@@ -134,7 +134,7 @@ fn the_remote_column_really_probes_this_machine_and_drops_the_monitor_rows() {
     let _ = std::fs::remove_dir_all(&h);
 }
 
-/// ★ 本机那一栏一问：monitor 只交它自己进程的那几条（家目录 · agent 家 · PATH），人群 == monitor 那台视角（含 `本机` 那一族），
+/// ★ 本机那一栏一问：monitor 只交它自己进程的那几条（家目录 · PATH；agent 家用这台后端自己解析的那一个），人群 == monitor 那台视角（含 `本机` 那一族），
 /// 那一族按 **monitor 交来的**家目录解、由这台 stat（同一台、同一用户）—— 放在那个家目录下的文件答「在」，这台自己的家目录不掺进来。
 #[test]
 fn the_local_column_resolves_the_monitor_rows_under_the_monitor_facts() {
@@ -143,7 +143,7 @@ fn the_local_column_resolves_the_monitor_rows_under_the_monitor_facts() {
     let m = temp_dir("local-monitor");
     std::fs::create_dir_all(m.join(".cc-monitor/bin")).unwrap();
     std::fs::write(m.join(".cc-monitor/bin/ccm"), "x").unwrap();
-    let client = json!({ "home": m.display().to_string(), "agentHome": m.join(".claude").display().to_string(), "path": "/m/bin" });
+    let client = json!({ "home": m.display().to_string(), "path": "/m/bin" });
     let got = answer_with(
         &env_of(vec![("HOME", h.display().to_string())]),
         &agent,
@@ -216,8 +216,8 @@ fn bad_arguments_are_refused() {
     let get = env_of(vec![("HOME", d.display().to_string())]);
     let cases = [
         json!({ "client": [] }),
-        json!({ "client": { "home": "rel", "agentHome": "/m/.claude" } }),
-        json!({ "client": { "home": "/m" } }),
+        json!({ "client": { "home": "rel" } }),
+        json!({ "client": { "path": "/m/bin" } }),
     ];
     for args in cases {
         let err = answer_with(&get, &d, &args).expect_err("坏入参还成功了");

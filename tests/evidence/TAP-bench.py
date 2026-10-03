@@ -208,7 +208,8 @@ def main() -> int:
     cwd = WORK / "proj"
     for d in (home / ".cc-monitor", cfg, cwd):
         d.mkdir(parents=True)
-    creds = WORK / "apikey-credentials.json"
+    creds = home / ".cc-monitor" / "apikey-credentials.json"  # 凭据住家里
+    creds.parent.mkdir(parents=True, exist_ok=True)
     creds.write_text('{\n  "accounts": {\n    "acctA": {}\n  }\n}\n')
 
     up = Upstream(cfg / "projects")
@@ -223,7 +224,6 @@ def main() -> int:
         "CLAUDE_CONFIG_DIR": str(cfg),
         "CCM_RELAY_PORT": str(relay_port),
         "CCM_AGENT_UPSTREAM_CLAUDE_CODE": f"http://127.0.0.1:{up_port}",
-        "CCM_APIKEY_CREDENTIALS": str(creds),
     }
     be = subprocess.Popen([str(BACKEND), "--", "--tail-only"], env=env, stdin=subprocess.PIPE,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

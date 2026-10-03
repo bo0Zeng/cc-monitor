@@ -35,16 +35,26 @@
 //!
 //! - **间接调用**：经函数指针 / 闭包值 / trait 对象的那一跳看不见（例：`relay_endpoint_on`〔散文墓碑〕
 //!   里 `(facts.endpoint)(…)` 那一跳）；同名歧义的调用不连。
-//! - **针只认两样**。`§10` 同样点名的「同步命令里起进程（`Command::spawn` / `output` / `wait`）· 读写文件」
-//!   **不在射程**：TL3 现打（名字级闭包原型）今天这一类还有 `list_local_tmux`（`tmux ls`）·
-//!   `local_ccm_entry_status`（跑 `ccm --ccm-probe`）· `backend_stop`（`kill` ＋ `wait`）·
-//!   `load_config` / `save_config` 等 —— 列在，待定。
+//! - **针认七样**（[`NEEDLES`]）：等 async 往返 · 同步连口 · 起子进程 · 等子进程 · 睡 · 起停串行锁。
+//!   「读写文件」**不在射程**（今天还同步的 `load_config` / `patch_config` / `cc_*_auto_launch` 读写的是 monitor 自己几 KB 的
+//!   一份文件，逐条登记在 [`SYNC_ALLOWED`]）；`local_ccm_entry_status`（跑 `ccm --ccm-probe`）· `backend_status`（等起停那把锁）
+//!   10-02 改成了 `async`。
 //! - 只看 monitor 这一个 crate（`#[tauri::command]` 全在这里）；共享 crate 里的阻塞看不见（今天零处）。
 
 use std::collections::{BTreeMap, BTreeSet};
 
-/// 在 IPC 派发线程上「等外面」的两种写法（量的是剥掉注释与字面量内容之后的源码）。
-const NEEDLES: &[&str] = &["block_on(", "TcpStream::connect"];
+/// 在 IPC 派发线程上「等外面」的写法（量的是剥掉注释与字面量内容之后的源码）：同步里等一次 async 往返 · 同步连后端口 ·
+/// 起子进程（`Command::new` · 唯一出口 `spawn_managed_cmd`）· 等子进程（`wait_with_output`）· 睡 ·
+/// 拿起停本机后端那把串行锁（它可能被一趟起 / 停攥着几十秒）。
+const NEEDLES: &[&str] = &[
+    "block_on(",
+    "TcpStream::connect",
+    "Command::new(",
+    "spawn_managed_cmd(",
+    "wait_with_output(",
+    "thread::sleep(",
+    "LIFECYCLE.lock(",
+];
 
 /// 🔴 **例外表**：`(同步命令, 它的闭包里够得着的针所在 fn, 为什么)`。键形 `相对 src/frontend/shell/src 的路径::fn 名`。
 ///
@@ -55,6 +65,76 @@ const NEEDLES: &[&str] = &["block_on(", "TcpStream::connect"];
 /// `start_local_backend → start_detached → adopt_with`，在 IPC 派发线程上连本机后端口、读 hello、`sleep` 等绑定、
 /// `attach_stream` 里 `block_on`）「改 async」，本机那一支进了 `spawn_blocking` ⇒ 摘掉。
 const PENDING: &[(&str, &[&str], &str)] = &[];
+
+/// 🔴 **同步命令白名单**：`(同步命令, 为什么它不会等外面)` —— 与盘上现扫出来的同步 `#[tauri::command]` 两向相等。
+/// 新加一条同步命令 ⇒ 要么写 `async`（`§10` 默认），要么在这里写一句为什么它不等外面（不起进程 · 不连口 · 不睡 · 不等锁）。
+const SYNC_ALLOWED: &[(&str, &str)] = &[
+    (
+        "backend_control.rs::backend_machines",
+        "读进程内那张远端句柄表的名字（内存，锁只在这一下）",
+    ),
+    (
+        "chan/webview.rs::chan_cancel",
+        "撤一条在飞的调用：在进程内的在飞表里摘一行、发撤单不等回话",
+    ),
+    (
+        "chan/webview.rs::chan_offer",
+        "读进程内那台机器的能力事实（握手时记下的，内存）",
+    ),
+    (
+        "chan/webview.rs::chan_stop",
+        "停一条订阅：在进程内的订阅表里摘一行",
+    ),
+    (
+        "chan/webview.rs::chan_subscribe",
+        "登记一条订阅：进程内的订阅表加一行，回放由别的任务送",
+    ),
+    ("chan/webview.rs::chan_want", "给订阅加额度：进程内计数"),
+    (
+        "config.rs::load_config",
+        "读 monitor 自己几 KB 的 config.json（本机小文件，不起进程不连口）",
+    ),
+    (
+        "config.rs::patch_config",
+        "按键补丁写 monitor 自己几 KB 的 config.json（进程内锁 ＋ 同目录锁，持锁只在读改写这一下）",
+    ),
+    (
+        "footprint_client.rs::footprint_client_facts",
+        "读本进程的家目录与 PATH 两格（内存）",
+    ),
+    (
+        "lib.rs::bound_terminal_count",
+        "读进程内绑定表的条数（内存）",
+    ),
+    (
+        "lib.rs::cc_get_auto_launch",
+        "读 monitor 自己的 auto-launch.json（本机小文件）",
+    ),
+    (
+        "lib.rs::cc_set_auto_launch",
+        "写 monitor 自己的 auto-launch.json（本机小文件）",
+    ),
+    (
+        "lib.rs::forget_session",
+        "从进程内的回放表与会话成品表里忘掉一条（内存）",
+    ),
+    (
+        "lib.rs::frontend_perf_log",
+        "往日志里记至多 40 行（tracing，不等）",
+    ),
+    (
+        "lib.rs::get_diagnostics_config",
+        "读进程内的诊断配置（内存）",
+    ),
+    (
+        "lib.rs::get_log_file_info",
+        "列 monitor 自己的日志目录（本机 stat）",
+    ),
+    (
+        "lib.rs::set_diagnostics_config",
+        "改进程内的日志级别并写回 config.json 那一格（本机小文件）",
+    ),
+];
 
 // ───────────────────────────── 分析器 ─────────────────────────────
 
@@ -485,6 +565,32 @@ fn no_sync_command_waits_on_the_outside_except_the_registered_deviations() {
             别往例外表里加一行了事（加一行 = 偏离设计）。\n\
          ⇒ 后一种：修好了 ⇒ 从 `PENDING` 删掉那一行；只是换了针所在的 fn ⇒ 按实数改并写清为什么。"
     );
+}
+
+/// ★★ **同步命令 == 白名单**（两向相等）：会起子进程或会长等的命令必须是 `async`，留在同步那一侧的每一条都写了为什么不等外面。
+#[test]
+fn every_sync_command_is_on_the_whitelist_with_a_reason() {
+    let a = analyze(&this_crate());
+    let want: BTreeSet<String> = SYNC_ALLOWED.iter().map(|(c, _)| (*c).to_string()).collect();
+    let extra: Vec<&String> = a.sync_cmds.difference(&want).collect();
+    let stale: Vec<&String> = want.difference(&a.sync_cmds).collect();
+    assert!(
+        extra.is_empty() && stale.is_empty(),
+        "同步 `#[tauri::command]` 与白名单对不上（`INVARIANTS §10`）：\n\
+         盘上是同步、白名单里没有：{extra:?} —— 它会不会起子进程 / 等外面？会 ⇒ 改 `pub async fn` ＋ `spawn_blocking`；\n\
+         真不会 ⇒ 进 `SYNC_ALLOWED` 并写清为什么。\n\
+         白名单里有、盘上不是同步了：{stale:?} —— 从白名单删掉那一行。"
+    );
+    for (c, why) in SYNC_ALLOWED {
+        assert!(why.chars().count() >= 8, "`{c}` 没写清为什么它不等外面");
+    }
+    // 正控：今天改成 async 的那两条确实在 async 那一侧（扫描器读得出 `async`，白名单那一向不是空真）。
+    for cmd in [
+        "ccm_probe.rs::local_ccm_entry_status",
+        "backend_control.rs::backend_status",
+    ] {
+        assert!(a.async_cmds.contains(cmd), "`{cmd}` 不在 async 命令里");
+    }
 }
 
 /// 正控（真仓）：本机起会话那一条（今天是开终端窗口 `open_local_terminal`）与起后端那一条被认成 **async** 命令 —— 扫描器看得见属性，也读得出 `async` 那一格。

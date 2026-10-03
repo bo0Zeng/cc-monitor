@@ -925,7 +925,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--remote-reach",
     // 测试连接（`remote-probe`）那一行 CLI 面摘了：进度格改走本连接的应答通道（硬臂，只在帧面，理由见 `cli_control_tests::NOT_ON_CLI`）。
     // 历史注解那三条（`inbound::REGISTRY` 的 `history-annotate` / `-forget` / `-last-accounts`）派生的 CLI 面。
-    // ⚠ 一次性进程多半没被交 `CCM_HISTORY_METADATA` ⇒ 明拒（不猜路径）。加这三行会逼出一次 `BUILD_ID` bump，本路**不 bump**。
+    // 文件住家里，一次性进程与常驻那一个按家推出同一份。加这三行会逼出一次 `BUILD_ID` bump，本路**不 bump**。
     "--history-annotate",
     "--history-forget",
     "--history-last-accounts",

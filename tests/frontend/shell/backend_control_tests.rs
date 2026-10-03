@@ -13,10 +13,14 @@ fn the_three_ports_are_one_command_each_and_all_take_origin() {
     for p in PORTS {
         // `backend_stop` 本机那一支要等（SIGTERM → ≤ 约 10 秒 → 强杀）⇒ 它是 `async`（同步命令跑在主线程上）。
         // 〔INVARIANTS §10〕`backend_start` 本机那一支也要等（起进程 · 连口 · 读 hello · 等绑上口）⇒ 同样 `async`。
-        let sig = if *p == "backend_stop" || *p == "backend_start" {
-            format!("pub async fn {p}(origin: String)")
+        // 〔INVARIANTS §10〕`backend_status` 本机那一支要拿句柄表的锁 ⇒ 也是 `async`，本体住 `backend_status_now`
+        //   （命令本身只有一行 `spawn_blocking`）⇒ 那一口切本体那一份。
+        guard_core::find_pinned(&src, &format!("pub async fn {p}(origin: String)"))
+            .unwrap_or_else(|e| panic!("`{p}` 不是恰好一条 `async` 命令（{e}）"));
+        let sig = if *p == "backend_status" {
+            "fn backend_status_now(origin: String)".to_string()
         } else {
-            format!("pub fn {p}(origin: String)")
+            format!("pub async fn {p}(origin: String)")
         };
         let at = guard_core::find_pinned(&src, &sig).unwrap_or_else(|e| {
             panic!(
@@ -124,7 +128,7 @@ fn the_startup_path_really_registers_remote_handles() {
 #[test]
 fn an_empty_origin_is_refused_by_every_port() {
     for r in [
-        backend_status("  ".into()).map(|_| ()),
+        tauri::async_runtime::block_on(backend_status("  ".into())).map(|_| ()),
         // `backend_start` 也改成 `async` ⇒ 同样就地跑完它。
         tauri::async_runtime::block_on(backend_start(" ".into())).map(|_| ()),
         // `backend_stop` 改成 `async`（本机那一支要等）⇒ 就地跑完它。

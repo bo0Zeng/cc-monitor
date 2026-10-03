@@ -27,6 +27,7 @@
 //! 命令级（本模块 / `gate`）：`invalid_args` · `no_tmux` · `no_such_session` ·
 //! `wrong_owner`（Gate 2 不通过）· `too_many_windows`（Gate 3 不通过）· `kill_failed`。
 
+use crate::common::child_env::WithoutOwnEnv;
 use copy_core::copy_text;
 use std::process::{Command, Stdio};
 
@@ -98,6 +99,7 @@ fn run_expecting(name: &str, sid: Option<&str>) -> Result<super::cc_bus::BusClea
     // 杀之前记下这个会话全部 pane 的根进程 pid：杀完按它认 cc-bus 名册里登记在这里的 id（不按会话名猜）。
     let panes = pane_pids(&handle);
     let out = Command::new("tmux")
+        .without_own_env()
         .args(["kill-session", "-t", &handle])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -126,6 +128,7 @@ fn run_expecting(name: &str, sid: Option<&str>) -> Result<super::cc_bus::BusClea
 /// `INVARIANTS §49`：argv 直传 ⇒ UTF-8 旗排在子命令前（读的虽是数字，照表带）。
 fn pane_pids(handle: &str) -> Vec<u32> {
     Command::new("tmux")
+        .without_own_env()
         .args([
             UTF8_CLIENT_FLAG,
             "list-panes",

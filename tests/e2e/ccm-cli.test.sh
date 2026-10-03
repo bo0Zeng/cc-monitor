@@ -45,7 +45,7 @@ ck() { # ck <描述> <期望> <实得>
 # 开发者本人也可能正跑在某个隔离账号下（`CLAUDE_CONFIG_DIR`），ccm 会真读它，不摘会让结果随「是谁在跑测试」漂移。
 # `CCM_BACKEND_BIN` 那一栏早没了：敲的那个命令**就是**后端。
 NOHOME="$CCMDIR/home"; mkdir -p "$NOHOME"
-ccm() { env -u CLAUDE_CONFIG_DIR HOME="$NOHOME" CCM_CONFIG=/nonexistent "$CCM" "$@" 2>&1; }
+ccm() { env -u CLAUDE_CONFIG_DIR HOME="$NOHOME" "$CCM" "$@" 2>&1; }
 
 UNSET="unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION"
 
@@ -144,7 +144,7 @@ cat > "$AL/accounts.json" <<JSON
   { "name": "z", "configDir": "$AL/z", "isDefault": true },
   { "name": "b", "configDir": "$AL/b", "isDefault": false } ] }
 JSON
-acct() { env -u CLAUDE_CONFIG_DIR HOME="$ACCTMP" CCM_CONFIG=/nonexistent "$CCM" "$@" 2>&1; }
+acct() { env -u CLAUDE_CONFIG_DIR HOME="$ACCTMP" "$CCM" "$@" 2>&1; }
 ck "显式 --account 注入其 configDir" \
    "export CLAUDE_CONFIG_DIR='$AL/b'; $UNSET; cd '/p' && exec claude" \
    "$(acct -- --cwd /p --account b --ccm-print)"
@@ -193,7 +193,7 @@ echo "===== 账号继承（F03 综合设计时发现的 bug 回归）====="
 # 一直看不出来）。实测：同一份 HEAD，`TMUX` 有无决定 44/0 还是 40/4。
 # 测什么就要固定什么，不能让环境替测试选路径。
 # 夹具同上一组（临时家目录里的账号库）。
-inherit_acct() { CLAUDE_CONFIG_DIR="$AL/b" env -u TMUX -u TMUX_PANE HOME="$ACCTMP" CCM_CONFIG=/nonexistent "$CCM" "$@" 2>&1; }
+inherit_acct() { CLAUDE_CONFIG_DIR="$AL/b" env -u TMUX -u TMUX_PANE HOME="$ACCTMP" "$CCM" "$@" 2>&1; }
 ACCTMP="$(mktemp -d)"; AL="$ACCTMP/.cc-monitor/accounts"; mkdir -p "$AL/z" "$AL/b"
 cat > "$AL/accounts.json" <<JSON
 { "version": 1, "accounts": [
@@ -201,7 +201,7 @@ cat > "$AL/accounts.json" <<JSON
   { "name": "b", "configDir": "$AL/b", "isDefault": false } ] }
 JSON
 ck "外层已继承账号 b（无 --account/--base）→ 保留 b，不被默认号 z 静默覆盖"    "$UNSET; cd '/p' && exec claude"    "$(inherit_acct -- --cwd /p --ccm-print)"
-ck "裸终端（无继承）仍落 manifest 默认号 z"    "export CLAUDE_CONFIG_DIR='$AL/z'; $UNSET; cd '/p' && exec claude"    "$(env -u CLAUDE_CONFIG_DIR HOME="$ACCTMP" CCM_CONFIG=/nonexistent "$CCM" -- --cwd /p --ccm-print 2>&1)"
+ck "裸终端（无继承）仍落 manifest 默认号 z"    "export CLAUDE_CONFIG_DIR='$AL/z'; $UNSET; cd '/p' && exec claude"    "$(env -u CLAUDE_CONFIG_DIR HOME="$ACCTMP" "$CCM" -- --cwd /p --ccm-print 2>&1)"
 ck "--base 显式清空，不受继承影响"    "unset CLAUDE_CONFIG_DIR; $UNSET; cd '/p' && exec claude"    "$(inherit_acct -- --cwd /p --base --ccm-print)"
 ck "--account 显式指定，优先级最高（覆盖继承的 b）"    "export CLAUDE_CONFIG_DIR='$AL/z'; $UNSET; cd '/p' && exec claude"    "$(inherit_acct -- --cwd /p --account z --ccm-print)"
 
@@ -231,7 +231,7 @@ ck "R08：容器路径 + 显式 --account z → 内层带 --account z（优先�
    "$(inherit_acct -- --ccm-tmux --cwd /p --account z --ccm-print | unesc | grep -qF -- "'--account' 'z'" && echo yes || echo no)"
 ck "R08：容器路径 + 裸终端（无继承）→ 内层仍落默认号 z（粘滞体验不回退）" \
    "yes" \
-   "$(env -u CLAUDE_CONFIG_DIR -u TMUX -u TMUX_PANE HOME="$ACCTMP" CCM_CONFIG=/nonexistent "$CCM" -- --ccm-tmux --cwd /p --ccm-print 2>&1 | unesc | grep -qF -- "'--account' 'z'" && echo yes || echo no)"
+   "$(env -u CLAUDE_CONFIG_DIR -u TMUX -u TMUX_PANE HOME="$ACCTMP" "$CCM" -- --ccm-tmux --cwd /p --ccm-print 2>&1 | unesc | grep -qF -- "'--account' 'z'" && echo yes || echo no)"
 rm -rf "$ACCTMP"
 
 echo
@@ -246,7 +246,7 @@ printf '{"oauthAccount":{"emailAddress":"d@example.test"}}' > "$AH/.claude.json"
 mkdir -p "$AH/.claude-alt/old"
 printf '{"version":1,"accounts":[{"name":"old","configDir":"%s","isDefault":true}]}\n' "$AH/.claude-alt/old" > "$AH/.claude-alt/accounts.json"
 OLD_SUM="$(cksum < "$AH/.claude-alt/accounts.json")"
-home_run() { env -i PATH=/usr/bin:/bin HOME="$AH" CCM_CONFIG=/nonexistent "$CCM" "$@" 2>&1; }
+home_run() { env -i PATH=/usr/bin:/bin HOME="$AH" "$CCM" "$@" 2>&1; }
 names_of() { home_run -- --list-accounts | tail -n +2 | sed -n 's/.*"name":"\([^"]*\)".*/\1/p' | tr '\n' ' '; }
 ck "建库前：只有旧位置那份清单 ⇒ 没启用多账号" "false" \
    "$(home_run -- --list-accounts | head -1 | sed -n 's/.*"enabled":\([a-z]*\).*/\1/p')"
@@ -297,7 +297,7 @@ FAKEHOME="$TMPROOT/home"; mkdir -p "$FAKEHOME"
 cmp_cwd() {
   local desc="$1" dir="$2" home="${3:-$NOHOME}" got want
   want="$( cd "$dir" && pwd -P )"
-  got="$( cd "$dir" && HOME="$home" CCM_CONFIG=/nonexistent \
+  got="$( cd "$dir" && HOME="$home" \
       CCM_WORKSPACE="$CC_WORKSPACE" "$CCM" -- --ccm-print 2>&1 | sed -n "s/.*cd '\\([^']*\\)' && .*/\\1/p" )"
   ck "$desc" "$want" "$got"
 }
@@ -319,7 +319,7 @@ echo "===== 会话名派生：真跑那条路铸出来的名字（前端那份�
 # 「响亮失败」时，把 `tmux new-session` 包进了 `{ … || { …; exit 3; }; }` ——
 # 于是这条 `sed` 的 `^tmux` 锚点**零命中**，下面 5 条**全部拿到空串、静默常红**。
 # 这正是「判据的匹配单位跟不上事实的形状」那一族：报的是「不一致」，真因是抽取器失灵。
-name_of() { env -u TMUX HOME="$NOHOME" CCM_CONFIG=/nonexistent "$CCM" -- --ccm-tmux --cwd "$1" --ccm-print 2>&1 \
+name_of() { env -u TMUX HOME="$NOHOME" "$CCM" -- --ccm-tmux --cwd "$1" --ccm-print 2>&1 \
             | sed -n "s/^[{ ]*tmux new-session -d -s \\('[^']*'\\|[^ ]*\\) .*/\\1/p" | tr -d "'"; }
 # tmux 名撞名时 CLI 会加 -2/-3；此处只比基名（测试环境不建会话，故恒等基名）
 for pair in "/home/pi/proj|proj-cc" "/home/pi/a  b|a-b-cc" "/home/pi/proj///|proj-cc" "/|session-cc" "/home/pi/.hidden.dir|hidden-dir-cc"; do
@@ -363,7 +363,7 @@ echo "===== CCM_SELF 删了：内层载荷只认「这个进程自己被怎么�
 # 「`CCM_SELF` 这个环境变量随之删掉」。
 # 两向：① 设了一个假值，容器路的内层载荷里**一处都不许出现它**（有人把那一格读回来 ⇒ 当场红）；
 #       ② 正控：内层载荷真的以本进程的入口（`$CCM` 这条软链）开头 —— 否则 ① 可以靠「内层根本没打出来」零命中地绿。
-SELF_OUT="$(env -u TMUX -u CLAUDE_CONFIG_DIR CCM_SELF=/bogus/old-ccm HOME="$NOHOME" CCM_CONFIG=/nonexistent "$CCM" -- --ccm-tmux --cwd /p --ccm-print 2>&1)"
+SELF_OUT="$(env -u TMUX -u CLAUDE_CONFIG_DIR CCM_SELF=/bogus/old-ccm HOME="$NOHOME" "$CCM" -- --ccm-tmux --cwd /p --ccm-print 2>&1)"
 ck "设了 CCM_SELF 也不被读（内层载荷里零命中）" "0" "$(printf '%s\n' "$SELF_OUT" | grep -c 'bogus/old-ccm')"
 ck "正控：内层载荷以本进程被叫的那个入口开头" "yes" "$(printf '%s\n' "$SELF_OUT" | unesc | grep -qF "'$CCM' '--' '--cwd'" && echo yes || echo no)"
 

@@ -8,6 +8,7 @@
 //! 要动 tmux / 读记录 / 起 ccm 的几样由入口经 [`Deps`] 交进来（control 不引用 observe），判据交替身。
 
 use super::launch_render::{local, wire};
+use crate::common::child_env::WithoutOwnEnv;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
 
@@ -499,6 +500,7 @@ fn start_window_here(it: &Item, deps: &Deps) -> Answer {
 pub(crate) fn run_self_as_ccm(argv: &[String]) -> Result<(i32, String, String), String> {
     let me = std::env::current_exe().map_err(|e| e.to_string())?;
     let out = std::process::Command::new(me)
+        .without_own_env()
         .args(argv.iter().skip(1))
         .env_remove("TMUX")
         .env_remove("TMUX_PANE")

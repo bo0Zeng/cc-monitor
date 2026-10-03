@@ -1062,13 +1062,7 @@ fn no_e2e_script_kills_by_pattern() {
 /// 写路径之前「继承开发机默认值」的那几个变量：开发者的 shell rc 里常 export 着它们、指向真家目录 / 真账号目录 / 真 cc-bus /
 /// 真凭据表 / 真数据目录。`${VAR:-沙箱}` 这种写法在那台机器上会照用真值、再往里写测试数据（10-01 实发过一次：
 /// 当时另指账号库位置的那个变量指着真清单，真账号清单被改写成两个测试号；那个变量今天整个删了，账号库只跟着家走）。
-const INHERITED_PATH_VARS: &[&str] = &[
-    "HOME",
-    "CLAUDE_CONFIG_DIR",
-    "CC_BUS_HOME",
-    "CCM_APIKEY_CREDENTIALS",
-    "CCM_DATA_DIR",
-];
+const INHERITED_PATH_VARS: &[&str] = &["HOME", "CLAUDE_CONFIG_DIR", "CC_BUS_HOME", "CCM_DATA_DIR"];
 
 /// 留着这种写法的那几处（`文件 · 变量 · 为什么不是往真路径里写`）。每一条都要是**只读**，或者另有一道闸挡住写。
 const INHERITED_PATH_ALLOWED: &[(&str, &str, &str)] = &[

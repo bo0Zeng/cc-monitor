@@ -230,7 +230,7 @@ fn monitor_and_backend_logs_live_side_by_side_under_logs() {
 }
 
 /// 交给后端的那个变量名 == 后端读的那个（异源：从后端源码里现抠 `pub const ENV`）；路径就是设置页读的那一份（同一个函数）。
-/// 接线（文本，如实登记：按行为量要真起脱离后端）：`spawn_detached` 交它恰好一处，被监护那条的 `relay_host_envs` 不交。
+/// 接线（文本，如实登记：按行为量要真起脱离后端）：`spawn_detached` 交它恰好一处，两条载体共用的 `backend_env` 不交。
 #[test]
 fn the_detached_backend_is_handed_its_stderr_log_path_and_only_that_carrier_is() {
     let backend = include_str!("../../../src/backend/stderr_log.rs");
@@ -258,7 +258,7 @@ fn the_detached_backend_is_handed_its_stderr_log_path_and_only_that_carrier_is()
         "脱离那条载体没交诊断文件路径（或路径不是那一个函数算的）"
     );
     assert!(
-        !crate::local_backend_host::relay_host_envs()
+        !crate::local_backend_host::backend_env()
             .iter()
             .any(|(k, _)| k == BACKEND_STDERR_LOG_ENV),
         "两条载体共用那份环境里也交了 —— 被监护那条的 stderr 会分成两处"

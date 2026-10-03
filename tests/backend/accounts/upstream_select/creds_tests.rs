@@ -38,13 +38,11 @@ fn default_file(home: &Path) -> PathBuf {
     home.join(".cc-monitor").join(store::FILE_NAME)
 }
 
-/// 取值器：只答 `HOME`（与 `ENV_CREDENTIALS` 那一格，给了才答）。
-fn env_with(home: &Path, creds: Option<&str>) -> impl Fn(&str) -> Option<String> {
+/// 取值器：只答 `HOME`。
+fn env_with(home: &Path) -> impl Fn(&str) -> Option<String> {
     let home = home.display().to_string();
-    let creds = creds.map(str::to_string);
     move |k| match k {
         "HOME" => Some(home.clone()),
-        ENV_CREDENTIALS => creds.clone(),
         _ => None,
     }
 }
@@ -65,7 +63,7 @@ fn upstream_selection_loads_the_key_from_a_hand_written_file_alone() {
     )
     .expect("写夹具");
 
-    let resolved = resolve_path(&env_with(&home, None)).expect("有家目录却推不出");
+    let resolved = resolve_path(&env_with(&home)).expect("有家目录却推不出");
     assert_eq!(resolved, p, "路径解析没落在契约那条路上");
     let loaded = load(&resolved);
     assert!(loaded.problem.is_none(), "不该有问题：{:?}", loaded.problem);
@@ -81,50 +79,38 @@ fn upstream_selection_loads_the_key_from_a_hand_written_file_alone() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// 位置只跟着家走：默认 `~/.cc-monitor` 根上那一份；`CCM_DATA_DIR`（绝对）⇒ 它根上那一份；相对 ⇒ 出声。
+/// 不认 agent 家（`CLAUDE_CONFIG_DIR`），也没有另指它的变量（从前的 `CCM_APIKEY_CREDENTIALS` 删了，给了也不认）。期望手写。
 #[test]
-fn env_overrides_the_default_location() {
-    let home = tmpdir("env-override");
-    let elsewhere = home.join("somewhere-else.json");
-    std::fs::write(&elsewhere, b"{\"api_key\":\"sk-ant-ELSEWHERE\"}").expect("写夹具");
-    let got =
-        resolve_path(&env_with(&home, Some(&elsewhere.display().to_string()))).expect("显式给了");
-    assert_eq!(got, elsewhere);
-    assert_eq!(
-        single_key(&load(&got))
-            .expect("应当拿到 key")
-            .expose_for_auth_header(),
-        "sk-ant-ELSEWHERE"
-    );
-    // 非空对照：空串的覆盖**不算覆盖**，回默认路径。
-    let dflt = resolve_path(&env_with(&home, Some("   ")));
-    assert_eq!(dflt, Ok(default_file(&home)));
-    // 默认臂按用户家推、不认 agent 家：给了 `CLAUDE_CONFIG_DIR` 也落在同一份。
-    let with_agent_home = |k: &str| match k {
-        "CLAUDE_CONFIG_DIR" => Some("/elsewhere/.claude-acct".to_string()),
-        _ => env_with(&home, None)(k),
-    };
-    assert_eq!(resolve_path(&with_agent_home), Ok(default_file(&home)));
-    // 数据目录与 monitor 同一条规矩：`CCM_DATA_DIR`（绝对）⇒ 它根上那一份（期望手写）；
-    //   设了却是相对路径 ⇒ 出声（`Err`），不退回家目录下那一份；显式给的 `CCM_APIKEY_CREDENTIALS` 仍优先。
-    let with_data_dir = |dd: &'static str, creds: Option<&'static str>| {
-        let base = env_with(&home, creds);
-        move |k: &str| match k {
-            "CCM_DATA_DIR" => Some(dd.to_string()),
-            _ => base(k),
+fn the_location_only_follows_the_home() {
+    let home = tmpdir("home-only");
+    let with = |extra: &'static [(&'static str, &'static str)]| {
+        let base = env_with(&home);
+        move |k: &str| {
+            extra
+                .iter()
+                .find(|(n, _)| *n == k)
+                .map(|(_, v)| v.to_string())
+                .or_else(|| base(k))
         }
     };
+    assert_eq!(resolve_path(&with(&[])), Ok(default_file(&home)));
     assert_eq!(
-        resolve_path(&with_data_dir("/iso", None)),
+        resolve_path(&with(&[
+            ("CLAUDE_CONFIG_DIR", "/elsewhere/.claude-acct"),
+            ("CCM_APIKEY_CREDENTIALS", "/x/c.json"),
+        ])),
+        Ok(default_file(&home)),
+        "家之外的变量改道了凭据文件"
+    );
+    assert_eq!(
+        resolve_path(&with(&[("CCM_DATA_DIR", "/iso")])),
         Ok(PathBuf::from("/iso/apikey-credentials.json"))
     );
-    let refused = resolve_path(&with_data_dir("iso", None)).expect_err("相对路径被收下了");
+    let refused = resolve_path(&with(&[("CCM_DATA_DIR", "iso")])).expect_err("相对路径被收下了");
     assert!(
         refused.contains("CCM_DATA_DIR"),
         "那句话没点名是哪一格：{refused}"
-    );
-    assert_eq!(
-        resolve_path(&with_data_dir("iso", Some("/x/c.json"))),
-        Ok(PathBuf::from("/x/c.json"))
     );
     let _ = std::fs::remove_dir_all(&home);
 }

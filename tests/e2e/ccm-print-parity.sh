@@ -64,7 +64,7 @@ get_line() { echo "$TSV" | awk -F'\t' -v k="$1" '$1==k{print $2}'; }
 #     空家目录 = 「这台机器没有账号库」，开发者本机的账号库不会被注入断言。
 FAKE_BACKEND="$REPO/tests/e2e/fake-backend.sh"
 run_print() {
-  env -u TMUX -u CLAUDE_CONFIG_DIR CCM_CONFIG=/nonexistent \
+  env -u TMUX -u CLAUDE_CONFIG_DIR \
     CCM_BACKEND_BIN="$FAKE_BACKEND" \
     HOME="$NOHOME" bash -c "$1 --ccm-print"
 }

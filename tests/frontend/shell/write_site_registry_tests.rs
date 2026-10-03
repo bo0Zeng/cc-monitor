@@ -129,18 +129,13 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("bookmarks.rs", "lock_store", None,
      "monitor 自己的状态：文件窗口书签的锁旁件（`<数据目录>/filewin-bookmarks.json.lock`，空文件）"),
     ("atomic.rs", "atomic_replace_path", None, "同上，原语的本地副本"),
-    // ── `K-P1`：常驻那条路要写两样东西。**都不是安装动作** —— 写的是 monitor 自己的目录。
+    // ── `K-P1`：常驻那条路要写一样东西。**不是安装动作** —— 写的是这台的家。
     ("local_backend_host.rs", "ensure_listen_token", None,
-     "写 `~/.cc-monitor/listen-token`（**`0600`**，`create_new` 只创建一次）。\
+     "写 `<家>/listen-token`（**`0600`**，`create_new` 只创建一次）。\
           ★ 它买的是**权限位**：回环 TCP 上同机任何进程（含别的用户）都连得上，\
-          Unix socket 有权限位而它没有，收窄只能靠一个 token；而 **backend 只读铁律不许它自己写文件**\
-          ⇒ token 只能由宿主生成、当 env 传进去。**这一格是一条真裁决，不是实现细节。**\
+          Unix socket 有权限位而它没有，收窄只能靠一把钥匙；钥匙落文件、环境里只交文件路径。\
           幂等：已存在就读回（重写会让上一个宿主留下的那个后端当场变成接不上的孤儿）"),
-    ("local_backend_host.rs", "write_listen_pid", None,
-     "写 `~/.cc-monitor/listen-<port>.pid` —— 「谁在听那个口」。\
-          它**不是**源头（源头永远是「那个口连不连得上」），只在**停**那一步用，\
-          且用之前还要过一道 `/proc/<pid>/exe` 的身份核对。\
-          没有它，接管来的那个实例按不动「停」——那时按钮就成了一句骗人的话"),
+    // 「谁在听」那一行摘了：monitor 不再写那份记录，由常驻后端绑上口之后自己记（`control/resident.rs::record_owner`，本机远端同一个写者）。
     // ── 起脱离那条载体之前建好后端 stderr 诊断文件那一层目录。**不是安装动作**。
     ("local_backend_host.rs", "spawn_detached", None,
      "建 `<monitor 数据目录>/logs/backend/`（`create_dir_all`，只建目录）—— 脱离常驻的本机后端把自己的 stderr 落在\
@@ -477,7 +472,6 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
         "ensure_listen_token",
         Lands::OwnState,
     ),
-    ("local_backend_host.rs", "write_listen_pid", Lands::OwnState),
     // monitor 自己的日志目录下那一层（后端 stderr 诊断文件住那里）。
     ("local_backend_host.rs", "spawn_detached", Lands::OwnState),
     // 文件窗口书签的锁旁件（`<monitor 数据目录>/filewin-bookmarks.json.lock`）——

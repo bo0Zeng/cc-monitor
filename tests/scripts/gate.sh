@@ -2027,7 +2027,11 @@ run_e2e backend-gate2         34 exact-with-skip
 # 26 → 24：起真后端的那三条少了一条 `the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕（它钉的 monitor 本机
 #     tmux 原文账随账本进后端删了，快照帧删了；后端那本账由 `graylight-backend-frames.sh` 真 tmux 实测），它打 2 条标记 ⇒
 #     铺了 24+0、没铺 15+9。量于 2026-09-28 铺了落点的非 ASCII 路径工作树。
-run_e2e local-backend         24 exact-with-skip
+# 24 → 27：多一条 `e2e_the_door_follows_the_home_not_the_claude_dir`（门牌只跟着家走：改了 Claude 目录设置照样接得上 · 停得掉 ·
+#     设置里那一格显式交给后端），它打 3 条标记 ⇒ 没铺 18+9（本工作树 `w4/home` 现打）。
+# 27 → 28：同一条多一格「监听口的钥匙不在常驻后端的环境里」⇒ 没铺 19+9。
+# 28 → 29：多一条 `e2e_children_of_the_resident_backend_carry_none_of_its_own_env`（常驻后端起的 tmux 不带它自有的环境）⇒ 没铺 20+9。
+run_e2e local-backend         29 exact-with-skip
 # 〔MIG-2 合后〕`restart-frames` 5 → 6：加一格「kill→resume→记账 znew、没有 shim 不认的问」（换号成功后记 pin 那一步此前没被测到）；量于主树同形的非 ASCII 路径。
 run_e2e restart-frames         6
 run_e2e restart               25

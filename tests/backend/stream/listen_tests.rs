@@ -1,7 +1,7 @@
 //! # 要求住址：`INVARIANTS §48.1`（本机常驻后端的监听口要钥匙）
 //!
 //! 核原文：`§48.1` 逐字「「有口没钥匙」⇒ **拒绝起**；空钥匙 ⇒ 按「没设」算；钥匙逐字节全等才算对」「三种拒法**出声且彼此可分**」——
-//! 本族 `a_port_without_a_token_is_refused` · `empty_strings_count_as_unset` · `an_empty_token_never_matches` · `tokens_match_is_exact` ·
+//! 本族 `a_port_without_a_token_is_refused`（今天钥匙只经文件交，`ENV_TOKEN_FILE`）· `empty_strings_count_as_unset` · `an_empty_token_never_matches` · `tokens_match_is_exact` ·
 //! `attach_verdicts_are_three_distinct_faces` · `the_two_tier_split_is_pinned_cell_by_cell` 逐格判它。
 //! 只听回环、拒绝理由闭集、握手行上界、退出码那几条是同一个监听口的形状，住生产侧 `listen.rs` 头注（「诚实边界」三条），本条不另点。〔IV1 点址 2026-09-25〕
 
@@ -22,55 +22,64 @@ fn no_env_means_todays_stdio_path() {
     assert_eq!(mode_from(&env_of(&[])).expect("空环境"), Mode::Stdio);
 }
 
-/// ★★ **有口没 token ⇒ 拒绝起**。这一条是本模块最要紧的一格。
+/// ★★ **有口没钥匙文件 ⇒ 拒绝起**。这一条是本模块最要紧的一格。
 ///
 /// 放过它的后果很具体：同机任何本地进程（**含别的用户**）连上那个口就能发
 /// `launch` / `kill` —— 以本账号的身份执行。回环 TCP 没有权限位，
-/// 补回来的只有这一个 token。
+/// 补回来的只有这一把钥匙。
 #[test]
 fn a_port_without_a_token_is_refused() {
     let e = mode_from(&env_of(&[(ENV_PORT, "51000")])).unwrap_err();
     assert!(
-        e.contains(ENV_TOKEN),
-        "拒绝的理由里没点名 {ENV_TOKEN} —— 那句诊断说不清该去补什么：{e}"
+        e.contains(ENV_TOKEN_FILE),
+        "拒绝的理由里没点名 {ENV_TOKEN_FILE} —— 那句诊断说不清该去补什么：{e}"
     );
 }
 
-/// 有 token 没口 ⇒ 也拒，且**不静默退回 stdio**。
+/// 有钥匙文件没口 ⇒ 也拒，且**不静默退回 stdio**。
 #[test]
 fn a_token_without_a_port_is_refused_loudly() {
-    let e = mode_from(&env_of(&[(ENV_TOKEN, "abc")])).unwrap_err();
+    let e = mode_from(&env_of(&[(ENV_TOKEN_FILE, "/h/.cc-monitor/listen-token")])).unwrap_err();
     assert!(e.contains(ENV_PORT), "{e}");
 }
 
 /// 端口 0 与不是数字的都要拒 —— 0 会让内核随机挑口，而宿主等在算好的那个口上。
 #[test]
 fn port_zero_and_garbage_are_refused() {
-    assert!(mode_from(&env_of(&[(ENV_PORT, "0"), (ENV_TOKEN, "t")])).is_err());
-    assert!(mode_from(&env_of(&[(ENV_PORT, "no"), (ENV_TOKEN, "t")])).is_err());
-    assert!(mode_from(&env_of(&[(ENV_PORT, "70000"), (ENV_TOKEN, "t")])).is_err());
+    let f = (ENV_TOKEN_FILE, "/t");
+    assert!(mode_from(&env_of(&[(ENV_PORT, "0"), f])).is_err());
+    assert!(mode_from(&env_of(&[(ENV_PORT, "no"), f])).is_err());
+    assert!(mode_from(&env_of(&[(ENV_PORT, "70000"), f])).is_err());
 }
 
-/// 空串按「没设」算 —— shell 里 `export X=` 是常态，把它读成「设了个空 token」
-/// 就等于**用空串当口令**。
+/// 空串按「没设」算 —— shell 里 `export X=` 是常态。
 #[test]
 fn empty_strings_count_as_unset() {
     assert_eq!(
-        mode_from(&env_of(&[(ENV_TOKEN, "  ")])).unwrap(),
+        mode_from(&env_of(&[(ENV_TOKEN_FILE, "  ")])).unwrap(),
         Mode::Stdio
     );
-    assert!(mode_from(&env_of(&[(ENV_PORT, "51000"), (ENV_TOKEN, " ")])).is_err());
+    assert!(mode_from(&env_of(&[(ENV_PORT, "51000"), (ENV_TOKEN_FILE, " ")])).is_err());
 }
 
+/// 两个都在 ⇒ 常驻；钥匙**只认文件**：从前那个直接装钥匙的变量删了，环境里给了它也不认（不起、不当钥匙用）。
 #[test]
 fn both_present_gives_listen_mode() {
-    let m = mode_from(&env_of(&[(ENV_PORT, "51000"), (ENV_TOKEN, "s3cret")])).unwrap();
+    let m = mode_from(&env_of(&[(ENV_PORT, "51000"), (ENV_TOKEN_FILE, "/h/k")])).unwrap();
     assert_eq!(
         m,
         Mode::Listen {
             port: 51000,
-            token: "s3cret".into()
+            token_file: "/h/k".into()
         }
+    );
+    assert!(
+        mode_from(&env_of(&[
+            (ENV_PORT, "51000"),
+            ("CCM_LISTEN_TOKEN", "s3cret")
+        ]))
+        .is_err(),
+        "钥匙装在环境变量里还起了 —— 那把钥匙会被它起的每个进程继承"
     );
 }
 
@@ -121,7 +130,7 @@ fn attach_verdicts_are_three_distinct_faces() {
 
 /// ★★ **空 token 永远配不上**。
 ///
-/// 少了这一格，`ENV_TOKEN` 万一被读成空串（或者哪天有人放宽了上面那条），
+/// 少了这一格，钥匙文件万一读出空串（或者哪天有人放宽了上面那条），
 /// 客户端发 `{"attach":""}` 就直接过 —— 而那看起来是「认证通过」。
 #[test]
 fn an_empty_token_never_matches() {

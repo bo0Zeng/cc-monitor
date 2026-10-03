@@ -118,7 +118,6 @@ def main():
             env.pop(k, None)
         env.update({
             "CCM_SELF": "/usr/local/bin/ccm",
-            "CCM_CONFIG": "/nonexistent",
             "CCM_ACCTS_MANIFEST": str(w / "accounts.json"),
             "CCM_DAEMON_BIN": str(w / "bin" / "faked"),
             "HOME": str(w),

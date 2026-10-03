@@ -98,7 +98,7 @@ mod byte_table; // 全仓唯一的取字节口：一台机器要哪一份可执�
 #[path = "../../../../tests/frontend/shell/contract_crate_guard_tests.rs"]
 mod contract_crate_guard;
 mod copy_table; // 对外文案表的 Rust 读口（与前端 `copyText` 同一份 `src/shared/copy/table.json`）
-mod creds_store; // 第三方 API key 那份文件在本机的「它在哪」（`resolve_path`）；写侧与读侧掩码都不在 monitor 了（本机常驻后端写、答）
+mod creds_store; // 第三方 API key 那份文件：monitor 这一侧零读零写零交路径（本机常驻后端按家推、写、答）—— 只剩判据
 #[cfg(test)]
 mod guard_support; // 住址唯一源（仓根/源码树/测试树）——头注写着它为什么存在
 mod launch;
@@ -639,10 +639,7 @@ pub fn run() {
                 }
             }
 
-            // agent 数据目录：三级回退 用户配置 → CLAUDE_CONFIG_DIR → ~/.claude（从前经 monitor 那份适配器 `active().data_root()`
-            //   转一道，适配器删了之后直接问 `config`，同一个函数）。
-            let claude_dir = config::resolve_claude_dir().ok_or("agent data dir not found")?;
-            tracing::info!("monitor using agent data dir: {}", claude_dir.display());
+            // agent 数据目录不在这里解析：那台后端自己解析（设置里的覆盖由起本机后端那一处显式交过去）。
             // 这里原来还算 `sessions_dir`（`<claude_dir>/sessions`，喂 monitor 自己那份判活）——
             //   本机判活改由本机后端的帧来，monitor 不再需要知道 pidfile 住哪。
             // 这里原来还算 `tasks_dir`（喂 monitor 自己那条任务 notify）—— 监视进了后端，monitor 不再需要知道任务住哪。
@@ -1014,7 +1011,7 @@ pub(crate) fn load_show_bg_sessions() -> bool {
 ///
 /// config.rs 是 schema-agnostic（只透传 serde_json::Value），所以这里直接读
 /// `config::resolve_config_path()` 的文件，自己取 `remote` 子对象。读法对齐
-/// `config.rs::read_user_override`（同一个 config.json，同样的 best-effort 容错）。
+/// `config.rs::claude_dir_override`（同一个 config.json，同样的 best-effort 容错）。
 ///
 /// remote 段 schema（S6/S7 的设置 UI 负责写）：
 /// ```json

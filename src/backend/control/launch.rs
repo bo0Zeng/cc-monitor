@@ -50,6 +50,7 @@
 //! （用户以为在复用那个 idle 会话，实际上被丢进一个新建的空 shell）。
 //! 由 `send_into_never_creates_a_session` 钉住。
 
+use crate::common::child_env::WithoutOwnEnv;
 use copy_core::copy_text;
 use std::process::{Command, Stdio};
 
@@ -396,7 +397,7 @@ const SAID_CAP: usize = 400;
 
 /// 跑一次 tmux 子命令。**argv 直传，不过 shell。**
 fn tmux(args: &[&str]) -> Result<Ran, CmdErr> {
-    ran(Command::new("tmux"), args)
+    ran(Command::new("tmux").without_own_env(), args)
 }
 
 /// [`tmux`] 的本体：`cmd` 由调用方造（生产 = `Command::new("tmux")`；判据换一个假 tmux 的绝对路径，

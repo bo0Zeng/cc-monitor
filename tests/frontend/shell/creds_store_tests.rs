@@ -10,62 +10,35 @@
 //! ⚠ 「key 不进 `config.json`」与 TS 状态类型对拍那几条没有逐字原文。
 //! 与 `crates/creds-core/store_tests.rs` 不重复：那族判纯函数。〔JA1 点址 2026-09-24〕
 
-use super::*;
+use creds_core::store;
 
-/// ★★ **跨 crate 契约对拍**：monitor 与后端算出来的是**同一份文件**。
-///
-/// 两边各写一份路径字面量的话，漂开的那天没有任何东西会说，
-/// 而症状是「界面上配好了，上游选择说没配」——查不出来的那一类。
+/// 凭据文件的位置只跟着家走：monitor 起本机后端时交的那份环境里**没有**任何一格另指它的位置
+/// （从前那一格 `CCM_APIKEY_CREDENTIALS` 删了，后端按家推 `creds_core::store::credentials_path`）。
 #[test]
-fn the_two_sides_resolve_the_same_file() {
-    let home = dirs::home_dir().expect("这台机器得有 home");
-    let mine = resolve_path().expect("monitor 侧算得出来");
-    // 期望手写：数据目录根上那一份（后端默认臂按用户家推同一个）。
-    let backends = home.join(".cc-monitor").join("apikey-credentials.json");
-    assert_eq!(mine, backends, "两侧算出来的凭据文件路径不一样 —— 契约漂了");
-    // 非空对照：这把尺子分得出不同的路径（不是恒相等）。
-    assert_ne!(mine, store::credentials_path(&home.join(".claude-other")));
-
-    // ★★ `K-H2b` `D1 阻-3`：**上面那个根是手写的** ——
-    // 钉不住「两侧的**根**会不会算到两个地方去」。阻-3 的病：
-    // backend 侧的根从前走 `resolve_home()`，它**认 `CLAUDE_CONFIG_DIR`**（今天默认臂改按用户家推，不再认它）；
-    // monitor 这一侧**刻意不跟随** ⇒ 中转一旦继承到那个变量，
-    // 两侧读写的就是两份文件，而症状是「界面上配好了，上游选择说没配」。
-    //
-    // ⇒ 今天买断这一格的**不是**路径算法，是**把路径显式传过去**：
-    // 起本机后端时用 `CCM_APIKEY_CREDENTIALS` 把**本函数算出来的这一个**交给它
-    // （中转与上游选择住在那个进程里，`local_backend_host::relay_host_envs`）。
-    //
-    // 🔴 `D6 阻-1` 回修（08-29）：这里先前是两条「`local_backend_host.rs` 的生产段里有没有
-    // `crate::creds_store::resolve_path()` / `"CCM_APIKEY_CREDENTIALS".into()` 这两段文本」——
-    // **同一族的病**（文本留住、行为摘掉：把那两段文本留在一处用不到的地方，
-    // 真正交出去的换成别的路径 ⇒ 两条照绿）。
-    // ⇒ 换成读 `local_backend_host::relay_host_envs()` **产出来的那一份**：
-    // 那一格的值必须逐字节等于本函数算出来的路径。
-    let envs = crate::local_backend_host::relay_host_envs();
+fn nobody_hands_the_backend_a_path_for_the_credentials_file() {
+    let envs = crate::local_backend_host::backend_env_from(&|_| None, None);
+    let names: Vec<&str> = envs.iter().map(|(k, _)| k.as_str()).collect();
     assert_eq!(
-        envs.iter()
-            .find(|(k, _)| k == "CCM_APIKEY_CREDENTIALS")
-            .map(|(_, v)| v.clone()),
-        Some(mine.display().to_string()),
-        "起中转那一侧交出去的凭据路径不是**本函数**算出来的这一个 —— 它会退回去读 \
-             `CLAUDE_CONFIG_DIR` 底下那份，而 monitor 写的这一份不跟随它。实得：{envs:?}"
+        names,
+        vec!["CCM_RELAY_PORT"],
+        "交给本机后端的环境多了一格：{envs:?}"
     );
-    // 反空真：这把尺子分得出「不是那个路径」（不是恒相等）。
-    assert!(
-        !envs.iter().any(|(_, v)| *v
-            == store::credentials_path(&home.join(".claude-other"))
-                .display()
-                .to_string()),
-        "这把尺子对任何路径都说「是」—— 它恒真，本条按红处理"
+    // 反空真：这把尺子看得见被交的格（家那一格在设了的时候出现）。
+    let iso = crate::local_backend_host::backend_env_from(
+        &|k| (k == crate::config::DATA_DIR_ENV).then(|| "/iso/home".to_string()),
+        None,
     );
+    assert!(iso
+        .iter()
+        .any(|(k, v)| k == crate::config::DATA_DIR_ENV && v == "/iso/home"));
 }
 
 /// `KS7`：它**不是**前端整份读写的那份配置。
 #[test]
 fn the_key_never_lands_in_the_config_file_the_frontend_rewrites_wholesale() {
     let cfg = crate::config::resolve_config_path().expect("config path");
-    let creds = resolve_path().expect("creds path");
+    let creds =
+        store::credentials_path(&crate::config::resolve_monitor_data_dir().expect("data dir"));
     assert_ne!(cfg, creds, "凭据落在了前端『读—改—写』整份的那个文件上");
     // 同一个目录是**可以**的（`§0a` 要的是「不进那份配置」，不是「不同目录」）。
     assert_eq!(cfg.parent(), creds.parent());

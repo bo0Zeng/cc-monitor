@@ -33,6 +33,7 @@
 //! 搬之后那两条路走的是 `None` 臂，**落点逐字相同** ——
 //! 变的只有一件事：先前那是「碰巧撞出来的」，现在是**写出来的**。
 
+use crate::common::child_env::WithoutOwnEnv;
 pub(crate) mod dialect;
 pub(crate) mod posix;
 pub(crate) mod powershell;
@@ -46,7 +47,7 @@ pub(crate) mod powershell;
 pub(crate) fn posix_shell(script: &str) -> Option<std::process::Command> {
     #[cfg(unix)]
     {
-        let mut c = std::process::Command::new("sh");
+        let mut c = std::process::Command::new("sh").without_own_env();
         c.arg("-c").arg(script);
         Some(c)
     }
@@ -83,8 +84,8 @@ pub(crate) fn powershell_on(host: PsHost, script: &str) -> Option<std::process::
 fn powershell_command(host: PsHost, script: &str) -> std::process::Command {
     // 程序名写成字面量：起进程登记表（`tests/backend/readonly_guard.rs` 那张 `ALLOWED`）按它认是谁。
     let mut c = match host {
-        PsHost::Desktop => std::process::Command::new("powershell.exe"),
-        PsHost::Core => std::process::Command::new("pwsh.exe"),
+        PsHost::Desktop => std::process::Command::new("powershell.exe").without_own_env(),
+        PsHost::Core => std::process::Command::new("pwsh.exe").without_own_env(),
     };
     c.args(["-NoProfile", "-NonInteractive", "-Command", script]);
     c.env_remove("PSExecutionPolicyPreference");

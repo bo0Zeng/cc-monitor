@@ -43,21 +43,11 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              ⚠ 这两行是**真的多出来的**，不是数字漂了 —— 本来可以把参数改名躲开针来保住 8，\
              那才是「改数字了事」的镜像（为了不动数字去拧代码）。",
     ),
-    (
-        "src/lib.rs",
-        "hub",
-        2, // 3 → 2：tasks 目录那一处（喂 monitor 自己那条任务 notify）随监视进后端删了
-        "启动时解析 `claude_dir` 并派生 sessions/tasks 等目录往下传 —— \
-             **一处入口，不读内容**。切后端之后仍要在（得告诉后端读哪儿）⇒ **不属**退役范围。\
-**7 → 6**：projects 那一处（喂 monitor 自己那套 jsonl watcher）随 watcher 删了 ——\
-             本机会话内容改走本机后端的 `line` 帧，monitor 这一侧不再需要知道 projects 在哪。\
-**6 → 4**：给全文索引构建线程交 `claude_dir` 那两行随本机内存索引删了（本机搜索改问本机后端）；\
-             **4 → 3**：派生 `sessions/` 目录那一行随 monitor 自己那份判活删了（本机判活改由本机后端的帧来）。",
-    ),
+    // `src/lib.rs` 那一行（2 处：setup 里解析一次 Claude 目录、打一行日志）摘了：Claude 目录只由那台后端解析，monitor 不再解析它。
     (
         "src/config.rs",
         "hub",
-        8, // 9 → 8：`CCM_DATA_DIR` 不合法那句日志原本点着数据目录的旧住址（在 `.claude` 下）；数据目录搬出 `.claude` 了
+        1, // 8 → 1：Claude 目录的三级回退（`resolve_claude_dir`）删了 —— 只由那台后端解析；剩 `claudeDir` 覆盖原值那一处（`claude_dir_override`）
         "住址 `src/paths.rs` → `src/config.rs`（「config ＋ paths → 一处」，整份并进来、处数不变）。\
 10 → 9：数据目录那条规则搬进共享 `creds_core::store::monitor_data_dir`（远端常驻后端按同一份推默认），本文件只转交。\
              **路径源头** —— 只回答「`~/.claude` 与它的子目录在哪」，自己不读内容。\
@@ -71,8 +61,9 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/local_backend_host.rs",
         "non-read",
-        6,
-        "**一个字节的用户数据都没读。**四个命中全是「拿这条路径当身份比」：\
+        4, // 6 → 4：门牌改按家算、hello 不再比 Claude 目录；剩的是把设置里那一格交给后端（`CLAUDE_DIR_ENV` 常量与它的说明）
+        "**一个字节的用户数据都没读。**今天的命中全是「把设置里填的 Claude 目录原样交给后端」（`backend_env`）。\
+             〔下面是从前的样子：〕四个命中全是「拿这条路径当身份比」：\
              3 处在 `hello_verdict`（解 hello 帧的**冻结 wire 字段** `claude_dir` + 比 + 那句诊断），\
              1 处是 `start_detached` 里问一次 `paths::resolve_claude_dir()` —— \
              它只用来**算那台机的监听口**（`listen_port_for`）并核对「那个口上的后端看的是不是同一个目录」。\
@@ -102,21 +93,8 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     // `src/adapter/claude_code.rs` 那一行（1 处：适配器自己的数据根）**真退役**：monitor 那份适配表删了，
     //   起会话事实只住后端适配层；setup 里取 claude 目录直接问 `config::resolve_claude_dir`（那一处本来就登记在 `src/config.rs` 里）。
     // `src/config_surface.rs`〔散文墓碑〕那一行（3 处）随判定进后端摘了（`src/backend/footprint/rows.rs`，那一半不在本表人群里）。
-    (
-        "src/footprint_client.rs",
-        "reader",
-        1,
-        "足迹里 monitor 自己那台那几行（`HostScope::Client`）的事实：交一次 monitor 自己的 agent 家（`paths::resolve_claude_dir` 那一处答），\
-         再 stat 后端交来的绝对路径 —— 不认识任何工具名。退役归 F10 本体。",
-    ),
-    // 数据位置页列监听口的进程记录：只要它叫什么 ⇒ 按宿主起常驻时同一个算法算口。
-    (
-        "src/data_paths.rs",
-        "payload",
-        1,
-        "拿 Claude 家目录的字符串喂 `relay_route_core::listen_port_for`（与 `local_backend_host` 起常驻时同一个算法）算出 \
-         `listen-<口>.pid` 叫什么；不读 Claude 目录里任何东西 ⇒ 不属 F10 的退役范围。",
-    ),
+    // `src/footprint_client.rs` · `src/data_paths.rs` 两行摘了：足迹里 monitor 那几行不再交 agent 家（用这台后端自己解析的那一个）；
+    //   数据位置页算监听口改按家算（门牌只跟着家走，与 Claude 目录无关）。
     // `src/hooks_diag.rs` 那一行摘了：钩子诊断进了后端（`hooks-diag`），monitor 不再读 settings。
     // 🔴 原来这里有一行 `src/ccm_cli_contract.rs`（`non-read` 1 处：
     //    契约清单里出现过 `CLAUDE_CONFIG_DIR` 这个变量名）。本拍把那个模块从 2773 行砍到
@@ -249,7 +227,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
     //   写改走本机后端之后，home 由后端答（`user_files::Door::home`），这一条不再伸手进用户 home ⇒ 摘行。
     (
         "ccm_probe.rs",
-        "local_ccm_entry_status",
+        "local_ccm_entry_now",
         "`~/.cc-monitor/bin/<本机 ccm 入口名>`（`K-R69`：在不在 + 它自报的身份）",
         "**不是伸手拿用户的东西**：这是 monitor 自己的目录，那一份也是我们自己放下去的\
              （写侧登记在 `write_site_registry` 的 `local_backend.rs::extract_embedded_to`；它就是后端本身）。\
@@ -266,16 +244,8 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "**不是伸手拿用户的东西**：monitor 自己的目录（与自释放出来的本机后端同一个）。只在开窗而 exe 旁边没有它时放；\
              写侧登记在 `write_site_registry` 的 `local_backend.rs::place_local_program`",
     ),
-    (
-        "local_backend_host.rs",
-        "cc_monitor_dir",
-        "`~/.cc-monitor`（`K-P1` 的 attach token 与「谁在听那个口」）",
-        "**不是伸手拿用户的东西**：这是 monitor 自己的目录，只有我们写、只有我们读。\
-             用 `home_dir()` 正是为了「每个用户各一份」—— 而那恰恰是这一格要买的东西：\
-             token 文件 `0600` 是回环 TCP 上**唯一**挡住同机别的用户的门。\
-             写侧两条登记在 `write_site_registry` 的 `local_backend_host.rs::ensure_listen_token` 与 \
-             `local_backend_host.rs::write_listen_pid`",
-    ),
+    // `("local_backend_host.rs", "cc_monitor_dir")` 那一行摘了：钥匙与「谁在听」改住这台的家（`config::resolve_monitor_data_dir`，
+    //   门牌只跟着家走），不再单独 `home_dir()` 拼一份。
     // 拨号代理的二进制解析那一行**摘了**：monitor 不再找 / 起拨号代理（拨号挪进本机常驻后端）。
     (
         "local_backend_host.rs",
@@ -289,12 +259,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
     //   钉契约目录名的那条判据搬到了后端（`accounts_query_tests.rs::the_accounts_library_lives_under_the_contract_directory_name`，
     //   对 `acct-core` 的常量与后端缺省解析那一处），本机那份参照实现连同这一处 `home_dir()` 一起删了。
     // `mcp.rs` 那一行（`.claude.json` 三候选的 `home_dir()`〔散文墓碑〕）去掉：MCP 列表改问那台后端，monitor 不再伸手进 home 找它。
-    (
-        "config.rs", // 原 `paths.rs`
-        "resolve_claude_dir",
-        "`~/.claude`",
-        "claude 目录源头（`hub`）；本模块棘轮的中心",
-    ),
+    // `("config.rs", "resolve_claude_dir")` 那一行摘了：Claude 目录只由那台后端解析。
     (
         "config.rs", // 原 `paths.rs`
         "resolve_monitor_data_dir",
@@ -463,9 +428,11 @@ fn every_reader_names_its_retirement_owner() {
     // 4 → **3**：`mcp.rs` 真退役（MCP 列表改问那台后端 `mcp-read`，monitor 零处读 `.claude.json`）。
     // 3 → **2**：`hooks_diag.rs` 真退役（钩子诊断进后端 `hooks-diag`，monitor 零处读 `settings.json`）。
     // 2 → **1**：`adapter/claude_code.rs` 真退役（monitor 那份适配表删了，起会话事实只住后端适配层）。
+    // 1 → **0**：`footprint_client.rs` 真退役（足迹里 monitor 那几行不再交 agent 家 —— Claude 目录只由那台后端解析）。
+    //   ⚠ 0 之后「一条 reader 都没认出来」就是真值，不再是抽取器坏了的信号；类别与「不属」那两条照旧逐条判。
     assert_eq!(
-        readers, 1,
-        "`reader` 条数变了（**实测 1 条** —— ⚠ 这句话本身腐过一次：数字从 11 一路走到 7，\
+        readers, 0,
+        "`reader` 条数变了（**实测 0 条** —— ⚠ 这句话本身腐过一次：数字从 11 一路走到 7，\
              而这段文案一直写着「实测 10 条」，是 S11 那族出现在**判据自己的报错文案**里）。这个数就是 **F10 的真实工作面** —— \
              多一条要说明为什么又加了直读点，少一条说明退役了一处（把棘轮往下拧）。\n\
              ⚠ 棘轮史：11 → **10**（F10b 第一批，`usage.rs` 退役 —— 它改走本机后端的 `--usage`）\n\

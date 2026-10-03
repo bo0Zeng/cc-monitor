@@ -138,9 +138,9 @@ pub fn collect(handle: &AppHandle) -> DataPathsResponse {
 
     let entries = monitor_entries(&monitor_data_dir);
     // 后端的家按家目录算（它自己也是这么落盘的）；取不到家目录 ⇒ 这一张卡空着，不猜。
-    // 常驻监听口：与宿主同一个算法（按 Claude 家目录，`local_backend_host` 起常驻时就是这么算的）。
-    let listen_port = crate::config::resolve_claude_dir()
-        .map(|d| relay_route_core::listen_port_for(&d.to_string_lossy()));
+    // 常驻监听口：与宿主同一个算法（按这台的家，`local_backend_host` 起常驻时就是这么算的）。
+    let listen_port =
+        crate::config::resolve_monitor_data_dir().map(|d| relay_route_core::listen_port_for(&d));
     let (backend_home, backend_entries) = match creds_core::store::home_dir() {
         Some(home) => (
             home.join(backend_home_rel()).display().to_string(),

@@ -100,14 +100,9 @@ pub(crate) type RelayAsk = fn(
 ) -> Result<Option<String>, String>;
 
 impl Env {
-    /// 从真实进程取一份。**只读环境与那一个配置文件**，不写任何东西。
+    /// 从真实进程取一份。**只读环境**，不写任何东西。
     ///
-    /// 优先级逐条照旧：**环境变量 > 配置文件 > 内置默认**（默认值住
-    /// [`super::argv::Defaults`]，这里一个字面量都不许再写）。
-    ///
-    /// ⚠ **配置文件那一层是收窄过的**：旧实现 `. "$CCM_CONFIG"`（真 source 一段 bash，
-    /// 里面可以写任意 shell）；这里只认 `KEY=value`（值两侧的成对引号会被剥掉）。
-    /// **这不是等价**，登记在模块头注。
+    /// 优先级：**环境变量 > 内置默认**（默认值住 [`super::argv::Defaults`]，这里一个字面量都不许再写）。
     pub(crate) fn from_process(process_argv: &[String]) -> Self {
         use super::argv::Defaults;
         // 家目录：`HOME`，没有再退 `USERPROFILE` —— 与本 crate 其余各处同一个口径
@@ -115,20 +110,6 @@ impl Env {
         //   默认没有它 ⇒ 账号库落到当前盘的根上，找不到号还说「不在那个文件里」。
         let home = home_of(|k| std::env::var(k).ok());
         let get = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
-        // 🔴 **`$CCM_CONFIG` 这一层本实现不认，而且不许静默不认。**
-        //
-        // 旧实现是 `. "$CCM_CONFIG"` —— 真 source 一段 bash，里面可以写任意 shell。
-        // 在原生实现里没有等价物：要么退化成「只认 `KEY=value`」（那是**换了一套语义**
-        // 而用户不会知道），要么起一个 shell 去 source 它（那就把刚删掉的 bash 请回来了）。
-        // ⇒ 选第三条：**发现它存在就说一句，然后照常跑**。
-        // 静默忽略正是本工作区反复消灭的那类病（写了个配置、看起来生效了、其实被吃掉）。
-        let cfg_path = get("CCM_CONFIG").unwrap_or_else(|| under_home(&home, Defaults::CONFIG_REL));
-        if std::path::Path::new(&cfg_path).is_file() {
-            eprintln!(
-                "{}",
-                copy_text("bePlan.env.configIgnored", &[("path", &cfg_path)])
-            );
-        }
         let pick = |k: &str, fallback: String| -> String { get(k).unwrap_or(fallback) };
         Env {
             pwd: std::env::current_dir()
@@ -169,8 +150,6 @@ impl Env {
     /// - 账号目录变量不继承（由 [`super::plan_of`] 的 `inherit_account = false` 管）。
     ///
     /// 其余照这台机器的真值：账号库 manifest · `CCM_ENV` · cc-bus 脚本目录。
-    /// ⚠ 与 [`Env::from_process`] 不同，这里**不**对 `$CCM_CONFIG` 出声：那一句是说给终端里的人听的，
-    /// 常驻后端的 stderr 进的是日志。
     pub(crate) fn for_preview() -> Self {
         use super::argv::Defaults;
         let home = home_of(|k| std::env::var(k).ok());

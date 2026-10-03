@@ -80,48 +80,59 @@ fn the_strip_rule_this_file_leans_on_is_still_on_disk() {
 //
 // ⚠ 先前本文件上一条买的是另一半（那个取值口自己真的去连那个口）；那个取值口随「本机中转在不在由本机后端答」一起退役。
 
-/// M2：**两条载体起本机后端时交的是同一份环境，且恰好是中转那两格**。
+/// M2：**两条载体起本机后端时交的是同一份环境**：中转端口 ＋（隔离跑时）家；没有另指凭据 / 注解位置的格。
 ///
-/// ① 行为：[`relay_host_envs`] 产出的键集 **两向相等** {`CCM_RELAY_PORT`, `CCM_APIKEY_CREDENTIALS`}；
-///    值取自注入侧常量与 monitor 写凭据那条路（异源：`payload::RELAY_PORT` · `creds_store::resolve_path`）。
-/// ② 接线：`start_local_backend` 里 `relay_host_envs()` **恰好算一次**、排在常驻那条会 `return` 的分支之前，
-///    常驻那条（`start_detached(…, &relay_envs)`）与被监护那条（`start_or_extract(…, relay_envs,)`）各交一次。
-///    ⚠ 这一格是**文本**，如实登记：按行为量要真跑 `start_local_backend`（吃真实的 `~/.cc-monitor`、起真后端 —— 红线）。
-///    绕过形态：交出去的换成就地另拼的一份、`relay_envs` 算出来扔掉 ⇒ 第 ② 格红（两处消费点各恰好一处）；
-///    就地另拼且**同时**留着那两处消费点的死用法 ⇒ 照绿。
+/// ① 行为：[`backend_env_from`] 产出的键集两向相等（期望手写）；端口值取自注入侧常量（异源）。
+/// ② 接线：`start_local_backend` 里 `backend_env()` **恰好算一次**、排在常驻那条会 `return` 的分支之前，
+///    常驻那条与被监护那条各交一次（文本，如实登记：按行为量要真跑 `start_local_backend`，吃真实的 `~/.cc-monitor`）。
 #[test]
 fn both_carriers_hand_the_backend_the_same_relay_envs() {
-    let envs = relay_host_envs();
-    let mut keys: Vec<&str> = envs.iter().map(|(k, _)| k.as_str()).collect();
-    keys.sort_unstable();
-    // +1 格 `CCM_HISTORY_METADATA`：历史注解的读写者换成本机后端，那份文件的路径同样显式交。
+    let keys = |envs: &[(String, String)]| -> Vec<String> {
+        let mut k: Vec<String> = envs.iter().map(|(k, _)| k.clone()).collect();
+        k.sort_unstable();
+        k
+    };
+    let plain = backend_env_from(&|_| None, None);
     assert_eq!(
-        keys,
-        vec![
-            "CCM_APIKEY_CREDENTIALS",
-            "CCM_HISTORY_METADATA",
-            "CCM_RELAY_PORT"
-        ],
-        "交给本机后端的环境不是恰好那三格（多一格 = 夹带；少一格 = 端口 / 凭据路径 / 注解路径靠后端自己猜）"
+        keys(&plain),
+        vec!["CCM_RELAY_PORT"],
+        "没隔离跑时交给本机后端的不是恰好中转端口那一格"
     );
-    let get = |k: &str| envs.iter().find(|(kk, _)| kk == k).map(|(_, v)| v.clone());
     assert_eq!(
-        get("CCM_RELAY_PORT"),
-        Some(relay_route_core::PORT.to_string()),
+        plain[0].1,
+        relay_route_core::PORT.to_string(),
         "端口不是注入侧那个常量 —— 注入侧拼的 URL 会指向一个没人听的口"
     );
-    assert_eq!(
-        get("CCM_APIKEY_CREDENTIALS"),
-        crate::creds_store::resolve_path().map(|p| p.display().to_string()),
-        "凭据路径不是 monitor 写它的那条路 —— 两侧读写两份文件，症状是一个静默的 404"
+    let iso = backend_env_from(
+        &|k| (k == "CCM_DATA_DIR").then(|| "/iso/home".to_string()),
+        None,
     );
-    // 🔴 注解路径**就是** monitor 从前读写那份文件的那一个（同一个函数算）—— 用户的星标 / 改名 / 隐藏一条不丢，
-    //   前提是后端读写的恰是这一份（「文件留在原处、同一路径」）。
+    assert_eq!(keys(&iso), vec!["CCM_DATA_DIR", "CCM_RELAY_PORT"]);
+    assert!(iso.contains(&("CCM_DATA_DIR".into(), "/iso/home".into())));
+    // 空串的家 == 没设（不交一格空值）。
     assert_eq!(
-        get("CCM_HISTORY_METADATA"),
-        crate::history::metadata_path().map(|p| p.display().to_string()),
-        "注解路径不是 monitor 从前读写的那一份 —— 换读写者那一刻用户的注解看起来就全丢了"
+        keys(&backend_env_from(
+            &|k| (k == "CCM_DATA_DIR").then(String::new),
+            None
+        )),
+        vec!["CCM_RELAY_PORT"]
     );
+    // 设置里填了 Claude 目录 ⇒ 原值交成后端认的那个名字（解析只在后端）；没填 ⇒ 不交（上面那两份）。
+    let over = backend_env_from(&|_| None, Some("/data/claude-b".into()));
+    assert_eq!(keys(&over), vec!["CCM_RELAY_PORT", "CLAUDE_CONFIG_DIR"]);
+    assert!(over.contains(&("CLAUDE_CONFIG_DIR".into(), "/data/claude-b".into())));
+    // 名字与后端认的那一个逐字相等（读后端源码现抠，异源）。
+    let paths = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../backend/agents/claudecode/paths.rs"),
+    )
+    .expect("读后端 paths.rs");
+    guard_core::pin_line(
+        &guard_core::production_code(&paths),
+        "pub(crate) const CONFIG_DIR_ENV: &str = \"CLAUDE_CONFIG_DIR\";",
+    )
+    .unwrap_or_else(|e| panic!("后端认的 Claude 目录变量名变了（或不是恰好一处）：{e}"));
+    assert_eq!(CLAUDE_DIR_ENV, "CLAUDE_CONFIG_DIR");
 
     let prod = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/local_backend_host.rs"
@@ -129,11 +140,11 @@ fn both_carriers_hand_the_backend_the_same_relay_envs() {
     let at = guard_core::find_pinned(&prod, "pub fn start_local_backend()")
         .unwrap_or_else(|e| panic!("`start_local_backend` 不是恰好一处：{e}"));
     let body = &prod[at..];
-    let made = guard_core::find_pinned(body, "let relay_envs = relay_host_envs();")
+    let made = guard_core::find_pinned(body, "let handed = backend_env();")
         .unwrap_or_else(|e| panic!("`start_local_backend` 里没有恰好一处算那份环境：{e}"));
-    let detached = guard_core::find_pinned(body, "match start_detached(&resolve, &relay_envs) {")
+    let detached = guard_core::find_pinned(body, "match start_detached(&resolve, &handed) {")
         .unwrap_or_else(|e| panic!("常驻那条没交那份环境（或交了别的）：{e}"));
-    let supervised = guard_core::find_pinned(body, "relay_envs,\n")
+    let supervised = guard_core::find_pinned(body, "handed,\n")
         .unwrap_or_else(|e| panic!("被监护那条没交那份环境：{e}"));
     assert!(
         made < detached && detached < supervised,
@@ -603,7 +614,10 @@ fn the_stop_command_really_calls_this_module() {
         .take_while(|l| *l != "\u{7d}")
         .collect::<Vec<_>>()
         .join("\n");
-    guard_core::find_pinned(&body, "g.take()").unwrap_or_else(|e| {
+    guard_core::find_pinned(&body, "let _life = LIFECYCLE").unwrap_or_else(|e| {
+        panic!("`stop_local_backend` 没攥着起停串行锁（{e}）—— 停的同时可以又起一个")
+    });
+    guard_core::find_pinned(&body, ".take();").unwrap_or_else(|e| {
         panic!(
             "`stop_local_backend` 不再把句柄 `take()` 走（{e}）。\n\
                  ★ 留着它的后果很具体：`start_local_backend` 的判据是「句柄在表里 = 在跑」\n\
@@ -612,7 +626,7 @@ fn the_stop_command_really_calls_this_module() {
     });
 }
 
-/// T5 **本机「停」走同一条一次性子命令**：`stop_detached_locked` 恰好调一次 `run_resident_stop`，自己不发信号、不强杀、不等；
+/// T5 **本机「停」走同一条一次性子命令**：`stop_detached` 恰好调一次 `run_resident_stop`，自己不发信号、不强杀、不等；
 /// 整份生产段里没有发 `-TERM` / `-KILL` 的路（HX1 那套 SIGTERM → 等 → SIGKILL 删干净）；`run_resident_stop` 起的是那个二进制 ＋ `--resident-stop`。
 /// 要求：「本机那一格也改走同一条 `--resident-stop`（本机远端同形），
 /// monitor 侧 `local_backend_host.rs` 那套 SIGTERM → 等 → SIGKILL 删掉」。
@@ -630,13 +644,13 @@ fn the_local_stop_rides_the_same_one_shot_supervisor() {
             .collect::<Vec<_>>()
             .join("\n")
     };
-    let stop = body_of("fn stop_detached_locked(");
+    let stop = body_of("fn stop_detached(");
     assert_eq!(stop.matches("run_resident_stop(").count(), 1, "{stop}");
     for banned in ["kill(", "SIGTERM", "SIGKILL", "sleep("] {
         assert_eq!(
             stop.matches(banned).count(),
             0,
-            "`stop_detached_locked` 里又出现了 `{banned}`：{stop}"
+            "`stop_detached` 里又出现了 `{banned}`：{stop}"
         );
     }
     for banned in ["\"-TERM\"", "\"-KILL\"", "Command::new(\"kill\")"] {
@@ -646,11 +660,28 @@ fn the_local_stop_rides_the_same_one_shot_supervisor() {
             "生产段又长出发信号的路：`{banned}`"
         );
     }
-    let run = body_of("fn run_resident_stop(");
+    let run = body_of("fn run_resident_stop_within(");
     // 本机落点就是 `ccm` ⇒ `ccm -- --resident-stop`（打头的 `--` 让它当后端用）。
     guard_core::find_pinned(
         &run,
-        "let words = [local_backend::BACKEND_SEP, \"--resident-stop\"];",
+        "cmd.args([local_backend::BACKEND_SEP, \"--resident-stop\"])",
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    // 等带期限（与本机探针同一段等法），交的环境与起它时同一份。
+    for needle in [
+        "crate::ccm_probe::capture_full(",
+        ".envs(handed.iter().cloned())",
+    ] {
+        guard_core::find_pinned(&run, needle).unwrap_or_else(|e| panic!("{e}"));
+    }
+    assert_eq!(
+        run.matches("wait_with_output").count(),
+        0,
+        "又成了没有期限的等"
+    );
+    guard_core::find_pinned(
+        &body_of("fn run_resident_stop("),
+        "run_resident_stop_within(bin, RESIDENT_STOP_DEADLINE)",
     )
     .unwrap_or_else(|e| panic!("{e}"));
     guard_core::find_pinned(&run, "crate::remote_resident::read_stop(")
@@ -715,8 +746,8 @@ fn the_local_backend_only_takes_a_binary_this_platform_can_run() {
 ///
 /// ① 判据是 **`g.is_some()`**，不是 `current_pid()` —— 后者有竞态：
 ///    `pid` 由 supervise 线程在 spawn 后才写，本函数返回时它还是 0，门形同虚设。
-/// ② 体内**只许出现一次** `LOCAL_BACKEND.lock()` —— 两次就意味着锁被放开过，
-///    「检查」与「存句柄」之间又有窗口。
+/// ② 「检查」与「存句柄」之间不许有窗口：起停串行锁 `LIFECYCLE` 在检查之前拿、**恰好一次**、绑在 `_life` 上活到函数尾
+///    （句柄表本身只在检查与存那两下拿 —— 起的那几秒不攥着它，查状态不被挡住）。
 /// ③ 那一支必须 **`return`** —— 只打日志不返回等于没有门。
 #[test]
 fn starting_twice_does_not_spawn_a_second_local_backend_host() {
@@ -746,11 +777,15 @@ fn starting_twice_does_not_spawn_a_second_local_backend_host() {
         )
     });
 
-    let locks = body.matches("LOCAL_BACKEND.lock()").count();
-    assert_eq!(
-        locks, 1,
-        "体内出现 {locks} 次 `LOCAL_BACKEND.lock()` —— 只许一次。\n\
-             多于一次 = 锁在「检查」与「存句柄」之间被放开过，那个窗口正是双起的入口。"
+    let life = guard_core::find_pinned(&body, "let _life = LIFECYCLE.lock()").unwrap_or_else(|e| {
+        panic!(
+            "起的那一趟没有从头攥着起停串行锁（{e}）—— 「检查」与「存句柄」之间就有窗口，那正是双起的入口。\n\
+             ⚠ 绑在 `_life` 上才活到函数尾；写成 `let _ = …` 当场就放了。"
+        )
+    });
+    assert!(
+        life < body.find("if g.is_some() {").expect("上面刚 pin 过"),
+        "串行锁拿在检查之后 —— 检查那一刻没被串住"
     );
 
     let guard_at = body.find("if g.is_some() {").expect("上面刚 pin 过");
@@ -969,7 +1004,10 @@ fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
     //   （`#[cfg(target_os = "linux")]` 那个 + 非 Linux 的诚实降级壳）。
     //   `F19` 逐字栽过同一形：「把 needle 扩到能唯一确定那个事实的大小」。
     //   Linux 那份的参数**不带下划线前缀**（另一份是 `_port`/`_token`）⇒ 用它分辨。
-    let spawn = body_of(&me, "    port: u16,\n    token: &str,");
+    let spawn = body_of(
+        &me,
+        "fn spawn_detached(\n    bin: &std::path::Path,\n    port: u16,",
+    );
     // ⚠ 后两个针是**常量名**不是那两个串：串本身住在常量声明里，
     //   而它与后端那侧逐字一致由 `the_listen_env_names_are_the_same_string_on_both_sides` 管。
     //   钉「这里用的是那个常量」而不是「这里出现了那个串」，正好挡住「顺手在这里写死一个串」。
@@ -985,7 +1023,7 @@ fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
         "StderrSink::Null",
         "Stdio::null()",
         "LISTEN_PORT_ENV",
-        "LISTEN_TOKEN_ENV",
+        "LISTEN_TOKEN_FILE_ENV",
     ] {
         assert!(
             spawn.contains(needle),
@@ -1026,7 +1064,7 @@ fn the_exit_arm_collects_no_relay() {
         2,
         "正控：退出臂里 `kill_on_exit_now(` 不是恰好一处 —— 臂切错了，下面的零命中是空真"
     );
-    // ⚠ 刻意是**子串**不是词边界：`contains_word` 认不出 `relay_running` / `relay_host_envs` 这种
+    // ⚠ 刻意是**子串**不是词边界：`contains_word` 认不出 `relay_running` / `relay_port` 这种
     //   带下划线的名字（死值验 M6 第一版就是这么绿的：臂里插一句 `relay_running()` 它照过）。
     assert!(
         body.split("relay").count() == 1,
@@ -1070,7 +1108,8 @@ fn detached_reads_the_path_that_was_taken_not_a_guess() {
     let dc = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/backend_control.rs"
     ));
-    let status = body_of(&dc, "pub fn backend_status(origin: String)");
+    // 命令本身是 `async`、本体在 `backend_status_now`（`spawn_blocking` 里跑）。
+    let status = body_of(&dc, "fn backend_status_now(origin: String)");
     assert_eq!(
         status.matches("local_backend_host::is_detached()").count(),
         1,
@@ -1104,14 +1143,18 @@ fn detached_reads_the_path_that_was_taken_not_a_guess() {
         DETACHED.lock().expect("锁").is_none(),
         "测试开始时 `DETACHED` 就不是空的 —— 前一条判据留了状态，本条读数不可信"
     );
-    let st = crate::backend_control::backend_status(crate::inbound_client::LOCAL_ORIGIN.into())
-        .expect("查状态");
+    let st = tauri::async_runtime::block_on(crate::backend_control::backend_status(
+        crate::inbound_client::LOCAL_ORIGIN.into(),
+    ))
+    .expect("查状态");
     assert_eq!(
         st.get("detached").and_then(|v| v.as_bool()),
         Some(false),
         "没走过脱离那条路，`detached` 却不是 false —— 那一格在猜"
     );
-    let remote = crate::backend_control::backend_status("某台远端".into()).expect("查远端状态");
+    let remote =
+        tauri::async_runtime::block_on(crate::backend_control::backend_status("某台远端".into()))
+            .expect("查远端状态");
     assert!(
         remote.get("detached").is_some_and(|v| v.is_null()),
         "远端的 `detached` 不是 null —— 那是在替一台看不见的机器编读数"
@@ -1220,7 +1263,7 @@ fn the_listen_env_names_are_the_same_string_on_both_sides() {
     let backend = include_str!("../../../src/backend/stream/listen.rs");
     for (rust_name, ours) in [
         ("ENV_PORT", LISTEN_PORT_ENV),
-        ("ENV_TOKEN", LISTEN_TOKEN_ENV),
+        ("ENV_TOKEN_FILE", LISTEN_TOKEN_FILE_ENV),
         // ⚠ 第三条不是 env 名，但**同一族**：它是宿主判「这次拒绝会不会自己好」的依据。
         //   漂了的后果：「上一个 monitor 刚退、对面还没反应过来」会被当成不可恢复，
         //   于是新 monitor 直接报失败 —— 而它本来只要再等 20 毫秒。
@@ -1410,13 +1453,14 @@ fn both_production_spawn_paths_go_through_the_shared_etxtbsy_verdict() {
     }
 }
 
-/// 监听口是**算出来的**：同一个家目录恒等，不同的家目录基本不撞，且落在动态口段里。
+/// 监听口是**算出来的**：同一个家恒等，不同的家基本不撞，且落在动态口段里。
 #[test]
 fn the_listen_port_is_deterministic_and_inside_the_dynamic_range() {
-    let a = listen_port_for("/home/someone/.claude");
+    use std::path::Path;
+    let a = listen_port_for(Path::new("/home/someone/.cc-monitor"));
     assert_eq!(
         a,
-        listen_port_for("/home/someone/.claude"),
+        listen_port_for(Path::new("/home/someone/.cc-monitor")),
         "同一个输入两次算出不同的口"
     );
     assert!(
@@ -1425,8 +1469,8 @@ fn the_listen_port_is_deterministic_and_inside_the_dynamic_range() {
     );
     assert_ne!(
         a,
-        listen_port_for("/home/other/.claude"),
-        "两个不同的家目录算出同一个口 —— 同机两个用户就会互相撞（撞了会出声拒绝，但没必要）"
+        listen_port_for(Path::new("/home/other/.cc-monitor")),
+        "两个不同的家算出同一个口 —— 同机两个用户就会互相撞（撞了会出声拒绝，但没必要）"
     );
     // ★ 反向锚点：**不许用 `DefaultHasher`**（它跨 Rust 版本不保证稳定）。
     //   升级一次 monitor 就换一个口 = 下一次启动去连空口、起第二个后端，
@@ -1450,27 +1494,24 @@ fn a_stranger_on_our_port_is_refused_out_loud_not_silently_reused() {
         "{{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"host_arch\":\"x86_64\",\
               \"claude_dir\":\"/h/.claude\",\"capabilities\":[],\"emits\":[],\"commands\":[]}}"
     );
-    assert_eq!(
-        hello_verdict(&ours, "b1", "/h/.claude", &[]),
-        HelloVerdict::Ours
-    );
+    assert_eq!(hello_verdict(&ours, "b1", &[]), HelloVerdict::Ours);
     // ① 版本不对
-    match hello_verdict(&ours, "b2", "/h/.claude", &[]) {
+    match hello_verdict(&ours, "b2", &[]) {
         HelloVerdict::Stranger(w) => assert!(w.contains("b1") && w.contains("b2"), "{w}"),
         v => panic!("旧版本的后端被当成了我们的：{v:?}"),
     }
-    // ② 看的目录不对（同机两个用户撞了口就是这一形）
-    match hello_verdict(&ours, "b1", "/other/.claude", &[]) {
-        HelloVerdict::Stranger(w) => assert!(w.contains("/other/.claude"), "{w}"),
-        v => panic!("另一个数据目录的后端被当成了我们的：{v:?}"),
-    }
+    // ② 它看的 Claude 目录与这个 monitor 设置里填的不同 ⇒ **仍是我们的**：门牌只跟着家走，Claude 目录归那台后端解析，
+    //    这里不比（从前比 ⇒ 改了设置之后本机后端一个都接不上）。「另一个家」那一形由 host_env 比（`hx2_` 那一族）。
+    let other_claude = ours.replace("/h/.claude", "/other/.claude");
+    assert_ne!(other_claude, ours, "替换没落在靶上");
+    assert_eq!(hello_verdict(&other_claude, "b1", &[]), HelloVerdict::Ours);
     // ③ 压根不是我们的协议
     assert!(matches!(
-        hello_verdict("HTTP/1.1 200 OK", "b1", "/h/.claude", &[]),
+        hello_verdict("HTTP/1.1 200 OK", "b1", &[]),
         HelloVerdict::Stranger(_)
     ));
     assert!(matches!(
-        hello_verdict("", "b1", "/h/.claude", &[]),
+        hello_verdict("", "b1", &[]),
         HelloVerdict::Stranger(_)
     ));
 }
@@ -3508,7 +3549,7 @@ impl E2eSandbox {
         }
     }
 
-    /// 造一个**独立的家** —— 端口是家目录算出来的，所以不同的家 = 不同的口。
+    /// 造一个**独立的家** —— 端口是家（`$HOME/.cc-monitor`）算出来的，所以不同的家 = 不同的口。
     /// 这正是 `KPY2` 那条「非空对照」要用的东西。
     fn become_host_with_home(&self, tag: &str) -> std::path::PathBuf {
         let home = self.work.join(format!("host-{tag}"));
@@ -3644,7 +3685,7 @@ fn e2e_a_second_host_adopts_the_running_backend_instead_of_starting_a_second_one
     {
         let _guard = crate::inbound_client::local_origin_test_lock();
         let sb = E2eSandbox::demand();
-        let claude = sb.become_host_with_home("adopt");
+        let _ = sb.become_host_with_home("adopt");
         *DETACHED.lock().expect("锁") = None;
 
         // ── 宿主① ────────────────────────────────────────────────
@@ -3658,8 +3699,9 @@ fn e2e_a_second_host_adopts_the_running_backend_instead_of_starting_a_second_one
         println!("E2E-OK KPY2 第一个宿主起出脱离的后端（pid={pid1}）");
 
         // 「谁在听那个口」那份记录要真的落了盘 —— 没有它，下一个宿主停不了它。
-        let port = listen_port_for(&claude.to_string_lossy());
-        let owner = read_listen_owner(&cc_monitor_dir(), port);
+        let home = crate::config::resolve_monitor_data_dir().expect("沙箱的家");
+        let port = listen_port_for(&home);
+        let owner = read_listen_owner(&home, port);
         assert_eq!(
             owner.as_ref().map(|(p, _)| *p),
             Some(pid1),
@@ -3691,11 +3733,11 @@ fn e2e_a_second_host_adopts_the_running_backend_instead_of_starting_a_second_one
 
         // ── ★ 非空对照：换一个家 = 换一个口 ⇒ 必须**真的**起出第二个 ──
         sb.forget_like_a_host_that_exited();
-        let claude_b = sb.become_host_with_home("control");
+        let _ = sb.become_host_with_home("control");
         assert_ne!(
-            listen_port_for(&claude_b.to_string_lossy()),
+            listen_port_for(&crate::config::resolve_monitor_data_dir().expect("沙箱的家")),
             port,
-            "两个家目录算出同一个口 —— 那这条对照说明不了任何事"
+            "两个家算出同一个口 —— 那这条对照说明不了任何事"
         );
         *DETACHED.lock().expect("锁") = None;
         let bin3 = sb.bin.clone();
@@ -3786,6 +3828,286 @@ fn e2e_a_detached_backend_that_dies_leaves_no_zombie() {
         *DETACHED.lock().expect("锁") = None;
         let _ = std::env::var("CCM_E2E_TMUX_SHIM_BIN");
     }
+}
+
+/// ★ 常驻后端起的子进程不带它自有的那几格环境（监听口 · 钥匙文件 · 中转口 · 诊断文件）。
+///
+/// 量法：PATH 最前面挂一个记账的 `tmux`（把它自己环境里 `CCM_` 开头的名字记一行，再 `exec` 隔离用的 shim），
+/// 起一个真的脱离后端，等它起一次 tmux（观测那一路一上来就问），读账。
+/// 正控：常驻后端自己的环境里那几格都在（读的是对的进程）；账至少一行（它真起过 tmux）。
+/// 故意交下去的（家 `CCM_DATA_DIR`）与测试台自己的（`CCM_E2E_*`）不算自有的。
+#[test]
+#[ignore]
+fn e2e_children_of_the_resident_backend_carry_none_of_its_own_env() {
+    #[cfg(target_os = "linux")]
+    {
+        let _guard = crate::inbound_client::local_origin_test_lock();
+        let sb = E2eSandbox::demand();
+        let _ = sb.become_host_with_home("child-env");
+        *DETACHED.lock().expect("锁") = None;
+        let home = crate::config::resolve_monitor_data_dir().expect("沙箱的家");
+        let wrap = home.join("wrap-bin");
+        std::fs::create_dir_all(&wrap).expect("建记账目录");
+        let log = home.join("tmux-env.log");
+        let shim = demand_tmux_shim("记账的 tmux 之后接隔离的那一个");
+        let script = format!(
+            "#!/bin/sh\nenv | sed -n 's/^\\(CCM_[A-Z_]*\\)=.*/\\1/p' | sort -u | tr '\\n' ' ' >> '{}'\necho >> '{}'\nexec '{}/tmux' \"$@\"\n",
+            log.display(),
+            log.display(),
+            shim
+        );
+        std::fs::write(wrap.join("tmux"), script).expect("写记账的 tmux");
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(wrap.join("tmux"), std::fs::Permissions::from_mode(0o755))
+                .expect("chmod");
+        }
+        let mut env = sb.envs();
+        for (k, v) in env.iter_mut() {
+            if k == "PATH" {
+                *v = format!("{}:{v}", wrap.display());
+            }
+        }
+        let bin = sb.bin.clone();
+        expect_started(start_detached(&|| Ok(bin.clone()), &env), "本条");
+        let pid = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
+        sb.remember(pid);
+        let own = [
+            "CCM_LISTEN_PORT",
+            "CCM_LISTEN_TOKEN_FILE",
+            "CCM_BACKEND_STDERR_LOG",
+        ];
+        let mine: Vec<String> = environ_of(pid).into_iter().map(|(k, _)| k).collect();
+        for k in own {
+            assert!(
+                mine.iter().any(|m| m == k),
+                "正控：常驻后端自己的环境里没有 {k}（读错了进程？）"
+            );
+        }
+        let mut lines: Vec<String> = Vec::new();
+        for _ in 0..100 {
+            lines = std::fs::read_to_string(&log)
+                .unwrap_or_default()
+                .lines()
+                .map(str::to_string)
+                .collect();
+            if !lines.is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        assert!(
+            !lines.is_empty(),
+            "正控：5 秒里常驻后端一次 tmux 都没起 —— 这条量不到东西"
+        );
+        let leaked: Vec<&str> = lines
+            .iter()
+            .flat_map(|l| l.split_whitespace())
+            .filter(|n| own.contains(n) || *n == "CCM_RELAY_PORT")
+            .collect();
+        assert_eq!(
+            leaked,
+            Vec::<&str>::new(),
+            "常驻后端起的 tmux 带着它自有的环境：{lines:?}"
+        );
+        println!(
+            "E2E-OK CHILD-ENV 常驻后端起的 tmux 不带它自有的那几格环境（记了 {} 次，自己身上那几格都在）",
+            lines.len()
+        );
+        let _ = std::env::var("CCM_E2E_TMUX_SHIM_BIN");
+    }
+}
+
+/// 读一个进程**起来时**的整份环境（`/proc/<pid>/environ`，NUL 分隔）。
+#[cfg(target_os = "linux")]
+fn environ_of(pid: u32) -> Vec<(String, String)> {
+    let raw = std::fs::read(format!("/proc/{pid}/environ")).expect("读 /proc/<pid>/environ");
+    raw.split(|b| *b == 0)
+        .filter(|kv| !kv.is_empty())
+        .filter_map(|kv| {
+            let kv = String::from_utf8_lossy(kv);
+            let (k, v) = kv.split_once('=')?;
+            Some((k.to_string(), v.to_string()))
+        })
+        .collect()
+}
+
+/// 门牌只跟着家走：**改了设置里的 Claude 目录、又从带另一个 `CLAUDE_CONFIG_DIR` 的终端起 monitor，本机后端照样接得上**
+/// （同一个进程，不起第二个）；停它的那一趟（`--resident-stop`，后端自己按家算口）找得到同一个；再起时设置里那一格**显式**交了过去。
+/// 守的要求：「一台机器一个常驻后端」「门牌只跟着家走」；体检读数：改一个设置 ⇒ 本机后端一个都接不上 / 一台两个后端。
+/// 非空对照：KPY2 那一条「换一个家 = 换一个口 ⇒ 真的起出第二个」。
+#[test]
+#[ignore]
+fn e2e_the_door_follows_the_home_not_the_claude_dir() {
+    #[cfg(target_os = "linux")]
+    {
+        let _guard = crate::inbound_client::local_origin_test_lock();
+        let sb = E2eSandbox::demand();
+        let claude_a = sb.become_host_with_home("door");
+        *DETACHED.lock().expect("锁") = None;
+        // 起它的环境 = shim 的 PATH ＋ 生产那一份（去掉中转口：不许让测试后端去绑这台机器真的那个中转口）。
+        let env_now = || {
+            let mut env = sb.envs();
+            env.extend(
+                backend_env()
+                    .into_iter()
+                    .filter(|(k, _)| k != "CCM_RELAY_PORT"),
+            );
+            env
+        };
+        let bin = sb.bin.clone();
+        expect_started(start_detached(&|| Ok(bin.clone()), &env_now()), "第一次起");
+        let pid1 = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
+        sb.remember(pid1);
+        // 监听口的钥匙**不在**常驻后端的环境里（它起的 tmux server 会把这份环境拷成全局环境，传给每个窗格）：
+        //   只交钥匙文件的路径。正控：那个路径真指着那把钥匙（读的是对的进程、对的那份环境）。
+        let home = crate::config::resolve_monitor_data_dir().expect("沙箱的家");
+        let token = std::fs::read_to_string(token_path(&home)).expect("钥匙文件");
+        let token = token.trim();
+        let env1 = environ_of(pid1);
+        assert!(token.len() >= 32, "钥匙文件里不是一把钥匙：{token:?}");
+        assert_eq!(
+            env1.iter()
+                .filter(|(k, v)| v.contains(token) || k == "CCM_LISTEN_TOKEN")
+                .map(|(k, _)| k.as_str())
+                .collect::<Vec<_>>(),
+            Vec::<&str>::new(),
+            "钥匙进了常驻后端的环境"
+        );
+        assert!(
+            env1.contains(&(
+                LISTEN_TOKEN_FILE_ENV.to_string(),
+                token_path(&home).display().to_string()
+            )),
+            "正控：环境里没有指着那把钥匙的文件路径 —— 读错了进程或那一格没交"
+        );
+        println!("E2E-OK HOME-0 监听口的钥匙不在常驻后端的环境里（只交钥匙文件的路径）");
+        let seen = |pid: u32| -> Option<String> {
+            environ_of(pid)
+                .into_iter()
+                .find(|(k, _)| k == CLAUDE_DIR_ENV)
+                .map(|(_, v)| v)
+        };
+        assert_eq!(
+            seen(pid1),
+            Some(claude_a.display().to_string()),
+            "没填覆盖时后端该沿用起它的那个环境"
+        );
+
+        // ── 设置里改了 Claude 目录，并且换一个带别的 `CLAUDE_CONFIG_DIR` 的终端起 monitor ──
+        sb.forget_like_a_host_that_exited();
+        let home_dir = std::path::PathBuf::from(std::env::var("HOME").expect("沙箱 HOME"));
+        let (claude_b, claude_c) = (home_dir.join("claude-b"), home_dir.join("claude-c"));
+        std::fs::create_dir_all(&claude_b).expect("建 claude-b");
+        std::fs::create_dir_all(&claude_c).expect("建 claude-c");
+        let cfg = crate::config::resolve_config_path().expect("沙箱的 config.json");
+        std::fs::write(
+            &cfg,
+            serde_json::json!({ "claudeDir": claude_b.display().to_string() }).to_string(),
+        )
+        .expect("写设置");
+        std::env::set_var(CLAUDE_DIR_ENV, &claude_c);
+        assert_eq!(crate::config::claude_dir_override(), Some(claude_b.clone()));
+        let bin2 = sb.bin.clone();
+        expect_adopted(
+            start_detached(&|| Ok(bin2.clone()), &env_now()),
+            "改了设置之后再起",
+        );
+        assert_eq!(
+            DETACHED.lock().expect("锁").as_ref().expect("句柄").pid,
+            pid1,
+            "改了 Claude 目录之后接上的不是同一个后端"
+        );
+        println!("E2E-OK HOME-1 改了设置里的 Claude 目录、换了终端：本机后端照样接得上，还是同一个（pid={pid1}）");
+
+        // ── 停：一次性 `--resident-stop` 自己按家算口、在家里找 pid 记录 ──
+        match stop_detached() {
+            Some(Ok(a)) => assert_eq!(
+                (a.stopped, a.pid),
+                (crate::remote_resident::StopWord::Graceful, Some(pid1)),
+                "停的那一趟没找到同一个后端"
+            ),
+            other => panic!("停不掉：{other:?}"),
+        }
+        assert!(
+            !alive(pid1) || proc_state(pid1) == Some('Z'),
+            "说停了，pid={pid1} 还在跑"
+        );
+        println!("E2E-OK HOME-2 停的那一趟（后端自己按家算口）找到了同一个后端并让它收尾退出");
+
+        // ── 再起：设置里那一格显式交过去，压过终端带来的那一个 ──
+        sb.forget_like_a_host_that_exited();
+        let bin3 = sb.bin.clone();
+        expect_started(
+            start_detached(&|| Ok(bin3.clone()), &env_now()),
+            "停了之后再起",
+        );
+        let pid2 = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
+        sb.remember(pid2);
+        assert_ne!(pid2, pid1);
+        assert_eq!(
+            seen(pid2),
+            Some(claude_b.display().to_string()),
+            "设置里填的 Claude 目录没交给后端（或被终端带来的那一个压了）"
+        );
+        println!("E2E-OK HOME-3 再起时设置里的 Claude 目录显式交给了后端（压过终端带来的那一个）");
+        let _ = std::env::var("CCM_E2E_TMUX_SHIM_BIN");
+    }
+}
+
+/// 查状态不被一趟起 / 停挡住：起停串行锁（`LIFECYCLE`）被一趟攥着时，`local_pid_and_attempts`（`backend_status` 本机那一支）
+/// 照样当场回来。守的要求：「锁不跨长等待」（体检 S3-B2：停后端在锁里无期限地等，`backend_status` 要的那把锁被它攥着）。
+#[test]
+fn status_is_not_blocked_while_a_start_or_stop_holds_the_lifecycle_lock() {
+    let (held_tx, held_rx) = std::sync::mpsc::channel::<()>();
+    let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+    let holder = std::thread::spawn(move || {
+        let _g = LIFECYCLE.lock().unwrap_or_else(|e| e.into_inner());
+        held_tx.send(()).expect("报已攥住");
+        let _ = release_rx.recv();
+    });
+    held_rx.recv().expect("等它攥住");
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = done_tx.send(local_pid_and_attempts().is_ok());
+    });
+    let got = done_rx.recv_timeout(std::time::Duration::from_secs(5));
+    release_tx.send(()).expect("放手");
+    holder.join().expect("攥锁那条线程");
+    assert_eq!(
+        got,
+        Ok(true),
+        "起 / 停攥着串行锁时，查状态被挡住了（或报错）"
+    );
+}
+
+/// 停那一趟带期限：替身后端不答话（一直睡），期限到 ⇒ 当场回来、说「没答完」，并把那一趟收掉。
+/// 守的要求：「等待带期限」（体检 S3-B2：从前是没有期限的 `wait_with_output()`）。
+#[cfg(unix)]
+#[test]
+fn the_stop_run_gives_up_at_its_deadline() {
+    let dir = std::env::temp_dir().join(format!("lbh-stop-deadline-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("建临时目录");
+    let fake = dir.join("ccm");
+    std::fs::write(&fake, "#!/bin/sh\nexec sleep 30\n").expect("写替身");
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    }
+    let t0 = std::time::Instant::now();
+    let got = run_resident_stop_within(&fake, std::time::Duration::from_millis(300));
+    let took = t0.elapsed();
+    let _ = std::fs::remove_dir_all(&dir);
+    let want = crate::copy_table::copy_text("rsLocalBackendHost.stop.timedOut", &[("secs", "0")]);
+    assert_eq!(
+        got.err(),
+        Some(want.to_string()),
+        "不答话的那一趟没按期限回来"
+    );
+    assert!(
+        took < std::time::Duration::from_secs(10),
+        "期限 300 毫秒，实际等了 {took:?} —— 没按期限收"
+    );
 }
 
 // ══ `K-P3b`：死亡账接线 —— 三处观测点真的喂到了 `record_death` ═══════════
@@ -4106,32 +4428,6 @@ fn the_shared_stripper_keeps_the_exit_and_refusal_arms_this_guard_must_scan() {
     );
 }
 
-/// monitor 交注解路径用的环境变量名 == 后端认的那一个（两侧对拍；读后端源码现抠，运行期读、不是编译期边）。
-///
-/// 守的要求：「文件留在原处、同一路径，不迁移、一条不丢」——
-/// 名字一漂，后端就收不到路径 ⇒ 明说不知道注解在哪（不会丢，但界面上注解全成了「不知道」）。
-#[test]
-fn the_annotation_path_env_name_is_the_one_the_backend_reads() {
-    let backend = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../backend/history/history_annotations.rs"),
-    )
-    .expect("读后端那份源码");
-    let prod = guard_core::production_code(&backend);
-    let at = guard_core::find_pinned(&prod, "pub(crate) const ENV_PATH: &str = \"")
-        .unwrap_or_else(|e| panic!("后端那一侧的环境变量名常量不是恰好一处：{e}"));
-    let rest = &prod[at + "pub(crate) const ENV_PATH: &str = \"".len()..];
-    let name = &rest[..rest.find('"').expect("常量没收尾")];
-    let envs = relay_host_envs();
-    assert!(
-        envs.iter().any(|(k, _)| k == name),
-        "后端认 `{name}`，monitor 交的键是 {:?} —— 两侧对不上，后端收不到注解路径",
-        envs.iter().map(|(k, _)| k).collect::<Vec<_>>()
-    );
-    // 反空真：这把尺子分得出「不是那个名字」。
-    assert!(!envs.iter().any(|(k, _)| k == "CCM_HISTORY_METADATA_X"));
-}
-
 /// 给人看的话进了文案表（`copy_text("key", …)`）⇒ 「这一段代码说了什么」＝
 /// 代码本身 ＋ 它取的那几条表项的原文（占位符原样留着）。只看代码的话，「那句话说没说下一步」
 /// 这一类判据从此永远读不到那句话 —— 字搬了家，尺子跟着去新家量。
@@ -4167,7 +4463,7 @@ fn with_copy(code: impl AsRef<str>) -> String {
 // （照本路 §3），要么常驻后端的身份带上数据目录」；审计 `E-compat.md` §E10（「隔离数据目录的 monitor 写穿到真 profile」）。
 
 /// 🔴 I2：hello 的 `host_env` 与这一趟要交的那几格两向比（期望手写）：等 ⇒ 我们的；值不等 · 它多一格 · 它少一格 ⇒ 拒，
-/// 那句话点名那一格、两边各是什么、说得出下一步；名不在名单里的（`PATH` 之类）不参与比。
+/// 那句话点名那一格、两边各是什么；名不在名单里的（`PATH` 之类）不参与比。
 #[test]
 fn hx2_a_backend_started_for_another_data_dir_is_refused_out_loud() {
     let hello_with = |env: &str| {
@@ -4176,61 +4472,56 @@ fn hx2_a_backend_started_for_another_data_dir_is_refused_out_loud() {
              \"claude_dir\":\"/h/.claude\"{env}}}"
         )
     };
-    let seen = hello_with(",\"host_env\":{\"CCM_APIKEY_CREDENTIALS\":\"/h/.cc-monitor/k.json\",\"CCM_RELAY_PORT\":\"8788\"}");
-    let want = |creds: &str| -> Vec<(String, String)> {
+    let seen =
+        hello_with(",\"host_env\":{\"CCM_DATA_DIR\":\"/iso/a\",\"CCM_RELAY_PORT\":\"8788\"}");
+    let want = |home: &str| -> Vec<(String, String)> {
         vec![
             ("CCM_RELAY_PORT".into(), "8788".into()),
-            ("CCM_APIKEY_CREDENTIALS".into(), creds.into()),
+            ("CCM_DATA_DIR".into(), home.into()),
             ("PATH".into(), "/shim:/usr/bin".into()),
         ]
     };
     assert_eq!(
-        hello_verdict(&seen, "b1", "/h/.claude", &want("/h/.cc-monitor/k.json")),
+        hello_verdict(&seen, "b1", &want("/iso/a")),
         HelloVerdict::Ours,
         "同一份环境（外加一格不在名单里的 PATH）⇒ 该是我们的"
     );
-    match hello_verdict(&seen, "b1", "/h/.claude", &want("/tmp/iso/k.json")) {
+    match hello_verdict(&seen, "b1", &want("/iso/b")) {
         HelloVerdict::Stranger(w) => {
             assert!(
-                w.contains("CCM_APIKEY_CREDENTIALS")
-                    && w.contains("/h/.cc-monitor/k.json")
-                    && w.contains("/tmp/iso/k.json")
-                    && w.contains("CCM_DATA_DIR")
+                w.contains("CCM_DATA_DIR")
+                    && w.contains("/iso/a")
+                    && w.contains("/iso/b")
                     && !w.contains("CCM_RELAY_PORT："),
                 "{w}"
             );
         }
-        v => panic!("另一个数据目录起的后端被当成了我们的：{v:?}"),
+        v => panic!("另一个家起的后端被当成了我们的：{v:?}"),
     }
-    let mut more = want("/h/.cc-monitor/k.json");
-    more.push((
-        "CCM_HISTORY_METADATA".into(),
-        "/tmp/iso/history-metadata.json".into(),
-    ));
     // C-L5：值是汉字 ⇒ 与前面的汉字之间不隔空格
     assert!(
-        matches!(hello_verdict(&seen, "b1", "/h/.claude", &more), HelloVerdict::Stranger(w) if w.contains("CCM_HISTORY_METADATA：它用的是没有")),
-        "它少一格（没被交注解路径）⇒ 该拒"
+        matches!(hello_verdict(&seen, "b1", &want("/iso/a")[..1]), HelloVerdict::Stranger(w) if w.contains("CCM_DATA_DIR：它用的是 /iso/a，这个 monitor 要的是没有")),
+        "它多一格（它住隔离的家，这一趟住默认的家）⇒ 该拒"
     );
     assert!(
         matches!(
-            hello_verdict(&hello_with(""), "b1", "/h/.claude", &want("/x")),
+            hello_verdict(&hello_with(""), "b1", &want("/x")),
             HelloVerdict::Stranger(_)
         ),
         "hello 里没有 host_env（没被交任何一格）而这一趟要交 ⇒ 该拒"
     );
     assert_eq!(
-        hello_verdict(&hello_with(""), "b1", "/h/.claude", &[]),
+        hello_verdict(&hello_with(""), "b1", &[]),
         HelloVerdict::Ours,
         "两边都空 ⇒ 我们的"
     );
 }
 
-/// 🔴 I3：monitor 交的那几格的名字 == 后端回显的名单（两向；读后端源码现抠，异源）；`relay_host_envs` 交的名 == 名单
-/// （生产那一份不许漏交一格回显不到的，也不许多交一格回显不了的）。
+/// 🔴 I3：monitor 交的那几格的名字 == 后端回显的名单（两向；读后端源码现抠，异源）；[`backend_env_from`] 交的名 ⊆ 名单
+/// （生产那一份不许多交一格回显不了的）。
 #[test]
 fn hx2_the_handed_names_are_exactly_what_the_backend_echoes() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../backend");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let read = |rel: &str| {
         guard_core::production_code(
             &std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("读 {rel}：{e}")),
@@ -4242,55 +4533,51 @@ fn hx2_the_handed_names_are_exactly_what_the_backend_echoes() {
         let after_decl = &text[at + decl.len()..];
         after_decl[..after_decl.find('"').expect("常量没收尾")].to_string()
     };
-    let wire = read("stream/wire.rs");
-    let at = guard_core::find_pinned(&wire, "pub const HOST_ECHO_ENVS: [&str; 3] = [")
-        .expect("后端回显名单不在了");
-    // 名单那几行（到收尾的 `];` 为止；逐行取，不做子串切）。
-    let echo_list: Vec<&str> = wire[at..]
-        .lines()
-        .skip(1)
+    let wire = read("backend/stream/wire.rs");
+    let decl = "pub const HOST_ECHO_ENVS: [&str; 2] = [";
+    let at = guard_core::find_pinned(&wire, decl).expect("后端回显名单不在了");
+    // 名单写在一行里（两格，`cargo fmt` 不拆）：取那一行到收尾。
+    let line = wire[at + decl.len()..].lines().next().unwrap_or_default();
+    let end = guard_core::find_pinned(line, "];").expect("名单没收尾（或不在一行里）");
+    let echo_list: Vec<&str> = line[..end]
+        .split(',')
         .map(str::trim)
-        .take_while(|l| *l != "];")
+        .filter(|s| !s.is_empty())
         .collect();
     let mut backend: Vec<String> = Vec::new();
     for (needle, file, decl) in [
         (
             "crate::relay::ENV_PORT",
-            "relay/listen.rs",
+            "backend/relay/listen.rs",
             "pub(crate) const ENV_PORT: &str = \"",
         ),
         (
-            "crate::accounts::upstream_select::creds::ENV_CREDENTIALS",
-            "accounts/upstream_select/creds.rs",
-            "pub(crate) const ENV_CREDENTIALS: &str = \"",
-        ),
-        (
-            "crate::history::history_annotations::ENV_PATH",
-            "history/history_annotations.rs",
-            "pub(crate) const ENV_PATH: &str = \"",
+            "creds_core::store::DATA_DIR_ENV",
+            "common/creds-core/src/store.rs",
+            "pub const DATA_DIR_ENV: &str = \"",
         ),
     ] {
         assert!(
-            echo_list.contains(&format!("{needle},").as_str()),
+            echo_list.contains(&needle),
             "后端回显名单里没有 `{needle}`：{echo_list:?}"
         );
         backend.push(const_value(&read(file), decl));
     }
     assert_eq!(
         echo_list.len(),
-        3,
-        "后端回显名单不是恰好三格：{echo_list:?}"
+        2,
+        "后端回显名单不是恰好两格：{echo_list:?}"
     );
     let mut mine: Vec<String> = HANDED_ENVS.iter().map(|s| s.to_string()).collect();
     backend.sort();
     mine.sort();
     assert_eq!(mine, backend, "monitor 交的名 ≠ 后端回显的名");
-    let mut handed: Vec<String> = relay_host_envs().into_iter().map(|(k, _)| k).collect();
+    let mut handed: Vec<String> = backend_env_from(&|_| Some("/iso".into()), None)
+        .into_iter()
+        .map(|(k, _)| k)
+        .collect();
     handed.sort();
-    assert_eq!(
-        handed, mine,
-        "生产交的那份环境不是恰好名单那几格（这台机器上数据目录解得出时）"
-    );
+    assert_eq!(handed, mine, "生产交的那份环境不是恰好名单那几格");
 }
 
 /// 〔RK1 报 3〕token 取自**内核密码学随机数**，不再从时钟 / pid / 计数器里拼。

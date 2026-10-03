@@ -334,7 +334,7 @@ pub(crate) enum CaptureFail {
 
 /// 起它（`input` ⇒ 从 stdin 交这一段、交完就关）、等它（带上限）、读两根管子（没接的那根是空）。
 /// 本机探针与「问自己放下去的那份后端一次」（[`ask_once`]）共用这一段等法 —— 两份手写的 wait/read 之间只会漂。
-fn capture_full(
+pub(crate) fn capture_full(
     timeout: std::time::Duration,
     spawn: &dyn Fn() -> std::io::Result<crate::spawn_managed::ManagedChild>,
     input: Option<Vec<u8>>,
@@ -788,8 +788,18 @@ pub(crate) fn ours_by_bytes(p: &std::path::Path) -> bool {
 /// **一个字节都不写。**
 ///
 /// 手动兜底：`fresh` = 先作废 PATH 探针那份 5 分钟缓存再问（「重新对齐」那一下交；缺席 = 照缓存）。
+///
+/// 〔`INVARIANTS §10`〕**`async`**：它起 `ccm --ccm-probe`、冷缓存时再起登录 shell（Windows 是两个 PowerShell），单次上限十几秒 ——
+/// 同步命令跑在 IPC 派发线程上，那几秒整个界面没反应。本体进 `spawn_blocking`（形状照 `backend_control::backend_start`）。
 #[tauri::command]
-pub fn local_ccm_entry_status(fresh: Option<bool>) -> LocalCcmEntry {
+pub async fn local_ccm_entry_status(fresh: Option<bool>) -> Result<LocalCcmEntry, String> {
+    tauri::async_runtime::spawn_blocking(move || local_ccm_entry_now(fresh))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// [`local_ccm_entry_status`] 的本体（阻塞：读字节 · 起探针 · 等它）。
+pub(crate) fn local_ccm_entry_now(fresh: Option<bool>) -> LocalCcmEntry {
     if fresh == Some(true) {
         *LOCAL_PROBE_CACHE.lock().unwrap_or_else(|e| e.into_inner()) = None;
     }

@@ -71,7 +71,7 @@ fn local_ccm_too_old_warning() -> Option<String> {
 /// 「今天 monitor 在 Windows 上确实没有任何 ccm 探测形态（`probe_local_ccm` 那一族整族
 /// 带 `#[cfg(not(windows))]`）；**哪天有了，这条该换成真探测，而不是继续报『没做』**」。
 /// ⇒ **那一天是 `K-R69`**：`ccm_probe::probe_binary_uncached` 直接问一个二进制
-/// `<bin> --ccm-probe`（不经 shell、跨平台），`ccm_probe::local_ccm_entry_status` 用它问
+/// `<bin> --ccm-probe`（不经 shell、跨平台），`ccm_probe::local_ccm_entry_now` 用它问
 /// **cc-monitor 自己装下去的那一份**（`~/.cc-monitor/bin/<本机 ccm 入口名>`）。
 /// 本条从此复用那一处，**不另起进程**（起进程的登记住在 `ccm_probe.rs`）。
 ///
@@ -89,7 +89,7 @@ fn local_ccm_too_old_warning() -> Option<String> {
 ///
 /// ⚠ 它**不是错误**（与非 Windows 那条同一条纪律）：装本身做完了，命令仍回 `Ok`。
 fn windows_ccm_too_old_warning() -> Option<String> {
-    let st = crate::ccm_probe::local_ccm_entry_status(None);
+    let st = crate::ccm_probe::local_ccm_entry_now(None);
     Some(windows_ccm_precheck(
         st.entry.as_deref().map(|e| (e, &st.ours)),
         env!("BACKEND_BUILD_ID"),

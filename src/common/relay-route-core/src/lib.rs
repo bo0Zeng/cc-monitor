@@ -42,13 +42,15 @@
 //!   `accounts/manage`（账号库）；读账号库清单的还有 `observe/accounts_query` · `control/ccm`。
 
 /// 〔两个端口〕**常驻监听口**的门牌也住这里（它与中转口是这台机器上后端的两个门）：
-/// 这台机器 ＋ 这个 agent 家目录 ⇒ 那一个口。本机宿主（monitor `local_backend_host`）与远端 `--resident-ensure` 同一个函数
+/// 这台机器 ＋ 这个家（`~/.cc-monitor`；隔离跑时 `CCM_DATA_DIR`）⇒ 那一个口。门牌只跟着家走：与 Claude 目录、
+/// 与哪一家 agent 都无关（改一个设置、换一个终端起 monitor，都还是同一个口、同一个后端）。
+/// 本机宿主（monitor `local_backend_host`）与后端 `--resident-ensure` / `--resident-stop` 同一个函数
 /// ⇒ 一台机器一个常驻后端，本机 / 远端视角收敛。FNV-1a 写死（`DefaultHasher` 跨 Rust 版本不稳定，升级后要算出同一个口）。
-pub fn listen_port_for(home: &str) -> u16 {
+pub fn listen_port_for(data_home: &std::path::Path) -> u16 {
     const PORT_BASE: u16 = 49152;
     const PORT_SPAN: u32 = 16384;
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in home.as_bytes() {
+    for b in data_home.to_string_lossy().as_bytes() {
         h ^= u64::from(*b);
         h = h.wrapping_mul(0x1000_0000_01b3);
     }

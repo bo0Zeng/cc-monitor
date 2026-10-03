@@ -7,12 +7,11 @@
 //! C4c 的设计（`C4c.md §3.2`）：注解是 monitor 自有状态搬去后端自有状态（`readonly_guard` 第四层），不是用户文件；
 //! `D1`：join 只有一个家 —— 历史清单并注解这件事从此住本机后端（`history_join.rs`）。
 //!
-//! # 文件在哪（同一路径是**构造**出来的，不是算法对齐出来的）
+//! # 文件在哪
 //!
-//! monitor 起本机后端时用 [`ENV_PATH`] 把那份文件的绝对路径显式交过来（`local_backend_host::relay_host_envs`，
-//! 值由 monitor 从前读写它的那一个函数算：`history·rs::metadata_path`）。同 RL1 交凭据路径那一条理由：
-//! 由知道那份文件在哪的那一侧把路径说出来，`CCM_DATA_DIR` 隔离跑时跟着走。
-//! **没交 ⇒ 注解不可用**：读回「不知道」（三个数不说成 0）、写拒 —— 不猜一个路径去写。
+//! 住这台的家：`<家>/history-metadata.json`（家 = `creds_core::store::monitor_data_dir`，默认 `~/.cc-monitor`，
+//! 隔离跑时跟 `CCM_DATA_DIR` 走）。位置只跟着家走，没有另指它的变量。
+//! **推不出家 ⇒ 注解不可用**：读回「不知道」（三个数不说成 0）、写拒 —— 不猜一个路径去写。
 //!
 //! # 形状（与 monitor 从前那份**同形同注解**，逐格照搬）
 //!
@@ -38,9 +37,6 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-
-/// monitor 起本机后端时交那份文件绝对路径的环境变量名（monitor 那一侧 `local_backend_host::relay_host_envs` 同名，判据对拍）。
-pub(crate) const ENV_PATH: &str = "CCM_HISTORY_METADATA";
 
 /// 读一份注解文件的上限。超了 ⇒ 当读不懂：读回「不知道」、拒写（一个字节不动）。
 /// 一条注解约 150 字节 ⇒ 64 MiB 装得下四十万条；真撞上说明那份文件不对劲，不拿截断的当完整的用。
@@ -75,11 +71,11 @@ struct Doc {
 /// sid → 注解。
 pub type Table = BTreeMap<String, Entry>;
 
-/// 读的结局。「没交路径」「文件不在」「读不懂」三件事分开说 —— 后两件对界面的意思完全不同：
+/// 读的结局。「推不出家」「文件不在」「读不懂」三件事分开说 —— 后两件对界面的意思完全不同：
 /// 文件不在 = 还没有任何注解（真的是 0）；读不懂 = 不知道（不许说成 0）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum Loaded {
-    /// 没交路径（不是本机常驻后端 / monitor 没交）—— 注解这一维不可用。
+    /// 推不出家（没有家目录 / `CCM_DATA_DIR` 设成了相对路径）—— 注解这一维不可用。
     NoPath,
     /// 读到了（文件不在 = 空表，同 monitor 从前那份）。
     Read(Table),
@@ -87,16 +83,16 @@ pub enum Loaded {
     Unreadable(String),
 }
 
-/// 那份文件的路径（环境变量给的；空串 / 相对路径都不认）。
+/// 那份文件的路径：这台的家根上那一份；推不出家 ⇒ `None`。
 pub fn path() -> Option<PathBuf> {
-    path_from(std::env::var(ENV_PATH).ok().as_deref())
+    path_from(&|k| std::env::var(k).ok())
 }
 
-/// [`path`] 有逻辑的那一半（判据喂值，不去动进程级环境变量）。
-pub fn path_from(raw: Option<&str>) -> Option<PathBuf> {
-    let t = raw?.trim();
-    let p = PathBuf::from(t);
-    (!t.is_empty() && p.is_absolute()).then_some(p)
+/// [`path`] 有逻辑的那一半（环境取值器注入，判据不去动进程级环境变量）。
+pub fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    use creds_core::store::{monitor_data_dir, DATA_DIR_ENV, HISTORY_METADATA_FILE};
+    let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into));
+    monitor_data_dir(get(DATA_DIR_ENV).as_deref(), home).map(|d| d.join(HISTORY_METADATA_FILE))
 }
 
 /// 读原文（带上限）。`Ok(None)` = 文件不在。
@@ -329,7 +325,10 @@ fn write_at(path: &Path, raw: &Value) -> Result<(), String> {
 fn need_path() -> Result<PathBuf, (&'static str, String)> {
     path().ok_or((
         "no_annotations",
-        copy_text("beHistoryAnnotations.needPath.unknown", &[]),
+        copy_text(
+            "beHistoryAnnotations.needPath.unknown",
+            &[("env", creds_core::store::DATA_DIR_ENV)],
+        ),
     ))
 }
 

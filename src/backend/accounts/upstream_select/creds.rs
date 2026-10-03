@@ -29,9 +29,6 @@ use creds_core::perm::{self, Verdict};
 use creds_core::store::{self, AccountEntry, AuthStyle};
 use std::path::{Path, PathBuf};
 
-/// 覆盖那份文件的位置。给判据与「一台机器上跑两个中转」用。
-pub(crate) const ENV_CREDENTIALS: &str = "CCM_APIKEY_CREDENTIALS";
-
 /// 读一次的结果。**三样都要带出去**，因为调用方要把它们分别印出来。
 pub(crate) struct Loaded {
     /// 算出来的那条绝对路径 —— **一定要印**（`KS9` 的「路径文档化」落在这儿）。
@@ -48,7 +45,7 @@ pub(crate) struct Loaded {
     pub(crate) problem: Option<String>,
 }
 
-/// 算出那份文件在哪。`env` 覆盖优先，其次这台 monitor 数据目录（默认 `~/.cc-monitor`）根上那一份。
+/// 算出那份文件在哪：这台的家（默认 `~/.cc-monitor`）根上那一份。位置只跟着家走，没有另指它的变量。
 ///
 /// 数据目录与 monitor 那一侧**同一条规矩**：`store::monitor_data_dir(CCM_DATA_DIR, HOME)`（家目录取法同中转钥匙
 /// `relay::door::key_path`），不按 agent 家（`CLAUDE_CONFIG_DIR` 换号不许把凭据换到另一份）。
@@ -58,9 +55,6 @@ pub(crate) struct Loaded {
 /// （`std::env::set_var` 与并行跑的别的判据是竞态 —— 隔壁 `server::run_reading` 的头注
 /// 逐字记着这一课）。
 pub(crate) fn resolve_path(get: &dyn Fn(&str) -> Option<String>) -> Result<PathBuf, String> {
-    if let Some(p) = get(ENV_CREDENTIALS).filter(|p| !p.trim().is_empty()) {
-        return Ok(PathBuf::from(p));
-    }
     let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into));
     store::monitor_data_dir(get(store::DATA_DIR_ENV).as_deref(), home)
         .map(|d| store::credentials_path(&d))

@@ -224,8 +224,7 @@ fn write_at(path: &Path, kill: bool) -> Result<(), String> {
 fn resident_now() -> bool {
     matches!(
         crate::stream::listen::mode_from(&|k| std::env::var(k).ok()),
-        Ok(crate::stream::listen::Mode::Listen { .. }
-            | crate::stream::listen::Mode::ListenTokenFile { .. })
+        Ok(crate::stream::listen::Mode::Listen { .. })
     )
 }
 

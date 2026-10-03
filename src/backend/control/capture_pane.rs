@@ -64,6 +64,7 @@
 //! **值级**（这一处发出去的 argv 逐元素就是那条只读形）＋ **文本级**
 //! （生产段里不出现任何会改 tmux 状态的动词）＋ 反向自检（合成样本必须被逮到）。
 
+use crate::common::child_env::WithoutOwnEnv;
 use crate::common::tmux_utf8::UTF8_CLIENT_FLAG;
 use copy_core::copy_text;
 use std::process::{Command, Stdio};
@@ -211,7 +212,7 @@ pub(crate) fn classify(raw: &RawCapture) -> Result<String, CmdErr> {
 /// 在一个**隔离的 tmux server** 上测得出来 —— 同 `layering_guard::layer_sources_at`
 /// 的「根可注入」：活体夹具要让**真判据本身**跑在真东西上，不是跑在它的复刻上。
 fn spawn_capture(socket: Option<&str>, target: &str) -> Result<RawCapture, CmdErr> {
-    let mut cmd = Command::new("tmux");
+    let mut cmd = Command::new("tmux").without_own_env();
     if let Some(s) = socket {
         cmd.args(["-S", s]);
     }

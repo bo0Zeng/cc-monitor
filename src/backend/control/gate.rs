@@ -33,6 +33,7 @@
 //! 所以「目标在不在」的判据是**输出为空**，不是退出码。这与 monitor 侧
 //! `[ -z "$info" ] → CCM_NO_SESSION` 是同一条判据，刻意保持一致。
 
+use crate::common::child_env::WithoutOwnEnv;
 use copy_core::copy_text;
 use std::process::{Command, Stdio};
 
@@ -155,7 +156,7 @@ const PROBE_FMT_FIELDS: usize = 3;
 /// 复用这一处等于**不新增起进程点**。⚠ 空串 target 会被 tmux 静默解析成「某个会话」，
 /// 调用方必须自己挡（`identity_tag::pane_is_safe` 就是那道门）。
 pub(crate) fn probe(target: &str) -> Result<Option<Probed>, CmdErr> {
-    probe_with(Command::new("tmux"), target)
+    probe_with(Command::new("tmux").without_own_env(), target)
 }
 
 /// [`probe`] 的本体，`tmux` 由调用方造：[`super::identity_tag`] 经它自己那一个口递进来

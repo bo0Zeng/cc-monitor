@@ -748,7 +748,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         .env("TMUX_TMPDIR", &home)
         .env_remove("TMUX")
         .env_remove("CCM_LISTEN_PORT")
-        .env_remove("CCM_LISTEN_TOKEN")
+        .env_remove("CCM_LISTEN_TOKEN_FILE")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .spawn()
