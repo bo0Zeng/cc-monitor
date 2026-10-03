@@ -313,8 +313,8 @@ impl OptinState {
     }
 }
 
-/// 一条地址是不是我们那一形（带钥匙段的、或没带钥匙段的构造口产物）。
-fn ours(url: &str) -> bool {
+/// 一条地址是不是我们那一形（带钥匙段的、或没带钥匙段的构造口产物）。读者：设置文件判态 · `ccm` 不继承别的号的中转地址。
+pub(crate) fn ours(url: &str) -> bool {
     relay_route_core::split_keyed_base_url(url).is_some()
         || relay_route_core::base_url_shape_ok(url)
 }

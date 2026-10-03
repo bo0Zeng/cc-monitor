@@ -165,8 +165,8 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         // **边的条数一格没变**（16 → 16），只是左端的住址换了。
         "tests/frontend/shell/polling_registry_tests.rs",
         "src/backend/control/tmux_hook.rs",
-        "C14 那条登记在案的例外（预信任的等信任框以 shell 字符串形态产出）真实存在的证据 —— \
-         它是「零轮询」那条零命中守卫的反向锚点",
+        "前端那几条「今天不能退役」的轮询理由建立在「后端只装那三条会话 hook」之上 —— \
+         hook 覆盖面一变就要回来重新裁定",
     ),
     // 🔴 **〔条 67〕`tool_registry.rs → sidecars/codepicture/acquire.rs`
     //    这条跨半边删了** —— 右边那份源码随 `sidecars/` 整棵走了（2 008 行）。

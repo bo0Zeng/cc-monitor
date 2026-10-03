@@ -176,8 +176,6 @@ pub(crate) struct LaunchFace {
     pub(crate) has_identity: bool,
     /// 这一家的会话留 pidfile、入口注入的那份「此刻在跑」扫描认得出来 ⇒ resume 之前先问它是不是已经在别处跑着。
     pub(crate) has_pidfiles: bool,
-    /// 起来时会弹「信任这个目录吗」那一框：框里认得出的那句话（容器路收尾轮询它、按 Enter）。`None` ＝ 不弹。
-    pub(crate) trust_prompt: Option<&'static str>,
 }
 
 /// 某一家（wire 上的 kind）在给定注册表里的起会话事实。认不出 ⇒ `None`。

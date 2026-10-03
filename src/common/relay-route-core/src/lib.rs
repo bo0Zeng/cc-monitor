@@ -144,8 +144,8 @@ pub fn key_shape_ok(s: &str) -> bool {
 /// `("http://127.0.0.1:<口>/", "/<前缀>/<seg1>/<seg2>")`。
 ///
 /// 认的条件全在这里一处：钥匙段过 [`key_shape_ok`] · 两半拼回去（去掉钥匙段）过 [`base_url_shape_ok`]。
-/// 认不出 ⇒ `None`（那就不是我们注入的地址，原样对待）。读者：`ccm` 把继承来的地址转进新 pane 时
-/// 渲回 `$(cat …)` 形、不把钥匙本身写进 `tmux send-keys` 的 argv（RK1 报 2）。
+/// 认不出 ⇒ `None`（那就不是我们注入的地址，原样对待）。读者：观测侧判一条会话是不是经中转 ·
+/// 上游选择判一条地址是不是我们那一形（`ccm` 因此不把外层别的号的中转地址带进这一发）。
 pub fn split_keyed_base_url(url: &str) -> Option<(&str, &str)> {
     let after_scheme = url.strip_prefix("http://127.0.0.1:")?;
     let head_len = "http://127.0.0.1:".len() + after_scheme.find('/')? + 1;

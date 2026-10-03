@@ -693,7 +693,7 @@ agent、烧真额度。
 那是「起了，但名字没认出来」，**不是**「没起来」）· `said`（`cc-spawn` 的原始回显，给人看）。
 
 ★ **本机与远端同一条路**：monitor 对每台机器（含 `<local>`）都走这条原语，不再有「远端拼一条 `cc-spawn …`
-shell 串走 SSH、本机拒绝」的分叉。命名避让 / 登记进总线 / spawn 台账 / 预信任目录全在 `cc-spawn`
+shell 串走 SSH、本机拒绝」的分叉。命名避让 / 登记进总线 / spawn 台账全在 `cc-spawn`
 （它内部再经 `ccm`），后端**只转调**。发给 `cc-spawn` 的 `--tool` / `--account` / `--base` 是**子进程的**
 旗标，不是后端 argv（`protocol_doc_guard::CHILD_PROCESS_FLAGS` 登记 ＋ 两向判据）。
 
@@ -800,7 +800,7 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
 - **起**：先问记录还在不在（同 `history-record`，查 `account.configDir` 那棵树）—— 不在 ⇒ `skipped`/`record_gone`（`detail` = 查的那棵树）。
   - `mode:"tmux"`（不接进去）：`running` ⇒ `skipped`/`running`；`ambiguous` ⇒ `skipped`/`ambiguous`（`session` 是第一个）；`idle` ⇒ 同 `launch` 的 `send-into` 键入直路那一行；
     `none` ⇒ 这台铸名（同 `tmux-name-mint`），交**界面「在 tmux 里 Resume」那一行**（远端同 `launch-render-cli`、本机同 `launch-local`，同一份映射、同一个渲染器）只多 `--detach`，
-    由这台后端自己当 ccm 跑（环境、中转地址、身份标记、自检、信任框兜底都由 ccm 那一趟做）；退出码 3（名字有人了）⇒ `failed`/`name_taken`，别的非零 ⇒ `failed`/`start_failed`（`detail` 是 ccm 的原话）。
+    由这台后端自己当 ccm 跑（环境、中转地址、身份标记、自检都由 ccm 那一趟做）；退出码 3（名字有人了）⇒ `failed`/`name_taken`，别的非零 ⇒ `failed`/`start_failed`（`detail` 是 ccm 的原话）。
   - `mode:"window"`：只渲那一行交回（本机同 `launch-local`：POSIX 上铸名建进 tmux；远端同 `launch-render-cli` 直连），窗口由 monitor 开。渲不出来 ⇒ `failed`/`refused`。
 - 这台没装 tmux ⇒ 停与 `mode:"tmux"` 逐个 `skipped`/`no_tmux`。
 
@@ -1859,7 +1859,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 #### `launch-render-cli`：远端起会话那一行 `ccm …`
 
 monitor 每一条远端起会话路径（直连 resume · 建 tmux 会话 resume〔换号重启 · 分叉〕· 开新会话 · 接回 · 就地 resume）都问那台后端要这一行；
-交给终端的**只是这一行**（就地 resume 回落那一形外层只包一层 `tmux send-keys … ; tmux attach`）。环境、中转地址、身份标记、预信任由**那台的 `ccm`**
+交给终端的**只是这一行**（就地 resume 回落那一形外层只包一层 `tmux send-keys … ; tmux attach`）。环境、中转地址、身份标记由**那台的 `ccm`**
 在最终 exec 那一处定。`ccm` 就是这台后端本身 ⇒ 能力问它自己（与 `--ccm-probe` 同一份）。**纯函数**（不起进程、不碰盘）。
 （原 monitor 的 Tauri 命令 `render_ccm_launch`〔散文墓碑〕搬进那台后端；载荷那一条随起会话只交一行 `ccm …` 删了。）
 
@@ -1911,6 +1911,8 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
   「这台的中转在不在听」= 钥匙文件读得到 ＋ 回环口连得上（`ccm` 是一次性进程，读不到常驻后端的监听状态 —— 口被别人占着时会被认成在听）。
   非它不可（API 号代入 `/s/`）而没在听 ⇒ **拒绝起会话**、一句话说清；`/t/` 那一格没在听 ⇒ 这一发直连。
   钥匙在 `ccm` 进程里拼进 agent 的环境，不进 argv、不进 shell；用户自己设了 `ANTHROPIC_BASE_URL` ⇒ 不注入、说一句。
+  环境里继承来的是**我们的中转那一形**（外层 shell / 上一趟留下的，属于别的号）⇒ 不认：按**这一发的目标账号**重问；
+  这一发不注入 ⇒ 清掉它。容器路（`--ccm-tmux`）不把它带进 pane —— pane 里那一趟走到这里自己问（只带用户自己的端点）。
 - **身份**：`--ccm-launch-id` ⇒ `CCM_LAUNCH_ID`；`--ccm-sid=` ⇒ tmux 会话上的 `@ccm_sid`。
 - **账号**：`--account <名>` · `--account-dir <目录>`（说不出名字时）· `--base`。
 - 同号会话**有活着的 agent 进程**才回接那个窗口；只剩窗口上的标记（进程已退）⇒ 原地续上。

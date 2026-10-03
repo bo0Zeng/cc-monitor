@@ -286,11 +286,6 @@ fn the_agent_set_has_one_address_and_every_member_is_wired() {
     assert!(face("codex").needs_bus_id && !face("claude").needs_bus_id);
     assert!(face("claude").has_identity && !face("codex").has_identity);
     assert!(face("claude").has_pidfiles && !face("codex").has_pidfiles);
-    assert_eq!(
-        face("claude").trust_prompt,
-        Some("Yes, I trust this folder")
-    );
-    assert_eq!(face("codex").trust_prompt, None);
 }
 
 /// 〔搬自 `ccm-cli` WIRE/launch「发对了①–⑤」「缺省尺寸①②」「控制字符①–④」那几族〕
@@ -309,7 +304,6 @@ fn the_container_launch_goes_through_the_one_door_with_every_field_intact() {
         detach: true,
         payload: "'/usr/local/bin/ccm' '--cwd' '/p'".into(),
         self_check: "'/usr/local/bin/ccm' '--cwd' '/p' '--print'".into(),
-        trust_prompt: Some("t"),
         bus: None,
     };
     let req = crate::control::launch::parse_request(&launch_args(&c)).expect("该过得了门");
@@ -598,7 +592,6 @@ fn the_alias_preview_is_the_same_plan_as_ccm_print() {
                 .unwrap_or_default()
                 .to_string(),
             self_argv: vec!["ccm".into()],
-            no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
             bus_scripts: plan::discover_bus_scripts(),
             ..Default::default()
         };

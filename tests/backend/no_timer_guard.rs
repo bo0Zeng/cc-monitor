@@ -52,20 +52,12 @@ mod f09_external_beat {
     //!
     //! 针（逐字）：`sh -c` · `run-shell` · `format!`
     //!
-    //! # 🔴本条不再是零命中守卫：**它今天恰好逮住一处，而那一处登记在案**
+    //! # 今天它是零命中守卫：后端产出的 shell 串里**一处自带节拍的都没有**
     //!
-    //! 上一版这里有两句话，今天两句都不准了，逐句订正：
-    //!
-    //! 1. 「那条预信任轮询串住 `shared/ccm`，不在后端」—— **假了**。`K-R48`（09-11）把那个
-    //!    bash 脚本删掉、整条搬进了 `control/ccm/`，它今天住 `control/ccm/plan.rs`。
-    //! 2. 「后端侧今天零实例」—— **也假了**；它之所以还绿，是因为**人群够不着**：
-    //!    上一版按**行**收人（同一行里有引号 **且** 有上面三根针之一），
-    //!    而 `plan.rs` 那一条是 `format!(` 的**续行** ⇒ 三根针一根都不落在那一行上。
-    //!
-    //! ⇒ 病不在「针太窄」，在**匹配单位比事实小**（同族登记在
-    //! `platform/cfgless_guard` 的 `hits` 头注里，本仓量到过三次）。
-    //! 本轮的处置是**把匹配单位从「行」改成「表达式」**（从带针那一行起、括号配平到收尾），
-    //! **不是**把针放宽成「任何字符串字面量」。
+    //! 它曾逮到过一处 —— 容器路收尾那段「等 agent 的信任框、替用户按 Enter」的六轮 `sleep 0.5`
+    //! （当时登记为例外）。那一处已删：信任由用户在会话里自己答，替它按中的是缺省那一项「不信任、退出」。
+    //! 零命中不靠真树上碰巧有病灶来证明针没瞎：正控是 [`the_matching_unit_is_an_expression_not_a_line`]
+    //! 的合成夹具（续行里的循环串收得进、也认得出是节拍）与 [`the_shell_string_scan_finds_candidates`] 的地板。
     //!
     //! # 为什么不放宽成「任何字符串字面量」：两把尺子现打（09-13，量于本 crate `src/` 生产段）
     //!
@@ -81,15 +73,6 @@ mod f09_external_beat {
     //!
     //! 放宽成「任何字符串字面量」买到的是 1 真 4 假 ⇒ **净变宽，人会绕开它**
     //! （纪律 ⑯：放宽越界闸之前先问它买得到什么）。改匹配单位买到的是 1 真 0 假 —— 选后者。
-    //!
-    //! # 「没扫到」与「刻意不扫」从今天起在盘上分得开
-    //!
-    //! 逮到的那一处**不是违规**，它是 `C14` 逐字登记的那个例外
-    //! （逐字见 [`REGISTERED_EXTERNAL_BEATS`] 的签字栏）。⇒ 那张表**默认拒绝**：
-    //! 没登记的当场红、登记了而今天一处都匹配不上的也当场红。
-    //! 🔴 它买到的**不是**「后端没有外部节拍」，是「**每一条外部节拍都有人签过字**」。
-    //! ⚠ 而「登记的那一条今天还在人群里」是另一格 ——
-    //! 上一版就是死在那里 ⇒ 单立一条 [`the_registered_beat_is_actually_inside_the_population`]。
 
     /// 循环关键字：shell 里提供节拍的三种写法。
     fn loop_words() -> Vec<String> {
@@ -105,24 +88,6 @@ mod f09_external_beat {
     /// 🔴 它与头注里那一行 `针（逐字）：…` **两向对拍**
     /// （[`the_head_note_lists_exactly_the_needles_in_use`]）：改一边不改另一边当场红。
     const NEEDLES: &[&str] = &["sh -c", "run-shell", "format!"];
-
-    /// **登记在案的外部节拍**：`(文件相对路径, 串里的逐字锚点, 定框依据, 签字)`。
-    ///
-    /// 🔴 **这不是免检名单，是默认拒绝**：没登记的当场红；登记了而今天一处都匹配不上的
-    /// 也当场红（过期条目会让这张表慢慢变成一张没人敢动的名单 ——
-    /// 同 `platform/cfgless_guard` 的 `REGISTERED` 那两个方向）。
-    const REGISTERED_EXTERNAL_BEATS: &[(&str, &str, &str, &str)] = &[(
-        "control/ccm/plan.rs",
-        // 锚在轮询串自己的骨架上：框里那句话是各家适配层的（`LaunchFace::trust_prompt`），串里只剩它的占位。
-        "| grep -q {prompt} && {{ tmux send-keys",
-        "C14",
-        "`C14`〔实 08-01·inotify 看不见 pane 内容〕逐字：「**预信任的『等信任框』没有内核事件源** \
-         —— 它本质就是轮询。**`C8` 的唯一登记例外**：`control/` 继续**以 shell 字符串形态**产出它\
-         （由目标 shell 执行，因此与零定时器共存）。不写下来，实现期必然有人用 Rust 重写然后撞护栏」。\
-         ⇒ 这一处**不是漏进来的**，是定框点名让它以这个形态住在 `control/` 的：\
-         节拍由**目标 shell** 提供，后端进程自己一个定时器都没有。\
-         🔴 要把它收掉得先回定框重裁 `C14`，不是在这里删一行。",
-    )];
 
     // ══════════════════════════ 匹配单位 ══════════════════════════
 
@@ -339,81 +304,41 @@ mod f09_external_beat {
         );
     }
 
-    /// ★ 正题：后端产出的 shell 串里，**每一条自带节拍的都要签过字**。两个方向都断。
-    #[test]
-    fn every_external_beat_the_backend_produces_is_registered() {
-        let words = loop_words();
-        let beats: Vec<(String, String, String)> = shell_string_literals()
+    /// 这条 shell 串**自带节拍**吗（含循环关键字）—— 正题与合成夹具量同一把尺子。
+    fn is_beat(s: &str) -> bool {
+        loop_words().iter().any(|w| s.contains(w.as_str()))
+    }
+
+    /// 一段生产文本里自带节拍的那几条 shell 串。
+    fn beats_in(prod: &str) -> Vec<String> {
+        shell_strings_in(prod)
             .into_iter()
-            .filter(|(_, _, s)| words.iter().any(|w| s.contains(w.as_str())))
-            .collect();
-        let unsigned: Vec<String> = beats
-            .iter()
-            .filter(|(f, _, s)| {
-                !REGISTERED_EXTERNAL_BEATS
-                    .iter()
-                    .any(|(p, anchor, _, _)| *p == f.as_str() && s.contains(*anchor))
-            })
+            .map(|(a, z)| prod[a..z].to_string())
+            .filter(|s| is_beat(s))
+            .collect()
+    }
+
+    /// ★ 正题：后端产出的 shell 串里**没有一条自带节拍**（零命中；正控见下一条的合成夹具）。
+    #[test]
+    fn the_backend_produces_no_external_beat() {
+        let beats: Vec<String> = shell_string_literals()
+            .into_iter()
+            .filter(|(_, _, s)| is_beat(s))
             .map(|(f, line, _)| format!("  {f}: {line}"))
             .collect();
         assert_eq!(
-            unsigned,
+            beats,
             Vec::<String>::new(),
-            "后端产出的 shell 串里出现了**没签字**的循环关键字 —— 那是 `C12` 的 ⚠ 点名的\n\
-             「**周期跑一次外部命令**」形态：不用 sleep/interval，而是让别人的 shell 提供节拍，\n\
-             于是本 crate 的零定时器护栏一个字都看不见。\n\
-             出路两条：把那条节拍去掉；或者回定框重裁 `C12`/`C14` 之后在\n\
-             `REGISTERED_EXTERNAL_BEATS` 上签一行字（写清定框依据）。\n{}",
-            unsigned.join("\n")
+            "后端产出的 shell 串里出现了循环关键字 —— 那是「**周期跑一次外部命令**」形态：\n\
+             不用 sleep/interval，而是让别人的 shell 提供节拍，于是本 crate 的零定时器护栏一个字都看不见。\n\
+             先回答它的内核事件源是什么、为什么后端接不了。\n{}",
+            beats.join("\n")
         );
-        let stale: Vec<String> = REGISTERED_EXTERNAL_BEATS
-            .iter()
-            .filter(|(p, anchor, _, _)| {
-                !beats
-                    .iter()
-                    .any(|(f, _, s)| f.as_str() == *p && s.contains(*anchor))
-            })
-            .map(|(p, anchor, ..)| format!("  {p} :: {anchor}"))
-            .collect();
-        assert_eq!(
-            stale,
-            Vec::<String>::new(),
-            "`REGISTERED_EXTERNAL_BEATS` 里这几条今天一处都匹配不上：\n{}\n\
-             🔴 两种成因在盘上必须分得开：**那一处真的挪走/去掉了**（把这一行删掉）\n\
-             与**人群又够不着它了**（本条此刻在空转）。\n\
-             判之前先看 `the_registered_beat_is_actually_inside_the_population` 红没红。",
-            stale.join("\n")
-        );
-    }
-
-    /// ★★ 反空真：**「人群够不着」与「盘上没有」必须分得开。**
-    ///
-    /// 上一版正是死在这一格 —— 那条预信任串一直在盘上，而人群按行收人够不着它，
-    /// 于是判据零命中地绿着，头注还写着「后端侧今天零实例」。
-    /// 本条断的是**登记表上那一处真的落在人群里**。
-    #[test]
-    fn the_registered_beat_is_actually_inside_the_population() {
-        assert!(
-            !REGISTERED_EXTERNAL_BEATS.is_empty(),
-            "登记表空了 —— 本条会变成「对空集全称成立」，恒绿"
-        );
-        let all = shell_string_literals();
-        for (p, anchor, charter, _why) in REGISTERED_EXTERNAL_BEATS {
-            let n = all
-                .iter()
-                .filter(|(f, _, s)| f.as_str() == *p && s.contains(*anchor))
-                .count();
-            assert!(
-                n >= 1,
-                "`{p}` 上那条 `{charter}` 登记的外部节拍（锚点 `{anchor}`）**不在人群里** ——\n\
-                 那不是它没了，是本条的匹配单位又够不着它了（`K-R103` 治的正是这一形）。"
-            );
-        }
     }
 
     /// ★★ 拿合成夹具证明**匹配单位真的是表达式** —— 不靠真树上碰巧有没有病灶。
     ///
-    /// 四刀，两正两反：
+    /// 四刀，两正两反（外加一刀：续行里带循环的串认得出是节拍）：
     /// ① 针与串同一行 ⇒ 收得进 · ② 针在上一行、串在**续行** ⇒ **也要收得进**
     /// （这一刀就是 `K-R103` 之前那个洞，上一版在这里是 0）·
     /// ③ 一根针都没有的串 ⇒ 不收 · ④ 表达式收尾之后**下一条**语句里的串 ⇒ 不收（窗口不许越界）。
@@ -431,6 +356,15 @@ mod f09_external_beat {
             n(&continued),
             1,
             "针在上一行、串在续行 ⇒ 收不进 —— 匹配单位又退回「行」了（`K-R103` 那个洞）"
+        );
+        let beat = format!(
+            "let a = {}(\n    \" && (for _i in 1 2; do sleep 1; done)\"\n);\n",
+            "format!"
+        );
+        assert_eq!(
+            beats_in(&beat).len(),
+            1,
+            "续行里带循环的串没被认成节拍 —— 正题那条会零命中地绿"
         );
 
         let innocent = "let a = String::from(\"just a plain string\");\n";

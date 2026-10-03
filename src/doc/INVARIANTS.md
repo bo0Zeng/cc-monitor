@@ -150,9 +150,9 @@ monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / �
 **不挡**「已登记那条改成起别的东西」—— 登记的是**文件名**不是完整 argv，
 而 argv 里有格式化变量（`tmux_probe_script()` 拼的脚本），钉不住也不该钉死。
 
-**预信任那条是单列的受管例外**：后端 **主动**让 `ccm` 去写 `~/.claude.json`（首次进某目录的信任确认）
-—— 那是第 2 条里「替用户决定写什么」的一个**明确例外**，因为不做它自动化会卡在弹窗上。
-它今天还没落到后端侧（`--account-trust` 只**读**、只回三个布尔）；真落地时要在这里再列一行写面。
+**信任这个目录吗，产品不替用户答**：`ccm` 不写 `~/.claude.json` / `~/.codex/config.toml` 的信任项，
+也不往会话里按键去答 agent 的信任框（那是 agent 的安全检查；替它按 Enter 按中的是缺省那一项「不信任、退出」）。
+`--account-trust` 只**读**、只回三个布尔。
 
 **为什么不算松动**：破坏性上它与已放行的「远端历史删除」（例外 3）不在一个量级——那条真的会让
 用户的会话消失，这条只增不减。且它**没有引入新的写入者**：后端早就在写远端
@@ -1004,7 +1004,7 @@ attach 已有会话走宽松的 `gate_rules::existing_tmux_name_issue`（②：�
 
 载荷那一层（裸载荷 · 外层 tmux 三格 · 「这一发的中转地址」）整层删了，两份夹具与它们的用例表一起删了。
 monitor 的每一条起会话路径（新起 · resume · 换号重启 · 分叉 · 远端开新会话 · 本机拉起 · cc-bus 派生 · 就地 resume）
-问那台后端要的都只是一行 `ccm [交给 agent 的…] -- [ccm 自己的…]`；环境、中转地址、身份标记、预信任由**那台机器上的 `ccm`**
+问那台后端要的都只是一行 `ccm [交给 agent 的…] -- [ccm 自己的…]`；环境、中转地址、身份标记由**那台机器上的 `ccm`**
 在最终 exec 那一处定。外层容器（tmux 建会话 / 键进已有 pane）只包这一行。
 **「表达不了就放弃」照旧**：渲不出来 ⇒ 帧命令回码 `refused`、带那一句，调用方不回落、不拼第二条。
 验证：`launch_cli_parity_tests.rs::every_monitor_launch_path_hands_over_one_ccm_line`（每条远端路径真发出去的那一形逐条以 `ccm ` 开头）·
@@ -1048,13 +1048,12 @@ monitor 的每一条起会话路径（新起 · resume · 换号重启 · 分叉
 
 ### `--print` **刻意**不说的两件事（别去「修」它们）
 
-铁律 1 的范围是**环境变量**，不是「exec 路发生的一切」。以下两件 `--print` 故意不反映，
-理由都是铁律 2（保持纯）：
+铁律 1 的范围是**环境变量**，不是「exec 路发生的一切」。以下这件 `--print` 故意不反映，
+理由是铁律 2（保持纯）：
 
 | 它不说什么 | 为什么 |
 |---|---|
 | **撞名避让**（`--tmux` 无名时真跑会退到 `-2`/`-3`） | 要知道退到第几个必须 `tmux has-session` 查实时状态。`--print` 展示**基名**；真行为由 `ccm-acceptance` 场景 5/5bis 在真 tmux 里钉住 |
-| **预信任副作用**（新目录写 `~/.claude.json` / `~/.codex/config.toml`） | `--print` 不许写文件。真行为由 `ccm-pretrust-acceptance` 钉住 |
 
 **为什么不把两份副本合成一份代码**：exec 那条路是真正跑用户会话的路径，
 为了消副本给它引入 `eval` 是拿生产路径换整洁。且配方（文本）与函数（代码）本就无法
@@ -1701,7 +1700,7 @@ Linux 本地是 POSIX + tmux + `ccm`，跟远端那条路**只差一跳 ssh**。
 | **多账号**（列表 / 切号 / 按会话切号 / 用量） | 有 | POSIX 本机有 · Windows 本机无 | 账号库改由后端 `accounts/manage/` 建立和维护，远端与 POSIX 本机同一份代码；Windows 本机上建库那一组命令答 `unsupported` |
 | **per-account 默认模型**（`MODEL_DIMENSION`） | 有 | **无** | 依赖账号 ⇒ 随上一条 |
 | **嵌套 env 清理**（`unset-nested-env`） | 有 | **无** | `history.rs:930 build_local_ps_command` **不注入任何 env**。**这一条不依赖账号**，可单独还 |
-| **`ccm` 全套修饰**（`--tmux`/`--detach`/`--tmux-size`/预信任/身份回填） | 有 | **无** | Windows 本地没有 tmux 也没有 `ccm`。**POSIX 本地（§40 主体）落地后自动就有** |
+| **`ccm` 全套修饰**（`--tmux`/`--detach`/`--tmux-size`/身份回填） | 有 | **无** | Windows 本地没有 tmux 也没有 `ccm`。**POSIX 本地（§40 主体）落地后自动就有** |
 | **配置面审计页对远端的实况** | **无**（7/10 行恒返回「未确定」，本页明写不连 SSH） | 有 | **反向缺口**——本地能答、远端答不出。说明这条原则是**双向**的 |
 | 远端 hooks 诊断读死 `$HOME/.claude/settings.json` | 不认 `CLAUDE_CONFIG_DIR` | 认（B04 已修） | 同型反向漂移，BACKLOG **E17** |
 | 远端 profile 的 fail-safe 读取 | Phase G 已补齐 | 本机侧原本就有（v1.7.9 修法） | 已对齐 |
@@ -2285,11 +2284,13 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 `endpoint_tests.rs::optin_judges_the_pasted_address_against_the_relay_port_and_key_on_disk`（例外那一条：已装不带片段、片段里的钥匙 == 盘上那一把）·
 `host_tests.rs::our_relay_listening_answers_from_the_hosts_own_state_not_from_who_answers_the_port`；
 起会话那一半 `plan_tests.rs::the_relay_address_is_decided_at_the_final_exec_and_only_there`（`ccm` 直路在进程内把钥匙拼进 agent 的环境，非得经 shell 那一趟渲成读钥匙文件的命令替换）·
+`plan_tests.rs::the_relay_route_follows_the_target_account_not_the_outer_shell`（路由跟着目标账号走，外层环境里别的号的中转地址不顶它）·
 e2e `restart-suite.sh`（换号重启经 `ccm` 起的进程环境里有中转地址，只看变量在不在）；
 写口登记 `readonly_guard` 第四层（`relay/door.rs`，门 `relay/listen.rs`）。设计与读数住。
 
 **诚实边界**：钥匙挡的是**读不到那份 `0600` 文件**的人 —— 能读你家目录的（root、你自己的进程、你起的 agent）本来就能以你的身份跑东西。
-钥匙文件在中转跑着时被删 / 改 ⇒ 新会话每一发 403（出声），重起中转就好。会话里的 `ccm` 把**继承来的**（已展开、带钥匙的）`ANTHROPIC_BASE_URL` 原样转进新 pane 的载荷，那一跳钥匙会进一次 `tmux send-keys` 的 argv（`control/ccm/plan.rs`，未修）。
+钥匙文件在中转跑着时被删 / 改 ⇒ 新会话每一发 403（出声），重起中转就好。继承来的（已展开、带钥匙的）中转地址 `ccm` 不往新 pane 的载荷里转（它属于外层的号，pane 里那一趟按目标账号自己问）⇒ 钥匙不进 `tmux send-keys` 的 argv
+（`plan_tests.rs::an_inherited_relay_address_of_ours_never_goes_into_the_pane`）。
 
 ### 48.2 脱离后不留僵尸
 
