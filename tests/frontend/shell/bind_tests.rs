@@ -190,39 +190,154 @@ fn verify_binding_cannot_tell_that_the_window_changed_hands() {
     }
 }
 
-/// ★ 沿进程链从下往上，第一个有可见顶层窗口的进程：恰好一个 ⇒ 它；好几个 ⇒ 分不清（不挑）；整条链都没有 ⇒ 没有窗口。
-/// 本机后端那一格成品原样反序列化（`start` 那一格本进程不用）。
-#[test]
-fn the_window_is_the_first_one_up_the_chain_and_only_if_it_is_alone() {
-    let chain: Vec<ChainLink> = serde_json::from_value(serde_json::json!([
+/// 本机后端那一格成品原样反序列化（`start` 那一格本进程不用）：ssh → powershell → Windows Terminal。
+fn ssh_chain() -> Vec<ChainLink> {
+    serde_json::from_value(serde_json::json!([
         { "pid": 700, "name": "ssh.exe", "start": 4000 },
         { "pid": 600, "name": "powershell.exe", "start": 3000 },
         { "pid": 500, "name": "WindowsTerminal.exe", "start": 2000 },
     ]))
-    .unwrap();
-    let wins = |table: &'static [(u32, &'static [isize])]| {
-        move |pid: u32| {
-            table
-                .iter()
-                .find(|(p, _)| *p == pid)
-                .map(|(_, w)| w.to_vec())
-                .unwrap_or_default()
-        }
-    };
+    .unwrap()
+}
+
+/// 窗口枚举的替身：pid ⇒ 它名下的可见顶层窗口。
+fn wins(table: &'static [(u32, &'static [isize])]) -> impl Fn(u32) -> Vec<isize> {
+    move |pid: u32| {
+        table
+            .iter()
+            .find(|(p, _)| *p == pid)
+            .map(|(_, w)| w.to_vec())
+            .unwrap_or_default()
+    }
+}
+
+fn found(hwnd: isize, owner_pid: u32, owner_proc_start: u64) -> FoundWindow {
+    FoundWindow {
+        hwnd,
+        owner_pid,
+        owner_proc_start,
+    }
+}
+
+/// 握手表里的一条：PowerShell `ps_pid` 登记了窗口 `hwnd`（属主 `owner_pid`）。
+fn entry(ps_pid: u32, hwnd: isize, owner_pid: u32) -> HwndEntry {
+    HwndEntry {
+        ps_pid,
+        hwnd,
+        owner_pid,
+        owner_proc_start: 777,
+        ps_proc_start: "639150434950992340".to_string(),
+        title_at_bind: format!("ccm-bind-{ps_pid}-abcd1234"),
+        registered_at: 1716393600000,
+    }
+}
+
+/// 握手表一条也没有时：沿进程链从下往上，第一个有可见顶层窗口的进程 —— 恰好一个 ⇒ 它；好几个 ⇒ 分不清（不挑）；
+/// 整条链都没有 ⇒ 没有窗口。
+#[test]
+fn without_a_registration_the_window_is_the_first_one_up_the_chain_and_only_if_it_is_alone() {
+    let chain = ssh_chain();
+    let none = |_: u32| None;
+    let start = |pid: u32| u64::from(pid) * 10;
     // 经典控制台：窗口属主是 shell。
     assert_eq!(
-        pick_chain_window(&chain, wins(&[(600, &[0x11]), (500, &[0x22])])),
-        Ok((0x11, 600))
+        pick_chain_window(&chain, none, wins(&[(600, &[0x11]), (500, &[0x22])]), start),
+        Ok(found(0x11, 600, 6000))
     );
     // Windows Terminal 只开一个窗口。
     assert_eq!(
-        pick_chain_window(&chain, wins(&[(500, &[0x22])])),
-        Ok((0x22, 500))
+        pick_chain_window(&chain, none, wins(&[(500, &[0x22])]), start),
+        Ok(found(0x22, 500, 5000))
     );
     // 开着两个窗口 ⇒ 分不清，说出是哪个程序。
-    let two = pick_chain_window(&chain, wins(&[(500, &[0x22, 0x33])])).unwrap_err();
+    let two = pick_chain_window(&chain, none, wins(&[(500, &[0x22, 0x33])]), start).unwrap_err();
     assert!(two.contains("WindowsTerminal.exe"), "{two}");
     // 整条链都没有窗口 ⇒ 说开着连接的那个程序没有窗口。
-    let none = pick_chain_window(&chain, wins(&[])).unwrap_err();
-    assert!(none.contains("ssh.exe") && none != two, "{none}");
+    let nowin = pick_chain_window(&chain, none, wins(&[]), start).unwrap_err();
+    assert!(nowin.contains("ssh.exe") && nowin != two, "{nowin}");
+}
+
+/// ★ 链上某个 PowerShell 在握手表里登记过、且作数 ⇒ 用它登记的那个窗口，哪怕 Windows Terminal 开着好几个窗口
+/// （精确到窗口，不靠枚举）；嵌套时开着连接的那个没登记、它外面那个登记了 ⇒ 外面那个（同一个窗口）。
+#[test]
+fn a_registered_shell_on_the_chain_names_its_window_even_when_the_terminal_has_several() {
+    let chain = ssh_chain();
+    let start = |pid: u32| u64::from(pid) * 10;
+    let reg = |pid: u32| (pid == 600).then(|| entry(600, 0x33, 500));
+    assert_eq!(
+        pick_chain_window(&chain, reg, wins(&[(500, &[0x22, 0x33, 0x44])]), start),
+        Ok(found(0x33, 500, 777))
+    );
+    let nested: Vec<ChainLink> = serde_json::from_value(serde_json::json!([
+        { "pid": 700, "name": "ssh.exe", "start": 4000 },
+        { "pid": 650, "name": "pwsh.exe", "start": 3500 },
+        { "pid": 600, "name": "powershell.exe", "start": 3000 },
+        { "pid": 500, "name": "WindowsTerminal.exe", "start": 2000 },
+    ]))
+    .unwrap();
+    assert_eq!(
+        pick_chain_window(&nested, reg, wins(&[(500, &[0x22, 0x33])]), start),
+        Ok(found(0x33, 500, 777))
+    );
+}
+
+/// ★ 终端窗口的属主以上的进程不在这个窗口里：Windows Terminal 是从某个登记过的 PowerShell 里打开的，
+/// 那个 PowerShell 登记的是它自己那个窗口 ⇒ 不拿来用；这条连接所在的 PowerShell 没登记、终端开着两个窗口 ⇒ 照实说分不清。
+#[test]
+fn a_registration_above_the_terminal_window_is_not_this_window() {
+    let chain: Vec<ChainLink> = serde_json::from_value(serde_json::json!([
+        { "pid": 700, "name": "ssh.exe", "start": 4000 },
+        { "pid": 650, "name": "pwsh.exe", "start": 3500 },
+        { "pid": 500, "name": "WindowsTerminal.exe", "start": 2000 },
+        { "pid": 400, "name": "powershell.exe", "start": 1000 },
+    ]))
+    .unwrap();
+    let reg = |pid: u32| (pid == 400).then(|| entry(400, 0x99, 300));
+    let said = pick_chain_window(&chain, reg, wins(&[(500, &[0x22, 0x33])]), |_| 0).unwrap_err();
+    assert!(said.contains("WindowsTerminal.exe"), "{said}");
+}
+
+/// ★ 握手表里那一条不作数就不用：登记的 PowerShell 已经不是此刻这个进程（起始时刻对不上 / 读不到）、
+/// 或那个窗口不作数了 ⇒ 当没登记；仍好几个窗口 ⇒ 照实说分不清，并说怎么办，不挑。
+#[test]
+fn a_registration_that_fails_its_check_is_not_used_and_several_windows_are_never_guessed() {
+    let e = entry(600, 0x33, 500);
+    let ok = |_: &FoundWindow| true;
+    assert!(registration_holds(&e, Some(639150434950992340), ok));
+    // 进程号被复用：此刻 600 是另一个进程。
+    assert!(!registration_holds(&e, Some(639150434950992341), ok));
+    // 读不到此刻的起始时刻 ⇒ 校验不了 ⇒ 不用。
+    assert!(!registration_holds(&e, None, ok));
+    // 窗口没了 / 换了属主。
+    assert!(!registration_holds(&e, Some(639150434950992340), |_| false));
+
+    // 生产那一侧只交作数的那一条：不作数 ⇒ 当没登记 ⇒ 退回终端窗口那一级；两个窗口 ⇒ 分不清，不挑其中任何一个。
+    let chain = ssh_chain();
+    let stale = |pid: u32| {
+        (pid == 600)
+            .then(|| entry(600, 0x33, 500))
+            .filter(|e| registration_holds(e, Some(1), |_| true))
+    };
+    let said = pick_chain_window(&chain, stale, wins(&[(500, &[0x22, 0x33])]), |_| 0).unwrap_err();
+    assert!(said.contains("WindowsTerminal.exe"), "{said}");
+    assert!(
+        said.contains("PowerShell 标签页"),
+        "分不清时要说怎么办（在那个窗口里新开一个 PowerShell 标签页、从那里重新连）：{said}"
+    );
+}
+
+/// ★ 本机会话也走同一条规则：claude 不是 PowerShell 的直接子进程（敲 cc 时中间隔着 ccm）⇒ 往上走到登记过的那个 PowerShell。
+#[test]
+fn a_local_claude_finds_its_shell_through_ccm() {
+    let chain: Vec<ChainLink> = serde_json::from_value(serde_json::json!([
+        { "pid": 810, "name": "ccm.exe" },
+        { "pid": 600, "name": "powershell.exe" },
+        { "pid": 500, "name": "WindowsTerminal.exe" },
+    ]))
+    .unwrap();
+    let reg = |pid: u32| (pid == 600).then(|| entry(600, 0x33, 500));
+    assert_eq!(
+        walk_chain(&chain, reg, wins(&[(500, &[0x22, 0x33])])),
+        ChainHit::Registered(entry(600, 0x33, 500))
+    );
 }

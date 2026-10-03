@@ -4931,11 +4931,8 @@
     },
     "machineAliases.ps.registeredHint": {
       "kind": "body",
-      "zh": "已经登记给 monitor、Tab ↗ 能切过去的 PowerShell 进程数。\n数字 0 不等于没装好：只要那个 PowerShell 窗口最近没跑过 cc 或 __ccm_bind，就不会出现在这里。",
-      "args": [],
-      "waive": {
-        "C-T1": "__ccm_bind 是要用户亲手写进自己函数开头的那一行命令名，换个说法用户就没法照做"
-      }
+      "zh": "已经登记给 monitor、Tab ↗ 能切过去的 PowerShell 进程数。\n接入之后新开的 PowerShell 会自己登记，接入之前就开着的不会；monitor 起来时在后台标签页里的那几个，在里面敲一次 cc 才会登记。",
+      "args": []
     },
     "machineAliases.ps.registered": {
       "kind": "title",
@@ -4944,11 +4941,8 @@
     },
     "machineAliases.ps.titleHint": {
       "kind": "body",
-      "zh": "别名块里的 __ccm_bind 在启动 claude 时把当前终端窗口登记给 monitor。之后 Tab ↗ 能切对终端窗口；不装也能用 monitor，只是切不到终端窗口。",
-      "args": [],
-      "waive": {
-        "C-T1": "__ccm_bind 是要用户亲手写进自己函数开头的那一行命令名，换个说法用户就没法照做"
-      }
+      "zh": "每开一个 PowerShell 都会把窗口登记给 monitor。monitor 没开就等它开了再登记；之后 Tab ↗ 能切对终端窗口，远端会话也一样。不接入也能用 monitor，只是切不到终端窗口。",
+      "args": []
     },
     "machineAliases.ps.title": {
       "kind": "title",
@@ -11789,7 +11783,7 @@
     },
     "rsBind.front.severalWindows": {
       "kind": "error",
-      "zh": "{name} 开着好几个窗口，分不清是哪一个",
+      "zh": "{name} 开着好几个窗口，这个终端没登记给 monitor，分不清是哪一个。在要切到的那个窗口里新开一个 PowerShell 标签页，从那里重新连过去就能切到（终端页里要先接入）",
       "args": ["name"]
     },
     "rsSftpPool.watch.lost": {
@@ -12222,7 +12216,7 @@
     },
     "rsLib.front.unbound": {
       "kind": "error",
-      "zh": "会话 {sessionId} 没有绑定窗口。用 cc 命令启动 claude 才能把它的窗口提到前面；cc 集成的安装见设置面板。",
+      "zh": "会话 {sessionId} 的窗口没登记给 monitor。它是在接入之前开的终端里、或不在 PowerShell 里起的；在终端页接入之后新开一个 PowerShell 起 claude，就能切过去。",
       "args": ["sessionId"]
     },
     "rsLib.settings.windowTitle": {

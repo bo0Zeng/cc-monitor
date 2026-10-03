@@ -209,8 +209,8 @@ monitor 自己的文件在 `~/.cc-monitor/`：
 | 路径 | 写入方 | 读取方 | 用途 |
 |---|---|---|---|
 | `config.json` | monitor 设置 | monitor | 主题 · 字体 · 行为开关 · 机器表 · 诊断 |
-| `ps-await/<PID>.json` | PowerShell（`__ccm_bind`） | monitor `bind.rs` | PS 通知 monitor 去找标题含 marker 的窗口（短暂，3s 超时） |
-| `ps-registry/<PID>.json` | monitor | PowerShell | monitor 回告绑定成功与 HWND（与 PS 进程同寿） |
+| `ps-await/<PID>.json` | PowerShell（`__ccm_bind`：每开一个 PowerShell 后台一次 · 敲 `cc` 时前台一次） | monitor `bind.rs` | PS 通知 monitor 去找标题含 marker 的窗口（短暂，3s 超时） |
+| `ps-registry/<PID>.json` | monitor | PowerShell · monitor（本机会话 ↗ · 远端会话 ↗ 先查它） | monitor 回告绑定成功与 HWND（与 PS 进程同寿） |
 | `sid-hwnd-cache.json` | monitor | monitor | sid → 窗口把手的持久缓存 |
 | `auto-launch.json` | monitor 设置 | PowerShell | 「用 `cc` 起 claude 时自动开 monitor」开关 ＋ monitor 路径 |
 | `history-metadata.json` | 本机后端 | 本机后端 | 历史注解（星标 · 改名 · 隐藏 · 上次账号） |
@@ -296,7 +296,7 @@ Windows 上把终端窗口拉到前台前要同时满足：窗口把手还有效
 
 ### marker 握手：先改标题，后写文件
 
-PowerShell **先**把 `$Host.UI.RawUI.WindowTitle` 设成唯一 marker，**后**写 `ps-await/<PID>.json`；monitor 收到文件后 `EnumWindows` 找标题含 marker 的窗口，找不到就重试（最多 600ms），找到写回 `ps-registry/<PID>.json`，PS 看到后恢复标题。顺序不可换：反过来 monitor 会在文件落地瞬间去找一个还没设上的标题。时序图在 [IPC-PROTOCOL.md § 跨进程握手时序图](IPC-PROTOCOL.md)。
+PowerShell **先**把窗口标题（WindowTitle，`[System.Console]::Title`）设成唯一 marker，**后**写 `ps-await/<PID>.json`；monitor 收到文件后 `EnumWindows` 找标题含 marker 的窗口，找不到就重试（最多 600ms），找到写回 `ps-registry/<PID>.json`，PS 看到后恢复标题。顺序不可换：反过来 monitor 会在文件落地瞬间去找一个还没设上的标题。每开一个 PowerShell 都在后台做一次（只在 monitor 在跑时，不等、不出声）；敲 `cc` 时前台再确认一次。时序图在 [IPC-PROTOCOL.md § 跨进程握手时序图](IPC-PROTOCOL.md)。
 
 **为什么本机不按进程找窗口**：PowerShell 不拥有终端窗口（Windows Terminal 是单独进程，cmd 走 conhost，VS Code 走集成终端），window owner 不等于 PS，从 claude 往上数常常数不到那个窗口。让 PS 改自己窗口的标题、再按标题反查，不依赖进程关系。远端会话没有这一步可走（终端可能是用户自己开的 `ssh`），它从连接的拥有者往上数（见 §6）。
 

@@ -106,8 +106,8 @@
       "word": "PowerShell",
       "tier": "限用",
       "tally": { "re": "powershell", "flags": "i" },
-      "inTable": 41,
-      "inTableNote": "44 → 41：别名块那几句（同时装 cc 函数那一问 · 它的说明 · 块外同名 function 那句）随 PowerShell 块只剩握手与接上别名文件删了。43 → 44：数据位置页 PowerShell 那份别名文件的说明（rsDataPaths.backend.aliasesPs「你建的别名（PowerShell 读这一份）」，用户自己的 shell 名）。36 → 37：认不出本机系统时别名那一格那句（machineAliases.unknownOs.said）点名 PowerShell（与 bash 并列，说明为什么不猜）。37 → 43：执行策略那一族（machineAliases.policy.hostPowershell / hostPwsh / confirm / setDone / afterInstall · rsPsPolicy.listing.unreadable）说的就是 $PROFILE 由哪一代 PowerShell 加载、它的执行策略。",
+      "inTable": 44,
+      "inTableNote": "41 → 44：↗ 认窗口那几句说的是用户自己的 PowerShell —— 好几个窗口分不清时的办法（rsBind.front.severalWindows「新开一个 PowerShell 标签页」）· 接入那一节的说明（machineAliases.ps.titleHint「每开一个 PowerShell 都会把窗口登记」）· 本机会话没登记时（rsLib.front.unbound「不在 PowerShell 里起的」）。44 → 41：别名块那几句（同时装 cc 函数那一问 · 它的说明 · 块外同名 function 那句）随 PowerShell 块只剩握手与接上别名文件删了。43 → 44：数据位置页 PowerShell 那份别名文件的说明（rsDataPaths.backend.aliasesPs「你建的别名（PowerShell 读这一份）」，用户自己的 shell 名）。36 → 37：认不出本机系统时别名那一格那句（machineAliases.unknownOs.said）点名 PowerShell（与 bash 并列，说明为什么不猜）。37 → 43：执行策略那一族（machineAliases.policy.hostPowershell / hostPwsh / confirm / setDone / afterInstall · rsPsPolicy.listing.unreadable）说的就是 $PROFILE 由哪一代 PowerShell 加载、它的执行策略。",
       "meaning": "Windows 上的 shell。",
       "context": "讲终端集成、$PROFILE 时许说；不许缩写成 PS。",
       "source": "R1b"

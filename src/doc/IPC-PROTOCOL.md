@@ -82,7 +82,7 @@ PS 端 `__ccm_bind` 通知 monitor "我想绑定，去找标题 = marker 的窗�
 
 **位置**：`~/.cc-monitor/ps-await/<PowerShell_PID>.json`
 
-**写入方**：PowerShell `__ccm_bind` helper（profile 里）
+**写入方**：PowerShell `__ccm_bind` helper（profile 里）。两个时机：**每开一个 PowerShell**（块尾 `__ccm_bind -Background`，认领在后台一个空 runspace 里做，不等、不出声）· **敲 `cc` 时**（前台，最多等 3 秒）。同一时刻只有一份认领在改窗口标题（进程内一把锁）。
 **读取方**：monitor `bind::BindRegistry` 的 `bind-await-watcher` 线程（notify-debouncer）
 
 **Schema**：
@@ -98,10 +98,17 @@ PS 端 `__ccm_bind` 通知 monitor "我想绑定，去找标题 = marker 的窗�
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `ps_pid` | `u32` | 调用 `__ccm_bind` 的 PowerShell 进程 PID |
-| `marker` | `string` | 唯一字符串，PS 同时把它写到自己的 `$Host.UI.RawUI.WindowTitle`；monitor 用 EnumWindows 查这个字符串 |
+| `marker` | `string` | 唯一字符串，PS 同时把它写到自己的控制台标题（`[System.Console]::Title`）；monitor 用 EnumWindows 查这个字符串 |
 | `proc_start` | `string` | .NET `Process.StartTime.ToFileTime()`，用于二次校验 PID 不被复用 |
 
-**生命周期**：短暂。PS 写完后**轮询**（30ms 步，deadline **3000ms**），退出条件二选一：await 文件被 monitor 删除，**或** `ps-registry/<PID>.json` 落地且 `ps_proc_start` 指纹匹配。monitor 在线时正常几十 ms 内完事；到 deadline 仍没绑上则 PS 自删 await + 报"绑定超时"——**但存在指纹不匹配的陈旧 registry 时不告警**（`cc.ps1.tpl` 的告警条件是 `-not $bound -and -not (Test-Path $regFile)`）。（v2 之前只认"await 被删"一种信号、deadline 是 800ms —— monitor 冷启动来不及。）
+**生命周期**：短暂。PS 写完后**轮询**（30ms 步，deadline **3000ms**），退出条件二选一：await 文件被 monitor 删除，**或** `ps-registry/<PID>.json` 落地且 `ps_proc_start` 指纹匹配。monitor 在线时正常几十 ms 内完事；退出时标题若还是 marker 就还原（中途被别人改了就不动），await 还在就自删。敲 `cc` 那一份没绑上且没有 registry 时报"绑定超时"；开 PowerShell 时那一份从不出声。（v2 之前只认"await 被删"一种信号、deadline 是 800ms —— monitor 冷启动来不及。）
+
+**后台那一份什么时候认领**：不定时醒，只在下面那两样系统对象上阻塞等。等到「起来了」⇒ 先看一眼「还活着」：拿得到 ⇒ 那个置位是上一个没正常退出的 monitor 留下的，趁拿着复位、放手，接着等；拿不到 ⇒ monitor 在跑，认领（开 PowerShell 时它已在跑，或它后来才起来）。没认上（中途标题被别人改了 / monitor 没回话 / 标题一直挂着 marker 也没被认出，比如这个标签页当时不在前面）⇒ 等这个 monitor 走（拿到「还活着」）、复位「起来了」，再等下一个 monitor 起来；或者下一次敲 `cc`。登记上就收工。
+
+**「monitor 起来了 / 还活着」**：两样有名字的系统对象（同一登录会话可见；名字住 `shell_quote_core::MONITOR_UP_NAME` · `MONITOR_ALIVE_NAME`，别名块渲染时填进模板）。
+- `Local\cc-monitor-alive`：互斥量。monitor 起来时在一个专门的线程（`monitor-up-mark`，一直不退）上占住它，进程一没、系统替它放手（被遗弃）。
+- `Local\cc-monitor-up`：手动复位的事件。monitor **先占住互斥量、再置位**；正常退出时复位（崩了复位不了，那一态由 PS 看互斥量认出来，见上）。
+- PS 两样都是「有就打开、没有就建」；PS 只在拿到互斥量（= 此刻没有 monitor）的那一下复位事件，下一个 monitor 要先拿到互斥量才置位 ⇒ 清不掉它的。
 
 **握手时序**：见下文 § 跨进程握手时序图。
 
@@ -114,7 +121,7 @@ monitor 通知 PS "绑定成功，HWND = X"，同时是个**持久映射**让 mo
 **位置**：`~/.cc-monitor/ps-registry/<PowerShell_PID>.json`
 
 **写入方**：monitor `bind::BindRegistry`
-**读取方**：monitor `SidHwndCache::record` 在 session 新建时按 claude_pid 反查 parent_pid 然后查这里；PS 端 `__ccm_bind` 启动时也读这个看是否已注册（指纹比对）
+**读取方**：monitor `SidHwndCache::record` 在 session 新建时从 claude_pid 往上沿进程链查这里（走到终端窗口的属主为止；中间可以隔着 ccm / cmd）；远端会话的 ↗（`bind::bring_chain_window`）先按进程链上的进程号查这里（§11）；PS 端 `__ccm_bind` 启动时也读这个看是否已注册（指纹比对）
 
 **Schema**：
 
@@ -4410,12 +4417,16 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
    或一条原因（`detached` · `no-terminal` · `unreadable`）。有原因 ⇒ 界面照它说，不往下走。
 2. **本机**：`terminal-processes {terminals}`（§10）—— 界面把那台回话里的 `terminals` 原样交来；本机后端按 TCP 连接表四元组全等认出拥有连接的进程，
    回它往上的进程链；或一条原因（`not-ssh` · `elsewhere` · `mismatch` · `query-failed`）。
-3. **monitor**：`bring_remote_terminal_to_front {chain}` —— 沿进程链从下往上，第一个拥有可见顶层窗口的进程：恰好一个窗口 ⇒
-   三重指纹校验（窗口还在 · 属主 pid · 属主起始时刻）后拉到前台（`bind::bring_found_window`）；整条链都没有窗口 / 那个进程有好几个窗口 ⇒ 照实说。
+3. **monitor**：`bring_remote_terminal_to_front {chain}` —— 沿进程链从下往上，每一级先查握手表（`ps-registry`，§3）：
+   登记过、登记的就是此刻这个进程（起始时刻对得上）且窗口校验通过 ⇒ 用它登记的窗口，精确到窗口；校验不过的不用。
+   再看这一级名下有没有可见顶层窗口：有就停在这一级（终端窗口的属主；它以上的进程不在这个窗口里，它们的登记不拿来用）——
+   恰好一个窗口 ⇒ 它；好几个 ⇒ 照实说分不清，并说怎么办（在那个窗口里新开一个 PowerShell 标签页、从那里重新连），不挑。
+   整条链都没有 ⇒ 说没有窗口。拉前三重指纹校验（窗口还在 · 属主 pid · 属主起始时刻，`bind::bring_found_window`）。
 
 ### 已知边界
 
-- Windows Terminal 只能拉到那个窗口，切不到具体标签页（没有按进程切标签的接口）；它开着好几个窗口时分不清是哪一个。
+- Windows Terminal 只能拉到那个窗口，切不到具体标签页（没有按进程切标签的接口）；它开着好几个窗口时，只有连接所在的 PowerShell 登记过才认得出是哪一个
+  （接入块 v7 起每开一个 PowerShell 就登记；当时不在前面的标签页、或接入之前就开着的，认不出 ⇒ 照实说）。
 - 经跳板机 / 改端口的路由连过去的：这台的连接表对不上（`mismatch`），拉不到。
 - mosh 这类不走 ssh 会话的：`SSH_CONNECTION` 是建立时那条，对不上。
 
@@ -4438,7 +4449,7 @@ PS (__ccm_bind)                          File System                    monitor 
 
 3. 生成 marker = "ccm-bind-<PID>-<8 字符 GUID>"
 
-4. ★ 先设 $Host.UI.RawUI.WindowTitle = marker
+4. ★ 先设窗口标题 WindowTitle = marker（[System.Console]::Title）
    （v2 竞态修复，顺序不可换 —— 见下）
 
 5. 后写 ps-await/<PID>.json  ────────►  ps-await/<PID>.json
@@ -4461,10 +4472,13 @@ PS (__ccm_bind)                          File System                    monitor 
                                                  10. 删 ps-await/<PID>.json
                                                      │
 7'. 循环退出 ◄────────────────────────────────────────┘
-    - 恢复 $Host.UI.RawUI.WindowTitle = oldTitle
+    - 标题还是 marker ⇒ 恢复成 oldTitle（中途被别人改了就不动）
     - 循环外**再补查一次 registry**（吃「退出瞬间 registry 刚落地」）
     - ps-await 还在 ⇒ 自删
 ```
+
+上图是敲 `cc` 那一份（前台）。开 PowerShell 时那一份（`__ccm_bind -Background`）第 1 步之后不做第 2 步，第 3–7' 步
+交给后台一个空 runspace：等到「monitor 起来了」、且看得出它真在跑时才做（§2），做的是同一段认领，不出声。
 
 ### ★ 为什么第 4 步必须在第 5 步之前（v2 竞态修复）
 

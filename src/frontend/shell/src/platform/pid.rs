@@ -1,4 +1,4 @@
-//! 进程这一族的平台读法〔阶段 H：；原住 `bind.rs`〕：一个 pid 的起始时刻 · 父 pid · 还活没活。
+//! 进程这一族的平台读法〔阶段 H：；原住 `bind.rs`〕：一个 pid 的起始时刻 · 往上的祖先 · 还活没活。
 //!
 //! 只有 Windows 那一臂有实现（`OpenProcess` 一族 · ToolHelp）；别处答「读不到」（`None` / `false`），与搬家前 `bind.rs` 那几个桩逐字同义。
 //! 拿这几个事实去判「绑定还作不作数 / 这条登记该不该撤」的规则在 `bind.rs`。
@@ -37,42 +37,71 @@ pub fn creation_filetime(_pid: u32) -> Option<crate::utils::FileTime> {
     None
 }
 
-/// 用 ToolHelp 拿指定 pid 的父 pid。读不到 ⇒ `None`。
+/// 一个 pid 往上的祖先（父进程在前，不含它自己）：`(pid, 程序名)`。一趟 ToolHelp 快照；最多 32 级（父进程表成环 / 读坏了也停得下来）。
+/// 读不到 ⇒ 空。别处恒空。
 #[cfg(windows)]
-pub fn parent_pid(pid: u32) -> Option<u32> {
+pub fn ancestors(pid: u32) -> Vec<(u32, String)> {
+    use std::collections::HashMap;
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32, TH32CS_SNAPPROCESS,
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
     };
+    let mut table: HashMap<u32, (u32, String)> = HashMap::new();
     unsafe {
-        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
+        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
+            return Vec::new();
+        };
         if snap.is_invalid() {
-            return None;
+            return Vec::new();
         }
-        let mut entry = PROCESSENTRY32 {
-            dwSize: std::mem::size_of::<PROCESSENTRY32>() as u32,
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
             ..Default::default()
         };
-        let mut result = None;
-        if Process32First(snap, &mut entry).is_ok() {
+        if Process32FirstW(snap, &mut entry).is_ok() {
             loop {
-                if entry.th32ProcessID == pid {
-                    result = Some(entry.th32ParentProcessID);
-                    break;
-                }
-                if Process32Next(snap, &mut entry).is_err() {
+                let n = entry
+                    .szExeFile
+                    .iter()
+                    .position(|&c| c == 0)
+                    .unwrap_or(entry.szExeFile.len());
+                table.insert(
+                    entry.th32ProcessID,
+                    (
+                        entry.th32ParentProcessID,
+                        String::from_utf16_lossy(&entry.szExeFile[..n]),
+                    ),
+                );
+                if Process32NextW(snap, &mut entry).is_err() {
                     break;
                 }
             }
         }
         let _ = CloseHandle(snap);
-        result
     }
+    let mut out = Vec::new();
+    let mut cur = pid;
+    while out.len() < 32 {
+        let Some((ppid, _)) = table.get(&cur) else {
+            break;
+        };
+        let ppid = *ppid;
+        if ppid == 0 || ppid == cur || out.iter().any(|(p, _)| *p == ppid) {
+            break;
+        }
+        let Some((_, name)) = table.get(&ppid) else {
+            break;
+        };
+        out.push((ppid, name.clone()));
+        cur = ppid;
+    }
+    out
 }
 
 #[cfg(not(windows))]
-pub fn parent_pid(_pid: u32) -> Option<u32> {
-    None
+pub fn ancestors(_pid: u32) -> Vec<(u32, String)> {
+    Vec::new()
 }
 
 /// 这个 pid 还在跑没有（`GetExitCodeProcess == STILL_ACTIVE`）。别处恒 `false`（`bind.rs` 心跳那一格的诚实边界照旧）。

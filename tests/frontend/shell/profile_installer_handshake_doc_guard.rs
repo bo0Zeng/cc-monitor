@@ -40,7 +40,7 @@ fn tpl() -> String {
 fn ps_template_sets_the_window_title_before_writing_the_await_file() {
     let t = &tpl();
     let title = t
-        .find("$Host.UI.RawUI.WindowTitle = $marker")
+        .find("[System.Console]::Title = $marker")
         .expect("模板里找不到设标题那行 —— 抽取坏了还是握手改了？");
     let write = t
         .find("WriteAllText($awaitFile")
@@ -58,7 +58,7 @@ fn ps_template_sets_the_window_title_before_writing_the_await_file() {
 fn handshake_timings_in_the_template_appear_in_the_protocol_doc() {
     let t = &tpl();
     let deadline = between(t, "AddMilliseconds(", ")").expect("模板里没有 deadline");
-    let poll = between(t, "Start-Sleep -Milliseconds ", "\n").expect("模板里没有轮询步长");
+    let poll = between(t, "[System.Threading.Thread]::Sleep(", ")").expect("模板里没有轮询步长");
 
     // 这两个数曾双双漂移：文档停在 800ms，实现早已 3000ms。
     assert!(
@@ -142,7 +142,7 @@ fn handshake_timings_match_their_pinned_values() {
              退回去会让「monitor 没在跑时第一次 cc」重新烧满超时。"
     );
     assert_eq!(
-        g(&t, "Start-Sleep -Milliseconds ", "\n"),
+        g(&t, "[System.Threading.Thread]::Sleep(", ")"),
         30,
         "PS 轮询步长变了"
     );

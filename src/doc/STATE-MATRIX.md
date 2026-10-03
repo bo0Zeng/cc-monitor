@@ -14,7 +14,7 @@
 |---|---|---|---|
 | ~~`Arc<session_map::SessionMap>`~~ 已删 | — | — | 本机活会话表改由本机后端那条流的起停帧喂，住进程级的一张（`session_map::local()`，不 manage）；写者只有本机那条流的消费者（`ssh_source::consume_local` ⇒ `session_map::feed`），读者：本机 emitter · `frontend-ready` 对账 · `list_active_sessions`〔散文墓碑〕 / `list_session_activity`〔散文墓碑〕 |
 | `Arc<event_replay::EventReplay>` | `lib.rs::setup()` `app.manage(replay.clone())` | `EventReplay::new()` | 共享：setup 局部 + frontend-ready listener + jsonl async pump + State |
-| `Arc<bind::BindRegistry>` | `lib.rs::setup()` `app.manage(bind_registry.clone())` | `BindRegistry::spawn()` | 共享：setup 局部 + `session-book-emitter` 线程 + `bind-await-watcher` 线程 + `bind-heartbeat` 线程 + State |
+| `Arc<bind::BindRegistry>` | `lib.rs::setup()` `app.manage(bind_registry.clone())` | `BindRegistry::spawn()` | 共享：setup 局部 + `session-book-emitter` 线程 + `bind-await-watcher` 线程 + `bind-heartbeat` 线程 + State（另起的 `monitor-up-mark` 线程只占着两样系统对象，不持有它） |
 | `Arc<bind::SidHwndCache>` | `lib.rs::setup()` `app.manage(sid_hwnd_cache.clone())` | `SidHwndCache::load()` | 共享：setup 局部 + `session-book-emitter` 线程 + State |
 | `Arc<logging::LoggingState>` | `lib.rs::setup()` `app.manage(logging_state.clone())` | `logging::init(monitor_data_dir)`（在 `tauri::Builder` 之前） | 共享：`lib.rs::run()` 局部（持有 WorkerGuard 到 setup 结束）+ setup 闭包内 `install_error_emitter` 注入 closure + State |
 | ~~`Arc<search::SearchIndex>`~~ (issue #6) 已删 | — | — | 本机全文搜索改问本机后端（`history-search`），monitor 不再建索引 |
@@ -36,6 +36,7 @@
 
 ### `Arc<BindRegistry>`
 - `lib.rs::bound_terminal_count(bind_state: State<'_, Arc<BindRegistry>>)`（握手终端数单独一问；从前夹在别名读回口里 —— 别名那一族进了那台后端，`aliases-read`）
+- `lib.rs::bring_remote_terminal_to_front(chain, bind_state: State<'_, Arc<BindRegistry>>)`（远端会话的 ↗：沿进程链先查握手表）
 
 ### `Arc<SidHwndCache>`
 - `lib.rs::bring_terminal_to_front(session_id, cache: State<'_, Arc<SidHwndCache>>)`

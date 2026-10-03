@@ -957,6 +957,8 @@ pub fn run() {
         // 而模块头注里逐字写着「不杀就成了游魂进程」。**注释说了、代码没做，靠一条告警才发现。**
         .run(|_app, event| {
             if let tauri::RunEvent::Exit = event {
+                // PowerShell 接入块等的那个「monitor 起来了」复位（崩了复位不了，那一态由它们看互斥量认出来）。
+                bind::BindRegistry::going_away();
                 // P2s（C8②③）：**杀不杀由这台机自己的值说了算**，缺省不杀。
                 //
                 // 〔条 66〕那个值住后端所在那台机器上 ⇒ 这里**在决定那一刻现问**
@@ -1426,11 +1428,15 @@ async fn bring_terminal_to_front(
 }
 
 /// 拉对应**远端** Tab 的本地终端窗口：界面先问那台「此刻谁在显示它」、再问本机后端那条连接的进程链，
-/// 交来的就是本机后端那一格成品 `chain`；这里沿链找属主的窗口、校验、拉前（`bind::bring_chain_window`）。
+/// 交来的就是本机后端那一格成品 `chain`；这里先查握手表、再沿链找属主的窗口，校验、拉前（`bind::bring_chain_window`）。
 /// **必须 async + spawn_blocking** 隔离 Win32 sync 调用（INVARIANT § 10）。
 #[tauri::command]
-async fn bring_remote_terminal_to_front(chain: Vec<bind::ChainLink>) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || bind::bring_chain_window(&chain))
+async fn bring_remote_terminal_to_front(
+    chain: Vec<bind::ChainLink>,
+    bind_state: tauri::State<'_, Arc<bind::BindRegistry>>,
+) -> Result<(), String> {
+    let bind = bind_state.inner().clone();
+    tokio::task::spawn_blocking(move || bind::bring_chain_window(&chain, &bind))
         .await
         .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
