@@ -426,8 +426,10 @@ run_gate() {
 # 合计只会**变小**，而「变小」和「有测试没跑」在终端上一模一样。
 # 该跑到哪几个包从 `cargo metadata` 现取 —— 原先钉的是手抄的包数，每加/删一个 crate 就要回来改、多路合并时撞数。
 # 跑到的包集合：每个被测 lib 在 cargo 输出里一行 `Running unittests src/lib.rs (…/deps/<lib 名>-<hash>)`。
+# 先剥掉颜色码：CI 上 cargo 带 ANSI 颜色（`Running` 两头各一串），不剥就一个包都认不出。
 gate_ran_libs() {
-  sed -nE 's#^[[:space:]]*Running unittests .*[/\\]deps[/\\]([A-Za-z0-9_]+)-[0-9a-f]+(\.exe)?\)[[:space:]]*$#\1#p' | sort -u
+  sed -E $'s/\x1b\\[[0-9;]*m//g' |
+    sed -nE 's#^[[:space:]]*Running unittests .*[/\\]deps[/\\]([A-Za-z0-9_]+)-[0-9a-f]+(\.exe)?\)[[:space:]]*$#\1#p' | sort -u
 }
 # 一个 workspace 的成员里**该被 `cargo test --lib` 跑到**的 lib 名（`cargo metadata` 现取，不抄成员数）。
 # ⚠ 不看 `[lib] test = false`：有人把一个成员的单测关掉，它就该在这里红，而不是悄悄从「该跑到」里出列。
@@ -665,6 +667,10 @@ N-G1 治的正是这一形：vitest 在非 TTY 下照样上色，ESC 不是 [[:s
   #   只有它拦得住：`exit 0` ＋ 跑到的 {a} == 该跑的 {a} ⇒ 前两条**都已被满足**，合计恰好是 0。
   probe="$(run_gate_sum 自检⑨ gate_probe_libs_a bash -c 'printf "  Running unittests src/lib.rs (/x/deps/a-0a1b)\ntest result: ok. 0 passed\nNG2-PROBE-I\n"; exit 0' 2>&1)"
   gate_assert_judged 自检⑨ "$probe" NG2-PROBE-I "run_gate_sum 的「0 passed 不是绿」"
+  #
+  # 探针⑩ · 采集面认得带颜色的 cargo 输出（CI 上就是这一形）。
+  [ "$(printf '\033[1m\033[92m     Running\033[0m unittests src/lib.rs (/x/deps/a-0a1b)\n' | gate_ran_libs)" = a ] ||
+    fails+=("gate 自检⑩（带颜色的 cargo 输出里认不出跑到的包 ⇒ CI 上 cargo 格必红）")
 }
 gate_selftest
 

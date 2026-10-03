@@ -5,18 +5,17 @@ use super::*;
 
 /// 名单 == 起常驻后端的那一方只交给它自己用的那几格（手写期望，异源：逐个现取各模块的常量）。
 #[test]
-fn own_envs_are_exactly_the_four_the_host_hands_for_the_backend_itself() {
+fn own_envs_are_exactly_what_the_host_hands_the_backend_for_itself() {
     let got: std::collections::BTreeSet<&str> = OWN_ENVS.into_iter().collect();
     let want: std::collections::BTreeSet<&str> = [
         "CCM_LISTEN_PORT",
         "CCM_LISTEN_TOKEN_FILE",
-        "CCM_RELAY_PORT",
         "CCM_BACKEND_STDERR_LOG",
     ]
     .into_iter()
     .collect();
     assert_eq!(got, want);
-    // 远端 `--resident-ensure` 交给常驻载体的那几格（口 · 钥匙文件 · 中转口 · 诊断文件）恰好就是这一份。
+    // 远端 `--resident-ensure` 交给常驻载体的那几格 == 这一份 ＋ 中转口（中转口要往下传给窗格里的 ccm）。
     let handed: std::collections::BTreeSet<String> = crate::control::resident::child_env(
         1,
         std::path::Path::new("/h/.cc-monitor/listen-token"),
@@ -29,10 +28,16 @@ fn own_envs_are_exactly_the_four_the_host_hands_for_the_backend_itself() {
     .into_iter()
     .map(|(k, _)| k)
     .collect();
+    let mut want_handed: std::collections::BTreeSet<String> =
+        want.iter().map(|s| s.to_string()).collect();
+    want_handed.insert(crate::stream::listen::RELAY_PORT_ENV.to_string());
     assert_eq!(
-        handed,
-        want.iter().map(|s| s.to_string()).collect(),
-        "起常驻载体交的自有格与清掉的那一份不是同一份"
+        handed, want_handed,
+        "起常驻载体交的 ≠ 清掉的那一份 ＋ 中转口"
+    );
+    assert!(
+        !OWN_ENVS.contains(&crate::stream::listen::RELAY_PORT_ENV),
+        "中转口不许清：窗格里的 ccm 靠它找同机中转，清掉就去连默认口"
     );
 }
 
