@@ -2,7 +2,7 @@
 
 **把你在各台机器上跑的 Claude Code 会话收进一个窗口：实时看、随时接着用、一处管好所有机器。**
 
-> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 · Linux（.deb） | 当前版本: v4.0.6
+> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 · Linux（.deb） | 当前版本: v4.1.0
 
 ![主界面：左边每个 tab 是一个正在跑的 Claude Code 会话，右边实时显示对话与工具调用](docs/screenshots/main.png)
 
@@ -196,7 +196,7 @@ ccm -- --ccm-help                 # 全部选项
 - Windows 上会话暂不能放后台、接回、看画面、往里送字；本机后端在 Windows 上随界面一起退出。
 - macOS 不在支持范围内，当本机、当远端机器都不行；Linux arm64 只能当远端机器。
 - 多账号目前只支持 Linux 机器，Windows 本机上不能建账号库。
-- 4.0.6 新加的 Windows 那一侧（↗ 找窗口、文件窗口的新样子）只经过交叉编译和自动化测试，没在真实 Windows 上跑过，见 [CHANGELOG](CHANGELOG.md)。
+- 4.0.6 与 4.1.0 改的 Windows 那一侧（↗ 找窗口、PowerShell 接入、文件窗口）只经过交叉编译和自动化测试，没在真实 Windows 上跑过，见 [CHANGELOG](CHANGELOG.md)。
 - ↗ 只能切到窗口，切不到 Windows Terminal 里的具体标签页；经跳板机或端口转换连过去的终端对不上。
 
 ---
@@ -211,8 +211,8 @@ ccm -- --ccm-help                 # 全部选项
 
 ## 项目当前状态
 
-- **版本**：v4.0.6（Released）
-- 当前发布 **v4.0.6**：详见 [CHANGELOG](CHANGELOG.md)
+- **版本**：v4.1.0（Released）
+- 当前发布 **v4.1.0**：详见 [CHANGELOG](CHANGELOG.md)
 
 ## License
 
