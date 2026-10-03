@@ -849,19 +849,21 @@ impl DropBoard {
         if !asking.is_empty() {
             let mut answer: Option<bool> = None;
             let mut changed = false;
-            egui::Modal::new(egui::Id::new("filewin-overwrite")).show(ui.ctx(), |ui| {
+            let (_, esc) = super::shell::modal(ui.ctx(), "filewin-overwrite", |ui| {
                 ui.heading(copy_text(
                     "rsFilewinTransfer.ui.askOverwrite",
                     &[("n", &(asking.len()).to_string())],
                 ));
                 ui.label(&copy_text("rsFilewinTransfer.ui.askOnce", &[]));
-                for (i, p) in asking.iter().enumerate() {
-                    let mut t = ticks[i];
-                    if ui.checkbox(&mut t, &p.name).changed() {
-                        ticks[i] = t;
-                        changed = true;
+                super::shell::modal_list(ui, |ui| {
+                    for (i, p) in asking.iter().enumerate() {
+                        let mut t = ticks[i];
+                        if ui.checkbox(&mut t, &p.name).changed() {
+                            ticks[i] = t;
+                            changed = true;
+                        }
                     }
-                }
+                });
                 ui.horizontal(|ui| {
                     if ui
                         .button(&copy_text("rsFilewinTransfer.ui.overwriteChecked", &[]))
@@ -879,6 +881,9 @@ impl DropBoard {
             });
             if changed {
                 self.inner.lock().unwrap().ticks = ticks;
+            }
+            if esc && answer.is_none() {
+                answer = Some(false);
             }
             if let Some(ok) = answer {
                 self.settle(ok);

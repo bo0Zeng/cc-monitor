@@ -220,7 +220,7 @@ impl ExtractBoard {
         };
         if let Some(said) = asking {
             let (mut fresh, mut skip) = (false, false);
-            egui::Modal::new(egui::Id::new("filewin-extract-taken")).show(ui.ctx(), |ui| {
+            let (_, esc) = super::shell::modal(ui.ctx(), "filewin-extract-taken", |ui| {
                 ui.label(copy_text("rsFilewinExtract.ask.taken", &[("said", &said)]));
                 ui.horizontal(|ui| {
                     fresh = ui
@@ -231,6 +231,7 @@ impl ExtractBoard {
                         .clicked();
                 });
             });
+            skip |= esc;
             if fresh || skip {
                 self.settle(fresh);
             }
@@ -238,7 +239,11 @@ impl ExtractBoard {
         if let Some(name) = &running {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(copy_text("rsFilewinExtract.ui.running", &[("name", name)]));
+                super::shell::fit_label(
+                    ui,
+                    copy_text("rsFilewinExtract.ui.running", &[("name", name)]),
+                    0.0,
+                );
             });
         }
         if let Some((name, o)) = &last {

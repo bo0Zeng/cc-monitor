@@ -242,7 +242,7 @@ pub fn dest_exists_at(p: &std::path::Path) -> bool {
 ///
 /// [`Listed`]: super::source::Listed
 pub fn is_downloadable_listed(r: &super::source::Listed) -> bool {
-    is_downloadable(r) || (!r.is_dir && r.raw_name.is_some())
+    !r.link_dir && (is_downloadable(r) || (!r.is_dir && r.raw_name.is_some()))
 }
 
 // ═══════════════════════════════════════════════════════════════════════

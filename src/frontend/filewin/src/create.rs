@@ -200,10 +200,10 @@ impl FileWindow {
             return;
         }
         let (mut go, mut cancel) = (false, false);
-        egui::Modal::new(egui::Id::new("filewin-new-file")).show(ui.ctx(), |ui| {
+        let (_, esc) = super::shell::modal(ui.ctx(), "filewin-new-file", |ui| {
             ui.heading(NewFilePrompt::heading());
             if let Some(text) = self.new_file_text_mut() {
-                ui.text_edit_singleline(text);
+                go |= super::shell::prompt_field(ui, text);
             }
             ui.label(&copy_text("rsFilewinCreate.ui.sameDirOnly", &[]));
             ui.horizontal(|ui| {
@@ -221,6 +221,7 @@ impl FileWindow {
                 }
             });
         });
+        cancel |= esc;
         if cancel {
             self.cancel_new_file();
         } else if go {

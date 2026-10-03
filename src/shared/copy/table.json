@@ -9190,6 +9190,11 @@
       "zh": "{name} 改不了：{why}",
       "args": ["name", "why"]
     },
+    "rsFilewinShell.edit.stillOpening": {
+      "kind": "error",
+      "zh": "还在读 {path}，读完再开别的",
+      "args": ["path"]
+    },
     "rsFilewinShell.pull.noRuntime": {
       "kind": "error",
       "zh": "往外拖启动不了，请重开这个窗口",
@@ -10600,6 +10605,11 @@
       "zh": "下载",
       "args": []
     },
+    "rsFilewinRows.tip.sep": {
+      "kind": "body",
+      "zh": " · ",
+      "args": []
+    },
     "rsFilewinRows.icon.warn": {
       "kind": "body",
       "zh": "⚠",
@@ -11978,6 +11988,11 @@
     "rsDataPaths.monitor.bookmarks": {
       "kind": "body",
       "zh": "文件管理窗口里收藏的目录（每台机器一份清单）",
+      "args": []
+    },
+    "rsDataPaths.monitor.filewinView": {
+      "kind": "body",
+      "zh": "文件管理窗口调过的缩放大小",
       "args": []
     },
     "rsDataPaths.monitor.config": {
@@ -18533,6 +18548,11 @@
     "rsFilewinChrome.command.grep": {
       "kind": "action",
       "zh": "按内容搜",
+      "args": []
+    },
+    "rsFilewinChrome.command.more": {
+      "kind": "action",
+      "zh": "更多",
       "args": []
     },
     "rsFilewinChrome.command.hidden": {

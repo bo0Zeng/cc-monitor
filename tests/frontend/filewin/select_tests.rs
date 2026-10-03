@@ -483,3 +483,33 @@ fn two_lossy_names_that_look_the_same_are_still_two_picks() {
     // 有损而没有字节 ⇒ 退回显示串（它反正不许写，选中只用来看）。
     assert_eq!(pick_key(&row("x\u{FFFD}", false, 1, true)), "x\u{FFFD}");
 }
+
+/// 指向目录的链接：给「打开」，不给编辑 / 解压 / 跨机复制 / 下载（那几件只对文件）；指向文件的链接照旧给编辑。
+#[test]
+fn a_link_to_a_directory_opens_and_a_link_to_a_file_edits() {
+    let link = |name: &str, to_dir: bool| Listed {
+        link: true,
+        link_dir: to_dir,
+        ..row(name, false, 4096, false)
+    };
+    let to_dir = link("bin", true);
+    let to_file = link("conf", false);
+    let got = actions_for(&[&to_dir]);
+    assert!(
+        got.contains(&Action::Open),
+        "指向目录的链接没有「打开」：{got:?}"
+    );
+    for no in [
+        Action::Edit,
+        Action::Extract,
+        Action::CrossCopy,
+        Action::Download,
+    ] {
+        assert!(!got.contains(&no), "指向目录的链接给了 {no:?}：{got:?}");
+    }
+    let got = actions_for(&[&to_file]);
+    assert!(
+        got.contains(&Action::Edit) && !got.contains(&Action::Open),
+        "{got:?}"
+    );
+}

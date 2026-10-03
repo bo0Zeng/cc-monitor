@@ -140,12 +140,23 @@ pub const ORDER: [SortBy; 4] = [SortBy::Name, SortBy::Mtime, SortBy::Type, SortB
 
 impl Columns {
     /// 一行（或表头）的矩形 → 四列各自的矩形（按 [`ORDER`]）。名称列吃剩下的，至少 [`MIN_NAME`]。
-    /// 一行放不下（双栏 · 窗口窄）⇒ 另外三列按比例让，名称列留 [`MIN_NAME`]；四列的总宽恒等于那一行（不画出界）。
+    /// 一行放不下（双栏 · 窗口窄）⇒ 按「大小 · 类型 · 修改时间」的先后留列：放不下整宽的那一列压到不窄于
+    /// [`MIN_COL`]，再窄就收起（宽 0，悬停名字看它）；四列的总宽恒等于那一行（不画出界）。
     pub fn rects(&self, row: egui::Rect) -> [egui::Rect; 4] {
-        let fixed = self.mtime + self.kind + self.size;
-        let room = (row.width() - MIN_NAME).max(0.0);
-        let shrink = if fixed > room { room / fixed } else { 1.0 };
-        let (mtime, kind, size) = (self.mtime * shrink, self.kind * shrink, self.size * shrink);
+        let mut left = (row.width() - MIN_NAME).max(0.0);
+        let mut w = [0.0f32; 3];
+        for (k, want) in [(2, self.size), (1, self.kind), (0, self.mtime)] {
+            let got = if want <= left {
+                want
+            } else if left >= MIN_COL {
+                left
+            } else {
+                0.0
+            };
+            w[k] = got;
+            left -= got;
+        }
+        let [mtime, kind, size] = w;
         let name = row.width() - mtime - kind - size;
         let mut x = row.left();
         let mut out = [row; 4];
@@ -217,26 +228,27 @@ pub fn show_header(ui: &mut Ui, cols: &mut Columns, sort: Sort) -> Option<SortBy
             text = format!("{text} {caret}");
         }
         let color = if mine { p.text } else { p.text2 };
-        let align = if by == SortBy::Size {
-            egui::Align2::RIGHT_CENTER
+        // 列太窄就截成「…」，悬停看全名。
+        let g = one_line(ui, text.clone(), r.width() - 2.0 * PAD, color);
+        if g.elided {
+            resp.on_hover_text(text);
+        }
+        let x = if by == SortBy::Size {
+            r.right() - PAD - g.size().x
         } else {
-            egui::Align2::LEFT_CENTER
+            r.left() + PAD
         };
-        let at = if by == SortBy::Size {
-            egui::pos2(r.right() - PAD, r.center().y)
-        } else {
-            egui::pos2(r.left() + PAD, r.center().y)
-        };
-        ui.painter().with_clip_rect(r).text(
-            at,
-            align,
-            text,
-            egui::TextStyle::Body.resolve(ui.style()),
+        ui.painter().with_clip_rect(r).galley(
+            egui::pos2(x, r.center().y - g.size().y / 2.0),
+            g,
             color,
         );
     }
-    // 三条分隔线（拖手画在表头上，列宽只在这里改）。
+    // 三条分隔线（拖手画在表头上，列宽只在这里改）；收起的那一列两边不画。
     for k in 0..3 {
+        if rects[k + 1].width() <= 0.0 {
+            continue;
+        }
         let x = rects[k].right();
         let grip = egui::Rect::from_min_max(
             egui::pos2(x - GRIP, rect.top()),
@@ -455,6 +467,34 @@ fn paint_one_row(
     let room = name_c.right() - nx - PAD - warn.as_ref().map_or(0.0, |w| w.size().x + 6.0);
     let g = one_line(ui, r.name.clone(), room, main);
     let gw = g.size().x;
+    // 截成「…」的那几格：悬停在上面看全文；有列收起了 ⇒ 悬停名字连那几列一起看。
+    let when = r.mtime_secs.map(mtime_text);
+    let size_text = if r.is_dir {
+        String::new()
+    } else {
+        human_size(r.size)
+    };
+    let mut tips: Vec<(egui::Rect, String)> = Vec::new();
+    let folded: Vec<String> = [
+        (
+            mtime_c,
+            when.as_ref().map(|w| w.full.clone()).unwrap_or_default(),
+        ),
+        (kind_c, kind::type_text(r)),
+        (size_c, size_text.clone()),
+    ]
+    .into_iter()
+    .filter(|(c, t)| c.width() <= 0.0 && !t.is_empty())
+    .map(|(_, t)| t)
+    .collect();
+    if g.elided || !folded.is_empty() {
+        let mut t = r.name.clone();
+        if !folded.is_empty() {
+            t.push('\n');
+            t.push_str(&folded.join(&copy_text("rsFilewinRows.tip.sep", &[])));
+        }
+        tips.push((name_c, t));
+    }
     painter.with_clip_rect(name_c).galley(
         egui::pos2(nx, rect.center().y - g.size().y / 2.0),
         g,
@@ -468,11 +508,14 @@ fn paint_one_row(
         );
     }
     // 修改时间 · 类型（左齐）· 大小（右齐；目录不写）。
-    let cell = |c: egui::Rect, text: String, right: bool| {
-        if text.is_empty() {
+    let mut cell = |c: egui::Rect, text: String, right: bool| {
+        if text.is_empty() || c.width() <= 0.0 {
             return;
         }
-        let g = one_line(ui, text, c.width() - 2.0 * PAD, minor);
+        let g = one_line(ui, text.clone(), c.width() - 2.0 * PAD, minor);
+        if g.elided {
+            tips.push((c, text));
+        }
         let x = if right {
             c.right() - PAD - g.size().x
         } else {
@@ -484,28 +527,24 @@ fn paint_one_row(
             minor,
         );
     };
-    let when = r.mtime_secs.map(mtime_text);
     cell(
         mtime_c,
         when.as_ref().map(|w| w.short.clone()).unwrap_or_default(),
         false,
     );
     cell(kind_c, kind::type_text(r), false);
-    cell(
-        size_c,
-        if r.is_dir {
-            String::new()
-        } else {
-            human_size(r.size)
-        },
-        true,
-    );
-    // 悬停在修改时间那一格上 ⇒ 完整时间。
-    let in_time = ui
-        .input(|i| i.pointer.hover_pos())
-        .is_some_and(|p| mtime_c.contains(p));
-    let row = match when {
-        Some(w) if in_time && row.hovered() => row.on_hover_text(w.full),
+    cell(size_c, size_text, true);
+    // 悬停在修改时间那一格上 ⇒ 完整时间；悬停在截成「…」的那一格上 ⇒ 全文。
+    let at = ui.input(|i| i.pointer.hover_pos());
+    let in_time = at.is_some_and(|p| mtime_c.contains(p));
+    let tip = at.and_then(|p| {
+        tips.into_iter()
+            .find(|(c, _)| c.contains(p))
+            .map(|(_, t)| t)
+    });
+    let row = match (when, tip) {
+        (Some(w), _) if in_time && row.hovered() => row.on_hover_text(w.full),
+        (_, Some(t)) if row.hovered() => row.on_hover_text(t),
         _ => row,
     };
     let mods = ui.input(|i| i.modifiers);

@@ -54,7 +54,10 @@ fn frame(ctx: &egui::Context, time: f64, events: Vec<egui::Event>, pane: &mut Pa
         events,
         ..Default::default()
     };
-    let out = ctx.run_ui(input, |ui| show(ui, Some(pane)));
+    let out = ctx.run_ui(input, |ui| {
+        let h = view_height(ui, VIEW_ROWS);
+        show(ui, Some(pane), h)
+    });
     let mut seen = Vec::new();
     for cs in &out.shapes {
         collect(&cs.shape, cs.clip_rect, &mut seen);

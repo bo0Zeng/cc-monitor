@@ -195,6 +195,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 | `config.json` | **真相** | `config.rs` | theme/font/claudeDir/keybindings/`remote.hosts[]`(含 label)/resume 命令/诊断开关——全用户手填 |
 | `history-metadata.json` | **真相** | 本机常驻后端 `history_annotations.rs::answer_annotate`（文件住家里，那台后端按家推，位置只跟着家走） | 按 sid 的 star/重命名/隐藏——用户策展意图 |
 | `filewin-bookmarks.json` | **真相** | `filewin/src/bookmarks.rs`（文件管理窗口进程；旁件 `.lock` 上独占锁读-改-写） | 每台机器一份收藏目录清单 —— 用户手点的；设置页「数据位置」列出它 |
+| `filewin-view.json` | **真相** | `filewin/src/workspace.rs`（文件管理窗口进程；整份原子换，后写者赢） | 文件管理窗口的整窗缩放 —— 用户按 Ctrl + = / - 调出来的；设置页「数据位置」列出它 |
 | `auto-launch.json` | **混（良性）** | `auto_launch.rs` | `enabled`=真相；`monitor_exe_path`=派生(每次启动 `current_exe()` 自愈改写) |
 | `sid-hwnd-cache.json` | **缓存** | `bind.rs` | sid→HWND，能从 PS 握手重建 |
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | 跨进程握手，启动重扫 |

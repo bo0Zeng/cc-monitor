@@ -189,7 +189,11 @@ impl SizeBoard {
         if let Some(name) = &running {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(copy_text("rsFilewinSize.ui.running", &[("name", name)]));
+                super::shell::fit_label(
+                    ui,
+                    copy_text("rsFilewinSize.ui.running", &[("name", name)]),
+                    0.0,
+                );
             });
         }
         if let Some(r) = &last {

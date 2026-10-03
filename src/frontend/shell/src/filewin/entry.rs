@@ -214,6 +214,8 @@ pub(crate) async fn open_with(
     // 书签文件住 monitor 自己的数据目录（不是用户文件），路径在这一侧算好交过去（名字只住 `data_paths`）。
     let bookmarks = crate::config::resolve_monitor_data_dir()
         .map(|d| d.join(crate::data_paths::FILEWIN_BOOKMARKS_FILE));
+    let view = crate::config::resolve_monitor_data_dir()
+        .map(|d| d.join(crate::data_paths::FILEWIN_VIEW_FILE));
     // ⓪ 三者优先级 —— 那一段是**纯函数**（[`plan_target`]），理由见它的头注。
     //    〔09-28 裁 3〕home 那一支不在这里问了：`cwd` 缺席交给窗口进程（`proc::first_screen`）。
     let (cwd, reveal) = match plan_target(&path, reveal_file.as_deref())? {
@@ -230,6 +232,7 @@ pub(crate) async fn open_with(
         reveal,
         handoff,
         bookmarks,
+        view,
         machines: machine_names(),
         work_area,
         theme,

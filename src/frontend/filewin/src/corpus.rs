@@ -187,6 +187,7 @@ pub fn synth_rows(n: usize, seed: u64) -> Vec<super::source::Listed> {
                 .fold(0u64, |a, b| a.wrapping_mul(31).wrapping_add(u64::from(b)));
             super::source::Listed {
                 link: h % 17 == 0,
+                link_dir: false,
                 mtime_secs: Some(1_000_000_000 + h % 900_000_000),
                 raw_name: None,
                 row: Row {

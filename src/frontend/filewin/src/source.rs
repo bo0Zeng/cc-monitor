@@ -118,6 +118,8 @@ pub struct Listed {
     /// 🔴 这一项**是不是符号链接**。后端 `files.ls` 的 `kind` 与 SFTP 的 `is_symlink`
     /// 两条路都送得出它 —— 此前窗口这一侧把它**压掉了**（见 [`row_from_ls_entry`] 那张表）。
     pub link: bool,
+    /// 链接指向的是目录（后端 `files-ls` 的 `link_dir`）：点得进去，但删 / 复制仍按链接本身算（不递归）。
+    pub link_dir: bool,
     /// 最后修改时间（epoch 秒）。
     ///
     /// 🔴 `None` 逐字是「**这条路没送这一格**」，不是「这个文件没有时间」。
@@ -144,9 +146,15 @@ impl Listed {
         Self {
             row,
             link: false,
+            link_dir: false,
             mtime_secs: None,
             raw_name: None,
         }
+    }
+
+    /// 点得进去：目录，或指向目录的链接。
+    pub fn opens_as_dir(&self) -> bool {
+        self.row.is_dir || self.link_dir
     }
 }
 
@@ -715,6 +723,7 @@ pub const CMD_LS: &str = "files-ls";
 /// |---|---|---|
 /// | `path`（字符串 或 `{"b16":…}`） | `path` · `name` · `lossy_name` | 先解成**字节**，再取尾段作名字；有损与否看那串字节 |
 /// | `kind`（`dir`/`file`/`symlink`/`other`） | `is_dir` ＋ `link` | `dir` ⇒ 目录；`symlink` ⇒ 链接。**两格，不是一格** |
+/// | `link_dir`（只在链接上、可能缺） | `link_dir` | 链接且它为真 ⇒ 指向目录；缺 ⇒ 否 |
 /// | `size`（可能缺） | `size` | 缺就是 0（同本机那条：读不到 stat 不整趟失败） |
 /// | `mtime_secs`（可能缺） | `mtime_secs` | 原样带上来；缺就是 `None`（＝**没送**，不是 1970） |
 /// | `entries` | 那一屏有几行 | 由 [`rows_from_ls_data`] 摊开 |
@@ -751,6 +760,7 @@ pub fn row_from_ls_entry(v: &serde_json::Value) -> Result<Listed, String> {
     let kind = v.get("kind").and_then(|k| k.as_str());
     let is_dir = kind == Some("dir");
     let link = kind == Some("symlink");
+    let link_dir = link && v.get("link_dir").and_then(serde_json::Value::as_bool) == Some(true);
     let size = v
         .get("size")
         .and_then(serde_json::Value::as_u64)
@@ -764,6 +774,7 @@ pub fn row_from_ls_entry(v: &serde_json::Value) -> Result<Listed, String> {
             lossy_name,
         },
         link,
+        link_dir,
         // 🔴 原样带上来。缺了就是 `None`（＝**后端没送**）—— 不许兜底成 0，
         //    那是 1970-01-01，一个看起来很像真读数的假时间。
         mtime_secs: v.get("mtime_secs").and_then(serde_json::Value::as_u64),

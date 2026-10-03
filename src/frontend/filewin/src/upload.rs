@@ -170,7 +170,7 @@ impl UploadPrompt {
         }
         let (mut go, mut cancel) = (false, false);
         let refused = self.refused.clone();
-        egui::Modal::new(egui::Id::new("filewin-upload-prompt")).show(ui.ctx(), |ui| {
+        let (_, esc) = super::shell::modal(ui.ctx(), "filewin-upload-prompt", |ui| {
             ui.heading(&copy_text("rsFilewinUpload.ui.title", &[]));
             ui.label(&copy_text("rsFilewinUpload.ui.paths", &[]));
             if let Some(text) = self.text_mut() {
@@ -201,7 +201,7 @@ impl UploadPrompt {
                 }
             });
         });
-        if cancel {
+        if cancel || esc {
             self.cancel();
             return None;
         }

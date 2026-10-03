@@ -1898,3 +1898,50 @@ fn a_non_utf8_file_is_read_back_chunk_by_chunk_byte_for_byte() {
     assert_eq!(e.0, "not_text");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// 指向目录的链接：`files-ls` 那一行 `kind` 照旧是 `symlink`（不跟），另带 `link_dir: true`；
+/// 指向文件的 `false`；断链与非链接那几行不出这一格。
+#[cfg(unix)]
+#[test]
+fn ls_says_which_symlinks_point_at_directories() {
+    let d = f7a_dir("ls-link");
+    let target = d.join("real-dir");
+    std::fs::create_dir_all(&target).expect("建目标目录");
+    std::fs::write(d.join("plain.txt"), b"x").expect("建文件");
+    std::os::unix::fs::symlink(&target, d.join("to-dir")).expect("链接到目录");
+    std::os::unix::fs::symlink(d.join("plain.txt"), d.join("to-file")).expect("链接到文件");
+    std::os::unix::fs::symlink(d.join("nowhere"), d.join("dangling")).expect("断链");
+    let v = answer("files.ls", &serde_json::json!({ "path": path_json(&d) })).expect("ls 不该失败");
+    let mut got: Vec<(String, String, Option<bool>)> = v["entries"]
+        .as_array()
+        .expect("entries 该是数组")
+        .iter()
+        .map(|e| {
+            let name = e["path"]
+                .as_str()
+                .unwrap()
+                .rsplit('/')
+                .next()
+                .unwrap()
+                .to_string();
+            (
+                name,
+                e["kind"].as_str().unwrap().to_string(),
+                e.get("link_dir").map(|b| b.as_bool().unwrap()),
+            )
+        })
+        .collect();
+    got.sort();
+    let want = |n: &str, k: &str, l: Option<bool>| (n.to_string(), k.to_string(), l);
+    assert_eq!(
+        got,
+        vec![
+            want("dangling", "symlink", None),
+            want("plain.txt", "file", None),
+            want("real-dir", "dir", None),
+            want("to-dir", "symlink", Some(true)),
+            want("to-file", "symlink", Some(false)),
+        ]
+    );
+    std::fs::remove_dir_all(&d).ok();
+}

@@ -11,7 +11,14 @@ pub fn pane_with_chrome(ui: &mut egui::Ui, w: &mut FileWindow) {
     egui::Panel::top("t-commands")
         .exact_size(BAR_HEIGHT - 4.0)
         .show(ui, |ui| {
-            ui.horizontal_centered(|ui| w.command_ui(ui));
+            let items = w.command_items();
+            if let Some(c) = ui
+                .horizontal_centered(|ui| crate::chrome::command_row(ui, &items))
+                .inner
+            {
+                let ctx = ui.ctx().clone();
+                w.run_command(c, Some(ctx));
+            }
         });
     egui::Panel::bottom("t-status")
         .exact_size(28.0)

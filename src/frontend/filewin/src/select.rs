@@ -529,7 +529,7 @@ pub fn actions_for(picked: &[&Listed]) -> Vec<Action> {
     match picked {
         [] => {}
         [r] => {
-            if r.is_dir {
+            if r.opens_as_dir() {
                 out.push(Action::Open);
             } else if editable(r) {
                 out.push(Action::Edit);
@@ -545,7 +545,7 @@ pub fn actions_for(picked: &[&Listed]) -> Vec<Action> {
             if !r.lossy_name || r.raw_name.is_some() {
                 out.push(Action::Size);
                 // 解压：一份文件就给（认不认这种包由后端判，窗口不写第二份后缀表）。
-                if !r.is_dir {
+                if !r.opens_as_dir() {
                     out.push(Action::Extract);
                     // 复制到另一台：一份文件（名字寻址得到就给；不是 UTF-8 的走按字节下那一条）。
                     out.push(Action::CrossCopy);

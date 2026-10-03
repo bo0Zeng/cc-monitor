@@ -164,6 +164,9 @@ pub fn collect(handle: &AppHandle) -> DataPathsResponse {
 /// 窗口进程那一侧（`filewin/bookmarks.rs`）引它，app 这一侧不去够窗口模块（「文件管理器可以单独搞」那道门只有一扇）。
 pub const FILEWIN_BOOKMARKS_FILE: &str = "filewin-bookmarks.json";
 
+/// 文件管理窗口记整窗缩放那份文件的名字 —— 同 [`FILEWIN_BOOKMARKS_FILE`]（开窗入口拼好全路径、随种子交给窗口）。
+pub const FILEWIN_VIEW_FILE: &str = "filewin-view.json";
+
 /// monitor data dir 下逐个文件 / 目录的枚举 —— **唯一权威枚举点**（`INVARIANTS §2.1`）。
 /// 从 [`collect`] 里抽出来，只为让「每一项是哪一类」能不带 `AppHandle` 地被判据逐项对拍。
 fn monitor_entries(monitor_data_dir: &Path) -> Vec<DataPathInfo> {
@@ -201,6 +204,13 @@ fn monitor_entries(monitor_data_dir: &Path) -> Vec<DataPathInfo> {
             monitor_data_dir.join(FILEWIN_BOOKMARKS_FILE),
             FILEWIN_BOOKMARKS_FILE,
             &copy_text("rsDataPaths.monitor.bookmarks", &[]),
+            DataClass::Truth,
+        ),
+        // 文件管理窗口的整窗缩放（你调过的大小 ⇒ 按真相记）。
+        probe_file(
+            monitor_data_dir.join(FILEWIN_VIEW_FILE),
+            FILEWIN_VIEW_FILE,
+            &copy_text("rsDataPaths.monitor.filewinView", &[]),
             DataClass::Truth,
         ),
         probe_dir(

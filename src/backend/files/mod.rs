@@ -222,7 +222,7 @@ pub const CAPABILITIES: &[Capability] = &[
         //    不然 `src/doc/IPC-PROTOCOL.md §10` 那份**冻结的线上契约**里就会多出一个
         //    「写了也不起作用」的参数，而那份文档的读者在仓外。
         args: &["limit", "path"],
-        fields: &["entries", "kind", "mtime_secs", "path", "size", "truncated"],
+        fields: &["entries", "kind", "link_dir", "mtime_secs", "path", "size", "truncated"],
         codes: &["bad_path", "unreadable"],
     },
     Capability {
@@ -655,6 +655,10 @@ fn answer_ls(args: &serde_json::Value) -> Answer {
             row.insert("size".to_string(), serde_json::json!(md.len()));
             if let Some(t) = epoch_secs(md.modified()) {
                 row.insert("mtime_secs".to_string(), serde_json::json!(t));
+            }
+            // 链接指向的是不是目录（跟链接那一次 `metadata` 顺带的）：窗口据此给「打开」。断链不出这一格。
+            if kind == "symlink" {
+                row.insert("link_dir".to_string(), serde_json::json!(md.is_dir()));
             }
         }
         entries.push(serde_json::Value::Object(row));

@@ -330,8 +330,14 @@ pub fn byte_at_char(s: &str, k: usize, ascii: bool) -> usize {
 // 三、大文件模式那一面
 // ═══════════════════════════════════════════════════════════════════════
 
-/// 一屏几行（与普通路径 `TextEdit::desired_rows(24)` 同值 —— 进不进模式，编辑面一样高）。
+/// 不知道摆多高时一屏几行（判据那一形；生产上编辑面的高由它那一栏剩下的高给，见 [`show`]）。
 pub const VIEW_ROWS: usize = 24;
+
+/// `rows` 行等宽字有多高。
+pub fn view_height(ui: &Ui, rows: usize) -> f32 {
+    let font = TextStyle::Monospace.resolve(ui.style());
+    rows as f32 * ui.fonts_mut(|f| f.row_height(&font))
+}
 
 /// 横向总宽在最宽那一行之后再留几列（放「这一行共 N 字」）。
 const TAG_ROOM: usize = 20;
@@ -416,6 +422,8 @@ pub struct Doc {
     follow: bool,
     /// 下一帧钉死滚动偏移（量帧 / 跳转用）。
     pin: Option<Vec2>,
+    /// 这一屏摆得下几行（PageUp / PageDown 走这么多）。
+    page: usize,
     laid: Vec<Laid>,
     tally: Tally,
 }
@@ -448,6 +456,7 @@ impl Doc {
             follow: c > 0,
             // 滚动状态按 id 存在 egui 里、跨文件共用 ⇒ 新打开一份从头看起（有接过来的光标就再滚过去）。
             pin: Some(Vec2::ZERO),
+            page: VIEW_ROWS,
             laid: Vec::new(),
             tally: Tally::default(),
         }
@@ -705,8 +714,8 @@ impl Doc {
             }
             Key::ArrowUp => self.vertical(text, -1, shift),
             Key::ArrowDown => self.vertical(text, 1, shift),
-            Key::PageUp => self.vertical(text, -(VIEW_ROWS as isize), shift),
-            Key::PageDown => self.vertical(text, VIEW_ROWS as isize, shift),
+            Key::PageUp => self.vertical(text, -(self.page as isize), shift),
+            Key::PageDown => self.vertical(text, self.page as isize, shift),
             Key::Home => {
                 let at = if m.command { 0 } else { self.lines.start(line) };
                 self.move_to(at, shift);
@@ -805,14 +814,17 @@ impl Doc {
         self.cur = b;
     }
 
-    /// 画这一面。
-    pub fn ui(&mut self, ui: &mut Ui, text: &mut String) {
+    /// 画这一面：说明那一行 ＋ 高 `view_h` 的视口（内容在里面横竖滚）。
+    pub fn ui(&mut self, ui: &mut Ui, text: &mut String, view_h: f32) {
         self.revalidate(text);
+        let top = ui.cursor().top();
         ui.label(self.notice());
         let font = TextStyle::Monospace.resolve(ui.style());
         let (row_h, char_w) =
             ui.fonts_mut(|f| (f.row_height(&font), f.glyph_width(&font, '0').max(1.0)));
-        let view_h = VIEW_ROWS as f32 * row_h;
+        // 说明那一行也算在给的高里。
+        let view_h = (view_h - (ui.cursor().top() - top)).max(row_h);
+        self.page = ((view_h / row_h).floor() as usize).max(1);
         let mut area = ScrollArea::both()
             .id_salt("filewin-bigfile")
             .auto_shrink([false, false])
@@ -1164,10 +1176,11 @@ fn carried_cursor(ctx: &egui::Context, text: &str) -> usize {
 /// 🔴 **编辑面那一格文字的唯一入口**（`shell.rs` 只挂这一行）。
 ///
 /// 没进模式 ⇒ 每帧判一次（O(n)，而普通路径本来每帧就是 O(n)）；
-/// 进了 ⇒ 一直留在大文件模式。普通路径那个 `TextEdit` 与挂载前逐项相同，
-/// 只多了一个显式 id（切进大文件模式时接光标用）。
-pub fn show(ui: &mut Ui, pane: Option<&mut Pane>) {
+/// 进了 ⇒ 一直留在大文件模式。两条路都占满给它的宽、高 `view_h`，内容在里面滚
+/// （长文件不把编辑面撑出窗口）；光标挪出视野就跟过去。
+pub fn show(ui: &mut Ui, pane: Option<&mut Pane>, view_h: f32) {
     let Some(p) = pane else { return };
+    let fresh = std::mem::take(&mut p.fresh);
     let slot = p.big.clone();
     let mut g = slot.lock();
     if g.is_none() {
@@ -1177,15 +1190,33 @@ pub fn show(ui: &mut Ui, pane: Option<&mut Pane>) {
         }
     }
     match g.as_mut() {
-        Some(doc) => doc.ui(ui, &mut p.text),
+        Some(doc) => doc.ui(ui, &mut p.text, view_h),
         None => {
-            ui.add(
-                egui::TextEdit::multiline(&mut p.text)
+            let mut area = ScrollArea::vertical()
+                .id_salt("filewin-editor-scroll")
+                .auto_shrink([false, false])
+                .max_height(view_h)
+                .min_scrolled_height(view_h);
+            if fresh {
+                area = area.scroll_offset(Vec2::ZERO);
+            }
+            let reveal = std::mem::take(&mut p.reveal);
+            area.show(ui, |ui| {
+                let out = egui::TextEdit::multiline(&mut p.text)
                     .id(Id::new(NORMAL_ID))
                     .desired_rows(VIEW_ROWS)
                     .desired_width(f32::INFINITY)
-                    .code_editor(),
-            );
+                    .min_size(Vec2::new(0.0, view_h))
+                    .code_editor()
+                    .show(ui);
+                // 查找 / 替换把光标挪到了视野外 ⇒ 滚过去（打字与方向键由控件自己滚）。
+                if let Some(r) = reveal.then(|| out.state.cursor.char_range()).flatten() {
+                    let at = out.galley.pos_from_cursor(r.primary).translate(
+                        out.galley_pos.to_vec2() - Vec2::new(out.galley.rect.left(), 0.0),
+                    );
+                    ui.scroll_to_rect(at, None);
+                }
+            });
         }
     }
 }
