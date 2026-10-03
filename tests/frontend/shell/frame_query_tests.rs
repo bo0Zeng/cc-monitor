@@ -571,6 +571,16 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "新帧命令：别名那一族（规则 · 方言 · 围栏住那台后端 `assets/aliases/`），monitor 那六条 Tauri 命令删了",
     ),
     (
+        "aliases-to-form",
+        "新帧命令：别名表单与参数互转住那台后端（`assets/aliases/form.rs`，按 ccm 自己的解析器走）；\
+         前端 `src/frontend/ui/alias-reads.ts::aliasToForm` 问，界面那两份自抄的 ccm 文法删了",
+    ),
+    (
+        "aliases-from-form",
+        "新帧命令：别名表单与参数互转住那台后端（`assets/aliases/form.rs`，按 ccm 自己的解析器走）；\
+         前端 `src/frontend/ui/alias-reads.ts::aliasFromForm` 问，界面那两份自抄的 ccm 文法删了",
+    ),
+    (
         "powershell-policy-set",
         "新帧命令：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned`（`assets/aliases/mod.rs::answer_policy_set`）；\
          前端 `src/frontend/ui/alias-reads.ts::allowLocalScripts` 问（用户点了、确认了之后），monitor 这一侧零发送点",

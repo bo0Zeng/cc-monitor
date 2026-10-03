@@ -851,6 +851,14 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
          按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
     ),
     (
+        "aliases-to-form",
+        "别名表单两向住 `assets/aliases/`（引用图按文件算，因此连带）；本身是纯函数，只问 ccm 的解析器 `argv.rs`，不碰 tmux",
+    ),
+    (
+        "aliases-from-form",
+        "别名表单两向住 `assets/aliases/`（引用图按文件算，因此连带）；本身是纯函数，只问 ccm 的解析器 `argv.rs`，不碰 tmux",
+    ),
+    (
         "powershell-policy-set",
         "与别名那一族同住 `assets/aliases/mod.rs`（引用图按文件算，因此连带）；设执行策略本身只起 PowerShell，不碰 tmux",
     ),

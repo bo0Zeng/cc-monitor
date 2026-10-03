@@ -111,9 +111,12 @@ pub const COMMANDS: &[&str] = &[
     "aliases-block-install",
     "aliases-block-remove",
     "aliases-block-render",
+    // 别名表单两向（纯）：表单 ⇄ 一条别名，按 ccm 自己的解析器走（`assets/aliases/form.rs`）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "aliases-from-form",
     "aliases-install",
     "aliases-read",
     "aliases-render",
+    "aliases-to-form",
     "apikey-key-set",
     "apikey-read",
     // 界面「这几个号在这台的表里有没有行 · 这台的中转在不在」（成品，界面经 `chan.call` 直接问）。
@@ -3417,6 +3420,58 @@ pub const REGISTRY: &[CommandSpec] = &[
             crate::assets::aliases::answer_render(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 别名表单两向：纯函数，问的是 ccm 自己的解析器（`assets/aliases/form.rs`）。
+    CommandSpec {
+        name: "aliases-to-form",
+        doc_anchor: Some("#### `aliases-to-form`"),
+        codes: &["bad_args"],
+        fields: &[
+            "account",
+            "agent",
+            "alias",
+            "args",
+            "at",
+            "base",
+            "busNote",
+            "busRegister",
+            "ccmOther",
+            "cwd",
+            "cwdIf",
+            "detach",
+            "form",
+            "launcher",
+            "model",
+            "name",
+            "passthru",
+            "restTo",
+            "tmux",
+            "tmuxName",
+            "tmuxSize",
+            "to",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::assets::aliases::answer_to_form(&r.args)
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    CommandSpec {
+        name: "aliases-from-form",
+        doc_anchor: Some("#### `aliases-from-form`"),
+        codes: &["bad_args", "refused"],
+        fields: &["alias", "form", "orig"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::assets::aliases::answer_from_form(&r.args)
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
         }),
     },
     CommandSpec {

@@ -2,7 +2,8 @@
   "说明": [
     "别名六问的跨语言金样：后端对临时 home 现算 == reply；界面 `src/frontend/ui/alias-reads.ts` 的解码器读同一份。",
     "只采结构（占位名字 / 占位参数）。`<HOME>` 由测试换成临时 home。",
-    "`manifest` 是铺在临时 home 上的账号库清单（两个占位号），读回口据它答账号表、归组与缺的那几条。"
+    "`manifest` 是铺在临时 home 上的账号库清单（两个占位号），读回口据它答账号表、归组与缺的那几条。",
+    "`formCases`：表单两向（`aliases-to-form` · `aliases-from-form`）的样本 —— 后端现算 `alias → form` == `form`、`form ＋ orig → alias` == `alias`；界面的解码器读同一份，第一条是空白别名（界面「＋ 新增」那张空表单与它逐格相等）。"
   ],
   "aliases": [
     {
@@ -158,6 +159,10 @@
       "bad_args",
       "refused"
     ],
+    "aliases-from-form": [
+      "bad_args",
+      "refused"
+    ],
     "aliases-install": [
       "bad_args",
       "refused",
@@ -170,6 +175,141 @@
     "aliases-render": [
       "bad_args",
       "refused"
+    ],
+    "aliases-to-form": [
+      "bad_args"
     ]
-  }
+  },
+  "formCases": [
+    {
+      "alias": {
+        "name": "",
+        "args": [],
+        "restTo": "agent"
+      },
+      "form": {
+        "name": "",
+        "cwdIf": [],
+        "cwd": "",
+        "account": "",
+        "base": false,
+        "tmux": "none",
+        "tmuxName": "",
+        "agent": "",
+        "model": "",
+        "launcher": "",
+        "tmuxSize": "",
+        "detach": false,
+        "busRegister": false,
+        "busNote": "",
+        "passthru": "",
+        "ccmOther": ""
+      }
+    },
+    {
+      "alias": {
+        "name": "mine",
+        "args": [
+          "--append-system-prompt",
+          "be brief",
+          "--",
+          "--account-dir",
+          "/srv/acc",
+          "--cwd",
+          "/w"
+        ],
+        "restTo": "agent"
+      },
+      "form": {
+        "name": "mine",
+        "cwdIf": [],
+        "cwd": "/w",
+        "account": "",
+        "base": false,
+        "tmux": "none",
+        "tmuxName": "",
+        "agent": "",
+        "model": "",
+        "launcher": "",
+        "tmuxSize": "",
+        "detach": false,
+        "busRegister": false,
+        "busNote": "",
+        "passthru": "--append-system-prompt 'be brief'",
+        "ccmOther": "--account-dir /srv/acc"
+      }
+    },
+    {
+      "alias": {
+        "name": "convz",
+        "args": [
+          "--model",
+          "opus",
+          "--",
+          "--cwd-if",
+          "~",
+          "~/a b",
+          "--account",
+          "z",
+          "--ccm-tmux=w",
+          "--detach",
+          "--bus-register",
+          "--bus-note",
+          "n"
+        ],
+        "restTo": "agent"
+      },
+      "form": {
+        "name": "convz",
+        "cwdIf": [
+          {
+            "at": "~",
+            "to": "~/a b"
+          }
+        ],
+        "cwd": "",
+        "account": "z",
+        "base": false,
+        "tmux": "named",
+        "tmuxName": "w",
+        "agent": "",
+        "model": "opus",
+        "launcher": "",
+        "tmuxSize": "",
+        "detach": true,
+        "busRegister": true,
+        "busNote": "n",
+        "passthru": "",
+        "ccmOther": ""
+      }
+    },
+    {
+      "alias": {
+        "name": "cca",
+        "args": [
+          "--",
+          "--attach"
+        ],
+        "restTo": "ccm"
+      },
+      "form": {
+        "name": "cca",
+        "cwdIf": [],
+        "cwd": "",
+        "account": "",
+        "base": false,
+        "tmux": "attach",
+        "tmuxName": "",
+        "agent": "",
+        "model": "",
+        "launcher": "",
+        "tmuxSize": "",
+        "detach": false,
+        "busRegister": false,
+        "busNote": "",
+        "passthru": "",
+        "ccmOther": ""
+      }
+    }
+  ]
 }

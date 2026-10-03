@@ -647,6 +647,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "terminal-ssh",
         // `history-search-merge`：纯计算，普通 spawn。
         "history-search-merge",
+        // 别名表单两向：纯函数（问 ccm 的解析器），普通 spawn。
+        "aliases-to-form",
+        "aliases-from-form",
         "assets-sync",
         "ext-hub-preview",
         "ext-hub-apply",

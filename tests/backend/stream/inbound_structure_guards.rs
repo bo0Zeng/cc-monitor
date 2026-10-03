@@ -484,6 +484,9 @@ fn every_registered_command_declares_its_run_kind() {
         "aliases-block-render",
         "aliases-block-install",
         "aliases-block-remove",
+        // 别名表单两向：纯函数（问 ccm 的解析器），异步档。
+        "aliases-to-form",
+        "aliases-from-form",
         "powershell-policy-set",
         "ext-uninstall-apply",
         "mcp-server-put",

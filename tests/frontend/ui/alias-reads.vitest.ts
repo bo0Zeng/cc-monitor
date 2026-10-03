@@ -14,9 +14,13 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import {
   AliasesStale,
+  aliasFromForm,
+  aliasToForm,
+  decodeAliasForm,
   decodeAliasInstallReport,
   decodeAliasListing,
   decodeAliasRender,
+  emptyForm,
   installAliasBlock,
   installAliases,
   readAliases,
@@ -32,6 +36,7 @@ const G = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/aliases
   string,
   Record<string, unknown>
 >;
+const FORM_CASES = G.formCases as unknown as Array<{ alias: unknown; form: Record<string, unknown> }>;
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -48,6 +53,25 @@ describe("金样：后端出的成品，TS 读得懂", () => {
     expect(l.missing.map((m) => m.alias.name)).toEqual(["alphacct", "betacc", "betacct"]);
     expect(typeof l.fingerprint).toBe("string");
     expect(l.rcCandidates.map((c) => c.block.present)).toEqual([false]);
+  });
+});
+
+describe("金样：表单两向（后端现算过的那几条）", () => {
+  it("每条表单都读得懂；「＋ 新增」那张空表单与后端摊开一条空白别名逐格相等", () => {
+    expect(FORM_CASES.length).toBeGreaterThanOrEqual(3);
+    for (const c of FORM_CASES) expect(decodeAliasForm(c.form)).toEqual(c.form);
+    expect(FORM_CASES[0].alias).toEqual({ name: "", args: [], restTo: "agent" });
+    expect(emptyForm()).toEqual(decodeAliasForm(FORM_CASES[0].form));
+  });
+  it("表单严格收：多一格 / 缺一格 / 类型不对 / 认不得的「在哪起」⇒ 抛", () => {
+    const f = FORM_CASES[1].form;
+    const bad = copyText("aliasReads.reply.badShape");
+    expect(() => decodeAliasForm({ ...f, extra: 1 })).toThrow(bad);
+    const { ccmOther: _c, ...short } = f;
+    expect(() => decodeAliasForm(short)).toThrow(bad);
+    expect(() => decodeAliasForm({ ...f, base: "no" })).toThrow(bad);
+    expect(() => decodeAliasForm({ ...f, tmux: "screen" })).toThrow(bad);
+    expect(() => decodeAliasForm({ ...f, cwdIf: [{ at: "~" }] })).toThrow(bad);
   });
 });
 
@@ -109,5 +133,24 @@ describe("请求：问对那台、说对那条、参数原样", () => {
       ["devbox", "aliases-block-install", { rcPath: "~/.bashrc" }],
       ["devbox", "aliases-block-remove", { rcPath: "~/.bashrc" }],
     ]);
+  });
+  it("表单两向：摊开只交那一条；拼回交表单与原来那一条（新增 ⇒ null）；回的形状严格收", async () => {
+    const c = FORM_CASES[1];
+    invokeMock.mockResolvedValueOnce(chanReply({ form: c.form }));
+    expect(await aliasToForm("devbox", c.alias as never)).toEqual(c.form);
+    invokeMock.mockResolvedValueOnce(chanReply({ alias: c.alias }));
+    expect(await aliasFromForm("devbox", c.form as never, c.alias as never)).toEqual(c.alias);
+    invokeMock.mockResolvedValueOnce(chanReply({ alias: c.alias }));
+    await aliasFromForm("<local>", emptyForm(), null);
+    const calls = invokeMock.mock.calls.map((x) => x[1] as ChanCallArgs);
+    expect(calls.map((x) => [x.origin, x.op, chanArgsJson(x)])).toEqual([
+      ["devbox", "aliases-to-form", { alias: c.alias }],
+      ["devbox", "aliases-from-form", { form: c.form, orig: c.alias }],
+      ["<local>", "aliases-from-form", { form: emptyForm(), orig: null }],
+    ]);
+    invokeMock.mockResolvedValueOnce(chanReply({ form: c.form, more: 1 }));
+    await expect(aliasToForm("devbox", c.alias as never)).rejects.toThrow(copyText("aliasReads.reply.badShape"));
+    invokeMock.mockRejectedValueOnce(refusedReply("refused", "交给 agent 的参数里有引号没配对。"));
+    await expect(aliasFromForm("devbox", c.form as never, null)).rejects.toThrow("交给 agent 的参数里有引号没配对。");
   });
 });

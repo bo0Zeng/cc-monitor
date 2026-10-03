@@ -7,9 +7,10 @@
  *   本文件**不按名字或参数自己认组**；
  * - 存：`aliases-install` 收整份清单 ＋ 读回时的指纹，盘上被别处改过 ⇒ 后端拒（[`AliasesStale`]），这里重读、表单留着让人再存；
  * - 合不合格 · 撞名 · 和系统命令重名：`aliases-render`；会执行什么：`ccm-print`；
+ * - 表单 ⇄ 参数：`aliases-to-form` / `aliases-from-form`（那台后端按 ccm 自己的解析器转；「改」那一下把原来那条一起交回，没动的原样留）；
  * - 接入（别名块装 / 断开 / 我自己贴）：`aliases-block-*`，块外同名函数与执行策略随候选一起到。
  *
- * 本文件一个字节的 shell 文本都不拼：表单只拼成 ccm 参数（`formToAlias`），写进 shell 的那一份由后端渲染。
+ * 本文件一个 ccm 参数都不认、一个字节的 shell 文本都不拼：表单那几格原样交后端、后端回一条别名；写进 shell 的那一份也由后端渲染。
  *
  * # 纪律
  *
@@ -29,11 +30,26 @@ import { showActionFailureToast } from "../error-toast"; // `K-R135`：用户级
 import { buildPasteBlock } from "../paste-block";
 import { DEFAULT_AGENT, listAgents } from "../agent-profile";
 // 别名六问走通道、那台后端出成品（`../alias-reads`）；类型随成品住那边。
-import type { AccountShape, Alias, AliasRender, ExecPolicy, MissingAlias, PsHost, StartupFile, Shell } from "../alias-reads";
+import type {
+  AccountShape,
+  Alias,
+  AliasForm,
+  AliasRender,
+  CwdCase,
+  ExecPolicy,
+  MissingAlias,
+  PsHost,
+  StartupFile,
+  Shell,
+  TmuxMode,
+} from "../alias-reads";
 import { askConfirm, type ConfirmFn } from "../ask-dialog";
 import {
   AliasesStale,
+  aliasFromForm,
+  aliasToForm,
   allowLocalScripts,
+  emptyForm,
   installAliasBlock,
   installAliases,
   readAliases,
@@ -100,9 +116,6 @@ export async function previewAlias(origin: Origin, a: Alias): Promise<string> {
   }
 }
 
-/** 「在哪起」那一维（第一档）：当前终端 · tmux 三种取名 · 接回一个 tmux 会话（会话名敲的时候跟上）。 */
-export type TmuxMode = "none" | "auto" | "named" | "base" | "attach";
-
 /**
  * 「在哪起」各项**撞名时会怎样**（下拉的选项只有名字，没有一句说撞了会怎样）。
  *
@@ -118,148 +131,6 @@ export const TMUX_NAMING: Record<TmuxMode, { stepsAside: boolean | null; text: (
   base: { stepsAside: true, text: () => copyText("machineAliases.tmuxNaming.base") },
   attach: { stepsAside: null, text: () => copyText("machineAliases.tmuxNaming.attach") },
 };
-
-/** 工作目录的一种情况：「在 `at` 敲 → 进 `to`」（拼成 `--cwd-if <at> <to>`）。 */
-export interface CwdCase {
-  at: string;
-  to: string;
-}
-
-/** 表单那一侧的样子。**只是编辑界面** —— 合不合格由那台后端判。 */
-export interface AliasForm {
-  name: string;
-  /** 按所在目录分的那几种情况，按序（第一条对上的算）。 */
-  cwdIf: CwdCase[];
-  /** 其余情况进哪；`""` = 当前目录。 */
-  cwd: string;
-  /** `""` = 不指定；`"--base"` = 显式不带账号；其余 = 账号名。 */
-  account: string;
-  tmux: TmuxMode;
-  tmuxName: string;
-  agent: string;
-  model: string;
-  launcher: string;
-  tmuxSize: string;
-  detach: boolean;
-  busRegister: boolean;
-  busNote: string;
-  /** 原样交给 agent 的那几个词（按空白切；渲在 `--` 左边）。 */
-  passthru: string;
-}
-
-export const BASE_CHOICE = "--base";
-
-export function emptyForm(): AliasForm {
-  return {
-    name: "",
-    cwdIf: [],
-    cwd: "",
-    account: "",
-    tmux: "none",
-    tmuxName: "",
-    agent: "",
-    model: "",
-    launcher: "",
-    tmuxSize: "",
-    detach: false,
-    busRegister: false,
-    busNote: "",
-    passthru: "",
-  };
-}
-
-/**
- * 表单 → 一条别名（原样的 ccm argv）。纯函数。
- * `<交给 claude 的…> -- <ccm 自己的…>`：`--model` 与透传栏是 claude 的（左边），其余是 ccm 的（右边）。
- * 「接回一个 tmux 会话」只有一形：`-- --attach`，调用时跟的词（会话名）交给 ccm。
- */
-export function formToAlias(f: AliasForm): Alias {
-  const name = f.name.trim();
-  if (f.tmux === "attach") return { name, args: ["--", "--attach"], restTo: "ccm" };
-  const claude: string[] = [];
-  const ours: string[] = [];
-  for (const c of f.cwdIf) {
-    const at = c.at.trim();
-    const to = c.to.trim();
-    if (at && to) ours.push("--cwd-if", at, to);
-  }
-  const cwd = f.cwd.trim();
-  if (cwd) ours.push("--cwd", cwd);
-  if (f.account === BASE_CHOICE) ours.push("--base");
-  else if (f.account.trim()) ours.push("--account", f.account.trim());
-  const tn = f.tmuxName.trim();
-  if (f.tmux === "auto") ours.push("--ccm-tmux");
-  else if (f.tmux === "named" && tn) ours.push(`--ccm-tmux=${tn}`);
-  else if (f.tmux === "base" && tn) ours.push("--tmux-base", tn);
-  if (f.agent) ours.push("--ccm-agent", f.agent);
-  if (f.model.trim()) claude.push("--model", f.model.trim());
-  if (f.launcher.trim()) ours.push("--launcher", f.launcher.trim());
-  if (f.tmux !== "none") {
-    if (f.tmuxSize.trim()) ours.push("--tmux-size", f.tmuxSize.trim());
-    if (f.detach) ours.push("--detach");
-    if (f.detach && f.busRegister) {
-      ours.push("--bus-register");
-      if (f.busNote.trim()) ours.push("--bus-note", f.busNote.trim());
-    }
-  }
-  claude.push(...f.passthru.trim().split(/\s+/).filter(Boolean));
-  const needsEnd = ours.length > 0 || claude.includes("--");
-  return { name, args: needsEnd ? [...claude, "--", ...ours] : claude, restTo: "agent" };
-}
-
-/** 一条别名 → 表单（「改」那一下）。按最后一个 `--` 切；认不出的参数原样塞回透传栏，**不静默丢**。 */
-export function aliasToForm(a: Alias): AliasForm {
-  const f = emptyForm();
-  f.name = a.name;
-  if (a.restTo === "ccm" && a.args.length === 2 && a.args[0] === "--" && a.args[1] === "--attach") {
-    f.tmux = "attach";
-    return f;
-  }
-  const extra: string[] = [];
-  const cut = a.args.lastIndexOf("--");
-  const left = cut < 0 ? a.args : a.args.slice(0, cut);
-  const right = cut < 0 ? [] : a.args.slice(cut + 1);
-  // 右边第一个词 `new`（起新会话，缺省就是它）是 ccm 的位置词，表单里没有对应格、也不进透传。
-  if (right[0] === "new") right.shift();
-  for (let i = 0; i < left.length; i++) {
-    if (left[i] === "--model" && i + 1 < left.length && !f.model) f.model = left[++i];
-    else extra.push(left[i]);
-  }
-  const it = right[Symbol.iterator]();
-  const next = (): string => {
-    const r = it.next();
-    return r.done ? "" : r.value;
-  };
-  for (let r = it.next(); !r.done; r = it.next()) {
-    const w = r.value;
-    if (w.startsWith("--ccm-tmux=")) {
-      f.tmux = "named";
-      f.tmuxName = w.slice("--ccm-tmux=".length);
-      continue;
-    }
-    switch (w) {
-      case "--cwd-if": {
-        const at = next();
-        f.cwdIf.push({ at, to: next() });
-        break;
-      }
-      case "--cwd": f.cwd = next(); break;
-      case "--account": f.account = next(); break;
-      case "--base": f.account = BASE_CHOICE; break;
-      case "--ccm-tmux": f.tmux = "auto"; break;
-      case "--tmux-base": f.tmux = "base"; f.tmuxName = next(); break;
-      case "--ccm-agent": f.agent = next(); break;
-      case "--launcher": f.launcher = next(); break;
-      case "--tmux-size": f.tmuxSize = next(); break;
-      case "--detach": f.detach = true; break;
-      case "--bus-register": f.busRegister = true; break;
-      case "--bus-note": f.busNote = next(); break;
-      default: extra.push(w);
-    }
-  }
-  f.passthru = extra.join(" ");
-  return f;
-}
 
 /** 给人看的那一串参数（带空格的值加引号）。**只是显示**，写进 shell 的那一份由后端渲染。 */
 export function describeArgs(args: readonly string[]): string {
@@ -289,6 +160,9 @@ function button(label: string, variant: string, onClick: () => void): HTMLButton
   return b;
 }
 
+/** 账号下拉里「不用任何账号」那一项的值：只是个记号（那一项按元素认，见表单），不是 ccm 参数。 */
+const BASE_OPTION = "(base)";
+
 /** 同一条别名（名字 ＋ 参数 ＋ 交给谁逐格相等）。 */
 const sameAlias = (a: Alias, b: Alias): boolean =>
   a.name === b.name && a.restTo === b.restTo && a.args.length === b.args.length && a.args.every((w, i) => w === b.args[i]);
@@ -306,6 +180,8 @@ interface FormHost {
   shell: Shell;
   hasTmux: boolean;
   accounts: () => readonly string[];
+  /** 表单 → 一条别名（那台后端拼；「改」时带着原来那条）。拼不出 ⇒ 抛那句话。 */
+  render: (f: AliasForm) => Promise<Alias>;
   /** 这一条按表单现在的样子放进清单后，问后端这一条的问题与撞名。 */
   check: (a: Alias) => Promise<string[]>;
   preview: (a: Alias) => Promise<string>;
@@ -338,17 +214,25 @@ function buildAliasForm(initial: AliasForm, host: FormHost): HTMLElement {
   nameIn.dataset.role = "name";
   const acctSel = select([
     ["", copyText("machineAliases.form.accountNone")],
-    [BASE_CHOICE, copyText("machineAliases.form.accountBase")],
+    [BASE_OPTION, copyText("machineAliases.form.accountBase")],
     ...host.accounts().map((a): [string, string] => [a, copyText("machineAliases.form.accountNamed", { name: a })]),
   ]);
   acctSel.dataset.role = "account";
+  // 「不用任何账号」那一项按元素认、不按值认（值只是个记号，不与任何号名相撞）。
+  const baseOpt = acctSel.options[1];
+  const isBase = (): boolean => acctSel.options[acctSel.selectedIndex] === baseOpt;
   // 别名里写的号不在这台的账号表里（手编的 / 号删了）：照原样摆一项，不悄悄变成「不指定」。
-  if (initial.account && ![...acctSel.options].some((o) => o.value === initial.account)) {
-    const o = el("option", "", copyText("machineAliases.form.accountNamed", { name: initial.account }));
-    o.value = initial.account;
-    acctSel.appendChild(o);
+  let picked = initial.account
+    ? [...acctSel.options].find((o) => o !== baseOpt && o.value === initial.account)
+    : initial.base
+      ? baseOpt
+      : acctSel.options[0];
+  if (!picked) {
+    picked = el("option", "", copyText("machineAliases.form.accountNamed", { name: initial.account }));
+    picked.value = initial.account;
+    acctSel.appendChild(picked);
   }
-  acctSel.value = initial.account;
+  picked.selected = true;
   const tmuxSel = select([
     ["none", copyText("machineAliases.form.tmuxNone")],
     ["auto", copyText("machineAliases.form.tmuxAuto")],
@@ -473,7 +357,8 @@ function buildAliasForm(initial: AliasForm, host: FormHost): HTMLElement {
     name: nameIn.value,
     cwdIf: caseRows.map((c) => ({ at: c.at.value, to: c.to.value })),
     cwd: dirR.checked ? cwdIn.value : "",
-    account: acctSel.value,
+    account: isBase() ? "" : acctSel.value,
+    base: isBase(),
     tmux: tmuxSel.value as TmuxMode,
     tmuxName: tmuxNameIn.value,
     agent: agentSel.value,
@@ -484,6 +369,8 @@ function buildAliasForm(initial: AliasForm, host: FormHost): HTMLElement {
     busRegister: busCk.checked,
     busNote: busNoteIn.value,
     passthru: passIn.value,
+    // 表单没有格子的 ccm 参数：原样带着走（那台后端放回原位）。
+    ccmOther: initial.ccmOther,
   });
 
   /** 控件上把必被拒的组合先关掉（后端校验才是真判定）：接回会话只单放 `--attach`；不进 tmux ⇒ 容器那几格关；不 --detach ⇒ 登记关。 */
@@ -505,14 +392,23 @@ function buildAliasForm(initial: AliasForm, host: FormHost): HTMLElement {
   let seq = 0;
   const changed = (): void => {
     syncEnabled();
-    const a = formToAlias(read());
     const mine = ++seq;
-    void host.preview(a).then((t) => {
-      if (mine === seq) wouldRun.textContent = t;
-    });
-    void host.check(a).then((lines) => {
-      if (mine === seq) notes.textContent = lines.join("\n");
-    });
+    void host.render(read()).then(
+      (a) => {
+        if (mine !== seq) return;
+        void host.preview(a).then((t) => {
+          if (mine === seq) wouldRun.textContent = t;
+        });
+        void host.check(a).then((lines) => {
+          if (mine === seq) notes.textContent = lines.join("\n");
+        });
+      },
+      (e: unknown) => {
+        if (mine !== seq) return;
+        wouldRun.textContent = "";
+        notes.textContent = e instanceof Error ? e.message : String(e);
+      },
+    );
   };
   for (const c of [nameIn, acctSel, tmuxSel, tmuxNameIn, cwdIn, hereR, dirR, agentSel, modelIn, launcherIn, sizeIn, detachCk, busCk, busNoteIn, passIn]) {
     c.addEventListener("change", () => changed());
@@ -520,7 +416,12 @@ function buildAliasForm(initial: AliasForm, host: FormHost): HTMLElement {
 
   const onSave = async (): Promise<void> => {
     saveBtn.disabled = true;
-    const said = await host.save(formToAlias(read()));
+    let said: string | null;
+    try {
+      said = await host.save(await host.render(read()));
+    } catch (e) {
+      said = e instanceof Error ? e.message : String(e);
+    }
     saveBtn.disabled = false;
     if (said !== null) notes.textContent = said;
   };
@@ -679,13 +580,35 @@ export function buildAliasManager(opts: {
     form = null;
   };
 
-  /** 「＋ 新增别名」（`orig = null`，在清单顶上展开）与「改」（在那一行下面展开）共用同一张表单。 */
+  /**
+   * 「＋ 新增别名」（`orig = null`，在清单顶上展开）与「改」（在那一行下面展开）共用同一张表单。
+   * 「改」先问那台后端把这一条摊成表单（打不开 ⇒ 状态行说一句）；新增是一张空表单，就地展开。
+   */
+  let opening = 0;
   const openForm = (orig: Alias | null, after?: HTMLElement): void => {
     closeForm();
-    const f = buildAliasForm(orig ? aliasToForm(orig) : emptyForm(), {
+    const ticket = ++opening;
+    if (!orig) {
+      mountForm(null, emptyForm());
+      return;
+    }
+    void aliasToForm(opts.origin(), orig).then(
+      (initial) => {
+        if (ticket === opening) mountForm(orig, initial, after);
+      },
+      (e: unknown) => {
+        if (ticket === opening)
+          status.textContent = copyText("machineAliases.form.openFailed", { e: e instanceof Error ? e.message : String(e) });
+      },
+    );
+  };
+  const mountForm = (orig: Alias | null, initial: AliasForm, after?: HTMLElement): void => {
+    closeForm();
+    const f = buildAliasForm(initial, {
       shell,
       hasTmux,
       accounts: () => accounts,
+      render: (form) => aliasFromForm(opts.origin(), form, orig),
       check: async (a) => {
         const at = orig ? list.findIndex((x) => sameAlias(x, orig)) : -1;
         const next = at >= 0 ? list.map((x, i) => (i === at ? a : x)) : [...list, a];

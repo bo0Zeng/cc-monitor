@@ -196,18 +196,9 @@ pub(crate) fn last_end(args: &[String]) -> Option<usize> {
     args.iter().rposition(|a| a == flag::END)
 }
 
-/// 🔴 **这套 argv 的唯一解析口。**
-///
-/// 〔用户 09-27〕格式 `ccm [交给 claude 的…] -- [ccm 自己的…]`：没有 `--` ⇒ 整行原样交 agent（[`Opts::passthru`]，
-/// 一个词都不拦）；有 ⇒ 按**最后一个** `--` 切（[`last_end`]），左边原样交 agent（claude 自己的 `--` 照写，
-/// 没有 ccm 部分时末尾补一个空 `--`），右边逐词只认 ccm 表（壳层选项 ＋ `--ccm-*` 诊断口），认不得就报错、不猜。
-/// 〔墓碑 —— 上一版：壳层选项在任何位置都认、首词 `new` 是 ccm 的位置动作、`--` 之后一律透传。〕
-pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
-    let (left, right): (&[String], &[String]) = match last_end(args) {
-        Some(k) => (&args[..k], &args[k + 1..]),
-        None => (args, &[]),
-    };
-    let mut o = Opts {
+/// 一组没给任何选项时的意图（默认值都取 [`Defaults`]）；`left` 是交给 agent 的那一串。
+pub(crate) fn blank_opts(left: &[String]) -> Opts {
+    Opts {
         attach_name: String::new(),
         use_tmux: Defaults::USE_TMUX,
         tmux_name: String::new(),
@@ -228,86 +219,172 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
         tmux_size: String::new(),
         passthru: left.to_vec(),
         resumes: None,
+    }
+}
+
+/// `--` 右边认得的全部词（[`flag::END`] 不在其中：右边不会再有它）。
+const RIGHT_WORDS: &[&str] = &[
+    flag::NEW,
+    flag::TMUX,
+    flag::TMUX_BASE,
+    flag::TMUX_SIZE,
+    flag::DETACH,
+    flag::ACCOUNT,
+    flag::BASE,
+    flag::CWD,
+    flag::CWD_IF,
+    flag::AGENT,
+    flag::LAUNCHER,
+    flag::BUS_REGISTER,
+    flag::BUS_NOTE,
+    flag::ATTACH,
+    flag::CCM_PRINT,
+    flag::CCM_HELP,
+    flag::CCM_VERSION,
+    flag::CCM_PROBE,
+    flag::CCM_SID,
+    flag::LAUNCH_ID,
+    flag::ACCOUNT_DIR,
+];
+
+/// 右边的一组词：一个认得的词连同它吃掉的值。几个词、值从哪来只住 [`word_at`]，含义只住 [`apply_word`] ——
+/// [`parse`] 与别名表单（`assets/aliases/form.rs`）都按这一份走。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Word {
+    /// 认得的那个词（[`flag`] 里的常量）。
+    pub(crate) flag: &'static str,
+    /// 它带的值：`--x <值>` / `--x=<值>` 一个，`--cwd-if` 两个，开关没有（`--ccm-tmux=<名>` 的名算一个）。
+    pub(crate) vals: Vec<String>,
+    /// 这一组占几个词（原样那几个是 `args[i..i + len]`）。
+    pub(crate) len: usize,
+}
+
+/// `args[i]` 起的那一组词（`args` 是 `--` 右边那一串）。认不得 / 缺值 ⇒ 与 [`parse`] 同一句。
+pub(crate) fn word_at(args: &[String], i: usize) -> Result<Word, Die> {
+    let a = args[i].as_str();
+    // `--flag=值` 这一形先拆开，省得每个旗标写两条臂。
+    let (key, inline) = match a.find('=') {
+        Some(p) if a.starts_with("--") && p > 2 => (&a[..p], Some(a[p + 1..].to_string())),
+        _ => (a, None),
     };
-    let args = right;
+    let Some(&known) = RIGHT_WORDS.iter().find(|w| **w == key) else {
+        // 右边认不得 ⇒ 报错。是后端子命令 / 流词（它们只能紧跟打头的 `--`）⇒ 说清为什么。
+        return die(if i == 0 && crate::control::ccm::is_backend_word(a) {
+            copy_text(
+                "beArgv.parse.backendWordAfterClaudeArgs",
+                &[("w", &a.to_string())],
+            )
+        } else {
+            copy_text("beArgv.parse.unknownRight", &[("w", &a.to_string())])
+        });
+    };
+    // `--flag <值>` / `--flag=<值>`：值与占几个词。
+    let one = || -> Result<(String, usize), Die> {
+        match &inline {
+            Some(v) => Ok((v.clone(), 1)),
+            None => Ok((need_val(key, args.get(i + 1))?, 2)),
+        }
+    };
+    let (vals, len) = match known {
+        flag::TMUX => (inline.clone().into_iter().collect(), 1),
+        flag::CWD_IF => {
+            let (at, n) = one()?;
+            let to = need_val(key, args.get(i + n))?;
+            (vec![at, to], n + 1)
+        }
+        // 写空（`--ccm-agent ""`）⇒ 默认那一家，不当成漏了参数（认法住 `agents::pick_kind`）。
+        flag::AGENT if inline.is_none() && args.get(i + 1).is_some_and(|v| v.is_empty()) => {
+            (vec![String::new()], 2)
+        }
+        flag::TMUX_BASE
+        | flag::BUS_NOTE
+        | flag::ACCOUNT
+        | flag::CWD
+        | flag::AGENT
+        | flag::LAUNCHER
+        | flag::ATTACH
+        | flag::CCM_SID
+        | flag::LAUNCH_ID
+        | flag::ACCOUNT_DIR
+        | flag::TMUX_SIZE => {
+            let (v, n) = one()?;
+            (vec![v], n)
+        }
+        // 开关：`--x=值` 那个值不看（与从前一样）。
+        _ => (Vec::new(), 1),
+    };
+    Ok(Word {
+        flag: known,
+        vals,
+        len,
+    })
+}
+
+/// 一组词落进意图。`at` 是它在右边的位置（`new` 只许打头）。立即结束的那几个 ⇒ `Some`、`o` 不动。
+pub(crate) fn apply_word(o: &mut Opts, w: &Word, at: usize) -> Result<Option<Early>, Die> {
+    let v = |k: usize| w.vals.get(k).cloned().unwrap_or_default();
+    match w.flag {
+        flag::NEW if at == 0 => {}
+        // `new` 只许打头 ⇒ 别处出现说清为什么，不落到「不是 ccm 的选项」那句。
+        flag::NEW => return die(copy_text("beArgv.parse.newNotFirst", &[])),
+        flag::TMUX => {
+            o.use_tmux = true;
+            if let Some(n) = w.vals.first() {
+                o.tmux_name = n.clone();
+            }
+        }
+        flag::TMUX_BASE => {
+            o.use_tmux = true;
+            o.tmux_base = v(0);
+        }
+        flag::BUS_REGISTER => o.bus_register = true,
+        flag::BUS_NOTE => o.bus_note = v(0),
+        flag::ACCOUNT => o.account = v(0),
+        flag::BASE => o.use_base = true,
+        flag::CWD => o.cwd_spec = CwdSpec::Explicit(v(0)),
+        flag::CWD_IF => o.cwd_if.push((v(0), v(1))),
+        flag::AGENT => o.agent = v(0),
+        flag::LAUNCHER => o.launcher = v(0),
+        flag::ATTACH => o.attach_name = v(0),
+        flag::CCM_SID => o.ccm_sid = v(0),
+        flag::LAUNCH_ID => o.launch_id = v(0),
+        flag::ACCOUNT_DIR => o.account_dir = v(0),
+        flag::DETACH => o.detach = true,
+        flag::TMUX_SIZE => o.tmux_size = v(0),
+        flag::CCM_PRINT => o.print = true,
+        flag::CCM_PROBE => return Ok(Some(Early::Probe)),
+        flag::CCM_VERSION => return Ok(Some(Early::Version)),
+        flag::CCM_HELP => return Ok(Some(Early::Help)),
+        other => {
+            return die(copy_text(
+                "beArgv.parse.unknownRight",
+                &[("w", &other.to_string())],
+            ))
+        }
+    }
+    Ok(None)
+}
+
+/// 🔴 **这套 argv 的唯一解析口。**
+///
+/// 〔用户 09-27〕格式 `ccm [交给 claude 的…] -- [ccm 自己的…]`：没有 `--` ⇒ 整行原样交 agent（[`Opts::passthru`]，
+/// 一个词都不拦）；有 ⇒ 按**最后一个** `--` 切（[`last_end`]），左边原样交 agent（claude 自己的 `--` 照写，
+/// 没有 ccm 部分时末尾补一个空 `--`），右边逐词只认 ccm 表（壳层选项 ＋ `--ccm-*` 诊断口），认不得就报错、不猜。
+/// 逐词那一圈是 [`word_at`]（几个词）＋ [`apply_word`]（什么意思）。
+/// 〔墓碑 —— 上一版：壳层选项在任何位置都认、首词 `new` 是 ccm 的位置动作、`--` 之后一律透传。〕
+pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
+    let (left, right): (&[String], &[String]) = match last_end(args) {
+        Some(k) => (&args[..k], &args[k + 1..]),
+        None => (args, &[]),
+    };
+    let mut o = blank_opts(left);
     let mut i = 0;
-    while i < args.len() {
-        let a = args[i].as_str();
-        // `--flag=值` 这一形先拆开，省得每个旗标写两条臂。
-        let (key, inline) = match a.find('=') {
-            Some(p) if a.starts_with("--") && p > 2 => (&a[..p], Some(a[p + 1..].to_string())),
-            _ => (a, None),
-        };
-        // `--flag <值>` 这一形：取值并前进一格。
-        macro_rules! val {
-            () => {
-                match inline {
-                    Some(v) => v,
-                    None => {
-                        let v = need_val(key, args.get(i + 1))?;
-                        i += 1;
-                        v
-                    }
-                }
-            };
+    while i < right.len() {
+        let w = word_at(right, i)?;
+        if let Some(e) = apply_word(&mut o, &w, i)? {
+            return Ok(Parsed::Early(e));
         }
-        match key {
-            flag::NEW if i == 0 => {}
-            flag::TMUX => {
-                o.use_tmux = true;
-                if let Some(v) = inline {
-                    o.tmux_name = v;
-                }
-            }
-            flag::TMUX_BASE => {
-                o.use_tmux = true;
-                o.tmux_base = val!();
-            }
-            flag::BUS_REGISTER => o.bus_register = true,
-            flag::BUS_NOTE => o.bus_note = val!(),
-            flag::ACCOUNT => o.account = val!(),
-            flag::BASE => o.use_base = true,
-            flag::CWD => o.cwd_spec = CwdSpec::Explicit(val!()),
-            flag::CWD_IF => {
-                let at = val!();
-                let to = need_val(key, args.get(i + 1))?;
-                i += 1;
-                o.cwd_if.push((at, to));
-            }
-            // 写空（`--ccm-agent ""`）⇒ 默认那一家，不当成漏了参数（认法住 `agents::pick_kind`）。
-            flag::AGENT if inline.is_none() && args.get(i + 1).is_some_and(|v| v.is_empty()) => {
-                o.agent = String::new();
-                i += 1;
-            }
-            flag::AGENT => o.agent = val!(),
-            flag::LAUNCHER => o.launcher = val!(),
-            flag::ATTACH => o.attach_name = val!(),
-            flag::CCM_SID => o.ccm_sid = val!(),
-            flag::LAUNCH_ID => o.launch_id = val!(),
-            flag::ACCOUNT_DIR => o.account_dir = val!(),
-            flag::DETACH => o.detach = true,
-            flag::TMUX_SIZE => o.tmux_size = val!(),
-            flag::CCM_PRINT => o.print = true,
-            flag::CCM_PROBE => return Ok(Parsed::Early(Early::Probe)),
-            flag::CCM_VERSION => return Ok(Parsed::Early(Early::Version)),
-            flag::CCM_HELP => return Ok(Parsed::Early(Early::Help)),
-            // `new` 只许打头 ⇒ 别处出现说清为什么，不落到「不是 ccm 的选项」那句。
-            flag::NEW => return die(copy_text("beArgv.parse.newNotFirst", &[])),
-            // 右边认不得 ⇒ 报错。是后端子命令 / 流词（它们只能紧跟打头的 `--`）⇒ 说清为什么。
-            _ if i == 0 && crate::control::ccm::is_backend_word(a) => {
-                return die(copy_text(
-                    "beArgv.parse.backendWordAfterClaudeArgs",
-                    &[("w", &a.to_string())],
-                ))
-            }
-            _ => {
-                return die(copy_text(
-                    "beArgv.parse.unknownRight",
-                    &[("w", &a.to_string())],
-                ))
-            }
-        }
-        i += 1;
+        i += w.len;
     }
 
     o.resumes = resume_sid(&o.passthru).map(str::to_string);

@@ -5395,6 +5395,11 @@
       "zh": "点这一行，看它会执行什么",
       "args": []
     },
+    "machineAliases.form.openFailed": {
+      "kind": "error",
+      "zh": "打不开这一条：{e}",
+      "args": ["e"]
+    },
     "machineAliases.form.cancel": {
       "kind": "action",
       "zh": "取消",
@@ -14340,6 +14345,16 @@
       "kind": "error",
       "zh": "--account-dir 的值 {dir} 用不了（要一个绝对路径，不含 .. 段、控制字符与 shell 元字符）",
       "args": ["dir"]
+    },
+    "beAliasForm.passthru.unbalanced": {
+      "kind": "error",
+      "zh": "交给 agent 的参数里有引号没配对。带空格的参数用一对单引号或双引号括起来",
+      "args": []
+    },
+    "beAliasForm.ccmOther.unbalanced": {
+      "kind": "error",
+      "zh": "其它 ccm 参数里有引号没配对。带空格的参数用一对单引号或双引号括起来",
+      "args": []
     },
     "beArgv.parse.unknownRight": {
       "kind": "error",
