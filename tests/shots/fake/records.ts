@@ -55,10 +55,13 @@ export class Convo {
       message: { role: "user", content: text, model: null, usage: null },
       cwd: this.cwd,
       sessionId: this.sid,
-      isMeta: opts.meta ?? false,
       parentUuid: this.prev,
       forkedFrom: null,
-      userText: { clean: text, interrupt: opts.interrupt ?? false },
+      userText: opts.interrupt
+        ? { speaker: { kind: "interrupt" }, text: "" }
+        : opts.meta
+          ? { speaker: { kind: "system" }, text: "" }
+          : { speaker: { kind: "human" }, text },
     });
     this.prev = uuid;
     return this;
@@ -132,10 +135,9 @@ export class Convo {
       },
       cwd: this.cwd,
       sessionId: this.sid,
-      isMeta: false,
       parentUuid: this.prev,
       forkedFrom: null,
-      userText: { clean: "", interrupt: false },
+      userText: { speaker: { kind: "toolResult" }, text: "" },
     });
     this.prev = uuid;
     return this;
