@@ -518,11 +518,13 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
     // ── 起 ────────────────────────────────────────────────────────
     *LOCAL_BACKEND.lock().expect("锁") = Some(spawn());
     assert!(wait_channel(true), "5s 内通道没登记上 —— backend 没起来");
-    let pid1 = crate::backend_control::backend_status(crate::inbound_client::LOCAL_ORIGIN.into())
-        .expect("查状态")
-        .get("pid")
-        .and_then(|v| v.as_u64())
-        .expect("起来了却没有 pid") as u32;
+    let pid1 = tauri::async_runtime::block_on(crate::backend_control::backend_status(
+        crate::inbound_client::LOCAL_ORIGIN.into(),
+    ))
+    .expect("查状态")
+    .get("pid")
+    .and_then(|v| v.as_u64())
+    .expect("起来了却没有 pid") as u32;
     assert!(alive(pid1), "状态给了 pid={pid1}，但 /proc 里没有这个进程");
     // ★ `K-R7`：本条改成 `#[ignore]` 之后由 `tests/e2e/local-backend-supervise.sh` 驱动，
     //   而那个脚本的收尾自检是「**标记数 < 跑成的测试数 ⇒ 有测试提前退出**」
@@ -559,11 +561,13 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
         wait_channel(true),
         "停了之后起不回来 —— 那就只有「停」没有「起」"
     );
-    let pid2 = crate::backend_control::backend_status(crate::inbound_client::LOCAL_ORIGIN.into())
-        .expect("查状态")
-        .get("pid")
-        .and_then(|v| v.as_u64())
-        .expect("再起之后没有 pid") as u32;
+    let pid2 = tauri::async_runtime::block_on(crate::backend_control::backend_status(
+        crate::inbound_client::LOCAL_ORIGIN.into(),
+    ))
+    .expect("查状态")
+    .get("pid")
+    .and_then(|v| v.as_u64())
+    .expect("再起之后没有 pid") as u32;
     assert!(alive(pid2), "再起给了 pid={pid2}，但 /proc 里没有");
     assert_ne!(
         pid1, pid2,
