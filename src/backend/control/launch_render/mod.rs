@@ -43,3 +43,8 @@ pub(crate) fn answer_local(args: &Value) -> Answer {
 #[cfg(test)]
 #[path = "../../../../tests/backend/control/launch_render/answers_tests.rs"]
 mod tests;
+
+// 假启动器是 POSIX shell 脚本、`ccm` 在那一形上 exec 掉子进程 ⇒ 只在 POSIX 上跑。
+#[cfg(all(test, unix))]
+#[path = "../../../../tests/backend/control/launch_render/history_resume_e2e_tests.rs"]
+mod history_resume_e2e;

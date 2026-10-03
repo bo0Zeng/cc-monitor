@@ -20,6 +20,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "new"
         },
@@ -36,7 +37,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm -- new --base"
+      "out": "ccm -- new --ccm-agent claude --base"
     },
     {
       "name": "new + 具名账号",
@@ -56,6 +57,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "new"
         },
@@ -74,7 +76,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm -- new --account z"
+      "out": "ccm -- new --ccm-agent claude --account z"
     },
     {
       "name": "只有目录没有名字 ⇒ --account-dir",
@@ -94,6 +96,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "new"
         },
@@ -112,7 +115,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm -- new --account-dir /home/u/.cc-monitor/accounts/z"
+      "out": "ccm -- new --ccm-agent claude --account-dir /home/u/.cc-monitor/accounts/z"
     },
     {
       "name": "resume + tmux + 具名账号",
@@ -132,6 +135,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "resume",
           "sid": "abc-123"
@@ -153,7 +157,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --resume abc-123 -- --ccm-tmux=cc-abc123 --account z"
+      "out": "ccm --resume abc-123 -- --ccm-tmux=cc-abc123 --ccm-agent claude --account z"
     },
     {
       "name": "resume + cwd + model",
@@ -173,6 +177,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "resume",
           "sid": "s1"
@@ -190,7 +195,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --resume s1 --model opus -- --base --cwd /w"
+      "out": "ccm --resume s1 --model opus -- --ccm-agent claude --base --cwd /w"
     },
     {
       "name": "就地 resume：外层只包那一行直路",
@@ -210,6 +215,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "resume",
           "sid": "s1"
@@ -229,7 +235,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "tmux send-keys -t '=cc-x:' 'ccm --resume s1 -- --base' Enter; tmux attach -t '=cc-x:'"
+      "out": "tmux send-keys -t '=cc-x:' 'ccm --resume s1 -- --ccm-agent claude --base' Enter; tmux attach -t '=cc-x:'"
     },
     {
       "name": "identity（--ccm-sid）",
@@ -249,6 +255,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "new"
         },
@@ -265,7 +272,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm -- new --ccm-sid=sid-1 --base"
+      "out": "ccm -- new --ccm-sid=sid-1 --ccm-agent claude --base"
     },
     {
       "name": "自定义 launcher",
@@ -285,6 +292,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "new"
         },
@@ -301,7 +309,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm -- new --base --launcher mycc"
+      "out": "ccm -- new --ccm-agent claude --base --launcher mycc"
     },
     {
       "name": "launcher 等于默认 ⇒ 不吐 --launcher",
@@ -321,6 +329,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "new"
         },
@@ -337,7 +346,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm -- new --base"
+      "out": "ccm -- new --ccm-agent claude --base"
     },
     {
       "name": "attach（不起 agent，不收修饰）",
@@ -357,6 +366,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "attach",
           "name": "cc-foo"
@@ -396,6 +406,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "new"
         },
@@ -412,7 +423,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm -- new --base --cwd '/home/用户/带 空格'"
+      "out": "ccm -- new --ccm-agent claude --base --cwd '/home/用户/带 空格'"
     },
     {
       "name": "缺无条件能力 cwd",
@@ -431,6 +442,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "new"
         },
@@ -466,6 +478,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "new"
         },
@@ -503,6 +516,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "new"
         },
@@ -538,6 +552,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "new"
         },
@@ -574,6 +589,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "resume",
           "sid": "-x"
@@ -594,6 +610,84 @@
       "out": "会话 ID \"-x\" 不合法（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）"
     },
     {
+      "name": "Codex 会话 resume（直连）",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
+      "req": {
+        "agent": "codex",
+        "action": {
+          "kind": "resume",
+          "sid": "s1"
+        },
+        "container": {
+          "kind": "none"
+        },
+        "cwd": "/p",
+        "account": {
+          "kind": "base"
+        },
+        "ccmSid": null,
+        "model": null,
+        "launcher": "codex",
+        "defaultLauncher": "codex"
+      },
+      "ok": true,
+      "out": "ccm resume s1 -- --ccm-agent codex --base --cwd /p"
+    },
+    {
+      "name": "Codex 会话选了具名账号",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
+      "req": {
+        "agent": "codex",
+        "action": {
+          "kind": "resume",
+          "sid": "s1"
+        },
+        "container": {
+          "kind": "none"
+        },
+        "cwd": "/p",
+        "account": {
+          "kind": "account",
+          "name": "z",
+          "configDir": "/home/u/.cc-monitor/accounts/z"
+        },
+        "ccmSid": null,
+        "model": null,
+        "launcher": "codex",
+        "defaultLauncher": "codex"
+      },
+      "ok": false,
+      "out": "Codex 会话还不能选账号"
+    },
+    {
       "name": "path:远端直连 resume",
       "caps": [
         "new",
@@ -611,6 +705,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "resume",
           "sid": "s1"
@@ -630,7 +725,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --resume s1 -- --account z --cwd /p"
+      "out": "ccm --resume s1 -- --ccm-agent claude --account z --cwd /p"
     },
     {
       "name": "path:远端 tmux 建会话 resume（换号重启 · 分叉）",
@@ -650,6 +745,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "resume",
           "sid": "s1"
@@ -671,7 +767,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --resume s1 -- --ccm-tmux=cc-s1 --ccm-sid=s1 --account z --cwd /p"
+      "out": "ccm --resume s1 -- --ccm-tmux=cc-s1 --ccm-sid=s1 --ccm-agent claude --account z --cwd /p"
     },
     {
       "name": "path:分叉继承源会话的目录（说不出名字）",
@@ -691,6 +787,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "resume",
           "sid": "s1"
@@ -712,7 +809,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --resume s1 -- --ccm-tmux=p-fork-cc --ccm-sid=s1 --account-dir /home/u/.cc-monitor/accounts/z --cwd /p"
+      "out": "ccm --resume s1 -- --ccm-tmux=p-fork-cc --ccm-sid=s1 --ccm-agent claude --account-dir /home/u/.cc-monitor/accounts/z --cwd /p"
     },
     {
       "name": "path:就地 resume 键进 pane 的那一行",
@@ -732,6 +829,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "resume",
           "sid": "s1"
@@ -749,7 +847,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --resume s1 -- --base"
+      "out": "ccm --resume s1 -- --ccm-agent claude --base"
     },
     {
       "name": "path:就地 resume 回落那一整串（外层只包那一行）",
@@ -769,6 +867,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "resume",
           "sid": "s1"
@@ -788,7 +887,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "tmux send-keys -t '=cc-s1:' 'ccm --resume s1 -- --base' Enter; tmux attach -t '=cc-s1:'"
+      "out": "tmux send-keys -t '=cc-s1:' 'ccm --resume s1 -- --ccm-agent claude --base' Enter; tmux attach -t '=cc-s1:'"
     },
     {
       "name": "path:远端开新会话",
@@ -808,6 +907,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "new"
         },
@@ -826,7 +926,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm -- new --ccm-tmux=w-cc --base --cwd /p"
+      "out": "ccm -- new --ccm-tmux=w-cc --ccm-agent claude --base --cwd /p"
     },
     {
       "name": "path:远端接回",
@@ -846,6 +946,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "attach",
           "name": "cc-s1"
@@ -885,6 +986,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "resume",
           "sid": "p1"
@@ -904,7 +1006,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --resume p1 -- --ccm-tmux=cc-p1 --ccm-sid=p1 --base --cwd /tmp"
+      "out": "ccm --resume p1 -- --ccm-tmux=cc-p1 --ccm-sid=p1 --ccm-agent claude --base --cwd /tmp"
     },
     {
       "name": "print-parity:newTmuxCustomLauncher",
@@ -924,6 +1026,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "new"
         },
@@ -942,7 +1045,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm -- new --ccm-tmux=cc-proj --base --cwd '/home/pi/my proj' --launcher CCMPROBE"
+      "out": "ccm -- new --ccm-tmux=cc-proj --ccm-agent claude --base --cwd '/home/pi/my proj' --launcher CCMPROBE"
     },
     {
       "name": "print-parity:attach",
@@ -962,6 +1065,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "attach",
           "name": "cc-p1"
@@ -1001,6 +1105,7 @@
         "tmux-size"
       ],
       "req": {
+        "agent": "claude",
         "action": {
           "kind": "resume",
           "sid": "p1"
@@ -1020,7 +1125,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --resume p1 --model opus -- --ccm-tmux=cc-p1 --ccm-sid=p1 --base --cwd /tmp"
+      "out": "ccm --resume p1 --model opus -- --ccm-tmux=cc-p1 --ccm-sid=p1 --ccm-agent claude --base --cwd /tmp"
     }
   ]
 }

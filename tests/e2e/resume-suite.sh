@@ -146,7 +146,7 @@ SID2="$(cat /proc/sys/kernel/random/uuid)"; S2="cc-${SID2:0:8}"
 # 执行验证交给下面非阻塞的 tmux-new 形态,两者共用同一个 Rust 载荷渲染,注入语义一致)。
 CMD2D="$(drv direct "$SID2" "$CWD_DIR" "$FAKE" "$ACCT_A")"
 echo "   direct: $CMD2D"
-echo "$CMD2D" | grep -q "^ccm --resume $SID2 -- --account-dir $ACCT_A " && ok "B2 直连命令是一行 ccm、带账号 A 目录（--account-dir $ACCT_A）" || bad "B2 直连命令缺账号 A"
+echo "$CMD2D" | grep -q "^ccm --resume $SID2 -- --ccm-agent claude --account-dir $ACCT_A " && ok "B2 直连命令是一行 ccm、带账号 A 目录（--account-dir $ACCT_A）" || bad "B2 直连命令缺账号 A"
 # tmux-new 形态(resumeTabTmux 归档分支):新建 cc-<sid8> 会话 + @ccm_sid,真执行 → argv 落 A。
 CMD2T="$(drv tmux-new "$SID2" "$CWD_DIR" "$FAKE" "$S2" "$ACCT_A")"
 echo "   tmux-new: $CMD2T"
@@ -184,7 +184,7 @@ SID4="$(cat /proc/sys/kernel/random/uuid)"; S4="cc-${SID4:0:8}"
 make_idle "$SID4" "$REMOTE_DIR" >/dev/null
 CMD4="$(drv into-existing "$SID4" "$S4" "$FAKE" -)"
 echo "   cmd: $CMD4"
-echo "$CMD4" | grep -qF -- " -- --base " && ok "B4 基座命令带 --base（ccm 清掉 shell 残留旧号,#75 复用变体逃生口）" || bad "B4 基座命令缺 --base"
+echo "$CMD4" | grep -qF -- " -- --ccm-agent claude --base " && ok "B4 基座命令带 --base（ccm 清掉 shell 残留旧号,#75 复用变体逃生口）" || bad "B4 基座命令缺 --base"
 # #75 主因:不带 pin 时的跟随解析——lastAccount 无 → 当前工作账号 current(真源 resolveFollowAccount)。
 STATE_B4='{"accounts":[{"name":"work","email":"","configDir":"'"$ACCT_A"'","isDefault":true,"mode":"isolated","exists":true,"loggedIn":true,"authKind":"subscription","authReady":true}]}'
 FOL="$(drv follow - work "$STATE_B4")"

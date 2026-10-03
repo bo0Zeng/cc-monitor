@@ -20,12 +20,15 @@
 #   · Rust  后端 `tests/backend/agents_tests.rs`（注册表 == 本表）· monitor `tests/frontend/shell/lib_env_scrub_tests.rs`（起前清洗名单 == 本表）
 #   · TS    `tests/frontend/ui/agent-profile-parity.vitest.ts`（生成物 == 本表）
 #
+# `launch_args`：ccm 起这一家时垫在交给它的那一串最前面的参数（空格分隔）。
 # 列：agent <TAB> key <TAB> value（value 为空写 `<empty>`）
 claude	default_launcher	claude
 claude	resume_kind	flag
 claude	resume_token	--resume
 claude	nested_env	CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION
+claude	launch_args	<empty>
 codex	default_launcher	codex
 codex	resume_kind	subcommand
 codex	resume_token	resume
 codex	nested_env	<empty>
+codex	launch_args	--no-daemon

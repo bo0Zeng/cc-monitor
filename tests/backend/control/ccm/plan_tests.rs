@@ -88,7 +88,10 @@ fn the_shape_of_one_launch_command_line() {
     // codex：换启动器 + **不清** claude 的嵌套标记 + cc-bus 身份配方
     assert_eq!(
         printed(&["--cwd", "/p", "--ccm-agent", "codex"]),
-        format!("{} cd '/p' && exec codex", *super::super::BUS_ID_RECIPE)
+        format!(
+            "{} cd '/p' && exec codex --no-daemon",
+            *super::super::BUS_ID_RECIPE
+        )
     );
     // 透传参数含特殊字符 ⇒ 正确 quote
     assert_eq!(
@@ -2033,4 +2036,30 @@ fn cwd_expands_a_leading_tilde_like_cwd_if() {
     assert_eq!(at(&["--cwd", "~"]), "/home/pi");
     assert_eq!(at(&["--cwd", "rel"]), "/p/rel");
     assert_eq!(at(&["--cwd", "/abs"]), "/abs");
+}
+
+/// Codex 那一趟：交给它的那一串最前面垫 `--no-daemon`（新起与 resume 都垫，透传里写了的不重复），
+/// resume 是它自己的子命令形；它没有账号这一维 ⇒ 不选号、不落默认号，`--base` 什么都不做。
+#[test]
+fn codex_runs_without_the_shared_daemon_and_without_an_account() {
+    let d = tempdir();
+    let t = table(&[("z", Some(d.as_str()), true)]);
+    let e = Env {
+        account_env: String::new(),
+        ..env()
+    };
+    let line = |a: &[&str]| render(&plan_of(a, &e, &t));
+    let bus = &*super::super::BUS_ID_RECIPE;
+    assert_eq!(
+        line(&["resume", "s1", "--ccm-agent", "codex", "--cwd", "/p"]),
+        format!("{bus} cd '/p' && exec codex --no-daemon resume s1")
+    );
+    assert_eq!(
+        line(&["--cwd", "/p", "--ccm-agent", "codex", "--base"]),
+        format!("{bus} cd '/p' && exec codex --no-daemon")
+    );
+    assert_eq!(
+        line(&["--no-daemon", "--cwd", "/p", "--ccm-agent", "codex"]),
+        format!("{bus} cd '/p' && exec codex --no-daemon")
+    );
 }

@@ -490,6 +490,7 @@ const nul = (v: unknown): unknown => (v === undefined ? null : v);
 /** 旧回包里的一个项目 ⇒ 成品里的一行（缺的格按旧消费侧的读法补齐）。 */
 function productProject(p: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {
+    agent: p.agent ?? "claude",
     projectPath: p.projectPath ?? p.path ?? "",
     projectName: p.projectName ?? p.name ?? "",
     projectDir: p.projectDir ?? "",
@@ -506,6 +507,7 @@ function productProject(p: Record<string, unknown>): Record<string, unknown> {
 /** 旧回包里的一条会话 ⇒ 成品里的一行。 */
 function productSession(e: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {
+    agent: e.agent ?? "claude",
     sessionId: e.sessionId ?? "",
     projectPath: e.projectPath ?? "",
     projectName: e.projectName ?? "",
@@ -852,7 +854,7 @@ function localLaunchOldArgs(b: Record<string, unknown>): [string, Record<string,
   const account = "account" in b ? { account: b.account } : {};
   if (action.kind === "attach") return ["render_local_attach", { tmuxName: b.tmuxName }];
   if (action.kind === "new") return ["new_local_session", { cwd: b.cwd, launcher: b.launcher, ...account }];
-  return ["resume_history_session", { sessionId: action.sid, cwd: b.cwd, launcher: b.launcher, tmuxName: b.tmuxName, ...account }];
+  return ["resume_history_session", { agent: b.agent, sessionId: action.sid, cwd: b.cwd, launcher: b.launcher, tmuxName: b.tmuxName, ...account }];
 }
 
 /** 判据手里那个 `invoke` 替身收到的全部调用里，本机起会话那几发（译回旧名字 ＋ 旧形参）。 */

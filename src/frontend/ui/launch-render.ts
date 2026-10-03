@@ -13,7 +13,7 @@ import { ControlError, exactKeys, isObj, machineName, settle, unreadable, type R
 import type { Origin } from "./ipc/origin";
 import { LOCAL_ORIGIN } from "./backend-policy";
 import { commands } from "./ipc/commands";
-import { AGENT_PROFILE } from "./agent-profile";
+import { defaultLauncherOf } from "./agent-profile";
 import type { CliRenderRequest } from "./launch-cli-wire";
 import { copyText } from "./copy-table";
 
@@ -48,6 +48,8 @@ export async function renderCli(origin: Origin, req: CliRenderRequest): Promise<
 export type LocalLaunchAction = { kind: "new" } | { kind: "resume"; sid: string } | { kind: "attach" };
 
 export interface LocalLaunchRequest {
+  /** 这个会话是哪一家（线上的 kind）。 */
+  agent: string;
   action: LocalLaunchAction;
   /** 只用来核「新起」那一格的目录在不在。 */
   cwd: string | null;
@@ -67,12 +69,13 @@ export interface LocalLaunchPlan {
 /** 问本机后端要这次拉起的那一行（不开窗口）。拒 ⇒ 抛。 */
 export async function planLocalLaunch(req: LocalLaunchRequest): Promise<LocalLaunchPlan> {
   const args = {
+    agent: req.agent,
     action: req.action,
     cwd: req.cwd,
     launcher: req.launcher,
     ...(req.account === undefined ? {} : { account: req.account }),
     tmuxName: req.tmuxName,
-    defaultLauncher: AGENT_PROFILE.defaultLauncher,
+    defaultLauncher: defaultLauncherOf(req.agent),
   };
   const body = jsonBody(args);
   const budget = budgetWithin(RENDER_BUDGET_MS);

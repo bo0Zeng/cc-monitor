@@ -13,7 +13,8 @@ const FIXTURE: &str = include_str!("fixtures/cli-golden.json");
 /// 加「只有目录」「启动期令牌」「就地 resume」三条 ok 与「缺 cwd 能力」「坏 sid」两条拒（tmux 那条拒换成「容器要 tmux」），
 /// 再加 `path:` 七条（monitor 每条远端起会话路径真发出去的那一形）。
 /// 29 → 27：「启动期令牌」那条 ok 与「坏令牌」那条拒随起会话时注的令牌删了。
-const EXPECT_CASES: usize = 27;
+/// 27 → 29：按会话的那一家起 —— Codex resume 一条 ok，Codex 选号一条拒。
+const EXPECT_CASES: usize = 29;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

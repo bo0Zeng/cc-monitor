@@ -21,7 +21,7 @@ import type { LaunchContext, LaunchModifiers } from "./launch-types";
 import type { CliRenderRequest } from "./launch-cli-wire.ts";
 import { renderCli } from "./launch-render";
 import { showActionFailureToast } from "./error-toast";
-import { AGENT_PROFILE } from "./agent-profile";
+import { defaultLauncherOf } from "./agent-profile";
 // 起新会话的名字只从一个家取：`tmux-name-mint.ts`（列名单 ＋ 铸名 ＋ 「列不出 ⇒ 不起」）。
 import { mintFreshTmuxName, refuseUnmintable } from "./tmux-name-mint";
 import { copyText } from "./copy-table";
@@ -32,9 +32,9 @@ async function renderLaunchCommand(origin: string, ctx: LaunchContext): Promise<
   return renderCli(origin, buildCliRenderRequest(ctx));
 }
 
-/** 空白 ⇒ 默认启动器（没配就是没配，不是一个判定）。字符集只在后端判。 */
-function launcherOrDefault(launcher: string): string {
-  return launcher.trim() || AGENT_PROFILE.defaultLauncher;
+/** 空白 ⇒ 那一家的默认启动器（没配就是没配，不是一个判定）。字符集只在后端判。 */
+function launcherOrDefault(agent: string, launcher: string): string {
+  return launcher.trim() || defaultLauncherOf(agent);
 }
 
 /**
@@ -43,6 +43,7 @@ function launcherOrDefault(launcher: string): string {
  */
 export function buildCliRenderRequest(ctx: LaunchContext): CliRenderRequest {
   return {
+    agent: ctx.agent,
     action:
       ctx.action.kind === "resume"
         ? { kind: "resume", sid: ctx.action.sid }
@@ -60,8 +61,8 @@ export function buildCliRenderRequest(ctx: LaunchContext): CliRenderRequest {
         : { kind: "base" },
     ccmSid: ctx.ccmSid ?? null,
     model: ctx.modelOverride ?? null,
-    launcher: launcherOrDefault(ctx.launcherOverride ?? ""),
-    defaultLauncher: AGENT_PROFILE.defaultLauncher,
+    launcher: launcherOrDefault(ctx.agent, ctx.launcherOverride ?? ""),
+    defaultLauncher: defaultLauncherOf(ctx.agent),
   };
 }
 
@@ -159,6 +160,7 @@ async function invokeLaunchOrCopyFallback(
 /** 一键 resume 远端会话：拉起成功 toast 告知；失败回退复制命令。 */
 export async function runRemoteResume(
   origin: string,
+  agent: string,
   sid: string,
   cwd: string,
   launcher: string,
@@ -167,23 +169,25 @@ export async function runRemoteResume(
   // 对齐（那边的头注逐字记着为什么要有返回值：account-ux 那次把「走到了第⑤步」当成
   // 「已 resume」）。既有调用点忽略返回值 ⇒ 行为逐字不变。
 ): Promise<boolean> {
-  return sent(await resumeDirectCore(origin, sid, cwd, launcher, mods, "expect"));
+  return sent(await resumeDirectCore(origin, agent, sid, cwd, launcher, mods, "expect"));
 }
 
 /** 同 [`runRemoteResume`]，但等那台报出会话 ⇒ 交回「等到了没有」（分叉据它才说「已分叉」）。 */
 export async function runRemoteResumeAndWait(
   origin: string,
+  agent: string,
   sid: string,
   cwd: string,
   launcher: string,
   mods: LaunchModifiers = {},
 ): Promise<LaunchWait> {
-  const o = await resumeDirectCore(origin, sid, cwd, launcher, mods, "await");
+  const o = await resumeDirectCore(origin, agent, sid, cwd, launcher, mods, "await");
   return o === "sent" ? "missed" : o;
 }
 
 async function resumeDirectCore(
   origin: string,
+  agent: string,
   sid: string,
   cwd: string,
   launcher: string,
@@ -192,7 +196,7 @@ async function resumeDirectCore(
 ): Promise<Opened> {
   let cmd: string;
   try {
-    const ctx = planResumeDirect(sid, cwd, launcher, mods);
+    const ctx = planResumeDirect(agent, sid, cwd, launcher, mods);
     cmd = await renderLaunchCommand(origin, ctx);
   } catch (err) {
     showActionFailureToast(copyText("remoteLaunchRun.resume.buildFailed"), String(err));
@@ -208,18 +212,20 @@ async function resumeDirectCore(
 /** 同 [`runRemoteResumeTmux`]，但等那台报出会话 ⇒ 交回「等到了没有」（换号重启 · 分叉据它才说成了、才记账）。 */
 export async function runRemoteResumeTmuxAndWait(
   origin: string,
+  agent: string,
   sid: string,
   cwd: string,
   launcher: string,
   name: string,
   mods: LaunchModifiers = {},
 ): Promise<LaunchWait> {
-  const o = await resumeTmuxCore(origin, sid, cwd, launcher, name, mods, "await");
+  const o = await resumeTmuxCore(origin, agent, sid, cwd, launcher, name, mods, "await");
   return o === "sent" ? "missed" : o;
 }
 
 async function resumeTmuxCore(
   origin: string,
+  agent: string,
   sid: string,
   cwd: string,
   launcher: string,
@@ -229,7 +235,7 @@ async function resumeTmuxCore(
 ): Promise<Opened> {
   let cmd: string;
   try {
-    const ctx = planResumeTmux(sid, cwd, launcher, name, mods);
+    const ctx = planResumeTmux(agent, sid, cwd, launcher, name, mods);
     cmd = await renderLaunchCommand(origin, ctx);
   } catch (err) {
     showActionFailureToast(copyText("remoteLaunchRun.resumeTmux.buildFailed"), String(err));
@@ -243,14 +249,14 @@ async function resumeTmuxCore(
 }
 
 /**
- * F96：历史页「在该目录起新会话」——远端分支。tmux 会话名由 cwd 派生、默认拉起命令由
- * `AGENT_PROFILE` 兜底，**让调用方（history.ts）既不必知道底下用不用 tmux、也不必知道
- * 默认拉起是哪个 agent**（用户 2026-07-15 硬约束）——history.ts 只传 F34 配置命令（可空）。
+ * F96：历史页「在该目录起新会话」——远端分支。tmux 会话名由 cwd 派生、默认拉起命令取那一家的默认启动器，
+ * **让调用方（history.ts）不必知道底下用不用 tmux** —— history.ts 只传起哪一家与 F34 配置命令（可空）。
  * 薄封装 F53 的 `runRemoteLauncher`，不写第二份拉起逻辑。
  * （`buildLauncherCmd` 只对 `undefined` 套默认、空串不触发，故默认在此显式兜。）
  */
 export async function runNewSessionRemote(
   origin: string,
+  agent: string,
   cwd: string,
   command: string,
   mods: LaunchModifiers = {}, // 正交修饰（configDir/accountName/modelOverride），见 launch-types.ts
@@ -266,18 +272,13 @@ export async function runNewSessionRemote(
     refuseUnmintable(origin, minted.why);
     return;
   }
-  await runRemoteLauncher(
-    origin,
-    cwd,
-    minted.name,
-    command || AGENT_PROFILE.defaultLauncher,
-    mods,
-  );
+  await runRemoteLauncher(origin, agent, cwd, minted.name, command || defaultLauncherOf(agent), mods);
 }
 
-/** F53：「在这台机开新 Claude」——在远端 tmux 会话里启动全新 Claude;失败回退复制命令。 */
+/** F53：「在这台机开新会话」——在远端 tmux 会话里起那一家的全新会话;失败回退复制命令。 */
 export async function runRemoteLauncher(
   origin: string,
+  agent: string,
   cwd: string,
   tmuxName: string,
   command: string,
@@ -285,7 +286,7 @@ export async function runRemoteLauncher(
 ): Promise<void> {
   let cmd: string;
   try {
-    const ctx = planLauncher(cwd, tmuxName, command, mods);
+    const ctx = planLauncher(agent, cwd, tmuxName, command, mods);
     cmd = await renderLaunchCommand(origin, ctx);
   } catch (err) {
     showActionFailureToast(copyText("remoteLaunchRun.launcher.buildFailed"), String(err));
@@ -301,10 +302,10 @@ export async function runRemoteLauncher(
 
 /** F51：一键 attach 到远端 tmux 会话:拉起 `ssh -t … tmux attach -t <名>`;失败回退复制命令。
  *  ccm 已装且能力齐全时走 CLI 渲染器（`ccm attach <名>`，与兜底输出逐字同构，无 #76 歧义）。 */
-export async function runRemoteAttach(origin: string, name: string): Promise<void> {
+export async function runRemoteAttach(origin: string, agent: string, name: string): Promise<void> {
   let cmd: string;
   try {
-    cmd = await renderLaunchCommand(origin, planAttach(name));
+    cmd = await renderLaunchCommand(origin, planAttach(agent, name));
   } catch (err) {
     showActionFailureToast(copyText("remoteLaunchRun.attach.buildFailed"), String(err));
     return;

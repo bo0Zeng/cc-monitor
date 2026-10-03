@@ -5,6 +5,7 @@ use super::*;
 
 fn attach_req() -> Value {
     serde_json::json!({
+        "agent": "claude",
         "action": {"kind": "attach", "name": "cc-foo"},
         "container": {"kind": "tmux", "name": "cc-foo", "send_into": false},
         "cwd": null, "account": {"kind": "base"}, "ccmSid": null, "model": null,
@@ -30,6 +31,18 @@ fn the_cli_product_is_one_cmd_and_a_refusal_is_the_refused_code() {
         "bad_args",
         "旧形状（带 `isSsh`）该被拒，不静默吞"
     );
+    // 不说是哪一家 ⇒ 收不下（不落默认那一家）；说了认不出的 ⇒ `refused`、列出认得的几家。
+    let mut no_agent = attach_req();
+    no_agent.as_object_mut().unwrap().remove("agent");
+    assert_eq!(answer_cli(&no_agent).unwrap_err().0, "bad_args");
+    let mut unknown = attach_req();
+    unknown["agent"] = serde_json::json!("gemini");
+    let (code, said) = answer_cli(&unknown).unwrap_err();
+    assert_eq!(code, "refused");
+    assert!(
+        said.contains("gemini") && said.contains("claude / codex"),
+        "{said}"
+    );
 }
 
 /// `launch-local` 的入参按形状收（缺必填 / 多一格 / 旧形状 ⇒ `bad_args`），成品 `{cmd, launchId}`。
@@ -37,13 +50,15 @@ fn the_cli_product_is_one_cmd_and_a_refusal_is_the_refused_code() {
 fn the_local_request_and_product_have_their_registered_shapes() {
     for bad in [
         serde_json::json!({"action": {"kind": "new"}}),
-        serde_json::json!({"action": {"kind": "new"}, "defaultLauncher": "claude", "x": 1}),
+        serde_json::json!({"agent": "claude", "action": {"kind": "new"}, "defaultLauncher": "claude", "x": 1}),
+        // 不说是哪一家。
+        serde_json::json!({"action": {"kind": "resume", "sid": "s-1"}, "defaultLauncher": "claude"}),
         serde_json::json!({"action": {"kind": "new"}, "agent": {"id": "claude-code", "defaultLauncher": "claude"}, "allSessions": true}),
     ] {
         assert_eq!(answer_local(&bad).unwrap_err().0, "bad_args", "{bad}");
     }
     let v = answer_local(&serde_json::json!({
-        "action": {"kind": "resume", "sid": "s-1"}, "defaultLauncher": "claude",
+        "agent": "claude", "action": {"kind": "resume", "sid": "s-1"}, "defaultLauncher": "claude",
     }))
     .unwrap();
     let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();

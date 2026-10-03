@@ -8,6 +8,7 @@ const SID: &str = "01998f2a-1234-7abc-9def-0123456789ab";
 
 fn req(action: LocalAction) -> LocalLaunchRequest {
     LocalLaunchRequest {
+        agent: "claude".into(),
         action,
         cwd: None,
         launcher: None,
@@ -47,7 +48,7 @@ fn every_local_launch_shape_is_one_ccm_line() {
     let out = plan(&r, &POSIX).unwrap();
     assert_eq!(
         out.cmd,
-        format!("ccm --resume {SID} -- --ccm-tmux=p-cc --ccm-sid={SID} --account work --ccm-launch-id {SID}")
+        format!("ccm --resume {SID} -- --ccm-tmux=p-cc --ccm-sid={SID} --ccm-agent claude --account work --ccm-launch-id {SID}")
     );
     assert_eq!(out.launch_id.as_deref(), Some(SID));
 
@@ -55,7 +56,7 @@ fn every_local_launch_shape_is_one_ccm_line() {
     r.account = named("/h/.claude-alt/work", None);
     assert_eq!(
         plan(&r, &POSIX).unwrap().cmd,
-        format!("ccm --resume {SID} -- --ccm-tmux=p-cc --ccm-sid={SID} --account-dir /h/.claude-alt/work --ccm-launch-id {SID}")
+        format!("ccm --resume {SID} -- --ccm-tmux=p-cc --ccm-sid={SID} --ccm-agent claude --account-dir /h/.claude-alt/work --ccm-launch-id {SID}")
     );
 
     // 账号 0 ⇒ `--base`；缺席 ⇒ 继承（一个账号旗标都不吐）。
@@ -76,7 +77,7 @@ fn every_local_launch_shape_is_one_ccm_line() {
     assert_eq!(tok.len(), 36);
     assert_eq!(
         out.cmd,
-        format!("ccm -- new --ccm-tmux=w-cc --ccm-launch-id {tok}")
+        format!("ccm -- new --ccm-tmux=w-cc --ccm-agent claude --ccm-launch-id {tok}")
     );
 
     // 自定义启动命令 ⇒ `--launcher`。
@@ -91,7 +92,7 @@ fn every_local_launch_shape_is_one_ccm_line() {
     d.account = Some(LaunchAccount::Base);
     assert_eq!(
         plan(&d, &POSIX).unwrap().cmd,
-        format!("ccm --resume {SID} -- --base --ccm-launch-id {SID}")
+        format!("ccm --resume {SID} -- --ccm-agent claude --base --ccm-launch-id {SID}")
     );
 
     // 接回：不起 agent ⇒ 不带身份 token。
@@ -138,7 +139,7 @@ fn windows_launches_go_the_direct_way_and_attach_is_refused() {
     r.account = named("C:\\Users\\z\\.claude-alt\\work", None);
     assert_eq!(
         plan(&r, &WINDOWS).unwrap().cmd,
-        format!("ccm --resume {SID} -- --account-dir 'C:\\Users\\z\\.claude-alt\\work' --ccm-launch-id {SID}")
+        format!("ccm --resume {SID} -- --ccm-agent claude --account-dir 'C:\\Users\\z\\.claude-alt\\work' --ccm-launch-id {SID}")
     );
     let mut a = req(LocalAction::Attach);
     a.tmux_name = Some("p-cc".into());

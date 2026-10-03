@@ -801,7 +801,7 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
 → {"id":"S2","cmd":"sessions-start","args":{
      "mode":"tmux" | "window",
      "local":true,                      // 这台是不是 monitor 所在那台（开终端那一形按它选本机 / 远端那一行）
-     "items":[{"sid":"<sid>","cwd":"/x",
+     "items":[{"agent":"claude","sid":"<sid>","cwd":"/x",
                "account":{"kind":"inherit"} | {"kind":"base"} | {"kind":"named","name":"work","configDir":"/h/.cc/work"},
                "model":null,"launcher":"claude","defaultLauncher":"claude"}]}}
 ← {"kind":"reply","id":"S1","ok":true,"data":{"results":[
@@ -1935,12 +1935,13 @@ monitor 每一条远端起会话路径（直连 resume · 建 tmux 会话 resume
 （原 monitor 的 Tauri 命令 `render_ccm_launch`〔散文墓碑〕搬进那台后端；载荷那一条随起会话只交一行 `ccm …` 删了。）
 
 ```text
-→ {"id":"c1","cmd":"launch-render-cli","args":{"action":{"kind":"resume","sid":"s1"},"container":{"kind":"tmux","name":"cc-s1","send_into":false},"cwd":"/p","account":{"kind":"account","name":"z","configDir":"/home/u/.cc-monitor/accounts/z"},"ccmSid":"s1","model":null,"launcher":"claude","defaultLauncher":"claude"}}
-← {"kind":"reply","id":"c1","ok":true,"data":{"cmd":"ccm --resume s1 -- --ccm-tmux=cc-s1 --ccm-sid=s1 --account z --cwd /p"}}
+→ {"id":"c1","cmd":"launch-render-cli","args":{"agent":"claude","action":{"kind":"resume","sid":"s1"},"container":{"kind":"tmux","name":"cc-s1","send_into":false},"cwd":"/p","account":{"kind":"account","name":"z","configDir":"/home/u/.cc-monitor/accounts/z"},"ccmSid":"s1","model":null,"launcher":"claude","defaultLauncher":"claude"}}
+← {"kind":"reply","id":"c1","ok":true,"data":{"cmd":"ccm --resume s1 -- --ccm-tmux=cc-s1 --ccm-sid=s1 --ccm-agent claude --account z --cwd /p"}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `agent` | → | **必填**：这个会话是哪一家（`claude` / `codex`）。resume 按那一家的写法渲（`--resume <sid>` · `resume <sid>`），`--ccm-agent <kind>` 恒显式写出（接回不写）；认不出 ⇒ `refused` 并列出认得的几家；那一家没有账号这一维却给了具名账号 ⇒ `refused` |
 | `action` | → | `{"kind":"new"}` · `{"kind":"resume","sid":…}` · `{"kind":"attach","name":…}` |
 | `container` | → | `{"kind":"none"}`（直路）· `{"kind":"tmux","name":…,"send_into":bool}`（建会话 / 键进已有 pane）|
 | `cwd` · `ccmSid` · `model` · `launcher` · `defaultLauncher` | → | 这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）|
@@ -1958,12 +1959,13 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 起 agent 的那几形带 `--ccm-launch-id <token>`（resume 用 sid，新起现铸一个 nonce）：`ccm` 把它放进 agent 进程环境（`CCM_LAUNCH_ID`），调用方拿它回填新会话的 sid。
 
 ```text
-→ {"id":"l1","cmd":"launch-local","args":{"action":{"kind":"new"},"cwd":"/w","launcher":null,"account":null,"tmuxName":"w-cc","defaultLauncher":"claude"}}
-← {"kind":"reply","id":"l1","ok":true,"data":{"cmd":"ccm -- new --ccm-tmux=w-cc --ccm-launch-id …","launchId":"…"}}
+→ {"id":"l1","cmd":"launch-local","args":{"agent":"claude","action":{"kind":"new"},"cwd":"/w","launcher":null,"account":null,"tmuxName":"w-cc","defaultLauncher":"claude"}}
+← {"kind":"reply","id":"l1","ok":true,"data":{"cmd":"ccm -- new --ccm-tmux=w-cc --ccm-agent claude --ccm-launch-id …","launchId":"…"}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `agent` | → | **必填**，同 `launch-render-cli` |
 | `action` | → | `{"kind":"new"}` · `{"kind":"resume","sid":…}` · `{"kind":"attach"}`（接回 `tmuxName` 那个会话，不起 agent）|
 | `cwd` | → | 只用来核「新起」那一格的目录在不在 |
 | `launcher` | → | 自定义启动命令（空 = 没设）|
@@ -2523,13 +2525,13 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 
 ```text
 → {"id":"q1","cmd":"history-projects","args":{"origin":"dev"}}
-← {"kind":"reply","id":"q1","ok":true,"data":{"rows":[{"projectPath":"/home/u/proj","projectName":"proj","projectDir":"-home-u-proj","sessionCount":3,"starredCount":1,"hiddenCount":0,"lastActivity":1727250000000,"hasLive":null,"origin":"dev"}],"notice":null}}
+← {"kind":"reply","id":"q1","ok":true,"data":{"rows":[{"agent":"claude","projectPath":"/home/u/proj","projectName":"proj","projectDir":"-home-u-proj","sessionCount":3,"starredCount":1,"hiddenCount":0,"lastActivity":1727250000000,"hasLive":null,"origin":"dev"}],"notice":null}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `origin` | → | 可缺席：那台的名字（可达表的键）。缺席 = 这台 |
-| `rows` | ← | 每项目一行：`projectPath` · `projectName` · `projectDir`（懒加载的键，原样交回 `history-sessions`）· `sessionCount` · `starredCount` / `hiddenCount`（`null` = 不知道，**不是 0**）· `lastActivity`（毫秒）· `hasLive`（`null` = 这条路上答不了）· `origin`（远端那台才有） |
+| `rows` | ← | 每项目一行：`agent`（同 `history-sessions`）· `projectPath` · `projectName` · `projectDir`（懒加载的键，原样交回 `history-sessions`）· `sessionCount` · `starredCount` / `hiddenCount`（`null` = 不知道，**不是 0**）· `lastActivity`（毫秒）· `hasLive`（`null` = 这条路上答不了）· `origin`（远端那台才有） |
 | `notice` | ← | 注解没并上的那句话；`null` = 并上了 |
 
 **错误码**：`bad_args`（`origin` 空串 / 不是串）· `failed`（这台的记录树读不动）· `unreachable`（可达表里没有那一台 / 那台问不出来 —— 带那台的名字与原因）· `too_large`。
@@ -2539,14 +2541,14 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 
 ```text
 → {"id":"q2","cmd":"history-sessions","args":{"project_dir":"-home-u-proj","origin":"dev"}}
-← {"kind":"reply","id":"q2","ok":true,"data":{"rows":[{"sessionId":"0f…","projectPath":"/home/u/proj","projectName":"proj","aiTitle":null,"firstUserExcerpt":"…","startedAt":1727250000000,"updatedAt":1727250001000,"jsonlPath":"/home/u/.claude/projects/-home-u-proj/0f….jsonl","isLive":null,"messageCountApprox":12,"isBg":false,"starred":false,"customTitle":null,"hidden":false,"origin":"dev"}],"notice":null}}
+← {"kind":"reply","id":"q2","ok":true,"data":{"rows":[{"agent":"claude","sessionId":"0f…","projectPath":"/home/u/proj","projectName":"proj","aiTitle":null,"firstUserExcerpt":"…","startedAt":1727250000000,"updatedAt":1727250001000,"jsonlPath":"/home/u/.claude/projects/-home-u-proj/0f….jsonl","isLive":null,"messageCountApprox":12,"isBg":false,"starred":false,"customTitle":null,"hidden":false,"origin":"dev"}],"notice":null}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `project_dir` | → | `history-projects` 给的那个项目键：记录树的项目目录名（不是路径；含分隔符 / `..` ⇒ `bad_args`），或合成历史的 `<kind>:<cwd>`（只在这台） |
 | `origin` | → | 同 `history-projects` |
-| `rows` | ← | 每会话一行：`sessionId` · `projectPath` · `projectName` · `aiTitle` · `firstUserExcerpt` · `startedAt` / `updatedAt`（毫秒）· `jsonlPath` · `isLive`（`null` = 答不了）· `messageCountApprox` · `isBg` · `starred` / `customTitle` / `hidden`（这台的注解）· `forkedFromSessionId` / `forkedFromMessageUuid`（`/branch` 分叉来的才有）· `origin`（远端那台才有） |
+| `rows` | ← | 每会话一行：`agent`（哪一家：记录树那一支是记录树那一家，合成历史是那一家）· `sessionId` · `projectPath` · `projectName` · `aiTitle` · `firstUserExcerpt` · `startedAt` / `updatedAt`（毫秒）· `jsonlPath` · `isLive`（`null` = 答不了）· `messageCountApprox` · `isBg` · `starred` / `customTitle` / `hidden`（这台的注解）· `forkedFromSessionId` / `forkedFromMessageUuid`（`/branch` 分叉来的才有）· `origin`（远端那台才有） |
 | `notice` | ← | 同 `history-projects` |
 
 **错误码**：`bad_args` · `failed` · `unreachable` · `too_large`。⚠ 远端那一支在那台跑 `--list-sessions <project_dir>`。
@@ -2565,7 +2567,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 | `scope` | → | 可选，`user` / `assistant`，= `--scope` |
 | `after_ms` | → | 可选，= `--after-ms` |
 | `limit` | → | 可选，= `--limit` |
-| `lines` | ← | 每命中会话一行 `SessionHits`，形状与行序同 `--search` |
+| `lines` | ← | 每命中会话一行 `SessionHits`（带 `agent`：只扫记录树 ⇒ 记录树那一家），形状与行序同 `--search` |
 
 ⚠ 选项**不在帧面另写一份语义**：这几个字段被摊回 `--include-tools` / `--scope` / `--after-ms` / `--limit`，交给 CLI 那一臂同一个解析。
 

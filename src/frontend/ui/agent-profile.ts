@@ -134,6 +134,17 @@ export function fullAgentProfile(
   };
 }
 
+/** 起这一家时的默认启动器。认不出 ⇒ 抛（同 [`fullAgentProfile`]，不回落到别的哪一家）。 */
+export function defaultLauncherOf(agent: string): string {
+  return fullAgentProfile(agent).defaultLauncher;
+}
+
+/** 这一家有没有账号这一维（选号 · 跟随上次的号只对有的那一家）。认不出 ⇒ 没有。 */
+export function agentHasAccounts(agent: string): boolean {
+  const got = lookupAgentProfile(agent);
+  return got.known && got.facts.hasAccounts;
+}
+
 /**
  * **当前 agent 那一份画像** —— 本仓今天所有 `AGENT_PROFILE.*` 的消费者走的都是它。
  *

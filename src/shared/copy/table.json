@@ -12604,6 +12604,11 @@
       "zh": "这一项设置（{id}）写不成 ccm 参数",
       "args": ["id"]
     },
+    "rsCcmInvocation.refusal.agentNoAccounts": {
+      "kind": "error",
+      "zh": "{agent} 会话还不能选账号",
+      "args": ["agent"]
+    },
     "rsCcmInvocation.refusal.attachNeedsTmux": {
       "kind": "error",
       "zh": "只能接入 tmux 里的会话",
@@ -14299,6 +14304,11 @@
       "kind": "error",
       "zh": "--account-dir 与 --account / --base 互斥",
       "args": []
+    },
+    "beArgv.validate.agentNoAccounts": {
+      "kind": "error",
+      "zh": "{agent} 还没有账号可选：不收 --account / --account-dir（--base 照收）",
+      "args": ["agent"]
     },
     "beArgv.validate.badLaunchId": {
       "kind": "error",

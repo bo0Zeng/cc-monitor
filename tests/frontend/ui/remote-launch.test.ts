@@ -41,7 +41,8 @@ const req = buildCliRenderRequest;
 const ACCT = { configDir: "/h/.claude-alt/w", accountName: "w" };
 
 test("直连 resume：没有容器、cwd 原样、具名账号带名字与目录", () => {
-  eq(req(planResumeDirect("abc-123", "/home/pi/a'b", "claude", ACCT)), {
+  eq(req(planResumeDirect("claude", "abc-123", "/home/pi/a'b", "claude", ACCT)), {
+    agent: "claude",
     action: { kind: "resume", sid: "abc-123" },
     container: { kind: "none" },
     cwd: "/home/pi/a'b",
@@ -51,37 +52,37 @@ test("直连 resume：没有容器、cwd 原样、具名账号带名字与目录
     launcher: "claude",
     defaultLauncher: AGENT_PROFILE.defaultLauncher,
   });
-  eq(req(planResumeDirect("abc-123", "   ", "claude")).cwd, null, "cwd 空白 ⇒ 不带");
+  eq(req(planResumeDirect("claude", "abc-123", "   ", "claude")).cwd, null, "cwd 空白 ⇒ 不带");
 });
 
 test("tmux 建会话 resume：容器 create、身份标记是完整 sid、名字用传进来的", () => {
-  const r = req(planResumeTmux("abc-123", "/p", "claude", "abc-123-cc", ACCT));
+  const r = req(planResumeTmux("claude", "abc-123", "/p", "claude", "abc-123-cc", ACCT));
   eq(r.container, { kind: "tmux", name: "abc-123-cc", send_into: false });
   eq(r.ccmSid, "abc-123");
 });
 
 test("就地 resume：容器 send-into、不重打身份标记、没有 cwd", () => {
-  const r = req(planResumeIntoExistingTmux("abc-123", "cc-abc", "claude", ACCT));
+  const r = req(planResumeIntoExistingTmux("claude", "abc-123", "cc-abc", "claude", ACCT));
   eq(r.container, { kind: "tmux", name: "cc-abc", send_into: true });
   eq(r.ccmSid, null);
   eq(r.cwd, null);
 });
 
 test("开新会话：动作 new、容器 create、没选账号 ⇒ 账号 0", () => {
-  const r = req(planLauncher("/p", " w-cc ", "claude"));
+  const r = req(planLauncher("claude", "/p", " w-cc ", "claude"));
   eq(r.action, { kind: "new" });
   eq(r.container, { kind: "tmux", name: "w-cc", send_into: false });
   eq(r.account, { kind: "base" });
 });
 
 test("接回：不起 agent ⇒ 不带账号修饰", () => {
-  const r = req(planAttach("cc-x"));
+  const r = req(planAttach("claude", "cc-x"));
   eq(r.action, { kind: "attach", name: "cc-x" });
   eq(r.account, { kind: "base" });
 });
 
 test("只有目录没有名字（分叉继承源会话的目录）：名字 null、目录照带", () => {
-  eq(req(planResumeDirect("s1", "/p", "claude", { configDir: "/h/x" })).account, {
+  eq(req(planResumeDirect("claude", "s1", "/p", "claude", { configDir: "/h/x" })).account, {
     kind: "account",
     name: null,
     configDir: "/h/x",
@@ -89,17 +90,17 @@ test("只有目录没有名字（分叉继承源会话的目录）：名字 null
 });
 
 test("launcher：空白 ⇒ 默认启动器；带注入字符的原样上线（字符集只在后端判）", () => {
-  eq(req(planResumeDirect("s1", "", "")).launcher, AGENT_PROFILE.defaultLauncher);
-  eq(req(planResumeDirect("s1", "", "   ")).launcher, AGENT_PROFILE.defaultLauncher);
-  eq(req(planResumeDirect("s1", "", "cc; rm -rf /")).launcher, "cc; rm -rf /", "不许悄悄换成默认那个");
+  eq(req(planResumeDirect("claude", "s1", "", "")).launcher, AGENT_PROFILE.defaultLauncher);
+  eq(req(planResumeDirect("claude", "s1", "", "   ")).launcher, AGENT_PROFILE.defaultLauncher);
+  eq(req(planResumeDirect("claude", "s1", "", "cc; rm -rf /")).launcher, "cc; rm -rf /", "不许悄悄换成默认那个");
 });
 
 test("sid 前端不判：怪值原样上线（后端那一跳拒）", () => {
-  eq(req(planResumeDirect("a; rm -rf /", "/p", "claude")).action, { kind: "resume", sid: "a; rm -rf /" });
+  eq(req(planResumeDirect("claude", "a; rm -rf /", "/p", "claude")).action, { kind: "resume", sid: "a; rm -rf /" });
 });
 
 test("模型偏好进 model 那一格", () => {
-  eq(req(planResumeDirect("s1", "", "claude", { modelOverride: "opus" })).model, "opus");
+  eq(req(planResumeDirect("claude", "s1", "", "claude", { modelOverride: "opus" })).model, "opus");
 });
 
 // F01 漂移守卫（INVARIANTS §31a）：`=名:` 精确目标形态编码在 Rust（`ccm_invocation.rs` · `control/tmux.rs::exact_target`）

@@ -65,6 +65,7 @@ export function historyOps(): Record<string, OpHandler> {
   return {
     "history-projects": (_o, req) => ({
       rows: projectsOn(req.origin).map((p) => ({
+        agent: "claude",
         projectPath: p.path,
         projectName: baseName(p.path),
         projectDir: projectDir(p.path),
@@ -82,6 +83,7 @@ export function historyOps(): Record<string, OpHandler> {
       if (!p) return { rows: [], notice: null };
       return {
         rows: p.sessions.map((s) => ({
+          agent: "claude",
           sessionId: s.sid,
           projectPath: p.path,
           projectName: baseName(p.path),
@@ -107,6 +109,7 @@ export function historyOps(): Record<string, OpHandler> {
           .filter((s) => s.hits)
           .map((s) =>
             JSON.stringify({
+              agent: "claude",
               sessionId: s.sid,
               projectPath: p.path,
               projectName: baseName(p.path),

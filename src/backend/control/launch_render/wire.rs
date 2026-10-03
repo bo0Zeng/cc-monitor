@@ -12,6 +12,8 @@ use std::collections::BTreeSet;
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct CliRenderRequest {
+    /// 这个会话是哪一家（线上的 kind）。必填：没说就不知道该怎么起，不落默认那一家。
+    pub agent: String,
     pub action: WireAction,
     pub container: WireContainer,
     pub cwd: Option<String>,
@@ -102,6 +104,7 @@ fn with_spec<T>(
         },
     };
     let spec = CliSpec {
+        agent: &req.agent,
         action,
         container,
         cwd: req.cwd.as_deref(),

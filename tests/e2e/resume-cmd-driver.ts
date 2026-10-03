@@ -22,6 +22,8 @@ import {
   planResumeDirect,
 } from "../../src/frontend/ui/launch-requests.ts";
 import { renderCmdViaProduction } from "./launch-render-driver.ts";
+// 这几套跑的是 claude 那一家（假的 claude 当启动器）。
+import { DEFAULT_AGENT } from "../../src/frontend/ui/agent-profile.ts";
 import { resolveFollowAccount, accountConfigDir } from "../../src/frontend/ui/accounts.ts";
 
 function opt(v: string | undefined): string | undefined {
@@ -34,20 +36,20 @@ try {
     case "into-existing":
       process.stdout.write(
         renderCmdViaProduction(
-          planResumeIntoExistingTmux(a[0], a[1], a[2], { configDir: opt(a[3]) }),
+          planResumeIntoExistingTmux(DEFAULT_AGENT, a[0], a[1], a[2], { configDir: opt(a[3]) }),
         ) + "\n",
       );
       break;
     case "tmux-new":
       process.stdout.write(
         renderCmdViaProduction(
-          planResumeTmux(a[0], a[1], a[2], a[3], { configDir: opt(a[4]) }),
+          planResumeTmux(DEFAULT_AGENT, a[0], a[1], a[2], a[3], { configDir: opt(a[4]) }),
         ) + "\n",
       );
       break;
     case "direct":
       process.stdout.write(
-        renderCmdViaProduction(planResumeDirect(a[0], a[1], a[2], { configDir: opt(a[3]) })) +
+        renderCmdViaProduction(planResumeDirect(DEFAULT_AGENT, a[0], a[1], a[2], { configDir: opt(a[3]) })) +
           "\n",
       );
       break;

@@ -78,9 +78,11 @@ pub(crate) const AGENT_KIND: &str = "codex";
 /// 本家的起会话事实（注册表 `Adapter.launch` 那一格）。适配器 id 就是 wire 上的 kind（这一家没有登记默认上游）；没有 shell wrapper。
 pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     adapter_id: AGENT_KIND,
+    display_name: "Codex",
     default_launcher: resume::DEFAULT_COMMAND,
     launcher_alias: None,
     resume_token: resume::RESUME_TOKEN,
+    launch_args: resume::LAUNCH_ARGS,
     nested_env: resume::NESTED_ENV,
     is_default: false,
     resume_command: resume::resume_command,

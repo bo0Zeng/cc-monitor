@@ -5,6 +5,7 @@ use super::*;
 
 fn base_spec() -> CliSpec<'static> {
     CliSpec {
+        agent: "claude",
         action: Action::New,
         container: Container::None,
         cwd: None,
@@ -23,7 +24,8 @@ fn base_spec() -> CliSpec<'static> {
 /// 判据自带的无条件能力清单（不复用 `CLI_REQUIRED_CAPS`）。
 const STATIC_CAPS_EXPECTED: &[&str] = &["new", "resume", "cwd", "launcher"];
 /// 用到才要的那几条（容器 · 接回 · 维度各自声明的）。
-const CONDITIONAL_CAPS_EXPECTED: &[&str] = &["tmux", "attach", "ccm-sid", "account", "model"];
+const CONDITIONAL_CAPS_EXPECTED: &[&str] =
+    &["tmux", "attach", "ccm-sid", "agent", "account", "model"];
 
 fn caps_all() -> BTreeSet<String> {
     STATIC_CAPS_EXPECTED
@@ -103,6 +105,13 @@ fn every_refusal_reason_is_pinned_byte_for_byte() {
             "这台机器上的 ccm 做不到这样起会话（缺 tmux）".into(),
         ),
         (Refusal::AttachNeedsTmux, "只能接入 tmux 里的会话".into()),
+        (Refusal::UnknownAgent("那一句".into()), "那一句".into()),
+        (
+            Refusal::AgentNoAccounts {
+                agent: "Codex".into(),
+            },
+            "Codex 会话还不能选账号".into(),
+        ),
         (
             Refusal::DimensionCannotSpeak("account".into()),
             "这一项设置（account）写不成 ccm 参数".into(),
@@ -145,7 +154,7 @@ fn every_refusal_reason_is_pinned_byte_for_byte() {
         .filter(|l| l.chars().next().is_some_and(char::is_uppercase))
         .map(|l| l.split(['(', ' ', ',', '{']).next().unwrap())
         .collect();
-    assert_eq!(variants.len(), 6, "抠到的变体：{variants:?}");
+    assert_eq!(variants.len(), 8, "抠到的变体：{variants:?}");
     for v in &variants {
         assert!(
             pairs.iter().any(|(r, _)| format!("{r:?}").starts_with(v)),
@@ -162,14 +171,17 @@ fn the_account_dimension_has_its_five_shapes() {
         s.account = a;
         render(&s)
     };
-    assert_eq!(with(CliAccount::Base).unwrap(), "ccm -- new --base");
+    assert_eq!(
+        with(CliAccount::Base).unwrap(),
+        "ccm -- new --ccm-agent claude --base"
+    );
     assert_eq!(
         with(CliAccount::Named {
             name: Some("z"),
             config_dir: Some("/h/.claude-alt/z")
         })
         .unwrap(),
-        "ccm -- new --account z"
+        "ccm -- new --ccm-agent claude --account z"
     );
     assert_eq!(
         with(CliAccount::Named {
@@ -177,9 +189,12 @@ fn the_account_dimension_has_its_five_shapes() {
             config_dir: Some("/h/.claude-alt/z")
         })
         .unwrap(),
-        "ccm -- new --account-dir /h/.claude-alt/z"
+        "ccm -- new --ccm-agent claude --account-dir /h/.claude-alt/z"
     );
-    assert_eq!(with(CliAccount::Inherit).unwrap(), "ccm -- new");
+    assert_eq!(
+        with(CliAccount::Inherit).unwrap(),
+        "ccm -- new --ccm-agent claude"
+    );
     assert_eq!(
         with(CliAccount::Named {
             name: None,
@@ -193,6 +208,7 @@ fn the_account_dimension_has_its_five_shapes() {
 #[test]
 fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
     let spec = CliSpec {
+        agent: "claude",
         action: Action::Resume { sid: "s1" },
         container: Container::Tmux {
             name: "cc-s1",
@@ -215,7 +231,7 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
     assert_eq!(
         render(&spec).unwrap(),
         format!(
-            "ccm --resume s1 --model opus --verbose -- --ccm-tmux=cc-s1 --ccm-sid=s1 --account z \
+            "ccm --resume s1 --model opus --verbose -- --ccm-tmux=cc-s1 --ccm-sid=s1 --ccm-agent claude --account z \
              --ccm-launch-id s1 --cwd '/w d' --launcher 'ccr code'"
         )
     );
@@ -228,7 +244,7 @@ fn identity_tokens_ride_only_when_an_agent_starts() {
     s.launch_id = Some("id-1");
     assert_eq!(
         render(&s).unwrap(),
-        "ccm -- new --base --ccm-launch-id id-1"
+        "ccm -- new --ccm-agent claude --base --ccm-launch-id id-1"
     );
     s.action = Action::Attach { name: "cc-x" };
     s.container = Container::Tmux {
@@ -359,4 +375,84 @@ fn argv_leaves_the_allowed_characters_bare_and_quotes_the_rest() {
     for t in ["", "a b", "a'b", "a$b", "文"] {
         assert_eq!(argv(t), shell_quote_core::posix_quote(t), "{t:?}");
     }
+}
+
+/// 按会话的那一家渲：resume 用那一家的写法（Codex 是子命令 `resume <sid>`），`--ccm-agent` 恒显式（Claude 也写）。
+/// 旧形（不说是哪一家、一律 `--resume`）在这里不可能再渲出来。
+#[test]
+fn resume_is_written_the_way_that_agent_resumes_and_the_agent_is_always_said() {
+    let mut s = base_spec();
+    s.action = Action::Resume { sid: "s1" };
+    s.cwd = Some("/w");
+    s.agent = "codex";
+    assert_eq!(
+        render(&s).unwrap(),
+        "ccm resume s1 -- --ccm-agent codex --base --cwd /w"
+    );
+    s.agent = "claude";
+    assert_eq!(
+        render(&s).unwrap(),
+        "ccm --resume s1 -- --ccm-agent claude --base --cwd /w"
+    );
+    // 起新会话也说是哪一家；接回不起 agent ⇒ 不写。
+    let mut n = base_spec();
+    n.agent = "codex";
+    assert_eq!(render(&n).unwrap(), "ccm -- new --ccm-agent codex --base");
+    n.action = Action::Attach { name: "cc-x" };
+    n.container = Container::Tmux {
+        name: "cc-x",
+        send_into: false,
+    };
+    assert_eq!(render(&n).unwrap(), "ccm -- --attach cc-x");
+    // 说不出是哪一家（空 · 带空白 · 注册表里没有）⇒ 拒，那一句列出认得的几家；不落默认那一家。
+    for bad in ["", " codex", "gemini"] {
+        let mut b = base_spec();
+        b.agent = bad;
+        b.action = Action::Resume { sid: "s1" };
+        match render(&b) {
+            Err(Refusal::UnknownAgent(said)) => {
+                assert!(said.contains("claude / codex"), "{bad:?}：{said}")
+            }
+            other => panic!("{bad:?} 没被拒：{other:?}"),
+        }
+    }
+}
+
+/// 没有账号这一维的那一家（Codex）：具名账号 ⇒ 拒、明说；`--base` / 继承照常渲。Claude 选号照旧。
+#[test]
+fn an_agent_without_accounts_refuses_a_named_account_and_says_so() {
+    let mut s = base_spec();
+    s.agent = "codex";
+    s.action = Action::Resume { sid: "s1" };
+    for named in [
+        CliAccount::Named {
+            name: Some("z"),
+            config_dir: None,
+        },
+        CliAccount::Named {
+            name: None,
+            config_dir: Some("/h/.claude-alt/z"),
+        },
+    ] {
+        s.account = named;
+        let r = render(&s);
+        assert_eq!(
+            r,
+            Err(Refusal::AgentNoAccounts {
+                agent: "Codex".into()
+            })
+        );
+        assert_eq!(r.unwrap_err().reason(), "Codex 会话还不能选账号");
+    }
+    s.account = CliAccount::Inherit;
+    assert_eq!(render(&s).unwrap(), "ccm resume s1 -- --ccm-agent codex");
+    s.agent = "claude";
+    s.account = CliAccount::Named {
+        name: Some("z"),
+        config_dir: None,
+    };
+    assert_eq!(
+        render(&s).unwrap(),
+        "ccm --resume s1 -- --ccm-agent claude --account z"
+    );
 }

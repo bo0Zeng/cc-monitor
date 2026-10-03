@@ -111,7 +111,7 @@ describe("restartWithAccount（A5 换号重启编排 · §5）", () => {
     // 编排发出的控制调用恰好只有 kill 一发：再敲回 `Escape` / `/exit`（或任何按键）这里就红。
     const control = invokeMock.mock.calls.filter((c) => c[0] === "tmux_send_keys" || c[0] === "kill_remote_tmux");
     expect(control).toEqual([["kill_remote_tmux", { origin: "devbox", target: "cc-s1abcdef" }]]);
-    expect(resumeTmux).toHaveBeenCalledWith("devbox", "s1", "/w", "cct", "cc-s1abcdef", { configDir: "/h/z", accountName: "z", modelOverride: undefined });
+    expect(resumeTmux).toHaveBeenCalledWith("devbox", "claude", "s1", "/w", "cct", "cc-s1abcdef", { configDir: "/h/z", accountName: "z", modelOverride: undefined });
     expect(recordLast).toHaveBeenCalledWith("s1", "z");
   });
 
@@ -194,7 +194,7 @@ describe("A5/Phase G：resume 真失败时不得上报成功", () => {
     vi.mocked(getModelForAccount).mockResolvedValue("opus");
     invokeMock.mockResolvedValue(undefined);
     await restartWithAccount(baseOpts({ confirm: () => true }));
-    expect(resumeTmux).toHaveBeenCalledWith("devbox", "s1", "/w", "cct", "cc-s1abcdef", {
+    expect(resumeTmux).toHaveBeenCalledWith("devbox", "claude", "s1", "/w", "cct", "cc-s1abcdef", {
       configDir: "/h/z",
       accountName: "z",
       modelOverride: "opus",
@@ -218,6 +218,7 @@ describe("A3 本机换号重启（origin = <local>）", () => {
     expect(invokeMock).toHaveBeenCalledWith("kill_remote_tmux", { origin: LOCAL, target: "proj-cc" });
     expect(resumeTmux).not.toHaveBeenCalled();
     expect(payloadOf("resume_history_session")).toEqual({
+      agent: "claude",
       sessionId: "s1",
       cwd: "/w",
       launcher: null, // 设置里没配本机 resume 命令 ⇒ 交 null，由后端用默认

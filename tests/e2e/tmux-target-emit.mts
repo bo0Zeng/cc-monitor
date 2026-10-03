@@ -20,14 +20,15 @@ import {
   planLauncher,
 } from "../../src/frontend/ui/launch-requests.ts";
 import { renderCmdViaProduction } from "./launch-render-driver.ts";
+import { DEFAULT_AGENT } from "../../src/frontend/ui/agent-profile.ts";
 
 const out: Record<string, string> = {
   // 新建自己的 tmux（兄弟名 cc-p1-2 已存在时，绝不能碰它）
-  resumeTmux: renderCmdViaProduction(planResumeTmux("p1", "", "CCMPROBE", "cc-p1")),
+  resumeTmux: renderCmdViaProduction(planResumeTmux(DEFAULT_AGENT, "p1", "", "CCMPROBE", "cc-p1")),
   // 往「已存在的 cc-p1」就地 send-keys —— cc-p1 不存在时必须失败，绝不能落进 cc-p1-2
-  resumeIntoExisting: renderCmdViaProduction(planResumeIntoExistingTmux("p1", "cc-p1", "CCMPROBE")),
-  attach: renderCmdViaProduction(planAttach("cc-p1")),
+  resumeIntoExisting: renderCmdViaProduction(planResumeIntoExistingTmux(DEFAULT_AGENT, "p1", "cc-p1", "CCMPROBE")),
+  attach: renderCmdViaProduction(planAttach(DEFAULT_AGENT, "cc-p1")),
   // 起新会话（posixQuote 名路径，与上面的裸名路径是两条不同的引号分支）
-  launcher: renderCmdViaProduction(planLauncher("", "cc-p1", "CCMPROBE")),
+  launcher: renderCmdViaProduction(planLauncher(DEFAULT_AGENT, "", "cc-p1", "CCMPROBE")),
 };
 for (const [k, v] of Object.entries(out)) console.log(`${k}\t${v}`);

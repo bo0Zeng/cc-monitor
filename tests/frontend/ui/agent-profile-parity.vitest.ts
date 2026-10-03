@@ -410,3 +410,34 @@ describe("界面上的 agent 名单只从后端注册表来", () => {
     SCAN_TIMEOUT_MS,
   );
 });
+
+describe("起会话按会话的那一家取画像", () => {
+  it(
+    "★ 界面生产段里 `AGENT_PROFILE`（当前那一家的画像）只剩 agent-profile.ts 自己；拼起法意图（`launcherOverride:`）只在 launch-requests.ts",
+    () => {
+      const profile = /\bAGENT_PROFILE\b(?!_)/;
+      const ctx = /\blauncherOverride\s*:/;
+      // 正控：从前的写法认得出；画像表与类型声明不算。
+      expect(profile.test("launcher = AGENT_PROFILE.defaultLauncher")).toBe(true);
+      expect(profile.test("AGENT_PROFILE_TABLE.map(f)")).toBe(false);
+      expect(ctx.test("return { action, launcherOverride: launcher, ccmSid };")).toBe(true);
+      const files = productionTsFiles("src/frontend/ui");
+      expect(files.length, "扫描面塌了").toBeGreaterThan(100);
+      const profileAt: string[] = [];
+      const ctxAt: string[] = [];
+      for (const { file, text } of files) {
+        const code = stripComments(text, "ts");
+        if (profile.test(code)) profileAt.push(file);
+        if (ctx.test(code)) ctxAt.push(file);
+      }
+      expect(profileAt, "起法又按「当前那一家」取启动器了 —— 按会话的 agent 取（`defaultLauncherOf(agent)`）").toEqual([
+        "src/frontend/ui/agent-profile.ts",
+      ]);
+      expect(ctxAt.sort(), "起法意图只许在 launch-requests.ts 拼（类型声明在 launch-types.ts）").toEqual([
+        "src/frontend/ui/launch-requests.ts",
+        "src/frontend/ui/launch-types.ts",
+      ]);
+    },
+    SCAN_TIMEOUT_MS,
+  );
+});

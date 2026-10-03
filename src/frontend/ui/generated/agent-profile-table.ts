@@ -18,6 +18,8 @@ export type AgentProfileRow = {
   resumeKind: "flag" | "subcommand";
   resumeToken: string;
   nestedEnvVars: string[];
+  /** 这一家有没有账号这一维（选号 · 跟随上次的号只对有的那一家）。 */
+  hasAccounts: boolean;
 };
 
 export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
@@ -29,6 +31,7 @@ export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
     resumeKind: "flag",
     resumeToken: "--resume",
     nestedEnvVars: ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION"],
+    hasAccounts: true,
   },
   {
     agent: "codex",
@@ -38,6 +41,7 @@ export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
     resumeKind: "subcommand",
     resumeToken: "resume",
     nestedEnvVars: [],
+    hasAccounts: false,
   },
 ];
 

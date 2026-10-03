@@ -174,9 +174,11 @@ pub(crate) const SESSION_NAME_PREFIX: &str = "fk";
 /// 通用层若在哪一格上按名字认人，喂这一家就会答错（`fake_tests.rs` 的 ccm 规划那几条）。
 pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     adapter_id: AGENT_KIND,
+    display_name: "Fake",
     default_launcher: DEFAULT_COMMAND,
     launcher_alias: None,
     resume_token: RESUME_TOKEN,
+    launch_args: &[],
     nested_env: &["FAKEAGENT_PARENT"],
     is_default: false,
     resume_command,
