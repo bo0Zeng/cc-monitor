@@ -54,12 +54,47 @@ use crate::common::tmux_utf8::{tab_underflow, UTF8_CLIENT_FLAG};
 pub(crate) type CmdErr = (&'static str, String);
 
 /// 快照里的一行：**只有名字与 `@ccm_sid`**（为什么不带 `session_id` 见模块头注）。
+///
+/// `@ccm_sid` 打在**窗格**上（一个会话里可以跑几个 claude）⇒ 一行 = 一个会话 × 它里面挂着的一个 sid：
+/// 挂着几个就几行（活动窗格那个在前），一个都没挂 ⇒ 一行空 sid（会话本身还在）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SessionRow {
     /// `#{session_name}`。
     pub(crate) name: String,
-    /// `@ccm_sid` 的值。未设置 ⇒ 空串（= 那个会话不是 `ccm` 起的，或还没绑 sid）。
+    /// 这个会话某个窗格上 `@ccm_sid` 的值。一个都没挂 ⇒ 空串（= 不是 `ccm` 起的，或还没绑 sid）。
     pub(crate) ccm_sid: String,
+}
+
+/// 一个会话里挂着的 sid：活动窗格那个（`active` ＝ 会话上下文里的 `#{@ccm_sid}`）在前，其余按窗口 / 窗格序
+/// （`all` ＝ `#{W:#{P:#{@ccm_sid} }}` 的展开：逐窗口、逐窗格，空格分隔，没挂的窗格是空段；窗格上没有自己的值时
+/// tmux 往上取会话那一级的，那也算挂着）；去重；只认 sid 字符集（极老 tmux 不展开、原样留 `#{…}` 字面量 ⇒ 不当 sid）。
+pub(crate) fn pane_sids(active: &str, all: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for s in std::iter::once(active).chain(all.split(' ')).map(str::trim) {
+        let shaped = !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+        if shaped && !out.iter().any(|o| o == s) {
+            out.push(s.to_string());
+        }
+    }
+    out
+}
+
+/// 一个会话 ⇒ 快照行（见 [`SessionRow`]）。
+pub(crate) fn rows_of(name: &str, sids: Vec<String>) -> Vec<SessionRow> {
+    if sids.is_empty() {
+        return vec![SessionRow {
+            name: name.to_string(),
+            ccm_sid: String::new(),
+        }];
+    }
+    sids.into_iter()
+        .map(|ccm_sid| SessionRow {
+            name: name.to_string(),
+            ccm_sid,
+        })
+        .collect()
 }
 
 /// **已被占用的会话名。** 字段刻意是模块私有的 —— 本模块之外造不出一份。
@@ -75,7 +110,7 @@ impl TakenNames {
         &self.0
     }
 
-    /// claude 会话 `sid` 正在哪个 tmux 会话里跑（`@ccm_sid` 对上）；没有 ⇒ `None`。
+    /// claude 会话 `sid` 正在哪个 tmux 会话里跑（某个窗格的 `@ccm_sid` 对上）；没有 ⇒ `None`。
     /// 与避让同一份快照（同一次探测）⇒ `ccm --ccm-print` 与真跑对「在跑」也同答。
     pub(crate) fn running(&self, sid: &str) -> Option<&str> {
         self.1
@@ -119,10 +154,9 @@ impl SessionSnapshot {
     /// 铸名避让要的那份「已占用的名字」。**同样会触发一次更新**（它就是 `query` 的投影）。
     pub(crate) fn taken_names(&self) -> Result<TakenNames, CmdErr> {
         let rows = self.query()?;
-        Ok(TakenNames(
-            rows.iter().map(|r| r.name.clone()).collect(),
-            rows,
-        ))
+        let mut names: Vec<String> = rows.iter().map(|r| r.name.clone()).collect();
+        names.dedup();
+        Ok(TakenNames(names, rows))
     }
 
     /// 观测方把刚看到的一份**焐进来**。
@@ -160,13 +194,12 @@ pub(crate) fn global() -> &'static SessionSnapshot {
     ONE.get_or_init(|| SessionSnapshot::new(Box::new(probe_tmux)))
 }
 
-/// 探测格式串。**两列**用 TAB 分隔 —— 会话名被 tmux 转义成字面 `\t`、
-/// `@ccm_sid` 的字符集在 `launch::parse_request` 里收到了 `[A-Za-z0-9_-]`
-/// ⇒ 下溢与过溢都不会由合法内容触发，下溢只可能是打印通道被改写。
-const LIST_FMT: &str = "#{session_name}\t#{@ccm_sid}";
+/// 探测格式串。**三列**用 TAB 分隔：会话名（tmux 转义成字面 `\t`）· 活动窗格的 `@ccm_sid` · 各窗格的 `@ccm_sid`
+/// （见 [`pane_sids`]，sid 字符集 `[A-Za-z0-9_-]`）⇒ 下溢与过溢都不会由合法内容触发，下溢只可能是打印通道被改写。
+const LIST_FMT: &str = "#{session_name}\t#{@ccm_sid}\t#{W:#{P:#{@ccm_sid} }}";
 
 /// `LIST_FMT` 的列数 —— [`tab_underflow`] 的 N。**改格式串必须同步这个数。**
-const LIST_FMT_FIELDS: usize = 2;
+const LIST_FMT_FIELDS: usize = 3;
 
 /// 全 crate **唯一**一处「一次列全部 tmux 会话」的起进程点。
 ///
@@ -219,11 +252,13 @@ fn parse_rows(text: &str) -> Vec<SessionRow> {
             if name.is_empty() {
                 return None;
             }
-            Some(SessionRow {
-                name: name.to_string(),
-                ccm_sid: it.next().unwrap_or_default().trim().to_string(),
-            })
+            let active = it.next().unwrap_or_default();
+            Some(rows_of(
+                name,
+                pane_sids(active, it.next().unwrap_or_default()),
+            ))
         })
+        .flatten()
         .collect()
 }
 

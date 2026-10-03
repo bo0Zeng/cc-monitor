@@ -140,6 +140,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     child_link: Some(runs::child_link),
     children: Some(super::ChildFace {
         sources: runs::sources,
+        owner: runs::owner,
         hint: runs::hint,
     }),
     project_dir: Some(parse::project_dir),

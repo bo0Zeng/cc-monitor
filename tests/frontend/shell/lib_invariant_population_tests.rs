@@ -210,8 +210,8 @@ const TMUX_PRINT_SITES: &[(&str, &str, Carry, usize, &str)] = &[
     ("src/shared/cc-bus/scripts/cc-whoami", "display-message", Carry::Flag, 1, "读 `#{session_name}` 当身份 ⇒ 旗（非 UTF-8 客户端下中文被改写成 `_`，消毒之后与 UTF-8 客户端下的身份不同）；真跑判据 `backend-cc-bus.sh` [SH1-a]"),
     ("src/shared/cc-bus/scripts/cc-whoami", "list-sessions", Carry::Flag, 1, "`#{session_id} #{session_name}` ⇒ 旗（同上）"),
     ("src/shared/cc-bus/scripts/cc-whoami", "list-panes", Carry::Flag, 1, "`#{pane_pid} #{session_name}` ⇒ 旗（同上）"),
-    ("src/backend/control/kill.rs", "list-panes", Carry::Flag, 1, "argv；杀之前读这个会话全部 pane 的根进程 pid（数字，照表仍带旗）"),
-    ("src/backend/control/terminals.rs", "list-sessions", Carry::Flag, 1, "argv；终端名单读会话名 · 工作目录 · 窗格标题（可以非 ASCII）⇒ 旗"),
+    ("src/backend/control/gate.rs", "list-panes", Carry::Flag, 1, "argv；按 sid 找窗格：读这个会话各窗格的句柄 · 根进程 pid · `@ccm_sid`（ASCII，照表仍带旗）"),
+    ("src/backend/control/terminals.rs", "list-panes", Carry::Flag, 1, "argv；终端名单逐窗格读会话名 · 工作目录 · 窗格标题（可以非 ASCII）⇒ 旗"),
     ("src/backend/control/terminals.rs", "list-clients", Carry::Flag, 1, "argv；读会话 ID 与两个时刻（ASCII，照表仍带旗）"),
     ("src/backend/control/terminals.rs", "display-message", Carry::Flag, 1, "argv；预览问尺寸与光标（数字，照表仍带旗）"),
 ];
@@ -385,9 +385,10 @@ const QUOTE_SITES: &[QuoteRow] = &[
     //   token 在 `argv.rs::validate` 进门判（段闸 `segment_is_safe`）；中转地址是本侧上游选择出的。
     // 35 → 34：信任框那段轮询删了（收尾不再替用户按键）⇒ 它认的那句话那一处 quote 跟着没了。
     // 34 → 32：容器路不再把外层的中转地址渲回读钥匙文件那一形（那三处 quote 随那个函数删了），只原样转用户自己的端点（一处）。
+    // 32 → 31：接进一个会话的那一行（在 tmux 里 switch-client、不在 attach）三处共用一个函数，`--attach` 那一形自己那一处 quote 并进去了。
     (
         "src/backend/control/ccm/plan.rs",
-        32,
+        31,
         &[
             ("src/backend/control/ccm/plan.rs", "validate_tmux_name"),
             ("src/backend/control/ccm/plan.rs", "free_text_gate"),

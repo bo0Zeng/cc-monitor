@@ -530,6 +530,12 @@ pub(crate) fn plan_isolate(s: &Snapshot, item: &str) -> Result<Plan, Refusal> {
             &[("item", item)],
         )));
     }
+    if face().is_some_and(|f| f.watched.contains(&item)) {
+        return Err(refused(copy_text(
+            "beAcctPlan.isolate.watched",
+            &[("item", item)],
+        )));
+    }
     let m = need_manifest(s)?;
     let r = s.roots();
     if !s.shared.get(item).exists() {

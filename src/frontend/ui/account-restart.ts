@@ -109,7 +109,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
       { level: "info", durationMs: 8000 },
     );
     try {
-      await sendKeys(origin, tmuxName, "/compact");
+      await sendKeys(origin, tmuxName, "/compact", sessionId);
       const done = opts.awaitCompact
         ? await opts.awaitCompact()
         : await delay(DEFAULT_COMPACT_WAIT_MS).then(() => false);
@@ -132,7 +132,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   // ④ 结束旧会话（`tmux-control.ts::killSession`，关卡 2 在那台后端）。不再先发 `Escape` ＋ `/exit` 等它自己退：
   //   直接杀。**失败 → 中止不续 ⑤**（避免新旧两进程抢同一会话；§5.2 ④）。
   try {
-    await killSession(origin, tmuxName);
+    await killSession(origin, tmuxName, sessionId);
   } catch (e) {
     const said = copyText("accountRestart.aborted.body", { e: saidOfControl(e) });
     // 关卡 2 拒的 ⇒ 「对齐后重试」：只对这个会话重验 ＋ 重打，再从头走一遍（二次确认照问）。

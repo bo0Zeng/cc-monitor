@@ -686,7 +686,88 @@ fn every_value_that_reaches_a_shell_is_quoted() {
 /// 〔搬自 `ccm-print-parity`「attach 到 cc-p1」〕—— `=名:` 是 tmux 的**精确匹配**形。
 #[test]
 fn attach_uses_the_exact_match_target() {
-    assert_eq!(printed(&["--attach", "cc-p1"]), "tmux attach -t '=cc-p1:'"); // `attach <名>` 写作 `--attach <名>`
+    // `attach <名>` 写作 `--attach <名>`
+    assert_eq!(
+        printed(&["--attach", "cc-p1"]),
+        "if [ -n \"${TMUX:-}\" ]; then tmux switch-client -t '=cc-p1:'; else tmux attach -t '=cc-p1:'; fi"
+    );
+}
+
+/// 已经在 tmux 里敲给了名字的那几形（`--attach <名>` · `--ccm-tmux=<名>` · `--tmux-base <基名>`）：接进去用 `switch-client`
+/// （在 tmux 里 `attach` 是拒的 ⇒ 会话建了、claude 起了，ccm 却 rc 1、人还留在原窗格）；不在 tmux 里照旧 `attach`。
+/// 拿渲好的那一段真跑（假 tmux 记下子命令）。
+#[cfg(unix)]
+#[test]
+fn naming_a_session_from_inside_tmux_switches_the_client() {
+    let dir = std::env::temp_dir().join(format!("ccm-w5-join-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let log = dir.join("said");
+    let fake = dir.join("tmux");
+    std::fs::write(
+        &fake,
+        format!("#!/bin/sh\necho \"$1\" >> '{}'\n", log.display()),
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let tail_of = |args: &[&str]| -> String {
+        let Plan::Container(c) = plan_of(args, &env(), &AccountTable::default()) else {
+            panic!("该是容器路：{args:?}")
+        };
+        render_container_tail(&c)
+    };
+    let joins = [
+        ("--attach", printed(&["--attach", "cc-p1"])),
+        (
+            "--ccm-tmux=<名>",
+            tail_of(&["--ccm-tmux=n1", "--cwd", "/p"]),
+        ),
+        (
+            "--tmux-base",
+            tail_of(&["--tmux-base", "tb", "--cwd", "/p"]),
+        ),
+    ];
+    let mut got = Vec::new();
+    for (what, rendered) in &joins {
+        let Some(at) = rendered.find("if [ -n \"${TMUX:-}\" ]") else {
+            got.push(format!("{what}: 没有按在不在 tmux 里分开"));
+            continue;
+        };
+        let join = &rendered[at..];
+        for inside in [Some("/tmp/x,1,0"), None] {
+            let _ = std::fs::remove_file(&log);
+            let mut sh = std::process::Command::new("/bin/sh");
+            sh.arg("-c")
+                .arg(join)
+                .env("PATH", format!("{}:/usr/bin:/bin", dir.display()))
+                .env_remove("TMUX");
+            if let Some(t) = inside {
+                sh.env("TMUX", t);
+            }
+            sh.status().expect("起不来 sh");
+            let said = std::fs::read_to_string(&log).unwrap_or_default();
+            got.push(format!(
+                "{what} {}: {}",
+                if inside.is_some() { "在里" } else { "在外" },
+                said.trim()
+            ));
+        }
+    }
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(
+        got,
+        vec![
+            "--attach 在里: switch-client",
+            "--attach 在外: attach",
+            "--ccm-tmux=<名> 在里: switch-client",
+            "--ccm-tmux=<名> 在外: attach",
+            "--tmux-base 在里: switch-client",
+            "--tmux-base 在外: attach",
+        ]
+    );
 }
 
 /// 🔴 `KR58D3` —— 不给 `--cwd` 的默认是**恒等**：就是调用方自己的 cwd，一层都不跳。

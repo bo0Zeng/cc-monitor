@@ -11,6 +11,7 @@
 //!
 //! 「怎么问那台 `@ccm_sid`」住 `gate.rs::probe`（就在那台机器上 argv 直传跑一次 `tmux display-message`）；
 //! 本模块不起进程、不碰 tmux、不认识 shell。
+//! 请求指了 sid 时，喂进来的是挂着它的那个窗格上的 `@ccm_sid`（一个 tmux 会话里可以有几个 claude 窗格，活动窗格是谁不算数）。
 //!
 //! # ⚠ `@ccm_sid` 不是 `@ccm_sid_expect`
 //!

@@ -26,8 +26,8 @@ export function closePanePreview(): void {
   }
 }
 
-/** 打开 [origin] 的 tmux 会话 `target` 的画面预览。 */
-export async function openPanePreview(origin: string, target: string): Promise<void> {
+/** 打开 [origin] 的 tmux 会话 `target` 的画面预览（给了 `sid` ⇒ 挂着它的那个窗格）。 */
+export async function openPanePreview(origin: string, target: string, sid?: string): Promise<void> {
   closePanePreview(); // 一次只一个
 
   const overlay = document.createElement("div");
@@ -76,7 +76,7 @@ export async function openPanePreview(origin: string, target: string): Promise<v
     refreshBtn.disabled = true;
     if (!loaded) pre.textContent = copyText("panePreview.body.loading");
     try {
-      const text = await capturePane(origin, target);
+      const text = await capturePane(origin, target, sid);
       if (current !== overlay) return; // 抓取途中被关/换
       pre.textContent = text.length > 0 ? text : copyText("panePreview.body.empty");
       loaded = true;

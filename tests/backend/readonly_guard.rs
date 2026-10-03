@@ -2792,10 +2792,10 @@ mod spawn_registry {
         (
             "control/kill.rs",
             "tmux",
-            "F04a：`kill-session`（argv 直传）。**破坏性**，但改的是 **tmux server 的运行期状态**，\
-             不是后端自己写用户既有数据；且必须先过 §34 三道门（Gate 3 = 单窗口）。\
-同一份文件另有一处**只读**的 `list-panes -F '#{pane_pid}'`（过门之后、杀之前读这个会话的 pane 根进程 pid，\
-             杀成之后按它从 cc-bus 名册认人 ⇒ `cc-kill` 经 `plugin/invoke.rs` 那条转调，写面记在那一条里）",
+            "F04a：`kill-session` / `kill-pane`（argv 直传；会话里还有别的 claude 窗格时只结束挂着那个 sid 的窗格）。\
+             **破坏性**，但改的是 **tmux server 的运行期状态**，不是后端自己写用户既有数据；且必须先过 §34 三道门（Gate 3 = 单窗口）。\
+             杀之前读 pane 根进程 pid（杀成之后按它从 cc-bus 名册认人 ⇒ `cc-kill` 经 `plugin/invoke.rs` 那条转调，写面记在那一条里）\
+             走 `control/gate.rs` 那一处只读的 `list-panes`，本文件只这一处起进程",
             "缩性质",
             "§34 那三道门有任何一道被拆掉、或「杀会话」不再由后端发起的那天，\
              这一条要回来重判（它是本表里唯一**破坏性**的 tmux 动作）。",
@@ -2809,7 +2809,9 @@ mod spawn_registry {
              ⚠ **`K-R96`（09-12）：这一条从前还盖着第二处** —— P4f 续刀那条 \
              `list-sessions -F`（一次列全部会话）。用户 `R52` 裁定一之后，\
              判活改成向 `common/session_snapshot.rs` 那张快照发一次询问 \
-             ⇒ 那处调用点搬去了那边，本条今天**只盖 `display-message` 一处**。",
+             ⇒ 那处调用点搬去了那边。\
+             今天两条子命令共用本文件**一处**起进程：探测那条 `display-message`，以及按 sid 找窗格那条只读的 \
+             `list-panes -s -F '#{pane_id}…#{@ccm_sid}…'`（一个 tmux 会话里可以有几个 claude 窗格；`kill.rs` 杀之前读 pane pid 也走它）。",
             "缩性质",
             "这一条是**只读 tmux**，本来就落在收窄后的性质之内；\
              等哪天有一条判据能机检「这个起进程点只读」，它就该从受管例外里摘出去、不再占一格。",
@@ -2843,7 +2845,7 @@ mod spawn_registry {
         (
             "control/terminals.rs",
             "tmux",
-            "终端管理 L1：列会话（`list-sessions -F`）· 列客户端（`list-clients -F`）· 问尺寸光标（`display-message -p`）三处只读，\
+            "终端管理 L1：逐窗格列名单（`list-panes -a -F`）· 列客户端（`list-clients -F`）· 问尺寸光标（`display-message -p`）三处只读，\
              外加经同一个命令构造器交给 `control/launch.rs` 的送字送键（`send-keys` / 粘贴）与 `control/gate.rs` 的身份探测 \
              —— 写的那一半只改 **tmux server 的运行期状态**（往用户明确要送的那个终端里打字），\
              不写任何文件；送之前过身份门（同 `launch` 的 `send-into`），只认名单里的终端。",
@@ -3136,7 +3138,8 @@ mod spawn_registry {
         // 16 → 17：`control/session_batch.rs` 当 ccm 起自己（tab 栏在 tmux 里后台起，`ALLOWED` 里写明）。
         // **17 → 18**（合并）：上面两行是两边各自的 16 → 17，各加一处，相加。
         // **18 → 19**：`control/terminals.rs` 一处（终端管理 L1：列会话 · 列客户端 · 问尺寸只读，送字送键经 `launch.rs`，`ALLOWED` 里写明）。
-        const SPAWN_SITES_TODAY: usize = 19;
+        // **19 → 18**：`control/kill.rs` 那一处只读 `list-panes` 并进 `control/gate.rs` 的那一处（按 sid 找窗格，读 pane pid 也走它）。
+        const SPAWN_SITES_TODAY: usize = 18;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,

@@ -110,7 +110,8 @@ describe("restartWithAccount（A5 换号重启编排 · §5）", () => {
     await restartWithAccount(baseOpts());
     // 编排发出的控制调用恰好只有 kill 一发：再敲回 `Escape` / `/exit`（或任何按键）这里就红。
     const control = invokeMock.mock.calls.filter((c) => c[0] === "tmux_send_keys" || c[0] === "kill_remote_tmux");
-    expect(control).toEqual([["kill_remote_tmux", { origin: "aya", target: "cc-s1abcdef" }]]);
+    // 带着会话 ID：同一个 tmux 会话里还有别的 claude 窗格时，后端只结束挂着它的那个窗格。
+    expect(control).toEqual([["kill_remote_tmux", { origin: "aya", target: "cc-s1abcdef", sid: "s1" }]]);
     expect(resumeTmux).toHaveBeenCalledWith("aya", "claude", "s1", "/w", "cct", "cc-s1abcdef", { configDir: "/h/z", accountName: "z", modelOverride: undefined });
     expect(recordLast).toHaveBeenCalledWith("s1", "z");
   });
@@ -124,6 +125,7 @@ describe("restartWithAccount（A5 换号重启编排 · §5）", () => {
       target: "cc-s1abcdef",
       keys: "/compact",
       enter: true,
+      sid: "s1", // 送进挂着这个会话的那个窗格，不是活动窗格
     });
     expect(awaitCompact).toHaveBeenCalled();
     expect(invokeMock).toHaveBeenCalledWith("kill_remote_tmux", expect.anything());
@@ -215,7 +217,7 @@ describe("A3 本机换号重启（origin = <local>）", () => {
   it("happy：kill 带 `<local>`，resume 走本机那一跳、交的是**用户点的那个号**（名字 ＋ 目录）", async () => {
     const ok = await restartWithAccount(baseOpts({ origin: LOCAL, tmuxName: "proj-cc", launcher: "" }));
     expect(ok).toBe(true);
-    expect(invokeMock).toHaveBeenCalledWith("kill_remote_tmux", { origin: LOCAL, target: "proj-cc" });
+    expect(invokeMock).toHaveBeenCalledWith("kill_remote_tmux", { origin: LOCAL, target: "proj-cc", sid: "s1" });
     expect(resumeTmux).not.toHaveBeenCalled();
     expect(payloadOf("resume_history_session")).toEqual({
       agent: "claude",

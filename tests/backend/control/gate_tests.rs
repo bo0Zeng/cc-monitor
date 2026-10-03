@@ -132,7 +132,7 @@ fn both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand() {
     );
     // 反向那一针用的人群：把排版这一维抹掉（`-u` 与子命令同不同行由 rustfmt 说了算）。
     let flat: String = prod.chars().filter(|c| !c.is_whitespace()).collect();
-    for verb in ["display-message"] {
+    for verb in ["display-message", "list-panes"] {
         let quoted = format!("\"{verb}\"");
         // ── 正向：`-u` 排在子命令**之前** ──────────────────────────────
         let at = guard_core::find_pinned(&prod, &quoted).unwrap_or_else(|e| {
@@ -285,6 +285,48 @@ fn a_probe_line_parses_into_a_handle_and_a_sid() {
     );
 }
 
+/// 按 sid 找窗格：一个会话里几个窗格各挂一个 sid ⇒ 挂着它的那个，不看哪个是当前窗格；
+/// 同一个 sid 挂在几个窗格上（会话那一级的旧标签往下透）⇒ 当前窗格那个，否则第一个；谁都不挂 ⇒ 没有。
+/// 读不懂的行（段数不对 = 打印通道被改写、句柄不是 `%N`）丢掉，不猜。
+#[test]
+fn the_pane_that_carries_a_sid_is_found_whichever_pane_is_active() {
+    let panes = parse_panes(
+        "%1\t101\tsid-a\t00\n\
+         %2\t102\tsid-b\t10\n\
+         %3\t103\t\t11\n\
+         %4\t104\tsid-l\t01\n\
+         %5\t105\tsid-l\t11\n\
+         %6\t106\tsid-l\t00\n\
+         %7_107_sid-x_00\n\
+         $8\t108\tsid-y\t00\n\
+         %9\tpid\tsid-z\t00\n",
+    );
+    assert_eq!(
+        panes.iter().map(|p| p.pane.as_str()).collect::<Vec<_>>(),
+        ["%1", "%2", "%3", "%4", "%5", "%6"]
+    );
+    assert_eq!(panes[0].pid, 101);
+    assert!(panes[4].current && !panes[1].current && !panes[3].current);
+    let at = |sid: &str| carrier(&panes, sid).map(|p| p.pane.as_str());
+    assert_eq!(
+        at("sid-a"),
+        Some("%1"),
+        "活动的是别的窗格也照样找到挂着它的那个"
+    );
+    assert_eq!(at("sid-b"), Some("%2"));
+    assert_eq!(
+        at("sid-l"),
+        Some("%5"),
+        "几个窗格挂着同一个 sid ⇒ 当前窗格那个"
+    );
+    assert_eq!(
+        carrier(&panes[3..4], "sid-l").map(|p| p.pane.as_str()),
+        Some("%4")
+    );
+    assert_eq!(at("sid-x"), None);
+    assert_eq!(at(""), None, "没挂 sid 的窗格不是「挂着空 sid」");
+}
+
 /// ★ F04a：**Gate 3 拿不到窗口数时 fail closed**（解析失败 ⇒ 0 ⇒ 拒绝）。
 ///
 /// 反向的错法（解析失败当 1）会把「探测被截断」变成「放行一次 kill」——
@@ -373,7 +415,15 @@ fn both_gates_always_probe_before_they_act() {
         2,
         "生产段里 `{PROBE_BINDING}` 不是恰好两处（`admit` 与 `admit_destructive` 各一）"
     );
-    for sig in ["pub(crate) fn admit(", "pub(crate) fn admit_destructive("] {
+    // 放行时交出来的句柄：`admit` 交会话句柄，或那个会话里挂着请求 sid 的窗格句柄；
+    // `admit_destructive` 交「整个会话」（会话句柄）或「这几个窗格」（同会话句柄 ＋ 窗格句柄）。
+    for (sig, handle_out) in [
+        ("pub(crate) fn admit(", "Ok(at.unwrap_or(p.session_id))"),
+        (
+            "pub(crate) fn admit_destructive(",
+            "Ok(EndAt::Session(p.session_id))",
+        ),
+    ] {
         let at = guard_core::find_pinned(&prod, sig).unwrap_or_else(|e| {
             panic!("`{sig}` 不是恰好一处（{e}）—— 签名变了就把本条一起改，别让它零命中地绿")
         });
@@ -390,8 +440,8 @@ fn both_gates_always_probe_before_they_act() {
             "`{sig}` 里探不到会话时没有回 `no_such_session` —— 那一档被吞掉了"
         );
         assert!(
-            body.contains(HANDLE_OUT),
-            "`{sig}` 放行时交出来的不是探回来的句柄 `{HANDLE_OUT}` ——\n\
+            body.contains(handle_out),
+            "`{sig}` 放行时交出来的不是探回来的句柄 `{handle_out}` ——\n\
                  对**名字**下手就把 TOCTOU 窗口留着（`K-R54` 表第 2 处判「留后端」\n\
                  的理由逐字就是这一条）。实得这一段：{body:?}"
         );

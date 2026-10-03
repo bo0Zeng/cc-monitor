@@ -24,7 +24,7 @@ pub(crate) struct TmuxEntry {
     pub(crate) name: String,
     /// `@ccm_sid`（没设 ⇒ `None`）。
     pub(crate) sid: Option<String>,
-    /// 前台是不是 agent 的进程（`tmux-list` 那一格）。
+    /// 前台是不是 agent 的进程。
     pub(crate) agent: bool,
 }
 
@@ -36,8 +36,8 @@ pub(crate) struct Deps<'a> {
     pub(crate) record: &'a dyn Fn(&str, Option<&str>) -> Result<(bool, String), String>,
     /// `(会话名, sid)` ⇒ 杀；成品是 `kill` 那一格 `bus`。
     pub(crate) kill: &'a dyn Fn(&str, &str) -> Result<Value, CmdErr>,
-    /// 就地键入：`(会话名, 那一行)` ⇒ 同 `launch send-into`（过身份门）。
-    pub(crate) send_into: &'a dyn Fn(&str, &str) -> Result<(), CmdErr>,
+    /// 就地键入：`(会话名, sid, 那一行)` ⇒ 同 `launch send-into`（带 sid：落在挂着它的那个窗格，身份按它判）。
+    pub(crate) send_into: &'a dyn Fn(&str, &str, &str) -> Result<(), CmdErr>,
     /// 交一行 ccm（argv，`argv[0]` 是 `ccm`）⇒ `(退出码, stdout, stderr)`。生产那一份起这台后端自己（它就是 ccm）。
     pub(crate) run_ccm: &'a dyn Fn(&[String]) -> Result<(i32, String, String), String>,
     /// 工作目录 ⇒ 这台铸的新会话名（同 `tmux-name-mint`）。
@@ -440,7 +440,7 @@ fn start_in_tmux(it: &Item, rows: Option<&[TmuxEntry]>, here: bool, deps: &Deps)
         Standing::Idle(n) => {
             let done = match wire::render_ccm_launch_with(&wire_req(it, None, false), deps.caps) {
                 Err(said) => Answer::failed(&it.sid, ("refused", said)),
-                Ok(line) => match (deps.send_into)(&n, &line) {
+                Ok(line) => match (deps.send_into)(&n, &it.sid, &line) {
                     Ok(()) => Answer::done(&it.sid),
                     Err(e) => Answer::failed(&it.sid, e),
                 },

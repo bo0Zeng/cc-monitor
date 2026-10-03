@@ -252,6 +252,25 @@ pub(crate) fn sources(parent: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// [`sources`] 的反方向：`<dir>/<stem>/subagents/[至多 CHILD_DEPTH 层]/agent-*.jsonl` ⇒ `<dir>/<stem>.jsonl`；别的形状 ⇒ `None`。
+pub(crate) fn owner(p: &Path) -> Option<PathBuf> {
+    let name = p.file_name()?.to_str()?;
+    if !name.starts_with(CHILD_PREFIX) || !super::records::is_session_file(p) {
+        return None;
+    }
+    let child_dir = p
+        .ancestors()
+        .skip(1)
+        .take(CHILD_DEPTH + 1)
+        .find(|a| a.file_name().is_some_and(|n| n == CHILD_DIR))?;
+    let stem_dir = child_dir.parent()?;
+    let ext = p.extension()?;
+    let mut parent = stem_dir.as_os_str().to_owned();
+    parent.push(".");
+    parent.push(ext);
+    Some(PathBuf::from(parent))
+}
+
 fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return;

@@ -237,3 +237,25 @@ fn an_api_error_record_ends_the_run_as_failed_whatever_its_stop_reason() {
         "不是 API 报错的 stop_sequence 不算收场"
     );
 }
+
+/// `owner` 是 `sources` 的反方向：嵌套几层都认得回父记录；别的形状（元数据 · 父记录本身 · 不在子 agent 目录里）一律不认。
+#[test]
+fn owner_maps_a_child_record_back_to_its_parent() {
+    let p = |s: &str| Path::new(s).to_path_buf();
+    assert_eq!(
+        owner(&p("/h/projects/-p/s1/subagents/agent-a.jsonl")),
+        Some(p("/h/projects/-p/s1.jsonl"))
+    );
+    assert_eq!(
+        owner(&p("/h/projects/-p/s1/subagents/x/y/agent-b.jsonl")),
+        Some(p("/h/projects/-p/s1.jsonl"))
+    );
+    for other in [
+        "/h/projects/-p/s1/subagents/agent-a.meta.json",
+        "/h/projects/-p/s1.jsonl",
+        "/h/projects/-p/s1/tool-results/agent-a.jsonl",
+        "/h/projects/-p/s1/subagents/a/b/c/d/e/agent-z.jsonl",
+    ] {
+        assert_eq!(owner(&p(other)), None, "{other}");
+    }
+}

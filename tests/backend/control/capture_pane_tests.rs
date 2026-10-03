@@ -69,7 +69,7 @@ fn capturing_a_real_pane_brings_the_screen_back() {
     //   由 `readonly_guard::capture_is_read_only::the_capture_site_is_one_shot` 钉着。
     let mut screen = String::new();
     for _ in 0..200 {
-        screen = capture_on(Some(&sock.to_string_lossy()), "kr86live")
+        screen = capture_on(Some(&sock.to_string_lossy()), "kr86live", None)
             .expect("真会话必须抓得到，抓不到说明这条原语根本没通");
         if screen.contains(marker) {
             break;
@@ -84,8 +84,8 @@ fn capturing_a_real_pane_brings_the_screen_back() {
 
     // ★ 反向对照：同一个 server 上问一个**不存在**的会话，必须是「会话不存在」，
     //   不是空串、也不是「没有 server」。
-    let miss =
-        capture_on(Some(&sock.to_string_lossy()), "kr86nope").expect_err("不存在的会话不许回成功");
+    let miss = capture_on(Some(&sock.to_string_lossy()), "kr86nope", None)
+        .expect_err("不存在的会话不许回成功");
     assert_eq!(
         miss.0, "no_such_session",
         "server 在、目标不在 ⇒ 该报 `no_such_session`。实得：{miss:?}"
@@ -95,11 +95,93 @@ fn capturing_a_real_pane_brings_the_screen_back() {
     let _ = tmux_on(&sock, &["kill-session", "-t", "=kr86live:"]);
 }
 
+/// 一个 tmux 会话里两个窗格各挂一个 sid（窗格级 `@ccm_sid`，同后端打标签的打法），活动的是 B ⇒
+/// 按 sid-a 抓的是 A 那个窗格（不是活动窗格）；不给 sid ⇒ 活动窗格；哪个窗格都不挂那个 sid ⇒ `no_such_session`。
+#[test]
+fn capturing_by_sid_reads_the_pane_that_carries_it_not_the_active_one() {
+    /// 收摊按 server 的 pid 杀（断言半路红了也收），不 `kill-server`。
+    struct Server(std::path::PathBuf);
+    impl Drop for Server {
+        fn drop(&mut self) {
+            let o = tmux_on(&self.0, &["display-message", "-p", "#{pid}"]);
+            let pid = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if !pid.is_empty() && pid.chars().all(|c| c.is_ascii_digit()) {
+                let _ = Command::new("kill").arg(&pid).status();
+            }
+            let _ = std::fs::remove_dir_all(self.0.parent().unwrap());
+        }
+    }
+    let sock = iso_socket("bysid");
+    let _server = Server(sock.clone());
+    let at = sock.to_string_lossy().to_string();
+    let pane = |args: &[&str]| -> String {
+        let o = tmux_on(&sock, args);
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        String::from_utf8_lossy(&o.stdout).trim().to_string()
+    };
+    let a = pane(&[
+        "-f",
+        "/dev/null",
+        "new-session",
+        "-d",
+        "-x",
+        "80",
+        "-y",
+        "12",
+        "-s",
+        "kr86dual",
+        "-P",
+        "-F",
+        "#{pane_id}",
+        "sh",
+        "-c",
+        "printf '%s\\n' ZQ-in-a; exec cat",
+    ]);
+    let b = pane(&[
+        "split-window",
+        "-t",
+        "=kr86dual:",
+        "-P",
+        "-F",
+        "#{pane_id}",
+        "sh",
+        "-c",
+        "printf '%s\\n' ZQ-in-b; exec cat",
+    ]);
+    pane(&["set-option", "-p", "-t", &a, "@ccm_sid", "sid-a"]);
+    pane(&["set-option", "-p", "-t", &b, "@ccm_sid", "sid-b"]);
+    pane(&["select-pane", "-t", &b]);
+    // 夹具侧的有界等待：两行字由各自窗格里的进程写进 pty，什么时候进屏幕缓冲不归本原语管。
+    let shows = |sid: Option<&str>, marker: &str| -> String {
+        let mut screen = String::new();
+        for _ in 0..200 {
+            screen = capture_on(Some(&at), "kr86dual", sid).expect("抓得到");
+            if screen.contains(marker) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        screen
+    };
+    let by_a = shows(Some("sid-a"), "ZQ-in-a");
+    assert!(
+        by_a.contains("ZQ-in-a") && !by_a.contains("ZQ-in-b"),
+        "按 sid-a 抓的不是挂着它的那个窗格（活动的是 B）：{by_a:?}"
+    );
+    let plain = shows(None, "ZQ-in-b");
+    assert!(
+        plain.contains("ZQ-in-b"),
+        "不给 sid 抓的该是活动窗格：{plain:?}"
+    );
+    let miss = capture_on(Some(&at), "kr86dual", Some("sid-x")).expect_err("没有窗格挂着它");
+    assert_eq!(miss.0, "no_such_session", "{miss:?}");
+}
+
 /// ★★ `KR86D2` 的正题之一：**「一个 server 都没有」是自己一档，真 tmux 打出来的。**
 #[test]
 fn a_socket_with_no_server_says_so_in_its_own_words() {
     let sock = iso_socket("dead");
-    let e = capture_on(Some(&sock.to_string_lossy()), "whatever")
+    let e = capture_on(Some(&sock.to_string_lossy()), "whatever", None)
         .expect_err("没有 server 的 socket 上不许回成功");
     assert_eq!(
         e.0, "no_server",
@@ -203,7 +285,7 @@ fn every_registered_needle_lands_in_its_own_bucket() {
 fn a_name_that_would_break_the_target_never_reaches_tmux() {
     // 〔DUP3 §5 ③ ⑦〕规则换成 `gate_rules` 那一份：`"  "` 与 `=a` 是合法的已有会话名（attach 同样放行），不在这里。
     for bad in ["", "a:b", "a\nb", "a\u{202e}b"] {
-        let e = capture(bad).expect_err("坏形状的名字不许放行");
+        let e = capture(bad, None).expect_err("坏形状的名字不许放行");
         assert_eq!(
             e.0, "invalid_args",
             "名字 {bad:?} 没被形状检查拦住，而是走到了 tmux 那一步。实得：{e:?}"

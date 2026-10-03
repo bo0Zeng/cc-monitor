@@ -705,9 +705,11 @@ export function tmuxControlShim(
     if (a.op !== "kill" && a.op !== "launch" && a.op !== "capture-pane") return inner(cmd, args);
     const body = chanArgsJson(a) as Record<string, unknown>;
     const name = body.name;
+    // 按 sid 找窗格：请求带了会话 ID（抓屏 · 结束是 `sid`，送键是 `launch` 的 `ccm_sid`）⇒ 旧形参多一格 `sid`，判据看得见。
+    const bySid = (sid: unknown): { sid?: unknown } => (sid === undefined ? {} : { sid });
     if (a.op === "kill") {
       try {
-        await inner("kill_remote_tmux", { origin: a.origin, target: name });
+        await inner("kill_remote_tmux", { origin: a.origin, target: name, ...bySid(body.sid) });
       } catch (e) {
         throw refusedReply("kill_failed", wordsOf(e));
       }
@@ -716,7 +718,7 @@ export function tmuxControlShim(
     if (a.op === "capture-pane") {
       let screen: unknown;
       try {
-        screen = await inner("capture_remote_pane", { origin: a.origin, target: name });
+        screen = await inner("capture_remote_pane", { origin: a.origin, target: name, ...bySid(body.sid) });
       } catch (e) {
         throw refusedReply("capture_failed", wordsOf(e));
       }
@@ -724,7 +726,7 @@ export function tmuxControlShim(
     }
     if (launchAs === "tmux_send_keys") {
       try {
-        await inner("tmux_send_keys", { origin: a.origin, target: name, keys: body.payload, enter: body.mode === "send-into" });
+        await inner("tmux_send_keys", { origin: a.origin, target: name, keys: body.payload, enter: body.mode === "send-into", ...bySid(body.ccm_sid) });
       } catch (e) {
         throw refusedReply("typed_unconfirmed", wordsOf(e));
       }

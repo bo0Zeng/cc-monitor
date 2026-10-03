@@ -220,7 +220,7 @@ export class TabMenu {
     updateTabContextMenuItem("preview", gateByOffer(origin, {
       id: "preview",
       label: copyText("tabMenu.resolveAttachMenuItem.preview"),
-      onClick: () => void openPanePreview(origin, name),
+      onClick: () => void openPanePreview(origin, name, sid),
     }));
     // 命中多个 ⇒ 不给杀（破坏性，选错了不可逆）。
     updateTabContextMenuItem("kill", gateByOffer(origin, ambiguous

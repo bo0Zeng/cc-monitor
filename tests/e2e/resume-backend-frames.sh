@@ -119,7 +119,7 @@ SA="$(wait_line 0 "\"kind\":\"session_added\".*$SID" 15)" \
   && ok "SessionAdded(live):$SA" \
   || bad "15s 内未见 SessionAdded($SID)"
 # 「标签挂着谁」直接问 tmux（经 `-L` shim）；原来看的 `tmux_sessions` 快照帧删了。
-TAG="$(tmux show-options -v -t "=$SESSION:" @ccm_sid 2>/dev/null || true)"
+TAG="$(tmux display-message -p -t "=$SESSION:" '#{@ccm_sid}' 2>/dev/null || true)"
 [ "$TAG" = "$SID" ] \
   && ok "tmux 会话 $SESSION 挂着 @ccm_sid=$SID(live)" \
   || bad "$SESSION 的 @ccm_sid 不是 $SID（实得 '$TAG'）"

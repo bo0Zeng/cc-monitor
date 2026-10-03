@@ -1274,7 +1274,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "no_such_session",
             "capture_failed",
         ],
-        fields: &["name", "screen"],
+        fields: &["name", "screen", "sid"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::capture_pane::capture_for_inbound(&r.args).map(Some)
@@ -3889,7 +3889,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "too_many_windows",
             "kill_failed",
         ],
-        fields: &["bus", "client", "killed", "name", "session"],
+        fields: &["bus", "client", "killed", "name", "session", "sid"],
         takes_input: true,
         run: Run::Blocking(|r| crate::control::kill::kill_for_inbound(&r.args).map(Some)),
     },

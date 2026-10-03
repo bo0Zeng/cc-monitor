@@ -33,25 +33,27 @@ fn the_kill_path_admits_before_it_kills() {
     let admit = src
         .find("gate::admit_destructive")
         .expect("生产段里没有 `gate::admit_destructive` —— 这条 kill 没过门");
-    // ⚠ **锚在调用形态上，不是那个词**：生产段里 `kill-session` 有**两处**
-    //（真调用 + 一句错误消息「kill-session 失败…」），`find` 取首处 —— 今天命中对的
-    // 那一处**是排序运气**。换成 `.args([` 那个形状（唯一），并当场核一次唯一性。
-    let verb = format!(".args([\"kill-{}\"", "session");
-    let n = src.matches(verb.as_str()).count();
-    assert_eq!(
-        n, 1,
-        "生产段里 `{verb}` 出现 {n} 次（应恰好 1 次）—— \
-             0 次 = 调用写法变了（本条会零命中地绿）；≥2 次 = 有第二条 kill 路，\
-             那就得逐条问「它过门了吗」，而不是只比第一处的位置"
-    );
-    let act = src.find(verb.as_str()).expect("上面已断言恰好一处");
+    // 两种结束（整个会话 · 挂着那个 sid 的窗格）共用一条命令：argv 由放行的结局拼出，只在一处交给 tmux。
+    let at = |needle: &str| {
+        let n = src.matches(needle).count();
+        assert_eq!(
+            n, 1,
+            "生产段里 `{needle}` 出现 {n} 次（应恰好 1 次）—— 0 次 = 写法变了（本条会零命中地绿）；\
+             ≥2 次 = 有第二条 kill 路，那就得逐条问「它过门了吗」"
+        );
+        src.find(needle).unwrap()
+    };
+    let whole = at(&format!("[\"kill-{}\", \"-t\", &handle]", "session"));
+    let panes = at(&format!("[\"kill-{}\", \"-t\", p.as_str()]", "pane"));
+    let act = at(".args(&argv)");
     assert!(
-        admit < act,
-        "`kill-session` 排在过门之前 —— 先杀再判，门就没意义了"
+        admit < whole && admit < panes && whole < act && panes < act,
+        "杀的那条命令排在过门之前 —— 先杀再判，门就没意义了"
     );
-    // 杀的必须是 `admit_destructive` 回的**句柄**，不是名字。
+    // 杀的必须是放行时拿到的句柄（会话句柄 / 窗格句柄），不是名字。
     assert!(
-        src.contains("\"-t\", &handle"),
+        src.contains("super::gate::EndAt::Session(h) => (h, None)")
+            && src.contains("super::gate::EndAt::Panes(h, ps) => (h, Some(ps))"),
         "kill 的目标不是过门时拿到的句柄 —— 对名字下手就把 TOCTOU 窗口放回来了，\
              而这是**破坏性**动作"
     );
@@ -71,13 +73,13 @@ fn the_kill_path_reads_panes_before_it_kills_and_unregisters_only_after() {
         src.find(needle).unwrap()
     };
     let admit = at("gate::admit_destructive");
-    let panes = at("let panes = pane_pids(&handle);");
-    let kill = at(".args([\"kill-session\"");
+    let panes = at("let panes = pane_pids(&handle, only.as_deref());");
+    let kill = at(".args(&argv)");
     let ok = at("if out.status.success() {");
     let unregister = at("let bus = super::cc_bus::unregister_panes(name, &panes);");
     assert!(
         admit < panes && panes < kill,
-        "pane pid 要在过门之后、kill-session 之前读"
+        "pane pid 要在过门之后、杀之前读"
     );
     assert!(ok < unregister, "顺手注销只能在杀成那一支里");
     let after_ok = &src[ok..];
