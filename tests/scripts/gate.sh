@@ -32,7 +32,7 @@
 #   去绑真端口、把真 `stderr.log` 轮转了两次。按前缀摘，新长一个同族变量也跟着摘，不靠调用方记得。
 # 要这些变量的测试一律自己设（e2e 各套最前面还会再清一遍：`tests/e2e/sandbox-env.sh`）。
 # ⚠ 代价：`CCM_PWSH` 这类「开发者显式打开一组手测」的开关也一起摘了 —— 那几条本来就不在门禁里跑。
-# 只印名字，不印值（里面有令牌）。`env-sandbox` 那一格带着指向假「真目录」的这几族起一趟门禁，判零写入、零监听。
+# 只印名字，不印值（里面有令牌）。`env-sandbox` 那一格带着指向假「真目录」「真口」的这几族起一趟门禁，判零写入、零监听、零连接。
 gate_scrubbed=()
 for gate_v in $(compgen -e); do
   case "$gate_v" in
@@ -51,6 +51,49 @@ set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 2
 fails=()
 printf '  ·    %-14s %s\n' "环境" "摘掉了 ${#gate_scrubbed[@]} 个从开发机会话继承来的变量：${gate_scrubbed[*]:-（一个都没有）}"
+
+# ── 无网沙箱：会起后端 / ccm / tmux 的格，测试进程跑在一个新网络命名空间里 ─────────────────────
+# 开发机的回环上住着用户真在跑的服务（中转口 8788、常驻后端的监听口）。测试里的进程一旦退到默认口，
+# 本机就连上了用户的服务：测试绿在别人的服务上、只在 CI 上红，而且在碰用户的东西（10-03 中转口那次就是这样）。
+# 包法：`bwrap --unshare-net` —— 新命名空间里只有它自己的回环，宿主的口一个都连不到；文件系统照旧。
+# 包不包以环境为准，不以「装没装 bwrap」为准（那样一台没装它的开发机会静默裸跑）：
+#   · GitHub Actions（`GITHUB_ACTIONS=true`）上不包：runner 是一次性的，上面没有用户的服务；
+#   · 其余一律包；bwrap 不在、或起不来新网络命名空间 ⇒ 要包的格全红并说原因，不退回裸跑。
+# 包的格：每一套 e2e（`run_e2e`）· `cargo` · `backend`（单测里起后端、tmux、Xvfb）。
+#   `env-sandbox` 不包：它自己造一台假开发机、在里面起内层门禁，由内层去包；`weak-net` 在 docker 里自己造网，不碰。
+GATE_NONET=(bwrap --dev-bind / / --proc /proc --unshare-net --die-with-parent --)
+GATE_NONET_WHY=""
+if [ "${GITHUB_ACTIONS:-}" = true ]; then
+  GATE_NONET=()
+  printf '  ·    %-14s %s\n' "无网沙箱" "不包（GITHUB_ACTIONS=true：CI runner 上没有用户的服务）"
+elif ! command -v bwrap >/dev/null 2>&1; then
+  GATE_NONET_WHY="这台机器上没有 bwrap（装 bubblewrap）"
+elif ! gate_v="$("${GATE_NONET[@]}" true 2>&1)"; then
+  GATE_NONET_WHY="bwrap 起不来新网络命名空间：${gate_v}"
+fi
+unset gate_v
+if [ -n "$GATE_NONET_WHY" ]; then
+  printf '  ·    %-14s %s\n' "无网沙箱" "用不了 —— ${GATE_NONET_WHY}；要包的格一律判红"
+elif [ "${#GATE_NONET[@]}" -gt 0 ]; then
+  printf '  ·    %-14s %s\n' "无网沙箱" "e2e · cargo · backend 跑在新网络命名空间里（bwrap --unshare-net），连不到这台机器上的任何口"
+fi
+# 在无网沙箱里跑一条命令；沙箱用不了时不跑，印原因、退非零。
+gate_nonet() {
+  if [ -n "$GATE_NONET_WHY" ]; then
+    printf '无网沙箱用不了 —— %s。这一格会起后端 / ccm / tmux，本机不许裸跑（会连上开发机上真在跑的服务）\n' "$GATE_NONET_WHY"
+    return 125
+  fi
+  ${GATE_NONET[@]+"${GATE_NONET[@]}"} "$@"
+}
+# cargo 的测试格：先在沙箱外把测试编出来（缺依赖时下载要网），再进沙箱跑。`$1` 是 cargo 工程目录，其余原样给 `cargo test`。
+gate_cargo_test_nonet() {
+  local dir="$1" out rc
+  shift
+  [ -z "$GATE_NONET_WHY" ] || { gate_nonet; return; }
+  out="$(cd "$dir" && cargo test --no-run "$@" 2>&1)"; rc=$?
+  if [ "$rc" -ne 0 ]; then printf '%s\n' "$out"; return "$rc"; fi
+  gate_nonet bash -c 'cd "$1" && shift && cargo test "$@" 2>&1' _ "$dir" "$@"
+}
 
 
 # ── 〔被谁调用〕`GATE_ONLY` 子集 ＋ 一张**跑过的收据**（`G4` 空洞③，09-20）──────────
@@ -1164,7 +1207,7 @@ run_gate winlink '不是数出来的数：`cargo build --bins --target x86_64-pc
          bash -c 'cd src/frontend/shell && cargo build --locked -p monitor --bins --target x86_64-pc-windows-gnu 2>&1 && echo "winlink: 1 passed"'
 
 # 该跑到的包 = `src/frontend/shell` workspace 的成员（`cargo metadata` 现取），与输出里真跑到的两向相等。
-run_gate_sum cargo gate_shell_libs bash -c 'cd src/frontend/shell && cargo test --workspace --lib 2>&1'
+run_gate_sum cargo gate_shell_libs gate_cargo_test_nonet src/frontend/shell --workspace --lib
 
 # ★★ `K-G3`（09-01）：上面那个合计**还缺一个分母** —— `src/frontend/shell/embedded-backends/` 铺没铺。
 #
@@ -1308,7 +1351,7 @@ run_gate appbuild '不是数出来的数：`cargo build`（dev）只有绿/红�
          bash -c 'cd src/frontend/shell && out=$(cargo build 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "appbuild: 1 passed"'
 
 run_gate backend '单包 src/backend，只有一行 test result ⇒ 最大值 = 合计' \
-         bash -c 'cd src/backend && cargo test 2>&1'
+         gate_cargo_test_nonet src/backend
 run_gate clippy-backend '不是数出来的数：`cargo clippy --all-targets` 只有绿/红两态，射程 = `src/backend` 那一个 crate 的全部 target，与 `ci.yml` 的 `backend` job 那一步同一条命令（不带 `-D warnings` ⇒ 只有 deny 档的 lint 与编译错红）。本格墙钟〔量于 2026-09-30，本工作树〕首趟 32 秒' \
          bash -c 'cd src/backend && out=$(cargo clippy --all-targets 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "clippy-backend: 1 passed"'
 # ── `tsc`：**发版产物编不编得出来**，此前门禁一格都没有（`K-R118` `KR118D1` ②，09-14，第 16 格）──
@@ -1366,6 +1409,7 @@ run_gate audit '步数：`ci.yml` 的 `npm audit (production deps, high)` 一步
 # ── 真机 e2e：每一套一行 `run_e2e <套件>` ─────────────────────────────────────────
 #
 # 判法复用 `tests/e2e/assert-pass-floor.sh`：套件退出码 0 ＋ 收尾 `合计 PASS=<n> FAIL=0` ＋ `n > 0`。
+# 套件跑在无网沙箱里（`gate_nonet`，见文件头那段）：连不到开发机上的任何口。
 # 每套断言几条**只住在套件自己的输出里** —— 这里不钉数，CI 也不钉（CI 的 e2e job 就是调本门禁）。
 # 几路同时给同一套加断言时，不再在几处手抄的数上撞车；读数照样印在绿行上、记进收据。
 # `GATE_ONLY` 里写套件短名（`ccm-cli`），或写 `e2e` 一次点名全部套件（CI 那个 job 用它，套件名单不抄第二份）。
@@ -1375,7 +1419,7 @@ run_e2e() {
   gate_wants "$suite" e2e || return 0
   local out rc n t0
   t0="$(gate_now_ms)"
-  out="$(bash tests/e2e/assert-pass-floor.sh "$suite" 2>&1)"
+  out="$(gate_nonet bash tests/e2e/assert-pass-floor.sh "$suite" 2>&1)"
   rc=$?
   gate_ran "ccm tests/e2e/$suite" "$t0"
   n="$(printf '%s' "$out" | grep -oE '合计 PASS=[0-9]+' | grep -oE '[0-9]+' | tail -1)"
@@ -1444,40 +1488,76 @@ run_e2e tmux-target
 run_e2e cc-bus-queue-drain
 run_e2e resume
 
-# ── `env-sandbox`：带着指向「真目录」的会话环境起一趟门禁，那个目录零写入、那几个口零监听 ─────────────
+# ── `env-sandbox`：在一台假开发机上，带着指向「真目录」「真口」的会话环境起一趟门禁 ─────────────
+# 假开发机 = 一个新网络命名空间（bwrap 起一个占位进程撑着，命令用 nsenter 进去跑）：宿主上用户真在用的口不受打扰，
+#   而假的「真口」能占上开发机上那个号 —— 默认中转口（`relay-route-core` 的 `PORT`，开发机上用户的中转就住那里）在里面听着。
 # 「真目录」是一棵临时的假家（`~/.cc-monitor` 的样子：日志目录 ＋ 一份哨兵 stderr.log ＋ 监听口令牌文件），
-# 「真口」是现找的三个空闲口。带着指向它们的 `CCM_*` / `CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` / `TMUX`
-# 起一趟内层门禁，只跑 `backend-tmux-late-server`（它起常驻那一形的后端：环境漏进去，后端就会去绑那几个口、
-# 轮转那份日志 —— 死值验现打过）。判：内层门禁绿 ＋ 假家前后逐份（路径 · 大小 · mtime）相同 ＋ 跑的全程
-# 那两个口上没有监听（`ss` 每 0.1 秒看一次 —— 活得比 0.1 秒短的监听它看不见，那一形由「零写入」接：
-# 后端起来第一件事是接日志）。墙钟约 25 秒（大头是那一套 e2e 本身）。
+# 另有现找的三个空闲口。带着指向它们的 `CCM_*` / `CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` / `TMUX`
+# 在假开发机上起内层门禁，跑两套：`backend-tmux-late-server`（起常驻那一形的后端：环境漏进去，后端就去绑那几个口、
+# 轮转那份日志）· `restart`（窗格里的 ccm 要连中转，中转口丢了就去连默认口）。判：
+#   ① 内层门禁绿；② 假家前后逐份（路径 · 大小 · mtime）相同；
+#   ③ 那三个口上全程没有监听（`ss` 每 0.1 秒看一次 —— 活得更短的监听看不见，由「零写入」接：后端起来第一件事是接日志）；
+#   ④ 零连接：假开发机上内核的 TCP 主动建连计数（`/proc/<pid>/net/snmp` 的 `ActiveOpens`，连不上的也算）前后不变，
+#      假真口一个连接都没收到。内层把 e2e 包进它自己的无网沙箱，测试进程的连接都落在那里面；
+#      包装一拿掉，restart 那几发回环连接就落在假开发机上。
+# CI 上 e2e 不包（见上面无网沙箱那段）⇒ 不造假开发机、④ 不判，内层门禁直接跑在 runner 上。
+# 墙钟约 35 秒（大头是那两套 e2e 本身）。
 gate_env_sandbox() {
-  local d p1 p2 p3 before after out rc w lis
+  local d p1 p2 p3 before after out rc w lis hold="" real="" rport="" o0="" o1="" hits="" ns=()
   command -v ss >/dev/null 2>&1 || { printf 'env-sandbox: 这台机器上没有 ss —— 看不了监听，判不了\n'; return 1; }
+  if [ -n "$GATE_NONET_WHY" ]; then printf 'env-sandbox: 无网沙箱用不了（%s）—— 判不了\n' "$GATE_NONET_WHY"; return 1; fi
   d="$(mktemp -d "${TMPDIR:-/tmp}/gate-env-sandbox.XXXXXX")" || return 1
   mkdir -p "$d/cc/logs/backend" "$d/claude"
   printf 'sentinel\n' > "$d/cc/logs/backend/stderr.log"
   printf 'sentinel-token\n' > "$d/cc/listen.token"
-  read -r p1 p2 p3 < <(python3 -c 'import socket
+  if [ "${#GATE_NONET[@]}" -gt 0 ]; then
+    rport="$(sed -nE 's/^pub const PORT: u16 = ([0-9]+);$/\1/p' src/common/relay-route-core/src/lib.rs)"
+    case "$rport" in ''|*[!0-9]*) printf 'env-sandbox: relay-route-core 里抠不出默认中转口 —— 判不了\n'; rm -rf -- "$d"; return 1 ;; esac
+    # 占位进程不接本格的输出管道（否则命令替换等不到 EOF）；bwrap 死了它不跟着死，收尾按它自己的 pid 杀。
+    "${GATE_NONET[@]}" sh -c 'echo $$ > "$1"; exec sleep infinity' _ "$d.ns" </dev/null >/dev/null 2>&1 &
+    for _ in $(seq 1 50); do [ -s "$d.ns" ] && break; sleep 0.1; done
+    hold="$(cat "$d.ns" 2>/dev/null)"
+    ns=(nsenter -t "${hold:-0}" -U -n --preserve-credentials)
+    "${ns[@]}" python3 -c 'import socket, sys
+s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", int(sys.argv[2]))); s.listen(64)
+log = open(sys.argv[1], "a", buffering=1); log.write("ready\n")
+while True:
+    c, peer = s.accept(); log.write("accept %d\n" % peer[1]); c.close()' "$d.real" "$rport" </dev/null >/dev/null 2>&1 &
+    real=$!
+    for _ in $(seq 1 50); do grep -q ready "$d.real" 2>/dev/null && break; sleep 0.1; done
+    o0="$(gate_tcp_opens "$hold")"
+  fi
+  read -r p1 p2 p3 < <(${ns[@]+"${ns[@]}"} python3 -c 'import socket
 s = [socket.socket() for _ in range(3)]
 for x in s: x.bind(("127.0.0.1", 0))
 print(*[x.getsockname()[1] for x in s])')
   before="$(find "$d" -printf '%P %s %T@\n' | sort)"
-  ( while :; do ss -ltnH 2>/dev/null | awk '{print $4}' | grep -E ":($p1|$p2|$p3)\$"; sleep 0.1; done ) > "$d.listen" 2>/dev/null &
+  ( while :; do ${ns[@]+"${ns[@]}"} ss -ltnH 2>/dev/null | awk '{print $4}' | grep -E ":($p1|$p2|$p3)\$"; sleep 0.1; done ) > "$d.listen" 2>/dev/null &
   w=$!
-  out="$(env CCM_LISTEN_PORT="$p1" CCM_LISTEN_TOKEN_FILE="$d/cc/listen.token" CCM_RELAY_PORT="$p2" \
+  out="$(${ns[@]+"${ns[@]}"} env CCM_LISTEN_PORT="$p1" CCM_LISTEN_TOKEN_FILE="$d/cc/listen.token" CCM_RELAY_PORT="$p2" \
              CCM_BACKEND_STDERR_LOG="$d/cc/logs/backend/stderr.log" CCM_HISTORY_METADATA="$d/cc/history.json" \
              CCM_APIKEY_CREDENTIALS="$d/cc/apikey.json" CLAUDE_CONFIG_DIR="$d/claude" \
              ANTHROPIC_BASE_URL="http://127.0.0.1:$p3" TMUX="$d/tmux.sock,1,0" \
-             GATE_ONLY=backend-tmux-late-server GATE_RECEIPT="$d.receipt.json" \
+             GATE_ONLY="backend-tmux-late-server restart" GATE_RECEIPT="$d.receipt.json" \
              bash tests/scripts/gate.sh 2>&1)"; rc=$?
   kill "$w" 2>/dev/null; wait "$w" 2>/dev/null
+  if [ -n "$rport" ]; then
+    o1="$(gate_tcp_opens "$hold")"
+    hits="$(grep -c '^accept' "$d.real")"
+    kill "$real" ${hold:+"$hold"} 2>/dev/null; wait "$real" 2>/dev/null
+  fi
   after="$(find "$d" -printf '%P %s %T@\n' | sort)"
   lis="$(sort -u "$d.listen" | tr '\n' ' ')"
-  rm -rf -- "$d" "$d.listen" "$d.receipt.json"
+  rm -rf -- "$d" "$d.listen" "$d.receipt.json" "$d.ns" "$d.real"
   if [ "$before" != "$after" ] || [ -n "${lis// /}" ]; then
     diff <(printf '%s\n' "$before") <(printf '%s\n' "$after") | head -20
     printf 'env-sandbox: 会话环境漏进去了 —— 假家有写入（上面的 diff）、或这几个口上出现过监听 [%s]\n' "${lis% }"
+    return 1
+  fi
+  if [ -n "$rport" ] && { [ -z "$o0" ] || [ -z "$o1" ] || [ "$o0" != "$o1" ] || [ "$hits" != 0 ]; }; then
+    printf 'env-sandbox: 测试进程连到了假开发机上 —— TCP 主动建连 %s → %s，假真口 %s 收到 %s 个连接（本机的 e2e 没被关进无网沙箱）\n' \
+      "${o0:-?}" "${o1:-?}" "$rport" "${hits:-?}"
     return 1
   fi
   if [ "$rc" -ne 0 ] || ! printf '%s\n' "$out" | grep -q '^GATE: PARTIAL'; then
@@ -1485,9 +1565,17 @@ print(*[x.getsockname()[1] for x in s])')
     printf 'env-sandbox: 内层门禁退出码 %s、没有 PARTIAL 裁决 —— 判不了\n' "$rc"
     return 1
   fi
-  printf 'env-sandbox: 1 passed（假家零写入、三个口零监听；内层门禁绿）\n'
+  if [ -n "$rport" ]; then
+    printf 'env-sandbox: 1 passed（假家零写入、三个口零监听、假开发机上零连接（假真口 %s 收到 0 个）；内层门禁绿）\n' "$rport"
+  else
+    printf 'env-sandbox: 1 passed（假家零写入、三个口零监听；内层门禁绿。CI 上 e2e 不包，零连接不判）\n'
+  fi
 }
-run_gate env-sandbox '不是数出来的数：带着指向假「真目录」的会话环境起一趟内层门禁（一套起常驻后端的 e2e），零写入 ＋ 零监听才绿' \
+# 一个网络命名空间里内核记下的 TCP 主动建连数（`$1` 是住在那个命名空间里的一个进程）。
+gate_tcp_opens() {
+  awk '/^Tcp:/ { if (!h) { for (i = 1; i <= NF; i++) if ($i == "ActiveOpens") c = i; h = 1 } else if (c) print $c }' "/proc/$1/net/snmp" 2>/dev/null
+}
+run_gate env-sandbox '不是数出来的数：在一台假开发机（新网络命名空间）上带着指向假「真目录」「真口」的会话环境起一趟内层门禁（两套起后端 / ccm 的 e2e），零写入 ＋ 零监听 ＋ 零连接才绿' \
          gate_env_sandbox
 
 # ── `weak-net`：弱网台架（建镜像 · 跑台架）──────────────────────────────────────────────────
