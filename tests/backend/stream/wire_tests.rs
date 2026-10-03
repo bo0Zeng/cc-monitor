@@ -267,6 +267,7 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             Frame::SessionRuns {
                 sid: "s".into(),
                 runs: vec![],
+                ended: vec![],
             },
             "session_runs",
         ),
@@ -601,7 +602,7 @@ fn tap_frames_have_exactly_these_bytes() {
 #[test]
 fn session_runs_frames_have_exactly_these_bytes() {
     use crate::agents::RunDid;
-    use crate::stream::wire::{RunInfo, RunState};
+    use crate::stream::wire::{RunEnded, RunInfo, RunState};
     let f = Frame::SessionRuns {
         sid: "s1".into(),
         runs: vec![
@@ -624,10 +625,15 @@ fn session_runs_frames_have_exactly_these_bytes() {
                 last: Some(RunDid::Say),
             },
         ],
+        ended: vec![RunEnded {
+            run: "a0".into(),
+            tool: "t0".into(),
+            state: RunState::Failed,
+        }],
     };
     assert_eq!(
         to_line(&f).unwrap(),
-        "{\"kind\":\"session_runs\",\"sid\":\"s1\",\"runs\":[{\"run\":\"a1\",\"label\":\"scan\",\"kind\":\"Explore\",\"tool\":\"t1\",\"state\":\"running\",\"last\":{\"t\":\"tool\",\"name\":\"Bash\"}},{\"run\":\"a2\",\"state\":\"done\",\"last\":{\"t\":\"say\"}}]}\n"
+        "{\"kind\":\"session_runs\",\"sid\":\"s1\",\"runs\":[{\"run\":\"a1\",\"label\":\"scan\",\"kind\":\"Explore\",\"tool\":\"t1\",\"state\":\"running\",\"last\":{\"t\":\"tool\",\"name\":\"Bash\"}},{\"run\":\"a2\",\"state\":\"done\",\"last\":{\"t\":\"say\"}}],\"ended\":[{\"run\":\"a0\",\"tool\":\"t0\",\"state\":\"failed\"}]}\n"
     );
     assert!(
         !f.loss_is_recoverable(),

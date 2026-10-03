@@ -882,8 +882,8 @@ export class TabManager {
   private readonly runTimelines = new Map<string, RunTimeline>();
 
   /**
-   * 一个会话的运行表到了（会话流里的 `runs` 格）：派出它们的那几张工具卡记上是哪个子运行、什么状态；当前 tab 的就交 agent 面板；
-   * 开着的时间线续读一次。主 tab 的消息流里不画子运行。
+   * 一个会话的运行表到了（会话流里的 `runs` 格）：派出它们的那几张工具卡记上是哪个子运行、什么状态（被挤出表的已收场那几个
+   * 在 `ended` 里，卡照样标）；当前 tab 的就交 agent 面板；开着的时间线续读一次。主 tab 的消息流里不画子运行。
    */
   onSessionRuns(p: SessionRunsPayload): void {
     const tab = this.store.tabs.get(p.session_id);
@@ -893,6 +893,10 @@ export class TabManager {
       if (r.tool === undefined) continue;
       const card = tab.runCards.get(r.tool);
       if (card) markRunCard(card, r.run, r.state);
+    }
+    for (const e of p.ended) {
+      const card = tab.runCards.get(e.tool);
+      if (card) markRunCard(card, e.run, e.state);
     }
     if (tab.sessionId === this.store.activeId) this.agentsPanel?.setSession(tab.sessionId, p.runs);
     for (const [k, t] of this.runTimelines) if (k.startsWith(`${tab.sessionId}\u0000`)) void t.refresh();

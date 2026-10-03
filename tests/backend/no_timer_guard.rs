@@ -624,47 +624,57 @@ mod tests {
         "inbound.rs",
         "Duration::from_millis(30_000)",
         "流模式收场的**退出排空期限**（`inbound::DRAIN_DEADLINE`）。它**是**一个会醒来的构件 —— \
-         零定时器在这里让位，那一处的调用另登记在 `REGISTERED_EXIT_DEADLINE`（恰好一行）。只在进程要退时装一次。",
+         零定时器在这里让位，那一处的调用另登记在 `REGISTERED_DEADLINE_WAKES`（inbound.rs 那一行）。只在进程要退时装一次。",
         "缩性质",
-        "后端的收场改由外部（宿主 / 进程管理器）保证上限、远端也有人叫它退的那天 —— 那时这一条与 `REGISTERED_EXIT_DEADLINE` 一起摘。",
+        "后端的收场改由外部（宿主 / 进程管理器）保证上限、远端也有人叫它退的那天 —— 那时这一条与 `REGISTERED_DEADLINE_WAKES` 里 inbound.rs 那一行一起摘。",
     ),
         (
         "runs.rs",
         "Duration::from_millis(15 * 60 * 1000)",
-        "子运行「久未再写 ⇒ 状态不明」的**阈值**（`observe::runs::STALE_AFTER`）：只在读到一条记录 / 收到一个文件事件时\
-         拿「现在」与子记录的写入时刻比一次（`Sess::settle`），不让任何线程醒来、不驱动任何循环 —— 没有事件就不算。不是定时器。",
-        "收窄人群",
-        "子运行的收场改由别的信号完全兜住（不再需要「久未再写」这一格）的那天。",
+        "子运行「久未再写 ⇒ 状态不明」的**阈值**（`observe::runs::STALE_AFTER`）。它**是**一个会醒来的构件的期限：\
+         watcher 有在跑的子运行时至多等到最早那个 `seen + STALE_AFTER`，那一处的等另登记在 `REGISTERED_DEADLINE_WAKES`\
+         （observe/runs.rs 那一行）；读记录 / 出帧时也拿「现在」比一次。不驱动固定间隔。",
+        "缩性质",
+        "子运行的收场改由别的信号完全兜住（不再需要「久未再写」这一格）的那天 —— 与那一行登记一起摘。",
     ),
     ];
     // `relay/machine.rs` 那一行（差分探针的 socket 读写期限）摘了：「在不在」改由常驻后端进程内的状态答，探针删了。
 
     use crate::guard_support::production_code;
 
-    /// 🔴**唯一**一处会让后端自己醒来的构件：**退出排空期限**。
+    /// 🔴 会让后端自己醒来的构件**全在这张表里**，每项一行：
+    /// `(文件, 生产段里的片段——恰好一处, why——为什么零定时器在这里让位, 醒在什么期限上)`。
     ///
-    /// `(文件, 生产段里的片段——恰好一处, why——为什么零定时器在这里让位)`。**类型就是一行**（不是表）：
-    /// 想再加第二处，得先把这个类型改成表 —— 那一改本身就是一次会被看见的放宽。
-    ///
-    /// 它在收场时（流模式后端要退了）装一次、到点就退，不驱动任何循环、不产生节拍；上面两条扫描都**只**对这一处的这一个片段让位
-    /// （剥掉这一个片段之后照常扫同一份文件）。性质的出处：`INVARIANTS §48.2`「脱离后不留僵尸」—— 远端后端在 SSH 断开那一刻
-    /// 没人叫它退、也没人给上限，一条阻塞在挂死文件系统上的写会把一个没有宿主的进程无限期留下。
-    pub(super) const REGISTERED_EXIT_DEADLINE: (&str, &str, &str) = (
-        "inbound.rs",
-        "tokio::time::sleep(deadline)",
-        "流模式收场（`inbound::exit_after_drain_within`）等在飞的阻塞命令做完的**上限**（`DRAIN_DEADLINE` 30 秒）：\
-         到点仍没排空 ⇒ 说出哪几条没做完、退出。只装一次、只在进程要退时装；它是一个一次性的期限，不是节拍器。\
-         零定时器在这里让位的理由：排空要有上限，而远端后端 SSH 断开时**没有**别的一方能给它上限。",
-    );
+    /// 每一项都是**一次性的期限**，不是节拍：只在有真期限时等、只醒在那一个期限上、醒来之后期限重算（或进程就退了）。
+    /// 上面两条扫描**只**对登记的这几个片段让位（剥掉片段之后照常扫同一份文件）；表外出现任何自醒构件仍红。
+    /// **加一行就是一次放宽**：提交说明里写明放宽了什么。
+    pub(super) const REGISTERED_DEADLINE_WAKES: &[(&str, &str, &str, &str)] = &[
+        (
+            "inbound.rs",
+            "tokio::time::sleep(deadline)",
+            "流模式收场（`inbound::exit_after_drain_within`）等在飞的阻塞命令做完的**上限**：到点仍没排空 ⇒ 说出哪几条没做完、退出。\
+             零定时器在这里让位的理由：排空要有上限，而远端后端 SSH 断开时**没有**别的一方能给它上限\
+             （`INVARIANTS §48.2`「脱离后不留僵尸」）。",
+            "进程要退时装一次：`DRAIN_DEADLINE`（30 秒）之后。",
+        ),
+        (
+            "observe/runs.rs",
+            "rx.recv_timeout(wait)",
+            "子运行「久未动静 ⇒ 状态不明」要到点就判：会话空闲时不会再有它的文件事件，只靠事件判的话面板上的「在跑」永远冻住。\
+             watcher 的事件循环（`runs::next_event`）只在有在跑的子运行时带期限地等，到点判一遍、表变了才出帧。",
+            "最早那个在跑的子运行的 `seen + STALE_AFTER`（15 分钟）；没有在跑的 ⇒ 无期限地等、不醒。",
+        ),
+    ];
 
-    /// 按 [`REGISTERED_EXIT_DEADLINE`] 剥掉那一个片段（恰好一处；文件对不上就原样返回）。
-    pub(super) fn without_exit_deadline(name: &str, code: &str) -> String {
-        let (file, snippet, _) = REGISTERED_EXIT_DEADLINE;
-        if matches_registered(name, file) {
-            code.replacen(snippet, "", 1)
-        } else {
-            code.to_string()
+    /// 按 [`REGISTERED_DEADLINE_WAKES`] 剥掉这份文件登记的片段（各恰好一处；文件对不上就原样返回）。
+    pub(super) fn without_registered_wakes(name: &str, code: &str) -> String {
+        let mut out = code.to_string();
+        for (file, snippet, ..) in REGISTERED_DEADLINE_WAKES {
+            if matches_registered(name, file) {
+                out = out.replacen(snippet, "", 1);
+            }
         }
+        out
     }
 
     /// 〔「等待住一次性 CLI」〕**一次性 CLI 例外表**：带期限的内核等待（`poll(pidfd, ms)` · `WaitForSingleObject(h, ms)`）
@@ -943,8 +953,8 @@ mod tests {
         // 补的是**调用形态**（名字要是完整的词、后面紧跟 `(`），与怎么导入无关。
         // ⚠ 补之前量过误红面：这八个名字在后端生产段今天**全为 0 处**。
         for (name, code) in &files {
-            // 唯一的退出期限让位（只剥那一个片段，同一份文件其余照扫）。
-            let code = &without_exit_deadline(name, code);
+            // 登记的期限等待让位（只剥登记的片段，同一份文件其余照扫）。
+            let code = &without_registered_wakes(name, code);
             for call in [
                 "sleep",
                 "interval",
@@ -969,7 +979,7 @@ mod tests {
             }
         }
         for (name, code) in &files {
-            let code = &without_exit_deadline(name, code);
+            let code = &without_registered_wakes(name, code);
             for pat in periodic_wake_patterns() {
                 assert!(
                     !code.contains(&pat),
@@ -1023,39 +1033,11 @@ mod tests {
         }
     }
 
-    /// **唯一的退出期限还在盘上、恰好一处、只在它登记的那份文件里**；而且让位只让了它 ——
+    /// **登记的每一处期限等待都还在盘上、恰好一处、只在它登记的那份文件里**；而且让位只让了它们 ——
     /// 剥掉登记的片段之后，那份文件的生产段对两条扫描都干净；**不剥**的话调用形态那一条当场认得出它（正控：让位是真在让）。
-    /// 守的要求：「在 `no_timer_guard` 开一个登记口（登记表一行，写明它是唯一的退出期限）」。
     #[test]
-    fn the_exit_deadline_is_the_one_registered_wake_and_nothing_else_hides_behind_it() {
-        let (file, snippet, why) = REGISTERED_EXIT_DEADLINE;
-        assert!(why.chars().count() >= 40, "登记没写清为什么让位");
-        let hits: Vec<(String, usize)> = backend_sources()
-            .into_iter()
-            .map(|(n, code)| {
-                let c = code.matches(snippet).count();
-                (n, c)
-            })
-            .filter(|(_, c)| *c > 0)
-            .collect();
-        assert_eq!(hits.len(), 1, "登记的片段应当恰好住一份文件：{hits:?}");
-        assert!(
-            matches_registered(&hits[0].0, file) && hits[0].1 == 1,
-            "{hits:?}"
-        );
-        let code = backend_sources()
-            .into_iter()
-            .find(|(n, _)| matches_registered(n, file))
-            .map(|(_, c)| c)
-            .expect("那份文件");
-        // 正控：不剥 ⇒ 调用形态认得出（`sleep(`）。
-        assert!(
-            code.lines().any(|l| is_call_of(l, "sleep")),
-            "正控失效：没剥的时候也认不出那一处"
-        );
-        // 剥掉那一个片段 ⇒ 两条扫描都干净（别的会醒来的构件没有借这个口子躲进来）。
-        let rest = without_exit_deadline(&hits[0].0, &code);
-        for call in [
+    fn every_registered_deadline_wake_is_on_disk_once_and_nothing_else_hides_behind_it() {
+        const CALLS: [&str; 8] = [
             "sleep",
             "interval",
             "interval_at",
@@ -1064,16 +1046,57 @@ mod tests {
             "wait_timeout",
             "timeout",
             "tick",
-        ] {
+        ];
+        for (file, snippet, why, wakes_on) in REGISTERED_DEADLINE_WAKES {
+            assert!(why.chars().count() >= 40, "{file} 的登记没写清为什么让位");
             assert!(
-                !rest
-                    .lines()
-                    .any(|l| !l.trim_start().starts_with("//") && is_call_of(l, call)),
-                "{file} 剥掉退出期限之后仍有 `{call}(`"
+                wakes_on.chars().count() >= 10,
+                "{file} 的登记没写醒在什么期限上"
             );
-        }
-        for pat in periodic_wake_patterns() {
-            assert!(!rest.contains(&pat), "{file} 剥掉退出期限之后仍有 `{pat}`");
+            let hits: Vec<(String, usize)> = backend_sources()
+                .into_iter()
+                .map(|(n, code)| {
+                    let c = code.matches(snippet).count();
+                    (n, c)
+                })
+                .filter(|(_, c)| *c > 0)
+                .collect();
+            assert_eq!(
+                hits.len(),
+                1,
+                "登记的片段 `{snippet}` 应当恰好住一份文件：{hits:?}"
+            );
+            assert!(
+                matches_registered(&hits[0].0, file) && hits[0].1 == 1,
+                "{hits:?}"
+            );
+            let code = backend_sources()
+                .into_iter()
+                .find(|(n, _)| matches_registered(n, file))
+                .map(|(_, c)| c)
+                .expect("那份文件");
+            // 正控：不剥 ⇒ 调用形态认得出。
+            assert!(
+                code.lines()
+                    .any(|l| l.contains(snippet) && CALLS.iter().any(|c| is_call_of(l, c))),
+                "正控失效：没剥的时候也认不出 {file} 那一处"
+            );
+            // 剥掉登记的片段 ⇒ 两条扫描都干净（别的会醒来的构件没有借这个口子躲进来）。
+            let rest = without_registered_wakes(&hits[0].0, &code);
+            for call in CALLS {
+                assert!(
+                    !rest
+                        .lines()
+                        .any(|l| !l.trim_start().starts_with("//") && is_call_of(l, call)),
+                    "{file} 剥掉登记的片段之后仍有 `{call}(`"
+                );
+            }
+            for pat in periodic_wake_patterns() {
+                assert!(
+                    !rest.contains(&pat),
+                    "{file} 剥掉登记的片段之后仍有 `{pat}`"
+                );
+            }
         }
     }
 
@@ -1304,10 +1327,10 @@ mod g6_reach {
         // 5 → **6**：多的那一条是 `relay/machine.rs` 的 `PROBE_DEADLINE`（远端「口上是不是我们的中转」
         //   那两发差分探针的一次阻塞上限）。同族于中转那两条 socket 期限，不驱动任何循环。
         // 6 → **7**：多的那一条是 `inbound.rs` 的 `DRAIN_DEADLINE`（退出排空期限）—— 它是本表第一条
-        //   **真会醒来**的登记（cell `缩性质`），调用那一处另住 `REGISTERED_EXIT_DEADLINE`。
+        //   **真会醒来**的登记（cell `缩性质`），调用那一处另住 `REGISTERED_DEADLINE_WAKES`。
         // 7 → **6**：`relay/machine.rs` 的 `PROBE_DEADLINE` 随差分探针删了（「在不在」改读进程内状态）。
-        // 6 → **7**：多的那一条是 `observe/runs.rs` 的 `STALE_AFTER`（子运行「久未再写 ⇒ 状态不明」的阈值，
-        //   只在读记录 / 收到文件事件时比一次，不醒来）。
+        // 6 → **7**：多的那一条是 `observe/runs.rs` 的 `STALE_AFTER`（子运行「久未再写 ⇒ 状态不明」的阈值）。
+        //   条数不变、格改了：它后来成了 `REGISTERED_DEADLINE_WAKES` 里 runs 那一处等的期限（cell `缩性质`）。
         assert_eq!(
             registered, 7,
             "登记表从 7 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
@@ -1383,8 +1406,8 @@ mod g6_reach {
         let pats = periodic_wake_patterns();
         let mut hits: Vec<String> = Vec::new();
         for (name, code) in &files {
-            // 唯一的退出期限让位（与正题那条同一个剥法：`tests::without_exit_deadline`）。
-            let code = super::tests::without_exit_deadline(name, code);
+            // 登记的期限等待让位（与正题那条同一个剥法：`tests::without_registered_wakes`）。
+            let code = super::tests::without_registered_wakes(name, code);
             for pat in &pats {
                 if code.contains(pat.as_str()) {
                     hits.push(format!("  {name}: {pat}"));

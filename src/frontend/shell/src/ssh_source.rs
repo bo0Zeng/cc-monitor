@@ -1192,10 +1192,11 @@ pub enum InboundFrame {
     SessionRemoved { sid: String },
     /// 后端会话账本的成品：这条会话离开「活」之后是什么（`session_state`）。
     SessionState { sid: String, state: Fate },
-    /// 一个会话的运行表（`session_runs`；`runs` 是 JSON 数组原文，不解释）。
+    /// 一个会话的运行表（`session_runs`；`runs` · `ended` 是 JSON 数组原文，不解释）。
     SessionRuns {
         sid: String,
         runs: crate::ui_contract::RecordBody,
+        ended: crate::ui_contract::RecordBody,
     },
     /// issue #32：远端后端发送通道拥塞、丢了 `dropped` 帧（慢 SSH 管道）。
     /// monitor 收到后经 SS-F remote-health 通道提示用户。
@@ -1482,6 +1483,9 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             sid: obj.get("sid")?.as_str()?.to_string(),
             runs: crate::ui_contract::RecordBody::from_json(
                 obj.get("runs").filter(|r| r.is_array())?.to_string(),
+            )?,
+            ended: crate::ui_contract::RecordBody::from_json(
+                obj.get("ended").filter(|r| r.is_array())?.to_string(),
             )?,
         }),
         "session_removed" => Some(InboundFrame::SessionRemoved {
@@ -2359,13 +2363,13 @@ pub(crate) fn local_product(
         LocalItem::Frame(InboundFrame::SessionsReplayed) => {
             Some(BookIn::Listed { origin: origin() })
         }
-        LocalItem::Frame(InboundFrame::SessionRuns { sid, runs }) => {
-            (!hidden.contains(sid)).then(|| BookIn::Runs {
+        LocalItem::Frame(InboundFrame::SessionRuns { sid, runs, ended }) => (!hidden.contains(sid))
+            .then(|| BookIn::Runs {
                 origin: origin(),
                 sid: sid.clone(),
                 runs: runs.clone(),
-            })
-        }
+                ended: ended.clone(),
+            }),
         LocalItem::Frame(_) => None,
     }
 }
@@ -2999,11 +3003,12 @@ async fn stream_loop(
                     waiting_for,
                 });
             }
-            Some(InboundFrame::SessionRuns { sid, runs }) => {
+            Some(InboundFrame::SessionRuns { sid, runs, ended }) => {
                 crate::session_book::feed(BookIn::Runs {
                     origin: host_label.clone(),
                     sid,
                     runs,
+                    ended,
                 });
             }
             Some(InboundFrame::SessionRemoved { sid }) => {

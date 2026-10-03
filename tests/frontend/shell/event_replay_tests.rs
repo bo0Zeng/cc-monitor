@@ -1037,6 +1037,7 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
         F::Runs(b::SessionRunsPayload {
             session_id: "s".into(),
             runs: b::RecordBody::from_json("[]".into()).unwrap(),
+            ended: b::RecordBody::from_json("[]".into()).unwrap(),
         }),
     ];
     let key = |f: &F| -> String {

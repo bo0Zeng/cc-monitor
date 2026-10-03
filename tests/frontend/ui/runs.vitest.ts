@@ -162,7 +162,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     const { tm, streamRootEl, panel } = rig();
     tm.onLine(dispatch(0, "t1", "扫目录"));
     tm.switchTo(SID);
-    tm.onSessionRuns({ session_id: SID, runs: SIX });
+    tm.onSessionRuns({ session_id: SID, runs: SIX, ended: [] });
 
     // 主 tab：只在运行表里出现的那几个标签，消息流里一个字都没有；也没有任何按运行标的行。
     const mainText = streamRootEl.textContent ?? "";
@@ -200,11 +200,25 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     tm.onLine(dispatch(0, "t1", "扫目录"));
     tm.onLine(launched(1, "t1"));
     tm.switchTo(SID);
-    tm.onSessionRuns({ session_id: SID, runs: [run("w6", "running", "扫目录", "t1")] });
+    tm.onSessionRuns({ session_id: SID, runs: [run("w6", "running", "扫目录", "t1")], ended: [] });
     expect(rowsIn(panel)).toEqual([{ run: "w6", ...st("running") }]);
-    tm.onSessionRuns({ session_id: SID, runs: [run("w6", "stopped", "扫目录", "t1")] });
+    tm.onSessionRuns({ session_id: SID, runs: [run("w6", "stopped", "扫目录", "t1")], ended: [] });
     expect(rowsIn(panel)).toEqual([{ run: "w6", ...st("stopped") }]);
     expect(copyText("runs.icon.stopped")).not.toBe(copyText("runs.icon.done"));
+  });
+
+  it("被挤出运行表的已收场子运行（`ended`）：派出它的那张卡照样标终态；面板上不列它", () => {
+    const { tm, streamRootEl, panel } = rig();
+    tm.onLine(dispatch(0, "t1", "扫目录"));
+    tm.switchTo(SID);
+    const card = streamRootEl.querySelector<HTMLElement>(".block-agent")!;
+    const title = copyText("runCard.summary.text", { kind: "Explore", label: "扫目录" });
+    tm.onSessionRuns({ session_id: SID, runs: [], ended: [{ run: "w6", tool: "t1", state: "done" }] });
+    expect([card.dataset.runState, card.querySelector("summary")?.textContent]).toEqual([
+      "done",
+      copyText("runCard.summary.state", { title, state: copyText("runs.state.done") }),
+    ]);
+    expect(panel.popoverElement.querySelector('.agent-row[data-run="w6"]')).toBeNull();
   });
 
   it("派出它的那张工具卡标状态；点面板那一行 ⇒ 它下面展开它的时间线，再点收起", () => {
@@ -213,9 +227,9 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     tm.switchTo(SID);
     const card = streamRootEl.querySelector<HTMLElement>(".block-agent")!;
     const title = copyText("runCard.summary.text", { kind: "Explore", label: "扫目录" });
-    tm.onSessionRuns({ session_id: SID, runs: [run("w6", "running", "扫目录", "t1")] });
+    tm.onSessionRuns({ session_id: SID, runs: [run("w6", "running", "扫目录", "t1")], ended: [] });
     expect([card.dataset.runState, card.querySelector("summary")?.textContent]).toEqual(["running", title]);
-    tm.onSessionRuns({ session_id: SID, runs: [run("w6", "failed", "扫目录", "t1")] });
+    tm.onSessionRuns({ session_id: SID, runs: [run("w6", "failed", "扫目录", "t1")], ended: [] });
     expect([card.dataset.runState, card.querySelector("summary")?.textContent]).toEqual([
       "failed",
       copyText("runCard.summary.state", { title, state: copyText("runs.state.failed") }),

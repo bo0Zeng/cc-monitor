@@ -397,7 +397,7 @@ struct InFlight {
 //
 // 🔴 **「有上限」**〔`INVARIANTS §48.2`「脱离后不留僵尸」〕：后端**自己**兜一个
 //   退出排空期限 [`DRAIN_DEADLINE`]（30 秒）—— 到点仍没排空 ⇒ 记一行说哪几条没做完，然后退。
-//   这是后端零定时器（`no_timer_guard`）**唯一**让位的地方，登记在那张表的 `REGISTERED_EXIT_DEADLINE`（恰好一行）。
+//   这是后端零定时器（`no_timer_guard`）让位的地方之一，登记在 `REGISTERED_DEADLINE_WAKES`（inbound.rs 那一行）。
 //   为什么非它不可：远端后端在 SSH 断开那一刻没人叫它退、也没人给上限 —— 阻塞在一个挂死的文件系统上的那一条
 //   会把进程无限期留下（一个没有宿主的后端进程）。叫它退的一方仍可以更早：**第二次停机信号 = 立刻退**；
 //   机器页「停」等得比它久一点（一次性子命令 `--resident-stop` 的宽限期 `control/resident.rs::STOP_GRACE_MS`，35 秒），好让后端先把「哪几条没做完」说出来再退。
@@ -559,7 +559,7 @@ where
         }
         std::future::pending::<()>().await
     };
-    // 后端零定时器唯一让位的一处（`no_timer_guard::REGISTERED_EXIT_DEADLINE`）：只在收场时装这一次。
+    // 后端零定时器让位的一处（`no_timer_guard::REGISTERED_DEADLINE_WAKES`）：只在收场时装这一次。
     let expired = tokio::time::sleep(deadline);
     tokio::select! {
         _ = DRAIN.drained() => {

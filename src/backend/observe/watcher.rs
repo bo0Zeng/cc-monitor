@@ -910,11 +910,26 @@ fn watch_loop(
     // **P5 删掉这一行 + `spawn_tmux_ticker` 即可**（并按 `WatchEvent::Shutdown` 的注释接停机信号）。
     initial_tmux_probe(&events_tx);
 
-    // P2：**无超时** `recv()`——本循环再没有任何定时器（轮询 A 已由 pidfd 取代）。
+    // P2：**无超时** `recv()`——本循环没有节拍（轮询 A 已由 pidfd 取代）。唯一的期限：有在跑的子运行时，至多等到
+    // 最早那个「久未动静」的时刻（`runs::next_event`），到点回循环头判一次、重算期限；没有在跑的 ⇒ 照旧无超时等。
     // 事件源：notify（经 DebouncerSink）· pidfd 看守线程 · tmux 探测/节拍线程。
     // **P3/P4 只往 `WatchEvent` 加变体 + 加发送方，不许再挂独立定时器。**
-    // `while let Ok(..)` = 所有发送端都掉了就结束（等价于原来的 Disconnected 分支）。
-    while let Ok(event) = events_rx.recv() {
+    // 所有发送端都掉了就结束（等价于原来的 Disconnected 分支）。
+    loop {
+        // 每一拍（事件之后 · 到点）都按此刻把全部会话的「久未动静」判一遍，表变了的才发帧。
+        for f in state.runs.due_frames(std::time::SystemTime::now()) {
+            sink.send(f);
+        }
+        let event = match crate::observe::runs::next_event(
+            &events_rx,
+            state.runs.next_due(),
+            std::time::SystemTime::now(),
+        ) {
+            Ok(Some(e)) => e,
+            Ok(None) if sink.is_closed() => break,
+            Ok(None) => continue,
+            Err(_) => break,
+        };
         match event {
             WatchEvent::Notify(Ok(events)) => {
                 // 账号目录自己出现 / 消失 ⇒ 先重挂；它也算「清单可能变了」。
@@ -936,6 +951,8 @@ fn watch_loop(
                 for sid in tasks_touched(events.iter().map(|ev| ev.path.as_path()), &ears.tasks) {
                     sink.send(Frame::TasksChanged { sid });
                 }
+                // 子运行记录动过的会话（批内合并：一批里同一个会话的运行表只发一帧）。
+                let mut runs_touched = std::collections::BTreeSet::new();
                 for ev in events {
                     let p = ev.path.as_path();
                     // ★★ `P0b-Y2`：**`sessions/` 换了 inode 或刚出现 ⇒ 重挂 + 重扫**；`projects/` 同族；
@@ -973,7 +990,7 @@ fn watch_loop(
                     };
                     if let Some((sid, changed)) = child {
                         if changed {
-                            sink.send(state.runs.frame(&sid));
+                            runs_touched.insert(sid);
                         }
                     } else if is_jsonl(p) {
                         // process_jsonl skips sids not in active_sids.
@@ -997,6 +1014,9 @@ fn watch_loop(
                             sid_drifted = true;
                         }
                     }
+                }
+                for sid in runs_touched {
+                    sink.send(state.runs.frame(&sid));
                 }
                 // ★ S0：一批事件处理完再决定探不探（批内多次漂移只探一次；`tmux_inflight`
                 // 再兜一层去重）。**注意这只让快照更新鲜，不是本 bug 的修复** ——

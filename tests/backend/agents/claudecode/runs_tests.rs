@@ -216,3 +216,24 @@ fn sources_are_the_agent_records_under_the_parents_own_directory() {
     assert!(sources(&d.join("none.jsonl")).is_empty());
     let _ = std::fs::remove_dir_all(&d);
 }
+
+#[test]
+fn an_api_error_record_ends_the_run_as_failed_whatever_its_stop_reason() {
+    // API 报错的那条是合成的 assistant 记录，stop_reason 不是 end_turn（现场见过 stop_sequence 与 refusal）。
+    for stop in ["stop_sequence", "refusal", "end_turn"] {
+        let v = json!({"type":"assistant","isSidechain":true,"agentId":"a1","isApiErrorMessage":true,
+            "message":{"id":"m1","content":[{"type":"text","text":"x"}],"stop_reason":stop}});
+        assert_eq!(
+            run_of(&v).unwrap().end,
+            Some(RunEnd::Failed),
+            "stop_reason={stop}"
+        );
+    }
+    let ok = json!({"type":"assistant","isSidechain":true,"agentId":"a1",
+        "message":{"id":"m1","content":[{"type":"text","text":"x"}],"stop_reason":"stop_sequence"}});
+    assert_eq!(
+        run_of(&ok).unwrap().end,
+        None,
+        "不是 API 报错的 stop_sequence 不算收场"
+    );
+}

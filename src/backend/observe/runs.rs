@@ -6,7 +6,7 @@
 //! - [`RunTrack`]：watcher 那一侧的手 —— 子运行的记录文件在哪（`ChildFace::sources`）、读到哪了；与主记录走同一条文件事件管线，不轮询。
 
 use crate::agents::{ChildLink, RunEnd, RunFaces, RunMark};
-use crate::stream::wire::{Frame, RunInfo, RunState};
+use crate::stream::wire::{Frame, RunEnded, RunInfo, RunState};
 use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Seek, SeekFrom};
@@ -16,22 +16,47 @@ use std::time::{Duration, SystemTime};
 
 /// 每个会话最多记几个运行（超了先丢最久没动静的已收场的，再丢最久没动静的）。
 pub(crate) const RUNS_KEEP: usize = 64;
+/// 每个会话最多记住几个被挤出运行表的已收场运行（先进先出）：挤出只是不再列，「它已经收场了」不许跟着忘。
+pub(crate) const ENDED_KEEP: usize = 4096;
 /// 每个会话记住几个「这次工具调用派出了子运行、标签是什么」（先进先出）。
 pub(crate) const LINKS_KEEP: usize = 256;
 /// 每个会话记住几个对账键的归属（先进先出）。
 pub(crate) const RIDS_KEEP: usize = 512;
-/// 一个子运行没有任何收场信号、它的记录又这么久没再写 ⇒ 「状态不明」，不当它在跑。只在读记录 / 收到文件事件时算，不轮询。
-/// 比一次前台工具调用最长的等待（10 分钟）再宽一截：在等一个长命令的子运行不会被误判。
+/// 一个子运行没有任何收场信号、它的记录又这么久没再写 ⇒ 「状态不明」，不当它在跑。到点就判（watcher 有在跑的运行时
+/// 至多等到最早那个期限，[`next_event`]），读记录 / 出帧时也判。比一次前台工具调用最长的等待（10 分钟）再宽一截。
 pub(crate) const STALE_AFTER: Duration = Duration::from_millis(15 * 60 * 1000);
 
-/// 簿里的一个运行：线上那一格 ＋ 它最近一次动静的时刻（子记录的写入时刻；只有父侧说到过 ⇒ 头一次听说它的时刻）。
+/// 簿里的一个运行：线上那一格 ＋ 它最近一次动静的时刻（子记录的写入时刻；只有父侧说到过 ⇒ 说到它的那份记录的时刻）。
 struct Run {
     info: RunInfo,
     seen: SystemTime,
+    /// 它自己的记录里最近一次应答的对账键。
+    rid: Option<String>,
+    /// 收场了 ⇒ 怎么收的（与 `info.state` 是不是三种收场之一同进退）。
+    closed: Option<Closed>,
 }
 
-fn ended(s: RunState) -> bool {
-    matches!(s, RunState::Done | RunState::Failed | RunState::Stopped)
+/// 收场那一刻：它最近一次应答的对账键 · 收场的时刻 · 是不是它自己的记录写出的终局。
+#[derive(Clone)]
+struct Closed {
+    rid: Option<String>,
+    at: SystemTime,
+    own: bool,
+}
+
+impl Closed {
+    /// 收场之后读到它的一条记录（对账键 `rid`、写于 `seen`）：是不是又一次新的应答（被续跑了）。
+    /// 收场只粘同一轮 —— 自己写过终局 ⇒ 之后别的应答都是新的一轮；只有派出那一方说过 ⇒ 要比那一刻晚写的才算。
+    fn resumed_by(&self, rid: Option<&str>, seen: SystemTime) -> bool {
+        rid.is_some() && rid != self.rid.as_deref() && (self.own || seen > self.at)
+    }
+}
+
+/// 被挤出运行表的已收场运行（[`ENDED_KEEP`]）：只记派出它的那次工具调用 · 终态 · 判续跑要的那一格。
+struct Gone {
+    tool: Option<String>,
+    state: RunState,
+    closed: Closed,
 }
 
 fn state_of(e: RunEnd) -> RunState {
@@ -45,6 +70,9 @@ fn state_of(e: RunEnd) -> RunState {
 #[derive(Default)]
 struct Sess {
     runs: Vec<Run>,
+    /// 被挤出 `runs` 的已收场运行（`gone_order` 先进先出）。一个运行只在两处之一。
+    gone: HashMap<String, Gone>,
+    gone_order: VecDeque<String>,
     /// 父侧工具调用 id ⇒（标签, 类别）：调用先到、子运行是哪个后到。
     labels: HashMap<String, (Option<String>, Option<String>)>,
     label_order: VecDeque<String>,
@@ -58,9 +86,14 @@ impl Sess {
         self.runs.iter_mut().find(|r| r.info.run == run)
     }
 
-    fn slot(&mut self, run: &str, now: SystemTime) -> &mut Run {
+    /// 表里的这个运行；不在 ⇒ 立一个（先查被挤出的那张：收过场的照它的终态立回来，不当新的在跑）。
+    fn slot(&mut self, run: &str, seen: SystemTime) -> &mut Run {
         if let Some(i) = self.runs.iter().position(|r| r.info.run == run) {
             return &mut self.runs[i];
+        }
+        let back = self.gone.remove(run);
+        if back.is_some() {
+            self.gone_order.retain(|g| g != run);
         }
         if self.runs.len() >= RUNS_KEEP {
             let oldest = |any: bool| {
@@ -72,20 +105,52 @@ impl Sess {
                     .map(|(i, _)| i)
             };
             let victim = oldest(false).or_else(|| oldest(true)).unwrap_or(0);
-            self.runs.remove(victim);
+            let v = self.runs.remove(victim);
+            if let Some(closed) = v.closed {
+                self.bury(v.info.run, v.info.tool, v.info.state, closed);
+            }
         }
+        let tool = back.as_ref().and_then(|g| g.tool.clone());
+        let (label, kind) = tool
+            .as_ref()
+            .and_then(|t| self.labels.get(t).cloned())
+            .unwrap_or_default();
         self.runs.push(Run {
             info: RunInfo {
                 run: run.to_string(),
-                label: None,
-                kind: None,
-                tool: None,
-                state: RunState::Running,
+                label,
+                kind,
+                tool,
+                state: back.as_ref().map_or(RunState::Running, |g| g.state),
                 last: None,
             },
-            seen: now,
+            seen,
+            rid: None,
+            closed: back.map(|g| g.closed),
         });
         self.runs.last_mut().expect("just pushed")
+    }
+
+    fn bury(&mut self, run: String, tool: Option<String>, state: RunState, closed: Closed) {
+        if self
+            .gone
+            .insert(
+                run.clone(),
+                Gone {
+                    tool,
+                    state,
+                    closed,
+                },
+            )
+            .is_none()
+        {
+            self.gone_order.push_back(run);
+            while self.gone_order.len() > ENDED_KEEP {
+                if let Some(old) = self.gone_order.pop_front() {
+                    self.gone.remove(&old);
+                }
+            }
+        }
     }
 
     fn learn_rid(&mut self, rid: String, owner: Option<String>) {
@@ -99,13 +164,44 @@ impl Sess {
         }
     }
 
-    /// 子运行自己的一条记录（`seen` ＝ 那份记录的写入时刻）。收场是粘的：先到的收场信号算数，之后的记录不把它翻回在跑。
-    fn mark(&mut self, m: RunMark, seen: SystemTime) -> bool {
+    /// 子运行自己的一条记录（对账键 `rid`，`seen` ＝ 那份记录的写入时刻）。先到的收场信号算数；收场只粘同一轮
+    /// （[`Closed::resumed_by`]：被续跑 ⇒ 回到在跑）。
+    fn mark(&mut self, m: RunMark, rid: Option<String>, seen: SystemTime) -> bool {
+        if let Some(g) = self.gone.get_mut(&m.run) {
+            if !g.closed.resumed_by(rid.as_deref(), seen) {
+                if m.end.is_some() {
+                    g.closed = Closed {
+                        rid: rid.or(g.closed.rid.take()),
+                        at: seen,
+                        own: true,
+                    };
+                }
+                return false;
+            }
+        }
         let r = self.slot(&m.run, seen);
         let before = r.info.clone();
         r.seen = seen;
-        if !ended(r.info.state) {
-            r.info.state = m.end.map_or(RunState::Running, state_of);
+        if r.closed
+            .as_ref()
+            .is_some_and(|c| c.resumed_by(rid.as_deref(), seen))
+        {
+            r.closed = None;
+        }
+        match (&r.closed, m.end) {
+            (None, None) => r.info.state = RunState::Running,
+            (None, Some(e)) => r.info.state = state_of(e),
+            (Some(_), _) => {}
+        }
+        if m.end.is_some() {
+            r.closed = Some(Closed {
+                rid: rid.clone().or(r.rid.clone()),
+                at: seen,
+                own: true,
+            });
+        }
+        if rid.is_some() {
+            r.rid = rid;
         }
         if m.did.is_some() {
             r.info.last = m.did;
@@ -113,33 +209,43 @@ impl Sess {
         r.info != before
     }
 
-    fn end(r: &mut Run, e: Option<RunEnd>) {
-        if let Some(e) = e {
-            if !ended(r.info.state) {
-                r.info.state = state_of(e);
-            }
+    fn end(r: &mut Run, e: Option<RunEnd>, at: SystemTime) {
+        if let (Some(e), None) = (e, &r.closed) {
+            r.info.state = state_of(e);
+            r.closed = Some(Closed {
+                rid: r.rid.clone(),
+                at,
+                own: false,
+            });
         }
     }
 
-    fn link(&mut self, l: ChildLink, now: SystemTime) -> bool {
+    /// 说到子运行的一条（`at` ＝ 那条记录的时刻：来自子记录 ⇒ 那份记录的写入时刻）。
+    fn link(&mut self, l: ChildLink, at: SystemTime) -> bool {
         match (l.run, l.tool) {
             (Some(run), Some(tool)) => {
+                // 被挤出表的已收场运行：只补上是哪次调用派出的（收场是粘的，不回表）。
+                if let Some(g) = self.gone.get_mut(&run) {
+                    let changed = g.tool.as_deref() != Some(tool.as_str());
+                    g.tool = Some(tool);
+                    return changed;
+                }
                 let known = self.labels.get(&tool).cloned();
-                let r = self.slot(&run, now);
+                let r = self.slot(&run, at);
                 let before = r.info.clone();
                 r.info.tool = Some(tool);
                 if let Some((label, kind)) = known {
                     r.info.label = label.or(r.info.label.take());
                     r.info.kind = kind.or(r.info.kind.take());
                 }
-                Self::end(r, l.end);
+                Self::end(r, l.end, at);
                 r.info != before
             }
             // 只说收场：认识的运行才算（同一种通知也说别的后台任务，那些不是子运行）。
             (Some(run), None) => match self.find(&run) {
                 Some(r) => {
                     let before = r.info.state;
-                    Self::end(r, l.end);
+                    Self::end(r, l.end, at);
                     r.info.state != before
                 }
                 None => false,
@@ -175,17 +281,48 @@ impl Sess {
         }
     }
 
-    /// 在跑却久未再写的 ⇒ 状态不明（[`STALE_AFTER`]）。
+    /// 在跑却久未再写的 ⇒ 状态不明（[`STALE_AFTER`]，到点即算）。
     fn settle(&mut self, now: SystemTime) -> bool {
         let mut changed = false;
         for r in &mut self.runs {
             let quiet = now.duration_since(r.seen).unwrap_or_default();
-            if r.info.state == RunState::Running && quiet > STALE_AFTER {
+            if r.info.state == RunState::Running && quiet >= STALE_AFTER {
                 r.info.state = RunState::Unknown;
                 changed = true;
             }
         }
         changed
+    }
+
+    /// 运行表（最早动过的在前）。
+    fn table(&self) -> Vec<RunInfo> {
+        let mut v: Vec<&Run> = self.runs.iter().collect();
+        v.sort_by_key(|r| r.seen);
+        v.into_iter().map(|r| r.info.clone()).collect()
+    }
+
+    /// 被挤出表的已收场运行里对上了派出调用的那些（先挤出的在前）。
+    fn ended(&self) -> Vec<RunEnded> {
+        self.gone_order
+            .iter()
+            .filter_map(|run| {
+                let g = self.gone.get(run)?;
+                Some(RunEnded {
+                    run: run.clone(),
+                    tool: g.tool.clone()?,
+                    state: g.state,
+                })
+            })
+            .collect()
+    }
+
+    /// 最早那个在跑的运行到「久未动静」的时刻（没有在跑的 ⇒ `None`）。
+    fn due(&self) -> Option<SystemTime> {
+        self.runs
+            .iter()
+            .filter(|r| r.info.state == RunState::Running)
+            .map(|r| r.seen + STALE_AFTER)
+            .min()
     }
 }
 
@@ -212,6 +349,7 @@ impl RunBook {
     ) -> bool {
         let mark = faces.run_of(v);
         let rid = faces.response_id(v);
+        let own_rid = rid.clone().filter(|_| mark.is_some());
         let links = faces.child_links(v);
         let now = SystemTime::now();
         let (changed, learned) = self.with(|m| {
@@ -229,11 +367,12 @@ impl RunBook {
                 }
             }
             let mut changed = false;
+            let at = child.unwrap_or(now);
             if let Some(mk) = mark {
-                changed |= s.mark(mk, child.unwrap_or(now));
+                changed |= s.mark(mk, own_rid, at);
             }
             for l in links {
-                changed |= s.link(l, now);
+                changed |= s.link(l, at);
             }
             changed |= s.settle(now);
             (changed, learned)
@@ -278,16 +417,42 @@ impl RunBook {
         self.with(|m| m.get(sid).and_then(|s| s.rids.get(rid).cloned()))
     }
 
+    /// 这个会话的运行表那一帧（出帧前先按 `now` 判一次久未动静）。
+    pub(crate) fn frame_at(&self, sid: &str, now: SystemTime) -> Frame {
+        let (runs, ended) = self.with(|m| match m.get_mut(sid) {
+            Some(s) => {
+                s.settle(now);
+                (s.table(), s.ended())
+            }
+            None => (Vec::new(), Vec::new()),
+        });
+        Frame::SessionRuns {
+            sid: sid.to_string(),
+            runs,
+            ended,
+        }
+    }
+
+    /// 全部会话按 `now` 判一次久未动静：回运行表变了的那几个会话（排好序）。
+    pub(crate) fn settle_all(&self, now: SystemTime) -> Vec<String> {
+        self.with(|m| {
+            let mut v: Vec<String> = m
+                .iter_mut()
+                .filter_map(|(sid, s)| s.settle(now).then(|| sid.clone()))
+                .collect();
+            v.sort();
+            v
+        })
+    }
+
+    /// 全部会话里最早那个在跑的运行到「久未动静」的时刻（没有在跑的 ⇒ `None`）。
+    pub(crate) fn next_due(&self) -> Option<SystemTime> {
+        self.with(|m| m.values().filter_map(Sess::due).min())
+    }
+
     /// 这个会话的运行表（最早动过的在前）。
     pub(crate) fn runs(&self, sid: &str) -> Vec<RunInfo> {
-        self.with(|m| {
-            let Some(s) = m.get(sid) else {
-                return Vec::new();
-            };
-            let mut v: Vec<&Run> = s.runs.iter().collect();
-            v.sort_by_key(|r| r.seen);
-            v.into_iter().map(|r| r.info.clone()).collect()
-        })
+        self.with(|m| m.get(sid).map(Sess::table).unwrap_or_default())
     }
 
     /// 会话退休了（派出它们的那一方没了）：还算在跑的再也等不到收场信号 ⇒ 状态不明。回：运行表变没变。
@@ -516,11 +681,41 @@ impl RunTrack {
         !self.book.runs(sid).is_empty()
     }
 
-    /// 这个会话此刻的运行表那一帧。
+    /// 这个会话此刻的运行表那一帧（出帧前按此刻判一次久未动静）。
     pub(crate) fn frame(&self, sid: &str) -> Frame {
-        Frame::SessionRuns {
-            sid: sid.to_string(),
-            runs: self.book.runs(sid),
-        }
+        self.book.frame_at(sid, SystemTime::now())
+    }
+
+    /// 全部会话按 `now` 判一次久未动静：表变了的那几个各一帧。
+    pub(crate) fn due_frames(&self, now: SystemTime) -> Vec<Frame> {
+        self.book
+            .settle_all(now)
+            .into_iter()
+            .map(|sid| self.book.frame_at(&sid, now))
+            .collect()
+    }
+
+    /// 下一个「久未动静」的期限（没有在跑的子运行 ⇒ `None`：watcher 无期限地等事件）。
+    pub(crate) fn next_due(&self) -> Option<SystemTime> {
+        self.book.next_due()
+    }
+}
+
+/// watcher 等下一个事件：`due` 有 ⇒ 至多等到那一刻，到点回 `Ok(None)`（调用方判一次久未动静、重算期限再等）；
+/// 没有 ⇒ 无期限地等。只醒在真期限上，不是节拍。
+pub(crate) fn next_event<T>(
+    rx: &std::sync::mpsc::Receiver<T>,
+    due: Option<SystemTime>,
+    now: SystemTime,
+) -> Result<Option<T>, std::sync::mpsc::RecvError> {
+    use std::sync::mpsc::{RecvError, RecvTimeoutError};
+    let Some(due) = due else {
+        return rx.recv().map(Some);
+    };
+    let wait = due.duration_since(now).unwrap_or_default();
+    match rx.recv_timeout(wait) {
+        Ok(e) => Ok(Some(e)),
+        Err(RecvTimeoutError::Timeout) => Ok(None),
+        Err(RecvTimeoutError::Disconnected) => Err(RecvError),
     }
 }

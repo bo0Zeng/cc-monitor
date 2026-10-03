@@ -13,12 +13,13 @@
 //!    接上会话的两条路（实时逐行 · 只读尾巴时补读已有的那一截）读出同一张表；会话退休 ⇒ 还算在跑的变状态不明。
 
 use crate::agents::{RunEnd, RunFaces, StreamEv, StreamFamily};
-use crate::observe::runs::{RunBook, RunTrack, STALE_AFTER};
+use crate::observe::runs::{next_event, RunBook, RunTrack, RUNS_KEEP, STALE_AFTER};
 use crate::relay::{TapBody, TapEvent};
 use crate::stream::run_route::RunRouter;
 use crate::stream::wire::{Frame, RunState};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
 /// Claude Code 子运行形状的那几个字面量（它们只许住适配层）。
 const NEEDLES: &[&str] = &[
@@ -578,9 +579,11 @@ fn completion_scenario(shape: &Shape, via_prime: bool) -> Vec<(String, RunState)
             track.main_record(SID, l);
         }
     }
-    for run in ["w1", "w2", "w3", "w4", "w6"] {
-        child_wrote(shape, &parent, run, None);
+    // 收场的那几个：最后一条写在派出那一方说它收场之前（之后才写的新应答 ＝ 被续跑，另一族判据）。
+    for run in ["w1", "w2", "w3", "w4"] {
+        child_wrote(shape, &parent, run, Some(minute));
     }
+    child_wrote(shape, &parent, "w6", None);
     child_wrote(shape, &parent, "w5", Some(STALE_AFTER + minute));
     child_wrote(shape, &parent, "w7", Some(STALE_AFTER - minute));
     track.adopt(SID, &parent);
@@ -658,4 +661,419 @@ fn a_fake_adapter_ends_its_runs_by_what_the_dispatcher_says() {
 #[test]
 fn claude_code_ends_its_runs_by_what_the_dispatcher_says() {
     completion_criteria(&claude_code());
+}
+
+// ── 冷接 · 续跑 · 空闲 ──────────────────────────────────────────────────────────
+
+/// 一份子运行记录（整份写好），写入时刻拨到 `ago` 之前（`None` ＝ 刚写）。
+fn child_file(shape: &Shape, parent: &Path, run: &str, lines: &[String], ago: Option<Duration>) {
+    let p = (shape.child_of)(parent, run);
+    append(&p, lines);
+    if let Some(ago) = ago {
+        set_written(&p, std::time::SystemTime::now() - ago);
+    }
+}
+
+fn set_written(p: &Path, at: std::time::SystemTime) {
+    let f = std::fs::OpenOptions::new().write(true).open(p).unwrap();
+    f.set_modified(at).unwrap();
+}
+
+fn state_of(book: &RunBook, run: &str) -> Option<RunState> {
+    book.runs(SID)
+        .into_iter()
+        .find(|r| r.run == run)
+        .map(|r| r.state)
+}
+
+fn running_set(book: &RunBook) -> std::collections::BTreeSet<String> {
+    book.runs(SID)
+        .into_iter()
+        .filter(|r| r.state == RunState::Running)
+        .map(|r| r.run)
+        .collect()
+}
+
+/// 冷接（后端重启 / 界面重连）一个子运行比表上限还多、还有嵌套派出的会话：子记录按路径序读，嵌套的 Y 先收场、
+/// 被一串别的挤出表，最后才读到发射器 X 那条「派出 Y」—— 已收场的不许被重新立成在跑；只在旧记录里被派出、
+/// 自己没有记录的 Y2 立起来就是久未动静。在跑的集合 ＝ 真在跑的那一个。
+fn cold_crowded_scenario(shape: &Shape) {
+    let dir = scratch(&format!("{}-cold", shape.name));
+    let parent = (shape.parent_of)(&dir, SID);
+    let day = Duration::from_secs(86_400);
+    let (y, y2, x, w) = ("a0", "a1", "c0", "d0");
+    let zs: Vec<String> = (0..RUNS_KEEP + 6).map(|i| format!("b{i:03}")).collect();
+    let mut lines = vec![(shape.spawn)("tx", "X"), (shape.spawned)("tx", x)];
+    for (i, z) in zs.iter().enumerate() {
+        let t = format!("tz{i}");
+        lines.push((shape.spawn)(&t, z));
+        lines.push((shape.spawned)(&t, z));
+        lines.push((shape.notice)(z, RunEnd::Done));
+    }
+    lines.push((shape.notice)(x, RunEnd::Done));
+    lines.push((shape.spawn)("tw", "W"));
+    lines.push((shape.spawned)("tw", w));
+    append(&parent, &lines);
+    child_file(
+        shape,
+        &parent,
+        y,
+        &[(shape.child_end)(y, "r-y")],
+        Some(3 * day),
+    );
+    for z in &zs {
+        child_file(
+            shape,
+            &parent,
+            z,
+            &[(shape.child_end)(z, &format!("r-{z}"))],
+            Some(2 * day),
+        );
+    }
+    child_file(
+        shape,
+        &parent,
+        x,
+        &[
+            (shape.child_tool)(x, "r-x1", "Agent"),
+            (shape.spawn)("ty2", "Y2"),
+            (shape.spawned)("ty2", y2),
+            (shape.spawn)("ty", "Y"),
+            (shape.spawned)("ty", y),
+            (shape.child_end)(x, "r-x2"),
+        ],
+        Some(2 * day),
+    );
+    child_file(
+        shape,
+        &parent,
+        w,
+        &[(shape.child_tool)(w, "r-w", "Bash")],
+        None,
+    );
+
+    let book = Arc::new(RunBook::default());
+    let mut track = RunTrack::new(shape.faces, book.clone());
+    track.prime(SID, &std::fs::read(&parent).unwrap());
+    track.adopt(SID, &parent);
+    assert_eq!(
+        running_set(&book),
+        [w.to_string()].into_iter().collect(),
+        "[{}] 冷接之后在跑的只该是真在跑的那一个（几天前就收场的嵌套 agent 被重新立成了在跑）",
+        shape.name
+    );
+    assert_eq!(
+        state_of(&book, y2),
+        Some(RunState::Unknown),
+        "[{}] 只在两天前的记录里被派出、自己没写过记录 ⇒ 立起来就是久未动静（链接的时刻跟着那份记录走）",
+        shape.name
+    );
+    // 挤出表的不丢终态：每个收场了、对上了派出调用的子运行，在运行表或 `ended` 里恰好出现一次，终态对。
+    let Frame::SessionRuns { runs, ended, .. } = track.frame(SID) else {
+        panic!("frame() 该出运行表帧");
+    };
+    assert_eq!(
+        runs.len(),
+        RUNS_KEEP,
+        "[{}] 运行表照旧只列上限那么多",
+        shape.name
+    );
+    let mut got: Vec<(String, String, RunState)> = runs
+        .iter()
+        .filter(|r| {
+            matches!(
+                r.state,
+                RunState::Done | RunState::Failed | RunState::Stopped
+            )
+        })
+        .filter_map(|r| Some((r.run.clone(), r.tool.clone()?, r.state)))
+        .chain(
+            ended
+                .iter()
+                .map(|e| (e.run.clone(), e.tool.clone(), e.state)),
+        )
+        .collect();
+    got.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut want: Vec<(String, String, RunState)> = zs
+        .iter()
+        .enumerate()
+        .map(|(i, z)| (z.clone(), format!("tz{i}"), RunState::Done))
+        .chain([
+            (x.to_string(), "tx".to_string(), RunState::Done),
+            (y.to_string(), "ty".to_string(), RunState::Done),
+        ])
+        .collect();
+    want.sort_by(|a, b| a.0.cmp(&b.0));
+    assert_eq!(
+        got, want,
+        "[{}] 收场的子运行在表里或 ended 里各一次、终态对",
+        shape.name
+    );
+    assert!(
+        ended.iter().any(|e| e.run == y),
+        "[{}] 被挤出之后才对上派出调用的 Y 在 ended 里（补上了是哪次调用派出的）",
+        shape.name
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_fake_adapter_cold_connect_past_the_cap_raises_no_dead_runs() {
+    cold_crowded_scenario(&fake());
+}
+
+#[test]
+fn claude_code_cold_connect_past_the_cap_raises_no_dead_runs() {
+    cold_crowded_scenario(&claude_code());
+}
+
+/// 收场只粘同一轮：收场之后同一个子运行又写出一次**别的**应答（被续跑）⇒ 回到在跑；同一次应答的余下几条、
+/// 收场通知之前就写好的记录，不翻。实时与冷接各一格。
+fn resume_scenario(shape: &Shape) {
+    let dir = scratch(&format!("{}-resume", shape.name));
+    let parent = (shape.parent_of)(&dir, SID);
+    let book = Arc::new(RunBook::default());
+    let mut track = RunTrack::new(shape.faces, book.clone());
+    let sec = Duration::from_secs(1);
+    let mut lines = Vec::new();
+    for (i, run) in ["w1", "w2", "w3", "w4", "w5"].iter().enumerate() {
+        let t = format!("t{i}");
+        lines.push((shape.spawn)(&t, run));
+        lines.push((shape.spawned)(&t, run));
+    }
+    append(&parent, &lines);
+    for l in &lines {
+        track.main_record(SID, l);
+    }
+    // w5：冷接时读到的就是「收场 ⇒ 续跑」整段。
+    child_file(
+        shape,
+        &parent,
+        "w5",
+        &[
+            (shape.child_tool)("w5", "r-w5a", "Bash"),
+            (shape.child_end)("w5", "r-w5b"),
+            (shape.child_tool)("w5", "r-w5c", "Bash"),
+        ],
+        None,
+    );
+    for run in ["w1", "w2", "w3", "w4"] {
+        child_file(
+            shape,
+            &parent,
+            run,
+            &[(shape.child_tool)(run, &format!("r-{run}a"), "Bash")],
+            Some(10 * sec),
+        );
+    }
+    track.adopt(SID, &parent);
+    assert_eq!(
+        state_of(&book, "w5"),
+        Some(RunState::Running),
+        "[{}] 冷接读到「自己收场之后又一次应答」⇒ 被续跑了，在跑",
+        shape.name
+    );
+
+    // w1：自己写出终局 ⇒ 完成；之后又一次别的应答 ⇒ 在跑。
+    let w1 = (shape.child_of)(&parent, "w1");
+    append(&w1, &[(shape.child_end)("w1", "r-w1b")]);
+    track.on_path(&w1);
+    assert_eq!(
+        state_of(&book, "w1"),
+        Some(RunState::Done),
+        "[{}] 终局 ⇒ 完成",
+        shape.name
+    );
+    append(&w1, &[(shape.child_tool)("w1", "r-w1c", "Bash")]);
+    track.on_path(&w1);
+    assert_eq!(
+        state_of(&book, "w1"),
+        Some(RunState::Running),
+        "[{}] 收场之后又写出新的一次应答（被续跑）⇒ 回到在跑",
+        shape.name
+    );
+
+    // w4：终局那次应答的余下一条（同一个对账键）⇒ 不翻。
+    let w4 = (shape.child_of)(&parent, "w4");
+    append(
+        &w4,
+        &[
+            (shape.child_end)("w4", "r-w4b"),
+            (shape.child_tool)("w4", "r-w4b", "Bash"),
+        ],
+    );
+    track.on_path(&w4);
+    assert_eq!(
+        state_of(&book, "w4"),
+        Some(RunState::Done),
+        "[{}] 同一次应答的余下几条不算续跑",
+        shape.name
+    );
+
+    // w2 / w3：派出那一方先说收场了。w2 之后又写（比那一刻晚）⇒ 在跑；w3 读到的是那之前就写好的 ⇒ 不翻。
+    for run in ["w2", "w3"] {
+        let l = (shape.notice)(run, RunEnd::Done);
+        append(&parent, std::slice::from_ref(&l));
+        track.main_record(SID, &l);
+    }
+    let w2 = (shape.child_of)(&parent, "w2");
+    append(&w2, &[(shape.child_tool)("w2", "r-w2b", "Bash")]);
+    set_written(&w2, std::time::SystemTime::now() + 2 * sec);
+    track.on_path(&w2);
+    let w3 = (shape.child_of)(&parent, "w3");
+    append(&w3, &[(shape.child_tool)("w3", "r-w3b", "Bash")]);
+    set_written(&w3, std::time::SystemTime::now() - 5 * sec);
+    track.on_path(&w3);
+    assert_eq!(
+        (state_of(&book, "w2"), state_of(&book, "w3")),
+        (Some(RunState::Running), Some(RunState::Done)),
+        "[{}] 收场通知之后才写的新应答 ⇒ 在跑；通知之前就写好、晚读到的 ⇒ 仍完成",
+        shape.name
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_fake_adapter_run_resumed_after_it_ended_is_running_again() {
+    resume_scenario(&fake());
+}
+
+#[test]
+fn claude_code_run_resumed_after_it_ended_is_running_again() {
+    resume_scenario(&claude_code());
+}
+
+/// 会话空闲（不再有任何记录 / 文件事件）：出帧那一刻也要按「久未动静」判，不靠这个会话再写一条。
+#[test]
+fn a_frame_judges_quiet_runs_without_waiting_for_another_record() {
+    let shape = claude_code();
+    let dir = scratch("idle-frame");
+    let parent = (shape.parent_of)(&dir, SID);
+    append(
+        &parent,
+        &[(shape.spawn)("t1", "w1"), (shape.spawned)("t1", "w1")],
+    );
+    child_file(
+        &shape,
+        &parent,
+        "w1",
+        &[(shape.child_tool)("w1", "r-w1", "Bash")],
+        Some(STALE_AFTER - Duration::from_secs(2)),
+    );
+    let book = Arc::new(RunBook::default());
+    let mut track = RunTrack::new(shape.faces, book.clone());
+    track.prime(SID, &std::fs::read(&parent).unwrap());
+    track.adopt(SID, &parent);
+    assert_eq!(
+        state_of(&book, "w1"),
+        Some(RunState::Running),
+        "差两秒到阈值 ⇒ 还在跑"
+    );
+    std::thread::sleep(Duration::from_millis(2500));
+    let Frame::SessionRuns { runs, .. } = track.frame(SID) else {
+        panic!("frame() 该出运行表帧");
+    };
+    assert_eq!(
+        runs.iter()
+            .map(|r| (r.run.as_str(), r.state))
+            .collect::<Vec<_>>(),
+        vec![("w1", RunState::Unknown)],
+        "过了阈值、会话再没写过 ⇒ 出帧时就是状态不明"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 「久未动静 ⇒ 状态不明」到点就判、不靠这个会话再来记录：期限是最早那个在跑的 `seen + STALE_AFTER`，到点判、表变了才出帧，
+/// 判完按剩下的重算（不是上一个期限加固定间隔）；没有在跑的 ⇒ 没有期限，watcher 无期限地等、不醒。
+#[test]
+fn quiet_runs_are_judged_on_their_own_deadline_not_on_a_beat() {
+    let shape = claude_code();
+    let book = Arc::new(RunBook::default());
+    let track = RunTrack::new(shape.faces, book.clone());
+    assert_eq!(track.next_due(), None, "没有子运行 ⇒ 没有期限");
+    let sec = Duration::from_secs(1);
+    let t0 = SystemTime::now();
+    for (run, ago) in [
+        ("w1", STALE_AFTER - 10 * sec),
+        ("w2", STALE_AFTER - 25 * sec),
+    ] {
+        let v: serde_json::Value =
+            serde_json::from_str(&(shape.child_tool)(run, &format!("r-{run}"), "Bash")).unwrap();
+        book.record(&shape.faces, SID, &v, Some(t0 - ago));
+    }
+    let d1 = t0 + 10 * sec;
+    assert_eq!(
+        track.next_due(),
+        Some(d1),
+        "期限 ＝ 最早那个在跑的 seen + 阈值"
+    );
+    assert!(
+        track.due_frames(d1 - Duration::from_millis(1)).is_empty(),
+        "期限之前不判"
+    );
+    let frames = track.due_frames(d1);
+    let [Frame::SessionRuns { runs, .. }] = frames.as_slice() else {
+        panic!("到点、表变了 ⇒ 恰好一帧：{frames:?}");
+    };
+    let mut st: Vec<_> = runs.iter().map(|r| (r.run.as_str(), r.state)).collect();
+    st.sort_by(|a, b| a.0.cmp(b.0));
+    assert_eq!(
+        st,
+        vec![("w1", RunState::Unknown), ("w2", RunState::Running)]
+    );
+    assert!(track.due_frames(d1).is_empty(), "表没再变 ⇒ 不再出帧");
+    assert_eq!(
+        track.next_due(),
+        Some(t0 + 25 * sec),
+        "判完按剩下的重算期限"
+    );
+    assert_eq!(track.due_frames(t0 + 25 * sec).len(), 1);
+    assert_eq!(track.next_due(), None, "没有在跑的了 ⇒ 不再有期限");
+
+    // watcher 的等：没有期限 ⇒ 只被事件叫醒（300ms 后才来的事件照收、中间不醒）；有期限 ⇒ 到点回 None；期限之前的事件先回。
+    let (tx, rx) = std::sync::mpsc::channel::<u8>();
+    let h = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(300));
+        tx.send(7).unwrap();
+        tx
+    });
+    let t = std::time::Instant::now();
+    assert_eq!(
+        next_event(&rx, track.next_due(), SystemTime::now()),
+        Ok(Some(7))
+    );
+    assert!(
+        t.elapsed() >= Duration::from_millis(300),
+        "没有期限却提前醒了"
+    );
+    let tx = h.join().unwrap();
+    let now = SystemTime::now();
+    let t = std::time::Instant::now();
+    assert_eq!(
+        next_event(&rx, Some(now + Duration::from_millis(80)), now),
+        Ok(None)
+    );
+    assert!(t.elapsed() >= Duration::from_millis(80));
+    assert_eq!(
+        next_event(&rx, Some(now - sec), SystemTime::now()),
+        Ok(None),
+        "期限已过 ⇒ 当场回"
+    );
+    tx.send(9).unwrap();
+    assert_eq!(
+        next_event(&rx, Some(SystemTime::now() + 10 * sec), SystemTime::now()),
+        Ok(Some(9))
+    );
+    drop(tx);
+    assert!(
+        next_event(&rx, None, SystemTime::now()).is_err(),
+        "发送端都掉了 ⇒ 结束"
+    );
+
+    // watcher 的事件循环就是这么等的：期限问运行簿，没有第二处 `recv`。
+    let w = guard_core::production_code(
+        &std::fs::read_to_string(repo().join("src/backend/observe/watcher.rs")).unwrap(),
+    );
+    assert_eq!(w.matches("crate::observe::runs::next_event(").count(), 1);
+    assert!(w.contains("state.runs.next_due()") && !w.contains("events_rx.recv()"));
 }

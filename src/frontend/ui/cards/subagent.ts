@@ -76,7 +76,7 @@ const cardState = new WeakMap<HTMLElement, CardState>();
 /** 子运行的状态收到它那张卡上（运行表给的成品：哪个子运行 · 状态）。 */
 export function markRunCard(card: HTMLElement, run: string, state: RunState): void {
   const st = cardState.get(card);
-  if (!st) return;
+  if (!st || (st.run === run && card.dataset.runState === state)) return;
   st.run = run;
   card.dataset.runState = state;
   const s = card.querySelector(":scope > summary");
