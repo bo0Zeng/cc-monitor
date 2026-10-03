@@ -366,3 +366,51 @@ describe("界面层零判定：扩展页不比较指纹、不读配置文件", (
     expect(src).not.toMatch(/files-peek|files-browse|read_text|settings\.json/);
   });
 });
+
+// 「装到…」卡上填的密钥跟着卡走：抽屉因为别的事重画（另一台点了「装到…」、后台同步回来）不许把它清空，确认时交的是填的那份。
+describe("「装到…」卡上填的值跟着卡走", () => {
+  beforeEach(() => invokeMock.mockReset());
+
+  it("★ 填了 A 卡的密钥、再点 B 的「装到…」：A 卡上还是那个值，确认 A 交上去的就是它", async () => {
+    const m3 = [...machines, { key: "nano", here: false, reachable: true, name: "nano", projects: [] }];
+    const mcpMissing = cell("missing", [place(user, "missing")], bring());
+    const lst = { machines: m3, problems: [], rows: [row("mcp", "srv", [cell("same", [place(user, "same", true)]), mcpMissing, mcpMissing])] };
+    const slotCard = { ...card, kind: "mcp", name: "srv", slots: [{ field: "env", key: "API_KEY", kept: false }] };
+    let applied: unknown = null;
+    invokeMock.mockImplementation(async (cmd: string, a: ChanCallArgs) => {
+      if (cmd !== "chan_call") return undefined;
+      switch (a.op) {
+        case "ext-list":
+          return chanReply(lst);
+        case "assets-sync":
+          return chanReply(synced);
+        case "ext-hub-preview":
+          return chanReply(slotCard);
+        case "ext-hub-apply":
+          applied = chanArgsJson(a);
+          return chanReply({ path: "/g", changed: ["x"], note: null });
+      }
+      throw new Error("unexpected " + a.op);
+    });
+    const s = new ExtSection();
+    document.body.replaceChildren(s.element);
+    s.loadNow();
+    await settle();
+    open(s, "mcp/srv");
+    await settle();
+    const bringBtns = () =>
+      [...s.element.querySelectorAll<HTMLButtonElement>(".ext-drawer .ext-machine button")].filter((b) => b.textContent === copyText("extPage.button.bring"));
+    bringBtns()[0]!.click();
+    await settle();
+    const secret = s.element.querySelector<HTMLInputElement>(".ext-card-secret")!;
+    secret.value = "sk-123";
+    secret.dispatchEvent(new Event("input"));
+    bringBtns()[1]!.click(); // B 那台的「装到…」
+    await settle();
+    const secrets = [...s.element.querySelectorAll<HTMLInputElement>(".ext-card-secret")];
+    expect(secrets.map((x) => x.value), "A 卡填的被重画清空了").toEqual(["sk-123", ""]);
+    [...s.element.querySelectorAll<HTMLButtonElement>(".ext-card button")].find((b) => b.textContent === copyText("extPage.card.confirm"))!.click();
+    await settle();
+    expect((applied as { fill?: unknown } | null)?.fill).toEqual({ env: { API_KEY: "sk-123" } });
+  });
+});

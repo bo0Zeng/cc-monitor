@@ -53,6 +53,11 @@ vi.mock("../../../../src/frontend/ui/paths", () => ({
   claudeDirIn: () => null,
   setClaudeDirOverride: vi.fn(() => Promise.resolve()),
 }));
+// 存 Claude 数据目录之前问那个目录在不在：判据替后端答（默认「在」）。
+const dirCheck = vi.hoisted(() => ({ problem: null as string | null }));
+vi.mock("../../../../src/frontend/ui/settings/claude-dir-check", () => ({
+  claudeDirProblem: () => Promise.resolve(dirCheck.problem),
+}));
 vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
   commands: new Proxy(
     {},
@@ -68,6 +73,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
   LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
   RemoteSection: class {
+    originOfPage = (): string | null => null;
     element = document.createElement("div");
     refresh = vi.fn().mockResolvedValue(undefined);
   },
@@ -99,6 +105,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(), listen: vi.fn() }));
 
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
@@ -191,6 +198,49 @@ describe("ST1：设置窗关窗 ＝ 隐藏；〔ST2〕全即时：改了就落�
     p.handleEsc();
     await tick();
     expect(win.hide).toHaveBeenCalledTimes(1);
+  });
+
+  it("★ Claude 数据目录填了一个不在的：不存、不给重启条供货，就地说没存下", async () => {
+    (await import("../../../../src/frontend/ui/settings/restart-notice")).__resetRestartNoticeForTests();
+    const paths = await import("../../../../src/frontend/ui/paths");
+    const setDir = vi.mocked(paths.setClaudeDirOverride);
+    setDir.mockClear();
+    const p = await mount();
+    dirCheck.problem = "/mnt/x 不在";
+    const dir = document.querySelector<HTMLInputElement>(".settings-input-wide")!;
+    dir.value = "/mnt/x";
+    dir.dispatchEvent(new Event("change"));
+    for (let i = 0; i < 3; i++) await tick();
+    dirCheck.problem = null;
+    expect(setDir).not.toHaveBeenCalled();
+    expect(document.querySelector(".settings-restart-bar")!.textContent).not.toContain("Claude 数据目录");
+    expect(document.querySelector(".settings-panel .settings-banner")!.textContent).toBe(
+      "Claude 数据目录没存下：/mnt/x 不在",
+    );
+    void p;
+  });
+
+  it("★ 基础字号越界（0、1、99）：不预览、不存，就地说；改回区间内才存", async () => {
+    const themeMod = await import("../../../../src/frontend/ui/theme");
+    const token = vi.mocked(themeMod.applyThemeToken);
+    theme.save.mockClear();
+    token.mockClear();
+    await mount();
+    const size = document.querySelector<HTMLInputElement>(".settings-panel input[type=number]")!;
+    for (const bad of ["1", "0", "99"]) {
+      size.value = bad;
+      size.dispatchEvent(new Event("input"));
+      size.dispatchEvent(new Event("change"));
+      for (let i = 0; i < 3; i++) await tick();
+    }
+    expect(theme.save, "越界的字号落盘了").not.toHaveBeenCalled();
+    expect(token.mock.calls.filter(([k]) => k === "font-size-base"), "越界的字号拿去预览了").toEqual([]);
+    expect(size.closest(".settings-group")!.textContent).toContain(copyText("settingsPanel.field.fontSizeRange"));
+    size.value = "16";
+    size.dispatchEvent(new Event("change"));
+    for (let i = 0; i < 3; i++) await tick();
+    expect(theme.save.mock.calls).toEqual([[expect.objectContaining({ "font-size-base": 16 })]]);
+    expect(size.closest(".settings-group")!.textContent).not.toContain(copyText("settingsPanel.field.fontSizeRange"));
   });
 
   it("★ 页脚「保存」「取消」与拦截条都没了；「恢复默认」在「外观」那一页上", async () => {

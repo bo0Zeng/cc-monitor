@@ -1614,7 +1614,7 @@ body.settings-window-mode .settings-panel {
      ③ 轴整轴退役 —— 行里的用量单元格已经不渲染了，留着它就是最后一条轨道空着、整表右偏。
      条数契约由 `tests/frontend/ui/settings/accounts-section.vitest.ts`「每行子元素数 == grid 列数(7)」守。 */
   grid-template-columns:
-    14px 16px minmax(0, auto) minmax(0, 1.2fr) auto
+    auto 16px minmax(0, auto) minmax(0, 1.2fr) auto
     minmax(0, 0.8fr) auto;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
@@ -1787,9 +1787,8 @@ body.settings-window-mode .settings-panel {
 }
 
 /* ─── N-F1b：本机那一支（没有配任何远端时，这一节讲的是这台机器） ────────────────
-   刻意**不复用** .accounts-table / .accounts-row：那两个类的列轨道是按远端那张表的
-   8 列排的（★/头像/名/邮箱/状态/用量/路径/操作），本机这几行只有 6 格，套上去列会错位。
-   ⚠ 本机这一支今天是**只读**的：没有操作列、没有用量列 —— 少的那两列不是漏写。
+   刻意**不复用** .accounts-table / .accounts-row：本机这几行是 7 格（头像/名/邮箱/状态/路径/当前/操作），
+   与远端那张表的列不一样，套上去列会错位。
    列宽的权重照 .accounts-table 那段头注的同一条理由：邮箱 > 路径（isolated 账号的
    configDir 逐行只差最后一个字符，而邮箱才分辨得出是哪个号）。 */
 .accounts-local-head {
@@ -1798,9 +1797,10 @@ body.settings-window-mode .settings-panel {
 
 .accounts-local-table {
   display: grid;
-  /* 头像 / 名 / 邮箱 / 状态 / 路径 / 当前标记 */
+  /* 头像 / 名 / 邮箱 / 状态 / 路径 / 当前标记 / 操作。
+     贴边两条用 auto：行是 subgrid，行的内边距与左边框算进贴边那两格里，死宽撑不开就压到下一格上。 */
   grid-template-columns:
-    16px minmax(0, auto) minmax(0, 1.2fr) auto minmax(0, 1fr) auto;
+    auto minmax(0, auto) minmax(0, 1.2fr) auto minmax(0, 1fr) auto auto;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   /* 设置窗没有 min_inner_size，用户可以拖到很窄 —— 宁可横向滚也别把最右一格裁掉。 */

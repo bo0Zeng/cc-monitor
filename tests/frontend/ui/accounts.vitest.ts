@@ -14,7 +14,7 @@ import { loadConfig } from "../../../src/frontend/ui/config";
 import { fakeCfg } from "./config-patch-fake";
 import { deriveUi, effectiveDefault, currentWorkingAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, resolveFollowAccount, detectAccountMismatch, isSelectable, accountConfigDir, badgeText, sessionBadge, shouldShowAccountBadge, resolveAccount, isAccountZero, accountStatusBadge, localApikeyEndpointStateFor, accountLoginActionLabel, type AccountsState, type Account, type SessionAccount } from "../../../src/frontend/ui/accounts";
 import { fetchAccounts, fetchSessionAccounts, fetchSessionAccountsOrNull, parseSessionAccountLines, invalidateAccountsCache, __resetAccountsCacheForTest, fetchLocalApikeyRouting } from "../../../src/frontend/ui/account-reads";
-import { getDefaultName, setDefaultName, getModelForAccount, setModelForAccount } from "../../../src/frontend/ui/account-prefs";
+import { getDefaultName, setDefaultName, getModelForAccount, setModelForAccount, moveMachinePrefs } from "../../../src/frontend/ui/account-prefs";
 import { recordLastAccount, withAccount, localLaunchAccountSync, localLaunchAccountNameSync, __setLocalLaunchSnapshotForTests, __resetLocalLaunchSnapshotForTests } from "../../../src/frontend/ui/launch-account";
 import { sidOfLaunch, rememberLocalLaunch, resolvePendingLocalLaunches, __resetPendingLocalLaunchesForTests, __pendingLocalLaunchCountForTests, PENDING_LAUNCH_TTL_MS, PENDING_LAUNCH_MAX_ASKS, PENDING_LAUNCH_CAP } from "../../../src/frontend/ui/local-launch-backfill";
 import { restartLocateFailureMessage } from "../../../src/frontend/ui/account-restart";
@@ -331,69 +331,73 @@ describe("sessionBadge（§3 优先级）", () => {
   });
 });
 
-describe("defaultName config 读写", () => {
+// 默认账号 / 默认模型按机器存（`accounts.byMachine.<机器>`）：在一台上设的不许改到别台的同名号。
+describe("defaultName config 读写（按机器）", () => {
   it("无 accounts 键 → null", async () => {
     loadCfg.mockResolvedValue({});
-    expect(await getDefaultName()).toBeNull();
+    expect(await getDefaultName("aya")).toBeNull();
   });
-  it("有 defaultName → 读回", async () => {
-    loadCfg.mockResolvedValue({ accounts: { defaultName: "b" } });
-    expect(await getDefaultName()).toBe("b");
+  it("有这台的 defaultName → 读回；别的机器 → null", async () => {
+    loadCfg.mockResolvedValue({ accounts: { byMachine: { aya: { defaultName: "b" } } } });
+    expect(await getDefaultName("aya")).toBe("b");
+    expect(await getDefaultName("nano")).toBeNull();
+    expect(await getDefaultName("<local>")).toBeNull();
   });
-  it("写入保留其它键（不丢字段）", async () => {
-    loadCfg.mockResolvedValue({ theme: "dark", accounts: { somethingElse: 1 } });
-    await setDefaultName("z");
+  it("★ 在 aya 上设默认号，nano 上的同名号不受影响", async () => {
+    loadCfg.mockResolvedValue({ theme: "dark", accounts: { byMachine: { nano: { defaultName: "a1" } }, somethingElse: 1 } });
+    await setDefaultName("aya", "z");
     const written = saveCfg.mock.calls[0][0] as Record<string, unknown>;
     expect(written.theme).toBe("dark"); // 其它顶层键不丢
     const a = written.accounts as Record<string, unknown>;
-    expect(a.defaultName).toBe("z");
     expect(a.somethingElse).toBe(1); // accounts 内其它键不丢
+    expect(a.byMachine).toEqual({ aya: { defaultName: "z" }, nano: { defaultName: "a1" } });
   });
-  it("清除（null）→ 删掉 defaultName", async () => {
-    loadCfg.mockResolvedValue({ accounts: { defaultName: "z", keep: 1 } });
-    await setDefaultName(null);
-    const a = (saveCfg.mock.calls[0][0] as Record<string, unknown>).accounts as Record<string, unknown>;
-    expect(a.defaultName).toBeUndefined();
-    expect(a.keep).toBe(1);
+  it("清除（null）→ 只删这台的 defaultName", async () => {
+    loadCfg.mockResolvedValue({ accounts: { byMachine: { aya: { defaultName: "z", keep: 1 }, nano: { defaultName: "z" } } } });
+    await setDefaultName("aya", null);
+    const by = ((saveCfg.mock.calls[0][0] as Record<string, unknown>).accounts as Record<string, unknown>).byMachine as Record<string, Record<string, unknown>>;
+    expect(by.aya).toEqual({ keep: 1 });
+    expect(by.nano).toEqual({ defaultName: "z" });
   });
 });
 
-// F07：每账号模型偏好 config 读写——结构上是 defaultName（单值）的复数版，同一套模式。
-describe("modelByAccount config 读写（F07）", () => {
+// F07：每账号模型偏好 config 读写——结构上是 defaultName（单值）的复数版，同一套模式，同样按机器分。
+describe("modelByAccount config 读写（F07，按机器）", () => {
   it("无 accounts 键 → undefined", async () => {
     loadCfg.mockResolvedValue({});
-    expect(await getModelForAccount("z")).toBeUndefined();
+    expect(await getModelForAccount("aya", "z")).toBeUndefined();
   });
-  it("有 modelByAccount[z] → 读回；未设置的账号名 → undefined", async () => {
-    loadCfg.mockResolvedValue({ accounts: { modelByAccount: { z: "opus" } } });
-    expect(await getModelForAccount("z")).toBe("opus");
-    expect(await getModelForAccount("b")).toBeUndefined();
+  it("有这台的 modelByAccount[z] → 读回；未设置的账号名 / 别的机器 → undefined", async () => {
+    loadCfg.mockResolvedValue({ accounts: { byMachine: { aya: { modelByAccount: { z: "opus" } } } } });
+    expect(await getModelForAccount("aya", "z")).toBe("opus");
+    expect(await getModelForAccount("aya", "b")).toBeUndefined();
+    expect(await getModelForAccount("nano", "z")).toBeUndefined();
   });
-  it("写入保留其它键（不丢字段）+ 多账号互不影响", async () => {
-    loadCfg.mockResolvedValue({ theme: "dark", accounts: { defaultName: "b", modelByAccount: { b: "sonnet" } } });
-    await setModelForAccount("z", "opus");
+  it("★ 写入保留其它键 + 多账号互不影响 + 别的机器上的同名号不受影响", async () => {
+    loadCfg.mockResolvedValue({
+      theme: "dark",
+      accounts: { byMachine: { aya: { defaultName: "b", modelByAccount: { b: "sonnet" } }, nano: { modelByAccount: { z: "haiku" } } } },
+    });
+    await setModelForAccount("aya", "z", "opus");
     const written = saveCfg.mock.calls[0][0] as Record<string, unknown>;
     expect(written.theme).toBe("dark");
-    const a = written.accounts as Record<string, unknown>;
-    expect(a.defaultName).toBe("b"); // 其它 accounts 内键不丢
-    const map = a.modelByAccount as Record<string, string>;
-    expect(map.z).toBe("opus");
-    expect(map.b).toBe("sonnet"); // 既有账号的偏好不受影响
+    const by = (written.accounts as Record<string, unknown>).byMachine as Record<string, Record<string, unknown>>;
+    expect(by.aya.defaultName).toBe("b"); // 这台其它键不丢
+    expect(by.aya.modelByAccount).toEqual({ b: "sonnet", z: "opus" });
+    expect(by.nano.modelByAccount).toEqual({ z: "haiku" });
   });
-  it("清除（null）→ 只删该账号这一条，其余账号保留", async () => {
-    loadCfg.mockResolvedValue({ accounts: { modelByAccount: { z: "opus", b: "sonnet" } } });
-    await setModelForAccount("z", null);
-    const map = (saveCfg.mock.calls[0][0] as Record<string, unknown>).accounts as Record<string, unknown>;
-    const modelMap = map.modelByAccount as Record<string, string>;
-    expect(modelMap.z).toBeUndefined();
-    expect(modelMap.b).toBe("sonnet");
+  it("清除（null）→ 只删这台这个号这一条，其余保留", async () => {
+    loadCfg.mockResolvedValue({ accounts: { byMachine: { aya: { modelByAccount: { z: "opus", b: "sonnet" } } } } });
+    await setModelForAccount("aya", "z", null);
+    const by = ((saveCfg.mock.calls[0][0] as Record<string, unknown>).accounts as Record<string, unknown>).byMachine as Record<string, Record<string, unknown>>;
+    expect(by.aya.modelByAccount).toEqual({ b: "sonnet" });
   });
   // Phase D 审计（阻塞项修复）：非法模型名必须在写入点被拒绝，不能只留给起会话时的
   // MODEL_DIMENSION.apply() 才发现——那样会让该账号往后每一次会话拉起都统一失败。
   it("非法模型名（含 shell 元字符/空格）→ throw，不落盘", async () => {
     loadCfg.mockResolvedValue({ accounts: {} });
-    await expect(setModelForAccount("z", "opus; rm -rf /")).rejects.toThrow(/模型名不合法/);
-    await expect(setModelForAccount("z", "Claude Opus 4.5")).rejects.toThrow(/模型名不合法/); // 空格非法
+    await expect(setModelForAccount("aya", "z", "opus; rm -rf /")).rejects.toThrow(/模型名不合法/);
+    await expect(setModelForAccount("aya", "z", "Claude Opus 4.5")).rejects.toThrow(/模型名不合法/); // 空格非法
     expect(saveCfg).not.toHaveBeenCalled();
   });
   // 规则换成共享那一份（生成物）之后，真实模型名都放行：
@@ -401,12 +405,18 @@ describe("modelByAccount config 读写（F07）", () => {
   it("真实模型名（`sonnet[1m]` · Bedrock · Vertex）写得进去", async () => {
     loadCfg.mockResolvedValue({ accounts: {} });
     for (const m of ["sonnet[1m]", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "claude-sonnet-4-5@20250929"]) {
-      await expect(setModelForAccount("z", m)).resolves.toBeUndefined();
+      await expect(setModelForAccount("aya", "z", m)).resolves.toBeUndefined();
     }
   });
   it("清除（null）不受校验约束——恒允许", async () => {
-    loadCfg.mockResolvedValue({ accounts: { modelByAccount: { z: "opus" } } });
-    await expect(setModelForAccount("z", null)).resolves.toBeUndefined();
+    loadCfg.mockResolvedValue({ accounts: { byMachine: { aya: { modelByAccount: { z: "opus" } } } } });
+    await expect(setModelForAccount("aya", "z", null)).resolves.toBeUndefined();
+  });
+  it("机器改名：那台的偏好整段搬到新名字下", async () => {
+    loadCfg.mockResolvedValue({ accounts: { byMachine: { aya: { defaultName: "z", modelByAccount: { z: "opus" } }, nano: { defaultName: "a" } } } });
+    await moveMachinePrefs("aya", "aya2");
+    const by = ((saveCfg.mock.calls[0][0] as Record<string, unknown>).accounts as Record<string, unknown>).byMachine as Record<string, unknown>;
+    expect(by).toEqual({ aya2: { defaultName: "z", modelByAccount: { z: "opus" } }, nano: { defaultName: "a" } });
   });
 });
 
@@ -456,7 +466,7 @@ describe("fetchAccounts TTL 缓存", () => {
     expect(s.error).toContain("未配置");
   });
   it("把 config 的 defaultName 合进 state", async () => {
-    loadCfg.mockResolvedValue({ accounts: { defaultName: "b" } });
+    loadCfg.mockResolvedValue({ accounts: { byMachine: { aya: { defaultName: "b" } } } });
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => ({ available: true, error: null, meta: { enabled: true, acctsDir: "/a", manifestPath: "/a/x", updatedAt: null, sharedStore: null, count: 2, error: null }, accounts: [acct({ name: "z", isDefault: true }), acct({ name: "b" })] }))));
     const s = await fetchAccounts("aya");
     expect(s.defaultName).toBe("b");
@@ -803,7 +813,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
   const toastMock = (): ReturnType<typeof vi.fn> => vi.mocked(showActionFailureToast) as unknown as ReturnType<typeof vi.fn>;
   it("★ 〔FE1 · D-h〕不可选账号 → **不起**、一条提示；点提示 ⇒ 改用当前账号起、记 pin", async () => {
     toastMock().mockReset();
-    loadCfg.mockResolvedValue({ accounts: { defaultName: "b" } });
+    loadCfg.mockResolvedValue({ accounts: { byMachine: { aya: { defaultName: "b" } } } });
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (
       okRaw([acct({ name: "z", loggedIn: false, authReady: false }), acct({ name: "b", configDir: "/h/b" })])
     ))));
@@ -845,7 +855,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
 
   // ---- account-ux U2：跟随模式（opt-in opts.follow）----
   it("follow：lastAccount 可选 → run(它的 configDir) + 记 lastAccount（粘性压过 current）", async () => {
-    loadCfg.mockResolvedValue({ accounts: { defaultName: "b" } });
+    loadCfg.mockResolvedValue({ accounts: { byMachine: { aya: { defaultName: "b" } } } });
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (
       okRaw([acct({ name: "z", configDir: "/h/z" }), acct({ name: "b", configDir: "/h/b" })])
     ))));
@@ -860,7 +870,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
   // 这一条先前钉的是 E7 本身：「既有 pin 不可选 → 下沉 current 起会话」（只防了「不 clobber pin」那一半）。
   it("★ 〔FE1 · D-h〕follow：既有 pin 不可选 → **不起**、不记账；提示可点，点了才用当前号起", async () => {
     toastMock().mockReset();
-    loadCfg.mockResolvedValue({ accounts: { defaultName: "b" } });
+    loadCfg.mockResolvedValue({ accounts: { byMachine: { aya: { defaultName: "b" } } } });
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (
       okRaw([acct({ name: "z", loggedIn: false, authReady: false }), acct({ name: "b", configDir: "/h/b" })])
     ))));
@@ -876,7 +886,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     );
   });
   it("follow：无既有 pin（no-owner）→ 落 current → 记 current（become sticky，决策②）", async () => {
-    loadCfg.mockResolvedValue({ accounts: { defaultName: "z" } });
+    loadCfg.mockResolvedValue({ accounts: { byMachine: { aya: { defaultName: "z" } } } });
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (okRaw([acct({ name: "z", configDir: "/h/z" })])))));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", null, run, { sessionId: "s1", follow: {} }); // 无 pin
@@ -887,7 +897,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     });
   });
   it("follow 迁移守卫：无 lastAccount + 老 config 仅 defaultName → 解析出当前账号", async () => {
-    loadCfg.mockResolvedValue({ accounts: { defaultName: "z" } });
+    loadCfg.mockResolvedValue({ accounts: { byMachine: { aya: { defaultName: "z" } } } });
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (
       okRaw([acct({ name: "z", configDir: "/h/z" }), acct({ name: "b", configDir: "/h/b" })])
     ))));
@@ -920,7 +930,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     expect(toastMock()).not.toHaveBeenCalled();
   });
   it("follow：新会话无 sessionId → run({configDir, accountName}) 但不记账", async () => {
-    loadCfg.mockResolvedValue({ accounts: { defaultName: "z" } });
+    loadCfg.mockResolvedValue({ accounts: { byMachine: { aya: { defaultName: "z" } } } });
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (okRaw([acct({ name: "z", configDir: "/h/z" })])))));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", null, run, { follow: {} });
@@ -937,14 +947,14 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
   // F07：命中账号时补一次 getModelForAccount 查询，供 run 的第三参数使用——证明接线本身
   // （不是只测过 getModelForAccount/setModelForAccount 自己的存取逻辑）。
   it("F07：可选账号 + 配了模型偏好 → run 收到真实 modelOverride", async () => {
-    loadCfg.mockResolvedValue({ accounts: { modelByAccount: { z: "opus" } } });
+    loadCfg.mockResolvedValue({ accounts: { byMachine: { aya: { modelByAccount: { z: "opus" } } } } });
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (okRaw([acct({ name: "z", configDir: "/h/z" })])))));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", "z", run, {});
     expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: "opus" });
   });
   it("F07：可选账号但未配模型偏好 → run 收到 undefined（不是空串/不是 throw）", async () => {
-    loadCfg.mockResolvedValue({ accounts: { modelByAccount: { b: "sonnet" } } }); // 只有 b 有偏好
+    loadCfg.mockResolvedValue({ accounts: { byMachine: { aya: { modelByAccount: { b: "sonnet" } } } } }); // 只有 b 有偏好
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (okRaw([acct({ name: "z", configDir: "/h/z" })])))));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", "z", run, {});

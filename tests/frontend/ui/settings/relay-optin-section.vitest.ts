@@ -184,3 +184,31 @@ describe("机器页「终端」栏：让直接敲的 claude 也走中转（可�
     expect(part(s.element, "state")!.dataset.state, "旧那台的晚到答复盖掉了当前这台").toBe("installed");
   });
 });
+
+// 照片段贴好回来：回到这一页就重问（展开过的才问；没展开过的不让中转钥匙进界面）。
+describe("回到这一页：展开过就重问", () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+    __resetMachineContextForTests();
+  });
+
+  it("★ 没展开过 ⇒ 不问；展开过 ⇒ 再问一次，画的是新的那一态", async () => {
+    backend(() => chanReply(rep({ state: "absent" })));
+    const s = new RelayOptinSection();
+    document.body.replaceChildren(s.element);
+    s.rereadIfOpened();
+    await settle();
+    expect(asked(), "没展开过就问了").toEqual([]);
+    s.element.open = true;
+    s.element.dispatchEvent(new Event("toggle"));
+    await settle();
+    backend(() => chanReply(rep({ state: "installed", snippet: null })));
+    s.rereadIfOpened();
+    await settle();
+    expect(asked()).toEqual([
+      ["<local>", "relay-optin"],
+      ["<local>", "relay-optin"],
+    ]);
+    expect(part(s.element, "state")?.dataset.state).toBe("installed");
+  });
+});

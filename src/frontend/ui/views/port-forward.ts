@@ -10,6 +10,7 @@ import { hostKey, readRemoteConfig, type RemoteHostConfig } from "../remote-conf
 // `connCount`：累计连接数，按**累计连接数**量纲算 2^53-1 条（每秒 1000 连接要 28.5 万年）⇒ `number` 够用。
 import { listForwards, startForward, stopForward, type ForwardStatus } from "../port-forward-reads";
 import { copyText } from "../copy-table";
+import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 
 function mkBtn(label: string, onClick: () => void): HTMLButtonElement {
   const b = document.createElement("button");
@@ -38,6 +39,8 @@ class PortForwardPanel {
   private rportInput!: HTMLInputElement;
   /** 打开时读到的那几台（起转发时一并交它的配置：那台的流没起来时本机后端按它自己拨）。 */
   private hosts: RemoteHostConfig[] = [];
+  /** Esc 栈里的这一层：Esc 只关这个面板，不连带关下面那层（设置窗）。 */
+  private readonly layer: OverlayHandle = { handleEsc: () => (this.close(), true) };
 
   constructor() {
     this.el = document.createElement("div");
@@ -47,9 +50,6 @@ class PortForwardPanel {
     document.body.appendChild(this.el);
     this.el.addEventListener("click", (e) => {
       if (e.target === this.el) this.close();
-    });
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && this.el.style.display !== "none") this.close();
     });
   }
 
@@ -99,6 +99,7 @@ class PortForwardPanel {
 
   async open(): Promise<void> {
     this.el.style.display = "flex";
+    dispatcher.pushOverlay(this.layer);
     this.originSel.innerHTML = "";
     try {
       const { hosts } = await readRemoteConfig();
@@ -117,6 +118,7 @@ class PortForwardPanel {
   }
 
   close(): void {
+    dispatcher.popOverlay(this.layer);
     this.el.style.display = "none";
   }
 

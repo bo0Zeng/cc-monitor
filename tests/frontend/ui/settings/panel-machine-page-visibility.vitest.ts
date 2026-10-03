@@ -53,6 +53,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
   LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
   RemoteSection: class {
+    originOfPage = (): string | null => null;
     element = document.createElement("div");
     refresh = vi.fn();
     constructor(opts?: { pages?: typeof captured.pages }) {
@@ -147,6 +148,9 @@ vi.mock("@tauri-apps/api/window", () => ({
 
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
 import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
+import * as machineAliases from "../../../../src/frontend/ui/settings/machine-aliases";
+import { RelayOptinSection } from "../../../../src/frontend/ui/settings/relay-optin-section";
+import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
 
 // jsdom 的 UA 含 `linux`；本文件照 Windows 形态跑（第三条那块 `appliesTo: "local"` 的分节今天是「别名」，
 // 两个平台都构造 —— 钉成 windows 只是沿用本文件一直以来的形态）。
@@ -217,5 +221,24 @@ describe("N-F1b NF1bD5：账号那一节在本机页上真的显示出来（穿�
       local.hidden,
       "远端页上本机专属那一块仍然可见 —— 这把尺子读不出 hidden===true，上面两条是空真",
     ).toBe(true);
+  });
+});
+
+// 回到机器页 ＝ 展开过的那几块重读一次（照提示在终端里改完回来，不该还是旧的）。
+describe("回到机器页：本机别名块与「走中转」那一块重读", () => {
+  it("★ 本机页进两次 ⇒ 每次都叫本机别名块重读；同一台再进来 ⇒ 「走中转」那块也重读，换了台的由它自己的订阅读", async () => {
+    __resetMachineContextForTests();
+    const aliases = vi.spyOn(machineAliases, "rereadAliases").mockImplementation(() => {});
+    const relay = vi.spyOn(RelayOptinSection.prototype, "rereadIfOpened").mockImplementation(() => {});
+    await mountPanel();
+    captured.pages!.navigateToMachinePage(LOCAL_PAGE);
+    captured.pages!.navigateToMachinePage(REMOTE_PAGE); // 换了台：不归这里
+    captured.pages!.navigateToMachinePage(LOCAL_PAGE); // 换回本机：也不归这里（订阅读）
+    document.querySelector<HTMLButtonElement>("#settings-tab-machines")!.click();
+    captured.pages!.navigateToMachinePage(LOCAL_PAGE); // 同一台再进来
+    expect(aliases.mock.calls).toEqual([["<local>"], ["<local>"], ["<local>"]]);
+    expect(relay).toHaveBeenCalledTimes(2); // 第一次进本机页（store 本来就是本机）＋ 最后那次
+    aliases.mockRestore();
+    relay.mockRestore();
   });
 });

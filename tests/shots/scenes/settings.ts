@@ -111,6 +111,36 @@ export const SETTINGS_SCENES: Scene[] = [
     d.dispatchEvent(new Event("toggle"));
     await sleep(1500);
   }),
+  settings("settings-machine-name-taken", "设置 · 远端 · 改名撞名", "devbox 的名字改成 gpu-01（另一台已经叫这个）", async () => {
+    await go("machine:devbox", "machine:devbox#conn");
+    const name = document.querySelector<HTMLInputElement>('.settings-page:not([hidden]) input[type="text"]')!;
+    name.value = "gpu-01";
+    name.dispatchEvent(new Event("change"));
+    await sleep(700);
+  }),
+  settings("settings-machine-port-range", "设置 · 远端 · 端口越界", "devbox 的端口填 70000", async () => {
+    await go("machine:devbox", "machine:devbox#conn");
+    const port = document.querySelector<HTMLInputElement>('.settings-page:not([hidden]) input[type="number"]')!;
+    port.value = "70000";
+    port.dispatchEvent(new Event("change"));
+    await sleep(700);
+  }),
+  settings("settings-appearance-font-size-range", "设置 · 外观 · 字号越界", "基础字号填 1", async () => {
+    await go("app-appearance");
+    const size = document.querySelector<HTMLInputElement>('.settings-page:not([hidden]) input[type="number"]')!;
+    size.value = "1";
+    size.dispatchEvent(new Event("input"));
+    size.dispatchEvent(new Event("change"));
+    await sleep(700);
+  }),
+  settings("settings-machine-new-acct", "设置 · 刚加的机器 · 账号", "先看过 devbox 的账号，再「＋ 添加机器」、进新那台的「账号」栏", async () => {
+    await go("machine:devbox", "machine:devbox#acct");
+    await go("machines");
+    await click(await byText("button", "添加机器"));
+    await sleep(600);
+    await go("machine:新机器", "machine:新机器#acct");
+    await sleep(800);
+  }),
   settings("settings-unknown-keys", "设置 · 配置里有认不出的键", "config.json 里留着两个已经没人读的顶层键：设置窗顶上的提示条", async () => {
     await waitFor(".settings-nav");
     await sleep(1500);

@@ -625,7 +625,7 @@ describe("K-H2b D4 阻-2：主路的账号与 pin 是**行为**判据（驱动�
           accounts,
         });
       }
-      if (cmd === "load_config") return Promise.resolve({ accounts: { defaultName } });
+      if (cmd === "load_config") return Promise.resolve({ accounts: { byMachine: { "<local>": { defaultName } } } });
       if (cmd === "list_last_accounts") return Promise.resolve(pins);
       return Promise.resolve(undefined);
     }))));
@@ -786,7 +786,7 @@ describe("K-H2b D5 阻-2：tab 栏那条本机 resume 也是**行为**判据（�
           accounts,
         });
       }
-      if (cmd === "load_config") return Promise.resolve({ accounts: { defaultName } });
+      if (cmd === "load_config") return Promise.resolve({ accounts: { byMachine: { "<local>": { defaultName } } } });
       if (cmd === "list_last_accounts") return Promise.resolve(pins);
       return Promise.resolve(undefined);
     }))));

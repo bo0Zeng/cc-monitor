@@ -5251,7 +5251,6 @@ fn every_prose_tombstone_mark_is_registered() {
             1,
         ),
         // 模型名那一格（J17）：设置里写入点那一句原先调 TS `isValidModelName`。
-        ("src/frontend/ui/account-prefs.ts", 1),
         // `backendPath` · 远端三行入口 · 逐字节副本退役，点旧名的散文挂墓碑。
         // `acct_iso_deploy.rs` 那一行随整份文件删了（字节随后端二进制走）。
         ("tests/frontend/shell/command_home_registry_tests.rs", 5), // 3 → 5：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑 // 2 → 3 // 1 → 2：足迹那一行已迁 // 新贴：待迁那一行删了，原处一块

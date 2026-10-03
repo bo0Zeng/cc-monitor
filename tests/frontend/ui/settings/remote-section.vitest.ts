@@ -83,6 +83,7 @@ vi.mock("../../../../src/frontend/ui/ssh-config-reads", () => {
 import { loadConfig } from "../../../../src/frontend/ui/config";
 import { fakeCfg } from "../config-patch-fake";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { dispatcher } from "../../../../src/frontend/ui/keybindings/registry";
 import { refusedReply } from "../../../test-support/chan-fake";
 const saveConfig = fakeCfg.saved;
 import {
@@ -1140,6 +1141,171 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const st = readStatus("a");
     expect(st.connection?.kind).toBe("ok");
     expect(st.backend?.kind).toBe("ok");
+    ipcReplies.clear();
+  });
+
+  // ── 机器表的几条写盘缺陷：回填漏一格、重名、空白卡、端口越界、卸载失败照记成功 ──
+  const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+  const diskHosts = async (): Promise<RemoteHostConfig[]> =>
+    ((await vi.mocked(loadConfig)()) as unknown as { remote: RemoteConfig }).remote.hosts;
+  const field = (page: HTMLElement, placeholder: string): HTMLInputElement =>
+    [...page.querySelectorAll<HTMLInputElement>("input")].find((i) => i.placeholder === placeholder)!;
+  const pageOf = (p: ReturnType<typeof fakePages>, id: string): HTMLElement => p.added.find((a) => a.id === id)!.element;
+  const banner = (sec: RemoteSection): string => sec.element.querySelector(".settings-banner")?.textContent ?? "";
+  const change = async (input: HTMLInputElement, v: string): Promise<void> => {
+    input.value = v;
+    input.dispatchEvent(new Event("change"));
+    await tick();
+    await tick();
+  };
+
+  it("每台的续跑命令重开后照样回填；改别台时不被抹成空", async () => {
+    const p = fakePages();
+    await mount([{ ...mkH("a", "1.1.1.1"), resumeCommand: "ccm resume --tmux" }, mkH("b", "2.2.2.2")], p.host);
+    expect(field(pageOf(p, "machine:a"), copyText("machineCard.field.resumeCmdHint")).value).toBe("ccm resume --tmux");
+    await change(field(pageOf(p, "machine:b"), copyText("machineCard.field.userHint")), "root");
+    expect((await diskHosts()).map((h) => [h.label, h.user, h.resumeCommand])).toEqual([
+      ["a", "u", "ccm resume --tmux"],
+      ["b", "root", ""],
+    ]);
+  });
+
+  it("下拉导入一个已在列表里的别名：不建卡、说已经有了；之后改别台照常存得进去", async () => {
+    ipcReplies.set("ssh-config-aliases", ["a", "c"]);
+    ipcReplies.set("ssh-config-resolve", { host: "1.1.1.1", port: 22, user: "u", keyPath: null, proxyJump: null });
+    const p = fakePages();
+    const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")], p.host);
+    await tick();
+    const sel = sec.element.querySelector<HTMLSelectElement>("select")!;
+    sel.value = "a";
+    sel.dispatchEvent(new Event("change"));
+    for (let i = 0; i < 4; i++) await tick();
+    expect(banner(sec)).toBe(copyText("remote.import.exists", { alias: "a" }));
+    expect(sec.element.querySelectorAll(".remote-machine-row").length, "本机 ＋ a ＋ b，没有多一行").toBe(3);
+    await change(field(pageOf(p, "machine:b"), copyText("machineCard.field.userHint")), "root");
+    expect((await diskHosts()).map((h) => [h.label, h.user])).toEqual([["a", "u"], ["b", "root"]]);
+    ipcReplies.clear();
+  });
+
+  it("把一台改名成另一台的名字：就地拦住、不存；之后两台照常改得动", async () => {
+    const p = fakePages();
+    const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")], p.host);
+    const pageB = pageOf(p, "machine:b");
+    await change(pageB.querySelectorAll<HTMLInputElement>('input[type="text"]')[0]!, "a");
+    expect((await diskHosts()).map((h) => h.label)).toEqual(["a", "b"]);
+    expect(pageB.textContent).toContain(copyText("machineCard.field.nameTaken", { name: "a" }));
+    await change(field(pageOf(p, "machine:a"), copyText("machineCard.field.userHint")), "zz");
+    expect((await diskHosts()).map((h) => [h.label, h.user])).toEqual([["a", "zz"], ["b", "u"]]);
+    expect(banner(sec)).toBe(copyText("remote.save.done"));
+  });
+
+  it("「＋ 添加机器」的空白卡：改别台时不写进配置，横幅也不说有几台不完整", async () => {
+    const p = fakePages();
+    const sec = await mount([mkH("a", "1.1.1.1")], p.host);
+    [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("remote.build.addMachine"))!.click();
+    await change(field(pageOf(p, "machine:a"), copyText("machineCard.field.userHint")), "root");
+    expect((await diskHosts()).map((h) => [h.label, h.user])).toEqual([["a", "root"]]);
+    expect(banner(sec)).toBe(copyText("remote.save.done"));
+  });
+
+  it("端口越界：就地说、不存（盘上还是原值，不是 22）", async () => {
+    const p = fakePages();
+    await mount([{ ...mkH("a", "1.1.1.1"), port: 2222 }], p.host);
+    const pageA = pageOf(p, "machine:a");
+    await change(pageA.querySelector<HTMLInputElement>('input[type="number"]')!, "70000");
+    expect((await diskHosts())[0]!.port).toBe(2222);
+    expect(pageA.textContent).toContain(copyText("machineCard.field.portRange"));
+    // 改别的格时也不许把越界那一格兜成 22 写进去
+    await change(field(pageA, copyText("machineCard.field.userHint")), "root");
+    expect((await diskHosts()).map((h) => [h.user, h.port])).toEqual([["root", 2222]]);
+    await change(pageA.querySelector<HTMLInputElement>('input[type="number"]')!, "2200");
+    expect((await diskHosts())[0]!.port).toBe(2200);
+    expect(pageA.textContent).not.toContain(copyText("machineCard.field.portRange"));
+  });
+
+  it("改名之后这一页讲的是新名字；改名时那台的默认账号 / 默认模型跟着搬", async () => {
+    const p = fakePages();
+    vi.mocked(loadConfig).mockResolvedValue({
+      remote: { enabled: true, hosts: [mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")] },
+      accounts: { byMachine: { b: { defaultName: "w", modelByAccount: { w: "opus" } } } },
+    } as unknown as Awaited<ReturnType<typeof loadConfig>>);
+    const sec = new RemoteSection({ headless: true, pages: p.host });
+    await tick();
+    expect(sec.originOfPage("machine:b")).toBe("b");
+    await change(pageOf(p, "machine:b").querySelectorAll<HTMLInputElement>('input[type="text"]')[0]!, "c");
+    for (let i = 0; i < 4; i++) await tick();
+    expect(sec.originOfPage("machine:b"), "页 id 不变，讲的是改名之后那台").toBe("c");
+    const cfg = (await vi.mocked(loadConfig)()) as unknown as { accounts: { byMachine: Record<string, unknown> } };
+    expect(cfg.accounts.byMachine).toEqual({ c: { defaultName: "w", modelByAccount: { w: "opus" } } });
+  });
+
+  // Esc 一次只关最上面一层：机器页上的三个小框（批量导入预览 · 开新 Claude · 端口转发）关掉自己，设置窗不跟着关。
+  describe("Esc 只关最上面那个小框", () => {
+    const esc = (): void => {
+      (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
+    };
+    let panelEsc = vi.fn<() => void>();
+    const panel = { handleEsc: () => void panelEsc() };
+    beforeEach(() => {
+      dispatcher.applyOverrides({});
+      dispatcher.start();
+      panelEsc = vi.fn<() => void>();
+      dispatcher.pushOverlay(panel); // 设置窗自己是栈底那一层
+    });
+    afterEach(() => dispatcher.popOverlay(panel));
+
+    it("批量导入预览", async () => {
+      ipcReplies.set("ssh-config-import", [
+        { label: "x", host: "h", port: 22, user: "u", keyPath: null, addresses: [], jump: null, members: [{ alias: "x", host: "h", port: 22, proxyJump: null }] },
+      ]);
+      const sec = await mount([], fakePages().host);
+      document.body.appendChild(sec.element);
+      [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("remote.import.batch"))!.click();
+      await tick();
+      await tick();
+      expect(document.querySelector(".import-preview-back"), "前提：预览开着").toBeTruthy();
+      esc();
+      expect(document.querySelector(".import-preview-back")).toBeNull();
+      expect(panelEsc).not.toHaveBeenCalled();
+      esc(); // 再按一次才轮到设置窗
+      expect(panelEsc).toHaveBeenCalledTimes(1);
+      ipcReplies.clear();
+      sec.element.remove();
+    });
+
+    it("开新 Claude", async () => {
+      const p = fakePages();
+      await mount([mkH("a", "1.1.1.1")], p.host);
+      [...pageOf(p, "machine:a").querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("machineCard.build.launch"))!.click();
+      expect(document.querySelector(".launcher-back"), "前提：对话框开着").toBeTruthy();
+      esc();
+      expect(document.querySelector(".launcher-back")).toBeNull();
+      expect(panelEsc).not.toHaveBeenCalled();
+    });
+
+    it("端口转发", async () => {
+      const sec = await mount([], fakePages().host);
+      [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("remote.build.portForward"))!.click();
+      await tick();
+      const pf = document.querySelector<HTMLElement>(".pf-overlay")!;
+      expect(pf.style.display, "前提：面板开着").not.toBe("none");
+      esc();
+      expect(pf.style.display).toBe("none");
+      expect(panelEsc).not.toHaveBeenCalled();
+    });
+  });
+
+  it("卸载后端失败：列表那一格不记成「已卸载」", async () => {
+    localStorage.clear();
+    ipcReplies.set("uninstall_remote_backend", new Error("ssh: connect refused"));
+    const p = fakePages();
+    await mount([mkH("a", "1.1.1.1")], p.host);
+    const pageA = pageOf(p, "machine:a");
+    [...pageA.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("machineCard.deploy.uninstall"))!.click();
+    await tick();
+    [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("askDialog.buttons.ok"))!.click();
+    for (let i = 0; i < 4; i++) await tick();
+    expect(readStatus("a").backend?.detail).not.toBe(copyText("machineCard.status.uninstalled"));
     ipcReplies.clear();
   });
 });

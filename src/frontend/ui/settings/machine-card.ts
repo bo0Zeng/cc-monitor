@@ -34,6 +34,7 @@ import { probeMachine, ProbeStalled, type ConnTestResult, type ProbeStop } from 
 import { pushPublicKey } from "../pubkey-push";
 import type { ResolvedHost } from "../ssh-config-reads";
 import { askConfirm } from "../ask-dialog";
+import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { copyText } from "../copy-table";
 import { unavailableReason } from "../control-said";
 
@@ -100,11 +101,33 @@ function makeStatusLine(ok: boolean, text: string): HTMLElement {
   line.appendChild(label);
   return line;
 }
-/** 解析端口字符串：失败 / 越界 → 兜底 22。 */
-function parsePort(raw: string): number {
-  let port = Number.parseInt(raw.trim(), 10);
-  if (!Number.isFinite(port) || port < 1 || port > 65535) port = 22;
-  return port;
+/** 解析端口字符串：空 ⇒ 22（占位就是它）；不是 1–65535 的整数 ⇒ `null`（不替用户兜底）。 */
+function parsePort(raw: string): number | null {
+  const t = raw.trim();
+  if (t === "") return 22;
+  if (!/^\d+$/.test(t)) return null;
+  const port = Number(t);
+  return port >= 1 && port <= 65535 ? port : null;
+}
+
+/** 一格输入下面那一行错误：有话说时挂在那一格所在行的后面，没话说时摘掉。 */
+function showFieldError(input: HTMLInputElement, text: string | null): void {
+  const row = input.parentElement;
+  const next = row?.nextElementSibling;
+  let err = next instanceof HTMLElement && next.dataset.fieldError !== undefined ? next : null;
+  if (text === null) {
+    err?.remove();
+    input.removeAttribute("aria-invalid");
+    return;
+  }
+  if (!err) {
+    err = document.createElement("div");
+    err.className = "remote-test-line remote-test-err";
+    err.dataset.fieldError = "";
+    row?.after(err);
+  }
+  err.textContent = text;
+  input.setAttribute("aria-invalid", "true");
 }
 
 /**
@@ -169,6 +192,8 @@ export interface MachineCardHooks {
   onRemove: (card: MachineCard) => void;
   /** S4b：这张卡的状态/名字变了，宿主该刷新列表那一行。 */
   onStatusChanged?: (card: MachineCard) => void;
+  /** 列表里别的机器已经叫这个名字了没有（名字是机器的键，重名就存不进、也改不了删不了）。 */
+  nameTaken?: (card: MachineCard, origin: string) => boolean;
 }
 // 「后端路径」那一格删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`（它就是后端本身），
 //   从前按用户名预填的 `defaultBackendPathFor`〔散文墓碑〕随之删。
@@ -221,6 +246,8 @@ export class MachineCard {
   private jumpInput!: HTMLInputElement;
   /** S4b-3（§5-1）：这台机器的 resume 启动命令（空 = 用全局默认）。 */
   private resumeCmdInput!: HTMLInputElement;
+  /** 名字 / 地址 / 端口最后一次被接受的值：输入框里不合法的那一格不存，交出去的是这一份。 */
+  private accepted = { label: "", host: "", port: 22 };
   /** 依当前指纹值显隐「重置为 TOFU」按钮（load / 重置后调用）。 */
   private syncResetFpVisibility!: () => void;
   private testButton!: HTMLButtonElement;
@@ -289,12 +316,12 @@ export class MachineCard {
     this.testResult.appendChild(line);
   }
 
-  /** 读出本卡片的 RemoteHostConfig（trim；port 兜底 22）。 */
+  /** 读出本卡片的 RemoteHostConfig（trim）。名字 / 地址 / 端口取最后一次被接受的值（不合法的那一格不交）。 */
   collect(): RemoteHostConfig {
     return {
-      label: this.labelInput.value.trim(),
-      host: this.hostInput.value.trim(),
-      port: parsePort(this.portInput.value),
+      label: this.accepted.label,
+      host: this.accepted.host,
+      port: this.accepted.port,
       user: this.userInput.value.trim(),
       keyPath: this.keyPathInput.value.trim(),
       hostKeyFingerprint: this.fingerprintInput.value.trim(),
@@ -312,7 +339,17 @@ export class MachineCard {
     this.userInput.value = resolved.user;
     this.keyPathInput.value = resolved.keyPath ?? "";
     if (resolved.proxyJump) this.jumpInput.value = resolved.proxyJump; // F57 S-2:单别名也填跳板
+    this.acceptInputs();
     this.updateLegend();
+  }
+
+  /** 把输入框里此刻的名字 / 地址 / 端口记成「被接受的」（初值与导入时用；用户改的走各自的校验）。 */
+  private acceptInputs(): void {
+    this.accepted = {
+      label: this.labelInput.value.trim(),
+      host: this.hostInput.value.trim(),
+      port: parsePort(this.portInput.value) ?? 22,
+    };
   }
 
   private build(): HTMLElement {
@@ -385,19 +422,45 @@ export class MachineCard {
       this.hooks.onChange();
     };
 
+    // 名字（空着就用地址）是这台的键：与别台撞了 ⇒ 就地说、不存。
+    const onNameChange = (): void => {
+      const label = this.labelInput.value.trim();
+      const host = this.hostInput.value.trim();
+      const origin = label || host;
+      if (origin && this.hooks.nameTaken?.(this, origin)) {
+        showFieldError(this.labelInput, copyText("machineCard.field.nameTaken", { name: origin }));
+        this.updateLegend();
+        return;
+      }
+      showFieldError(this.labelInput, null);
+      this.accepted.label = label;
+      this.accepted.host = host;
+      onChange();
+    };
     this.labelInput = buildTextRow(
       body,
       copyText("machineCard.field.label"),
       copyText("machineCard.field.labelHint"),
-      onChange,
+      onNameChange,
     );
     this.hostInput = buildTextRow(
       body,
       copyText("machineCard.field.host"),
       copyText("machineCard.field.hostHint"),
-      onChange,
+      onNameChange,
     );
-    this.portInput = buildNumberRow(body, copyText("machineCard.field.port"), 22, onChange);
+    // 端口不是 1–65535 ⇒ 就地说、不存（不再悄悄存成 22）。
+    const onPortChange = (): void => {
+      const port = parsePort(this.portInput.value);
+      if (port === null) {
+        showFieldError(this.portInput, copyText("machineCard.field.portRange"));
+        return;
+      }
+      showFieldError(this.portInput, null);
+      this.accepted.port = port;
+      onChange();
+    };
+    this.portInput = buildNumberRow(body, copyText("machineCard.field.port"), 22, onPortChange);
     // 占位符举**多个**例子，别只写一个 —— 只写 "pi" 会让人以为这里非填树莓派默认用户不可。
     this.userInput = buildTextRow(
       body,
@@ -641,6 +704,8 @@ export class MachineCard {
     this.fingerprintInput.value = cfg.hostKeyFingerprint;
     this.addressesInput.value = cfg.addresses.join("\n");
     this.jumpInput.value = cfg.jump ?? "";
+    this.resumeCmdInput.value = cfg.resumeCommand;
+    this.acceptInputs();
     this.syncResetFpVisibility();
   }
 
@@ -830,6 +895,12 @@ export class MachineCard {
 
     const back = document.createElement("div");
     back.className = "launcher-back";
+    // 压进 Esc 栈：Esc 只关这个框，不连带关设置窗。
+    const layer: OverlayHandle = { handleEsc: () => (close(), true) };
+    const close = (): void => {
+      dispatcher.popOverlay(layer);
+      back.remove();
+    };
     const box = document.createElement("div");
     box.className = "launcher-box";
     const title = document.createElement("div");
@@ -937,7 +1008,7 @@ export class MachineCard {
     cancel.type = "button";
     cancel.className = "settings-btn";
     cancel.textContent = copyText("machineCard.launch.cancel");
-    cancel.addEventListener("click", () => back.remove());
+    cancel.addEventListener("click", close);
     const start = document.createElement("button");
     start.type = "button";
     start.className = "settings-btn settings-btn-primary";
@@ -965,7 +1036,7 @@ export class MachineCard {
       }
       const command = cmdInput.value.trim() || AGENT_PROFILE.defaultLauncher;
       const accName = acctSelect.value; // "" = 不指定
-      back.remove();
+      close();
       // A4：新会话无 sid → 不记 lastAccount；withAccount 统一解析注入（选的号不可选 ⇒ 不起、说清、给显式选择）。
       await withAccount(origin, accName || null, (mods) =>
         runRemoteLauncher(origin, cwd, name, command, mods),
@@ -975,17 +1046,12 @@ export class MachineCard {
     foot.append(cancel, start);
     box.appendChild(foot);
 
-    // 点遮罩空白 / Esc 取消(不冒泡到设置面板)。
+    // 点遮罩空白取消；Esc 走上面那一层。
     back.addEventListener("click", (e) => {
-      if (e.target === back) back.remove();
-    });
-    back.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        back.remove();
-      }
+      if (e.target === back) close();
     });
     back.appendChild(box);
+    dispatcher.pushOverlay(layer);
     document.body.appendChild(back);
     cwdInput.focus();
   }
@@ -1010,7 +1076,7 @@ export class MachineCard {
     ledger?: { facet: MachineFacet; ok: string; fail: string },
     /** 结果写到哪一栏：「连接」栏的动作写 `testResult`，「组件」栏的写 `actionResult`（「终端」栏的别名那一块自带结果区）。 */
     where: ResultArea = "conn",
-  ): Promise<void> {
+  ): Promise<boolean> {
     const out = this.resultArea(where);
     btn.disabled = true;
     const prev = btn.textContent;
@@ -1021,10 +1087,12 @@ export class MachineCard {
       const msg = await fn();
       out.textContent = `✓ ${msg}`;
       if (ledger) this.recordFacet(ledger.facet, { kind: "ok", detail: ledger.ok });
+      return true;
     } catch (e) {
       out.textContent = `✗ ${String(e)}`;
       if (ledger)
         this.recordFacet(ledger.facet, { kind: "fail", detail: ledger.fail });
+      return false;
     } finally {
       btn.disabled = false;
       btn.textContent = prev;
@@ -1071,7 +1139,7 @@ export class MachineCard {
     ) {
       return;
     }
-    await this.runRemoteAction(
+    const done = await this.runRemoteAction(
       this.backendUninstallButton,
       copyText("machineCard.uninstall.running"),
       () => commands.uninstall_remote_backend({ cfg }),
@@ -1080,7 +1148,8 @@ export class MachineCard {
       undefined,
       "comp",
     );
-    this.recordFacet("backend", { kind: "fail", detail: copyText("machineCard.status.uninstalled") });
+    // 没卸掉 ⇒ 那一格不动（失败的原因已在结果区）。
+    if (done) this.recordFacet("backend", { kind: "fail", detail: copyText("machineCard.status.uninstalled") });
   }
 
   /** 渲染测试结果：SSH ✓/✗、指纹（+可固化）、backend ✓/✗（+hello）。

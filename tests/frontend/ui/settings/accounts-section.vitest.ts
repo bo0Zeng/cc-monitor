@@ -38,7 +38,7 @@ vi.mock("@tauri-apps/api/core", async () => {
 const askConfirmMock = vi.fn();
 vi.mock("../../../../src/frontend/ui/ask-dialog", () => ({ askConfirm: (...a: unknown[]) => askConfirmMock(...a) }));
 vi.mock("../../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
-vi.mock("../../../../src/frontend/ui/remote-config", () => ({ readRemoteConfig: () => readRemoteConfigMock() }));
+vi.mock("../../../../src/frontend/ui/remote-config", async (orig) => ({ ...(await orig<object>()), readRemoteConfig: () => readRemoteConfigMock() }));
 
 import { readFileSync } from "node:fs";
 // API key 那两问改走通道（`chan_call`，op = `apikey-read` / `apikey-routing`）：判据按 op 分派、回成品字节。
@@ -76,6 +76,7 @@ import * as accounts from "../../../../src/frontend/ui/accounts";
 import * as accountReads from "../../../../src/frontend/ui/account-reads";
 import type { AccountsState, Account } from "../../../../src/frontend/ui/accounts";
 import { setCurrentMachine, __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
+import * as machineAliases from "../../../../src/frontend/ui/settings/machine-aliases";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { NEW_ACCOUNT_COPY } from "../../../../src/frontend/ui/settings/account-new-form";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/backend-policy";
@@ -852,10 +853,10 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     );
     // ★ 正题的另一半：那条命令**确实**收到了 configDir（不是「什么都没传所以没推 id」）。
     expect(
-      // 参数里可以多一格 baseUrl（表单那一路）；打头的是 origin（按这一页那台机器），
+      // 参数里可以多一格 baseUrl（表单那一路）；打头的是 origin（画这一行时的那台），
       // 接着照旧是 key 与它自己的 configDir。
-      // 今天那一处是经通道的发送口：`writeApikeyKey(这台, configDir, key, baseUrl)`。
-      /writeApikeyKey\(this\.machineOrigin\(\),\s*configDir,\s*key\b/.test(code),
+      // 今天那一处是经通道的发送口：`writeApikeyKey(那台, configDir, key, baseUrl)`。
+      /writeApikeyKey\(origin,\s*configDir,\s*key\b/.test(code),
       "那条写命令没把 configDir 一起交出去 —— 后端就只能落到顶层那一格",
     ).toBe(true);
   });
@@ -1060,8 +1061,9 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
     expect(harvested.filter((s) => s.includes("该远端尚未启用多账号"))).toEqual([]);
     // 阴性对照：同一把尺子在**远端**那一支上**认得出**「远端」——它不是恒空。
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
-    setCurrentMachine("aya"); // 站到 aya 那一页上（上面的 `noRemotes()` 把 store 置回了本机）
+    // 先摆好 aya 的答复再切：上面挂着的三块也跟着切到 aya 去读（同一个 store）。
     fetchAccountsMock.mockResolvedValue(state({ available: false, oldBackend: true, error: "backend 过旧" }));
+    setCurrentMachine("aya"); // 站到 aya 那一页上（上面的 `noRemotes()` 把 store 置回了本机）
     const remoteEl = await mount();
     expect(
       (remoteEl.textContent ?? "").includes("远端"),
@@ -1969,5 +1971,145 @@ describe("〔RESYNC〕[刷新] 清这一页那台的账号缓存", () => {
       got.push(inval.mock.calls.map((c) => c[0]));
     }
     expect(got).toEqual([[LOCAL_ORIGIN], ["aya"]]);
+  });
+});
+
+// 切机器快过读：上一台晚到的那一份作废，不许落在这一台的页上（落上去点「删除」删的是这一台的同名号）。
+describe("切机器：晚到的账号表作废，动作只打画它的那台", () => {
+  const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
+  it("aya 读得慢、先切到 nano：aya 回来之后页上只有 nano 一张表", async () => {
+    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ label: "aya" }), host({ label: "nano", host: "n" })] });
+    let releaseAya!: (s: AccountsState) => void;
+    vi.spyOn(accountReads, "fetchAccounts").mockImplementation((origin: string) =>
+      origin === "aya"
+        ? new Promise((r) => (releaseAya = r))
+        : Promise.resolve(state({ origin: "nano", accounts: [acct({ name: "n1", configDir: "/h/n1" })], defaultName: "n1" })),
+    );
+    setCurrentMachine("aya");
+    const s = loaded(new AccountsSection());
+    document.body.innerHTML = "";
+    document.body.appendChild(s.element);
+    await tick();
+    await tick();
+    setCurrentMachine("nano");
+    for (let i = 0; i < 6; i++) await tick();
+    releaseAya(state({ origin: "aya", accounts: [acct({ name: "a1", configDir: "/h/a1" })], defaultName: "a1" }));
+    for (let i = 0; i < 8; i++) await tick();
+    expect(s.element.querySelectorAll(".accounts-table").length).toBe(1);
+    expect(s.element.querySelectorAll(".accounts-current-banner").length).toBe(1);
+    expect([...s.element.querySelectorAll(".accounts-row-name")].map((n) => n.textContent)).toEqual(["n1"]);
+  });
+
+  it("切到一台还不在机器表里的（刚加的空白机器）：不留上一台的表，说这台还没连上过", async () => {
+    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ label: "aya" })] });
+    const asked: string[] = [];
+    vi.spyOn(accountReads, "fetchAccounts").mockImplementation((origin: string) => {
+      asked.push(origin);
+      return Promise.resolve(state({ origin, accounts: [acct({ name: "a1", configDir: "/h/a1" })], defaultName: "a1" }));
+    });
+    setCurrentMachine("aya");
+    const el = await mount();
+    expect(el.querySelectorAll(".accounts-row").length, "前提：aya 的表在").toBe(1);
+    setCurrentMachine("新机器");
+    for (let i = 0; i < 6; i++) await tick();
+    expect(asked, "不认得的那台不去问").toEqual(["aya"]);
+    expect(el.querySelectorAll(".accounts-row").length, "上一台的表不许留着").toBe(0);
+    expect(el.querySelector(".accounts-info")?.textContent).toBe(copyText("accounts.machine.notConnected", { machine: "新机器" }));
+  });
+
+  it("同一次打开里新存进机器表的那台：再读一次机器表，认得就去问它", async () => {
+    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ label: "aya" })] });
+    const asked: string[] = [];
+    vi.spyOn(accountReads, "fetchAccounts").mockImplementation((origin: string) => {
+      asked.push(origin);
+      return Promise.resolve(state({ origin, accounts: [acct({ name: `${origin}-1`, configDir: `/h/${origin}` })], defaultName: null }));
+    });
+    setCurrentMachine("aya");
+    const el = await mount();
+    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ label: "aya" }), host({ label: "box", host: "b" })] });
+    setCurrentMachine("box");
+    for (let i = 0; i < 6; i++) await tick();
+    expect(asked).toEqual(["aya", "box"]);
+    expect([...el.querySelectorAll(".accounts-row-name")].map((n) => n.textContent)).toEqual(["box-1"]);
+  });
+
+  it("「启用远端模式」关着：远端页照样跟着切到那台，不停在上一台", async () => {
+    readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [host({ label: "aya" }), host({ label: "nano", host: "n" })] });
+    const asked: string[] = [];
+    vi.spyOn(accountReads, "fetchAccounts").mockImplementation((origin: string) => {
+      asked.push(origin);
+      return Promise.resolve(state({ origin, accounts: [acct({ name: `${origin}-1`, configDir: `/h/${origin}` })], defaultName: null }));
+    });
+    setCurrentMachine("aya");
+    const el = await mount();
+    setCurrentMachine("nano");
+    for (let i = 0; i < 6; i++) await tick();
+    expect(asked).toEqual(["aya", "nano"]);
+    expect([...el.querySelectorAll(".accounts-row-name")].map((n) => n.textContent)).toEqual(["nano-1"]);
+  });
+});
+
+// 增删号会改那台的别名清单：已经展开的别名块跟着重读，不然「加上」拿旧指纹去写就被说「被别处改过」。
+describe("增删号之后别名块重读", () => {
+  it("★ 在 aya 上删一个号 ⇒ 叫 aya 那台已经展开的别名块重读", async () => {
+    const reread = vi.spyOn(machineAliases, "rereadAliases").mockImplementation(() => {});
+    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ label: "aya" })] });
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" }), acct({ name: "y", configDir: "/h/y" })], defaultName: "z" }));
+    setCurrentMachine("aya");
+    const el = await mount();
+    expect(reread).not.toHaveBeenCalled();
+    const rows = [...el.querySelectorAll(".accounts-row")];
+    [...rows[1]!.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("accounts.row.remove"))!.click();
+    for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(reread.mock.calls).toEqual([["aya"]]);
+  });
+});
+
+// 账号表的布局契约：jsdom 量不了排版，但量得出「每行几格 == 表定了几条轨道」与「贴边那两条轨道不是死宽」。
+// 每行是 subgrid：行自己的内边距 / 左边框会算进贴边那两条轨道上的格子里 —— 那条轨道是死宽（`16px`）就撑不开，
+//   格子溢出、压到下一格上（头像压在名字第一个字上）；行里的格子比轨道多一格，多出来的那格就折到下一行、
+//   落进最窄的第一条轨道（「当前」那一行的「登录终端 / 删除」被挤成一字一行竖排）。
+describe("账号表布局：每行格数 == 轨道数，贴边轨道不是死宽", () => {
+  const css = readFileSync("src/frontend/ui/styles/settings.css", "utf8");
+  const tracks = (sel: string): string[] => {
+    const m = new RegExp(`\\n${sel.replace(".", "\\.")} \\{[^}]*?grid-template-columns:([^;]+);`).exec(css);
+    expect(m, `${sel} 那条 grid-template-columns 没找到 —— 下面全是空转`).toBeTruthy();
+    // 按顶层空白切（括号里的空白不切）。
+    const out: string[] = [];
+    let depth = 0;
+    let cur = "";
+    for (const ch of m![1]!.trim()) {
+      if (ch === "(") depth++;
+      if (ch === ")") depth--;
+      if (/\s/.test(ch) && depth === 0) {
+        if (cur) out.push(cur);
+        cur = "";
+      } else cur += ch;
+    }
+    if (cur) out.push(cur);
+    return out;
+  };
+
+  it("★ 本机表：当前那一行与别的行格数一样，且 == 轨道数", async () => {
+    readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
+    setCurrentMachine(LOCAL_ORIGIN);
+    fetchLocalAccountsMock.mockResolvedValue(
+      localState({
+        accounts: [acct({ name: "work", configDir: "/h/w" }), acct({ name: "me", configDir: "/h/m" }), acct({ name: "0", configDir: null, mode: "bare" })],
+        defaultName: "work",
+      }),
+    );
+    const el = await mount();
+    const rows = [...el.querySelectorAll(".accounts-local-row")];
+    expect(rows.length).toBe(3);
+    expect(rows.map((r) => r.children.length)).toEqual(rows.map(() => tracks(".accounts-local-table").length));
+  });
+
+  it("★ 两张表贴边那两条轨道都不是死宽（行的内边距要算得进去）", () => {
+    for (const sel of [".accounts-local-table", ".accounts-table"]) {
+      const t = tracks(sel);
+      expect([t[0], t[t.length - 1]].filter((x) => /^\d+(\.\d+)?px$/.test(x!)), `${sel}：${t.join(" ")}`).toEqual([]);
+    }
   });
 });

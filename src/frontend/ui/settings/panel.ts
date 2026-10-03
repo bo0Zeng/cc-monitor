@@ -34,8 +34,9 @@ import { makeSkeleton } from "./skeleton";
 import { SettingsRouter } from "./router";
 // E62：`markRestartNeeded` —— 本文件两处「重启才生效」的改动此前不给常驻条供货。
 import { createRestartBar, markRestartNeeded } from "./restart-notice";
-import { createUnknownKeysBar } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
-import { setCurrentMachine } from "./machine-context";
+import { claudeDirProblem } from "./claude-dir-check";
+import { createUnknownKeysBar, rerenderUnknownKeys } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
+import { getCurrentMachine, setCurrentMachine } from "./machine-context";
 import { LOCAL_ORIGIN } from "../ipc/origin";
 import { showActionFailureToast } from "../error-toast"; // 行为设置落盘失败出声
 import {
@@ -54,7 +55,7 @@ import {
   type BehaviorConfig,
 } from "../behavior";
 import { diagnoseRemoteLauncher } from "../launcher-diagnostics";
-import { buildAliasManager, buildUnknownOsAliasBlock, localShell } from "./machine-aliases"; // 机器页 ②「别名」（两个平台一份，含 PowerShell 的终端集成）
+import { buildAliasManager, buildUnknownOsAliasBlock, localShell, rereadAliases } from "./machine-aliases"; // 机器页 ②「别名」（两个平台一份，含 PowerShell 的终端集成）
 import { dispatcher } from "../keybindings/registry";
 import { KeybindingsEditor } from "../keybindings/editor";
 // F82a：独立设置窗口——保存后广播 `settings-applied`，主窗口 listen 后重读并应用主题/行为
@@ -106,6 +107,10 @@ const MONO_FONT_PRESETS = (): ReadonlyArray<{ label: string; value: string }> =>
   { label: "Consolas", value: "Consolas, monospace" },
   { label: copyText("settingsPanel.font.systemMono"), value: "monospace" },
 ];
+
+/** 基础字号的可读区间（px）：越界不存（0、1 能把字全弄没，连设置窗一起）。 */
+const FONT_SIZE_MIN = 10;
+const FONT_SIZE_MAX = 24;
 
 const FIELDS = (): ReadonlyArray<FieldSpec> => [
   { key: "font-base", label: copyText("settingsPanel.field.fontBase"), type: "font-base", group: "font" },
@@ -269,6 +274,8 @@ export class SettingsPanel {
     keyof ThemeConfig,
     HTMLInputElement | HTMLSelectElement
   >();
+  /** 各格下面那一行错误（用到时才建）。 */
+  private fieldErrors = new Map<HTMLInputElement | HTMLSelectElement, HTMLElement>();
   private isOpen = false;
 
   /** Claude 数据目录输入框 —— 改动后保存会提示需要重启 */
@@ -290,6 +297,8 @@ export class SettingsPanel {
   private remoteSection?: RemoteSection;
   /** P2s（C8）：backend 开关区。打开面板时 refresh 一次，重拉每台机的状态。 */
   private backendSection?: BackendSection;
+  /** 「终端」栏「直接敲的 claude 也走中转」那一块：回到机器页时展开过就重问。 */
+  private relayOptin?: RelayOptinSection;
 
   // v2.4 issue #2: 行为类 toggle
   private autoFollowCheckbox!: HTMLInputElement;
@@ -401,7 +410,10 @@ export class SettingsPanel {
     // 与主窗口抽屉行为一致。窗口模式下面板 handleEsc→cancel→close()→关窗（见 close()）。
     dispatcher.pushOverlay(this);
     try {
-      this.fillConfigCells(await loadConfig());
+      const cfg = await loadConfig();
+      this.fillConfigCells(cfg);
+      // 「config.json 里有认不出的项」那条跟着这一份重算（窗口是藏起来再开，那条不会自己重建）。
+      rerenderUnknownKeys(cfg);
     } catch (e) {
       // 读不回来 ⇒ 三格照旧各回落到缺省（与原来三个读者各自的降级同形），外观不重刷。
       console.warn("设置窗读配置失败，外观 / 数据目录 / 行为按缺省显示：", e);
@@ -639,7 +651,7 @@ export class SettingsPanel {
       })
       .catch((e: unknown) => {
         // 落不下就不关：窗口留着、说出原因，用户的改动还在输入框里。
-        this.banner.textContent = copyText("settingsPanel.close.saveFailed", { e: String(e) });
+        this.banner.textContent = copyText("settingsPanel.close.saveFailed", { e: e instanceof Error ? e.message : String(e) });
         this.banner.classList.add("settings-banner-show");
       });
   }
@@ -706,6 +718,9 @@ export class SettingsPanel {
   private async persistClaudeDir(): Promise<void> {
     const nextDir = this.claudeDirInput.value.trim();
     if (nextDir === this.claudeDirOriginal) return;
+    // 不在的目录不存：照收的话重启后会被悄悄忽略。抛出去由调用方说「没存下：…」。
+    const problem = nextDir === "" ? null : await claudeDirProblem(nextDir);
+    if (problem !== null) throw new Error(problem);
     await setClaudeDirOverride(nextDir === "" ? null : nextDir);
     this.claudeDirOriginal = nextDir;
     // E62：给 S7 那条常驻条**供货**。这里的 banner 是一次性的（关窗即没），
@@ -718,7 +733,7 @@ export class SettingsPanel {
 
   /** 落盘失败时说出来（全即时的每一格都走它，不许静默吞）。 */
   private reportSaveFailure(what: string, e: unknown): void {
-    this.banner.textContent = copyText("settingsPanel.save.failed", { what, e: String(e) });
+    this.banner.textContent = copyText("settingsPanel.save.failed", { what, e: e instanceof Error ? e.message : String(e) });
     this.banner.classList.add("settings-banner-show");
   }
 
@@ -1128,7 +1143,15 @@ export class SettingsPanel {
       {
         appliesTo: "both",
         tab: "term",
-        el: this.safeBlock(copyText("relayOptin.section.title"), () => new RelayOptinSection().element, { untitled: true }),
+        el: this.safeBlock(
+          copyText("relayOptin.section.title"),
+          () => {
+            const sec = new RelayOptinSection();
+            this.relayOptin = sec;
+            return sec.element;
+          },
+          { untitled: true },
+        ),
       },
       // 〔资产目录 · 插件〕三块搬走了：skill / MCP 是跨机器的一类对象，住顶层「扩展」页（一张表 ＋ 一个抽屉）；
       //   插件只读列表没有可做的事，先拿掉。
@@ -1243,7 +1266,15 @@ export class SettingsPanel {
     router.onNavigate((id) => {
       if (!id.startsWith(MACHINE_PAGE_PREFIX)) return;
       const isLocal = id === LOCAL_MACHINE_PAGE_ID;
-      setCurrentMachine(isLocal ? LOCAL_ORIGIN : id.slice(MACHINE_PAGE_PREFIX.length));
+      // 页 id 建卡时定死、不跟着改名走 ⇒ 这页讲的是哪台问机器列表（改过名的是新名；刚导入的是它的别名）。
+      const before = getCurrentMachine();
+      setCurrentMachine(
+        isLocal ? LOCAL_ORIGIN : (this.remoteSection?.originOfPage(id) ?? id.slice(MACHINE_PAGE_PREFIX.length)),
+      );
+      // 回到机器页 ＝ 展开过的那几块重读一次（照提示在终端里改完回来，不该还是旧的）。
+      // 换了机器的由各块自己的订阅重读，这里只管同一台再进来；本机别名块不跟机器走，进本机页就重读。
+      if (isLocal) rereadAliases(LOCAL_ORIGIN);
+      if (getCurrentMachine() === before) this.relayOptin?.rereadIfOpened();
       const page = router.pageContentOf(id);
       if (page) this.movePerMachineTo(page, isLocal, id);
     });
@@ -1727,6 +1758,7 @@ export class SettingsPanel {
   private syncOneInput(f: FieldSpec): void {
     const input = this.inputs.get(f.key);
     if (!input) return;
+    this.showFieldError(input, null); // 回到存过的值，上一次「没存」那句跟着撤
     const override = this.current[f.key];
     if (override !== undefined && override !== null && override !== "") {
       input.value = String(override);
@@ -1776,6 +1808,10 @@ export class SettingsPanel {
     const input = document.createElement("input");
     input.type = f.type; // color / number / text
     input.className = "settings-input";
+    if (f.type === "number") {
+      input.min = String(FONT_SIZE_MIN);
+      input.max = String(FONT_SIZE_MAX);
+    }
     // `input` 只预览（拖取色器 ~60Hz，不逐帧写盘）；`change`（松手 / 失焦 / 回车）才落。
     input.addEventListener("input", () => this.onFieldChange(f, input));
     input.addEventListener("change", () => {
@@ -1812,15 +1848,40 @@ export class SettingsPanel {
       nextValue = undefined;
     } else if (f.type === "number") {
       const n = Number(v);
+      if (!Number.isFinite(n) || n < FONT_SIZE_MIN || n > FONT_SIZE_MAX) {
+        // 越界：不预览、不存（下次打开显示存过的值），就地说一句。
+        this.showFieldError(input, copyText("settingsPanel.field.fontSizeRange"));
+        return;
+      }
       (this.current as Record<string, unknown>)[f.key] = n;
       nextValue = n;
     } else {
       (this.current as Record<string, unknown>)[f.key] = v;
       nextValue = v;
     }
+    this.showFieldError(input, null);
     // 性能关键：拖 color picker 时 `input` 事件 ~60Hz 高频；只更新这一个 token，
     // 避免每帧调 14 次 setProperty 触发整棵 :root 子树重算
     applyThemeToken(f.key, nextValue);
+  }
+
+  /** 一格下面那一行错误：有话说时挂在那一格所在行的后面，没话说时摘掉。 */
+  private showFieldError(input: HTMLInputElement | HTMLSelectElement, text: string | null): void {
+    let err = this.fieldErrors.get(input);
+    if (text === null) {
+      err?.remove();
+      this.fieldErrors.delete(input);
+      input.removeAttribute("aria-invalid");
+      return;
+    }
+    if (!err) {
+      err = document.createElement("div");
+      err.className = "remote-test-line remote-test-err";
+      input.closest(".settings-row")?.after(err);
+      this.fieldErrors.set(input, err);
+    }
+    err.textContent = text;
+    input.setAttribute("aria-invalid", "true");
   }
 
   /** 把 this.current 的值写回所有 input；无覆盖的字段读 :root 计算值作为占位 */

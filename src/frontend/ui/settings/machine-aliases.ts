@@ -438,6 +438,20 @@ function buildAliasForm(initial: AliasForm, host: FormHost): HTMLElement {
  * @param origin 那台机器（取值函数：远端卡改名后跟着它走）。每一发都带它。
  * @param onBlockDone 接入 / 断开之后（远端卡拿它记机器列表那一格；`error` 为空 = 成了）。
  */
+/**
+ * 已经展开读过的那几块别名（本机那一块与每张远端卡各一块）。别处改了那台的别名清单（账号增删）、
+ * 或回到那一页时按机器重读 —— 不然清单与指纹停在第一次读的那一刻，「加上」拿旧指纹去写就被说「被别处改过」。
+ */
+const loadedManagers = new Map<HTMLElement, { origin: () => Origin; reread: () => void }>();
+
+/** 重读那台机器上已经展开过的别名块（没展开过的不读；已不在界面上的顺手清掉）。 */
+export function rereadAliases(origin: Origin): void {
+  for (const [el, m] of loadedManagers) {
+    if (!el.isConnected) loadedManagers.delete(el);
+    else if (m.origin() === origin) m.reread();
+  }
+}
+
 export function buildAliasManager(opts: {
   platform: Shell;
   origin: () => Origin;
@@ -982,6 +996,13 @@ export function buildAliasManager(opts: {
       psExtras.loadNow();
     }
     void load();
+    loadedManagers.set(wrap, {
+      origin: opts.origin,
+      reread: () => {
+        psExtras?.loadNow();
+        void load();
+      },
+    });
   });
   return wrap;
 }

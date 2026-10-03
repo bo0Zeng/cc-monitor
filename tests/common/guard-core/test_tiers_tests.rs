@@ -191,6 +191,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/session-status.vitest.ts",
     "tests/frontend/ui/settings/account-new-form.vitest.ts",
     "tests/frontend/ui/settings/cc-bus-section.vitest.ts",
+    "tests/frontend/ui/settings/claude-dir-check.vitest.ts", // Claude 数据目录存之前问本机后端在不在（假通道）
     "tests/frontend/ui/settings/config-surface-section.vitest.ts",
     "tests/frontend/ui/settings/context-limits-section.vitest.ts", // `contextLimits` 的入口（假 IPC）
     "tests/frontend/ui/settings/diagnostics-section.vitest.ts",

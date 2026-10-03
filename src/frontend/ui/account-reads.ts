@@ -59,7 +59,7 @@ export async function fetchAccounts(origin: Origin, force = false): Promise<Acco
       oldBackend: false,
       meta: got.meta,
       accounts: got.accounts,
-      defaultName: await getDefaultName(),
+      defaultName: await getDefaultName(origin),
       // Z01：后端说的「能用但有缺」（manifest 里没有账号 0）。
       notice: got.notice,
     };

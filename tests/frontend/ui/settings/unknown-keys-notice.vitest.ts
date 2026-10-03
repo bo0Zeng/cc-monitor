@@ -49,6 +49,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
   LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
   RemoteSection: class {
+    originOfPage = (): string | null => null;
     element = document.createElement("div");
     refresh = vi.fn().mockResolvedValue(undefined);
   },
@@ -209,5 +210,28 @@ describe("🔴 P12：真·用户那一侧 —— 打开设置就看得见", () =
       text,
       "配置里没有任何未知键，面板上却挂着那句话 —— 上面那条于是与被测的性质无关，恒绿",
     ).not.toContain("认不出来");
+  });
+});
+
+// 设置窗关了是藏起来，那条不会重建：每次打开都拿那一趟读回的配置重算 —— 改对了就消，新出现的就出。
+describe("重开设置窗：那条跟着配置重算", () => {
+  it("★ 改对了 config.json 再打开 ⇒ 条消失；又写进一个认不出的 ⇒ 条出现", async () => {
+    store.cfg = { theme: {}, [RETIRED_KEY]: true };
+    const panel = new SettingsPanel();
+    await panel.open();
+    await tick();
+    const bar = document.querySelector<HTMLElement>(".settings-panel .settings-unknown-keys-bar")!;
+    expect(bar.textContent, "前提：第一次打开时条亮着").toContain(RETIRED_KEY);
+    panel.close();
+    store.cfg = { theme: {} };
+    await panel.open();
+    await tick();
+    expect(bar.hidden, "改对了还亮着").toBe(true);
+    panel.close();
+    store.cfg = { theme: {}, 某个错字: 1 };
+    await panel.open();
+    await tick();
+    expect(bar.hidden).toBe(false);
+    expect(bar.textContent).toContain("某个错字");
   });
 });

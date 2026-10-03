@@ -151,7 +151,7 @@ describe("F1 chip 纯全局切换器（无 ⚠k）", () => {
     expect((chip as unknown as Record<string, unknown>).updateMismatchBadge).toBeUndefined();
   });
 
-  it("下拉列出账号 + 点非当前项 → 走 setDefaultName 全局切号（DoD 正路）", async () => {
+  it("下拉列出账号 + 点非当前项 → 走 setDefaultName 切这台的默认号（DoD 正路）", async () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ label: "aya" })] });
     fetchAccountsMock.mockResolvedValue(
       state({ accounts: [acct({ name: "wei" }), acct({ name: "amy" })], defaultName: "wei" }),
@@ -168,7 +168,7 @@ describe("F1 chip 纯全局切换器（无 ⚠k）", () => {
     amy.click();
     // selectDefault 链：setDefaultName → invalidateCache → refresh(含两次 async 数据源) → onDefaultChanged。
     for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
-    expect(setDef).toHaveBeenCalledWith("amy"); // 点非当前项 → 全局切到 amy
+    expect(setDef).toHaveBeenCalledWith("aya", "amy"); // 点非当前项 → 这台（aya）切到 amy
     expect(changed).toBe(1); // 切完回调 onDefaultChanged（让 main.ts 重算会话归属）
   });
 });

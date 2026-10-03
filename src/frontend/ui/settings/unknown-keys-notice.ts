@@ -51,6 +51,15 @@ export function unknownKeysMessage(keys: readonly string[]): string | null {
   );
 }
 
+/** 这个窗口里的那几条（各自的重画）。 */
+const renders = new Set<(keys: readonly string[]) => void>();
+
+/** 拿一份刚读回的配置重算一遍：设置窗每次打开都读一次配置，顺手交给它（改对了就消、新出现的就出）。 */
+export function rerenderUnknownKeys(cfg: unknown): void {
+  const keys = unknownKeysIn(cfg);
+  for (const r of renders) r(keys);
+}
+
 /**
  * 常驻条。**刻意没有关闭按钮** —— 同 `restart-notice.ts`：用户点一下并不会让
  * 「这个键不生效」这件事变成假的。
@@ -74,6 +83,7 @@ export function createUnknownKeysBar(): HTMLElement {
     bar.textContent = msg;
   };
   render(unknownConfigKeys());
+  renders.add(render);
   // 刷新失败**不清空**已经显示的那句：读不到盘不等于那些键消失了。
   void loadConfig().then(
     (cfg) => render(unknownKeysIn(cfg)),
