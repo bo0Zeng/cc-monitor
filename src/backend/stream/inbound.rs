@@ -287,10 +287,14 @@ pub const COMMANDS: &[&str] = &[
     "ssh-config-import",
     "ssh-config-resolve",
     "tasks-list",
+    // 终端管理 L1（两个前端共用，形状与宿主无关）：送字 / 送键 · 抓一屏 · 名单。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "terminal-input",
+    "terminal-preview",
     // ↗ 那一问的本机一半：那台报来的终端连接是这台电脑上哪个进程开的、往上的进程链（只读的系统查询）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "terminal-processes",
     // 〔「待迁」最后一行〕给一台远端开终端要跑的那一串（`ssh -t …` 外壳 ＋ PowerShell 窗口载荷），本机后端渲、monitor 只开窗。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "terminal-ssh",
+    "terminals-list",
     // 列这台的 tmux 会话（原样行；monitor `list_remote_tmux` 那条拨号 shell 退役）。
     "tmux-list",
     // 起会话要的 tmux 名：这台派生 ＋ 按这台那张会话快照避让（前端那份铸名口删了）。**是新命令** ⇒ `build_id_guard` 红是预期的。
@@ -3685,6 +3689,103 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 终端管理 L1 三条（`control/terminals.rs`）：只认名单里的终端（句柄 / sid），不收 tmux 目标串；送字送键过身份门。
+    //   阻塞档（起 tmux）；只抓一次、只送一次，轮询归调用方。
+    CommandSpec {
+        name: "terminals-list",
+        doc_anchor: Some("#### `terminals-list` / `terminal-preview` / `terminal-input`"),
+        codes: &["invalid_args", "unobservable"],
+        fields: &[
+            "agent",
+            "can",
+            "client",
+            "clients",
+            "complete",
+            "cwd",
+            "end",
+            "host",
+            "input",
+            "kind",
+            "last_activity",
+            "mine",
+            "no",
+            "preview",
+            "program",
+            "purpose",
+            "session",
+            "sid",
+            "since",
+            "started_by",
+            "state",
+            "terminal",
+            "terminals",
+            "title",
+            "tmux_name",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| crate::control::terminals::list_for_inbound(&r.args).map(Some)),
+    },
+    CommandSpec {
+        name: "terminal-preview",
+        doc_anchor: Some("#### `terminals-list` / `terminal-preview` / `terminal-input`"),
+        codes: &[
+            "bad_target",
+            "invalid_args",
+            "not_known",
+            "ambiguous",
+            "no_tmux",
+            "no_server",
+            "no_such_session",
+            "capture_failed",
+            "unobservable",
+        ],
+        fields: &[
+            "capped",
+            "captured_at",
+            "color",
+            "cols",
+            "cursor",
+            "lines",
+            "rows",
+            "screen",
+            "scrollback",
+            "scrollback_lines",
+            "sid",
+            "spans",
+            "terminal",
+            "text",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| crate::control::terminals::preview_for_inbound(&r.args).map(Some)),
+    },
+    CommandSpec {
+        name: "terminal-input",
+        doc_anchor: Some("#### `terminals-list` / `terminal-preview` / `terminal-input`"),
+        codes: &[
+            "bad_target",
+            "invalid_args",
+            "no_tmux",
+            "no_server",
+            "no_such_session",
+            "capture_failed",
+            "unobservable",
+        ],
+        fields: &[
+            "client",
+            "enter",
+            "key",
+            "result",
+            "screen",
+            "seen_screen",
+            "sid",
+            "take",
+            "terminal",
+            "text",
+            "why",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| crate::control::terminals::input_for_inbound(&r.args).map(Some)),
+    },
     // 列这台的 tmux 会话。成品 `{installed, sessions}`（`observe/tmux_list.rs`；原先是原样行、解析在 monitor）。阻塞档（起一次 `sh` ＋ `tmux`）。
     CommandSpec {
         name: "tmux-list",
@@ -3788,7 +3889,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "too_many_windows",
             "kill_failed",
         ],
-        fields: &["bus", "killed", "name", "session"],
+        fields: &["bus", "client", "killed", "name", "session"],
         takes_input: true,
         run: Run::Blocking(|r| crate::control::kill::kill_for_inbound(&r.args).map(Some)),
     },
@@ -3799,7 +3900,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         doc_anchor: Some("#### `sessions-tmux` / `sessions-stop` / `sessions-start`"),
         codes: &["invalid_args", "unobservable"],
         fields: &[
-            "bus", "cmd", "detail", "outcome", "results", "session", "sid", "sids", "why",
+            "bus", "client", "cmd", "detail", "outcome", "results", "session", "sid", "sids", "why",
         ],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -3812,7 +3913,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "sessions-tmux",
         doc_anchor: Some("#### `sessions-tmux` / `sessions-stop` / `sessions-start`"),
         codes: &["invalid_args", "unobservable"],
-        fields: &["names", "results", "sid", "sids", "standing"],
+        fields: &["client", "names", "results", "sid", "sids", "standing"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::session_batch_face::where_(&r.args)
@@ -3826,6 +3927,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         codes: &["invalid_args", "unobservable"],
         fields: &[
             "account",
+            "client",
             "cmd",
             "configDir",
             "cwd",
@@ -3870,8 +3972,8 @@ pub const REGISTRY: &[CommandSpec] = &[
         // ⇒ 不补就是**静默丢修饰**。⚠ `avoid_collision` **不加**：撞名避让住在要搬的那一块
         // **之外**，而「撞了」这件事后端已经用 `created:false` 表达完了（`§15 裁五`）。
         fields: &[
-            "agent", "ccm_sid", "created", "cwd", "height", "mode", "name", "payload", "session",
-            "typed", "width",
+            "agent", "ccm_sid", "client", "created", "cwd", "height", "mode", "name", "payload",
+            "session", "typed", "width",
         ],
         takes_input: true,
         run: Run::Blocking(|r| crate::control::launch::launch_for_inbound(&r.args).map(Some)),

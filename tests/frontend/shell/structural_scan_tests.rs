@@ -2433,11 +2433,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "hello_is_flushed_before_the_inbound_reader_starts",
             1,
         ),
-        (
-            "src/backend/stream/listen.rs",
-            "frozen_single_client_guard",
-            1,
-        ),
         ("src/backend/observe/watcher.rs", "spawn_tmux_ticker", 2),
         (
             "tests/backend/protocol_doc_guard.rs",

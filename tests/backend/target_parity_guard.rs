@@ -99,6 +99,10 @@ const WAITING_ROWS: &[(&str, &str)] = &[
     ("cli-subcommands", "--capture-pane"),
     ("cli-subcommands", "--kill"),
     ("cli-subcommands", "--launch"),
+    ("wire-commands", "terminal-preview"),
+    ("wire-commands", "terminal-input"),
+    ("cli-subcommands", "--terminal-preview"),
+    ("cli-subcommands", "--terminal-input"),
 ];
 
 /// 理由串里一旦出现就等于替用户选了三种机制里的某一种（丙 · 乙 · 甲）。
@@ -128,7 +132,7 @@ fn no_gap_rationale_picks_the_windows_mechanism() {
     let want: BTreeSet<(&str, &str)> = WAITING_ROWS.iter().copied().collect();
     assert_eq!(
         cites, want,
-        "写「Windows 后台机制」的理由串那几行 ≠ 点名的那 14 行（`ccm-launcher × Windows` 8 ＋ 命令面 6）"
+        "写「Windows 后台机制」的理由串那几行 ≠ 点名的那 18 行（`ccm-launcher × Windows` 8 ＋ 命令面 10）"
     );
     let picks: Vec<String> = TARGET_GAPS
         .iter()
@@ -162,6 +166,7 @@ fn no_gap_rationale_picks_the_windows_mechanism() {
 ///   它们不是新裁的差异：`change_mode` 在非 unix 上从来就改不了；FW5 给那条命令声明了 `no_unix_mode` 码，
 ///   现推段（`unix_mode_bits_on` × 码）才第一次看见它们（买不到 1 · `§8.5` 待拍 3）。
 ///   档判结构：能力的定义就是「改 unix 权限位」，Windows 没有那套位；那边改访问权限是另一条能力。
+/// - **欠着 12 → 16**：终端管理 L1 的 `terminal-preview` / `terminal-input` × Windows（帧面 ＋ CLI 面）：这一版宿主只有 tmux，形状与宿主无关，等 Windows 后台机制。
 #[test]
 fn both_tiers_have_real_members_and_their_sizes_are_pinned() {
     let count = |k: GapKind| TARGET_GAPS.iter().filter(|g| g.kind == k).count();
@@ -173,8 +178,8 @@ fn both_tiers_have_real_members_and_their_sizes_are_pinned() {
     );
     assert_eq!(
         (s, o),
-        (4, 12),
-        "差异登记表两档现打 结构 {s} · 欠着 {o}（PR1 落地时 2 · 12；FW5 结构 +2 → 4 · 12，逐条见本条头注）。\n\
+        (4, 16),
+        "差异登记表两档现打 结构 {s} · 欠着 {o}（PR1 落地时 2 · 12；FW5 结构 +2 → 4 · 12；终端管理 L1 欠着 +4 → 4 · 16，逐条见本条头注）。\n\
          这个数本身没有对错，但它变了说明有裁决动过 —— 连理由一起看、一起改。"
     );
 }
@@ -808,6 +813,10 @@ fn handler_files(
 
 /// 够得着 tmux、却**不**声明 `no_tmux` 的命令 —— 逐条写理由（tmux 在它那里是可选的：问不到就降级，命令本身照做）。
 const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
+    (
+        "terminals-list",
+        "终端名单：没 tmux ⇒ 这台没有 tmux 终端、答空名单（不是错）；托管终端做出来后名单里还有它们",
+    ),
     (
         "sessions-start",
         "批量起：tmux 那一形没 tmux ⇒ 逐个答「这台没 tmux」跳过、命令照答；开终端那一形本来用不着 tmux（Windows 本机照做）",

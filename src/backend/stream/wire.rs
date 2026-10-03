@@ -285,9 +285,9 @@ pub enum Frame {
         #[serde(skip_serializing_if = "Vec::is_empty")]
         uncancellable: Vec<String>,
     },
-    /// One JSONL line tailed from a session file —— 带的是**成品**，不是原文：
+    /// One JSONL line tailed from a session file —— 带的是**成品**：
     /// 这一行在渲染模型里是什么（`message`，缺 ＝ 不进界面、照占号）与它自己的 `cwd`。解释住后端适配层，
-    /// monitor 只原样转交（原先这一格是 `raw`、由 monitor 解析）。
+    /// monitor 只原样转交。原文 `raw` 只给发了 `--with-raw` 的客户端（第二个前端自己解析记录）。
     Line {
         session_id: String,
         path: String,
@@ -301,16 +301,17 @@ pub enum Frame {
         /// `tail -c +(N+1)`。给 offset 续拉/截断检测（`seq` 是 per-stream 序数、非 resume 键）。
         /// 注：`Frame` 仅 derive `Serialize`，故此 `#[serde(default)]` 在**本 crate 装饰性**。
         ///
-        /// ⚠ **别把它当成向后兼容的落点**。这里曾写着「向后兼容实现在 cc-monitor 反序列化侧」——
-        /// **那是假的**：`ssh_source.rs` 的 `"line"` 分支只取 `session_id/path/seq/raw`，
-        /// 全仓 `byte_offset` / `byteOffset` 零命中，**cc-monitor 根本不读这个字段**。
-        /// 今天唯一的消费者是仓外 aterm（它自己决定缺字段怎么办）。
-        /// U6a 审计抓到：一条把不存在的实现点写成契约锚的注释，下一个人照它去 monitor 找会扑空。
+        /// 两个前端都读它：monitor 记续点（`ssh_source.rs` 的 `"line"` 分支 · `snapshot_resume.rs`），
+        /// 第二个前端拿它续拉（冻结，`wire_tests::the_shapes_the_second_frontend_reads_stay_put`）。
         #[serde(default)]
         byte_offset: u64,
         /// 这一行的对账键（适配层 `RecordFace::response_id` 给；流的「开始」带同一个值）。没有 ⇒ 不上线。
         #[serde(skip_serializing_if = "Option::is_none")]
         rid: Option<String>,
+        /// 〔additive〕这一行记录的**原文**（去掉行尾换行）。只在客户端发了 `--with-raw` 时才带
+        /// （`ReaderState::with_raw`）—— 第二个前端自己解析记录，要它；没索要的客户端收到的字节与本字段加进来之前一字不差。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        raw: Option<String>,
     },
     /// A new session file appeared.
     ///

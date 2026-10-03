@@ -646,6 +646,13 @@ mod tests {
              查不到就如实说「缺 / 查不动」—— 不起它、不假设它在，在任何平台上都不是一个会答错的值。",
         ),
         (
+            "control/terminals.rs",
+            "\"bash\", \"zsh\", \"fish\", \"sh\"",
+            "合法线外",
+            "终端名单里认「前台是不是一个 shell」的一张名字表（tmux `pane_current_command` 的值）：\
+             只用来说这个终端的状态（程序退出、只剩 shell），不起它、不假设这台装了它，在任何平台上都不是一个会答错的值。",
+        ),
+        (
             "agents/fake/mod.rs",
             "cmdline(\"/usr/bin/vim\")",
             "合法线外",

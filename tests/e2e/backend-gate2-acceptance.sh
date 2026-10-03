@@ -299,6 +299,45 @@ if wait_for '"id":"e2e-g3-bad"'; then
   else bad "形状门没挡住 \`a:b\`：$R"; fi
 else bad "kill 形状门：5s 内无应答"; fi
 
+# ── 「哪个前端的会话」那一维（`@ccm_client`）的真机验收 ───────────────────────
+# 会话由起它的那一方声明；请求带 `client` 自报。声明了别的前端 ⇒ 只读（哪怕 `@ccm_sid` 在）；
+# 声明归自报的那个 ⇒ 放（名字不必像我们铸的）；声明成 `ccm`（用户终端起的）⇒ 不拦。
+echo
+echo "-- 哪个前端的会话（@ccm_client）--"
+cl() { # <场景名> <会话名> <@ccm_client> <设不设sid> <命令 kill|send> <client 或空> <期望码|OK> <序号>
+  local what="$1" name="$2" decl="$3" sid="$4" cmd="$5" who="$6" want="$7" rid="e2e-cl-$8"
+  "$TMUX_BIN" -L "$TMUX_SHIM_SOCK" kill-server 2>/dev/null || true; sleep 0.2
+  "$TMUX_BIN" new-session -d -s "$name" 2>/dev/null || { bad "$what：建不出会话"; return; }
+  "$TMUX_BIN" set-option -t "=$name:" @ccm_client "$decl" >/dev/null 2>&1
+  [ "$sid" = yes ] && "$TMUX_BIN" set-option -t "=$name:" @ccm_sid abc123 >/dev/null 2>&1
+  local extra=""; [ -n "$who" ] && extra=",\"client\":\"$who\""
+  local marker="CCMCL_$8"
+  if [ "$cmd" = kill ]; then
+    send "{\"id\":\"$rid\",\"cmd\":\"kill\",\"args\":{\"name\":\"$name\"$extra}}"
+  else
+    send "{\"id\":\"$rid\",\"cmd\":\"launch\",\"args\":{\"mode\":\"send-into\",\"name\":\"$name\",\"payload\":\"printf %s $marker\"$extra}}"
+  fi
+  wait_for "\"id\":\"$rid\"" || { bad "$what：5s 内无应答"; return; }
+  local R; R="$(reply_of "$rid")"
+  sleep 0.4
+  local alive=no; "$TMUX_BIN" has-session -t "=$name:" 2>/dev/null && alive=yes
+  local landed=no
+  [ "$alive" = yes ] && "$TMUX_BIN" capture-pane -p -t "=$name:" 2>/dev/null | grep -q "$marker" && landed=yes
+  if [ "$want" = OK ]; then
+    if [ "$cmd" = kill ] && printf '%s' "$R" | grep -qF '"killed":true' && [ "$alive" = no ]; then ok "$what → 杀掉了"
+    elif [ "$cmd" = send ] && printf '%s' "$R" | grep -qF '"ok":true' && [ "$landed" = yes ]; then ok "$what → 送进去了"
+    else bad "$what：期望放行，实得 $R（alive=$alive landed=$landed）"; fi
+  else
+    if printf '%s' "$R" | grep -qF "$want" && [ "$alive" = yes ] && [ "$landed" = no ]; then ok "$what → 拒绝（$want），会话还在、没被打字"
+    else bad "$what：期望 $want 且会话未动，实得 $R（alive=$alive landed=$landed）"; fi
+  fi
+}
+cl "别的前端的会话 + @ccm_sid，不报自己是谁 ⇒ 结束不了" "atermpipe-a" mobile yes kill "" wrong_owner 1
+cl "别的前端的会话，自报 desktop ⇒ 送不进字" "atermpipe-b" mobile yes send desktop wrong_owner 2
+cl "自己起的会话（名字不像我们铸的、没 @ccm_sid），自报对上 ⇒ 送得进" "atermpipe-c" mobile no send mobile OK 3
+cl "自己起的会话，自报对上 ⇒ 结束得了" "atermpipe-d" mobile no kill mobile OK 4
+cl "用户终端起的（@ccm_client=ccm），别的前端照名字规则 ⇒ 结束得了" "cl-proj-cc" ccm no kill mobile OK 5
+
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail SKIP=$((skip_ver + skip)) WAIVED=$waived ====="
 # 本轮跑在哪个 tmux 上、用掉几条豁免、版本门跳过几条，收尾打出来（换机器时 PASS/SKIP 怎么分的，一眼看得出）。

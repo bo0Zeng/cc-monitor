@@ -2832,7 +2832,18 @@ mod spawn_registry {
              ⚠ [`super::capture_is_read_only`] **不是**那条通用判据：它只盖本文件这一处 \
              ⇒ 不许拿它去把 `control/gate.rs` / `common/session_snapshot.rs` 那两条也摘掉。\
              ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第二个 tmux 子命令 —— \
-             这一处的立身之本就是「抓一屏只有一处、而且只抓一屏」。",
+             这一处的立身之本就是「抓一屏只有一处、而且只抓一屏」。\
+             终端预览要的颜色（`-e`）与往回几行（`-S -N`）是同一条子命令上的两类只读旗（`capture_argv_with`，值级同样钉着）。",
+        ),
+        (
+            "control/terminals.rs",
+            "tmux",
+            "终端管理 L1：列会话（`list-sessions -F`）· 列客户端（`list-clients -F`）· 问尺寸光标（`display-message -p`）三处只读，\
+             外加经同一个命令构造器交给 `control/launch.rs` 的送字送键（`send-keys` / 粘贴）与 `control/gate.rs` 的身份探测 \
+             —— 写的那一半只改 **tmux server 的运行期状态**（往用户明确要送的那个终端里打字），\
+             不写任何文件；送之前过身份门（同 `launch` 的 `send-into`），只认名单里的终端。",
+            "缩性质",
+            "终端管理换成托管终端（宿主不再是 tmux）的那天，这一条随实现一起换掉。",
         ),
         (
             "common/session_snapshot.rs",
@@ -3119,7 +3130,8 @@ mod spawn_registry {
         // **16 → 17**：`observe/session_terminals.rs` 一处只读的 `tmux list-clients`（点 ↗ 时问谁连着这个会话）。
         // 16 → 17：`control/session_batch.rs` 当 ccm 起自己（tab 栏在 tmux 里后台起，`ALLOWED` 里写明）。
         // **17 → 18**（合并）：上面两行是两边各自的 16 → 17，各加一处，相加。
-        const SPAWN_SITES_TODAY: usize = 18;
+        // **18 → 19**：`control/terminals.rs` 一处（终端管理 L1：列会话 · 列客户端 · 问尺寸只读，送字送键经 `launch.rs`，`ALLOWED` 里写明）。
+        const SPAWN_SITES_TODAY: usize = 19;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,
@@ -3406,6 +3418,24 @@ mod capture_is_read_only {
              · `-p` 必须是「打到 stdout」—— 换成落 tmux buffer 就是改 tmux 状态。"
         );
         assert_eq!(argv[4], "=某会话:", "目标那一格被改写了");
+        // 预览那一形：同一条子命令，只多 `-e`（带颜色）与 `-S -N`（往回几行）两类只读旗；都不要时与上面逐字相同。
+        assert_eq!(
+            crate::control::capture_pane::capture_argv_with("=某会话:", true, 5),
+            [
+                "-u",
+                "capture-pane",
+                "-p",
+                "-e",
+                "-S",
+                "-5",
+                "-t",
+                "=某会话:"
+            ]
+        );
+        assert_eq!(
+            crate::control::capture_pane::capture_argv_with("=某会话:", false, 0),
+            argv
+        );
     }
 
     /// ★★ 正题②（**文本级**）：生产段里不出现任何会改 tmux 状态的动词。

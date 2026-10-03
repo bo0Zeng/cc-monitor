@@ -1995,7 +1995,7 @@ run_e2e ccm-print-parity 12
 # 46 → 48：新增两格「设了 CCM_SELF 也不被读」＋ 正控（后端只认 self_invocation）。
 # 48 → 53：`--cwd ../x` 补绝对 · `new` 保留 · 位置词 `attach` 交 claude · `--ccm-tmux` / `--ccm-agent` 让名 · 启动器拆词各一格（现打 53）。
 # 58 → 70：账号库住进 `~/.cc-monitor/accounts/` 那一组 12 格（临时家目录里建库 → 起会话 → 列账号；旧位置的清单不读不写）。
-run_e2e ccm-cli               70
+run_e2e ccm-cli               80
 # 🔴 39 → **42**：C 组加了三格（`capabilities=` 声明
 #    `base-url-across-tmux` · 容器载荷真带 `export ANTHROPIC_BASE_URL=` · 反空真）。
 #    判法是 `exact` ⇒ 这个数不改，涨了照样红。**同一拍要改三处**（本行 + `ci.yml` 的
@@ -2021,7 +2021,7 @@ run_e2e backend-cc-bus        97
 #   ★ `backend-gate2` 按 **PASS+SKIP** 恒等判（`exact-with-skip`）：`meta_dollar` 那一格要 tmux ≥3.5，版本不够的机器上
 #     它记 SKIP 并说原因（套件里的版本门 `min_tmux_for`；版本不够却建得出来 ⇒ FAIL「版本门过时」）⇒ 3.6 上 35+0、
 #     3.4 上 34+1，这一格两边都是 35。只钉 PASS 的话就是把开发机的 tmux 烤进了判据。
-run_e2e backend-gate2         34 exact-with-skip
+run_e2e backend-gate2         39 exact-with-skip
 #   ★ `local-backend` 同形按 **PASS+SKIP** 恒等判：三条起真后端的判据由 `cfg(embedded_backends)` 门着，
 #     没铺 `src/frontend/shell/embedded-backends/` 的树上它们记 SKIP 并说原因（套件里那一段；落点齐了却不跑 ⇒ FAIL）⇒ 铺了 26+0、没铺 15+11。
 # 26 → 24：起真后端的那三条少了一条 `the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕（它钉的 monitor 本机

@@ -83,7 +83,13 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
     //    ⚠ 顺序按 `REGISTRY` 的排列，不是字典序。
     assert_eq!(
         names,
-        vec!["capture-pane", "kill", "launch"],
+        vec![
+            "capture-pane",
+            "terminal-preview",
+            "terminal-input",
+            "kill",
+            "launch"
+        ],
         "没有 tmux 的那台机器上，做不到的恰好是 `REGISTRY` 里登记了 `{NO_TMUX}` 的那几条。\n\
              ⚠ 本条红**未必是错**：你要是新加了一条会回 `{NO_TMUX}` 的命令，它已经自动进表了\n\
              （这张表是从 `codes` 派生的，不是手写的）—— 那就把这里的期望值补上。\n\
@@ -219,6 +225,8 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
         names,
         vec![
             "capture-pane".to_string(),
+            "terminal-preview".to_string(),
+            "terminal-input".to_string(),
             "kill".to_string(),
             "launch".to_string()
         ],

@@ -695,12 +695,12 @@ E2E_NOTE = ("`gate.sh` 里 `run_e2e` 那一批之一：`ci.yml` 里每一套带 
             "⚠ `package.json` 里不带地板的那几套（`graylight` · `f40` 全链级）不在这道门里，理由登记在 `e2e_gate_registry` 的 `EXEMPT`")
 for suite, anchor in [
     ("ccm tests/e2e/ccm-print-parity", "run_e2e ccm-print-parity 12"),
-    ("ccm tests/e2e/ccm-cli", "run_e2e ccm-cli               70"),
+    ("ccm tests/e2e/ccm-cli", "run_e2e ccm-cli               80"),
     ("ccm tests/e2e/ccm-contract-parity", "run_e2e ccm-contract-parity   45"),
     # 后端的 cc-bus 基础命令（真跑 cc-bus 脚本 ＋ 隔离 tmux socket）—— 此前只挂在不通电的 `ci.yml` 上。
     ("ccm tests/e2e/backend-cc-bus", "run_e2e backend-cc-bus        97"),
     # 同样只挂在不通电的 `ci.yml` 上、各红了几天没人看见的那四套（gate2 · 本机后端监护 · 换号两套）。
-    ("ccm tests/e2e/backend-gate2", "run_e2e backend-gate2         34 exact-with-skip"),
+    ("ccm tests/e2e/backend-gate2", "run_e2e backend-gate2         39 exact-with-skip"),
     ("ccm tests/e2e/local-backend", "run_e2e local-backend         29 exact-with-skip"),
     ("ccm tests/e2e/restart-frames", "run_e2e restart-frames         6"),
     ("ccm tests/e2e/restart", "run_e2e restart               25"),

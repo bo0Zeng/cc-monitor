@@ -99,6 +99,43 @@ pub(crate) fn capture_argv(target: &str) -> [&str; 5] {
     ]
 }
 
+/// `-e` = 带上颜色等属性（SGR 转义）。只影响打到 stdout 的样子，不改 tmux 状态。
+pub(crate) const WITH_ESCAPES: &str = "-e";
+
+/// `-S <起始行>`：负数 = 往回多要几行历史。只读。
+pub(crate) const START_LINE: &str = "-S";
+
+/// 抓屏的完整形（终端预览用）：要不要颜色、往回几行。子命令与 `-p` 不变，只多两类只读旗。
+pub(crate) fn capture_argv_with(target: &str, color: bool, back: u32) -> Vec<String> {
+    let mut v: Vec<String> = vec![
+        UTF8_CLIENT_FLAG.into(),
+        CAPTURE_SUBCOMMAND.into(),
+        PRINT_TO_STDOUT.into(),
+    ];
+    if color {
+        v.push(WITH_ESCAPES.into());
+    }
+    if back > 0 {
+        v.push(START_LINE.into());
+        v.push(format!("-{back}"));
+    }
+    v.push(TARGET_FLAG.into());
+    v.push(target.into());
+    v
+}
+
+/// 抓一次那一屏（终端预览用：要不要颜色、往回几行）。判法同 [`capture_on`]；`target` 由调用方从名单里取（`#{session_id}`）。
+pub(crate) fn capture_with_on(
+    socket: Option<&str>,
+    target: &str,
+    color: bool,
+    back: u32,
+) -> Result<String, CmdErr> {
+    let argv = capture_argv_with(target, color, back);
+    let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
+    classify(&spawn_tmux(socket, &argv)?)
+}
+
 /// stderr 里「这台机上一个 tmux server 都没有」的形状。
 ///
 /// `(针, 为什么它算这一档)` —— 加一条要连理由一起加。
@@ -212,12 +249,17 @@ pub(crate) fn classify(raw: &RawCapture) -> Result<String, CmdErr> {
 /// 在一个**隔离的 tmux server** 上测得出来 —— 同 `layering_guard::layer_sources_at`
 /// 的「根可注入」：活体夹具要让**真判据本身**跑在真东西上，不是跑在它的复刻上。
 fn spawn_capture(socket: Option<&str>, target: &str) -> Result<RawCapture, CmdErr> {
+    spawn_tmux(socket, &capture_argv(target))
+}
+
+/// 本模块唯一起进程的那一处：跑一条只读的抓屏命令，读回退出码与两条流。
+fn spawn_tmux(socket: Option<&str>, argv: &[&str]) -> Result<RawCapture, CmdErr> {
     let mut cmd = Command::new("tmux").without_own_env();
     if let Some(s) = socket {
         cmd.args(["-S", s]);
     }
     let out = cmd
-        .args(capture_argv(target))
+        .args(argv)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

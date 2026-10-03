@@ -854,7 +854,7 @@ jobs:
                       "cc-spawn-uplift 72" \
                       "restart 25" "resume 17" "graylight-frames 13" "restart-frames 5" "resume-frames 7" \
                       "backend-fork 10" "inbound-frames 31" \
-                      "ccm-contract-parity 45" "backend-gate2 33" "local-backend 19" \
+                      "ccm-contract-parity 45" "backend-gate2 38" "local-backend 19" \
                       "backend-sessions-rewatch 5" "backend-tmux-late-server 2" \
                       "cc-bus-queue-drain 43" "backend-cc-bus 50" "p3t-local-tmux 10"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
@@ -1170,7 +1170,7 @@ jobs:
       #      本机门禁按 PASS+SKIP 恒等判 35（`exact-with-skip`）。两个数都由 `the_gate2_floor_still_makes_a_skip_hurt` 现算。
       # 34 / 35 → 33 / 34：裸键 mode `send-keys-raw` 删了，「它也过同一道 Gate 2」那一格随之删。
       - name: Gate 2 backend 真机验收（F03）
-        run: bash tests/e2e/assert-pass-floor.sh backend-gate2 33
+        run: bash tests/e2e/assert-pass-floor.sh backend-gate2 38
 
       # F05a：本机后端监护的真进程验收（起-杀-自愈 / 必崩即判死 / 缺本机后端诚实降级）。
       # 数字地板**只在这一行**（定框 §4：同一个数不许两侧各写一份）；脚本里只有导出式自检。

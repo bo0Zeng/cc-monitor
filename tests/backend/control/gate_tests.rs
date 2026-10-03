@@ -264,7 +264,7 @@ fn the_backend_side_agrees_with_the_golden_table() {
 #[test]
 fn a_probe_line_parses_into_a_handle_and_a_sid() {
     // 直接构造探测输出的解析结果，不起进程（起进程是 e2e 的事）。
-    let line = "$3\tabc123\t1";
+    let line = "$3\tabc123\t1\t";
     let mut it = line.split('\t');
     let p = Probed {
         session_id: it.next().unwrap().to_string(),
@@ -272,7 +272,10 @@ fn a_probe_line_parses_into_a_handle_and_a_sid() {
         // F04a：第三段是 `#{session_windows}`。**解析不出来 ⇒ 0**，而 Gate 3 要求恰好 1
         // ⇒ fail closed（拿不到窗口数就不许杀）。
         windows: it.next().unwrap_or_default().parse().unwrap_or(0),
+        // 第四段是 `@ccm_client`（没设 ⇒ 空串）。
+        client: it.next().unwrap_or_default().to_string(),
     };
+    assert_eq!(p.client, "");
     assert_eq!(p.session_id, "$3");
     assert_eq!(p.ccm_sid, "abc123");
     assert_eq!(p.windows, 1);
@@ -597,10 +600,11 @@ fn the_gate2_floor_still_makes_a_skip_hurt() {
     // 逐格数出来的：抽取器自检 1 · 目标不存在仍报 `no_such_session` 1 ·
     // 只设 `@ccm_sid_expect` 仍拒 1 · Gate 3 五条 5 · kill 目标不存在 1 · kill 形状门 1 = **10**
     // 11 → 10：裸键那个 mode（`send-keys-raw`）删了，「它也过同一道门」那一格随之删。
+    // 10 → 15：「哪个前端的会话」（`@ccm_client`）五格 —— 别的前端的结束 / 送字各拒一格 · 自己的送字 / 结束各放一格 · 用户终端起的放一格。
     // ⇒ 总槽位 = 判定表行数 + 11（08-06 是 25 + 11 = 36，与本文件原来那个 `FLOOR_TODAY`
     //   以及 `tests/e2e/README.md:64` 的 08-13 台账「35 过」＋当时 1 条登记豁免，两份独立读数都对得上）。
     // ⚠ **加/删判定表之外的场景时同拍改这里**；加判定表用例**不用**动它（那一半是现数的）。
-    const FIXED_SLOTS: usize = 10;
+    const FIXED_SLOTS: usize = 15;
     let slots = rows + FIXED_SLOTS;
 
     // ── 输入 ③：**版本门**条数，从套件自己的 `min_tmux_for()` 现数 ────────────
@@ -813,4 +817,63 @@ fn every_command_that_passes_the_gate_lists_the_gates_codes() {
         vec![("kill", "admit_destructive"), ("launch", "admit")],
         "过门的命令变了"
     );
+}
+
+/// 「哪个前端的会话」那一维接在身份门上：声明了别的前端 ⇒ 只读（哪怕名字像我们铸的、`@ccm_sid` 也在）；
+/// 声明归这次请求的前端 ⇒ 放（名字不必像我们铸的）；没声明 / 用户终端起的（`ccm`）⇒ 照名字规则。
+#[test]
+fn the_identity_door_reads_which_client_started_the_session() {
+    let p = |sid: &str, client: &str| Probed {
+        session_id: "$1".into(),
+        ccm_sid: sid.into(),
+        windows: 1,
+        client: client.into(),
+    };
+    for (name, probed, requester, want) in [
+        ("atermpipe-x", p("", ""), None, Who::NotOurs),
+        ("atermpipe-x", p("", ""), Some("mobile"), Who::NotOurs),
+        ("proj-cc", p("", ""), None, Who::Pass),
+        ("atermpipe-x", p("s1", ""), None, Who::Pass),
+        ("proj-cc", p("s1", "ccm"), None, Who::Pass),
+        ("proj-cc", p("s1", "ccm"), Some("mobile"), Who::Pass),
+        ("atermpipe-x", p("", "ccm"), Some("mobile"), Who::NotOurs),
+        ("atermpipe-x", p("s1", "mobile"), None, Who::OtherClient),
+        (
+            "proj-cc",
+            p("s1", "mobile"),
+            Some("desktop"),
+            Who::OtherClient,
+        ),
+        ("atermpipe-x", p("", "mobile"), Some("mobile"), Who::Pass),
+    ] {
+        assert_eq!(
+            identity(name, &probed, requester),
+            want,
+            "{name} · {probed:?} · 请求自报 {requester:?}"
+        );
+    }
+}
+
+/// 请求里的 `client`：没给 ⇒ 没报；给了就得合形状（会进 tmux 会话选项），不合 ⇒ `invalid_args`。
+#[test]
+fn the_requester_is_optional_and_shaped() {
+    assert_eq!(requester_of(&serde_json::json!({})), Ok(None));
+    assert_eq!(
+        requester_of(&serde_json::json!({ "client": "mobile" })),
+        Ok(Some("mobile".into()))
+    );
+    for bad in [
+        serde_json::json!({ "client": "" }),
+        serde_json::json!({ "client": "Mobile" }),
+        serde_json::json!({ "client": "-x" }),
+        serde_json::json!({ "client": "a b" }),
+        serde_json::json!({ "client": 1 }),
+        serde_json::json!({ "client": "x".repeat(33) }),
+    ] {
+        assert_eq!(
+            requester_of(&bad).map_err(|(c, _)| c),
+            Err("invalid_args"),
+            "{bad}"
+        );
+    }
 }

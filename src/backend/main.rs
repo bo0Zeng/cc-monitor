@@ -131,7 +131,7 @@ async fn main() {
     let args: Vec<String> = backend_args;
     // Batch7-F24/Batch8-F25：流模式 flag 集合，先剥离再判一次性查询模式
     // （否则误入 query 分支——INVARIANT §26）。纯函数化供单测（审计 D）。
-    let (args_rest, with_bg, tail_only, with_pid) = split_stream_flags(args);
+    let (args_rest, wants) = split_stream_flags(args);
     // `--<老子命令> --stdin-line` ⇒ 其余 argv 从 stdin 一行拿（远端命令行里不拼自由文本）。
     let args = match control::cli_control::expand_stdin_argv(args_rest, std::io::stdin().lock()) {
         Ok(a) => a,
@@ -230,7 +230,7 @@ async fn main() {
     let hello = build_hello(&agent_home);
 
     match listening {
-        None => run_over_stdio(hello, agent_home, with_bg, tail_only, with_pid).await,
+        None => run_over_stdio(hello, agent_home, wants).await,
         Some((listener, port, token)) => {
             // 这台账号库里各号共用的用户级 MCP：常驻那条载体上盯各号的配置文件，一有动静同步一趟（一次性的 stdio 那条不起）。
             inbound::watch_account_mcp();
@@ -245,7 +245,7 @@ async fn main() {
                     token,
                     hello,
                     agent_home,
-                    (with_bg, tail_only, with_pid),
+                    wants,
                 ) => {}
                 _ = stop => {
                     tracing::info!("shutdown signal received; exiting");
@@ -329,13 +329,7 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
 ///
 /// ⚠ 本函数体是 `K-P1` 之前 `main()` 的那一段**原样搬过来的**，一行行为都没改 ——
 /// 常驻是**加一条载体**，不是把这条改掉。改这一段之前先问：另一条载体要不要跟着改？
-async fn run_over_stdio(
-    hello: Frame,
-    agent_home: PathBuf,
-    with_bg: bool,
-    tail_only: bool,
-    with_pid: bool,
-) -> ! {
+async fn run_over_stdio(hello: Frame, agent_home: PathBuf, wants: StreamWants) -> ! {
     let mut stdout = BufWriter::new(tokio::io::stdout());
     // U6b-3：写 + flush 一步到位，**并拿到 `HelloFlushed` 见证**。
     // 那个见证是 `inbound::spawn` 的必填参数 ⇒「reader 抢在 Hello 之前起来」
@@ -369,8 +363,7 @@ async fn run_over_stdio(
     // bounded frame channel.
     // 运行簿：这条连接的 watcher 写、tap 那一路的流归位读（一条连接一本）。
     let book = std::sync::Arc::new(observe::runs::RunBook::default());
-    let (rx, poke) =
-        observe::watcher::spawn(agent_home, with_bg, tail_only, with_pid, book.clone());
+    let (rx, poke) = observe::watcher::spawn(agent_home, wants, book.clone());
 
     // (c2) **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」。**
     //
@@ -485,7 +478,7 @@ struct Attached {
     writer: BufWriter<tokio::net::tcp::OwnedWriteHalf>,
     hello_flushed: wire::HelloFlushed,
     /// 这条连接要的流模式旗标（attach 行里的 `flags`）；`None` = 用进程起参那一份。
-    flags: Option<(bool, bool, bool)>,
+    flags: Option<StreamWants>,
 }
 
 /// 一条连接的**握手**：先写 hello，再读一行 attach 请求，然后分档。
@@ -644,7 +637,7 @@ async fn serve_listening(
     token: String,
     hello: Frame,
     agent_home: PathBuf,
-    defaults: (bool, bool, bool),
+    defaults: StreamWants,
 ) {
     let addr = std::net::SocketAddr::new(listen::LOOPBACK, port);
     tracing::info!("常驻监听口已就位：{addr}（多条流 + 不限次「只读 hello 就走」）");
@@ -654,17 +647,11 @@ async fn serve_listening(
         tracing::warn!("记不下「谁在听 {port}」（{e}）⇒ 「停」会停不了它");
     }
 
-    let (with_bg, tail_only, with_pid) = defaults;
     let _poke_task = spawn_sigusr1_task();
 
     let (mut idle_rx, mut idle_poke) = {
-        let (rx, poke) = observe::watcher::spawn(
-            agent_home.clone(),
-            with_bg,
-            tail_only,
-            with_pid,
-            std::sync::Arc::default(),
-        );
+        let (rx, poke) =
+            observe::watcher::spawn(agent_home.clone(), defaults, std::sync::Arc::default());
         (Some(rx), Some(poke))
     };
 
@@ -701,10 +688,12 @@ async fn serve_listening(
                 }
                 let id = clients.join();
                 let Attached { reader, writer, hello_flushed, flags } = att;
-                let (bg, tail, pid) = flags.unwrap_or(defaults);
                 let book = std::sync::Arc::new(observe::runs::RunBook::default());
-                let (rx, poke) =
-                    observe::watcher::spawn(agent_home.clone(), bg, tail, pid, book.clone());
+                let (rx, poke) = observe::watcher::spawn(
+                    agent_home.clone(),
+                    flags.unwrap_or(defaults),
+                    book.clone(),
+                );
                 // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
@@ -759,9 +748,7 @@ async fn serve_listening(
                 tracing::info!("流结束 ⇒ 回到空转：口仍在听，sessions/ 仍在看");
                 let (rx, poke) = observe::watcher::spawn(
                     agent_home.clone(),
-                    with_bg,
-                    tail_only,
-                    with_pid,
+                    defaults,
                     std::sync::Arc::default(),
                 );
                 idle_rx = Some(rx);

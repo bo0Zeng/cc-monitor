@@ -520,3 +520,29 @@ fn frozen_the_protocol_doc_lists_exactly_the_frozen_shape() {
         );
     }
 }
+
+/// 会话 id 的校验规则：第二个前端照它铸 / 认 id（非空 · ≤128 · 只 `[0-9A-Za-z_-]`）。放宽或收紧都红。
+#[test]
+fn the_session_id_rule_the_second_frontend_relies_on_stays_put() {
+    for ok in [
+        "a",
+        "11111111-2222-3333-4444-555555555555",
+        "A_b-9",
+        &"x".repeat(128),
+    ] {
+        assert!(is_valid_session_id(ok), "{ok:?} 该放行");
+    }
+    for bad in [
+        "",
+        &"x".repeat(129),
+        "a b",
+        "a;b",
+        "a.b",
+        "a/b",
+        "ä",
+        "a\nb",
+        "$x",
+    ] {
+        assert!(!is_valid_session_id(bad), "{bad:?} 该拒");
+    }
+}
