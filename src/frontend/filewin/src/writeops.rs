@@ -925,7 +925,7 @@ impl WriteBoard {
         if !asking.is_empty() {
             let mut answer: Option<bool> = None;
             let mut changed = false;
-            egui::Modal::new(egui::Id::new("filewin-write-confirm")).show(ui.ctx(), |ui| {
+            let (_, esc) = super::shell::modal(ui.ctx(), "filewin-write-confirm", |ui| {
                 ui.heading(copy_text(
                     "rsFilewinWriteops.confirm.ask",
                     &[("n", &(asking.len()).to_string())],
@@ -934,13 +934,15 @@ impl WriteBoard {
                     ui.visuals().warn_fg_color,
                     &copy_text("rsFilewinWriteops.confirm.warn", &[]),
                 );
-                for (i, o) in asking.iter().enumerate() {
-                    let mut t = ticks[i];
-                    if ui.checkbox(&mut t, o.label()).changed() {
-                        ticks[i] = t;
-                        changed = true;
+                super::shell::modal_list(ui, |ui| {
+                    for (i, o) in asking.iter().enumerate() {
+                        let mut t = ticks[i];
+                        if ui.checkbox(&mut t, o.label()).changed() {
+                            ticks[i] = t;
+                            changed = true;
+                        }
                     }
-                }
+                });
                 ui.horizontal(|ui| {
                     if ui
                         .button(&copy_text("rsFilewinWriteops.confirm.doChecked", &[]))
@@ -958,6 +960,9 @@ impl WriteBoard {
             });
             if changed {
                 self.inner.lock().unwrap().ticks = ticks;
+            }
+            if esc && answer.is_none() {
+                answer = Some(false);
             }
             if let Some(go) = answer {
                 self.settle(go);

@@ -594,6 +594,8 @@ fn ctrl_t_and_ctrl_w_open_and_close_tabs_on_the_focused_side() {
     d.frame(&mut ws, vec![ctrl(egui::Key::T)]);
     assert_eq!(tab_counts(&ws), vec![1, 1], "框开着时 Ctrl+T 还是开了标签");
     ws.pane_on_mut(1).cancel_new_file();
+    // 框收掉之后的那一帧：框里那个输入框不再画，它手上的键盘焦点跟着放掉。
+    d.frame(&mut ws, Vec::new());
     // 正控：框收掉之后同一个键开得出来；焦点换到左栏之后落在左栏。
     ws.focus_side(0);
     d.frame(&mut ws, vec![ctrl(egui::Key::T)]);
@@ -878,4 +880,211 @@ async fn screenshot_for_the_shots_tool() {
     tokio::task::spawn_blocking(move || h.join().unwrap())
         .await
         .unwrap();
+}
+
+/// 🔴 **双栏时编辑面只占它那一栏**：右栏开一份长文件 ⇒ 编辑面那一块落在右栏里、在窗口里，
+/// 左栏的行照样画在它外面（没被盖住、没被挤走）。
+#[test]
+fn an_editor_on_the_right_side_stays_in_the_right_side() {
+    let mut ws = two_sides(pane("/l", &["left-only.txt"]), pane("/r", &["right.txt"]));
+    let long: String = (0..3000).map(|i| format!("line {i}\n")).collect();
+    let right = ws.pane_on_mut(1);
+    right.edits.deliver(crate::editor::Arrived::Text {
+        path: "/r/right.txt".into(),
+        name: "right.txt".into(),
+        text: long,
+        sha256: crate::find::testing::fake_sha256(""),
+    });
+    assert!(right.settle_opened_edits());
+    let mut d = Drive::new();
+    let mut painted = Vec::new();
+    for _ in 0..4 {
+        painted = d.frame(&mut ws, Vec::new());
+    }
+    let area = d
+        .ctx
+        .memory(|m| m.area_rect(egui::Id::new("filewin-editor")))
+        .expect("编辑面没立起来");
+    let whole = egui::Rect::from_min_size(egui::Pos2::ZERO, SCREEN);
+    assert!(whole.contains_rect(area), "编辑面 {area:?} 出了窗口");
+    // 左栏那一行最右那一格（大小）：编辑面的左沿在它右边 ⇒ 没越过两栏的分界。
+    let mut sizes = rects_of(&painted, &crate::rows::human_size(10));
+    sizes.sort_by(|a, b| a.left().total_cmp(&b.left()));
+    assert_eq!(sizes.len(), 2, "两栏各一行，大小那一格该画两处");
+    assert_eq!(
+        rects_of(&painted, "left-only.txt").len(),
+        1,
+        "左栏那一行没画"
+    );
+    assert!(
+        area.left() > sizes[0].right(),
+        "右栏的编辑面 {area:?} 越过了左栏（左栏那一行的大小格在 {:?}）",
+        sizes[0]
+    );
+}
+
+/// 跑一帧：这一帧的输入里带不带「点了关窗」；回这一帧窗口收到的命令。
+fn close_frame(d: &mut Drive, ws: &mut Workspace, close: bool) -> Vec<egui::ViewportCommand> {
+    d.t += 1.0;
+    let mut input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, SCREEN)),
+        time: Some(d.t),
+        ..Default::default()
+    };
+    if close {
+        input.viewports.insert(
+            egui::ViewportId::ROOT,
+            egui::ViewportInfo {
+                events: vec![egui::ViewportEvent::Close],
+                ..Default::default()
+            },
+        );
+    }
+    let out = d.ctx.run_ui(input, |ui| {
+        ws.guard_close(ui.ctx());
+        ws.frame(ui);
+    });
+    let cmds = out
+        .viewport_output
+        .get(&egui::ViewportId::ROOT)
+        .map(|v| v.commands.clone())
+        .unwrap_or_default();
+    out.drop_without_applying_deltas();
+    cmds
+}
+
+fn open_text(p: &mut FileWindow, text: &str) {
+    p.edits.deliver(crate::editor::Arrived::Text {
+        path: format!("{}/t.txt", p.cwd),
+        name: "t.txt".into(),
+        text: text.into(),
+        sha256: crate::find::testing::fake_sha256(""),
+    });
+    assert!(p.settle_opened_edits());
+}
+
+/// 🔴 **点 × 关窗先看会不会丢东西**：后台标签里改了没存 ⇒ 拦下、切过去摆「改了没存」那一问；
+/// 答「丢掉」⇒ 接着关。开着一份没改过的文本不拦；什么都没有 ⇒ 直接关。
+#[test]
+fn closing_the_window_asks_about_unsaved_text_first() {
+    let cancel = egui::ViewportCommand::CancelClose;
+    let mut d = Drive::new();
+    // 什么都没有 ⇒ 不拦。
+    let mut ws = two_sides(pane("/l", &["a"]), pane("/r", &["b"]));
+    assert!(!close_frame(&mut d, &mut ws, true).contains(&cancel));
+    // 没改过的一份 ⇒ 不拦。
+    open_text(ws.pane_on_mut(1), "x\n");
+    assert!(
+        !close_frame(&mut d, &mut ws, true).contains(&cancel),
+        "没改过的文本也拦了关窗"
+    );
+    // 左栏那一份改了没存、焦点在右栏 ⇒ 拦下，焦点切到左栏、那一问摆出来。
+    open_text(ws.pane_on_mut(0), "y\n");
+    *ws.pane_on_mut(0).editing_text_mut().unwrap() = "y2\n".into();
+    assert!(
+        close_frame(&mut d, &mut ws, true).contains(&cancel),
+        "改了没存，关窗却没拦"
+    );
+    assert_eq!(ws.focus(), 0, "没切到改了没存的那一页");
+    assert!(ws.pane_on(0).asking_discard(), "拦下了却没问");
+    // 答「先别关」⇒ 作罢，不再自己关。
+    ws.pane_on_mut(0).keep_editing();
+    let cmds = close_frame(&mut d, &mut ws, false);
+    assert!(
+        !cmds.contains(&egui::ViewportCommand::Close),
+        "答了先别关却关了"
+    );
+    // 再点一次 ×，这回答「丢掉」⇒ 接着关。
+    assert!(close_frame(&mut d, &mut ws, true).contains(&cancel));
+    ws.pane_on_mut(0).discard_edit();
+    let cmds = close_frame(&mut d, &mut ws, false);
+    assert!(
+        cmds.contains(&egui::ViewportCommand::Close),
+        "答了丢掉却没接着关"
+    );
+}
+
+/// 🔴 **手上有活时点 × ⇒ 拦下、切过去说关标签页时那同一句话**；那句话摆着时再点一次 ⇒ 照关。
+#[test]
+fn closing_the_window_while_busy_says_why_and_a_second_click_closes() {
+    let cancel = egui::ViewportCommand::CancelClose;
+    let mut d = Drive::new();
+    let mut ws = two_sides(pane("/l", &["a"]), pane("/r", &["b"]));
+    ws.pane_on_mut(0).edits.begin_open("/l/a");
+    assert!(
+        close_frame(&mut d, &mut ws, true).contains(&cancel),
+        "在读着一份，关窗却没拦"
+    );
+    assert_eq!(ws.focus(), 0, "没切到有活的那一页");
+    let why = ws.pane_on(0).work_reason().unwrap();
+    assert_eq!(
+        ws.notice(),
+        Some(copy_text("rsFilewinWorkspace.closeTab.busy", &[("why", &why)]).as_str()),
+        "说的不是关标签页时那句话"
+    );
+    assert!(
+        !close_frame(&mut d, &mut ws, true).contains(&cancel),
+        "那句话摆着时再点一次，还是拦着"
+    );
+}
+
+/// 跑几帧 `Workspace::frame`（产品那一套样子），屏幕 `screen`；回最后一帧画出来的字。
+fn frames_at(ws: &mut Workspace, screen: egui::Vec2, n: usize) -> Vec<PaintedText> {
+    let ctx = egui::Context::default();
+    crate::theme::install(&ctx, &crate::theme::testing::default_theme());
+    let mut painted = Vec::new();
+    for k in 0..n {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, screen)),
+            time: Some(k as f64),
+            ..Default::default()
+        };
+        let out = ctx.run_ui(input, |ui| ws.frame(ui));
+        painted = text_in_frame(&out);
+        out.drop_without_applying_deltas();
+    }
+    painted
+}
+
+/// 🔴 **窗口窄了不截断**：最小窗口（单栏）与 640×480 双栏、外加一句长提示，
+/// 这一帧画出来的每一段字都在窗口里（放不下的截成「…」、收进「⋯」，不是画到窗外被裁掉）；
+/// 搜索框、「⋯」、当前目录、列表头那几样都还在。
+#[test]
+fn a_narrow_window_cuts_nothing_off() {
+    let [w0, h0] = crate::shell::MIN_WINDOW;
+    for (screen, split) in [
+        (egui::vec2(w0, h0), false),
+        (egui::vec2(640.0, 480.0), true),
+    ] {
+        let dir = "/home/user/work/a-rather-long-project-directory-name";
+        let mut ws = Workspace::new(pane(dir, &["Cargo.toml", "README.md"]));
+        if split {
+            assert!(ws.add_side(pane(dir, &["Cargo.toml", "README.md"])));
+        }
+        ws.set_notice(
+            "这个标签页还没忙完（正在读写 /home/user/work/一个很长很长的路径/文件.txt），先别关"
+                .into(),
+        );
+        let painted = frames_at(&mut ws, screen, 4);
+        let whole = egui::Rect::from_min_size(egui::Pos2::ZERO, screen).expand(0.5);
+        let out: Vec<&PaintedText> = painted
+            .iter()
+            .filter(|(t, r)| !t.trim().is_empty() && !whole.contains_rect(*r))
+            .collect();
+        assert!(out.is_empty(), "{screen:?}：这几段字画到了窗口外：{out:?}");
+        let has = |pred: &dyn Fn(&str) -> bool| painted.iter().any(|(t, _)| pred(t));
+        assert!(has(&|t| t.contains("文件名")), "{screen:?}：搜索框不见了");
+        assert!(
+            has(&|t| t == egui_phosphor::regular::DOTS_THREE),
+            "{screen:?}：没有「⋯」"
+        );
+        assert!(
+            has(&|t| t.starts_with("a-rather")),
+            "{screen:?}：地址栏里看不到当前目录"
+        );
+        assert!(
+            has(&|t| t.starts_with("Cargo")),
+            "{screen:?}：列表那一行不见了"
+        );
+    }
 }

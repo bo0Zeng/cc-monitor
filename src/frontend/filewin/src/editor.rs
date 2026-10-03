@@ -449,6 +449,10 @@ pub struct Pane {
     pub raw_path: Option<Vec<u8>>,
     /// 〔「查找替换」〕编辑面上那一截查找替换的状态（只在普通路径上画；大文件模式没有，`§5.5`）。
     pub find: FindBar,
+    /// 刚打开：下一帧正文从头看起（滚动状态按 id 存在 egui 里、跨文件共用）。
+    pub(crate) fresh: bool,
+    /// 光标被外面挪了（查找 · 替换）：下一帧把它滚进视野。
+    pub(crate) reveal: bool,
 }
 
 /// 编辑面那一截查找替换的状态。
@@ -514,6 +518,8 @@ impl Pane {
             big: Default::default(),
             raw_path: None,
             find: FindBar::default(),
+            fresh: true,
+            reveal: false,
         }
     }
 
@@ -664,6 +670,23 @@ impl EditBoard {
 
     pub fn opening(&self) -> Option<String> {
         self.lock().opening.clone()
+    }
+
+    /// 有一趟打开还没落进编辑面（在读，或读完了还没被取走）：回那一份的路径。
+    pub fn open_pending(&self) -> Option<String> {
+        let d = self.lock();
+        d.opening.clone().or_else(|| {
+            d.arrived.as_ref().map(|a| match a {
+                Arrived::Text { path, .. } | Arrived::NotText { path } => path.clone(),
+                Arrived::Failed { path, .. } => path.clone(),
+            })
+        })
+    }
+
+    /// 有一趟存还没落进编辑面（在存，或存完了还没被取走）。
+    pub fn save_pending(&self) -> bool {
+        let d = self.lock();
+        d.saving.is_some() || d.saved.is_some()
     }
 
     pub fn begin_save(&self, path: &str) {

@@ -27,7 +27,8 @@
 //!
 //! 那个标签手上**有活**（有一问摆着、有东西在传 / 在复制 / 在写 / 在读写文本）⇒ 不关，说是哪一件
 //! （`FileWindow::busy_reason`）。后台那几趟任务不随标签走，关掉就再也没人把结局摆给你看。
-//! 关**整个窗口**照旧不问（窗口生命周期就是销毁）。
+//! 关**整个窗口**同样先看（[`Workspace::guard_close`]）：改了没存 ⇒ 切到那一页摆它那一问；
+//! 手上有活 ⇒ 切过去说同一句话；同一句话摆着时再点一次关窗 ⇒ 照关（用户坚持）。
 //!
 //! # ⚠ 买不到什么
 //!
@@ -71,6 +72,57 @@ pub struct Workspace {
     pub(super) home: super::chrome::Home,
     /// 左栏「其他机器」那一问的结局。
     pub(super) other: super::chrome::OtherSlot,
+    /// 点了关窗、正等编辑面「改了没存」那一问的回答（答「丢掉」⇒ 接着关）。
+    closing: bool,
+    /// 整窗缩放（记在视图文件里，下次开窗照它）。
+    pub zoom: Zoom,
+}
+
+/// 缩放的上下限与一步多少（Ctrl + = / -）。
+pub const ZOOM_MIN: f32 = 0.5;
+pub const ZOOM_MAX: f32 = 3.0;
+pub const ZOOM_STEP: f32 = 0.1;
+
+/// 整窗缩放（egui 的 `zoom_factor`）：Ctrl + = / Ctrl + - / Ctrl + 0、Ctrl + 滚轮改它；
+/// 记在 monitor 交来的那份视图文件里（`{"zoom": 1.2}`），下次开窗照它。没有那份文件 ⇒ 照样能缩放，只是不记。
+/// 主界面的「字号」是另一回事（随开窗的样子交过来的绝对字号）；这里是在它之上整体放大缩小。
+#[derive(Clone, Debug, Default)]
+pub struct Zoom {
+    file: Option<std::path::PathBuf>,
+    /// 文件里记着的那个数（没记过 ⇒ 1）。
+    saved: Option<f32>,
+}
+
+impl Zoom {
+    /// 读那份文件（读不到 / 读不懂 ⇒ 按 1 起，下一次改了就写一份新的）。
+    pub fn open(file: Option<std::path::PathBuf>) -> Self {
+        let saved = file
+            .as_deref()
+            .and_then(|f| std::fs::read(f).ok())
+            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+            .and_then(|v| v.get("zoom").and_then(serde_json::Value::as_f64))
+            .map(|z| (z as f32).clamp(ZOOM_MIN, ZOOM_MAX));
+        Self { file, saved }
+    }
+
+    /// 开窗时照哪个数缩放。
+    pub fn factor(&self) -> f32 {
+        self.saved.unwrap_or(1.0)
+    }
+
+    /// 这一帧的缩放与记着的不同 ⇒ 记下来（两位小数，同一个数不重写）。
+    fn remember(&mut self, z: f32) {
+        let z = (z * 100.0).round() / 100.0;
+        if self.saved == Some(z) || (self.saved.is_none() && z == 1.0) {
+            return;
+        }
+        self.saved = Some(z);
+        if let Some(f) = &self.file {
+            if let Err(e) = host_core::atomic_write_json(f, &serde_json::json!({ "zoom": z })) {
+                tracing::warn!(error = %e, "zoom not saved");
+            }
+        }
+    }
 }
 
 /// 工具条上那几颗 —— **唯一住址**（判据按同一个常量去找它画出来的字）。
@@ -137,6 +189,8 @@ impl Workspace {
             sidebar_open: true,
             home: Default::default(),
             other: Default::default(),
+            closing: false,
+            zoom: Zoom::default(),
         };
         w.sync_focus();
         w
@@ -439,10 +493,94 @@ impl Workspace {
         format!("{mark}{tail}")
     }
 
+    /// 🔴 **点了关窗**（这一帧的输入里有关窗请求）：有东西会丢就拦下（`CancelClose`）并说出来 ——
+    /// 改了没存 ⇒ 切到那一页、摆它那一问（答「丢掉」之后接着关）；手上有活 ⇒ 切到那一页、说关标签页时那同一句话；
+    /// 那句话正摆着时又点了一次 ⇒ 照关。开着一份没改过的文本不拦。
+    pub fn guard_close(&mut self, ctx: &egui::Context) {
+        if !ctx.input(|i| i.viewport().close_requested()) {
+            // 等的那一问答了：答「丢掉」⇒ 接着关；答「先别关」⇒ 作罢。
+            if self.closing && !self.panes().any(FileWindow::asking_discard) {
+                self.closing = false;
+                if !self.panes().any(|p| p.editing().is_some_and(|e| e.dirty())) {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+            }
+            return;
+        }
+        if !self.may_close() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        }
+    }
+
+    /// 关得了吗；关不了 ⇒ 已经切到那一页、摆出那一问 / 那句话。
+    fn may_close(&mut self) -> bool {
+        let at = |ws: &Self, f: &dyn Fn(&FileWindow) -> bool| {
+            (0..ws.sides.len()).find_map(|k| {
+                (0..ws.sides[k].tabs.len())
+                    .find(|&i| f(&ws.sides[k].tabs[i].pane))
+                    .map(|i| (k, i))
+            })
+        };
+        if let Some((k, i)) = at(self, &|p| p.editing().is_some_and(|e| e.dirty())) {
+            self.select_tab(k, i);
+            self.sides[k].tabs[i].pane.close_edit();
+            self.closing = true;
+            return false;
+        }
+        let Some((k, i)) = at(self, &|p| p.work_reason().is_some()) else {
+            return true;
+        };
+        let why = self.sides[k].tabs[i].pane.work_reason().unwrap_or_default();
+        let said = copy_text("rsFilewinWorkspace.closeTab.busy", &[("why", &why)]);
+        if self.notice.as_deref() == Some(said.as_str()) {
+            return true;
+        }
+        self.select_tab(k, i);
+        self.notice = Some(said);
+        false
+    }
+
+    /// 这一帧的缩放手势：Ctrl + = / + 放大一步 · Ctrl + - 缩小一步 · Ctrl + 0 回 100% · Ctrl + 滚轮按滚的量；
+    /// 改了就记下来。回值 ＝ 这一帧之后的缩放。
+    pub fn apply_zoom(&mut self, ctx: &egui::Context) -> f32 {
+        use egui::{Key, KeyboardShortcut as K, Modifiers as M};
+        let mut z = ctx.zoom_factor();
+        let step = |z: f32, d: f32| ((z + d) * 10.0).round() / 10.0;
+        ctx.input_mut(|i| {
+            if i.consume_shortcut(&K::new(M::COMMAND, Key::Num0)) {
+                z = 1.0;
+            }
+            while i.consume_shortcut(&K::new(M::COMMAND, Key::Equals))
+                || i.consume_shortcut(&K::new(M::COMMAND, Key::Plus))
+            {
+                z = step(z, ZOOM_STEP);
+            }
+            while i.consume_shortcut(&K::new(M::COMMAND, Key::Minus)) {
+                z = step(z, -ZOOM_STEP);
+            }
+            z *= i.zoom_delta();
+        });
+        let z = z.clamp(ZOOM_MIN, ZOOM_MAX);
+        if z != ctx.zoom_factor() {
+            ctx.set_zoom_factor(z);
+        }
+        self.zoom.remember(z);
+        z
+    }
+
+    /// 每一栏的每一个标签页。
+    fn panes(&self) -> impl Iterator<Item = &FileWindow> {
+        self.sides
+            .iter()
+            .flat_map(|s| s.tabs.iter().map(|t| &t.pane))
+    }
+
     /// 🔴 **每一帧的正文**（`eframe::App::ui` 只剩一句委派，判据直接喂它 —— 同 `FileWindow::frame_body`）。
     pub fn frame(&mut self, ui: &mut egui::Ui) {
-        // ── 标签页快捷键：先于两栏的正文（那里才是列表接键盘的地方）──
+        // ── 整窗缩放：Ctrl + = / - / 0 · Ctrl + 滚轮 ──
         let ctx = ui.ctx().clone();
+        self.apply_zoom(&ctx);
+        // ── 标签页快捷键：先于两栏的正文（那里才是列表接键盘的地方）──
         self.apply_tab_keys(&ctx);
         // ── 导航键（Alt+← / → · 鼠标侧键 · F5 · Ctrl+L · Ctrl+F）· 开另一台那一问落地 ──
         self.apply_nav_keys(&ctx);
@@ -456,11 +594,14 @@ impl Workspace {
             let pane = &side.tabs[side.active].pane;
             if let Some(p) = self.preview.as_mut() {
                 p.follow(pane, Some(ctx.clone()));
+                // 窗口窄了预览跟着让（不把两栏挤没）。
+                let room = ctx.content_rect().width();
                 egui::Panel::right("filewin-preview-panel")
                     .frame(super::theme::pane_frame(&ctx))
                     .resizable(true)
-                    .default_size(380.0)
-                    .min_size(260.0)
+                    .default_size(380f32.min(room * 0.4))
+                    .min_size(260f32.min(room * 0.3))
+                    .max_size(room * 0.6)
                     // 内容先铺满：不然面板会把「这一帧用了多宽」记成自己的宽，开出来就只剩一条窄缝。
                     .show(ui, |ui| {
                         ui.set_min_width(ui.available_width());
@@ -571,11 +712,9 @@ impl Workspace {
             let s = &self.sides[k];
             let many = s.tabs.len() > 1;
             for (i, t) in s.tabs.iter().enumerate() {
-                if ui
-                    .selectable_label(i == s.active, Self::tab_title(&t.pane))
-                    .on_hover_text(&t.pane.cwd)
-                    .clicked()
-                {
+                let tab = egui::Button::selectable(i == s.active, Self::tab_title(&t.pane))
+                    .wrap_mode(egui::TextWrapMode::Truncate);
+                if ui.add(tab).on_hover_text(&t.pane.cwd).clicked() {
                     pick = Some(i);
                 }
                 if many
@@ -682,6 +821,11 @@ pub async fn copy_across(
 }
 
 impl eframe::App for Workspace {
+    /// 关窗那一下在这里接（窗口最小化时 eframe 只跑这一段，不跑 `ui`）。
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.guard_close(ctx);
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.frame(ui);
     }

@@ -855,6 +855,7 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
     const TABLE: &[(&str, &str)] = &[
         ("entries", "那一屏有几行"),
         ("kind", "is_dir ＋ link"),
+        ("link_dir", "link_dir（缺 ＝ 否）"),
         ("mtime_secs", "mtime_secs（缺 ＝ None）"),
         ("path", "path · name · lossy_name"),
         ("size", "size（缺 ＝ 0）"),
@@ -877,6 +878,10 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
     assert!(dir.is_dir && !dir.link);
     let file = one(serde_json::json!({ "path": "/a/f", "kind": "file" }));
     assert!(!file.is_dir && !file.link);
+    // link_dir：链接且为真 ⇒ 点得进去（is_dir 仍为假：删 / 复制按链接本身算）；缺 ⇒ 否。
+    let to_dir = one(serde_json::json!({ "path": "/a/ld", "kind": "symlink", "link_dir": true }));
+    assert!(to_dir.link && to_dir.link_dir && !to_dir.is_dir && to_dir.opens_as_dir());
+    assert!(!link.link_dir && !link.opens_as_dir());
     // mtime_secs：原样；缺了是 None，不是 0（1970）。
     let t =
         one(serde_json::json!({ "path": "/a/t", "kind": "file", "mtime_secs": 1_700_000_000u64 }));

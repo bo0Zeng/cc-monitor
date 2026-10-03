@@ -154,6 +154,7 @@ pub fn child_main() -> i32 {
         rows,
         req.reveal,
         req.bookmarks,
+        req.view,
         req.machines,
         req.work_area,
         Some(req.theme),

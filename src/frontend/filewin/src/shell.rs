@@ -922,7 +922,7 @@ impl FileWindow {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
                 // 有损名目录：没带字节就进不去（寻址不到）；带了 ⇒ 按字节进。
-                Some(r) if r.is_dir && (!r.lossy_name || r.raw_name.is_some()) => {
+                Some(r) if r.opens_as_dir() && (!r.lossy_name || r.raw_name.is_some()) => {
                     join_path(&self.cwd_path(), &name_bytes(r))
                 }
                 _ => return false,
@@ -1484,7 +1484,7 @@ impl FileWindow {
             .lock()
             .unwrap()
             .get(i)
-            .filter(|r| !r.is_dir)
+            .filter(|r| !r.opens_as_dir())
             .map(|r| (super::source::wire_bytes(&name_bytes(r)), r.name.clone()))
         else {
             return false;
@@ -1513,7 +1513,7 @@ impl FileWindow {
             .lock()
             .unwrap()
             .get(i)
-            .filter(|r| !r.is_dir)
+            .filter(|r| !r.opens_as_dir())
             .map(|r| (r.name.clone(), self.row_path(r)))
         else {
             return false;
@@ -1563,7 +1563,7 @@ impl FileWindow {
             return;
         };
         let (mut go, mut cancel) = (false, false);
-        egui::Modal::new(egui::Id::new("filewin-cross-copy")).show(ui.ctx(), |ui| {
+        let (_, esc) = modal(ui.ctx(), "filewin-cross-copy", |ui| {
             ui.heading(copy_text(
                 "rsFilewinCrossCopy.prompt.heading",
                 &[("name", &p.name)],
@@ -1578,9 +1578,10 @@ impl FileWindow {
                         ui.selectable_value(&mut p.machine, m.clone(), m.as_str());
                     }
                 });
-            ui.text_edit_singleline(&mut p.machine);
+            go |= prompt_field(ui, &mut p.machine);
             ui.label(copy_text("rsFilewinCrossCopy.prompt.dir", &[]));
-            ui.text_edit_singleline(&mut p.dir);
+            let r = ui.text_edit_singleline(&mut p.dir);
+            go |= r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
             ui.label(copy_text("rsFilewinCrossCopy.prompt.hint", &[]));
             ui.horizontal(|ui| {
                 go = ui.button(super::cross_copy::CROSS_LABEL.as_str()).clicked();
@@ -1590,7 +1591,7 @@ impl FileWindow {
             });
         });
         self.cross_prompt = Some(p);
-        if cancel {
+        if cancel || esc {
             self.cross_prompt = None;
         } else if go {
             let ctx = ui.ctx().clone();
@@ -1618,12 +1619,12 @@ impl FileWindow {
             return;
         };
         let (mut go, mut cancel) = (false, false);
-        egui::Modal::new(egui::Id::new("filewin-copy-as")).show(ui.ctx(), |ui| {
+        let (_, esc) = modal(ui.ctx(), "filewin-copy-as", |ui| {
             ui.heading(copy_text(
                 "rsFilewinShell.copyUi.heading",
                 &[("name", &p.src_name.to_string())],
             ));
-            ui.text_edit_singleline(&mut p.new_name);
+            go |= prompt_field(ui, &mut p.new_name);
             ui.label(&copy_text("rsFilewinShell.copyUi.sameDirOnly", &[]));
             ui.horizontal(|ui| {
                 if ui.button(super::copy::COPY_LABEL.as_str()).clicked() {
@@ -1638,7 +1639,7 @@ impl FileWindow {
             });
         });
         self.copy_prompt = Some(p);
-        if cancel {
+        if cancel || esc {
             self.cancel_copy();
         } else if go {
             let ctx = ui.ctx().clone();
@@ -2100,6 +2101,14 @@ impl FileWindow {
     /// **连那趟往返都不发** —— 而且把**为什么**说出来。
     /// 逐条理由住 `editor.rs` 头注「超了怎么办」那一节。
     pub fn begin_edit(&mut self, i: usize, ctx: Option<egui::Context>) -> bool {
+        // 读着一份时不起第二趟：后到的那一份会把正在改的那一份换掉。
+        if let Some(p) = self.edits.open_pending() {
+            *self.listing.error.lock().unwrap() = Some(copy_text(
+                "rsFilewinShell.edit.stillOpening",
+                &[("path", &p)],
+            ));
+            return false;
+        }
         let row = {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
@@ -2197,6 +2206,10 @@ impl FileWindow {
 
     /// 存回去。回值 = **真的发出去了**。
     pub fn save_edit(&mut self, ctx: Option<egui::Context>) -> bool {
+        // 上一趟还没回来：再发一趟带的是旧摘要，回来就是一场假冲突。
+        if self.edits.save_pending() {
+            return false;
+        }
         let Some(p) = self.editing.clone() else {
             return false;
         };
@@ -2241,6 +2254,9 @@ impl FileWindow {
     ///
     /// 先重读一趟拿盘上此刻那一份的摘要、再以它为 `expect` 存（`editor::overwrite_anyway`）—— CAS 仍在。
     pub fn overwrite_edit(&mut self, ctx: Option<egui::Context>) -> bool {
+        if self.edits.save_pending() {
+            return false;
+        }
         let Some(p) = self.editing.clone() else {
             return false;
         };
@@ -2266,6 +2282,9 @@ impl FileWindow {
     /// 存盘撞上 stale 之后，人点了**丢掉我的改动、重新打开**：编辑面收掉、同一份重读一遍。
     /// 回值 = 真的发出去了（拿不到运行时 / 通道 ⇒ 编辑面照旧留着，一个字不丢）。
     pub fn reopen_edit(&mut self, ctx: Option<egui::Context>) -> bool {
+        if self.edits.save_pending() {
+            return false;
+        }
         let Some(p) = self.editing.as_ref() else {
             return false;
         };
@@ -2375,6 +2394,7 @@ impl FileWindow {
                 st.store(ctx, id);
                 ctx.memory_mut(|m| m.request_focus(id));
                 p.find.notice = None;
+                p.reveal = true;
                 true
             }
             None => {
@@ -2443,19 +2463,21 @@ impl FileWindow {
         if let Some(p) = self.edits.opening() {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(copy_text(
-                    "rsFilewinShell.editor.reading",
-                    &[("path", &p.to_string())],
-                ));
+                fit_label(
+                    ui,
+                    copy_text("rsFilewinShell.editor.reading", &[("path", &p.to_string())]),
+                    0.0,
+                );
             });
         }
         if let Some(p) = self.edits.saving() {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(copy_text(
-                    "rsFilewinShell.editor.saving",
-                    &[("path", &p.to_string())],
-                ));
+                fit_label(
+                    ui,
+                    copy_text("rsFilewinShell.editor.saving", &[("path", &p.to_string())]),
+                    0.0,
+                );
             });
         }
         let Some(pane) = self.editing.clone() else {
@@ -2465,7 +2487,7 @@ impl FileWindow {
         //    egui 画后一个，而这一问是更要紧的那一个。
         if self.asking_discard {
             let (mut discard, mut keep) = (false, false);
-            egui::Modal::new(egui::Id::new("filewin-edit-discard")).show(ui.ctx(), |ui| {
+            let (_, esc) = modal(ui.ctx(), "filewin-edit-discard", |ui| {
                 ui.heading(copy_text(
                     "rsFilewinShell.editor.unsaved",
                     &[("name", &pane.name.to_string())],
@@ -2491,7 +2513,7 @@ impl FileWindow {
             });
             if discard {
                 self.discard_edit();
-            } else if keep {
+            } else if keep || esc {
                 self.keep_editing();
             }
             return;
@@ -2503,78 +2525,119 @@ impl FileWindow {
         if !big && ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::F)) {
             ui.memory_mut(|m| m.request_focus(egui::Id::new(FIND_ID)));
         }
-        egui::Modal::new(egui::Id::new("filewin-editor")).show(ui.ctx(), |ui| {
-            ui.heading(format!(
-                "{}{}",
-                pane.name,
-                if pane.dirty() { " *" } else { "" }
-            ));
-            ui.label(&pane.path);
-            // 🔴 敲超上限 ⇒ 这一行**一直**摆着（它是一个到你改掉为止都成立的状态）。
-            if pane.over_cap() {
-                ui.colored_label(
-                    ui.visuals().error_fg_color,
-                    copy_text(
-                        "rsFilewinShell.editor.overLimit",
-                        &[
-                            (
-                                "limit",
-                                &(super::rows::human_size(super::editor::MAX_EDIT_BYTES as u64))
-                                    .to_string(),
-                            ),
-                            ("n", &(-pane.headroom()).to_string()),
-                        ],
-                    ),
-                );
-            }
-            if let Some(r) = pane.last_save.clone() {
-                match r {
-                    Ok(()) => ui.colored_label(
-                        crate::theme::palette(ui.ctx()).success,
-                        &copy_text("rsFilewinShell.editor.saved", &[]),
-                    ),
-                    // 原话原样画出去（围栏那句 / 连接失败那句 …）。
-                    Err(why) => ui.colored_label(
+        // Ctrl+S ＝「保存」那一颗（在存着时同样不起第二趟，见 `save_edit`）。
+        if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::S)) {
+            save = true;
+        }
+        // 一趟存还没回来时，存 / 覆盖 / 重开那几颗都按不下去（再发一趟带的是旧摘要）。
+        let idle = !self.edits.save_pending();
+        // 编辑面摆满它那一栏（`ui` 的 max_rect）、不比它大：正文那一格吃掉剩下的高，内容在里面滚。
+        let room = ui.max_rect();
+        let id = egui::Id::new("filewin-editor");
+        let frame = egui::Frame::popup(ui.style());
+        let inner = (room.size() - frame.total_margin().sum()).max(egui::Vec2::ZERO);
+        let foot_id = id.with("foot");
+        let foot_h = ui
+            .ctx()
+            .data(|d| d.get_temp::<f32>(foot_id))
+            .unwrap_or(ui.spacing().interact_size.y);
+        let area = egui::Area::new(id)
+            .kind(egui::UiKind::Modal)
+            .sense(egui::Sense::hover())
+            .order(egui::Order::Foreground)
+            .interactable(true)
+            .fixed_pos(room.min);
+        let shown = egui::Modal::new(id)
+            .area(area)
+            .frame(frame)
+            .show(ui.ctx(), |ui| {
+                ui.set_width(inner.x);
+                let top = ui.cursor().top();
+                ui.heading(format!(
+                    "{}{}",
+                    pane.name,
+                    if pane.dirty() { " *" } else { "" }
+                ));
+                ui.label(&pane.path);
+                // 🔴 敲超上限 ⇒ 这一行**一直**摆着（它是一个到你改掉为止都成立的状态）。
+                if pane.over_cap() {
+                    ui.colored_label(
                         ui.visuals().error_fg_color,
                         copy_text(
-                            "rsFilewinShell.editor.saveFailed",
-                            &[("why", &why.to_string())],
+                            "rsFilewinShell.editor.overLimit",
+                            &[
+                                (
+                                    "limit",
+                                    &(super::rows::human_size(
+                                        super::editor::MAX_EDIT_BYTES as u64,
+                                    ))
+                                    .to_string(),
+                                ),
+                                ("n", &(-pane.headroom()).to_string()),
+                            ],
                         ),
-                    ),
-                };
-            }
-            // 盘上那份在打开之后被改过了 ⇒ 让人选，不替他选（编辑框的字一个不动）。
-            if pane.stale {
-                ui.horizontal(|ui| {
-                    if ui.button(super::editor::OVERWRITE_LABEL.as_str()).clicked() {
-                        overwrite = true;
+                    );
+                }
+                if let Some(r) = pane.last_save.clone() {
+                    match r {
+                        Ok(()) => ui.colored_label(
+                            crate::theme::palette(ui.ctx()).success,
+                            &copy_text("rsFilewinShell.editor.saved", &[]),
+                        ),
+                        // 原话原样画出去（围栏那句 / 连接失败那句 …）。
+                        Err(why) => ui.colored_label(
+                            ui.visuals().error_fg_color,
+                            copy_text(
+                                "rsFilewinShell.editor.saveFailed",
+                                &[("why", &why.to_string())],
+                            ),
+                        ),
+                    };
+                }
+                // 盘上那份在打开之后被改过了 ⇒ 让人选，不替他选（编辑框的字一个不动）。
+                if pane.stale {
+                    ui.horizontal(|ui| {
+                        let b = egui::Button::new(super::editor::OVERWRITE_LABEL.as_str());
+                        if ui.add_enabled(idle, b).clicked() {
+                            overwrite = true;
+                        }
+                        let b = egui::Button::new(super::editor::REOPEN_LABEL.as_str());
+                        if ui.add_enabled(idle, b).clicked() {
+                            reopen = true;
+                        }
+                    });
+                }
+                if big {
+                    ui.label(copy_text("rsFilewinShell.editor.findBig", &[]));
+                } else if let Some(p) = self.editing.as_mut() {
+                    find_act = find_row(ui, &mut p.find);
+                }
+                let gap = ui.spacing().item_spacing.y;
+                let view_h = (inner.y - (ui.cursor().top() - top) - gap - foot_h)
+                    .max(super::bigfile::view_height(ui, 3));
+                super::bigfile::show(ui, self.editing.as_mut(), view_h);
+                let foot = ui.horizontal(|ui| {
+                    let b = egui::Button::new(copy_text("rsFilewinShell.editor.save", &[]));
+                    if ui.add_enabled(idle, b).clicked() {
+                        save = true;
                     }
-                    if ui.button(super::editor::REOPEN_LABEL.as_str()).clicked() {
-                        reopen = true;
+                    if ui
+                        .button(&copy_text("rsFilewinShell.editor.close", &[]))
+                        .clicked()
+                    {
+                        close = true;
                     }
                 });
-            }
-            if big {
-                ui.label(copy_text("rsFilewinShell.editor.findBig", &[]));
-            } else if let Some(p) = self.editing.as_mut() {
-                find_act = find_row(ui, &mut p.find);
-            }
-            super::bigfile::show(ui, self.editing.as_mut());
-            ui.horizontal(|ui| {
-                if ui
-                    .button(&copy_text("rsFilewinShell.editor.save", &[]))
-                    .clicked()
-                {
-                    save = true;
-                }
-                if ui
-                    .button(&copy_text("rsFilewinShell.editor.close", &[]))
-                    .clicked()
-                {
-                    close = true;
-                }
+                let h = foot.response.rect.height();
+                ui.ctx().data_mut(|d| d.insert_temp(foot_id, h));
             });
-        });
+        // Esc ＝「关闭」那一颗（改了没存照旧先问）。
+        if shown.is_top_modal
+            && !shown.any_popup_open
+            && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+        {
+            close = true;
+        }
         if let Some(a) = find_act {
             let ctx = ui.ctx().clone();
             match a {
@@ -2617,14 +2680,18 @@ impl FileWindow {
             let (got, total) = self.pull.seen();
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(copy_text(
-                    "rsFilewinShell.pull.progress",
-                    &[
-                        ("name", &name.to_string()),
-                        ("got", &(super::rows::human_size(got)).to_string()),
-                        ("total", &(super::rows::human_size(total)).to_string()),
-                    ],
-                ));
+                fit_label(
+                    ui,
+                    copy_text(
+                        "rsFilewinShell.pull.progress",
+                        &[
+                            ("name", &name.to_string()),
+                            ("got", &(super::rows::human_size(got)).to_string()),
+                            ("total", &(super::rows::human_size(total)).to_string()),
+                        ],
+                    ),
+                    0.0,
+                );
             });
         }
         // ── 上一趟的结局：**成功也出声** ──
@@ -2666,7 +2733,7 @@ impl FileWindow {
         };
         let (mut go, mut cancel, mut browse) = (false, false, false);
         let pick_notice = self.pick_notice.clone();
-        egui::Modal::new(egui::Id::new("filewin-pull-prompt")).show(ui.ctx(), |ui| match ask {
+        let (_, esc) = modal(ui.ctx(), "filewin-pull-prompt", |ui| match ask {
             Ask::Dest { .. } => {
                 ui.heading(copy_text(
                     "rsFilewinShell.pull.askWhere",
@@ -2675,7 +2742,7 @@ impl FileWindow {
                 let Some(text) = self.pull_dest_mut() else {
                     return;
                 };
-                ui.text_edit_singleline(text);
+                go |= prompt_field(ui, text);
                 ui.label(&copy_text("rsFilewinShell.pull.dirHint", &[]));
                 // 原生选择框：选到的保存位置填进上面那个框，确定照旧走这一问的判定。
                 if ui
@@ -2727,7 +2794,7 @@ impl FileWindow {
                 });
             }
         });
-        if cancel {
+        if cancel || esc {
             self.pick_notice = None;
             self.cancel_pull();
         } else if go {
@@ -2757,7 +2824,7 @@ impl FileWindow {
         if let Some(Some(r)) = &readout {
             super::writeops::apply_prefill(&mut p, r);
         }
-        egui::Modal::new(egui::Id::new("filewin-write-prompt")).show(ui.ctx(), |ui| {
+        let (_, esc) = modal(ui.ctx(), "filewin-write-prompt", |ui| {
             ui.heading(p.heading());
             match &readout {
                 Some(Some(r)) => {
@@ -2768,7 +2835,7 @@ impl FileWindow {
                 }
                 None => {}
             }
-            ui.text_edit_singleline(&mut p.text);
+            go |= prompt_field(ui, &mut p.text);
             ui.label(&copy_text("rsFilewinShell.write.sameDirOnly", &[]));
             ui.horizontal(|ui| {
                 if ui
@@ -2786,7 +2853,7 @@ impl FileWindow {
             });
         });
         self.write_prompt = Some(p);
-        if cancel {
+        if cancel || esc {
             self.cancel_write();
         } else if go {
             let ctx = ui.ctx().clone();
@@ -2848,7 +2915,13 @@ impl FileWindow {
         if self.editing.is_some() {
             return Some(copy_text("rsFilewinShell.busy.editorOpen", &[]).into());
         }
-        if self.modal_up() {
+        self.work_reason()
+    }
+
+    /// 同 [`Self::busy_reason`]，只是开着一份**没改过**的文本不算（关整个窗口时问它：关了不丢东西；
+    /// 改了没存的那一份由编辑面自己那一问管）。
+    pub fn work_reason(&self) -> Option<String> {
+        if self.asking_up() {
             return Some(copy_text("rsFilewinShell.busy.pendingAsk", &[]).into());
         }
         if let Some(p) = self.edits.opening().or_else(|| self.edits.saving()) {
@@ -2912,6 +2985,11 @@ impl FileWindow {
     /// 🔴 **一处**：拖入那一口（[`Self::take_drops`]）与键盘那一口（[`Self::apply_keys`]）
     /// 问的是同一个函数 —— 分成两份的症状是「编辑面开着，按 Delete 删掉了列表里的文件」。
     fn modal_up(&self) -> bool {
+        self.asking_up() || self.editing.is_some()
+    }
+
+    /// 编辑面以外的那几个框有没有一个摆着。
+    fn asking_up(&self) -> bool {
         self.board.is_asking()
             || self.copy_board.is_asking()
             // 解压撞名那一问。
@@ -2926,7 +3004,6 @@ impl FileWindow {
             || self.pull_ask.is_some()
             // 工具栏「上传」那一问（框开着时键盘不许动列表）。
             || self.upload.is_open()
-            || self.editing.is_some()
             || self.props.is_some()
     }
 
@@ -3049,7 +3126,7 @@ impl FileWindow {
         let one = {
             let rows = self.listing.rows.lock().unwrap();
             match self.selection.picked_indices(&rows).as_slice() {
-                [i] => Some((*i, rows[*i].is_dir)),
+                [i] => Some((*i, rows[*i].opens_as_dir())),
                 _ => None,
             }
         };
@@ -3496,13 +3573,13 @@ impl FileWindow {
     /// 这一格的位置归工具条，里面的控件与行为归搜索那一族：🔴 **`changed()` 就发** —— 一敲就出。
     /// 没有去抖（去抖要定时器）⇒ 每敲一个字一趟往返；在飞的旧那几趟后端按号收手、这一侧按号丢掉，**结果不会错**。
     /// 开关开着时换了目录 ⇒ 范围变了，自动再搜一趟（那一判在 `frame_body`：画不画工具条都成立）。
-    pub(super) fn search_box(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn search_box(&mut self, ui: &mut egui::Ui, compact: Option<f32>) {
         let mut fire = false;
         let mut rebuild = false;
         let r = ui.add(
             egui::TextEdit::singleline(&mut self.query)
                 .id(egui::Id::new(SEARCH_BOX_ID))
-                .desired_width(200.0)
+                .desired_width(compact.unwrap_or(SEARCH_BOX_WIDTH))
                 .hint_text(format!(
                     "{}  {}",
                     egui_phosphor::regular::MAGNIFYING_GLASS,
@@ -3512,21 +3589,34 @@ impl FileWindow {
         if r.changed() {
             fire = true;
         }
-        if ui
-            .checkbox(
-                &mut self.search_here,
-                copy_text("rsFilewinShell.search.here", &[]),
-            )
-            .changed()
-        {
-            fire = true;
-        }
-        if ui
-            .button(egui_phosphor::regular::ARROWS_CLOCKWISE)
-            .on_hover_text(copy_text("rsFilewinShell.search.rebuild", &[]))
-            .clicked()
-        {
-            rebuild = true;
+        let rebuild_icon = egui_phosphor::regular::ARROWS_CLOCKWISE;
+        let rebuild_text = copy_text("rsFilewinShell.search.rebuild", &[]);
+        if compact.is_some() {
+            // 窄窗口：那两件收进「⋯」（画法不变，只是挪进菜单）。
+            ui.menu_button(egui_phosphor::regular::DOTS_THREE, |ui| {
+                let here = copy_text("rsFilewinShell.search.here", &[]);
+                fire |= ui.checkbox(&mut self.search_here, here).changed();
+                rebuild |= ui.button((rebuild_icon, rebuild_text.as_str())).clicked();
+            })
+            .response
+            .on_hover_text(super::chrome::MORE_LABEL.as_str());
+        } else {
+            if ui
+                .checkbox(
+                    &mut self.search_here,
+                    copy_text("rsFilewinShell.search.here", &[]),
+                )
+                .changed()
+            {
+                fire = true;
+            }
+            if ui
+                .button(rebuild_icon)
+                .on_hover_text(rebuild_text)
+                .clicked()
+            {
+                rebuild = true;
+            }
         }
         if self.search.is_running() {
             ui.spinner();
@@ -3545,7 +3635,7 @@ impl FileWindow {
     fn grep_row(&mut self, ui: &mut egui::Ui) {
         let mut fire = false;
         let mut stop = false;
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(&copy_text("rsFilewinShell.grep.label", &[]));
             let r = ui.add(
                 egui::TextEdit::singleline(&mut self.grep_query)
@@ -3586,6 +3676,10 @@ impl FileWindow {
 
 /// 工具条上那个搜索框的 egui id（Ctrl+F 把焦点给它）。
 pub const SEARCH_BOX_ID: &str = "filewin-search-box";
+/// 窗口最小多大（逻辑像素）：再小，工具条收进「⋯」之后地址栏也摆不下了。
+pub const MIN_WINDOW: [f32; 2] = [480.0, 360.0];
+/// 搜索框平时多宽（窗口窄时收窄，见 `chrome.rs` 工具条）。
+pub const SEARCH_BOX_WIDTH: f32 = 200.0;
 
 /// 换目录时历史怎么记。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -3615,6 +3709,7 @@ pub fn open_detached(
         rt,
         None,
         Vec::new(),
+        None,
         None,
         None,
         Vec::new(),
@@ -3648,6 +3743,8 @@ pub fn open_detached_seeded(
     reveal: Option<String>,
     // 书签文件（monitor 算好交过来；`None` ＝ 数据目录解不出来，书签栏上出声）。
     bookmarks: Option<std::path::PathBuf>,
+    // 视图文件（记缩放；同书签那份，monitor 算好交过来；`None` ＝ 照样能缩放，只是不记）。
+    view: Option<std::path::PathBuf>,
     // 「复制到另一台」下拉里的机器（开窗种子带来的）。
     machines: Vec<String>,
     // 开出来第一拍夹进这块工作区（`None` ＝ 不夹）。
@@ -3663,6 +3760,7 @@ pub fn open_detached_seeded(
         );
         let opts = eframe::NativeOptions {
             event_loop_builder: Some(Box::new(crate::platform::any_thread_hook)),
+            viewport: egui::ViewportBuilder::default().with_min_inner_size(MIN_WINDOW),
             ..Default::default()
         };
         WINDOWS_OPENED.fetch_add(1, Ordering::SeqCst);
@@ -3691,6 +3789,9 @@ pub fn open_detached_seeded(
                 // 最外一层是 `Workspace`（标签页 ＋ 双栏 ＋ 预览），开窗那一个目录视图是它的第一个标签页。
                 let mut ws = super::workspace::Workspace::new(w);
                 ws.theme = theme;
+                // 上次的缩放（主界面的字号随样子交过来，这里在它之上整体缩放）。
+                ws.zoom = super::workspace::Zoom::open(view);
+                cc.egui_ctx.set_zoom_factor(ws.zoom.factor());
                 Ok(Box::new(FitOnce {
                     inner: ws,
                     work: work_area,
@@ -3717,11 +3818,17 @@ struct FitOnce<A> {
 }
 
 impl<A: eframe::App> eframe::App for FitOnce<A> {
+    fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.inner.logic(ctx, frame);
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         if let Some(work) = self.work {
-            let (outer, inner, ppp) = ui.ctx().input(|i| {
+            // 几何是逻辑点、而逻辑点随整窗缩放变 ⇒ 按此刻的 pixels_per_point（含缩放）换算。
+            let ppp = Some(ui.ctx().pixels_per_point());
+            let (outer, inner) = ui.ctx().input(|i| {
                 let v = i.viewport();
-                (v.outer_rect, v.inner_rect, v.native_pixels_per_point)
+                (v.outer_rect, v.inner_rect)
             });
             if let (Some(outer), Some(inner), Some(ppp)) = (outer, inner, ppp) {
                 self.work = None;
@@ -3766,6 +3873,57 @@ enum FindAct {
     ReplaceAll,
 }
 
+/// 一行里的一句话：放不下就截成「…」、悬停看全句；`reserve` ＝ 它后面那几颗控件要留的宽。
+pub(crate) fn fit_label(ui: &mut egui::Ui, text: String, reserve: f32) {
+    let room = (ui.available_width() - reserve).max(0.0);
+    ui.scope(|ui| {
+        ui.set_max_width(room);
+        ui.add(egui::Label::new(text.as_str()).truncate())
+            .on_hover_text(text);
+    });
+}
+
+/// 模态框离窗口边留多少。
+const MODAL_EDGE: f32 = 8.0;
+
+/// 摆一个模态框，外加两件每个框都要的事：框不比窗口宽（窄窗口里不被裁掉）；
+/// Esc ＝ 取消（只认最上面那个框；下拉开着时 Esc 先收下拉）。回 `(框里画的结果, 按了 Esc)`。
+pub(crate) fn modal<R>(
+    ctx: &egui::Context,
+    id: &str,
+    add: impl FnOnce(&mut egui::Ui) -> R,
+) -> (R, bool) {
+    let chrome = egui::Frame::popup(&ctx.global_style())
+        .total_margin()
+        .sum()
+        .x;
+    let room = (ctx.content_rect().width() - chrome - 2.0 * MODAL_EDGE).max(0.0);
+    let r = egui::Modal::new(egui::Id::new(id)).show(ctx, |ui| {
+        ui.set_max_width(room);
+        add(ui)
+    });
+    let esc = r.is_top_modal
+        && !r.any_popup_open
+        && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+    (r.inner, esc)
+}
+
+/// 模态框里那一摞可能很长的条目：超过窗口一半高就在框里滚。
+pub(crate) fn modal_list(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
+    let h = ui.ctx().content_rect().height() * 0.5;
+    egui::ScrollArea::vertical().max_height(h).show(ui, add);
+}
+
+/// 框里那个单行输入框：框刚摆出来（没有谁拿着焦点）就把焦点给它；回 ＝ 在它里面按了回车。
+pub(crate) fn prompt_field(ui: &mut egui::Ui, text: &mut String) -> bool {
+    let r = ui.text_edit_singleline(text);
+    let entered = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+    if !entered && ui.memory(|m| m.focused().is_none()) {
+        r.request_focus();
+    }
+    entered
+}
+
 /// 查找框的 egui id（Ctrl+F 把焦点给它）。
 const FIND_ID: &str = "filewin-editor-find";
 
@@ -3773,7 +3931,8 @@ const FIND_ID: &str = "filewin-editor-find";
 /// 在查找框里按回车 ＝「下一个」。回这一帧按了哪一颗。
 fn find_row(ui: &mut egui::Ui, f: &mut super::editor::FindBar) -> Option<FindAct> {
     let mut act = None;
-    ui.horizontal(|ui| {
+    // 栏窄了就折到下一行（不把编辑面撑出那一栏）。
+    ui.horizontal_wrapped(|ui| {
         ui.label(copy_text("rsFilewinShell.editor.findLabel", &[]));
         let r = ui.add(
             egui::TextEdit::singleline(&mut f.needle)

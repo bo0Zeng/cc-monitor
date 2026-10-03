@@ -645,7 +645,7 @@ impl CopyBoard {
         };
         if !asking.is_empty() {
             let mut answer: Option<bool> = None;
-            egui::Modal::new(egui::Id::new("filewin-copy-overwrite")).show(ui.ctx(), |ui| {
+            let (_, esc) = super::shell::modal(ui.ctx(), "filewin-copy-overwrite", |ui| {
                 if let [job] = asking.as_slice() {
                     ui.heading(copy_text(
                         "rsFilewinCopy.ui.askOverwrite",
@@ -657,9 +657,11 @@ impl CopyBoard {
                         &[("n", &asking.len().to_string())],
                     ));
                 }
-                for job in &asking {
-                    ui.label(format!("{} → {}", job.from, job.to));
-                }
+                super::shell::modal_list(ui, |ui| {
+                    for job in &asking {
+                        ui.label(format!("{} → {}", job.from, job.to));
+                    }
+                });
                 ui.horizontal(|ui| {
                     if ui
                         .button(&copy_text("rsFilewinCopy.ui.overwrite", &[]))
@@ -675,6 +677,9 @@ impl CopyBoard {
                     }
                 });
             });
+            if esc && answer.is_none() {
+                answer = Some(false);
+            }
             if let Some(ok) = answer {
                 self.settle(ok);
             }
@@ -682,10 +687,11 @@ impl CopyBoard {
         if let Some(name) = &running {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(copy_text(
-                    "rsFilewinCopy.ui.copying",
-                    &[("name", &name.to_string())],
-                ));
+                super::shell::fit_label(
+                    ui,
+                    copy_text("rsFilewinCopy.ui.copying", &[("name", &name.to_string())]),
+                    0.0,
+                );
             });
         }
         if let Some(o) = &last {

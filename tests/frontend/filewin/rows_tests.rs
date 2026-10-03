@@ -1001,6 +1001,7 @@ fn linked_rows() -> Vec<Listed> {
             lossy_name: false,
         },
         link,
+        link_dir: false,
         mtime_secs: t,
         raw_name: None,
     };

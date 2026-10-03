@@ -239,7 +239,7 @@ impl Preview {
             ));
             return;
         };
-        if r.is_dir {
+        if r.opens_as_dir() {
             self.view = View::Idle(copy_text(
                 "rsFilewinPreview.decide.isDir",
                 &[("name", &name.to_string())],
@@ -357,10 +357,14 @@ impl Preview {
             View::Loading(p) => {
                 ui.horizontal(|ui| {
                     ui.spinner();
-                    ui.label(copy_text(
-                        "rsFilewinPreview.ui.reading",
-                        &[("name", &(super::source::remote_basename(p)).to_string())],
-                    ));
+                    super::shell::fit_label(
+                        ui,
+                        copy_text(
+                            "rsFilewinPreview.ui.reading",
+                            &[("name", &(super::source::remote_basename(p)).to_string())],
+                        ),
+                        0.0,
+                    );
                 });
             }
             View::Text {

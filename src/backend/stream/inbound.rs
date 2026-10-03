@@ -2377,6 +2377,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "entries",
             "kind",
             "limit",
+            "link_dir",
             "mtime_secs",
             "path",
             "size",

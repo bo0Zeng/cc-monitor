@@ -204,7 +204,7 @@ impl CrossBoard {
         };
         if let Some(said) = asking {
             let (mut yes, mut no) = (false, false);
-            egui::Modal::new(egui::Id::new("filewin-cross-overwrite")).show(ui.ctx(), |ui| {
+            let (_, esc) = super::shell::modal(ui.ctx(), "filewin-cross-overwrite", |ui| {
                 ui.label(said);
                 ui.horizontal(|ui| {
                     yes = ui
@@ -215,6 +215,7 @@ impl CrossBoard {
                         .clicked();
                 });
             });
+            no |= esc;
             if yes || no {
                 self.settle(yes);
             }
@@ -223,14 +224,18 @@ impl CrossBoard {
             let (got, total) = self.seen(name);
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(copy_text(
-                    "rsFilewinCrossCopy.ui.running",
-                    &[
-                        ("name", name),
-                        ("got", &super::rows::human_size(got / 2)),
-                        ("total", &super::rows::human_size(total / 2)),
-                    ],
-                ));
+                super::shell::fit_label(
+                    ui,
+                    copy_text(
+                        "rsFilewinCrossCopy.ui.running",
+                        &[
+                            ("name", name),
+                            ("got", &super::rows::human_size(got / 2)),
+                            ("total", &super::rows::human_size(total / 2)),
+                        ],
+                    ),
+                    260.0,
+                );
                 if total > 0 {
                     ui.add(egui::ProgressBar::new(got as f32 / total as f32).desired_width(160.0));
                 }

@@ -98,6 +98,45 @@ fn double_clicking_a_directory_walks_into_it_and_up_walks_back() {
     assert_eq!(w.cwd, "/srv/data");
 }
 
+/// 指向目录的链接（`/bin` 这一形）：双击与回车都进得去；指向文件的链接照旧不进。
+#[test]
+fn a_symlink_to_a_directory_walks_in_on_activate_and_enter() {
+    let window = || {
+        let link = |name: &str, to_dir: bool| crate::source::Listed {
+            link: true,
+            link_dir: to_dir,
+            ..crate::source::Listed::plain(file_row(name))
+        };
+        FileWindow::seeded(
+            Source::remote(synth_cfg("r")),
+            "/srv/data".to_string(),
+            None,
+            vec![link("bin", true), link("conf", false)],
+        )
+    };
+    let mut w = window();
+    assert!(!w.activate(1), "指向文件的链接被当成目录进了");
+    assert_eq!(w.cwd, "/srv/data");
+    assert!(w.activate(0), "双击指向目录的链接没进去");
+    assert_eq!(w.cwd, "/srv/data/bin");
+    // 回车：光标落在第一行再按 Enter。
+    let mut w = window();
+    w.apply_intent(
+        crate::select::Intent::Edge {
+            end: false,
+            extend: false,
+        },
+        0.0,
+        None,
+    );
+    assert!(
+        w.apply_intent(crate::select::Intent::Open, 0.0, None),
+        "回车没进去：{:?}",
+        w.key_notice()
+    );
+    assert_eq!(w.cwd, "/srv/data/bin");
+}
+
 /// 点一个**文件**：什么都不做。
 ///
 /// ⚠ 这不是「还没做完」的占位 —— 文件那一侧（预览/编辑/下载）这一刀明确没做，
@@ -567,6 +606,7 @@ fn xvfb_worker_opens_a_real_window() {
         rows.iter().cloned().map(Into::into).collect(),
         None,
         None,
+        None,
         Vec::new(),
         None,
         Some(crate::theme::testing::default_theme()),
@@ -689,6 +729,7 @@ fn xvfb_worker_opens_with_no_x_server_at_all() {
         None,
         None,
         vec![file_row("f.txt").into()],
+        None,
         None,
         None,
         Vec::new(),
@@ -1874,6 +1915,308 @@ async fn closing_a_dirty_pane_asks_before_throwing_the_typing_away() {
     assert!(!w.asking_discard());
 }
 
+/// 立起一份编辑面（不经后端：直接交到货那一格）。
+fn editing_window(name: &str, text: String) -> FileWindow {
+    let mut w = FileWindow::seeded(
+        Source::remote(synth_cfg("edit-long")),
+        "/srv/data".to_string(),
+        None,
+        Vec::<Row>::new(),
+    );
+    w.edits.deliver(crate::editor::Arrived::Text {
+        path: format!("/srv/data/{name}"),
+        name: name.into(),
+        text,
+        sha256: crate::find::testing::fake_sha256(""),
+    });
+    assert!(w.settle_opened_edits(), "到货了却没立起编辑面");
+    w
+}
+
+/// 跑几帧 `frame_body`，回最后一帧画出来的文字与编辑面那一块的矩形。
+fn editor_frames(
+    ctx: &egui::Context,
+    w: &mut FileWindow,
+    screen: egui::Vec2,
+    n: usize,
+) -> (Vec<crate::copy::testing::PaintedText>, egui::Rect) {
+    let mut painted = Vec::new();
+    for _ in 0..n {
+        // 时钟只往前走（滚动带动画，倒着走就永远滚不到）。
+        let t = ctx.input(|i| i.time) + 0.5;
+        painted =
+            crate::copy::testing::painted_text(ctx, screen, t, Vec::new(), |ui| w.frame_body(ui));
+    }
+    let area = ctx
+        .memory(|m| m.area_rect(egui::Id::new("filewin-editor")))
+        .expect("编辑面那一块没立起来");
+    (painted, area)
+}
+
+/// 🔴 **长文件不把编辑面撑出窗口**：普通路径（几千行）· 大文件模式（全文过线 / 一行过线、长行不折）·
+/// 大窗口与缩小的窗口，四形里编辑面那一块都在窗口里，「保存」「关闭」两颗都画在窗口里。
+#[test]
+fn a_long_file_scrolls_inside_an_editor_that_stays_inside_the_window() {
+    let long: String = (0..3000).map(|i| format!("line {i}\n")).collect();
+    let big_total: String = (0..12_000)
+        .map(|i| format!("{{\"id\":{i},\"tags\":[\"alpha\",\"beta\"]}}\n"))
+        .collect();
+    let big_line = "0123456789".repeat(4_000);
+    assert!(
+        crate::bigfile::judge(&long).is_none(),
+        "普通路径那一形进了大文件模式"
+    );
+    assert!(crate::bigfile::judge(&big_total).is_some_and(|w| w.total_over()));
+    assert!(crate::bigfile::judge(&big_line).is_some_and(|w| w.line_over()));
+    let save = copy_text("rsFilewinShell.editor.save", &[]);
+    let close = copy_text("rsFilewinShell.editor.close", &[]);
+    for screen in [egui::vec2(1280.0, 800.0), egui::vec2(560.0, 360.0)] {
+        let whole = egui::Rect::from_min_size(egui::Pos2::ZERO, screen);
+        for (name, text) in [
+            ("long.rs", long.clone()),
+            ("dump.jsonl", big_total.clone()),
+            ("one.min.js", big_line.clone()),
+        ] {
+            let mut w = editing_window(name, text);
+            let ctx = egui::Context::default();
+            let (painted, area) = editor_frames(&ctx, &mut w, screen, 4);
+            assert!(
+                whole.contains_rect(area),
+                "{name} 在 {screen:?} 的窗口里：编辑面 {area:?} 出了窗口"
+            );
+            for label in [&save, &close] {
+                let at = crate::copy::testing::rects_of(&painted, label);
+                assert_eq!(at.len(), 1, "{name}：「{label}」画了 {} 次", at.len());
+                assert!(
+                    whole.contains_rect(at[0]),
+                    "{name} 在 {screen:?} 的窗口里：「{label}」画在窗口外 {:?}",
+                    at[0]
+                );
+            }
+        }
+    }
+}
+
+/// 🔴 **查找跳到视野外 ⇒ 正文跟着滚过去**（普通路径；大文件模式自己跟光标，由 `bigfile_tests` 钉）。
+#[test]
+fn a_find_hit_below_the_view_scrolls_the_text_to_it() {
+    let n = 3000;
+    let long: String = (0..n).map(|i| format!("line {i}\n")).collect();
+    let mut w = editing_window("long.rs", long);
+    let ctx = egui::Context::default();
+    let screen = egui::vec2(1280.0, 800.0);
+    let (painted, area) = editor_frames(&ctx, &mut w, screen, 4);
+    let galley = |p: &[crate::copy::testing::PaintedText]| {
+        p.iter()
+            .find(|(t, _)| t.starts_with("line 0\n"))
+            .map(|(_, r)| *r)
+            .expect("正文那一份没画")
+    };
+    let before = galley(&painted);
+    assert!(before.top() >= area.top(), "还没找就已经滚走了");
+    w.find_bar_mut().unwrap().needle = format!("line {}", n - 2);
+    assert!(w.find_in_editor(&ctx, false), "那一行没找到");
+    let (painted, area) = editor_frames(&ctx, &mut w, screen, 3);
+    let after = galley(&painted);
+    let row = after.height() / n as f32;
+    let hit_y = after.top() + (n - 2) as f32 * row;
+    assert!(
+        hit_y >= area.top() && hit_y <= area.bottom(),
+        "找到的那一行在 y={hit_y}，编辑面是 {area:?} —— 没滚过去"
+    );
+}
+
+/// 线上记下的那几行里，命令是 `cmd` 的有几行。
+fn sent(log: &crate::find::testing::WireLog, cmd: &str) -> usize {
+    log.lock()
+        .unwrap()
+        .iter()
+        .filter(|l| l["cmd"] == cmd)
+        .count()
+}
+
+/// 🔴 **读着一份时再开一份：不发第二趟、说为什么**（后到的那一份会把正在改的那一份换掉）。
+/// 读完了还没落进编辑面的那一拍同样不发。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_second_open_while_one_is_still_reading_is_not_sent() {
+    let mut w = FileWindow::seeded(
+        Source::remote(synth_cfg("edit-race")),
+        "/srv/data".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        vec![file_row("a.txt"), file_row("b.txt")],
+    );
+    let wired = crate::find::testing::wire_up(
+        "edit-race",
+        crate::find::testing::FakeBackend::new(
+            &[crate::editor::CMD_READ_TEXT],
+            crate::find::testing::Declared::default(),
+        ),
+    )
+    .await;
+    w.attach_line(wired.line.clone());
+    // a.txt 那一趟还在路上。
+    w.edits.begin_open("/srv/data/a.txt");
+    assert!(!w.begin_edit(1, None), "a.txt 还在读，b.txt 那一趟竟然发了");
+    let e = w.listing.error.lock().unwrap().clone().expect("拒了却没说");
+    assert!(e.contains("/srv/data/a.txt"), "没说在等哪一份：{e}");
+    // 读完了、还没落进编辑面那一拍：同样不发。
+    w.edits.deliver(crate::editor::Arrived::Text {
+        path: "/srv/data/a.txt".into(),
+        name: "a.txt".into(),
+        text: "a\n".into(),
+        sha256: crate::find::testing::fake_sha256(""),
+    });
+    assert!(
+        !w.begin_edit(1, None),
+        "a.txt 到货还没落地，b.txt 那一趟竟然发了"
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(sent(&wired.log, crate::editor::CMD_READ_TEXT), 0);
+    assert!(w.settle_opened_edits());
+    assert_eq!(w.editing().unwrap().path, "/srv/data/a.txt");
+}
+
+/// 🔴 **一趟存还在路上时再存：不发第二趟**（第二趟带的是旧摘要，回来就是一场假冲突）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_second_save_while_one_is_in_flight_is_not_sent() {
+    let mut w = editing_window("app.conf", "a=1\n".into());
+    w.rt = tokio::runtime::Handle::try_current().ok();
+    let wired = crate::find::testing::wire_up(
+        "edit-save-race",
+        crate::find::testing::FakeBackend::new(
+            &["files-write-text"],
+            crate::find::testing::Declared::default(),
+        ),
+    )
+    .await;
+    w.attach_line(wired.line.clone());
+    *w.editing_text_mut().unwrap() = "a=2\n".into();
+    w.edits.begin_save("/srv/data/app.conf");
+    assert!(!w.save_edit(None), "上一趟还在路上，又存了一趟");
+    assert!(!w.overwrite_edit(None), "上一趟还在路上，又覆盖了一趟");
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(sent(&wired.log, "files-write-text"), 0);
+}
+
+/// 🔴 **编辑面里 Ctrl+S ＝ 保存**：真喂一帧按键，线上真出去一趟写。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ctrl_s_in_the_editor_saves() {
+    let mut w = editing_window("app.conf", "a=1\n".into());
+    w.rt = tokio::runtime::Handle::try_current().ok();
+    let wired = crate::find::testing::wire_up(
+        "edit-ctrl-s",
+        crate::find::testing::FakeBackend::new(
+            &["files-write-text"],
+            crate::find::testing::Declared::default(),
+        ),
+    )
+    .await;
+    w.attach_line(wired.line.clone());
+    *w.editing_text_mut().unwrap() = "a=2\n".into();
+    let ctx = egui::Context::default();
+    let _ = editor_frames(&ctx, &mut w, egui::vec2(1280.0, 800.0), 2);
+    let key = egui::Event::Key {
+        key: egui::Key::S,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::COMMAND,
+    };
+    let _ =
+        crate::copy::testing::painted_text(&ctx, egui::vec2(1280.0, 800.0), 9.0, vec![key], |ui| {
+            w.frame_body(ui)
+        });
+    for _ in 0..200 {
+        if w.edits.saves() > 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert_eq!(
+        sent(&wired.log, "files-write-text"),
+        1,
+        "按了 Ctrl+S 却没存"
+    );
+}
+
+fn key_ev(key: egui::Key) -> egui::Event {
+    egui::Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    }
+}
+
+/// 跑一帧 `frame_body`（时钟往前走半秒），喂这几个事件。
+fn step(ctx: &egui::Context, w: &mut FileWindow, events: Vec<egui::Event>) {
+    let t = ctx.input(|i| i.time) + 0.5;
+    let _ = crate::copy::testing::painted_text(ctx, egui::vec2(1280.0, 800.0), t, events, |ui| {
+        w.frame_body(ui)
+    });
+}
+
+/// 🔴 **框认 Esc 与回车**：新建目录那个框摆出来就能直接打字，回车 ＝「确定」（这里没有运行时，
+/// 确定之后那一步当场出声 ⇒ 读得到它真走到了确定）；改名那个框按 Esc ＝「取消」。
+#[test]
+fn prompts_take_enter_to_confirm_and_escape_to_cancel() {
+    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.txt")]);
+    let ctx = egui::Context::default();
+    assert!(w.begin_mkdir());
+    step(&ctx, &mut w, Vec::new());
+    step(&ctx, &mut w, Vec::new());
+    step(&ctx, &mut w, vec![egui::Event::Text("newdir".into())]);
+    assert_eq!(
+        w.write_prompt().map(|p| p.text.as_str()),
+        Some("newdir"),
+        "框摆出来了却打不进字"
+    );
+    step(&ctx, &mut w, vec![key_ev(egui::Key::Enter)]);
+    assert_eq!(
+        w.listing.error.lock().unwrap().clone(),
+        Some(copy_text("rsFilewinShell.writes.noRuntime", &[])),
+        "回车没走到「确定」"
+    );
+    w.cancel_write();
+    *w.listing.error.lock().unwrap() = None;
+    assert!(w.begin_rename(0));
+    step(&ctx, &mut w, Vec::new());
+    step(&ctx, &mut w, Vec::new());
+    assert!(w.write_prompt().is_some());
+    step(&ctx, &mut w, vec![key_ev(egui::Key::Escape)]);
+    assert!(w.write_prompt().is_none(), "按了 Esc 框还在");
+    assert!(
+        w.listing.error.lock().unwrap().is_none(),
+        "取消却做了点什么"
+    );
+}
+
+/// 🔴 **编辑面认 Esc**：没改过 ⇒ 关掉；改了没存 ⇒ 先问，在那一问上再按 Esc ＝「先别关」（字一个不少）。
+#[test]
+fn escape_closes_the_editor_and_asks_first_when_dirty() {
+    let ctx = egui::Context::default();
+    let mut w = editing_window("app.conf", "a=1\n".into());
+    step(&ctx, &mut w, Vec::new());
+    step(&ctx, &mut w, Vec::new());
+    step(&ctx, &mut w, vec![key_ev(egui::Key::Escape)]);
+    assert!(w.editing().is_none(), "没改过，按 Esc 却没关");
+    let mut w = editing_window("app.conf", "a=1\n".into());
+    *w.editing_text_mut().unwrap() = "a=2\n".into();
+    step(&ctx, &mut w, Vec::new());
+    step(&ctx, &mut w, Vec::new());
+    step(&ctx, &mut w, vec![key_ev(egui::Key::Escape)]);
+    assert!(w.asking_discard(), "改了没存，按 Esc 却没问");
+    step(&ctx, &mut w, Vec::new());
+    step(&ctx, &mut w, vec![key_ev(egui::Key::Escape)]);
+    assert!(!w.asking_discard(), "在那一问上按 Esc 没收掉问");
+    assert_eq!(
+        w.editing().map(|p| p.text.as_str()),
+        Some("a=2\n"),
+        "字丢了"
+    );
+}
+
 /// 存失败 ⇒ 那句原话画在编辑面上，**而用户敲的东西一个字都不少**。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_refused_save_shows_the_reason_and_keeps_the_text() {
@@ -2640,4 +2983,57 @@ fn the_file_window_is_fitted_into_the_work_area_it_was_handed() {
         proc.contains("req.work_area,"),
         "窗口进程没把工作区交给开窗那一处"
     );
+}
+
+/// 🔴 **整窗缩放**：Ctrl + = 放大一步、Ctrl + - 缩小一步、Ctrl + 0 回 100%、Ctrl + 滚轮按滚的量；
+/// 改了就记进视图文件，重开（再读那份文件）还是那个数。
+#[test]
+fn zoom_keys_and_wheel_change_the_zoom_and_it_survives_a_reopen() {
+    let dir = std::env::temp_dir().join(format!("ccm-filewin-zoom-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("filewin-view.json");
+    let mut ws =
+        crate::workspace::Workspace::new(remote_window_with_rows("/l", vec![file_row("a")]));
+    ws.zoom = crate::workspace::Zoom::open(Some(file.clone()));
+    assert_eq!(ws.zoom.factor(), 1.0, "没记过却不是 100%");
+    let ctx = egui::Context::default();
+    let mut t = 0.0;
+    // 按一下，再跑一帧（egui 的缩放在下一帧开头才生效）。
+    let mut press = |ws: &mut crate::workspace::Workspace, ev: egui::Event| {
+        for events in [vec![ev], Vec::new()] {
+            t += 1.0;
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1280.0, 800.0),
+                )),
+                time: Some(t),
+                events,
+                ..Default::default()
+            };
+            ctx.run_ui(input, |ui| ws.frame(ui))
+                .drop_without_applying_deltas();
+        }
+        ctx.zoom_factor()
+    };
+    let key = |k: egui::Key| egui::Event::Key {
+        key: k,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::COMMAND,
+    };
+    assert_eq!(press(&mut ws, key(egui::Key::Equals)), 1.1);
+    assert_eq!(press(&mut ws, key(egui::Key::Minus)), 1.0);
+    assert_eq!(press(&mut ws, key(egui::Key::Minus)), 0.9);
+    assert_eq!(press(&mut ws, key(egui::Key::Num0)), 1.0);
+    let z = press(&mut ws, egui::Event::Zoom(1.5));
+    assert!((z - 1.5).abs() < 1e-4, "Ctrl + 滚轮没缩放：{z}");
+    assert_eq!(
+        crate::workspace::Zoom::open(Some(file.clone())).factor(),
+        1.5,
+        "重开之后不是上次的缩放"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }

@@ -53,6 +53,7 @@ fn synthetic_request() -> OpenRequest {
         bookmarks: Some(std::path::PathBuf::from(
             "/tmp/书签 目录/filewin-bookmarks.json",
         )),
+        view: Some(std::path::PathBuf::from("/tmp/书签 目录/filewin-view.json")),
         // 机器名单也进种子对拍（带中文与空格）。
         machines: vec!["<local>".to_string(), "台架 远端".to_string()],
         // 工作区那一格也进种子对拍（负坐标：主屏左边那台副屏）。
@@ -399,6 +400,7 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
         reveal: None,
         handoff: synthetic_handoff(),
         bookmarks: None,
+        view: None,
         machines: Vec::new(),
         work_area: None,
         theme: theme_testing::default_theme(),
@@ -513,6 +515,7 @@ fn the_window_process_lists_first_and_the_parent_carries_its_words() {
         reveal: None,
         handoff: synthetic_handoff(),
         bookmarks: None,
+        view: None,
         machines: Vec::new(),
         work_area: None,
         theme: theme_testing::default_theme(),
@@ -571,6 +574,7 @@ fn a_window_that_dies_after_being_judged_open_is_still_reported() {
         reveal: None,
         handoff: synthetic_handoff(),
         bookmarks: None,
+        view: None,
         machines: Vec::new(),
         work_area: None,
         theme: theme_testing::default_theme(),
@@ -695,6 +699,7 @@ fn a_window_process_that_dies_at_once_comes_back_as_a_reason() {
             reveal: None,
             handoff: synthetic_handoff(),
             bookmarks: None,
+            view: None,
             machines: Vec::new(),
             work_area: None,
             theme: theme_testing::default_theme(),

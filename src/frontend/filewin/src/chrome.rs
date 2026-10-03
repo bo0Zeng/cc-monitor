@@ -17,6 +17,8 @@ use super::workspace::Workspace;
 pub const ADDR_ID: &str = "filewin-address";
 /// 工具条上搜索那一格占多宽（搜索框 ＋ 重建 ＋ 在飞指示）。
 const SEARCH_SLOT: f32 = 440.0;
+/// 地址栏至少留多宽；窗口窄到留不出来 ⇒ 搜索那一格收窄，「只搜当前目录」与「重建索引」收进「⋯」。
+const ADDR_MIN: f32 = 160.0;
 /// 左栏多宽（可收起，不拖宽：书签那几格的字超出就截成「…」）。
 const SIDEBAR_WIDTH: f32 = 220.0;
 /// 面包屑最多摆几段（再深就把开头几段收成「…」）。
@@ -37,6 +39,159 @@ fn icon_button(ui: &mut egui::Ui, icon: &str, tip: String, enabled: bool) -> boo
     .on_hover_text(&tip)
     .on_disabled_hover_text(tip)
     .clicked()
+}
+
+/// 命令栏上的一颗是哪一件。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Cmd {
+    Mkdir,
+    NewFile,
+    Upload,
+    Term,
+    Grep,
+    Hidden,
+    Split,
+    Preview,
+    Across,
+}
+
+/// 命令栏上的一颗：图标 · 字 · 开关态（`None` ＝ 不是开关）· 悬停说明 · 第几组（组与组之间画一道竖线）。
+pub(crate) struct CmdItem {
+    pub cmd: Cmd,
+    icon: &'static str,
+    pub label: String,
+    on: Option<bool>,
+    hint: Option<String>,
+    group: u8,
+}
+
+impl CmdItem {
+    pub(crate) fn new(cmd: Cmd, icon: &'static str, label: &str, group: u8) -> Self {
+        Self {
+            cmd,
+            icon,
+            label: label.to_string(),
+            on: None,
+            hint: None,
+            group,
+        }
+    }
+    pub(crate) fn toggle(mut self, on: bool) -> Self {
+        self.on = Some(on);
+        self
+    }
+    fn hint(mut self, h: String) -> Self {
+        self.hint = Some(h);
+        self
+    }
+    fn button(&self) -> egui::Button<'_> {
+        let on = self.on.unwrap_or(false);
+        flat((self.icon, self.label.as_str()))
+            .selected(on)
+            .frame_when_inactive(on)
+    }
+}
+
+/// 「更多」那一颗的悬停说明（命令栏放不下的那几颗收在它里面）。
+pub static MORE_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinChrome.command.more", &[]));
+
+/// 画命令栏上那一排：放得下的摆在栏上，放不下的从右往左收进「更多」（⋯）。回这一帧按了哪一件。
+/// 每一颗的宽按上一帧画出来的量（头一帧没量过就按字估）。
+pub(crate) fn command_row(ui: &mut egui::Ui, items: &[CmdItem]) -> Option<Cmd> {
+    let id = egui::Id::new("filewin-cmd-width");
+    let pad = ui.spacing().button_padding.x * 2.0 + ui.spacing().icon_spacing;
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let width = |ui: &egui::Ui, it: &CmdItem| -> f32 {
+        ui.data(|d| d.get_temp::<f32>(id.with(it.cmd)))
+            .unwrap_or_else(|| {
+                let text = format!("{}{}", it.icon, it.label);
+                pad + ui.fonts_mut(|f| {
+                    f.layout_no_wrap(text, font.clone(), ui.visuals().text_color())
+                        .size()
+                        .x
+                })
+            })
+    };
+    let gap = ui.spacing().item_spacing.x;
+    let sep = gap * 2.0 + 1.0;
+    let more = ui.spacing().interact_size.y + pad + gap;
+    let avail = ui.available_width();
+    let mut need = Vec::with_capacity(items.len());
+    let mut x = 0.0;
+    for (k, it) in items.iter().enumerate() {
+        if k > 0 && items[k - 1].group != it.group {
+            x += sep;
+        }
+        x += width(ui, it) + gap;
+        need.push(x);
+    }
+    let shown = if need.last().is_none_or(|&w| w <= avail) {
+        items.len()
+    } else {
+        need.iter().take_while(|&&w| w + more <= avail).count()
+    };
+    let mut hit = None;
+    for (k, it) in items.iter().take(shown).enumerate() {
+        if k > 0 && items[k - 1].group != it.group {
+            ui.separator();
+        }
+        let mut r = ui.add(it.button());
+        ui.data_mut(|d| d.insert_temp(id.with(it.cmd), r.rect.width()));
+        if let Some(h) = &it.hint {
+            r = r.on_hover_text(h);
+        }
+        if r.clicked() {
+            hit = Some(it.cmd);
+        }
+    }
+    if shown < items.len() {
+        ui.menu_button(egui::RichText::new(ph::DOTS_THREE).size(18.0), |ui| {
+            for it in &items[shown..] {
+                let mut r = ui.add(it.button());
+                if let Some(h) = &it.hint {
+                    r = r.on_hover_text(h);
+                }
+                if r.clicked() {
+                    hit = Some(it.cmd);
+                }
+            }
+        })
+        .response
+        .on_hover_text(MORE_LABEL.as_str());
+    }
+    hit
+}
+
+/// 地址栏里开头收起几段：从当前那一级往前数，放得下几段摆几段（当前那一级总摆着，太长自己截成「…」）。
+/// 回 `(收起几段, 摆不摆开头那个「…」)`：连「…」都摆不下时只摆当前那一级。
+fn crumbs_skip(ui: &egui::Ui, crumbs: &[(String, String)]) -> (usize, bool) {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let gap = ui.spacing().item_spacing.x;
+    let w = |t: &str, pad: f32| {
+        pad + gap
+            + ui.fonts_mut(|f| {
+                f.layout_no_wrap(t.to_string(), font.clone(), ui.visuals().text_color())
+                    .size()
+                    .x
+            })
+    };
+    let caret = w(ph::CARET_RIGHT, 0.0);
+    let dots = w(ph::DOTS_THREE, 0.0);
+    let pad = 2.0 * ui.spacing().button_padding.x;
+    let room = ui.available_width();
+    let mut used = 0.0;
+    let mut start = crumbs.len();
+    for k in (0..crumbs.len()).rev() {
+        let one = caret + w(&crumbs[k].0, pad);
+        let head = if k > 0 { caret + dots } else { 0.0 };
+        if k + 1 < crumbs.len() && used + one + head > room {
+            break;
+        }
+        used += one;
+        start = k;
+    }
+    (start, start > 0 && used + caret + dots <= room)
 }
 
 /// 工具条想干什么（闭包里只收，画完再做：闭包借着 `self`）。
@@ -91,7 +246,19 @@ impl FileWindow {
             ) {
                 nav = Some(Nav::Refresh);
             }
-            let w = (ui.available_width() - SEARCH_SLOT).max(160.0);
+            let avail = ui.available_width();
+            let compact = avail - SEARCH_SLOT < ADDR_MIN;
+            let search_w = if compact {
+                (avail * 0.3).clamp(60.0, super::shell::SEARCH_BOX_WIDTH)
+            } else {
+                super::shell::SEARCH_BOX_WIDTH
+            };
+            let tail = if compact {
+                search_w + 2.0 * ui.spacing().interact_size.y + 3.0 * ui.spacing().item_spacing.x
+            } else {
+                SEARCH_SLOT
+            };
+            let w = (avail - tail).max(0.0);
             let h = 30.0;
             if let Some(buf) = self.addr_edit.as_mut() {
                 let r = ui.add_sized(
@@ -144,53 +311,69 @@ impl FileWindow {
                     }),
                     _ => None,
                 };
-                ui.scope_builder(
+                // 画在已经占好的那一块里，不再向外占地（路径再长也不把搜索格挤出窗口）。
+                ui.new_child(
                     egui::UiBuilder::new()
                         .max_rect(rect.shrink2(egui::vec2(8.0, 0.0)))
                         .layout(egui::Layout::right_to_left(egui::Align::Center)),
-                    |ui| {
-                        if let Some((glyph, tip, color)) = star {
-                            if ui
-                                .add(flat(egui::RichText::new(glyph).size(17.0).color(color)))
-                                .on_hover_text(tip)
-                                .clicked()
-                            {
-                                nav = Some(Nav::Star);
+                )
+                .scope(|ui| {
+                    if let Some((glyph, tip, color)) = star {
+                        if ui
+                            .add(flat(egui::RichText::new(glyph).size(17.0).color(color)))
+                            .on_hover_text(tip)
+                            .clicked()
+                        {
+                            nav = Some(Nav::Star);
+                        }
+                    }
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        // 路径再长也只占星左边那一块：画和点都裁在这里，长名字盖不到星、抢不走它的点击。
+                        ui.set_clip_rect(ui.max_rect().intersect(ui.clip_rect()));
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        ui.label(egui::RichText::new(ph::HARD_DRIVES).color(p.text2))
+                            .on_hover_text(self.source.label());
+                        let crumbs = breadcrumbs(&self.cwd);
+                        // 机器名与当前那一级放不下同时摆 ⇒ 先让机器名（悬停盘符看它，窗口标题上也有）。
+                        let font = egui::TextStyle::Body.resolve(ui.style());
+                        let width = |ui: &egui::Ui, t: &str| {
+                            ui.fonts_mut(|f| {
+                                f.layout_no_wrap(t.to_string(), font.clone(), p.text)
+                                    .size()
+                                    .x
+                            })
+                        };
+                        let last = crumbs.last().map_or(0.0, |(seg, _)| width(ui, seg));
+                        let host = self.source.label();
+                        if width(ui, &host) + last + 40.0 <= ui.available_width() {
+                            ui.label(egui::RichText::new(host).color(p.text2));
+                        }
+                        let (fit, dots) = crumbs_skip(ui, &crumbs);
+                        let skip = fit.max(crumbs.len().saturating_sub(CRUMBS_SHOWN));
+                        if skip > 0 && (dots || fit < skip) {
+                            ui.label(egui::RichText::new(ph::CARET_RIGHT).color(p.faint));
+                            ui.label(egui::RichText::new(ph::DOTS_THREE).color(p.faint));
+                        }
+                        for (seg, full) in crumbs.into_iter().skip(skip) {
+                            ui.label(egui::RichText::new(ph::CARET_RIGHT).color(p.faint));
+                            // 当前这一级不画成按钮（点了什么都不会发生）；有损目录里只画不点（那一摞前缀寻址不到）。
+                            if full == self.cwd || lossy {
+                                ui.add(
+                                    egui::Label::new(egui::RichText::new(seg).color(p.text))
+                                        .selectable(false)
+                                        .truncate(),
+                                );
+                            } else if ui.add(flat(seg)).clicked() {
+                                nav = Some(Nav::Go(full));
                             }
                         }
-                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                            // 路径再长也只占星左边那一块：画和点都裁在这里，长名字盖不到星、抢不走它的点击。
-                            ui.set_clip_rect(ui.max_rect().intersect(ui.clip_rect()));
-                            ui.spacing_mut().item_spacing.x = 2.0;
-                            ui.label(egui::RichText::new(ph::HARD_DRIVES).color(p.text2));
-                            ui.label(egui::RichText::new(self.source.label()).color(p.text2));
-                            let crumbs = breadcrumbs(&self.cwd);
-                            let skip = crumbs.len().saturating_sub(CRUMBS_SHOWN);
-                            if skip > 0 {
-                                ui.label(egui::RichText::new(ph::CARET_RIGHT).color(p.faint));
-                                ui.label(egui::RichText::new(ph::DOTS_THREE).color(p.faint));
-                            }
-                            for (seg, full) in crumbs.into_iter().skip(skip) {
-                                ui.label(egui::RichText::new(ph::CARET_RIGHT).color(p.faint));
-                                // 当前这一级不画成按钮（点了什么都不会发生）；有损目录里只画不点（那一摞前缀寻址不到）。
-                                if full == self.cwd || lossy {
-                                    ui.add(
-                                        egui::Label::new(egui::RichText::new(seg).color(p.text))
-                                            .selectable(false)
-                                            .truncate(),
-                                    );
-                                } else if ui.add(flat(seg)).clicked() {
-                                    nav = Some(Nav::Go(full));
-                                }
-                            }
-                        });
-                    },
-                );
+                    });
+                });
                 if bg.clicked() && !lossy {
                     nav = Some(Nav::Edit);
                 }
             }
-            self.search_box(ui);
+            self.search_box(ui, compact.then_some(search_w));
         });
         match nav {
             Some(Nav::Back) => {
@@ -244,87 +427,60 @@ impl FileWindow {
     }
 
     /// 🔴 **命令栏左半**（不依赖选中就能做的那几件）：新建目录 · 新建文件 · 上传 · 在此打开终端 · 按内容搜 · 隐藏文件开关。
-    pub fn command_ui(&mut self, ui: &mut egui::Ui) {
-        let (mut mkdir, mut new_file, mut upload, mut term, mut grep) =
-            (false, false, false, false, false);
-        let mut hidden: Option<bool> = None;
-        if ui
-            .add(flat((
+    pub(crate) fn command_items(&self) -> Vec<CmdItem> {
+        let hidden = self.shows_hidden();
+        vec![
+            CmdItem::new(
+                Cmd::Mkdir,
                 ph::FOLDER_PLUS,
-                super::writeops::MKDIR_LABEL.as_str(),
-            )))
-            .clicked()
-        {
-            mkdir = true;
-        }
-        if ui
-            .add(flat((
+                &super::writeops::MKDIR_LABEL,
+                0,
+            ),
+            CmdItem::new(
+                Cmd::NewFile,
                 ph::FILE_PLUS,
-                super::create::NEW_FILE_LABEL.as_str(),
-            )))
-            .clicked()
-        {
-            new_file = true;
-        }
-        if ui
-            .add(flat((
+                &super::create::NEW_FILE_LABEL,
+                0,
+            ),
+            CmdItem::new(
+                Cmd::Upload,
                 ph::UPLOAD_SIMPLE,
-                super::upload::UPLOAD_LABEL.as_str(),
-            )))
-            .clicked()
-        {
-            upload = true;
-        }
-        if ui
-            .add(flat((ph::TERMINAL_WINDOW, TERMINAL_LABEL.as_str())))
-            .clicked()
-        {
-            term = true;
-        }
-        if ui
-            .add(
-                flat((ph::FILE_MAGNIFYING_GLASS, GREP_LABEL.as_str()))
-                    .selected(self.grep_open)
-                    .frame_when_inactive(self.grep_open),
+                &super::upload::UPLOAD_LABEL,
+                0,
+            ),
+            CmdItem::new(Cmd::Term, ph::TERMINAL_WINDOW, &TERMINAL_LABEL, 0),
+            CmdItem::new(Cmd::Grep, ph::FILE_MAGNIFYING_GLASS, &GREP_LABEL, 0)
+                .toggle(self.grep_open),
+            CmdItem::new(
+                Cmd::Hidden,
+                if hidden { ph::EYE } else { ph::EYE_SLASH },
+                &HIDDEN_LABEL,
+                1,
             )
-            .clicked()
-        {
-            grep = true;
-        }
-        ui.separator();
-        let on = self.shows_hidden();
-        if ui
-            .add(
-                flat((
-                    if on { ph::EYE } else { ph::EYE_SLASH },
-                    HIDDEN_LABEL.as_str(),
-                ))
-                .selected(on)
-                .frame_when_inactive(on),
-            )
-            .on_hover_text(copy_text("rsFilewinChrome.hidden.hint", &[]))
-            .clicked()
-        {
-            hidden = Some(!on);
-        }
-        if mkdir {
-            self.begin_mkdir();
-        }
-        if new_file {
-            self.begin_new_file();
-        }
-        if upload {
-            self.upload.open();
-        }
-        if term {
-            let ctx = ui.ctx().clone();
-            self.open_terminal_here(Some(ctx));
-        }
-        if grep {
-            self.grep_open = !self.grep_open;
-        }
-        if let Some(on) = hidden {
-            self.set_show_hidden(on);
+            .toggle(hidden)
+            .hint(copy_text("rsFilewinChrome.hidden.hint", &[])),
+        ]
+    }
+
+    /// 命令栏上那几颗里归目录视图的那几件。
+    pub(crate) fn run_command(&mut self, c: Cmd, ctx: Option<egui::Context>) {
+        match c {
+            Cmd::Mkdir => {
+                self.begin_mkdir();
+            }
+            Cmd::NewFile => {
+                self.begin_new_file();
+            }
+            Cmd::Upload => self.upload.open(),
+            Cmd::Term => {
+                self.open_terminal_here(ctx);
+            }
+            Cmd::Grep => self.grep_open = !self.grep_open,
+            Cmd::Hidden => {
+                let on = self.shows_hidden();
+                self.set_show_hidden(!on);
+            }
+            Cmd::Split | Cmd::Preview | Cmd::Across => {}
         }
     }
 
@@ -366,7 +522,9 @@ impl FileWindow {
         let p = palette(ui.ctx());
         let mut toggle = false;
         ui.horizontal_centered(|ui| {
-            ui.label(egui::RichText::new(self.status_line()).color(p.text2));
+            let line = self.status_line();
+            ui.add(egui::Label::new(egui::RichText::new(&line).color(p.text2)).truncate())
+                .on_hover_text(line);
             if self.listing.is_loading() {
                 ui.spinner();
                 ui.label(
@@ -502,7 +660,7 @@ impl Workspace {
             .exact_size(BAR_HEIGHT)
             .show_separator_line(false)
             .show(ui, |ui| self.pane_on_mut(f).toolbar_ui(ui));
-        let (mut split, mut preview, mut across, mut sidebar) = (None, None, false, false);
+        let (mut cmd, mut sidebar) = (None, false);
         egui::Panel::top("filewin-commands")
             .frame(bar_frame(&ctx))
             .exact_size(BAR_HEIGHT - 4.0)
@@ -521,56 +679,54 @@ impl Workspace {
                         sidebar = true;
                     }
                     ui.separator();
-                    self.pane_on_mut(f).command_ui(ui);
-                    ui.separator();
                     let two = self.sides() == 2;
-                    if ui
-                        .add(
-                            flat((ph::COLUMNS, super::workspace::SPLIT_LABEL.as_str()))
-                                .selected(two)
-                                .frame_when_inactive(two),
+                    let mut items = self.pane_on(f).command_items();
+                    items.push(
+                        CmdItem::new(Cmd::Split, ph::COLUMNS, &super::workspace::SPLIT_LABEL, 2)
+                            .toggle(two),
+                    );
+                    items.push(
+                        CmdItem::new(
+                            Cmd::Preview,
+                            ph::SIDEBAR,
+                            &super::workspace::PREVIEW_LABEL,
+                            2,
                         )
-                        .clicked()
-                    {
-                        split = Some(!two);
+                        .toggle(self.preview.is_some()),
+                    );
+                    if two {
+                        items.push(CmdItem::new(
+                            Cmd::Across,
+                            ph::COPY,
+                            &super::workspace::COPY_ACROSS_LABEL,
+                            2,
+                        ));
                     }
-                    let on = self.preview.is_some();
-                    if ui
-                        .add(
-                            flat((ph::SIDEBAR, super::workspace::PREVIEW_LABEL.as_str()))
-                                .selected(on)
-                                .frame_when_inactive(on),
-                        )
-                        .clicked()
-                    {
-                        preview = Some(!on);
-                    }
-                    if two
-                        && ui
-                            .add(flat((
-                                ph::COPY,
-                                super::workspace::COPY_ACROSS_LABEL.as_str(),
-                            )))
-                            .clicked()
-                    {
-                        across = true;
-                    }
+                    cmd = command_row(ui, &items);
                     if let Some(n) = self.notice() {
-                        ui.colored_label(ui.visuals().warn_fg_color, n);
+                        // 放不下就截成「…」，悬停看全句。
+                        let t = egui::RichText::new(n).color(ui.visuals().warn_fg_color);
+                        ui.add(egui::Label::new(t).truncate()).on_hover_text(n);
                     }
                 });
             });
         if sidebar {
             self.sidebar_open = !self.sidebar_open;
         }
-        if let Some(on) = split {
-            self.set_split(on);
-        }
-        if let Some(on) = preview {
-            self.set_preview(on);
-        }
-        if across {
-            self.copy_to_other(Some(ctx.clone()));
+        match cmd {
+            Some(Cmd::Split) => {
+                let two = self.sides() == 2;
+                self.set_split(!two);
+            }
+            Some(Cmd::Preview) => {
+                let on = self.preview.is_some();
+                self.set_preview(!on);
+            }
+            Some(Cmd::Across) => {
+                self.copy_to_other(Some(ctx.clone()));
+            }
+            Some(c) => self.pane_on_mut(f).run_command(c, Some(ctx.clone())),
+            None => {}
         }
         egui::Panel::bottom("filewin-status")
             .frame(bar_frame(&ctx))
@@ -578,9 +734,11 @@ impl Workspace {
             .show_separator_line(false)
             .show(ui, |ui| self.pane_on_mut(f).status_ui(ui));
         if self.sidebar_open {
+            // 窗口窄了左栏跟着让（至多占三成），里面的字截成「…」。
+            let w = SIDEBAR_WIDTH.min(ctx.content_rect().width() * 0.3);
             egui::Panel::left("filewin-sidebar")
                 .frame(bar_frame(&ctx).inner_margin(egui::Margin::same(10)))
-                .exact_size(SIDEBAR_WIDTH)
+                .exact_size(w)
                 .show(ui, |ui| self.sidebar_ui(ui));
         }
     }
