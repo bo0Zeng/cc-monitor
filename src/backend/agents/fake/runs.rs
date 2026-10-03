@@ -104,12 +104,29 @@ fn sources(parent: &Path) -> Vec<PathBuf> {
     v
 }
 
+/// [`sources`] 的反方向：`<父记录去后缀>.lanes/<lane>.ndjson` ⇒ 父记录（与子运行记录同一个后缀）。
+fn owner(p: &Path) -> Option<PathBuf> {
+    if !p.extension().is_some_and(|e| e == LANE_EXT) {
+        return None;
+    }
+    let lanes = p.parent()?;
+    let stem = lanes
+        .file_name()?
+        .to_str()?
+        .strip_suffix(&format!(".{LANES_SUFFIX}"))?;
+    Some(lanes.with_file_name(format!("{stem}.{LANE_EXT}")))
+}
+
 /// 本假适配层的运行面。
 pub(crate) const FACES: RunFaces = RunFaces {
     response_id: Some(response_id),
     run_of: Some(run_of),
     child_link: Some(child_link),
-    children: Some(crate::agents::ChildFace { sources, hint }),
+    children: Some(crate::agents::ChildFace {
+        sources,
+        owner,
+        hint,
+    }),
 };
 
 fn fold(data: &str) -> Vec<StreamEv> {

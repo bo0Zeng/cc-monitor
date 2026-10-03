@@ -18,7 +18,7 @@
 //!
 //! # (pid, sid) → 「打到哪个 tmux 会话上」怎么解
 //!
-//! `@ccm_sid` 是 **tmux 会话级** option，所以必须先知道那个 claude 进程住在哪个会话里。
+//! `@ccm_sid` 是 **tmux 窗格级** option（一个会话里可以跑几个 claude，各挂各的），所以必须先知道那个 claude 进程住在哪个窗格里。
 //!
 //! **走 `/proc/<pid>/environ` 的 `TMUX_PANE`**，理由是它**没有陈旧的可能**：
 //! 那个值属于**这个进程自己**（tmux 起 pane 时注进环境、`exec` 原样继承），
@@ -68,7 +68,7 @@
 #[must_use = "打标的结局要经 `failure_note` 说出来（打不上 ⇒ 之后 kill / 送键被身份门拒）"]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Outcome {
-    /// 打上了（或从「没有」变成了新值）。带上落地的 `#{session_id}` 句柄。
+    /// 打上了（或从「没有」变成了新值）。带上落地的窗格句柄。
     Tagged(String),
     /// 已经是这个值了 —— **不重复写**。启动重扫时每个会话都会走一遍这里，
     /// 免掉「已经对了还再起一次 `tmux`」。
@@ -255,10 +255,9 @@ pub(crate) fn tag(pid: u32, sid: &str) -> Outcome {
     if probed.ccm_sid == sid {
         return Outcome::AlreadyCurrent;
     }
-    // ★ 对 `#{session_id}` **句柄**下手，不对名字 —— 与 `gate` / `kill` 同一条纪律：
-    // 名字在探测与动手之间可能被重新绑定到别的会话，句柄不会（server 生命周期内唯一、不复用）。
-    let target = probed.session_id.clone();
-    set_sid(door::tmux(), target, sid)
+    // ★ 对窗格**句柄**（`%N`，server 生命周期内唯一、不复用）下手，不对名字 —— 与 `gate` / `kill` 同一条纪律。
+    // 打在窗格上：同一个会话里的几个 claude 各挂各的，不互相覆盖（会话级单值会让对账来回改写、重探不停）。
+    set_sid(door::tmux(), pane, sid)
 }
 
 /// 打标路上起 tmux 的唯一口（探测与写都经 `door::tmux`）。
@@ -268,14 +267,14 @@ pub(crate) fn tag(pid: u32, sid: &str) -> Outcome {
 #[cfg_attr(test, path = "../../../tests/backend/control/identity_tag_door.rs")]
 pub(crate) mod door;
 
-/// 真写那一下：`set-option -t <句柄> <事实键> <sid>`。
+/// 真写那一下：`set-option -p -t <窗格句柄> <事实键> <sid>`。
 ///
 /// 〔同形〕tmux 的 stderr **收下来进原因**（原先丢进 `Stdio::null()`，
 /// 失败只剩一个退出码 —— 「为什么没打上」要靠猜）。`cmd` 由调用方造（生产 = `Command::new("tmux")`），
 /// 判据换一个假 tmux 的绝对路径进来，不碰进程级 `PATH`（`gate_tests` 头注写过为什么不能 `set_var`）。
 fn set_sid(mut cmd: std::process::Command, target: String, sid: &str) -> Outcome {
     match cmd
-        .args(["set-option", "-t", &target, "@ccm_sid", sid])
+        .args(["set-option", "-p", "-t", &target, "@ccm_sid", sid])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())

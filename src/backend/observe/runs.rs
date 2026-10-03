@@ -603,19 +603,16 @@ impl RunTrack {
             return None;
         }
         if !self.children.contains_key(p) {
-            let parents: Vec<(String, PathBuf)> = self
+            // 新长出来的子运行记录：只认这一家说得出「属于哪份父记录」的形状，且只在那一份底下找（不是每个事件都把全部会话扫一遍）。
+            let parent = self.faces.owner(p)?;
+            let sid = self
                 .parents
                 .iter()
-                .flat_map(|(sid, ps)| ps.iter().map(move |p| (sid.clone(), p.clone())))
-                .collect();
-            let mut changed: Vec<String> = Vec::new();
-            for (sid, parent) in parents {
-                if self.discover_under(&sid, &parent) {
-                    changed.push(sid);
-                }
-            }
-            let sid = self.children.get(p).map(|c| c.sid.clone())?;
-            return Some((sid.clone(), changed.contains(&sid)));
+                .find(|(_, ps)| ps.contains(&parent))
+                .map(|(sid, _)| sid.clone())?;
+            let changed = self.discover_under(&sid, &parent);
+            self.children.contains_key(p).then_some(())?;
+            return Some((sid, changed));
         }
         let sid = self.children.get(p).map(|c| c.sid.clone())?;
         let changed = self.read_child(p);

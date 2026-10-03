@@ -3,6 +3,8 @@ use super::*;
 fn row(id: &str, name: &str, sid: &str, client: &str, program: &str) -> TermRow {
     TermRow {
         id: id.into(),
+        pane: None,
+        shared: false,
         name: name.into(),
         windows: 1,
         activity: 100,
@@ -38,7 +40,7 @@ fn codes_of(name: &str) -> Vec<String> {
 /// 名单原文 ⇒ 行：读得懂的按名字排好；读不懂的不猜、记成「没报全」。
 #[test]
 fn the_list_reads_only_well_formed_rows_and_says_when_it_is_partial() {
-    let (rows, odd) = parse_rows("$2\tb-cc\t1\t5\t\t\t\tbash\t/b\tt\n$1\ta-cc\t2\t6\ts\tclaude\tccm\tclaude\t/a\twith\ttab\n");
+    let (rows, odd) = parse_rows("$2\t%2\t1\t1\tb-cc\t1\t5\t\t\t\tbash\t/b\tt\n$1\t%1\t1\t1\ta-cc\t2\t6\ts\tclaude\tccm\tclaude\t/a\twith\ttab\n");
     assert!(!odd);
     assert_eq!(
         rows.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
@@ -50,13 +52,52 @@ fn the_list_reads_only_well_formed_rows_and_says_when_it_is_partial() {
     );
     assert_eq!(rows[0].windows, 2);
     for bad in [
-        "x\tno-dollar\t1\t1\t\t\t\tsh\t/\tt\n",
-        "$1\tshort\t1\n",
-        "$1\tn\tW\t1\t\t\t\tsh\t/\tt\n",
+        "x\t%0\t1\t1\tno-dollar\t1\t1\t\t\t\tsh\t/\tt\n",
+        "$1\tno-pct\t1\t1\tn\t1\t1\t\t\t\tsh\t/\tt\n",
+        "$1\t%1\t1\t1\tshort\t1\n",
+        "$1\t%1\t1\t1\tn\tW\t1\t\t\t\tsh\t/\tt\n",
     ] {
         let (rows, odd) = parse_rows(bad);
         assert!(rows.is_empty() && odd, "{bad:?}");
     }
+}
+
+/// 一个 tmux 会话里几个窗格各跑一个 claude：每个挂着 sid 的窗格各是一个终端（句柄带窗格、对它下手），活动窗格是个 shell 也不影响；
+/// 同一个 sid 挂在几个窗格上（会话那一级的旧标签往下透）只算一个；一个都没挂的会话还是一个终端（看它当前的窗格）。
+#[test]
+fn each_pane_that_carries_a_sid_is_its_own_terminal() {
+    let text = "$1\t%1\t0\t1\ttwo-cc\t1\t9\tsid-a\tclaude\tccm\tclaude\t/p\ta\n\
+                $1\t%2\t0\t1\ttwo-cc\t1\t9\tsid-b\tclaude\tccm\tclaude\t/p\tb\n\
+                $1\t%3\t1\t1\ttwo-cc\t1\t9\t\tclaude\tccm\tbash\t/p\tsh\n\
+                $2\t%4\t0\t1\told-cc\t1\t9\tsid-l\t\t\tbash\t/q\tx\n\
+                $2\t%5\t1\t1\told-cc\t1\t9\tsid-l\t\t\tclaude\t/q\ty\n\
+                $3\t%6\t0\t1\tplain\t1\t9\t\t\t\tvim\t/r\tv\n\
+                $3\t%7\t1\t1\tplain\t1\t9\t\t\t\tbash\t/r\tw\n";
+    let (rows, odd) = parse_rows(text);
+    assert!(!odd);
+    let got: Vec<(String, &str, &str, bool)> = rows
+        .iter()
+        .map(|r| (r.handle(), r.target(), r.sid.as_str(), r.shared))
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            ("tmux-2-5".to_string(), "%5", "sid-l", false),
+            ("tmux-3".to_string(), "$3", "", false),
+            ("tmux-1-1".to_string(), "%1", "sid-a", true),
+            ("tmux-1-2".to_string(), "%2", "sid-b", true),
+        ]
+    );
+    assert_eq!(rows[1].program, "bash", "没挂 sid 的会话看它当前的窗格");
+    let t = |v: Value| target_of(&v).expect("形状对");
+    assert_eq!(
+        find(&rows, &t(json!({ "sid": "sid-b" }))),
+        Found::One(&rows[3])
+    );
+    // 结束得了：同会话里还有别的 claude ⇒ 只关这一个窗格（不看窗口数）。
+    let mut wide = rows[2].clone();
+    wide.windows = 3;
+    assert_eq!(terminal_json(&wide, &[], None)["can"]["end"], true);
 }
 
 /// 目标恰好给一个；句柄与 sid 只在名单里对，对不上就是「不在名单」，同一个 sid 落在两个终端上不猜。
@@ -255,7 +296,7 @@ fn colours_become_spans_and_the_fingerprint_ignores_them() {
 fn the_products_match_the_golden() {
     let g = golden();
     let l = &g["terminals-list"];
-    let (rows, odd) = parse_rows(l["sessions"].as_str().unwrap());
+    let (rows, odd) = parse_rows(l["panes"].as_str().unwrap());
     let clients = parse_clients(l["clients"].as_str().unwrap());
     let who = crate::control::gate::requester_of(&l["request"]).unwrap();
     let got = list_reply(&rows, &clients, !odd, who.as_deref());
@@ -509,4 +550,111 @@ fn on_a_real_tmux_the_three_commands_do_what_they_say() {
             Err("not_known")
         );
     }
+}
+
+/// 真 tmux：一个 tmux 会话里两个窗格各跑一个「claude」（`cat`，窗格级标签各挂一个 sid），活动窗格是另一个 ⇒
+/// 名单里两个终端；按 sid 抓屏 / 送字都落在挂着它的那个窗格，另一个窗格一个字都没收到；
+/// 名字不像我们铸的会话，sid 只挂在非活动窗格上（活动窗格是个没标签的）⇒ 身份按挂着 sid 的那个窗格判，照样送得进。
+#[test]
+fn on_a_real_tmux_a_sid_reaches_its_own_pane_not_the_active_one() {
+    let iso = Iso::new("panes");
+    let pane_of = |args: &[&str]| -> String {
+        let o = iso.tmux(args);
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        String::from_utf8_lossy(&o.stdout).trim().to_string()
+    };
+    let new = |name: &str| {
+        pane_of(&[
+            "-f",
+            "/dev/null",
+            "new-session",
+            "-d",
+            "-x",
+            "80",
+            "-y",
+            "10",
+            "-s",
+            name,
+            "-P",
+            "-F",
+            "#{pane_id}",
+            "cat",
+        ])
+    };
+    let a = new("dual-cc");
+    let b = pane_of(&[
+        "split-window",
+        "-t",
+        "=dual-cc:",
+        "-P",
+        "-F",
+        "#{pane_id}",
+        "cat",
+    ]);
+    iso.tmux(&["set-option", "-p", "-t", &a, "@ccm_sid", "sid-a"]);
+    iso.tmux(&["set-option", "-p", "-t", &b, "@ccm_sid", "sid-b"]);
+    iso.tmux(&["select-pane", "-t", &b]);
+    let c = new("box");
+    let d = pane_of(&[
+        "split-window",
+        "-t",
+        "=box:",
+        "-P",
+        "-F",
+        "#{pane_id}",
+        "cat",
+    ]);
+    iso.tmux(&["set-option", "-p", "-t", &c, "@ccm_sid", "sid-c"]);
+    iso.tmux(&["select-pane", "-t", &d]);
+
+    let l = list_on(iso.on(), &json!({})).unwrap();
+    let sids: Vec<String> = l["terminals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| format!("{}:{}", t["tmux_name"], t["session"]["sid"]))
+        .collect();
+    assert_eq!(
+        sids,
+        [
+            "\"box\":\"sid-c\"",
+            "\"dual-cc\":\"sid-a\"",
+            "\"dual-cc\":\"sid-b\""
+        ],
+        "{l}"
+    );
+    let handle = |sid: &str| -> String {
+        l["terminals"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["session"]["sid"] == sid)
+            .unwrap()["terminal"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    let (ha, hb, hc) = (handle("sid-a"), handle("sid-b"), handle("sid-c"));
+
+    // 按 sid 送字：落在 A 的窗格（活动的是 B）。
+    let r = input_on(iso.on(), &json!({ "sid": "sid-a", "text": "to-a-zq" })).unwrap();
+    assert_eq!(r, json!({ "result": "delivered" }));
+    assert!(iso.shows(&ha, "to-a-zq"), "送进去的字没出现在 A 那一屏");
+    let shot_a = preview_on(iso.on(), &json!({ "sid": "sid-a", "color": false })).unwrap();
+    assert!(
+        shot_a["lines"].to_string().contains("to-a-zq"),
+        "按 sid 抓的不是 A 那一屏"
+    );
+    let shot_b = preview_on(iso.on(), &json!({ "terminal": hb, "color": false })).unwrap();
+    assert!(
+        !shot_b["lines"].to_string().contains("to-a-zq"),
+        "给 A 的字落进了活动窗格 B"
+    );
+
+    // 名字不像我们铸的、活动窗格没标签：按挂着 sid 的那个窗格判身份 ⇒ 送得进，且落在它上面。
+    let r = input_on(iso.on(), &json!({ "sid": "sid-c", "text": "to-c-zq" })).unwrap();
+    assert_eq!(r, json!({ "result": "delivered" }));
+    assert!(iso.shows(&hc, "to-c-zq"));
+    let p = pane_of(&["capture-pane", "-p", "-t", &d]);
+    assert!(!p.contains("to-c-zq"), "给 C 的字落进了活动窗格");
 }

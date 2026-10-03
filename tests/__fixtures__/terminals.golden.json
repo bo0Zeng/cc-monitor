@@ -8,7 +8,7 @@
     "request": {
       "client": "mobile"
     },
-    "sessions": "$1\tdemo-cc\t1\t100\tsid-a\tclaude\tccm\tclaude\t/p\tdemo title\n$2\tpipe-x\t1\t200\tsid-b\tclaude\tmobile\tbash\t/q\tq\n$3\tother\t2\t300\t\t\tdesktop\tvim\t/r\tr\n",
+    "panes": "$1\t%1\t1\t1\tdemo-cc\t1\t100\tsid-a\tclaude\tccm\tclaude\t/p\tdemo title\n$2\t%2\t1\t1\tpipe-x\t1\t200\tsid-b\tclaude\tmobile\tbash\t/q\tq\n$3\t%3\t1\t1\tother\t2\t300\t\t\tdesktop\tvim\t/r\tr\n",
     "clients": "$1\t50\t90\n",
     "reply": {
       "complete": true,
@@ -41,7 +41,7 @@
             "mine": true
           },
           "state": "running",
-          "terminal": "tmux-1",
+          "terminal": "tmux-1-1",
           "title": "demo title",
           "tmux_name": "demo-cc"
         },
@@ -93,7 +93,7 @@
             "mine": true
           },
           "state": "program-exited",
-          "terminal": "tmux-2",
+          "terminal": "tmux-2-2",
           "title": "bash",
           "tmux_name": "pipe-x"
         }

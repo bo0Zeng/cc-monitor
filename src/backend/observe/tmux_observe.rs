@@ -47,13 +47,14 @@ pub(super) fn classify_with_server_state(
     }
 }
 
-/// B2：`tmux ls -F` 格式串——**与 monitor `tmux::TMUX_LS_FMT` 逐字对齐**（真 TAB 分列，monitor
-/// `parse_tmux_ls`〔散文墓碑〕 靠它解析）。name⇥path⇥cmd⇥attached⇥windows⇥@ccm_sid。**改此须同步 monitor（双写点）。**
-const TMUX_LS_FMT: &str = "#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{?session_attached,1,0}\t#{session_windows}\t#{@ccm_sid}";
+/// B2：`tmux ls -F` 格式串（真 TAB 分列）。name⇥path⇥cmd⇥attached⇥windows⇥@ccm_sid（活动窗格的）⇥session_id⇥各窗格的 @ccm_sid。
+///
+/// `@ccm_sid` 打在**窗格**上（一个会话里可以跑几个 claude）：末列逐窗口、逐窗格展开（解析见
+/// `common::session_snapshot::pane_sids`）；`#{session_id}` 是会话账本认会话的句柄（会话改名它不变）。
+const TMUX_LS_FMT: &str = "#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{?session_attached,1,0}\t#{session_windows}\t#{@ccm_sid}\t#{session_id}\t#{W:#{P:#{@ccm_sid} }}";
 
-/// `TMUX_LS_FMT` 的列数 —— [`tab_underflow`] 的 N。**改格式串必须同步这个数**
-/// （而格式串本身是红线双写点，见上面那条头注）。
-const TMUX_LS_FMT_FIELDS: usize = 6;
+/// `TMUX_LS_FMT` 的列数 —— [`tab_underflow`] 的 N。**改格式串必须同步这个数**。
+pub(crate) const TMUX_LS_FMT_FIELDS: usize = 8;
 
 // ★★ **K-R12 下一拍（09-04）：这两个口径的家搬到了 `crate::common::tmux_utf8`。**
 //
@@ -410,33 +411,39 @@ fn session_names(raw: &str) -> std::collections::BTreeSet<String> {
         .collect()
 }
 
-/// `K-R96`：把这一份观测切成**那张唯一的会话快照**认的行
-/// （`crate::common::session_snapshot::SessionRow` = 会话名 ＋ `@ccm_sid`）。
-///
-/// 列的位置由 `TMUX_LS_FMT` 定（**红线：不改它**）：名字在第 0 列、`@ccm_sid` 在**末**列。
-/// 这里刻意**按 `TMUX_LS_FMT_FIELDS` 取那一列**而不是写死 `5`，也不是 `last()`：
-/// - 写死 `5` 是第二处「列数」常量，与格式串漂开了不会红；
-/// - `last()` 在段数**过溢**（有人把 `@ccm_sid` 设成含 TAB 的值）时会取到半截。
-///
-/// 段数下溢的行**整行丢掉** —— 与 [`session_names`] 的旁邻 `classify_tmux_probe` 同一条
-/// 处置（`K-R12 J1`：通道被改写就不当好数据）。这里再挡一次是因为本函数也被
-/// 「raw 从别处来」的路径调得到，不许假设上游已经筛过。
+/// 一行 `tmux ls` 切成列；段数不等于 `TMUX_LS_FMT_FIELDS`（下溢 = 通道被改写 · 过溢 = 路径里有真 TAB）或名字空 ⇒ 整行丢掉
+/// （`K-R12 J1`：通道被改写就不当好数据；本函数也被「raw 从别处来」的路径调得到，不许假设上游已经筛过）。
+/// 回 `(会话名, 句柄, 这个会话挂着的 sid)`，sid 活动窗格那个在前。
+fn ls_row(line: &str) -> Option<(&str, &str, Vec<String>)> {
+    let cols: Vec<&str> = line.split('\t').collect();
+    if cols.len() != TMUX_LS_FMT_FIELDS {
+        return None;
+    }
+    let name = cols[0].trim();
+    if name.is_empty() || name == "NO_TMUX" {
+        return None;
+    }
+    let sids = crate::common::session_snapshot::pane_sids(cols[5], cols[7]);
+    Some((name, cols[6].trim(), sids))
+}
+
+/// `K-R96`：把这一份观测切成**那张唯一的会话快照**认的行（`crate::common::session_snapshot::SessionRow`：
+/// 会话名 ＋ 它某个窗格上的 `@ccm_sid`，挂着几个就几行）。
 pub(crate) fn session_rows(raw: &str) -> Vec<crate::common::session_snapshot::SessionRow> {
     raw.lines()
-        .filter_map(|line| {
-            let cols: Vec<&str> = line.split('\t').collect();
-            if cols.len() != TMUX_LS_FMT_FIELDS {
-                return None;
-            }
-            let name = cols[0].trim();
-            if name.is_empty() || name == "NO_TMUX" {
-                return None;
-            }
-            Some(crate::common::session_snapshot::SessionRow {
-                name: name.to_string(),
-                ccm_sid: cols[TMUX_LS_FMT_FIELDS - 1].trim().to_string(),
-            })
-        })
+        .filter_map(ls_row)
+        .flat_map(|(name, _, sids)| crate::common::session_snapshot::rows_of(name, sids))
+        .collect()
+}
+
+/// 会话账本读的那一份：会话句柄（`#{session_id}`，改名不变）→ 它各窗格挂着的 sid。
+pub(crate) fn ledger_view(
+    raw: &str,
+) -> std::collections::BTreeMap<String, std::collections::BTreeSet<String>> {
+    raw.lines()
+        .filter_map(ls_row)
+        .filter(|(_, id, _)| !id.is_empty())
+        .map(|(_, id, sids)| (id.to_string(), sids.into_iter().collect()))
         .collect()
 }
 

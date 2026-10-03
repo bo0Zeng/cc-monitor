@@ -61,10 +61,10 @@ impl Rig {
                 None => Ok(json!({ "removed": [], "failed": [], "unread": null })),
             }
         };
-        let send_into = |name: &str, line: &str| -> Result<(), CmdErr> {
-            self.launched
-                .borrow_mut()
-                .push(json!({ "mode": "send-into", "name": name, "payload": line }));
+        let send_into = |name: &str, sid: &str, line: &str| -> Result<(), CmdErr> {
+            self.launched.borrow_mut().push(
+                json!({ "mode": "send-into", "name": name, "payload": line, "ccm_sid": sid }),
+            );
             Ok(())
         };
         // 真 ccm：建会话撞名 ⇒ 退出码 3（响亮失败）。
@@ -276,11 +276,11 @@ fn start_in_tmux_is_the_single_tmux_item_without_attaching() {
         ]
     );
     let remote = json!({ "kind": "account", "name": "work", "configDir": "/h/.cc/work" });
-    // 空 tmux：键进去的是单个就地 resume 那一行（直路、不带 cwd）。
+    // 空 tmux：键进去的是单个就地 resume 那一行（直路、不带 cwd），落在挂着 B 的那个窗格。
     assert_eq!(
         *rig.launched.borrow(),
         vec![
-            json!({ "mode": "send-into", "name": "b-cc", "payload": single_line(B, None, remote.clone()) })
+            json!({ "mode": "send-into", "name": "b-cc", "payload": single_line(B, None, remote.clone()), "ccm_sid": B })
         ]
     );
     // 都不是：交的是单个「在 tmux 里 Resume」那一行（界面经 `launch-render-cli` 拿到的同一行），只多一个 `--detach`。
@@ -353,4 +353,21 @@ fn a_window_start_renders_what_the_single_item_renders() {
     .unwrap();
     assert_eq!(out["results"][0]["cmd"], single["cmd"]);
     assert_eq!(out["results"][0]["session"], "proj-cc-2");
+}
+
+/// 一个 tmux 会话里几个窗格各挂一个 sid：空着的那个（agent 已退）就地接回时，送字带着它的 sid
+/// （`launch send-into` 按 sid 落在挂着它的那个窗格），不只按会话名送（那会落在会话当前的窗格 —— 多半是另一个正在跑的 claude）。
+#[test]
+fn an_idle_sid_in_one_pane_of_a_shared_session_is_typed_with_its_sid() {
+    let acct = json!({ "kind": "named", "name": "work", "configDir": "/h/.cc/work" });
+    let rows = vec![row("two-cc", Some(A), true), row("two-cc", Some(B), false)];
+    assert_eq!(standing(&rows, B), Standing::Idle("two-cc".into()));
+    let rig = Rig::new(Some(rows));
+    let args = json!({ "mode": "tmux", "local": false, "items": [item(B, acct)] });
+    let out = rig.run(|d| start(&args, d)).unwrap();
+    assert_eq!(outcomes(&out), vec![(B.into(), "done".into(), Value::Null)]);
+    let launched = rig.launched.borrow();
+    assert_eq!(launched.len(), 1);
+    assert_eq!(launched[0]["name"], "two-cc");
+    assert_eq!(launched[0]["ccm_sid"], B, "{launched:?}");
 }

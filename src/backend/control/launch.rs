@@ -84,6 +84,8 @@ pub(crate) struct LaunchRequest {
     pub(crate) name: String,
     pub(crate) payload: String,
     pub(crate) cwd: Option<String>,
+    /// `create-or-attach`：这个会话将要挂的 sid（写成意图键 `@ccm_sid_expect`）；
+    /// `send-into`：键入挂着它的那个窗格（不是会话的当前窗格），身份按那个窗格判。
     pub(crate) ccm_sid: Option<String>,
     /// 哪个 AI（`claude` / `codex`）。落成 tmux 的 `@ccm_agent` 标记。
     ///
@@ -538,7 +540,9 @@ fn run_with(
             //
             // ⚠ 顺序不可反：`admit` 必须在 `type_payload` **之前**。
             // 由 `the_send_into_arm_admits_before_it_types` 钉住。
-            let handle = super::gate::admit(&req.name, &t, req.client.as_deref())?;
+            //   带了 `ccm_sid` ⇒ 句柄是挂着它的那个窗格（一个 tmux 会话里可以有几个 claude），身份也按它判。
+            let handle =
+                super::gate::admit(&req.name, &t, req.ccm_sid.as_deref(), req.client.as_deref())?;
             type_payload(&handle, &req.payload, tmux)?;
             Ok(LaunchOutcome {
                 created: false,

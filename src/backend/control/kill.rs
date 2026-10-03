@@ -31,8 +31,6 @@ use crate::common::child_env::WithoutOwnEnv;
 use copy_core::copy_text;
 use std::process::{Command, Stdio};
 
-use crate::common::tmux_utf8::UTF8_CLIENT_FLAG;
-
 /// 命令级错误：`(code, message)`。与 [`super::launch`] / [`super::gate`] 同型。
 type CmdErr = (&'static str, String);
 
@@ -88,7 +86,8 @@ pub(crate) fn run(
     run_expecting(name, None, requester)
 }
 
-/// 同 [`run`]，另要求句柄上此刻的 `@ccm_sid` 就是 `sid`（批量停按 sid 认出这个名字，认完名字换了人 ⇒ 不杀）。
+/// 同 [`run`]，但按 `sid` 认：要求此刻有窗格挂着它（批量停按 sid 认出这个名字，认完名字换了人 ⇒ 不杀）；
+/// 那个会话里还有别的 claude 窗格 ⇒ 只结束挂着它的窗格（`gate::admit_destructive` 说了算）。
 pub(crate) fn run_as(
     name: &str,
     sid: &str,
@@ -106,12 +105,29 @@ fn run_expecting(
     // ★ Gate 1（`=name:` 精确匹配，`exact_target` 内部）· Gate 2（身份）· Gate 3（windows==1）
     //   ⇒ 通过后拿到句柄。**顺序不可反**：门在 kill 之前，由
     //   `the_kill_path_admits_before_it_kills` 钉住。
-    let handle = super::gate::admit_destructive(name, &target, sid, requester)?;
-    // 杀之前记下这个会话全部 pane 的根进程 pid：杀完按它认 cc-bus 名册里登记在这里的 id（不按会话名猜）。
-    let panes = pane_pids(&handle);
+    let end = super::gate::admit_destructive(name, &target, sid, requester)?;
+    // 结束整个会话，还是只结束挂着那个 sid 的几个窗格（会话里还跑着别的 claude）。都对放行时拿到的句柄下手。
+    let (handle, only) = match end {
+        super::gate::EndAt::Session(h) => (h, None),
+        super::gate::EndAt::Panes(h, ps) => (h, Some(ps)),
+    };
+    let mut argv: Vec<&str> = Vec::new();
+    match &only {
+        None => argv.extend(["kill-session", "-t", &handle]),
+        Some(ps) => {
+            for (i, p) in ps.iter().enumerate() {
+                if i > 0 {
+                    argv.push(";");
+                }
+                argv.extend(["kill-pane", "-t", p.as_str()]);
+            }
+        }
+    }
+    // 杀之前记下要走的那几个 pane 的根进程 pid：杀完按它认 cc-bus 名册里登记在这里的 id（不按会话名猜）。
+    let panes = pane_pids(&handle, only.as_deref());
     let out = Command::new("tmux")
         .without_own_env()
-        .args(["kill-session", "-t", &handle])
+        .args(&argv)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
@@ -135,30 +151,13 @@ fn run_expecting(
     ))
 }
 
-/// 这个会话（句柄）全部 pane 的根进程 pid。只读 tmux；问不到 ⇒ 空（顺手注销那一步随之不做，不影响杀）。
-/// `INVARIANTS §49`：argv 直传 ⇒ UTF-8 旗排在子命令前（读的虽是数字，照表带）。
-fn pane_pids(handle: &str) -> Vec<u32> {
-    Command::new("tmux")
-        .without_own_env()
-        .args([
-            UTF8_CLIENT_FLAG,
-            "list-panes",
-            "-F",
-            "#{pane_pid}",
-            "-s",
-            "-t",
-            handle,
-        ])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .map(|o| {
-            String::from_utf8_lossy(&o.stdout)
-                .lines()
-                .filter_map(|l| l.trim().parse().ok())
-                .collect()
-        })
-        .unwrap_or_default()
+/// 要走的那几个 pane 的根进程 pid（`only` ＝ 只结束这几个窗格；`None` ＝ 整个会话）。问不到 ⇒ 空（顺手注销那一步随之不做，不影响杀）。
+fn pane_pids(handle: &str, only: Option<&[String]>) -> Vec<u32> {
+    super::gate::panes_on(None, handle)
+        .into_iter()
+        .filter(|p| only.is_none_or(|ps| ps.contains(&p.pane)))
+        .map(|p| p.pid)
+        .collect()
 }
 
 /// 入方向命令的入口：`args` → 结局 JSON。
@@ -167,7 +166,10 @@ pub(crate) fn kill_for_inbound(
 ) -> Result<serde_json::Value, (String, String)> {
     let name = parse_name(args).map_err(|(c, m)| (c.to_string(), m))?;
     let client = super::gate::requester_of(args).map_err(|(c, m)| (c.to_string(), m))?;
-    let bus = run(&name, client.as_deref()).map_err(|(c, m)| (c.to_string(), m))?;
+    // 带了 `sid` ⇒ 结束挂着它的那个窗格（会话里还有别的 claude 窗格时不关整个会话）。
+    let sid = super::gate::sid_of(args).map_err(|(c, m)| (c.to_string(), m))?;
+    let bus = run_expecting(&name, sid.as_deref(), client.as_deref())
+        .map_err(|(c, m)| (c.to_string(), m))?;
     Ok(reply(&name, &bus))
 }
 

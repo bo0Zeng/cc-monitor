@@ -18,13 +18,13 @@
 // 用一个手动 resolve 的 deferred 把「回包」按在半空，就能确定地造出那个时序。
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const capture = vi.fn<(args: { origin: string; target: string }) => Promise<string>>();
+const capture = vi.fn<(args: { origin: string; target: string; sid?: string }) => Promise<string>>();
 const toast = vi.fn();
 
 // 抓屏从 monitor 的 `capture_remote_pane`〔散文墓碑〕换成界面直接经通道问（`src/frontend/ui/tmux-control.ts`）：
 //   本文件只关心「回包晚于关闭」这条竞态，于是把那一问整个替掉（通道那一跳的判据在 `tests/frontend/ui/tmux-control.vitest.ts`）。
 vi.mock("../../../../src/frontend/ui/tmux-control", () => ({
-  capturePane: (origin: string, target: string) => capture({ origin, target }),
+  capturePane: (origin: string, target: string, sid?: string) => capture(sid === undefined ? { origin, target } : { origin, target, sid }),
   saidOfControl: (e: unknown) => (e instanceof Error ? e.message : String(e)),
 }));
 vi.mock("../../../../src/frontend/ui/error-toast", () => ({
@@ -62,6 +62,17 @@ describe("远端画面预览：正路", () => {
     await openPanePreview("devbox", "%1");
     expect(capture, "抓屏命令一次都没被调 —— 夹具没走通").toHaveBeenCalledTimes(1);
     expect(preText(overlayEl())).toBe("hello-pane");
+  });
+
+  it("从 tab 打开的带着会话 ID ⇒ 抓的是挂着它的那个窗格（每次刷新都带）", async () => {
+    capture.mockResolvedValue("x");
+    await openPanePreview("devbox", "two-cc", "sid-b");
+    (overlayEl()?.querySelector("button.pane-preview-btn") as HTMLButtonElement | null)?.click(); // 头一个是「刷新」
+    await Promise.resolve();
+    expect(capture.mock.calls.map(([a]) => a)).toEqual([
+      { origin: "devbox", target: "two-cc", sid: "sid-b" },
+      { origin: "devbox", target: "two-cc", sid: "sid-b" },
+    ]);
   });
 
   it("抓到空串 → 明确写「画面为空」，不是留一个空白框", async () => {

@@ -10,33 +10,47 @@ fn names(v: &[&str]) -> Option<BTreeSet<String>> {
     Some(v.iter().map(|s| s.to_string()).collect())
 }
 
-/// ★ `K-R96`：切给那张唯一会话快照的行 —— 名字取第 0 列、`@ccm_sid` 取**末**列。
+/// ★ `K-R96`：切给那张唯一会话快照的行 —— 名字取第 0 列；sid 取活动窗格那列 ＋ 各窗格那列（挂着几个就几行，活动窗格那个在前）。
 ///
 /// 顺带钉住两条：段数不等于 `TMUX_LS_FMT_FIELDS` 的行**整行丢掉**（下溢是通道被改写、
-/// 过溢是有人往 `@ccm_sid` 里塞了 TAB —— 两种都不许当好数据）；`NO_TMUX` 哨兵不是会话。
+/// 过溢是路径里有真 TAB —— 两种都不许当好数据）；`NO_TMUX` 哨兵不是会话。
 #[test]
 fn session_rows_carry_the_name_and_the_ccm_sid_and_nothing_else() {
     use crate::common::session_snapshot::SessionRow;
-    let raw = "s1\t/p\tclaude\t1\t2\tsid-a\ns2\t/q\tbash\t0\t1\t\n";
+    let row = |name: &str, sid: &str| SessionRow {
+        name: name.into(),
+        ccm_sid: sid.into(),
+    };
+    let raw = "s1\t/p\tclaude\t1\t2\tsid-a\t$0\tsid-a \ns2\t/q\tbash\t0\t1\t\t$1\t \n\
+               s3\t/r\tzsh\t0\t2\tsid-b\t$2\tsid-c  sid-b \n";
     assert_eq!(
         session_rows(raw),
         vec![
-            SessionRow {
-                name: "s1".into(),
-                ccm_sid: "sid-a".into()
-            },
-            SessionRow {
-                name: "s2".into(),
-                ccm_sid: String::new()
-            },
+            row("s1", "sid-a"),
+            row("s2", ""),
+            row("s3", "sid-b"),
+            row("s3", "sid-c")
         ]
     );
     assert!(session_rows("NO_TMUX\n").is_empty(), "哨兵不是会话");
     assert!(session_rows("只有一段\n").is_empty(), "下溢的行不当好数据");
     assert!(
-        session_rows("s\t/p\tc\t1\t2\tsid\t多出来一段\n").is_empty(),
-        "过溢的行不当好数据（`last()` 那种写法会在这里取到半截）"
+        session_rows("s\t/p\tc\t1\t2\tsid\t$0\tsid \t多出来一段\n").is_empty(),
+        "过溢的行不当好数据"
     );
+}
+
+/// 会话账本那一份：按会话句柄记它各窗格挂着的那一组（改名不变的那一格当键）。
+#[test]
+fn the_ledger_view_is_keyed_by_the_session_handle() {
+    let raw = "work\t/p\tclaude\t1\t2\tsid-a\t$4\tsid-b sid-a \nidle\t/q\tbash\t0\t1\t\t$7\t \n";
+    let v = ledger_view(raw);
+    assert_eq!(v.len(), 2);
+    assert_eq!(
+        v.get("$4").map(|s| s.iter().cloned().collect::<Vec<_>>()),
+        Some(vec!["sid-a".to_string(), "sid-b".to_string()])
+    );
+    assert_eq!(v.get("$7").map(|s| s.len()), Some(0));
 }
 
 /// ★★ `K-R96` 死值验（observe 这一侧）：**观测无效时快照一个字都不许动。**
@@ -53,7 +67,7 @@ fn an_invalid_observation_leaves_the_shared_snapshot_untouched() {
     // 先让快照里有点东西（走 `Sessions` 那一支发布）。
     let _ = diff_closed_into(
         &mut prev,
-        &TmuxObservation::Sessions("keep-cc\t/p\tclaude\t1\t1\tsid-k\n".into()),
+        &TmuxObservation::Sessions("keep-cc\t/p\tclaude\t1\t1\tsid-k\t$2\tsid-k \n".into()),
         &snap,
     );
     let warmed = snap.peek();
@@ -81,7 +95,7 @@ fn an_invalid_observation_leaves_the_shared_snapshot_untouched() {
 
 #[test]
 fn session_names_takes_first_column_only() {
-    let raw = "s1\t/p\tclaude\t1\t2\tsid-a\ns2\t/q\tbash\t0\t1\t\n";
+    let raw = "s1\t/p\tclaude\t1\t2\tsid-a\t$3\tsid-a \ns2\t/q\tbash\t0\t1\t\t$4\t \n";
     assert_eq!(
         session_names(raw),
         ["s1", "s2"].iter().map(|s| s.to_string()).collect()
@@ -99,7 +113,7 @@ fn diff_reports_only_the_disappeared_one() {
     let mut prev = names(&["a", "b", "c"]);
     let closed = diff_closed(
         &mut prev,
-        &TmuxObservation::Sessions("a\t/p\tsh\t0\t1\t\nc\t/p\tsh\t0\t1\t\n".into()),
+        &TmuxObservation::Sessions("a\t/p\tsh\t0\t1\t\t$5\t \nc\t/p\tsh\t0\t1\t\t$6\t \n".into()),
     );
     assert_eq!(closed, vec!["b".to_string()]);
     assert_eq!(prev, names(&["a", "c"]));
@@ -111,7 +125,7 @@ fn diff_reports_all_disappeared_at_once() {
     let mut prev = names(&["a", "b", "c", "d"]);
     let closed = diff_closed(
         &mut prev,
-        &TmuxObservation::Sessions("b\t/p\tsh\t0\t1\t\n".into()),
+        &TmuxObservation::Sessions("b\t/p\tsh\t0\t1\t\t$7\t \n".into()),
     );
     assert_eq!(
         closed,
@@ -148,7 +162,7 @@ fn first_observation_reports_nothing() {
     let mut prev = None;
     let closed = diff_closed(
         &mut prev,
-        &TmuxObservation::Sessions("a\t/p\tsh\t0\t1\t\n".into()),
+        &TmuxObservation::Sessions("a\t/p\tsh\t0\t1\t\t$8\t \n".into()),
     );
     assert!(closed.is_empty());
     assert_eq!(prev, names(&["a"]));
@@ -158,7 +172,7 @@ fn first_observation_reports_nothing() {
 #[test]
 fn repeated_identical_observation_reports_nothing() {
     let mut prev = names(&["a"]);
-    let obs = TmuxObservation::Sessions("a\t/p\tsh\t0\t1\t\n".into());
+    let obs = TmuxObservation::Sessions("a\t/p\tsh\t0\t1\t\t$9\t \n".into());
     assert!(diff_closed(&mut prev, &obs).is_empty());
     assert!(diff_closed(&mut prev, &obs).is_empty());
 }
@@ -169,7 +183,7 @@ fn new_session_is_not_a_death() {
     let mut prev = names(&["a"]);
     let closed = diff_closed(
         &mut prev,
-        &TmuxObservation::Sessions("a\t/p\tsh\t0\t1\t\nb\t/p\tsh\t0\t1\t\n".into()),
+        &TmuxObservation::Sessions("a\t/p\tsh\t0\t1\t\t$10\t \nb\t/p\tsh\t0\t1\t\t$11\t \n".into()),
     );
     assert!(closed.is_empty());
     assert_eq!(prev, names(&["a", "b"]));
@@ -274,8 +288,8 @@ fn tmux_server_query_yields_nothing_without_a_server() {
 fn tmux_probe_classifies_four_states() {
     // rc=0 + 非空 → 有会话
     assert_eq!(
-        classify_tmux_probe(Some(0), "s1\t/p\tclaude\t1\t1\tsid-a\n"),
-        TmuxObservation::Sessions("s1\t/p\tclaude\t1\t1\tsid-a\n".to_string())
+        classify_tmux_probe(Some(0), "s1\t/p\tclaude\t1\t1\tsid-a\t$12\tsid-a \n"),
+        TmuxObservation::Sessions("s1\t/p\tclaude\t1\t1\tsid-a\t$12\tsid-a \n".to_string())
     );
     // rc=0 + 空 → **server 活但零会话**（exit-empty off）。P3 起与 rc=1 分开。
     assert_eq!(
@@ -333,10 +347,10 @@ fn tmux_probe_classifies_four_states() {
 fn a_dirty_tmux_channel_is_unobservable_never_sessions() {
     // 真 tmux 3.4 + POSIX 客户端打出来的字节（见头注）。六列塌成 1 段。
     const DIRTY: &str = "kr12_/tmp/kr12dv/____/proj_bash_0_1_cc-deadval1\n";
-    // 同一台 server、加了 `-u`/`LC_ALL` 之后的同一行。
-    const CLEAN: &str = "kr12\t/tmp/kr12dv/文档/proj\tbash\t0\t1\tcc-deadval1\n";
-    // 合法的**过溢**：cwd 里有一个真 TAB ⇒ 7 段。`!= 6` 会误伤它，`< 6` 不会。
-    const OVERFLOW: &str = "kr12\t/tmp/a\tb\tbash\t0\t1\tcc-deadval1\n";
+    // 同一台 server、加了 `-u`/`LC_ALL` 之后的同一行（列数跟着今天的格式串补到 8 列）。
+    const CLEAN: &str = "kr12\t/tmp/kr12dv/文档/proj\tbash\t0\t1\tcc-deadval1\t$14\tcc-deadval1 \n";
+    // 合法的**过溢**：cwd 里有一个真 TAB ⇒ 9 段。`!= 8` 会误伤它，`< 8` 不会。
+    const OVERFLOW: &str = "kr12\t/tmp/a\tb\tbash\t0\t1\tcc-deadval1\t$14\tcc-deadval1 \n";
 
     assert_eq!(
         classify_tmux_probe(Some(0), DIRTY),
@@ -345,20 +359,20 @@ fn a_dirty_tmux_channel_is_unobservable_never_sessions() {
     );
     assert!(
         matches!(classify_tmux_probe(Some(0), CLEAN), TmuxObservation::Sessions(ref s) if s == CLEAN),
-        "正对照：干净的六段必须照常放行，否则买到的是「门坏了」而不是「门对了」"
+        "正对照：干净的八段必须照常放行，否则买到的是「门坏了」而不是「门对了」"
     );
     assert!(
         matches!(
             classify_tmux_probe(Some(0), OVERFLOW),
             TmuxObservation::Sessions(_)
         ),
-        "过溢是**合法内容**（cwd 里带真 TAB）⇒ 必须放行。这一格钉的是「下溢」而不是「不等于 6」"
+        "过溢是**合法内容**（cwd 里带真 TAB）⇒ 必须放行。这一格钉的是「下溢」而不是「不等于 8」"
     );
 
     // ── 第二段：量**后果**，不是量分支 ────────────────────────────────
     // 先用一份干净观测建立快照，再喂一份脏的，断言**一个会话都没被报死**。
     let mut prev = None;
-    let first = "s1\t/p\tclaude\t1\t1\tsid-a\ns2\t/q\tbash\t0\t1\t\n";
+    let first = "s1\t/p\tclaude\t1\t1\tsid-a\t$15\tsid-a \ns2\t/q\tbash\t0\t1\t\t$16\t \n";
     let closed = diff_closed(&mut prev, &classify_tmux_probe(Some(0), first));
     assert!(closed.is_empty(), "第一次观测不该报任何死亡");
     assert_eq!(
@@ -389,19 +403,19 @@ fn a_dirty_tmux_channel_is_unobservable_never_sessions() {
 fn the_underflow_predicate_only_fires_downward() {
     assert!(
         tab_underflow("一段而已", TMUX_LS_FMT_FIELDS),
-        "1 < 6 ⇒ 下溢"
+        "1 < 8 ⇒ 下溢"
     );
     assert!(
-        tab_underflow("a\tb\tc\td\te", TMUX_LS_FMT_FIELDS),
-        "5 < 6 ⇒ 下溢"
+        tab_underflow("a\tb\tc\td\te\tf\tg", TMUX_LS_FMT_FIELDS),
+        "7 < 8 ⇒ 下溢"
     );
     assert!(
-        !tab_underflow("a\tb\tc\td\te\tf", TMUX_LS_FMT_FIELDS),
-        "恰好 6 ⇒ 不红"
+        !tab_underflow("a\tb\tc\td\te\tf\tg\th", TMUX_LS_FMT_FIELDS),
+        "恰好 8 ⇒ 不红"
     );
     assert!(
-        !tab_underflow("a\tb\tc\td\te\tf\tg", TMUX_LS_FMT_FIELDS),
-        "7 段是合法内容（路径里有真 TAB）⇒ **不许红**，否则就成了 `!= 6` 那个误伤"
+        !tab_underflow("a\tb\tc\td\te\tf\tg\th\ti", TMUX_LS_FMT_FIELDS),
+        "9 段是合法内容（路径里有真 TAB）⇒ **不许红**，否则就成了 `!= 8` 那个误伤"
     );
     assert!(
         tab_underflow("15_/tmp/x/sock", 2),
@@ -561,7 +575,7 @@ fn probe_script_propagates_rc_with_fake_tmux() {
     let path_with_fake = format!("{}:/usr/bin:/bin", dir.display());
 
     // ① 假 tmux 打印一行会话、rc=0 → Sessions
-    write_fake("#!/bin/sh\nprintf 's1\\t/p\\tclaude\\t1\\t1\\tsid-a\\n'\nexit 0\n");
+    write_fake("#!/bin/sh\nprintf 's1\\t/p\\tclaude\\t1\\t1\\tsid-a\\t$0\\tsid-a \\n'\nexit 0\n");
     assert!(matches!(
         run(&path_with_fake),
         TmuxObservation::Sessions(ref s) if s.contains("sid-a")

@@ -108,10 +108,11 @@ fn every_production_spawn_goes_through_it() {
         vec!["control/ccm/mod.rs", "control/ccm/mod.rs"],
         "这几处起子进程没过 `without_own_env`：{sites:?}"
     );
-    // 反空真：人群与起进程登记那张表数的是同一个数（`readonly_guard::SPAWN_SITES_TODAY`；终端管理那一处 18 → 19）。
+    // 反空真：人群与起进程登记那张表数的是同一个数（`readonly_guard::SPAWN_SITES_TODAY`；终端管理那一处 18 → 19；
+    //   `kill.rs` 读 pane pid 那一处并进 `gate.rs` 起 tmux 的那一处 19 → 18）。
     assert_eq!(
         sites.len(),
-        19,
+        18,
         "抽到的起进程处数不对 —— 抽取坏了：{sites:?}"
     );
 }

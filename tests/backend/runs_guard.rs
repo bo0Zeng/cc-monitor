@@ -1077,3 +1077,65 @@ fn quiet_runs_are_judged_on_their_own_deadline_not_on_a_beat() {
     assert_eq!(w.matches("crate::observe::runs::next_event(").count(), 1);
     assert!(w.contains("state.runs.next_due()") && !w.contains("events_rx.recv()"));
 }
+
+/// 一个文件事件只在它自己那份父记录底下找新的子运行记录：别的会话那份不扫；不是子运行记录形状的（旁边的元数据之类）一份都不扫。
+/// 两套形状各跑一遍。
+fn discovery_scenario(shape: &Shape) -> (Vec<String>, Vec<String>) {
+    let dir = scratch(&format!("{}-discover", shape.name));
+    let book = Arc::new(RunBook::default());
+    let mut track = RunTrack::new(shape.faces, book.clone());
+    let parents: Vec<PathBuf> = ["s-1", "s-2"]
+        .iter()
+        .map(|sid| {
+            let p = (shape.parent_of)(&dir, sid);
+            append(&p, &[(shape.main_say)(&format!("m-{sid}"))]);
+            track.adopt(sid, &p);
+            p
+        })
+        .collect();
+    for (p, run) in parents.iter().zip(["w1", "w2"]) {
+        append(
+            &(shape.child_of)(p, run),
+            &[(shape.child_tool)(run, &format!("r-{run}"), "Bash")],
+        );
+    }
+    let seen = |book: &RunBook| -> Vec<String> {
+        ["s-1", "s-2"]
+            .iter()
+            .flat_map(|sid| {
+                book.runs(sid)
+                    .into_iter()
+                    .map(move |r| format!("{sid}:{}", r.run))
+            })
+            .collect()
+    };
+    // 旁边一份不是子运行记录的文件动了：什么都不找。
+    let beside = (shape.child_of)(&parents[0], "w1").with_extension("meta");
+    std::fs::write(&beside, "{}").unwrap();
+    assert_eq!(track.on_path(&beside), None, "[{}]", shape.name);
+    let after_beside = seen(&book);
+    // 第一个会话的子运行记录来了事件：只找到它自己那一份。
+    let got = track.on_path(&(shape.child_of)(&parents[0], "w1"));
+    assert_eq!(
+        got.map(|(s, _)| s),
+        Some("s-1".to_string()),
+        "[{}]",
+        shape.name
+    );
+    let after_one = seen(&book);
+    let _ = std::fs::remove_dir_all(&dir);
+    (after_beside, after_one)
+}
+
+#[test]
+fn a_file_event_only_looks_under_its_own_parent_record() {
+    for shape in [fake(), claude_code()] {
+        let (after_beside, after_one) = discovery_scenario(&shape);
+        assert_eq!(
+            (after_beside, after_one),
+            (Vec::<String>::new(), vec!["s-1:w1".to_string()]),
+            "[{}] 一个文件事件把别的会话的子运行记录也扫了进来",
+            shape.name
+        );
+    }
+}

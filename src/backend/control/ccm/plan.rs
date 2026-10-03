@@ -1192,18 +1192,23 @@ pub(crate) fn build_among(
 /// `--ccm-print`：吐出这一趟的**等价 shell**。全部来自 [`Plan`] ⇒ 与真跑同源。
 pub(crate) fn render(plan: &Plan) -> String {
     match plan {
-        Plan::Attach { name } => format!("tmux attach -t {}", sq(&format!("={name}:"))),
-        // 在不在 tmux 里不进 `--ccm-print`（`INVARIANTS §33a` 铁律 2）⇒ 值不知道就打印配方，真跑也跑这一行。
+        Plan::Attach { name } => join_session(name),
         Plan::Rejoin {
             name, detach: true, ..
         } => format!("echo {}", sq(&format!("ccm-session={name}"))),
-        Plan::Rejoin { name, .. } => {
-            let t = sq(&format!("={name}:"));
-            format!("if [ -n \"${{TMUX:-}}\" ]; then tmux switch-client -t {t}; else tmux attach -t {t}; fi")
-        }
+        Plan::Rejoin { name, .. } => join_session(name),
         Plan::Container(c) => render_container(c),
         Plan::Direct(d) => render_direct(d),
     }
+}
+
+/// 接进一个 tmux 会话：已经在 tmux 里 ⇒ 当前客户端切过去（`attach` 在 tmux 里是拒的）；不在 ⇒ `attach`。
+/// 在不在 tmux 里不进 `--ccm-print`（`INVARIANTS §33a` 铁律 2）⇒ 值不知道就打印配方，真跑也跑这一行。
+fn join_session(name: &str) -> String {
+    let t = sq(&format!("={name}:"));
+    format!(
+        "if [ -n \"${{TMUX:-}}\" ]; then tmux switch-client -t {t}; else tmux attach -t {t}; fi"
+    )
 }
 
 fn render_container(c: &Container) -> String {
@@ -1279,7 +1284,7 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
     // agent 起来时若问「信任这个目录吗」（claude 首次进一个目录），由用户在会话里自己答：
     // 那是它的安全检查，收尾一个键都不替用户按（替它按 Enter 按中的是缺省那一项「不信任、退出」）。
     if !c.detach {
-        seq.push_str(&format!("; tmux attach -t {t}"));
+        seq.push_str(&format!("; {}", join_session(&c.name)));
     }
     if let Some(b) = &c.bus {
         seq.push_str(&format!(

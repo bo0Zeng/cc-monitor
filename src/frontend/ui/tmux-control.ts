@@ -94,10 +94,11 @@ export function decodeCapture(origin: Origin, v: unknown): string {
 
 /**
  * 抓 `origin` 上 tmux 会话 `target` 当前的一屏（**只读快照，不 attach**；刻意不过身份门，同后端那一侧）。
+ * 给了 `sid` ⇒ 抓那个会话里挂着它的那个窗格（一个 tmux 会话里可以有几个 claude），不是活动窗格。
  * 失败 ⇒ 抛 [`ControlError`]（`message` 是给人看的那一句）。
  */
-export async function capturePane(origin: Origin, target: string): Promise<string> {
-  const payload = jsonBody({ name: target });
+export async function capturePane(origin: Origin, target: string, sid?: string): Promise<string> {
+  const payload = jsonBody(sid === undefined ? { name: target } : { name: target, sid });
   const budget = budgetWithin(CAPTURE_BUDGET_MS);
   const v = await settle(origin, "capture-pane", chan.call(origin, "capture-pane", payload, budget), captureRefusals(target));
   return decodeCapture(origin, v);
@@ -166,10 +167,11 @@ export function decodeKilled(origin: Origin, target: string, v: unknown): string
 
 /**
  * 结束 `origin` 上的 tmux 会话 `target`（**破坏性**：调用方先二次确认）。身份门 · 窗口门在后端先过，
- * 后端对**句柄**下手（不是名字）。失败 ⇒ 抛 [`ControlError`]；**没有第二条路可回落**。
+ * 后端对**句柄**下手（不是名字）。给了 `sid` ⇒ 结束挂着它的那个窗格（同会话里还有别的 claude 时不关整个会话）。
+ * 失败 ⇒ 抛 [`ControlError`]；**没有第二条路可回落**。
  */
-export async function killSession(origin: Origin, target: string): Promise<string | null> {
-  const payload = jsonBody({ name: target });
+export async function killSession(origin: Origin, target: string, sid?: string): Promise<string | null> {
+  const payload = jsonBody(sid === undefined ? { name: target } : { name: target, sid });
   const budget = budgetWithin(CONTROL_BUDGET_MS);
   const v = await settle(origin, "kill", chan.call(origin, "kill", payload, budget), killRefusals(target));
   return decodeKilled(origin, target, v);
@@ -227,10 +229,12 @@ export function decodeTyped(origin: Origin, target: string, v: unknown): void {
 
 /**
  * 往 `origin` 上已存在的 tmux 会话 `target` 里键入 `keys` ＋ 回车（mode `send-into`，如 `/compact`）。**只发按键、不杀不建。**
+ * 给了 `sid` ⇒ 键入挂着它的那个窗格（不是活动窗格），身份也按那个窗格判。
  * 失败 ⇒ 抛 [`ControlError`]；**没有第二条路可回落**。
  */
-export async function sendKeys(origin: Origin, target: string, keys: string): Promise<void> {
-  const payload = jsonBody({ mode: "send-into", name: target, payload: keys });
+export async function sendKeys(origin: Origin, target: string, keys: string, sid?: string): Promise<void> {
+  const req = { mode: "send-into", name: target, payload: keys };
+  const payload = jsonBody(sid === undefined ? req : { ...req, ccm_sid: sid });
   const budget = budgetWithin(CONTROL_BUDGET_MS);
   const v = await settle(origin, "launch", chan.call(origin, "launch", payload, budget), keysRefusals(target));
   decodeTyped(origin, target, v);

@@ -273,22 +273,44 @@ fn spawn_tmux(socket: Option<&str>, argv: &[&str]) -> Result<RawCapture, CmdErr>
 }
 
 /// [`capture`] 的本体，**socket 由调用方给**（理由见 [`spawn_capture`]）。
-pub(crate) fn capture_on(socket: Option<&str>, name: &str) -> Result<String, CmdErr> {
+///
+/// `sid`：抓这个会话里挂着它的那个窗格（一个 tmux 会话里可以有几个 claude 窗格），不看哪个窗格是活动的；
+/// 哪个窗格都不挂它 ⇒ `no_such_session`。没给 ⇒ 会话当前的那个窗格。
+pub(crate) fn capture_on(
+    socket: Option<&str>,
+    name: &str,
+    sid: Option<&str>,
+) -> Result<String, CmdErr> {
     let name = checked_name(name)?;
     // Gate 1（`=name:` 精确匹配）—— 裸 `-t <名>` 会被 tmux 按「精确名 → 名字开头 → glob」
     // 解析，只有 `sib-2` 在时 `-t sib` 抓的是 `sib-2`（`F01`，`launch::exact_target` 头注）。
     let target = super::launch::exact_target(&name);
+    let target = match sid {
+        None => target,
+        Some(s) => match super::gate::carrier(&super::gate::panes_on(socket, &target), s) {
+            Some(c) => c.pane.clone(),
+            None => {
+                return Err((
+                    "no_such_session",
+                    copy_text(
+                        "beCapturePane.run.noCarrier",
+                        &[("name", &format!("{name:?}"))],
+                    ),
+                ))
+            }
+        },
+    };
     classify(&spawn_capture(socket, &target)?)
 }
 
-/// 抓一次 `name` 这个 tmux 会话此刻的那一屏。**只读**：不 attach、不落 buffer、不写盘。
+/// 抓一次 `name` 这个 tmux 会话此刻的那一屏（给了 `sid` ⇒ 挂着它的那个窗格）。**只读**：不 attach、不落 buffer、不写盘。
 ///
 /// ⚠ **刻意不过身份门（Gate 2）**：这是一次只读快照，与 monitor 侧同族那一处口径一致
 /// （`src/frontend/shell/src/exec_site_registry.rs` 里 `capture_remote_pane` 那一行逐字：
 /// 「只读快照，明确不为它加身份门」）。破坏性动作那三道门在 [`super::gate`]，
 /// 与本处无关 —— **别顺手给它加门，也别顺手把那三道门搬过来**。
-pub(crate) fn capture(name: &str) -> Result<String, CmdErr> {
-    capture_on(None, name)
+pub(crate) fn capture(name: &str, sid: Option<&str>) -> Result<String, CmdErr> {
+    capture_on(None, name, sid)
 }
 
 /// 会话名的形状校验 —— **不在这里写第二份**。
@@ -302,7 +324,7 @@ fn checked_name(raw: &str) -> Result<String, CmdErr> {
 
 /// 帧面入口（`K-R104`）：`capture-pane`。
 ///
-/// `args`：`{name}`。回 `{name, screen}` —— `screen` 是那一屏的**原文**
+/// `args`：`{name, sid?}`。回 `{name, screen}` —— `screen` 是那一屏的**原文**
 /// （`R58`〔用 09-13〕逐字「直接抓屏给我看」：这一层一个字都不解析、不裁剪、不归一）。
 ///
 /// 🔴 **与 CLI 面 [`run`] 共用同一个本体 [`capture`]**：`K33` 逐字「所有命令只许有一处，
@@ -314,7 +336,8 @@ pub(crate) fn capture_for_inbound(
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, (String, String)> {
     let name = super::kill::parse_name(args).map_err(|(c, m)| (c.to_string(), m))?;
-    let screen = capture(&name).map_err(|(c, m)| (c.to_string(), m))?;
+    let sid = super::gate::sid_of(args).map_err(|(c, m)| (c.to_string(), m))?;
+    let screen = capture(&name, sid.as_deref()).map_err(|(c, m)| (c.to_string(), m))?;
     Ok(reply(&name, &screen))
 }
 
@@ -346,7 +369,7 @@ pub fn run(args: &[String]) -> i32 {
             ),
         ));
     }
-    match capture(name) {
+    match capture(name, None) {
         Ok(screen) => {
             // 原样透传：pane 里本来就有换行，别再包一层 JSON 把它转义掉。
             print!("{screen}");

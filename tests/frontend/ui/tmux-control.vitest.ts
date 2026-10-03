@@ -245,6 +245,28 @@ describe("〔C4e〕结束会话 · 发按键：按形状收", () => {
   });
 });
 
+describe("按 sid 找窗格：抓屏 · 结束 · 发按键带上会话 ID", () => {
+  it("★ 给了 sid ⇒ 请求里带上（抓屏 · 结束是 `sid`，发按键是 `launch` 的 `ccm_sid`），后端按它落在挂着它的那个窗格；不给 ⇒ 请求形状不变", async () => {
+    answer({ ok: CAP.reply });
+    await capturePane("devbox", "demo-cc", "sid-a");
+    await capturePane("devbox", "demo-cc");
+    answer({ ok: KILL.reply });
+    await killSession("devbox", "demo-cc", "sid-a");
+    await killSession("devbox", "demo-cc");
+    answer({ ok: LAUNCH.reply });
+    await sendKeys("devbox", "demo-cc", "/compact", "sid-a");
+    await sendKeys("devbox", "demo-cc", "/compact");
+    expect(sentCalls()).toEqual([
+      ["devbox", "capture-pane", { name: "demo-cc", sid: "sid-a" }],
+      ["devbox", "capture-pane", { name: "demo-cc" }],
+      ["devbox", "kill", { name: "demo-cc", sid: "sid-a" }],
+      ["devbox", "kill", { name: "demo-cc" }],
+      ["devbox", "launch", { mode: "send-into", name: "demo-cc", payload: "/compact", ccm_sid: "sid-a" }],
+      ["devbox", "launch", { mode: "send-into", name: "demo-cc", payload: "/compact" }],
+    ]);
+  });
+});
+
 describe("FIX4 · 杀会话顺手注销的结局", () => {
   /** 「杀会话顺手注销的结局只进日志：界面不说『顺手注销了谁 / 没注销成』；要说得给 kill 的成品加一格（界面、金样、文案同拍）」。 */
   it("★ bus 那一格 ⇒ 一句话：注销了谁 · 谁没注销成 · 名册读不到；全空不说；那一格缺 / 形状不对 ⇒ 读不懂", () => {

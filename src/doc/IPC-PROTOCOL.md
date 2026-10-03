@@ -423,7 +423,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `accounts_changed` | —（无载荷） | **这台机器上的账号清单变了**（watcher 盯账号 manifest 所在目录，一批文件事件里 manifest 动了几次都只发一帧）。客户端收到就重拉一次账号清单（`accounts-list`）—— 清单本身不在帧里，唯一出口仍是那条查询。manifest 所在目录起步时不在 / 后来被删掉重建 ⇒ 这一路听不见（已知边界，代价只是不推帧）。monitor 收到交给前端：经通道 `subscribe(origin, "accounts-changed")` 那条流里一格 `Frame`（原先是裸 Tauri 事件 `remote-backend-ready`，已退役；句柄 `event_replay.rs`），账号表与 chip 随之重取 |
 | `tasks_changed` | `sid` | **这台机器上某个会话的任务清单变了**（watcher 递归盯 `<agent 家>/tasks/`，一批文件事件里同一个 sid 动了几次都只发一帧；`tasks/` 起步不在 ⇒ 它作为 `agent_home` 里的一个事件出现时挂上）。只带 sid：客户端收到就重问一次 `tasks-list` —— 清单本身不在帧里，唯一出口仍是那条查询。本机远端同一个二进制 ⇒ 同形（monitor 自己那份 notify 删了）。monitor 收到交给前端：经通道 `subscribe(origin, "session-tasks")` 那条流里一格 `Frame`（体 `{"sid": …}`）。丢了不可恢复（`overflow.lost` 带身份，subject = sid）|
 | `sessions_replayed` | —（无载荷） | **这台机器的活会话清单报完了**：`watch_loop` 的 Phase 1（同步扫 `sessions/`、对每个活 pidfile 发一帧 `session_added`）走完那一刻发**一次**，排在 Phase 1 所有帧之后、Phase 2 任何帧之前（同一个 sink、同一条线程）；`sessions/` 不在也照发（清单是空的，也是说完了）。**为什么要它**：客户端手里有一条「固定」的会话条目而这台还没报过它时，得分清「这台还没说完」（显示**说不清**）与「说完了、里面没有它」（显示**已结束**）—— 那张表的判据，此前线上没有任何东西分得开。丢了不可恢复（`overflow.lost` 带身份、subject 无）：客户端停在「说不清」，不会被说成已结束。monitor 收到发前端 `origin-sessions-listed {origin}`（与 `remote-session-added` 同一条线程、同序）|
-| `session_state` | `sid`, `state` | **会话账本的成品**：这条会话离开「活」之后是 `"reconnectable"`（claude 退了、它的 tmux 会话还挂着 `@ccm_sid`）还是 `"ended"`（进程没了、容器也没了，或被 `superseded` 顶替）。**由这台后端自己裁**（`observe/session_ledger.rs`：摘除原因 ＋ 它自己那份 tmux 快照；收割：tmux 会话关了当场、`@ccm_sid` 连续两份不见才落）；紧跟在引起它的 `session_removed` / `tmux_sessions` 之后（同一个 sink）。新连接第一份可观测的 tmux 快照里「挂着 `@ccm_sid`、却不在活会话里」的各发一帧 `reconnectable`，**排在 `sessions_replayed` 之前**（清单压到第一份快照之后才放）。客户端只收成品、不再查 tmux 原文。丢了不可恢复（`overflow.lost` 带身份）|
+| `session_state` | `sid`, `state` | **会话账本的成品**：这条会话离开「活」之后是 `"reconnectable"`（claude 退了、它所在的窗格还挂着 `@ccm_sid`）还是 `"ended"`（进程没了、容器也没了，或被 `superseded` 顶替）。**由这台后端自己裁**（`observe/session_ledger.rs`：摘除原因 ＋ 它自己那份 tmux 快照；`@ccm_sid` 打在窗格上，一个 tmux 会话可挂几个；会话按 `#{session_id}` 认，改名不算关）。`superseded` 紧跟 `session_removed`；`gone` 等一份**摘除之后才起**的 tmux 观测来裁、紧跟那份观测（不拿摘除之前的快照裁，免得先报错一格再翻回来）。收割只对可重连的：它的 tmux 会话关了当场、哪个窗格都不挂它连续两份才落；活着的会话只认 pidfile。新连接第一份可观测的 tmux 快照里「挂着 `@ccm_sid`、却不在活会话里」的各发一帧 `reconnectable`，**排在 `sessions_replayed` 之前**（清单压到第一份快照之后才放）。客户端只收成品、不再查 tmux 原文。丢了不可恢复（`overflow.lost` 带身份）|
 | `session_file_gone` | `session_id`, `path` | **活会话的记录文件不见了**（被删 / 被改名走了）。文件管理器改得动活会话的 jsonl；观察侧当它是「看的、不是管的」：不崩、**不误判结束**（判活看 pidfile / pid，不看 jsonl），出声一次 —— 每次「在 → 不在」只发一帧；同时丢掉那份文件的游标 ⇒ 同名文件再出现（agent 按路径追加重建）从 0 读、`seq` 照旧往上，之后再不见才再发。丢了不可恢复（`overflow.lost` 带身份 subject = sid）。monitor 收到交给那个会话的内容流一格 `{"file_gone": …}`，该 tab 说「记录文件不见了」 |
 | `session_file_reread` | `session_id`, `path`, `why` | **活会话的记录文件被改过了、已从头重读**：`why` = `"truncated"`（比读到过的最长还短）/ `"rewritten"`（没变短，但游标之前那一截被原地改写过：游标旁记着已读前缀的末尾 64 字节，续读前核，对不上即是）。紧排在这一趟重读出来的 `line` 帧**之前**（同一个 sink、同一条线程）；重读的 `seq` 照旧往上（`INVARIANTS §25`），前端按 uuid 去重，本帧只负责出声。⚠ 买不到：长度一字不差的原地改写对得齐、不出声。丢了不可恢复（subject = sid）|
 | `link_data` | `link`, `data` | **一条链路的下行字节**（`data` = base64，标准字母表带补位；解码后 ≤ 32 KiB）。只在客户端开了链路（`link-open`）之后才出现；链路上的字节与 C2 拨号代理的 stdout 逐字节同形。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「链路四条」 |
@@ -743,9 +743,12 @@ shell 串走 SSH、本机拒绝」的分叉。命名避让 / 登记进总线 / s
 #### `kill`：杀一个 tmux 会话（F04a，**第一条破坏性入方向命令**）
 
 ```text
-→ {"id":"K1","cmd":"kill","args":{"name":"1a2b3c4d-cc"}}   // 可带 "client":"<自报的前端>"（见下「哪个前端的会话」）
+→ {"id":"K1","cmd":"kill","args":{"name":"1a2b3c4d-cc"}}   // 可带 "client":"<自报的前端>"（见下「哪个前端的会话」）· "sid":"<会话 ID>"（见下）
 ← {"kind":"reply","id":"K1","ok":true,"data":{"session":"1a2b3c4d-cc","killed":true,"bus":{"removed":[],"failed":[],"unread":null}}}
 ```
+
+带 `sid`（1–128 个 `[A-Za-z0-9_-]`，不合 ⇒ `invalid_args`）⇒ 结束的是这个会话里挂着它（`@ccm_sid`）的那个窗格，身份按那个窗格判（活动窗格是谁不算数）：
+同会话里还有窗格挂着别的 sid（别的 claude）⇒ 只关挂着它的窗格（Gate 3 不适用）；没有 ⇒ 整个会话（照常过 Gate 3）；哪个窗格都不挂它 ⇒ `wrong_owner`。同 `sessions-stop`。
 
 杀成之后**顺手从 cc-bus 收掉登记在这个会话上的 id**：过门之后、杀之前读下这个会话全部 pane 的根进程 pid，
 杀成之后经 `cc-list --tsv` 读名册、按第 4 列 pane pid 认人（不按会话名猜），逐个 `cc-kill <id>`（名册 · 台账 · 状态 · 收件箱一起清）。
@@ -786,7 +789,9 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
 #### `sessions-tmux` / `sessions-stop` / `sessions-start`：一批会话一次问（tab 栏的单个菜单与批量菜单）
 
 同一台机器上的那几个**一次**交过来，这台**逐个**答；一个不成不挡下一个。单个菜单就是一个 sid 的一批 —— 两条路是同一条。
-「这个 sid 此刻在这台哪个 tmux 会话里」只在这台判一次（带着它的 `@ccm_sid`、前台是不是 agent），三条命令共用；没打上标记的不按目录猜。
+「这个 sid 此刻在这台哪个 tmux 会话里」只在这台判一次（哪个窗格挂着它的 `@ccm_sid`、那个窗格前台是不是 agent），三条命令共用；没打上标记的不按目录猜。
+停：会话里还有别的窗格挂着别的 sid（别的 claude）⇒ 只关挂着它的那个窗格；没有 ⇒ 关整个会话（照常过「只有一个窗口」那道门）。身份按挂着它的窗格判。
+就地接回（`idle`）：那一行送进挂着它的那个窗格。
 
 ```text
 → {"id":"S0","cmd":"sessions-tmux","args":{"sids":["<sid>"]}}
@@ -812,10 +817,11 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
 `results` 与入参逐个同序。`outcome`：`done` 做成了 · `skipped` 这一个不用做 / 做不了（`why` 说为什么）· `failed` 做了没成（`why` ＋ `detail` 是单个那一条的码与原话）。
 `session` = 落在哪个 tmux 会话上；`bus` 只有停那一条有（同 `kill`）；`cmd` 只有开终端那一形有（monitor 拿它开窗）。
 
-- **停**：`running` / `idle` ⇒ 杀那一个，同 `kill`（三道门、杀句柄、顺手注销 cc-bus），门里另核句柄上此刻的 `@ccm_sid` 就是它（认完名字换了人 ⇒ `wrong_owner`）。
+- **停**：`running` / `idle` ⇒ 结束那一个，同 `kill`（三道门、杀句柄、顺手注销 cc-bus），门里另核此刻有窗格挂着它（认完名字换了人 ⇒ `wrong_owner`）；
+  同会话里还有别的 claude 窗格 ⇒ 只关挂着它的窗格（Gate 3 不适用），没有 ⇒ 整个会话。
   `none` ⇒ `skipped`/`not_in_tmux`；`ambiguous` ⇒ `skipped`/`ambiguous`（`detail` 列名字，不杀）。
 - **起**：先问记录还在不在（同 `history-record`，查 `account.configDir` 那棵树）—— 不在 ⇒ `skipped`/`record_gone`（`detail` = 查的那棵树）。
-  - `mode:"tmux"`（不接进去）：`running` ⇒ `skipped`/`running`；`ambiguous` ⇒ `skipped`/`ambiguous`（`session` 是第一个）；`idle` ⇒ 同 `launch` 的 `send-into` 键入直路那一行；
+  - `mode:"tmux"`（不接进去）：`running` ⇒ `skipped`/`running`；`ambiguous` ⇒ `skipped`/`ambiguous`（`session` 是第一个）；`idle` ⇒ 把直路那一行键入挂着它的那个窗格（同 `launch` 的 `send-into` 带 `ccm_sid`：过同一道身份门，送不进的码也同它）；
     `none` ⇒ 这台铸名（同 `tmux-name-mint`），交**界面「在 tmux 里 Resume」那一行**（远端同 `launch-render-cli`、本机同 `launch-local`，同一份映射、同一个渲染器）只多 `--detach`，
     由这台后端自己当 ccm 跑（环境、中转地址、身份标记、自检都由 ccm 那一趟做）；退出码 3（名字有人了）⇒ `failed`/`name_taken`，别的非零 ⇒ `failed`/`start_failed`（`detail` 是 ccm 的原话）。
   - `mode:"window"`：只渲那一行交回（本机同 `launch-local`：POSIX 上铸名建进 tmux；远端同 `launch-render-cli` 直连），窗口由 monitor 开。渲不出来 ⇒ `failed`/`refused`。
@@ -834,7 +840,7 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
      "name":"cc-1a2b3c4d",
      "payload":"cd '/x' && claude --resume …",
      "cwd":"/x",             // 可选，仅 create-or-attach
-     "ccm_sid":"<完整 sid>",  // 可选，仅 create-or-attach；[A-Za-z0-9_-]
+     "ccm_sid":"<完整 sid>",  // 可选；[A-Za-z0-9_-]。create-or-attach：写成意图键 @ccm_sid_expect；send-into：键入挂着它的那个窗格、身份按那个窗格判（哪个窗格都不挂它 ⇒ wrong_owner）
      "agent":"claude",       // 可选，仅 create-or-attach；给了就得是注册表里的一家（空 ⇒ 默认那一家，认不出 ⇒ invalid_args）
      "width":"220",          // 可选，仅 create-or-attach；与 height **同时给或都不给**
      "height":"50",          // 可选；1–4 位十进制**字符串**
@@ -943,12 +949,14 @@ pane 处于 **copy-mode**（用户滚了一下轮子）时 `send-keys` **照样�
 #### `capture-pane`：把某个 tmux 会话此刻那一屏抓回来（`K-R104`，只读）
 
 ```text
-→ {"id":"C1","cmd":"capture-pane","args":{"name":"cc-ab12cd34"}}
+→ {"id":"C1","cmd":"capture-pane","args":{"name":"cc-ab12cd34"}}   // 可带 "sid":"<会话 ID>"
 ← {"kind":"reply","id":"C1","ok":true,"data":{"name":"cc-ab12cd34","screen":"Welcome …"}}
 ```
 
 `name` 要抓的会话名；回 `name`（回显）＋ `screen`（**那一屏的原文**，不解析、不裁剪、不归一 ——
 `R58`〔用@09-13〕逐字「直接抓屏给我看」）。
+`sid`（可选，形状同 `kill`）⇒ 抓这个会话里挂着它的那个窗格（一个 tmux 会话里可以有几个 claude 窗格），不看哪个窗格是活动的；
+哪个窗格都不挂它 ⇒ `no_such_session`。不给 ⇒ 会话当前的那个窗格。
 
 ★ **它是 CLI 面 `--capture-pane`（`K-R86`）的同一个本体**（`control/capture_pane.rs::capture`），
 两个面只差取参数与包信封的方式（`K33` 逐字「所有命令只许有一处」）。
@@ -968,7 +976,7 @@ SSH 握手，而当时的调用方（用量探针）两段轮询上限 12+20 轮
 ⚠ **刻意不过 §34 Gate 2**：这是一次只读快照，与调用方那一侧口径一致（今天是界面 `src/frontend/ui/tmux-control.ts::capturePane`：只拒空目标、不过身份门；
 此前 monitor 侧同族那一处的登记逐字：「只读快照，明确不为它加身份门」）。
 
-错误码：`invalid_args`（`name` 缺/空/含 `:` `=`）· `no_tmux`（tmux 这个程序起不来）·
+错误码：`invalid_args`（`name` 缺/空/含 `:` `=`，`sid` 形状不对）· `no_tmux`（tmux 这个程序起不来）·
 `no_server`（这台机上一个 tmux server 都没有）· `no_such_session`（server 在、目标不存在）·
 `capture_failed`（其它失败，**stderr 原样回包** —— 说不清但不撒谎）。
 
@@ -980,7 +988,8 @@ SSH 握手，而当时的调用方（用量探针）两段轮询上限 12+20 轮
 
 #### `terminals-list` / `terminal-preview` / `terminal-input`：终端管理 L1（名单 · 抓一屏 · 送字送键）
 
-两个前端共用，**形状与宿主无关**（这一版宿主是 tmux：一个 tmux 会话 ＝ 一个终端，看它当前窗口的当前窗格；托管终端做出来后换实现、不换形状）。
+两个前端共用，**形状与宿主无关**（这一版宿主是 tmux：挂着 `@ccm_sid` 的窗格各是一个终端 —— 一个 tmux 会话里几个 claude 就几个，送字 / 抓屏落在那个窗格、不看哪个窗格是活动的，身份也按那个窗格判；
+一个都没挂的 tmux 会话是一个终端，看它当前窗口的当前窗格。托管终端做出来后换实现、不换形状）。
 目标用名单里的不透明句柄 `terminal`（前端不拼、不解析）**或**会话 ID `sid` 指，恰好给一个，否则 `bad_target`；**不收任意 tmux 目标串**——
 句柄 / sid 先在这一刻的名单里对上才动手。只抓一次、只送一次，轮询归调用方。CLI 面同名（`ccm -- --terminals-list` 等，stdin 一段 JSON 当 `args`）。金样 `tests/__fixtures__/terminals.golden.json`。
 
@@ -2753,7 +2762,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `item` | → | 共享库顶层的一个名字（含 `/` · `.` · `..` · 共享库里没有 ⇒ `refused`） |
+| `item` | → | 共享库顶层的一个名字（含 `/` · `.` · `..` · 共享库里没有 · 是后端看会话用的那几项（Claude 的 `sessions` · `projects`：常驻后端只看共享库那一份）⇒ `refused`） |
 | `dryRun` | → | 同上 |
 | `applied` · `steps` · `notes` · `backup` · `aliases` | ← | 同 `accounts-init`（`aliases` 恒 `[]`：这一条不动账号表）；它不在身份表里 ⇒ `notes` 提示之后「核对」会报它不是共享链接 |
 

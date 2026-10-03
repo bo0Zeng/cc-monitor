@@ -550,6 +550,9 @@ impl UserText {
 #[derive(Clone, Copy)]
 pub(crate) struct ChildFace {
     pub(crate) sources: fn(&Path) -> Vec<PathBuf>,
+    /// 一个路径**若是**某份父记录的子运行记录（形状对得上 `sources` 会收的那种）⇒ 那份父记录的路径；否则 `None`。
+    /// 文件事件来了只对它答得出的才去找，且只在那一份父记录底下找。
+    pub(crate) owner: fn(&Path) -> Option<PathBuf>,
     /// 父记录的一行原文可能说到子运行（[`RecordFace::child_link`] 会答出东西）—— 便宜的预筛：漏判不许，多判无妨。
     /// 只读尾巴的那条流接上会话时，靠它从父记录已有的那一截里只挑这几行解析。
     pub(crate) hint: fn(&str) -> bool,
@@ -645,6 +648,10 @@ impl RunFaces {
         self.children
             .map(|c| (c.sources)(parent))
             .unwrap_or_default()
+    }
+
+    pub(crate) fn owner(&self, p: &Path) -> Option<PathBuf> {
+        self.children.and_then(|c| (c.owner)(p))
     }
 
     pub(crate) fn hint(&self, line: &str) -> bool {
@@ -869,6 +876,8 @@ pub(crate) struct AccountsFace {
     pub(crate) shared_root: fn(&Path) -> PathBuf,
     /// 一个配置根下登录的邮箱（读不到 ⇒ `None`）。
     pub(crate) email_in: fn(&Path) -> Option<String>,
+    /// 后端看会话用的那几项（会话起停 · 会话记录）：常驻后端只看共享库里的这一份 ⇒ 各号必须链回去，不许隔离。
+    pub(crate) watched: &'static [&'static str],
 }
 
 /// 这台机器上账号库的布局（注册表里第一家带账号库布局的；一台机器只有一套账号库）。

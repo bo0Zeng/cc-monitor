@@ -4512,7 +4512,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/backend/common/tmux_utf8.rs", "parse_tmux_ls", 1), // 列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
         ("src/backend/observe/mod.rs", "parse_tmux_ls", 1), // 列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
         ("src/backend/observe/tmux_list.rs", "parse_tmux_ls", 1), // 列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
-        ("src/backend/observe/tmux_observe.rs", "parse_tmux_ls", 1), // 列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
         (
             "src/backend/observe/tmux_observe.rs",
             "tmux_tab_underflow",
@@ -4904,7 +4903,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/shell/ssh_source_capped_line_tests.rs", 2), // 新行：会话 / tmux 账本搬进后端，点旧名的散文挂墓碑
         ("tests/frontend/shell/rust_timer_registry_tests.rs", 1), // 新行：会话 / tmux 账本搬进后端，点旧名的散文挂墓碑
         ("src/frontend/shell/src/bind.rs", 1), // 新行：会话 / tmux 账本搬进后端，点旧名的散文挂墓碑
-        ("src/backend/observe/tmux_observe.rs", 3), // 住址随 A 块从 watcher.rs 搬来（三处标记全在 A 块里） // 列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑 1 → 3 // 新行：会话 / tmux 账本搬进后端，点旧名的散文挂墓碑
+        ("src/backend/observe/tmux_observe.rs", 2), // 3 → 2：格式串那句头注改成现状（窗格级 sid · 会话句柄），点 `parse_tmux_ls` 的那一处去掉了 // 住址随 A 块从 watcher.rs 搬来（三处标记全在 A 块里） // 列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑 1 → 3 // 新行：会话 / tmux 账本搬进后端，点旧名的散文挂墓碑
         // config.json 写口从整份（`save_config` / `saveConfig`）换成按键补丁、`remote-config.ts` 那个整表写函数
         //   换成只出补丁的 `remoteEdit`：讲来历的散文逐处一块（配置写口的头注 · 诊断写口 · 远端保存那段 · 各判据头注），
         //   以及 KS7 那一格为什么改盯 `patch_config`。

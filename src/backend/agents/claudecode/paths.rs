@@ -147,6 +147,11 @@ pub fn home_of(config_dir: Option<&Path>, from_env: bool) -> PathBuf {
     }
 }
 
+/// 会话记录目录在配置根下的名字。
+pub(crate) const PROJECTS_DIR: &str = "projects";
+/// 会话 pidfile 目录在配置根下的名字。
+pub(crate) const SESSIONS_DIR: &str = "sessions";
+
 /// `<home>/projects` —— 会话记录树的根。
 ///
 /// `S3` 从 `common/paths.rs` 搬来。⚠ 它当初被建出来是为了**去重**（U2 实测五处副本，
@@ -154,7 +159,7 @@ pub fn home_of(config_dir: Option<&Path>, from_env: bool) -> PathBuf {
 /// 变的只是它住哪一层：目录名 `projects` 是 **Claude 的布局知识**，
 /// 而 `common/` 的三条门槛第③条逐字写着「无域知识」。它当初就不该在那儿。
 pub(crate) fn projects_root(home: &Path) -> PathBuf {
-    home.join("projects")
+    home.join(PROJECTS_DIR)
 }
 
 /// `<home>/sessions` —— **pidfile 目录**（`<PID>.json`，判活用）。
@@ -162,7 +167,7 @@ pub(crate) fn projects_root(home: &Path) -> PathBuf {
 /// ⚠ 与 Codex 的 `sessions/`（会话记录根）**同名不同物**。`S2` 就是因为这个
 /// 把 `sessions/` 从 codex 的针里剔了出去。
 pub(crate) fn sessions_root(home: &Path) -> PathBuf {
-    home.join("sessions")
+    home.join(SESSIONS_DIR)
 }
 
 /// 一个路径**在不在 Claude 的那几棵树里** —— `~/.claude*` 那个星号的**唯一住址**。

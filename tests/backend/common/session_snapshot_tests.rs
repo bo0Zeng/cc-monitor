@@ -169,7 +169,18 @@ fn a_tab_starved_line_is_dropped_instead_of_becoming_a_session() {
     assert!(parse_rows(dirty).is_empty(), "下溢的行被当成了一个会话名");
     // 好行照常出。
     assert_eq!(
-        parse_rows("a-cc\tsid-a\nb-cc\t\n\n"),
-        vec![row("a-cc", "sid-a"), row("b-cc", "")]
+        parse_rows("a-cc\tsid-a\tsid-a \nb-cc\t\t \nc-cc\t\tsid-c  sid-d \n\n"),
+        vec![
+            row("a-cc", "sid-a"),
+            row("b-cc", ""),
+            row("c-cc", "sid-c"),
+            row("c-cc", "sid-d")
+        ]
     );
+    // 一个会话里几个窗格各挂一个 sid：哪一个都认得出它在跑（`ccm --resume` 接回它，而不是另起第二份）。
+    let snap = SessionSnapshot::with_prober(|| Ok(parse_rows("w-cc\tsid-b\tsid-a sid-b \n")));
+    let taken = snap.taken_names().expect("问得到");
+    assert_eq!(taken.as_slice(), ["w-cc".to_string()], "名字只占一次");
+    assert_eq!(taken.running("sid-a"), Some("w-cc"));
+    assert_eq!(taken.running("sid-b"), Some("w-cc"));
 }

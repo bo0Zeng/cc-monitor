@@ -1341,16 +1341,10 @@ fn same_sid_two_pidfiles_refcount() {
     process_session_added(&p1, &mut state, &mut sink);
     assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "shared-sid"));
     process_session_added(&p2, &mut state, &mut sink);
-    // 第二个 pidfile：幂等检查是 per-key 的 → 恰好再发一条 Added（前端
-    // ensureTab 幂等）。断言帧序（审计 S3：吞帧会掩盖"先 Removed 再 Added
-    // 闪烁"类回归）。
-    assert!(
-        matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "shared-sid"),
-        "second pidfile re-announces exactly once"
-    );
+    // 第二个 pidfile：同一个会话已经宣告过 ⇒ 只记账，一帧都不发（也没有误发的 Removed）。
     assert!(
         rx.try_recv().is_err(),
-        "and nothing else (no spurious Removed)"
+        "second pidfile announces nothing (no second Added, no spurious Removed)"
     );
     assert_eq!(state.sessions.len(), 2);
 
@@ -2187,6 +2181,44 @@ fn prime_does_not_build_the_line_vector() {
     );
 }
 
+/// 冷接宣告（只读尾巴）时主记录不整份进内存：按块读，数行 / 推游标与整读同一个结果，峰值只到一块的量级。
+/// 量具是本线程的分配高水位（同步 `#[test]`，被测代码与断言同线程）。
+#[test]
+fn priming_a_big_record_reads_it_in_blocks() {
+    let dir = std::env::temp_dir().join(format!("ccm-w5-prime-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let proj = dir.join("projects").join("-p");
+    std::fs::create_dir_all(&proj).unwrap();
+    let sid = "prime-big";
+    let path = proj.join(format!("{sid}.jsonl"));
+    let line = format!("{{\"type\":\"user\",\"pad\":\"{}\"}}\n", "x".repeat(200));
+    let n = 100_000usize; // ≈ 21 MiB
+    let mut body = line.repeat(n).into_bytes();
+    body.extend_from_slice(b"\n{\"type\":\"user\",\"torn\":");
+    std::fs::write(&path, &body).unwrap();
+    let complete = (body.len() - b"{\"type\":\"user\",\"torn\":".len()) as u64;
+
+    let mut state = ReaderState::new(dir.join("projects"), false, true);
+    state.active_sids.insert(sid.to_string());
+    let base = crate::alloc_probe::reset_peak();
+    let lines = prime_file_cursor(&path, &mut state);
+    let grew = crate::alloc_probe::peak_since(base);
+    let cursor = state.offsets.get(&path_key(&path)).copied();
+    std::fs::remove_dir_all(&dir).ok();
+
+    assert_eq!(lines, n as u64, "行数（空行不算、残行不算）");
+    assert_eq!(
+        cursor.map(|c| (c.consumed, c.seen_len)),
+        Some((complete, body.len() as u64)),
+        "游标停在最后一个整行之后，看到的长度是整份"
+    );
+    assert!(
+        grew < 8 * 1024 * 1024,
+        "冷接一份 {} 字节的主记录，本线程峰值涨了 {grew} 字节 —— 整份读进内存了",
+        body.len()
+    );
+}
+
 /// ★★ **两条 tail 读路不许再整读会话 jsonl**〔audit-0805 F04 第 2 步〕。
 ///
 /// # 为什么不能笼统禁 `fs::read`
@@ -2203,9 +2235,9 @@ fn prime_does_not_build_the_line_vector() {
 #[test]
 fn the_two_tail_readers_do_not_slurp_the_whole_session_file() {
     let src = guard_core::production_code(include_str!("../../../src/backend/observe/watcher.rs"));
-    for (name, sig) in [
-        ("process_jsonl", "fn process_jsonl("),
-        ("prime_file_cursor", "fn prime_file_cursor("),
+    for (name, sig, reader) in [
+        ("process_jsonl", "fn process_jsonl(", "read_tail_from"),
+        ("prime_file_cursor", "fn prime_file_cursor(", "PrimeReader"),
     ] {
         let begin = src
             .find(sig)
@@ -2215,8 +2247,8 @@ fn the_two_tail_readers_do_not_slurp_the_whole_session_file() {
             .unwrap_or_else(|| panic!("找不到 {name} 的结尾 —— 抽取器坏了"));
         let body = &src[begin..begin + end];
         assert!(
-            body.contains("read_tail_from"),
-            "{name} 里没有调 `read_tail_from` —— 要么切错范围（本条会零命中地绿），\n\
+            body.contains(reader),
+            "{name} 里没有调 `{reader}` —— 要么切错范围（本条会零命中地绿），\n\
                  要么它被改回整读了。"
         );
         for slurp in ["fs::read(", "read_to_string("] {
@@ -2660,6 +2692,115 @@ fn the_notify_arm_asks_once_per_batch_before_the_per_event_loop() {
         .map(|k| ask + k)
         .expect("问完之后没有逐条处理事件的 for —— 结构变了");
     assert!(ask < emit && emit < per_event, "问与发要排在逐条处理之前");
+}
+
+/// 一个 tmux 会话里两个窗格各跑一个 claude：各自的标签打在各自的窗格上，对账一轮就稳 —— 之后每一轮一次都不写。
+/// 标签若还是会话级单值，两个 claude 每一轮都把对方改回来，而每次「真写了」都会再起一次探测（探测 ↔ 打标死循环）。
+///
+/// 假 tmux 照真 tmux 的取值规则：窗格上有自己的值就取它，没有就往上取会话那一级的。
+#[cfg(target_os = "linux")]
+#[test]
+fn two_claudes_in_one_tmux_session_settle_after_one_retag_round() {
+    let root = std::env::temp_dir().join(format!("ccm-w5-two-in-one-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let opts = root.join("opts");
+    let sessions = root.join("sessions");
+    std::fs::create_dir_all(&opts).unwrap();
+    std::fs::create_dir_all(&sessions).unwrap();
+    let script = root.join("tmux");
+    std::fs::write(
+        &script,
+        format!(
+            r#"#!/bin/sh
+D='{}'
+if [ "$2" = display-message ]; then
+  v=$(cat "$D/p$5" 2>/dev/null || cat "$D/s" 2>/dev/null)
+  printf '%s\n' "$6" | sed -e 's/#{{session_id}}/$0/g' -e "s/#{{@ccm_sid}}/$v/g" -e 's/#{{session_windows}}/1/g' -e 's/#{{@[a-z_]*}}//g'
+  exit 0
+fi
+if [ "$1" = set-option ]; then
+  if [ "$2" = -p ]; then printf '%s' "$6" > "$D/p$4"; else printf '%s' "$5" > "$D/s"; fi
+  exit 0
+fi
+exit 1
+"#,
+            opts.display()
+        ),
+    )
+    .unwrap();
+    let _iso = crate::control::identity_tag::door::isolate_with(&script);
+    let mut kids: Vec<std::process::Child> = ["%1", "%2"]
+        .iter()
+        .map(|pane| {
+            crate::control::identity_tag::tests::spawn_settled_sleep(|c| {
+                c.env("TMUX_PANE", pane).env_remove("TMUX");
+            })
+        })
+        .collect();
+    let files: Vec<PathBuf> = kids
+        .iter()
+        .zip(["two-a", "two-b"])
+        .map(|(k, sid)| vis2_pidfile(&sessions, k.id(), sid))
+        .collect();
+    let (tx, _rx) = tokio::sync::mpsc::channel::<Frame>(64);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(root.join("projects"), false, false);
+    let first: Vec<bool> = files
+        .iter()
+        .map(|f| process_session_added(f, &mut state, &mut sink))
+        .collect();
+    let rounds = [retag_tracked(&state, None), retag_tracked(&state, None)];
+    for k in kids.iter_mut() {
+        let _ = k.kill();
+        let _ = k.wait();
+    }
+    std::fs::remove_dir_all(&root).ok();
+    assert_eq!(
+        first,
+        vec![true, true],
+        "两个窗格起初都没挂标签 ⇒ 各写一次（夹具自检）"
+    );
+    assert_eq!(
+        rounds,
+        [0, 0],
+        "同一个 tmux 会话里的两个 claude 在互相改写标签 —— 每一轮对账都「真写了」⇒ 每份快照之后再探一次，不收敛"
+    );
+}
+
+/// 同一个 sid 两份 pidfile（resume 时原进程还活着）：「会话出现」只报一次；先退的那一份不摘这个会话。
+#[cfg(target_os = "linux")]
+#[test]
+fn one_sid_in_two_pidfiles_is_announced_once() {
+    let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
+    let dir = std::env::temp_dir().join(format!("ccm-w5-dup-sid-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let sessions = dir.join("sessions");
+    std::fs::create_dir_all(&sessions).unwrap();
+    let mut kids = vec![vis2_sleeper(), vis2_sleeper()];
+    let files: Vec<PathBuf> = kids
+        .iter()
+        .map(|k| vis2_pidfile(&sessions, k.id(), "dup-sid"))
+        .collect();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"), false, false);
+    initial_session_scan(&sessions, &mut state, &mut sink);
+    std::fs::remove_file(&files[0]).unwrap();
+    process_session_removed(&files[0], &mut state, &mut sink);
+    let mut got = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        got.push(f.loss_identity().kind.to_string());
+    }
+    for k in kids.iter_mut() {
+        let _ = k.kill();
+        let _ = k.wait();
+    }
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(
+        got,
+        vec!["session_added", "sessions_replayed"],
+        "同一个会话宣告了两次，或先退的那份 pidfile 把还活着的会话摘了"
+    );
 }
 
 /// **「清单报完了」那一帧的位置**：Phase 1 的每一帧 `session_added` 之后、恰好一帧。

@@ -333,6 +333,89 @@ cl "自己起的会话（名字不像我们铸的、没 @ccm_sid），自报对�
 cl "自己起的会话，自报对上 ⇒ 结束得了" "atermpipe-d" mobile no kill mobile OK 4
 cl "用户终端起的（@ccm_client=ccm），别的前端照名字规则 ⇒ 结束得了" "cl-proj-cc" ccm no kill mobile OK 5
 
+# ── 按 sid 结束（批量停）：一个 tmux 会话里几个 claude 窗格 ⇒ 只结束挂着那个 sid 的窗格，没有别的才结束整个会话 ──
+# 身份按挂着那个 sid 的窗格判（活动窗格是谁不算数）。标签照后端的打法打在窗格上（`set-option -p`）。
+echo
+echo "-- 按 sid 结束（sessions-stop）--"
+SA=aaaaaaaa-0000-4000-8000-00000000000a
+SB=bbbbbbbb-0000-4000-8000-00000000000b
+SC=cccccccc-0000-4000-8000-00000000000c
+pane_alive() { "$TMUX_BIN" list-panes -a -F '#{pane_id}' 2>/dev/null | grep -qxF -- "$1"; }
+stop_sid() { # <sid> <序号> ⇒ 应答
+  send "{\"id\":\"e2e-stop-$2\",\"cmd\":\"sessions-stop\",\"args\":{\"sids\":[\"$1\"]}}"
+  wait_for "\"id\":\"e2e-stop-$2\"" || { echo "<5s 内无应答>"; return; }
+  sleep 0.3
+  reply_of "e2e-stop-$2"
+}
+"$TMUX_BIN" -L "$TMUX_SHIM_SOCK" kill-server 2>/dev/null || true; sleep 0.2
+PA="$("$TMUX_BIN" new-session -d -s dual-cc -P -F '#{pane_id}')"
+PB="$("$TMUX_BIN" split-window -t '=dual-cc:' -P -F '#{pane_id}')"
+"$TMUX_BIN" set-option -p -t "$PA" @ccm_sid "$SA" >/dev/null 2>&1
+"$TMUX_BIN" set-option -p -t "$PB" @ccm_sid "$SB" >/dev/null 2>&1
+"$TMUX_BIN" select-pane -t "$PB" >/dev/null 2>&1
+R="$(stop_sid "$SA" 1)"
+if printf '%s' "$R" | grep -qF '"outcome":"done"' && ! pane_alive "$PA" && pane_alive "$PB"; then
+  ok "停一个非活动窗格里的 sid（同会话还有别的 claude）→ 只关了它那个窗格，另一个还在"
+else bad "按 sid 停（同会话还有别的 claude）：实得 $R（A 在=$(pane_alive "$PA" && echo 是 || echo 否) B 在=$(pane_alive "$PB" && echo 是 || echo 否)）"; fi
+R="$(stop_sid "$SB" 2)"
+if printf '%s' "$R" | grep -qF '"outcome":"done"' && ! "$TMUX_BIN" has-session -t '=dual-cc:' 2>/dev/null; then
+  ok "停会话里剩下的最后一个 claude → 整个会话结束"
+else bad "按 sid 停最后一个：实得 $R（会话还在=$("$TMUX_BIN" has-session -t '=dual-cc:' 2>/dev/null && echo 是 || echo 否)）"; fi
+PC="$("$TMUX_BIN" new-session -d -s box -P -F '#{pane_id}')"
+PD="$("$TMUX_BIN" split-window -t '=box:' -P -F '#{pane_id}')"
+"$TMUX_BIN" set-option -p -t "$PC" @ccm_sid "$SC" >/dev/null 2>&1
+"$TMUX_BIN" select-pane -t "$PD" >/dev/null 2>&1
+R="$(stop_sid "$SC" 3)"
+if printf '%s' "$R" | grep -qF '"outcome":"done"' && ! "$TMUX_BIN" has-session -t '=box:' 2>/dev/null; then
+  ok "名字不像我们铸的、sid 只挂在非活动窗格上 → 身份按那个窗格判，结束得了"
+else bad "按挂着 sid 的窗格判身份：实得 $R"; fi
+
+# ── 按 sid 送字 · 抓屏 · 结束（单条命令带 sid）：落在挂着它的那个窗格，身份按那个窗格判 ──
+# `launch send-into` 带 `ccm_sid` · `capture-pane` 带 `sid` · `kill` 带 `sid`。活动窗格是另一个、名字也不像我们铸的。
+echo
+echo "-- 按 sid 送字 · 抓屏 · 结束（单条命令）--"
+SE=eeeeeeee-0000-4000-8000-00000000000e
+SG=99999999-0000-4000-8000-000000000009
+pane_shows() { "$TMUX_BIN" capture-pane -p -t "$1" 2>/dev/null | grep -qF -- "$2"; }
+ask() { # <请求 JSON> <id> ⇒ 应答
+  send "$1"
+  wait_for "\"id\":\"$2\"" || { echo "<5s 内无应答>"; return; }
+  sleep 0.4
+  reply_of "$2"
+}
+"$TMUX_BIN" -L "$TMUX_SHIM_SOCK" kill-server 2>/dev/null || true; sleep 0.2
+PE="$("$TMUX_BIN" new-session -d -s box2 -P -F '#{pane_id}')"
+PF="$("$TMUX_BIN" split-window -t '=box2:' -P -F '#{pane_id}')"
+"$TMUX_BIN" set-option -p -t "$PE" @ccm_sid "$SE" >/dev/null 2>&1
+"$TMUX_BIN" select-pane -t "$PF" >/dev/null 2>&1
+R="$(ask "{\"id\":\"e2e-sid-1\",\"cmd\":\"launch\",\"args\":{\"mode\":\"send-into\",\"name\":\"box2\",\"payload\":\"printf %s SIDMARK_E\",\"ccm_sid\":\"$SE\"}}" e2e-sid-1)"
+if printf '%s' "$R" | grep -qF '"ok":true' && pane_shows "$PE" SIDMARK_E && ! pane_shows "$PF" SIDMARK_E; then
+  ok "送字带 sid（名字不像我们铸的、sid 只挂在非活动窗格上）→ 身份按那个窗格判，字落在它上面、活动窗格没收到"
+else bad "按 sid 送字：实得 $R（E 收到=$(pane_shows "$PE" SIDMARK_E && echo 是 || echo 否) 活动窗格收到=$(pane_shows "$PF" SIDMARK_E && echo 是 || echo 否)）"; fi
+R="$(ask '{"id":"e2e-sid-2","cmd":"launch","args":{"mode":"send-into","name":"box2","payload":"printf %s SIDMARK_X"}}' e2e-sid-2)"
+if printf '%s' "$R" | grep -qF wrong_owner && ! pane_shows "$PE" SIDMARK_X && ! pane_shows "$PF" SIDMARK_X; then
+  ok "同一个会话不带 sid → 按活动窗格判（没挂标签）⇒ 拒绝，谁都没被打字（对照）"
+else bad "不带 sid 的对照：实得 $R"; fi
+R="$(ask '{"id":"e2e-sid-3","cmd":"launch","args":{"mode":"send-into","name":"box2","payload":"printf %s SIDMARK_Y","ccm_sid":"not-here-0000"}}' e2e-sid-3)"
+if printf '%s' "$R" | grep -qF wrong_owner && ! pane_shows "$PE" SIDMARK_Y && ! pane_shows "$PF" SIDMARK_Y; then
+  ok "送字带的 sid 哪个窗格都不挂 → wrong_owner，谁都没被打字"
+else bad "带一个没人挂的 sid 送字：实得 $R"; fi
+"$TMUX_BIN" send-keys -t "$PF" 'printf %s SIDMARK_F' Enter >/dev/null 2>&1; sleep 0.4
+R="$(ask "{\"id\":\"e2e-sid-4\",\"cmd\":\"capture-pane\",\"args\":{\"name\":\"box2\",\"sid\":\"$SE\"}}" e2e-sid-4)"
+if printf '%s' "$R" | grep -qF SIDMARK_E && ! printf '%s' "$R" | grep -qF SIDMARK_F; then
+  ok "抓屏带 sid → 抓的是挂着它的那个窗格，不是活动窗格"
+else bad "按 sid 抓屏：实得 $R"; fi
+"$TMUX_BIN" -L "$TMUX_SHIM_SOCK" kill-server 2>/dev/null || true; sleep 0.2
+PE="$("$TMUX_BIN" new-session -d -s two-cc -P -F '#{pane_id}')"
+PG="$("$TMUX_BIN" split-window -t '=two-cc:' -P -F '#{pane_id}')"
+"$TMUX_BIN" set-option -p -t "$PE" @ccm_sid "$SE" >/dev/null 2>&1
+"$TMUX_BIN" set-option -p -t "$PG" @ccm_sid "$SG" >/dev/null 2>&1
+"$TMUX_BIN" select-pane -t "$PG" >/dev/null 2>&1
+R="$(ask "{\"id\":\"e2e-sid-5\",\"cmd\":\"kill\",\"args\":{\"name\":\"two-cc\",\"sid\":\"$SE\"}}" e2e-sid-5)"
+if printf '%s' "$R" | grep -qF '"killed":true' && ! pane_alive "$PE" && pane_alive "$PG"; then
+  ok "结束带 sid（同会话还有别的 claude）→ 只关了挂着它的那个窗格，另一个 claude 还在"
+else bad "按 sid 结束：实得 $R（E 在=$(pane_alive "$PE" && echo 是 || echo 否) G 在=$(pane_alive "$PG" && echo 是 || echo 否)）"; fi
+
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail SKIP=$((skip_ver + skip)) WAIVED=$waived ====="
 # 本轮跑在哪个 tmux 上、用掉几条豁免、版本门跳过几条，收尾打出来（换机器时 PASS/SKIP 怎么分的，一眼看得出）。

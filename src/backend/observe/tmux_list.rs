@@ -18,15 +18,16 @@ pub(crate) struct TmuxRow {
     pub(crate) command: String,
     pub(crate) attached: bool,
     pub(crate) windows: u32,
-    /// F74：`@ccm_sid`（此 tmux 当前所跑 claude 会话的 sid）。未设置 / 不是合法 sid 字符集 ⇒ `None`。
+    /// F74：`@ccm_sid`（此 tmux 所跑 claude 会话的 sid；几个窗格各跑一个时取活动窗格那个，它没挂就取第一个）。
+    /// 一个都没挂 / 不是合法 sid 字符集 ⇒ `None`。
     pub(crate) sid: Option<String>,
     /// 前台命令是注册表里某一家 agent 的进程（`agents::is_agent_process`；Claude 是 `claude` / `node`）。
     /// 从前界面按画像表的判活进程名自己判（`tmux-sessions.ts::isClaudeTmuxCommand`〔散文墓碑〕），判定进了后端。
     pub(crate) agent: bool,
 }
 
-/// 格式串的列数（`tmux_observe::TMUX_LS_FMT`：name ⇥ path ⇥ cmd ⇥ attached ⇥ windows ⇥ @ccm_sid）。
-const FIELDS: usize = 6;
+// 格式串的列数（`tmux_observe::TMUX_LS_FMT`：name ⇥ path ⇥ cmd ⇥ attached ⇥ windows ⇥ @ccm_sid ⇥ session_id ⇥ 各窗格的 @ccm_sid）。
+use crate::observe::tmux_observe::TMUX_LS_FMT_FIELDS as FIELDS;
 
 /// 原样行 → 成品。字段数不符 / 名字空的行丢掉（半截行、非法行不进结果）；windows 非数字回退 0。
 ///
@@ -54,15 +55,11 @@ pub(crate) fn rows(raw: &str) -> Vec<TmuxRow> {
                 }
                 return None;
             }
-            // 只认合法 sid 字符集 [A-Za-z0-9_-]：空串（未设）当 None；极老 tmux（<3.0）不展开 `#{@ccm_sid}`、原样留字面量
+            // 只认合法 sid 字符集（`pane_sids` 筛）：极老 tmux（<3.0）不展开 `#{@ccm_sid}`、原样留字面量
             // （含 `#{}`），当成 sid 会让「有没有 sid」恒真（`INVARIANTS §30`）。
-            let sid = Some(f[5])
-                .filter(|s| {
-                    !s.is_empty()
-                        && s.chars()
-                            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-                })
-                .map(str::to_string);
+            let sid = crate::common::session_snapshot::pane_sids(f[5], f[7])
+                .into_iter()
+                .next();
             Some(TmuxRow {
                 name: f[0].to_string(),
                 path: f[1].to_string(),

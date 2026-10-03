@@ -275,12 +275,17 @@ fn initial_tmux_probe(tx: &std::sync::mpsc::Sender<WatchEvent>) {
 }
 
 /// 起一次 tmux 探测（一次性后台线程，结果回 `TmuxObserved`）。已有在途的就不起 —— `inflight` 只在这里置位、
-/// 只在收到 `TmuxObserved` 时清。回真 = 这次真起了。
-fn start_tmux_probe(inflight: &mut bool, tx: &std::sync::mpsc::Sender<WatchEvent>) -> bool {
+/// 只在收到 `TmuxObserved` 时清。回真 = 这次真起了（会话账本据此知道「摘除之后才起」的那一份在路上了）。
+fn start_tmux_probe(
+    inflight: &mut bool,
+    tx: &std::sync::mpsc::Sender<WatchEvent>,
+    sink: &mut FrameSink,
+) -> bool {
     if *inflight {
         return false;
     }
     *inflight = true;
+    sink.observing();
     let tx = tx.clone();
     std::thread::spawn(move || {
         let _ = tx.send(WatchEvent::TmuxObserved(run_tmux_probe()));
@@ -971,7 +976,7 @@ fn watch_loop(
                         watch_sock_dir_if_present(&mut debouncer, &sock_dir, &mut sock_dir_watched);
                     }
                     if watched_socket.as_deref() == Some(p) || in_sock_dir {
-                        start_tmux_probe(&mut tmux_inflight, &events_tx);
+                        start_tmux_probe(&mut tmux_inflight, &events_tx, &mut sink);
                         continue;
                     }
                     // 子运行的记录（适配层说住哪）：读新行进运行簿、表变了发一帧；不发 `line`（它们不属于主时间线）。
@@ -1028,7 +1033,7 @@ fn watch_loop(
                     // 只在**真的起了**探测时才清标志。在途时清掉会丢信号——那次在途的探测是
                     // 在漂移**之前**发起的，它带回来的快照照样是旧的。留着标志，下一个事件
                     // 会补上一次（代价只是晚一拍；这本来就只是"更新鲜"，不是本 bug 的修复）。
-                    if start_tmux_probe(&mut tmux_inflight, &events_tx) {
+                    if start_tmux_probe(&mut tmux_inflight, &events_tx, &mut sink) {
                         sid_drifted = false;
                     }
                 }
@@ -1062,7 +1067,7 @@ fn watch_loop(
             // P4：`Poke` 与 `TmuxProbeDue` 走**同一段**——`tmux_inflight` 那道去重顺带
             // 免疫了「信号合并 / 一串 hook 同时打进来」：多次戳只会落一次探测。
             WatchEvent::TmuxProbeDue | WatchEvent::Poke => {
-                start_tmux_probe(&mut tmux_inflight, &events_tx);
+                start_tmux_probe(&mut tmux_inflight, &events_tx, &mut sink);
             }
             WatchEvent::TmuxObserved(probe) => {
                 tmux_inflight = false;
@@ -1115,9 +1120,10 @@ fn watch_loop(
                 // 四态观测只喂这条流的会话账本（成品帧由它发），快照本身不上线。
                 sink.tmux(obs);
                 // 探测结果到达 ⇒ 顺手对账身份标签（hook 不报选项变化）。
-                // 真改了 ⇒ 刚发的那份快照里的 `@ccm_sid` 已过期 ⇒ 再探一次（下一次全是 AlreadyCurrent，不会连环）。
+                // 真改了 ⇒ 刚发的那份快照里的 `@ccm_sid` 已过期 ⇒ 再探一次。标签打在各自的窗格上（一个会话里几个 claude
+                // 互不覆盖）⇒ 下一次全是 AlreadyCurrent，不会连环。
                 if retag_tracked(&state, None) > 0 {
-                    start_tmux_probe(&mut tmux_inflight, &events_tx);
+                    start_tmux_probe(&mut tmux_inflight, &events_tx, &mut sink);
                 }
             }
             // P3：tmux server 的 pidfd 醒了 ⇒ 立刻等价于零会话，**不等下一个 8s 节拍**。
@@ -1131,6 +1137,8 @@ fn watch_loop(
                     for name in diff_closed(&mut last_names, &TmuxObservation::NoServer) {
                         tracing::info!("tmux 会话 {name} 随 server 退出关闭");
                     }
+                    // server 死在此刻：这一份比任何在等裁的摘除都新。
+                    sink.observing();
                     sink.tmux(TmuxObservation::NoServer);
                 }
             }
@@ -1147,10 +1155,14 @@ fn watch_loop(
                     sink.send(Frame::AccountsChanged);
                 }
                 let got = resync_sessions(&sessions, &mut state, &mut sink, only.as_deref());
-                start_tmux_probe(&mut tmux_inflight, &events_tx);
+                start_tmux_probe(&mut tmux_inflight, &events_tx, &mut sink);
                 let _ = done.send(got);
             }
             WatchEvent::Shutdown => break,
+        }
+        // 有摘除了的会话在等一份「摘除之后才起」的 tmux 观测来裁去向 ⇒ 起一份（在途的那份是摘除之前起的，它回来再起）。
+        if sink.awaits_observation() {
+            start_tmux_probe(&mut tmux_inflight, &events_tx, &mut sink);
         }
 
         if sink.is_closed() {
@@ -2007,7 +2019,8 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             waiting_for: meta_str("waitingFor"),
         },
     );
-    state.active_sids.insert(sid.clone());
+    // 同一个 sid 已由另一份 pidfile 宣告过（resume 时原进程还活着）⇒ 只记账、打标、挂看守，不再宣告第二次。
+    let announced = !state.active_sids.insert(sid.clone());
     // `U-NP④`：身份打标（`@ccm_sid`）—— 接 `shared/ccm` 那条每秒轮询的班，见
     // `control::identity_tag`（跨层边已登记进 `layering_guard`）。放在冒名检查**之后**。
     //
@@ -2019,6 +2032,9 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     // P2：给这个进程实例挂 pidfd 看守（取代原先每 2s 一遍的判活扫描）。
     // `start` 就是上面 verdict 用过的那次 /proc 读，不再多读一次。
     arm_pid_watcher(&key_for_watch, pid, start, state);
+    if announced {
+        return wrote;
+    }
     // Batch8-F25：先定位该 sid 的 jsonl（帧要带 path 供 monitor 旁路快照；
     // mtime 降序，first=当前活跃文件。会话刚起还没写首行时为空 → path=None，
     // 此时无历史可拉，后续行天然从 tail 全量到达）。
@@ -2268,54 +2284,138 @@ fn prime_file_cursor(path: &Path, state: &mut ReaderState) -> u64 {
     let key = path_key(path);
     let key_str = key.to_string_lossy().into_owned();
     let prev = state.offsets.get(&key).copied().unwrap_or_default();
-    // F04：同 `process_jsonl`，只读新字节。同一个 `read_tail_from`（不在 ⇒ 丢游标；改写 ⇒ 游标归零），
-    //   这里不出声：prime 发生在宣告之前，那句话由之后的 `process_jsonl` 说。
-    let (chunk, chunk_start, file_len, from) =
-        match read_tail_from(path, prev, state.tails.get(&key).map(Vec::as_slice)) {
-            Look::Read {
-                chunk,
-                chunk_start,
-                file_len,
-                from,
-                reread,
-            } => {
-                // 从 0 重数，同 `process_jsonl`（这里不出声：宣告还没发，下游的快照按行号从 0 拉）。
-                if reread.is_some() || file_len < from.seen_len {
-                    state.seqs.restart(&key_str);
-                }
-                (chunk, chunk_start, file_len, from)
-            }
-            Look::Gone => {
-                forget_cursor(state, &key);
-                return 0;
-            }
-            Look::Unreadable => return 0,
+    // 冷接时游标在 0、而主记录可能上百 MB ⇒ 按块读（[`PrimeReader`]），不攒整份 —— 要的只是行数与说到子运行的那几行。
+    // 「不在 ⇒ 丢游标 · 变短 / 改写 ⇒ 从 0 重数」与续读同一套；这里不出声：prime 发生在宣告之前，那句话由之后的 `process_jsonl` 说。
+    let mut reader = match PrimeReader::open(path, prev, state.tails.get(&key).map(Vec::as_slice)) {
+        Ok(r) => r,
+        Err(Look::Gone) => {
+            forget_cursor(state, &key);
+            return 0;
+        }
+        Err(_) => return 0,
+    };
+    if reader.from == 0 && (prev.consumed > 0 || prev.seen_len > 0) {
+        state.seqs.restart(&key_str);
+    }
+    let mut cursor = ReadCursor {
+        consumed: reader.from,
+        seen_len: reader.from,
+    };
+    let mut tail = std::mem::take(&mut reader.probe);
+    let mut n_lines = 0;
+    while let Some(block) = reader.next_block() {
+        let Ok(block) = block else {
+            // 读到一半出错：游标不动（至少一次语义，下一趟再来）。
+            return state.seqs.peek(&key_str);
         };
-    // F04 第 3 步：**只数不建**。此前这里把每行 `to_string` 成 `Vec<ReadLine>`，
-    // 而下面只用了 `.len()`（一条 debug 日志）—— 首次 prime 时那一段就是整份文件。
-    let (n_lines, cursor) = count_new_lines_at(
-        &chunk,
-        chunk_start,
-        file_len,
-        from,
-        &key_str,
-        &mut state.seqs,
-    );
-    state
-        .tails
-        .insert(key.clone(), tail_of(&chunk, chunk_start, cursor.consumed));
+        // 每块恰好止于一个 `\n` ⇒ 当它是「读到这里为止」交给续读同一个扫描（数行 · 推 seq），不会有残行。
+        let (n, next) = count_new_lines_at(
+            &block,
+            cursor.consumed,
+            cursor.consumed + block.len() as u64,
+            cursor,
+            &key_str,
+            &mut state.seqs,
+        );
+        n_lines += n;
+        cursor = next;
+        // 这一块里派出 / 收场过的子运行补进运行簿（宣告之后那一帧运行表带出去）。
+        state.runs.prime(&session_id, &block);
+        tail.extend_from_slice(&block);
+        let drop = tail.len().saturating_sub(TAIL_PROBE as usize);
+        tail.drain(..drop);
+    }
+    cursor.seen_len = reader.len.max(cursor.consumed);
+    state.tails.insert(key.clone(), tail);
     state.offsets.insert(key, cursor);
-    // 跳过的这一截里派出 / 收场过的子运行补进运行簿（宣告之后那一帧运行表带出去）。
-    state.runs.prime(&session_id, &chunk);
     tracing::debug!(
-        "primed {key_str}: cursor→{} (+{} lines suppressed, tail seq starts here)",
-        cursor.consumed,
-        n_lines
+        "primed {key_str}: cursor→{} (+{n_lines} lines suppressed, tail seq starts here)",
+        cursor.consumed
     );
     // Batch8 审计 D-I2：返回 prime 后的行号计数器现值（= 完整行总数 L），
     // session_added 帧带给 monitor 做快照完整性校验（拉到的行数 < L = 快照
     // 中途断/backend 报错——exit status 拿不到，行数校验更强）。
     state.seqs.peek(&key_str)
+}
+
+/// 冷接宣告那一趟每次至多读多少字节（一行比它长就接着读，直到那一行读完）。
+const PRIME_BLOCK: usize = 1 << 20;
+
+/// 冷接宣告那一趟的读者：从游标读到最后一个整行，**按块交出**（每块止于一个 `\n`；末尾的残行不交，留给续读）。
+/// 起读处与续读（[`read_tail_from`]）同一套：变短 ⇒ 从 0；游标之前的末尾指纹对不上 ⇒ 从 0。
+struct PrimeReader {
+    file: std::fs::File,
+    /// 从哪一处起读。
+    from: u64,
+    /// 起读处之前那几个指纹字节（从 0 起 ⇒ 空）。
+    probe: Vec<u8>,
+    /// 到此刻读到的长度（读完才是这一趟看到的文件长度）。
+    len: u64,
+    carry: Vec<u8>,
+    done: bool,
+}
+
+impl PrimeReader {
+    /// 不在 ⇒ `Err(Look::Gone)`；读不出 ⇒ `Err(Look::Unreadable)`。
+    fn open(path: &Path, cursor: ReadCursor, tail: Option<&[u8]>) -> Result<Self, Look> {
+        use std::io::{Read, Seek, SeekFrom};
+        let meta_len = match std::fs::metadata(path) {
+            Ok(m) => m.len(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(Look::Gone),
+            Err(_) => return Err(Look::Unreadable),
+        };
+        let mut file = std::fs::File::open(path).map_err(|_| Look::Unreadable)?;
+        let mut from = 0;
+        let mut probe = Vec::new();
+        if meta_len >= cursor.seen_len {
+            let consumed = cursor.consumed.min(meta_len);
+            let k = TAIL_PROBE.min(consumed);
+            let mut got = vec![0u8; k as usize];
+            file.seek(SeekFrom::Start(consumed - k))
+                .and_then(|_| file.read_exact(&mut got))
+                .map_err(|_| Look::Unreadable)?;
+            if tail.is_none_or(|t| t == got.as_slice()) {
+                from = consumed;
+                probe = got;
+            }
+        }
+        file.seek(SeekFrom::Start(from))
+            .map_err(|_| Look::Unreadable)?;
+        Ok(Self {
+            file,
+            from,
+            probe,
+            len: from,
+            carry: Vec::new(),
+            done: false,
+        })
+    }
+
+    /// 下一块整行（读出错 ⇒ `Err`，之后不再有块）；读完 ⇒ `None`。
+    fn next_block(&mut self) -> Option<Result<Vec<u8>, ()>> {
+        use std::io::Read;
+        let mut buf = vec![0u8; PRIME_BLOCK];
+        while !self.done {
+            let n = match self.file.read(&mut buf) {
+                Ok(0) => {
+                    self.done = true;
+                    break;
+                }
+                Ok(n) => n,
+                Err(_) => {
+                    self.done = true;
+                    return Some(Err(()));
+                }
+            };
+            self.len += n as u64;
+            self.carry.extend_from_slice(&buf[..n]);
+            if let Some(last) = self.carry.iter().rposition(|&b| b == b'\n') {
+                let rest = self.carry.split_off(last + 1);
+                return Some(Ok(std::mem::replace(&mut self.carry, rest)));
+            }
+        }
+        None
+    }
 }
 
 /// Add-time verdict on whether the current occupant of a PID is plausibly the
@@ -2524,6 +2624,18 @@ impl FrameSink {
             ledger: Some(crate::observe::session_ledger::SessionLedger::new()),
             ..FrameSink::new(tx)
         }
+    }
+
+    /// 一份 tmux 观测从这一刻起了（交会话账本：此前摘除的等它回来裁去向）。
+    fn observing(&mut self) {
+        if let Some(l) = self.ledger.as_mut() {
+            l.observing();
+        }
+    }
+
+    /// 会话账本在等一份还没起的 tmux 观测。
+    fn awaits_observation(&self) -> bool {
+        self.ledger.as_ref().is_some_and(|l| l.awaits_observation())
     }
 
     /// 一份 tmux 观测：只交会话账本（有的话），它补发的成品帧照常发；观测本身不上线。

@@ -120,8 +120,8 @@ SA="$(wait_line 0 "\"kind\":\"session_added\".*$SID" 15 'session_added')" \
   && { ok "SessionAdded(live):$SA"; } \
   || { bad "15s 内未见 SessionAdded($SID)"; }
 
-# 「@ccm_sid」挂着这个 sid（claude 活时）—— 直接问 tmux（经 `-L` shim，打不到真 server）。
-tag_of() { tmux show-options -v -t "=$1:" @ccm_sid 2>/dev/null || true; }
+# 「@ccm_sid」挂着这个 sid（claude 活时）—— 直接问 tmux（经 `-L` shim，打不到真 server）。标签打在 claude 的窗格上（这里就是活动窗格）。
+tag_of() { tmux display-message -p -t "=$1:" '#{@ccm_sid}' 2>/dev/null || true; }
 wait_tag() { # <会话名> <期望 sid> <秒>
   local i; for ((i=0; i<$3*2; i++)); do [ "$(tag_of "$1")" = "$2" ] && return 0; sleep 0.5; done; return 1; }
 wait_tag "$SESSION" "$SID" 12 \
