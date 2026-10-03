@@ -210,7 +210,7 @@ guard-core = { path = "../../common/guard-core" }
 chan-core = { path = "../../common/chan-core", features = ["ts"] }
 
 [target.'cfg(windows)'.dependencies]
-# v1.7.0：cc 注入式绑定恢复 ToolHelp（claude.exe 的 parent_pid 反查 PS） +
+# v1.7.0：cc 注入式绑定恢复 ToolHelp（从 claude.exe 往上的进程链反查 PS） +
 # UI_WindowsAndMessaging（EnumWindows 找 title marker、SetForegroundWindow 拉前）。
 # ProcessStatus 仍不需要（v1.6 拉前算法时也没真用）。
 windows = { version = "0.56", features = [

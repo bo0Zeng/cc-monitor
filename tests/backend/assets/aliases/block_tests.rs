@@ -273,9 +273,90 @@ fn the_powershell_block_carries_only_the_handshake() {
     // 按词，不按子串〔§5 2l〕：语料里一出现 `function ccm`，`contains` 就假红。
     assert!(!guard_core::contains_word(&out, "function cc"));
     assert!(!out.contains("{{"), "模板里还有没填的占位：{out}");
-    // v5 → v6：`function cc` 挪进清单。
-    assert!(out.contains("BEGIN v6"));
+    // v6 → v7：每开一个 PowerShell 就登记一次（块尾那一行，不等、不出声）。
+    assert!(out.contains("BEGIN v7"));
     assert!(out.contains("cc-monitor END"));
+}
+
+/// 块里等的那两样（「monitor 起来了」的事件 · 「monitor 还活着」的互斥量）的名字 == monitor 挂上的那两个
+/// （两侧共用 `shell_quote_core::MONITOR_UP_NAME` · `MONITOR_ALIVE_NAME`）：渲染出来各恰一处、按 PowerShell 单引号字面量；
+/// 模板里只有占位、没有写死的名字。
+#[test]
+fn the_block_waits_on_the_same_monitor_marks_the_monitor_holds() {
+    let out = render_cc_code(std::path::Path::new("/_"));
+    let tpl = include_str!("../../../../src/shared/cc.ps1.tpl");
+    for (name, slot) in [
+        (shell_quote_core::MONITOR_UP_NAME, "{{MONITOR_UP}}"),
+        (shell_quote_core::MONITOR_ALIVE_NAME, "{{MONITOR_ALIVE}}"),
+    ] {
+        let lit = crate::platform::shell::dialect::ps_literal(name);
+        assert_eq!(out.matches(lit.as_str()).count(), 1, "{name}：{out}");
+        assert_eq!(tpl.matches(slot).count(), 1, "{slot}");
+        let bare = name.rsplit('\\').next().unwrap();
+        assert_eq!(tpl.matches(bare).count(), 0, "模板里写死了 {bare}");
+    }
+}
+
+/// 块里后台那一份（`$watch`，开着 PowerShell 就一直在）不定时醒：没有 sleep、没有带时长的等待，只在两样系统对象上阻塞等
+/// （`WaitOne()` 不带时长；`WaitOne(0)` 是只看一眼）。认领那一下自己的「最多等 3 秒回话」在 `$claim` 里，不归这一条。
+#[test]
+fn the_background_half_of_the_block_never_wakes_on_a_timer() {
+    let tpl = include_str!("../../../../src/shared/cc.ps1.tpl");
+    let start = tpl
+        .find("$watch = {")
+        .expect("模板里没有后台那一份（$watch）");
+    // 按大括号配平切出 `$watch` 那一段（脚本块里没有落单的大括号字面量）。
+    let mut depth = 0usize;
+    let mut end = None;
+    for (i, c) in tpl[start..].char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = Some(start + i);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let body = &tpl[start..end.expect("$watch 那一段没收尾")];
+    let code: String = body
+        .lines()
+        .map(|l| l.split('#').next().unwrap_or(""))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_eq!(
+        code.matches("$up.WaitOne()").count(),
+        1,
+        "抽取器自检：后台那一份该在「monitor 起来了」上不带时长地等：{code}"
+    );
+    let mut timed = Vec::new();
+    for (at, _) in code.match_indices("Sleep") {
+        timed.push(code[at..].lines().next().unwrap_or("").to_string());
+    }
+    // 方法调用那一形（`.Wait(` · `.WaitOne(` · `::WaitAny(` …）；类型名里的 `WaitHandle` 不算。
+    for (at, _) in code
+        .match_indices(".Wait")
+        .chain(code.match_indices("::Wait"))
+    {
+        let rest = &code[at..];
+        let args = rest.find('(').and_then(|o| {
+            rest[o + 1..]
+                .find(')')
+                .map(|c| rest[o + 1..o + 1 + c].trim())
+        });
+        if let Some(a) = args {
+            if !(a.is_empty() || a == "0") {
+                timed.push(rest.lines().next().unwrap_or("").to_string());
+            }
+        }
+    }
+    assert!(
+        timed.is_empty(),
+        "后台那一份又有定时醒的等待了（它开着 PowerShell 就一直在，要等就等那两样系统对象）：{timed:?}"
+    );
 }
 
 #[test]
@@ -326,12 +407,13 @@ fn an_older_powershell_block_is_flagged_and_a_fresh_one_is_not() {
     //   块内容变了就抬版本，装着 v3 的人在机器页看到「重装一次」。
     // v4 → v5：数据目录搬到 `~/.cc-monitor`，v4 块的 `$ccmDir` 是旧住址 ⇒ 装着 v4 的人也重装一次。
     // v5 → v6：`function cc` 挪进清单，块只剩握手 ＋ 接上别名文件 ⇒ 装着 v5 的人重装一次。
+    // v6 → v7：每开一个 PowerShell 就登记一次（不再只在敲 cc 时）⇒ 装着 v6 的人重装一次，远端会话的 ↗ 才认得出窗口。
     assert_eq!(
-        cur, "v6",
+        cur, "v7",
         "模板版本串变了就来改这里（并想清楚：旧块的人要不要重装）"
     );
     let ps = std::path::Path::new("/h/p.ps1");
-    for old_ver in ["v2", "v3", "v4", "v5"] {
+    for old_ver in ["v2", "v3", "v4", "v5", "v6"] {
         let old = format!(
             "# === cc-monitor BEGIN {old_ver} ===\nfunction __ccm_bind {{}}\n# === cc-monitor END ===\n"
         );
@@ -1658,4 +1740,166 @@ fn hx2_the_bind_helper_finds_the_monitor_data_dir_through_the_one_exit() {
     let at = guard_core::find_pinned(&prod, "pub(crate) fn plan_install(").expect("装那一跳不在了");
     let body = &prod[at..at + prod[at..].find("\n}\n").expect("没收尾")];
     assert_eq!(body.matches("monitor_data_dir(home)").count(), 1, "{body}");
+}
+
+/// 读数，**不在门禁**（要一个 PowerShell：`CCM_PWSH=<收 .ps1 路径的程序> cargo test --lib -- --ignored claim_`；
+/// 那个程序只收一个参数，脚本与渲染出来的块放在同一个目录里）。
+///
+/// 渲染出来的那一块（同一个 `render_cc_code`）交真 PowerShell：解析零错误；再跑六种情形（配置文件里开着 `Set-StrictMode`）——
+/// 开 PowerShell 那一下不出一个字；monitor 在跑 ⇒ 登记上、标题还原 · 不在 ⇒ 不动标题、它起来后补上 ·
+/// 上一个 monitor 崩了留下「起来了」⇒ 不去认领、等下一个起来再认 · 中途标题被别人改了 ⇒ 不改回去、这个 monitor 在时不再试、
+/// 它走了又起来才再认一次 · 一直没被认出 ⇒ 只试一次、标题还原 · 敲 cc 而 monitor 不在 ⇒ 照旧报超时。
+/// 替身四处（只换字面量，块的其余逐字）：控制台标题换成一个静态字段（Linux 上读不了）· 有名字的事件换成进程内的一个静态事件
+/// （Linux 上的 .NET 只认有名字的互斥量）· 数据目录与互斥量的名字换成本次独有的 ·
+/// 假 monitor（占着互斥量、置位事件、看到待认领那份时按「那一刻标题是不是记号」决定认不认；「走」＝复位事件、放开互斥量）。
+/// 买不到：真窗口、真 monitor、Windows PowerShell 5.1 的控制台。
+#[test]
+#[ignore = "要一个 PowerShell：CCM_PWSH=<收 .ps1 路径的程序> cargo test -- --ignored"]
+fn claim_the_rendered_block_registers_in_the_background_without_a_word() {
+    let Ok(pwsh) = std::env::var("CCM_PWSH") else {
+        panic!("没给 CCM_PWSH");
+    };
+    const DIR: &str = "/ccm-claim-sentinel-dir";
+    let block = render_cc_code(std::path::Path::new(DIR));
+    let lit = |n: &str| crate::platform::shell::dialect::ps_literal(n);
+    let harness = r#"
+$ErrorActionPreference = 'Continue'
+$t = $null; $errs = $null
+[void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'block.ps1'), [ref]$t, [ref]$errs)
+"parse-errors=$($errs.Count)"
+Add-Type -TypeDefinition 'public static class FakeConsole { public static string Title = "orig-title"; }'
+Add-Type -TypeDefinition 'public static class FakeUp { public static System.Threading.EventWaitHandle Ev = new System.Threading.EventWaitHandle(false, System.Threading.EventResetMode.ManualReset); }'
+$tag = [guid]::NewGuid().ToString('N').Substring(0, 8)
+$dir = Join-Path ([System.IO.Path]::GetTempPath()) "ccm-claim-$tag"
+$upName = "Local\ccm-up-$tag"; $aliveName = "Local\ccm-alive-$tag"
+$src = (Get-Content (Join-Path $PSScriptRoot 'block.ps1') -Raw).Replace('[System.Console]::Title', '[FakeConsole]::Title')
+$src = $src.Replace('[System.Threading.EventWaitHandle]::new($false, [System.Threading.EventResetMode]::ManualReset, $upName)', '[FakeUp]::Ev')
+$src = $src.Replace("'__DIR__'", "'$dir'").Replace("'__UP__'", "'$upName'").Replace("'__ALIVE__'", "'$aliveName'")
+$mode = '__MODE__'
+$log = [System.Collections.ArrayList]::Synchronized([System.Collections.ArrayList]::new())
+$ctl = [hashtable]::Synchronized(@{ stop = $false })
+function Start-FakeMonitor([string]$how) {
+    $ctl.stop = $false
+    $mon = [powershell]::Create()
+    [void]$mon.AddScript({
+        param($dir, $how, $log, $ctl, $upName, $aliveName)
+        $alive = [System.Threading.Mutex]::new($false, $aliveName)
+        try { [void]$alive.WaitOne() } catch [System.Threading.AbandonedMutexException] {}
+        $up = [FakeUp]::Ev
+        [void]$up.Set()
+        $await = Join-Path $dir 'ps-await'; $reg = Join-Path $dir 'ps-registry'
+        New-Item -ItemType Directory -Force $await, $reg | Out-Null
+        while (-not $ctl.stop) {
+            foreach ($f in @(Get-ChildItem $await -Filter *.json -ErrorAction SilentlyContinue)) {
+                try { $j = Get-Content $f.FullName -Raw -ErrorAction Stop | ConvertFrom-Json } catch { continue }
+                [void]$log.Add($j.marker)
+                $hit = ([FakeConsole]::Title -eq $j.marker) -and ($how -ne 'missed')
+                if ($how -eq 'interfere' -and $log.Count -eq 1) { [FakeConsole]::Title = 'prompt-set'; $hit = $false }
+                if ($hit) {
+                    $body = "{`n  `"ps_pid`": $($j.ps_pid),`n  `"hwnd`": 4660,`n  `"ps_proc_start`": `"$($j.proc_start)`"`n}"
+                    Set-Content -Path (Join-Path $reg "$($j.ps_pid).json") -Value $body -NoNewline
+                } else { Start-Sleep -Milliseconds 600 }
+                Remove-Item $f.FullName -Force -ErrorAction SilentlyContinue
+            }
+            Start-Sleep -Milliseconds 20
+        }
+        [void]$up.Reset()
+        $alive.ReleaseMutex()
+    }).AddArgument($dir).AddArgument($how).AddArgument($log).AddArgument($ctl).AddArgument($upName).AddArgument($aliveName)
+    [void]$mon.BeginInvoke()
+    Start-Sleep -Milliseconds 300
+}
+function Stop-FakeMonitor { $ctl.stop = $true; Start-Sleep -Milliseconds 800 }
+function Show([string]$tag) {
+    "$tag registered=$(Test-Path (Join-Path $dir "ps-registry/$PID.json")) title=$([FakeConsole]::Title) tries=$($log.Count)"
+}
+function Settle { foreach ($i in 1..16) { Start-Sleep -Milliseconds 500; if ($ExecutionContext.SessionState.PSVariable.GetValue('__ccm_state').done) { break } } }
+if ($mode -like 'cc-*') { $src = $src.Replace("`n__ccm_bind -Background`n", "`n") }
+if ($mode -eq 'crashed') {
+    $stale = [FakeUp]::Ev
+    [void]$stale.Set()
+}
+if ($mode -in 'hit', 'interfere', 'missed') { Start-FakeMonitor $mode }
+Set-StrictMode -Version Latest
+$out = . ([scriptblock]::Create($src)) *>&1
+"load-said=$(@($out).Count)"
+if ($mode -eq 'cc-down') { "cc-said=$(@(__ccm_bind *>&1) -join ' ')"; return }
+if ($mode -in 'down-then-up', 'crashed') {
+    Start-Sleep -Milliseconds 2500
+    Show 'down'
+    if ($mode -eq 'crashed') { "stale-up-cleared=$(-not $stale.WaitOne(0))" }
+    Start-FakeMonitor 'hit'
+}
+Settle
+Show 'end'
+if ($mode -eq 'interfere') { Stop-FakeMonitor; Start-FakeMonitor 'hit'; Settle; Show 'again' }
+"#;
+    let dir = tmpdir("claim");
+    std::fs::write(dir.0.join("block.ps1"), {
+        let mut b = String::from("\u{feff}");
+        b.push_str(
+            &block
+                .replace(&format!("'{DIR}'"), "'__DIR__'")
+                .replace(&lit(shell_quote_core::MONITOR_UP_NAME), "'__UP__'")
+                .replace(&lit(shell_quote_core::MONITOR_ALIVE_NAME), "'__ALIVE__'"),
+        );
+        b
+    })
+    .unwrap();
+    let run = |mode: &str| -> String {
+        let f = dir.0.join(format!("run-{mode}.ps1"));
+        std::fs::write(&f, harness.replace("__MODE__", mode)).unwrap();
+        let out = std::process::Command::new(&pwsh)
+            .arg(&f)
+            .output()
+            .expect("起 CCM_PWSH");
+        let text = String::from_utf8_lossy(&out.stdout).into_owned();
+        assert!(
+            text.contains("parse-errors=0\n") && text.contains("load-said=0\n"),
+            "{mode}：块解析出错，或开 PowerShell 那一下说了话：\n{text}\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        text
+    };
+    let has = |text: &str, line: &str| text.lines().any(|l| l == line);
+    let t = run("hit");
+    assert!(
+        has(&t, "end registered=True title=orig-title tries=1"),
+        "{t}"
+    );
+    let t = run("down-then-up");
+    assert!(
+        has(&t, "down registered=False title=orig-title tries=0"),
+        "{t}"
+    );
+    assert!(
+        has(&t, "end registered=True title=orig-title tries=1"),
+        "{t}"
+    );
+    let t = run("crashed");
+    assert!(
+        has(&t, "down registered=False title=orig-title tries=0"),
+        "{t}"
+    );
+    assert!(has(&t, "stale-up-cleared=True"), "{t}");
+    assert!(
+        has(&t, "end registered=True title=orig-title tries=1"),
+        "{t}"
+    );
+    let t = run("interfere");
+    assert!(
+        has(&t, "end registered=False title=prompt-set tries=1"),
+        "{t}"
+    );
+    assert!(
+        has(&t, "again registered=True title=prompt-set tries=2"),
+        "{t}"
+    );
+    let t = run("missed");
+    assert!(
+        has(&t, "end registered=False title=orig-title tries=1"),
+        "{t}"
+    );
+    let t = run("cc-down");
+    assert!(t.contains("cc-said=cc-monitor: 绑定超时"), "{t}");
 }

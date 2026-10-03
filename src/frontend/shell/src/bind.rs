@@ -17,8 +17,8 @@
 //!   8. 删 ps-await/<PID>.json → PS 解除阻塞
 //!
 //! [SessionMap added 新 session]
-//!   9. ToolHelp 拿 claude_pid 的 parent → PS_PID
-//!   10. BindRegistry::lookup_hwnd_for_ps(PS_PID) → HwndEntry
+//!   9. ToolHelp 拿 claude_pid 往上的进程链（中间可以隔着 ccm / cmd）
+//!   10. 沿链走到终端窗口的属主为止，第一个登记过且作数的 PowerShell（[`walk_chain`]）→ HwndEntry
 //!   11. 写 sid-hwnd-cache.json
 //! ```
 //!
@@ -29,8 +29,9 @@
 //!
 //! ## ↗ 远端那一格
 //!
-//! 远端会话的窗口不在这张表里：点 ↗ 时现查（那台答「此刻谁在显示它」、本机后端按连接对到这台电脑上的进程链），
-//! 本模块做最后两跳 —— [`bring_chain_window`]：沿进程链找属主的窗口，交 [`bring_found_window`] 三重指纹校验 ＋ 拉到前台。
+//! 点 ↗ 时现查（那台答「此刻谁在显示它」、本机后端按连接对到这台电脑上的进程链），本模块做最后两跳 ——
+//! [`bring_chain_window`]：沿链从下往上走到终端窗口的属主为止，哪一级 PowerShell 在这张表里登记过、且作数 ⇒ 用它登记的窗口；
+//! 没有就看属主那一级的窗口（好几个就照实说分不清，不挑）；交 [`bring_found_window`] 三重指纹校验 ＋ 拉到前台。
 
 use crate::copy_table::copy_text;
 use notify::RecursiveMode;
@@ -54,7 +55,7 @@ pub struct AwaitRequest {
 }
 
 /// 写入 ps-registry/<PID>.json 的内容；同时缓存到 BindRegistry.by_ps_pid 内存。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HwndEntry {
     pub ps_pid: u32,
     pub hwnd: isize,
@@ -115,7 +116,18 @@ impl BindRegistry {
 
         Self::spawn_await_watcher(me.clone(), await_dir);
         Self::spawn_heartbeat(me.clone());
+        // 挂上「monitor 起来了 / 还活着」那两样：PowerShell 接入块后台那一份等到它才去认领窗口（不定时醒、不动窗口标题），
+        // 在 monitor 起来之前就开着的 PowerShell 也由此在它起来时补上登记。
+        crate::platform::proc::hold_monitor_marks(
+            shell_quote_core::MONITOR_ALIVE_NAME,
+            shell_quote_core::MONITOR_UP_NAME,
+        );
         me
+    }
+
+    /// 正常退出时调：把「monitor 起来了」复位，之后新开的 PowerShell 不会去找一个已经不在的 monitor。
+    pub fn going_away() {
+        crate::platform::proc::lower_monitor_up_mark();
     }
 
     /// 查 ps_pid 对应的 hwnd entry。SessionMap 在新 session 加入时调。
@@ -403,16 +415,26 @@ impl SidHwndCache {
         self.by_sid.read().get(sid).cloned()
     }
 
-    /// claude 新 session 出现时调：拿 parent_pid → 查 BindRegistry → 写绑定。
-    /// 返回 Some 表示绑定成功，None 表示没找到（该 PS 未跑过 cc / cc 还没握手完）。
+    /// claude 新 session 出现时调：从 claude 往上沿进程链（同远端那一格的规则，[`walk_chain`]）找登记过、且作数的 PowerShell → 写绑定。
+    /// claude 往往不是 PowerShell 的直接子进程（敲 cc 时中间隔着 ccm；npm 装的 claude 中间隔着 cmd）。
+    /// 返回 Some 表示绑定成功，None 表示没找到（那个 PowerShell 没登记 / 还没登记完）。
     pub fn record(
         &self,
         sid: &str,
         claude_pid: u32,
         bind: &BindRegistry,
     ) -> Option<SidHwndBinding> {
-        let parent_pid = crate::platform::pid::parent_pid(claude_pid)?;
-        let entry = bind.lookup_hwnd_for_ps(parent_pid)?;
+        let chain: Vec<ChainLink> = crate::platform::pid::ancestors(claude_pid)
+            .into_iter()
+            .map(|(pid, name)| ChainLink { pid, name })
+            .collect();
+        let ChainHit::Registered(entry) = walk_chain(
+            &chain,
+            |pid| holding_registration(bind, pid),
+            crate::platform::hwnd::visible_top_windows_of,
+        ) else {
+            return None;
+        };
         let binding = SidHwndBinding {
             hwnd: entry.hwnd,
             owner_pid: entry.owner_pid,
@@ -428,7 +450,7 @@ impl SidHwndCache {
             "sid-hwnd: bound sid={} → hwnd={:#x} (ps_pid={} owner_pid={})",
             sid,
             binding.hwnd,
-            parent_pid,
+            binding.ps_pid,
             binding.owner_pid
         );
         Some(binding)
@@ -489,46 +511,119 @@ pub struct ChainLink {
     pub name: String,
 }
 
-/// 沿进程链从下往上，第一个有可见顶层窗口的进程：恰好一个 ⇒ (窗口, 属主)；好几个 ⇒ 分不清；整条链都没有 ⇒ 没有窗口。
-/// 窗口那一问是参数（判据喂替身）。
-pub(crate) fn pick_chain_window(
-    chain: &[ChainLink],
-    windows_of: impl Fn(u32) -> Vec<isize>,
-) -> Result<(isize, u32), String> {
-    for l in chain {
-        match windows_of(l.pid).as_slice() {
-            [] => continue,
-            [h] => return Ok((*h, l.pid)),
-            _ => {
-                return Err(copy_text(
-                    "rsBind.front.severalWindows",
-                    &[("name", &l.name)],
-                ))
-            }
-        }
-    }
-    let name = chain.first().map(|l| l.name.as_str()).unwrap_or_default();
-    Err(copy_text(
-        "rsBind.front.noWindow",
-        &[("name", &name.to_string())],
-    ))
+/// 握手表里这一条还作不作数：登记的那个 PowerShell 就是此刻这个进程（起始时刻 `start_now` 与登记时对得上；读不到也不算）·
+/// 它登记的窗口还在且属主没换（`window_ok`）。读法是参数（判据喂替身）。
+pub(crate) fn registration_holds(
+    entry: &HwndEntry,
+    start_now: Option<u64>,
+    window_ok: impl Fn(&FoundWindow) -> bool,
+) -> bool {
+    let same_shell = matches!(
+        (entry.ps_proc_start.trim().parse::<u64>().ok(), start_now),
+        (Some(a), Some(b)) if a == b
+    );
+    same_shell && window_ok(&FoundWindow::of(entry))
 }
 
-/// ↗ 远端那一格：进程链 ⇒ 属主的那个窗口 ⇒ 校验 ＋ 拉前。
-pub fn bring_chain_window(chain: &[ChainLink]) -> Result<(), String> {
+impl FoundWindow {
+    /// 握手表里那一条登记的窗口。
+    fn of(entry: &HwndEntry) -> Self {
+        FoundWindow {
+            hwnd: entry.hwnd,
+            owner_pid: entry.owner_pid,
+            owner_proc_start: entry.owner_proc_start,
+        }
+    }
+}
+
+/// 沿进程链从下往上走到终端窗口那一级为止的结局。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ChainHit<'a> {
+    /// 走到终端窗口之前，有一级在握手表里登记过、且作数（`registered` 已校验）⇒ 它登记的那一条。
+    Registered(HwndEntry),
+    /// 先走到一个有可见顶层窗口的进程（终端本身）⇒ 它和它的窗口们（一个或好几个）。
+    Owner(&'a ChainLink, Vec<isize>),
+    /// 整条链都没有。
+    Nothing,
+}
+
+/// 沿进程链从下往上（开着连接 / 起会话的那个进程在前）：每一级先看握手表（`registered` 只交作数的那一条），
+/// 再看它名下有没有可见顶层窗口；碰到有窗口的那一级就停 —— 终端窗口的属主以上的进程不在这个窗口里，
+/// 它们登记的是别的窗口（比如从某个 PowerShell 里打开的 Windows Terminal，它上面那个 PowerShell）。读法是参数（判据喂替身）。
+pub(crate) fn walk_chain<'a>(
+    chain: &'a [ChainLink],
+    registered: impl Fn(u32) -> Option<HwndEntry>,
+    windows_of: impl Fn(u32) -> Vec<isize>,
+) -> ChainHit<'a> {
+    for l in chain {
+        if let Some(e) = registered(l.pid) {
+            return ChainHit::Registered(e);
+        }
+        let wins = windows_of(l.pid);
+        if !wins.is_empty() {
+            return ChainHit::Owner(l, wins);
+        }
+    }
+    ChainHit::Nothing
+}
+
+/// 进程链 ⇒ 要拉的那个窗口：链上登记过的 PowerShell ⇒ 它登记的窗口（精确到窗口）；否则终端窗口的属主恰好一个窗口 ⇒ 它；
+/// 好几个 ⇒ 分不清（不挑，说怎么办）；整条链都没有 ⇒ 没有窗口。`start_of` 读属主的起始时刻。
+pub(crate) fn pick_chain_window(
+    chain: &[ChainLink],
+    registered: impl Fn(u32) -> Option<HwndEntry>,
+    windows_of: impl Fn(u32) -> Vec<isize>,
+    start_of: impl Fn(u32) -> u64,
+) -> Result<FoundWindow, String> {
+    match walk_chain(chain, registered, windows_of) {
+        ChainHit::Registered(e) => Ok(FoundWindow::of(&e)),
+        ChainHit::Owner(l, wins) => match wins.as_slice() {
+            [h] => Ok(FoundWindow {
+                hwnd: *h,
+                owner_pid: l.pid,
+                owner_proc_start: start_of(l.pid),
+            }),
+            _ => Err(copy_text(
+                "rsBind.front.severalWindows",
+                &[("name", &l.name)],
+            )),
+        },
+        ChainHit::Nothing => {
+            let name = chain.first().map(|l| l.name.as_str()).unwrap_or_default();
+            Err(copy_text(
+                "rsBind.front.noWindow",
+                &[("name", &name.to_string())],
+            ))
+        }
+    }
+}
+
+/// 生产那一份「握手表里作数的那一条」：查表 ＋ 此刻的起始时刻 ＋ 窗口三重校验。
+fn holding_registration(bind: &BindRegistry, pid: u32) -> Option<HwndEntry> {
+    let entry = bind.lookup_hwnd_for_ps(pid)?;
+    let start_now = crate::platform::pid::creation_filetime(pid).map(|ft| ft.0);
+    registration_holds(&entry, start_now, |w| {
+        verify_window(w.hwnd, w.owner_pid, w.owner_proc_start).is_ok()
+    })
+    .then_some(entry)
+}
+
+/// ↗ 远端那一格：进程链 ⇒ 握手表里登记的窗口（或终端窗口的属主那一个）⇒ 校验 ＋ 拉前。
+pub fn bring_chain_window(chain: &[ChainLink], bind: &BindRegistry) -> Result<(), String> {
     if !crate::platform::hwnd::SUPPORTED {
         return Err("only supported on Windows".into());
     }
-    let (hwnd, owner_pid) =
-        pick_chain_window(chain, crate::platform::hwnd::visible_top_windows_of)?;
-    let owner_proc_start = crate::platform::pid::creation_filetime(owner_pid)
-        .map(|ft| ft.0)
-        .unwrap_or(0);
-    bring_found_window(&FoundWindow {
-        hwnd,
-        owner_pid,
-        owner_proc_start,
-    })
+    let w = pick_chain_window(
+        chain,
+        |pid| holding_registration(bind, pid),
+        crate::platform::hwnd::visible_top_windows_of,
+        |pid| {
+            crate::platform::pid::creation_filetime(pid)
+                .map(|ft| ft.0)
+                .unwrap_or(0)
+        },
+    )?;
+    bring_found_window(&w)
 }
 
 fn run_heartbeat(this: Arc<BindRegistry>) {

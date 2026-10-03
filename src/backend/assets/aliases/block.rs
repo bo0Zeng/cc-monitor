@@ -535,11 +535,22 @@ fn encode_for_disk(flavor: Shell, content: &str) -> String {
 /// `monitor_data_dir` 填进模板那一格 `{{MONITOR_DATA_DIR}}`（`__ccm_bind` 找 `ps-registry/` · `ps-await/` ·
 /// `auto-launch.json` 的那个目录），按 PowerShell 单引号字面量写。它只有一个出口 —— `paths::resolve_monitor_data_dir`
 /// （跟 `CCM_DATA_DIR`），由 [`plan_install`] 取了交进来。
+/// `{{MONITOR_UP}}` · `{{MONITOR_ALIVE}}` 填「monitor 起来了」那个事件与「monitor 还活着」那个互斥量的名字
+/// （两侧共用的那一份 `shell_quote_core::MONITOR_UP_NAME` · `MONITOR_ALIVE_NAME`）。
 pub(crate) fn render_cc_code(monitor_data_dir: &Path) -> String {
-    CC_TEMPLATE.replace(
-        "{{MONITOR_DATA_DIR}}",
-        &dialect::ps_literal(&monitor_data_dir.to_string_lossy()),
-    )
+    CC_TEMPLATE
+        .replace(
+            "{{MONITOR_DATA_DIR}}",
+            &dialect::ps_literal(&monitor_data_dir.to_string_lossy()),
+        )
+        .replace(
+            "{{MONITOR_UP}}",
+            &dialect::ps_literal(shell_quote_core::MONITOR_UP_NAME),
+        )
+        .replace(
+            "{{MONITOR_ALIVE}}",
+            &dialect::ps_literal(shell_quote_core::MONITOR_ALIVE_NAME),
+        )
 }
 
 /// idempotent 安装：把别名块写到 profile / rc，已有块则原地替换。用户在 BEGIN/END 块外的内容完全不动。
