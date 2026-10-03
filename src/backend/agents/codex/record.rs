@@ -13,6 +13,7 @@
 
 use super::parse::{normalize_event, payload_type, unwrap_envelope};
 use crate::agents::claudecode::schema::{ApiMessage, JsonlRecord};
+use crate::agents::{Speaker, UserText};
 use serde_json::{json, Value};
 
 /// Codex 记录的**语义种类**（防御分类；未知/未来 → `Other*`，不崩）。
@@ -142,7 +143,7 @@ pub fn call_id(v: &Value) -> Option<&str> {
     unwrap_envelope(v)?.1.get("call_id").and_then(Value::as_str)
 }
 
-/// role=user 但正文是 **CLI 注入的上下文块**（非真用户输入 → 去噪当 meta、渲染隐藏）。判据：trim 后以
+/// role=user 但正文是 **CLI 注入的上下文块**（非真用户输入 ⇒ 系统注入、界面不画）。判据：trim 后以
 /// 已知注入标记起头。**去噪集与 aterm 2C / 事实对照 doc §63 对齐（3 标记）**——真机核（devbox `~/.codex`，
 /// 两端同机同数据）47 条 user msg = 34 真输入 + 2 `<environment_context>` + 5 `<recommended_plugins>` +
 /// 6 `# AGENTS.md instructions`，**34 真输入 0 误判**：
@@ -209,11 +210,21 @@ pub fn to_jsonl_record(v: &Value, raw: &str) -> JsonlRecord {
             let content = text_blocks(&text);
             match message_role(v) {
                 Some("assistant") => assistant_rec(id, ts, "assistant", content),
-                // developer=系统指令/元 → User(isMeta=true)（保文本、渲染当 meta 隐藏，同 Claude）。
-                Some("developer") => user_rec(id, ts, "user", content, true),
-                // role=user：CLI 注入的上下文块（<environment_context>/<recommended_plugins>）当 meta
-                // 去噪（渲染隐藏、非真用户输入；事实对照 doc §63 + aterm 对齐）。真用户输入 → isMeta=false。
-                _ => user_rec(id, ts, "user", content, is_injected_context(&text)),
+                // developer = 系统指令 ⇒ 系统注入（保文本、界面不画）。
+                Some("developer") => user_rec(id, ts, content, UserText::of(Speaker::System)),
+                // role=user：CLI 注入的上下文块是系统注入；其余是人说的话。
+                _ => {
+                    let said = if is_injected_context(&text) {
+                        UserText::of(Speaker::System)
+                    } else {
+                        UserText {
+                            speaker: Speaker::Human,
+                            text: text.trim().to_string(),
+                            pasted: Vec::new(),
+                        }
+                    };
+                    user_rec(id, ts, content, said)
+                }
             }
         }
         K::Reasoning => {
@@ -246,7 +257,7 @@ pub fn to_jsonl_record(v: &Value, raw: &str) -> JsonlRecord {
                 "tool_use_id": call_id(v).unwrap_or(""),
                 "content": out,
             }]);
-            user_rec(id, ts, "user", content, false)
+            user_rec(id, ts, content, UserText::of(Speaker::ToolResult))
         }
         // 事件/元记录 → Unrecognized（保 raw；turn-end/用量 per-kind 从 raw 读）。
         _ => unrecognized(v, ts, raw),
@@ -304,26 +315,22 @@ fn assistant_rec(uuid: String, ts: Option<String>, role: &str, content: Value) -
     }
 }
 
-fn user_rec(
-    uuid: String,
-    ts: Option<String>,
-    role: &str,
-    content: Value,
-    is_meta: bool,
-) -> JsonlRecord {
+/// 用户角色的一条：谁说的由本家判好（[`is_injected_context`] · role），不走 Claude 那一份。
+fn user_rec(uuid: String, ts: Option<String>, content: Value, said: UserText) -> JsonlRecord {
     JsonlRecord::User {
         uuid,
         timestamp: ts.unwrap_or_default(),
-        message: api_msg(role, content),
+        message: api_msg("user", content),
         cwd: None,
         session_id: None,
         is_sidechain: false,
-        is_meta,
+        is_meta: false,
+        is_compact_summary: false,
+        origin: None,
         parent_uuid: None,
         forked_from: None,
-        user_text: Default::default(),
+        user_text: said,
     }
-    .with_user_text()
 }
 
 /// 非消息记录 → `Unrecognized`（保 raw；`original_type`=`顶层/payload.type` 便于诊断/per-kind 读）。

@@ -42,8 +42,8 @@
  * ## 有哪几样是**逐字保留**的，以及为什么（这段必须诚实，别省）
  *
  * 1. **CLI 协议标记**：`<bash-input>` `<command-name>` `<system-reminder>`
- *    `This session is being continued…` 等。换掉它们 ⇒ `stripInternalNoise` /
- *    `parseSlashCommand` / `isCompactSummary` 全部失配 ⇒ 卡型分布变 ⇒ 秤失去意义。
+ *    `This session is being continued…` 等。换掉它们 ⇒ 后端判「谁说的」（斜杠命令 · `!` 输入输出 ·
+ *    压缩摘要 · 注入）全部失配 ⇒ 卡型分布变 ⇒ 秤失去意义。
  *    它们是 Claude Code 的公开协议字面，不含用户内容。
  * 2. **工具名**（`Bash` / `Read` / `mcp__…`）：驱动 `isInteractiveTool` 与
  *    `defaultModeForTool`，换掉会改渲染路径。本文件会把保留下来的工具名**全部打印出来**，

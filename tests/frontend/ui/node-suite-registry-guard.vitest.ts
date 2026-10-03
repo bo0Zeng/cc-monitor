@@ -72,7 +72,7 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   ["test:diff", "tests/frontend/ui/cards/diff.test.ts", 16], // 17 → 16：`isDiffTool` 那一条随判定进了后端（`cards_tests.rs`）
   ["test:branching", "tests/frontend/ui/branching.test.ts", 24], // +1 J10：isInterrupt 只读成品
   ["test:api-error", "tests/frontend/ui/cards/api-error.test.ts", 5],
-  ["test:bash", "tests/frontend/ui/cards/bash.test.ts", 20],
+  // `test:bash` 整份删了：斜杠命令与 `!` 输入 / 输出的解析随「谁说的」进了后端（`text_tests.rs::slash_and_bash_forms`）。
   ["test:remote-health", "tests/frontend/ui/remote-health.test.ts", 5],
   // F04b +1：`isValidNewTmuxName` 也禁 `=`（别创建一个主路杀不掉的名字）。
   // `K-R96` +1（`KR96D3`：名字可读、sid 一个片段都不进去 + `@ccm_sid` 必须还在）。
@@ -147,7 +147,9 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
 // 归 Rust `tests/backend/control/ccm/plan_tests.rs` ＋ 帧那一格 `ccm_tests.rs`）。删后现打 181 ⇒ 棘到现打值。
 // **181 → 132**，同上（**被测对象没了**）：`launch-dimensions.test.ts` 整份删除（31 条，维度表随载荷渲染删了）·
 // `remote-launch.test.ts` 28 → 10（载荷 / 外层 / 嵌套 env 那几格随载荷渲染删了，每条路径的请求留一条）。删后现打 132 ⇒ 棘到现打值。
-const TOTAL_FLOOR = 132;
+// **132 → 112**（**被测对象没了**）：`cards/bash.test.ts` 整份删除（20 条：斜杠命令与 `!` 输入 / 输出的解析随「谁说的」进了后端，
+// 逐条搬进 `tests/backend/agents/claudecode/text_tests.rs::slash_and_bash_forms`）。删后现打 112 ⇒ 棘到现打值。
+const TOTAL_FLOOR = 112;
 
 /** 判定一条 npm 命令是不是「用 tsx 跑某个 `.test.ts`」。`tsx …` 与 `npx tsx …` 都算。 */
 const TSX_SUITE_CMD = /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*(\S+\.test\.ts)\s*$/;

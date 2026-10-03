@@ -218,6 +218,7 @@ describe("C01 边界生成物", () => {
       // ——`null` 是「读不到」，`0` 是「真的一个都没声明」，两者不许合并）。
       "Origin.ts", // 步 12：`Origin` 的线上形状（`null | string` —— 两个变体、三个线上值，见 `src/comms/inward/origin.rs` 头注）
       "OriginSessionsListedPayload.ts", // 某台机器的活会话清单报完了（`origin-sessions-listed`）
+      "Pasted.ts", // 人粘贴进来的一块在 `userText.text` 里的位置（后端判「谁说的」时顺手抽出）
       // `PanoramaStatus.ts` 出列：它的 Rust 源（monitor `panorama.rs`）随内嵌引擎删了；
       //   形状今天住 `src/frontend/ui/panorama/types.ts`（全景小程序判据生成的，不手写）。
       "PathCcmVerdict.ts", // `K-R69`：PATH 上那个 `ccm` 与我们那一份的关系（四态，没有兜底档）
@@ -246,12 +247,13 @@ describe("C01 边界生成物", () => {
       "SessionTapPayload.ts", // 中转抄出来的一个 SSE 事件（`session-tap`，活卡）
       "SessionUnseenPayload.ts", // 那台机器看不见了 ⇒ 说不清（`session-unseen`）
       "SnapshotInflightPayload.ts", // 会话流 `snapshot_inflight` 那一格
+      "Speaker.ts", // 用户角色记录是谁说的（后端适配层判，随 `userText` 带来；界面只按它画）
       "StreamEv.ts", //               归一流事件（后端按上游协议折好，`tap` 帧的 `ev`）
       "ToolCard.ts", // 一个 tool_use 画成哪一种卡（后端适配层判，随 assistant 记录的 `toolCards` 带来；界面不认工具名）
       // "SftpEntry.ts" 走了（它的 Rust 源随池子那条列目录命令一起删了）。
       // "TransferProgress.ts" 走了（它的 Rust 源随池子最后那条命令一起删了）。
       "Usage.ts", //                  C04c（messages.rs 的 token 计数，**不是** usage.rs 的 UsageTotals）
-      "UserText.ts", // monitor 按 agents/claudecode/text.rs::user_text 给 user 记录填的成品
+      "UserText.ts", // 后端适配层给 user 记录与排队消息填的成品（谁说的 ＋ 要显示的正文）
       "VerifyCheck.ts", //            账号库核对里的一条（`acct-core::wire`）
       "VerifyReport.ts", //           账号库核对的成品
       // 🔴 `K-R93`（09-12）：**这一份不是 ts-rs 生成的**，是〔今天是后端注册表 `src/backend/agents/mod.rs` 经 `tests/backend/agents_tests.rs`；从前是〕`src/frontend/shell/src/adapter.rs` 的
@@ -397,7 +399,7 @@ describe("C01 边界生成物", () => {
     // ——对面那份二进制自报的构建身份（`--ccm-probe` 的 `build=` 行）。同一条理由：
     // **缺席与 `null` 语义不同** —— 缺席 = 那份后端是 `p2f-build-stamp` 之前的旧版、
     // 它压根不吐这一行；写成 `| null` 会把「它没说」与「它说了个空」混成一格。
-    expect(checked, `期望恰好 18 处 skip_serializing_if，实得 ${checked}`).toBe(18); // −1（`SessionLivePayload.rbind_token`：起会话时注的令牌删了）// 子运行 +9（`JsonlRecord::Assistant.child_runs` · `JsonlLinePayload.rid` · `SessionTapPayload.run` · `StreamEv::Block.tool` · `RunInfo.label` / `.kind` / `.tool` / `.last` · `ChildRunTag.kind`：缺席 = 没有；`SessionTapPayload.data` 换成 `.ev`，不增不减）// +1（`JsonlRecord::Assistant.tool_cards`：缺席 = 这条消息里没有要特别画的 tool_use）// +2（`CcmProbeResult.at`：只有问 PATH 那一条探针带 · `SessionLivePayload.rbind_token`：那台读不回就缺席）// −2（`TaskEntry.description` / `.active_form`：`tasks.rs` 删了）// +1（`JsonlLinePayload.skipped_from`：缺席 = 前面没有连着的不可显示段 / 不确知） // 主线 6 ＋ TAP ＋2（`SessionTapPayload.data` / `.end`）⇒ 8 // −1（`SessionHits.origin`：`search.rs` 删了） // 子步 6 −4（`HistoryProject.origin` · `HistorySessionEntry.origin` / `.forked_from_session_id` / `.forked_from_message_uuid`：两个形状随历史清单改走本机后端删了，TS 手写在 `src/frontend/ui/history-reads.ts`） // 子步 3 −2（`RemoteAccount.authKind` / `.authReady`：随 `accounts.rs` 整份删了） // −4（`FindResult.reason` · `UserInputsResult.reason` / `.failure` · `SessionIndexResult.reason`：三个回包类型随会话读面三条改走通道删了）； // +1（`FindResult.reason`：缺席 = 查得了）； +2（`UserInputsResult.reason` / `.failure`：缺席 = 清单可用）； 〔骨架〕+1（`SessionIndexResult.reason`：缺席 = 索引可用）
+    expect(checked, `期望恰好 28 处 skip_serializing_if，实得 ${checked}`).toBe(28); // +10（「谁说的」：`Speaker` 各变体的 `taskId` / `status` / `summary` / `toolUseId` / `from`×2 / `name` · `UserText.pasted` · `Pasted.id` · 排队消息的 `userText`：缺席 = 没有） // −1（`SessionLivePayload.rbind_token`：起会话时注的令牌删了）// 子运行 +9（`JsonlRecord::Assistant.child_runs` · `JsonlLinePayload.rid` · `SessionTapPayload.run` · `StreamEv::Block.tool` · `RunInfo.label` / `.kind` / `.tool` / `.last` · `ChildRunTag.kind`：缺席 = 没有；`SessionTapPayload.data` 换成 `.ev`，不增不减）// +1（`JsonlRecord::Assistant.tool_cards`：缺席 = 这条消息里没有要特别画的 tool_use）// +2（`CcmProbeResult.at`：只有问 PATH 那一条探针带 · `SessionLivePayload.rbind_token`：那台读不回就缺席）// −2（`TaskEntry.description` / `.active_form`：`tasks.rs` 删了）// +1（`JsonlLinePayload.skipped_from`：缺席 = 前面没有连着的不可显示段 / 不确知） // 主线 6 ＋ TAP ＋2（`SessionTapPayload.data` / `.end`）⇒ 8 // −1（`SessionHits.origin`：`search.rs` 删了） // 子步 6 −4（`HistoryProject.origin` · `HistorySessionEntry.origin` / `.forked_from_session_id` / `.forked_from_message_uuid`：两个形状随历史清单改走本机后端删了，TS 手写在 `src/frontend/ui/history-reads.ts`） // 子步 3 −2（`RemoteAccount.authKind` / `.authReady`：随 `accounts.rs` 整份删了） // −4（`FindResult.reason` · `UserInputsResult.reason` / `.failure` · `SessionIndexResult.reason`：三个回包类型随会话读面三条改走通道删了）； // +1（`FindResult.reason`：缺席 = 查得了）； +2（`UserInputsResult.reason` / `.failure`：缺席 = 清单可用）； 〔骨架〕+1（`SessionIndexResult.reason`：缺席 = 索引可用）
   });
 
   it("每一个 u64/i64 字段都配了 ts(type = …)——C03 的大整数策略，打在源上", () => {

@@ -130,7 +130,8 @@ fn facts_count_prose_code_and_folded_units_separately() {
 fn facts_for_user_string_meta_sidechain_system_and_garbage() {
     let u = r#"{"type":"user","isMeta":true,"isSidechain":true,"agentId":"a1","message":{"role":"user","content":"两行\n第二行"}}"#;
     let r = index_row(u.as_bytes(), 0, 0);
-    assert!(r.mt && r.sc);
+    assert!(r.sc);
+    assert_eq!(r.sp, Some("system"), "isMeta ⇒ 系统注入");
     assert_eq!((r.pl, r.ch, r.cj), (2, 5, 5));
     // tool_result 数组：只算折叠单元，正文 0
     let tr = r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":"大段输出"}]}}"#;

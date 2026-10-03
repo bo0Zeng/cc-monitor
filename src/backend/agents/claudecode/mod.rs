@@ -127,7 +127,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     text: Some(super::TextFace {
         main: text::extract_text_blocks,
         tool: text::extract_tool_text,
-        clean_user: text::clean_user_text,
+        user: text::user_text_of_record,
     }),
     delete: Some(super::SessionDelete {
         locate: paths::session_file_for_delete,

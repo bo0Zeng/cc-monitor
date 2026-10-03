@@ -128,7 +128,7 @@ const TEXT_HELPERS: &[&str] = &[
     "extract_text_blocks",
     "extract_tool_text",
     "stringify_json",
-    "clean_user_text",
+    "user_text",
 ];
 
 /// 口径常量 —— **它们就是口径本身**，任何一处再写一遍就是第二份口径。
@@ -144,7 +144,7 @@ const CONSTS: &[&str] = &[
 const MUST_CALL: &[&str] = &[
     "search_rules::make_snippet",
     "search_rules::sort_by_recency",
-    "crate::agents::clean_user_text",
+    "crate::agents::human_speech",
     "search_rules::session_title",
 ];
 

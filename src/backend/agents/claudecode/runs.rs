@@ -72,9 +72,7 @@ pub(crate) fn run_of(v: &Value) -> Option<super::super::RunMark> {
     let interrupted = s(v, "type") == Some("user")
         && v.get("message")
             .and_then(|m| m.get("content"))
-            .is_some_and(|c| {
-                super::text::user_text(&super::text::extract_text_blocks(c)).interrupt
-            });
+            .is_some_and(super::text::is_interrupt_content);
     let end = end.or(interrupted.then_some(RunEnd::Stopped));
     let did = if assistant {
         content(v).last().and_then(|b| match s(b, "type") {
@@ -162,34 +160,22 @@ fn result_link(v: &Value) -> Vec<super::super::ChildLink> {
         .collect()
 }
 
-/// 后台任务收场通知的开头（整段就是它；同一种通知也说后台命令，那些 `task-id` 对不上任何子 agent，通用层不立新行）。
-const NOTICE_OPEN: &str = "<task-notification>";
-
-/// 一段 `<tag>值</tag>` 的值（第一次出现的那个；状态与 id 都排在正文之前）。
-fn tag<'a>(text: &'a str, name: &str) -> Option<&'a str> {
-    let open = format!("<{name}>");
-    let close = format!("</{name}>");
-    let from = text.find(&open)? + open.len();
-    let len = text[from..].find(&close)?;
-    Some(text[from..from + len].trim())
-}
-
-/// 收场通知 ⇒ 哪个子 agent 怎么收场的。只读 `task-id` 与 `status` 两格。
+/// 收场通知 ⇒ 哪个子 agent 怎么收场的（通知的认法与几格住 `text.rs::task_notice`）。只读 `task-id` 与 `status` 两格；
+/// 同一种通知也说后台命令，那些 `task-id` 对不上任何子 agent，通用层不立新行。
 fn notice(text: &str) -> Vec<super::super::ChildLink> {
     use super::super::{ChildLink, RunEnd};
-    let t = trim(text);
-    if !t.starts_with(NOTICE_OPEN) {
+    let Some(n) = super::text::task_notice(text) else {
         return Vec::new();
-    }
-    let end = match tag(t, "status") {
+    };
+    let end = match n.status.as_deref() {
         Some("completed") => RunEnd::Done,
         Some("failed") => RunEnd::Failed,
         Some("killed" | "stopped") => RunEnd::Stopped,
         _ => return Vec::new(),
     };
-    match tag(t, "task-id").filter(|id| !id.is_empty()) {
+    match n.task_id {
         Some(run) => vec![ChildLink {
-            run: Some(run.to_string()),
+            run: Some(run),
             end: Some(end),
             ..ChildLink::default()
         }],
@@ -200,7 +186,7 @@ fn notice(text: &str) -> Vec<super::super::ChildLink> {
 /// 父记录的一行原文可能说到子 agent（[`child_link`] 会答出东西）：Agent 工具调用 · 带 `agentId` 的结果 · 收场通知。
 pub(crate) fn hint(line: &str) -> bool {
     static CALLS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
-    line.contains(NOTICE_OPEN)
+    line.contains(super::text::NOTICE_OPEN)
         || line.contains("\"agentId\"")
         || CALLS
             .get_or_init(|| {

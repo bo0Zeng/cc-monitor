@@ -16,26 +16,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::agents::{ChildRunTag, ToolCard};
+use crate::agents::{ChildRunTag, ToolCard, UserText};
 use std::collections::BTreeMap;
-
-/// 〔那条不等价的根〕一条 user 正文按注入噪声规则判过的成品。
-#[derive(Debug, Serialize, Clone, Default, PartialEq, Eq)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct UserText {
-    /// 剥完、trim 过的真内容；空 = 整条都是注入噪声（不建卡）。
-    pub clean: String,
-    /// 整条恰是 ESC 中断标记（分叉折叠认它）。
-    pub interrupt: bool,
-}
-
-impl UserText {
-    /// 规则只有一份（[`super::text::user_text`]）；正文的抽法同全局搜索（[`super::text::extract_text_blocks`]）。
-    pub(crate) fn of(message: &ApiMessage) -> Self {
-        super::text::user_text(&super::text::extract_text_blocks(&message.content))
-    }
-}
 
 impl JsonlRecord {
     /// assistant 记录填上 `toolCards`（`content` 里每个 `tool_use` 按本家工具词表判一次）与 `childRuns`（派出子运行的那几次）；别的类型原样。
@@ -75,13 +57,32 @@ impl JsonlRecord {
         self
     }
 
-    /// user 记录填上 [`UserText`]（别的类型原样）。
+    /// user 记录与排队消息填上「谁说的」（[`UserText`]，判定只在 `text.rs`）；别的类型原样。
     pub(crate) fn with_user_text(mut self) -> Self {
-        if let Self::User {
-            message, user_text, ..
-        } = &mut self
-        {
-            *user_text = UserText::of(message);
+        match &mut self {
+            Self::User {
+                message,
+                is_meta,
+                is_sidechain,
+                is_compact_summary,
+                parent_uuid,
+                origin,
+                user_text,
+                ..
+            } => {
+                *user_text = super::text::user_text(&super::text::Facts {
+                    content: &message.content,
+                    is_meta: *is_meta,
+                    is_sidechain: *is_sidechain,
+                    is_compact_summary: *is_compact_summary,
+                    has_parent: parent_uuid.as_deref().is_some_and(|p| !p.is_empty()),
+                    origin: origin.as_ref().filter(|o| o.is_object()),
+                });
+            }
+            Self::QueueOperation {
+                content, user_text, ..
+            } => *user_text = content.as_deref().map(super::text::queued_text),
+            _ => {}
         }
         self
     }
@@ -123,19 +124,23 @@ pub enum JsonlRecord {
         #[serde(rename = "isSidechain", default, skip_serializing)]
         #[cfg_attr(test, ts(skip))]
         is_sidechain: bool,
-        // Claude Code 注入的 meta 消息（skill/command 展开的 prompt、system-reminder、
-        // caveat 等）带 isMeta:true —— 不是用户真正输入。仍 emit（它含 uuid+parentUuid，
-        // 是 parent 链一环，漏掉会断链同 attachment #8），但前端据此 flag 跳过建卡
-        // （cards/index.ts renderMessage），否则整段 skill prompt 会当用户气泡渲染。
-        #[serde(rename = "isMeta", default)]
+        // 下面三格只喂「谁说的」那一判（`text.rs::user_text`），不上线：界面只读成品 `userText`。
+        #[serde(rename = "isMeta", default, skip_serializing)]
+        #[cfg_attr(test, ts(skip))]
         is_meta: bool,
+        #[serde(rename = "isCompactSummary", default, skip_serializing)]
+        #[cfg_attr(test, ts(skip))]
+        is_compact_summary: bool,
+        #[serde(default, skip_serializing)]
+        #[cfg_attr(test, ts(skip))]
+        origin: Option<serde_json::Value>,
         #[serde(rename = "parentUuid", default)]
         parent_uuid: Option<String>,
         // issue #12: fork session 的所有记录都带这个字段；非 fork session 缺失
         #[serde(rename = "forkedFrom", default)]
         forked_from: Option<ForkedFrom>,
-        /// 剥完 CLI 注入噪声的正文与「是不是 ESC 中断标记」—— 规则只在 `agents/claudecode/text.rs::user_text`，
-        /// 前端渲染 / 分叉折叠只读这个成品（不自己再判）。原文里没有这一格：解析完由 [`UserText::of`] 填（`parse::parse_line` · `agents/codex/record.rs`）。
+        /// 这条是谁说的、要显示的正文 —— 判定只在 `agents/claudecode/text.rs::user_text`（Codex 在 `agents/codex/record.rs`），
+        /// 界面渲染 / 分叉折叠只读这个成品（不自己再判）。原文里没有这一格：解析完由 [`JsonlRecord::with_user_text`] 填。
         #[serde(rename = "userText", skip_deserializing, default)]
         user_text: UserText,
     },
@@ -289,6 +294,16 @@ pub enum JsonlRecord {
         /// 时间戳是它**仅有的**可用于排序与展示的元数据，原文里一直有，只是我们没收。
         #[serde(default)]
         timestamp: Option<String>,
+        /// `content` 是谁说的（排队消息没有记录级字段，只认具名框与固定句）；没有 `content` ⇒ 缺。
+        /// 只有人说的那一支建卡（`remove`：插进正在跑的那一轮、没有 user 记录的那句话）。
+        #[serde(
+            rename = "userText",
+            skip_deserializing,
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        #[cfg_attr(test, ts(optional))]
+        user_text: Option<UserText>,
     },
     #[serde(rename = "permission-mode")]
     PermissionMode {},

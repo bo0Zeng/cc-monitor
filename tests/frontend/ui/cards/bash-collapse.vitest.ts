@@ -8,8 +8,8 @@
 //
 // 同批四条里另两条（`DEFAULT_MAX_LINES` / `BLOCK_LOOKAHEAD_LINES`）**当场被逮**，
 // 所以这不是「前端没有测试」，是**折叠这一支恰好长在没人去的那一层**：
-// `bash.test.ts` 是 node 纯函数套件，而 `bash.ts` 自己写着
-// 「DOM 渲染（下面依赖 document，node 纯函数测试不要碰）」—— 于是没有任何 vitest 接手。
+// 当时的 `bash.test.ts` 是 node 纯函数套件（只测解析，今天解析已进后端、那份套件删了），
+// 折叠那一段是 DOM —— 于是没有任何 vitest 接手。
 //
 // # 为什么不直接断言 30 和 20
 //

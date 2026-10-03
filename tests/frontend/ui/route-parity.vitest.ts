@@ -10,6 +10,17 @@ function mk(message: Record<string, unknown>): JsonlLinePayload {
   return { session_id: "s", cwd: null, path: "/p", seq: 1, message } as unknown as JsonlLinePayload;
 }
 
+/** 排队消息带上后端判好的「谁说的」（夹具里显式写；前端不判）。 */
+function queued(
+  operation: string,
+  content: string | null,
+  timestamp: string,
+  kind = "human",
+): JsonlLinePayload {
+  const userText = content === null ? undefined : { speaker: { kind }, text: kind === "human" ? content.trim() : "" };
+  return mk({ type: "queue-operation", operation, content, timestamp, userText });
+}
+
 function recordingSink() {
   const got = { titles: [] as string[], queued: [] as string[], branches: 0 };
   const sink: MetaSink = {
@@ -29,8 +40,8 @@ function recordingSink() {
 // ③ 一条都不许喂 branch —— 它没有 uuid/parentUuid，喂进去等于给分叉折叠算法
 //    一个没有父子关系的节点（issue #8 链完整性）。
 describe("P0c 排队消息：remove 要建卡，dequeue 不许", () => {
-  const qop = (operation: string, content: string | null) =>
-    mk({ type: "queue-operation", operation, content, timestamp: "2026-08-12T09:51:06.664Z" });
+  const qop = (operation: string, content: string | null, kind = "human") =>
+    queued(operation, content, "2026-08-12T09:51:06.664Z", kind);
 
   it("remove + 用户真实输入 → content（会走到建卡那条路）", () => {
     const { got, sink } = recordingSink();
@@ -64,24 +75,14 @@ describe("P0c 排队消息：remove 要建卡，dequeue 不许", () => {
       mk({ type: "queue-operation", operation: "enqueue", content: text, timestamp: "2026-08-12T09:51:06.664Z" }),
       sink,
     );
-    const rm = mk({
-      type: "queue-operation",
-      operation: "remove",
-      content: text,
-      timestamp: "2026-08-12T09:51:51.359Z", // 晚 45 秒
-    });
+    const rm = queued("remove", text, "2026-08-12T09:51:51.359Z"); // 晚 45 秒
     expect(routeMetaAndBranch(rm, sink)).toBe("content");
     expect((rm.message as { timestamp: string }).timestamp).toBe("2026-08-12T09:51:06.664Z");
   });
 
   it("配不上 enqueue（那条没到）→ 退回用 remove 的时刻，不空着", () => {
     const { sink } = recordingSink();
-    const rm = mk({
-      type: "queue-operation",
-      operation: "remove",
-      content: "没有对应 enqueue 的话",
-      timestamp: "2026-08-12T10:00:00.000Z",
-    });
+    const rm = queued("remove", "没有对应 enqueue 的话", "2026-08-12T10:00:00.000Z");
     expect(routeMetaAndBranch(rm, sink)).toBe("content");
     // 晚 25 秒的时间仍比没有时间有用，且卡上「排队时发出」已在提示读者。
     expect((rm.message as { timestamp: string }).timestamp).toBe("2026-08-12T10:00:00.000Z");
@@ -106,12 +107,7 @@ describe("P0c 排队消息：remove 要建卡，dequeue 不许", () => {
         sink,
       );
     }
-    const rm = mk({
-      type: "queue-operation",
-      operation: "remove",
-      content: oldest,
-      timestamp: "2026-08-12T10:00:00.000Z",
-    });
+    const rm = queued("remove", oldest, "2026-08-12T10:00:00.000Z");
     expect(routeMetaAndBranch(rm, sink)).toBe("content");
     // 配不上了 ⇒ 退回 remove 的时刻（而不是拿到那个 2026-01-01）。
     expect((rm.message as { timestamp: string }).timestamp).toBe("2026-08-12T10:00:00.000Z");
@@ -128,10 +124,17 @@ describe("P0c 排队消息：remove 要建卡，dequeue 不许", () => {
     expect(routeMetaAndBranch(qop("remove", "打断时说的话"), sink)).toBe("content");
   });
 
-  it("remove + <task-notification> → consumed（系统注入不是用户说的话）", () => {
+  it("remove + 后端判为非人（后台通知 · agent 来话）→ consumed（不是用户说的话）", () => {
     const { sink } = recordingSink();
     const note = "<task-notification>\n<task-id>abc</task-id>\n</task-notification>";
-    expect(routeMetaAndBranch(qop("remove", note), sink)).toBe("consumed");
+    expect(routeMetaAndBranch(qop("remove", note, "taskNotification"), sink)).toBe("consumed");
+    expect(routeMetaAndBranch(qop("remove", "甲乙", "agentMessage"), sink)).toBe("consumed");
+  });
+
+  it("前端不看正文：后端说是人就是人，说不是就不是（正文长什么样都一样）", () => {
+    const { sink } = recordingSink();
+    expect(routeMetaAndBranch(qop("remove", "<agent-message from=\"a\">甲</agent-message>", "human"), sink)).toBe("content");
+    expect(routeMetaAndBranch(qop("remove", "普通的一句话", "system"), sink)).toBe("consumed");
   });
 
   it("remove + 空/纯空白 → consumed（没有内容就没有卡）", () => {

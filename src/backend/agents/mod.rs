@@ -404,6 +404,144 @@ pub struct ChildRunTag {
     pub kind: Option<String>,
 }
 
+/// 一条用户角色的记录（或一条排队消息）是**谁说的** —— 通用的值域；怎么认是各家的格式知识（`agents/<名>/`，
+/// 注册表 [`TextFace::user`]）。随记录成品带出（`userText.speaker`），界面按它决定画不画、画成哪种，不认正文里的标记。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum Speaker {
+    /// 人打的字（含粘贴、采纳的建议、忙时排队打的）。
+    Human,
+    /// 人敲的斜杠命令。
+    SlashCommand { name: String, args: String },
+    /// 人敲的 `!` 命令。
+    BashInput { command: String },
+    /// `!` 命令的输出回显。
+    BashOutput { stdout: String, stderr: String },
+    /// 本地命令（斜杠命令）的输出回显。
+    CommandOutput,
+    /// 后台任务（子 agent / 后台命令）的收场通知。
+    TaskNotification {
+        #[serde(rename = "taskId", skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(test, ts(optional))]
+        task_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(test, ts(optional))]
+        status: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(test, ts(optional))]
+        summary: Option<String>,
+        #[serde(rename = "toolUseId", skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(test, ts(optional))]
+        tool_use_id: Option<String>,
+    },
+    /// 同一会话里的子 agent 发来的话；`handback` ＝ 它交回的报告。`from` 是子 agent 的 id。
+    AgentMessage {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(test, ts(optional))]
+        from: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(test, ts(optional))]
+        name: Option<String>,
+        handback: bool,
+    },
+    /// 另一个会话（另一个实例）发来的话。
+    PeerSession {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(test, ts(optional))]
+        from: Option<String>,
+    },
+    /// （子 agent 那一侧）主会话后来发给它的话。
+    Coordinator,
+    /// （子 agent 那一侧）主会话派给它的活。
+    AgentTask,
+    /// 系统注入：提醒、技能展开、续跑样板、定时触发、额度恢复后的续跑等。
+    System,
+    /// 上下文压缩后续接用的摘要。
+    CompactSummary,
+    /// 中断标记（人按了 Esc）。
+    Interrupt,
+    /// 工具结果回灌。
+    ToolResult,
+}
+
+impl Speaker {
+    /// 线上 `kind` 那一格（骨架索引的 `sp` 也用它）。
+    pub(crate) fn kind(&self) -> &'static str {
+        match self {
+            Self::Human => "human",
+            Self::SlashCommand { .. } => "slashCommand",
+            Self::BashInput { .. } => "bashInput",
+            Self::BashOutput { .. } => "bashOutput",
+            Self::CommandOutput => "commandOutput",
+            Self::TaskNotification { .. } => "taskNotification",
+            Self::AgentMessage { .. } => "agentMessage",
+            Self::PeerSession { .. } => "peerSession",
+            Self::Coordinator => "coordinator",
+            Self::AgentTask => "agentTask",
+            Self::System => "system",
+            Self::CompactSummary => "compactSummary",
+            Self::Interrupt => "interrupt",
+            Self::ToolResult => "toolResult",
+        }
+    }
+}
+
+/// 一条用户角色记录判过「谁说的」的成品（user 记录与排队消息的 `userText`）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct UserText {
+    pub speaker: Speaker,
+    /// 要显示的正文（剥过注入、trim 过）：人说的话 · 压缩摘要 · 派给子 agent 的活；别的来源是空串。
+    pub text: String,
+    /// `text` 里人粘贴进来的块（UTF-16 下标，含两头的标记）。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(test, ts(optional, as = "Option<Vec<Pasted>>"))]
+    pub pasted: Vec<Pasted>,
+}
+
+/// 人粘贴进来的一块在 `text` 里的位置（`[start, end)`，UTF-16 下标）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct Pasted {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub id: Option<String>,
+    pub start: u32,
+    pub end: u32,
+}
+
+impl Default for UserText {
+    fn default() -> Self {
+        Self::of(Speaker::System)
+    }
+}
+
+impl UserText {
+    /// 没有正文要显示的那几种来源。
+    pub(crate) fn of(speaker: Speaker) -> Self {
+        Self {
+            speaker,
+            text: String::new(),
+            pasted: Vec::new(),
+        }
+    }
+
+    /// 人在这条里说的话（大纲 · 搜索 · 历史摘录都用它）；不是人说的、或说了个空 ⇒ `None`。
+    pub(crate) fn speech(&self) -> Option<String> {
+        let s = match &self.speaker {
+            Speaker::Human => self.text.clone(),
+            Speaker::SlashCommand { name, args } => format!("{name} {args}").trim().to_string(),
+            Speaker::BashInput { command } => format!("!{command}"),
+            _ => return None,
+        };
+        (!s.is_empty()).then_some(s)
+    }
+}
+
 /// 子运行的记录住哪：父记录路径 ⇒ 此刻在盘上的子运行记录路径们（不在 ⇒ 空）。通用 watcher 拿这些路径走与主记录同一条事件管线。
 #[derive(Clone, Copy)]
 pub(crate) struct ChildFace {
@@ -521,15 +659,15 @@ pub(crate) fn run_of_record(v: &serde_json::Value) -> Option<RunMark> {
 }
 
 /// 一家的记录文本面（原共享 crate `search-core` 里 Claude 记录文本那一半）：函数指针（同 [`Adapter::home`]，不立 trait）。
-/// 通用层（全局搜索 · 会话内查找 · 历史摘录 · 用户输入列表）经 [`main_text`] · [`tool_text`] · [`clean_user_text`] 够它，不按名字够。
+/// 通用层（全局搜索 · 会话内查找 · 历史摘录 · 用户输入列表 · 骨架索引）经 [`main_text`] · [`tool_text`] · [`user_text_of`] · [`human_speech`] 够它，不按名字够。
 #[derive(Clone, Copy)]
 pub(crate) struct TextFace {
     /// 一条记录的 `message.content` ⇒ 正文文本块。
     pub(crate) main: fn(&serde_json::Value) -> String,
     /// 同上 ⇒ 工具内容（`is_assistant`：工具入参 · 思考；否则：工具结果）。
     pub(crate) tool: fn(&serde_json::Value, bool) -> String,
-    /// 一条 user 正文剥掉 CLI 注入之后的真内容（空 ＝ 整条都是注入噪声）。
-    pub(crate) clean_user: fn(&str) -> String,
+    /// 一条已解析的记录 ⇒ 它是谁说的（[`UserText`]）；不是用户角色的记录 ⇒ `None`。
+    pub(crate) user: fn(&serde_json::Value) -> Option<UserText>,
 }
 
 /// 记录树那一家（同 [`stream_record_face`]）的文本面。
@@ -547,9 +685,14 @@ pub(crate) fn tool_text(content: &serde_json::Value, is_assistant: bool) -> Stri
     text_face().map_or_else(String::new, |t| (t.tool)(content, is_assistant))
 }
 
-/// 记录树那一家怎么剥 user 正文里的 CLI 注入。没有哪一家答得了 ⇒ 原样（不剥）。
-pub(crate) fn clean_user_text(s: &str) -> String {
-    text_face().map_or_else(|| s.to_string(), |t| (t.clean_user)(s))
+/// 记录树那一家判这条记录是谁说的。没有哪一家答得了 ⇒ `None`。
+pub(crate) fn user_text_of(v: &serde_json::Value) -> Option<UserText> {
+    text_face().and_then(|t| (t.user)(v))
+}
+
+/// 人在这条记录里说的话（[`UserText::speech`]）；不是人说的 ⇒ `None`。
+pub(crate) fn human_speech(v: &serde_json::Value) -> Option<String> {
+    user_text_of(v)?.speech()
 }
 
 /// 删历史会话那一条要问适配层的两件事 —— 那是记录布局的知识，文件管理写面不认；

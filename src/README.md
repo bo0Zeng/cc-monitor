@@ -35,8 +35,8 @@ index.html  ─> /src/frontend/ui/main.ts (defer)
 | **branching.ts** (issue #8/#22/#25) | parentUuid 拓扑分析：识别 ESC 回退主线 vs 被回退分支。`computeMainBranch` = "fork 点选 latest-descendant 赢家" + "多 root 折叠被 ESC 回撤废弃的首条/重发"（#22）。单链全 on-main；多 root 时只折叠死胡同的 plain user root，/compact·/clear·链断·pre-compact 历史保留。入口按 uuid 去重对重投幂等（#25，INVARIANTS § 25） | `computeMainBranch(records) / extractBranchRecord(rec)` |
 | **branch-fold.ts** (issue #8) | DOM 重排：把连续的 off-main 卡片包到 `.branch-fold-wrap`，header「已被 ESC 回退（含 N 条）」；策略 = unwrap-then-rewrap 全量重建。v2.2 加 batch mode (`setBatchMode/flushPending`)，重放期延后到 batch 结束才算一次 mainBranch，省 O(N²)。**v2.6 起由 render-stream-record.ts 统一调用 recordAdded**（之前 tabs.ts 直接调）；`seenUuids` 拒重（#25） | `new BranchFolder(container).recordAdded / setRecordsAndRebuild / setBatchMode / flushPending` |
 | **cards/index.ts** | renderMessage 主分发：user 气泡 / assistant 卡 / 工具组合并 / tool_result 注入到 tool_use。**v2.6 RenderContext.pendingToolResults 改必填 + 加 lazy 字段**（透传给 renderMarkdown 控代码块占位） | `renderMessage(rec, ctx) → RenderResult` |
-| **cards/slash.ts** | `/` 命令紧凑卡 | `parseSlashCommand / buildSlashCommandCard` |
-| **cards/compact.ts** | `/compact` 续接消息折叠 | `isCompactSummary / buildCompactSummaryCard` |
+| **cards/slash.ts** | `/` 命令紧凑卡（命令名 / 参数由后端判好随 `userText.speaker` 带来） | `buildSlashCommandCard` |
+| **cards/compact.ts** | `/compact` 续接消息折叠（是不是压缩摘要由后端判） | `buildCompactSummaryCard` |
 | **cards/subagent.ts** | Task/Agent tool_use 折叠卡 + 懒加载 subagent JSONL | `isAgentTool / buildAgentCard` |
 | **cards/diff.ts** (issue #14) | Edit/Write/MultiEdit 的行级 diff 卡（tool_use 折叠条 body 级替换；上半纯逻辑 DOM-free，diff.test.ts 锁） | `isDiffTool / buildDiffBody` |
 | **cards/interactive.ts** (issue #21) | AskUserQuestion / ExitPlanMode 默认展开卡（提问+选项 / plan 正文直接可见，不进工具组；答复后降噪+选中高亮） | `isInteractiveTool / buildInteractiveCard / markInteractiveAnswer` |

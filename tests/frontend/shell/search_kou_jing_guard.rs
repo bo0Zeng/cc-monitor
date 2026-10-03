@@ -11,7 +11,7 @@ const HELPERS: &[&str] = &[
     "extract_text_blocks",
     "extract_tool_text",
     "stringify_json",
-    "clean_user_text",
+    "user_text",
     "make_snippet",
     "find_ci",
     "tail_chars",

@@ -159,6 +159,7 @@ function toolResultRec(
       role: "user",
       content: [{ type: "tool_result", tool_use_id: toolUseId, content: text }],
     },
+    userText: { speaker: { kind: "toolResult" }, text: "" },
   } as unknown as JsonlRecord;
 }
 
@@ -409,7 +410,7 @@ describe("🔴 秤 6 乙：核对 `tabs.ts` 那句「一条记录的文本在前
         parentUuid: null,
         timestamp: "2026-09-18T12:00:00.000Z",
         message: { role: "user", content: LONG_TEXT },
-        userText: { clean: LONG_TEXT.trim(), interrupt: false }, // monitor 那一格成品
+        userText: { speaker: { kind: "human" }, text: LONG_TEXT.trim() }, // 后端那一格成品
       } as unknown as JsonlRecord,
       ctx,
     );

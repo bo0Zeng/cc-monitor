@@ -5,10 +5,10 @@ import type { ForkedFrom } from "./ForkedFrom";
 import type { ToolCard } from "./ToolCard";
 import type { UserText } from "./UserText";
 
-export type JsonlRecord = { "type": "user", uuid: string, timestamp: string, message: ApiMessage, cwd: string | null, sessionId: string | null, isMeta: boolean, parentUuid: string | null, forkedFrom: ForkedFrom | null, 
+export type JsonlRecord = { "type": "user", uuid: string, timestamp: string, message: ApiMessage, cwd: string | null, sessionId: string | null, parentUuid: string | null, forkedFrom: ForkedFrom | null, 
 /**
- * 剥完 CLI 注入噪声的正文与「是不是 ESC 中断标记」—— 规则只在 `agents/claudecode/text.rs::user_text`，
- * 前端渲染 / 分叉折叠只读这个成品（不自己再判）。原文里没有这一格：解析完由 [`UserText::of`] 填（`parse::parse_line` · `agents/codex/record.rs`）。
+ * 这条是谁说的、要显示的正文 —— 判定只在 `agents/claudecode/text.rs::user_text`（Codex 在 `agents/codex/record.rs`），
+ * 界面渲染 / 分叉折叠只读这个成品（不自己再判）。原文里没有这一格：解析完由 [`JsonlRecord::with_user_text`] 填。
  */
 userText: UserText, } | { "type": "assistant", uuid: string, timestamp: string, message: ApiMessage, sessionId: string | null, requestId: string | null, parentUuid: string | null, forkedFrom: ForkedFrom | null, isApiErrorMessage: boolean, error: unknown, apiErrorStatus: number | null, 
 /**
@@ -29,7 +29,12 @@ childRuns?: { [key in string]: ChildRunTag }, } | { "type": "ai-title", aiTitle:
  * 它没有 `user` 记录、没有 `uuid`、没有 `parentUuid`，
  * 时间戳是它**仅有的**可用于排序与展示的元数据，原文里一直有，只是我们没收。
  */
-timestamp: string | null, } | { "type": "permission-mode", } | { "type": "last-prompt", } | { "type": "file-history-snapshot", } | { "type": "cc-monitor-unrecognized", uuid: string | null, parentUuid: string | null, timestamp: string | null, 
+timestamp: string | null, 
+/**
+ * `content` 是谁说的（排队消息没有记录级字段，只认具名框与固定句）；没有 `content` ⇒ 缺。
+ * 只有人说的那一支建卡（`remove`：插进正在跑的那一轮、没有 user 记录的那句话）。
+ */
+userText?: UserText, } | { "type": "permission-mode", } | { "type": "last-prompt", } | { "type": "file-history-snapshot", } | { "type": "cc-monitor-unrecognized", uuid: string | null, parentUuid: string | null, timestamp: string | null, 
 /**
  * 原文里的 `type`（若有）——诊断 / 记账按它分类
  */

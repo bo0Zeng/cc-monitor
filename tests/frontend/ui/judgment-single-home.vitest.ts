@@ -275,17 +275,21 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     ],
   },
   J10: {
-    what: "用户消息里的 CLI 注入噪声",
-    // 规则合成一份住 `user_text`（`clean_user_text` 取它的 `clean`）；后端读者（搜索 · 历史摘要 · 大纲）都走它。
-    //   前端：monitor 解析 user 记录时调同一个 `user_text` 填 `userText`（`messages.rs::UserText::of`），
-    //   渲染 / compact 检测 / 分叉折叠只读成品；TS 那份 `stripInternalNoise` 与 `branching.ts` 的前缀判断删了。
-    // `search-core` 拆进后端：这条规则是 Claude 记录格式的知识 ⇒ 住适配层（通用层经注册表 `agents::clean_user_text` 够）。
-    homes: ["src/backend/agents/claudecode/text.rs::user_text", "src/backend/agents/claudecode/text.rs::clean_user_text"],
+    what: "用户角色记录是谁说的（人 · CLI 注入 · agent 来话 · 后台通知 · 斜杠命令 · `!` 输入输出 · 压缩摘要 · 中断标记……）",
+    // 规则一份住适配层 `user_text`；后端读者（搜索 · 历史摘录 · 大纲 · 骨架索引）经注册表 `agents::user_text_of` 够它。
+    //   前端：后端解析 user 记录与排队消息时填 `userText`（`speaker` ＋ 要显示的 `text`），渲染 / 排队消息建卡 /
+    //   compact 检测 / 分叉折叠 / 估高只读成品；TS 那几份认标签的（注入噪声 · 排队消息 · 斜杠 · bash · compact 前缀）都删了。
+    homes: ["src/backend/agents/claudecode/text.rs::user_text"],
     status: "zero",
-    defs: ["stripInternalNoise"],
+    defs: ["stripInternalNoise", "isQueuedUserSpeech", "parseSlashCommand", "parseBashInput", "parseBashOutput", "isCompactSummary"],
     needles: [
       { text: 'startsWith("[Request interrupted by user")', count: 0, file: "src/frontend/ui/branching.ts" },
       { text: "Request interrupted by user", count: 0 },
+      { text: "<task-notification", count: 0 },
+      { text: "<agent-message", count: 0 },
+      { text: "<command-name>", count: 0 },
+      { text: "<bash-", count: 0 },
+      { text: "This session is being continued", count: 0 },
     ],
   },
   J11: {

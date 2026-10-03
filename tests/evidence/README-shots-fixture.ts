@@ -33,7 +33,7 @@ const usage = (input: number, output: number) => ({
   output_tokens: output,
 });
 
-/** 一条用户话（正文 ＝ 成品 `userText.clean`，夹具没有注入噪声）。 */
+/** 一条用户话（正文 ＝ 成品 `userText.text`，夹具没有注入噪声）。 */
 function user(sid: string, uuid: string, sec: number, text: string, cwd: string): JsonlRecord {
   return {
     type: "user",
@@ -42,10 +42,9 @@ function user(sid: string, uuid: string, sec: number, text: string, cwd: string)
     message: { role: "user", content: text, model: null, usage: null },
     cwd,
     sessionId: sid,
-    isMeta: false,
     parentUuid: null,
     forkedFrom: null,
-    userText: { clean: text, interrupt: false },
+    userText: { speaker: { kind: "human" }, text },
   };
 }
 
@@ -58,10 +57,9 @@ function result(sid: string, uuid: string, sec: number, toolUseId: string, conte
     message: { role: "user", content: [{ type: "tool_result", tool_use_id: toolUseId, content }], model: null, usage: null },
     cwd,
     sessionId: sid,
-    isMeta: false,
     parentUuid: null,
     forkedFrom: null,
-    userText: { clean: "", interrupt: false },
+    userText: { speaker: { kind: "toolResult" }, text: "" },
   };
 }
 

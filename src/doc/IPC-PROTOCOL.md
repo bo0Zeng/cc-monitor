@@ -4307,8 +4307,9 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 1. 头 `{"kind":"session_index","v":1,"from":<offset>}` —— **首行就认得出对面会出索引**；
 2. 每个**可计行**一行（口径 = `line_counts`，与 watcher / `--read-session-tail` 的行号空间一字一致 ⇒
    第 k 行就是 seq `base+k`，`base` = `offset` 之前的可计行数，**由调用方持有**，本命令不回）：
-   `{"o":<行起点绝对字节>,"n":<行字节长含\n>,"t":<type>,"u":<uuid>,"sc":true,"mt":true,"ch":…,"cj":…,"pl":…,"cb":…,"cl":…,"fd":…}`
-   —— `sc`=isSidechain · `mt`=isMeta · `ch` 正文字符数（代码块外）· `cj` 其中 CJK（`> U+2E80`）·
+   `{"o":<行起点绝对字节>,"n":<行字节长含\n>,"t":<type>,"u":<uuid>,"sc":true,"sp":"system","ch":…,"cj":…,"pl":…,"cb":…,"cl":…,"fd":…}`
+   —— `sc`=属于子运行 · `sp`=user 记录是谁说的（来源的 `kind`，同记录成品 `userText.speaker.kind`；人说的与工具结果省略，
+   客户端据它定这一行建不建卡）· `ch` 正文字符数（代码块外）· `cj` 其中 CJK（`> U+2E80`）·
    `pl` 正文非空硬行 · `cb` 围栏代码块数 · `cl` 代码行数 · `fd` 折叠单元数（tool_use / tool_result / thinking / image）。
    **零值与假值不序列化**；解析不出的行**仍占一行**（只有 `o`/`n`），丢了它后面的 seq 全错一位；
 这一行是一条**用户输入**（口径 = §10.4 那四条，判定同一个函数 `user_inputs::user_input_of`）⇒ 多两个键：
@@ -4346,9 +4347,10 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 
 选项在位置参数前后都认；**客户端写在前面**（与 §10.3 同一条纪律；monitor 不再经 argv 发它 —— 界面经通道说帧命令 `history-user-inputs`）。
 
-**口径**（四条同时满足才算一条）：`type == "user"` · `isMeta != true` · `isSidechain != true`（子 agent 的 prompt 不算 —— 选出来的，不是漏的）·
-`message.content` 抽出的**纯文本**（字符串本身，或 `type:"text"` 块用 `\n` 拼）trim 后非空（工具结果回灌靠这条排除）。**没有 uuid 的不要。**
-⚠ 已知不等价：渲染那边还会再剥一层 `stripInternalNoise`，剥空了不建卡 ⇒ 清单可能多出极少数「没有卡」的项；前端跳空时标出来。
+**口径**：user 记录里**人说了话**的那几条 —— 「谁说的」由适配层判（与记录成品的 `userText.speaker` 同一个函数）：
+人打的 / 粘贴的 / 斜杠命令 / `!` 输入算；agent 发来的、后台任务通知、系统注入、压缩摘要、中断标记、输出回显、工具结果都不算。
+属于子运行的不算（子 agent 收到的是主线派的活 —— 选出来的，不是漏的）。**没有 uuid 的不要。**
+斜杠命令的 `excerpt` 是 `/名字 参数`，`!` 输入是 `!命令`。
 
 **三段**：
 1. 头 `{"kind":"user_inputs","v":1,"from":<offset>}` —— 首行就认得出对面会出这份清单；
