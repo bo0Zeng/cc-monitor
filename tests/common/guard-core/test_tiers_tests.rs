@@ -107,7 +107,8 @@ const UNIT: &[&str] = &[
     "tests/comms/outward/route_tests.rs", // 跨半边抠 monitor 源码那几条退役 ⇒ 只剩纯解析 ＋ 成品→决策表（SCAN → UNIT）
     "tests/comms/outward/tee_tests.rs",
     "tests/comms/outward/upstream_tests.rs",
-    "tests/backend/stream/tap_tests.rs",     // hub
+    "tests/backend/stream/tap_tests.rs",       // hub
+    "tests/backend/stream/run_route_tests.rs", // 流归位那一跳的丢弃账
     "tests/frontend/ui/live-card.vitest.ts", // 活卡：状态机 · 真 TabManager 三向相等（台架夹具那一条随折法搬进后端）
     "tests/frontend/ui/runs.vitest.ts", // 子运行：主 tab 零子运行行、agent 面板分组与五态、主活卡只有主运行那段、状态标到那张卡上
     "tests/backend/writer_task_tests.rs", // 写者优先序（tap 最低）
@@ -637,6 +638,7 @@ const INTEGRATION: &[&str] = &[
     // 〔MG1 合 SU1〕skill 装记录：临时家目录里真写 / 读 / 摘 `~/.cc-monitor/skill-installs.json` ⇒ 判别器判集成层。
     "tests/backend/assets/skill_ledger_tests.rs",
     "tests/backend/stderr_log_tests.rs",
+    "tests/backend/main_claim_tests.rs", // 先抢口再接日志：占一个真回环口
     "tests/backend/stream/wire_tests.rs",
     // `tests/frontend/shell/account_aliases_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
     // `tests/frontend/shell/adapter_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
@@ -835,6 +837,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/backend/relay/host_tests.rs",
         "hosted_relay_child_entry_point",
         Trigger::Filter { by: "tests/backend/relay/host_tests.rs", needle: "relay::listen::host_tests::hosted_relay_child_entry_point" },
+    ),
+    (
+        "tests/backend/stream/tap_tests.rs",
+        "tap_capacity_reading_with_a_dozen_concurrent_streams",
+        Trigger::Manual("读数不是判据：十几路并发时 tap 通道的峰值占用与丢件（写者是模型）；跑法住它自己的头注"),
     ),
     (
         "tests/backend/stderr_log_tests.rs",

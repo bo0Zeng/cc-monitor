@@ -181,12 +181,12 @@ describe("T6 活卡状态机（期望手写）", () => {
     expect(c.cardsOf("s1").map((x) => x.messageId)).toEqual(["m1", "m2"]);
     expect(c.cardsOf("s1")).toHaveLength(LIVE_PER_TAB);
 
-    const many = Array.from({ length: LIVE_STREAMS_KEEP + 5 }, (_, i) => `t${i}`);
-    const g = core(many);
-    many.forEach((sid, i) => feed(g, taps(sid, i, round(`m${i}`, ["a"]).slice(0, 3))));
+    // 全局：子运行占满了再来 ⇒ 挤最老的，总数守在上界（正在流的主运行不挤，见「满载」那一组）。
+    const g = core(["busy"]);
+    for (let i = 0; i < LIVE_STREAMS_KEEP + 5; i++) feed(g, taps("busy", i, round(`m${i}`, ["a"]).slice(0, 3), undefined, `w${i}`));
     expect(g.size).toBe(LIVE_STREAMS_KEEP);
-    expect(g.cardsOf("t0")).toEqual([]); // 最老的被挤
-    expect(g.cardsOf(`t${many.length - 1}`)).toHaveLength(1);
+    expect(g.cardsOf("busy", "w0")).toEqual([]); // 最老的被挤
+    expect(g.cardsOf("busy", `w${LIVE_STREAMS_KEEP + 4}`)).toHaveLength(1);
 
     const big = core();
     const chunk = "字".repeat(10_000);
@@ -202,6 +202,117 @@ describe("T6 活卡状态机（期望手写）", () => {
     const d = core();
     feed(d, taps("s1", 0, [{ t: "start", rid: "m1" }, { t: "stop", ok: false }]));
     expect(d.cardsOf("s1")).toEqual([]);
+  });
+});
+
+// ─── 满载：十几路子运行同时在问，主运行长回合先思考后出字 ────────────────────────
+
+describe("满载：十几路子运行并发时，正在流的主运行活卡留得住", () => {
+  /** 主运行一段长回合：先只有思考（迟迟不出字）。 */
+  const thinking = (sid: string, resp: number, rid: string): TapPayload[] =>
+    taps(sid, resp, [
+      { t: "start", rid },
+      { t: "block", i: 0, kind: "thinking" },
+    ]);
+  /** 这段终于出字了（接在 `thinking` 那两件之后）。 */
+  const speaks = (sid: string, resp: number, s: string): TapPayload[] =>
+    [
+      { t: "block", i: 1, kind: "text" },
+      { t: "text", i: 1, s },
+    ].map((ev, k): TapPayload => ({ origin: O, stream: sid, resp, n: 2 + k, ev: ev as StreamEv }));
+  /** 子运行的一段：开头两件（还在说）· 收尾两件（说完 ＋ done）。 */
+  const subOpen = (sid: string, run: string, resp: number): TapPayload[] =>
+    taps(sid, resp, [{ t: "start", rid: `r${resp}` }, { t: "block", i: 0, kind: "tool", tool: "Bash" }], undefined, run);
+  const subClose = (sid: string, run: string, resp: number): TapPayload[] => [
+    { origin: O, stream: sid, run, resp, n: 2, ev: { t: "stop", ok: true } },
+    { origin: O, stream: sid, run, resp, n: 3, end: "done" },
+  ];
+
+  it("★ 那个现场：14 路子运行一段接一段地问、峰值 17 段同时在说；主运行先思考很久、最后出字 ⇒ 它的活卡一直在、字上得来", () => {
+    const c = core(["main", "busy"]);
+    feed(c, thinking("main", 0, "m-main"));
+    let resp = 1;
+    for (let round = 0; round < 5; round++) {
+      const open: [string, number][] = [];
+      for (let w = 0; w < 14; w++) {
+        const r = resp++;
+        feed(c, subOpen("busy", `w${w}`, r));
+        open.push([`w${w}`, r]);
+      }
+      // 洪峰：另有三路同时开着（这一刻 17 段子运行 ＋ 1 段主运行在说）。
+      for (let w = 14; w < 17; w++) {
+        const r = resp++;
+        feed(c, subOpen("busy", `w${w}`, r));
+        open.push([`w${w}`, r]);
+      }
+      expect(c.cardsOf("main").map((x) => x.messageId), `第 ${round} 轮洪峰里主运行的活卡没了`).toEqual(["m-main"]);
+      for (const [w, r] of open) feed(c, subClose("busy", w, r));
+    }
+    feed(c, speaks("main", 0, "答一句"));
+    const [card] = c.cardsOf("main");
+    expect(card?.phase).toBe("streaming");
+    expect(renderCardText(card!).body).toBe([copyText("liveCard.block.thinking"), "答一句"].join("\n"));
+    expect(c.size, "说完的子运行段还占着坑").toBe(1);
+  });
+
+  it("子运行说完的段：它的时间线没开着 ⇒ 当场撤（不占坑）；开着 ⇒ 留着「等写入记录」，记录到了 / 时间线收起才撤", () => {
+    const open = new Set<string>(["busy\u0000w1"]);
+    const c = new LiveCore(
+      (origin, stream) => (origin === O && ["busy"].includes(stream) ? stream : null),
+      (sid, run) => open.has(`${sid}\u0000${run}`),
+    );
+    for (let r = 0; r < 3 * LIVE_STREAMS_KEEP; r++) {
+      feed(c, [...subOpen("busy", "w0", r), ...subClose("busy", "w0", r)]);
+      expect(c.size, `第 ${r} 段说完了还占着坑`).toBe(0);
+    }
+    feed(c, [...subOpen("busy", "w1", 100), ...subClose("busy", "w1", 100)]);
+    expect(c.cardsOf("busy", "w1").map((x) => [x.messageId, x.phase])).toEqual([["r100", "awaiting"]]);
+    feed(c, [...subOpen("busy", "w1", 101), ...subClose("busy", "w1", 101)]);
+    c.record("busy", "r100", "w1"); // 记录到了 ⇒ 同 id 那张撤；另一张已收尾、id 不同 ⇒ 也撤
+    expect(c.cardsOf("busy", "w1")).toEqual([]);
+    feed(c, [...subOpen("busy", "w1", 102), ...subClose("busy", "w1", 102)]);
+    expect(c.size).toBe(1);
+    open.clear();
+    c.unwatched("busy", "w1"); // 时间线收起 ⇒ 说完的那几段撤
+    expect(c.size).toBe(0);
+  });
+
+  it("满了挤谁：先挤说完的、再挤子运行的（最老的先）；正在流的主运行一个不挤 —— 全是它们时主运行照收、子运行不收", () => {
+    const tabs = Array.from({ length: LIVE_STREAMS_KEEP + 4 }, (_, i) => `t${i}`);
+    const c = core([...tabs, "busy"]);
+    feed(c, taps("t0", 0, round("done0", ["a"]), "done")); // 说完了、等记录
+    feed(c, thinking("t1", 1, "m1")); // 正在流的主运行
+    for (let r = 2; r < LIVE_STREAMS_KEEP; r++) feed(c, subOpen("busy", `w${r}`, r)); // 子运行在说
+    expect(c.size).toBe(LIVE_STREAMS_KEEP);
+    feed(c, thinking("t2", 50, "m2")); // 满了 ⇒ 挤说完的那张
+    expect(c.cardsOf("t0")).toEqual([]);
+    feed(c, thinking("t3", 51, "m3")); // 再来 ⇒ 挤最老的子运行
+    expect(c.cardsOf("busy", "w2")).toEqual([]);
+    expect(c.cardsOf("busy", "w3")).toHaveLength(1);
+    expect(c.size).toBe(LIVE_STREAMS_KEEP);
+    for (let i = 4; i < tabs.length; i++) feed(c, thinking(`t${i}`, 60 + i, `m${i}`)); // 子运行挤光、之后主运行照收
+    expect(c.size).toBe(tabs.length - 1);
+    for (let i = 1; i < tabs.length; i++) expect(c.cardsOf(`t${i}`), `t${i} 正在流却被挤了`).toHaveLength(1);
+    feed(c, subOpen("busy", "late", 99)); // 全是正在流的主运行 ⇒ 子运行这段不收
+    expect(c.cardsOf("busy", "late")).toEqual([]);
+    expect(c.size).toBe(tabs.length - 1);
+  });
+
+  it("每一种丢都数、都出声（同一种第 1、2、4、8… 次说一行，带累计）；正常撤卡不算丢", () => {
+    const said: string[] = [];
+    const c = new LiveCore(
+      (origin, stream) => (origin === O && ["s1", "busy"].includes(stream) ? stream : null),
+      () => false,
+      (why, n) => said.push(`${why}#${n}`),
+    );
+    for (let r = 0; r < 5; r++) feed(c, taps("nobody", r, round(`x${r}`, ["a"]))); // 匿名 ×5
+    feed(c, taps("s1", 10, round("g", ["a", "b"])).filter((t) => t.n !== 3)); // 断号
+    feed(c, taps("s1", 11, round("h", ["a"])).slice(1)); // 头件丢
+    feed(c, [...taps("s1", 12, round("k", ["a"]).slice(0, 3)), { origin: O, stream: "s1", resp: 12, n: 3, end: "broken" }]); // 断在半路
+    feed(c, taps("s1", 13, round("ok", ["a"]), "done"));
+    c.record("s1", "ok"); // 定稿：正常撤，不算丢
+    expect(c.lost).toEqual({ anon: 5, gap: 1, head: 1, broken: 1 });
+    expect(said).toEqual(["anon#1", "anon#2", "anon#4", "gap#1", "head#1", "broken#1"]);
   });
 });
 
@@ -265,5 +376,25 @@ describe("T8 SSE 断 / 丢不碰 jsonl 那条对的路（抄流可以有缺口�
     expect(gapped.liveMidway).toBe("");
     expect(broken.liveMidway).toBe("");
     expect(whole.liveAfter).toBe("");
+  });
+
+  it("tab 按旧机器标签建出来（固定的 tab 复活）、后端宣告这个会话在另一台 ⇒ tab 的机器改成宣告的那台，那台来的流上得了活卡、标题前缀跟着变", () => {
+    installViewerRig();
+    const barEl = document.createElement("div");
+    const streamRootEl = document.createElement("div");
+    document.body.append(barEl, streamRootEl);
+    const tm = new TabManager(barEl, streamRootEl);
+    tm.setLivePainter(livePainter);
+    const trailer = (): string =>
+      [...streamRootEl.querySelectorAll(".stream")].map((s) => [...s.children].slice(1).map((c) => c.textContent).join("|")).join("#");
+    tm.createSkeletonTab("s9", "/w/p", "old-host"); // 盘上存的那份标签
+    tm.createSkeletonTab("s9", "/w/p", "new-host"); // 后端宣告
+    for (const t of taps("s9", 0, round("m9", ["这台", "说的"]).slice(0, 5))) tm.onSessionTap({ ...t, origin: "new-host" });
+    expect(trailer()).toContain("这台说的");
+    expect(tm.snapshotSessions().map((x) => [x.sessionId, x.origin, x.title.includes("[new-host]"), x.title.includes("old-host")])).toEqual([
+      ["s9", "new-host", true, false],
+    ]);
+    for (const t of taps("s9", 1, round("m10", ["旧的"]).slice(0, 5))) tm.onSessionTap({ ...t, origin: "old-host" });
+    expect(trailer()).not.toContain("旧的");
   });
 });

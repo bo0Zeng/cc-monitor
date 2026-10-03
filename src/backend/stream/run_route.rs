@@ -6,12 +6,13 @@
 //!    这一家没声明那个头 ⇒ 这个会话此刻**没有在跑的子运行**就归主运行，**有**就先挂起，等哪条记录（主或子）的对账键对上，
 //!    按它的归属放出来。挂起的那段在对上之前不上任何活卡。
 //! 3. 号：放出去的帧按段重新从 0 连续编号（界面靠它看缺口）；上游那一侧缺了号（tap 通道满）⇒ 这一段收尾成 `broken`、不再收。
+//! 4. 没放出去 / 半路收了的段按原因数（[`Lost`]），每种第 1、2、4、8… 次说一行；正常说完不算。
 
 use crate::agents::{StreamEv, StreamFace, StreamFamily};
 use crate::observe::runs::RunBook;
 use crate::relay::{TapBody, TapEvent};
 use crate::stream::wire::{Frame, TapEnd};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 /// 同时在攒的段最多几个（超了挤掉最老的）。
@@ -22,6 +23,23 @@ pub(crate) const ROUTE_PENDING_KEEP: usize = 512;
 const DEAD_KEEP: usize = 256;
 
 type Item = (Option<StreamEv>, Option<TapEnd>);
+
+/// 一段流为什么没放出去 / 半路收了（这条连接上数）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Lost {
+    /// 头一件不是 0 号（开头在 tap 通道那一跳丢了，对账键在里面）。
+    Head,
+    /// 没有会话标签（请求没带会话头）⇒ 对不上任何 tab。
+    NoStream,
+    /// 哪家的协议面都折不出「开始」。
+    NoFace,
+    /// 同时在攒的段满了，最老的被挤掉。
+    Evicted,
+    /// 半路缺了号（tap 通道满）⇒ 收尾成断。
+    Gap,
+    /// 挂起时攒的件超了上界。
+    PendingOverflow,
+}
 
 enum Route {
     Run(Option<String>),
@@ -46,6 +64,8 @@ pub(crate) struct RunRouter {
     order: VecDeque<u64>,
     dead: HashSet<u64>,
     dead_order: VecDeque<u64>,
+    /// 这条连接上至今每种丢了几段。
+    lost: BTreeMap<Lost, u64>,
 }
 
 impl RunRouter {
@@ -57,6 +77,21 @@ impl RunRouter {
             order: VecDeque::new(),
             dead: HashSet::new(),
             dead_order: VecDeque::new(),
+            lost: BTreeMap::new(),
+        }
+    }
+
+    /// 这一段不收了，因为 `why`：埋掉、数一次、该说就说。
+    fn lose(&mut self, resp: u64, why: Lost) {
+        self.bury(resp);
+        let c = self.lost.entry(why).or_default();
+        *c += 1;
+        let n = *c;
+        if n.is_power_of_two() {
+            tracing::warn!(
+                "[tap] 一段流没放出去 / 半路收了：{why:?}（这条连接上这一种第 {n} 次；累计 {:?}）",
+                self.lost
+            );
         }
     }
 
@@ -82,11 +117,15 @@ impl RunRouter {
         if !self.resps.contains_key(&resp) {
             // 头一件不是 0 号 ⇒ 开头丢了（对账键在里面）；没有会话标签 ⇒ 对不上任何 tab。都不收。
             let TapBody::Data(d) = &ev.body else {
-                self.bury(resp);
+                self.lose(resp, Lost::Head);
                 return Vec::new();
             };
-            if ev.n != 0 || ev.stream.is_empty() {
-                self.bury(resp);
+            if ev.n != 0 {
+                self.lose(resp, Lost::Head);
+                return Vec::new();
+            }
+            if ev.stream.is_empty() {
+                self.lose(resp, Lost::NoStream);
                 return Vec::new();
             }
             let Some(family) = self.families.iter().copied().find(|f| {
@@ -94,7 +133,7 @@ impl RunRouter {
                     .iter()
                     .any(|e| matches!(e, StreamEv::Start { .. }))
             }) else {
-                self.bury(resp);
+                self.lose(resp, Lost::NoFace);
                 return Vec::new();
             };
             let face = family.face;
@@ -107,7 +146,7 @@ impl RunRouter {
             };
             if self.resps.len() >= ROUTE_RESPS_KEEP {
                 if let Some(old) = self.order.front().copied() {
-                    self.bury(old);
+                    self.lose(old, Lost::Evicted);
                 }
             }
             self.resps.insert(
@@ -131,7 +170,7 @@ impl RunRouter {
             // 上游那一侧缺了号：这一段认不全了 ⇒ 收尾成断、不再收（定稿归记录）。
             let items = vec![(None, Some(TapEnd::Broken))];
             let out = emit(r, resp, items);
-            self.bury(resp);
+            self.lose(resp, Lost::Gap);
             return out;
         }
         r.raw_next += 1;
@@ -173,7 +212,7 @@ impl RunRouter {
             Route::Pending(held) => {
                 held.extend(items);
                 if held.len() > ROUTE_PENDING_KEEP {
-                    self.bury(resp);
+                    self.lose(resp, Lost::PendingOverflow);
                 }
                 Vec::new()
             }
@@ -237,3 +276,7 @@ fn emit(r: &mut Resp, resp: u64, items: Vec<Item>) -> Vec<Frame> {
         })
         .collect()
 }
+
+#[cfg(test)]
+#[path = "../../../tests/backend/stream/run_route_tests.rs"]
+pub(crate) mod tests; // `pub(crate)`：听 `tracing` 说了什么的 `tests::heard` 给 hub 的单测共用
