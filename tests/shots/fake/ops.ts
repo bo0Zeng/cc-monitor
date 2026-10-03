@@ -23,7 +23,7 @@ function layout(records: JsonlRecord[]): { at: { o: number; n: number }[]; end: 
 }
 
 const textOf = (r: JsonlRecord): string => {
-  if (r.type === "user") return r.userText.clean;
+  if (r.type === "user") return r.userText.text;
   if (r.type === "assistant" && Array.isArray(r.message.content)) {
     return (r.message.content as { type: string; text?: string }[])
       .filter((b) => b.type === "text")
@@ -123,8 +123,8 @@ export function defaultOps(): Record<string, OpHandler> {
         from: 0,
         end: layout(recs).end,
         entries: recs
-          .filter((r): r is Extract<JsonlRecord, { type: "user" }> => r.type === "user" && r.userText.clean !== "")
-          .map((r) => ({ uuid: r.uuid, excerpt: r.userText.clean.slice(0, 120), timestamp: r.timestamp })),
+          .filter((r): r is Extract<JsonlRecord, { type: "user" }> => r.type === "user" && r.userText.speaker.kind === "human" && r.userText.text !== "")
+          .map((r) => ({ uuid: r.uuid, excerpt: r.userText.text.slice(0, 120), timestamp: r.timestamp })),
       };
     },
     "history-facts": (_o, req, w) => {
