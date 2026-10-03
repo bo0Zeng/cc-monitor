@@ -38,6 +38,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
   LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
   RemoteSection: class {
+    originOfPage = (): string | null => null;
     element = document.createElement("div");
     refresh = vi.fn().mockResolvedValue(undefined);
     constructor(opts?: {
@@ -93,8 +94,8 @@ const LOCAL_PAGE_IPC = [
 ] as const;
 
 /**
- * 已经放过一次之后切到 devbox：只有**跟着机器走、切换即重读**的那几块（足迹 · 未识别的数据）重读。
- * 账号那块也订阅了机器，但它只认「已加载的远端清单里有的那台」—— 录音机下清单是空的 ⇒ 不读；
+ * 已经放过一次之后切到 devbox：只有**跟着机器走、切换即重读**的那几块（足迹 · 未识别的数据 · 账号）重读。
+ * 账号那块读不到机器表（录音机下 `load_config` 失败）就不核「认不认得这台」，跟着去问 devbox；
  * 足迹在远端页上**也去问**（按 devbox 那台，回声不对就说答不了）——
  *   它并进了 per-machine 那一批单例，切机器由它自己的订阅重读，恰好一发。
  */
@@ -103,6 +104,7 @@ const SWITCH_TO_AYA_IPC: readonly string[] = [
   // 「未识别的数据」按机器分：切到 devbox 由它自己的订阅重读，按 devbox 去问，恰好一发。
   "drift_ledger_report",
   "chan_call", // 未识别的数据里记录那两面：经通道问 devbox 那台后端 `drift-report`
+  "chan_call", // 账号：devbox 那一台（经通道说 `accounts-list`）
 ];
 /**
  * 第一次可见就是 devbox：per-machine 那一批放一次，**每一发恰好一次**。

@@ -70,6 +70,11 @@ export class RelayOptinSection {
     });
   }
 
+  /** 回到这一页时：展开过就重问一次（照片段贴好回来，不该还显示旧的那一态）。 */
+  rereadIfOpened(): void {
+    if (this.opened) void this.refresh();
+  }
+
   private buildCosts(): HTMLElement {
     const box = div("", "costs");
     box.appendChild(div("settings-label", "costs-title", copyText("relayOptin.costs.title")));

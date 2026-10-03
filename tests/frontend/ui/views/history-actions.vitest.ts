@@ -174,7 +174,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
         case "list_local_accounts":
           return Promise.resolve({ available: true, error: null, meta: null, accounts: [ACCT], notice: null });
         case "load_config":
-          return Promise.resolve({ accounts: { defaultName: "acct-a" } });
+          return Promise.resolve({ accounts: { byMachine: { "<local>": { defaultName: "acct-a" } } } });
         case "list_last_accounts":
           return Promise.resolve({});
         // ★ 起会话这一跳**交回身份 token**（`KP5HD1` 那一格的前端这一侧）。

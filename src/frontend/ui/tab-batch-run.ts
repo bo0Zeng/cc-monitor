@@ -231,7 +231,7 @@ export async function planStarts(origin: Origin, list: readonly Tab[]): Promise<
       sid: t.sessionId,
       cwd: t.projectDir ?? "",
       account: r.kind === "account" ? { kind: "named", name: r.name, configDir: r.configDir } : { kind: "base" },
-      model: r.kind === "account" ? ((await getModelForAccount(r.name)) ?? null) : null,
+      model: r.kind === "account" ? ((await getModelForAccount(origin, r.name)) ?? null) : null,
       launcher,
       defaultLauncher,
     });

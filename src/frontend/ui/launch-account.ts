@@ -427,7 +427,7 @@ export async function withAccount(
     }
   }
   const modelOverride =
-    resolution.kind === "account" ? await getModelForAccount(resolution.name) : undefined;
+    resolution.kind === "account" ? await getModelForAccount(origin, resolution.name) : undefined;
   const launched = await run({
     configDir,
     accountName: resolution.kind === "account" ? resolution.name : undefined,

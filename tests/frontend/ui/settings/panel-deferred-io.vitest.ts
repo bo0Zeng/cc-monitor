@@ -55,6 +55,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
   LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
   RemoteSection: class {
+    originOfPage = (): string | null => null;
     element = document.createElement("div");
     refresh = vi.fn().mockResolvedValue(undefined);
     constructor(opts?: {

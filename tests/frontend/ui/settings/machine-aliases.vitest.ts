@@ -236,6 +236,12 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     f.dispatchEvent(new Event("change"));
   };
 
+  /** 重读：别名那一份 ＋ 本机 ccm 那一格；PowerShell 那几格跟着重问（用户级 PATH 那一格有自己的「刷新」）。 */
+  const REREAD: Record<Plat, string[]> = {
+    posix: ["aliases_read", "aliases_render", "local_ccm_entry_status"],
+    powershell: ["aliases_read", "aliases_render", "bound_terminal_count", "cc_get_auto_launch", "local_ccm_entry_status"],
+  };
+
   const FIRST_OPEN: Record<Plat, string[]> = {
     posix: ["aliases_read", "aliases_render", "local_ccm_entry_status"],
     powershell: ["aliases_read", "aliases_render", "bound_terminal_count", "cc_get_auto_launch", "ccm_user_path_status", "local_ccm_entry_status"],
@@ -253,6 +259,22 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     expect(seen.length, "再展开又读了一遍").toBe(n);
     const shells = seen.filter((c) => c.cmd === "aliases_read" || c.cmd === "aliases_render").map((c) => (c.args as { shell: string }).shell);
     expect(new Set(shells)).toEqual(new Set([plat]));
+  });
+
+  it("★ 回到这一页 / 别处改了这台的别名清单：展开过的按机器重读一遍；没展开过的、别台的都不读", async () => {
+    const m = await import("../../../../src/frontend/ui/settings/machine-aliases");
+    const el = await mount();
+    m.rereadAliases("<local>");
+    await flush();
+    expect(seen, "没展开过就读了").toEqual([]);
+    await open(el);
+    seen = [];
+    m.rereadAliases("devbox");
+    await flush();
+    expect(seen, "别台的清单变了，这台跟着读了").toEqual([]);
+    m.rereadAliases("<local>");
+    await flush();
+    expect(seen.map((c) => c.cmd).sort()).toEqual(REREAD[plat]);
   });
 
   it("「终端接入」在最上、先说现状：没接入 ⇒ 醒目的「接入 …」；接入之后说「已接入」并给「卸载 ccm」，两发都带那份文件", async () => {

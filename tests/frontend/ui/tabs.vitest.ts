@@ -1336,7 +1336,7 @@ describe("单个「在 tmux 里 Resume」交那台（与批量同一条，只差
         });
       }
       if (cmd === "list_last_accounts") return Promise.resolve({});
-      if (cmd === "load_config") return Promise.resolve({ accounts: { modelByAccount: { z: "opus" } } });
+      if (cmd === "load_config") return Promise.resolve({ accounts: { byMachine: { devbox: { modelByAccount: { z: "opus" } } } } });
       return Promise.resolve(undefined);
     })));
     vi.mocked(callStart).mockResolvedValue([reply("done", null, "proj-cc")] as never);

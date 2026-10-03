@@ -25,6 +25,7 @@
 
 import { commands } from "../ipc/commands";
 import { openPortForwardPanel } from "../views/port-forward";
+import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 // F12：配置数据层已抽到 src/frontend/ui/remote-config.ts（治分层倒挂）——UI 从数据模块 import，不再自持 CRUD。
 import {
   describeFacet,
@@ -54,6 +55,7 @@ import {
   type MachineCardParts,
 } from "./machine-card";
 import { markRestartNeeded } from "./restart-notice";
+import { moveMachinePrefs } from "../account-prefs";
 import { computeGaps, summarizeGaps, describeGap } from "./readiness";
 // K-P1/P2s：本机后端那条把手的 origin。**与 `LOCAL_MACHINE_KEY` 不是同一个串** ——
 // 前者是后端注册表里的键（`inbound_client::LOCAL_ORIGIN`），后者是这本 UI 账本的键。
@@ -502,6 +504,7 @@ export class RemoteSection {
         onChange: () => void this.save(),
         onRemove: (c) => this.removeCard(c),
         onStatusChanged: (c) => this.refreshMachineRow(c),
+        nameTaken: (c, origin) => this.originTaken(origin, c),
       },
       collapsed,
       persistedKey,
@@ -625,6 +628,22 @@ export class RemoteSection {
     for (let n = 2; this.machinePageIds.includes(id); n += 1) id = `${stem}#${n}`;
     this.pageIdOf.set(card, id);
     return id;
+  }
+
+  /** 列表里（除 `except` 那张）已经有一台叫 `origin` 了。 */
+  private originTaken(origin: string, except?: MachineCard): boolean {
+    return this.cards.some((c) => c !== except && hostKey(c.collect()) === origin);
+  }
+
+  /**
+   * 某一页此刻讲的是哪台：按那张卡现在的名字（改过名的是新名）。还没名字的空白卡、不是机器页 ⇒ `null`。
+   * 页 id 建卡时定死、不跟着改名走，所以「切到这一页 = 看哪台」要问这里，不能从页 id 里抠。
+   */
+  originOfPage(pageId: string): string | null {
+    for (const [card, id] of this.pageIdOf) {
+      if (id === pageId) return hostKey(card.collect()) || null;
+    }
+    return null;
   }
 
   /** 这张卡的页 id。创建时定死，**绝不重算**（理由见 `assignPageId`）。 */
@@ -869,16 +888,21 @@ export class RemoteSection {
     //   `insertAdjacentElement("afterend")` 是空操作 ⇒ 这块提示从来没进过 DOM（「未找到」「读不了」都没人看得见）。
   }
 
-  /** 选了别名 → `ssh-config-resolve` → 新增一台机器并填好 → 保存。 */
+  /** 选了别名 → `ssh-config-resolve` → 新增一台机器并填好 → 保存。已有同名的 ⇒ 不建卡、说出来（与批量导入同一条）。 */
   private async onImportAlias(): Promise<void> {
     const alias = this.importSelect.value;
     if (!alias) return;
+    if (this.originTaken(alias)) {
+      this.showBanner(copyText("remote.import.exists", { alias }));
+      this.importSelect.value = "";
+      return;
+    }
     try {
       const resolved = await resolveSshHost(alias);
       const card = this.appendCard({ ...HOST_DEFAULTS });
       card.applyResolved(resolved, alias);
-      await this.save();
-      this.showBanner(copyText("remote.import.done", { alias }));
+      // 没存进去时 `save()` 已经把原因画在横幅上，不拿「已导入」盖掉它。
+      if (await this.save()) this.showBanner(copyText("remote.import.done", { alias }));
     } catch (e) {
       console.warn("ssh-config-resolve failed:", e);
       this.showBanner(copyText("remote.import.failed", { alias, e: String(e) }));
@@ -950,6 +974,12 @@ export class RemoteSection {
 
     const back = document.createElement("div");
     back.className = "import-preview-back";
+    // 压进 Esc 栈：Esc 只关这个框，不连带关设置窗。
+    const layer: OverlayHandle = { handleEsc: () => (close(), true) };
+    const close = (): void => {
+      dispatcher.popOverlay(layer);
+      back.remove();
+    };
     const box = document.createElement("div");
     box.className = "import-preview-box";
     const title = document.createElement("div");
@@ -1013,28 +1043,23 @@ export class RemoteSection {
     cancel.type = "button";
     cancel.className = "settings-btn";
     cancel.textContent = copyText("remote.preview.cancel");
-    cancel.addEventListener("click", () => back.remove());
+    cancel.addEventListener("click", close);
     const confirm = document.createElement("button");
     confirm.type = "button";
     confirm.className = "settings-btn settings-btn-primary";
     confirm.textContent = copyText("remote.preview.import");
     confirm.addEventListener("click", () => {
-      back.remove();
+      close();
       void this.applyImportPreview(state);
     });
     foot.append(cancel, confirm);
     box.appendChild(foot);
 
     back.addEventListener("click", (e) => {
-      if (e.target === back) back.remove();
-    });
-    back.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        back.remove();
-      }
+      if (e.target === back) close();
     });
     back.appendChild(box);
+    dispatcher.pushOverlay(layer);
     document.body.appendChild(back);
     box.querySelector("input")?.focus();
   }
@@ -1049,12 +1074,7 @@ export class RemoteSection {
     }>,
   ): Promise<void> {
     // 已存在的卡（导入前）→ 撞到就跳过（不重复导入）。批内新机同名 → 加后缀消歧（不丢机,F57-1）。
-    const preExisting = new Set(
-      this.cards.map((c) => {
-        const cfg = c.collect();
-        return cfg.label.trim() || cfg.host;
-      }),
-    );
+    const preExisting = new Set(this.cards.map((c) => hostKey(c.collect())));
     const usedInBatch = new Set<string>();
     let added = 0;
     let skipped = 0;
@@ -1080,7 +1100,8 @@ export class RemoteSection {
         push(this.groupToCfg(s.g, s.label));
       }
     }
-    if (added > 0) await this.save();
+    // 没存进去时 `save()` 已经把原因画在横幅上，不拿「已导入几台」盖掉它。
+    if (added > 0 && !(await this.save())) return;
     this.showBanner(
       copyText("remote.batch.done", { added, skippedPart: skipped ? copyText("remote.batch.skipped", { skipped }) : "" }),
     );
@@ -1129,17 +1150,15 @@ export class RemoteSection {
 
   // === 数据 ===
 
-  /** 读出当前整段 RemoteConfig（enabled + 所有卡片）。 */
-  private collect(): RemoteConfig {
-    return {
-      enabled: this.enabledCheckbox.checked,
-      hosts: this.cards.map((c) => c.collect()),
-    };
-  }
-
-  /** 任一控件变化 → 组装 → merge 进 config.json → 提示重启。 */
-  private async save(): Promise<void> {
-    const next = this.collect();
+  /** 任一控件变化 → 组装 → merge 进 config.json → 提示重启。存进去了 ⇒ `true`（没存进去的原因已画在横幅上）。 */
+  private async save(): Promise<boolean> {
+    // 还没落过盘、主机或用户没填的卡（「＋ 添加机器」刚出来那张）不进补丁：
+    // 写进去就是一条认不出、删不掉的空机器。它留在界面上，填完了再存。
+    const saving = this.cards.filter((c) => {
+      const h = c.collect();
+      return c.persistedKey !== null || (!!h.host && !!h.user);
+    });
+    const next: RemoteConfig = { enabled: this.enabledCheckbox.checked, hosts: saving.map((c) => c.collect()) };
     // best-effort UI 校验：启用但某台缺必填字段 → 软提示（不拦保存，后端会跳过该台）。
     const incompleteCount = next.enabled
       ? next.hosts.filter((h) => !h.host || !h.user).length
@@ -1181,14 +1200,14 @@ export class RemoteSection {
         for (const k of keys) if (k !== null) m.set(k, (m.get(k) ?? 0) + 1);
         return m;
       };
-      const liveCount = countBy(this.cards.map((c) => c.persistedKey));
+      const liveCount = countBy(saving.map((c) => c.persistedKey));
       // 每张已在盘上的卡带上加载时那份（origin 在加载时恰好一台的才带）⇒ 数据层按格改、只交动过的格。
       const loadedCount = countBy(this.loadedKeys);
       const wasOf = (k: string | null): RemoteHostConfig | undefined =>
         k !== null && loadedCount.get(k) === 1 ? findHostByOrigin(this.original.hosts, k) ?? undefined : undefined;
       await patchRemoteConfig({
         enabled: next.enabled,
-        upsert: this.cards.map((c) => ({
+        upsert: saving.map((c) => ({
           key: c.persistedKey,
           value: c.collect(),
           was: wasOf(c.persistedKey),
@@ -1198,29 +1217,37 @@ export class RemoteSection {
           .map(([k]) => k),
       });
       // 落盘成功后卡片身份跟到新 origin 上（用户这次可能就是在改名）。
-      for (const c of this.cards) {
+      const renames: [string, string][] = [];
+      for (const c of saving) {
         const next = hostKey(c.collect());
         // S3：状态账本跟着改名走，否则改个名字那几格就凭空清零。
         if (c.persistedKey && c.persistedKey !== next) {
           renameMachine(c.persistedKey, next);
+          renames.push([c.persistedKey, next]);
         }
         c.persistedKey = next;
         c.renderStatusStrip();
       }
-      this.loadedKeys = this.cards.map((c) => c.persistedKey!);
+      this.loadedKeys = saving.map((c) => c.persistedKey!);
 
       const changed = !sameRemote(next, this.original);
+      // 续跑命令起会话时现读，改了不用重启；但要说一声存上了。
+      const resumeChanged = next.hosts.some((h, i) => h.resumeCommand !== this.original.hosts[i]?.resumeCommand);
       this.original = next;
-      if (changed && incompleteCount === 0 && !fingerprintLooksOff) {
+      // 那台的默认账号 / 默认模型跟着改名走。
+      for (const [from, to] of renames) await moveMachinePrefs(from, to);
+      if ((changed || resumeChanged) && incompleteCount === 0 && !fingerprintLooksOff) {
         // S7：「要重启」这个**状态**收敛到底部常驻条，banner 只报「这次动作成功了」。
         // 原先每次保存都在 banner 里重说一遍「需要重启」—— 那句话恒真，说多了就成噪音，
         // 真该注意时反而认不出来（§12）。
-        markRestartNeeded(copyText("remote.save.what"));
+        if (changed) markRestartNeeded(copyText("remote.save.what"));
         this.showBanner(copyText("remote.save.done"));
       }
+      return true;
     } catch (e) {
       console.warn("save remote config failed:", e);
       this.showBanner(copyText("remote.save.failed", { e: String(e) }));
+      return false;
     }
   }
 

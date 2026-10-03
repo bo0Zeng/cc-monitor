@@ -154,13 +154,14 @@ function said(e: unknown, verb: ExtVerb, m: ExtMachine): { text: string; stale: 
   return { text, stale: e instanceof ExtRefused && e.code === "stale" };
 }
 
-/** 「装到…」那张卡要记住的：交给枢纽的那几格 · 能选的各处 · 来源叫什么。 */
+/** 「装到…」那张卡要记住的：交给枢纽的那几格 · 能选的各处 · 来源叫什么 · 卡上填的值（跟着卡走，抽屉重画不清）。 */
 interface BringCard {
   kind: "bring";
   ask: ExtAsk;
   targets: ExtTarget[];
   fromName: string;
   card: ExtCard | null;
+  fill: Record<string, Record<string, string>>;
 }
 
 /** 抽屉里一台机器那一行的临时状态：打开的确认卡 · 在路上 · 那一句出错的话（整句，带动作与机器）· 做完那一句。 */
@@ -541,7 +542,7 @@ export class ExtSection {
   /** 点了「装到…」：先按后端建议的那一处问一张卡（本机后端当枢纽）。 */
   private async openBring(r: ExtRow, m: ExtMachine, bring: ExtBring): Promise<void> {
     const ask: ExtAsk = { kind: r.kind, name: r.name, from: bring.from, to: m.here ? null : m.key, scope: bring.scope };
-    await this.previewBring(machineKey(m), m, { kind: "bring", ask, targets: bring.targets, fromName: bring.fromName, card: null });
+    await this.previewBring(machineKey(m), m, { kind: "bring", ask, targets: bring.targets, fromName: bring.fromName, card: null, fill: {} });
   }
 
   private async previewBring(key: string, m: ExtMachine, b: BringCard): Promise<void> {
@@ -598,14 +599,21 @@ export class ExtSection {
     box.appendChild(files);
     if (card.unchanged) box.appendChild(el("div", "settings-hint", copyText("extPage.card.unchanged")));
     if (card.config !== null) box.appendChild(el("pre", "ext-card-config", card.config));
+    // 填的值住在卡上（`c.fill`），重画时回填；交上去的只取这张卡真有的那几格。
     const fill: Record<string, Record<string, string>> = {};
+    for (const s of card.slots) {
+      const v = c.fill[s.field]?.[s.key];
+      if (v !== undefined) (fill[s.field] ??= {})[s.key] = v;
+    }
     for (const s of card.slots) {
       const row = el("label", "ext-card-field", copyText("extPage.card.slot", { field: s.field, key: s.key }));
       const input = el("input", "ext-card-secret");
       input.type = "password";
       input.autocomplete = "off";
       input.placeholder = s.kept ? copyText("extPage.card.slotKept") : copyText("extPage.card.slotEmpty");
+      input.value = c.fill[s.field]?.[s.key] ?? "";
       input.addEventListener("input", () => {
+        (c.fill[s.field] ??= {})[s.key] = input.value;
         (fill[s.field] ??= {})[s.key] = input.value;
       });
       row.appendChild(input);

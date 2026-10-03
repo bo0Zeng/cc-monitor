@@ -178,7 +178,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
     : await runRemoteResumeTmuxAndWait(origin, sessionId, cwd, launcher, tmuxName, {
         configDir,
         accountName,
-        modelOverride: await getModelForAccount(accountName),
+        modelOverride: await getModelForAccount(origin, accountName),
       });
 
   // ⑥ 记 lastAccount（源②）+ 提示。

@@ -6104,6 +6104,16 @@
       "zh": "留空 = 用全局默认",
       "args": []
     },
+    "machineCard.field.nameTaken": {
+      "kind": "error",
+      "zh": "已经有一台叫「{name}」，这次没存。",
+      "args": ["name"]
+    },
+    "machineCard.field.portRange": {
+      "kind": "error",
+      "zh": "端口要在 1 到 65535 之间，这次没存。",
+      "args": []
+    },
     "machineCard.field.resumeCmd": {
       "kind": "control",
       "zh": "resume 命令 · 这台机器",
@@ -6684,6 +6694,11 @@
       "zh": "正在读 {machine} 的账号…",
       "args": ["machine"]
     },
+    "accounts.machine.notConnected": {
+      "kind": "body",
+      "zh": "{machine} 还没连上过。连上之后这里列出它的账号。",
+      "args": ["machine"]
+    },
     "accounts.who.local": {
       "kind": "body",
       "zh": "本机",
@@ -7027,6 +7042,21 @@
       "zh": "Claude 数据目录已更新 —— 重启本机上的 cc-monitor 后生效",
       "args": []
     },
+    "settingsPanel.claudeDir.missing": {
+      "kind": "error",
+      "zh": "{path} 不在",
+      "args": ["path"]
+    },
+    "settingsPanel.claudeDir.notDir": {
+      "kind": "error",
+      "zh": "{path} 不是目录",
+      "args": ["path"]
+    },
+    "settingsPanel.claudeDir.uncheckable": {
+      "kind": "error",
+      "zh": "没法确认 {path} 在不在（{said}）",
+      "args": ["path", "said"]
+    },
     "settingsPanel.close.failed": {
       "kind": "error",
       "zh": "关不掉这个窗口：{e}",
@@ -7165,6 +7195,11 @@
     "settingsPanel.field.fontSize": {
       "kind": "control",
       "zh": "基础字号 (px)",
+      "args": []
+    },
+    "settingsPanel.field.fontSizeRange": {
+      "kind": "error",
+      "zh": "字号要在 10 到 24 之间，这次没存。",
       "args": []
     },
     "settingsPanel.field.fontMono": {
@@ -7639,6 +7674,11 @@
     "remote.import.done": {
       "kind": "body",
       "zh": "已从别名「{alias}」导入为新机器。",
+      "args": ["alias"]
+    },
+    "remote.import.exists": {
+      "kind": "error",
+      "zh": "已经有一台叫「{alias}」，这次没导入。",
       "args": ["alias"]
     },
     "remote.import.batchHint": {
