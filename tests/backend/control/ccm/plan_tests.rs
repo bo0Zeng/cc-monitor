@@ -1255,18 +1255,13 @@ fn the_home_is_home_then_userprofile_and_paths_under_it_are_joined_per_segment()
     );
 }
 
-/// 〔RK1 报 2〕E10：继承来的中转地址（钥匙已展开）不许原样进载荷 —— 渲回 `$(cat ~/…)` 形，
-/// 真 `sh` 在夹具家目录下展开后 == 原地址；认不出的（用户自己的端点 · 形状不对的）原样。
-/// 守的要求：`INVARIANTS §48.1a`（中转钥匙不进 argv）。
+/// 继承来的中转地址是我们那一形（带钥匙段的 · 没带钥匙段的）⇒ 一个字都不进载荷与自检（钥匙更不进
+/// `tmux send-keys` 的 argv）：它属于外层的号，pane 里那一趟按目标账号自己问。认不出的（用户自己的端点 ·
+/// 形状不对的）原样转。守的要求：`INVARIANTS §48.1a`（中转钥匙不进 argv）。
 #[test]
-fn us1_an_inherited_keyed_relay_url_goes_inward_as_a_file_read_not_as_the_key() {
+fn an_inherited_relay_address_of_ours_never_goes_into_the_pane() {
     let key = "0123456789abcdef".repeat(4);
-    let home = tempdir();
-    let key_file = std::path::Path::new(&home).join(relay_route_core::KEY_FILE_REL);
-    std::fs::create_dir_all(key_file.parent().unwrap()).unwrap();
-    std::fs::write(&key_file, &key).unwrap();
-    let keyed = format!("http://127.0.0.1:8788/{key}/t/claude-code/_");
-    let payload_of = |v: &str| -> String {
+    let container_of = |v: &str| -> Container {
         let mut e = env();
         e.anthropic_base_url = Some(v.to_string());
         let Plan::Container(c) = plan_of(
@@ -1276,30 +1271,21 @@ fn us1_an_inherited_keyed_relay_url_goes_inward_as_a_file_read_not_as_the_key() 
         ) else {
             panic!("该是容器路")
         };
-        c.payload
+        c
     };
-    let p = payload_of(&keyed);
-    assert!(
-        !p.contains(&key),
-        "钥匙原样进了载荷（会进 tmux send-keys 的 argv）：{p}"
-    );
-    assert!(
-        p.contains("'$(cat ~/.cc-monitor/relay-key)'"),
-        "没渲成现读钥匙文件那一形：{p}"
-    );
-    // 真 shell：取载荷里那一句 export，在夹具家目录下跑、印出来 == 原地址。
-    let export = &p[..p.find("; ").unwrap() + 2];
-    let out = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(format!("{export}printf %s \"$ANTHROPIC_BASE_URL\""))
-        .env("HOME", &home)
-        .output()
-        .expect("起 sh");
-    assert_eq!(
-        String::from_utf8_lossy(&out.stdout),
-        keyed,
-        "展开之后不是原地址"
-    );
+    for ours in [
+        format!("http://127.0.0.1:8788/{key}/t/claude-code/_"),
+        "http://127.0.0.1:8788/t/claude-code/q".to_string(),
+    ] {
+        let c = container_of(&ours);
+        let full = render(&Plan::Container(c.clone()));
+        assert_eq!(
+            full.matches(BASE_URL_ENV).count(),
+            0,
+            "外层那条中转地址进了 pane（会顶掉目标账号的路由）：{full}"
+        );
+        assert!(!full.contains(&key), "钥匙进了渲出来的命令：{full}");
+    }
     // 认不出 ⇒ 原样（期望 == 输入经 sq 的那一形）。
     for v in [
         "https://relay.example/v1".to_string(),
@@ -1311,9 +1297,124 @@ fn us1_an_inherited_keyed_relay_url_goes_inward_as_a_file_read_not_as_the_key() 
         format!("http://10.0.0.1:8788/{key}/t/claude-code/_"),
     ] {
         assert!(
-            payload_of(&v).starts_with(&format!("export ANTHROPIC_BASE_URL={}; ", sq(&v))),
+            container_of(&v)
+                .payload
+                .starts_with(&format!("export ANTHROPIC_BASE_URL={}; ", sq(&v))),
             "认不出的地址没有原样转：{v}"
         );
+    }
+}
+
+/// 指定了号的每一种起法，中转路由都是**这一趟的号**的 —— 外层环境里带着别的号（q）的中转地址时也是
+/// （ccm 自己注入的那一形：`/t/` 带钥匙 · `/t/` 不带 · `/s/` API 号带钥匙）。
+/// 直起（`--account b` · `--base`）：按目标账号问真决策表（`relay_with`，中转当在听），渲出的路由恰是那个号的一句、
+/// 与外层没有时逐字相同；这一发不注入 ⇒ 外层那一条清掉（不让 agent 拿着 q 的路由 / key 出去）。
+/// 容器起（`--account b` · `--base`）：不把外层那一条带进 pane（pane 里那一趟走直路，同一个函数）。
+#[test]
+fn the_relay_route_follows_the_target_account_not_the_outer_shell() {
+    use crate::accounts::upstream_select::endpoint::{relay_with, LaunchAccount};
+    fn listening(agent: &str, a: &LaunchAccount) -> Result<Option<String>, String> {
+        relay_with(agent, a, true, 8788, &[], &|_, _| true)
+    }
+    fn not_injecting(agent: &str, a: &LaunchAccount) -> Result<Option<String>, String> {
+        relay_with(agent, a, false, 8788, &[], &|_, _| true)
+    }
+    let key = "0123456789abcdef".repeat(4);
+    // 账号表只认目录真在的号 ⇒ 夹具目录底下真建 b / q（路由里的账号段是目录名末段）。
+    let root = tempdir();
+    let dir = |n: &str| -> String {
+        let d = std::path::Path::new(&root).join(n);
+        std::fs::create_dir_all(&d).expect("造账号目录");
+        d.to_string_lossy().to_string()
+    };
+    let (b, q) = (dir("b"), dir("q"));
+    let t = table(&[("b", Some(&b), false), ("q", Some(&q), true)]);
+    let outers = [
+        None,
+        Some(format!("http://127.0.0.1:8788/{key}/t/claude-code/q")),
+        Some("http://127.0.0.1:8788/t/claude-code/q".to_string()),
+        Some(format!("http://127.0.0.1:8788/{key}/s/claude-code/q")),
+    ];
+    let route = |seg: &str| {
+        format!(
+            "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'$(cat ~/.cc-monitor/relay-key)'/t/claude-code/{seg}'; "
+        )
+    };
+    // 直起：(起法, 参数, 期望的账号段)。
+    for (what, args, seg) in [
+        (
+            "直起 --account b",
+            &["--account", "b", "--cwd", "/p"][..],
+            "b",
+        ),
+        ("直起 --base", &["--base", "--cwd", "/p"][..], "0"),
+    ] {
+        let want = route(seg);
+        let mut lines = Vec::new();
+        for outer in &outers {
+            let mut e = env();
+            e.relay = Some(listening);
+            e.anthropic_base_url = outer.clone();
+            let line = render(&plan_of(args, &e, &t));
+            assert_eq!(
+                (
+                    line.matches(BASE_URL_ENV).count(),
+                    line.matches(&want).count()
+                ),
+                (1, 1),
+                "{what}，外层 {outer:?}：渲出来的中转路由不是这一趟的号的：{line}"
+            );
+            lines.push(line);
+            e.relay = Some(not_injecting);
+            let Plan::Direct(d) = plan_of(args, &e, &t) else {
+                panic!("{what} 该是直路")
+            };
+            let quiet = render(&Plan::Direct(d.clone()));
+            let unset = format!("unset {BASE_URL_ENV}; ");
+            assert_eq!(
+                (
+                    d.clears_inherited_relay,
+                    quiet.matches(BASE_URL_ENV).count(),
+                    quiet.matches(&unset).count()
+                ),
+                if outer.is_some() {
+                    (true, 1, 1)
+                } else {
+                    (false, 0, 0)
+                },
+                "{what}，外层 {outer:?}：不注入时没把外层那一条清掉（或清了不存在的）：{quiet}"
+            );
+        }
+        assert!(
+            lines.windows(2).all(|w| w[0] == w[1]),
+            "{what}：外层环境里那条中转地址改变了渲出来的命令：{lines:#?}"
+        );
+    }
+    // 容器起：外层那一条一个字都不进 pane。
+    for (what, args) in [
+        (
+            "容器起 --account b",
+            &["--ccm-tmux=n1", "--account", "b", "--cwd", "/p"][..],
+        ),
+        (
+            "容器起 --base",
+            &["--ccm-tmux=n1", "--base", "--cwd", "/p"][..],
+        ),
+    ] {
+        for outer in &outers {
+            let mut e = env();
+            e.relay = Some(listening);
+            e.anthropic_base_url = outer.clone();
+            let Plan::Container(c) = plan_of(args, &e, &t) else {
+                panic!("{what} 该是容器路")
+            };
+            let full = render(&Plan::Container(c));
+            assert_eq!(
+                full.matches(BASE_URL_ENV).count(),
+                0,
+                "{what}，外层 {outer:?}：把外层的中转地址带进了 pane：{full}"
+            );
+        }
     }
 }
 
@@ -1723,7 +1824,7 @@ fn the_three_options_are_judged_and_account_dir_excludes_the_other_account_forms
 }
 
 /// 中转地址只在最终 exec 那一处定：问上游选择那一只手（带上这一发的账号），注入的那一句钥匙段是读钥匙文件的命令替换；
-/// 环境里已经有一个 ⇒ 不问、不动（不是我们注入的那一形 ⇒ 记下要说一句）；拒 ⇒ 用法错带那一句。
+/// 环境里已经有用户自己的端点 ⇒ 不问、不动、记下要说一句；有的是我们那一形 ⇒ 照样问；拒 ⇒ 用法错带那一句。
 #[test]
 fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
     fn inject(
@@ -1781,8 +1882,10 @@ fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
     };
     assert_eq!(d.relay, None);
     assert!(d.keeps_user_base_url, "用户自己的端点没记下要说一句");
+    // 外层留下的我们那一形（别的号的）⇒ 不认，按这一发的账号重问。
+    e.relay = Some(inject);
     e.anthropic_base_url = Some(format!(
-        "http://127.0.0.1:8788/{}/t/claude-code/w",
+        "http://127.0.0.1:8788/{}/t/claude-code/q",
         "a".repeat(64)
     ));
     let Plan::Direct(d) = plan_split(&args, &e).unwrap() else {
@@ -1790,7 +1893,12 @@ fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
     };
     assert!(
         !d.keeps_user_base_url,
-        "外层 ccm 带进来的我们那一形被当成了用户的端点"
+        "外层留下的我们那一形被当成了用户的端点"
+    );
+    assert_eq!(
+        d.relay.as_deref(),
+        Some("http://127.0.0.1:8788/t/claude-code/w"),
+        "外层留下的中转地址顶掉了这一发的"
     );
     e.anthropic_base_url = None;
     e.relay = Some(refuse);

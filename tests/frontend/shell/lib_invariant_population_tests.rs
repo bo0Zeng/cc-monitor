@@ -375,14 +375,16 @@ const QUOTE_SITES: &[QuoteRow] = &[
     // 29 → 28：`--model` 交给 claude 了，`export ANTHROPIC_MODEL=<quote>` 那一处删；模型名 / resume 的 sid 不再由 ccm 判。
     // 28 → 30：resume 接上已在跑的那一个（`Plan::Rejoin`）渲两处 —— attach 目标 `=<名>:` 与 `ccm-session=<名>` 那一行。
     //   名字是 tmux 自己在快照里报的（不是外部输入），只经这一处 quote（同 `Plan::Attach` 那一形）。
-    // 30 → 31：信任框轮询认的那句话从串里的字面量换成适配层那一格（`LaunchFace::trust_prompt`），拼进去时 quote 一次
+    // 30 → 31：信任框轮询认的那句话从串里的字面量换成适配层起会话事实上的一格，拼进去时 quote 一次
     //   （值是适配层的常量，不是外部输入；产出的字节与从前写死的 `'…'` 逐字相同）。
     // 31 → 35：直路自己定中转地址与身份那几格（起会话只交一行 `ccm …`，env 归 `ccm` 在最终 exec 那一处定）——
     //   中转地址那一词的两段常量与「拿不到钥匙时整串」三处 · 身份 token 那一句 `export`。
     //   token 在 `argv.rs::validate` 进门判（段闸 `segment_is_safe`）；中转地址是本侧上游选择出的。
+    // 35 → 34：信任框那段轮询删了（收尾不再替用户按键）⇒ 它认的那句话那一处 quote 跟着没了。
+    // 34 → 32：容器路不再把外层的中转地址渲回读钥匙文件那一形（那三处 quote 随那个函数删了），只原样转用户自己的端点（一处）。
     (
         "src/backend/control/ccm/plan.rs",
-        35,
+        32,
         &[
             ("src/backend/control/ccm/plan.rs", "validate_tmux_name"),
             ("src/backend/control/ccm/plan.rs", "free_text_gate"),

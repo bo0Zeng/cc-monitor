@@ -25,10 +25,8 @@
 //!
 //! # 本轮**没有**做到的，逐条写在这里（别读成做到了）
 //!
-//! - **预信任**（`~/.claude.json` / `~/.codex/config.toml` 那两处写入）：**没搬**。
-//!   backend 这个 crate 有一条「进程自身不许写用户既有数据」的红线
-//!   （`readonly_guard`，白名单恰好一个模块）⇒ 搬它要先动那条红线，那是另一件活。
-//!   后果：`claude` 起来可能弹信任框。`--ccm-print` 那条兜底轮询照旧在，捞得回来。
+//! - **信任这个目录吗**：ccm 不替用户答 —— 不写 `~/.claude.json` / `~/.codex/config.toml`，
+//!   也不往会话里按键。`claude` 首次进一个目录会问，由用户在会话里自己答（那是它的安全检查）。
 //! - **`$CCM_CONFIG` 是 bash 源文件**：旧实现 `. "$CCM_CONFIG"`（真 source 一段 bash）。
 //!   这里只认 `KEY=value` 三个键（见 [`Env::from_process`]），**不是等价**。
 //! - **`--help` 的正文**：旧实现是 `sed` 自己的注释块；这里是 [`USAGE`] 常量，**文本不同**。
@@ -87,6 +85,7 @@ pub(crate) fn agents() -> Vec<&'static str> {
 /// 它声明的是「**我会把 `ANTHROPIC_BASE_URL` 带过 tmux 的进程边界**」——
 /// tmux server 的 `update-environment` 默认列表不含它，外层那句 `export`
 /// 在边界上会被整个吃掉（`plan.rs` 那段注释逐字「账号注入 100% 失效，**实测过**」）。
+/// 带过去的只有用户自己的端点；我们的中转地址属于某个号，pane 里那一趟按目标账号自己问。
 ///
 /// 🔴 **这件事我们早就做到了，只是一直没说**：`plan.rs` 的容器分支把它显式化进载荷内侧。
 /// 当时本机起会话那边按「探不到就不放行」照旧挡着，**挡的却是一件我们自己已经做到的事** ——
@@ -172,7 +171,7 @@ pub(crate) static BUS_ID_RECIPE: std::sync::LazyLock<String> = std::sync::LazyLo
 pub(crate) static USAGE: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("beCcm.usage.body", &[]));
 
-// 按哪一家起会有什么不同（默认启动器 · 嵌套标记 · cc-bus 身份 · 身份面 · pidfile · 信任框）全是适配层那一格
+// 按哪一家起会有什么不同（默认启动器 · 嵌套标记 · cc-bus 身份 · 身份面 · pidfile）全是适配层那一格
 // （`agents::LaunchFace`），`plan::build_among` 一处问完；本模块不认识任何一家的名字。
 
 /// 入口注入的「此刻在跑的会话」扫描：入参 = 账号配置目录（`None` = agent 默认家目录），出 `(sid, pid)`。
@@ -711,6 +710,8 @@ fn exec_direct(d: &plan::Direct) -> i32 {
             Some(keyed) => std::env::set_var(plan::BASE_URL_ENV, keyed),
             None => return die(&copy_text("beCcm.relay.noKey", &[])),
         }
+    } else if d.clears_inherited_relay {
+        std::env::remove_var(plan::BASE_URL_ENV);
     }
     if !d.cwd.is_empty() && std::env::set_current_dir(&d.cwd).is_err() {
         return die(&copy_text(

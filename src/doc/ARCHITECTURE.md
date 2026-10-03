@@ -151,7 +151,7 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
 
 **搬不走的那条边界**：最后那次 exec 必须发生在用户自己的终端进程里——pid 要等于 pidfile 名，tty 与 Ctrl-C 要落在 agent 上，`tmux attach` 要占住调用者的终端。所以起一个会话拆成三个平面：
 
-1. 计划面「跑什么命令」→ 那台后端出成品，**永远只是一行 `ccm …`**（本机帧命令 `launch-local`，远端 `launch-render-cli`；开终端那一行 `terminal-ssh` 只包它）。环境、中转地址、身份标记、预信任由那台的 `ccm` 在最终 exec 那一处定；
+1. 计划面「跑什么命令」→ 那台后端出成品，**永远只是一行 `ccm …`**（本机帧命令 `launch-local`，远端 `launch-render-cli`；开终端那一行 `terminal-ssh` 只包它）。环境、中转地址、身份标记由那台的 `ccm` 在最终 exec 那一处定；
 2. 执行面「在那台真的建 tmux」→ 后端 `control/launch`，argv 直传、不过 shell；
 3. 开窗面 → 只能是 monitor（`open_terminal_window`）：后端在远端，开不了你面前的窗。平面 ③ 永远搬不走。
 
@@ -174,7 +174,7 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
 | `rust_timer_registry` 的 `REGISTERED` | monitor Rust 里的 `sleep` / `interval` |
 | `rust_timer_registry` 的 `SHELL_WAKES` | monitor Rust 拼出来的 shell 循环（前三张都看不见它） |
 
-登记在案的例外：预信任的「等信任框」没有内核事件源，由目标 shell 执行一段兜底轮询（`control/ccm` 产出这段 shell 串），与后端零定时器共存。期限一律由发起那件事的一方给一个绝对时刻，下游只收紧，通信层自己没有期限常量。
+后端也不产出自带节拍的 shell 串（`no_timer_guard` 的 `f09_external_beat` 零命中）。期限一律由发起那件事的一方给一个绝对时刻，下游只收紧，通信层自己没有期限常量。
 
 ### 2.7 共享 crate 与 workspace
 

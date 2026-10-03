@@ -388,7 +388,7 @@ printf '#!/bin/bash\nprintf "%%s\\n" "$*" > "$PWD/agent-args.$PPID"\nexec sleep 
 chmod +x "$_EW/bin/fake-agent"
 _sp() {  # $1.. = 额外的 VAR=值；目录与任务两个入口一样（那样内层参数才可能逐字相等）
   env -u TMUX -u TMUX_PANE -u CC_BUS_ID HOME="$_EW" CC_BUS_HOME="$_EW/bus" \
-      CC_BUS_SCRIPTS="$SCRIPTS" CCSPAWN_LAUNCH="$_EW/bin/fake-agent" CCM_NO_PRETRUST=1 \
+      CC_BUS_SCRIPTS="$SCRIPTS" CCSPAWN_LAUNCH="$_EW/bin/fake-agent" \
       CCM_CONFIG=/nonexistent "$@" \
       "$TIMEOUT" 60 bash "$SCRIPTS/cc-spawn" --base "$_EW/proj" "任务乙"
 }
@@ -454,7 +454,7 @@ printf '#!/bin/bash\nexec -a "%s" "%s" "$@"\n' "$_EW/old/ccm" "$D" > "$_EW/e4/cc
 chmod +x "$_EW/e4/ccm"
 mkdir -p "$_EW/bad"
 _ob="$(env -u TMUX -u TMUX_PANE -u CC_BUS_ID HOME="$_EW" CC_BUS_HOME="$_EW/bus" \
-      CC_BUS_SCRIPTS="$SCRIPTS" CCSPAWN_LAUNCH="$_EW/bin/fake-agent" CCM_NO_PRETRUST=1 \
+      CC_BUS_SCRIPTS="$SCRIPTS" CCSPAWN_LAUNCH="$_EW/bin/fake-agent" \
       CCM_CONFIG=/nonexistent \
       CCM_BIN="$_EW/e4/ccm" \
       "$TIMEOUT" 60 bash "$SCRIPTS/cc-spawn" --base "$_EW/bad" "任务丙" 2>"$_EW/errb.txt")"; _rb=$?

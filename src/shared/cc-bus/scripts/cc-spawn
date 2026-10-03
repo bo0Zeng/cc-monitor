@@ -94,13 +94,6 @@ for _c in detach tmux-size tmux-base bus-register; do
 done
 unset _caps _c
 
-# 向后兼容:预信任的可测性钩子改名了(cc-spawn 的 CCSPAWN_* → ccm 的 CCM_*)。
-# 收编后若不映射,任何还在设 CCSPAWN_CLAUDEJSON 来**保护真实 ~/.claude.json** 的外部
-# 测试/脚本会静默失效并**直接写真文件**——静默丢失一个安全钩子比丢功能更坏。
-# 只在对应的 CCM_* 未设时映射,不覆盖显式设置。
-[ -n "${CCSPAWN_CLAUDEJSON:-}" ] && [ -z "${CCM_CLAUDEJSON:-}" ] && export CCM_CLAUDEJSON="$CCSPAWN_CLAUDEJSON"
-[ -n "${CCSPAWN_CODEXTOML:-}" ] && [ -z "${CCM_CODEXTOML:-}" ] && export CCM_CODEXTOML="$CCSPAWN_CODEXTOML"
-
 # 1. 绝对路径 + 校验目录存在
 absdir=$(cd "$dir" 2>/dev/null && pwd) || { echo "cc-spawn: 目录不存在: $dir" >&2; exit 2; }
 
@@ -122,8 +115,8 @@ base="$(printf '%s' "$bn" | tr -c 'A-Za-z0-9_-' '_' | sed 's/^-*//; s/-*$//')_cc
 # ★★ 而 08-13(C15〔用「cc-bus收进ccm」〕)起,避让**住进 ccm 了** —— 见下面 `--tmux-base`。
 
 # 3. 建 detached 会话 + 送任务 —— **全部经 ccm**(unify-launch B02,闭合账本"起会话被写死成
-#    N 套实现"那一行)。ccm 现在负责:建会话(--detach 只建不 attach)、窗口尺寸、预信任、
-#    账号/env 注入、信任框轮询兜底、codex 的 CC_BUS_ID。
+#    N 套实现"那一行)。ccm 现在负责:建会话(--detach 只建不 attach)、窗口尺寸、
+#    账号/env 注入、codex 的 CC_BUS_ID。agent 的信任框不替用户答(由用户 attach 进去自己答)。
 #    cc-spawn 只保留 cc-bus 专属的部分 —— C15 三件全搬完之后,**这里已经一件不剩**。
 #
 # ★★ C15〔用@08-13「cc-bus收进ccm」〕第一件:**命名避让搬进 ccm**(`--tmux-base=<基名>`)。
@@ -137,9 +130,7 @@ base="$(printf '%s' "$bn" | tr -c 'A-Za-z0-9_-' '_' | sed 's/^-*//; s/-*$//')_cc
 #    与 `cc-whoami resolve` 对齐 —— 那是 cc-bus 的 id 规则,不是 tmux 的取名规则)。
 #
 #    删掉的原实现,逐条说明为什么不是回归:
-#      · 预信任 46 行 → ccm F11 已上提,且比这里多修了绝对路径规范化(cwd_abs)与
-#        CCM_NO_PRETRUST 逃生口(本脚本原先没有,收编后 cc-spawn 用户顺带获得)。
-#      · 信任框轮询 12 行 → ccm 同款六轮 0.5s capture-pane,且额外尊重 CCM_NO_PRETRUST。
+#      · 预信任 46 行与信任框轮询 12 行 → 删:信任由用户自己答,产品不替用户写、不替用户按。
 #      · CC_BUS_ID 手动注入 → ccm 的 agent_needs_bus_id 只对 codex 生效(同一判断、同一理由),
 #        且它从 tmux 会话名自动派生,与这里原先注入的 $name 逐字相同(隔离 socket 实测确认)。
 #      · `-x 220 -y 50` → 未丢,改由 `--tmux-size 220x50` 表达。
@@ -225,7 +216,7 @@ unset _out
 # ⚠ 而**格式仍归 cc-bus**:ccm 调的是 cc-bus 自己的 `cc-register` / `cc-spawned-record`,
 #   不复刻 TSV 的列与锁(同一个格式两份实现 = 改一处漏一处)。找不到 cc-bus 时 ccm 静默 no-op。
 
-# 6. 给启动器一点启动时间。**不是**信任框兜底(那条已归 ccm),而是保留原脚本的既有时序:
+# 6. 给启动器一点启动时间,保留原脚本的既有时序:
 #    紧接着用户敲的 cc-send 更可能被即时处理(消息落 inbox 不丢,这只影响即时性)。
 #    显式保留而非默默删掉——原先 pretrusted 成功路径上就是 sleep 1.5。
 sleep 1.5

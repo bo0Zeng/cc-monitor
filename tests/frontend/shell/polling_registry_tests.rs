@@ -23,23 +23,8 @@ const REGISTERED: &[(&str, &str, &str)] = &[
     ),
     // `tab-session-actions.ts` 那条 data-poll（`awaitExitFor`：等 claude 退出的 1s 轮询）退役：
     //   换号重启不再键入 `/exit` 等它自己退，直接 kill ⇒ 没有要等的事，行删。
-    (
-        // 🔴 住址从 `shared/ccm` 换到这里：〔用@09-11 `K33`〕
-        //    那个 bash 脚本删了，容器路那段 shell **由这份 Rust 渲出来**（`render_container`
-        //    里那句 `for _i in 1 2 3 4 5 6; do sleep 0.5; …`）。
-        //    ⇒ 扫描面也跟着加了它一份（见 `scan()`）：**产出那段 shell 的人换了，
-        //    那个节拍本身一个字没变**。
-        "src/backend/control/ccm/plan.rs",
-        "wait-for-condition",
-        "**只剩一处**：预信任对话框等待（6 × 0.5s，**§1.3 登记在案的例外** —— 那个对话框\
-             没有内核事件源，只能看屏）。\
-             ⚠ **`U-NP④`（2026-08-14）**：本条原来还有「② 1s 身份轮询（`sleep 1`）」，\
-             那是本仓唯一一条**与会话同寿、每会话一条、跑在远端**的每秒循环。\
-             要求「不要轮询」＋「ccm 做到必须走后端」⇒ **整条删掉，没留轮询退路**。\
-             接班的是后端的 `control/identity_tag.rs`（由 `sessions/` 的 pidfile inotify \
-             驱动，零新增节拍）。所以本文件今天**不再是两类**，是一类。\
-             钉住「它真的没了」的是本模块的 `the_identity_poller_is_gone_for_good`。",
-    ),
+    // `control/ccm/plan.rs` 那一行（容器路收尾「等信任框、替用户按 Enter」的六轮 `sleep 0.5`）退役：
+    //   信任由用户在会话里自己答，那段等待整条删了 ⇒ 行删（那份文件照旧在扫描面里，见 `scan()`）。
     // ★★ **08-10（devbench F07）扩面后逮到的一族**：`src/shared/cc-bus/scripts/`。
     // 本表原来的人群是「`src/**/*.ts` + 写死的 `shared/ccm` 一个文件名」⇒ 这棵树整个在账外。
     // ⚠ 第四类 `one-shot` 是这次新加的：shell 那条针是宽的（`contains("sleep ")`），
@@ -261,10 +246,8 @@ fn scan() -> Vec<(String, usize)> {
     let mut shells = collect_shell(&root.join("src/shared"));
     shells.sort();
     files.extend(shells);
-    // 🔴 **容器路那段 shell 今天由 Rust 渲出来** ——
-    //    `shared/ccm` 删了，而那个 6×0.5s 的预信任等待一个字没变，只是换了产出方。
-    //    不把它收进人群的话，本表会读成「那个节拍退役了」⇒ 下一条判据当场说
-    //    「登记表里的 xx 已经没有周期唤醒了」，而那是**假读数**。
+    // 🔴 **容器路那段 shell 由 Rust 渲出来**（`shared/ccm` 删了，产出方换了）⇒ 收进人群，
+    //    渲出去的 shell 里再长出 `sleep` 就当场要登记。
     //    ⚠ 它按 `is_shell` 那条针认（`contains("sleep ")`）—— 那正对：
     //    本表要认的是**那段 shell 里的 sleep**，不是 Rust 自己的节拍。
     files.push(root.join("src/backend/control/ccm/plan.rs"));
@@ -640,15 +623,14 @@ fn every_scheduling_call_site_is_classified() {
 ///
 /// # 为什么不是零命中的空守卫
 ///
-/// 它有一个真实的反向锚点：同一个文件里**仍然有**一处 `sleep`（预信任等待，
-/// `REGISTERED` 里登记为 `wait-for-condition`）。所以「ccm 里没有轮询」这句话
-/// 是**假的**、也不该被钉；该钉的是**那一种形态**：与会话同寿的循环。
+/// 它有一个真实的反向锚点：同两份文件里**仍然有**渲给 shell 的串（容器路键入载荷那句
+/// `send-keys -t`）。该钉的是**那一种形态**：与会话同寿的循环。
 /// 下面第二段断言正是靠它证明抽取器没有空转。
 #[test]
 fn the_identity_poller_is_gone_for_good() {
     // 🔴 **语料换了：`shared/ccm` → `control/ccm/{mod,plan}.rs`。**
     //    〔用@09-11 `K33`〕那个 bash 脚本删了，而它渲出来的那段 shell（容器路的 send-keys
-    //    载荷与预信任等待）今天由这两份 Rust 产出 ⇒ 「与会话同寿的循环不许回来」
+    //    载荷与收尾）今天由这两份 Rust 产出 ⇒ 「与会话同寿的循环不许回来」
     //    这件事要盯的是**产出方**。剥注释也跟着换成 Rust 那套（`strip_comment_lines`）。
     let root = repo_root();
     let raw: String = ["mod.rs", "plan.rs"]
@@ -698,10 +680,10 @@ fn the_identity_poller_is_gone_for_good() {
         !prod.contains("_ccm_sid_from_file"),
         "`_ccm_sid_from_file` 还在 —— 它只服务那条已删的 poller，留着就是死代码"
     );
-    // 反向锚点 ②：**抽取器没有空转** —— 那处登记在案的预信任 `sleep` 必须还看得见。
+    // 反向锚点 ②：**抽取器没有空转** —— 渲给 shell 的那句键入载荷必须还看得见。
     assert!(
-        prod.contains("sleep 0.5"),
-        "连预信任那处 `sleep 0.5` 都扫不到 —— 剥法或路径坏了，上面那几条是零命中地绿"
+        prod.contains("tmux send-keys -t {t}"),
+        "连容器路键入载荷那句 `tmux send-keys` 都扫不到 —— 剥法或路径坏了，上面那几条是零命中地绿"
     );
 }
 

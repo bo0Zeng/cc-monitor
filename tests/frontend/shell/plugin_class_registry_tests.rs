@@ -504,13 +504,14 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
              ⇒ 按哪一家起会有什么不同，做成适配层起会话事实上的一格（没声明 = 不支持），ccm 问那一格。"
     );
     // 表的宽度（`E4b`「通用骨架不动，加一张表的一行」）：起会话事实有几格。
-    // 12 = 适配器 id · 默认启动器 · shell wrapper · resume 字面量 · 嵌套标记 · 是不是默认那一家 ·
-    //      resume 命令形 · 会话名前缀 · cc-bus 身份 · 身份面 · pidfile · 信任框。
+    // 11 = 适配器 id · 默认启动器 · shell wrapper · resume 字面量 · 嵌套标记 · 是不是默认那一家 ·
+    //      resume 命令形 · 会话名前缀 · cc-bus 身份 · 身份面 · pidfile。
+    //      12 → 11：信任框那一格删了（ccm 不再替用户答 agent 的信任框）。
     let cells = launch_face_fields();
     assert_eq!(
         cells.len(),
-        12,
-        "起会话事实从 12 格变成 {} 格：{cells:?}\n\
+        11,
+        "起会话事实从 11 格变成 {} 格：{cells:?}\n\
              ⇒ 多一格 = 分叉面变大，那正是该有人过一眼的时刻；少一格 = 收敛了（改这个数并写清少了哪一格）。",
         cells.len()
     );
@@ -677,7 +678,7 @@ fn the_const_list_extractor_takes_one_list_not_the_whole_file() {
     // 起会话事实那一格：抠的是**一个**结构的字段，不是把下一个结构也吃进来（它后面紧跟着两个按注册表查的函数）。
     let cells = launch_face_fields();
     assert!(
-        cells.contains(&"trust_prompt".to_string()) && !cells.iter().any(|c| c.contains("fn ")),
+        cells.contains(&"has_pidfiles".to_string()) && !cells.iter().any(|c| c.contains("fn ")),
         "`LaunchFace` 抠错了：{cells:?}"
     );
 }

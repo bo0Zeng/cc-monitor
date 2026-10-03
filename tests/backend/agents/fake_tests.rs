@@ -435,7 +435,7 @@ fn registry_with_fake() -> Vec<crate::agents::Adapter> {
 /// 起会话那几格：**通用层只看能力、不看名字**。
 ///
 /// 用户逐字：「思考怎么解耦, 不要硬适配claude code」「如果是其他agent呢, 比如codex」。
-/// 喂一张含本假 agent 的注册表（它的组合与两家都不同：要 cc-bus 身份 · 有身份面 · 弹信任框、话也不同 · 不留 pidfile），
+/// 喂一张含本假 agent 的注册表（它的组合与两家都不同：要 cc-bus 身份 · 有身份面 · 不留 pidfile），
 /// 每一家都过同一条 ccm 规划与 resume 解析，每一格的产出都必须等于**那一家**声明的那一格。
 /// 通用层若在哪一格上按名字认人，本假 agent 那一行就会答错。
 #[test]
@@ -486,29 +486,34 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
             a.kind
         );
         assert_eq!(d.has_identity, face.has_identity, "{} 的身份面", a.kind);
-        // 容器路：信任框轮询认的就是这一家那句话。
-        let Ok(Plan::Container(c)) = plan::build_among(
-            &reg,
-            &opts(a.kind, &["--ccm-tmux=w-x", "--detach"]),
-            &env,
-            &t,
-            None,
-        ) else {
-            panic!("{} 该是容器路", a.kind)
-        };
-        assert_eq!(c.trust_prompt, face.trust_prompt, "{} 的信任框", a.kind);
-        let tail = plan::render_container_tail(&c);
-        match face.trust_prompt {
-            Some(p) => assert!(
-                tail.contains(&format!("grep -q '{p}'")),
-                "{} 声明了信任框，收尾却没有轮询它：{tail}",
+        // 容器路：整条命令里只有键入载荷那一次按键，收尾一个键都不替用户按
+        //（agent 问「信任这个目录吗」由用户自己答；替它按 Enter 按中的是缺省那一项「不信任、退出」）。
+        for extra in [&["--ccm-tmux=w-x", "--detach"][..], &["--ccm-tmux=w-x"][..]] {
+            let Ok(Plan::Container(c)) =
+                plan::build_among(&reg, &opts(a.kind, extra), &env, &t, None)
+            else {
+                panic!("{} 该是容器路", a.kind)
+            };
+            let full = plan::render(&Plan::Container(c.clone()));
+            let typed = format!(
+                "send-keys -t '=w-x:' {} Enter",
+                shell_quote_core::posix_quote(&c.payload)
+            );
+            assert_eq!(
+                (
+                    full.matches("send-keys").count(),
+                    full.matches(&typed).count()
+                ),
+                (1, 1),
+                "{} {extra:?}：容器路里除了键入载荷还有别的按键：{full}",
                 a.kind
-            ),
-            None => assert!(
-                !tail.contains("grep -q"),
-                "{} 没有信任框却挂了轮询：{tail}",
+            );
+            assert_eq!(
+                full.matches("capture-pane").count(),
+                0,
+                "{} {extra:?}：容器路又在看屏（为了替用户按键）：{full}",
                 a.kind
-            ),
+            );
         }
         // resume 前问「是不是已在别处跑着」：只对留 pidfile 的那一家问。
         let mut e = env.clone();
@@ -547,25 +552,19 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
         ["claude", "codex", AGENT_KIND],
         "这张注册表的人群变了"
     );
-    // 本假 agent 声明了要预信任 ⇒ 它真被预信任；组合与两家都不同（不是第三个 claude / codex）。
-    assert_eq!(LAUNCH.trust_prompt, Some("Trust this workspace?"));
+    // 组合与两家都不同（不是第三个 claude / codex）。
     let differs = |k: &str| {
         let f = reg
             .iter()
             .find(|a| a.kind == k)
             .and_then(|a| a.launch)
             .expect("在注册表里");
-        (
-            f.needs_bus_id,
-            f.has_identity,
-            f.has_pidfiles,
-            f.trust_prompt.is_some(),
-        ) != (
-            LAUNCH.needs_bus_id,
-            LAUNCH.has_identity,
-            LAUNCH.has_pidfiles,
-            LAUNCH.trust_prompt.is_some(),
-        )
+        (f.needs_bus_id, f.has_identity, f.has_pidfiles)
+            != (
+                LAUNCH.needs_bus_id,
+                LAUNCH.has_identity,
+                LAUNCH.has_pidfiles,
+            )
     };
     assert!(
         differs("claude") && differs("codex"),

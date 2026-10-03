@@ -40,20 +40,14 @@ fn relay_word(url: &str) -> String {
     }
 }
 
-/// 〔RK1 报 2〕把继承来的 `ANTHROPIC_BASE_URL` 显式化进新 pane 载荷时，`export … =` 右边那个 shell 词。
+/// 环境里继承来的 `ANTHROPIC_BASE_URL` 里，**用户自己的端点**那一个（不是我们的中转那一形）。
 ///
-/// 继承来的值是上一个 pane 的 shell **展开过**的：我们注入的中转地址里那一段 `$(cat ~/<钥匙文件>)`
-/// 已经变成了 64 位钥匙本身。原样 `export` ⇒ 钥匙进这一次 `tmux send-keys` 的 **argv**（同机别的用户 `ps` 看得见）、
-/// 进 pane 的 shell 历史与回滚。⇒ 认得出是我们注入的那一形（`relay_route_core::split_keyed_base_url`：回环字面量 ＋ 口 ＋
-/// 形状对的钥匙段 ＋ 构造口产得出的路由）就渲回与直路注入（[`relay_word`]）同形的
-/// `'<钥匙之前>'$(cat ~/<钥匙文件>)'<钥匙之后>'`，在新 pane 里现读；认不出（用户自己的端点）⇒ 原样。
-fn base_url_word(v: &str) -> String {
-    match relay_route_core::split_keyed_base_url(v) {
-        Some((head, tail)) => {
-            posix::home_file_between(&sq(head), relay_route_core::KEY_FILE_REL, &sq(tail))
-        }
-        None => sq(v),
-    }
+/// 我们的中转地址属于某一个号（路由里带着账号段）：它是外层 shell / 上一趟 ccm 留下的，
+/// 不是这一发的 ⇒ 不认（容器路不转进 pane，直路按这一发的目标账号重问）。用户自己的端点 ⇒ 照旧不动。
+fn user_base_url(env: &Env) -> Option<&str> {
+    env.anthropic_base_url
+        .as_deref()
+        .filter(|v| !v.is_empty() && !crate::accounts::upstream_select::endpoint::ours(v))
 }
 
 /// 这一趟能看见的**外界**。做成结构体的唯一理由：让整条计划面可以在单测里跑，
@@ -90,8 +84,6 @@ pub(crate) struct Env {
     /// 从前还有一档「设了 `CCM_SELF` 就用那个值」—— 那个环境变量删了
     /// （它只为远端 shim 存在）。
     pub(crate) self_argv: Vec<String>,
-    /// `CCM_NO_PRETRUST=1`。
-    pub(crate) no_pretrust: bool,
     /// cc-bus 脚本目录（`CC_BUS_SCRIPTS`），找不到就空。
     pub(crate) bus_scripts: Option<String>,
     /// 问「此刻哪些会话在跑」的那一次扫描（观测层的，由入口注入 —— control 不引用 observe）。
@@ -159,7 +151,6 @@ impl Env {
             //   （「`CCM_SELF` 这个环境变量随之删掉」）。
             // argv 由调用方交（`main.rs` 取的那一次），本模块不再自己读。
             self_argv: super::self_invocation(process_argv),
-            no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
             bus_scripts: discover_bus_scripts(),
             running_sessions: None,
             relay: Some(crate::accounts::upstream_select::endpoint::relay_for_exec),
@@ -177,7 +168,7 @@ impl Env {
     /// - `pwd = home` · 不在 tmux 里 · 没有继承来的中转地址 / 启动号 / 令牌；
     /// - 账号目录变量不继承（由 [`super::plan_of`] 的 `inherit_account = false` 管）。
     ///
-    /// 其余照这台机器的真值：账号库 manifest · `CCM_ENV` · cc-bus 脚本目录 · `CCM_NO_PRETRUST`。
+    /// 其余照这台机器的真值：账号库 manifest · `CCM_ENV` · cc-bus 脚本目录。
     /// ⚠ 与 [`Env::from_process`] 不同，这里**不**对 `$CCM_CONFIG` 出声：那一句是说给终端里的人听的，
     /// 常驻后端的 stderr 进的是日志。
     pub(crate) fn for_preview() -> Self {
@@ -195,7 +186,6 @@ impl Env {
             inherited_config_dir: None,
             account_env: String::new(),
             self_argv: vec![super::SUBCOMMAND_WORD.to_string()],
-            no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
             bus_scripts: discover_bus_scripts(),
             running_sessions: None,
             relay: Some(crate::accounts::upstream_select::endpoint::relay_for_preview),
@@ -470,8 +460,6 @@ pub(crate) struct Container {
     /// **同一条内层命令的自检形**：同一段 `export` 前缀、同一个入口、同一串参数，
     /// 只在 `--` 前多一个 `--ccm-print`。收尾那段在登记之前先跑它（见 [`render_container_tail`]）。
     pub(crate) self_check: String,
-    /// 那段「抓信任框、自动按 Enter」的兜底轮询认的那句话（这一家的 `LaunchFace::trust_prompt`）；`None` ＝ 不挂。
-    pub(crate) trust_prompt: Option<&'static str>,
     // ★★ **`avoid_collision` 这个字段删了** —— 散文墓碑留在这里。
     //
     // 它从前的意思是「这个名字撞了要不要退让」，而退让本身发生在 `mod.rs::execute`
@@ -536,6 +524,8 @@ pub(crate) struct Direct {
     pub(crate) relay: Option<String>,
     /// 环境里本来就有一个不是我们注入的 `ANTHROPIC_BASE_URL`（用户自己的端点）⇒ 不动它，说一句。
     pub(crate) keeps_user_base_url: bool,
+    /// 环境里继承来的是我们的中转那一形（别的号的），而这一发不注入 ⇒ exec 之前清掉它。
+    pub(crate) clears_inherited_relay: bool,
 }
 
 /// POSIX argv 元素的**最省引号**写法：能裸写就裸写。
@@ -881,7 +871,7 @@ fn inherited_gate(env: &Env) -> Result<(), Die> {
             env.account_env.as_str(),
             env.inherited_config_dir.as_deref(),
         ),
-        ("ANTHROPIC_BASE_URL", env.anthropic_base_url.as_deref()),
+        ("ANTHROPIC_BASE_URL", user_base_url(env)),
         (LAUNCH_ID_ENV, env.ccm_launch_id.as_deref()),
     ] {
         if let Some(v) = v.filter(|v| !shell_quote_core::free_text_ok(v)) {
@@ -1071,9 +1061,7 @@ pub(crate) fn build_among(
         let bare = payload.clone();
         // 🔴 **把继承来的那几个显式化** —— tmux 的 `update-environment` 默认列表不含它们，
         // 外层那句 `export` 在 tmux 进程边界上会被整个吃掉（账号注入 100% 失效，实测过）。
-        // ⚠ 这几行的形状（`payload = format!("export <VAR>={}; {payload}", sq(v));`）有人在逐行认：
-        //   壳那一侧（`src/frontend/shell`）的 `KP5ED1`（`payload_tests·rs::forwarded_by_container_path`）从起点
-        //   `let mut payload = inner.iter()` 数到登记那段注释，改形状它会红。
+        // 中转地址只转用户自己的端点：我们的中转那一形属于外层的号，pane 里那一趟按目标账号自己问（见直路）。
         if account.is_empty() && !o.use_base && o.account_dir.is_empty() {
             if let Some(v) = env
                 .inherited_config_dir
@@ -1083,11 +1071,8 @@ pub(crate) fn build_among(
                 payload = format!("{}{payload}", posix::export(&env.account_env, &sq(v)));
             }
         }
-        if let Some(v) = env.anthropic_base_url.as_deref().filter(|v| !v.is_empty()) {
-            payload = format!(
-                "{}{payload}",
-                posix::export("ANTHROPIC_BASE_URL", &base_url_word(v))
-            );
+        if let Some(v) = user_base_url(env) {
+            payload = format!("{}{payload}", posix::export(BASE_URL_ENV, &sq(v)));
         }
         if let Some(v) = env.ccm_launch_id.as_deref().filter(|v| !v.is_empty()) {
             payload = format!("{}{payload}", posix::export(LAUNCH_ID_ENV, &sq(v)));
@@ -1151,9 +1136,6 @@ pub(crate) fn build_among(
             detach: o.detach,
             payload,
             self_check,
-            trust_prompt: face
-                .and_then(|f| f.trust_prompt)
-                .filter(|_| !env.no_pretrust),
             bus,
         }));
     }
@@ -1161,10 +1143,12 @@ pub(crate) fn build_among(
     // ── 非容器路（最终 exec 的那一处）────────────────────────────────────
     let mut argv = launcher_words(&launcher, &env.home);
     argv.extend(o.passthru.iter().cloned());
-    // 中转地址只在这里定：环境里已经有一个（用户自己设的 / 外层 ccm 带进来的）⇒ 不动；否则问上游选择那张表。
-    let inherited_base_url = env.anthropic_base_url.as_deref().filter(|v| !v.is_empty());
-    let relay = match (inherited_base_url, env.relay, face) {
-        (None, Some(ask), Some(f)) => {
+    // 中转地址只在这里定，按**这一发的目标账号**问上游选择那张表（容器路的 pane 里那一趟也走到这里）。
+    // 环境里继承来的：用户自己的端点 ⇒ 不动、说一句；我们的中转那一形（别的号的）⇒ 不认，重问，
+    // 这一发不注入时还要清掉它（否则 agent 拿着别的号的路由出去）。
+    let keeps_user_base_url = user_base_url(env).is_some();
+    let relay = match (keeps_user_base_url, env.relay, face) {
+        (false, Some(ask), Some(f)) => {
             let account = if !config_dir.is_empty() {
                 LaunchAccount::Named {
                     config_dir: config_dir.clone(),
@@ -1187,8 +1171,12 @@ pub(crate) fn build_among(
         }
         _ => None,
     };
-    let keeps_user_base_url =
-        inherited_base_url.is_some_and(|v| relay_route_core::split_keyed_base_url(v).is_none());
+    let clears_inherited_relay = relay.is_none()
+        && !keeps_user_base_url
+        && env
+            .anthropic_base_url
+            .as_deref()
+            .is_some_and(|v| !v.is_empty());
 
     Ok(Plan::Direct(Direct {
         ccm_env: env.ccm_env.clone(),
@@ -1208,6 +1196,7 @@ pub(crate) fn build_among(
         launch_id: o.launch_id.clone(),
         relay,
         keeps_user_base_url,
+        clears_inherited_relay,
     }))
 }
 
@@ -1269,14 +1258,14 @@ fn render_container(c: &Container) -> String {
     seq
 }
 
-/// 容器路的**收尾**：兜底轮询 · attach · cc-bus 登记。
+/// 容器路的**收尾**：自检 · attach · cc-bus 登记。
 ///
 /// 建会话与键入载荷在真跑那条路上已经由 [`crate::control::launch`] 在**本进程里**做完了，
 /// 剩下这几件仍是本机的事（attach 尤其：后端开不了你面前的窗）。
 pub(crate) fn render_container_tail(c: &Container) -> String {
     let t = sq(&format!("={}:", c.name));
     let mut seq = String::new();
-    // ★★ **先自检，再谈兜底 / 接进去 / 登记** —— 排在收尾的最前面，而且只能在这里。
+    // ★★ **先自检，再谈接进去 / 登记** —— 排在收尾的最前面，而且只能在这里。
     //
     // 从前 ccm 的 rc=0 只说明「会话建了、载荷键入了、收尾跑了」，pane 里那一跳一个字都没看：
     // BS1b 现打入口② 那一跳当场「unknown argument: --cwd」退回空 bash，而 cc-spawn 照报成功、
@@ -1298,19 +1287,8 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
         sq(&super::SELF_CHECK_FAILED_FMT),
         sq(&c.name)
     ));
-    // 🔴 下面那条**自带节拍的 shell 串**不是漏进来的，是 `C14` 逐字登记的那个例外
-    //（「预信任的『等信任框』没有内核事件源 …… `C8` 的唯一登记例外：`control/` 继续
-    // 以 shell 字符串形态产出它」）。节拍由**目标 shell** 提供，后端进程自己一个定时器都没有。
-    // ⚠`no_timer_guard::f09` 从今天起**扫得到它**（匹配单位从「行」
-    // 改成「表达式」之后，`format!(` 的续行不再掉出人群）⇒ 它在
-    // `no_timer_guard::f09_external_beat::REGISTERED_EXTERNAL_BEATS` 上**签了字**。
-    // 改这一段之前先看那张表：动了这条串的形状，那边会红。
-    if let Some(prompt) = c.trust_prompt {
-        let prompt = sq(prompt);
-        seq.push_str(&format!(
-            " && {{ (for _i in 1 2 3 4 5 6; do sleep 0.5; tmux capture-pane -t {t} -p 2>/dev/null | grep -q {prompt} && {{ tmux send-keys -t {t} Enter; break; }}; done) || true; }}"
-        ));
-    }
+    // agent 起来时若问「信任这个目录吗」（claude 首次进一个目录），由用户在会话里自己答：
+    // 那是它的安全检查，收尾一个键都不替用户按（替它按 Enter 按中的是缺省那一项「不信任、退出」）。
     if !c.detach {
         seq.push_str(&format!("; tmux attach -t {t}"));
     }
@@ -1362,6 +1340,8 @@ fn render_direct(d: &Direct) -> String {
     }
     if let Some(url) = &d.relay {
         line.push_str(&relay_export(url));
+    } else if d.clears_inherited_relay {
+        line.push_str(&posix::unset(&[BASE_URL_ENV]));
     }
     if !d.cwd.is_empty() {
         line.push_str(&format!("cd {} && ", sq(&d.cwd)));
