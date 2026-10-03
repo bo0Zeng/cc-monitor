@@ -10,6 +10,7 @@
 # 探测失败），天然只覆盖兜底渲染器路径，测不到 CLI 渲染器这条新路径是否真的对得上 ccm 的行为。
 #
 # 跑法：bash tests/e2e/ccm-print-parity.sh   （npm run test:ccm-print-parity）
+. "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -o pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"

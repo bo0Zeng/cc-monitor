@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 /// **刻意不进 shellcheck 的脚本**（路径, 为什么）。
 ///
-/// 默认拒绝：不在这里、又不被 CI 那条表达式覆盖的脚本，正题判据会点名。
+/// 默认拒绝：不在这里、又不被门禁 shellcheck 人群覆盖的脚本，正题判据会点名。
 const EXEMPT: &[(&str, &str)] = &[(
     "src/shared/ccm-aliases.sh",
     "供 source 的片段、无 shebang（SC2148 是构造性属性）；它会被写进用户 shell profile \
@@ -14,42 +14,25 @@ fn repo_root() -> PathBuf {
     crate::guard_support::repo_root()
 }
 
-/// 从 `e2e-smoke` job 里抠出那条 `FILES=$(printf …)` 的**各个 pattern**。
-///
-/// ⚠ 用 `ci_yaml::job_block`（E3：`ci.yml` 的读取与切块只有一个家），它**剔注释** ——
-/// 这里非剔不可：同一段注释里逐字写着 `tests/scripts/*.sh`、`src/frontend/shell/vendor/.../scripts**`
-/// 这些 pattern，整份 `contains` 会把注释里的写法当成真的在扫。
+/// shellcheck 的人群：门禁 `tests/scripts/gate.sh` 里 `GATE_SHELLCHECK_GLOBS='…'` 那一行的各个 glob
+/// （人群的唯一住址；CI 那个 job 调门禁的 `shellcheck` 格，不另记一份）。
 fn shellcheck_patterns() -> Vec<String> {
-    let block = crate::shared_crate_registry::ci_yaml::job_block("e2e-smoke");
-    let mut out = Vec::new();
-    let mut in_files = false;
-    for line in block.lines() {
-        let t = line.trim();
-        if let Some(rest) = t.strip_prefix("FILES=$(printf '%s\\n'") {
-            in_files = true;
-            push_tokens(rest, &mut out);
-            if !t.ends_with('\\') {
-                break;
-            }
-            continue;
-        }
-        if in_files {
-            push_tokens(t, &mut out);
-            if !t.ends_with('\\') {
-                break;
-            }
-        }
-    }
-    out
-}
-
-fn push_tokens(s: &str, out: &mut Vec<String>) {
-    for tok in s.split_whitespace() {
-        let tok = tok.trim_end_matches(')').trim_end_matches('\\');
-        if !tok.is_empty() {
-            out.push(tok.to_string());
-        }
-    }
+    let gate = std::fs::read_to_string(repo_root().join("tests/scripts/gate.sh"))
+        .expect("读不到 tests/scripts/gate.sh");
+    let line = gate
+        .lines()
+        .filter_map(|l| l.strip_prefix("GATE_SHELLCHECK_GLOBS='"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        line.len(),
+        1,
+        "`gate.sh` 里 `GATE_SHELLCHECK_GLOBS='…'` 不是恰好一行 —— 人群的写法变了，本模块要跟着改"
+    );
+    line[0]
+        .trim_end_matches('\'')
+        .split_whitespace()
+        .map(str::to_string)
+        .collect()
 }
 
 /// bash 在**不开 globstar** 时的匹配语义：`*` 不跨 `/`。
@@ -75,23 +58,6 @@ fn matches(pattern: &str, path: &str) -> bool {
 
 fn covered(patterns: &[String], path: &str) -> bool {
     patterns.iter().any(|p| matches(p, path))
-}
-
-/// CI 那条计数地板写的数（`[ "$N" -ge <数> ]` 那一行）。
-fn floor_in_ci() -> usize {
-    let block = crate::shared_crate_registry::ci_yaml::job_block("e2e-smoke");
-    let line = block
-        .lines()
-        .find(|l| l.contains("-ge") && l.contains("覆盖面缩水"))
-        .unwrap_or_else(|| {
-            panic!("`e2e-smoke` 里找不到那条计数地板（含 `-ge` 与「覆盖面缩水」）—— 形状变了，本模块两条判据都会零命中地绿")
-        });
-    let after = line.split("-ge").nth(1).expect("地板行没有 -ge 右侧");
-    after
-        .split_whitespace()
-        .next()
-        .and_then(|s| s.trim_matches(|c: char| !c.is_ascii_digit()).parse().ok())
-        .unwrap_or_else(|| panic!("地板行解析不出数字：{line}"))
 }
 
 /// **PowerShell 那一半：今天全仓零 lint，而没人盯着它别长大**。
@@ -151,11 +117,10 @@ fn every_shell_script_is_either_linted_or_registered_as_exempt() {
         "全仓只扫到 {} 个 shell 脚本（08-08 实测 46）—— 遍历口径坏了，本条会零命中地绿",
         scripts.len()
     );
+    // 正控：门禁自己必须被人群盖住（抽取器坏了时这一条先红，而不是把所有脚本判成「没被扫」）。
     assert!(
-        patterns.len() >= 5,
-        "从 `e2e-smoke` 只抠到 {} 个 pattern（08-08 实测 8）—— `FILES=$(printf …)` 的写法变了，\
-             本条会把**所有**脚本判成「没被扫」，或者（更坏）把地板那条判成 0。抽取器先修",
-        patterns.len()
+        covered(&patterns, "tests/scripts/gate.sh"),
+        "抽到的 pattern {patterns:?} 盖不住 `tests/scripts/gate.sh` —— 抽取器坏了"
     );
 
     let unlinted: Vec<&String> = scripts
@@ -165,43 +130,15 @@ fn every_shell_script_is_either_linted_or_registered_as_exempt() {
         .collect();
     assert!(
         unlinted.is_empty(),
-        "这些 shell 脚本既不在 CI 的 shellcheck 表达式里、也没登记豁免：\n{}\n\n\
-             ★ 它们**一次都没被 lint 过**，而 CI 那条计数地板一个都不少 ⇒ 照旧绿\n\
-             （地板只会数它扫到的那些，数不出它没扫的那些）。\n\
-             两条路：① 补进 `.github/workflows/ci.yml` 的 `FILES=$(printf …)`（记得同步地板数），\n\
-             或 ② 在本文件的 `EXEMPT` 里登记，**并写清为什么** —— \n\
-             「刻意不含」写在 `ci.yml` 的注释里不算，那正是本区在治的病（E12）。",
+        "这些 shell 脚本既不在门禁的 shellcheck 人群里、也没登记豁免：\n{}\n\n\
+             ★ 它们**一次都没被 lint 过**。\n\
+             两条路：① 补进 `tests/scripts/gate.sh` 的 `GATE_SHELLCHECK_GLOBS`，\n\
+             或 ② 在本文件的 `EXEMPT` 里登记，**并写清为什么**。",
         unlinted
             .iter()
             .map(|s| format!("  {s}"))
             .collect::<Vec<_>>()
             .join("\n")
-    );
-}
-
-/// ★ **地板必须等于今天真实覆盖数**，不是「≥」。
-///
-/// 那条地板自己的注释逐字承认落后过三次（37→39→41 每次事后补），
-/// 而落后期间「可以少扫几个文件而照样绿」。「≥」这个形状是落后的**成因**：
-/// 加脚本时它不响，于是没人回来棘。改成等号之后，加一个脚本就必须在同一次改动里
-/// 把数写对 —— 诊断会直接告诉他该写几。
-#[test]
-fn the_coverage_floor_equals_what_is_actually_covered_today() {
-    let scripts = guard_core::shell_scripts(&repo_root());
-    let patterns = shellcheck_patterns();
-    let n = scripts.iter().filter(|s| covered(&patterns, s)).count();
-    assert!(
-        n >= 40,
-        "算出的覆盖数只有 {n}（08-08 实测 45）—— 匹配语义坏了，本条会去比一个假数"
-    );
-    let floor = floor_in_ci();
-    assert_eq!(
-        floor, n,
-        "CI 的 shellcheck 计数地板写着 {floor}，而那条表达式今天真实覆盖 {n} 个文件。\n\
-             ⇒ 把 `ci.yml` 里那条 `[ \"$N\" -ge {floor} ]` 改成 {n}，并按它自己的规矩\n\
-             「棘的时候把**实测构成**一起写下，别只改数字」。\n\
-             ⚠ 数字比实际小 = 那段时间可以少扫几个文件而门禁照样绿（它自己记着这事发生过三次）；\n\
-             数字比实际大 = CI 会红在一条与真实原因无关的诊断上。"
     );
 }
 
@@ -218,7 +155,7 @@ fn every_exemption_still_points_at_a_real_unlinted_script() {
         );
         assert!(
             !covered(patterns.as_slice(), path),
-            "`{path}` 登记着豁免，可 CI 那条表达式**已经在扫它了** ⇒ 删掉这条豁免。\n\
+            "`{path}` 登记着豁免，可门禁的人群**已经在扫它了** ⇒ 删掉这条豁免。\n\
                  留着的害处是具体的：下一个人会以为这个文件没被 lint，\
                  从而不敢改它 / 或者以为「反正没人扫」而放松它"
         );

@@ -116,50 +116,20 @@ jobs:
             exit 1
           }
 
-  # ──：**monitor 这棵树在 Linux 上的行为，云端一次都没有被执行过** ──────
+  # ── Linux 那几个 job 一律**调本地门禁**（`GATE_ONLY=<格>`），命令只住 `tests/scripts/gate.sh` 一处 ──
   #
-  # ## 问题（漏洞 3 逐字）
+  # 门禁的格本来就能单跑；一个 job 点哪几格，这一行就是全部的登记（拼错一个格名门禁自己判红）。
+  # 裁决行会是 `GATE: PARTIAL`（只跑了点到的那几格），退出码 0 = 点到的全绿。
+  # Windows 那两个 job（`rust` · `frontend`）照旧自己写命令：门禁跑不了真 Windows。
   #
-  # 上面 `rust` job 是**唯一**跑 `cargo test --workspace` 的地方，而它 `runs-on: windows-latest`；
-  # Linux 侧对 `src/frontend/shell` 今天只有 `linux-app-build` 那一条 `cargo build` ——
-  # **「编得过」不等于「跑得对」**。⇒ monitor 那批 `#[cfg(unix)]` 门控的测试
-  # **云端执行面 = 0**，它们只在开发机的本地门禁（`tests/scripts/gate.sh`）里跑过。
-  #
-  # ## 它是谁的安全网（为什么它排在这一波第一个）
-  #
-  # （526 个 `#[cfg(test)]` 块搬兄弟文件）· `§5.2 B2`（clippy 换掉 ~3500 行文本扫描）·
-  # `§5.2 B3`（退役两个守卫）三件都是**拿行为测试去换文本判据**。
-  # 换之前必须先有人**真跑过**那些行为测试 —— 否则裁掉的是尺子，换来的是一句没人验过的话。
-  #
-  # ## 🔴 它买不到什么（写死，别读宽）
-  #
-  #   · **买不到「这个 job 是绿的」这个事实** —— 加进来这一趟不推，它在云端**一次都没跑过**。
-  #     今天它的状态是「**配置写对了**」，不是「**验过了**」。第一次真跑出来的红
-  #     有两种读法（真缺陷 / 这一面第一次被看见），**在有读数之前别挑顺手的那一种**。
-  #   · 买不到 Windows 那一面（那是 `rust` job），也买不到 `src/backend`（那是 `backend` job）。
-  #   · 买不到「本地门禁与云端同一把尺子」：本地 `gate.sh` 那格带 `--lib`（丢 doctest 与 bin 档），
-  #     这里**刻意不带** —— 与 `rust` job 逐字同一条命令。同一个性质两把长度不同的尺子
-  #     是本区最贵那族病（漏洞 2 就是它），所以跨平台这两格用同一把。
-  #
-  # ⚠ `fetch-depth: 0` 与 `rust` job **同一条理由**，不是抄习惯：
-  #   `scanning_guard_registry::the_pending_ratchet_never_turns_backwards` 与 `dial_home_registry`
-  #   那条都拿 **git 历史**当权威，浅克隆下它们的诊断第一句逐字就是
-  #   「浅克隆把历史截掉了（要 `fetch-depth: 0`）」。同一套测试搬到这里，那个需求跟着搬。
-  #
-  # ⚠ apt 那四个包与 `linux-app-build` 逐字同一份：monitor 是 Tauri app crate，
-  #   `cargo test` 也得先把它编出来 ⇒ 缺 webkit2gtk 的 pkg-config 会红在走到我们代码之前。
-  #   步骤名刻意与那个 job **一字不差** —— `shared_crate_registry` 的 `STEPS` 按**步骤名**登记，
-  #   同一件事共用一条登记（三条 `- run: npm ci` 是同一形）。
-  #
-  # ⚠ `timeout-minutes` 这个数**没有 Linux 读数**：`rust` 那个 35 是 09-10 三趟 windows runner
-  #   量出来的。这里借它的上界，**不现编一个** —— 真跑起来之后要回来重量一次（口径见 `rust` 头注）。
+  # ⚠ `fetch-depth: 0` 与 `rust` job 同一条理由：几条判据拿 git 历史当权威，浅克隆下它们会红。
+  # ⚠ apt 那几个包：monitor 是 Tauri app crate，`cargo test` 也得先把它编出来（缺 webkit2gtk 的 pkg-config 会红在走到我们代码之前）；
+  #   起真窗口的那几条要 Xvfb / xdotool / CJK 字体。
+  # ⚠ 门禁的 `cargo` 那一格带 `--lib`（不跑 doctest 与 bin 的测试档）；那两档由 `rust` job 在 Windows 上跑全量。
   rust-linux:
-    name: Rust test (Linux)
+    name: Rust test (Linux, gate cells)
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    defaults:
-      run:
-        working-directory: src/frontend/shell
     steps:
       - uses: actions/checkout@v4
         with:
@@ -180,16 +150,15 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
-      # 文件窗口那几格要一个真图形会话（`tests/frontend/filewin/xvfb_rig.rs`）和一份 CJK 字体
-      # （`tests/frontend/filewin/fonts_tests.rs`）；缺了它们报「判不了」而不是「过了」。
-      # `libxkbcommon-x11-0`：winit 在 X11 上起窗口时按名字 dlopen 它，缺了窗口起不来。
-      # `ubuntu-latest` 今天自带 Xvfb，但那是镜像的实现细节 ⇒ 这里照样点名装。
       - name: Install test-time deps (Xvfb · xdotool · CJK font)
         run: |
           sudo apt-get install -y xvfb xdotool fonts-noto-cjk libxkbcommon-x11-0
 
-      - name: cargo test（整个 workspace；Linux 执行面）
-        run: cargo test --workspace --no-fail-fast
+      - name: 门禁 · monitor 那棵树的测试
+        env:
+          GATE_ONLY: cargo comm-boundary test-tiers generated deadcode
+        run: bash tests/scripts/gate.sh
+
 
   frontend:
     name: Frontend typecheck + build
@@ -275,15 +244,12 @@ jobs:
       - name: vite build (dist/)
         run: npm run build
 
-  # 远端后端是这套体系里**唯一以 Linux 为真实目标**的部分（inotify / aarch64），
-  # 故单独跑在 ubuntu。standalone crate（无 root workspace），不被上面 Windows job 触及。
+  # 远端后端是这套体系里**唯一以 Linux 为真实目标**的部分（inotify / aarch64），故单独跑在 ubuntu。
+  # fmt / clippy / test 调门禁；跨 target 到 `x86_64-pc-windows-msvc` 的 check 门禁做不了（本机没有 MSVC 那一套），留在这里。
   backend:
     name: Remote backend (Linux) lint + test
     runs-on: ubuntu-latest
     timeout-minutes: 15      # 实测 0–1m（09-10 三趟）；口径见 `rust` 那一格的头注
-    defaults:
-      run:
-        working-directory: src/backend
     steps:
       - uses: actions/checkout@v4
 
@@ -297,6 +263,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src/backend
+
 
       # ★ 08-25（`K-H1` / `KU10` 走「甲」）：**给这个 ubuntu job 装一个能给 Windows 编 C 的交叉工具链。**
       #
@@ -313,22 +280,14 @@ jobs:
       # ⚠ 只给归档器是**不够**的：实测把 `AR` 指向 GNU `ar` 或 `llvm-lib`，
       #   宿主 gcc 产的是 ELF，LIB 驱动当场 `not a COFF object` ⇒ 必须有一个真发 COFF 的编译器。
       #
-      # ⚠ 为什么用 `uses:` 装而不是加一步 `run:`：`shared_crate_registry::
-      # every_ci_run_step_is_classified_as_local_or_unrunnable` 要求本文件里**每一条 `run:` 步骤**
-      # 都在 `src/frontend/shell/src/shared_crate_registry.rs` 的 `STEPS` 表里登记过；`uses:` 步骤不进那个人群。
       # ⚠ 版本与 `release.yml` 那步**刻意保持一致**（`mlugg/setup-zig@v1` + zig `0.14.0`）：
       # 那一步已经在本仓 CI 上跑过，少一个会自己变的量。
       - uses: mlugg/setup-zig@v1
         with:
           version: 0.14.0
 
-      - name: cargo fmt --check
-        run: cargo fmt --check
-
       # ★ U4a（2026-08-01）
-      # **位置**：紧跟 fmt，排在 clippy/test 之前（Phase D 审计建议）——
-      # 它是四步里最便宜、最确定的一步，前面任一步失败它就不执行。job 照样红、信号不丢，
-      # 但「Windows 编得过」这条判据会被最不稳的那步（cargo test 真起 tmux、真 spawn 进程）遮住。
+      # **位置**：排在门禁那一步之前 —— 它最便宜、最确定；排在后面会被最不稳的那步（cargo test 真起 tmux、真 spawn 进程）遮住。
       # 原注：**§1.1 第一条解耦线（平台线）的唯一真判据。**
       #
       # 计划自审 §0.5-3 打掉过一个安慰剂式的机检：「`platform/` 之外出现平台 cfg 就红」
@@ -340,9 +299,10 @@ jobs:
       #
       # 这一步之前，backend 在 Windows 上 **RC=101 / 12 个错**，而 CI 从来不知道。
       - name: cargo check（跨 target：Windows 编得过 —— 平台线的真判据）
+        working-directory: src/backend
         # ★ 08-25：这三个环境变量是上面那步 zig 的用法，**不改这条命令一个字符** ——
-        # `shared_crate_registry::ci_actually_runs_the_backend_four_steps` 对下面这条 `run:` 是
-        # **整行全等**匹配（不是子串），所以 `cargo xwin check …` 那种写法会直接把它打红。
+        # `shared_crate_registry::the_windows_cross_target_signal_covers_only_the_backend` 钉着下面这条 `run:`，
+        # 换写法（如 `cargo xwin check …`）会把它打红。
         #
         # ★★ 逐字说清这一步今天证什么、**不**证什么（别让下一个人把它读大一格）：
         #   · **证**：我们自己的 Rust 代码（含中转与 TLS）在 `x86_64-pc-windows-msvc` 上
@@ -361,27 +321,13 @@ jobs:
           AR_x86_64_pc_windows_msvc: zig lib
         run: cargo check --all-targets --target x86_64-pc-windows-msvc
 
-      # clippy 同后端 job：仅警告，不强制
-      - name: cargo clippy
-        run: cargo clippy --all-targets
+      - name: 门禁 · 后端 fmt / clippy / test
+        env:
+          GATE_ONLY: fmt-backend clippy-backend backend
+        run: bash tests/scripts/gate.sh
 
-      - name: cargo test
-        run: cargo test
-
-
-  # L4（local-as-remote）：**Linux 宿主上 app 能不能构建**的持续信号。
-  #
-  # 为什么要它：L0 在开发机上实测过「三个 WebKitGTK pkg-config 依赖都在、`cargo build`
-  # 完整 app 二进制 rc=0」，但那是**一台机器一次性的读数**。没有这个 job，Linux 侧的构建
-  # 会在没人看的时候烂掉——而 `release.yml` 的 Linux 打包 job 只在 tag 时跑，
-  # **等到发版才发现就晚了**。⇒ 这个 job 是那个发版 job 的**前置信号**。
-  #
-  # **刻意只 build 不 bundle**：bundle（deb）要多几分钟，而回归信号在「能不能编过」这一步
-  # 就拿到了。打包本身留给 release（那里本来就要跑一次）。
-  #
-  # 装包说明：ubuntu runner 不预装 WebKitGTK 开发包。本仓 CI 里装系统包已有先例
-  #（e2e job 装 tmux/jq），这里同理——**这与「本机不装软件包」那条纪律无关**，那条说的是
-  # 开发者自己的机器。
+  # L4（local-as-remote）：**Linux 宿主上 app 能不能构建**的持续信号（`release.yml` 的 Linux 打包 job 只在 tag 时跑）。
+  # 刻意只 build 不 bundle。`npm run build`（tsc ＋ vite）先产出 `dist/`，app crate 编译时要它。
   linux-app-build:
     name: Linux app build (no bundle)
     runs-on: ubuntu-latest
@@ -400,8 +346,6 @@ jobs:
         with:
           workspaces: src/frontend/shell
 
-      # Tauri v2 在 Linux 上的构建期依赖。**逐个都是编译 app 必需**（不是打包才要的）：
-      # webkit2gtk-4.1 = WebView；gtk-3 = 窗口；ayatana-appindicator3 = 托盘；rsvg2 = 图标。
       - name: Install Linux build deps
         run: |
           sudo apt-get update
@@ -411,593 +355,35 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
-      - name: npm ci
-        run: npm ci
+      - run: npm ci
 
-      # 与 L0 本机实测的同一组命令：先前端，再 app 二进制。
       - name: npm run build (tsc + vite)
         run: npm run build
 
-      - name: cargo build (full app binary, not --lib)
-        working-directory: src/frontend/shell
-        run: cargo build
+      - name: 门禁 · 类型检查 ＋ 真编真链 app
+        env:
+          GATE_ONLY: tsc appbuild
+        run: bash tests/scripts/gate.sh
 
-  # F09：e2e 脚本**健康冒烟**（非真 e2e）。真 e2e（Xvfb + tauri dev 全量 app + xdotool，见
-  # tests/e2e/README.md）需 Linux GUI runner + 5min+ app 构建，且 app 生产仅 Windows → 大投入低 ROI，
-  # 留 v2/真机。这里只防脚本**腐烂**：shellcheck 只挡 error 级（忽略 info/style 噪音，f40-suite
-  # 有意用 ls/eval 等）+ python 语法编译。ubuntu-latest 预装 shellcheck，零安装、秒级。
-  e2e-smoke:
-    name: E2E scripts health (shellcheck + py compile)
+  # 门禁里只读盘上文本的那几格（shellcheck · py 语法与可执行位 · hooks · 复制族 · 发版守卫 · 平台承诺 · 安装面）。
+  static-gate:
+    name: Gate static cells
     runs-on: ubuntu-latest
-    timeout-minutes: 15      # 实测 0m（09-10 三趟）；口径见 `rust` 那一格的头注
-    steps:
-      - uses: actions/checkout@v4
-      # B01 审计 I5：搬进来的 `src/shared/cc-bus/` 有 1107 行 shell，此前**零 lint 覆盖**——
-      # 唯一门禁是下面那条 exec-bit 守卫。扩进来实测今天就是绿的（severity=error 零告警），
-      # 零成本。`shared/ccm` 一并纳入：它被 `sftp.rs:538` include_str! 进二进制，是生产件。
-      # **刻意不含 `src/shared/ccm-aliases.sh`**：那是个供 source 的片段、无 shebang，
-      # SC2148 是它的构造性属性；而它会被写进用户 shell profile、并在 UI 面板里展示供手动复制，
-      # 为过 lint 往里塞 `# shellcheck shell=bash` 等于往用户配置和界面文案里掺 lint 噪音。
-      # **覆盖面地板**（本工作区在治的病：零断言/零覆盖也报绿）：文件数少一个就红。
-      # 改名/挪走脚本时若不同步这里，shellcheck 会少扫几个文件而**照样绿**——地板挡的正是这个。
-      # 08-13 棘 52 → 53：新增 `tests/e2e/cc-bus-queue-drain.sh`（cc-send 滞留队列补投）。
-      # 实测构成（本机 `shopt -s nullglob` 后逐组数）：
-      #   tests/e2e/*.sh 31 + src/shared/cc-bus/scripts/* 14 + shared/ccm 1 + tests/e2e/fake-claude 1
-      #   + tests/scripts/*.sh 2 + vendor/cc-acct-iso 那 4 个 = **53**。
-      # 08-13 再棘 53 → 54：新增 `tests/e2e/backend-cc-bus.sh`（P4f）⇒ tests/e2e/*.sh 变 32。
-      # ⚠ 我第一版把构成写成「tests/e2e/*.sh 37 + …」——**那是凑出 53 的假账**，
-      #   总数对得上不等于构成对得上。数字要逐组数出来，别倒推。
-      - name: shellcheck (errors only)
-        run: |
-          set -euo pipefail
-          # ⚠ `nullglob`：不开的话，某一组 glob 一个都不匹配时 bash 会**留下字面量**
-          # （如 `tests/scripts/*.sh`）⇒ `grep -c .` 照数 1、地板照过，只有 shellcheck 自己会红，
-          # 而它报的是「文件不存在」、与「覆盖面缩水」这条诊断完全对不上。
-          # `scripts` 那组今天只有 1 个文件 ⇒ 归零就是整组消失，正是地板该挡的场景。
-          # （Phase D 审计实测：`shellcheck 'tests/scripts/*.sh'` → openBinaryFile does not exist, RC=2）
-          shopt -s nullglob
-          FILES=$(printf '%s\n' tests/e2e/*.sh src/shared/cc-bus/scripts/* \
-            src/shared/cc-bus/examples/cc-keepalive \
-            tests/e2e/fake-claude \
-            tests/e2e/weak-net/*.sh \
-            tests/e2e/local-backend-container/*.sh \
-            tests/evidence/*.sh \
-            tests/scripts/*.sh \
-            tests/hooks/*)
-          N=$(printf '%s\n' "$FILES" | grep -c .)
-          echo "shellcheck 覆盖 $N 个文件"
-          # 地板：2026-07-30 实测 37（e2e 19 + cc-bus 13 + ccm 1 + vendored 4）；
-          # **2026-08-01 E82 棘到 39** —— 实测同一表达式已是 39（e2e 21：G2 加了
-          # `backend-fork-session.sh` 与 `ccm-rbind-title.sh`，地板没跟 ⇒ 那段时间可以少扫
-          # 2 个文件而不报警）。**地板的意义就是灵敏度**：写下之后不回来棘，等于慢慢把它交出去
-          # （同 E81 的覆盖率棘轮）。棘的时候把**实测构成**一起写下，别只改数字。
-          # **2026-08-02 U8a-2a 棘到 40** —— 实测 40（e2e 22：新增 `inbound-backend-frames.sh`；
-          # cc-bus 13 + ccm 1 + vendored 4 未变）。
-          # **2026-08-02 U9a 棘到 41** —— 实测 41（e2e 23：新增 `ccm-contract-parity.sh`；
-          # 其余三组未变）。
-          # **2026-08-05 audit-0805 F01 棘到 44**，同时补进 `tests/scripts/*.sh`。两件事：
-          # ① **地板又落后了 2**：写下 41 之后 e2e 从 23 长到 **25**，那段时间可以少扫 2 个文件而不报警
-          #    —— 这已经是同一条地板第三次落后（37→39→41 每次都是事后补），⇒ 见 `audit-0805` I-8。
-          # ② ★ **`tests/scripts/verify-committed-state.sh` 此前既没被 lint 也没被测**，而
-          #    `shared_crate_registry.rs:155-167` 逐字称它是「**CI 的本地替身**」——
-          #    一个被当作门禁替身的脚本自己在所有门禁之外。今天实测构成：
-          #    **44 = e2e 25 + cc-bus 13 + ccm 1 + scripts 1 + vendored 4**。
-          # **2026-08-08 audit-0805 棘到 45**，同时补进 `tests/e2e/fake-claude`。★ 这次不是「地板落后」，
-          # 是**人群漏了一个**：`tests/e2e/*.sh` 这个 glob 按**后缀**取样，而 `fake-claude` 没有后缀
-          # ——它是 e2e 的 claude shim（`#!/bin/sh`，`tests/e2e/README.md` 逐条描述它的行为），
-          # 一次都没被 lint 过，而计数一个都不少 ⇒ 地板照过。今天实测构成：
-          # **45 = e2e 25 + fake-claude 1 + cc-bus 13 + ccm 1 + scripts 1 + vendored 4**。
-          # ⇒ 这条地板此后由 `shell_lint_registry` 钉成**等号**（不是「≥」）：
-          #   「≥」正是它落后三次的成因 —— 加脚本时它不响，于是没人回来棘。
-          # ⚠ 两个 `.ps1` 仍**零 lint**（全仓无 PowerShell linter）：`tests/scripts/run.ps1` 与
-          #    `tests/e2e/tier2/run-in-session1.ps1` ⇒ 记为诚实边界。
-          #    〔09-25 MG1 合 RT1〕长到**四个**：`tests/evidence/RT1-lib.ps1` · `RT1-winwatch.ps1`（Win11 虚拟机真机台架，
-          #    只在台架里跑、不进产品）同样零 lint；「要不要引 PSScriptAnalyzer」待定（`shell_lint_registry` 那张表同拍）。
-          # **2026-08-11 P3t-Y5 棘到 46**：新增 `tests/e2e/p3t-local-tmux.sh`（本机拉起真的建出 tmux 会话）。
-          # ★ 这次**不是事后补**——改成等号之后它当场就红了，加脚本的同一拍就回来棘。
-          #   那正是把「≥」改成等号买到的东西：前三次落后（37→39→41）全是「≥ 不响，没人回来」。
-          #   今天实测构成：**48 = e2e 28 + fake-claude 1 + cc-bus 13 + ccm 1 + scripts 1 + vendored 4**
-          #   〔`P0b` 08-12 +1：`tests/e2e/reap-orphan-backends.sh`；`P0e` 08-12 +1：`tests/e2e/tmux-shim.sh`
-          #    —— `C7i` 隔离原语抽成一份，原本在三个套件里各抄一份〕。
-          #   **2026-08-13 P4b①③ 棘到 49**：新增 `src/shared/cc-bus/scripts/cc-spawned-record`
-          #   （`C15` 把台账收进 `ccm` 时，**格式仍归 cc-bus** ⇒ 那段 flock 追加从 `cc-spawn`
-          #    抽成 cc-bus 自己的一个脚本，`ccm --bus-register` 调它）。
-          #   今天实测构成：**49 = e2e 28 + fake-claude 1 + cc-bus 14 + ccm 1 + scripts 1 + vendored 4**。
-          #   **2026-08-13 P0b-Y2 棘到 50**：新增 `tests/e2e/backend-sessions-rewatch.sh`
-          #   （四组对照真跑：`sessions/` 被换 inode / 起初不存在 / 重建后立刻写 —— 那是
-          #    `#60` 台架九拍拿不到读数的原因，只有真起后端才验得出来）。
-          #   今天实测构成：**50 = e2e 29 + fake-claude 1 + cc-bus 14 + ccm 1 + scripts 1 + vendored 4**。
-          #   **2026-08-13 P0b-Y2 第十六拍棘到 51**：新增 `tests/e2e/backend-tmux-late-server.sh`
-          #   （backend 起得比 tmux server 早时，后来的会话看不看得见 —— `#60` 的根因形状，
-          #    只有真起 backend + 真建 tmux server 才验得出）。
-          #   今天实测构成：**51 = e2e 30 + fake-claude 1 + cc-bus 14 + ccm 1 + scripts 1 + vendored 4**。
-          #   **2026-08-13 棘到 52**：新增 `tests/scripts/gate.sh`（出货前的唯一闸门 —— 它自己也要被 lint）。
-          #   今天实测构成：**52 = e2e 30 + fake-claude 1 + cc-bus 14 + ccm 1 + scripts 2 + vendored 4**。
-          # **2026-08-14 棘到 55** —— 新增 `tests/hooks/pre-commit`（C7 的机器挡，默认不启用：
-          # 要 `git config core.hooksPath hooks` 才生效）。它是被 `shell_lint_registry`
-          # **当场逮住的**：文件建出来就没进这条表达式，而计数地板照旧绿 ——
-          # 那条登记表的诊断逐字说中了「地板只会数它扫到的那些，数不出它没扫的那些」。
-          # 实测构成：55 = 上一轮 54 + tests/hooks/pre-commit 1。
-          # **2026-09-05 `W-F1` 棘到 60**，同时补进 `tests/e2e/weak-net/*.sh`。★ 这一次同样**不是事后补**：
-          # `tests/e2e/weak-net/` 是个**新目录**，而上面 `tests/e2e/*.sh` 那个 glob **不跨 `/`**
-          # ⇒ 弱网台架那 4 个脚本落在所有分组之外，一次都不会被 lint，而计数一个都不少。
-          # 与 `tests/e2e/fake-claude` 那次（08-08）是**同一形**：人群漏了一个，不是地板落后。
-          # 落地路径也是 `shell_lint_registry` 的诊断逐字给的第 ① 条
-          #（「补进 `ci.yml` 的 `FILES=$(printf …)`（记得同步地板数）」）。
-          # 今天实测构成（**逐组现打，不倒推** —— 上一轮就是倒推凑出过一次假账）：
-          # **60 = tests/e2e/*.sh 33 + tests/e2e/weak-net/*.sh 4 + fake-claude 1 + cc-bus 14 + ccm 1
-          #        + scripts 2 + vendored 4 + tests/hooks/pre-commit 1**。
-          # 🔴 **2026-09-11 `K-R48` 第二拍：60 → 57，这是本仓第一次**往下**拧这个地板，
-          #    所以理由要比往上棘时写得更清楚**：
-          #    〔用@09-11 `K33`〕逐字「后端只有一个…**不要有什么 bash 脚本**」⇒ 本轮删了
-          #    **三个 shell 文件**：`shared/ccm`（那 1592 行 bash 启动器）·
-          #    `tests/e2e/ccm-acceptance.sh` · `tests/e2e/ccm-pretrust-acceptance.sh`。
-          #    ⇒ `shared/ccm` 那一项也从上面的 `FILES=` 表达式里摘了（留着它
-          #    `shellcheck` 会报「文件不存在」rc=2，而那条诊断与「覆盖面缩水」完全对不上）。
-          #    实测构成：**57 = tests/e2e/*.sh 31 + tests/e2e/weak-net/*.sh 4 + fake-claude 1 + cc-bus 14
-          #             + scripts 2 + vendored 4 + tests/hooks/pre-commit 1**（ccm 那 1 个没了）。
-          #    ⚠ **别把这一次当先例**：往下拧的合法理由只有「那几个文件真的不在了」，
-          #    不是「今天数不够」。`shell_lint_registry` 那条恒等判据会替你分辨这两件事。
-          # 🔴 **2026-09-20 `G4` 空洞③ 棘到 77，同时把 `tests/hooks/pre-commit` 换成 `tests/hooks/*`。**
-          #    ★ 这一次**又是「人群漏了一个」，不是「地板落后」** —— 与 08-08 `fake-claude`、
-          #      09-05 `weak-net/` 两次**同一形**，而这次漏的原因是第三种：
-          #      上面那一项此前写的是**一个写死的文件名**（`tests/hooks/pre-commit`），
-          #      不是 glob ⇒ 本拍新增的 `tests/hooks/pre-push` 落在所有分组之外，
-          #      **一次都不会被 lint，而计数一个都不少**。
-          #    ★ 逮住它的仍是 `shell_lint_registry`（「每个 shell 脚本要么进表达式、要么登记豁免」）——
-          #      它在 `cargo` 那一格当场红，**不是事后补**。
-          #    ⇒ 换成 `tests/hooks/*`（整目录，与 `src/shared/cc-bus/scripts/*` 同写法）：
-          #      往 `tests/hooks/` 再放一份 hook，人群自动跟上，**不必再指望有人记得回来加一行**。
-          #      ⚠ 这一项不按后缀取样是**刻意的**：git 的 hook 天生无后缀。
-          #      ⚠ 整目录 glob 不会把非脚本混进来 —— 门禁 `hooks` 那一格已经要求
-          #      `tests/hooks/` 下**每一个被跟踪的文件**都有 shebang 且在闭集里（口径同源）。
-          #    今天实测构成（逐组现打，不倒推）：
-          #    **77 = 上一轮 76 + tests/hooks/pre-push 1**。
-          # **2026-09-12 `K-R82` 棘到 58**：新增 `tests/scripts/hooks-are-runnable.sh`
-          #（门禁第 13 格 `hooks` 的判据本体）。★ 与 08-11 那次同形，**不是事后补**：
-          # 文件建出来的同一拍 `shell_lint_registry` 那条恒等判据当场红，诊断逐字给出「该写几」。
-          # ⚠ 它落在 `tests/scripts/*.sh` 那个 glob 里 ⇒ **人群没漏**，只是计数要跟。
-          # 今天实测构成（**逐组现打，不倒推**，量于工作树 `k-r82`）：
-          # **58 = tests/e2e/*.sh 31 + tests/e2e/weak-net/*.sh 4 + fake-claude 1 + cc-bus 14
-          #        + scripts 3 + vendored 4 + tests/hooks/pre-commit 1**。
-          # 🔴 **2026-09-12 `K-R72`：58 → 57，本仓第二次**往下**拧这个地板**（第一次是
-          #    `K-R48` 第二拍，理由同族）：删了 `tests/e2e/tmux-guarded-acceptance.sh` 一个文件 ——
-          #    它的输入源（`tmux.rs` 两条桌面侧 SSH 回落的 builder）随 `K-R54` 表第 1 · 2 · 5 处
-          #    一起走了 ⇒ 那套 e2e 取不到命令串、跑不起来，留着就是一颗哑弹。
-          #    ⚠ 它落在 `tests/e2e/*.sh` 那个 glob 里 ⇒ **人群没漏，是文件真的不在了**
-          #    （`shell_lint_registry` 那条恒等判据当场红并逐字给出「该写几」）。
-          #    今天实测构成（**逐组现打，不倒推**，量于工作树 `k-r72`）：
-          #    **57 = tests/e2e/*.sh 30 + tests/e2e/weak-net/*.sh 4 + fake-claude 1 + cc-bus 14
-          #           + scripts 3 + vendored 4 + tests/hooks/pre-commit 1**。
-          # **2026-09-15 `K-R139` 棘到 60**，同时补进 `tests/e2e/local-backend-container/*.sh`。
-          # ★ 与 `W-F1`（09-05 那次补 `tests/e2e/weak-net/`）**同一形，不是地板落后**：
-          # `tests/e2e/local-backend-container/` 是个**新目录**，而 `tests/e2e/*.sh` 那个 glob **不跨 `/`**
-          # ⇒ 干净 Linux 容器台架那 3 个脚本落在所有分组之外，一次都不会被 lint，
-          # 而计数一个都不少 ⇒ 光看 `shellcheck` 印的那个数会以为「lint 过了没问题」，
-          # 真相是「**根本没被 lint 到**」。逮住它的是 `shell_lint_registry` 那条恒等判据。
-          # ⚠ **刻意不走「登记豁免」那条**：这 3 个脚本是本轮新写的、没有任何历史包袱，
-          #   豁免是给改不动的老债留的。
-          # **2026-09-18 棘到 61** —— 新增 `tests/e2e/tier2-rig.sh`（tier-2 台架搭建器：
-          # 把 README 那份散文配方变成一条能跑的命令）。它落在 `tests/e2e/*.sh` 那个 glob 里
-          # ⇒ **人群没漏，是真多了一个文件**，与 `W-F1`/`K-R139` 那两次「新目录落在所有分组之外」
-          # 不同形。逮住它的还是 `shell_lint_registry` 那条恒等判据 —— 而且它是**提交之后**才红的：
-          # 那条判据数的是 `git ls-files`，文件没被跟踪时它看不见。⇒ 新增脚本要连地板一起提。
-          # （那一拍的实测构成：61 = tests/e2e/*.sh 31 + cc-bus 14 + weak-net 4
-          #   + local-backend-container 3 + scripts 3 + vendored 4 + fake-claude 1 + pre-commit 1。）
-          # 🔴 **2026-09-18 `61 → 60`，本仓第三次**往下**拧这个地板**（前两次是 `K-R48` 第二拍
-          #    与 `K-R72`，理由同族）：用量（usage）整条产品面删干净，随之删掉
-          #    `tests/e2e/usage-probe-acceptance.sh` ⇒ 它落在 `tests/e2e/*.sh` 那个 glob 里，
-          #    **人群没漏，是文件真的不在了**（`shell_lint_registry` 那条恒等判据当场红，
-          #    并逐字给出「地板写着 61，而那条表达式今天真实覆盖 60 个文件」）。
-          # 今天实测构成（**逐组现打，不倒推** —— 倒推凑过一次假账）：
-          # **60 = tests/e2e/*.sh 30 + src/shared/cc-bus/scripts/* 14 + tests/e2e/weak-net/*.sh 4
-          #        + tests/e2e/local-backend-container/*.sh 3 + tests/scripts/*.sh 3
-          #        + vendored cc-acct-iso 4 + fake-claude 1 + tests/hooks/pre-commit 1**。
-          # ⚠ `local-backend-container/` 里还有一份 `Dockerfile`（**不是 `.sh`，不进这个人群**）。
-          # **2026-09-18 棘到 62**，同时补进 `tests/evidence/*.sh`。★ 与 `W-F1`（09-05 补 weak-net）
-          # 和 `K-R139`（09-15 补 local-backend-container）**同一形**：`tests/evidence/` 是个**新目录**，
-          # 而 `tests/e2e/*.sh` / `tests/scripts/*.sh` 那两个 glob **都不跨 `/`**
-          # ⇒ 秤 2 的两个复算脚本（`U-scale2-run.sh` 真浏览器取真高 · `U-scale2-mutation.sh` 变异自检）
-          # 落在所有分组之外，一次都不会被 lint，而计数一个都不少 ⇒ 地板照过。
-          # 逮住它的还是 `shell_lint_registry` 那条恒等判据。
-          # ⚠ **刻意不走「登记豁免」那条**：这 2 个脚本是本轮新写的、没有历史包袱，
-          #   豁免是给改不动的老债留的（同 `K-R139` 那次的论证）。
-          # ⚠ 实测：`shellcheck -s bash` 对这两个文件**零告警**（连默认档也是零），补进来零成本。
-          # 今天实测构成（**逐组现打，不倒推**）：
-          # **62 = tests/e2e/*.sh 30 + src/shared/cc-bus/scripts/* 14 + tests/e2e/weak-net/*.sh 4
-          #        + tests/e2e/local-backend-container/*.sh 3 + tests/evidence/*.sh 2
-          #        + tests/scripts/*.sh 3 + vendored cc-acct-iso 4 + fake-claude 1
-          #        + tests/hooks/pre-commit 1**。
-          # **2026-09-18 同日棘到 66** —— 波 2 四路并发各留了一个复算 / 死值验脚本，
-          # 全部落进上面刚补的 `tests/evidence/*.sh` 那一组：
-          #   `S1-run.sh`（秤 1 复算）· `S1-mutation.sh`（秤 1 死值验）·
-          #   `S4-deathvalue.sh`（秤 4 死值验）· `S6-mutations.sh`（秤 6 死值验）。
-          # ★ **这一次是判据自己逮的，不是事后补**：`shell_lint_registry` 那条**恒等**判据
-          #   当场红并逐字给出「地板写着 62，而那条表达式今天真实覆盖 66」。
-          #   那正是把「≥」改成等号买到的东西 —— 前三次落后（37→39→41）全是「≥ 不响，没人回来」。
-          # 今天实测构成（**逐组现打，不倒推**）：
-          # **66 = tests/e2e/*.sh 30 + src/shared/cc-bus/scripts/* 14 + tests/e2e/weak-net/*.sh 4
-          #        + tests/e2e/local-backend-container/*.sh 3 + tests/evidence/*.sh 6
-          #        + tests/scripts/*.sh 3 + vendored cc-acct-iso 4 + fake-claude 1
-          #        + tests/hooks/pre-commit 1**。
-          # **2026-09-18 同日棘到 69**（第三次）—— 波 2 后半三路又各留了一个脚本，
-          # 全部落进 `tests/evidence/*.sh`：`S7-make-corpus.sh`（秤 7 夹具重建）·
-          # `S7-mutations.sh`（秤 7 死值验）· `S22-floor-run.sh`（地板取证一键复算）。
-          # ★ 同日第三次由那条**恒等**判据当场逮住。⇒ **`tests/evidence/` 是个会长的目录**，
-          #   每派一波并发就会多几个脚本；这一格棘得勤是正常的，**它响就是它在干活**。
-          # **2026-09-19 `w24c` 棘到 75** —— 步 24c 往 `src/shared/cc-bus/scripts/` 里加了
-          # **6 个** shell：两阶段读口两条（`cc-peek` / `cc-commit`）＋ 三个适配面四份
-          # （`cc-bus-adapt.sh` 契约 · `cc-bus-adapt-posix.sh` · `cc-bus-adapt-windows.sh` ·
-          # `cc-bus-agent-claude.sh`）。★ 与 09-18 那三次同形:**不是地板落后**，
-          # 是同一拍加文件、同一拍棘 —— `shell_lint_registry` 那条恒等判据当场给出「该写几」。
-          # 今天实测构成（逐组现打，不倒推）：
-          # **75 = tests/e2e/*.sh 30 + cc-bus/scripts/* 20 + weak-net 4 + local-backend-container 3
-          #        + tests/evidence/*.sh 9 + tests/scripts/*.sh 3 + vendored 4 + fake-claude 1 + pre-commit 1**。
-          # **2026-09-19 步 `19c` 棘到 76** —— 新增 `tests/scripts/re-embed.sh`：
-          # `BUILD_ID` bump 的**同拍步骤**（重编两份内嵌 musl 字节并铺回落点，
-          # 配方与 `release.yml` 产字节那一步同源）。★ 与前几次同形：**不是地板落后**，
-          # 是同一拍加文件、同一拍棘。⚠ 它**是**该被 lint 的那一类 —— 它会在开发者机器上
-          # 真跑 `cargo zigbuild` 并往两个目录里写二十多 MB，不是一段说明文字。
-          # 今天实测构成（逐组现打，不倒推）：
-          # **76 = tests/e2e/*.sh 30 + cc-bus/scripts/* 20 + weak-net 4 + local-backend-container 3
-          #        + tests/evidence/*.sh 9 + tests/scripts/*.sh 4 + vendored 4 + fake-claude 1 + pre-commit 1**。
-          # **2026-09-23 棘到 78** —— 新增 `tests/e2e/backend-rbind-token.sh`：
-          # 真起后端看 `session_added` 帧里有没有启动期令牌（`CCM_RBIND_TOKEN`）。
-          # ★ 与前几次同形：**不是地板落后**，是同一拍加文件、同一拍棘 ——
-          #   `shell_lint_registry` 那条**恒等**判据当场红并直接给出「该写几」。
-          # ⚠ 本拍**只动了这一个数**：那套 e2e 故意**没有**登记成 `package.json` 的 `test:*`，
-          #   也没有加 `assert-pass-floor` 那一行（那是另一条计数地板，待定）。
-          # 今天实测构成（逐组现打，不倒推）：
-          # **78 = tests/e2e/*.sh 31 + cc-bus/scripts/* 20 + weak-net 4 + local-backend-container 3
-          #        + tests/evidence/*.sh 9 + tests/scripts/*.sh 4 + vendored 4 + fake-claude 1 + tests/hooks/* 2**。
-          # **2026-09-24 棘到 79** —— 新增 `tests/e2e/rbind-token-endtoend.sh`：
-          # 生产载荷字节（取自 `payload-golden.json`）在真 bash 里跑 → 真后端从进程环境读回令牌 → wire。
-          # ★ 同步 2 那一拍同形：**不是地板落后**，是同一拍加文件、同一拍棘，`shell_lint_registry`
-          #   那条**恒等**判据当场红并直接给出「该写几」。
-          # ⚠ 本拍**只动了这一个数**：那套 e2e 与步 2 那套一样**没有**登记成 `package.json` 的 `test:*`、
-          #   也没有加 `assert-pass-floor` 那一行 —— 两条都是计数地板，**待定**。
-          # 今天实测构成（逐组现打，不倒推）：
-          # **79 = tests/e2e/*.sh 32 + cc-bus/scripts/* 20 + weak-net 4 + local-backend-container 3
-          #        + tests/evidence/*.sh 9 + tests/scripts/*.sh 4 + vendored 4 + fake-claude 1 + tests/hooks/* 2**。
-          # **2026-09-24 BS1 合并那一拍棘到 80** —— 新增 `src/shared/cc-bus/examples/cc-keepalive`
-          #   （保活调用方，W24C 尺子真跑它）。同拍加文件、同拍棘，`shell_lint_registry` 那条恒等判据当场红给的。
-          # **80 = 上面 79 ＋ cc-bus/examples/cc-keepalive 1**（逐组现打同上）。
-          # **2026-09-24 TQ1 棘到 81** —— 新增 `tests/scripts/rust-coverage.sh`（Rust 覆盖率量具，不进门禁）；
-          #   `tests/scripts/*.sh` 那组 4 → 5。同拍加文件、同拍棘。
-          # **81 = 上面 80 ＋ tests/scripts/rust-coverage.sh 1**。
-          # **2026-09-25 LR2 棘到 82** —— 新增 `tests/e2e/launch-render-emit.sh`（生产 Rust 渲染器给 e2e 的出口，
-          #   `launch-render-driver.ts` 调它）；`tests/e2e/*.sh` 那组 +1。同拍加文件、同拍棘。
-          # **82 = 上面 81 ＋ tests/e2e/launch-render-emit.sh 1**。
-          # **2026-09-26 SH1 棘到 83** —— 新增 `src/shared/cc-bus/scripts/cc-log`（只读看收件箱尾巴）；cc-bus/scripts 那组 +1。
-          # **83 → 79**：账号库管理收进后端，vendored 的那 4 份 bash（主脚本 · 库 · 安装脚本 · 自测）整棵删了 ——
-          #   人群没漏，是文件真的不在了。今天实测构成 = 上面 83 减去那 4 份。
-          # **79 → 80**：新增 `tests/e2e/ccm-shim.sh`（把后端以 `ccm` 之名放上 PATH、沙箱一律无条件给的那份助手）；`tests/e2e/*.sh` 那组 +1。
-          # **80 → 77**：拉前终端改成点 ↗ 时现查，标题与令牌那三套 e2e（`ccm-rbind-title` 与令牌两套）随被测的东西删了；`tests/e2e/*.sh` 那组 −3。
-          [ "$N" -ge 77 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 77）"; exit 1; }
-          # shellcheck disable=SC2086
-          shellcheck --severity=error $FILES
-
-      - name: python syntax compile
-        run: python3 -m py_compile tests/e2e/*.py
-
-      # B01：`src/shared/**` 里带 shebang 的文件在 **git 里**必须是 100755。
-      # 本仓 `core.fileMode=false` → git 忽略文件系统的可执行位，于是"盘上 755 但 git 记 644"
-      # 在本地**永远看不出来**（本地跑的是盘上那份），只有干净 checkout 才炸。已踩过两次：
-      # R00 的 `shared/ccm`（CI 上 Permission denied，e2e 连红三轮）与 B01 的 13 个 cc-bus 脚本。
-      # 直接 bash 调用：本 job 没有 setup-node 步骤，不该为一条纯 shell 检查引入 npm 依赖。
-      # 🔴 **23 → 21**：本轮删了 `ccm-acceptance` 与 `ccm-pretrust`
-      #    两套（它们只测 `shared/ccm` 那个 bash 脚本的真机行为，而那个脚本按 `K33` 删了）。
-      #    这个数在本文件里存着**四份**，四处一起改（本行 · 下面那条 `-ge` · 它的报错文案 ·
-      #    `pair` 清单那行 `echo`）—— 那张登记表逐字说这四份漂过一次。
-      # 🔴 **21 → 20**：删了 `tmux-guarded` 那一套。它的输入源是 `tmux.rs`
-      #    两条桌面侧 SSH 回落的 builder，回落删净 ⇒ 它连命令串都取不到、跑不起来。
-      #    ★ 四处这次是 `e2e_gate_registry::the_suite_count_is_the_same_number_in_all_four_places`
-      #    当场逮出来的（我先只改了 `echo` 那一处）—— **那条判据买的正是这一刻。**
-      # G-A **覆盖面地板**：19 套真机套件必须**每一套**都经 `assert-pass-floor.sh` 跑。
-      # 20 → 19：删了 `ccm-rbind-title`（窗口标题那一套随被测的东西删了；四处一起改）。
-      # 19 → 20：`p3t-local-tmux` 接回执行链（四处一起改）。
-      #      〔用量下线 09-18〕20 → 19：删了 `usage-probe`。⚠ 这是那个数的**第四份** ——
-      #      判据自己警告过「同一个数在 `ci.yml` 里存了四份，别只改报错的那一处」，本次就是漏跟这一份。
-      # （U0 2026-08-01 订正：本行与下面 `:313` 原写「8」，是 E82 订正下方散文时漏跟的两处，
-      #  与紧邻的步骤名和 `-ge N` 自相矛盾。真值以本步骤的 grep 计数为准。
-      #  U8a-2a 2026-08-02：新增 inbound-frames ⇒ 15 → 16，三处一起改。
-      #  U9a  2026-08-02：新增 ccm-contract-parity ⇒ 16 → 17，同样三处一起改。
-      #  F03  2026-08-03：新增 backend-gate2 ⇒ 17 → 18，同样三处一起改。
-      #  F05a 2026-08-04：新增 local-backend ⇒ 18 → 19，同样三处一起改。
-      #  08-13：新增 cc-bus-queue-drain（cc-send 滞留队列补投）⇒ 21 → 22，四处一起改。
-      #  08-13：新增 backend-cc-bus（P4f：backend 的 cc-bus 基础命令）⇒ 22 → 23，同样四处。）
-      # 不加这条的失效模式是：有人把某一步改回裸 `npm run test:X`（或整步删掉），
-      # 那套的断言数就再没人管了，而 CI **照样全绿** —— 与断言数缩水同一类病，只是换了一层。
-      # ★★ **2026-08-24 K-C1（D2 审计 `A2`）：把 ccm 那三套的地板棘到今天的实得**
-      #    `ccm-cli` **59 → 109** · `ccm-acceptance` **26 → 29** · `ccm-contract-parity` **62 → 68**
-      #    （**先跑再棘**：三套在本轮交回态下实测 109/0 · 29/0 · 68/0）。棘之前那三个数
-      #    恰好是 K-C1 改造**前**的值 ⇒ K-C1 两轮加的 **54 条断言 + 本轮 5 条一处都没被护住**，
-      #    「今天可以把它们全删掉而 CI 照样绿」—— 正是 `assert-pass-floor.sh` 头注写的那个
-      #    失效模式：**不是变红，是静默缩水**。
-      # ★★ **2026-08-25 K-C1 第六轮：`ccm-cli` 再棘 `109` → `123`**（`ccm-acceptance 29` ·
-      #    `ccm-contract-parity 68` **不变**）。那 14 条不是零碎补丁：本轮把「热路径零外部依赖」
-      #    那把尺子整个换代（`command_not_found_handle` + `$0: ` 前缀 ⇒ `DEBUG` 陷阱数真进程），
-      #    并把**一条盖三形的单点自检**拆成**一形一条 12 条**（含 3 条反向 / 活体对照）。
-      #    ⇒ 不棘的话，这一族自检**明天就能被整族删掉而 CI 照样绿**，而它们一旦没了，
-      #    两条热路径主判据会**永远读 0、永远 PASS**（那正是它们存在的理由）。
-      #    **先跑再棘**：PM 在合并点独立重跑实测 123/0 · 68/0 · 29/0。
-      #    牙口现打（**落文件读 `$?`，不走管道** —— 管道会把 `tail` 的码当成它的）：
-      #    `123 ⇒ rc=0` · `124 ⇒ rc=1`。
-      # ★★ **2026-08-25 K-C1 第七轮：`ccm-cli` 再棘 `123` → `126`**（另两套不变）。
-      #    那 3 条是 `⑬`/`⑭`/`⑮`：前两条钉住 R7 堵上的**两个真缺口**（数组元素当命令字 ·
-      #    `${VAR:-默认}` 当命令字 —— 在 R6 下那两形注入一条**真在跑**的外部依赖，全套 123/0 全绿），
-      #    第三条钉住 `KNF()` 改名后真正在数的那个量。⇒ 不棘的话它们明天能被删掉而 CI 照样绿。
-      #    **先跑再棘**：PM 在合并点独立重跑实测 126/0 · 68/0 · 29/0，并各切一刀复核有牙。
-      #    牙口现打（**落文件读 `$?`，不走管道**）：`126 ⇒ rc=0` · `127 ⇒ rc=1`。
-      # ★★ **2026-08-26 `K-P1`：`local-backend` 棘 `7` → `14`**（别的都不变）。
-      #    那 7 条不是零碎补丁：它们是**常驻那条路**的真进程判据 ——
-      #    `KPY2`「同机第二个宿主不许起第二个后端」5 条（含一条**非空对照**：换一个数据目录
-      #    = 换一个口 ⇒ 必须**真的**起出第二个进程，否则前面那几条读数可能只是「这条路起不出进程」）
-      #    · `KPY3`「脱离之后不留僵尸」2 条（断言落在**进程表**上，不是落在我们自己的事件上）。
-      #    ⚠ **套件数不变（仍 23）**：新判据接进了**已有**的 `local-backend` 套件（第二趟 `--ignored`），
-      #    没有新增套件 ⇒ 上面那个 `-ge 23` 一个字不动。⇒ 本轮「三处」实际动的是**两处**：
-      #    调用行 + 下面那张 `pair` 清单。**先跑再棘**：本机实测 `PASS=14 FAIL=0`。
-      #    牙口现打（**落文件读 `$?`，不走管道** —— 管道会把 `tail` 的码当成它的）：见交回报告。
-      # ★★ **2026-09-03 `K-P2` `D` 阶段：`ccm-cli` 棘 `126` → `203`**（别的都不变）。
-      #    那 77 条分两拍买的：`D1` 的 `JSONENC` 47 条（shell 侧真 JSON 编码器 `json_str`，
-      #    主判据是与 `jq -Rs .` **逐字节对拍**，不是「塞进去能取出来」）＋ `D2` 的 `WIRE` 30 条
-      #    （**真发请求那一半**：落盘式假后端，判据分「**发了**」与「**发对了**」两族，
-      #    并有四条成对自检证明这两族分得开）。
-      #    ⚠ `WIRE` 那 30 条里**有 1 条是死值验现打出来的缺口**（`D2` `N5`：把 exec 路的
-      #    `--resolve` 改名，配方路一条都不红 —— 因为 `resolve_recipe` 自己又写了一份）
-      #    ⇒ 地板是 **203**，不是先报的 202。**「先跑再棘」的那个「跑」包括切刀。**
-      #    🔴 **这一格自己就是「静默不涨」的现打例子，写出来别当没发生**：`D1` 落地后
-      #    实得 **173**、地板仍 **126**，而 `assert-pass-floor.sh:56` 是 `n -lt FLOOR`
-      #    ⇒ **只挡缩水、不挡「涨了不跟」** ⇒ 那一整拍多出来的 47 条断言，
-      #    在地板眼里等于不存在（当时可以被整族删掉而 CI 照样绿）。
-      #    **那个机制该不该改（地板恒等 / 自动棘轮）归 `K-G8`，本拍只棘这一次的数。**
-      #    **先跑再棘**：`D2` 在沙箱 `ccmon-devbox:latest` 里现打 `PASS=203 FAIL=0`
-      #    （量于 `65b2792`），沙箱门禁整趟的第 ⑦ 格（`ccm e2e / ccm-cli`）同值。
-      #    牙口现打（**落文件读 `$?`，不走管道**）：见件文件 `§18` 那条 `N8`。
-      # ★★ **2026-09-03 `K-P2` `D` 阶段第三拍（生产接线）：`ccm-cli` 再棘 `203` → `242`**。
-      #    那 39 条是 `WIRE/launch` 一节 —— **`D2` 那 30 条盖的是 `--resolve` 那一跳，
-      #    一条都没盖住 `launch`**（同一个桩、同一套读法，但被测的生产路完全不同）。
-      #    七族：夹具/发了 · 诚实降级 · 发对了（整条 stdin 逐字节手算 ＋ 会咬人的 `cwd`
-      #    拿 `jq -Rs .` 当预言机 ＋ 「不给 `--tmux-size`」那条缺省人群）· **新路与旧路送的是
-      #    同一件事** · 控制字符 · 撞名 · `--print`。
-      #    **先跑再棘**：棘之前这一趟是**切完 8 刀、补完判据之后**的那一趟
-      #    （`D2` `裁八` 那条方法论），沙箱 `ccmon-devbox:latest` 现打 `PASS=242 FAIL=0`。
-      #    ⚠ 那 8 刀**按 242 这个基线重打过一遍** —— 先前按 240 打的那一轮作废：
-      #      补判据在切刀之后，切刀读数就得跟着重打，否则报的是「补判据之前」的数。
-      #    死值验：拆掉生产接线 ⇒ **21 条红**；只改子命令名 ⇒ **1 条红**（「发对了」全绿，
-      #    两族真的分得开）；让后端建完之后本地那条**也**再建一次 ⇒ **只有 `发了③` 红**。
-      # ⚠ **同一拍必须改下面那张 `pair` 清单**（本轮就是这么改的）。审计逮到：清单此前停在
-      #    `ccm-cli 53` / `ccm-acceptance 19` / `ccm-contract-parity 61`，与调用行 59/26/62
-      #    **三处对不上** ⇒ 按本步骤的逻辑第一条不命中就 `exit 1`。那是一处**先于 K-C1** 的病
-      #    （`ci.yml` 在 `54dc560..HEAD` 之间 0 个 commit、md5 逐字相同；`git log -S'ccm-cli 53'`
-      #    指向 `0085d0d`「U-NP④」那次**只棘了调用行、没棘清单**）—— 本轮连它一起订正。
-      #    ⇒ **纪律**：改任何一套的地板 = 改**调用行 + 这张清单**两处，一拍做完。
-      # ★★ **2026-09-03 `K-G8`：这条纪律的第三处，以及它今天为什么开始有牙。**
-      #    `K-G7`（09-03）之后，`ccm` 那四套（`ccm-print-parity` · `ccm-rbind-title` ·
-      #    `ccm-cli` · `ccm-contract-parity`）的地板**还有第三处**登记：`tests/scripts/gate.sh`
-      #    的 `run_e2e` 行 —— 那是**出货门禁真跑**的那一份。⇒ 那四套改地板要**三处**一起改。
-      #    🔴 **本拍一个地板值都没改**（`ccm-cli 242` 等 23 条调用行、下面那张 `pair` 清单
-      #    逐字未动）。改的只有**判法**，而且**只改了 `gate.sh` 那 4 条**：
-      #      · `tests/e2e/assert-pass-floor.sh` 加了个**可选的第三个参数** ——
-      #        `at-least`（**不给就是它**，`n < 地板` 红，**与本文件这 23 条调用行今天的行为逐字同义**）
-      #        / `exact`（恒等：`n < 地板` 红 **外加** `n > 地板` 也红）。
-      #      · `tests/scripts/gate.sh` 的 `run_e2e` 传 `exact`；**本文件这 23 条调用行一条都没传**
-      #        ⇒ **CI 侧行为零变化。**
-      #    🔴 **为什么本文件这 19 条（23 − gate 那 4 条）不跟着改**（`K-G8` 摸底现打、PM 复核）：
-      #      本文件的触发器只有 `push`（`main` / `v*`）与 `pull_request`，而
-      #      `origin/main` = `1eeb4bf` @**2026-08-05**，`git rev-list --count origin/main..main`
-      #      = **751** ⇒ **751 个提交 / 29 天，这条流水线一次都没跑过。**
-      #      给一条**没人在跑**的判据换判法 ⇒ **没有任何读数能验它**；而「实得稳不稳」
-      #      那一格 `K-G8` 只在**沙箱 Linux** 上量过（23 套 × 4 趟全同值），
-      #      **CI runner 上是未知，不是稳**。⇒ 这 19 条归 `K-G3`，与「地板 36 注定达不到」
-      #      那一格同一笔账：**先得有人在跑这把尺子，地板定多少才谈得上是不是判据。**
-      #    ⚠ 那次「涨了而地板没跟」的活体就在上面几行（`D1` 实得 173 / 地板 126，绿着挂了一整拍）
-      #      —— `exact` 治的正是它，但**只在 `gate.sh` 那 4 条上治住了**。**4/23。**
-      - name: G-A/G-C 覆盖面地板（19 套真机套件都必须带断言数地板）
-        run: |
-          set -euo pipefail
-          # 只数**真正的调用行**（`run: bash tests/e2e/…`）——本步骤自己那几行 grep 也含这个脚本名，
-          # 用宽模式会把它们算进来（实测会数成比真值更大的数，那个数就成了假的）。
-          N=$(grep -c 'run: bash tests/e2e/assert-pass-floor\.sh' .github/workflows/ci.yml || true)
-          echo "带地板的 e2e 步骤数 = ${N:-0}"
-          # **2026-08-13 P0b-Y2 棘到 21**：两套新增的全链前置套件此前是**裸 `run:`**——
-          # 没有地板 ⇒ 断言被删空照样绿，正是这套机制立起来要防的那件事（我自己刚犯了一次）。
-          [ "${N:-0}" -ge 19 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 19）——有套件被改回裸 npm run 或被删掉"; exit 1; }
-          # 反向自检：地板值必须**逐个**出现在调用行上，不能只有脚本名对了而地板被抹成 0。
-          #
-          # 🔴🔴 **读这张清单之前先读这四行 —— 这里是本仓「同一个量不许两处各写一份」
-          #      那条病的活体，而且它长在守卫自己身上。**
-          #   · 这张清单**不是**地板的源头。源头只有一个：下面那些
-          #     `bash tests/e2e/assert-pass-floor.sh <套件> <地板>` 的调用行
-          #     （`e2e-tmux` 里 `:646` 起 · `e2e-tmux-rust` 里 `:753` 起）。
-          #     这张清单是它们的**副本**，作用是「地板被人偷偷抹成 0 / 套件被删」时有人喊。
-          #   · 判法是**逐字符串命中**（下面那行 `grep -q`）：清单里的数与调用行上的数
-          #     **差 1 都不命中** ⇒ 第一条不命中就 `exit 1`，整个 `E2E scripts health` job 红。
-          #     ⇒ **副本漂了不是「注释过期」，是流水线直接红。**
-          #   · ⇒ **纪律（第三次写在这里了）：改任何一套的地板 = 同一拍改两处 ——
-          #     调用行 + 这张清单。** `ccm-print-parity` / `ccm-rbind-title` / `ccm-cli` /
-          #     `ccm-contract-parity` 这四套还有**第三处**（`tests/scripts/gate.sh` 的 `run_e2e` 行，
-          #     见 `:521` 那段 `K-G8`）⇒ 那四套是**三处**一起改。
-          #
-          # ⚠ **2026-09-09 `CI-J2` 订正三处已漂的**（`ccm-cli 242→264` · `ccm-acceptance 29→31` ·
-          #   `ccm-contract-parity 68→72`，其余 20 条本来就一致）。
-          #   漂是 `e08db89`（09-05，`K-P2 F` 拍）留下的：它把这三条**调用行**从 242/29/68 抬到
-          #   264/31/72，**没动这张清单** —— 而 `:515` 那段在 09-03 就已经逐字写着这条纪律，
-          #   而且写它的那一拍订正的正是**同样三套**（当时是 53/19/61 对不上 59/26/62）。
-          #   ⇒ **同一个位置、同样三套、两个月内第二次。散文纪律拦不住它。**
-          #   云端首跑（run `34432595554`）逐字报的是本步骤自己那句
-          #   `::error::找不到调用行 '…sh ccm-cli <当时清单里的 242>'`。
-          # ⚠ **2026-09-09 `CI-J3` 又动了两条，两处都是同一拍改的**：
-          #   · `inbound-frames` 由 32 抬到 33 —— `track/e2e-sid-tag` 把「验 `@ccm_sid`」那一格
-          #     拆成了「意图键写对了」＋「此刻事实键必须为空」两格（`−1 +2`）；
-          #   · `backend-gate2` 由 36 降到 35，同日第二拍再由 35 降到 34 —— 那是一条**从 `F20`
-          #     （08-06）起就没成立过**的地板（`meta_colon` 必然走登记豁免，可达上限一直是 35；
-          #     `meta_dollar` 09-09 查穿根因后成为第二条登记豁免 ⇒ 34），新口径是
-          #     「总槽位 − 已登记豁免数」，由 `src/backend/control/gate.rs` 两侧夹住。
-          #   两条的完整理由都写在**各自的调用行上方**，这里不重抄 —— 这张清单是副本，不是源头。
-          #   ⚠⚠ **这几行注释刻意不把那句报错原样抄全**：下面那个 `grep -q` 搜的是**整份
-          #   `ci.yml`、不剔注释** ⇒ 注释里只要出现一次逐字的
-          #   「脚本名 + 空格 + 套件名 + 空格 + 数字」，那一对以后就**永远命中**，
-          #   这道守卫在那一套上当场变成空转。
-          #   （同一个坑 `weak-net` job 头上那段注释也逐字警告过一次，见 `:837`。）
-          #   ⇒ **往这个 job 里写注释时，别把任何一条调用行原样抄进来。**
-          #   ⇒ 想把它治根就得让这份副本**不必存在**（例如从调用行里现抽套件名+地板、
-          #   只对「套数」与「每条都带非零地板」立判据）；那不是本件的写区，已在交回里提给 PM。
-          # 🔴 〔`K-R48` 第二拍 09-11〕`ccm-cli 264→46` · `ccm-contract-parity 72→39`；
-          #    `ccm-acceptance` / `ccm-pretrust` 两套删了 ⇒ 两条从清单里摘掉。
-          # 🔴 〔`K-R72` 09-12〕`tmux-guarded 14` 摘掉 —— 那套的**输入源**是 monitor 侧
-          #    `tmux.rs` 那两条桌面侧 SSH 回落的 builder，回落整块删了 ⇒ 它今天跑不起来
-          #    （留着就是一颗哑弹：CI 每跑必红，而红的不是被测对象）。真机那一面的等价覆盖
-          #    在 `backend-gate2` 那一套（真 backend + 真 tmux，用例逐行来自同一张
-          #    gate2-golden.tsv）。⚠ 地板值刻意不在这里重抄，理由见上面那段警告。
-          for pair in "tmux-target 26" "ccm-cli 48" "ccm-print-parity 12" \
-                      "cc-spawn-uplift 72" \
-                      "restart 25" "resume 17" "graylight-frames 13" "restart-frames 5" "resume-frames 7" \
-                      "backend-fork 10" "inbound-frames 31" \
-                      "ccm-contract-parity 45" "backend-gate2 38" "local-backend 19" \
-                      "backend-sessions-rewatch 5" "backend-tmux-late-server 2" \
-                      "cc-bus-queue-drain 43" "backend-cc-bus 50" "p3t-local-tmux 10"; do
-            grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
-              || { echo "::error::找不到调用行 'assert-pass-floor.sh $pair' —— 套件或地板被改了"; exit 1; }
-          done
-          echo "19 套逐个对上（套件名 + 地板值）"  # 20 → 19：删了 ccm-rbind-title；〔TL1〕19 → 20：接回 p3t-local-tmux；〔`K-R48` 第二拍〕23 → 21：删了 ccm-acceptance / ccm-pretrust；〔`K-R72`〕21 → 20：删了 tmux-guarded；〔用量下线 09-18〕20 → 19：删了 usage-probe
-
-      - name: exec-bit guard (src/shared/** shebang files must be 100755 in git)
-        run: bash tests/e2e/exec-bit-guard.sh
-
-      # ── `release.yml` 发版守卫（`KR114D1` 09-14 立 · `KR124D2` 09-15 加第三件）────
-      #
-      # 它守三件事，三件都是「发版」这一拍付不起的：
-      #   ① `release.yml` **触发得了**（有 `workflow_dispatch`）—— 没有它，想验一次
-      #      发版流水线改得对不对，唯一的办法是真推一个 `v*` tag。
-      #   ② **手工触发默认不发布** —— 有了触发器而没有这个开关，随手点一下「Run workflow」
-      #      就是**误发一个版**。误发比触发不了贵：发出去收不回来。
-      #   ③ **两处发布步骤都带正文来源** —— 没有它，真发出去的正文是 GitHub 自动生成的
-      #      那份提交列表，我们写的一个字都不在上面（`tests/evidence/K-R123-发版读数.md § 4.5`）。
-      #
-      # ⚠ 判据本体住 `tests/evidence/K-R124-ruler.py`，**它的射程与买不到的东西逐条写在那份文件的
-      #   头注里**，这里不复述一份（复述就会漂 —— 与 `ci-e2e-prereq` 那一格同一条取法）。
-      #   放在那儿也是为了能对着变异过的副本跑死值验（`K_R124_ROOT=<副本>`），
-      #   不必去动真工作树。
-      # 🔴 **KR124D1（`K-R124`，2026-09-15）：判据本体从这个 `run:` 块里搬走了。**
-      #   病灶逐字：runner 会把 `run:` 里的 `${{ … }}` **先求值再交给 shell** ⇒ 原版判据
-      #   要比的那个字面在渲染之后变成 `"false"`（tag / push 上是 `"true"`），
-      #   与盘上那串模板在**三个触发器上都必不相等** ⇒ **它从加进去那天起就不可能过**。
-      #   云端实打读数住 `tests/evidence/K-R123-发版读数.md § 1.3`（run `34928839471`）。
-      #   ⇒ 整段搬进 `tests/evidence/K-R124-ruler.py`：`.py` 不经 GitHub 的表达式渲染器。
-      #   顺带治掉第二件：原版用 `yaml.safe_load` 写，而沙箱镜像里没有 PyYAML
-      #   ⇒ 它**在本地一次都跑不起来**，坏了一个月没人看见（`KR124D3`）。
-      #   本地落点是 `tests/scripts/gate.sh` 的 `release-gate` 那一格，与本步骤**同一份判据本体**。
-      - name: release.yml 发版守卫（KR114D1 ＋ KR124D2）
-        run: python3 tests/evidence/K-R124-ruler.py
-
-  # R00③：**真机行为验收进 CI**。**E82（2026-08-01）订正这段散文里的数**：地板值本身一直是对的
-  # （下面有逐个 grep 的反向自检兜着），只是这几行注释没跟 —— 实际调用行是
-  # `ccm-acceptance 19` / `usage-probe 9`，不是 15 / 7；套数也从 8 长到了 15（跨两个 job）。
-  # ⚠ **2026-08-24 订正：下面这几行散文里的数今天全是旧的**（保留是因为它们记着「哪一刀为什么棘」）。
-  #   现值以**调用行**为准：`ccm-cli` **242** · `ccm-acceptance 29` · `ccm-contract-parity 68`
-  #   （`ccm-cli` 那个数 09-03 `K-P2 D2` 从 126 棘到 203、`D3` 再棘到 242；反向自检清单已同拍改）。
-  # ⚠ audit-0805 F14 第六刀把 ccm-cli 棘到 53（新增 7 条：身份 poller 的 sid 解析——
-  #   抽取器自检 1 + 取值 4 + 「文件不存在 stderr 必须为空」1 + 「不残留上一次」1）。
-  # ⚠ audit-0805 F10 把 ccm-cli 棘到 46（新增两条：I-11 的 resume×backend×passthru 那一格，
-  #   以及它的反向「不带 -- 时配方逐字不变」）。下面这段是 2026-07-29 的原文，数字已过期。
-  # 原文（2026-07-29 实测**共 152 条**断言：tmux-target 26 · ccm-cli 44 · ccm-print-parity 12 ·
-  # ccm-acceptance 15 · ccm-pretrust 13 · cc-spawn-uplift 21 · tmux-guarded 14 · usage-probe 7）
-  # 此前既不在 CI 也不在 `npm test`，
-  # 只靠开发者本地手动跑——而它们恰恰是本仓唯一能回答「这条命令在 tmux 上到底干了什么」的门禁
-  # （§5.2 实证：cargo test 369 + npm test 全绿 + tsc 0，仍放行过一个让 send-keys 完全失效的改动，
-  # 因为那些门禁只断言「我写出了打算写的字符串」）。
-  #
-  # 上面 e2e-smoke 的注释说真 e2e 需要 GUI runner + 5min app 构建——**那说的是 DOM e2e**
-  # （Xvfb + tauri dev 全量 app + xdotool）。下面这一批只需要 tmux：全部在隔离 `-L` socket 上
-  # 起自己的 tmux server，用假 launcher（`PROBE`/`CCMPROBE` 这类纯字母词）而**不是真 claude**
-  # （真 claude 会重绘/清屏，把打进去的内容盖掉，让「兄弟会话未被污染」的 grep 假 PASS）。
-  # 写用户配置的两套（ccm-acceptance / ccm-pretrust）经 CCM_CLAUDEJSON / CCM_CODEXTOML
-  # 重定向到 mktemp 目录，不碰 runner 的 $HOME（F11 Phase D 审计发现并修的真实污染）。
-  #
-  # 按「要不要 Rust 工具链」拆两个 job：多数套件只要 tmux+node，秒级；只有 2 套要从真 builder
-  # 取命令串（教训清单第 2 条：验收输入必须从真 builder 取，绝不手搓等价命令），
-  # 它们得编译 src/frontend/shell，而 src/frontend/shell 依赖 tauri v2 → Linux 上需要 webkit2gtk 一套系统库。
-  # 拆开的好处：快的那个先给信号，不被慢的 Linux Tauri 构建挡住。
-  e2e-tmux:
-    name: E2E real-machine (tmux, no Rust)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15      # 实测 2m（09-10 三趟）；口径见 `rust` 那一格的头注
+    timeout-minutes: 15      # 全是读盘上文本的判据，本机以秒计；口径见 `rust` 那一格的头注
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
+      - name: 门禁 · 静态那几格
+        env:
+          GATE_ONLY: hooks copy2 shellcheck e2e-smoke release-gate platform installface
+        run: bash tests/scripts/gate.sh
 
-      - run: npm ci
-
-      # tmux 是这些套件的被测对象本身；jq 供 ccm-pretrust 读回写入结果做断言。
-      # script(1)（util-linux，预装）供 tmux-target 的 pty attach 正例，缺了它那条自动 SKIP。
-      - name: install tmux + jq
-        run: sudo apt-get update && sudo apt-get install -y tmux jq
-
-      # ── 🔴 `K-R122`（2026-09-14）：**四步搬走了 —— 它们要的是 Rust 工具链的产物。** ──
-      #
-      # 搬去了下面 `e2e-tmux-rust` 的「build debug backend」**之后**，四步逐个点名：
-      #   `ccm CLI 契约（F02）` · `ccm --print 平价预言机（F03）` ·
-      #   `ccm 契约差分对拍（U9a · S10 保住清单）` · `cc-spawn 收编等价（B02）`。
-      #
-      # **尺子只有一把，而且是本 job 自己早就写下的那一把**（下面 `CI-J1` 那段逐字）：
-      # 「判「这一步该住哪个 job」的尺子只有一把：**它要不要 Rust 工具链的产物**。」
-      # `K-R48` 第二拍（09-11）把 `ccm` 收成后端的原生命令、删掉 `shared/ccm` 之后，
-      # 这四套的被测对象全部换成 `.build/backend/debug/` 下那个后端二进制，
-      # 各自顶上一道 fail-closed 的 `[ -x ]`（现打：四套各一处；`ccm-rbind-title` 没有）
-      # ⇒ 它们从那一刻起就落进「要 Rust 产物」那一档，而本 job **刻意不装 Rust 工具链、
-      # 不编任何东西** ⇒ 在这里**不可能绿**。`K-R119` 推 tag 那一趟云端实测：本 job 红在
-      # 第 7 步，套件自己印的是「找不到原生入口 …（先 cargo build）」。
-      #
-      # 🔴 **为什么不是「在本 job 补一步 build」** —— 补 build 就要给本 job 装 Rust 工具链，
-      # 那等于把 `CI-J1` 立下的那条拆法（按「要不要 Rust 工具链」拆两个 job）拆掉，
-      # 而那条拆法正是为了同一族缺陷立的。⇒ **搬步骤，不搬工具链。**
-      #
-      # ⚠ **也不是「删掉」** —— 删之前现打问过「这个问题是不是已经被别的门覆盖了」，答案是**没有**：
-      #   · 本地出货门禁 `tests/scripts/gate.sh` 今天对本文件里每一套带 `assert-pass-floor.sh` 地板的 e2e 都有一行
-      #     `run_e2e`（四套全在，含 `cc-spawn-uplift`；两向由 `shared_crate_registry` 那条映射判据钉着）——
-      #     但那是本机门禁，不是 CI：本地全绿 ≠ CI 会绿。
-      #   · 现打整份 `ci.yml`：这四个套件名各自**只**出现在搬走的那一步上，别的 job 一条都没有。
-      #   ⇒ 删掉 = 把四套真机覆盖从云端交出去。**搬家是唯一不丢覆盖的处置。**
-      #
-      # 本 job 留下的五步（`tmux-target` · `cc-bus-queue-drain` · `restart` · `resume` ·
-      # `ccm-rbind-title`）现打**一条都不碰** `target/debug` ⇒「no Rust」这个名字今天仍然属实。
-
-      # 🔴 原来这里有 `ccm-acceptance 31` 与 `ccm-pretrust 15` 两步，
-      #    两套 e2e 本拍删了（它们只测那个 bash 脚本的真机行为，理由逐条写在
-      #    `src/frontend/shell/src/shared_crate_registry.rs` 那张棘轮表被摘掉的那两行旁边）。
-
-      # 08-13：`cc-send` 兜底路径的滞留队列补投。**本套件不用 tmux**（收发全走文件）——
-      # 于是 `C7i` 那条红线在它身上天然不成立。它起的唯一进程是 `cc-busd` 自己，
-      # 且 `HOME` 与 `CC_BUS_HOME` 双双落在 mktemp 沙箱里（第一版把 export 写进了命令替换、
-      # 真的落到开发机的 ~/.cc-bus 上过，那道自检就是那次撞出来的）。
-      - name: cc-send 滞留队列补投（cc-busd 死后消息不许没人管）
-        run: bash tests/e2e/assert-pass-floor.sh cc-bus-queue-drain 43
-
-      # 🔴 **2026-09-09 `CI-J1`：`backend-sessions-rewatch` · `backend-tmux-late-server` ·
-      #    `backend-cc-bus` 三套原先加在这里，已搬去 `e2e-tmux-rust`。**
-      #    它们每一套第一件事就是硬门一个**真后端二进制**
-      #    （`tests/e2e/backend-sessions-rewatch.sh:29` · `backend-tmux-late-server.sh:23` ·
-      #    `backend-cc-bus.sh:31`，默认路径 `.build/backend/debug/cc-monitor-backend`），
-      #    而本 job 按上面那条拆法（`:623`「按『要不要 Rust 工具链』拆两个 job」）
-      #    **刻意不装 Rust 工具链、不编任何东西** ⇒ 它们在这里
-      #    **不可能绿**。云端首跑（run `34432595554`）三套逐字报
-      #    「需要后端二进制：…/target/debug/cc-monitor-backend（先 cargo build -p cc-monitor-backend）」。
-      #    ⚠ **加错 job 这件事从 `a952b47` / `81c1bab`（08-13）起就在**，一个月没人发现 ——
-      #    因为本流水线只在 `push`/`pull_request` 上触发，而本仓当时不 push：
-      #    **一条没人在跑的判据，加错了地方也不会有人知道。**
-      #    留在这里的只有 `cc-bus-queue-drain`：它收发全走文件，不要二进制（所以它绿了）。
-      #    ⇒ 判「这一步该住哪个 job」的尺子只有一把：**它要不要 Rust 工具链的产物**。
-
-
-  e2e-tmux-rust:
-    name: E2E real-machine (tmux + Rust builder emit)
+  # 真机 e2e：每一套在门禁里一行 `run_e2e <套件>`；`GATE_ONLY=e2e` 点名全部套件（名单不在这里抄第二份）。
+  # 门禁自己先编后端二进制（e2e 的被测对象），再逐套跑；判法是退出码 0 ＋ `合计 PASS=<n> FAIL=0` ＋ `n > 0`。
+  e2e:
+    name: E2E real-machine (tmux + backend, gate)
     runs-on: ubuntu-latest
-    timeout-minutes: 25      # 实测 6m（09-10 三趟，本文件第二重）；口径见 `rust` 那一格的头注
+    timeout-minutes: 30      # 旧 e2e-tmux-rust 实测 6m（09-10 三趟），这里多了几套；口径见 `rust` 那一格的头注
     steps:
       - uses: actions/checkout@v4
 
@@ -1005,29 +391,15 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src/frontend/shell
+          workspaces: src/backend
 
-      # **E67④（2026-08-01）订正**：原注释写着「这两套只从 Rust 侧取命令串、不跑前端，无需 node」
-      # ——**不成立**。`resume-backend-frames.sh` 第 3 步要跑 `npx tsx tests/e2e/resume-cmd-driver.ts`
-      # 拿**真源** resume 命令串，而那个 driver `import "../../src/frontend/ui/accounts.ts"`（第 25 行），
-      # `accounts.ts` 顶层 `import { invoke } from "@tauri-apps/api/core"` ⇒ 没有 node_modules
-      # 就是 `ERR_MODULE_NOT_FOUND`。
-      #
-      # **为什么以前没红**：这套件在第 2 步就死了（那行是裸赋值，`set -e` 直接退出、连 FAIL 都不打），
-      # 根本走不到第 3 步 —— 一个 bug 把另一个 bug 挡在后面。前一个修好，这个才露出来。
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
 
-      # src/frontend/shell 依赖 tauri v2；Linux 上编译它需要 webkit2gtk/soup 一套开发库
-      # （Windows job 不需要，故只在这里装）。
-      # ⚠ **`jq` 是 `CI-J1` 搬家带过来的真依赖**，不是顺手加的：`tests/e2e/backend-cc-bus.sh:33`
-      #   是 `command -v jq || exit 1` 的硬门（它整套断言都拿 `jq` 读回帧）。
-      #   `ubuntu-latest` 镜像今天确实预装了 `jq`，但那是**镜像的实现细节、不是契约** ——
-      #   隔壁 `e2e-tmux` 的 `install tmux + jq`（`:642`）从一开始就自己装，本 job 照同一口径写死。
-      - name: install tmux + jq + Tauri Linux build deps
+      - name: install tmux + jq + build deps
         run: |
           sudo apt-get update
           sudo apt-get install -y tmux jq \
@@ -1035,317 +407,22 @@ jobs:
             curl wget file libxdo-dev libssl-dev librsvg2-dev \
             libayatana-appindicator3-dev
 
-      # 原先这里有一步跑 `tmux-guarded` 那一套（F04 三道门的 monitor 侧真机
-      # 验收）。它的输入源是 `tmux.rs` 那两条桌面侧 SSH 回落的 builder，回落删了 ⇒ 整套跟着删。
-      # 三道门的真机覆盖今天在下面 G-C 那一批里的 `backend-gate2` 那一套。
-      # ⚠ 上面那句刻意不把原调用行（脚本名 + 套件名 + 地板值）原样抄回来 —— 抄了会让
-      #   `:660` 那道反向自检在这一套上永远命中，见它头上那段警告。
-
-      # G-C：这三套要一个**真后端二进制**（backend-wrapper.sh 默认取
-      # `.build/backend/debug/cc-monitor-backend`）。把「怎么把后端产物
-      # 从 `backend` job 传过来」记成 G-C 唯一的技术不确定性——**直接在本 job 里编就绕开了**：
-      # 本 job 已有 Rust 工具链，而 backend crate 比它已经在编的 src/frontend/shell 轻得多。
-      # cwd 必须是 `src/backend`：cargo 按**发起命令的 cwd** 找 `.cargo/config.toml`。
-      # 从仓根发起会读到仓根那份（`.build/shell`），产物就不在下面几套找的 `.build/backend/` 里。
-      - name: build debug backend（供 backend-frames 三套）
-        working-directory: src/backend
-        run: cargo build
-
-      # 起会话交给终端的只是一行 `ccm …` ⇒ 下面三套真跑那一行，要上面刚编出来的后端二进制（以 `ccm` 之名上 PATH，
-      #   `tests/e2e/ccm-shim.sh`）⇒ 从 `e2e-tmux`（不装 Rust）搬到这里，排在 build 之后。
-      - name: tmux 目标精确匹配（F01）
-        run: bash tests/e2e/assert-pass-floor.sh tmux-target 26
-
-      - name: 换号重启编排（F-E3）
-        run: bash tests/e2e/assert-pass-floor.sh restart 25
-
-      - name: resume 编排 + 复用守卫（F-E2）
-        run: bash tests/e2e/assert-pass-floor.sh resume 17
-
-      # ── 🔴〔用量下线 2026-09-18〕**「用量探针（F10）」那一步整步删了。** ────────────
-      # 它跑的是 `tests/e2e/usage-probe-acceptance.sh`（套件名 `usage-probe`，地板 11），
-      # 而用量整条产品面（含那份套件文件）本拍删干净 ⇒ 步骤留着就会红在「文件不存在」上。
-      # 同拍摘掉的还有：上面 `for pair` 那张地板清单里的那一条（20 → 19）。
-      # ⚠ `shared_crate_registry.rs` 的 `STEPS` 里**没有**它的登记，删它也不必动那张表 ——
-      #   `assert-pass-floor.sh <套件>` 那批步骤不在 `STEPS` 里逐条登记（按套件名与 `gate.sh` 的 `run_e2e` 对拍）
-      #   ⇒ 删这一步不必动 `STEPS`。
-      # 它原先带的那段 `K-R122` 步骤次序散文（「必须排在 `build debug backend` 之后」）随步走 ——
-      # 同一条次序约束今天由下面四步顶上那段继续管着。
-
-      # ── 🔴 `K-R122`（2026-09-14）：**下面这四步是从 `e2e-tmux` 搬过来的。** ──────────
-      #
-      # 搬家的尺子与逐条理由**只写在那一侧**（`e2e-tmux` 里 `tmux 目标精确匹配（F01）`
-      # 之后那一段），这里不抄第二份。一句话：它们要 Rust 工具链的产物（后端二进制），
-      # 而上面那一步刚把它编出来。
-      # ⚠ **必须排在 `build debug backend` 之后** —— 四套顶上各有一道 fail-closed 的 `[ -x ]`。
-      # 🔴 264 → 46：`shared/ccm` 删了，本套件的被测对象换成后端二进制。
-      #    逐条判词住 `tests/evidence/K-R48-356-verdicts.tsv`；构成与理由写在 `tests/scripts/gate.sh`
-      #    那两行 `run_e2e` 上方（那是「三处一起改」里说理最全的一处，别在这儿再抄一份）。
-      # ⚠ **跑之前要先 build 后端二进制**（`cargo build --bin cc-monitor-backend`）——
-      #    套件顶上那道 `[ -x ]` 是 fail-closed 的，不 build 就红。
-      - name: ccm CLI 契约（F02）
-        run: bash tests/e2e/assert-pass-floor.sh ccm-cli 48
-
-      - name: ccm --print 平价预言机（F03）
-        run: bash tests/e2e/assert-pass-floor.sh ccm-print-parity 12
-
-      # U9a：`--print` 说的 == 真跑做的（S10「保住清单」差分对拍）。
-      # 与上面两套的分工：`ccm-cli` 只跑 `--print`（全 `env -u TMUX`）、`ccm-print-parity`
-      # 验渲染器意图能被接住 —— **都不比对真 exec 路**，而那正是 U9b 搬决策时会漏的地方。
-      # 🔴 72 → 39，同上。
-      - name: ccm 契约差分对拍（U9a · S10 保住清单）
-        # 🔴 39 → 42：C 组加了三格 —— `capabilities=` 里声明
-        #    `base-url-across-tmux`（monitor 侧那条降级理由的退役条件点名的 token）·
-        #    容器载荷内侧真带 `export ANTHROPIC_BASE_URL=`（申报与兑现一起量）· 一格反空真。
-                # 🔴 42 → 45：`--ccm-probe` 多吐一行 `build=<BUILD_ID>` ⇒ C 组加三格 ——
-        #    `build=` 行逐字 == backend 源码里的 `BUILD_ID` · `build=` 与 `version=` 不是同一个值 ·
-        #    抽取器自检。⚠ **本行与 `tests/scripts/gate.sh:951` 的 `run_e2e` 行、以及上面那份清单副本
-        #    共三处，「一起改」是纪律不是判据 —— 今天没有任何东西会在三处分叉时报红。**
-        run: bash tests/e2e/assert-pass-floor.sh ccm-contract-parity 45
-
-      # B02：`cc-spawn` 收编进 `ccm` 的行为等价验收。**本套件自带起飞前自检**——
-      # 它经 PATH 上的 tmux shim 强制 `-L <隔离socket>`（cc-spawn/ccm/cc-register 内部都是
-      # 裸调 tmux，塞不进 -L，只能这样拦），并断言 shim 看不到默认 socket 上的任何会话，
-      # 不过就 exit 9 中止。开发机上有正在运行的 tmux 会话与真实 ~/.cc-bus/，
-      # 这条自检是为了那里；CI 上是干净 runner，自检自然通过。
-      - name: cc-spawn 收编等价（B02）
-        run: bash tests/e2e/assert-pass-floor.sh cc-spawn-uplift 72
-
-      # U8a-2a：入方向（控制通道）的真进程端到端。此前那条通道**从没有真进程验证过**——
-      # backend 侧全是单测夹具，monitor 侧一个字节都没发过。
-      # ★★ **2026-09-09 `CI-J3`：地板 `32` → `33`**（`−1 +2`）。产品 `2a58237`（09-03，`K-P2` C5）
-      #    把建会话那一刻写的键从**事实**键 `@ccm_sid` 换成**意图**键 `@ccm_sid_expect`，
-      #    而那套夹具停在 `34d3209`（08-12）⇒ 云端 `run 34432595554` 逐字 `合计 PASS=27 FAIL=5`
-      #    （一因五果：会话名不是本工具形状、事实键又没设 ⇒ 下游 send-into / send-keys-raw
-      #    全被 §34 Gate 2 判 `wrong_owner`）。`track/e2e-sid-tag` 把那一格
-      #    **拆成了两格**：意图键必须写对 **＋ 此刻事实键必须为空**（后者钉的是那道分离本身，
-      #    只改个名字买不到）。⇒ 32 − 1 + 2 = **33**。
-      #    🔴 **这一行与 `track/e2e-sid-tag`（`b7a2c5a`）是 lockstep 的**：那一支不落先落这一行，
-      #      套件只吐 32 ⇒ 缩水判据当场红。两支必须同批合，或先合那一支。
-      #    ⚠ 不棘的话，新加的那两格明天能被删掉而 CI 照样绿 —— `assert-pass-floor.sh` 头注
-      #      写的那个失效模式：**不是变红，是静默缩水**。**先跑再棘**的「跑」这一次由 PM 在沙箱里做。
-      - name: 入方向后端帧（U8a-2a）
-        # 33 → 30：裸键 mode `send-keys-raw` 删了，「被接受 · 没附回车 · 补 Enter 才执行」三格随之删。
-        # 32 → 31：hello 命令清单里全景那一条随代码全景删了（「hello.commands 声明了它」那一格随之没了）。
-        run: bash tests/e2e/assert-pass-floor.sh inbound-frames 31
-
-      # F03：§34 Gate 2 在后端侧的真机验收。用例逐行来自那张唯一的判定表
-      # `tests/__fixtures__/gate2-golden.tsv`（后端与本套两条轨道同一份）。
-      # ★★ **2026-09-09 `CI-J3`：地板 `36` → `35`，而且这个数从此不再由人手写。**
-      #
-      #    这条地板**从 `58b1312`（F20，08-06）起就没有一次成立过**，而云端 08-05 之后
-      #    一次没跑 ⇒ 没人看见。事实链（都在盘上，逐条可复核）：
-      #      · 本套件的 PASS 槽位共 **36** 格（抽取器自检 1 + 判定表 25 行 + 目标不存在 1
-      #        + `send-keys-raw` 过同一道门 1 + 只设 `@ccm_sid_expect` 仍拒 1 + Gate 3 五条 5
-      #        + kill 目标不存在 1 + kill 形状门 1）；
-      #      · `F20` 给循环加了「建完用 `=name:` 复核，找不到就 skip」⇒ `meta_colon`（`cc-a:b`）
-      #        在**任何会把 `:` 改写成 `_` 的 tmux** 上必然走那一支（脚本 `:53-55` 逐字记着
-      #        本机 tmux 3.6 实测 `cc-a:b → cc-a_b`）⇒ 可达上限当场变成 **35**；
-      #      · `938635b`（08-13）把那一支从 `skip` 改成**登记豁免**，让套件退 0 —— 于是
-      #        地板第一次被**读到**，也第一次露出「够不到」。`tests/e2e/README.md:64` 那份全量台账
-      #        逐字记着这套 **35 过 / 0 败**。
-      #    🔴 **一条够不到的地板不是判据，是路障**：它唯一的可观测效果，是把它后面所有步骤
-      #      整片挡成 skipped（本轮就是这么被发现的）。
-      #
-      #    ⚠ **`F20 §3` 那个决定（「skip 不是通过」）本轮一个字没翻**，只是把它的落点说清楚：
-      #      扛它的是套件收尾那句 `[ "$skip" -eq 0 ] || exit 1` —— 那比地板**更硬**
-      #      （套件非零退出时，地板那一步压根轮不到读数）。`meta_dollar`（根因至今未知）
-      #      照旧在那里疼。地板扛的是另一件事：**断言数缩水**。
-      #    ⇒ 新口径：**地板 = 总槽位 − 已登记豁免数**，由
-      #      `src/backend/control/gate.rs` 的 `the_gate2_floor_still_makes_a_skip_hurt`
-      #      **两侧夹住**（低了＝有一格被静默不验；高了＝又造一条够不到的地板）。
-      #      ⇒ 想降这个数，唯一的路是**登记一条带书面理由的豁免**；想省掉一条豁免，
-      #      这个数就得涨回去。**两边都不再靠散文。**
-      #    ⚠ **2026-09-09 同日第二拍：35 → 34。** `meta_dollar`（`cc-a$x`）的根因这一天查穿了
-      #      —— tmux **≤3.4** 会在会话名的 `$` 前插一个反斜杠（`utf8_stravis`，那条规则不看 flag），
-      #      上游 `692ce59bcef5`（2024-05-24）加了 `VIS_DQ` 门、首次随 **3.5** 出货，
-      #      而本 runner 的 ubuntu-24.04 装的是 **3.4**（日志逐字 `tmux 3.4-1ubuntu0.1`），
-      #      开发机是 3.6 ⇒ **这个病在本地物理上看不见**，「根因至今未知」挂了一个月。
-      #      ⇒ 它进 `waiver_reason` 成为**第二条登记豁免** ⇒ 登记数 2 ⇒ 可达上限 36−2 = **34**。
-      #      🔴 这条豁免**是环境相关的**：runner 升到 ≥3.5 之后它会真的过（PASS 35 / WAIVED 1），
-      #      而 `at-least` 不会因此红 —— 那一格如实登记在 `tests/e2e/backend-gate2-acceptance.sh`
-      #      的 `waiver_reason` 头注里（含为什么不装成红、以及解锁条件）。**没治，但写清楚了。**
-      # `meta_dollar` 不再是登记豁免，换成套件里的**版本门**（`min_tmux_for`）：tmux <3.5 记 SKIP 并说原因、
-      #      建得出来就 FAIL「版本门过时」。本行仍按 PASS 的 at-least 判 ⇒ 按最坏的机器（3.4：34 PASS + 1 SKIP）算 34；
-      #      本机门禁按 PASS+SKIP 恒等判 35（`exact-with-skip`）。两个数都由 `the_gate2_floor_still_makes_a_skip_hurt` 现算。
-      # 34 / 35 → 33 / 34：裸键 mode `send-keys-raw` 删了，「它也过同一道 Gate 2」那一格随之删。
-      - name: Gate 2 backend 真机验收（F03）
-        run: bash tests/e2e/assert-pass-floor.sh backend-gate2 38
-
-      # F05a：本机后端监护的真进程验收（起-杀-自愈 / 必崩即判死 / 缺本机后端诚实降级）。
-      # 数字地板**只在这一行**（定框 §4：同一个数不许两侧各写一份）；脚本里只有导出式自检。
-      # ★★ `K-P1` 08-26：**7 → 14**。多出来的 7 条是常驻那条路的真进程判据
-      #    （`KPY2` 认已有实例 5 条含一条**非空对照** · `KPY3` 不留僵尸 2 条），
-      #    它们住 `src/frontend/shell/src/local_backend_host.rs`，由本套件**第二趟** `--ignored` 拉起。
-      #    ⚠ 不棘的话那 7 条明天能被整族删掉而 CI 照样绿 —— 那正是
-      #    `assert-pass-floor.sh` 头注写的失效模式：**不是变红，是静默缩水**。
-      #    14 → 18：常驻那条路多 4 条（门牌只跟着家走：改了 Claude 目录设置照样接得上 · 停得掉 · 设置里那一格显式交给后端；
-      #    监听口的钥匙不在常驻后端的环境里）；→ 19：常驻后端起的 tmux 不带它自有的环境。
-      - name: 本机后端监护真进程验收（F05a + K-P1 常驻）
-        run: bash tests/e2e/assert-pass-floor.sh local-backend 19
-
-      - name: 灰灯后端帧（F-E1）
-        run: bash tests/e2e/assert-pass-floor.sh graylight-frames 13
-
-      - name: 换号后端帧（F-E3）
-        run: bash tests/e2e/assert-pass-floor.sh restart-frames 5
-
-      - name: resume backend 帧（F-E2）
-        run: bash tests/e2e/assert-pass-floor.sh resume-frames 7
-
-      # 同上（Phase G 审计）：G2 的后端分叉 e2e 此前只有 npm 脚本。
-      # 它要的 debug backend 上面那步已经编好了。
-      - name: backend 分叉（G2 `--fork-session`）
-        run: bash tests/e2e/assert-pass-floor.sh backend-fork 10
-
-      # 本机拉起真的建出 tmux 会话（`P3t-Y5`）：这套从前**只有脚本、没有任何执行链引用**
-      #    （不在 `package.json` ⇒ 这张地板表与 `e2e_gate_registry` 都看不见它；TQ1 现打逮到）。4C 现打 10 过 / 0 败 ⇒ 接回。
-      #    它要上面那步编好的 debug backend（软链成 `ccm`）＋ 本 job 装的 tmux；命令串取自 monitor 那条
-      #    `#[ignore]` 渲染出口（`history_tests.rs` 那一条，要 `src/frontend/shell` 的测试编译 —— 本 job 本来就编）。
-      #    ⚠ 它跑在 `bash -lic` 里（生产送法）：runner 的登录 shell 若把 PATH 重排到 shim 前面，脚本顶上两道前置会 ABORT（退出码 2），
-      #      不会降级去起真 claude 或打到别的 tmux server —— 那一红是环境的，不是被测对象的。真 runner 上没跑过（本机现打）。
-      - name: 本机拉起真建出 tmux 会话（P3t-Y5）
-        run: bash tests/e2e/assert-pass-floor.sh p3t-local-tmux 10
-
-      # 🔴 **2026-09-09 `CI-J1`：下面三套是从 `e2e-tmux` **搬**过来的，不是新增。**
-      #    三条调用行（套件名 + 地板值）**逐字未动**，只换了住的 job。它们要的
-      #    debug backend 就是上面「build debug backend」那一步的产物（云端首跑里那一步是**绿的**
-      #    —— 二进制本身没问题，问题只是这三套当时不在这个 job 里）。
-      #    `tests/e2e/README.md` 的 job 表从这三套进网那天起（`81c1bab` / `a952b47`）就把它们记在
-      #    `e2e-tmux-rust` 名下 ⇒ **对不上的一直是 `ci.yml`，本次是让它跟上已记下来的意图。**
-      #    ⚠ **为什么这次搬家不用动上面那三处计数/清单**（去核过，不是假设）：
-      #      · `G-A/G-C 覆盖面地板`那一步里 `:547` 的 `grep -c` 与 `:591` 的逐条 `grep -q`
-      #        **都对整份 `ci.yml` 做**、不分 job；
-      #      · `doc_copy_registry::the_e2e_readme_suite_list_matches_ci` 取的是 README 里
-      #        以 `| ` + `e2e-tmux` 开头那**两行的并集**，对全文件调用行集合比**集合相等**。
-      #      ⇒ 搬家不改变「全文件调用行集合」这个量 ⇒ 三把尺子眼里都是**恒等变换**。
-      #      （反过来说：这三把尺子**都不看 job 归属** —— 所以它们一个月来一条都没逮到本缺陷。
-      #       「哪一套住哪个 job」今天仍然只有散文管着，是一处**已知无牙**的地方。）
-      - name: e2e - backend sessions 重挂（P0b-Y2，#60 台架九拍的根因）
-        run: bash tests/e2e/assert-pass-floor.sh backend-sessions-rewatch 5
-      - name: e2e - backend 迟到的 tmux server（P0b-Y2，#60 根因）
-        run: bash tests/e2e/assert-pass-floor.sh backend-tmux-late-server 2
-      # P4f：backend 的 cc-bus 基础命令 —— 一次性 CLI（`--bus-list` / `--bus-send`），不起真 claude。
-      # ⚠ 搬家时顺手订正一处旧注：原文写「不要 tmux」，**今天不成立**。
-      #   `tests/e2e/backend-cc-bus.sh:35` 硬门 `command -v tmux`（`[10]` 的身份空间对账要它），
-      #   `:33` 硬门 `command -v jq` —— 脚本自己的头注（§20-24）记着「原来只在用到 tmux 的
-      #   那一格前面挂 shim、头注还写着本套件不用 tmux」是**一次事故换来的**订正。
-      #   本 job 的 apt 那步因此补了 `jq`（`tmux` 本来就装）。
-      - name: e2e - backend 的 cc-bus 基础命令（P4f）
-        run: bash tests/e2e/assert-pass-floor.sh backend-cc-bus 50
-
-  # `W-F1`（weak-network 区第一件）：**弱网台架**。两个容器 + 一条自建 docker 网络，
-  # `tc/netem` 只打在容器 A 自己的 `eth0` 上，四维（延迟 · 丢包 · 带宽 · 断链）外加一条真
-  # SSH 连接，每一维都给**改前 / 改后**两个读数。
-  #
-  # 🔴 **为什么单开一个 job**：它要 docker + `--cap-add=NET_ADMIN`，与上面两个 e2e job
-  #    的依赖（tmux / node / Rust）一件都不重合；混进去只会让那两个 job 多背一个 docker 拉取。
-  #
-  # 🔴 **`--network host` 只出现在 build 那一步**（定框 `W3`）：跑的时候一律自建 docker 网络
-  #    + `--cap-add=NET_ADMIN`，**不给 `--privileged`**。台架自己带一条文本判据看着这件事
-  #    （`tests/e2e/weak-net/guard-run-netns.sh`，它是台架开跑的第一个断言）。
-  #
-  # ⚠ **这一步的地板不走 `tests/e2e/assert-pass-floor.sh`**，因此**不进**上面那张「23 套真机套件都
-  #    必须带断言数地板」的反向自检清单（那张清单只数 `assert-pass-floor.sh` 那种 `run:` 调用行
-  #    —— 这句刻意不把那条调用行原样抄进来：抄了就会被那一步自己的 `grep -c` 数进去，
-  #    而它数的是**整份文件**、不剔注释。⚠ 同一个坑那一步的注释里逐字警告过一次）。
-  #    原因是那个脚本的第一件事是 `npm run test:<套名>`，而给 `package.json`
-  #    加一条 `test:weak-net` **不在 `W-F1` 的写区里**。⇒ 本套件的地板今天**只有一处住址**
-  #    （下面那行调用行），没有反向自检替它兜底；`tests/e2e/weak-net/assert-floor.sh` 的头注把这处
-  #    诚实边界与它的解锁条件写全了。**这是一处已登记的缺口，不是一处等价实现。**
-  #
-  # ⚠ **本步骤在 GitHub runner 上一次都没跑过**：本流水线的触发器只有 `push`(main/`v*`) 与
-  #    `pull_request`，而本仓红线是不 push ⇒ 与它旁边那 23 条调用行同一笔账。
-  #    落地读数全部量于开发机（09-05：`PASS=26 FAIL=0`，连跑两趟同值）。
-  # ── `local-gate`：**本地那道门在云端零调用**这件事，到此为止（`G4` 空洞③，09-20）──
-  #
-  # ## 问题（非截断复打）
-  #
-  #     grep -c 'bash tests/scripts/'"gate.sh" .github/workflows/*.yml   →  两份都是 0
-  #     （⚠ 上面那条命令**刻意把串拆开写**：原样抄一遍，`C8d` 那条 count()==1 就会把这行
-  #       注释也数进去 ⇒ 当场 2 处。落地时现打栽过一次。同一个坑 `weak-net` 那一步的
-  #       注释里也逐字警告过一次，形状一模一样。）
-  #     ls .git/hooks/ | grep -v sample                                 →  零个
-  #
-  # ⇒ `tests/scripts/gate.sh` 那 26 格**此前只有人手动跑**。而「跑了」与「没跑」在终端上
-  #   一模一样 —— 两边都是**什么都没有**。这个 job 与 `tests/hooks/pre-push` 填的是那句话的前半。
-  #
-  # ## 🔴 为什么是**子集**，以及「哪几格不进」凭什么不是静默少跑
-  #
-  # 这个 job 只装 `actions/checkout` —— 不装 rust、不装 node_modules、不装 zig / musl target /
-  # mingw。人群的口径因此是**「这个 job 装什么就能跑什么」**（现打得出来），
-  # 不是「哪几格重要」（那要拍脑袋）。
-  #
-  # 🔴 **少跑的那几格不许静默**：每一格在云端跑不跑、不跑的话是「云端另有 job 盖着」
-  #   还是「云端零覆盖」，逐格登记在 `tests/evidence/K-R80-gate-cell-coverage.py` 的
-  #   `INVOCATION` 里。那份登记与**下面这一行 `GATE_ONLY:`** 由 `C8d` **两向集合相等**地对拍：
-  #   改这一行不改登记、或改登记不改这一行，**两边都当场红**（而且是在本 job 自己跑的
-  #   `gate-selfdesc` 那一格里红 —— 它就在下面那张名单里）。
-  #   ⇒ 「少跑一格」从此**必须先写一条理由**，写不出理由就改不动这一行。
-  #
-  # ## 🔴 第二步才是重点：**「写了这个 job」不等于「它真跑了门禁」**
-  #
-  # 第一步那条 `run:` 可以因为一堆原因**什么都没干还回 0**：`if:` 求值成 false ·
-  # 前一步 `continue-on-error` 把红洗成绿 · `GATE_ONLY` 打错一个字 · 有人把它注释掉。
-  # **这几种在流水线的绿勾上一模一样。**
-  # ⇒ 第二步读门禁自己落的那张收据（`.build/gate-receipt.json`，`gate.sh` 每趟都落）：
-  #   它记着**这份** `gate.sh` 的 sha256 · **这棵**树的 tree oid · **真判过哪几格**。
-  #   判它的 `K-G4C-gate-receipt.py` 的反空真锚是「`ran ∪ skipped` 与 `gate.sh` 现打的格名
-  #   **两向集合相等**」—— 收据被写空、或有一格既没跑也没登记成跳过，当场分叉。
-  #   `--require` 不给 ⇒ 它**从那份 `INVOCATION` 现取**该跑的名单，这儿刻意不抄第二份。
-  #
-  # ## ⚠⚠ 诚实边界（别读成「云端从此有保障」）
-  #
-  # 🔴 **本 job 在 GitHub runner 上一趟都没跑过，落地这一拍也跑不了。**
-  #   本流水线的触发器只有 `push`(main/`v*`) 与 `pull_request`，而**本仓红线是不推送**
-  #   （用户 2026-09-20 明确裁定）⇒ 它从未被触发。旁边 `weak-net` 那一步的头注
-  #   为**同一笔账**已经登记过一次，这里是第二处、同一个原因。
-  # 🔴 落地它的那一拍跑在**断网沙箱**里（`--network none`），`gh run view` 一次都做不到
-  #   ⇒ 那一拍买到的只有「**盘上这几份文本满足 `C8` 那几条**」：
-  #   job 在 yml 里 · 收据判据排在门禁**之后** · `GATE_ONLY` 与登记两向相等。
-  #   **一个字都没说这个 job 会绿**，更没说它在 runner 上起得来。
-  #   ⚠ 第一次真跑那天，下面那 8 格里凡是红的，先怀疑**这个 job 的环境假设**
-  #     （runner 自带什么），再怀疑那一格 —— 那几条假设本拍一条都没在 runner 上量过。
-  # ⚠ 门禁**设计成能断网跑**（`--network none` 沙箱是它的常态），所以这一步本身不取网络；
-  #   而这个 job 也刻意**不做** `npm ci` / `cargo fetch` —— 下面那 8 格一个都不需要它们
-  #   （`release-gate` 顺带调的 `release-notes.mjs --check` 现打只用 node 内置模块）。
-  #   哪天往子集里加一格要依赖的，**同拍**要把装依赖那几步也加上，并在登记里写清。
-  local-gate:
-    name: 本地门禁的云端子集（gate.sh 子集 + 跑过的收据）
-    runs-on: ubuntu-latest
-    timeout-minutes: 15      # 8 格全是读盘上文本的静态判据，实测在本机以秒计；口径见 `rust` 那一格的头注
-    steps:
-      - uses: actions/checkout@v4
-
-      # 🔴 `GATE_ONLY` 里每一个名字都由 `gate.sh` 自己现打校验：拼错一个字是**红**，
-      #    不是「少跑一格」（`gate_check_only`）。而这一行整体与 `INVOCATION` 里标着
-      #    「进云端子集」的那几格由 `C8d` 两向对拍 —— 这一行是那张登记的**唯一**第二住址，
-      #    而它被钉住了。
-      # ⚠ 跳过的那几格 `gate.sh` 会逐字印出来，且裁决行会是 `GATE: PARTIAL` 而**不是**
-      #    `GATE: OK` —— `GATE: OK` 那四个字只许有一个意思：盘上每一格都跑过了。
-      - name: 跑本地门禁的云端子集（GATE_ONLY，裁决行只会是 PARTIAL）
+      - name: 门禁 · 全部真机 e2e ＋ 会话环境不漏进门禁
         env:
-          GATE_ONLY: hooks copy2 shellcheck ci-e2e-prereq release-gate gate-selfdesc platform installface
+          GATE_ONLY: e2e env-sandbox
         run: bash tests/scripts/gate.sh
 
-      # 🔴 **这一步排在上一步之后，是 `C8d` 逐字钉着的。** 排到前面去就是在验上一趟留下的
-      #    陈收据 —— 那比没有收据更坏：它看起来像跑过了。
-      - name: 这一趟到底跑没跑门禁（收据对拍，该跑的那几格从 INVOCATION 现取）
-        run: python3 tests/evidence/K-G4C-gate-receipt.py
-
   weak-net:
-    name: E2E weak-net rig (docker + netem, no tmux/Rust)
+    name: E2E weak-net rig (docker + netem, gate)
     runs-on: ubuntu-latest
     timeout-minutes: 15      # 实测 0m（09-10 三趟）；口径见 `rust` 那一格的头注
     steps:
       - uses: actions/checkout@v4
 
-      # 镜像定义进仓（`tests/e2e/weak-net/Dockerfile`）。这一步幂等：镜像已在就跳过。
-      - name: 建弱网台架镜像（装包这一步，也只有这一步，用宿主 netns）
-        run: bash tests/e2e/weak-net/build-image.sh
-
-      - name: 弱网台架四维 + SSH（改前/改后两个读数，带断言数地板）
-        run: bash tests/e2e/weak-net/assert-floor.sh 26
+      - name: 门禁 · 弱网台架
+        env:
+          GATE_ONLY: weak-net
+        run: bash tests/scripts/gate.sh
 
 # 注：曾加过一个 `cargo audit` 信息性 job，但对 Windows-only Tauri 应用而言它**永久红**——
 # Cargo.lock 含大量 Tauri 的 Linux GTK 传递依赖（atk/gdk/gtk-rs，标记 unmaintained，且

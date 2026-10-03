@@ -1374,7 +1374,7 @@ Rust 单测只锁判定，真机验收锁"真后端收到请求之后在真 tmux
 `tests/e2e/tmux-guarded-acceptance.sh`（14 项）的输入源就是那个已被删掉的 builder
 ⇒ **它今天取不到命令串、跑不起来**。⇒ **整套删了**，连同它在 `tests/e2e/README.md` ·
 `package.json` · `.github/workflows/ci.yml`（清单 + 调用步骤）·
-`src/frontend/shell/src/shared_crate_registry.rs`（`dormant_e2e_suites_keep_their_assertions` 的棘轮行）·
+`src/frontend/shell/src/shared_crate_registry.rs`（e2e 静态断言条数棘轮里的那一行，那张棘轮后来整张删了）·
 `src/frontend/shell/src/capability_registry.rs` 五处的登记。
 ⚠ **不是「三道门少了一层真机验收」**：`backend-gate2-acceptance.sh` 打的是同一张
 `gate2-golden.tsv`，而且打在**今天真的那条路**（后端）上；删掉的那套打的是一条已经不存在的路。
@@ -2147,10 +2147,10 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 
 | 管哪一类 | 判据 |
 |---|---|
-| e2e 套件 | `e2e_gate_registry_tests.rs::every_e2e_suite_is_either_gated_or_registered_as_exempt` ＋ `every_exemption_still_points_at_a_real_ungated_suite`（豁免不许变死行）＋ `the_suite_count_is_the_same_number_in_all_four_places`（同一个套数的几份副本对拍） |
-| shell 脚本的 lint | `shell_lint_registry_tests.rs::every_shell_script_is_either_linted_or_registered_as_exempt` ＋ `every_exemption_still_points_at_a_real_unlinted_script` ＋ `the_coverage_floor_equals_what_is_actually_covered_today`（地板钉成**等于**，落后当场红） |
-| 共享 crate 的测试 | `shared_crate_registry_tests.rs::every_shared_crate_is_a_workspace_member` ＋ `the_gate_package_count_tracks_the_number_of_shared_crates` |
-| CI 的每一步 | `shared_crate_registry_tests.rs::every_ci_run_step_is_classified_as_local_or_unrunnable`（本地跑，或写清结构上为什么跑不了） |
+| e2e 套件 | `e2e_gate_registry_tests.rs::every_e2e_suite_is_either_gated_or_registered_as_exempt` ＋ `every_exemption_still_points_at_a_real_ungated_suite`（豁免不许变死行）；「进门禁」= `tests/scripts/gate.sh` 里一行 `run_e2e <套件>`，CI 的 e2e job 调门禁，套件名单不另抄 |
+| shell 脚本的 lint | `shell_lint_registry_tests.rs::every_shell_script_is_either_linted_or_registered_as_exempt` ＋ `every_exemption_still_points_at_a_real_unlinted_script`（人群住门禁 `GATE_SHELLCHECK_GLOBS` 一处，不另钉份数） |
+| 共享 crate 的测试 | `shared_crate_registry_tests.rs::every_shared_crate_is_a_workspace_member` ＋ 门禁 `cargo` 那一格：`cargo metadata` 现取的成员集合 == 真跑到的包集合 |
+| CI 的每一步 | Linux 那几个 job 一律调门禁（`GATE_ONLY=<格>`，拼错格名门禁自己判红），命令只住 `tests/scripts/gate.sh`；Windows 两个 job 自己写命令（门禁跑不了真 Windows），其中 `coverage` · `audit` 两步由门禁按步骤名现取原样跑 |
 | `package.json` 的测试脚本 | `shared_crate_registry_tests.rs::every_test_script_is_either_run_by_ci_or_registered_as_manual` |
 | `#[ignore]` 的判据 | `shared_crate_registry_tests.rs::every_ignored_test_still_has_someone_who_triggers_it`（e2e 脚本点名 · 判据 spawn · 手动登记三档；手动那一档要写清谁、什么时候跑） |
 

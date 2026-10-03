@@ -493,10 +493,6 @@ fn the_reading_defaults_to_unknown_not_to_clean() {
              「今天不是『它没崩过』，是『没有任何东西在记它崩没崩』…… \
              这两句话差得很远，不许混用」。"
     );
-    assert!(
-        LEDGER_IS_PROCESS_LOCAL,
-        "这本账变成跨进程的了 —— 那「无记录」那一档（`health_face` 第一档）的理由就变了，回来重判"
-    );
     // 崩过之后读数要跟着走，且带得出次数与最后那一行。
     let origin = "kp3-读数跟着走-甲";
     let ev = DeathEvidence {
@@ -814,6 +810,45 @@ fn body_after(prod: &str, head: &str) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
+
+/// 只有本判据读这张表 ⇒ 它住判据旁边，不住产品代码（住在那边时它是生产段里的一条死常量）。
+/// ★★ `K-P3b KP3W3`：[`record_death`] 的**生产调用点逐处点名**。
+///
+/// 形状照 `src/backend/readonly_guard.rs::ALLOWED` 那种
+/// 「**逐处点名 + 相等**」，不是地板 —— 地板在变大方向上是瞎的
+/// （那张表的报错文案逐字：「不许改回地板」）。
+///
+/// # 它守的是什么
+///
+/// `K-P3` 第一档交付时这个数是 **0**：判据、账、文案全买了，**一个消费者都没有**
+/// （`K-P3` `§3-5` 第一行如实登记）。本件把它接成 3 处；
+/// [`the_death_ledger_is_wired_at_exactly_these_sites`] 让「接了几处就是几处」
+/// 变成一条相等断言 —— 摘掉任何一处**都会点名是哪一处少了**。
+///
+/// `(文件, 那一处的宿主函数头, 它记的是哪条路)`
+///
+/// ⚠ 第二列是**函数头整行的前缀**，用来把那一处的函数体切出来单独数 ——
+/// 只数全局总数的话，「某一处塌了、另一处多了一次」会互相抵消（本仓 `backend_control.rs`
+/// 那条「逐口切体，不数全局」的头注为同一形栽过一次）。
+const DEATH_RECORD_SITES: &[(&str, &str, &str)] = &[
+    (
+        "local_backend_host.rs",
+        "fn note_detached_death(",
+        "脱离路：`attach_stream` 的流断了 ⇒ `reap_detached` 那条收尸线程 `wait()` 回来那一拍",
+    ),
+    (
+        "local_backend_host.rs",
+        "fn backend_supervise_events(",
+        "监护路：backend 那个 `on_event` **闭包**收到 `Exited` 那一拍。\
+         它抽成一个返回闭包的函数，只为让 `KP3W3` 那三只假后端能跑**同一个闭包**\
+         —— 内联的闭包测试够不着，那条行为判据就只能退回读源码",
+    ),
+    (
+        "local_backend_host.rs",
+        "fn note_never_started(",
+        "起不来：`start_local_backend` 返回 `StartOutcome::Failed` 那一个出口",
+    ),
+];
 
 /// ★★ `KP3W3` 的「数」那一格：[`record_death`] 的生产调用点 == [`DEATH_RECORD_SITES`]。
 ///

@@ -428,264 +428,52 @@ fn both_gates_always_probe_before_they_act() {
 // ⇒ 处置：进 `waiver_reason` 成为**第二条登记豁免**（理由里带机制、版本边界与出处）。
 //   **不是「不验了」**：判定表被三方独立读，另两条纯函数轨照常验它，本轨欠的只是「真会话」这一层。
 //
-// 而 §3 那个决定 —— **skip 不是通过** —— 今天**只是一段散文**。
-// 有人为了让 CI 变绿把它悄悄抹掉，这个意图就静默消失了，
-// 而那正是本区 F25 那一族（一个刻意的决定没有判据看着）。
-//
-// ⚠ 本组**不修根因，也不假装修了** —— 它只保证那个决定不会被悄悄推翻。
-//
-// ★★ **2026-09-09 `CI-J3`：订正上面这段话里的一处，并把那个决定挪到它真正的落点上。**
-//
-// 原文逐字是「**地板不动（36），skip 会让 PASS 少一个 ⇒ 地板照样红**」。
-// 那句话把两件事压成了一件，而且其中一半从写下那天起就不成立：
-//
-//   · **扛「skip 不是通过」的从来不是地板，是套件收尾那句 `[ "$skip" -eq 0 ] || exit 1`。**
-//     它比地板**更硬** —— 套件非零退出时 `assert-pass-floor.sh` 第一条就 `exit "$rc"`，
-//     地板那一步**压根读不到 PASS 数**。09-09 那趟的收尾逐字
-//     `合计 PASS=34 FAIL=0 SKIP=1 WAIVED=1` —— 拦它的正是那句硬退出，**地板没执行到**。
-//     ⇒ 那道门今天仍然一个字没动：**未登记**的 skip 照旧让整套 RC=1。
-//   · **地板扛的是另一件事：断言数缩水**（`assert-pass-floor.sh` 头注逐字：
-//     「它唯一的独立射程是『套件 `FAIL=0` 而 `PASS` 少了 / 多了』」）。
-//   · 而 `938635b`（08-13）之后有了**第三种结局**：登记豁免 —— 既不进 `pass` 也不进 `skip`。
-//     `meta_colon`（`cc-a:b`）在**任何会把 `:` 改写成 `_` 的 tmux** 上必然走它
-//     （脚本 `:53-55` 逐字记着本机 tmux 3.6 实测 `cc-a:b → cc-a_b`）
-//     ⇒ 可达 PASS 上限是 **35**，而地板一直写着 36。`tests/e2e/README.md:64` 那份 08-13 全量台账
-//     逐字记着这套 **35 过 / 0 败**。
-//     ⚠ 09-09 第二拍：`meta_dollar` 根因查穿后成为**第二条**登记豁免（见上）
-//     ⇒ 在 tmux ≤3.4 上可达上限再少一格 = **34**，CI 地板同拍跟到 34。
-//
-// 🔴 **一条够不到的地板不是判据，是路障。** 它从 `58b1312`（F20，08-06）起就没有一次成立过，
-//    而云端 08-05 之后一次没跑 ⇒ 没人看见；它唯一的可观测效果，是把 `e2e-tmux-rust` 里
-//    排在它后面的每一步整片挡成 skipped（本轮正是这么被发现的）。
-//
-// ⇒ 新口径：**地板 = 总槽位 − 已登记豁免数**，下面那条**两侧夹住**它。
-//   想降这个数，唯一的合法路径是**登记一条带书面理由的豁免**（那是一次看得见、要审的改动）；
-//   想省掉一条豁免，这个数就得涨回去。**两个方向都不再靠散文。**
-//   ⚠ 「总槽位」里判定表那一半是**现数的**（`rows`）⇒ 加一行用例，地板要求自动跟着抬一格。
-//     原来那句「加用例时地板要跟着抬」是散文，现在是机械的。
-//
-// ── 🔴 **一格如实登记的诚实边界：本条看不见「豁免的前提还成不成立」** ──
-//
-// 两条登记豁免的性质**不一样**：
-//   · `meta_colon` 与 tmux 版本无关（`:`→`_` 至今未变，本机 3.6 实测）；
-//   · `meta_dollar` **只在 tmux ≤3.4 上成立**（`VIS_DQ` 那个门首次随 3.5 出货）。
-//
-// ⇒ runner 哪天升到 ≥3.5，那一格会**真的建出会话、真的跑、真的过**：
-//   `PASS` 34→35、`WAIVED` 2→1，而**本条算的 `reachable` 仍是 34**（豁免还登记着）
-//   ⇒ `floor <= reachable` 不红、`floor >= reachable` 不红、`at-least` 也不红
-//   ⇒ **一条已经不需要的豁免会静悄悄留着，本条一句话都不会说。**
-//
-// ⚠ **为什么不把「豁免没被用到」判成红**（想过，是错的）：那要么需要本条知道**运行期**
-//   发生了什么（它只读磁盘，读不到），要么把判据装进套件里 —— 而开发机今天就是 **3.6**，
-//   那会让本套件**在更新的 tmux 上恒红**，等于拿「你的 tmux 太新了」去挡人。
-//   更根本的一条：「**所有**环境都不再需要它了吗」这一问，**单次运行在原理上答不出来**
-//   （它只看得见自己那一台）。
-//
-// ⇒ 今天的处置（三条，都不靠人的记忆；但**确实没治住它**，别读成治住了）：
-//   ① 套件收尾**打出本轮的 tmux 版本与用掉的豁免条数** —— 这件事唯一会出声的地方；
-//   ② 真去删那条臂时**不用记得改地板**：登记数 2→1 ⇒ `reachable` 34→35
-//      ⇒ 下面 `floor >= reachable` **当场红**，诊断直接说该棘到几；
-//   ③ 「`PASS` 涨了而地板没跟」这个**一般形态不是本件新开的洞**，它有主：
-//      `K-G8`/`K-G3` 的 `exact` 判法（今天只在 `tests/scripts/gate.sh` 那 4 条上生效，
-//      CI 那 23 条仍是 `at-least`，理由逐字在 `ci.yml` 那段 `K-G8` 里）。
-//   **解锁条件一句话**：runner 上 `tmux -V` ≥ 3.5 之后删掉 `meta_dollar` 那条臂，让 ② 把地板逼到 35。
+// 「skip 不是通过」由套件自己扛：收尾 `[ "$skip" -eq 0 ] || … exit 1`（**未登记**的 skip 让整套 RC=1），
+// 而登记的豁免进 `waiver_reason()`，兜底分支回空串（不算登记）。门禁只判退出码 ＋ `FAIL=0` ＋ `PASS > 0`，
+// 不钉断言条数 ⇒ 这两处就是那个决定的全部落点，下面那条把它们钉住。
 
 fn repo_root() -> std::path::PathBuf {
     crate::guard_support::repo_root()
 }
 
-/// ★ `backend-gate2` 的地板必须**恰好等于这套件今天够得到的那个数**：
-/// `总槽位 − 已登记豁免数`。**两侧各红一件不同的事**，诊断也是两段不同的话
-/// （照 `assert-pass-floor.sh` 头注那条纪律：`-lt` 与 `-gt` 治的不是同一个病）：
-///
-/// - **低了** ⇒ 有一格被静默地不验了。这一侧就是原来那条「只许涨」，**一个字没松**。
-/// - **高了** ⇒ 又造了一条**够不到**的地板 —— 那正是 08-06 起挡着半条流水线的那个东西。
-///   它不会以「地板红」的形式被看见，只会以「后面所有步骤 skipped」的形式被看见。
-///
-/// 外加一条不变的：地板必须**盖得住判定表的行数**，否则 skip 一格也不会让它红。
-///
-/// ⚠ 三个输入里**两个是现数的**（判定表行数 · 已登记豁免数），只有「判定表之外的固定场景数」
-///   是手工维护的常量。**别把豁免数抄进本文件** —— 抄一份就又是「同一个量两处各写一份」，
-///   而本条治的正是那个形状。
+/// ★ **未登记的 skip 仍然让 `backend-gate2` 整套红**：
+/// ① `waiver_reason` 的兜底分支整行还是 `*) echo "" ;;` —— 兜底一回非空串，每一条未登记的 skip
+///    都会被当成豁免，收尾那道门当场静默失效；
+/// ② 收尾那道门还在：`[ "$skip" -eq 0 ] ||` 之后 `exit 1`。
 #[test]
-fn the_gate2_floor_still_makes_a_skip_hurt() {
-    let root = repo_root();
-    let ci = std::fs::read_to_string(root.join(".github/workflows/ci.yml")).expect("ci.yml 读不到");
-    let mark = "assert-pass-floor.sh backend-gate2 ";
-    let at = ci
-        .find(mark)
-        .expect("ci.yml 里没有 `assert-pass-floor.sh backend-gate2 <地板>` 调用行");
-    let floor: usize = ci[at + mark.len()..]
-        .split_whitespace()
-        .next()
-        .and_then(|t| t.trim().parse().ok())
-        .expect("地板值解析不出来 —— 调用行的形状变了");
-
-    let golden = std::fs::read_to_string(root.join("tests/__fixtures__/gate2-golden.tsv"))
-        .expect("判定表读不到");
-    let rows = golden
-        .lines()
-        .filter(|l| !l.trim_start().starts_with('#') && !l.trim().is_empty())
-        .count();
-    // 抽取器自检：判定表解析不出行时，下面那条会零命中地绿。
-    assert!(
-        rows >= 20,
-        "判定表只解析出 {rows} 行（08-06 实测 25）—— 抽取器坏了，下面那条此刻是空转的"
-    );
-
-    // ── 输入 ②：**已登记豁免数，从套件自己的 `waiver_reason()` 现数** ────────────
-    //
-    // 不在本文件抄一份。抄一份就又是「同一个量两处各写一份」，而下面两条治的正是那个形状。
-    let sh = std::fs::read_to_string(root.join("tests/e2e/backend-gate2-acceptance.sh"))
+fn an_unregistered_skip_still_fails_the_gate2_suite() {
+    let sh = std::fs::read_to_string(repo_root().join("tests/e2e/backend-gate2-acceptance.sh"))
         .expect("e2e 脚本读不到");
-    // ⚠ 刻意**不复用**上面那个 `at`（那是 ci.yml 里的偏移）—— 两个不同的量不共一个名字。
-    //
-    // ★★ 用 `find_pinned` 而**不是** `str::find`〔`CI-J3` 收尾，F24 那一族〕。
-    //    `str::find` 取的是**第一处**：不查唯一性、不查边界。脚本里哪天多出第二个同名定义、
-    //    或注释里写了同一串，它会**静默切到别人身上** —— 然后下面那几条就按一个**假的豁免数**
-    //    去夹地板。那正是本文件下面自己写着的「**比不判更坏**」。
-    //    `find_pinned` 买的是两格：**恰好一处** ＋ 左侧有边界（needle 以 `w` 开头
-    //    ⇒ `my_waiver_reason() {` 不再命中）。两种走偏各红一条带上下文的诊断。
-    //    ⚠ 右侧边界这一格**是空的**：needle 末字符 `{` 不是标识符字符 ⇒ `ident_char` 判据不施加
-    //      —— 如实登记，别读成「两侧都钉住了」。
-    let w_at = guard_core::find_pinned(&sh, "waiver_reason() {").unwrap_or_else(|e| {
-        panic!(
-            "e2e 脚本里的 `waiver_reason()` 定义钉不住：{e}\n\
-                 ★ 那不是「注释过期」：登记豁免那套机制是本条的**输入** ——\n\
-                 切错地方 ⇒ 本条按一个假的豁免数去夹地板，两侧都判错。"
-        )
-    });
+    let w_at = guard_core::find_pinned(&sh, "waiver_reason() {")
+        .unwrap_or_else(|e| panic!("e2e 脚本里的 `waiver_reason()` 定义钉不住：{e}"));
     let w_rel = sh[w_at..]
         .find("esac")
         .expect("`waiver_reason` 里找不到 `esac` —— 函数形状变了，切不出函数体");
     let body = &sh[w_at..w_at + w_rel];
-    // ★ 抽取器自检：切错地方时下面两条会**按一个假的豁免数**判 —— 那比不判更坏。
-    //
-    // 原来这里是一条 `body.contains("case …") && body.contains("*)")`。拆成两格，
-    // 因为**它们根本不是同一件事**（而且第二件比「切对了」重得多）：
     assert!(
         guard_core::contains_word(body, "case \"$1\" in"),
-        "切出来的不是 `waiver_reason` 的 `case` 块（{} 字节）—— 抽取器坏了，本条此刻在按假数判",
+        "切出来的不是 `waiver_reason` 的 `case` 块（{} 字节）—— 抽取器坏了",
         body.len()
     );
-    // ★★ 兜底那一行必须**整行**还是 `*) echo "" ;;`。
-    //
-    // 这一格钉的不是「切对了」，是一条**承重的事实**：兜底一旦回**非空**串，
-    // `skipped()` 会把**每一条未登记的 skip** 都当成豁免 ⇒ 收尾那句
-    // `[ "$skip" -eq 0 ] || exit 1`（真正扛「skip 不是通过」的那道门，见本组头注）
-    // **当场静默失效**，而本条数出来的豁免数也一并变成假的。**一处改动，两道门一起塌。**
-    //
-    // ⇒ 用 `pin_line`（整行相等 + 恰好一行），**不用** `contains_word("*)")`：
-    //   后者首尾都不是标识符字符 ⇒ `ident_char` 那两条边界约束**全为空**，
-    //   与裸 `contains` **逐字等价** —— 换它只是让这一处退出某条棘轮的人群定义，
-    //   一格牙都不多买。**为了数字换写法**在本仓是要点名的，所以这里换的是**更硬**的那一个。
     if let Err(e) = guard_core::pin_line(body, "*) echo \"\" ;;") {
         panic!(
             "`waiver_reason` 的兜底分支不再是整行 `*) echo \"\" ;;`：{e}\n\
-                 🔴 兜底回非空串 ⇒ 每一条**未登记**的 skip 都会被当成豁免 ⇒\n\
-                 `[ \"$skip\" -eq 0 ] || exit 1` 静默失效，且本条的豁免数一并变假。\n\
-                 真要改它的写法，先说清「未登记的 skip 仍然让整套 RC=1」由谁接。"
+                 🔴 兜底回非空串 ⇒ 每一条**未登记**的 skip 都会被当成豁免 ⇒ 收尾那道门静默失效。"
         )
     }
-    // 一条登记 = 一条 `<case_id>) echo "<书面理由>" ;;`。兜底那条 `*)` 回空串，**不算登记**
-    //（脚本 `:59` 逐字：「只豁免**登记在册**的：没登记的 skip 仍然让整套 RC=1」）。
-    let waivers = body
+    let gate_line = sh
         .lines()
-        .map(str::trim)
-        .filter(|l| l.contains(") echo ") && !l.starts_with("*)"))
-        .count();
-
-    // ── 判定表**之外**的固定场景数：三个输入里唯一手工维护的那个 ────────────────
-    //
-    // 逐格数出来的：抽取器自检 1 · 目标不存在仍报 `no_such_session` 1 ·
-    // 只设 `@ccm_sid_expect` 仍拒 1 · Gate 3 五条 5 · kill 目标不存在 1 · kill 形状门 1 = **10**
-    // 11 → 10：裸键那个 mode（`send-keys-raw`）删了，「它也过同一道门」那一格随之删。
-    // 10 → 15：「哪个前端的会话」（`@ccm_client`）五格 —— 别的前端的结束 / 送字各拒一格 · 自己的送字 / 结束各放一格 · 用户终端起的放一格。
-    // ⇒ 总槽位 = 判定表行数 + 11（08-06 是 25 + 11 = 36，与本文件原来那个 `FLOOR_TODAY`
-    //   以及 `tests/e2e/README.md:64` 的 08-13 台账「35 过」＋当时 1 条登记豁免，两份独立读数都对得上）。
-    // ⚠ **加/删判定表之外的场景时同拍改这里**；加判定表用例**不用**动它（那一半是现数的）。
-    const FIXED_SLOTS: usize = 15;
-    let slots = rows + FIXED_SLOTS;
-
-    // ── 输入 ③：**版本门**条数，从套件自己的 `min_tmux_for()` 现数 ────────────
-    //
-    // 版本门那一格在 tmux 够新的机器上真跑（进 PASS）、不够新的机器上记 SKIP ⇒ PASS 数随机器变：
-    // CI 那一行判的是 PASS 的 **at-least** ⇒ 按最坏的机器（每一条版本门都跳过）算；
-    // 本机门禁判的是 **PASS+SKIP 恒等**（`exact-with-skip`）⇒ 与版本无关，恒等于总槽位 − 登记豁免。
-    let v_at = guard_core::find_pinned(&sh, "min_tmux_for() {")
-        .unwrap_or_else(|e| panic!("e2e 脚本里的 `min_tmux_for()` 定义钉不住：{e}"));
-    let v_rel = sh[v_at..]
-        .find("esac")
-        .expect("`min_tmux_for` 里找不到 `esac` —— 函数形状变了");
-    let vbody = &sh[v_at..v_at + v_rel];
-    guard_core::pin_line(vbody, "*) echo \"\" ;;")
-        .unwrap_or_else(|e| panic!("`min_tmux_for` 的兜底分支不再是整行 `*) echo \"\" ;;`：{e}"));
-    let version_gates = vbody
-        .lines()
-        .map(str::trim)
-        .filter(|l| l.contains(") echo ") && !l.starts_with("*)"))
-        .count();
-
-    let total = slots.checked_sub(waivers).unwrap_or_else(|| {
-        panic!("登记了 {waivers} 条豁免，比总槽位 {slots} 还多 —— 两个数里必有一个是假的")
-    });
-    let reachable = total.checked_sub(version_gates).unwrap_or_else(|| {
-        panic!("版本门 {version_gates} 条比可达总数 {total} 还多 —— 抽取器坏了")
-    });
-
-    // 本机门禁那一行：`run_e2e backend-gate2 <总数> exact-with-skip`，总数必须恰好 == 总槽位 − 登记豁免。
-    let gate = std::fs::read_to_string(root.join("tests/scripts/gate.sh")).expect("gate.sh 读不到");
-    let g_line = gate
-        .lines()
-        .filter(|l| l.trim_start().starts_with("run_e2e backend-gate2 "))
+        .filter(|l| l.trim_start().starts_with("[ \"$skip\" -eq 0 ] ||"))
         .collect::<Vec<_>>();
     assert_eq!(
-        g_line.len(),
+        gate_line.len(),
         1,
-        "gate.sh 里 `run_e2e backend-gate2 …` 不是恰好一行：{g_line:?}"
+        "收尾那道「未登记的 skip ⇒ 整套红」不是恰好一行：{gate_line:?}"
     );
-    let g_words: Vec<&str> = g_line[0].split_whitespace().collect();
-    assert_eq!(
-        g_words.get(3).copied(),
-        Some("exact-with-skip"),
-        "本机门禁那一行不是按 PASS+SKIP 判（`exact-with-skip`）—— 只钉 PASS 就是把开发机的 tmux 版本烤进判据：{}",
-        g_line[0]
-    );
-    let g_total: usize = g_words
-        .get(2)
-        .and_then(|t| t.parse().ok())
-        .expect("本机门禁那一行的总数解析不出来");
-    assert_eq!(
-        g_total, total,
-        "本机门禁 `backend-gate2` 钉的总数 {g_total} ≠ 总槽位 {slots} − 登记豁免 {waivers} = {total}"
-    );
-
-    // ★ 低了：**一个字没松的那一侧**。
     assert!(
-        floor >= reachable,
-        "`backend-gate2` 的地板 {floor} 低于它够得到的 {reachable}\n\
-             （总槽位 {slots} = 判定表 {rows} 行 + 表外固定场景 {FIXED_SLOTS}；已登记豁免 {waivers} 条；版本门 {version_gates} 条按最坏机器计）。\n\
-             ★ **低下去，就有一格可以被静默地不验了** —— 那正是 `assert-pass-floor.sh` 头注写的\n\
-             失效模式：不是变红，是**静默缩水**。\n\
-             ⇒ 真要降，唯一的合法路径是**登记一条带书面理由的豁免**（`waiver_reason()`），\n\
-             那是一次看得见、要审的改动；不是在这里改个数。"
-    );
-    // ★ 高了：这条是 `CI-J3` 新加的那颗牙 —— 08-06 起挡着半条流水线的正是它。
-    assert!(
-        floor <= reachable,
-        "`backend-gate2` 的地板 {floor} **高于它够得到的 {reachable}**\n\
-             （总槽位 {slots} = 判定表 {rows} 行 + 表外固定场景 {FIXED_SLOTS}；已登记豁免 {waivers} 条；版本门 {version_gates} 条按最坏机器计）。\n\
-             🔴 **一条够不到的地板不是判据，是路障**：它不会以「地板红」的形式被看见，\n\
-             只会以「排在它后面的每一步整片 skipped」的形式被看见 —— 08-06 到 09-09 就是这么过的。\n\
-             ⇒ 两条出路：① 真加了判据 ⇒ 把地板棘到实得（**先跑再棘**）；\n\
-                        ② 是因为登记了新豁免 ⇒ 地板要**跟着降**那一格，别让它悬着。"
-    );
-    // ★ 不变的那条：豁免不许多到把判定表本身盖不住。
-    assert!(
-        floor > rows,
-        "地板 {floor} 没盖住判定表的 {rows} 行（已登记豁免 {waivers} 条）——\n\
-             skip 一格也不会让它红，「skip 不是通过」那个决定就成了空话。\n\
-             ⇒ 豁免登记到这个数量时，该问的是「这一轨还值不值得跑」，不是再登记一条。"
+        gate_line[0].contains("exit 1"),
+        "收尾那道门不再 `exit 1`：{} —— skip 会被当成通过",
+        gate_line[0]
     );
 }
 

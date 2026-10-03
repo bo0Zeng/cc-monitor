@@ -5,6 +5,7 @@
 # tests/e2e/tmux-target-acceptance.sh 那套真机 harness 管）。
 #
 # 跑法：bash tests/e2e/ccm-cli.test.sh   （npm run test:ccm-cli）
+. "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"

@@ -1,27 +1,20 @@
 //! **每个 shell 脚本要么进 shellcheck，要么登记为什么不进**〔audit-0805 08-08，Phase G 第 71 件〕。
 //!
-//! # 洞：人群是手写分组，地板只会数数
+//! # 洞：人群是手写分组
 //!
-//! `ci.yml` 的 shellcheck 步骤用一条手写的 `FILES=$(printf …)` 取人群
-//!（`tests/e2e/*.sh` · `src/shared/cc-bus/scripts/*` · `src/shared/ccm` · `tests/scripts/*.sh` + vendored 四个），
-//! 后面跟一条**计数地板**（`[ "$N" -ge <数> ]`）。⚠ 那个数**刻意不抄在这里** ——
-//! 它的家是 `ci.yml`，而下面第二条判据每次都去读它；抄一份在注释里，
-//! 下次棘紧时这里就成了本区一直在治的那种过期散文。两件事它都挡不住：
-//!
-//! - **新脚本落在任何一个分组之外 ⇒ 静默不被 lint**，而计数一个都不少 ⇒ 地板照过。
-//!   08-08 实测：全仓 46 个 shell 脚本，那条表达式覆盖 44 —— 漏的是
-//!   `tests/e2e/fake-claude`（e2e 的 claude shim，那一组的 glob 是 `tests/e2e/*.sh`，它没有后缀）
-//!   与 `src/shared/ccm-aliases.sh`。
-//! - **地板会落后**：它自己的注释逐字承认「这已经是同一条地板**第三次**落后
-//!   （37→39→41 每次都是事后补）」。⇒ 本模块把地板钉成**等于**今天真实覆盖数，
-//!   而不是「≥」：落后这件事从此当场红。
+//! shellcheck 的人群是一行手写的 glob 分组（今天住门禁 `tests/scripts/gate.sh` 的 `GATE_SHELLCHECK_GLOBS`，
+//! CI 那个 job 调门禁的 `shellcheck` 格）。**新脚本落在任何一个分组之外 ⇒ 静默不被 lint**。
+//! 08-08 实测：全仓 46 个 shell 脚本，那条表达式覆盖 44 —— 漏的是 `tests/e2e/fake-claude`
+//! （那一组的 glob 是 `tests/e2e/*.sh`，它没有后缀）与 `src/shared/ccm-aliases.sh`。
+//! ⇒ 本模块判「盘上每个 shell 脚本要么被某个 glob 盖住、要么登记豁免」；
+//! 原先另有一条「覆盖份数 == CI 里那条计数地板」，人群对拍之后那个数不再承重，连同地板一起删了。
 //!
 //! # 「刻意不含」不能只是散文（E12）
 //!
 //! `src/shared/ccm-aliases.sh` 的排除是**有理由的、先核过的**：它是供 `source` 的片段、
 //! 没有 shebang（SC2148 是它的构造性属性），而它会被写进用户 shell profile、
 //! 还在 UI 面板里展示供手动复制 —— 为过 lint 往里塞 `# shellcheck shell=bash`
-//! 等于往用户配置和界面文案里掺 lint 噪音。理由成立，**但它只写在 `ci.yml` 的注释里**。
+//! 等于往用户配置和界面文案里掺 lint 噪音。理由成立，**但当时它只写在 CI 配置的注释里**。
 //! 本模块把它登记成一条**豁免**：默认拒绝，豁免要写理由，且豁免行不许变成死行。
 //!
 //! ⚠ 如实记一笔量到的事：`shellcheck -s bash src/shared/ccm-aliases.sh` 今天**零 error**

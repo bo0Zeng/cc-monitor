@@ -1,81 +1,27 @@
 #!/usr/bin/env bash
-# G-A（gate-integrity）：**跑一套真机 e2e，并断言它的运行期 PASS 数不低于地板。**
+# 跑一套真机 e2e（`npm run test:<套件>`），判它**跑完了、一条没红、确实断言过东西**。
 #
-# ## 为什么需要它
+# 判法（三条，全是 fail-closed）：
+#   1. 套件非零退出 ⇒ 红（原样透传输出）；
+#   2. 收尾那行 `===== 合计 PASS=<n> FAIL=<m> … =====` 抓不到 ⇒ 红 —— 没打印就是没跑到收尾；
+#   3. `FAIL ≠ 0` 或 `PASS = 0` ⇒ 红 —— 退出码 0 而一条没过，与「一条都没跑」在终端上一样。
 #
-# 那 8 套套件的退出码只看 `FAIL` 数 ⇒ **一条不跑也会 exit 0**。删掉断言、`return` 提前、
-# 某个前置条件悄悄不满足导致整段被跳过 —— 全部表现为**绿**。这是门禁的天然失效模式：
-# 不是变红，是**静默缩水**。地板挡的正是这个。
+# 每套断言了几条**只住在套件自己的输出里**，本脚本与门禁都不抄这个数：
+# 几路同时给同一套加断言时，不再在几处手抄的数上撞车。
+# 它买不到「断言被删了几条」—— 那由改套件的那次提交自己说清，评审看 diff。
 #
-# ## fail-closed 的三条
-#
-# 1. 套件本身非零退出 ⇒ 直接失败（原样透传输出）
-# 2. 抓不到 `合计 PASS=<n>` 那行 ⇒ **失败**，不当作 0 也不当作通过。
-#    抓不到只有两种可能：套件被改得不打印了，或它压根没跑到收尾 —— 两种都该红。
-# 3. `n < 地板` ⇒ 失败，诊断里同时给出实得与地板
-#
-# ## ★★ 第三个参数：`at-least`（默认，旧行为）/ `exact`（恒等）
-#
-# 上面第 3 条只挡**缩水**。**它不挡「涨了而地板没跟」**，而那一侧是**静默**的 ——
-# 09-03 的活体逐字记在 `.github/workflows/ci.yml` 那段散文里：`K-P2` `D1` 交回时
-# `ccm-cli` 实得 **173**、地板还停在 **126** ⇒ 门禁那行印的是 `PASS=173（地板 126）`，
-# **绿的**，那 47 条断言在地板眼里等于不存在（当天可以被整族删掉而没有任何东西说一句话）。
-# 最后是下一拍的人**顺手**把地板棘上去的 —— **不是任何判据逮到的。**
-#
-# ⇒ ★ **余量的宽度不是这套机制的属性，是「上一次有人手动棘距今多久」的属性。**
-#
-# 第三个参数就是给这一侧装的闸：
-#   · `at-least`（**不给第三个参数时的默认**）：`n < 地板` 红。**与本文件立起来那天逐字同义。**
-#   · `exact`：`n < 地板` 红（**同一条，一个字没改**）**外加** `n > 地板` 也红。
-#
-# 🔴 **为什么是 opt-in，而不是把 `-lt` 直接改成 `-ne`**（这一条是承重的，别"简化"）：
-#   本仓今天有 **23** 条调用行，其中**只有 4 条**住在 `tests/scripts/gate.sh` 里、每趟出货真跑；
-#   另外 **19** 条只住在 `ci.yml` 里，而那条流水线 **29 天 / 751 个提交没通电**
-#   （`origin/main` = `1eeb4bf` @2026-08-05，`K-G8` 摸底现打、PM 复核）。
-#   ⇒ 给一条**没人在跑**的判据换判法，等于**没有任何读数能验它** ——
-#   而「实得稳不稳」这一格 `K-G8` 只在**沙箱 Linux** 上量过，CI runner 上**是未知，不是稳**。
-#   ⇒ **谁在跑它，谁才配换判法。** 那 19 条归 `K-G3`，本文件对它们**一个字节没改**。
-#
-# ⚠ **不认识的第三个参数 ⇒ exit 2**，不回落 `at-least`。回落 = 把「拼错了」
-#   静默降级成旧行为，而那正是本段要治的那一族（静默）。
-#
-# ⚠ **它买不到什么**（射程，别读宽）：
-#   · 它判的是**条数**，不是**牙口**。断言被掏空成 `assert true` 而条数不变 ⇒ 本条看不见。
-#   · `FAIL > 0` 的那一趟**根本走不到这里**（上面第 1 条先 `exit "$rc"` 了）
-#     ⇒ 这个量唯一的独立射程是「套件 `FAIL=0` 而 `PASS` 少了 / 多了」。
-#   · 它挡不住「删一条、加一条」——**条数不变**的等量替换，本条看不见。
-#
-# ## 地板值写在调用处（`ci.yml`），不写在这里
-#
-# 这个脚本对「哪套该有多少条」**一无所知**，它只是个可复用的度量器。地板与套件的对应
-# 关系是 CI 的知识 ⇒ 写在 `ci.yml` 的调用行上，改地板时**一定**会在 diff 里看见。
-# （对比 G-B：vendored `run-tests.sh` 的地板写在脚本自己里，那是因为 SS-10 不许改副本，
-#  这里没有那个约束，所以按「改动可见性」选调用处。）
-#
-# 用法：bash tests/e2e/assert-pass-floor.sh <npm-script-后缀> <地板> [at-least|exact|exact-with-skip]
-# `exact-with-skip`：判的数是同一行「合计」里的 **PASS + SKIP**（恒等）。给那种**按环境显式分支**的套件用
-#   （`backend-gate2`：tmux 版本不够的那一格记 SKIP 并说原因）—— PASS 数随机器变，而「总格数」不许变。
-#   套件自己负责「SKIP 只在环境真不够时出现」；那一行没有 `SKIP=<n>` ⇒ 判失败（不当 0）。
-#   例：bash tests/e2e/assert-pass-floor.sh tmux-target 26           → 跑 `npm run test:tmux-target`
-#       bash tests/e2e/assert-pass-floor.sh ccm-cli 242 exact        → 同上，但实得 ≠ 地板就红
+# 用法：bash tests/e2e/assert-pass-floor.sh <npm-script-后缀>
+#   例：bash tests/e2e/assert-pass-floor.sh tmux-target   → 跑 `npm run test:tmux-target`
 set -uo pipefail
 
-SUITE="${1:?用法: assert-pass-floor.sh <npm-script-后缀> <地板> [at-least|exact|exact-with-skip]}"
-FLOOR="${2:?缺地板值}"
-MODE="${3:-at-least}"
-
-case "$FLOOR" in ''|*[!0-9]*) echo "地板必须是非负整数，实得：$FLOOR" >&2; exit 2 ;; esac
-# fail-closed：拼错的模式名**不许**回落成 `at-least` —— 那是把「拼错了」静默降级成旧行为。
-case "$MODE" in
-  at-least|exact|exact-with-skip) ;;
-  *) echo "第三个参数只认 at-least（默认，只挡缩水）、exact（恒等）或 exact-with-skip（PASS+SKIP 恒等）。实得：$MODE" >&2; exit 2 ;;
-esac
+SUITE="${1:?用法: assert-pass-floor.sh <npm-script-后缀>}"
+[ "$#" -eq 1 ] || { echo "只收一个参数（套件名）；断言条数不由调用方给。实得：$*" >&2; exit 2; }
+case "$SUITE" in ''|*[!a-z0-9-]*) echo "套件名只许小写字母、数字、连字符。实得：$SUITE" >&2; exit 2 ;; esac
 
 OUT_FILE="$(mktemp)"
 trap 'rm -f -- "$OUT_FILE"' EXIT
 
-# **别写成 `npm run … | tee`**：管线会把 npm 的退出码藏起来（`pipefail` 也只在开了它时救得回来，
-# 而这里要的是原样退出码 + 完整输出两者都要）。落文件再回显。
+# 落文件再回显，别写成 `npm run … | tee`：管线会把 npm 的退出码藏起来。
 set +e
 npm run --silent "test:$SUITE" >"$OUT_FILE" 2>&1
 rc=$?
@@ -87,43 +33,25 @@ if [ "$rc" -ne 0 ]; then
   exit "$rc"
 fi
 
-# 只认收尾那行的格式：`===== 合计 PASS=<n> FAIL=<m> =====`（8 套逐字一致）。
-n="$(grep -oE '合计 PASS=[0-9]+' "$OUT_FILE" | grep -oE '[0-9]+' | tail -1 || true)"
-if [ "$MODE" = exact-with-skip ] && [ -n "$n" ]; then
-  k="$(grep -E '合计 PASS=[0-9]+' "$OUT_FILE" | tail -1 | grep -oE 'SKIP=[0-9]+' | grep -oE '[0-9]+' || true)"
-  if [ -z "$k" ]; then
-    echo "::error::$SUITE 按 exact-with-skip 判，可「合计」那一行没有 SKIP=<n> —— 判不了，不当 0。"
-    exit 1
-  fi
-  echo "[assert-pass-floor] $SUITE: PASS=$n SKIP=$k ⇒ 按 PASS+SKIP=$((n + k)) 判"
-  n=$((n + k))
+line="$(grep -E '合计 PASS=[0-9]+' "$OUT_FILE" | tail -1 || true)"
+if [ -z "$line" ]; then
+  echo "::error::$SUITE 的输出里找不到「合计 PASS=<n>」—— 套件没跑到收尾，或被改得不打印了。判不了 ⇒ 红。"
+  exit 1
 fi
-if [ -z "$n" ]; then
-  echo "::error::$SUITE 的输出里找不到「合计 PASS=<n>」——套件被改得不打印了，或没跑到收尾。地板无从校验 ⇒ 判失败。"
+n="$(printf '%s' "$line" | grep -oE 'PASS=[0-9]+' | grep -oE '[0-9]+')"
+f="$(printf '%s' "$line" | grep -oE 'FAIL=[0-9]+' | grep -oE '[0-9]+' || true)"
+k="$(printf '%s' "$line" | grep -oE 'SKIP=[0-9]+' | grep -oE '[0-9]+' || true)"
+if [ -z "$f" ]; then
+  echo "::error::$SUITE 的收尾行没有 FAIL=<m>：$line —— 判不了 ⇒ 红。"
+  exit 1
+fi
+if [ "$f" -ne 0 ]; then
+  echo "::error::$SUITE 收尾记着 FAIL=$f，退出码却是 0 —— 套件的退出码没跟上它自己的失败数。"
+  exit 1
+fi
+if [ "$n" -eq 0 ]; then
+  echo "::error::$SUITE 一条都没过（PASS=0）—— 退出码 0 而什么都没断言，与没跑分不开。"
   exit 1
 fi
 
-if [ "$n" -lt "$FLOOR" ]; then
-  echo "::error::$SUITE 断言数缩水：实得 $n < 地板 $FLOOR。真删了断言就把地板一起降，并在 commit 里说明理由。"
-  exit 1
-fi
-
-# ★★ `exact` 那一侧（`K-G8` 09-03）。**上面那条 `-lt` 一个字没动** ——
-#    这里是**加了一条**，不是**换掉一条**：两侧红的是两件不同的事，诊断也必须是两段不同的话。
-#    （死值验第 2 条逐字要求「确认原来那条还在」。）
-if [ "$MODE" != at-least ] && [ "$n" -gt "$FLOOR" ]; then
-  echo "::error::$SUITE 断言数涨了而地板没跟：实得 $n > 地板 $FLOOR（本套按 exact 判，实得 ≠ 地板就红）。"
-  echo "::error::⇒ 两条出路，按优先级："
-  echo "::error::  ① **这 $((n - FLOOR)) 条是真买到的东西** ⇒ 把地板棘到 $n，并在 commit 里写清「这几条盖住了什么」——"
-  echo "::error::     不是写「+$((n - FLOOR))」，是写那几条断言各自逮的是哪个失效形状（照 ci.yml 那串「先跑再棘」的先例）。"
-  echo "::error::  ② 实得涨了但你**不知道涨的是什么** ⇒ 先去看那几条是谁加的，别先改数。"
-  echo "::error::⚠ **不许**为了变绿就把新加的断言删掉，也**不许**把第三个参数从 exact 改回 at-least ——"
-  echo "::error::   那两条都是把闸拆掉，而这道闸治的正是「涨了没人管、下一拍可以被整族静默删掉」。"
-  exit 1
-fi
-
-if [ "$MODE" = exact-with-skip ]; then
-  echo "[assert-pass-floor] $SUITE: PASS+SKIP=$n（地板 $FLOOR，判法 $MODE）"
-else
-  echo "[assert-pass-floor] $SUITE: PASS=$n（地板 $FLOOR，判法 $MODE）"
-fi
+echo "[assert-pass-floor] $SUITE: 合计 PASS=$n FAIL=0${k:+ SKIP=$k}"

@@ -1,0 +1,669 @@
+# 墓碑冻结点（那一笔之后不许再挂墓碑，`src/doc/CONTRIBUTING.md` §3.4）那两张表的快照：表名 \t 仓根相对路径 \t 名字（REGISTERED 没有，留空）\t 处数。
+# 判据 `structural_scan_tests.rs` 逐格对拍它：此刻每一格都得在这里、处数不超过这里。删墓碑不用改本文件；不许往里加行、加数。
+REGISTERED	src/backend/control/gate_rules.rs		1
+REGISTERED	src/backend/control/launch.rs		1
+REGISTERED	tests/frontend/shell/gate_singleton_guard_tests.rs		1
+REGISTERED	src/frontend/shell/src/remote_resident.rs		1
+REGISTERED	src/frontend/ui/cards/diff.ts		1
+REGISTERED	src/frontend/ui/cards/interactive.ts		1
+REGISTERED	src/frontend/ui/tmux-sessions.ts		1
+REGISTERED	tests/frontend/shell/ssh_source_write_half_guard.rs		2
+REGISTERED	tests/frontend/shell/ssh_source_capped_line_tests.rs		2
+REGISTERED	tests/frontend/shell/rust_timer_registry_tests.rs		1
+REGISTERED	src/frontend/shell/src/bind.rs		1
+REGISTERED	src/backend/observe/tmux_observe.rs		3
+REGISTERED	src/frontend/shell/src/logging.rs		1
+REGISTERED	src/frontend/ui/config.ts		1
+REGISTERED	src/frontend/ui/settings/remote-section.ts		2
+REGISTERED	tests/frontend/ui/config-lost-update.vitest.ts		1
+REGISTERED	tests/frontend/ui/remote-config.vitest.ts		1
+REGISTERED	tests/frontend/ui/settings/accounts-section.vitest.ts		2
+REGISTERED	tests/frontend/ui/settings/remote-section.vitest.ts		1
+REGISTERED	src/frontend/shell/src/event_replay.rs		7
+REGISTERED	src/frontend/shell/src/config.rs		1
+REGISTERED	src/frontend/shell/src/creds_store.rs		6
+REGISTERED	src/frontend/shell/src/platform/fs.rs		2
+REGISTERED	src/frontend/shell/src/platform/spawn.rs		1
+REGISTERED	src/frontend/shell/src/platform/terminal.rs		5
+REGISTERED	tests/backend/accounts/upstream_select/file_face_tests.rs		6
+REGISTERED	tests/comms/outward/server_tests.rs		1
+REGISTERED	tests/frontend/shell/creds_store_tests.rs		11
+REGISTERED	src/frontend/shell/src/ui_contract.rs		2
+REGISTERED	src/frontend/ui/entry-viewer.ts		1
+REGISTERED	src/doc/STATE-MATRIX.md		3
+REGISTERED	tests/frontend/shell/lib_remote_config_tests.rs		2
+REGISTERED	src/backend/dial/connect.rs		2
+REGISTERED	src/backend/platform/ssh_agent.rs		1
+REGISTERED	tests/frontend/shell/local_origin_registry_tests.rs		11
+REGISTERED	tests/backend/footprint/registry_tests.rs		2
+REGISTERED	src/backend/dial/sftp.rs		1
+REGISTERED	src/common/creds-core/src/lib.rs		2
+REGISTERED	tests/naming/account-vs-relay-naming.vitest.ts		1
+REGISTERED	src/backend/observe/search_query.rs		1
+REGISTERED	src/frontend/ui/views/history-search.ts		2
+REGISTERED	src/frontend/ui/views/history.ts		3
+REGISTERED	tests/frontend/shell/drift_ledger_tests.rs		2
+REGISTERED	tests/frontend/shell/local_read_surface_registry_tests.rs		10
+REGISTERED	src/backend/lib.rs		2
+REGISTERED	src/backend/assets/aliases/fence.rs		7
+REGISTERED	src/backend/agents/claudecode/paths.rs		4
+REGISTERED	tests/frontend/shell/history_tests.rs		10
+REGISTERED	tests/frontend/shell/write_site_registry_tests.rs		8
+REGISTERED	tests/backend/control/files_write_tests.rs		2
+REGISTERED	tests/backend/assets/aliases/block_tests.rs		6
+REGISTERED	tests/frontend/shell/ssh_source_dial_move_judge.rs		5
+REGISTERED	tests/backend/main_argv_table_guard.rs		1
+REGISTERED	tests/evidence/C2-dial-loopback.py		1
+REGISTERED	src/frontend/shell/src/sftp.rs		11
+REGISTERED	src/backend/assets/aliases/block.rs		10
+REGISTERED	tests/frontend/shell/remote_write_registry_tests.rs		18
+REGISTERED	tests/frontend/shell/local_backend_tests.rs		3
+REGISTERED	src/backend/assets/aliases/mod.rs		1
+REGISTERED	src/backend/platform/shell/dialect.rs		2
+REGISTERED	tests/backend/assets/aliases/aliases_tests.rs		1
+REGISTERED	tests/frontend/ui/generated-boundary-guard.vitest.ts		3
+REGISTERED	tests/frontend/ui/settings/panel-deferred-io.vitest.ts		1
+REGISTERED	src/backend/stream/wire.rs		2
+REGISTERED	src/frontend/shell/README.md		15
+REGISTERED	src/frontend/shell/build.rs		1
+REGISTERED	src/backend/agents/codex/token.rs		1
+REGISTERED	src/frontend/shell/src/cc_bus.rs		1
+REGISTERED	src/frontend/shell/src/local_backend.rs		12
+REGISTERED	src/frontend/shell/src/cc_bus_deploy.rs		2
+REGISTERED	src/frontend/shell/src/ccm_cli_contract.rs		1
+REGISTERED	src/frontend/filewin/src/source.rs		5
+REGISTERED	src/frontend/filewin/src/fonts.rs		2
+REGISTERED	src/frontend/shell/src/history.rs		9
+REGISTERED	src/frontend/shell/src/launch.rs		2
+REGISTERED	src/frontend/shell/src/lib.rs		36
+REGISTERED	src/frontend/shell/src/local_backend_host.rs		4
+REGISTERED	src/backend/agents/claudecode/resume.rs		1
+REGISTERED	src/frontend/shell/src/local_origin_registry.rs		12
+REGISTERED	src/frontend/shell/src/spawn_managed.rs		5
+REGISTERED	src/frontend/shell/src/structural_scan.rs		1
+REGISTERED	src/doc/ARCHITECTURE.md		3
+REGISTERED	src/doc/INVARIANTS.md		28
+REGISTERED	src/doc/IPC-PROTOCOL.md		10
+REGISTERED	src/frontend/ui/settings/accounts-section.ts		3
+REGISTERED	src/frontend/ui/apikey-reads.ts		2
+REGISTERED	tests/backend/control/gate_tests.rs		1
+REGISTERED	tests/backend/no_timer_guard.rs		1
+REGISTERED	tests/backend/readonly_guard.rs		3
+REGISTERED	tests/frontend/shell/backend_kill_tests.rs		2
+REGISTERED	tests/frontend/shell/cc_bus_deploy_tests.rs		1
+REGISTERED	tests/frontend/shell/cc_bus_tests.rs		1
+REGISTERED	tests/frontend/shell/inbound_client_tests.rs		5
+REGISTERED	tests/frontend/shell/backend_client_guard_tests.rs		3
+REGISTERED	tests/frontend/shell/byte_cap_registry_tests.rs		11
+REGISTERED	src/backend/footprint/rows.rs		3
+REGISTERED	tests/frontend/shell/capability_registry_tests.rs		1
+REGISTERED	tests/frontend/shell/ccm_cli_contract_tests.rs		1
+REGISTERED	src/frontend/filewin/src/editor.rs		3
+REGISTERED	tests/frontend/shell/comm_boundary_registry_tests.rs		3
+REGISTERED	tests/common/guard-core/lib_tests.rs		1
+REGISTERED	tests/frontend/shell/doc_claim_registry_tests.rs		3
+REGISTERED	tests/frontend/shell/filewin/entry_tests.rs		2
+REGISTERED	tests/backend/assets/aliases/fence_tests.rs		3
+REGISTERED	tests/frontend/filewin/source_tests.rs		2
+REGISTERED	src/frontend/shell/src/asset_sync.rs		2
+REGISTERED	tests/frontend/shell/asset_sync_tests.rs		1
+REGISTERED	src/frontend/shell/src/user_files.rs		8
+REGISTERED	tests/frontend/shell/parity_ledger_tests.rs		72
+REGISTERED	tests/frontend/shell/plugin_class_registry_tests.rs		2
+REGISTERED	tests/frontend/shell/polling_registry_tests.rs		1
+REGISTERED	tests/frontend/shell/sftp_tests.rs		16
+REGISTERED	tests/frontend/shell/shared_crate_registry_tests.rs		1
+REGISTERED	tests/frontend/shell/ssh_source_snapshot_tail_tests.rs		1
+REGISTERED	tests/frontend/shell/structural_scan_tests.rs		1
+REGISTERED	tests/frontend/shell/tmux_backend_gate_guard_tests.rs		8
+REGISTERED	tests/backend/footprint/registry_environment_tests.rs		1
+REGISTERED	tests/evidence/K-R20-C-deadname-census.py		1
+REGISTERED	tests/evidence/S29-legacy-compat-census.py		11
+REGISTERED	tests/frontend/ui/ipc/commands.vitest.ts		10
+REGISTERED	tests/frontend/shell/backend_policy_tests.rs		2
+REGISTERED	src/frontend/shell/src/snapshot_resume.rs		1
+REGISTERED	src/frontend/ui/ipc/commands.ts		13
+REGISTERED	src/frontend/ui/session-reads.ts		3
+REGISTERED	tests/test-support/chan-fake.ts		8
+REGISTERED	src/frontend/filewin/src/lib.rs		3
+REGISTERED	src/frontend/filewin/src/transfer.rs		4
+REGISTERED	src/frontend/filewin/src/writeops.rs		1
+REGISTERED	src/frontend/filewin/src/shell.rs		5
+REGISTERED	src/frontend/filewin/src/bookmarks.rs		2
+REGISTERED	tests/frontend/shell/filewin/boundary_tests.rs		2
+REGISTERED	tests/frontend/filewin/transfer_tests.rs		1
+REGISTERED	tests/frontend/shell/sftp_family_registry_tests.rs		2
+REGISTERED	src/frontend/shell/src/sftp_pool.rs		3
+REGISTERED	src/backend/control/files_write.rs		2
+REGISTERED	src/backend/main.rs		1
+REGISTERED	src/frontend/filewin/src/select.rs		1
+REGISTERED	src/frontend/ui/keybindings/actions.ts		2
+REGISTERED	src/frontend/ui/keybindings/editor.ts		1
+REGISTERED	tests/frontend/ui/keybindings/actions.vitest.ts		1
+REGISTERED	src/backend/faces/read_face.rs		2
+REGISTERED	src/frontend/shell/src/frame_query.rs		6
+REGISTERED	tests/frontend/shell/frame_query_tests.rs		20
+REGISTERED	src/frontend/shell/src/backend_policy.rs		2
+REGISTERED	src/frontend/ui/settings/backend-section.ts		2
+REGISTERED	src/backend/accounts/upstream_select/mod.rs		3
+REGISTERED	src/comms/outward/mod.rs		1
+REGISTERED	src/frontend/shell/src/ssh_source.rs		25
+REGISTERED	src/backend/footprint/registry.rs		9
+REGISTERED	tests/frontend/shell/exec_site_registry_tests.rs		5
+REGISTERED	tests/backend/observe/accounts_query_tests.rs		2
+REGISTERED	src/backend/agents/codex/history.rs		2
+REGISTERED	src/backend/observe/history_query.rs		2
+REGISTERED	tests/backend/observe/history_query_tests.rs		1
+REGISTERED	tests/backend/faces/read_face_tests.rs		1
+REGISTERED	tests/backend/history/history_annotations_tests.rs		1
+REGISTERED	src/frontend/shell/src/ccm_probe.rs		4
+REGISTERED	src/frontend/ui/tmux-control.ts		1
+REGISTERED	src/frontend/ui/cc-bus-control.ts		4
+REGISTERED	src/frontend/ui/views/pane-preview.ts		1
+REGISTERED	tests/comms/inward/backend_route_tests.rs		8
+REGISTERED	src/frontend/ui/account-restart.ts		2
+REGISTERED	src/frontend/shell/src/tmux_backend_gate_guard.rs		3
+REGISTERED	tests/frontend/shell/launcher_identity_registry_tests.rs		3
+REGISTERED	src/backend/control/cc_bus.rs		2
+REGISTERED	tests/frontend/ui/account-restart.vitest.ts		1
+REGISTERED	tests/frontend/ui/remote-launch-run.vitest.ts		1
+REGISTERED	tests/frontend/ui/tabs-split-graph.vitest.ts		1
+REGISTERED	tests/frontend/ui/tabs.vitest.ts		4
+REGISTERED	tests/frontend/ui/views/pane-preview.vitest.ts		1
+REGISTERED	tests/backend/history/history_join_tests.rs		1
+REGISTERED	tests/comms/inward/origin_tests.rs		9
+REGISTERED	src/backend/accounts/upstream_select/file_face.rs		2
+REGISTERED	src/frontend/shell/Cargo.toml		1
+REGISTERED	tests/comms/outward/route_tests.rs		1
+REGISTERED	tests/frontend/shell/local_backend_host_tests.rs		8
+REGISTERED	src/backend/observe/tasks_query.rs		1
+REGISTERED	src/backend/control/fork_write.rs		1
+REGISTERED	src/frontend/shell/src/cross_half_edge_registry.rs		2
+REGISTERED	tests/frontend/shell/spawn_managed_exit_sites.rs		3
+REGISTERED	tests/frontend/shell/write_site_registry_spawn_sites.rs		3
+REGISTERED	src/frontend/ui/accounts.ts		2
+REGISTERED	tests/frontend/ui/account-availability-guard.vitest.ts		1
+REGISTERED	src/frontend/ui/shell-quote.ts		7
+REGISTERED	src/frontend/ui/local-resume.ts		1
+REGISTERED	tests/frontend/ui/launch-orchestration-single-home.vitest.ts		1
+REGISTERED	src/frontend/ui/account-prefs.ts		1
+REGISTERED	tests/frontend/shell/command_home_registry_tests.rs		5
+REGISTERED	src/frontend/shell/src/filewin/entry.rs		2
+REGISTERED	src/frontend/shell/src/quote_singleton_guard.rs		3
+REGISTERED	src/backend/dial/terminal.rs		2
+REGISTERED	tests/frontend/ui/views/history-search.vitest.ts		1
+REGISTERED	tests/frontend/shell/launch_tests.rs		2
+REGISTERED	tests/frontend/shell/quote_singleton_guard_tests.rs		2
+REGISTERED	src/frontend/shell/src/ccm_legacy.rs		1
+REGISTERED	src/common/deploy-contract/src/lib.rs		1
+REGISTERED	tests/backend/control/deploy_plan_tests.rs		1
+REGISTERED	tests/frontend/shell/lib_invariant_population_tests.rs		2
+REGISTERED	tests/frontend/shell/ssh_source_tier1_tests.rs		2
+REGISTERED	src/frontend/ui/settings/machine-card.ts		1
+REGISTERED	src/backend/control/ccm/mod.rs		3
+REGISTERED	src/backend/control/ccm/plan.rs		1
+REGISTERED	tests/e2e/backend-cc-bus.sh		1
+REGISTERED	tests/e2e/backend-gate2-acceptance.sh		1
+REGISTERED	tests/backend/control/ccm_tests.rs		1
+REGISTERED	tests/backend/plugin_walk_fixture.rs		1
+REGISTERED	src/frontend/ui/main.ts		4
+REGISTERED	src/frontend/ui/tab-session-state.ts		1
+REGISTERED	src/frontend/ui/tab-store.ts		1
+REGISTERED	src/frontend/ui/tabs.ts		1
+REGISTERED	tests/frontend/shell/event_replay_tests.rs		1
+REGISTERED	src/frontend/shell/src/parity_ledger.rs		1
+REGISTERED	src/README.md		1
+REGISTERED	src/backend/agents/claudecode/branch.rs		2
+REGISTERED	tests/frontend/ui/branch-button.vitest.ts		1
+REGISTERED	tests/frontend/ui/views/history-actions.vitest.ts		1
+REGISTERED	src/frontend/ui/account-reads.ts		1
+REGISTERED	src/frontend/ui/backend-policy.ts		1
+REGISTERED	src/frontend/shell/src/sync_command_registry.rs		1
+REGISTERED	tests/frontend/shell/sync_command_registry_tests.rs		3
+REGISTERED	tests/frontend/shell/utils_tests.rs		1
+REGISTERED	src/backend/common/tmux_utf8.rs		1
+REGISTERED	src/backend/observe/mod.rs		1
+REGISTERED	src/backend/observe/tmux_list.rs		2
+REGISTERED	src/frontend/ui/tmux-reads.ts		1
+REGISTERED	tests/backend/observe/tmux_list_tests.rs		1
+REGISTERED	tests/frontend/ui/tmux-reads.vitest.ts		1
+REGISTERED	tests/backend/dial_probe_tests.rs		1
+REGISTERED	src/backend/agents/claudecode/footprint.rs		1
+REGISTERED	src/frontend/ui/settings/config-surface-section.ts		2
+REGISTERED	src/frontend/ui/settings/footprint-reads.ts		1
+REGISTERED	tests/e2e/local-backend-supervise.sh		2
+REGISTERED	tests/scripts/gate.sh		3
+REGISTERED	src/backend/assets/pubkey.rs		1
+REGISTERED	src/frontend/ui/pubkey-push.ts		1
+REGISTERED	tests/frontend/ui/pubkey-push.vitest.ts		1
+REGISTERED	src/frontend/shell/src/dial_host.rs		1
+REGISTERED	src/backend/agents/claudecode/schema.rs		1
+REGISTERED	src/backend/agents/codex/parse.rs		1
+REGISTERED	src/backend/agents/codex/record.rs		1
+REGISTERED	src/comms/inward/origin.rs		1
+REGISTERED	src/frontend/shell/src/utils.rs		1
+REGISTERED	src/frontend/ui/cards/index.ts		2
+REGISTERED	tests/backend/agents/claudecode/schema_title_coverage.rs		1
+REGISTERED	tests/backend/observe/record_page_tests.rs		1
+TOMBSTONED	src/frontend/shell/src/cc_bus_deploy.rs	deploy_local_cc_bus	1
+TOMBSTONED	src/frontend/shell/src/cc_bus_deploy.rs	cc_bus_install_state	1
+TOMBSTONED	src/frontend/ui/ipc/commands.ts	deploy_local_cc_bus	1
+TOMBSTONED	src/frontend/ui/ipc/commands.ts	cc_bus_install_state	1
+TOMBSTONED	tests/frontend/shell/frame_query_tests.rs	deploy_local_cc_bus	1
+TOMBSTONED	tests/frontend/shell/frame_query_tests.rs	cc_bus_install_state	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	deploy_local_cc_bus	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	cc_bus_install_state	1
+TOMBSTONED	src/backend/lib.rs	refresh_doc_links	1
+TOMBSTONED	src/backend/control/gate_rules.rs	needs_remote_sid	1
+TOMBSTONED	tests/frontend/shell/gate_singleton_guard_tests.rs	the_monitor_wrapper_really_delegates	1
+TOMBSTONED	src/backend/dial/terminal.rs	build_remote_ssh_ps_command	1
+TOMBSTONED	src/backend/dial/terminal.rs	build_open_terminal_cmd	1
+TOMBSTONED	src/frontend/filewin/src/shell.rs	build_open_terminal_cmd	1
+TOMBSTONED	src/frontend/filewin/src/shell.rs	build_open_terminal_cmd_at	2
+TOMBSTONED	src/frontend/filewin/src/shell.rs	cd_then_shell	1
+TOMBSTONED	src/frontend/shell/src/launch.rs	build_remote_ssh_ps_command	1
+TOMBSTONED	src/frontend/shell/src/local_origin_registry.rs	build_remote_ssh_ps_command	1
+TOMBSTONED	tests/frontend/shell/launch_tests.rs	build_jump_arg	1
+TOMBSTONED	tests/frontend/shell/launch_tests.rs	build_remote_ssh_ps_command	1
+TOMBSTONED	src/backend/footprint/rows.rs	with_monitor_probe	1
+TOMBSTONED	src/frontend/ui/settings/config-surface-section.ts	config_surface_report	1
+TOMBSTONED	src/backend/footprint/rows.rs	config_surface_report	1
+TOMBSTONED	src/frontend/ui/ipc/commands.ts	config_surface_report	1
+TOMBSTONED	tests/frontend/shell/command_home_registry_tests.rs	config_surface_report	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	config_surface_report	2
+TOMBSTONED	tests/frontend/ui/ipc/commands.vitest.ts	config_surface_report	2
+TOMBSTONED	src/frontend/ui/settings/footprint-reads.ts	config_surface_report	1
+TOMBSTONED	tests/frontend/shell/local_read_surface_registry_tests.rs	with_monitor_probe	1
+TOMBSTONED	src/backend/observe/tmux_observe.rs	observation_tokens_double_write_point_stays_in_sync	1
+TOMBSTONED	src/backend/stream/wire.rs	removal_cause_wire_literal_stays_in_sync	1
+TOMBSTONED	src/frontend/shell/src/local_backend.rs	forget_tmux_raw	1
+TOMBSTONED	src/frontend/shell/src/local_backend.rs	local_idle_retirements	2
+TOMBSTONED	src/frontend/shell/src/local_backend.rs	local_reaper_state	1
+TOMBSTONED	src/frontend/shell/src/local_backend.rs	local_tmux_closed	1
+TOMBSTONED	src/frontend/shell/src/local_backend.rs	record_tmux_raw	1
+TOMBSTONED	src/frontend/shell/src/bind.rs	is_process_alive	1
+TOMBSTONED	src/frontend/shell/src/lib.rs	load_with_changes	1
+TOMBSTONED	src/frontend/shell/src/platform/spawn.rs	is_process_alive	1
+TOMBSTONED	src/frontend/shell/src/ssh_source.rs	f032_idle_tests	1
+TOMBSTONED	src/frontend/shell/src/ssh_source.rs	list_ssh_host_aliases	1
+TOMBSTONED	src/frontend/shell/src/ssh_source.rs	reannounce_after_reconnect	1
+TOMBSTONED	src/frontend/shell/src/ssh_source.rs	record_tmux_raw	1
+TOMBSTONED	src/frontend/shell/src/ssh_source.rs	tmux_snapshot_exposure_tests	1
+TOMBSTONED	src/doc/INVARIANTS.md	classify_tmux_observation	1
+TOMBSTONED	src/doc/INVARIANTS.md	find_tmux_origin_for_sid	1
+TOMBSTONED	src/doc/INVARIANTS.md	is_process_alive	1
+TOMBSTONED	src/doc/INVARIANTS.md	observation_tokens_double_write_point_stays_in_sync	1
+TOMBSTONED	src/doc/INVARIANTS.md	remote_idle_single_writer_guard	1
+TOMBSTONED	src/doc/INVARIANTS.md	tmux_origin_for_sid	1
+TOMBSTONED	src/doc/IPC-PROTOCOL.md	removal_cause_wire_literal_stays_in_sync	1
+TOMBSTONED	tests/frontend/shell/inbound_client_tests.rs	removal_cause_wire_literal_stays_in_sync	1
+TOMBSTONED	tests/frontend/shell/rust_timer_registry_tests.rs	is_process_alive	1
+TOMBSTONED	tests/frontend/shell/ssh_source_capped_line_tests.rs	classify_tmux_observation	1
+TOMBSTONED	tests/frontend/shell/ssh_source_capped_line_tests.rs	remove_tmux_line	1
+TOMBSTONED	tests/frontend/shell/ssh_source_write_half_guard.rs	remote_idle_single_writer_guard	1
+TOMBSTONED	src/frontend/shell/src/parity_ledger.rs	resolve_ssh_host	1
+TOMBSTONED	src/frontend/shell/src/spawn_managed.rs	resolve_ssh_host	1
+TOMBSTONED	src/frontend/shell/src/ssh_source.rs	resolve_ssh_host	1
+TOMBSTONED	src/frontend/shell/src/ssh_source.rs	import_ssh_hosts	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	the_alias_capabilities_speak_through_one_command_family	1
+TOMBSTONED	src/backend/platform/shell/dialect.rs	look_on_path	1
+TOMBSTONED	src/backend/agents/claudecode/paths.rs	claude_data_fence	1
+TOMBSTONED	src/doc/INVARIANTS.md	claude_data_fence	1
+TOMBSTONED	tests/frontend/shell/write_site_registry_tests.rs	write_skill_file	1
+TOMBSTONED	tests/frontend/shell/remote_write_registry_tests.rs	claude_data_fence	3
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	read_skill_file	2
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	write_skill_file	2
+TOMBSTONED	src/frontend/shell/src/lib.rs	agent_dispatch_registry	1
+TOMBSTONED	src/frontend/shell/src/lib.rs	agent_profile_parity	1
+TOMBSTONED	tests/frontend/shell/drift_ledger_tests.rs	parse_for_kind	1
+TOMBSTONED	src/backend/assets/pubkey.rs	push_public_key	1
+TOMBSTONED	src/frontend/ui/pubkey-push.ts	push_public_key	1
+TOMBSTONED	tests/frontend/ui/pubkey-push.vitest.ts	push_public_key	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	push_public_key	3
+TOMBSTONED	src/frontend/shell/src/lib.rs	push_public_key	1
+TOMBSTONED	src/README.md	create_branch_session	1
+TOMBSTONED	src/frontend/shell/README.md	delete_remote_history_session	2
+TOMBSTONED	src/backend/agents/claudecode/branch.rs	create_branch_session	1
+TOMBSTONED	src/frontend/shell/src/local_origin_registry.rs	create_remote_branch_session	1
+TOMBSTONED	src/doc/INVARIANTS.md	delete_remote_history_session	1
+TOMBSTONED	src/doc/INVARIANTS.md	validate_delete_target	1
+TOMBSTONED	tests/frontend/ui/branch-button.vitest.ts	create_remote_branch_session	1
+TOMBSTONED	tests/frontend/shell/frame_query_tests.rs	remote_branch_tests	1
+TOMBSTONED	tests/frontend/shell/local_origin_registry_tests.rs	create_remote_branch_session	2
+TOMBSTONED	tests/frontend/shell/local_read_surface_registry_tests.rs	create_branch_session	1
+TOMBSTONED	tests/comms/inward/origin_tests.rs	create_remote_branch_session	1
+TOMBSTONED	tests/comms/inward/origin_tests.rs	delete_remote_history_session	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	create_remote_branch_session	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	delete_remote_history_session	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	diagnose_remote_cc_bus_hooks	2
+TOMBSTONED	tests/frontend/shell/remote_write_registry_tests.rs	delete_remote_history_session	2
+TOMBSTONED	tests/frontend/ui/ipc/commands.vitest.ts	create_remote_branch_session	3
+TOMBSTONED	tests/frontend/ui/ipc/commands.vitest.ts	delete_remote_history_session	3
+TOMBSTONED	tests/frontend/ui/views/history-actions.vitest.ts	delete_remote_history_session	1
+TOMBSTONED	tests/frontend/shell/write_site_registry_tests.rs	this_module_never_writes	2
+TOMBSTONED	tests/frontend/shell/frame_query_tests.rs	skill_uninstall_apply	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	skill_install_preview	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	skill_uninstall_apply	1
+TOMBSTONED	src/doc/INVARIANTS.md	the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold	1
+TOMBSTONED	src/frontend/shell/README.md	stream_read_remote_session	2
+TOMBSTONED	src/doc/INVARIANTS.md	is_session_active	1
+TOMBSTONED	tests/frontend/shell/byte_cap_registry_tests.rs	stream_read_remote_session	1
+TOMBSTONED	tests/frontend/shell/drift_ledger_tests.rs	stream_read_remote_session	1
+TOMBSTONED	tests/comms/inward/origin_tests.rs	stream_read_remote_session	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	stream_read_remote_session	1
+TOMBSTONED	tests/frontend/ui/ipc/commands.vitest.ts	stream_read_remote_session	3
+TOMBSTONED	src/frontend/shell/src/creds_store.rs	write_key_on	2
+TOMBSTONED	tests/frontend/shell/creds_store_tests.rs	a_config_dir_that_names_no_account_is_refused_instead_of_falling_back	1
+TOMBSTONED	tests/frontend/shell/creds_store_tests.rs	the_plaintext_argument_is_only_ever_handed_one_hop_further	1
+TOMBSTONED	tests/frontend/shell/creds_store_tests.rs	write_key_on	2
+TOMBSTONED	src/backend/control/cc_bus.rs	broadcast_via_backend	1
+TOMBSTONED	src/frontend/shell/src/tmux_backend_gate_guard.rs	kill_now_routes_through_the_backend	2
+TOMBSTONED	src/frontend/shell/src/tmux_backend_gate_guard.rs	send_keys_now_routes_through_the_backend	2
+TOMBSTONED	tests/frontend/shell/backend_kill_tests.rs	the_refusal_wording_matches_the_sibling_command	1
+TOMBSTONED	tests/frontend/shell/tmux_backend_gate_guard_tests.rs	a_gate_rejection_is_never_laundered_into_the_ssh_fallback	1
+TOMBSTONED	tests/frontend/shell/tmux_backend_gate_guard_tests.rs	both_commands_branch_on_the_same_three_way_verdict	1
+TOMBSTONED	tests/frontend/shell/tmux_backend_gate_guard_tests.rs	kill_now_routes_through_the_backend	1
+TOMBSTONED	tests/frontend/shell/tmux_backend_gate_guard_tests.rs	send_keys_now_routes_through_the_backend	1
+TOMBSTONED	src/backend/control/fork_write.rs	interpret_fork_exec	1
+TOMBSTONED	src/doc/INVARIANTS.md	interpret_fork_exec	1
+TOMBSTONED	src/frontend/shell/src/cross_half_edge_registry.rs	local_failure_kind	1
+TOMBSTONED	src/frontend/shell/src/spawn_managed.rs	local_backend_one_shot_query	1
+TOMBSTONED	tests/frontend/shell/spawn_managed_exit_sites.rs	local_backend_one_shot_query	1
+TOMBSTONED	src/backend/assets/aliases/fence.rs	ensure_rc_source_line	1
+TOMBSTONED	tests/backend/assets/aliases/fence_tests.rs	ensure_rc_source_line	1
+TOMBSTONED	src/frontend/shell/src/event_replay.rs	tail_only_sessions	1
+TOMBSTONED	src/frontend/shell/src/event_replay.rs	keep_tail_only	1
+TOMBSTONED	src/frontend/shell/src/event_replay.rs	replay_and_mark_ready	2
+TOMBSTONED	src/frontend/shell/src/creds_store.rs	check_base_url	1
+TOMBSTONED	src/backend/accounts/upstream_select/file_face.rs	apikey_rows_at	1
+TOMBSTONED	src/frontend/shell/src/creds_store.rs	read_status_at	1
+TOMBSTONED	src/frontend/shell/src/local_backend_host.rs	relay_listening_at	1
+TOMBSTONED	tests/backend/accounts/upstream_select/file_face_tests.rs	apikey_rows_at	1
+TOMBSTONED	tests/backend/accounts/upstream_select/file_face_tests.rs	what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for	1
+TOMBSTONED	tests/frontend/shell/creds_store_tests.rs	read_status_at	1
+TOMBSTONED	tests/frontend/shell/creds_store_tests.rs	what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for	1
+TOMBSTONED	tests/frontend/shell/local_backend_host_tests.rs	relay_running_really_asks_the_loopback_port	1
+TOMBSTONED	src/frontend/shell/src/creds_store.rs	write_key_at	1
+TOMBSTONED	tests/backend/accounts/upstream_select/file_face_tests.rs	write_key_at	1
+TOMBSTONED	tests/comms/outward/server_tests.rs	write_key_at	1
+TOMBSTONED	tests/backend/accounts/upstream_select/file_face_tests.rs	a_program_write_keeps_everything_the_human_put_there	1
+TOMBSTONED	tests/backend/accounts/upstream_select/file_face_tests.rs	a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style	1
+TOMBSTONED	tests/backend/accounts/upstream_select/file_face_tests.rs	the_write_side_no_longer_targets_the_legacy_top_level_slot	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	panorama_diagram_kinds	1
+TOMBSTONED	tests/frontend/shell/lib_remote_config_tests.rs	legacy_single_object_one_host	2
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	list_plugin_marketplaces	2
+TOMBSTONED	src/frontend/shell/src/lib.rs	list_plugin_marketplaces	1
+TOMBSTONED	src/frontend/ui/ipc/commands.ts	list_plugin_marketplaces	1
+TOMBSTONED	tests/frontend/ui/ipc/commands.vitest.ts	the_two_same_named_local_origin_constants_stay_deliberately_different	1
+TOMBSTONED	tests/frontend/shell/backend_policy_tests.rs	the_two_same_named_local_origin_constants_stay_deliberately_different	1
+TOMBSTONED	src/backend/dial/connect.rs	connect_via_jump	1
+TOMBSTONED	src/backend/dial/connect.rs	authenticate_via_agent	1
+TOMBSTONED	src/backend/platform/ssh_agent.rs	authenticate_via_agent	1
+TOMBSTONED	src/frontend/shell/src/lib.rs	sftp_move_ledger	1
+TOMBSTONED	tests/frontend/shell/local_origin_registry_tests.rs	connect_via_jump	2
+TOMBSTONED	tests/backend/footprint/registry_tests.rs	sftp_move_ledger	1
+TOMBSTONED	tests/frontend/shell/ssh_source_dial_move_judge.rs	russh_lives_only_where_sftp_still_needs_it	1
+TOMBSTONED	src/common/creds-core/src/lib.rs	verify_uploaded_bytes	1
+TOMBSTONED	tests/backend/readonly_guard.rs	the_backend_tree_has_no_remote_write_today_and_the_scan_face_is_not_empty	1
+TOMBSTONED	tests/naming/account-vs-relay-naming.vitest.ts	start_local_relay	1
+TOMBSTONED	tests/backend/main_argv_table_guard.rs	the_dial_arm_is_actually_wired_into_the_dispatch	1
+TOMBSTONED	src/backend/observe/search_query.rs	merge_search_results	1
+TOMBSTONED	src/frontend/filewin/src/fonts.rs	too_big_to_save	1
+TOMBSTONED	src/frontend/filewin/src/fonts.rs	read_only_notice	1
+TOMBSTONED	tests/frontend/shell/ssh_source_dial_move_judge.rs	every_registered_fallback_is_actually_decided_in_the_entry	1
+TOMBSTONED	tests/frontend/shell/ssh_source_dial_move_judge.rs	the_request_line_is_written_with_snake_case_keys	1
+TOMBSTONED	tests/frontend/shell/ssh_source_dial_move_judge.rs	the_proxy_is_resolved_from_exactly_two_places_and_never_from_home	1
+TOMBSTONED	tests/frontend/shell/ssh_source_snapshot_tail_tests.rs	parse_snapshot_meta	1
+TOMBSTONED	tests/frontend/shell/filewin/entry_tests.rs	an_empty_path_asks_the_remote_for_home_and_opens_nothing_when_it_cannot	1
+TOMBSTONED	tests/frontend/shell/filewin/entry_tests.rs	a_directory_we_cannot_list_is_an_error_not_a_blank_window	1
+TOMBSTONED	src/frontend/shell/src/filewin/entry.rs	list_first_screen	2
+TOMBSTONED	src/frontend/shell/src/sftp.rs	is_safe_remote_managed_path	1
+TOMBSTONED	src/frontend/shell/src/lib.rs	acct_iso_deploy	1
+TOMBSTONED	src/frontend/shell/src/sftp.rs	acct_iso_deploy	3
+TOMBSTONED	tests/frontend/shell/sftp_tests.rs	acct_iso_deploy	1
+TOMBSTONED	src/frontend/ui/ipc/commands.ts	deploy_remote_acct_iso	1
+TOMBSTONED	tests/frontend/shell/frame_query_tests.rs	acct_iso_deploy_tests	1
+TOMBSTONED	tests/frontend/shell/command_home_registry_tests.rs	deploy_remote_acct_iso	1
+TOMBSTONED	tests/frontend/shell/launcher_identity_registry_tests.rs	deploy_remote_acct_iso	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	deploy_remote_acct_iso	6
+TOMBSTONED	tests/frontend/ui/ipc/commands.vitest.ts	deploy_remote_acct_iso	3
+TOMBSTONED	tests/frontend/shell/sftp_tests.rs	deploy_remote_acct_iso	2
+TOMBSTONED	tests/frontend/shell/sftp_tests.rs	deploy_decision_truth_table	1
+TOMBSTONED	tests/frontend/shell/sftp_tests.rs	safe_managed_path_requires_a_marker	1
+TOMBSTONED	src/frontend/filewin/src/source.rs	a_window_that_started_local_has_nowhere_to_go_back_to	1
+TOMBSTONED	src/frontend/filewin/src/source.rs	the_button_shows_up_exactly_when_the_jump_would_work	1
+TOMBSTONED	src/frontend/filewin/src/source.rs	a_real_click_on_the_go_back_button_walks_the_whole_chain	1
+TOMBSTONED	tests/frontend/filewin/source_tests.rs	walking_up_uses_slashes_on_the_remote_side_and_the_platform_on_the_local_side	1
+TOMBSTONED	src/doc/IPC-PROTOCOL.md	the_local_launch_recipe_is_reachable_only_from_print	1
+TOMBSTONED	src/frontend/shell/src/platform/terminal.rs	resolve_from_backend	1
+TOMBSTONED	tests/backend/footprint/registry_environment_tests.rs	a_hand_written_entry_is_never_app_installs	1
+TOMBSTONED	tests/frontend/shell/plugin_class_registry_tests.rs	ccm_agent_arms	1
+TOMBSTONED	tests/frontend/shell/plugin_class_registry_tests.rs	ccm_probe_values	1
+TOMBSTONED	tests/frontend/shell/polling_registry_tests.rs	ccm_fails_loudly_when_no_backend_can_be_found	1
+TOMBSTONED	src/backend/assets/aliases/fence.rs	find_block_range	1
+TOMBSTONED	tests/backend/assets/aliases/block_tests.rs	install_preserves_explicit_acl_entries	1
+TOMBSTONED	src/frontend/shell/README.md	atomic_write_string	1
+TOMBSTONED	tests/frontend/shell/history_tests.rs	read_jsonl_values	1
+TOMBSTONED	src/backend/agents/claudecode/paths.rs	is_safe_remote_jsonl	1
+TOMBSTONED	src/backend/agents/claudecode/paths.rs	is_protected_session_file	1
+TOMBSTONED	src/backend/agents/claudecode/paths.rs	is_protected_session_path	1
+TOMBSTONED	src/frontend/shell/README.md	is_safe_remote_jsonl	1
+TOMBSTONED	src/frontend/shell/src/sftp.rs	is_safe_remote_jsonl	1
+TOMBSTONED	src/doc/INVARIANTS.md	is_safe_remote_jsonl	1
+TOMBSTONED	tests/frontend/shell/comm_boundary_registry_tests.rs	is_safe_remote_jsonl	1
+TOMBSTONED	src/backend/assets/aliases/block.rs	atomic_write_string	2
+TOMBSTONED	tests/frontend/shell/write_site_registry_tests.rs	atomic_write_string	1
+TOMBSTONED	tests/backend/control/files_write_tests.rs	install_preserves_explicit_acl_entries	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	write_account_aliases	3
+TOMBSTONED	tests/backend/assets/aliases/aliases_tests.rs	validate_alias_line	1
+TOMBSTONED	tests/frontend/ui/generated-boundary-guard.vitest.ts	write_account_aliases	1
+TOMBSTONED	tests/frontend/ui/settings/panel-deferred-io.vitest.ts	write_account_aliases	1
+TOMBSTONED	src/backend/assets/aliases/block.rs	legacy_profile_paths	1
+TOMBSTONED	src/backend/assets/aliases/block.rs	scan_legacy_profiles	3
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	cc_integration_preview	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	cc_integration_status	1
+TOMBSTONED	tests/backend/assets/aliases/block_tests.rs	cc_integration_install	1
+TOMBSTONED	tests/backend/assets/aliases/block_tests.rs	cc_integration_scan_path	1
+TOMBSTONED	tests/backend/assets/aliases/block_tests.rs	cc_integration_uninstall	1
+TOMBSTONED	tests/backend/assets/aliases/block_tests.rs	scan_legacy_profiles	1
+TOMBSTONED	src/frontend/shell/README.md	install_remote_ccm_helper	2
+TOMBSTONED	src/frontend/shell/src/local_backend.rs	install_remote_ccm_helper	1
+TOMBSTONED	src/backend/assets/aliases/block.rs	install_remote_ccm_helper	1
+TOMBSTONED	src/frontend/shell/src/sftp.rs	install_remote_ccm_helper	1
+TOMBSTONED	tests/frontend/shell/remote_write_registry_tests.rs	read_profile_text	2
+TOMBSTONED	tests/frontend/shell/sftp_tests.rs	interpret_profile_read	1
+TOMBSTONED	tests/frontend/shell/sftp_tests.rs	read_profile_text	1
+TOMBSTONED	tests/frontend/shell/remote_write_registry_tests.rs	install_remote_ccm_helper	1
+TOMBSTONED	tests/frontend/shell/sftp_tests.rs	rollback_note_matches_what_actually_happened	1
+TOMBSTONED	tests/frontend/shell/sftp_tests.rs	ccm_cli_strength_is_at_or_above_baseline	1
+TOMBSTONED	tests/frontend/shell/sftp_tests.rs	pin_t_def	1
+TOMBSTONED	tests/frontend/shell/sftp_tests.rs	the_identity_witness_is_derived_from_the_manifest_not_written_by_hand	1
+TOMBSTONED	src/doc/INVARIANTS.md	the_daemonless_remote_still_needs_the_ts_fallback_renderer	1
+TOMBSTONED	src/frontend/shell/src/local_backend.rs	resolve_from_backend	1
+TOMBSTONED	src/frontend/shell/src/ccm_cli_contract.rs	pin_t_def	1
+TOMBSTONED	src/frontend/shell/src/ccm_cli_contract.rs	scan_t_targets	1
+TOMBSTONED	tests/frontend/shell/ccm_cli_contract_tests.rs	the_avoidance_lives_in_ccm_now	1
+TOMBSTONED	src/doc/IPC-PROTOCOL.md	handlers_never_run_on_the_reader_task	1
+TOMBSTONED	src/doc/IPC-PROTOCOL.md	hello_commands_match_the_dispatch_table	1
+TOMBSTONED	src/doc/IPC-PROTOCOL.md	hello_is_flushed_before_the_inbound_reader_starts	1
+TOMBSTONED	src/backend/stream/wire.rs	hello_bytes_for_claude_are_frozen	1
+TOMBSTONED	src/frontend/shell/src/lib.rs	the_ui_never_derives_the_account_id_itself	1
+TOMBSTONED	src/frontend/ui/settings/accounts-section.ts	the_ui_never_derives_the_account_id_itself	1
+TOMBSTONED	src/doc/INVARIANTS.md	build_kill_session_cmd	1
+TOMBSTONED	src/doc/INVARIANTS.md	build_send_keys_remote_cmd	1
+TOMBSTONED	src/doc/INVARIANTS.md	gate_guard_expr	1
+TOMBSTONED	tests/frontend/shell/tmux_backend_gate_guard_tests.rs	build_kill_session_cmd	1
+TOMBSTONED	tests/frontend/shell/doc_claim_registry_tests.rs	the_four_outer_layer_producers_are_all_still_there	1
+TOMBSTONED	tests/backend/control/gate_tests.rs	the_ssh_fallback_always_probes_before_it_acts	1
+TOMBSTONED	tests/frontend/shell/shared_crate_registry_tests.rs	emit_guarded_commands_for_e2e	1
+TOMBSTONED	src/doc/ARCHITECTURE.md	validate_branch_source	1
+TOMBSTONED	tests/frontend/shell/doc_claim_registry_tests.rs	a_capability_line_has_landed	1
+TOMBSTONED	tests/frontend/shell/doc_claim_registry_tests.rs	layer_has_landed_at	1
+TOMBSTONED	tests/frontend/shell/doc_claim_registry_tests.rs	the_capability_line_landing_probe_actually_bites	1
+TOMBSTONED	src/doc/INVARIANTS.md	validate_branch_source	1
+TOMBSTONED	tests/frontend/shell/capability_registry_tests.rs	emit_usage_probe_frames_for_e2e	1
+TOMBSTONED	src/frontend/shell/README.md	aggregate_remote_usage_all	1
+TOMBSTONED	src/backend/agents/codex/token.rs	kou_jing_singleton	1
+TOMBSTONED	src/frontend/shell/src/local_origin_registry.rs	account_usage_local	1
+TOMBSTONED	tests/frontend/ui/ipc/commands.vitest.ts	account_usage_local	1
+TOMBSTONED	tests/frontend/ui/ipc/commands.vitest.ts	aggregate_remote_usage_all	1
+TOMBSTONED	tests/frontend/ui/ipc/commands.vitest.ts	aggregate_usage_all	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	account_usage_local	4
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	aggregate_remote_usage_all	2
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	aggregate_usage_all	2
+TOMBSTONED	tests/backend/no_timer_guard.rs	the_oneshot_watchdog_script_carries_no_loop	1
+TOMBSTONED	src/frontend/shell/README.md	list_remote_mcp_project_dirs	1
+TOMBSTONED	src/frontend/shell/README.md	is_safe_remote_mcp_json	2
+TOMBSTONED	src/frontend/shell/README.md	mcp_json_path	1
+TOMBSTONED	tests/comms/inward/origin_tests.rs	list_remote_mcp_project_dirs	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	list_remote_mcp_project_dirs	1
+TOMBSTONED	tests/frontend/ui/ipc/commands.vitest.ts	list_remote_mcp_project_dirs	3
+TOMBSTONED	src/frontend/shell/src/local_origin_registry.rs	list_remote_mcp_project_dirs	1
+TOMBSTONED	src/backend/footprint/registry.rs	build_online_cmd	1
+TOMBSTONED	tests/frontend/shell/spawn_managed_exit_sites.rs	local_shell_read	1
+TOMBSTONED	tests/frontend/shell/write_site_registry_spawn_sites.rs	local_shell_read	1
+TOMBSTONED	src/frontend/shell/src/local_backend_host.rs	hide_console_window	1
+TOMBSTONED	src/frontend/shell/src/spawn_managed.rs	hide_console_window	1
+TOMBSTONED	tests/common/guard-core/lib_tests.rs	the_caller_never_gets_its_own_source_back	1
+TOMBSTONED	tests/backend/readonly_guard.rs	strip_cfg_test	2
+TOMBSTONED	src/frontend/shell/build.rs	c_cross_note	2
+TOMBSTONED	tests/frontend/shell/cc_bus_deploy_tests.rs	windows_says_the_precheck_did_not_happen_instead_of_staying_silent	1
+TOMBSTONED	src/frontend/shell/README.md	sftp_cancel_transfer	1
+TOMBSTONED	src/frontend/shell/README.md	sftp_read_text_for_edit	2
+TOMBSTONED	src/frontend/filewin/src/editor.rs	sftp_read_text_for_edit	2
+TOMBSTONED	src/frontend/filewin/src/lib.rs	sftp_cancel_transfer	1
+TOMBSTONED	src/frontend/filewin/src/lib.rs	sftp_read_text_for_edit	1
+TOMBSTONED	src/frontend/filewin/src/transfer.rs	sftp_cancel_transfer	1
+TOMBSTONED	src/frontend/filewin/src/writeops.rs	sftp_read_text_for_edit	1
+TOMBSTONED	src/frontend/filewin/src/shell.rs	refused_in_lossy_cwd	1
+TOMBSTONED	src/backend/dial/sftp.rs	the_chmod_attrs_never_put_a_size_on_the_wire	1
+TOMBSTONED	tests/frontend/shell/filewin/boundary_tests.rs	sftp_cancel_transfer	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	sftp_cancel_transfer	2
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	sftp_read_text_for_edit	1
+TOMBSTONED	tests/frontend/shell/remote_write_registry_tests.rs	sftp_cancel_transfer	4
+TOMBSTONED	tests/frontend/shell/remote_write_registry_tests.rs	sftp_read_text_for_edit	2
+TOMBSTONED	tests/frontend/shell/sftp_family_registry_tests.rs	sftp_cancel_transfer	1
+TOMBSTONED	tests/frontend/shell/sftp_family_registry_tests.rs	sftp_read_text_for_edit	1
+TOMBSTONED	src/backend/faces/read_face.rs	with_apikey_table	1
+TOMBSTONED	src/frontend/shell/src/frame_query.rs	run_list_query	1
+TOMBSTONED	src/frontend/shell/src/ssh_source.rs	run_list_query	1
+TOMBSTONED	src/backend/footprint/registry.rs	run_list_query	1
+TOMBSTONED	tests/frontend/shell/frame_query_tests.rs	run_list_query	1
+TOMBSTONED	tests/frontend/shell/byte_cap_registry_tests.rs	run_list_query	1
+TOMBSTONED	tests/frontend/shell/exec_site_registry_tests.rs	run_list_query	1
+TOMBSTONED	tests/backend/observe/accounts_query_tests.rs	list_from_dir	1
+TOMBSTONED	tests/backend/faces/read_face_tests.rs	line_shaped_answers_carry_the_rows	1
+TOMBSTONED	tests/backend/observe/history_query_tests.rs	truncate_is_char_safe	1
+TOMBSTONED	src/backend/agents/codex/history.rs	codex_first_user_excerpt	1
+TOMBSTONED	src/frontend/shell/src/history.rs	codex_first_user_excerpt	1
+TOMBSTONED	src/frontend/shell/src/history.rs	codex_projects_from	1
+TOMBSTONED	src/frontend/shell/src/history.rs	codex_session_entry	1
+TOMBSTONED	src/frontend/shell/src/history.rs	enumerate_codex_sessions	1
+TOMBSTONED	src/frontend/shell/src/history.rs	local_projects_via	1
+TOMBSTONED	tests/backend/history/history_annotations_tests.rs	c4d_the_old_reader_reads_the_annotation_fixture_as_the_golden	1
+TOMBSTONED	tests/backend/history/history_join_tests.rs	unknown_is_its_own_bucket_when_sorting	1
+TOMBSTONED	tests/frontend/shell/history_tests.rs	c4d_the_old_reader_reads_the_annotation_fixture_as_the_golden	1
+TOMBSTONED	tests/frontend/shell/history_tests.rs	codex_projects_group_by_cwd	1
+TOMBSTONED	tests/frontend/shell/history_tests.rs	history_project_camel_case_contract	1
+TOMBSTONED	tests/frontend/shell/history_tests.rs	last_account_serde_and_patch_semantics	1
+TOMBSTONED	tests/frontend/shell/history_tests.rs	the_local_project_list_is_whatever_the_backend_said	1
+TOMBSTONED	tests/frontend/shell/history_tests.rs	the_three_counts_can_say_i_do_not_know	1
+TOMBSTONED	tests/frontend/shell/history_tests.rs	truncate_chars_unicode	1
+TOMBSTONED	tests/frontend/ui/generated-boundary-guard.vitest.ts	forked_from_message_uuid	1
+TOMBSTONED	src/frontend/shell/README.md	stream_remote_history_sessions	1
+TOMBSTONED	tests/comms/inward/origin_tests.rs	stream_remote_history_sessions	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	stream_remote_history_sessions	1
+TOMBSTONED	tests/frontend/ui/ipc/commands.vitest.ts	stream_remote_history_sessions	3
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	check_local_acct_iso	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	check_remote_acct_iso	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	local_acct_iso_shellinit	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	remote_acct_iso_shellinit	1
+TOMBSTONED	tests/frontend/ui/ipc/commands.vitest.ts	remote_acct_iso_shellinit	1
+TOMBSTONED	src/backend/footprint/registry.rs	is_safe_remote_backend_path	1
+TOMBSTONED	tests/frontend/shell/sftp_tests.rs	is_safe_remote_backend_path	1
+TOMBSTONED	tests/frontend/shell/ssh_source_tier1_tests.rs	backend_path_for_shell	1
+TOMBSTONED	tests/frontend/shell/local_backend_tests.rs	remote_shim_sets_no_environment_of_its_own	1
+TOMBSTONED	tests/frontend/shell/lib_invariant_population_tests.rs	every_read_of_the_backend_path_field_is_registered	1
+TOMBSTONED	tests/frontend/shell/sftp_tests.rs	both_remote_path_sinks_still_ask_their_fence	1
+TOMBSTONED	tests/frontend/shell/sftp_tests.rs	the_remote_ccm_entry_is_an_entry_not_an_implementation	1
+TOMBSTONED	src/frontend/shell/src/local_backend.rs	local_extract_name	1
+TOMBSTONED	tests/frontend/shell/local_backend_tests.rs	the_local_ccm_entry_is_a_copy_of_the_backend_itself	1
+TOMBSTONED	tests/frontend/shell/local_backend_tests.rs	the_resolution_path_really_puts_the_local_ccm_entry_down	1
+TOMBSTONED	src/backend/control/ccm/mod.rs	routes_to_backend	1
+TOMBSTONED	tests/backend/control/ccm_tests.rs	under_the_name_ccm_only_backend_first_words_reach_the_backend	1
+TOMBSTONED	src/frontend/shell/README.md	list_active_sessions	1
+TOMBSTONED	src/frontend/shell/README.md	list_session_activity	1
+TOMBSTONED	src/frontend/shell/src/ui_contract.rs	list_active_sessions	1
+TOMBSTONED	src/frontend/shell/src/event_replay.rs	buffered_local_session_ids	1
+TOMBSTONED	src/frontend/shell/src/event_replay.rs	buffered_remote_sessions	1
+TOMBSTONED	src/frontend/shell/src/lib.rs	list_active_sessions	1
+TOMBSTONED	src/frontend/shell/src/lib.rs	list_session_activity	1
+TOMBSTONED	src/doc/ARCHITECTURE.md	list_active_sessions	1
+TOMBSTONED	src/doc/IPC-PROTOCOL.md	list_active_sessions	1
+TOMBSTONED	src/doc/IPC-PROTOCOL.md	list_session_activity	1
+TOMBSTONED	src/doc/STATE-MATRIX.md	list_active_sessions	1
+TOMBSTONED	src/doc/STATE-MATRIX.md	list_session_activity	1
+TOMBSTONED	src/frontend/ui/main.ts	list_active_sessions	1
+TOMBSTONED	src/frontend/ui/main.ts	list_session_activity	1
+TOMBSTONED	src/frontend/ui/tab-session-state.ts	list_active_sessions	1
+TOMBSTONED	src/frontend/ui/tab-store.ts	list_active_sessions	1
+TOMBSTONED	src/frontend/ui/tabs.ts	list_active_sessions	1
+TOMBSTONED	tests/frontend/shell/event_replay_tests.rs	buffered_local_session_ids	1
+TOMBSTONED	tests/frontend/shell/event_replay_tests.rs	buffered_remote_sessions	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	list_active_sessions	2
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	list_session_activity	2
+TOMBSTONED	tests/frontend/ui/tabs.vitest.ts	list_active_sessions	2
+TOMBSTONED	src/frontend/ui/account-reads.ts	launch_agent_id	1
+TOMBSTONED	src/frontend/ui/accounts.ts	apikey_account_id	1
+TOMBSTONED	src/frontend/shell/README.md	build_resume_ps_command	1
+TOMBSTONED	src/frontend/shell/src/ccm_probe.rs	build_local_posix_command	1
+TOMBSTONED	src/frontend/shell/src/platform/terminal.rs	build_local_posix_command	1
+TOMBSTONED	src/frontend/shell/src/platform/terminal.rs	the_local_resume_payload_has_no_session_container_today	1
+TOMBSTONED	src/frontend/shell/src/platform/terminal.rs	the_rendered_local_command_really_carries_the_container	1
+TOMBSTONED	src/doc/INVARIANTS.md	every_one_of_the_six_cells_is_measured_not_narrated	1
+TOMBSTONED	src/doc/INVARIANTS.md	render_local_ccm_with	1
+TOMBSTONED	src/frontend/ui/settings/accounts-section.ts	apikey_account_id	1
+TOMBSTONED	tests/backend/observe/accounts_query_tests.rs	the_launch_id_env_var_matches_the_monitor_side_home	1
+TOMBSTONED	tests/frontend/shell/local_backend_host_tests.rs	the_launch_side_really_asks_the_backend_and_uses_its_answer	1
+TOMBSTONED	tests/frontend/shell/local_backend_host_tests.rs	the_production_relay_facts_are_those_take_points	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	the_two_launch_rows_no_longer_carry_the_two_falsified_clauses	1
+TOMBSTONED	tests/frontend/shell/utils_tests.rs	local_launch_choice	1
+TOMBSTONED	tests/frontend/shell/local_read_surface_registry_tests.rs	tmux_raw_registry	1
+TOMBSTONED	src/backend/common/tmux_utf8.rs	parse_tmux_ls	1
+TOMBSTONED	src/backend/observe/mod.rs	parse_tmux_ls	1
+TOMBSTONED	src/backend/observe/tmux_list.rs	parse_tmux_ls	1
+TOMBSTONED	src/backend/observe/tmux_observe.rs	parse_tmux_ls	1
+TOMBSTONED	src/backend/observe/tmux_observe.rs	tmux_tab_underflow	1
+TOMBSTONED	src/frontend/shell/src/cross_half_edge_registry.rs	backend_watcher_src	1
+TOMBSTONED	src/frontend/ui/tmux-reads.ts	parse_tmux_ls	1
+TOMBSTONED	tests/backend/observe/tmux_list_tests.rs	parse_tmux_ls	1
+TOMBSTONED	tests/frontend/shell/inbound_client_tests.rs	capture_pane_args	1
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	the_tmux_manage_row_stops_waiting_for_a_backend_primitive	2
+TOMBSTONED	tests/frontend/ui/tmux-reads.vitest.ts	parse_tmux_ls	1
+TOMBSTONED	src/frontend/shell/src/ssh_source.rs	probe_control_channel	2
+TOMBSTONED	src/frontend/shell/src/ssh_source.rs	pump_inbound_replies	1
+TOMBSTONED	tests/backend/dial_probe_tests.rs	the_control_probe_writes_nothing_to_an_old_backend	1
+TOMBSTONED	tests/frontend/shell/ssh_source_dial_move_judge.rs	the_request_keys_are_the_ones_the_proxy_reads	1
+TOMBSTONED	src/backend/agents/codex/parse.rs	codex_sid_from_rollout	1
+TOMBSTONED	src/backend/agents/codex/record.rs	token_usage_fields	1
+TOMBSTONED	src/frontend/shell/src/frame_query.rs	parse_session_lines	1
+TOMBSTONED	src/frontend/shell/src/ssh_source.rs	snapshot_line_countable	1
+TOMBSTONED	src/frontend/ui/cards/index.ts	codex_sid_from_rollout	1
+TOMBSTONED	src/frontend/ui/cards/index.ts	kind_of_record_name	1
+TOMBSTONED	tests/backend/observe/record_page_tests.rs	parse_for_kind_dispatches_claude_and_codex	1
+TOMBSTONED	tests/frontend/shell/history_tests.rs	require_cfg_by_label	1
+TOMBSTONED	tests/frontend/shell/local_origin_registry_tests.rs	require_cfg_by_label	2
+TOMBSTONED	src/doc/INVARIANTS.md	config_dir_command_safe	1
+TOMBSTONED	src/doc/INVARIANTS.md	render_tmux_outer	3
+TOMBSTONED	src/frontend/shell/src/ccm_probe.rs	probe_ccm_cli	1
+TOMBSTONED	src/frontend/shell/src/lib.rs	relay_all_sessions_switch	1
+TOMBSTONED	src/frontend/shell/src/local_origin_registry.rs	probe_ccm_cli	1
+TOMBSTONED	src/frontend/shell/src/parity_ledger.rs	probe_ccm_cli	1
+TOMBSTONED	src/frontend/shell/src/user_files.rs	probe_ccm_cli	1
+TOMBSTONED	tests/frontend/shell/exec_site_registry_tests.rs	probe_ccm_cli	3
+TOMBSTONED	tests/frontend/shell/launcher_identity_registry_tests.rs	relay_all_sessions_switch	2
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	probe_ccm_cli	8
+TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	relay_all_sessions_switch	5
+TOMBSTONED	tests/frontend/shell/utils_tests.rs	relay_env_prefix_ps	1
+TOMBSTONED	tests/frontend/ui/ipc/commands.vitest.ts	probe_ccm_cli	1
+TOMBSTONED	tests/frontend/ui/ipc/commands.vitest.ts	relay_all_sessions_switch	3

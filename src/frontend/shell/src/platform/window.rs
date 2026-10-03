@@ -1,7 +1,31 @@
 //! 窗口这一族的平台差异〔余下〕：壳里平台 cfg 的唯一住址（同 [`super::fs`]）。
-//! 两件都原住 `lib.rs`，逐字搬来：[`desktop_fixes`]（`run()` 里那段 `cfg(windows)` 块）· [`bring_to_front`]（`bring_monitor_to_front` 两个平台臂）。
+//! 都原住 `lib.rs`，逐字搬来：[`desktop_fixes`]（`run()` 里那段 `cfg(windows)` 块）· [`bring_to_front`]（`bring_monitor_to_front` 两个平台臂）。
 
 use tauri::Manager;
+
+/// Batch7-F23A：nudge skip 判定的纯函数对（单测钦定，见）。
+///
+/// `pack_nudge_state`：终态物理尺寸 + fullscreen 位打包成一个可比较状态值。
+/// fullscreen 占 bit 63（F11 borderless 全屏与 maximize 在"自动隐藏任务栏"下
+/// inner 尺寸可能相同——状态位保证这类 #4095 高危过渡不被 skip）；宽度截 31 位
+/// （物理像素远小于 2^31，不损失信息）。
+/// 只有本文件 Windows 那一臂调它；`test` 也编，好在 Linux 上跑那几条纯函数单测。
+#[cfg(any(windows, test))]
+fn pack_nudge_state(w: u32, h: u32, fullscreen: bool) -> u64 {
+    ((fullscreen as u64) << 63) | (((w as u64) & 0x7FFF_FFFF) << 32) | h as u64
+}
+
+/// skip 当且仅当：曾经 nudge 过（last != 0）且 (尺寸+全屏态) 与上次执行完的
+/// nudge 完全一致——典型即"最小化→恢复"。0 是安全哨兵：真实窗口尺寸非零，
+/// pack 结果不可能为 0（0×0 在事件入口与 settle 双重滤除）。
+#[cfg(any(windows, test))]
+fn nudge_should_skip(last_nudged: u64, packed: u64) -> bool {
+    last_nudged != 0 && last_nudged == packed
+}
+
+#[cfg(test)]
+#[path = "../../../../../tests/frontend/shell/lib_nudge_skip_tests.rs"]
+mod nudge_skip_tests;
 
 /// Windows：单实例插件（第二个实例把主窗口拉前）＋ WebView2 最大化 / 全屏后内容错位的修复（resize 去抖后三板斧）。别处原样返回。
 #[cfg(windows)]
@@ -110,8 +134,8 @@ pub fn desktop_fixes(mut builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<
                 // Batch7-F23A：同(尺寸+全屏态) skip（典型 = 最小化恢复）。
                 // 判定与打包是纯函数（单测见 nudge_skip_tests）。
                 let packed =
-                    crate::pack_nudge_state(target.width, target.height, fullscreen);
-                if crate::nudge_should_skip(last_nudged.load(Ordering::SeqCst), packed) {
+                    pack_nudge_state(target.width, target.height, fullscreen);
+                if nudge_should_skip(last_nudged.load(Ordering::SeqCst), packed) {
                     tracing::info!(
                         "nudge skip: size+state unchanged {}x{} fs={fullscreen} (restore-from-minimize path)",
                         target.width,

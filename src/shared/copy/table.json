@@ -11526,11 +11526,6 @@
       "zh": "本机后端回了一条空回答",
       "args": []
     },
-    "rsAssetSync.call.internal": {
-      "kind": "error",
-      "zh": "本机后端同步资产目录时出了内部错误，没有拿到结果",
-      "args": []
-    },
     "rsAssetSync.call.failed": {
       "kind": "error",
       "zh": "本机后端：{message}",
@@ -11754,11 +11749,6 @@
     "rsLinkMux.data.noCredit": {
       "kind": "error",
       "zh": "本机后端版本不对，这条远端连接断了；重开 monitor 后再试",
-      "args": []
-    },
-    "rsLinkMux.said.internal": {
-      "kind": "error",
-      "zh": "连接出错了，这是程序内部错误",
       "args": []
     },
     "rsLinkMux.said.refused": {
@@ -12339,11 +12329,6 @@
       "zh": "启动失败，原因不明",
       "args": []
     },
-    "rsBackendPolicy.call.internal": {
-      "kind": "error",
-      "zh": "问退出策略出了内部错误，没有拿到结果",
-      "args": []
-    },
     "rsBackendPolicy.call.noData": {
       "kind": "error",
       "zh": "[{machine}] 的后端回答里没有数据，多半是版本不对",
@@ -12557,11 +12542,6 @@
     "machineAliases.tmuxNaming.base": {
       "kind": "body",
       "zh": "以某个名字为底：先试这个名，已经被占了就依次试 -2、-3 …",
-      "args": []
-    },
-    "rsAssetSync.reach.internal": {
-      "kind": "error",
-      "zh": "本机后端登记那台远端时出了内部错误",
       "args": []
     },
     "rsAssetSync.reach.said": {
@@ -13406,11 +13386,6 @@
       "kind": "error",
       "zh": "{who}的回答前后对不上：{plan}",
       "args": ["who", "plan"]
-    },
-    "rsFrameQuery.said.internal": {
-      "kind": "error",
-      "zh": "查询出了内部错误，没有拿到结果",
-      "args": []
     },
     "rsFrameQuery.who.local": {
       "kind": "body",

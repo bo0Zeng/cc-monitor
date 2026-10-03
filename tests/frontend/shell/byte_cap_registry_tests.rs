@@ -224,10 +224,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              `49152..=65535` 这 16384 个动态口里）。它没有「超了怎么办」这一格 —— \
              那个 hash 按定义落在区间内。",
     ),
-    (
-        "NET_EPOCH_TO_WIN32_FILETIME_TICKS",
-        "**时间纪元差**（.NET 与 Win32 FILETIME 的起点相差多少个 100ns tick）。单位是时间不是字节。",
-    ),
+    // `NET_EPOCH_TO_WIN32_FILETIME_TICKS`（.NET 与 FILETIME 的纪元差）那一行摘了：它住的那个换算一个调用方都没有，连同常量删了。
     // `PROC_START_TOLERANCE_TICKS` 那一行摘了：它住 monitor 自己那份判活（`session_map.rs` 的 Windows
     //   进程身份核对），本机判活改由本机后端的帧来，那份实现连同这个常量一起删了。
     (
@@ -311,7 +308,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
         "FILETIME_TICKS_BEFORE_UNIX_EPOCH",
         "**时间纪元差**（Win32 FILETIME 的 1601 起点与 Unix 1970 起点相差多少个 100ns tick）。\
-             与上面 `NET_EPOCH_TO_WIN32_FILETIME_TICKS` 同族：单位是时间不是字节。",
+             单位是时间不是字节。",
     ),
     (
         "FILETIME_TICKS_PER_SEC",

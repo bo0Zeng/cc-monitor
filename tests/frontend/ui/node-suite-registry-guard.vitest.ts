@@ -20,7 +20,7 @@
  * ②比①更重（表面上一切正常），而且**一行编辑就能重开**。Phase D 审计实测：
  * 删掉 `context-limit.test.ts`（当时叫 `pricing.test.ts`）的收尾 + 让一条断言必然失败 ⇒
  * `npm run test:context-limit` **RC=0**。
- * 15 套 e2e 早有 `assert-pass-floor.sh` 的运行期 PASS 数地板兜这一类，这 16 套 **242 条**一直没有。
+ * e2e 那几套由 `assert-pass-floor.sh` 兜这一类（收尾 `合计 PASS=<n> FAIL=0` 抓不到 ⇒ 红），这 16 套 **242 条**一直没有。
  *
  * > 把它记成「既无断言地板又被 `coverage.exclude` 排掉，双重不设防」——
  * > **「双重」那半不成立**：`coverage.exclude` 里的 `src/**\/*.test.ts` 排的是测试文件自身

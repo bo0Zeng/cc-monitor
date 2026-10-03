@@ -1,6 +1,6 @@
 //! WebView2 resize 过渡补丁：什么时候跳过。
 //!
-//! 本族判 `lib.rs::nudge_should_skip` 与 `lib.rs::pack_nudge_state`：尺寸与全屏态都同上次 ⇒ 跳过，第一次永不跳过，
+//! 本族判 `platform/window.rs::nudge_should_skip` 与 `platform/window.rs::pack_nudge_state`：尺寸与全屏态都同上次 ⇒ 跳过，第一次永不跳过，
 //! 全屏位把内尺寸相同的两态分开，宽高两个位域互不串位。
 
 use super::{nudge_should_skip, pack_nudge_state};

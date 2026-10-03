@@ -14,6 +14,7 @@
 #   否则这套件只证明「backend 认得我手写的 JSON」，证明不了「monitor 发的那种 JSON」。
 #
 # 红线：backend 零改动（只跑它）/ 不碰真 ~/.claude / **不碰用户真实的 tmux server**。
+. "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -euo pipefail
 
 # ── 隔离（照抄 graylight-backend-frames.sh 的 G-C 做法，两件事缺一不可）────────────

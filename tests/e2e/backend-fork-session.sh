@@ -9,6 +9,7 @@
 # 不需要 tmux、不需要 ssh：`--fork-session` 是一次性查询模式，指向隔离的 fixture 目录即可。
 # 红线：**不碰真 ~/.claude** —— 全程用 `CLAUDE_CONFIG_DIR` 指向临时目录
 #（backend 的 `resolve_claude_dir` 优先读它，没有 `--claude-dir` 这种参数）；不改后端行为（只跑它）。
+. "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

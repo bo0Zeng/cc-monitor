@@ -36,6 +36,7 @@
 #
 # 红线：**绝不碰用户真实的 tmux server**（unset TMUX + 私有 TMUX_TMPDIR）；不碰真 ~/.claude。
 # 跑法：bash tests/e2e/local-backend-supervise.sh   （npm run test:local-backend）
+. "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -uo pipefail
 
 # `C7i` 隔离：走**共享原语**（`P0e` 08-12）。shim 强插 `-L <本趟私有名>`。
@@ -165,8 +166,7 @@ else
 fi
 
 # ── 每条 E2E-OK 标记 = 一条断言。**导出式自检**：不写硬编码数字地板 ────────
-# 定框 §4：「同一个数不许两侧各写一份」。数字地板只写在 CI 的
-# `assert-pass-floor.sh local-backend <n>` 那一处。这里只查「Rust 报的 ok 数与标记数自洽」。
+# 定框 §4：「同一个数不许两侧各写一份」。门禁与 CI 都不钉本套件的条数；这里只查「Rust 报的 ok 数与标记数自洽」。
 #
 # ⚠ **别锚 `^E2E-OK`**（首版这么写，漏掉一半）：`--nocapture` 下每个测试的**第一条** println
 #   被拼在 `test <名> ... ` 后面，不在行首；只有第二条起才顶格。同一个坑的第二种形状。

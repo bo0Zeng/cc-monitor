@@ -14,6 +14,7 @@
 #   ④ 清理只用 `tmux -L $SOCK kill-server`（**永远带 socket 名**）。
 #      裸 `tmux kill-server` 在本套件里是禁用词——它会连开发机上正在跑的会话一起杀掉。
 #   ⑤ 启动器一律是假的（纯 sleep 脚本），绝不起真的已认证 claude/codex。
+. "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -o pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"

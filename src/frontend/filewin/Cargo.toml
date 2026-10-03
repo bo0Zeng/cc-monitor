@@ -46,10 +46,9 @@ rfd = { version = "0.16", default-features = false, features = ["gtk3", "common-
 #  ① **进程形态定的是「同进程」**：窗口要直接调 `sftp_pool` 的那些函数，
 #     而那个池是 `sftp_pool.rs:539` 的**进程级 `OnceLock`** ⇒ 换进程 = 换一份池
 #     = 同一台远端第二条 SSH 连接，秤 F4 钉的「6 通道 − 4 车道 = 2」会被悄悄变成两份预算。
-#  ② **门禁 `cargo` 那一格把 workspace 包数**恒等**钉在 9**（`tests/scripts/gate.sh:1351`
-#     的 `run_gate_sum cargo 9`）。新增一个 workspace 成员 ⇒ 那一格当场红，
-#     而那个 `9` 住 `gate.sh`，**不在 24e 的写区** ⇒ 不许为了塞一个 crate 去动判据。
-#     ⇒ 落成 `monitor` 自己的一个模块，包数不动。
+#  ② 〔当时〕门禁 `cargo` 那一格把 workspace 包数恒等钉成一个手抄的数，新增成员要改 `gate.sh`，
+#     而那不在 24e 的写区 ⇒ 当时落成 `monitor` 自己的一个模块。今天那一格的成员集合从 `cargo metadata`
+#     现取，这条理由已不成立（文件窗口后来也独立成了这个包）。
 #
 # ⚠ **代价如实记**：这两条把依赖树从 679 个包推到约 1080 个（winit / wgpu / naga / accesskit
 #    一大片）。现打核过它编得过的三档（`cargo check`）：

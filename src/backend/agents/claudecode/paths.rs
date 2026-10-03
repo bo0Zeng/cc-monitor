@@ -225,7 +225,7 @@ pub fn is_inside_tree(home: &Path, target: &Path) -> bool {
 ///
 /// 两个 crate 之间没有共享落点：`src/backend` **刻意不在** monitor 那个 workspace 里
 /// （它有自己的 `Cargo.lock`，那条隔离是真架构约束，见它 `Cargo.toml` 头注），
-/// 而新立一个共享 crate 会动门禁那句 `run_gate_sum cargo 9`（本刀写区之外），
+/// 而当时新立一个共享 crate 要改门禁里手抄的包数（本刀写区之外；那个数今天已改成从 `cargo metadata` 现取），
 /// 并且记着上一次「把围栏搬成共享 crate」当天就被撤回。
 /// ⇒ 处置：**函数体逐字节相同**，并由判据把这件事钉成相等断言 ——
 /// 两侧任何一处改动、另一处不跟，当场红。桥那一份删了，那条相等判据随之退役（全仓只剩这一份）。

@@ -55,9 +55,6 @@ src/frontend/shell/src/local_backend.rs:600	 …〔这一行超过单行上界�
 src/common/deploy-contract/src/lib.rs:663	# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）	保留	[不对外] 匹配用的记号：认旧版三行 ccm 入口（生成器随「ccm 就是后端本体」删了）的第二行，只拿来比对、不渲染（随 is_ours 搬进 deploy-core）
 src/frontend/shell/src/local_backend.rs:1783	本机后端（stdio 载体）	保留	[不对外] FrameTally 的流名，只出现在丢帧账那几行日志里
 src/frontend/shell/src/backend_policy.rs:400	[死亡账] origin={origin} 判定={} 退出状态={} —— {}	保留	[不对外] 〔CP2b 复核〕ST2 步 7 起界面只取 last_brief（判定＋退出状态），ledger_line 只经 DeathSink 落 monitor 日志；原裁「界面只取判定＋退出状态两格，日志行留在日志」已兑现 ⇒ 这一行今天不对外，不进文案表（原裁：改·§2.1 [可达存疑]）
-src/frontend/shell/src/backend_policy.rs:504	脱离路：`attach_stream` 的流断了 ⇒ `reap_detached` 那条收尸线程 `wait()` 回来那一拍	保留	[不对外] DEATH_RECORD_SITES：判据用的登记表（记录点住址＋说明），生产代码不读
-src/frontend/shell/src/backend_policy.rs:509	监护路：backend 那个 `on_event` **闭包**收到 `Exited` 那一拍。\n         它抽成一个返回闭包的函数，只为让 `KP3W3` 那三只假后端能跑**同一个闭包**\n         —— 内联的闭包测试够不着，那条行为判据就只能退回读源码	保留	[不对外] DEATH_RECORD_SITES 登记表说明
-src/frontend/shell/src/backend_policy.rs:516	起不来：`start_local_backend` 返回 `StartOutcome::Failed` 那一个出口	保留	[不对外] DEATH_RECORD_SITES 登记表说明
 src/frontend/filewin/src/fonts.rs:257	共向式幕横模滚长	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
 src/frontend/filewin/src/fonts.rs:258	事任何头选项	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
 src/frontend/filewin/src/fonts.rs:293	变收	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔F9c 与 FW34 合并〕F9c 删掉的 9 个字里仍被 preview / workspace 用着的两个）

@@ -16,7 +16,8 @@
 #
 # C7d：**绝不起真 claude**。launcher 指向 tests/e2e/fake-claude。
 #
-# 跑法：bash tests/e2e/p3t-local-tmux.sh（或 `npm run test:p3t-local-tmux`；CI 里经 `assert-pass-floor.sh` 带地板跑，见 `ci.yml` 的 `e2e-tmux-rust`）
+# 跑法：bash tests/e2e/p3t-local-tmux.sh（或 `npm run test:p3t-local-tmux`；门禁 `run_e2e p3t-local-tmux` 经 `assert-pass-floor.sh` 跑，CI 的 e2e job 调门禁）
+. "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
@@ -244,6 +245,6 @@ fi
 
 kill "$LAUNCH_PID" 2>/dev/null
 echo
-# 收尾行换成 `assert-pass-floor.sh` 认的那一形（它只认「合计 PASS=<n>」）—— 本套接回执行链（`ci.yml` 地板一行）。
+# 收尾行换成 `assert-pass-floor.sh` 认的那一形（它只认「合计 PASS=<n> FAIL=<m>」）—— 本套接在执行链上（门禁 `run_e2e`）。
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
 [ "$FAIL" -eq 0 ] || exit 1

@@ -12,6 +12,7 @@
 # (放行 / 拦下,B4/B1/B2),两者互补。
 #
 # 红线:backend 零改(不跑它) / 隔离 CLAUDE_CONFIG_DIR 绝不碰真 ~/.claude / 只 kill 本套件建的 cc-<sid8>。
+. "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -euo pipefail
 
 # ── G-C（解 BACKLOG E41）：把整套件钉在**自己的 tmux server** 上 ──────────────────

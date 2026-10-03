@@ -17,274 +17,29 @@
 # 用法就一句纪律：**先跑它、看见 `GATE: OK`，再单独敲 `git commit`。**
 # ⚠ 它**故意不提交任何东西**、也不接 `--commit` 之类的开关 —— 那会把刚拆开的两件事又焊回去。
 #
-# ┌─ 〔自述·射程〕本脚本此刻跑哪几格 ─────────────────────────────────────────────
-# │
-# │ 🔴 **这一段由 `tests/evidence/K-R80-gate-cell-coverage.py` 的 `C5b` 逐字对拍**（`K-R91` 09-12）：
-# │   格数三方对拍（这一段的数 · 下面裁决行的数 · 现打的判定格数）＋ 逐格点名**集合相等**
-# │   ＋ **这一段里点名的每一条住址现打得存在**。
-# │
-# │ 🔴 **上一版这里逐字写着「三道门 + 一道生成物漂移检查 + `pb check` + 四套 `ccm` e2e」**
-# │   ＝ 3+1+1+4 = **9**，而那天盘上已经是 **13** 格。**那个算式与 `R42` 裁定零里被 PM
-# │   传播了 46 次的错数是同一个算式、同一份文件。** `C5` 只对拍下面那行裁决，**钉不到这里**
-# │   —— ⚠ **腐的时长如实写**：这句话在 09-10 加 `fmt`/`winchk` 之前是**对的**（当时就 9 格），
-# │   09-10 起变成 9 vs 11，09-12 `K-R80`/`K-R82` 之后是 9 vs 13。裁决行那一句 09-12 有人订正，
-# │   **头注这一句没有**（没有判据钉着它）—— 这才是要修的，不是「错了很久」。
-# │
-# │ ⚠ **自述句只许住在这一段里。** `C5b` 会把这一段之外、头注里任何一句「本脚本跑 N 格 /
-# │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
-# │
-# │ 〔自述·格数〕50 格
-# │ 〔自述·点名〕worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc ·
-# │   ccbus-twophase · e2e-smoke ·
-# │   platform · muslbuild ·
-# │   installface ·
-# │   fmt · fmt-backend ·
-# │   winchk · winchk-backend · winlink · cargo · comm-boundary · test-tiers · deadcode · clippy · appbuild · generated · backend · clippy-backend · tsc · npm ·
-# │   coverage · audit · weak-net ·
-# │   ccm tests/e2e/ccm-print-parity · ccm tests/e2e/ccm-cli ·
-# │   ccm tests/e2e/ccm-contract-parity ·
-# │   ccm tests/e2e/backend-cc-bus ·
-# │   ccm tests/e2e/backend-gate2 · ccm tests/e2e/local-backend · ccm tests/e2e/restart-frames · ccm tests/e2e/restart ·
-# │   ccm tests/e2e/backend-tmux-late-server · ccm tests/e2e/backend-sessions-rewatch · ccm tests/e2e/p3t-local-tmux ·
-# │   ccm tests/e2e/resume-frames · ccm tests/e2e/cc-spawn-uplift · ccm tests/e2e/inbound-frames ·
-# │   ccm tests/e2e/graylight-frames · ccm tests/e2e/backend-fork · ccm tests/e2e/tmux-target ·
-# │   ccm tests/e2e/cc-bus-queue-drain · ccm tests/e2e/resume
-# │ 〔自述·现物〕十九套 e2e 的被测文件：`tests/e2e/ccm-print-parity.sh` ·
-# │   `tests/e2e/ccm-cli.test.sh` · `tests/e2e/ccm-contract-parity.sh` ·
-# │   `tests/e2e/backend-cc-bus.sh` ·
-# │   `tests/e2e/backend-gate2-acceptance.sh` · `tests/e2e/local-backend-supervise.sh` ·
-# │   `tests/e2e/restart-backend-frames.sh` · `tests/e2e/restart-suite.sh` ·
-# │   `tests/e2e/backend-tmux-late-server.sh` · `tests/e2e/backend-sessions-rewatch.sh` · `tests/e2e/p3t-local-tmux.sh` ·
-# │   `tests/e2e/resume-backend-frames.sh` · `tests/e2e/cc-spawn-uplift.sh` · `tests/e2e/inbound-backend-frames.sh` ·
-# │   `tests/e2e/graylight-backend-frames.sh` · `tests/e2e/backend-fork-session.sh` · `tests/e2e/tmux-target-acceptance.sh` ·
-# │   `tests/e2e/cc-bus-queue-drain.sh` · `tests/e2e/resume-suite.sh`；判法一律走 `tests/e2e/assert-pass-floor.sh`。
-# │ 〔自述·现物〕`e2e-smoke` · `coverage` · `audit` · `weak-net` 四格没有独立的判据文件 —— 它们按步骤名从
-# │   `.github/workflows/ci.yml` 现取那几步的 `run:` 原样跑（`gate_ci_steps`）；`weak-net` 另判台架 PASS 与那一步的地板恒等。
-# │ 〔自述·现物〕`copy2` 那一格的判据本体：`tests/evidence/K-R115-ruler.py`（`K-R115` 09-14 第 14 格）。
-# │ 〔自述·现物〕`shellcheck` 那一格没有独立的判据文件 —— 它的**人群与地板都从
-# │   `.github/workflows/ci.yml` 现读**（那一段 `FILES=` ＋ 它下面那条覆盖面地板行），
-# │   判定逐字写在下面那个 `gate_shellcheck` 函数里（`K-R122` 09-14 第 17 格）。
-# │ 〔自述·现物〕`ci-e2e-prereq` 那一格的判据本体：`tests/evidence/K-R122-ruler.py`（`K-R122` 09-14 第 18 格）。
-# │ 〔自述·现物〕`release-gate` 那一格的判据本体：`tests/evidence/K-R124-ruler.py`（`K-R124` 09-15 第 20 格）
-# │   —— 它与 `.github/workflows/ci.yml` 里那一步跑的是**同一份文件**，不是两份抄件；
-# │   被测对象是 `.github/workflows/release.yml`，它顺带调 `scripts/release-notes.mjs --check`。
-# │ 〔自述·现物〕`worktree-clean` 那一格的判据本体：`tests/evidence/K-W25-worktree-clean.py`
-# │   （09-19 第 25 格）—— **前置条件**，排在所有格之前。
-# │ 〔自述·现物〕`platform` 那一格的判据本体：`tests/evidence/K-G4-platform-ledger.py`
-# │   （`G4` 09-19 第 24 格）—— 承诺的平台（条 63：三格）↔ 门禁真跑的格，两向对拍。
-# │ 〔自述·现物〕`muslbuild` 那一格没有独立的判据文件 —— 它就是两趟 `cargo zigbuild`
-# │   （`x86_64-unknown-linux-musl` ＋ `aarch64-unknown-linux-musl`），判定逐字写在
-# │   下面那一行 `run_gate muslbuild` 的内联脚本里（`G4` 09-19 第 23 格）。
-# │ 〔自述·现物〕`ccbus-twophase` 那一格的判据本体：`tests/evidence/W24C-ccbus-twophase-ruler.py`
-# │   （`w24c` 09-19 第 24 格）—— 它既读盘上那几份 shell，也在一次性 `CC_BUS_HOME` 里真跑；
-# │   死值验住 `tests/evidence/W24C-deathvalue.md`。
-# │ 〔自述·现物〕`comm-boundary` 那一格没有独立的判据文件 —— 被测对象就是
-# │   `tests/frontend/shell/comm_boundary_registry_tests.rs`（通信层那一族，`13b` 步 1 09-20 第 27 格；C1–C5 ＋ X1–X6
-# │   ＋ 锚 ＋ 余下五份 ＋ 传输面四份 ＋ 住址 ＋ 元判据，18 条），判定（三方对拍 ＋ 元判据/「说得出今天是空的」两条逐字锚点）
-# │   逐字写在下面那一行 `run_gate comm-boundary` 的内联脚本里。
-# │   🔴 本格买的是「这一族还在不在」。⚠ **这里刻意不写人群有几份** —— 那个数
-# │   有唯一住址（该族自己那条三方相等 ＋ 模块头注那句，两处都是被判的），
-# │   散文里再抄一份必腐：它 09-20 立表时是 0 份，09-21 步 3 之后是非空，而这 6 处
-# │   自述**一条都不会红**（`gate-selfdesc` 的锚只钉裁词前缀）。
-# │ 〔自述·现物〕`test-tiers` 那一格没有独立的判据文件 —— 被测对象就是
-# │   `tests/common/guard-core/test_tiers_tests.rs`（测试层分级：分区 ＋ 五层各一条反空真自检 ＋
-# │   `tests/benches/` 登记 ＋ 合成夹具自检，TQ1 09-24 第 29 格），判定（三方对拍 ＋ 两条逐字锚点）逐字写在
-# │   下面那一行 `run_gate test-tiers` 的内联脚本里。条数的唯一住址是那一行的 `pin`。
-# │ 〔自述·退役〕第 26 格 `f3-copy`（秤 F3 两向）连同它量的那条零流量复制一起退役：
-# │   窗口的复制早已走后端 `files-copy`（F7a），池子里只剩传输 ⇒ 29 格 → 28 格。
-# │ 〔自述·现物〕`gate-selfdesc` 那一格的判据本体：`tests/evidence/K-R80-gate-cell-coverage.py`
-# │   （09-19 第 22 格）—— **被测对象就是本文件**。它默认读 `tests/scripts/gate.sh`，
-# │   也接一个路径参数（对着变异过的副本跑死值验时用）。
-# │ 〔自述·现物〕`installface` 那一格的判据本体：`tests/evidence/K-R117-ruler.py`（`K-R128` 09-15
-# │   第 21 格）—— 它同时是 `K-R117` 第一拍摸底的那把尺子，本件只往它上面加了 `R8`/`R9`/`R10`
-# │   三条判定（`R1`–`R7` 一个字节没动）。死值验 16 刀住 `tests/evidence/K-R128-deathvalue.md`。
-# │ 〔自述·现物〕`winchk-backend` 那一格没有独立的判据文件 —— 它就是一趟
-# │   `cargo check --all-targets`，target 是 `x86_64-pc-windows-gnu`，跑在
-# │   `src/backend` 那个 workspace 上（`K-R122` 09-14 第 18 格）。
-# │ 〔自述·现物〕`winlink` 那一格没有独立的判据文件 —— 它就是一趟 `cargo build --bins`，
-# │   target 是 `x86_64-pc-windows-gnu`，跑在 `src/frontend/shell` 那个 workspace 的 `-p monitor` 上（WIN1 第 30 格）。
-# │ 〔自述·现物〕`deadcode` 那一格没有独立的判据文件 —— 它就是一趟 `cargo check -p monitor`
-# │   加一个递减棘轮，判定逐字写在下面那一行 `run_gate deadcode` 的内联脚本里（第 15 格）。
-# │ 〔自述·现物〕`tsc` 那一格没有独立的判据文件 —— 它就是一趟 `tsc --noEmit`
-# │   （发版那条 `npm run build` 的**第一步**）加一条「程序面没被掏空」的对账，
-# │   判定逐字写在下面那一行 `run_gate tsc` 的内联脚本里（`K-R118` 09-14 第 16 格）；
-# │   程序面由 `tsconfig.json` 的 include 决定。
-# │ 〔自述·不在射程〕跨平台 / 提交状态那一维归 `npm run verify:committed`（`C16`，动后端时跑）。
-# │
-# └─ 〔自述·射程〕完 ────────────────────────────────────────────────────────────
+# 本脚本跑哪几格，以下面各行行首的 `run_gate` / `run_gate_sum` / `run_e2e` 与 `if gate_wants <名>` 为准 ——
+# 这里不抄名单、不写格数（裁决行的格数与名单从这一趟真判过的格现算；收据 `.build/gate-receipt.json` 记着
+# 真跑过哪几格、每格用了几毫秒）。CI 的 Linux job 就是调本脚本（`GATE_ONLY=<格>`），命令只住这里一处；
+# 留在 Windows job 里的那几步（门禁跑不了真 Windows）由 `coverage` · `audit` 两格从 `ci.yml` 按步骤名现取原样跑。
 #
-# 🔴 **〔量于 09-12〕下面凡是点名 `ccm-acceptance` / `ccm-pretrust` 的段落，一律是
-#   量于 09-01 / 09-03 / 09-04 的历史账 —— 那两套 09-11 `K-R48` 第二拍随 `shared/ccm`
-#   一起删了，`tests/e2e/` 下现打双 `No such file`。**
-#   旧读数**刻意不删**（它们记着「当初为什么只挂两套」「`jq` 那块拦路石怎么解开的」），
-#   但每一段的**首行**都补上了 `〔量于 …〕` —— **自述与历史读数在散文里长得一模一样，
-#   标一个，`C5b` 才分得开。** ⚠ 那个标记买不到「标着历史、内容却是今天的自述」那一形
-#   （要读语义）；它买的是**没标的新句子当场红**。
-#
-# ★★ `K-G3`（09-01）〔量于 09-03〕：**「真机 e2e 本脚本不跑它们」这句话已经作废，
-#    但只作废了 2/6。** ★ **`K-G7`（09-03）：作废到 4/6。**
-#    剩下没作废的那 2/6 是 `ccm-acceptance` / `ccm-pretrust` —— 拦它们的**不是** `jq`
-#    （那个本拍解开了），是沙箱里各红 1 条，另一笔账，见下面那一节。
-#
-# 上一版这一行逐字写着「真机 e2e 归各自的套件（本脚本不跑它们 —— 它们要 tmux/Xvfb，
-# 几分钟起步）」。`丙1-f1` 逮到的正是这句话与那句「出货前的**唯一闸门**」对不上：
-# `grep -c ccm scripts/gate.sh` = **0**（PM 08-24 独立复核，K-G3 09-01 在 `b28464e` 上复打，仍是 0）。
-#
-# **「几分钟起步」这个理由现打是假的**〔量于 09-01〕（沙箱 `ccmon-devbox:latest` 里逐套计时）：
-#   · `ccm-print-parity` **1.28 秒** · `ccm-rbind-title` **0.28 秒**（两套合计 ≈ 1.6 秒）
-#   · `ccm-cli` 7.16 秒 · `ccm-contract-parity` 5.60 秒
-#   · `ccm-acceptance` 37.7 秒 · `ccm-pretrust` 35.6 秒
-# 分母：门禁基线墙钟 **148 秒**（09-01，同一沙箱，同一棵树，`k-g3-c1` target）。
-#
-# ⚠⚠ **那个 148 秒今天不能拿来跟本文件里任何新读数相减**：
-#   它量于 **09-01 的旧镜像**、`k-g3-c1` 那个 target 目录、那一天的主干。
-#   本拍在 **`644ea0ce5c3d` 新镜像** + `k-p2` target（6.0 GB，热）上现打的同一趟基线是
-#   **45 秒**。⇒ 两个数分母不同，**差的 103 秒里有多少是镜像、有多少是 target 冷热、
-#   有多少是主干长胖，本拍没有拆开量，别当成「换镜像快了 103 秒」。**
-#   墙钟**从来不是**这道门的判据，各格 passed 数才是 —— 那些数逐格可比，理由见下。
-#
-# ⚠ **为什么当初只挂两套，另外四套的确切拦路石**〔量于 09-01〕（如实写，别读成「它们太慢」）：
-#   · `ccm-cli` / `ccm-acceptance` / `ccm-contract-parity` / `ccm-pretrust` 都硬依赖 `jq`，
-#     而**当时的沙箱镜像 `ccmon-devbox:latest` 里没有 `jq`**（`K-G3` 09-01 现打：
-#     `command -v jq` ⇒ MISSING）。四套都是 fail-closed 的（自己打「需要 jq」再 exit 1），
-#     所以它们**不会假绿**，但当天挂上去就是四条恒红 ⇒ 不挂。
-#   · 在一份**只多装了 `jq`** 的探针镜像上现打过：`ccm-cli` 126 PASS/0 FAIL、
-#     `ccm-contract-parity` 68 PASS/0 FAIL（这两套加 `jq` 就能挂，合计 +12.8 秒）；
-#     而 `ccm-acceptance` 28/1、`ccm-pretrust` 14/1 —— **沙箱里各红 1 条**，
-#     那是另一笔账（`.claude/devbox/gate` 头注自己写着「容器里 `HOME` 几乎是空的」）。
-#   · `.claude/devbox/Dockerfile` 不在 `K-G3` 的写区 ⇒ 加 `jq` 这一步交回 PM 裁。
-#
-# ★★ **`K-G7`（09-03）：那块拦路石没了 —— 两套变四套。**
-#
-# PM 09-03 裁「加」，重建了 `ccmon-devbox:latest`（现物 **`644ea0ce5c3d`**，容器里现打
-# `jq-1.7` 在 `/usr/bin/jq`）⇒ 下面多挂了 `ccm-cli` 与 `ccm-contract-parity` 两行。
-#
-# ⚠⚠ **`K-G8`（09-03 下午）订正：上面那个「现物」今天已经不是盘上那个了。**
-#   现打 `docker image inspect ccmon-devbox:latest` ⇒ **`sha256:553f5932…`**（建于 09-03T11:17）。
-#   ⇒ **`644ea0ce5c3d` 与下面那个「沙箱 `644ea0ce5c3d`」都要按「那一拍量于哪个镜像」读，
-#     不是「今天的镜像」。** 旧数**刻意不删** —— 它记着「哪一次重建买到了 `jq`」。
-#   🔴 这一族（散文里一个**现在时**的住址，盘上已经没有了）本仓 09-03 一天逮到两次，
-#     另一次是 `K-G8` 摸底件 `§7.0` 那个 `.sh` 死住址。`K-R20` 那道闸**两次都够不着**
-#     （① 住在注释里；② 不是 `snake_case` 标识符）⇒ **镜像 ID 写进散文时要带日期。**
-#
-#   · 🔴 **地板本拍重打，不沿用 09-01 那两个数**（主干此后动了很多次，那两个数已经馊了）。
-#     量于 **`b8a6ecd`**（= 本件基点 `4558394` + 一次纯 `evidence/` 提交，`scripts/` 与
-#     `tests/e2e/` 一个字节没动），沙箱 `644ea0ce5c3d`，连打**两趟**、两趟同值：
-#       `ccm-cli` **126 PASS / 0 FAIL**（6.78 秒） ·
-#       `ccm-contract-parity` **68 PASS / 0 FAIL**（5.58 秒） —— 两套 **0 条 SKIP**。
-#     ⇒ 重打的结果与 09-01 那两个数**相等**，但**那是重打出来的相等，不是沿用**。
-#     合计 **+12.36 秒**（同一趟现打，不是从 09-01 的 12.8 抄的）。
-#
-#   · **这两个地板与 `.github/workflows/ci.yml` 的调用行同值**，刻意的：
-#     `ci.yml` 里 `assert-pass-floor.sh ccm-cli <地板>` · `… ccm-contract-parity <地板>` 那两行。
-#     ⚠ **09-03 `K-P2 D2` 把这里的行号拆掉了，那不是洁癖**：原文写的是 `ci.yml:559` / `:574`，
-#       而本拍在 `ci.yml` 那两行**上方**加了一段棘轮注释 ⇒ 两个行号当场双双失真
-#       （**559 → 575** · **574 → 590**）。**按名字指，不写行号**（`tests/e2e/ccm-cli.test.sh` 头注同一条纪律）。
-#       ★ **这两个数在本拍之内就漂了两次**：写这段话时量到的是 571 / 586，
-#         而后来又往那段棘轮注释里补了 4 行 ⇒ 再漂成 575 / 590。
-#         **「行号会失真」这句话在同一拍里自己被验了一遍。**
-#     ⚠ **现值 09-03 `D3` 起是 `ccm-cli 242` · `ccm-contract-parity 68`**（下面那两行 `run_e2e` 同值）。
-#     一个性质两把尺子是本区最贵那族病（`K13`）⇒ 这里不另起一个数。
-#     ⚠ **代价如实写：同值靠的是纪律，不是判据。** 今天没有任何东西会在「本文件的地板」
-#       与「`ci.yml` 的地板」分叉时报红（`ci.yml` 那张 `pair` 反向清单只看它自己那个文件）。
-#       ⇒ **棘地板要三处一起改**：`ci.yml` 调用行 · `ci.yml` 的 `pair` 清单 · 本文件这两行。
-#       ⚠⚠ **`K-G8`（09-03）订正上面这段的两处，别照旧读**：
-#         ① 「本文件这两行」今天是**四行**（`K-G7` 从两套挂到四套）。
-#         ② 「没有任何东西会在分叉时报红」**只剩半句是真的**：本文件的 `run_e2e` 改成
-#            **恒等**（`exact`）之后，「**本文件的地板陈了**」这一侧**当场红**
-#            （实得 > 本文件地板 ⇒ 红）。仍然没人管的是**另一侧** ——
-#            `ci.yml` 的地板陈了而本文件跟上了：那种分叉今天照旧没有判据，
-#            因为 `ci.yml` 那 19 条挂在一条 29 天没通电的流水线上（归 `K-G3`）。
-#            ⇒ **「三处一起改」这条纪律一个字不变**，变的只是**忘了改本文件那一处会响**。
-#
-#   · **仍然不挂 `ccm-acceptance` / `ccm-pretrust`**〔量于 09-03；那两套 09-11 `K-R48` 已删，
-#     这一句连同它的处置一起作废，见头注 `K-R91` 那一段〕—— `jq` 只解开了四套里的两套，
-#     那两套在沙箱里各红 1 条（上一段那笔账），挂了就是两条恒红。
-#
-#   ⚠⚠ **`K-P2 F` 拍（09-04）订正上面那句的一半，并报一条它买不到的东西。**〔量于 09-04〕
-#     现打（沙箱 `ccmon-devbox:latest`，工作树 `k-p2f` @ `d305ffa` 的 `shared/ccm`，
-#     量具 `tests/evidence/K-P2-F-suites.py`）：
-#       · `ccm-acceptance`  **29 PASS / 0 FAIL（rc=0）** —— **它今天是绿的**，
-#         上面那句「各红 1 条」对它**已经馊了**（那是 09-01 在一份探针镜像上量的 28/1）；
-#       · `ccm-pretrust`    **14 PASS / 1 FAIL（rc=1）** —— 这一半仍然属实。
-#     ⇒ **不挂 `ccm-acceptance` 的理由今天只剩「没人回来重量过」**。
-#     🔴 **而这一格是有代价的，本拍现打逮到了**：同一趟量具在**改后**那一侧读到
-#       `ccm-acceptance` **5/24**、`cc-spawn-uplift` **31/41**、`ccm-pretrust` **12/3**，
-#       而**门禁四格只看见 `ccm-cli` 那 9 条** ⇒ 一次真行为变更的 71 条红里，
-#       **这道门看得见 9 条、看不见 62 条**。
-#     ⇒ 该不该把 `ccm-acceptance` 挂上来是 `K-G` 那一族的活（挂它要连 `cc-spawn-uplift`
-#       一起想，两套都真起 tmux），**`K-P2` 不自批**；这里只把**读数**订正到今天，
-#       并把「62 条看不见」这个分母写下来 —— 不写下来，下一个人会照着上面那句旧话
-#       继续以为「不挂是因为它红」。
-#
-#   ★★ **`F` 拍后半的收尾读数（同一趟量具，改完之后重打）**〔量于 09-04〕：那 71 条**全部回绿**，
-#     而且六套里四套还涨了：`ccm-cli` 242→**264** · `ccm-contract-parity` 68→**72** ·
-#     `ccm-acceptance` 29→**31** · `ccm-pretrust` 14/1→**15/0** ·
-#     `ccm-print-parity` 12（=）· `ccm-rbind-title` 8（=）。
-#     `cc-spawn-uplift` 67/5→**71/1**：那 1 条是**沙箱的既有红**（非 ASCII 目录名在容器里
-#     被搞成 `__ ____ ______`，locale 的事），**与 `shared/ccm` 无关** ——
-#     现打对照：同一份新夹具喂**旧** `shared/ccm` 也是 **71/1**，逐字相同。
-#     买到这些的是一份**可复用的假后端** `tests/e2e/fake-backend.sh`（六套共用一份，不是六份各写一遍）。
-#
-#   🔴 **给 `K-G` 的建议（只写建议，本件不挂）**〔量于 09-04；`ccm-acceptance` 09-11 已删，
-#      这条建议随之作废 —— 留着是因为它记着「不挂的理由当时只剩没人重量过」〕：
-#      把 `ccm-acceptance` 挂进本门。
-#     理由三条，都是本拍现打出来的：
-#       ① 它今天在沙箱里 **31/0 绿**（挂上去不是「两条恒红」）；
-#       ② 本拍那次行为变更里它一个人就吃了 **24/71** —— 门禁看不见的 62 条里它占最大一块；
-#       ③ 它是四套里**唯一真起 tmux** 的那一套 ⇒ 它买的是「命令在真 tmux 上干了什么」，
-#          与现挂四套（都只看串与字节）**不同源**。
-#     ⚠ 代价如实写：它 **37.7 秒**（本文件上面那段计时），比现挂四套合计还长一倍多；
-#       而 `cc-spawn-uplift` **今天仍挂不了**（沙箱那 1 条既有红，那是另一笔账 ——
-#       修它要动容器 locale，不在本件写区）。
-#
-# ⚠ **`jq` 哪天从镜像里没了，这两行是 fail-closed 的**（死值验现打）：
-#   把 `/usr/bin/jq` 挡掉再跑**整趟**门禁 ⇒ 那两格双双红、诊断原文里带着套件自己打的
-#   「需要 jq」、末行 `GATE: FAIL` ⇒ **不会退化成静默跳过**。
-#
-# ⚠ **`K-G3` 那条「诚实边界」的前提没了，连它一起订正。** 原文逐字：
-#   「这两套买不到 `K-C1` 那 54 条 …… 只对 20 条断言成立（12 + 8）」——
-#   而那 54 条按原文自己的说法就住在 `ccm-cli` / `ccm-contract-parity` 里，本拍挂上了
-#   ⇒ **那个「只对 20 条成立」的读数到此作废**，`K-G7` 当天四套合计 **214 条**（12 + 8 + 126 + 68）。
-#   ⚠ **09-03 `K-P2` `D` 阶段之后这个合计是 291**（12 + 8 + **203** + 68）—— 量于那趟
-#     沙箱门禁的四格读数，**不是从 214 加出来的**（`ccm-cli` 那一格是重打的）。
-#   ⚠ **`D3`（生产接线）之后是 330**（12 + 8 + **242** + 68）—— 同样量于本拍那趟沙箱门禁的
-#     四格读数，**不是从 291 加出来的**。
-#   ⚠ 别把这一格读大成另一个方向，两条：
-#     ① **214 是「跑了多少条断言」，不是「盖住了多少行为」**；
-#     ② 「那 54 条住在这两套里」是**引原文**，`K-G7` **没有独立复核**过这个归属
-#        （已在件文件 `§7` 列为未核项）—— 别拿它当已证的数。
-#
-# ★★ 本脚本**今天仍然盖不到的两维**（`K-G3` `己1-f13` / `己1-f14`，09-01 现打；
-#    写在这里是因为「自称的射程 > 实际盖住的面」正是这个文件被立案的原因）：
-#
-#   ① **Windows 那半编不编得过**：`grep -c -- --target` 本文件 = **0**。
-#      `creds-core` 的 `harden` feature 带 `#[cfg(windows)]` 的平台原语，
-#      本脚本跑在 Linux 上 ⇒ 那一段**根本不参与编译**。
-#      刀已切过（把 `perm.rs` 的 `FILE_ATTRIBUTE_NORMAL` 改坏）：
-#      `cargo check --target x86_64-pc-windows-msvc` **rc=101**，而**本脚本六格全绿〔量于 09-01·
-#      当时六格〕、印 `GATE: OK`**。
-#      买法是一行 `cargo check -p creds-core --features harden --target x86_64-pc-windows-msvc`
-#      （冷 5.67s / 热 0.15s），**卡在沙箱镜像没装那个 target**（`rustup target list --installed`
-#      只有 `x86_64-unknown-linux-gnu`）⇒ 归 PM。
-#      ⚠ 诚实边界：那一行买的是「**编得过**」，**买不到「行为对」** —— 行为要真 Windows 机器，
-#      那一格今天是**判不了**，不是「通过」。
-#
-#   ② **格式漂移** —— ✅ **09-10 已买**，那一道门就在下面 `run_gate fmt` 那一行。
-#      〔本条留着不删，因为它记着为什么当初没有：**卡在沙箱镜像没装 `rustfmt` 组件**
-#      （`cargo fmt --version` 报 `'cargo-fmt' is not installed`）。
-#      09-10 给 `.claude/devbox/Dockerfile` 加了一层 `rustup component add rustfmt`，
-#      前提消失，门当天补上。历史读数：`b28464e` 上是 rc=1 / 78 处 / 18 个文件 / 1.09 秒。〕
-#
-#   ① **Windows 那半编不编得过** —— ✅ **09-10 下午也买到了**，门在下面 `run_gate winchk` 那一行。
-#      〔本条同样留着不删，它记着两件事：**当初为什么没有**（沙箱镜像没装那个 target），
-#      以及**原本提议的买法射程错了** —— 那条 `-p creds-core …` 只盖 86 处 `cfg(windows)` 里的
-#      **2 处（2.3%）**，而 09-09 那 17 个编译错**全在 monitor 本体那 67 处里**。
-#      换成 `-p monitor --target x86_64-pc-windows-gnu`（`-msvc` 扩不到本体：C 依赖要 `lib.exe`）。〕
-#
-#   ★ 原文那句「在它改之前，把这两维写成一道门 = 把 55 棵树的门禁一起打红」**仍然对**：
-#     ①②两条能加，都是因为**前提被先改掉了**（`.claude/devbox/Dockerfile` 先装了
-#     `rustfmt` / `mingw-w64` + 那个 target），不是因为那句话过时了。
+# 真机 e2e 一律在本脚本里跑（`run_e2e`）；Windows 那一维由 `winchk` · `winchk-backend` · `winlink` 三格交叉编译盖，
+# 真 Windows 上的行为本脚本判不了（射程表 `GATE_BLIND` 在裁决那一刻逐条印出来）。
+# ── 起跑第一件事：**无条件**摘掉从开发机会话继承来的环境变量（按前缀，不按名单）─────────────────
+# 门禁常在 Claude Code / cc-monitor 起的会话里、tmux 窗格里跑；这几族是**那个会话**的状态，不是这棵树的：
+#   `CCM_*`（本机后端的监听口 · 中转口 · stderr 日志 · 凭据落点，都指真 `~/.cc-monitor`）·
+#   `CLAUDE*`（会话、账号目录）· `ANTHROPIC_*`（上游与中转）· `TMUX*`（所在窗格 · socket 目录）· `CC_BUS_*`（总线身份）。
+# 测试一继承，读数就跟着开发机走，更坏的是动到真东西：10-02 一趟门禁里 e2e 起的后端带着 `CCM_LISTEN_PORT`
+#   去绑真端口、把真 `stderr.log` 轮转了两次。按前缀摘，新长一个同族变量也跟着摘，不靠调用方记得。
+# 要这些变量的测试一律自己设（e2e 各套最前面还会再清一遍：`tests/e2e/sandbox-env.sh`）。
+# ⚠ 代价：`CCM_PWSH` 这类「开发者显式打开一组手测」的开关也一起摘了 —— 那几条本来就不在门禁里跑。
+# 只印名字，不印值（里面有令牌）。`env-sandbox` 那一格带着指向假「真目录」的这几族起一趟门禁，判零写入、零监听。
+gate_scrubbed=()
+for gate_v in $(compgen -e); do
+  case "$gate_v" in
+    CCM_*|CLAUDE*|ANTHROPIC_*|TMUX*|CC_BUS_*) gate_scrubbed+=("$gate_v"); unset "$gate_v" ;;
+  esac
+done
+unset gate_v
 set -uo pipefail
 
 # 🔴 **仓根 = 本脚本的上两级**（`tests/scripts/gate.sh` ⇒ `../..`）。
@@ -295,32 +50,8 @@ set -uo pipefail
 # 那一笔里修过了，**唯独漏了门禁自己** —— 一个「检查别人的东西」自己没被检查。
 cd "$(dirname "$0")/../.." || exit 2
 fails=()
-
-# ── 起跑先摘掉开发机会话带进来的环境变量 ────────────────────────────────────────
-# 门禁常在 tmux 窗格里、在 Claude Code / cc-monitor 起的会话里跑：下面这几族是**那个会话**的状态
-# （所在窗格、账号目录、中转地址、令牌、总线身份），不是这棵树的。测试进程一继承，读数就跟着开发机走 ——
-# 经中转起的会话里 `ANTHROPIC_BASE_URL` 是真值，顶掉过 `ccm-contract-parity`「不设中转地址」那一格（假红）；
-# `TMUX`/`TMUX_PANE` 会让走身份打标的测试去给真机默认 tmux 打标。CI runner 上它们本来就不存在，
-# 摘掉 = 本机与 CI 同一个起点。摘的是：
-#   · tmux 窗格：`TMUX` `TMUX_PANE`
-#   · Claude Code 会话：`CLAUDECODE` `CLAUDE_CONFIG_DIR`，以及 `CLAUDE_CODE_` 打头的整族（按前缀现取）
-#   · 上游与中转：`ANTHROPIC_BASE_URL` `ANTHROPIC_MODEL` `ANTHROPIC_API_KEY` `ANTHROPIC_AUTH_TOKEN`
-#   · cc-monitor 起会话时注入的：`CCM_RBIND_TOKEN` `CCM_LAUNCH_ID` `CCM_CLAUDEJSON` `CCM_CODEXTOML`
-#   · cc-bus 身份：`CC_BUS_ID` `CC_BUS_HOME`
-# ⚠ 要这些变量的测试一律自己设（e2e 各自的 `base_env`、Rust 判据里的 `Command::env`），不靠继承；
-#   `CCM_PWSH` 这类「开发者显式打开一组测试」的开关不在名单里，刻意不摘。只印名字，不印值（里面有令牌）。
-gate_scrubbed=()
-for gate_v in TMUX TMUX_PANE CLAUDECODE CLAUDE_CONFIG_DIR \
-              ANTHROPIC_BASE_URL ANTHROPIC_MODEL ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN \
-              CCM_RBIND_TOKEN CCM_LAUNCH_ID CCM_CLAUDEJSON CCM_CODEXTOML \
-              CC_BUS_ID CC_BUS_HOME $(compgen -e | grep -E '^CLAUDE_CODE_' || true); do
-  if [ -n "${!gate_v+x}" ]; then
-    gate_scrubbed+=("$gate_v")
-    unset "$gate_v"
-  fi
-done
-unset gate_v
 printf '  ·    %-14s %s\n' "环境" "摘掉了 ${#gate_scrubbed[@]} 个从开发机会话继承来的变量：${gate_scrubbed[*]:-（一个都没有）}"
+
 
 # ── 〔被谁调用〕`GATE_ONLY` 子集 ＋ 一张**跑过的收据**（`G4` 空洞③，09-20）──────────
 #
@@ -346,10 +77,11 @@ printf '  ·    %-14s %s\n' "环境" "摘掉了 ${#gate_scrubbed[@]} 个从开�
 #     ① 这份 `gate.sh` 的 sha256 —— 换了版本开的收据不算这一份门禁开的；
 #     ② 这棵树的 tree oid ＋ 工作树脏不脏 —— 别的树上那一趟不算这一趟；
 #     ③ 这一趟**真的判过**哪几格（`GATE_RAN`，**现算**，不是抄的清单）；
-#     ④ 被 `GATE_ONLY` 挡掉哪几格（`GATE_SKIPPED`，**现算**）。
+#     ④ 被 `GATE_ONLY` 挡掉哪几格（`GATE_SKIPPED`，**现算**）；
+#     ⑤ 每格的墙钟（`ms`，毫秒）、e2e 前置那一趟编译（`e2e_prep_ms`）与整趟（`total_ms`）—— 「门禁更快」拿它当基线。
 #   判它的判据本体是 `tests/evidence/K-G4C-gate-receipt.py` —— 它**刻意不在本脚本里跑**：
-#   本脚本跑得了它就说明本脚本跑了，那是同源恒真。它是给**调用方**（`ci.yml` 那个 job /
-#   `tests/hooks/pre-push`）在门禁**之后**跑的那一条：门禁跳过了 ⇒ 没有收据 / 收据陈了 ⇒ 当场红。
+#   本脚本跑得了它就说明本脚本跑了，那是同源恒真。它是给**调用方**（`tests/hooks/pre-push`）
+#   在门禁**之后**跑的那一条：门禁跳过了 ⇒ 没有收据 / 收据陈了 ⇒ 当场红。CI 的 job 直接判门禁的退出码。
 #   🔴 **那条判据的反空真锚是「`ran ∪ skipped` 与本文件现打的格名两向集合相等」** ——
 #     收据写空了、或本文件被读成空串，两个集合当场分叉。单向包含在表被清空时恒真。
 #
@@ -369,17 +101,34 @@ printf '  ·    %-14s %s\n' "环境" "摘掉了 ${#gate_scrubbed[@]} 个从开�
 GATE_ONLY="${GATE_ONLY:-}"
 GATE_RECEIPT="${GATE_RECEIPT:-.build/gate-receipt.json}"
 GATE_DECLARED=()   # 盘上声明过的格（短名，现算）
+GATE_GROUPS=()     # 盘上声明过的组名（`GATE_ONLY` 里写组名 = 点名组里每一格；今天只有 `e2e`）
 GATE_RAN=()        # 这一趟**命令真的执行过并被判过**的格（规范名，现算）
 GATE_SKIPPED=()    # 这一趟被 GATE_ONLY 挡掉的格（短名，现算）
+declare -A GATE_MS=()   # 这一趟每格的墙钟（毫秒，规范名 → 数），进收据
+GATE_PREP_MS=0          # e2e 前置那一趟 cargo build 的墙钟（不是格，单记）
+GATE_T0=""              # 整趟起点，下面定义完 `gate_now_ms` 就取
 
-# 这一格这一趟要不要跑。返回 0 = 跑。⚠ 副作用：把短名记进 `GATE_DECLARED`。
+# 现在的毫秒数（`EPOCHREALTIME` 是微秒精度；去掉小数点那一位，与 locale 的小数点写法无关）。
+gate_now_ms() { local t="${EPOCHREALTIME//[!0-9]/}"; printf '%s' "$(( t / 1000 ))"; }
+gate_fmt_ms() { printf '%d.%d 秒' "$(( $1 / 1000 ))" "$(( $1 % 1000 / 100 ))"; }
+GATE_T0="$(gate_now_ms)"
+# 一格判完：记进 `GATE_RAN`，墙钟记进 `GATE_MS`。`$2` 是这一格起跑那一刻的 `gate_now_ms`。
+gate_ran() { GATE_RAN+=("$1"); GATE_MS["$1"]=$(( $(gate_now_ms) - $2 )); }
+gate_took() { gate_fmt_ms "${GATE_MS[$1]:-0}"; }
+
+# 这一格这一趟要不要跑。返回 0 = 跑。`$2`（可选）是它所在的组名。
+# ⚠ 副作用：把短名记进 `GATE_DECLARED`、组名记进 `GATE_GROUPS`。
 gate_wants() {
   if [ "${GATE_PROBE:-0}" = 1 ]; then return 0; fi
   GATE_DECLARED+=("$1")
+  if [ -n "${2:-}" ]; then GATE_GROUPS+=("$2"); fi
   if [ -z "$GATE_ONLY" ]; then return 0; fi
   case " $GATE_ONLY " in
     *" $1 "*) return 0 ;;
   esac
+  if [ -n "${2:-}" ]; then
+    case " $GATE_ONLY " in *" $2 "*) return 0 ;; esac
+  fi
   GATE_SKIPPED+=("$1")
   printf '  skip %-14s %s\n' "$1" "GATE_ONLY 没点它 ⇒ 这一格这一趟**没判**（收据里如实记着，裁决行因此不许是 GATE: OK）"
   return 1
@@ -391,7 +140,7 @@ gate_check_only() {
   local tok d known
   for tok in $GATE_ONLY; do
     known=0
-    for d in ${GATE_DECLARED[@]+"${GATE_DECLARED[@]}"}; do
+    for d in ${GATE_DECLARED[@]+"${GATE_DECLARED[@]}"} ${GATE_GROUPS[@]+"${GATE_GROUPS[@]}"}; do
       if [ "$tok" = "$d" ]; then known=1; break; fi
     done
     if [ "$known" -ne 1 ]; then
@@ -436,7 +185,16 @@ gate_write_receipt() {
     printf '  "when": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf '  "gate_only": "%s",\n' "$GATE_ONLY"
     printf '  "ran": '    ; gate_json_arr ${GATE_RAN[@]+"${GATE_RAN[@]}"}        ; printf ',\n'
-    printf '  "skipped": '; gate_json_arr ${GATE_SKIPPED[@]+"${GATE_SKIPPED[@]}"}; printf '\n'
+    printf '  "skipped": '; gate_json_arr ${GATE_SKIPPED[@]+"${GATE_SKIPPED[@]}"}; printf ',\n'
+    printf '  "ms": {'
+    local i first=1
+    for i in ${GATE_RAN[@]+"${GATE_RAN[@]}"}; do
+      if [ "$first" -eq 1 ]; then first=0; else printf ', '; fi
+      printf '"%s": %s' "$i" "${GATE_MS[$i]:-0}"
+    done
+    printf '},\n'
+    printf '  "e2e_prep_ms": %s,\n' "$GATE_PREP_MS"
+    printf '  "total_ms": %s\n' "$(( $(gate_now_ms) - GATE_T0 ))"
     printf '}\n'
   } > "$GATE_RECEIPT" || {
     printf 'GATE: 收据落不了盘（%s 写不进去）—— 后面那条 K-G4C-gate-receipt.py 会因此红，那是对的\n' "$GATE_RECEIPT"
@@ -617,12 +375,13 @@ gate_diag() {
 run_gate() {
   local name="$1"; local denom="$2"; shift 2
   gate_wants "$name" || return 0
-  local out
+  local out t0
+  t0="$(gate_now_ms)"
   out="$("$@" 2>&1)"
   local rc=$?
   # 🔴 记在**命令执行完之后**，不是在派发之前 —— 收据里 `ran` 那一栏的意思必须是
   #   「这一格的命令真的跑过并被判过」，不是「这一格被点到过」。两者在收据上长得一样。
-  GATE_RAN+=("$name")
+  gate_ran "$name" "$t0"
   # ⚠ **`rc=0` 不等于绿**：`0 passed` 也会 rc=0（`C7` 逐字：「0 passed 不是绿」）。
   #   ⇒ 两条都判：退出码 + 那行读数里的数字。
   local n
@@ -634,7 +393,7 @@ run_gate() {
     fails+=("$name（读数是 ${n:-<找不到>} —— 0 passed 不是绿）")
     gate_diag "$name" "$out"          # K-R22：这一支同样得说清「那它到底打了什么」
   else
-    printf '  ok   %-14s %s passed（分母：%s）\n' "$name" "$n" "$denom"
+    printf '  ok   %-14s %s passed（%s；分母：%s）\n' "$name" "$n" "$(gate_took "$name")" "$denom"
   fi
 }
 
@@ -650,13 +409,8 @@ run_gate() {
 #   ⚠原文第三项是 `usage-core 11`，合计 **79**、存量 **61** —— 用量下线后那个 crate
 #     改建成 `codex-token-core`，现打 `cargo test -p codex-token-core --lib` = **3 条**
 #     ⇒ 合计 71、存量 53（存量 = 合计 − `K-H2a` 新开的 `creds-core` 18，两组数各自自洽）。
-#     （`--exclude` 与**包数都不变**：不是减 crate，是同一格换了被测对象 ⇒ 下面那条
-#      cargo 合计行里的包数 **9** 不动。⚠ 刻意不把那条调用的**逐字前缀**抄进本注释：
-#      `shared_crate_registry::the_gate_package_count_tracks_the_number_of_shared_crates`
-#      用 `find_pinned` 钉的就是那个前缀、**要求全文唯一**，抄一次它当场判红。现打栽过。）
 #
-# 裸 `--workspace` 就是 `monitor` ＋ 共享 crate；有别的包被拉进成员，由下面这一格的**包数相等**接住
-#   （成员多一个 ⇒ 合计行包数对不上 ⇒ 红；⚠ 这里刻意不抄那一行的逐字前缀 —— `find_pinned` 要它全文唯一）。
+# 裸 `--workspace` 就是 `monitor` ＋ 共享 crate；成员集合由 `cargo metadata` 现取，与真跑到的包两向相等。
 #
 # ⚠ **CI 那一侧没跟着改**（`ci.yml` 不在 `K-H2a` 的写区）⇒ 从此**本地门禁比 CI 严**。
 #   别把「本地绿」读成「CI 也会绿」。
@@ -668,36 +422,62 @@ run_gate() {
 # 于是往任何一个共享 crate 加判据，这个数**永远不动**。
 # ⇒ 那正是本轮要治的病换了个位置又长出来一次：**命令的射程扩了，读数的射程没扩。**
 #
-# 本函数改成**逐行求和**，并且**钉死包数**（不是松地板）：
-# 一个 crate 静默掉出 `--workspace`（改名 / members 漏登记）时，合计只会**变小**，
-# 而「变小」和「有测试没跑」在终端上一模一样 —— 只有包数相等断言认得出来。
-# 〔同一条道理 `platform/fallback_guard.rs` 逐字论证过：「第一版是 `checked >= 3`，
-#  而实测 `checked = 7` —— 余量 2.3 倍，4 个块可以静默掉出采集面而地板照绿」。〕
+# 本函数改成**逐行求和**，并且判**包的集合**：一个 crate 静默掉出 `--workspace`（改名 / members 漏登记）时，
+# 合计只会**变小**，而「变小」和「有测试没跑」在终端上一模一样。
+# 该跑到哪几个包从 `cargo metadata` 现取 —— 原先钉的是手抄的包数，每加/删一个 crate 就要回来改、多路合并时撞数。
+# 跑到的包集合：每个被测 lib 在 cargo 输出里一行 `Running unittests src/lib.rs (…/deps/<lib 名>-<hash>)`。
+gate_ran_libs() {
+  sed -nE 's#^[[:space:]]*Running unittests .*[/\\]deps[/\\]([A-Za-z0-9_]+)-[0-9a-f]+(\.exe)?\)[[:space:]]*$#\1#p' | sort -u
+}
+# 一个 workspace 的成员里**该被 `cargo test --lib` 跑到**的 lib 名（`cargo metadata` 现取，不抄成员数）。
+# ⚠ 不看 `[lib] test = false`：有人把一个成员的单测关掉，它就该在这里红，而不是悄悄从「该跑到」里出列。
+gate_workspace_libs() {
+  ( cd "$1" && cargo metadata --no-deps --offline --format-version 1 ) | python3 -c '
+import json, sys
+m = json.load(sys.stdin)
+ids = set(m["workspace_members"])
+LIB = {"lib", "rlib", "dylib", "cdylib", "staticlib", "proc-macro"}
+for p in m["packages"]:
+    if p["id"] in ids:
+        for t in p["targets"]:
+            if LIB & set(t["kind"]):
+                print(t["name"].replace("-", "_"))
+' | sort -u
+}
+gate_shell_libs() { gate_workspace_libs src/frontend/shell; }
+
+# 多包求和的那一格（`--workspace`）：`$2` 是一个函数名，它印出**该跑到**的 lib 名集合。
+# 判：退出码 0 ＋ 该跑到的集合 == 输出里真跑到的集合（两向）＋ 合计 > 0。
+# 一个成员静默掉出 `--workspace` 时合计只会变小，与「有测试没跑」在终端上一样 —— 集合相等认得出来，
+# 而且成员是现取的：加/删 crate 不用回来改任何数。
 run_gate_sum() {
-  local name="$1"; local want_pkgs="$2"; shift 2
+  local name="$1"; local want_fn="$2"; shift 2
   gate_wants "$name" || return 0
-  local out
-  out="$("$@" 2>&1)"
-  local rc=$?
-  GATE_RAN+=("$name")
-  local lines n pkgs
+  local out t0 rc want wrc got miss extra lines n pkgs
+  t0="$(gate_now_ms)"
+  want="$("$want_fn" 2>&1)"; wrc=$?
+  out="$("$@" 2>&1)"; rc=$?
+  gate_ran "$name" "$t0"
+  got="$(printf '%s\n' "$out" | gate_ran_libs)"
   lines="$(printf '%s' "$out" | grep -oE '^test result: ok\. [0-9]+ passed')"
   pkgs="$(printf '%s' "$lines" | grep -c . || true)"
   n="$(printf '%s' "$lines" | grep -oE '[0-9]+' | paste -sd+ - | bc 2>/dev/null || echo 0)"
+  miss="$(comm -23 <(printf '%s\n' "$want") <(printf '%s\n' "$got") | grep . | tr '\n' ' ')"
+  extra="$(comm -13 <(printf '%s\n' "$want") <(printf '%s\n' "$got") | grep . | tr '\n' ' ')"
   if [ "$rc" -ne 0 ]; then
     fails+=("$name（退出码 $rc）")
-    gate_diag "$name" "$out"          # K-R22：本件的病灶就是这一支，判定一个字没动
-  elif [ "$pkgs" -ne "$want_pkgs" ]; then
-    # ⚠ 这一支是**采集面自检**，不是测试失败：包数对不上 ⇒ 下面那个合计不算数。
-    fails+=("$name（只跑到 $pkgs 个包，应当 $want_pkgs —— 有包静默掉出了 --workspace；\
-合计变小与「有测试没跑」在终端上一模一样，只有这条认得出来。真加/删了 crate 就来改这个数）")
-    # K-R22：这一形最需要的恰是那几行 `Running …`（到底跑到了哪几个包），模式表里有它。
+    gate_diag "$name" "$out"
+  elif [ "$wrc" -ne 0 ] || [ -z "$want" ]; then
+    fails+=("$name（列不出该跑到的成员 —— $want_fn 退出码 $wrc：${want:-<空>}）")
+  elif [ -n "$miss" ] || [ -n "$extra" ]; then
+    fails+=("$name（成员与真跑到的包对不上：该跑没跑 [${miss% }] · 跑了却不是成员 [${extra% }] —— \
+合计变小与「有测试没跑」在终端上一模一样，只有这条认得出来）")
     gate_diag "$name" "$out"
   elif [ -z "$n" ] || [ "$n" -eq 0 ]; then
     fails+=("$name（读数是 ${n:-<找不到>} —— 0 passed 不是绿）")
     gate_diag "$name" "$out"
   else
-    printf '  ok   %-14s %s passed（%s 个包合计）\n' "$name" "$n" "$pkgs"
+    printf '  ok   %-14s %s passed（%s；%s 个包合计，成员集合 == 跑到的包集合）\n' "$name" "$n" "$(gate_took "$name")" "$pkgs"
   fi
 }
 
@@ -815,6 +595,8 @@ gate_assert_judged() {
   esac
 }
 
+gate_probe_libs_a() { echo a; }
+gate_probe_libs_ab() { printf 'a\nb\n'; }
 gate_selftest() {
   # 🔴 探针**不受 `GATE_ONLY` 影响**（`gate_wants` 第一行读它）。bash 是动态作用域 ⇒
   #   这一句在本函数调出去的 `run_gate`/`run_gate_sum` 里也看得见。
@@ -827,7 +609,7 @@ gate_selftest() {
     *) fails+=("gate 自检①（run_gate 的失败支没把被测命令的输出印出来 —— K-R22 那一格被改回去了：\
 门禁红了又不说为什么红）") ;;
   esac
-  probe="$(run_gate_sum 自检② 8 bash -c 'printf "error[E0425]: KR22-PROBE-B\n --> src/x.rs:1:1\n"; exit 101' 2>&1)"
+  probe="$(run_gate_sum 自检② gate_probe_libs_a bash -c 'printf "error[E0425]: KR22-PROBE-B\n --> src/x.rs:1:1\n"; exit 101' 2>&1)"
   case "$probe" in
     *KR22-PROBE-B*) ;;
     *) fails+=("gate 自检②（run_gate_sum 的失败支在「编译错误」那一形上印不出东西 —— \
@@ -868,20 +650,20 @@ N-G1 治的正是这一形：vitest 在非 TTY 下照样上色，ESC 不是 [[:s
   gate_assert_judged 自检⑥ "$probe" NG2-PROBE-F "run_gate 的「0 passed 不是绿」"
   #
   # 探针⑦ · `run_gate_sum` 的**退出码**那条。
-  #   只有它拦得住：喂 1 行 `test result: ok.` 且 want_pkgs 就给 1 ⇒ 包数自检**已被满足**；
+  #   只有它拦得住：跑到的 {a} == 该跑的 {a} ⇒ 集合那条**已被满足**；
   #   合计 7 ≠ 0 ⇒ 「0 passed 不是绿」也**已被满足**。
-  probe="$(run_gate_sum 自检⑦ 1 bash -c 'printf "test result: ok. 7 passed\nNG2-PROBE-G\n"; exit 3' 2>&1)"
+  probe="$(run_gate_sum 自检⑦ gate_probe_libs_a bash -c 'printf "  Running unittests src/lib.rs (/x/deps/a-0a1b)\ntest result: ok. 7 passed\nNG2-PROBE-G\n"; exit 3' 2>&1)"
   gate_assert_judged 自检⑦ "$probe" NG2-PROBE-G "run_gate_sum 的「退出码非零 ⇒ 红」"
   #
-  # 探针⑧ · `run_gate_sum` 的**包数自检**（采集面：跑到的包数 ≠ 应有）。
+  # 探针⑧ · `run_gate_sum` 的**成员集合自检**（采集面：真跑到的包 ≠ 该跑的成员）。
   #   只有它拦得住：`exit 0` ⇒ 退出码那条**已被满足**；合计 7 ≠ 0 ⇒ 「0 passed」那条也**已被满足**；
-  #   只喂 1 行 `test result:` 而 want_pkgs 给 2 ⇒ 差的正是包数这一条。
-  probe="$(run_gate_sum 自检⑧ 2 bash -c 'printf "test result: ok. 7 passed\nNG2-PROBE-H\n"; exit 0' 2>&1)"
-  gate_assert_judged 自检⑧ "$probe" NG2-PROBE-H "run_gate_sum 的「包数自检：跑到的包数 ≠ 应有」"
+  #   只跑到 {a} 而该跑的是 {a, b} ⇒ 差的正是集合这一条。
+  probe="$(run_gate_sum 自检⑧ gate_probe_libs_ab bash -c 'printf "  Running unittests src/lib.rs (/x/deps/a-0a1b)\ntest result: ok. 7 passed\nNG2-PROBE-H\n"; exit 0' 2>&1)"
+  gate_assert_judged 自检⑧ "$probe" NG2-PROBE-H "run_gate_sum 的「成员集合 == 跑到的包集合」"
   #
   # 探针⑨ · `run_gate_sum` 的**「0 passed 不是绿」**那条。
-  #   只有它拦得住：`exit 0` ＋ 包数 1 = want_pkgs 1 ⇒ 前两条**都已被满足**，合计恰好是 0。
-  probe="$(run_gate_sum 自检⑨ 1 bash -c 'printf "test result: ok. 0 passed\nNG2-PROBE-I\n"; exit 0' 2>&1)"
+  #   只有它拦得住：`exit 0` ＋ 跑到的 {a} == 该跑的 {a} ⇒ 前两条**都已被满足**，合计恰好是 0。
+  probe="$(run_gate_sum 自检⑨ gate_probe_libs_a bash -c 'printf "  Running unittests src/lib.rs (/x/deps/a-0a1b)\ntest result: ok. 0 passed\nNG2-PROBE-I\n"; exit 0' 2>&1)"
   gate_assert_judged 自检⑨ "$probe" NG2-PROBE-I "run_gate_sum 的「0 passed 不是绿」"
 }
 gate_selftest
@@ -956,106 +738,48 @@ run_gate hooks '每个被跟踪的 hook 文件 3 条（盘上可执行 · 库里
 run_gate copy2 '`evidence/*.py` 里，`shutil` 保元数据复制族（copy2 · copytree · copystat）的**调用点**数，逐处判目的地；绿行那个数就是判过的调用点数。⚠ 本行原先写着「现打 176 份」——那是从判据本体那句现算的分母**手抄**过来的第二份，而本件落地前盘上已经是 183、落地后 185 ⇒ **摘掉那个抄来的数**，份数以 `tests/evidence/K-R115-ruler.py` 自己印的那一行为准。⚠ 只看 `evidence/` 下的 `.py`，别的目录、别的语言、shell 串里的 `cp -a` 本行一概盖不到' \
          bash -c 'python3 tests/evidence/K-R115-ruler.py'
 
-# ── `shellcheck`：**CI 独有的那一格收进门禁**（`K-R122` `KR122D2` 甲，09-14，第 17 格）──
+# ── `shellcheck`：shell 脚本的 `--severity=error` 那一档 ───────────────────────────────────────
 #
-# ## 问题：这一格在本门禁里**一格都没有**，而它在 CI 里是独立一个 job
-#
-# 〔散文墓碑〕**下面这段立项理由今天已不成立，原话照留。**
-# 原话：「`K-R119`（09-14）推 `v3.8.0` 那一趟被 `release.yml` 自己的 `ci-gate` 拦下，
-# CI 五条红里有一条就是它：`e2e-smoke` job 的 `shellcheck --severity=error`
-# 报 `SC1081` 六处，全在 `tests/e2e/usage-probe-acceptance.sh`（一个叫 `FOR` 的函数，
-# 它按「大小写写错的关键字」判 error）。」
-# 🔴 **今天不成立的是「全在」那个住址**：用量整条产品面下线，
-# `tests/e2e/usage-probe-acceptance.sh` **整份删了** ⇒ 那六处 `SC1081` 连同宿主一起没了，
-# 这条立项理由指着一个不存在的文件。**留着原话是因为它是本格当初为什么存在的唯一记录**
-# （「那一趟被拦下」这件事发生过，不因文件删除而变假）。
-# ⚠ **立项理由作废 ≠ 本格作废**：本格钉的是「这一维在本门禁里有没有格」，
-#   而那个答案今天仍是「有了才对」——人群从 ci.yml 现读（见下），一格都不许再回到零。
-# 而同一棵树上本门禁 **16 格全绿** —— 〔量于 09-14 本件落地之前〕
-# `grep -c -i shellcheck scripts/gate.sh` = **0**。
-# ⇒ 这不是「射程印出来了没人读」，是**这一维根本没有格**。
-#
-# ⚠ **本段刻意不让任何一行以 `#` ＋ 空格 ＋ 那个工具名开头** —— 那是它的**指令**语法
-#   （`# shellcheck disable=…` 那一形）。现打栽过一次：本段第一版有一行那么开头，
-#   它当场报 `SC1072`/`SC1073`（`Expected '=' after directive key`）把本文件自己判红。
-#
-# ## 🔴 人群**从 `.github/workflows/ci.yml` 现读**，本文件不写第二份清单
-#
-# 那份清单（`FILES=$(printf …)` 那一段 ＋ 它下面那条覆盖面地板）今天已经有唯一住址，
-# 而且 `src/frontend/shell/src/shell_lint_registry.rs` 那条恒等判据就是靠**解析它**来钉
-# 「每个 shell 脚本要么进 shellcheck 要么登记豁免」。
-# ⇒ 在本文件里抄一份 = 同一个闭集第三个住址，三处必漂（本仓那笔账写在
-#   `tests/e2e/assert-pass-floor.sh` 的地板纪律里，已经栽过两次）。
-# ⇒ 本格**解析那一段**取人群、**解析那条地板行**取地板，一个数都不写死。
-#
-# ⚠ **fail-closed 的三条**（缺一条它就会在「解析坏了」的时候静默地绿）：
-#   ① `shellcheck` 不在 PATH ⇒ 红（不许退化成「跳过」）；
-#   ② 解析不到地板数 ⇒ 红；
-#   ③ 展开出来的份数 < `ci.yml` 自己那条地板 ⇒ 红 —— 解析坏了最可能的样子就是展开出 0 份，
-#      而「扫了 0 个文件」与「全都干净」在 `shellcheck` 的退出码上一模一样。
-#
-# ⚠ **诚实边界**：
-#   · 本格与 CI 那一格用的是**两份 shellcheck 二进制**（沙箱镜像 0.9.0 · `ubuntu-latest` 自带）。
-#     版本不同 ⇒ 规则集可能不同；本格买的是「**本地先看见**」，不是「与 CI 逐字等价」。
-#   · 它只判 `--severity=error`（与 CI 同一档）；warning / info / style 一概不看。
-#   · 它读 `ci.yml` 的**那一段文本**。那一段的写法一变（换成别的取人群方式）⇒ 本格红在
-#     「展开份数不够」上，**那是对的**：人群换了家，就该有人回来看一眼。
+# 人群的**唯一住址**是下面这一行（CI 的那个 job 调本格，不另记一份）；
+# `shell_lint_registry` 读这一行判「每个 shell 脚本要么在人群里、要么登记豁免」。
+# ⚠ 本段刻意不让任何一行以 `#` ＋ 空格 ＋ 那个工具名开头 —— 那是它的指令语法，会把本文件自己判红。
+# 反空真：展开出来的份数 > 0，且本文件自己必须在里面（正控）；`nullglob` 下一组 glob 一个都不匹配时
+#   那一组就静默没了 —— 由 `shell_lint_registry`「盘上每个 shell 脚本都被某个 glob 盖住」接住，不靠数份数。
+# ⚠ 只判 error 这一档；本地与 CI 是两份 shellcheck 二进制，版本可能不同。
+GATE_SHELLCHECK_GLOBS='tests/e2e/*.sh src/shared/cc-bus/scripts/* src/shared/cc-bus/examples/cc-keepalive tests/e2e/fake-claude tests/e2e/weak-net/*.sh tests/e2e/local-backend-container/*.sh tests/evidence/*.sh tests/scripts/*.sh tests/hooks/*'
 gate_shellcheck() {
-  local yml=".github/workflows/ci.yml"
-  local block pats floor n out rc
+  local out rc n self=0 f
   command -v shellcheck >/dev/null 2>&1 || {
     printf 'shellcheck: 这台机器上没有 shellcheck —— 判不了，按红记（不许退化成静默跳过）\n'
     return 1
   }
-  [ -f "$yml" ] || {
-    printf 'shellcheck: 读不到 %s —— 人群的唯一住址不在了，判不了\n' "$yml"
-    return 1
-  }
-  # 取 `FILES=$(printf …)` 那一段：从它那一行起，到第一行以 `)` 收尾的行为止。
-  block="$(awk '/FILES=[$][(]printf/{f=1} f{print} f && /[)][[:space:]]*$/{exit}' "$yml")"
-  # 首行剥到最后一个单引号（那是 `printf` 的格式串尾），每行剥行尾续行符，末行剥收尾括号。
-  pats="$(printf '%s\n' "$block" | sed -e "1s/^.*'//" -e 's/\\[[:space:]]*$//' -e '$s/)[[:space:]]*$//')"
-  floor="$(grep -oE '"\$N" -ge [0-9]+' "$yml" | grep -oE '[0-9]+' | head -1)"
-  case "${floor:-}" in
-    ''|*[!0-9]*)
-      printf 'shellcheck: 从 %s 里解析不到那条覆盖面地板（`[ "$N" -ge <数> ]`）—— 判不了\n' "$yml"
-      return 1 ;;
-  esac
   local -a files=()
   shopt -s nullglob
-  # shellcheck disable=SC2206
-  files=($pats)
+  # shellcheck disable=SC2206  # 这里要的就是按空白拆开、再按 glob 展开
+  files=($GATE_SHELLCHECK_GLOBS)
   shopt -u nullglob
   n=${#files[@]}
-  if [ "$n" -lt "$floor" ]; then
-    printf 'shellcheck: 人群只展开出 %s 份，而 %s 自己那条地板是 %s —— 要么那一段的写法变了、要么真的少了文件。「扫了 0 个」与「全都干净」在退出码上一模一样，所以一律按红记\n' \
-           "$n" "$yml" "$floor"
+  for f in "${files[@]}"; do [ "$f" = tests/scripts/gate.sh ] && self=1; done
+  if [ "$n" -eq 0 ] || [ "$self" -ne 1 ]; then
+    printf 'shellcheck: 人群展开出 %s 份、本文件%s在里面 —— 展开坏了。「扫了 0 个」与「全都干净」在退出码上一模一样，按红记\n' \
+           "$n" "$([ "$self" -eq 1 ] && echo || echo 不)"
     return 1
   fi
-  # 🔴 `LC_ALL` 是承重的，别删：本仓的 shell 脚本里有大量中文注释，而 shellcheck 报告时会把
-  #   出错那一行**原样打出来**。沙箱镜像里 `LANG` 未设（现打 `locale -a` 只有 `C` / `C.utf8` /
-  #   `POSIX`）⇒ 非 UTF-8 下它死在 `commitBuffer: invalid argument (invalid character)`、rc=2，
-  #   而那个 rc 与「真有 error」在退出码上一模一样。CI 的 `ubuntu-latest` 自带 `LANG=C.UTF-8`
-  #   ⇒ 不设这一条，本格与 CI 那一格在**同一份输入**上会给出不同的答案。
   out="$(LC_ALL=C.UTF-8 shellcheck --severity=error "${files[@]}" 2>&1)"
   rc=$?
   printf '%s\n' "$out" | head -80
   if [ "$rc" -ne 0 ]; then
-    printf 'shellcheck: 退出码 %s —— 云端 `E2E scripts health` 那个 job 跑的是同一条命令、同一份人群，它会红\n' "$rc"
+    printf 'shellcheck: 退出码 %s\n' "$rc"
     return "$rc"
   fi
-  printf 'shellcheck: %s passed（人群与地板都是从 %s 现读的，本文件一个数都没写死；地板 %s）\n' \
-         "$n" "$yml" "$floor"
+  printf 'shellcheck: %s passed（人群住本文件 GATE_SHELLCHECK_GLOBS 一处）\n' "$n"
 }
-run_gate shellcheck '不是「几条断言过了」：这个数是**从 `.github/workflows/ci.yml` 现读的那张人群**展开出来的 shell 文件份数（与云端 `E2E scripts health` 那个 job 同一份人群、同一档 `--severity=error`）。⚠ 只判 error 这一档；warning/info/style 本行一概不看。⚠ 沙箱与 CI 是两份 shellcheck 二进制，版本可能不同 ⇒ 本格买的是「本地先看见」，不是「与 CI 逐字等价」。⚠ 人群之外的 shell（`.ps1` 全仓零 lint · 没进那张人群的任何脚本）本行盖不到' \
+run_gate shellcheck '不是「几条断言过了」：这个数是人群展开出来的 shell 文件份数（`--severity=error`）。⚠ 只判 error 这一档；`.ps1` 全仓零 lint' \
          gate_shellcheck
 
-# ── 照 `ci.yml` 原样跑某几步 ────────────────────────────────────────────────────
-# 按步骤名（前缀）从 `.github/workflows/ci.yml` 取出那一步的 `run:`（单行，或 `|` 块整块），
-# 用 CI 那一档 shell（`bash -eo pipefail`）在仓根跑。命令只住 `ci.yml` 一处，本文件不抄第二份 ——
-# CI 那边改了命令或地板，这里跑的跟着变。
-# ⚠ 只认在仓根跑的步骤：名字与 `run:` 之间出现 `working-directory:` ⇒ 印 `WORKDIR` 记号，下面按红记
-#   （取不准该在哪跑）；名字一个都对不上 ⇒ 取出来是空串，同样按红记。
+# ── 按步骤名照 `ci.yml` 原样跑某几步 —— 只给**留在 Windows job 里**的那几步用（`coverage` · `audit`）。
+# 那几步的命令住 `ci.yml` 的 Windows job（门禁跑不了真 Windows，那个 job 保留），本文件不抄第二份。
+# ⚠ 只认在仓根跑的步骤：名字与 `run:` 之间出现 `working-directory:` ⇒ 按红记；名字对不上 ⇒ 同样按红记。
 gate_ci_step_body() {
   awk -v want="- name: $1" '
     { s = $0; sub(/^[ \t]+/, "", s) }
@@ -1102,32 +826,15 @@ gate_ci_steps() {
   printf '%s: %s passed（ci.yml 里 %s 步原样跑过）\n' "$label" "$ran" "$ran"
 }
 
-# ── `e2e-smoke`：`ci.yml` 同名 job 里另三步（shellcheck 与发版守卫各有自己的格）────────────
-# 三步都只读盘上文本：`tests/e2e/*.py` 过 `py_compile` · 那张「每套 e2e 都带断言数地板」的自检
-# （它数的就是 `ci.yml` 自己）· `src/shared/` 下带 shebang 的文件在 git 里是 100755。
-# 此前三步只在 CI 上跑：改了一套 e2e 的地板而那张自检清单没跟，本机一格都不红。
-# 〔量于 2026-09-30，本工作树〕本格墙钟不到 1 秒。
-run_gate e2e-smoke '步数：`ci.yml` 的 `e2e-smoke` job 里 `python syntax compile` · `G-A/G-C 覆盖面地板` · `exec-bit guard` 三步，按步骤名从 `ci.yml` 现取 `run:` 原样跑（本文件不抄命令）。⚠ 判的是那三步自己的判定：py 只判语法、地板自检只判 `ci.yml` 文本、exec-bit 只判 `src/shared/` 下带 shebang 的那批；本格墙钟不到 1 秒' \
-         gate_ci_steps e2e-smoke "python syntax compile" "G-A/G-C 覆盖面地板" "exec-bit guard"
-
-# ── `ci-e2e-prereq`：**CI 里那些 e2e 的前置跟没跟上**（`K-R122` `KR122D1` ③④，09-14，第 18 格）──
-#
-# ## 问题：`K-R119` 那趟五条红里有**两条**是这一形，而它在本地一个字都看不见
-#
-# `K-R48` 第二拍（09-11）把 `ccm` 收成后端的原生命令、`K-R104`（09-13）把用量探针整条
-# 重写成「往真后端的帧面写帧」—— **两次都换了被测对象，而 `ci.yml` 里那两处 job 的
-# 前置一次都没跟上** ⇒ 云端双双红在「找不到原生入口 / 需要先 build backend」。
-#
-# 🔴 **为什么本地看不见**：本脚本自己在跑四套 ccm e2e 之前**有一步 build 后端二进制**
-#（下面那行 `e2e 前置`），CI 那两个 job 没有 ⇒ 同一份被测对象，两边的「绿」长得一模一样。
-# ⇒ 这一格把「**前置齐不齐**」本身变成判据：它不跑任何 e2e，只读 `ci.yml` ＋ `package.json`
-#   ＋ 那些 `.sh`，对账「每一套硬门后端二进制的 e2e，同 job 里都有一条 build 排在它前面」。
-#
-# ⚠ 判据本体住 `tests/evidence/K-R122-ruler.py`，**它的射程与买不到的东西逐条写在那份文件的头注里**，
-#   这里不复述一份（复述就会漂）。放在那儿也是为了能对着变异过的副本跑死值验
-#   （`K_R122_ROOT=<副本>`），不必去动真工作树 —— 与 `hooks` 那一格同一条取法。
-run_gate ci-e2e-prereq '判过的 e2e 调用行数（`ci.yml` 的 `steps:` 里形如 `assert-pass-floor.sh <套件> <地板>` 的 `run:`，现打 20 条），其中「被测对象是后端二进制」的那几条逐条要求同 job 里有一条 `cargo build` 排在它前面。⚠ 它**不跑任何 e2e**，只读盘上三份文本 ⇒ 「前置齐了」不等于「那一套会绿」；⚠ 认「要不要二进制」靠一个字面量、认「有 build」靠 `cargo build` 四个字，两处的失效形状逐条写在判据本体的头注里' \
-         python3 tests/evidence/K-R122-ruler.py
+# ── `e2e-smoke`：两步只读盘上文本的体检 ─────────────────────────────────────────────────────
+# `tests/e2e/*.py` 过 `py_compile` · `src/shared/` 下带 shebang 的文件在 git 里是 100755（`exec-bit-guard.sh`）。
+gate_e2e_smoke() {
+  python3 -m py_compile tests/e2e/*.py || { printf 'e2e-smoke: tests/e2e/*.py 编不过\n'; return 1; }
+  bash tests/e2e/exec-bit-guard.sh || return $?
+  printf 'e2e-smoke: 2 passed（py 语法 · 可执行位）\n'
+}
+run_gate e2e-smoke '步数：`tests/e2e/*.py` 的 `py_compile` · `tests/e2e/exec-bit-guard.sh` 两步，只读盘上文本' \
+         gate_e2e_smoke
 
 # ── `release-gate`：**发版那条流水线的两件事**（`K-R124` `KR124D1`/`KR124D2`，09-15，第 20 格）──
 #
@@ -1145,8 +852,7 @@ run_gate ci-e2e-prereq '判过的 e2e 调用行数（`ci.yml` 的 `steps:` 里�
 # ⇒ 本格把它收进本地门禁：判据本体搬到 `tests/evidence/K-R124-ruler.py`（不依赖 PyYAML，
 #   自带 YAML 子集切块器），**CI 那一步与本格跑的是同一份文件**，不是两份抄件。
 #
-# ⚠ 射程与买不到的东西逐条写在那份文件的头注里，这里不复述一份（复述就会漂 ——
-#   与上面 `ci-e2e-prereq` 那一格同一条取法）。放在那儿也是为了能对着变异过的副本跑死值验
+# ⚠ 射程与买不到的东西逐条写在那份文件的头注里，这里不复述一份（复述就会漂）。放在那儿也是为了能对着变异过的副本跑死值验
 #   （`K_R124_ROOT=<副本>` / `RELEASE_WORKFLOW=<某份 release.yml>`），不必去动真工作树。
 #
 # ── 🔴 `19b`（09-19）：本格**多买了第三件事 —— 产字节那条路** ────────────────────
@@ -1176,24 +882,6 @@ run_gate ci-e2e-prereq '判过的 e2e 调用行数（`ci.yml` 的 `steps:` 里�
 # ⚠ **本格不因此变成「编译格」**：⑬ 一条字节都不编，⑬g 真跑的只是那条命令的 `--check`（只读）。
 run_gate release-gate '判过的条数（`release.yml` 上逐行印出来的 PASS：三条地板 ＋ ①触发得了 ②手工默认不发布 ③`env.PUBLISH` 字面 ④两处发布步骤的闸 ⑤CI 门的闸 ⑥两处发布步骤各自的正文来源 ⑦生成器排在发布步骤前面 ⑧生成器吐得出本版正文 ＋⑨产字节那条路（承诺的平台 ↔ 产线 · 编后端的步骤 ↔ 登记 · target triple ↔ 登记，三条都是**两向集合相等**；每条产线步骤在那个 job 里 count()==1；runner 标签逐字）⑩每一处抠 `const BUILD_ID`／身份戳界标的住址，逐处计数相等 ＋ **实打去读那份源码**、抠不出恰好一行就红 ⑪`build.rs` 那一侧「抠不到」是所有构建形态都响的失败（`unknown` 兜底从类型上消失）⑫本文件 `muslbuild` 裁词点名的工具链版本 == `release.yml` 真装的那两个 ＋⑬`BUILD_ID` bump 的同拍步骤 re-embed（`tests/scripts/re-embed.sh` 是出路的**唯一住址**，`build.rs::REEMBED_CMD` 逐字指着它；本机那条配方与 `release.yml` 产字节那一步**同源** —— target **两向集合相等** ＋ 旗标逐字相同；它铺的 arch ↔ `build.rs` 吃的 arch **两向集合相等**；三个内嵌落点 ↔ `src/frontend/shell/.gitignore` 里带机检锚的那几行**两向集合相等**；`build.rs` 那两个内嵌函数的出路各点名那条命令 ≥2 处、代码行里不许再手抄第二条产字节配方；mtime 那张安全网仍看**两份**源码；末一条**真跑** `re-embed.sh --check`，要有数）。⚠ 它**不执行 GitHub 的表达式求值器**，也**不跑那条流水线** ⇒ 「盘上这几份文本满足这几条」不等于「云端那一趟会绿」——⑨ 尤其如此：「登记的那一步在文件里」≠「那一步在 runner 上编得出字节」，更不等于「那份字节在目标机器上跑得起来」，真机那一维仍是**判不了**；⚠ 「往 Release 上写」只认两种形状（`softprops/action-gh-release` 的 `uses:` · `run:` 里的 `gh release`/`gh api …/releases`），换第三种路子上传它看不见；⚠ 正文**写得对不对**它一个字都不判；⚠ ⑬ 那一组同一条边界 —— ⑬a–⑬f 全是**盘上文本**的对拍，「配方写得一样」≠「那条命令今天在这台机器上跑得出字节」（它要 zig ＋ cargo-zigbuild，本格一个都不装、不跑）；⑬g 真跑的只是 `--check`（**只读**），在一棵没铺字节的树上它只答得出「这里没有一份对不上的字节」，**不是**「字节是对的」，更不是「发版那一拍办完了」' \
          python3 tests/evidence/K-R124-ruler.py
-
-# ── `gate-selfdesc`：**门禁自述 ↔ 门禁现状的对拍**（09-19，第 22 格）───────────
-#
-# 🔴 **立这一格的直接起因是本门禁自己说了一整天假话。** `pb check` 那一格 09-18 已按用户
-#   **整格删除**，而裁决行照旧点着它的名、自称「21 格全绿」——实跑 20 格。
-#   ⚠ **本该抓住它的东西一直都在**：`tests/evidence/K-R80-gate-cell-coverage.py` 的
-#   `C5`/`C5b` 逐字就是「裁决行的数 == 现打格数」「逐格点名集合相等」。它没瞎，是**两头坏**：
-#     ① **没人跑它** —— 它只被本文件头注引为「可复跑」，**不在执行链上**；
-#     ② 它默认找的是**重构前**的 `scripts/gate.sh` ⇒ 手跑当场 `FileNotFoundError`。
-#   两头叠在一起，效果就是本仓自己的那句话：**坏尺子会把真缺陷一起藏起来。**
-#   ⇒ 本拍把 ② 修了，并把它接成真的一格，治 ①。**从此「自述腐了」这件事不靠人记得手跑。**
-#
-# ⚠ **它判的是登记，不是行为** —— 它只买「本文件的自述与盘上现状对得上、且每条登记指得到
-#   真东西」。裁词对不对（某格到底盖没盖到某棵树）它一个字都不判，那要读语义。
-# ⚠ **它是本门禁里唯一一格「被测对象就是本文件自己」** —— 改本文件的头注、加删一格、
-#   动一句自述，都会在这一格上出声。这是刻意的：自述与现状分叉，正是它要治的病。
-run_gate gate-selfdesc '判过的条数（逐项分母由判据本体每趟现算并印在它自己那行上：C1 两向集合对拍 ＋ 每格一条逐字锚点 ＋ 逐格逐树的裁词与理由 ＋ 树的分区恒等 ＋ 每棵树非空与在盘 ＋ 裁决行格数对拍 ＋「不需要门」的说明与钉子 ＋ 分档表逐份成员）。⚠ **反空真锚不是这个数，是 `C1` 那两向集合相等** —— 登记空了或 `gate.sh` 读成空串，两个集合当场分叉（死值验：改一格的名 ⇒ C1 红）。⚠ 它只判「登记完整且指得到真东西」，**不判裁词对不对、不判归得对不对**（那要读语义）' \
-         python3 tests/evidence/K-R80-gate-cell-coverage.py
 
 # ── `muslbuild`：**远端 Linux 那一格**（G4 · 09-19，第 23 格）─────────────────
 #
@@ -1469,21 +1157,8 @@ run_gate winchk-backend '不是数出来的数：`cargo check --all-targets --ta
 run_gate winlink '不是数出来的数：`cargo build --bins --target x86_64-pc-windows-gnu`（dev）只有绿/红两态。射程 = `-p monitor` 的两个二进制（`cc-monitor` · `cc-monitor-filewin`）**真链接**一趟；⚠ 只链不跑（起不起得来要真机）· `-gnu` 不是 `-msvc` · release 那一档不链 · test 档不链（那一半归 `winchk` 的 `check`）' \
          bash -c 'cd src/frontend/shell && cargo build --locked -p monitor --bins --target x86_64-pc-windows-gnu 2>&1 && echo "winlink: 1 passed"'
 
-# 13 个包 = `monitor` + 12 个共享 crate。
-# 9 → 10：加了 `copy-core`（对外文案表的 Rust 取文口）。
-# 10 → 11：新共享 crate `relay-route-core`（中转门牌：端口 · 钥匙路径 · 路由语法，目标）。
-# 11 → 12：新共享 crate `agent-tools-core`（agent 工具词表：哪些工具名算「展开 = 子会话」，monitor 渲染与后端会话事实共用，J19）。
-# 12 → 13（本路增量 ＋1）：新共享 crate `upstream-url-core`（上游 base URL 能不能用，J9）。
-# 13 → 14（本路增量 ＋1）：新共享 crate `deploy-core`（部署决策：本机常驻后端出计划、monitor 放字节共用）。
-# 14 → 13：`codex-token-core` 搬进后端（`agents/codex/token.rs`，monitor 零引用），它的 3 条随后端那一格跑。
-# 13 → 12：`gate-core` 收成后端模块 `control/gate_rules.rs`（monitor 那一侧的门删了），它的单测随后端那一格跑。
-# 12 → 11：`agent-tools-core` 收进后端适配层 `agents/claudecode/cards.rs`（界面不再按工具名判卡型）。
-# 11 → 10：`branch-core` 收进后端适配层 `agents/claudecode/branch.rs`（monitor 零引用）。
-# 10 → 9：`search-core` 拆进后端（通用口径 `observe/search_rules.rs` · 记录文本 `agents/claudecode/text.rs`），它的单测随后端那一格跑；
-#   `deploy-core` 改名 `deploy-contract`（契约那一半，成员数不变）。
-# 9 → 12：新共享 crate `host-core`（前端宿主原语）· `chan-core`（通道）· `filewin-contract`（monitor ↔ 文件窗口进程的契约）。
-# 12 → 13：文件窗口独立成包 `src/frontend/filewin/`（`cc-monitor-filewin`，lib；monitor 包里那个 `[[bin]]` 转调它），它的单测随本格跑。
-run_gate_sum cargo 13 bash -c 'cd src/frontend/shell && cargo test --workspace --lib 2>&1'
+# 该跑到的包 = `src/frontend/shell` workspace 的成员（`cargo metadata` 现取），与输出里真跑到的两向相等。
+run_gate_sum cargo gate_shell_libs bash -c 'cd src/frontend/shell && cargo test --workspace --lib 2>&1'
 
 # ★★ `K-G3`（09-01）：上面那个合计**还缺一个分母** —— `src/frontend/shell/embedded-backends/` 铺没铺。
 #
@@ -1548,11 +1223,12 @@ fi
 #   也得手接一次。漏接的形状是：`GATE_ONLY` 点不到它、而它照样跑，
 #   于是收据里 `ran ∪ skipped` 少一格 ⇒ `K-G4C` 的两向相等当场分叉（那是**响的**）。
 if gate_wants generated; then
+gen_t0="$(gate_now_ms)"
 git diff --quiet --exit-code -- src/frontend/ui/generated/
 gen_rc=$?
-GATE_RAN+=("generated")
+gate_ran generated "$gen_t0"
 case "$gen_rc" in
-  0) printf '  ok   %-14s %s\n' "generated" "与 Rust 源一致（跑过上面那道 cargo 门之后再判的）" ;;
+  0) printf '  ok   %-14s %s\n' "generated" "与 Rust 源一致（跑过上面那道 cargo 门之后再判的；$(gate_took generated)）" ;;
   1)
     printf '  FAIL %-14s %s\n' "generated" "src/frontend/ui/generated/ 与 Rust 源不一致："
     git diff --stat -- src/frontend/ui/generated/
@@ -1565,179 +1241,54 @@ case "$gen_rc" in
 esac
 fi
 
-# ── `dead_code`：门禁此前**没有这一格**（`K-R115` `KR115D2` 甲，09-14，第 15 格）────────
+# ── `deadcode`：monitor 非 test 构建里的死代码，**零容忍** ───────────────────────────────────
 #
-# ## 问题：要量它只能自己开一条路
-#
-# 门禁跑的是 `cargo test`，而 test 构建里那些函数**有调用方**（测试自己）⇒ 那条 `dead_code`
-# 它一辈子看不见。`K-R109`（09-13）要量这一维，只能自己拼一条 `docker run … cargo check`
-# —— **因此破了派工单「唯一许可命令」的字面**（PM 已裁「破字面未破实质 · 照登记不抹」）。
-# ⇒ `KR115D2` 二选一：收进门禁，或明写「本门禁不看它」。本格选的是**收进来**。
-#
-# ⚠ **射程如实写**：`-p monitor` 一个包的**非 test** 构建。
-#   `src/backend` 那棵树、`src/frontend/shell` 的其余成员、`#[cfg(test)]` 里的死代码，
-#   本行**一概盖不到**。
-# ⚠ **判法是恒等，不是「不超过某个上限」** —— 这一条承重，理由是死值验逼出来的：
-#   本格第一趟落地时写的是「≤ 54」（照抄 `K-R109` 09-13 的读数），而**本趟现打是 41** ⇒
-#   造一处 `dead_code` 只会让它变成 42，**离 54 还很远，那一刀不红**。
-#   一个宽了 13 的上限，长得和一道门一模一样，而它拦不住本格要拦的那一形。
-#   ⇒ 恒等：多了红（有人写了新的死代码），少了也红（好事 —— 回来把这个数改小，
-#   并写清降的是哪几条；不写就没人分得开「清理了」与「这一趟根本没编」）。
-# ⚠ **「这一趟根本没编」那一形单独有话说**：`cargo` 对**新鲜**单元会重放缓存里的警告，
-#   万一哪天它不重放了，「一条都没有」与「没编」在终端上一模一样 —— 恒等把它一起接住了。
-# ⚠ 它**不修**任何一条 `dead_code`，只是从此有人在数（同一条边界：数出来归数出来）。
-#
-# 〔量于 09-14，本工作树 `track/k-r115`，沙箱 `ccmon-devbox:latest`〕**41 条**，本格墙钟 **71 秒**
-#   （冷 target 的第一趟；这个数就是 `KR115D2` 甲的实测代价，同一趟的门禁基线是 4 分 45 秒）。
-# ⚠ `K-R109` 09-13 现打的是 **54** 条 —— **两个数分母不同，别相减**：那一趟的命令是
-#   `touch src/history.rs src/lib.rs && cargo check -p monitor`（默认 message-format），
-#   本格是 `--message-format=short`、不 touch，而且量于另一个主干尖。
-deadcode_t0=$(date +%s)
-# 🔴 **2026-09-18：41 → 33，降的 8 条逐条记在这里**（本格自己要求「回来把数改小，**并写清降的是哪几条**」）。
-# 起因：用量 ②③ 两轴整轴退役⇒ `usage.rs` · `account_usage.rs` ·
-# `observe/usage_query.rs` · `agents/codex/usage.rs` 等整删，它们里面那 8 条死代码**随文件一起消失**，
-# 不是有人去修的。⇒ 这是「真清掉了」那一支，不是「cargo 没重编」那一支 —— 证据：现打 33 条里
-# **一条都不含用量相关符号**（逐条核过）。
-# ⚠ `codex_record.rs` 的 `token_usage_last` / `turn_context_model` **仍在这 36 条里**，那是
-# 「codex 后面单独做」的**已知代价**，不是删漏 —— 别顺手清掉。
-#
-# 🔴 **2026-09-20：33 → 36，涨的 3 条逐条记在这里**（本格自己要求「说清为什么留着」）。
-# 三条**全部出自 `src/comms/inward/origin.rs`**，是步 12（`origin` 归一）第一刀的**预期状态**：
-#   · `src/origin.rs` 的 `LOCAL` 常量 · `Origin` 这个 enum ·
-#     `Origin` 的五个方法（`local` / `is_local` / `is_remote` / `host_name` / `as_wire_str`）
-# 这一刀刻意**只定类型、不换调用点**（线上形状与今天逐字节相同、零协议变更），
-# 所以「类型在、还没人用」是它落地那一拍的**正确**样子，不是漏。
-# ⚠ **本格是恒等不是上限，这里有一条刻意的耦合**：等迁移真的开始吃 `Origin`，
-#   这三条会自己消失 ⇒ 本格当场红，逼人回来把这个数改小。**那正是要的。**
-# 🔴 **2026-09-20（同日第二次）：36 → 34，降的 2 条逐条记在这里。**
-# **这不是有人去清的，是那条刻意的耦合按设计开火了。** 上面那段逐字预告过：
-# 「等迁移真的开始吃 `Origin`，这三条会自己消失 ⇒ 本格当场红，逼人回来把这个数改小。**那正是要的。**」
-# 步 12·C（`origin` 归一第二刀）合掉 5 对双份命令、`Origin::route()` 上线
-# ⇒ `LOCAL` 常量与 `Origin` 这个 enum **真的有了生产段调用方** ⇒ 两条出列。
-# ⚠ 剩下的第 3 条**仍在**：`Origin` 的五个方法（`local` / `is_local` / `is_remote` /
-#   `host_name` / `as_wire_str`）今天只在测试段用 ⇒ 仍算死代码，**不是漏清**。
-#   等调用点真的吃这几个方法，本格会再红一次 —— 那一次同样是对的。
-# ⚠ 这个数是**现打**的（`cargo check -p monitor --message-format=short | grep -c "never used"`），
-#   不是 36−2 算的。
-# 🔴 **2026-09-21（步 `24f` 第四刀）：34 → 33，降的 1 条逐条记在这里。**
-# **又是那条刻意的耦合按设计开火了，而且这一次上面那段逐字预告过它**：
-#   「剩下的第 3 条**仍在**：`Origin` 的五个方法……等调用点真的吃这几个方法，
-#    本格会再红一次 —— **那一次同样是对的**。」
-# 吃它的是 `src/frontend/filewin/src/find.rs`（原生文件窗口那一侧的搜索）＋
-#   `filewin/source.rs::Source::origin`：前者调 `Origin::as_wire_str()`，后者调 `Origin::local()`
-#   ⇒ 那一条「associated items 从来没用过」的合并警告整条出列。
-# ⚠ **`is_local` / `is_remote` / `host_name` 今天仍然没有生产调用方** —— 现打核过
-#   （全树 `.is_local()` / `.host_name()` 只命中 `origin.rs` 自己头注里那一句散文）。
-#   那三个方法没有单独再报一条，是 rustc 把同一个 impl 块的未用项**合并成一条**警告的结果
-#   ⇒ **别把「警告没了」读成「五个方法都有人用了」。**
-# ⚠ 这个数同样是**现打**的（同一条命令，两趟：`touch src/lib.rs` 与
-#   `touch src/origin.rs` 各一趟，都是 33），不是 34−1 算的。
-# ⚠ 🔴 顺带修一条本格自己的腑坏：这个数原先在下面的内联脚本里**手抄了五遍**
-#   （3 处写 33、**2 处还写着更早的 41**）⇒ 终端上印出来的「恒等钉在 41」是假话，
-#   而没有任何东西会因此变红。现在它只住 `pin=` 一处。
-# 🔴 **2026-09-24（T3 令牌步 3）：33 → 35，涨的 2 条逐条记在这里。**
-# 两条**全部出自 `src/frontend/shell/src/bind.rs`**，都是「接得住、还没人收」那一拍的**预期状态**：
-#   · `lookup_hwnd_for_token` —— 令牌 → HWND 的查询口。消费点（↗ 按令牌分派）是**步 4**，
-#     排在后面 ⇒ 今天零生产调用方。**步 4 落地那一拍它会自己出列 ⇒ 本格当场红，逼人改回 34。**
-#   · `entry_from_marker_hit` —— 从 `#[cfg(windows)]` 函数体里抽出来、为的是 Linux 上也验得了
-#     （测试段有调用方）。生产调用方只在 Windows 那支 ⇒ 本格（Linux 非 test 构建）看它是死的。
-#     ⚠ 这一条**不会**自己出列；它的代价就是「平台分支抽出来可测」本身，不是漏。
-# ⚠ 这个数是**现打**的（合并后主线 `cargo check -p monitor --message-format=short`），不是 33+2 算的；
-#   两条的新旧由 `9ba7f7a7:src/frontend/shell/src/bind.rs` 里这两个函数**零命中**核过。
-# 🔴 **2026-09-24（令牌步 4）：35 → 34，降的 1 条逐条记在这里。**
-# **又是那条刻意的耦合按设计开火了，而且上面那段逐字预告过它**：
-#   「`lookup_hwnd_for_token` …… **步 4 落地那一拍它会自己出列 ⇒ 本格当场红，逼人改回 34。**」
-# 吃它的是 `src/frontend/shell/src/bind.rs::resolve_remote_front`（↗ 远端那一格的唯一分派点，
-#   先令牌 `sid → token → HWND`、后标题退路），生产调用链是
-#   `lib.rs::bring_remote_terminal_to_front` → `bind::bring_remote_front` → 它 ⇒ 那一条出列。
-# ⚠ `entry_from_marker_hit` **仍在这 34 条里**，上面那段也逐字预告过「这一条**不会**自己出列」——
-#   它的生产调用方只在 `#[cfg(windows)]` 那支，本格量的是 Linux 非 test 构建。
-# ⚠ 这个数是**现打**的（本工作树 `w2/t4`，`cargo check -p monitor --message-format=short | grep -c "never used"`
-#   = 34，同一趟 `grep bind.rs` 只剩 `entry_from_marker_hit` / `find_window_by_marker_substr` /
-#   `process_creation_filetime` 三条），不是 35−1 算的。
-# 🔴 **2026-09-24：34 → 33，现打，逐条记**：
-#   R2 让生产改走 `payload.rs` 的 `relay_route_path_in` / `relay_base_url_in`，旧的两口 `relay_route_path` /
-#   `relay_base_url` 与两个跨半边样例常量 `RELAY_ROUTE_SAMPLE` / `RELAY_PASSTHROUGH_SAMPLE` 只剩判据在用
-#   ⇒ 四样都挂 `#[cfg(test)]`（样例常量是后端 `include_str!` 按源码文本读的，挂属性不影响那一读）。
-#   其中 `relay_route_path` 那一条在 33 之前的读数里本来就在（旧的那条 `payload.rs` 警告）⇒ 净 −1。
-#   ⚠ 同一拍 T4 让 `bind.rs::lookup_hwnd_for_token` 有了生产调用方（35→34 那一拍已记）。
-# 🔴 **2026-09-24：33 → 34，现打，逐条记**：B2 加了第四句退出文案 `backend_policy.rs::EXIT_UNREADABLE`
-#   （「那台机器上的退出策略读不出来，按默认办」）。它与同文件已在册的 `EXIT_KILLS` / `EXIT_UNATTENDED` / `EXIT_SELF_DIES` /
-#   `EXIT_COPY` 同一族：Rust 这一份**只为与 TS 那份逐字对拍而存在**（家在 `src/frontend/ui/backend-policy.ts`），非 test 构建里本来就没读者。
-#   ⚠ 这一族要不要整族挂 `#[cfg(test)]` 是另一件事（会一次降 7 条），不在合并这一拍做。
-# 🔴 **2026-09-24（F7c 收尾）：34 → 36，现打，逐条记**：
-#   池子那十二条 Tauri 命令删了之后，`sftp_pool.rs` 里**浏览那一半**的通道闸在生产上没人用了 ——
-#   `ChannelSet::lease`（只过通道闸、不过车道闸的那一口）与 `Leased::discard`（原先只有 `with_sftp` 的死连重试调它）。
-#   **刻意没删**：秤 F4（`sftp_pool_f4_tests`）拿它俩量「传输占满车道时浏览还进得来」那条 `6 − 4 = 2` 的设计；
-#   而浏览今天整个走后端 `files-*`，SFTP 上已经没有浏览 ⇒ 车道闸「给浏览留格子」那条前提不在了。
-#   它俩连同 `TRANSFER_LANE_CAP` 的去留是一道设计题，不顺手删。
-# 🔴 **2026-09-24（SFTP 收尾）：36 → 34，现打，逐条记**：
-#   上一段那两条（`ChannelSet::lease` · `Leased::discard`）**本拍删了** —— 浏览离开 SFTP 之后车道闸没有要保护的东西，
-#   闸（`TRANSFER_LANE_CAP`）、浏览用的借法与它俩一起退役（留下的那一条）。
-#   同拍删的零流量复制一段（命令 · 核心 · 裸通道借据 · 老 Tauri 进度通道 · 取消登记表）**不带走也不带来**死代码：
-#   它们删之前在生产上都有调用方（那条命令），删之后整块不在了。
-# ⚠ 这个数是**现打**的（本工作树 `w4/s4`，`cargo check -p monitor --message-format=short | grep -c "never used"` = 34），不是 36−2 算的。
-# ⚠ 下面两段原先夹在 `run_gate deadcode … \` 的续行与 `bash -c` 之间 —— 续行接上一行注释 ⇒ 命令在那里就断了、
-#    `bash -c` 那一段成了一条游离命令（本格跑的不是它）。挪到 `run_gate` 之上，一字未改。
-# 🔴 **2026-09-24：34 → 35，现打，逐条记**：多的一条是 `dial_host.rs::RemoteFs::home`（`method home is never used`）。
-#    生产侧不读它（`open` 里只核「后端答出了起始目录」）；唯一的读者是真 sshd 那条 `#[ignore]` 读数用例
-#    （`sftp_tests::sr1b_loopback_deploy_and_transfer_through_the_resident_backend` 断言「起始目录就是 sshd 给的那个」）。
-#    ⚠ 没改成 `#[cfg(test)]`：那会把 `src/frontend/shell/src` 的「测试专用支撑项」顶到 16（`structural_scan` 的只许降棘轮，上限 15）——
-#    两条纪律冲突时，动**允许说清理由再改的**这一个数，不动只许降的那一个。
-# 🔴 **2026-09-24（子步 1）：35 → 34，现打，逐条记**：少的那一条正是上一段那条 `RemoteFs::home` ——
-#    推全景小程序字节（`panorama_bytes·rs::push_to`）拿它拼远端落点 `<home>/.cc-monitor/bin/cc-monitor-panorama`，
-#    它有了生产读者 ⇒ 出列。同拍 `panorama_bytes` 那两个 `cfg_attr(not(test), allow(dead_code))` 摘了（有了生产调用方），不进这个数。
-#    ⚠ 现打：本工作树 `cargo check -p monitor --message-format=short | grep -c "never used"` = 34。
-#    代码全景摘掉之后它又没了生产读者 ⇒ 连同那个字段一起删了（不进这个数）。
-# 🔴 **2026-09-25（文案全量抽表）：34 → 23，现打，逐条记**：降的 11 条正是 B2 合并那段点名的那一族 ——
-#    `backend_policy·rs` 的 `EXIT_KILLS` / `EXIT_UNATTENDED` / `EXIT_SELF_DIES` / `EXIT_UNREADABLE` / `EXIT_COPY` /
-#    `HEALTH_UNKNOWN` / `HEALTH_CLEAN` / `HEALTH_CRASHED` / `HEALTH_LAST_MISSING` / `HEALTH_COPY` / `CROSS_LANGUAGE_COPY`。
-#    它们「只为与 TS 那份逐字对拍而存在」；文案表立起来之后两侧读同一条表项（`backendPolicy.*`），Rust 副本与逐字对拍一起删了。
-#    ⚠ 现打：本工作树 `w4/cp2b` 的 `cargo check -p monitor --message-format=short | grep -c "never used"` = 23，
-#    与删之前那份 34 条逐行 diff 只差这 11 行（其余 23 条原样在）。本路不跑 gate，这个数是写区外动的，已报备。
-# 🔴 **2026-09-26（PB1 · 90 阶段 B）：23 → 21，现打**：`backend_policy·rs` 的 `describe_health` 与只经它活着的 `Health::seen` 出列 ——
-#    前者并进有生产读者的 `health_face`（`backend_status` 调它），后者随之有了生产读者。与基线逐行 diff 只差这 2 行。
-# 🔴 **2026-09-26（SH1）：23 → 22，现打，逐条记**：少的那一条是 cc-bus 驾驶舱远端读 `exec_read` 里那句
-#    「value assigned to `overflowed` is never read」—— 那个函数随读面改问后端整个删了。同拍新长的三条零生产调用项
-#    （monitor `tmux.rs::TMUX_LS_FMT` 双写点 · `spawn_managed` 的 async 出口两项）各带 `cfg_attr(not(test), allow(dead_code))` 与理由，不进这个数。
-# 🔴 **2026-09-26（合并 PB1 × SH1）：23 − 2（PB1）− 1（SH1）= 20**。
-# 🔴 **2026-09-28（MIG-2 · 起会话进后端）：本路 −0**：起会话搬进后端之后 `apikey_remote.rs` 的发送口（`BUDGET` · `call` · `said`）零调用方，
-#    整个模块删了（没有抬这个数）。现打本工作树 = 21，多的那一条是 `user_files.rs::delete_empty_dir`，归 MIG-3a（它合后回 20）。
-# 🔴 **2026-09-28（MIG-3a × MIG-2 合并）：MIG-2 那 −0（`apikey_remote` 整删）＋ MIG-3a 21 → 20 → 19，现打，逐条记**：① −1 `user_files·rs::BackendDoor::delete_empty_dir`（卸 skill 进后端后零生产调用方，连同测试侧假门删，回到 20）；
-#    ② −1 `fenced_block·rs::FENCE_SHAPES`（那张形状账只有判据读，随别名块进后端时住进判据文件 `tests/backend/assets/aliases/fence_tests.rs`）。
-#    同拍另有 `user_files·rs::list_dir` / `LIST_LIMIT`（收件箱进后端）· `rel_under` / `join_under`（别名进后端）四项零调用方，**当拍删了**，不进这个数。
-#    ⚠ 现打：本工作树 `cargo check -p monitor --message-format=short | grep -c "never used"` = 19。
-# 🔴 **2026-09-28（合并 MIG-3b × 主线 5bb03b34）：19 → 18**：−1 `hooks_diag·rs` 第 51 行那一条（钩子诊断整个文件随进后端 `hooks-diag` 删了）；
-#    MIG-3b 另删的 `dial_host·rs::RemoteFs::stat`（部署判定进后端后零调用方）当拍就删、没进过这个数。现打本工作树 = 18（主线 5bb03b34 现打 19，逐条对过只差这一条）。
-# 🔴 **2026-09-28（合 MIG-1 × 主线 p5e）：主树现打 19 → 回 18，现打，逐条记**：多的那一条是 `inbound_client·rs::InboundClient::close_write` ——
-#    它唯一的生产调用方（测试连接那次一次性探测）随测试连接进本机后端删了，只剩两条起真后端的判据还用它 ⇒ 连同 `WriteJob::CloseWrite`
-#    改成只编进测试档（`#[cfg(test)]`），生产段不再有关写半边这回事。没有抬这个数。
-# 🔴 **2026-09-28（MIG-3b 续 · 足迹进后端）：18 → 14，现打，逐条记**：−4 全出自 `tool_registry·rs`（申报表随「一处后端」进了后端
-#    `src/backend/footprint/registry.rs`）：`ToolSpec::touches` · `Provisioning` 的 `ALL`/`label` · `EnvTier` 的 `ALL`/`label` · `NOT_MANAGED` ——
-#    它们在后端那棵树里仍只有判据读（挂 `cfg_attr(not(test), allow(dead_code))` 并写明），本格射程外。
-#    ⚠ 现打：本工作树 = 14；上一拍（`4a223c87`，申报表还在 monitor）另起一份工作树现打 = 18，逐条对过只差这四条。
-# 🔴 **2026-09-28（记录抽取进后端）：14 → 12，现打，逐条记**：−2 全出自 `codex_record·rs`（`token_usage_last` · `turn_context_model`）——
-#    那份文件整批搬进后端 `agents/codex/record.rs`（后端是记录解释的唯一的家），本格射程外。
-#    ⚠ 现打：本工作树 = 12；基线 `95670597` 另起一份工作树现打 = 14，逐条对过只差这两条。
-# 🔴 **2026-09-29（P1 · 起会话事实进后端）：12 → 11，现打，逐条记**：−1 `adapter·rs::ALL_AGENT_KINDS`（只有判据读）——
-#    monitor 那份适配表整删（起会话事实只住后端 `agents/<名>/resume.rs`）。⚠ 现打：本工作树（铺了内嵌字节）= 11；
-#    子步 4 那一笔 `52d06e7d` 另起一份工作树现打 = 12，逐条对过只差这一条。
-# 🔴 **2026-09-30（P4b · 阶段 H 子步 2）：11 → 8，现打，逐条记**：−3 全出自 `bind·rs`（`entry_from_marker_hit` · `find_window_by_marker_substr` · `process_creation_filetime`）——
-#    它们的生产调用方原先只在 `#[cfg(windows)]` 那一支；cfg 分身合成一份（Win32 读法进 `platform/{hwnd,pid}.rs`）之后 Linux 构建里也有了调用方。⚠ 现打：本工作树 = 8，与基线 11 条逐行 diff 只差这三行。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 8，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'pin=8; cd src/frontend/shell && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
-n=$(printf "%s\n" "$out" | grep -c "never used"); \
-printf "%s\n" "$out" | tail -5; \
-if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
-if [ "$n" -gt "$pin" ]; then printf "deadcode: never used %s 条，钉的是 %s —— 有人写了新的死代码；修掉它，或者说清为什么留着、再来改这个数\n" "$n" "$pin"; exit 1; fi; \
-if [ "$n" -lt "$pin" ]; then printf "deadcode: never used 只数到 %s 条，钉的是 %s —— 要么真清掉了几条（好事：回来把这个数改小，并写清降的是哪几条），要么这一趟 cargo 根本没重编 / 没重放警告。两者在终端上一模一样，所以一律按红记\n" "$n" "$pin"; exit 1; fi; \
-printf "deadcode: %s passed（never used %s 条，恒等钉在 %s）\n" "$n" "$n" "$pin"'
-# ⚠ 这一行是**读数**不是判定 —— 那一格被 `GATE_ONLY` 挡掉时它会印出「墙钟 0 秒」，
-#   而 0 秒与「真的快」在这一行上长得一模一样 ⇒ 挡掉了就别印。
-case " ${GATE_SKIPPED[*]-} " in
-  *" deadcode "*) : ;;
-  *) printf '  分母 %-14s %s\n' "deadcode" "本格墙钟 $(( $(date +%s) - deadcode_t0 )) 秒（现打，与门禁基线相减就是加这一格的代价）" ;;
-esac
+# 门禁的 `cargo test` 看不见它（test 构建里那些项有调用方：测试自己）⇒ 单开一趟 `cargo check -p monitor`。
+# 判：这一趟 rustc 报的 `dead_code` 诊断（`never used` · `never constructed` · `never read` 都算）一条都不许有；
+#   有就逐条列出来（文件:行 ＋ 原话）。原先钉的是「`never used` 恰好 8 条」—— 一个手抄的数，
+#   漏数 `never constructed`，而且每路合并都要回来改它。
+# 只在别的平台上才有调用方的项，用 `#[cfg(…)]` 把它和调用方放在同一个平台上，别留着让这一格记它。
+# 反空真：JSON 里必须有 `monitor_lib` 那一个 artifact（这一趟真走到了 monitor；缓存命中时 cargo 照样重放警告）。
+# ⚠ 射程：`-p monitor` 这一趟编到的包（含它的 path 依赖）的非 test 段；`src/backend` 与 `#[cfg(test)]` 里的盖不到。
+gate_deadcode() {
+  local out rc
+  out="$(cd src/frontend/shell && cargo check -p monitor --message-format=json 2>&1)"; rc=$?
+  printf '%s\n' "$out" | python3 -c '
+import json, sys
+rc = int(sys.argv[1])
+seen_lib, dead, errs = False, [], []
+for line in sys.stdin:
+    try:
+        m = json.loads(line)
+    except ValueError:
+        continue
+    if m.get("reason") == "compiler-artifact" and m.get("target", {}).get("name") == "monitor_lib":
+        seen_lib = True
+    if m.get("reason") != "compiler-message":
+        continue
+    msg = m["message"]
+    if msg.get("level") == "error":
+        errs.append(msg.get("rendered") or msg["message"])
+    if (msg.get("code") or {}).get("code") == "dead_code":
+        sp = [x for x in msg["spans"] if x.get("is_primary")] or msg["spans"] or [{}]
+        dead.append("%s:%s  %s" % (sp[0].get("file_name", "?"), sp[0].get("line_start", "?"), msg["message"]))
+if rc != 0:
+    print("".join(errs)[-4000:])
+    print("deadcode: cargo check 退出码 %d —— 判不了" % rc)
+    sys.exit(rc)
+if not seen_lib:
+    print("deadcode: 输出里没有 monitor_lib 的 artifact —— 这一趟没走到 monitor，「零条死代码」不算数")
+    sys.exit(1)
+if dead:
+    for d in sorted(set(dead)):
+        print("  dead_code  " + d)
+    print("deadcode: 非 test 构建里有 %d 条死代码（上面逐条）—— 删掉，或用 #[cfg(…)] 收到它真有调用方的那个平台" % len(set(dead)))
+    sys.exit(1)
+print("deadcode: 1 passed（monitor 非 test 构建零条 dead_code）")
+' "$rc"
+}
+run_gate deadcode '不是数出来的数：`cargo check -p monitor`（非 test）的 `dead_code` 诊断零条才绿，有就逐条列出来' \
+         gate_deadcode
 
 # ── `clippy` / `appbuild`：`ci.yml` 那两步此前只在 CI 上跑 ─────────────────────────────
 # `rust` job 的 `cargo clippy --workspace --all-targets`（不带 `-D warnings`，但 clippy 默认 deny 的那几类
@@ -1806,286 +1357,145 @@ run_gate coverage '这一趟 vitest（带 v8 覆盖率）真跑过的条数：`c
 run_gate audit '步数：`ci.yml` 的 `npm audit (production deps, high)` 一步原样跑（`--omit=dev --audit-level=high`），只有绿/红两态。⚠ 要联网、判的是 registry 当下的漏洞库；dev 依赖与 high 以下的档本行不看。本格墙钟〔量于 2026-09-30，本工作树〕约 1 秒' \
          gate_ci_steps audit "npm audit (production deps, high)"
 
-# ── 门⑥ `ccm` e2e（`K-G3` 09-01，治 `丙1-f1`）────────────────────────────────
+# ── 真机 e2e：每一套一行 `run_e2e <套件>` ─────────────────────────────────────────
 #
-# ★★ 它买的是什么：`shared/ccm` 是 1258 行的 bash 启动器，`K-C1` 为它写了 54 条断言，
-#    而在本行落地之前 `grep -c ccm scripts/gate.sh` = **0** ⇒ 出货那一刀**一条都不看**。
-#    头注那句「出货前的**唯一闸门**」与这个 0 对不上，`丙1-f1` 就是这笔账。
-#
-# ★ **判法不自造，复用 `tests/e2e/assert-pass-floor.sh`** —— CI 的 26 条 e2e 步骤用的就是它，
-#   地板值也照抄 `ci.yml` 那两行（`ccm-print-parity 12` · `ccm-rbind-title 8`）。
-#   一个性质两个量法就是本区最贵那族病（`K13`）；这里刻意只留一份。
-#   它自己 fail-closed 的三条（头注逐字）：非零退出 ⇒ 红 · 抓不到「合计 PASS=」⇒ 红
-#   （不当 0 也不当过）· 实得 < 地板 ⇒ 红。
-#
-# ⚠ **本函数在它之外再判一次「抓不抓得到那个数」**，不是重复：`assert-pass-floor.sh`
-#   自己红时会 `exit 1`，而**它整个没跑起来**（脚本被删 / bash 起不来）时 `rc` 也是非零，
-#   两者在 `fails` 里长得一样。多抓一次 `n` 是为了让绿行**带上实得数**——
-#   门禁类判据的专属陷阱是「门没跑」与「门跑了结果是空」在终端上一模一样。
-#
-# ★★★ **`K-G8`（09-03）：本函数跑的这几套一律按 `exact` 判 —— 实得 ≠ 地板就红。**
-#
-#   在此之前判法是 `n < 地板`（`assert-pass-floor.sh:56` 逐字 `-lt`）⇒ **只挡缩水，
-#   不挡「涨了而地板没跟」**。那一侧是**静默**的，09-03 当天就发生了一次活体：
-#   `ccm-cli` 实得 **173** / 地板 **126** ⇒ 门禁印 `PASS=173（地板 126）`，**绿的**，
-#   那 **47** 条断言在地板眼里等于不存在（当天可以被整族删掉，没有任何东西会说一句话）。
-#   最后是下一拍的人**顺手**棘上去的 —— **不是任何判据逮到的。**
-#   ⇒ ★ 余量的宽度**不是这套机制的属性**，是「上一次有人手动棘距今多久」的属性。
-#
-#   🔴 **为什么恒等能装在这里、不能装在 `ci.yml` 那 19 条上**（分母写死，别读宽）：
-#     地板今天有 **23** 条调用行，本文件只跑其中 **4** 条；另外 **19** 条只住在 `ci.yml`，
-#     而那条流水线 **751 个提交 / 29 天没通电**（`origin/main` = `1eeb4bf` @2026-08-05）。
-#     给一条没人在跑的判据换判法 ⇒ **没有任何读数能验它**。那 19 条归 `K-G3`，本拍不动。
-#     ⇒ **4/23。别把「这 4 套装上了恒等」读成「地板这件事解决了」。**
-#
-#   🔴 **摩擦落在谁头上，写清楚**：落在**加断言的那一拍**身上，而且落点是**三处** ——
-#     `ci.yml` 调用行 + `ci.yml` 的 `pair` 自检清单 + 本文件这几行 `run_e2e`。
-#     那三处**本来就该一起改**（`ci.yml` 那条纪律逐字写着），恒等买到的不是「少改一处」，
-#     是把「忘了改」从**静默**变成**当场红**。⚠ 摩擦的量没变，变的是忘了会不会响。
-#
-#   ⚠ **前置买过了才装的**：恒等把「涨了也红」加进来之后，一套 PASS 数**随环境浮动**的
-#     套件会**双向都红**。`K-G8` 落地拍现打：23 套 × **4 趟**（同镜像连打两趟 ·
-#     换镜像 `kg3-devbox-full:probe` 一趟 · 换网络 `--network host` 且带并发负载一趟）
-#     ⇒ **23/23 逐套 `(PASS, FAIL, rc)` 三元组全同值**，这 4 套在内。
-#     ⚠ 那是「4 趟里没抓到不稳」，**不是「恒稳」**；CI runner / Windows 上**未知，不是稳**。
-#     尺子留在 `tests/evidence/K-G8-stability-diff.py`（可复算）。
-#
-#   ⚠ **`exact` 是第三个参数、fail-closed**：拼错 ⇒ `exit 2`，**不回落 `at-least`**。
-#     回落等于把「拼错了」静默降级成旧行为 —— 那正是这道闸要治的那一族。
+# 判法复用 `tests/e2e/assert-pass-floor.sh`：套件退出码 0 ＋ 收尾 `合计 PASS=<n> FAIL=0` ＋ `n > 0`。
+# 每套断言几条**只住在套件自己的输出里** —— 这里不钉数，CI 也不钉（CI 的 e2e job 就是调本门禁）。
+# 几路同时给同一套加断言时，不再在几处手抄的数上撞车；读数照样印在绿行上、记进收据。
+# `GATE_ONLY` 里写套件短名（`ccm-cli`），或写 `e2e` 一次点名全部套件（CI 那个 job 用它，套件名单不抄第二份）。
+# 收据与裁决行里的规范名带前缀（`ccm tests/e2e/<套件>`）。
 run_e2e() {
-  # 第三个参数可选：`exact`（缺省）或 `exact-with-skip`（按 PASS+SKIP 恒等判，给按环境显式分支的套件）。
-  local suite="$1"; local floor="$2"; local mode="${3:-exact}"
-  # ⚠ 两个名字**刻意不同**：`GATE_ONLY` 里写套件短名（`ccm-cli`），而收据与
-  #   `found_cells()` 认的**规范名**带前缀（`ccm tests/e2e/ccm-cli`）。
-  #   规范名里有空格 ⇒ 它当不了空格分隔的 `GATE_ONLY` 记号，所以两侧各用一个，
-  #   归一那一跳写在 `K-G4C-gate-receipt.py` 与 `K-R80` 的 `C5d`/`C8` 里（同一份取法）。
-  gate_wants "$suite" || return 0
-  local out rc n
-  out="$(bash tests/e2e/assert-pass-floor.sh "$suite" "$floor" "$mode" 2>&1)"
+  local suite="$1"
+  gate_wants "$suite" e2e || return 0
+  local out rc n t0
+  t0="$(gate_now_ms)"
+  out="$(bash tests/e2e/assert-pass-floor.sh "$suite" 2>&1)"
   rc=$?
-  GATE_RAN+=("ccm tests/e2e/$suite")
+  gate_ran "ccm tests/e2e/$suite" "$t0"
   n="$(printf '%s' "$out" | grep -oE '合计 PASS=[0-9]+' | grep -oE '[0-9]+' | tail -1)"
   if [ "$rc" -ne 0 ]; then
-    fails+=("ccm tests/e2e/$suite（退出码 $rc；实得 PASS=${n:-<抓不到>}，地板 $floor，判法 $mode。\
-诊断原文见上方本套件自己的输出）")
-    # K-R22：原来这里是裸 `tail -20`。换成共用的 `gate_diag` 有两处不是排版：
-    #   ① 套件自己的 `::error::` 诊断行**可能落在尾部 20 行之外**（`assert-pass-floor.sh`
-    #      先 `cat` 整份输出再打诊断，一套失败几十条时那行就被顶出去了）—— 模式表把它捞回来；
-    #   ② 加了 `  | ` 前缀，套件输出里的 `PASS=`/`FAIL=` 行不再混进本脚本的裁决面。
+    fails+=("ccm tests/e2e/$suite（退出码 $rc；PASS=${n:-<抓不到>}。诊断原文见下）")
     gate_diag "tests/e2e/$suite" "$out"
   elif [ -z "$n" ]; then
     fails+=("ccm tests/e2e/$suite（退出码 0 但抓不到「合计 PASS=<n>」—— 门没跑与门跑了结果是空\
 在终端上一模一样，判不了，不许当成绿）")
-    # K-R22 D1 #9：这一支原来一个字都不印，而「门没跑」与「门跑了结果是空」
-    # **恰恰只能靠那段输出分开** —— 不印等于把这条判据自己那句话作废。
     gate_diag "tests/e2e/$suite" "$out"
   else
-    printf '  ok   %-14s %-22s PASS=%s（地板 %s，判法 %s）\n' "ccm e2e" "$suite" "$n" "$floor" "$mode"
+    printf '  ok   %-14s %-22s PASS=%s（%s）\n' "ccm e2e" "$suite" "$n" "$(gate_took "ccm tests/e2e/$suite")"
   fi
 }
 
-# ── 探针⑩（`N-G2`）：`run_e2e` 的**退出码**那条判定还在不在判 ──────────────────
-#
-# 🔴 **为什么它不住在上面那个 `gate_selftest` 里**：bash 要函数**先定义后调用**，而
-#   `gate_selftest` 的调用点在本文件靠前处、`run_e2e` 到这里才定义。两条别的路都更贵 ——
-#   把 `run_e2e` 的定义整块前移、或把 `gate_selftest` 的调用点后移，都是为了一条探针去动
-#   本文件的结构。⇒ **让这一条住在它盯的那道门旁边**，`gate_assert_judged` 与取法仍是同一份。
-#
-# 只有它拦得住：给一个**非数字的地板** ⇒ `tests/e2e/assert-pass-floor.sh` 在**参数校验**那一步
-#   `exit 2`，并把那个参数**原样回显**；参数里带着 `合计 PASS=7` ⇒ `run_e2e` 抓得到读数
-#   ⇒ 「抓不到「合计 PASS=」」那条**已被满足**，掏掉退出码那条就一路落到绿行。
-# ⚠ 那一步排在 `npm run` 与 `mktemp` **之前** ⇒ 不跑 npm、不落文件（见上面自检段头注）。
+# 探针⑩：`run_e2e` 的「退出码非零 ⇒ 红」还在判。给判法脚本两个参数 ⇒ 它在参数校验那一步 `exit 2`
+#   并把参数原样回显（不跑 npm）；参数里带着 `合计 PASS=7` ⇒ 读数抓得到，掏掉退出码那条就会落到绿行。
 gate_selftest_e2e() {
   local GATE_PROBE=1   # 同 `gate_selftest`：探针不受 `GATE_ONLY` 影响
   local probe
-  probe="$(run_e2e 自检⑩ '合计 PASS=7 NG2-PROBE-J' 2>&1)"
+  probe="$(run_e2e '自检⑩ 合计 PASS=7 NG2-PROBE-J' 2>&1)"
   gate_assert_judged 自检⑩ "$probe" NG2-PROBE-J "run_e2e 的「退出码非零 ⇒ 红」"
 }
 gate_selftest_e2e
 
-# ★★ 🔴 `K-R48` 第二拍（09-11）：**这四套的被测对象换成了后端二进制，所以先把它 build 出来。**
-#
-# 〔用@09-11 `K33`〕逐字「后端**只有一个**…**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」
-# ⇒ `shared/ccm` 删了，四套 e2e 的 `$CCM` 指向 `$CARGO_TARGET_DIR/debug/cc-monitor-backend`。
-#
-# 🔴 **为什么要单独 build，不能指望上面 `backend` 那格顺手带出来**：现打实测过 ——
-#   `cargo test`（那一格跑的就是它）**只编 `src/main.rs` 的 test 版**
-#   （`deps/cc_monitor_backend-<hash>`），**不产 `debug/cc-monitor-backend`**。
-#   不加这一步的话，四套 e2e 会在 fail-closed 那道 `[ -x ]` 上一起红，
-#   而诊断说的是「先 cargo build」——对，但那件事该由门禁自己做。
-# ⚠ 它**不进判定面**：build 失败时下面四格会各自红并说清原因（fail-closed），
-#   这里再加一层判定只会让同一件事报两遍。
+# e2e 的被测对象是后端二进制 ⇒ 先编出来（`backend` 那格的 `cargo test` 只编 test 版，不产 `debug/cc-monitor-backend`）。
+# 它不进判定面：编不出来时每一套各自 fail-closed 红并说清原因。
 gate_e2e_wanted() {
   if [ -z "$GATE_ONLY" ]; then return 0; fi
-  local suite
-  for suite in ccm-print-parity ccm-cli ccm-contract-parity backend-cc-bus backend-gate2 local-backend restart-frames restart backend-tmux-late-server backend-sessions-rewatch p3t-local-tmux resume-frames cc-spawn-uplift inbound-frames graylight-frames backend-fork tmux-target cc-bus-queue-drain resume; do
-    case " $GATE_ONLY " in *" $suite "*) return 0 ;; esac
+  local tok
+  for tok in $GATE_ONLY; do
+    case "$tok" in e2e) return 0 ;; esac
+    if grep -qE "^run_e2e $tok\$" "$0"; then return 0; fi
   done
   return 1
 }
 if gate_e2e_wanted; then
-printf '  ·    %-14s %s\n' "e2e 前置" "build 后端二进制（下面那几套 e2e 的被测对象）"
+gate_prep_t0="$(gate_now_ms)"
 ( cd src/backend && cargo build --bin cc-monitor-backend >/dev/null 2>&1 ) || true
+GATE_PREP_MS="$(( $(gate_now_ms) - gate_prep_t0 ))"
+printf '  ·    %-14s %s\n' "e2e 前置" "build 后端二进制（下面那几套 e2e 的被测对象；$(gate_fmt_ms "$GATE_PREP_MS")）"
 else
 printf '  ·    %-14s %s\n' "e2e 前置" "跳过（GATE_ONLY 一套 e2e 都没点 ⇒ 不白编那一趟 cargo build）"
 fi
 
-run_e2e ccm-print-parity 12
-# ── `K-G7`（09-03）新挂的两套 ─────────────────────────────────────────────────
-# 地板量于 `b8a6ecd`、镜像 `644ea0ce5c3d`，连打两趟同值（126 / 68，各 0 FAIL 0 SKIP）；
-# 与 `ci.yml` 的调用行同值 —— 详见本文件头注那一节，改地板要三处一起改。
-# ⚠ 这两套硬依赖 `jq` 且 fail-closed：镜像里没有 `jq` ⇒ 这两格红，不会静默跳过。
-# ★★ **`K-P2` `D` 阶段（09-03）：`ccm-cli` 棘 `126` → `203`**（`ccm-contract-parity` 本拍没动）。
-#   那 77 条分两拍买的：`D1` 的 `JSONENC` 47 条（真 JSON 编码器，与 `jq -Rs .` 逐字节对拍）
-#   ＋ `D2` 的 `WIRE` 30 条（真发请求那一半：落盘式假后端，「发了」与「发对了」分两族判）。
-#   量于 `65b2792`、同一份 devbox 镜像，`PASS=203 FAIL=0`。
-#   🔴 **顺带如实登记这一格是怎么被逮到的**：`D1` 交回时实得 **173**、地板还停在 **126**，
-#   而 `tests/e2e/assert-pass-floor.sh:56` 是 `n -lt FLOOR` ⇒ **只挡缩水、不挡「涨了不跟」**
-#   ⇒ 那 47 条在地板眼里等于不存在，**没有任何东西会说一句话**（「静默不涨」）。
-#   那个**机制**（地板该不该恒等 / 自动棘轮）归 `K-G8`；这里只是把这一次的数棘上去。
-# ★★ **`K-P2` `D` 阶段第三拍（09-03，生产接线）：`ccm-cli` 再棘 `203` → `242`**。
-#   那 39 条是 `WIRE/launch` 一节：**`D2` 那 30 条盖的是 `--resolve` 那一跳，一条都没盖住
-#   `launch`**。棘之前那一趟是**切完 8 刀、补完判据之后**的那一趟（`§19 裁八`），
-#   沙箱 `ccmon-devbox:latest` 现打 `PASS=242 FAIL=0`。
-#   ⚠ 那 8 刀按 242 这个基线**重打过一遍**（先前按 240 打的那一轮作废）。
-# ★★ **`K-P2` `F` 拍（09-04，真搬拍）：`ccm-cli` 棘 `242` → `261` · `ccm-contract-parity` 棘 `68` → `72`。**
-#   用@09-04 逐字「**ccm不要管找不到, 统一走后端**」⇒ `shared/ccm` 的**建会话**与**账号解析**
-#   两条本地退路都删了。那不是「删几条判据」——盘上是**整族翻面 ＋ 净增**：
-#     · `ccm-cli` +19：`WIRE/launch` 的「降级」族翻成「不可达」族（＋`腿分开` 3 条：
-#       用一份「账号答得上、只有 `--launch` 答不出」的后端把两条腿分开）· `KCY2` 整族翻面
-#       （`rc=4` / 「`CCM_NO_BACKEND=1` 不是逃生口」/「空表是合法答案」各成一格）·
-#       身份前置检查那族补了「不给 `--base` ⇒ 账号那条腿先报」的反向对照 ·
-#       `WIRE/夹具自检④` 拆成「没后端 ⇒ 没有兜底」＋「后端在但答不出 `--resolve` ⇒ 静默退路仍在」。
-#     · `ccm-contract-parity` +4：`A″`/`A′e`/`A′h` 三处的反向对照从「关掉后端」换成
-#       「换一份后端」（同一条代码路径、只有输入不同 —— provenance 正是后者），
-#       并各补一格「`CCM_NO_BACKEND=1` ⇒ rc=4」。
-#     · `ccm-cli` 再 +3：`控制字符` 那一族拆成两半 —— 「换行照发」（修回来的那个能力：
-#       载荷里的 `\n`/`\t` 是**键**，`create-or-attach` 放行；`ESC`/`CR`/`NUL` 照旧挡）
-#       ＋「线上那份请求里那个换行是**转义**过去的」。
-#   量于 `ccmon-devbox:latest`，`PASS=264 FAIL=0` / `PASS=72 FAIL=0`。
-#   ⚠ **`ci.yml` 那两行不在本件写区** ⇒ 逐字 diff 交回 PM 落（头注那条「三处一起改」的纪律照旧）。
-# ★★ 🔴 **`K-R48` 第二拍（09-11）：`ccm-cli` 264 → 46 · `ccm-contract-parity` 72 → 39。**
-#   **这是本门第一次往下拧地板，所以理由要比往上棘时写得更细。**
-#
-# 用户 09-11 逐字：「那就把这个门禁删了，**bash 脚本直接删**」。PM 第一拍的对拍读数
-#（`tests/evidence/K-R48-native-vs-bash-parity.py`，SAME=27 / DIFF=2）买到的结论是
-#「那四套多半不必重写，只要把 `$CCM` 指向二进制」⇒ 本拍**没有删套件**，是
-#**逐条判了那 356 条断言**（`tests/evidence/K-R48-356-verdicts.tsv`）再把没有指称对象的删掉。
-#
-# 四格实测（本拍现打，沙箱 `ccmon-devbox:latest`）：
-#   · `ccm-print-parity`   12 → **12**（0 删；断言一个字没改，只把 PATH 上那个 `ccm` 换成软链）
-#   · `ccm-rbind-title`     8 → **8**（0 删；格式串取值点从 `sed shared/ccm` 换成 `sed` 那个 Rust `const`）
-#   · `ccm-cli`           264 → **46**（删 218）
-#   · `ccm-contract-parity` 72 → **39**（删 33）
-#
-# **删掉的那 251 条按族**（逐条判词在 TSV 第 6 列）：
-#   · `JSONENC` 47 —— 手写的 bash JSON 编码器与 `jq -Rs .` 对拍。Rust 侧是 `serde_json`。
-#   · `WIRE` 85 —— 「发了 / 发对了 / 不可达 / 撞名」。同一个进程之下没有「上线字节」这回事；
-#     其中「那几件事一件都不许丢」已落成 Rust 判据
-#     `the_container_launch_goes_through_the_one_door_with_every_field_intact`。
-#   · 账号解析走后端一节 69 + 身份后端前置检查 15 —— 「找不到后端」这个概念没了。
-#   · `A″`/`A′d`/`A′e`/`A′f`/`A′h` 31 —— 全是「ccm 去问另一个进程」这件事的形状。
-#   · `A′g` 2 —— **搬进了 Rust**（`a_command_from_the_backend_is_never_rewritten_by_the_shell`）。
-#
-# 🔴 **两族是本拍实测推翻第一拍判词的**（第一拍判「搬得过去」，指过去之后发现没有指称对象）：
-#   ccm-cli 第 82–83（`--print` 不受身份前置检查影响 ＋ **非空对照断的正是已删的 rc=2**）·
-#   第 281–284（`--print` 纯性，第 281 数「假后端被调几次」⇒ 原生实现恒 0，**空真**）。
-#
-# ⚠ **新增判据落在别处，不在这四格里**：backend 那格 676 → 677（容器路三条转发那条）。
-# 46 → 48：新增两格「设了 CCM_SELF 也不被读」＋ 正控（后端只认 self_invocation）。
-# 48 → 53：`--cwd ../x` 补绝对 · `new` 保留 · 位置词 `attach` 交 claude · `--ccm-tmux` / `--ccm-agent` 让名 · 启动器拆词各一格（现打 53）。
-# 58 → 70：账号库住进 `~/.cc-monitor/accounts/` 那一组 12 格（临时家目录里建库 → 起会话 → 列账号；旧位置的清单不读不写）。
-run_e2e ccm-cli               80
-# 🔴 39 → **42**：C 组加了三格（`capabilities=` 声明
-#    `base-url-across-tmux` · 容器载荷真带 `export ANTHROPIC_BASE_URL=` · 反空真）。
-#    判法是 `exact` ⇒ 这个数不改，涨了照样红。**同一拍要改三处**（本行 + `ci.yml` 的
-#    调用行 + 那个 job 里的清单副本），三处都不在 `K-R61` 写区，已点名交回 PM。
-# 🔴 42 → **45**：C 组再加三格，问的是**一份真编出来的二进制**
-#    「你是哪一次构建」——① 抽取器自检（从后端源码抠得到 `BUILD_ID`）·
-#    ② `--ccm-probe` 的 `build=` 行 == 那个 `BUILD_ID` · ③ `build=` 与 `version=` 不同值
-#    （后者是 CLI 契约版本，答不出身份）。**它是本件唯一跑真二进制的判据**，
-#    Rust 侧那几条跑的是测试壳。⚠ `ci.yml` 那两处（调用行 + 清单副本）**不在本件写区**，
-#    逐字 diff 已交回 PM（头注那条「三处一起改」的纪律照旧）。
-run_e2e ccm-contract-parity   45
+run_e2e ccm-print-parity
+run_e2e ccm-cli
+run_e2e ccm-contract-parity
+run_e2e backend-cc-bus
+# `backend-gate2` · `local-backend` 按环境显式分支：版本门 / 没铺 `embedded-backends/` 的格记 SKIP 并说原因；
+#   未登记的 SKIP 由套件自己判红（收尾 `[ "$skip" -eq 0 ] || exit 1`）。
+run_e2e backend-gate2
+run_e2e local-backend
+run_e2e restart-frames
+run_e2e restart
+run_e2e backend-tmux-late-server
+run_e2e backend-sessions-rewatch
+# `p3t-local-tmux` 跑在 `bash -lic` 里、依赖本机登录 shell：套件自己的 fail-closed 前置罩住（解析到的不是本树那个二进制就 ABORT）。
+run_e2e p3t-local-tmux
+run_e2e resume-frames
+run_e2e cc-spawn-uplift
+run_e2e inbound-frames
+run_e2e graylight-frames
+run_e2e backend-fork
+run_e2e tmux-target
+run_e2e cc-bus-queue-drain
+run_e2e resume
 
-# `backend-cc-bus`：DUP2 把拒码改成 `bad_id` 之后它红了 3 条、一整天没人看见 ——
-#   它只挂在 `ci.yml` 那条不通电的流水线上。接进本机执行链（isolated tmux socket ＋ jq，fail-closed）。
-#   〔量于 2026-09-26，本工作树 `w4/tail`〕**96 PASS / 0 FAIL**。
-# 96 → 97：多一格「杀会话成品的 `bus` 那一格说出注销了谁」。
-run_e2e backend-cc-bus        97
-# 同一族的另外四套：只挂在 `ci.yml` 那条不通电的流水线上（本仓不推送），于是各红了几天没人看见 ——
-#   `backend-gate2` 的 `meta_equals` 判据过时（DUP3 §5 ⑦ 按设计放行 `=`，它仍期望 `invalid_args`）·
-#   `local-backend` 两趟过滤串重叠、常驻那族跑两遍（且第一个宿主起的后端没人收，靠收尾 `pkill -f` 兜着）·
-#   `restart-frames` / `restart` 的驱动器载不了 `.css`、shim 还在说已经退役的 Tauri 命令（真源早改走通道）。
-#   修完接进本机执行链。〔量于 2026-09-27，本工作树 `w4/e2`，本机 tmux 3.6〕35 · 15 · 5 · 24 PASS / 0 FAIL，约 100 秒。
-#   ★ `backend-gate2` 按 **PASS+SKIP** 恒等判（`exact-with-skip`）：`meta_dollar` 那一格要 tmux ≥3.5，版本不够的机器上
-#     它记 SKIP 并说原因（套件里的版本门 `min_tmux_for`；版本不够却建得出来 ⇒ FAIL「版本门过时」）⇒ 3.6 上 35+0、
-#     3.4 上 34+1，这一格两边都是 35。只钉 PASS 的话就是把开发机的 tmux 烤进了判据。
-run_e2e backend-gate2         39 exact-with-skip
-#   ★ `local-backend` 同形按 **PASS+SKIP** 恒等判：三条起真后端的判据由 `cfg(embedded_backends)` 门着，
-#     没铺 `src/frontend/shell/embedded-backends/` 的树上它们记 SKIP 并说原因（套件里那一段；落点齐了却不跑 ⇒ FAIL）⇒ 铺了 26+0、没铺 15+11。
-# 26 → 24：起真后端的那三条少了一条 `the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕（它钉的 monitor 本机
-#     tmux 原文账随账本进后端删了，快照帧删了；后端那本账由 `graylight-backend-frames.sh` 真 tmux 实测），它打 2 条标记 ⇒
-#     铺了 24+0、没铺 15+9。量于 2026-09-28 铺了落点的非 ASCII 路径工作树。
-# 24 → 27：多一条 `e2e_the_door_follows_the_home_not_the_claude_dir`（门牌只跟着家走：改了 Claude 目录设置照样接得上 · 停得掉 ·
-#     设置里那一格显式交给后端），它打 3 条标记 ⇒ 没铺 18+9（本工作树 `w4/home` 现打）。
-# 27 → 28：同一条多一格「监听口的钥匙不在常驻后端的环境里」⇒ 没铺 19+9。
-# 28 → 29：多一条 `e2e_children_of_the_resident_backend_carry_none_of_its_own_env`（常驻后端起的 tmux 不带它自有的环境）⇒ 没铺 20+9。
-run_e2e local-backend         29 exact-with-skip
-# 〔MIG-2 合后〕`restart-frames` 5 → 6：加一格「kill→resume→记账 znew、没有 shim 不认的问」（换号成功后记 pin 那一步此前没被测到）；量于主树同形的非 ASCII 路径。
-run_e2e restart-frames         6
-run_e2e restart               25
-# 〔MIG-1 续四 · 同 E2 尾那一形〕#60 那一族的两套：同样只挂在不通电的 `ci.yml` 上。`backend-tmux-late-server` 在主线红 1 格（`late`）——
-#   后端先起、tmux server 后起时会话账本只在**第一份**快照推可重连（那一份是「零会话」），之后那台 server 上挂着 `@ccm_sid` 的会话
-#   再没人报 ⇒ 真缺陷，修在 `observe/session_ledger.rs`（每一份可观测快照都推没报过的可重连）。`backend-sessions-rewatch` 主线本就绿。
-#   〔量于 2026-09-28，主树同形的非 ASCII 路径工作树，本机 tmux 3.6〕2 · 5 PASS / 0 FAIL。
-run_e2e backend-tmux-late-server 2
-run_e2e backend-sessions-rewatch 5
-# 〔MIG-1 续五 · 「判据不在执行链上 ≈ 不存在」〕`p3t-local-tmux`（本机拉起真建出 tmux 会话）：此前只挂在不通电的 `ci.yml` 上。
-#   它跑在 `bash -lic` 里、依赖本机登录 shell —— 由套件自己的 fail-closed 前置罩住（串打头的 `ccm` 钉成本树这一份的绝对路径、
-#   解析到的不是本树那个二进制就 ABORT；登录 shell 里的 tmux / 假 launcher 不是 shim 也 ABORT），不会静默过。
-#   〔量于 2026-09-28，主树同形的非 ASCII 路径工作树，本机 tmux 3.6〕11 PASS / 0 FAIL。
-run_e2e p3t-local-tmux        11
-# 〔同 E2 尾那一形〕`resume-frames`（就地 resume 复活清灰，后端帧级）：此前只挂在不通电的 `ci.yml` 上，主线 6 过 1 红 ——
-#   「claude 死后等不到可重连」的根因在套件自己：kill 之后才取帧日志记号，而后端靠 pidfd 判死几乎零延迟，那一拍的 `session_state`
-#   已经落在记号之前（与仓路径是不是 ASCII 无关；后端会话账本那一族没毛病）。记号挪到 kill 之前。
-#   〔量于 2026-09-28，ASCII 工作树连打三趟 ＋ 主树同形的非 ASCII 路径工作树，本机 tmux 3.6〕7 PASS / 0 FAIL。
-run_e2e resume-frames          7
-# ── `ci.yml` 里带 `assert-pass-floor.sh` 地板、此前只在 CI 上跑的七套 ─────────────────────────────
-#   `cc-spawn-uplift` 有一个真回归在 CI 上红了四天，本机门禁一格都看不见。七套全走隔离的 tmux socket
-#   （`-L` 或 tmux shim）或根本不碰 tmux，本机跑得动 ⇒ 接进执行链，判法同上面各套（`exact`：PASS 恒等）。
-#   地板取的是本机实打的 PASS（`inbound-frames` 31 · `graylight-frames` 13 比 `ci.yml` 那两行的 30 · 12 高 ——
-#   CI 那边是 `at-least`，只挡缩水）。〔量于 2026-09-30，本工作树，本机 tmux 3.6〕各套墙钟：
-#   cc-spawn-uplift 44 秒 · inbound-frames 2 秒 · graylight-frames 3 秒 · backend-fork 不到 1 秒 ·
-#   tmux-target 9–48 秒（两趟）· cc-bus-queue-drain 4 秒 · resume 16 秒。
-run_e2e cc-spawn-uplift       72
-# inbound-frames 32 → 31：hello 命令清单里全景那一格随代码全景删了。
-run_e2e inbound-frames        31
-run_e2e graylight-frames      13
-run_e2e backend-fork          10
-run_e2e tmux-target           26
-run_e2e cc-bus-queue-drain    43
-run_e2e resume                17
-
-# ── `weak-net`：`ci.yml` 同名 job 的两步（建台架镜像 · 跑台架带地板）──────────────────────────
-# 台架全程在 docker 里自建网络造网况（宿主网卡不动）；要本机有 docker 与 `NET_ADMIN`。两步按步骤名从 `ci.yml`
-# 现取原样跑；地板也从那一步现读，台架实打的 PASS 必须**恒等**于它（同 `run_e2e` 的 `exact`；CI 那一步只挡缩水）。
-gate_weaknet() {
-  local out rc floor n
-  out="$(gate_ci_steps weak-net "建弱网台架镜像" "弱网台架四维" 2>&1)"
-  rc=$?
-  printf '%s\n' "$out"
-  [ "$rc" -eq 0 ] || return "$rc"
-  floor="$(gate_ci_step_body "弱网台架四维" | grep -oE 'assert-floor\.sh [0-9]+' | grep -oE '[0-9]+$')"
-  n="$(printf '%s\n' "$out" | grep -oE '合计 PASS=[0-9]+' | grep -oE '[0-9]+' | tail -1)"
-  if [ -z "$floor" ] || [ -z "$n" ] || [ "$n" -ne "$floor" ]; then
-    printf 'weak-net: 台架 PASS=%s，ci.yml 那一步的地板 %s —— 本格按恒等判，多了少了都红（涨了就去 ci.yml 把地板棘上去）\n' \
-           "${n:-<抓不到>}" "${floor:-<抓不到>}"
+# ── `env-sandbox`：带着指向「真目录」的会话环境起一趟门禁，那个目录零写入、那几个口零监听 ─────────────
+# 「真目录」是一棵临时的假家（`~/.cc-monitor` 的样子：日志目录 ＋ 一份哨兵 stderr.log ＋ 监听口令牌文件），
+# 「真口」是现找的三个空闲口。带着指向它们的 `CCM_*` / `CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` / `TMUX`
+# 起一趟内层门禁，只跑 `backend-tmux-late-server`（它起常驻那一形的后端：环境漏进去，后端就会去绑那几个口、
+# 轮转那份日志 —— 死值验现打过）。判：内层门禁绿 ＋ 假家前后逐份（路径 · 大小 · mtime）相同 ＋ 跑的全程
+# 那两个口上没有监听（`ss` 每 0.1 秒看一次 —— 活得比 0.1 秒短的监听它看不见，那一形由「零写入」接：
+# 后端起来第一件事是接日志）。墙钟约 25 秒（大头是那一套 e2e 本身）。
+gate_env_sandbox() {
+  local d p1 p2 p3 before after out rc w lis
+  command -v ss >/dev/null 2>&1 || { printf 'env-sandbox: 这台机器上没有 ss —— 看不了监听，判不了\n'; return 1; }
+  d="$(mktemp -d "${TMPDIR:-/tmp}/gate-env-sandbox.XXXXXX")" || return 1
+  mkdir -p "$d/cc/logs/backend" "$d/claude"
+  printf 'sentinel\n' > "$d/cc/logs/backend/stderr.log"
+  printf 'sentinel-token\n' > "$d/cc/listen.token"
+  read -r p1 p2 p3 < <(python3 -c 'import socket
+s = [socket.socket() for _ in range(3)]
+for x in s: x.bind(("127.0.0.1", 0))
+print(*[x.getsockname()[1] for x in s])')
+  before="$(find "$d" -printf '%P %s %T@\n' | sort)"
+  ( while :; do ss -ltnH 2>/dev/null | awk '{print $4}' | grep -E ":($p1|$p2|$p3)\$"; sleep 0.1; done ) > "$d.listen" 2>/dev/null &
+  w=$!
+  out="$(env CCM_LISTEN_PORT="$p1" CCM_LISTEN_TOKEN_FILE="$d/cc/listen.token" CCM_RELAY_PORT="$p2" \
+             CCM_BACKEND_STDERR_LOG="$d/cc/logs/backend/stderr.log" CCM_HISTORY_METADATA="$d/cc/history.json" \
+             CCM_APIKEY_CREDENTIALS="$d/cc/apikey.json" CLAUDE_CONFIG_DIR="$d/claude" \
+             ANTHROPIC_BASE_URL="http://127.0.0.1:$p3" TMUX="$d/tmux.sock,1,0" \
+             GATE_ONLY=backend-tmux-late-server GATE_RECEIPT="$d.receipt.json" \
+             bash tests/scripts/gate.sh 2>&1)"; rc=$?
+  kill "$w" 2>/dev/null; wait "$w" 2>/dev/null
+  after="$(find "$d" -printf '%P %s %T@\n' | sort)"
+  lis="$(sort -u "$d.listen" | tr '\n' ' ')"
+  rm -rf -- "$d" "$d.listen" "$d.receipt.json"
+  if [ "$before" != "$after" ] || [ -n "${lis// /}" ]; then
+    diff <(printf '%s\n' "$before") <(printf '%s\n' "$after") | head -20
+    printf 'env-sandbox: 会话环境漏进去了 —— 假家有写入（上面的 diff）、或这几个口上出现过监听 [%s]\n' "${lis% }"
     return 1
   fi
-  printf 'weak-net: %s passed（台架 PASS 与 ci.yml 那一步的地板恒等）\n' "$n"
+  if [ "$rc" -ne 0 ] || ! printf '%s\n' "$out" | grep -q '^GATE: PARTIAL'; then
+    printf '%s\n' "$out" | tail -30
+    printf 'env-sandbox: 内层门禁退出码 %s、没有 PARTIAL 裁决 —— 判不了\n' "$rc"
+    return 1
+  fi
+  printf 'env-sandbox: 1 passed（假家零写入、三个口零监听；内层门禁绿）\n'
 }
-run_gate weak-net '台架实打的 PASS 条数（四维网况 ＋ SSH，改前/改后两个读数），与 `ci.yml` `weak-net` job 那一步的地板**恒等**。⚠ 要 docker；镜像已在就跳过建镜像（建一次约 13 秒，要能装包）；只量容器里自建网络上的网况，真远端、真 Windows 一概不在。本格墙钟〔量于 2026-09-30，本工作树，镜像已在〕约 36 秒' \
+run_gate env-sandbox '不是数出来的数：带着指向假「真目录」的会话环境起一趟内层门禁（一套起常驻后端的 e2e），零写入 ＋ 零监听才绿' \
+         gate_env_sandbox
+
+# ── `weak-net`：弱网台架（建镜像 · 跑台架）──────────────────────────────────────────────────
+# 台架全程在 docker 里自建网络造网况（宿主网卡不动）；要本机有 docker 与 `NET_ADMIN`。镜像已在就跳过建镜像。
+# 判法同 `run_e2e`：退出码 0 ＋ `合计 PASS=<n> FAIL=0` ＋ `n > 0`（`tests/e2e/weak-net/assert-floor.sh`），不钉条数。
+gate_weaknet() {
+  local out rc
+  bash tests/e2e/weak-net/build-image.sh || { printf 'weak-net: 建台架镜像失败\n'; return 1; }
+  out="$(bash tests/e2e/weak-net/assert-floor.sh 2>&1)"; rc=$?
+  printf '%s\n' "$out"
+  [ "$rc" -eq 0 ] || return "$rc"
+  printf 'weak-net: %s passed（台架跑完、FAIL=0）\n' "$(printf '%s' "$out" | grep -oE '合计 PASS=[0-9]+' | grep -oE '[0-9]+' | tail -1)"
+}
+run_gate weak-net '台架跑完且 FAIL=0（四维网况 ＋ SSH，改前/改后两个读数）。⚠ 要 docker；只量容器里自建网络上的网况，真远端、真 Windows 一概不在' \
          gate_weaknet
 
 # ── 这里原先是第 26 格 `f3-copy`（秤 F3 两向：零流量复制的包计数对拍，三方对拍 ＋ 两向锚点）。
@@ -2093,90 +1503,36 @@ run_gate weak-net '台架实打的 PASS 条数（四维网况 ＋ SSH，改前/�
 #   判据本体那份台架文件一起删了 ⇒ 本格退役，29 格 → 28 格。它的形状（三方对拍 ＋ 写死的 pin）
 #   仍是下面 `comm-boundary` 那一格的取法，说明留在那一格里。
 
-# ── `comm-boundary`：通信层那十七条独立成格（`13b` 步 1 落地，本拍第 27 格）──────
+# ── `comm-boundary` · `test-tiers`：两族判据**还在不在** ─────────────────────────────────────
 #
-# 🔴 **问题与当年那一格 `f3-copy`（已退役）同形，但这一格更要紧 —— 因为那一族的人群可能是空集。**
-#   `tests/frontend/shell/comm_boundary_registry_tests.rs`（1400 行）是
-#   那 C1–C5 ＋ X1–X6 的本体。人群为空时，绿的理由是 `0 == 0` 而不是「扫不到」。
-#   ⚠ **本文件不写人群有几份** —— 见 `〔自述·现物〕` 那一段的理由。
-#   ⇒ 整个模块被从 `lib.rs` 摘掉时，**十七条一条都不跑，连那条元判据也不跑**，
-#     而 `cargo` 那一格只会合计小一点 —— **「摘掉了」与「全绿」在终端上一模一样**。
-#   🔴 一个人群为空的判据族，如果连「它自己还在不在」都没人看，那它买到的是零。
-#   立本格的那一路自己停下报备了这件事（写区不含本文件），这一拍补上。
-#
-# ★ 取法照当年那一格 `f3-copy`（已退役）：**三方对拍**（本行 `pin=17` · 那份文件现打的 `#[test]` 条数 ·
-#   `cargo test` 真跑出的 passed），三个数必须相等。
-# ★ 两个逐字锚点选的是**最承重的两条**，不是随便挑两个名字：
-#   ① `every_criterion_is_on_the_execution_chain` —— 元判据本身（判据清单 ↔ 真实 `#[test]`
-#      两向集合相等）。它没跑，等于这一族的自述没人核。
-#   ② `the_boundary_registry_says_out_loud_how_big_it_is_today` —— 「说得出今天是空的」那条。
-#      它没跑，「人群为空」就退回成「扫不到」。
-#   ⚠ 两侧不同源：名字写死在本文件里，命中数来自 `cargo` 的运行时输出。
-# ⚠ 本格**不买**「没盖标记的文件不是通信层」—— 那是那张表自己最大的诚实边界
-#   （一份真在做传输的代码不盖标记，它一个字都看不见）。本格只买「这十七条没有静默消失」。
-#
-# ★ **这一格的三方对拍逐腿砍过**（`pin` 从 15 抬到 16 那一拍，
-#   还原一律 `cp` 覆盖 ＋ `sha256` 对账，**不搬 mtime**）：
-#   · **`pin` 那条腿** —— 把本行的 `pin=16` 改回 `15` ⇒ 当场红，逐字
-#     「三方对拍分叉 —— 本行钉 15 · … 声明 16 条 · cargo 真跑 16 条」；
-#   · **「真跑」那条腿** —— 给那份文件里任一条判据加 `#[ignore]` ⇒ 当场红，逐字
-#     「本行钉 16 · … 声明 16 条 · cargo 真跑 15 条」。
-#   ⇒ 三个数里**改动任何一个**都会分叉，不存在「两边一起改掉」的安静路径
-#     （`pin` 在本文件、`declared` 在那份判据文件、`ran` 来自 cargo 的运行时输出，**三侧异源**）。
-#   ⚠ 「声明」那条腿与「真跑」那条腿会被**同一次编辑**一起改掉（真删一条判据 ⇒ 两个都变 15），
-#     而那时 `pin` 还是 16 ⇒ 照样红。**本格的反空真锚是那个三方相等，不是任何单独一条腿。**
-#
-# ★ 〔收尾重排〕`pin` **17 → 18**：立「`src/comms/` 下文件集合 == 登记表」那一腿（`the_comms_tree_holds_exactly_the_registered_members`），判据与 `pin` 同拍。
-# ★ `pin` **从 16 抬到 17**（「步 4 的剩余」立第十七条：
-#   面 A 的传输面候选逐份两向集合相等）。同一拍逐腿再砍过一遍，读数与上面那次同形：
-#   · 只加判据**不**抬 `pin` ⇒ 当场红，逐字「本行钉 16 · … 声明 17 条 · cargo 真跑 17 条」；
-#   · 只抬 `pin` 而判据没加 ⇒ 当场红（反方向）。
-#   🔴 **为什么抬它不是放宽**：这个 `pin` 是一条**恒等**腿（`pin == declared == ran`），
-#     **不是一个上限**。加一条真判据时把它同拍抬上去，买到的是**让那条恒等继续成立**；
-#     而「把上限调上去让今天好过」是方向相反的另一件事 —— 那一种会让分母悄悄变小，
-#     这一种让分母变大而三侧仍异源。⇒ 判据与 `pin` **必须同拍改，别分两次**；
-#     单独抬 `pin` 或单独加判据，两个方向都当场红。
-run_gate comm-boundary '判过的条数 = 通信层那一族（C1–C5 ＋ X1–X6 ＋ 锚 ＋ 余下五份 ＋ 传输面四份 ＋ 住址 ＋ 元判据）这一趟真跑过的条数。**三方对拍**：本行钉的 18 · 那份文件里现打的 `#[test]` 条数 · `cargo test` 真跑出来的 passed，三个数必须**相等** ＋ 两条逐字锚点（元判据 · 「说得出今天是空的」那条）各命中**恰好 1 次**。⚠ **本格存在的唯一理由是那一族的人群可能是空集** —— 模块被摘掉时十八条与元判据一起消失，而 `cargo` 那一格只会合计小一点，「摘掉了」与「全绿」在终端上分不开。⚠ 本格买的是「这十七条没有静默消失」，**不买**它们判得对（那由它们各自的头注与死值验负责），更**不买**「没盖标记的文件不是通信层」（那张表自己写死的最大边界）；⚠ 这 17 条**同时**算在 `cargo` 那一格的合计里 —— 两格都在，档位不叠加' \
-         bash -c 'pin=18; f=tests/frontend/shell/comm_boundary_registry_tests.rs; \
-meta=every_criterion_is_on_the_execution_chain; \
-empty=the_boundary_registry_says_out_loud_how_big_it_is_today; \
-[ -r "$f" ] || { printf "comm-boundary: 那一族的判据本体 %s 盘上读不到 —— 住址改了就回来改本格，不许静默跳过\n" "$f"; exit 1; }; \
-declared=$(grep -cE "^[[:space:]]*#\[(tokio::)?test\]" "$f"); \
-out=$(cd src/frontend/shell && cargo test -p monitor --lib comm_boundary_registry::tests:: 2>&1); rc=$?; \
-if [ "$rc" -ne 0 ]; then printf "%s\n" "$out" | tail -25; printf "comm-boundary: cargo test 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
-ran=$(printf "%s\n" "$out" | grep -oE "^test result: ok\. [0-9]+ passed" | grep -oE "[0-9]+" | head -1); \
-if [ -z "$ran" ]; then printf "%s\n" "$out" | tail -25; printf "comm-boundary: 那趟输出里抠不出「test result: ok. N passed」—— 读法与 cargo 的输出面对不上，本格判不了（不许当成绿）\n"; exit 1; fi; \
-if [ "$declared" -ne "$pin" ] || [ "$ran" -ne "$pin" ]; then printf "comm-boundary: 三方对拍分叉 —— 本行钉 %s · %s 里现打声明 %s 条 · cargo 真跑 %s 条；三个数必须相等。真加/删了一条判据，就回来改本行那个 pin（别去动另外两边）\n" "$pin" "$f" "$declared" "$ran"; exit 1; fi; \
-for t in "$meta" "$empty"; do n=$(printf "%s\n" "$out" | grep -c "comm_boundary_registry::tests::$t \.\.\. ok"); if [ "$n" -ne 1 ]; then printf "comm-boundary: 锚点 %s 在这趟跑过的名单里命中 %s 次（应当恰好 1 次）—— 它没跑，或者它改了名\n" "$t" "$n"; exit 1; fi; done; \
-printf "comm-boundary: %s passed（C1–C5 ＋ X1–X6 ＋ 锚 ＋ 余下五份 ＋ 传输面四份 ＋ 住址 ＋ 元判据；三方对拍 pin %s == 声明 %s == 真跑 %s）\n" "$ran" "$pin" "$declared" "$ran"'
+# 两族都挂在一个模块上（通信层那一族在 monitor 的 lib · 测试层分级在 `guard-core` 的 lib）：那一行 `mod` 被摘掉时
+# 整族一起消失，而 `cargo` 那一格只会合计小一点 ——「摘掉了」与「全绿」在终端上分不开。
+# 判：那份判据文件里**声明的** `#[test]` 名字集合 == 这一趟 cargo **真跑过**的名字集合（两向）。
+# 两侧异源（一侧读源码、一侧读 cargo 的运行时输出）；条数不再钉在本文件里 —— 加/删一条判据不用回来改数。
+# ⚠ 买的是「这一族没有静默消失 / 没有哪条被 `#[ignore]` 挡掉」，不买它们判得对（那由各条的头注负责）；
+#   这些条同时算在 `cargo` 那一格的合计里。
+gate_family() {
+  local label="$1" file="$2" pkg="$3" filter="$4" out rc declared ran miss extra
+  [ -r "$file" ] || { printf '%s: 判据本体 %s 盘上读不到 —— 住址改了就回来改本格\n' "$label" "$file"; return 1; }
+  declared="$(awk '/^[[:space:]]*#\[(tokio::)?test\]/{t=1; next} t && /fn [A-Za-z0-9_]+/{match($0, /fn [A-Za-z0-9_]+/); print substr($0, RSTART+3, RLENGTH-3); t=0}' "$file" | sort -u)"
+  out="$(cd src/frontend/shell && cargo test -p "$pkg" --lib "$filter" 2>&1)"; rc=$?
+  if [ "$rc" -ne 0 ]; then printf '%s\n' "$out" | tail -40; printf '%s: cargo test 退出码 %s —— 判不了\n' "$label" "$rc"; return "$rc"; fi
+  ran="$(printf '%s\n' "$out" | sed -nE "s/^test .*${filter}([A-Za-z0-9_]+) \.\.\. ok\$/\1/p" | sort -u)"
+  if [ -z "$declared" ]; then printf '%s: %s 里一条 `#[test]` 都没认出来 —— 读法与源码对不上，判不了\n' "$label" "$file"; return 1; fi
+  miss="$(comm -23 <(printf '%s\n' "$declared") <(printf '%s\n' "$ran") | tr '\n' ' ')"
+  extra="$(comm -13 <(printf '%s\n' "$declared") <(printf '%s\n' "$ran") | tr '\n' ' ')"
+  if [ -n "${miss// /}" ] || [ -n "${extra// /}" ]; then
+    printf '%s\n' "$out" | tail -25
+    printf '%s: 声明的判据与真跑过的对不上 —— 声明了没跑 [%s] · 跑了却没在 %s 里声明 [%s]\n' "$label" "${miss% }" "$file" "${extra% }"
+    return 1
+  fi
+  printf '%s: %s passed（%s 里声明的 #[test] 名字集合 == cargo 真跑过的集合）\n' "$label" "$(printf '%s\n' "$ran" | grep -c .)" "$file"
+}
+run_gate comm-boundary '判过的条数 = 通信层那一族这一趟真跑过的条数；声明的名字集合 == 真跑过的集合' \
+         gate_family comm-boundary tests/frontend/shell/comm_boundary_registry_tests.rs monitor comm_boundary_registry::tests::
+run_gate test-tiers '判过的条数 = 测试层分级那一族这一趟真跑过的条数；声明的名字集合 == 真跑过的集合' \
+         gate_family test-tiers tests/common/guard-core/test_tiers_tests.rs guard-core test_tiers::
 
-# ── `test-tiers`（TQ1 09-24，第 29 格）：测试层分级那一族**还在不在** ─────────────────────
-#
-# 同 `comm-boundary` 那一形，理由也同：那一族挂在 `guard-core` 的 lib 上
-# （`src/common/guard-core/src/lib.rs` 末尾那一行 `mod test_tiers;`），
-# 那一行被摘掉时十二条一起消失，而 `cargo` 那一格只会合计小十二 ——「摘掉了」与「全绿」在终端上分不开。
-# 而这一族守的正是「别的判据有没有静默变空」⇒ 它自己静默变空是最贵的那一种。
-# 三方对拍：`pin`（写死在本行）· 那份文件里现打的 `#[test]` 条数 · `cargo` 真跑出来的 passed，三侧异源；
-# 两条锚点：分区那条（五层登记表的人群闸）· 真机层那条（`#[ignore]` 触发链）各在跑过的名单里恰好 1 次。
-# ⚠ 本格**不买**它们判得对（各条头注负责）。
-# ⚠ `benches/` 那条判据只判「秤有家、`cargo test` 会跑它的冒烟档」；**墙钟一个都不进本门禁**。
-# ★ 逐腿死值验（TQ1 09-24，还原一律 `shutil.copyfile` ＋ `touch` ＋ sha256 对账）：
-#   · `pin` 那条腿：`pin=12` → `11` ⇒ 当场红（三方对拍分叉）；
-#   · 「挂载」那条腿：`guard-core` 的 `lib.rs` 里 `mod test_tiers;` 那一行改成别的模块名 ⇒
-#     `cargo` 编得过、这一族零条跑 ⇒ 抠不出 passed ／ 真跑 0 ≠ pin ⇒ 红。
-run_gate test-tiers '判过的条数 = 测试层分级那一族（分区 ＋ 单元 / 扫描 / 集成 / e2e / 真机五层各一条反空真自检 ＋ `benches/` 登记 ＋ 五条合成夹具自检）这一趟真跑过的条数。**三方对拍**：本行钉的 12 · 那份文件里现打的 `#[test]` 条数 · `cargo test -p guard-core --lib test_tiers::` 真跑出来的 passed，三个数必须**相等** ＋ 两条逐字锚点（分区 · 真机层）各命中**恰好 1 次**。⚠ **本格存在的唯一理由**：那一族挂在 `guard-core` 的 lib 上，那一行 `mod` 被摘掉时十二条一起消失，而 `cargo` 那一格只会合计小一点。⚠ 本格买的是「测试层分级没有静默消失」，**不买**任何一层的判据判得对；⚠ 这 12 条**同时**算在 `cargo` 那一格的合计里 —— 两格都在，档位不叠加' \
-         bash -c 'pin=12; f=tests/common/guard-core/test_tiers_tests.rs; \
-part=the_tiers_partition_the_test_files_on_disk; \
-real=real_machine_tier_every_ignored_test_is_registered_and_its_trigger_still_reaches_it; \
-[ -r "$f" ] || { printf "test-tiers: 那一族的判据本体 %s 盘上读不到 —— 住址改了就回来改本格，不许静默跳过\n" "$f"; exit 1; }; \
-declared=$(grep -cE "^[[:space:]]*#\[(tokio::)?test\]" "$f"); \
-out=$(cd src/frontend/shell && cargo test -p guard-core --lib test_tiers:: 2>&1); rc=$?; \
-if [ "$rc" -ne 0 ]; then printf "%s\n" "$out" | tail -40; printf "test-tiers: cargo test 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
-ran=$(printf "%s\n" "$out" | grep -oE "^test result: ok\. [0-9]+ passed" | grep -oE "[0-9]+" | head -1); \
-if [ -z "$ran" ]; then printf "%s\n" "$out" | tail -25; printf "test-tiers: 那趟输出里抠不出「test result: ok. N passed」—— 读法与 cargo 的输出面对不上，本格判不了（不许当成绿）\n"; exit 1; fi; \
-if [ "$declared" -ne "$pin" ] || [ "$ran" -ne "$pin" ]; then printf "test-tiers: 三方对拍分叉 —— 本行钉 %s · %s 里现打声明 %s 条 · cargo 真跑 %s 条；三个数必须相等。真加/删了一条判据，就回来改本行那个 pin（别去动另外两边）\n" "$pin" "$f" "$declared" "$ran"; exit 1; fi; \
-for t in "$part" "$real"; do n=$(printf "%s\n" "$out" | grep -c "test_tiers::$t \.\.\. ok"); if [ "$n" -ne 1 ]; then printf "test-tiers: 锚点 %s 在这趟跑过的名单里命中 %s 次（应当恰好 1 次）—— 它没跑，或者它改了名\n" "$t" "$n"; exit 1; fi; done; \
-printf "test-tiers: %s passed（分区 ＋ 五层自检 ＋ benches/ ＋ 合成夹具；三方对拍 pin %s == 声明 %s == 真跑 %s）\n" "$ran" "$pin" "$declared" "$ran"'
 
 # pb check 不打「passed」，单独判：它自己会打 `FAIL=<n> BROKEN=<n>`。
 #
@@ -2238,12 +1594,7 @@ printf "test-tiers: %s passed（分区 ＋ 五层自检 ＋ benches/ ＋ 合成�
 #
 # ## 形状：`键|说明`，而**键是有牙的那一半**
 #
-# 说明是给人读的散文；**键**（`|` 左边那个小写标识）进机检：
-# `tests/evidence/K-R80-gate-cell-coverage.py` 的 `C5c` 对拍三件事 ——
-#   ① 这张表非空、每一项形状对、键不重复；
-#   ② **键集合与现打的判定格名互不相交** —— 哪天有人把某一维收成了格而这里还自称「不看」，
-#      当场红（那正是「买到了却还在说不看」那一形，和 `C5b` 治的腐同源）；
-#   ③ 印出来的条数是**现算**的（`${#GATE_BLIND[@]}`），不许写死一个数。
+# 说明是给人读的散文；条数现算（`${#GATE_BLIND[@]}`），不写死。
 #
 # ⚠ **它买不到什么**：这张表是**黑名单**，列不全 —— 它保证的是「**列出来的这几条不会悄悄
 #   变成一句没人守的散文**」，不是「射程之外只有这几条」。
@@ -2251,9 +1602,9 @@ printf "test-tiers: %s passed（分区 ＋ 五层自检 ＋ benches/ ＋ 合成�
 #   把真正要看的诊断顶下去。
 GATE_BLIND=(
   "windows-runner|Windows runner 上才犯的那一族 —— 本门禁的 npm / tsc / e2e 全跑在 Linux 上，路径分隔符恒是 /。K-R119 那趟云端 vitest 的唯一一条红（1 failed / 1725 passed）就是这一形，本机在构造上红不了"
-  "ci-job-shape|.github/workflows/*.yml 里那些 job 自己的形状 —— 装了哪条工具链、runner 是谁、缓存与 needs 怎么连、每一步的 if 条件。⚠ 这一条已经被收窄过三次，每次只割走一个切片：ci-e2e-prereq 判 ci.yml 里 e2e 步骤的 build 前置齐不齐（K-R122）；release-gate 判 release.yml 的触发器、env.PUBLISH 字面、两处发布步骤与 CI 门那一步的 if、以及两处发布步骤的正文来源（K-R124）；release-gate 又割走**产字节那条路**——release.yml 里「跑 cargo build/zigbuild」的步骤 ↔ 条 63 承诺的三格（两向）、出现的 target triple（两向）、三个 job 的 runs-on 逐字、每一处抠 const BUILD_ID 的住址实打指得到真东西、setup-zig 与 install-action 那两个版本。**其余全部仍然没人看** —— 包括 ci.yml 那 8 个 job 的 runner/工具链/needs/缓存，和 release.yml 里除上面点名那几处以外的每一步（打包 · 校验和 · 上传清单 · artifact 传递）。⚠ 而且那几个切片买的都只是「盘上这份文本满足这几条」——**云端那一趟会不会绿，见下面 did-ci-actually-run 那一条**"
+  "ci-job-shape|.github/workflows/*.yml 里那些 job 自己的形状 —— 装了哪条工具链、runner 是谁、缓存与 needs 怎么连、每一步的 if 条件。Linux 那几个 job 的命令就是调本脚本（GATE_ONLY），命令只住这里；但 job 的环境（apt 装了什么、runner 是谁）本门禁不判。release-gate 割走了 release.yml 的一部分（触发器、发布闸、产字节那条路、BUILD_ID 的抠法、工具链版本，见 K-R124），其余每一步（打包 · 校验和 · 上传清单 · artifact 传递）仍然没人看；那些切片买的也只是「盘上这份文本满足这几条」"
   "msvc-abi|MSVC ABI 专属的那一类跨平台编译问题 —— 两格 Windows 交叉检查用的都是 -gnu（沙箱里没有 zig，ring 的 build script 缺 lib.exe）。只在 msvc 上才犯的毛病本门禁盖不到"
-  "did-ci-actually-run|云端那条流水线到底跑没跑、绿没绿 —— 本门禁断网跑（--network none），它一次 gh run view 都做不到。GATE: OK 说的是这棵树在本机这几格上的样子，不是它在云端的样子。⚠〔09-20 收窄一刀，不摘〕本文件此刻已经**被调用方接住了**：.github/workflows/ci.yml 的 local-gate 那个 job 与 tests/hooks/pre-push 都在门禁之后跑 tests/evidence/K-G4C-gate-receipt.py（「这一趟到底跑没跑门禁」从此有判据）。**但那两条路今天一趟都没在云端真跑过** —— 本仓红线是不推送，而 ci.yml 的触发器只有 push(main/v*) 与 pull_request ⇒ 那个 job 在 GitHub runner 上从未起过；pre-push 同理（没有 push 就没有 pre-push）。⇒ 盘上那几份文本满足那几条判据，**不等于**云端那一趟会绿，这一条因此不摘。⚠ 本条刻意不写第二个格数：那个数是**写死在裁决行那一句里的字面量**，由 K-R80 的 C5（数）· C5b（自述节三方对拍）· C5d（裁决行那串点名与盘上两向集合相等）三处钉着。上一版这里逐字声称那个数是门禁自己算出来的 —— **那是假话**（裁决行是字面量，C5 那条正则正是靠它是字面量才钉得住），而说明栏 C5c 逐字声明「一个字都不判」⇒ 那句假话没人守，腐着。C5d 第二半从此把它焊住"
+  "did-ci-actually-run|云端那条流水线到底跑没跑、绿没绿 —— 本门禁一次 gh run view 都不做。GATE: OK 说的是这棵树在本机这几格上的样子，不是它在云端的样子。ci.yml 的触发器只有 push(main/v*) 与 pull_request，而本仓不推送 ⇒ 那几个 job 在 GitHub runner 上从未起过；tests/hooks/pre-push 同理"
 )
 gate_print_blind() {
   printf 'GATE: 射程 —— 上面那行只对它自己那几格负责；下面这 %s 件事**本门禁不看**：\n' "${#GATE_BLIND[@]}"
@@ -2263,7 +1614,23 @@ gate_print_blind() {
   done
 }
 
+# 裁决行里的格名用短名（e2e 那批去掉 `ccm tests/e2e/` 前缀）；格数与名单都从 `GATE_RAN` 现算，不抄。
+gate_short_names() {
+  local n out=""
+  for n in ${GATE_RAN[@]+"${GATE_RAN[@]}"}; do out="${out:+$out · }${n#ccm tests/e2e/}"; done
+  printf '%s' "$out"
+}
+# 墙钟：这一趟合计 ＋ 最慢的几格（逐格的数在每一格的绿行上、也在收据的 `ms` 里）。
+gate_print_timing() {
+  local total=$(( $(gate_now_ms) - GATE_T0 )) n ms line=""
+  while IFS=$'\t' read -r ms n; do
+    line="${line:+$line · }$n $(gate_fmt_ms "$ms")"
+  done < <(for n in ${GATE_RAN[@]+"${GATE_RAN[@]}"}; do printf '%s\t%s\n' "${GATE_MS[$n]:-0}" "${n#ccm tests/e2e/}"; done | sort -rn | head -8)
+  printf 'GATE: 墙钟 —— 合计 %s（其中 e2e 前置 %s）；最慢的几格：%s\n' "$(gate_fmt_ms "$total")" "$(gate_fmt_ms "$GATE_PREP_MS")" "${line:-（一格都没跑）}"
+}
+
 echo
+gate_print_timing
 # ── 〔被谁调用〕拼错的 `GATE_ONLY` 是**红**，不是「少跑一格」 ───────────────────
 gate_check_only
 # ── 〔被谁调用〕落收据。**三种裁词都落** —— 判它的是 `tests/evidence/K-G4C-gate-receipt.py` ──
@@ -2288,36 +1655,8 @@ if [ "${#fails[@]}" -eq 0 ] && [ "${#GATE_SKIPPED[@]}" -ne 0 ]; then
   exit 0
 fi
 if [ "${#fails[@]}" -eq 0 ]; then
-  # 🔴 `K-R80`（09-12）：**这一行原来逐字是「三道门 + 生成物漂移 + pb check + 四套 ccm e2e」
-  #   —— 那是 09-10 加 `fmt`/`winchk` 之前的点名，盘上现打 11 格时它只点得出 9 格。**
-  #   本拍加了第 12 格（`fmt-backend`），顺手把它订正到今天，并且**不让它再自己烂下去**：
-  #   下面这个 `12` 与「本文件里到底有几格判定」由 `tests/evidence/K-R80-gate-cell-coverage.py`
-  #   三方对拍（本行的数 · 本文件真有的判定格 · 那份覆盖登记的条数），对不上就红。
-  #   ⚠ 那把尺子**不在本脚本里跑** —— 它是登记的机检，不是出货闸的一格。
-  # 🔴 `K-R82`（09-12）：**12 → 13**，加的是 `hooks` 那一格（上面 `gate_selftest` 之后那一段）。
-  #   这一行的数与点名跟着改了 —— 而**不是靠人记得改**：`C5` 那条三方对拍会当场逮到。
-  # 🔴 `K-R122`（09-14）：**16 → 19**，加了三格 —— `shellcheck`（第 17 格）·
-  #   `ci-e2e-prereq`（第 18 格）· `winchk-backend`（第 19 格）。三格都是
-  #   「CI 那边有人看、本门禁一个字都看不见」的那一维（`KR122D2` 甲）。
-  # 🔴 `K-R128`（09-15）：**20 → 21**，加的是 `installface`（第 21 格）——
-  #   第三块（`S1`–`S5`）开工前，把 `K-R117` 自陈的那个洞（收工判据没有闸）
-  #   与**纪律 A**（改了命令名没人响）两条都接上闸。棘轮，所以第一天就是绿的。
-  # 🔴 `K-R124`（09-15）：**19 → 20**，加的是 `release-gate`（第 20 格）。它治的不是
-  #   「CI 有、本地没有」，是**更坏的一档**：CI 里那一步从加进去那天起就不可能过，
-  #   而它在本地跑不起来（判据本体用了沙箱里没有的 PyYAML）⇒ **两头都看不见**。
-  # 🔴 **21 → 20，摘掉 `pb check`。** 那一格**已整格删除**
-  #   （`PB_WS` / `planned-build` 在本文件非注释处现打零命中），而这一行与上面自述段
-  #   **两处都还在点它的名**，于是门禁整整一天印着一个比实跑多一格的数。
-  #   ⚠ **这正是 `C5`/`C5b` 该抓而没抓到的那条** —— 它没瞎，是**没人跑它**：
-  #   `K-R80` 不在本脚本的执行链上，且它默认找的是重构前的 `scripts/gate.sh`（现打直接
-  #   `FileNotFoundError`）。**两头坏叠在一起 ⇒ 假账在裁决行上挂了一天。**
-  #   ⇒ 本拍把它接成真的一格（见下面 `run_gate gate-selfdesc`），不再靠人记得手跑。
-    # 🔴 （09-24）：**27 → 29**，加的是两套 e2e（它们此前只被 shellcheck、不被执行）。
-  # **30 → 31**，加的是 `backend-cc-bus`（见上面 `run_e2e` 那一段）；
-  #   **31 → 32**，加的是全景小程序自己的测试那一格。
-  # **55 → 53**：代码全景整条摘掉，`panorama-engine` 与 `code-picture-core` 两格随被测的那两棵树一起删了。
-  # **53 → 50**：拉前终端改成点 ↗ 时现查（不再靠窗口标题与起会话时注的令牌）⇒ 标题与令牌那三套 e2e 随被测的东西一起删了。
-  echo "GATE: OK —— 50 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · e2e-smoke · platform · installface · fmt · fmt-backend · winchk · winchk-backend · winlink · muslbuild · cargo · comm-boundary · test-tiers · deadcode · clippy · appbuild · generated · backend · clippy-backend · tsc · npm · coverage · audit · ccm-print-parity · ccm-cli · ccm-contract-parity · backend-cc-bus · backend-gate2 · local-backend · restart-frames · restart · backend-tmux-late-server · backend-sessions-rewatch · p3t-local-tmux · resume-frames · cc-spawn-uplift · inbound-frames · graylight-frames · backend-fork · tmux-target · cc-bus-queue-drain · resume · weak-net），可以出货"
+  # 格数与点名从这一趟真判过的格现算 —— 原先是一句手抄的「N 格全绿（…）」，每加/删一格都要回来改，改漏过不止一次。
+  printf 'GATE: OK —— %s 格全绿（%s），可以出货\n' "${#GATE_RAN[@]}" "$(gate_short_names)"
   gate_print_blind
   exit 0
 fi

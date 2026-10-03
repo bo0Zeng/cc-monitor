@@ -319,8 +319,8 @@ export const RELAY_NAMES: { name: string; re: RegExp; why: string }[] = [
   { name: "CCM_RELAY_ALL_SESSIONS", re: ident("CCM_RELAY_ALL_SESSIONS"), why: "全量注入开关：让订阅号的会话也过中转（`/t/`）" },
   { name: "RELAY_PORT", re: ident("RELAY_PORT"), why: "monitor 侧拼注入地址用的端口" },
   { name: "relay_endpoint_for", re: ident("relay_endpoint_for"), why: "「往 ANTHROPIC_BASE_URL 里写哪个中转地址」的唯一判断口（有行时它把那一格交给 `apikey_endpoint_for`）" },
-  { name: "relay_route_path_in", re: ident("relay_route_path_in"), why: "拼中转路由键（中转的线格式）" },
-  { name: "relay_base_url_in", re: ident("relay_base_url_in"), why: "拼中转地址" },
+  // 「拼中转路由键」「拼中转地址」那两行摘了：两个名字代码里早已零处，此前只靠门禁 deadcode 那段条数沿革
+  //   还点着才没零命中；那段沿革随条数一起删了 ⇒ 名字全仓零处，本表跟着退役（不是改名漏网）。
   // 载荷那一层拼中转前缀的那一个随起会话只交一行 `ccm …` 删了；接替它的是 `ccm` 那一句。
   { name: "relay_export", re: ident("relay_export"), why: "`ccm` 非得经 shell 那一趟把中转地址渲成 export 那一句" },
   { name: "relay_prefix_for_launch", re: ident("relay_prefix_for_launch"), why: "起会话那一刻挑中转前缀的接线口" },

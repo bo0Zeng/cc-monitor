@@ -1347,46 +1347,6 @@ pub fn extraction_failure_reason(dir: &Path, err: &str) -> String {
     )
 }
 
-/// **生产入口**：找得到就起并看住；找不到就**诚实降级**（定框 §5）。
-///
-/// ⚠ **走哪一支取决于用户手里是哪一份产物**〔订正 2026-09-10 现打，v3.7.0〕：
-/// 安装包（NSIS / MSI）里**带着** local_backend —— 干净 win11 虚拟机上装完现打，
-/// `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe` **2 个进程在跑**；
-/// 而**裸 `monitor.exe`** 那份 **0 个**，走的才是降级那一支。
-/// 〔本行原话「今天恒走降级那一支 —— 安装包里还没有本机后端（`externalBin` 是 F05b）」
-/// 已被那次读数证伪。`externalBin` 配着，只是住 `src/frontend/shell/tauri.sidecar.conf.json`
-/// 而不是基础 `tauri.conf.json` —— 分工见模块头注。〕
-/// 降级不是「接线没做」，是**接线做了、这一份产物里没带**：两者的区别就在这个返回值上，
-/// 调用方能把 `reason` 与 `looked_at` 原样记进日志。
-pub fn start_if_present(
-    target_triple: &str,
-    on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
-    spawn: Arc<crate::spawn_managed::ManagedSpawn>,
-) -> (Resolved, Option<SuperviseHandle>) {
-    let r = resolve_beside_this_exe(target_triple);
-    let Resolved::Found(bin) = &r else {
-        return (r, None);
-    };
-    // P2：本机后端**起来就带入方向通道** —— 这一步不是可选项，也不由宿主决定。
-    // 「本机 = 不走 ssh 的远端」（`INVARIANTS §40`）：远端一连上就 attach 通道，本机同理。
-    let h = supervise_with_stdio(
-        bin.clone(),
-        LOCAL_STREAM_ARGS.iter().map(|a| a.to_string()).collect(),
-        Vec::new(),
-        CrashLimits::default(),
-        Arc::new(|| {
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis() as u64)
-                .unwrap_or(0)
-        }),
-        on_event,
-        Some(Arc::new(local_stdio_consumer_guarded)),
-        spawn,
-    );
-    (r, Some(h))
-}
-
 /// [`local_stdio_consumer`] 用的**同步有界读行** —— 远端 `ssh_source::read_capped_line` 的孪生。
 ///
 /// # 为什么不复用那一份

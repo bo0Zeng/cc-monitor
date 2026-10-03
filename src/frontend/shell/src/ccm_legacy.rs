@@ -92,7 +92,6 @@ async fn ask_verdict(cfg: &crate::ssh_source::RemoteConfig) -> Result<Verdict, S
         .map_err(
             |e| match route_call_error(&e, |_code, message| message.to_string()) {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
-                Routed::Done => copy_text("rsCcmLegacy.verdict.unreadable", &[]),
             },
         )?;
     decode_verdict(&data.unwrap_or_default())
