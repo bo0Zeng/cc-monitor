@@ -1227,7 +1227,8 @@ fn the_status_command_hands_the_panel_the_finished_face() {
     };
     let mut sink = CapturingSink::default();
     let _ = record_death(origin, &ev, &mut sink).expect("要记一笔");
-    let st = crate::backend_control::backend_status(origin.into()).expect("查状态");
+    let st = tauri::async_runtime::block_on(crate::backend_control::backend_status(origin.into()))
+        .expect("查状态");
     let got = st.get("health").expect("状态里没有 health 那一格").clone();
     let want = serde_json::to_value(health_face(&health(origin))).expect("成品序列化不了");
     assert_eq!(
@@ -1250,7 +1251,10 @@ fn the_status_command_hands_the_panel_the_finished_face() {
         "health 那一格的键不是成品那四个 —— 原料（计数 / 短摘要 / 账行）又上线了，界面就能再判一遍"
     );
     // 没记过的那一台：同一条命令回「无记录」那一档（远端今天恒是这一档 —— 那是真话，不是缺席）。
-    let quiet = crate::backend_control::backend_status("pb1-没记过的一台".into()).expect("查状态");
+    let quiet = tauri::async_runtime::block_on(crate::backend_control::backend_status(
+        "pb1-没记过的一台".into(),
+    ))
+    .expect("查状态");
     assert_eq!(quiet["health"]["state"], "unknown");
 }
 

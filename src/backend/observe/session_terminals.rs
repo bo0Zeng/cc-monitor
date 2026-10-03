@@ -7,6 +7,7 @@
 //! - 读环境只抠写死的那几个键（`TMUX` · `TMUX_PANE` · `SSH_CONNECTION`），不回整份环境。
 //! - 零定时器：只在被问时答。读不了别人的进程 ⇒ 照实说 `unreadable`。
 
+use crate::common::child_env::WithoutOwnEnv;
 use serde::Serialize;
 use serde_json::{json, Value};
 
@@ -180,6 +181,7 @@ fn pane_ok(p: &str) -> bool {
 /// 问那个 socket：连着 `pane` 所在会话的客户端（pid, 最近动静）。tmux 起不来 / 报错 ⇒ `failed`。
 fn list_clients(socket: &str, pane: &str) -> Result<Vec<(u32, u64)>, (&'static str, String)> {
     let out = std::process::Command::new("tmux")
+        .without_own_env()
         .arg(crate::common::tmux_utf8::UTF8_CLIENT_FLAG)
         .args(["-S", socket, "list-clients", "-t", pane, "-F"])
         .arg("#{client_pid} #{client_activity}")

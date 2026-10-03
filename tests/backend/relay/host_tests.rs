@@ -83,11 +83,12 @@ fn env_of(
     let home = door::door_tests::seed_test_home(creds.parent().expect("夹具目录"))
         .display()
         .to_string();
-    let creds = creds.display().to_string();
+    // 凭据住家里：家指到夹具那一份所在的目录（文件名就是 `apikey-credentials.json`）。
+    let creds = creds.parent().expect("夹具目录").display().to_string();
     move |k: &str| match k {
         ENV_PORT => port.clone(),
         "CCM_AGENT_UPSTREAM_CLAUDE_CODE" => upstream.clone(),
-        "CCM_APIKEY_CREDENTIALS" => Some(creds.clone()),
+        "CCM_DATA_DIR" => Some(creds.clone()),
         "HOME" => Some(home.clone()),
         _ => None,
     }
@@ -315,7 +316,7 @@ fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() 
             "CCM_AGENT_UPSTREAM_CLAUDE_CODE",
             format!("http://127.0.0.1:{}", up.port()),
         )
-        .env("CCM_APIKEY_CREDENTIALS", &creds)
+        .env("CCM_DATA_DIR", creds.parent().expect("夹具目录"))
         .env("CLAUDE_CONFIG_DIR", &home)
         // 钥匙文件落在夹具家目录里（预先放好夹具那一把），不碰用户真实的家目录。
         .env("HOME", door::door_tests::seed_test_home(&home))

@@ -9,7 +9,6 @@ use super::super::listen::{
 };
 use super::super::upstream;
 use super::super::{TapBody, TapEvent, TapPort};
-use crate::accounts::upstream_select::creds;
 use crate::accounts::upstream_select::{self as accounts, table::RoutingTable, Accounts};
 use creds_core::SecretKey;
 use std::io::BufRead;
@@ -1360,7 +1359,7 @@ fn relay_child_process_entry_point() {
             let _ = o.flush();
         }
     });
-    // ⚠ 凭据那份文件的位置由 `CCM_APIKEY_CREDENTIALS` 覆盖，父进程一定会设它
+    // ⚠ 凭据那份文件住家里，父进程一定会把家（`CCM_DATA_DIR`）指到夹具目录
     //   （见 `spawn_relay_child_with_creds`）。**绝不能让判据去读用户真实的那份凭据。**
     let said = crate::accounts::upstream_select::host_relay();
     eprintln!("[relay-child] {said}");
@@ -1454,7 +1453,11 @@ fn spawn_relay_child_at(
             "CCM_AGENT_UPSTREAM_CLAUDE_CODE",
             format!("http://127.0.0.1:{}", up.port()),
         )
-        .env(creds::ENV_CREDENTIALS, creds_path)
+        // 凭据住家里（`<家>/apikey-credentials.json`）：家指到夹具那一份所在的目录。
+        .env(
+            creds_core::store::DATA_DIR_ENV,
+            creds_path.parent().expect("凭据夹具有父目录"),
+        )
         .env("HOME", &home)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())

@@ -11,6 +11,7 @@
 //! 从 monitor `ssh_source.rs` 原样搬来（规则一个字没改）；monitor 从此一处 `.ssh` 都不读、不起 `ssh`（「monitor 零 SSH」字面成立）。
 //! 只读 `~/.ssh/config`，**不碰任何密钥文件**（`identityfile` 只问「在不在」，不读内容）。
 
+use crate::common::child_env::WithoutOwnEnv;
 use copy_core::copy_text;
 use serde::Serialize;
 
@@ -235,6 +236,7 @@ pub(crate) fn resolve(alias: &str) -> Result<ResolvedHost, CmdErr> {
         return Err(("bad_alias", copy_text("beSshConfig.host.dashAlias", &[])));
     }
     let out = std::process::Command::new("ssh")
+        .without_own_env()
         .arg("-G")
         .arg(alias)
         .stdin(std::process::Stdio::null())

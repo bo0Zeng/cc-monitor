@@ -265,7 +265,7 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
       claude_config_dir: "/h/.claude",
       home: "/h",
     };
-    ipc.replies.set("footprint_client_facts", { home: "/h", agentHome: "/h/.claude", path: null });
+    ipc.replies.set("footprint_client_facts", { home: "/h", path: null });
     ipc.replies.set("chan_call", (a: unknown) => {
       const { op, payload } = a as { op: string; payload: number[] };
       if (op !== "footprint-report") return Promise.reject(new Error(`[录音机] ${op} 没有真后端`));

@@ -1,6 +1,6 @@
 // 本机起会话那一族判据（旧路形状 · 账号三态 · 注入闸 · `ccm` 容器路 · 中转前缀 · 身份 token · 三条缝）
 //   随计划与渲染搬进本机后端：`tests/backend/control/launch_render/local_tests.rs`。这里只剩「只一处」那几条（读正文那一族随判定进了后端）。
-use super::*;
+use std::path::PathBuf;
 
 /// 每个测试独占的临时目录（仓库约定不引 `tempfile`，用 pid + 计数器保唯一）。
 /// **绝不碰用户真实的 `~/.claude`** —— 全部在 `std::env::temp_dir()` 下。

@@ -302,7 +302,8 @@ fn our_own_ccm_is_identified_by_its_bytes_before_it_is_run() {
     let _ = std::fs::remove_dir_all(&d);
     let prod =
         guard_core::production_code(include_str!("../../../src/frontend/shell/src/ccm_probe.rs"));
-    let at = guard_core::find_pinned(&prod, "pub fn local_ccm_entry_status(").expect("入口不在了");
+    let at =
+        guard_core::find_pinned(&prod, "pub(crate) fn local_ccm_entry_now(").expect("入口不在了");
     let body = &prod[at..];
     guard_core::find_pinned(
         body,

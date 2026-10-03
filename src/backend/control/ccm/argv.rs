@@ -111,8 +111,6 @@ impl Defaults {
     //    连同读它的 `CCM_WORKSPACE`。默认值表里少一格，是因为那一格的默认现在是恒等。
     // 账号库 manifest 的门牌号不在这张默认值表里：它是后端的家那一族（`plan::accts_manifest_under`），
     // 不是一个可以换的默认值。
-    /// 配置文件（相对 `$HOME`）。
-    pub(crate) const CONFIG_REL: &'static str = ".config/ccm/config";
     /// 起 agent 前要 eval 的机器级 env（旧 `CC_ENV` 的搬家）。
     pub(crate) const ENV: &'static str = "";
 }

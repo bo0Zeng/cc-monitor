@@ -19,8 +19,8 @@
 //!
 //! ⚠ **代价如实记，这是一条真裁决不是实现细节**：回环 TCP 上**同机任何本地进程都连得上**，
 //! Unix socket 有文件权限位而它没有。收窄只能靠一个 token；而 **backend 只读铁律不许它自己写文件**
-//! （`readonly_guard`）⇒ **token 只能由宿主生成、当 env 传进来**（[`ENV_TOKEN`]）。
-//! 宿主那一半住 `src/frontend/shell/src/local_backend_host.rs`（`0600` 的 token 文件）。
+//! （`readonly_guard`）⇒ **钥匙由起它的那一方生成、落进 `0600` 的钥匙文件，环境里只交那份文件的路径**（[`ENV_TOKEN_FILE`]）。
+//! 本机那一半住 `src/frontend/shell/src/local_backend_host.rs`，远端那一半是 `--resident-ensure`（`control/resident.rs`）—— 同一种交法。
 //!
 //! # 两档连接，而 hello 写在分档**之前**
 //!
@@ -69,12 +69,9 @@ pub const LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 /// ⇒ **只留一份实现，住宿主那一侧**（`local_backend_host::listen_port_for`），backend 只收一个数。
 pub const ENV_PORT: &str = "CCM_LISTEN_PORT";
 
-/// 宿主传进来的 attach token。**backend 自己造不出它** —— 只读铁律不许它写文件，
-/// 而 token 必须在两个宿主进程之间传得下去（上一个 monitor 退了，下一个要接上同一个后端）。
-pub const ENV_TOKEN: &str = "CCM_LISTEN_TOKEN";
-
-/// 钥匙文件的**路径**（不是钥匙）：远端那台由 `--resident-ensure` 起常驻后端时交，子进程自己读 ——
-/// 钥匙一次都不经过 env / argv（与中转钥匙同形，`relay/door.rs` 头注）。本机宿主仍交 [`ENV_TOKEN`]。
+/// 钥匙文件的**路径**（不是钥匙）：起常驻后端的那一方交（本机 monitor · 远端 `--resident-ensure`，同一种），子进程自己读 ——
+/// 钥匙一次都不经过 env / argv（与中转钥匙同形，`relay/door.rs` 头注）。钥匙若在环境里，常驻后端起的 tmux server 会把它
+/// 拷成全局环境，之后每个窗格里的 shell · ccm · claude 都带着它。
 pub const ENV_TOKEN_FILE: &str = "CCM_LISTEN_TOKEN_FILE";
 
 /// 远端 `--resident-ensure` 起常驻后端时交的中转口 env 名（`main.rs` 在库外，够不着 `relay::` 的 crate 内口）。
@@ -179,10 +176,8 @@ pub const REFUSE_MALFORMED: &str = "malformed-attach";
 pub enum Mode {
     /// 今天那条路：stdin/stdout 一对管道，宿主一退就死。
     Stdio,
-    /// 常驻：听一个回环口，认 token 之后才交出流。
-    Listen { port: u16, token: String },
-    /// 同上，钥匙在文件里（[`ENV_TOKEN_FILE`]）；`main` 读出来再换成 [`Mode::Listen`]（[`token_from_file`]）。
-    ListenTokenFile { port: u16, path: String },
+    /// 常驻：听一个回环口，认钥匙之后才交出流。钥匙在文件里（[`ENV_TOKEN_FILE`]），[`resolve`] 读出来。
+    Listen { port: u16, token_file: String },
 }
 
 /// 从环境算出形态。**纯函数**（`get` 是入参），所以两条错误支都测得到 ——
@@ -190,32 +185,24 @@ pub enum Mode {
 ///
 /// 四条规则，每条都有一个具体的坏结局在后面顶着：
 /// - 两个都没有 ⇒ [`Mode::Stdio`]（**今天的行为一个字节不变**）。
-/// - 有口没 token ⇒ `Err`：那会起一个**同机任何进程都能对它发 `launch` 的口**。
-/// - 有 token 没口 ⇒ `Err`：多半是接线漏了一半，静默退回 stdio 会让「我明明开了常驻」
+/// - 有口没钥匙文件 ⇒ `Err`：那会起一个**同机任何进程都能对它发 `launch` 的口**。
+/// - 有钥匙文件没口 ⇒ `Err`：多半是接线漏了一半，静默退回 stdio 会让「我明明开了常驻」
 ///   变成一个查不出来的谜（`P2d §0a` 那一形：**假信号不报错，它只是一直说是**）。
 /// - 口解析不出来 / 是 0 ⇒ `Err`：0 会让内核随机挑一个口，而宿主正等在那个算好的口上。
 pub fn mode_from(get: &dyn Fn(&str) -> Option<String>) -> Result<Mode, String> {
     let raw_port = get(ENV_PORT).filter(|s| !s.trim().is_empty());
-    let raw_token = get(ENV_TOKEN).filter(|s| !s.trim().is_empty());
     let raw_file = get(ENV_TOKEN_FILE).filter(|s| !s.trim().is_empty());
-    match (raw_port, raw_token) {
-        (Some(p), None) if raw_file.is_some() => {
-            let port = parse_port(&p)?;
-            Ok(Mode::ListenTokenFile {
-                port,
-                path: raw_file.unwrap_or_default().trim().to_string(),
-            })
-        }
+    match (raw_port, raw_file) {
         (None, None) => Ok(Mode::Stdio),
         (None, Some(_)) => Err(crate::common::contract::malformed(&format!(
-            "{ENV_TOKEN} is set but {ENV_PORT} is not; refusing to fall back to stdio"
+            "{ENV_TOKEN_FILE} is set but {ENV_PORT} is not; refusing to fall back to stdio"
         ))),
         (Some(_), None) => Err(crate::common::contract::malformed(&format!(
-            "{ENV_PORT} is set but {ENV_TOKEN} is not; refusing to open an unauthenticated port"
+            "{ENV_PORT} is set but {ENV_TOKEN_FILE} is not; refusing to open an unauthenticated port"
         ))),
-        (Some(p), Some(t)) => Ok(Mode::Listen {
+        (Some(p), Some(f)) => Ok(Mode::Listen {
             port: parse_port(&p)?,
-            token: t.trim().to_string(),
+            token_file: f.trim().to_string(),
         }),
     }
 }
@@ -230,12 +217,11 @@ fn parse_port(p: &str) -> Result<u16, String> {
     Ok(port)
 }
 
-/// 形态 ⇒ 载体：`None` = stdio；`Some((口, 钥匙))` = 常驻（钥匙在文件里那一形此刻读出来）。
+/// 形态 ⇒ 载体：`None` = stdio；`Some((口, 钥匙))` = 常驻（钥匙此刻从文件读出来，只进内存）。
 pub fn resolve(m: Mode) -> Result<Option<(u16, String)>, String> {
     match m {
         Mode::Stdio => Ok(None),
-        Mode::Listen { port, token } => Ok(Some((port, token))),
-        Mode::ListenTokenFile { port, path } => Ok(Some((port, token_from_file(&path)?))),
+        Mode::Listen { port, token_file } => Ok(Some((port, token_from_file(&token_file)?))),
     }
 }
 

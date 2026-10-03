@@ -110,7 +110,7 @@ def handoff_sites():
     """起 daemon 的那几条路：各自把什么交给了它。逐处行号。"""
     probes = [
         ("monitor · 脱离式常驻", "src-tauri/src/local_daemon.rs",
-         [r"fn spawn_detached", r'env_remove\("TMUX"\)', r"LISTEN_PORT_ENV", r"LISTEN_TOKEN_ENV"]),
+         [r"fn spawn_detached", r'env_remove\("TMUX"\)', r"LISTEN_PORT_ENV", r"LISTEN_TOKEN_FILE_ENV"]),
         ("monitor · 被监护 stdio", "src-tauri/src/backend/control/local_backend.rs",
          [r"pub fn supervise_with_stdio", r'cmd\.env_remove\("TMUX"\)', r"for \(k, v\) in &envs"]),
         ("daemon 自己 · 载体由 env 决定", "remote-daemon-proto/src/listen.rs",

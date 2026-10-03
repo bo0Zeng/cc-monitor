@@ -182,10 +182,9 @@ monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / �
 **谁在守**：`paths_tests.rs::with_nothing_set_it_is_the_documented_default`（本条正文那一半）· `paths_tests.rs::an_absolute_override_is_used_verbatim` ·
 `paths_tests.rs::an_empty_value_means_unset_not_broken` · `paths_tests.rs::a_relative_override_refuses_instead_of_quietly_using_the_real_profile` ·
 `paths_tests.rs::no_home_and_no_override_is_still_none` · `paths_tests.rs::nothing_else_in_the_monitor_tree_builds_that_path_itself`（全树只经一处派生）· `paths_tests.rs::the_data_dir_is_spelled_in_one_place`（默认住址只在一处拼、生产段零处旧住址）。
-⚠ **常驻后端那一格**：常驻后端的监听口仍按 Claude **家目录**算，隔离跑的 monitor 会敲到真 profile 那个 monitor 起的常驻后端；
-接不接由宿主比「它的数据身份」—— hello 回显的那几格宿主环境（凭据文件路径 · 历史注解路径）与这一趟要交的逐格相等才接，
-不等 ⇒ 出声拒绝、不接、不另起（`local_backend_host.rs::hello_verdict`）。
-⇒ 隔离跑要么换 Claude 家目录（`CLAUDE_CONFIG_DIR`，口跟着变），要么先停真 profile 那个。
+⚠ **常驻后端那一格**：常驻后端的监听口按**家**算（`relay_route_core::listen_port_for(家)`，与 Claude 目录无关）⇒ 隔离跑的 monitor
+（设了 `CCM_DATA_DIR`）有它自己的口、自己的常驻后端。撞口的仍可能是另一个家的后端：接不接由宿主比 —— hello 回显的那几格宿主环境
+（中转口 · 家）与这一趟要交的逐格相等才接，不等 ⇒ 出声拒绝、不接、不另起（`local_backend_host.rs::hello_verdict`）。
 
 ### 2.1 真相 vs 缓存必须分得清（F65 / issue #58 单向门④）
 
@@ -194,7 +193,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 | 文件 | 类 | 写它的 | 说明 |
 |---|---|---|---|
 | `config.json` | **真相** | `config.rs` | theme/font/claudeDir/keybindings/`remote.hosts[]`(含 label)/resume 命令/诊断开关——全用户手填 |
-| `history-metadata.json` | **真相** | 本机常驻后端 `history_annotations.rs::answer_annotate`（路径仍由 `history.rs::metadata_path` 算、起后端时交过去；文件原地不动） | 按 sid 的 star/重命名/隐藏——用户策展意图 |
+| `history-metadata.json` | **真相** | 本机常驻后端 `history_annotations.rs::answer_annotate`（文件住家里，那台后端按家推，位置只跟着家走） | 按 sid 的 star/重命名/隐藏——用户策展意图 |
 | `filewin-bookmarks.json` | **真相** | `filewin/src/bookmarks.rs`（文件管理窗口进程；旁件 `.lock` 上独占锁读-改-写） | 每台机器一份收藏目录清单 —— 用户手点的；设置页「数据位置」列出它 |
 | `auto-launch.json` | **混（良性）** | `auto_launch.rs` | `enabled`=真相；`monitor_exe_path`=派生(每次启动 `current_exe()` 自愈改写) |
 | `sid-hwnd-cache.json` | **缓存** | `bind.rs` | sid→HWND，能从 PS 握手重建 |
@@ -337,6 +336,11 @@ jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是�
 **为什么不能松动**：Tauri 的 `#[tauri::command] fn`（非 async）跑在 IPC 派发线程上。一个慢命令阻塞期间，其他 IPC 全部排队 → 整个 UI 没反应（切设置 / 拉前 / 切 Tab 全失灵）。即便代码"看起来快"（如 read_dir + stat 几百次），磁盘冷状态下也能轻松超过 100ms 阈值。
 
 **实施口诀**：IPC 命令默认写 `pub async fn`，函数体包 `tokio::task::spawn_blocking(move || { ... }).await.map_err(...)?`。State 参数前先 `state.inner().clone()` 拿 Arc 再 move 进 closure。
+
+**谁在守**：`sync_command_registry_tests.rs::every_sync_command_is_on_the_whitelist_with_a_reason`（同步命令 == 白名单，每条写清为什么它不等外面）·
+`sync_command_registry_tests.rs::no_sync_command_waits_on_the_outside_except_the_registered_deviations`（同步命令的调用闭包里零处起子进程 · 等子进程 · 睡 ·
+`block_on` · 同步连口 · 拿起停本机后端那把串行锁）。起 / 停本机后端那一趟句柄表的锁只在读写那一下拿（`local_backend_host.rs::LIFECYCLE` 串行），
+停那一趟带期限（`local_backend_host.rs::RESIDENT_STOP_DEADLINE`）。
 
 ---
 
@@ -2246,7 +2250,9 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 
 **性质**：常驻后端对外开的**控制口**（回环 TCP；`listen.rs`）只有出示了钥匙的连接才能拿到**流**（能发 `launch` / `kill` 的那一档）。
 「有口没钥匙」⇒ **拒绝起**；空钥匙 ⇒ 按「没设」算；钥匙逐字节全等才算对（前缀 / 后缀 / 大小写都不算）；
-钥匙不对、形状不对、口被占着 —— 三种拒法**出声且彼此可分**。钥匙由宿主生成（新生成时 128 位随机）、写进 `0600` 的文件、经 env 交给后端（后端只读铁律不许它自己写文件）。
+钥匙不对、形状不对、口被占着 —— 三种拒法**出声且彼此可分**。钥匙由起它的那一方生成（新生成时 128 位随机）、写进 `0600` 的文件，环境里**只交那份文件的路径**（`CCM_LISTEN_TOKEN_FILE`，本机远端同一种），
+后端读进内存；钥匙本身不进任何进程的环境。常驻后端起子进程时还把起它的那一方交给它自己的那几格环境清掉（`common/child_env.rs`：
+监听口 · 钥匙文件 · 中转口 · 诊断文件）—— 它起的 tmux server 会把调用者的环境拷成全局环境、传给每个窗格。
 不认证的只有 hello 那一档（只读、读完即关），它泄露 `claude_dir` / `build_id` / 能力集，这是有意的取舍（`listen.rs` 头注「诚实边界」第 1 条）。
 
 **为什么不能松动**：回环 TCP **没有权限位** —— 同机任何本地进程（**含别的用户**）连得上那个口，
@@ -2255,6 +2261,8 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 **谁在守**：后端 `listen_tests.rs::a_port_without_a_token_is_refused` · `listen_tests.rs::a_token_without_a_port_is_refused_loudly` ·
 `listen_tests.rs::empty_strings_count_as_unset` · `listen_tests.rs::an_empty_token_never_matches` · `listen_tests.rs::tokens_match_is_exact` ·
 `listen_tests.rs::attach_verdicts_are_three_distinct_faces` · `listen_tests.rs::the_two_tier_split_is_pinned_cell_by_cell`；
+不进环境：`local_backend_host_tests.rs::e2e_the_door_follows_the_home_not_the_claude_dir`（读常驻后端的 `/proc/<pid>/environ`）·
+`local_backend_host_tests.rs::e2e_children_of_the_resident_backend_carry_none_of_its_own_env` · `child_env_tests.rs::every_production_spawn_goes_through_it`；
 宿主那一半 `local_backend_host_tests.rs::every_token_is_fresh_and_long_enough` · `local_backend_host_tests.rs::the_listen_token_file_is_pinned_cell_by_cell`（`0600` · 竞态支不覆盖 · 空文件支）·
 `local_backend_host_tests.rs::a_stranger_on_our_port_is_refused_out_loud_not_silently_reused`（口被别人占着 ⇒ 出声拒，不静默复用）。
 

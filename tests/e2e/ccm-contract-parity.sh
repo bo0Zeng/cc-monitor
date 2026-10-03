@@ -118,7 +118,6 @@ base_env() {
       CLAUDECODE=1 CLAUDE_CODE_ENTRYPOINT=cli \
       CLAUDE_CODE_SESSION_ID=fake-sid CLAUDE_CODE_CHILD_SESSION=1 \
       TMUX=/faux/socket,1,0 PATH="$W/bin:$PATH" HOME="$W/home" \
-      CCM_CONFIG=/nonexistent \
       "${BASE_EXTRA[@]}" "$@"
 }
 
@@ -284,10 +283,7 @@ BASE_EXTRA=()
 
 echo
 echo "===== C 组：--ccm-probe 是跨语言契约，两个消费方都只测过 fixture ====="
-# **必须隔离 `CCM_CONFIG`**：裸调会 `.` 掉用户真实的 `~/.config/ccm/config`（本机就有一份）。
-# 今天那份是纯赋值所以无害，但配置里只要有一句输出就会把首行断言打掉 —— 那是假红，
-# 而假红与假绿同样是坏信号（且与本文件其余每一处、另四套 ccm e2e 的口径不一致）。
-PROBE="$(env CCM_CONFIG=/nonexistent "$CCM" -- --ccm-probe 2>&1)"
+PROBE="$("$CCM" -- --ccm-probe 2>&1)"
 ck "首行逐字 name=ccm（ccm_probe.rs::parse_probe_output 的判活依据）" "name=ccm" "$(printf '%s\n' "$PROBE" | head -1)"
 ck "有 version= 行" "1" "$(printf '%s\n' "$PROBE" | grep -c '^version=')"
 CAPS="$(printf '%s\n' "$PROBE" | sed -n 's/^capabilities=//p' | tr ',' '\n')"

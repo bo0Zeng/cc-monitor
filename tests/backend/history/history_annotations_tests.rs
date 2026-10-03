@@ -262,13 +262,32 @@ fn last_accounts_are_only_the_entries_that_have_one() {
     );
 }
 
-/// 路径只认环境变量给的绝对路径（空串 / 相对路径 / 缺席 ⇒ 没有，不猜）。
+/// 位置只跟着家走（期望手写）：默认 `<HOME>/.cc-monitor/history-metadata.json`；`CCM_DATA_DIR`（绝对）⇒ 它根上那一份；
+/// 相对 / 没有家目录 ⇒ 没有（不猜）。从前另指它的 `CCM_HISTORY_METADATA` 删了，给了也不认。
 #[test]
-fn only_an_absolute_path_is_taken() {
-    assert_eq!(path_from(None), None);
-    assert_eq!(path_from(Some("")), None);
-    assert_eq!(path_from(Some("  ")), None);
-    assert_eq!(path_from(Some("rel/history-metadata.json")), None);
-    let abs = std::env::temp_dir().join("x.json");
-    assert_eq!(path_from(Some(abs.to_str().unwrap())), Some(abs));
+fn the_location_only_follows_the_home() {
+    let env = |pairs: &'static [(&'static str, &'static str)]| {
+        move |k: &str| {
+            pairs
+                .iter()
+                .find(|(n, _)| *n == k)
+                .map(|(_, v)| v.to_string())
+        }
+    };
+    assert_eq!(
+        path_from(&env(&[
+            ("HOME", "/h"),
+            ("CCM_HISTORY_METADATA", "/x/m.json")
+        ])),
+        Some(PathBuf::from("/h/.cc-monitor/history-metadata.json"))
+    );
+    assert_eq!(
+        path_from(&env(&[("HOME", "/h"), ("CCM_DATA_DIR", "/iso")])),
+        Some(PathBuf::from("/iso/history-metadata.json"))
+    );
+    assert_eq!(
+        path_from(&env(&[("HOME", "/h"), ("CCM_DATA_DIR", "rel")])),
+        None
+    );
+    assert_eq!(path_from(&env(&[])), None);
 }

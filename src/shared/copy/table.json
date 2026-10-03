@@ -764,11 +764,6 @@
       "zh": "回滚做了 {done} 步，有几步没做成：{failed}。备份还在 {path}，处理掉原因后可以再回滚一次。",
       "args": ["done", "failed", "path"]
     },
-    "bePlan.env.configIgnored": {
-      "kind": "error",
-      "zh": "ccm: {path} 不会被读取。要设 CCM_ENV 请改用环境变量；账号库的位置跟着家目录走，不用设。",
-      "args": ["path"]
-    },
     "bePlan.bus.noScripts": {
       "kind": "error",
       "zh": "ccm: 找不到 cc-bus，没有登记到总线。装在别处的话，用 CC_BUS_SCRIPTS 指过去。",
@@ -7025,7 +7020,7 @@
     },
     "settingsPanel.claudeDir.updated": {
       "kind": "body",
-      "zh": "Claude 数据目录已更新 —— 需要重启 monitor 才能生效",
+      "zh": "Claude 数据目录已更新 —— 重启本机上的 cc-monitor 后生效",
       "args": []
     },
     "settingsPanel.close.failed": {
@@ -13970,7 +13965,7 @@
     },
     "rsLocalBackendHost.dataDir.otherDataDir": {
       "kind": "error",
-      "zh": "这个口上的后端属于另一个数据目录，没有接它。{diffs}。接上它，凭据与历史注解会写进那个数据目录。多半是用 CCM_DATA_DIR 隔离跑的 monitor 碰上了平常那个 monitor 起的后端：换一个 CLAUDE_CONFIG_DIR 跑，或者先把那个后端停掉。",
+      "zh": "这个口上的后端住另一个数据目录，没有接它。{diffs}。接上它，凭据与历史注解会写进那个数据目录。先把那个后端停掉再起。",
       "args": ["diffs"]
     },
     "rsLocalBackendHost.stop.noBin": {
@@ -13982,6 +13977,16 @@
       "kind": "error",
       "zh": "起不来停后端用的 {bin}：{e}",
       "args": ["bin", "e"]
+    },
+    "rsLocalBackendHost.stop.timedOut": {
+      "kind": "error",
+      "zh": "停本机后端的那一趟 {secs} 秒内没答完，后端可能还在跑。可以再停一次。",
+      "args": ["secs"]
+    },
+    "rsLocalBackendHost.stop.readFailed": {
+      "kind": "error",
+      "zh": "读不到停本机后端那一趟的结局：{e}",
+      "args": ["e"]
     },
     "rsLocalBackendHost.stop.noRecord": {
       "kind": "error",
@@ -14122,11 +14127,6 @@
       "kind": "error",
       "zh": "连不上端口上的后端（{e}）",
       "args": ["e"]
-    },
-    "rsLocalBackendHost.hello.homeMismatch": {
-      "kind": "error",
-      "zh": "端口上的后端看的是 {theirs}，而当前 cc-monitor 看的是 {ours}",
-      "args": ["theirs", "ours"]
     },
     "rsLocalBackendHost.hello.buildMismatch": {
       "kind": "error",
@@ -14678,13 +14678,13 @@
     },
     "beHistoryAnnotations.lastAccountsOf.unknown": {
       "kind": "error",
-      "zh": "这台后端不知道星标和改名记在哪。它不是 cc-monitor 起的那一个。",
+      "zh": "找不到数据目录，星标和改名读不出来。没有家目录，或者数据目录设成了相对路径。",
       "args": []
     },
     "beHistoryAnnotations.needPath.unknown": {
       "kind": "error",
-      "zh": "这台后端不知道星标和改名记在哪，没有写。它不是 cc-monitor 起的那一个。",
-      "args": []
+      "zh": "找不到数据目录，星标和改名没有写。{env} 设了却不是绝对路径，或者没有家目录。",
+      "args": ["env"]
     },
     "bePlatformLock.hold.openFailed": {
       "kind": "error",
@@ -14763,7 +14763,7 @@
     },
     "beHistoryJoin.annotations.unknown": {
       "kind": "error",
-      "zh": "这台后端不知道星标、改名和隐藏记在哪。它不是 cc-monitor 起的那一个。",
+      "zh": "找不到数据目录，星标、改名和隐藏读不出来。没有家目录，或者数据目录设成了相对路径。",
       "args": []
     },
     "beRemoteAsk.run.tooLarge": {

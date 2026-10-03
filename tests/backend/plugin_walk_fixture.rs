@@ -1610,7 +1610,7 @@ mod tests {
     ///
     /// ② **暗路 —— 09-05 关掉了，这一段是它的病历**。
     ///    09-04 夜本格逐字记着：`invoke::run` **不 `env_clear()`** ⇒ 子进程**继承后端的
-    ///    整份环境**，而常驻监听口那两个变量（`listen::ENV_PORT` / `listen::ENV_TOKEN`）
+    ///    整份环境**，而常驻监听口那两个变量（`listen::ENV_PORT` / `listen::ENV_TOKEN_FILE`）
     ///    恰好就是「接上宿主 + 过鉴权」需要的两样 ⇒ 只要后端是带着它们起的，
     ///    **任何被它起的插件读一读自己的环境就能回连宿主、发全部基础命令**。
     ///    那不是「已经有了回调口」—— 它是**一条没有协议、没有权限模型、没有审计的**回程，
@@ -1711,12 +1711,12 @@ mod tests {
         // 那两个会随环境一起漂过去的变量名，点住住址（不复述它们的值）。
         assert!(
             !crate::stream::listen::ENV_PORT.is_empty()
-                && !crate::stream::listen::ENV_TOKEN.is_empty(),
+                && !crate::stream::listen::ENV_TOKEN_FILE.is_empty(),
             "常驻口那两个变量名空了 —— 本格头注 ② 段指的就是它们"
         );
         assert_ne!(
             crate::stream::listen::ENV_PORT,
-            crate::stream::listen::ENV_TOKEN
+            crate::stream::listen::ENV_TOKEN_FILE
         );
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -1740,7 +1740,7 @@ mod tests {
 
     /// 喂给「backend 侧那个进程」的两个**值**。
     ///
-    /// ⚠ 只有值住这里 —— **键名一律现取** `listen::ENV_PORT` / `listen::ENV_TOKEN`，
+    /// ⚠ 只有值住这里 —— **键名一律现取** `listen::ENV_PORT` / `listen::ENV_TOKEN_FILE`，
     /// 手抄一份字面量的话，那两个常量改了名本格会**安静地**继续绿
     ///（它量的就变成「一个没人用的键没漏过去」）。
     const FAKE_PORT_VALUE: &str = "51999";
@@ -1757,7 +1757,7 @@ mod tests {
     ///    交给那个新进程（形状照 `relay::server::tests` 那台真子进程中转，同一条纪律）。
     ///
     /// ⇒ **分母说清楚**：内层那个进程**不是** `cargo test` 那个进程，
-    ///    它是一个由 `Command` 起、环境里带着 `listen::ENV_PORT`/`ENV_TOKEN` 的新进程 ——
+    ///    它是一个由 `Command` 起、环境里带着 `listen::ENV_PORT`/`ENV_TOKEN_FILE` 的新进程 ——
     ///    而**生产里后端拿到那两个键的方式一模一样**（`listen.rs` 头注逐字：
     ///    token「只能由宿主生成、当 env 传进来」，backend 自己造不出它）。
     ///    这就是它凭什么代表生产：**同一条投喂路，只是投喂的人换成了判据。**
@@ -1782,7 +1782,7 @@ mod tests {
             .env(INHERIT_MARK, "1")
             // ★ 键名现取，值是夹具的。
             .env(crate::stream::listen::ENV_PORT, FAKE_PORT_VALUE)
-            .env(crate::stream::listen::ENV_TOKEN, FAKE_TOKEN_VALUE)
+            .env(crate::stream::listen::ENV_TOKEN_FILE, FAKE_TOKEN_VALUE)
             .stdin(std::process::Stdio::null())
             .output()
             .expect("起不来那个内层进程");
@@ -1821,7 +1821,7 @@ mod tests {
             return;
         }
         let port_key = crate::stream::listen::ENV_PORT;
-        let token_key = crate::stream::listen::ENV_TOKEN;
+        let token_key = crate::stream::listen::ENV_TOKEN_FILE;
 
         // ── 分母①：本进程（扮演后端）的环境键 ────────────────────────────
         let parent: std::collections::BTreeSet<String> = std::env::vars_os()

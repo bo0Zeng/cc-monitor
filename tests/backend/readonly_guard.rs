@@ -840,7 +840,7 @@ mod tests {
         (
             "history/history_annotations.rs",
             "**历史注解**那一份文件（星标 / 改名 / 隐藏 / 上次账号；就是 monitor 从前读写的 \
-             `<monitor 数据目录>/history-metadata.json`，路径由 monitor 起本机后端时交 `CCM_HISTORY_METADATA`）。\
+             `<家>/history-metadata.json`，那台后端按家推）。\
              「读写者换成本机常驻后端、文件留在原处」：它是界面的注解、只有我们读写 ⇒ 后端**自己的**状态，不是用户数据\
              （会话记录本身一个字节不碰）。读不懂就拒写 → 只改那一条 → `O_EXCL` 临时文件 → 写满 → 原子挪过去；只建那一层目录；\
              失败删自己的临时文件。线上入口只有 `inbound.rs` 的 `history-annotate` / `history-forget`（＋ 派生的 CLI 面）",
@@ -966,8 +966,11 @@ skill 装记录那一条（`skill-install-record`）。\
         // 中转钥匙：门是中转起监听那一处，不是命令注册。
         ("relay/door.rs", "door::ensure_key", "relay/listen.rs"),
         // stderr 诊断文件：写口是装它的那一个函数，门是 `main.rs`。
-        // 针取模块前缀：装它（`install_from_env`）与滚它（`stderr_writer`，交给 `tracing`）都会写，都只许 `main.rs` 碰。
-        ("stderr_log.rs", "stderr_log::", "main.rs"),
+        // 装它（`install_from_env`）与滚它（`stderr_writer`，交给 `tracing`）都会写，都只许 `main.rs` 碰 ⇒ 两条针各钉一个写口。
+        // 〔从前针取模块前缀 `stderr_log::`：起子进程清环境那一处（`common/child_env.rs`）要点那个变量的**名字**
+        //  （`stderr_log::ENV`，不是写口）就被当成够到了写口 ⇒ 改成逐个点写口；这个模块今天对外的函数就这两个会写。〕
+        ("stderr_log.rs", "stderr_log::install_from_env", "main.rs"),
+        ("stderr_log.rs", "stderr_log::stderr_writer", "main.rs"),
         // 一条写口 `answer_record` ⇒ 针取前缀同上两条；读口 `load_at` / `read_at` / `ledger_path` / `digest_of` 不在针上（`skill_install.rs` 读它合法）。
         (
             "assets/skill_ledger.rs",

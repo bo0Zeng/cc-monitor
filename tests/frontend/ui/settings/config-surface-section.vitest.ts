@@ -57,7 +57,7 @@ import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import { chanArgsJson, chanReply, isChanCall, UNSUPPORTED, type ChanCallArgs } from "../../../test-support/chan-fake";
 
 /** monitor 自己进程独有的那几条事实（本机那一栏先问它一次）。 */
-const CLIENT_FACTS = { home: "/m", agentHome: "/m/.claude", path: null };
+const CLIENT_FACTS = { home: "/m", path: null };
 
 /** 足迹经通道问那台后端，一问回整份报告。 */
 function footprintInvoke(rep: unknown): (cmd: string, args?: unknown) => Promise<unknown> {

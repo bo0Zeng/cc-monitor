@@ -91,8 +91,9 @@ export const ACCOUNT_NAMES: AccountName[] = [
   {
     old: "CCM_RELAY_CREDENTIALS",
     re: ident("CCM_RELAY_CREDENTIALS"),
-    fresh: "CCM_APIKEY_CREDENTIALS",
-    freshRe: ident("CCM_APIKEY_CREDENTIALS"),
+    // 改名之后连新名也删了：凭据文件的位置只跟着家走，没有另指它的变量 ⇒ 新名不要求在盘上。
+    fresh: "CCM_APIKEY_CREDENTIALS（已删）",
+    freshRe: null,
     kind: "环境变量",
     why: "盖的是 apikey 凭据文件的路径 —— 读它的是上游选择（`accounts::upstream_select::creds`），中转一个字节都不读",
     state: "done",
@@ -325,7 +326,7 @@ export const RELAY_NAMES: { name: string; re: RegExp; why: string }[] = [
   { name: "relay_prefix_for_launch", re: ident("relay_prefix_for_launch"), why: "起会话那一刻挑中转前缀的接线口" },
   { name: "relay_running", re: ident("relay_running"), why: "本机中转进程在不在跑" },
   // `start_local_relay` / `LOCAL_RELAY` 两条随「monitor 另起中转」那一族删掉，换成接替它们的两个中转名字。〔散文墓碑〕
-  { name: "relay_host_envs", re: ident("relay_host_envs"), why: "起本机后端时交给它的中转端口（与凭据路径 —— 那是上游选择要读的，但交接这一步是为中转在那个进程里起来）" },
+  // 起本机后端交的那份环境从前叫「中转那几格」，那一行摘了：它今天还交家 · Claude 目录，不再是中转的名字。
   { name: "host_relay", re: ident("host_relay"), why: "常驻后端进程内起中转的装配口（中转的 host ＋ 上游选择那只手）" },
   { name: "RelayAsk", re: ident("RelayAsk"), why: "`relay_endpoint_for` 的入参" },
   // 「中转路由段字符闸」那一行（登记的是它 US1 之前的旧名）删了：那道闸今天叫 `relay_route_core::segment_is_safe`，

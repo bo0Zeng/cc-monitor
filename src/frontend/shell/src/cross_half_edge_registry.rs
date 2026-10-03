@@ -216,7 +216,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "tests/frontend/shell/local_backend_host_tests.rs",
         "src/backend/stream/listen.rs",
         "★**跨 crate 字面量对拍**：常驻监听口那两个 env 名\
-         （`CCM_LISTEN_PORT` / `CCM_LISTEN_TOKEN`）宿主与后端各声明一份，\
+         （`CCM_LISTEN_PORT` / `CCM_LISTEN_TOKEN_FILE`）宿主与后端各声明一份，\
          而两边漂了**不会报错** —— backend 会把它当成「没设」走 stdio 那条路，\
          宿主则等在一个永远没人 bind 的口上，日志里只有一句「连不上」。\
          ⇒ 只能同时读两侧的源码才验得了（形状抄 `the_local_origin_is_the_same_string_on_both_sides`）。",

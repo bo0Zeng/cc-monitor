@@ -7,9 +7,9 @@
 //! # 两种问法（一问出整份报告）
 //!
 //! - **远端那一栏**（`{}`）：视角 [`rows::Vantage::Remote`]：住 monitor 那台的那一族（`HostScope::Client`）不进人群。
-//! - **本机那一栏**（`{client: {home, agentHome, path?}}`）：视角 [`rows::Vantage::Monitor`]。本机后端与 monitor 同一台、同一用户 ⇒
-//!   `HostScope::Client` 那一族也由这里 stat；monitor 只交它**独有**的那几条事实（它自己进程的家目录 · agent 家 · `PATH`，
-//! 「足迹里 monitor 自己那几行」），那一族按它们解。
+//! - **本机那一栏**（`{client: {home, path?}}`）：视角 [`rows::Vantage::Monitor`]。本机后端与 monitor 同一台、同一用户 ⇒
+//!   `HostScope::Client` 那一族也由这里 stat；monitor 只交它**独有**的那几条事实（它自己进程的家目录 · `PATH`，
+//! 「足迹里 monitor 自己那几行」），那一族按它们解；agent 家用这台后端自己解析的那一个（Claude 目录只在后端解析）。
 //!
 //! # 上限
 //!
@@ -42,7 +42,6 @@ pub(crate) fn answer(args: &Value) -> FootprintAnswer {
 /// monitor 交来的它自己那台独有的事实。
 struct Client {
     home: PathBuf,
-    agent_home: PathBuf,
     path: Option<String>,
 }
 
@@ -76,7 +75,7 @@ pub(crate) fn answer_with(
     // monitor 那一族：按 monitor 交来的环境解，stat 仍是这台自己（同一台、同一用户）。
     let c_env = client.as_ref().map(|c| SurfaceEnv {
         home: &c.home,
-        agent_home: &c.agent_home,
+        agent_home,
         fs: &own_fs,
         path_env: c.path.as_deref(),
         vantage: Vantage::Monitor,
@@ -132,7 +131,7 @@ fn hooks_in(p: &Path) -> Option<bool> {
     Some(rows::HOOK_PROGRAMS.iter().any(|n| s.contains(n)))
 }
 
-/// `client` 入参：`{home, agentHome, path?}`（monitor 自己进程的那几条，原样）。
+/// `client` 入参：`{home, path?}`（monitor 自己进程的那几条，原样）。
 fn client_arg(v: Option<&Value>) -> Result<Option<Client>, (&'static str, String)> {
     let bad = |m: &str| ("bad_args", crate::common::contract::malformed(m));
     let Some(c) = v.filter(|v| !v.is_null()) else {
@@ -153,13 +152,9 @@ fn client_arg(v: Option<&Value>) -> Result<Option<Client>, (&'static str, String
             Err(bad(&format!("`client.{k}`: {s:?} is not an absolute path")))
         }
     };
-    let (home, agent_home) = (abs("home")?, abs("agentHome")?);
+    let home = abs("home")?;
     let path = env.get("path").and_then(Value::as_str).map(str::to_string);
-    Ok(Some(Client {
-        home,
-        agent_home,
-        path,
-    }))
+    Ok(Some(Client { home, path }))
 }
 
 #[cfg(test)]

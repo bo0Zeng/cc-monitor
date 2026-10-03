@@ -43,6 +43,7 @@
 //!   一个都不问那一列，而 watcher 那条路（`TMUX_LS_FMT`）里根本没有它 ——
 //!   带一列谁都不用、且有一半发布者填不出来的值，就是下一处静默的空串。
 
+use crate::common::child_env::WithoutOwnEnv;
 use copy_core::copy_text;
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
@@ -180,6 +181,7 @@ const LIST_FMT_FIELDS: usize = 2;
 /// 由本模块测试段那条判据钉住次序（判据从 `control/gate.rs` 随这处调用点一起搬来）。
 fn probe_tmux() -> Result<Vec<SessionRow>, CmdErr> {
     let out = Command::new("tmux")
+        .without_own_env()
         .args([UTF8_CLIENT_FLAG, "list-sessions", "-F", LIST_FMT])
         .stdin(Stdio::null())
         .stderr(Stdio::null())

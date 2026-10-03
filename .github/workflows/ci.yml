@@ -854,7 +854,7 @@ jobs:
                       "cc-spawn-uplift 72" \
                       "restart 25" "resume 17" "graylight-frames 13" "restart-frames 5" "resume-frames 7" \
                       "backend-fork 10" "inbound-frames 31" \
-                      "ccm-contract-parity 45" "backend-gate2 33" "local-backend 14" \
+                      "ccm-contract-parity 45" "backend-gate2 33" "local-backend 19" \
                       "backend-sessions-rewatch 5" "backend-tmux-late-server 2" \
                       "cc-bus-queue-drain 43" "backend-cc-bus 50" "p3t-local-tmux 10"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
@@ -1179,8 +1179,10 @@ jobs:
       #    它们住 `src/frontend/shell/src/local_backend_host.rs`，由本套件**第二趟** `--ignored` 拉起。
       #    ⚠ 不棘的话那 7 条明天能被整族删掉而 CI 照样绿 —— 那正是
       #    `assert-pass-floor.sh` 头注写的失效模式：**不是变红，是静默缩水**。
+      #    14 → 18：常驻那条路多 4 条（门牌只跟着家走：改了 Claude 目录设置照样接得上 · 停得掉 · 设置里那一格显式交给后端；
+      #    监听口的钥匙不在常驻后端的环境里）；→ 19：常驻后端起的 tmux 不带它自有的环境。
       - name: 本机后端监护真进程验收（F05a + K-P1 常驻）
-        run: bash tests/e2e/assert-pass-floor.sh local-backend 14
+        run: bash tests/e2e/assert-pass-floor.sh local-backend 19
 
       - name: 灰灯后端帧（F-E1）
         run: bash tests/e2e/assert-pass-floor.sh graylight-frames 13

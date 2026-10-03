@@ -158,10 +158,11 @@ const SITES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "local_backend_host.rs",
-        "run_resident_stop",
+        "run_resident_stop_within",
         "spawn_managed_cmd",
         "机器页「停」本机后端：起一次 `<后端> --resident-stop`（不经 shell），等与强杀由那个一次性子命令做（同机监督者）。\
-         argv 是那个二进制与一个常量 flag，环境只多一格 `CLAUDE_CONFIG_DIR`（本 monitor 认的 Claude 家目录，让它算出同一个口）。\
+         argv 是那个二进制与一个常量 flag，环境与起它时同一份（`backend_env`：中转口 ·（隔离跑时）家 ·（填了覆盖时）Claude 目录），\
+         它按同一个家算出同一个口。等带期限（`ccm_probe::capture_full`，起那一下在它的闭包里交给出口）。\
          stdout 要 piped（结局那一行是返回值）、stderr 要 captured（失败那句 `{code,message}`）。⚠ 已登记在 `SPAWNS`。",
     ),
     (

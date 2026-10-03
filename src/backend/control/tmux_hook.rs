@@ -38,6 +38,7 @@
 //! 名字→sid 的映射由消费侧查表。本模块**连名字都不传**，所以这条陷阱在这里已不适用，
 //! 但注释留着 —— 将来若有人想「顺便把名字带上」，得先回头看这一条。
 
+use crate::common::child_env::WithoutOwnEnv;
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -225,6 +226,7 @@ pub(crate) type TmuxRun<'a> = &'a mut dyn FnMut(&[String]) -> Result<(bool, Stri
 fn run_tmux(args: &[String]) -> Result<(bool, String), String> {
     // 读它的回话 ⇒ 打印通道按 UTF-8（`common/tmux_utf8.rs` 那条规矩：本机 argv 直传用旗，且排在子命令之前）。
     let out = std::process::Command::new("tmux")
+        .without_own_env()
         .arg(crate::common::tmux_utf8::UTF8_CLIENT_FLAG)
         .args(args)
         .stdin(std::process::Stdio::null())

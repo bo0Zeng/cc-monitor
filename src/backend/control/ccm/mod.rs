@@ -27,8 +27,6 @@
 //!
 //! - **信任这个目录吗**：ccm 不替用户答 —— 不写 `~/.claude.json` / `~/.codex/config.toml`，
 //!   也不往会话里按键。`claude` 首次进一个目录会问，由用户在会话里自己答（那是它的安全检查）。
-//! - **`$CCM_CONFIG` 是 bash 源文件**：旧实现 `. "$CCM_CONFIG"`（真 source 一段 bash）。
-//!   这里只认 `KEY=value` 三个键（见 [`Env::from_process`]），**不是等价**。
 //! - **`--help` 的正文**：旧实现是 `sed` 自己的注释块；这里是 [`USAGE`] 常量，**文本不同**。
 
 pub(crate) mod argv;

@@ -27,9 +27,8 @@ export HOME="$CCM_SHIM_DIR/home"
 # 账号库只跟着家走：本趟的那一份就是沙箱家目录底下这一份（写它的套件先核它在沙箱里）。
 CCM_SHIM_ACCOUNTS="$HOME/.cc-monitor/accounts"
 mkdir -p "$CCM_SHIM_ACCOUNTS"
-export CCM_APIKEY_CREDENTIALS="$CCM_SHIM_DIR/apikey-credentials.json"
 export CC_BUS_HOME="$CCM_SHIM_DIR/cc-bus"
-unset CLAUDE_CONFIG_DIR CC_BUS_SCRIPTS CCM_CONFIG CCM_ENV CCM_LAUNCH_ID \
+unset CLAUDE_CONFIG_DIR CC_BUS_SCRIPTS CCM_ENV CCM_LAUNCH_ID \
   ANTHROPIC_BASE_URL CCM_RELAY_PORT CCM_RELAY_ALL_SESSIONS
 
 ccm_shim_cleanup() { rm -rf "$CCM_SHIM_DIR"; }

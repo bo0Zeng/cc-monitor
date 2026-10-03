@@ -1290,9 +1290,9 @@ fn loc1b_session_added_pid_is_additive() {
 fn hx2_host_env_echoes_exactly_the_handed_names_and_never_the_token() {
     let env: std::collections::HashMap<&str, &str> = [
         ("CCM_RELAY_PORT", "8788"),
+        ("CCM_DATA_DIR", "/iso/home"),
         ("CCM_APIKEY_CREDENTIALS", "/d/apikey-credentials.json"),
-        ("CCM_HISTORY_METADATA", ""),
-        (crate::stream::listen::ENV_TOKEN, "s3cret-token"),
+        (crate::stream::listen::ENV_TOKEN_FILE, "s3cret-token"),
         ("HOME", "/home/u"),
     ]
     .into_iter()
@@ -1300,10 +1300,7 @@ fn hx2_host_env_echoes_exactly_the_handed_names_and_never_the_token() {
     let got = crate::stream::wire::host_env_from(|n| env.get(n).map(|v| v.to_string()));
     let want: std::collections::BTreeMap<String, String> = [
         ("CCM_RELAY_PORT".to_string(), "8788".to_string()),
-        (
-            "CCM_APIKEY_CREDENTIALS".to_string(),
-            "/d/apikey-credentials.json".to_string(),
-        ),
+        ("CCM_DATA_DIR".to_string(), "/iso/home".to_string()),
     ]
     .into_iter()
     .collect();
@@ -1311,21 +1308,16 @@ fn hx2_host_env_echoes_exactly_the_handed_names_and_never_the_token() {
     assert!(crate::stream::wire::host_env_from(|_| None).is_empty());
 }
 
-/// 🔴 I1b：token 那个变量名不在回显名单里（名单三格 == 手写；token 名不在其中）—— hello 谁都读得到。
+/// 🔴 I1b：钥匙那个变量名不在回显名单里（名单两格 == 手写；钥匙名不在其中）—— hello 谁都读得到。
 #[test]
 fn hx2_the_listen_token_is_never_echoed() {
     let names: std::collections::BTreeSet<&str> =
         crate::stream::wire::HOST_ECHO_ENVS.into_iter().collect();
-    let want: std::collections::BTreeSet<&str> = [
-        "CCM_RELAY_PORT",
-        "CCM_APIKEY_CREDENTIALS",
-        "CCM_HISTORY_METADATA",
-    ]
-    .into_iter()
-    .collect();
+    let want: std::collections::BTreeSet<&str> =
+        ["CCM_RELAY_PORT", "CCM_DATA_DIR"].into_iter().collect();
     assert_eq!(names, want);
     assert!(
-        !names.contains(crate::stream::listen::ENV_TOKEN)
+        !names.contains(crate::stream::listen::ENV_TOKEN_FILE)
             && !names.contains(crate::stream::listen::ENV_PORT)
     );
 }
@@ -1356,7 +1348,7 @@ fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
     let present = hello(
         [
             ("CCM_RELAY_PORT".to_string(), "8788".to_string()),
-            ("CCM_APIKEY_CREDENTIALS".to_string(), "/d/k".to_string()),
+            ("CCM_DATA_DIR".to_string(), "/d".to_string()),
         ]
         .into_iter()
         .collect(),
@@ -1364,7 +1356,7 @@ fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
     assert_eq!(
         present,
         "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\",\
-         \"host_env\":{\"CCM_APIKEY_CREDENTIALS\":\"/d/k\",\"CCM_RELAY_PORT\":\"8788\"}}\n"
+         \"host_env\":{\"CCM_DATA_DIR\":\"/d\",\"CCM_RELAY_PORT\":\"8788\"}}\n"
     );
     let main = guard_core::production_code(include_str!("../../../src/backend/main.rs"));
     assert_eq!(

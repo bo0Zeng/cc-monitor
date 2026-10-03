@@ -156,8 +156,8 @@ async fn main() {
             // `--relay`（独立的中转进程）那一臂删了：中转只住常驻后端进程里（本机远端同形）。
             // 远端常驻后端的起 · 找 / 停（`control/resident.rs` 头注）。
             // 远端中转住进远端常驻后端 —— 起它时交中转口（与本机宿主交的同一个常量）。
-            Some("--resident-ensure") => control::resident::ensure(&agent_home, &args[1..]),
-            Some("--resident-stop") => control::resident::run_stop(&agent_home, &args[1..]),
+            Some("--resident-ensure") => control::resident::ensure(&args[1..]),
+            Some("--resident-stop") => control::resident::run_stop(&args[1..]),
             // `--dial` 那条拨号代理臂**删了**：拨号挪进本机那一个常驻后端，经流上的链路
             // （`link-*` 四条，`dial/link.rs`）做 —— 不再每条链路起一个进程。
             // ★ 这几个字面量必须与 `observe::accounts_query::run` 自己认的子命令**完全一致**。
@@ -233,8 +233,6 @@ async fn main() {
     // (b) Emit the Hello handshake FIRST, flushed, before anything else.
     let hello = build_hello(&agent_home);
 
-    // 远端起的常驻后端自己记「谁在听」（起它的那一方不在场）；本机那一份仍由宿主记。
-    let self_record = std::env::var(listen::ENV_TOKEN_FILE).is_ok();
     match mode {
         None => run_over_stdio(hello, agent_home, with_bg, tail_only, with_pid).await,
         Some((port, token)) => {
@@ -251,7 +249,6 @@ async fn main() {
                     hello,
                     agent_home,
                     (with_bg, tail_only, with_pid),
-                    self_record,
                 ) => {
                     // 绑不上口 ⇒ 那一步交回退出码，在这里退（退出口只有 `main` 与 `exit_after_drain`）。
                     if let Err(code) = served {
@@ -605,7 +602,6 @@ async fn serve_listening(
     hello: Frame,
     agent_home: PathBuf,
     defaults: (bool, bool, bool),
-    self_record: bool,
 ) -> Result<(), i32> {
     let addr = std::net::SocketAddr::new(listen::LOOPBACK, port);
     let listener = match tokio::net::TcpListener::bind(addr).await {
@@ -631,13 +627,9 @@ async fn serve_listening(
     };
     tracing::info!("常驻监听口已就位：{addr}（多条流 + 不限次「只读 hello 就走」）");
 
-    if self_record {
-        match control::resident::record_owner(port) {
-            Ok(()) => {}
-            Err(e) => {
-                tracing::warn!("记不下「谁在听 {port}」（{e}）⇒ 远端那一侧的「停」会停不了它")
-            }
-        }
+    // 「谁在听」由常驻后端自己记（本机远端同一个写者；起它的那一方不写）。
+    if let Err(e) = control::resident::record_owner(port) {
+        tracing::warn!("记不下「谁在听 {port}」（{e}）⇒ 「停」会停不了它");
     }
 
     let (with_bg, tail_only, with_pid) = defaults;

@@ -86,9 +86,6 @@ ln -sf "$CCM_NATIVE" "$BIN/ccm"
 export PATH="$BIN:$PATH"
 # 这里从前 `export CCM_SELF="$BIN/ccm"`：那个环境变量删了——
 # 经 `$BIN/ccm` 这条软链进来，`argv[0]` 本来就是它（入口①），内层载荷取的就是这个名字。
-# ⚠ 下面那份 `$TMP/ccm-config` **原生实现不读**（旧版是 source 一段 bash，
-#   没有等价物；它发现那个文件在会往 stderr 说一句然后照常跑）⇒ 那个值改走环境变量。
-#   留着 `CCM_CONFIG` 指过去是有意的：它同时验「发现它存在会出声」这条行为没丢。
 # 隔离账号库 / 工作区 / 预信任写入点，绝不碰用户真实文件：账号库跟着家目录走 ⇒ 家目录换成临时目录。
 # 工具链的位置先钉住（下面要 `cargo test` 取渲染器输出；它们默认跟着家目录走，换了家就找不到工具链）。
 export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}" RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
@@ -98,9 +95,7 @@ cat > "$ACCTS/accounts.json" <<JSON
 { "version": 1, "accounts": [
   { "name": "z", "configDir": "$ACCTS/z", "isDefault": true, "mode": "isolated" } ] }
 JSON
-printf 'CCM_WORKSPACE=%s\n' "$TMP/ws" > "$TMP/ccm-config"
 mkdir -p "$TMP/ws" "$TMP/proj"
-export CCM_CONFIG="$TMP/ccm-config"
 export CCM_WORKSPACE="$TMP/ws"
 export CCM_CLAUDEJSON="$TMP/claude.json" CCM_CODEXTOML="$TMP/config.toml"
 export CLAUDE_CONFIG_DIR="$TMP/fakehome"
@@ -109,7 +104,7 @@ export CLAUDE_CONFIG_DIR="$TMP/fakehome"
 mkdir -p "$TMP/home"
 export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}" RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"  # 取串那一跳要跑 cargo：工具链在换家目录前钉住
 export HOME="$TMP/home"
-export CCM_APIKEY_CREDENTIALS="$TMP/apikey-credentials.json" CCM_RELAY_ALL_SESSIONS=0
+export CCM_RELAY_ALL_SESSIONS=0
 export CCM_FAKE_CWD="$TMP/proj" CCM_FAKE_SLEEP=120
 unset CLAUDECODE CLAUDE_CODE_SESSION_ID
 # ccm 在 tmux 内会退化成「就地起」（见 shared/ccm）—— 那时要验的容器行为根本不发生。

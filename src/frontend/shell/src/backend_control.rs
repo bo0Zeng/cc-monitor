@@ -99,8 +99,18 @@ pub fn backend_machines() -> Result<Vec<String>, String> {
 ///
 /// `pid` / `attempts` 只有本机有（远端的进程在别人机器上，我们手里只有一条流）——
 /// 这**不是欠账，是天然不对称**，所以它们是 `null` 而不是「远端那边填 0」。
+///
+/// 〔`INVARIANTS §10`〕**`async`**：本机那一支要拿句柄表的锁；起 / 停本机后端那一趟虽然不在锁里等外面了
+/// （只拿 `local_backend_host` 那把起停串行锁），这里仍进 `spawn_blocking` —— 读锁这一下不许落在 IPC 派发线程上。
 #[tauri::command]
-pub fn backend_status(origin: String) -> Result<serde_json::Value, String> {
+pub async fn backend_status(origin: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || backend_status_now(origin))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// [`backend_status`] 的本体。
+fn backend_status_now(origin: String) -> Result<serde_json::Value, String> {
     check_origin(&origin)?;
     let channel = crate::inbound_client::client_for(&origin).is_some();
     // ★★ `K-P1 KPY5`：**`detached` 的源头只能是「起它的时候走没走那条路」。**

@@ -9,9 +9,11 @@
 //!   SIGTERM（它按 HX1 排空后自己退）→ 在宽限期内等内核通知 → 到点 SIGKILL → 回 `{"stopped":"graceful"|"killed"|"not_running","pid":n|null}`。
 //!   等待住这个一次性进程里，常驻后端的事件循环不加定时器（`no_timer_guard::REGISTERED_ONE_SHOT_CLI_WAITS`）。
 //!
-//! 口按 agent 家目录算（共享 crate `relay_route_core::listen_port_for`，本机宿主同一个函数）⇒ 一台机器一个常驻后端。
+//! 口按这台的家算（`~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`；共享 crate `relay_route_core::listen_port_for`，本机宿主同一个函数）
+//! ⇒ 一台机器一个常驻后端，与 Claude 目录、与哪一家 agent 都无关。钥匙与「谁在听」也住这个家。
 //! ⚠ 钥匙会出现在 `--resident-ensure` 的 stdout 上：那一行只走 SSH 通道到 monitor 内存，不进日志（调用侧不许打印它）。
 
+use crate::common::child_env::WithoutOwnEnv;
 use std::path::{Path, PathBuf};
 
 use copy_core::copy_text;
@@ -47,14 +49,24 @@ fn home() -> Option<PathBuf> {
     crate::platform::paths::home_dir()
 }
 
-fn pid_path(home: &Path, port: u16) -> PathBuf {
-    home.join(".cc-monitor")
-        .join(relay_route_core::listen_pid_file_name(port))
+/// 这台的家：门牌（口 · 钥匙 · 谁在听）只跟着它走。规矩与 monitor 同一份（`creds_core::store::monitor_data_dir`）。
+fn data_home() -> Option<PathBuf> {
+    creds_core::store::monitor_data_dir(
+        std::env::var(creds_core::store::DATA_DIR_ENV)
+            .ok()
+            .as_deref(),
+        home(),
+    )
 }
 
-/// 这台机器的常驻监听口（按 agent 家目录，与本机宿主同一个函数）。
-pub(crate) fn port_for(agent_home: &Path) -> u16 {
-    relay_route_core::listen_port_for(&agent_home.to_string_lossy())
+fn pid_path(data_home: &Path, port: u16) -> PathBuf {
+    data_home.join(relay_route_core::listen_pid_file_name(port))
+}
+
+fn token_path(data_home: &Path) -> PathBuf {
+    data_home.join(relay_route_core::file_name_of(
+        relay_route_core::LISTEN_TOKEN_FILE_REL,
+    ))
 }
 
 /// 一次性子命令的错误出口：stderr 一行 `{code,message}`、退出 2（协议 v1 §3）—— 与 CLI 控制面同一份信封。
@@ -64,19 +76,19 @@ fn fail(code: &str, message: String) -> i32 {
 
 /// `--resident-ensure [--replace]`。`hosted`：宿主层（`main.rs`）交的额外环境 —— 中转口那一格
 /// （本层不许伸手进 `relay/`，`layering_guard`）。
-pub fn run_ensure(agent_home: &Path, args: &[String], hosted: &[(&str, String)]) -> i32 {
-    let Some(home) = home() else {
+pub fn run_ensure(args: &[String], hosted: &[(&str, String)]) -> i32 {
+    let (Some(home), Some(dh)) = (home(), data_home()) else {
         return fail("no_home", copy_text("beResident.home.missing", &[]));
     };
-    let port = port_for(agent_home);
-    let token_path = home.join(relay_route_core::LISTEN_TOKEN_FILE_REL);
+    let port = relay_route_core::listen_port_for(&dh);
+    let token_path = token_path(&dh);
     let token = match ensure_token(&token_path) {
         Ok(t) => t,
         Err(e) => return fail("no_token", e),
     };
     if args.iter().any(|a| a == "--replace") {
         // 旧的不先让出口，新的必然绑不上 ⇒ 与「停」同一个停法（等它真退了再起）。
-        if let Err(e) = stop_owner(&home, port, STOP_GRACE_MS) {
+        if let Err(e) = stop_owner(&dh, port, STOP_GRACE_MS) {
             return fail("replace_failed", e);
         }
     }
@@ -101,40 +113,32 @@ pub fn run_ensure(agent_home: &Path, args: &[String], hosted: &[(&str, String)])
     }
 }
 
-/// `--resident-ensure` 的入口：宿主层环境 = 中转口· stderr 诊断文件 ·
-/// 〔HOST 余项〕数据目录那两格按默认推（谁起都一样）⇒ 那台自己的 monitor 能收养它。
-pub fn ensure(agent_home: &Path, args: &[String]) -> i32 {
-    let mut hosted = vec![
+/// `--resident-ensure` 的入口：宿主层环境 = 中转口 · stderr 诊断文件（凭据与历史注解住家里，那台后端按家自己推）。
+pub fn ensure(args: &[String]) -> i32 {
+    let hosted = vec![
         (
             crate::stream::listen::RELAY_PORT_ENV,
             relay_route_core::PORT.to_string(),
         ),
         (crate::stderr_log::ENV, format!("~/{STDERR_LOG_REL}")),
     ];
-    let [_, creds_env, meta_env] = crate::stream::wire::HOST_ECHO_ENVS;
     if let Some(h) = home() {
         // 诊断文件那层目录先建好（`stderr_log` 只 `O_EXCL` 建文件、不建目录）；建不了 ⇒ 子进程装不上、stderr 照旧 null，不拖垮起。
         let _ = log_dir_chain(&h);
-        hosted.extend(data_dir_envs(
-            &|k| std::env::var(k).ok(),
-            &h,
-            creds_env,
-            meta_env,
-        ));
     }
-    run_ensure(agent_home, args, &hosted)
+    run_ensure(args, &hosted)
 }
 
 /// `--resident-stop [--grace <秒>]`。
-pub fn run_stop(agent_home: &Path, args: &[String]) -> i32 {
-    let Some(home) = home() else {
+pub fn run_stop(args: &[String]) -> i32 {
+    let Some(dh) = data_home() else {
         return fail("no_home", copy_text("beResident.home.missing", &[]));
     };
     let grace_ms = match parse_grace(args) {
         Ok(g) => g,
         Err(e) => return fail("bad_args", e),
     };
-    match stop_owner(&home, port_for(agent_home), grace_ms) {
+    match stop_owner(&dh, relay_route_core::listen_port_for(&dh), grace_ms) {
         Ok(end) => {
             println!(
                 "{}",
@@ -292,26 +296,6 @@ fn write_private(path: &Path, body: &str) -> Result<(), String> {
     result
 }
 
-/// 〔HOST 余项〕数据目录那两格（凭据文件 · 历史注解）的默认值 —— 与那台 monitor 自己算的是同一条规矩
-/// （`creds_core::store::monitor_data_dir`）⇒ 谁起的常驻后端，hello 回显的都是同一对值，那台自己的 monitor 能收养（HX2 不拒）。
-/// 本进程环境里已有的那一格不覆盖；推不出来（`CCM_DATA_DIR` 不是绝对路径）⇒ 两格都缺席。纯函数。
-pub fn data_dir_envs(
-    get: &dyn Fn(&str) -> Option<String>,
-    home: &Path,
-    creds_env: &'static str,
-    meta_env: &'static str,
-) -> Vec<(&'static str, String)> {
-    use creds_core::store::{monitor_data_dir, DATA_DIR_ENV, FILE_NAME, HISTORY_METADATA_FILE};
-    let Some(dir) = monitor_data_dir(get(DATA_DIR_ENV).as_deref(), Some(home.to_path_buf())) else {
-        return Vec::new();
-    };
-    [(creds_env, FILE_NAME), (meta_env, HISTORY_METADATA_FILE)]
-        .into_iter()
-        .filter(|(k, _)| get(k).filter(|v| !v.is_empty()).is_none())
-        .map(|(k, f)| (k, dir.join(f).display().to_string()))
-        .collect()
-}
-
 /// 子进程的环境：口 · 钥匙文件路径（不是钥匙）· 宿主层交的那几格（中转口 · stderr 诊断文件，值里的 `~` 换成家目录）。
 /// 纯函数，判据钉它。
 pub(crate) fn child_env(
@@ -339,10 +323,9 @@ pub(crate) fn child_env(
 
 /// 起一个脱离的自己（常驻载体）：stdio 全空（SSH 断了它不跟着收 SIGPIPE）、自成进程组、不继承 `TMUX`。
 fn spawn_detached(exe: &Path, env: &[(String, String)]) -> Result<u32, (&'static str, String)> {
-    let mut cmd = std::process::Command::new(exe);
+    let mut cmd = std::process::Command::new(exe).without_own_env();
     cmd.args(DEFAULT_STREAM_ARGS)
         .env_remove("TMUX")
-        .env_remove(crate::stream::listen::ENV_TOKEN)
         .envs(env.iter().cloned())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
@@ -359,11 +342,11 @@ fn spawn_detached(exe: &Path, env: &[(String, String)]) -> Result<u32, (&'static
     })
 }
 
-/// 常驻后端绑上口之后记下「谁在听」（`pid\n二进制\n`，与本机宿主写的同形）—— 远端起它的那一方不在场，由它自己记。
+/// 常驻后端绑上口之后记下「谁在听」（`pid\n二进制\n`）—— 本机远端都由它自己记（起它的那一方不写这份）。
 pub fn record_owner(port: u16) -> Result<(), String> {
-    let home = home().ok_or_else(|| copy_text("beResident.home.missing", &[]))?;
+    let dh = data_home().ok_or_else(|| copy_text("beResident.home.missing", &[]))?;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let path = pid_path(&home, port);
+    let path = pid_path(&dh, port);
     if let Some(dir) = path.parent() {
         ensure_dir(dir)?;
     }
@@ -388,8 +371,8 @@ pub(crate) fn exe_matches(seen: &str, recorded: &Path) -> bool {
 }
 
 /// 按 pid 文件停口上那一位。没有记录 ⇒ `NotRunning`。
-fn stop_owner(home: &Path, port: u16, grace_ms: u32) -> Result<Stopped, String> {
-    let path = pid_path(home, port);
+fn stop_owner(data_home: &Path, port: u16, grace_ms: u32) -> Result<Stopped, String> {
+    let path = pid_path(data_home, port);
     let Some((pid, bin)) = std::fs::read_to_string(&path)
         .ok()
         .and_then(|b| parse_owner(&b))

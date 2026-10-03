@@ -31,6 +31,7 @@
 //! ⚠ 两条各自**认不出**什么（具名常量来自本层与 control/observe 之外 · 非 `i32` 的码 ·
 //! 运行期从数据里读的表 · `mod.rs` 本身不在扫描面），逐条写在它们自己的头注里 —— 别读成全覆盖。
 
+use crate::common::child_env::WithoutOwnEnv;
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -45,8 +46,9 @@ pub(crate) const TIMED_OUT_CODE: i32 = 124;
 ///
 /// # 病：这一层此前不清环境，于是子进程拿到的是后端的**整份**环境
 ///
-/// 那不是一个抽象的风险：常驻监听口的地址与令牌（`listen::ENV_PORT` /
-/// `listen::ENV_TOKEN`）是 backend **自己从环境读**的，也就是说它们一定在后端的环境里。
+/// 那不是一个抽象的风险：常驻监听口的地址与钥匙文件路径（`listen::ENV_PORT` /
+/// `listen::ENV_TOKEN_FILE`）是 backend **自己从环境读**的，也就是说它们一定在后端的环境里
+/// （钥匙本身从前也在 —— 今天只交文件路径，但同用户的进程读得到那份文件）。
 /// ⇒ 任何被这一处口起出来的插件，读一读自己的环境就能接上宿主、过鉴权、发全部基础命令，
 /// 而这条回程**没有协议、没有权限模型、没有审计**。
 /// 设计文档里没有它，代码里也没写它 —— 它是**默认行为**长出来的（`K-R26`）。
@@ -192,7 +194,7 @@ fn deadline_bin() -> Option<PathBuf> {
 /// 次序是承重的 —— 调用方那一趟排在后面，它盖得住白名单里的同名键（显式压过继承）。
 fn command_for(bin: &Path, args: &[&str], deadline_secs: u64, env: &[(&str, &str)]) -> Command {
     let (prog, argv) = argv_for(bin, args, deadline_secs, deadline_bin().as_deref());
-    let mut cmd = Command::new(&prog);
+    let mut cmd = Command::new(&prog).without_own_env();
     cmd.args(&argv).stdin(Stdio::null());
     // ★ 先清空：不在白名单里的键**按构造**到不了子进程。
     cmd.env_clear();
