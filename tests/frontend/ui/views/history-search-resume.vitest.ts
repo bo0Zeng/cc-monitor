@@ -42,7 +42,7 @@ const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const runRemote = runRemoteResume as unknown as ReturnType<typeof vi.fn>;
 
 function searchSession(over: Record<string, unknown> = {}): Record<string, unknown> {
-  return { sessionId: "s1", projectPath: "/p", projectName: "P", jsonlPath: "/p/s1.jsonl", title: "T", updatedAt: 1, hitCount: 1, hits: [], ...over };
+  return { agent: "claude", sessionId: "s1", projectPath: "/p", projectName: "P", jsonlPath: "/p/s1.jsonl", title: "T", updatedAt: 1, hitCount: 1, hits: [], ...over };
 }
 function buildCard(view: HistoryView, s: Record<string, unknown>): HTMLElement {
   const g = (view as unknown as { buildSearchSession(s: unknown): HTMLElement }).buildSearchSession(s);
@@ -82,7 +82,7 @@ describe("HistoryView 搜索卡片 resume (F85 #44)", () => {
     // account-ux U3：远端 resume 现经 withAccount(await fetchAccounts) → 多冲一轮宏任务排空微任务队列。
     await new Promise((r) => setTimeout(r, 0));
     expect(runRemote).toHaveBeenCalledTimes(1);
-    expect(runRemote.mock.calls[0].slice(0, 3)).toEqual(["hostA", "s1", "/p"]);
+    expect(runRemote.mock.calls[0].slice(0, 4)).toEqual(["hostA", "claude", "s1", "/p"]);
     expect(localLaunchCalls(invokeMock.mock.calls, "resume_history_session").length > 0).toBe(false);
   });
 
@@ -108,7 +108,29 @@ describe("HistoryView 搜索卡片 resume (F85 #44)", () => {
     const card = buildCard(view, searchSession({ origin: "hostA" }));
     card.querySelector<HTMLButtonElement>(".search-session-resume")!.click();
     await new Promise((r) => setTimeout(r, 0));
-    expect(runRemote).toHaveBeenCalledWith("hostA", "s1", "/p", "", { configDir: "/h/.claude-accts/z", accountName: "z", modelOverride: undefined });
+    expect(runRemote).toHaveBeenCalledWith("hostA", "claude", "s1", "/p", "", { configDir: "/h/.claude-accts/z", accountName: "z", modelOverride: undefined });
     invalidateAccountsCache(); // fetchAccounts 有模块级缓存,别泄漏进同文件/同 worker 的其它测试
+  });
+
+  it("Codex 会话那一行：交的是 codex；它没有账号这一维 ⇒ 当前号在也不跟随、不带号", async () => {
+    invalidateAccountsCache();
+    invokeMock.mockImplementation(withAccountReads((cmd: string) => {
+      if (cmd === "list_remote_accounts") {
+        return Promise.resolve({
+          available: true,
+          error: null,
+          meta: { enabled: true, acctsDir: "/h/.claude-accts", manifestPath: "/h/.claude-accts/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null },
+          accounts: [{ name: "z", email: "z@x.edu", configDir: "/h/.claude-accts/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true }],
+        });
+      }
+      if (cmd === "list_last_accounts") return Promise.resolve({});
+      return Promise.resolve(undefined);
+    }));
+    const view = new HistoryView();
+    const card = buildCard(view, searchSession({ origin: "hostA", agent: "codex" }));
+    card.querySelector<HTMLButtonElement>(".search-session-resume")!.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(runRemote).toHaveBeenCalledWith("hostA", "codex", "s1", "/p", "", {});
+    invalidateAccountsCache();
   });
 });

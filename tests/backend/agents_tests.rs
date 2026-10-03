@@ -209,6 +209,7 @@ fn the_launch_faces_agree_with_the_golden_table() {
             "resume_token" => f.resume_token.to_string(),
             "resume_kind" => resume_kind_of(f.resume_token).to_string(),
             "nested_env" => f.nested_env.join(" "),
+            "launch_args" => f.launch_args.join(" "),
             other => panic!("夹具里出现了未知 key `{other}` —— 加一项要来这里表态"),
         };
         if &got != want {
@@ -431,6 +432,8 @@ export type AgentProfileRow = {
   resumeKind: "flag" | "subcommand";
   resumeToken: string;
   nestedEnvVars: string[];
+  /** 这一家有没有账号这一维（选号 · 跟随上次的号只对有的那一家）。 */
+  hasAccounts: boolean;
 "#;
 
 /// 接着上面那一段 —— **第一行就是那个收尾的 `};`**（见上面为什么不能合并）。
@@ -458,7 +461,7 @@ fn ts_str(s: &str) -> String {
     format!("\"{s}\"")
 }
 
-fn render_row(kind: &str, f: &LaunchFace) -> String {
+fn render_row(kind: &str, f: &LaunchFace, has_accounts: bool) -> String {
     let list: Vec<String> = f.nested_env.iter().map(|s| ts_str(s)).collect();
     let fields = [
         ("agent", ts_str(kind)),
@@ -473,6 +476,7 @@ fn render_row(kind: &str, f: &LaunchFace) -> String {
         ("resumeKind", ts_str(resume_kind_of(f.resume_token))),
         ("resumeToken", ts_str(f.resume_token)),
         ("nestedEnvVars", format!("[{}]", list.join(", "))),
+        ("hasAccounts", has_accounts.to_string()),
     ];
     let mut s = String::from("  {\n");
     for (key, value) in fields {
@@ -487,7 +491,7 @@ fn render_agent_profile_table() -> String {
     s.push_str(TABLE_HEADER_TAIL);
     for a in REGISTRY {
         if let Some(f) = a.launch {
-            s.push_str(&render_row(a.kind, &f));
+            s.push_str(&render_row(a.kind, &f, a.account_env.is_some()));
         }
     }
     s.push_str("];\n");

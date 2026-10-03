@@ -11,6 +11,8 @@
 //      （kill 失败提前 return、绝不记，见 §5.2 + vitest ④）。硬合需给 withAccount 加 abort-vs-degrade /
 //      条件记账 / run 前置 compact&kill 钩子三个开关，复杂度净增、收益为负。二者已共用 accounts.ts
 //      **同一批原语**（fetchAccounts / accountConfigDir / recordLastAccount），无逻辑漂移。故维持分离。
+// 换号重启的是标签页里的会话 ⇒ 流跟的那一家。
+import { ACTIVE_AGENT } from "./agent-profile";
 import { askConfirm, type ConfirmFn } from "./ask-dialog";
 import { killSession, saidOfControl, sendKeys } from "./tmux-control";
 import { isIdentityRefusal, offerResyncRetry } from "./resync";
@@ -168,6 +170,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   //   没等到（`missed`，那一句主窗口已经说了）⇒ 不记账、不说「已用新账号重启」；没真发出去（`unsent`）⇒ 照旧说失败。
   const launched = isLocal
     ? await resumeLocalSessionAndWait({
+        agent: ACTIVE_AGENT,
         sid: sessionId,
         cwd,
         account: { kind: "explicit", configDir, name: accountName },
@@ -175,7 +178,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
         launcher,
         failureTitle: copyText("localResume.restart.failed"),
       })
-    : await runRemoteResumeTmuxAndWait(origin, sessionId, cwd, launcher, tmuxName, {
+    : await runRemoteResumeTmuxAndWait(origin, ACTIVE_AGENT, sessionId, cwd, launcher, tmuxName, {
         configDir,
         accountName,
         modelOverride: await getModelForAccount(origin, accountName),

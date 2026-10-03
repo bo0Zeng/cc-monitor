@@ -31,6 +31,8 @@ import { launchLocal } from "./launch-render";
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import { explicitLocalAccountWire, localFollowPlan, primeLocalLaunchAccounts, recordLocalLaunchAccount, refuseUnavailableAccount, type LocalAccountWire } from "./launch-account";
 import { getBehavior } from "./behavior";
+import { agentHasAccounts } from "./agent-profile";
+import { configuredLauncherFor } from "./launch-requests";
 import { mintFreshTmuxName } from "./tmux-name-mint";
 import { showActionFailureToast } from "./error-toast";
 import { copyText } from "./copy-table";
@@ -47,12 +49,14 @@ export type LocalResumeAccount =
   | { kind: "explicit"; configDir: string | null; name: string | null };
 
 export interface LocalResumeRequest {
+  /** 这个会话是哪一家（线上的 kind）。没有账号这一维的那一家不跟随上次的号。 */
+  agent: string;
   sid: string;
   cwd: string;
   account: LocalResumeAccount;
   /** 给了就用它（换号重启：复用被 kill 让出来的旧名）；缺席 ⇒ 问本机 tmux 名单现铸一个。 */
   tmuxName?: string;
-  /** 设置里的本机 resume 命令（调用方已经读过就给；空串 = 没配 ⇒ 后端用默认）。缺席 ⇒ 现读。 */
+  /** 设置里的本机 resume 命令（调用方已经读过就给；空串 = 没配 ⇒ 后端用默认）。缺席 ⇒ 现读（只用在默认那一家的会话上）。 */
   launcher?: string;
   /** 拉起失败那句提示的标题；缺席 ⇒ 「恢复失败」。 */
   failureTitle?: string;
@@ -79,14 +83,16 @@ export async function resumeLocalSessionAndWait(req: LocalResumeRequest): Promis
 }
 
 async function resumeLocalCore(req: LocalResumeRequest, wait: "expect" | "await"): Promise<LaunchWait | "sent"> {
+  // 没有账号这一维的那一家：跟随说不出（不选号，交给那一家自己）；显式选的号照交，由后端明说不行。
+  const follows = req.account.kind === "follow" && agentHasAccounts(req.agent);
   // `D1 阻-1`：**不等待**地把账号快照踢一脚（等它就多一拍）。只有跟随那一态读快照。
-  if (req.account.kind === "follow") primeLocalLaunchAccounts();
+  if (follows) primeLocalLaunchAccounts();
   // 这里原来先过 `validateLocalLaunch`〔散文墓碑〕（sid 字符集）—— 那份删了：
   // 本机拉起那条路上本机后端自己判（`launch_render/local.rs` → `shell_quote_core::session_id_ok`），判不过回错、下面照常说出来。
   // 🔴 跟随时，这条会话的 pin 那个号选不了 ⇒ **不起**：说清、给「用当前账号」的显式选择
   //   （点了就以**显式**选号再起一次，起成了记 pin —— 与远端 `withAccount` 显式那一支同语义）。
   //   先前这一形落成「缺席」⇒ 落 shell rc 里的默认号，不说一个字（E7 的本机那一形）。
-  const plan = req.account.kind === "follow" ? localFollowPlan(req.sid) : null;
+  const plan = follows ? localFollowPlan(req.sid) : null;
   if (plan?.kind === "pinGone") {
     const alt = plan.alternative;
     refuseUnavailableAccount({
@@ -115,7 +121,7 @@ async function resumeLocalCore(req: LocalResumeRequest, wait: "expect" | "await"
     if (!(await req.preflight(configDir))) return "unsent";
   }
   try {
-    const launcher = req.launcher ?? (await getBehavior()).resumeCommandLocal;
+    const launcher = req.launcher ?? configuredLauncherFor(req.agent, (await getBehavior()).resumeCommandLocal);
     // ★★ `K-R46`：名字要算出来传下去 —— 后端**故意**拒绝自己铸名（本机后端 `launch_render/local.rs` 的 `NO_TMUX_NAME`），
     //    不传 ⇒ 后端如实走不进容器的旧路。名单不知道 ⇒ `null`（绝不退化成空集，#76）。
     // 名字问本机后端铸（`tmux-name-mint`）；问不到 ⇒ `null`（不拿空集去避让）。
@@ -130,6 +136,7 @@ async function resumeLocalCore(req: LocalResumeRequest, wait: "expect" | "await"
     await launchLocal(
       {
         action: { kind: "resume", sid: req.sid },
+        agent: req.agent,
         cwd: req.cwd,
         launcher: launcher.trim() === "" ? null : launcher,
         tmuxName,

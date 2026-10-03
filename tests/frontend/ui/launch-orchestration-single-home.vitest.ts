@@ -129,12 +129,12 @@ describe("K3 · 列不出 ⇒ 不铸名（三态不许压成两态）", () => {
       localLaunchCalls(invokeMock.mock.calls, "resume_history_session")[0];
     replyMint(null);
     expect(
-      await resumeLocalSession({ sid: "s1", cwd: "/home/u/proj", account: { kind: "explicit", configDir: null, name: null } }),
+      await resumeLocalSession({ agent: "claude", sid: "s1", cwd: "/home/u/proj", account: { kind: "explicit", configDir: null, name: null } }),
     ).toBe(true);
     expect(sent().tmuxName).toBeNull();
     invokeMock.mockReset();
     replyMint("proj-cc-2");
-    await resumeLocalSession({ sid: "s1", cwd: "/home/u/proj", account: { kind: "explicit", configDir: null, name: null } });
+    await resumeLocalSession({ agent: "claude", sid: "s1", cwd: "/home/u/proj", account: { kind: "explicit", configDir: null, name: null } });
     expect(sent().tmuxName).toBe("proj-cc-2");
     expect(mintAsks).toEqual([{ origin: LOCAL_ORIGIN, args: { cwd: "/home/u/proj" } }]);
     // 账号 0 是**显式 `base`**，不是省略（省略 = 没表态 = 被 shell rc 里的默认号顶掉）。
@@ -152,7 +152,7 @@ describe("K3 · 列不出 ⇒ 不铸名（三态不许压成两态）", () => {
           : Promise.resolve(undefined),
     ));
     expect(
-      await resumeLocalSession({ sid: "a b", cwd: "/p", account: { kind: "explicit", configDir: null, name: null } }),
+      await resumeLocalSession({ agent: "claude", sid: "a b", cwd: "/p", account: { kind: "explicit", configDir: null, name: null } }),
     ).toBe(false);
     expect(localLaunchCalls(invokeMock.mock.calls, "resume_history_session")).toHaveLength(1);
     expect(vi.mocked(showActionFailureToast)).toHaveBeenCalledTimes(1);
@@ -193,7 +193,7 @@ describe("K4 · D-h：本机跟随时 pin 那个号选不了 ⇒ 不起、说清
 
   it("★ pin「z」选不了 ⇒ 零次拉起 ＋ 一条可点提示；点了 ⇒ 以当前号「b」起", async () => {
     __setLocalLaunchSnapshotForTests(snapshot([acct("z", false), acct("b", true)], "b"), { s1: "z" });
-    expect(await resumeLocalSession({ sid: "s1", cwd: "/home/u/proj", account: { kind: "follow" } })).toBe(false);
+    expect(await resumeLocalSession({ agent: "claude", sid: "s1", cwd: "/home/u/proj", account: { kind: "follow" } })).toBe(false);
     expect(resumes(), "pin 选不了还起了 —— 落到 shell rc 里的默认号，静默换号（E7 本机那一形）").toEqual([]);
     const calls = vi.mocked(showActionFailureToast).mock.calls;
     expect(calls).toHaveLength(1);
@@ -207,18 +207,26 @@ describe("K4 · D-h：本机跟随时 pin 那个号选不了 ⇒ 不起、说清
 
   it("正控：pin「z」可选 ⇒ 照起、带 z，不提示", async () => {
     __setLocalLaunchSnapshotForTests(snapshot([acct("z", true), acct("b", true)], "b"), { s1: "z" });
-    expect(await resumeLocalSession({ sid: "s1", cwd: "/home/u/proj", account: { kind: "follow" } })).toBe(true);
+    expect(await resumeLocalSession({ agent: "claude", sid: "s1", cwd: "/home/u/proj", account: { kind: "follow" } })).toBe(true);
     expect(resumes()[0].account).toEqual({ kind: "named", configDir: "/h/z", name: "z" });
     expect(vi.mocked(showActionFailureToast)).not.toHaveBeenCalled();
   });
 
   it("没有 pin ⇒ 当前号（没有原账号，谈不上换号）；快照冷 ⇒ 缺席（逐字节旧行为）", async () => {
     __setLocalLaunchSnapshotForTests(snapshot([acct("b", true)], "b"), {});
-    await resumeLocalSession({ sid: "s1", cwd: "/p", account: { kind: "follow" } });
+    await resumeLocalSession({ agent: "claude", sid: "s1", cwd: "/p", account: { kind: "follow" } });
     expect(resumes()[0].account).toEqual({ kind: "named", configDir: "/h/b", name: "b" });
     invokeMock.mockClear();
     __resetLocalLaunchSnapshotForTests();
-    await resumeLocalSession({ sid: "s1", cwd: "/p", account: { kind: "follow" } });
+    await resumeLocalSession({ agent: "claude", sid: "s1", cwd: "/p", account: { kind: "follow" } });
     expect(resumes()[0].account).toBeUndefined();
+  });
+
+  it("Codex 会话没有账号这一维 ⇒ 不跟随（当前号在也不带）、不提示；请求说的是 codex", async () => {
+    __setLocalLaunchSnapshotForTests(snapshot([acct("z", false), acct("b", true)], "b"), { s1: "z" });
+    expect(await resumeLocalSession({ agent: "codex", sid: "s1", cwd: "/p", account: { kind: "follow" } })).toBe(true);
+    expect(resumes()[0].account).toBeUndefined();
+    expect(resumes()[0].agent).toBe("codex");
+    expect(vi.mocked(showActionFailureToast)).not.toHaveBeenCalled();
   });
 });

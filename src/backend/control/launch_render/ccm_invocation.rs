@@ -14,6 +14,12 @@ use std::collections::BTreeSet;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refusal {
     MissingCap(String),
+    /// 没说是哪一家 / 说的那一家注册表里没有 ⇒ 不猜（那一句列出认得的几家）。
+    UnknownAgent(String),
+    /// 这一家没有账号这一维，却要了一个具名账号（`agent` = 它对用户的叫法）。
+    AgentNoAccounts {
+        agent: String,
+    },
     AttachNeedsTmux,
     /// 某个维度在当前上下文里说不出 CLI 语法 ⇒ 整条放弃。
     DimensionCannotSpeak(String),
@@ -71,6 +77,11 @@ impl Refusal {
                 &[("c", &c.to_string())],
             ),
             Refusal::AttachNeedsTmux => copy_text("rsCcmInvocation.refusal.attachNeedsTmux", &[]),
+            Refusal::UnknownAgent(said) => said.clone(),
+            Refusal::AgentNoAccounts { agent } => copy_text(
+                "rsCcmInvocation.refusal.agentNoAccounts",
+                &[("agent", &agent.to_string())],
+            ),
             Refusal::DimensionCannotSpeak(id) => copy_text(
                 "rsCcmInvocation.refusal.cannotSpeak",
                 &[("id", &id.to_string())],
@@ -164,6 +175,8 @@ pub enum CliAccount<'a> {
 /// 渲染 ccm 调用行所需的全部输入。
 #[derive(Debug, Clone)]
 pub struct CliSpec<'a> {
+    /// 起哪一家（线上的 kind）：resume 怎么写、能不能选号都按它；`--ccm-agent` 恒显式写出。
+    pub agent: &'a str,
     pub action: Action<'a>,
     pub container: Container<'a>,
     pub cwd: Option<&'a str>,
@@ -241,7 +254,7 @@ fn starts_agent(s: &CliSpec) -> bool {
 /// 别名表单的「模型」那一格（`assets/aliases/form.rs`）用同一个。
 pub(crate) const MODEL_FLAG: &str = "--model";
 
-/// **顺序即契约**：`identity` < `account` < `model` < `launch-id`。
+/// **顺序即契约**：`identity` < `agent` < `account` < `model` < `launch-id`。
 /// 由 `a_fully_loaded_invocation_emits_every_part_in_registry_order`（全触发、逐字节比整条命令）钉住。
 const DIMENSION_ORDER: &[Dim] = &[
     Dim {
@@ -249,6 +262,13 @@ const DIMENSION_ORDER: &[Dim] = &[
         applies: |s| s.ccm_sid.is_some(),
         cli_flags: |s| Some(vec![format!("--ccm-sid={}", s.ccm_sid.unwrap_or_default())]),
         caps: &["ccm-sid"],
+    },
+    Dim {
+        id: "agent",
+        // **恒真** —— 同账号维度：不说是哪一家 ＝ ccm 落默认那一家，起错家也不报错。
+        applies: |_| true,
+        cli_flags: |s| Some(vec!["--ccm-agent".into(), s.agent.to_string()]),
+        caps: &["agent"],
     },
     Dim {
         id: "account",
@@ -326,6 +346,7 @@ fn render_parts(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Parts, Refusa
             return Err(Refusal::MissingCap((*c).to_string()));
         }
     }
+    let face = launch_face(spec.agent)?;
     let need = |c: &str| -> Result<(), Refusal> {
         if caps.contains(c) {
             Ok(())
@@ -380,8 +401,8 @@ fn render_parts(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Parts, Refusa
                     value: format!("{sid:?}"),
                 });
             }
-            // `--resume <sid>` 是 agent 的旗标，ccm 原样交过去。
-            tokens.push("--resume".into());
+            // resume 怎么写是那一家的事（`--resume <sid>` 旗标形 · `resume <sid>` 子命令形），写在 `--` 左边、ccm 原样交过去。
+            tokens.push(face.resume_token.to_string());
             tokens.push(sid.to_string());
         }
         // 起新会话是 ccm 自己的位置词 `new`，写在 `--` 右边第一个（`ccm -- new …`）。
@@ -389,6 +410,13 @@ fn render_parts(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Parts, Refusa
         Action::Attach { .. } => {}
     }
     identifiers_ok(spec)?;
+    if matches!(spec.account, CliAccount::Named { .. })
+        && crate::agents::account_env_of(spec.agent).is_none()
+    {
+        return Err(Refusal::AgentNoAccounts {
+            agent: face.display_name.to_string(),
+        });
+    }
     if let Container::Tmux { name, .. } = spec.container {
         need("tmux")?;
         if crate::control::gate_rules::new_tmux_name_issue(name).is_some() {
@@ -438,6 +466,20 @@ fn render_parts(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Parts, Refusa
     }
     tokens.extend(spec.args.iter().map(|a| (*a).to_string()));
     Ok(Parts::Argv(join_halves(tokens, ours)))
+}
+
+/// 起哪一家：空 / 带空白 / 注册表里没有 ⇒ 拒（不落默认那一家：起错家比起不来更坏）。
+fn launch_face(agent: &str) -> Result<crate::agents::LaunchFace, Refusal> {
+    if agent.is_empty() || agent.trim() != agent {
+        let known = crate::agents::launchable_kinds().join(" / ");
+        return Err(Refusal::UnknownAgent(copy_text(
+            "beAgents.pick.unknown",
+            &[("agent", agent), ("known", &known)],
+        )));
+    }
+    crate::agents::pick_kind(Some(agent))
+        .map(|(_, f)| f)
+        .map_err(Refusal::UnknownAgent)
 }
 
 /// 一个**已有**会话的名字：拒绝集（控制符 · 欺骗字符）＋ 非空（`control/gate_rules.rs`，全仓唯一一份）。

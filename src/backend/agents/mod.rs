@@ -152,12 +152,16 @@ pub(crate) struct Adapter {
 pub(crate) struct LaunchFace {
     /// 适配器 id（界面起会话那一发交回，上游选择按它挑那一行）。
     pub(crate) adapter_id: &'static str,
+    /// 这一家对用户的叫法（「{名} 会话还不能选账号」这类话里用）。
+    pub(crate) display_name: &'static str,
     /// 默认启动器（无候选时的命令基底）。
     pub(crate) default_launcher: &'static str,
     /// shell 集成 wrapper：探得到先用它，探不到回退默认启动器；没有 ⇒ `None`。
     pub(crate) launcher_alias: Option<&'static str>,
     /// resume 那个字面量：`--` 开头 ＝ flag 形（`claude --resume <sid>`），否则 ＝ 子命令形（`codex resume <sid>`）。
     pub(crate) resume_token: &'static str,
+    /// `ccm` 起这一家（新起与 resume）时垫在交给它的那一串最前面的参数。
+    pub(crate) launch_args: &'static [&'static str],
     /// 起之前要清掉的嵌套会话标记（顺序决定载荷字节）。
     pub(crate) nested_env: &'static [&'static str],
     /// 不说是哪一家时就起这一家（`ccm` 不给 `--agent` · resume 规格里没写或写了认不出的 `agentKind` · 载荷内核）。
@@ -756,6 +760,14 @@ pub(crate) fn record_face_among(registry: &[Adapter], path: &Path) -> Option<Rec
         .and_then(|a| a.records)
 }
 
+/// 家目录记录树那一家（注册表里没有合成历史面的那一家）的 kind：历史清单的记录树那一支与全文搜索的会话都是它的。
+pub(crate) fn record_tree_kind() -> Option<&'static str> {
+    REGISTRY
+        .iter()
+        .find(|a| a.history.is_none())
+        .map(|a| a.kind)
+}
+
 /// 流式 watcher 跟的那一家（家目录记录树那一家）的记录解释面。
 pub(crate) fn stream_record_face() -> Option<RecordFace> {
     REGISTRY
@@ -1166,12 +1178,9 @@ pub(crate) fn user_mcp_file() -> Option<PathBuf> {
 #[rustfmt::skip]
 pub(crate) const REGISTRY: &[Adapter] = &[
     Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), accounts: Some(claudecode::accounts::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH) },
-    // ⚠ codex 那一格**今天借用同一个载体，这是如实登记的耦合、不是设计**：
-    //   账号维度来自机器上唯一那一套账号库（`accounts/manage/`），而那套库切的就是这个变量。
-    //   `ccm --agent codex --account b` 从来就是这个行为（`shared/ccm` 那侧也是无条件 export）。
-    //   codex 自己并不读它 ⇒ 哪天账号维度按家拆开，改的就是这一行。
+    // codex 今天没有账号维度（`account_env: None`）：选号对它说不出，起法与 `ccm` 都明说不行。
     // codex **刻意不登记**默认上游：它的默认上游是哪一个、认不认 base URL 覆盖，本仓零证据（`C7`）⇒ 未登记即拒（fail-closed）。
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: None, history: Some(codex::HISTORY), upstream: None, mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH) },
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, assets: None, history: Some(codex::HISTORY), upstream: None, mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH) },
 ];
 
 /// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。

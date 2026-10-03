@@ -36,6 +36,8 @@ export interface LaunchModifiers {
 
 /** 调用方已解析好的具体意图。 */
 export interface LaunchContext {
+  /** 这个会话是哪一家（线上的 kind）：怎么 resume、能不能选号都按它，由那台后端渲。 */
+  agent: string;
   action: LaunchAction;
   container: LaunchContainer;
   cwd: string | null;

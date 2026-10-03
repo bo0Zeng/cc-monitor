@@ -640,6 +640,8 @@ const INTEGRATION: &[&str] = &[
     // 〔MG1 合 SU1〕skill 装记录：临时家目录里真写 / 读 / 摘 `~/.cc-monitor/skill-installs.json` ⇒ 判别器判集成层。
     "tests/backend/assets/skill_ledger_tests.rs",
     "tests/backend/stderr_log_tests.rs",
+    // 历史里恢复 ⇒ 起的是那个会话的那一家：临时家目录 ＋ 假启动器，re-exec 本测试二进制让 `ccm` exec 掉它。
+    "tests/backend/control/launch_render/history_resume_e2e_tests.rs",
     "tests/backend/main_claim_tests.rs", // 先抢口再接日志：占一个真回环口
     "tests/backend/stream/wire_tests.rs",
     // `tests/frontend/shell/account_aliases_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
@@ -845,6 +847,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/backend/stream/tap_tests.rs",
         "tap_capacity_reading_with_a_dozen_concurrent_streams",
         Trigger::Manual("读数不是判据：十几路并发时 tap 通道的峰值占用与丢件（写者是模型）；跑法住它自己的头注"),
+    ),
+    (
+        "tests/backend/control/launch_render/history_resume_e2e_tests.rs",
+        "history_resume_child_entry_point",
+        Trigger::Filter { by: "tests/backend/control/launch_render/history_resume_e2e_tests.rs", needle: "control::launch_render::history_resume_e2e::history_resume_child_entry_point" },
     ),
     (
         "tests/backend/stderr_log_tests.rs",

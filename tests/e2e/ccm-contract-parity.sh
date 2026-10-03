@@ -126,18 +126,24 @@ base_env() {
 CCM_KEYS='^(CLAUDE_CONFIG_DIR|ANTHROPIC_MODEL|CC_BUS_ID|CLAUDECODE|CLAUDE_CODE_ENTRYPOINT|CLAUDE_CODE_SESSION_ID|CLAUDE_CODE_CHILD_SESSION|CCM_ENV_PROBE)='
 ccm_keys() { grep -E "$CCM_KEYS" | LC_ALL=C sort | tr '\n' '|'; }
 
-# 真跑：`--launcher env` ⇒ 最终 `exec env` ⇒ stdout 就是**真实**环境。
+# 真跑：`--launcher envdump`（`exec env`、不看参数）⇒ stdout 就是**真实**环境。
+# 不直接用 `env`：codex 那一趟 ccm 会在启动器后面垫 `--no-daemon`，`env` 会把它当成自己的选项拒掉。
+cat > "$W/bin/envdump" <<'STUB'
+#!/bin/sh
+exec env
+STUB
+chmod +x "$W/bin/envdump"
 # 用文件重定向而非 `$(...)`：claude 那条路会留一个身份回填 poller 在后台，
 # 命令替换会等它关掉 stdout（多等 1 秒/次）。
 actual_env() {
   # 调用方交来的是 `[交给 agent 的…] -- [ccm 的…]`（恒带 `--`），本条往 ccm 那一半末尾补自己的选项。
-  base_env "$CCM" "$@" --cwd "$CWD" --launcher env > "$W/a.out" 2>&1
+  base_env "$CCM" "$@" --cwd "$CWD" --launcher "$W/bin/envdump" > "$W/a.out" 2>&1
   ccm_keys < "$W/a.out"
 }
 
 # 预言：同一组 flag 的 `--print` 串，在**同一个基础环境**里跑一遍。
 predicted_env() {
-  base_env "$CCM" "$@" --cwd "$CWD" --launcher env --ccm-print > "$W/p.line" 2>&1
+  base_env "$CCM" "$@" --cwd "$CWD" --launcher "$W/bin/envdump" --ccm-print > "$W/p.line" 2>&1
   base_env bash -c "$(cat "$W/p.line")" > "$W/p.out" 2>&1
   ccm_keys < "$W/p.out"
 }
@@ -156,8 +162,12 @@ echo "===== A 组：--ccm-print 说的 == 真跑做的 ====="
 pair "codex（CC_BUS_ID 派生）"            -- --ccm-agent codex
 pair "claude（嵌套 env 清理）"             -- --ccm-agent claude
 pair "claude + --account b"               -- --ccm-agent claude --account b
-# `--model` 交给 agent 了（启动器是 `env` 时它会被 env 当选项拒）⇒ 两格换成「账号 × codex」与「透传不改环境」。
-pair "codex + --account b"                -- --ccm-agent codex --account b
+# Codex 没有账号这一维 ⇒ `--account` 真跑与 print 都明说不收（从前静默导出一个它不读的变量）。
+NOACCT="ccm: codex 还没有账号可选：不收 --account / --account-dir（--base 照收）"
+ck "codex + --account b：真跑明说不收" "$NOACCT" \
+   "$(base_env "$CCM" -- --ccm-agent codex --account b --cwd "$CWD" --launcher "$W/bin/envdump" 2>&1)"
+ck "codex + --account b：--ccm-print 同样不收" "$NOACCT" \
+   "$(base_env "$CCM" -- --ccm-agent codex --account b --cwd "$CWD" --launcher "$W/bin/envdump" --ccm-print 2>&1)"
 pair "claude + --account b + 透传（交给 agent 的词不改环境）" AL3_PASSTHRU=1 -- --ccm-agent claude --account b
 
 # `--base` 要有意义，基础环境里必须**先有**一个 CLAUDE_CONFIG_DIR 让它去 unset。
@@ -165,7 +175,7 @@ pair "claude + --account b + 透传（交给 agent 的词不改环境）" AL3_PA
 # （config_dir 被 unset、四个嵌套标记被 unset、codex 专属的 CC_BUS_ID 又不适用）⇒
 # 差分退化成 `"" == ""`。上面那条自检就是逮到这个的（第一次跑当场红）。
 BASE_EXTRA=(CLAUDE_CONFIG_DIR="$W/acct-z")
-pair "codex + --base（#75 逃生口）" -- --ccm-agent codex --base
+pair "codex + --base（没有账号这一维：什么都不做）" -- --ccm-agent codex --base
 BASE_EXTRA=()
 
 # ⚠ **`A″` 组 7 条整组删了**（判词 `N`，住 `tests/evidence/K-R48-356-verdicts.tsv`

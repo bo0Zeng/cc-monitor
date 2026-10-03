@@ -475,6 +475,10 @@ pub(crate) fn tmux_name_mint_with(
 /// `--base` 与「已继承 `CLAUDE_CONFIG_DIR`」这两条路**不需要账号表** ——
 /// 读它就是白付一次 IO，还会把「这台机器没有账号库」变成一句多余的话。
 fn needs_account_table(o: &argv::Opts, env: &Env) -> bool {
+    // 没有账号这一维的那一家不选号。
+    if env.account_env.is_empty() {
+        return false;
+    }
     if !o.account.is_empty() {
         return true;
     }
@@ -718,7 +722,8 @@ fn exec_direct(d: &plan::Direct) -> i32 {
     if !d.config_dir.is_empty() {
         std::env::set_var(cfg_env, &d.config_dir);
     }
-    if d.unset_config_dir {
+    // 没有账号载体的那一家：`--base` 什么都不做。
+    if d.unset_config_dir && !cfg_env.is_empty() {
         std::env::remove_var(cfg_env);
     }
     if !d.launch_id.is_empty() {

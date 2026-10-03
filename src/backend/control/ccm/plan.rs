@@ -755,6 +755,10 @@ pub(crate) fn resolve_account(
     env: &Env,
     table: &AccountTable,
 ) -> Result<(String, String), Die> {
+    // 这一家没有账号这一维（载体名空）⇒ 不选号、不落默认号（选号的那几形 `argv::validate` 已经拒了）。
+    if env.account_env.is_empty() {
+        return Ok((String::new(), String::new()));
+    }
     if !o.account.is_empty() {
         return match table.config_dir_of(&o.account) {
             Some(d) => Ok((d, o.account.clone())),
@@ -1121,6 +1125,12 @@ pub(crate) fn build_among(
 
     // ── 非容器路（最终 exec 的那一处）────────────────────────────────────
     let mut argv = launcher_words(&launcher, &env.home);
+    // 这一家要垫在最前面的参数（Codex 的 `--no-daemon`）；透传里自己写了的不重复垫。
+    for a in face.map_or(&[][..], |f| f.launch_args) {
+        if !o.passthru.iter().any(|p| p == a) {
+            argv.push((*a).to_string());
+        }
+    }
     argv.extend(o.passthru.iter().cloned());
     // 中转地址只在这里定，按**这一发的目标账号**问上游选择那张表（容器路的 pane 里那一趟也走到这里）。
     // 环境里继承来的：用户自己的端点 ⇒ 不动、说一句；我们的中转那一形（别的号的）⇒ 不认，重问，
@@ -1308,7 +1318,8 @@ fn render_direct(d: &Direct) -> String {
     if !d.config_dir.is_empty() {
         line.push_str(&posix::export(cfg_env, &sq(&d.config_dir)));
     }
-    if d.unset_config_dir {
+    // 没有账号载体的那一家：`--base` 什么都不做。
+    if d.unset_config_dir && !cfg_env.is_empty() {
         line.push_str(&posix::unset(&[cfg_env]));
     }
     if !d.nested.is_empty() {

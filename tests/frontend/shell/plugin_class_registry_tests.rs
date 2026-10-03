@@ -504,14 +504,16 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
              ⇒ 按哪一家起会有什么不同，做成适配层起会话事实上的一格（没声明 = 不支持），ccm 问那一格。"
     );
     // 表的宽度（`E4b`「通用骨架不动，加一张表的一行」）：起会话事实有几格。
-    // 11 = 适配器 id · 默认启动器 · shell wrapper · resume 字面量 · 嵌套标记 · 是不是默认那一家 ·
-    //      resume 命令形 · 会话名前缀 · cc-bus 身份 · 身份面 · pidfile。
+    // 13 = 适配器 id · 对用户的叫法 · 默认启动器 · shell wrapper · resume 字面量 · 垫在最前面的参数 · 嵌套标记 ·
+    //      是不是默认那一家 · resume 命令形 · 会话名前缀 · cc-bus 身份 · 身份面 · pidfile。
     //      12 → 11：信任框那一格删了（ccm 不再替用户答 agent 的信任框）。
+    //      11 → 13：按会话的那一家起 —— 「Codex 会话还不能选账号」那句话要叫得出名字（对用户的叫法）；
+    //      ccm 起 Codex 一律不连共享后台（垫在最前面的参数，Codex 那一格是 `--no-daemon`）。
     let cells = launch_face_fields();
     assert_eq!(
         cells.len(),
-        11,
-        "起会话事实从 11 格变成 {} 格：{cells:?}\n\
+        13,
+        "起会话事实从 13 格变成 {} 格：{cells:?}\n\
              ⇒ 多一格 = 分叉面变大，那正是该有人过一眼的时刻；少一格 = 收敛了（改这个数并写清少了哪一格）。",
         cells.len()
     );

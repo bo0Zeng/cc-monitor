@@ -55,7 +55,7 @@ function proj(over: Record<string, unknown> = {}): Record<string, unknown> {
   return { projectPath: "/p", projectName: "P", projectDir: "pd", sessionCount: 2, starredCount: 0, hiddenCount: 0, lastActivity: 1, hasLive: false, ...over };
 }
 function entry(over: Record<string, unknown> = {}): Record<string, unknown> {
-  return { sessionId: "s1", projectPath: "/p", projectName: "P", aiTitle: "T", firstUserExcerpt: "x", startedAt: 1, updatedAt: 1, jsonlPath: "/p/s1.jsonl", isLive: false, messageCountApprox: 1, starred: false, hidden: false, ...over };
+  return { agent: "claude", sessionId: "s1", projectPath: "/p", projectName: "P", aiTitle: "T", firstUserExcerpt: "x", startedAt: 1, updatedAt: 1, jsonlPath: "/p/s1.jsonl", isLive: false, messageCountApprox: 1, starred: false, hidden: false, ...over };
 }
 function buildRow(view: HistoryView, e: Record<string, unknown>, p: Record<string, unknown>): HTMLElement {
   const row = (view as unknown as { buildEntryRow(e: unknown, p: unknown): HTMLElement }).buildEntryRow(e, p);
@@ -234,7 +234,8 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(runNewRemote).toHaveBeenCalledTimes(1);
     expect(runNewRemote.mock.calls[0][0]).toBe("hostA");
-    expect(runNewRemote.mock.calls[0][1]).toBe("/p");
+    expect(runNewRemote.mock.calls[0][1]).toBe("claude");
+    expect(runNewRemote.mock.calls[0][2]).toBe("/p");
     expect(localLaunchCalls(invokeMock.mock.calls, "new_local_session")).toEqual([]);
   });
 
@@ -261,7 +262,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
     menuItem("在该目录起新会话")!.click();
     await new Promise((r) => setTimeout(r, 0));
-    expect(runNewRemote).toHaveBeenCalledWith("hostA", "/p", "", { configDir: "/h/.claude-accts/z", accountName: "z", modelOverride: undefined });
+    expect(runNewRemote).toHaveBeenCalledWith("hostA", "claude", "/p", "", { configDir: "/h/.claude-accts/z", accountName: "z", modelOverride: undefined });
     invalidateAccountsCache(); // fetchAccounts 有模块级缓存,别泄漏进同文件其它测试
   });
 

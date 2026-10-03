@@ -32,6 +32,8 @@ import { copyText } from "./copy-table";
 
 /** 项目级那一行（不含会话内容）。 */
 export interface HistoryProject {
+  /** 这个项目的会话是哪一家（线上的 kind）。 */
+  agent: string;
   projectPath: string;
   projectName: string;
   /** 懒加载的键（记录树的项目目录名，或合成历史的 `<kind>:<cwd>`），原样交回 [`fetchSessions`]。 */
@@ -50,6 +52,8 @@ export interface HistoryProject {
 
 /** 会话级那一行。 */
 export interface HistorySessionEntry {
+  /** 这个会话是哪一家（线上的 kind）：恢复按它起。 */
+  agent: string;
   sessionId: string;
   projectPath: string;
   projectName: string;
@@ -129,6 +133,7 @@ function keysOk(
 }
 
 const PROJECT_KEYS = [
+  "agent",
   "projectPath",
   "projectName",
   "projectDir",
@@ -139,6 +144,7 @@ const PROJECT_KEYS = [
   "hasLive",
 ] as const;
 const SESSION_KEYS = [
+  "agent",
   "sessionId",
   "projectPath",
   "projectName",
@@ -188,6 +194,7 @@ export function decodeProjects(v: unknown): {
     const ok =
       isObj(r) &&
       keysOk(r, PROJECT_KEYS, ["origin"]) &&
+      isStr(r.agent) &&
       isStr(r.projectPath) &&
       isStr(r.projectName) &&
       isStr(r.projectDir) &&
@@ -220,6 +227,7 @@ export function decodeSessions(v: unknown): {
         "forkedFromMessageUuid",
         "origin",
       ]) &&
+      isStr(r.agent) &&
       isStr(r.sessionId) &&
       isStr(r.projectPath) &&
       isStr(r.projectName) &&

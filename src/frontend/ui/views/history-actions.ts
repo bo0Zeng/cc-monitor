@@ -31,6 +31,8 @@ export type HistoryActionId =
  * 这里**刻意写成字面联合类型而不 import**，上面「无 import 的纯模块」那条不破。
  */
 export interface HistoryActionCtx {
+  /** 这个会话是哪一家（线上的 kind）：恢复按它起。 */
+  agent: string;
   sessionId: string;
   jsonlPath: string;
   cwd: string;

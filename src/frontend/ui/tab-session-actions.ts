@@ -46,7 +46,8 @@ import {
 } from "./remote-config";
 import { standingOf } from "./tmux-sessions";
 import { callStart, callStop, planStarts, sayReply, type Reply, type StartItem } from "./tab-batch-run";
-import { AGENT_PROFILE } from "./agent-profile";
+// 标签页里的会话都是流跟的那一家（记录树那一家）。
+import { ACTIVE_AGENT, defaultLauncherOf } from "./agent-profile";
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
 import { decodeKilled, saidOfControl } from "./tmux-control";
@@ -280,6 +281,7 @@ export class TabSessionActions {
           if (!(await this.recordStillThere(tab, mods.configDir))) return false; // 拦下 ⇒ 不记上次的账号
           await runRemoteResume(
             origin,
+            ACTIVE_AGENT,
             sid,
             cwd,
             await resolveResumeCommand(origin, behavior.resumeCommandRemote),
@@ -303,6 +305,7 @@ export class TabSessionActions {
     //   这里先前逐字抄着一份（连同内联的「列本机 tmux → 铸名」六行），注释里记着 #75 · #76 ·
     //   `D1 阻-1` · `D3 阻-2` 四次「这里修了、那里漏了」。账号跟随这条会话上次的号（同远端 `follow`）。
     await resumeLocalSession({
+      agent: ACTIVE_AGENT,
       sid,
       cwd: tab.projectDir ?? "",
       account: { kind: "follow" },
@@ -345,7 +348,7 @@ export class TabSessionActions {
     if (!tab || isLocalOrigin(tab.origin)) return;
     const behavior = await getBehavior();
     const origin = tab.origin;
-    const launcher = (await resolveResumeCommand(origin, behavior.resumeCommandRemote)).trim() || AGENT_PROFILE.defaultLauncher;
+    const launcher = (await resolveResumeCommand(origin, behavior.resumeCommandRemote)).trim() || defaultLauncherOf(ACTIVE_AGENT);
     // 起法与批量「在 tmux 里后台起」同一条（那台判在不在跑 · 空 tmux 就地键入 · 铸名交一行 ccm，建完不接进去），
     //   单个只多一步：起好之后开一个终端接进去。账号照旧经 `withAccount`（显式点的号 / 跟随上次的号）。
     await withAccount(
@@ -353,12 +356,13 @@ export class TabSessionActions {
       accountName ?? null,
       async (mods) => {
         const item: StartItem = {
+          agent: ACTIVE_AGENT,
           sid,
           cwd: tab.projectDir ?? "",
           account: mods.configDir ? { kind: "named", name: mods.accountName ?? null, configDir: mods.configDir } : { kind: "base" },
           model: mods.modelOverride ?? null,
           launcher,
-          defaultLauncher: AGENT_PROFILE.defaultLauncher,
+          defaultLauncher: defaultLauncherOf(ACTIVE_AGENT),
         };
         return this.startInTmuxThenAttach(tab, item, () => this.resumeTabTmuxInner(sid, accountName, useBase));
       },
@@ -410,7 +414,7 @@ export class TabSessionActions {
         { level: "info", durationMs: 8000 },
       );
     }
-    await runRemoteAttach(origin, r.session);
+    await runRemoteAttach(origin, ACTIVE_AGENT, r.session);
   }
 
   /** 本机：在那个空 tmux 里就地 resume，再开一个终端接进去（与批量同一条；账号跟随同本机 Resume）。 */

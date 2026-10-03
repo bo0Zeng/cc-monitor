@@ -45,6 +45,8 @@ export interface Hit {
 
 /** 一个会话的命中（后端 `--search` 的一行 ＋ 这边补的 `origin`）。 */
 export interface SessionHits {
+  /** 这个会话是哪一家（线上的 kind）：恢复按它起。 */
+  agent: string;
   sessionId: string;
   projectPath: string;
   projectName: string;
@@ -179,6 +181,7 @@ function sessionHitsOf(v: unknown): SessionHits | null {
   const o = (v !== null && typeof v === "object" ? v : {}) as Record<string, unknown>;
   const hits = Array.isArray(o.hits) ? o.hits.map(parseHit) : null;
   if (
+    !isStr(o.agent) ||
     !isStr(o.sessionId) ||
     !isStr(o.projectPath) ||
     !isStr(o.projectName) ||
@@ -194,6 +197,7 @@ function sessionHitsOf(v: unknown): SessionHits | null {
     return null;
   }
   return {
+    agent: o.agent,
     sessionId: o.sessionId,
     projectPath: o.projectPath,
     projectName: o.projectName,

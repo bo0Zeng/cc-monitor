@@ -18,6 +18,8 @@
  * 两边都从那里取。`tabs.ts` 原样 re-export，既有 import 面零改动。
  */
 
+// 分叉只对记录树那一家（流跟的那一家）的会话做 ⇒ 分叉出来的会话也是它。
+import { ACTIVE_AGENT as FORK_AGENT } from "./agent-profile";
 import { isLocalOrigin, isRemoteOrigin, type Origin } from "./ipc/origin";
 import { showActionFailureToast } from "./error-toast";
 import { getBehavior } from "./behavior";
@@ -164,6 +166,7 @@ function productionDeps(input: ForkFlowInput): ForkStartDeps {
     // 「起了」= 看见那台报出分叉出来的会话（等到才说「已分叉」；没等到那一句主窗口说过了）。
     startLocal: async (a) =>
       (await resumeLocalSessionAndWait({
+        agent: FORK_AGENT,
         sid: a.sessionId,
         cwd: a.cwd,
         account: { kind: "explicit", configDir: a.configDir, name: a.accountName },
@@ -178,8 +181,8 @@ function productionDeps(input: ForkFlowInput): ForkStartDeps {
       const mods = { configDir: a.configDir ?? undefined };
       // ★ 返回值必须往上传：那两条路失败时**不抛**，只弹自己的 toast 并回 false。
       const r = a.tmuxName
-        ? await runRemoteResumeTmuxAndWait(a.origin, a.sessionId, a.cwd, launcher, a.tmuxName, mods)
-        : await runRemoteResumeAndWait(a.origin, a.sessionId, a.cwd, launcher, mods);
+        ? await runRemoteResumeTmuxAndWait(a.origin, FORK_AGENT, a.sessionId, a.cwd, launcher, a.tmuxName, mods)
+        : await runRemoteResumeAndWait(a.origin, FORK_AGENT, a.sessionId, a.cwd, launcher, mods);
       return r === "arrived";
     },
 

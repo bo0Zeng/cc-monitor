@@ -26,7 +26,7 @@ import {
 } from "./launch-account";
 import { getBehavior } from "./behavior";
 import { resolveResumeCommand } from "./remote-config";
-import { AGENT_PROFILE } from "./agent-profile";
+import { ACTIVE_AGENT, defaultLauncherOf } from "./agent-profile";
 import { openTerminal } from "./terminal-open";
 import { commands } from "./ipc/commands";
 
@@ -170,6 +170,8 @@ export async function stopMany(tabs: readonly Tab[]): Promise<BatchOutcome[]> {
 
 /** 起会话要交给那台的一个（`sessions-start` 的 `items[i]`）。 */
 export interface StartItem {
+  /** 这个会话是哪一家（线上的 kind）。 */
+  agent: string;
   sid: string;
   cwd: string;
   account: { kind: "inherit" } | { kind: "base" } | { kind: "named"; name: string | null; configDir: string };
@@ -188,7 +190,9 @@ export interface StartPlan {
 /** 账号跟随与单个那条 Resume 同一份解析（远端：每台一次账号清单 ＋ 一次「上次用的号」）。 */
 export async function planStarts(origin: Origin, list: readonly Tab[]): Promise<StartPlan> {
   const behavior = await getBehavior();
-  const defaultLauncher = AGENT_PROFILE.defaultLauncher;
+  // 标签页里的会话都是流跟的那一家（记录树那一家）。
+  const agent = ACTIVE_AGENT;
+  const defaultLauncher = defaultLauncherOf(agent);
   const plan: StartPlan = { items: [], skipped: [], record: new Map() };
   if (isLocalOrigin(origin)) {
     primeLocalLaunchAccounts();
@@ -201,6 +205,7 @@ export async function planStarts(origin: Origin, list: readonly Tab[]): Promise<
       }
       if (p.kind === "named") plan.record.set(t.sessionId, () => recordLocalLaunchAccount(t.sessionId, p.name));
       plan.items.push({
+        agent,
         sid: t.sessionId,
         cwd: t.projectDir ?? "",
         account: p.kind === "named" ? { kind: "named", name: p.name, configDir: p.configDir } : { kind: "inherit" },
@@ -228,6 +233,7 @@ export async function planStarts(origin: Origin, list: readonly Tab[]): Promise<
     const name = r.kind === "account" ? followRecordName(prior, r) : null;
     if (name) plan.record.set(t.sessionId, () => void recordLastAccount(t.sessionId, name));
     plan.items.push({
+      agent,
       sid: t.sessionId,
       cwd: t.projectDir ?? "",
       account: r.kind === "account" ? { kind: "named", name: r.name, configDir: r.configDir } : { kind: "base" },

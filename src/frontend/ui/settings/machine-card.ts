@@ -23,7 +23,7 @@ import { hostKey, readRemoteConfig, resolveRemoteConfigByOrigin, type RemoteHost
 import { parseAddressLines } from "../remote-config";
 // E80：`ConnectStage` 直连生成物，不再绕道 `remote-section`（那条绕道是 import 环的一半）。
 import type { ConnectStage } from "../generated/ConnectStage";
-import { AGENT_PROFILE } from "../agent-profile";
+import { DEFAULT_AGENT, defaultLauncherOf } from "../agent-profile";
 // 铸名口（列名单 ＋ 避让 ＋ 「列不出 ⇒ 不起」）本机远端同一个家。
 import { mintFreshTmuxName, refuseUnmintable } from "../tmux-name-mint";
 import { isSelectable, currentWorkingAccount } from "../accounts";
@@ -1034,12 +1034,13 @@ export class MachineCard {
         }
         name = minted.name;
       }
-      const command = cmdInput.value.trim() || AGENT_PROFILE.defaultLauncher;
+      // 新起：程序还不能选 ⇒ 起默认那一家。
+      const command = cmdInput.value.trim() || defaultLauncherOf(DEFAULT_AGENT);
       const accName = acctSelect.value; // "" = 不指定
       close();
       // A4：新会话无 sid → 不记 lastAccount；withAccount 统一解析注入（选的号不可选 ⇒ 不起、说清、给显式选择）。
       await withAccount(origin, accName || null, (mods) =>
-        runRemoteLauncher(origin, cwd, name, command, mods),
+        runRemoteLauncher(origin, DEFAULT_AGENT, cwd, name, command, mods),
       );
       })();
     });

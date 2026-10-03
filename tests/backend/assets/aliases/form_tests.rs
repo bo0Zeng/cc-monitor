@@ -434,6 +434,10 @@ fn a_form_comes_back_from_its_own_args_and_ccm_accepts_them() {
                 f.tmux_name = r.pick(&["w", "s1"]).to_string();
             }
             f.agent = r.pick(&["", "codex", "claude"]).to_string();
+            // Codex 没有账号这一维（ccm 明说不收 `--account`）⇒ 那一家的表单不选号。
+            if f.agent == "codex" {
+                f.account.clear();
+            }
             f.model = r.pick(&["", "opus", "claude-x[1m]"]).to_string();
             f.launcher = r.pick(&["", "ccr code", "/usr/bin/claude"]).to_string();
             if f.tmux != TmuxMode::None {

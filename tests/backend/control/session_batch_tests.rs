@@ -175,12 +175,13 @@ fn a_malformed_batch_is_refused_whole() {
 }
 
 fn item(sid: &str, account: Value) -> Value {
-    json!({ "sid": sid, "cwd": "/w/proj", "account": account, "model": null, "launcher": "claude", "defaultLauncher": "claude" })
+    json!({ "agent": "claude", "sid": sid, "cwd": "/w/proj", "account": account, "model": null, "launcher": "claude", "defaultLauncher": "claude" })
 }
 
 /// 单个那一条那台后端会渲出的那一行（`launch-render-cli`，直连、不建容器）。
 fn single_line(sid: &str, cwd: Option<&str>, account: Value) -> String {
     let req = json!({
+        "agent": "claude",
         "action": { "kind": "resume", "sid": sid },
         "container": { "kind": "none" },
         "cwd": cwd,
@@ -199,6 +200,7 @@ fn single_line(sid: &str, cwd: Option<&str>, account: Value) -> String {
 /// 单个「在 tmux 里 Resume」那一行（`launch-render-cli`，建进 tmux、打 sid 标记、带 cwd）。
 fn single_tmux_line(sid: &str, name: &str, account: Value) -> String {
     let req = json!({
+        "agent": "claude",
         "action": { "kind": "resume", "sid": sid },
         "container": { "kind": "tmux", "name": name, "send_into": false },
         "cwd": "/w/proj",
@@ -341,6 +343,7 @@ fn a_window_start_renders_what_the_single_item_renders() {
     let args = json!({ "mode": "window", "local": true, "items": [item(A, json!({ "kind": "inherit" }))] });
     let out = rig.run(|d| start(&args, d)).unwrap();
     let single = super::super::launch_render::answer_local(&json!({
+        "agent": "claude",
         "action": { "kind": "resume", "sid": A },
         "cwd": "/w/proj",
         "launcher": null,

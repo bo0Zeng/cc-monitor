@@ -38,6 +38,7 @@ function deepEq(actual: unknown, expected: unknown, msg?: string): void {
 console.log("history-actions.test.ts");
 
 const base = (over: Partial<HistoryActionCtx> = {}): HistoryActionCtx => ({
+  agent: "claude",
   sessionId: "s1",
   jsonlPath: "/p/s1.jsonl",
   cwd: "/p",

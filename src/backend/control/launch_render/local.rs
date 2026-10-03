@@ -14,6 +14,8 @@ use std::collections::BTreeSet;
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct LocalLaunchRequest {
+    /// 这个会话是哪一家（线上的 kind）。必填：没说就不知道该怎么起，不落默认那一家。
+    pub(crate) agent: String,
     pub(crate) action: LocalAction,
     /// 只用来核「新起」那一格的目录在不在；终端的工作目录由 monitor 开窗口时给。
     #[serde(default)]
@@ -166,6 +168,7 @@ fn with_spec<T>(
         _ => None,
     };
     let spec = ci::CliSpec {
+        agent: &req.agent,
         action,
         container: match tmux {
             Some(name) => ci::Container::Tmux {

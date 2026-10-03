@@ -217,6 +217,8 @@ fn stop_one(sid: &str, rows: Option<&[TmuxEntry]>, deps: &Deps) -> Answer {
 
 /// 一个要起的会话（已过形状关）。
 struct Item {
+    /// 这个会话是哪一家（线上的 kind）。
+    agent: String,
     sid: String,
     cwd: String,
     account: Acct,
@@ -276,6 +278,7 @@ fn item_of(v: &Value) -> Result<Item, CmdErr> {
         .ok_or_else(|| bad("each item must be an object"))?;
     for k in o.keys() {
         if ![
+            "agent",
             "sid",
             "cwd",
             "account",
@@ -311,6 +314,7 @@ fn item_of(v: &Value) -> Result<Item, CmdErr> {
         Some(_) => return Err(bad("`model` must be a string or null")),
     };
     Ok(Item {
+        agent: str_of(o, "agent")?.to_string(),
         sid: sid.to_string(),
         cwd: str_of(o, "cwd")?.to_string(),
         account,
@@ -324,6 +328,7 @@ fn item_of(v: &Value) -> Result<Item, CmdErr> {
 /// 单个那条在界面拼的就是这一份（直路：cwd 只在开终端那一形带；建进 tmux：带 cwd、打 sid 标记）。
 fn wire_req(it: &Item, tmux: Option<&str>, cwd: bool) -> wire::CliRenderRequest {
     wire::CliRenderRequest {
+        agent: it.agent.clone(),
         action: wire::WireAction::Resume {
             sid: it.sid.clone(),
         },
@@ -346,6 +351,7 @@ fn wire_req(it: &Item, tmux: Option<&str>, cwd: bool) -> wire::CliRenderRequest 
 /// 本机那一形的入参（`launch-local`）。
 fn local_req(it: &Item, tmux: Option<String>) -> local::LocalLaunchRequest {
     local::LocalLaunchRequest {
+        agent: it.agent.clone(),
         action: local::LocalAction::Resume {
             sid: it.sid.clone(),
         },

@@ -26,6 +26,8 @@ import {
   type NamedAccountModifier,
 } from "./launch-menu";
 import { runRemoteAttach } from "./remote-launch-run";
+// 标签页里的会话都是流跟的那一家（记录树那一家）。
+import { ACTIVE_AGENT } from "./agent-profile";
 // 本机 = `LOCAL_ORIGIN`（`"<local>"`）；「是不是本机」只经 `ipc/origin.ts` 判。
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { openPanePreview } from "./views/pane-preview";
@@ -188,7 +190,7 @@ export class TabMenu {
       updateTabContextMenuItem("attach", {
         id: "attach",
         label: copyText("tabMenu.attach.idle", { name }),
-        onClick: () => void runRemoteAttach(origin, name),
+        onClick: () => void runRemoteAttach(origin, ACTIVE_AGENT, name),
       });
       removeTabContextMenuItem("preview"); // 空 shell 没有 agent 画面可看
       updateTabContextMenuItem("kill", gateByOffer(origin, {
@@ -212,7 +214,7 @@ export class TabMenu {
             { level: "info", durationMs: 8000 },
           );
         }
-        void runRemoteAttach(origin, name);
+        void runRemoteAttach(origin, ACTIVE_AGENT, name);
       },
     });
     updateTabContextMenuItem("preview", gateByOffer(origin, {

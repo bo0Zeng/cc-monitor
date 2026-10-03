@@ -87,9 +87,11 @@ pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
 /// 本家的**起会话事实**（注册表 `Adapter.launch` 那一格）：`ccm` 按它起、界面按生成物 `agent-profile-table.ts` 读，同一份。
 pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     adapter_id: UPSTREAM.route_id,
+    display_name: "Claude Code",
     default_launcher: resume::DEFAULT_COMMAND,
     launcher_alias: Some(resume::LAUNCHER_ALIAS),
     resume_token: resume::RESUME_TOKEN,
+    launch_args: &[],
     nested_env: resume::NESTED_ENV,
     is_default: true,
     resume_command: resume::resume_command,

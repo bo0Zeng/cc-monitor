@@ -198,6 +198,11 @@ fn last_segment(p: &str) -> Option<&str> {
     p.rsplit(['/', '\\']).next().filter(|s| !s.is_empty())
 }
 
+/// 记录树那一支（本机 · 远端）的行是哪一家：注册表里记录树那一家。
+fn record_tree_agent() -> &'static str {
+    crate::agents::record_tree_kind().unwrap_or_default()
+}
+
 /// `--list-projects` 的一行 ＋ 注解 ＋ 判活 ⇒ **一条项目行**（`HistoryProject` 那一形）。没有 `dirName` ⇒ `None`（拿不到懒加载的键）。
 pub(crate) fn project_from_row(
     v: &Value,
@@ -210,6 +215,7 @@ pub(crate) fn project_from_row(
     let project_name = last_segment(&project_path).unwrap_or(&dir_name).to_string();
     let c = project_counts(v, ann, live);
     let mut o = Map::new();
+    o.insert("agent".into(), json!(record_tree_agent()));
     o.insert("projectPath".into(), json!(project_path));
     o.insert("projectName".into(), json!(project_name));
     o.insert("projectDir".into(), json!(dir_name));
@@ -243,6 +249,7 @@ pub(crate) fn session_from_row(
     let project_name = last_segment(&cwd).unwrap_or(project_dir).to_string();
     let meta = ann.and_then(|t| t.get(&sid)).cloned().unwrap_or_default();
     let mut o = Map::new();
+    o.insert("agent".into(), json!(record_tree_agent()));
     o.insert("sessionId".into(), json!(sid));
     o.insert("projectPath".into(), json!(cwd));
     o.insert("projectName".into(), json!(project_name));
@@ -304,6 +311,7 @@ pub(crate) fn synth_projects(
             let c = counts_over(&sids, ann, &NoLiveness);
             let name = last_segment(cwd).map_or_else(|| format!("({kind})"), str::to_string);
             let mut o = Map::new();
+            o.insert("agent".into(), json!(kind));
             o.insert("projectPath".into(), json!(cwd));
             o.insert("projectName".into(), json!(name));
             o.insert("projectDir".into(), json!(format!("{kind}:{cwd}")));
@@ -327,6 +335,7 @@ pub(crate) fn synth_session(
     let meta = ann.and_then(|t| t.get(&s.sid)).cloned().unwrap_or_default();
     let name = last_segment(&s.cwd).map_or_else(|| format!("({kind})"), str::to_string);
     json!({
+        "agent": kind,
         "sessionId": s.sid,
         "projectPath": s.cwd,
         "projectName": name,

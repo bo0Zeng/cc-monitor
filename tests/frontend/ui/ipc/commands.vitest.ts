@@ -641,7 +641,7 @@ describe("K-H2b D4 阻-2：主路的账号与 pin 是**行为**判据（驱动�
     return { projectPath: "/p", projectName: "P", projectDir: "pd", sessionCount: 2, starredCount: 0, hiddenCount: 0, lastActivity: 1, hasLive: false };
   }
   function entry(): Record<string, unknown> {
-    return { sessionId: "s1", projectPath: "/p", projectName: "P", aiTitle: "T", firstUserExcerpt: "x", startedAt: 1, updatedAt: 1, jsonlPath: "/p/s1.jsonl", isLive: false, messageCountApprox: 1, starred: false, hidden: false };
+    return { agent: "claude", sessionId: "s1", projectPath: "/p", projectName: "P", aiTitle: "T", firstUserExcerpt: "x", startedAt: 1, updatedAt: 1, jsonlPath: "/p/s1.jsonl", isLive: false, messageCountApprox: 1, starred: false, hidden: false };
   }
 
   /** 造一行、开右键菜单、点 `label` 那一条，然后把异步链排空。 */

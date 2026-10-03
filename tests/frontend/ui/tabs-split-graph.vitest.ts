@@ -197,6 +197,7 @@ const DEPS: Record<string, readonly string[]> = {
   ],
   // ⑤ 菜单放哪几项：账号 flyout · tmux 判据 · attach / 预览 · 菜单控件 · 会话动作。
   "src/frontend/ui/tab-menu.ts": [
+    "src/frontend/ui/agent-profile.ts", // 接回交那台时要说是哪一家（标签页里的会话是流跟的那一家）
     "src/frontend/ui/ask-dialog.ts", // 「新建集合…」问名字（原 `window.prompt`）
     "src/frontend/ui/control-said.ts", // 那台握手时说过做不到的几项置灰：`unavailableSaid`（事实住 monitor 那份 Offer）
     "src/frontend/ui/copy-table.ts", // 固定那一项的两句提示（说到会话状态）住文案表

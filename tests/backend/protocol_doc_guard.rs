@@ -172,6 +172,11 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "agents/claudecode/resume.rs",
         include_str!("../../src/backend/agents/claudecode/resume.rs"),
     ),
+    // codex 那一家的起会话事实（`LAUNCH_ARGS = ["--no-daemon"]`）：发给 codex 这个子进程的旗标，同上。
+    (
+        "agents/codex/resume.rs",
+        include_str!("../../src/backend/agents/codex/resume.rs"),
+    ),
 ];
 
 /// 🔴 **终端命令面**的文件 —— 它们持有 `--旗标` 字面量，但那些**不是 wire 子命令**。
@@ -262,6 +267,13 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
         &["--resume"],
         "`claude` 那一家 resume 的 flag 形字面量（`agents/claudecode/resume.rs::RESUME_TOKEN`，起会话事实的唯一住址）：\
          它是 claude 这个子进程的命令面，后端 argv 从不认它，线上契约里也没有它的位置。",
+    ),
+    (
+        "agents/codex/resume.rs",
+        "tests/__fixtures__/agent-profile-golden.tsv",
+        &["--no-daemon"],
+        "`codex` 那一家起会话时垫在最前面的参数（`agents/codex/resume.rs::LAUNCH_ARGS`，不连共享后台）：\
+         它是 codex 这个子进程的命令面，后端 argv 从不认它，线上契约里也没有它的位置。",
     ),
 ];
 
@@ -720,15 +732,29 @@ mod tests {
             let script = std::fs::read_to_string(repo.join(child))
                 .unwrap_or_else(|e| panic!("读不到子进程脚本 {child}：{e} —— 判不了，不许当成绿"));
             let mut accepts: Vec<String> = if child.ends_with(".tsv") {
-                // 子进程在仓外（`claude`）⇒ 它认的旗标取金样里 flag 形（`--` 开头）的 `resume_token`。
+                // 子进程在仓外（`claude` · `codex`）⇒ 它认的旗标取金样里那一家的 `--` 开头的那几个词：
+                // flag 形的 `resume_token` ＋ `launch_args`。
+                let agent = if file.contains("/codex/") {
+                    "codex"
+                } else {
+                    "claude"
+                };
                 script
                     .lines()
                     .filter(|l| !l.trim_start().starts_with('#'))
                     .filter_map(|l| {
                         let f: Vec<&str> = l.split('\t').collect();
-                        (f.len() == 3 && f[1] == "resume_token" && f[2].starts_with("--"))
-                            .then(|| f[2].to_string())
+                        (f.len() == 3
+                            && f[0] == agent
+                            && (f[1] == "resume_token" || f[1] == "launch_args"))
+                            .then(|| {
+                                f[2].split(' ')
+                                    .filter(|w| w.starts_with("--"))
+                                    .map(str::to_string)
+                                    .collect::<Vec<_>>()
+                            })
                     })
+                    .flatten()
                     .collect()
             } else if script.lines().any(|l| l.trim() == "while true; do") {
                 shell_loop_flags(&script)

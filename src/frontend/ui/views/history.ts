@@ -38,6 +38,8 @@ import { liveRank, starRank, bumpCounted, isKnown } from "./counted";
 import { dispatcher } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
 import { runRemoteResume, runNewSessionRemote } from "../remote-launch-run";
+import { agentHasAccounts, DEFAULT_AGENT } from "../agent-profile";
+import { configuredLauncherFor } from "../launch-requests";
 import { isSelectable } from "../accounts";
 import { fetchAccounts } from "../account-reads";
 import { withAccount, localLaunchAccountSync, localLaunchAccountNameSync, primeLocalLaunchAccounts } from "../launch-account";
@@ -850,6 +852,7 @@ export class HistoryView {
       : copyText("history.resume.hint");
     // F85 + A4：搜索卡片 ctx（hasEntry:false，只用 identity 段）——resume 按钮与右键菜单共用。
     const cardCtx: RowActionCtx = {
+      agent: s.agent,
       sessionId: s.sessionId,
       jsonlPath: s.jsonlPath,
       cwd: s.projectPath,
@@ -1558,11 +1561,18 @@ export class HistoryView {
   }
 
   private async runResume(ctx: RowActionCtx): Promise<void> {
+    // 按这个会话的那一家起（`ctx.agent`）。没有账号这一维的那一家不跟随上次的号；显式点了号照交，由那台明说不行。
+    const follows = agentHasAccounts(ctx.agent);
     if (ctx.origin) {
       // F41：远端 resume 一键拉起（wt.exe → `ssh -t …`），失败回退 F09 复制命令。
-      // F34：用户自定义远端 resume 命令（如 cct）；空 = 后端默认
+      // F34：用户自定义远端 resume 命令（如 cct）—— 只用在默认那一家的会话上；空 = 后端默认
       const origin = ctx.origin;
       const behavior = await getBehavior();
+      const launcher = configuredLauncherFor(ctx.agent, await resolveResumeCommand(origin, behavior.resumeCommandRemote));
+      if (!follows && !ctx.account) {
+        await runRemoteResume(origin, ctx.agent, ctx.sessionId, ctx.cwd, launcher, {});
+        return;
+      }
       // account-ux U3:无显式选号 → 跟随。先读该会话的 pin(源②,本机后端 `history-last-accounts` 只读本地那份注解,
       // 非远端 SSH)传给 follow,使「粘性优先」在 history 入口也成立——有 pin 走 pin、无 pin 走当前账号;
       // 配合 withAccount 的不-clobber 记账,绝不把既有 pin 翻成当前账号(U3 审计 重要-1)。显式选号维持 A4。
@@ -1581,13 +1591,8 @@ export class HistoryView {
         ctx.account ?? null,
         // 同 tabs.ts：`runRemoteResume` 已改返回 boolean，这条路显式丢弃（反馈走它自己的 toast）。
         async (mods) => {
-          await runRemoteResume(
-            origin,
-            ctx.sessionId,
-            ctx.cwd,
-            await resolveResumeCommand(origin, behavior.resumeCommandRemote),
-            mods,
-          );
+          // 没起成 ⇒ 不记「上次用的号」。
+          if (!(await runRemoteResume(origin, ctx.agent, ctx.sessionId, ctx.cwd, launcher, mods))) return false;
         },
         {
           sessionId: ctx.sessionId,
@@ -1599,7 +1604,7 @@ export class HistoryView {
       // 本机 resume 的编排只有一份（`local-resume.ts`）：校验 sid → 铸名 → 起 → 记 pin。
       //   这里先前逐字抄着一份（`K-R46` 补铸名 · `K-H2b` 补账号 · `D3 阻-2` 补记 pin，三次都是
       //   「tab 栏那条早有了、这条没有」）。账号跟随这条会话上次的号 —— 与上面远端那条 `follow` **同形**。
-      await resumeLocalSession({ sid: ctx.sessionId, cwd: ctx.cwd, account: { kind: "follow" } });
+      await resumeLocalSession({ agent: ctx.agent, sid: ctx.sessionId, cwd: ctx.cwd, account: { kind: "follow" } });
     }
   }
 
@@ -1618,6 +1623,7 @@ export class HistoryView {
         async (mods) =>
           runNewSessionRemote(
             origin,
+            DEFAULT_AGENT,
             ctx.cwd,
             await resolveResumeCommand(origin, behavior.resumeCommandRemote),
             mods,
@@ -1645,6 +1651,8 @@ export class HistoryView {
         const launchId = await launchLocal(
           {
             action: { kind: "new" },
+            // 程序还不能选 ⇒ 起默认那一家。
+            agent: DEFAULT_AGENT,
             cwd: ctx.cwd,
             launcher: behavior.resumeCommandLocal || null,
             account: localLaunchAccountSync(null),
@@ -1849,6 +1857,7 @@ export class HistoryView {
     // F96：条目行动作上下文（inline 按钮与右键菜单共用）。带活的 entry/project 引用，
     // star/hide/delete 的 run 直接 mutate 它们并同步缓存（与旧 inline 闭包同一对象）。
     const rowCtx: RowActionCtx = {
+      agent: e.agent,
       sessionId: e.sessionId,
       jsonlPath: e.jsonlPath,
       cwd: e.projectPath,

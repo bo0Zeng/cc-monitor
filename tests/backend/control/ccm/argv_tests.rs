@@ -119,6 +119,55 @@ fn the_ways_to_say_resume_all_reach_claude_untouched() {
     );
 }
 
+/// resume 的那条会话按这一家的写法认：Claude 的旗标形（`--resume <sid>` · `--resume=` · `-r`），Codex 的子命令形
+/// （透传第一个词恰是 `resume`）。认错了家（Codex 那一趟里的 `--resume`、Claude 那一趟里的首词 `resume`）不算。
+#[test]
+fn the_resumed_session_is_read_the_way_that_agent_resumes() {
+    assert_eq!(ok(&["--resume", "s1"]).resumes.as_deref(), Some("s1"));
+    assert_eq!(ok(&["--resume=s1"]).resumes.as_deref(), Some("s1"));
+    assert_eq!(ok(&["-r", "s1"]).resumes.as_deref(), Some("s1"));
+    assert_eq!(ok(&["resume", "s1"]).resumes, None);
+    let codex = |a: &[&str]| {
+        let mut w = v(a);
+        w.extend(v(&["--", "--ccm-agent", "codex"]));
+        match crate::control::ccm::argv::parse(&w).expect("该解析得动") {
+            Parsed::Opts(o) => *o,
+            other => panic!("{other:?}"),
+        }
+    };
+    assert_eq!(codex(&["resume", "s1"]).resumes.as_deref(), Some("s1"));
+    assert_eq!(codex(&["resume", "s1"]).passthru, v(&["resume", "s1"]));
+    assert_eq!(codex(&["resume", "--last"]).resumes, None);
+    assert_eq!(codex(&["--resume", "s1"]).resumes, None);
+    assert_eq!(codex(&["exec", "resume", "s1"]).resumes, None);
+}
+
+/// 没有账号这一维的那一家（Codex）：`--account` / `--account-dir` 明说不行（从前静默导出一个它不读的变量）；`--base` 照收。
+#[test]
+fn an_agent_without_accounts_refuses_to_pick_one() {
+    let want = "codex 还没有账号可选：不收 --account / --account-dir（--base 照收）";
+    let said = |a: &[&str]| match crate::control::ccm::argv::parse(&v(a)) {
+        Err(Die(m)) => m,
+        other => panic!("{a:?} 该被拒：{other:?}"),
+    };
+    assert_eq!(
+        said(&["--", "--ccm-agent", "codex", "--account", "b"]),
+        want
+    );
+    assert_eq!(
+        said(&[
+            "--",
+            "--ccm-agent",
+            "codex",
+            "--account-dir",
+            "/h/.cc-monitor/accounts/b"
+        ]),
+        want
+    );
+    assert!(ok(&["--ccm-agent", "codex", "--base"]).use_base);
+    assert_eq!(ok(&["--account", "b"]).account, "b");
+}
+
 /// `--attach <名>` 取值时不许把下一个旗标吞成名字（从前位置动作 `attach <名>` 那一条的同形）。
 #[test]
 fn the_attach_option_never_swallows_the_next_flag_as_its_value() {

@@ -16,6 +16,7 @@ export type CliWireContainer = { kind: "none" } | { kind: "tmux"; name: string; 
 export type CliWireAccount = { kind: "base" } | { kind: "account"; name: string | null; configDir: string | null };
 
 export interface CliRenderRequest {
+  agent: string;
   action: CliWireAction;
   container: CliWireContainer;
   cwd: string | null;

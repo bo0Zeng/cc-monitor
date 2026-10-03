@@ -387,34 +387,45 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
     Ok(Parsed::Opts(Box::new(finish(o)?)))
 }
 
-/// 逐词落完之后的收尾：认 resume、认是哪一家、组合校验。[`parse`] 与别名校验（`assets/aliases::check_alias`）共用。
+/// 逐词落完之后的收尾：认是哪一家、按那一家的写法认 resume、组合校验。[`parse`] 与别名校验（`assets/aliases::check_alias`）共用。
 pub(crate) fn finish(mut o: Opts) -> Result<Opts, Die> {
-    o.resumes = resume_sid(&o.passthru).map(str::to_string);
     // 哪一家：空 ⇒ 默认那一家；注册表里没有 ⇒ 报错、列出认得的几家（不落默认）。下游只见解析好的 kind。
-    o.agent = crate::agents::pick_kind(Some(&o.agent))
-        .map_err(Die)?
-        .0
-        .to_string();
+    let (kind, face) = crate::agents::pick_kind(Some(&o.agent)).map_err(Die)?;
+    o.agent = kind.to_string();
+    o.resumes = resume_sid(&o.passthru, face.resume_token).map(str::to_string);
     validate(&o)?;
     Ok(o)
 }
 
-/// 透传里 claude 的 `--resume <值>` / `--resume=<值>` / `-r <值>`（最后一个算；claude 自己的 `--` 之后不看）。
-/// 值可能是 claude 的搜索词而不是 sid —— 那只会对不上快照里任何 `@ccm_sid`，不误伤。
-pub(crate) fn resume_sid(passthru: &[String]) -> Option<&str> {
+/// 透传里 resume 的那条会话，按这一家的 resume 写法认（`token` ＝ `LaunchFace::resume_token`）：
+/// - 旗标形（`--` 开头）：`<token> <值>` / `<token>=<值>` / `-r <值>`（最后一个算；agent 自己的 `--` 之后不看）；
+/// - 子命令形：透传第一个词恰是 `<token>` ⇒ 下一个词（不以 `-` 开头才算）。
+///
+/// 值可能是搜索词 / 会话名而不是 sid —— 那只会对不上快照里任何 `@ccm_sid`，不误伤。
+pub(crate) fn resume_sid<'a>(passthru: &'a [String], token: &str) -> Option<&'a str> {
+    if !token.starts_with("--") {
+        return match passthru {
+            [first, v, ..] if first == token && !v.starts_with('-') => Some(v.as_str()),
+            _ => None,
+        };
+    }
     let mut found = None;
     let mut i = 0;
     while let Some(w) = passthru.get(i) {
         match w.as_str() {
             flag::END => break,
-            "--resume" | "-r" => {
+            w if w == token || w == "-r" => {
                 if let Some(v) = passthru.get(i + 1).filter(|v| !v.starts_with('-')) {
                     found = Some(v.as_str());
                     i += 1;
                 }
             }
             w => {
-                if let Some(v) = w.strip_prefix("--resume=").filter(|v| !v.is_empty()) {
+                if let Some(v) = w
+                    .strip_prefix(token)
+                    .and_then(|r| r.strip_prefix('='))
+                    .filter(|v| !v.is_empty())
+                {
                     found = Some(v);
                 }
             }
@@ -432,6 +443,15 @@ fn validate(o: &Opts) -> Result<(), Die> {
     }
     if !o.account_dir.is_empty() && (!o.account.is_empty() || o.use_base) {
         return die(&copy_text("beArgv.validate.accountDirAndAccount", &[]));
+    }
+    // 这一家没有账号这一维 ⇒ 选号说不出：明说，不导出一个它不读的变量（`--base` 照收，什么都不做）。
+    if (!o.account.is_empty() || !o.account_dir.is_empty())
+        && crate::agents::account_env_of(&o.agent).is_none()
+    {
+        return die(copy_text(
+            "beArgv.validate.agentNoAccounts",
+            &[("agent", &o.agent.to_string())],
+        ));
     }
     if o.detach && !o.use_tmux {
         return die(&copy_text("beArgv.validate.detachNeedsTmux", &[]));

@@ -375,7 +375,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // 主线 1504 → 1506：上游搜索命中那一格改走 `data-kind`（多一行注释、一句拆两句），这一处本身没动。
   // 1515 → 1516：`history.ts` 多一行 import（`launch-arrival`），这一处本身没动。
   // 1516 → 1517：全文搜索那一处多一行注释（条数上限不在前端写），这一处本身没动。
-  "src/frontend/ui/views/history.ts:1548":
+  // 1548 → 1551：`history.ts` 多两行 import（按会话的那一家恢复）＋ 搜索卡片多一格 `agent`，这一处本身没动。
+  "src/frontend/ui/views/history.ts:1551":
     "`e.hidden = updated.hidden` —— 这一处根本不是「切某个组件的显隐」，是在把一条会话记录的 `hidden` 字段往回写",
 } as const;
 

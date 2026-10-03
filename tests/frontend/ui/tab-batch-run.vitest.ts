@@ -133,9 +133,9 @@ describe("批量起：账号跟随同单个那条、每台只取一次清单", (
           mode: "tmux",
           local: false,
           items: [
-            { sid: "c", cwd: "/w/c", account: { kind: "named", name: "work", configDir: "/h/.cc/work" }, model: "opus", launcher: "claude", defaultLauncher: "claude" },
+            { agent: "claude", sid: "c", cwd: "/w/c", account: { kind: "named", name: "work", configDir: "/h/.cc/work" }, model: "opus", launcher: "claude", defaultLauncher: "claude" },
             // 没有 pin 的那一个跟当前号（同单个那条的跟随），不是跳过。
-            { sid: "f", cwd: "/w/f", account: { kind: "named", name: "work", configDir: "/h/.cc/work" }, model: "opus", launcher: "claude", defaultLauncher: "claude" },
+            { agent: "claude", sid: "f", cwd: "/w/f", account: { kind: "named", name: "work", configDir: "/h/.cc/work" }, model: "opus", launcher: "claude", defaultLauncher: "claude" },
           ],
         },
       ],

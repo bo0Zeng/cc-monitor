@@ -31,6 +31,7 @@ const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
 function mk(sid: string, updatedAt: number, hitCount: number, origin?: string): SessionHits {
   return {
+    agent: "claude",
     sessionId: sid,
     projectPath: "/p",
     projectName: "p",
@@ -47,6 +48,7 @@ function mk(sid: string, updatedAt: number, hitCount: number, origin?: string): 
 /** 后端 `--search` 的一行（不带 origin）。 */
 function row(sid: string, updatedAt: number, hitCount: number): string {
   return JSON.stringify({
+    agent: "claude",
     sessionId: sid,
     projectPath: "/p",
     projectName: "p",
@@ -125,7 +127,7 @@ describe("合并问本机后端", () => {
 
 describe("后端 `--search` 的逐行", () => {
   it("后端那一行（camelCase，不带 origin）解得出来，并补上那台的 origin", () => {
-    const line = `{"sessionId":"s9","projectPath":"/home/pi/p","projectName":"p","jsonlPath":"/home/pi/.claude/projects/p/s9.jsonl","title":"标题","updatedAt":123,"hitCount":2,"hits":[{"uuid":"u1","tsMs":5,"kind":"user","before":"b","matched":"m","after":"a"}]}`;
+    const line = `{"agent":"claude","sessionId":"s9","projectPath":"/home/pi/p","projectName":"p","jsonlPath":"/home/pi/.claude/projects/p/s9.jsonl","title":"标题","updatedAt":123,"hitCount":2,"hits":[{"uuid":"u1","tsMs":5,"kind":"user","before":"b","matched":"m","after":"a"}]}`;
     const [sh] = parseSessionHitsLines([line], "pi");
     expect(sh.sessionId).toBe("s9");
     expect(sh.hitCount).toBe(2);
@@ -138,12 +140,12 @@ describe("后端 `--search` 的逐行", () => {
   });
 
   it("坏行跳过、不毁整次（不是 JSON / 缺字段 / 命中里有一格坏）", () => {
-    const good = `{"sessionId":"a","projectPath":"/p","projectName":"p","jsonlPath":"/a.jsonl","title":"t","updatedAt":1,"hitCount":0,"hits":[]}`;
+    const good = `{"agent":"claude","sessionId":"a","projectPath":"/p","projectName":"p","jsonlPath":"/a.jsonl","title":"t","updatedAt":1,"hitCount":0,"hits":[]}`;
     const got = parseSessionHitsLines(
       [
         "not json",
         `{"sessionId":"b"}`,
-        `{"sessionId":"c","projectPath":"/p","projectName":"p","jsonlPath":"/c.jsonl","title":"t","updatedAt":1,"hitCount":1,"hits":[{"uuid":"u"}]}`,
+        `{"agent":"claude","sessionId":"c","projectPath":"/p","projectName":"p","jsonlPath":"/c.jsonl","title":"t","updatedAt":1,"hitCount":1,"hits":[{"uuid":"u"}]}`,
         good,
       ],
       "pi",

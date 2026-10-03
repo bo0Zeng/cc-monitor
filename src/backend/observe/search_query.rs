@@ -4,7 +4,7 @@
 //! backend 在远端 CPU 上扫 `<claude_dir>/projects/**/*.jsonl`、做服务端搜索（避免拉
 //! 整库回本地），输出**每命中会话一行** camelCase JSON（与 monitor `search::SessionHits`
 //! 形状严格一致，可直接反序列化）：
-//! `{sessionId,projectPath,projectName,jsonlPath,title,updatedAt,hitCount,hits:[{uuid,tsMs,kind,before,matched,after}]}`
+//! `{agent,sessionId,projectPath,projectName,jsonlPath,title,updatedAt,hitCount,hits:[{uuid,tsMs,kind,before,matched,after}]}`
 //!
 //! 🔴 语义与本地 `../../bridge/src/search.rs` **不是「对齐」，是同一份**：
 //! 抽取 / 匹配 / snippet 的 12 个助手、4 个口径常量、snippet 预算与预算顺序只有一个家 ——通用那一半住
@@ -720,6 +720,8 @@ fn session_hits_in(
         &session_id,
     );
     Some(serde_json::json!({
+        // 全文搜索只扫记录树（`projects/`）⇒ 命中的会话都是记录树那一家的。
+        "agent": crate::agents::record_tree_kind().unwrap_or_default(),
         "sessionId": session_id,
         "projectPath": project_path,
         "projectName": project_name,
