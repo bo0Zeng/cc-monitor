@@ -109,8 +109,9 @@ fn injection_attempts_arrive_as_plain_args_in_bash() {
         "it's",
         "\"$@\"",
     ];
+    // 载体是交给 claude 的词（原样放行）；ccm 自己的值（账号名 …）另有字符集，ccm 运行时就拒这些。
     for v in evil {
-        let a = al("evil", &["--account", v]);
+        let a = al("evil", &["--model", v]);
         assert_eq!(check_alias(&a, P), Ok(()), "{v:?}");
         let script = format!(
             "ccm() {{ printf '%s\\n' \"$@\"; }}\n{}\nevil\n",
@@ -271,39 +272,26 @@ fn the_generated_file_is_byte_stable() {
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 本文件的夹具把 ccm 选项与 claude 的词混写 ⇒ 这里换成 `<交给 claude 的…> -- <ccm 自己的…>` 排列，
-/// 意图逐词不变。ccm 的词 = [`ALIAS_FLAGS`] ∪ [`NOT_IN_ALIASES`] ∪ `--ccm-tmux=…`。
+/// 意图逐词不变。哪个词是 ccm 的、跟几个值，问 ccm 自己的解析器（缺值的照原样只放那一个词）。
 fn al(name: &str, args: &[&str]) -> Alias {
+    use crate::control::ccm::argv;
+    let words: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     let (mut left, mut right) = (Vec::new(), Vec::new());
     let mut i = 0;
-    while i < args.len() {
-        let w = args[i];
+    while i < words.len() {
+        let w = &words[i];
         if w == "--" {
-            left.extend(args[i + 1..].iter().map(|s| s.to_string()));
+            left.extend(words[i + 1..].iter().cloned());
             break;
         }
-        let takes = ALIAS_FLAGS
-            .iter()
-            .find(|(f, _)| *f == w)
-            .map(|(_, t)| *t)
-            .or_else(|| {
-                NOT_IN_ALIASES
-                    .contains(&w)
-                    .then_some(usize::from(w == "--ccm-sid"))
-            });
-        match takes {
-            _ if w.starts_with("--ccm-tmux=") => right.push(w.to_string()),
-            Some(t) => {
-                right.push(w.to_string());
-                for _ in 0..t {
-                    if i + 1 < args.len() {
-                        i += 1;
-                        right.push(args[i].to_string());
-                    }
-                }
-            }
-            None => left.push(w.to_string()),
+        if !argv::is_ccm_word(w) {
+            left.push(w.clone());
+            i += 1;
+            continue;
         }
-        i += 1;
+        let n = argv::word_at(&words, i).map_or(1, |g| g.len);
+        right.extend(words[i..i + n].iter().cloned());
+        i += n;
     }
     if !right.is_empty() || left.iter().any(|w| w == "--") {
         left.push("--".into());
@@ -530,6 +518,44 @@ fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
     assert_eq!(r.problems.len(), 1);
 }
 
+/// 别名放行的，ccm 起会话时也得收：一条别名就是一条 ccm argv，合法与否只问 ccm 自己的解析器。
+/// 这几条 ccm 运行时会拒（尺寸不是数字 · 账号名带空格 · 值像漏了参数），别名这一侧不许先放行。
+#[test]
+fn an_alias_is_valid_only_if_ccm_itself_takes_its_argv() {
+    let ccm_takes = |a: &Alias| {
+        let mut argv = a.args.clone();
+        if a.rest_to == RestTo::Ccm {
+            argv.push("cc-x".into()); // 调用时跟上的那个词
+        }
+        crate::control::ccm::argv::parse(&argv).is_ok()
+    };
+    let corpus = [
+        al("s1", &["--ccm-tmux", "--tmux-size", "abc"]),
+        al("s2", &["--account", "a b"]),
+        al(
+            "s3",
+            &[
+                "--ccm-tmux",
+                "--detach",
+                "--bus-register",
+                "--bus-note",
+                "-x",
+            ],
+        ),
+        al("s4", &["--ccm-tmux", "--tmux-base", "-w"]),
+        al("s5", &["--ccm-tmux", "--tmux-size", "80x24"]),
+        al("s6", &["--account", "z", "--cwd", "/srv"]),
+    ];
+    for a in &corpus {
+        if check_alias(a, P).is_ok() {
+            assert!(ccm_takes(a), "别名放行了一条 ccm 不收的：{:?}", a.args);
+        }
+    }
+    // 正控：ccm 收的这两条，别名这一侧也收（上面那条不是靠全拒绿的）。
+    assert_eq!(check_alias(&corpus[4], P), Ok(()));
+    assert_eq!(check_alias(&corpus[5], P), Ok(()));
+}
+
 /// `--cwd-if` 两个目录都许 `~` 打头或绝对（不含 `..`）；接回会话那一形（调用时的词交给 ccm）只许单放 `--attach`，
 /// 没有 tmux 的目标拒（能力闸先说）。真 bash 执行：`cca foo` 到 ccm 手里是 `-- --attach foo`。
 #[test]
@@ -690,7 +716,7 @@ fn every_alias_flag_is_a_real_ccm_flag() {
     let usage_src = copy_core::copy_text("beCcm.usage.body", &[]);
     let from = guard_core::find_pinned(&usage_src, "选项\n").expect("用法里「选项」那一段锚不住");
     let usage = &usage_src[from..];
-    for (flag, _) in ALIAS_FLAGS {
+    for flag in ALIAS_FLAGS {
         assert!(
             usage.contains(&format!("  {flag} ")) || usage.contains(&format!("  {flag}[")),
             "`{flag}` 不是后端 ccm 用法里的一个旗标 —— 生成出来就是一条当场报错的别名"
@@ -705,7 +731,7 @@ fn every_alias_flag_is_a_real_ccm_flag() {
         "--help",
     ] {
         assert!(
-            ALIAS_FLAGS.iter().all(|(f, _)| f != &third),
+            !ALIAS_FLAGS.contains(&third),
             "`{third}` 每次取值都不同，做成固定别名没意义（第三档）"
         );
     }
@@ -811,14 +837,17 @@ fn the_tmux_gate_is_exactly_the_backends_tmux_carried_flags() {
                 format!("--{c}")
             }
         })
-        .filter(|f| ALIAS_FLAGS.iter().any(|(a, _)| a == f))
+        .filter(|f| ALIAS_FLAGS.contains(&f.as_str()))
         .collect();
     let got: std::collections::BTreeSet<String> =
         NEEDS_TMUX.iter().map(|s| s.to_string()).collect();
     assert_eq!(got, want, "能力闸与后端的 tmux 载体表对不上");
-    for (flag, takes) in ALIAS_FLAGS {
+    for flag in ALIAS_FLAGS {
+        // 跟几个值问 ccm 的解析器（别名这一侧不另记一份）。
+        let probe = [flag.to_string(), "v".to_string(), "v".to_string()];
+        let takes = crate::control::ccm::argv::word_at(&probe, 0).map_or(0, |g| g.len - 1);
         let mut args = vec![flag.to_string()];
-        for _ in 0..*takes {
+        for _ in 0..takes {
             args.push("v".to_string());
         }
         let e = check_alias(

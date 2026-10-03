@@ -237,7 +237,11 @@ describe("：chip 上的用量面已退役（翻面判据）", () => {
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
     await chip.openMenu();
-    expect(invokeMock).not.toHaveBeenCalled();
+    // 唯一许发的一问是那台的 API key 两格事实（`apikey-routing`，徽章用）；用量那一族一条都不许有。
+    const others = invokeMock.mock.calls.filter(
+      (c) => !(c[0] === "chan_call" && (c[1] as { op?: string })?.op === "apikey-routing"),
+    );
+    expect(others).toEqual([]);
     const actions = [...document.querySelectorAll<HTMLButtonElement>(".account-picker-action")].map(
       (b) => b.textContent,
     );
@@ -296,14 +300,24 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     expect(statusOf(row)).not.toBe("未登录 ⚠");
     expect(statusOf(row)).not.toBe("未登录");
     // title 是 `accountStatusBadge` 给的那一句：等号防漂 + 一句字面量防「两边一起坏」的循环自证。
-    // ⚠〔`K-H2b` `D1 阻-5` 08-28〕chip 现在**明说这一行属于哪一半**：`menuRows` 造的是
-    //    远端那一档（`readRemoteConfig` 给了一台 host）⇒ 这里要拿同样的 scope 去比，
-    //    否则「等号防漂」比的是两句不同的话。
-    expect(row.title).toBe(accountsMod.accountStatusBadge(kk, { scope: "remote" }).title);
+    // `menuRows` 造的是远端那一档，那台的两格事实这里没给（问不到）⇒ 徽章不表态，与缺席那一档同一句。
+    expect(row.title).toBe(accountsMod.accountStatusBadge(kk).title);
     expect(row.title).toContain("请求会在 claude 那边报鉴权失败");
     // ★ 第三轮：这一格**本来就该是警示态**（选得中却连不上），警示由 `.warn` 类呈现 ——
     // 文本里一个字形都不拼，所以上面那三条 `not.toBe` 与这一条并不打架。
     expect(warnOf(row), "api-key 那格没拿到 warn 类 ⇒ 用户看到的是一句普通灰字").toBe(true);
+  });
+
+  it("★ 远端那一台：问的是那台（本机远端同一条路），那台答「表里有行 · 中转在跑」⇒「经中转」", async () => {
+    const kk = acct({ name: "kk", configDir: "/h/.cc-monitor/accounts/kk", authKind: "api-key", loggedIn: false, authReady: true });
+    const spy = vi
+      .spyOn(readsMod, "fetchMachineApikeyRouting")
+      .mockResolvedValue({ routed: ["/h/.cc-monitor/accounts/kk"], running: true });
+    const items = await menuRows([acct({ name: "wei" }), kk], "wei");
+    expect(statusOf(rowOf(items, "kk"))).toBe("API key（经中转）");
+    expect(warnOf(rowOf(items, "kk"))).toBe(false);
+    expect(spy.mock.calls.map((c) => c[0])).toEqual([pickPrimaryOrigin([host({ label: "devbox" })])]);
+    spy.mockRestore();
   });
 
   it("Y3 阴性对照①：in-place ⇒「逃生口」", async () => {
@@ -311,7 +325,7 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     const items = await menuRows([esc, acct({ name: "wei" })], "wei");
     const row = rowOf(items, "esc");
     expect(statusOf(row)).toBe("不支持切换");
-    expect(row.title).toBe(accountsMod.accountStatusBadge(esc, { scope: "remote" }).title);
+    expect(row.title).toBe(accountsMod.accountStatusBadge(esc).title);
     expect(row.title).toContain("in-place 模式");
     // 这一格断的是 `accountStatusBadge` **实际给的** `warn` 值 —— 实读 `src/frontend/ui/accounts.ts:185-191`：
     // in-place 那一支逐字 `warn: true`（它「选得中但不支持按会话切号」，同样是警示态）。
@@ -327,7 +341,7 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     expect(statusOf(row)).not.toBe("已登录");
     // 这一句 title 与替换前**逐字相同**（见下面那条「真发现」里贴的替换前三句）。
     expect(row.title).toBe("该账号尚未登录——请在终端里用它 /login");
-    expect(row.title).toBe(accountsMod.accountStatusBadge(old, { scope: "remote" }).title);
+    expect(row.title).toBe(accountsMod.accountStatusBadge(old).title);
     // ★ 第三轮：第二轮丢掉的那个 ⚠ 就补在这儿 —— 不是拼回文本，是拿到 `.warn` 类。
     expect(warnOf(row), "订阅号缺凭据那格没拿到 warn 类 ⇒ 「未登录」丢了警示呈现").toBe(true);
   });
@@ -340,7 +354,7 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     // 替换前这一支**不设** `row.title`（读作空串）；`accountStatusBadge` 给的 title 是 ""
     // ⇒ 读数逐字相同（差别只在 DOM 上多了个空的 `title` 属性，用户看不见）。
     expect(row.title).toBe("");
-    expect(row.title).toBe(accountsMod.accountStatusBadge(wei, { scope: "remote" }).title);
+    expect(row.title).toBe(accountsMod.accountStatusBadge(wei).title);
     // ★ 第三轮的**阴性对照**：健康态一格不上色（`.accounts-row-badge` 那条注释逐字的道理 ——
     // 恒真的信息不携带信息，涂它只会稀释真正要跳出来的那几档）。无条件加类会在这儿红。
     expect(warnOf(row), "已登录不该上警示色 —— 那说明 warn 被无条件加上了").toBe(false);
@@ -420,8 +434,7 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
 // ★★ 它治的是两条**同源**的病：
 // ① `阻-4`：本文件此前两处注释写着「远端全关掉时这里渲染的就是本机账号」——**是假的**。
 //    `fetchAccounts` 只问 `list_remote_accounts`，`origin` 为 `null` 时 `refresh` 整个隐藏。
-// ② `阻-5`：于是 `KH2B7` 那三态**在用户看得见的地方一处都没落地**
-//    （`fetchLocalApikeyRouting` / `localApikeyEndpointStateFor` 生产调用方各 0）。
+// ② `阻-5`：于是 `KH2B7` 那三态**在用户看得见的地方一处都没落地**（取值函数当时生产调用方为 0）。
 // ⇒ 本组既钉「本机那几行真的渲染出来了」，也钉「三态真的分得开」。
 describe("K-H2b D1 阻-5：没有远端时 chip 渲染本机账号，徽章带 apikey 端点三态", () => {
   /** 起一个「没有远端」的 chip，本机账号由 `fetchLocalAccounts` 给、routing 由那条命令给。 */
@@ -437,7 +450,7 @@ describe("K-H2b D1 阻-5：没有远端时 chip 渲染本机账号，徽章带 a
     vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue(
       state({ accounts, defaultName: accounts[0]?.name ?? "" }),
     );
-    const spy = vi.spyOn(readsMod, "fetchLocalApikeyRouting");
+    const spy = vi.spyOn(readsMod, "fetchMachineApikeyRouting");
     if (routing === "fail") spy.mockRejectedValue(new Error("问不到"));
     else spy.mockResolvedValue(routing);
     const chip = new AccountChip({ openSettings: () => {} });
@@ -460,9 +473,9 @@ describe("K-H2b D1 阻-5：没有远端时 chip 渲染本机账号，徽章带 a
   it("★★ 三态在 DOM 上真的分得开（表里有行 + 中转在跑 / 表里有行 + 没跑 / 表里没行）", async () => {
     const A = apiKey("acct-a", "/h/.claude-alt/acct-a");
     const B = apiKey("acct-b", "/h/.claude-alt/acct-b");
-    // ① 有行 + 在跑 ⇒ 「经本机中转」；同一趟里 B 没行 ⇒ 「未配置端点」（非空对照就在同一趟）。
+    // ① 有行 + 在跑 ⇒ 「经中转」；同一趟里 B 没行 ⇒ 「未配置端点」（非空对照就在同一趟）。
     let items = await localMenuRows([A, B], { routed: ["/h/.claude-alt/acct-a"], running: true });
-    expect(statusOf(rowOf(items, "acct-a"))).toBe("API key（经本机中转）");
+    expect(statusOf(rowOf(items, "acct-a"))).toBe("API key（经中转）");
     expect(statusOf(rowOf(items, "acct-b"))).toBe("API key（未配置端点）");
     // ② 只把「中转在不在跑」翻过来 ⇒ 第三档。
     items = await localMenuRows([A, B], { routed: ["/h/.claude-alt/acct-a"], running: false });

@@ -1419,11 +1419,6 @@
       "zh": "auth_style 是这把 key 交给上游时用哪种鉴权头。留空用默认；写了认不出的词不会被当成默认，后端起来时会说出来，并列出认得的几个值。本地部署不校验凭据的，就选不发鉴权头的那个值。",
       "args": []
     },
-    "beResident.fs.noParent": {
-      "kind": "error",
-      "zh": "{path} 没有上一级目录。",
-      "args": ["path"]
-    },
     "beResident.fs.mkdirFailed": {
       "kind": "error",
       "zh": "建目录 {dir} 失败：{e}",
@@ -11209,41 +11204,6 @@
       "zh": "同一个名字出现了两次 —— 后一条会盖掉前一条",
       "args": []
     },
-    "rsAccountAliases.check.sizeNeedsTmux": {
-      "kind": "error",
-      "zh": "--tmux-size 与 --detach 只在 tmux 里起的时候有意义",
-      "args": []
-    },
-    "rsAccountAliases.check.noteNeedsRegister": {
-      "kind": "error",
-      "zh": "--bus-note 要和 --bus-register 一起用",
-      "args": []
-    },
-    "rsAccountAliases.check.busNeedsDetach": {
-      "kind": "error",
-      "zh": "--bus-register 要和 --detach 一起用",
-      "args": []
-    },
-    "rsAccountAliases.check.tmuxXorBase": {
-      "kind": "error",
-      "zh": "--ccm-tmux=<名> 与 --tmux-base 只能选一个",
-      "args": []
-    },
-    "rsAccountAliases.check.accountXorBase": {
-      "kind": "error",
-      "zh": "--account 与 --base 只能选一个",
-      "args": []
-    },
-    "rsAccountAliases.check.missingValue": {
-      "kind": "error",
-      "zh": "{flag} 后面缺一个值",
-      "args": ["flag"]
-    },
-    "rsAccountAliases.check.notCcmFlag": {
-      "kind": "error",
-      "zh": "-- 右边只放 ccm 自己的选项，{word} 不是；交给 claude 的参数写在 -- 左边",
-      "args": ["word"]
-    },
     "rsAccountAliases.check.notAllowed": {
       "kind": "error",
       "zh": "{word} 不能放进别名（这个选项每次现敲）",
@@ -11262,11 +11222,6 @@
     "rsAccountAliases.check.attachAlone": {
       "kind": "error",
       "zh": "接回 tmux 会话的那一条只能单放 --attach，会话名在敲的时候跟上",
-      "args": []
-    },
-    "rsAccountAliases.check.tmuxNoName": {
-      "kind": "error",
-      "zh": "--ccm-tmux= 后面缺会话名",
       "args": []
     },
     "rsAccountAliases.check.noTmux": {
@@ -13619,12 +13574,7 @@
     },
     "accounts.badge.whyUnknown": {
       "kind": "body",
-      "zh": "无法判断端点是否已配置。两件事都成立才会替它配好：凭据文件里有这个账号的一行，本机中转在跑。",
-      "args": []
-    },
-    "accounts.badge.whyRemote": {
-      "kind": "body",
-      "zh": "key 可以存到远端那台机器上。但远端起的会话不经中转换上它，只有本机会话会。要用这个号，先在远端那台机器上自己配好第三方端点。",
+      "zh": "无法判断端点是否已配置。两件事都成立才会替它配好：凭据文件里有这个账号的一行，这台机器上的中转在跑。",
       "args": []
     },
     "accounts.badge.whyNoRow": {
@@ -13634,7 +13584,7 @@
     },
     "accounts.badge.apikeyRelayDownHint": {
       "kind": "body",
-      "zh": "本机中转没在运行，起会话会被当场拒掉。先启动本机后端。",
+      "zh": "这台机器上的中转没在运行，起会话会被当场拒掉。先启动这台机器上的后端。",
       "args": []
     },
     "accounts.badge.apikeyRelayDown": {
@@ -13644,12 +13594,12 @@
     },
     "accounts.badge.apikeyRelayedHint": {
       "kind": "body",
-      "zh": "已配置：本机会话经本机中转发送请求。后端按凭据文件里这一行换上 key；key 本身对不对，要到 claude 那边才知道。",
+      "zh": "已配置：会话经这台机器上的中转发送请求。按凭据文件里这一行换上 key；key 本身对不对，要到 claude 那边才知道。",
       "args": []
     },
     "accounts.badge.apikeyRelayed": {
       "kind": "body",
-      "zh": "API key（经本机中转）",
+      "zh": "API key（经中转）",
       "args": []
     },
     "accounts.badge.inPlaceHint": {
@@ -14072,11 +14022,6 @@
       "zh": "本机后端没有启动：端口 {port} 上已有的后端接不上（{why}）。结束那个进程再重开 cc-monitor 就行，它的进程号记在 {pidPath}。",
       "args": ["port", "why", "pidPath"]
     },
-    "rsLocalBackendHost.start.noToken": {
-      "kind": "error",
-      "zh": "拿不到连接用的钥匙（{e}），没有起后端",
-      "args": ["e"]
-    },
     "rsLocalBackendHost.stream.lost": {
       "kind": "error",
       "zh": "和本机后端的连接断了",
@@ -14176,21 +14121,6 @@
       "kind": "error",
       "zh": "端口上的程序答的第一行不是后端的回答（{bytes} 字节）",
       "args": ["bytes"]
-    },
-    "rsLocalBackendHost.fs.writeFailed": {
-      "kind": "error",
-      "zh": "写 {path} 失败：{e}",
-      "args": ["path", "e"]
-    },
-    "rsLocalBackendHost.token.noRandom": {
-      "kind": "error",
-      "zh": "取不到系统随机数（{e}），生成不了本机后端的连接钥匙",
-      "args": ["e"]
-    },
-    "rsLocalBackendHost.fs.createFailed": {
-      "kind": "error",
-      "zh": "建 {path} 失败：{e}",
-      "args": ["path", "e"]
     },
     "rsLocalBackendHost.token.empty": {
       "kind": "error",

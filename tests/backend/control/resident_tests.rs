@@ -10,18 +10,16 @@ fn scratch(tag: &str) -> PathBuf {
     d
 }
 
-/// H5：钥匙出生即只给本人、第二次读回同一把；子进程的环境里只有钥匙文件的**路径**，没有钥匙本身。
+/// H5：钥匙出生即只给本人、每次起都换一把（盘上就是新的那一把）；子进程的环境里只有钥匙文件的**路径**，没有钥匙本身。
 #[test]
-fn the_token_is_private_stable_and_never_handed_through_the_environment() {
+fn the_token_is_private_fresh_each_start_and_never_handed_through_the_environment() {
     let home = scratch("tok");
     let path = home.join(relay_route_core::LISTEN_TOKEN_FILE_REL);
-    let t1 = ensure_token(&path).expect("铸不出钥匙");
+    let t1 = rotate_token(&path).expect("铸不出钥匙");
     assert_eq!(t1.len(), 2 * TOKEN_BYTES);
-    assert_eq!(
-        ensure_token(&path).unwrap(),
-        t1,
-        "第二次没读回同一把 —— 已在跑的常驻后端会接不上"
-    );
+    let t2 = rotate_token(&path).unwrap();
+    assert_ne!(t2, t1, "再起一次没换钥匙 —— 旧环境里漏出去的那把还认");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), t2);
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
@@ -38,7 +36,7 @@ fn the_token_is_private_stable_and_never_handed_through_the_environment() {
         ],
     );
     assert!(
-        env.iter().all(|(_, v)| !v.contains(&t1)),
+        env.iter().all(|(_, v)| !v.contains(&t2)),
         "钥匙进了子进程的环境：{env:?}"
     );
     let names: Vec<&str> = env.iter().map(|(k, _)| k.as_str()).collect();
@@ -87,13 +85,12 @@ fn env_of<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String
     }
 }
 
-/// 远端 `--resident-ensure` 那一形：钥匙在文件里（env 只有路径）⇒ 读出来就是常驻；文件空 / 读不动 ⇒ 拒（fail closed）。
+/// 钥匙在文件里（env 只有路径）⇒ 常驻；读那份文件：空 / 读不动 ⇒ 拒（`--resident-ensure` 回给客户端的就是它）。
 #[test]
 fn a_token_file_gives_listen_mode_and_an_empty_one_is_refused() {
     let dir = std::env::temp_dir().join(format!("ccm-listen-tokfile-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let f = dir.join("listen-token");
-    std::fs::write(&f, "abc123\n").unwrap();
     let path = f.to_string_lossy().into_owned();
     let m = crate::stream::listen::mode_from(&env_of(&[
         (crate::stream::listen::ENV_PORT, "51000"),
@@ -101,18 +98,21 @@ fn a_token_file_gives_listen_mode_and_an_empty_one_is_refused() {
     ]))
     .unwrap();
     assert_eq!(
-        crate::stream::listen::resolve(m).unwrap(),
-        Some((51000, "abc123".to_string()))
+        m,
+        crate::stream::listen::Mode::Listen {
+            port: 51000,
+            token_file: path.clone()
+        }
+    );
+    std::fs::write(&f, "abc123\n").unwrap();
+    assert_eq!(
+        crate::stream::listen::token_from_file(&path).unwrap(),
+        "abc123"
     );
     std::fs::write(&f, " \n").unwrap();
-    let m = crate::stream::listen::mode_from(&env_of(&[
-        (crate::stream::listen::ENV_PORT, "51000"),
-        (crate::stream::listen::ENV_TOKEN_FILE, &path),
-    ]))
-    .unwrap();
     assert!(
-        crate::stream::listen::resolve(m).is_err(),
-        "空钥匙文件也起了一个口"
+        crate::stream::listen::token_from_file(&path).is_err(),
+        "空钥匙文件也认了"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }

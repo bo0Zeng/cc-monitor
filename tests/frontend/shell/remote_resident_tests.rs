@@ -89,7 +89,11 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
             &[]
         )))
     );
-    assert!(parse_ensured(&serde_json::json!({"port":51000})).is_err());
+    // 刚起了一个 ⇒ 钥匙是它绑上口之后自己写的，答里没有（读到 hello 之后再问一次）；缺端口才算答不全。
+    let fresh = parse_ensured(&serde_json::json!({"port":51000,"token":null,"pid":7})).unwrap();
+    assert_eq!((fresh.port, fresh.token), (51000, None));
+    assert_eq!(parse_ensured(&ok).unwrap().token.as_deref(), Some("ab"));
+    assert!(parse_ensured(&serde_json::json!({"token":"ab"})).is_err());
     assert!(
         !format!("{:?}", parse_ensured(&ok).unwrap()).contains("ab"),
         "钥匙进了 Debug 输出"

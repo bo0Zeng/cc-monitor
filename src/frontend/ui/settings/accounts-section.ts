@@ -10,7 +10,7 @@ import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { emit } from "@tauri-apps/api/event";
 import { openTerminal } from "../terminal-open";
 import { readApikeyStatus, writeApikeyKey, type ApikeyCredentialsStatus, type ApikeyRoutingView } from "../apikey-reads";
-import { LOCAL_ACCOUNTS_COPY, deriveUi, currentWorkingAccount, isSelectable, accountStatusBadge, accountLoginActionLabel, localApikeyEndpointStateFor, type ApikeyEndpointState, type AccountsState, type Account } from "../accounts";
+import { LOCAL_ACCOUNTS_COPY, deriveUi, currentWorkingAccount, isSelectable, accountStatusBadge, accountLoginActionLabel, apikeyEndpointStateFor, type ApikeyEndpointState, type AccountsState, type Account } from "../accounts";
 import { fetchAccounts, fetchLocalAccounts, fetchLocalApikeyRouting, fetchMachineApikeyRouting, invalidateAccountsCache } from "../account-reads";
 import { setDefaultName, getModelForAccount, setModelForAccount } from "../account-prefs";
 import { accountAvatarEl } from "../account-color";
@@ -448,7 +448,7 @@ export class AccountsSection {
     const routing = await this.readLocalRouting(state.accounts);
     for (const a of state.accounts) {
       table.appendChild(
-        this.localRow(a, cur?.name === a.name, routing ? localApikeyEndpointStateFor(a, routing) : undefined),
+        this.localRow(a, cur?.name === a.name, routing ? apikeyEndpointStateFor(a, routing) : undefined),
       );
     }
     box.appendChild(table);
@@ -512,12 +512,8 @@ export class AccountsSection {
   /**
    * 本机清单里的一行。**只读** —— 这一件不做切号，也不做加号。
    *
-   * 徽章的 `endpoint` 从这一拍起**传本机那一半**（`{ scope: "local", … }`，
-   * 由 `localApikeyEndpointStateFor` 从后端答的两格事实摊出来）。原先这里不传，理由是「那要多一条 IPC，属下一件」
-   * —— 那一问早在盘上了，只是这一支没去问（今天经通道问 `apikey-routing`）。
-   * 问不到 / 账号 0（没有 configDir）⇒ 仍然不传，徽章照旧「不替它下判断」。
-   * 🔴 **千万别顺手传 `{ scope: "remote" }`** —— 那会让一台本机的号被解释成远端那一半，
-   * 文案里当场出现「远端」两个字；`NF1bD2` 那条判据正是钉这个的。
+   * 徽章的 `endpoint` 是本机后端答的两格事实（`apikey-routing`，由 `apikeyEndpointStateFor` 摊到这个号上）。
+   * 问不到 / 账号 0（没有 configDir）⇒ 不传，徽章「不替它下判断」。
    */
   private localRow(a: Account, isCurrent: boolean, relay?: ApikeyEndpointState): HTMLElement {
     const row = document.createElement("div");
@@ -795,6 +791,7 @@ export class AccountsSection {
         a,
         def?.name === a.name,
         apikey.entries.find((e) => e.configDir === a.configDir) ?? null,
+        apikey.routing ? apikeyEndpointStateFor(a, apikey.routing) : undefined,
       );
       table.appendChild(row);
       if (editor) table.appendChild(editor);
@@ -909,15 +906,17 @@ export class AccountsSection {
   private async readApikeyState(
     origin: Origin,
     accounts: Account[],
-  ): Promise<{ entries: ApikeyEditorAccount[]; fileBlock: HTMLElement }> {
+  ): Promise<{ entries: ApikeyEditorAccount[]; fileBlock: HTMLElement; routing: ApikeyRoutingView | null }> {
     const dirs = accounts.map((a) => a.configDir).filter((d): d is string => !!d);
-    let routed: string[] = [];
+    let routing: ApikeyRoutingView | null = null;
     try {
       // 问**这一页那台机器**（远端由那台的后端答），不再问本机。
-      routed = dirs.length ? (await fetchMachineApikeyRouting(origin, dirs)).routed : [];
+      const r = dirs.length ? await fetchMachineApikeyRouting(origin, dirs) : null;
+      routing = r && Array.isArray(r.routed) && typeof r.running === "boolean" ? r : null;
     } catch {
-      // 口径①：这一格失败只让状态那一行说「还没有它那一行」，不挡配 key。
+      // 口径①：这一格失败只让状态那一行说「还没有它那一行」、徽章不替它下判断，不挡配 key。
     }
+    const routed = routing?.routed ?? [];
     const entries: ApikeyEditorAccount[] = accounts
       .filter((a): a is Account & { configDir: string } => !!a.configDir)
       .map((a) => ({ name: a.name, configDir: a.configDir, routed: routed.includes(a.configDir) }));
@@ -929,7 +928,7 @@ export class AccountsSection {
       fileBlock.className = "apikey-file-problem";
       fileBlock.textContent = copyText("accounts.readApikey.failed", { e: String(e) });
     }
-    return { entries, fileBlock };
+    return { entries, fileBlock, routing };
   }
 
   /**
@@ -1069,6 +1068,7 @@ export class AccountsSection {
     a: Account,
     isCurrent: boolean,
     apikey: ApikeyEditorAccount | null = null,
+    endpoint?: ApikeyEndpointState,
   ): Promise<{ row: HTMLElement; editor: HTMLElement | null }> {
     const model = await getModelForAccount(origin, a.name); // F07：这台上这个号的默认模型偏好
     const row = document.createElement("div");
@@ -1101,11 +1101,8 @@ export class AccountsSection {
     // 还是「已登录」。
     const badge = document.createElement("span");
     badge.className = "accounts-row-badge";
-    // `K-H2b` `KH2B7`：**这张表是远端专用的** —— `reload` 在 `this.origin` 为空时
-    // 直接早退（「账号功能在远端 Linux 上」），所以这里渲染的每一行都来自远端那一半。
-    // ⇒ 显式告诉徽章是哪一半：远端那一半本件明写不做（`§0e` 裁四），
-    //   它的 hover 该说「只给本机配、远端这一半还不做」，而不是一句不分半边的全称。
-    const status = accountStatusBadge(a, { scope: "remote" });
+    // 这张表是远端那一页的：徽章的两格事实由那台的后端答（那台的 `ccm` 定往哪发、那台的中转换 key —— 与本机同一条路）。
+    const status = accountStatusBadge(a, endpoint);
     badge.textContent = status.text;
     if (status.warn) badge.classList.add("warn");
     if (status.title) badge.title = status.title;

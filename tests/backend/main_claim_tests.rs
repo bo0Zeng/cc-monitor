@@ -1,5 +1,6 @@
 //! `main.rs::claim_then_log`：先抢口，抢到了才接 stderr 落盘。
-//! 要求：口上已有常驻后端时，抢口失败的后起者不碰那两份日志（原先它一起来就把在跑那一个的日志滚走，再来一个就删掉）。
+//! 要求：口上已有常驻后端时，抢口失败的后起者不碰那两份日志（原先它一起来就把在跑那一个的日志滚走，再来一个就删掉）；
+//! 抢到口的那一个每次都换一把新钥匙写回钥匙文件（抢不到的不碰它）。
 
 use super::*;
 
@@ -41,14 +42,34 @@ async fn a_late_starter_that_cannot_claim_the_port_never_touches_the_log() {
     );
     assert_eq!(installs.get(), 0, "监听口配置不成立也接了日志");
 
+    assert_eq!(
+        std::fs::read_to_string(&key).ok().as_deref(),
+        Some("t"),
+        "抢口失败的后起者动了钥匙文件（在跑那一个会接不上）"
+    );
+
     drop(held);
     let (listening, _) = claim_then_log(&listen_env, install)
         .await
         .expect("口空出来了却没抢到");
+    let (p, t) = listening
+        .map(|(_, p, t)| (p.to_string(), t))
+        .expect("该在听");
+    assert_eq!(p, port);
+    // 抢到口的那一个换一把新钥匙：旧环境里漏出去的那把（这里的 "t"）从此不认。
+    assert_ne!(t, "t", "常驻起来没换钥匙");
+    assert_eq!(t.len(), 32, "新钥匙不是 128 位");
     assert_eq!(
-        listening.map(|(_, p, t)| (p.to_string(), t)),
-        Some((port.clone(), "t".to_string()))
+        std::fs::read_to_string(&key).ok().as_deref(),
+        Some(t.as_str()),
+        "盘上那份不是它认的那一把（连上来的客户端读文件会接不上）"
     );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mode = std::fs::metadata(&key).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "钥匙文件不是只给本人");
+    }
     assert_eq!(installs.get(), 1);
     let (listening, _) = claim_then_log(&|_| None, install)
         .await

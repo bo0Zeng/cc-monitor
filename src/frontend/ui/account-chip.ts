@@ -12,11 +12,10 @@
 // ⚠ 那两句假话不是笔误，是**从上一轮报告里抄来没量的**（`己1-f34` 记着这一条）。
 //
 // ★★ `D1 阻-5`：现在它**真的会**渲染本机账号 —— 没有远端时回落到
-// `fetchLocalAccounts`，并且那几行的徽章带上「这个号走不走 apikey 端点改写」的三态
-// （`accountStatusBadge` 的 `{scope:"local",…}`）。在此之前 `KH2B7` 那三态
-// **在用户看得见的地方一处都没落地**（两个取值函数生产调用方各 0）。
-import { localApikeyEndpointStateFor, deriveUi, currentWorkingAccount, accountColorsActive, isSelectable, accountStatusBadge, type AccountsState, type Account } from "./accounts";
-import { fetchAccounts, fetchLocalAccounts, fetchLocalApikeyRouting, invalidateAccountsCache } from "./account-reads";
+// `fetchLocalAccounts`；每一行的徽章带上「这个号走不走 apikey 端点改写」的三态
+// （chip 那一台答的两格事实，本机远端同一条路）。
+import { apikeyEndpointStateFor, deriveUi, currentWorkingAccount, accountColorsActive, isSelectable, accountStatusBadge, type AccountsState, type Account } from "./accounts";
+import { fetchAccounts, fetchLocalAccounts, fetchMachineApikeyRouting, invalidateAccountsCache } from "./account-reads";
 import { setDefaultName } from "./account-prefs";
 import type { ApikeyRoutingView } from "./apikey-reads";
 import { accountAvatarEl } from "./account-color";
@@ -136,13 +135,13 @@ export class AccountChip {
     // chip 显出来、菜单里写一句**远端口吻的假话**「该远端尚未启用多账号」——
     // 而那台「远端」根本不存在。⇒ 本件只该**加**「本机有账号时能看见」，
     // 不该**改**「什么都没有时看不见」。
-    if (this.local && this.state) {
-      // 只问**说得出 configDir** 的那几个（账号 0 没有目录 ⇒ 推不出apikey 表里的 id）。
+    if (this.state) {
+      // 只问**说得出 configDir** 的那几个（账号 0 没有目录 ⇒ 推不出 key 表里的 id）。问的是 chip 这一台（本机远端同一条路）。
       const dirs = this.state.accounts
         .map((a) => a.configDir)
         .filter((d): d is string => typeof d === "string" && d.length > 0);
       try {
-        this.apikeyRouting = dirs.length ? await fetchLocalApikeyRouting(dirs) : null;
+        this.apikeyRouting = dirs.length ? await fetchMachineApikeyRouting(this.origin, dirs) : null;
       } catch {
         // 问不到就**不表态** —— 徽章回落到「只说条件、不下判断」那一档，不猜。
         this.apikeyRouting = null;
@@ -301,15 +300,11 @@ export class AccountChip {
     // 就是本机账号」，而那是假的 —— `fetchAccounts` 只问 `list_remote_accounts`，
     // `origin` 为 `null` 时 `refresh` 整个隐藏并 `return`，一行都渲染不到。〕
     //
-    // ★ `D1 阻-5`：本机那几行带上「走不走 apikey 端点改写」的三态；远端那几行明说是远端那一半。
+    // ★ `D1 阻-5`：每一行带上「走不走 apikey 端点改写」的三态（那台后端答的两格事实，本机远端同一条路）。
     //   问不到 routing（`null`）时**不表态** —— 回落到缺席那一档（只说条件、不下判断）。
     const s = accountStatusBadge(
       a,
-      this.local
-        ? this.apikeyRouting
-          ? localApikeyEndpointStateFor(a, this.apikeyRouting)
-          : undefined
-        : { scope: "remote" },
+      this.apikeyRouting ? apikeyEndpointStateFor(a, this.apikeyRouting) : undefined,
     );
     status.textContent = s.text;
     if (s.warn) status.classList.add("warn");

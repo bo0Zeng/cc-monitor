@@ -595,10 +595,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     parse_font_families: NONE,
     parse_px: NONE,
   },
-  // 前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写 · 窗口夹进工作区；TS 侧零孪生。
+  // 前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写（含交给 Win32 的长路径形）· 窗口夹进工作区；TS 侧零孪生。
   "host-core": {
     atomic_write_json: NONE,
     fit_into_work_area: NONE,
+    win32_long_path: NONE,
   },
   "relay-route-core": {
     // 后端住在 `~/.cc-monitor` 里的那几样的相对路径（后端各写者引它、monitor 数据位置页按它列）；TS 侧没有孪生。

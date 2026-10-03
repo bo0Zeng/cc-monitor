@@ -214,14 +214,13 @@ pub(crate) fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> st
     use windows::core::PCWSTR;
     use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_REPLACE_EXISTING};
 
-    let to_wide = |p: &std::path::Path| -> Vec<u16> {
-        p.as_os_str()
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect()
+    // 带长路径前缀（`host_core::win32_long_path`）：过 260 字符的路径照样换得上。
+    let wide = |p: &std::path::Path| -> std::io::Result<Vec<u16>> {
+        let mut w = host_core::win32_long_path(std::path::absolute(p)?.as_os_str().encode_wide());
+        w.push(0);
+        Ok(w)
     };
-    let src_w = to_wide(src);
-    let dst_w = to_wide(dst);
+    let (src_w, dst_w) = (wide(src)?, wide(dst)?);
     unsafe {
         MoveFileExW(
             PCWSTR(src_w.as_ptr()),

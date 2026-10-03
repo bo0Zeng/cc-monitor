@@ -201,51 +201,32 @@ export interface AccountStatusBadge {
   title: string;
 }
 /**
- * `K-H2b` `KH2B7`：**api-key 号那一格今天不是一态。**
- *
- * 本件之前那句 hover 文案逐字是「cc-monitor 今天还不会替它配 API key 与 base URL」——
- * 本件落地那一刻，它对**一部分号**就成了假话（本机、且apikey 表里有它那一行、且中转在跑
- * 的那些号，cc-monitor **真的**会替它配）。⇒ 按「这个号属于哪一半 / 那两个前置成不成立」
- * 分别说各自的话。
+ * api-key 号那一格：**这个号所在那台机器**（本机 / 远端同一条路：那台的后端答 `apikey-routing`）的两格事实。
+ * 起会话时由那台的 `ccm` 定往哪发、那台的中转按那台 key 表里这一行换上 key ⇒ 两格都成立才替它配好。
  *
  * | `endpoint` | 用户看到 | 那句话为什么是真的 |
  * |---|---|---|
- * | `{scope:"local",hasRow:true,running:true}` | 「api-key（经本机中转）」 | 两个前置都成立 |
- * | `{scope:"local",hasRow:true,running:false}` | 「api-key（中转未运行）」 | 起会话那一侧会**当场拒**（`KH2B2`②） |
- * | `{scope:"local",hasRow:false}` | 「api-key（未配置端点）」 | 表里没有这一行 ⇒ 确实没人替它配 |
- * | `{scope:"remote"}` | 「api-key（未配置端点）」 | **远端那一半本件明写不做**（`§0e` 裁四） |
- * | 缺席 | 「api-key（未配置端点）」 | 调用方没说是哪一半 ⇒ **不替它下判断**，只把条件说清 |
+ * | `{hasRow:true,running:true}` | 「API key（经中转）」 | 两个前置都成立 |
+ * | `{hasRow:true,running:false}` | 「API key（中转未运行）」 | 起会话那一侧会**当场拒** |
+ * | `{hasRow:false}` | 「API key（未配置端点）」 | 表里没有这一行 ⇒ 确实没人替它配 |
+ * | 缺席 | 「API key（未配置端点）」 | 没问到 ⇒ **不替它下判断**，只把条件说清 |
  *
  * ⚠ **不许从「不会配」直接跳成「已登录」** —— 中间隔着这两格。
- *
- * ⚠⚠ **诚实边界（本件没做完的那一格）**：`{scope:"local"}` 那三档今天**没有生产调用方** ——
- * 要把「表里有没有这一行」「中转在不在跑」端到前端，得注册一条**只答本机**的 tauri 命令，
- * 而新注册一条命令会让 `src/frontend/shell/src/parity_ledger.rs` 的
- * `every_tauri_command_is_declared_in_the_ledger` 当场红（本轮实测过，报文点名了那条命令），
- * 那个文件不在 `K-H2b` 的写区。⇒ 两个生产调用点今天分别传 `{scope:"remote"}`（设置里那张表
- * 是**远端专用**的：`accounts-section.ts` 的 `reload` 对 `origin` 为空时直接早退）与
- * 「远端就 `{scope:"remote"}`、本机就缺席」（chip）。
- * **这是「本机那三档有实现、没接线」，别读成「接上了」。** 经过住件文件 `§4`。
  */
-export type ApikeyEndpointState =
-  /** 远端那一半：`K-H2b` `§0e` 裁四明写不做 ⇒ 对它确实没人配端点。 */
-  | { scope: "remote" }
-  /** 本机那一半：两个前置各自成不成立。 */
-  | { scope: "local"; hasRow: boolean; running: boolean };
-
+export type ApikeyEndpointState = { hasRow: boolean; running: boolean };
 
 /**
- * 把上面那份读数落到**一个账号**上。
+ * 把那台机器的读数落到**一个账号**上。
  *
- * `configDir` 缺席（账号 0）⇒ `null`：账号 0 在 manifest 里没有目录名，
- * **推不出apikey 表里的 id** ⇒ 说不出就不表态（与 Rust 侧 `apikey_account_id` 的三态同形）。 〔散文墓碑〕
+ * `configDir` 缺席（账号 0）⇒ `undefined`：账号 0 在 manifest 里没有目录名，
+ * 推不出 key 表里的 id ⇒ 说不出就不表态。
  */
-export function localApikeyEndpointStateFor(
+export function apikeyEndpointStateFor(
   a: Account,
   routing: ApikeyRoutingView,
 ): ApikeyEndpointState | undefined {
   if (!a.configDir) return undefined;
-  return { scope: "local", hasRow: routing.routed.includes(a.configDir), running: routing.running };
+  return { hasRow: routing.routed.includes(a.configDir), running: routing.running };
 }
 
 export function accountStatusBadge(
@@ -260,8 +241,7 @@ export function accountStatusBadge(
     };
   }
   if (a.authKind === "api-key") {
-    const local = endpoint?.scope === "local" ? endpoint : null;
-    if (local?.hasRow && local.running) {
+    if (endpoint?.hasRow && endpoint.running) {
       return {
         text: copyText("accounts.badge.apikeyRelayed"),
         warn: false,
@@ -269,7 +249,7 @@ export function accountStatusBadge(
           copyText("accounts.badge.apikeyRelayedHint"),
       };
     }
-    if (local?.hasRow) {
+    if (endpoint?.hasRow) {
       return {
         text: copyText("accounts.badge.apikeyRelayDown"),
         warn: true,
@@ -277,15 +257,8 @@ export function accountStatusBadge(
           copyText("accounts.badge.apikeyRelayDownHint"),
       };
     }
-    // 三种「没配上」的成因，各说各的 —— **合成一句就等于又写下一句说不准的话**。
-    const why =
-      local != null
-        ? copyText("accounts.badge.whyNoRow")
-        : endpoint?.scope === "remote"
-          ? // 旧句「把 key 送到远端那台机器是另一件事」半过期了：key 今天送得到那台机器上
-            //   （设置里配 key 按页上那台机器写），差的是远端起的会话还不经中转换上它（注入归 4B RL1）。
-            copyText("accounts.badge.whyRemote")
-          : copyText("accounts.badge.whyUnknown");
+    // 两种「没配上」的成因，各说各的 —— 合成一句就等于又写下一句说不准的话。
+    const why = endpoint != null ? copyText("accounts.badge.whyNoRow") : copyText("accounts.badge.whyUnknown");
     return {
       text: copyText("accounts.badge.apikeyNoEndpoint"),
       warn: true,
