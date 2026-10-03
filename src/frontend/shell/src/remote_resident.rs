@@ -1,8 +1,9 @@
 //! **远端常驻后端，monitor 这一侧**（「远端常驻、本机远端同形」·）。
 //!
 //! 与本机宿主（`local_backend_host`）同形的四件：起 · 找 · 只升不降 · 停。设计住仓外。
-//! - 起 · 找：经链路 `capture` 在远端跑 `--resident-ensure`（它无条件起一个脱离的自己；口上已有常驻后端时子进程退 3）→
-//!   回 `{port, token}`；再经链路 `tunnel`（本机常驻后端开 direct-tcpip 到远端回环口）连上去读 hello、交 attach 行。
+//! - 起 · 找：经链路 `capture` 在远端跑 `--resident-ensure`（口上已有常驻后端 ⇒ 回 `{port, token}`；没有 ⇒ 起一个脱离的自己、
+//!   回 `{port, token: null}`，钥匙由它绑上口之后自己写）→ 经链路 `tunnel`（本机常驻后端开 direct-tcpip 到远端回环口）
+//!   连上去读 hello；手上没钥匙就再问一次 `--resident-ensure`（此刻口上有人 ⇒ 回盘上那一把）；交 attach 行。
 //! - 只升不降：hello 的 build 比手上这一版旧 ⇒ `--resident-ensure --replace` 一次；比我新 ⇒ 照接。
 //! 「换不换」由本机常驻后端判（帧命令 `resident-verdict`，与 `deploy-plan` 一家；判定只在后端），这里只照做。
 //! - 停：`--resident-stop`（那台自己做「请它收尾 → 宽限期内等 → 到点强杀」，这里只发一次、拿回 `graceful | killed | not_running`）。
@@ -26,11 +27,11 @@ const TUNNEL_WAIT: Duration = Duration::from_millis(200);
 /// 不认 `--resident-ensure` 的老后端会把它当未知旗标、直接进流模式发 hello ⇒ 见到它就收工、当「太旧」。
 const OLD_BACKEND_MARKER: &str = "\"kind\":\"hello\"";
 
-/// `--resident-ensure` 的答。
+/// `--resident-ensure` 的答。`token` 缺席 = 刚起了一个，钥匙由它绑上口之后自己写（读到 hello 之后再问一次）。
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Ensured {
     pub port: u16,
-    token: String,
+    token: Option<String>,
 }
 
 impl std::fmt::Debug for Ensured {
@@ -113,12 +114,12 @@ fn parse_ensured(v: &serde_json::Value) -> Result<Ensured, String> {
         .and_then(|p| u16::try_from(p).ok())
         .filter(|p| *p != 0);
     let token = v["token"].as_str().filter(|t| !t.is_empty());
-    match (port, token) {
-        (Some(port), Some(t)) => Ok(Ensured {
+    match port {
+        Some(port) => Ok(Ensured {
             port,
-            token: t.to_string(),
+            token: token.map(str::to_string),
         }),
-        _ => Err(copy_text("rsRemoteResident.ensure.answerIncomplete", &[])),
+        None => Err(copy_text("rsRemoteResident.ensure.answerIncomplete", &[])),
     }
 }
 
@@ -360,6 +361,14 @@ pub(crate) async fn attach(cfg: &RemoteConfig, flags: (bool, bool)) -> Result<Re
             ensured = ensure(cfg, true).await?;
             continue;
         }
+        // 刚起的那一个：钥匙是它绑上口之后自己写的（每次起都换一把）⇒ 读到 hello 之后再问一次，读盘上那一份。
+        let token = match ensured.token.take() {
+            Some(t) => t,
+            None => ensure(cfg, false)
+                .await?
+                .token
+                .ok_or_else(|| copy_text("rsRemoteResident.ensure.answerIncomplete", &[]))?,
+        };
         let not_sent = |e: std::io::Error| {
             copy_text(
                 "rsRemoteResident.handshake.attachNotSent",
@@ -367,7 +376,7 @@ pub(crate) async fn attach(cfg: &RemoteConfig, flags: (bool, bool)) -> Result<Re
             )
         };
         r.get_mut()
-            .write_all(attach_line(&ensured.token, flags).as_bytes())
+            .write_all(attach_line(&token, flags).as_bytes())
             .await
             .map_err(not_sent)?;
         r.get_mut().flush().await.map_err(not_sent)?;

@@ -4294,9 +4294,11 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 ⚠ 子命令集少了一条 ⇒ `build_id_guard` 红，合并时 bump `BUILD_ID`。
 
 **远端常驻后端：`--resident-ensure` / `--resident-stop`**（一次性，monitor 经本机常驻后端的链路 `capture` 在远端跑；住 `control/resident.rs`）。
-- `--resident-ensure`（可带 `--replace`）：读回或铸 `<家>/listen-token`（0600，与本机宿主同一份；家 = `~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`）→ 起一个脱离的自己（常驻载体：
+- `--resident-ensure`（可带 `--replace`）：口上已有人在听 ⇒ 不起，stdout 一行 `{"port","token","pid":null}`（`token` = 盘上 `<家>/listen-token` 那一把，
+  它起来时写的；家 = `~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`）；读不动 / 空 ⇒ `no_token`。没人 ⇒ 起一个脱离的自己（常驻载体：
   `CCM_LISTEN_PORT` = `relay_route_core::listen_port_for(家)`（门牌只跟着家走，与 Claude 目录无关）· `CCM_LISTEN_TOKEN_FILE` = 钥匙文件**路径** · `CCM_RELAY_PORT`（远端中转进程内起）·
-  `CCM_BACKEND_STDERR_LOG`）→ stdout 一行 `{"port","token","pid"}`、退出 0。口上已有常驻后端 ⇒ 子进程「绑不上就退 3」，找与起是同一步。
+  `CCM_BACKEND_STDERR_LOG`）→ stdout 一行 `{"port","token":null,"pid"}`、退出 0：钥匙由它绑上口之后自己换一把写进那份文件（0600，原子写），客户端读到 hello 之后再问一次。
+  常驻后端（本机远端同一份）每次绑上口都换一把新钥匙写回钥匙文件，抢不到口的后起者不碰它；连上来的客户端每次读文件。
   `--replace`：先按口上那一位自己记的 `<家>/listen-<口>.pid`（核 `/proc/<pid>/exe`）用下面同一个停法停掉它，再起。
   本机 monitor 停本机常驻后端也走 `--resident-stop`，交的环境与起它时同一份（`local_backend_host::backend_env`：中转口 ·（隔离跑时）家 ·（设置里填了覆盖时）`CLAUDE_CONFIG_DIR`）。
 - `--resident-stop`（可带 `--grace` `<秒>`）：同机监督者 —— 拿进程把手（Linux pidfd）→ 核身份 → SIGTERM →

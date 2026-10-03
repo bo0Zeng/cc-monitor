@@ -129,12 +129,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("bookmarks.rs", "lock_store", None,
      "monitor 自己的状态：文件窗口书签的锁旁件（`<数据目录>/filewin-bookmarks.json.lock`，空文件）"),
     ("atomic.rs", "atomic_replace_path", None, "同上，原语的本地副本"),
-    // ── `K-P1`：常驻那条路要写一样东西。**不是安装动作** —— 写的是这台的家。
-    ("local_backend_host.rs", "ensure_listen_token", None,
-     "写 `<家>/listen-token`（**`0600`**，`create_new` 只创建一次）。\
-          ★ 它买的是**权限位**：回环 TCP 上同机任何进程（含别的用户）都连得上，\
-          Unix socket 有权限位而它没有，收窄只能靠一把钥匙；钥匙落文件、环境里只交文件路径。\
-          幂等：已存在就读回（重写会让上一个宿主留下的那个后端当场变成接不上的孤儿）"),
+    // 钥匙文件那一行摘了：monitor 只交路径、只读，常驻后端绑上口之后自己换一把写进去（`control/resident.rs::rotate_token`）。
     // 「谁在听」那一行摘了：monitor 不再写那份记录，由常驻后端绑上口之后自己记（`control/resident.rs::record_owner`，本机远端同一个写者）。
     // ── 起脱离那条载体之前建好后端 stderr 诊断文件那一层目录。**不是安装动作**。
     ("local_backend_host.rs", "spawn_detached", None,
@@ -467,11 +462,6 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     // 下面第 ② 道把「搬走写盘的那几份文件」里调它也算成一处写）。
     ("atomic.rs", "atomic_write_json", Lands::OwnState),
     ("atomic.rs", "atomic_replace_path", Lands::OwnState),
-    (
-        "local_backend_host.rs",
-        "ensure_listen_token",
-        Lands::OwnState,
-    ),
     // monitor 自己的日志目录下那一层（后端 stderr 诊断文件住那里）。
     ("local_backend_host.rs", "spawn_detached", Lands::OwnState),
     // 文件窗口书签的锁旁件（`<monitor 数据目录>/filewin-bookmarks.json.lock`）——

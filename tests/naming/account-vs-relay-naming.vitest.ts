@@ -175,8 +175,8 @@ export const ACCOUNT_NAMES: AccountName[] = [
   {
     old: "localRelayStateFor",
     re: ident("localRelayStateFor"),
-    fresh: "localApikeyEndpointStateFor",
-    freshRe: ident("localApikeyEndpointStateFor"),
+    fresh: "apikeyEndpointStateFor",
+    freshRe: ident("apikeyEndpointStateFor"),
     kind: "函数",
     why: "把上一条的读数落到一个账号上：这个号的端点改写成不成（有没有行 ＋ 中转在不在跑）",
     state: "done",

@@ -225,6 +225,115 @@ LEFT="$(ours_backends | tr '\n' ' ')"
 if [ -n "${LEFT// /}" ]; then bad "Rust 侧跑完还有本套件起的后端活着（pid $LEFT）—— 有一条判据没收尸"
 else ok "Rust 侧跑完没有漏网的后端（进程表里按 exe ＋ \$WORK 认）"; fi
 
+# ── 远端那一形：`--resident-ensure` 起的常驻后端（远端那台就是这样起的）────────────────────
+# 一台自己的家（`$WORK/remote-home`）＋ 自己的中转口与假上游；`ccm` 就是后端二进制（叫这个名字时是壳）。
+#   ① 每次起都换钥匙：先放一把「旧环境里漏出去的」，起来之后它不认、只认它自己写下的那一把；刚起时回给客户端的答里没有钥匙，
+#      读到 hello 之后再问一次就拿得到（客户端每次读文件）。
+#   ② API key 账号：那台的中转从那台自己的 key 表取 key 带上。假上游只记头名不记值。
+RH="$WORK/remote-home"; RBIN="$WORK/rbin"; mkdir -p "$RH/.cc-monitor" "$RBIN"
+chmod 700 "$RH/.cc-monitor"
+ln -s "$BACKEND" "$RBIN/ccm"
+free_port() { python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1])'; }
+UP="$(free_port)"; RP="$(free_port)"
+python3 - "$UP" "$WORK/up-heads" <<'PY' &
+import socket, sys
+s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", int(sys.argv[1]))); s.listen(8)
+while True:
+    c, _ = s.accept(); buf = b""
+    while b"\r\n\r\n" not in buf:
+        d = c.recv(4096)
+        if not d: break
+        buf += d
+    # 只记头名，不记值（值里可能是 key）。
+    names = sorted(l.split(b":", 1)[0].decode().strip().lower() for l in buf.split(b"\r\n")[1:] if b":" in l)
+    with open(sys.argv[2], "a") as f: f.write(" ".join(names) + "\n")
+    body = b'{"ok":1}'
+    c.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s" % (len(body), body))
+    c.close()
+PY
+UPID=$!
+cat > "$WORK/fake-agent" <<'PY'
+#!/usr/bin/env python3
+import os, urllib.request, urllib.error
+base, code = os.environ.get("ANTHROPIC_BASE_URL", ""), "none"
+if base:
+    req = urllib.request.Request(base.rstrip("/") + "/v1/messages", data=b"{}", headers={"content-type": "application/json"}, method="POST")
+    try:
+        code = str(urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=10).status)
+    except urllib.error.HTTPError as e:
+        code = str(e.code)
+    except Exception:
+        code = "err"
+open(os.environ["E2E_AGENT_OUT"], "w").write(code + "\n")
+PY
+chmod +x "$WORK/fake-agent"
+# 远端那台的环境：家 · `ccm` 在 PATH 上 · 中转口 · 默认上游指着假上游（任何一发都出不了这台）· 只有要换 key 的号走中转。
+rcm() {
+  env -u CLAUDE_CONFIG_DIR -u ANTHROPIC_BASE_URL -u CCM_DATA_DIR -u CCM_LISTEN_PORT -u CCM_LISTEN_TOKEN_FILE \
+    HOME="$RH" PATH="$RBIN:$PATH" CCM_RELAY_PORT="$RP" CCM_RELAY_ALL_SESSIONS=0 \
+    CCM_AGENT_UPSTREAM_CLAUDE_CODE="http://127.0.0.1:$UP" ccm "$@"
+}
+jget() { python3 -c 'import json,sys;v=json.loads(sys.stdin.read() or "{}").get(sys.argv[1]);print("null" if v is None else v)' "$1"; }
+OLD_TOKEN="0123456789abcdef0123456789abcdef"
+printf '%s' "$OLD_TOKEN" > "$RH/.cc-monitor/listen-token"; chmod 600 "$RH/.cc-monitor/listen-token"
+E1="$(rcm -- --resident-ensure 2>"$WORK/e1.err")"
+LP="$(printf '%s' "$E1" | jget port)"
+if [ "$(printf '%s' "$E1" | jget token)" = "null" ] && [ "$(printf '%s' "$E1" | jget pid)" != "null" ]; then
+  ok "远端起常驻：刚起的那一个，答里没有钥匙（钥匙由它绑上口之后自己写）"
+else bad "远端起常驻：答里不该带钥匙（$(printf '%s' "$E1" | jget token | cut -c1-4)…）或没起：$(cat "$WORK/e1.err")"; fi
+hello() { python3 - "$1" <<'PY'
+import socket, sys
+try:
+    c = socket.create_connection(("127.0.0.1", int(sys.argv[1])), timeout=2); c.settimeout(2)
+    print("ok" if b'"hello"' in c.makefile("rb").readline() else "no")
+except Exception:
+    print("no")
+PY
+}
+for _ in $(seq 1 50); do [ "$(hello "$LP")" = ok ] && break; sleep 0.1; done
+attach() { python3 - "$LP" "$1" <<'PY'
+import json, socket, sys
+c = socket.create_connection(("127.0.0.1", int(sys.argv[1])), timeout=5); c.settimeout(5)
+r = c.makefile("rb"); r.readline()
+c.sendall(json.dumps({"attach": sys.argv[2]}).encode() + b"\n")
+print(json.loads(r.readline()).get("attach", "?"))
+PY
+}
+E2="$(rcm -- --resident-ensure 2>"$WORK/e2.err")"
+NEW_TOKEN="$(printf '%s' "$E2" | jget token)"
+if [ "$NEW_TOKEN" != "null" ] && [ "$NEW_TOKEN" != "$OLD_TOKEN" ] && [ "${#NEW_TOKEN}" -eq 32 ] \
+   && [ "$NEW_TOKEN" = "$(cat "$RH/.cc-monitor/listen-token")" ] && [ "$(printf '%s' "$E2" | jget pid)" = "null" ]; then
+  ok "远端常驻换了一把新钥匙写回钥匙文件；口上已有人时再问一次回的就是盘上那一把（不再另起）"
+else bad "远端常驻没换钥匙 / 再问一次回的不是盘上那一把：$(cat "$WORK/e2.err")"; fi
+if [ "$(attach "$OLD_TOKEN")" = refused ] && [ "$(attach "$NEW_TOKEN")" = ok ]; then
+  ok "旧环境里漏出去的那把钥匙不认了，新那一把接得上"
+else bad "钥匙作废没生效：旧钥匙 $(attach "$OLD_TOKEN") · 新钥匙 $(attach "$NEW_TOKEN")"; fi
+SECRET="sk-e2e-$(python3 -c 'import secrets;print(secrets.token_hex(12))')"
+printf '{"name":"main"}' | rcm -- --accounts-init >"$WORK/init.out" 2>&1
+ADD="$(printf '{"name":"k1","kind":"api-key","key":"%s","baseUrl":"http://127.0.0.1:%s"}' "$SECRET" "$UP" | rcm -- --accounts-add 2>&1)"
+if [ "$(printf '%s' "$ADD" | jget keyMasked)" != "null" ]; then ok "远端新建 API key 账号：key 存进那台的 key 表（只回掩码）"
+else bad "远端新建 API key 账号没存上 key：$(printf '%s' "$ADD" | jget keyProblem)"; fi
+: > "$WORK/up-heads"
+E2E_AGENT_OUT="$WORK/agent-out" rcm -- --account k1 --launcher "$WORK/fake-agent" >"$WORK/launch.out" 2>&1
+HEADS="$(cat "$WORK/up-heads" 2>/dev/null)"
+AUTH="$(printf '%s\n' "$HEADS" | tr ' ' '\n' | grep -cxE 'authorization|x-api-key')"
+if [ "$(cat "$WORK/agent-out" 2>/dev/null)" = 200 ] && [ "$(printf '%s\n' "$HEADS" | grep -c .)" -eq 1 ] && [ "$AUTH" -eq 1 ]; then
+  ok "远端用 API key 账号起的会话：请求经那台的中转到了上游，带上了一个鉴权头（会话自己没带）"
+else bad "远端 API key 账号起的会话没带上 key：会话看到 $(cat "$WORK/agent-out" 2>/dev/null) · 上游收到的头 [$HEADS] · $(tail -2 "$WORK/launch.out")"; fi
+: > "$WORK/up-heads"
+E2E_AGENT_OUT="$WORK/agent-out" ANTHROPIC_BASE_URL="http://127.0.0.1:$UP" "$WORK/fake-agent"
+if [ "$(tr ' ' '\n' < "$WORK/up-heads" | grep -cxE 'authorization|x-api-key')" -eq 0 ]; then
+  ok "对照：不经中转直打上游时一个鉴权头都没有（上面那一个是中转换上的）"
+else bad "对照不成立：会话自己就带了鉴权头 —— 上面那一格证不了中转换上了 key"; fi
+LEAK="$(grep -rlF --exclude-dir=remote-home -- "$SECRET" "$WORK")"
+if [ -n "$LEAK" ]; then bad "key 的明文出现在 key 表以外的地方：$LEAK"
+else ok "key 的明文没出现在 key 表以外的任何输出里"; fi
+STOP="$(rcm -- --resident-stop 2>&1)"
+if [ "$(printf '%s' "$STOP" | jget stopped)" = graceful ]; then ok "远端常驻后端按它自己记的 pid 收尾退出"
+else bad "远端常驻后端没停下：$STOP"; fi
+kill "$UPID" 2>/dev/null
+
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail SKIP=$skip ====="
 [ "$fail" -eq 0 ]

@@ -1147,7 +1147,8 @@ mod tests {
             callers("wait_within(", "fn wait_within("),
             vec!["platform/signal.rs".to_string()]
         );
-        // 而 `control/resident.rs` 只由 `main.rs` 的一次性子命令臂进（`Some("--resident-…") =>`）。
+        // 而 `control/resident.rs` 只由 `main.rs` 的一次性子命令臂进（`Some("--resident-…") =>`）；
+        // 常驻后端绑上口之后那两次写（换钥匙 · 记谁在听）不等任何东西，不算入口。
         let main = files
             .iter()
             .find(|(n, _)| n == "main.rs")
@@ -1155,7 +1156,11 @@ mod tests {
             .expect("main.rs");
         let entries: Vec<&str> = main
             .lines()
-            .filter(|l| l.contains("control::resident::") && !l.contains("record_owner"))
+            .filter(|l| {
+                l.contains("control::resident::")
+                    && !l.contains("record_owner")
+                    && !l.contains("rotate_token")
+            })
             .collect();
         assert!(
             !entries.is_empty()

@@ -345,37 +345,28 @@ fn account_table(home: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// 能进别名的 ccm 壳层选项：`(旗标, 跟几个值)`。第一、二档；
-/// 第三档（[`NOT_IN_ALIASES`]）每次取值都不同，做成固定别名没意义 ⇒ 不收。
-/// `--ccm-tmux=<名>` 是 `--ccm-tmux` 的内联形，另判。它们只许写在最后一个 `--` 右边；左边的词（`--model` · `--resume` · `-p` …）是交给 claude 的，原样放行。
+/// 能进别名的 ccm 词（`new` 与壳层选项）。其余 ccm 认得的词（`--ccm-*` 诊断口 · 起会话身份 · 账号目录）每次取值都不同，
+/// 做成固定别名没意义 ⇒ 不收。一个词跟几个值、合不合法只问 ccm 自己的解析器（`control/ccm/argv.rs`），这里只列「许不许进别名」。
+/// 它们只许写在最后一个 `--` 右边；左边的词（`--model` · `--resume` · `-p` …）是交给 claude 的，原样放行。
 ///
 /// ⚠ 每一个旗标都得是后端 `ccm --help` 里真有的那个词 —— 判据
 /// `aliases_tests.rs::every_alias_flag_is_a_real_ccm_flag` 去用法文本里对（异源）。
-/// 搬进后端之后旗标**只引** `control/ccm/argv.rs::flag`（ccm 终端 argv 的字面量唯一住址），不再抄一份。
-/// `--attach` 的会话名在别名里不写、调用时现给（只许「调用时的词交给 ccm」那一形，[`check_alias`]）⇒ 记 0 个值。
-pub(crate) const ALIAS_FLAGS: &[(&str, usize)] = &[
-    (flag::CWD, 1),
-    (flag::CWD_IF, 2),
-    (flag::ACCOUNT, 1),
-    (flag::BASE, 0),
-    (flag::TMUX, 0),
-    (flag::TMUX_BASE, 1),
-    (flag::AGENT, 1),
-    (flag::LAUNCHER, 1),
-    (flag::TMUX_SIZE, 1),
-    (flag::DETACH, 0),
-    (flag::BUS_REGISTER, 0),
-    (flag::BUS_NOTE, 1),
-    (flag::ATTACH, 0),
-];
-
-/// ccm 自己的、不进别名的那几个（第三档）：`--ccm-*` 诊断口。
-pub(crate) const NOT_IN_ALIASES: &[&str] = &[
-    flag::CCM_SID,
-    flag::CCM_PRINT,
-    flag::CCM_PROBE,
-    flag::CCM_HELP,
-    flag::CCM_VERSION,
+/// `--attach` 的会话名在别名里不写、调用时现给（只许「调用时的词交给 ccm」那一形，[`check_alias`]）。
+pub(crate) const ALIAS_FLAGS: &[&str] = &[
+    flag::NEW,
+    flag::CWD,
+    flag::CWD_IF,
+    flag::ACCOUNT,
+    flag::BASE,
+    flag::TMUX,
+    flag::TMUX_BASE,
+    flag::AGENT,
+    flag::LAUNCHER,
+    flag::TMUX_SIZE,
+    flag::DETACH,
+    flag::BUS_REGISTER,
+    flag::BUS_NOTE,
+    flag::ATTACH,
 ];
 
 /// **载体是 tmux 的那几个旗标**（`--ccm-tmux=<名>` 是 `--ccm-tmux` 的内联形，一并算）。
@@ -428,150 +419,85 @@ pub(crate) fn dialect_here(shell: Shell) -> Result<(), String> {
     ))
 }
 
-/// 一条别名合不合格。**这些是「判定的规则」**（第 6、7 格），与哪种 shell 无关；
-/// 方言只回答两个读法问题：名字的字符集、一个值能不能原样传到 ccm。
+/// 一条别名合不合格。一条别名就是一条 `ccm` argv（`<交给 claude 的…> -- <ccm 自己的…>`）：
+/// 词怎么分组、组合合不合法只问 ccm 自己的解析器（`argv::word_at` / `apply_word` / `finish`），这里不另写一份 ccm 文法。
+/// 别名自己的规则只有这几条：名字 · 控制字符与方言能不能原样传 · 能力闸（没有 tmux 的目标）· 许不许进别名 ·
+/// 目录要钉死 · 调用时跟的词交给谁。
 pub(crate) fn check_alias(a: &Alias, shell: Shell) -> Result<(), String> {
+    use crate::control::ccm::argv::{self, Die};
     let d = shell.dialect();
     let caps = Caps::of(shell);
     if !d.name_is_valid(&a.name) {
-        return Err(copy_text("rsAccountAliases.check.badName", &[]).into());
+        return Err(copy_text("rsAccountAliases.check.badName", &[]));
     }
-    let (mut account, mut base, mut tmux, mut tmux_named, mut tmux_base) =
-        (false, false, false, false, false);
-    let (mut size, mut detach, mut bus, mut note) = (false, false, false, false);
-    // 别名的预置参数就是一条 `ccm` argv：`<交给 claude 的…> -- <ccm 自己的…>`（按最后一个 `--` 切）。
-    //   左边原样放行（只过控制字符与方言那一关）；右边只认能进别名的壳层选项，认不得就拒（与 ccm 运行时同一条）。
-    let (left, right) = match a.args.iter().rposition(|w| w == flag::END) {
+    let (left, right) = match argv::last_end(&a.args) {
         Some(k) => (&a.args[..k], &a.args[k + 1..]),
         None => (&a.args[..], &a.args[..0]),
     };
+    for w in left.iter().chain(right) {
+        if w.chars().any(char::is_control) {
+            return Err(copy_text("rsAccountAliases.check.controlChar", &[]));
+        }
+        d.arg_is_passable(w)?;
+    }
     // 调用时的词交给 ccm 只有一形：接回会话 `-- --attach "$@"`（会话名现场给）；别的 ccm 选项与它同用会被 ccm 静默忽略 ⇒ 不许。
-    // 在逐词那一圈之后判：没有 tmux 的目标先由能力闸说「没有 tmux」。
     let attach_only = left.is_empty() && right.len() == 1 && right[0] == flag::ATTACH;
     let attach_bad = match a.rest_to {
         RestTo::Ccm => !attach_only,
         RestTo::Agent => right.iter().any(|w| w == flag::ATTACH),
     };
-    for w in left {
-        if w.chars().any(char::is_control) {
-            return Err(copy_text("rsAccountAliases.check.controlChar", &[]).into());
-        }
-        d.arg_is_passable(w)?;
+    // ccm 看到的右边：调用时交给 ccm 的那一形，补上调用时跟的那个词。
+    let mut seen: Vec<String> = right.to_vec();
+    if a.rest_to == RestTo::Ccm {
+        seen.push("x".to_string());
     }
-    // `new`（起新会话）是 ccm 自己的位置词，只许是右边第一个词。
-    let right = right
-        .strip_prefix(&[flag::NEW.to_string()][..])
-        .unwrap_or(right);
-    let mut it = right.iter();
-    while let Some(w) = it.next() {
-        if w.chars().any(char::is_control) {
-            return Err(copy_text("rsAccountAliases.check.controlChar", &[]).into());
-        }
-        d.arg_is_passable(w)?;
+    let mut o = argv::blank_opts(left);
+    let mut i = 0;
+    while i < seen.len() {
+        let g = argv::word_at(&seen, i).map_err(|Die(m)| m)?;
         // 能力闸（「`cct` 在 Windows 上没有」从硬编码变成能力查询）。
-        let head = w.split_once('=').map_or(w.as_str(), |(h, _)| h);
-        if !caps.tmux && NEEDS_TMUX.contains(&head) {
+        if !caps.tmux && NEEDS_TMUX.contains(&g.flag) {
             return Err(copy_text(
                 "rsAccountAliases.check.noTmux",
                 &[(
                     "flags",
-                    &(NEEDS_TMUX
+                    &NEEDS_TMUX
                         .iter()
                         .map(|f| format!("`{f}`"))
                         .collect::<Vec<_>>()
-                        .join(" / "))
-                    .to_string(),
+                        .join(" / "),
                 )],
             ));
         }
-        if let Some(n) = w.strip_prefix(flag::TMUX).and_then(|r| r.strip_prefix('=')) {
-            if n.is_empty() {
-                return Err(copy_text("rsAccountAliases.check.tmuxNoName", &[]).into());
-            }
-            tmux = true;
-            tmux_named = true;
-            continue;
-        }
-        if NOT_IN_ALIASES.contains(&head) {
+        if !ALIAS_FLAGS.contains(&g.flag) {
             return Err(copy_text(
                 "rsAccountAliases.check.notAllowed",
-                &[("word", &w.to_string())],
+                &[("word", &seen[i])],
             ));
         }
-        // `--` 右边认不得 ⇒ 拒（ccm 运行时同样拒；交给 claude 的词写在 `--` 左边）。
-        let Some((known, takes)) = ALIAS_FLAGS.iter().find(|(f, _)| f == w) else {
+        // 别名要钉住一个目录：`~` 打头或绝对（ccm 运行时同样拒相对的 `--cwd`，`INVARIANTS §47`）。
+        if g.flag == flag::CWD && !g.vals.iter().all(|v| pinned_dir_ok(v, shell)) {
             return Err(copy_text(
-                "rsAccountAliases.check.notCcmFlag",
-                &[("word", &w.to_string())],
+                "rsAccountAliases.check.cwdNotAbsolute",
+                &[("value", &g.vals.join(" "))],
             ));
-        };
-        for _ in 0..*takes {
-            match it.next() {
-                // 哪一家：写空 ⇒ 默认那一家；注册表里没有 ⇒ 拒、说出认得的几家（与 ccm 运行时同一种认法）。
-                Some(v) if *known == flag::AGENT && !v.chars().any(char::is_control) => {
-                    d.arg_is_passable(v)?;
-                    crate::agents::pick_kind(Some(v))?;
-                }
-                Some(v) if !v.is_empty() && !v.chars().any(char::is_control) => {
-                    d.arg_is_passable(v)?;
-                    // 相对 / 带 `..` 的 `--cwd` ccm 运行时会拒（`INVARIANTS §47`）⇒ 生成前就拦。
-                    if *known == flag::CWD && !pinned_dir_ok(v, shell) {
-                        return Err(copy_text(
-                            "rsAccountAliases.check.cwdNotAbsolute",
-                            &[("value", &v.to_string())],
-                        ));
-                    }
-                    // `--cwd-if` 两边都许 `~` 打头（ccm 起会话时按那台的家目录展开），其余同 `--cwd`。
-                    if *known == flag::CWD_IF && !pinned_dir_ok(v, shell) {
-                        return Err(copy_text(
-                            "rsAccountAliases.check.cwdIfNotPinned",
-                            &[("value", &v.to_string())],
-                        ));
-                    }
-                }
-                _ => {
-                    return Err(copy_text(
-                        "rsAccountAliases.check.missingValue",
-                        &[("flag", &known.to_string())],
-                    ))
-                }
-            }
         }
-        match *known {
-            flag::ACCOUNT => account = true,
-            flag::BASE => base = true,
-            flag::TMUX => tmux = true,
-            flag::TMUX_BASE => {
-                tmux = true;
-                tmux_base = true;
-            }
-            flag::TMUX_SIZE => size = true,
-            flag::DETACH => detach = true,
-            flag::BUS_REGISTER => bus = true,
-            flag::BUS_NOTE => note = true,
-            _ => {}
+        if let Some(v) = (g.flag == flag::CWD_IF)
+            .then(|| g.vals.iter().find(|v| !pinned_dir_ok(v, shell)))
+            .flatten()
+        {
+            return Err(copy_text(
+                "rsAccountAliases.check.cwdIfNotPinned",
+                &[("value", v)],
+            ));
         }
+        argv::apply_word(&mut o, &g, i).map_err(|Die(m)| m)?;
+        i += g.len;
     }
     if attach_bad {
         return Err(copy_text("rsAccountAliases.check.attachAlone", &[]));
     }
-    // 组合规则（依据是 `ccm --help` 逐字）＋后端 `argv.rs` 那道「备注要有登记」的闸。
-    if account && base {
-        return Err(copy_text("rsAccountAliases.check.accountXorBase", &[]).into());
-    }
-    if tmux_named && tmux_base {
-        return Err(copy_text("rsAccountAliases.check.tmuxXorBase", &[]).into());
-    }
-    if bus && !detach {
-        return Err(copy_text("rsAccountAliases.check.busNeedsDetach", &[]).into());
-    }
-    if note && !bus {
-        return Err(copy_text("rsAccountAliases.check.noteNeedsRegister", &[]).into());
-    }
-    if (size || detach) && !tmux {
-        return Err(copy_text("rsAccountAliases.check.sizeNeedsTmux", &[]).into());
-    }
-    Ok(())
+    argv::finish(o).map(|_| ()).map_err(|Die(m)| m)
 }
 
 /// `--cwd` 的形式判定，与 ccm 运行时同一条（`plan.rs::free_text_gate`：绝对 · 无 `..` 段 · 无 NUL/CR/LF）。

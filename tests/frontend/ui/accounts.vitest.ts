@@ -12,7 +12,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
 import { loadConfig } from "../../../src/frontend/ui/config";
 import { fakeCfg } from "./config-patch-fake";
-import { deriveUi, effectiveDefault, currentWorkingAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, resolveFollowAccount, detectAccountMismatch, isSelectable, accountConfigDir, badgeText, sessionBadge, shouldShowAccountBadge, resolveAccount, isAccountZero, accountStatusBadge, localApikeyEndpointStateFor, accountLoginActionLabel, type AccountsState, type Account, type SessionAccount } from "../../../src/frontend/ui/accounts";
+import { deriveUi, effectiveDefault, currentWorkingAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, resolveFollowAccount, detectAccountMismatch, isSelectable, accountConfigDir, badgeText, sessionBadge, shouldShowAccountBadge, resolveAccount, isAccountZero, accountStatusBadge, apikeyEndpointStateFor, accountLoginActionLabel, type AccountsState, type Account, type SessionAccount } from "../../../src/frontend/ui/accounts";
 import { fetchAccounts, fetchSessionAccounts, fetchSessionAccountsOrNull, parseSessionAccountLines, invalidateAccountsCache, __resetAccountsCacheForTest, fetchLocalApikeyRouting } from "../../../src/frontend/ui/account-reads";
 import { getDefaultName, setDefaultName, getModelForAccount, setModelForAccount, moveMachinePrefs } from "../../../src/frontend/ui/account-prefs";
 import { recordLastAccount, withAccount, localLaunchAccountSync, localLaunchAccountNameSync, __setLocalLaunchSnapshotForTests, __resetLocalLaunchSnapshotForTests } from "../../../src/frontend/ui/launch-account";
@@ -1159,17 +1159,17 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
   // 而「改了事实没改说它的那句话」是本区花过六轮的那一族（风险 6v / 裁定 K20）。
   // ⇒ 这里把**实现的三态**与**徽章的三态**钉成一一对应：少一格、串一格，都红。
 
-  it("★ 本机 · 表里有这一行 · 中转在跑 ⇒ 「经本机中转」，且不再是警示态", () => {
-    const b = accountStatusBadge(apiKey(), { scope: "local", hasRow: true, running: true });
-    expect(b.text).toBe("API key（经本机中转）");
+  it("★ 表里有这一行 · 中转在跑 ⇒ 「经中转」，且不再是警示态", () => {
+    const b = accountStatusBadge(apiKey(), { hasRow: true, running: true });
+    expect(b.text).toBe("API key（经中转）");
     expect(b.warn).toBe(false);
     // 它保证的是哪一截，必须写在 hover 里 —— 不许暗示「这个 key 一定能用」。
     // 按文案键断言，不按原文：原先钉着「ANTHROPIC_BASE_URL」，那是配置键名直出（R1），与 CP1 裁词相冲。
     expect(b.title).toBe(copyText("accounts.badge.apikeyRelayedHint"));
   });
 
-  it("★ 本机 · 表里有这一行 · 中转没跑 ⇒ 「中转未运行」，且说明会被当场拒", () => {
-    const b = accountStatusBadge(apiKey(), { scope: "local", hasRow: true, running: false });
+  it("★ 表里有这一行 · 中转没跑 ⇒ 「中转未运行」，且说明会被当场拒", () => {
+    const b = accountStatusBadge(apiKey(), { hasRow: true, running: false });
     expect(b.text).toBe("API key（中转未运行）");
     expect(b.warn).toBe(true);
     // `KH2B2`②：这一条**不许**被说成静默失败 —— 起会话那一侧会当场拒。
@@ -1177,21 +1177,24 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
     expect(b.title).toBe(copyText("accounts.badge.apikeyRelayDownHint"));
   });
 
-  it("★ 本机 · 表里没有这一行 ⇒ 仍是「未配置端点」，而且说得出**为什么**", () => {
-    const b = accountStatusBadge(apiKey(), { scope: "local", hasRow: false, running: true });
+  it("★ 表里没有这一行 ⇒ 仍是「未配置端点」，而且说得出**为什么**", () => {
+    const b = accountStatusBadge(apiKey(), { hasRow: false, running: true });
     expect(b.text).toBe("API key（未配置端点）");
     expect(b.title).toContain("没有这个账号的一行");
-    // 阴性对照：它**不许**说成「远端不做」那一条（那是另一个成因，处置也不同）。
+    // 阴性对照：本机远端同一条路，不许再说成「远端不做」。
     expect(b.title).not.toContain("远端");
   });
 
-  it("★ 远端那一半 ⇒ 文案要指名是**远端**（`§0e` 裁四：本件明写不做）", () => {
-    const b = accountStatusBadge(apiKey(), { scope: "remote" });
-    expect(b.text).toBe("API key（未配置端点）");
-    expect(b.title).toContain("远端");
-    expect(b.title).toContain("本机");
-    // 阴性对照：不许拿本机那条「表里没有这一行」去解释远端。
-    expect(b.title).not.toContain("没有这个账号的一行");
+  it("★ 远端那一台与本机同一条路：那台答的事实成立 ⇒ 同样是「经中转」，hover 不说「本机」也不说「远端不做」", () => {
+    // 远端那台起的会话由那台的 ccm 定往哪发、那台的中转按那台 key 表里这一行换上 key（与本机同一条路）。
+    const b = accountStatusBadge(apiKey(), { hasRow: true, running: true });
+    expect(b.text).toBe("API key（经中转）");
+    expect(b.warn).toBe(false);
+    for (const st of [{ hasRow: true, running: true }, { hasRow: true, running: false }, { hasRow: false, running: true }]) {
+      const t = accountStatusBadge(apiKey(), st).title;
+      expect(t).not.toContain("本机");
+      expect(t).not.toContain("远端");
+    }
   });
 
   it("★ 调用方没说是哪一半 ⇒ **不替它下判断**，只把两条前置说清", () => {
@@ -1203,15 +1206,14 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
     expect(b.title).not.toContain("没有这个账号的一行");
   });
 
-  it("★ 那句已经成假的话，四档里一句都不许再出现（分母 = 我列的这 4 档 + 缺席）", () => {
+  it("★ 那句已经成假的话，三档里一句都不许再出现（分母 = 我列的这 3 档 + 缺席）", () => {
     // 逐字：本件之前的原文是「cc-monitor 今天还不会替它配 API key 与 base URL」。
     const LIE = "今天还不会替它配 API key 与 base URL";
     const states: Array<Parameters<typeof accountStatusBadge>[1]> = [
       undefined,
-      { scope: "remote" },
-      { scope: "local", hasRow: false, running: false },
-      { scope: "local", hasRow: true, running: false },
-      { scope: "local", hasRow: true, running: true },
+      { hasRow: false, running: false },
+      { hasRow: true, running: false },
+      { hasRow: true, running: true },
     ];
     // 非空对照：先证明这把尺子认得出那句话（否则下面整个循环可能只是因为 needle 打错而全绿）。
     expect("cc-monitor " + LIE).toContain(LIE);
@@ -1223,8 +1225,8 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
   });
 
   // ★★★ 规则那一段：一份**后端读数**（`ApikeyRoutingView`）怎么落到某一个账号上，
-  // 以及三档**真的分得开**。喂进来的是读数的形状，**不是**直接喂 `{scope:"local",…}`
-  // —— 后者会把 `localApikeyEndpointStateFor` 那一格整个绕过去。
+  // 以及三档**真的分得开**。喂进来的是读数的形状，**不是**直接喂 `{hasRow,running}`
+  // —— 后者会把 `apikeyEndpointStateFor` 那一格整个绕过去。
   //
   // ⚠ **取数那一跳（`invoke`）今天还没接上**，卡点写在 `accounts.ts` 那段头注里
   // （`tests/frontend/ui/ipc/commands.vitest.ts` 的两个钉死计数不在本件写区）。⇒ 本组买的是**规则**，
@@ -1256,14 +1258,14 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
       acct({ name, configDir: dir, loggedIn: false, authKind: "api-key", authReady: true });
     const a = withDir("acct-a", "/h/.claude-accts/acct-a");
     const b = withDir("acct-b", "/h/.claude-accts/acct-b");
-    expect(accountStatusBadge(a, localApikeyEndpointStateFor(a, routing)).text).toBe("API key（经本机中转）");
-    expect(accountStatusBadge(b, localApikeyEndpointStateFor(b, routing)).text).toBe(
+    expect(accountStatusBadge(a, apikeyEndpointStateFor(a, routing)).text).toBe("API key（经中转）");
+    expect(accountStatusBadge(b, apikeyEndpointStateFor(b, routing)).text).toBe(
       "API key（未配置端点）",
     );
     // 非空对照：同一条产出方、只把 `running` 翻过来 ⇒ 第三档真的分得开。
     invokeMock.mockResolvedValue(chanReply({ routed: ["/h/.claude-accts/acct-a"], running: false }));
     const stopped = await fetchLocalApikeyRouting(["/h/.claude-accts/acct-a"]);
-    expect(accountStatusBadge(a, localApikeyEndpointStateFor(a, stopped)).text).toBe(
+    expect(accountStatusBadge(a, apikeyEndpointStateFor(a, stopped)).text).toBe(
       "API key（中转未运行）",
     );
   });
@@ -1273,27 +1275,27 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
     const withDir = (name: string, dir: string | null) =>
       acct({ name, configDir: dir, loggedIn: false, authKind: "api-key", authReady: true });
 
-    // ① 表里有这一行 + 中转在跑 ⇒ 「经本机中转」。
+    // ① 表里有这一行 + 中转在跑 ⇒ 「经中转」。
     const a = withDir("acct-a", "/h/.claude-accts/acct-a");
-    expect(accountStatusBadge(a, localApikeyEndpointStateFor(a, routing)).text).toBe("API key（经本机中转）");
+    expect(accountStatusBadge(a, apikeyEndpointStateFor(a, routing)).text).toBe("API key（经中转）");
     // ② 表里没有这一行 ⇒ 仍是「未配置端点」，而且说得出为什么。
     const b = withDir("acct-b", "/h/.claude-accts/acct-b");
-    const bb = accountStatusBadge(b, localApikeyEndpointStateFor(b, routing));
+    const bb = accountStatusBadge(b, apikeyEndpointStateFor(b, routing));
     expect(bb.text).toBe("API key（未配置端点）");
     expect(bb.title).toContain("没有这个账号的一行");
     // ③ 同一个账号、只把「中转在不在跑」翻过来 ⇒ 第三档（非空对照：两档真的分得开）。
     const stopped = { routed: ["/h/.claude-accts/acct-a"], running: false };
-    expect(accountStatusBadge(a, localApikeyEndpointStateFor(a, stopped)).text).toBe("API key（中转未运行）");
+    expect(accountStatusBadge(a, apikeyEndpointStateFor(a, stopped)).text).toBe("API key（中转未运行）");
     // ④ 账号 0（没有 configDir）⇒ 推不出 id ⇒ **不表态**，回落到缺席那一档。
     const zero = withDir("0", null);
-    expect(localApikeyEndpointStateFor(zero, routing)).toBeUndefined();
-    expect(accountStatusBadge(zero, localApikeyEndpointStateFor(zero, routing)).title).toContain(
+    expect(apikeyEndpointStateFor(zero, routing)).toBeUndefined();
+    expect(accountStatusBadge(zero, apikeyEndpointStateFor(zero, routing)).title).toContain(
       "无法判断端点是否已配置",
     );
   });
 
   it("★ 订阅号一格不受影响（阴性对照：新参数不许改到别的 kind）", () => {
-    for (const st of [undefined, { scope: "remote" } as const, { scope: "local", hasRow: true, running: true } as const]) {
+    for (const st of [undefined, { hasRow: false, running: false } as const, { hasRow: true, running: true } as const]) {
       expect(accountStatusBadge(acct({}), st).text).toBe("已登录");
       expect(accountStatusBadge(acct({ loggedIn: false, authReady: false }), st).text).toBe("未登录");
       expect(accountStatusBadge(acct({ mode: "in-place" }), st).text).toBe("不支持切换");

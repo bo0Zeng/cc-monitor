@@ -18,9 +18,10 @@
 //! `UnixListener` 0 处 · backend 侧 `NamedPipe` 0 处 ⇒ 走 Unix socket / 命名管道都要**从零立**一套。
 //!
 //! ⚠ **代价如实记，这是一条真裁决不是实现细节**：回环 TCP 上**同机任何本地进程都连得上**，
-//! Unix socket 有文件权限位而它没有。收窄只能靠一个 token；而 **backend 只读铁律不许它自己写文件**
-//! （`readonly_guard`）⇒ **钥匙由起它的那一方生成、落进 `0600` 的钥匙文件，环境里只交那份文件的路径**（[`ENV_TOKEN_FILE`]）。
-//! 本机那一半住 `src/frontend/shell/src/local_backend_host.rs`，远端那一半是 `--resident-ensure`（`control/resident.rs`）—— 同一种交法。
+//! Unix socket 有文件权限位而它没有。收窄只能靠一个 token：**起它的那一方只交钥匙文件的路径**（[`ENV_TOKEN_FILE`]），
+//! 常驻后端**绑上口之后**自己铸一把新的、原子写进那份 `0600` 的文件（`control/resident.rs::rotate_token`，后端自有状态文件，
+//! `readonly_guard` 第四层登记）。每次起都换 ⇒ 旧环境里漏出去的那把随之作废；连上来的客户端每次读文件。
+//! 起它的：本机 `src/frontend/shell/src/local_backend_host.rs`，远端 `--resident-ensure`（`control/resident.rs`）—— 同一种交法。
 //!
 //! # 两档连接，而 hello 写在分档**之前**
 //!
@@ -172,7 +173,7 @@ pub const REFUSE_MALFORMED: &str = "malformed-attach";
 pub enum Mode {
     /// 今天那条路：stdin/stdout 一对管道，宿主一退就死。
     Stdio,
-    /// 常驻：听一个回环口，认钥匙之后才交出流。钥匙在文件里（[`ENV_TOKEN_FILE`]），[`resolve`] 读出来。
+    /// 常驻：听一个回环口，认钥匙之后才交出流。钥匙文件（[`ENV_TOKEN_FILE`]）由它绑上口之后自己写一把新的。
     Listen { port: u16, token_file: String },
 }
 
@@ -213,15 +214,7 @@ fn parse_port(p: &str) -> Result<u16, String> {
     Ok(port)
 }
 
-/// 形态 ⇒ 载体：`None` = stdio；`Some((口, 钥匙))` = 常驻（钥匙此刻从文件读出来，只进内存）。
-pub fn resolve(m: Mode) -> Result<Option<(u16, String)>, String> {
-    match m {
-        Mode::Stdio => Ok(None),
-        Mode::Listen { port, token_file } => Ok(Some((port, token_from_file(&token_file)?))),
-    }
-}
-
-/// 读钥匙文件：读不动 / 空 ⇒ `Err`（fail closed：不起一个不设防的口）。报错里只有路径。
+/// 读钥匙文件（常驻后端绑上口之后写的那一把）：读不动 / 空 ⇒ `Err`。报错里只有路径。读者：`--resident-ensure`（口上已有人时回它）。
 pub fn token_from_file(path: &str) -> Result<String, String> {
     let t = std::fs::read_to_string(path).map_err(|e| {
         crate::common::contract::malformed(&format!("{ENV_TOKEN_FILE}={path:?}: {e}"))

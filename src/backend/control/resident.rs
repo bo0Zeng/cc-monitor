@@ -1,16 +1,16 @@
 //! **远端常驻后端的起 · 找 · 停**（「远端常驻、本机远端同形」·）。
 //!
 //! 两条一次性子命令，由 monitor 经本机常驻后端的链路 `capture` 在远端跑（设计住仓外）：
-//! - `--resident-ensure [--replace]`：读回或铸这台的监听钥匙（`~/.cc-monitor/listen-token`，与本机宿主同一份文件）→
-//!   **无条件起一个脱离的自己**（常驻载体；钥匙经文件交，不进 env / argv）→ 回一行 `{"port","token","pid"}`。
-//!   口上已有常驻后端时，子进程照旧「绑不上就退 3、绝不换口」⇒ 找与起是同一步，本进程不等任何东西（零定时器）。
+//! - `--resident-ensure [--replace]`：口上已有人在听 ⇒ 不再起，回盘上那把钥匙（`~/.cc-monitor/listen-token`，它起来时写的）；
+//!   没人 ⇒ 起一个脱离的自己（常驻载体；钥匙文件只交路径），回一行 `{"port","token","pid"}`，`token` 为 `null`：
+//!   钥匙由那个常驻后端绑上口之后自己写（[`rotate_token`]），客户端读到 hello 之后再问一次就拿得到。本进程不等任何东西（零定时器）。
 //!   `--replace`：先按下面那个停法停掉口上那一位（它自己记的 pid 文件），再起（只升不降由 monitor 按 hello 判）。
 //! - `--resident-stop [--grace <秒>]`：**同机监督者**那一形（k8s `terminationGracePeriodSeconds` · systemd `TimeoutStopSec`）：
 //!   SIGTERM（它按 HX1 排空后自己退）→ 在宽限期内等内核通知 → 到点 SIGKILL → 回 `{"stopped":"graceful"|"killed"|"not_running","pid":n|null}`。
 //!   等待住这个一次性进程里，常驻后端的事件循环不加定时器（`no_timer_guard::REGISTERED_ONE_SHOT_CLI_WAITS`）。
 //!
 //! 口按这台的家算（`~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`；共享 crate `relay_route_core::listen_port_for`，本机宿主同一个函数）
-//! ⇒ 一台机器一个常驻后端，与 Claude 目录、与哪一家 agent 都无关。钥匙与「谁在听」也住这个家。
+//! ⇒ 一台机器一个常驻后端，与 Claude 目录、与哪一家 agent 都无关。钥匙与「谁在听」也住这个家，都由常驻后端自己写（本机远端一个写者）。
 //! ⚠ 钥匙会出现在 `--resident-ensure` 的 stdout 上：那一行只走 SSH 通道到 monitor 内存，不进日志（调用侧不许打印它）。
 
 use crate::common::child_env::WithoutOwnEnv;
@@ -82,15 +82,23 @@ pub fn run_ensure(args: &[String], hosted: &[(&str, String)]) -> i32 {
     };
     let port = relay_route_core::listen_port_for(&dh);
     let token_path = token_path(&dh);
-    let token = match ensure_token(&token_path) {
-        Ok(t) => t,
-        Err(e) => return fail("no_token", e),
-    };
     if args.iter().any(|a| a == "--replace") {
         // 旧的不先让出口，新的必然绑不上 ⇒ 与「停」同一个停法（等它真退了再起）。
         if let Err(e) = stop_owner(&dh, port, STOP_GRACE_MS) {
             return fail("replace_failed", e);
         }
+    } else if someone_listening(port) {
+        // 口上已有人 ⇒ 不再起（起了也绑不上）；它认的是它起来时写下的那一把，读盘上那一份。
+        return match crate::stream::listen::token_from_file(&token_path.display().to_string()) {
+            Ok(token) => {
+                println!(
+                    "{}",
+                    serde_json::json!({ "port": port, "token": token, "pid": null })
+                );
+                0
+            }
+            Err(e) => fail("no_token", e),
+        };
     }
     let exe = match std::env::current_exe() {
         Ok(p) => p,
@@ -103,9 +111,10 @@ pub fn run_ensure(args: &[String], hosted: &[(&str, String)]) -> i32 {
     };
     match spawn_detached(&exe, &child_env(port, &token_path, &home, hosted)) {
         Ok(pid) => {
+            // 钥匙由它绑上口之后自己写：此刻还没有，客户端读到 hello 之后再问一次。
             println!(
                 "{}",
-                serde_json::json!({ "port": port, "token": token, "pid": pid })
+                serde_json::json!({ "port": port, "token": null, "pid": pid })
             );
             0
         }
@@ -113,12 +122,19 @@ pub fn run_ensure(args: &[String], hosted: &[(&str, String)]) -> i32 {
     }
 }
 
+/// 这台回环上那个口此刻有没有人在听（连一下：回环上「没人」是立刻被拒，不等）。
+fn someone_listening(port: u16) -> bool {
+    std::net::TcpStream::connect((crate::stream::listen::LOOPBACK, port)).is_ok()
+}
+
 /// `--resident-ensure` 的入口：宿主层环境 = 中转口 · stderr 诊断文件（凭据与历史注解住家里，那台后端按家自己推）。
 pub fn ensure(args: &[String]) -> i32 {
     let hosted = vec![
+        // 中转口与这台 `ccm` 起会话时找的是同一个口（同一个函数：这台环境里交了就用交的，否则默认口）。
         (
             crate::stream::listen::RELAY_PORT_ENV,
-            relay_route_core::PORT.to_string(),
+            crate::accounts::upstream_select::endpoint::relay_port(&|k| std::env::var(k).ok())
+                .to_string(),
         ),
         (crate::stderr_log::ENV, format!("~/{STDERR_LOG_REL}")),
     ];
@@ -213,27 +229,12 @@ fn log_dir_chain(home: &Path) -> Result<(), String> {
     chain.into_iter().try_for_each(ensure_dir)
 }
 
-/// 读回钥匙；没有 / 空 ⇒ 在目录锁里再读一次，仍没有才铸（与中转钥匙同形：`relay/door.rs::ensure_key`）。
-fn ensure_token(path: &Path) -> Result<String, String> {
-    let read = || {
-        std::fs::read_to_string(path)
-            .ok()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-    };
-    if let Some(t) = read() {
-        return Ok(t);
-    }
-    let dir = path.parent().ok_or_else(|| {
-        copy_text(
-            "beResident.fs.noParent",
-            &[("path", &path.display().to_string())],
-        )
-    })?;
-    ensure_dir(dir)?;
-    let _lock = crate::platform::lock::hold(dir)?;
-    if let Some(t) = read() {
-        return Ok(t);
+/// 常驻后端**绑上口之后**换一把新钥匙写回钥匙文件（临时件出生即只给本人 → 写满 → 原子挪过去），回这一把。
+/// 每次起都换 ⇒ 旧环境里漏出去的那把随之作废；抢不到口的后起者走不到这里（不碰在跑那一个的钥匙）。
+/// 本机远端都由常驻后端自己写（起它的那一方只交路径）；连上来的客户端每次读文件。
+pub fn rotate_token(path: &Path) -> Result<String, String> {
+    if let Some(dir) = path.parent() {
+        ensure_dir(dir)?;
     }
     let t = mint()?;
     write_private(path, &t)?;

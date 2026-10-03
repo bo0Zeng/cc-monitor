@@ -396,36 +396,37 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
     expect(subBadge.classList.contains("warn")).toBe(false);
   });
 
-  // ---- `K-H2b` `KH2B7`：那句 hover 本件落地那一刻对一部分号成了假话 ----
+  // ---- 远端那一页的 API key 号：徽章用**那台**答的两格事实（与本机同一条路：那台的 ccm 定往哪发、那台的中转换 key）----
   //
-  // ★ 同样**必须是 DOM 测试**，理由与上一条逐字相同：纯函数那一侧接不接得上，
-  // 是**另一件事**。`accountStatusBadge` 从本件起收第二个参数（这个号属于哪一半），
-  // 而**这张表是远端专用的**（`reload` 在 `origin` 为空时直接早退，
-  // 文案逐字「账号功能在远端 Linux 上」）⇒ 这里必须传 `{scope:"remote"}`。
-  // 不传 ⇒ 渲染出来的是「不替它下判断」那一档，而这张表**判得出来**（它就是远端）。
-  it("★ KH2B7：这张表是远端专用的 ⇒ api-key 那一行的 hover 要指名是**远端**那一半", async () => {
-    fetchAccountsMock.mockResolvedValue(
-      ready({
-        accounts: [
-          acct({ name: A }),
-          acct({ name: B, loggedIn: false, authKind: "api-key", authReady: true }),
-        ],
-      }),
-    );
-    const el = await mount();
-    const rows = [...el.querySelectorAll(".accounts-row")];
-    const byName = (n: string) =>
-      rows.find((r) => r.querySelector(".accounts-row-name")?.textContent === n)!;
-    const title = byName(B).querySelector(".accounts-row-badge")!.getAttribute("title") ?? "";
-    // 非空对照：这一格真的有 hover（不是空串上自问自答）。
-    expect(title.length).toBeGreaterThan(20);
-    // 正题：说清是哪一半 —— 只给本机配、远端这一半还不做。
-    expect(title).toContain("远端");
-    expect(title).toContain("本机");
-    // ⚠ 那句本件落地后就成假的话，一个字都不许留在界面上（逐字原文）。
-    expect(title).not.toContain("今天还不会替它配 API key 与 base URL");
-    // ⚠ 也不许拿本机那条成因（「表里没有这一行」）去解释一个远端账号。
-    expect(title).not.toContain("没有这个账号的一行");
+  // ★ 必须是 DOM 测试：纯函数接不接得上是另一件事。
+  it("★ 远端那一页：问那台的 `apikey-routing`，那台答「表里有行 · 中转在跑」⇒「经中转」；问不到 ⇒ 不替它下判断", async () => {
+    const keyed = acct({ name: B, configDir: "/h/.cc-monitor/accounts/b", loggedIn: false, authKind: "api-key", authReady: true });
+    fetchAccountsMock.mockResolvedValue(ready({ accounts: [acct({ name: A }), keyed] }));
+    const badgeOf = async (routing: unknown): Promise<HTMLElement> => {
+      invokeMock.mockImplementation((cmd: string, args: unknown) =>
+        Promise.resolve(isChanCall(cmd, args, "apikey-routing") ? (routing === undefined ? undefined : chanReply(routing)) : undefined),
+      );
+      const el = await mount();
+      const row = [...el.querySelectorAll(".accounts-row")].find(
+        (r) => r.querySelector(".accounts-row-name")?.textContent === B,
+      )!;
+      return row.querySelector<HTMLElement>(".accounts-row-badge")!;
+    };
+    const on = await badgeOf({ routed: [keyed.configDir], running: true });
+    expect(on.textContent).toBe("API key（经中转）");
+    expect(on.classList.contains("warn")).toBe(false);
+    const asked = invokeMock.mock.calls.filter(([c, a]) => isChanCall(c as string, a, "apikey-routing"));
+    expect(asked.length).toBeGreaterThan(0);
+    expect((asked[0][1] as Parameters<typeof chanArgsJson>[0]).origin).not.toBe(LOCAL_ORIGIN);
+    // 那台答「表里没有这一行」⇒ 说表里没它（与本机同一句），不再说「远端不做」。
+    const none = await badgeOf({ routed: [], running: true });
+    expect(none.textContent).toBe("API key（未配置端点）");
+    expect(none.title).toContain("没有这个账号的一行");
+    expect(none.title).not.toContain("远端");
+    // 问不到 ⇒ 与「没被告知」那一支逐字相同。
+    const untold = await badgeOf(undefined);
+    expect(untold.title).toBe(accounts.accountStatusBadge(keyed).title);
+    expect(untold.title).not.toContain("今天还不会替它配 API key 与 base URL");
   });
 
   it("★ KA6a 反面：缺凭据的订阅号仍写「未登录」（不许被 api-key 那一支一起放宽）", async () => {
@@ -1302,7 +1303,6 @@ describe("S3：本机那一支的空态就地可用", () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 本机清单上的徽章接上本机那一半的两格事实（经通道 `apikey-routing`）。
-// `accountStatusBadge` 的 `{ scope: "local" }` 三档自 `K-H2b` 起「有实现、没接线」。
 // ─────────────────────────────────────────────────────────────────────────────
 describe("S3：本机清单的徽章说本机那一半的真话", () => {
   const KEYED = acct({
@@ -1326,10 +1326,10 @@ describe("S3：本机清单的徽章说本机那一半的真话", () => {
     return el.querySelector<HTMLElement>(".accounts-local-row-badge")!;
   }
 
-  it("★ 表里有它 ＋ 中转在跑 ⇒ 「经本机中转」；只问本机这几个号的目录", async () => {
+  it("★ 表里有它 ＋ 中转在跑 ⇒ 「经中转」；只问本机这几个号的目录", async () => {
     const b = await badgeWith(() => Promise.resolve({ routed: [KEYED.configDir], running: true }));
     expect(b.textContent).toBe(
-      accounts.accountStatusBadge(KEYED, { scope: "local", hasRow: true, running: true }).text,
+      accounts.accountStatusBadge(KEYED, { hasRow: true, running: true }).text,
     );
     const asked = invokeMock.mock.calls.filter(([c, a]) => isChanCall(c as string, a, "apikey-routing"));
     expect(asked).toHaveLength(1);
@@ -1347,10 +1347,10 @@ describe("S3：本机清单的徽章说本机那一半的真话", () => {
     ].map((b) => `${b.textContent}|${b.title}`);
     expect(new Set(seen).size, seen.join("\n")).toBe(3);
     expect(seen[1]).toContain(
-      accounts.accountStatusBadge(KEYED, { scope: "local", hasRow: true, running: false }).text,
+      accounts.accountStatusBadge(KEYED, { hasRow: true, running: false }).text,
     );
     expect(seen[2]).toContain(
-      accounts.accountStatusBadge(KEYED, { scope: "local", hasRow: false, running: true }).title,
+      accounts.accountStatusBadge(KEYED, { hasRow: false, running: true }).title,
     );
   });
 

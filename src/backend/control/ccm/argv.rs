@@ -384,7 +384,11 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
         }
         i += w.len;
     }
+    Ok(Parsed::Opts(Box::new(finish(o)?)))
+}
 
+/// 逐词落完之后的收尾：认 resume、认是哪一家、组合校验。[`parse`] 与别名校验（`assets/aliases::check_alias`）共用。
+pub(crate) fn finish(mut o: Opts) -> Result<Opts, Die> {
     o.resumes = resume_sid(&o.passthru).map(str::to_string);
     // 哪一家：空 ⇒ 默认那一家；注册表里没有 ⇒ 报错、列出认得的几家（不落默认）。下游只见解析好的 kind。
     o.agent = crate::agents::pick_kind(Some(&o.agent))
@@ -392,7 +396,7 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
         .0
         .to_string();
     validate(&o)?;
-    Ok(Parsed::Opts(Box::new(o)))
+    Ok(o)
 }
 
 /// 透传里 claude 的 `--resume <值>` / `--resume=<值>` / `-r <值>`（最后一个算；claude 自己的 `--` 之后不看）。

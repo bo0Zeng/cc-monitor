@@ -8,7 +8,7 @@
 mod atomic;
 mod geometry;
 
-pub use atomic::atomic_write_json;
+pub use atomic::{atomic_write_json, win32_long_path};
 pub use geometry::{fit_into_work_area, WorkArea};
 
 #[cfg(test)]

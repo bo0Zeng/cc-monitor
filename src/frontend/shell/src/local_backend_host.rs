@@ -155,8 +155,8 @@ pub const NO_DETACH_ENV: &str = "CCM_NO_DETACH";
 /// 用同一个函数，一台机器一个常驻后端）；算法与「为什么由一处算」的理由住 `relay_route_core::listen_port_for` 头注。
 pub use relay_route_core::listen_port_for;
 
-/// attach token 的住址。**只此一份**：下一个宿主要接上上一个宿主留下的那个后端，
-/// 靠的就是读回同一个串。
+/// 钥匙文件的住址。常驻后端**绑上口之后**自己换一把新的写进去（后端 `control/resident.rs::rotate_token`），
+/// 本宿主只交路径、只读：每次连都现读这一份。
 fn token_path(dir: &std::path::Path) -> std::path::PathBuf {
     dir.join("listen-token")
 }
@@ -166,118 +166,23 @@ fn pid_path(dir: &std::path::Path, port: u16) -> std::path::PathBuf {
     dir.join(relay_route_core::listen_pid_file_name(port))
 }
 
-/// 生成（或读回）attach token。
-///
-/// # ★★ 这一格是一条**真裁决**，不是实现细节
-///
-/// 回环 TCP 上**同机任何本地进程都连得上**（含**别的用户**），Unix socket 有文件权限位
-/// 而它没有。而流那一档能发 `launch` / `kill` —— 以本账号的身份执行。
-/// 收窄只能靠一个 token；而 **backend 只读铁律不许它自己写文件**（`readonly_guard`）
-/// ⇒ **token 只能由宿主生成、当 env 传进去**。
-/// ⇒ 权限位这件事在这里补回来：**文件本身 `0600`**，那才是真正挡住别的用户的东西。
-///
-/// # 为什么是 `create_new` 而不是每次重写
-///
-/// 每次重写 = 上一个宿主留下的那个后端立刻变成「连得上但认证不过」的孤儿。
-/// ⇒ **只创建一次**，之后一律读回。
-///
-/// # ★★ 空文件那一格：**两支都要查，否则它们合成一个自己好不了的闭环**
-///
-/// 〔`K-P1-D1` `阻-4`，08-27 回修〕`create_new` 与 `write_all` 之间**不是原子的**
-/// （进程被杀 / 盘满 / `write_all` 报错都会在盘上留下一个**零字节**的 token 文件）。
-/// 回修前：第一支查了空、第二支**没查** ⇒ 第一支读到空 → 落到 `create_new` →
-/// `AlreadyExists` → 第二支读回空 → `Ok("")`。**每次都一样，自己好不了。**
-///
-/// 空 token 之后两条下游路**都是死路**，而且都 fail closed（这一点原来就做对了）：
-/// 起新的 ⇒ backend 的 `listen::mode_from` 把空串读成「没设」⇒ 退 `EXIT_BAD_LISTEN_CONFIG`；
-/// 接已有的 ⇒ `tokens_match` 的 `a.is_empty()` 直接判不等 ⇒ `WrongToken`。
-/// **问题从来不是它没关上，是它关上之后指错了地方** —— 用户看到的是
-/// 「脱离的后端起来了却连不上它」，`looked_at` 里是**那个二进制**，一个字没提 token 文件。
-/// ⇒ 空文件在这里就地变成 `Err`，`start_detached` 的那一支会把
-/// [`token_path`] 放进 `looked_at`，而下面这句话说得出**下一步删哪个文件**。
-///
-/// ⚠ 这一格有一个**窄窗**，如实记：另一个宿主刚 `create_new` 完、还没 `write_all` 时，
-/// 我们会读到空并**如实报错**（而不是静默等它）。等它要么加定时器、要么加自旋
-/// —— 而「再起一次就好了」这条路的代价明显更小。**不装作那个窗不存在。**
-///
-/// ⚠ 诚实边界：token 文件被人删掉 / 改掉之后，仍在跑的那个后端就再也接不上了。
-/// 那时 [`probe_listen_port`] 会**出声**（不是静默复用，也不是静默再起一个）。
-fn ensure_listen_token(dir: &std::path::Path) -> Result<String, String> {
-    let p = token_path(dir);
-    if let Ok(s) = std::fs::read_to_string(&p) {
-        let t = s.trim().to_string();
-        if !t.is_empty() {
-            return Ok(t);
-        }
-    }
-    crate::platform::fs::ensure_private_dir(dir)?;
-    let token = fresh_token()?;
-    // `create_new` = O_EXCL：两个 monitor 同时起时只有一个写得成，另一个回头读它写的那份。
-    let mut opts = std::fs::OpenOptions::new();
-    opts.write(true).create_new(true);
-    // ★ 权限位就是这一格买的东西 —— 少了它，同机别的用户读得到 token，
-    //   而 token 是这条回环口上**唯一**的门。
-    crate::platform::fs::only_me_on_create(&mut opts);
-    match opts.open(&p) {
-        Ok(mut f) => {
-            use std::io::Write;
-            f.write_all(token.as_bytes()).map_err(|e| {
-                copy_text(
-                    "rsLocalBackendHost.fs.writeFailed",
-                    &[("path", &(p.display()).to_string()), ("e", &e.to_string())],
-                )
-            })?;
-            Ok(token)
-        }
-        // 竞态：别人刚写完 ⇒ 读它那份（**不是**覆盖它）。
-        // ★★ 这一支**必须与第一支查同一个条件**（`阻-4`）：只查得到「读不出来」、
-        //    查不到「读出来是空的」，两支就合成一个自己好不了的闭环。
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => std::fs::read_to_string(&p)
-            .map_err(|e| {
-                copy_text(
-                    "rsLocalBackendHost.fs.readFailed",
-                    &[("path", &(p.display()).to_string()), ("e", &e.to_string())],
-                )
-            })
-            .and_then(|s| {
-                let t = s.trim().to_string();
-                if t.is_empty() {
-                    // ★ 诊断指到**这一格**：说得出下一步删哪个文件。
-                    Err(copy_text(
-                        "rsLocalBackendHost.token.empty",
-                        &[("path", &(p.display()).to_string())],
-                    ))
-                } else {
-                    Ok(t)
-                }
-            }),
-        Err(e) => Err(copy_text(
-            "rsLocalBackendHost.fs.createFailed",
+/// 读钥匙（每次连都现读：常驻后端每次起都换一把，读到的就是此刻在听的那一位认的那一把）。
+/// 读不动 / 空 ⇒ `Err`，那句话说得出是哪个文件、下一步怎么办（接不上就不接，出声）。
+fn read_listen_token(p: &std::path::Path) -> Result<String, String> {
+    let s = std::fs::read_to_string(p).map_err(|e| {
+        copy_text(
+            "rsLocalBackendHost.fs.readFailed",
             &[("path", &(p.display()).to_string()), ("e", &e.to_string())],
-        )),
+        )
+    })?;
+    let t = s.trim();
+    if t.is_empty() {
+        return Err(copy_text(
+            "rsLocalBackendHost.token.empty",
+            &[("path", &(p.display()).to_string())],
+        ));
     }
-}
-
-/// 造一个新 token：**内核密码学随机数** 16 字节 ⇒ 32 位十六进制（`INVARIANTS §48.1`「新生成时 128 位随机」）。
-///
-/// 🔴〔RK1 报 3〕此前取的熵是「纳秒时钟 ⊕ pid ⊕ 进程内计数器」（头注自认非密码学随机）—— 而 token 文件的
-/// mtime 就是纳秒量级的铸造时刻，同机另一个用户 `stat` 得到它，猜的空间远小于 128 位。
-/// 🪦〔散文墓碑〕原头注那一段「这里不用 `rand` …… 这个 token 要挡的东西**不需要密码学随机数**」不再成立，整段删。
-/// ⇒ 换成与中转钥匙（后端 `relay/door.rs::mint`，`ring` 的 `SystemRandom`，Linux 上是 `getrandom(2)`）**同一个内核池**：
-/// monitor 没有 `ring` / `getrandom` 直接依赖，而本函数唯一的用处（脱离那条路）只在 Linux ⇒ 读 `/dev/urandom`，不加依赖。
-/// 读不出 ⇒ `Err`，调用方拒绝起（与空 token 那一支同一个 fail-closed 方向：不起一个不设防的口）。
-fn fresh_token() -> Result<String, String> {
-    use std::io::Read as _;
-    let mut buf = [0u8; 16];
-    std::fs::File::open("/dev/urandom")
-        .and_then(|mut f| f.read_exact(&mut buf))
-        .map_err(|e| {
-            copy_text(
-                "rsLocalBackendHost.token.noRandom",
-                &[("e", &format!("/dev/urandom：{e}"))],
-            )
-        })?;
-    Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
+    Ok(t.to_string())
 }
 
 // `~/.cc-monitor` 这一层建的那一下就只给本人：那个函数住 `platform::fs::ensure_private_dir`，
@@ -735,7 +640,7 @@ static LAST_START_REFUSAL: std::sync::Mutex<Option<String>> = std::sync::Mutex::
 ///
 /// 上一轮只在 `Adopt::Refused` 那一臂写了记录，而 `StartOutcome::Failed` 的构造点
 /// **现打 6 处**（`the_user_actionable_start_failures_all_reach_the_user` 把这个分母钉住了）。
-/// 其中 `ensure_listen_token` 的 `Err` 那一支 —— **恰恰是同一轮 `阻-4` 刚修好的那一支** ——
+/// 其中当时「宿主自己铸钥匙失败」那一支（今天钥匙由常驻后端自己写，那一支随之删了）——
 /// 走的是 `None =>` ⇒ `tracing::info!` ⇒ **用户什么都看不到**。
 ///
 /// ★ 而这撞的是 `lib.rs` 自己写下的分档标准〔引的是 **2026-09-10 之前**那一版原话，
@@ -1054,29 +959,15 @@ fn start_detached(
     let port = listen_port_for(&home);
     // 钥匙与「谁在听」也住这个家（后端 `--resident-stop` 在同一个家里找同一份）。
     let dir = home;
-    let token = match ensure_listen_token(&dir) {
-        Ok(t) => t,
-        Err(e) => {
-            // ★★ `重-D2-1`：**这一格也是「用户动得了手」那一档 ⇒ 也要说到眼前。**
-            //    `阻-4` 让这句诊断指对了地方（说得出删哪个文件），但它只走到
-            //    `StartOutcome::Failed` 的 `reason` 里 —— 而自动起那条路对没有记录的失败
-            //    走 `tracing::info!` ⇒ 用户什么都看不到，那句「`rm <路径>`」只说给日志听。
-            //    ⚠ `e` 本身就是那句话（`ensure_listen_token` 的空文件支逐字写着「下一步」）,
-            //    这里**原样**转交，不另写一份 —— 两份措辞迟早对不上。
-            note_start_refusal(e.clone());
-            return DetachOutcome::Done(StartOutcome::Failed {
-                reason: copy_text("rsLocalBackendHost.start.noToken", &[("e", &e.to_string())]),
-                looked_at: vec![token_path(&dir)],
-            });
-        }
-    };
+    // 钥匙只交路径、每次连都现读（常驻后端绑上口之后自己写一把新的）。
+    let token_file = token_path(&dir);
 
     // ── ① 起时先认已有实例 ────────────────────────────────────────────
     //
     // ★★ 这一条是硬的：backend 一起来就**无条件**往它连得到的 tmux server 装三条全局 hook、
     //    **固定槽位 `[50]`**、**没有关掉它的开关**，载荷里烤着那一个后端的 pid+starttime。
     //    ⇒ **脱离而不认已有实例 = 每台机 N 个后端互相盖槽位，比今天更糟。**
-    match adopt_existing(port, &token, extra_env) {
+    match adopt_existing(port, &token_file, extra_env) {
         Adopt::Attached => {
             let (pid, bin) =
                 read_listen_owner(&dir, port).unwrap_or((0, std::path::PathBuf::new()));
@@ -1120,7 +1011,7 @@ fn start_detached(
             return DetachOutcome::Done(StartOutcome::Failed { reason, looked_at })
         }
     };
-    let child = match spawn_detached(&bin, port, &token_path(&dir), extra_env) {
+    let child = match spawn_detached(&bin, port, &token_file, extra_env) {
         Ok(c) => c,
         Err(e) => {
             return DetachOutcome::Done(StartOutcome::Failed {
@@ -1140,7 +1031,7 @@ fn start_detached(
         });
     }
     // 起来了之后自己连上去 —— **走与「接管」完全同一条路**，不另写一份。
-    match probe_and_attach_after_spawn(port, &token, extra_env) {
+    match probe_and_attach_after_spawn(port, &token_file, extra_env) {
         Ok(()) => DetachOutcome::Done(StartOutcome::Started(bin)),
         Err(e) => {
             // 起来了但连不上 ⇒ 这不是「起了」。把它收掉，别留一个谁都够不着的进程。
@@ -1197,18 +1088,18 @@ enum Adopt {
 ///   才会把那张牌放回去。⇒ 有界重试。**不重试它，用户会看到「换台电脑重开 monitor 就没后端了」。**
 ///
 /// 别的一律不重试 —— token 不对、口上是别人，重试只是把一个确定的坏消息拖晚。
-fn adopt_existing(port: u16, token: &str, env: &[(String, String)]) -> Adopt {
-    adopt_with(port, token, env, false)
+fn adopt_existing(port: u16, token_file: &std::path::Path, env: &[(String, String)]) -> Adopt {
+    adopt_with(port, token_file, env, false)
 }
 
 /// 刚起完之后连上去。**与接管走同一条路**，差别只有一句：
 /// 这一次「没人在听」是**还没 bind 完**（我们刚亲手起了一个），要等。
 fn probe_and_attach_after_spawn(
     port: u16,
-    token: &str,
+    token_file: &std::path::Path,
     env: &[(String, String)],
 ) -> Result<(), String> {
-    match adopt_with(port, token, env, true) {
+    match adopt_with(port, token_file, env, true) {
         Adopt::Attached => Ok(()),
         Adopt::Refused(why) => Err(why),
         Adopt::None => Err(copy_text(
@@ -1219,7 +1110,13 @@ fn probe_and_attach_after_spawn(
 }
 
 /// `env` = 这一趟交给（或会交给）后端的那份环境 —— 身份比对的第三项（[`hello_verdict`]）。
-fn adopt_with(port: u16, token: &str, env: &[(String, String)], wait_for_bind: bool) -> Adopt {
+/// 钥匙在读到 hello 之后才读（那时那一位已经把它那一把写下了）。
+fn adopt_with(
+    port: u16,
+    token_file: &std::path::Path,
+    env: &[(String, String)],
+    wait_for_bind: bool,
+) -> Adopt {
     let mut last = copy_text("rsLocalBackendHost.adopt.nobody", &[]);
     for _ in 0..LISTEN_WAIT_TRIES {
         match probe_listen_port(port, env) {
@@ -1233,7 +1130,10 @@ fn adopt_with(port: u16, token: &str, env: &[(String, String)], wait_for_bind: b
                     &[("port", &port.to_string())],
                 );
             }
-            Probe::Ours(sock, hello) => match send_attach(&sock, token) {
+            Probe::Ours(sock, hello) => match read_listen_token(token_file)
+                .map_err(AttachErr::Fatal)
+                .and_then(|token| send_attach(&sock, &token))
+            {
                 Ok(()) => {
                     return match attach_stream(sock, &hello) {
                         Ok(()) => Adopt::Attached,

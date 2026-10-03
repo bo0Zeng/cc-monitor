@@ -570,8 +570,7 @@ async fn claim_then_log(
     ),
     i32,
 > {
-    // `listen::resolve`：钥匙在文件里那一形（远端 `--resident-ensure` 起的）读出来再照常起。
-    let mode = match listen::mode_from(env).and_then(listen::resolve) {
+    let mode = match listen::mode_from(env) {
         Ok(m) => m,
         Err(e) => {
             // **fail closed**：宁可不起，也不要起一个不设防的口 —— 回环 TCP 没有权限位。
@@ -579,7 +578,7 @@ async fn claim_then_log(
             return Err(listen::EXIT_BAD_LISTEN_CONFIG);
         }
     };
-    let Some((port, token)) = mode else {
+    let listen::Mode::Listen { port, token_file } = mode else {
         return Ok((None, install()));
     };
     let addr = std::net::SocketAddr::new(listen::LOOPBACK, port);
@@ -601,6 +600,14 @@ async fn claim_then_log(
             } else {
                 listen::EXIT_BAD_LISTEN_CONFIG
             });
+        }
+    };
+    // 抢到口了 ⇒ 换一把新钥匙写回钥匙文件（旧的随之作废）；写不下 ⇒ 不起（口随 `listener` 放掉）。
+    let token = match control::resident::rotate_token(std::path::Path::new(&token_file)) {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::error!("钥匙写不下 ⇒ 拒绝起：{e}");
+            return Err(listen::EXIT_BAD_LISTEN_CONFIG);
         }
     };
     Ok((Some((listener, port, token)), install()))
