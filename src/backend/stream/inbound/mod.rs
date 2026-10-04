@@ -52,7 +52,7 @@ use drain::{exit_after_drain_within, Drain};
 pub(crate) use drain::{DRAIN, DRAIN_DEADLINE};
 use sniff::sniff_id;
 pub use sniff::ID_SNIFF_BYTES;
-use spec::{BlockingHandler, BoxFut, Fail, Handler, Outcome};
+use spec::{BlockingHandler, BoxFut, DataHandler, Fail, Handler, Outcome};
 pub(crate) use spec::{CommandSpec, Run};
 
 /// 单行上限。超过即整行丢弃 + 回 `line_too_long`。
@@ -218,6 +218,9 @@ async fn handle_line(
             let fut = move |r: Request| async move { run(r).await.map_err(Fail::from) };
             spawn_handler(req, replies.clone(), running.clone(), fut, true).await
         }
+        Disposition::SpawnData(req, run) => {
+            spawn_handler(req, replies.clone(), running.clone(), run, true).await
+        }
         // ★ 同步阻塞处理器：进 `spawn_blocking` 的专用线程池，**不占 tokio worker**。
         //   `cancellable: false` —— `spawn_blocking` 起的活 abort 不了，说实话。
         Disposition::SpawnBlocking(req, run) => {
@@ -276,6 +279,8 @@ enum Disposition {
     Done,
     Reply(Frame),
     Spawn(Request, Handler),
+    /// 同 [`Disposition::Spawn`]，失败可带 `data`。
+    SpawnData(Request, DataHandler),
     /// **同步阻塞**的处理器（起进程、扫全库）。走 `tokio::task::spawn_blocking`。
     ///
     /// # 为什么必须与 [`Disposition::Spawn`] 分开（D 设计审计 · 视角 A · P5）
@@ -391,6 +396,7 @@ fn dispatch(
         other => match lookup(other) {
             Some(spec) => match spec.run {
                 Run::Async(f) => Disposition::Spawn(req, Box::new(f)),
+                Run::AsyncData(f) => Disposition::SpawnData(req, Box::new(f)),
                 Run::Blocking(f) => {
                     Disposition::SpawnBlocking(req, Box::new(move |r| f(r).map_err(Fail::from)))
                 }

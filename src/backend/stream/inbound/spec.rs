@@ -29,6 +29,11 @@ impl From<(String, String)> for Fail {
 }
 pub(super) type BoxFut =
     std::pin::Pin<Box<dyn std::future::Future<Output = CmdResult> + Send + 'static>>;
+/// 同 [`BoxFut`]，结局可带按码定形的 `data`。
+pub(super) type DataFut =
+    std::pin::Pin<Box<dyn std::future::Future<Output = Outcome> + Send + 'static>>;
+/// 异步处理器（失败可带 `data`）。
+pub(super) type DataHandler = Box<dyn FnOnce(Request) -> DataFut + Send>;
 
 /// 一条命令**怎么跑**。三档，缺一不可：
 ///
@@ -43,6 +48,8 @@ pub(super) type BoxFut =
 #[derive(Clone, Copy)]
 pub(crate) enum Run {
     Async(fn(Request) -> BoxFut),
+    /// 同 [`Run::Async`]，只是失败可以带按码定形的 `data`（换号重启：起失败时带终端名）。
+    AsyncData(fn(Request) -> DataFut),
     Blocking(fn(Request) -> CmdResult),
     /// 同 [`Run::Blocking`]，只是失败可以带按码定形的 `data`（起会话那几条：选不了号时带上要的号与替代）。
     BlockingData(fn(Request) -> Outcome),

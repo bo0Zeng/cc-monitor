@@ -121,7 +121,6 @@ vi.mock("../../../../src/frontend/ui/render-stream-record", () => ({
 }));
 vi.mock("../../../../src/frontend/ui/cards", () => ({
   reconcilePendingToolResults: vi.fn(() => []),
-  isCompactRecord: () => false,
 }));
 vi.mock("../../../../src/frontend/ui/cards/subagent", () => ({ isAgentTool: () => false }));
 vi.mock("../../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));

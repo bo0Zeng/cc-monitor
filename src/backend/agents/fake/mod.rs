@@ -393,6 +393,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         records: None,
         processes: None,
         launch: None,
+        compact_request: None,
     };
     let discovered = crate::agents::visible_among(std::slice::from_ref(&adapter));
     if discovered.len() != 1 {
@@ -549,6 +550,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
             session_name_prefix: prefix,
             ..LAUNCH
         }),
+        compact_request: None,
     }];
     let spec = format!("{{\"agentKind\":\"{AGENT_KIND}\",\"sessionId\":\"{sid}\"}}");
     let plan =

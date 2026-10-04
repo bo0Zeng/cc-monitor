@@ -645,6 +645,14 @@ mod tests {
         "收窄人群",
         "起子进程不再需要期限（或期限改由别处执行）的那天。",
     ),
+        (
+        "observe/one_wait.rs",
+        "Duration::from_millis(ms)",
+        "一次性等待（`observe::one_wait::Armed::within`）的期限：值由发起方给（换号重启的界面把等压缩 / 等会话报出的期限交下来），\
+         只交给那一次有界等待（登记在 `REGISTERED_DEADLINE_WAKES` 的 observe/one_wait.rs 那一行），不驱动循环、不产生节拍。",
+        "收窄人群",
+        "换号重启不再等压缩摘要与会话报出（或等待改由别处执行）的那天 —— 与那一行登记一起摘。",
+    ),
     ];
     // `relay/machine.rs` 那一行（差分探针的 socket 读写期限）摘了：「在不在」改由常驻后端进程内的状态答，探针删了。
 
@@ -685,6 +693,13 @@ mod tests {
             "超时杀组之后，等读输出的线程收尾的宽限：过了仍没收尾 ⇒ 输出管道被逃出组的进程攥着，放手并记一行日志。\
              只在超时那一回、在等待线程里等一次。",
             "`DRAIN_AFTER_KILL`（1 秒）；读线程先收尾就立刻醒。",
+        ),
+        (
+            "observe/one_wait.rs",
+            "tokio::time::timeout(wait, self.hit)",
+            "换号重启等压缩摘要 / 等会话报出的**一次有界等待**：到了由文件事件（inotify）当场叫醒，没到就等到发起方给的期限、回「没等到」。\
+             一次一等、不循环、不复用；没有它，压缩一直不出摘要时这条命令就永远停在半路。",
+            "发起方给的期限（`compact_within_ms` / `arrive_within_ms`）；等的那件事先到就立刻醒。",
         ),
     ];
 
@@ -1413,9 +1428,10 @@ mod g6_reach {
         // 6 → **7**：多的那一条是 `observe/runs.rs` 的 `STALE_AFTER`（子运行「久未再写 ⇒ 状态不明」的阈值）。
         //   条数不变、格改了：它后来成了 `REGISTERED_DEADLINE_WAKES` 里 runs 那一处等的期限（cell `缩性质`）。
         // 7 → **8**：多的那一条是 `platform/child.rs` 的 `Deadline`（起子进程原语的期限类型，只交给那一次有界等待）。
+        // 8 → **9**：多的那一条是 `observe/one_wait.rs` 的一次性等待期限（换号重启等压缩 / 等会话报出，值由发起方给）。
         assert_eq!(
-            registered, 8,
-            "登记表从 8 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
+            registered, 9,
+            "登记表从 9 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
              改它等于改判据的射程"
         );
     }

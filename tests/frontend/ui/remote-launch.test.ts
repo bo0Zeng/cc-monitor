@@ -6,7 +6,6 @@
  * ＋ `ccm_invocation_tests.rs`。本文件只钉「意图落进请求的哪一格」，前端不判 sid / 名字 / 目录 / 启动器字符集。
  */
 
-import { readFileSync } from "node:fs";
 import { AGENT_PROFILE } from "../../../src/frontend/ui/agent-profile.ts";
 import {
   planResumeDirect,
@@ -103,15 +102,6 @@ test("模型偏好表原样进 models 那一格（那台判出号再取那一条
   const r = req(planResumeDirect("claude", "s1", "", "claude", { models: { w: "opus" } }));
   eq(r.models, { w: "opus" });
   eq(r.model, null);
-});
-
-// F01 漂移守卫（INVARIANTS §31a）：`=名:` 精确目标形态编码在 Rust（`ccm_invocation.rs` · `control/tmux.rs::exact_target`）
-// 与 `tests/e2e/restart-shims/core.mjs`。shim 是 Tauri IPC 边界的 mock，结构上无法 import Rust ⇒ 只能靠守卫钉住。
-test("F01 漂移守卫：e2e shim 的 tmux 目标是 =名: 精确形态", () => {
-  const shim = readFileSync(new URL("../../e2e/restart-shims/core.mjs", import.meta.url), "utf8");
-  eq(shim.includes("`=${target}:`"), true, "shim 必须用 =名: 精确形态（见 INVARIANTS §31a）");
-  eq(/\[\s*"send-keys",\s*"-t",\s*target\b/.test(shim), false, "shim 不得把裸 target 直接当 -t 目标");
-  eq(/\[\s*"kill-session",\s*"-t",\s*target\s*\]/.test(shim), false, "kill-session 同上");
 });
 
 if (failed > 0) {

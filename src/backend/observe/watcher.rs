@@ -1624,6 +1624,54 @@ fn tail_of(chunk: &[u8], chunk_start: u64, consumed: u64) -> Vec<u8> {
     chunk.get(from..to).map(<[u8]>::to_vec).unwrap_or_default()
 }
 
+/// 跟着一份记录往下读（一次性等待用）：与续读同一套读法 —— 只读新字节 · 截短 / 改写从 0 重读 · 残行等 `\n` · 不在了丢游标。
+pub(crate) struct Follow {
+    path: PathBuf,
+    cursor: ReadCursor,
+    tail: Vec<u8>,
+    seqs: SeqCounter,
+}
+
+impl Follow {
+    /// 从此刻最后一个完整行之后接着读（已有的行不交出）。
+    pub(crate) fn from_end(path: &Path) -> Follow {
+        let mut f = Follow {
+            path: path.to_path_buf(),
+            cursor: ReadCursor::default(),
+            tail: Vec::new(),
+            seqs: SeqCounter::new(),
+        };
+        f.more();
+        f
+    }
+
+    /// 上一趟之后新长出来的完整行（原文）。不在 / 这一趟读不出 ⇒ 空。
+    pub(crate) fn more(&mut self) -> Vec<String> {
+        let tail = (!self.tail.is_empty()).then_some(self.tail.as_slice());
+        match read_tail_from(&self.path, self.cursor, tail) {
+            Look::Gone => {
+                self.cursor = ReadCursor::default();
+                self.tail.clear();
+                Vec::new()
+            }
+            Look::Unreadable => Vec::new(),
+            Look::Read {
+                chunk,
+                chunk_start,
+                file_len,
+                from,
+                ..
+            } => {
+                let (lines, next) =
+                    read_new_lines_at(&chunk, chunk_start, file_len, from, "", &mut self.seqs);
+                self.tail = tail_of(&chunk, chunk_start, next.consumed);
+                self.cursor = next;
+                lines.into_iter().map(|l| l.raw).collect()
+            }
+        }
+    }
+}
+
 /// 这份文件的游标、指纹一起丢（不在了 ⇒ 同名再出现从 0 读；那一趟当改写办：先出声、行号从 0 重数）。
 fn forget_cursor(state: &mut ReaderState, key: &Path) {
     state.offsets.remove(key);
@@ -2527,7 +2575,7 @@ fn add_time_check(pid: u32, bytes: &[u8], path: &Path) -> Result<Option<u64>, &'
 }
 
 /// pidfile 目录（流模式的耳朵与一次性扫描同一处问适配层）。
-fn pidfile_dir(agent_home: &Path) -> PathBuf {
+pub(crate) fn pidfile_dir(agent_home: &Path) -> PathBuf {
     crate::agents::claudecode::paths::sessions_root(agent_home)
 }
 

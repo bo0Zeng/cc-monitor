@@ -1,236 +1,194 @@
 #!/usr/bin/env bash
-# auto-e2e F-E3(命令级整合):换号重启编排（#68/#69）——`compact → kill → resume(新账号)` 序列（不再键入 /exit）+
-# resume 落**新账号的 CLAUDE_CONFIG_DIR** + §5.2 失败语义。驱动**真源** src/frontend/ui/account-restart.ts
-# `restartWithAccount`（经 restart-cmd-driver.ts + restart-shims/ 把 Tauri IPC 边界重定向到真 tmux +
-# fake-claude,见那两个文件头注),逐边界断言编排真正发出的命令序列 / resume argv / 账号解析 / 失败语义。
+# 换号重启（帧命令 `session-restart`）真进程端到端：真后端二进制 ＋ 私有 tmux server ＋ 假 claude，经流的入方向发命令、读应答。
 #
-# **诚实天花板 = 命令级**:GUI 全链在 Linux 结构性不可达(`platform/terminal.rs::launch_powershell_window` 仅
-# Windows→回退剪贴板、绝不执行)。本套件测的是**真编排逻辑 + 真 tmux 效果 + 真账号解析**,唯一替换的
-# 是那道无法在 Linux 触达、本该由后端 Rust 执行 tmux 的 IPC 边界(见 tests/e2e/README + resume-suite.sh 头注)。
-# 批量对齐 alignAllToCurrentAccount 的 idle/busy 分桶是 TabManager DOM 方法,其诚实天花板 = DOM(jsdom)级,
-# 由 tests/frontend/ui/tabs.vitest.ts「account-ux U6」块覆盖(单独 vitest 跑);本套件在**命令级**钉 confirm 闸门
-# (放行 / 拦下,B4/B1/B2),两者互补。
-#
-# 红线:backend 零改(不跑它) / 隔离 CLAUDE_CONFIG_DIR 绝不碰真 ~/.claude / 只 kill 本套件建的 cc-<sid8>。
+# 覆盖：先压缩并等到摘要 ⇒ 同一终端名里用新号起、新进程报出 · 压缩超时照常重启（本机那一形）· 停不了 ⇒ 不起新的 ·
+#       号选不了 ⇒ 什么都不动 · 等压缩时撤单 ⇒ 不停不起。新进程用的是新号的目录、经 ccm 起（进程环境里有中转地址）。
+# 账号目录的 `sessions/` `projects/` 链回共享的 agent 家（与真机布局同形），后端盯的就是那一份。
+# 红线：只用私有 tmux server（`tmux-shim.sh` 强插 `-L`）· 家目录整个换成沙箱 · 只收本套件起的进程。
 . "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -euo pipefail
 
-# ── G-C（解 BACKLOG E41）：把整套件钉在**自己的 tmux server** 上 ──────────────────
-# 此前这套件裸调 tmux ⇒ 在开发者机器上会**直接操作默认 socket 上的真实会话**，
-# 所以它既进不了 CI 也不敢在有活会话的机器上跑（E41）。
-#
-# **两件事都必须做，缺一就不隔离**（2026-07-30 本机实测）：
-#   ① `unset TMUX` —— 从 tmux 会话里跑这套件时，`$TMUX` 会让客户端连**外层那台 server**
-#      并**完全忽略 `TMUX_TMPDIR`**（实测：设了 TMUX_TMPDIR 仍在默认 socket 上建出了会话）。
-#      **这才是 E41 的实质**：不只是「缺 `-L`」，是「继承了 `$TMUX`」。
-#   ② `TMUX_TMPDIR` 必须是**短路径** —— unix socket 路径上限 108 字节，指向长目录时
-#      tmux 报 `File name too long`（实测在 scratchpad 那种长路径上必踩）。
-#
-# 这样做的好处是**零调用点改动**：套件里 84 处裸 `tmux` 一个都不用改，
-# 也自动覆盖它 shell out 出去的东西（`ccm` / `cc-spawn` 内部也是裸调 tmux）。
-# `C7i` 隔离：走**共享原语**（`P0e` 08-12 抽出来的，原本这段在各套件里各抄一份）。
-# 它把 `$BIN/tmux` shim 放进 PATH 最前、强插 `-L <本趟私有名>` —— 漏什么环境变量都打不偏。
-# ⚠ 本套件此前靠 `TMUX_TMPDIR` 隔离，那是 `C7i` 逐字禁止的形态
-#   （08-11 一条同形态的探针把用户 **9 个真实会话**打没了）。
 # shellcheck source=tests/e2e/tmux-shim.sh
 . "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh" e2eRestart
-# 换号重启交给终端的是一行 `ccm …` ⇒ 后端二进制以 `ccm` 之名上 PATH（要先 build：二进制在 .build/backend/debug/cc-monitor-backend）。
+# 后端二进制以 `ccm` 之名上 PATH、家目录换成沙箱（要先 build：二进制在 .build/backend/debug/cc-monitor-backend）。
 # shellcheck source=tests/e2e/ccm-shim.sh
 . "$(cd "$(dirname "$0")" && pwd)/ccm-shim.sh"
-_gc_sock_cleanup() { tmux_shim_cleanup; ccm_shim_cleanup; }
-# ─────────────────────────────────────────────────────────────────────────────
 
-REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-E2E="$REPO/tests/e2e"
-FAKE="$E2E/fake-claude"
-GEN="$E2E/gen-idle-tmux.sh"
-DRV="$E2E/restart-cmd-driver.ts"
-
+E2E="$(cd "$(dirname "$0")" && pwd)"
 WORK="$(mktemp -d /tmp/e2e-restart.XXXXXX)"
-# 启动器路径要过 §47 的字符闸（只许 ASCII 那一族）；仓可能住在非 ASCII 目录（如 `~/文档/`）⇒ 拷进 ASCII 的 $WORK 再当启动器。
-cp "$E2E/fake-claude" "$WORK/fake-claude" && chmod +x "$WORK/fake-claude" && FAKE="$WORK/fake-claude"
-OLD="$WORK/acct-old"      # 旧账号 CLAUDE_CONFIG_DIR（account "bold"）
-NEW="$WORK/acct-new"      # 新账号 CLAUDE_CONFIG_DIR（account "znew"，换号目标）
+# 假 claude 以 `claude` 之名放进 ASCII 的 $WORK（前台命令名要认得出是 agent；启动器路径要过字符闸）。
+mkdir -p "$WORK/bin"
+cp "$E2E/fake-claude" "$WORK/bin/claude" && chmod +x "$WORK/bin/claude"
+FAKE="$WORK/bin/claude"
 CWD_DIR="/tmp/e2e-remote"
-mkdir -p "$OLD/sessions" "$OLD/projects" "$NEW/sessions" "$NEW/projects" "$CWD_DIR"
+mkdir -p "$CWD_DIR"
 
-# 两账号 fixture（都可选:isolated + loggedIn + exists）。znew=换号目标、bold=旧号。
-ACCTS='{"available":true,"error":null,"meta":null,"accounts":[{"name":"bold","email":"","configDir":"'"$OLD"'","isDefault":false,"mode":"isolated","exists":true,"loggedIn":true,"authKind":"subscription","authReady":true},{"name":"znew","email":"","configDir":"'"$NEW"'","isDefault":true,"mode":"isolated","exists":true,"loggedIn":true,"authKind":"subscription","authReady":true}]}'
-export CCM_ACCOUNTS_JSON="$ACCTS"
-# 同两个号给 ccm 自己的账号库（`--account znew` 由那台的 ccm 按它解析）。
-case "$CCM_SHIM_ACCOUNTS" in
-  "$CCM_SHIM_DIR"/*) ;;
-  *) echo "账号库 $CCM_SHIM_ACCOUNTS 不在本趟沙箱里 —— 拒绝往里写" >&2; exit 9 ;;
-esac
-printf '{"accounts":[{"name":"bold","configDir":"%s"},{"name":"znew","configDir":"%s","isDefault":true}]}\n' "$OLD" "$NEW" >"$CCM_SHIM_ACCOUNTS/accounts.json"
+SHARED="$HOME/.claude"
+mkdir -p "$SHARED/sessions" "$SHARED/projects"
+OLD="$CCM_SHIM_ACCOUNTS/bold"
+NEW="$CCM_SHIM_ACCOUNTS/znew"
+for d in "$OLD" "$NEW"; do
+  mkdir -p "$d"
+  printf '{}\n' >"$d/.credentials.json"
+  ln -s "$SHARED/sessions" "$d/sessions"
+  ln -s "$SHARED/projects" "$d/projects"
+done
+printf '{"version":1,"accounts":[{"name":"bold","configDir":"%s","isDefault":false},{"name":"znew","configDir":"%s","isDefault":true}]}\n' \
+  "$OLD" "$NEW" >"$CCM_SHIM_ACCOUNTS/accounts.json"
 
-# 中转：本趟自己的「中转口」（只是一个在听的回环口）＋ 一把假钥匙，落在沙箱家目录里（ccm-shim.sh 已把 HOME 换成沙箱）。
-#   pane 里那一趟 ccm 在最终 exec 那一处判注入；私有 tmux server 带的 HOME 就是这一个。
+# 中转：一个在听的回环口 ＋ 一把假钥匙（ccm 在最终那一跳判注入）。
 mkdir -p "$HOME/.cc-monitor"
 python3 -c 'import secrets;print(secrets.token_hex(32))' >"$HOME/.cc-monitor/relay-key"
-RELAY_PORT_FILE="$WORK/relay-port"
 python3 -c '
 import socket,sys
 s=socket.socket();s.bind(("127.0.0.1",0));s.listen(64)
 open(sys.argv[1],"w").write(str(s.getsockname()[1]))
 while True:
     c,_=s.accept();c.close()
-' "$RELAY_PORT_FILE" &
+' "$WORK/relay-port" &
 RELAY_PID=$!
-for _ in $(seq 1 50); do [ -s "$RELAY_PORT_FILE" ] && break; sleep 0.1; done
-export CCM_RELAY_PORT="$(cat "$RELAY_PORT_FILE")"
+for _ in $(seq 1 50); do [ -s "$WORK/relay-port" ] && break; sleep 0.1; done
+CCM_RELAY_PORT="$(cat "$WORK/relay-port")"
+export CCM_RELAY_PORT
+# 新起的假 claude 收到 `/compact` 就写一条压缩摘要（私有 tmux server 带着这份环境）。
+export CCM_FAKE_COMPACT=answer
 
 pass=0; fail=0
 ok()  { echo "  PASS $1"; pass=$((pass+1)); }
 bad() { echo "  FAIL $1"; fail=$((fail+1)); }
-SESSIONS=()
 
+IN="$WORK/in.fifo"; OUT="$WORK/out.jsonl"; ERR="$WORK/backend.stderr"
 cleanup() {
   set +e
+  exec 3>&- 2>/dev/null
+  [ -n "${BACKEND_PID:-}" ] && kill "$BACKEND_PID" 2>/dev/null
   [ -n "${RELAY_PID:-}" ] && kill "$RELAY_PID" 2>/dev/null
-  for s in "${SESSIONS[@]:-}"; do [ -n "$s" ] && tmux kill-session -t "=$s:" 2>/dev/null; done
-  for d in "$OLD" "$NEW"; do
-    for pf in "$d"/sessions/*.json; do
-      [ -f "$pf" ] || continue
-      p="$(awk -F'[:,]' '{for(i=1;i<=NF;i++) if($i ~ /"pid"/){print $(i+1); exit}}' "$pf" 2>/dev/null)"
-      [ -n "$p" ] && kill "$p" 2>/dev/null
-    done
+  for pf in "$SHARED"/sessions/*.json; do
+    [ -f "$pf" ] || continue
+    p="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["pid"])' "$pf" 2>/dev/null)"
+    [ -n "$p" ] && kill "$p" 2>/dev/null
   done
   rm -rf "$WORK"
 }
-trap 'cleanup; _gc_sock_cleanup' EXIT
+trap 'cleanup; tmux_shim_cleanup; ccm_shim_cleanup' EXIT
 
 command -v tmux >/dev/null || { echo "无 tmux"; exit 1; }
 
-# fresh sid,守卫:绝不撞已存在的**真** cc-* 会话（本机常有真 Claude 在跑）。
-new_sid() {
-  local sid s
-  for _ in 1 2 3 4 5; do
-    sid="$(cat /proc/sys/kernel/random/uuid)"; s="cc-${sid:0:8}"
-    tmux has-session -t "=$s:" 2>/dev/null || { echo "$sid"; return 0; }
-  done
-  echo "new_sid: 连续撞名(不该)" >&2; return 1
-}
-
-# 造一个**活**远端会话（fake-claude 常驻,不 kill）在指定账号目录下。回显会话名。
-make_live() {  # <sid> <dir>
-  local sid="$1" dir="$2" sess="cc-${1:0:8}"
-  CLAUDE_CONFIG_DIR="$dir" CCM_E2E_FAKE_CLAUDE="$FAKE" bash "$GEN" "$sid" >/dev/null
-  SESSIONS+=("$sess")
-  sleep 0.4
-  echo "$sess"
-}
-
-# SEQ 里只保留主序列步（compact/escape/exit/kill/resume），空格连成一行。pipefail 安全。
-# escape / exit 仍收进来：换号重启直接 kill，它俩再出现在序列里 ⇒ 下面的相等判据当场红。
-seq_core() { { grep -E '^(compact|escape|exit|kill|resume|record account=.*)$' "$1" 2>/dev/null || true; } | paste -sd' ' -; }
-# 等某账号目录 argv.log 出现该 sid 的 --resume 行,回显之。超时非零。
-wait_argv() {  # <dir> <sid> <timeout-s>
-  local dir="$1" sid="$2" to="$3" i hit
-  for ((i=0; i<to*2; i++)); do
-    hit="$(grep -E "sid=$sid .*argv=--resume $sid" "$dir/argv.log" 2>/dev/null | tail -1 || true)"
-    [ -n "$hit" ] && { echo "$hit"; return 0; }
-    sleep 0.5
+mkfifo "$IN"
+"$CCM_E2E_BIN" -- --tail-only <"$IN" >"$OUT" 2>"$ERR" &
+BACKEND_PID=$!
+exec 3>"$IN"
+send() { printf '%s\n' "$1" >&3; }
+# 等某个 id 的那一帧（应答 / 撤单），回显它；`$2` 秒内没等到 ⇒ 非零。
+frame_of() {
+  local id="$1" to="$2" i line
+  for ((i=0; i<to*10; i++)); do
+    line="$(grep -F "\"id\":\"$id\"" "$OUT" | grep -E '"kind":"(reply|cancelled)"' | head -1 || true)"
+    [ -n "$line" ] && { printf '%s\n' "$line"; return 0; }
+    sleep 0.1
   done
   return 1
 }
-session_alive() { tmux has-session -t "=$1:" 2>/dev/null && echo 1 || echo 0; }
+field() { python3 -c 'import json,sys;v=json.loads(sys.argv[1]);
+for k in sys.argv[2].split("."): v=(v or {}).get(k)
+print(v if v is not None else "")' "$1" "$2"; }
 
-# drive_restart <sid> <session> <account> <compactFirst> <confirm> <seqfile> <toastfile> [extra env...]
-drive_restart() {
-  local sid="$1" sess="$2" acct="$3" cf="$4" cfm="$5" seqf="$6" toastf="$7"; shift 7
-  : >"$seqf"; : >"$toastf"
-  # `CCM_ARRIVAL_ARGV_DIR`：事件替身（`restart-shims/event.mjs`）站在主窗口位置认「会话起来了」时看的那份 argv.log（新账号目录）。
-  env "$@" CCM_SEQ_LOG="$seqf" CCM_TOAST_LOG="$toastf" CCM_ARRIVAL_ARGV_DIR="$NEW" \
-    npx tsx "$DRV" restart devbox "$sid" "$CWD_DIR" "$sess" "$acct" "$FAKE" "$cf" "$cfm" 1
+for _ in $(seq 1 100); do grep -qF '"kind":"hello"' "$OUT" && break; sleep 0.1; done
+grep -qF '"kind":"hello"' "$OUT" && ok "后端发出 hello" || { bad "10s 内没等到 hello"; tail -20 "$ERR"; }
+grep -m1 -F '"kind":"hello"' "$OUT" | grep -qF '"session-restart"' && ok "hello.commands 里有 session-restart" || bad "hello 里没有 session-restart"
+
+# 起一条活会话：用旧号，前台是假 claude（`extra` 是给这一个的额外环境）。回显 `sid 会话名`。
+# 前台命令名要认得出是 agent：tmux 读的是 argv[0] ⇒ 以 `claude` 之名起那份脚本（同真 claude 的 argv[0]）。
+make_live() {  # <extra env>
+  local sid name
+  sid="$(cat /proc/sys/kernel/random/uuid)"; name="rs-${sid:0:8}-cc"
+  tmux new-session -d -s "$name" -c "$CWD_DIR" \
+    "env CLAUDE_CONFIG_DIR='$OLD' $1 bash -c 'exec -a claude /bin/sh \"\$0\" \"\$1\"' '$FAKE' '$sid'"
+  tmux set-option -t "=$name:" @ccm_sid "$sid"
+  for _ in $(seq 1 50); do grep -lqF "\"$sid\"" "$SHARED"/sessions/*.json 2>/dev/null && break; sleep 0.1; done
+  printf '%s %s\n' "$sid" "$name"
+}
+# 这个 sid 此刻活着的进程数。
+live_pids() {
+  local n=0 pf p
+  for pf in "$SHARED"/sessions/*.json; do
+    [ -f "$pf" ] || continue
+    grep -qF "\"$1\"" "$pf" || continue
+    p="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["pid"])' "$pf")"
+    kill -0 "$p" 2>/dev/null && n=$((n+1))
+  done
+  echo "$n"
+}
+resumed_in() { grep -cE "sid=$2 .*argv=--resume $2" "$1/argv.log" 2>/dev/null || true; }
+restart_req() {  # <id> <sid> <account> <compact_first> <compact_ms> <local>
+  printf '{"id":"%s","cmd":"session-restart","args":{"sid":"%s","cwd":"%s","account":"%s","compact_first":%s,"compact_within_ms":%s,"arrive_within_ms":20000,"local":%s,"agent":"claude","launcher":"%s","defaultLauncher":"claude"}}' \
+    "$1" "$2" "$CWD_DIR" "$3" "$4" "$5" "$6" "$FAKE"
 }
 
-echo "== F-E3 换号重启编排 命令级整合套件（真源 restartWithAccount + 真 tmux + fake-claude）=="
-echo "repo=$REPO  old(acct bold)=$OLD  new(acct znew)=$NEW  cwd=$CWD_DIR"
+echo "== 换号重启（session-restart）真进程端到端 =="
 
-# ── B1:restart 账号 znew + compactFirst=true → compact→kill→resume + argv 落新账号目录 ──────
-echo "-- B1 compactFirst=true:序列 compact→kill→resume + resume argv CLAUDE_CONFIG_DIR=新账号 --"
-SID1="$(new_sid)"; S1="cc-${SID1:0:8}"
-make_live "$SID1" "$OLD" >/dev/null
-OUT1="$(drive_restart "$SID1" "$S1" znew 1 1 "$WORK/b1.seq" "$WORK/b1.toast")"
-echo "   driver: $(echo "$OUT1" | paste -sd' ' -)"
-CORE1="$(seq_core "$WORK/b1.seq")"
-echo "   seq(core): [$CORE1]"
-[ "$CORE1" = "compact kill resume" ] && ok "B1 序列 = compact→kill→resume（真编排发出的有序命令；上次用的号由那台自己记，界面不写）" || bad "B1 序列=[$CORE1]（期望 compact kill resume）"
-echo "$OUT1" | grep -q "^RESULT true$" && ok "B1 restartWithAccount 返回 true（真拉起）" || bad "B1 RESULT≠true"
-echo "$OUT1" | grep -q "^CONFIGDIR $NEW$" && ok "B1 真 accountConfigDir 解析 znew → $NEW（非旧号 $OLD）" || bad "B1 CONFIGDIR≠新账号目录"
-if AL="$(wait_argv "$NEW" "$SID1" 12)"; then
-  echo "   argv(new): $AL"
-  echo "$AL" | grep -q "CLAUDE_CONFIG_DIR=$NEW " && ok "B1 resume argv 落**新账号** CLAUDE_CONFIG_DIR=$NEW" || bad "B1 resume argv 目录≠新账号"
-  # 起会话只经 ccm：换号重启那一行是 `ccm …`，起出来的进程环境里有中转地址（只看变量在不在，不看值）。
-  echo "$AL" | grep -q " relay=set " && ok "B1 经 ccm 起出来的进程环境里有中转地址（ANTHROPIC_BASE_URL）" || bad "B1 起出来的进程环境里没有中转地址：$AL"
-else bad "B1 12s 内新账号目录 argv.log 无 resume 行"; fi
-if grep -qE "sid=$SID1 .*argv=--resume" "$OLD/argv.log" 2>/dev/null; then bad "B1 串号:resume 泄漏到**旧账号**目录($OLD)"; else ok "B1 隔离:旧账号目录无该 sid 的 resume（换号未落回旧号）"; fi
+# ── R1 先压缩：等到摘要 ⇒ 停旧 ⇒ 同名用新号起 ⇒ 等到它报出 ──────────────────────────────
+read -r SID1 NAME1 < <(make_live "")
+send "$(restart_req r1 "$SID1" znew true 20000 false)"
+if R1="$(frame_of r1 40)"; then
+  echo "   reply: $R1"
+  [ "$(field "$R1" ok)" = True ] && ok "R1 成功应答" || bad "R1 失败：$(field "$R1" code) $(field "$R1" message)"
+  [ "$(field "$R1" data.compact)" = "done" ] && ok "R1 压缩：等到了摘要（done）" || bad "R1 compact=$(field "$R1" data.compact)"
+  [ "$(field "$R1" data.started)" = arrived ] && ok "R1 新进程报出了（arrived）" || bad "R1 started=$(field "$R1" data.started)"
+  [ "$(field "$R1" data.terminal)" = "$NAME1" ] && ok "R1 同一个终端名 $NAME1" || bad "R1 terminal=$(field "$R1" data.terminal)"
+  [ "$(field "$R1" data.account.name)" = znew ] && ok "R1 用的号是 znew" || bad "R1 account=$(field "$R1" data.account.name)"
+else bad "R1 40s 内没等到应答"; tail -20 "$ERR"; fi
+[ "$(resumed_in "$NEW" "$SID1")" -ge 1 ] && ok "R1 新进程用的是新号的目录（CLAUDE_CONFIG_DIR=$NEW）" || bad "R1 新号目录里没有 resume"
+grep -E "sid=$SID1 .*argv=--resume" "$NEW/argv.log" 2>/dev/null | grep -q ' relay=set ' && ok "R1 经 ccm 起（进程环境里有中转地址）" || bad "R1 起出来的进程没有中转地址"
+[ "$(resumed_in "$OLD" "$SID1")" = 0 ] && ok "R1 旧号目录里没有 resume（没落回旧号）" || bad "R1 resume 落回了旧号"
+[ "$(live_pids "$SID1")" = 1 ] && ok "R1 这条会话恰好一个进程在跑" || bad "R1 在跑的进程数=$(live_pids "$SID1")"
+tagged=""
+for _ in $(seq 1 50); do
+  tagged="$(tmux list-panes -t "=$NAME1:" -F '#{@ccm_sid}' 2>/dev/null | grep -xF "$SID1" || true)"
+  [ -n "$tagged" ] && break; sleep 0.1
+done
+[ -n "$tagged" ] && ok "R1 新会话挂着这条会话的 @ccm_sid（下一次还认得出它在哪）" || { bad "R1 新会话没挂 @ccm_sid"; tmux list-panes -a -F '#{session_name} #{pane_current_command} [#{@ccm_sid}]'; tmux show-options -t "=$NAME1:" 2>&1 | head; }
 
-# ── B2:restart 无 compact → 直接 kill→resume（无 compact 等待、不发 Esc / /exit）──────────────────
-echo "-- B2 compactFirst=false:直接 kill→resume（序列无 compact / escape / exit）--"
-SID2="$(new_sid)"; S2="cc-${SID2:0:8}"
-make_live "$SID2" "$OLD" >/dev/null
-OUT2="$(drive_restart "$SID2" "$S2" znew 0 1 "$WORK/b2.seq" "$WORK/b2.toast")"
-CORE2="$(seq_core "$WORK/b2.seq")"
-echo "   seq(core): [$CORE2]"
-[ "$CORE2" = "kill resume" ] && ok "B2 序列 = kill→resume（直接杀，不发 Esc / /exit；界面不记号）" || bad "B2 序列=[$CORE2]（期望 kill resume）"
-{ grep -qx "compact" "$WORK/b2.seq" 2>/dev/null && bad "B2 不该发 /compact 却发了"; } || ok "B2 全程未发 /compact（未勾选 compact）"
-echo "$OUT2" | grep -q "^RESULT true$" && ok "B2 返回 true" || bad "B2 RESULT≠true"
-wait_argv "$NEW" "$SID2" 12 >/dev/null && ok "B2 resume argv 落新账号目录" || bad "B2 无 resume argv"
+# ── R2 压缩超时（本机那一形）：到点照常重启 ─────────────────────────────────────────────
+read -r SID2 _NAME2 < <(make_live "CCM_FAKE_COMPACT=ignore")
+send "$(restart_req r2 "$SID2" znew true 1500 true)"
+if R2="$(frame_of r2 40)"; then
+  [ "$(field "$R2" data.compact)" = timed_out ] && ok "R2 压缩到点没见摘要（timed_out）" || bad "R2 compact=$(field "$R2" data.compact) $(field "$R2" message)"
+  [ "$(field "$R2" data.started)" = arrived ] && ok "R2 照常重启、新进程报出" || bad "R2 started=$(field "$R2" data.started)"
+else bad "R2 40s 内没等到应答"; fi
+[ "$(resumed_in "$NEW" "$SID2")" -ge 1 ] && ok "R2 新号目录里有 resume" || bad "R2 没有 resume"
 
-# ── B3:mismatch 检测（活会话账号 ≠ origin 当前号）→ restart 后清零 ────────────────────────────
-echo "-- B3 mismatch（真 detectAccountMismatch）restart 前后对比 --"
-# 前:活会话在旧号 bold、当前工作账号 znew → 不一致 true。（B1 已换号,那个 sid 现活在 znew。）
-BEFORE="$(CCM_ACCOUNTS_JSON="$ACCTS" npx tsx "$DRV" mismatch bold znew)"
-AFTER="$(CCM_ACCOUNTS_JSON="$ACCTS" npx tsx "$DRV" mismatch znew znew)"
-echo "   detectAccountMismatch(before live=bold, current=znew)=$BEFORE ; (after live=znew, current=znew)=$AFTER"
-[ "$BEFORE" = "true" ] && [ "$AFTER" = "false" ] && ok "B3 mismatch 换号后清零（true→false）——B1 argv 已证 sid 现活在 znew" || bad "B3 mismatch 未按预期翻转（before=$BEFORE after=$AFTER）"
-
-# ── B4:取消 confirm（()=>false）→ no-op:不 kill 不 resume,argv.log 无新行,会话仍活 ─────────────
-echo "-- B4 取消 confirm ()=>false → no-op（不 kill/不 resume/argv 无新行）--"
-SID4="$(new_sid)"; S4="cc-${SID4:0:8}"
-make_live "$SID4" "$NEW" >/dev/null    # 活在新号,resume 若误发会往 NEW 追行——正好用来验"无新行"
-BEFORE_LINES="$(wc -l <"$NEW/argv.log" 2>/dev/null || echo 0)"
-OUT4="$(drive_restart "$SID4" "$S4" znew 0 0 "$WORK/b4.seq" "$WORK/b4.toast")"
-CORE4="$(seq_core "$WORK/b4.seq")"
-echo "   seq(core): [$CORE4]  result: $(echo "$OUT4" | grep '^RESULT')"
-[ -z "$CORE4" ] && ok "B4 序列为空（confirm 拒 → 不 compact/不 kill/不 resume）" || bad "B4 序列非空=[$CORE4]（取消后仍动手）"
-echo "$OUT4" | grep -q "^RESULT false$" && ok "B4 返回 false（no-op）" || bad "B4 RESULT≠false"
-[ "$(session_alive "$S4")" = 1 ] && ok "B4 会话未被杀（仍活）" || bad "B4 会话被误杀（取消后不该动）"
+# ── R3 停不了（会话里多一个窗口 ⇒ 门不放）⇒ 不起新的 ─────────────────────────────────────
+read -r SID3 NAME3 < <(make_live "")
+tmux new-window -d -t "=$NAME3:" "sleep 2147483647"
+send "$(restart_req r3 "$SID3" znew false 1000 false)"
+if R3="$(frame_of r3 30)"; then
+  [ "$(field "$R3" code)" = stop_failed ] && ok "R3 停失败 ⇒ stop_failed（why=$(field "$R3" data.why)）" || bad "R3 code=$(field "$R3" code)"
+else bad "R3 30s 内没等到应答"; fi
 sleep 1
-AFTER_LINES="$(wc -l <"$NEW/argv.log" 2>/dev/null || echo 0)"
-[ "$BEFORE_LINES" = "$AFTER_LINES" ] && ok "B4 argv.log 无新行（before=$BEFORE_LINES after=$AFTER_LINES）" || bad "B4 argv.log 多了行（before=$BEFORE_LINES after=$AFTER_LINES）"
+[ "$(resumed_in "$NEW" "$SID3")" = 0 ] && ok "R3 没起新的" || bad "R3 停失败还起了新的"
+[ "$(live_pids "$SID3")" = 1 ] && ok "R3 旧进程还活着" || bad "R3 旧进程数=$(live_pids "$SID3")"
 
-# ── B5:kill 失败 → 中止不续 resume（account-restart.ts:152-161）──────────────────────────────
-echo "-- B5 kill 失败 → 中止（不 resume/不记账，account-restart.ts:152-161）--"
-SID5="$(new_sid)"; S5="cc-${SID5:0:8}"
-make_live "$SID5" "$OLD" >/dev/null
-OUT5="$(drive_restart "$SID5" "$S5" znew 0 1 "$WORK/b5.seq" "$WORK/b5.toast" CCM_KILL_FAIL=1)"
-echo "   seq: $(paste -sd' ' -<"$WORK/b5.seq")"
-CORE5="$(seq_core "$WORK/b5.seq")"
-grep -qx "kill-fail" "$WORK/b5.seq" && ok "B5 kill 失败已发生（kill-fail 帧）" || bad "B5 未见 kill-fail"
-{ echo "$CORE5" | grep -qw "resume" && bad "B5 kill 失败后**仍 resume**（回归:防新旧双进程失守）"; } || ok "B5 kill 失败后**未 resume**（序列止于 kill 前:[$CORE5]）"
-{ grep -q "^record " "$WORK/b5.seq" && bad "B5 kill 失败仍记账"; } || ok "B5 未记账（history-annotate 未发）"
-echo "$OUT5" | grep -q "^RESULT false$" && ok "B5 返回 false" || bad "B5 RESULT≠false"
-grep -q "重启已中止" "$WORK/b5.toast" && ok "B5 toast「重启已中止」" || bad "B5 无中止 toast"
+# ── R4 号选不了 ⇒ account_unavailable，什么都不动 ───────────────────────────────────────
+read -r SID4 _NAME4 < <(make_live "")
+send "$(restart_req r4 "$SID4" nope true 1000 false)"
+if R4="$(frame_of r4 30)"; then
+  [ "$(field "$R4" code)" = account_unavailable ] && ok "R4 account_unavailable（requested=$(field "$R4" data.requested)）" || bad "R4 code=$(field "$R4" code)"
+else bad "R4 30s 内没等到应答"; fi
+[ "$(live_pids "$SID4")" = 1 ] && ok "R4 旧进程还活着" || bad "R4 旧进程数=$(live_pids "$SID4")"
 
-# ── B6:resume 未起来 → 不记账不报成功（account-restart.ts:170-178）──────────────────────────
-echo "-- B6 resume 未起来 → 不记账/返回 false（account-restart.ts:170-178）--"
-SID6="$(new_sid)"; S6="cc-${SID6:0:8}"
-make_live "$SID6" "$OLD" >/dev/null
-OUT6="$(drive_restart "$SID6" "$S6" znew 0 1 "$WORK/b6.seq" "$WORK/b6.toast" CCM_RESUME_FAIL=1)"
-echo "   seq: $(paste -sd' ' -<"$WORK/b6.seq")"
-grep -qx "kill" "$WORK/b6.seq" && ok "B6 旧会话已真 kill（resume 前的破坏已发生）" || bad "B6 未见 kill"
-grep -qx "resume-fail" "$WORK/b6.seq" && ok "B6 resume 拉起失败（resume-fail 帧）" || bad "B6 未见 resume-fail"
-{ grep -q "^record " "$WORK/b6.seq" && bad "B6 resume 没起来却**记账**（回归:钉错账号归属）"; } || ok "B6 未记账（没起来就不钉账号归属）"
-echo "$OUT6" | grep -q "^RESULT false$" && ok "B6 返回 false（不报成功）" || bad "B6 RESULT≠false"
-# 标题从文案表取（`accountRestart.relaunch.failedTitle`）：这里原来逐字写着一句旧文案，
-#   文案改写（09-25 B3a）之后本格恒红、而编排本身是对的 —— 判的是「那一句 toast 出来了」，不是某一版措辞。
-T6="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["entries"]["accountRestart.relaunch.failedTitle"]["zh"])' "$REPO/src/shared/copy/table.json")"
-[ -n "$T6" ] && grep -qxF "TOAST $T6" "$WORK/b6.toast" && ok "B6 toast「$T6」（resume 没起来如实说）" || bad "B6 无 resume 失败 toast（期望标题「$T6」）"
+# ── R5 等压缩时撤单 ⇒ 不停、不起 ────────────────────────────────────────────────────────
+read -r SID5 _NAME5 < <(make_live "CCM_FAKE_COMPACT=ignore")
+send "$(restart_req r5 "$SID5" znew true 30000 false)"
+sleep 2
+send '{"id":"c5","cmd":"cancel","args":{"target":"r5"}}'
+if R5="$(frame_of r5 10)"; then
+  printf '%s' "$R5" | grep -qF '"kind":"cancelled"' && ok "R5 撤单生效（cancelled）" || bad "R5 不是 cancelled：$R5"
+else bad "R5 10s 内没等到撤单那一帧"; fi
+sleep 1
+[ "$(live_pids "$SID5")" = 1 ] && ok "R5 旧进程还活着（没停）" || bad "R5 旧进程数=$(live_pids "$SID5")"
+[ "$(resumed_in "$NEW" "$SID5")" = 0 ] && ok "R5 没起新的" || bad "R5 撤单之后还起了新的"
 
 echo "== 结果:$pass 过 / $fail 败 =="
-# G-C：与另外 8 套逐字一致的收尾格式，好让 `tests/e2e/assert-pass-floor.sh` 用同一条正则抓。
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
 [ "$fail" -eq 0 ]

@@ -1230,11 +1230,6 @@ function extractExitCode(text: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
-/** A5：这条是 `/compact` 后的续接摘要（后端判好的来源）—— 换号重启的 compact 完成检测（tabs.onLine）认它。 */
-export function isCompactRecord(rec: JsonlRecord): boolean {
-  return rec.type === "user" && rec.userText.speaker.kind === "compactSummary";
-}
-
 /**
  * 识别 assistant 自动应答（claude 在收到 task-notification 之类时回的 `<synthetic>`
  * 包裹的"无内容应答"），不是真实对话内容。

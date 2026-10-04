@@ -299,11 +299,11 @@ fixtures / 驱动:
    `SessionRemoved` + tmux 帧仍含 @ccm_sid(灰)→(真源就地 resume 命令复用原名)`SessionAdded` **再现**
    = 后端灰→live 复活边沿;全程 tmux 单会话无 `-N` 孤儿。
 
-## auto-e2e:换号重启编排(F-E3,#68/#69)
+## auto-e2e:换号重启(帧命令 `session-restart`)
 
-命令级 + backend-frame 验换号:`compact→kill→resume(新账号)` 序列（不再键入 /exit，直接杀）、resume 落新账号 `CLAUDE_CONFIG_DIR`、失败中止语义(kill 失败不续 resume / resume 未起不记账)、批量对齐 idle/busy 分流。诚实分层同 F-E2(GUI 结构性不可执行 → 命令级天花板)。
-- `restart-cmd-driver.ts` + `restart-shims/`(ESM loader 只重定向 Tauri IPC 边界到真 tmux+fake-claude,其余全真源;含 kill/resume 失败注入)。
-- 跑:`bash tests/e2e/restart-suite.sh`(命令级 24/0) + `bash tests/e2e/restart-backend-frames.sh`(5/0:旧号 `SessionRemoved`→新号 `SessionAdded` 迁移、无孤儿)。批量对齐 idle/busy 另由 `tabs.vitest.ts`「account-ux U6」覆盖。
+整条在后端：真后端二进制经流的入方向收 `session-restart`，私有 tmux server ＋ 假 claude（`CCM_FAKE_COMPACT`：收到 `/compact` 写一条压缩摘要）。
+验：先压缩等到摘要 ⇒ 同名用新号起、新进程报出（新号目录、经 ccm、带中转地址）· 压缩超时照常重启（本机那一形）· 停不了 ⇒ 不起新的 ·
+号选不了 ⇒ 什么都不动 · 等压缩时撤单 ⇒ 不停不起。跑：`bash tests/e2e/restart-suite.sh`。
 
 ## auto-e2e:Tier2 Windows DOM 冒烟(F-E5)
 

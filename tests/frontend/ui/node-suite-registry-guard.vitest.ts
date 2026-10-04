@@ -84,7 +84,7 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   // **39 → 38**（被测对象没了）：`sanitizeRemoteLauncher` 一条 · `isValidConfigDir` 一条随函数删；
   //    加一条「launcher 空白 ⇒ 默认、注入字符原样上线」（前端只剩缺省那一格）；「非法 configDir 拒」那条改测「前端不判、原样上线」（条数不变）。
   // **38 → 37**：`isValidSessionId` 那条随函数删；三条「非法 sid ⇒ throw」改测「前端不判、resumeSid 单报」（条数不变）。
-  ["test:remote-launch", "tests/frontend/ui/remote-launch.test.ts", 10], // 28 → 10：起会话只剩那一行 `ccm …`，请求形状收成每条路径一条（载荷 / 外层 / 嵌套 env 那几格随载荷渲染删了） // −6：TS 铸名口（`mintTmuxName` · `mintSessionTmuxName` · `deriveTmuxName`）随派生 ＋ 避让搬进后端，七条删、一条「请求逐字用传进来的名」留下（逐格归 `plan_tests.rs`） // −3：TS 两个 tmux 名谓词的三条逐格搬进 gate-core
+  ["test:remote-launch", "tests/frontend/ui/remote-launch.test.ts", 9], // −1：读 e2e 换号重启替身源码的那条漂移守卫随替身删（换号重启下沉后端，e2e 直接驱动后端） // 28 → 10：起会话只剩那一行 `ccm …`，请求形状收成每条路径一条（载荷 / 外层 / 嵌套 env 那几格随载荷渲染删了） // −6：TS 铸名口（`mintTmuxName` · `mintSessionTmuxName` · `deriveTmuxName`）随派生 ＋ 避让搬进后端，七条删、一条「请求逐字用传进来的名」留下（逐格归 `plan_tests.rs`） // −3：TS 两个 tmux 名谓词的三条逐格搬进 gate-core
   ["test:format", "tests/frontend/ui/format.test.ts", 11], // +1：basename 随老 SFTP 面板退役从 sftp/paths 搬进 format.ts，判据一起搬来
   ["test:history-cache", "tests/frontend/ui/views/history-cache.test.ts", 8],
   ["test:history-prefs", "tests/frontend/ui/views/history-prefs.test.ts", 18],
@@ -154,7 +154,8 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
 // 逐条搬进 `tests/backend/agents/claudecode/text_tests.rs::slash_and_bash_forms`）。删后现打 112 ⇒ 棘到现打值。
 // **112 → 110**（**被测对象没了**）：`context-limit.test.ts` 5 → 3（上下文上限的判定搬进后端，见登记表那一行）。删后现打 110 ⇒ 棘到现打值。
 // **110 → 111**：`context-limit.test.ts` +1（`contextTokensText`）。往上棘到现打值。
-const TOTAL_FLOOR = 111;
+// **111 → 110**（被测对象没了）：`remote-launch.test.ts` −1，e2e 换号重启替身连同读它的那条漂移守卫一起删了。
+const TOTAL_FLOOR = 110;
 
 /** 判定一条 npm 命令是不是「用 tsx 跑某个 `.test.ts`」。`tsx …` 与 `npx tsx …` 都算。 */
 const TSX_SUITE_CMD = /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*(\S+\.test\.ts)\s*$/;

@@ -107,6 +107,9 @@ pub(crate) const LOGIN: super::LoginFace = super::LoginFace {
     lock_beside: Some(".lock"),
 };
 
+/// 请求压缩上下文用的那一句（注册表 `Adapter.compact_request` 那一格）：在会话里敲的斜杠命令。
+pub(crate) const COMPACT_REQUEST: &str = "/compact";
+
 /// 本家的**起会话事实**（注册表 `Adapter.launch` 那一格）：`ccm` 按它起、界面按生成物 `agent-profile-table.ts` 读，同一份。
 pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     adapter_id: UPSTREAM.route_id,

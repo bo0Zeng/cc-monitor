@@ -156,16 +156,6 @@ vi.mock("../../../src/frontend/ui/render-stream-record", () => ({
 }));
 vi.mock("../../../src/frontend/ui/cards", () => ({
   reconcilePendingToolResults: vi.fn(() => []),
-  // A5：镜像真 isCompactRecord（真身在 cards/compact.vitest.ts 单测）——role:user + compact 前缀。
-  isCompactRecord: (m: unknown) => {
-    const inner = (m as { message?: { role?: unknown; content?: unknown } } | null)?.message;
-    if (!inner || inner.role !== "user") return false;
-    const c = inner.content;
-    const text = typeof c === "string" ? c : "";
-    return text
-      .trimStart()
-      .startsWith("This session is being continued from a previous conversation");
-  },
 }));
 vi.mock("../../../src/frontend/ui/cards/subagent", () => ({ isAgentTool: () => false }));
 vi.mock("../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
@@ -2298,69 +2288,6 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
   //   （`facts_query_tests.rs::the_three_facts_follow_the_moved_rules`），前端只保序透传 —— 那一条在文件末尾「〔STC〕会话事实」那组。
 });
 
-describe("A5 compact waiter（awaitCompactFor + onLine 检测）", () => {
-  const PREFIX = "This session is being continued from a previous conversation";
-  let tm: TabManager;
-  beforeEach(() => {
-    vi.clearAllMocks();
-    tm = makeTM();
-  });
-  const compactLine = (sid: string) => ({
-    session_id: sid,
-    cwd: "/w",
-    path: `/p/${sid}.jsonl`,
-    seq: 1,
-    message: { type: "user", uuid: `${sid}-u1`, message: { role: "user", content: `${PREFIX}…` } },
-  });
-
-  it("注册后 onLine 见该 sid 的 compact 摘要行 → resolve(true)", async () => {
-    const awaitC = home(tm).actions.awaitCompactFor("cs1", 60_000);
-    const p = awaitC(); // 注册 waiter
-    tm.onLine(compactLine("cs1") as never);
-    await expect(p).resolves.toBe(true);
-  });
-
-  it("超时 → resolve(false)", async () => {
-    vi.useFakeTimers();
-    try {
-      const awaitC = home(tm).actions.awaitCompactFor("cs2", 5000);
-      const p = awaitC();
-      vi.advanceTimersByTime(5000);
-      await expect(p).resolves.toBe(false);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("非 compact 行不 resolve（等待者仍挂着）", async () => {
-    const awaitC = home(tm).actions.awaitCompactFor("cs3", 60_000);
-    let resolved = false;
-    void awaitC().then(() => {
-      resolved = true;
-    });
-    tm.onLine({
-      session_id: "cs3",
-      cwd: "/w",
-      path: "/p/cs3.jsonl",
-      seq: 1,
-      message: { type: "user", uuid: "cs3-u", message: { role: "user", content: "普通消息" } },
-    } as never);
-    await Promise.resolve();
-    expect(resolved).toBe(false);
-  });
-
-  it("别的 sid 的 compact 行不误 resolve 本 waiter", async () => {
-    const awaitC = home(tm).actions.awaitCompactFor("cs4", 60_000);
-    let resolved = false;
-    void awaitC().then(() => {
-      resolved = true;
-    });
-    tm.onLine(compactLine("other-sid") as never); // 不同 sid
-    await Promise.resolve();
-    expect(resolved).toBe(false);
-  });
-});
-
 // **本机换号重启**：菜单与编排入口都对本机 tab 开放，origin 取 backend 的 `<local>`。
 // 死值验对照：把 `restartTabWithAccount` 开头那条改回 `tab.origin === null ⇒ return false`、
 // 或把右键那一行改回 `origin !== null && t`，下面各红一条。
@@ -2438,7 +2365,7 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
     expect(menuItems().map((b) => b.textContent)).not.toContain("换号重启");
   });
 
-  it("本机会话精确 @ccm_sid 命中 → 编排器拿到 `<local>` ＋ 本机 resume 命令 ＋ 本机 tmux 名", async () => {
+  it("本机会话精确 @ccm_sid 命中 → 编排器拿到 `<local>` ＋ 本机 tmux 名（resume 命令由那一发自己带）", async () => {
     tm.ensureTab("l1", "/w", "/p/l1.jsonl", LOCAL_ORIGIN);
     await home(tm).actions.restartTabWithAccount("l1", "b", false);
     expect(restartSpy).toHaveBeenCalledTimes(1);
@@ -2446,7 +2373,6 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
     expect(arg.origin).toBe("<local>");
     expect(arg.tmuxName).toBe("proj-cc");
     expect(arg.accountName).toBe("b");
-    expect(arg.launcher).toBe(""); // getBehavior 的 mock：resumeCommandLocal = ""（远端那条是 "cct"）
     // 「在哪个 tmux 会话里」问的是本机那一台（`sessions-where`）。
     const asked = (invoke as unknown as ReturnType<typeof vi.fn>).mock.calls
       .filter(([c, a]) => c === "chan_call" && (a as { op?: string }).op === "sessions-where")

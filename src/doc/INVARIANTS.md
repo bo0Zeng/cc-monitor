@@ -892,8 +892,7 @@ set-option / show-options / kill-session / has-session / attach **全部**动词
    由 `cli-golden.json` 逐字节钉着）与 `ccm` 自己（`control/ccm/plan.rs`）〕
 2. ~~monitor 壳里 `tmux.rs` 那份 `exact_target()` —— IPC 控制面~~ 〔THIN：只剩跨轨对拍锚点在用，删了；
    控制面今天是后端 `control/launch.rs::exact_target`（argv 直传，`exact_target_is_the_exact_match_shape` 钉着）〕
-3. `tests/e2e/restart-shims/core.mjs` —— Tauri IPC 边界的 mock，**结构上无法 import Rust，去重不可能**；
-   必须**与生产同构**，否则 e2e 对这条假绿
+3. ~~e2e 里换号重启那套 Tauri IPC 边界的 mock~~ 〔换号重启整条下沉后端之后那套 mock 删了，e2e 直接驱动后端〕
 4. `shared/ccm`（F02 统一启动 CLI）—— 独立的 tmux 命令构造器（不复用前三处，语言/执行环境不同）；
    守卫见 `src/frontend/shell/src/sftp.rs` 的 `ccm_cli_has_required_elements`：**结构性扫描**每个 `-t ` 目标
    （不是固定 needle——固定 needle 版本实测空转，把 `=名:` 全改回裸目标三门禁仍全绿）
@@ -902,9 +901,7 @@ e2e 的 shell 探针（`has-session` / `set-option` / `kill-session`）同样要
 （只剩 `X-2` 时 `has-session -t X` 返 0，"会话还在"假阳；`set-option -t $S` 会把 `@ccm_sid` 写到错的会话上、
 直接污染 fixture）。F01 的整个论点就是"前缀匹配会说谎"，探针不能例外。
 
-**漂移守卫**：`session-backend.test.ts` 有一条读 `tests/e2e/restart-shims/core.mjs` 的断言把 shim 形态与座钉在一起
-（那条随座的套件删之前搬进了 `tests/frontend/ui/remote-launch.test.ts`，断言一字未改）；
-Rust 侧今天只剩后端 `control/launch.rs::exact_target` 一处构造点（argv 直传，`exact_target_is_the_exact_match_shape` 钉形状）；monitor 生产段零处 `-t {…}`（`tmux_backend_gate_guard_tests.rs::every_target_placeholder_comes_from_exact_target`）。
+**漂移守卫**：Rust 侧今天只剩后端 `control/launch.rs::exact_target` 一处构造点（argv 直传，`exact_target_is_the_exact_match_shape` 钉形状）；monitor 生产段零处 `-t {…}`（`tmux_backend_gate_guard_tests.rs::every_target_placeholder_comes_from_exact_target`）。
 
 **第二道防线**：规则只有一份，住后端 `control/gate_rules.rs`（原共享 crate `gate-core`；原先界面两个谓词 ＋ 后端 `validate_tmux_name` ＋ 载荷 `TmuxTarget::check` 三家各写各的）。
 **新建**（本工具铸的名）走 `gate_rules::new_tmux_name_issue`：禁 glob 字符 `*`/`?` 与目标语法 `.` `:` `=`、前导 `-`、控制符与视觉欺骗字符、超过 128 —— 本工具永远不把 glob 建进名字；

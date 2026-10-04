@@ -12,7 +12,16 @@ type Answer = Result<Value, (&'static str, String)>;
 /// `client` ＝ 请求自报的前端（`args.client`，「哪个前端的会话」那一维）：杀与就地键入都带它过门。
 fn with_deps(args: &Value, f: impl FnOnce(&Deps) -> Answer) -> Answer {
     let client = crate::control::gate::requester_of(args)?;
-    let client = client.as_deref();
+    // 批量起说是哪一家（整批一格）；停 / 问样子用不着挑号。
+    let agent = args
+        .get("agent")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    with_deps_as(client.as_deref(), agent, f)
+}
+
+/// 同 [`with_deps`]，前端与那一家已经取好（换号重启每一步在自己的阻塞线程上各拼一份）。
+pub(crate) fn with_deps_as<T>(client: Option<&str>, agent: &str, f: impl FnOnce(&Deps) -> T) -> T {
     let list = || -> Result<Option<Vec<TmuxEntry>>, String> {
         let rows = crate::control::terminals::rows_here().map_err(|(_, m)| m)?;
         Ok(rows.map(|rows| {
@@ -57,11 +66,6 @@ fn with_deps(args: &Value, f: impl FnOnce(&Deps) -> Answer) -> Answer {
         .into_iter()
         .map(str::to_string)
         .collect();
-    // 批量起说是哪一家（整批一格）；停 / 问样子用不着挑号。
-    let agent = args
-        .get("agent")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
     crate::faces::launch_face::with_facts(agent, |accounts| {
         f(&Deps {
             list: &list,

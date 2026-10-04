@@ -1473,7 +1473,6 @@ run_e2e backend-cc-bus
 #   未登记的 SKIP 由套件自己判红（收尾 `[ "$skip" -eq 0 ] || exit 1`）。
 run_e2e backend-gate2
 run_e2e local-backend
-run_e2e restart-frames
 run_e2e restart
 run_e2e backend-tmux-late-server
 run_e2e backend-sessions-rewatch

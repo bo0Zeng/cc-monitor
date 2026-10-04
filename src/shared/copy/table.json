@@ -1319,6 +1319,16 @@
       "zh": "启动不了 tmux：{e}。这台机器上可能没装 tmux，或它不在 PATH 里。",
       "args": ["e"]
     },
+    "beSessionRestart.locate.notInTerminal": {
+      "kind": "error",
+      "zh": "{sid}：无运行中的终端",
+      "args": ["sid"]
+    },
+    "beSessionRestart.locate.ambiguous": {
+      "kind": "error",
+      "zh": "多个终端运行同一会话：{names}",
+      "args": ["names"]
+    },
     "beKill.run.failed": {
       "kind": "error",
       "zh": "结束会话失败：{e}",
@@ -4091,31 +4101,6 @@
       "zh": "打开新窗口失败",
       "args": []
     },
-    "accountRestart.done.body": {
-      "kind": "body",
-      "zh": "已用「{name}」重启这个会话。如果 Claude Code 问要不要信任这个目录，请在弹出的终端里确认。",
-      "args": ["name"]
-    },
-    "accountRestart.done.title": {
-      "kind": "body",
-      "zh": "已用新账号重启",
-      "args": []
-    },
-    "accountRestart.relaunch.copied": {
-      "kind": "error",
-      "zh": "用「{name}」的命令已复制到剪贴板，请到远端终端粘贴执行。会话内容不会丢。这次没有记下账号归属。",
-      "args": ["name"]
-    },
-    "accountRestart.relaunch.failedBody": {
-      "kind": "error",
-      "zh": "会话内容不会丢，可以在标签页上右键 Resume 重新拉起。本次没有记下账号归属。",
-      "args": []
-    },
-    "accountRestart.relaunch.failedTitle": {
-      "kind": "error",
-      "zh": "旧会话已退出，但新会话没能自动起来",
-      "args": []
-    },
     "accountRestart.aborted.body": {
       "kind": "error",
       "zh": "结束旧会话失败：{e}。没有继续 resume，免得新旧两个进程抢同一个会话。",
@@ -4126,34 +4111,79 @@
       "zh": "重启已中止",
       "args": []
     },
-    "accountRestart.compact.skipped": {
-      "kind": "error",
-      "zh": "{e}。跳过压缩，继续换号重启。",
-      "args": ["e"]
-    },
-    "accountRestart.compact.skippedTitle": {
-      "kind": "error",
-      "zh": "压缩未执行",
-      "args": []
-    },
-    "accountRestart.compact.timeout": {
-      "kind": "error",
-      "zh": "等压缩超时了，仍继续换号重启。",
-      "args": []
-    },
-    "accountRestart.compact.timeoutTitle": {
-      "kind": "error",
-      "zh": "压缩可能未完成",
-      "args": []
-    },
-    "accountRestart.compact.sent": {
+    "accountRestart.done.title": {
       "kind": "body",
-      "zh": "已在旧账号上发出 /compact，完成后换号重启。",
+      "zh": "重启切换 ✓",
       "args": []
     },
-    "accountRestart.compact.running": {
+    "accountRestart.done.body": {
       "kind": "body",
-      "zh": "正在压缩上下文…",
+      "zh": "{name} · {terminal}{compact}",
+      "args": ["name", "terminal", "compact"]
+    },
+    "accountRestart.running.title": {
+      "kind": "body",
+      "zh": "重启切换中",
+      "args": []
+    },
+    "accountRestart.running.body": {
+      "kind": "body",
+      "zh": "{name} · {tmuxName}{compact}",
+      "args": ["name", "tmuxName", "compact"]
+    },
+    "accountRestart.running.compactTag": {
+      "kind": "body",
+      "zh": " · 先压缩",
+      "args": []
+    },
+    "accountRestart.compactTag.done": {
+      "kind": "body",
+      "zh": " · 压缩 ✓",
+      "args": []
+    },
+    "accountRestart.compactTag.timedOut": {
+      "kind": "body",
+      "zh": " · 压缩超时",
+      "args": []
+    },
+    "accountRestart.compactTag.unsupported": {
+      "kind": "body",
+      "zh": " · 不支持压缩",
+      "args": []
+    },
+    "accountRestart.compactTag.failed": {
+      "kind": "body",
+      "zh": " · 压缩未执行",
+      "args": []
+    },
+    "accountRestart.missed.title": {
+      "kind": "error",
+      "zh": "重启切换 · 未见会话报出",
+      "args": []
+    },
+    "accountRestart.missed.body": {
+      "kind": "error",
+      "zh": "{name} · {terminal} · {secs}s 内无报出{compact}",
+      "args": ["name", "terminal", "secs", "compact"]
+    },
+    "accountRestart.startFailed.title": {
+      "kind": "error",
+      "zh": "重启切换 ✗ · 旧会话已停",
+      "args": []
+    },
+    "accountRestart.startFailed.body": {
+      "kind": "error",
+      "zh": "{machine} · {terminal} · {detail}\n点此：用 {name} 再起",
+      "args": ["machine", "terminal", "detail", "name"]
+    },
+    "accountRestart.failed.title": {
+      "kind": "error",
+      "zh": "重启切换 ✗",
+      "args": []
+    },
+    "accountRestart.failed.unreadable": {
+      "kind": "error",
+      "zh": "应答无法解析",
       "args": []
     },
     "accountRestart.confirm.body": {
@@ -15639,11 +15669,6 @@
     "localResume.launch.failed": {
       "kind": "error",
       "zh": "恢复失败",
-      "args": []
-    },
-    "localResume.restart.failed": {
-      "kind": "error",
-      "zh": "本机没能用新账号拉起会话",
       "args": []
     },
     "localResume.fork.failed": {

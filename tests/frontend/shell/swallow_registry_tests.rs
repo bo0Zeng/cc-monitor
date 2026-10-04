@@ -121,6 +121,7 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/main.rs", "let _ = done.send(id).await;", 1, Why::Signal, ""),
     ("src/backend/main.rs", "let _ = attached.send(Attached { reader: r, writer: w, hello_flushed, flags: flags.unwrap_or(None), }).await;", 1, Why::PeerGone, ""),
     ("src/backend/main.rs", "let _ = listen::write_line(&mut w, &listen::refusal_line(reason)).await;", 1, Why::DeadLink, ""),
+    ("src/backend/observe/one_wait.rs", "let _ = t.send(());", 1, Why::PeerGone, "一次性等待到了：等的那一侧可能已经撤了（撤单 / 期限到），没人要这一声"),
     ("src/backend/observe/watcher.rs", "let _ = debouncer.watcher().unwatch(dir);", 2, Why::Reap, "撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败"),
     ("src/backend/observe/watcher.rs", "let _ = debouncer.watcher().unwatch(sessions);", 2, Why::Reap, "撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败"),
     ("src/backend/observe/watcher.rs", "let _ = debouncer.watcher().unwatch(sock_dir);", 2, Why::Reap, "撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败"),

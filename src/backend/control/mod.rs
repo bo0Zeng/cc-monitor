@@ -83,6 +83,8 @@ pub mod launch_render;
 pub mod resident;
 pub mod resolve_query;
 pub(crate) mod session_batch;
+// 换号重启：查号 → 先压缩（可选）→ 停旧 → 同一终端名用新号起 → 等报出（帧面宿主 `faces/session_restart_face.rs`）。
+pub(crate) mod session_restart;
 // 终端管理 L1：名单 · 抓一屏 · 送字送键（两个前端共用，形状与宿主无关；这一版宿主是 tmux）。
 pub(crate) mod terminals;
 pub mod tmux_hook;

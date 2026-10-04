@@ -843,6 +843,10 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "问这几个会话在哪个 tmux 会话里：没 tmux ⇒ 逐个答「这台没 tmux」、命令照答",
     ),
     (
+        "session-restart",
+        "换号重启：没 tmux ⇒ 这条会话不在任何终端里，答 `not_in_terminal`（与「名单里没有它」同一个码）",
+    ),
+    (
         "sessions-stop",
         "批量停：没 tmux ⇒ 逐个答「这台没 tmux」跳过、命令照答（停的对象本来就只在 tmux 里）",
     ),

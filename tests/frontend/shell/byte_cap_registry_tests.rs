@@ -614,6 +614,13 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "拒收+回错",
     ),
     (
+        "src/backend/control/session_restart.rs",
+        "MAX_WAIT_MS",
+        3_600_000,
+        "换号重启发起方给的两个期限（毫秒，不是字节）",
+        "拒收+回错",
+    ),
+    (
         "src/backend/control/terminals.rs",
         "MAX_SCROLLBACK",
         2000,

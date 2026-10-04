@@ -1,7 +1,7 @@
 /**
  * 〔拆 `tabs.ts` ⑤〕**对一个会话做的动作**。
  *
- * resume（直连 / tmux / 就地）· 换号重启（等 compact · 等退出）· 杀 tmux 会话 · 打开工作目录 ·
+ * resume（直连 / tmux / 就地）· 换号重启（交那台一条命令做完）· 杀 tmux 会话 · 打开工作目录 ·
  * 在新窗口打开 · 切到终端窗口；外加 tab 层那几条零散的后端调用（忘掉会话 · 把 monitor 拉到前面 ·
  * 红绿灯快照 · DEV 探针日志）。
  *
@@ -84,28 +84,7 @@ export class TabSessionActions {
    *  可能算出两个不同名字、真建出两个都声称同一 sid 的 tmux 容器（R10 的一个具体、可关闭的成因，
    *  见 F04 计划 §2 综合来源方案 A §7.4）。 */
   private resumingSids = new Set<string>();
-  /** A5：换号重启时「等旧号 compact 完成」的 per-sid 回调。onLine 见该 sid 的 compact 摘要行即 resolve。 */
-  private compactWaiters = new Map<string, () => void>();
-
   constructor(private readonly host: TabSessionHost) {}
-
-  /**
-   * A5：`onLine` 每来一行都问一次 —— 有这个 sid 的 compact 等待者、且这一行就是 compact 摘要
-   * ⇒ 放行那个等待者（换号重启编排随即从 compact 步进入 kill 步）。
-   * 常态零开销：没有任何等待者时调用方连这一问都不问（`hasCompactWaiters`）。
-   * `isCompact` 是个惰性判定，只在真有等待者时才求值（与原先 `waiter && isCompactRecord(...)` 同序）。
-   */
-  hasCompactWaiters(): boolean {
-    return this.compactWaiters.size > 0;
-  }
-
-  settleCompact(sid: string, isCompact: () => boolean): void {
-    const waiter = this.compactWaiters.get(sid);
-    if (waiter && isCompact()) {
-      this.compactWaiters.delete(sid);
-      waiter();
-    }
-  }
 
   /**
    * issue #10：在独立只读窗口打开指定 session（Tab 右键 / 快捷键 / 拖拽撕离）。
@@ -356,25 +335,6 @@ export class TabSessionActions {
     await this.startInTmuxThenAttach(tab, item, (again) => this.resumeLocalInTmux(sid, again ?? account));
   }
 
-  /** A5：造一个「等该 sid compact 完成」的 awaitCompact——注册 waiter 与超时竞速，两路都清理 waiter
-   *  防泄漏。resolve(true)=onLine 检测到 compact 摘要行 / resolve(false)=超时（编排器照 §5.2 不阻断、续 kill）。
-   *  默认 5min（§5）。 */
-  awaitCompactFor(sid: string, timeoutMs = 300_000): () => Promise<boolean> {
-    return () =>
-      new Promise<boolean>((resolve) => {
-        let settled = false;
-        const finish = (v: boolean): void => {
-          if (settled) return;
-          settled = true;
-          this.compactWaiters.delete(sid);
-          clearTimeout(timer);
-          resolve(v);
-        };
-        this.compactWaiters.set(sid, () => finish(true));
-        const timer = setTimeout(() => finish(false), timeoutMs);
-      });
-  }
-
   /** A5：活跃会话换号重启——先解析该会话当前所在的 tmux 名（send-keys/kill 目标），再走
    *  `restartWithAccount` 编排（§5）。会话不在本工具 tmux（非本工具起/已漂移）→ 提示无法重启。
    * 本机会话（`origin === null`）也走这一条，origin 取 `<local>`。 */
@@ -419,13 +379,10 @@ export class TabSessionActions {
     compactFirst: boolean,
     confirmFn?: ConfirmFn,
   ): Promise<boolean> {
-    // 本机会话的 origin 是 `<local>`：下面每一跳（tmux 快照 / send-keys / kill /
-    // 账号清单 / 信任预检）都按 origin 分流，本机走得通；resume 那一跳在 `restartWithAccount` 里分。
     const origin = tab.origin;
     const cwd = tab.projectDir ?? "";
-    const behavior = await getBehavior();
-    // 这个会话在哪个 tmux 会话里：问那台（判定只在后端），一律现问。
-    // 破坏性重启必须恰好命中一个在跑的（不按目录猜）；命中多个 ⇒ 拒（选错了不可逆）。
+    // 确认框要说清是哪个终端：先问那台（判定只在后端）。破坏性重启必须恰好命中一个在跑的（不按目录猜）；
+    // 命中多个 ⇒ 拒（选错了不可逆）。那台在 `session-restart` 里照 sid 再找一次，这里只为把话说清、不白弹确认框。
     const standing = await standingOf(origin, sid);
     if (standing?.kind === "ambiguous") {
       showActionFailureToast(
@@ -437,11 +394,8 @@ export class TabSessionActions {
     }
     const live = standing?.kind === "running" ? { name: standing.names[0] } : undefined;
     if (!live) {
-      // `K-P5g`：这句话原来把**两条成因**并排摆着（「不在本工具 tmux 里」**或**「不是本工具
-      // 起的」），而当时没有任何东西分得开它们。现在分得开了——`--session-accounts` 读回来的
-      // 身份 token（`launchId`）说得出这条会话是不是从本工具这条路起来的，于是这里**拿它做
-      // 决定**：选哪一条成因、给哪一句补救。判据见 `account-restart.ts::restartLocateFailureMessage`
-      // 头注与 `accounts.vitest.ts`；本处的接线由 `tabs.vitest.ts` 那两条对照钉着。
+      // `K-P5g`：读回来的身份 token（`launchId`）说得出这条会话是不是从本工具这条路起来的 ⇒ 选哪一条成因、给哪一句补救
+      // （`account-restart.ts::restartLocateFailureMessage`）。
       const msg = restartLocateFailureMessage(this.host.sessionAccount(sid), {
         local: isLocalOrigin(origin),
       });
@@ -454,16 +408,12 @@ export class TabSessionActions {
       cwd,
       tmuxName: live.name,
       accountName,
-      launcher:
-        isLocalOrigin(origin)
-          ? behavior.resumeCommandLocal
-          : await resolveResumeCommand(origin, behavior.resumeCommandRemote),
       compactFirst,
-      // `confirmFn` 保留为可选参数（批量对齐曾用 `() => true` 跳过逐会话确认，随 F09 一并删除）；
-      // 唯一现存调用点（右键菜单的 Restart flyout）不传 → 仍走 restartWithAccount 自带的破坏性二次确认。
       confirm: confirmFn,
-      // A5 step5：真检测器——onLine 见该 sid 的 compact 摘要行即 resolve，超时（5min）按 §5.2 续 kill。
-      awaitCompact: this.awaitCompactFor(sid),
+      sessionAccount: this.host.sessionAccount(sid),
+      // 旧的已停、新的没起来 ⇒ 点那句话：用点名的号在 tmux 里起这一个并接上（同单个「在 tmux 里 Resume」）。
+      startAgain: () =>
+        isLocalOrigin(origin) ? this.resumeLocalInTmux(sid, askOf(accountName, false)) : this.resumeTabTmux(sid, accountName),
     });
   }
 

@@ -53,7 +53,6 @@
     "test:graylight-frames": "bash tests/e2e/graylight-backend-frames.sh",
     "test:inbound-frames": "bash tests/e2e/inbound-backend-frames.sh",
     "test:restart": "bash tests/e2e/restart-suite.sh",
-    "test:restart-frames": "bash tests/e2e/restart-backend-frames.sh",
     "test:resume": "bash tests/e2e/resume-suite.sh",
     "test:resume-frames": "bash tests/e2e/resume-backend-frames.sh",
     "test:exec-bits": "bash tests/e2e/exec-bit-guard.sh",

@@ -347,6 +347,12 @@ fn every_command_total_is_shorter_than_the_ui_wait_for_that_command() {
             crate::control::session_batch::SESSIONS_WHERE_TOTAL,
             Some(("src/frontend/ui/sessions-where.ts", "STANDING_BUDGET_MS")),
         ),
+        // 换号重启：界面等它 ＝ 两个等待（发起方给）＋ 底数；底数要罩住三步（定位 · 送那一句 · 停旧＋起新），最长的是这一步。
+        (
+            "SWAP_TOTAL",
+            crate::control::session_restart::SWAP_TOTAL,
+            Some(("src/frontend/ui/account-restart.ts", "RESTART_BASE_MS")),
+        ),
         (
             "SSH_IMPORT_TOTAL",
             crate::dial::ssh_config::SSH_IMPORT_TOTAL,
@@ -445,6 +451,11 @@ fn every_command_total_is_shorter_than_the_ui_wait_for_that_command() {
     installed.sort();
     let mut want: Vec<String> = table.iter().map(|(n, ..)| n.to_string()).collect();
     want.extend(["batch_total(items.len())".to_string(), "total".to_string()]);
+    // 换号重启的定位那一步与送压缩那一句各在自己的阻塞线程上再装一次同名的那两个（界面等它的底数 `RESTART_BASE_MS` 罩着三步）。
+    want.extend([
+        "SESSIONS_WHERE_TOTAL".to_string(),
+        "LAUNCH_TOTAL".to_string(),
+    ]);
     want.sort();
     assert_eq!(installed, want, "装了总期限的地方与这张表对不上");
 }

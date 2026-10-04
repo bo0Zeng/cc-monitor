@@ -7,6 +7,7 @@ import { MAIN_SCENES } from "./main";
 import { PANEL_SCENES } from "./panels";
 import { SETTINGS_SCENES } from "./settings";
 import { HISTORY_SCENES } from "./history";
+import { RESTART_SCENES } from "./restart";
 
 export interface Scene {
   id: string;
@@ -33,7 +34,7 @@ export const DEFAULT_STORAGE: Record<string, string> = {
   "cc-monitor.cmdk-hint.seen": "1",
 };
 
-export const SCENES: Scene[] = [...MAIN_SCENES, ...PANEL_SCENES, ...HISTORY_SCENES, ...SETTINGS_SCENES];
+export const SCENES: Scene[] = [...MAIN_SCENES, ...PANEL_SCENES, ...RESTART_SCENES, ...HISTORY_SCENES, ...SETTINGS_SCENES];
 
 export function sceneById(id: string): Scene {
   return (

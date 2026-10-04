@@ -56,6 +56,7 @@ use std::path::{Path, PathBuf};
 
 /// 单元层：不读仓内文本、不碰 OS 的测试文件。
 const UNIT: &[&str] = &[
+    "tests/frontend/ui/remote-launch.test.ts", // SCAN → UNIT：读 e2e 替身源码那一格随换号重启下沉删了，剩下的格都是纯函数
     // SCAN → UNIT：读 `main.rs` 源码的那一条（`--capture-pane` 够不够得到）随那条子命令删了，余下都是纯函数。
     "tests/backend/main_stream_flag_tests.rs",
     // 记录解释搬进后端：Claude 轮次判词（原 `observe/turn_detect_tests.rs`）· Codex 记录映射（原 monitor `codex_record_tests.rs`）·
@@ -166,7 +167,6 @@ const UNIT: &[&str] = &[
     "tests/frontend/shell/footprint_client_tests.rs", // monitor 自己进程那几条事实（纯函数；两拍之后它不再 stat）
     "tests/frontend/ui/cards/api-error.test.ts",
     "tests/frontend/ui/cards/bash-collapse.vitest.ts",
-    "tests/frontend/ui/cards/compact.vitest.ts",
     "tests/frontend/ui/cards/diff.test.ts",
     "tests/frontend/ui/cards/file-input.vitest.ts",
     "tests/frontend/ui/cards/interactive.vitest.ts",
@@ -288,8 +288,7 @@ const SCAN: &[&str] = &[
     "tests/backend/agents/claudecode/schema_title_coverage.rs",
     "tests/frontend/ui/remote-probe.vitest.ts", // 测试连接的读口（请求体 · 进度流 · 严格收）＋ 与 Rust `event_replay.rs::PROBE_PROGRESS_KIND` 对拍流名
     "tests/frontend/shell/remote_resident_tests.rs", // UNIT → SCAN：多一条跨半边期限对拍（`include_str!` 读后端 `control/resident.rs`）
-    "tests/frontend/ui/remote-launch.test.ts", // UNIT → SCAN：五个 builder 删后剩下的格读源码 / 夹具（判别器判 SCAN）
-    "tests/frontend/ui/tasks-decode.vitest.ts", // 读跨语言金样 tasks-list.golden.json
+    "tests/frontend/ui/tasks-decode.vitest.ts",      // 读跨语言金样 tasks-list.golden.json
     "tests/frontend/ui/record-file-notice.vitest.ts", // D-d：活会话 jsonl 不见了 / 被截短 / 被改写 ⇒ tab 顶一行提示
     "tests/frontend/ui/config-patch-fake.vitest.ts",  // 假盘对跨语言金样 config-patch.golden.json
     "tests/frontend/ui/tab-bar-width.vitest.ts", // J7 tab 栏宽度走存储接入层、零裸 localStorage
@@ -494,6 +493,7 @@ const SCAN: &[&str] = &[
     // overlay 路由的语义 ＋ `main.ts` 零处自判开没开（源码扫描）。
     "tests/frontend/ui/overlay-router.vitest.ts",
     "tests/frontend/ui/paste-block-guard.vitest.ts",
+    "tests/frontend/ui/restart-in-backend-guard.vitest.ts",
     "tests/frontend/ui/cc-bus-hooks-reads.vitest.ts", // cc-bus 钩子状态：严格收（金样）＋ 四态不误说 ＋ 读口源码只问 hooks-diag（读源码 ⇒ 扫描层）
     "tests/frontend/ui/paste-block.vitest.ts",
     "tests/frontend/ui/remote-config.vitest.ts",
@@ -600,6 +600,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/control/identity_tag_tests.rs",
     "tests/backend/control/kill_tests.rs", // SCAN → INTEGRATION：总期限那条在隔离子进程里拿假 tmux 真跑一趟结束会话
     "tests/backend/control/session_batch_tests.rs", // UNIT → INTEGRATION：整批总期限那条真起一个卡住的子进程
+    "tests/backend/control/session_restart_tests.rs", // 等压缩那几条盯真记录文件（真 inotify）
     "tests/backend/control/launch_tests.rs", // 由扫描层挪来：S4 那条判据真起一个假 tmux 子进程（`ran` 收 stderr）
     "tests/backend/control/terminals_tests.rs", // 终端管理 L1：隔离 socket 上起真 tmux，真列 · 真抓 · 真送
     "tests/backend/control/resident_tests.rs", // 临时目录上真铸钥匙、读钥匙文件 ·真 sh 子进程 ＋ 真信号：graceful / killed / not_running
@@ -638,6 +639,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/observe/tmux_observe_tests.rs",
     "tests/backend/observe/watcher_tests.rs",
     "tests/backend/observe/session_terminals_tests.rs",
+    "tests/backend/observe/one_wait_tests.rs",
     "tests/backend/plugin/discover_tests.rs",
     "tests/backend/plugin_walk_fixture.rs",
     "tests/backend/faces/read_face_tests.rs",
@@ -762,7 +764,6 @@ const E2E: &[&str] = &[
     "tests/e2e/inbound-backend-frames.sh",
     "tests/e2e/local-backend-supervise.sh",
     "tests/e2e/p3t-local-tmux.sh", // 接回执行链（`package.json` ＋ 门禁 `run_e2e`）
-    "tests/e2e/restart-backend-frames.sh",
     "tests/e2e/restart-suite.sh",
     "tests/e2e/resume-backend-frames.sh",
     "tests/e2e/resume-suite.sh",

@@ -1403,6 +1403,11 @@ pub(crate) fn record_in(agent_home: &Path, sid: &str) -> Result<RecordProbe, Str
     })
 }
 
+/// 这台记录树里那条会话的记录文件（同 [`record_in`] 那一找）。
+pub(crate) fn session_record(agent_home: &Path, sid: &str) -> Result<std::path::PathBuf, String> {
+    crate::agents::find_session_file(&projects_root(agent_home), sid)
+}
+
 /// [`record_in`] 按**这次 resume 要用的那个账号配置目录**查（`history-record` 的 `configDir`）。
 ///
 /// 会话起在另一个账号根下（`CLAUDE_CONFIG_DIR` 指别处）时，只查这台后端自己的家目录会答「不在」、误拦 resume

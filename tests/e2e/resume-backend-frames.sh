@@ -48,7 +48,7 @@ CLAUDE_DIR="${CCM_E2E_CLAUDE_DIR:-/tmp/e2e-resume-frames}"
 FAKE="$E2E_DIR/fake-claude"
 DRIVER="$E2E_DIR/resume-cmd-driver.ts"
 WORK="$(mktemp -d /tmp/e2e-resume-frames.XXXXXX)"
-# 〔纪律 25〕启动器路径要过 §47 的字符闸（只许 ASCII 那一族）；仓可能住在非 ASCII 目录（如 `~/文档/`）⇒ 同 `restart-backend-frames.sh`，
+# 〔纪律 25〕启动器路径要过 §47 的字符闸（只许 ASCII 那一族）；仓可能住在非 ASCII 目录（如 `~/文档/`）⇒ 同 `restart-suite.sh`，
 #   把 fake-claude 拷进 ASCII 的 $WORK 再当启动器（主树路径下跑，就地 resume 那一步原先 DRIVER_THROW REFUSE）。
 cp "$FAKE" "$WORK/fake-claude" && chmod +x "$WORK/fake-claude" && FAKE="$WORK/fake-claude"
 FRAMES="$WORK/frames.jsonl"

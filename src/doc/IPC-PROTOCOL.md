@@ -463,7 +463,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `cmd` | → | 命令名 |
 | `args` | → | 命令自己的参数对象，缺省 `{}` |
 | `ok` | ← | 成败。`true` 时 `code` / `message` **不上线**（skip_if_none） |
-| `data` | ← | 命令的返回值（如 `resolve` 的 CommandPlan）。无返回值的命令省略。**失败时**只有协议文档里给那个码定了形的才带（今天只有 `account_unavailable`，见 `launch-render-cli`），别的失败不出这一格、字节与从前逐字相同 |
+| `data` | ← | 命令的返回值（如 `resolve` 的 CommandPlan）。无返回值的命令省略。**失败时**只有协议文档里给那个码定了形的才带（`account_unavailable`，见 `launch-render-cli`；`ambiguous` · `stop_failed` · `start_failed`，见 `session-restart`），别的失败不出这一格、字节与从前逐字相同 |
 | `code` / `message` | ← | 失败原因。形状**对齐 `--resolve` 已冻结的那套**（协议 v1 §3），不发明第二种错误 JSON |
 
 **四条刻意的选择：**
@@ -844,6 +844,43 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
 
 命令级码只有两个：`invalid_args`（`sids` / `items` 空、超过 64 个、有重复、sid 形状不对、字段认不出、`client` 形状不对）· `unobservable`（这台的 tmux 名单看不见 —— 不是零会话）。
 只给界面用：命令行那一侧没有这两条（逐个 `--kill` / 直接敲 `ccm` 就是它们）。
+
+#### `session-restart`：换号重启（在会话所在那台一口气做完）
+
+```text
+→ {"id":"R1","cmd":"session-restart","args":{
+     "sid":"<sid>","cwd":"/x","account":"work",          // 用户点名的号（只收名字）
+     "compact_first":true,                               // 先请求压缩、等记录里出现压缩摘要再停
+     "compact_within_ms":300000,"arrive_within_ms":45000, // 两个期限都由发起方给（≤ 3 600 000）
+     "local":true,"agent":"claude","launcher":"claude","defaultLauncher":"claude",   // 同 `sessions-start` 的整批那几格
+     "models":{"work":"opus"}}}                          // 可缺：这台的模型偏好表原值（只用在远端那一行上）
+← {"kind":"reply","id":"R1","ok":true,"data":{
+     "compact":"done" | "timed_out" | "skipped" | "unsupported" | "failed",
+     "started":"arrived" | "missed",
+     "terminal":"proj-cc",
+     "account":{"name":"work","configDir":"/h/.cc/work","model":"opus"}}}
+```
+
+一步一步（全在这台）：
+
+1. **查号**：同 `sessions-start` 那一项的 `{"kind":"named"}` —— 选不了 ⇒ `account_unavailable`（同一形 `data`），什么都不动。
+2. **找终端**：同 `sessions-where` —— 恰好一个在跑的 ⇒ 用它；在跑的不止一个 ⇒ `ambiguous`（`data`：`{names}`，按名单顺序），什么都不动；
+   没有在跑的（空 tmux / 没有带着它的 / 这台没 tmux）⇒ `not_in_terminal`，什么都不动。名单看不见 ⇒ `unobservable`。
+3. **先压缩**（`compact_first`）：问适配层这一家请求压缩用哪一句（不支持 ⇒ `unsupported`），先盯住那条会话的记录（读法同会话流的续读：只读新字节、截短 / 改写从头重读），
+   再把那一句送进那个终端（同 `launch` 的 `send-into` 带 `ccm_sid`），等记录里出现一条压缩摘要（判定同 `line` 帧里 `compactSummary` 那一种来源）：
+   见到 ⇒ `done`；`compact_within_ms` 到了没见到 ⇒ `timed_out`；盯不住 / 送不进 ⇒ `failed`。**不论哪种都照常往下**。没要求 ⇒ `skipped`。
+4. **停旧 ＋ 同名起新**（不可分的一步）：先盯住 pidfile 目录（此刻在跑的那个进程不算），停那个终端（同 `kill` 带 `sid`）——
+   失败 ⇒ `stop_failed`（`data`：`{why}` ＝ 停那一步的码，如 `wrong_owner`），**不起新的**；停成了 ⇒ 用同一个名字建会话、用点名的号起（同 `sessions-start` 的 tmux 那一形、`none` 那一支，名字不铸、用让出来的这一个）——
+   失败 ⇒ `start_failed`（`data`：`{terminal, why}` ＝ 终端名 ＋ 起那一步的码；旧的已停，界面据它给「再起一次」，就是那一项的 `sessions-start`）。
+5. **等报出**：`arrive_within_ms` 内这条会话由一个新进程报出（pidfile）⇒ `started:"arrived"`，否则 `missed`（会话名在，里面没见到它起来）。
+
+**撤单在停旧之前有效**：它是可撤档，步与步之间看撤单（撤在第 1–3 步 ⇒ 不停、不起，回 `cancelled`）；第 4 步拿退出排空的票、在阻塞线程上一口气做完 ——
+它开跑之后撤单（或界面关了不再等）照样做完，只是不再回应答。进程正在收场、第 4 步还没开始 ⇒ `shutting_down`，一个字节不动。界面关了 / 刷新了，这台照样把它做完。
+
+可带 `client`（自报的前端，同 `kill`）：送那一句与停那一步带它过「哪个前端的会话」那一维。
+
+命令级码：`invalid_args`（字段缺 / 形状不对 / 期限超界）· `unobservable` · `account_unavailable` · `not_in_terminal` · `ambiguous` · `stop_failed` · `start_failed`。
+只给界面用：命令行那一侧逐个 `--kill` 再直接敲 `ccm --resume` 就是它。
 
 #### `launch`：平面 ②（远端执行面）——真的建 tmux 会话（U8a-2b）
 

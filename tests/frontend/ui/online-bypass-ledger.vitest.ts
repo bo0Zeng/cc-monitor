@@ -5,8 +5,8 @@
  *
  * -：「3. 前端不许从流上攒全会话事实 —— `onLine` 上的旁路记账员只剩『真事件』那两个。」
  * -：「**『这个会话到目前为止是什么样』＝ 全会话事实 ＝ 读 json** / **『刚刚发生了什么』＝ 事件 ＝ 留在流上**」；
- *   那张表里标「**事件，留在流上**」的恰好两行：`turnEndNotifier.observe`（轮次结束 → 系统通知）·
- *   `compactWaiters`（compact 完成 → 唤醒换号重启编排）。标「读 json」的四行（`trackUsage` · `trackAgents` ·
+ *   那张表里标「**事件，留在流上**」的原有两行：`turnEndNotifier.observe`（轮次结束 → 系统通知）·
+ *   `compactWaiters`（compact 完成 → 唤醒换号重启编排；换号重启整条下沉后端之后它没了，等压缩摘要由那台自己盯记录）。标「读 json」的四行（`trackUsage` · `trackAgents` ·
  *   `noteTouchedFiles` · `applyForkedFrom`）由 STC 改成问后端（`history-facts`，阶段 C）。
  *
  * ## 两条判据
@@ -17,7 +17,7 @@
  *   （如 `const uuid = (payload.message as …).uuid`；函数调用的返回值不算 —— `ensureTab(…)` 返回的是 tab，不是记录）。
  * - 登记表每行写类：`入口`（建 tab · 两道去重 · 线上表示法换算）· `真事件` · `活卡定稿`（TAP 那一格：jsonl 那一轮到了 ⇒
  *   撤掉同 `message.id` 的活卡，）· `渲染管线`。**没有「记账员」这一类。**
- * - 另两条：登记表里 `真事件` 类的事件名集合 == `{轮次结束, compact 完成}`（异源：上面原文那两行）；
+ * - 另两条：登记表里 `真事件` 类的事件名集合 == `{轮次结束}`（异源：上面原文那一行）；
  *   各类恰好这些行（`渲染管线` 只有 `this.view.ingest` 一行 —— 管线内部的 sink 不在那张表的射程里，见「买不到」）。
  * - 正控：同一个抽取器对一段内嵌样本抽得出 `noteAgents(tab, payload.message)` 与经别名的 `f(m)`，抽不出 `g(tab)`。
  *
@@ -53,8 +53,6 @@ const ONLINE_CALLS: ReadonlyArray<readonly [string, OnLineClass, string | null, 
   ["tab.seenSeqs.has", "入口", null, "按 (sid, seq) 去重（快照与实时的重叠区，`INVARIANTS §25a`）"],
   ["tab.seenSeqs.add", "入口", null, "同上"],
   ["tab.seenSeqs.addRange", "入口", null, "monitor 连着见过、都不可显示的那一段一起记（`skipped_from`）"],
-  ["this.actions.settleCompact", "真事件", "compact 完成", "「compactWaiters：compact 完成 → 唤醒换号重启编排」"],
-  ["isCompactRecord", "真事件", "compact 完成", "同一个事件：「这一行是不是 compact 摘要」的判法（交给 settleCompact 的闭包里）"],
   ["turnEndNotifier.observe", "真事件", "轮次结束", "「turnEndNotifier.observe：轮次结束 → 系统通知」"],
   [
     "this.live.onRecord",
@@ -66,7 +64,7 @@ const ONLINE_CALLS: ReadonlyArray<readonly [string, OnLineClass, string | null, 
 ];
 
 /** 表里标「事件，留在流上」的恰好这两行（异源：设计原文，不是上面那张表）。 */
-const DESIGN_TRUE_EVENTS = ["compact 完成", "轮次结束"];
+const DESIGN_TRUE_EVENTS = ["轮次结束"];
 
 /** 一个表达式（去括号 / `as` / 非空断言）是不是以 `roots` 里某个名字为根、只经取属性 / 取下标得来。 */
 function rootedIn(e: ts.Expression, roots: ReadonlySet<string>): boolean {

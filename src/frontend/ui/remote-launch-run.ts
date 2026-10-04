@@ -320,7 +320,7 @@ export async function runRemoteLauncher(
 
 /** F51：一键 attach 到远端 tmux 会话:拉起 `ssh -t … tmux attach -t <名>`;失败回退复制命令。
  *  ccm 已装且能力齐全时走 CLI 渲染器（`ccm attach <名>`，与兜底输出逐字同构，无 #76 歧义）。 */
-export async function runRemoteAttach(origin: string, agent: string, name: string): Promise<void> {
+export async function runRemoteAttach(origin: string, agent: string, name: string, opts: { quiet?: boolean } = {}): Promise<void> {
   let cmd: string;
   try {
     cmd = await renderLaunchCommand(origin, planAttach(agent, name));
@@ -333,5 +333,5 @@ export async function runRemoteAttach(origin: string, agent: string, name: strin
     successDetail: copyText("remoteLaunchRun.attach.startedBody", { machine: origin, name }),
     failureCopied: copyText("remoteLaunchRun.attach.failedCopied"),
     failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
-  }, { kind: "claim" });
+  }, opts.quiet ? { kind: "silent" } : { kind: "claim" });
 }

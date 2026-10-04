@@ -137,8 +137,8 @@
       "word": "Claude Code",
       "tier": "限用",
       "tally": { "re": "claude\\s*code", "flags": "i" },
-      "inTable": 22,
-      "inTableNote": "22 → 21：账号库收进后端 +1；插件只读列表与收件箱编辑面拿掉 −2。",
+      "inTable": 21,
+      "inTableNote": "22 → 21：换号重启的结局那一句改成一行标签（「请在弹出的终端里确认信任」那句随之去掉）−1。此前：账号库收进后端 +1；插件只读列表与收件箱编辑面拿掉 −2。",
       "meaning": "Anthropic 的命令行工具；命令名 claude。",
       "context": "产品名，许说。讲它的 hooks、settings.json 等它自己的概念时许用它的原名。",
       "source": "外部产品名"

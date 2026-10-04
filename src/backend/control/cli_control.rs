@@ -181,6 +181,8 @@ pub(crate) const STREAM_ONLY: &[&str] = &[
     "sessions-stop",
     "sessions-start",
     "sessions-where",
+    // 换号重启：要等压缩、等会话报出（几分钟），界面关了那台照样做完 —— 那是常驻流上的事；命令行那一侧逐个 `--kill` 再敲 `ccm --resume` 就是它。
+    "session-restart",
 ];
 
 /// 命令名 → CLI 子命令（`launch` → `--launch`）。
@@ -284,6 +286,7 @@ pub async fn run(args: &[String]) -> i32 {
         Run::Blocking(f) => f(req),
         Run::BlockingData(f) => f(req).map_err(|f| (f.code, f.message)),
         Run::Async(f) => f(req).await,
+        Run::AsyncData(f) => f(req).await.map_err(|f| (f.code, f.message)),
         Run::Builtin => {
             return emit_err(
                 "not_available_in_cli",

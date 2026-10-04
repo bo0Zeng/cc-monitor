@@ -148,7 +148,7 @@ export async function callStop(origin: Origin, sids: readonly string[]): Promise
 export async function callStart(origin: Origin, mode: "tmux" | "window", items: readonly StartItem[]): Promise<Reply[]> {
   const sids = items.map((i) => i.sid);
   const budget = budgetWithin(BATCH_BASE_MS + BATCH_EACH_MS * sids.length);
-  const body = jsonBody({ mode, local: isLocalOrigin(origin), ...(await batchSettings(origin)), items });
+  const body = jsonBody({ mode, local: isLocalOrigin(origin), ...(await startSettings(origin)), items });
   const v = await settle(origin, "sessions-start", chan.call(origin, "sessions-start", body, budget), batchRefusals(origin));
   return decodeBatch(origin, "sessions-start", sids, v);
 }
@@ -177,8 +177,8 @@ export interface StartItem {
   account?: AccountAsk;
 }
 
-/** 整批带的那几样（用户设置的原值）：哪一家 · resume 命令 · 那台的模型偏好表。标签页里的会话都是流跟的那一家。 */
-async function batchSettings(origin: Origin): Promise<Record<string, unknown>> {
+/** 起会话带的那几样（用户设置的原值）：哪一家 · resume 命令 · 那台的模型偏好表。标签页里的会话都是流跟的那一家。批量起与换号重启共用。 */
+export async function startSettings(origin: Origin): Promise<Record<string, unknown>> {
   const behavior = await getBehavior();
   const agent = ACTIVE_AGENT;
   const defaultLauncher = defaultLauncherOf(agent);

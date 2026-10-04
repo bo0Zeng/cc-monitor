@@ -322,6 +322,56 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 换号重启（`control/session_restart.rs`）：查号 → 找终端 → 先压缩（可选，等摘要）→ 停旧 → 同一终端名用新号起 → 等报出，全在这台做完。
+    //   可撤档：步与步之间撤单生效；停旧 ＋ 起新不可分（拿退出排空的票），开跑之后撤也做完。失败可带按码定形的 `data`。
+    CommandSpec {
+        name: "session-restart",
+        doc_anchor: Some("#### `session-restart`"),
+        codes: &[
+            "invalid_args",
+            "unobservable",
+            "account_unavailable",
+            "not_in_terminal",
+            "ambiguous",
+            "stop_failed",
+            "start_failed",
+        ],
+        fields: &[
+            "account",
+            "agent",
+            "arrive_within_ms",
+            "client",
+            "compact",
+            "compact_first",
+            "compact_within_ms",
+            "configDir",
+            "cwd",
+            "defaultLauncher",
+            "launcher",
+            "local",
+            "model",
+            "models",
+            "name",
+            "names",
+            "sid",
+            "started",
+            "terminal",
+            "why",
+        ],
+        takes_input: true,
+        run: Run::AsyncData(|r| {
+            Box::pin(async move {
+                crate::faces::session_restart_face::answer(r.args)
+                    .await
+                    .map(Some)
+                    .map_err(|(code, message, data)| Fail {
+                        code,
+                        message,
+                        data,
+                    })
+            })
+        }),
+    },
     CommandSpec {
         name: "launch",
         doc_anchor: Some("#### `launch`"),

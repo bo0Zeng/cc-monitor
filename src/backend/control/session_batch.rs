@@ -123,7 +123,7 @@ impl Answer {
     }
 }
 
-fn bad(why: &str) -> CmdErr {
+pub(crate) fn bad(why: &str) -> CmdErr {
     ("invalid_args", crate::common::contract::malformed(why))
 }
 
@@ -265,21 +265,21 @@ fn stop_one(sid: &str, rows: Option<&[TmuxEntry]>, deps: &Deps) -> Answer {
 }
 
 /// 一个要起的会话（已过形状关）。
-struct Item {
-    sid: String,
-    cwd: String,
-    account: AccountAsk,
+pub(crate) struct Item {
+    pub(crate) sid: String,
+    pub(crate) cwd: String,
+    pub(crate) account: AccountAsk,
 }
 
 /// 整批共用的几样：哪一家 · 启动器（用户设置的 resume 命令原值）· 这台的模型偏好表（原值）。
-struct Batch {
-    agent: String,
+pub(crate) struct Batch {
+    pub(crate) agent: String,
     launcher: String,
     default_launcher: String,
-    models: std::collections::BTreeMap<String, String>,
+    pub(crate) models: std::collections::BTreeMap<String, String>,
 }
 
-fn str_of<'v>(o: &'v Map<String, Value>, k: &str) -> Result<&'v str, CmdErr> {
+pub(crate) fn str_of<'v>(o: &'v Map<String, Value>, k: &str) -> Result<&'v str, CmdErr> {
     o.get(k)
         .and_then(Value::as_str)
         .ok_or_else(|| bad(&format!("missing string `{k}`")))
@@ -310,7 +310,7 @@ fn item_of(v: &Value) -> Result<Item, CmdErr> {
     })
 }
 
-fn batch_of(o: &Map<String, Value>) -> Result<Batch, CmdErr> {
+pub(crate) fn batch_of(o: &Map<String, Value>) -> Result<Batch, CmdErr> {
     let models = match o.get("models") {
         None => Default::default(),
         Some(m) => serde_json::from_value(m.clone())
@@ -496,43 +496,50 @@ fn start_in_tmux(
                 ..done
             }
         }
-        Standing::None => {
-            let name = match (deps.mint)(&it.cwd) {
-                Ok(n) => n,
-                Err(e) => return Answer::failed(&it.sid, e),
-            };
-            let argv = if here {
-                local::plan_argv(
-                    &local_req(it, b, Some(name.clone())),
-                    account,
-                    &deps.local_facts,
-                    true,
-                )
-            } else {
-                wire::ccm_launch_argv(
-                    &wire_req(it, b, Some(&name), true),
-                    account,
-                    deps.caps,
-                    true,
-                )
-            };
-            let done = match argv {
-                Err(said) => Answer::failed(&it.sid, ("refused", said)),
-                Ok(argv) => match (deps.run_ccm)(&argv) {
-                    Ok((0, _, _)) => Answer::done(&it.sid),
-                    // ccm 的退出码 3 = 会话名被占（它响亮失败，不接回别人的会话）。
-                    Ok((3, _, _)) => Answer::failed(&it.sid, ("name_taken", name.clone())),
-                    Ok((_, _, err)) => {
-                        Answer::failed(&it.sid, ("start_failed", err.trim().to_string()))
-                    }
-                    Err(e) => Answer::failed(&it.sid, e),
-                },
-            };
-            Answer {
-                session: Some(name),
-                ..done
-            }
-        }
+        Standing::None => match (deps.mint)(&it.cwd) {
+            Ok(name) => start_named(it, b, account, name, here, deps),
+            Err(e) => Answer::failed(&it.sid, e),
+        },
+    }
+}
+
+/// 以 `name` 新建一个 tmux 会话、在里面起这一个（交一行 ccm，`--detach`）。换号重启复用让出来的旧名也走这一条。
+pub(crate) fn start_named(
+    it: &Item,
+    b: &Batch,
+    account: &Settled,
+    name: String,
+    here: bool,
+    deps: &Deps,
+) -> Answer {
+    let argv = if here {
+        local::plan_argv(
+            &local_req(it, b, Some(name.clone())),
+            account,
+            &deps.local_facts,
+            true,
+        )
+    } else {
+        wire::ccm_launch_argv(
+            &wire_req(it, b, Some(&name), true),
+            account,
+            deps.caps,
+            true,
+        )
+    };
+    let done = match argv {
+        Err(said) => Answer::failed(&it.sid, ("refused", said)),
+        Ok(argv) => match (deps.run_ccm)(&argv) {
+            Ok((0, _, _)) => Answer::done(&it.sid),
+            // ccm 的退出码 3 = 会话名被占（它响亮失败，不接回别人的会话）。
+            Ok((3, _, _)) => Answer::failed(&it.sid, ("name_taken", name.clone())),
+            Ok((_, _, err)) => Answer::failed(&it.sid, ("start_failed", err.trim().to_string())),
+            Err(e) => Answer::failed(&it.sid, e),
+        },
+    };
+    Answer {
+        session: Some(name),
+        ..done
     }
 }
 

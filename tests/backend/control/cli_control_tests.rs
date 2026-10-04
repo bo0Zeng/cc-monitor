@@ -55,6 +55,10 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
         "sessions-start",
         "同上：命令行那一侧直接敲 `ccm --resume …` 就是它（开终端那一形回的那一行本来就是给 monitor 开窗用的）⇒ 只上帧面（`STREAM_ONLY`）。",
     ),
+    (
+        "session-restart",
+        "要等压缩、等会话报出（几分钟），界面关了那台照样做完 —— 那是常驻流上的事；命令行那一侧逐个 `--kill` 再直接敲 `ccm --resume` 就是它 ⇒ 只上帧面（`STREAM_ONLY`）。",
+    ),
     // 扩展页那张表与「装」的枢纽。
     (
         "ext-list",

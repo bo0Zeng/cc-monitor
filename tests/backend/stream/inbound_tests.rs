@@ -455,6 +455,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
             "`{c}` 不该在阻塞档上 —— 那会让它白白变成不可取消"
         );
     }
+    // 换号重启：可撤档、失败可带 `data` 的那一档（起 tmux 那几步自己挪到阻塞线程池）。
+    assert!(matches!(d("session-restart"), Disposition::SpawnData(..)));
     assert!(matches!(d("cancel"), Disposition::Done));
     assert!(matches!(d("nope"), Disposition::Reply(..)));
     // 链路四条是硬臂、**就地**做完（不进任何 spawn 档）：`link-data` 要保序，
@@ -809,6 +811,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "sessions-stop",
         "sessions-start",
         "sessions-where",
+        // 换号重启：可撤档（步与步之间 await；起 tmux 那几步自己挪到阻塞线程池）。
+        "session-restart",
         // 传输四条：硬臂，就地记账（起跑那一下只 `spawn`、不 await）⇒ 不阻塞。
         "transfer-upload",
         "transfer-download",

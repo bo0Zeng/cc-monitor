@@ -14,7 +14,7 @@
  * 本文件拆完只剩 `TabManager` 这个**组装根**：对外 API（`main.ts` / `entry-viewer.ts` 调的那些）
  * 逐字不变，事件怎么在上面几份之间流转写在这里。拆分逐子步提交，每一步 `tabs.vitest` 全绿、断言不动。
  */
-import { isCompactRecord, renderMessage, type RenderContext } from "./cards";
+import { renderMessage, type RenderContext } from "./cards";
 import { markRunCard } from "./cards/subagent";
 import { runLabel } from "./runs";
 import { RunTimeline } from "./run-timeline";
@@ -403,12 +403,6 @@ export class TabManager {
 
     // 大纲：只记一笔「这份会话又长了」（清单问后端要，这里不判、不攒）。
     this.view.noteGrew(tab); // 会话事实同一笔（分叉 · agent · 改动文件 · usage 问后端要）
-
-    // A5：换号重启的 compact 完成检测。仅当有该 sid 的等待者才判（常态零开销）：见 compact 摘要
-    // 行即 resolve 该等待者（换号重启编排随即从 compact 步进入 kill 步）。
-    if (this.actions.hasCompactWaiters()) {
-      this.actions.settleCompact(payload.session_id, () => isCompactRecord(payload.message));
-    }
 
     // Batch14-F42：turn-end 系统通知。放在双重去重之后（重投行不重报）、
     // 渲染管线之前（通知与渲染/收纳互相独立）。批量重放由 inBatch 短路。
