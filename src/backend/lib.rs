@@ -730,7 +730,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p6v-comms-crates：中转与通道各立一个 crate（comms-outward · comms-inward），行为与命令集合不变。
 ///
 /// p6w-terminal-naming：session_added.container 改成 {host, terminal} 对象；capture-pane · tmux-list 删，tmux-name-mint → terminal-name-mint，sessions-tmux → sessions-where。
-pub const BUILD_ID: &str = "p6w-terminal-naming";
+///
+/// p6x-own-version：身份戳界标与能力表改从 deploy-contract 取（字节同形），命令集合不变。
+pub const BUILD_ID: &str = "p6x-own-version";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
