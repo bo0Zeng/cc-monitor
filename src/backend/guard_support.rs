@@ -161,6 +161,25 @@ pub(crate) fn repo_root() -> std::path::PathBuf {
         .to_path_buf()
 }
 
+/// 界面那一侧的一个毫秒常量（`const NAME = 10_000;` 那一行，恰好一处），现从源码取。
+/// 后端的总期限要短于界面等那条命令的时间，判据两边都现取，不手抄数。
+pub(crate) fn ui_const_ms(rel: &str, name: &str) -> u64 {
+    let text = std::fs::read_to_string(repo_root().join(rel))
+        .unwrap_or_else(|e| panic!("读不到 {rel}：{e}"));
+    let head = format!("const {name} = ");
+    let hits: Vec<&str> = text
+        .lines()
+        .filter_map(|l| l.trim_start().strip_prefix(&head))
+        .collect();
+    assert_eq!(hits.len(), 1, "{rel} 里 `{head}` 应当恰好一处：{hits:?}");
+    hits[0]
+        .trim_end_matches(';')
+        .replace('_', "")
+        .trim()
+        .parse()
+        .unwrap_or_else(|e| panic!("{rel} 的 {name} 不是整数毫秒：{:?}（{e}）", hits[0]))
+}
+
 /// 🔴 后端 crate 的**根源码面** —— 它从一份变成了两份。
 ///
 /// 前置 1 把模块声明、身份（`BUILD_ID` ＋ 戳）、`SUBCOMMANDS` /

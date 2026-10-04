@@ -50,7 +50,7 @@
 //! （用户以为在复用那个 idle 会话，实际上被丢进一个新建的空 shell）。
 //! 由 `send_into_never_creates_a_session` 钉住。
 
-use crate::platform::child::{Child, Deadline};
+use crate::platform::child::{Budget, Child, Deadline};
 use copy_core::copy_text;
 
 /// 载荷 / 名字 / cwd 的长度上限。取值同 monitor 侧 `launch.rs::MAX_REMOTE_CMD` 的量级 ——
@@ -421,8 +421,11 @@ pub(crate) fn ran(cmd: Child, args: &[&str]) -> Result<Ran, CmdErr> {
     }
 }
 
-/// 建会话 · 打标 · 送键那几发 tmux 各自的期限：界面等 `launch` 送键的预算是 10 s，tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
+/// 建会话 · 打标 · 送键那几发 tmux 各自的期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
 const LAUNCH_TMUX_WITHIN: Deadline = Deadline::secs(5);
+
+/// `launch` 整条命令的总期限（过门 · 建会话 · 打标 · 送键共用）：界面等它 10 s（`tmux-control.ts` 的 `CONTROL_BUDGET_MS`），短 2 s。
+pub(crate) const LAUNCH_TOTAL: Deadline = Deadline::secs(8);
 
 /// 建会话之后那几步**次要动作**（失败不阻断键入载荷）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -731,6 +734,7 @@ pub(crate) fn press_key(
 pub(crate) fn launch_for_inbound(
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, (String, String)> {
+    let _total = Budget::start(LAUNCH_TOTAL);
     let req = parse_request(args).map_err(|(c, m)| (c.to_string(), m))?;
     let session = req.name.clone();
     let out = run(&req).map_err(|(c, m)| (c.to_string(), m))?;

@@ -375,3 +375,70 @@ fn an_idle_sid_in_one_pane_of_a_shared_session_is_typed_with_its_sid() {
     assert_eq!(launched[0]["name"], "two-cc");
     assert_eq!(launched[0]["ccm_sid"], B, "{launched:?}");
 }
+
+/// 整批一个总期限：第一个卡住吃光它 ⇒ 剩下的各自回 `child_timed_out`（不起、不等），整批按期回。
+#[cfg(unix)]
+#[test]
+fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_own() {
+    let dir = std::env::temp_dir().join(format!("ccm-batch-budget-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("建目录");
+    let rows = vec![
+        row("a-cc", Some(A), true),
+        row("b-cc", Some(B), true),
+        row("c-cc", Some(C), true),
+    ];
+    let caps = caps();
+    let list = || -> Result<Option<Vec<TmuxEntry>>, String> { Ok(Some(rows.clone())) };
+    let record =
+        |_: &str, _: Option<&str>| -> Result<(bool, String), String> { Ok((true, String::new())) };
+    // 杀那一下真起一发：先留个记号、再卡住（一发自己的期限 5 s）。
+    let kill = |name: &str, _: &str| -> Result<Value, CmdErr> {
+        let mark = dir.join(name);
+        Child::new("sh")
+            .args(["-c", &format!("touch {}; sleep 30", mark.display())])
+            .run(Deadline::secs(5))
+            .map(|_| json!({}))
+            .map_err(|e| e.into_cmd_err("kill_failed", |e| e.to_string()))
+    };
+    let send_into = |_: &str, _: &str, _: &str| -> Result<(), CmdErr> { Ok(()) };
+    let run_ccm = |_: &[String]| -> Result<(i32, String, String), CmdErr> {
+        Ok((0, String::new(), String::new()))
+    };
+    let mint = |_: &str| -> Result<String, CmdErr> { Ok(String::new()) };
+    let deps = Deps {
+        list: &list,
+        record: &record,
+        kill: &kill,
+        send_into: &send_into,
+        run_ccm: &run_ccm,
+        mint: &mint,
+        caps: &caps,
+        local_facts: local::Facts {
+            windows: false,
+            is_dir: |_| true,
+        },
+    };
+    let sids: Vec<String> = [A, B, C].map(str::to_string).to_vec();
+    let t0 = std::time::Instant::now();
+    let v = stop_within(&sids, &deps, Deadline::millis(600)).expect("整批照回");
+    let took = t0.elapsed();
+    let got = outcomes(&v);
+    for (sid, outcome, why) in &got {
+        assert_eq!(
+            (outcome.as_str(), why.as_str()),
+            ("failed", Some(crate::platform::child::TIMED_OUT)),
+            "{sid}：{v}"
+        );
+    }
+    assert_eq!(got.len(), 3);
+    assert!(
+        took < std::time::Duration::from_millis(600 + 1_500),
+        "整批没按总期限回：{took:?}"
+    );
+    assert!(dir.join("a-cc").exists(), "第一个该真起了");
+    for later in ["b-cc", "c-cc"] {
+        assert!(!dir.join(later).exists(), "总期限用完了 {later} 还起了");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

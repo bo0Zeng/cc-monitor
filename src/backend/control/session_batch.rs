@@ -8,12 +8,24 @@
 //! 要动 tmux / 读记录 / 起 ccm 的几样由入口经 [`Deps`] 交进来（control 不引用 observe），判据交替身。
 
 use super::launch_render::{local, wire};
-use crate::platform::child::{Child, Deadline};
+use crate::platform::child::{Budget, Child, Deadline};
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
 
 /// 一批的上界：兜坏输入（一屏 tab 栏放不下这么多），不是兜格式。
 pub(crate) const MAX_BATCH: usize = 64;
+
+/// `sessions-where` 整条命令的总期限（列名单两发）：界面等它 10 s（`sessions-where.ts` 的 `STANDING_BUDGET_MS`），短 2 s。
+pub(crate) const SESSIONS_WHERE_TOTAL: Deadline = Deadline::secs(8);
+/// 一批停 / 起的总期限 ＝ 底数 ＋ 每个一份：界面等一批的是 10 s ＋ 每个 6 s（`tab-batch-run.ts` 的 `BATCH_BASE_MS` / `BATCH_EACH_MS`），
+/// 后端照同一个式子、底数短 2 s。整批共用；用完了剩下的各自回超时，不让一个卡住整批。
+pub(crate) const BATCH_TOTAL_BASE_SECS: u64 = 8;
+pub(crate) const BATCH_TOTAL_EACH_SECS: u64 = 6;
+
+/// `n` 个一批的总期限。
+pub(crate) fn batch_total(n: usize) -> Deadline {
+    Deadline::secs(BATCH_TOTAL_BASE_SECS + BATCH_TOTAL_EACH_SECS * n as u64)
+}
 
 /// 命令级错误：`(code, message)`。
 pub(crate) type CmdErr = (&'static str, String);
@@ -171,6 +183,7 @@ pub(crate) fn standing(rows: &[TmuxEntry], sid: &str) -> Standing {
 /// `sessions-where`：`{sids}` ⇒ `{results: [{sid, standing, names, terminals}]}`（菜单就绪时问：这一项亮不亮、写哪个名字）。
 /// `terminals` 与 `names` 同序同数，每一项 `{host, terminal}`（词同容器那一格与 `terminals-list`）。
 pub(crate) fn where_(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
+    let _total = Budget::start(SESSIONS_WHERE_TOTAL);
     let sids = sids_of(args.get("sids"))?;
     let rows = (deps.list)().map_err(|m| ("unobservable", m))?;
     let host = crate::stream::wire::TerminalHost::Tmux.as_wire();
@@ -198,6 +211,12 @@ pub(crate) fn where_(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
 /// `sessions-stop`：`{sids}` ⇒ `{results}`。
 pub(crate) fn stop(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
     let sids = sids_of(args.get("sids"))?;
+    stop_within(&sids, deps, batch_total(sids.len()))
+}
+
+/// [`stop`] 的本体，整批的总期限由它装（判据交一个短的）。
+fn stop_within(sids: &[String], deps: &Deps, total: Deadline) -> Result<Value, CmdErr> {
+    let _total = Budget::start(total);
     let rows = (deps.list)().map_err(|m| ("unobservable", m))?;
     let results: Vec<Value> = sids
         .iter()
@@ -409,6 +428,7 @@ pub(crate) fn start(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
             return Err(bad(&format!("duplicate session id: {:?}", it.sid)));
         }
     }
+    let _total = Budget::start(batch_total(items.len()));
     // tmux 那一形先看一眼这台的名单（一批一次）；开终端那一形用不着。
     let rows = if tmux {
         Some((deps.list)().map_err(|m| ("unobservable", m))?)

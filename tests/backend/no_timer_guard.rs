@@ -688,10 +688,21 @@ mod tests {
         ),
     ];
 
-    /// 按 [`REGISTERED_DEADLINE_WAKES`] 剥掉这份文件登记的片段（各恰好一处；文件对不上就原样返回）。
+    /// **登记的读钟处**：`(文件, 生产段里的片段——恰好一处, why)`。读单调钟本身不让谁醒来，但它是节流的原料，
+    /// 所以禁用表里有它；这里只给「算总期限还剩多少」那一处让位，别处出现照红。
+    pub(super) const REGISTERED_CLOCK_READS: &[(&str, &str, &str)] = &[(
+        "platform/child.rs",
+        "std::time::Instant::now()",
+        "起子进程原语的总期限（`Budget`）：一条阻塞档命令里连发几发时，各发共用剩下的时间 —— \
+         装总期限时读一次、每发起之前读一次，只用来把那一次有界等待截短，不驱动任何循环、不产生节拍。",
+    )];
+
+    /// 按 [`REGISTERED_DEADLINE_WAKES`] 与 [`REGISTERED_CLOCK_READS`] 剥掉这份文件登记的片段（各恰好一处；文件对不上就原样返回）。
     pub(super) fn without_registered_wakes(name: &str, code: &str) -> String {
         let mut out = code.to_string();
-        for (file, snippet, ..) in REGISTERED_DEADLINE_WAKES {
+        let wakes = REGISTERED_DEADLINE_WAKES.iter().map(|(f, s, ..)| (*f, *s));
+        let clocks = REGISTERED_CLOCK_READS.iter().map(|(f, s, _)| (*f, *s));
+        for (file, snippet) in wakes.chain(clocks) {
             if matches_registered(name, file) {
                 out = out.replacen(snippet, "", 1);
             }
@@ -1113,6 +1124,49 @@ mod tests {
                     "{file} 剥掉登记的片段之后仍有 `{call}(`"
                 );
             }
+            for pat in periodic_wake_patterns() {
+                assert!(
+                    !rest.contains(&pat),
+                    "{file} 剥掉登记的片段之后仍有 `{pat}`"
+                );
+            }
+        }
+    }
+
+    /// **登记的每一处读钟都还在盘上、恰好一处、只在它登记的那份文件里**；剥掉之后那份文件对禁用表干净；
+    /// 不剥的话子串层当场认得出它（正控：让位是真在让）。别处多一行读钟 ⇒ 正题那条照红（让位只认登记的文件）。
+    #[test]
+    fn every_registered_clock_read_is_on_disk_once_and_nothing_else_hides_behind_it() {
+        let clock = format!("{}::now", "Instant");
+        for (file, snippet, why) in REGISTERED_CLOCK_READS {
+            assert!(why.chars().count() >= 40, "{file} 的登记没写清为什么让位");
+            let hits: Vec<(String, usize)> = backend_sources()
+                .into_iter()
+                .map(|(n, code)| {
+                    let c = code.matches(snippet).count();
+                    (n, c)
+                })
+                .filter(|(_, c)| *c > 0)
+                .collect();
+            assert_eq!(
+                hits.len(),
+                1,
+                "登记的片段 `{snippet}` 应当恰好住一份文件：{hits:?}"
+            );
+            assert!(
+                matches_registered(&hits[0].0, file) && hits[0].1 == 1,
+                "{hits:?}"
+            );
+            let code = &backend_sources()
+                .into_iter()
+                .find(|(n, _)| matches_registered(n, file))
+                .expect("那份文件")
+                .1;
+            assert!(
+                code.contains(&clock),
+                "正控失效：没剥的时候也认不出 {file} 那一处"
+            );
+            let rest = without_registered_wakes(&hits[0].0, code);
             for pat in periodic_wake_patterns() {
                 assert!(
                     !rest.contains(&pat),

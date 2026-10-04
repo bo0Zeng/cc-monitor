@@ -14,15 +14,22 @@
 //! 发起的那一侧只做**一次有界等待**。到点 ⇒ 杀整组 / 终止整个 Job ⇒ 直接子进程被收尸 ⇒ 回 [`ChildFail::TimedOut`]。
 //! 逃出组的孙进程（自己 `setsid` 的）若攥着输出管道，读线程放手、记一行日志，不拖住发起方。
 //! 期限值归发起方：常量住调用点模块，类型是 [`Deadline`]（只交给 `run`，不对外换成时长）。
+//!
+//! # 整条命令的总期限
+//!
+//! 一条阻塞档命令里连发几发时，命令入口装一个 [`Budget`]：各发共用剩下的时间（`run` 取「自己的期限」与「剩下的」里小的那个），
+//! 没剩 ⇒ 不起、直接回超时。总期限短于界面等这条命令的时间：超时时先答的是后端那句准话。
 
 use crate::common::child_env::OWN_ENVS;
 use copy_core::copy_text;
+use std::cell::Cell;
 use std::ffi::{OsStr, OsString};
 use std::io::Read;
+use std::marker::PhantomData;
 use std::process::{Command, Output, Stdio};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// 一次 [`Child::run`] 的期限。只由 [`Deadline::secs`] / [`Deadline::millis`] 造，只在本模块里换成时长。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +48,73 @@ impl Deadline {
     pub(crate) fn shown_secs(self) -> u64 {
         u64::try_from(self.0.as_millis().div_ceil(1000)).unwrap_or(u64::MAX)
     }
+}
+
+/// 一条阻塞档命令的**总期限**：这条命令里各发子进程共用剩下的时间。
+///
+/// 挂在执行这条命令的线程上（阻塞档一条命令占一根线程），**只由命令入口装**，深层函数不装；
+/// 守卫掉了就还原成装之前的样子（线程池复用这根线程跑下一条命令时不残留）。嵌套只收紧、不放宽。
+#[must_use] // 总期限只在守卫活着时有效
+pub(crate) struct Budget {
+    prev: Option<Span>,
+    /// 不许跨线程交出去（还原的是装它的那根线程）。
+    _here: PhantomData<*const ()>,
+}
+
+/// 这根线程此刻的总期限：报给人看的总长 · 到点时刻。
+#[derive(Debug, Clone, Copy)]
+struct Span {
+    total: Deadline,
+    ends: Instant,
+}
+
+thread_local! {
+    static SPAN: Cell<Option<Span>> = const { Cell::new(None) };
+}
+
+impl Budget {
+    /// 从现在起 `total`。这根线程上已有更紧的 ⇒ 沿用那个（只收紧、不放宽）。
+    pub(crate) fn start(total: Deadline) -> Budget {
+        let mine = Span {
+            total,
+            ends: now() + total.0,
+        };
+        let prev = SPAN.get();
+        SPAN.set(Some(match prev {
+            Some(p) if p.ends <= mine.ends => p,
+            _ => mine,
+        }));
+        Budget {
+            prev,
+            _here: PhantomData,
+        }
+    }
+}
+
+impl Drop for Budget {
+    fn drop(&mut self) {
+        SPAN.set(self.prev);
+    }
+}
+
+impl Span {
+    /// 这根线程上装着的那一个（没装 ⇒ `None`）。
+    fn here() -> Option<Span> {
+        SPAN.get()
+    }
+
+    /// 还剩多少；没剩 ⇒ `None`。
+    fn remaining(self) -> Option<Deadline> {
+        self.ends
+            .checked_duration_since(now())
+            .filter(|d| !d.is_zero())
+            .map(Deadline)
+    }
+}
+
+/// 读一次单调钟（后端生产段唯一一处）：只用来算总期限还剩多少，不驱动任何等待。
+fn now() -> Instant {
+    std::time::Instant::now()
 }
 
 /// 超时杀组之后，等读线程收尾的宽限：过了仍没收尾 ⇒ 输出管道被逃出组的进程攥着，放手。
@@ -221,8 +295,23 @@ impl Child {
     }
 
     /// 起它、等它、收两条输出；**期限必填**。到点 ⇒ 杀整组（Windows：终止 Job）、收尸、回 `TimedOut`。
+    /// 装着总期限（[`Budget`]）⇒ 只等「自己的期限」与「剩下的」里小的那个；没剩 ⇒ 不起、直接回 `TimedOut`。
+    /// 被总期限截短的那一次超时，话里报总期限（整条命令等了这么久）。
     pub(crate) fn run(self, within: Deadline) -> Result<Output, ChildFail> {
         let program = self.label();
+        let (within, said) = match Span::here() {
+            None => (within, within),
+            Some(s) => match s.remaining() {
+                None => {
+                    return Err(ChildFail::TimedOut {
+                        program,
+                        after: s.total,
+                    })
+                }
+                Some(left) if left.0 < within.0 => (left, s.total),
+                Some(_) => (within, within),
+            },
+        };
         let mut cmd = self.command();
         cmd.stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -286,7 +375,7 @@ impl Child {
                 }
                 Err(ChildFail::TimedOut {
                     program,
-                    after: within,
+                    after: said,
                 })
             }
             Err(RecvTimeoutError::Disconnected) => Err(ChildFail::Io(std::io::Error::other(

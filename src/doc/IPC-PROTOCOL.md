@@ -829,7 +829,7 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
 - **起**：先问记录还在不在（同 `history-record`，查 `account.configDir` 那棵树）—— 不在 ⇒ `skipped`/`record_gone`（`detail` = 查的那棵树）。
   - `mode:"tmux"`（不接进去）：`running` ⇒ `skipped`/`running`；`ambiguous` ⇒ `skipped`/`ambiguous`（`session` 是第一个）；`idle` ⇒ 把直路那一行键入挂着它的那个窗格（同 `launch` 的 `send-into` 带 `ccm_sid`：过同一道身份门，送不进的码也同它）；
     `none` ⇒ 这台铸名（同 `terminal-name-mint`），交**界面「在 tmux 里 Resume」那一行**（远端同 `launch-render-cli`、本机同 `launch-local`，同一份映射、同一个渲染器）只多 `--detach`，
-    由这台后端自己当 ccm 跑（环境、中转地址、身份标记、自检都由 ccm 那一趟做）；退出码 3（名字有人了）⇒ `failed`/`name_taken`，别的非零 ⇒ `failed`/`start_failed`（`detail` 是 ccm 的原话），15 s 没结束 ⇒ `failed`/`child_timed_out`。
+    由这台后端自己当 ccm 跑（环境、中转地址、身份标记、自检都由 ccm 那一趟做）；退出码 3（名字有人了）⇒ `failed`/`name_taken`，别的非零 ⇒ `failed`/`start_failed`（`detail` 是 ccm 的原话），15 s 没结束（或整批的总期限用完了）⇒ `failed`/`child_timed_out`。
   - `mode:"window"`：只渲那一行交回（本机同 `launch-local`：POSIX 上铸名建进 tmux；远端同 `launch-render-cli` 直连），窗口由 monitor 开。渲不出来 ⇒ `failed`/`refused`。
 - 这台没装 tmux ⇒ 停与 `mode:"tmux"` 逐个 `skipped`/`no_tmux`。
 
@@ -922,7 +922,7 @@ F04c 那个裸键 mode `send-keys-raw`（打断当前回合的 `Escape`、不附
 | 会话已存在（幂等短路，**不重复 resume**） | true | — | false / false |
 | `send-into` 键入成功 | true | — | false / true |
 | tmux 不在 PATH | false | `no_tmux` | 没起成 |
-| 某一发 tmux 过了期限没答（5 s） | false | `child_timed_out` | 不确定走到了哪一步 —— 先看名单再决定重试 |
+| 某一发 tmux 过了期限没答（一发 5 s，整条命令 8 s） | false | `child_timed_out` | 不确定走到了哪一步 —— 先看名单再决定重试 |
 | `send-into` 但会话不存在 | false | `no_such_session` | 没起成 |
 | `send-into` 但会话不是本工具的（§34 Gate 2，原先这一行漏了） | false | `wrong_owner` | 没起成 —— 没往别人的会话里打字 |
 | 建不出来且也不存在 | false | `create_failed` | 没起成 |
@@ -949,6 +949,12 @@ pane 处于 **copy-mode**（用户滚了一下轮子）时 `send-keys` **照样�
 后端已杀掉它那一整组、回这个码，`message` 说是哪个程序、等了几秒（期限归各调用点：tmux 一发 5 s · `ssh -G` 5 s · 当 ccm 起自己 15 s）。
 登记它的命令：`kill` · `launch` · `terminals-list` · `terminal-preview` · `terminal-input` · `session-terminals` · `ssh-config-resolve` · `terminal-name-mint`；
 `sessions-stop` / `sessions-start` 在单个那一条上回（`failed`/`child_timed_out`）。语义是「那台的那个程序此刻没应答」，可以重试。
+**整条命令另有一个总期限**：连发几发子进程的命令，各发共用剩下的时间（每发只等「自己的期限」与「剩下的」里小的那个）；
+总期限用完 ⇒ 后面那几发不起、直接回这个码，`message` 里的秒数是总期限。总期限比界面等这条命令的时间短 2 s
+（`kill` · `launch` · `sessions-where` 8 s · `terminals-list` 13 s · `terminal-preview` / `terminal-input` 18 s ·
+`ssh-config-import` 28 s · `bus-list` 13 s · `bus-state` / `bus-send` / `bus-broadcast` 28 s · `aliases-read` / `powershell-policy-set` 28 s）；
+`sessions-stop` / `sessions-start` 整批一个：8 s ＋ 每个 6 s，用完了剩下的各自回 `failed`/`child_timed_out`。
+调用方等一条命令的时间要长于它的总期限，超时时先到的才是后端这句。
 （⚠ `resolve` 今天仍回命令级 `bad_request` —— 它与仓外 aterm 的一次性契约冻结在 2026-07-18，
 两条路复用同一个纯函数，改它会破坏那份契约。如实登记，不顺手改。）
 
@@ -3515,6 +3521,7 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 **入参：无**。全部别名逐个 `ssh-config-resolve`（解析失败的跳过），同 `(keyPath, user, 基名前缀)` 的聚成一组 = 同一台机器的多个地址：
 `label`（单成员组 = 完整别名，多成员 = 基名）· `host` / `port` / `user` / `keyPath`（组首）· `addresses`（其余地址，端口不同则 `host:port`）·
 `jump`（组内首个非空 proxyjump）· `members`（`alias` / `host` / `port` / `proxyJump`，界面「拆分」时据此还原）。
+整条命令总期限 28 s（每个别名一发 `ssh -G`，共用）：用完了剩下的别名照「解析失败」跳过。
 
 #### `forward-start`：起一条本地端口转发（MIG-1，09-28，F58 `-L`）
 

@@ -267,9 +267,8 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/settings/profile-backups.vitest.ts",
     // 从 SCAN 挪来：本机起会话那一行（`control/launch_render/local.rs::plan` 纯函数，喂确定的事实）。
     "tests/backend/control/launch_render/local_tests.rs",
-    "tests/backend/control/session_batch_tests.rs", // 批量停 / 起：替身记下被调了什么，tmux 一个都不起
-    "tests/frontend/ui/tab-batch-menu.vitest.ts",   // 批量菜单：后端那两件与宿主都是替身
-    "tests/frontend/ui/tab-batch-run.vitest.ts", // 批量停 / 起交给那几台：`chan_call` 那一跳是替身
+    "tests/frontend/ui/tab-batch-menu.vitest.ts", // 批量菜单：后端那两件与宿主都是替身
+    "tests/frontend/ui/tab-batch-run.vitest.ts",  // 批量停 / 起交给那几台：`chan_call` 那一跳是替身
 ];
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
@@ -320,7 +319,6 @@ const SCAN: &[&str] = &[
     "tests/backend/control/ccm/argv_tests.rs",
     "tests/backend/control/cli_control_tests.rs",
     "tests/backend/control/gate_tests.rs",
-    "tests/backend/control/kill_tests.rs",
     "tests/backend/control/resolve_query_tests.rs", // UNIT → SCAN：跨仓承诺那一族读冻结金样与 IPC-PROTOCOL
     "tests/backend/dial_sftp_tests.rs",
     "tests/backend/dial_forwards_tests.rs", // 转发账判据 ＋ 写跨语言金样（`include_str!` 读 `forward-list.golden.json`）
@@ -599,6 +597,8 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/control/files_toctou_tests.rs", // TOCTOU 闭合的竞争判据：临时目录上真改名 / 真复制 / 真链接
     "tests/backend/control/fork_write_tests.rs",
     "tests/backend/control/identity_tag_tests.rs",
+    "tests/backend/control/kill_tests.rs", // SCAN → INTEGRATION：总期限那条在隔离子进程里拿假 tmux 真跑一趟结束会话
+    "tests/backend/control/session_batch_tests.rs", // UNIT → INTEGRATION：整批总期限那条真起一个卡住的子进程
     "tests/backend/control/launch_tests.rs", // 由扫描层挪来：S4 那条判据真起一个假 tmux 子进程（`ran` 收 stderr）
     "tests/backend/control/terminals_tests.rs", // 终端管理 L1：隔离 socket 上起真 tmux，真列 · 真抓 · 真送
     "tests/backend/control/resident_tests.rs", // 临时目录上真铸钥匙、读钥匙文件 ·真 sh 子进程 ＋ 真信号：graceful / killed / not_running
@@ -843,6 +843,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/backend/control/files_write_tests.rs",
         "own_home_child_entry_point",
         Trigger::Filter { by: "tests/backend/control/files_write_tests.rs", needle: "control::files_write::tests::own_home_child_entry_point" },
+    ),
+    (
+        "tests/backend/control/kill_tests.rs",
+        "kill_budget_child",
+        Trigger::Filter { by: "tests/backend/control/kill_tests.rs", needle: "control::kill::tests::kill_budget_child" },
     ),
     (
         "tests/backend/stream/drain_tests.rs",

@@ -227,3 +227,224 @@ fn pass_own_has_exactly_one_production_caller_and_it_starts_the_resident() {
         "自有环境（监听口 · 钥匙文件 · 诊断文件）只许起常驻后端那一处显式交"
     );
 }
+
+/// 总期限：第一发卡住只等到总期限（不是它自己的期限）；剩下的那一发**不起**、直接回超时；话里报的是总期限。
+#[cfg(unix)]
+#[test]
+fn a_command_budget_cuts_the_stuck_child_short_and_spawns_nothing_after_it_is_spent() {
+    let d = scratch("budget");
+    let mark = d.join("second-ran");
+    let t0 = std::time::Instant::now();
+    let _b = Budget::start(Deadline::millis(400));
+    let first = Child::new("sh")
+        .args(["-c", "sleep 30"])
+        .run(Deadline::secs(5));
+    let second = Child::new("sh")
+        .args(["-c", &format!("touch {}", mark.display())])
+        .run(Deadline::secs(5));
+    let took = t0.elapsed();
+    for r in [first, second] {
+        match r {
+            Err(ChildFail::TimedOut { after, .. }) => assert_eq!(after, Deadline::millis(400)),
+            other => panic!("该超时：{other:?}"),
+        }
+    }
+    assert!(
+        took < std::time::Duration::from_millis(400 + 1_500),
+        "没按总期限回：{took:?}"
+    );
+    assert!(!mark.exists(), "总期限用完了还起了下一发");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 嵌套只收紧、不放宽；里层守卫掉了还原成外层那一个；最外层掉了线程上什么都不剩。
+#[test]
+fn nested_budgets_only_tighten_and_each_guard_restores_what_was_there() {
+    let outer = Budget::start(Deadline::secs(60));
+    {
+        let _looser = Budget::start(Deadline::secs(600));
+        let s = Span::here().expect("装着");
+        assert_eq!(s.total, Deadline::secs(60), "更松的那一个把外层放宽了");
+        {
+            let _tighter = Budget::start(Deadline::millis(300));
+            assert_eq!(Span::here().expect("装着").total, Deadline::millis(300));
+        }
+        assert_eq!(
+            Span::here().expect("装着").total,
+            Deadline::secs(60),
+            "里层掉了没还原"
+        );
+    }
+    drop(outer);
+    assert!(Span::here().is_none(), "最外层掉了，线程上还挂着期限");
+}
+
+/// 线程池复用同一根线程跑下一条命令：上一条的总期限（正常结束或中途 panic）不残留，下一条照自己的期限跑完。
+#[cfg(unix)]
+#[test]
+fn a_reused_thread_carries_no_budget_into_the_next_command() {
+    std::thread::spawn(|| {
+        {
+            let _b = Budget::start(Deadline::millis(50));
+        }
+        let _ = std::panic::catch_unwind(|| {
+            let _b = Budget::start(Deadline::millis(50));
+            panic!("上一条命令中途炸了");
+        });
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        assert!(Span::here().is_none(), "上一条的总期限还挂在线程上");
+        let out = Child::new("sh")
+            .args(["-c", "sleep 0.2; exit 0"])
+            .run(Deadline::secs(5))
+            .expect("下一条照自己的期限跑完");
+        assert!(out.status.success());
+    })
+    .join()
+    .expect("线程");
+}
+
+/// 每条装了总期限的阻塞档命令：总期限比界面等这条命令的时间至少短 2 s（后端先答、界面后放手）。
+/// 两边都从代码现取（后端的常量 · 界面源码里那一行）；表 == 生产段里全部 `Budget::start(…)` 的实参（两向）。
+#[test]
+fn every_command_total_is_shorter_than_the_ui_wait_for_that_command() {
+    use crate::guard_support::ui_const_ms;
+    const MARGIN_MS: u128 = 2_000;
+    let ms = |d: Deadline| d.0.as_millis();
+    let control = ("src/frontend/ui/tmux-control.ts", "CONTROL_BUDGET_MS");
+    let reads = "src/frontend/ui/terminal-reads.ts";
+    let bus = "src/frontend/ui/cc-bus-control.ts";
+    let alias = ("src/frontend/ui/alias-reads.ts", "ALIAS_BUDGET_MS");
+    // (`Budget::start` 的实参, 后端总期限, 界面那条的等待：(文件, 常量) ；`None` ＝ 界面无调用方)
+    let table: Vec<(&str, Deadline, Option<(&str, &str)>)> = vec![
+        (
+            "KILL_TOTAL",
+            crate::control::kill::KILL_TOTAL,
+            Some(control),
+        ),
+        (
+            "LAUNCH_TOTAL",
+            crate::control::launch::LAUNCH_TOTAL,
+            Some(control),
+        ),
+        (
+            "TERMINALS_LIST_TOTAL",
+            crate::control::terminals::TERMINALS_LIST_TOTAL,
+            Some((reads, "LIST_BUDGET_MS")),
+        ),
+        (
+            "TERMINAL_PREVIEW_TOTAL",
+            crate::control::terminals::TERMINAL_PREVIEW_TOTAL,
+            Some((reads, "PREVIEW_BUDGET_MS")),
+        ),
+        // 界面无调用方（手机端在用）：与预览同一个，手机端那边的等待要长于它。
+        (
+            "TERMINAL_INPUT_TOTAL",
+            crate::control::terminals::TERMINAL_INPUT_TOTAL,
+            None,
+        ),
+        (
+            "SESSIONS_WHERE_TOTAL",
+            crate::control::session_batch::SESSIONS_WHERE_TOTAL,
+            Some(("src/frontend/ui/sessions-where.ts", "STANDING_BUDGET_MS")),
+        ),
+        (
+            "SSH_IMPORT_TOTAL",
+            crate::dial::ssh_config::SSH_IMPORT_TOTAL,
+            Some((
+                "src/frontend/ui/ssh-config-reads.ts",
+                "SSH_IMPORT_BUDGET_MS",
+            )),
+        ),
+        (
+            "BUS_LIST_TOTAL",
+            crate::control::cc_bus::BUS_LIST_TOTAL,
+            Some((bus, "ONLINE_BUDGET_MS")),
+        ),
+        (
+            "BUS_STATE_TOTAL",
+            crate::control::cc_bus::BUS_STATE_TOTAL,
+            Some((bus, "READ_BUDGET_MS")),
+        ),
+        (
+            "BUS_SEND_TOTAL",
+            crate::control::cc_bus::BUS_SEND_TOTAL,
+            Some((bus, "WRITE_BUDGET_MS")),
+        ),
+        (
+            "BUS_BROADCAST_TOTAL",
+            crate::control::cc_bus::BUS_BROADCAST_TOTAL,
+            Some((bus, "WRITE_BUDGET_MS")),
+        ),
+        (
+            "ALIASES_READ_TOTAL",
+            crate::assets::aliases::ALIASES_READ_TOTAL,
+            Some(alias),
+        ),
+        (
+            "POLICY_SET_TOTAL",
+            crate::assets::aliases::POLICY_SET_TOTAL,
+            Some(alias),
+        ),
+    ];
+    for (name, total, ui) in &table {
+        match ui {
+            Some((file, k)) => {
+                let wait = u128::from(ui_const_ms(file, k));
+                assert!(
+                    ms(*total) + MARGIN_MS <= wait,
+                    "{name} = {} ms，界面 {file} 的 {k} = {wait} ms：总期限要比界面的等待至少短 {MARGIN_MS} ms",
+                    ms(*total)
+                );
+            }
+            None => assert_eq!(
+                *total,
+                crate::control::terminals::TERMINAL_PREVIEW_TOTAL,
+                "{name}：界面无调用方的那一条与预览同一个"
+            ),
+        }
+    }
+    // 一批：界面按「底数 ＋ 每个一份」等，后端同一个式子；每个批量大小都要短于界面。
+    let batch = "src/frontend/ui/tab-batch-run.ts";
+    let (base, each) = (
+        u128::from(ui_const_ms(batch, "BATCH_BASE_MS")),
+        u128::from(ui_const_ms(batch, "BATCH_EACH_MS")),
+    );
+    for n in 1..=crate::control::session_batch::MAX_BATCH {
+        let total = ms(crate::control::session_batch::batch_total(n));
+        let wait = base + each * n as u128;
+        assert!(
+            total + MARGIN_MS <= wait,
+            "{n} 个一批：后端 {total} ms，界面 {wait} ms"
+        );
+    }
+    // 两向：生产段里装总期限的每一处 == 表里的 ＋ 一批那两处。
+    let mut installed: Vec<String> = Vec::new();
+    for (path, src) in
+        guard_core::scan_tree_excluding(&crate::guard_support::src_root(), &["rs"], &[])
+    {
+        let code = crate::guard_support::production_side_of(&path, &src);
+        let head = "Budget::start(";
+        for (i, _) in code.match_indices(head) {
+            let rest = &code[i + head.len()..];
+            let mut depth = 1usize;
+            let end = rest
+                .char_indices()
+                .find(|&(_, c)| {
+                    match c {
+                        '(' => depth += 1,
+                        ')' => depth -= 1,
+                        _ => {}
+                    }
+                    depth == 0
+                })
+                .map(|(i, _)| i)
+                .expect("实参没闭合");
+            installed.push(rest[..end].trim().to_string());
+        }
+    }
+    installed.sort();
+    let mut want: Vec<String> = table.iter().map(|(n, ..)| n.to_string()).collect();
+    want.extend(["batch_total(items.len())".to_string(), "total".to_string()]);
+    want.sort();
+    assert_eq!(installed, want, "装了总期限的地方与这张表对不上");
+}
