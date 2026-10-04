@@ -402,7 +402,7 @@ export const UPSTREAM_SELECTION_NAMES: AccountName[] = [
     old: "layer_two* / LAYER_TWO* / layer_one*",
     re: /[Ll]ayer_?[Tt]wo|LAYER_TWO|[Ll]ayer_?[Oo]ne|LAYER_ONE/,
     fresh: "upstream_selection* / relay*",
-    freshRe: ident("UPSTREAM_SELECTION_PREFIX"),
+    freshRe: ident("UPSTREAM_SELECTION_FILES"),
     kind: "判据名",
     why: "标识符里的「层 2 / 层 1」",
     state: "done",
@@ -410,7 +410,7 @@ export const UPSTREAM_SELECTION_NAMES: AccountName[] = [
 ];
 
 /** 改名前那几条旧叫法**只许**活在这几份文件挂了墓碑标记的行里（讲来历）。两向相等。 */
-export const RENAME_TOMBSTONED_FILES = ["src/backend/accounts/upstream_select/mod.rs", "src/comms/outward/mod.rs"];
+export const RENAME_TOMBSTONED_FILES = ["src/backend/accounts/upstream_select/mod.rs", "src/comms/outward/lib.rs"];
 
 /** 墓碑标记：从 `structural_scan.rs` 那一份常量声明里现抠（不在本文件写第二份字面量）。 */
 export function proseTombstoneMark(): string {
@@ -457,7 +457,7 @@ export function notScanned(path: string): boolean {
 
 /** 扫描面必须含的锚文件（自定位）。 */
 const ANCHORS = [
-  "src/comms/outward/mod.rs",
+  "src/comms/outward/lib.rs",
   "src/backend/accounts/upstream_select/mod.rs",
   "src/backend/control/launch_render/ccm_invocation.rs", // 起会话那一行（载荷那份删了）
   "src/frontend/ui/accounts.ts",

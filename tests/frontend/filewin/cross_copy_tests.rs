@@ -12,7 +12,7 @@
 //! | [`the_staging_dir_is_the_backend_one`] | 窗口那份暂存区（清 B 那头暂存件用）== 后端 `files_commit::STAGING_DIR` | 读两侧源码 |
 
 use super::*;
-use chan_core::chan::wire::{Body, By, CallError, CancelToken, Cursor, Item, Kind, Op, Origin};
+use comms_inward::chan::wire::{Body, By, CallError, CancelToken, Cursor, Item, Kind, Op, Origin};
 
 type Log = std::sync::Arc<std::sync::Mutex<Vec<(String, String, serde_json::Value)>>>;
 
@@ -24,10 +24,10 @@ struct Rig {
 fn refused(code: &str) -> CallError {
     let body = serde_json::to_vec(&serde_json::json!({ "code": code, "message": "合成" }))
         .unwrap_or_default();
-    chan_core::chan::wire::err_from_wire(chan_core::chan::wire::WireErr::Refused, body)
+    comms_inward::chan::wire::err_from_wire(comms_inward::chan::wire::WireErr::Refused, body)
 }
 
-impl chan_core::chan::router::Backends for Rig {
+impl comms_inward::chan::router::Backends for Rig {
     fn call(
         &self,
         origin: Origin,
@@ -87,20 +87,20 @@ impl chan_core::chan::router::Backends for Rig {
 
 async fn rig(push_fails: bool) -> (crate::source::Line, Log) {
     let log: Log = Default::default();
-    let h = chan_core::chan::handoff::start_with(
+    let h = crate::find::testing::start_host(
         std::sync::Arc::new(Rig {
             log: log.clone(),
             push_fails,
         }),
-        chan_core::chan::handoff::mint_key(),
+        crate::find::testing::test_key(),
         1 << 20,
         std::time::Duration::from_secs(5),
     )
     .await
     .expect("回环口绑得上");
-    let line = chan_core::chan::dial::dial(
+    let line = comms_inward::chan::dial::dial(
         &h,
-        chan_core::chan::wire::Budget {
+        comms_inward::chan::wire::Budget {
             until: std::time::Instant::now() + std::time::Duration::from_secs(5),
             cancel: CancelToken::new(),
         },

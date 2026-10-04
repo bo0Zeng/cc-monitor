@@ -61,9 +61,7 @@ mod ratchet_guard; // K-P1 KPY7：本件动过的那几张登记表，**断言�
 #[cfg(test)]
 #[path = "../../tests/backend/readonly_guard.rs"]
 mod readonly_guard; // F08a：backend 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
-                    // 面 B 的成员住 `src/comms/outward/`；非成员 door / listen 留 `relay/`，模块树不变
-#[path = "../comms/outward/mod.rs"]
-pub mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、按路径前缀分流、逐块透传 + tee
+pub mod relay; // 中转的宿主：绑口 · 钥匙 · 起中转（中转本身是通信层 crate `comms_outward`）
 #[cfg(test)]
 #[path = "../../tests/backend/runs_guard.rs"]
 mod runs_guard; // 子运行：通用层只认「运行」（扫描 ＋ 假适配层与 Claude Code 两套形状跑同一批判据）

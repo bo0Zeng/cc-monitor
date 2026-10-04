@@ -4,26 +4,6 @@
 //! 先前的第 3 段（流标签，resume 时是 sid、新开时是启动器铸的 nonce）退役：会话 id 归 agent 自己，
 //! 流标签取自请求头（`server.rs::stream_label`）。
 //!
-//! # 🔴 通信层成员 `COMM-LAYER-MEMBER`
-//!
-//! 这一枚标记是**盘上那一侧**的凭据（登记那一侧在
-//! `tests/frontend/shell/comm_boundary_registry_tests.rs::REGISTERED`，两向集合相等）。
-//! 盖上它 = **上锁**，不是放行：本文件从此被 `C1`–`C5` ＋ `X1`–`X6` 十一条一起管着。
-//!
-//! **凭什么它属于通信层**：列的四样里第一样是「**地址**（`origin` /
-//! 路由键）」，而本文件就是**面 B 那一侧的路由键**本体。更要紧的是，它是
-//! 那条「🔴 怎么做到零豁免」的**现物** —— 逐字：「通信层的类型里用
-//! **位置**称呼它搬的东西（「路径的第 1/2 段」＋一个不透明的流标签），业务名只出现在
-//! 后端那一半的实现里」。下面那个 [`Route`] 与 `super::RouteKey{ seg1, seg2 }` 就是它
-//! （条 48 · 形状的唯一住址是）。
-//!
-//! ⇒ 本文件**只切键、不解释键**：谁是 agent、谁是账号只在 `accounts/` 那一层才有名字。
-//! 十一条对它现打全绿 —— 它是 `§8` **步 4**（「通信层改成『收一张表』」）圈得进来的那两份之一。
-//!
-//! ⚠ **别把它读成「`relay/` 整层进来了」**：同目录七份里今天只有本文件与 `http1.rs`
-//! 进得来，其余五份各被哪几条咬住、为什么，逐份读数住（`E12`：一个事实一个住址，
-//! 不在这里抄第二份）。
-//!
 //! # 🔴 两个前缀 = 两种模式（「为什么用两个前缀而不是一个哨兵段」）
 //!
 //! ```text
@@ -68,12 +48,12 @@
 /// （第 3 段退役）。
 /// 谁是 agent、谁是账号，**只在 `accounts/` 那一层才有这两个词**。
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct Route {
+pub struct Route {
     /// 哪个前缀进来的 —— `/s/` 代入 · `/t/` 直通。中转只转交，不解释。
-    pub(crate) mode: super::Mode,
+    pub mode: super::Mode,
     /// 前两段，整包交给上游选择当键。中转**不解释**它们。
-    pub(crate) key: super::RouteKey,
-    pub(crate) rest: String,
+    pub key: super::RouteKey,
+    pub rest: String,
 }
 
 /// 一段路由键里允许的字符 —— 白名单，不是黑名单（ASCII 字母数字与 `-` `_`，1..=128 字节）。
@@ -85,12 +65,12 @@ pub(crate) struct Route {
 /// 它与两个前缀、拼 / 拆路由一起住共享 crate `relay_route_core`（目标）：
 /// monitor 那一侧（起会话身份 token · 载荷里中转地址的校验）与这里 `use` 同一份，先前的「两侧各写一份、样例对拍」退役。
 /// 那个 crate 不是业务 crate（没有账号 / 凭据的名字），本文件是通信层成员也可以依赖它（`C2`）。
-pub(crate) use relay_route_core::segment_is_safe;
+pub use relay_route_core::segment_is_safe;
 
 /// 解析 `/<前缀>/<seg1>/<seg2>/<rest>`。不是这个形状就返回 `None`（调用方回 404）。
 /// 前缀闭集与切法住 `relay_route_core::parse_target`（唯一住址）；本函数只把共享 crate 的模式
 /// 换成中转自己的契约类型 `super::Mode`（上游选择收的是它）。
-pub(crate) fn parse(target: &str) -> Option<Route> {
+pub fn parse(target: &str) -> Option<Route> {
     let p = relay_route_core::parse_target(target)?;
     Some(Route {
         mode: match p.mode {

@@ -6,7 +6,7 @@
 //! ② monitor 生产段（`[dependencies]` · `[build-dependencies]` · `[target.*.dependencies]`）点名的每个 path 依赖、连同它们自己生产段的
 //!    path 依赖闭包，只许住 `src/common/` 且是契约类；判定类出现即红，**没有例外**（`deploy-core` 拆成契约 `deploy-contract` ＋ 后端判定之后，按符号那道豁免退役）；
 //! ③ crate 级：部署判定（[`DEPLOY_DECISIONS`]）只有一个家 —— 后端 `control/deploy_plan.rs` 恰一处定义；契约 crate `deploy-contract` 与
-//!    monitor 生产源码里用着部署契约的每一份（壳 `src/**` ＋ 它经 `#[path]` 收进来的通信层文件）零处定义。
+//!    monitor 生产源码里用着部署契约的每一份（壳 `src/**` ＋ 通信层面 A 那个 crate）零处定义。
 //! ④「前端宿主原语」类（`host-core`）只许两个前端链：后端生产段闭包里出现即红。
 //! ⑤「前端包」（[`FRONTEND_PACKAGES`]：文件窗口）不住 `src/common/`：monitor 链它**只为**那个 `[[bin]]`
 //!    （生产源码里提到它的恰好是 `filewin/win_main.rs` 一份），它自己的闭包照 ② 判；monitor 的源码人群声明
@@ -33,7 +33,6 @@ enum Class {
 /// `src/common/` 每个 crate 的类与理由（表「类」一列的判据版）。
 const CRATES: &[(&str, Class, &str)] = &[
     ("acct-core", Class::Decision, "账号能不能用 · 走哪一支（`auth_ready` · `apikey_routed_subset`）是裁决；界面那份 `AUTH_KINDS` 由测试档的生成器现生成（monitor 只在 dev 侧链它）"),
-    ("chan-core", Class::Contract, "通道（通信层面 A）的线上词汇与帧格式，两端必须对上；外加搬字节的客户端 / 路由器 / 拨号（零业务判断，`05` C1–C5）"),
     ("copy-core", Class::Contract, "文案表：两侧按同一个键取同一句（`copy_text` / `copy_static`），不裁决"),
     ("creds-core", Class::Contract, "文件格式 · 路径：凭据落盘格式与文件名、数据目录（monitor 只算路径；写半边在 `harden` 后面，monitor 不开）"),
     ("deploy-contract", Class::Contract, "字节表键 · 文件格式 · 答话形状 · 路径：表 A 的键与行、拒绝的形状与话、身份戳格式、计划答话、落点路径，两侧对上同一份（判定那一半住后端 `control/deploy_plan.rs`）"),
@@ -134,6 +133,11 @@ fn common_dir() -> PathBuf {
     root().join("src/common")
 }
 
+/// 通信层那两个 crate 的住址（面 A `inward` · 面 B `outward`）。
+fn comms_dir() -> PathBuf {
+    root().join("src/comms")
+}
+
 /// monitor 生产段依赖闭包里每个 path 依赖：(谁带进来的, 依赖名, 目录)。
 fn monitor_production_closure() -> Vec<(String, String, PathBuf)> {
     let mut out = Vec::new();
@@ -153,14 +157,17 @@ fn monitor_production_closure() -> Vec<(String, String, PathBuf)> {
     out
 }
 
-/// monitor 生产源码：壳 `src/**/*.rs` ＋ 其中生产段经 `#[path = "…"]` 收进来、不在 `tests/` 下的文件。→ (仓内相对路径, 生产段正文)。
+/// monitor 生产源码：壳 `src/**/*.rs` ＋ 通信层面 A 那个 crate（`src/comms/inward/`）＋ 其中生产段经 `#[path = "…"]` 收进来、不在 `tests/` 下的文件。→ (仓内相对路径, 生产段正文)。
 fn monitor_production_sources() -> Vec<(String, String)> {
     let root = root();
-    let mut files: BTreeMap<PathBuf, String> =
-        guard_core::scan_tree_excluding(&root.join("src/frontend/shell/src"), &["rs"], &[])
-            .into_iter()
-            .map(|(p, raw)| (normalize(&p), guard_core::production_code(&raw)))
-            .collect();
+    let mut files: BTreeMap<PathBuf, String> = [
+        root.join("src/frontend/shell/src"),
+        root.join("src/comms/inward"),
+    ]
+    .iter()
+    .flat_map(|dir| guard_core::scan_tree_excluding(dir, &["rs"], &[]))
+    .map(|(p, raw)| (normalize(&p), guard_core::production_code(&raw)))
+    .collect();
     let mut todo: Vec<PathBuf> = files.keys().cloned().collect();
     while let Some(p) = todo.pop() {
         let body = files[&p].clone();
@@ -250,6 +257,10 @@ fn the_monitor_production_segment_links_only_contract_crates() {
             {
                 continue;
             }
+            // 通信层 crate（`src/comms/` 下）：只搬字节、零业务判断，它们自己的依赖由边界判据按依赖图判（`comm_boundary_registry`）。
+            if dir.starts_with(comms_dir()) {
+                continue;
+            }
             bad.push(format!(
                 "{who} → {name}：path 依赖不在 `src/common/` 下（{}）",
                 dir.display()
@@ -326,7 +337,7 @@ fn deploy_decisions_live_only_in_the_backend() {
         sources
             .iter()
             .any(|(r, _)| r == "src/comms/inward/backend_route.rs"),
-        "经 `#[path]` 收进来的通信层文件没进扫描面 —— 量法瞎了"
+        "monitor 链的通信层 crate 没进扫描面 —— 量法瞎了"
     );
     // 人群：契约 crate 自己 ＋ monitor 生产源码里用着部署契约的那几份（判定名很泛 —— `judge` 在文件窗口 · 凭据权限里另有同名的别的判定，
     //   按「用不用部署契约」取人群，不按名字猜）。
@@ -384,7 +395,7 @@ fn backend_production_closure() -> BTreeSet<PathBuf> {
     seen
 }
 
-/// ⑤ 前端包只为它那个 `[[bin]]` 链：monitor 生产源码（壳 `src/` ＋ `#[path]` 收进来的通信层文件，不含人群声明里的兄弟包）里
+/// ⑤ 前端包只为它那个 `[[bin]]` 链：monitor 生产源码（壳 `src/` ＋ 通信层面 A 那个 crate，不含别的兄弟包）里
 /// 提到它 crate 名的文件 == 那个 bin 的 crate 根，恰好一份。
 #[test]
 fn a_frontend_package_is_linked_only_for_its_bin() {
@@ -421,7 +432,14 @@ fn the_monitor_population_is_exactly_its_frontend_only_closure() {
     let declared: BTreeSet<PathBuf> =
         guard_core::population_trees(&root().join("src/frontend/shell/src"))
             .into_iter()
-            .map(|(_, src)| normalize(src.parent().expect("人群树是 <包>/src")))
+            // 人群树是 `<包>/src`，或 crate 根与清单同层的包目录本身（通信层那两个）。
+            .map(|(_, src)| {
+                normalize(if src.ends_with("src") {
+                    src.parent().expect("人群树是 <包>/src")
+                } else {
+                    &src
+                })
+            })
             .collect();
     let backend = backend_production_closure();
     assert!(

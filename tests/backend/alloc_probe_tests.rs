@@ -93,7 +93,7 @@ fn every_test_that_uses_this_probe_stays_single_threaded() {
         &["rs"],
         &["alloc_probe_tests.rs"],
     ));
-    // 面 B 成员的单测镜像住 `tests/comms/outward/`（`http1_tests.rs` 用这个量具）。
+    // 中转 crate 的单测住 `tests/comms/outward/`。
     files.extend(guard_core::scan_tree_excluding(
         &crate::guard_support::comms_tests_root(),
         &["rs"],

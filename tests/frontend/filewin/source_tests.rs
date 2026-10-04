@@ -1051,7 +1051,7 @@ fn fn_name_on(line: &str, fn_word: &str) -> Option<String> {
 /// 压成同一句的话，用户在「删除」上再点一次就可能删两遍。
 #[test]
 fn each_layer_of_a_channel_failure_says_something_different() {
-    use chan_core::chan::wire::{Body, CallError, HopFault, HopId, OursFault, PeerFault, Reach};
+    use comms_inward::chan::wire::{Body, CallError, HopFault, HopId, OursFault, PeerFault, Reach};
     let hop = |idx, reach| CallError::Hop {
         at: HopId { idx, tag: "wait" },
         reach,

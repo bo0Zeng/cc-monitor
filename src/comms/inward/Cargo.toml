@@ -1,14 +1,16 @@
 [package]
-name = "chan-core"
+name = "comms-inward"
 version = "0.1.0"
 edition = "2021"
 workspace = "../../frontend/shell"
-description = "通道（通信层面 A，前端 ↔ 后端）的线上词汇 · 帧 · 客户端 · 路由器 · 拨号与交接件：monitor（宿主那一侧）与文件窗口进程（外部前端）链接同一份。"
+description = "通信层面 A（前端 ↔ 后端）：通道的线上词汇 · 帧 · 客户端 · 路由器 · 拨号 · 交接件的形状 · 问后端的分流 · SSH 链路读应答。monitor（宿主那一侧）与文件窗口进程（外部前端）链同一份。"
 
-# 〔「先把通道客户端 … 抽成共享 crate」〕成员文件（`origin` · `wire` · `client` · `router`）原地住
-#   `src/comms/inward/`（成员资格由登记表认，目录只是住址）；本 crate 用 `#[path]` 编它们，另带两份非成员（`dial` · `handoff`：拨号与绑口）。
+[lib]
+path = "lib.rs"
+
+# 只许这几条：通信层不认识任何业务 crate（边界判据按依赖图判）。
 [dependencies]
-copy-core = { path = "../copy-core" }
+copy-core = { path = "../../common/copy-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }

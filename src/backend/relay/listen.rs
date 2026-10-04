@@ -1,33 +1,12 @@
-//! 中转 · **监听面**：绑回环 · accept · 在途上界 · 起监听之前那点接线。
+//! 中转的**宿主那一半**：绑回环 · accept · 在途上界 · 两个期限值 · 起监听之前那点接线（读 / 铸钥匙、问上游选择）。
 //!
-//! # 它从哪儿来（`server.rs` 4506 行按职责拆）
-//!
-//! 规格那张表把 `server.rs` 拆成三份，本文件是其中一份，逐字：
-//! 「`relay/listen.rs`  🔴 **要劈两半**：listen / accept / `INFLIGHT_CONNECTIONS` → 后端侧
-//! （`01 C5`）；serve / `apply_downstream_deadline` → 中转」。
-//! 在途上界 `INFLIGHT_CONNECTIONS` 与在途计数今天住本文件。
-//!
-//! ⚠⚠ **那「两半」本拍只劈了一半，另一半劈不动，理由现打**：
-//! 把 bind/accept 挪到**后端侧**要在 `relay/` 之外新开一个模块，而本拍的写区
-//! 逐字是「`src/backend/relay/` 及它下面新建的目录」。⇒ 本文件今天**两半都在**，
-//! 边界用注释标着；真正的搬家归步 **13c**（「后端 `bind`/`listen`，
-//! 把 `accept` 到的连接交给面 B」）—— 那一步自己就写着「它不挡 14」。
-//!
-//! # ⚠ 有两样东西**职责在这里、代码还在 `server.rs`** —— 逐条给现打的理由
-//!
-//! 它们**不是**按职责留在那儿的，是被**写区外的住址登记**钉住的：搬一步就当场红，
-//! 而那几处登记都不在本拍的写区里。如实列，别读成设计要它们分开：
-//!
-//! | 留在 `server.rs` 的 | 钉住它的登记（都在写区外） |
-//! |---|---|
-//! | `DOWNSTREAM_DEADLINE` ＋ `apply_downstream_deadline` | 那个**值**今天住本文件，`REGISTERED_DURATION_USES` 那两行的住址栏逐字 `"listen.rs"`；装它的那一手仍在 `server.rs`（改成收入参） |
-//! | `LOOPBACK` | 同上，钉它的是 **`src/backend/stream/listen.rs`**（K-P1 那个常驻监听口，与本文件同名但是另一棵）那句「理由与 `…/relay/server.rs::LOOPBACK` 逐字同源」 |
-//!
-//! ⇒ 本文件 `use` 它们，注释里点符号（不点文件）。真要把它们挪过来，得与
-//! `src/frontend/shell/` 那两句散文 ＋ `no_timer_guard` 那张表**同拍**改。
+//! 中转本身（一条连接的一来一回）是另一个 crate（`comms_outward`）：本文件接下一条连接就交给 `comms_outward::serve_one`，
+//! 端口、钥匙、期限、上游选择那只手、tap 口都由这里交进去（`Relay::new`）——
+//! 中转自己不绑口、不读盘、不读环境（边界判据 `C4` / `C5`）。
 
-use super::server::{self, Relay, LOOPBACK};
-use super::{door, tee::TeeSink, Startup};
+use super::key;
+use crate::stream::listen::LOOPBACK;
+use comms_outward::{Relay, Startup, TeeSink};
 use copy_core::copy_text;
 use std::net::{SocketAddr, TcpListener};
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
@@ -60,12 +39,7 @@ pub(crate) const ENV_PORT: &str = "CCM_RELAY_PORT";
 // 与 `upstream::connect`），只是改成收入参 —— **执行仍归通信层**，这一条没变。
 // ⚠ 这两条在 `no_timer_guard::REGISTERED_DURATION_USES` 里各占一行，住址栏跟着改成
 // 本文件。那张表是**恰好相等**的断言 ⇒ 住址改错/漏改当场红。
-// ⚠ 本段刻意**不写出通信层那枚成员标记的字面**：它是**裸子串扫描、不剥注释**
-// （与 `relay/mod.rs ㈠` 那一节记的只读护栏同一族坑）—— 在散文里提它一次，
-// 这份文件当场就「自称成员」了。本拍第一版正是这么红的，逐字
-// 「这几份文件**自称**通信层成员，却不在登记表里」。**要改就改措辞。**
-// ⚠ **不许把值搬回中转**：`upstream.rs` 今天盖着那枚成员标记，`X2`（生产段
-// 零期限字面量）对它当场成立；搬回去它立刻掉出边界。
+// ⚠ **不许把值搬回中转**：中转 crate 归边界判据管，`X2`（生产段零期限字面量）对它当场成立。
 
 /// **下游**那条 socket 的读写期限〔回修轮之六 08-25，D3 `阻-3(D3)` 的**后半段**〕。
 ///
@@ -188,7 +162,7 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<Atom
         //    排字节那步又是非阻塞的，我**没构造出**它阻塞的形状（理由全文见
         //    `apply_downstream_deadline` 头注㈡；本轮 `MU6` 实测删掉它**零红**）。
         //    装不上仍然**关连接并出声**：宁可拒绝，也不放一条来路不明的进来。
-        if let Err(e) = server::apply_downstream_deadline(&stream, DOWNSTREAM_DEADLINE) {
+        if let Err(e) = comms_outward::apply_downstream_deadline(&stream, DOWNSTREAM_DEADLINE) {
             eprintln!("[relay] cannot set connection deadline: {e}");
             continue;
         }
@@ -196,7 +170,7 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<Atom
             // ⚠ 只印数字与上限，**永不印请求头**（`K9` 裁定四第 1 条）——
             // 这一支根本还没读过一个字节，连请求头都还不存在。
             eprintln!("[relay] refusing: {INFLIGHT_CONNECTIONS} connections already in flight");
-            let _ = server::respond_and_drain(&mut stream, server::BUSY, "busy");
+            let _ = comms_outward::refuse_busy(&mut stream);
             continue;
         }
         // ★ 先留一份 fd 副本：`spawn` 失败时 `stream` 已经被 move 进那个闭包、拿不回来，
@@ -210,7 +184,7 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<Atom
         let spawned = std::thread::Builder::new()
             .name("ccm-relay-conn".to_string())
             .spawn(move || {
-                if let Err(e) = server::handle(stream, &relay) {
+                if let Err(e) = comms_outward::serve_one(stream, &relay) {
                     // ⚠ 只印错误本身，**永不印请求头**（`K9` 裁定四第 1 条）。
                     eprintln!("[relay] connection ended: {e}");
                 }
@@ -220,7 +194,7 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<Atom
             inflight.fetch_sub(1, SeqCst);
             eprintln!("[relay] cannot spawn connection thread: {e}");
             if let Some(mut s) = spare {
-                let _ = server::respond_and_drain(&mut s, server::BUSY, "busy");
+                let _ = comms_outward::refuse_busy(&mut s);
             }
         }
     }
@@ -257,9 +231,9 @@ fn prepare(
     //   ② 「在听」那句话说出去的时候钥匙文件已经在盘上 ⇒ 看着那句话去读钥匙的人（判据 · 那台机器的 shell）读得到。
     //   拿不到 ⇒ **不起**（有口没钥匙 = 不设防的口；`listener` 在这里 drop，口当场放掉）。
     //   ⚠ 报错里只有路径与原因，**永远没有钥匙值**（`door::Key` 不派生 `Debug`）。
-    let door = match door::key_path(get)
+    let door = match key::key_path(get)
         .ok_or_else(|| copy_text("beRelayListen.key.noHome", &[]))
-        .and_then(|p| door::ensure_key(&p))
+        .and_then(|p| key::ensure_key(&p))
     {
         Ok(k) => k,
         Err(e) => {
@@ -347,7 +321,7 @@ pub(crate) fn our_relay_listening(port: u16) -> bool {
 pub(crate) fn host(
     get: &dyn Fn(&str) -> Option<String>,
     startup: &dyn Startup,
-    tap: std::sync::Arc<dyn super::tee::TapPort>,
+    tap: std::sync::Arc<dyn comms_outward::TapPort>,
 ) -> Hosted {
     let Some(raw) = get(ENV_PORT).filter(|s| !s.trim().is_empty()) else {
         return Hosted::NotAsked;

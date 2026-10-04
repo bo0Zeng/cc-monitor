@@ -316,7 +316,7 @@ where
         name: name.to_string(),
         why,
     };
-    let to = chan_core::chan::wire::Origin(machine.trim().to_string());
+    let to = comms_inward::chan::wire::Origin(machine.trim().to_string());
     // ① B 那台：home · 落点 · 目标已在就问一次。
     let bhome = match super::source::ask(
         line,
@@ -381,7 +381,7 @@ where
         };
     }
     // ② 本机暂存（经本机后端：home · 暂存区 · 落点）。
-    let local = chan_core::chan::wire::Origin(LOCAL_ORIGIN.to_string());
+    let local = comms_inward::chan::wire::Origin(LOCAL_ORIGIN.to_string());
     let lhome = match super::source::ask(
         line,
         &local,

@@ -1,8 +1,8 @@
-//! 通信层边界登记表的判据本体 —— 模块头注（这张表为什么存在 · 成员怎么认 ·
-//! 买到什么买不到什么）住 `src/frontend/shell/src/comm_boundary_registry.rs`，不在这里抄第二份。
+//! 通信层边界判据的本体 —— 模块头注（成员怎么认 · 十一条管什么 · 买到什么买不到什么）住
+//! `src/frontend/shell/src/comm_boundary_registry.rs`，不在这里抄第二份。
 
-use std::collections::BTreeSet;
-use std::path::PathBuf;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
     // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
@@ -10,213 +10,130 @@ fn repo_root() -> PathBuf {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  一、边界登记表本体（另一半：画出通信层的边界）
+//  一、成员 ＝ 通信层那两个 crate（`cargo metadata` 现取）
 // ════════════════════════════════════════════════════════════════════════════
 
-/// ★★ **边界登记表** —— `(仓根相对路径, 为什么它属于通信层)`。
-///
-/// 🔴 **今天 4 份，两拍进来的。** `步 3`（09-20）圈进头两份 —— 人群第一次非空；
-/// `步 4`（09-21）圈进 `relay/` 那两份 —— **`C4` 第一次判得动它自己那句话点名的东西**。
-/// 步 1 逐字「判据先对空集成立，随搬迁逐步收紧」——「收紧」从步 3 那一拍开始。
-///
-/// # ⚠ 要求是「把**传输面**圈出来」，而传输面**一份都没进来**
-///
-/// `§8` 步 3 逐字：「把传输面（SSH / SFTP / 池 / 重连）从 `monitor` 的 Rust 半
-/// **圈出来**，业务先不动」。现打的结论是：**那三份今天一份都圈不进来** ——
-/// `stream_source/` / `sftp.rs` / `sftp_pool.rs` 的**公开面**上都命名了业务概念，
-/// 而「**`C1` 的豁免必须为零**」⇒ 不许开口子，只能不圈 ＋ 写清。
-/// 逐份咬在哪（名字 · 处数 · 判词）写在那份读数里，**不在这里抄第二份**。
-/// ⚠ 〔2026-09-21 换射程后现打〕**三份一份都没掉到零** —— 处数掉了约 91%，
-/// 而剩下的那些是它们自己起的公开名字（`is_safe_remote_jsonl`〔散文墓碑〕（已随 F11 删）· `SESSION_CHANNEL_CAP` ·
-/// `InboundFrame` 的会话/tmux 变体一族…），**改得了，所以它是账不是命**。
-///
-/// ⇒ 下面**头两份**是**通信层自己的词汇**那一档（`§2` 逐字四样里的「地址」与
-/// `§4.5.2` 的「失败语义」），不是传输面。**别把非空读成「传输面进来了」。**
-///
-/// # 🔴 后两份：`C4` 第一次有**真东西**可判
-///
-/// 步 4 逐字是「**`creds.rs` ＋ `table.rs` 搬去后端**，通信层改成『收一张表』
-/// ｜ ✅ `C4` 从这一步起可以真断言零读盘」。现打两句：
-///
-/// 1. **搬家那半已经做完了**（`14-i` 带走的）—— 那两份今天住
-///    `src/backend/accounts/`（先住 `relay/accounts/`，2026-09-24 搬出中转层），与 `impl Destinations`（那张决策表的唯一实现）同一层，
-///    中转手里只剩一个 `Arc<dyn Destinations>` ⇒「收一张表」的**接法**也在盘上了。
-/// 2. **而「圈进来」那半一直没人做** ⇒ `C4` 一直绿着，却**一份 `relay/` 的文件都没扫过**：
-///    它成立在一个不含被它点名的那个东西的人群上。这一拍补的就是那一半。
-///
-/// ⚠ **只进得来两份，不是整层。** 把 `relay/` 按 `C4` 切开、归通信层那一列
-/// 点了六份，加上后来的 `listen.rs` 共七份，而只有 `route.rs` 与 `http1.rs` 十一条全绿。
-///
-/// 🔴 **还进不来的那几份各被哪几条咬，从 2026-09-21 起不再写在这段散文里** ——
-/// 它有了自己的判据（`the_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names`，
-/// 逐份**两向集合相等**），编号与逐份理由住 [`RELAY_LEFT_OUTSIDE`]。
-/// 先前这里逐字写着那几份的编号，而**没有任何东西在看它** —— 那一拍就抓到一处已经假了的：
-/// 那句「`tee.rs` 带业务词并 `try_send`（`C1` ＋ `X4`）」在新射程下只剩 `X4`。
-/// ⇒ 一个事实一个住址（`E12`），而这个住址现在是**机检的**那一侧。
-/// **豁免仍为零** —— 变的是人群与射程，不是例外。
-///
-/// ⚠ 另有一格是**全绿而不该圈**（那一形的第二例）：
-/// `accounts/policy.rs` 十一条一条不咬，而它是**上游选择** —— 那份凭据文件的热重载，
-/// 正是 `C4` 那句话要挡在外面的那一类。**不圈它**，理由写在这里而不是等人来问。
-///
-/// # 往里加一条要同拍做三件事，缺一当场红
-///
-/// 1. 给那份文件的**文件头注释**盖上 [`MARK`] 那枚标记（盘上那一侧）；
-/// 2. 在这张表里加一行，理由写**为什么它是纯传输**，不是「先放这儿」；
-/// 3. 把 `src/frontend/shell/src/comm_boundary_registry.rs` 头注里那句
-///    「登记在册的通信层成员：N 份」的 N 改掉（散文那一侧）。
-///
-/// ⚠ 这张表**不是**豁免清单。进了这张表的文件从此被 `C1`–`C5` ＋ `X1`–`X6`
-/// 十一条一起管着 —— 登记是**上锁**，不是**放行**。
-const REGISTERED: &[(&str, &str)] = &[
+/// 通信层那两个 crate 的包名（面 A `comms-inward` · 面 B `comms-outward`）。
+const COMMS_CRATES: &[&str] = &["comms-inward", "comms-outward"];
+
+/// 每个通信层 crate 的普通依赖**只许**这些（传递进来的第一方 crate 也必须在表里）。
+/// 第一方业务 crate（后端 · 壳 · 文件窗口 · `acct-core` · `creds-core` · `host-core` · `filewin-contract` …）出现即红。
+/// `comms-inward` 的 `ts-rs` 是可选依赖，只在测试档（`ts` 那一格）进来、不进产物。
+const ALLOWED_DEPS: &[(&str, &[&str])] = &[
     (
-        "src/comms/inward/origin.rs",
-        "面 A 的**寻址键**本体。列了这一层认识的四样东西，第一样是\
-         「**地址**（`origin` / 路由键）」；`§4` 那张一层两面图里面 A 的寻址逐字就是 `origin`。\
-         它**只是**那个地址：零业务词 · 零读盘 · 零起进程 · 零期限字面量。\
-         步 2 刚把它收得更紧（`Unspecified` 退役 ⇒ 地址只有一种线上形状，`null` 进不来）。",
+        "comms-inward",
+        &[
+            "copy-core",
+            "serde",
+            "serde_json",
+            "tokio",
+            "futures",
+            "tracing",
+            "uuid",
+            "ts-rs",
+        ],
     ),
     (
-        "src/comms/inward/backend_route.rs",
-        "面 A 的**失败语义**本体。它把 `CallError` 翻成三态，\
-         判准逐字是「能不能证明这条命令根本没发出去」—— 那就是 `§3.3.1` 的 `reach` \
-         在今天这棵树上的样子，也是 `X1` 点名的三个线上类型之一（`CallError`）\
-         今天唯一一处**穷尽**的 `match`。它不知道会话/账号/skill/agent/tmux，\
-         不读盘、不起进程、不绑端口、不写期限。\
-         ⚠ `CallError` 的**定义**所在（同目录 `inbound_client.rs`）**没有**跟着进来：\
-         C1 在它身上咬到 `agent` 三处（cc-bus 的 `extras.agent`）、X4 咬到一处 `try_send`。\
-         类型的家还在外面，而用它做分流的这一份先进来了 —— 那是 C1 指的下一刀，不是矛盾。",
+        "comms-outward",
+        &[
+            "copy-core",
+            "relay-route-core",
+            "upstream-url-core",
+            "rustls",
+            "webpki-roots",
+            "tracing",
+        ],
     ),
-    // ── 〔步 4，2026-09-21〕面 B 那一侧：凭据搬走之后**只收不取**的那两份 ──────────
-    (
-        "src/comms/outward/route.rs",
-        "面 B 的**路由键**本体 —— 四样里第一样「**地址**（`origin` / 路由键）」\
-         在外向那一面的样子。更要紧的是它是那条 🔴「怎么做到零豁免」的**现物**：\
-         逐字「通信层的类型里用**位置**称呼它搬的东西（「路径的第 1/2 段」＋一个不透明的流标签），\
-         业务名只出现在后端那一半的实现里」⇒ 盘上就是 `Route` ＋ `RouteKey{ seg1, seg2 }`（条 48）。\
-         它**只切键、不解释键**：谁是 agent、谁是账号只在 `accounts/` 那一层才有名字。\
-         零读盘 · 零环境变量 · 零期限字面量 —— 那正是步 4 要买的「只收不取」。",
-    ),
-    // ── 中转本体与它的契约本体 ────────────────────────
-    (
-        "src/comms/outward/mod.rs",
-        "面 B 的**层间契约本体** —— `Destination` / `Destinations` / `Mode` / `RouteKey` / \
-         `AuthSwap` 都住这儿，归通信层那一列也点名了它。\
-         🔴 **那道「边界契约文件自己算不算成员」的题：照圈**，\
-         裁词逐字：本文件里那行 `mod accounts;`（`accounts/` 是上游选择）是 **Rust 模块树的\
-         机械产物** —— 子模块只能由父模块声明，语言里没有第二种写法 ⇒ \
-         **让一行语言层面的声明去否决一份文件的架构归属，是让语言产物驱动架构裁决**。不办。\
-         ⚠ 这一裁**配了一条硬判据**（同拍立的，见 [`assert_membership_does_not_inherit_down_the_module_tree`]）：\
-         成员资格**不沿模块树往下传** —— `accounts/**` 一份都不许自称成员。\
-         没有那一条，这一行登记在语义上就等于把上游选择一起圈进来。",
-    ),
-    (
-        "src/comms/outward/server.rs",
-        "面 B 的**交换面**本体（要的那个名字正是 `exchange.rs`），\
-归通信层那一列的第一个。\
-         它先前差两条，`P16` 同拍清掉：`C2`（`Destination::Substitute` 不再带 `creds-core` \
-         的类型，连明文都碰不到了 —— 那一句搬去了上游选择）＋ `X2`（那个 30 秒的**值**搬去 \
-         `listen.rs`，装它的那一手留在本文件、改成收入参）。\
-         ⚠ 这枚标记**不买**「这一层做得对」：请求头拼得对不对由 `wire_golden` 的逐字节\
-         金标准与 `server_tests` 那一族负责，它只买「没长业务、没伸手拿东西」。",
-    ),
-    // ── 〔`P16`，2026-09-22〕面 B 那一侧第三份：期限的**值**搬走之后才进得来 ──────
-    (
-        "src/comms/outward/upstream.rs",
-        "面 B 的**上游那一跳**本体 —— 它头注第一行逐字「连出去、把请求**原样**递上去」，\
-         那就是四样里的「**载荷**（不透明字节）」在外向那一面的样子。\
-         归属的依据是那张图（面 B ＝ agent ↔ 上游 API，**本来就在通信层内**）\
-         ＋归通信层那一列点名了它。它既不是上游选择（那是 `accounts/`）、\
-         也不是一张登记表 ⇒ **不属于** 那个「全绿而不该圈」的形状。\
-         **它先前只差 `X2` 一条**：那个 600 秒的**值**住在它自己文件里；`P16` 按 \
-（「**期限值**全部由后端交给它」）把值搬去 `listen.rs`，\
-         装它的那一手仍留在本文件（`connect` 收入参，`§3.3.2`「值归后端 · 执行归通信层」）\
-         ⇒ 十一条现打全绿。\
-         ⚠ **它带着 TLS 与 tee 明文进来，而一条豁免都没开**（`C1` 的豁免必须为零）：\
-         TLS 是「怎么搬」（`裁-1`：上游是 `https://`，而 TLS 不能手写）、tee 是「搬完抄一份」，\
-         两者都不需要它认识会话/账号/agent —— 它的**公开面**上一个业务名都没有。\
-         ⚠ 这枚标记**不买**「TLS 配得对」（那归 `wire_golden` 与 `tls_config` 自己的判据），\
-         也**不买**「tee 到的明文不该落盘」（那归 `creds_guard`）。",
-    ),
-    (
-        "src/comms/outward/http1.rs",
-        "面 B 的**协议编解码**本体 —— 那张「四样不共享」表里，面 B 的「协议」\
-         一栏逐字是「手写 HTTP/1.1 ＋ SSE」。它只解析中转必须懂的那几样（请求行 · 头 · \
-         `Content-Length` · chunked 拆帧），别的一律当**不透明字节** —— 就是 `§2` 四样里的\
-         「**载荷**（不透明字节）」。零 HTTP 框架（`K8`/`D4` 白名单一字没松）· 零业务 · 零读盘。\
-         ⚠ 它**不买**「HTTP 解析对不对」—— 那由 `http1_tests.rs` 与 `wire_golden` 的\
-         逐字节金标准负责；这枚标记只买「它没在这一层里长出业务、也没伸手去拿东西」。",
-    ),
-    // ── 面 B 那一侧：分帧从 `http1.rs` 里抽出来单住一份，同拍圈进来 ─────
-    (
-        "src/comms/outward/framer.rs",
-        "面 B 协议编解码的**分帧**那一半 —— 先前就住在成员 `http1.rs` 的 `ChunkedView` 里\
-         （外加 `tee.rs` 的一份手抄），把两份收成一个增量分帧器。\
-         它只认**字节与一个分隔符**，不认里面是什么（`§2` 四样里的「载荷（不透明字节）」）：\
-         零业务词 · 零读盘 · 零环境变量 · 零起进程 · 零绑端口 · 零期限 · 零尺寸常量（上限由调用方给）。\
-         🔴 **不同拍圈进来就是变松**：那段代码在 `http1.rs` 里时受十一条管着，搬出来不盖标记就出了锁。\
-         ⚠ 这枚标记**不买**「切得对 / 是 O(n)」—— 那由 `framer_tests.rs` 的次数与长度相等断言负责。",
-    ),
-    // ── 面 B 那一侧：tee 的 NDJSON 行落点删了之后，挡它的 `X4` 清空，同拍圈进来 ─────
-    (
-        "src/comms/outward/tee.rs",
-        "面 B 上「搬完抄一份」的那一半（归通信层那一列点名了它；挂载物 ①）：\
-         拆 SSE 的 `data:` 行、给每件占号、交给宿主的 tap 口。它不认识会话 / 账号 / agent（流标签是不透明串，\
-         路由那两段不进 tee —— 「① 不问账号」）· 零读盘 · 零环境变量 · 零起进程 · 零绑端口 · 零期限。\
-         先前挡它的 `X4`（NDJSON 行落点的 `try_send`：投不进就丢、不说）随独立 `--relay` 一起删了；\
-         tap 那一形「丢必须说」由位置号 `n` 原位兑现（`Gap` 那一形，纯算术）。\
-         ⚠ 这枚标记**不买**「抄得全」—— 那由 `host_tests` 的逐件相等与缺口判据负责。",
-    ),
-    // ── 〔面 A 第一个外部客户端，2026-09-24〕通道那三份：进来那天就是十一条全绿 ─────────
-    //    窗口变成独立前端：文件窗口是独立进程，够不着后端 ⇒ 它是又一个前端，
-    //    说的正是那两个动作。同目录另两份（`host.rs` 绑口造钥匙、`dial.rs` 拨号）
-    //    **刻意不圈** —— 它们做的正是 `C4`/`C5` 不许成员做的事，理由逐字住那两份的头注。
-    (
-        "src/comms/inward/chan/wire.rs",
-        "面 A 的**线上词汇本体** —— 那「五个不透明类型 ＋ 一个手柄 ＋ 一个跳号」、\
-         `§3.3.1` 的三层错误、`§3.3.4` 的 `Item`、以及 `Comms`/`Sub` 两个 trait 第一次在盘上有了类型。\
-         每一个公开名字都是位置名或传输词（用**位置**称呼它搬的东西）。\
-         载荷走帧体、不进 JSON ⇒ 对载荷形状零假设；帧长上限由调用方给（`C4`），本文件零尺寸常量、零期限常量。",
-    ),
-    (
-        "src/comms/inward/chan/router.rs",
-        "面 A 上**进程外前端**进来的那扇门：认证 ＋ 按 `origin` 把 `call`/`subscribe` 转给**注入的**句柄 ＋ \
-         撤单 ＋ credit。它是一个**纯路由器**：`op`/`kind`/载荷原样交出去、一个都不解释（`C1`）；\
-         钥匙、帧长上限、认证等待时长全由宿主交进来（`C4`）；**绑回环与 `accept` 在宿主那一份**，\
-         它只有 `serve(stream)`（`C5`，照面 B 那个先例逐字同形）。\
-         ⚠ 它**不买**「那个 `origin` 真有人服务」—— 那是句柄的活。",
-    ),
-    (
-        "src/comms/inward/chan/client.rs",
-        "「前端只有两个动作」在**进程外前端**手里的样子 —— 它实现 `Comms`，\
-         签名参数名与顺序一字不改（`budget` 是绝对时刻 · `from` 原样过线 · `want` 是 credit）。\
-         它收的是一条**已经连好**的流与一把**已经交到手里**的钥匙：不拨号（拨号在 `dial.rs`，不是成员）、\
-         不读钥匙、不造期限（`C4`/`C5`/`X2`）。⚠ 它**不买**自动重连：只有交给它的那一条流。",
-    ),
-    // ── 通道在 **webview** 手里的那一半（主界面第一次说 `call`）──────
-    (
-        "src/comms/inward/chan.ts",
-        "「前端只有两个动作」在**主界面**（webview）手里的样子 —— 与 `chan/client.rs`（进程外前端那一半）\
-         是同一件东西的两个住址：`call(origin, op, payload, budget)` 参数名与顺序一字不改，`Budget.until` 是绝对时刻、\
-         过线换成「还剩多少」，过期不发；本地撤单立即回；三层错误按 monitor 交回的线上形状解回（解不出就 `Broken`）。\
-         载荷两个方向原样（不 `JSON.parse` / `stringify`，那是调用方 ＋ `ipc/chan-caller.ts` 的事）。\
-         它经包装层 `chan_call` 过 Tauri IPC；那一跳的宿主 `chan/webview.rs` **不是成员**（碰 Tauri、注入生产句柄）。\
-         ⚠ 它**不买**对端撤活与 `subscribe`（webview 这一侧本拍零条流）。",
-    ),
-    // ── `Q6` 选甲的收回：传输面洗干净的那两份──────────
-    //    ⚠ 四份候选里 `stream_source/` / `pubkey.rs` **不收** —— 理由逐份住 `TRANSPORT_LEFT_OUTSIDE`；
-    //    `sftp_pool.rs` 是 `F7c` 独占，下一拍。
-    (
-        "src/comms/inward/ssh_link.rs",
-        "面 A 的 **SSH 链路**那一段：在一条**交给它的**管子上读拨号代理的阶段行与 ack、收全结果 —— \
-四样里的「流」与「载荷」（ack 之后的字节它一个都不看）。它原来埋在 `stream_source/` 里；\
-         C2 把 SSH 的全部活搬进后端的拨号代理之后，界面侧与 SSH 有关的**传输**就只剩这一件。\
-         起代理进程、读配置、定期限都在宿主 `dial_host.rs`（不是成员，做的正是 `C4`/`C5`/`X2` 不许成员做的事）。\
-         ⚠ 它**不买**「代理拨得对」—— 那归后端 `dial_tests` 与读数脚本 `C2-dial-loopback.py`。",
-    ),
-    // `port_forward.rs` 那一行随文件删了（不是摘标记）：三条命令与转发账进了本机常驻后端
-    //   （`src/backend/dial/forwards.rs`），界面经通道直问 —— 界面 crate 里再没有端口转发这一面。
 ];
+
+/// `cargo metadata` 里的一个工作区成员：包名 · 包目录 · crate 根 · 普通依赖 `(名, 第一方的话它的包目录)`。
+struct Package {
+    name: String,
+    dir: PathBuf,
+    roots: Vec<PathBuf>,
+    normal_deps: Vec<(String, Option<PathBuf>)>,
+}
+
+/// 壳那个 workspace 的成员（通信层两个 crate 都在里面），`cargo metadata --no-deps` 现取。
+fn workspace_packages() -> Vec<Package> {
+    let manifest = repo_root().join("src/frontend/shell/Cargo.toml");
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let out = std::process::Command::new(cargo)
+        .args([
+            "metadata",
+            "--no-deps",
+            "--offline",
+            "--format-version",
+            "1",
+        ])
+        .arg("--manifest-path")
+        .arg(&manifest)
+        .output()
+        .expect("跑不动 `cargo metadata`");
+    assert!(
+        out.status.success(),
+        "`cargo metadata` 退出码 {:?}：{}",
+        out.status.code(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("`cargo metadata` 吐的不是 JSON");
+    let path_of = |x: &serde_json::Value| PathBuf::from(x.as_str().unwrap_or_default());
+    v["packages"]
+        .as_array()
+        .expect("`cargo metadata` 里没有 packages")
+        .iter()
+        .map(|p| Package {
+            name: p["name"].as_str().unwrap_or_default().to_string(),
+            dir: path_of(&p["manifest_path"])
+                .parent()
+                .expect("清单有父目录")
+                .to_path_buf(),
+            roots: p["targets"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|t| path_of(&t["src_path"]))
+                .collect(),
+            normal_deps: p["dependencies"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|d| d["kind"].is_null())
+                .map(|d| {
+                    (
+                        d["name"].as_str().unwrap_or_default().to_string(),
+                        d.get("path").and_then(|x| x.as_str()).map(PathBuf::from),
+                    )
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+/// 通信层那两个 crate：恰好 [`COMMS_CRATES`] 那两个，都住 `src/comms/` 下。
+fn comms_packages(all: &[Package]) -> Vec<&Package> {
+    let comms_root = repo_root().join("src/comms");
+    let found: Vec<&Package> = all
+        .iter()
+        .filter(|p| COMMS_CRATES.contains(&p.name.as_str()))
+        .collect();
+    let names: BTreeSet<&str> = found.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(
+        names,
+        COMMS_CRATES.iter().copied().collect::<BTreeSet<_>>(),
+        "壳那个 workspace 里找不全通信层那两个 crate —— 改名了 / 出列了"
+    );
+    for p in &found {
+        assert!(
+            p.dir.starts_with(&comms_root),
+            "`{}` 不住 `src/comms/` 下（{}）",
+            p.name,
+            p.dir.display()
+        );
+    }
+    found
+}
 
 /// 通信层**对前端的入口符号** —— `(符号名, 说明)`。`C3` 与 `X6` 的人群从这儿派生。
 ///
@@ -274,7 +191,7 @@ const ENTRIES: &[(&str, &str, &str)] = &[
 const RUST_FRONTENDS: &[(&str, &[&str], &str)] = &[(
     "src/frontend/filewin/src/",
     &[],
-    "文件窗口进程（又一个前端）：它经 `chan_core` 的 `Client` 说 `Comms::call` / `subscribe`",
+    "文件窗口进程（又一个前端）：它经 `comms_inward` 的 `Client` 说 `Comms::call` / `subscribe`",
 )];
 
 /// 一份文件是不是某个入口的前端语料（按 [`ENTRIES`] 第二列的语言分）。
@@ -297,166 +214,8 @@ fn is_frontend_for(rel: &str, lang: &str, member_paths: &BTreeSet<&str>) -> bool
     }
 }
 
-/// 成员标记：一份文件属于通信层，当且仅当它的文本里带着这个词。
-///
-/// ⚠ **为什么是「文件自己带标记」而不是「住在某个目录下」**：恒等的两侧要异源。
-/// 目录那种写法的两侧（「扫这个目录」与「表里写的路径」）都由改表的同一个人一次编辑改掉
-/// ⇒ 退化成恒真。标记那一侧住在**成员文件自己的文本里**，是另一个人另一次编辑写的。
-const MARK: &str = "COMM-LAYER-MEMBER";
-
 // ════════════════════════════════════════════════════════════════════════════
-//  二、语料（盘上那一侧）
-// ════════════════════════════════════════════════════════════════════════════
-
-/// 语料根 ＋ 每根**明写的**排除名单（纪律 2、4）。
-///
-/// ⚠ 两个根**互不包含**（纪律 1）。排除的那两份是本判据自己的两半 ——
-/// 它们里面逐字写着 [`MARK`]，收进语料就是「判据在自己的散文里找到了自己」
-/// （`scanning_guard_registry` 头注治的那一族，实测栽过五次）。
-/// ★ `guard_core::scan_tree_excluding` 自带「名单上每一条都必须真的摘到东西」的自检
-/// ⇒ 这两份改名 / 搬走 ⇒ **当场 panic**，不会安静地多扫两份。
-const CORPUS_ROOTS: &[(&str, &[&str])] = &[
-    ("src", &["src/frontend/shell/src/comm_boundary_registry.rs"]),
-    (
-        "tests",
-        &["tests/frontend/shell/comm_boundary_registry_tests.rs"],
-    ),
-];
-
-/// 语料的后缀面。
-///
-/// ⚠ **诚实边界**：通信层哪天落一份别的后缀的文件（`.mts` / 无扩展名的脚本 / `.py`），
-/// 本判据**一个字都看不见** —— 它既不在盘上那一侧，也就不会与登记表分叉。
-/// 挡这一形的不是本条，是下面 [`CORPUS_WITNESS`]：每个后缀各钉一个真住址，
-/// 后缀表被改空 / 改错时当场红，改**窄**则由那个后缀自己的见证接住。
-const CORPUS_EXTS: &[&str] = &["rs", "ts", "toml"];
-
-/// 语料里**刻意不收**的两块 —— `(路径片段, 为什么)`。
-///
-/// 照 `653b35eb` 那一拍的教训写成**明写的排除**，不靠目录位置：
-/// 那次搬树之后 `evidence/` 跟着 `tests/` 自己回来了，而头注里那句「刻意不收」
-/// 当时靠的是位置 ⇒ 审计记录里复述的探针串被喂给了探针。
-///
-/// ⚠ 下面 [`corpus`] 会**数每一条真的摘掉了几份**，摘到 0 份当场红 ——
-/// 「排除悄悄失效」与「排除在生效」在终端上一模一样，那正是本仓反复记的那一形。
-const CORPUS_DROP: &[(&str, &str)] = &[
-    (
-        "/tests/evidence/",
-        "审计记录会逐字复述判据的串；喂给判据就是自己证明自己",
-    ),
-    (
-        "/vendor/",
-        "第三方代码不为我们的边界投票（它不会盖我们的标记，却会被我们的判据数进语料量）",
-    ),
-];
-
-/// 语料见证：这几份**逐字的真住址**必须出现在这一趟的扫描面里。
-///
-/// 🔴 **这是反空真的第二样**（第一样是相等断言，第三样是阳性对照）。
-/// 人群为空的日子里，「扫描面是活的」这件事没有任何别的东西能证明：
-/// 根写错 / 后缀过滤打空 / 排除摘过头，三种都会让盘上那一侧安静地变成 0，
-/// 而 `0 == 登记的 0` **照样绿**。
-///
-/// ⚠ 刻意**不是**地板（`>= N`）：地板在「变少」方向是瞎的 ——
-/// 本仓逐字记过「第一版是 `checked >= 3`，而实测 `checked = 7` ⇒ 余量 2.3 倍，
-/// 4 个块可以静默掉出采集面而地板照绿」。这里用的是**逐个住址的集合包含**。
-/// ⚠ 也刻意**不是**「把 `CORPUS_ROOTS` 再抄一遍」：抄一份的话，
-/// 「根少了一个」与「见证少了一条」会被同一次编辑一起改掉 ⇒ 恒真。
-/// 形状照 `scanning_guard_registry` 的 `MUST_BE_IN_REACH`：拿**盘上真有的那一份**当见证。
-const CORPUS_WITNESS: &[(&str, &str)] = &[
-    ("src/frontend/shell/src/lib.rs", "壳那棵 Rust 树 · 后缀 rs"),
-    (
-        "src/backend/stream/wire.rs",
-        "backend 那棵 Rust 树 · 后缀 rs",
-    ),
-    ("src/frontend/ui/tabs.ts", "前端那棵 TS 树 · 后缀 ts"),
-    (
-        "src/frontend/shell/Cargo.toml",
-        "清单面（`C2` 的依赖图那一侧要读它）· 后缀 toml",
-    ),
-    (
-        "tests/frontend/shell/guard_support_tests.rs",
-        "tests 那棵树 —— 判据剖分之后半个仓的 `.rs` 住在这儿",
-    ),
-];
-
-/// 走一遍两棵语料树，返回 `(仓根相对路径, 原文)`，已排序。
-///
-/// ⚠ 走的是 `guard_core::scan_tree_excluding`，**不裸 `read_dir`**
-/// （`scanning_guard_registry` 那条递减棘轮明禁，且那条棘轮**只许往下拧**）。
-fn corpus() -> Vec<(String, String)> {
-    let root = repo_root();
-    let mut raw: Vec<(String, String)> = Vec::new();
-    for (sub, excluded) in CORPUS_ROOTS {
-        for (p, text) in guard_core::scan_tree_excluding(&root.join(sub), CORPUS_EXTS, excluded) {
-            let rel = p
-                .strip_prefix(&root)
-                .unwrap_or(&p)
-                .to_string_lossy()
-                .replace('\\', "/");
-            raw.push((rel, text));
-        }
-    }
-    let mut kept: Vec<(String, String)> = Vec::new();
-    let mut dropped = vec![0usize; CORPUS_DROP.len()];
-    for (rel, text) in raw {
-        let probe = format!("/{rel}");
-        let mut keep = true;
-        for (i, (pat, _)) in CORPUS_DROP.iter().enumerate() {
-            if probe.contains(*pat) {
-                dropped[i] += 1;
-                keep = false;
-            }
-        }
-        if keep {
-            kept.push((rel, text));
-        }
-    }
-    let dead: Vec<String> = CORPUS_DROP
-        .iter()
-        .zip(&dropped)
-        .filter(|(_, n)| **n == 0)
-        .map(|((pat, why), _)| format!("  `{pat}` —— 摘到 0 份（登记的理由：{why}）"))
-        .collect();
-    assert!(
-        dead.is_empty(),
-        "语料排除名单上有条目**一份都没摘到**：\n{}\n\n\
-         ⇒ 它改名了 / 搬走了 / 片段写错了。这一格非红不可：\n\
-         排除悄悄失效之后那批文件会**回到语料里**，而「排除在生效」与「排除是空转」\n\
-         在终端上一模一样（`653b35eb` 那一拍的 `evidence/` 回流就是这么发生的）。",
-        dead.join("\n")
-    );
-    kept.sort();
-    kept
-}
-
-/// 一段文本是不是「自称通信层成员」。
-///
-/// 走 `guard_core::contains_word`（带边界），不是裸子串 ——
-/// 否则 `XCOMM-LAYER-MEMBERS` 这种被撑大的写法会照样命中
-/// （`needle_anchor_registry` 治的那一族：匹配单位比事实小）。
-fn claims_membership(text: &str) -> bool {
-    guard_core::contains_word(text, MARK)
-}
-
-/// 盘上那一侧：整棵语料里自称成员的那些路径（已排序、去重）。
-fn members_on_disk() -> Vec<String> {
-    corpus()
-        .into_iter()
-        .filter(|(_, text)| claims_membership(text))
-        .map(|(rel, _)| rel)
-        .collect()
-}
-
-/// 登记那一侧。
-fn members_registered() -> Vec<String> {
-    let mut out: Vec<String> = REGISTERED.iter().map(|(p, _)| (*p).to_string()).collect();
-    out.sort();
-    out
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-//  三、共用的那条相等断言 —— 每条判据的第一句
+//  二、人群：两个 crate 的源文件（含同住目录的 `chan.ts`）—— 每条判据的第一句
 // ════════════════════════════════════════════════════════════════════════════
 
 /// 一份成员：`(仓根相对路径, 生产段)`。
@@ -489,106 +248,73 @@ fn production_of(rel: &str, raw: &str) -> String {
     guard_core::strip_comment_lines(raw)
 }
 
-/// ★★ **每条判据的第一句**：先做那条相等断言，再把人群交出去。
+/// 人群：两个通信层 crate 目录下的 `.rs` / `.ts`（`chan.ts` 住 `comms-inward` 的目录、同归边界判据管）。
 ///
-/// 绿的两条理由是 ①「盘上实际条数 == 登记表条数」
-/// ②「人群里没有违例」。**① 在这里，② 在各条判据里** —— 一个事实一个住址（`E3`）：
-/// 十一条判据不许各写一份自己的相等断言，那样十一份会各自漂。
+/// 反空真：每个 crate 的 crate 根（`cargo metadata` 的 `targets[].src_path`）必须在人群里（两侧异源：清单 vs 走目录）；
+/// 人群里至少有一份 `.ts`（`C3` / `X6` 的 TS 那一面）。
 fn boundary() -> Vec<Member> {
-    assert_the_two_sides_agree();
     let root = repo_root();
-    REGISTERED
-        .iter()
-        .map(|(rel, why)| {
-            let p = root.join(rel);
-            let raw = std::fs::read_to_string(&p).unwrap_or_else(|e| {
-                panic!(
-                    "登记表里写着 `{rel}`（理由：{why}），而它读不出来：{e}\n\
-                     ⇒ 路径漂了 / 文件被删了。**不许当成「那就少判一份」** ——\n\
-                     人群缩水与「全都合规」在终端上一模一样。"
-                )
-            });
-            let prod = production_of(rel, &raw);
-            Member {
-                rel: (*rel).to_string(),
-                prod,
-            }
-        })
-        .collect()
+    let all = workspace_packages();
+    let mut out: Vec<Member> = Vec::new();
+    for pkg in comms_packages(&all) {
+        let files = guard_core::scan_tree_excluding(&pkg.dir, &["rs", "ts"], &[]);
+        let seen: BTreeSet<PathBuf> = files.iter().map(|(p, _)| p.clone()).collect();
+        for r in &pkg.roots {
+            assert!(
+                seen.contains(r),
+                "`{}` 的 crate 根 {} 不在走目录收到的人群里 —— 取法坏了",
+                pkg.name,
+                r.display()
+            );
+        }
+        for (p, raw) in files {
+            let rel = p
+                .strip_prefix(&root)
+                .unwrap_or(&p)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let prod = production_of(&rel, &raw);
+            out.push(Member { rel, prod });
+        }
+    }
+    assert!(
+        out.iter().any(|m| m.rel.ends_with(".ts")),
+        "人群里一份 `.ts` 都没有（`chan.ts` 那一面）—— 取法坏了"
+    );
+    out.sort_by(|a, b| a.rel.cmp(&b.rel));
+    out
 }
 
-/// 两侧**两向集合相等** ＋ 扫描面见证。[`boundary`] 与那条独立判据共用它。
-fn assert_the_two_sides_agree() {
-    let all = corpus();
-    let seen: BTreeSet<&str> = all.iter().map(|(rel, _)| rel.as_str()).collect();
-    let missing_witness: Vec<String> = CORPUS_WITNESS
-        .iter()
-        .filter(|(p, _)| !seen.contains(*p))
-        .map(|(p, why)| format!("  {p} —— {why}"))
-        .collect();
-    assert!(
-        missing_witness.is_empty(),
-        "这几份**应当**在本趟的扫描面里，而一份都没扫到：\n{}\n\n\
-         本趟语料共 {} 份（根：{:?} · 后缀：{CORPUS_EXTS:?}）。\n\n\
-         🔴 别读成「那些文件没了」—— 它红的多半是**扫描面被改窄了**：\n\
-         根少了一个 / 后缀表改了 / 排除名单摘过头。\n\
-         ★ 而扫描面一旦打空，下面那条相等断言会变成 `0 == 0` 并**安静地全绿** ——\n\
-         人群为空的日子里，这一条是唯一还在说话的东西。",
-        missing_witness.join("\n"),
-        all.len(),
-        CORPUS_ROOTS.iter().map(|(s, _)| *s).collect::<Vec<_>>(),
-    );
-
-    let on_disk: BTreeSet<String> = members_on_disk().into_iter().collect();
-    let registered: BTreeSet<String> = members_registered().into_iter().collect();
-    let unregistered: Vec<&String> = on_disk.difference(&registered).collect();
-    let ghosts: Vec<&String> = registered.difference(&on_disk).collect();
-    assert!(
-        unregistered.is_empty(),
-        "这几份文件**自称**通信层成员（文件里盖着那枚标记），却不在登记表里：{unregistered:?}\n\n\
-         ⇒ 搬进来了而没人挡 —— 警告过的那一形：\n\
-         「否则搬进来的东西没人挡，通信层当天就长业务」。\n\
-         ⇒ 处置：往 `REGISTERED` 里加一行并写清**为什么它是纯传输**，\n\
-         然后跑一遍 `C1`–`C5` / `X1`–`X6`（它们从此开始管这份文件）。"
-    );
-    assert!(
-        ghosts.is_empty(),
-        "登记表里这几条在盘上**找不到对应的成员**：{ghosts:?}\n\n\
-         两种可能，都得有人看一眼：\n\
-         ① 文件搬走 / 改名了 ⇒ 改登记表里的路径；\n\
-         ② 文件还在，但那枚标记被删了 ⇒ 它是不是不该再算通信层了？\n\
-         ⚠ **不许直接把这一行从表里删掉了事** —— 那会让人群静默缩水，\n\
-         而人群缩水与「全都合规」在终端上一模一样。"
-    );
-    assert_eq!(
-        on_disk.len(),
-        registered.len(),
-        "盘上 {} 份 · 登记 {} 份 —— 两向集合都查过还对不上，说明取法本身坏了（重复路径？）",
-        on_disk.len(),
-        registered.len()
-    );
+/// `X6` 的前端语料：`src/` 下的 `.rs` / `.ts`（第三方 `vendor/` 不算）。
+fn frontend_corpus() -> Vec<(String, String)> {
+    let root = repo_root();
+    let mut out: Vec<(String, String)> =
+        guard_core::scan_tree_excluding(&root.join("src"), &["rs", "ts"], &[])
+            .into_iter()
+            .map(|(p, text)| {
+                let rel = p
+                    .strip_prefix(&root)
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                (rel, text)
+            })
+            .filter(|(rel, _)| !rel.contains("/vendor/"))
+            .collect();
+    out.sort();
+    out
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  四、判据清单（元判据用它对拍「这十七条真的在跑」）
+//  三、判据清单（元判据用它对拍「这些条真的在跑」）
 // ════════════════════════════════════════════════════════════════════════════
 
 /// `(编号, 判据函数名, 它钉什么)`。**闭集**，与本文件里真实的 `#[test]` 两向相等。
 const CRITERIA: &[(&str, &str, &str)] = &[
     (
-        "锚",
-        "the_boundary_registry_and_the_disk_agree_two_ways",
-        "盘上自称成员的集合 == 登记表的集合（两向）＋ 扫描面见证",
-    ),
-    (
-        "散文",
-        "the_boundary_registry_says_out_loud_how_big_it_is_today",
-        "模块头注那句「登记在册 N 份」== 登记表长度 == 盘上份数（三方）",
-    ),
-    (
-        "识别器",
-        "the_membership_scanner_would_see_a_new_member_and_ignore_a_bystander",
-        "合成一棵小树：盖了标记的必须被看见，没盖的必须看不见",
+        "成员",
+        "members_are_the_two_comms_crates_and_nothing_is_path_mounted_into_them",
+        "生产代码里 `#[path]` 指进 `src/comms/` 的零处（成员只经 crate 依赖进来）",
     ),
     (
         "C1",
@@ -597,8 +323,8 @@ const CRITERIA: &[(&str, &str, &str)] = &[
     ),
     (
         "C2",
-        "c2_no_business_crate_dependency_inside_the_boundary",
-        "不许依赖任何业务 crate",
+        "c2_the_comms_crates_depend_only_on_the_allowed_crates",
+        "两个 crate 的普通依赖（含传递的第一方 crate）⊆ 只许的那几个，业务 crate 一个都不许出现",
     ),
     (
         "C3",
@@ -648,17 +374,12 @@ const CRITERIA: &[(&str, &str, &str)] = &[
     (
         "面B剩下的",
         "the_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names",
-        "面 B（`relay/`）今天还进不来的那几份，逐份**被哪几条咬**与散文两向相等",
+        "中转的宿主（`relay/listen.rs`）为什么在外面：逐份**被哪几条咬**与散文两向相等",
     ),
     (
-        "传输面四份",
+        "传输面三份",
         "the_transport_candidates_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names",
-        "面 A（传输面）进不来的那四份，逐份**被哪几条咬**与散文两向相等",
-    ),
-    (
-        "住址",
-        "the_comms_tree_holds_exactly_the_registered_members",
-        "`src/comms/` 下的文件集合 == 登记表",
+        "面 A（传输面）进不来的那几份，逐份**被哪几条咬**与散文两向相等",
     ),
     (
         "元",
@@ -668,283 +389,73 @@ const CRITERIA: &[(&str, &str, &str)] = &[
 ];
 
 // ════════════════════════════════════════════════════════════════════════════
-//  五、锚：相等断言 ＋ 散文对拍 ＋ 识别器阳性对照
+//  四、成员只经 crate 依赖进来（`#[path]` 指进 `src/comms/` 零处）
 // ════════════════════════════════════════════════════════════════════════════
 
-/// ★ 〔收尾重排〕**住址那一腿：`src/comms/` 下的文件集合 == [`REGISTERED`]**（两向）。
+/// 一份生产段里 `#[path = "…"]` 指到的、落在 `comms` 目录下的那几个目标（`file` 是这份源码的绝对住址）。
+fn path_mounts_into(comms: &Path, file: &Path, prod: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for rest in prod.split("#[path = \"").skip(1) {
+        let rel = rest.split('"').next().unwrap_or_default();
+        let mut target = PathBuf::new();
+        for c in file
+            .parent()
+            .unwrap_or(Path::new(""))
+            .join(rel)
+            .components()
+        {
+            match c {
+                std::path::Component::ParentDir => {
+                    target.pop();
+                }
+                std::path::Component::CurDir => {}
+                other => target.push(other),
+            }
+        }
+        if target.starts_with(comms) {
+            out.push(rel.to_string());
+        }
+    }
+    out
+}
+
+/// ★ **成员 ＝ crate**：生产代码里 `#[path]` 指进 `src/comms/` 的零处 —— 通信层的文件只经 crate 依赖进别的包，
+/// 不再被谁的模块树挂进去（挂进去的那一刻它就不受那两个 crate 的依赖边界管了）。
 ///
-/// 要求：「立两向判据：`comms/` 下文件集合 == 通信层登记表 == 带标记文件；非成员各回家」。
-/// 「登记表 == 带标记文件」由主锚（下一条）钉着；本条只加住址那一腿 —— 三者两两相等。
-/// 目录只是住址、成员资格仍由登记表认：成员搬出 `comms/`、非成员住进 `comms/`，都当场红。
-/// 走的是**只按目录**的那一口（`guard_core::files_under`，不顺 `#[path]`：`comms/outward/mod.rs` 挂回的 door / listen 不许算进来）。
+/// 人群：`src/` 下全部 `.rs` 的生产段（测试段里挂测试文件不算，那是 `tests/` 那一侧）。
+/// 正控：往一份合成的后端源码里塞一行 `#[path = "../comms/outward/x.rs"]` 必须数得出来。
 #[test]
-fn the_comms_tree_holds_exactly_the_registered_members() {
-    use std::collections::BTreeSet;
-    let comms = crate::guard_support::repo_src_root().join("comms");
-    let on_disk: BTreeSet<String> = guard_core::files_under(&comms)
-        .into_iter()
-        .map(|rel| format!("src/comms/{rel}"))
-        .collect();
-    let registered: BTreeSet<String> = REGISTERED.iter().map(|(p, _)| p.to_string()).collect();
+fn members_are_the_two_comms_crates_and_nothing_is_path_mounted_into_them() {
+    let root = repo_root();
+    let comms = root.join("src/comms");
+    let files = guard_core::scan_tree_excluding(&root.join("src"), &["rs"], &[]);
     assert!(
-        !on_disk.is_empty(),
-        "`src/comms/` 下一份文件都没走到 —— 住址改了或遍历坏了，下面的相等会拿两个集合空转"
+        files.len() > 100,
+        "`src/` 下只走到 {} 份 `.rs` —— 取法坏了，下面的零命中在空转",
+        files.len()
     );
-    let stray: Vec<&String> = on_disk.difference(&registered).collect();
-    let away: Vec<&String> = registered.difference(&on_disk).collect();
+    let mut hits: Vec<String> = Vec::new();
+    for (p, raw) in &files {
+        for rel in path_mounts_into(&comms, p, &guard_core::production_code(raw)) {
+            hits.push(format!("  {}：`#[path = \"{rel}\"]`", p.display()));
+        }
+    }
     assert!(
-        stray.is_empty() && away.is_empty(),
-        "`src/comms/` 的住户与通信层登记表对不上：\n\
-         住在 `comms/` 却没登记（非成员该回家）：{stray:?}\n\
-         登记了却不住 `comms/`（成员该搬进来）：{away:?}"
+        hits.is_empty(),
+        "生产代码用 `#[path]` 把通信层的文件挂进了自己的模块树：\n{}\n\n\
+         ⇒ 通信层的文件只许经 crate 依赖用（`comms_inward::…` / `comms_outward::…`）；\
+         挂进去的那份就不再受那两个 crate 的依赖边界管。",
+        hits.join("\n")
     );
-}
-
-/// ★★ **主锚** —— 盘上那一侧与登记那一侧**两向集合相等**。
-///
-/// # 它为什么是主锚（而不是模块头注里那句手写的份数）
-///
-/// 两侧**异源**：盘上那一侧来自成员文件**自己的文本**（搬文件的人写的），
-/// 登记那一侧来自 [`REGISTERED`]（立表的人写的）。同源的那种恒等会退化成恒真 ——
-/// 一次编辑同时改掉两侧，断言一个字都不会说。
-///
-/// # 买到 / 买不到
-///
-/// **买到**：搬进来不登记 ⇒ 红 · 登记了盘上没有 ⇒ 红 · 路径漂了 ⇒ 红 ·
-/// 标记被删了 ⇒ 红 · 扫描面被打空 ⇒ 红（见证那一段）。
-/// **买不到**：「盖标记盖对了没有」。一份真的在做传输却不盖标记的文件，
-/// 本条**一个字都看不见**（`src/frontend/shell/src/comm_boundary_registry.rs` 头注逐字登记过这条边界）。
-#[test]
-fn the_boundary_registry_and_the_disk_agree_two_ways() {
-    // 🔴 同一件事的第二半：**谁是成员**这条锚，还得管住
-    //    「成员资格不沿模块树往下传」—— 理由整段写在那个函数的头注里。
-    //    ⚠ 它刻意**不是**一条独立的 `#[test]`：门禁 `comm-boundary` 那一格的 `pin` 与
-    //      本族条数是一条**三方恒等**腿，而 `tests/scripts/gate.sh` 本拍不在写区
-    //      ⇒ 条数一个都不许动（同那一格的处置：判据与 `pin` 同拍改，
-    //      改不了 `pin` 就别偷偷加条数）。本条在执行链上，那才是要紧的。
-    assert_membership_does_not_inherit_down_the_module_tree();
-    assert_the_two_sides_agree();
-    let n = REGISTERED.len();
-    // 人群为空的那天，这一行是它**说得出口**的形态（`--nocapture` 可见）。
-    println!(
-        "〔通信层·边界登记表〕今天人群 {n} 份{}；语料 {} 份（根 {:?}）。\
-         绿的理由是 `{n} == {n}`，不是「扫不到」。",
-        if n == 0 { "（空集）" } else { "" },
-        corpus().len(),
-        CORPUS_ROOTS.iter().map(|(s, _)| *s).collect::<Vec<_>>(),
-    );
-}
-
-/// 从模块头注里抠「登记在册的通信层成员：N 份」那个 N。
-///
-/// 针走 `guard_core::find_pinned`（**恰好一处 ＋ 两侧有边界**）：
-/// 那句话在模块头注里出现第二次、或者被撑大，都当场红 ——
-/// 「断言指不明是哪一处」正是 `needle_anchor_registry` 那一族。
-/// ⚠ 「读的是不是那份文件」由调用方那条 `#[path]` 自检钉住（见下）。
-fn population_claimed_in_prose(module_src: &str) -> usize {
-    let needle = "登记在册的通信层成员：";
-    let at = guard_core::find_pinned(module_src, needle).unwrap_or_else(|e| {
-        panic!(
-            "在 `src/frontend/shell/src/comm_boundary_registry.rs` 里钉不住那句「登记在册…」：{e}\n\
-             ⇒ 那句话被改写 / 被删了 / 出现了第二处。它是散文那一侧的**唯一**住址。"
-        )
-    });
-    let tail = &module_src[at + needle.len()..];
-    let digits: String = tail.chars().take_while(char::is_ascii_digit).collect();
-    digits.parse().unwrap_or_else(|_| {
-        panic!(
-            "那句话后面跟的不是数字（读到 `{}`）",
-            &tail[..tail.len().min(24)]
-        )
-    })
-}
-
-/// **上游选择的住址前缀** —— 下面那条「成员资格不传递」判据的人群。
-const UPSTREAM_SELECTION_PREFIX: &str = "src/backend/accounts/upstream_select/"; // 上游选择从账号域根收窄到 `upstream/` 子树（`accounts/iso.rs` 不是上游选择）
-
-/// 上游选择今天有几份文件。**相等，不是地板** —— 多一份就回来改这个数并重读下面那条。
-const UPSTREAM_SELECTION_FILES: usize = 6; // 5 → 6：多了 `endpoint.rs`（起会话那一发走哪、注入什么 · 界面「表里有没有行」，那张表从 monitor 搬来）。4 → 5：多了 `file_face.rs`（这台机器上那份凭据文件的帧面读写口，上游选择自己的状态）。中途 4 → 5（`acct_iso.rs` 当时落在上游选择根底下）→ 回到 4：上游选择收进 `accounts/upstream_select/` 子树，`accounts/iso.rs` 不在这个前缀里。
-
-/// ★★ **成员资格说的是「这份文件里的代码属于中转」，不是「它的模块子树都属于中转」。**
-///
-/// # 🔴 它为什么必须存在（「`mod.rs` 照圈」的前置）
-///
-/// `relay/mod.rs` 入圈之后，它里面那行 `mod accounts;` 会让人读成「上游选择也跟着进来了」。
-/// **没有这一条，那句读法就是对的** —— 而那正是 `C2`（不许依赖业务模块）存在的理由，
-/// 并且 `C1`（公开面不许命名业务概念）在 `accounts/` 那一族上会**当场破**
-/// （上游选择的整个活就是把两个不透明段读成 agent 与账号，它的公开面上必然有业务名）。
-/// ⇒ 用户那一裁的裁词是「不许让语言产物驱动架构裁决」，而它配的硬条件就是本条：
-/// **入圈只作用于这一份文件的文本，不沿模块树往下传。**
-///
-/// # 两向 ＋ 零命中，不用地板
-///
-/// 1. **盘上那一侧**：`accounts/**` 里**一份都没有**自称成员（零命中）；
-/// 2. **登记那一侧**：[`REGISTERED`] 与 `accounts/**` 的**交集为空**；
-/// 3. **反空真**：那个人群**非空且份数相等**（`UPSTREAM_SELECTION_FILES`）—— 否则前两条
-///    是在一个空集上成立的，而「扫不到」与「都合规」在终端上一模一样；
-/// 4. **识别器不是恒假**：拿一段**合成**文本（运行时拼出那枚标记）喂进去必须认出来
-///    —— 没有这一条，识别器坏掉之后前两条照绿。
-///
-/// # 买不到
-///
-/// - **不买「上游选择真的没被当成中转用」** —— 它只判「有没有盖标记 / 有没有登记」。
-///   中转反手去 `use` 上游选择的类型这一形，挡它的是 `C2` 与 `layering_guard`，不是本条。
-/// - **不买「`accounts/` 就是上游选择的全部」** —— 人群是那个**住址前缀**给的。
-///   上游选择哪天多一个目录，本条一个字都不说（那时 `UPSTREAM_SELECTION_FILES` 那条相等会先红）。
-fn assert_membership_does_not_inherit_down_the_module_tree() {
-    let all = corpus();
-    let under_upstream_selection: Vec<&(String, String)> = all
-        .iter()
-        .filter(|(rel, _)| rel.starts_with(UPSTREAM_SELECTION_PREFIX))
-        .collect();
-
-    // 反空真③：人群非空且**份数相等**（不是地板）。
+    // 正控：识别器认得出那一形（相对路径按那份源码的住址解开）。
+    let planted = format!("#[{} = \"../comms/outward/x.rs\"]\nmod x;\n", "path");
     assert_eq!(
-        under_upstream_selection.len(),
-        UPSTREAM_SELECTION_FILES,
-        "`{UPSTREAM_SELECTION_PREFIX}` 下现扫到 {} 份文件，而判据里写的是 {UPSTREAM_SELECTION_FILES} 份 —— \
-         上游选择加/减了文件就回来改这个数**并重读这一条**（人群缩水与「都合规」在终端上一模一样）",
-        under_upstream_selection.len()
+        path_mounts_into(&comms, &root.join("src/backend/lib.rs"), &planted),
+        vec!["../comms/outward/x.rs".to_string()],
+        "识别器认不出一行指进 `src/comms/` 的 `#[path]` —— 上面那条零命中在空转"
     );
-
-    // 反空真④：识别器不是恒假 —— 合成一段**带那枚标记**的文本（运行时拼，本文件不写字面）。
-    let synthetic = format!("// 这一份假装自己是成员：{MARK}\npub fn x() {{}}\n");
-    assert!(
-        claims_membership(&synthetic),
-        "识别器认不出一段**故意**盖了标记的合成文本 —— 下面两条此刻在空转"
-    );
-
-    // ① 盘上那一侧：零命中。
-    let claiming: Vec<&str> = under_upstream_selection
-        .iter()
-        .filter(|(_, text)| claims_membership(text))
-        .map(|(rel, _)| rel.as_str())
-        .collect();
-    assert!(
-        claiming.is_empty(),
-        "上游选择的这几份文件盖了通信层的成员标记：{claiming:?}\n\n\
-         🔴 **成员资格不沿模块树往下传。** `relay/mod.rs` 入圈说的是「**那一份文件里的\
-         代码**属于中转」，不是「它的模块子树都属于中转」。\n\
-         上游选择的整个活就是把两个不透明段读成 agent 与账号 ⇒ 它的公开面上必然有业务名\
-         ⇒ 盖了标记，`C1` 当场破，而 `C1` 的豁免必须为零。\n\
-         ⇒ 处置只有一条：**把那枚标记摘掉**。不是往 `REGISTERED` 加一行。"
-    );
-
-    // ② 登记那一侧：交集为空。
-    let registered_in_upstream_selection: Vec<&str> = REGISTERED
-        .iter()
-        .map(|(rel, _)| *rel)
-        .filter(|rel| rel.starts_with(UPSTREAM_SELECTION_PREFIX))
-        .collect();
-    assert!(
-        registered_in_upstream_selection.is_empty(),
-        "登记表里有上游选择的文件：{registered_in_upstream_selection:?}\n\
-         ⇒ 同上：入圈只作用于一份文件的文本，不传递。**删掉那几行。**"
-    );
-}
-
-/// ★ **散文那一侧也得对得上** —— 「今天是空的」这句话由机器守着。
-///
-/// # 它治的是任务书点名的那一格
-///
-/// 「人群为空时，判据要能说出『今天是空的』而不是静默变绿 —— 两者在终端上一模一样」。
-/// 本条把那句话变成**三方相等**：模块头注里的 N · [`REGISTERED`] 的长度 ·
-/// 盘上现扫的份数。搬进来一份而忘了改散文 ⇒ 红；把散文改大而盘上没有 ⇒ 红。
-///
-/// ⚠ **诚实边界**：三条腿里只有「盘上」那条是异源的，另两条（散文与表）
-/// 都由改这件事的同一个人写。它买的是「三处不许各说各的」，
-/// **不买**「这个数是对的」—— 那一格由上面那条主锚买。
-#[test]
-fn the_boundary_registry_says_out_loud_how_big_it_is_today() {
-    let module_src = include_str!("../../../src/frontend/shell/src/comm_boundary_registry.rs");
-    let claimed = population_claimed_in_prose(module_src);
-    let registered = REGISTERED.len();
-    let on_disk = members_on_disk().len();
-    assert_eq!(
-        claimed, registered,
-        "模块头注说「登记在册 {claimed} 份」，而 `REGISTERED` 里是 {registered} 行。\n\
-         ⇒ 改表的时候忘了改那句话（或者反过来）。两处必须同拍。"
-    );
-    assert_eq!(
-        registered, on_disk,
-        "登记 {registered} 份，盘上自称成员的有 {on_disk} 份 —— 主锚那条会说得更细，先去看它。"
-    );
-    // 抽取器自检①：`include_str!` 指的真是那份模块，不是随便一份带那句话的文件。
-    // 证据选的是**只有那份文件才会有的东西** —— 它把本判据挂进来的那行 `#[path]`。
-    let attach = format!(
-        "#[{} = \"../../../../tests/frontend/shell/comm_boundary_registry_tests.rs\"]",
-        "path"
-    );
-    guard_core::find_pinned(module_src, &attach).unwrap_or_else(|e| {
-        panic!(
-            "读进来的这份文本里钉不住那行 `#[path]`：{e}\n\
-             ⇒ `include_str!` 指错了地方（或者那条挂载改了）。\n\
-             ★ 没有这一格的话，指到任何一份复述过那句话的文件上，本条都照样绿。"
-        )
-    });
-    // 抽取器自检②：读进来的不是空文本。
-    assert!(
-        module_src.len() > 2_000,
-        "读进来的模块源码只有 {} 字节 —— 本条在空转",
-        module_src.len()
-    );
-}
-
-/// ★ **识别器的阳性对照** —— 人群为空时，判据买到的全部就是这一条。
-///
-/// 合成一棵小树：一份盖了标记的、一份没盖的、一份把标记**撑大**了的
-/// （`COMM-LAYER-MEMBERSHIP`，`needle_anchor_registry` 治的那一族）。
-/// 走的是与真树**同一个** [`claims_membership`] 与 `guard_core::scan_tree_excluding`
-/// —— 换一条路子的话，这条对照证明不了真树上那条还活着。
-#[test]
-fn the_membership_scanner_would_see_a_new_member_and_ignore_a_bystander() {
-    // 识别器那一层（纯文本，不碰盘）。
-    assert!(
-        claims_membership(&format!("//! 一条传输线。{MARK}\n")),
-        "识别器认不出盖了标记的文件 —— 上面那条主锚此刻在空转"
-    );
-    assert!(
-        !claims_membership("//! 一条普通的业务线。\n"),
-        "识别器把没盖标记的文件也算成了成员"
-    );
-    assert!(
-        !claims_membership(&format!("//! {MARK}SHIP —— 这不是那枚标记\n")),
-        "标记被**撑大**之后照样命中 —— 匹配单位比事实小（`needle_anchor_registry` 那一族）"
-    );
-
-    // 遍历 ＋ 识别器**合起来**那一层：真的走一趟文件系统。
-    let dir = std::env::temp_dir().join(format!(
-        "cc-monitor-comm-boundary-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(dir.join("nested")).expect("造合成树");
-    std::fs::write(
-        dir.join("nested/a_member.rs"),
-        format!("//! {MARK}\nfn f() {{}}\n"),
-    )
-    .expect("写成员");
-    std::fs::write(dir.join("a_bystander.rs"), "fn g() {}\n").expect("写旁观者");
-    std::fs::write(dir.join("not_scanned.md"), format!("{MARK}\n")).expect("写非语料后缀");
-    let found: Vec<String> = guard_core::scan_tree_excluding(&dir, CORPUS_EXTS, &[])
-        .into_iter()
-        .filter(|(_, text)| claims_membership(text))
-        .map(|(p, _)| {
-            p.strip_prefix(&dir)
-                .unwrap_or(&p)
-                .to_string_lossy()
-                .replace('\\', "/")
-        })
-        .collect();
-    let _ = std::fs::remove_dir_all(&dir);
-    assert_eq!(
-        found,
-        vec!["nested/a_member.rs".to_string()],
-        "合成树上的成员没被认准（实得 {found:?}）——\n\
-         ⇒ 遍历与识别器**合起来**那一层坏了。真树今天人群为空，\n\
-         这条对照是「它还认得出成员」的唯一证据。"
-    );
+    // 两个 crate 都在、都住 `src/comms/` 下（人群的前提）。
+    let _ = comms_packages(&workspace_packages());
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -965,7 +476,7 @@ fn the_membership_scanner_would_see_a_new_member_and_ignore_a_bystander() {
 /// 「漏了复数」与「刻意只要单数」在盘上一模一样 —— 而那正是 `103` 逮到的那个洞的成因。
 ///
 /// ⚠ `tmuxes` / `claudes` / `mcps` 这三个复数形**本拍现打全仓零命中**（`src/` 233 份 `.rs`
-/// 的生产段）。留着是对的，理由同 [`BUSINESS_CRATES`] 那一条逐字：**本表是禁入名单，
+/// 的生产段）。留着是对的，理由同 `C2` 那条依赖名单的反面：**本表是禁入名单，
 /// 不是现存清单**。🔴 它**不是**本仓明禁的「留着用不上的豁免」—— 豁免是给违例**放行**的口子，
 /// 这里是**禁**的那一侧，多一条只会更严，不会更松。
 const BUSINESS_WORDS: &[(&str, &str)] = &[
@@ -1713,77 +1224,100 @@ fn c1_no_business_concept_is_named_on_the_public_surface() {
         !business_words_in("session_id").is_empty(),
         "连 `session_id` 都抓不到了 —— 单数那一侧整批瞎了，上面那组断言会恒真"
     );
-
-    assert_eq!(
-        pop.len(),
-        REGISTERED.len(),
-        "人群与登记表对不上 —— 主锚那条会说得更细"
-    );
 }
 
-/// 业务 crate —— `C2` 的五个（`creds-core` 是它特意加粗的那个）。
-///
-/// ⚠ `usage-core` 今天盘上**不存在**（把用量整删了）。留在表里是对的：
-/// 本表是**禁入名单**，不是现存清单 —— 哪天它回来，这条闸已经在那儿了。
-const BUSINESS_CRATES: &[&str] = &[
-    "branch-core",
-    "usage-core",
-    "acct-core",
-    "search-core",
-    "creds-core",
-];
-
-/// 一份文本里引到了哪几个业务 crate（连字符形与下划线形都认）。
-fn business_crates_in(text: &str) -> Vec<&'static str> {
-    BUSINESS_CRATES
+/// 一份 `ALLOWED_DEPS` 里那个 crate 的「只许」名单。
+fn allowed_for(name: &str) -> BTreeSet<&'static str> {
+    ALLOWED_DEPS
         .iter()
-        .filter(|c| {
-            let underscored = c.replace('-', "_");
-            guard_core::contains_word(text, c) || guard_core::contains_word(text, &underscored)
-        })
-        .copied()
-        .collect()
+        .find(|(n, _)| *n == name)
+        .map(|(_, deps)| deps.iter().copied().collect())
+        .unwrap_or_default()
 }
 
-/// ★ `C2` —— 不许依赖任何业务 crate。
-///
-/// **买到**：登记成员（`.rs` 的 `use` / 路径，`.toml` 的依赖表）里引到那五个 crate ⇒ 红。
-/// **买不到**：① **传递依赖** —— 本条读的是文本，不是 `cargo metadata` 的依赖图；
-/// 经由第三个 crate 间接吃进 `creds-core` 它看不见。那一格要等通信层真有自己的
-/// `Cargo.toml` 之后才判得了（缺的证据：一份该 crate 的 `cargo tree` 读数）。
-/// ② **别的业务 crate** —— 名单是那五个，第六个业务 crate 不在人群里。
-#[test]
-fn c2_no_business_crate_dependency_inside_the_boundary() {
-    let pop = boundary();
-    let offenders: Vec<String> = pop
+/// 一个通信层 crate 的依赖越界：直接的普通依赖不在名单里 ＋ 顺着第一方 path 依赖传递进来、不在名单里的第一方 crate。
+fn dependency_offences(pkg: &Package, all: &[Package]) -> Vec<String> {
+    let allowed = allowed_for(&pkg.name);
+    let mut bad: Vec<String> = pkg
+        .normal_deps
         .iter()
-        .filter_map(|m| {
-            let hits = business_crates_in(&m.prod);
-            (!hits.is_empty()).then(|| format!("  {} —— {hits:?}", m.rel))
-        })
+        .filter(|(n, _)| !allowed.contains(n.as_str()))
+        .map(|(n, _)| format!("直接依赖 `{n}`"))
         .collect();
-    assert!(
-        offenders.is_empty(),
-        "通信层成员引到了业务 crate：\n{}\n\n\
-`C2`：通信层是纯基础设施，业务 crate 一个都不许依赖。\n\
-         ⇒ 真需要那份数据，让**后端交给它**（`C4` 是同一句话的另一面）。",
-        offenders.join("\n")
-    );
-    for c in BUSINESS_CRATES {
-        let dashed = format!("{c} = {{ path = \"../{c}\" }}\n");
+    let by_dir: BTreeMap<&Path, &Package> = all.iter().map(|p| (p.dir.as_path(), p)).collect();
+    let mut seen: BTreeSet<PathBuf> = BTreeSet::new();
+    let mut todo: Vec<(String, PathBuf)> = pkg
+        .normal_deps
+        .iter()
+        .filter_map(|(n, d)| d.clone().map(|d| (n.clone(), d)))
+        .collect();
+    while let Some((name, dir)) = todo.pop() {
+        if !seen.insert(dir.clone()) {
+            continue;
+        }
+        if !allowed.contains(name.as_str()) {
+            bad.push(format!("第一方 crate `{name}`（{}）", dir.display()));
+        }
+        if let Some(dep) = by_dir.get(dir.as_path()) {
+            todo.extend(
+                dep.normal_deps
+                    .iter()
+                    .filter_map(|(n, d)| d.clone().map(|d| (n.clone(), d))),
+            );
+        }
+    }
+    bad.sort();
+    bad.dedup();
+    bad
+}
+
+/// ★ `C2` —— 由**依赖图**判：两个通信层 crate 的普通依赖 ⊆ [`ALLOWED_DEPS`]，
+/// 顺着第一方 path 依赖传递进来的第一方 crate 也必须在名单里。业务 crate 一个都不许出现。
+///
+/// 同 crate 内的越界由编译器挡（crate 里写 `crate::ssh_source::…` 根本编不过）；跨 crate 的只有依赖这一条路，本条就钉它。
+/// **买不到**：第三方 crate 的传递依赖（那一层不是我们的业务）。
+#[test]
+fn c2_the_comms_crates_depend_only_on_the_allowed_crates() {
+    let all = workspace_packages();
+    let comms = comms_packages(&all);
+    let mut offenders: Vec<String> = Vec::new();
+    for pkg in &comms {
         assert!(
-            business_crates_in(&dashed).contains(c),
-            "禁入名单里写着 `{c}`，识别器认不出它的清单形 —— 名单与识别器脱钩了"
+            !pkg.normal_deps.is_empty(),
+            "`{}` 一条普通依赖都没读到 —— 取法坏了，下面那条在空转",
+            pkg.name
         );
-        let used = format!("use {}::Thing;\n", c.replace('-', "_"));
-        assert!(
-            business_crates_in(&used).contains(c),
-            "禁入名单里写着 `{c}`，识别器认不出它的 `use` 形 —— 名单与识别器脱钩了"
-        );
+        for b in dependency_offences(pkg, &all) {
+            offenders.push(format!("  {} → {b}", pkg.name));
+        }
     }
     assert!(
-        business_crates_in("use guard_core::scan_tree;\nshell-quote-core = \"1\"\n").is_empty(),
-        "非业务 crate 被判成业务 crate —— 假红比不查更坏"
+        offenders.is_empty(),
+        "通信层 crate 依赖了名单之外的东西：\n{}\n\n\
+`C2`：通信层是纯基础设施，业务 crate 一个都不许依赖。\n\
+         ⇒ 真需要那份数据，让**宿主交给它**（`C4` 是同一句话的另一面）。",
+        offenders.join("\n")
+    );
+    // 正控：给面 B 那个 crate 合成一条业务依赖（`creds-core`，它的目录就是盘上那一份）必须咬出来。
+    let creds = all
+        .iter()
+        .find(|p| p.name == "creds-core")
+        .expect("workspace 里有 `creds-core`");
+    let outward = comms
+        .iter()
+        .find(|p| p.name == "comms-outward")
+        .expect("有 `comms-outward`");
+    let mut normal_deps = outward.normal_deps.clone();
+    normal_deps.push(("creds-core".to_string(), Some(creds.dir.clone())));
+    let planted = Package {
+        name: outward.name.clone(),
+        dir: outward.dir.clone(),
+        roots: outward.roots.clone(),
+        normal_deps,
+    };
+    assert!(
+        !dependency_offences(&planted, &all).is_empty(),
+        "合成一条 `creds-core` 依赖也咬不出来 —— 名单与识别器脱钩了"
     );
 }
 
@@ -2439,7 +1973,7 @@ fn call_sites_without_budget(text: &str, entry: &str) -> Vec<String> {
 fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     let pop = boundary();
     let member_paths: BTreeSet<&str> = pop.iter().map(|m| m.rel.as_str()).collect();
-    let all = corpus();
+    let all = frontend_corpus();
     // 抽取器自检：两种语言的前端语料都真的在（人群为空不等于语料为空）。
     assert!(
         all.iter().any(|(rel, _)| rel == "src/frontend/ui/tabs.ts"
@@ -2580,31 +2114,17 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
 //  七b、进不来的那几份：逐份被哪几条咬（散文 ⇒ 机检）—— 面 B ＋ 面 A 各一张表
 // ════════════════════════════════════════════════════════════════════════════
 
-/// `relay/` 里**进不来**的那几份 ——
-/// `(仓根相对路径, 咬它的判据编号, 它的 `C4` 判词标签, 为什么它今天圈不进来)`。
+/// 中转的宿主（后端 `relay/`）里**不进通信层**的那几份 ——
+/// `(仓根相对路径, 咬它的判据编号, 它的 `C4` 判词标签, 为什么它在外面)`。
 ///
-/// ⚠ 第三列〔`C4` 判词标签〕是 2026-09-22 加的，理由住 [`assert_left_outside`] ——
+/// ⚠ 第三列〔`C4` 判词标签〕的理由住 [`assert_left_outside`] ——
 /// 只比判据编号的话，「一份文件少了一处读盘」在盘上看不出来。标签的住址是
 /// [`disk_and_env_needles`]（本表**不写那个串本身**，理由见 [`disk_and_env_tags_in`]）。
 ///
-/// 🔴 **这张表是把一段散文搬成机检的。** `REGISTERED` 上方那段头注先前逐字写着
-/// 「余下五份各被哪几条咬（`C2` / `X2` / `C1` ＋ `X4` / `C4` ＋ `C5`）」——〔那句散文立表那天就是五份〕
-/// 那是**散文**：判据一条都没在看它，谁哪天把 `tee.rs` 的 `try_send` 换成 `send().await`、
-/// 或者往 `upstream.rs` 里再塞一个期限常量，那句话就悄悄假了而**没有任何东西会红**。
-/// 本条把它换成**逐份两向集合相等**：盘上现扫的咬人判据集合 == 本表这一行。
-///
-/// # 它治什么（而这不是「人群扩大」）
-///
-/// ⚠ **表里这几份不是通信层成员** —— 它们没盖 [`MARK`]，`C1`–`C5`/`X1`–`X6` 不管它们。
-/// 本条判的是**另一件事**：那段解释「为什么它们还进不来」的散文有没有腐。
-/// ⇒ 一份文件的阻塞清空了（表里那一行变成空集）⇒ 本条当场红，
-/// 而那时该做的是**把它圈进来**（盖标记 ＋ 加进 `REGISTERED` ＋ 改散文那个 N），
-/// 不是回来把这一行删掉了事。
-///
-/// ⚠ **它不买「圈进来就对了」** —— 那一形（十一条全绿而语义上不该圈）
-/// 本条一个字都不说。归属判断永远是人做的，本表只保证那段理由不是假的。
+/// 本条判的是：那段解释「为什么它在外面」的散文有没有腐 —— 盘上现扫的咬人判据集合 == 本表这一行（两向）。
+/// ⇒ 一份文件的阻塞清空了（表里那一行变成空集）⇒ 本条当场红，该问的是「它现在该不该搬进通信层 crate」，
+/// 不是回来把这一行删掉了事。⚠ 「十一条全绿」不等于「该进」，归属判断永远是人做的。
 const RELAY_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
-    // `relay/tee.rs` 那一行摘了：挡它的 `X4`（NDJSON 行落点的 `try_send`）随独立 `--relay` 删了 ⇒ 圈进 `REGISTERED`。
     (
         "src/backend/relay/listen.rs",
         &["C5", "X2"],
@@ -2708,9 +2228,6 @@ fn criteria_biting(rel: &str, prod: &str) -> BTreeSet<&'static str> {
     let mut out: BTreeSet<&'static str> = BTreeSet::new();
     if !surface_offences_of(rel, prod).is_empty() {
         out.insert("C1");
-    }
-    if !business_crates_in(prod).is_empty() {
-        out.insert("C2");
     }
     let c3 = if rel.ends_with(".ts") {
         guard_core::contains_word(prod, "transport")
@@ -2887,7 +2404,7 @@ fn assert_left_outside(
          ① **多出来一条** ⇒ 有人往那份文件里加了新的违例。补进表里那一行，并写清它是什么。\n\
          ② **少了一条**（表写了而不咬）⇒ 那条阻塞被清掉了。\n\
             🔴 处置**不是**把这一行改小了事 —— 该问的是「它现在圈得进来了吗」：\n\
-            阻塞清空 ⇒ 盖 [`MARK`] ＋ 往 `REGISTERED` 加一行 ＋ 改模块头注那个份数 N。\n\
+            阻塞清空 ⇒ 它该不该搬进通信层 crate。\n\
             ⚠ 而「十一条全绿」不等于「该圈」，归属判断仍是人做的。",
         diverged.join("\n")
     );
@@ -2911,7 +2428,7 @@ fn assert_left_outside(
         "{label}：判据里写的 `C4` 判词处数是 {expected_c4_sites}，而盘上现扫是 {c4_sites} —— \
          真清掉/真多长一处就回来同拍改这个数。\n\
          🔴 变**少**那个方向尤其要停一下：该问的不是「把这个数改小」，\
-         是「那一份现在圈得进来了吗」（阻塞清空 ⇒ 盖标记 ＋ 进 `REGISTERED` ＋ 改份数 N）。"
+         是「那一份现在该不该搬进通信层 crate」。"
     );
 
     // 反空真②：识别器不是恒红 —— 一段干净的合成文本喂进去必须零命中。
@@ -2925,48 +2442,16 @@ fn assert_left_outside(
     );
 }
 
-// 🪦 **这里先前住着一张「十一条全绿、而归属待裁」的表 ＋ 它的断言**〔散文墓碑〕
-//
-// **它存在过，为什么，被谁裁掉的** —— 三句话记全，别只留一句「已删」：
-//
-// · **为什么有**：`P16㈡`（2026-09-22）把 `C2` ＋ `X2` 从中转清掉，**三份**文件同拍变成
-//   十一条全绿，而那一拍只裁了一份（`upstream.rs`）。余下两份落进一个「进不来」那张表
-//   装不下的状态：既不被任何判据咬着，也还没有归属裁决。
-//   ⇒ 留在那张表里它会**以一个假理由红**（没人「清掉阻塞」，是阻塞本来就没了）；
-//   直接删掉这件事就**从盘上消失**。所以当时移出来单独登记并钉住，两个方向都钉
-//   （「今天真全绿」＋「真没盖标记」）。**那不是豁免，是一张等裁的账。**
-// · **两份都圈**：理由逐字住 [`REGISTERED`] 里
-//   `relay/mod.rs` 那一行（「不许让语言产物驱动架构裁决」），并配了同拍的硬条件 ——
-//   即 [`assert_membership_does_not_inherit_down_the_module_tree`] 那一条「不传递」。
-// · **所以它走了**：账结清了，表跟着走。⚠ **不是**因为它太吵或没人看 ——
-//   一张等裁的账被裁掉才能删，**别把这条墓碑读成「这种表不该有」**。
-//   下一次再出现「全绿而没裁」的文件，仍然照那个形状立一张，然后拿去要一个裁决。
-
-/// ★ **面 B 剩下的那几份** —— `relay/` 进不来的那几份，逐份**被哪几条咬**与 [`RELAY_LEFT_OUTSIDE`] 两向相等。
-///
-/// 把 `relay/` 按 `C4` 切开、归通信层那一列点了六份，加上后来的 `listen.rs`
-/// 共七份。**为什么其余的进不来**先前只是散文。
-///
-/// ⚠ 这张表从 5 行掉到 **2 行**：`upstream.rs` · `server.rs` · `mod.rs`
-/// 三份**都圈进来了**（`C2` ＋ `X2` 一清，它们十一条全绿；归属逐份已裁，理由住
-/// [`REGISTERED`] 各自那一行）。⇒ 面 B 归通信层那一列七份里，今天**只剩这两份**在外面。
+/// ★ **中转的宿主为什么在外面** —— 后端 `relay/` 里不进通信层的那几份，逐份**被哪几条咬**与 [`RELAY_LEFT_OUTSIDE`] 两向相等。
 ///
 /// 反空真那三样与面 A 那条**共用同一份实现**（[`assert_left_outside`]，`D1`）。
-///
-/// # 买不到
-///
-/// - **不买「表里那几份该不该进来」** —— 见 [`RELAY_LEFT_OUTSIDE`] 头注。
-/// - **不买「`relay/` 就是这七份」** —— 人群是那张表给的，本条不去数目录。
-///   哪天 `relay/` 多一份文件，本条**一个字都不说**（挡那一形的是 `BACKEND_FILES` 那张表）。
+/// **不买**「表里那几份该不该进来」—— 见 [`RELAY_LEFT_OUTSIDE`] 头注。
 #[test]
 fn the_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names() {
     assert_left_outside(
         RELAY_LEFT_OUTSIDE,
-        "`relay/` 今天还进不来的那几份（面 B）",
-        // 份数 2 → 1：`tee.rs` 圈进来了，只剩 `listen.rs`。
+        "中转的宿主（后端 `relay/`）不进通信层的那几份",
         1,
-        // `C4` 判词处数 1 → 0：`relay/listen.rs` 那一处读环境（`--relay` 入口）随那一形删了；
-        //   那一份仍被 `C5` / `X2` 咬 ⇒ 仍圈不进来（份数 2 不变）。
         0,
     );
 }

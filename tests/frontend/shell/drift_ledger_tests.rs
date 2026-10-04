@@ -416,7 +416,7 @@ fn every_ledger_feeder_is_registered_with_whose_book_it_writes() {
     let mut found: std::collections::BTreeMap<(String, String), String> = Default::default();
     for (path, raw) in guard_core::scan_tree!(&root, &["rs"]) {
         let prod = guard_core::production_code(&raw);
-        // 按模块住址认：通信层成员住 `src/comms/inward/`、经 `#[path]` 挂进本 crate（`guard_core` 顺着收）。
+        // 按模块住址认：人群声明带进来的兄弟包（通信层 `comms-inward` 等）认作 `<包名>/…`。
         let file = guard_core::module_address(&root, &path);
         for (name, body) in feeders_in(&prod) {
             found.insert((file.clone(), name), body);

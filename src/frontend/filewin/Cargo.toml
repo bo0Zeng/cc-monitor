@@ -16,7 +16,7 @@ name = "cc_monitor_filewin"
 path = "src/lib.rs"
 
 [dependencies]
-chan-core = { path = "../../common/chan-core" }
+comms-inward = { path = "../../comms/inward" }
 copy-core = { path = "../../common/copy-core" }
 creds-core = { path = "../../common/creds-core" }
 filewin-contract = { path = "../../common/filewin-contract" }

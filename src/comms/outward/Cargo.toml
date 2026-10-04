@@ -1,0 +1,25 @@
+[package]
+name = "comms-outward"
+version = "0.1.0"
+edition = "2021"
+workspace = "../../frontend/shell"
+description = "通信层面 B（中转）：HTTP 中转搬字节那一层 —— 按路径前缀分流、逐块透传、tee；钥匙、端口、期限、上游选择都由后端交进来。"
+
+[lib]
+path = "lib.rs"
+
+# 只许这几条：中转不认识任何业务 crate（边界判据按依赖图判）。
+[dependencies]
+copy-core = { path = "../../common/copy-core" }
+relay-route-core = { path = "../../common/relay-route-core" }
+upstream-url-core = { path = "../../common/upstream-url-core" }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+webpki-roots = "1"
+
+[dev-dependencies]
+guard-core = { path = "../../common/guard-core" }
+
+[features]
+default = []
+# 后端那几条组合判据（真中转 ＋ 上游选择 / tap / 内存探针）要够到的内部件；只由后端的测试档开，发布构建不开。
+test-support = []

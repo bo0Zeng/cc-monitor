@@ -25,16 +25,16 @@ async fn the_window_dials_back_with_the_handoff_and_refuses_to_open_without_it()
         &["files-stat"],
         Declared::default(),
     )));
-    let h = chan_core::chan::handoff::start_with(
+    let h = crate::find::testing::start_host(
         be,
-        chan_core::chan::handoff::mint_key(),
+        crate::find::testing::test_key(),
         1 << 20,
         std::time::Duration::from_secs(5),
     )
     .await
     .expect("回环口绑得上");
     let line = dial_back(&h).await.expect("拿着对的交接件却拨不通");
-    let origin = chan_core::origin::Origin("proc-dial".into());
+    let origin = comms_inward::origin::Origin("proc-dial".into());
     let r = crate::source::ask(
         &line,
         &origin,
@@ -46,7 +46,7 @@ async fn the_window_dials_back_with_the_handoff_and_refuses_to_open_without_it()
     assert!(r.is_ok(), "拨通了却说不了一次 call：{r:?}");
     // ② 钥匙错。
     let mut wrong = h.clone();
-    wrong.key = chan_core::chan::wire::Key("0".repeat(64));
+    wrong.key = comms_inward::chan::wire::Key("0".repeat(64));
     let e = match dial_back(&wrong).await {
         Ok(_) => panic!("钥匙不对竟然拨通了"),
         Err(e) => e,
@@ -115,25 +115,27 @@ impl FakeBackendHost {
     }
 }
 
-impl chan_core::chan::router::Backends for FakeBackendHost {
+impl comms_inward::chan::router::Backends for FakeBackendHost {
     fn call(
         &self,
-        _origin: chan_core::chan::wire::Origin,
-        op: chan_core::chan::wire::Op,
-        _payload: chan_core::chan::wire::Body,
+        _origin: comms_inward::chan::wire::Origin,
+        op: comms_inward::chan::wire::Op,
+        _payload: comms_inward::chan::wire::Body,
         _left: std::time::Duration,
-        _cancel: chan_core::chan::wire::CancelToken,
+        _cancel: comms_inward::chan::wire::CancelToken,
     ) -> futures::future::BoxFuture<
         'static,
-        Result<chan_core::chan::wire::Body, chan_core::chan::wire::CallError>,
+        Result<comms_inward::chan::wire::Body, comms_inward::chan::wire::CallError>,
     > {
         let known = self.0.lock().unwrap().offered.iter().any(|c| c == &op.0);
         Box::pin(async move {
             if known {
-                Ok(chan_core::chan::wire::Body(b"{\"kind\":\"dir\"}".to_vec()))
+                Ok(comms_inward::chan::wire::Body(
+                    b"{\"kind\":\"dir\"}".to_vec(),
+                ))
             } else {
-                Err(chan_core::chan::wire::CallError::Peer {
-                    why: chan_core::chan::wire::PeerFault::Unsupported,
+                Err(comms_inward::chan::wire::CallError::Peer {
+                    why: comms_inward::chan::wire::PeerFault::Unsupported,
                 })
             }
         })
@@ -141,10 +143,10 @@ impl chan_core::chan::router::Backends for FakeBackendHost {
 
     fn subscribe(
         &self,
-        _origin: chan_core::chan::wire::Origin,
-        _kind: chan_core::chan::wire::Kind,
-        _from: Option<chan_core::chan::wire::Cursor>,
-    ) -> futures::stream::BoxStream<'static, chan_core::chan::wire::Item> {
+        _origin: comms_inward::chan::wire::Origin,
+        _kind: comms_inward::chan::wire::Kind,
+        _from: Option<comms_inward::chan::wire::Cursor>,
+    ) -> futures::stream::BoxStream<'static, comms_inward::chan::wire::Item> {
         Box::pin(futures::stream::empty())
     }
 }
@@ -155,28 +157,29 @@ struct ScreenHost {
     refuse: Option<&'static str>,
 }
 
-impl chan_core::chan::router::Backends for ScreenHost {
+impl comms_inward::chan::router::Backends for ScreenHost {
     fn call(
         &self,
-        _origin: chan_core::chan::wire::Origin,
-        op: chan_core::chan::wire::Op,
-        payload: chan_core::chan::wire::Body,
+        _origin: comms_inward::chan::wire::Origin,
+        op: comms_inward::chan::wire::Op,
+        payload: comms_inward::chan::wire::Body,
         _left: std::time::Duration,
-        _cancel: chan_core::chan::wire::CancelToken,
+        _cancel: comms_inward::chan::wire::CancelToken,
     ) -> futures::future::BoxFuture<
         'static,
-        Result<chan_core::chan::wire::Body, chan_core::chan::wire::CallError>,
+        Result<comms_inward::chan::wire::Body, comms_inward::chan::wire::CallError>,
     > {
         self.asked.lock().unwrap().push(op.0.clone());
         let refused = self.refuse == Some(op.0.as_str());
         let args: serde_json::Value = serde_json::from_slice(&payload.0).unwrap_or_default();
         Box::pin(async move {
-            let json =
-                |v: serde_json::Value| Ok(chan_core::chan::wire::Body(v.to_string().into_bytes()));
+            let json = |v: serde_json::Value| {
+                Ok(comms_inward::chan::wire::Body(v.to_string().into_bytes()))
+            };
             if refused {
-                return Err(chan_core::chan::wire::CallError::Peer {
-                    why: chan_core::chan::wire::PeerFault::Refused {
-                        body: chan_core::chan::wire::Body(
+                return Err(comms_inward::chan::wire::CallError::Peer {
+                    why: comms_inward::chan::wire::PeerFault::Refused {
+                        body: comms_inward::chan::wire::Body(
                             r#"{"code":"io_failed","message":"那台说：没有这个目录"}"#
                                 .as_bytes()
                                 .to_vec(),
@@ -200,8 +203,8 @@ impl chan_core::chan::router::Backends for ScreenHost {
                         "truncated": false,
                     }))
                 }
-                _ => Err(chan_core::chan::wire::CallError::Peer {
-                    why: chan_core::chan::wire::PeerFault::Unsupported,
+                _ => Err(comms_inward::chan::wire::CallError::Peer {
+                    why: comms_inward::chan::wire::PeerFault::Unsupported,
                 }),
             }
         })
@@ -209,10 +212,10 @@ impl chan_core::chan::router::Backends for ScreenHost {
 
     fn subscribe(
         &self,
-        _origin: chan_core::chan::wire::Origin,
-        _kind: chan_core::chan::wire::Kind,
-        _from: Option<chan_core::chan::wire::Cursor>,
-    ) -> futures::stream::BoxStream<'static, chan_core::chan::wire::Item> {
+        _origin: comms_inward::chan::wire::Origin,
+        _kind: comms_inward::chan::wire::Kind,
+        _from: Option<comms_inward::chan::wire::Cursor>,
+    ) -> futures::stream::BoxStream<'static, comms_inward::chan::wire::Item> {
         Box::pin(futures::stream::empty())
     }
 }
@@ -230,9 +233,9 @@ async fn the_first_screen_asks_home_only_when_told_nothing() {
             asked: std::sync::Mutex::new(Vec::new()),
             refuse,
         });
-        let h = chan_core::chan::handoff::start_with(
+        let h = crate::find::testing::start_host(
             be.clone(),
-            chan_core::chan::handoff::mint_key(),
+            crate::find::testing::test_key(),
             1 << 20,
             std::time::Duration::from_secs(5),
         )

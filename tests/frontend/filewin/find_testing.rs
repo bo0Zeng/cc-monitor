@@ -987,19 +987,19 @@ struct Hosted {
     log: WireLog,
 }
 
-impl chan_core::chan::router::Backends for Hosted {
+impl comms_inward::chan::router::Backends for Hosted {
     fn call(
         &self,
-        _origin: chan_core::chan::wire::Origin,
-        op: chan_core::chan::wire::Op,
-        payload: chan_core::chan::wire::Body,
+        _origin: comms_inward::chan::wire::Origin,
+        op: comms_inward::chan::wire::Op,
+        payload: comms_inward::chan::wire::Body,
         _left: std::time::Duration,
-        _cancel: chan_core::chan::wire::CancelToken,
+        _cancel: comms_inward::chan::wire::CancelToken,
     ) -> futures::future::BoxFuture<
         'static,
-        Result<chan_core::chan::wire::Body, chan_core::chan::wire::CallError>,
+        Result<comms_inward::chan::wire::Body, comms_inward::chan::wire::CallError>,
     > {
-        use chan_core::chan::wire::{Body, CallError, PeerFault};
+        use comms_inward::chan::wire::{Body, CallError, PeerFault};
         let args: serde_json::Value =
             serde_json::from_slice(&payload.0).unwrap_or(serde_json::Value::Null);
         let mut be = self.be.lock().unwrap();
@@ -1051,13 +1051,13 @@ impl chan_core::chan::router::Backends for Hosted {
 
     fn subscribe(
         &self,
-        _origin: chan_core::chan::wire::Origin,
-        _kind: chan_core::chan::wire::Kind,
-        _from: Option<chan_core::chan::wire::Cursor>,
-    ) -> futures::stream::BoxStream<'static, chan_core::chan::wire::Item> {
+        _origin: comms_inward::chan::wire::Origin,
+        _kind: comms_inward::chan::wire::Kind,
+        _from: Option<comms_inward::chan::wire::Cursor>,
+    ) -> futures::stream::BoxStream<'static, comms_inward::chan::wire::Item> {
         Box::pin(futures::stream::iter([
-            chan_core::chan::wire::Item::Closed {
-                by: chan_core::chan::wire::By::Ours(chan_core::chan::wire::OursFault::Misuse),
+            comms_inward::chan::wire::Item::Closed {
+                by: comms_inward::chan::wire::By::Ours(comms_inward::chan::wire::OursFault::Misuse),
             },
         ]))
     }
@@ -1070,19 +1070,19 @@ pub async fn wire_up(origin: &str, be: FakeBackend) -> Wired {
         be: std::sync::Mutex::new(be),
         log: log.clone(),
     });
-    let h = chan_core::chan::handoff::start_with(
+    let h = crate::find::testing::start_host(
         hosted,
-        chan_core::chan::handoff::mint_key(),
+        crate::find::testing::test_key(),
         1 << 22,
         std::time::Duration::from_secs(5),
     )
     .await
     .expect("回环口绑得上");
-    let line = chan_core::chan::dial::dial(
+    let line = comms_inward::chan::dial::dial(
         &h,
-        chan_core::chan::wire::Budget {
+        comms_inward::chan::wire::Budget {
             until: std::time::Instant::now() + std::time::Duration::from_secs(5),
-            cancel: chan_core::chan::wire::CancelToken::new(),
+            cancel: comms_inward::chan::wire::CancelToken::new(),
         },
     )
     .await
@@ -1214,4 +1214,41 @@ pub fn fake_sha256(text: &str) -> String {
             format!("{:016x}", h.finish())
         })
         .collect()
+}
+
+/// 判据用的一把钥匙（形状同生产：两枚 v4 UUID 拼成的 64 位十六进制）。
+pub fn test_key() -> comms_inward::chan::wire::Key {
+    comms_inward::chan::wire::Key(format!(
+        "{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    ))
+}
+
+/// 判据用的通道口：绑回环 `127.0.0.1:0`，每条接进来的连接交给路由器，回交接件。
+/// 生产里绑口的是 monitor 那一侧（壳里 `chan/host.rs::start_with`）；窗口这一侧的判据要自己起一个挂着合成句柄的口。
+pub async fn start_host(
+    backends: std::sync::Arc<dyn comms_inward::chan::router::Backends>,
+    key: comms_inward::chan::wire::Key,
+    frame: usize,
+    hello_within: std::time::Duration,
+) -> std::io::Result<comms_inward::chan::handoff::Handoff> {
+    use comms_inward::chan::router;
+    let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
+    let addr = listener.local_addr()?;
+    let terms = router::Terms {
+        key: key.clone(),
+        frame,
+        hello_within,
+    };
+    tokio::spawn(async move {
+        while let Ok((stream, _)) = listener.accept().await {
+            let terms = terms.clone();
+            let backends = std::sync::Arc::clone(&backends);
+            tokio::spawn(async move {
+                let _ = router::serve(stream, terms, backends).await;
+            });
+        }
+    });
+    Ok(comms_inward::chan::handoff::Handoff { addr, key, frame })
 }

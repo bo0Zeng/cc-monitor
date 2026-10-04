@@ -276,7 +276,7 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
     ...productionRsFiles("src/frontend/filewin/src"), // 文件窗口独立成包（它的取文口调用点从前住上一棵）
     ...productionRsFiles("src/backend"),
     ...productionRsFiles("src/common"),
-    ...productionRsFiles("src/comms"), // 通信层成员（两个 crate 经 `#[path]` 编它们）
+    ...productionRsFiles("src/comms"), // 通信层那两个 crate（面 A · 面 B）
   ];
   const rsAll = rsFiles
     .filter((f) => !RS_DEFINITIONS.has(f.file))

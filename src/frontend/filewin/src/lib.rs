@@ -1,7 +1,7 @@
 //! 要求：「文件窗口成独立包 `src/frontend/filewin/`」· 「窗口是又一个前端：只说 `call` / `subscribe`」
 //! 独立的包（lib），monitor 包里的 `[[bin]] cc-monitor-filewin` 一行转调 [`run`]。
 //!
-//! 它依赖的只有契约类与前端宿主原语（`chan-core` 通道 · `filewin-contract` 种子 · `copy-core` 文案 · `creds-core` 家目录规矩 ·
+//! 它依赖的只有契约类与前端宿主原语（`comms-inward` 通道 · `filewin-contract` 种子 · `copy-core` 文案 · `creds-core` 家目录规矩 ·
 //! `relay-route-core` 暂存区路径 · `host-core` 原子写与窗口几何）＋ 自己的界面库；一个判定类 crate 都不链，也不链 monitor
 //! （`tests/frontend/shell/contract_crate_guard_tests.rs` 钉）。monitor 那一侧（开窗入口 · 起进程 · 读就绪那一行）住壳里 `filewin/`。
 //! 下面各节是这个模块落成以来的施工史（原住壳里 `filewin/mod.rs`），逐字留着。

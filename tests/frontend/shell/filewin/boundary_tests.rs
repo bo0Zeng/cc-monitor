@@ -4,7 +4,7 @@
 //! 「文件窗口成独立包 `src/frontend/filewin/`」。
 //!
 //! 窗口独立成包之后按进程切就是按 crate 切：窗口进程 ＝ 窗口包 `src/frontend/filewin/src/**`（它编不进 monitor 的库面，
-//! 够不着壳 —— 它够到自己之外的只剩共享 crate，下面 ① 按 `chan_core` / `copy_core` 两条前缀钉那张表）；
+//! 够不着壳 —— 它够到自己之外的只剩共享 crate，下面 ① 按 `comms_inward` / `copy_core` 两条前缀钉那张表）；
 //! monitor 那一侧 ＝ 壳里 `src/frontend/shell/src/filewin/**`（开窗入口 · 起进程 · `[[bin]]` 入口），够到壳的边照旧逐条。
 //! 头注里「摸底三问」那几节住窗口包的 `lib.rs`，**这里不抄第二份**。
 //!
@@ -194,7 +194,7 @@ fn window_crate_dir() -> PathBuf {
 
 /// 窗口包够到自己之外的**通道与文案**那两条前缀（从前是 `crate::chan::…` / `crate::copy_table::…`）。
 /// 别的共享 crate（开窗契约 · 宿主原语 · 家目录与暂存区两条常量）由 `contract_crate_guard` 按类钉，不进这张表。
-const WINDOW_REACH: &[&str] = &["chan_core", "copy_core"];
+const WINDOW_REACH: &[&str] = &["comms_inward", "copy_core"];
 
 /// `src/frontend/shell/src` 整棵树，切成**两半**：`filewin/` 里的 · 外面的。
 /// 「外面的」只算 monitor 自己的源码：那棵根的人群声明带进来的兄弟包（窗口包 · 通道 · 宿主原语 · 开窗契约，
@@ -300,34 +300,34 @@ enum Kind {
 ///
 /// 🔴 那句判据的可判形态：`Channel` ＋ `Wire` 两类是「只说 call/subscribe」本身；
 /// 其余三类每一条都是一笔带住址的欠账（见 [`Kind`]；「后端缺命令」那一类清零删了）。
-/// 路径带共享 crate 前缀（[`WINDOW_REACH`]）：从前的 `crate::chan::…` → `chan_core::chan::…`，`crate::copy_table::copy_text` → `copy_core::copy_text`；
-///   交接件那个类型随交接件住 `chan_core::chan::handoff`（从前挂在壳 `chan::host` 上）。
+/// 路径带共享 crate 前缀（[`WINDOW_REACH`]）：从前的 `crate::chan::…` → `comms_inward::chan::…`，`crate::copy_table::copy_text` → `copy_core::copy_text`；
+///   交接件那个类型随交接件住 `comms_inward::chan::handoff`（从前挂在壳 `chan::host` 上）。
 const WINDOW_SIDE: &[(&str, Kind)] = &[
     // ── 通道客户端 ──
-    ("chan_core::chan::client::Client", Kind::Channel),
-    ("chan_core::chan::dial::dial", Kind::Channel),
-    ("chan_core::chan::handoff::Handoff", Kind::Channel),
+    ("comms_inward::chan::client::Client", Kind::Channel),
+    ("comms_inward::chan::dial::dial", Kind::Channel),
+    ("comms_inward::chan::handoff::Handoff", Kind::Channel),
     // ── 线上类型 ──
-    ("chan_core::chan::wire::Body", Kind::Wire),
-    ("chan_core::chan::wire::Budget", Kind::Wire),
-    ("chan_core::chan::wire::CallError", Kind::Wire),
-    ("chan_core::chan::wire::CancelToken", Kind::Wire),
+    ("comms_inward::chan::wire::Body", Kind::Wire),
+    ("comms_inward::chan::wire::Budget", Kind::Wire),
+    ("comms_inward::chan::wire::CallError", Kind::Wire),
+    ("comms_inward::chan::wire::CancelToken", Kind::Wire),
     // 〔㉜「可撤」〕按内容搜那一趟的撤单手柄由窗口自己造（「停」拨它）。
-    ("chan_core::chan::wire::CancelToken::new", Kind::Wire),
-    ("chan_core::chan::wire::Comms", Kind::Wire),
-    ("chan_core::chan::wire::HopFault", Kind::Wire),
-    ("chan_core::chan::wire::Op", Kind::Wire),
-    ("chan_core::chan::wire::Origin", Kind::Wire),
-    ("chan_core::chan::wire::OursFault", Kind::Wire),
-    ("chan_core::chan::wire::PeerFault", Kind::Wire),
-    ("chan_core::chan::wire::Reach", Kind::Wire),
+    ("comms_inward::chan::wire::CancelToken::new", Kind::Wire),
+    ("comms_inward::chan::wire::Comms", Kind::Wire),
+    ("comms_inward::chan::wire::HopFault", Kind::Wire),
+    ("comms_inward::chan::wire::Op", Kind::Wire),
+    ("comms_inward::chan::wire::Origin", Kind::Wire),
+    ("comms_inward::chan::wire::OursFault", Kind::Wire),
+    ("comms_inward::chan::wire::PeerFault", Kind::Wire),
+    ("comms_inward::chan::wire::Reach", Kind::Wire),
     // 订阅那一口（`source::watch`，窗口进程里唯一一处 `subscribe`）用到的四样。
-    ("chan_core::chan::wire::By", Kind::Wire),
-    ("chan_core::chan::wire::Item", Kind::Wire),
-    ("chan_core::chan::wire::Kind", Kind::Wire),
-    ("chan_core::chan::wire::Sub", Kind::Wire),
+    ("comms_inward::chan::wire::By", Kind::Wire),
+    ("comms_inward::chan::wire::Item", Kind::Wire),
+    ("comms_inward::chan::wire::Kind", Kind::Wire),
+    ("comms_inward::chan::wire::Sub", Kind::Wire),
     // 那台的能力事实（接上通道时问一次，做不到的那一件置灰）。
-    ("chan_core::chan::wire::Offer", Kind::Wire),
+    ("comms_inward::chan::wire::Offer", Kind::Wire),
     // ── 跨机传输 ──
     // `§8.4` 拍了（「保留SFTP. 思考怎么干净」）：上传 / 下载经通道开单、订阅进度
     //  ⇒ `sftp_upload` · `sftp_download` · `TRANSFER_LANE_CAP` 三行走掉；
@@ -537,9 +537,9 @@ fn the_window_process_reaches_the_backend_only_through_the_channel() {
     );
     // 两类「要的」确实在（否则上面那条零命中可能只是因为窗口什么都不够了）。
     for must in [
-        "chan_core::chan::client::Client",
-        "chan_core::chan::dial::dial",
-        "chan_core::chan::wire::Comms",
+        "comms_inward::chan::client::Client",
+        "comms_inward::chan::dial::dial",
+        "comms_inward::chan::wire::Comms",
     ] {
         assert!(
             window.contains_key(must),

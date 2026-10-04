@@ -2291,7 +2291,7 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 ⇒ 载荷、`tmux send-keys` 的 argv、shell 历史、终端回滚、webview 里都没有它；后端 / monitor 自己的 argv、env、日志、tee、上游、成品应答里也没有它。
 **唯一的例外**：用户自己选「让直接敲的 claude 也走中转」时（设置文件里写不了 `$(cat …)`），帧命令 `relay-optin` 的成品带着要贴的那一段 ——
 钥匙在里面、进界面、经用户的剪贴板由用户自己合并进 `~/.claude/settings.json`（界面上逐条写明的代价之一）。只这一条成品、只在没装 / 过期时带（已装不带）、
-界面第一次展开那一块才问；日志 / argv / env / tee / 上游仍零处。把钥匙插进地址只在 `relay/door.rs::keyed_with_key_on_disk` 一处（`ccm` 直路拼 agent 环境那一下也经它）。
+界面第一次展开那一块才问；日志 / argv / env / tee / 上游仍零处。把钥匙插进地址只在 `relay/key.rs::keyed_with_key_on_disk` 一处（`ccm` 直路拼 agent 环境那一下也经它）。
 「我们的中转在不在」由起 agent 那台的 `ccm` 在最终 exec 那一处判：这台的钥匙文件读得到、且回环端口连得上，两样都有才算在听
 （`accounts/upstream_select/endpoint.rs::relay_for_exec`）。⚠ **诚实边界**：`ccm` 是一次性进程，读不到常驻后端进程内的监听状态 ⇒
 「口上有人 ≠ 我们的中转」那一格今天没收住（钥匙文件在、口被别人占着时会被认成在听）；别名预览与 `relay-optin` 那两面（常驻后端里）仍读进程内的状态。
@@ -2301,7 +2301,7 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 
 **谁在守**：`door_tests.rs::only_the_exact_key_as_the_first_segment_gets_in` · `door_tests.rs::any_origin_header_is_refused_before_the_key_is_looked_at` ·
 `door_tests.rs::only_a_loopback_literal_host_gets_in` · `door_tests.rs::the_three_refusals_are_distinct_faces` ·
-`door_tests.rs::the_key_file_is_minted_once_private_and_read_back_across_restarts`（`0600` · 跨重起同一把 · 坏文件换新）· `door_tests.rs::the_key_file_and_the_key_shape_come_from_the_shared_crate`（钥匙路径与形状只住共享 crate `relay-route-core`，两半同一个 const）·
+`key_tests.rs::the_key_file_is_minted_once_private_and_read_back_across_restarts`（`0600` · 跨重起同一把 · 坏文件换新）· `key_tests.rs::the_key_file_and_the_key_shape_come_from_the_shared_crate`（钥匙路径与形状只住共享 crate `relay-route-core`，两半同一个 const）·
 `server_tests.rs::rk1_the_door_refuses_without_the_key_and_that_is_not_a_404` · `server_tests.rs::rk1_browser_and_rebinding_requests_are_refused_but_the_cli_shape_passes` ·
 `server_tests.rs::rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream`（真子进程 · 零命中带正控）·
 `endpoint_tests.rs::optin_judges_the_pasted_address_against_the_relay_port_and_key_on_disk`（例外那一条：已装不带片段、片段里的钥匙 == 盘上那一把）·
@@ -2309,7 +2309,7 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 起会话那一半 `plan_tests.rs::the_relay_address_is_decided_at_the_final_exec_and_only_there`（`ccm` 直路在进程内把钥匙拼进 agent 的环境，非得经 shell 那一趟渲成读钥匙文件的命令替换）·
 `plan_tests.rs::the_relay_route_follows_the_target_account_not_the_outer_shell`（路由跟着目标账号走，外层环境里别的号的中转地址不顶它）·
 e2e `restart-suite.sh`（换号重启经 `ccm` 起的进程环境里有中转地址，只看变量在不在）；
-写口登记 `readonly_guard` 第四层（`relay/door.rs`，门 `relay/listen.rs`）。设计与读数住。
+写口登记 `readonly_guard` 第四层（`relay/key.rs`，门 `relay/listen.rs`）。设计与读数住。
 
 **诚实边界**：钥匙挡的是**读不到那份 `0600` 文件**的人 —— 能读你家目录的（root、你自己的进程、你起的 agent）本来就能以你的身份跑东西。
 钥匙文件在中转跑着时被删 / 改 ⇒ 新会话每一发 403（出声），重起中转就好。继承来的（已展开、带钥匙的）中转地址 `ccm` 不往新 pane 的载荷里转（它属于外层的号，pane 里那一趟按目标账号自己问）⇒ 钥匙不进 `tmux send-keys` 的 argv

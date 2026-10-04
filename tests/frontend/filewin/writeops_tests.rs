@@ -152,7 +152,7 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
         FakeBackend::new(&["files-mkdir", "files-delete"], Declared::default()),
     )
     .await;
-    let origin = chan_core::origin::Origin(wired.origin.clone());
+    let origin = comms_inward::origin::Origin(wired.origin.clone());
     let e = super::apply_remote(
         &wired.line,
         &origin,
@@ -719,7 +719,7 @@ async fn the_real_adapter_speaks_the_backend_write_face_with_root_and_rel() {
         ),
     )
     .await;
-    let origin = chan_core::origin::Origin(wired.origin.clone());
+    let origin = comms_inward::origin::Origin(wired.origin.clone());
     let ops = [
         WriteOp::Mkdir {
             path: "/srv/data/新目录".into(),
@@ -788,7 +788,7 @@ async fn a_directory_delete_recurses_and_a_lossy_name_is_addressed_by_its_bytes(
         ),
     )
     .await;
-    let origin = chan_core::origin::Origin(wired.origin.clone());
+    let origin = comms_inward::origin::Origin(wired.origin.clone());
     let raw = b"caf\xe9.txt".to_vec();
     let ops = [
         WriteOp::Delete {
@@ -1010,7 +1010,7 @@ async fn a_big_directory_is_deleted_slice_by_slice_until_nothing_is_left() {
     let be = FakeBackend::new(&["files-delete"], Declared::default());
     be.delete_left.lock().unwrap().extend([8_800, 120]);
     let wired = wire_up("writeops-slices", be).await;
-    let origin = chan_core::origin::Origin(wired.origin.clone());
+    let origin = comms_inward::origin::Origin(wired.origin.clone());
     let op = WriteOp::Delete {
         path: "/srv/data/node_modules".into(),
         is_dir: true,

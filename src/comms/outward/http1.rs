@@ -2,23 +2,6 @@
 //!
 //! `K8`/`D4` 那条「优先手写最小 HTTP，别引框架」的白名单在 `裁-1` 里**一个字没松**：
 //! 这里没有任何 HTTP 库，只有请求行 + 头 + `Content-Length` + chunked 拆帧。
-//!
-//! # 🔴 通信层成员 `COMM-LAYER-MEMBER`
-//!
-//! 这一枚标记是**盘上那一侧**的凭据（登记那一侧在
-//! `tests/frontend/shell/comm_boundary_registry_tests.rs::REGISTERED`，两向集合相等）。
-//! 盖上它 = **上锁**，不是放行：本文件从此被 `C1`–`C5` ＋ `X1`–`X6` 十一条一起管着。
-//!
-//! **凭什么它属于通信层**：那张「四样不共享」表里，面 B 的**协议**一栏
-//! 逐字就是「手写 HTTP/1.1 ＋ SSE」⇒ 本文件是面 B 的**协议编解码**本身。
-//! 它只认「中转必须懂的那几样」（请求行 · 头 · `Content-Length` · chunked），
-//! 别的一律当**不透明字节** —— 那正是 `§2` 四样里的「载荷（不透明字节）」。
-//!
-//! ⇒ 十一条对它现打全绿：零业务词 · 零业务 crate · 零读盘 · 零环境变量 · 零起进程 ·
-//! 零绑端口 · 零期限字面量。它是 `§8` **步 4** 圈得进来的那两份之一（另一份是 `route.rs`）。
-//!
-//! ⚠ **它不买「HTTP 解析对不对」** —— 那由 `tests/comms/outward/http1_tests.rs` 与
-//! `wire_golden` 的逐字节金标准负责。本标记只买「它没在这一层里长出业务 / 伸手去拿东西」。
 
 use copy_core::copy_text;
 use std::io::{BufRead, Read};
@@ -27,7 +10,7 @@ use std::io::{BufRead, Read};
 /// `RequestHead::content_length` 的头注（「没有这个头」与「读不懂」挤在同一个 `None` 里
 /// 会让请求体被静默丢掉）。
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum BodyLen {
+pub enum BodyLen {
     /// 没有 `Content-Length` 头 ⇒ 没有请求体。
     Absent,
     /// 读得懂的长度。
@@ -39,14 +22,14 @@ pub(crate) enum BodyLen {
 
 /// 请求头部（不含请求体）。
 #[derive(Debug)]
-pub(crate) struct RequestHead {
-    pub(crate) method: String,
-    pub(crate) target: String,
-    pub(crate) headers: Vec<(String, String)>,
+pub struct RequestHead {
+    pub method: String,
+    pub target: String,
+    pub headers: Vec<(String, String)>,
 }
 
 impl RequestHead {
-    pub(crate) fn header(&self, name: &str) -> Option<&str> {
+    pub fn header(&self, name: &str) -> Option<&str> {
         self.headers
             .iter()
             .find(|(k, _)| k.eq_ignore_ascii_case(name))
@@ -63,7 +46,7 @@ impl RequestHead {
     /// 上游收到空体、下游拿到一条正常的 200，全程零日志零 4xx（D3 实测，住址 `audits/K-H1-D3.md#6.1`）。
     /// 中转搬的正是 `POST /v1/messages` 的载荷，丢了它 claude 当场坏而门禁全绿。
     /// ⇒ 今天两件事分成两张脸，`Unparsable` 由调用方回 **400**。
-    pub(crate) fn content_length(&self) -> BodyLen {
+    pub fn content_length(&self) -> BodyLen {
         let Some(raw) = self.header("content-length") else {
             return BodyLen::Absent;
         };
@@ -73,7 +56,7 @@ impl RequestHead {
         }
     }
 
-    pub(crate) fn is_chunked_body(&self) -> bool {
+    pub fn is_chunked_body(&self) -> bool {
         self.header("transfer-encoding")
             .is_some_and(|v| v.to_ascii_lowercase().contains("chunked"))
     }
@@ -88,7 +71,7 @@ impl RequestHead {
 /// **盘上没有 431**。`None` 有**两个**来源（超上限 · 头没读完就 EOF），本函数**不区分**它们，
 /// 而两个调用点各自按自己的语境回：请求那一侧 `server.rs` 回 **400 Bad Request**，
 /// 响应那一侧回 **502 Bad Gateway**。要真回 431 得先让本函数把两个来源分开。
-pub(crate) fn read_head<R: Read>(r: &mut R, cap: usize) -> std::io::Result<Option<Vec<u8>>> {
+pub fn read_head<R: Read>(r: &mut R, cap: usize) -> std::io::Result<Option<Vec<u8>>> {
     let mut buf = Vec::with_capacity(1024);
     let mut one = [0u8; 1];
     while buf.len() < cap {
@@ -105,7 +88,7 @@ pub(crate) fn read_head<R: Read>(r: &mut R, cap: usize) -> std::io::Result<Optio
 }
 
 /// 解析请求头部字节。头名保留原样，值去掉两端空白。
-pub(crate) fn parse_request(raw: &[u8]) -> Option<RequestHead> {
+pub fn parse_request(raw: &[u8]) -> Option<RequestHead> {
     let text = std::str::from_utf8(raw).ok()?;
     let mut lines = text.split("\r\n");
     let mut start = lines.next()?.split(' ');
@@ -145,7 +128,7 @@ const HOP_BY_HOP: &[&str] = &[
     "upgrade",
 ];
 
-pub(crate) fn is_hop_by_hop(name: &str) -> bool {
+pub fn is_hop_by_hop(name: &str) -> bool {
     HOP_BY_HOP.iter().any(|h| name.eq_ignore_ascii_case(h))
 }
 
@@ -153,13 +136,13 @@ pub(crate) fn is_hop_by_hop(name: &str) -> bool {
 ///
 /// 下游拿到的永远是上游原样的字节（含 chunked 分帧）；tee 要看见 SSE 文本，
 /// 所以这里把 chunked 拆掉。两条路吃的是同一批字节，但**下游那条不经过这里**。
-pub(crate) enum BodyView {
+pub enum BodyView {
     Identity,
     Chunked(ChunkedView),
 }
 
 impl BodyView {
-    pub(crate) fn for_response(headers: &[(String, String)]) -> Self {
+    pub fn for_response(headers: &[(String, String)]) -> Self {
         let chunked = headers.iter().any(|(k, v)| {
             k.eq_ignore_ascii_case("transfer-encoding")
                 && v.to_ascii_lowercase().contains("chunked")
@@ -174,7 +157,7 @@ impl BodyView {
     /// 喂一段原始字节，拿回其中的**解码后**载荷。
     ///
     /// `cap` 是**攒着还没成形的那截**的上限，见 `ChunkedView::feed`。
-    pub(crate) fn feed(&mut self, raw: &[u8], cap: usize) -> Vec<u8> {
+    pub fn feed(&mut self, raw: &[u8], cap: usize) -> Vec<u8> {
         match self {
             BodyView::Identity => raw.to_vec(),
             BodyView::Chunked(v) => v.feed(raw, cap),
@@ -183,7 +166,7 @@ impl BodyView {
 
     /// 取走并清零「本视图因超 `cap` 丢掉的字节数」。**丢的只是 tee 那一路** ——
     /// 下游拿到的是上游原样的字节，一个都不经过本模块（见本类型头注）。
-    pub(crate) fn take_dropped(&mut self) -> u64 {
+    pub fn take_dropped(&mut self) -> u64 {
         match self {
             BodyView::Identity => 0,
             BodyView::Chunked(v) => std::mem::take(&mut v.dropped),
@@ -195,8 +178,8 @@ impl BodyView {
 ///
 /// 攒字节、找块长度行交给 [`super::framer::LineFramer`]（`relay/` 里唯一的增量分帧器）
 /// —— 这里只剩 chunked 自己的那一层：块长度、块尾 CRLF、终止块、上限。
-pub(crate) struct ChunkedView {
-    pub(super) framer: super::framer::LineFramer,
+pub struct ChunkedView {
+    pub framer: super::framer::LineFramer,
     /// 当前块还剩多少字节（含结尾的 `\r\n` 由 `crlf_left` 单管）。
     left: usize,
     crlf_left: usize,
@@ -229,7 +212,7 @@ impl ChunkedView {
     /// 严重度差一档，但同样是「外部输入决定内存上界」⇒ 一起收口。
     ///
     /// 超了怎么办：**丢掉攒着的那截并计数**（`dropped`），解码就此收工（`done = true`）——
-    /// tee 少一段，**下游的字节一个不少**。计数由 `server.rs::handle` 取走交给 tee
+    /// tee 少一段，**下游的字节一个不少**。计数由 `server.rs::serve_one` 取走交给 tee
     /// （在 tap 上占一个号不发）⇒ **不是静默丢**。
     fn feed(&mut self, raw: &[u8], cap: usize) -> Vec<u8> {
         self.framer.push(raw);
@@ -289,15 +272,12 @@ impl ChunkedView {
 }
 
 /// 从一个已经建立的连接上读响应头部（与请求头同款逐字节读，理由相同）。
-pub(crate) fn read_response_head<R: Read>(
-    r: &mut R,
-    cap: usize,
-) -> std::io::Result<Option<Vec<u8>>> {
+pub fn read_response_head<R: Read>(r: &mut R, cap: usize) -> std::io::Result<Option<Vec<u8>>> {
     read_head(r, cap)
 }
 
 /// 状态行里的三位数字（`HTTP/1.1 429 Too Many Requests` ⇒ 429）；不是三位数字 ⇒ `None`。
-pub(crate) fn status_code(status_line: &str) -> Option<u16> {
+pub fn status_code(status_line: &str) -> Option<u16> {
     let code = status_line.split(' ').nth(1)?;
     (code.len() == 3 && code.bytes().all(|b| b.is_ascii_digit()))
         .then(|| code.parse().ok())
@@ -305,7 +285,7 @@ pub(crate) fn status_code(status_line: &str) -> Option<u16> {
 }
 
 /// 解析响应头部，返回 `(状态行, 头表)`。
-pub(crate) fn parse_response(raw: &[u8]) -> Option<(String, Vec<(String, String)>)> {
+pub fn parse_response(raw: &[u8]) -> Option<(String, Vec<(String, String)>)> {
     let text = std::str::from_utf8(raw).ok()?;
     let mut lines = text.split("\r\n");
     let status = lines.next()?.to_string();
@@ -335,8 +315,8 @@ pub(crate) fn parse_response(raw: &[u8]) -> Option<(String, Vec<(String, String)
 ///   —— 那种状态行本来就是畸形的，交给调用方按「最终响应」往下走、由后续解析去红，
 ///   总好过在这里替它猜。
 /// - 它**不判**这条 1xx 是哪一种（100 / 101 / 103），调用方对 1xx 一视同仁（丢弃再读下一条）；
-///   `101` 的结局单独写在 `server.rs::handle` 那段头注里。
-pub(crate) fn is_interim_status(status_line: &str) -> bool {
+///   `101` 的结局单独写在 `server.rs::serve_one` 那段头注里。
+pub fn is_interim_status(status_line: &str) -> bool {
     let Some(code) = status_line.split(' ').nth(1) else {
         return false;
     };
@@ -374,7 +354,7 @@ pub(crate) fn is_interim_status(status_line: &str) -> bool {
 ///    `cap` 那么大的一块内存，而攻击方一个字节的代价都没付。
 ///
 /// 死值验与射程见 `an_oversized_content_length_is_refused_without_allocating_it` 与件文件 §8.20.2。
-pub(crate) fn read_exact_body<R: BufRead>(
+pub fn read_exact_body<R: BufRead>(
     r: &mut R,
     n: usize,
     cap: usize,

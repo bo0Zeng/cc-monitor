@@ -175,7 +175,7 @@ describe("COPY · 生产代码不许按原文认话（判是哪种失败靠码�
       ...productionRsFiles("src/frontend/shell/src"),
       ...productionRsFiles("src/frontend/filewin/src"), // 文件窗口独立成包
       ...productionRsFiles("src/common"),
-      ...productionRsFiles("src/comms"), // 通信层成员（两个 crate 经 `#[path]` 编它们）
+      ...productionRsFiles("src/comms"), // 通信层那两个 crate（面 A · 面 B）
     ].map((f) => ({ ...f, lang: "rust" as const }));
     const ts = productionTsFiles("src").map((f) => ({ ...f, lang: "ts" as const }));
     expect(rs.length, "Rust 生产文件一份都没扫到").toBeGreaterThan(100);

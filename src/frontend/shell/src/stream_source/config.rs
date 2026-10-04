@@ -40,12 +40,8 @@ pub struct RemoteConfig {
     pub jump: Option<String>,
 }
 
-/// Batch14-F45：单个连接目标（host + port）。今天只剩一个用处：后端 ack 里结构化的胜者（`winner`）。
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
-pub struct Endpoint {
-    pub host: String,
-    pub port: u16,
-}
+/// 单个连接目标：后端 ack 里结构化的胜者（`winner`），形状住通信层（`ssh_link`）。
+pub use comms_inward::ssh_link::Endpoint;
 
 // 〔「一个判定一个家」〕地址解析与组拨号请求只在本机常驻后端 `src/backend/dial/machine.rs`（起流时把这台原样的配置交过去）。
 

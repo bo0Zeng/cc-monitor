@@ -1,13 +1,6 @@
 //! **拨号应答的客户端**：在一条**交给它的**双工管子上，读完拨号代理（后端 `--dial`）的
 //! 阶段行与 ack，之后要么把管子原样交回（字节流），要么读一行收全的 exec 结果，要么逐行读转发计数。
 //!
-//! # 🔴 通信层成员 `COMM-LAYER-MEMBER`
-//!
-//! 这一枚标记是**盘上那一侧**的凭据（登记那一侧在
-//! `tests/frontend/shell/comm_boundary_registry_tests.rs` 的 `REGISTERED`，两向集合相等）。
-//! 盖上它 = **上锁**：本文件从此被 `C1`–`C5` ＋ `X1`–`X6` 十一条一起管着。
-//! 用户 `Q6` 裁「甲」（先承认传输面脏、C2 洗干净再收）—— 这一份就是从 `stream_source/` 里洗出来的那段传输。
-//!
 //! # 它为什么是通信层成员
 //!
 //! 它原来埋在 `stream_source/` 里（那时连 `russh` 握手也在界面进程里跑）。把 SSH 的全部活
@@ -25,7 +18,7 @@
 //! ack 之前零到多行 `{"stage":{…}}` → 恰好一行 ack → 之后按用法（`files` 是一问一答，读应答那一行用 [`reply_line`]）。
 //! 🔴 **老代理出声**：ack 的 `uses` 不含所请求的用法 ⇒ [`LinkError::TooOld`]，不去解后面那些字节。
 
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt};
 
@@ -57,6 +50,13 @@ pub enum ConnectStage {
     Established,
 }
 
+/// 单个连接目标（host + port）：后端 ack 里结构化的胜者（[`Ack::winner`]），壳记 last-good 用它。
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
+pub struct Endpoint {
+    pub host: String,
+    pub port: u16,
+}
+
 /// 代理的 ack（后端 `dial::DialAck`）。v1 代理没有 `endpoint`/`v`/`uses` ⇒ 缺省值。
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Ack {
@@ -77,7 +77,7 @@ pub struct Ack {
     pub endpoint: Option<String>,
     /// 同一条胜者，结构化 —— 记 last-good 用它（地址不在界面进程里解析）。
     #[serde(default)]
-    pub winner: Option<crate::stream_source::Endpoint>,
+    pub winner: Option<Endpoint>,
     /// 这一趟目标那台是否已严格校验指纹（后端组请求时定的，`dial/machine.rs`）。
     #[serde(default)]
     pub strict: bool,

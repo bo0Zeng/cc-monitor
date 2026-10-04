@@ -18,7 +18,7 @@
 #   shell   —— `cd src/frontend/shell && cargo test --workspace --lib`（= 门禁 `cargo` 那一格）
 #   backend —— `cd src/backend && cargo test`（= 门禁 `backend` 那一格）
 # 测试里 spawn 出去的子进程（后端二进制、`current_exe` 起的子测试）也是插桩的，它们的 `.profraw` 一并算进来。
-# 报告的人群是**生产源码**：`src/frontend/shell/src` · `src/common/*/src` · `src/backend` · `src/comms`（两侧经 `#[path]` 编的通信层成员）；
+# 报告的人群是**生产源码**：`src/frontend/shell/src` · `src/common/*/src` · `src/backend` · `src/comms`（通信层那两个 crate）；
 # 测试树 `tests/`、vendor、依赖 crate 一律滤掉（`--ignore-filename-regex`）。
 #
 # # 它量不到什么

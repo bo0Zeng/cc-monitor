@@ -626,82 +626,43 @@ mod tests {
     /// # ⚠ 诚实边界：本判据扫的是 `production_code`，测试段跨层构造夹具看不见，**这是有意的**
     ///
     /// 分层是**生产架构**的性质（`refs_to_layer` 头注同款取舍）。
-    /// `relay/` 对外的口（`relay/mod.rs` 里的 `pub(crate) use …`）**逐条登记**：`(项, 为什么它是对外的口)`。
+    /// 中转 crate（`comms_outward`）的公开项**逐条登记**：`(项, 为什么它是对外的口)`。
     ///
-    /// `relay/mod.rs` 头注逐字：「真要新开口子 ⇒ 加在那一行旁边，并在 `layering_guard` 里配一张**非空**登记表」。
-    /// 先前那张表不存在（口子只靠散文守）；本拍新开了两个口（`relay-*` 帧面那两个处理器），表同拍立起来。
+    /// 公开项 ＝ crate 根 `lib.rs` 生产段里的 `pub use …` 与顶层 `pub` 声明（模块都是私有的，够得着的只有这些）。
+    /// 多开一个口 ⇒ 加在这里并写清为什么；收掉一个 ⇒ 同拍摘掉。
     const RELAY_EXPORTS: &[(&str, &str)] = &[
-        (
-            "listen::host",
-            "流模式常驻后端**进程内**起中转的入口；上游选择那只手由 `accounts::upstream_select::host_relay` 递进来",
-        ),
-        (
-            "listen::ENV_PORT",
-            "中转端口那个环境变量**名**：hello 回显宿主交来的那几格（`wire::HOST_ECHO_ENVS`）要点它，名字只住 `listen.rs` 一处",
-        ),
-        // `listen::run`（`--relay` 那一臂的中转入口）随独立中转进程一形删了。
-        // `machine::answer_ensure` / `machine::answer_status`（帧面 `relay-*` 那两个处理器）随脱离 `--relay` 一族删了。
-        (
-            "listen::our_relay_listening",
-            "上游选择出成品（`launch-endpoint` · `apikey-routing`）时问「这台机器上我们的中转在不在听」—— 差分探针，只收端口、只回布尔",
-        ),
-        (
-            "door::keyed_with_key_on_disk",
-            "上游选择出「直接敲的也走中转」那一段（`relay-optin`）时把这台盘上那把钥匙插进地址 —— 只交插好的地址，钥匙不以裸值出门",
-        ),
-        (
-            "route::segment_is_safe",
-            "上游选择装表判账号 id 与中转切键是**同一个谓词**（`route.rs` 头注）",
-        ),
-        (
-            "upstream::Base",
-            "中转的传输原语：一行的上游是什么，上游选择解析它、焊进行里、原样交回",
-        ),
-        // 一问一答的传输原语（期限与上限由调用方给）：账号域续订阅号令牌那一发经它，不另写一套 TLS 连接。
-        (
-            "upstream::fetch",
-            "一问一答：发一整发、读回整段回包（账号域续登录令牌用；期限 · 上限由调用方给）",
-        ),
-        ("upstream::Fetched", "上一行读回来的那一段回包（状态码 · 头 · 体）"),        // tee 的第二个落点（三条同一个口：口本身 ＋ 它交出去的那件事的两半）。
-        (
-            "tee::TapPort",
-            "tee 的第二个落点的口：宿主（`crate::stream::tap::TapHub`）实现它，进程内中转经 `listen::host` 收它",
-        ),
-        (
-            "tee::TapEvent",
-            "tee 交给 tap 口的一件事（`stream` · `resp` · `n` · 事件原文 / 收尾），宿主转成 `tap` 帧",
-        ),
-        (
-            "tee::TapBody",
-            "`TapEvent` 的两形：一个 SSE 事件原文 · 这个响应收尾了（`broken`）",
-        ),
+        ("door::Key", "中转口的钥匙：后端读好 / 铸好交进来（`Relay::new`），中转只拿它比对"),
+        ("door::tokens_match", "定长比对的唯一住址：中转口的门与后端控制口（`stream::listen`）比令牌都用它"),
+        ("server::Relay", "一个中转的全部入参（上游选择那只手 · 钥匙 · tee 落点 · 两个期限值），由后端的监听面造"),
+        ("server::serve_one", "后端的接受循环接下一条连接就交给它一次：解析 → 问上游选择 → 连上游 → 逐块透传 ＋ tee"),
+        ("server::refuse_busy", "在途满了（上界在后端）回 503 并排掉已到的字节 —— 拒绝要出声"),
+        ("server::apply_downstream_deadline", "接下连接先装下游期限（值由后端给），拒绝那一支也不会被一个不读的对端钉住"),
+        ("tee::TapPort", "tee 的第二个落点的口：宿主（`stream::tap`）实现它，经 `TeeSink::to_port` 交进中转"),
+        ("tee::TapEvent", "tee 交给 tap 口的一件事（`stream` · `resp` · `n` · 事件原文 / 收尾），宿主转成 `tap` 帧"),
+        ("tee::TapBody", "`TapEvent` 的两形：一个 SSE 事件原文 · 这个响应收尾了（`broken`）"),
+        ("tee::TeeSink", "中转手里那个 tee 落点：后端起中转时用 `TeeSink::to_port` 把 tap 口包进来"),
+        ("route::segment_is_safe", "上游选择装表判账号 id 与中转切键是**同一个谓词**（`route.rs` 头注）"),
+        ("upstream::Base", "中转的传输原语：一行的上游是什么，上游选择解析它、焊进行里、原样交回"),
+        ("upstream::fetch", "一问一答：发一整发、读回整段回包（账号域续登录令牌用；期限 · 上限由调用方给）"),
+        ("upstream::Fetched", "上一行读回来的那一段回包（状态码 · 头 · 体）"),
+        ("Mode", "两个前缀两种模式（`/s/` 代入 · `/t/` 直通），上游选择按它答"),
+        ("RouteKey", "中转手里的键：两个不透明段，上游选择自己读成 agent 与账号"),
+        ("AuthSwap", "上游选择算好的换头材料（要丢的头名全集 ＋ 要写的那一条），中转照丢照写"),
+        ("Destination", "上游选择给中转的答案（直通 / 换头 / 拒），一次请求只拿到一个"),
+        ("Ask", "这一发里中转交给上游选择看的那几样（流标签 ＋ 整份请求体，只读）"),
+        ("Heard", "上游回包头读完那一刻中转手里的东西（去处标签 · 状态码 · 头），交给 `observe`"),
+        ("Destinations", "上游选择对中转的唯一一个口（`resolve` · `observe` · 流标签的头名）"),
+        ("Startup", "中转起监听之前问一次上游选择的配置行不行"),
+        ("Ready", "上一问过了之后，起监听之后交出 `Destinations` 的那一手"),
+        ("test_support", "组合判据要够到的内部件：只在 `test-support` 那一格（后端测试档）开，发布构建里没有"),
     ];
 
-    /// `relay/` 对外的口 == [`RELAY_EXPORTS`]（两向集合相等；从 `relay/mod.rs` 生产段现抠）。
+    /// 中转 crate 的公开项 == [`RELAY_EXPORTS`]（两向集合相等；从 `lib.rs` 生产段现抠）。
     #[test]
     fn the_relay_layer_exports_exactly_the_registered_items() {
-        let src = std::fs::read_to_string(crate::guard_support::relay_root().join("mod.rs"))
-            .expect("读 relay/mod.rs（住 `src/comms/outward/mod.rs`）");
-        let prod = production_code(&src);
-        let mut found: Vec<String> = Vec::new();
-        for line in prod.lines() {
-            let Some(rest) = line.trim().strip_prefix("pub(crate) use ") else {
-                continue;
-            };
-            let rest = rest.trim_end_matches(';').trim();
-            match rest.split_once("::{") {
-                Some((head, tail)) => {
-                    for item in tail.trim_end_matches('}').split(',') {
-                        let item = item.trim();
-                        if !item.is_empty() {
-                            found.push(format!("{head}::{item}"));
-                        }
-                    }
-                }
-                None => found.push(rest.to_string()),
-            }
-        }
-        found.sort();
+        let src = std::fs::read_to_string(crate::guard_support::relay_root().join("lib.rs"))
+            .expect("读中转 crate 的 lib.rs（`src/comms/outward/lib.rs`）");
+        let found = relay_crate_public_items(&production_code(&src));
         let mut want: Vec<String> = RELAY_EXPORTS
             .iter()
             .map(|(i, _)| (*i).to_string())
@@ -710,12 +671,59 @@ mod tests {
         assert!(!want.is_empty(), "登记表空了 —— 相等会退化成「空 == 空」");
         assert_eq!(
             found, want,
-            "`relay/` 对外的口与登记表对不上。多出来的 = 有人新开了口子而没说为什么；\
+            "中转 crate 的公开项与登记表对不上。多出来的 = 有人新开了口子而没说为什么；\
              少了的 = 口收掉了，同拍把登记摘掉。"
         );
         for (i, why) in RELAY_EXPORTS {
             assert!(why.chars().count() >= 15, "`{i}` 没写清为什么它是对外的口");
         }
+        // 正控：抽取器认得出两种形（`pub use` 的花括号 / 单项 · 顶层 `pub` 声明），不认 `pub(crate)` 与缩进里的。
+        let probe = "pub use a::{x, y};\npub use b::z;\npub struct S;\npub(crate) struct T;\n    pub fn inner() {}\npub trait Q {}\n";
+        assert_eq!(
+            relay_crate_public_items(probe),
+            vec!["Q", "S", "a::x", "a::y", "b::z"]
+        );
+    }
+
+    /// 一份 crate 根生产段里的公开项：`pub use` 引出的（`模块::项`）＋ 顶层 `pub` 声明的名字。已排序。
+    fn relay_crate_public_items(prod: &str) -> Vec<String> {
+        let mut found: Vec<String> = Vec::new();
+        for line in prod.lines() {
+            let Some(rest) = line.strip_prefix("pub ") else {
+                continue;
+            };
+            if let Some(used) = rest.strip_prefix("use ") {
+                let used = used.trim().trim_end_matches(';').trim();
+                match used.split_once("::{") {
+                    Some((head, tail)) => {
+                        for item in tail.trim_end_matches('}').split(',') {
+                            let item = item.trim();
+                            if !item.is_empty() {
+                                found.push(format!("{head}::{item}"));
+                            }
+                        }
+                    }
+                    None => found.push(used.to_string()),
+                }
+                continue;
+            }
+            let mut words = rest.split_whitespace();
+            if let (Some(kind), Some(name)) = (words.next(), words.next()) {
+                if [
+                    "struct", "enum", "trait", "fn", "const", "static", "type", "mod",
+                ]
+                .contains(&kind)
+                {
+                    let name: String = name
+                        .chars()
+                        .take_while(|c| c.is_alphanumeric() || *c == '_')
+                        .collect();
+                    found.push(name);
+                }
+            }
+        }
+        found.sort();
+        found
     }
 
     #[test]

@@ -47,7 +47,7 @@ fn fake_upstream() -> SocketAddr {
 }
 
 /// 这几条只量「起没起来 / 转没转发」，不看 tee 抄了什么 ⇒ 给一个自己的 hub（不碰进程级那一个）。
-fn no_tap() -> std::sync::Arc<dyn super::super::TapPort> {
+fn no_tap() -> std::sync::Arc<dyn comms_outward::TapPort> {
     std::sync::Arc::new(crate::stream::tap::TapHub::default())
 }
 
@@ -73,14 +73,14 @@ fn creds_fixture(tag: &str) -> std::path::PathBuf {
 }
 
 /// 喂给 `host` 的取值器：端口 ＋ 默认上游 ＋ 凭据路径 ＋夹具家目录（钥匙文件在它底下，
-/// 预先放好 `door::door_tests::TEST_KEY` —— 不给的话中转会去用户真实的家目录里铸钥匙）。
+/// 预先放好 `super::super::key::key_tests::TEST_KEY` —— 不给的话中转会去用户真实的家目录里铸钥匙）。
 fn env_of(
     port: Option<&str>,
     upstream: Option<String>,
     creds: &std::path::Path,
 ) -> impl Fn(&str) -> Option<String> {
     let port = port.map(str::to_string);
-    let home = door::door_tests::seed_test_home(creds.parent().expect("夹具目录"))
+    let home = super::super::key::key_tests::seed_test_home(creds.parent().expect("夹具目录"))
         .display()
         .to_string();
     // 凭据住家里：家指到夹具那一份所在的目录（文件名就是 `apikey-credentials.json`）。
@@ -108,7 +108,7 @@ fn through_with(addr: SocketAddr, extra: &str) -> String {
     let req = format!(
         // 过门：钥匙段挂在最前、`Host` 用回环字面量。
         "POST /{}/s/claude-code/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n{extra}Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
-        door::door_tests::TEST_KEY,
+        super::super::key::key_tests::TEST_KEY,
         body.len()
     );
     c.write_all(req.as_bytes()).expect("写请求");
@@ -319,7 +319,7 @@ fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() 
         .env("CCM_DATA_DIR", creds.parent().expect("夹具目录"))
         .env("CLAUDE_CONFIG_DIR", &home)
         // 钥匙文件落在夹具家目录里（预先放好夹具那一把），不碰用户真实的家目录。
-        .env("HOME", door::door_tests::seed_test_home(&home))
+        .env("HOME", super::super::key::key_tests::seed_test_home(&home))
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -472,7 +472,7 @@ fn fake_upstream_with(body: String) -> SocketAddr {
 fn hosted_with_tap(
     tag: &str,
     up: SocketAddr,
-    tap: std::sync::Arc<dyn super::super::TapPort>,
+    tap: std::sync::Arc<dyn comms_outward::TapPort>,
 ) -> SocketAddr {
     let creds = creds_fixture(tag);
     match host(
@@ -491,8 +491,8 @@ fn hosted_with_tap(
 
 /// 把 tap 接收端里此刻已有的全部取出来（`through` 返回时中转那条线程已经收尾：下游 EOF 在 `close` 之后）。
 fn drain(
-    rx: &mut tokio::sync::mpsc::Receiver<super::super::TapEvent>,
-) -> Vec<super::super::TapEvent> {
+    rx: &mut tokio::sync::mpsc::Receiver<comms_outward::TapEvent>,
+) -> Vec<comms_outward::TapEvent> {
     let mut v = Vec::new();
     while let Ok(ev) = rx.try_recv() {
         v.push(ev);
@@ -517,23 +517,23 @@ fn tap_gets_every_sse_data_payload_in_order_with_contiguous_positions_and_a_clea
 
     let got = drain(&mut rx);
     let k = TAP_EVENTS.len() as u64;
-    let mut want: Vec<super::super::TapEvent> = TAP_EVENTS
+    let mut want: Vec<comms_outward::TapEvent> = TAP_EVENTS
         .iter()
         .enumerate()
-        .map(|(i, e)| super::super::TapEvent {
+        .map(|(i, e)| comms_outward::TapEvent {
             stream: "k-rl1".into(),
             owner: String::new(),
             resp: got.first().map(|g| g.resp).unwrap_or(u64::MAX),
             n: i as u64,
-            body: super::super::TapBody::Data((*e).to_string()),
+            body: comms_outward::TapBody::Data((*e).to_string()),
         })
         .collect();
-    want.push(super::super::TapEvent {
+    want.push(comms_outward::TapEvent {
         stream: "k-rl1".into(),
         owner: String::new(),
         resp: got.first().map(|g| g.resp).unwrap_or(u64::MAX),
         n: k,
-        body: super::super::TapBody::End { broken: false },
+        body: comms_outward::TapBody::End { broken: false },
     });
     assert_eq!(got, want, "tap 收到的事件序列与上游发的不等");
 }
@@ -549,7 +549,7 @@ fn the_stream_label_is_the_session_id_the_agent_sends_in_its_own_request_header(
     let mut rx = hub.attach();
     let addr = hosted_with_tap("tapv141", up, hub.clone());
     let sid = "3f2a9c1e-7d44-4c3b-9a55-0e6b2f1d8c77";
-    let label_of = |extra: &str, rx: &mut tokio::sync::mpsc::Receiver<super::super::TapEvent>| {
+    let label_of = |extra: &str, rx: &mut tokio::sync::mpsc::Receiver<comms_outward::TapEvent>| {
         through_with(addr, extra);
         let got = drain(rx);
         assert!(!got.is_empty(), "正控：这一发该有 tap 件");
@@ -585,7 +585,7 @@ fn the_run_a_request_names_rides_along_with_its_tee_events() {
     let mut rx = hub.attach();
     let addr = hosted_with_tap("tapowner", up, hub.clone());
     let sid = "3f2a9c1e-7d44-4c3b-9a55-0e6b2f1d8c77";
-    let owners_of = |extra: &str, rx: &mut tokio::sync::mpsc::Receiver<super::super::TapEvent>| {
+    let owners_of = |extra: &str, rx: &mut tokio::sync::mpsc::Receiver<comms_outward::TapEvent>| {
         through_with(addr, &format!("X-Claude-Code-Session-Id: {sid}\r\n{extra}"));
         let got = drain(rx);
         assert!(!got.is_empty(), "正控：这一发该有 tap 件");
@@ -648,7 +648,7 @@ fn a_tap_that_cannot_keep_up_loses_positions_visibly_and_never_touches_the_forwa
     let mut fat: Vec<String> = TAP_EVENTS.iter().map(|s| s.to_string()).collect();
     fat[2] = format!(
         r#"{{"type":"ping","pad":"{}"}}"#,
-        "x".repeat(super::super::tee::TAP_DATA_CAP)
+        "x".repeat(comms_outward::test_support::tee::TAP_DATA_CAP)
     );
     let mut b = String::new();
     for e in &fat {
@@ -676,7 +676,7 @@ fn a_tap_that_cannot_keep_up_loses_positions_visibly_and_never_touches_the_forwa
     );
     assert_eq!(
         got.last().map(|e| e.body.clone()),
-        Some(super::super::TapBody::End { broken: false })
+        Some(comms_outward::TapBody::End { broken: false })
     );
 }
 

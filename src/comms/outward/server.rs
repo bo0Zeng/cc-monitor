@@ -1,21 +1,6 @@
 //! 中转 · **交换面**：一条请求从读头到收尾的全程 —— 读头 → 问上游选择（`resolve`）
 //! → 连上游 → 逐块透传 + tee。
 //!
-//! # 🔴 通信层成员 `COMM-LAYER-MEMBER`
-//!
-//! 登记那一侧在 `tests/frontend/shell/comm_boundary_registry_tests.rs::REGISTERED`（两向集合相等）。
-//! 盖上它 = **上锁**：本文件从此被 `C1`–`C5` ＋ `X1`–`X6` 十一条一起管着。
-//!
-//! **凭什么**：本文件第一行就是答案 —— 它是**中转本体**（要的那个名字正是
-//! `exchange.rs`），归通信层那一列点名了它。
-//!
-//! **它先前差两条，`P16` 同拍清掉**：`C2`（`Destination::Substitute` 不再带 `creds-core`
-//! 的类型 ⇒ 连明文都碰不到了）＋ `X2`（那个 30 秒的**值**搬去 `listen.rs`，
-//! 装它的那一手留在本文件、改成收入参）。
-//!
-//! ⚠ **它不买「这一层做得对」** —— 请求头拼得对不对由 `wire_golden` 的逐字节金标准与
-//! `server_tests` 那一族负责；这枚标记只买「它没在这一层里长出业务、也没伸手去拿东西」。
-//!
 //! # ⚠⚠ 🔴 它的**名字**与对不上，理由现打，别当成漏了
 //!
 //! 那张拆分表要的名字是 **`relay/exchange.rs`**。今天它仍叫 `server.rs`，
@@ -44,7 +29,7 @@ use super::tee::{RequestMark, SseSplitter, TeeSink};
 use super::upstream::{self, Base, Conn};
 use super::{Ask, AuthSwap, Destination, Destinations, Heard, StreamId};
 use std::io::{BufReader, Read, Write};
-use std::net::{IpAddr, Ipv4Addr, TcpStream};
+use std::net::TcpStream;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -52,17 +37,6 @@ use std::sync::Arc;
 //   每 agent 一行的表（`agents::Adapter::upstream`，跟着适配层）。中转里**没有任何可以回落的默认上游**
 //   —— 这一句由 `table_guard::the_relay_has_no_default_upstream_to_fall_back_to`
 //   的**两向相等断言**钉着（中转零处 ＋ 上游选择恰好登记那几处），不是一条散文。
-
-// ══ 下面这个常量的**职责在 `listen.rs`**（监听面），代码留在这里 ══════════════
-// 原先是三个：在途上界 `INFLIGHT_CONNECTIONS` 与在途计数已挪去 `listen.rs`。
-//    理由**不是**职责，是一处**写区外的散文住址**逐字点着 `…/relay/server.rs::<常量名>`（`DEFAULT_PORT` 随 `--relay` 删了），
-//    而 `structural_scan::every_symbol_address_in_the_sources_still_resolves` 真的判得了
-//    那种住址（现打：搬去 `listen.rs` 之后它当场红，诊断逐字「符号还在，但**搬家了**」）。
-//    逐条登记在 `listen.rs` 的头注里。⇒ `listen.rs` `use` 它们。
-
-/// 只听回环。**这是一个字面量常量，不是拼出来的** —— 拼出来的地址源码扫描看不见
-/// （`DoD-4` 那条 acceptor 的第一个瞎法就是这个）。行为那半由 `DoD-4㈡` 兜底。
-pub(super) const LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 
 /// 请求头部字节上限。
 const HEAD_CAP: usize = 64 * 1024;
@@ -101,7 +75,7 @@ const READ_CHUNK: usize = 64 * 1024;
 // （盘上扫出来的状态码字面量 ⇔ 登记表，两向相等；我们拒的全是 4xx、上游那侧全是 5xx）。
 
 /// 中转自己回的响应带的原因头：值是一个 ASCII 短词（`bad-key` · `no-account-row` · `upstream-connect` …）。
-pub(super) const REASON_HEADER: &str = "X-Cc-Monitor-Reason";
+pub const REASON_HEADER: &str = "X-Cc-Monitor-Reason";
 
 /// 下游请求**读不懂**（头坏了 / `Content-Length` 读不懂）。
 const BAD_REQUEST: &str = "400 Bad Request";
@@ -114,7 +88,7 @@ const NOT_A_ROUTE: &str = "404 Not Found";
 /// 在飞连接顶满（`listen.rs::INFLIGHT_CONNECTIONS`）或起不了连接线程。**「我们这侧现在吃不下」**。
 ///
 /// ⚠ 名字刻意不带 `CAP`/`MAX`/`LIMIT`/`BYTES`（那几个词是 `byte_cap_registry` 的钩子）。
-pub(super) const BUSY: &str = "503 Service Unavailable";
+pub const BUSY: &str = "503 Service Unavailable";
 /// 🔴 **中转自己的传输失败、而且不是超时**：上游连不上 · 发到一半断了 · 没回应就断 · 回的不是 HTTP · 只给 1xx。
 /// 先前一律 504（502 被上游选择的 `Refuse` 占着）；那个 `Refuse` 改成 4xx 之后 502 让回给它的本义。
 const UPSTREAM_UNREACHABLE: &str = "502 Bad Gateway";
@@ -135,11 +109,11 @@ const UPSTREAM_TOO_SLOW: &str = "504 Gateway Timeout";
 /// 抽成函数是因为它有**两个调用点**，而它们必须用同一个数。
 /// ⚠ 两个调用点**买的东西不一样，别当成一件事**：
 ///
-/// ㈠ `handle()` 开头 —— **有牙的那个**。D3 §2.3 逐字点名的住址（「`handle()` 只做
+/// ㈠ `serve_one()` 开头 —— **有牙的那个**。D3 §2.3 逐字点名的住址（「`serve_one()` 只做
 ///    `set_nodelay`，一个 `set_read_timeout` / `set_write_timeout` 都没有」），
 ///    也是转发路径真正阻塞的地方。删掉它，`both_peers_really_carry_…` 当场红（本轮 `MU1`）。
-///    而且 `handle()` 有一个**不经过 `serve()`** 的调用者（判据直接调它）
-///    ⇒ 这句承诺必须由 `handle()` 自己兑现，不能挂在调用者身上。
+///    而且 `serve_one()` 有一个**不经过 `serve()`** 的调用者（判据直接调它）
+///    ⇒ 这句承诺必须由 `serve_one()` 自己兑现，不能挂在调用者身上。
 ///
 /// ㈡ `serve()` 刚 `accept` 出来那一刻 —— **纵深，没有牙，我说不出它失效会怎样**。
 ///    ⚙ 照实写：我找过「拒绝路径（503）会阻塞」的形状，**没构造出来** ——
@@ -150,7 +124,7 @@ const UPSTREAM_TOO_SLOW: &str = "504 Gateway Timeout";
 ///    **每一条 `accept` 出来的 socket 从第一刻起就带着期限，不管它接下来走哪个分支**
 ///    —— 明天有人往拒绝路径上加一次阻塞读写时，这条不变式已经在那儿了。
 ///    ⚙ **本轮 `MU6` 实测：把这一块整个删掉，410 条判据零红。** 这个格子没有牙，别报成有。
-pub(super) fn apply_downstream_deadline(
+pub fn apply_downstream_deadline(
     s: &TcpStream,
     deadline: std::time::Duration,
 ) -> std::io::Result<()> {
@@ -200,7 +174,7 @@ const INTERIM_RESPONSES_ALLOWED: usize = 8;
 /// 两个字段**已经不在本结构体里了**，它们随热重载一起搬进了 `accounts/`（上游选择）。
 /// 今天 `Relay` 手里只剩一个 `dyn Destinations` —— 上游选择整块藏在它后面。
 /// 那条文本棘轮**仍然留着**（它守的是「别把那两个字段加回来」），只是它守的窗口更小了。
-pub(crate) struct Relay {
+pub struct Relay {
     /// 上游选择整块藏在这后面（那张「之后」的图）。
     ///
     /// ★★ 中转对它**只会问一句** `resolve(mode, &RouteKey, …)`，拿到一个
@@ -247,7 +221,7 @@ impl Relay {
     ///
     /// ⚠⚠：入参从一张**路由表**换成了一个 `dyn Destinations`
     /// —— 中转从此不认识「表」这个东西。
-    pub(crate) fn new(
+    pub fn new(
         dest: Arc<dyn Destinations>,
         door: door::Key,
         tee: TeeSink,
@@ -276,24 +250,20 @@ impl Relay {
     }
 
     /// 透传收尾账。**只给判据用** —— 生产路径不读它。
-    #[cfg(test)]
-    pub(crate) fn pumps(&self) -> Vec<Option<u64>> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn pumps(&self) -> Vec<Option<u64>> {
         self.pumps.lock().expect("lock").clone()
     }
 
     /// `DoD-1㈢` 的量点：本进程服务过几个请求。**只给判据用** ——
     /// 生产路径不读它（读了就成了「为了让守卫闭嘴而加的功能」）。
-    #[cfg(test)]
-    pub(crate) fn served(&self) -> u64 {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn served(&self) -> u64 {
         self.served.load(Ordering::SeqCst)
     }
 }
 
-pub(super) fn respond_status(
-    down: &mut TcpStream,
-    status: &str,
-    reason: &str,
-) -> std::io::Result<()> {
+pub fn respond_status(down: &mut TcpStream, status: &str, reason: &str) -> std::io::Result<()> {
     respond_body(down, status, reason, format!("{status}\n"))
 }
 
@@ -340,14 +310,15 @@ fn respond_body(
 ///
 /// **诚实边界**：下游的字节要是**在我们排完之后**才到，`close` 照样发 RST。
 /// 这一支不追求「一定送达」，只把常见那一形（请求已经整条发出来了）从静默变成有声。
-pub(super) fn respond_and_drain(
-    down: &mut TcpStream,
-    status: &str,
-    reason: &str,
-) -> std::io::Result<()> {
+pub fn respond_and_drain(down: &mut TcpStream, status: &str, reason: &str) -> std::io::Result<()> {
     let r = respond_status(down, status, reason);
     drain_arrived(down);
     r
+}
+
+/// 在途满了（或起不了连接线程）：回 [`BUSY`] 并把这条连接上已到的字节排掉再关。上界与计数在后端的接受循环里。
+pub fn refuse_busy(down: &mut TcpStream) -> std::io::Result<()> {
+    respond_and_drain(down, BUSY, "busy")
 }
 
 /// 同 [`respond_and_drain`]，只是体里多一句为什么〔RK1：门拒绝那几格要说清是哪一问拒的，
@@ -410,7 +381,7 @@ enum Answered {
 /// - 哪一跳：一个固定文案（[`FailedAt`]）。
 /// - 底层那条 `io::Error` **只进 stderr**，不进回给下游的字节（那是实现细节，：
 ///   对外的话不出现内部词）。
-pub(super) struct UpstreamFailure {
+pub struct UpstreamFailure {
     who: Who,
     at: FailedAt,
     cause: Option<std::io::Error>,
@@ -421,7 +392,7 @@ pub(super) struct UpstreamFailure {
 /// ⚠ 它是从上游选择借给我们的那个 `&Base` 上**现抄**的一份：那个借用活不出上游选择的锁
 /// （`Destinations::resolve` 的契约），而「等响应」那一段在锁外。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Who {
+pub struct Who {
     host: String,
     port: u16,
 }
@@ -437,7 +408,7 @@ impl Who {
 
 /// 传输失败卡在哪一跳。**每一支一句固定文案**，先说结果、再说卡在哪。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum FailedAt {
+pub enum FailedAt {
     /// 连接都没建立起来（拒绝连接 · 名字解析不了 · TLS 握手失败 · 连接超时）。
     Connect,
     /// 连上了，请求没发完连接就断了（先前的 `WriteFailed`，FIX3 起回码）。
@@ -454,7 +425,7 @@ pub(super) enum FailedAt {
 
 impl FailedAt {
     /// 这一跳的那句话。**两句**：结果 · 卡在哪。
-    pub(super) fn words(self) -> (&'static str, &'static str) {
+    pub fn words(self) -> (&'static str, &'static str) {
         match self {
             FailedAt::Connect => (
                 copy_core::copy_static!("beServer.words.cantConnect"),
@@ -486,7 +457,7 @@ impl FailedAt {
 
 impl FailedAt {
     /// 原因头的值（[`REASON_HEADER`]）：每一跳一个 ASCII 短词。
-    pub(super) fn reason(self) -> &'static str {
+    pub fn reason(self) -> &'static str {
         match self {
             FailedAt::Connect => "upstream-connect",
             FailedAt::Send => "upstream-send",
@@ -509,7 +480,7 @@ impl UpstreamFailure {
 
     /// 回哪个码：卡在超时上（底层错误是 `TimedOut` / `WouldBlock`——后者是 socket 读写期限到了的样子）⇒ 504，
     /// 其余上游那侧的失败 ⇒ 502。
-    pub(super) fn status(&self) -> &'static str {
+    pub fn status(&self) -> &'static str {
         let timed_out = self.cause.as_ref().is_some_and(|e| {
             matches!(
                 e.kind(),
@@ -524,7 +495,7 @@ impl UpstreamFailure {
     }
 
     /// 回给下游的那句话。底层错误**不在这里**（见 [`UpstreamFailure`] 头注）。
-    pub(super) fn sentence(&self) -> String {
+    pub fn sentence(&self) -> String {
         let (result, hop) = self.at.words();
         copy_core::copy_text(
             "beServer.sentence.say",
@@ -595,8 +566,8 @@ fn send_upstream(
     }
 }
 
-/// 处理一条下游连接：解析 → 问上游选择 → 连上游 → 逐块透传 + tee。
-pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
+/// 处理一条下游连接：解析 → 问上游选择 → 连上游 → 逐块透传 + tee。后端的接受循环每接下一条就交给它一次。
+pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     down.set_nodelay(true)?;
     // ★★ `阻-3(D3)` 后半段的正主：没有这一句，一条半开连接（只发半个请求头就不动了）
     //    会把这条线程**永久**钉在下面 `read_head` 的读上。
@@ -978,7 +949,7 @@ fn pump<R: Read, W: Write>(
 /// 3. **这一行没有 key 时，一个字节都不动**（`Authorization` / `x-api-key` 全照旧转发）
 ///    —— 订阅登录那一档要的正是这条透传路。
 ///    ⚠ 例外是 `AuthStyle::NoAuth`：它逐字说的就是「一个鉴权头都不发」⇒ 客户端那份也不转发。
-fn render_upstream_request(
+pub fn render_upstream_request(
     head: &RequestHead,
     rest: &str,
     base: &Base,
@@ -1088,7 +1059,3 @@ fn rewrite_response_head(raw: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 #[path = "../../../tests/comms/outward/server_tests.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "../../../tests/comms/outward/observe_retry_tests.rs"]
-mod observe_retry_tests;

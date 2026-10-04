@@ -463,7 +463,7 @@ async fn many_keystrokes_in_flight_still_only_trigger_one_rebuild() {
         let mine = w.search.start();
         let b = w.search.clone();
         let (o, r) = (
-            chan_core::origin::Origin(wired.origin.clone()),
+            comms_inward::origin::Origin(wired.origin.clone()),
             root.clone(),
         );
         let line = wired.line.clone();

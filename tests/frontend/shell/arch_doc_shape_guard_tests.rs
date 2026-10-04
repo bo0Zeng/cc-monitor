@@ -349,7 +349,7 @@ fn every_citation_of_invariant_36_says_which_platform_it_binds() {
         &["rs"],
         &[],
     ));
-    // 本 crate 的通信层成员（`src/comms/inward/`，经 `#[path]` 由上面那棵根顺进来）的单测镜像住 `tests/comms/inward/`。
+    // 通信层面 A 那个 crate（`src/comms/inward/`，人群声明由上面那棵根带进来）的单测住 `tests/comms/inward/`。
     files_src.extend(guard_core::scan_tree_excluding(
         &repo.join("tests/comms/inward"),
         &["rs"],

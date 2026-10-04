@@ -1,34 +1,5 @@
 //! `K-H1` 甲半：**HTTP 中转 · 搬字节**。纯基础设施 —— 它不懂任何 agent 的语义。
 //!
-//! # 🔴 通信层成员 `COMM-LAYER-MEMBER`
-//!
-//! 登记那一侧在 `tests/frontend/shell/comm_boundary_registry_tests.rs::REGISTERED`（两向集合相等）。
-//! 盖上它 = **上锁**：本文件从此被 `C1`–`C5` ＋ `X1`–`X6` 十一条一起管着。
-//!
-//! **凭什么**：本文件装着 `Destination` / `Destinations` / `Mode` / `RouteKey` /
-//! `AuthSwap` —— **那就是中转的契约本体**。归通信层那一列也点名了它。
-//!
-//! ## ⚠ 那道「边界契约文件自己算不算边界成员」的题，裁词逐字记在这里
-//!
-//! 反对的理由只有一条：本文件里有一行 `mod accounts;`，而 `accounts/` 是**上游选择**。
-//! 🔴 **照圈**：那一行是 **Rust 模块树的机械产物** ——
-//! 子模块只能由父模块声明，语言里没有第二种写法。
-//! ⇒ **让一行语言层面的声明去否决一份文件的架构归属，是让语言产物驱动架构裁决。不办。**
-//!
-//! ⚠ **那一行已经不在了**：上游选择搬到了 `src/backend/accounts/`
-//! （用户逐字「中转层不要有账号, 账号就账号中转就中转」），本文件一行 `mod accounts;` 都没有了。
-//! 上面那段裁词照原样留着 —— 它记的是那一天为什么照圈，不是今天的状态。
-//! 今天钉「中转层里没有账号」的是 `upstream_selection_guard`（㈡ ㈢ 零命中）。
-//!
-//! ## 🔴 而它配了一条硬判据：**成员资格不沿模块树往下传**
-//!
-//! 成员资格说的是「**这份文件里的代码**属于中转」，**不是**「这份文件的模块子树都属于中转」。
-//! 没有这一条，「圈本文件」在语义上就等于把上游选择一起圈进来 —— 那正是 `C2` 存在的理由，
-//! 而 `C1`（公开面不许命名业务概念）在 `accounts/` 那一族上会当场破。
-//! ⇒ 判据住 `comm_boundary_registry_tests` 的锚那一条里
-//! （`assert_membership_does_not_inherit_down_the_module_tree`，两向 ＋ 零命中形态）：
-//! `accounts/**` 里**一份都不许**自称成员，成员集合与 `accounts/**` 的交集必须为空。
-//!
 //! # 🔴 常驻后端这**一个进程同时承载中转与上游选择**，而两者的判断口必须分开
 //!
 //! 〔第五条 🔴〕
@@ -152,120 +123,32 @@
 //!   ②「换头」是**下一件**的活，而 `K11 裁定一` 自己写着硬前置，逐字「**没有那条新判据之前，
 //!   不许把 key 接进中转**」。逐条订正住 `server.rs::render_upstream_request` 的头注。
 
-//! # 边界：这一层许引什么、不许引什么（`K-G4` 09-02，铁律 14）
+//! # 边界：中转认识谁
 //!
-//! ⚠ 先说清**这一节不是什么**：`K-H1` 把 `relay/` 立起来时，
-//! 「谁能引谁」这件事**一条判据都没有** —— 开工前现打
-//! `grep -c relay ../../../tests/backend/layering_guard.rs` = **0**。这与 `KY5` 头注治过的是同一族病
-//!（新立一层而分层护栏没跟上），**同区第二次**。这一节配的判据住
-//! `layering_guard.rs`，三条：`relay_layer_must_not_reference_the_semantic_layers` ·
-//! `no_layer_may_reach_into_relay_internals` · `relay_and_plugin_must_not_reference_each_other`。
-//!
-//! ## 不许引（三条，零容忍）
-//!
-//! | 不许引 | 为什么 |
-//! |---|---|
-//! | `crate::observe::…` | 中转**搬字节、不读世界**。观测面一旦被它认识，「一个进程服务 N 个会话」就会退化成「转发路上顺手替某个会话查点东西」 |
-//! | `crate::control::…` | 中转**不改变世界**（除了把字节递过去）。认识控制面 = 在 HTTP 处理线程上开一条「顺手 kill / launch」的门 |
-//! | `crate::agents::…` | 本文件第一句逐字写着「**它不懂任何 agent 的语义**」。中转要的东西都由宿主递进来（`host(get, startup, tap)`：取值器 · 上游选择那只手 · tap 口），不去 `agents/` 里问 |
-//! | `crate::plugin::…` | 与调用口是**两条互不相干的基础设施**。中转认识它 = HTTP 线程上长出一条起进程的路（★ 这一格括号里原先那半句是假的，订正见表下） |
-//!
-//! ★ **订正**（`K-R31` `D5⑵`，09-06 现打）：最后一格括号里原先写的是
-//! 「**全 crate 唯一起进程口就在那儿**」—— **那是假的**。
-//! 现打（基点 `6f7ab21`，`git grep -n 'Command::new' -- 'src/backend/*.rs'`）：
-//! 本 crate 的 `src/` 里 `Command::new` 共 **55 行 / 15 份文件**，而 `plugin/invoke.rs`
-//! **只占 1 行**。反例逐行读过，随手四个（**点符号不点行号**，行号下一轮就变成假话）：
-//! `control/kill.rs::run` 里逐字 `let out = Command::new("tmux")` ·
-//! `control/launch.rs::tmux` 里逐字 `match Command::new("tmux")` ·
-//! `observe/tmux_observe.rs::run_tmux_ls` 与 `observe/tmux_observe.rs::query_tmux_server` 里逐字
-//! `std::process::Command::new("sh")`。**「唯一」一个反例就倒。**
-//! ⚠ **这个 55 没拆生产段与测试段**（15 份里有 3 份是守卫与夹具：`readonly_guard.rs` 9 ·
-//! `no_timer_guard.rs` 3 · `plugin_walk_fixture.rs` 1，合计 13 行）——
-//! **要往下用这个数就得先拆，本条不拆**；上面那句「唯一是假的」不依赖拆不拆，
-//! 因为那四个反例都住生产模块、都是逐行读过的真调用。
-//!
-//! 🔴 **倒的是理由，不是规矩**：这一格「中转不许认识 `crate::plugin::`」**今天仍成立**，
-//! 它靠的是**分层**（中转搬字节、不读世界、不改变世界 —— 与上面三格同一条理由），
-//! **不是**「就那一处起进程」。别把理由和规矩一起改掉。
-//!
-//! ⚠ **本条只治文字，一条判据都没配** —— 把这几句改回原样**不会红**：
-//! `layering_guard` 那三条断的是「**引没引**」，不是「注释里的理由**对不对**」。
-//!
-//! ## 许引
-//!
-//! `crate::common::…` · `crate::platform::…` · `crate::stream::wire`（通用面），
-//! 以及标准库与本层内部模块。**其余一律走入参**（`E6`）—— `host` 的取值器 `get` 就是活标本（中转要读哪个变量都经它）。
-//!
-//! ## 反过来：**别处不许伸手进来**
-//!
-//! 本层对外的口**逐条登记**（`layering_guard::RELAY_EXPORTS`，两向相等）：进程内起中转的入口 `host` ·
-//! 给上游选择的两样契约件 · 「我们的中转在不在听」那一问。`--relay` 的入口与帧面 `relay-*` 那两个处理器随那一族删了。
-//! `crate::relay::server::…` / `crate::relay::upstream::…` 这类**一条都不许**：
-//! 一旦有人这么引，中转的内部结构就变成了公共契约，之后 `upstream.rs` 想换形状都得先问一圈。
-//! （路由表不在本层 —— 它是上游选择的，住 `accounts::upstream_select::table`。）
-//! 真要新开口子 ⇒ 加在那一行旁边，并在 `layering_guard` 里配一张**非空**登记表。
-//!
-//! ## 🔴 诚实边界：这三条钉的是 **import 图**，不是**运行期调用图**
-//!
-//! - 反射式 / 字符串式的耦合它**一概看不见** —— 环境变量名、子命令字面量、
-//!   起进程时递过去的那串 argv、路径约定：这些都能让两层在运行期咬死，
-//!   而 import 图上干干净净。
-//!   ⚠ 上一行**刻意不写出标准库那个起进程类型的字面名字**：本层内外好几条护栏是
-//!   **子串扫描**，把它原样写进注释是在给自己的文档挖坑（本文件 `㈠` 那一节
-//!   记着同一个坑的第一次：写这份注释的第一版就是那么红的）。
-//! - 更曲折的间接（把符号先 `pub use` 到第三个模块再引）也扫不到
-//!   （`refs_to_layer` 头注逐字登记了这一条）。
-//! - **测试段不受管**（判据扫的是 `production_code`）。这是**有意**的：分层是生产架构的性质（子进程入口那类夹具可以伸手）。
-//! - 判据的人群是**层目录**：`src/` 顶层那几个文件（`main.rs` · `listen.rs` · `wire.rs`）
-//!   伸手进 `relay::upstream::…` 这一形，**今天没有判据挡着**（`mod relay;` 声明在 `main.rs`，
-//!   它写的是**裸** `relay::…`，锚点对不上）。如实登记，别读成「全体没有」。
+//! 中转是一个独立的 crate，普通依赖只有 `copy-core` · `relay-route-core` · `upstream-url-core` · `rustls` · `webpki-roots`
+//! （边界判据按依赖图判，第一方业务 crate 一个都不许出现）⇒ 后端的观测面 · 控制面 · 适配层 · 调用口它在编译期就够不着。
+//! 它要的东西都由宿主递进来（`Relay::new`：上游选择那只手 · 钥匙 · tee 落点 · 两个期限值）。
+//! 对外的口就是本文件里 `pub` 的那几样，逐条登记在后端 `layering_guard::RELAY_EXPORTS`（两向相等）。
 
-// ── 上游选择**不在这里**：它住 `src/backend/accounts/`（2026-09-24 搬出去的，用户逐字
-//    「中转层不要有账号, 账号就账号中转就中转」）。本目录里一行 `mod accounts;` 都没有了。
-// 「中转层里没有账号」：四条两向集合相等（残留表已清空 ⇒ 零命中形态）
-#[cfg(test)]
-#[path = "../../../tests/backend/relay/upstream_selection_guard.rs"]
-mod upstream_selection_guard;
-// ── 中转 · 搬字节那半 ────────────────────────────────────────────────────────
-#[cfg(test)]
-#[path = "../../../tests/backend/relay/bind_guard.rs"]
-mod bind_guard; // `DoD-4㈠`：零命中守卫单住一个文件（理由见它的头注）
-#[cfg(test)]
-#[path = "../../../tests/backend/relay/creds_guard.rs"]
-mod creds_guard; // `K-H2a` `KS2`/`KS4`：明文出口恰好一处 · 记日志走白名单（整体 #[cfg(test)]）
-#[path = "../../backend/relay/door.rs"] // 非成员：住后端中转宿主目录 `src/backend/relay/`
-mod door; // 中转口的门：钥匙住哪 · 谁铸 · 进门三问（Origin / Host / 钥匙）
-mod framer; //：`relay/` 里唯一的增量分帧器（游标，不 drain）—— `tee.rs` 与 `http1.rs` 是它的两个客户
+// 上游选择不在这里：它住后端 `src/backend/accounts/`（用户逐字「中转层不要有账号, 账号就账号中转就中转」）。
+// 绑口 · 在途上界 · 两个期限值 · 钥匙落盘也不在这里：都归后端（`src/backend/relay/`），中转只收它交下来的。
+mod door; // 中转口的门：钥匙的形状 · 进门三问（Origin / Host / 钥匙）· 定长比对
+mod framer; // 唯一的增量分帧器（游标，不 drain）—— `tee.rs` 与 `http1.rs` 是它的两个客户
 mod http1;
-#[path = "../../backend/relay/listen.rs"] // 非成员，同上
-mod listen; //：监听面 —— bind / accept / 在途上界 / 起监听之前的接线
 mod route;
-// `nodelay_guard`（Nagle 零命中的源码扫描）退役删了：「两个方向都真的关了 Nagle」
-//   由行为格 `server_tests.rs::both_directions_really_disable_nagle_on_the_socket`（`getsockopt` 背书）判。
-mod server; // 要的名字是 `exchange.rs`；改不了名的理由整段写在它的头注里
-#[cfg(test)]
-#[path = "../../../tests/backend/relay/table_guard.rs"]
-mod table_guard; // `K-H2` `KH1`：决定点那几条腿（焊接点 · 开上游连接点 · 中转无默认上游）
+mod server; // 一条下游连接的一来一回（解析 → 问上游选择 → 连上游 → 逐块透传 ＋ tee）
 mod tee;
 mod upstream;
-#[cfg(test)]
-#[path = "../../../tests/backend/relay/wire_golden.rs"]
-mod wire_golden; // –3：「零行为变化」的字节金标准（三条线各一份手写期望）
 
-/// 中转的入口（常驻后端进程内起）。**上游选择那只手由调用方递进来**（`accounts::upstream_select::host_relay`）——
-/// 本层叫不出它的名字（`upstream_selection_guard` ㈢ 零命中）。
-pub(crate) use listen::{host, ENV_PORT};
+/// 后端起中转那一侧用的：钥匙由后端读好交进来（[`Key`]）· 一条连接交给 [`serve_one`] ·
+/// 在途满了由后端回一声 [`refuse_busy`] · 接下连接先装下游期限（[`apply_downstream_deadline`]，值由后端给）。
+pub use door::{tokens_match, Key};
+pub use server::{apply_downstream_deadline, refuse_busy, serve_one, Relay};
 
-/// tee 的第二个落点的口与它交出去的那件事（宿主 `crate::stream::tap` 实现口、把事件转成 `tap` 帧）。
+/// tee 的第二个落点的口与它交出去的那件事（宿主 `stream::tap` 实现口、把事件转成 `tap` 帧）；
+/// [`TeeSink`] 是中转手里那个落点（后端起中转时用 `TeeSink::to_port` 把口交进来）。
 /// 字段语义与「位置号原位说缺口」住 `tee.rs` 头注「第二个落点」。
-pub(crate) use tee::{TapBody, TapEvent, TapPort};
-
-/// 「这台机器上我们的中转在不在听」—— 上游选择出成品时问它（`apikey-routing` · `relay-optin` · 别名预览）。
-/// 只收端口、只回布尔。对外口的全集由 `layering_guard` 那张登记表两向钉着。
-pub(crate) use listen::our_relay_listening;
-
-/// 「把这台的钥匙插进这条地址」—— 上游选择出「直接敲的也走中转」那一段（`relay-optin`）时用。只交插好的地址，不交钥匙本身。
-pub(crate) use door::keyed_with_key_on_disk;
+pub use tee::{TapBody, TapEvent, TapPort, TeeSink};
 
 // ══════════════════════════════════════════════════════════════════════════
 //  层间契约—— 中转问一句，上游选择答一句，**中转不做任何判断**
@@ -273,10 +156,10 @@ pub(crate) use door::keyed_with_key_on_disk;
 
 /// 「这一段当得了路由段吗」—— 上游选择装表时判账号 id 用的与本层切键用的是**同一个谓词**
 /// （`route.rs` 头注逐字论证过为什么不许各写一份）。同上，经这里交出去。
-pub(crate) use route::segment_is_safe;
+pub use route::segment_is_safe;
 /// 中转的**传输原语**：一行的上游是什么。上游选择解析它、焊进行里、原样交回（`Destination` 带着它）。
 /// ⚠ 它**经这里**交给上游选择（`upstream` 模块本身仍是私有的）—— 契约面上的每一样都住这个文件。
-pub(crate) use upstream::{fetch, Base, Fetched};
+pub use upstream::{fetch, Base, Fetched};
 
 /// 两个前缀 = 两种模式（「为什么用两个前缀而不是一个哨兵段」）。
 ///
@@ -285,7 +168,7 @@ pub(crate) use upstream::{fetch, Base, Fetched};
 /// **一次账号段打字错误**就会从「该代入却没代入（loud 404）」变成
 /// 「静默用了下游自己的凭据」—— 那正是 `KH2` 在治的病的镜像。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Mode {
+pub enum Mode {
     /// `/s/` —— 代入模式：表里必须有这一行，没有就是 404。
     Substitute,
     /// `/t/` —— 直通模式：中转**永不**代入 auth。
@@ -302,9 +185,9 @@ pub(crate) enum Mode {
 /// ⇒ （搬字节那层不许出现业务词）**一字不改、豁免仍为零、能力零损失**。
 /// 原先那个签名 `resolve(mode, agent, account)` 必然命中 `C1`。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RouteKey {
-    pub(crate) seg1: String,
-    pub(crate) seg2: String,
+pub struct RouteKey {
+    pub seg1: String,
+    pub seg2: String,
 }
 
 /// tee 那条流的身份：**一个流标签**。**不用业务名、不带路由键**（① 不问账号）——
@@ -347,11 +230,11 @@ pub(crate) struct StreamId<'a> {
 /// - **不买「`clear` 真的是全集」** —— 那由上游选择那侧的判据钉（射程不许缩那一条）。
 ///   本类型只保证**中转没有第二处可以自己凑一份名单**。
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct AuthSwap<'a> {
+pub struct AuthSwap<'a> {
     /// 换头前要整条丢掉的下游头名（**全集**，比对走 `eq_ignore_ascii_case`）。
-    pub(crate) clear: &'a [&'static str],
+    pub clear: &'a [&'static str],
     /// 这一趟要写的那一条：`(头名, 完整头值)`。`None` = 剥掉之后一个头都不写。
-    pub(crate) write: Option<(&'static str, &'a str)>,
+    pub write: Option<(&'static str, &'a str)>,
 }
 
 /// 上游选择给中转的答案。**中转拿到就照做**。
@@ -359,7 +242,7 @@ pub(crate) struct AuthSwap<'a> {
 /// ⚠ 借用形（`&Base` / [`AuthSwap`] 里那个 `&str`）而不是按值 —— 理由整段写在
 /// [`Destinations::resolve`] 的头注里（明文那个串是上游选择在自己的锁里现拼的，
 /// 按值返回就得把它 `String` 化一份带出来 —— 那是**多一份明文**，不是搬家）。
-pub(crate) enum Destination<'a> {
+pub enum Destination<'a> {
     /// 发到这个上游，**下游送来的 auth 头原样转发**。中转手里没有任何 key。
     ///
     /// `tag`：上游选择给这个去处贴的不透明标签；中转不解读，回包头到了交 [`Destinations::observe`] 时原样递回
@@ -397,25 +280,25 @@ pub(crate) enum Destination<'a> {
 
 /// 这一发请求里中转交给上游选择看的那几样（只读）：流标签 ＋ 整份请求体。
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Ask<'a> {
+pub struct Ask<'a> {
     /// 请求头里取出的流标签（[`Destinations::stream_label_headers`]）；没有 ⇒ 空串。
-    pub(crate) label: &'a str,
+    pub label: &'a str,
     /// 下游送来的整份请求体（中转先收全了才问去处）。
-    pub(crate) body: &'a [u8],
+    pub body: &'a [u8],
 }
 
 /// 上游回包头读完那一刻中转手里的东西。
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Heard<'a> {
+pub struct Heard<'a> {
     /// 答的那个去处的标签（[`Destination::Passthrough::tag`] 原样）。
-    pub(crate) tag: &'a str,
+    pub tag: &'a str,
     /// 状态行里的三位数字；读不出 ⇒ 0。
-    pub(crate) status: u16,
-    pub(crate) headers: &'a [(String, String)],
+    pub status: u16,
+    pub headers: &'a [(String, String)],
 }
 
 /// 上游选择对中转的**唯一**一个口。
-pub(crate) trait Destinations: Send + Sync {
+pub trait Destinations: Send + Sync {
     /// 上游选择自己把 `seg1`/`seg2` 读成 agent 与账号 —— 那两个词只出现在它的实现里。
     ///
     /// # ⚠ 与那段伪码的**一处形状差异**，理由写死在这里
@@ -475,7 +358,7 @@ pub(crate) trait Destinations: Send + Sync {
 /// ⚠ 两步而不是一步，是**顺序**逼的（`listen::run_with` 头注那两条退 2）：
 /// 配置读不懂要在**绑端口之前**就退（一个字节都不监听）；而装表要在**绑端口之后**
 /// （否则端口起不来那条支会先把与它不相干的东西印出来）。
-pub(crate) trait Startup: Sync {
+pub trait Startup: Sync {
     /// 起监听**之前**：拿这份取值器验上游选择自己的配置。认不出 ⇒ `None` ⇒ 中转出声并退 2。
     ///
     /// ⚠ 取值器是**注入的**，中转原样递过来：上游选择要读哪几个变量，中转连名字都不知道。
@@ -483,11 +366,39 @@ pub(crate) trait Startup: Sync {
 }
 
 /// [`Startup::check`] 过了之后手里那一份。
-pub(crate) trait Ready {
+pub trait Ready {
     /// 起监听**之后**、进接受循环**之前**：装好、把该说的话说到 `out`，交出 [`Destinations`]。
     fn into_destinations(
         self: Box<Self>,
         get: &dyn Fn(&str) -> Option<String>,
         out: &mut dyn std::io::Write,
     ) -> std::sync::Arc<dyn Destinations>;
+}
+
+/// 后端那几条组合判据（真中转 ＋ 生产段的上游选择 / tap / 内存探针）要够到的内部件。
+/// 只由后端的测试档开（`test-support`），发布构建里没有这一块。
+#[cfg(feature = "test-support")]
+#[doc(hidden)]
+pub mod test_support {
+    pub mod door {
+        pub use crate::door::*;
+    }
+    pub mod framer {
+        pub use crate::framer::*;
+    }
+    pub mod http1 {
+        pub use crate::http1::*;
+    }
+    pub mod route {
+        pub use crate::route::*;
+    }
+    pub mod server {
+        pub use crate::server::*;
+    }
+    pub mod tee {
+        pub use crate::tee::*;
+    }
+    pub mod upstream {
+        pub use crate::upstream::*;
+    }
 }

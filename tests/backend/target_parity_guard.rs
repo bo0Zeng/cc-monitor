@@ -547,7 +547,7 @@ fn backend_tree() -> Tree {
     guard_core::scan_tree!(&root, &["rs"])
         .into_iter()
         .map(|(p, raw)| {
-            // 顺着 `#[path]` 收进来的（面 B 成员住 `src/comms/outward/`）按模块住址认。
+            // 人群声明带进来的中转 crate（`src/comms/outward/`）按模块住址认（`comms-outward/…`）。
             let rel = guard_core::module_address(&root, &p);
             (rel, guard_core::production_code(&raw))
         })

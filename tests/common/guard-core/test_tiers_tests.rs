@@ -106,7 +106,9 @@ const UNIT: &[&str] = &[
     "tests/backend/plugin/probe_tests.rs",
     // 集成 → 单元：真起进程的那几条（可打断的等法）随代码全景删了，剩下的只喂纯函数。
     "tests/backend/plugin/invoke_tests.rs",
+    "tests/comms/outward/door_tests.rs",
     "tests/comms/outward/http1_tests.rs",
+    "tests/backend/relay/member_tests.rs",
     "tests/comms/outward/route_tests.rs", // 跨半边抠 monitor 源码那几条退役 ⇒ 只剩纯解析 ＋ 成品→决策表（SCAN → UNIT）
     "tests/comms/outward/tee_tests.rs",
     "tests/comms/outward/upstream_tests.rs",
@@ -151,6 +153,7 @@ const UNIT: &[&str] = &[
     // `session_map_f13_tests.rs` 与 `session_map_linux_liveness.rs` 随 monitor 自己那份本机判活删了。
     "tests/frontend/shell/sftp_pool_tests.rs",
     "tests/comms/inward/ssh_link_tests.rs",
+    "tests/comms/inward/backend_route_tests.rs",
     "tests/frontend/shell/stream_source/batcher_tests.rs",
     "tests/frontend/shell/stream_source/seam_tests.rs",
     "tests/frontend/shell/stream_source/snapshot_tail_tests.rs",
@@ -361,7 +364,7 @@ const SCAN: &[&str] = &[
     // `tests/frontend/shell/agent_profile_parity_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
     "tests/frontend/shell/backend_control_tests.rs",
     "tests/frontend/shell/backend_kill_tests.rs", // 挂载点从 `backend_kill.rs` 换成 `backend/control/mod.rs`（发送端删了，判据留着）；同拍 `backend_launch_tests.rs` / `backend_send_keys_tests.rs` 随发送端删掉、摘了
-    "tests/comms/inward/backend_route_tests.rs",
+    "tests/frontend/shell/backend_route_senders_tests.rs",
     "tests/backend/control/launch_render/ccm_invocation_tests.rs",
     "tests/frontend/shell/frame_query_tests.rs",
     "tests/frontend/shell/inbound_client_tests.rs",
@@ -637,11 +640,12 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/plugin_walk_fixture.rs",
     "tests/backend/faces/read_face_tests.rs",
     // 〔MG1 合 RK1〕中转口的门（403 / 421）：铺真钥匙文件、起真监听 ⇒ 判别器判集成层。
-    "tests/backend/relay/door_tests.rs",
+    "tests/backend/relay/key_tests.rs",
     "tests/backend/relay/host_tests.rs",
     "tests/comms/outward/server_tests.rs",
     // 中转的 `observe` / `retry` 口走到账号域那一头：真中转 ＋ 生产段的上游选择 ＋ 按鉴权头作答的假上游。
-    "tests/comms/outward/observe_retry_tests.rs",
+    "tests/backend/relay/observe_retry_tests.rs",
+    "tests/backend/relay/server_tests.rs",
     // 订阅号令牌：对一个回环上的假令牌端点续期、加锁、整份原子写回（真起监听 ＋ 临时目录）。
     "tests/backend/accounts/oauth/oauth_tests.rs",
     // 额度账：按号记账 · 落盘 · 读帧（临时目录里真写 `quota.json`）。
@@ -870,9 +874,9 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/backend/stderr_log_tests.rs", needle: "stderr_log::tests::stderr_log_child_entry_point" },
     ),
     (
-        "tests/comms/outward/server_tests.rs",
+        "tests/backend/relay/server_tests.rs",
         "relay_child_process_entry_point",
-        Trigger::Filter { by: "tests/comms/outward/server_tests.rs", needle: "relay::server::tests::relay_child_process_entry_point" },
+        Trigger::Filter { by: "tests/backend/relay/server_tests.rs", needle: "relay::server_tests::relay_child_process_entry_point" },
     ),
     (
         "tests/frontend/shell/local_backend_tests.rs",
@@ -1660,8 +1664,8 @@ fn module_path(
             return Some(segs.join("::"));
         }
     }
-    // 住在「被 `#[path]` 挂进来的 `mod.rs`」那一层目录里、由它隐式声明的子模块（`src/comms/outward/server.rs`
-    //   ← `mod.rs` 的 `mod server;`，而那份 `mod.rs` 由 `src/backend/lib.rs` 挂成 `relay`）。
+    // 住在「被 `#[path]` 挂进来的 `mod.rs`」那一层目录里、由它隐式声明的子模块（`x/y.rs` ← `x/mod.rs` 的 `mod y;`，
+    //   而那份 `mod.rs` 由别处挂进来）。
     if !mounts.contains_key(rel) {
         let (dir, file) = rel.rsplit_once('/')?;
         let mod_rs = format!("{dir}/mod.rs");
@@ -1890,8 +1894,8 @@ fn unit_tier_every_file_is_reached_by_its_runner() {
 
 /// 一个「根」函数名 ⇒ 它在那一侧指向的仓根相对目录。按文件所在的树分两侧（两个 crate 的 `guard_support` 语义不同）。
 fn root_fn_base(rel: &str, fname: &str) -> Option<&'static str> {
-    // `tests/comms/outward/` 由后端 crate 挂载 ⇒ 它的 `guard_support` 是后端那一份。
-    let backend = under(rel, "tests/backend/") || under(rel, "tests/comms/outward/");
+    // 后端 crate 挂载的那棵（`tests/comms/` 由通信层两个 crate 自己挂载，它们没有 `guard_support`）。
+    let backend = under(rel, "tests/backend/");
     // 文件窗口独立成包：它的判据由窗口包挂载 ⇒ `guard_support` 是窗口包那一份（三个根）。
     if under(rel, "tests/frontend/filewin/") {
         return match fname {
@@ -1910,9 +1914,10 @@ fn root_fn_base(rel: &str, fname: &str) -> Option<&'static str> {
         (false, "repo_src_root") => Some("src"),
         (true, "tests_root") => Some("tests/backend"),
         (true, "src_root") => Some("src/backend"),
-        // 后端那一侧新立的两个根（面 B 成员与它们的单测镜像）。
+        // 后端那一侧的三个根：中转 crate · 它的单测 · 后端里中转的宿主。
         (true, "relay_root") => Some("src/comms/outward"),
         (true, "comms_tests_root") => Some("tests/comms/outward"),
+        (true, "relay_host_root") => Some("src/backend/relay"),
         _ => None,
     }
 }
@@ -1936,6 +1941,7 @@ fn root_anchored_literals(rel: &str, raw: &str) -> Vec<(usize, String, String)> 
         "repo_src_root",
         "relay_root",
         "comms_tests_root",
+        "relay_host_root",
     ];
     // 本文件自己定义的同名根函数：函数体（定义行起 5 行）里转调的正是 `guard_support::<同名>()`
     // ⇒ 语义与共享那个相同，照认（本仓 25 份文件是这一形）；否则 ⇒ 语义是本地的 ⇒ 不认。

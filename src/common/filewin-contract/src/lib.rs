@@ -46,7 +46,7 @@ pub struct OpenRequest {
     /// 开窗就高亮这一行（`None` = 不高亮）。
     pub reveal: Option<String>,
     /// 🔴窗口进程拿它拨回 monitor 那个通道口（`chan::dial::dial`）。
-    pub handoff: chan_core::chan::handoff::Handoff,
+    pub handoff: comms_inward::chan::handoff::Handoff,
     /// 书签文件的全路径（monitor 算好：它住 monitor 的数据目录）。
     /// `None` ＝ 数据目录解不出来 ⇒ 窗口的书签栏上出声，不静默不画。
     pub bookmarks: Option<std::path::PathBuf>,

@@ -3214,7 +3214,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "write_key_at",
             1,
         ),
-        ("tests/comms/outward/server_tests.rs", "write_key_at", 1),
+        ("tests/backend/relay/server_tests.rs", "write_key_at", 1),
         (
             "tests/backend/accounts/upstream_select/file_face_tests.rs",
             "a_program_write_keeps_everything_the_human_put_there",
@@ -3536,11 +3536,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/frontend/shell/README.md", "is_safe_remote_jsonl", 1),
         ("src/frontend/shell/src/sftp.rs", "is_safe_remote_jsonl", 1),
         ("src/doc/INVARIANTS.md", "is_safe_remote_jsonl", 1),
-        (
-            "tests/frontend/shell/comm_boundary_registry_tests.rs",
-            "is_safe_remote_jsonl",
-            1,
-        ),
         (
             "src/backend/assets/aliases/block.rs",
             "atomic_write_string",
@@ -4822,7 +4817,7 @@ fn every_prose_tombstone_mark_is_registered() {
             "tests/backend/accounts/upstream_select/file_face_tests.rs",
             6,
         ),
-        ("tests/comms/outward/server_tests.rs", 1), // 2 → 1：点载荷那一侧旧判据名的那块随中转地址改由 `ccm` 定走了 // 1 → 2
+        ("tests/backend/relay/server_tests.rs", 1), // 2 → 1：点载荷那一侧旧判据名的那块随中转地址改由 `ccm` 定走了 // 1 → 2
         ("tests/frontend/shell/creds_store_tests.rs", 11), // 2 → 11：明文逐跳那一条 · 说不出 id 那一条 · `brace_block` 退役，原处与点它们的散文挂墓碑
         // `jsonl-line` / `jsonl-batch` 退役：头注点旧载荷名一块 · 独立窗口入口头注点旧定向重放命令一块 ·
         //   状态消费者矩阵那一行一块。
@@ -4977,7 +4972,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   （「26 万字节排一帧 16.3 ms」是 debug 档 ＋ 全新 Context 的第一帧；release 是 2.5 ms）。
         //   按本表的口径它是墓碑：**不删那段话**，但挂上标记、登记在册。
         ("src/frontend/filewin/src/editor.rs", 3), // 1 → 3（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
-        ("tests/frontend/shell/comm_boundary_registry_tests.rs", 3), // +2：sftp.rs 那一行的阻塞随 F11 清空 · 头注里那个公开名字
+        ("tests/frontend/shell/comm_boundary_registry_tests.rs", 1), // 3 → 1：登记表头注那个公开名字与「全绿待裁」那块墓碑随成员改由 crate 定义删了
         ("tests/common/guard-core/lib_tests.rs", 1),
         ("tests/frontend/shell/doc_claim_registry_tests.rs", 3), // +1：U8c-2b-0 量法原先读的 `stream_source` 转调壳删了，点旧名的散文挂墓碑 // +1：本机一次性 exec / 任务行解释 / 分叉 exec 那几条路删了，点旧名的散文挂墓碑
         ("tests/frontend/shell/filewin/entry_tests.rs", 2), // 〔09-28 裁 3〕1 → 2：旧名那一块随两条判据退役，新贴两块点它们
@@ -5057,7 +5052,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   （旧叫法本身不是 snake_case 死名，不进 `TOMBSTONED`；命名判据 `account-vs-relay-naming` 的「上游选择」改名那张表按这块标记放行这两行）。
         // +1：上游选择自己那张每 agent 默认上游表（`AGENT_UPSTREAMS`）搬回适配层，原处留一块说去向。
         ("src/backend/accounts/upstream_select/mod.rs", 3), // 4 → 3：点载荷那一层旧决策表住址的那块随起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了）走了
-        ("src/comms/outward/mod.rs", 1),
+        ("src/comms/outward/lib.rs", 1),
         // `src/frontend/shell/src/subagent.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
         ("src/backend/footprint/registry.rs", 9), // 账号库收进后端：10 → 9（那段更正里点旧工具探测函数的墓碑随那段改写走了）// 11 → 10：Claude 布局那一半搬进适配层，带走一块（`IndirectWrite` 那条 `~/.cc-bus/` note） // 10 → 11：头注点当年那条部署命令 // // 6 → 10：本机 `ccm` 载体的来源 / 头注里点副本与 shim 旧名处（四块） //, // 5 → 6：点 `is_safe_remote_backend_path`（卸载守卫随固定落点删了） // +1：远端 acct-iso 探测旧名 // +1：点 `build_online_cmd` 的那句原靠 monitor 驾驶舱那份墓碑兜着，那份删了，就地补标 // +2：`IndirectWrite` 那一档与 `~/.cc-bus/` 那条 note 点的写面旧命令名（写面迁到界面） // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         ("tests/frontend/shell/exec_site_registry_tests.rs", 5), // 跑出来 5（两路各给远端 `ccm` 探针那两句挂了墓碑，合并取主线那两句；另两处是 MIG-3b 点旧名处） // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑 // 1 → 3
@@ -5077,7 +5072,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/ui/cc-bus-control.ts", 4), // +3：TS 副本 `isValidBusId` / `refuseBadId` 删了（原处一行两块）· `checkSpawnShape` 头注点它一块
         // `backend/mod.rs` 那一行摘了：随 `backend` 目录删了。
         ("src/frontend/ui/views/pane-preview.ts", 1),
-        ("tests/comms/inward/backend_route_tests.rs", 8), // 9 → 8：全景发送端那一行的墓碑随代码全景整条摘掉删了 // 8 → 9：足迹发送端那一行删了、留墓碑 // 7 → 8：全景发送端那一行删了、留墓碑 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 6 → 7 // +1：`apikey_remote`整删，发送端表摘掉那一行处一块挂墓碑 // +1：发送端表摘掉 `mcp_sync.rs` 那一行处一块 // // +1：SENDERS 头三行（三个发送端）摘掉的那一块
+        ("tests/frontend/shell/backend_route_senders_tests.rs", 8), // 9 → 8：全景发送端那一行的墓碑随代码全景整条摘掉删了 // 8 → 9：足迹发送端那一行删了、留墓碑 // 7 → 8：全景发送端那一行删了、留墓碑 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 6 → 7 // +1：`apikey_remote`整删，发送端表摘掉那一行处一块挂墓碑 // +1：发送端表摘掉 `mcp_sync.rs` 那一行处一块 // // +1：SENDERS 头三行（三个发送端）摘掉的那一块
         // 杀会话 · 送键 · 就地 resume 三条迁到界面：调用方头注 / 注释里点旧命令名的地方各一块。
         ("src/frontend/ui/account-restart.ts", 2),
         // `launch-cli-wire.ts` · `remote-launch-run.ts` 两行摘了：两份重写成只问那一行 `ccm …`，讲旧 TS 判定来历的墓碑随起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了）走了。
@@ -5106,7 +5101,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   creds_store_tests.rs 里读侧三态那条判据头注那一处（点当年 monitor 的写口）—— 两处的净数已算在上面。
         ("src/backend/accounts/upstream_select/file_face.rs", 2), // 新贴：上游选择那半从 monitor 搬走时留下的墓碑
         ("src/frontend/shell/Cargo.toml", 1), // 新贴：上游选择那半从 monitor 搬走时留下的墓碑
-        ("tests/comms/outward/route_tests.rs", 1), // 新贴：上游选择那半从 monitor 搬走时留下的墓碑
+        ("tests/backend/relay/member_tests.rs", 1), // 新贴：上游选择那半从 monitor 搬走时留下的墓碑
         // `launch_render/payload_tests.rs` 那一行随文件删了（起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了））。
         ("tests/frontend/shell/local_backend_host_tests.rs", 8), // 主线 3 ＋ MIG-1 本路增量 ⇒ 8（盘上现打） // 新贴：上游选择那半从 monitor 搬走时留下的墓碑 // 1 → 3
         // 本机四个一次性 exec 改走 `<local>` 长连接（`local_query` 一族删、monitor 侧 `observe/` 删）·

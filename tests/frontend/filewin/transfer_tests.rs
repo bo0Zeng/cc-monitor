@@ -665,17 +665,17 @@ impl Drop for DropMark {
     }
 }
 
-impl chan_core::chan::router::Backends for XferHost {
+impl comms_inward::chan::router::Backends for XferHost {
     fn call(
         &self,
-        _origin: chan_core::chan::wire::Origin,
-        op: chan_core::chan::wire::Op,
-        payload: chan_core::chan::wire::Body,
+        _origin: comms_inward::chan::wire::Origin,
+        op: comms_inward::chan::wire::Op,
+        payload: comms_inward::chan::wire::Body,
         _left: std::time::Duration,
-        _cancel: chan_core::chan::wire::CancelToken,
+        _cancel: comms_inward::chan::wire::CancelToken,
     ) -> futures::future::BoxFuture<
         'static,
-        Result<chan_core::chan::wire::Body, chan_core::chan::wire::CallError>,
+        Result<comms_inward::chan::wire::Body, comms_inward::chan::wire::CallError>,
     > {
         let args: serde_json::Value = serde_json::from_slice(&payload.0).unwrap_or_default();
         self.log.lock().unwrap().push((op.0.clone(), args));
@@ -690,8 +690,8 @@ impl chan_core::chan::router::Backends for XferHost {
                 }))
                 .unwrap_or_default();
                 return Box::pin(async move {
-                    Err(chan_core::chan::wire::err_from_wire(
-                        chan_core::chan::wire::WireErr::Refused,
+                    Err(comms_inward::chan::wire::err_from_wire(
+                        comms_inward::chan::wire::WireErr::Refused,
                         body,
                     ))
                 });
@@ -703,7 +703,7 @@ impl chan_core::chan::router::Backends for XferHost {
             _ => serde_json::json!({ "path": "/srv/a.bin", "bytes": 3 }),
         };
         Box::pin(async move {
-            Ok(chan_core::chan::wire::Body(
+            Ok(comms_inward::chan::wire::Body(
                 serde_json::to_vec(&answer).unwrap_or_default(),
             ))
         })
@@ -711,11 +711,11 @@ impl chan_core::chan::router::Backends for XferHost {
 
     fn subscribe(
         &self,
-        _origin: chan_core::chan::wire::Origin,
-        kind: chan_core::chan::wire::Kind,
-        _from: Option<chan_core::chan::wire::Cursor>,
-    ) -> futures::stream::BoxStream<'static, chan_core::chan::wire::Item> {
-        use chan_core::chan::wire::{Body, By, Item};
+        _origin: comms_inward::chan::wire::Origin,
+        kind: comms_inward::chan::wire::Kind,
+        _from: Option<comms_inward::chan::wire::Cursor>,
+    ) -> futures::stream::BoxStream<'static, comms_inward::chan::wire::Item> {
+        use comms_inward::chan::wire::{Body, By, Item};
         use futures::StreamExt as _;
         self.log
             .lock()
@@ -778,30 +778,30 @@ pub(crate) async fn xfer_rig(
     std::sync::Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>,
 ) {
     let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let h = chan_core::chan::handoff::start_with(
+    let h = crate::find::testing::start_host(
         std::sync::Arc::new(XferHost {
             ends,
             log: log.clone(),
             commits: Default::default(),
         }),
-        chan_core::chan::handoff::mint_key(),
+        crate::find::testing::test_key(),
         1 << 20,
         std::time::Duration::from_secs(5),
     )
     .await
     .expect("回环口绑得上");
-    let line = chan_core::chan::dial::dial(
+    let line = comms_inward::chan::dial::dial(
         &h,
-        chan_core::chan::wire::Budget {
+        comms_inward::chan::wire::Budget {
             until: std::time::Instant::now() + std::time::Duration::from_secs(5),
-            cancel: chan_core::chan::wire::CancelToken::new(),
+            cancel: comms_inward::chan::wire::CancelToken::new(),
         },
     )
     .await
     .expect("拨得通");
     (
         line,
-        chan_core::chan::wire::Origin("判据机器·窗口传输".into()),
+        comms_inward::chan::wire::Origin("判据机器·窗口传输".into()),
         log,
     )
 }

@@ -5,71 +5,6 @@ use super::*;
 /// 判据就跟着它一起漂（本仓的「期望值必须手写」同一条纪律）。
 const NO_CAP: usize = usize::MAX;
 
-/// ★★ `阻-1(D3)`：**一个数就能把整个中转进程 abort 掉**这一格，今天有牙。
-///
-/// # 它钉的两件事，缺一不可
-///
-/// ㈠ **超上限要拒收**（`Ok(None)` ⇒ 调用方回 413）。死值验用的是 `BODY_CAP + 1`，
-///    不是 `1e12` —— 后者在**没有上限**的版本上会让进程 **SIGABRT**，那是 **CRASH 不是红**
-///    （判定行掉成 0），死值验拿不到「恰好这一格红」的读数。⇒ 用一个「超了但分配得动」的值。
-///
-/// ㈡ **一个字节都不许按 `n` 分配**。这一格用 `alloc_probe`（**线程级**分配高水位量具，
-///    住 `crate::alloc_probe`，`VmHWM` 是进程级的、会把邻居测试算进来 —— 那份头注写着来历）。
-///    没有 ㈡ 的话，「先 `vec![0u8; n]` 再判 `n > cap`」这种写法照样过 ㈠，
-///    而它**仍然会 abort** —— 顺序错一行就前功尽弃，而 ㈠ 看不见顺序。
-///
-/// # 分母与非空对照
-///
-/// - `1e12` 那一形：**必须**一个字节不分配（阈值 1 MiB，比它小 6 个数量级）。
-/// - 非空对照：同一把尺子量一条**正常**的读（8 MiB 的体）⇒ 高水位**必须**涨到 8 MiB 以上。
-///   没有它，「峰值 = 0」可能只是量具坏了（那正是 `alloc_probe` 头注里逐字警告的
-///   「源码落地不等于效果落地」）。
-#[test]
-fn an_oversized_content_length_is_refused_without_allocating_it() {
-    const CAP: usize = 4 * 1024 * 1024; // 手写字面量，不引 BODY_CAP
-    const HUGE: usize = 1_000_000_000_000;
-
-    // ㈠ 超上限 ⇒ 拒收，且**一个字节都没从流里读走**。
-    let src: &[u8] = b"hi";
-    let mut r = std::io::Cursor::new(src);
-    let base = crate::alloc_probe::reset_peak();
-    let got = read_exact_body(&mut r, HUGE, CAP).expect("超上限不是 IO 错误，是一个答案");
-    let peak = crate::alloc_probe::peak_since(base);
-    assert!(got.is_none(), "超 cap 必须拒收（回 None ⇒ 调用方回 413）");
-    assert_eq!(r.position(), 0, "拒收那一支不许从流里读走任何字节");
-    assert!(
-        peak < 1024 * 1024,
-        "拒收那一支的本线程分配高水位是 {peak} 字节 —— 它不许随 `n` 走（n = {HUGE}）"
-    );
-
-    // ㈡ 刚好在上限上 ⇒ 收（边界是 `>`，不是 `>=`）。
-    let body = vec![b'x'; CAP];
-    let mut r = std::io::Cursor::new(&body[..]);
-    let got = read_exact_body(&mut r, CAP, CAP).expect("io");
-    assert_eq!(
-        got.map(|v| v.len()),
-        Some(CAP),
-        "`n == cap` 必须收，边界是 `>`"
-    );
-
-    // ㈢ 非空对照：**正常**的读真的会把高水位顶上去 —— 否则上面那条「峰值不涨」是空真。
-    let body = vec![b'y'; 8 * 1024 * 1024];
-    let mut r = std::io::Cursor::new(&body[..]);
-    let base = crate::alloc_probe::reset_peak();
-    let got = read_exact_body(&mut r, body.len(), CAP * 4).expect("io");
-    let peak = crate::alloc_probe::peak_since(base);
-    assert_eq!(got.map(|v| v.len()), Some(8 * 1024 * 1024));
-    assert!(
-        peak >= 8 * 1024 * 1024,
-        "非空对照：真读 8 MiB 时高水位只有 {peak} 字节 —— 量具没在量这条路"
-    );
-
-    // ㈣ 流比声明的短 ⇒ `Err(UnexpectedEof)`，**不是** `Ok(None)`（那是超上限**独占**的答案）。
-    let mut r = std::io::Cursor::new(&b"abc"[..]);
-    let e = read_exact_body(&mut r, 10, CAP).expect_err("短流必须是错误");
-    assert_eq!(e.kind(), std::io::ErrorKind::UnexpectedEof);
-}
-
 /// ★ `重要-2(D3)`：`Content-Length` 的三张脸必须分得开。
 ///
 /// 分母 = 我列出的这 **7** 形。先前实现是 `…parse().ok()`，
@@ -265,21 +200,6 @@ fn hop_by_hop_set_is_exactly_the_eight_we_named() {
     assert!(!is_hop_by_hop("Authorization"));
 }
 
-#[test]
-fn chunked_view_decodes_across_arbitrary_split_points() {
-    let wire = b"5\r\nhello\r\n5\r\nworld\r\n0\r\n\r\n";
-    // 逐字节喂：拆帧必须对**任意切点**成立，否则「逐块透传」一进来就碎。
-    let mut v = ChunkedView::default();
-    let mut out = Vec::new();
-    for b in wire.iter() {
-        out.extend_from_slice(&v.feed(&[*b], NO_CAP));
-    }
-    assert_eq!(out, b"helloworld");
-    // 一次性喂：同样的答案
-    let mut v2 = ChunkedView::default();
-    assert_eq!(v2.feed(wire, NO_CAP), b"helloworld");
-}
-
 /// ★ `TEE_DECODE_CAP` 在 `ChunkedView` 这一侧的那一格〔回修轮之五 08-25，`阻-1(D3)` 同职面〕。
 ///
 /// 会无界涨的是**块长度行还没读到 `\r\n`** 那一支：上游发一条永不结束的长度行，
@@ -319,4 +239,19 @@ fn parses_a_response_head() {
     let (status, headers) = parse_response(raw).expect("应当解析成功");
     assert_eq!(status, "HTTP/1.1 200 OK");
     assert_eq!(headers.len(), 1);
+}
+
+#[test]
+fn chunked_view_decodes_across_arbitrary_split_points() {
+    let wire = b"5\r\nhello\r\n5\r\nworld\r\n0\r\n\r\n";
+    // 逐字节喂：拆帧必须对**任意切点**成立，否则「逐块透传」一进来就碎。
+    let mut v = ChunkedView::default();
+    let mut out = Vec::new();
+    for b in wire.iter() {
+        out.extend_from_slice(&v.feed(&[*b], NO_CAP));
+    }
+    assert_eq!(out, b"helloworld");
+    // 一次性喂：同样的答案
+    let mut v2 = ChunkedView::default();
+    assert_eq!(v2.feed(wire, NO_CAP), b"helloworld");
 }

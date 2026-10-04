@@ -77,7 +77,7 @@ pub async fn pull_by_bytes(
     use sha2::Digest as _;
     let (root, rel) =
         split_local(&local).ok_or_else(|| copy_text("rsFilewinLossyPull.local.badDest", &[]))?;
-    let here = chan_core::chan::wire::Origin(super::cross_copy::LOCAL_ORIGIN.to_string());
+    let here = comms_inward::chan::wire::Origin(super::cross_copy::LOCAL_ORIGIN.to_string());
     let key = uuid::Uuid::new_v4().simple().to_string();
     let path = super::source::wire_bytes(remote);
     let mut sha = sha2::Sha256::new();

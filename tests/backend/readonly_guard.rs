@@ -853,7 +853,7 @@ mod tests {
              失败删自己的临时文件。线上入口只有命令表历史那一族的 `history-annotate` / `history-forget`（＋ 派生的 CLI 面）",
         ),
         (
-            "relay/door.rs",
+            "relay/key.rs",
             "〔`INVARIANTS §48.1`〕**中转钥匙** `~/.cc-monitor/relay-key`：中转口进门要出示的那一把。文件名 / 格式 / 落点 \
              都是本仓定的、只有中转与起会话那一侧的 shell 读它 ⇒ 中转**自己的**状态，不是用户数据。读回；读不出或形状不对才铸 → \
              临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ 写满 → 原子挪过去；只建 `~/.cc-monitor` 那一层；\
@@ -1034,7 +1034,7 @@ mod tests {
             "accounts/upstream_select/mod.rs",
         ),
         // 中转钥匙：门是中转起监听那一处，不是命令注册。
-        ("relay/door.rs", "door::ensure_key", "relay/listen.rs"),
+        ("relay/key.rs", "key::ensure_key", "relay/listen.rs"),
         // stderr 诊断文件：写口是装它的那一个函数，门是 `main.rs`。
         // 装它（`install_from_env`）与滚它（`stderr_writer`，交给 `tracing`）都会写，都只许 `main.rs` 碰 ⇒ 两条针各钉一个写口。
         // 〔从前针取模块前缀 `stderr_log::`：起子进程清环境那一处（`common/child_env.rs`）要点那个变量的**名字**
@@ -4077,7 +4077,7 @@ mod g6_staged_zero {
     fn backend_files() -> Vec<(String, String, String)> {
         let src_root = crate::guard_support::src_root();
         let tests_root = crate::guard_support::tests_root();
-        // 面 B 成员的单测镜像住 `tests/comms/outward/`（生产那一半由 `guard_core` 顺着 `#[path]` 收进 `src_root`）。
+        // 中转 crate 的单测住 `tests/comms/outward/`（生产那一半经后端的人群声明收进 `src_root` 的人群）。
         let comms_tests = crate::guard_support::comms_tests_root();
         let mut out = Vec::new();
         for (root, excluded, prefix) in [
@@ -4752,6 +4752,19 @@ mod g6_dependency_signoff {
             MEASURED_CLEAN,
             "同上一行那个仓内 crate，测试构建多开 `fixtures` feature（多出来的只是一张静态夹具表 ＋ 渲染它的纯函数），0 处写面",
         ),
+        (
+            "comms-outward",
+            DEPS,
+            MEASURED_CLEAN,
+            "中转（通信层面 B，搬字节那一层）：仓内 crate，现打生产段 0 处文件系统调用、0 处起进程、0 处绑口 \
+             —— 钥匙文件 · 绑口 · 期限都在本 crate 的 `relay/`（宿主）里；它只写交给它的 socket",
+        ),
+        (
+            "comms-outward",
+            DEV_DEPS,
+            MEASURED_CLEAN,
+            "同上一行那个仓内 crate，测试构建多开 `test-support`（只把内部件再导出给组合判据），0 处写面",
+        ),
         // `branch-core` 那一行摘了：它收进本 crate 的适配层（`agents/claudecode/branch.rs`；IO 只有一处只读的目录枚举，0 处写面）。
         (
             GATED_CRATE,
@@ -4938,12 +4951,7 @@ mod g6_dependency_signoff {
             UNMEASURED,
             "目录遍历，纯只读：它交出的是路径，读不读、写不写由调用点决定",
         ),
-        (
-            "webpki-roots",
-            DEPS,
-            UNMEASURED,
-            "根证书**数据**（一张常量表）—— 它没有 IO 那条代码路径要谈",
-        ),
+        // `webpki-roots` 那一行摘了：根证书表只剩中转 crate `comms-outward` 用（它那一行签着）。
         (
             // 上游 base URL 能不能用的唯一一份（中转解析 · 上游选择装表 · 写口）。
             "upstream-url-core",
@@ -5108,11 +5116,14 @@ mod g6_dependency_signoff {
             .collect()
     }
 
-    /// 一棵仓内 crate 的 `src` 绝对住址（相对本清单所在目录解析）。
+    /// 一棵仓内 crate 的源码绝对住址（相对本清单所在目录解析）：有 `src/` 取它；crate 根与清单同层的（通信层那两个）取包目录。
     fn crate_src_dir(rel: &str) -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join(rel)
-            .join("src")
+        let pkg = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(rel);
+        if pkg.join("src").is_dir() || !pkg.join("lib.rs").is_file() {
+            pkg.join("src")
+        } else {
+            pkg
+        }
     }
 
     /// 把某一档拆成「扫得了的」与「扫不了的」两半。
@@ -5385,14 +5396,14 @@ mod g6_dependency_signoff {
             }
         }
         assert!(scanned >= 60, "只扫到 {scanned} 份后端源文件 —— 遍历坏了");
-        // 第二份：中转钥匙那一份（`relay/door.rs`，第四层登记）—— 钥匙文件出生即只给本人，同一份实现。
+        // 第二份：中转钥匙那一份（`relay/key.rs`，第四层登记）—— 钥匙文件出生即只给本人，同一份实现。
         let want: std::collections::BTreeSet<String> = [
             // 第四份：订阅号续登录令牌之后写回那份凭据文件（`accounts/oauth/store.rs`，第四层登记）——出生即只给本人，同一份实现。
             "accounts/oauth/store.rs".to_string(),
             "accounts/upstream_select/file_face.rs".to_string(),
             // 第三份：常驻监听口的钥匙 ＋ 远端常驻后端的 pid 文件（`control/resident.rs`，第四层登记）。
             "control/resident.rs".to_string(),
-            "relay/door.rs".to_string(),
+            "relay/key.rs".to_string(),
         ]
         .into_iter()
         .collect();

@@ -1,29 +1,5 @@
 //! 上游那一跳：连出去、把请求原样递上去。
 //!
-//! # 🔴 通信层成员 `COMM-LAYER-MEMBER`〔（ 的剩余），2026-09-22〕
-//!
-//! 这一枚标记是**盘上那一侧**的凭据（登记那一侧在
-//! `tests/frontend/shell/comm_boundary_registry_tests.rs::REGISTERED`，两向集合相等）。
-//! 盖上它 = **上锁**，不是放行：本文件从此被 `C1`–`C5` ＋ `X1`–`X6` 十一条一起管着。
-//!
-//! **凭什么它属于通信层**：那张图里**面 B（agent ↔ 上游 API）本来就在
-//! 通信层内**，而本文件第一行逐字「上游那一跳：连出去、把请求**原样**递上去」——
-//! 那就是**搬字节**。它既不是上游选择（那是 `accounts/`），也不是一张登记表
-//! ⇒ 它不属于那个「十一条全绿而**不该**圈」的形状。
-//!
-//! **它先前差哪一条**：只差 `X2`（生产段零期限字面量）—— 那个 600 秒的**值**
-//! 住在本文件里。`P16` 把它按（「**期限值**全部由后端交给它」）
-//! 搬去 `listen.rs`，本文件只剩「收一个期限、装到 socket 上」⇒ 十一条现打全绿。
-//! ⚠ **装它的那一手仍在本文件**（`connect` 收入参）——
-//! 「**值归后端 · 执行归通信层**」，搬走的只有值。
-//!
-//! ⚠ **这里有 TLS 与 tee 明文，而十一条对它仍然成立，没有开任何豁免**（`C1` 的豁免
-//! 必须为零）。两件事分开看：TLS 是**怎么搬**（`裁-1`：上游是 `https://`，而 TLS
-//! 不能手写），tee 是**搬完顺手抄一份**（`§4.1`：本层四件事的第四件）——
-//! 两者都不需要本文件认识会话/账号/agent，它的公开面上一个业务名都没有。
-//! 🔴 **它买不到的**：本标记**不买**「TLS 配得对」（那由 `tls_config` 自己的判据与
-//! `wire_golden` 负责），也**不买**「tee 到的明文不该落盘」（那是 `creds_guard` 的活）。
-//!
 //! # 为什么这里有 TLS，而服务端那半仍是手写的
 //!
 //! `裁-1`（PM 08-25）**只准 TLS**：上游是 `https://…`，而 **TLS 不能手写**。
@@ -59,7 +35,7 @@ use std::time::Duration;
 /// ⚠ 里面那句话是 `&'static str`（**不含文件内容**）⇒ 它进日志是安全的，
 /// 与 `table::Rejected::why` 同一条理由，也正是那个字段的类型能直接收它的原因。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BaseIssue(pub(crate) &'static str);
+pub struct BaseIssue(pub &'static str);
 
 /// 上游基址。`https` 走 TLS，`http` 走明文。
 ///
@@ -72,10 +48,10 @@ pub(crate) struct BaseIssue(pub(crate) &'static str);
 /// （判据 `a_plaintext_upstream_is_only_allowed_on_loopback`）。
 /// 本结构体自己**不判**这一条：它只答「这个串长什么样」，不答「许不许用」。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Base {
-    pub(crate) tls: bool,
-    pub(crate) host: String,
-    pub(crate) port: u16,
+pub struct Base {
+    pub tls: bool,
+    pub host: String,
+    pub port: u16,
     /// 基址里那一段**路径前缀**，`""` = 没有。带前导 `/`、**不带**尾随 `/`。
     ///
     /// # ★★ 它为什么必须存在（`K-R1` 摸底那一格，PM 09-04 复核过）
@@ -96,13 +72,13 @@ pub(crate) struct Base {
     /// ⚠ **它是承重的、会改变字节**：拼法与射程见 `Row::upstream_target`（住 `table.rs`），
     /// 拼出来的东西由 `the_path_prefix_from_the_base_url_really_reaches_the_request_line`
     /// 钉住。〔这里只存值，不拼。〕
-    pub(crate) path: String,
+    pub path: String,
 }
 
 impl Base {
     /// 「base URL 能不能用」全仓只有一份，住共享 crate `upstream_url_core`（协议闭集 `SCHEMES` 也在那儿）；
     /// 这里只把它的形状结论装成 `Base`、把理由翻成一句话（`K-R1`：理由来自解析器，逐形一句）。
-    pub(crate) fn parse(url: &str) -> Result<Base, BaseIssue> {
+    pub fn parse(url: &str) -> Result<Base, BaseIssue> {
         let u = upstream_url_core::parse(url).map_err(BaseIssue::of)?;
         Ok(Base {
             tls: u.tls,
@@ -113,7 +89,7 @@ impl Base {
     }
 
     /// `Host:` 头该写什么（默认端口不写端口，非默认端口要写）。
-    pub(crate) fn host_header(&self) -> String {
+    pub fn host_header(&self) -> String {
         let default = if self.tls { 443 } else { 80 };
         if self.port == default {
             self.host.clone()
@@ -151,14 +127,14 @@ impl Base {
     /// 「前缀 + 真路径」是**传输原语**，`Base` 自己就答得了；而 `Row` 是上游选择的东西，
     /// 中转拿到的是 `Destination` 里那个 `&Base`，够不到 `Row`。
     /// 实现仍然**只有这一份**（`Row` 那边不再有第二份）。
-    pub(crate) fn upstream_target(&self, rest: &str) -> String {
+    pub fn upstream_target(&self, rest: &str) -> String {
         format!("{}{}", self.path, rest)
     }
 }
 
 impl BaseIssue {
     /// 形状那几形各一句（句子住文案表；判定住 `upstream_url_core::parse`）。
-    pub(crate) fn of(i: upstream_url_core::ShapeIssue) -> BaseIssue {
+    pub fn of(i: upstream_url_core::ShapeIssue) -> BaseIssue {
         use upstream_url_core::ShapeIssue as S;
         BaseIssue(match i {
             S::Whitespace => copy_core::copy_static!("beRelayUpstream.parse.whitespace"),
@@ -175,7 +151,7 @@ impl BaseIssue {
 }
 
 /// 一条上游连接。两个变体都实现 `Read`/`Write` ⇒ 转发循环对 TLS 与否**一无所知**。
-pub(crate) enum Conn {
+pub enum Conn {
     Plain(TcpStream),
     Tls(Box<rustls::StreamOwned<rustls::ClientConnection, TcpStream>>),
 }
@@ -239,7 +215,7 @@ fn tls_config() -> Arc<rustls::ClientConfig> {
 /// 只咬它这一处，搬走之后十一条对它全绿 ⇒ 本文件头注盖上了那枚成员标记（见文件第一节）。
 ///
 
-pub(crate) fn connect(base: &Base, deadline: Duration) -> std::io::Result<Conn> {
+pub fn connect(base: &Base, deadline: Duration) -> std::io::Result<Conn> {
     let tcp = TcpStream::connect((base.host.as_str(), base.port))?;
     // ★ Nagle 两个方向都要关。参考实现登记过：没关会让 p95 塌到 3504ms。
     tcp.set_nodelay(true)?;
@@ -260,16 +236,16 @@ pub(crate) fn connect(base: &Base, deadline: Duration) -> std::io::Result<Conn> 
 
 /// 一问一答读回来的整段回包。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Fetched {
+pub struct Fetched {
     /// 状态行里的三位数字；读不出 ⇒ 0。
-    pub(crate) status: u16,
-    pub(crate) headers: Vec<(String, String)>,
-    pub(crate) body: Vec<u8>,
+    pub status: u16,
+    pub headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
 }
 
 /// 一问一答：发一整发（`Connection: close`）、读回整段回包。给后端自己要发的那几发用；
 /// 期限（连接上每一次读写）与回包体上限都由调用方给。回包体超过上限 ⇒ 错，不截断。
-pub(crate) fn fetch(
+pub fn fetch(
     base: &Base,
     method: &str,
     rest: &str,

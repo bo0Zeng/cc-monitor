@@ -53,8 +53,8 @@
 
 use std::net::{IpAddr, Ipv4Addr};
 
-/// 只听回环。**字面量常量，不是拼出来的** —— 拼出来的地址源码扫描看不见
-/// （理由与 `relay/server.rs::LOOPBACK` 逐字同源）。
+/// 只听回环。**字面量常量，不是拼出来的** —— 拼出来的地址源码扫描看不见。
+/// 中转的宿主（`relay/listen.rs`）绑口用的也是这一个。
 pub const LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 
 /// 宿主告诉后端「听哪个口」的 env 名。
@@ -282,22 +282,8 @@ pub fn attach_flags(line: &str) -> Result<Option<crate::StreamWants>, ()> {
     Ok(Some(crate::split_stream_flags(words).1))
 }
 
-/// 定长时间的字节比对：**跑完全部**，不提前返回。
-///
-/// 长度不同直接判不等（长度本来就藏不住，它在 `read_line` 的字节数里）。
-///
-/// 中转口的门（`relay/door.rs::admit`）比钥匙也用这一份 —— 定长比对只许有一个住址。
-pub(crate) fn tokens_match(a: &str, b: &str) -> bool {
-    let (a, b) = (a.as_bytes(), b.as_bytes());
-    if a.len() != b.len() || a.is_empty() {
-        return false;
-    }
-    let mut diff = 0u8;
-    for (x, y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
-}
+/// 定长比对的唯一住址在中转那一份（中转口的门也用它）。
+pub(crate) use comms_outward::tokens_match;
 
 /// 拒绝那一行。`reason` 只许是本模块那三个常量之一。
 pub fn refusal_line(reason: &str) -> String {

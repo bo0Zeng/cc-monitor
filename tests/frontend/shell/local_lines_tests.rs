@@ -58,7 +58,7 @@ fn callers_of(needle: &str) -> BTreeSet<(String, String)> {
     let mut out = BTreeSet::new();
     for (path, raw) in guard_core::scan_tree!(&root, &["rs"]) {
         let prod = guard_core::production_code(&raw);
-        // 按模块住址认：通信层成员住 `src/comms/inward/`、经 `#[path]` 挂进本 crate（`guard_core` 顺着收）。
+        // 按模块住址认：人群声明带进来的兄弟包（通信层 `comms-inward` 等）认作 `<包名>/…`。
         let file = guard_core::module_address(&root, &path);
         let lines: Vec<&str> = prod.lines().collect();
         for (i, l) in lines.iter().enumerate() {

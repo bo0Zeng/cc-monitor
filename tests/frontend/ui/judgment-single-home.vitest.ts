@@ -453,11 +453,11 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J20: {
     what: "中转进门请求的 Host 头是不是回环字面量（防 DNS 重绑）",
     // 与 J9 里上游那条回环判定是两个判定：这里只认三个字面量是设计，改名说清、分两行登记，不许并。
-    homes: ["src/backend/relay/door.rs::host_header_is_loopback_literal"],
+    homes: ["src/comms/outward/door.rs::host_header_is_loopback_literal"],
     status: "zero",
     defs: [],
     needles: [],
-    rustGone: ["src/backend/relay/door.rs::host_is_loopback"],
+    rustGone: ["src/comms/outward/door.rs::host_is_loopback"],
   },
   J21: {
     what: "后端健康读数落哪一档（无记录 / 没崩过 / 崩过）、每一档给界面什么",
@@ -509,10 +509,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   // `agent-tools-core` 那一格删了：它收进后端适配层（`agents/claudecode/cards.rs`），不再是共享 crate。
   // `branch-core` 那一格删了：它收进后端适配层（`agents/claudecode/branch.rs`），不再是共享 crate。
   // `codex-token-core` 那一格删了：它搬进后端成模块（`agents/codex/token.rs`），不再是共享 crate，不在本表人群里。
-  // 通道（面 A）的客户端 · 路由器 · 线上词汇 · 拨号与交接件：契约类，零判定；TS 侧那一半是 `src/comms/inward/chan.ts`（同一套线上形状，两侧由通道判据对拍）。
-  "chan-core": {
-    mint_key: NONE,
-  },
+  // `chan-core` 那一格删了：通道成了通信层 crate `comms-inward`（住 `src/comms/inward/`，不在 `src/common/` 的人群里）。
   "copy-core": {
     copy_text: "J11",
     TABLE_JSON: NONE,

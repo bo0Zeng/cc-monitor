@@ -906,10 +906,10 @@ pub async fn list_dir(
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 寻址键：`chan::wire` 再导出的全仓那一个「哪台机器」类型。
-pub use chan_core::chan::wire::Origin;
+pub use comms_inward::chan::wire::Origin;
 
 /// 窗口进程手里那条通道（克隆便宜，共享同一条回环连接）。
-pub type Line = chan_core::chan::client::Client;
+pub type Line = comms_inward::chan::client::Client;
 
 /// 发一条命令、拿它的 `data`（JSON）。
 ///
@@ -968,7 +968,7 @@ pub async fn ask_coded(
         cmd,
         args,
         t,
-        chan_core::chan::wire::CancelToken::new(),
+        comms_inward::chan::wire::CancelToken::new(),
     )
     .await
 }
@@ -982,9 +982,9 @@ pub async fn ask_coded_cancellable(
     cmd: &str,
     args: &serde_json::Value,
     t: std::time::Duration,
-    cancel: chan_core::chan::wire::CancelToken,
+    cancel: comms_inward::chan::wire::CancelToken,
 ) -> Result<serde_json::Value, Failed> {
-    use chan_core::chan::wire::{Body, Budget, Comms, Op};
+    use comms_inward::chan::wire::{Body, Budget, Comms, Op};
     let budget = Budget {
         until: std::time::Instant::now() + t,
         cancel,
@@ -1037,7 +1037,7 @@ pub async fn watch(
     line: &Line,
     origin: &Origin,
     kind: &str,
-    stop: &chan_core::chan::wire::CancelToken,
+    stop: &comms_inward::chan::wire::CancelToken,
     on: impl FnMut(u64, u64),
 ) -> Result<Watched, String> {
     watch_coded(line, origin, kind, stop, on)
@@ -1050,11 +1050,11 @@ pub async fn watch_coded(
     line: &Line,
     origin: &Origin,
     kind: &str,
-    stop: &chan_core::chan::wire::CancelToken,
+    stop: &comms_inward::chan::wire::CancelToken,
     mut on: impl FnMut(u64, u64),
 ) -> Result<Watched, (Option<String>, String)> {
     let plain = |s: String| (None, s);
-    use chan_core::chan::wire::{By, Comms, Item, Kind, Sub};
+    use comms_inward::chan::wire::{By, Comms, Item, Kind, Sub};
     use futures::StreamExt as _;
     let mut sub = line.subscribe(origin, &Kind(kind.to_string()), None, WATCH_CREDIT);
     let json = |b: &[u8]| serde_json::from_slice::<serde_json::Value>(b).unwrap_or_default();
@@ -1127,8 +1127,8 @@ pub struct Watched {
 }
 
 /// 对端拒了的那一形里，它给的那个码。别的形一律 `None`（**不猜**）。
-pub fn refused_code(e: &chan_core::chan::wire::CallError) -> Option<String> {
-    use chan_core::chan::wire::{CallError, PeerFault};
+pub fn refused_code(e: &comms_inward::chan::wire::CallError) -> Option<String> {
+    use comms_inward::chan::wire::{CallError, PeerFault};
     match e {
         CallError::Peer {
             why: PeerFault::Refused { body },
@@ -1149,8 +1149,8 @@ pub fn refused_code(e: &chan_core::chan::wire::CallError) -> Option<String> {
 ///
 /// ⚠ `reach` 那一格要说出来：`Sent` / `Unknown` 的意思是「对面可能已经做了」，
 /// 对写面那几条这一句是承重的（用户据此决定要不要再点一次）。
-pub fn said(cmd: &str, e: &chan_core::chan::wire::CallError) -> String {
-    use chan_core::chan::wire::{CallError, HopFault, OursFault, PeerFault, Reach};
+pub fn said(cmd: &str, e: &comms_inward::chan::wire::CallError) -> String {
+    use comms_inward::chan::wire::{CallError, HopFault, OursFault, PeerFault, Reach};
     match e {
         CallError::Peer { why } => match why {
             PeerFault::Refused { body } => {

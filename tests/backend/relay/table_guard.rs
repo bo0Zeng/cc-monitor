@@ -591,7 +591,7 @@ mod tests {
             .find(|(p, _)| p.ends_with("server.rs"))
             .expect("扫不到 `server.rs` —— 取法坏了，本条按红处理");
 
-        let at = guard_core::find_pinned(server, "pub(crate) struct Relay {")
+        let at = guard_core::find_pinned(server, "pub struct Relay {")
             .expect("切不出 `struct Relay` —— 本条按红处理，不是绿");
         let block = brace_block(server, at).expect("`struct Relay` 的花括号没配平 —— 按红处理");
 

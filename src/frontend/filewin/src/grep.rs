@@ -187,7 +187,7 @@ pub struct GrepBoard {
     epoch: Arc<AtomicU64>,
     inflight: Arc<AtomicU64>,
     rounds: Arc<AtomicU64>,
-    cancel: Arc<Mutex<Option<chan_core::chan::wire::CancelToken>>>,
+    cancel: Arc<Mutex<Option<comms_inward::chan::wire::CancelToken>>>,
     ctx: Arc<Mutex<Option<egui::Context>>>,
 }
 
@@ -205,8 +205,8 @@ impl GrepBoard {
     }
 
     /// 开一趟：上一趟还在飞就先撤掉它；回这一趟的号与撤单手柄。
-    pub fn start(&self, needle: &str) -> (u64, chan_core::chan::wire::CancelToken) {
-        let token = chan_core::chan::wire::CancelToken::new();
+    pub fn start(&self, needle: &str) -> (u64, comms_inward::chan::wire::CancelToken) {
+        let token = comms_inward::chan::wire::CancelToken::new();
         if let Some(old) = self.cancel.lock().unwrap().replace(token.clone()) {
             old.cancel();
         }
@@ -292,7 +292,7 @@ pub async fn run_grep(
     root: super::source::RemotePath,
     needle: String,
     mine: u64,
-    cancel: chan_core::chan::wire::CancelToken,
+    cancel: comms_inward::chan::wire::CancelToken,
 ) {
     let r = match super::source::ask_coded_cancellable(
         &line,

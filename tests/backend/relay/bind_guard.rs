@@ -46,18 +46,22 @@
 mod tests {
     #[test]
     fn no_non_loopback_bind_literal_in_relay_production_code() {
-        let dir = crate::guard_support::relay_root(); // `relay` 模块的根（面 B 成员 ＋ 挂回来的 door / listen）
-                                                      // 针**运行时拼**：直接写字面量的话本文件自己就是命中源。
-                                                      // ⚠ 先前这里写着「而 `scan_tree!` 已经摘掉了本文件 ——
-                                                      //   两道保险，别只靠一道」。**那一道今天不生效**（自摘在这一处恒空转，见模块头注），
-                                                      //   运行时拼针是**唯一**承重的那一道 —— 别把它改成字面量。
+        // 中转 crate ＋ 后端里它的宿主（绑口就在宿主 `relay/listen.rs`）。
+        // 针**运行时拼**：直接写字面量的话本文件自己就是命中源。
+        // ⚠ 先前这里写着「而 `scan_tree!` 已经摘掉了本文件 ——
+        //   两道保险，别只靠一道」。**那一道今天不生效**（自摘在这一处恒空转，见模块头注），
+        //   运行时拼针是**唯一**承重的那一道 —— 别把它改成字面量。
         let needles = [
             format!("0.0.{}", "0.0"),
             format!("[{}]", "::"),
             format!("Ipv4Addr::{}", "UNSPECIFIED"),
             format!("Ipv6Addr::{}", "UNSPECIFIED"),
         ];
-        let files = guard_core::scan_tree!(&dir, &["rs"]);
+        let mut files = guard_core::scan_tree!(&crate::guard_support::relay_root(), &["rs"]);
+        files.extend(guard_core::scan_tree!(
+            &crate::guard_support::relay_host_root(),
+            &["rs"]
+        ));
         assert!(
             files.len() >= 5,
             "只扫到 {} 个文件 —— 取法坏了，本断言在空转",

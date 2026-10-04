@@ -26,8 +26,8 @@
 //!
 //! # 它**认不出**什么（诚实边界，别读成「日志不可能泄漏」）
 //!
-//! 1. **只扫 `LOG_ROOTS` 那两棵**（`relay/` 与 `accounts/upstream_select/` —— 中转与上游选择两层的生产段）。
-//!    这两棵之外别处印了什么，本条不管（key 也只经过这两棵：上游选择取明文算头材料，中转只拿算好的头）。
+//! 1. **只扫 `LOG_ROOTS` 那三棵**（中转 crate · 后端里它的宿主 `relay/` · `accounts/upstream_select/` —— 中转与上游选择两层的生产段）。
+//!    这三棵之外别处印了什么，本条不管（key 也只经过这两棵：上游选择取明文算头材料，中转只拿算好的头）。
 //! 2. **只认 `{ident}` 内联捕获与逗号分隔的位置实参**。有人写
 //!    `let s = format!("{:?}", head.headers); eprintln!("{s}");` ⇒ 本条只看见 `s`，
 //!    而 `s` 要进白名单得有人写一行理由 —— 拦得住「顺手」，拦不住「刻意绕」。
@@ -141,7 +141,7 @@ mod tests {
         (
             // 先前是 `[relay] upstream connect failed`，只管「连不上」一支；
             //   今天等响应那四支（没回应就断 · 读出错 · 不是 HTTP · 只有 1xx）与发到一半断了（FIX3）也走这一行 ⇒ 回 502 / 504。
-            "relay/server.rs",
+            "comms-outward/server.rs",
             "[relay] upstream failed",
             "上游连不上 / 没发完 / 没回应 / 回的不是 HTTP（中转自己的传输失败，超时回 504、其余 502）",
         ),
@@ -161,7 +161,7 @@ mod tests {
             "绑上口之后拿不到钥匙（家目录解析不出 / 铸不出 / 写不进）⇒ 不起。只带路径与 io 错误文本，**永远没有钥匙值**",
         ),
         (
-            "relay/server.rs",
+            "comms-outward/server.rs",
             "[relay] refused at the door",
             "进门三问拒了一条（Origin / Host 非回环 / 钥匙不对）。只印状态行，**不印请求头与路径**（路径里可能正是一把错钥匙）",
         ),
@@ -278,7 +278,7 @@ mod tests {
     ///   并由判据本体断言「盘上有日志的根 ⇔ 登记表里出现的根 ⇔ 本表」三方相等。
     // 上游选择的根从 `accounts` 收窄成 `accounts/upstream_select`：`accounts/` 是账号**域**，
     // 其中 `iso.rs`（账号隔离工具的查询）**不是**中转的上游选择，不进本白名单的人群。
-    const LOG_ROOTS: &[&str] = &["relay", "accounts/upstream_select"];
+    const LOG_ROOTS: &[&str] = &["comms-outward", "relay", "accounts/upstream_select"];
 
     /// 整个 backend crate 的生产段（逐文件）。`KS2` 的人群是**整个 crate**，不是 `relay/` ——
     /// 「取明文的地方恰好一处」这句话的分母如果只到 `relay/`，
@@ -418,7 +418,7 @@ mod tests {
             want_clear.len()
         );
 
-        let base = crate::relay::upstream::Base::parse("https://api.example.com").expect("base");
+        let base = comms_outward::Base::parse("https://api.example.com").expect("base");
         let mut wrote = 0usize;
         for style in AuthStyle::ALL.iter().copied() {
             let table =
@@ -619,15 +619,21 @@ mod tests {
         let root = crate::guard_support::src_root();
         let mut files = Vec::new();
         for r in LOG_ROOTS {
-            // `relay` 模块的根住 `src/comms/outward/`（`mod.rs` 在那儿，door / listen 由它挂回）。
-            let dir = if *r == "relay" {
-                crate::guard_support::relay_root()
+            // `comms-outward` 那一格是中转 crate（`src/comms/outward/`）；`relay` 是后端里它的宿主。
+            let dirs = if *r == "comms-outward" {
+                vec![crate::guard_support::relay_root()]
             } else {
-                root.join(r)
+                vec![root.join(r)]
             };
-            let got = guard_core::scan_tree!(&dir, &["rs"]);
-            assert!(!got.is_empty(), "`{r}/` 一份文件都没扫到 —— 取法坏了");
-            files.extend(got);
+            for dir in dirs {
+                let got = guard_core::scan_tree!(&dir, &["rs"]);
+                assert!(
+                    !got.is_empty(),
+                    "`{}` 一份文件都没扫到 —— 取法坏了",
+                    dir.display()
+                );
+                files.extend(got);
+            }
         }
         assert!(
             files.len() >= 8,
@@ -722,7 +728,7 @@ mod tests {
         let non_relay: Vec<&str> = LOG_ROOTS
             .iter()
             .copied()
-            .filter(|r| *r != "relay")
+            .filter(|r| *r != "relay" && *r != "comms-outward")
             .collect();
         assert_eq!(
             non_relay,

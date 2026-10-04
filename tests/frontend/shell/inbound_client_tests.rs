@@ -825,7 +825,10 @@ async fn a_peer_that_cannot_withdraw_is_said_out_loud() {
                 // 按文案键断言，不钉原文。
                 assert_eq!(
                     said,
-                    copy_text("rsInboundClient.error.timeoutPeerRunsOn", &[("after", &ms)]),
+                    crate::copy_table::copy_text(
+                        "rsInboundClient.error.timeoutPeerRunsOn",
+                        &[("after", &ms)]
+                    ),
                     "结果里没说对端不认"
                 );
                 assert_eq!(told.len(), 1, "{told:?}");
@@ -834,7 +837,10 @@ async fn a_peer_that_cannot_withdraw_is_said_out_loud() {
             Withdraw::Asked | Withdraw::Unsent => {
                 assert_eq!(
                     said,
-                    copy_text("rsInboundClient.error.timeout", &[("after", &ms)])
+                    crate::copy_table::copy_text(
+                        "rsInboundClient.error.timeout",
+                        &[("after", &ms)]
+                    )
                 );
                 assert!(told.is_empty(), "{told:?}");
             }

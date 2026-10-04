@@ -18,18 +18,14 @@
 //! | `router.rs` | monitor 进程 | ✅ | 认证 ＋ 按 `origin` 转给注入的句柄 ＋ 撤单 ＋ credit |
 //! | `client.rs` | 外部前端进程 | ✅ | `Comms` 的实现：`call` / `subscribe` |
 //! | `host.rs` | monitor 进程 | ❌ 刻意不是 | 绑回环 · 造钥匙 · `accept` · 生产句柄（`C4`/`C5` 不许成员做的那几件） |
-//! | `dial.rs` | 外部前端进程 | ❌ 刻意不是 | 按交接件拨号（`C5`：成员只用交给它的流） |
+//! | `dial.rs` | 外部前端进程 | ✅ | 按交接件拨号（连出去、出示钥匙；不绑口） |
 //! | `webview.rs` | monitor 进程 | ❌ 刻意不是 | **主界面**（webview）说 `call` 的那一跳：Tauri 命令 `chan_call` ＋ 注入生产句柄；期限执行与回环那条共用 `router::settle`。成员那一半是 TS 的 `src/comms/inward/chan.ts` |
 //!
-//! # 为什么住 `src/frontend/shell/src/chan/` 而不是 `backend/` 下
+//! # 分两处住
 //!
-//! - `backend/` 是 monitor 侧的**后端边界**（读 / 控制两条能力线）；本模块是**通信层**面 A，
-//!   两者按是不同的层 —— 住进去就是把层画错。
-//! - 成员（三份）与宿主（两份）**同住一个目录**，为的是让「绑口在外、`serve` 在内」这条
-//!   `C5` 的分界**一眼看得见**：谁盖了标记、谁没盖，就在同一个 `ls` 里。
-//!   先例是面 B 的 `relay/`：`listen.rs`（绑口，不是成员）与 `server.rs`（成员）同目录。
-//! - 外部前端是本包的另一个二进制（`cc-monitor-filewin`），经 `monitor_lib::chan` 够得着它
-//!   ⇒ 本模块在 `lib.rs` 里是 `pub mod`（与 `filewin` 同一条理由）。
+//! 成员（线上词汇 · 路由器 · 客户端 · 拨号 · 交接件的形状）住通信层 crate `comms-inward`，宿主（绑口 · 造钥匙 · 生产句柄 ·
+//! webview 那一跳）住本目录 ——「绑口在外、`serve` 在内」这条 `C5` 的分界就是 crate 的边界，编译器挡着。
+//! 本模块在 `lib.rs` 里是 `pub mod`：外部前端那个 `[[bin]]` 经 `monitor_lib::chan` 够得着它。
 //!
 //! # 买到什么
 //!
@@ -42,10 +38,9 @@
 //! - ✅**生产上的 `subscribe` 有了第一条流**：传输进度 `transfer/<id>`；其余 `kind` 照旧没有（理由住 `host.rs` 头注）。
 //! - **不买重连**（`client.rs` 头注）· **不买对端撤活**（`host.rs` 头注）· **不买协议版本协商**（`wire.rs` 头注）。
 
-// 通信层成员住 `src/comms/inward/chan/`。
-// 〔⑰「先把通道客户端 … 抽成共享 crate」〕成员三份 ＋ 拨号 · 交接件编进共享 crate `chan-core`（文件窗口进程链同一份）；
-//   壳里只留 monitor 自己的宿主那两份（host 的生产入口与句柄 · webview 那一跳），其余经再导出、模块路径不变。
-pub use chan_core::chan::{client, dial, router, wire};
+// 线上词汇 · 客户端 · 路由器 · 拨号 · 交接件的形状住通信层 crate `comms-inward`（`src/comms/inward/chan/`，文件窗口进程链同一份）；
+//   壳里只留 monitor 自己的宿主那两份（host 的绑口 · 生产入口与句柄 · webview 那一跳），其余经再导出、模块路径不变。
+pub use comms_inward::chan::{client, dial, router, wire};
 pub mod host;
 pub mod webview;
 

@@ -1236,7 +1236,7 @@ fn chmod_is_refused_out_loud_where_the_machine_said_it_cannot() {
     for (said, allowed) in [(true, false), (false, true)] {
         let mut w = window(vec![file("a.bin")]);
         if said {
-            *w.offer.lock().unwrap() = Some(chan_core::chan::wire::Offer::new(
+            *w.offer.lock().unwrap() = Some(comms_inward::chan::wire::Offer::new(
                 vec!["files-chmod".into()],
                 vec![("files-chmod".into(), "no_unix_mode".into())],
                 vec![],

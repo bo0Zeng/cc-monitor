@@ -136,12 +136,12 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/observe/watcher.rs", "let _ = tx.send(target.death_event(pid));", 1, Why::PeerGone, ""),
     ("src/backend/platform/signal.rs", "let _ = t.recv().await;", 1, Why::Signal, "装不上 SIGTERM 时退回只等 SIGINT（从 `main.rs` 下沉来）"),
     ("src/backend/platform/signal.rs", "let _ = tokio::signal::ctrl_c().await;", 2, Why::Signal, "从 `main.rs` 下沉来的停机信号监听"),
-    ("src/backend/relay/door.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
+    ("src/backend/relay/key.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
     ("src/backend/control/resident.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "钥匙 / pid 文件的原子写临时件：换名失败之后删它；主错误已在回"),
     ("src/backend/control/resident.rs", "let _ = log_dir_chain(&h);", 1, Why::Diag, "诊断文件那层目录建不了 ⇒ 子进程装不上 stderr 文件、照旧 null（「写不进去不拖垮后端」）；这是一次性子命令，stderr 只许一行 JSON 信封，没有第二个地方可说"),
     ("src/backend/faces/read_face.rs", "let _ = BACKEND_LOG.set(path);", 1, Why::SetOnce, "`main.rs` 装上 stderr 诊断文件之后交一次"),
-    ("src/backend/relay/listen.rs", "let _ = server::respond_and_drain(&mut s, server::BUSY, \"busy\");", 1, Why::DeadLink, "回一句「忙」给被拒的那条连接"),
-    ("src/backend/relay/listen.rs", "let _ = server::respond_and_drain(&mut stream, server::BUSY, \"busy\");", 1, Why::DeadLink, "回一句「忙」给被拒的那条连接"),
+    ("src/backend/relay/listen.rs", "let _ = comms_outward::refuse_busy(&mut s);", 1, Why::DeadLink, "回一句「忙」给被拒的那条连接"),
+    ("src/backend/relay/listen.rs", "let _ = comms_outward::refuse_busy(&mut stream);", 1, Why::DeadLink, "回一句「忙」给被拒的那条连接"),
     ("src/comms/outward/server.rs", "let _ = down.set_nonblocking(false);", 1, Why::DeadLink, "已经答完的那条连接上排掉已到的字节，排不掉就算了"),
     ("src/comms/outward/server.rs", "let _ = down.set_nonblocking(true);", 1, Why::DeadLink, "已经答完的那条连接上排掉已到的字节，排不掉就算了"),
     ("src/comms/outward/tee.rs", "let _ = self.port.offer(TapEvent { stream: id.stream.to_string(), owner: id.owner.to_string(), resp: at.resp, n, body: T", 1, Why::Backpressure, "投不进就丢：号照占，缺口在接收侧按号算得出（「SSE 保快、jsonl 保对」）"),
@@ -539,7 +539,7 @@ fn population() -> BTreeMap<(String, String), usize> {
             &[],
         ));
     }
-    // 壳那棵根的人群声明带进来的兄弟包（`chan-core` · `host-core` …）也住 `src/common` 那棵：同一份只数一次。
+    // 壳那棵根的人群声明带进来的兄弟包（`host-core` · `comms-inward` …）也住别的根下（`src/common` · `src/comms`）：同一份只数一次。
     files.sort_by(|a, b| a.0.cmp(&b.0));
     files.dedup_by(|a, b| a.0 == b.0);
     let test_only = test_only_modules(&files);
@@ -652,7 +652,7 @@ fn w5vis_test_only_modules_are_derived_and_excluded() {
             &[],
         ));
     }
-    // 壳那棵根的人群声明带进来的兄弟包（`chan-core` · `host-core` …）也住 `src/common` 那棵：同一份只数一次。
+    // 壳那棵根的人群声明带进来的兄弟包（`host-core` · `comms-inward` …）也住别的根下（`src/common` · `src/comms`）：同一份只数一次。
     files.sort_by(|a, b| a.0.cmp(&b.0));
     files.dedup_by(|a, b| a.0 == b.0);
     let derived = test_only_modules(&files);

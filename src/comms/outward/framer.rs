@@ -1,12 +1,5 @@
 //! 增量分帧器 —— `relay/` 里**唯一**一份「攒字节、按分隔符切行」的实现。
 //!
-//! # 🔴 通信层成员 `COMM-LAYER-MEMBER`
-//!
-//! 登记那一侧在 `tests/frontend/shell/comm_boundary_registry_tests.rs::REGISTERED`（两向集合相等）。
-//! 它只认**字节与分隔符**，不认里面是什么 —— 那是四样里的「载荷（不透明字节）」。
-//! 这段代码先前住在成员 `http1.rs` 的 `ChunkedView` 里、受十一条管着；搬出来单住一份，
-//! 不同拍盖标记就等于**出了锁**。
-//!
 //! # 它治的病
 //!
 //! 先前两处手抄（`tee.rs::SseSplitter` · `http1.rs::ChunkedView`）同一形：攒一个 `Vec`，
@@ -27,7 +20,7 @@
 /// 按一个分隔符增量切行。分隔符**以 `\n` 收尾**（`b"\n"` 或 `b"\r\n"`）：
 /// 找的是 `\n`，找到之后再核它前面那几个字节 —— 这样跨两次 `push` 的 `\r` | `\n` 也认得出，
 /// 而且每个字节只看一次（按「分隔符长度往回退几格再找」那种写法，跨块处会重看）。
-pub(crate) struct LineFramer {
+pub struct LineFramer {
     buf: Vec<u8>,
     /// 已消费到哪（`buf[..start]` 是死字节，下一次 `push` 时一次挪走）。
     start: usize,
@@ -38,7 +31,7 @@ pub(crate) struct LineFramer {
     hit: Option<usize>,
     delim: &'static [u8],
     /// 账。**生产路径不读它**，判据读（`framer_tests.rs`）。
-    pub(super) ledger: Ledger,
+    pub ledger: Ledger,
 }
 
 /// 分帧器自己记的账：判据拿它做相等断言。
@@ -47,17 +40,17 @@ pub(crate) struct LineFramer {
 /// （`structural_scan_tests.rs::the_split_stays_done_and_p9_is_blocked_for_a_reason_that_says_itself`），
 /// 第一版按 `cfg(test)` 罩了四处，当场把那道棘轮顶破。代价是每次找 / 搬 / 喂各多一次整数加法。
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct Ledger {
+pub struct Ledger {
     /// 一共喂进来多少字节。
-    pub(super) pushed: u64,
+    pub pushed: u64,
     /// 找分隔符时一共看过多少字节。
-    pub(super) examined: u64,
+    pub examined: u64,
     /// `push` 里挪「上一轮剩下的那截」一共搬了多少字节。
-    pub(super) moved: u64,
+    pub moved: u64,
 }
 
 impl LineFramer {
-    pub(crate) fn new(delim: &'static [u8]) -> Self {
+    pub fn new(delim: &'static [u8]) -> Self {
         debug_assert!(delim.last() == Some(&b'\n'), "分隔符必须以 \\n 收尾");
         Self {
             buf: Vec::new(),
@@ -70,7 +63,7 @@ impl LineFramer {
     }
 
     /// 喂一段字节。先挪走上一轮消费掉的前缀（至多一次搬运），再接上新字节。
-    pub(crate) fn push(&mut self, bytes: &[u8]) {
+    pub fn push(&mut self, bytes: &[u8]) {
         if self.start == self.buf.len() {
             self.buf.clear();
             self.scanned = 0;
@@ -87,7 +80,7 @@ impl LineFramer {
     }
 
     /// 还没被消费的字节数。
-    pub(crate) fn pending(&self) -> usize {
+    pub fn pending(&self) -> usize {
         self.buf.len() - self.start
     }
 
@@ -116,12 +109,12 @@ impl LineFramer {
     }
 
     /// 第一行（含分隔符）的长度；没有完整的行就是全部待处理字节。
-    pub(crate) fn head_len(&mut self) -> usize {
+    pub fn head_len(&mut self) -> usize {
         self.find().map_or(self.pending(), |at| at + 1 - self.start)
     }
 
     /// 取下一行（**不含**分隔符）。借出的是缓冲里的切片：不搬、不分配。
-    pub(crate) fn next_line(&mut self) -> Option<&[u8]> {
+    pub fn next_line(&mut self) -> Option<&[u8]> {
         let at = self.find()?;
         let begin = self.start;
         self.start = at + 1;
@@ -130,14 +123,14 @@ impl LineFramer {
     }
 
     /// 原样取走至多 `n` 个待处理字节（不找分隔符）。
-    pub(crate) fn take(&mut self, n: usize) -> &[u8] {
+    pub fn take(&mut self, n: usize) -> &[u8] {
         let begin = self.start;
         self.skip(n);
         &self.buf[begin..self.start]
     }
 
     /// 丢掉至多 `n` 个待处理字节（不找分隔符）。
-    pub(crate) fn skip(&mut self, n: usize) {
+    pub fn skip(&mut self, n: usize) {
         self.start += n.min(self.pending());
         self.scanned = self.scanned.max(self.start);
         if self.hit.is_some_and(|h| h < self.start) {

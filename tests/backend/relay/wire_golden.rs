@@ -36,18 +36,16 @@
 //!   再做一次相等断言：真到上游的格数少了，同样红。
 
 use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE};
-use super::server::Relay;
-use super::tee::{TapEvent, TapPort, TeeSink};
-use super::upstream::Base;
 use crate::accounts::upstream_select::table::RoutingTable;
 use crate::accounts::upstream_select::Accounts;
+use comms_outward::{Base, Relay, TapEvent, TapPort, TeeSink};
 use creds_core::store::AuthStyle;
 use creds_core::SecretKey;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::{mpsc, Arc, Mutex};
 
-/// 只听回环。**字面量**，不是拼出来的（同 `server.rs::LOOPBACK` 那条理由）。
+/// 只听回环。**字面量**，不是拼出来的（同 `stream/listen.rs::LOOPBACK` 那条理由）。
 const STUB_LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 
 /// 假上游**一字不差**回这一串。响应体是一条 chunked 包着的 SSE 事件 ＋ 终止块。
@@ -379,7 +377,7 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
             table,
             crate::accounts::upstream_select::Upstreams::from_env(&|_| None).expect("内置默认"),
         )),
-        super::door::Key::for_tests(),
+        super::key::key_tests::test_key(),
         TeeSink::to_port(Arc::new(FramingTap(Arc::clone(&buf), Mutex::new(tick)))),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
@@ -401,7 +399,7 @@ fn one_shot(relay: SocketAddr, target: &str) -> String {
         // 过门：钥匙段挂在最前、`Host` 用回环字面量。金标准比的是**上游那一侧**收到的字节
         //   与下游拿回的字节 —— 钥匙段在门里就被剥掉，所以期望一个字节都不用动（这正是「钥匙不上游」的一格）。
         "POST /{}{target} HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {CLIENT_TOKEN}\r\nContent-Length: {}\r\n\r\n{CLIENT_BODY}",
-        super::door::door_tests::TEST_KEY,
+        super::key::key_tests::TEST_KEY,
         CLIENT_BODY.len()
     );
     c.write_all(req.as_bytes()).expect("写请求");

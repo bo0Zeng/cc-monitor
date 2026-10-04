@@ -180,7 +180,7 @@ fn ps_quoter_census(src: &str) -> std::collections::BTreeMap<&'static str, usize
 fn the_monitor_holds_no_powershell_quoter() {
     let root = repo_root();
     // 前端树 ＋ monitor 人群声明里住在它外面的兄弟包（通道 · 宿主原语 · 开窗契约，住 `src/common/`）：
-    //   通道成员从前经壳 `lib.rs` 的 `#[path]` 挂进来、在这棵树的人群里；搬进 `chan-core` 之后照旧算。
+    //   通道成员从前经壳 `lib.rs` 的 `#[path]` 挂进来、在这棵树的人群里；搬进通信层 crate `comms-inward` 之后照旧算（人群声明带进来）。
     let frontend = root.join("src/frontend");
     let mut files = guard_core::scan_tree_excluding(&frontend, &["rs"], &[]);
     for (_, tree) in guard_core::population_trees(&frontend.join("shell/src")) {

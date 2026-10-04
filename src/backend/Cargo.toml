@@ -36,6 +36,11 @@ edition = "2021"
 # 不影响部署。由 monitor 侧 `cross_half_edge_registry` 逐条登记 + 钉住
 # 「一条都不许长到生产段」（真长过去，上面那句 standalone 就变假了）。
 
+# 「后端源码树」的判据人群：本包 ＋ 只有后端链的兄弟包（中转 `comms-outward`）。按人群扫的判据（只读 · 零定时器 · 日志白名单 …）
+#   照旧管到中转那几份；`guard_core::walk_tree` / `module_address` 按它收 / 认（中转的文件认作 `comms-outward/<文件>`）。
+[package.metadata.guard]
+population = ["../comms/outward"]
+
 # 🔴 库面。前置 1：目标是「`backend-core` 一份，
 #    两个宿主 link 同一份」——本机 GUI 进程内跑它，远端走下面那个薄 `main` 壳。
 #    在这之前本 crate 只有 `[[bin]]`，模块全是 bin 私有的 ⇒ **没有任何东西能 link 它**。
@@ -84,19 +89,15 @@ test = true
 # tokio 1.52.x, notify 6.1.x, notify-debouncer-mini 0.4.x, walkdir 2.5.x,
 # tracing 0.1.x). Keep this list minimal.
 #
-# ⚠ 订正〔回修轮 08-25，承接 D1 `重要-4` / `漂-2`〕：**上面这句话只管它点名的那几条。**
-# `rustls` / `webpki-roots`（K-H1 加的，见本表末尾）**不在** `../frontend/shell/Cargo.lock` 里 ——
-# 同一把尺子 `grep -c '^name = "rustls"$' ../frontend/shell/Cargo.lock` ⇒ **0**，`webpki-roots` ⇒ **0**
-# （而上面点名的 serde / serde_json / tokio / notify / notify-debouncer-mini / walkdir /
-#  tracing / tracing-subscriber / libc 逐个量都是 1）。
-# ⇒ 这两条**没有**被 pin 到 monitor 那份 lock，**也不能**靠「monitor 早就下过」变成离线可用。
-# 准确说法：**一台从没下过 `rustls` 的机器，backend 第一次构建必须联网**；下过之后本机缓存才服务得了它。
-# 这正是 `裁-1` 代价② 认下的那条 —— 代价认了，而这段块头注先前一个字没跟着改，于是它自己变成了假话。
+# `rustls` / `webpki-roots` 也在 `../frontend/shell/Cargo.lock` 里：中转 crate `comms-outward` 是那个 workspace 的成员，
+# 两份锁解出同一个版本（`cargo tree -d` 两边都只有一份）。一台从没下过它们的机器，第一次构建仍要联网。
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # `branch-core` 这一行删了：monitor 零引用，它只剩本 crate 用 ⇒ 收进适配层 `agents/claudecode/branch.rs`。
 # `codex-token-core` 那一行删了：它搬进本 crate 成模块 `agents/codex/token.rs`（唯一消费者在那儿）。
 # `agent-tools-core` 这一行删了：界面不再认工具名（卡型随记录成品带出）⇒ 它只剩本 crate 用，收进适配层 `agents/claudecode/cards.rs`。
+# 中转（通信层面 B，搬字节那一层）：本 crate 是它的宿主 —— 绑口、钥匙、期限、上游选择都由这里交进去。
+comms-outward = { path = "../comms/outward" }
 # 上游 base URL 能不能用的唯一一份（中转解析 · 上游选择装表 · 写口）；非业务 crate ⇒ 通信层成员可以用它（C2）。
 upstream-url-core = { path = "../common/upstream-url-core" }
 acct-core = { path = "../common/acct-core" }
@@ -182,7 +183,6 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 # **零新包**：`ring 0.17.14` 本来就在本 crate 的 lock 里、发出去的二进制已经链接它（上面 `rustls` 的 provider · `russh`），
 # 这一行只是把它从间接依赖提成直接依赖（版本跟 lock 里那一份）。
 ring = "0.17"
-webpki-roots = "1"
 # ── `K-P6b`（候选 E）：`--dial` 那条代理臂的 SSH 客户端 ──────────────────────
 #
 # 🔴 **它只服务 `src/dial/`那一份**（`dial_locality` 那条判据把「谁许 `use russh`」钉在文件维上）。
@@ -282,6 +282,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
+# 组合判据（真中转 ＋ 上游选择 / tap / 内存探针）要够到中转的内部件：只在测试档开，不进发布二进制。
+comms-outward = { path = "../comms/outward", features = ["test-support"] }
 # U8a-2a：源码扫描型守卫的「只留生产段」剥法，与 monitor 共用同一份（守卫全在 cfg(test)，
 # 故是 dev-dependency —— 不进发布二进制）。
 guard-core = { path = "../common/guard-core" }

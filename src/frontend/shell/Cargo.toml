@@ -20,8 +20,10 @@ members = [
     "../../common/upstream-url-core",
     # 部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径）；判定那一半（原 `deploy-core`）进了后端 `control/deploy_plan.rs`。
     "../../common/deploy-contract",
-    # 通道（通信层面 A）的线上词汇 · 客户端 · 路由器 · 拨号与交接件：monitor 与文件窗口进程链同一份。
-    "../../common/chan-core",
+    # 通信层面 A（通道的线上词汇 · 客户端 · 路由器 · 拨号 · 交接件的形状 · 分流 · SSH 链路读应答）：monitor 与文件窗口进程链同一份。
+    "../../comms/inward",
+    # 通信层面 B（中转，搬字节那一层）：后端链它；它自己的单测由这个 workspace 跑。
+    "../../comms/outward",
     # 前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写 · 窗口夹进工作区。
     "../../common/host-core",
     # monitor 与文件窗口进程之间的契约（开窗种子 · 就绪那一行 · 「在此打开终端」那一问）。
@@ -51,7 +53,7 @@ default-run = "cc-monitor"
 #   两向对着「monitor 生产闭包 − 后端生产闭包」由 `contract_crate_guard_tests.rs` ⑤ 钉住。
 [package.metadata.guard]
 population = [
-    "../../common/chan-core",
+    "../../comms/inward",
     "../../common/host-core",
     "../../common/filewin-contract",
     "../filewin",
@@ -149,8 +151,8 @@ shell-quote-core = { path = "../../common/shell-quote-core" }
 relay-route-core = { path = "../../common/relay-route-core" }
 # 部署那一族的契约（契约类）：取字节口的键与行 · 解计划答话 · 读字节里的身份戳；判定都问后端（自举那一刻问手上那份字节自己，`place-verdict`）。
 deploy-contract = { path = "../../common/deploy-contract" }
-# 通道：成员文件原地住 `src/comms/inward/`，由这个共享 crate 编（壳里 `chan/` 再导出，模块路径不变）。
-chan-core = { path = "../../common/chan-core" }
+# 通信层面 A（crate 住 `src/comms/inward/`；壳里 `chan/` 再导出，模块路径不变）。
+comms-inward = { path = "../../comms/inward" }
 # 前端宿主原语（原子写 `atomic_write_json` · `WorkArea` / `fit_into_work_area`）：monitor 与文件窗口共用那一份（`src/common/host-core`）。
 host-core = { path = "../../common/host-core" }
 # monitor 与文件窗口进程两边对上的形状（种子 · 就绪行 · 开终端那一问）。
@@ -206,8 +208,8 @@ acct-core = { path = "../../common/acct-core" }
 # 起因：monitor 侧的守卫此前各写便宜近似（`split("\n#[cfg(test)]").next()`），
 # 那个近似在 `stream_source/` 上会把扫描面砍掉三分之二（详见 guard-core 头注）。
 guard-core = { path = "../../common/guard-core" }
-# `Origin` 编进 `chan-core` 之后，本包测试档里别的生成类型（会话流那几帧）嵌着它 ⇒ dev 侧开它的 TS 派生（发布二进制不开）。
-chan-core = { path = "../../common/chan-core", features = ["ts"] }
+# `Origin` 编进 `comms-inward` 之后，本包测试档里别的生成类型（会话流那几帧）嵌着它 ⇒ dev 侧开它的 TS 派生（发布二进制不开）。
+comms-inward = { path = "../../comms/inward", features = ["ts"] }
 
 [target.'cfg(windows)'.dependencies]
 # v1.7.0：cc 注入式绑定恢复 ToolHelp（从 claude.exe 往上的进程链反查 PS） +

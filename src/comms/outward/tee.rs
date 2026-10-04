@@ -1,11 +1,6 @@
 //! tee：把响应体里的 SSE 事件抄一份出去。**只抄响应体，永不抄请求头**
 //! （请求那一侧只出一样：名单上那几项在不在，布尔，见 [`TapPort::note_marks`]）。
 //!
-//! # 🔴 通信层成员 `COMM-LAYER-MEMBER`
-//!
-//! 登记那一侧在 `tests/frontend/shell/comm_boundary_registry_tests.rs::REGISTERED`（两向集合相等）。先前挡着它的只有 `X4`
-//! （NDJSON 行落点的 `try_send`，丢了不说）；那个落点随独立 `--relay` 删了，剩下的 tap 那一形「丢必须说」由位置号原位兑现。
-//!
 //! # 落点：**tap**（常驻后端进程内那一份中转）
 //!
 //! 中转住常驻后端进程里（`listen::host`），那个进程的 stdout 是 wire（stdio 载体）或 null（脱离载体），不能写行 ⇒ 落点是一个
@@ -29,8 +24,8 @@
 /// 它只认 SSE 的**分帧**（行、`data:` 前缀），不认里面是什么。
 /// 切行交给 [`super::framer::LineFramer`]（`relay/` 里唯一的增量分帧器）——
 /// 这里只剩 SSE 自己的那一层：`data:` 前缀、`[DONE]`、上限。
-pub(crate) struct SseSplitter {
-    pub(super) framer: super::framer::LineFramer,
+pub struct SseSplitter {
+    pub framer: super::framer::LineFramer,
     /// 超 `cap` 时丢掉的字节数（累计，由 `take_dropped` 取走）。
     dropped: u64,
 }
@@ -52,8 +47,8 @@ impl SseSplitter {
     ///
     /// 超了怎么办：**丢掉这条半行并计数**，其后的字节从下一个 `\n` 重新开始拆
     /// —— tee 少一行，**下游的字节一个不少**（tee 是抄一份，不在转发那条路上）。
-    /// 计数由 `server.rs::handle` 取走交给 [`TeeSink::note_dropped_bytes`]（占一个号不发 ⇒ 接收侧看得见缺口）⇒ **不是静默丢**。
-    pub(crate) fn feed(&mut self, decoded: &[u8], cap: usize) -> Vec<String> {
+    /// 计数由 `server.rs::serve_one` 取走交给 [`TeeSink::note_dropped_bytes`]（占一个号不发 ⇒ 接收侧看得见缺口）⇒ **不是静默丢**。
+    pub fn feed(&mut self, decoded: &[u8], cap: usize) -> Vec<String> {
         self.framer.push(decoded);
         // 只量**第一行**：它才是那条「攒着还没成形」的。其后的完整行照常拆，不许被连坐。
         let head_len = self.framer.head_len();
@@ -78,28 +73,28 @@ impl SseSplitter {
     }
 
     /// 取走并清零「因超 `cap` 丢掉的字节数」。
-    pub(crate) fn take_dropped(&mut self) -> u64 {
+    pub fn take_dropped(&mut self) -> u64 {
         std::mem::take(&mut self.dropped)
     }
 }
 
 /// tee 交给宿主的一件事（[`TapPort::offer`]）。字段语义见本文件头注「第二个落点」。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TapEvent {
+pub struct TapEvent {
     /// 请求自带的会话标识头的值（中转不解释它；消费侧拿它对 sid）；没有 ⇒ 空串。
-    pub(crate) stream: String,
+    pub stream: String,
     /// 第二个标签（请求自带的另一个头的值，中转不解释它）；没有 ⇒ 空串。
-    pub(crate) owner: String,
+    pub owner: String,
     /// 本进程第几个响应（跨连接单调，[`TeeSink`] 那一个计数器）。
-    pub(crate) resp: u64,
+    pub resp: u64,
     /// 这一个响应里第几个事件（从 0 连续）；收尾那一件是「一共占了几个号」。
-    pub(crate) n: u64,
-    pub(crate) body: TapBody,
+    pub n: u64,
+    pub body: TapBody,
 }
 
 /// 一件事是什么。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum TapBody {
+pub enum TapBody {
     /// 一个 SSE 事件：`data:` 后面那段原文（敌手可控字节，原样；上线时是一个 JSON 串，不参与帧结构）。
     Data(String),
     /// 这个响应不会再有事件了。`broken` = 转发以错误收尾（下游 / 上游断了），否则上游正常说完。
@@ -110,7 +105,7 @@ pub(crate) enum TapBody {
 ///
 /// ★ 契约：**立刻答收没收**，永不阻塞 —— 它在转发线程上被调（`pump` 的 `on_chunk` 里），
 /// 阻塞 = 让「有它更好」变成「非它不可」。答 `false` 的那一件号已占，接收侧看得见缺口。
-pub(crate) trait TapPort: Send + Sync {
+pub trait TapPort: Send + Sync {
     fn offer(&self, ev: TapEvent) -> bool;
 
     /// 一条流（`stream`）的一发请求里，名单上那几项各在不在（[`super::Destinations::request_marks`]）。
@@ -119,19 +114,19 @@ pub(crate) trait TapPort: Send + Sync {
 }
 
 /// 一项的「在不在」：（头名, 那一项的前缀）＋ 这一发带没带。
-pub(crate) type RequestMark = ((&'static str, &'static str), bool);
+pub type RequestMark = ((&'static str, &'static str), bool);
 
 /// 单个事件原文的字节上限。超了**不交**、号照占（缺口可见）。
 ///
 /// 值怎么定的：上游的 SSE 是 token 级增量，开头那一件带整份 usage 也在 KiB 级；
 /// 16 KiB 以上的一个事件只可能来自不正常的上游。它同时把「宿主通道满载」封在 `容量 × 16 KiB`。
 /// 登记住址 `src/frontend/shell/src/byte_cap_registry.rs`（尺寸类常量不登记就红）。
-pub(crate) const TAP_DATA_CAP: usize = 16 * 1024;
+pub const TAP_DATA_CAP: usize = 16 * 1024;
 
 /// 一个响应在 tee 这一侧的游标：`resp` 与下一个要占的号 `n`。由 [`TeeSink::open`] 发出，
 /// 同一个响应的 `event` / `note_dropped_bytes` / `close` 都拿它（响应之间互不相干，所以不放进共享的 `TeeSink`）。
 #[derive(Debug)]
-pub(crate) struct TeeStream {
+pub struct TeeStream {
     resp: u64,
     n: u64,
 }
@@ -148,7 +143,7 @@ impl TeeStream {
 /// tee 的落点。一个进程只有一个，**跨连接共享**（`TeeSink` 是 `Relay` 的字段，`serve()` 每连接 `Arc::clone`）。
 ///
 /// 转发那条路上只做「占号 ＋ `offer`」：`offer` 立刻答收没收（[`TapPort`] 的契约）⇒ 转发不因抄一份而被拖住。
-pub(crate) struct TeeSink {
+pub struct TeeSink {
     port: std::sync::Arc<dyn TapPort>,
     /// 本进程第几个响应（[`TapEvent::resp`]）。
     seq: std::sync::atomic::AtomicU64,
@@ -159,7 +154,7 @@ impl TeeSink {
     ///
     /// 那个进程的 stdout 在 stdio 载体上**就是 wire**（一行一帧，`wire.rs` 头注），在脱离载体上是 null
     /// ⇒ 不写行，把每个事件交给宿主的 [`TapPort`]（宿主转成 `tap` 帧，走它自己那条有界通道）。
-    pub(crate) fn to_port(port: std::sync::Arc<dyn TapPort>) -> Self {
+    pub fn to_port(port: std::sync::Arc<dyn TapPort>) -> Self {
         Self {
             port,
             seq: std::sync::atomic::AtomicU64::new(0),
@@ -168,13 +163,13 @@ impl TeeSink {
 
     /// 一个响应开头：发这一响应自己的游标（`resp` 取本进程的下一个序号，位置号 `n` 从 0 起）。
     /// 没有「开头那一件」：`resp` 随每一件事走（接收侧按 `(stream, resp)` 分响应）。
-    pub(crate) fn open(&self) -> TeeStream {
+    pub fn open(&self) -> TeeStream {
         let seq = self.seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         TeeStream { resp: seq, n: 0 }
     }
 
     /// 这条流的这一发请求里名单上那几项在不在（没有流标签 / 名单是空的 ⇒ 不交）。
-    pub(crate) fn mark(&self, stream: &str, marks: &[RequestMark]) {
+    pub fn mark(&self, stream: &str, marks: &[RequestMark]) {
         if !stream.is_empty() && !marks.is_empty() {
             self.port.note_marks(stream, marks);
         }
@@ -196,8 +191,8 @@ impl TeeSink {
 
     /// 解码那一路（`SseSplitter` / `ChunkedView` 超上限）丢掉了字节：那一截里至少有一个事件没成形
     /// ⇒ **占一个号不发**，接收侧当场看见缺口（它不需要知道丢了多少字节，只需要知道「这里断过」）。
-    /// 由 `server.rs::handle` 每块调一次（`n == 0` 是常态，直接返回）。
-    pub(crate) fn note_dropped_bytes(&self, at: &mut TeeStream, n: u64) {
+    /// 由 `server.rs::serve_one` 每块调一次（`n == 0` 是常态，直接返回）。
+    pub fn note_dropped_bytes(&self, at: &mut TeeStream, n: u64) {
         if n > 0 {
             at.take();
         }

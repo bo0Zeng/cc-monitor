@@ -1413,7 +1413,7 @@ pub fn scan_tree_excluding_self(
 ///
 /// # Panics
 ///
-/// 明写的目录没有 `Cargo.toml` / 没有包名 / 没有 `src/` —— 声明坏了就当场红，不许静默少扫。
+/// 明写的目录没有 `Cargo.toml` / 没有包名 / 既没有 `src/` 也没有 `lib.rs` —— 声明坏了就当场红，不许静默少扫。
 pub fn population_trees(root: &std::path::Path) -> Vec<(String, std::path::PathBuf)> {
     let pkg = if root.join("Cargo.toml").is_file() {
         root.to_path_buf()
@@ -1472,12 +1472,17 @@ pub fn population_trees(root: &std::path::Path) -> Vec<(String, std::path::PathB
                         .map(|v| v.trim().trim_matches('"').to_string())
                 })
                 .unwrap_or_else(|| panic!("{dir:?}/Cargo.toml 没有包名"));
+            // 源码住 `src/` 的包取 `src/`；crate 根就在包目录里的（通信层那两个，`lib.rs` 与 `Cargo.toml` 同层）取包目录本身。
             let src = dir.join("src");
-            assert!(
-                src.is_dir(),
-                "{pkg:?} 明写的人群 `{rel}` 下没有 src/ —— 声明坏了"
-            );
-            (name, src)
+            if src.is_dir() {
+                (name, src)
+            } else {
+                assert!(
+                    dir.join("lib.rs").is_file(),
+                    "{pkg:?} 明写的人群 `{rel}` 下既没有 src/ 也没有 lib.rs —— 声明坏了"
+                );
+                (name, dir)
+            }
         })
         .collect()
 }
@@ -1491,7 +1496,7 @@ pub fn population_trees(root: &std::path::Path) -> Vec<(String, std::path::PathB
 /// 各自都是现打逮出来的，写第二份必然漂。
 ///
 /// 〔收尾重排〕**人群按模块树认，不只按目录认**：根下源码用 `#[path]` 挂进来、住在根外的**生产**文件
-/// （通信层成员住 `src/comms/` 之后由壳 / 后端的模块树挂进去，「目录只是住址」）也算这棵根的人群，
+/// （「目录只是住址」：生产文件住在根外、由模块树挂进来）也算这棵根的人群，
 /// 挂的是 `mod.rs` 就连它那一层目录一起收。指向任何 `tests` 段的挂载不跟（那是测试段，不是生产人群）。
 /// 不跟的话，搬家那一拍两边几百条扫描型判据会**静默少扫**那几份（搬家时现打普查量过）。
 ///
@@ -1564,8 +1569,8 @@ fn walk_tree(root: &std::path::Path, exts: &[&str]) -> Vec<(std::path::PathBuf, 
 /// 〔收尾重排〕一份文件在 `root` 这棵模块树里的**模块住址**（相对 `root`，正斜杠）。
 ///
 /// 住在 `root` 下的：就是相对路径。住在根外、由根下某份文件用 `#[path]` 挂进来的（[`walk_tree`] 顺进来的那些）：
-/// 按「没有 `#[path]` 时它该住的地方」给 —— `lib.rs` 里 `#[path = "../comms/outward/mod.rs"] mod relay;`
-/// ⇒ `comms/outward/server.rs` 的模块住址是 `relay/server.rs`。模块树搬家不变 ⇒ 按模块住址登记的表搬家不用改。
+/// 按「没有 `#[path]` 时它该住的地方」给 —— `lib.rs` 里 `#[path = "../x/mod.rs"] mod y;`
+/// ⇒ `x/z.rs` 的模块住址是 `y/z.rs`。模块树搬家不变 ⇒ 按模块住址登记的表搬家不用改。
 /// 认不出来（不在根下、也没被挂）⇒ 原样的路径串。
 pub fn module_address(root: &std::path::Path, path: &std::path::Path) -> String {
     let fwd = |p: &std::path::Path| p.to_string_lossy().replace('\\', "/");

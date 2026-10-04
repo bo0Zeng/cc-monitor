@@ -335,7 +335,7 @@ pub struct CancelDesk {
     minted: Arc<AtomicU64>,
     /// 这一摞的**撤单令牌**：经通道起的每一趟（上传 / 下载）都盯着它，
     /// 拨下 ⇒ 那一趟的订阅停掉 ⇒ 传输台那一侧「停订即撤」。下一摞换一枚新的（[`CancelDesk::reset`]）。
-    stop: Arc<Mutex<chan_core::chan::wire::CancelToken>>,
+    stop: Arc<Mutex<comms_inward::chan::wire::CancelToken>>,
 }
 
 impl CancelDesk {
@@ -389,7 +389,7 @@ impl CancelDesk {
     }
 
     /// 这一摞此刻的撤单令牌（经通道起的每一趟拿它去盯）。
-    pub fn stop_token(&self) -> chan_core::chan::wire::CancelToken {
+    pub fn stop_token(&self) -> comms_inward::chan::wire::CancelToken {
         self.stop.lock().unwrap().clone()
     }
 

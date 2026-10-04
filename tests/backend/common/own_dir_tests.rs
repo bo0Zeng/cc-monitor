@@ -172,7 +172,7 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
     for f in [
         "control/exit_policy.rs",
         "assets/asset_catalog.rs",
-        "relay/door.rs",
+        "relay/key.rs",
         "assets/skill_ledger.rs",
         "control/files_commit.rs",
         // +2：凭据文件与历史注解那一层都是数据目录（默认 `~/.cc-monitor`）。

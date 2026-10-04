@@ -38,17 +38,17 @@ struct Two {
     body: Vec<u8>,
 }
 
-impl chan_core::chan::router::Backends for Two {
+impl comms_inward::chan::router::Backends for Two {
     fn call(
         &self,
-        origin: chan_core::chan::wire::Origin,
-        op: chan_core::chan::wire::Op,
-        payload: chan_core::chan::wire::Body,
+        origin: comms_inward::chan::wire::Origin,
+        op: comms_inward::chan::wire::Op,
+        payload: comms_inward::chan::wire::Body,
         _left: std::time::Duration,
-        _cancel: chan_core::chan::wire::CancelToken,
+        _cancel: comms_inward::chan::wire::CancelToken,
     ) -> futures::future::BoxFuture<
         'static,
-        Result<chan_core::chan::wire::Body, chan_core::chan::wire::CallError>,
+        Result<comms_inward::chan::wire::Body, comms_inward::chan::wire::CallError>,
     > {
         let a: serde_json::Value = serde_json::from_slice(&payload.0).unwrap_or_default();
         self.log
@@ -66,7 +66,7 @@ impl chan_core::chan::router::Backends for Two {
             serde_json::json!({ "path": "/x", "bytes": 0 })
         };
         Box::pin(async move {
-            Ok(chan_core::chan::wire::Body(
+            Ok(comms_inward::chan::wire::Body(
                 serde_json::to_vec(&v).unwrap_or_default(),
             ))
         })
@@ -74,10 +74,10 @@ impl chan_core::chan::router::Backends for Two {
 
     fn subscribe(
         &self,
-        _o: chan_core::chan::wire::Origin,
-        _k: chan_core::chan::wire::Kind,
-        _f: Option<chan_core::chan::wire::Cursor>,
-    ) -> futures::stream::BoxStream<'static, chan_core::chan::wire::Item> {
+        _o: comms_inward::chan::wire::Origin,
+        _k: comms_inward::chan::wire::Kind,
+        _f: Option<comms_inward::chan::wire::Cursor>,
+    ) -> futures::stream::BoxStream<'static, comms_inward::chan::wire::Item> {
         use futures::StreamExt as _;
         futures::stream::empty().boxed()
     }
@@ -90,22 +90,22 @@ async fn a_lossy_pull_reads_the_remote_by_bytes_and_lands_it_through_the_local_b
         .map(|i| (i % 249) as u8)
         .collect();
     let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let h = chan_core::chan::handoff::start_with(
+    let h = crate::find::testing::start_host(
         std::sync::Arc::new(Two {
             log: log.clone(),
             body: body.clone(),
         }),
-        chan_core::chan::handoff::mint_key(),
+        crate::find::testing::test_key(),
         4 << 20,
         std::time::Duration::from_secs(5),
     )
     .await
     .expect("回环口绑得上");
-    let line = chan_core::chan::dial::dial(
+    let line = comms_inward::chan::dial::dial(
         &h,
-        chan_core::chan::wire::Budget {
+        comms_inward::chan::wire::Budget {
             until: std::time::Instant::now() + std::time::Duration::from_secs(5),
-            cancel: chan_core::chan::wire::CancelToken::new(),
+            cancel: comms_inward::chan::wire::CancelToken::new(),
         },
     )
     .await
@@ -114,7 +114,7 @@ async fn a_lossy_pull_reads_the_remote_by_bytes_and_lands_it_through_the_local_b
     let local = crate::source::wire_bytes(b"/tmp/dl/f\xfe");
     pull_by_bytes(
         &line,
-        &chan_core::chan::wire::Origin("R".into()),
+        &comms_inward::chan::wire::Origin("R".into()),
         b"/srv/d\xff/f\xfe",
         local,
         true,

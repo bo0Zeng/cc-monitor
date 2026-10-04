@@ -280,7 +280,7 @@ fn the_three_policies_each_site_declares_match_the_code() {
     );
 
     let files = corpus();
-    // 语料含壳那棵根的人群声明带进来的兄弟包（`chan-core` · 文件窗口 …）：它们也有 `lib.rs` / `proc.rs`，
+    // 语料含壳那棵根的人群声明带进来的兄弟包（`comms-inward` · 文件窗口 …）：它们也有 `lib.rs` / `proc.rs`，
     //   而账本第一列写的是壳里那一份 ⇒ 按名字取时只在壳自己的 `src/` 与 `build.rs` 里取（兄弟包一处都不起进程：上一条判据现数）。
     let own = |p: &Path| p.starts_with(src_root()) || p.ends_with("build.rs");
     let src_of = |stem: &str| -> String {

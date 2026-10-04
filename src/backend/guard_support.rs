@@ -126,18 +126,20 @@ pub(crate) fn code_roots() -> [std::path::PathBuf; 3] {
     [src_root(), tests_root(), comms_tests_root()]
 }
 
-/// 〔收尾重排〕本 crate 挂着的第二棵测试树：面 B 成员（`src/comms/outward/`，本 crate 经 `#[path]` 编它们）
-/// 的单测镜像住 `tests/comms/outward/`。生产那一半由 `guard_core` 顺着 `#[path]` 收进 [`src_root`] 的人群；
-/// 测试这一半不顺（测试挂载不跟）⇒ 这里明写成一棵根。
+/// 中转 crate（`comms-outward`，住 `src/comms/outward/`）的单测住 `tests/comms/outward/`：它们不编进本 crate，
+/// 但中转是本 crate 生产闭包的一部分（人群声明见 `Cargo.toml` 的 `[package.metadata.guard]`），按人群扫的判据连它的测试树一起看。
 pub(crate) fn comms_tests_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/comms/outward")
 }
 
-/// `relay` 模块的根（它的 `mod.rs` 所在）：面 B 成员住 `src/comms/outward/`，非成员 `door` / `listen` 住
-/// `src/backend/relay/`，由 `mod.rs` 经 `#[path]` 挂回（`guard_core` 顺着挂载一起收）。
-/// 扫「中转那一层」用它，别用 `src_root().join("relay")`（那里今天只剩两份非成员）。
+/// 中转 crate 的根（`lib.rs` 所在，`src/comms/outward/`）。扫「中转那一层」用它。
 pub(crate) fn relay_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../comms/outward")
+}
+
+/// 中转的宿主（本 crate 的 `relay/` 模块：绑口 · 钥匙 · 起中转）。
+pub(crate) fn relay_host_root() -> std::path::PathBuf {
+    src_root().join("relay")
 }
 
 /// 本 crate 的全部测试树（[`tests_root`] ＋ [`comms_tests_root`]），两棵互不包含。

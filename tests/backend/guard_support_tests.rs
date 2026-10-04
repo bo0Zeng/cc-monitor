@@ -47,7 +47,7 @@ fn the_src_root_address_points_at_a_real_tree() {
     for rel in [
         "control/mod.rs",
         "observe/mod.rs",
-        "relay/door.rs", // 面 B 成员搬去 `src/comms/outward/`，`relay/` 下今天住的是非成员
+        "relay/key.rs", // 中转本身是 crate `comms-outward`，`relay/` 下住的是它的宿主
         "platform/mod.rs",
     ] {
         assert!(

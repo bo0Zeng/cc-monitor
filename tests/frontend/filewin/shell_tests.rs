@@ -1113,7 +1113,7 @@ fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
     let files: Vec<(String, String)> = guard_core::scan_tree_excluding(&monitor_src, &["rs"], &[])
         .into_iter()
         .map(|(p, raw)| {
-            // 按模块住址认：通信层成员住 `src/comms/inward/`、经 `#[path]` 挂进本 crate（`guard_core` 顺着收）。
+            // 按模块住址认：monitor 人群声明带进来的兄弟包（通信层 `comms-inward` 等）认作 `<包名>/…`。
             (guard_core::module_address(&monitor_src, &p), raw)
         })
         .chain(
@@ -2744,7 +2744,7 @@ async fn gp1_the_mode_probe_asks_files_stat_per_target_over_the_wire() {
         FakeBackend::new(&["files-stat"], Declared::default()),
     )
     .await;
-    let origin = chan_core::origin::Origin(wired.origin.clone());
+    let origin = comms_inward::origin::Origin(wired.origin.clone());
     let paths: Vec<String> = [&a, &b, &dir.join("gone.bin")]
         .iter()
         .map(|p| p.to_str().expect("ASCII").to_string())

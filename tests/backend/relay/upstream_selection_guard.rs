@@ -40,8 +40,10 @@ pub(super) mod tests {
     use crate::guard_support::production_code;
     use std::collections::BTreeSet;
 
-    /// 中转的目录（相对 `src/backend/`）。
+    /// 中转在后端里的模块（宿主 `src/backend/relay/`，经它转出中转的契约件）。
     const RELAY_DIR: &str = "relay";
+    /// 中转 crate 的文件在后端人群里的住址前缀（`guard_core::module_address` 认作 `comms-outward/<文件>`）。
+    const RELAY_CRATE: &str = "comms-outward";
 
     /// ㈠ 上游选择那棵树里的文件（相对**上游选择的根**）。**相等，不是地板**。
     // 根从 `accounts/` 收窄到 `accounts/upstream_select/`（现推，不是写死）；
@@ -136,7 +138,7 @@ pub(super) mod tests {
         let files: Vec<(String, String)> = guard_core::scan_tree!(&root, &["rs"])
             .into_iter()
             .map(|(p, raw)| {
-                // 面 B 成员住 `src/comms/outward/`、由 `lib.rs` 挂成 `relay` ⇒ 按模块住址认（`relay/…`）。
+                // 中转 crate 住 `src/comms/outward/`（后端人群声明里的兄弟树）⇒ 按模块住址认（`comms-outward/…`）。
                 let rel = guard_core::module_address(&root, &p);
                 (rel, production_code(&raw))
             })
@@ -426,14 +428,14 @@ pub(super) mod tests {
              加/减了文件就回来改 `UPSTREAM_SELECTION_FILES`，并重读下面三条 —— 它们的人群都从这里来。"
         );
 
-        // ㈡ `relay/` 里住着几份上游选择：**零命中**。反空真：两个人群各自非空（交集为空不是因为扫不到）。
+        // ㈡ 中转里住着几份上游选择：**零命中**。反空真：两个人群各自非空（交集为空不是因为扫不到）。
         let relay_files: Vec<&(String, String)> = files
             .iter()
-            .filter(|(rel, _)| rel.starts_with(&format!("{RELAY_DIR}/")))
+            .filter(|(rel, _)| rel.starts_with(&format!("{RELAY_CRATE}/")))
             .collect();
         assert!(
             relay_files.len() >= 7 && !selection.is_empty(),
-            "人群取空了：`relay/` 扫到 {} 份、上游选择扫到 {} 份 —— 下面的「交集为空」此刻在空转",
+            "人群取空了：中转 crate 扫到 {} 份、上游选择扫到 {} 份 —— 下面的「交集为空」此刻在空转",
             relay_files.len(),
             selection.len()
         );

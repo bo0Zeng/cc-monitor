@@ -210,7 +210,7 @@ function walk(dir: string, ext: string, out: string[] = []): string[] {
  */
 function rustCommands(): Set<string> {
   const out = new Set<string>();
-  // 本 crate 的通信层成员住 `src/comms/inward/`（经 `#[path]` 编进来）。
+  // monitor 链的通信层 crate 住 `src/comms/inward/`。
   for (const f of [
     ...walk(resolve(REPO_ROOT, "src/frontend/shell/src"), ".rs"),
     ...walk(resolve(REPO_ROOT, "src/comms/inward"), ".rs"),

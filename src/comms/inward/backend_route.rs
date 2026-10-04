@@ -1,26 +1,7 @@
 //! F04c：**「这条命令能不能回落」的唯一判定**（monitor 侧走后端的所有控制命令共用）。
 //!
-//! # 🔴 通信层成员 `COMM-LAYER-MEMBER`
-//!
-//! 这一枚标记是**盘上那一侧**的凭据（登记那一侧在
-//! `tests/frontend/shell/comm_boundary_registry_tests.rs::REGISTERED`，两向集合相等）。
-//! 盖上它 = **上锁**，不是放行：本文件从此被 `C1`–`C5` ＋ `X1`–`X6` 十一条一起管着。
-//!
-//! **凭什么它属于通信层**：是面 A 的「连不上时怎么办」，
-//! 而本文件就是那一格在盘上的现物 —— 它把 `CallError` 翻成三态，判准逐字是
-//! 「**能不能证明这条命令根本没发出去**」。那正是 `§3.3.1` 的 `reach`
-//! （`NotSent` / 已发出）在今天这棵树上的样子，也是 `X1` 点名的三个线上类型之一
-//! （`CallError`）唯一一处**穷尽**的 `match`。
-//!
-//! 它**零业务语义**：不知道会话、账号、skill、agent、tmux；不读盘、不起进程、
-//! 不绑端口、不写期限字面量。头注里那句「把一次被门拒绝洗成另一条路的成功」
-//! 说的是**传输归因**（`D7`），不是业务判断。
-//!
-//! ⚠ **射程，别读宽**：进来的是**这一份**，不是 `backend/control/` 那一棵树。
-//! 同目录下 `inbound_client.rs`（`CallError` 的**定义**所在）今天**圈不进来** ——
-//! C1 在它身上咬到 `agent`（三处，cc-bus 的 `extras.agent`）、X4 咬到一处 `try_send`。
-//! ⇒ **类型的家还在外面，而用它做分流的这一份先进来了。**
-//! 那不是矛盾，那是 C1 指出来的**下一刀该切哪儿**（逐份读数在）。
+//! `CallError`（问后端失败的原因）与在等应答的上限 [`MAX_PENDING`] 也住这里：客户端（壳里 `inbound_client.rs`）
+//! 造它们，分流规则读它们 —— 一套词一个家。
 //!
 //! # 为什么它必须只有一份
 //!
@@ -53,13 +34,97 @@
 //! 一次写入段超时会让用户拿到错误而不是回落。要修得在 `inbound_client` 那边把两个产地
 //! 分成两个变体 —— **那是它自己的活**。记在这里，别让下一个人以为是漏了。
 
-use crate::chan::wire as w;
-use crate::copy_table::copy_text;
-use crate::inbound_client::CallError;
+use crate::chan::wire::{self as w, Withdraw};
+use copy_core::copy_text;
+use std::time::Duration;
+
+/// 同一条连接上**同时在等应答**的命令数上限。
+///
+/// 超时**不摘登记**（见 [`InboundClient::call`]），所以一个死掉但没断连的 backend
+/// 会让登记表只涨不落。这条上限把它变成「新命令快速失败」而不是「内存无界增长」。
+/// 取值与后端侧应答通道容量同量级（后端侧应答通道容量
+/// `REPLY_CHANNEL_CAPACITY = 256`）—— 那头一次也只缓 256 条应答。
+pub const MAX_PENDING: usize = 256;
+
+/// 一次调用失败的原因。**每一档都要能让调用方分辨「该重试」还是「别重试」。**
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CallError {
+    /// backend 在 `hello.commands` 里没声明这条命令（含旧后端：无该字段 ⇒ 空集）。
+    /// 客户端侧直接拒，省一次往返 + 一次超时。**别重试**。
+    Unsupported { cmd: String, offered: Vec<String> },
+    /// 同时在等的命令已达 [`MAX_PENDING`]。**可稍后重试**。
+    TooManyPending,
+    /// 连接（或写任务）已经没了。**重连后重试**。
+    Disconnected,
+    /// backend 回了 `{"kind":"cancelled"}`。
+    Cancelled,
+    /// 握手时那台说过「这条我接得下、这台做不到」（`hello.unavailable`）⇒ **不发**，事前就拒。
+    /// `code` 与那台事后会回的同一个（如 `no_tmux`），调用方那张「码 → 人话」表不用另写。**别重试**（换台机器或装上再连）。
+    Unavailable { cmd: String, code: String },
+    /// 本地超时。`withdraw` 说对端那一半：没发出去 / 已补发撤单（best-effort）/ 对端不认撤单（要说出来）。
+    Timeout { after: Duration, withdraw: Withdraw },
+    /// backend 回了 `ok:false`。`code`/`message` 原样透出（形状对齐 `--resolve` 的错误契约）。
+    Remote { code: String, message: String },
+}
+
+impl std::fmt::Display for CallError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CallError::Unsupported { .. } => {
+                write!(f, "{}", copy_text("rsInboundClient.error.unsupported", &[]))
+            }
+            // 码不上屏（调用方要按码分支的读 `code` 本身）。
+            CallError::Unavailable { .. } => {
+                write!(f, "{}", copy_text("rsInboundClient.error.unavailable", &[]))
+            }
+            CallError::TooManyPending => write!(
+                f,
+                "{}",
+                copy_text(
+                    "rsInboundClient.error.tooMany",
+                    &[("max", &MAX_PENDING.to_string())]
+                )
+            ),
+            CallError::Disconnected => {
+                write!(f, "{}", copy_text("rsInboundClient.error.closed", &[]))
+            }
+            CallError::Cancelled => {
+                write!(f, "{}", copy_text("rsInboundClient.error.cancelled", &[]))
+            }
+            CallError::Timeout { after, withdraw } => {
+                let ms = after.as_millis().to_string();
+                let said = match withdraw {
+                    Withdraw::Unsent | Withdraw::Asked => {
+                        copy_text("rsInboundClient.error.timeout", &[("after", &ms)])
+                    }
+                    // 对端不认撤单：本地照撤，结果里说出来。
+                    Withdraw::NotOffered => {
+                        copy_text("rsInboundClient.error.timeoutPeerRunsOn", &[("after", &ms)])
+                    }
+                };
+                write!(f, "{said}")
+            }
+            // 那台的原话；码不上屏（调用方要按码分支的读 `code` 本身）。
+            CallError::Remote { message, .. } if message.trim().is_empty() => write!(
+                f,
+                "{}",
+                copy_text("rsInboundClient.error.refusedNoReason", &[])
+            ),
+            CallError::Remote { message, .. } => write!(
+                f,
+                "{}",
+                copy_text(
+                    "rsInboundClient.error.refused",
+                    &[("message", &message.to_string())]
+                )
+            ),
+        }
+    }
+}
 
 /// 一条走后端的控制命令**失败时**的结局，分界线见模块头注（成功那一态由调用方的 `Ok` 自己装，这里不另设）。
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Routed {
+pub enum Routed {
     /// **证明**这条命令没发出去 ⇒ 调用方可以回落到过渡期的 SSH 路径（C7）。
     /// 带上原因只为诊断，**不参与分流判断**。
     NoChannel(String),
@@ -89,7 +154,7 @@ pub(crate) enum Routed {
 ///
 /// 附带的 [`Detail`] 是**给人看的那句话的原料**，只为让收拢出来的三态逐字节不变；
 /// 它**不参与**任何分流判断（分流只看 `error`）。
-pub(crate) fn layer_call_error(e: &CallError, hop: u8) -> Layered {
+pub fn layer_call_error(e: &CallError, hop: u8) -> Layered {
     let at = |tag: &'static str| w::HopId { idx: hop, tag };
     let text = |s: String| Detail::Text(s);
     match e {
@@ -166,7 +231,7 @@ pub(crate) fn layer_call_error(e: &CallError, hop: u8) -> Layered {
 
 /// [`layer_call_error`] 的产出：`05` 的分层错误 ＋ 给人看的那句话的原料。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Layered {
+pub struct Layered {
     /// 三层。**分流只看它。**
     pub error: w::CallError,
     /// 那句话的原料 —— 不参与分流。
@@ -175,7 +240,7 @@ pub(crate) struct Layered {
 
 /// 给人看的那句话的原料。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Detail {
+pub enum Detail {
     /// 已经说成一句话了。
     Text(String),
     /// 对端的原话，由调用方的 `refusal` 翻成用户看的话。
@@ -183,7 +248,7 @@ pub(crate) enum Detail {
 }
 
 /// 没有控制通道（`client_for` 回 `None`）的分层结果 —— **一个字节都没发出去**。
-pub(crate) fn layer_no_channel(hop: u8) -> w::CallError {
+pub fn layer_no_channel(hop: u8) -> w::CallError {
     w::CallError::Hop {
         at: w::HopId {
             idx: hop,
@@ -201,7 +266,7 @@ pub(crate) fn layer_no_channel(hop: u8) -> w::CallError {
 /// 收拢规则只有一条：分层结果**能证明没发出去**（`reach: NotSent`，或对端事前就说不认）
 /// ⇒ `NoChannel`（可回落）；其余一律 `Refused`（不回落）。
 /// 收拢前后逐字节不变由 `the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering` 钉着。
-pub(crate) fn route_call_error(e: &CallError, refusal: impl Fn(&str, &str) -> String) -> Routed {
+pub fn route_call_error(e: &CallError, refusal: impl Fn(&str, &str) -> String) -> Routed {
     let Layered { error, detail } = layer_call_error(e, 0);
     let provably_not_sent = match error {
         w::CallError::Hop { reach, .. } => match reach {
@@ -226,7 +291,7 @@ pub(crate) fn route_call_error(e: &CallError, refusal: impl Fn(&str, &str) -> St
 }
 
 /// 没有控制通道（`client_for` 回 `None`）—— **一个字节都没发出去**，可回落。
-pub(crate) fn no_channel(origin: &str) -> Routed {
+pub fn no_channel(origin: &str) -> Routed {
     Routed::NoChannel(copy_text(
         "rsBackendRoute.noChannel.message",
         &[("origin", &origin.to_string())],

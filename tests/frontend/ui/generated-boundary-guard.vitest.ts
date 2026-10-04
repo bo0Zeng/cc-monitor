@@ -106,7 +106,7 @@ function tsDerivingSources(): string[] {
   // 记录的线上形状随记录解释搬进了后端（`agents/claudecode/schema.rs`），ts-rs 从后端导出 ——
   //   后端那一侧也在范围里，否则下面几条通用性质对 `JsonlRecord` 一族静默失效（C04d 那一课）。
   walk("src/backend");
-  walk("src/comms"); // 通信层成员（壳 / 后端经 `#[path]` 编它们）
+  walk("src/comms"); // 通信层那两个 crate
   return out.sort();
 }
 

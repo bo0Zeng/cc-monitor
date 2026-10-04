@@ -18,14 +18,14 @@ use filewin_contract::{decode_request, encode_ready, Ready};
 ///
 /// 连不上 / 钥匙不对 / 期限内没答 —— 带着通道那一层的分层原因。
 pub async fn dial_back(
-    h: &chan_core::chan::handoff::Handoff,
+    h: &comms_inward::chan::handoff::Handoff,
 ) -> Result<super::source::Line, String> {
-    use chan_core::chan::wire::{Budget, CancelToken};
+    use comms_inward::chan::wire::{Budget, CancelToken};
     let budget = Budget {
         until: std::time::Instant::now() + DIAL_BUDGET,
         cancel: CancelToken::new(),
     };
-    chan_core::chan::dial::dial(h, budget)
+    comms_inward::chan::dial::dial(h, budget)
         .await
         .map_err(|e| copy_text("rsFilewinProc.dialBack.failed", &[("e", &e.to_string())]))
 }

@@ -41,8 +41,9 @@
 //! `NotOffered`（那句话多说一句）＋ warn；补发之后被回 `not_cancellable` ⇒ warn 点名那条命令。
 
 use crate::chan::wire::{Offer, Withdraw, WITHDRAW_OP, WITHDRAW_REFUSED};
-use crate::copy_table::copy_text;
+// 「问后端失败了」那一套词（失败原因 · 在等应答的上限）住通信层 crate，与分流规则同一个家。
 use crate::stream_source::InboundFrame;
+pub use comms_inward::backend_route::{CallError, MAX_PENDING};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -52,93 +53,9 @@ use std::time::Duration;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::sync::{mpsc, oneshot};
 
-/// 同一条连接上**同时在等应答**的命令数上限。
-///
-/// 超时**不摘登记**（见 [`InboundClient::call`]），所以一个死掉但没断连的 backend
-/// 会让登记表只涨不落。这条上限把它变成「新命令快速失败」而不是「内存无界增长」。
-/// 取值与后端侧应答通道容量同量级（`src/backend/stream/inbound/mod.rs` 的
-/// `REPLY_CHANNEL_CAPACITY = 256`）—— 那头一次也只缓 256 条应答。
-pub const MAX_PENDING: usize = 256;
-
 /// 待写队列容量。满了 [`InboundClient::call`] 会**等**（背压），不丢命令 ——
 /// 丢一条命令的后果是调用方永远等不到应答，比慢一点糟得多。
 pub const WRITE_QUEUE_CAPACITY: usize = 64;
-
-/// 一次调用失败的原因。**每一档都要能让调用方分辨「该重试」还是「别重试」。**
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CallError {
-    /// backend 在 `hello.commands` 里没声明这条命令（含旧后端：无该字段 ⇒ 空集）。
-    /// 客户端侧直接拒，省一次往返 + 一次超时。**别重试**。
-    Unsupported { cmd: String, offered: Vec<String> },
-    /// 同时在等的命令已达 [`MAX_PENDING`]。**可稍后重试**。
-    TooManyPending,
-    /// 连接（或写任务）已经没了。**重连后重试**。
-    Disconnected,
-    /// backend 回了 `{"kind":"cancelled"}`。
-    Cancelled,
-    /// 握手时那台说过「这条我接得下、这台做不到」（`hello.unavailable`）⇒ **不发**，事前就拒。
-    /// `code` 与那台事后会回的同一个（如 `no_tmux`），调用方那张「码 → 人话」表不用另写。**别重试**（换台机器或装上再连）。
-    Unavailable { cmd: String, code: String },
-    /// 本地超时。`withdraw` 说对端那一半：没发出去 / 已补发撤单（best-effort）/ 对端不认撤单（要说出来）。
-    Timeout { after: Duration, withdraw: Withdraw },
-    /// backend 回了 `ok:false`。`code`/`message` 原样透出（形状对齐 `--resolve` 的错误契约）。
-    Remote { code: String, message: String },
-}
-
-impl std::fmt::Display for CallError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CallError::Unsupported { .. } => {
-                write!(f, "{}", copy_text("rsInboundClient.error.unsupported", &[]))
-            }
-            // 码不上屏（调用方要按码分支的读 `code` 本身）。
-            CallError::Unavailable { .. } => {
-                write!(f, "{}", copy_text("rsInboundClient.error.unavailable", &[]))
-            }
-            CallError::TooManyPending => write!(
-                f,
-                "{}",
-                copy_text(
-                    "rsInboundClient.error.tooMany",
-                    &[("max", &MAX_PENDING.to_string())]
-                )
-            ),
-            CallError::Disconnected => {
-                write!(f, "{}", copy_text("rsInboundClient.error.closed", &[]))
-            }
-            CallError::Cancelled => {
-                write!(f, "{}", copy_text("rsInboundClient.error.cancelled", &[]))
-            }
-            CallError::Timeout { after, withdraw } => {
-                let ms = after.as_millis().to_string();
-                let said = match withdraw {
-                    Withdraw::Unsent | Withdraw::Asked => {
-                        copy_text("rsInboundClient.error.timeout", &[("after", &ms)])
-                    }
-                    // 对端不认撤单：本地照撤，结果里说出来。
-                    Withdraw::NotOffered => {
-                        copy_text("rsInboundClient.error.timeoutPeerRunsOn", &[("after", &ms)])
-                    }
-                };
-                write!(f, "{said}")
-            }
-            // 那台的原话；码不上屏（调用方要按码分支的读 `code` 本身）。
-            CallError::Remote { message, .. } if message.trim().is_empty() => write!(
-                f,
-                "{}",
-                copy_text("rsInboundClient.error.refusedNoReason", &[])
-            ),
-            CallError::Remote { message, .. } => write!(
-                f,
-                "{}",
-                copy_text(
-                    "rsInboundClient.error.refused",
-                    &[("message", &message.to_string())]
-                )
-            ),
-        }
-    }
-}
 
 /// 一条命令的结局（由收帧侧路由过来）。
 #[derive(Debug, Clone, PartialEq)]

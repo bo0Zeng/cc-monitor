@@ -26,9 +26,12 @@ mod asset_sync; // 资产目录同步：连上那一刻把「怎么够到那台�
 mod auto_launch;
 // 🔴 `origin` 归一的地基：「这一趟问的是哪台机器」的唯一类型。
 mod backend_policy;
-// 通信层成员住 `src/comms/inward/`。`origin` 随通道编进共享 crate `chan-core`（线上词汇要它），这里再导出、路径不变；
-//   它那份判据（含 monitor 这一侧的「origin 归一」棘轮）照旧挂在 monitor 里（`origin_tests` 见下）。
-use chan_core::origin;
+// 通信层面 A 是 crate `comms_inward`（住 `src/comms/inward/`）：`origin` · 分流 · SSH 链路读应答这里再导出、路径不变；
+//   `origin` 那份判据（含 monitor 这一侧的「origin 归一」棘轮）照旧挂在 monitor 里（`origin_tests` 见下）。
+use comms_inward::{backend_route, origin, ssh_link};
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/backend_route_senders_tests.rs"]
+mod backend_route_senders_tests; // 每个走后端的发送端都经那一份分流规则（遍历 monitor 源码树）
 #[cfg(test)]
 #[path = "../../../../tests/comms/inward/origin_tests.rs"]
 mod origin_tests; // P2s（C8）：每台机一份后端策略（生效值住内存，持久化归前端）
@@ -71,8 +74,6 @@ mod history;
 //   宿主 —— `local_backend`（本机后端的起与看住）。跨轨对拍锚点 `agent_profile_parity`〔散文墓碑〕 随 monitor 那份适配表删了（对拍随家进了后端 `agents_tests.rs`）。
 //   Gate 1 前检 `tmux` 与 monitor 那一轨 `gate2_parity` 删了（子步 1：门只在后端）。
 mod backend_control;
-#[path = "../../../comms/inward/backend_route.rs"]
-mod backend_route;
 mod cc_bus;
 mod frame_query;
 mod inbound_client;
@@ -145,8 +146,6 @@ mod sftp;
 mod ccm_probe;
 mod stream_source;
 // 拨号应答的客户端（通信层面 A 的 SSH 链路那一段）。
-#[path = "../../../comms/inward/ssh_link.rs"] // 通信层成员，同上
-mod ssh_link;
 // `inproc_dial`（界面进程里最后一份 russh 拨号，只剩 SFTP 一个用户）删了：
 //   SFTP 进了本机常驻后端（`src/backend/dial/sftp.rs`），**界面进程零 SSH**（用户）。
 // 〔C2 → SR1a〕拨号的宿主：配置 → 请求 · 经本机常驻后端开链路 · 链路交给 `ssh_link`。
@@ -186,7 +185,7 @@ mod bus_identity_registry; // cc-bus：拿 id 点名 tmux 前必须核身份（�
 mod byte_cap_registry; // audit-0805 F06：字节上限登记表（管什么量 + 超限怎么办 + 跨 crate 对拍）
 mod capability_registry;
 #[cfg(test)]
-mod comm_boundary_registry; //：通信层的边界登记表 ＋ C1–C5 / X1–X6 十一条判据（人群非空之后绿的理由是三方相等，不是「扫不到」；份数的唯一住址在那个模块的头注里，这里刻意不抄第二份；整体 #[cfg(test)]）
+mod comm_boundary_registry; // 通信层的边界判据：成员 ＝ 通信层那两个 crate（`cargo metadata` 现取）＋ C1–C5 / X1–X6
 #[cfg(test)]
 mod dial_home_registry; // K-R74：「解耦干净」改述成三样可判的东西 —— 终点二值旗（russh 在不在界面 manifest 里）+ 过程递减棘轮（还没搬走的拨号处数）+ 拨号锚点的唯一住址（整体 #[cfg(test)]）
 #[cfg(test)]

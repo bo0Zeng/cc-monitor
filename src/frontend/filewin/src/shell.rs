@@ -382,7 +382,7 @@ pub struct FileWindow {
     /// 没有它的时候，每一件要问后端的事都**出声**（[`NO_LINE`]），不静默、不退回 SFTP（`D11`）。
     pub line: Option<Line>,
     /// 这台机器的能力事实（接上通道时问一次，`chan::wire::Offer`）：做不到的那几件在菜单上置灰并说为什么。
-    pub offer: std::sync::Arc<std::sync::Mutex<Option<chan_core::chan::wire::Offer>>>,
+    pub offer: std::sync::Arc<std::sync::Mutex<Option<comms_inward::chan::wire::Offer>>>,
     /// 拖入那一摞的状态机（**先一次问完，再并行传**）。
     pub board: DropBoard,
     /// 已经消化过几趟拖入。`board.rounds()` 走在它前面 ⇒ 该重列一次目录了。
@@ -573,7 +573,7 @@ impl FileWindow {
         if let Some(h) = &self.rt {
             let (l, origin, slot) = (line.clone(), self.source.origin(), self.offer.clone());
             h.spawn(async move {
-                let budget = chan_core::chan::wire::Budget {
+                let budget = comms_inward::chan::wire::Budget {
                     until: std::time::Instant::now() + OFFER_WITHIN,
                     cancel: Default::default(),
                 };

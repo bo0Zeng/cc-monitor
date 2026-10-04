@@ -1,11 +1,14 @@
 //! 中转的 `observe` 口走到账号域那一头：真中转 ＋ 生产段的上游选择 ＋ 一个按鉴权头作答的假上游。
 
-use super::super::listen::{listen, serve, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE};
-use super::*;
+use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE};
 use crate::accounts::quota::ledger::{self, Ledger};
 use crate::accounts::upstream_select::{table::RoutingTable, Accounts, Upstreams};
+use crate::stream::listen::LOOPBACK;
+use comms_outward::{Relay, TapEvent, TapPort, TeeSink};
 use std::io::BufRead;
+use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::sync::Arc;
 use std::sync::Mutex;
 
 /// 假上游收到的一发：鉴权头 · 请求体。
@@ -68,7 +71,7 @@ pub(super) fn upstreams_at(up: SocketAddr) -> Upstreams {
 pub(super) fn spawn_relay_over(accounts: Accounts) -> SocketAddr {
     let relay = Arc::new(Relay::new(
         Arc::new(accounts),
-        door::Key::for_tests(),
+        super::key::key_tests::test_key(),
         TeeSink::to_port(Arc::new(Mute)),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
@@ -80,8 +83,8 @@ pub(super) fn spawn_relay_over(accounts: Accounts) -> SocketAddr {
 }
 
 struct Mute;
-impl super::super::TapPort for Mute {
-    fn offer(&self, _ev: super::super::TapEvent) -> bool {
+impl TapPort for Mute {
+    fn offer(&self, _ev: TapEvent) -> bool {
         false
     }
 }
@@ -93,7 +96,7 @@ pub(super) fn shoot(addr: SocketAddr, target: &str, headers: &str, body: &str) -
         .expect("read deadline");
     let req = format!(
         "POST /{}{target} HTTP/1.1\r\nHost: 127.0.0.1\r\n{headers}Content-Length: {}\r\n\r\n{body}",
-        door::door_tests::TEST_KEY,
+        super::key::key_tests::TEST_KEY,
         body.len()
     );
     c.write_all(req.as_bytes()).expect("write");

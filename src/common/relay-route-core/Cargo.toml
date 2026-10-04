@@ -7,6 +7,6 @@ description = "后端的门牌与家的契约：落点 · 监听口与中转口 
 
 # **零依赖**。同 acct-core / shell-quote-core 的约束：backend 是 Linux-only 的静态 musl 二进制、
 # 且刻意不在 monitor 的 workspace 里；一旦引入平台相关的东西，共享就破了。
-# ⚠ 它**不是业务 crate**（不在 `comm_boundary_registry_tests::BUSINESS_CRATES` 里）：里面没有账号 / 凭据 / 上游，
-# 只有「这台机器的中转门在哪、路由路径长什么样」—— 通信层成员 `relay/route.rs` 因此可以 use 它（`C2`）。
+# ⚠ 它**不是业务 crate**：里面没有账号 / 凭据 / 上游，只有「这台机器的中转门在哪、路由路径长什么样」——
+# 中转 crate `comms-outward` 因此可以依赖它（边界判据 `C2` 的依赖名单里有它）。
 [dependencies]
