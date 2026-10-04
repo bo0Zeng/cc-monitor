@@ -146,7 +146,7 @@ fn parses_hello_commands_across_the_three_shapes() {
 /// ★ U8a-2a：`reply` 帧的**字段**解析必须有判据。
 ///
 /// D 审计变异 I1：`ok` 改成 `unwrap_or(true)`（错误应答变成成功）+ `data` 从 `payload`
-/// 键取 ⇒ 全绿。`known_kinds_matches_parse_frame` 只钉「有没有这条臂」，不看臂里取什么。
+/// 键取 ⇒ 全绿。金样那几条只钉「必填格缺了就红」，不看臂里取什么。
 #[test]
 fn parses_reply_and_cancelled_field_by_field() {
     let ok_line = r#"{"kind":"reply","id":"a-1","ok":true,"data":{"pong":1}}"#;
@@ -176,7 +176,7 @@ fn parses_reply_and_cancelled_field_by_field() {
     let proto_err = r#"{"kind":"reply","id":"","ok":false,"code":"line_too_long","message":"x"}"#;
     assert!(matches!(
         parse_frame(proto_err),
-        Some(InboundFrame::Reply { ok: false, .. })
+        Ok(InboundFrame::Reply { ok: false, .. })
     ));
     // 必需字段缺失 / 类型不对 → 坏帧跳过（与其余帧同一口径），**绝不当成 ok**。
     for bad in [
@@ -185,20 +185,20 @@ fn parses_reply_and_cancelled_field_by_field() {
         r#"{"kind":"reply","id":"a-3","ok":"true"}"#,
         r#"{"kind":"reply","id":7,"ok":true}"#,
     ] {
-        assert!(parse_frame(bad).is_none(), "坏 reply 却解出来了：{bad}");
+        assert!(parse_frame(bad).is_err(), "坏 reply 却解出来了：{bad}");
     }
     assert_eq!(
         parse_frame(r#"{"kind":"cancelled","id":"a-4"}"#).expect("cancelled must parse"),
         InboundFrame::Cancelled { id: "a-4".into() }
     );
-    assert!(parse_frame(r#"{"kind":"cancelled"}"#).is_none());
+    assert!(parse_frame(r#"{"kind":"cancelled"}"#).is_err());
 }
 
 /// #33：hello 缺 build_id → None（按必需字段，坏帧跳过；既有后端总在发它）。
 #[test]
 fn hello_missing_build_id_returns_none() {
     let line = r#"{"kind":"hello","v":1,"host_arch":"x86_64","claude_dir":"/c"}"#;
-    assert_eq!(parse_frame(line), None);
+    assert!(parse_frame(line).is_err());
 }
 
 /// F66（#58③）wire 契约：hello 的 `capabilities` 字段。
@@ -321,8 +321,8 @@ fn hx2_the_version_warning_says_which_side_is_older() {
 #[test]
 fn parses_two_line_frames_with_all_fields() {
     // 帧上带的是成品（`message` 原样收下、monitor 不读它）与这条记录自己的 `cwd`，不再是原文 `raw`。
-    let l0 = r#"{"kind":"line","session_id":"s-1","path":"/home/pi/.claude/projects/p/s-1.jsonl","seq":0,"message":{"type":"user"},"cwd":"/w"}"#;
-    let l1 = r#"{"kind":"line","session_id":"s-1","path":"/home/pi/.claude/projects/p/s-1.jsonl","seq":1}"#;
+    let l0 = r#"{"kind":"line","session_id":"s-1","path":"/home/pi/.claude/projects/p/s-1.jsonl","seq":0,"message":{"type":"user"},"cwd":"/w","byte_offset":40}"#;
+    let l1 = r#"{"kind":"line","session_id":"s-1","path":"/home/pi/.claude/projects/p/s-1.jsonl","seq":1,"byte_offset":80}"#;
 
     let f0 = parse_frame(l0).expect("line 0 must parse");
     assert_eq!(
@@ -333,7 +333,7 @@ fn parses_two_line_frames_with_all_fields() {
             seq: 0,
             message: crate::ui_contract::RecordBody::from_json(r#"{"type":"user"}"#.to_string()),
             cwd: Some("/w".to_string()),
-            end: None, // 这条金样没带 `byte_offset`
+            end: 40,
             rid: None,
         }
     );
@@ -351,14 +351,8 @@ fn parses_two_line_frames_with_all_fields() {
 // tmux 观测两帧（`tmux_session_closed` · `tmux_sessions`）的解析判据随帧删了：老后端发来 ⇒ 落下面那条「未知 kind」。
 #[test]
 fn a_retired_tmux_frame_from_an_old_backend_is_an_unknown_kind() {
-    assert_eq!(
-        parse_frame(r#"{"kind":"tmux_session_closed","name":"cc-abc123"}"#),
-        None
-    );
-    assert_eq!(
-        parse_frame(r#"{"kind":"tmux_sessions","raw":"NO_TMUX"}"#),
-        None
-    );
+    assert!(parse_frame(r#"{"kind":"tmux_session_closed","name":"cc-abc123"}"#).is_err());
+    assert!(parse_frame(r#"{"kind":"tmux_sessions","raw":"NO_TMUX"}"#).is_err());
 }
 
 /// 测试连接的进度帧：票 ＋ 那一格原样（对象的 JSON 文本，monitor 不解释）；那一格不是对象 / 缺票 ⇒ 坏帧。
@@ -366,38 +360,32 @@ fn a_retired_tmux_frame_from_an_old_backend_is_an_unknown_kind() {
 fn a_probe_frame_carries_its_ticket_and_the_cell_verbatim() {
     assert_eq!(
         parse_frame(r#"{"kind":"probe","ticket":"t-1","cell":{"reached":"ssh"}}"#),
-        Some(InboundFrame::Probe {
+        Ok(InboundFrame::Probe {
             ticket: "t-1".into(),
             cell: r#"{"reached":"ssh"}"#.into(),
         })
     );
-    assert_eq!(
-        parse_frame(r#"{"kind":"probe","ticket":"t-1","cell":"ssh"}"#),
-        None
-    );
-    assert_eq!(
-        parse_frame(r#"{"kind":"probe","cell":{"reached":"ssh"}}"#),
-        None
-    );
+    assert!(parse_frame(r#"{"kind":"probe","ticket":"t-1","cell":"ssh"}"#).is_err());
+    assert!(parse_frame(r#"{"kind":"probe","cell":{"reached":"ssh"}}"#).is_err());
 }
 
 /// 未知 kind（协议向前演进新增的帧类型）→ None，调用方 warn+skip，绝不 panic。
 #[test]
 fn unknown_kind_returns_none() {
     let line = r#"{"kind":"future_thing","x":1}"#;
-    assert_eq!(parse_frame(line), None);
+    assert!(parse_frame(line).is_err());
 }
 
 /// 完全非 JSON 的 garbage 行 → None，绝不 panic。
 #[test]
 fn garbage_non_json_returns_none() {
-    assert_eq!(parse_frame("not json"), None);
-    assert_eq!(parse_frame(""), None);
+    assert!(parse_frame("not json").is_err());
+    assert!(parse_frame("").is_err());
     // 合法 JSON 但不是 object（数组 / 标量）也 → None
-    assert_eq!(parse_frame("[1,2,3]"), None);
-    assert_eq!(parse_frame("42"), None);
+    assert!(parse_frame("[1,2,3]").is_err());
+    assert!(parse_frame("42").is_err());
     // object 但缺 kind
-    assert_eq!(parse_frame(r#"{"v":1}"#), None);
+    assert!(parse_frame(r#"{"v":1}"#).is_err());
 }
 
 /// 已知 kind + 额外未知字段：仍正常解析，多余字段被忽略（不 fail）。
@@ -455,7 +443,7 @@ fn session_status_frame_parses() {
     let line = r#"{"kind":"session_status","sid":"s-1","status":"waiting","waiting_for":"permission prompt"}"#;
     assert_eq!(
         parse_frame(line),
-        Some(InboundFrame::SessionStatus {
+        Ok(InboundFrame::SessionStatus {
             sid: "s-1".to_string(),
             status: Some("waiting".to_string()),
             waiting_for: Some("permission prompt".to_string()),
@@ -465,7 +453,7 @@ fn session_status_frame_parses() {
     let line = r#"{"kind":"session_status","sid":"s-2","status":"busy"}"#;
     assert_eq!(
         parse_frame(line),
-        Some(InboundFrame::SessionStatus {
+        Ok(InboundFrame::SessionStatus {
             sid: "s-2".to_string(),
             status: Some("busy".to_string()),
             waiting_for: None,
@@ -482,7 +470,7 @@ fn parses_session_removed() {
     ] {
         assert_eq!(
             parse_frame(line),
-            Some(InboundFrame::SessionRemoved {
+            Ok(InboundFrame::SessionRemoved {
                 sid: "s-dead".to_string(),
             })
         );
@@ -496,23 +484,20 @@ fn session_state_reads_two_literals_and_anything_else_is_a_bad_frame() {
     use crate::session_book::Fate;
     assert_eq!(
         parse_frame(r#"{"kind":"session_state","sid":"abc","state":"reconnectable"}"#),
-        Some(InboundFrame::SessionState {
+        Ok(InboundFrame::SessionState {
             sid: "abc".into(),
             state: Fate::Reconnectable
         })
     );
     assert_eq!(
         parse_frame(r#"{"kind":"session_state","sid":"abc","state":"ended"}"#),
-        Some(InboundFrame::SessionState {
+        Ok(InboundFrame::SessionState {
             sid: "abc".into(),
             state: Fate::Ended
         })
     );
-    assert_eq!(
-        parse_frame(r#"{"kind":"session_state","sid":"abc","state":"idle"}"#),
-        None
-    );
-    assert_eq!(parse_frame(r#"{"kind":"session_state","sid":"abc"}"#), None);
+    assert!(parse_frame(r#"{"kind":"session_state","sid":"abc","state":"idle"}"#).is_err());
+    assert!(parse_frame(r#"{"kind":"session_state","sid":"abc"}"#).is_err());
 }
 
 /// issue #32：overflow 帧解析出 dropped 计数；缺/错 dropped 当坏帧跳过（None）。
@@ -528,26 +513,22 @@ fn parses_overflow_and_rejects_bad_dropped() {
         }
     );
     // 缺 dropped → None
-    assert_eq!(parse_frame(r#"{"kind":"overflow"}"#), None);
+    assert!(parse_frame(r#"{"kind":"overflow"}"#).is_err());
     // dropped 类型错（字符串）→ None
-    assert_eq!(parse_frame(r#"{"kind":"overflow","dropped":"12"}"#), None);
+    assert!(parse_frame(r#"{"kind":"overflow","dropped":"12"}"#).is_err());
 }
 
 /// 已知 kind 但必需字段缺失 / 类型错 → None（坏帧当 garbage 跳过，不 panic）。
 #[test]
 fn known_kind_missing_or_wrong_field_returns_none() {
     // line 缺 seq
-    assert_eq!(
-        parse_frame(r#"{"kind":"line","session_id":"s","path":"/p","raw":"x"}"#),
-        None
-    );
+    assert!(parse_frame(r#"{"kind":"line","session_id":"s","path":"/p","raw":"x"}"#).is_err());
     // seq 类型错（字符串而非数字）
-    assert_eq!(
-        parse_frame(r#"{"kind":"line","session_id":"s","path":"/p","seq":"0","raw":"x"}"#),
-        None
+    assert!(
+        parse_frame(r#"{"kind":"line","session_id":"s","path":"/p","seq":"0","raw":"x"}"#).is_err()
     );
     // session_added 缺 sid
-    assert_eq!(parse_frame(r#"{"kind":"session_added"}"#), None);
+    assert!(parse_frame(r#"{"kind":"session_added"}"#).is_err());
 }
 
 /// 模拟一段帧序列逐行喂入：hello → 两条 line → 未知 → garbage → session_removed。
@@ -556,23 +537,27 @@ fn known_kind_missing_or_wrong_field_returns_none() {
 fn dispatch_over_a_frame_sequence() {
     let lines = [
         r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/c"}"#,
-        r#"{"kind":"line","session_id":"s","path":"/p","seq":0,"raw":"a"}"#,
-        r#"{"kind":"line","session_id":"s","path":"/p","seq":1,"raw":"b"}"#,
+        r#"{"kind":"line","session_id":"s","path":"/p","seq":0,"byte_offset":2}"#,
+        r#"{"kind":"line","session_id":"s","path":"/p","seq":1,"byte_offset":4}"#,
         r#"{"kind":"future_thing","x":1}"#,
         "not json",
         r#"{"kind":"session_removed","sid":"s"}"#,
     ];
-    let parsed: Vec<Option<InboundFrame>> = lines.iter().map(|l| parse_frame(l)).collect();
+    let parsed: Vec<Result<InboundFrame, Unread>> = lines.iter().map(|l| parse_frame(l)).collect();
 
-    assert!(matches!(parsed[0], Some(InboundFrame::Hello { v: 1, .. })));
-    assert!(matches!(parsed[1], Some(InboundFrame::Line { seq: 0, .. })));
-    assert!(matches!(parsed[2], Some(InboundFrame::Line { seq: 1, .. })));
-    assert_eq!(parsed[3], None, "unknown kind → None");
-    assert_eq!(parsed[4], None, "garbage → None");
-    assert!(matches!(
-        parsed[5],
-        Some(InboundFrame::SessionRemoved { .. })
-    ));
+    assert!(matches!(parsed[0], Ok(InboundFrame::Hello { v: 1, .. })));
+    assert!(matches!(parsed[1], Ok(InboundFrame::Line { seq: 0, .. })));
+    assert!(matches!(parsed[2], Ok(InboundFrame::Line { seq: 1, .. })));
+    assert_eq!(
+        parsed[3],
+        Err(Unread::UnknownKind("future_thing".into())),
+        "不认识的种类单列"
+    );
+    assert!(
+        matches!(&parsed[4], Err(Unread::BadShape { kind, .. }) if kind.is_empty()),
+        "不是 JSON ⇒ 形状不对、种类读不出"
+    );
+    assert!(matches!(parsed[5], Ok(InboundFrame::SessionRemoved { .. })));
 }
 
 /// `accounts_changed`：认得出（无载荷，多余字段忽略）；
@@ -584,17 +569,17 @@ fn dispatch_over_a_frame_sequence() {
 fn accounts_changed_is_recognised_and_reaches_the_frontend_as_ready() {
     assert_eq!(
         parse_frame(r#"{"kind":"accounts_changed"}"#),
-        Some(InboundFrame::AccountsChanged)
+        Ok(InboundFrame::AccountsChanged)
     );
     assert_eq!(
         parse_frame(r#"{"kind":"accounts_changed","future":1}"#),
-        Some(InboundFrame::AccountsChanged),
+        Ok(InboundFrame::AccountsChanged),
         "多余字段该被忽略（additive）"
     );
     let prod = crate::guard_support::stream_source_production();
     let arm = guard_core::find_pinned(&prod, "Some(InboundFrame::AccountsChanged) =>")
         .expect("流循环里不是恰好一条 accounts_changed 的臂");
-    // 臂体取到下一条 `Some(InboundFrame::` 臂为止（按字符切，不按字节数切 —— 中文注释会切在字中间）。
+    // 臂体取到下一条 `Ok(InboundFrame::` 臂为止（按字符切，不按字节数切 —— 中文注释会切在字中间）。
     let rest = &prod[arm + 1..];
     let body = &prod[arm..arm + 1 + rest.find("Some(InboundFrame::").unwrap_or(rest.len())];
     let code = guard_core::strip_comment_lines(body);
@@ -648,7 +633,7 @@ fn session_added_container_reads_two_literals_and_unknown_is_none() {
 fn sessions_replayed_is_known() {
     assert_eq!(
         parse_frame(r#"{"kind":"sessions_replayed"}"#),
-        Some(InboundFrame::SessionsReplayed)
+        Ok(InboundFrame::SessionsReplayed)
     );
 }
 
@@ -662,7 +647,7 @@ fn tap_frames_parse_into_their_shapes_and_bad_ones_are_none() {
     let start = "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":0,\"ev\":{\"t\":\"start\",\"rid\":\"r-1\"}}";
     assert_eq!(
         parse_frame(start),
-        Some(InboundFrame::Tap(Tap {
+        Ok(InboundFrame::Tap(Tap {
             stream: "0b6c1f7e-sid".into(),
             run: None,
             resp: 12,
@@ -672,7 +657,7 @@ fn tap_frames_parse_into_their_shapes_and_bad_ones_are_none() {
     );
     let block = "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"run\":\"a1\",\"resp\":12,\"n\":1,\"ev\":{\"t\":\"block\",\"i\":0,\"kind\":\"tool\",\"tool\":\"Bash\"}}";
     match parse_frame(block) {
-        Some(InboundFrame::Tap(t)) => {
+        Ok(InboundFrame::Tap(t)) => {
             assert_eq!(t.run.as_deref(), Some("a1"));
             assert_eq!(t.n, 1);
             assert!(matches!(t.body, TapBody::Ev(_)));
@@ -685,7 +670,7 @@ fn tap_frames_parse_into_their_shapes_and_bad_ones_are_none() {
         );
         assert_eq!(
             parse_frame(&line),
-            Some(InboundFrame::Tap(Tap {
+            Ok(InboundFrame::Tap(Tap {
                 stream: "0b6c1f7e-sid".into(),
                 run: None,
                 resp: 12,
@@ -701,7 +686,10 @@ fn tap_frames_parse_into_their_shapes_and_bad_ones_are_none() {
         r#"{"kind":"tap","stream":"s","resp":1,"ev":{"t":"stop","ok":true}}"#,
         r#"{"kind":"tap","stream":"s","run":7,"resp":1,"n":0,"ev":{"t":"stop","ok":true}}"#,
     ] {
-        assert_eq!(parse_frame(bad), None, "坏的 tap 帧被当成好帧解了：{bad}");
+        assert!(
+            parse_frame(bad).is_err(),
+            "坏的 tap 帧被当成好帧解了：{bad}"
+        );
     }
 }
 
@@ -711,7 +699,7 @@ fn tap_frames_parse_into_their_shapes_and_bad_ones_are_none() {
 fn session_runs_frames_carry_the_runs_verbatim() {
     let line = r#"{"kind":"session_runs","sid":"s1","runs":[{"run":"a2","state":"done","last":{"t":"say"}}],"ended":[{"run":"a0","tool":"t0","state":"failed"}]}"#;
     match parse_frame(line) {
-        Some(InboundFrame::SessionRuns { sid, runs, ended }) => {
+        Ok(InboundFrame::SessionRuns { sid, runs, ended }) => {
             assert_eq!(sid, "s1");
             assert_eq!(
                 runs.0.get(),
@@ -729,7 +717,7 @@ fn session_runs_frames_carry_the_runs_verbatim() {
         r#"{"kind":"session_runs","sid":"s1","runs":[],"ended":{}}"#,
         r#"{"kind":"session_runs","sid":"s1","runs":[]}"#,
     ] {
-        assert_eq!(parse_frame(bad), None, "坏的运行表帧被收下了：{bad}");
+        assert!(parse_frame(bad).is_err(), "坏的运行表帧被收下了：{bad}");
     }
 }
 
@@ -774,7 +762,7 @@ fn a_tap_frame_becomes_the_session_tap_payload_field_for_field() {
 #[test]
 fn loc1b_the_pid_on_session_added_is_read_only_when_it_is_a_real_pid() {
     let pid_of = |line: &str| match parse_frame(line) {
-        Some(InboundFrame::SessionAdded { pid, .. }) => pid,
+        Ok(InboundFrame::SessionAdded { pid, .. }) => pid,
         other => panic!("解不出 session_added：{other:?}"),
     };
     assert_eq!(
@@ -803,7 +791,7 @@ fn the_session_file_frames_are_known_and_an_unknown_why_is_dropped() {
     use crate::stream_source::FileChange;
     assert_eq!(
         parse_frame(r#"{"kind":"session_file_gone","session_id":"s","path":"/p/s.jsonl"}"#),
-        Some(InboundFrame::SessionFileNotice {
+        Ok(InboundFrame::SessionFileNotice {
             sid: "s".into(),
             path: "/p/s.jsonl".into(),
             change: FileChange::Gone
@@ -817,7 +805,7 @@ fn the_session_file_frames_are_known_and_an_unknown_why_is_dropped() {
             parse_frame(&format!(
                 r#"{{"kind":"session_file_reread","session_id":"s","path":"/p/s.jsonl","why":"{why}"}}"#
             )),
-            Some(InboundFrame::SessionFileNotice {
+            Ok(InboundFrame::SessionFileNotice {
                 sid: "s".into(),
                 path: "/p/s.jsonl".into(),
                 change: want
@@ -829,7 +817,7 @@ fn the_session_file_frames_are_known_and_an_unknown_why_is_dropped() {
         r#"{"kind":"session_file_reread","session_id":"s","path":"/p/s.jsonl"}"#,
         r#"{"kind":"session_file_gone","session_id":"s"}"#,
     ] {
-        assert_eq!(parse_frame(bad), None, "{bad}");
+        assert!(parse_frame(bad).is_err(), "{bad}");
     }
 }
 
@@ -838,9 +826,9 @@ fn the_session_file_frames_are_known_and_an_unknown_why_is_dropped() {
 fn tasks_changed_is_recognised_and_reaches_the_frontend_stream() {
     assert_eq!(
         parse_frame(r#"{"kind":"tasks_changed","sid":"s1"}"#),
-        Some(InboundFrame::TasksChanged { sid: "s1".into() })
+        Ok(InboundFrame::TasksChanged { sid: "s1".into() })
     );
-    assert_eq!(parse_frame(r#"{"kind":"tasks_changed"}"#), None);
+    assert!(parse_frame(r#"{"kind":"tasks_changed"}"#).is_err());
     let prod = crate::guard_support::stream_source_production();
     assert_eq!(
         prod.matches("replay.tasks_changed(").count(),

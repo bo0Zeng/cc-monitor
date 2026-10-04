@@ -12474,6 +12474,16 @@
       "zh": "远端 [{host}] 连接拥塞，可能丢了约 {dropped} 条实时消息；重开该会话可看完整历史。",
       "args": ["host", "dropped"]
     },
+    "rsSshSource.health.unknownFrame": {
+      "kind": "body",
+      "zh": "{host}：未知帧 {kind}（后端较新）",
+      "args": ["host", "kind"]
+    },
+    "rsSshSource.health.badFrame": {
+      "kind": "body",
+      "zh": "{host}：帧格式不符 {kind}",
+      "args": ["host", "kind"]
+    },
     "rsSshSource.snapshot.incompletePlan": {
       "kind": "error",
       "zh": "快照不完整：{total}/{expected} 行（连接中断或后端报错）",

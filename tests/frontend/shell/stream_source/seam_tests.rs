@@ -19,7 +19,7 @@ async fn a_hello_frame_thaws_the_write_half_and_registers_the_client() {
     // 非 hello 帧不解冻。
     let not_hello = parse_frame(r#"{"kind":"overflow","dropped":1}"#);
     assert!(
-        attach_inbound_client(origin, &mut parked, not_hello.as_ref()).is_none(),
+        attach_inbound_client(origin, &mut parked, not_hello.as_ref().ok()).is_none(),
         "非 hello 帧居然把写半边解冻了"
     );
     assert!(parked.is_some(), "写半边被误消耗了");
@@ -27,8 +27,8 @@ async fn a_hello_frame_thaws_the_write_half_and_registers_the_client() {
 
     // hello ⇒ 解冻 + 登记，且后端声明的命令集透传到客户端。
     let hello = parse_frame(&hello_line(r#"["ping"]"#));
-    let client =
-        attach_inbound_client(origin, &mut parked, hello.as_ref()).expect("hello 应当换出客户端");
+    let client = attach_inbound_client(origin, &mut parked, hello.as_ref().ok())
+        .expect("hello 应当换出客户端");
     assert!(client.accepts("ping"));
     assert!(!client.accepts("launch"));
     assert!(parked.is_none(), "写半边应当已被 take 走");
@@ -39,7 +39,7 @@ async fn a_hello_frame_thaws_the_write_half_and_registers_the_client() {
 
     // 第二次 hello（不该有）：静默跳过，不会再造一个客户端。
     let again = parse_frame(&hello_line(r#"["ping"]"#));
-    assert!(attach_inbound_client(origin, &mut parked, again.as_ref()).is_none());
+    assert!(attach_inbound_client(origin, &mut parked, again.as_ref().ok()).is_none());
 
     inbound_client::unregister(origin, &client);
     assert!(inbound_client::client_for(origin).is_none());
@@ -106,7 +106,7 @@ fn the_overflow_message_says_so_when_the_identity_list_was_truncated() {
 #[test]
 fn overflow_from_an_old_backend_still_parses() {
     match parse_frame(r#"{"kind":"overflow","dropped":5}"#) {
-        Some(InboundFrame::Overflow {
+        Ok(InboundFrame::Overflow {
             dropped,
             lost,
             lost_truncated,
@@ -124,7 +124,7 @@ fn overflow_from_an_old_backend_still_parses() {
 fn overflow_identity_fields_are_actually_parsed() {
     let json = r#"{"kind":"overflow","dropped":2,"lost":[{"kind":"session_removed","subject":"sid-x"},{"kind":"tmux_sessions"}],"lost_truncated":true}"#;
     match parse_frame(json) {
-        Some(InboundFrame::Overflow {
+        Ok(InboundFrame::Overflow {
             dropped,
             lost,
             lost_truncated,
@@ -148,7 +148,7 @@ async fn reply_and_cancelled_frames_reach_the_waiting_caller() {
     let mut parked = Some(inbound_client::park(mine));
     let origin = "seam-route-origin";
     let hello = parse_frame(&hello_line(r#"["ping","cancel"]"#));
-    let client = attach_inbound_client(origin, &mut parked, hello.as_ref()).expect("客户端");
+    let client = attach_inbound_client(origin, &mut parked, hello.as_ref().ok()).expect("客户端");
 
     let c = client.clone();
     let caller = tokio::spawn(async move {

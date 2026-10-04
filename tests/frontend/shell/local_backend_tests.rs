@@ -568,7 +568,7 @@ fn the_read_loop_really_calls_the_absorb_point() {
         .expect("读行循环里必须恰好有一处 `absorb_local_frame(frame, registered.as_ref())`");
     let before = &prod[..at];
     assert!(
-        before.contains("parse_frame(&line)"),
+        before.contains("unread.take(&line"),
         "吸收点必须排在**解析出帧之后** —— 顺序反了就是拿没解析的东西去收"
     );
     // ★ M3：常驻那条载体（宿主的 `attach_stream`）**也**只经这一个吸收点 —— 恰好一处，
@@ -582,7 +582,7 @@ fn the_read_loop_really_calls_the_absorb_point() {
     )
     .expect("常驻载体的读循环里必须恰好有一处吸收点调用");
     assert!(
-        host[..at].contains("parse_frame(line)"),
+        host[..at].contains("unread.take(line"),
         "常驻载体：吸收点必须排在解析出帧之后"
     );
     for (name, src) in [

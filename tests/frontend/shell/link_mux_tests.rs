@@ -64,7 +64,7 @@ fn rig() -> Rig {
     tauri::async_runtime::spawn(async move {
         let mut lines = tokio::io::BufReader::new(mon_r).lines();
         while let Ok(Some(l)) = lines.next_line().await {
-            if let Some(f) = parse_frame(&l) {
+            if let Ok(f) = parse_frame(&l) {
                 crate::local_backend::absorb_local_frame(f, Some(&c2));
             }
         }
@@ -363,23 +363,23 @@ async fn an_error_end_and_an_over_window_flood_both_surface_as_read_errors() {
 #[test]
 fn parse_frame_decodes_link_frames_and_refuses_bad_base64() {
     match parse_frame(r#"{"kind":"link_data","link":"L","data":"aGkK"}"#) {
-        Some(InboundFrame::LinkData { link, data }) => {
+        Ok(InboundFrame::LinkData { link, data }) => {
             assert_eq!(link, "L");
             assert_eq!(data, b"hi\n");
         }
         other => panic!("解出来的不对：{other:?}"),
     }
-    assert!(parse_frame(r#"{"kind":"link_data","link":"L","data":"a!"}"#).is_none());
+    assert!(parse_frame(r#"{"kind":"link_data","link":"L","data":"a!"}"#).is_err());
     assert_eq!(
         parse_frame(r#"{"kind":"link_end","link":"L","error":"e"}"#),
-        Some(InboundFrame::LinkEnd {
+        Ok(InboundFrame::LinkEnd {
             link: "L".into(),
             error: Some("e".into())
         })
     );
     assert_eq!(
         parse_frame(r#"{"kind":"link_end","link":"L"}"#),
-        Some(InboundFrame::LinkEnd {
+        Ok(InboundFrame::LinkEnd {
             link: "L".into(),
             error: None
         })

@@ -174,15 +174,8 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     // 「谁给 agent 进程定 env」那张两半人群闭表（后端测试读 monitor `platform/terminal.rs`）这条边摘了：
     //   起会话只交一行 `ccm …` 之后，给 agent 进程定 env 的只剩 `ccm`（`control/ccm/`，同一个 crate 里有判据），
     //   开窗那一跳的 `.env(k, v)` 由 monitor 自己的 `launch_tests.rs::every_terminal_window_backend_opens_carries_the_backend_path` 钉着。
-    (
-        "monitor→backend",
-        "tests/frontend/shell/stream_source/emits_parity.rs",
-        // 🔴 对端从 `main.rs` 改成 `lib.rs` —— `EMITS` 那张表按
-        // 前置 1 搬进了后端库面。本行是**盘上现打出来的答案**：
-        //    搬家当天这条判据逐字报「盘上有 `…/lib.rs`、登记里是 `…/main.rs`」。
-        "src/backend/lib.rs",
-        "backend 的启动契约（身份清单 / hello）两侧同形",
-    ),
+    // `stream_source/emits_parity.rs → src/backend/lib.rs`（`EMITS` 两侧对拍）那一条随那份判据删了：
+    //   认得哪些帧改由跨语言金样 `tests/__fixtures__/session-stream.golden.jsonl` 两向比（后端写、monitor 读）。
     // `ssh_source_f032_idle_tests.rs → src/backend/stream/wire.rs`（`RemovalCause` 字面量双写点）那一条随那份判据删了：
     //   monitor 不再读 `session_removed.cause`（去向由后端会话账本裁成 `session_state`）。
     (

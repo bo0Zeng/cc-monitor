@@ -2569,12 +2569,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "copy_bidirectional_with_sizes",
             1,
         ),
-        (
-            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
-            "tests/frontend/shell/stream_source/emits_parity.rs",
-            "hello_commands_match_the_dispatch_table",
-            1,
-        ),
+        // `stream_source/emits_parity.rs` 点 `hello_commands_match_the_dispatch_table` 那一行摘了：那份判据随跨语言金样删了。
         // 存量四行摘了：点它们的那几段散文（`stream_source/` 的 tmux 原文账 / 宣告账头注 · `tmux.rs` 的 `list_local_tmux` 头注）
         //   随 monitor 那几本账一起删 / 改写（`list_local_tmux` 改问本机后端），`ssh_source_f032_idle_tests.rs` 那一处随文件删。
         // `tmux_backend_gate_guard_tests.rs` 里 `both_backend_commands_use_this_one_router` 那一行（存量）摘了：

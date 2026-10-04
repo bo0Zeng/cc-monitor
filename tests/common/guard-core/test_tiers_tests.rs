@@ -453,7 +453,7 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/stream_source/coldstart_perf_guard.rs",
     "tests/frontend/shell/stream_source/coldstart_preflight_guard.rs",
     "tests/frontend/shell/stream_source/dial_move_judge.rs",
-    "tests/frontend/shell/stream_source/emits_parity.rs",
+    "tests/frontend/shell/stream_source/golden_tests.rs", // 读跨语言金样（`tests/__fixtures__/session-stream.golden.jsonl`）
     "tests/frontend/shell/stream_source/frame_dispatch_shape.rs",
     "tests/frontend/shell/stream_source/parse_frame_tests.rs",
     "tests/frontend/shell/stream_source/stream_flag_gate_tests.rs",

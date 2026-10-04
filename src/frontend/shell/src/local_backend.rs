@@ -1585,7 +1585,7 @@ pub(crate) fn absorb_local_frame(
 /// `stream_source::stream_loop` **不是泛型**：它吃 `&RemoteConfig` + `&tauri::AppHandle`，
 /// 还管重放 / 会话变更 / 连接状态 / hello 确认。本机没有那些。
 /// 但它下面那三个零件**是纯的**，本函数复用的正是它们：
-/// `parse_frame(&str) -> Option<InboundFrame>` · `BackendHello::from_hello_frame(&InboundFrame)` ·
+/// `parse_frame(&str) -> Result<InboundFrame, Unread>` · `BackendHello::from_hello_frame(&InboundFrame)` ·
 /// `ParkedWriter::into_client(BackendHello)`。
 /// ⇒ 复用**纯零件**，不把一个绑传输的循环硬掰成泛型。
 ///
@@ -1641,6 +1641,11 @@ pub(crate) fn local_stdio_consumer(
     let mut rd = std::io::BufReader::new(stdout);
     // 这条载体上跳过了几帧认不出的、几行不是合法 UTF-8 —— 记账，流结束出总账。
     let mut tally = crate::frame_tally::FrameTally::new("本机后端（stdio 载体）");
+    // 解不出来的帧每种说一次（日志 ＋ 本机的健康信息）。
+    let mut unread = crate::stream_source::UnreadNotes::new(
+        crate::inbound_client::LOCAL_ORIGIN,
+        copy_text("rsLocalBackend.place.thisMachine", &[]),
+    );
     loop {
         let line =
             match read_capped_line_sync(&mut rd, crate::stream_source::BACKEND_FRAME_LINE_CAP) {
@@ -1672,10 +1677,8 @@ pub(crate) fn local_stdio_consumer(
         if line.is_empty() {
             continue; // 空行
         }
-        let Some(frame) = crate::stream_source::parse_frame(&line) else {
-            if let Some(n) = tally.note_unparsed(&line) {
-                tracing::warn!("{n}");
-            }
+        let Some(frame) = unread.take(&line, &mut tally, &crate::stream_source::local_health)
+        else {
             continue;
         };
         // 还没登记时先看它是不是 hello；不是 hello（或已经登记过了）⇒ 交吸收点。

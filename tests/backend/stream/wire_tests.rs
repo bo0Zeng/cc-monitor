@@ -237,49 +237,96 @@ fn parse_kind(line: &str) -> String {
         .to_string()
 }
 
-#[test]
-fn each_variant_serializes_to_single_line_with_expected_kind() {
-    let cases: Vec<(Frame, &str)> = vec![
-        (
+/// 会话流金样的住址（仓根相对）。monitor 那一侧读同一份逐行判自己的解析器。
+const SESSION_STREAM_GOLDEN: &str = "tests/__fixtures__/session-stream.golden.jsonl";
+
+/// 每种帧两行：`[全格, 最少格]` —— 全格 ＝ 可选格（`skip_serializing_if` 的）都在；最少格 ＝ 都缺。
+/// 没有可选格的帧两行相同。
+/// `tap` 的 `ev` 与 `end` 恰有一个：最少格留 `end`（两格都缺不是一帧合法的 `tap`）。
+fn golden_pairs() -> Vec<[Frame; 2]> {
+    use crate::agents::{RunDid, StreamEv};
+    use crate::stream::wire::{
+        AgentHome, LostFrame, RereadWhy, RunEnded, RunInfo, RunState, SessionContainer,
+        SessionFate, TapEnd, TransferEnd, Unavailable,
+    };
+    let s = |v: &str| v.to_string();
+    let both = |f: Frame| [f.clone(), f];
+    vec![
+        [
             Frame::Hello {
                 v: 1,
-                build_id: "b".into(),
-                host_arch: "x86_64".into(),
-                claude_dir: "/home/u/.claude".into(),
+                build_id: s("b1"),
+                host_arch: s("x86_64"),
+                claude_dir: s("/home/u/.claude"),
+                homes: vec![AgentHome {
+                    agent_kind: s("claude"),
+                    path: s("/home/u/.claude"),
+                }],
+                capabilities: vec![s("bg"), s("tail-only")],
+                emits: vec![s("line")],
+                commands: vec![s("ping")],
+                unavailable: vec![Unavailable {
+                    command: s("tmux-list"),
+                    code: s("no_tmux"),
+                }],
+                host_env: [(s("CCM_RELAY_PORT"), s("47001"))].into_iter().collect(),
+                uncancellable: vec![s("ping")],
+            },
+            Frame::Hello {
+                v: 1,
+                build_id: s("b1"),
+                host_arch: s("x86_64"),
+                claude_dir: s("/home/u/.claude"),
                 homes: vec![],
-                capabilities: vec!["bg".into(), "tail-only".into()],
-                emits: vec!["line".into(), "session_status".into()],
+                capabilities: vec![],
+                emits: vec![],
                 commands: vec![],
                 unavailable: vec![],
                 host_env: Default::default(),
                 uncancellable: vec![],
             },
-            "hello",
-        ),
-        (
+        ],
+        [
             Frame::Line {
-                session_id: "s".into(),
-                path: "/p".into(),
-                seq: 0,
+                session_id: s("s1"),
+                path: s("/p/s1.jsonl"),
+                seq: 3,
+                message: Some(serde_json::json!({"role": "user"})),
+                cwd: Some(s("/w")),
+                byte_offset: 120,
+                rid: Some(s("r1")),
+                raw: Some(s("{}")),
+            },
+            Frame::Line {
+                session_id: s("s1"),
+                path: s("/p/s1.jsonl"),
+                seq: 3,
                 message: None,
                 cwd: None,
-                byte_offset: 0,
+                byte_offset: 120,
                 rid: None,
                 raw: None,
             },
-            "line",
-        ),
-        (
-            Frame::SessionRuns {
-                sid: "s".into(),
-                runs: vec![],
-                ended: vec![],
-            },
-            "session_runs",
-        ),
-        (
+        ],
+        [
             Frame::SessionAdded {
-                sid: "s".into(),
+                sid: s("s1"),
+                agent_kind: Some(s("claude")),
+                liveness_confidence: Some(s("pidfile")),
+                session_kind: Some(s("interactive")),
+                attachable: Some(true),
+                cwd: Some(s("/w")),
+                project_dir: Some(s("/w")),
+                name: Some(s("n")),
+                path: Some(s("/p/s1.jsonl")),
+                lines: Some(9),
+                status: Some(s("waiting")),
+                waiting_for: Some(s("permission prompt")),
+                container: Some(SessionContainer::Tmux),
+                pid: Some(42),
+            },
+            Frame::SessionAdded {
+                sid: s("s1"),
                 agent_kind: None,
                 liveness_confidence: None,
                 session_kind: None,
@@ -294,173 +341,255 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
                 container: None,
                 pid: None,
             },
-            "session_added",
-        ),
-        (
+        ],
+        [
             Frame::SessionStatus {
-                sid: "s".into(),
-                status: Some("busy".into()),
+                sid: s("s1"),
+                status: Some(s("waiting")),
+                waiting_for: Some(s("permission prompt")),
+                liveness_confidence: Some(s("pidfile")),
+            },
+            Frame::SessionStatus {
+                sid: s("s1"),
+                status: None,
                 waiting_for: None,
                 liveness_confidence: None,
             },
-            "session_status",
-        ),
-        (
+        ],
+        both(Frame::SessionState {
+            sid: s("s1"),
+            state: SessionFate::Reconnectable,
+        }),
+        [
             Frame::SessionRemoved {
-                sid: "s".into(),
+                sid: s("s1"),
+                cause: RemovalCause::Superseded,
+            },
+            Frame::SessionRemoved {
+                sid: s("s1"),
                 cause: RemovalCause::Gone,
             },
-            "session_removed",
-        ),
-        (
-            Frame::TurnEnd {
-                session_id: "s".into(),
-                uuid: "u".into(),
-            },
-            "turn_end",
-        ),
-        (
+        ],
+        both(Frame::TurnEnd {
+            session_id: s("s1"),
+            uuid: s("u1"),
+        }),
+        [
             Frame::Overflow {
                 dropped: 7,
-                lost: Vec::new(),
+                lost: vec![LostFrame {
+                    kind: "session_added",
+                    subject: Some(s("s1")),
+                }],
+                lost_truncated: true,
+            },
+            Frame::Overflow {
+                dropped: 7,
+                lost: vec![],
                 lost_truncated: false,
             },
-            "overflow",
-        ),
-        // 补上此前**测试段零构造**的三个变体。
-        // `Reply` 的上线形另有 `stream/inbound/` 钉着；`TmuxSessionClosed` / `Cancelled`
-        // 此前**只有 monitor 侧「解析成 None」的负向断言** —— 那是消费方的行为，
-        // 不是后端序列化形态：改掉 kind 标签或字段名，两边都不会红。
-        (
+        ],
+        [
             Frame::Reply {
-                id: "r1".into(),
+                id: s("q1"),
+                ok: false,
+                code: Some(s("bad_args")),
+                message: Some(s("m")),
+                data: Some(serde_json::json!({"k": 1})),
+            },
+            Frame::Reply {
+                id: s("q1"),
                 ok: true,
                 code: None,
                 message: None,
                 data: None,
             },
-            "reply",
-        ),
-        (Frame::Cancelled { id: "r1".into() }, "cancelled"),
-        // 账号清单变了（无载荷；逐字节形状另由 `link_frames_have_exactly_these_bytes` 钉）。
-        (Frame::AccountsChanged, "accounts_changed"),
-        (Frame::QuotaChanged, "quota_changed"),
-        // 某个会话的任务清单变了（只带 sid；逐字节形状由 `link_frames_have_exactly_these_bytes` 钉）。
-        (Frame::TasksChanged { sid: "s1".into() }, "tasks_changed"),
-        // 链路两帧（逐字节形状另由 `link_frames_have_exactly_these_bytes` 钉）。
-        (
-            Frame::LinkData {
-                link: "L".into(),
-                data: "AA==".into(),
-            },
-            "link_data",
-        ),
-        (
+        ],
+        both(Frame::Cancelled { id: s("q1") }),
+        both(Frame::AccountsChanged),
+        both(Frame::QuotaChanged),
+        both(Frame::TasksChanged { sid: s("s1") }),
+        both(Frame::SessionsReplayed),
+        both(Frame::SessionFileGone {
+            session_id: s("s1"),
+            path: s("/p/s1.jsonl"),
+        }),
+        both(Frame::SessionFileReread {
+            session_id: s("s1"),
+            path: s("/p/s1.jsonl"),
+            why: RereadWhy::Truncated,
+        }),
+        both(Frame::LinkData {
+            link: s("L1"),
+            data: s("aGkK"),
+        }),
+        [
             Frame::LinkEnd {
-                link: "L".into(),
+                link: s("L1"),
+                error: Some(s("e")),
+            },
+            Frame::LinkEnd {
+                link: s("L1"),
                 error: None,
             },
-            "link_end",
-        ),
-        // 传输进度 / 终局（逐字节形状另由 `transfer_frames_have_exactly_these_bytes` 钉）。
-        (
+        ],
+        [
             Frame::Transfer {
-                id: "xfer-1".into(),
+                id: s("x1"),
+                got: 4,
+                total: 4,
+                end: Some(TransferEnd::Done {
+                    bytes: 4,
+                    sha256: Some(s("ab")),
+                }),
+            },
+            Frame::Transfer {
+                id: s("x1"),
                 got: 0,
-                total: 0,
+                total: 4,
                 end: None,
             },
-            "transfer",
-        ),
-        (
-            Frame::Probe {
-                ticket: "t-1".into(),
-                cell: serde_json::json!({"reached": "ssh"}),
-            },
-            "probe",
-        ),
-        (Frame::SessionsReplayed, "sessions_replayed"),
-        // 会话账本的成品（逐字节形状另由 `mig1_session_state_has_exactly_these_bytes` 钉）。
-        (
-            Frame::SessionState {
-                sid: "s".into(),
-                state: crate::stream::wire::SessionFate::Ended,
-            },
-            "session_state",
-        ),
-        // 中转抄出来的 SSE 事件（逐字节形状另由 `tap_frames_have_exactly_these_bytes` 钉）。
-        (
+        ],
+        both(Frame::Probe {
+            ticket: s("t1"),
+            cell: serde_json::json!({"reached": "ssh"}),
+        }),
+        [
             Frame::Tap {
-                stream: "s".into(),
+                stream: s("s1"),
+                run: Some(s("a1")),
+                resp: 0,
+                n: 1,
+                ev: Some(StreamEv::Text { i: 0, s: s("hi") }),
+                end: Some(TapEnd::Done),
+            },
+            Frame::Tap {
+                stream: s("s1"),
                 run: None,
                 resp: 0,
-                n: 0,
-                ev: Some(crate::agents::StreamEv::Stop { ok: true }),
-                end: None,
+                n: 1,
+                ev: None,
+                end: Some(TapEnd::Done),
             },
-            "tap",
-        ),
-        // 活会话的记录文件不见了 / 被改过已从头重读（逐字节形状另由
-        //   `watcher_tests::the_two_session_file_frames_have_exactly_these_bytes` 钉）。
-        (
-            Frame::SessionFileGone {
-                session_id: "s".into(),
-                path: "/p".into(),
-            },
-            "session_file_gone",
-        ),
-        (
-            Frame::SessionFileReread {
-                session_id: "s".into(),
-                path: "/p".into(),
-                why: crate::stream::wire::RereadWhy::Rewritten,
-            },
-            "session_file_reread",
-        ),
-    ];
+        ],
+        both(Frame::SessionRuns {
+            sid: s("s1"),
+            runs: vec![RunInfo {
+                run: s("a1"),
+                label: Some(s("scan")),
+                kind: Some(s("Explore")),
+                tool: Some(s("t1")),
+                state: RunState::Running,
+                last: Some(RunDid::Tool { name: s("Bash") }),
+            }],
+            ended: vec![RunEnded {
+                run: s("a0"),
+                tool: s("t0"),
+                state: RunState::Failed,
+            }],
+        }),
+    ]
+}
 
-    // ★ 人群自检：**样本必须覆盖 `Frame` 的每一个变体**。
-    //
-    // 原来这里是一张**手写清单**：11 个变体只列了 8 个，而加第 12 个变体时
-    // **没有任何东西会红** —— 一条上线契约帧就那样进了协议。
-    // ⇒ 把人群换成**枚举本身**：从源码数 `pub enum Frame` 的变体数，
-    // 与样本产出的**去重 kind 数**对拍。加变体不补样本 ⇒ 当场红。
+/// `Frame` 的全部变体名（从源码的 `pub enum Frame` 里数，异源于上面的样本）→ 线上 kind（snake_case）。
+fn frame_variant_kinds() -> std::collections::BTreeSet<String> {
     let src = include_str!("../../../src/backend/stream/wire.rs");
     let beg = src.find("pub enum Frame").expect("找不到 Frame 枚举");
     let end = src[beg..].find("\n}\n").expect("找不到枚举结尾") + beg;
-    let variant_count = src[beg..end]
+    src[beg..end]
         .lines()
-        .filter(|l| {
+        .filter_map(|l| {
             let t = l.trim_end();
-            t.starts_with("    ")
-                && !t.starts_with("     ")
-                && t.trim_start().starts_with(|c: char| c.is_ascii_uppercase())
-                && (t.contains('{') || t.ends_with(','))
+            let head = t.strip_prefix("    ")?;
+            if head.starts_with(' ') || !head.starts_with(|c: char| c.is_ascii_uppercase()) {
+                return None;
+            }
+            if !(t.contains('{') || t.ends_with(',')) {
+                return None;
+            }
+            let name: String = head
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric())
+                .collect();
+            let mut kind = String::new();
+            for (i, c) in name.chars().enumerate() {
+                if c.is_ascii_uppercase() && i > 0 {
+                    kind.push('_');
+                }
+                kind.push(c.to_ascii_lowercase());
+            }
+            Some(kind)
         })
-        .count();
+        .collect()
+}
+
+/// ★ 会话流跨语言金样：金样 == 真序列化器此刻的产出（逐行字节）；金样的 kind 集合 == `Frame` 的全部变体。
+///
+/// 每一行都是单行 JSON、`\n` 收尾、kind 与 `loss_identity` 报的一致。
+/// 重打是显式动作：`REGOLD_SESSION_STREAM=1` 跑本条写盘；不设就只比、不一致就红并打印差异。
+#[test]
+fn the_session_stream_golden_is_what_the_serializer_writes() {
+    let mut produced = String::new();
+    let mut kinds = std::collections::BTreeSet::new();
+    for pair in golden_pairs() {
+        let pair_kinds: Vec<String> = pair
+            .iter()
+            .map(|f| {
+                let line = to_line(f).expect("serialize");
+                let kind = parse_kind(&line);
+                assert_eq!(
+                    kind,
+                    f.loss_identity().kind,
+                    "kind 标签与 loss_identity 不一致"
+                );
+                produced.push_str(&line);
+                kind
+            })
+            .collect();
+        assert_eq!(
+            pair_kinds[0], pair_kinds[1],
+            "一对样本不是同一种帧：{pair_kinds:?}"
+        );
+        assert!(
+            kinds.insert(pair_kinds[0].clone()),
+            "{} 出现了两对样本",
+            pair_kinds[0]
+        );
+    }
+    let variants = frame_variant_kinds();
     assert!(
-        variant_count >= 10,
-        "只数出 {variant_count} 个 Frame 变体（08-06 实测 11）—— 抽取坏了，下面的对拍会空转"
+        variants.len() >= 20,
+        "只数出 {} 个 Frame 变体 —— 抽取坏了，下面的对拍会空转",
+        variants.len()
+    );
+    assert_eq!(
+        kinds, variants,
+        "金样的 kind 集合与 `Frame` 的变体对不上 —— 新增的帧要在 `golden_pairs` 补「全格」「最少格」两行"
     );
 
-    let mut kinds: Vec<&str> = Vec::new();
-    for (frame, expected_kind) in &cases {
-        let line = to_line(frame).expect("serialize");
-        assert_eq!(&parse_kind(&line), expected_kind);
-        if !kinds.contains(expected_kind) {
-            kinds.push(expected_kind);
-        }
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(SESSION_STREAM_GOLDEN);
+    if std::env::var_os("REGOLD_SESSION_STREAM").is_some() {
+        std::fs::write(&path, &produced).expect("写金样");
     }
-    assert_eq!(
-        kinds.len(),
-        variant_count,
-        "样本覆盖 {} 个 kind，而 `Frame` 有 {variant_count} 个变体 —— \n\
-             新增变体没补样本：它的上线形态（kind 标签 / 字段名 / 单行）此刻无人钉。\n\
-             ⚠ 这是**契约帧**，`backend-api` 的 D6 写着「暴露给第三方 = 契约冻结成本」，\n\
-             而 aterm 正在消费这条流。\n\
-             已覆盖：{kinds:?}",
-        kinds.len()
-    );
+    let on_disk = std::fs::read_to_string(&path).expect("读金样");
+    if on_disk != produced {
+        let diff: Vec<String> = on_disk
+            .lines()
+            .zip(produced.lines())
+            .enumerate()
+            .filter(|(_, (a, b))| a != b)
+            .map(|(i, (a, b))| format!("第 {} 行\n  金样：{a}\n  此刻：{b}", i + 1))
+            .collect();
+        panic!(
+            "会话流金样与序列化器此刻的产出不一致（金样 {} 行 · 此刻 {} 行）：\n{}\n\
+             形状是有意改的 ⇒ `REGOLD_SESSION_STREAM=1` 重打这一条，连同手机端一起对。",
+            on_disk.lines().count(),
+            produced.lines().count(),
+            diff.join("\n")
+        );
+    }
 }
 
 /// ★ W1：链路两帧 ＋ `accounts_changed` 的**逐字节**金标准。`link_end` 的 `error` 缺席时不上线（正常收尾）。

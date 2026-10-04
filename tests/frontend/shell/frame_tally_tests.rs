@@ -62,13 +62,15 @@ fn w5vis_the_summary_is_silent_only_when_nothing_was_dropped() {
     std::mem::forget(only_utf8);
 }
 
-/// 三条读帧循环各自接了几处：`(文件, FrameTally::new 处数, note_unparsed 处数, note_bad_utf8 处数)`。
+/// 三条读帧循环各自接了几处：`(文件, FrameTally::new 处数, 认不出的那一支（`unread.take(`）处数, note_bad_utf8 处数)`。
 ///
 /// - `stream_source/`：读任务一本（只数非 UTF-8 —— 它按替换字符读）· 主循环一本（只数认不出的）；
 /// - `local_backend_host.rs`：脱离载体那条循环一本，两样都数（非 UTF-8 行在那里整行丢）；
 /// - `local_backend.rs`：stdio 载体那条循环一本，两样都数。
+/// 认不出的那一支一律经 `UnreadNotes::take`（`stream_source/frame.rs`），记账（`note_unparsed`）只住那一处。
 const WIRED: &[(&str, usize, usize, usize)] = &[
     ("src/frontend/shell/src/stream_source/run.rs", 2, 1, 1),
+    ("src/frontend/shell/src/stream_source/frame.rs", 0, 0, 0),
     ("src/frontend/shell/src/local_backend_host.rs", 1, 1, 1),
     ("src/frontend/shell/src/local_backend.rs", 1, 1, 1),
 ];
@@ -87,15 +89,22 @@ fn w5vis_every_frame_reader_keeps_the_tally_and_nothing_else_pretends_to() {
         let prod = guard_core::production_code(&raw);
         let counts = (
             prod.matches("FrameTally::new(").count(),
-            prod.matches(".note_unparsed(").count(),
+            prod.matches("unread.take(").count(),
             prod.matches(".note_bad_utf8(").count(),
         );
-        if counts != (0, 0, 0) {
-            let rel = path
-                .strip_prefix(&root)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        // 记账那一句只许住 `UnreadNotes::take` 里（frame.rs 恰好一处，别处零处）。
+        let is_frame_rs = rel == "src/frontend/shell/src/stream_source/frame.rs";
+        assert_eq!(
+            prod.matches(".note_unparsed(").count(),
+            usize::from(is_frame_rs),
+            "{rel}：`.note_unparsed(` 处数不对 —— 认不出的那一支要经 `UnreadNotes::take`"
+        );
+        if counts != (0, 0, 0) || is_frame_rs {
             seen.push((rel, counts.0, counts.1, counts.2));
         }
     }
@@ -114,21 +123,20 @@ fn w5vis_every_frame_reader_keeps_the_tally_and_nothing_else_pretends_to() {
 #[test]
 fn w5vis_no_frame_reader_skips_an_unparsed_frame_silently() {
     /// `(文件里的哪一支（头，恰好一处）, 块里必须有的记账调用)`。块 = 头之后到第一个 `continue;`。
-    const SKIPS: &[(&str, &str, &str)] = &[
+    const SKIPS: &[(&str, &str, &str)] = &[(
+        "local_backend_host.rs",
+        "let Ok(line) = std::str::from_utf8(&buf) else {",
+        "tally.note_bad_utf8(",
+    )];
+    /// 认不出的那一支：头本身就是记账（`UnreadNotes::take` 里记账、每种说一次），块里只剩 `continue;`。
+    const TAKES: &[(&str, &str)] = &[
         (
             "local_backend_host.rs",
-            "let Ok(line) = std::str::from_utf8(&buf) else {",
-            "tally.note_bad_utf8(",
-        ),
-        (
-            "local_backend_host.rs",
-            "let Some(f) = crate::stream_source::parse_frame(line) else {",
-            "tally.note_unparsed(",
+            "let Some(f) = unread.take(line, &mut tally, &crate::stream_source::local_health)",
         ),
         (
             "local_backend.rs",
-            "let Some(frame) = crate::stream_source::parse_frame(&line) else {",
-            "tally.note_unparsed(",
+            "let Some(frame) = unread.take(&line, &mut tally, &crate::stream_source::local_health)",
         ),
     ];
     fn block_after<'a>(prod: &'a str, head: &str) -> Result<&'a str, String> {
@@ -159,6 +167,15 @@ fn w5vis_no_frame_reader_skips_an_unparsed_frame_silently() {
             "{f}：`{head}` 那一支跳过之前没记账（找不到 `{must}`）：{block}"
         );
     }
+    for (f, head) in TAKES {
+        let prod = if *f == "local_backend.rs" {
+            &stdio
+        } else {
+            &host
+        };
+        guard_core::find_pinned(prod, head)
+            .unwrap_or_else(|e| panic!("{f}：认不出的那一支不是恰好一处经 `unread.take`：{e}"));
+    }
     guard_core::find_pinned(&ssh, "tally.note_unparsed(line)")
         .unwrap_or_else(|e| panic!("stream_source 主循环记账那一句不是恰好一处：{e}"));
     assert!(
@@ -168,9 +185,8 @@ fn w5vis_no_frame_reader_skips_an_unparsed_frame_silently() {
     );
     // 正控：旧形必须被认出（量具没瞎）。
     let old = "let Some(f) = crate::stream_source::parse_frame(line) else {\n    continue;\n};\n";
-    let block = block_after(old, SKIPS[1].1).expect("旧形切得出那一支");
     assert!(
-        guard_core::find_pinned(block, "tally.note_unparsed(").is_err(),
+        guard_core::find_pinned(old, TAKES[0].1).is_err(),
         "旧形（裸 continue）没被认出 —— 量具瞎了"
     );
 }

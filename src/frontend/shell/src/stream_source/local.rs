@@ -214,7 +214,7 @@ pub(crate) fn local_step(
                     seq,
                     message,
                     cwd,
-                    end,
+                    end: Some(end),
                     rid,
                 }
             }

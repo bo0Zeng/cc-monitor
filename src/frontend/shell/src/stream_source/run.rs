@@ -264,6 +264,13 @@ async fn stream_loop(
     let mut intake = LineIntake::open(host_label.clone(), tail_only, replay, health);
     // 这条流上跳过了几帧认不出的（读任务那边另有一本记非 UTF-8 行）。
     let mut tally = crate::frame_tally::FrameTally::new(format!("stream_source {host_label}"));
+    // 解不出来的帧每种说一次（日志 ＋ 这台的健康信息）。
+    let mut unread = UnreadNotes::new(host_label.clone(), host_label.clone());
+    let say_health = |p: crate::ui_contract::RemoteHealthPayload| {
+        if let Err(e) = health(p) {
+            tracing::warn!("stream_source remote-health (frame) emit failed: {e}");
+        }
+    };
 
     let mut frame_rx = spawn_frame_reader(stream, host_label.clone());
 
@@ -290,7 +297,7 @@ async fn stream_loop(
         };
         let line = line.as_str();
 
-        let frame = parse_frame(line);
+        let frame = unread.take(line, &mut tally, &say_health);
         // SessionRemoved 是唯一顺序敏感的攒批边界：它的行必须先落前端，否则
         // 归档后迟到的行把 Tab 复活成僵尸 live（审计 R1/R2）。SessionAdded /
         // Hello / Overflow / 坏帧**不再**作边界——多小会话的 snapshot 才能聚
@@ -365,7 +372,7 @@ async fn stream_loop(
                         seq,
                         message,
                         cwd,
-                        end,
+                        end: Some(end),
                         rid,
                     })
                     .await;
@@ -496,13 +503,10 @@ async fn stream_loop(
             // 远端中转住进远端常驻后端（进程内），它抄出来的 SSE 事件沿这条流回来 ⇒ 与本机那条流同一个口转前端
             //   （origin = 这台；标签就是 claude 自己的 sid，不用对账）。从不阻塞、不进内容通道。
             Some(InboundFrame::Tap(t)) => crate::session_tap::deliver(&host_label, t),
-            None => {
-                // 未知 kind / 坏帧 / 非 JSON：跳过，绝不 panic、绝不中断流。
-                // 记账：按 2 的幂次说（带累计数），流结束出总账（原先逐帧一行、从不计数）。
-                if let Some(n) = tally.note_unparsed(line) {
-                    tracing::warn!("{n}");
-                }
-            }
+            // 认识但不消费的两种（理由在变体上）。
+            Some(InboundFrame::TurnEnd | InboundFrame::QuotaChanged) => {}
+            // 不认识的种类 / 形状不对：`take` 已记账、每种说过一次；跳过，绝不中断流。
+            None => {}
         }
     }
 }

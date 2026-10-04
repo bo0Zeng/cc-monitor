@@ -45,6 +45,8 @@ pub(crate) fn install(app: tauri::AppHandle, replay: Arc<EventReplay>) {
         tracing::error!("local_lines::install 被调了第二次 —— 本机内容消费者只许有一个，这次不起");
         return;
     }
+    // 本机两条载体解不出来的帧也进健康信息（同一个出口）。
+    crate::stream_source::install_local_health(crate::remote_health_out(app.clone()));
     tauri::async_runtime::spawn(crate::stream_source::consume_local(
         rx,
         replay,

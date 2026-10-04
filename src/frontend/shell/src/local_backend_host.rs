@@ -230,7 +230,7 @@ pub(crate) fn hello_verdict(
     want_build: &str,
     want_env: &[(String, String)],
 ) -> HelloVerdict {
-    let Some(frame) = crate::stream_source::parse_frame(line) else {
+    let Ok(frame) = crate::stream_source::parse_frame(line) else {
         return HelloVerdict::Stranger(copy_text(
             "rsLocalBackendHost.hello.notBackendLine",
             &[("bytes", &(line.len()).to_string())],
@@ -831,7 +831,7 @@ fn shout_if_the_ledger_refused(rec: Option<crate::backend_policy::Recorded>) {
 /// 那是 `local_stdio_consumer` 头注自己给的分寸。
 fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), String> {
     let frame = crate::stream_source::parse_frame(hello_line)
-        .ok_or_else(|| copy_text("rsLocalBackendHost.stream.badFirstLine", &[]))?;
+        .map_err(|_| copy_text("rsLocalBackendHost.stream.badFirstLine", &[]))?;
     let witness = crate::inbound_client::BackendHello::from_hello_frame(&frame)
         .ok_or_else(|| copy_text("rsLocalBackendHost.stream.notHello", &[]))?;
     // ★ `K-P3b`：**「它说过话没有」这一维就在这一行变真的** —— 上面那道门给出见证的那一刻。
@@ -870,6 +870,11 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
         let mut reader_end = crate::backend_policy::ReaderEnd::CleanEof;
         // 这条载体上丢了几行 / 几帧 —— 原先两处裸 `continue` 一声不吭；记账，流结束出总账。
         let mut tally = crate::frame_tally::FrameTally::new("本机常驻后端（脱离载体）");
+        // 解不出来的帧每种说一次（日志 ＋ 本机的健康信息）。
+        let mut unread = crate::stream_source::UnreadNotes::new(
+            crate::inbound_client::LOCAL_ORIGIN,
+            copy_text("rsLocalBackendHost.local.machine", &[]),
+        );
         loop {
             match crate::stream_source::read_capped_line(
                 &mut reader,
@@ -900,10 +905,7 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
                 }
                 continue;
             };
-            let Some(f) = crate::stream_source::parse_frame(line) else {
-                if let Some(n) = tally.note_unparsed(line) {
-                    tracing::warn!("{n}");
-                }
+            let Some(f) = unread.take(line, &mut tally, &crate::stream_source::local_health) else {
                 continue;
             };
             // 本机的 tmux 帧（`P3` 刀 1）·应答 · 链路帧 —— 与 stdio 那条载体**同一个吸收点**，

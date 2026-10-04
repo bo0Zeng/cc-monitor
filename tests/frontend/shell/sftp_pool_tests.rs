@@ -51,7 +51,7 @@ pub(crate) fn rig(commands: &[&str]) -> Rig {
     tokio::spawn(async move {
         let mut lines = tokio::io::BufReader::new(mon_r).lines();
         while let Ok(Some(l)) = lines.next_line().await {
-            if let Some(f) = parse_frame(&l) {
+            if let Ok(f) = parse_frame(&l) {
                 crate::local_backend::absorb_local_frame(f, Some(&c2));
             }
         }
@@ -384,7 +384,7 @@ fn transfer_frames_parse_exactly_as_the_backend_writes_them() {
     ];
     for (line, want) in cases {
         match parse_frame(line) {
-            Some(InboundFrame::Transfer {
+            Ok(InboundFrame::Transfer {
                 id,
                 got,
                 total,
@@ -399,6 +399,6 @@ fn transfer_frames_parse_exactly_as_the_backend_writes_them() {
     assert!(parse_frame(
         r#"{"kind":"transfer","id":"x","got":1,"total":1,"end":{"state":"maybe"}}"#
     )
-    .is_none());
-    assert!(parse_frame(r#"{"kind":"transfer","id":"x","got":"1","total":1}"#).is_none());
+    .is_err());
+    assert!(parse_frame(r#"{"kind":"transfer","id":"x","got":"1","total":1}"#).is_err());
 }

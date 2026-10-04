@@ -95,35 +95,12 @@ fn tap() -> Option<tokio::sync::mpsc::Receiver<LocalItem>> {
 
 // ─── F1 ────────────────────────────────────────────────────────────────────
 
-/// `parse_frame` 认得的全部 `kind`：从它的源码里摘（`"xxx" =>` 那几条臂）。
-fn parse_frame_kinds() -> BTreeSet<String> {
-    let prod = crate::guard_support::stream_source_production();
-    let lines: Vec<&str> = prod.lines().collect();
-    let start = lines
-        .iter()
-        .position(|l| l.starts_with("pub fn parse_frame("))
-        .expect("stream_source 生产段里找不到 `pub fn parse_frame(` —— 抽取面画错了");
-    let end = fn_end(&lines, start);
-    let mut kinds = BTreeSet::new();
-    for l in &lines[start..=end] {
-        let t = l.trim_start();
-        if let Some(rest) = t.strip_prefix('"') {
-            if let Some((k, tail)) = rest.split_once('"') {
-                if tail.trim_start().starts_with("=>") {
-                    kinds.insert(k.to_string());
-                }
-            }
-        }
-    }
-    kinds
-}
-
 /// 每一种帧一行手写线上 JSON（**不从实现生成**）。
 ///
-/// ⚠ 一种不在表里、理由写清：`turn_end`：`parse_frame` 对它回 `None`（本就不进任何吸收点）。
+/// ⚠ 两种不在表里、理由写清：`turn_end` · `quota_changed` 认识但不消费（本就不进任何吸收点）。
 /// tmux 观测那两种帧删了（后端不再发，monitor 不再认）。
 ///
-/// ⇒ 表的种类 ＋ 这一种 == `parse_frame` 的全部臂（两向），新长一种帧就红：先答它是不是内容。
+/// ⇒ 表的种类 ＋ 这两种 == `parse_frame` 的全部臂（两向），新长一种帧就红：先答它是不是内容。
 const FRAMES: &[(&str, &str)] = &[
     (
         "hello",
@@ -131,7 +108,7 @@ const FRAMES: &[(&str, &str)] = &[
     ),
     (
         "line",
-        r#"{"kind":"line","session_id":"s1","path":"/h/.claude/projects/p/s1.jsonl","seq":7}"#,
+        r#"{"kind":"line","session_id":"s1","path":"/h/.claude/projects/p/s1.jsonl","seq":7,"byte_offset":70}"#,
     ),
     (
         "session_added",
@@ -202,16 +179,11 @@ const FRAMES: &[(&str, &str)] = &[
 
 #[test]
 fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
-    // 两向：表里的种类 ＋ 刻意不喂的那两种（`parse_frame` 认识但回 `None`）== parse_frame 的全部臂。
+    // 两向：表里的种类 ＋ 刻意不喂的那两种（认识但不消费）== parse_frame 的全部臂。
     let mut fed: BTreeSet<String> = FRAMES.iter().map(|(k, _)| k.to_string()).collect();
     fed.insert("turn_end".into());
     fed.insert("quota_changed".into());
-    let all = parse_frame_kinds();
-    assert!(
-        all.len() >= 10,
-        "只从 parse_frame 里摘到 {} 种 —— 抽取坏了（本条此刻是空转的）",
-        all.len()
-    );
+    let all = crate::guard_support::parse_frame_kinds();
     assert_eq!(
         fed, all,
         "喂进吸收点的帧种类与 `parse_frame` 认得的种类对不上 —— 新长了一种帧：\
@@ -220,7 +192,7 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
     let mut handed_back = BTreeSet::new();
     for (kind, line) in FRAMES {
         let f = parse_frame(line)
-            .unwrap_or_else(|| panic!("手写的 `{kind}` 帧 parse_frame 解不出来：{line}"));
+            .unwrap_or_else(|e| panic!("手写的 `{kind}` 帧 parse_frame 解不出来（{e}）：{line}"));
         if let Some(back) = crate::local_backend::absorb_local_frame(f, None) {
             // 交回的就是喂进去的那一种（不是别的东西）。
             let same = matches!(
@@ -275,9 +247,9 @@ fn frame(line: &str) -> LocalItem {
 
 #[test]
 fn the_local_dispatch_core_matches_the_hand_written_table() {
-    const LINE_A: &str =
-        r#"{"kind":"line","session_id":"a","path":"/p/a.jsonl","seq":4,"message":{"x":1}}"#;
-    const LINE_B: &str = r#"{"kind":"line","session_id":"b","path":"/p/b.jsonl","seq":0}"#;
+    const LINE_A: &str = r#"{"kind":"line","session_id":"a","path":"/p/a.jsonl","seq":4,"message":{"x":1},"byte_offset":50}"#;
+    const LINE_B: &str =
+        r#"{"kind":"line","session_id":"b","path":"/p/b.jsonl","seq":0,"byte_offset":10}"#;
     const ADD_A: &str = r#"{"kind":"session_added","sid":"a","session_kind":"interactive","path":"/p/a.jsonl","lines":4}"#;
     const ADD_A_OLD_CC: &str = r#"{"kind":"session_added","sid":"a"}"#;
     const ADD_B_BG: &str =
@@ -291,7 +263,7 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
         seq: 4,
         message: crate::ui_contract::RecordBody::from_json(r#"{"x":1}"#.into()),
         cwd: None,
-        end: None,
+        end: Some(50),
         rid: None,
     };
     let line_b = LocalStep::Line {
@@ -300,7 +272,7 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
         seq: 0,
         message: None,
         cwd: None,
-        end: None,
+        end: Some(10),
         rid: None,
     };
 
@@ -733,7 +705,8 @@ fn the_local_product_core_matches_the_hand_written_table() {
     const LEFT_B: &str = r#"{"kind":"session_state","sid":"b","state":"ended"}"#;
     const REM_A: &str = r#"{"kind":"session_removed","sid":"a"}"#;
     const LISTED: &str = r#"{"kind":"sessions_replayed"}"#;
-    const LINE: &str = r#"{"kind":"line","session_id":"a","path":"/p/a.jsonl","seq":0}"#;
+    const LINE: &str =
+        r#"{"kind":"line","session_id":"a","path":"/p/a.jsonl","seq":0,"byte_offset":10}"#;
     let local = || "<local>".to_string();
 
     let none = HashSet::new();
