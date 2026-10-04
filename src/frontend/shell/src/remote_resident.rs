@@ -148,7 +148,7 @@ pub(crate) fn hello_build(line: &str) -> Result<String, String> {
     Ok(v["build_id"].as_str().unwrap_or_default().to_string())
 }
 
-/// 本机常驻后端那条命令的名字（与 `src/backend/stream/inbound.rs::REGISTRY` 同名）。
+/// 本机常驻后端那条命令的名字（与 `src/backend/stream/inbound/mod.rs::REGISTRY` 同名）。
 pub(crate) const VERDICT_CMD: &str = "resident-verdict";
 
 /// 问那一趟的上限：纯判定、不拨号，只是本机那条长连接上一问一答。

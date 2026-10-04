@@ -176,6 +176,49 @@ pub fn backend_root_source() -> String {
     format!("{}\n{}", include_str!("lib.rs"), include_str!("main.rs"),)
 }
 
+/// 入方向那个目录（`stream/inbound/`，含命令表各族）下的**每一份**源文件：`(相对 [`src_root`] 的路径, 生产段)`，按路径排。
+///
+/// 入方向从一份文件拆成一个目录之后，人群曾经是「`inbound.rs` 那一份」的判据，人群现在是这一整个目录 ——
+/// 只看其中一份会安静地少一块人群（不红，只是扫不全）。
+pub(crate) fn inbound_sources() -> Vec<(String, String)> {
+    let root = src_root();
+    let mut out: Vec<(String, String)> =
+        guard_core::scan_tree_excluding(&root.join("stream/inbound"), &["rs"], &[])
+            .into_iter()
+            .map(|(path, src)| {
+                let rel = path
+                    .strip_prefix(&root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                (rel, production_code(&src))
+            })
+            .collect();
+    out.sort();
+    assert!(
+        out.iter().any(|(rel, _)| rel == "stream/inbound/mod.rs"),
+        "入方向目录里没扫到 `mod.rs` —— 住址坏了，用它的判据会在空人群上恒绿"
+    );
+    out
+}
+
+/// 命令表各族（`stream/inbound/registry/*.rs`）：形状同 [`inbound_sources`]，一族一份。
+///
+/// 按 `CommandSpec {` 切块的判据要**逐份切**，别把几份拼起来再切：拼起来的话，
+/// 一份的文件头（`use` · 常量）会粘到上一份的最后一块上，被算成那条命令的一部分。
+pub(crate) fn registry_sources() -> Vec<(String, String)> {
+    let out: Vec<(String, String)> = inbound_sources()
+        .into_iter()
+        .filter(|(rel, _)| rel.starts_with("stream/inbound/registry/"))
+        .collect();
+    assert!(
+        out.len() >= 2,
+        "只扫到 {} 份命令表族文件 —— 住址坏了，用它的判据会在空人群上恒绿",
+        out.len()
+    );
+    out
+}
+
 #[cfg(test)]
 #[path = "../../tests/backend/guard_support_tests.rs"]
 mod tests;

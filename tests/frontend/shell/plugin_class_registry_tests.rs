@@ -141,20 +141,22 @@ fn segment_after(hay: &str, anchor: &str, close: &str) -> String {
     tail[..end].to_string()
 }
 
-/// backend 命令注册表里的**每一条命令名**（`REGISTRY` 那张表内，段界之内）。
+/// backend 命令注册表里的**每一条命令名**（命令表各族那张 `SPECS` 表内，段界之内，逐族取）。
 fn backend_command_names() -> Vec<String> {
-    let prod = rust_production("src/backend/stream/inbound.rs", 10_000);
-    let seg = segment_after(&prod, "const REGISTRY: &[CommandSpec] = &[", "\n];");
     let mut out = Vec::new();
-    let key = format!("name{} \"", ':');
-    let mut from = 0usize;
-    while let Some(rel) = seg[from..].find(key.as_str()) {
-        let at = from + rel + key.len();
-        let Some(end) = seg[at..].find('"') else {
-            break;
-        };
-        out.push(seg[at..at + end].to_string());
-        from = at + end;
+    for (rel, _) in crate::guard_support::backend_registry_sources() {
+        let prod = rust_production(&rel, 500);
+        let seg = segment_after(&prod, "const SPECS: &[CommandSpec] = &[", "\n];");
+        let key = format!("name{} \"", ':');
+        let mut from = 0usize;
+        while let Some(at_rel) = seg[from..].find(key.as_str()) {
+            let at = from + at_rel + key.len();
+            let Some(end) = seg[at..].find('"') else {
+                break;
+            };
+            out.push(seg[at..at + end].to_string());
+            from = at + end;
+        }
     }
     out
 }

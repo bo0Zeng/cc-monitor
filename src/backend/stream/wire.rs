@@ -132,7 +132,7 @@ pub struct AgentHome {
 /// 本来就说得更细（`not_installed_message` 会列出查过哪几个目录）。
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct Unavailable {
-    /// 哪条命令 —— 取值空间与 `Hello.commands` **同一套**（`inbound::COMMANDS`）。
+    /// 哪条命令 —— 取值空间与 `Hello.commands` **同一套**（`inbound::command_names`）。
     /// ⚠ 它**必须**同时出现在 `commands` 里：本表说的是「接得下但做不到」，
     /// 「根本不接」那一格由不在 `commands` 里表达（客户端 `accepts()` 一个字节都不发）。
     pub command: String,

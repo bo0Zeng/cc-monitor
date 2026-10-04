@@ -67,15 +67,13 @@ fn session(home: &Path, proj: &str, sid: &str, n: usize, torn: bool) -> PathBuf 
 
 /// ★ 两向相等：`inbound::REGISTRY` 里把活交给本宿主的命令 == [`FAMILY`]。
 ///
-/// 左边从 `inbound.rs` **生产段源码**切 `CommandSpec {` 块数出来（异源：不读本文件的任何常量）。
+/// 左边从命令表各族的**生产段源码**切 `CommandSpec {` 块数出来（异源：不读本文件的任何常量）。
 #[test]
 fn the_registry_hands_exactly_the_eight_to_this_host() {
-    let prod = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/stream/inbound.rs"
-    ));
-    let mut got: Vec<String> = prod
-        .split("CommandSpec {")
-        .skip(1)
+    let families = crate::guard_support::registry_sources();
+    let mut got: Vec<String> = families
+        .iter()
+        .flat_map(|(_, prod)| prod.split("CommandSpec {").skip(1))
         .filter(|blk| blk.contains("read_face::answer"))
         .filter_map(|blk| {
             let at = blk.find("name: \"")? + "name: \"".len();
@@ -89,11 +87,11 @@ fn the_registry_hands_exactly_the_eight_to_this_host() {
         got, want,
         "交给 `read_face::answer` 的帧命令与要求点名的那几条不相等"
     );
-    // 那八条也都真在帧面的镜子里（`hello.commands` 从它出）。
+    // 那八条也都真在 `hello.commands` 里（`command_names`，从注册表派生）。
     for n in FAMILY {
         assert!(
-            crate::stream::inbound::COMMANDS.contains(n),
-            "`{n}` 不在 `inbound::COMMANDS` —— hello 不会宣告它，monitor 的 `accepts` 会拒"
+            crate::stream::inbound::command_names().contains(n),
+            "`{n}` 不在 `inbound::command_names()` —— hello 不会宣告它，monitor 的 `accepts` 会拒"
         );
     }
 }

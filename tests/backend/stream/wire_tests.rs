@@ -15,7 +15,7 @@
 ///
 /// # 人群与豁免
 ///
-/// 人群 = **流式那条路**（`main.rs` / `inbound.rs` / `wire.rs` / `listen.rs`）生产段里所有
+/// 人群 = **流式那条路**（`main.rs` / `stream/inbound/` 整个目录 / `wire.rs` / `listen.rs`）生产段里所有
 /// `write_all(`。今天恰好三处，各自登记：
 /// · `wire.rs::write_and_flush_hello` —— 握手前那一帧，写完才产出 `HelloFlushed`；
 ///   它按定义发生在 writer_task 起来**之前**，不存在并发。
@@ -71,13 +71,18 @@ fn the_outbound_stream_has_exactly_one_writer() {
             .and_then(|s| s.to_str())
             .unwrap()
             .to_string();
-        // 只看流式那条路的四个文件；`observe/*_query.rs` 是一次性子命令，理由见头注。
-        if !matches!(
-            name.as_str(),
-            "wire.rs" | "main.rs" | "inbound.rs" | "listen.rs"
-        ) {
+        // 入方向是一个目录（`stream/inbound/`）：整个目录都在人群里，按仓内相对路径记名。
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let in_inbound = rel.starts_with("stream/inbound/");
+        // 只看流式那条路（`wire.rs` · `main.rs` · `listen.rs` ＋ 入方向那个目录）；`observe/*_query.rs` 是一次性子命令，理由见头注。
+        if !in_inbound && !matches!(name.as_str(), "wire.rs" | "main.rs" | "listen.rs") {
             continue;
         }
+        let name = if in_inbound { rel } else { name };
         let n = guard_core::production_code(&src)
             .lines()
             .filter(|l| l.contains(verb.as_str()))

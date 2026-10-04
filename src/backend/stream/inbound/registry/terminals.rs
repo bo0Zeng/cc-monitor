@@ -1,0 +1,369 @@
+//! 命令表 · 终端与会话：`terminal-*` · `terminals-list` · `session-terminals` · `capture-pane` · `tmux-*` · `launch*` · `kill` · `sessions-*`。
+
+use crate::stream::inbound::spec::{CommandSpec, Run};
+
+pub(super) const SPECS: &[CommandSpec] = &[
+    // `K-R104`（09-13）：**把 `K-R86` / `K-R87` 那两条原语搬上帧面。**
+    //
+    // 🔴 为什么非搬不可（这是**结构**，不是性能取舍）：那两条此前**只有 CLI 面**，
+    // 而 CLI 面每调一次就是一次 SSH 握手 —— 用量探针两段轮询上限 12+20 轮
+    // ⇒ 单次探测最多 **36** 次握手，撑破 `EXEC_TIMEOUT_SECS = 25`。
+    // 帧面是**一条长连接上多次往返**，握手恒 1 次。读数与三条候选的比价住
+    // `.claude/planned-build/backend-consolidation/features/K-R101-…#§8`。
+    //
+    // ⚠ 两条都**只做一次**：抓一屏就返回、起一个会话就返回。
+    // 「隔多久再抓一次」留在调用方（`K37`：后端只给机制，不给偏好），
+    // backend 侧由 `no_timer_guard` 零容忍地钉着。
+    CommandSpec {
+        name: "capture-pane",
+        doc_anchor: Some("#### `capture-pane`"),
+        codes: &[
+            "invalid_args",
+            "no_tmux",
+            "no_server",
+            "no_such_session",
+            "capture_failed",
+        ],
+        fields: &["name", "screen", "sid"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::capture_pane::capture_for_inbound(&r.args).map(Some)
+        }),
+    },
+    // 起会话那一行 `ccm …`（`control/launch_render/`）：交给终端的只有这一行，环境与中转地址归那台的 `ccm`。
+    //   `launch-local`：本机那几形（阻塞档：核一次「新起」的目录在不在）；`launch-render-cli`：远端那几形（纯函数）。
+    CommandSpec {
+        name: "launch-local",
+        doc_anchor: Some("#### `launch-local`"),
+        codes: &["bad_args", "refused"],
+        fields: &[
+            "account",
+            "action",
+            "cmd",
+            "cwd",
+            "defaultLauncher",
+            "launchId",
+            "launcher",
+            "tmuxName",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::launch_render::answer_local(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "launch-render-cli",
+        doc_anchor: Some("#### `launch-render-cli`"),
+        codes: &["bad_args", "refused"],
+        fields: &[
+            "account",
+            "action",
+            "ccmSid",
+            "cmd",
+            "container",
+            "cwd",
+            "defaultLauncher",
+            "launcher",
+            "model",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::control::launch_render::answer_cli(&r.args)
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    // 〔「待迁」最后一行〕**开终端那一串**：`{machine, saved?, jump?, prefer?, command}` ⇒ `{command}`（一行 PowerShell：
+    //   `& ssh -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`）。组请求走 `dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
+    //   纯函数：校验 ＋ quote，不拨号、不起进程、不碰盘 ⇒ 不进阻塞档（同 `ping` 那一形）。
+    CommandSpec {
+        name: "terminal-ssh",
+        doc_anchor: Some("#### `terminal-ssh`"),
+        codes: &["invalid_args", "bad_jump", "refused"],
+        fields: &["command"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::dial::terminal::answer(&r.args)
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    // 那台报来的终端 ⇒ 这台电脑上开着那条连接的进程链：`{terminals}` ⇒ `{chain:[{pid, name, start}…], why?, addr?}`
+    //   （`dial/terminal_processes.rs`）。阻塞档：起一趟 PowerShell（连接表 ＋ 进程表四格）并等它退出。只在被问时答。
+    CommandSpec {
+        name: "terminal-processes",
+        doc_anchor: Some("#### `terminal-processes`"),
+        codes: &["bad_args"],
+        fields: &["addr", "chain", "name", "pid", "start", "why"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::dial::terminal_processes::answer(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 此刻是哪个终端在显示这个会话：`{sid}` ⇒ `{terminals:[{ssh, activity}…], why?}`（`observe/session_terminals.rs`）。
+    //   阻塞档：读 `/proc` ＋ 在 tmux 里时起一次 `tmux list-clients`。零定时器，只在被问时答。
+    CommandSpec {
+        name: "session-terminals",
+        doc_anchor: Some("#### `session-terminals`"),
+        codes: &["bad_args", "no_such_session", "failed"],
+        fields: &[
+            "activity",
+            "clientAddr",
+            "clientPort",
+            "serverAddr",
+            "serverPort",
+            "ssh",
+            "terminals",
+            "why",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::feature_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 终端管理 L1 三条（`control/terminals.rs`）：只认名单里的终端（句柄 / sid），不收 tmux 目标串；送字送键过身份门。
+    //   阻塞档（起 tmux）；只抓一次、只送一次，轮询归调用方。
+    CommandSpec {
+        name: "terminals-list",
+        doc_anchor: Some("#### `terminals-list` / `terminal-preview` / `terminal-input`"),
+        codes: &["invalid_args", "unobservable"],
+        fields: &[
+            "agent",
+            "can",
+            "client",
+            "clients",
+            "complete",
+            "cwd",
+            "end",
+            "host",
+            "input",
+            "kind",
+            "last_activity",
+            "mine",
+            "no",
+            "preview",
+            "program",
+            "purpose",
+            "session",
+            "sid",
+            "since",
+            "started_by",
+            "state",
+            "terminal",
+            "terminals",
+            "title",
+            "tmux_name",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| crate::control::terminals::list_for_inbound(&r.args).map(Some)),
+    },
+    CommandSpec {
+        name: "terminal-preview",
+        doc_anchor: Some("#### `terminals-list` / `terminal-preview` / `terminal-input`"),
+        codes: &[
+            "bad_target",
+            "invalid_args",
+            "not_known",
+            "ambiguous",
+            "no_tmux",
+            "no_server",
+            "no_such_session",
+            "capture_failed",
+            "unobservable",
+        ],
+        fields: &[
+            "capped",
+            "captured_at",
+            "color",
+            "cols",
+            "cursor",
+            "lines",
+            "rows",
+            "screen",
+            "scrollback",
+            "scrollback_lines",
+            "sid",
+            "spans",
+            "terminal",
+            "text",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| crate::control::terminals::preview_for_inbound(&r.args).map(Some)),
+    },
+    CommandSpec {
+        name: "terminal-input",
+        doc_anchor: Some("#### `terminals-list` / `terminal-preview` / `terminal-input`"),
+        codes: &[
+            "bad_target",
+            "invalid_args",
+            "no_tmux",
+            "no_server",
+            "no_such_session",
+            "capture_failed",
+            "unobservable",
+        ],
+        fields: &[
+            "client",
+            "enter",
+            "key",
+            "result",
+            "screen",
+            "seen_screen",
+            "sid",
+            "take",
+            "terminal",
+            "text",
+            "why",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| crate::control::terminals::input_for_inbound(&r.args).map(Some)),
+    },
+    // 列这台的 tmux 会话。成品 `{installed, sessions}`（`observe/tmux_list.rs`；原先是原样行、解析在 monitor）。阻塞档（起一次 `sh` ＋ `tmux`）。
+    CommandSpec {
+        name: "tmux-list",
+        doc_anchor: Some("#### `tmux-list`"),
+        codes: &["unobservable", "too_large"],
+        fields: &[
+            "attached",
+            "command",
+            "installed",
+            "name",
+            "path",
+            "sessions",
+            "sid",
+            "windows",
+        ],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::faces::feature_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // **起会话要一个 tmux 名 —— 问这台**：`{cwd}`（`<项目名>-cc`）或 `{forkOf}`（`<…>-fork-cc`）⇒ `{name}`（按这台那张会话快照避让）。
+    //   本体 `control/ccm/mod.rs::answer_tmux_name_mint`；阻塞档（快照问一次就起一次 `tmux`）。
+    CommandSpec {
+        name: "tmux-name-mint",
+        doc_anchor: Some("#### `tmux-name-mint`"),
+        codes: &["invalid_args"],
+        fields: &["name"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::ccm::answer_tmux_name_mint(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // F04a：**第一条破坏性命令。** 三道门在 `control/gate::admit_destructive`，
+    // 对句柄下手不对名字。⚠ monitor 侧改走这条路是 **F04b**（定框 C6 的顺序）。
+    CommandSpec {
+        name: "kill",
+        doc_anchor: Some("#### `kill`"),
+        codes: &[
+            "invalid_args",
+            "no_tmux",
+            "no_such_session",
+            "wrong_owner",
+            "too_many_windows",
+            "kill_failed",
+        ],
+        fields: &["bus", "client", "killed", "name", "session", "sid"],
+        takes_input: true,
+        run: Run::Blocking(|r| crate::control::kill::kill_for_inbound(&r.args).map(Some)),
+    },
+    // 一批会话的停 / 起：每一个同单个那一条（`kill` · `launch` · `launch-render-cli` · `launch-local`），逐个答结局。
+    //   阻塞档（逐个起 tmux）；要动 tmux / 读记录的几样由帧面那层壳交进去（`faces/session_batch_face.rs`）。
+    CommandSpec {
+        name: "sessions-stop",
+        doc_anchor: Some("#### `sessions-tmux` / `sessions-stop` / `sessions-start`"),
+        codes: &["invalid_args", "unobservable"],
+        fields: &[
+            "bus", "client", "cmd", "detail", "outcome", "results", "session", "sid", "sids", "why",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::session_batch_face::stop(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "sessions-tmux",
+        doc_anchor: Some("#### `sessions-tmux` / `sessions-stop` / `sessions-start`"),
+        codes: &["invalid_args", "unobservable"],
+        fields: &["client", "names", "results", "sid", "sids", "standing"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::session_batch_face::where_(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "sessions-start",
+        doc_anchor: Some("#### `sessions-tmux` / `sessions-stop` / `sessions-start`"),
+        codes: &["invalid_args", "unobservable"],
+        fields: &[
+            "account",
+            "client",
+            "cmd",
+            "configDir",
+            "cwd",
+            "defaultLauncher",
+            "detail",
+            "items",
+            "kind",
+            "launcher",
+            "local",
+            "mode",
+            "model",
+            "name",
+            "outcome",
+            "results",
+            "session",
+            "sid",
+            "why",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::session_batch_face::start(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "launch",
+        doc_anchor: Some("#### `launch`"),
+        // 〔C4e 问 2〕+`wrong_owner`：`send-into` 过 `gate::admit`（§34 Gate 2），
+        // 它真会回这个码，登记表原先漏了。由 `gate_tests.rs::every_command_that_passes_the_gate_lists_the_gates_codes` 从 gate.rs 源码派生钉住。
+        codes: &[
+            "invalid_args",
+            "no_tmux",
+            "no_such_session",
+            "wrong_owner",
+            "create_failed",
+            "typed_unconfirmed",
+        ],
+        // 〔`K-P2` `D` 阶段第三拍 09-03〕8 → 11：`agent` / `width` / `height`。
+        // 那三个是「ccm 的 `--tmux` 真的改走这条路」逼出来的 —— 本地那条编排里
+        // `@ccm_agent` 与 `-x/-y` 一直都在，这一侧此前没有字段能表达它们
+        // ⇒ 不补就是**静默丢修饰**。⚠ `avoid_collision` **不加**：撞名避让住在要搬的那一块
+        // **之外**，而「撞了」这件事后端已经用 `created:false` 表达完了（`§15 裁五`）。
+        fields: &[
+            "agent", "ccm_sid", "client", "created", "cwd", "height", "mode", "name", "payload",
+            "session", "typed", "width",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| crate::control::launch::launch_for_inbound(&r.args).map(Some)),
+    },
+];

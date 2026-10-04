@@ -126,8 +126,8 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "src/backend/platform/shell/dialect.rs",
         "「monitor 零 PowerShell 引号器」那把零命中尺子的正控：同一把尺子量后端那唯一的出口（`ps_literal`）要恰好量出四个引号字符，量不出 ⇒ 尺子瞎了",
     ),
-    // `tests/frontend/shell/remote_relay_tests.rs → src/backend/stream/inbound.rs` 那一条退役：远端「用到才起」的脱离中转一族删了（中转只住常驻后端里）。
-    // `tests/frontend/shell/apikey_remote_tests.rs → src/backend/stream/inbound.rs` 那一条退役：命令名常量随写臂删了、那条对拍判据随之退役
+    // `tests/frontend/shell/remote_relay_tests.rs → src/backend/stream/inbound/mod.rs` 那一条退役：远端「用到才起」的脱离中转一族删了（中转只住常驻后端里）。
+    // `tests/frontend/shell/apikey_remote_tests.rs → src/backend/stream/inbound/mod.rs` 那一条退役：命令名常量随写臂删了、那条对拍判据随之退役
     //   （monitor 里零处叫得出那条帧命令，由 `creds_store_tests::hx2_the_monitor_names_no_plaintext_key_on_the_way_to_the_backend` 钉零命中）。
     (
         "monitor→backend",
@@ -140,9 +140,9 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→backend",
         "tests/frontend/shell/creds_store_tests.rs",
-        "src/backend/stream/inbound.rs",
+        "src/backend/stream/inbound/registry/accounts.rs",
         "写 key 改走通道之后，「monitor 生产段零处叫得出明文 key 的写口」那条零命中判据的**正控**要落在真命令表上 —— \
-         同一根针（帧命令名 `apikey-key-set`）在后端 `inbound.rs` 的登记里数得到，才说明零命中不是针瞎了",
+         同一根针（帧命令名 `apikey-key-set`）在后端命令表账号那一族的登记里数得到，才说明零命中不是针瞎了",
     ),
     (
         "monitor→backend",
@@ -151,12 +151,8 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "本机凭据文件的写者换成本机常驻后端之后，「monitor 生产段零处够写半边」那条零命中判据的**正控** \
          要落在真写者身上 —— 同一把针在后端那一份写口里数得到，才说明零命中不是针瞎了（合成样本证不了针对准了真写口）",
     ),
-    (
-        "monitor→backend",
-        "tests/frontend/shell/inbound_client_tests.rs",
-        "src/backend/stream/inbound.rs",
-        "入方向帧的种类与错误码两侧同形",
-    ),
+    // `tests/frontend/shell/inbound_client_tests.rs → src/backend/stream/inbound/mod.rs` 那一条摘了：手抄的命令名单删了、
+    //   命令名只住命令表各族，那条对拍改成运行时逐族读（`guard_support::backend_registry_sources`），不再是编译期边。
     (
         "monitor→backend",
         // 〔步 7c 剖分 2026-09-19〕住址跟着判据搬：

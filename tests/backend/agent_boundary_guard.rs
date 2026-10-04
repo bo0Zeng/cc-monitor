@@ -49,7 +49,7 @@ mod tests {
         "platform/fallback_guard.rs",
         "common/mod.rs",
         "stream/wire.rs",
-        "stream/inbound.rs",
+        "stream/inbound/mod.rs",
         // ── 以下由 `S3` 加入 ──────────────────────────────────────────
         // `platform/` 整层：`S3` 把 `proc_claude_config_dir` 参数化成 `proc_env_var(pid, name)`
         // 之后，这一层再没有任何一个 agent 的名字。⚠ 这是**整层**进表，不是挑干净的进 ——
@@ -104,6 +104,20 @@ mod tests {
         // 六根针在那个文件里**逐针 0 命中**；同一把尺子打 `observe/watcher.rs` 作**非空对照**
         // 得 57 / 3 / 13 / 12 / 34 / 1 ⇒ 尺子不是坏的，那个 0 是真的 0。
         "common/tmux_utf8.rs",
+        // 入方向从一份文件拆成目录（10-03）：拆出来的每一份（含命令表各族）照旧在表里（原来那一份在表里，拆开不缩覆盖面）。
+        "stream/inbound/doors.rs",
+        "stream/inbound/drain.rs",
+        "stream/inbound/sniff.rs",
+        "stream/inbound/spec.rs",
+        "stream/inbound/registry/accounts.rs",
+        "stream/inbound/registry/aliases.rs",
+        "stream/inbound/registry/assets.rs",
+        "stream/inbound/registry/bus.rs",
+        "stream/inbound/registry/file_manager.rs",
+        "stream/inbound/registry/history.rs",
+        "stream/inbound/registry/link.rs",
+        "stream/inbound/registry/machine.rs",
+        "stream/inbound/registry/terminals.rs",
     ];
 
     /// 人群下界：低于它说明取法坏了（路径写错 / 扩展名过滤掉）⇒ **红**，不是绿。
@@ -301,7 +315,7 @@ mod tests {
             "platform/fallback_guard.rs",
             "common/mod.rs",
             "stream/wire.rs",
-            "stream/inbound.rs",
+            "stream/inbound/mod.rs",
             // S3 加入
             "platform/proc.rs",
             "platform/liveness.rs",
@@ -315,6 +329,20 @@ mod tests {
             "plugin/probe.rs",
             // K-R12 下一拍加入（09-04）：新建的 `common/tmux_utf8.rs`，同样从第一天就在表里
             "common/tmux_utf8.rs",
+            // 入方向拆成目录（10-03）：拆出来的那几份与命令表各族
+            "stream/inbound/doors.rs",
+            "stream/inbound/drain.rs",
+            "stream/inbound/sniff.rs",
+            "stream/inbound/spec.rs",
+            "stream/inbound/registry/accounts.rs",
+            "stream/inbound/registry/aliases.rs",
+            "stream/inbound/registry/assets.rs",
+            "stream/inbound/registry/bus.rs",
+            "stream/inbound/registry/file_manager.rs",
+            "stream/inbound/registry/history.rs",
+            "stream/inbound/registry/link.rs",
+            "stream/inbound/registry/machine.rs",
+            "stream/inbound/registry/terminals.rs",
         ];
         let missing: Vec<&str> = EVER_DECLARED_CORE
             .iter()

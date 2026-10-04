@@ -621,12 +621,12 @@ mod tests {
         "「测试连接」不再走代理、或探活改由界面侧期限兜住的那天。",
     ),
         (
-        "inbound.rs",
+        "stream/inbound/drain.rs",
         "Duration::from_millis(30_000)",
         "流模式收场的**退出排空期限**（`inbound::DRAIN_DEADLINE`）。它**是**一个会醒来的构件 —— \
-         零定时器在这里让位，那一处的调用另登记在 `REGISTERED_DEADLINE_WAKES`（inbound.rs 那一行）。只在进程要退时装一次。",
+         零定时器在这里让位，那一处的调用另登记在 `REGISTERED_DEADLINE_WAKES`（stream/inbound/drain.rs 那一行）。只在进程要退时装一次。",
         "缩性质",
-        "后端的收场改由外部（宿主 / 进程管理器）保证上限、远端也有人叫它退的那天 —— 那时这一条与 `REGISTERED_DEADLINE_WAKES` 里 inbound.rs 那一行一起摘。",
+        "后端的收场改由外部（宿主 / 进程管理器）保证上限、远端也有人叫它退的那天 —— 那时这一条与 `REGISTERED_DEADLINE_WAKES` 里 stream/inbound/drain.rs 那一行一起摘。",
     ),
         (
         "runs.rs",
@@ -650,7 +650,7 @@ mod tests {
     /// **加一行就是一次放宽**：提交说明里写明放宽了什么。
     pub(super) const REGISTERED_DEADLINE_WAKES: &[(&str, &str, &str, &str)] = &[
         (
-            "inbound.rs",
+            "stream/inbound/drain.rs",
             "tokio::time::sleep(deadline)",
             "流模式收场（`inbound::exit_after_drain_within`）等在飞的阻塞命令做完的**上限**：到点仍没排空 ⇒ 说出哪几条没做完、退出。\
              零定时器在这里让位的理由：排空要有上限，而远端后端 SSH 断开时**没有**别的一方能给它上限\

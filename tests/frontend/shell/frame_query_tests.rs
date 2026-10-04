@@ -31,16 +31,13 @@ fn sorted(v: impl IntoIterator<Item = String>) -> Vec<String> {
     v
 }
 
-/// 后端 `inbound.rs` 生产段里的每一块 `CommandSpec`：`(帧命令名, 那一块的原文)`（**从后端源码数**）。
+/// 后端命令表各族生产段里的每一块 `CommandSpec`：`(帧命令名, 那一块的原文)`（**从后端源码数**，逐族切）。
 /// 抽成一处：下面两条判据（交给只读宿主的那几条 · 全部登记的帧命令）共用同一个切法。
 fn backend_command_blocks() -> Vec<(String, String)> {
-    let p =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../backend/stream/inbound.rs");
-    let src = std::fs::read_to_string(&p).expect("读后端 inbound.rs");
-    let prod = guard_core::production_code(&src);
-    let blocks: Vec<(String, String)> = prod
-        .split("CommandSpec {")
-        .skip(1)
+    let families = crate::guard_support::backend_registry_sources();
+    let blocks: Vec<(String, String)> = families
+        .iter()
+        .flat_map(|(_, prod)| prod.split("CommandSpec {").skip(1))
         .filter_map(|blk| {
             let at = blk.find("name: \"")? + "name: \"".len();
             Some((blk[at..].split('"').next()?.to_string(), blk.to_string()))
@@ -816,7 +813,7 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
     let registered = backend_registered_commands();
     assert!(
         registered.len() > 20,
-        "从后端 `inbound.rs` 只数到 {} 条帧命令 —— 抽取坏了",
+        "从后端命令表只数到 {} 条帧命令 —— 抽取坏了",
         registered.len()
     );
     for (op, n, why) in SAME_SPELLING_NOT_A_SEND {

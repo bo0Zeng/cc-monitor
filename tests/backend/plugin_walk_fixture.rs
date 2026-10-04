@@ -909,7 +909,7 @@ mod tests {
         assert!(!w.declared.is_empty(), "事前那张表是空的");
         for u in &w.declared {
             assert!(
-                crate::stream::inbound::COMMANDS.contains(&u.command.as_str()),
+                crate::stream::inbound::command_names().contains(&u.command.as_str()),
                 "声明做不到的 `{}` 根本不在 `commands` 里 —— 本字段说的是「接得下但做不到」",
                 u.command
             );
@@ -1289,7 +1289,7 @@ mod tests {
                 spec.codes
             );
             assert!(
-                crate::stream::inbound::COMMANDS.contains(&u.command.as_str()),
+                crate::stream::inbound::command_names().contains(&u.command.as_str()),
                 "`{}` 不在 `commands` 里 —— 「根本不接」那一格由不在 `commands` 里表达，\
                  不该出现在这张「接得下但做不到」的表上",
                 u.command
@@ -1317,8 +1317,8 @@ mod tests {
         //    ⇒ 它「说得出」，但**说不出口**。走出路乙（`REGISTRY` 8 → 9）才买得到另一半，
         //    而那要动 PM 持有的文件 ⇒ `§4` 上报。
         assert!(
-            !crate::stream::inbound::COMMANDS.contains(&plugin_name().as_str()),
-            "假插件的名字混进了 `inbound::COMMANDS` —— 那是**出货面**，夹具不许进去"
+            !crate::stream::inbound::command_names().contains(&plugin_name().as_str()),
+            "假插件的名字混进了 `inbound::command_names()` —— 那是**出货面**，夹具不许进去"
         );
         assert!(
             !crate::stream::inbound::REGISTRY
@@ -1629,7 +1629,7 @@ mod tests {
     ///    `invoke::run` 的**第五个入参**（一份「这次调用允许回调哪几条基础命令」的显式清单），
     ///    落地形态是把常驻口的地址与一枚**一次性、按调用发的、只授这几条命令**的短票
     ///    显式塞进子进程环境；ⓐ（清环境）已经做掉了，剩下的是
-    ///    ⓑ 那份清单的取值空间钉在 `inbound::COMMANDS` 上（同 `Hello.unavailable` 的口径，
+    ///    ⓑ 那份清单的取值空间钉在 `inbound::command_names()` 上（同 `Hello.unavailable` 的口径，
     ///    不许自造第二套词）。
     #[test]
     fn nothing_here_hands_the_plugin_a_designed_way_back_into_the_host_commands() {
@@ -1941,7 +1941,7 @@ mod tests {
     ///
     /// | # | 落点 | 判据强制吗 | 什么条件下才轮到它 |
     /// |---|---|---|---|
-    /// | 1 | `inbound::REGISTRY` 加一条 `CommandSpec` | ✅ 红（`COMMANDS`/`REGISTRY` 双向相等 + `protocol_doc_guard` 对拍） | **无条件** —— 插件要被宿主调，就得有一条命令 |
+    /// | 1 | `inbound::REGISTRY` 加一条 `CommandSpec` | ✅ 红（`protocol_doc_guard` 对拍：每条登记都要有文档小节） | **无条件** —— 插件要被宿主调，就得有一条命令 |
     /// | 2 | 协议文档对应锚点 | ✅ 红（`protocol_doc_guard` 认 `doc_anchor`） | 无条件（跟着 1） |
     /// | 3 | 新插件自己的适配层（码表 · 候选路径 · 必需清单） | ➖ **不算宿主改动** | `E6`/`E9` 明写它就该每插件一份 |
     /// | 4 | `layering_guard::ALLOWED_INTO_PLUGIN`（今天 **5 条**，条数钉死） | ✅ 红 | 🔴 **只在适配层住 `control/` 或 `observe/` 时** —— 那条判据逐字 `for layer in ["control", "observe"]` |
@@ -1973,7 +1973,7 @@ mod tests {
     fn adding_a_plugin_still_costs_the_host_something() {
         // 落点 1/2 的机检**今天真在**：命令表两侧互为镜子，且每条转调型命令都带文档锚点。
         assert_eq!(
-            crate::stream::inbound::COMMANDS.len(),
+            crate::stream::inbound::command_names().len(),
             crate::stream::inbound::REGISTRY.len(),
             "命令表两侧的条数对不上 —— 落点 1 那道机检此刻自己就是红的"
         );

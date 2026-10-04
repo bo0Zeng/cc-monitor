@@ -635,7 +635,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/stream/inbound.rs",
+        "src/backend/stream/inbound/mod.rs",
         "MAX_LINE_BYTES",
         1 << 20,
         "入方向单行",
@@ -1385,7 +1385,7 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     // 对 F：窗口存盘时一行的上限 ＝ 后端入方向一行的上限 ⇒ 钉相等。
     //   窗口多给一个字节 ⇒ 后端整行丢弃（`line_too_long`）；少给 ⇒ 只是多切几块（不错，但两份数漂了就该有人看）。
     let f1 = by("src/frontend/filewin/src/editor.rs", "SAVE_LINE_CAP");
-    let f2 = by("src/backend/stream/inbound.rs", "MAX_LINE_BYTES");
+    let f2 = by("src/backend/stream/inbound/mod.rs", "MAX_LINE_BYTES");
     assert_eq!(
         f1, f2,
         "窗口存盘一行的上限与后端入方向一行上限漂开了（窗口 {f1} / 后端 {f2}）。\
@@ -1930,7 +1930,7 @@ fn every_uncapped_stream_read_has_an_owner() {
              ★ 对端是**远端进程** —— 它坏掉、或者压根不是我们的后端，都会让\n\
              「无界读」变成「无界堆分配」。backend 侧为此栽过一次实测：\n\
              喂 512 MiB 无换行的流 ⇒ RSS 从 6 MiB 涨到 518 MiB\n\
-             （见 `src/backend/stream/inbound.rs` 头注）。\n\
+             （见 `src/backend/stream/inbound/mod.rs` 头注）。\n\
              两条路：① 加上限（`.take(CAP + 1)` + 超了回错，形态见 `common/fs.rs`）；\n\
              ② 登记进 `UNCAPPED_STREAM_READS` 并写明**谁退役它**。",
         orphans.join("\n")

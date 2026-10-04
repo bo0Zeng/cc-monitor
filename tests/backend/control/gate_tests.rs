@@ -607,17 +607,18 @@ fn every_command_that_passes_the_gate_lists_the_gates_codes() {
         "门的码读错了：{doors:?}"
     );
 
-    let inbound = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/stream/inbound.rs"
-    ));
+    let families = crate::guard_support::registry_sources();
     let root = crate::guard_support::src_root();
     let mut checked = Vec::new();
     for spec in crate::stream::inbound::REGISTRY {
         let anchor = format!("name: \"{}\",", spec.name);
-        let Some(at) = inbound.find(&anchor) else {
+        let Some((family, at)) = families
+            .iter()
+            .find_map(|(_, prod)| prod.find(&anchor).map(|at| (prod, at)))
+        else {
             continue;
         };
-        let cell = &inbound[at..];
+        let cell = &family[at..];
         let cell = &cell[..cell.find("\n    },").unwrap_or(cell.len())];
         for (i, _) in cell.match_indices("crate::control::") {
             let module: String = cell[i + "crate::control::".len()..]

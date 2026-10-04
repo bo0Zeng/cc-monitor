@@ -44,7 +44,7 @@
 //!
 //! # 第二种件：**存盘的块**（`files-stage-chunk` ＋ `files-commit-text`）
 //!
-//! 文件窗口存一份装不进一条请求行的文本（后端入方向一行 1 MiB，`inbound.rs::MAX_LINE_BYTES`）时，
+//! 文件窗口存一份装不进一条请求行的文本（后端入方向一行 1 MiB，`stream/inbound/mod.rs::MAX_LINE_BYTES`）时，
 //! 把它切成几块逐块送进暂存区（`<key>.<seq>.chunk`，**`O_EXCL` 新建**：一块只写一次），
 //! 再由 `files-commit-text` 按块号读回、拼起来、核总长，交给写面那一份覆盖写
 //! （`files_write::overwrite_text`，**一字不抄**）。设计全文住。

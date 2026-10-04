@@ -106,7 +106,7 @@
 //!      ⚠ 教训写在这儿：**分母的单位与它的量法要与判据自己印的那个数同源**，
 //!      不然下一个人照「引用前重打」重打一次，会把 255 999 读成「语料漂了七千多字节」。〕
 //!      量法 = 与 `crate_sources()` 同一份剥法逐文件数子串（同一刻现打）：`channel(` **0 处**；
-//!      `use tokio::sync::mpsc` **2 处**，`stream/inbound.rs:35` 与 `observe/watcher.rs:77`，
+//!      `use tokio::sync::mpsc` **2 处**，`stream/inbound/mod.rs:35` 与 `observe/watcher.rs:77`，
 //!      两处都停在 `::mpsc;`（全 crate `use tokio::sync::mpsc::` **0 处**），
 //!      没有一处 import 到函数那一级。
 //!      **这是那一刻的读数，不是不变量** —— 引用前重打。）

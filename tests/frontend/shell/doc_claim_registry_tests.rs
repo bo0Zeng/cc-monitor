@@ -763,7 +763,7 @@ fn the_protocol_level_error_codes_in_the_doc_are_the_ones_the_backend_uses() {
              unknown_command · duplicate_id · handler_panicked · not_cancellable。",
         in_doc.len()
     );
-    let backend = std::fs::read_to_string(repo_root().join("src/backend/stream/inbound.rs"))
+    let backend = std::fs::read_to_string(repo_root().join("src/backend/stream/inbound/mod.rs"))
         .expect("读不到后端的 inbound.rs");
     let prod = guard_core::production_code(&backend);
     let missing: Vec<&&str> = in_doc

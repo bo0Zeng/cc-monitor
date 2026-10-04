@@ -1576,6 +1576,119 @@ mod tests {
         );
     }
 
+    /// §10 里「入方向」那一小节（到下一个三级标题为止）。
+    ///
+    /// ★ **收到「入方向」那一小节**（U8a-2b）：原来扫的是 §10 整节，而 §10 里的帧字段表本来就有
+    /// `status` / `path` / `name` / `sid` 这些词 ⇒ **一条叫 `status` 的命令零文档也直接通过**
+    /// （D 设计审计 · 视角 A · P3）。收到入方向小节之后，命令名要想白嫖就得恰好撞上入方向小节里的某个词，面小得多。
+    fn inbound_section(doc: &str) -> &str {
+        let sec = doc
+            .find("## 10. 远端后端 wire 协议")
+            .expect("文档里找不到 §10 —— 抽取坏了");
+        let sec_end = doc[sec..]
+            .find("\n## ")
+            .map(|k| sec + k)
+            .unwrap_or(doc.len());
+        let inbound_at = doc[sec..sec_end]
+            .find("### 入方向：流连接上的命令信封")
+            .map(|k| sec + k)
+            .expect("§10 里找不到「入方向」小节 —— 抽取坏了还是文档被大改了？");
+        let inbound_end = doc[inbound_at + 4..sec_end]
+            .find("\n### ")
+            .map(|k| inbound_at + 4 + k)
+            .unwrap_or(sec_end);
+        &doc[inbound_at..inbound_end]
+    }
+
+    /// 入方向小节里以命令名开头的四级标题：`(那一行, 开头那串名字)`。
+    ///
+    /// 「以命令名开头」＝ `#### ` 之后紧跟一个反引号跨度；开头那串名字是 `` `a` `` 或 `` `a` / `b` / … ``，
+    /// 到第一个不是「` / ` 再接一个反引号跨度」的地方为止。不以反引号开头的标题（讲一族、讲共同规则的）不算。
+    fn command_headings(section: &str) -> Vec<(String, Vec<String>)> {
+        let mut out = Vec::new();
+        for head in section.lines() {
+            let Some(mut rest) = head.strip_prefix("#### `") else {
+                continue;
+            };
+            let mut names = Vec::new();
+            loop {
+                let Some(end) = rest.find('`') else {
+                    break;
+                };
+                names.push(rest[..end].to_string());
+                rest = &rest[end + 1..];
+                match rest.strip_prefix(" / `") {
+                    Some(next) => rest = next,
+                    None => break,
+                }
+            }
+            out.push((head.to_string(), names));
+        }
+        out
+    }
+
+    /// 入方向小节里点了**不在注册表里的名字**的命令标题。
+    fn stray_command_headings(
+        section: &str,
+        registered: &std::collections::BTreeSet<&str>,
+    ) -> Vec<String> {
+        command_headings(section)
+            .into_iter()
+            .filter(|(_, names)| names.iter().any(|n| !registered.contains(n.as_str())))
+            .map(|(head, _)| head)
+            .collect()
+    }
+
+    /// ★ **反向**：入方向小节里凡以命令名开头的四级标题（`` `名字` ``：… · `` `a` / `b` ``：…），
+    /// 开头那串名字**每一个**都在 `REGISTRY`；每条带 `doc_anchor` 的命令，它的锚恰好是某个这样的标题的前缀。
+    ///
+    /// 正向（每条命令都在文档里、带载荷的有自己的小节）早有人查；反向此前没人查 ——
+    /// 删一条命令而忘了删它那一节，文档就一直当现状说着一条不存在的命令，客户端照着发只会拿到 `unknown_command`。
+    /// `cancel` · `ping` 没有自己的小节，照旧只要求出现在小节正文里（上一条）。
+    /// 讲一族、讲共同规则的标题不以反引号开头（「文件读那一族（`files-read` …）」），不在本条的人群里。
+    #[test]
+    fn every_command_heading_in_the_inbound_section_names_a_registered_command() {
+        let section = inbound_section(DOC);
+        let registered: std::collections::BTreeSet<&str> = crate::stream::inbound::command_names()
+            .into_iter()
+            .collect();
+        let heads = command_headings(section);
+        assert!(
+            heads.len() >= 100,
+            "入方向小节里只切出 {} 个命令标题 —— 切法坏了，本断言在空转",
+            heads.len()
+        );
+        let stray = stray_command_headings(section, &registered);
+        assert!(
+            stray.is_empty(),
+            "入方向小节里这几节讲的命令不在注册表里（删了命令没删文档，或标题写错了名字）：\n  {}",
+            stray.join("\n  ")
+        );
+        let mut anchored = 0usize;
+        for spec in crate::stream::inbound::REGISTRY {
+            let Some(anchor) = spec.doc_anchor else {
+                continue;
+            };
+            anchored += 1;
+            assert!(
+                heads.iter().any(|(head, _)| head.starts_with(anchor)),
+                "`{}` 的锚 {anchor:?} 不是入方向小节里任何一个命令标题的前缀",
+                spec.name
+            );
+        }
+        assert!(
+            anchored >= 100,
+            "只有 {anchored} 条命令带锚 —— 本断言在空转"
+        );
+        // 正控：往小节里补一节已删命令的标题，切法认得出它。
+        let planted = format!("{section}\n#### `relay-ensure`：没人在听就起一个脱离的中转\n");
+        assert_eq!(
+            stray_command_headings(&planted, &registered),
+            vec!["#### `relay-ensure`：没人在听就起一个脱离的中转".to_string()],
+            "补进去的一节已删命令没被认出来 —— 切法瞎了"
+        );
+    }
+
     /// ★ **入方向命令名**也必须在 §10 里（U7-5 补的第三条）。
     ///
     /// # 这条是 U7-5 扫「自洽夹具」时顺带发现的空白
@@ -1592,33 +1705,13 @@ mod tests {
     /// 表现是 `unknown_command`，而两边各自看都"对"。
     #[test]
     fn every_inbound_command_appears_in_the_protocol_doc() {
-        let sec = DOC
-            .find("## 10. 远端后端 wire 协议")
-            .expect("文档里找不到 §10 —— 抽取坏了");
-        let sec_end = DOC[sec..]
-            .find("\n## ")
-            .map(|k| sec + k)
-            .unwrap_or(DOC.len());
-        // ★ **收到「入方向」那一小节**（U8a-2b）。
-        //
-        // 原来扫的是 §10 整节，而 §10 里的帧字段表本来就有 `status` / `path` / `name` / `sid`
-        // 这些词 ⇒ **一条叫 `status` 的命令零文档也直接通过**（D 设计审计 · 视角 A · P3）。
-        // 收到入方向小节之后，命令名要想白嫖就得恰好撞上入方向小节里的某个词，面小得多。
-        let inbound_at = DOC[sec..sec_end]
-            .find("### 入方向：流连接上的命令信封")
-            .map(|k| sec + k)
-            .expect("§10 里找不到「入方向」小节 —— 抽取坏了还是文档被大改了？");
-        let inbound_end = DOC[inbound_at + 4..sec_end]
-            .find("\n### ")
-            .map(|k| inbound_at + 4 + k)
-            .unwrap_or(sec_end);
-        let documented = code_span_identifiers(&DOC[inbound_at..inbound_end]);
+        let documented = code_span_identifiers(inbound_section(DOC));
         assert!(
             documented.len() >= 25,
             "只从「入方向」小节切出 {} 个标识符 —— 抽取坏了，本断言在空转",
             documented.len()
         );
-        let cmds = crate::stream::inbound::COMMANDS;
+        let cmds = crate::stream::inbound::command_names();
         assert!(
             cmds.len() >= 2,
             "只有 {} 条命令 —— 抽取坏了，本断言在空转",

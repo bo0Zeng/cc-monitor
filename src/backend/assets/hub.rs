@@ -41,7 +41,7 @@ use crate::stream::remote_ask::{Remote, Table};
 
 type Answer = Result<Value, (String, String)>;
 
-/// 这台自己的那几条内层命令（生产 = `inbound.rs::LocalFrames`：本进程 `REGISTRY` 的 `run`，限那几条）。
+/// 这台自己的那几条内层命令（生产 = `stream/inbound/doors.rs::LocalFrames`：本进程 `REGISTRY` 的 `run`，限那几条）。
 pub(crate) trait Here: Send + Sync {
     fn ask(&self, cmd: &str, args: Value) -> Answer;
 }

@@ -9,7 +9,7 @@
 //! |---|---|---|
 //! | ① | 这个模块**只许依赖** `platform` / `common` / 下面一层的基础设施（业务模块之间零依赖；适配层那一类为零） | [`every_edge_out_of_the_file_backend_is_declared`]：模块生产段够到外面的**每一条**符号路径，与 [`OUTWARD`] **逐格相等**；每一格的类别必须与它的路径首段对得上 |
 //! | ② | 原生后端**零处**伸手进它**内部** | [`the_native_backend_reaches_the_file_backend_only_through_its_doors`]：模块之外的后端生产段够到模块的符号，集合 == [`DOORS`]（几个入口函数，零个内部符号） |
-//! | ③ | 外界够到它**只有一扇门**（命令注册那一处） | 同上那一条的**文件**那一维：[`DOORS`] 里除了挂载／汇总那一格，住址全是 `inbound.rs` |
+//! | ③ | 外界够到它**只有一扇门**（命令注册那一处） | 同上那一条的**文件**那一维：[`DOORS`] 里除了挂载／汇总那一格，住址全在入方向（命令表文件管理那一族 · 分派） |
 //!
 //! 形状照前端那一侧的先例 `tests/frontend/shell/filewin/boundary_tests.rs`（正向逐格相等 ＋
 //! 反向一元素零命中守卫 ＋ 抽取器在合成语料上正反各喂一遍）。抽取器是**移植**过来的一份，
@@ -411,28 +411,32 @@ enum Door {
 /// ★ 门：`(住址, 符号, 类别)`。**每一个符号都是入口函数，零个内部符号**
 /// （`files::index::*` / `files::raw::*` / 围栏那几个函数 —— 原生后端一个都够不到）。
 const DOORS: &[(&str, &str, Door)] = &[
-    ("stream/inbound.rs", "files::answer_wire", Door::Command),
+    (
+        "stream/inbound/registry/file_manager.rs",
+        "files::answer_wire",
+        Door::Command,
+    ),
     // 按内容搜要**可撤**（异步档：阻塞线程上那一趟看取消位）⇒ 同一族的第二个入口函数，
     //   不是内部符号：它自己再进 `answer_grep`（与唯一入口 `answer` 里那一臂同一个本体）。
     (
-        "stream/inbound.rs",
+        "stream/inbound/registry/file_manager.rs",
         "files::answer_grep_cancellable",
         Door::Command,
     ),
     (
-        "stream/inbound.rs",
+        "stream/inbound/registry/file_manager.rs",
         "control::files_write::answer_wire",
         Door::Command,
     ),
     // 上传的提交：同一扇门里的第三个入口函数。
     (
-        "stream/inbound.rs",
+        "stream/inbound/registry/file_manager.rs",
         "control::files_commit::answer_wire",
         Door::Command,
     ),
     // 解压（`files-extract`）：同一扇门里的又一个入口函数。
     (
-        "stream/inbound.rs",
+        "stream/inbound/registry/file_manager.rs",
         "control::files_extract::answer_wire",
         Door::Command,
     ),
@@ -440,23 +444,23 @@ const DOORS: &[(&str, &str, Door)] = &[
     //   ⇒ 这一面的入口是「造表 ＋ 答口」两个函数，外加读循环 / 分派签名里点名的那个表类型。
     //   四条 `transfer-*` 硬臂**全**经 `answer_wire` 进来（它们是 `Run::Builtin`，要碰本连接的票表与应答通道）。
     (
-        "stream/inbound.rs",
+        "stream/inbound/mod.rs",
         "control::transfer::Desk",
         Door::Command,
     ),
     (
-        "stream/inbound.rs",
+        "stream/inbound/mod.rs",
         "control::transfer::Desk::new",
         Door::Command,
     ),
     (
-        "stream/inbound.rs",
+        "stream/inbound/mod.rs",
         "control::transfer::Desk::answer_wire",
         Door::Command,
     ),
     // 删会话那两问的窄口：门把适配层那两个函数装进这个类型递给写面（`SESSION_PORT`）。
     (
-        "stream/inbound.rs",
+        "stream/inbound/registry/file_manager.rs",
         "control::files_write::SessionPort",
         Door::Command,
     ),
@@ -526,16 +530,19 @@ fn the_file_backend_depends_on_no_business_module_only_on_the_layers_below() {
     );
 }
 
-/// ★ 门的**住址**：命令那一类全住 `inbound.rs`，汇总那一类恰好一格、住 `lib.rs`。
+/// ★ 门的**住址**：命令那一类全住入方向（命令表里文件管理那一族 · 分派的硬臂与读循环），汇总那一类恰好一格、住 `lib.rs`。
 #[test]
 fn the_doors_are_the_command_registry_plus_one_ledger_read() {
     for (file, sym, door) in DOORS {
-        let home = match door {
-            Door::Command => "stream/inbound.rs",
-            Door::Ledger => "lib.rs",
+        let homes: &[&str] = match door {
+            Door::Command => &[
+                "stream/inbound/registry/file_manager.rs",
+                "stream/inbound/mod.rs",
+            ],
+            Door::Ledger => &["lib.rs"],
         };
-        assert_eq!(
-            *file, home,
+        assert!(
+            homes.contains(file),
             "`{sym}` 登记成 `{door:?}` 门，却住在 `{file}` —— 那不是那一类门的住址"
         );
     }

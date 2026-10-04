@@ -231,7 +231,7 @@ pub(crate) fn decode_plan(v: &serde_json::Value) -> Result<Plan, String> {
 /// 问本机常驻后端要计划那一趟的上限：一次 `uname` ＋ 两次 stat ＋ 至多两次扫身份戳 ＋ 一次读回（每样一两个往返）。
 const PLAN_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
 
-/// 本机常驻后端那条命令的名字（与 `src/backend/stream/inbound.rs::REGISTRY` 同名）。
+/// 本机常驻后端那条命令的名字（与 `src/backend/stream/inbound/mod.rs::REGISTRY` 同名）。
 pub(crate) const PLAN_CMD: &str = "deploy-plan";
 
 /// 问本机常驻后端要一份计划。入参只有事实：怎么够到那台（拨号请求）· 这一版带着哪几格字节、各自自报的身份。

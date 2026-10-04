@@ -28,14 +28,13 @@ fn scratch(tag: &str) -> std::path::PathBuf {
     d
 }
 
-/// ★ 两向相等：`inbound.rs` 生产段里把活交给本宿主的帧命令 == [`FAMILY`]。
+/// ★ 两向相等：命令表各族生产段里把活交给本宿主的帧命令 == [`FAMILY`]。
 #[test]
 fn the_registry_hands_exactly_this_family_to_this_host() {
-    let src = include_str!("../../../src/backend/stream/inbound.rs");
-    let prod = crate::guard_support::production_code(src);
-    let mut got: Vec<String> = prod
-        .split("CommandSpec {")
-        .skip(1)
+    let families = crate::guard_support::registry_sources();
+    let mut got: Vec<String> = families
+        .iter()
+        .flat_map(|(_, prod)| prod.split("CommandSpec {").skip(1))
         .filter(|blk| blk.contains("feature_face::answer"))
         .filter_map(|blk| {
             let at = blk.find("name: \"")? + "name: \"".len();
@@ -49,10 +48,10 @@ fn the_registry_hands_exactly_this_family_to_this_host() {
         got, want,
         "交给 `feature_face::answer` 的帧命令与本族清单不相等"
     );
-    // 反空真：本族每一条都真在 `COMMANDS` 镜子里（不只是在某段注释里出现过）。
+    // 反空真：本族每一条都真在 `hello.commands` 里（`command_names`，不只是在某段注释里出现过）。
     for c in FAMILY {
         assert!(
-            crate::stream::inbound::COMMANDS.contains(c),
+            crate::stream::inbound::command_names().contains(c),
             "`{c}` 不在 hello.commands 里"
         );
     }

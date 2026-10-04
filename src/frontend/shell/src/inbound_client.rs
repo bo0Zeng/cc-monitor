@@ -56,7 +56,7 @@ use tokio::sync::{mpsc, oneshot};
 ///
 /// 超时**不摘登记**（见 [`InboundClient::call`]），所以一个死掉但没断连的 backend
 /// 会让登记表只涨不落。这条上限把它变成「新命令快速失败」而不是「内存无界增长」。
-/// 取值与后端侧应答通道容量同量级（`src/backend/stream/inbound.rs` 的
+/// 取值与后端侧应答通道容量同量级（`src/backend/stream/inbound/mod.rs` 的
 /// `REPLY_CHANNEL_CAPACITY = 256`）—— 那头一次也只缓 256 条应答。
 pub const MAX_PENDING: usize = 256;
 

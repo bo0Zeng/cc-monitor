@@ -67,6 +67,36 @@ pub(crate) fn backend_src_root() -> PathBuf {
     repo_src_root().join("backend")
 }
 
+/// 后端命令表各族（`src/backend/stream/inbound/registry/*.rs`）：`(仓内相对路径, 生产段)`，按路径排，一族一份。
+///
+/// 按 `CommandSpec {` 切块的判据要**逐份切**，别把几份拼起来再切：拼起来的话，
+/// 一份的文件头（`use` · 常量）会粘到上一份的最后一块上，被算成那条命令的一部分。
+pub(crate) fn backend_registry_sources() -> Vec<(String, String)> {
+    let root = repo_root();
+    let mut out: Vec<(String, String)> = guard_core::scan_tree_excluding(
+        &backend_src_root().join("stream/inbound/registry"),
+        &["rs"],
+        &[],
+    )
+    .into_iter()
+    .map(|(path, src)| {
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        (rel, guard_core::production_code(&src))
+    })
+    .collect();
+    out.sort();
+    assert!(
+        out.len() >= 2,
+        "只扫到 {} 份后端命令表族文件 —— 住址坏了，用它的判据会在空人群上恒绿",
+        out.len()
+    );
+    out
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/guard_support_tests.rs"]
 mod tests;

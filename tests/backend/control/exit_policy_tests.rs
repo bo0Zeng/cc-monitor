@@ -129,7 +129,7 @@ fn the_wire_shape_carries_the_three_states() {
 /// 线上形状**恰好**是登记的那几格 —— 两侧异源、按集合相等：
 ///
 /// - 一侧是**真跑出来的** JSON（三态 × 常驻 / 被监护各跑一遍 `wire_as`，取键的并集）；
-/// - 另一侧是 `inbound.rs::REGISTRY` 里两条命令手写的 `fields`（也是 `protocol_doc_guard` 拿去钉文档的那一份）。
+/// - 另一侧是 `stream/inbound/mod.rs::REGISTRY` 里两条命令手写的 `fields`（也是 `protocol_doc_guard` 拿去钉文档的那一份）。
 ///
 /// 它防的是 `shell` 那一格的回潮（「折进前端进程」那一档已放弃）。任何一侧单独加回一格都红；
 /// 两侧一起加回 ⇒ 下面那条字面量对照红（第三个来源：四格 ＋ 成品 `said`）。

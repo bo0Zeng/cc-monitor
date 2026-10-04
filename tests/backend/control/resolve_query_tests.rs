@@ -465,13 +465,15 @@ fn frozen_both_entry_points_of_the_commitment_are_still_wired() {
         "Some(\"--resolve\") => control::resolve_query::run(&agent_home, &args),",
     )
     .unwrap_or_else(|e| panic!("`main.rs` 分派里 `--resolve` 那一臂不在了：{e}"));
-    let inbound = guard_core::strip_comment_lines(&crate::guard_support::production_code(
-        include_str!("../../../src/backend/stream/inbound.rs"),
-    ));
-    let at = inbound
-        .find("name: \"resolve\",")
-        .expect("`inbound.rs` 里找不到 `resolve` 那一格");
-    let tail = &inbound[at..];
+    let inbound: Vec<String> = crate::guard_support::registry_sources()
+        .into_iter()
+        .map(|(_, prod)| guard_core::strip_comment_lines(&prod))
+        .collect();
+    let (family, at) = inbound
+        .iter()
+        .find_map(|f| f.find("name: \"resolve\",").map(|at| (f, at)))
+        .expect("命令表各族里找不到 `resolve` 那一格");
+    let tail = &family[at..];
     let cell = &tail[..tail.find("\n    },").expect("那一格没收尾")];
     assert!(
         cell.contains("resolve_query::resolve_json_for_inbound("),

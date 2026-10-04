@@ -77,14 +77,12 @@ async fn the_handshake_hands_over_how_to_reach_that_machine() {
 /// 跨半边：本侧发的命令名与字段 ⊆ 后端 `REGISTRY` 那一条声明的 `fields`，读的两格也在里面；远端要认的那条命令真在后端命令表里。
 #[test]
 fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
-    let inbound = std::fs::read_to_string(
-        crate::guard_support::repo_root().join("src/backend/stream/inbound.rs"),
-    )
-    .expect("读后端 inbound.rs");
-    let at = inbound
-        .find(&format!("name: \"{CMD}\""))
+    let families = crate::guard_support::backend_registry_sources();
+    let (family, at) = families
+        .iter()
+        .find_map(|(_, prod)| prod.find(&format!("name: \"{CMD}\"")).map(|at| (prod, at)))
         .unwrap_or_else(|| panic!("后端 REGISTRY 里没有 `{CMD}`"));
-    let block = &inbound[at..at + inbound[at..].find("run:").expect("那一条的 run")];
+    let block = &family[at..at + family[at..].find("run:").expect("那一条的 run")];
     let fields_line = block
         .lines()
         .find(|l| l.trim_start().starts_with("fields:"))
@@ -103,15 +101,20 @@ fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
         declared, used,
         "本侧发 / 读的字段与后端声明的不相等（两向）"
     );
-    // 远端要认的那条在后端命令镜子里
-    let at = guard_core::find_pinned(&inbound, "pub const COMMANDS").expect("后端命令镜子");
-    let commands_block: String = inbound[at..]
-        .lines()
-        .take_while(|l| l.trim() != "];")
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(commands_block.contains(&format!("\"{REMOTE_NEEDS}\"")));
-    assert!(commands_block.contains(&format!("\"{CMD}\"")));
+    // 远端要认的那条在后端命令表里
+    let registered: std::collections::BTreeSet<&str> = families
+        .iter()
+        .flat_map(|(_, prod)| {
+            prod.split("name: \"")
+                .skip(1)
+                .filter_map(|t| t.split('"').next())
+        })
+        .collect();
+    assert!(
+        registered.contains(REMOTE_NEEDS),
+        "后端命令表里没有 `{REMOTE_NEEDS}`"
+    );
+    assert!(registered.contains(CMD), "后端命令表里没有 `{CMD}`");
 }
 
 /// 判定没长第二个家：monitor 这一侧零合并 / 推送规则的字样（人群从后端两份源码现抠：它们的公开函数名）。
@@ -160,20 +163,21 @@ fn this_module_holds_no_sync_rule() {
 }
 
 /// 跨半边：可达表登记那一条 —— 本侧发的三格 ＋ 读回的那一格 == 后端 `REGISTRY` 里 `remote-reach` 声明的 `fields`（两向），
-/// 且那条命令真在后端命令镜子里；发的入参就是 `assets-sync` 那一份（同一个 `args_for`，逐键相等）。
+/// 且那条命令真在后端命令表里；发的入参就是 `assets-sync` 那一份（同一个 `args_for`，逐键相等）。
 ///
 /// 守的要求：「可达表 origin → {dial, backend_path, 对面 id} 由 monitor 在（`backend_path` 那一格随 `backendPath` 删了，落点是固定常量）
 /// 远端流握手成功那一刻交给本机后端」—— C4d 让它对每台远端都成立（不只认资产目录的那几台）。
 #[test]
 fn the_reach_registration_sends_what_the_backend_registers() {
-    let inbound = std::fs::read_to_string(
-        crate::guard_support::repo_root().join("src/backend/stream/inbound.rs"),
-    )
-    .expect("读后端 inbound.rs");
-    let at = inbound
-        .find(&format!("name: \"{REACH_CMD}\""))
+    let families = crate::guard_support::backend_registry_sources();
+    let (family, at) = families
+        .iter()
+        .find_map(|(_, prod)| {
+            prod.find(&format!("name: \"{REACH_CMD}\""))
+                .map(|at| (prod, at))
+        })
         .unwrap_or_else(|| panic!("后端 REGISTRY 里没有 `{REACH_CMD}`"));
-    let block = &inbound[at..at + inbound[at..].find("run:").expect("那一条的 run")];
+    let block = &family[at..at + family[at..].find("run:").expect("那一条的 run")];
     let fields_line = block
         .lines()
         .find(|l| l.trim_start().starts_with("fields:"))
@@ -192,11 +196,16 @@ fn the_reach_registration_sends_what_the_backend_registers() {
         declared, used,
         "本侧发 / 读的字段与后端 `remote-reach` 声明的不相等（两向）"
     );
-    let at = guard_core::find_pinned(&inbound, "pub const COMMANDS").expect("后端命令镜子");
-    let commands_block: String = inbound[at..]
-        .lines()
-        .take_while(|l| l.trim() != "];")
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(commands_block.contains(&format!("\"{REACH_CMD}\"")));
+    let registered: std::collections::BTreeSet<&str> = families
+        .iter()
+        .flat_map(|(_, prod)| {
+            prod.split("name: \"")
+                .skip(1)
+                .filter_map(|t| t.split('"').next())
+        })
+        .collect();
+    assert!(
+        registered.contains(REACH_CMD),
+        "后端命令表里没有 `{REACH_CMD}`"
+    );
 }

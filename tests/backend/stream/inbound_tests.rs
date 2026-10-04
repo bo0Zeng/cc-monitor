@@ -33,7 +33,7 @@
 #[test]
 fn the_handle_is_deregistered_before_the_reply_goes_out() {
     let src = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/stream/inbound.rs"
+        "../../../src/backend/stream/inbound/mod.rs"
     ));
     // 两个锚点各自的唯一性先量过：`remove` 那句只有一处；`replies.send(frame)` 有两处
     // （另一处在下面的监督臂里），所以**取第一处**并断言它就在 `remove` 之后。
@@ -819,7 +819,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "transfer-start",
         "transfer-stop",
     ];
-    let missing: Vec<&&str> = COMMANDS.iter().filter(|c| !covered.contains(c)).collect();
+    let names = command_names();
+    let missing: Vec<&&str> = names.iter().filter(|c| !covered.contains(c)).collect();
     assert!(
         missing.is_empty(),
         "这些命令没在本条里表态「阻塞还是不阻塞」：{missing:?}\n\
@@ -904,7 +905,14 @@ fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
         .map(str::to_string)
         .collect();
     assert!(!blocking.is_empty(), "一条阻塞档都没有 —— 本条在空转");
-    assert_eq!(super::uncancellable(), blocking);
+    // 名单按字母排（它是集合，次序与命令登记在哪一族无关）；集合与分派那一侧两向相等。
+    let got = super::uncancellable();
+    let mut sorted = got.clone();
+    sorted.sort();
+    assert_eq!(got, sorted, "`uncancellable` 没按字母排");
+    let mut blocking = blocking;
+    blocking.sort();
+    assert_eq!(got, blocking);
 }
 
 /// ★ **不可取消的命令不许回一条撒谎的 `cancelled`。**

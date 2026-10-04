@@ -312,7 +312,10 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
         homes: Vec::new(),
         capabilities: CAPABILITIES.iter().map(|s| s.to_string()).collect(),
         emits: EMITS.iter().map(|s| s.to_string()).collect(),
-        commands: inbound::COMMANDS.iter().map(|s| s.to_string()).collect(),
+        commands: inbound::command_names()
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
         // ★★〔NET2 真填〕握手帧第四条面「我做得到什么」：这台机器上接得下却做不到的命令（tmux · unix 权限位两维，
         // 表从 `inbound::REGISTRY` 的 `codes` 派生）。是**提示不是闸门**（读数是握手那一刻的，`wire.rs` 那个字段头注口径③）。
         // 仓外 aterm 不读这个字段（只读核过 `DaemonTransport.kt::parseHello`，未知字段忽略）；有 tmux 的 unix 机器上恒空 ⇒ 字节不变。

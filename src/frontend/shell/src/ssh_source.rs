@@ -961,7 +961,7 @@ pub(crate) enum CappedLine {
 ///
 /// # ★ 为什么不是 `read_line` 加一句长度判断
 ///
-/// 那是后端侧栽过的坑，逐字记在 `src/backend/stream/inbound.rs` 头注里：
+/// 那是后端侧栽过的坑，逐字记在 `src/backend/stream/inbound/mod.rs` 头注里：
 /// 第一版用无界 `read_until`、读完再看长度，D 审计实测**喂 512 MiB 无换行的流 ⇒
 /// RSS 从 6 MiB 涨到 518 MiB**，而它照样回了一条 `line_too_long`「看起来对」。
 /// ⇒ 机制必须是 `fill_buf`/`consume`：超限之后**只找换行、不再往 buf 里塞字节**，
@@ -1122,7 +1122,7 @@ pub enum InboundFrame {
         /// （保守：按最小能力集待它，不发流模式 flag）。monitor 按此决定发
         /// `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配。
         capabilities: Vec<String>,
-        /// U6b-2 / U8a-2a：backend 声明**接受哪些入方向命令**（`inbound::COMMANDS`）。
+        /// U6b-2 / U8a-2a：backend 声明**接受哪些入方向命令**（后端 `inbound::command_names`，从命令表派生）。
         /// `capabilities` 说的是「我认识哪些流 flag」（出方向），这一条说的是入方向 ——
         /// 两者正交。旧后端无此字段 ⇒ 空集 ⇒ monitor 一条入方向命令都不发。
         commands: Vec<String>,

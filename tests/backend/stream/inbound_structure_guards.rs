@@ -1,15 +1,18 @@
 /// ★ 本文件**不许出现任何 `observe::`**。
 ///
 /// 头注宣称了这条，但 D 审计指出它**没有机检** —— `layering_guard::layer_sources`
-/// 只遍历 `src/observe` 与 `src/control`，顶层的 `inbound.rs` 不在采集面内。
+/// 只遍历 `src/observe` 与 `src/control`，顶层的入方向（今天是 `stream/inbound/` 这个目录）不在采集面内。
 /// 变异 `use crate::observe::watcher as _;` 之后全量 211 passed。
 ///
 /// 在一份通篇强调「跨两处的约束必须机检」的文件里，这条自己是注释。现在不是了。
 #[test]
 fn inbound_never_reaches_into_the_observe_layer() {
-    let src = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/stream/inbound.rs"
-    ));
+    // 人群 = 入方向整个目录（收行分派 · 规格 · 排空 · 门 · 命令表各族）。
+    let src: String = crate::guard_support::inbound_sources()
+        .into_iter()
+        .map(|(_, prod)| prod)
+        .collect::<Vec<_>>()
+        .join("\n");
     assert!(
         src.len() > 3000,
         "只剥出 {} 字节生产段 —— 抽取坏了，本断言在空转",
@@ -22,7 +25,7 @@ fn inbound_never_reaches_into_the_observe_layer() {
         .collect();
     assert!(
         hits.is_empty(),
-        "`inbound.rs` 伸进了读面：{hits:?}\n\
+        "入方向伸进了读面：{hits:?}\n\
              §1.1 的线是按**职责**画的：入方向是传输 + 控制，读面的事不归它。\n\
              依赖方向只许 `inbound → control`。"
     );
@@ -36,9 +39,12 @@ fn inbound_never_reaches_into_the_observe_layer() {
 /// 客户端换个格式就崩，而且后端会开始依赖一个它无权定义的结构。
 #[test]
 fn the_request_id_is_never_parsed() {
-    let src = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/stream/inbound.rs"
-    ));
+    // 人群 = 入方向整个目录（同上一条）。
+    let src: String = crate::guard_support::inbound_sources()
+        .into_iter()
+        .map(|(_, prod)| prod)
+        .collect::<Vec<_>>()
+        .join("\n");
     let banned = [
         ".parse",
         ".split",
@@ -62,49 +68,120 @@ fn the_request_id_is_never_parsed() {
     );
 }
 
-/// ★ `COMMANDS` 这面**镜子**必须与注册表一致。
+/// ★ `hello.commands` 就是注册表的名字、按字母排、无重（[`super::command_names`]）。
 ///
-/// # 它替掉了什么
-///
-/// 上一版是 `hello_commands_match_the_dispatch_table` —— 扫 `dispatch` 分派臂的**文本**
-/// （按 8 空格缩进切）。那种判据既对 rustfmt 脆，又只能事后比对。
-/// U8a-2d 把名字与处理器绑进**同一个值**（[`super::REGISTRY`]）之后，
-/// 「声明了却不接 / 接了却不声明」在注册表这一侧**不可表示** ——
-/// 剩下的只有 `COMMANDS` 这面镜子，而这条是**数据对数据**，不是扫文本。
-///
-/// # 为什么还留着这面镜子
-///
-/// monitor 侧 `inbound_client.rs` 与 `tests/e2e/inbound-backend-frames.sh` 都在**文本抽取**
-/// `const COMMANDS`（拿它做跨轨对拍）。把它换成运行时派生会同时打断那两处。
-/// ⇒ 保留字面量，由本条钉住它不漂。
+/// 此前这里钉的是手抄的名单 `COMMANDS` 与注册表两向相等（那面镜子删了，名字只住注册表一处）。
+/// 剩下要钉的：hello 真的读它（不是另起一份）、它有序（上线的能力集稳定可读，与镜子那时逐字节相同）、
+/// 名字不重（`lookup` 取第一个，重复会让后一条静默失效）。
 #[test]
-fn the_commands_mirror_matches_the_registry() {
-    let mut from_registry: Vec<&str> = super::REGISTRY.iter().map(|s| s.name).collect();
-    from_registry.sort_unstable();
+fn hello_commands_are_the_registry_names_in_order() {
+    let names = super::command_names();
     assert!(
-        from_registry.len() >= 4,
+        names.len() >= 4,
         "注册表只有 {} 条 —— 本断言在空转",
-        from_registry.len()
+        names.len()
     );
-    let mut mirror: Vec<&str> = super::COMMANDS.to_vec();
-    mirror.sort_unstable();
-    assert_eq!(
-        mirror, from_registry,
-        "\n`COMMANDS`（hello 上线的那份）与 `REGISTRY` 对不上。\n\
-             它今天只是一面镜子 —— 改注册表就把它一起改。\n\
-             （它之所以还是字面量：monitor 与 e2e 都在文本抽取它做跨轨对拍。）"
-    );
-    // 名字不许重复（`lookup` 取第一个，重复会让后一条静默失效）。
-    let mut uniq = from_registry.clone();
-    uniq.dedup();
-    assert_eq!(uniq.len(), from_registry.len(), "注册表里有重名命令");
-    // 排序：`COMMANDS` 上线时是有序的，别让它随手插到中间变成无序。
-    let mut sorted = super::COMMANDS.to_vec();
+    let mut sorted = names.clone();
     sorted.sort_unstable();
+    sorted.dedup();
+    assert_eq!(names, sorted, "`command_names()` 不是去重后的字典序");
+    let from_registry: std::collections::BTreeSet<&str> =
+        super::REGISTRY.iter().map(|s| s.name).collect();
     assert_eq!(
-        super::COMMANDS.to_vec(),
-        sorted,
-        "`COMMANDS` 不是字典序 —— 上线的能力集应当稳定可读"
+        names
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>(),
+        from_registry
+    );
+    // hello 那一格读的就是它（`main.rs` 拼握手帧那一处）。
+    let main = crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
+    guard_core::find_pinned(&main, "commands: inbound::command_names()")
+        .expect("`main.rs` 的 hello 不再从 `inbound::command_names()` 取 `commands`");
+}
+
+/// ★ **命令表的族划分**：`registry/` 目录下的 `.rs` 文件集合 == `FAMILIES` 列的模块集合（两向，文件系统现取）；
+/// 各族的命令名两两不交；`REGISTRY` 里名字无重。
+///
+/// 为什么要它：一份族文件放进 `registry/` 却没进 `FAMILIES`，它的命令**一条都不会编进** `REGISTRY`，
+/// 而别的判据都只看编进去的那张表 —— 那几条命令会静默消失（发过去只回 `unknown_command`）。
+/// 两侧异源：一侧是盘上的文件，一侧是 `mod.rs` 里 `FAMILIES` 那张表的源码（再与编进去的族数对一次）。
+#[test]
+fn the_registry_families_are_exactly_the_files_in_the_registry_directory() {
+    let sources = crate::guard_support::inbound_sources();
+    let on_disk: std::collections::BTreeSet<String> = sources
+        .iter()
+        .filter_map(|(rel, _)| rel.strip_prefix("stream/inbound/registry/"))
+        .map(|f| f.trim_end_matches(".rs").to_string())
+        .collect();
+    let (_, mod_rs) = sources
+        .iter()
+        .find(|(rel, _)| rel == "stream/inbound/mod.rs")
+        .expect("入方向目录里没有 mod.rs");
+    let at = guard_core::find_pinned(mod_rs, "const FAMILIES: &[&[super::CommandSpec]] = &[")
+        .expect("`mod.rs` 里锚不住 `FAMILIES`");
+    let table = &mod_rs[at..at + mod_rs[at..].find("];").expect("`FAMILIES` 没收尾")];
+    let listed: Vec<String> = table
+        .split("::SPECS")
+        .map(|head| {
+            head.chars()
+                .rev()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect::<String>()
+        })
+        .filter(|name| !name.is_empty())
+        .collect();
+    let in_table: std::collections::BTreeSet<String> = listed.iter().cloned().collect();
+    assert_eq!(
+        listed.len(),
+        in_table.len(),
+        "`FAMILIES` 里有一族列了两遍：{listed:?}"
+    );
+    assert_eq!(
+        listed.len(),
+        super::registry::FAMILIES.len(),
+        "从源码数出的族数与编进去的 `FAMILIES` 对不上 —— 数法坏了"
+    );
+    assert!(
+        on_disk.len() >= 2,
+        "`registry/` 下只扫到 {} 份 —— 遍历坏了，下面那条相等在空集上成立",
+        on_disk.len()
+    );
+    assert_eq!(
+        on_disk,
+        in_table,
+        "\n`registry/` 下的文件与 `FAMILIES` 列的族对不上。\n  \
+         盘上有、表里没有（🔴 **那一族的命令一条都没编进去**）：{:?}\n  \
+         表里有、盘上没有：{:?}",
+        on_disk.difference(&in_table).collect::<Vec<_>>(),
+        in_table.difference(&on_disk).collect::<Vec<_>>()
+    );
+    // 各族两两不交，拼起来的 `REGISTRY` 不多不少、名字无重。
+    let mut seen: std::collections::BTreeMap<&str, usize> = Default::default();
+    for (i, family) in super::registry::FAMILIES.iter().enumerate() {
+        for spec in family.iter() {
+            if let Some(j) = seen.insert(spec.name, i) {
+                panic!(
+                    "`{}` 同时登记在 `FAMILIES` 的第 {j} 族与第 {i} 族 —— 同一个名字只许落一族",
+                    spec.name
+                );
+            }
+        }
+    }
+    let total: usize = super::registry::FAMILIES.iter().map(|f| f.len()).sum();
+    assert_eq!(
+        super::REGISTRY.len(),
+        total,
+        "`REGISTRY` 的条数不是各族之和"
+    );
+    let names: std::collections::BTreeSet<&str> = super::REGISTRY.iter().map(|s| s.name).collect();
+    assert_eq!(
+        names.len(),
+        super::REGISTRY.len(),
+        "`REGISTRY` 里有重名命令"
     );
 }
 
@@ -757,7 +834,11 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
     type WriteAnswer = fn(&str, &serde_json::Value) -> crate::control::files_write::Answer;
     let tables: [(&[crate::control::files_write::ManageCommand], WriteAnswer); 2] = [
         (crate::control::files_write::MANAGE_COMMANDS, |c, a| {
-            crate::control::files_write::answer_wire(c, a, &super::SESSION_PORT)
+            crate::control::files_write::answer_wire(
+                c,
+                a,
+                &super::registry::file_manager::SESSION_PORT,
+            )
         }),
         (
             crate::control::files_commit::COMMIT_COMMANDS,

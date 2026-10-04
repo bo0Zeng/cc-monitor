@@ -412,29 +412,25 @@ fn the_e2e_send_into_line_is_exactly_what_the_encoder_produces() {
     );
 }
 
-/// ★ e2e 脚本里硬编码的那三个命令名，必须等于后端的 `inbound::COMMANDS`。
+/// ★ e2e 脚本里硬编码的那几个命令名，必须等于后端命令表里的单词命令名（命令表各族的 `name`）。
 ///
 /// 那是命令面的**第五处**副本（前四处已由后端侧两条护栏钉住）。没有这条的话，
 /// 加一条新命令时 e2e 不会红 —— 只是**悄悄漏测**，而 e2e 恰恰是唯一跑真进程的那一层。
 #[test]
 fn the_e2e_command_list_matches_the_backend_command_table() {
     const SUITE: &str = include_str!("../../e2e/inbound-backend-frames.sh");
-    const BACKEND_INBOUND: &str = include_str!("../../../src/backend/stream/inbound.rs");
 
-    // backend 侧：`pub const COMMANDS: &[&str] = &["cancel", "ping", "resolve"];`
-    let i = BACKEND_INBOUND
-        .find("const COMMANDS")
-        .expect("backend inbound.rs 里找不到 COMMANDS —— 抽取坏了");
-    let j = BACKEND_INBOUND[i..]
-        .find("];")
-        .map(|k| i + k)
-        .expect("COMMANDS 没有收尾");
-    let mut backend: Vec<String> = BACKEND_INBOUND[i..j]
-        .split('"')
-        .skip(1)
-        .step_by(2)
+    // backend 侧：命令表各族里每一条的 `name: "…"`（`hello.commands` 就从这里派生）。
+    let mut backend: Vec<String> = crate::guard_support::backend_registry_sources()
+        .iter()
+        .flat_map(|(_, prod)| {
+            prod.split("name: \"")
+                .skip(1)
+                .filter_map(|t| t.split('"').next())
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
         .filter(|t| !t.is_empty() && t.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
-        .map(str::to_string)
         .collect();
     backend.sort();
     backend.dedup();
@@ -470,7 +466,7 @@ fn the_e2e_command_list_matches_the_backend_command_table() {
 
     assert_eq!(
         suite, backend,
-        "\ne2e 脚本断言的命令集与后端的 `inbound::COMMANDS` 对不上。\n\
+        "\ne2e 脚本断言的命令集与后端命令表里的单词命令对不上。\n\
              加/删入方向命令时这两处要一起动 —— 否则新命令在**唯一跑真进程的那一层**漏测。"
     );
 }

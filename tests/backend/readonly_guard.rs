@@ -218,7 +218,7 @@ mod tests {
         (
             "assets",
             "后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定。\
-             它归 backend-core 是因为算的与写的是同一台后端；**零写盘**：写一律经 `inbound.rs::LocalFiles` 递进来的\
+             它归 backend-core 是因为算的与写的是同一台后端；**零写盘**：写一律经 `stream/inbound/doors.rs::LocalFiles` 递进来的\
              本进程文件管理面（`files-*` 帧命令本身），本模块不直呼 `files_write`。 \
 从 crate 根归进来五件（纯搬家；上面「零写盘」说的是 MIG-3a 那几份，`asset_catalog` / `skill_ledger` 写的是后端**自己的**文件），各自理由原样： \
              `asset_catalog` —— 资产目录：帧面 `assets-catalog` / `assets-catalog-merge`。它归 backend-core 是因为\
@@ -227,7 +227,7 @@ mod tests {
              `asset_sync` —— 资产目录的自动同步：帧面 `assets-sync` —— 本机常驻后端沿池里那条 SSH \
              在远端跑两条一次性子命令（拉 `--assets-catalog` · 推 `--assets-catalog-merge`）。它归 backend-core 是因为\
              SSH 连接只住本机常驻后端（`dial/`）。**零写盘**：本机目录的写口（`asset_catalog::answer_merge`）由 \
-             `inbound.rs` 递进来，本模块不直呼它（第四层 ④）。跑远端那一跳与可达表搬去了 `remote_ask` · \
+             命令表资产那一族（`stream/inbound/registry/assets.rs`）递进来，本模块不直呼它（第四层 ④）。跑远端那一跳与可达表搬去了 `remote_ask` · \
              `mcp_sync` —— MCP 资产同步的判定：帧面 `mcp-sync-plan` —— 两份原文进、差异 ＋ 可疑项 ＋ 写哪几条出。\
              它归 backend-core 是因为可疑项里「有没有这个路径 / 这个命令」是**要被写的那台机器上**的事实。\
              **零写盘、零读文件内容**（原文由 `files-peek` 读来，写经 `files-put`；本模块只 stat） · \
@@ -420,7 +420,7 @@ mod tests {
          执行趟只删计划里的且每条当场再判，由删文件 ＋ 删空目录拼成，**不添动词**）。每一件都先过路径解析 \
          （词法不越根 ＋ 解 symlink 再判落点；会话数据围栏拿掉了）；\
          会跟链接的几件（改权限 · 覆盖写 · 复制的源 · 读改写）连最后一段也解到底。\
-         线上入口只有 `inbound.rs` 那几条 `files-*` 写命令（`MANAGE_COMMANDS` 逐条登记）",
+         线上入口只有命令表文件管理那一族（`stream/inbound/registry/file_manager.rs`）那几条 `files-*` 写命令（`MANAGE_COMMANDS` 逐条登记）",
     ), (
         // SFTP 缩成只做传输之后，上传只写暂存区，
         //   把暂存件挪进用户目标的**那一下**住这里 —— 同一条：只有后端的文件管理部分写文件。
@@ -430,7 +430,7 @@ mod tests {
          （改名失败撤掉自己那个 0 字节占位）。暂存件路径由本模块自己拼、`key` 只收 32 位十六进制 ⇒ \
          调用方指不到暂存区之外的源。存盘装不进一行时的块：`O_EXCL` 新建 \
          `<key>.<seq>.chunk`（暂存区不在就先过路径解析再建目录）· 读回拼起来交写面 `overwrite_text` 原地覆盖（不添动词）· \
-         删这一键的块（先过以暂存区为根的路径解析）。线上入口只有 `inbound.rs` 那三条 \
+         删这一键的块（先过以暂存区为根的路径解析）。线上入口只有命令表文件管理那一族那三条 \
          `files-commit-upload` / `files-stage-chunk` / `files-commit-text`（`COMMIT_COMMANDS`）",
     ), (
         // 用户「SFTP 进本机常驻后端」：传输台搬进本机后端，下载的**本机落点**
@@ -439,7 +439,7 @@ mod tests {
         "传输台：下载的本机落点 —— `O_EXCL` 新建 `<落点>.part`（旧的尾块对不上先删）· \
          续传时接着写那一份（不截断、不新建）· 传完改名上位 · 失败删 `.part`。每一处先过写面那道路径解析 \
          （`files_write::resolve_in_root`，根 = 落点的父目录，借用、不抄）。远端暂存区那一半一行都不在这里 \
-         （经 `dial/sftp.rs` 的写原语，只许两处）。线上入口只有 `inbound.rs` 那四条 `transfer-*` 硬臂 \
+         （经 `dial/sftp.rs` 的写原语，只许两处）。线上入口只有入方向分派（`stream/inbound/mod.rs`）那四条 `transfer-*` 硬臂 \
          （`transfer_command_names`）",
     ), (
         // 按通行做法：「复制链接本身」·「解压」。3 → 4。
@@ -447,7 +447,7 @@ mod tests {
         "解压（`files-extract`：zip · tar · tar.gz · tgz 解到一个新目录）＋ 建符号链接（复制目录遇链接复制链接本身，= `cp -R` 缺省的 `-P`）。\
          解压两趟：计划趟只读、逐条目判（`..` / 绝对路径 / 链接出落点 / 设备 ⇒ 整趟拒）；执行趟每一条先过 \
          `files_write::resolve_in_root`（借用、不抄）再 `O_EXCL` 新建 · 写 · 改权限 · 建目录 · 建链接，中途失败逐条先判后删自己建的。\
-         链接的目标文本原样写（不解、不判，同 `cp -P`）。线上入口只有 `inbound.rs` 的 `files-extract`（`EXTRACT_COMMANDS`）",
+         链接的目标文本原样写（不解、不判，同 `cp -P`）。线上入口只有命令表文件管理那一族的 `files-extract`（`EXTRACT_COMMANDS`）",
     ), (
         // Q5「SFTP 起始目录不是后端 home ⇒ 上传改走后端链路分块写」。4 → 5。
         "control/files_upload_chunks.rs",
@@ -779,12 +779,19 @@ mod tests {
     ///
     /// `(仓库相对路径, why)`。**零命中守卫的形状**（照 `tests/frontend/shell/filewin/boundary_tests.rs`
     /// 那条「app 侧只许有一条门」）：期望集合只有这一个元素，多出任何一个都红。
-    const MUTATING_FACE_DOORS: &[(&str, &str)] = &[(
-        "stream/inbound.rs",
-        "命令注册那一处 —— 帧面与 CLI 面共用它（`cli_control` 从 `REGISTRY` 派生）。\
-         用户那句「只允许后端的文件管理部分写文件」在源码上的形态就是：\
-         够得到写原语的**只有**这里那几条 `files-*` 写命令",
-    )];
+    const MUTATING_FACE_DOORS: &[(&str, &str)] = &[
+        (
+            "stream/inbound/registry/file_manager.rs",
+            "命令注册里文件管理那一族 —— 帧面与 CLI 面共用它（`cli_control` 从 `REGISTRY` 派生）。\
+             用户那句「只允许后端的文件管理部分写文件」在源码上的形态就是：\
+             够得到写原语的**只有**这里那几条 `files-*` 写命令",
+        ),
+        (
+            "stream/inbound/mod.rs",
+            "入方向的读循环与分派：传输四条 `transfer-*` 是 `dispatch` 的硬臂（要碰本连接的票表与应答通道），\
+             读循环给每条连接造一张票表 —— 它们经传输台的答口进来，命令名登记在传输台自己的表里",
+        ),
+    ];
 
     fn is_mutating_face(rel: &str) -> bool {
         MUTATING_FACE_MODULES.iter().any(|(p, _)| *p == rel)
@@ -808,7 +815,7 @@ mod tests {
     /// | ① | **按文件**登记（不按目录，同第三层那块墓碑的理由） | 相等断言（扫到的第四层模块数 == 本表条数） |
     /// | ② | 动词**闭集**：建那一层目录 · 原子挪 · 失败时删自己的临时文件 | [`OWN_STATE_VERBS`] ＋ `every_fs_call_in_backend_production_is_read_only` |
     /// | ③ | 表外写法照旧禁（覆盖写 / 截断 / 追加 / 复制 / 链接 / 改权限 / 删目录） | [`OWN_STATE_STILL_FORBIDDEN`] ＋ `.open(` 与 `O_EXCL` 配对 |
-    /// | ④ | **只从一扇门进来**：每一份的写口（[`OWN_STATE_WRITERS`]）只被**它自己那扇门**引用（门逐写口登记，今天三扇：`inbound.rs` 命令注册 ·`relay/listen.rs` 中转起监听 ·`main.rs` stderr 诊断文件） | `the_own_state_writer_is_reached_through_exactly_one_door` |
+    /// | ④ | **只从一扇门进来**：每一份的写口（[`OWN_STATE_WRITERS`]）只被**它自己那扇门**引用（门逐写口登记，今天几扇：命令注册里持有那条命令的那一族（`stream/inbound/registry/*.rs`） ·`relay/listen.rs` 中转起监听 ·`main.rs` stderr 诊断文件 …） | `the_own_state_writer_is_reached_through_exactly_one_door` |
     /// | ⑤ | **只写那一份文件**：文件名在全部生产代码里只有这一个家 | `control::exit_policy::tests::the_file_name_has_exactly_one_home_in_all_production_code` |
     ///
     /// ⚠ 漏判面：它判不了「挪进去的那一下落在的就是那个名字」（数据流）——
@@ -819,7 +826,7 @@ mod tests {
         "「退出行为」那个值（条 66）：后端**自己的**状态文件 \
          `~/.cc-monitor/backend.json`，一格布尔。`O_EXCL` 建临时文件 → 写满 → 原子挪过去；\
          目录不在就建那一层（父目录是家目录）；失败删掉自己的临时文件。\
-         线上入口只有 `inbound.rs` 的 `exit-policy-set`（＋ 派生的 CLI 面）",
+         线上入口只有命令表机器那一族的 `exit-policy-set`（＋ 派生的 CLI 面）",
         ),
         (
             "accounts/upstream_select/file_face.rs",
@@ -827,14 +834,14 @@ mod tests {
              文件名 / 格式 / 落点都是本仓定的、只有中转进程里的上游选择读它 ⇒ 上游选择**自己的**状态，\
              不是用户数据（判清全文）。写的那一刻读盘 → 只改一条账号那一格 → \
              临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ 写满 → 原子挪过去；\
-             只建数据目录那一层（`~/.cc-monitor`，经 `own_dir::ensure_private_dir` 只给本人）；失败删自己的临时文件。线上入口只有 `inbound.rs` 的 `apikey-key-set`",
+             只建数据目录那一层（`~/.cc-monitor`，经 `own_dir::ensure_private_dir` 只给本人）；失败删自己的临时文件。线上入口只有命令表账号那一族的 `apikey-key-set`",
         ),
         (
             "assets/asset_catalog.rs",
             "**资产目录** `~/.cc-monitor/assets-catalog.json`：这台看到的 skill / 项目级 MCP \
              ＋ 别的后端同步来的各台快照。文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 后端**自己的**状态，不是用户数据\
              （用户的 skill 与 `.mcp.json` 本模块一个字节都不写）。`O_EXCL` 建临时文件 → 写满 → 原子挪过去；只建 \
-             `~/.cc-monitor` 那一层；失败删自己的临时文件；读不懂的那份不覆盖。线上入口只有 `inbound.rs` 的 \
+             `~/.cc-monitor` 那一层；失败删自己的临时文件；读不懂的那份不覆盖。线上入口只有命令表资产那一族的 \
              `assets-catalog` / `assets-catalog-merge`（＋ 派生的 CLI 面）",
         ),
         (
@@ -843,7 +850,7 @@ mod tests {
              `<家>/history-metadata.json`，那台后端按家推）。\
              「读写者换成本机常驻后端、文件留在原处」：它是界面的注解、只有我们读写 ⇒ 后端**自己的**状态，不是用户数据\
              （会话记录本身一个字节不碰）。读不懂就拒写 → 只改那一条 → `O_EXCL` 临时文件 → 写满 → 原子挪过去；只建那一层目录；\
-             失败删自己的临时文件。线上入口只有 `inbound.rs` 的 `history-annotate` / `history-forget`（＋ 派生的 CLI 面）",
+             失败删自己的临时文件。线上入口只有命令表历史那一族的 `history-annotate` / `history-forget`（＋ 派生的 CLI 面）",
         ),
         (
             "relay/door.rs",
@@ -857,7 +864,7 @@ mod tests {
             "脱离常驻那条载体的后端自己的 **stderr 诊断文件**（当前 `stderr.log` ＋ 旧的一份 \
              `stderr.old.log`；路径由 monitor 起脱离那条载体时交 `CCM_BACKEND_STDERR_LOG`，目录由它建好）。只有后端写、\
              是后端自己说的话 ⇒ 后端**自己的**状态，不是用户数据。动词：`O_EXCL` 新建当前那份 · 原子挪成旧的（盖掉上一份旧的）；\
-             不建目录、不截断、不追加。对外口（装它的 `install_from_env` · 交给 `tracing` 的 `stderr_writer`）只从 `main.rs` 进（与`relay/listen.rs` 一样，是不走 `inbound.rs` 的门）",
+             不建目录、不截断、不追加。对外口（装它的 `install_from_env` · 交给 `tracing` 的 `stderr_writer`）只从 `main.rs` 进（与`relay/listen.rs` 一样，是不走命令注册的门）",
         ),
         (
             "control/resident.rs",
@@ -892,7 +899,7 @@ mod tests {
             "**skill 装记录** `~/.cc-monitor/skill-installs.json`：从别的机器装到这台的 skill，装时写进了哪几个文件 \
              （各自的摘要 ＋ 装之前在不在）。只删装时写进去的文件 —— 卸只删这里记着的。文件名 / 格式 / 落点都是本仓定的、\
              只有后端读它 ⇒ 后端**自己的**状态，不是用户数据（skill 目录里的文件本模块一个字节都不写不删）。`O_EXCL` 建临时文件 → \
-             写满 → 原子挪过去；只建 `~/.cc-monitor` 那一层；失败删自己的临时文件；读不懂的那份不覆盖。线上入口只有 `inbound.rs` 的 \
+             写满 → 原子挪过去；只建 `~/.cc-monitor` 那一层；失败删自己的临时文件；读不懂的那份不覆盖。线上入口只有命令表资产那一族的 \
              `skill-install-record`（＋ 派生的 CLI 面）",
         ),
     ];
@@ -933,13 +940,24 @@ mod tests {
     /// 本表是门的全集（用到的门 == 本表，两向）。
     /// 先前只有 `inbound.rs` 一扇、所有写口共用（同波另加了 `relay/listen.rs`，两路合并时并成这一张）；stderr 诊断文件的写口在进程起来那一刻装、此后跟着 `tracing` 滚（没有命令可走）⇒
     /// 门改成「每个写口自己的那一扇」，`inbound.rs` 那几个写口照旧只许 `inbound.rs` 碰（一格没松）。
+    /// 入方向拆成目录之后（10-03），命令注册那几个写口的门收紧到**持有那条命令的那一族文件**（例：`apikey-key-set` 的写口只许账号那一族碰），比「整个 `inbound.rs` 都算门」更紧。
     const OWN_STATE_DOORS: &[(&str, &str)] = &[
         (
-            "stream/inbound.rs",
-            "命令注册那一处 —— `exit-policy-set` 与`apikey-key-set` 各一条（帧面与派生的 CLI 面共用）；\
-资产目录那两条（`assets-catalog` / `assets-catalog-merge`）；历史注解那两条（`history-annotate` / `history-forget`）；\
-skill 装记录那一条（`skill-install-record`）。\
-             前端改那两份只有这一条路（`§3.3b ③`：前端要改它，走一条后端命令）",
+            "stream/inbound/registry/machine.rs",
+            "命令注册里机器那一族 —— `exit-policy-set` 一条（帧面与派生的 CLI 面共用）。\
+             前端改那份只有这一条路（`§3.3b ③`：前端要改它，走一条后端命令）",
+        ),
+        (
+            "stream/inbound/registry/accounts.rs",
+            "命令注册里账号那一族 —— `apikey-key-set` 一条，外加改账号库那几条（`accounts-*`）递给执行器的 key 表几口（`ACCOUNT_KEYS`）",
+        ),
+        (
+            "stream/inbound/registry/assets.rs",
+            "命令注册里资产那一族 —— 资产目录那两条（`assets-catalog` / `assets-catalog-merge`）；skill 装记录那一条（`skill-install-record`）",
+        ),
+        (
+            "stream/inbound/registry/history.rs",
+            "命令注册里历史那一族 —— 历史注解那两条（`history-annotate` / `history-forget`）",
         ),
         (
             "accounts/oauth/mod.rs",
@@ -976,27 +994,27 @@ skill 装记录那一条（`skill-install-record`）。\
         (
             "control/exit_policy.rs",
             "exit_policy::answer_set",
-            "stream/inbound.rs",
+            "stream/inbound/registry/machine.rs",
         ),
         // 写 key（`answer_set`）· 删号清那一行（`answer_drop`）· 回滚放回那一行（`answer_restore`）同一个前缀 ⇒ 针取前缀；
-        // 读口 `answer_read` 也落在针上，它同样只从 `inbound.rs` 进来（多挡一个读口不伤）。
+        // 读口 `answer_read` 也落在针上，它同样只从账号那一族进来（多挡一个读口不伤）。
         (
             "accounts/upstream_select/file_face.rs",
             "file_face::answer_",
-            "stream/inbound.rs",
+            "stream/inbound/registry/accounts.rs",
         ),
         // 三条写口同一个前缀（`answer_catalog` 现扫即记 · `answer_merge` 并进来再记，都会写）⇒ 针取前缀：
-        // 本模块生产段里凡是 `answer_` 开头的公开入口都是写口，只许 `inbound.rs` 碰。
+        // 本模块生产段里凡是 `answer_` 开头的公开入口都是写口，只许资产那一族碰。
         (
             "assets/asset_catalog.rs",
             "asset_catalog::answer_",
-            "stream/inbound.rs",
+            "stream/inbound/registry/assets.rs",
         ),
         // 两条写口同一个前缀（`answer_annotate` · `answer_forget`）⇒ 针取前缀；读口 `last_accounts` / `load` 不在针上。
         (
             "history/history_annotations.rs",
             "history_annotations::answer_",
-            "stream/inbound.rs",
+            "stream/inbound/registry/history.rs",
         ),
         // 订阅号凭据：写回（`write_tokens`）与续期锁（`with_refresh_lock`）都只从续期那一处（`oauth/mod.rs`）进。
         (
@@ -1027,7 +1045,7 @@ skill 装记录那一条（`skill-install-record`）。\
         (
             "assets/skill_ledger.rs",
             "skill_ledger::answer_",
-            "stream/inbound.rs",
+            "stream/inbound/registry/assets.rs",
         ),
         // 针取模块前缀：`run_ensure`（铸钥匙）与 `record_owner`（记 pid）都会写，都只许 `main.rs` 碰。
         ("control/resident.rs", "resident::", "main.rs"),
@@ -1846,17 +1864,19 @@ skill 装记录那一条（`skill-install-record`）。\
 
     /// 🔴🔴 **第三层判据 ④ 的另一半：那扇门里，够得到写面的命令恰好是写面登记的那几条。**
     ///
-    /// 上一条只判「哪份**文件**引用得到」—— `inbound.rs` 里任何一条命令都在那份文件里，
+    /// 上一条只判「哪份**文件**引用得到」—— 门里任何一条命令都在那几份文件里，
     /// 所以还得往下切一刀：按 `CommandSpec {` 切块，块里引用了写面的，
     /// 取它的 `name`，集合 == `MANAGE_COMMANDS`。
     ///
-    /// ⚠ **两侧异源**：一侧是 `inbound.rs` 的**源码文本**，一侧是写面模块里的**常量表**。
+    /// ⚠ **两侧异源**：一侧是命令表各族与分派的**源码文本**，一侧是写面模块里的**常量表**。
     /// 若两侧取自同一张表（比如拿 `REGISTRY` 去比 `REGISTRY`）就是恒真。
     #[test]
     fn inside_the_door_only_the_file_manager_commands_reach_the_mutating_face() {
+        // 命令登记逐族切块（各族文件各自成段）；硬臂那一半在 `dispatch`（`mod.rs`）里。
+        let families = crate::guard_support::registry_sources();
         let src =
-            std::fs::read_to_string(crate::guard_support::src_root().join("stream/inbound.rs"))
-                .expect("读 inbound.rs");
+            std::fs::read_to_string(crate::guard_support::src_root().join("stream/inbound/mod.rs"))
+                .expect("读 stream/inbound/mod.rs");
         let prod = guard_core::production_code(&src);
         // 第三层从此两个模块 ⇒ 针按登记表**派生**（每个模块一根），不手写第二份。
         let needles: Vec<String> = MUTATING_FACE_MODULES
@@ -1869,7 +1889,10 @@ skill 装记录那一条（`skill-install-record`）。\
         let marker = format!("CommandSpec {}", "{");
         let mut chunks = 0usize;
         let mut reaching: std::collections::BTreeSet<String> = Default::default();
-        for chunk in prod.split(marker.as_str()).skip(1) {
+        for chunk in families
+            .iter()
+            .flat_map(|(_, family)| family.split(marker.as_str()).skip(1))
+        {
             chunks += 1;
             if !needles.iter().any(|n| chunk.contains(n.as_str())) {
                 continue;
@@ -2001,7 +2024,7 @@ skill 装记录那一条（`skill-install-record`）。\
         );
         assert_eq!(
             port_users.into_iter().collect::<Vec<_>>(),
-            vec!["stream/inbound.rs".to_string()],
+            vec!["stream/inbound/registry/file_manager.rs".to_string()],
             "删会话落点的窄口只许门引用（它递给写面）—— 别的面拿到它就等于拿到了删会话的落点"
         );
         let spec = crate::control::files_write::MANAGE_COMMANDS

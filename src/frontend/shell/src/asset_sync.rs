@@ -28,7 +28,7 @@ use serde_json::{json, Value};
 
 use crate::backend_route::{route_call_error, Routed};
 
-/// 本机后端那条命令的名字（与 `src/backend/stream/inbound.rs::REGISTRY` 同名，判据现抠对拍）。
+/// 本机后端那条命令的名字（与 `src/backend/stream/inbound/mod.rs::REGISTRY` 同名，判据现抠对拍）。
 pub(crate) const CMD: &str = "assets-sync";
 
 /// 远端那台要认得的命令（它不认 ⇒ 那台后端太旧，连上时不去碰它）。
@@ -81,7 +81,7 @@ pub(crate) async fn sync_with(
     local.call(args_for(target)?).await
 }
 
-/// 本机后端**可达表登记**那条命令（与 `src/backend/stream/inbound.rs::REGISTRY` 同名，判据现抠对拍）。
+/// 本机后端**可达表登记**那条命令（与 `src/backend/stream/inbound/mod.rs::REGISTRY` 同名，判据现抠对拍）。
 ///
 /// 「本机后端问远端后端」那一跳（后端 `remote_ask.rs`）有两路在用：资产目录同步（本模块）· 历史跨机 join（后端 `history_join.rs`）。
 /// 前者只在那台认 `assets-catalog-merge` 时才交 `assets-sync`（它顺手登记）；后者问的是老子命令，**老远端也得够得着**

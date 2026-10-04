@@ -23,7 +23,7 @@
 界面要的新东西几乎都是这一形：那台后端算好，界面 `call(origin, op, …)` 拿成品。
 
 1. **本体**放进它该在的那一层：产出观测的读进 `observe/`，改状态、或只喂控制决策的查询进 `control/`，写用户文件经 `control/files_write` 那一族；入参出参用结构，不拼 shell 串。
-2. **登记**进 `src/backend/stream/inbound.rs`：名单 `COMMANDS` 一行 ＋ `REGISTRY` 一条 `CommandSpec`（名字 · 协议文档锚点 · 错误码 · 输出字段 · 有没有入参 · 跑法）。两边对不上由 `inbound_structure_guards.rs::the_commands_mirror_matches_the_registry` 报。只读查询的帧面宿主住 `faces/`。
+2. **登记**进它那一族的命令表 `src/backend/stream/inbound/registry/<族>.rs`：`SPECS` 里一条 `CommandSpec`（名字 · 协议文档锚点 · 错误码 · 输出字段 · 有没有入参 · 跑法）。`hello` 的命令名单从命令表派生，不另写。新开一族就在 `registry/` 下加一份文件、并进 `stream/inbound/mod.rs` 的 `FAMILIES`（漏了由 `inbound_structure_guards.rs::the_registry_families_are_exactly_the_files_in_the_registry_directory` 报）。只读查询的帧面宿主住 `faces/`。
 3. **协议文档**：[IPC-PROTOCOL.md](IPC-PROTOCOL.md) 里给它一节 `` #### `命令名` ``，写载荷与答话的形状；带载荷的命令没有这一节会红（`inbound_structure_guards.rs::a_command_with_a_payload_must_own_a_doc_section`）。
 4. **CLI 面**：帧命令默认派生同名的一次性子命令；只在流面上有意义的（读本进程里的 watcher、中转或转发账）登记进 `src/backend/control/cli_control.rs` 的 `STREAM_ONLY` 并写理由。子命令表一变 `build_id_guard` 就红 ⇒ bump `src/backend/lib.rs` 的 `BUILD_ID` 并重铺内嵌字节（[BUILDING.md § 内嵌字节与 BUILD_ID](BUILDING.md#内嵌字节与-build_id)）。
 5. **界面**：`chan.call(origin, "命令名", 载荷, 期限)`，期限由发起那件事的一方给一个绝对时刻。vitest 里用 `tests/test-support/chan-fake.ts` 的通道替身。
@@ -135,7 +135,7 @@ cargo test --workspace
 
 ### 3.2 撤一条后端帧命令
 
-从 `COMMANDS` 与 `REGISTRY` 里摘掉、删 IPC-PROTOCOL.md 那一节、处理 CLI 面（派生的子命令跟着没了，登记过的从 `STREAM_ONLY` 摘）、删界面的调用处与通道替身里的那一格，bump `BUILD_ID`。
+从它那一族的命令表（`registry/<族>.rs`）里摘掉、删 IPC-PROTOCOL.md 那一节、处理 CLI 面（派生的子命令跟着没了，登记过的从 `STREAM_ONLY` 摘）、删界面的调用处与通道替身里的那一格，bump `BUILD_ID`。
 
 ### 3.3 改跨进程文件的格式（`ps-await` · `ps-registry` · `sid-hwnd-cache` · `auto-launch`）
 

@@ -690,7 +690,7 @@ mod tests {
     /// # 它此前只覆盖一半，而漏掉的那半从 0 长到了 5
     ///
     /// 本函数原来只抠 `main.rs` 里的 `Some("--`，也就是**一次性子命令**那一面。
-    /// 而后端还有第二个命令面：[`crate::stream::inbound::COMMANDS`]（常驻通道命令）。
+    /// 而后端还有第二个命令面：[`crate::stream::inbound::REGISTRY`]（常驻通道命令，名字由 `command_names` 取）。
     /// 实测（`audit-0805` 的只读核实）：
     ///
     /// - `BUILD_ID` 从 `4617f34`（07-31，`p1v-attachable`）之后**再没变过**；
@@ -757,9 +757,9 @@ mod tests {
             "从 `SUBCOMMANDS` 只拿到 {} 条子命令 —— 登记表被掏了（08-06 实测 14 条）：{subs:?}",
             subs.len()
         );
-        // ── 第二个命令面：常驻通道命令（`inbound::COMMANDS` 是它的单一源头）──────
+        // ── 第二个命令面：常驻通道命令（`inbound::REGISTRY` 是它的单一源头，`command_names` 取名）──────
         // 排序后写成 `ch:<名>`，与 `--x` 那一面在同一个字符串里但**不会混淆**。
-        let mut chans: Vec<String> = crate::stream::inbound::COMMANDS
+        let mut chans: Vec<String> = crate::stream::inbound::command_names()
             .iter()
             .map(|c| format!("ch:{c}"))
             .collect();
@@ -767,7 +767,7 @@ mod tests {
         // 反向自检：通道面空了 ⇒ 指纹会退化回「只覆盖一半」那个老样子而没人发现。
         assert!(
             !chans.is_empty(),
-            "`inbound::COMMANDS` 抽到空集 —— 指纹会静默退回只覆盖 CLI 那一面"
+            "`inbound::command_names()` 抽到空集 —— 指纹会静默退回只覆盖 CLI 那一面"
         );
         let mut out = subs.join("\n");
         out.push_str("\n#channel\n");

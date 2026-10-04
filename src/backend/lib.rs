@@ -1800,7 +1800,7 @@ pub const COMMAND_FACES: &[CapabilityFace] = &[
         family: "wire-commands",
         kind: CapabilityKind::Protocol,
         declares: wire_command_names,
-        declared_in: "stream/inbound.rs",
+        declared_in: "stream/inbound/mod.rs",
         targets: TARGETS,
         target_basis: "帧面每一条命令四个 target 上**都编得进去**（`inbound::REGISTRY` 零平台 `cfg`）；\
                        做不做得到按它**自己声明的码**分：`codes` 里有 `no_tmux` 的，在平台确证没有 tmux 的 \

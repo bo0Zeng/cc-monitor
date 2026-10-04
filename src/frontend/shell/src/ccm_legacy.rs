@@ -37,7 +37,7 @@ use crate::user_files::{Door, Refused};
 /// 那一份在家目录下的相对路径。**唯一住址**在契约 crate `deploy-contract`（后端判它、足迹那一行、本模块删它，同一个常量）。
 pub(crate) use deploy_contract::LEGACY_ENTRY_REL as LEGACY_REL;
 
-/// 本机常驻后端那条命令的名字（与 `src/backend/stream/inbound.rs::REGISTRY` 同名）。
+/// 本机常驻后端那条命令的名字（与 `src/backend/stream/inbound/mod.rs::REGISTRY` 同名）。
 pub(crate) const RETIRED_CMD: &str = "deploy-retired";
 
 /// 问一次的上限：一次 stat ＋ 至多一次读回（池里那条 SSH，SFTP 第一问时才开）。

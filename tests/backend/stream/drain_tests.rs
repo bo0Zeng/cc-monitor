@@ -446,7 +446,7 @@ fn enclosing_fn(code: &str, at: usize) -> String {
 #[test]
 fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_drains() {
     let inbound = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/stream/inbound.rs"
+        "../../../src/backend/stream/inbound/mod.rs"
     ));
     // 取票：恰好一处，在 `handle_line`（`SpawnBlocking` 那一支）里，且在 `spawn_blocking(` 之前。
     let enters = call_sites(&inbound, "DRAIN.enter");
@@ -487,13 +487,16 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
         "流模式的收场口集合变了"
     );
 
-    // 生产入口交给本体的期限恰是 `DRAIN_DEADLINE`（判据用短期限走的是同一个本体）。
-    let within: Vec<usize> = call_sites(&inbound, "exit_after_drain_within");
+    // 生产入口交给本体的期限恰是 `DRAIN_DEADLINE`（判据用短期限走的是同一个本体）。收场那几样住 `drain.rs`。
+    let drain = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/stream/inbound/drain.rs"
+    ));
+    let within: Vec<usize> = call_sites(&drain, "exit_after_drain_within");
     assert_eq!(within.len(), 1, "本体只该被生产入口调一处：{within:?}");
-    assert_eq!(enclosing_fn(&inbound, within[0]), "exit_after_drain");
+    assert_eq!(enclosing_fn(&drain, within[0]), "exit_after_drain");
     assert_eq!(
         guard_core::find_pinned(
-            &inbound,
+            &drain,
             "exit_after_drain_within(why, writer, DRAIN_DEADLINE)"
         ),
         Ok(within[0]),
@@ -505,7 +508,7 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
 ///
 /// 期望（异源：取自 ⑮ 那句裁决与 `main.rs` 的分派形状，不从被扫的源码现推）：
 /// `main.rs::main` 四处（ccm 那一趟 · argv 一族的 stdin 一行读不动 · 一次性查询 · 监听口配置不成立或绑不上口，`claim_then_log` 交回的码）——
-/// 都发生在**一条命令都还没收**之前、没有可排空的；`stream/inbound.rs::exit_after_drain_within` 一处
+/// 都发生在**一条命令都还没收**之前、没有可排空的；`stream/inbound/drain.rs::exit_after_drain_within` 一处
 /// （`exit_after_drain` 的本体：生产入口只经它，期限由 d3 钉）。别处一处都不许有 —— 模块里想退就把退出码交回调用方。
 #[test]
 fn x15_the_process_exits_only_in_main_and_exit_after_drain() {
@@ -534,7 +537,7 @@ fn x15_the_process_exits_only_in_main_and_exit_after_drain() {
         ("main.rs", "main"),
         ("main.rs", "main"),
         ("main.rs", "main"),
-        ("stream/inbound.rs", "exit_after_drain_within"),
+        ("stream/inbound/drain.rs", "exit_after_drain_within"),
     ]
     .iter()
     .map(|(a, b)| (a.to_string(), b.to_string()))

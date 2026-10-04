@@ -162,8 +162,9 @@ fn the_dial_only_happens_under_dial_home() {
 /// ② `--dial` 那条老入口**零处**（它删了；留着一半 = `is_query_mode` 认它却没有臂接，v3.4.0 那一形）。
 #[test]
 fn the_link_arms_are_actually_wired_into_the_dispatch() {
-    let inbound_prod =
-        crate::guard_support::production_code(include_str!("../../src/backend/stream/inbound.rs"));
+    let inbound_prod = crate::guard_support::production_code(include_str!(
+        "../../src/backend/stream/inbound/mod.rs"
+    ));
     assert!(
         inbound_prod.len() > 3_000,
         "剥完 inbound.rs 生产段只剩 {} 字节 —— 剥法坏了，本条此刻在空转",

@@ -186,9 +186,14 @@ mod tests {
              不是哪个 agent 的 `sessions/` 目录布局 —— 合并只读 `updatedAt` / `hitCount` / `hitsTruncated` 三格。",
         ),
         (
-            "stream/inbound.rs",
+            "stream/inbound/registry/terminals.rs",
             "\"sessions\",",
-            "同上一条：`tmux-list` 那条命令登记的应答字段名（`fields` 表），不是目录布局。",
+            "同上上一条：`tmux-list` 那条命令登记的应答字段名（`fields` 表），不是目录布局。",
+        ),
+        (
+            "stream/inbound/registry/history.rs",
+            "\"sessions\",",
+            "同上一条：`history-search-merge` 那条命令登记的应答字段名（`fields` 表），不是目录布局。",
         ),
     ];
 

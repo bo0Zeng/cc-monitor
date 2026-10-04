@@ -779,20 +779,39 @@ fn reachable(
     seen
 }
 
-/// `inbound.rs` 生产段里 `REGISTRY` 每一条的 `run:` 闭包点名的 `crate::…` 路径所在文件（命令名 → 文件集）。
+/// 命令表各族（`stream/inbound/registry/*.rs`）生产段里每一条的 `run:` 闭包点名的 `crate::…` 路径所在文件（命令名 → 文件集）。
 fn handler_files(
     tree: &Tree,
 ) -> std::collections::BTreeMap<String, std::collections::BTreeSet<String>> {
-    let src = tree
-        .get("stream/inbound.rs")
-        .expect("后端树里没有 inbound.rs");
-    let at = src
-        .find("pub const REGISTRY: &[CommandSpec] = &[")
-        .expect("`inbound.rs` 里锚不住 REGISTRY");
+    let families: Vec<&String> = tree
+        .iter()
+        .filter(|(rel, _)| rel.starts_with("stream/inbound/registry/"))
+        .map(|(_, src)| src)
+        .collect();
+    assert!(
+        families.len() >= 2,
+        "后端树里只找到 {} 份命令表族文件",
+        families.len()
+    );
     let mods: std::collections::BTreeMap<Vec<String>, String> =
         tree.keys().map(|r| (module_of(r), r.clone())).collect();
     let mut out = std::collections::BTreeMap::new();
-    for block in src[at..].split("CommandSpec {").skip(1) {
+    for src in families {
+        let at = src
+            .find("const SPECS: &[CommandSpec] = &[")
+            .expect("命令表族文件里锚不住 `SPECS`");
+        handler_files_of(&src[at..], &mods, &mut out);
+    }
+    out
+}
+
+/// 一族命令表（`SPECS` 那张表起）里逐块取 `run:` 闭包点名的文件，并进 `out`。
+fn handler_files_of(
+    table: &str,
+    mods: &std::collections::BTreeMap<Vec<String>, String>,
+    out: &mut std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
+) {
+    for block in table.split("CommandSpec {").skip(1) {
         let Some(n) = block.find("name: \"") else {
             continue;
         };
@@ -803,12 +822,11 @@ fn handler_files(
         let run = &block[r..];
         let files: std::collections::BTreeSet<String> = paths_in(&[], run)
             .into_iter()
-            .filter_map(|p| file_of(&mods, &p))
-            .filter(|f| f != "stream/inbound.rs")
+            .filter_map(|p| file_of(mods, &p))
+            .filter(|f| !f.starts_with("stream/inbound/"))
             .collect();
         out.insert(name, files);
     }
-    out
 }
 
 /// 够得着 tmux、却**不**声明 `no_tmux` 的命令 —— 逐条写理由（tmux 在它那里是可选的：问不到就降级，命令本身照做）。

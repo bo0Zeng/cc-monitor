@@ -1755,7 +1755,7 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
         ("ratchet_guard.rs", "main.rs", 651),
         ("ratchet_guard.rs", "observe/watcher.rs", 1040),
         ("ratchet_guard.rs", "tmux_hook.rs", 6),
-        ("single_stream_guard.rs", "stream/inbound.rs", 35),
+        ("single_stream_guard.rs", "stream/inbound/mod.rs", 35),
         ("single_stream_guard.rs", "main.rs", 585),
         ("single_stream_guard.rs", "observe/watcher.rs", 77),
         ("single_stream_guard.rs", "relay/tee.rs", 169),
@@ -2447,24 +2447,18 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            "src/backend/stream/inbound.rs",
+            "src/backend/stream/inbound/mod.rs",
             "handlers_never_run_on_the_reader_task",
             1,
         ),
-        // 🔴 〔步 7c 后端剖分 2026-09-19 · C 类〕**这一条拆成两行，总处数守恒（3 ＝ 2 ＋ 1）。**
-        //    那个名字的 3 处散文引用里，2 处留在生产段的头注里、1 处随测试段搬走了。
+        // 〔入方向拆目录 10-03〕手抄的命令名单删了：它头注里那一处与测试段那条镜子判据头注里那一处随之没了，3 → 1。
         (
-            "src/backend/stream/inbound.rs",
-            "hello_commands_match_the_dispatch_table",
-            2,
-        ),
-        (
-            "tests/backend/stream/inbound_structure_guards.rs",
+            "src/backend/stream/inbound/mod.rs",
             "hello_commands_match_the_dispatch_table",
             1,
         ),
         (
-            "src/backend/stream/inbound.rs",
+            "src/backend/stream/inbound/mod.rs",
             "hello_is_flushed_before_the_inbound_reader_starts",
             1,
         ),

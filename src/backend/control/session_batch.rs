@@ -28,7 +28,7 @@ pub(crate) struct TmuxEntry {
     pub(crate) agent: bool,
 }
 
-/// 做事要用到的几样。生产那一份由入口拼（`stream/inbound.rs`），判据给替身。
+/// 做事要用到的几样。生产那一份由入口拼（`stream/inbound/mod.rs`），判据给替身。
 pub(crate) struct Deps<'a> {
     /// 这台的 tmux 名单；`Ok(None)` = 这台没装 tmux；`Err` = 看不见（不是零会话）。
     pub(crate) list: &'a dyn Fn() -> Result<Option<Vec<TmuxEntry>>, String>,
