@@ -734,7 +734,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p6x-own-version：身份戳界标与能力表改从 deploy-contract 取（字节同形），命令集合不变。
 ///
 /// p6y-child-primitive：后端起子进程收成一个原语（期限必填、杀整组、无条件清环境）；新命令级码 child_timed_out。
-pub const BUILD_ID: &str = "p6y-child-primitive";
+///
+/// p6z-command-budget：每条阻塞档命令一个总期限（短于界面等待），命令集合不变。
+pub const BUILD_ID: &str = "p6z-command-budget";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
