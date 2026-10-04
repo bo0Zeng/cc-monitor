@@ -553,20 +553,33 @@ fn ask_once_reads_the_cli_envelope_both_ways() {
     };
     let t = std::time::Duration::from_secs(5);
     let args = serde_json::json!({ "text": "#!/bin/sh\n", "n": 1 });
+    // 刚写好的替身脚本，exec 那一刻可能撞上别的测试线程 fork 出来、还没 exec 的子进程握着它的写 fd
+    // ⇒ `ETXTBSY`（`os error 26`，认 errno 不认 locale 文字）。只对这一种起不来重试，上限 50 × 20ms；
+    // 别的结果原样交回判（同 `launch_tests` 起假终端那一处）。
+    let once = |prog: &std::path::Path, cmd: &str, timeout: std::time::Duration| {
+        let mut r = ask_once(prog, cmd, &args, timeout);
+        for _ in 0..50 {
+            match &r {
+                Err(OnceErr::Spawn(e)) if e.contains("os error 26") => {
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                    r = ask_once(prog, cmd, &args, timeout);
+                }
+                _ => break,
+            }
+        }
+        r
+    };
     let echo = script(
         "echo",
         r#"[ "$1" = "--" ] && [ "$2" = "--deploy-retired" ] || exit 9; cat"#,
     );
-    assert_eq!(
-        ask_once(&echo, "deploy-retired", &args, t),
-        Ok(args.clone())
-    );
+    assert_eq!(once(&echo, "deploy-retired", t), Ok(args.clone()));
     let no = script(
         "no",
         r#"echo '{"code":"refused","message":"不放"}' >&2; exit 2"#,
     );
     assert_eq!(
-        ask_once(&no, "x", &args, t),
+        once(&no, "x", t),
         Err(OnceErr::Refused {
             code: "refused".into(),
             message: "不放".into()
@@ -579,13 +592,13 @@ fn ask_once_reads_the_cli_envelope_both_ways() {
     ] {
         let p = script(name, body);
         assert!(
-            matches!(ask_once(&p, "x", &args, t), Err(OnceErr::Unreadable(_))),
+            matches!(once(&p, "x", t), Err(OnceErr::Unreadable(_))),
             "{name}"
         );
     }
     let hang = script("hang", "exec sleep 30");
     assert_eq!(
-        ask_once(&hang, "x", &args, std::time::Duration::from_millis(300)),
+        once(&hang, "x", std::time::Duration::from_millis(300)),
         Err(OnceErr::TimedOut)
     );
     assert!(matches!(
