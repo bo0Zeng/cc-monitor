@@ -728,7 +728,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p6u-inbound-split：帧命令表按族拆成目录（命令集合不变）；hello / resync 的 uncancellable 按字母排。
 ///
 /// p6v-comms-crates：中转与通道各立一个 crate（comms-outward · comms-inward），行为与命令集合不变。
-pub const BUILD_ID: &str = "p6v-comms-crates";
+///
+/// p6w-terminal-naming：session_added.container 改成 {host, terminal} 对象；capture-pane · tmux-list 删，tmux-name-mint → terminal-name-mint，sessions-tmux → sessions-where。
+pub const BUILD_ID: &str = "p6w-terminal-naming";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
