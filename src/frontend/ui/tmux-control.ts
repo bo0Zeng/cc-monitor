@@ -1,10 +1,10 @@
 /**
- * **界面直接说的 tmux 控制类帧命令** —— 抓一屏（`capture-pane`）·
- * 结束会话（`kill`）· 往会话里发按键 / 就地恢复（`launch` 的 `send-into` mode）。
+ * **界面直接说的 tmux 控制类帧命令** —— 结束会话（`kill`）· 往会话里发按键 / 就地恢复（`launch` 的 `send-into` mode）。
+ * （抓一屏走终端管理那一条 `terminal-preview`，在 `terminal-reads.ts`。）
  *
  * # 它顶掉了什么
  *
- * 此前界面经 monitor 的四条 Tauri 命令做这几件事：`capture_remote_pane` / `kill_remote_tmux` / `tmux_send_keys` /
+ * 此前界面经 monitor 的四条 Tauri 命令做这几件事：抓屏 / `kill_remote_tmux` / `tmux_send_keys` /
  * `backend_send_into`〔散文墓碑〕。monitor 在每一条上做的都只是：先拒空目标、转一条后端帧命令、核应答那一格、
  * 把拒绝码与「通道不在」说成人话、给就地恢复判「能不能回落」—— 那一份解释住 monitor 中层（`backend/control/`
  * 的 `tmux.rs` · `backend_kill.rs` · `backend_send_keys.rs` · `backend_launch.rs`）。后端的帧应答本来就是成品
@@ -31,7 +31,7 @@
  *
  * # 期限（`X6`：调用点显式给）
  *
- * 抓一屏 20 秒；结束 / 发按键 / 就地恢复 10 秒 —— 与它们上一个住址（monitor 那几个发送端）同值。
+ * 结束 / 发按键 / 就地恢复 10 秒 —— 与它们上一个住址（monitor 那几个发送端）同值。
  */
 import { copyText } from "./copy-table";
 import {
@@ -53,56 +53,8 @@ import { isIdentityRefusal } from "./resync";
 //   `settle`）搬进了 `src/frontend/ui/control-said.ts`；本文件的调用方照旧从这里取那两样。
 export { ControlError, saidOfControl };
 
-/** 抓一屏的期限（见头注）。 */
-const CAPTURE_BUDGET_MS = 20_000;
 /** 结束 / 发按键 / 就地恢复的期限（见头注）。 */
 const CONTROL_BUDGET_MS = 10_000;
-
-// ─── 抓一屏 ───
-
-/** 抓屏的拒绝码 ⇒ 一句话。五个码逐一分开（它们的下一步各不相同）；认不出的码原样带出去。 */
-function captureRefusals(target: string): Refusals {
-  return {
-    byCode(code, detail) {
-      switch (code) {
-        case "no_tmux":
-          return copyText("tmuxControl.capture.noTmux", { target, detail });
-        case "no_server":
-          return copyText("tmuxControl.capture.noServer", { target, detail });
-        case "no_such_session":
-          return copyText("tmuxControl.capture.noSuchSession", { target, detail });
-        case "invalid_args":
-          return copyText("tmuxControl.capture.badName", { target, detail });
-        case "capture_failed":
-          return copyText("tmuxControl.capture.failed", { target, detail });
-        default:
-          // 认不出的码：只说那台的原话（码不上屏，留在诊断里）；原话是空的 ⇒ 说没给原因。
-          return detail.trim() !== "" ? copyText("tmuxControl.capture.otherCode", { target, detail }) : copyText("tmuxControl.capture.noReason", { target });
-      }
-    },
-    noReason: () => copyText("tmuxControl.capture.noReason", { target }),
-  };
-}
-
-/** `capture-pane` 的成品 ⇒ 那一屏。形状不对 ⇒ 抛。**空屏是合法的成功**（刚建起来、什么都没打印的 pane）。 */
-export function decodeCapture(origin: Origin, v: unknown): string {
-  if (!isObj(v) || !exactKeys(v, ["name", "screen"]) || typeof v.name !== "string" || typeof v.screen !== "string") {
-    throw unreadable(origin, "capture-pane", "is not exactly {name, screen} (two strings)");
-  }
-  return v.screen;
-}
-
-/**
- * 抓 `origin` 上 tmux 会话 `target` 当前的一屏（**只读快照，不 attach**；刻意不过身份门，同后端那一侧）。
- * 给了 `sid` ⇒ 抓那个会话里挂着它的那个窗格（一个 tmux 会话里可以有几个 claude），不是活动窗格。
- * 失败 ⇒ 抛 [`ControlError`]（`message` 是给人看的那一句）。
- */
-export async function capturePane(origin: Origin, target: string, sid?: string): Promise<string> {
-  const payload = jsonBody(sid === undefined ? { name: target } : { name: target, sid });
-  const budget = budgetWithin(CAPTURE_BUDGET_MS);
-  const v = await settle(origin, "capture-pane", chan.call(origin, "capture-pane", payload, budget), captureRefusals(target));
-  return decodeCapture(origin, v);
-}
 
 // ─── 结束会话 ───
 

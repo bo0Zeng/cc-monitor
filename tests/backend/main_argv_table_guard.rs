@@ -184,17 +184,11 @@ fn every_listed_subcommand_is_actually_dispatched() {
 /// **有一个洞**：摘掉它们的字面量臂，派生臂会静默接住 ⇒ 主断言不红，
 /// 而那是一次**换路**（`--resolve` 那条臂上方逐字写着它「故意留在前面」，
 /// 理由是仓外 aterm 的冻结契约「不拿『实际上一样』去赌」）。
-const DUAL_ROUTE_ARMS: &[(&str, &str)] = &[
-    (
-        "--capture-pane",
-        "`K-R86` 的只读抓屏原语：一次性 exec 直接调本体，不绕 CLI 面那层信封",
-    ),
-    (
-        "--resolve",
-        "信封与仓外 aterm 冻结在 2026-07-18，走原路一个字节都不动 —— \
+const DUAL_ROUTE_ARMS: &[(&str, &str)] = &[(
+    "--resolve",
+    "信封与仓外 aterm 冻结在 2026-07-18，走原路一个字节都不动 —— \
              两条路的输出实为同一个 `CommandPlan`，而冻结的契约不拿「实际上一样」去赌",
-    ),
-];
+)];
 
 /// ★★ `KR102D2` 甲：**表里每一条子命令都有一条活的分派落点。**
 ///

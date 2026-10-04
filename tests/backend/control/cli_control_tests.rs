@@ -48,8 +48,8 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
         "它是界面「一批会话一次问」的那一形；命令行那一侧逐个 `--kill` 就是它，再上一条只是同一件事的第二个入口 ⇒ 只上帧面（`STREAM_ONLY`）。",
     ),
     (
-        "sessions-tmux",
-        "同上：它答的是界面菜单要的那一格（这个会话在哪个 tmux 会话里、亮哪几项）；命令行那一侧 `--tmux-list` 就是它的原料 ⇒ 只上帧面（`STREAM_ONLY`）。",
+        "sessions-where",
+        "同上：它答的是界面菜单要的那一格（这个会话在哪个 tmux 会话里、亮哪几项）；命令行那一侧 `--terminals-list` 就是它的原料 ⇒ 只上帧面（`STREAM_ONLY`）。",
     ),
     (
         "sessions-start",
@@ -70,7 +70,7 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
     ),
     // 起会话要的 tmux 名。
     (
-        "tmux-name-mint",
+        "terminal-name-mint",
         "它只给界面起会话前问一个名字用；命令行那一侧 `ccm` 不给名时自己就铸（同一份 `plan::mint_tmux_name`，同一张会话快照），\
          第三方 skill 要起会话直接敲 `ccm` ⇒ 再开一个 CLI 口只是第二个入口 ⇒ 只上帧面（`STREAM_ONLY`）。",
     ),
@@ -372,7 +372,6 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         // sid → 上次用哪个号起：无入参（读本机那份注解文件）。
         "history-last-accounts",
         // 列这台的 tmux 会话：无入参（问的就是「这台」）。
-        "tmux-list",
         // 列转发：无入参（问的就是本进程那张账）。
         "forward-list",
         // 这台 `~/.ssh/config` 的别名清单 · 批量导入预览：无入参（`ssh-config-resolve` 要 `alias`，收输入）。

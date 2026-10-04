@@ -138,7 +138,7 @@ pub(crate) struct Adapter {
     /// 收进注册表而不是让通用层直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]（判据④的读数只许降）。
     pub(crate) records: Option<RecordFace>,
     /// tmux 前台命令（`#{pane_current_command}`）是这几个之一 ⇒ 那个 pane 跑的是这一家（从前界面按画像表自己判）。
-    /// `None` ＝ 今天没人考据过。收进注册表而不是让 `observe/tmux_list.rs` 直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]。
+    /// `None` ＝ 今天没人考据过。收进注册表而不是让调用方直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]。
     pub(crate) processes: Option<&'static [&'static str]>,
     /// 这一家的**起会话事实**（默认启动器 · shell wrapper · resume 字面量 · 嵌套标记）；`None` ＝ 这一家不由我们起。
     pub(crate) launch: Option<LaunchFace>,
@@ -315,7 +315,7 @@ pub(crate) fn build_branch_records(
     }
 }
 
-/// 这个 tmux 前台命令是不是注册表里某一家的进程（[`Adapter::processes`]）—— `tmux-list` 每一行的 `agent`。
+/// 这个 tmux 前台命令是不是注册表里某一家的进程（[`Adapter::processes`]）—— 批量停 / 起认窗格时每一行的 `agent`。
 pub(crate) fn is_agent_process(command: &str) -> bool {
     REGISTRY
         .iter()

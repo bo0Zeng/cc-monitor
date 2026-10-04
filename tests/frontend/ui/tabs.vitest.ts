@@ -243,7 +243,7 @@ import {
   type TabRect,
 } from "../../../src/frontend/ui/tabs";
 import { COLLECTION_CAP, type TabCollection } from "../../../src/frontend/ui/tab-collections";
-import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
+import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, LIVE_UNKNOWN_HOST, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
@@ -1214,7 +1214,7 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
   //（回退之后恒 `tmuxName: null`，那条照样绿）⇒ 必须再钉正面：知道的时候要铸、且要避让。
   it("P3t-Y2b 本地 resume：本机后端铸了名字 → 原样传给起会话那一问", async () => {
     (invoke as unknown as Mock).mockImplementation(withHistoryReads(launchRenderShim(async (cmd: string) => {
-      // `K-R96`：基名从 cwd 派生 ⇒ `/home/u/p` ⇒ `p-cc`；它已被占 ⇒ 让到 `-2`。派生 ＋ 避让在本机后端（`tmux-name-mint`），
+      // `K-R96`：基名从 cwd 派生 ⇒ `/home/u/p` ⇒ `p-cc`；它已被占 ⇒ 让到 `-2`。派生 ＋ 避让在本机后端（`terminal-name-mint`），
       //   替身写死它铸了 `p-cc-2`；这里钉的是「问了、用的就是它铸的」（下面 `tmuxMintCalls` 那一行）。
       if (cmd === "tmux_name_mint") return "p-cc-2";
       return undefined;
@@ -2534,9 +2534,9 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
     expect(arg.tmuxName).toBe("proj-cc");
     expect(arg.accountName).toBe("b");
     expect(arg.launcher).toBe(""); // getBehavior 的 mock：resumeCommandLocal = ""（远端那条是 "cct"）
-    // 「在哪个 tmux 会话里」问的是本机那一台（`sessions-tmux`）。
+    // 「在哪个 tmux 会话里」问的是本机那一台（`sessions-where`）。
     const asked = (invoke as unknown as ReturnType<typeof vi.fn>).mock.calls
-      .filter(([c, a]) => c === "chan_call" && (a as { op?: string }).op === "sessions-tmux")
+      .filter(([c, a]) => c === "chan_call" && (a as { op?: string }).op === "sessions-where")
       .map(([, a]) => (a as { origin: string }).origin);
     expect(asked).toEqual(["<local>"]);
   });
@@ -2781,7 +2781,7 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     expect(local.map(([, a]) => chanArgsJson(a as never))).toEqual([{ terminals: TERMINALS }]);
     expect(calls.filter(([c]) => c === "bring_remote_terminal_to_front").map(([, a]) => a)).toEqual([{ chain: CHAIN }]);
     expect(
-      calls.filter(([c, a]) => c === "list_remote_tmux" || c === "list_local_tmux" || isChanCall(c, a, "tmux-list")),
+      calls.filter(([c, a]) => c === "list_remote_tmux" || c === "list_local_tmux" || isChanCall(c, a, "terminals-list")),
       "↗ 又去查了 tmux —— tmux 回到了 ↗ 的前提链上",
     ).toEqual([]);
     // 「拉前」是术语表的禁词（say：「切到终端窗口」）。
@@ -4710,23 +4710,31 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
   });
 
   it("★ G3：容器事实落在活会话上（tooltip 第一行说它）；早到的暂存、建 tab 时落实；死了之后来的不改死的那一格", () => {
-    tm.noteContainer("c1", "tmux"); // 早于建 tab
+    tm.noteContainer("c1", { form: "hosted", host: "tmux", terminal: "tmux-3-7" }); // 早于建 tab
     const t = tm.ensureTab("c1", "/x", "p", "pi");
     expect(t.state).toEqual(LIVE_ATTACHABLE);
     expect(btn().title).toBe(`${t.title}\n在 tmux 会话里运行：程序退了也能接回去`);
-    tm.noteContainer("c1", "none");
+    tm.noteContainer("c1", { form: "none" });
     expect(t.state).toEqual(LIVE_RESUMABLE);
     expect(btn().title).toBe(`${t.title}\n不在 tmux 会话里：程序退了只能 resume`);
-    tm.noteContainer("c1", "screen"); // 不认识的取值 ⇒ 当没报，不动
-    expect(t.state).toEqual(LIVE_RESUMABLE);
     tm.archiveTab("c1");
-    tm.noteContainer("c1", "tmux"); // 晚到：死了的那一格由死的那一刻说了算
+    tm.noteContainer("c1", { form: "hosted", host: "tmux", terminal: null }); // 晚到：死了的那一格由死的那一刻说了算
     expect(t.state).toEqual(ENDED);
+  });
+
+  it("★ 不认识的宿主不被吞：那一格进「终端形式未知」（不当可接回）、日志一条", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const t = tm.ensureTab("c3", "/x", "p", "pi");
+    tm.noteContainer("c3", { form: "other", host: "hosted" });
+    expect(t.state).toEqual(LIVE_UNKNOWN_HOST);
+    expect(btn().title).toBe(`${t.title}\n终端形式未知`);
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes("host=hosted")).length).toBe(1);
+    warn.mockRestore();
   });
 
   it("★ G3 行为不回退：活着、只是不在 tmux 里的会话 ≠ 已结束（× 不露、↗ 还在）", () => {
     tm.ensureTab("c2", "/x", "p", "pi");
-    tm.noteContainer("c2", "none");
+    tm.noteContainer("c2", { form: "none" });
     expect(btn().classList.contains("ended")).toBe(false);
     expect(btn().classList.contains("reconnectable")).toBe(false);
   });

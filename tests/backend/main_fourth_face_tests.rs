@@ -79,17 +79,12 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
     //    「本条红未必是错……那就把这里的期望值补上」。
     //    🔴 〔删用量〕**4 → 3**：`oneshot-session` 随用量 ③ 轴整轴退役
     //    （`control/oneshot_session.rs` 整删、`inbound::REGISTRY` 11 → 10）。
-    //    `capture-pane` **留着**（拉屏预览在用），别把两条一起读成退役。
+    //    🔴 **4 → 3 → 4**：终端管理 L1 两条（`terminal-preview` / `terminal-input`）进表；`capture-pane` 随抓屏改走
+    //    `terminal-preview` 删了。
     //    ⚠ 顺序按 `REGISTRY` 的排列，不是字典序。
     assert_eq!(
         names,
-        vec![
-            "capture-pane",
-            "terminal-preview",
-            "terminal-input",
-            "kill",
-            "launch"
-        ],
+        vec!["terminal-preview", "terminal-input", "kill", "launch"],
         "没有 tmux 的那台机器上，做不到的恰好是 `REGISTRY` 里登记了 `{NO_TMUX}` 的那几条。\n\
              ⚠ 本条红**未必是错**：你要是新加了一条会回 `{NO_TMUX}` 的命令，它已经自动进表了\n\
              （这张表是从 `codes` 派生的，不是手写的）—— 那就把这里的期望值补上。\n\
@@ -141,7 +136,7 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
         //   这一步才是「不是编译期常量」的正面证据 —— 上面两组各自都只证了一半。
         // 🔴 `K-R104`：`2` → **4**（`capture-pane` / `oneshot-session` 也登记了
         //    `no_tmux`，这张表从 `codes` 派生 ⇒ 自动进表）。
-        // 🔴 **4 → 3**：`oneshot-session` 随用量 ③ 轴退役。
+        // 🔴 **4 → 3**：`oneshot-session` 随用量 ③ 轴退役；`capture-pane` 删了、终端管理 L1 两条进表。
         //    ⚠ 这个数**不许写成地板** —— 「有 tmux 的机器上一条都不报」那一半是
         //    `is_empty()`，而这一半要的是「恰好是登记了 `no_tmux` 的那几条」。
         let today = unavailable_from(Some(false)).len();
@@ -220,11 +215,10 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
     .map(|u| u.command.clone())
     .collect();
     // 🔴 `K-R104`：同上一条，2 → **4**（`capture-pane` / `oneshot-session` 自动进表）。
-    // 🔴 **4 → 3**：`oneshot-session` 随用量 ③ 轴退役。
+    // 🔴 **4 → 3**：`oneshot-session` 随用量 ③ 轴退役；`capture-pane` 删了、终端管理 L1 两条进表。
     assert_eq!(
         names,
         vec![
-            "capture-pane".to_string(),
             "terminal-preview".to_string(),
             "terminal-input".to_string(),
             "kill".to_string(),

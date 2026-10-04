@@ -155,7 +155,7 @@ pub(crate) async fn call(
         // 说「谁」用同一个 [`who`]：本机那几问改走 `<local>` 之后，不许把 `<local>` 这个键原样说给人看。
         return Err(said(no_channel(&who)));
     };
-    // 能力协商放在发之前（同 `tmux::capture_via_backend`）：「这台的后端太旧」是问得出答案的，
+    // 能力协商放在发之前：「这台的后端太旧」是问得出答案的，
     // 不许与超时同形。
     if !client.accepts(cmd) {
         return Err(copy_text("rsFrameQuery.call.tooOld", &[("who", &who)]));

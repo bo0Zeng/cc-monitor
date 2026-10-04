@@ -569,9 +569,6 @@ export function withHistoryReads(
       failedHosts: [],
     };
   return async (cmd, args) => {
-    // 列 tmux 会话那一发也在这里译回旧名字（本判据族大多经这一层，免逐条改）。
-    const tmux = tmuxReadOf(cmd, args);
-    if (tmux) return tmuxProduct(tmux[0], answer(tmux[0], tmux[1]));
     const st = standingAsked(cmd, args, answer);
     if (st) return st;
     const mint = tmuxMintOf(cmd, args);
@@ -680,11 +677,11 @@ export function withHistoryReads(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// tmux 控制类（抓屏 · 杀会话 · 送键 · 就地 resume）改走通道之后，判据那一侧的翻译
+// tmux 控制类（杀会话 · 送键 · 就地 resume）改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 它们从前是四条 Tauri 命令（`capture_remote_pane` / `kill_remote_tmux` / `tmux_send_keys` / `backend_send_into`〔散文墓碑〕），
-// 判据按命令名答话、断言旧形参。今天它们是一发 `chan_call`（op = `capture-pane` / `kill` / `launch`）⇒ 本节把一发 `chan_call`
+// 它们从前是三条 Tauri 命令（`kill_remote_tmux` / `tmux_send_keys` / `backend_send_into`〔散文墓碑〕），
+// 判据按命令名答话、断言旧形参。今天它们是一发 `chan_call`（op = `kill` / `launch`）⇒ 本节把一发 `chan_call`
 // 译回「哪一问 ＋ 旧形参」交给判据手里那个 `invoke` 替身，再把它的旧回包译成**后端的成品字节**（或通道的失败）。
 // ⚠ 译法逐格照生产：请求体键名是 `src/frontend/ui/tmux-control.ts` 发的那几个，成品键名是后端那三个构造器出的那几个
 //   （跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 钉着两侧）。
@@ -702,7 +699,6 @@ function wordsOf(e: unknown): string {
  * - `kill_remote_tmux` / `tmux_send_keys`：解析成功 ⇒ 成品（`killed` / `typed` 为真）；抛 ⇒ 对端说「不行」（原话原样带上）。
  * - `backend_send_into`：`{typed:true}` ⇒ 成品；`mayFallBack:true` ⇒ 「那台没有控制通道」（能证明没发出去）；
  *   其余 `typed:false` ⇒ 对端说「键入没确认」（原因原样）；抛 ⇒ 原样抛（那一跳自己坏了 ⇒ 界面拿不准，按不回落处置）。
- * - `capture_remote_pane`：字符串 ⇒ 成品；抛 ⇒ 对端说「抓屏失败」（原话原样）。
  */
 export function tmuxControlShim(
   inner: (cmd: string, args?: unknown) => unknown,
@@ -711,10 +707,10 @@ export function tmuxControlShim(
   return async (cmd, args) => {
     if (cmd !== "chan_call") return inner(cmd, args);
     const a = args as ChanCallArgs;
-    if (a.op !== "kill" && a.op !== "launch" && a.op !== "capture-pane") return inner(cmd, args);
+    if (a.op !== "kill" && a.op !== "launch") return inner(cmd, args);
     const body = chanArgsJson(a) as Record<string, unknown>;
     const name = body.name;
-    // 按 sid 找窗格：请求带了会话 ID（抓屏 · 结束是 `sid`，送键是 `launch` 的 `ccm_sid`）⇒ 旧形参多一格 `sid`，判据看得见。
+    // 按 sid 找窗格：请求带了会话 ID（结束是 `sid`，送键是 `launch` 的 `ccm_sid`）⇒ 旧形参多一格 `sid`，判据看得见。
     const bySid = (sid: unknown): { sid?: unknown } => (sid === undefined ? {} : { sid });
     if (a.op === "kill") {
       try {
@@ -723,15 +719,6 @@ export function tmuxControlShim(
         throw refusedReply("kill_failed", wordsOf(e));
       }
       return chanReply({ session: name, killed: true, bus: { removed: [], failed: [], unread: null } });
-    }
-    if (a.op === "capture-pane") {
-      let screen: unknown;
-      try {
-        screen = await inner("capture_remote_pane", { origin: a.origin, target: name, ...bySid(body.sid) });
-      } catch (e) {
-        throw refusedReply("capture_failed", wordsOf(e));
-      }
-      return chanReply({ name, screen });
     }
     if (launchAs === "tmux_send_keys") {
       try {
@@ -885,9 +872,6 @@ export function launchRenderShim(
     // 开终端那三步也在这里译回旧的那一条（起会话那几条判据都要开终端）。
     if (isTerminalStep(cmd, args)) return term(cmd, args);
     if (cmd !== "chan_call") return inner(cmd, args);
-    // 列 tmux 会话那一发也在这里译回旧名字（起会话那几条判据都要问名单）。
-    const tmux = tmuxReadOf(cmd, args);
-    if (tmux) return tmuxProduct(tmux[0], inner(tmux[0], tmux[1]));
     const mint = tmuxMintOf(cmd, args);
     if (mint) return tmuxMintProduct(inner(mint[0], mint[1]));
     const a = args as ChanCallArgs;
@@ -924,46 +908,13 @@ export function launchRenderShim(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// 列 tmux 会话改走通道之后，判据那一侧的翻译
+// 「这几个会话各在哪个 tmux 会话里」改问那台后端之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 它们从前是两条 Tauri 命令（本机 `list_local_tmux` · 远端 `list_remote_tmux`〔散文墓碑〕），判据按命令名答话、回 `TmuxSession[] | null`。
-// 今天是一发 `chan_call`（op = `tmux-list`，本机远端同一问）⇒ 本节把那一发译回旧名字交给判据手里的替身，再把旧回包译成后端成品：
-// - 列表 ⇒ `{installed: true, sessions}`（缺的字段按旧桩的意思补齐：`path` / `command` 空串 · `attached` 否 · `windows` 1 · `sid` null；
-// `agent` 缺 ⇒ 替身扮那台后端答：前台命令是 `claude` / `node` 即真 —— 与后端 `agents/claudecode/cards.rs::PROCESS_NAMES` 同一张，
-//   是替身在扮后端，不是界面的判定）；
-// - `null`：远端 = 那台没装 tmux ⇒ `{installed: false, sessions: []}`；本机 = 旧口径的「不知道」⇒ 通道那一层失败（新口径里「不知道」就是抛）；
-// - `undefined`（桩没答）⇒ 那台没有控制通道（不知道）；抛 ⇒ 那台后端拒（码 `unobservable`，原话带着 —— 「不知道」要说得出为什么）。
-/** 一发 `chan_call` 若是列 tmux 会话 ⇒ `[旧名字, 旧形参]`；否则 `null`。 */
-export function tmuxReadOf(cmd: string, args: unknown): [string, Record<string, unknown>] | null {
-  if (!isChanCall(cmd, args, "tmux-list")) return null;
-  return args.origin === "<local>" ? ["list_local_tmux", {}] : ["list_remote_tmux", { origin: args.origin }];
-}
-
-/** 旧回包 ⇒ `tmux-list` 成品（见本节头注）。 */
-async function tmuxProduct(name: string, got: Promise<unknown> | unknown): Promise<ArrayBuffer> {
-  let v: unknown;
-  try {
-    v = await got;
-  } catch (e) {
-    throw refusedReply("unobservable", wordsOf(e));
-  }
-  if (v === undefined || (v === null && name === "list_local_tmux")) throw NO_CHANNEL;
-  if (v === null) return chanReply({ installed: false, sessions: [] });
-  const rows = (v as Record<string, unknown>[]).map((r) => ({
-    name: r.name,
-    path: r.path ?? "",
-    command: r.command ?? "",
-    attached: r.attached ?? false,
-    windows: r.windows ?? 1,
-    sid: r.sid ?? null,
-    agent: r.agent ?? (r.command === "claude" || r.command === "node"),
-  }));
-  return chanReply({ installed: true, sessions: rows });
-}
-
+// 判据手里的替身仍按旧名字（本机 `list_local_tmux` · 远端 `list_remote_tmux`〔散文墓碑〕）答一份 tmux 名单（`{name, command?, agent?, sid?}[] | null`）；
+// 替身扮那台后端，从那份名单现算 `sessions-where` 的成品。
 /**
- * `sessions-tmux`（这几个会话各在哪个 tmux 会话里）：替身扮那台后端答 —— 从判据手里那份 tmux 名单（同上一节的旧名字）现算，
+ * `sessions-where`（这几个会话各在哪个 tmux 会话里）：替身扮那台后端答 —— 从判据手里那份 tmux 名单（同上一节的旧名字）现算，
  * 规则照后端 `control/session_batch.rs::standing`（带着它的 sid、前台是不是 agent；在跑恰一个 / 多个 / 空 tmux / 没有），不是界面的判定。
  * 名单答不出（`undefined` / 抛）⇒ 那台问不到；远端 `null` ⇒ 那台没装 tmux。
  */
@@ -977,21 +928,28 @@ async function standingProduct(origin: string, sids: string[], got: Promise<unkn
   if (v === undefined || (v === null && origin === "<local>")) throw NO_CHANNEL;
   const rows = (v ?? []) as Record<string, unknown>[];
   const results = sids.map((sid) => {
-    if (v === null) return { sid, standing: "no_tmux", names: [] };
+    // 句柄由替身按名字造（不透明，界面只拿来回指）。
+    const at = (standing: string, names: string[]) => ({
+      sid,
+      standing,
+      names,
+      terminals: names.map((n) => ({ host: "tmux", terminal: `tmux-${n}` })),
+    });
+    if (v === null) return at("no_tmux", []);
     const agentOf = (r: Record<string, unknown>) => r.agent ?? (r.command === "claude" || r.command === "node");
     const live = rows.filter((r) => r.sid === sid && agentOf(r)).map((r) => r.name as string);
     const idle = rows.filter((r) => r.sid === sid && !agentOf(r)).map((r) => r.name as string);
-    if (live.length === 1) return { sid, standing: "running", names: live };
-    if (live.length > 1) return { sid, standing: "ambiguous", names: live };
-    if (idle.length > 0) return { sid, standing: "idle", names: [idle[0]] };
-    return { sid, standing: "none", names: [] };
+    if (live.length === 1) return at("running", live);
+    if (live.length > 1) return at("ambiguous", live);
+    if (idle.length > 0) return at("idle", [idle[0]]);
+    return at("none", []);
   });
   return chanReply({ results });
 }
 
-/** 一发 `chan_call` 若是 `sessions-tmux` ⇒ 替身扮那台答（名单向判据手里的替身要）；否则 `null`。 */
+/** 一发 `chan_call` 若是 `sessions-where` ⇒ 替身扮那台答（名单向判据手里的替身要）；否则 `null`。 */
 function standingAsked(cmd: string, args: unknown, inner: (cmd: string, args: Record<string, unknown>) => unknown): Promise<ArrayBuffer> | null {
-  if (!isChanCall(cmd, args, "sessions-tmux")) return null;
+  if (!isChanCall(cmd, args, "sessions-where")) return null;
   const origin = args.origin;
   const { sids } = chanArgsJson(args) as { sids: string[] };
   const list = origin === "<local>" ? inner("list_local_tmux", {}) : inner("list_remote_tmux", { origin });
@@ -1003,8 +961,6 @@ export function withTmuxReads(
   inner: (cmd: string, args?: unknown) => unknown,
 ): (cmd: string, args?: unknown) => Promise<unknown> {
   return async (cmd, args) => {
-    const t = tmuxReadOf(cmd, args);
-    if (t) return tmuxProduct(t[0], inner(t[0], t[1]));
     const st = standingAsked(cmd, args, inner);
     if (st) return st;
     const m = tmuxMintOf(cmd, args);
@@ -1014,17 +970,17 @@ export function withTmuxReads(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// 起会话要的 tmux 名改问那台后端（`tmux-name-mint`）之后，判据那一侧的翻译
+// 起会话要的 tmux 名改问那台后端（`terminal-name-mint`）之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 同上一节的译法：一发 `chan_call`（op = `tmux-name-mint`）译成判据手里那个替身认得的名字 `tmux_name_mint`
+// 同上一节的译法：一发 `chan_call`（op = `terminal-name-mint`）译成判据手里那个替身认得的名字 `tmux_name_mint`
 // （形参 `{origin, cwd}` / `{origin, forkOf}`），替身答一个**名字**。派生 ＋ 避让的规则只在后端（`control/ccm/plan.rs`）⇒
 // 这里**不重抄**：判据自己写死「那台铸了什么」，钉的是前端问了谁、问的什么、用的是不是它铸回来的、问不到时怎么办。
 // - 名字（字符串）⇒ 成品 `{name}`；`{ bad: v }` ⇒ 原样回 `v`（形状不认那一格）；
 // - `undefined`（替身没答）⇒ 那台没有控制通道（问不到）；抛 ⇒ 那台后端拒（码 `invalid_args`，原话带着）。
 /** 一发 `chan_call` 若是铸名那一问 ⇒ `["tmux_name_mint", {origin, …入参}]`；否则 `null`。 */
 export function tmuxMintOf(cmd: string, args: unknown): [string, Record<string, unknown>] | null {
-  if (!isChanCall(cmd, args, "tmux-name-mint")) return null;
+  if (!isChanCall(cmd, args, "terminal-name-mint")) return null;
   return ["tmux_name_mint", { origin: args.origin, ...(chanArgsJson(args) as Record<string, unknown>) }];
 }
 

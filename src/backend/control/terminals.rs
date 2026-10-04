@@ -9,7 +9,7 @@
 //! - **只认名单里的终端**：句柄 / sid 先在这一刻的名单里对上，对上了才对那个窗格的 `#{pane_id}`（没挂 sid 的会话 ⇒ `#{session_id}`）下手；
 //!   不收任意 tmux 目标串。
 //! - **送字 / 送键过身份门**（与 `launch` 的 `send-into` 同一道：`gate::identity`，含「哪个前端的会话」那一维）；
-//!   抓屏只读、不过门（同 `capture-pane`）。
+//!   抓屏只读、不过门。
 //! - **先看见再送**：送的时候带上看到的那一屏的指纹（`seen_screen`），画面变了就不送、把新指纹交回去。
 //! - 只抓一次、只送一次：轮询归调用方（零定时器）。
 
@@ -108,12 +108,8 @@ pub(crate) struct TermRow {
 }
 
 impl TermRow {
-    fn handle(&self) -> String {
-        let id = self.id.trim_start_matches('$');
-        match &self.pane {
-            Some(p) => format!("{HANDLE_PREFIX}{id}-{}", p.trim_start_matches('%')),
-            None => format!("{HANDLE_PREFIX}{id}"),
-        }
+    pub(crate) fn handle(&self) -> String {
+        handle_of(&self.id, self.pane.as_deref())
     }
 
     /// 对它下手用的 tmux 句柄：挂着 sid 的窗格，或那个会话（看它当前的窗格）。
@@ -129,6 +125,15 @@ impl TermRow {
             windows: self.windows,
             client: self.client.clone(),
         }
+    }
+}
+
+/// 终端句柄：tmux 会话 ID（`$N`）＋ 挂着 sid 的窗格（`%M`；没有 ⇒ 只指会话）。名单发的、容器那一格报的都由它算（一个家）。
+pub(crate) fn handle_of(session_id: &str, pane: Option<&str>) -> String {
+    let id = session_id.trim_start_matches('$');
+    match pane {
+        Some(p) => format!("{HANDLE_PREFIX}{id}-{}", p.trim_start_matches('%')),
+        None => format!("{HANDLE_PREFIX}{id}"),
     }
 }
 
@@ -296,7 +301,10 @@ pub(crate) fn terminal_json(
     };
     let mut t = Map::new();
     t.insert("terminal".into(), row.handle().into());
-    t.insert("host".into(), "tmux".into());
+    t.insert(
+        "host".into(),
+        crate::stream::wire::TerminalHost::Tmux.as_wire().into(),
+    );
     t.insert("tmux_name".into(), row.name.clone().into());
     let title = if !row.sid.is_empty() && !shell && !row.title.is_empty() {
         row.title.clone()

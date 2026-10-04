@@ -56,6 +56,8 @@ use std::path::{Path, PathBuf};
 
 /// 单元层：不读仓内文本、不碰 OS 的测试文件。
 const UNIT: &[&str] = &[
+    // SCAN → UNIT：读 `main.rs` 源码的那一条（`--capture-pane` 够不够得到）随那条子命令删了，余下都是纯函数。
+    "tests/backend/main_stream_flag_tests.rs",
     // 记录解释搬进后端：Claude 轮次判词（原 `observe/turn_detect_tests.rs`）· Codex 记录映射（原 monitor `codex_record_tests.rs`）·
     //   按路径读正文出成品那个核（新）。
     "tests/backend/agents/claudecode/turn_tests.rs",
@@ -300,7 +302,7 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/accounts-decode.vitest.ts", // 读跨语言金样（`tests/__fixtures__/accounts.golden.json`）
     "tests/frontend/ui/apikey-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/apikey.golden.json`）
     "tests/frontend/ui/ssh-config-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/ssh-config.golden.json`）
-    "tests/frontend/ui/tmux-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/tmux-list.golden.json`）
+    "tests/frontend/ui/terminal-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/terminals.golden.json`）
     "tests/frontend/ui/port-forward-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/forward-list.golden.json`）
     "tests/frontend/ui/session-stream-credit.vitest.ts", // 读跨语言金样（`tests/__fixtures__/session-stream-credit.golden.json`）
     "tests/frontend/ui/history-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/history-products.golden.json`）
@@ -321,7 +323,6 @@ const SCAN: &[&str] = &[
     "tests/backend/control/kill_tests.rs",
     "tests/backend/control/resolve_query_tests.rs", // UNIT → SCAN：跨仓承诺那一族读冻结金样与 IPC-PROTOCOL
     "tests/backend/dial_sftp_tests.rs",
-    "tests/backend/observe/tmux_list_tests.rs", // 解析判据 ＋ 写跨语言金样（`include_str!` 读 `tmux-list.golden.json`）
     "tests/backend/dial_forwards_tests.rs", // 转发账判据 ＋ 写跨语言金样（`include_str!` 读 `forward-list.golden.json`）
     "tests/backend/dial_ssh_config_tests.rs", // 规则判据 ＋ 写跨语言金样（`include_str!` 读 `ssh-config.golden.json`）
     "tests/common/creds-core/store_tests.rs", // UNIT → SCAN：多一条「两侧读家目录同一个函数」（读两棵生产树的源码现扫调用点）
@@ -334,7 +335,6 @@ const SCAN: &[&str] = &[
     "tests/backend/stream/inbound_tests.rs",
     "tests/backend/stream/listen_tests.rs",
     "tests/backend/main_argv_table_guard.rs",
-    "tests/backend/main_stream_flag_tests.rs",
     "tests/backend/main_window_raise_guard.rs",
     "tests/backend/no_timer_guard.rs",
     // 会话事实的口径与续传（纯字节）＋ 一条异源对拍读生成物 `src/frontend/ui/generated/agent-profile-table.ts` ⇒ 判别器判扫描层。

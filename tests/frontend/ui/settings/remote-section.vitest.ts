@@ -31,8 +31,8 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
         ipcCalls.push(name);
         const op = name === "chan_call" ? String((args[0] as { op?: unknown } | undefined)?.op) : "";
         if (name === "chan_call") chanOps.push(op);
-        // 铸名那一问（`tmux-name-mint`）按帧命令名回：名字 ⇒ 那台后端的成品 `{name}`；别的 ⇒ 原样 reject（通道那一层的错）。
-        if (op === "tmux-name-mint") {
+        // 铸名那一问（`terminal-name-mint`）按帧命令名回：名字 ⇒ 那台后端的成品 `{name}`；别的 ⇒ 原样 reject（通道那一层的错）。
+        if (op === "terminal-name-mint") {
           const minted = ipcReplies.get(op);
           if (typeof minted !== "string") return Promise.reject(minted);
           const u = new TextEncoder().encode(JSON.stringify({ name: minted }));
@@ -53,16 +53,6 @@ vi.mock("../../../../src/frontend/ui/remote-probe", () => ({
     const reply = ipcReplies.get("remote-probe");
     if (reply instanceof Error) return Promise.reject(reply);
     return Promise.resolve({ message: "", stages: [], backendGaps: [], ...(reply as object) });
-  },
-}));
-// 列 tmux 会话改问那台后端（`tmux-reads.ts` 经通道）⇒ 替身同一本账：记旧名、按旧名回（`Error` ⇒ reject）。
-//   解码器本身由 `tests/frontend/ui/tmux-reads.vitest.ts` 对金样钉。
-vi.mock("../../../../src/frontend/ui/tmux-reads", () => ({
-  listTmux: (origin: string) => {
-    const name = origin === "<local>" ? "list_local_tmux" : "list_remote_tmux";
-    ipcCalls.push(name);
-    const reply = ipcReplies.get(name);
-    return reply instanceof Error ? Promise.reject(reply) : Promise.resolve(reply ?? []);
   },
 }));
 // 「从 ~/.ssh/config 导入」那三问改问本机常驻后端（`ssh-config-reads.ts` 经通道）⇒ 替身同一本账：
@@ -1056,7 +1046,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   /**
    * 「一条都不许静默忽略」：「开新 Claude」替用户派生的默认名要过铸名口，
    * **铸不出 ⇒ 不起、出声**。先前这里「列不出来就用空集铸名」—— 同一个 cwd 派生出同一个名字，
-   * 撞上远端 `create-or-attach` 的幂等闸，静默接进第一个会话（#76）。铸名口是那台后端的 `tmux-name-mint`。
+   * 撞上远端 `create-or-attach` 的幂等闸，静默接进第一个会话（#76）。铸名口是那台后端的 `terminal-name-mint`。
    * 正控：那台铸了名字 ⇒ 照常往下走到渲染那一跳。
    */
   // 起会话那几问（中转地址 `launch-endpoint` → 渲染 `launch-render-*`）改问那台后端（`src/frontend/ui/launch-render.ts`），
@@ -1065,7 +1055,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   const openLauncherAndStart = async (minted: unknown): Promise<void> => {
     ipcCalls.length = 0;
     chanOps.length = 0;
-    ipcReplies.set("tmux-name-mint", minted);
+    ipcReplies.set("terminal-name-mint", minted);
     const sec = await mount([mkH("a", "1.1.1.1")]);
     const btns = [...sec.element.querySelectorAll<HTMLButtonElement>("button")];
     btns.find((b) => b.textContent === "开新 Claude")!.click();
@@ -1079,7 +1069,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   it("★ 〔FE1〕开新 Claude：那台铸不出名字 ⇒ 不起、出声（不自己拼一个不避让的名字）", async () => {
     document.body.innerHTML = "";
     await openLauncherAndStart(refusedReply("invalid_args", "ssh 抖动"));
-    expect(chanOps).toContain("tmux-name-mint");
+    expect(chanOps).toContain("terminal-name-mint");
     expect(renderAsked(), "铸不出名字还往下起了").toBe(false);
     expect(ipcCalls).not.toContain("launch_remote_terminal");
     const toast = document.body.textContent ?? "";

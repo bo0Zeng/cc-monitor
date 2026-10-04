@@ -310,7 +310,7 @@ cmp_cwd "布局5：工作区自身（非 git）→ 自己"             "$CC_WORK
 
 echo
 echo "===== 会话名派生：真跑那条路铸出来的名字（前端那份删了，规则只剩后端一份）====="
-# 同规则 = 终端里敲 `ccm` 与 app「开新 Claude」（问后端 `tmux-name-mint`，同一个 `plan::mint_tmux_name`）在同一目录铸同一个名字。
+# 同规则 = 终端里敲 `ccm` 与 app「开新 Claude」（问后端 `terminal-name-mint`，同一个 `plan::mint_tmux_name`）在同一目录铸同一个名字。
 # 原先这 5 条拿 `npx tsx` 真跑前端 `deriveTmuxName` 对拍（跨语言双写点的漂移守卫，E49）。
 #   前端那份删了 ⇒ 没有第二份可拍；期望改手写（与 `plan_tests.rs::the_session_name_derivation_rule` 同一组样本），
 #   钉的是「`--ccm-print` 那一行里抽得出这个名字」—— 抽取器失灵（下面 `^[{ ]*` 那段注脚）照样当场红。

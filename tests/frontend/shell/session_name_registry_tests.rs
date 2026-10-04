@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 const REGISTERED: &[(&str, &str, usize, &str)] = &[
     // 前端那两格出表：`src/remote-launch.ts`（`deriveTmuxName`，原 `producer-target`）整份删、
     //   `src/frontend/ui/fork-launch.ts`（`forkTmuxName` 的 `-fork-cc`，原 `producer-duplicate` 退役归 U11）随派生 ＋ 避让一起搬进后端。
-    //   ⇒ 前端零产名点（界面要名字就问那台后端的 `tmux-name-mint`）；后端那一份从「副本」翻成**唯一本体**。
+    //   ⇒ 前端零产名点（界面要名字就问那台后端的 `terminal-name-mint`）；后端那一份从「副本」翻成**唯一本体**。
     (
         // 🔴 住址从 `shared/ccm` 换到这里：〔用@09-11 `K33`〕那个 bash 脚本删了，`derive_tmux_name` 搬进了后端本体。
         //    ⚠ 处数按**行**数：`derive_tmux_name` 里 `"session-cc"`（空名回落）与 `format!("{s}-cc")` 两行，
@@ -18,7 +18,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
         "producer-target",
         4,
         "本体：`derive_tmux_name`（cwd 派生 `<项目名>-cc`，空 ⇒ `session-cc`）＋ `fork_tmux_base`（分叉 `<源名>-fork-cc`）。\
-全仓唯一一份：`ccm` 起会话与帧命令 `tmux-name-mint`（界面问的那一口）都走它，\
+全仓唯一一份：`ccm` 起会话与帧命令 `terminal-name-mint`（界面问的那一口）都走它，\
              撞名避让走同文件的 `next_free_name`（`mint_tmux_name`，只收会话快照那张 `TakenNames`）。\
              ★★ `K-R96`（09-12）退役了 sid 派生那一族（`pickFreshTmuxName`，用户 `R55`「要是可读的名字 / 不要id」）；\
              sid 骑在 `@ccm_sid` 上。",

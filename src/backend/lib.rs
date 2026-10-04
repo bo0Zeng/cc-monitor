@@ -212,7 +212,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   ★ 同 `p2d` / `p2e` 那条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
 ///   本轮**没做**（本工作树也没铺 `src/frontend/shell/embedded-backends/`）。
 ///   🔴 **别把它读成「远端画面预览通了」**：本件只出后端这一侧的原语，
-///   monitor 那条 `capture_remote_pane` 一个字节没动 —— 欠账换了个名字，没有被结掉。
+///   monitor 那条远端抓屏命令一个字节没动 —— 欠账换了个名字，没有被结掉。
 ///
 /// - p2h-oneshot-session：新增 `--oneshot-session` —— **一次性会话**，
 ///   起一个到点**自己会死**的 tmux 会话（`new-session -d -P -F '#{session_id}'` ＋
@@ -847,10 +847,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `K-R113`：cc-bus 的**具名读命令**（名单 ＋ spawn 台账一次回全）。
     // 登记在这里的理由与上面那三条逐字相同 —— `is_query_mode` 那道闸门读的就是本表。
     "--bus-state",
-    // `K-R86`：只读的一次性抓屏原语。登记在这里的理由与上面那几条逐字相同 ——
-    // `is_query_mode` 那道**闸门**读的就是本表，不在表里 ⇒ 被当未知 flag ⇒
-    // 打一行 warn 之后**照常进流模式**，调用方拿到一堆 jsonl 行而不是那一屏。
-    "--capture-pane",
     // 部署计划（帧面 `deploy-plan` 的 CLI 面，自动派生）。
     "--deploy-plan",
     // 远端常驻后端 hello 的新旧（帧面 `resident-verdict` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
@@ -1061,8 +1057,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--terminal-input",
     "--terminal-preview",
     "--terminals-list",
-    // 帧面 `tmux-list` 自动派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
-    "--tmux-list",
     "--tmux-notify",
 ];
 
@@ -1359,6 +1353,8 @@ pub struct TargetGap {
 
 /// 🔴 **全部逐能力豁免 —— 唯一住址。**
 ///
+/// **20 → 18**：帧面 `capture-pane` 与 CLI 面 `--capture-pane` × Windows 两行摘了（抓屏只走 `terminal-preview`）。
+///
 /// **14 → 16**：`files-chmod` × Windows（帧面 ＋ CLI 面各一行，档 = 结构），
 /// 由 `no_unix_mode` 码 × [`unix_mode_bits_on`] 现推出来（表尾那一段）。
 ///
@@ -1502,15 +1498,6 @@ pub const TARGET_GAPS: &[TargetGap] = &[
     // 谁来还：挂在 Windows 后台机制上（机制未定）。
     TargetGap {
         family: "wire-commands",
-        capability: "capture-pane",
-        target: Target::Windows,
-        kind: GapKind::Owed,
-        rationale: "抓一屏今天就是起一次 `tmux capture-pane`（命令自己声明了 `no_tmux` 码）。\
-              Windows 上没有 tmux ⇒ 平台默认做不到。将来 Windows 后台机制选定（未定）时给出\
-              「看一眼会话画面」的等价物，**暂时不做**。",
-    },
-    TargetGap {
-        family: "wire-commands",
         capability: "kill",
         target: Target::Windows,
         kind: GapKind::Owed,
@@ -1556,14 +1543,6 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "与帧面 `terminal-input` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
-    },
-    TargetGap {
-        family: "cli-subcommands",
-        capability: "--capture-pane",
-        target: Target::Windows,
-        kind: GapKind::Owed,
-        rationale: "与帧面 `capture-pane` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \
-              派生到同一条登记）⇒ 同一个理由（Windows 后台机制未定），将来与帧面那一行同拍还，**暂时不做**。",
     },
     TargetGap {
         family: "cli-subcommands",

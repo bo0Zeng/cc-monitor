@@ -600,32 +600,82 @@ fn accounts_changed_is_recognised_and_reaches_the_frontend_as_ready() {
     );
 }
 
-/// `session_added.container`：两个字面量认得；缺席 / 不认识的取值 ⇒ `None`（不知道 ≠ 不在）。
-/// 帧串与后端 `wire_tests::session_added_container_is_additive_with_two_literals` 的精确字节逐字相同（异源：那边是后端序列化器的产物）。
+/// `session_added.container`：开放联合 —— 认得的宿主 · 不在宿主里 · 其它（原词带着，不吞）；缺席 ⇒ `None`（不知道）；
+/// 形状不对 ⇒ 整帧 `BadShape`。认得的两形帧串 == 后端 `wire_tests::session_added_container_is_an_object_with_host_and_terminal` 的精确字节。
 #[test]
-fn session_added_container_reads_two_literals_and_unknown_is_none() {
-    use crate::session_book::Container;
+fn session_added_container_is_an_open_union() {
+    use crate::session_book::{SessionContainer, TerminalHost};
     let get = |line: &str| match parse_frame(line).expect("session_added 要解得出") {
         InboundFrame::SessionAdded { container, .. } => container,
         other => panic!("解出来不是 session_added：{other:?}"),
     };
     assert_eq!(
-        get(r#"{"kind":"session_added","sid":"s","container":"tmux"}"#),
-        Some(Container::Tmux)
+        get(
+            r#"{"kind":"session_added","sid":"s","container":{"host":"tmux","terminal":"tmux-3-7"}}"#
+        ),
+        Some(SessionContainer::Hosted {
+            host: TerminalHost::Tmux,
+            terminal: Some("tmux-3-7".into())
+        })
     );
     assert_eq!(
-        get(r#"{"kind":"session_added","sid":"s","container":"none"}"#),
-        Some(Container::None)
+        get(r#"{"kind":"session_added","sid":"s","container":{"host":"tmux"}}"#),
+        Some(SessionContainer::Hosted {
+            host: TerminalHost::Tmux,
+            terminal: None
+        })
+    );
+    assert_eq!(
+        get(r#"{"kind":"session_added","sid":"s","container":{"host":"none"}}"#),
+        Some(SessionContainer::None)
     );
     assert_eq!(get(r#"{"kind":"session_added","sid":"s"}"#), None);
     assert_eq!(
-        get(r#"{"kind":"session_added","sid":"s","container":"screen"}"#),
-        None
+        get(r#"{"kind":"session_added","sid":"s","container":{"host":"hosted","terminal":"h-1"}}"#),
+        Some(SessionContainer::Other {
+            host: "hosted".into()
+        })
     );
-    assert_eq!(
-        get(r#"{"kind":"session_added","sid":"s","container":1}"#),
-        None
-    );
+    for bad in [
+        r#"{"kind":"session_added","sid":"s","container":"tmux"}"#,
+        r#"{"kind":"session_added","sid":"s","container":{"terminal":"t"}}"#,
+        r#"{"kind":"session_added","sid":"s","container":{"host":"tmux","terminal":1}}"#,
+    ] {
+        assert!(
+            matches!(parse_frame(bad), Err(Unread::BadShape { .. })),
+            "形状不对的容器要整帧 BadShape：{bad}"
+        );
+    }
+}
+
+/// 认得的宿主 == 金样里出现过的宿主（两向；异源：金样由后端序列化器写出）。壳不写宿主字面量表。
+#[test]
+fn the_hosts_the_monitor_knows_are_the_hosts_in_the_golden() {
+    use crate::session_book::{SessionContainer, TerminalHost};
+    let golden = include_str!("../../../__fixtures__/session-stream.golden.jsonl");
+    let mut seen: Vec<TerminalHost> = Vec::new();
+    for line in golden.lines() {
+        if let Ok(InboundFrame::SessionAdded {
+            container: Some(c), ..
+        }) = parse_frame(line)
+        {
+            match c {
+                SessionContainer::Hosted { host, .. } => seen.push(host),
+                SessionContainer::None => {}
+                SessionContainer::Other { host } => panic!("金样里的宿主 `{host}` 壳不认得"),
+            }
+        }
+    }
+    seen.sort();
+    seen.dedup();
+    let all = vec![TerminalHost::Tmux];
+    // 穷尽 `match`：加一种宿主不补上面那一行就编不过。
+    for h in &all {
+        match h {
+            TerminalHost::Tmux => {}
+        }
+    }
+    assert_eq!(seen, all, "壳认得的宿主与金样里的宿主对不上");
 }
 
 /// `sessions_replayed`（无载荷）认得。帧串 == 后端 `wire_tests::sessions_replayed_has_exactly_these_bytes`。

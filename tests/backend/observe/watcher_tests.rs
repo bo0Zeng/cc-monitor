@@ -2857,7 +2857,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     let containers: Vec<Option<crate::stream::wire::SessionContainer>> = frames
         .iter()
         .filter_map(|f| match f {
-            Frame::SessionAdded { container, .. } => Some(*container),
+            Frame::SessionAdded { container, .. } => Some(container.clone()),
             _ => None,
         })
         .collect();

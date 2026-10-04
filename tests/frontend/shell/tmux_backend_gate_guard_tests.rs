@@ -445,7 +445,7 @@ fn the_monitor_has_no_second_path_that_kills_a_session() {
     );
 }
 
-/// ★★**界面说这几条控制类帧命令只经一处**：`capture-pane` / `kill` / `launch` 的 `chan.call`
+/// ★★**界面说这几条控制类帧命令只经一处**：`kill` / `launch` 的 `chan.call`
 /// 只住 `src/frontend/ui/tmux-control.ts`。
 ///
 /// 守的要求：「迁到通道之后，业务解释是不是**只有一个家**」—— 空目标先拒（Gate 1 本地那一格）、
@@ -457,11 +457,7 @@ fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
     let root = crate::guard_support::repo_root();
     let mut homes: std::collections::BTreeMap<String, Vec<String>> = Default::default();
     let mut scanned = 0usize;
-    let needles = [
-        "chan.call(origin, \"capture-pane\"",
-        "chan.call(origin, \"kill\"",
-        "chan.call(origin, \"launch\"",
-    ];
+    let needles = ["chan.call(origin, \"kill\"", "chan.call(origin, \"launch\""];
     let mut counts: std::collections::BTreeMap<&str, usize> = Default::default();
     for (p, text) in guard_core::scan_tree_excluding(&root.join("src"), &["ts"], &[]) {
         let rel = p
@@ -489,11 +485,10 @@ fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
             "`{n}` 出现在 `src/frontend/ui/tmux-control.ts` 之外（或那一份里没有了）—— 界面说这条控制类帧命令的家不止一个"
         );
     }
-    // 正控 ＋ 恒等：抓屏 1 · 结束 1 · 送键与就地 resume 各 1 ⇒ launch 2（「打断」那个 mode 名 1 → 删）。
+    // 正控 ＋ 恒等：结束 1 · 送键与就地 resume 各 1 ⇒ launch 2（「打断」那个 mode 名 1 → 删；抓屏改走 `terminal-preview` → 删）。
     assert_eq!(
         counts.into_iter().collect::<Vec<_>>(),
         vec![
-            ("chan.call(origin, \"capture-pane\"", 1),
             ("chan.call(origin, \"kill\"", 1),
             ("chan.call(origin, \"launch\"", 2),
         ],

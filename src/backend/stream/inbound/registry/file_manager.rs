@@ -40,7 +40,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   在这两条之前，`files::index::rebuild_once` 与 `files::browse_watch::set_browsing`
     //   **零生产调用方** ⇒ 真机上 `files-find` 恒回 `index_missing: true`。
     //
-    // 🔴 **节拍仍然不归后端**，一个字没松：这两条与 `capture-pane` 那两条**同一形** ——
+    // 🔴 **节拍仍然不归后端**，一个字没松：这两条与抓屏那条原语**同一形** ——
     //   「**只做一次**……『隔多久再做一次』留在调用方」（`K37`：后端只给机制，不给偏好），
     //   `no_timer_guard` 在后端侧零容忍地钉着。
     //   ⚠ **别把这一刀读成「那个缺口填上了」**：调用方不发这条命令，

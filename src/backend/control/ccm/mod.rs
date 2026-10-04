@@ -429,7 +429,7 @@ pub(crate) fn answer_print(
     Ok(serde_json::json!({ "line": plan::render(&plan) }))
 }
 
-/// 帧命令 `tmux-name-mint`：**起会话要一个 tmux 名 —— 问这台**。
+/// 帧命令 `terminal-name-mint`：**起会话要一个终端名 —— 问这台**（这一版宿主只有 tmux，铸的是 tmux 会话名）。
 ///
 /// 入：`{"cwd": "<目录>"}`（起新会话 / 全新 resume：基名 `<项目名>-cc`）或 `{"forkOf": "<源会话的 tmux 名，或它的 cwd>"}`
 /// （分叉：基名 `<…>-fork-cc`），二者恰给一个。出：`{"name": "<最终名>"}`。
@@ -438,15 +438,15 @@ pub(crate) fn answer_print(
 /// 这台没装 tmux ⇒ 一个名字都没占 ⇒ 交基名（起不起得来归起会话那一步说）。
 ///
 /// 码：`invalid_args`（两格都没给 / 都给了 / 不是字符串）。前端问不到（链路断 · 那台后端比这一问老）⇒ 不铸名、不起、说清
-/// （`src/frontend/ui/tmux-name-mint.ts`：空集铸名就是「不避让」，issue #76 的形状）。
-pub(crate) fn answer_tmux_name_mint(
+/// （`src/frontend/ui/terminal-name-mint.ts`：空集铸名就是「不避让」，issue #76 的形状）。
+pub(crate) fn answer_terminal_name_mint(
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, (&'static str, String)> {
-    tmux_name_mint_with(args, crate::common::session_snapshot::global())
+    terminal_name_mint_with(args, crate::common::session_snapshot::global())
 }
 
-/// [`answer_tmux_name_mint`] 的内核（快照是入参：测试拿脚本化探测器造一份）。
-pub(crate) fn tmux_name_mint_with(
+/// [`answer_terminal_name_mint`] 的内核（快照是入参：测试拿脚本化探测器造一份）。
+pub(crate) fn terminal_name_mint_with(
     args: &serde_json::Value,
     snap: &crate::common::session_snapshot::SessionSnapshot,
 ) -> Result<serde_json::Value, (&'static str, String)> {

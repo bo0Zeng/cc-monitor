@@ -18,13 +18,15 @@
 // 用一个手动 resolve 的 deferred 把「回包」按在半空，就能确定地造出那个时序。
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const capture = vi.fn<(args: { origin: string; target: string; sid?: string }) => Promise<string>>();
+const capture = vi.fn<(args: { origin: string; target: string; which: unknown }) => Promise<string>>();
 const toast = vi.fn();
 
-// 抓屏从 monitor 的 `capture_remote_pane`〔散文墓碑〕换成界面直接经通道问（`src/frontend/ui/tmux-control.ts`）：
-//   本文件只关心「回包晚于关闭」这条竞态，于是把那一问整个替掉（通道那一跳的判据在 `tests/frontend/ui/tmux-control.vitest.ts`）。
-vi.mock("../../../../src/frontend/ui/tmux-control", () => ({
-  capturePane: (origin: string, target: string, sid?: string) => capture(sid === undefined ? { origin, target } : { origin, target, sid }),
+// 抓屏经通道问那台后端（`src/frontend/ui/terminal-reads.ts::previewText`）：
+//   本文件只关心「回包晚于关闭」这条竞态，于是把那一问整个替掉（通道那一跳的判据在 `tests/frontend/ui/terminal-reads.vitest.ts`）。
+vi.mock("../../../../src/frontend/ui/terminal-reads", () => ({
+  previewText: (origin: string, which: unknown, target: string) => capture({ origin, target, which }),
+}));
+vi.mock("../../../../src/frontend/ui/control-said", () => ({
   saidOfControl: (e: unknown) => (e instanceof Error ? e.message : String(e)),
 }));
 vi.mock("../../../../src/frontend/ui/error-toast", () => ({
@@ -59,25 +61,25 @@ afterEach(() => {
 describe("远端画面预览：正路", () => {
   it("抓到内容 → 显示出来（先证明夹具真的走通了，不然下面全是空转）", async () => {
     capture.mockResolvedValue("hello-pane");
-    await openPanePreview("devbox", "%1");
+    await openPanePreview("devbox", "%1", { sid: "sid-a" });
     expect(capture, "抓屏命令一次都没被调 —— 夹具没走通").toHaveBeenCalledTimes(1);
     expect(preText(overlayEl())).toBe("hello-pane");
   });
 
-  it("从 tab 打开的带着会话 ID ⇒ 抓的是挂着它的那个窗格（每次刷新都带）", async () => {
+  it("从 tab 打开的带着终端句柄 ⇒ 抓的是那个终端（每次刷新都带）", async () => {
     capture.mockResolvedValue("x");
-    await openPanePreview("devbox", "two-cc", "sid-b");
+    await openPanePreview("devbox", "two-cc", { terminal: "tmux-2-5" });
     (overlayEl()?.querySelector("button.pane-preview-btn") as HTMLButtonElement | null)?.click(); // 头一个是「刷新」
     await Promise.resolve();
     expect(capture.mock.calls.map(([a]) => a)).toEqual([
-      { origin: "devbox", target: "two-cc", sid: "sid-b" },
-      { origin: "devbox", target: "two-cc", sid: "sid-b" },
+      { origin: "devbox", target: "two-cc", which: { terminal: "tmux-2-5" } },
+      { origin: "devbox", target: "two-cc", which: { terminal: "tmux-2-5" } },
     ]);
   });
 
   it("抓到空串 → 明确写「画面为空」，不是留一个空白框", async () => {
     capture.mockResolvedValue("");
-    await openPanePreview("devbox", "%1");
+    await openPanePreview("devbox", "%1", { sid: "sid-a" });
     expect(preText(overlayEl())).toBe("（画面为空）");
   });
 });
@@ -86,7 +88,7 @@ describe("★ 竞态：回包晚于关闭 / 换预览", () => {
   it("关掉之后迟到的成功回包，不许写回那个旧壳", async () => {
     const d = deferred<string>();
     capture.mockReturnValue(d.promise);
-    const pending = openPanePreview("devbox", "%1");
+    const pending = openPanePreview("devbox", "%1", { sid: "sid-a" });
 
     const old = overlayEl();
     expect(old, "壳没建起来，下面的断言会变成空转").not.toBeNull();
@@ -105,7 +107,7 @@ describe("★ 竞态：回包晚于关闭 / 换预览", () => {
   it("关掉之后迟到的失败回包，不许再弹 toast", async () => {
     const d = deferred<string>();
     capture.mockReturnValue(d.promise);
-    const pending = openPanePreview("devbox", "%1");
+    const pending = openPanePreview("devbox", "%1", { sid: "sid-a" });
 
     closePanePreview();
     d.reject(new Error("boom"));
@@ -116,7 +118,7 @@ describe("★ 竞态：回包晚于关闭 / 换预览", () => {
 
   it("对照：没关掉时，失败回包该弹 toast（否则上面那条可能只是 toast 从来不弹）", async () => {
     capture.mockRejectedValue(new Error("boom"));
-    await openPanePreview("devbox", "%1");
+    await openPanePreview("devbox", "%1", { sid: "sid-a" });
     expect(toast, "首次抓取失败却什么都不说 = 静默失败").toHaveBeenCalledTimes(1);
     // 首次失败无内容可留 ⇒ 直接关掉，不留一个空壳在那里。
     expect(overlayEl()).toBeNull();
@@ -129,7 +131,7 @@ describe("抽表前后界面文字逐字不变（CP2a 样板区）", () => {
   it("标题 · 两个按钮 · 加载中 · 空画面 · 失败 toast", async () => {
     const d = deferred<string>();
     capture.mockReturnValue(d.promise);
-    const pending = openPanePreview("devbox", "%1");
+    const pending = openPanePreview("devbox", "%1", { sid: "sid-a" });
     const root = overlayEl();
     expect(root?.querySelector(".pane-preview-title")?.textContent).toBe("预览画面 · [devbox] tmux: %1");
     const btns = [...(root?.querySelectorAll("button") ?? [])];
@@ -144,7 +146,7 @@ describe("抽表前后界面文字逐字不变（CP2a 样板区）", () => {
 
     closePanePreview();
     capture.mockRejectedValue(new Error("boom"));
-    await openPanePreview("devbox", "%1");
+    await openPanePreview("devbox", "%1", { sid: "sid-a" });
     expect(toast.mock.calls[0]?.[0]).toBe("预览画面失败");
   });
 });

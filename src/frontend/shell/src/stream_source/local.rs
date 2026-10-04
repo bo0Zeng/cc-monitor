@@ -126,7 +126,7 @@ pub(crate) fn local_product(
                 name: name.clone(),
                 status: status.clone(),
                 waiting_for: waiting_for.clone(),
-                container: *container,
+                container: container.clone(),
                 pid: *pid,
             },
         }),

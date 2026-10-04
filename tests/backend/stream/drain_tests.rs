@@ -35,13 +35,13 @@ fn d1_the_gate_waits_for_every_ticket_and_refuses_after_close() {
         .enter("files-put（id=a）".into())
         .expect("没关闸时取得到票");
     let b = d
-        .enter("capture-pane（id=b）".into())
+        .enter("terminal-preview（id=b）".into())
         .expect("没关闸时取得到第二张");
     assert_eq!(
         d.in_flight_names(),
         vec![
             "files-put（id=a）".to_string(),
-            "capture-pane（id=b）".to_string()
+            "terminal-preview（id=b）".to_string()
         ],
         "在飞的名字（按起跑先后）"
     );
@@ -60,7 +60,7 @@ fn d1_the_gate_waits_for_every_ticket_and_refuses_after_close() {
     drop(a);
     assert_eq!(
         d.in_flight_names(),
-        vec!["capture-pane（id=b）".to_string()],
+        vec!["terminal-preview（id=b）".to_string()],
         "落下的那张要从名单里摘掉"
     );
     assert!(
@@ -85,7 +85,7 @@ const CHILD_DEADLINE_MS: &str = "CCM_HX1_DRAIN_DEADLINE_MS";
 
 /// 子进程那一半：与 `main.rs::run_over_stdio` 收信号那一支同形 —— stdin 进 `inbound::spawn`、应答写 stdout，
 /// 收到停机信号 ⇒ `exit_after_drain`（写者照常跑）。**跑的全是生产那几样**：取票的门 · 闸 · 收场函数 · 信号监听 ·
-/// 一条真的阻塞命令（`capture-pane` 起 `tmux`，PATH 上那个是假的）。只有「把它们拼起来」这一层是台架（接线由 D3 钉）。
+/// 一条真的阻塞命令（`terminal-preview` 起 `tmux`，PATH 上那个是假的）。只有「把它们拼起来」这一层是台架（接线由 D3 钉）。
 #[test]
 #[ignore = "HX1 D2 的子进程那一半：只由 d2_* 父进程 re-exec 起来"]
 fn d2_child_harness() {
@@ -138,7 +138,7 @@ fn d2_child_harness() {
     });
 }
 
-/// 一台假 `tmux`：被起来就先往 `ready` 那根 FIFO 说一声，再卡在 `gate` 那根 FIFO 上，直到父进程放开。
+/// 一台假 `tmux`：头一次被起来就先往 `ready` 那根 FIFO 说一声，再卡在 `gate` 那根 FIFO 上，直到父进程放开。
 struct Rig {
     dir: std::path::PathBuf,
     ready: std::path::PathBuf,
@@ -166,8 +166,10 @@ impl Rig {
                 .expect("mkfifo");
             assert!(st.success(), "mkfifo {} 失败", f.display());
         }
+        // 只有头一次被起来时报到并卡住；同一条命令后面再起的几次 tmux（列客户端那一下）直接退。
         let script = format!(
-            "#!/bin/sh\necho started > '{}'\ncat '{}' > /dev/null\nexit 0\n",
+            "#!/bin/sh\nif mkdir '{}' 2>/dev/null; then echo started > '{}'; cat '{}' > /dev/null; fi\nexit 0\n",
+            dir.join("once").display(),
             ready.display(),
             gate.display()
         );
@@ -335,8 +337,8 @@ fn wait_exit(c: &mut Child) -> std::process::ExitStatus {
     }
 }
 
-const CAPTURE_A: &str = r#"{"id":"a","cmd":"capture-pane","args":{"name":"hx1-a"}}"#;
-const CAPTURE_B: &str = r#"{"id":"b","cmd":"capture-pane","args":{"name":"hx1-b"}}"#;
+const CAPTURE_A: &str = r#"{"id":"a","cmd":"terminal-preview","args":{"sid":"hx1-a"}}"#;
+const CAPTURE_B: &str = r#"{"id":"b","cmd":"terminal-preview","args":{"sid":"hx1-b"}}"#;
 
 /// 起子进程 → 发一条会卡住的阻塞命令 → 等假 tmux 真起来 → SIGTERM → 等到「收尾：还有 1 条」那句。
 fn up_to_draining(tag: &str) -> (Rig, Child) {
@@ -404,7 +406,7 @@ fn d2_a_second_sigterm_stops_waiting() {
 /// **到期限仍没排空 ⇒ 说出哪几条没做完，然后退**（不再无限期留着）。
 /// 守的要求：「后端自己兜一个退出排空期限 …… 到点仍未排空 ⇒ 记一行日志说哪几条没做完，然后退出」；
 /// `INVARIANTS §48.2`「脱离后不留僵尸」。形状：同 D2 的真子进程台架，期限交 800ms、gate 一直不放 ⇒
-/// 子进程自己退 0，stderr 里那一行点名 `capture-pane（id=a）`；对照：D2 那一趟（期限是生产的 30 秒）放开之前一直在。
+/// 子进程自己退 0，stderr 里那一行点名 `terminal-preview（id=a）`；对照：D2 那一趟（期限是生产的 30 秒）放开之前一直在。
 #[test]
 fn d4_the_drain_deadline_names_what_was_left_and_exits() {
     let (rig, mut c) = up_to_draining_with("deadline", Some(800));
@@ -412,7 +414,7 @@ fn d4_the_drain_deadline_names_what_was_left_and_exits() {
     assert_eq!(st.code(), Some(0), "{st:?}");
     let err = c.err_all.lock().unwrap().join("\n");
     assert!(
-        err.contains("排空期限") && err.contains("capture-pane（id=a）"),
+        err.contains("排空期限") && err.contains("terminal-preview（id=a）"),
         "到点了应当说出哪一条没做完：{err}"
     );
     assert!(!err.contains("都做完了"), "{err}");

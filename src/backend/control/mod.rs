@@ -25,17 +25,12 @@
 //!   「不要轮询」「ccm 做到必须走后端」）。触发时机来自 observe 侧的 pidfile inotify
 //!   ⇒ 这是 `layering_guard` 里**第二条**登记在案的 `observe → control` 跨层边。
 //!   探测复用 [`gate::probe`]，只在真要改值时多起一个 `tmux set-option`。
-//! - [`capture_pane`]（`K-R86`，09-13）：**抓一次某个 tmux 会话此刻那一屏**（`capture-pane -p`）。
+//! - [`capture_pane`]：**抓一次某个窗格此刻那一屏**（`tmux capture-pane -p`），终端管理的预览与送前比对用。
 //!   **只读**，起进程一处（`tmux`，argv 直传不过 shell），已登记进
 //!   `readonly_guard::spawn_registry::ALLOWED`；而「这一处只读」这件事那张表的键**分不出**
 //!   （它只记「起什么程序」），所以另有 `readonly_guard::capture_is_read_only` 逐元素钉 argv。
-//!   ⚠ 它**只抓一次就返回** —— 轮询归调用方，别在这里顺手做掉（`KR86D3`）。
+//!   ⚠ 它**只抓一次就返回** —— 轮询归调用方，别在这里顺手做掉。
 //!   ⚠ 它归本层的理由**不是** `gate` 那条「有决策权」（定框 C13），逐条写在它自己的头注里。
-//!   ★ **`K-R104`（09-13）：它有第二个面了** —— 帧面命令 `capture-pane`
-//!   （`inbound::REGISTRY`），与 CLI 那条 `--capture-pane` **共用同一个本体**
-//!   （`K33` 逐字「所有命令只许有一处，其他都是根据传参来调用」）。
-//!   两个面**只差取参数与包信封的方式**：`capture_for_inbound` 收 `{name}`、回 `{name, screen}`；
-//!   `run` 收一个位置参数、把那一屏原样写 stdout。起进程点**一处不增**。
 //! - [`kill`]（F04a）：**杀一个 tmux 会话**。过 §34 三道门（Gate 3 = `windows==1` 只给它），
 //!   对 `#{session_id}` 句柄下手而不是名字。⚠ 本模块落地 ≠ monitor 那条路已切过来（那是 F04b，C6 顺序）。
 //! - [`launch`]（U8a-2b）：**起 tmux 会话 / 往已有会话键入载荷**（U8a 分解里的「平面 ②」）。

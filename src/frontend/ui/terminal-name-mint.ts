@@ -8,7 +8,7 @@
  *
  * 「从 cwd 派生基名 → 撞名避让」原先前端一份（`remote-launch.ts` 的 `deriveTmuxName` · `mintTmuxName` ·
  * `mintSessionTmuxName`，分叉那条 `fork-launch.ts::forkTmuxName`）、后端一份（`control/ccm/plan.rs`，终端里敲 `ccm` 走它），
- * 两边逐字同规则、跨语言对拍钉着。前端那份删了：要名字就问**那台**后端的 `tmux-name-mint`
+ * 两边逐字同规则、跨语言对拍钉着。前端那份删了：要名字就问**那台**后端的 `terminal-name-mint`
  * （`{cwd}` ⇒ `<项目名>-cc` · `{forkOf}` ⇒ `<…>-fork-cc`，按那台那张会话快照避让）—— 规则与名单都在那一台，
  * 于是界面铸出来的名字与终端里在同一目录敲 `ccm` 铸的是同一个。
  *
@@ -19,7 +19,7 @@
  * 「不铸名」之后怎么办归调用方：本机把 `null` 交给后端（它有一条如实的「不进容器」旧路）；
  * 远端**没有**不进 tmux 的起法 ⇒ [`refuseUnmintable`]：不起，说清是哪台、为什么。
  *
- * 分叉那条要知道源会话此刻在哪个 tmux 里，那是另一问（问那台后端 `sessions-tmux`，`tmux-sessions.ts::standingOf`）。
+ * 分叉那条要知道源会话此刻在哪个 tmux 里，那是另一问（问那台后端 `sessions-where`，`sessions-where.ts::standingOf`）。
  */
 import type { Origin } from "./ipc/origin";
 import { chan } from "../../comms/inward/chan";
@@ -29,10 +29,10 @@ import { copyText } from "./copy-table";
 
 export type MintOutcome = { ok: true; name: string } | { ok: false; why: string };
 
-/** 期限：那台后端问一次会话快照（起一次 `tmux ls`）就答；15 s 盖住回程（远端没连着还要握手），与 `tmux-list` 同一档。 */
+/** 期限：那台后端问一次会话快照（起一次 `tmux ls`）就答；15 s 盖住回程（远端没连着还要握手），与列终端名单同一档。 */
 const MINT_BUDGET_MS = 15_000;
 
-/** `tmux-name-mint` 的成品 `{name}` ⇒ 名字；形状不认 ⇒ `null`。严格收（恰好一个键、非空串）。 */
+/** `terminal-name-mint` 的成品 `{name}` ⇒ 名字；形状不认 ⇒ `null`。严格收（恰好一个键、非空串）。 */
 export function decodeMinted(v: unknown): string | null {
   if (v === null || typeof v !== "object" || Array.isArray(v)) return null;
   const o = v as Record<string, unknown>;
@@ -46,7 +46,7 @@ async function askMint(origin: Origin, args: { cwd: string } | { forkOf: string 
   try {
     const body = jsonBody(args);
     const budget = budgetWithin(MINT_BUDGET_MS);
-    reply = await chan.call(origin, "tmux-name-mint", body, budget);
+    reply = await chan.call(origin, "terminal-name-mint", body, budget);
   } catch (e) {
     return { ok: false, why: saidOf(e, copyText("tmuxMint.backend.tooOld")) };
   }

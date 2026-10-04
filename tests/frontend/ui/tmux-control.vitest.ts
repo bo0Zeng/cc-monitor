@@ -9,7 +9,7 @@
  *
  * | 性质 | 判据 |
  * |---|---|
- * | TS 解码器读得懂后端真出的成品 —— 同一份跨语言金样，后端那侧 `capture_pane_tests::the_capture_product_matches_the_cross_language_golden` 对拍它（异源：Rust 构造器造、TS 解） | 「金样」 |
+ * | TS 解码器读得懂后端真出的成品 —— 同一份跨语言金样，后端那侧 `kill_tests` / `launch_tests` 对拍它（异源：Rust 构造器造、TS 解） | 「金样」 |
  * | 形状不对 ⇒ 抛（多一格 / 缺一格 / 类型不对），不猜 | 「形状不对」 |
  * | 界面不判目标名：空目标原样交给后端；后端 `invalid_args` ⇒ 各动作那句「后端不接受这个会话名」带后端原话 | 「空目标」 |
  * | 本机与远端同一条路（`<local>` 照样经通道问），通道不在时两句话不同、远端那句点得出是哪台 | 「本机」「通道不在」 |
@@ -28,9 +28,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import {
-  capturePane,
   ControlError,
-  decodeCapture,
   decodeKilled,
   decodeTyped,
   killSession,
@@ -53,7 +51,6 @@ const golden = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/tm
   string,
   GoldenOp
 >;
-const CAP = golden["capture-pane"];
 const KILL = golden.kill;
 const LAUNCH = golden.launch;
 
@@ -92,8 +89,6 @@ async function saidOf(act: () => Promise<unknown>): Promise<string> {
   throw new Error("本该失败却成功了");
 }
 
-/** 跑一趟抓屏，拿抛出来的那一句。 */
-const saidBy = (origin: string, target: string): Promise<string> => saidOf(() => capturePane(origin, target));
 
 /** 失败那一下的诊断（可复制的那一份）：错误码在这里，不在给人看的那一句里。 */
 async function detailOf(act: () => Promise<unknown>): Promise<string> {
@@ -105,101 +100,6 @@ async function detailOf(act: () => Promise<unknown>): Promise<string> {
   }
   throw new Error("本该失败却成功了");
 }
-
-describe("〔C4e〕抓一屏：按形状收", () => {
-  it("★★ 金样：解码器读得懂后端真出的成品；请求体就是金样那一份", async () => {
-    expect(decodeCapture("devbox", CAP.reply)).toBe(CAP.reply.screen);
-    answer({ ok: CAP.reply });
-    await expect(capturePane("devbox", String(CAP.request.name))).resolves.toBe(CAP.reply.screen);
-    expect(sentCalls()).toEqual([["devbox", "capture-pane", CAP.request]]);
-  });
-
-  it("★ 空屏是合法的成功（刚建起来、什么都没打印的 pane），不是失败", () => {
-    expect(decodeCapture("devbox", { name: "demo-cc", screen: "" })).toBe("");
-  });
-
-  it("★ 形状不对 ⇒ 抛（多一格 / 缺一格 / 类型不对 / 不是对象），不猜", () => {
-    const bad = [
-      { ...CAP.reply, extra: 1 },
-      { name: "demo-cc" },
-      { name: "demo-cc", screen: 3 },
-      { lines: [] },
-      null,
-      "screen",
-    ];
-    for (const v of bad) {
-      expect(() => decodeCapture("devbox", v), JSON.stringify(v)).toThrow(/读不懂/);
-    }
-  });
-});
-
-describe("〔C4e〕抓一屏：发出去之前", () => {
-  it("★ 〔DUP3〕空目标不在界面判：原样交给后端（Gate 1 住 gate-core / 后端入口），后端拒了照原话说", async () => {
-    answer({ fail: refusedReply("invalid_args", "`name` 为空") });
-    const said = await saidBy("devbox", "");
-    expect(sentCalls(), "界面自己把空目标拦下了 —— Gate 1 在界面又长了一份").toEqual([["devbox", "capture-pane", { name: "" }]]);
-    expect(said).toMatch(/后端不接受这个会话名/);
-    expect(said).toContain("`name` 为空");
-  });
-
-  it("★ 本机照样经通道问（`<local>` 也是一台机器），不是死胡同", async () => {
-    answer({ ok: CAP.reply });
-    await expect(capturePane(LOCAL_ORIGIN, "demo-cc")).resolves.toBe(CAP.reply.screen);
-    expect(sentCalls()).toEqual([[LOCAL_ORIGIN, "capture-pane", { name: "demo-cc" }]]);
-    const leftMs = (invokeMock.mock.calls[0][1] as ChanCallArgs).leftMs;
-    expect(leftMs, "期限没交（X6：调用点显式给）").toBeGreaterThan(0);
-  });
-});
-
-describe("〔C4e〕抓一屏：失败怎么说", () => {
-  it("★★ 通道不在：本机与远端两句话不同；远端那句点得出是哪台；都不说「未找到远端配置」", async () => {
-    answer({ fail: NO_CHANNEL });
-    const local = await saidBy(LOCAL_ORIGIN, "demo-cc");
-    const remote = await saidBy("kr-remote-label", "demo-cc");
-    expect(local).not.toBe(remote);
-    expect(local).toMatch(/本机后端/);
-    expect(remote).toContain("kr-remote-label");
-    expect(remote).not.toMatch(/本机/);
-    for (const s of [local, remote]) expect(s).not.toMatch(/未找到远端配置/);
-  });
-
-  it("★ 那台后端比这条命令老（对端事前说不认）⇒ 说版本不对，不说连不上", async () => {
-    answer({ fail: UNSUPPORTED });
-    const said = await saidBy("devbox", "demo-cc");
-    expect(said).toMatch(/devbox 的后端版本不对/);
-  });
-
-  it("★ 连接断了 / 等回复超时 ⇒ 说不知道做完没有；撤回 ⇒ 说撤回了", async () => {
-    answer({ fail: { err: { Hop: { idx: 1, tag: "wait", reach: "Unknown", why: "Overrun" } }, body: [] } });
-    expect(await saidBy("devbox", "demo-cc")).toMatch(/不知道 devbox 那边做完了没有/);
-    answer({ fail: { err: { Ours: "Cancelled" }, body: [] } });
-    expect(await saidBy("devbox", "demo-cc")).toMatch(/撤回/);
-  });
-
-  it("★★ 拒绝码（取自金样）逐码一句、两两不同、带会话名与后端原话；认不出的码不上屏（只说原话，码在诊断里）、不被猜成已知档", async () => {
-    const said: string[] = [];
-    for (const code of CAP.codes) {
-      answer({ fail: refusedReply(code, "RAW-WORDS") });
-      said.push(await saidBy("devbox", "demo-cc"));
-    }
-    expect(said.length, "金样里一个码都没有 —— 下面全是空转").toBeGreaterThan(0);
-    expect(new Set(said).size, `有两档被压成了同一句：${JSON.stringify(said)}`).toBe(said.length);
-    for (const s of said) {
-      expect(s).toContain("demo-cc");
-      expect(s, "后端的原话被吃掉了").toContain("RAW-WORDS");
-    }
-    answer({ fail: refusedReply("zzz_new_code", "RAW-WORDS") });
-    const unknown = await saidBy("devbox", "demo-cc");
-    expect(unknown).toContain("RAW-WORDS");
-    expect(unknown, "错误码上了屏").not.toContain("zzz_new_code");
-    expect(said).not.toContain(unknown);
-    answer({ fail: refusedReply("zzz_new_code", "RAW-WORDS") });
-    expect(await detailOf(() => capturePane("devbox", "demo-cc")), "诊断里没有码").toContain("zzz_new_code");
-    // 拒绝体读不出来 ⇒ 仍是一句「被拒」，不是空串、不是崩。
-    answer({ fail: { err: "Refused", body: [0xff] } });
-    expect(await saidBy("devbox", "demo-cc")).toMatch(/被拒/);
-  });
-});
 
 // ════════════════════════════════════════════════════════════════════════════
 //  结束会话（`kill`）· 发按键（`launch{send-into}`）· 就地 resume（`launch{send-into}` ＋ F14）
@@ -245,11 +145,8 @@ describe("〔C4e〕结束会话 · 发按键：按形状收", () => {
   });
 });
 
-describe("按 sid 找窗格：抓屏 · 结束 · 发按键带上会话 ID", () => {
-  it("★ 给了 sid ⇒ 请求里带上（抓屏 · 结束是 `sid`，发按键是 `launch` 的 `ccm_sid`），后端按它落在挂着它的那个窗格；不给 ⇒ 请求形状不变", async () => {
-    answer({ ok: CAP.reply });
-    await capturePane("devbox", "demo-cc", "sid-a");
-    await capturePane("devbox", "demo-cc");
+describe("按 sid 找窗格：结束 · 发按键带上会话 ID", () => {
+  it("★ 给了 sid ⇒ 请求里带上（结束是 `sid`，发按键是 `launch` 的 `ccm_sid`），后端按它落在挂着它的那个窗格；不给 ⇒ 请求形状不变", async () => {
     answer({ ok: KILL.reply });
     await killSession("devbox", "demo-cc", "sid-a");
     await killSession("devbox", "demo-cc");
@@ -257,8 +154,6 @@ describe("按 sid 找窗格：抓屏 · 结束 · 发按键带上会话 ID", () 
     await sendKeys("devbox", "demo-cc", "/compact", "sid-a");
     await sendKeys("devbox", "demo-cc", "/compact");
     expect(sentCalls()).toEqual([
-      ["devbox", "capture-pane", { name: "demo-cc", sid: "sid-a" }],
-      ["devbox", "capture-pane", { name: "demo-cc" }],
       ["devbox", "kill", { name: "demo-cc", sid: "sid-a" }],
       ["devbox", "kill", { name: "demo-cc" }],
       ["devbox", "launch", { mode: "send-into", name: "demo-cc", payload: "/compact", ccm_sid: "sid-a" }],
@@ -397,7 +292,7 @@ describe("那台握手时说过做不到的，菜单置灰并说为什么", () =
     invokeMock.mockImplementation((cmd: string, args: { origin?: string }) =>
       Promise.resolve(
         cmd === "chan_offer" && args.origin === "net2-box"
-          ? { ops: ["kill", "capture-pane"], unavailable: [["kill", "no_tmux"]], stoppable: [] }
+          ? { ops: ["kill", "terminal-preview"], unavailable: [["kill", "no_tmux"]], stoppable: [] }
           : null,
       ),
     );

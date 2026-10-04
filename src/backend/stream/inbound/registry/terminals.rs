@@ -1,35 +1,8 @@
-//! 命令表 · 终端与会话：`terminal-*` · `terminals-list` · `session-terminals` · `capture-pane` · `tmux-*` · `launch*` · `kill` · `sessions-*`。
+//! 命令表 · 终端与会话：`terminal-*` · `terminals-list` · `session-terminals` · `launch*` · `kill` · `sessions-*`。
 
 use crate::stream::inbound::spec::{CommandSpec, Run};
 
 pub(super) const SPECS: &[CommandSpec] = &[
-    // `K-R104`（09-13）：**把 `K-R86` / `K-R87` 那两条原语搬上帧面。**
-    //
-    // 🔴 为什么非搬不可（这是**结构**，不是性能取舍）：那两条此前**只有 CLI 面**，
-    // 而 CLI 面每调一次就是一次 SSH 握手 —— 用量探针两段轮询上限 12+20 轮
-    // ⇒ 单次探测最多 **36** 次握手，撑破 `EXEC_TIMEOUT_SECS = 25`。
-    // 帧面是**一条长连接上多次往返**，握手恒 1 次。读数与三条候选的比价住
-    // `.claude/planned-build/backend-consolidation/features/K-R101-…#§8`。
-    //
-    // ⚠ 两条都**只做一次**：抓一屏就返回、起一个会话就返回。
-    // 「隔多久再抓一次」留在调用方（`K37`：后端只给机制，不给偏好），
-    // backend 侧由 `no_timer_guard` 零容忍地钉着。
-    CommandSpec {
-        name: "capture-pane",
-        doc_anchor: Some("#### `capture-pane`"),
-        codes: &[
-            "invalid_args",
-            "no_tmux",
-            "no_server",
-            "no_such_session",
-            "capture_failed",
-        ],
-        fields: &["name", "screen", "sid"],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::control::capture_pane::capture_for_inbound(&r.args).map(Some)
-        }),
-    },
     // 起会话那一行 `ccm …`（`control/launch_render/`）：交给终端的只有这一行，环境与中转地址归那台的 `ccm`。
     //   `launch-local`：本机那几形（阻塞档：核一次「新起」的目录在不在）；`launch-render-cli`：远端那几形（纯函数）。
     CommandSpec {
@@ -228,38 +201,16 @@ pub(super) const SPECS: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| crate::control::terminals::input_for_inbound(&r.args).map(Some)),
     },
-    // 列这台的 tmux 会话。成品 `{installed, sessions}`（`observe/tmux_list.rs`；原先是原样行、解析在 monitor）。阻塞档（起一次 `sh` ＋ `tmux`）。
+    // **起会话要一个终端名 —— 问这台**：`{cwd}`（`<项目名>-cc`）或 `{forkOf}`（`<…>-fork-cc`）⇒ `{name}`（按这台那张会话快照避让）。
+    //   本体 `control/ccm/mod.rs::answer_terminal_name_mint`（这一版宿主只有 tmux）；阻塞档（快照问一次就起一次 `tmux`）。
     CommandSpec {
-        name: "tmux-list",
-        doc_anchor: Some("#### `tmux-list`"),
-        codes: &["unobservable", "too_large"],
-        fields: &[
-            "attached",
-            "command",
-            "installed",
-            "name",
-            "path",
-            "sessions",
-            "sid",
-            "windows",
-        ],
-        takes_input: false,
-        run: Run::Blocking(|r| {
-            crate::faces::feature_face::answer(&r.cmd, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    // **起会话要一个 tmux 名 —— 问这台**：`{cwd}`（`<项目名>-cc`）或 `{forkOf}`（`<…>-fork-cc`）⇒ `{name}`（按这台那张会话快照避让）。
-    //   本体 `control/ccm/mod.rs::answer_tmux_name_mint`；阻塞档（快照问一次就起一次 `tmux`）。
-    CommandSpec {
-        name: "tmux-name-mint",
-        doc_anchor: Some("#### `tmux-name-mint`"),
+        name: "terminal-name-mint",
+        doc_anchor: Some("#### `terminal-name-mint`"),
         codes: &["invalid_args"],
         fields: &["name"],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::control::ccm::answer_tmux_name_mint(&r.args)
+            crate::control::ccm::answer_terminal_name_mint(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -285,7 +236,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   阻塞档（逐个起 tmux）；要动 tmux / 读记录的几样由帧面那层壳交进去（`faces/session_batch_face.rs`）。
     CommandSpec {
         name: "sessions-stop",
-        doc_anchor: Some("#### `sessions-tmux` / `sessions-stop` / `sessions-start`"),
+        doc_anchor: Some("#### `sessions-where` / `sessions-stop` / `sessions-start`"),
         codes: &["invalid_args", "unobservable"],
         fields: &[
             "bus", "client", "cmd", "detail", "outcome", "results", "session", "sid", "sids", "why",
@@ -298,10 +249,20 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
     CommandSpec {
-        name: "sessions-tmux",
-        doc_anchor: Some("#### `sessions-tmux` / `sessions-stop` / `sessions-start`"),
+        name: "sessions-where",
+        doc_anchor: Some("#### `sessions-where` / `sessions-stop` / `sessions-start`"),
         codes: &["invalid_args", "unobservable"],
-        fields: &["client", "names", "results", "sid", "sids", "standing"],
+        fields: &[
+            "client",
+            "host",
+            "names",
+            "results",
+            "sid",
+            "sids",
+            "standing",
+            "terminal",
+            "terminals",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::session_batch_face::where_(&r.args)
@@ -311,7 +272,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "sessions-start",
-        doc_anchor: Some("#### `sessions-tmux` / `sessions-stop` / `sessions-start`"),
+        doc_anchor: Some("#### `sessions-where` / `sessions-stop` / `sessions-start`"),
         codes: &["invalid_args", "unobservable"],
         fields: &[
             "account",

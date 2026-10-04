@@ -7,7 +7,7 @@
 //! 「配置没找到」，而是「这条路是远端专属的，本机根本不该走到这里」。
 //!
 //! 已逐个修过三处（`backend_kill` / `list_remote_tmux` / `launch_remote_terminal`〔散文墓碑〕），
-//! 而 `P3b` 的 E 阶段又量到第四处（`capture_remote_pane`）。
+//! 而 `P3b` 的 E 阶段又量到第四处（远端抓屏那一条）。
 //!
 //! ⇒ **别再一个一个修。** 一个一个修的问题不是慢，是它对「第六次」毫无办法：
 //! 下一个人写下一处时，前面四处的教训对他不可见。
@@ -47,7 +47,7 @@
 //!
 //! ⚠ **不是 `INVARIANTS §40`**（「本地 = 不走 ssh 的远端」）。`§40` 逐字划了范围：
 //! 「**后端零改**：本条只涉及**启动路径**，不涉及会话监视」，而本护栏逮到的四处里
-//! `backend_kill` / `list_remote_tmux` / `capture_remote_pane` 全在监视/控制面。
+//! `backend_kill` / `list_remote_tmux` / 远端抓屏全在监视/控制面。
 //! ⚠ 也**不是** `§40 追加`（功能面平价）—— 那一条的机制是「枚举全部 Tauri 命令、
 //! 两侧都有或白名单带理由」，它的执行体是 `crate::parity_ledger`，不是本表。
 //! 核对过程住。
@@ -120,7 +120,7 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     //   那份文件整份删了 —— 跳板配置今天由宿主 `dial_host.rs::request` 查（上面 `forward` 那一行同一个家）。
     // 🔴 〔归属 2026-09-19〕住址从 `tmux.rs` 改成 `backend/control/tmux.rs` ——
     //    **文件真的挪了**（`lib.rs` 顶层 → `backend/control/`），欠的那笔债一格没变。
-    // `backend/control/tmux.rs` 里列会话那一行（那条命令已整条搬走）还掉了：列会话改问那台后端 `tmux-list`，不再查远端配置。
+    // `backend/control/tmux.rs` 里列会话那一行（那条命令已整条搬走）还掉了：列终端改问那台后端 `terminals-list`，不再查远端配置。
     // `K-R56`（09-11）：`tmux_send_keys`〔散文墓碑〕从这里**还掉了** —— 它当时在
     // `load_remote_config_by_label` 之前分本机（`Routed::NoChannel` 那一臂的早退）。
     // 那条命令整个迁到界面（`src/frontend/ui/tmux-control.ts::sendKeys`），当年钉它的行为判据随之退役。

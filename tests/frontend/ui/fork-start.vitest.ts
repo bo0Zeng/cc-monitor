@@ -19,7 +19,7 @@ type RemoteArgs = Parameters<ForkStartDeps["startRemote"]>[0];
 type AskFn = ForkStartDeps["ask"];
 type MintFn = ForkStartDeps["mintForkName"];
 
-/** 铸名是那台后端的事（`tmux-name-mint {forkOf}`）；替身回一个与源名**无关**的固定名，好认出「用的就是它铸的」。 */
+/** 铸名是那台后端的事（`terminal-name-mint {forkOf}`）；替身回一个与源名**无关**的固定名，好认出「用的就是它铸的」。 */
 const MINTED = "minted-by-backend-fork-cc";
 
 function deps(over: { ask?: AskFn; mint?: MintFn } = {}) {

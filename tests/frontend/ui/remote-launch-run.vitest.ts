@@ -17,7 +17,7 @@ vi.mock("../../../src/frontend/ui/terminal-open", () => ({ openTerminal: term.op
 const tmux = vi.hoisted(() => ({ sendInto: vi.fn() }));
 vi.mock("../../../src/frontend/ui/tmux-control", () => ({ sendInto: tmux.sendInto }));
 const mint = vi.hoisted(() => ({ mintFreshTmuxName: vi.fn(), refuseUnmintable: vi.fn() }));
-vi.mock("../../../src/frontend/ui/tmux-name-mint", () => mint);
+vi.mock("../../../src/frontend/ui/terminal-name-mint", () => mint);
 vi.mock("../../../src/frontend/ui/resync", () => ({ offerResyncRetry: vi.fn() }));
 vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 vi.mock("../../../src/frontend/ui/launch-arrival", () => ({

@@ -2,7 +2,7 @@
 {"kind":"hello","v":1,"build_id":"b1","host_arch":"x86_64","claude_dir":"/home/u/.claude"}
 {"kind":"line","session_id":"s1","path":"/p/s1.jsonl","seq":3,"message":{"role":"user"},"cwd":"/w","byte_offset":120,"rid":"r1","raw":"{}"}
 {"kind":"line","session_id":"s1","path":"/p/s1.jsonl","seq":3,"byte_offset":120}
-{"kind":"session_added","sid":"s1","agent_kind":"claude","liveness_confidence":"pidfile","session_kind":"interactive","attachable":true,"cwd":"/w","project_dir":"/w","name":"n","path":"/p/s1.jsonl","lines":9,"status":"waiting","waiting_for":"permission prompt","container":"tmux","pid":42}
+{"kind":"session_added","sid":"s1","agent_kind":"claude","liveness_confidence":"pidfile","session_kind":"interactive","attachable":true,"cwd":"/w","project_dir":"/w","name":"n","path":"/p/s1.jsonl","lines":9,"status":"waiting","waiting_for":"permission prompt","container":{"host":"tmux","terminal":"tmux-3-7"},"pid":42}
 {"kind":"session_added","sid":"s1"}
 {"kind":"session_status","sid":"s1","status":"waiting","waiting_for":"permission prompt","liveness_confidence":"pidfile"}
 {"kind":"session_status","sid":"s1"}

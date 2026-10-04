@@ -439,7 +439,7 @@ describe("K-R46：历史页 resume 的 tmux 名（行为）", () => {
     return call!;
   }
 
-  /** 让本机后端答铸名那一问（`tmux-name-mint`）：名字 ⇒ 它铸了这个；`null` ⇒ 问不到（不知道）。
+  /** 让本机后端答铸名那一问（`terminal-name-mint`）：名字 ⇒ 它铸了这个；`null` ⇒ 问不到（不知道）。
    *  派生 ＋ 避让的规则只在后端（逐格归 `tests/backend/control/ccm/plan_tests.rs`）⇒ 替身写死它铸了什么，不重抄规则。 */
   function serveLocalMint(minted: string | null): void {
     invokeMock.mockImplementation(withHistoryReads(launchRenderShim((cmd: string) =>
@@ -473,7 +473,7 @@ describe("K-R46：历史页 resume 的 tmux 名（行为）", () => {
       resumePayload().tmuxName,
       "历史页 resume 的载荷里没有后端铸的 tmux 名 ——\n" +
         "要么名字压根没传（后端 `NO_TMUX_NAME` 早退 ⇒ 会话不进具名容器），\n" +
-        "要么没问本机后端 `tmux-name-mint`（全仓唯一带撞名避让的铸造口）：自己拼的名字不避让 —— 那就是 issue #76 的形状。",
+        "要么没问本机后端 `terminal-name-mint`（全仓唯一带撞名避让的铸造口）：自己拼的名字不避让 —— 那就是 issue #76 的形状。",
     ).toBe("p-cc-2");
   });
 

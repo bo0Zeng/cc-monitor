@@ -221,7 +221,7 @@ SID7="$(cat /proc/sys/kernel/random/uuid)"
 #    名字不再是 `<sid8>-cc`，改成从 **cwd** 派生的 `<项目名>-cc`。
 #    这条 e2e 是全套件唯一断言「生产侧 tmux 命名形状」的地方（见上面 E67③ 那段），
 #    所以它**必须跟着改** —— 上一次没跟上时它红了两个版本。
-# 名字由后端铸（`tmux-name-mint {cwd}`：`/tmp/e2e-remote` ⇒ `e2e-remote-cc`，派生与避让的逐格归
+# 名字由后端铸（`terminal-name-mint {cwd}`：`/tmp/e2e-remote` ⇒ `e2e-remote-cc`，派生与避让的逐格归
 #    `tests/backend/control/ccm/plan_tests.rs`）；本套件不碰后端 ⇒ 这里用后端会铸的那个名字，改钉「它在建之前确实没被占」——
 #    否则下面测到的是 create-gate 短路、不是回退新建（原先那一格 `drv mint-name` 调的前端铸名口随 J7 删了）。
 EXPECT7="e2e-remote-cc"   # basename("/tmp/e2e-remote") + `-cc`；撞名时才追加 `-2/-3`

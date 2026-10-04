@@ -4,6 +4,7 @@
  */
 import type { JsonlRecord } from "../../../src/frontend/ui/generated/JsonlRecord";
 import type { RunInfo } from "../../../src/frontend/ui/generated/RunInfo";
+import type { SessionContainer } from "../../../src/frontend/ui/generated/SessionContainer";
 
 export interface TaskSpec {
   id: string;
@@ -25,7 +26,7 @@ export interface SessionSpec {
   /** Claude 的 status 原值：busy / idle / waiting / shell；`null` = 不说。 */
   status: string | null;
   waitingFor: string | null;
-  container: "tmux" | "none";
+  container: SessionContainer;
   records: JsonlRecord[];
   runs: RunInfo[];
   /** 子运行的记录（agent 面板点开那一条时按行取）：run → 记录。 */

@@ -93,10 +93,8 @@ const WAITING_ROWS: &[(&str, &str)] = &[
     ("ccm-launcher", "bus-register"),
     ("ccm-launcher", "ccm-sid"),
     ("ccm-launcher", "base-url-across-tmux"),
-    ("wire-commands", "capture-pane"),
     ("wire-commands", "kill"),
     ("wire-commands", "launch"),
-    ("cli-subcommands", "--capture-pane"),
     ("cli-subcommands", "--kill"),
     ("cli-subcommands", "--launch"),
     ("wire-commands", "terminal-preview"),
@@ -132,7 +130,7 @@ fn no_gap_rationale_picks_the_windows_mechanism() {
     let want: BTreeSet<(&str, &str)> = WAITING_ROWS.iter().copied().collect();
     assert_eq!(
         cites, want,
-        "写「Windows 后台机制」的理由串那几行 ≠ 点名的那 18 行（`ccm-launcher × Windows` 8 ＋ 命令面 10）"
+        "写「Windows 后台机制」的理由串那几行 ≠ 点名的那 16 行（`ccm-launcher × Windows` 8 ＋ 命令面 8）"
     );
     let picks: Vec<String> = TARGET_GAPS
         .iter()
@@ -167,6 +165,7 @@ fn no_gap_rationale_picks_the_windows_mechanism() {
 ///   现推段（`unix_mode_bits_on` × 码）才第一次看见它们（买不到 1 · `§8.5` 待拍 3）。
 ///   档判结构：能力的定义就是「改 unix 权限位」，Windows 没有那套位；那边改访问权限是另一条能力。
 /// - **欠着 12 → 16**：终端管理 L1 的 `terminal-preview` / `terminal-input` × Windows（帧面 ＋ CLI 面）：这一版宿主只有 tmux，形状与宿主无关，等 Windows 后台机制。
+/// - **欠着 16 → 14**：帧面 `capture-pane` 与 CLI 面 `--capture-pane` 删了（抓屏只走 `terminal-preview`），那两行随之摘掉。
 #[test]
 fn both_tiers_have_real_members_and_their_sizes_are_pinned() {
     let count = |k: GapKind| TARGET_GAPS.iter().filter(|g| g.kind == k).count();
@@ -178,8 +177,8 @@ fn both_tiers_have_real_members_and_their_sizes_are_pinned() {
     );
     assert_eq!(
         (s, o),
-        (4, 16),
-        "差异登记表两档现打 结构 {s} · 欠着 {o}（PR1 落地时 2 · 12；FW5 结构 +2 → 4 · 12；终端管理 L1 欠着 +4 → 4 · 16，逐条见本条头注）。\n\
+        (4, 14),
+        "差异登记表两档现打 结构 {s} · 欠着 {o}（PR1 落地时 2 · 12；FW5 结构 +2 → 4 · 12；终端管理 L1 欠着 +4 → 4 · 16；`capture-pane` 两面删 −2 → 4 · 14，逐条见本条头注）。\n\
          这个数本身没有对错，但它变了说明有裁决动过 —— 连理由一起看、一起改。"
     );
 }
@@ -840,7 +839,7 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "批量起：tmux 那一形没 tmux ⇒ 逐个答「这台没 tmux」跳过、命令照答；开终端那一形本来用不着 tmux（Windows 本机照做）",
     ),
     (
-        "sessions-tmux",
+        "sessions-where",
         "问这几个会话在哪个 tmux 会话里：没 tmux ⇒ 逐个答「这台没 tmux」、命令照答",
     ),
     (
@@ -957,11 +956,10 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     // 〔合并 SH1 × W5-AUX 时本判据当场点出〕
     ("bus-inbox", "同 `bus-list` 那个文件（`control/cc_bus.rs` 经 gate 挂 `live`）；读收件箱本身转调 `cc-log`，不用 tmux"),
     ("resync", "打标经 `identity_tag::tag`：不在 tmux / tmux 起不来 ⇒ 那个会话不打（结局说进日志），对齐照做、照回差异；它的能力是对表，不是 tmux"),
-    ("hooks-diag", "同 `mcp-read`：只因与 `tmux-list` 同住 `feature_face.rs` 被连带；读 settings ＋ stat 本身不碰 tmux"),
-    ("tmux-list", "`tmux_observe::list_for_query` 问不到 tmux ⇒ 回 `installed: false` ＋ 空行（如实说没装），命令照答，不回 `no_tmux`"),
-    ("tmux-name-mint", "铸名只拿会话快照避让：这台没装 tmux ⇒ 一个名字都没占 ⇒ 交基名，命令照答，不回 `no_tmux`（起不起得来归起会话那一步说）"),
-    ("mcp-read", "与 `tmux-list` 同一个宿主 `feature_face::answer`（引用图按文件算，因此连带）；读 MCP 本身不碰 tmux"),
-    ("tasks-list", "同 `mcp-read`：只因与 `tmux-list` 同住 `feature_face.rs` 被连带；本身不碰 tmux"),
+    ("hooks-diag", "同 `mcp-read`：只因与 `session-terminals` 同住 `feature_face.rs` 被连带；读 settings ＋ stat 本身不碰 tmux"),
+    ("terminal-name-mint", "铸名只拿会话快照避让：这台没装 tmux ⇒ 一个名字都没占 ⇒ 交基名，命令照答，不回 `no_tmux`（起不起得来归起会话那一步说）"),
+    ("mcp-read", "与 `session-terminals` 同一个宿主 `feature_face::answer`（引用图按文件算，因此连带）；读 MCP 本身不碰 tmux"),
+    ("tasks-list", "同 `mcp-read`：只因与 `session-terminals` 同住 `feature_face.rs` 被连带；本身不碰 tmux"),
     (
         "session-terminals",
         "tmux 只在那个会话本来就在 tmux 里时被问（`list-clients`，socket 取自那个进程自己的 `TMUX`）；\

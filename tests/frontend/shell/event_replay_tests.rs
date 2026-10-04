@@ -1023,7 +1023,7 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
         }),
         F::Container(b::SessionContainerPayload {
             session_id: sid(),
-            container: "tmux".into(),
+            container: crate::session_book::SessionContainer::None,
         }),
         F::Idle(b::SessionIdlePayload { session_id: sid() }),
         F::Ended(b::SessionEndedPayload { session_id: sid() }),

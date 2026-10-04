@@ -210,7 +210,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-collections.ts",
     "src/frontend/ui/tab-context-menu.ts",
     "src/frontend/ui/tab-session-state.ts", // 给 Resume 还是给换号重启 · 本机「杀死会话」占位
-    "src/frontend/ui/tmux-sessions.ts", // 在 tmux 里那几项亮不亮、写哪个名字：问那台（`sessions-tmux`）
+    "src/frontend/ui/sessions-where.ts", // 在 tmux 里那几项亮不亮、写哪个名字：问那台（`sessions-where`）
     "src/frontend/ui/views/pane-preview.ts",
   ],
   // ⑤ 菜单控件：零依赖（纯 DOM）。
@@ -243,7 +243,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/session-reads.ts", // resume 之前问记录还在不在（经通道问 `history-record`）
     "src/frontend/ui/tab-batch-run.ts", // 杀 / 在 tmux 里 Resume 交那台（`sessions-stop` / `sessions-start`，与批量同一条）
     "src/frontend/ui/tmux-control.ts", // 杀成之后 cc-bus 注销那一句（`decodeKilled` 那一份说法）
-    "src/frontend/ui/tmux-sessions.ts", // 换号重启找旧会话：问那台它在哪个 tmux 会话里
+    "src/frontend/ui/sessions-where.ts", // 换号重启找旧会话：问那台它在哪个 tmux 会话里
   ],
 };
 
@@ -382,7 +382,7 @@ describe("〔U2〕tabs.ts 只剩组装根", () => {
         "DWELL_MOVE_PX",
         "DropTarget",
         "TabRect",
-        // tmux-sessions.ts 那几个过滤〔散文墓碑〕的 re-export 删了：「在哪个 tmux 会话里」问那台后端。
+        // sessions-where.ts 那几个过滤〔散文墓碑〕的 re-export 删了：「在哪个 tmux 会话里」问那台后端。
       ].sort(),
     );
   });

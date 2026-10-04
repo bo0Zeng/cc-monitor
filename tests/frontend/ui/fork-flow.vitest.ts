@@ -36,14 +36,14 @@ import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
 import { deriveForkSource, runForkFlow } from "../../../src/frontend/ui/fork-flow";
 import { askForkLaunch } from "../../../src/frontend/ui/fork-ask";
 import type { SessionAccount } from "../../../src/frontend/ui/accounts";
-import type { Standing } from "../../../src/frontend/ui/tmux-sessions";
+import type { Standing } from "../../../src/frontend/ui/sessions-where";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { isChanCall, launchRenderShim, linesReply, localLaunchCalls } from "../../test-support/chan-fake";
 import { copyTableTextsIn } from "../../test-support/copy-refs.ts";
 
-/** 那台答的样子（`sessions-tmux`）。 */
-const RUN = (name: string): Standing => ({ kind: "running", names: [name] });
-const NONE: Standing = { kind: "none", names: [] };
+/** 那台答的样子（`sessions-where`）。 */
+const RUN = (name: string): Standing => ({ kind: "running", names: [name], terminals: [`tmux-${name}`] });
+const NONE: Standing = { kind: "none", names: [], terminals: [] };
 const A = (sessionId: string, configDir: string | null, alive = true): SessionAccount => ({
   pid: 1,
   sessionId,
@@ -89,8 +89,8 @@ describe("deriveForkSource", () => {
   });
 
   it("★ tmux 里那条前台不是 claude（idle-tmux）→ 不算活着", () => {
-    // 「前台是不是 agent」那台后端判（`sessions-tmux` 答 idle），这里不另算一份。
-    const f = deriveForkSource([], { kind: "idle", names: ["p-cc"] }, "s1", "/p");
+    // 「前台是不是 agent」那台后端判（`sessions-where` 答 idle），这里不另算一份。
+    const f = deriveForkSource([], { kind: "idle", names: ["p-cc"], terminals: ["tmux-1"] }, "s1", "/p");
     expect(f.source.sourceIsLive).toBe(false);
     expect(f.sourceTmuxName).toBeNull();
   });
@@ -99,7 +99,7 @@ describe("deriveForkSource", () => {
     const f = deriveForkSource([], NONE, "s1", "/p");
     expect(f.source.sourceIsLive).toBe(false);
     expect(f.sourceTmuxName).toBeNull();
-    // 「它的名字仍要进已占用」那一格随避让搬进后端（`tmux-name-mint` 问那台自己的会话快照）。
+    // 「它的名字仍要进已占用」那一格随避让搬进后端（`terminal-name-mint` 问那台自己的会话快照）。
   });
 
   it("两份快照都取不到（远端不可达）→ 全落「不知道」，不落具体值", () => {
@@ -274,7 +274,7 @@ describe("K-R46：分叉本机起会话的 tmux 名（行为）", () => {
     expect(
       resumePayload().tmuxName,
       "分叉本机起的载荷里没有后端铸的 tmux 名 —— 要么名字没传（后端 `NO_TMUX_NAME` 早退\n" +
-        "⇒ 会话不进具名容器），要么没问后端 `tmux-name-mint`（全仓唯一铸造口）。",
+        "⇒ 会话不进具名容器），要么没问后端 `terminal-name-mint`（全仓唯一铸造口）。",
     ).toBe("p-cc-2");
     // `K-R96`：名字里**一个 sid 片段都没有** —— 新老 sid 都不许出现。
     expect(String(resumePayload().tmuxName).includes(NEW.slice(0, 8))).toBe(false);

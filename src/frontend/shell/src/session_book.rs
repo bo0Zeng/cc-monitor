@@ -15,33 +15,61 @@ use parking_lot::RwLock;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::OnceLock;
 
-/// 一条活会话住在什么容器里（后端 `session_added.container`；判不了的不在这里，缺席 = 不知道）。
-///
-/// 线上两个字面量与后端 `wire::SessionContainer` 逐字一致。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Container {
+/// 终端宿主（后端 `session_added.container.host`）。认得的就这几种，词由 serde 从变体名派生（不另写字面量表）；
+/// 别的取值进 [`SessionContainer::Other`]，不吞。
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+#[serde(rename_all = "snake_case")]
+pub enum TerminalHost {
     Tmux,
-    None,
 }
 
-pub const CONTAINER_TMUX: &str = "tmux";
-pub const CONTAINER_NONE: &str = "none";
+/// 「不在任何宿主里」的那个 `host` 词。
+pub const HOST_NONE: &str = "none";
 
-impl Container {
-    /// 不认识的取值当不知道（`None`）—— 宁可说「没报」，不许凭一个不认识的词说「不在 tmux 里」。
-    pub fn from_wire(s: &str) -> Option<Self> {
-        match s {
-            CONTAINER_TMUX => Some(Container::Tmux),
-            CONTAINER_NONE => Some(Container::None),
-            _ => None,
-        }
-    }
+/// 一条活会话住在什么容器里（后端 `session_added.container`；缺席 = 不知道，不在这里）。开放联合：认得的 ＋ 其它。
+/// 原样交给界面（`ui_contract::SessionContainerPayload`），`ts-rs` 生成同形的判别联合。
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+#[serde(tag = "form", rename_all = "snake_case")]
+pub enum SessionContainer {
+    /// 在某个认得的宿主的终端里；`terminal` 是 `terminals-list` 那一行的句柄（后端算不出就没有）。
+    Hosted {
+        host: TerminalHost,
+        terminal: Option<String>,
+    },
+    /// 不在任何宿主里（＝ 就在起它的那个终端里）。
+    None,
+    /// 这边不认识的宿主（那台比这边新）：原词带着，界面记成「不认识的终端形式」。
+    Other { host: String },
+}
 
-    pub fn as_wire(self) -> &'static str {
-        match self {
-            Container::Tmux => CONTAINER_TMUX,
-            Container::None => CONTAINER_NONE,
+impl SessionContainer {
+    /// 线上那一格（对象）⇒ 容器。不是 `{host: 字符串, terminal?: 字符串}` ⇒ `Err(为什么)`。
+    pub fn from_wire(v: &serde_json::Value) -> Result<Self, &'static str> {
+        let o = v.as_object().ok_or("`container` is not an object")?;
+        let host = o
+            .get("host")
+            .and_then(serde_json::Value::as_str)
+            .ok_or("`container.host` is not a string")?;
+        let terminal = match o.get("terminal") {
+            None => None,
+            Some(serde_json::Value::String(t)) => Some(t.clone()),
+            Some(_) => return Err("`container.terminal` is not a string"),
+        };
+        if host == HOST_NONE {
+            return Ok(SessionContainer::None);
         }
+        Ok(
+            match serde_json::from_value::<TerminalHost>(serde_json::Value::String(host.into())) {
+                Ok(host) => SessionContainer::Hosted { host, terminal },
+                Err(_) => SessionContainer::Other { host: host.into() },
+            },
+        )
     }
 }
 
@@ -79,7 +107,7 @@ pub struct LiveMeta {
     pub name: Option<String>,
     pub status: Option<String>,
     pub waiting_for: Option<String>,
-    pub container: Option<Container>,
+    pub container: Option<SessionContainer>,
     /// 那个 claude 进程的 pid（本机 ↗ 绑窗口用；老后端 / 没索要 ⇒ `None`）。
     pub pid: Option<u32>,
 }
@@ -381,10 +409,10 @@ impl Out {
                         waiting_for: meta.waiting_for.clone(),
                     }),
                 ];
-                if let Some(c) = meta.container {
+                if let Some(c) = &meta.container {
                     v.push(F::Container(b::SessionContainerPayload {
                         session_id: sid.clone(),
-                        container: c.as_wire().to_string(),
+                        container: c.clone(),
                     }));
                 }
                 v

@@ -84,7 +84,7 @@ export function lookupAgentProfile(
  *
  * 〔判定只在后端〕从前这里还有五格判定用的词表（agent 工具 · 交互工具 · 写类工具 · markdown 工具 ·
  * 判活进程名），界面按它们判卡型、认 tmux 会话。那几张表进了后端适配层：卡型随记录成品带出（`toolCards`），
- * tmux 那一格随 `tmux-list` 成品带出（`agent`）⇒ 本画像只剩起会话那几格事实。
+ * tmux 那一格由后端认窗格时判（`agent`）⇒ 本画像只剩起会话那几格事实。
  */
 export type FullAgentProfile = {
   /**

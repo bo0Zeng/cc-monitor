@@ -663,7 +663,7 @@ pub fn encode_request(id: &str, cmd: &str, args: &Value) -> String {
     s
 }
 
-// 🔴 〔.5，2026-09-21〕**`launch` / `capture-pane` 的参数构造器
+// 🔴 〔.5，2026-09-21〕**`launch` 的参数构造器
 //    与 `LaunchExtras` 搬走了** —— 新家 `backend/control/command_args.rs`。
 //    搬的理由不是整理：`C1`（零业务语义）在本文件上咬到 `sid` 与 `agent`
 //    两个词，**两处都在那三样身上**（`ccm_sid` 参数 · `extras.agent` 字段）。

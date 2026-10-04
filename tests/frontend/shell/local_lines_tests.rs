@@ -697,7 +697,7 @@ fn the_local_product_core_matches_the_hand_written_table() {
     use crate::session_book::{Fate, In, LiveMeta};
     use crate::stream_source::local_product;
     // 带启动期令牌：成品要把它原样交给前端（`launch-arrival.ts` 认「我刚起的那条」）。
-    const ADD_A: &str = r#"{"kind":"session_added","sid":"a","session_kind":"interactive","cwd":"/w","project_dir":"/w/p","name":"n","status":"busy","pid":42,"container":"tmux"}"#;
+    const ADD_A: &str = r#"{"kind":"session_added","sid":"a","session_kind":"interactive","cwd":"/w","project_dir":"/w/p","name":"n","status":"busy","pid":42,"container":{"host":"tmux","terminal":"tmux-3-7"}}"#;
     const ADD_B_BG: &str = r#"{"kind":"session_added","sid":"b","session_kind":"bg"}"#;
     const STATUS_A: &str = r#"{"kind":"session_status","sid":"a","status":"idle"}"#;
     const STATUS_B: &str = r#"{"kind":"session_status","sid":"b","status":"idle"}"#;
@@ -721,7 +721,10 @@ fn the_local_product_core_matches_the_hand_written_table() {
                 project_dir: Some("/w/p".into()),
                 name: Some("n".into()),
                 status: Some("busy".into()),
-                container: Some(crate::session_book::Container::Tmux),
+                container: Some(crate::session_book::SessionContainer::Hosted {
+                    host: crate::session_book::TerminalHost::Tmux,
+                    terminal: Some("tmux-3-7".into()),
+                }),
                 pid: Some(42),
                 ..Default::default()
             }

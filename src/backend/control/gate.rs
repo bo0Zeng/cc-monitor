@@ -146,7 +146,6 @@ const PROBE_FMT: &str = "#{session_id}\t#{@ccm_sid}\t#{session_windows}\t#{@ccm_
 /// （`$<数字>` / `[A-Za-z0-9_-]` / 正整数）。
 /// ⇒ 本处的**过溢只可能来自「有人手工把 `@ccm_sid` 设成含 TAB 的值」或格式串被改**，
 /// 那两种都该拒 ⇒ 既有的 fail-closed 处置是对的，**本拍不动它**。
-/// 那条误伤是真的、但只在 `tmux-list` 的解析那一处（今天住 `observe/tmux_list.rs::rows`，见该处头注）。
 const PROBE_FMT_FIELDS: usize = 4;
 
 /// 跑一次 `tmux display-message -p -t <target> '<fmt>'` 并把 stdout 取回来。

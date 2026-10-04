@@ -13,8 +13,8 @@
  * # 为什么本模块不 import `tabs.ts`
  *
  * `tabs.ts` 挂 `⑂`（→ `branch-button.ts`）→ 分叉成功 → 调本模块。本模块再回头 import
- * `tabs.ts` 就成环了。而「源会话在哪个 tmux 里」那一问（今天问那台后端 `sessions-tmux`）
- * 原本正住在 `tabs.ts` 里 —— 所以 G6 把那一族判据搬进了叶子模块 `tmux-sessions.ts`，
+ * `tabs.ts` 就成环了。而「源会话在哪个 tmux 里」那一问（今天问那台后端 `sessions-where`）
+ * 原本正住在 `tabs.ts` 里 —— 所以 G6 把那一族判据搬进了叶子模块 `sessions-where.ts`，
  * 两边都从那里取。`tabs.ts` 原样 re-export，既有 import 面零改动。
  */
 
@@ -26,9 +26,9 @@ import { getBehavior } from "./behavior";
 import { resolveResumeCommand } from "./remote-config";
 import { isSelectable, type Account, type SessionAccount } from "./accounts";
 import { fetchAccounts, fetchLocalAccounts, fetchSessionAccounts } from "./account-reads";
-import { standingOf, type Standing } from "./tmux-sessions";
+import { standingOf, type Standing } from "./sessions-where";
 import { resumeLocalSessionAndWait } from "./local-resume";
-import { mintForkTmuxName } from "./tmux-name-mint";
+import { mintForkTmuxName } from "./terminal-name-mint";
 import { askForkLaunch, type ForkAccountOption } from "./fork-ask";
 import { startForkedSession, type ForkStartDeps, type ForkStartOutcome } from "./fork-start";
 import type { ForkLaunchInput } from "./fork-launch";
@@ -55,7 +55,7 @@ export interface ForkSourceFacts {
   source: ForkLaunchInput;
   /** 源会话所在 tmux 名（新名要避开它）。 */
   sourceTmuxName: string | null;
-  // `takenTmuxNames` 删了：避让在那台后端（`tmux-name-mint {forkOf}`），前端不再拿名单自己铸。
+  // `takenTmuxNames` 删了：避让在那台后端（`terminal-name-mint {forkOf}`），前端不再拿名单自己铸。
 }
 
 /**
@@ -76,7 +76,7 @@ export function deriveForkSource(
   cwd: string | null,
 ): ForkSourceFacts {
   const row = rows?.find((r) => r.sessionId === sid && r.alive);
-  // 「在哪个 tmux 会话里跑」那台后端判（`sessions-tmux`）：在跑的取第一个（命中多个也取第一个）。
+  // 「在哪个 tmux 会话里跑」那台后端判（`sessions-where`）：在跑的取第一个（命中多个也取第一个）。
   const running = standing?.kind === "running" || standing?.kind === "ambiguous";
   const tmuxName = running ? (standing.names[0] ?? null) : null;
   const live = Boolean(row) || running;
@@ -162,7 +162,7 @@ function productionDeps(input: ForkFlowInput): ForkStartDeps {
     //   「账号 0」的生产路，而 POSIX 后端只有那一态渲染得出容器）、账号是**用户在小窗里显式选的**：
     //   账号 0 ⇒ 显式 `base`（不是省略：省略 = 没表态 = 被 shell rc 里的默认号顶掉），具名 ⇒ 名字说得出才带（`K-R53`）。
     //   ⚠ 这里铸的是**新会话自己**的 `<项目名>-cc`（避让本机现有名字），与远端那条「避开源会话的名字」
-    //     （`fork-start.ts` 问那台后端 `tmux-name-mint {forkOf}`）不是一回事。失败它自己出声，这里只回布尔（与 `startRemote` 同形）。
+    //     （`fork-start.ts` 问那台后端 `terminal-name-mint {forkOf}`）不是一回事。失败它自己出声，这里只回布尔（与 `startRemote` 同形）。
     // 「起了」= 看见那台报出分叉出来的会话（等到才说「已分叉」；没等到那一句主窗口说过了）。
     startLocal: async (a) =>
       (await resumeLocalSessionAndWait({

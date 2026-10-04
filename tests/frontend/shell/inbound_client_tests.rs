@@ -472,10 +472,8 @@ fn the_e2e_command_list_matches_the_backend_command_table() {
 }
 
 // 这里原来住着 `KR104D1` 那条跨轨对拍（抓屏的参数构造器 `capture_pane_args` ↔ 后端 `REGISTRY` 那一格 `fields`）〔散文墓碑〕。
-//   抓屏改由界面经通道直接问（`src/frontend/ui/tmux-control.ts::capturePane`），monitor 侧那个构造器没了生产调用方、随发送端删了；
-//   请求 / 成品的形状从此由跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 钉着：后端侧
-//   `capture_pane_tests.rs::the_capture_product_matches_the_cross_language_golden`（请求样例过生产解析器 · 成品 == 生产构造器 ·
-//   码集合 == `REGISTRY`），界面侧 `tests/frontend/ui/tmux-control.vitest.ts`（请求体 · 解码器读同一份）。
+//   monitor 侧那个构造器随发送端删了；抓屏今天走终端管理那一条 `terminal-preview`（界面 `src/frontend/ui/terminal-reads.ts`），
+//   形状由跨语言金样 `tests/__fixtures__/terminals.golden.json` 钉着（后端 `terminals_tests.rs` · 界面 `terminal-reads.vitest.ts` 读同一份）。
 
 // 这里原来住着「`launch_args`〔散文墓碑〕吐的键名恰好是后端解析器认的那几个」（跨轨读后端 `control/launch.rs`）。
 //   monitor 侧那个构造器随发送端迁到界面删了；「发出去的键 == 后端解析器认的键」改由跨语言金样钉：

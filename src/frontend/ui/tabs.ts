@@ -38,7 +38,8 @@ import {
   TERMINAL_FRONT_UNAVAILABLE_DETAIL,
 } from "./terminal-front";
 import { computeTitleFor, isBgKind, type Tab, type TabsSummary } from "./tab-model";
-import { ENDED, LIVE, RECONNECTABLE, closesWithoutMenu, isLive, isResumeOnly, hasTerminal, nextState, type StateEvent } from "./tab-session-state";
+import { ENDED, LIVE, RECONNECTABLE, closesWithoutMenu, containerEvent, isLive, isResumeOnly, hasTerminal, nextState, type StateEvent } from "./tab-session-state";
+import type { SessionContainer } from "./generated/SessionContainer";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
 // `Tab` 的形状与标题函数搬去了 `tab-model.ts`；这里原样 re-export，既有 import 面零改动。
 export type { Tab, TabsSummary } from "./tab-model";
@@ -751,7 +752,7 @@ export class TabManager {
       // 容器事实早于建 Tab ⇒ 落实（建出来就是活的，转移只经 `nextState`）。
       const c = this.store.pendingContainer.get(sessionId);
       this.store.pendingContainer.delete(sessionId);
-      if (c) tab.state = nextState(tab.state, c === "tmux" ? "container-tmux" : "container-none");
+      if (c) tab.state = nextState(tab.state, c);
     }
     this.store.tabs.set(sessionId, tab);
     this.store.placeInOrder(tab);
@@ -988,18 +989,21 @@ export class TabManager {
   }
 
   /**
-   * 后端报来这条活会话的容器（`container` 格：`"tmux"` / `"none"`）。
-   * Tab 还没建 ⇒ 暂存（同 `pendingActivity`），建 Tab 时落实；不认识的取值当没报（丢掉）。
+   * 后端报来这条活会话的容器（`container` 格：在认得的宿主里 · 不在任何宿主里 · 这边不认识的宿主）。
+   * Tab 还没建 ⇒ 暂存（同 `pendingActivity`），建 Tab 时落实；不认识的宿主记成「终端形式未知」、日志一条（不吞）。
    * 只落在活着的会话上（`nextState`）：死了的那一格由死的那一刻的裁决说了算。
    */
-  noteContainer(sessionId: string, container: string): void {
-    if (container !== "tmux" && container !== "none") return;
+  noteContainer(sessionId: string, container: SessionContainer): void {
+    if (container.form === "other") {
+      console.warn(`[tabs] 会话 ${sessionId.slice(0, 8)} 的终端形式这边不认识：host=${container.host}`);
+    }
+    const ev = containerEvent(container);
     const tab = this.store.tabs.get(sessionId);
     if (!tab) {
-      this.store.pendingContainer.set(sessionId, container);
+      this.store.pendingContainer.set(sessionId, ev);
       return;
     }
-    if (!this.applyState(tab, container === "tmux" ? "container-tmux" : "container-none")) return;
+    if (!this.applyState(tab, ev)) return;
     this.refreshTabBar();
   }
 

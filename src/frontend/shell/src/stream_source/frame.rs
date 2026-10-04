@@ -137,10 +137,10 @@ pub enum InboundFrame {
         /// Batch9-F27：宣告时的初始 status/waitingFor（连接建立灯就对）。
         status: Option<String>,
         waiting_for: Option<String>,
-        /// 〔additive〕这条活会话住在什么容器里（`tmux` / `none`）。
-        /// 缺席 / 不认识的取值 ⇒ `None` = 不知道（**不是**「不在 tmux 里」）。
+        /// 〔additive〕这条活会话住在什么容器里（`{host, terminal?}`）。缺席 ⇒ `None` = 不知道（**不是**「不在任何宿主里」）；
+        /// 不认识的宿主 ⇒ `Other`（不吞）。
         /// 进 `session_book` 的活会话成品（本机那条流同一个口）。
-        container: Option<crate::session_book::Container>,
+        container: Option<crate::session_book::SessionContainer>,
         /// 〔additive〕那个 claude 进程的 pid。本机活会话的成品（`session_book::LiveMeta::pid`）
         /// 拿它给本机 ↗ 绑窗口（`bind::SidHwndCache::record`）；老后端不带 ⇒ `None`。远端那一支不读它。
         pid: Option<u32>,
@@ -454,10 +454,14 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                 lines: obj.get("lines").and_then(|v| v.as_u64()),
                 status: opt("status"),
                 waiting_for: opt("waiting_for"),
-                // 两个字面量之外一律当不知道（`Container::from_wire`）。
-                container: opt("container")
-                    .as_deref()
-                    .and_then(crate::session_book::Container::from_wire),
+                // 开放联合：认得的宿主 · 不在宿主里 · 其它（原词带着）；形状不对 ⇒ 整帧 `BadShape`。
+                container: match obj.get("container") {
+                    None => None,
+                    Some(v) => Some(
+                        crate::session_book::SessionContainer::from_wire(v)
+                            .map_err(|why| bad(k, why))?,
+                    ),
+                },
                 // 只认装得进 u32 的非负整数；别的一律当没带。
                 pid: obj
                     .get("pid")

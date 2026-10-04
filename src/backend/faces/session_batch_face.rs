@@ -1,8 +1,8 @@
-//! 帧面 `sessions-stop` / `sessions-start` 的宿主壳：把本体（`control/session_batch.rs`）要的那几样拼成生产那一份交进去。
+//! 帧面 `sessions-where` / `sessions-stop` / `sessions-start` 的宿主壳：把本体（`control/session_batch.rs`）要的那几样拼成生产那一份交进去。
 //!
 //! 本体住 `control/`，而 tmux 名单与记录在不在住观测层（`control → observe` 是反向边）⇒ 由这层顶层壳补上，与 `fork_face` 同形。
 //! tmux 名单 = 终端名单那一趟（挂着 sid 的窗格各一行）· 记录在不在 = `history-record` 那一问 · 杀 = `kill`（按 sid 认窗格）·
-//! 就地键入 = `launch send-into`（带 sid ⇒ 落在挂着它的那个窗格）· 铸名 = `tmux-name-mint` · 起会话 = 这台后端自己当 ccm 跑那一行。
+//! 就地键入 = `launch send-into`（带 sid ⇒ 落在挂着它的那个窗格）· 铸名 = `terminal-name-mint` · 起会话 = 这台后端自己当 ccm 跑那一行。
 
 use crate::control::session_batch::{self as batch, Deps, TmuxEntry};
 use serde_json::Value;
@@ -19,6 +19,7 @@ fn with_deps(args: &Value, f: impl FnOnce(&Deps) -> Answer) -> Answer {
             rows.into_iter()
                 .map(|r| TmuxEntry {
                     agent: crate::agents::is_agent_process(&r.program),
+                    terminal: r.handle(),
                     sid: (!r.sid.is_empty()).then_some(r.sid),
                     name: r.name,
                 })
@@ -46,7 +47,7 @@ fn with_deps(args: &Value, f: impl FnOnce(&Deps) -> Answer) -> Answer {
     };
     let run_ccm = |argv: &[String]| crate::control::session_batch::run_self_as_ccm(argv);
     let mint = |cwd: &str| {
-        crate::control::ccm::tmux_name_mint_with(
+        crate::control::ccm::terminal_name_mint_with(
             &serde_json::json!({ "cwd": cwd }),
             crate::common::session_snapshot::global(),
         )
@@ -68,7 +69,7 @@ fn with_deps(args: &Value, f: impl FnOnce(&Deps) -> Answer) -> Answer {
     })
 }
 
-/// `sessions-tmux`：`{sids}` ⇒ 每个的样子（菜单就绪时问）。
+/// `sessions-where`：`{sids}` ⇒ 每个的样子（菜单就绪时问）。
 pub(crate) fn where_(args: &Value) -> Answer {
     with_deps(args, |d| batch::where_(args, d))
 }

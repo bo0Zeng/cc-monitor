@@ -199,10 +199,19 @@ fn the_env_key_this_file_reads_is_one_named_constant() {
 /// 「不在 tmux 会话里：程序退了只能 resume」。
 #[test]
 fn container_maps_every_tag_outcome_to_the_hand_written_table() {
-    use crate::stream::wire::SessionContainer;
+    use crate::stream::wire::{SessionContainer, TerminalHost};
+    let hosted = |t: &str| {
+        Some(SessionContainer::Hosted {
+            host: TerminalHost::Tmux,
+            terminal: Some(t.into()),
+        })
+    };
     let table: Vec<(Outcome, Option<SessionContainer>)> = vec![
-        (Outcome::Tagged("$1".into()), Some(SessionContainer::Tmux)),
-        (Outcome::AlreadyCurrent, Some(SessionContainer::Tmux)),
+        (Outcome::Tagged("tmux-1-2".into()), hosted("tmux-1-2")),
+        (
+            Outcome::AlreadyCurrent("tmux-1-3".into()),
+            hosted("tmux-1-3"),
+        ),
         (Outcome::NotInTmux, Some(SessionContainer::None)),
         (Outcome::PaneUnknown, None),
         (Outcome::NoSuchPane, None),
@@ -251,8 +260,8 @@ fn w5vis_s2_the_failure_note_speaks_for_exactly_the_two_untagged_forms() {
             Some("tmux 报了一句 X"),
         ),
         (Outcome::RejectedSid, Some("sid 的形状不对")),
-        (Outcome::Tagged("$3".into()), None),
-        (Outcome::AlreadyCurrent, None),
+        (Outcome::Tagged("tmux-3-1".into()), None),
+        (Outcome::AlreadyCurrent("tmux-3-1".into()), None),
         (Outcome::NotInTmux, None),
         (Outcome::PaneUnknown, None),
         (Outcome::NoSuchPane, None),
@@ -278,24 +287,29 @@ fn w5vis_s2_the_failure_note_speaks_for_exactly_the_two_untagged_forms() {
 fn w5vis_s2_set_sid_carries_what_tmux_said() {
     let said = "no server running on /tmp/tmux-1000/w5vis";
     let bad = fake_tmux("bad", &format!("#!/bin/sh\necho '{said}' >&2\nexit 1\n"));
-    match set_sid(fake_cmd(&bad), "$9".into(), "abc") {
+    match set_sid(fake_cmd(&bad), "%9".into(), "abc", "tmux-1-9".into()) {
         Outcome::Failed(why) => assert!(why.contains(said), "原因里没有 tmux 的原话：{why}"),
         other => panic!("假 tmux 退出 1，结局却是 {other:?}"),
     }
     let mute = fake_tmux("mute", "#!/bin/sh\nexit 1\n");
-    match set_sid(fake_cmd(&mute), "$9".into(), "abc") {
+    match set_sid(fake_cmd(&mute), "%9".into(), "abc", "tmux-1-9".into()) {
         Outcome::Failed(why) => assert!(why.contains("tmux 没说原因"), "{why}"),
         other => panic!("{other:?}"),
     }
-    // 正控：成功那一形仍是 `Tagged(句柄)`。
+    // 正控：成功那一形是 `Tagged(终端句柄)`。
     let good = fake_tmux("good", "#!/bin/sh\nexit 0\n");
     assert_eq!(
-        set_sid(fake_cmd(&good), "$9".into(), "abc"),
-        Outcome::Tagged("$9".into())
+        set_sid(fake_cmd(&good), "%9".into(), "abc", "tmux-1-9".into()),
+        Outcome::Tagged("tmux-1-9".into())
     );
     // 起不来（程序不存在）⇒ 仍是 `Failed`，原因说清。
     let gone = std::env::temp_dir().join("ccm-w5vis-s2-definitely-not-here/tmux");
-    match set_sid(std::process::Command::new(&gone), "$9".into(), "abc") {
+    match set_sid(
+        std::process::Command::new(&gone),
+        "%9".into(),
+        "abc",
+        "tmux-1-9".into(),
+    ) {
         Outcome::Failed(why) => assert!(why.contains("起不来 tmux"), "{why}"),
         other => panic!("{other:?}"),
     }

@@ -1,7 +1,7 @@
 /**
  * F60：远端 tmux 画面预览（只读快照）。轻量 overlay（照 pf 范式，body-level fixed，
- * 点外关 + Esc + ✕，z-index 200）——经 `src/frontend/ui/tmux-control.ts::capturePane` 问那台机器的后端抓 `tmux capture-pane -p`
- * 的屏幕文本，等宽 `<pre>` 展示；失败弹 toast。此前经 monitor 的 `capture_remote_pane`〔散文墓碑〕。**非 attach、不接管终端；只读快照非实时**
+ * 点外关 + Esc + ✕，z-index 200）——经 `src/frontend/ui/terminal-reads.ts::previewText` 问那台机器的后端抓挂着这个会话的那个终端
+ * 的屏幕文本（`terminal-preview`，纯文本），等宽 `<pre>` 展示；失败弹 toast。此前经 monitor 的一条 Tauri 命令。**非 attach、不接管终端；只读快照非实时**
  * （「重新抓取」按钮手动刷新，要动态看去 attach）。一次只开一个。
  *
  * 本文件是抽表的**样板区**：它的对外文案全部住 `src/shared/copy/table.json` 的
@@ -9,7 +9,8 @@
  */
 import { copyText } from "../copy-table";
 import { showActionFailureToast } from "../error-toast";
-import { capturePane, saidOfControl } from "../tmux-control";
+import { saidOfControl } from "../control-said";
+import { previewText, type TerminalTarget } from "../terminal-reads";
 
 let current: HTMLElement | null = null;
 
@@ -26,8 +27,8 @@ export function closePanePreview(): void {
   }
 }
 
-/** 打开 [origin] 的 tmux 会话 `target` 的画面预览（给了 `sid` ⇒ 挂着它的那个窗格）。 */
-export async function openPanePreview(origin: string, target: string, sid?: string): Promise<void> {
+/** 打开 [origin] 上 `which` 那个终端的画面预览（`target` 是标题里那个 tmux 会话名）。 */
+export async function openPanePreview(origin: string, target: string, which: TerminalTarget): Promise<void> {
   closePanePreview(); // 一次只一个
 
   const overlay = document.createElement("div");
@@ -76,7 +77,7 @@ export async function openPanePreview(origin: string, target: string, sid?: stri
     refreshBtn.disabled = true;
     if (!loaded) pre.textContent = copyText("panePreview.body.loading");
     try {
-      const text = await capturePane(origin, target, sid);
+      const text = await previewText(origin, which, target);
       if (current !== overlay) return; // 抓取途中被关/换
       pre.textContent = text.length > 0 ? text : copyText("panePreview.body.empty");
       loaded = true;

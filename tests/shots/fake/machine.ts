@@ -75,9 +75,8 @@ export function machineOps(): Record<string, OpHandler> {
       synced: w.machines.slice(1).map((origin) => ({ origin, peer: null, changed: false, pushed: 0, error: null })),
       reach: w.machines.slice(1).map((origin) => ({ origin, machine: null })),
     }),
-    "capture-pane": (_o, req) => ({
-      name: String(req.name),
-      screen: [
+    "terminal-preview": () => ({
+      lines: [
         "╭──────────────────────────────────────────────╮",
         "│ ✻ Welcome to Claude Code!                    │",
         "╰──────────────────────────────────────────────╯",
@@ -95,22 +94,17 @@ export function machineOps(): Record<string, OpHandler> {
         "> ",
         "─────────────────────────────────────────────────",
         "  ⏵⏵ accept edits on (shift+tab to cycle)",
-      ].join("\n"),
+      ].map((text) => ({ text })),
     }),
     "ssh-config-aliases": () => ({ aliases: ["devbox", "gpu-01", "win-laptop", "bastion"] }),
     "exit-policy-read": () => ({ state: "absent", killOnExit: false, reason: null, path: null, said: copyText("backendPolicy.exit.unattended") }),
     "footprint-report": () => footprint(),
-    "tmux-list": (origin, _r, w) => ({
-      installed: true,
-      sessions: w.sessions
-        .filter((s) => s.origin === origin && !s.ended)
-        .map((s, i) => ({ name: `cc-${s.cwd.split(/[/\\]/).pop()}`, path: s.cwd, command: s.idle ? "zsh" : "claude", attached: i === 0, windows: 1, sid: s.sid, agent: !s.idle })),
-    }),
-    "sessions-tmux": (_o, req, w) => ({
+    "sessions-where": (_o, req, w) => ({
       results: (req.sids as string[]).map((sid) => {
         const s = w.sessions.find((x) => x.sid === sid);
-        if (!s || s.ended) return { sid, standing: "none", names: [] };
-        return { sid, standing: s.idle ? "idle" : "running", names: [`cc-${s.cwd.split(/[/\\]/).pop()}`] };
+        if (!s || s.ended) return { sid, standing: "none", names: [], terminals: [] };
+        const name = `cc-${s.cwd.split(/[/\\]/).pop()}`;
+        return { sid, standing: s.idle ? "idle" : "running", names: [name], terminals: [{ host: "tmux", terminal: `tmux-${name}` }] };
       }),
     }),
     "history-find": (_o, req) => {

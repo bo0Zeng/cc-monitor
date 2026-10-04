@@ -11,7 +11,7 @@
 //   into-existing <sid> <name> <launcher> [configDir]   -> planResumeIntoExistingTmux → 生产渲染
 //   tmux-new      <sid> <cwd> <launcher> <name> [configDir] -> planResumeTmux → 生产渲染
 //   direct        <sid> <cwd> <launcher> [configDir] -> planResumeDirect → 生产渲染
-//   （`mint-name` 那个 mode 删了：tmux 名的派生 ＋ 避让只在后端 `tmux-name-mint`，前端那份铸名口没了）
+//   （`mint-name` 那个 mode 删了：tmux 名的派生 ＋ 避让只在后端 `terminal-name-mint`，前端那份铸名口没了）
 //   follow        <lastAccount|-> <current|-> <stateJson> -> resolveFollowAccount(名或 "<base>")
 //   acct-dir      <name> <stateJson>                      -> accountConfigDir(路径或 "<none>")
 //

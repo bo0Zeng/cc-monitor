@@ -702,23 +702,3 @@ fn the_tmux_probe_is_bounded_and_degrades_honestly() {
              那是把一个「偶发卡死」换成「必然不可用」。要诚实降级（C7），不是赌它存在。实得：{script}"
     );
 }
-
-/// `tmux-list` 的四态折叠：没装 ≠ 零会话 ≠ 看不清（`list_remote_tmux` 头注那三档，搬到这一侧）。
-/// 要求：`INVARIANTS §49`「下溢必须出声 ＋ 这一行不许当好数据」·「`list_remote_tmux` 改后端新帧命令 `tmux-list`」。
-#[test]
-fn the_tmux_list_query_keeps_not_installed_empty_and_unobservable_apart() {
-    assert_eq!(query_reply(TmuxObservation::NoTmux), Ok((false, vec![])));
-    assert_eq!(query_reply(TmuxObservation::NoServer), Ok((true, vec![])));
-    assert_eq!(
-        query_reply(TmuxObservation::ServerEmpty),
-        Ok((true, vec![]))
-    );
-    assert_eq!(
-        query_reply(TmuxObservation::Sessions("a\tb\n".to_string() + "c\td")),
-        Ok((true, vec!["a\tb".to_string(), "c\td".to_string()]))
-    );
-    assert!(
-        query_reply(TmuxObservation::Unobservable).is_err(),
-        "看不清绝不当成零会话"
-    );
-}

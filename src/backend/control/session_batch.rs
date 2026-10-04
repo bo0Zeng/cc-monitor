@@ -18,10 +18,12 @@ pub(crate) const MAX_BATCH: usize = 64;
 /// 命令级错误：`(code, message)`。
 pub(crate) type CmdErr = (&'static str, String);
 
-/// 这台 tmux 里的一个会话（只要三格）。
+/// 这台 tmux 里的一个会话（只要四格）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TmuxEntry {
     pub(crate) name: String,
+    /// 终端句柄（同 `terminals-list` 那一行）。
+    pub(crate) terminal: String,
     /// `@ccm_sid`（没设 ⇒ `None`）。
     pub(crate) sid: Option<String>,
     /// 前台是不是 agent 的进程。
@@ -40,7 +42,7 @@ pub(crate) struct Deps<'a> {
     pub(crate) send_into: &'a dyn Fn(&str, &str, &str) -> Result<(), CmdErr>,
     /// 交一行 ccm（argv，`argv[0]` 是 `ccm`）⇒ `(退出码, stdout, stderr)`。生产那一份起这台后端自己（它就是 ccm）。
     pub(crate) run_ccm: &'a dyn Fn(&[String]) -> Result<(i32, String, String), String>,
-    /// 工作目录 ⇒ 这台铸的新会话名（同 `tmux-name-mint`）。
+    /// 工作目录 ⇒ 这台铸的新会话名（同 `terminal-name-mint`）。
     pub(crate) mint: &'a dyn Fn(&str) -> Result<String, CmdErr>,
     /// 这台 ccm 会哪些（渲那一行用）。
     pub(crate) caps: &'a BTreeSet<String>,
@@ -125,24 +127,24 @@ fn sids_of(v: Option<&Value>) -> Result<Vec<String>, CmdErr> {
 }
 
 /// 这个 sid 此刻在这台 tmux 里的样子 —— **唯一的判定**（单个菜单亮哪几项、批量停 / 起都读它）。
+/// `T` 是带着它的那一个（默认是 tmux 会话名；`sessions-where` 要整行）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Standing {
+pub(crate) enum Standing<T = String> {
     /// 恰好一个带着它（`@ccm_sid`）、前台是 agent 的会话。
-    Running(String),
+    Running(T),
     /// 带着它、前台是 agent 的不止一个（按名单顺序）—— 破坏性动作拒，接回接第一个。
-    Ambiguous(Vec<String>),
+    Ambiguous(Vec<T>),
     /// 没有在跑的，但有带着它的空 tmux（agent 已退、只剩 shell；取第一个）。
-    Idle(String),
+    Idle(T),
     /// 没有哪个 tmux 会话带着它（没打上标记的不猜：不按目录认）。
     None,
 }
 
-/// 名单 ⇒ 这个 sid 的样子。
-pub(crate) fn standing(rows: &[TmuxEntry], sid: &str) -> Standing {
-    let carrying = |agent: bool| -> Vec<String> {
+/// 名单 ⇒ 这个 sid 的样子（带着它的那几行）。
+fn carriers<'a>(rows: &'a [TmuxEntry], sid: &str) -> Standing<&'a TmuxEntry> {
+    let carrying = |agent: bool| -> Vec<&TmuxEntry> {
         rows.iter()
             .filter(|r| r.sid.as_deref() == Some(sid) && r.agent == agent)
-            .map(|r| r.name.clone())
             .collect()
     };
     let mut live = carrying(true);
@@ -156,21 +158,38 @@ pub(crate) fn standing(rows: &[TmuxEntry], sid: &str) -> Standing {
     }
 }
 
-/// `sessions-tmux`：`{sids}` ⇒ `{results: [{sid, standing, names}]}`（菜单就绪时问：这一项亮不亮、写哪个名字）。
+/// 名单 ⇒ 这个 sid 的样子（带着它的 tmux 会话名）。
+pub(crate) fn standing(rows: &[TmuxEntry], sid: &str) -> Standing {
+    match carriers(rows, sid) {
+        Standing::Running(e) => Standing::Running(e.name.clone()),
+        Standing::Ambiguous(es) => Standing::Ambiguous(es.iter().map(|e| e.name.clone()).collect()),
+        Standing::Idle(e) => Standing::Idle(e.name.clone()),
+        Standing::None => Standing::None,
+    }
+}
+
+/// `sessions-where`：`{sids}` ⇒ `{results: [{sid, standing, names, terminals}]}`（菜单就绪时问：这一项亮不亮、写哪个名字）。
+/// `terminals` 与 `names` 同序同数，每一项 `{host, terminal}`（词同容器那一格与 `terminals-list`）。
 pub(crate) fn where_(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
     let sids = sids_of(args.get("sids"))?;
     let rows = (deps.list)().map_err(|m| ("unobservable", m))?;
+    let host = crate::stream::wire::TerminalHost::Tmux.as_wire();
     let results: Vec<Value> = sids
         .iter()
         .map(|sid| {
-            let (kind, names) = match rows.as_deref().map(|r| standing(r, sid)) {
+            let (kind, found) = match rows.as_deref().map(|r| carriers(r, sid)) {
                 None => ("no_tmux", vec![]),
-                Some(Standing::Running(n)) => ("running", vec![n]),
-                Some(Standing::Ambiguous(ns)) => ("ambiguous", ns),
-                Some(Standing::Idle(n)) => ("idle", vec![n]),
+                Some(Standing::Running(e)) => ("running", vec![e]),
+                Some(Standing::Ambiguous(es)) => ("ambiguous", es),
+                Some(Standing::Idle(e)) => ("idle", vec![e]),
                 Some(Standing::None) => ("none", vec![]),
             };
-            json!({ "sid": sid, "standing": kind, "names": names })
+            let names: Vec<&str> = found.iter().map(|e| e.name.as_str()).collect();
+            let terminals: Vec<Value> = found
+                .iter()
+                .map(|e| json!({ "host": host, "terminal": e.terminal }))
+                .collect();
+            json!({ "sid": sid, "standing": kind, "names": names, "terminals": terminals })
         })
         .collect();
     Ok(json!({ "results": results }))

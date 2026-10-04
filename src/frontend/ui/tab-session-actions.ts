@@ -44,7 +44,7 @@ import {
   findHostByOrigin,
   resolveResumeCommand,
 } from "./remote-config";
-import { standingOf } from "./tmux-sessions";
+import { standingOf } from "./sessions-where";
 import { callStart, callStop, planStarts, sayReply, type Reply, type StartItem } from "./tab-batch-run";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
 import { ACTIVE_AGENT, defaultLauncherOf } from "./agent-profile";

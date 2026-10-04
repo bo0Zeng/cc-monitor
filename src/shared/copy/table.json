@@ -1229,11 +1229,6 @@
       "zh": "启动不了 tmux：{e}。这台机器上可能没装 tmux，或它不在 PATH 里。",
       "args": ["e"]
     },
-    "beCapturePane.run.noCarrier": {
-      "kind": "error",
-      "zh": "tmux 会话 {name} 里没有这条会话的窗格，抓不到画面。",
-      "args": ["name"]
-    },
     "beCapturePane.classify.noServer": {
       "kind": "error",
       "zh": "这台机器上没有在跑的 tmux，抓不到画面。tmux 的原话：{tail}",
@@ -1248,16 +1243,6 @@
       "kind": "error",
       "zh": "抓取画面失败，退出码 {status}。tmux 的原话：{tail}",
       "args": ["status", "tail"]
-    },
-    "beCapturePane.cli.noName": {
-      "kind": "error",
-      "zh": "缺会话名。要给一个 tmux 会话名。",
-      "args": []
-    },
-    "beCapturePane.cli.extra": {
-      "kind": "error",
-      "zh": "多了参数 {extra}。只收一个会话名。",
-      "args": ["extra"]
     },
     "beGate.probe.noTmux": {
       "kind": "error",
@@ -1717,6 +1702,11 @@
       "zh": "不在 tmux 会话里：程序退了只能 resume",
       "args": []
     },
+    "sessionState.liveUnknownHost.tooltip": {
+      "kind": "body",
+      "zh": "终端形式未知",
+      "args": []
+    },
     "sessionState.gone.name": {
       "kind": "body",
       "zh": "记录已不在",
@@ -1967,40 +1957,55 @@
       "zh": "{machine} 的后端回的内容读不懂，多半是它的版本不对，需要更新。",
       "args": ["machine"]
     },
-    "tmuxControl.capture.noTmux": {
+    "terminalReads.preview.noTmux": {
       "kind": "error",
       "zh": "抓取不了 {target} 的画面：那台机器上起不来 tmux（{detail}）",
       "args": ["target", "detail"]
     },
-    "tmuxControl.capture.noServer": {
+    "terminalReads.preview.noServer": {
       "kind": "error",
       "zh": "抓取不了 {target} 的画面：那台机器上没有在运行的 tmux（{detail}）",
       "args": ["target", "detail"]
     },
-    "tmuxControl.capture.noSuchSession": {
+    "terminalReads.preview.noSuchSession": {
       "kind": "error",
       "zh": "抓取不了 {target} 的画面：这个会话不存在，可能刚结束（{detail}）",
       "args": ["target", "detail"]
     },
-    "tmuxControl.capture.badName": {
-      "kind": "error",
-      "zh": "抓取不了 {target} 的画面：后端不接受这个会话名（{detail}）",
-      "args": ["target", "detail"]
-    },
-    "tmuxControl.capture.failed": {
+    "terminalReads.preview.failed": {
       "kind": "error",
       "zh": "抓取 {target} 的画面失败了，tmux 的原话：{detail}",
       "args": ["target", "detail"]
     },
-    "tmuxControl.capture.otherCode": {
+    "terminalReads.preview.otherCode": {
       "kind": "error",
       "zh": "抓取 {target} 的画面被拒：{detail}",
       "args": ["target", "detail"]
     },
-    "tmuxControl.capture.noReason": {
+    "terminalReads.preview.noReason": {
       "kind": "error",
       "zh": "抓取 {target} 的画面被拒，没有给出原因。",
       "args": ["target"]
+    },
+    "terminalReads.preview.badTarget": {
+      "kind": "error",
+      "zh": "抓取 {target} 画面：目标无效（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "terminalReads.preview.notKnown": {
+      "kind": "error",
+      "zh": "抓取 {target} 画面：终端不在名单（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "terminalReads.preview.ambiguous": {
+      "kind": "error",
+      "zh": "抓取 {target} 画面：多个终端匹配（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "terminalReads.preview.unobservable": {
+      "kind": "error",
+      "zh": "抓取 {target} 画面：终端名单不可读（{detail}）",
+      "args": ["target", "detail"]
     },
     "tmuxControl.kill.badName": {
       "kind": "error",
@@ -11204,11 +11209,6 @@
       "zh": "登记的路径里有不能解析的字符 {bad}（{declared}）。说明请写在备注里，路径栏只放路径。",
       "args": ["bad", "declared"]
     },
-    "beTmuxList.query.unobservable": {
-      "kind": "error",
-      "zh": "这一趟没看清这台的 tmux，稍后再试。输出被改写、超时或起不来都会这样 —— 不是没有会话",
-      "args": []
-    },
     "beMcp.read.statFailed": {
       "kind": "error",
       "zh": "看 {path} 失败：{e}",
@@ -13390,16 +13390,6 @@
     "apikeyReads.backend.tooOld": {
       "kind": "error",
       "zh": "那台机器的后端太旧，重装那台机器的后端之后再试",
-      "args": []
-    },
-    "tmuxReads.reply.badShape": {
-      "kind": "error",
-      "zh": "读不懂那台后端回的 tmux 会话清单，多半是它的版本不对",
-      "args": []
-    },
-    "tmuxReads.backend.tooOld": {
-      "kind": "error",
-      "zh": "那台机器的后端太旧，列不了 tmux 会话。重装那台机器的后端之后再试",
       "args": []
     },
     "remoteProbe.reply.badShape": {

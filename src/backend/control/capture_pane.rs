@@ -1,19 +1,6 @@
-//! `K-R86`（2026-09-13）：**`capture-pane` 只读原语** —— 把某个 tmux 会话**此刻**那一屏
-//! 的文本抓回来，抓完就返回。
-//!
-//! # 它补的是哪个洞
-//!
-//! monitor 侧 `src/frontend/shell/src/parity_ledger.rs` 的 `tmux.manage` 那一格逐字记了一个月：
-//! 「能不能预览这件事一点没变，**仍等后端出原语**」。**本模块就是那条原语。**
-//!
-//! 在它之前后端会 `list-sessions`（`common/session_snapshot.rs`）、会
-//! `display-message`（[`super::gate`]）、会 `kill-session`（[`super::kill`]）、
-//! 会 `send-keys`（[`super::launch`]）—— **唯独没有「把那一屏取回来」**。
-//!
-//! ⚠ **它只是原语。** monitor 侧那条 `capture_remote_pane` 今天仍然只有远端一条路
-//! （`src/frontend/shell/src/tmux.rs` 不在本件写区）—— 欠账从「等后端出原语」变成
-//! 「等 monitor 侧接上去」，**没有被结掉**。〔`K-R112` 接上了；再往前一步：
-//! 界面经通道直接说本条原语（`src/frontend/ui/tmux-control.ts::capturePane`），monitor 那一跳只搬字节，本机与远端同一条路。〕
+//! **抓一屏的只读原语**（tmux 的 `capture-pane`）：把某个窗格**此刻**那一屏的文本抓回来，抓完就返回。
+//! 调用方是终端管理那几条（`control/terminals.rs`：`terminal-preview` 抓屏 · `terminal-input` 送之前比指纹）；
+//! 本模块自己不上帧面、不上 CLI 面（目标只认名单里的终端，不收 tmux 目标串）。
 //!
 //! # 🔴 只出原语，不出轮询（`KR86D3`）
 //!
@@ -31,7 +18,7 @@
 //!    （`gate` / `kill` / `launch` / `identity_tag` / `tmux_hook` / `session_snapshot`），
 //!    `observe/` 那一侧碰 tmux 走的是 `platform/shell.rs` 的 `sh -c`，与本处形态不同。
 //! 2. **进不了 `common/`**：那一层的门槛①是「≥2 个**上层**用」，而本模块今天
-//!    只有一个调用方（`main.rs` 的一次性分派臂）⇒ 不达标，硬塞就是把门槛变成杂物间。
+//!    只有一个调用方（`control/terminals.rs`）⇒ 不达标，硬塞就是把门槛变成杂物间。
 //! 3. ⚠ **`gate` 那条「只读但归 control/」的理由（定框 C13：有没有决策权）在这里
 //!    不成立** —— 本模块不参与任何「能不能改这个会话」的决策。不许照抄那句话。
 //!
@@ -81,7 +68,13 @@ pub(crate) const PRINT_TO_STDOUT: &str = "-p";
 /// `-t` = 目标。
 pub(crate) const TARGET_FLAG: &str = "-t";
 
-/// 这一处**只许**发这一条 argv。
+/// `-e` = 带上颜色等属性（SGR 转义）。只影响打到 stdout 的样子，不改 tmux 状态。
+pub(crate) const WITH_ESCAPES: &str = "-e";
+
+/// `-S <起始行>`：负数 = 往回多要几行历史。只读。
+pub(crate) const START_LINE: &str = "-S";
+
+/// 这一处**只许**发的 argv：要不要颜色、往回几行。
 ///
 /// 🔴 顺序有两条硬约束，都不是排版：
 /// - [`UTF8_CLIENT_FLAG`] **必须排在子命令之前**（`K-R12`：放后面是
@@ -89,23 +82,6 @@ pub(crate) const TARGET_FLAG: &str = "-t";
 /// - [`PRINT_TO_STDOUT`] 不许换成 `-b`／落 buffer 的写法 —— 那就不再是只读。
 ///
 /// 逐元素由 `readonly_guard::capture_is_read_only` 钉死。
-pub(crate) fn capture_argv(target: &str) -> [&str; 5] {
-    [
-        UTF8_CLIENT_FLAG,
-        CAPTURE_SUBCOMMAND,
-        PRINT_TO_STDOUT,
-        TARGET_FLAG,
-        target,
-    ]
-}
-
-/// `-e` = 带上颜色等属性（SGR 转义）。只影响打到 stdout 的样子，不改 tmux 状态。
-pub(crate) const WITH_ESCAPES: &str = "-e";
-
-/// `-S <起始行>`：负数 = 往回多要几行历史。只读。
-pub(crate) const START_LINE: &str = "-S";
-
-/// 抓屏的完整形（终端预览用）：要不要颜色、往回几行。子命令与 `-p` 不变，只多两类只读旗。
 pub(crate) fn capture_argv_with(target: &str, color: bool, back: u32) -> Vec<String> {
     let mut v: Vec<String> = vec![
         UTF8_CLIENT_FLAG.into(),
@@ -124,7 +100,7 @@ pub(crate) fn capture_argv_with(target: &str, color: bool, back: u32) -> Vec<Str
     v
 }
 
-/// 抓一次那一屏（终端预览用：要不要颜色、往回几行）。判法同 [`capture_on`]；`target` 由调用方从名单里取（`#{session_id}`）。
+/// 抓一次那一屏（终端预览用：要不要颜色、往回几行）。`target` 由调用方从名单里取（窗格 / 会话的 tmux ID）。
 pub(crate) fn capture_with_on(
     socket: Option<&str>,
     target: &str,
@@ -242,17 +218,10 @@ pub(crate) fn classify(raw: &RawCapture) -> Result<String, CmdErr> {
     ))
 }
 
-/// 真起进程那一处 —— **全 crate 唯一一处 `capture-pane`**。
+/// 本模块唯一起进程的那一处 —— **全 crate 唯一一处 `capture-pane`**：跑一条只读的抓屏命令，读回退出码与两条流。
 ///
-/// `socket`：`None` = 让 tmux 自己按环境解析默认 socket（**生产恒 `None`**）；
-/// `Some(p)` = 显式 `-S <p>`。它**不是配置口**，是为了让「真能拿回内容」这件事
-/// 在一个**隔离的 tmux server** 上测得出来 —— 同 `layering_guard::layer_sources_at`
-/// 的「根可注入」：活体夹具要让**真判据本身**跑在真东西上，不是跑在它的复刻上。
-fn spawn_capture(socket: Option<&str>, target: &str) -> Result<RawCapture, CmdErr> {
-    spawn_tmux(socket, &capture_argv(target))
-}
-
-/// 本模块唯一起进程的那一处：跑一条只读的抓屏命令，读回退出码与两条流。
+/// `socket`：`None` = 让 tmux 自己按环境解析默认 socket（**生产恒 `None`**）；`Some(p)` = 显式 `-S <p>`，
+/// 只为让「真能拿回内容」在一个隔离的 tmux server 上测得出来。
 fn spawn_tmux(socket: Option<&str>, argv: &[&str]) -> Result<RawCapture, CmdErr> {
     let mut cmd = Command::new("tmux").without_own_env();
     if let Some(s) = socket {
@@ -270,120 +239,6 @@ fn spawn_tmux(socket: Option<&str>, argv: &[&str]) -> Result<RawCapture, CmdErr>
         stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
         stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
     })
-}
-
-/// [`capture`] 的本体，**socket 由调用方给**（理由见 [`spawn_capture`]）。
-///
-/// `sid`：抓这个会话里挂着它的那个窗格（一个 tmux 会话里可以有几个 claude 窗格），不看哪个窗格是活动的；
-/// 哪个窗格都不挂它 ⇒ `no_such_session`。没给 ⇒ 会话当前的那个窗格。
-pub(crate) fn capture_on(
-    socket: Option<&str>,
-    name: &str,
-    sid: Option<&str>,
-) -> Result<String, CmdErr> {
-    let name = checked_name(name)?;
-    // Gate 1（`=name:` 精确匹配）—— 裸 `-t <名>` 会被 tmux 按「精确名 → 名字开头 → glob」
-    // 解析，只有 `sib-2` 在时 `-t sib` 抓的是 `sib-2`（`F01`，`launch::exact_target` 头注）。
-    let target = super::launch::exact_target(&name);
-    let target = match sid {
-        None => target,
-        Some(s) => match super::gate::carrier(&super::gate::panes_on(socket, &target), s) {
-            Some(c) => c.pane.clone(),
-            None => {
-                return Err((
-                    "no_such_session",
-                    copy_text(
-                        "beCapturePane.run.noCarrier",
-                        &[("name", &format!("{name:?}"))],
-                    ),
-                ))
-            }
-        },
-    };
-    classify(&spawn_capture(socket, &target)?)
-}
-
-/// 抓一次 `name` 这个 tmux 会话此刻的那一屏（给了 `sid` ⇒ 挂着它的那个窗格）。**只读**：不 attach、不落 buffer、不写盘。
-///
-/// ⚠ **刻意不过身份门（Gate 2）**：这是一次只读快照，与 monitor 侧同族那一处口径一致
-/// （`src/frontend/shell/src/exec_site_registry.rs` 里 `capture_remote_pane` 那一行逐字：
-/// 「只读快照，明确不为它加身份门」）。破坏性动作那三道门在 [`super::gate`]，
-/// 与本处无关 —— **别顺手给它加门，也别顺手把那三道门搬过来**。
-pub(crate) fn capture(name: &str, sid: Option<&str>) -> Result<String, CmdErr> {
-    capture_on(None, name, sid)
-}
-
-/// 会话名的形状校验 —— **不在这里写第二份**。
-///
-/// 逐字复用 [`super::kill::parse_name`]（Gate 1 那一份，`gate_rules`），一条规矩只许有一个住址。
-/// ⚠ 它今天的入参形状是帧面命令的 `args`（一段 JSON），而本条 CLI 面只有一个位置参数
-/// ⇒ **在这里包一层，不去改它的签名**：改签名会动到 `kill` 的帧面，而那份文件不在本件写区。
-fn checked_name(raw: &str) -> Result<String, CmdErr> {
-    super::kill::parse_name(&serde_json::json!({ "name": raw }))
-}
-
-/// 帧面入口（`K-R104`）：`capture-pane`。
-///
-/// `args`：`{name, sid?}`。回 `{name, screen}` —— `screen` 是那一屏的**原文**
-/// （`R58`〔用 09-13〕逐字「直接抓屏给我看」：这一层一个字都不解析、不裁剪、不归一）。
-///
-/// 🔴 **与 CLI 面 [`run`] 共用同一个本体 [`capture`]**：`K33` 逐字「所有命令只许有一处，
-/// 其他都是根据传参来调用」。两个面**只差取参数与包信封的方式**。
-///
-/// ⚠ **空屏是合法的成功**（模块头注那一段）—— 这里照样回 `ok:true` ＋ 空 `screen`，
-/// 不许把它压成一条错误：那是 `KR101D1` ③ 明令禁止的那一形。
-pub(crate) fn capture_for_inbound(
-    args: &serde_json::Value,
-) -> Result<serde_json::Value, (String, String)> {
-    let name = super::kill::parse_name(args).map_err(|(c, m)| (c.to_string(), m))?;
-    let sid = super::gate::sid_of(args).map_err(|(c, m)| (c.to_string(), m))?;
-    let screen = capture(&name, sid.as_deref()).map_err(|(c, m)| (c.to_string(), m))?;
-    Ok(reply(&name, &screen))
-}
-
-/// 帧面成品 `{name, screen}` 的构造器 —— 从 [`capture_for_inbound`] 里原样抽出来（逻辑不动），
-/// 只为让跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 拿**同一个**构造器对拍：
-/// 界面（`src/frontend/ui/tmux-control.ts`）从此直接收这份成品，monitor 那一跳只搬字节。
-pub(crate) fn reply(name: &str, screen: &str) -> serde_json::Value {
-    serde_json::json!({ "name": name, "screen": screen })
-}
-
-/// 一次性 CLI 入口：`--capture-pane <会话名>`。
-///
-/// 成功 ⇒ 那一屏**原样**写 stdout（同 `--read-session` 的透传口径）＋ exit 0；
-/// 失败 ⇒ stderr 一行 `{code, message}` JSON ＋ exit 2（同 `--resolve` 那套信封）。
-///
-/// ⚠ **子命令那个 `--` 字面量刻意留在 `main.rs`，本文件一个都没有**：
-/// `protocol_doc_guard::dispatch_registry_is_complete` 按「生产段里出现 `"--` 字面量」
-/// 收人，本文件一旦持有它就得进 `DISPATCH_FILES`（那份文件不在本件写区）。
-pub fn run(args: &[String]) -> i32 {
-    let Some(name) = args.get(1) else {
-        return emit_err(("invalid_args", copy_text("beCapturePane.cli.noName", &[])));
-    };
-    if args.len() > 2 {
-        return emit_err((
-            "invalid_args",
-            copy_text(
-                "beCapturePane.cli.extra",
-                &[("extra", &format!("{:?}", &args[2..]))],
-            ),
-        ));
-    }
-    match capture(name, None) {
-        Ok(screen) => {
-            // 原样透传：pane 里本来就有换行，别再包一层 JSON 把它转义掉。
-            print!("{screen}");
-            0
-        }
-        Err(e) => emit_err(e),
-    }
-}
-
-/// 错误信封：stderr 一行 JSON ＋ 退出码 2。形状与 `--resolve` 逐字相同。
-fn emit_err((code, message): CmdErr) -> i32 {
-    let line = serde_json::json!({ "code": code, "message": message });
-    eprintln!("{line}");
-    2
 }
 
 #[cfg(test)]

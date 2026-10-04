@@ -33,7 +33,7 @@ import { explicitLocalAccountWire, localFollowPlan, primeLocalLaunchAccounts, re
 import { getBehavior } from "./behavior";
 import { agentHasAccounts } from "./agent-profile";
 import { configuredLauncherFor } from "./launch-requests";
-import { mintFreshTmuxName } from "./tmux-name-mint";
+import { mintFreshTmuxName } from "./terminal-name-mint";
 import { showActionFailureToast } from "./error-toast";
 import { copyText } from "./copy-table";
 import { arrivedBody, awaitArrival, expectArrival, type LaunchWait } from "./launch-arrival";
@@ -124,7 +124,7 @@ async function resumeLocalCore(req: LocalResumeRequest, wait: "expect" | "await"
     const launcher = req.launcher ?? configuredLauncherFor(req.agent, (await getBehavior()).resumeCommandLocal);
     // ★★ `K-R46`：名字要算出来传下去 —— 后端**故意**拒绝自己铸名（本机后端 `launch_render/local.rs` 的 `NO_TMUX_NAME`），
     //    不传 ⇒ 后端如实走不进容器的旧路。名单不知道 ⇒ `null`（绝不退化成空集，#76）。
-    // 名字问本机后端铸（`tmux-name-mint`）；问不到 ⇒ `null`（不拿空集去避让）。
+    // 名字问本机后端铸（`terminal-name-mint`）；问不到 ⇒ `null`（不拿空集去避让）。
     const minted = req.tmuxName == null ? await mintFreshTmuxName(LOCAL_ORIGIN, req.cwd) : null;
     const tmuxName = req.tmuxName ?? (minted?.ok ? minted.name : null);
     const accountWire: LocalAccountWire | undefined =

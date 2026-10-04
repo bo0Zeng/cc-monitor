@@ -294,7 +294,7 @@ fn every_registered_command_declares_its_run_kind() {
                 // 认终端进程：起一趟 PowerShell（连接表 ＋ 进程表）并等它退出。
                 | "terminal-processes"
                 // 铸 tmux 名：问一次会话快照 = 起一次 `tmux` 并等它退出。
-                | "tmux-name-mint"
+                | "terminal-name-mint"
                 // `~/.ssh/config` 三条：读一份文件 ／ 起 `ssh -G` 并等它退出。
                 | "ssh-config-aliases"
                 | "ssh-config-import"
@@ -375,7 +375,7 @@ fn every_registered_command_declares_its_run_kind() {
                 // 批量停 / 起：逐个起 tmux 子进程（同 `kill` / `launch`）。
                 | "sessions-stop"
                 | "sessions-start"
-                | "sessions-tmux"
+                | "sessions-where"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
         assert_eq!(
@@ -503,9 +503,9 @@ fn every_registered_command_declares_its_run_kind() {
         "tmux-list",
         "session-terminals",
         "terminal-processes",
-        "tmux-name-mint", //
-        "hooks-diag",     //
-        "resync",         //
+        "terminal-name-mint", //
+        "hooks-diag",         //
+        "resync",             //
         "apikey-key-set",
         "apikey-read",
         "apikey-routing", //
@@ -581,7 +581,7 @@ fn every_registered_command_declares_its_run_kind() {
         // 批量停 / 起：阻塞。
         "sessions-stop",
         "sessions-start",
-        "sessions-tmux",
+        "sessions-where",
         // 终端管理 L1 三条：阻塞（起 tmux）。
         "terminals-list",
         "terminal-preview",
@@ -963,4 +963,37 @@ fn a_command_with_a_payload_must_own_a_doc_section() {
             spec.fields.len()
         );
     }
+}
+
+/// 帧命令名与它们派生出来的 CLI 面里零个带宿主名 `tmux` 的（名字按「终端」叫，宿主只是实现）。
+/// 人群从 `REGISTRY` 现取；正控：同一个找法在真表 `SUBCOMMANDS` 里认得出手写的 `--tmux-notify`（tmux 钩子入口，不由帧命令派生）。
+#[test]
+fn no_frame_command_or_derived_cli_flag_names_the_tmux_host() {
+    let names_tmux = |s: &str| s.split(['-', '_']).any(|w| w == "tmux");
+    let frame: Vec<&str> = super::REGISTRY
+        .iter()
+        .map(|s| s.name)
+        .filter(|n| names_tmux(n))
+        .collect();
+    let derived: Vec<String> = super::REGISTRY
+        .iter()
+        .filter(|s| crate::control::cli_control::cli_exposed(s))
+        .map(|s| crate::control::cli_control::flag_of(s.name))
+        .filter(|f| names_tmux(f))
+        .collect();
+    assert!(
+        super::REGISTRY.len() > 50,
+        "只取到 {} 条帧命令 —— 人群塌了",
+        super::REGISTRY.len()
+    );
+    assert_eq!(frame, Vec::<&str>::new(), "帧命令名里带了宿主名 tmux");
+    assert_eq!(
+        derived,
+        Vec::<String>::new(),
+        "派生出来的 CLI 面带了宿主名 tmux"
+    );
+    assert!(
+        crate::SUBCOMMANDS.iter().any(|f| names_tmux(f)),
+        "正控失败：同一个找法在 `SUBCOMMANDS` 里认不出 `--tmux-notify` —— 上面的零命中不可信"
+    );
 }

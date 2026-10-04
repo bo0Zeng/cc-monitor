@@ -25,7 +25,7 @@
  */
 
 // 分叉会话的 tmux 名（原 `forkTmuxName`：`<源名>-fork-cc` ＋ 避让）搬进后端
-//   （`control/ccm/plan.rs::fork_tmux_base`，帧命令 `tmux-name-mint {forkOf}`）；这里只剩推断与追问。
+//   （`control/ccm/plan.rs::fork_tmux_base`，帧命令 `terminal-name-mint {forkOf}`）；这里只剩推断与追问。
 import { copyText } from "./copy-table";
 
 /** 某个维度的取值：知道（带来源）或不知道（带原因）。 */

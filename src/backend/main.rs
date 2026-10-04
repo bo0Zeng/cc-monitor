@@ -143,9 +143,6 @@ async fn main() {
         let code = match args.first().map(String::as_str) {
             // P4b：hook 子进程走这条 —— 校验身份后给后端发 SIGUSR1，**不碰文件系统**。
             Some("--tmux-notify") => control::tmux_hook::notify(&args),
-            // `K-R86`：只读抓屏原语。**抓一次、立刻返回** —— 轮询归 `K-R87`，
-            // 零定时器铁律（`no_timer_guard`）看着本 crate 的每一份生产段。
-            Some("--capture-pane") => control::capture_pane::run(&args),
             // `K-R87`：起一个到点自己会死的一次性会话。看门狗是**外部进程**，
             // 不在本 crate 的源码文本里 —— 零定时器铁律的人群逐字排除「被起进程的行为」。
             Some("--search") => observe::search_query::run(&agent_home, &args),

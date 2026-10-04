@@ -25,7 +25,7 @@ import {
   type ForkLaunchInput,
 } from "./fork-launch";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
-import type { MintOutcome } from "./tmux-name-mint";
+import type { MintOutcome } from "./terminal-name-mint";
 import { copyText } from "./copy-table";
 
 /** 用户在追问小窗里给的答案。只覆盖 `unknown` 的那几格。 */
@@ -79,7 +79,7 @@ export interface ForkStartDeps {
     tmuxName: string | null;
   }) => Promise<boolean>;
   /**
-   * 问那台后端给分叉会话铸 tmux 名（`tmux-name-mint {forkOf}`：`<源名>-fork-cc`，必与源名不同、按那台的会话快照避让）。
+   * 问那台后端给分叉会话铸 tmux 名（`terminal-name-mint {forkOf}`：`<源名>-fork-cc`，必与源名不同、按那台的会话快照避让）。
    * 问不到 ⇒ `ok:false` 带原因 ⇒ 选了 tmux 就不起（抛，由 `runForkFlow` 出声）—— 拿空集自己拼一个就是「不避让」，#76 的形状。
    */
   mintForkName: (origin: Origin, source: string) => Promise<MintOutcome>;

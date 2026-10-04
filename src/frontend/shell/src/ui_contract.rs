@@ -296,14 +296,13 @@ pub struct SessionLivePayload {
     pub name: Option<String>,
 }
 
-/// `container` 格 的 payload。`container` 只有两个值：`"tmux"` / `"none"`
-/// （判不了的不发这个事件）。
+/// `container` 格 的 payload：在认得的宿主里（带终端句柄）· 不在任何宿主里 · 不认识的宿主（判不了的不发这一格）。
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionContainerPayload {
     pub session_id: String,
-    pub container: String,
+    pub container: crate::session_book::SessionContainer,
 }
 
 /// 会话流 `session-tap`（通道 `subscribe`）里一格的体：后端 `tap` 帧的字段原样 ＋ 哪台机器。

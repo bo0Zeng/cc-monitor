@@ -2,7 +2,7 @@
  * 〔拆 `tabs.ts` ⑤〕**右键一个 tab，菜单里放哪几项** —— 以及那几格要异步就绪的项怎么就绪。
  *
  * 在新窗口打开 · 加入 / 移出集合 · 固定 · Resume（容器 × 账号 flyout）· 关闭标签 · Attach · 预览 ·
- * 杀死会话 · 就地 resume · 换号重启。在 tmux 里那几项（Attach · 预览 · 杀死 · 就地 resume）亮不亮、写哪个名字问那台后端（`sessions-tmux`）。项怎么画、菜单怎么开关住 `tab-context-menu.ts`；
+ * 杀死会话 · 就地 resume · 换号重启。在 tmux 里那几项（Attach · 预览 · 杀死 · 就地 resume）亮不亮、写哪个名字问那台后端（`sessions-where`）。项怎么画、菜单怎么开关住 `tab-context-menu.ts`；
  * 点下去真正做事的住 `tab-session-actions.ts`（本文件直接调它，不经 `TabManager` 转一手）。
  *
  * 方法体逐字从 `tabs.ts` 搬来（右键处理器的函数体缩进少了两格，其余一字不差），
@@ -31,7 +31,7 @@ import { ACTIVE_AGENT } from "./agent-profile";
 // 本机 = `LOCAL_ORIGIN`（`"<local>"`）；「是不是本机」只经 `ipc/origin.ts` 判。
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { openPanePreview } from "./views/pane-preview";
-import { standingOf } from "./tmux-sessions";
+import { standingOf } from "./sessions-where";
 import {
   appendTabContextMenuItem,
   menuGeneration,
@@ -44,7 +44,7 @@ import type { TabSessionActions } from "./tab-session-actions";
 import { machineName, unavailableSaid } from "./control-said";
 
 /** 菜单项 id ⇒ 它要那台后端做的那条命令（那台握手时说过做不到 ⇒ 置灰并说为什么）。 */
-const ITEM_OPS: Readonly<Record<string, string>> = { kill: "kill", preview: "capture-pane", "resume-into": "launch" };
+const ITEM_OPS: Readonly<Record<string, string>> = { kill: "kill", preview: "terminal-preview", "resume-into": "launch" };
 
 /** 按 `origin` 那台的能力事实给一项置灰：做不到 ⇒ 不可点、字后面带一句为什么。 */
 export function gateByOffer(origin: Origin, item: TabMenuItem): TabMenuItem {
@@ -165,7 +165,7 @@ export class TabMenu {
         onClick: () => this.host.close(sid),
       });
     }
-    // 这个会话在那台哪个 tmux 会话里（Attach · 预览 · 杀死 · 就地 resume 亮不亮、写哪个名字）：问那台后端（`sessions-tmux`），
+    // 这个会话在那台哪个 tmux 会话里（Attach · 预览 · 杀死 · 就地 resume 亮不亮、写哪个名字）：问那台后端（`sessions-where`），
     //   界面不判。先放「检测中」占位，答回来再换成可点的那几项（同一代菜单才换）。
     const remote = t !== undefined && isRemoteOrigin(t.origin) ? t.origin : null;
     if (remote !== null && t?.projectDir) {
@@ -235,7 +235,7 @@ export class TabMenu {
     updateTabContextMenuItem("preview", gateByOffer(origin, {
       id: "preview",
       label: copyText("tabMenu.resolveAttachMenuItem.preview"),
-      onClick: () => void openPanePreview(origin, name, sid),
+      onClick: () => void openPanePreview(origin, name, { terminal: s.terminals[0] }),
     }));
     // 命中多个 ⇒ 不给杀（破坏性，选错了不可逆）。
     updateTabContextMenuItem("kill", gateByOffer(origin, ambiguous

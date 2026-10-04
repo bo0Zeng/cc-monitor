@@ -12,7 +12,7 @@
 import type { SessionAccount } from "./accounts";
 import type { TaskEntry } from "./tasks-panel";
 import type { Tab, TabsSummary } from "./tab-model";
-import { isLive } from "./tab-session-state";
+import { isLive, type ContainerEvent } from "./tab-session-state";
 import { Slice } from "./app-store";
 
 /** 当前 tab 那一格对外的样子：HUD 要的 usage 与「会话事实要不到」的原因。 */
@@ -124,7 +124,7 @@ export class TabStore {
    * 容器事实（`container` 格）早于 Tab 建出时暂存。ensureTab 建 Tab 时落实
    * （建出来就是活的；早到的死亡信号优先 —— 那时容器一格由死的那一刻的裁决说了算）。
    */
-  readonly pendingContainer = new Map<string, "tmux" | "none">();
+  readonly pendingContainer = new Map<string, ContainerEvent>();
   /**
    * 〔说不清〕已经把活会话清单报完了的机器（`origin-sessions-listed` / 本机 `list_active_sessions`〔散文墓碑〕）。
    * 固定复活时据它分：报完了 ⇒ 已结束（它不在清单里，不然 tab 早就被建成活的了）；没报完 ⇒ 说不清。

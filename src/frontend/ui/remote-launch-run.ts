@@ -22,8 +22,8 @@ import type { CliRenderRequest } from "./launch-cli-wire.ts";
 import { renderCli } from "./launch-render";
 import { showActionFailureToast } from "./error-toast";
 import { defaultLauncherOf } from "./agent-profile";
-// 起新会话的名字只从一个家取：`tmux-name-mint.ts`（列名单 ＋ 铸名 ＋ 「列不出 ⇒ 不起」）。
-import { mintFreshTmuxName, refuseUnmintable } from "./tmux-name-mint";
+// 起新会话的名字只从一个家取：`terminal-name-mint.ts`（列名单 ＋ 铸名 ＋ 「列不出 ⇒ 不起」）。
+import { mintFreshTmuxName, refuseUnmintable } from "./terminal-name-mint";
 import { copyText } from "./copy-table";
 import { arrivedBody, awaitArrival, expectArrival, type ArrivalMatch, type LaunchWait } from "./launch-arrival";
 
@@ -264,7 +264,7 @@ export async function runNewSessionRemote(
   // ★★ **默认名必须过铸名口**（F13）：同一个 cwd 点两次「起新会话」派生出同一个名字 ⇒ 撞上远端
   // `create-or-attach` 的幂等闸 ⇒ **静默接进第一个会话，而用户以为开了新的**（issue #76 那一族）。
   //
-  // 「列名单 → 铸名」收进 `tmux-name-mint.ts`（本机远端同一个家）。这里先前是
+  // 「列名单 → 铸名」收进 `terminal-name-mint.ts`（本机远端同一个家）。这里先前是
   // `settings/machine-card.ts` 那段的逐字副本，**列不出名单就拿空集铸名**（「诚实降级：列不出来就不避让」）——
   // 那正是 #76 的形状，而本机那一侧早就写着「绝不退化成空集」。⇒ 列不出 ⇒ 不起、说清。
   const minted = await mintFreshTmuxName(origin, cwd);

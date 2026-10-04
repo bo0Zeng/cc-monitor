@@ -658,3 +658,81 @@ fn on_a_real_tmux_a_sid_reaches_its_own_pane_not_the_active_one() {
     let p = pane_of(&["capture-pane", "-p", "-t", &d]);
     assert!(!p.contains("to-c-zq"), "给 C 的字落进了活动窗格");
 }
+
+/// 容器那一格的句柄 == 名单里同一会话的句柄（同一台、同一窗格）。走打标那一条生产路（`identity_tag::tag`），
+/// tmux 换成指向隔离 socket 的那一个；被打标的是非活动窗口里的窗格（句柄必须落在它上面，不是活动的那个）。
+#[cfg(target_os = "linux")]
+#[test]
+fn the_container_handle_is_the_list_handle_of_the_same_pane() {
+    use crate::stream::wire::{SessionContainer, TerminalHost};
+    let iso = Iso::new("container");
+    iso.session("box-cc", "", "");
+    let o = iso.tmux(&["new-window", "-t", "=box-cc:", "cat"]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let pid_out = iso.tmux(&["display-message", "-p", "-t", "=box-cc:0.0", "#{pane_pid}"]);
+    let pid: u32 = String::from_utf8_lossy(&pid_out.stdout)
+        .trim()
+        .parse()
+        .expect("pane_pid");
+    // 有界等待（夹具侧）：那个窗格的进程已经 exec 成 `cat`（之前读到的环境是 tmux 自己的）。
+    let ready = (0..150).any(|_| {
+        let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
+        let hit = comm.trim() == "cat";
+        if !hit {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        hit
+    });
+    assert!(ready, "窗格进程没起成 cat");
+    let script = iso.sock.parent().unwrap().join("tmux");
+    std::fs::write(
+        &script,
+        format!("#!/bin/sh\nexec tmux -S '{}' \"$@\"\n", iso.sock.display()),
+    )
+    .expect("写 tmux 转接");
+    let _door = crate::control::identity_tag::door::isolate_with(&script);
+
+    let tagged = crate::control::identity_tag::tag(pid, "sid-box");
+    let again = crate::control::identity_tag::tag(pid, "sid-box");
+    let l = list_on(iso.on(), &json!({})).unwrap();
+    let listed = l["terminals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["session"]["sid"] == "sid-box")
+        .unwrap_or_else(|| panic!("名单里没有挂着 sid-box 的终端：{l}"))["terminal"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let want = Some(SessionContainer::Hosted {
+        host: TerminalHost::Tmux,
+        terminal: Some(listed.clone()),
+    });
+    assert!(
+        matches!(tagged, crate::control::identity_tag::Outcome::Tagged(_)),
+        "{tagged:?}"
+    );
+    assert_eq!(tagged.container(), want, "打标那一刻报的句柄与名单对不上");
+    assert!(
+        matches!(
+            again,
+            crate::control::identity_tag::Outcome::AlreadyCurrent(_)
+        ),
+        "{again:?}"
+    );
+    assert_eq!(
+        again.container(),
+        want,
+        "已经打过的那一形报的句柄与名单对不上"
+    );
+    // 正控：活动的是另一个窗口，句柄不许指向它。
+    let active = iso.tmux(&["display-message", "-p", "-t", "=box-cc:", "#{pane_id}"]);
+    let active = String::from_utf8_lossy(&active.stdout)
+        .trim()
+        .trim_start_matches('%')
+        .to_string();
+    assert!(
+        !listed.ends_with(&format!("-{active}")),
+        "句柄落在了活动窗格上：{listed}"
+    );
+}

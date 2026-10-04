@@ -214,8 +214,7 @@ export const commands = {
   // 「resume 之前问记录还在不在」那一条退役：界面经通道直接问后端 `history-record`
   //   （`src/frontend/ui/session-reads.ts::probeSessionRecord`，成品 `{present, root}`）。
 
-  // 列 tmux 会话那两条（本机 · 远端）的包装随命令退役删了：界面经通道直接问那台后端的 `tmux-list`
-  //   （成品，`src/frontend/ui/tmux-reads.ts::listTmux`，本机远端同一形）。
+  // 列 tmux 会话那两条（本机 · 远端）的包装随命令退役删了：终端名单问那台后端的 `terminals-list`（`src/frontend/ui/terminal-reads.ts`）。
 
   /** `K-R69`：**本机那条 `ccm` 入口现在是什么样** —— 我们放下去的那一份在哪、它自报什么身份、
    *  你 PATH 上那个 `ccm` 是不是它，以及给人读的那句话。`LocalCcmEntry` 是生成物 ⇒ **桶③**。

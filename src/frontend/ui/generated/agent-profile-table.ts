@@ -6,7 +6,7 @@
 //
 // ⚠ **`null` ≠ 空**：`null` = 这一格今天没有（后端 `None`），**不许拿 claude 那份顶上**
 // （`KR93D3`）；`[]` 才是「考据过、确实是空的」。
-// 工具 / 判活进程那五格不在这里了：判卡型 · 认 tmux 会话是那台后端的事（`toolCards` · `tmux-list` 的 `agent`）。
+// 工具 / 判活进程那五格不在这里了：判卡型 · 认 tmux 会话是那台后端的事（`toolCards` · 批量停 / 起认窗格的 `agent`）。
 
 export type AgentProfileRow = {
   /** 这张表的键（= `agent-profile-golden.tsv` 第一列，也是 `ccm --agent` 收的那个名字）。 */

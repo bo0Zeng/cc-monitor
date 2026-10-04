@@ -550,8 +550,9 @@ fn the_gap_table_never_exempts_a_whole_face_and_its_size_is_pinned() {
 
     assert_eq!(
         gaps.len(),
-        20,
-        "逐能力豁免现打 {} 条（**20** = 下面那 16 条 ＋ 终端管理 L1 的 `terminal-preview` / `terminal-input` × Windows 帧面 2 条、CLI 面同名 2 条（这一版宿主只有 tmux，档 = 欠着）；\n\
+        18,
+        "逐能力豁免现打 {} 条（**18** = 下面那 20 条 − 帧面 `capture-pane` 与 CLI 面 `--capture-pane` × Windows 2 条（抓屏只走 `terminal-preview`）；\n\
+**20** = 下面那 16 条 ＋ 终端管理 L1 的 `terminal-preview` / `terminal-input` × Windows 帧面 2 条、CLI 面同名 2 条（这一版宿主只有 tmux，档 = 欠着）；\n\
 **16** = PR1 那 14 条 ＋ `files-chmod` / `--files-chmod` × Windows 2 条\n\
           —— 那条命令声明了 `no_unix_mode` 之后被现推出来，档 = 结构，理由住 `lib.rs` 表尾。\n\
 **14** = 下面那 8 条 ＋ 命令面 6 条：\n\

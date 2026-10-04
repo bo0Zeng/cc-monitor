@@ -10,6 +10,7 @@ const C: &str = "cccccccc-1111-2222-3333-444444444444";
 fn row(name: &str, sid: Option<&str>, agent: bool) -> TmuxEntry {
     TmuxEntry {
         name: name.into(),
+        terminal: format!("tmux-{name}"),
         sid: sid.map(str::to_string),
         agent,
     }
@@ -245,9 +246,12 @@ fn the_standing_of_a_sid_is_judged_once_for_menu_stop_and_start() {
     assert_eq!(
         out,
         json!({ "results": [
-            { "sid": A, "standing": "running", "names": ["a-cc"] },
-            { "sid": B, "standing": "idle", "names": ["b-cc"] },
-            { "sid": C, "standing": "ambiguous", "names": ["c-cc", "c-cc-2"] },
+            { "sid": A, "standing": "running", "names": ["a-cc"],
+              "terminals": [{ "host": "tmux", "terminal": "tmux-a-cc" }] },
+            { "sid": B, "standing": "idle", "names": ["b-cc"],
+              "terminals": [{ "host": "tmux", "terminal": "tmux-b-cc" }] },
+            { "sid": C, "standing": "ambiguous", "names": ["c-cc", "c-cc-2"],
+              "terminals": [{ "host": "tmux", "terminal": "tmux-c-cc" }, { "host": "tmux", "terminal": "tmux-c-cc-2" }] },
         ] })
     );
     let none = Rig::new(None);

@@ -2902,13 +2902,11 @@ mod spawn_registry {
         (
             "control/capture_pane.rs",
             "tmux",
-            "`K-R86`（09-13）：**全 crate 唯一一处 `capture-pane`** —— \
-             `tmux -u capture-pane -p -t '=名:'`（argv 直传不过 shell），\
-             把某个会话此刻那一屏的文本打到 stdout。\
+            "**全 crate 唯一一处 `capture-pane`** —— \
+             `tmux -u capture-pane -p -t <窗格>`（argv 直传不过 shell），\
+             把名单里那个终端此刻那一屏的文本打到 stdout（终端预览 · 送前比指纹）。\
              **只读 tmux**：不 attach、不落 tmux buffer（`-p` = 打到 stdout，\
              换成落 buffer 就是改 tmux 状态了）、不写任何文件。\
-             它服务的是 monitor 侧账本 `parity_ledger` 的 `tmux.manage` 那格挂了一个月的\
-             「画面预览」欠账 —— 那一格逐字写着「仍等后端出原语」。\
              ⚠ **这张表的键分不出被调的是哪条 tmux 子命令**（同 `plugin/invoke.rs` 那条\
              自陈的 `K6b` 盲区）⇒ 光靠这一行**买不到「只读」**。\
              真正钉住它的是本文件的 [`super::capture_is_read_only`]：\
@@ -3496,7 +3494,7 @@ mod capture_is_read_only {
     /// `INVARIANTS §49`（tmux 打印通道必须是 UTF-8）的邻居：`capture-pane` 实测不在那一条的人群里，这里钉着的第一个元素（那个旗）是额外的；本条的主住址仍是只读铁律。
     #[test]
     fn the_argv_this_site_emits_is_read_only_element_by_element() {
-        let argv = crate::control::capture_pane::capture_argv("=某会话:");
+        let argv = crate::control::capture_pane::capture_argv_with("=某会话:", false, 0);
         assert_eq!(
             argv,
             ["-u", "capture-pane", "-p", "-t", "=某会话:"],
@@ -3523,10 +3521,6 @@ mod capture_is_read_only {
                 "=某会话:"
             ]
         );
-        assert_eq!(
-            crate::control::capture_pane::capture_argv_with("=某会话:", false, 0),
-            argv
-        );
     }
 
     /// ★★ 正题②（**文本级**）：生产段里不出现任何会改 tmux 状态的动词。
@@ -3537,7 +3531,7 @@ mod capture_is_read_only {
             bad,
             Vec::<String>::new(),
             "抓屏那一处的生产段里出现了会改 tmux 状态的动词：{bad:?}\n\
-             ⇒ 要么有人绕过 `capture_argv` 另起了一条 argv，要么那个构造器被改了。\n\
+             ⇒ 要么有人绕过 `capture_argv_with` 另起了一条 argv，要么那个构造器被改了。\n\
              这一处的立身之本就是「只读」——`readonly_guard::ALLOWED` 那一行的理由\n\
              逐字写着它不改任何 tmux 状态；写不成真话就别写。"
         );
@@ -4387,15 +4381,6 @@ mod error_envelope_registry {
              ⇒ 与另两份差一个 `.into()`。它是**入口层**的出口：命令本体回什么，由它翻成信封。",
         ),
         (
-            "control/capture_pane.rs",
-            "let line = serde_json::json!",
-            "`--capture-pane` 的 `emit_err`",
-            "〔：原话说它与 `control/oneshot_session.rs` 那份**逐字同形** —— \
-             那份随用量 ③ 轴整轴退役了，「第 4 份同形」今天是第 3 份。〕\
-             它只有三行、只被自己那个入口用；`K-R103` 现打：引入至今零改动、零不同步事故\
-             ⇒ 收它买不到「一处改、全体跟」（真正的分母是 12 处，不是几份）。",
-        ),
-        (
             "control/fork_write.rs",
             "let env = serde_json::json!",
             "`--fork-session` 的 `fail`",
@@ -4570,8 +4555,9 @@ mod error_envelope_registry {
     /// 一条说不出理由的签字就是一条免检，而这张表存在的全部意义是逼人回答那一问。
     #[test]
     fn every_signed_row_says_why_it_is_its_own_copy() {
+        // 8 → 7：抓屏那条 CLI 面（`--capture-pane`）删了，它的 `emit_err` 随之没了。
         assert!(
-            SIGNED.len() >= 8,
+            SIGNED.len() >= 7,
             "`SIGNED` 只剩 {} 行 —— 它在缩水",
             SIGNED.len()
         );

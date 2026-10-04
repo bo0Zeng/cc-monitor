@@ -371,7 +371,7 @@ if printf '%s' "$R" | grep -qF '"outcome":"done"' && ! "$TMUX_BIN" has-session -
 else bad "按挂着 sid 的窗格判身份：实得 $R"; fi
 
 # ── 按 sid 送字 · 抓屏 · 结束（单条命令带 sid）：落在挂着它的那个窗格，身份按那个窗格判 ──
-# `launch send-into` 带 `ccm_sid` · `capture-pane` 带 `sid` · `kill` 带 `sid`。活动窗格是另一个、名字也不像我们铸的。
+# `launch send-into` 带 `ccm_sid` · `terminal-preview` 带 `sid` · `kill` 带 `sid`。活动窗格是另一个、名字也不像我们铸的。
 echo
 echo "-- 按 sid 送字 · 抓屏 · 结束（单条命令）--"
 SE=eeeeeeee-0000-4000-8000-00000000000e
@@ -401,7 +401,7 @@ if printf '%s' "$R" | grep -qF wrong_owner && ! pane_shows "$PE" SIDMARK_Y && ! 
   ok "送字带的 sid 哪个窗格都不挂 → wrong_owner，谁都没被打字"
 else bad "带一个没人挂的 sid 送字：实得 $R"; fi
 "$TMUX_BIN" send-keys -t "$PF" 'printf %s SIDMARK_F' Enter >/dev/null 2>&1; sleep 0.4
-R="$(ask "{\"id\":\"e2e-sid-4\",\"cmd\":\"capture-pane\",\"args\":{\"name\":\"box2\",\"sid\":\"$SE\"}}" e2e-sid-4)"
+R="$(ask "{\"id\":\"e2e-sid-4\",\"cmd\":\"terminal-preview\",\"args\":{\"sid\":\"$SE\",\"color\":false}}" e2e-sid-4)"
 if printf '%s' "$R" | grep -qF SIDMARK_E && ! printf '%s' "$R" | grep -qF SIDMARK_F; then
   ok "抓屏带 sid → 抓的是挂着它的那个窗格，不是活动窗格"
 else bad "按 sid 抓屏：实得 $R"; fi

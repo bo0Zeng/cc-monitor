@@ -480,7 +480,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "bus-spawn",
         "bus-state",
         "bus-inbox",
-        "capture-pane",
         // 读写整份 jsonl。
         "session-fork",
     ] {
@@ -555,10 +554,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
         "tasks-list",
         "mcp-read",
-        "tmux-list",
         "session-terminals",  // 读 `/proc` ＋ 起一次 `tmux list-clients`
         "terminal-processes", // 起一趟 PowerShell（连接表 ＋ 进程表）
-        "tmux-name-mint",     // 问一次会话快照 = 起一次 `tmux`
+        "terminal-name-mint", // 问一次会话快照 = 起一次 `tmux`
         "terminals-list",     // 终端管理 L1：起 tmux（列会话 ＋ 列客户端）
         "terminal-preview",   // 起 tmux（抓屏 ＋ 问尺寸）
         "terminal-input",     // 起 tmux（探身份 ＋ 送字送键）
@@ -685,7 +683,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "bus-spawn",
         "bus-state",
         "bus-inbox",
-        "capture-pane",
         "session-fork",
         "files-create",
         "files-commit-upload",
@@ -733,10 +730,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "quota-read",
         "tasks-list",
         "mcp-read",
-        "tmux-list",
         "session-terminals",  // 读 `/proc` ＋ 起一次 `tmux list-clients`
         "terminal-processes", // 起一趟 PowerShell（连接表 ＋ 进程表）
-        "tmux-name-mint",     // 问一次会话快照 = 起一次 `tmux`
+        "terminal-name-mint", // 问一次会话快照 = 起一次 `tmux`
         "terminals-list",     // 终端管理 L1：起 tmux（列会话 ＋ 列客户端）
         "terminal-preview",   // 起 tmux（抓屏 ＋ 问尺寸）
         "terminal-input",     // 起 tmux（探身份 ＋ 送字送键）
@@ -812,7 +808,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 批量停 / 起：逐个起 tmux 子进程（同 `kill` / `launch`），阻塞档。
         "sessions-stop",
         "sessions-start",
-        "sessions-tmux",
+        "sessions-where",
         // 传输四条：硬臂，就地记账（起跑那一下只 `spawn`、不 await）⇒ 不阻塞。
         "transfer-upload",
         "transfer-download",

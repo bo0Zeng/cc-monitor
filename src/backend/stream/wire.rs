@@ -34,24 +34,58 @@ impl RemovalCause {
     }
 }
 
-/// [`Frame::SessionAdded`] 的 `container`：**这条活着的会话住在什么容器里**。
-///
-/// 可恢复性（死了之后能不能接回去）由容器类型决定 —— 在 tmux 里的，claude 退了
-/// 终端还在（「可重连」）；不在的，只能 resume（「已结束」）。死的那一刻 monitor 会现查一次 tmux，
-/// 但**活着的时候**这一格此前没人报⇒ 前端只能写「没报」。
-///
-/// 判定住 `observe::watcher::container_of`（喂它的是 `control::identity_tag::tag` 那一次探测的结局，
-/// 不多起进程）。**判不了就不写这个字段**（缺席 ≠ `none`）：环境读不到、pane 不在默认 socket 上、
-/// 探测失败、非 Linux —— 都是「不知道」。
-///
-/// 线上两个字面量 `"tmux"` / `"none"` 与 monitor `stream_source::parse_frame` 逐字一致。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SessionContainer {
-    /// 这个 claude 进程在一个 tmux pane 里（`TMUX_PANE` 核过形状、tmux 认得那个 pane）。
+/// 终端住在哪种宿主里（线上 `host`）。**宿主的字面量只住这里**：容器那一格（[`SessionContainer`]）与
+/// `terminals-list` 每一行的 `host` 都从 [`TerminalHost::as_wire`] 取，收的两层按「认得的 ＋ 其它」收、不写第二份。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TerminalHost {
     Tmux,
-    /// 环境读得到、没有 `TMUX_PANE` ⇒ 不在任何 tmux 里。
+}
+
+impl TerminalHost {
+    pub const fn as_wire(self) -> &'static str {
+        match self {
+            TerminalHost::Tmux => "tmux",
+        }
+    }
+}
+
+/// 「不在任何宿主里」的那个 `host` 词（＝ 就在起它的那个终端里）。
+pub const HOST_NONE: &str = "none";
+
+/// [`Frame::SessionAdded`] 的 `container`：**这条活着的会话住在什么容器里**，词与 `terminals-list` 同一套。
+///
+/// 线上是对象：`{"host":"tmux","terminal":"tmux-3-7"}` · `{"host":"none"}`。可恢复性由它定 —— 在宿主里的，
+/// claude 退了终端还在（「可重连」）；不在的，只能 resume。`terminal` 是 `terminals-list` 里那一行的句柄
+/// （同一个函数算，`control::terminals::handle_of`）；打标那一刻算不出 ⇒ 不写这一格。
+///
+/// 判定住 `control::identity_tag::Outcome::container`（喂它的是打标那一次探测的结局，不多起进程）。
+/// **判不了就不写整个字段**（缺席 ≠ `none`）：环境读不到、pane 不在默认 socket 上、探测失败、非 Linux —— 都是「不知道」。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionContainer {
+    /// 在某个宿主的终端里（`TMUX_PANE` 核过形状、tmux 认得那个 pane）。
+    Hosted {
+        host: TerminalHost,
+        terminal: Option<String>,
+    },
+    /// 环境读得到、不在任何宿主里。
     None,
+}
+
+impl Serialize for SessionContainer {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut m = s.serialize_map(None)?;
+        match self {
+            SessionContainer::Hosted { host, terminal } => {
+                m.serialize_entry("host", host.as_wire())?;
+                if let Some(t) = terminal {
+                    m.serialize_entry("terminal", t)?;
+                }
+            }
+            SessionContainer::None => m.serialize_entry("host", HOST_NONE)?,
+        }
+        m.end()
+    }
 }
 
 /// [`Frame::SessionState`] 的 `state`：**一条会话离开「活」之后是什么** ——

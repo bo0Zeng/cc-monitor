@@ -6,7 +6,7 @@
  * 不再自己说「起来了」，而是交一件「等它」（[`expectArrival`]）。等的那一方只有一个：**主窗口**（它订着每台机器的会话流，
  * 设置窗 / 查看窗订不全）⇒ 预期经窗口间事件交过去（同 `settings/events.ts` 那两条跨窗事件的做法），主窗口在
  * [`bindLaunchArrivals`] 里收下、在 [`noteLive`] 里对那台报上来的活会话（`live` 格）。预算到了还没见到 ⇒ 说没见到：
- * 起在 tmux 里的顺手抓那一屏当原话（`tmux-control.ts::capturePane`），直接开窗的说原话在那个窗口里。
+ * 起在 tmux 里的顺手抓那一屏当原话（`terminal-reads.ts::previewByTmuxName`），直接开窗的说原话在那个窗口里。
  *
  * 认「是不是它」只看那台报上来的事实：resume 按 sid；新开的会话（本机远端 · cc-bus 派生）按「预期之后第一次出现、
  * 工作目录相同的新 sid」。
@@ -16,7 +16,7 @@ import { copyText } from "./copy-table";
 import { machineName } from "./control-said";
 import { showActionFailureToast } from "./error-toast";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
-import { capturePane } from "./tmux-control";
+import { previewByTmuxName } from "./terminal-reads";
 
 /** 预算：从命令发出去到那台报出会话。慢机器上 ssh 握手 ＋ claude 冷启动在这之内；过了只说「没看到」，不说失败。 */
 export const ARRIVAL_BUDGET_MS = 45_000;
@@ -96,7 +96,7 @@ async function sayMissed(p: ArrivalSpec): Promise<void> {
     body = copyText("launchArrival.missed.inWindow", { secs, machine });
   } else {
     try {
-      const words = lastWords(await capturePane(p.origin, p.tmuxName));
+      const words = lastWords(await previewByTmuxName(p.origin, p.tmuxName));
       body =
         words === ""
           ? copyText("launchArrival.missed.emptyScreen", { secs, machine, name: p.tmuxName })

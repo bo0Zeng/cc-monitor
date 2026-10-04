@@ -33,7 +33,7 @@ fn tmux_on(sock: &std::path::Path, args: &[&str]) -> std::process::Output {
 /// 那种判据在 `control/ccm/plan.rs` 今天就有那个字面量的情况下**恒绿**。
 /// 喂假探测器只强一格：它证得了「判法对」，证不了「这条命令真跑得通、真拿得回屏幕」。
 /// ⇒ 起一个**真的 tmux server**（隔离 socket，`-S`，`-f /dev/null` 不读用户配置），
-/// 往里打一段**只属于本测试的中性串**，再走**生产入口** [`capture_on`] 抓回来。
+/// 往里打一段**只属于本测试的中性串**，再走**生产入口** [`capture_with_on`] 抓回来。
 ///
 /// ⚠ 断言的那个串**不取自夹具的名字**（`6g`：断言别取自夹具的名字 / 路径）。
 #[test]
@@ -64,12 +64,12 @@ fn capturing_a_real_pane_brings_the_screen_back() {
     // ⚠ **夹具侧的有界等待，不是被测行为的一部分**：pane 里那行字是由**另一个进程**
     //   写进 pty 的，tmux 什么时候把它读进屏幕缓冲不归本原语管。
     //   等不到就**失败**（不静默跳过），上限给足；真被测的那一下是循环体里那次
-    //   `capture_on` —— 它每一轮都是一次完整的「抓一次」。
+    //   `capture_with_on` —— 它每一轮都是一次完整的「抓一次」。
     //   🔴 这段循环住在**测试段**：`KR86D3` 禁的是**生产段**里的轮询，
     //   由 `readonly_guard::capture_is_read_only::the_capture_site_is_one_shot` 钉着。
     let mut screen = String::new();
     for _ in 0..200 {
-        screen = capture_on(Some(&sock.to_string_lossy()), "kr86live", None)
+        screen = capture_with_on(Some(&sock.to_string_lossy()), "=kr86live:", false, 0)
             .expect("真会话必须抓得到，抓不到说明这条原语根本没通");
         if screen.contains(marker) {
             break;
@@ -84,7 +84,7 @@ fn capturing_a_real_pane_brings_the_screen_back() {
 
     // ★ 反向对照：同一个 server 上问一个**不存在**的会话，必须是「会话不存在」，
     //   不是空串、也不是「没有 server」。
-    let miss = capture_on(Some(&sock.to_string_lossy()), "kr86nope", None)
+    let miss = capture_with_on(Some(&sock.to_string_lossy()), "=kr86nope:", false, 0)
         .expect_err("不存在的会话不许回成功");
     assert_eq!(
         miss.0, "no_such_session",
@@ -95,93 +95,11 @@ fn capturing_a_real_pane_brings_the_screen_back() {
     let _ = tmux_on(&sock, &["kill-session", "-t", "=kr86live:"]);
 }
 
-/// 一个 tmux 会话里两个窗格各挂一个 sid（窗格级 `@ccm_sid`，同后端打标签的打法），活动的是 B ⇒
-/// 按 sid-a 抓的是 A 那个窗格（不是活动窗格）；不给 sid ⇒ 活动窗格；哪个窗格都不挂那个 sid ⇒ `no_such_session`。
-#[test]
-fn capturing_by_sid_reads_the_pane_that_carries_it_not_the_active_one() {
-    /// 收摊按 server 的 pid 杀（断言半路红了也收），不 `kill-server`。
-    struct Server(std::path::PathBuf);
-    impl Drop for Server {
-        fn drop(&mut self) {
-            let o = tmux_on(&self.0, &["display-message", "-p", "#{pid}"]);
-            let pid = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            if !pid.is_empty() && pid.chars().all(|c| c.is_ascii_digit()) {
-                let _ = Command::new("kill").arg(&pid).status();
-            }
-            let _ = std::fs::remove_dir_all(self.0.parent().unwrap());
-        }
-    }
-    let sock = iso_socket("bysid");
-    let _server = Server(sock.clone());
-    let at = sock.to_string_lossy().to_string();
-    let pane = |args: &[&str]| -> String {
-        let o = tmux_on(&sock, args);
-        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
-        String::from_utf8_lossy(&o.stdout).trim().to_string()
-    };
-    let a = pane(&[
-        "-f",
-        "/dev/null",
-        "new-session",
-        "-d",
-        "-x",
-        "80",
-        "-y",
-        "12",
-        "-s",
-        "kr86dual",
-        "-P",
-        "-F",
-        "#{pane_id}",
-        "sh",
-        "-c",
-        "printf '%s\\n' ZQ-in-a; exec cat",
-    ]);
-    let b = pane(&[
-        "split-window",
-        "-t",
-        "=kr86dual:",
-        "-P",
-        "-F",
-        "#{pane_id}",
-        "sh",
-        "-c",
-        "printf '%s\\n' ZQ-in-b; exec cat",
-    ]);
-    pane(&["set-option", "-p", "-t", &a, "@ccm_sid", "sid-a"]);
-    pane(&["set-option", "-p", "-t", &b, "@ccm_sid", "sid-b"]);
-    pane(&["select-pane", "-t", &b]);
-    // 夹具侧的有界等待：两行字由各自窗格里的进程写进 pty，什么时候进屏幕缓冲不归本原语管。
-    let shows = |sid: Option<&str>, marker: &str| -> String {
-        let mut screen = String::new();
-        for _ in 0..200 {
-            screen = capture_on(Some(&at), "kr86dual", sid).expect("抓得到");
-            if screen.contains(marker) {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
-        screen
-    };
-    let by_a = shows(Some("sid-a"), "ZQ-in-a");
-    assert!(
-        by_a.contains("ZQ-in-a") && !by_a.contains("ZQ-in-b"),
-        "按 sid-a 抓的不是挂着它的那个窗格（活动的是 B）：{by_a:?}"
-    );
-    let plain = shows(None, "ZQ-in-b");
-    assert!(
-        plain.contains("ZQ-in-b"),
-        "不给 sid 抓的该是活动窗格：{plain:?}"
-    );
-    let miss = capture_on(Some(&at), "kr86dual", Some("sid-x")).expect_err("没有窗格挂着它");
-    assert_eq!(miss.0, "no_such_session", "{miss:?}");
-}
-
 /// ★★ `KR86D2` 的正题之一：**「一个 server 都没有」是自己一档，真 tmux 打出来的。**
 #[test]
 fn a_socket_with_no_server_says_so_in_its_own_words() {
     let sock = iso_socket("dead");
-    let e = capture_on(Some(&sock.to_string_lossy()), "whatever", None)
+    let e = capture_with_on(Some(&sock.to_string_lossy()), "=whatever:", false, 0)
         .expect_err("没有 server 的 socket 上不许回成功");
     assert_eq!(
         e.0, "no_server",
@@ -277,73 +195,13 @@ fn every_registered_needle_lands_in_its_own_bucket() {
     }
 }
 
-/// ★ 名字的形状校验**真的复用了 `kill` 那一份**，不是这里又抄了一遍。
-///
-/// 逐个坏形状打过去：它们必须全部在**起进程之前**就被拒（回 `invalid_args`），
-/// 而不是被拼进 `=name:` 送给 tmux。
-#[test]
-fn a_name_that_would_break_the_target_never_reaches_tmux() {
-    // 〔DUP3 §5 ③ ⑦〕规则换成 `gate_rules` 那一份：`"  "` 与 `=a` 是合法的已有会话名（attach 同样放行），不在这里。
-    for bad in ["", "a:b", "a\nb", "a\u{202e}b"] {
-        let e = capture(bad, None).expect_err("坏形状的名字不许放行");
-        assert_eq!(
-            e.0, "invalid_args",
-            "名字 {bad:?} 没被形状检查拦住，而是走到了 tmux 那一步。实得：{e:?}"
-        );
-    }
-}
-
 /// ★ argv 逐元素 —— 值级的「只读」在这里断一次（另一半在 `readonly_guard`）。
 #[test]
 fn the_argv_is_the_read_only_capture_form_in_this_exact_order() {
     assert_eq!(
-        capture_argv("=x:"),
+        capture_argv_with("=x:", false, 0),
         ["-u", "capture-pane", "-p", "-t", "=x:"],
         "这一处发出去的 argv 变了 —— `-u` 必须排在子命令之前（K-R12），\
              `-p` 必须是「打到 stdout」（换成落 buffer 就不再只读）"
-    );
-}
-
-/// ★★**跨语言金样**：界面直接收的这份成品，两侧读同一份 `tests/__fixtures__/tmux-control.golden.json`。
-///
-/// 守的要求：「**成品的两侧对拍**：界面按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）；
-/// 线上形状由一份跨语言金样钉住（后端测试产出 == 金样 · TS 解码器读同一份）」。
-/// 抓屏从这一拍起由界面经通道直接问（`src/frontend/ui/tmux-control.ts::capturePane`），monitor 那一跳只搬字节 ——
-/// 于是「成品长什么样」「拒绝码有哪几个」从此只有后端这一侧与金样说了算，TS 那一半在 `tests/frontend/ui/tmux-control.vitest.ts`。
-///
-/// 三格各自异源：请求样例过**生产**解析器（`kill::parse_name`，抓屏复用它）· 成品 == 生产构造器 [`reply`] ·
-/// 码集合 == 后端登记表 `inbound::REGISTRY` 那一块（手写在 `stream/inbound/registry/terminals.rs`，不从本文件派生）。
-#[test]
-fn the_capture_product_matches_the_cross_language_golden() {
-    let g: serde_json::Value =
-        serde_json::from_str(include_str!("../../__fixtures__/tmux-control.golden.json"))
-            .expect("金样读不出来");
-    let c = &g["capture-pane"];
-    let name =
-        super::super::kill::parse_name(&c["request"]).expect("金样的请求样例过不了生产解析器");
-    let screen = c["reply"]["screen"]
-        .as_str()
-        .expect("金样的成品样例缺 `screen`");
-    assert_eq!(
-        reply(&name, screen),
-        c["reply"],
-        "后端出的抓屏成品与金样不相等 —— 改了键名或多 / 少一格，界面那一侧就会读成「两端对不上」"
-    );
-    let spec = crate::stream::inbound::REGISTRY
-        .iter()
-        .find(|s| s.name == "capture-pane")
-        .expect("后端登记表里没有 `capture-pane`");
-    let mut want: Vec<&str> = spec.codes.to_vec();
-    want.sort_unstable();
-    let mut got: Vec<&str> = c["codes"]
-        .as_array()
-        .expect("金样缺 `codes`")
-        .iter()
-        .map(|v| v.as_str().expect("码不是字符串"))
-        .collect();
-    got.sort_unstable();
-    assert_eq!(
-        got, want,
-        "金样里的拒绝码与后端登记的不相等 —— 界面那张「码 → 一句话」的表就会漏一档或多一档"
     );
 }

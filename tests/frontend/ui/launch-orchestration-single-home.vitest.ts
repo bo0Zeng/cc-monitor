@@ -1,5 +1,5 @@
 /**
- * **起会话的两件事各只有一个家**：铸 tmux 名（`src/frontend/ui/tmux-name-mint.ts`）·
+ * **起会话的两件事各只有一个家**：铸 tmux 名（`src/frontend/ui/terminal-name-mint.ts`）·
  * 本机 resume 的编排（`src/frontend/ui/local-resume.ts`）。
  *
  * 守的要求（住址逐字）：
@@ -13,7 +13,7 @@
  *
  * | # | 性质 | 形状 |
  * |---|---|---|
- * | K1 | 铸名只有一个家 | 生产段发 `tmux-name-mint`（问那台后端铸名）的文件集合 == `{tmux-name-mint.ts}`；问 tmux 名单的文件集合 == 手写集合（两向） |
+ * | K1 | 铸名只有一个家 | 生产段发 `terminal-name-mint`（问那台后端铸名）的文件集合 == `{terminal-name-mint.ts}`；问 tmux 名单的文件集合 == 手写集合（两向） |
  * | K2 | 本机 resume 编排只有一个家 | 生产段以 resume 动作问本机后端起会话（`launchLocal(` / `planLocalLaunch(` ＋ `kind: "resume"`）的文件集合 == `{local-resume.ts}`（两向） |
  * | K3 | 问不到 ⇒ 不铸名 | `mintFreshTmuxName` 问不到 / 形状不认 ⇒ `ok:false`；本机 resume 问不到 ⇒ 交 `tmuxName: null` |
  *
@@ -29,7 +29,7 @@
  * # 同波别的路长出新成员时会怎么红
  *
  * K1 / K2 的人群是**生产段全集**（`test-support/production-sources.ts`），不是登记表：
- * 别的路新写一处 `"tmux-name-mint"` / 以 resume 动作的 `launchLocal(` / `listTmux(` ⇒ 集合多一个 ⇒ 红，
+ * 别的路新写一处 `"terminal-name-mint"` / 以 resume 动作的 `launchLocal(` / `listTmux(` ⇒ 集合多一个 ⇒ 红，
  * 报文点名那个文件。它该不该存在，回来看它是不是本该走这两个家。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -45,7 +45,7 @@ import { launchRenderShim, localLaunchCalls } from "../../test-support/chan-fake
 import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
-import { mintFreshTmuxName } from "../../../src/frontend/ui/tmux-name-mint";
+import { mintFreshTmuxName } from "../../../src/frontend/ui/terminal-name-mint";
 import { resumeLocalSession } from "../../../src/frontend/ui/local-resume";
 import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
 import type { Account, AccountsState } from "../../../src/frontend/ui/accounts";
@@ -63,22 +63,22 @@ function filesMatching(re: RegExp, skip: readonly string[] = []): string[] {
 }
 
 describe("K1 · 铸名只有一个家", () => {
-  // 派生 ＋ 避让搬进后端：前端铸名 = 问那台后端 `tmux-name-mint`，发这一问的只许一个家。
-  it("★ 生产段发 `tmux-name-mint` 的文件 == {tmux-name-mint.ts}", () => {
+  // 派生 ＋ 避让搬进后端：前端铸名 = 问那台后端 `terminal-name-mint`，发这一问的只许一个家。
+  it("★ 生产段发 `terminal-name-mint` 的文件 == {terminal-name-mint.ts}", () => {
     expect(
-      filesMatching(/["']tmux-name-mint["']/),
-      "有别的地方自己去问后端铸名了。起会话的 tmux 名只许经 `src/frontend/ui/tmux-name-mint.ts`" +
+      filesMatching(/["']terminal-name-mint["']/),
+      "有别的地方自己去问后端铸名了。起会话的 tmux 名只许经 `src/frontend/ui/terminal-name-mint.ts`" +
         "（它守着「问不到 ⇒ 不铸名」；别处抄一份，降级口径就又分叉了 —— B §2.6 的病）。",
-    ).toEqual(["src/frontend/ui/tmux-name-mint.ts"]);
+    ).toEqual(["src/frontend/ui/terminal-name-mint.ts"]);
   }, SCAN_TIMEOUT_MS);
 
   it("★ 「这个会话在哪个 tmux 会话里」只问那台、只有一个问口（两向）；界面零处拿 tmux 名单自己判", () => {
-    // 手写期望，不从实现生成：发 `sessions-tmux` 的只有 `tmux-sessions.ts`（菜单就绪 · 换号重启 · 分叉都经它）。
-    expect(filesMatching(/["']sessions-tmux["']/), "有别的地方自己去问那台了").toEqual(["src/frontend/ui/tmux-sessions.ts"]);
+    // 手写期望，不从实现生成：发 `sessions-where` 的只有 `sessions-where.ts`（菜单就绪 · 换号重启 · 分叉都经它）。
+    expect(filesMatching(/["']sessions-where["']/), "有别的地方自己去问那台了").toEqual(["src/frontend/ui/sessions-where.ts"]);
     // 界面拿 tmux 名单自己判（按 sid / 按目录筛）那一族删了：读口定义处之外零处调它。
     expect(
-      filesMatching(/\b(?:listTmux|list_(?:local|remote)_tmux)\s*\(/, ["src/frontend/ui/tmux-reads.ts"]),
-      "又长出一处拿 tmux 名单自己判的 —— 判定只在那台后端（`sessions-tmux`）",
+      filesMatching(/\b(?:listTmux|list_(?:local|remote)_tmux)\s*\(/),
+      "又长出一处拿 tmux 名单自己判的 —— 判定只在那台后端（`sessions-where`）",
     ).toEqual([]);
   }, SCAN_TIMEOUT_MS);
 });

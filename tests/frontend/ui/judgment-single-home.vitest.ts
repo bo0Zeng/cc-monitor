@@ -232,8 +232,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J7: {
     what: "tmux 名派生 ＋ 撞名避让",
     // 翻 `zero`：派生（`name_segment` → `<段>-cc` / `<段>-fork-cc`）＋ 避让只在后端，
-    //   帧命令 `tmux-name-mint`（`control/ccm/mod.rs::answer_tmux_name_mint`，按那台的会话快照避让）；
-    //   界面要名字就问它（`src/frontend/ui/tmux-name-mint.ts`）。TS 那份（`remote-launch.ts` 整份 · `shell-quote.ts::tmuxNameSegment` ·
+    //   帧命令 `terminal-name-mint`（`control/ccm/mod.rs::answer_terminal_name_mint`，按那台的会话快照避让）；
+    //   界面要名字就问它（`src/frontend/ui/terminal-name-mint.ts`）。TS 那份（`remote-launch.ts` 整份 · `shell-quote.ts::tmuxNameSegment` ·
     //   `fork-launch.ts::forkTmuxName`）删。
     homes: [
       "src/backend/control/ccm/plan.rs::derive_tmux_name",
@@ -411,8 +411,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     //   收成一份进新立的共享 crate `agent-tools-core`（两半编译期不许互咬 ——
     //   共享 crate 是唯一合法的形；现有 core 没有一个的身份是「工具词表」）。
     //   两边都成它的别名，异源对拍（后端常量 == 生成物里 claude 那一行）随之退役。
-    //   〔判定只在后端〕界面不再按工具名判（卡型随 assistant 记录的 `toolCards` 带来、tmux 那一格随 `tmux-list`
-    //   的 `agent` 带来）⇒ 那几张词表连同 `agent-tools-core` 收进后端适配层 `agents/claudecode/cards.rs`，翻 `zero`：
+    //   〔判定只在后端〕界面不再按工具名判（卡型随 assistant 记录的 `toolCards` 带来、tmux 那一格由后端认窗格时判
+    //   的 `agent`）⇒ 那几张词表连同 `agent-tools-core` 收进后端适配层 `agents/claudecode/cards.rs`，翻 `zero`：
     //   TS 那几个按生成物求值的薄壳（`isAgentTool` · `isInteractiveTool` · `isDiffTool` · `isClaudeTmuxCommand` · `defaultModeForTool`）删了。
     homes: ["src/backend/agents/claudecode/cards.rs::tool_card"],
     status: "zero",

@@ -468,14 +468,14 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
       "这些路没把 tmux 会话名传下去 ⇒ 后端 `render_local_ccm` 早退（`NO_TMUX_NAME`）⇒\n" +
         "如实降级回旧路 ⇒ 起出来的会话**不在具名 tmux 容器里**，于是 `list_local_tmux`\n" +
         "那一族（右键「杀死会话（kill tmux …）」/「就地 resume（复用空 tmux …）」）对它\n" +
-        "一条都给不出来。名字只许问后端铸（`tmux-name-mint`，派生 ＋ 避让只在后端），\n" +
-        "问的那一口住 `tmux-name-mint.ts`（原 `ipc/local-tmux-name.ts` 并进去了）。",
+        "一条都给不出来。名字只许问后端铸（`terminal-name-mint`，派生 ＋ 避让只在后端），\n" +
+        "问的那一口住 `terminal-name-mint.ts`（原 `ipc/local-tmux-name.ts` 并进去了）。",
     ).toEqual([]);
   });
 
-  // 这里原来一条「铸名只有一个算法口」（调 `mintSessionTmuxName(` 的生产文件 == {tmux-name-mint.ts}）。
+  // 这里原来一条「铸名只有一个算法口」（调 `mintSessionTmuxName(` 的生产文件 == {terminal-name-mint.ts}）。
   //   TS 那份算法删了（派生 ＋ 避让只在后端）⇒ 它要守的「只有一个家」换成「问后端铸名只有一个口」，
-  //   住 `tests/frontend/ui/launch-orchestration-single-home.vitest.ts` K1（发 `tmux-name-mint` 的文件 == {tmux-name-mint.ts}，两向）——
+  //   住 `tests/frontend/ui/launch-orchestration-single-home.vitest.ts` K1（发 `terminal-name-mint` 的文件 == {terminal-name-mint.ts}，两向）——
   //   这里不再留第二把同义的尺子。
 
   it("★★ 本机 resume 那两条也往 pin 里写（`D3 阻-2`：写入口先前结构上只走远端）", () => {

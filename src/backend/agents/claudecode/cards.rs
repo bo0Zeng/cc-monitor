@@ -3,7 +3,7 @@
 //! 要求：「加第三种 agent ＝ 在 `agents/` 下加一个目录 ＋ 在注册表里加一行」· `§1.2`「判定只在后端」。
 //! 这几张表从前住 monitor `adapter.rs` 的画像表（生成 `agent-profile-table.ts` 给前端按工具名画卡）与共享 crate `agent-tools-core`
 //! （agent 工具那一张，后端会话事实也判它）。界面不再认工具名：卡型随记录成品带出（`JsonlRecord::Assistant.toolCards`，
-//! 由 [`super::schema`] 在解析时填），tmux 那一格随 `tmux-list` 成品带出（`agent`）。值逐字未改。
+//! 由 [`super::schema`] 在解析时填），tmux 那一格由后端批量停 / 起认窗格时判（`sessions-*` 的 `agent`）。值逐字未改。
 
 use crate::agents::ToolCard;
 

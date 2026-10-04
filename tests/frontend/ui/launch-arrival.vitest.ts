@@ -10,11 +10,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(() => Promise.resolve()), listen: vi.fn(() => Promise.resolve(() => {})) }));
 vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
-vi.mock("../../../src/frontend/ui/tmux-control", () => ({ capturePane: vi.fn() }));
+vi.mock("../../../src/frontend/ui/terminal-reads", () => ({ previewByTmuxName: vi.fn() }));
 
 import { emit } from "@tauri-apps/api/event";
 import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
-import { capturePane } from "../../../src/frontend/ui/tmux-control";
+import { previewByTmuxName } from "../../../src/frontend/ui/terminal-reads";
 import {
   ARRIVAL_BUDGET_MS,
   __resetArrivalsForTests,
@@ -27,7 +27,7 @@ import {
 } from "../../../src/frontend/ui/launch-arrival";
 
 const toast = showActionFailureToast as unknown as ReturnType<typeof vi.fn>;
-const capture = capturePane as unknown as ReturnType<typeof vi.fn>;
+const capture = previewByTmuxName as unknown as ReturnType<typeof vi.fn>;
 const none = new Set<string>();
 const seen = (cwd: string | null) => ({ cwd });
 const spec = (over: Partial<ArrivalSpec>): ArrivalSpec => ({

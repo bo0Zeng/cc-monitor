@@ -174,21 +174,10 @@ mod tests {
         ),
         // `control/ccm/argv.rs` 那一条摘了：账号库的门牌号搬进后端的家（契约 crate 的 `ACCOUNTS_DIR_REL`），那里不再有 `.claude` 字样。
         (
-            "observe/tmux_list.rs",
-            "\"sessions\"",
-            "这是 **`tmux-list` 成品的字段名**（这台机器上的 tmux 会话清单），不是哪个 agent 的 `sessions/` 目录布局 —— \
-             tmux 会话与 claude 会话是两回事（`@ccm_sid` 才把它们连起来）。",
-        ),
-        (
             "observe/search_query.rs",
             "\"sessions\"",
             "这是 **`history-search-merge` 线上的字段名**（各台搜索结果的会话行那一摞，界面 `SearchResult.sessions`），\
              不是哪个 agent 的 `sessions/` 目录布局 —— 合并只读 `updatedAt` / `hitCount` / `hitsTruncated` 三格。",
-        ),
-        (
-            "stream/inbound/registry/terminals.rs",
-            "\"sessions\",",
-            "同上上一条：`tmux-list` 那条命令登记的应答字段名（`fields` 表），不是目录布局。",
         ),
         (
             "stream/inbound/registry/history.rs",

@@ -20,10 +20,11 @@
  *
  * 缺的格（要后端补，不在前端猜）记在：G1 记录没了 · G2 本机容器还在 · G3 活会话的容器类型。
  * 三格都补上了，外加「说不清」：
- * - G3：活着时可恢复性那一格来自后端的容器事实（`container-tmux` / `container-none` 两个事件）；
+ * - G3：活着时可恢复性那一格来自后端的容器事实（`container-hosted` / `container-none` / `container-other` 三个事件）；
  * - G1：可恢复性第三值 `gone`（resume 一跳问过那台后端、记录不在）；
  * - 说不清：活性第三值 `unseen`（固定复活、那台机器还没把活会话清单报完）。
  */
+import type { SessionContainer } from "./generated/SessionContainer";
 import { copyText } from "./copy-table";
 
 /**
@@ -43,6 +44,12 @@ export type Liveness = "live" | "dead" | "unseen";
 export type Recoverability = "attachable" | "resumable" | "gone";
 
 /**
+ * 活着时可恢复性的第四种说法：那台报来的容器是这边不认识的宿主（那台比这边新）⇒ 终端形式未知。
+ * 不当可接回、也不当只能重开：说不清它死了会落到哪一格，等死的那一刻的裁决。
+ */
+export type UnknownHost = "unknown-host";
+
+/**
  * 两轴合起来。**判别联合，不是两个独立字段**：
  * - 活着：可恢复性是容器事实（`attachable` / `resumable`），后端没报（旧后端 / 判不了）⇒ `null`；
  *   活着不会是 `gone`（记录在不在只在 resume 那一刻问，而活会话不走 resume）。
@@ -51,7 +58,7 @@ export type Recoverability = "attachable" | "resumable" | "gone";
  * 类型上不许出现别的组合，免得有人拿一个默认值去填空格。
  */
 export type SessionState =
-  | { readonly liveness: "live"; readonly recoverability: "attachable" | "resumable" | null }
+  | { readonly liveness: "live"; readonly recoverability: "attachable" | "resumable" | UnknownHost | null }
   | { readonly liveness: "dead"; readonly recoverability: Recoverability }
   | { readonly liveness: "unseen"; readonly recoverability: null };
 
@@ -66,6 +73,11 @@ export const LIVE_ATTACHABLE: SessionState = Object.freeze({
 export const LIVE_RESUMABLE: SessionState = Object.freeze({
   liveness: "live",
   recoverability: "resumable",
+});
+/** 活着，容器是这边不认识的宿主 ⇒ 终端形式未知（不当可接回）。 */
+export const LIVE_UNKNOWN_HOST: SessionState = Object.freeze({
+  liveness: "live",
+  recoverability: "unknown-host",
 });
 /** 死了，容器也没了 ⇒ 只能 resume。 */
 export const ENDED: SessionState = Object.freeze({ liveness: "dead", recoverability: "resumable" });
@@ -86,7 +98,8 @@ export const UNSEEN: SessionState = Object.freeze({ liveness: "unseen", recovera
  * - `started`：本机 `live` 格（pidfile 新增且探活通过）/ 本机清单里有它
  * - `remote-line`：远端又见到这条会话的行 / 重宣告（后端只对活 pidfile 推行）
  * - `activity`：带 status 的活动信号（后端只对活着的 claude 推）
- * - `container-tmux` / `container-none`：`container` 格（后端 `session_added.container`）
+ * - `container-hosted` / `container-none` / `container-other`：`container` 格（后端 `session_added.container`：
+ *   在认得的宿主里 · 不在任何宿主里 · 这边不认识的宿主）
  * - `record-gone` / `record-present`：resume 一跳问那台后端（`history-record`）的答案
  * - `seen-absent`：那台机器的活会话清单报完了、里面没有它（`origin-sessions-listed` / 本机 `list_active_sessions`〔散文墓碑〕）
  * - `unseen`：那台机器看不见了（`unseen` 格：到它的连接断了 / F5 时它还没报完清单）
@@ -97,12 +110,28 @@ export type StateEvent =
   | "started"
   | "remote-line"
   | "activity"
-  | "container-tmux"
+  | "container-hosted"
   | "container-none"
+  | "container-other"
   | "record-gone"
   | "record-present"
   | "seen-absent"
   | "unseen";
+
+/** 容器那一格落成的状态事件。 */
+export type ContainerEvent = "container-hosted" | "container-none" | "container-other";
+
+/** 容器那一格 ⇒ 状态事件：按判别联合的 `form` 分，不写宿主字面量（认哪些宿主由生成的类型说）。 */
+export function containerEvent(c: SessionContainer): ContainerEvent {
+  switch (c.form) {
+    case "hosted":
+      return "container-hosted";
+    case "none":
+      return "container-none";
+    case "other":
+      return "container-other";
+  }
+}
 
 /**
  * 转移表（`U4b.md §1.3` 那张表逐格）。返回值与入参**是同一个对象** ⇔ 这次事件不改状态
@@ -129,10 +158,12 @@ export function nextState(s: SessionState, ev: StateEvent): SessionState {
       return s.liveness === "live" ? s : LIVE;
     case "activity":
       return s.liveness === "dead" && s.recoverability === "attachable" ? LIVE : s;
-    case "container-tmux":
+    case "container-hosted":
       return s.liveness === "live" && s.recoverability !== "attachable" ? LIVE_ATTACHABLE : s;
     case "container-none":
       return s.liveness === "live" && s.recoverability !== "resumable" ? LIVE_RESUMABLE : s;
+    case "container-other":
+      return s.liveness === "live" && s.recoverability !== "unknown-host" ? LIVE_UNKNOWN_HOST : s;
     case "record-gone":
       return s.liveness === "dead" && s.recoverability === "resumable" ? GONE : s;
     case "record-present":
@@ -229,6 +260,14 @@ export function stateView(s: SessionState): StateView {
             reconnectable: false,
             name: null,
             tooltip: copyText("sessionState.liveResumable.tooltip"),
+          };
+        case "unknown-host":
+          return {
+            ended: false,
+            unseen: false,
+            reconnectable: false,
+            name: null,
+            tooltip: copyText("sessionState.liveUnknownHost.tooltip"),
           };
       }
       break;

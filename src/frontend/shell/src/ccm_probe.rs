@@ -1,6 +1,5 @@
 //! F03（unify-launch）：探测 `ccm`（F02 统一启动 CLI）装没装及其能力集。
-//! 远端那一条（一次性 headless SSH exec，照当年 F60 抓屏那条
-//! `capture_remote_pane`〔散文墓碑〕的范式）与前端缓存 `src/ccm-probe.ts` 删了：
+//! 远端那一条（一次性 headless SSH exec，照当年 F60 抓屏那条命令的范式）与前端缓存 `src/ccm-probe.ts` 删了：
 //! 起会话的渲染住进那台后端，能力由它在自己机器上现查（`src/backend/control/launch_render/wire.rs::render_ccm_launch`：`ccm` 就是那台后端本身，能力是它自己的）。
 //! 本文件今天只剩**本机 PATH 上那个 `ccm`** 的探测（`local_ccm_entry_status` 那一族用）。
 

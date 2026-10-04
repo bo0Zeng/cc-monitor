@@ -999,7 +999,7 @@ fn the_probe_frame_answers_the_same_card_as_the_cli_flag() {
 }
 
 /// 要求：「tmux 名派生 ＋ 撞名避让只留后端，前端要名字就问后端」。
-/// 帧命令 `tmux-name-mint` 两形各一格 == 手写期望；避让问的是**交进来那张快照**（被占 ⇒ 往后排）；没装 tmux ⇒ 基名；入参不恰一格 ⇒ `invalid_args`。
+/// 帧命令 `terminal-name-mint` 两形各一格 == 手写期望；避让问的是**交进来那张快照**（被占 ⇒ 往后排）；没装 tmux ⇒ 基名；入参不恰一格 ⇒ `invalid_args`。
 #[test]
 fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {
     use crate::common::session_snapshot::{SessionRow, SessionSnapshot};
@@ -1013,7 +1013,7 @@ fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {
             })
             .collect())
     });
-    let mint = |a: serde_json::Value| tmux_name_mint_with(&a, &snap);
+    let mint = |a: serde_json::Value| terminal_name_mint_with(&a, &snap);
     assert_eq!(
         mint(json!({"cwd": "/home/u/proj"})).unwrap(),
         json!({"name": "proj-cc-2"})
@@ -1032,7 +1032,7 @@ fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {
     );
     let no_tmux = SessionSnapshot::with_prober(|| Err(("no_tmux", "tmux: not found".to_string())));
     assert_eq!(
-        tmux_name_mint_with(&json!({"cwd": "/home/u/proj"}), &no_tmux).unwrap(),
+        terminal_name_mint_with(&json!({"cwd": "/home/u/proj"}), &no_tmux).unwrap(),
         json!({"name": "proj-cc"})
     );
     for bad in [

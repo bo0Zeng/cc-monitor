@@ -25,4 +25,4 @@
 // `ccm …` 调用行 · 后端 `ccm/plan.rs::validate_tmux_name` 都调它；判不过带 `REFUSE:` 标拒，前端照拒说出来。
 
 // tmux 会话名一段的净化（`tmuxNameSegment`〔散文墓碑〕）随派生 ＋ 避让一起搬进后端
-// （`control/ccm/plan.rs::name_segment`）：界面要名字就问那台后端的 `tmux-name-mint`（`src/frontend/ui/tmux-name-mint.ts`）。
+// （`control/ccm/plan.rs::name_segment`）：界面要名字就问那台后端的 `terminal-name-mint`（`src/frontend/ui/terminal-name-mint.ts`）。

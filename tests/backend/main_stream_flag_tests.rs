@@ -93,38 +93,3 @@ fn query_args_pass_through() {
     assert!(wants.with_bg);
     assert!(!wants.tail_only && !wants.with_pid && !wants.with_raw);
 }
-
-/// ★★ `KR86D1` 的**接线那一半**：`--capture-pane` 真的**够得到**那条原语。
-///
-/// # 失效方向（件文件逐字点名的那个）：**别判「源码里有 `capture-pane` 字面量」**
-///
-/// 别处（产出给 shell 的串）随时可能出现那个字面量，按字面量判会**恒绿**。本条断的是两处**承重点**，两处都不是「某个字面量出现过」：
-///
-/// 1. **闸门**：`is_query_mode` 认它。不认 ⇒ 被当未知 flag ⇒ 打一行 warn 之后
-///    **照常进流模式**，CLI 面看上去「存在」却永远调不到（`p2b` 08-13 实测过这个形状）。
-/// 2. **分派臂**：生产段里那一行**整行**就是「把它交给原语本体」。
-///    整行相等（`pin_line`）比 `contains` 强一格：撑大成别的表达式时那一行就不见了。
-///
-/// ⚠ 「拿回来的真是屏幕内容」不在本条射程内 —— 那一格由
-/// `control::capture_pane::tests::capturing_a_real_pane_brings_the_screen_back`
-/// 在**真 tmux**（隔离 socket）上断。两条合起来才是 `KR86D1`。
-#[test]
-fn the_capture_pane_subcommand_is_actually_reachable() {
-    let flag = "--capture-pane".to_string();
-    assert!(
-        super::is_query_mode(std::slice::from_ref(&flag)),
-        "`--capture-pane` 没进 `is_query_mode` 的闸门 —— 它会静默变成「起了个流」"
-    );
-    let prod = crate::guard_support::production_code(include_str!("../../src/backend/main.rs"));
-    guard_core::pin_line(
-        &prod,
-        "Some(\"--capture-pane\") => control::capture_pane::run(&args),",
-    )
-    .unwrap_or_else(|e| {
-        panic!(
-            "一次性查询的分派里没有那条把 `--capture-pane` 交给原语本体的臂：{e}\n\
-                 ⇒ 闸门放它进查询模式，而下面没人接 ⇒ 它落进 `_` 臂走历史查询、\n\
-                 报 `unknown argument` + exit 2（v3.4.0 `--account-trust-zero` 那次事故的形状）。"
-        )
-    });
-}

@@ -38,9 +38,8 @@ pub(crate) mod session_ledger;
 pub(crate) mod session_terminals; // `session-terminals`：此刻是哪个终端在显示这个会话（点 ↗ 时问一次）
                                   // 会话的任务列表（`tasks-list` 帧命令的本体；帧面宿主在顶层 `feature_face`）。
 pub(crate) mod tasks_query;
-pub(crate) mod tmux_list; // `tmux-list` 出成品（解析从 monitor `parse_tmux_ls`〔散文墓碑〕 搬来）
-                          // 「你说过的话」清单的纯核（四条口径的唯一住址）；argv 与分派在 `history_query`。
-                          // 运行簿：会话 ＝ 主运行 ＋ 子运行；只认「运行」，每家的形状问适配层（watcher 写、流归位读）。
+// 「你说过的话」清单的纯核（四条口径的唯一住址）；argv 与分派在 `history_query`。
+// 运行簿：会话 ＝ 主运行 ＋ 子运行；只认「运行」，每家的形状问适配层（watcher 写、流归位读）。
 pub(crate) mod record_page; // 按路径读正文出成品（切行 · 编号 · 挑哪一家解释）
 pub mod runs;
 pub(crate) mod tmux_observe; // tmux 观测（原 `watcher.rs` A 块）

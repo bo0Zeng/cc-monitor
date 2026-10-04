@@ -120,6 +120,6 @@ describe("describeSlot", () => {
 });
 
 // 这里原来一组 `forkTmuxName`（分叉会话名 `<源名>-fork-cc` ＋ 避让）：它随派生 ＋ 避让搬进后端
-// （`control/ccm/plan.rs::fork_tmux_base`，帧命令 `tmux-name-mint {forkOf}`）。五条期望（与源名不同 · 撞了往后排 · `-cc` 形状 ·
+// （`control/ccm/plan.rs::fork_tmux_base`，帧命令 `terminal-name-mint {forkOf}`）。五条期望（与源名不同 · 撞了往后排 · `-cc` 形状 ·
 // 拿 cwd 当源也建得出来 · 空 ⇒ `session-fork-cc`）原样搬进 `tests/backend/control/ccm/plan_tests.rs::the_fork_base_differs_from_its_source_and_is_always_a_legal_new_name`
 // （「建得出来」那一格的消费者换成真正判新建名的 `validate_tmux_name`）。

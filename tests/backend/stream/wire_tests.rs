@@ -247,7 +247,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
     use crate::agents::{RunDid, StreamEv};
     use crate::stream::wire::{
         AgentHome, LostFrame, RereadWhy, RunEnded, RunInfo, RunState, SessionContainer,
-        SessionFate, TapEnd, TransferEnd, Unavailable,
+        SessionFate, TapEnd, TerminalHost, TransferEnd, Unavailable,
     };
     let s = |v: &str| v.to_string();
     let both = |f: Frame| [f.clone(), f];
@@ -322,7 +322,10 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 lines: Some(9),
                 status: Some(s("waiting")),
                 waiting_for: Some(s("permission prompt")),
-                container: Some(SessionContainer::Tmux),
+                container: Some(SessionContainer::Hosted {
+                    host: TerminalHost::Tmux,
+                    terminal: Some("tmux-3-7".into()),
+                }),
                 pid: Some(42),
             },
             Frame::SessionAdded {
@@ -1327,15 +1330,14 @@ fn removal_cause_is_additive_on_the_wire() {
     assert_ne!(gone, sup);
 }
 
-/// `session_added.container` 的线上形：**两个字面量 ＋ 缺席**，三格各钉一处。
+/// `session_added.container` 的线上形：对象 ＋ 缺席，四格各钉一处（精确字节）。
 ///
-/// - 缺席：与本字段加进来之前逐字节相同。
-/// - `tmux` / `none`：字段按声明序排在 `waiting_for` 之后。这两个字面量是 monitor
-///   `stream_source::parse_frame` 照着认的东西 —— 两边各写一遍，对不上时 monitor 把它当「不知道」，
-///   而「不知道」是合法值 ⇒ **不会有任何东西报错**，所以这里用精确字节钉。
+/// - 缺席：「不知道」。
+/// - `{"host":"tmux","terminal":…}` / `{"host":"tmux"}`（句柄算不出就不写那一格）/ `{"host":"none"}`。
 #[test]
-fn session_added_container_is_additive_with_two_literals() {
-    let frame = |c: Option<crate::stream::wire::SessionContainer>| {
+fn session_added_container_is_an_object_with_host_and_terminal() {
+    use crate::stream::wire::{SessionContainer, TerminalHost};
+    let frame = |c: Option<SessionContainer>| {
         to_line(&Frame::SessionAdded {
             sid: "s".into(),
             agent_kind: None,
@@ -1354,14 +1356,22 @@ fn session_added_container_is_additive_with_two_literals() {
         })
         .unwrap()
     };
+    let hosted = |t: Option<&str>| SessionContainer::Hosted {
+        host: TerminalHost::Tmux,
+        terminal: t.map(str::to_string),
+    };
     assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\"}\n");
     assert_eq!(
-        frame(Some(crate::stream::wire::SessionContainer::Tmux)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"container\":\"tmux\"}\n"
+        frame(Some(hosted(Some("tmux-3-7")))),
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"}}\n"
     );
     assert_eq!(
-        frame(Some(crate::stream::wire::SessionContainer::None)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"container\":\"none\"}\n"
+        frame(Some(hosted(None))),
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"container\":{\"host\":\"tmux\"}}\n"
+    );
+    assert_eq!(
+        frame(Some(SessionContainer::None)),
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"container\":{\"host\":\"none\"}}\n"
     );
 }
 

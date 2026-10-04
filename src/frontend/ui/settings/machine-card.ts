@@ -25,7 +25,7 @@ import { parseAddressLines } from "../remote-config";
 import type { ConnectStage } from "../generated/ConnectStage";
 import { DEFAULT_AGENT, defaultLauncherOf } from "../agent-profile";
 // 铸名口（列名单 ＋ 避让 ＋ 「列不出 ⇒ 不起」）本机远端同一个家。
-import { mintFreshTmuxName, refuseUnmintable } from "../tmux-name-mint";
+import { mintFreshTmuxName, refuseUnmintable } from "../terminal-name-mint";
 import { isSelectable, currentWorkingAccount } from "../accounts";
 import { fetchAccounts } from "../account-reads";
 import { withAccount } from "../launch-account";
@@ -1022,7 +1022,7 @@ export class MachineCard {
       //
       // 用户显式填的名字**不动**（那是他的意思，撞了也是他要的复用）；
       // 只有**我们替他派生**的那个默认名才过铸名口。
-      // 铸名收进 `tmux-name-mint.ts`（与 `remote-launch-run.ts::runNewSessionRemote` 先前是逐字副本）；
+      // 铸名收进 `terminal-name-mint.ts`（与 `remote-launch-run.ts::runNewSessionRemote` 先前是逐字副本）；
       // 先前「列不出名单 ⇒ 空集铸名、不避让」正是 #76 的形状 ⇒ 列不出就不起、说清。
       const typed = nameInput.value.trim();
       let name = typed;

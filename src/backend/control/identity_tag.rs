@@ -68,11 +68,11 @@
 #[must_use = "打标的结局要经 `failure_note` 说出来（打不上 ⇒ 之后 kill / 送键被身份门拒）"]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Outcome {
-    /// 打上了（或从「没有」变成了新值）。带上落地的窗格句柄。
+    /// 打上了（或从「没有」变成了新值）。带上那个窗格的终端句柄（同 `terminals-list`）。
     Tagged(String),
     /// 已经是这个值了 —— **不重复写**。启动重扫时每个会话都会走一遍这里，
-    /// 免掉「已经对了还再起一次 `tmux`」。
-    AlreadyCurrent,
+    /// 免掉「已经对了还再起一次 `tmux`」。同样带终端句柄。
+    AlreadyCurrent(String),
     /// 这个进程不在 tmux 里：环境**读得到**，`TMUX_PANE` 没设（或是空串）⇒ 没有会话可打。
     ///
     /// 这一格从此**只**说这一件事 —— 它是 `session_added.container = "none"`
@@ -111,7 +111,7 @@ impl Outcome {
                 "sid 的形状不对（只认字母、数字、`-`、`_`，长度 1–128），不往 tmux 里写".to_string()
             }
             Outcome::Tagged(_)
-            | Outcome::AlreadyCurrent
+            | Outcome::AlreadyCurrent(_)
             | Outcome::NotInTmux
             | Outcome::PaneUnknown
             | Outcome::NoSuchPane => return None,
@@ -130,8 +130,8 @@ impl Outcome {
     ///
     /// | 结局 | 容器 | 为什么 |
     /// |---|---|---|
-    /// | `Tagged` / `AlreadyCurrent` | `tmux` | tmux 认得这个进程所在的 pane |
-    /// | `NotInTmux` | `none` | 环境读得到，`TMUX_PANE` 没设 |
+    /// | `Tagged` / `AlreadyCurrent` | `{host: tmux, terminal: 句柄}` | tmux 认得这个进程所在的 pane |
+    /// | `NotInTmux` | `{host: none}` | 环境读得到，`TMUX_PANE` 没设 |
     /// | `PaneUnknown` | 不知道 | 环境读不到 / pane id 形状不对 |
     /// | `NoSuchPane` | 不知道 | 环境说在某个 pane 里，默认 socket 上的 tmux 不认（私有 `-S` socket 之类）|
     /// | `RejectedSid` | 不知道 | sid 形状不对，压根没探 |
@@ -143,9 +143,12 @@ impl Outcome {
     /// 放在观测侧就得让 `observe → control` 多一条跨层边（`layering_guard` 的登记表）；
     /// 调用方（`observe/watcher.rs::process_session_added`）今天只经 `tag(..)` 的返回值用它。
     pub(crate) fn container(&self) -> Option<crate::stream::wire::SessionContainer> {
-        use crate::stream::wire::SessionContainer;
+        use crate::stream::wire::{SessionContainer, TerminalHost};
         match self {
-            Outcome::Tagged(_) | Outcome::AlreadyCurrent => Some(SessionContainer::Tmux),
+            Outcome::Tagged(t) | Outcome::AlreadyCurrent(t) => Some(SessionContainer::Hosted {
+                host: TerminalHost::Tmux,
+                terminal: Some(t.clone()),
+            }),
             Outcome::NotInTmux => Some(SessionContainer::None),
             Outcome::PaneUnknown
             | Outcome::NoSuchPane
@@ -252,12 +255,14 @@ pub(crate) fn tag(pid: u32, sid: &str) -> Outcome {
         Ok(None) => return Outcome::NoSuchPane,
         Err((code, msg)) => return Outcome::Failed(format!("{code}: {msg}")),
     };
+    // 容器那一格报的句柄：与 `terminals-list` 同一个函数、同一个窗格。
+    let terminal = super::terminals::handle_of(&probed.session_id, Some(&pane));
     if probed.ccm_sid == sid {
-        return Outcome::AlreadyCurrent;
+        return Outcome::AlreadyCurrent(terminal);
     }
     // ★ 对窗格**句柄**（`%N`，server 生命周期内唯一、不复用）下手，不对名字 —— 与 `gate` / `kill` 同一条纪律。
     // 打在窗格上：同一个会话里的几个 claude 各挂各的，不互相覆盖（会话级单值会让对账来回改写、重探不停）。
-    set_sid(door::tmux(), pane, sid)
+    set_sid(door::tmux(), pane, sid, terminal)
 }
 
 /// 打标路上起 tmux 的唯一口（探测与写都经 `door::tmux`）。
@@ -272,7 +277,7 @@ pub(crate) mod door;
 /// 〔同形〕tmux 的 stderr **收下来进原因**（原先丢进 `Stdio::null()`，
 /// 失败只剩一个退出码 —— 「为什么没打上」要靠猜）。`cmd` 由调用方造（生产 = `Command::new("tmux")`），
 /// 判据换一个假 tmux 的绝对路径进来，不碰进程级 `PATH`（`gate_tests` 头注写过为什么不能 `set_var`）。
-fn set_sid(mut cmd: std::process::Command, target: String, sid: &str) -> Outcome {
+fn set_sid(mut cmd: std::process::Command, target: String, sid: &str, terminal: String) -> Outcome {
     match cmd
         .args(["set-option", "-p", "-t", &target, "@ccm_sid", sid])
         .stdin(std::process::Stdio::null())
@@ -280,7 +285,7 @@ fn set_sid(mut cmd: std::process::Command, target: String, sid: &str) -> Outcome
         .stderr(std::process::Stdio::piped())
         .output()
     {
-        Ok(out) if out.status.success() => Outcome::Tagged(target),
+        Ok(out) if out.status.success() => Outcome::Tagged(terminal),
         Ok(out) => Outcome::Failed(format!(
             "tmux set-option 退出码 {}：{}",
             out.status,

@@ -163,8 +163,8 @@ pub(crate) const STREAM_ONLY: &[&str] = &[
     "forward-start",
     "forward-stop",
     "forward-list",
-    // 起会话要的 tmux 名：界面问；CLI 那一侧 `ccm` 起会话时自己铸（同一份 `plan::mint_tmux_name`）。
-    "tmux-name-mint",
+    // 起会话要的终端名：界面问；CLI 那一侧 `ccm` 起会话时自己铸（同一份 `plan::mint_tmux_name`）。
+    "terminal-name-mint",
     // 开终端那一串：界面 / 文件窗口开 PowerShell 窗口前问；命令行那一侧用不着（它自己就在终端里）。
     "terminal-ssh",
     // ↗ 那一问：那台答「此刻谁在显示这个会话」—— 只有拉前那一方（界面）用得着。
@@ -180,7 +180,7 @@ pub(crate) const STREAM_ONLY: &[&str] = &[
     // tab 栏多选的批量停 / 起：一批会话一次问，只给界面用（命令行那一侧逐个 `--kill` / 直接敲 `ccm` 就是它们）。
     "sessions-stop",
     "sessions-start",
-    "sessions-tmux",
+    "sessions-where",
 ];
 
 /// 命令名 → CLI 子命令（`launch` → `--launch`）。

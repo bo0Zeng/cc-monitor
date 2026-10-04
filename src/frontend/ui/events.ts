@@ -32,6 +32,7 @@ import type { SessionIdlePayload } from "./generated/SessionIdlePayload";
 import type { SessionActivityPayload } from "./generated/SessionActivityPayload";
 import type { SessionTapPayload } from "./generated/SessionTapPayload";
 import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
+import type { SessionContainer } from "./generated/SessionContainer";
 // 本文件内部也用这些名字（8 处），所以 import + re-export 都要有：
 // 只写 `export type { … } from` 不会把名字带进本地作用域。
 export type {
@@ -94,7 +95,7 @@ export interface EventHandlers {
    * 活会话住在什么容器里（`container` 格，本机与远端同一个事件）。
    * 进 queue：与 `remote-added` / 行保序（先建 tab、再落容器；早到的由 TabManager 暂存）。
    */
-  onSessionContainer?: (sessionId: string, container: string) => void;
+  onSessionContainer?: (sessionId: string, container: SessionContainer) => void;
   /**
    * 一个会话的运行表（会话流里的 `runs` 格，那台后端的成品）：列在 agent 面板里，状态标到派出它的那张工具卡上（不进主 tab 的消息流）。
    * 进 queue：排在那个会话的宣告之后（处理它时 tab 已在）。
@@ -241,7 +242,7 @@ type QueueItem =
       name: string | null;
     }
   // 容器事实 / 某台清单报完了 —— 同一 queue 保序（见 EventHandlers 里两条的注释）。
-  | { kind: "container"; sessionId: string; container: string }
+  | { kind: "container"; sessionId: string; container: SessionContainer }
   | { kind: "runs"; payload: SessionRunsPayload }
   | { kind: "listed"; origin: string }
   // 那台机器看不见了 —— 同一 queue 保序（见 EventHandlers.onOriginUnseen）。

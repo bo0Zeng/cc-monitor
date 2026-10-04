@@ -191,7 +191,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "新帧命令：每一个同单个那一条（记录在不在 · 在跑不另起 · 空 tmux 就地键入 · 铸名建会话 / 渲那一行），判在那台后端",
     ),
     (
-        "sessions-tmux",
+        "sessions-where",
         "新帧命令：这几个会话各在哪个 tmux 会话里（单个菜单亮哪几项 · 换号重启 · 分叉都问它），判在那台后端",
     ),
     (
@@ -258,10 +258,10 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "remote-probe",
         "测试连接：界面交表单那一台（＋ 已保存的同名那一份 · 跳板），后端 `dial/probe.rs` 出结局；前端 `src/frontend/ui/remote-probe.ts` 按恰好的键集合收",
     ),
-    // 列 tmux 会话：monitor 那两条 Tauri 命令（本机 · 远端）与它们那份解析退役，那台后端出成品。
+    // 终端名单：那台后端出成品（与宿主无关的句柄）；只有 tmux 名在手的那一方先按名字认出那一行。
     (
-        "tmux-list",
-        "列那台 tmux 会话：后端 `observe/tmux_list.rs` 出成品 `{installed, sessions}`（解析从 monitor 搬去）；前端 `src/frontend/ui/tmux-reads.ts` 按恰好的键集合收",
+        "terminals-list",
+        "那台的终端名单：后端 `control/terminals.rs` 出成品；前端 `src/frontend/ui/terminal-reads.ts` 收它要的那几格（只加不改的形状，多出来的格照收）",
     ),
     // 各台搜索结果合成一份：合并排序进本机后端（`search_rules::sort_by_recency`），界面逐台扇出。
     (
@@ -287,8 +287,8 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ),
     // 起会话要的 tmux 名：派生 ＋ 避让只留后端（前端那份铸名口删了）。
     (
-        "tmux-name-mint",
-        "铸 tmux 名：那台后端派生基名、按它那张会话快照避让（`control/ccm/mod.rs::answer_tmux_name_mint`）；前端 `src/frontend/ui/tmux-name-mint.ts` 问，monitor 这一侧零发送点",
+        "terminal-name-mint",
+        "铸 tmux 名：那台后端派生基名、按它那张会话快照避让（`control/ccm/mod.rs::answer_terminal_name_mint`）；前端 `src/frontend/ui/terminal-name-mint.ts` 问，monitor 这一侧零发送点",
     ),
     // 端口转发三条：monitor 那三条 Tauri 命令与它手里的转发账退役，账住本机常驻后端。
     (
@@ -462,12 +462,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "这几个号在那台的表里有没有行 · 那台的中转在不在：monitor 那条命令（`apikey_routing_for`）本机自己读凭据文件 ＋ 连回环口、         远端转 `apikey-read` 的 `rows` ＋ `relay-status`，再调 `acct-core` 那条规则 —— 人群与判准整个搬进后端（`accounts/upstream_select/endpoint.rs`），命令删了",
     ),
     // skill 卸的「看」那一半：生来就走通道（没有过 monitor 那一条）。
-    // `C4c.md §5.6` A 组 `tmux.manage` 第一格：抓一屏。
+    // `C4c.md §5.6` A 组 `tmux.manage` 第一格：抓一屏（今天走终端管理那一条）。
     (
-        "capture-pane",
-        "后端应答就是成品 `{name, screen}`，monitor 那条命令（`capture_remote_pane`）只在拒空目标、预问认不认、转、\
-         把五个拒绝码说成人话 —— 那一份解释搬到唯一的消费者那一侧 `src/frontend/ui/tmux-control.ts::capturePane`\
-         （预览窗 `views/pane-preview.ts` 调它），命令与发送端（`capture_via_backend`〔散文墓碑〕）删了",
+        "terminal-preview",
+        "后端应答就是成品（逐行文本 ＋ 尺寸光标），按名单里的句柄 / 会话 ID 指；拒绝码说成人话那一份住唯一的消费者那一侧\
+         `src/frontend/ui/terminal-reads.ts`（预览窗 `views/pane-preview.ts` · 起会话没报出来时抓原话 `launch-arrival.ts` 调它）",
     ),
     // `tmux.manage` 其余两格（杀会话 · 送键）＋ `launch.send-into`（就地 resume）：
     //   三条 Tauri 命令（`kill_remote_tmux` / `tmux_send_keys` / `backend_send_into`〔散文墓碑〕）同拍迁完 ——
