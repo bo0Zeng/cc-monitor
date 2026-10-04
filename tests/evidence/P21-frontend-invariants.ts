@@ -209,7 +209,10 @@ export function fixedSelectors(css = styleSheet()): string[] {
   return [...out].sort();
 }
 
-/** 逐个 fixed 选择器算出「谁建的、那份文件碰不碰 `document.body`」。 */
+/**
+ * 逐个 fixed 选择器算出「谁建的、那份文件碰不碰 `document.body`」。
+ * 类名按整词认：前后不许再接字母、数字、`_`、`-`（`grid-monitor` 不算在 `grid-monitor-trigger` 里）。
+ */
 export function fixedPortals(sources = productionCode(), css = styleSheet()): FixedPortal[] {
   return fixedSelectors(css).map((sel) => {
     const name = sel.slice(1);
@@ -217,7 +220,7 @@ export function fixedPortals(sources = productionCode(), css = styleSheet()): Fi
     const born =
       sel[0] === "."
         ? new RegExp(
-            `className\\s*=\\s*["\`][^"\`]*\\b${esc}\\b|classList\\s*\\.\\s*add\\(\\s*["\`]${esc}["\`]`,
+            `className\\s*=\\s*["\`](?:[^"\`]*[^\\w"\`-])?${esc}(?![\\w-])|classList\\s*\\.\\s*add\\(\\s*["\`]${esc}["\`]`,
           )
         : new RegExp(
             `\\.\\s*id\\s*=\\s*["\`]${esc}["\`]|getElementById\\(\\s*["\`]${esc}["\`]|=\\s*["\`]${esc}["\`]`,

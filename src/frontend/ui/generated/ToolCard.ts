@@ -5,4 +5,4 @@
  * 注册表 [`RecordFace::tool_card`]）。没有这一格 ＝ 普通工具卡。随记录成品带出（`JsonlRecord::Assistant` 的 `toolCards`），
  * 界面只按它画、不认工具名（判定只在后端 · `§2.1` 加一个 agent 只改 `agents/`）。
  */
-export type ToolCard = "agent" | "interactive" | "diff" | "md";
+export type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";

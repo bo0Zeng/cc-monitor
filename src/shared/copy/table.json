@@ -1942,6 +1942,16 @@
       "zh": "Resume 这个会话",
       "args": []
     },
+    "tabMenu.item.close": {
+      "kind": "action",
+      "zh": "关闭标签",
+      "args": []
+    },
+    "tabMenu.close.unseenHint": {
+      "kind": "body",
+      "zh": "它若还在跑，连上 {machine} 之后会回来",
+      "args": ["machine"]
+    },
     "tabMenu.item.greyed": {
       "kind": "control",
       "zh": "{label}（{why}）",
@@ -2850,6 +2860,26 @@
       "zh": "🔧 工具调用 · {count} 个 · 自 {since}",
       "args": ["count", "since"]
     },
+    "cards.toolGroup.summaryFailed": {
+      "kind": "body",
+      "zh": "🔧 工具调用 · {count} 个 · {failed} 个失败 · 自 {since}",
+      "args": ["count", "failed", "since"]
+    },
+    "cards.toolGroup.summaryAgents": {
+      "kind": "body",
+      "zh": "🔧 工具调用 · {count} 个 · {agents} 个子 agent · 自 {since}",
+      "args": ["count", "agents", "since"]
+    },
+    "cards.toolGroup.summaryBoth": {
+      "kind": "body",
+      "zh": "🔧 工具调用 · {count} 个 · {failed} 个失败 · {agents} 个子 agent · 自 {since}",
+      "args": ["count", "failed", "agents", "since"]
+    },
+    "cards.command.note": {
+      "kind": "body",
+      "zh": "# {text}",
+      "args": ["text"]
+    },
     "cards.queuedUser.title": {
       "kind": "title",
       "zh": "用户 · 排队时发出",
@@ -3024,6 +3054,26 @@
     "keybindingActions.behavior.autoFront": {
       "kind": "action",
       "zh": "切换「自动把 monitor 切到前台」",
+      "args": []
+    },
+    "behaviorToggle.autoFollow.on": {
+      "kind": "body",
+      "zh": "自动跟随：开",
+      "args": []
+    },
+    "behaviorToggle.autoFollow.off": {
+      "kind": "body",
+      "zh": "自动跟随：关",
+      "args": []
+    },
+    "behaviorToggle.bringFront.on": {
+      "kind": "body",
+      "zh": "自动把 monitor 切到前台：开",
+      "args": []
+    },
+    "behaviorToggle.bringFront.off": {
+      "kind": "body",
+      "zh": "自动把 monitor 切到前台：关",
       "args": []
     },
     "keybindingActions.behavior.autoFollow": {
@@ -3348,8 +3398,8 @@
     },
     "main.cmd.switchSession": {
       "kind": "action",
-      "zh": "切到会话：{originTag}{title}",
-      "args": ["originTag", "title"]
+      "zh": "切到会话：{title}",
+      "args": ["title"]
     },
     "main.cmd.tabPrevKeywords": {
       "kind": "body",
@@ -15614,6 +15664,36 @@
     "events.stream.closedRemote": {
       "kind": "body",
       "zh": "{machine} 上的会话不会再自动更新。重启 cc-monitor 可以重新接上。",
+      "args": ["machine"]
+    },
+    "events.unseen.neverTitle": {
+      "kind": "error",
+      "zh": "还没连上 {machine}",
+      "args": ["machine"]
+    },
+    "events.unseen.neverBody": {
+      "kind": "body",
+      "zh": "{machine}上的会话要等连上之后才会出现。cc-monitor 会一直重试；这台机器连不连得上，在设置里看得到。",
+      "args": ["machine"]
+    },
+    "events.unseen.droppedTitle": {
+      "kind": "error",
+      "zh": "和 {machine} 的连接断了",
+      "args": ["machine"]
+    },
+    "events.unseen.overrunTitle": {
+      "kind": "error",
+      "zh": "{machine} 一直没有回应",
+      "args": ["machine"]
+    },
+    "events.unseen.unreachableTitle": {
+      "kind": "error",
+      "zh": "连不上 {machine}",
+      "args": ["machine"]
+    },
+    "events.unseen.lostBody": {
+      "kind": "body",
+      "zh": "{machine}上的会话现在说不清还在不在跑。cc-monitor 会一直重试，连上之后自己接上；这台机器连不连得上，在设置里看得到。",
       "args": ["machine"]
     },
     "launchAccount.lastAccount.notRecorded": {

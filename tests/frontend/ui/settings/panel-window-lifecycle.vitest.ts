@@ -298,3 +298,26 @@ describe("〔W5-UI〕选 Claude 数据目录的窗口打不开 ⇒ 说出来", (
     expect(text).toContain("dialog-refused-xyz");
   });
 });
+
+describe("主窗口用快捷键翻了「自动跟随 / 自动切到前台」⇒ 开着的设置窗那一页跟着变", () => {
+  it("收到翻完之后的两格 ⇒ 两个开关照它摆（不留旧值，免得下一次在这页改别的把它写回去）", async () => {
+    const { listen } = await import("@tauri-apps/api/event");
+    const heard = new Map<string, (e: { payload: unknown }) => void>();
+    vi.mocked(listen).mockImplementation(((name: string, cb: (e: { payload: unknown }) => void) => {
+      heard.set(name, cb);
+      return Promise.resolve(() => {});
+    }) as never);
+    document.body.replaceChildren();
+    await mount();
+    const box = (key: "settingsPanel.behavior.autoFollow" | "settingsPanel.behavior.autoFront"): HTMLInputElement =>
+      [...document.querySelectorAll<HTMLLabelElement>(".settings-row-checkbox")]
+        .find((l) => l.textContent === copyText(key))!
+        .querySelector("input")!;
+    const [auto, front] = [box("settingsPanel.behavior.autoFollow"), box("settingsPanel.behavior.autoFront")];
+    expect([auto.checked, front.checked], "前提：缺省是跟随开、拉前关").toEqual([true, false]);
+    const toggled = heard.get("behavior-toggled");
+    expect(toggled, "设置窗没听主窗口翻开关那件事").toBeTruthy();
+    toggled!({ payload: { autoFollowUserActive: false, bringMonitorToFrontOnUserActive: true } });
+    expect([auto.checked, front.checked, front.disabled]).toEqual([false, true, true]);
+  });
+});

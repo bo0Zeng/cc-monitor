@@ -47,7 +47,7 @@ export function richConvo(sid: string, cwd: string): { convo: Convo; agentTool: 
     "src/orders/service.py:88:    stock = inventory_client.reserve(order.items)",
     "src/orders/service.py:131:    inventory_client.release(order.id)",
     "src/orders/clients.py:7:inventory_client = InventoryClient(base_url=settings.INVENTORY_URL)",
-  ].join("\n"));
+  ].join("\n"), { card: "command" });
   c.tool("Read", { file_path: `${cwd}/src/orders/clients.py` }, [
     "     1\timport httpx",
     "     2\tfrom .settings import settings",
@@ -96,8 +96,8 @@ export function richConvo(sid: string, cwd: string): { convo: Convo; agentTool: 
     null,
     { card: "agent", child: { label: "检查其他服务有没有同类调用", kind: "Explore" } },
   );
-  c.tool("Bash", { command: "pytest -q tests/test_inventory_client.py", description: "跑测试" }, "...\n3 passed in 0.41s");
-  c.tool("Bash", { command: "pytest -q", description: "全量测试" }, "FAILED tests/test_checkout.py::test_timeout - AssertionError: expected 5, got 30\n1 failed, 212 passed in 9.82s", { error: true });
+  c.tool("Bash", { command: "pytest -q tests/test_inventory_client.py", description: "跑测试" }, "...\n3 passed in 0.41s", { card: "command" });
+  c.tool("Bash", { command: "pytest -q", description: "全量测试" }, "FAILED tests/test_checkout.py::test_timeout - AssertionError: expected 5, got 30\n1 failed, 212 passed in 9.82s", { error: true, card: "command" });
   c.say("全量里有一条超时断言还写着旧的 30 秒，我把它改成读配置。", 74_000);
   c.retry(1, 10);
   c.retry(2, 10);
@@ -140,7 +140,7 @@ function subagentRecords(sid: string, cwd: string): SessionSpec["runRecords"] {
   const a1 = new Convo(sid, cwd, "2026-10-01T09:05:00Z");
   a1.user("为 InventoryClient._call 写单元测试：成功、重试后成功、重试耗尽三种。");
   a1.tool("Write", { file_path: `${cwd}/tests/test_inventory_client.py`, content: "def test_ok(): ...\ndef test_retry_then_ok(): ...\ndef test_retry_exhausted(): ...\n" }, "File created successfully.", { card: "diff" });
-  a1.tool("Bash", { command: "pytest -q tests/test_inventory_client.py" }, "3 passed in 0.38s");
+  a1.tool("Bash", { command: "pytest -q tests/test_inventory_client.py" }, "3 passed in 0.38s", { card: "command" });
   a1.say("测试已写好：tests/test_inventory_client.py，3 个用例全部通过。");
   const a2 = new Convo(sid, cwd, "2026-10-01T09:06:00Z");
   a2.user("在 services/ 下找所有直接用 httpx 调内部服务、没有超时的地方。");

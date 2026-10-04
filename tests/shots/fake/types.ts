@@ -56,6 +56,8 @@ export interface World {
   unseenMachines: string[];
   /** 会话流被那台后端关掉的那几台（流里第一格 `closed`）。 */
   closedMachines: string[];
+  /** 订阅时看得见、交完会话之后断了的那几台（随后一格 `unseen`，断在读那一跳）。 */
+  droppedMachines?: string[];
   config: Record<string, unknown>;
   sessions: SessionSpec[];
   /** 帧命令的答法，按 op 名；场景可以整条覆盖。 */

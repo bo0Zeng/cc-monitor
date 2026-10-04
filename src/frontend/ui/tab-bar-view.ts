@@ -15,7 +15,7 @@ import type { TabCollection } from "./tab-collections";
 import { activityLightClass } from "./session-status";
 import { terminalFrontAvailable } from "./terminal-front";
 import { isRemoteOrigin } from "./ipc/origin";
-import { hasTerminal, isLive, isResumeOnly, stateView } from "./tab-session-state";
+import { closesWithoutMenu, hasTerminal, isLive, stateView } from "./tab-session-state";
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
@@ -227,10 +227,10 @@ export class TabBarView {
       this.host.beginDrag(e, hit.sid, hit.root);
       return;
     }
-    // 中键点击已结束的 Tab 也关闭（常见 UX）
+    // 中键点击已结束的 Tab 也关闭（常见 UX）；说不清的只在右键菜单里关
     if (e.button === 1) {
       const t = this.store.tabs.get(hit.sid);
-      if (t && isResumeOnly(t.state)) {
+      if (t && closesWithoutMenu(t.state)) {
         e.preventDefault();
         this.host.closeTab(hit.sid);
       }
@@ -569,9 +569,10 @@ export class TabBarView {
     const active = sid === this.store.activeId;
     // 多选里的样子（`.selected`）与「当前 tab」（`.active`）是两件事，两个类各画各的。
     const selected = this.host.isSelected(sid);
-    // 两个轴怎么画（类 · 提示句）只从 `stateView` 取：已结束（只能 resume）· 可重连（死了、容器还在）。
+    // 两个轴怎么画（类 · 提示句）只从 `stateView` 取：已结束（只能 resume）· 说不清（那台看不见）· 可重连（死了、容器还在）。
     const view = stateView(tab.state);
     const ended = view.ended;
+    const unseen = view.unseen;
     // 固定：**只多一个 📌 角标，位置一个字不动**（`§B.3b`：没有「固定区」，
     // pin 管的是「别丢」不是「排前面」；位置由 `§C` 的顺序落盘管，两者不抢）。
     const pinned = tab.pinned;
@@ -610,6 +611,7 @@ export class TabBarView {
       active,
       selected,
       ended,
+      unseen,
       pinned,
       hasCwd,
       remote,
@@ -626,6 +628,7 @@ export class TabBarView {
       refs.root.classList.toggle("active", active);
       refs.root.classList.toggle("selected", selected);
       refs.root.classList.toggle("ended", ended);
+      refs.root.classList.toggle("unseen", unseen);
       refs.root.classList.toggle("pinned", pinned);
       refs.root.classList.toggle("has-cwd", hasCwd);
       refs.root.classList.toggle("remote", remote);

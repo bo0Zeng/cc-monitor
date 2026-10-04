@@ -13,7 +13,7 @@
  */
 // `LOCAL_ORIGIN`：本机那个 origin 的**唯一住址**（Rust 侧是
 // `origin::LOCAL`，三处由 `origin_tests.rs::the_sentinel_agrees_with_the_two_existing_homes` 钉着）。
-import { isRemoteOrigin, LOCAL_ORIGIN } from "./ipc/origin";
+import { LOCAL_ORIGIN } from "./ipc/origin";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
@@ -38,9 +38,9 @@ import { UsageHud } from "./usage-hud";
 import { recordFileWiring } from "./record-file-notice";
 import { bindErrorToast, showActionFailureToast } from "./error-toast";
 import { bindRemoteHealthToast } from "./remote-health";
-// F83（#39）：顶栏 SFTP 入口——按远端主机数 0/1/N 分支打开现有 SFTP 模态。
-import { openFileWindow } from "./file-window";
-import { readRemoteConfig, sftpEligibleHosts, hostKey } from "./remote-config";
+// F83（#39）：顶栏远端文件入口——按远端主机数 0/1/N 分支（`sftp-host-picker.ts`）。
+import { openSftpFromTopbar, toggleSftpFromTopbar } from "./sftp-host-picker";
+import { readRemoteConfig, hostKey } from "./remote-config";
 // N-F3：主窗口那一条「还差什么」指路 —— 那张清单此前只在设置面板 → 远端那一节渲染，
 // 刚装完没打开过设置的人一个字都看不到。两个维度两个值，见 first-run-hint.ts 头注。
 import { FirstRunHint } from "./first-run-hint";
@@ -51,12 +51,14 @@ import { collectAccountRows, createEventRefresher } from "./session-accounts-pol
 import { lastAccounts } from "./history-reads";
 import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
-import { getBehavior, setBehavior } from "./behavior";
+import { getBehavior } from "./behavior";
+import { flipBehavior } from "./behavior-toggle";
 import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
 import { installGlobalClickDelegation } from "./entry-render-common";
 import { AccountChip } from "./account-chip";
 import { buildAccountCommands } from "./account-commands";
+import { sessionCommands } from "./session-commands";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
 import { currentAccountForBadge } from "./accounts";
 import { fetchSessionAccounts, fetchAccounts } from "./account-reads";
@@ -386,7 +388,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   sftpTrigger.className = "sftp-trigger";
   sftpTrigger.title = copyText("main.topbar.filesHint");
   sftpTrigger.setAttribute("aria-label", copyText("main.cmd.openFiles"));
-  sftpTrigger.addEventListener("click", () => void openSftpFromTopbar(sftpTrigger));
+  sftpTrigger.addEventListener("click", () => void toggleSftpFromTopbar(sftpTrigger));
   document.getElementById("app")?.appendChild(sftpTrigger);
 
   // S6（settings-ia）：cc-bus 驾驶舱从设置里搬出来，成为顶层运营视图。
@@ -433,15 +435,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       }),
     );
     // 切到会话（来自 F91 只读投影 snapshotSessions）
-    for (const s of tabs.snapshotSessions()) {
-      const originTag = isRemoteOrigin(s.origin) ? `[${s.origin}] ` : "";
-      cmds.push({
-        id: `switch-${s.sessionId}`,
-        title: copyText("main.cmd.switchSession", { originTag, title: s.title }),
-        keywords: copyText("main.cmd.switchSessionKeywords", { cwd: s.cwd ?? "", machine: isRemoteOrigin(s.origin) ? s.origin : "" }),
-        run: () => tabs.switchTo(s.sessionId),
-      });
-    }
+    cmds.push(...sessionCommands(tabs.snapshotSessions(), (sid) => tabs.switchTo(sid)));
     return cmds;
   };
   const commandBar = new CommandBarView(buildCommands);
@@ -568,25 +562,9 @@ window.addEventListener("DOMContentLoaded", async () => {
       .catch((e) => console.warn("toggle-fullscreen failed:", e));
   });
   dispatcher.bind("panel.toggle-tasks", () => tasksPanel.toggle());
-  dispatcher.bind("behavior.toggle-auto-follow", () => {
-    void (async () => {
-      const cur = await getBehavior();
-      const next = { ...cur, autoFollowUserActive: !cur.autoFollowUserActive };
-      await setBehavior(next);
-      tabs.applyBehavior(next);
-    })();
-  });
-  dispatcher.bind("behavior.toggle-bring-monitor", () => {
-    void (async () => {
-      const cur = await getBehavior();
-      const next = {
-        ...cur,
-        bringMonitorToFrontOnUserActive: !cur.bringMonitorToFrontOnUserActive,
-      };
-      await setBehavior(next);
-      tabs.applyBehavior(next);
-    })();
-  });
+  // 翻完说一句、并告诉设置窗（`behavior-toggle.ts`）。
+  dispatcher.bind("behavior.toggle-auto-follow", () => void flipBehavior("autoFollowUserActive", (b) => tabs.applyBehavior(b)));
+  dispatcher.bind("behavior.toggle-bring-monitor", () => void flipBehavior("bringMonitorToFrontOnUserActive", (b) => tabs.applyBehavior(b)));
 
   // account-ux U8：账号相关快捷键（ACTIONS 里 default:null —— 默认不绑，用户想要自己去绑）。
   dispatcher.bind("account.switch-default", () => {
@@ -654,6 +632,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     },
     // 那台机器看不见了 ⇒ 那台上活的 · 可重连的说不清（不是已结束）。机器级一格。
     onOriginUnseen: (origin) => tabs.markOriginUnseen(origin),
+    // 一台机器一直看不见 ⇒ 提示里「打开设置」（那台连不连得上在机器页里看得到）。
+    openMachineSettings: () => void openSettingsWindow(),
     // 会话复活（resume）：后端 liveness 门控后才发，复活已归档的本地 Tab，免 F5。
     // Batch7-F24：无 Tab（= 运行中途**新出现**的本地会话）→ 建骨架——bg 会话必须
     // 从这条通道拿 kind/name（首行 onLine→ensureTab 不带 kind，会建成无 ⚙ 普通 tab）。
@@ -771,71 +751,3 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 去抖后微调 webview 尺寸强制 wry 重新 put_Bounds，把 WebView2 合成层钉回左上角）。
   // 旧版（v2.13.0）在这里做的 onResized + scrollTop 微滚动够不着 DOM 之下的合成层偏移，已删。
 });
-
-// ============ F83（#39）：顶栏 SFTP 入口 ============
-
-/** 多台远端时的选主机浮层（body-level，单例）。照 history F96 菜单关闭范式。 */
-let sftpHostPicker: HTMLElement | null = null;
-let sftpHostPickerClose: ((ev: Event) => void) | null = null;
-
-function closeSftpHostPicker(): void {
-  if (sftpHostPickerClose) {
-    document.removeEventListener("pointerdown", sftpHostPickerClose);
-    document.removeEventListener("keydown", sftpHostPickerClose);
-    sftpHostPickerClose = null;
-  }
-  if (sftpHostPicker) {
-    sftpHostPicker.remove();
-    sftpHostPicker = null;
-  }
-}
-
-/** 顶栏 SFTP 入口点击：0 台提示 / 1 台直开 / 多台选单。 */
-async function openSftpFromTopbar(anchor: HTMLElement): Promise<void> {
-  const cfg = await readRemoteConfig();
-  const hosts = sftpEligibleHosts(cfg);
-  if (hosts.length === 0) {
-    // 这是引导提示不是失败 → info 级（非红色错误）。
-    showActionFailureToast(
-      copyText("main.sftp.noMachine"),
-      copyText("main.sftp.noMachineHint"),
-      { level: "info" },
-    );
-    return;
-  }
-  if (hosts.length === 1) {
-    void openFileWindow(hosts[0]);
-    return;
-  }
-  // ≥2 台：选主机浮层（照 history F96：body-level fixed，Esc / 外部 pointerdown 关，下一拍挂监听防自关）。
-  closeSftpHostPicker();
-  const menu = document.createElement("div");
-  menu.className = "sftp-host-picker";
-  for (const h of hosts) {
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = "sftp-host-picker-item";
-    item.textContent = h.label || h.host;
-    item.addEventListener("click", () => {
-      closeSftpHostPicker();
-      void openFileWindow(h);
-    });
-    menu.appendChild(item);
-  }
-  const r = anchor.getBoundingClientRect();
-  menu.style.top = `${r.bottom + 4}px`;
-  menu.style.right = `${Math.max(4, window.innerWidth - r.right)}px`;
-  document.body.appendChild(menu);
-  sftpHostPicker = menu;
-  const close = (ev: Event): void => {
-    if (ev instanceof KeyboardEvent && ev.key !== "Escape") return;
-    if (ev.type === "pointerdown" && menu.contains(ev.target as Node)) return;
-    closeSftpHostPicker();
-  };
-  sftpHostPickerClose = close;
-  setTimeout(() => {
-    if (sftpHostPicker !== menu) return; // 期间被新菜单/关闭取代 → 别挂陈旧监听
-    document.addEventListener("pointerdown", close);
-    document.addEventListener("keydown", close);
-  }, 0);
-}

@@ -6,7 +6,7 @@
  */
 /**
  * issue #10：极简一次性上下文菜单（Tab 右键用）。挂 document.body 作 fixed 浮层，
- * 点任意项 / 点外部 / Esc 即关。一次只允许一个（开新的前先关旧的）。
+ * 点任意项 / 点外部 / Esc 即关。一次只允许一个（开新的前先关旧的）。躲窗口边（`placeMenu`）。
  *
  * B14-F51：升级为 action 注册表 lite——项带可选 `id`/`enabled`,并可对**已打开**菜单按 id
  * `update`/`remove`(承载异步就绪项,如 attach 的 tmux 反查回来才可点）。
@@ -27,6 +27,8 @@ export interface TabMenuItem {
   divider?: boolean;
 }
 let activeTabMenu: HTMLElement | null = null;
+/** 这一代菜单是在哪一点开的（异步补项让菜单变高之后按它重新摆）。 */
+let activeAnchor = { x: 0, y: 0 };
 const activeTabMenuItems = new Map<string, HTMLElement>();
 /** F51：菜单代次令牌——每次开/关菜单自增。在飞的异步就绪(attach 反查)回来时比对代次,
  * 只作用于发起它的那一代菜单;换/关菜单后旧查询整体 no-op(防 R-1 跨 tab 串味错配)。 */
@@ -142,6 +144,24 @@ function flipSubmenuIfOverflowing(wrap: HTMLElement, flyout: HTMLElement): void 
   }
 }
 
+/** 菜单离窗口边至少留这么多。 */
+const EDGE_GAP = 8;
+
+/**
+ * 菜单躲窗口边：放得下就在光标处；靠下放不下 ⇒ 往上翻（底边对着光标），靠右放不下 ⇒ 往左翻；
+ * 翻过去还放不下（窗口比菜单还小）⇒ 贴边内缩 `EDGE_GAP`。挂上 DOM 之后量。
+ */
+function placeMenu(menu: HTMLElement, x: number, y: number): void {
+  const { width, height } = menu.getBoundingClientRect();
+  const fits = (at: number, size: number, room: number): boolean => at + size <= room - EDGE_GAP;
+  let left = fits(x, width, window.innerWidth) ? x : x - width;
+  let top = fits(y, height, window.innerHeight) ? y : y - height;
+  left = Math.max(EDGE_GAP, Math.min(left, window.innerWidth - EDGE_GAP - width));
+  top = Math.max(EDGE_GAP, Math.min(top, window.innerHeight - EDGE_GAP - height));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+}
+
 export function showTabContextMenu(x: number, y: number, items: TabMenuItem[]): void {
   closeTabContextMenu();
   const menu = document.createElement("div");
@@ -155,6 +175,8 @@ export function showTabContextMenu(x: number, y: number, items: TabMenuItem[]): 
   }
   document.body.appendChild(menu);
   activeTabMenu = menu;
+  activeAnchor = { x, y };
+  placeMenu(menu, x, y);
   tabMenuGeneration++; // 新一代菜单 → 让上一代在飞的异步就绪回调失效
   // 下一拍再挂关闭监听，避免本次右键触发的事件立刻把菜单关掉
   window.setTimeout(() => {
@@ -176,6 +198,7 @@ export function updateTabContextMenuItem(id: string, item: TabMenuItem): void {
   if (wasOpen) btn.classList.add("is-open");
   activeTabMenuItems.set(item.id ?? id, btn);
   old.replaceWith(btn);
+  placeMenu(activeTabMenu, activeAnchor.x, activeAnchor.y);
 }
 
 /** F51：移除已打开菜单里某 id 项(异步查无匹配);无此 id 则 no-op。 */
@@ -192,6 +215,7 @@ export function appendTabContextMenuItem(item: TabMenuItem): void {
   const btn = makeTabMenuButton(item);
   if (item.id) activeTabMenuItems.set(item.id, btn);
   activeTabMenu.appendChild(btn);
+  placeMenu(activeTabMenu, activeAnchor.x, activeAnchor.y);
 }
 
 function closeTabContextMenu(): void {

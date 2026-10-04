@@ -28,6 +28,8 @@ import {
   LIVE_RESUMABLE,
   RECONNECTABLE,
   UNSEEN,
+  canResume,
+  closesWithoutMenu,
   hasTerminal,
   isLive,
   isResumeOnly,
@@ -108,15 +110,19 @@ describe("S1 / T1 转移表（〔U4b〕7 态 × 10 事件 ＋〔GP1〕`unseen` �
     expect(FROM.every((s) => Object.isFrozen(s))).toBe(true);
   });
 
-  it("★ 三个行为谓词在七个态上 == 设计（`U4b.md §1.3` 谓词；前三列是 U4b 新添的活态，行为必须 == 旧「活」）", () => {
+  it("★ 行为谓词在七个态上 == 设计（`U4b.md §1.3` 谓词；前三列是 U4b 新添的活态，行为必须 == 旧「活」；说不清不给恢复、只在右键菜单里关）", () => {
     const row = (f: (s: SessionState) => boolean): boolean[] => FROM.map(f);
     expect({
       isResumeOnly: row(isResumeOnly),
+      canResume: row(canResume),
+      closesWithoutMenu: row(closesWithoutMenu),
       hasTerminal: row(hasTerminal),
       isLive: row(isLive),
     }).toEqual({
-      //            活     活·接回 活·重开 可重连  已结束 记录没了 说不清
+      //                 活     活·接回 活·重开 可重连  已结束 记录没了 说不清
       isResumeOnly: [false, false, false, false, true, true, true],
+      canResume: [false, false, false, false, true, true, false],
+      closesWithoutMenu: [false, false, false, false, true, true, false],
       hasTerminal: [true, true, true, true, false, false, false],
       isLive: [true, true, true, false, false, false, false],
     });
@@ -126,22 +132,23 @@ describe("S1 / T1 转移表（〔U4b〕7 态 × 10 事件 ＋〔GP1〕`unseen` �
 describe("S2 / T2 呈现表（〔U4b〕7 态 → 类 · 状态名 · 提示句 == `U4b.md §1.3` ＋）", () => {
   it("★ 七个态逐格相等（期望串是本文件的字面量，被测串来自文案表）", () => {
     expect(FROM.map(stateView)).toEqual([
-      { ended: false, reconnectable: false, name: null, tooltip: null },
-      { ended: false, reconnectable: false, name: null, tooltip: "在 tmux 会话里运行：程序退了也能接回去" },
-      { ended: false, reconnectable: false, name: null, tooltip: "不在 tmux 会话里：程序退了只能 resume" },
-      { ended: false, reconnectable: true, name: "可重连", tooltip: "程序退了，终端还在 —— 可以接回去" },
-      { ended: true, reconnectable: false, name: "已结束", tooltip: "这个会话已结束" },
-      { ended: true, reconnectable: false, name: "记录已不在", tooltip: "这个会话已结束，它的记录也不在了，没法 resume" },
-      { ended: true, reconnectable: false, name: "说不清", tooltip: "现在看不见那台机器，说不清这个会话还在不在" },
+      { ended: false, unseen: false, reconnectable: false, name: null, tooltip: null },
+      { ended: false, unseen: false, reconnectable: false, name: null, tooltip: "在 tmux 会话里运行：程序退了也能接回去" },
+      { ended: false, unseen: false, reconnectable: false, name: null, tooltip: "不在 tmux 会话里：程序退了只能 resume" },
+      { ended: false, unseen: false, reconnectable: true, name: "可重连", tooltip: "程序退了，终端还在 —— 可以接回去" },
+      { ended: true, unseen: false, reconnectable: false, name: "已结束", tooltip: "这个会话已结束" },
+      { ended: true, unseen: false, reconnectable: false, name: "记录已不在", tooltip: "这个会话已结束，它的记录也不在了，没法 resume" },
+      { ended: false, unseen: true, reconnectable: false, name: "说不清", tooltip: "现在看不见那台机器，说不清这个会话还在不在" },
     ]);
   });
 
-  it("★ 两个类互斥；「没有终端可去」的外观 == `isResumeOnly`；活着不亮类", () => {
+  it("★ 三个类互斥；已结束的外观 == 死了且没有终端可去；说不清单独一个类（不当已结束画）；活着不亮类", () => {
     for (const s of FROM) {
       const v = stateView(s);
-      expect(v.ended && v.reconnectable, `${nameOf(s)}：两个类同时亮`).toBe(false);
-      expect(v.ended, `${nameOf(s)}：.ended 外观 == 只能 resume`).toBe(isResumeOnly(s));
-      if (isLive(s)) expect(v.ended || v.reconnectable, `${nameOf(s)}：活着亮了类`).toBe(false);
+      expect([v.ended, v.unseen, v.reconnectable].filter(Boolean).length <= 1, `${nameOf(s)}：两个类同时亮`).toBe(true);
+      expect(v.ended, `${nameOf(s)}：.ended 外观 == 已结束 · 记录没了`).toBe(canResume(s));
+      expect(v.unseen, `${nameOf(s)}：.unseen == 说不清`).toBe(s.liveness === "unseen");
+      if (isLive(s)) expect(v.ended || v.unseen || v.reconnectable, `${nameOf(s)}：活着亮了类`).toBe(false);
     }
   });
 

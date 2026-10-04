@@ -93,6 +93,9 @@ export class FakeBackend {
     if (sub.kind === "session-lines" || sub.kind.startsWith("session-lines/")) {
       const only = sub.kind.startsWith("session-lines/") ? sub.kind.slice("session-lines/".length) : null;
       this.sendFrames(sub, this.sessionFrames(sub.origin, only));
+      if (this.world.droppedMachines?.includes(sub.origin)) {
+        setTimeout(() => this.send(sub, [{ t: "unseen", idx: 1, tag: "read", why: "Dropped" }]), 1500);
+      }
     } else if (sub.kind === "session-tap" || sub.kind === "accounts-changed" || sub.kind === "session-tasks") {
       this.send(sub, [{ t: "seen", from: null }]);
     } else {

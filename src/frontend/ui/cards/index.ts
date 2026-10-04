@@ -325,6 +325,16 @@ export interface ToolGroup {
   startedAt: string;
 }
 
+/** 外层折叠卡 → 它的工具组（结果后到、注入进组里某一条时，要回头改那一组收着时那一行）。 */
+const groupOfRoot = new WeakMap<HTMLElement, ToolGroup>();
+
+/** `el` 所在的那个工具组收着时那一行重写一遍（`el` 不在任何组里 ⇒ 不动）。 */
+function refreshGroupAround(el: HTMLElement | null): void {
+  const root = el?.closest<HTMLElement>(".card-tool-group");
+  const group = root ? groupOfRoot.get(root) : undefined;
+  if (group) updateToolGroupSummary(group);
+}
+
 export function buildToolGroup(startedAt: string): ToolGroup {
   const root = document.createElement("details");
   root.className = "card card-tool-group";
@@ -338,6 +348,7 @@ export function buildToolGroup(startedAt: string): ToolGroup {
   root.appendChild(body);
 
   const group: ToolGroup = { root, body, summary, count: 0, startedAt };
+  groupOfRoot.set(root, group);
   updateToolGroupSummary(group);
   return group;
 }
@@ -348,8 +359,20 @@ export function addToToolGroup(group: ToolGroup, units: HTMLElement[]): void {
   updateToolGroupSummary(group);
 }
 
+/** 收着时那一行：个数 · 起始时刻；里面有失败的、有子 agent 就说出来（收着也看得见）。 */
 function updateToolGroupSummary(group: ToolGroup): void {
-  group.summary.textContent = copyText("cards.toolGroup.summary", { count: group.count, since: formatTimestampShort(group.startedAt) });
+  const count = group.count;
+  const since = formatTimestampShort(group.startedAt);
+  const failed = group.body.querySelectorAll(":scope > .block-has-error, :scope > .block-tool-result.block-error").length;
+  const agents = group.body.querySelectorAll(":scope > .block-agent").length;
+  group.summary.textContent =
+    failed > 0 && agents > 0
+      ? copyText("cards.toolGroup.summaryBoth", { count, failed, agents, since })
+      : failed > 0
+        ? copyText("cards.toolGroup.summaryFailed", { count, failed, since })
+        : agents > 0
+          ? copyText("cards.toolGroup.summaryAgents", { count, agents, since })
+          : copyText("cards.toolGroup.summary", { count, since });
 }
 
 function buildUserCard(
@@ -442,7 +465,7 @@ function renderBlock(
           console.warn("interactive card fallback:", block.name, e);
         }
       }
-      return buildToolUseCard(block, ctx, card === "diff");
+      return buildToolUseCard(block, ctx, card);
     }
     case "tool_result": {
       return injectOrBuildToolResult(block, ctx);
@@ -473,9 +496,10 @@ function renderBlock(
 function buildToolUseCard(
   block: Extract<ContentBlock, { type: "tool_use" }>,
   ctx: RenderContext,
-  asDiff: boolean,
+  card: ToolCard | undefined,
 ): HTMLElement {
-  const summary = summarizeInput(block.input);
+  const command = card === "command" ? commandOf(block.input) : null;
+  const summary = command ? commandSummary(command.command) : summarizeInput(block.input);
   const d = document.createElement("details");
   d.className = "block-collapsible block-tool-use";
 
@@ -495,12 +519,21 @@ function buildToolUseCard(
     // issue #14：Edit/Write/MultiEdit → 行级 diff 卡；任何异常 / 畸形 / 未知工具
     // 回退现有 prettyJson <pre>（双重 try/catch：这里 + buildDiffBody 内部）。
     // 写类工具（后端判的卡型 `diff`）→ 行级 diff 卡。
-    if (asDiff) {
+    if (card === "diff") {
       try {
         bodyEl = buildDiffBody(block.name, block.input);
       } catch {
         bodyEl = null;
       }
+    }
+    // 命令卡（后端判的卡型 `command`）→ 命令本身，说明作一行注；形状不对就照常回退 JSON。
+    if (command) {
+      const pre = document.createElement("pre");
+      pre.className = "block-body block-args";
+      pre.textContent = command.description
+        ? `${copyText("cards.command.note", { text: command.description })}\n${command.command}`
+        : command.command;
+      bodyEl = pre;
     }
     if (!bodyEl) {
       const pre = document.createElement("pre");
@@ -521,6 +554,23 @@ function buildToolUseCard(
 
   ctx.toolUseElements.set(block.id, d);
   return d;
+}
+
+/**
+ * 命令卡（卡型 `command`）的入参：`command` 是那一行命令，`description` 是可缺的一句说明。形状不是这样 ⇒ `null`（照普通卡画）。
+ */
+function commandOf(input: unknown): { command: string; description: string | null } | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const o = input as Record<string, unknown>;
+  if (typeof o.command !== "string" || o.command.length === 0) return null;
+  const description = typeof o.description === "string" && o.description.trim() ? o.description.trim() : null;
+  return { command: o.command, description };
+}
+
+/** 命令卡收着时那一行：命令的第一行（多行或太长 ⇒ 截到 60 字加省略号）。 */
+function commandSummary(command: string): string {
+  const { line } = firstLineOf(command, 60);
+  return command.trim() === line ? line : copyText("cards.truncate.ellipsis", { text: line });
 }
 
 /**
@@ -667,6 +717,7 @@ function injectOrBuildToolResult(
       if (block.is_error) {
         resultEl.classList.add("block-error");
         host.classList.add("block-has-error");
+        refreshGroupAround(host); // 收着的工具组那一行要说出「1 个失败」
       }
 
       const labelPrefix = block.is_error
@@ -774,6 +825,7 @@ export function reconcilePendingToolResults(ctx: RenderContext): HTMLElement[] {
       toDelete.push(toolUseId);
       const shell = removeEmptyToolGroupShell(host);
       if (shell) removed.push(shell);
+      else refreshGroupAround(host); // 那一条（可能是失败的）搬走了，原来那一组收着时那一行重算
     }
   }
   for (const id of toDelete) {

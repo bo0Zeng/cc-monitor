@@ -147,9 +147,9 @@ export function nextState(s: SessionState, ev: StateEvent): SessionState {
 /**
  * 没有终端可去，只能 resume（旧 `status === "archived"`）：已结束 · 记录没了 · 说不清。
  *
- * 用在：× / Ctrl+W / 中键关得掉 · 自动跟随不跟 · 后台物化不排 · 右键给 Resume · 活动信号不收。
+ * 用在：关得掉（右键菜单 · 批量）· 自动跟随不跟 · 后台物化不排 · 活动信号不收。
  * 可重连的会话**不**在其中：它的终端还在（↗ 拉前照样有效），今天也不许关（与改之前逐条相同）。
- * 说不清在其中：改之前固定复活的 tab 就是已结束，这些行为逐条照旧（变的只是它说的话）。
+ * 说不清在其中，但它不当已结束画、不给恢复（[`canResume`]）、× / 中键 / W 不关它（[`closesWithoutMenu`]）。
  *
  * ⚠ 不能再写成 `recoverability === "resumable"`：G3 之后「活 ＋ 只能重开」也是 `resumable`，
  *   那样写会把一条活着、只是不在 tmux 里的会话当成死的（能关、不跟随、菜单给 Resume）。
@@ -158,12 +158,24 @@ export function isResumeOnly(s: SessionState): boolean {
   return s.liveness !== "live" && s.recoverability !== "attachable";
 }
 
+/** 死了、没有终端可去：已结束 · 记录没了。 */
+function isEnded(s: SessionState): boolean {
+  return s.liveness === "dead" && s.recoverability !== "attachable";
+}
+
 /**
  * 能恢复（Resume / 在 tmux 里起）：**死了**、只能 resume（已结束 · 记录没了）。
  * 说不清的不算 —— 那台暂时看不见，会话也许还在跑；本机那一形再起一份就是同一个会话两个 claude。
  */
 export function canResume(s: SessionState): boolean {
-  return s.liveness === "dead" && s.recoverability !== "attachable";
+  return isEnded(s);
+}
+
+/**
+ * × · 中键 · W 关得掉：已结束 · 记录没了。说不清的只在右键菜单里关 —— 它也许还在跑，那台连上之后会回来。
+ */
+export function closesWithoutMenu(s: SessionState): boolean {
+  return isEnded(s);
 }
 
 /** 还有一个终端可去：活着，或者容器还在。↗ 拉前 · 本机「杀死会话」那几格用它。 */
@@ -182,11 +194,11 @@ export function isLive(s: SessionState): boolean {
  */
 export interface StateView {
   /**
-   * `.ended`：「没有终端可去」那一套外观（整颗变淡、标题斜体、灯 / ↗ / 📂 隐藏、× 露出来）。
-   * 已结束 · 记录没了 · 说不清三态外观相同、**字不同**（`name` / `tooltip`）—— 不新增 CSS 规则。
-   * 说不清在改之前就是这副外观（固定复活置已结束），改的只是它说的话。
+   * `.ended`：已结束那一套外观（整颗变淡、标题斜体、灯 / ↗ / 📂 隐藏、× 露出来）。已结束 · 记录没了两态，字不同（`name` / `tooltip`）。
    */
   ended: boolean;
+  /** `.unseen`：说不清（那台暂时看不见）—— 单独一个状态，不当已结束画（标题照常、不出 ×，灯换成暗色）。 */
+  unseen: boolean;
   /** `.reconnectable`：可重连（灯换成暗色、停呼吸）。 */
   reconnectable: boolean;
   /** 状态名（「已结束」「可重连」「记录已不在」「说不清」）；活着 ⇒ `null`（活着不另说状态，灯自己说）。 */
@@ -201,10 +213,11 @@ export function stateView(s: SessionState): StateView {
     case "live":
       switch (s.recoverability) {
         case null:
-          return { ended: false, reconnectable: false, name: null, tooltip: null };
+          return { ended: false, unseen: false, reconnectable: false, name: null, tooltip: null };
         case "attachable":
           return {
             ended: false,
+            unseen: false,
             reconnectable: false,
             name: null,
             tooltip: copyText("sessionState.liveAttachable.tooltip"),
@@ -212,6 +225,7 @@ export function stateView(s: SessionState): StateView {
         case "resumable":
           return {
             ended: false,
+            unseen: false,
             reconnectable: false,
             name: null,
             tooltip: copyText("sessionState.liveResumable.tooltip"),
@@ -220,7 +234,8 @@ export function stateView(s: SessionState): StateView {
       break;
     case "unseen":
       return {
-        ended: true,
+        ended: false,
+        unseen: true,
         reconnectable: false,
         name: copyText("sessionState.unseen.name"),
         tooltip: copyText("sessionState.unseen.tooltip"),
@@ -230,6 +245,7 @@ export function stateView(s: SessionState): StateView {
         case "resumable":
           return {
             ended: true,
+            unseen: false,
             reconnectable: false,
             name: copyText("sessionState.ended.name"),
             tooltip: copyText("sessionState.ended.tooltip"),
@@ -237,6 +253,7 @@ export function stateView(s: SessionState): StateView {
         case "attachable":
           return {
             ended: false,
+            unseen: false,
             reconnectable: true,
             name: copyText("sessionState.reconnectable.name"),
             tooltip: copyText("sessionState.reconnectable.tooltip"),
@@ -244,6 +261,7 @@ export function stateView(s: SessionState): StateView {
         case "gone":
           return {
             ended: true,
+            unseen: false,
             reconnectable: false,
             name: copyText("sessionState.gone.name"),
             tooltip: copyText("sessionState.gone.tooltip"),
@@ -251,5 +269,5 @@ export function stateView(s: SessionState): StateView {
       }
   }
   // 类型上走不到（上面两个内层 switch 穷尽）；给 tsc 一个出口。
-  return { ended: false, reconnectable: false, name: null, tooltip: null };
+  return { ended: false, unseen: false, reconnectable: false, name: null, tooltip: null };
 }

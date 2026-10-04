@@ -229,6 +229,7 @@ const UNIT: &[&str] = &[
     "tests/test-support/component-sources.vitest.ts",
     "tests/frontend/ui/usage-hud.vitest.ts",
     "tests/frontend/ui/main-window-fixes.vitest.ts", // 主窗口交互逻辑：组字 · 弹层栈挡单键 · 确认框焦点 · 子 agent 时间线 · agent 面板原地更新
+    "tests/frontend/ui/main-window-behavior.vitest.ts", // 主窗口：状态栏两块浮层 · 右键菜单躲边与关闭 · 说不清单列 · 多机选单 · 工具组与命令卡（jsdom，假后端）
     "tests/frontend/ui/views/cc-bus-view.vitest.ts",
     "tests/frontend/ui/views/context-limit.test.ts",
     "tests/frontend/ui/views/counted.vitest.ts",

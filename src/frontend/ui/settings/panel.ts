@@ -60,9 +60,9 @@ import { dispatcher } from "../keybindings/registry";
 import { KeybindingsEditor } from "../keybindings/editor";
 // F82a：独立设置窗口——保存后广播 `settings-applied`，主窗口 listen 后重读并应用主题/行为
 // （跨 OS 窗口无法直接回调）；close/cancel 关闭本窗口。事件名在中立模块 events.ts。
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { SETTINGS_APPLIED_EVENT } from "./events";
+import { BEHAVIOR_TOGGLED_EVENT, SETTINGS_APPLIED_EVENT, type BehaviorToggled } from "./events";
 import { askConfirm } from "../ask-dialog";
 import { copyText } from "../copy-table";
 
@@ -609,9 +609,20 @@ export class SettingsPanel {
           void this.open();
         })
         .catch((e: unknown) => console.warn("[settings] 挂重新打开监听失败：", e));
+      // 主窗口用快捷键翻了「自动跟随 / 自动切到前台」⇒ 这一页的两个开关跟着变（不然下一次在这页改别的会把旧值写回去）。
+      void listen<BehaviorToggled>(BEHAVIOR_TOGGLED_EVENT, (e) => this.showBehaviorToggled(e.payload)).catch((e: unknown) =>
+        console.warn("[settings] 挂行为开关同步失败：", e),
+      );
     } catch (e) {
       console.warn("[settings] 窗口生命周期接管失败：", e);
     }
+  }
+
+  /** 主窗口翻过的那两格照它说的值摆上。 */
+  private showBehaviorToggled(b: BehaviorToggled): void {
+    this.autoFollowCheckbox.checked = b.autoFollowUserActive;
+    this.bringFrontCheckbox.checked = b.bringMonitorToFrontOnUserActive;
+    if (!this.autoFollowCheckbox.disabled) this.updateBringFrontEnabled(); // 还在读配置（整组禁用）时不提前放开
   }
 
   /**

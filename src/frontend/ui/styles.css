@@ -318,7 +318,9 @@
 
 .tab.ended .live-dot,
 .tab.ended .tab-focus,
-.tab.ended .tab-cwd {
+.tab.ended .tab-cwd,
+.tab.unseen .tab-focus,
+.tab.unseen .tab-cwd {
   display: none;
 }
 
@@ -379,8 +381,9 @@
 
 /* audit-fixes F03.2：可重连——claude 退出但 tmux 会话仍在（可 attach 回去）。原名 .tmux-idle。
    灯不被 .ended 隐藏，此规则覆写 .live-dot 为暗色、压过红绿黄。放在 act-* 之后
-   =同特异性靠源序取胜；animation:none 停掉 waiting 呼吸。 */
-.tab.reconnectable .live-dot {
+   =同特异性靠源序取胜；animation:none 停掉 waiting 呼吸。说不清（那台暂时看不见）同一盏暗灯。 */
+.tab.reconnectable .live-dot,
+.tab.unseen .live-dot {
   background: var(--text-faint);
   animation: none;
 }
@@ -397,7 +400,8 @@
 }
 
 /* audit-fixes F03.2：grid cell 的可重连暗色灯（同 tab-bar，覆写红绿黄、停呼吸）。 */
-.live-dot.reconnectable {
+.live-dot.reconnectable,
+.live-dot.unseen {
   background: var(--text-faint);
   animation: none;
 }

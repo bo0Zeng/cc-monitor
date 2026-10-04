@@ -24,6 +24,7 @@ import { showActionFailureToast } from "./error-toast";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { appStore, putAccounts } from "./app-store";
+import { armPopupDismiss } from "./popup-dismiss";
 
 // ------------------------------------------------------------ 纯函数（可测）
 
@@ -88,7 +89,8 @@ export class AccountChip {
     return st;
   }
   private menu: HTMLElement | null = null;
-  private menuClose: ((e: Event) => void) | null = null;
+  /** 选单开着时的关法（点外面 · 再点 chip · Esc 走弹层栈，`popup-dismiss.ts`）；关掉时调它摘掉。 */
+  private menuDisarm: (() => void) | null = null;
 
   constructor(private deps: AccountChipDeps) {
     const btn = document.createElement("button");
@@ -236,18 +238,7 @@ export class AccountChip {
     menu.style.right = `${Math.max(4, window.innerWidth - r.right)}px`;
     document.body.appendChild(menu);
     this.menu = menu;
-    // 照 SFTP host-picker：Esc / 外部 pointerdown 关，下一拍挂监听防自关
-    const close = (ev: Event): void => {
-      if (ev instanceof KeyboardEvent && ev.key !== "Escape") return;
-      if (ev.type === "pointerdown" && menu.contains(ev.target as Node)) return;
-      this.closeMenu();
-    };
-    this.menuClose = close;
-    setTimeout(() => {
-      if (this.menu !== menu) return;
-      document.addEventListener("pointerdown", close);
-      document.addEventListener("keydown", close);
-    }, 0);
+    this.menuDisarm = armPopupDismiss(menu, this.element, () => this.closeMenu());
   }
 
   private accountRow(a: Account, isCurrent: boolean): HTMLElement {
@@ -397,11 +388,8 @@ export class AccountChip {
   }
 
   private closeMenu(): void {
-    if (this.menuClose) {
-      document.removeEventListener("pointerdown", this.menuClose);
-      document.removeEventListener("keydown", this.menuClose);
-      this.menuClose = null;
-    }
+    this.menuDisarm?.();
+    this.menuDisarm = null;
     this.menu?.remove();
     this.menu = null;
   }

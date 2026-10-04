@@ -28,6 +28,7 @@ import * as prefsMod from "../../../src/frontend/ui/account-prefs";
 import { buildAccountCommands } from "../../../src/frontend/ui/account-commands";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { putAccounts } from "../../../src/frontend/ui/app-store";
+import { dispatcher, type OverlayHandle } from "../../../src/frontend/ui/keybindings/registry";
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -170,6 +171,54 @@ describe("F1 chip 纯全局切换器（无 ⚠k）", () => {
     for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
     expect(setDef).toHaveBeenCalledWith("devbox", "amy"); // 点非当前项 → 这台（devbox）切到 amy
     expect(changed).toBe(1); // 切完回调 onDefaultChanged（让 main.ts 重算会话归属）
+  });
+});
+
+// 选单的关法：点外面 · 再点 chip · Esc（Esc 走快捷键的弹层栈，一下只关最上面那一层）。
+describe("账号选单：再点 chip 收起；Esc 只关选单", () => {
+  const menus = (): number => document.querySelectorAll(".account-picker").length;
+  const press = (el: Element): void => void el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
+  const tap = async (el: HTMLElement): Promise<void> => {
+    press(el);
+    el.click();
+    await new Promise((r) => setTimeout(r, 0));
+  };
+  async function mounted(): Promise<AccountChip> {
+    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ label: "devbox" })] });
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "wei" }), acct({ name: "amy" })], defaultName: "wei" }));
+    const chip = new AccountChip({ openSettings: () => {} });
+    document.body.appendChild(chip.element);
+    await chip.refresh();
+    dispatcher.applyOverrides({});
+    dispatcher.start();
+    return chip;
+  }
+
+  it("开着时再点 chip ⇒ 收起（不是先关又开）；点外面也收起", async () => {
+    const chip = await mounted();
+    await tap(chip.element);
+    expect(menus()).toBe(1);
+    await tap(chip.element);
+    expect(menus()).toBe(0);
+    await tap(chip.element);
+    press(document.body);
+    expect(menus()).toBe(0);
+    chip.element.remove();
+  });
+
+  it("Esc 只关选单：下面那层（多选 / 查找）这一下收不到", async () => {
+    const chip = await mounted();
+    let below = 0;
+    const floor: OverlayHandle = { handleEsc: () => void below++ };
+    dispatcher.pushOverlay(floor);
+    await tap(chip.element);
+    const esc = (): boolean => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
+    esc();
+    expect([menus(), below]).toEqual([0, 0]);
+    esc();
+    expect(below).toBe(1);
+    dispatcher.popOverlay(floor);
+    chip.element.remove();
   });
 });
 

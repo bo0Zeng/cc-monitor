@@ -1,6 +1,6 @@
 import { makeYieldToMain } from "./yield-to-main";
 import { commands } from "./ipc/commands";
-import { chan, type Item, type Sub } from "../../comms/inward/chan";
+import { chan, type HopFault, type HopTag, type Item, type Sub } from "../../comms/inward/chan";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { showActionFailureToast } from "./error-toast";
@@ -131,6 +131,8 @@ export interface EventHandlers {
    * 进 queue：与行 / `live` / `listed` 保序（断连那一刻之前的行先落，重连之后的重宣告与清单后到）。
    */
   onOriginUnseen?: (origin: string) => void;
+  /** 一台机器一直看不见时，那条提示里「打开设置」按它开（没给 ⇒ 提示里不带按钮）。 */
+  openMachineSettings?: () => void;
   /**
    * v2.2 (issue #12 性能): 启动重放（jsonl-batch 第一块）到达时调一次。
    * TabManager 在此把所有 tab 的 BranchFolder 切到 batch 模式 + lazy hljs 开关。
@@ -350,6 +352,23 @@ function makeInputPendingProbe(): (() => boolean) | null {
  * 真实时新消息（用户发一条消息的间隔 ≥ 几秒，CLI 自己也得 stream response）。
  */
 const BATCH_END_GRACE_MS = 300;
+
+/** 会话流看不见了多久才说（起步那几秒常是「那台还在连」，不算）。 */
+const UNSEEN_SAY_MS = 20_000;
+
+/** 一台机器一直看不见：哪台 · 为什么（从没看见过 ⇒ 只说还没连上）· 能做什么。 */
+function sayUnseen(origin: Origin, ever: boolean, why: HopFault, openSettings: (() => void) | undefined): void {
+  const machine = isLocalOrigin(origin) ? copyText("control.machine.local") : origin;
+  const title = !ever
+    ? copyText("events.unseen.neverTitle", { machine })
+    : why === "Dropped"
+      ? copyText("events.unseen.droppedTitle", { machine })
+      : why === "Overrun"
+        ? copyText("events.unseen.overrunTitle", { machine })
+        : copyText("events.unseen.unreachableTitle", { machine });
+  const body = ever ? copyText("events.unseen.lostBody", { machine }) : copyText("events.unseen.neverBody", { machine });
+  showActionFailureToast(title, body, openSettings ? { action: { label: copyText("main.cmd.openSettings"), run: openSettings } } : {});
+}
 
 /** bindEvents 选项。 */
 export interface BindEventsOptions {
@@ -606,6 +625,32 @@ export async function bindEvents(
   // 会话内容**不再是** `jsonl-line` / `jsonl-batch` 两个事件：走通道的 `subscribe`
   //   （本函数末尾按 `opts.streams` 订）。一格 = 一行（`{"line": …}`）或成批那一段的边界（`{"batch": …}`）。
   //   进 queue 的样子与原来逐字相同：行 ⇒ payload；批边界 ⇒ batch-start / batch-end 哨兵。
+  // 一台机器的会话流看不见了：起步那几秒（那台还在连）不吵；过了 `UNSEEN_SAY_MS` 还没看见 ⇒ 说是哪台、能做什么。
+  //   从没看见过 ⇒「还没连上」（不猜原因）；看见过之后断了 ⇒ 照流里那一跳的原因说。
+  //   断在「读」那一跳 ＝ 订的时候它看得见（那时流里不先来一格「看不见」），也算看见过。
+  const sight = new Map<Origin, { ever: boolean; timer: ReturnType<typeof setTimeout> | null }>();
+  const sightOf = (origin: Origin): { ever: boolean; timer: ReturnType<typeof setTimeout> | null } => {
+    let s = sight.get(origin);
+    if (!s) sight.set(origin, (s = { ever: false, timer: null }));
+    return s;
+  };
+  const onUnseen = (origin: Origin, at: HopTag, why: HopFault): void => {
+    const s = sightOf(origin);
+    if (at !== "open") s.ever = true;
+    if (s.timer !== null) return;
+    const ever = s.ever;
+    s.timer = setTimeout(() => {
+      s.timer = null;
+      sayUnseen(origin, ever, why, handlers.openMachineSettings);
+    }, UNSEEN_SAY_MS);
+  };
+  const onSeenAgain = (origin: Origin): void => {
+    const s = sightOf(origin);
+    s.ever = true;
+    if (s.timer !== null) clearTimeout(s.timer);
+    s.timer = null;
+  };
+
   const onStreamItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
     for (const it of items) {
       if (it.t === "frame") {
@@ -700,10 +745,13 @@ export async function bindEvents(
         queue.push({ kind: "gap", origin });
       } else if (it.t === "unseen") {
         console.info(`[events] 会话流 [${origin}]：那台机器现在看不见（${it.why}）`);
+        onUnseen(origin, it.at.tag, it.why);
       } else if (it.t === "seen") {
         console.info(`[events] 会话流 [${origin}]：又看得见了`);
+        onSeenAgain(origin);
       } else {
         console.warn(`[events] 会话流 [${origin}] 关了：`, it.by);
+        onSeenAgain(origin); // 关了另有一句（下面），不再说「看不见」
         // 〔E §3.3〕这条流是这台机器会话更新的唯一来源；关了之后什么都不会再来 ⇒ 必须让人知道
         //   （原先只打 console：界面照旧，看起来只是「没动静」）。句柄只在拒绝 / 出错时关，正常收尾不走这里。
         showActionFailureToast(

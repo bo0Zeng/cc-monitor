@@ -169,12 +169,13 @@ describe("P2 ＋ P7 ＋ P1：整刷改成差量刷", () => {
     try {
       r.view.refresh();
       expect(spy).toHaveBeenCalledTimes(0);
-      // 正控：一颗按钮真变了 ⇒ 那一颗的 9 个开关各调一次（别的按钮仍然 0）。
+      // 正控：一颗按钮真变了 ⇒ 那一颗的每个开关各调一次（别的按钮仍然 0）。
       // 〔「删掉树」〕10 → 9：少了 `.tab-bg` 那一个开关（bg tab 不再有自己的样式）。
       // 9 → 10：多选里的样子 `.selected` 那一个开关。
+      // 10 → 11：说不清（那台看不见）`.unseen` 那一个开关。
       (r.store.tabs.get("s5") as { pinned: boolean }).pinned = true;
       r.view.refresh();
-      expect(spy).toHaveBeenCalledTimes(10);
+      expect(spy).toHaveBeenCalledTimes(11);
     } finally {
       spy.mockRestore();
     }

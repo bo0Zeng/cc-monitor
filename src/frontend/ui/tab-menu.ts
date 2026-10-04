@@ -1,7 +1,7 @@
 /**
  * 〔拆 `tabs.ts` ⑤〕**右键一个 tab，菜单里放哪几项** —— 以及那几格要异步就绪的项怎么就绪。
  *
- * 在新窗口打开 · 加入 / 移出集合 · 固定 · Resume（容器 × 账号 flyout）· Attach · 预览 ·
+ * 在新窗口打开 · 加入 / 移出集合 · 固定 · Resume（容器 × 账号 flyout）· 关闭标签 · Attach · 预览 ·
  * 杀死会话 · 就地 resume · 换号重启。在 tmux 里那几项（Attach · 预览 · 杀死 · 就地 resume）亮不亮、写哪个名字问那台后端（`sessions-tmux`）。项怎么画、菜单怎么开关住 `tab-context-menu.ts`；
  * 点下去真正做事的住 `tab-session-actions.ts`（本文件直接调它，不经 `TabManager` 转一手）。
  *
@@ -41,7 +41,7 @@ import {
   type TabMenuItem,
 } from "./tab-context-menu";
 import type { TabSessionActions } from "./tab-session-actions";
-import { unavailableSaid } from "./control-said";
+import { machineName, unavailableSaid } from "./control-said";
 
 /** 菜单项 id ⇒ 它要那台后端做的那条命令（那台握手时说过做不到 ⇒ 置灰并说为什么）。 */
 const ITEM_OPS: Readonly<Record<string, string>> = { kill: "kill", preview: "capture-pane", "resume-into": "launch" };
@@ -72,6 +72,8 @@ export interface TabMenuHost {
   /** 同上一条理由：没 `loadPinned` 过就不给固定入口。 */
   pinnedLoaded(): boolean;
   togglePin(sid: string): void;
+  /** 关掉这个标签（与批量菜单「关闭标签」、× 同一个动作）。 */
+  close(sid: string): void;
 }
 
 export class TabMenu {
@@ -154,6 +156,14 @@ export class TabMenu {
           onClick: () => void this.actions.resumeTab(sid),
         });
       }
+    }
+    // 关闭：已结束 · 记录没了 · 说不清（窄窗里那颗 × 看不见，这一项不靠它）。说不清的悬停说它若还在跑、连上那台之后会回来。
+    if (t && isResumeOnly(t.state)) {
+      items.push({
+        label: copyText("tabMenu.item.close"),
+        title: t.state.liveness === "unseen" ? copyText("tabMenu.close.unseenHint", { machine: machineName(t.origin) }) : undefined,
+        onClick: () => this.host.close(sid),
+      });
     }
     // 这个会话在那台哪个 tmux 会话里（Attach · 预览 · 杀死 · 就地 resume 亮不亮、写哪个名字）：问那台后端（`sessions-tmux`），
     //   界面不判。先放「检测中」占位，答回来再换成可点的那几项（同一代菜单才换）。

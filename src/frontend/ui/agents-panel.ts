@@ -1,6 +1,6 @@
 /**
  * issue #23：当前会话的子 agent 面板 —— status bar 一枚 chip（`N agents (M 在跑)`，0 个隐藏）＋ 点击展开 popover，
- * 与 task 面板同位同形态。子运行只在这里列，不进主 tab 的消息流。
+ * 与 task 面板同位同形态 ⇒ 两块同一时刻只开一块（`status-popovers.ts`）；看得见时在 Esc 弹层栈上。子运行只在这里列，不进主 tab 的消息流。
  *
  * 数据是那台后端的运行表（`session_runs`，`runs.ts::RunBoard`）：标签 · 状态 · 最近一件事 · 派出它的那次工具调用。
  * **状态只读后端给的那一份**，面板不自己判（「有结果 ⇒ 完成」「会话不忙 ⇒ 中止」这类判断一条都没有）。
@@ -13,6 +13,8 @@
  */
 
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
+import { dispatcher } from "./keybindings/registry";
+import { popoverExpanded, popoverShown } from "./status-popovers";
 import { copyText } from "./copy-table";
 import type { RunInfo } from "./generated/RunInfo";
 import { panelGroups, runLabel, runLastText, runStateIcon, runStateText, type LiveBlockView } from "./runs";
@@ -53,9 +55,14 @@ export class AgentsPanel {
   private older: RunInfo[] = [];
   /** main.ts 注入（时间线由 TabManager 建、留着）。 */
   host: AgentsPanelHost | null = null;
+  /** 浮层此刻在 Esc 弹层栈上（⇔ 看得见）。 */
+  private stacked = false;
+  /** 跟着当前 tab 走、不盖住 tab 栏 ⇒ 不拦快捷键（与任务面板同）。 */
+  readonly passes = "all" as const;
 
   constructor() {
     this.collapsed = loadCollapsed();
+    popoverExpanded(this, !this.collapsed);
 
     this.summaryElement = document.createElement("button");
     this.summaryElement.type = "button";
@@ -122,9 +129,33 @@ export class AgentsPanel {
     this.render(false);
   }
 
+  /** dispatcher overlay 接口（只在看得见时在栈上）。 */
+  handleEsc(): void {
+    this.setCollapsed(true);
+  }
+
+  /** 收起（状态栏另一块浮层开了 ⇒ 这一块让位）。 */
+  collapse(): void {
+    if (!this.collapsed) this.setCollapsed(true);
+  }
+
+  /** 弹层栈跟着「浮层此刻看得见」走（与任务面板同一条）。 */
+  private syncLayer(): void {
+    const shown = this.popoverElement.style.display !== "none";
+    if (shown === this.stacked) return;
+    this.stacked = shown;
+    if (shown) {
+      dispatcher.pushOverlay(this);
+      popoverShown(this);
+    } else {
+      dispatcher.popOverlay(this);
+    }
+  }
+
   private setCollapsed(collapsed: boolean): void {
     this.collapsed = collapsed;
     safeSet(LS_KEYS.agentsPanelCollapsed, collapsed ? "1" : "0");
+    popoverExpanded(this, !collapsed);
     this.applyCollapsedArrow();
     this.render(true);
   }
@@ -158,6 +189,7 @@ export class AgentsPanel {
       this.summaryElement.style.display = "none";
       this.popoverElement.style.display = "none";
       this.drawn = "";
+      this.syncLayer();
       return;
     }
     const g = panelGroups(this.runs);
@@ -174,6 +206,7 @@ export class AgentsPanel {
 
     this.summaryElement.style.display = "";
     this.popoverElement.style.display = this.collapsed ? "none" : "";
+    this.syncLayer();
     const running = g.running.length;
     this.summaryText.textContent =
       running > 0 ? copyText("agentsPanel.render.summary", { n: this.runs.length, running }) : `${this.runs.length} agents`;

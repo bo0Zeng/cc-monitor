@@ -13,7 +13,8 @@
  * UI 形态（v2.3 调整后）：
  *  - **summary chip**：嵌入底部 status bar，显示「N tasks (X done, Y active, Z open)」+ ▶/▼
  *    点击切换 popover 折叠 / 展开。0 task 时灰显不可点。
- *  - **popover**：fixed 浮层贴在 status bar 上方往上展开（最高 50vh），含 task 完整列表
+ *  - **popover**：fixed 浮层贴在 status bar 上方往上展开（最高 50vh），含 task 完整列表；与子 agent 面板同一时刻只开一块
+ *    （`status-popovers.ts`），看得见时在 Esc 弹层栈上
  *
  * 全局单例：TabManager 维护 `Map<sid, TaskEntry[]>`，切 Tab / 收到 update 都同步给单例。
  * 同 sid 只显示自己的 task，跨 Tab 不混淆。
@@ -29,6 +30,7 @@
  */
 
 import { dispatcher } from "./keybindings/registry";
+import { popoverExpanded, popoverShown } from "./status-popovers";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson } from "./ipc/chan-caller";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
@@ -81,9 +83,12 @@ export class TasksPanel {
   private collapsed: boolean;
   /** 远端现问的代次：慢的那次回来不许盖掉后发的那次（同 `plugins-section.ts` 的 `seq`）。 */
   private refreshSeq = 0;
+  /** 浮层此刻在 Esc 弹层栈上（⇔ 看得见）。 */
+  private stacked = false;
 
   constructor() {
     this.collapsed = loadCollapsed();
+    popoverExpanded(this, !this.collapsed);
 
     // === summary chip ===
     this.summaryElement = document.createElement("button");
@@ -127,17 +132,31 @@ export class TasksPanel {
     this.popoverElement.appendChild(this.list);
 
     this.applyCollapsedClass();
-    // 构造时 tasks=[] / activeSid=null，永远不需要 pushOverlay；
-    // setSession 之后用户 toggle 折叠时再由 setCollapsed 路径推入。
   }
 
   /** 跟着当前 tab 走、不盖住 tab 栏 ⇒ 不拦快捷键（切 tab 时它照开、换成新会话那一份）。 */
   readonly passes = "all" as const;
 
-  /** dispatcher overlay 接口 */
+  /** dispatcher overlay 接口（只在看得见时在栈上）。 */
   handleEsc(): void {
-    if (!this.collapsed && this.popoverElement.style.display !== "none") {
-      this.setCollapsed(true);
+    this.setCollapsed(true);
+  }
+
+  /** 收起（状态栏另一块浮层开了 ⇒ 这一块让位）。 */
+  collapse(): void {
+    this.setCollapsed(true);
+  }
+
+  /** 弹层栈跟着「浮层此刻看得见」走：启动就按记住的展开态显示、切到没任务的 tab 藏起来，都在这里进 / 出栈。 */
+  private syncLayer(): void {
+    const shown = this.popoverElement.style.display !== "none";
+    if (shown === this.stacked) return;
+    this.stacked = shown;
+    if (shown) {
+      dispatcher.pushOverlay(this);
+      popoverShown(this);
+    } else {
+      dispatcher.popOverlay(this);
     }
   }
 
@@ -177,11 +196,13 @@ export class TasksPanel {
     if (total === 0 || this.activeSid === null) {
       this.summaryElement.style.display = "none";
       this.popoverElement.style.display = "none";
+      this.syncLayer();
       return;
     }
     this.summaryElement.style.display = "";
     // popover 显示与否跟随折叠状态
     this.popoverElement.style.display = this.collapsed ? "none" : "";
+    this.syncLayer();
 
     let completed = 0;
     let inProgress = 0;
@@ -248,6 +269,7 @@ export class TasksPanel {
     if (next === this.collapsed) return;
     this.collapsed = next;
     saveCollapsed(next);
+    popoverExpanded(this, !next);
     this.applyCollapsedClass();
     // 展开的那一刻，远端会话现问一次（看的就是这一刻的列表）。
     if (!next && this.activeSid !== null) void this.refreshIfRemote(this.activeSid);
@@ -256,12 +278,7 @@ export class TasksPanel {
     if (this.tasks.length > 0 && this.activeSid !== null) {
       this.popoverElement.style.display = this.collapsed ? "none" : "";
     }
-    // issue #5: 同步 dispatcher overlay 栈 —— 展开进栈、折叠出栈
-    if (this.collapsed) {
-      dispatcher.popOverlay(this);
-    } else if (this.tasks.length > 0 && this.activeSid !== null) {
-      dispatcher.pushOverlay(this);
-    }
+    this.syncLayer();
   }
 
   private applyCollapsedClass(): void {

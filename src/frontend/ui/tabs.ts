@@ -38,7 +38,7 @@ import {
   TERMINAL_FRONT_UNAVAILABLE_DETAIL,
 } from "./terminal-front";
 import { computeTitleFor, isBgKind, type Tab, type TabsSummary } from "./tab-model";
-import { ENDED, LIVE, RECONNECTABLE, isLive, isResumeOnly, hasTerminal, nextState, type StateEvent } from "./tab-session-state";
+import { ENDED, LIVE, RECONNECTABLE, closesWithoutMenu, isLive, isResumeOnly, hasTerminal, nextState, type StateEvent } from "./tab-session-state";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
 // `Tab` 的形状与标题函数搬去了 `tab-model.ts`；这里原样 re-export，既有 import 面零改动。
 export type { Tab, TabsSummary } from "./tab-model";
@@ -250,6 +250,7 @@ export class TabManager {
       },
       pinnedLoaded: () => this.prefs.pinnedLoaded,
       togglePin: (sid) => this.togglePin(sid),
+      close: (sid) => this.closeTab(sid),
     },
     this.actions,
   );
@@ -1180,12 +1181,14 @@ export class TabManager {
   private readonly pendingCloses = new Map<string, { tab: Tab; index: number }>();
 
   /**
-   * 快捷键 `W`：当前 tab 已结束才关；先只从栏上摘下来，给一条 8 秒「撤销」——
+   * 快捷键 `W`：当前 tab 已结束才关（说不清的只在右键菜单里关）；先只从栏上摘下来，给一条 8 秒「撤销」——
    * 撤销 ⇒ 原位、原分组、原固定放回（内容也还在）；到点 ⇒ 做完关闭剩下的事（取消固定 · 出组 · 让后端忘掉）。
    */
   closeActiveIfArchived(): void {
     const sid = this.store.activeId;
     if (!sid) return;
+    const current = this.store.tabs.get(sid);
+    if (!current || !closesWithoutMenu(current.state)) return;
     const index = this.store.orderedIds.indexOf(sid);
     const tab = this.detachTab(sid);
     if (!tab) return;

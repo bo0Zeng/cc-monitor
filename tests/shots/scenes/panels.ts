@@ -44,6 +44,20 @@ function unseenPinnedWorld(): World {
   return w;
 }
 
+/** 「表格分页」那个会话有一个子 agent、没有任务。 */
+function agentsOnlyWorld(): World {
+  const w = defaultWorld();
+  w.sessions[1].runs = [{ run: "agent-b1", label: "量一下现在的渲染耗时", kind: "general-purpose", state: "running", last: { t: "tool", name: "Bash" } }];
+  return w;
+}
+
+/** 「自动跟随」绑了 J。 */
+function behaviorKeyWorld(): World {
+  const w = defaultWorld();
+  w.config = { ...w.config, keybindings: { "behavior.toggle-auto-follow": "KeyJ" } };
+  return w;
+}
+
 function closedWorld(): World {
   const w = defaultWorld();
   w.closedMachines = ["devbox"];
@@ -165,6 +179,10 @@ export const PANEL_SCENES: Scene[] = [
     await openCommandBar();
     await type(".command-bar-input", "zzzzqqq");
   }),
+  panel("panel-cmdk-machine", "命令面板 · 按机器名找会话", "命令面板里输入「gpu-01」：切到那台上的会话，机器名只出一次", async () => {
+    await openCommandBar();
+    await type(".command-bar-input", "gpu-01");
+  }),
   panel("panel-find", "会话内查找", "Ctrl+F：在当前会话里找「重试」", async () => {
     await mainReady(ALL_TABS);
     await key("f", { ctrl: true });
@@ -242,6 +260,64 @@ export const PANEL_SCENES: Scene[] = [
     await mainReady(ALL_TABS - 2);
     await sleep(800);
   }, closedWorld),
+  panel("panel-agents-tasks", "先开任务面板、再开子 agent 面板", "先点「4 tasks」再点「2 agents」：同一时刻只开一块", async () => {
+    await mainReady(ALL_TABS);
+    await click(".status-tasks:not(.status-agents)");
+    await waitFor(".tasks-popover:not(.agents-popover)");
+    await click(".status-agents");
+    await waitFor(".agents-popover");
+    await sleep(500);
+  }),
+  panel("panel-agents-switch-back", "在别的 tab 上开了子 agent 面板再切回来", "第一个 tab 开着任务面板，切到没有任务的「表格分页」点开子 agent 面板，再切回第一个 tab：开着的仍是子 agent 面板", async () => {
+    await mainReady(ALL_TABS);
+    await click(".status-tasks:not(.status-agents)");
+    await waitFor(".tasks-popover:not(.agents-popover)");
+    await openTab(1);
+    await click(".status-agents");
+    await waitFor(".agents-popover");
+    await openTab(0);
+    await sleep(500);
+  }, agentsOnlyWorld),
+  {
+    ...panel("panel-tasks-esc", "任务面板 · 启动就开着时按 Esc", "上次退出时任务面板开着：这次启动直接开着，按一下 Esc 收起", async () => {
+      await mainReady(ALL_TABS);
+      await sleep(400);
+      (document.activeElement as HTMLElement | null)?.blur();
+      await key("Escape");
+      await sleep(400);
+    }),
+    storage: { "cc-monitor.tab-bar-w": "260", "cc-monitor.cmdk-hint.seen": "1", "cc-monitor.tasks-panel.collapsed": "0" },
+  },
+  panel("panel-account-reclick", "账号选单 · 再点一下徽标", "选单开着时再点一下账号徽标：选单收起", async () => {
+    await mainReady(ALL_TABS);
+    await click(".status-account");
+    await waitFor(".account-picker");
+    await sleep(300);
+    await click(".status-account");
+    await sleep(500);
+  }),
+  panel("panel-sftp-reclick", "文件按钮 · 再点一下", "选机器的小单开着时再点一下文件按钮：小单收起", async () => {
+    await mainReady(ALL_TABS);
+    await click(".sftp-trigger");
+    await waitFor(".sftp-host-picker");
+    await sleep(300);
+    await click(".sftp-trigger");
+    await sleep(500);
+  }),
+  panel("panel-tab-menu-edge", "贴着窗口底边点右键", "在窗口最底下右键一个 tab：菜单往上翻，不伸出窗口", async () => {
+    await mainReady(ALL_TABS);
+    const tabs = document.querySelectorAll<HTMLElement>("#tab-bar .tab");
+    const t = tabs[tabs.length - 1];
+    const r = t.getBoundingClientRect();
+    t.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + 20, clientY: window.innerHeight - 12, button: 2 }));
+    await sleep(900);
+  }),
+  panel("panel-behavior-toggle", "按快捷键翻「自动跟随」", "给「自动跟随」绑了 J，按一下：右下角说翻成了什么", async () => {
+    await mainReady(ALL_TABS);
+    (document.activeElement as HTMLElement | null)?.blur();
+    await key("j");
+    await sleep(700);
+  }, behaviorKeyWorld),
   panel("panel-first-run", "首次打开", "第一次开：命令面板入口高亮、tab 栏默认宽度", async () => {
     await mainReady(ALL_TABS);
   }),

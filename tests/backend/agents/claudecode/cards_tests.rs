@@ -18,7 +18,7 @@ fn each_tool_name_maps_to_exactly_its_card() {
         ("WebFetch", Some(ToolCard::Md)),
         ("NotebookRead", Some(ToolCard::Md)),
         ("TodoWrite", Some(ToolCard::Md)),
-        ("Bash", None),
+        ("Bash", Some(ToolCard::Command)),
         ("NotebookEdit", None),
         ("task", None),
         ("", None),

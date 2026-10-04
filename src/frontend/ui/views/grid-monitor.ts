@@ -582,9 +582,9 @@ export class GridMonitorView {
     cell.classList.toggle("cell-bg", s.kind !== null && s.kind !== "interactive");
     cell.classList.toggle("is-selected", s.sessionId === this.selectedId); // F91b 选中高亮
 
-    // 红绿灯点。audit-fixes F03.2：可重连的暗色灯覆写红绿黄（.live-dot.reconnectable，同 tab-bar 语义）。
+    // 红绿灯点。audit-fixes F03.2：可重连 · 说不清的暗色灯覆写红绿黄（.live-dot.reconnectable / .unseen，同 tab-bar 语义）。
     const light = activityLightClass(s.activityStatus);
-    const dotClass = `live-dot${light ? ` ${light}` : ""}${view.reconnectable ? " reconnectable" : ""}`;
+    const dotClass = `live-dot${light ? ` ${light}` : ""}${view.reconnectable ? " reconnectable" : ""}${view.unseen ? " unseen" : ""}`;
     if (refs.dot.className !== dotClass) refs.dot.className = dotClass;
     if (refs.name.textContent !== s.title) refs.name.textContent = s.title;
 

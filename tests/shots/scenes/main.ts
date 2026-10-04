@@ -5,7 +5,7 @@ import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { Convo } from "../fake/records";
 import { defaultWorld, LOCAL, session } from "../fake/world";
-import { mainReady, openTab, scrollStream, sleep } from "./helpers";
+import { mainReady, openTab, rightClick, scrollStream, sleep } from "./helpers";
 
 const W = 1280;
 const H = 800;
@@ -71,6 +71,13 @@ function longWorld(): World {
 function unseenWorld(): World {
   const w = defaultWorld();
   w.unseenMachines = ["gpu-01"];
+  return w;
+}
+
+/** gpu-01 一开始连着、会话交完之后断了。 */
+function droppedWorld(): World {
+  const w = defaultWorld();
+  w.droppedMachines = ["gpu-01"];
   return w;
 }
 
@@ -168,6 +175,14 @@ export const MAIN_SCENES: Scene[] = [
     await mainReady(ALL_TABS - 1);
     await sleep(800);
   }, unseenWorld),
+  main("main-unseen-machine-later", "主窗口 · 一台机器一直连不上", "gpu-01 的会话流一开始就看不见、20 秒后还没连上：右下角说是哪台、能做什么", async () => {
+    await mainReady(ALL_TABS - 1);
+    await sleep(21_000);
+  }, unseenWorld),
+  main("main-dropped-machine-later", "主窗口 · 一台机器连着连着断了", "gpu-01 一开始连着、之后断了、20 秒没回来：右下角说连接断了（不说「还没连上」）", async () => {
+    await mainReady(ALL_TABS);
+    await sleep(22_500);
+  }, droppedWorld),
   main("main-groups", "主窗口 · tab 集合与固定", "手动建的两个集合（订单与控制台 · 训练）＋ 一个固定的 tab", async () => {
     await mainReady(ALL_TABS);
   }, groupedWorld),
@@ -177,6 +192,11 @@ export const MAIN_SCENES: Scene[] = [
   }, oldBackendWorld),
   main("main-narrow", "主窗口 · 窄窗口", "窗口 900×640：tab 栏与状态栏挤一挤的样子", async () => {
     await mainReady(ALL_TABS);
+  }, defaultWorld, [900, 640]),
+  main("main-narrow-ended-menu", "窄窗口 · 已结束 tab 的右键菜单", "窗口 900×640、tab 栏收成点：右键已结束的「周报草稿」，菜单里能关掉它", async () => {
+    await mainReady(ALL_TABS);
+    await rightClick(document.querySelectorAll<HTMLElement>("#tab-bar .tab")[2]);
+    await sleep(900);
   }, defaultWorld, [900, 640]),
   main("main-wide", "主窗口 · 宽屏", "窗口 1920×1080", async () => {
     await mainReady(ALL_TABS);

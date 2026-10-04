@@ -286,6 +286,8 @@ pub enum ToolCard {
     Diff,
     /// 结果默认按 Markdown 画。
     Md,
+    /// 跑一行命令的工具：入参里 `command` 是那一行、`description` 是可缺的说明 —— 展开画命令本身，不画入参 JSON。
+    Command,
 }
 
 /// [`RecordFace::branch`] 的形状。

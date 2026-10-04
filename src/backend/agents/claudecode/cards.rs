@@ -15,6 +15,8 @@ const INTERACTIVE_TOOLS: &[&str] = &["AskUserQuestion", "ExitPlanMode"];
 const DIFF_TOOLS: &[&str] = &["Edit", "Write", "MultiEdit"];
 /// 结果默认按 Markdown 画的工具。
 const MD_TOOLS: &[&str] = &["Read", "Grep", "WebFetch", "NotebookRead", "TodoWrite"];
+/// 跑一行命令的工具（入参 `command` ＋ `description`）。
+const COMMAND_TOOLS: &[&str] = &["Bash"];
 
 /// tmux 前台命令算 Claude 的会话（Claude Code 是 Node CLI，视启动路径也可能报解释器 `node`）。注册表 `Adapter.processes` 那一格。
 pub(crate) const PROCESS_NAMES: &[&str] = &["claude", "node"];
@@ -31,6 +33,7 @@ pub(crate) fn tool_card(name: &str) -> Option<ToolCard> {
         (INTERACTIVE_TOOLS, ToolCard::Interactive),
         (DIFF_TOOLS, ToolCard::Diff),
         (MD_TOOLS, ToolCard::Md),
+        (COMMAND_TOOLS, ToolCard::Command),
     ]
     .into_iter()
     .find(|(tools, _)| tools.contains(&name))
