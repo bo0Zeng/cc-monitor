@@ -726,7 +726,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p6t-quota-ledger：中转按号记下回包里的额度头（5h / 7d 用量、重置时刻、状态），账号域落 quota.json；新帧命令 quota-read、变了推 quota_changed；订阅号令牌由账号域续期。
 ///
 /// p6u-inbound-split：帧命令表按族拆成目录（命令集合不变）；hello / resync 的 uncancellable 按字母排。
-pub const BUILD_ID: &str = "p6u-inbound-split";
+///
+/// p6v-comms-crates：中转与通道各立一个 crate（comms-outward · comms-inward），行为与命令集合不变。
+pub const BUILD_ID: &str = "p6v-comms-crates";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
