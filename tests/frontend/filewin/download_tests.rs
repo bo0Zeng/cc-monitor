@@ -10,6 +10,11 @@ fn row(name: &str, is_dir: bool, lossy: bool) -> Row {
     }
 }
 
+/// 本机落点「分隔符 ＋ 原名」：本机是 Windows 时分隔符是 `\`（同 `default_dest`），别处是 `/`。
+fn sep_name(name: &str) -> String {
+    format!("{}{name}", std::path::MAIN_SEPARATOR)
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // 落点那条纯函数
 // ═══════════════════════════════════════════════════════════════════
@@ -52,7 +57,10 @@ fn an_empty_answer_is_refused_rather_than_silently_defaulted() {
     // 阴性对照：缺省值本身**是**合法的（否则上面那一比可以靠「什么都拒」全绿）。
     let d = default_dest("orig.txt");
     assert_eq!(plan_dest(&d, "orig.txt").unwrap(), d);
-    assert!(d.ends_with("/orig.txt"), "缺省落点没带上原名：{d}");
+    assert!(
+        d.ends_with(&sep_name("orig.txt")),
+        "缺省落点没带上原名：{d}"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -125,7 +133,7 @@ fn a_free_destination_goes_straight_through() {
     match judge_dest(&ask, |_| false) {
         DestVerdict::Go { src_path, dest } => {
             assert_eq!(src_path, "/srv/data/a.txt");
-            assert!(dest.ends_with("/a.txt"), "落点没带上原名：{dest}");
+            assert!(dest.ends_with(&sep_name("a.txt")), "落点没带上原名：{dest}");
         }
         other => panic!("落点是空的却没直接放行：{other:?}"),
     }
@@ -150,7 +158,7 @@ fn an_occupied_destination_asks_once_more_instead_of_clobbering() {
         }) => {
             assert_eq!(src_path, "/srv/data/a.txt");
             assert_eq!(src_name, "a.txt");
-            assert!(dest.ends_with("/a.txt"));
+            assert!(dest.ends_with(&sep_name("a.txt")));
         }
         other => panic!("落点上有东西却没再问一次：{other:?}"),
     }

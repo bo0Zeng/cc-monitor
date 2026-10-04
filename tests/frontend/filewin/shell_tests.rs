@@ -1664,7 +1664,10 @@ async fn a_real_click_on_download_opens_the_destination_question() {
         }) => {
             assert_eq!(src_path, "/srv/data/报表.csv", "问的不是被点那一行");
             assert_eq!(src_name, "报表.csv");
-            assert!(text.ends_with("/报表.csv"), "缺省落点没带上原名：{text}");
+            assert!(
+                text.ends_with(&format!("{}报表.csv", std::path::MAIN_SEPARATOR)),
+                "缺省落点没带上原名：{text}"
+            );
         }
         other => panic!("真点了「下载」，第一问却没摆出来：{other:?}"),
     }

@@ -461,5 +461,12 @@ async fn a_real_dial_to_a_dead_port_answers_one_failed_ack_on_the_link() {
         "失败的 ack 没说清是哪个地址：{ack}"
     );
     assert_eq!(ended(&frames, "D"), Some(None));
+    // 生产那一侧「先报再摘」：收到 `link_end` 时摘表可能还差一拍 ⇒ 有界地等它摘掉（慢机器上不等就红）。
+    for _ in 0..200 {
+        if table.len() == 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
     assert_eq!(table.len(), 0);
 }
