@@ -8,28 +8,18 @@
 # `src/frontend/shell/embedded-backends/` 里那两份 musl 字节**立刻变旧** —— 它们是上一版源码编的，
 # 身份戳里写的还是上一个 id。于是二选一，两条都坏：
 #
-#   · 有人在盯（今天就是这样）⇒ `src/frontend/shell/build.rs::embed_backends` 的**半 bump 守卫**
-#     当场 `panic!`，**整棵树编不过**。2026-09-18 实地踩过一次：删用量 ⇒ bump `p2j`→`p2k`
-#     ⇒ **四路 agent 同时编不过**。
-#   · 没人在盯 ⇒ 装出去的是一份自报旧 id 的字节，已部署的远端**不判 stale、不重装**，
-#     整轮改动在那边休眠（那次事故的孪生形）。
+#   · 发版那一趟 ⇒ `release.yml` 的内嵌校验当场红（字节自报的 id ≠ 源码 `BUILD_ID`）。
+#   · 本机手工打包 ⇒ 装出去的是一份自报旧 id 的字节，已部署的远端**不判 stale、不重装**，
+#     整轮改动在那边休眠。monitor 自己照样编得过：它的「我这一版」就是手上那份字节自报的 id，
+#     `build.rs` 不读后端源码（只要求几份内嵌字节彼此同一版）。
 #
 # ⇒ 单子的裁定逐字：「**把 re-embed 写成 bump 的同拍步骤**，别让它变成一次事故。」
 #   本文件就是那个步骤，**全仓唯一的本机产字节入口**。
 #
-# ── 它与那张 mtime 安全网的关系（别读混）──────────────────────────────────────
+# ── 它是本机那一侧的半 bump 核对 ────────────────────────────────────────────
 #
-# `build.rs::embed_backends` 里有一张 mtime 安全网：取 `lib.rs` 与 `main.rs` 两份源码的
-# **较新**那个 mtime，比内嵌字节新就打一条 `cargo:warning=内嵌 backend … 比后端源码旧`。
-# 它**是安全网，不是机制**，三条都是构造性的：
-#   ① 它只在**已经出事之后**说话（字节已经旧了）；
-#   ② 它说的是「旧了」，**不说怎么办** —— 出路要人去读 panic 文案里那一段；
-#   ③ 它一条 `warning`，在几百行 cargo 输出里滚过去（本仓自己的账：长输出里那行
-#      `1 failed` 会滚过去，08-13 实测红着出过一次货）。
-# ⇒ 本文件补的是它缺的那一半：**一条真跑得起来的命令**，以及一条 `--check`
-#   ——「盘上这几份字节与源码的 `BUILD_ID` 对不对得上」由它**当场用相等断言回答**，
-#   不必等谁去编整棵树、也不必在 cargo 的输出里找那一行。
-# ⚠ 安全网**一条没撤**：mtime 那条 warning 与三处 panic 全部留着（判据 ⑬f 钉着它别被改瘦）。
+# 「盘上这几份字节与源码的 `BUILD_ID` 对不对得上」由 `--check` **当场用相等断言回答**，
+# 不必等谁去编整棵树、也不必在 cargo 的输出里找那一行。发版那一侧是 `release.yml` 的内嵌校验。
 #
 # ── 🔴 一个事实一个住址：配方与 `release.yml` 逐字同源 ───────────────────────────
 #
@@ -100,9 +90,11 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 REEMBED_BUILD_FLAGS=(--release --locked)
 REEMBED_TARGETS=(x86_64-unknown-linux-musl aarch64-unknown-linux-musl)
 
-#: 身份的唯一住址 —— 与 `build.rs::backend_lib_rs()` / `release.yml` 的
+#: 身份的唯一住址 —— 与 `release.yml` 的
 #: `env.CCM_BACKEND_IDENTITY_SRC` 是同一份文件（步 9 把它从 `main.rs` 搬来）。
 IDENTITY_SRC="$ROOT/src/backend/lib.rs"
+#: 身份戳两个界标的住址 —— 契约 crate（后端拼戳 · monitor 扫字节同一份；`release.yml` 的 `env.CCM_STAMP_MARKS_SRC` 同一份文件）。
+MARKS_SRC="$ROOT/src/common/deploy-contract/src/lib.rs"
 #: 内嵌落点 —— 名字定死在 `build.rs` 的 `EMBEDDED_BACKENDS_DIR` / `NATIVE_BACKEND_DIR`
 #: （判据 ⑬c/⑬d 把这两处与本文件、与 `src/frontend/shell/.gitignore` 三向钉在一起）。
 EMBEDDED_DIR="$ROOT/src/frontend/shell/embedded-backends"
@@ -114,24 +106,24 @@ fail=0
 ok()  { printf 'PASS  %s :: %s\n' "$1" "$2"; pass=$((pass + 1)); }
 bad() { printf 'FAIL  %s :: %s\n' "$1" "$2"; fail=$((fail + 1)); }
 
-# 从身份那份源码里抠一个 `const <名>: &str = "…";`，**恰好一行**才算数。
+# 从一份源码里抠一个 `const <名>: &str = "…";`，**恰好一行**才算数（`$2` 缺省 = 身份那份）。
 # 抠不到给空串，调用方按红记 —— **不许兜底成一个会参与比较的字符串**
 # （「`"unknown"` 这个值必须从类型上消失」，事故住）。
 src_const() {
-  local name="$1" hits
-  hits="$(grep -cE "^[[:space:]]*(pub )?const ${name}: &str = \"[^\"]+\";" "$IDENTITY_SRC" || true)"
+  local name="$1" file="${2:-$IDENTITY_SRC}" hits
+  hits="$(grep -cE "^[[:space:]]*(pub )?const ${name}: &str = \"[^\"]+\";" "$file" || true)"
   [ "$hits" = "1" ] || return 0
-  sed -nE "s/^[[:space:]]*(pub )?const ${name}: &str = \"([^\"]+)\";.*/\2/p" "$IDENTITY_SRC" | head -1
+  sed -nE "s/^[[:space:]]*(pub )?const ${name}: &str = \"([^\"]+)\";.*/\2/p" "$file" | head -1
 }
 
 # 一份字节自报的身份：扫它里面那段定长戳 `<开><id><关>`。
-# 🔴 **恰好一个才是身份**（`build.rs::bytes_build_id` 头注逐字：「多个 ＝ 身份不唯一，
+# 🔴 **恰好一个才是身份**（与 `deploy-contract::identity_of_bytes` 同一条：「多个 ＝ 身份不唯一，
 #    两种都不许当成答案」）。0 个 / 多个都回一个说明串，它必然不等于任何真 `BUILD_ID`，
 #    于是落在下面那条相等断言的红这一侧 —— 不静默、不兜底。
 bytes_id() {
   local f="$1" open="$2" close="$3" found n s
   # 界标之间**至少一个字符**：两个界标常量在 `.rodata` 里挨着时会读出一个空 id 的「戳」（MIG-3b 之后实测 3 处），
-  # 它不是身份 —— 与 `build.rs::bytes_build_id` · `deploy-contract::stamp_scan_cmd` 同一条（空串不收）。
+  # 它不是身份 —— 与 `deploy-contract::identity_of_bytes` · `deploy-contract::stamp_scan_cmd` 同一条（空串不收）。
   found="$(LC_ALL=C grep -aoE "${open}[[:alnum:]_.-]+${close}" "$f" | sort -u || true)"
   n="$(printf '%s' "$found" | grep -c . || true)"
   if [ "$n" != "1" ]; then
@@ -242,20 +234,20 @@ do_check() {
   local id open close arch t f got present=0
 
   id="$(src_const BUILD_ID)"
-  open="$(src_const BUILD_STAMP_OPEN)"
-  close="$(src_const BUILD_STAMP_CLOSE)"
+  open="$(src_const STAMP_OPEN "$MARKS_SRC")"
+  close="$(src_const STAMP_CLOSE "$MARKS_SRC")"
 
   if [ -n "$id" ]; then
     ok "源码身份抠得出（恰好一行）" "src/backend/lib.rs 的 const BUILD_ID = $id"
   else
     bad "源码身份抠得出（恰好一行）" \
-        "在 src/backend/lib.rs 里抠不出**恰好一行** \`const BUILD_ID\` —— 身份又搬家了？住址是本文件顶上的 IDENTITY_SRC，与 build.rs::backend_lib_rs() 同一份"
+        "在 src/backend/lib.rs 里抠不出**恰好一行** \`const BUILD_ID\` —— 身份又搬家了？住址是本文件顶上的 IDENTITY_SRC，与 release.yml 的 env.CCM_BACKEND_IDENTITY_SRC 同一份"
   fi
   if [ -n "$open" ] && [ -n "$close" ]; then
     ok "身份戳界标抠得出（各恰好一行）" "open=$open close=$close"
   else
     bad "身份戳界标抠得出（各恰好一行）" \
-        "抠不出 BUILD_STAMP_OPEN / BUILD_STAMP_CLOSE —— 拿一对空界标去扫，对**任何**字节都答不出身份"
+        "在 src/common/deploy-contract/src/lib.rs 里抠不出 STAMP_OPEN / STAMP_CLOSE —— 拿一对空界标去扫，对**任何**字节都答不出身份"
   fi
 
   # 🔴 **人群从 `REEMBED_TARGETS` 派生，不从「扫落点目录」来。**

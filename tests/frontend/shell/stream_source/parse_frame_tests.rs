@@ -247,45 +247,75 @@ fn hello_capabilities_backward_compat_and_declared() {
     }
 }
 
-/// #33：版本协商真值表。协议不符优先于 build 差异。
+/// 「我这一版」的一个样值（判据里不读 `byte_table::my_backend_id`：两档都要判，与这棵树带没带字节无关）。
+const MINE: Option<&str> = Some("p9z-mine");
+
+/// #33：版本协商真值表。协议不符优先于 build 差异；手上没带后端字节 ⇒ 不可比（不判旧）。
 #[test]
 fn negotiate_version_truth_table() {
     // 全同 → Ok。
     assert_eq!(
-        negotiate_version(EXPECTED_PROTO_V, EXPECTED_BACKEND_BUILD_ID),
+        negotiate_version(EXPECTED_PROTO_V, "p9z-mine", MINE),
         VersionVerdict::Ok
     );
-    // 协议同、build 异 → StaleBuild（带上报值）。
+    // 协议同、build 异 → StaleBuild（带上报值与「我这一版」）。
     assert_eq!(
-        negotiate_version(EXPECTED_PROTO_V, "p1a-history"),
+        negotiate_version(EXPECTED_PROTO_V, "p1a-history", MINE),
         VersionVerdict::StaleBuild {
-            reported: "p1a-history".to_string()
+            reported: "p1a-history".to_string(),
+            mine: "p9z-mine".to_string(),
         }
     );
-    // 协议异 → Incompatible，且即便 build 也不同，协议优先。
-    assert_eq!(
-        negotiate_version(999, "whatever"),
-        VersionVerdict::Incompatible { reported_v: 999 }
-    );
-    assert_eq!(
-        negotiate_version(999, EXPECTED_BACKEND_BUILD_ID),
-        VersionVerdict::Incompatible { reported_v: 999 },
-        "协议不符时即使 build 匹配也算不兼容"
-    );
+    // 手上没带后端字节 → Incomparable：哪个 build 都不判旧。
+    for theirs in ["p1a-history", "p9z-mine", ""] {
+        assert_eq!(
+            negotiate_version(EXPECTED_PROTO_V, theirs, None),
+            VersionVerdict::Incomparable {
+                reported: theirs.to_string()
+            },
+            "没有对照物却判出了新旧：{theirs:?}"
+        );
+    }
+    // 协议异 → Incompatible，且即便 build 也不同、或没带字节，协议优先。
+    for mine in [MINE, None] {
+        assert_eq!(
+            negotiate_version(999, "whatever", mine),
+            VersionVerdict::Incompatible { reported_v: 999 }
+        );
+        assert_eq!(
+            negotiate_version(999, "p9z-mine", mine),
+            VersionVerdict::Incompatible { reported_v: 999 },
+            "协议不符时即使 build 匹配也算不兼容"
+        );
+    }
 }
 
 /// #33：version_warning 文案——Ok→None，其余→Some 且含 label。
 #[test]
 fn version_warning_messages() {
     assert_eq!(
-        version_warning(EXPECTED_PROTO_V, EXPECTED_BACKEND_BUILD_ID, "pi", false),
+        version_warning(EXPECTED_PROTO_V, "p9z-mine", "pi", false, MINE),
         None
     );
-    let stale = version_warning(EXPECTED_PROTO_V, "p1a-history", "pi", true).expect("stale warns");
-    assert!(stale.contains("pi") && stale.contains("p1a-history"));
-    let incompat =
-        version_warning(2, EXPECTED_BACKEND_BUILD_ID, "wsl", false).expect("incompat warns");
+    let stale =
+        version_warning(EXPECTED_PROTO_V, "p1a-history", "pi", true, MINE).expect("stale warns");
+    assert!(stale.contains("pi") && stale.contains("p1a-history") && stale.contains("p9z-mine"));
+    let incompat = version_warning(2, "p9z-mine", "wsl", false, MINE).expect("incompat warns");
     assert!(incompat.contains("wsl") && incompat.contains("不兼容"));
+}
+
+/// 手上没带后端字节（「我这一版」是 `None`）：健康信息那一句是「不可比」，不说那台旧、不说会换掉它。
+#[test]
+fn without_own_bytes_the_version_line_says_incomparable() {
+    let said = version_warning(EXPECTED_PROTO_V, "p1a-history", "pi", true, None)
+        .expect("没带字节也要说一句");
+    assert_eq!(
+        said,
+        "远端 [pi] 后端 p1a-history · 未带后端字节 · 版本不可比"
+    );
+    for wrong in ["旧版", "自动换", "换回去"] {
+        assert!(!said.contains(wrong), "没有对照物却说了「{wrong}」：{said}");
+    }
 }
 
 /// B4：版本不同那句按新旧分两句（期望手写）—— 那台旧 ⇒「下次连上时自动换成这一版」；
@@ -295,18 +325,20 @@ fn version_warning_messages() {
 /// （「解不出序 ⇒ 不比这一版旧」那一格随判定进了后端：`deploy_plan_tests.rs::the_verdict_replaces_only_upward_and_only_once`）。
 #[test]
 fn hx2_the_version_warning_says_which_side_is_older() {
-    let older = version_warning(EXPECTED_PROTO_V, "p1a-history", "pi", true).expect("旧的该提示");
+    let older =
+        version_warning(EXPECTED_PROTO_V, "p1a-history", "pi", true, MINE).expect("旧的该提示");
     assert!(
         older.contains("旧版 p1a-history") && older.contains("下次连上时自动换成这一版"),
         "{older}"
     );
-    let newer = version_warning(EXPECTED_PROTO_V, "p99a-future", "pi", false).expect("新的该提示");
+    let newer =
+        version_warning(EXPECTED_PROTO_V, "p99a-future", "pi", false, MINE).expect("新的该提示");
     assert!(
         newer.contains("p99a-future") && newer.contains("不会把它换回去") && newer.contains("升级"),
         "{newer}"
     );
-    let odd =
-        version_warning(EXPECTED_PROTO_V, "hand-built", "pi", false).expect("解不出序的也该提示");
+    let odd = version_warning(EXPECTED_PROTO_V, "hand-built", "pi", false, MINE)
+        .expect("解不出序的也该提示");
     assert!(
         odd.contains("不会把它换回去"),
         "后端答「不旧」⇒ 按「不比这一版旧」说：{odd}"

@@ -284,9 +284,9 @@ fn our_own_ccm_is_identified_by_its_bytes_before_it_is_run() {
     std::fs::create_dir_all(&d).unwrap();
     let ours = d.join("ours");
     let mut b = b"\x7fELF....".to_vec();
-    b.extend_from_slice(env!("BACKEND_STAMP_OPEN").as_bytes());
+    b.extend_from_slice(deploy_contract::STAMP_OPEN.as_bytes());
     b.extend_from_slice(b"p5a-e2");
-    b.extend_from_slice(env!("BACKEND_STAMP_CLOSE").as_bytes());
+    b.extend_from_slice(deploy_contract::STAMP_CLOSE.as_bytes());
     std::fs::write(&ours, &b).unwrap();
     let liar = d.join("liar");
     std::fs::write(&liar, "#!/bin/sh\nprintf 'name=ccm\\nversion=6\\n'\n").unwrap();

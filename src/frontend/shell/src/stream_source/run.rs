@@ -545,12 +545,14 @@ async fn open_round(
     // 优雅 no-op。**best-effort**：部署失败仅 warn，不阻断——手动部署的后端仍可连。
     // ★ F05 下半：**上一次这台机器的后端自报过就是期望 build ⇒ 跳过预检那两条连接**。
     // 判据与记忆的语义见 `VERIFIED_BUILD` 头注（记的是 hello 自证，不是预检结论）。
-    // 跳过时 `confirmed_build` 直接给 `EXPECTED` —— 若给 `None`，下面的 caps 阶梯会掉进
+    // 跳过时 `confirmed_build` 直接给「我这一版」—— 若给 `None`，下面的 caps 阶梯会掉进
     // ③ 空集全降级，那就**比不跳还糟**（省两条连接换来一轮降级 + 一轮升级重连）。
+    // 「我这一版」只有一个值：手上那份内嵌字节自报的 id；没带字节 ⇒ `None` ⇒ 不跳、不乐观。
+    let mine = crate::byte_table::my_backend_id();
     let verified = verified_build_of(&host_label);
-    let skip_preflight = preflight_can_be_skipped(verified.as_deref(), EXPECTED_BACKEND_BUILD_ID);
+    let skip_preflight = preflight_can_be_skipped(verified.as_deref(), mine);
     let confirmed_build = if skip_preflight {
-        Some(EXPECTED_BACKEND_BUILD_ID.to_string())
+        mine.map(str::to_string)
     } else {
         match crate::sftp::ensure_backend_deployed(cfg).await {
             Ok(c) => Some(c),
@@ -585,13 +587,13 @@ async fn open_round(
     // 死循环，§26），故只对**声明了对应能力**的后端发 flag（声明 = 自证会剥离该 flag）。
     // 能力两条来源，hello 自愈账本优先：
     //   ① `hello_confirmed`（上一轮 backend **自报**的能力）—— 最权威，收过真 hello 才有。
-    //   ② 否则部署侧确认了当前内嵌 build（`confirmed_build == EXPECTED`）→ 用内嵌后端的
+    //   ② 否则部署侧确认了当前内嵌 build（`confirmed_build == 我这一版`）→ 用内嵌后端的
     //      能力常量**预知**，省第一轮「降级→收 hello→重连升级」往返（乐观路径）。
     //   ③ 都没有 → 空集 → 全降级（= 2.18.0 行为，连接正常、功能退化）。
     // **hello 优先**于部署侧（②可能是陈旧内嵌的身份 ≠ 期望 → 空集 → 靠 hello 自愈救，
     //  见 v2.22.1 无限重连教训；`hello_confirmed` 只在收到真声明时写入，优先采纳恒安全）。
     let caps: Vec<String> = hello_confirmed.clone().unwrap_or_else(|| {
-        if confirmed_build.as_deref() == Some(EXPECTED_BACKEND_BUILD_ID) {
+        if mine.is_some() && confirmed_build.as_deref() == mine {
             embedded_backend_capabilities()
         } else {
             Vec::new()
@@ -784,7 +786,9 @@ fn on_hello(
     replay.origin_seen(&crate::origin::Origin(host_label.clone()), true);
     // issue #33：版本协商。不兼容/偏旧经 SS-F remote-health 通道醒目提示（前端
     // headlineFor 已含 version case，零前端改动）。不 hard-disconnect（向前兼容）。
-    if let Some(msg) = version_warning(v, &build_id, &host_label, remote_older) {
+    // 手上没带后端字节（「我这一版」是 `None`）⇒ 同一条通道说一句「版本不可比」，照常接。
+    let mine = crate::byte_table::my_backend_id();
+    if let Some(msg) = version_warning(v, &build_id, &host_label, remote_older, mine) {
         tracing::warn!("stream_source remote [{host_label}] version: {msg}");
         let payload = crate::ui_contract::RemoteHealthPayload {
             origin: host_label.clone(),
@@ -809,9 +813,9 @@ fn on_hello(
         t_connect_start.elapsed().as_millis()
     );
     // ★ F05 下半：**自证记忆的唯一写入点**。backend 自己说它是谁，我们才记。
-    // build_id 不是期望值 ⇒ **抹掉**（这台机器上装的不是当前 build，
+    // build_id 不是「我这一版」（或手上没带字节、无从比）⇒ **抹掉**（这台机器上装的不是当前 build，
     // 下一轮必须照跑预检去部署），不是「留着上次的」。
-    if build_id == EXPECTED_BACKEND_BUILD_ID {
+    if mine == Some(build_id.as_str()) {
         record_verified_build(&host_label, &build_id);
     } else {
         forget_verified_build(&host_label);
@@ -827,16 +831,23 @@ fn on_hello(
     //   另一件事（「这台后端一条能力都没声明」），口径一个字没动。
     if !tail_only {
         if capabilities.is_empty() {
-            let payload = crate::ui_contract::RemoteHealthPayload {
-                origin: host_label.clone(),
-                kind: "degraded".to_string(),
-                message: copy_text(
+            let message = match mine {
+                Some(m) => copy_text(
                     "rsSshSource.health.degraded",
                     &[
                         ("build", &build_id.to_string()),
-                        ("expected", &EXPECTED_BACKEND_BUILD_ID.to_string()),
+                        ("expected", &m.to_string()),
                     ],
                 ),
+                None => copy_text(
+                    "rsSshSource.health.degradedNoOwnBytes",
+                    &[("build", &build_id.to_string())],
+                ),
+            };
+            let payload = crate::ui_contract::RemoteHealthPayload {
+                origin: host_label.clone(),
+                kind: "degraded".to_string(),
+                message,
             };
             if let Err(e) = health(payload) {
                 tracing::warn!("stream_source remote-health (degraded) emit failed: {e}");

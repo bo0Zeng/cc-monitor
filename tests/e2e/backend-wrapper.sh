@@ -14,7 +14,7 @@
 #   起来了(只读铁律没破,但沙箱意图整个落空)。这一行写清楚,省得下一个人再踩。
 #   (内容 = app 期望的 backend build_id,如 `p1p-tmux-frame`),再把 backendPath 指向它 →
 #   deploy_decision=Skip、脚本存活。(见 src/frontend/shell/src/sftp.rs::deploy_decision +
-#   stream_source EXPECTED_BACKEND_BUILD_ID)
+#   monitor 的「我这一版」)
 E2E_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO=$(CDPATH= cd -- "$E2E_DIR/../.." && pwd)
 # 🔴 **防呆：直接跑就拒。** 本脚本是夹具（loopback 远端的后端包装器），合法的叫法只有一种：

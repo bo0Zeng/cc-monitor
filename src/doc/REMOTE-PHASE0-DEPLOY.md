@@ -55,29 +55,21 @@ copy target\aarch64-unknown-linux-musl\release\cc-monitor-backend  ..\src/fronte
 > 官方发版一律走 release.yml 的 zigbuild。另外本机若无 qemu，**aarch64 那份从未被执行过**，
 > 只做过字节级核对，真机 smoke 前别当已验收。
 
-> **纪律（2026-08-01 U-1 起：`build.rs` 从 warning 升成硬 panic）**：每次改了 backend
-> （尤其 bump `lib.rs::BUILD_ID`）都要**重编二进制 + 同步改清单**，两件一起做。
-> `build.rs` 会在三种情况直接 panic 掉编译。
-> **三条都以「`embedded-backends/` 里真有那个 arch 的二进制」为前提**（`build.rs:266` 的
-> `if src.exists()`）—— 整个目录不存在时走的是优雅降级（两条 `cargo:warning` + 自动部署 no-op），
-> 那正是 dev / CI 的常态，见下方补注：
+> **纪律**：每次改了 backend（尤其 bump `lib.rs::BUILD_ID`）都要重编内嵌字节（`bash tests/scripts/re-embed.sh`）。
+> monitor 的「我这一版」只有一个值：手上那份内嵌字节自报的 id（`build.rs` 从字节里扫 `CC_MONITOR_BUILD_STAMP`，
+> monitor 读 `byte_table.rs::my_backend_id`）。`build.rs` 不读后端源码，只在两种情况让编译失败：
 >
 > | 情况 | 为什么必须 fail 而不是 warn |
 > |---|---|
-> | 抠不到源码 `const BUILD_ID` | 单源链条断了，`BACKEND_BUILD_ID` 会静默退化成 `"unknown"`，每台远端都判 StaleBuild |
-> | **有二进制但字节里问不出身份戳** | 🔴 `K-R70` 换掉的就是这一格。〔原话逐字：「清单是二进制在运行期的**唯一**身份来源（`BUILD_ID` 被编译器优化成立即数，字节里搜不到连续明文，`sftp.rs` 的字节启发式会**误拒正品**）」—— 那句对**当时那个被测对象**是真的；今天后端带着一段 `#[used] static` 的戳，有地址、进 `.rodata`、字节按定义连续，拆不成立即数。〕问不出身份 = 这份字节不是这套源码编出来的（或太旧），放它进去等于内嵌一份没人认得的二进制 |
-> | 字节自报的身份与源码 `BUILD_ID` 不符（**半 bump**） | monitor 判过期的唯一判据就是这个字符串不等 ⇒ 装上去**永远判 StaleBuild、无限重装** |
+> | 有二进制但字节里问不出身份戳 | 这份字节不是这套源码编出来的（或太旧），放它进去等于内嵌一份没人认得的二进制 |
+> | 内嵌的几份字节（两份 musl ＋ 本机那份）不是同一版 | 同一个 exe 带着两版后端，「我这一版」就不是一个值 |
 >
-> 原来只有一条比 mtime 的 `cargo:warning`。它漏掉了真实发生过的那次：源码已 bump 到
-> `p1v-attachable`、清单还是 `p1u-fork-session`，而二进制 mtime **更新**——mtime 判据完全不响。
-> 不想重编就 `rm -rf src/frontend/shell/embedded-backends/`：自动部署诚实关闭，编译立刻恢复。
+> 「字节自报 == 源码 `BUILD_ID`」（**半 bump**）那条核对住发版那一侧：`release.yml` 内嵌校验那一步与
+> `re-embed.sh --check`。开发中源码 bump 了、字节还没重铺，monitor 照样编得过，按手上那份旧字节说话。
+> 不想重编就 `bash tests/scripts/re-embed.sh --clean`：自动部署诚实关闭。
 >
-> **⚠ 这三条挡不住「根本没有内嵌目录」那一档**（Phase E 审计 R3 订正）。干净 clone / CI 里
-> `embedded-backends/` 不存在 ⇒ 三条 panic 一条都够不着，`BACKEND_BUILD_ID` 静默变 `"unknown"`。
-> 兜这一档的**不是** `build.rs`，是 monitor 侧的
-> `tests/frontend/shell/stream_source/stream_flag_gate_tests.rs::embedded_build_id_single_source_wired`（断言它 ≠ `"unknown"`）。
-> 发版链上二者都够得着：`release.yml` 的 `build-backends` 现场生成二进制**并写清单**
-> （`:56-58` 从源码抠 `BUILD_ID`），`build-windows` `:113-118` 还会再对拍一次。
+> 干净 clone / CI 里 `embedded-backends/` 不存在 ⇒ 「我这一版」是 `None`：不判远端旧、不发起换装，
+> 只按那台报的接，健康信息里说一句「未带后端字节 · 版本不可比」。
 
 ---
 

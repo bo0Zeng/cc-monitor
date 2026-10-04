@@ -896,7 +896,7 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
         include_str!("../../../src/frontend/shell/src/doc_claim_registry.rs").to_string(),
     ));
     // `build.rs` 是单文件、不在任何被扫的目录下 —— 第一版就漏了它，
-    // 于是 `build.rs::emit_backend_build_id` 被当成「腐了」。**抽取器的扫描面要自己说清楚。**
+    // 于是 `build.rs` 里定义的函数（如 `build.rs::emit_embedded_id`）被当成「腐了」。**抽取器的扫描面要自己说清楚。**
     let br = repo_root().join("src/frontend/shell/build.rs");
     let br_src = std::fs::read_to_string(&br).expect("读不到 src/frontend/shell/build.rs");
     srcs.push((br, br_src));

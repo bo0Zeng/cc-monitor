@@ -27,8 +27,8 @@ use std::sync::Mutex;
 ///
 /// # 为什么这样跳预检是保守的
 ///
-/// 跳的条件**只有一个**：记忆里那台机器的 build_id **恰好等于** [`EXPECTED_BACKEND_BUILD_ID`]。
-/// 其余一律照跑（无记忆 / 记的是别的 build）—— 那些情况本来就**可能需要部署**，不能跳。
+/// 跳的条件**只有一个**：记忆里那台机器的 build_id **恰好等于**「我这一版」（`byte_table::my_backend_id`）。
+/// 其余一律照跑（无记忆 / 记的是别的 build / 手上没带后端字节）—— 那些情况本来就**可能需要部署**，或根本比不了，不能跳。
 ///
 /// ⚠ 功能件 §8 把「缓存 miss 时 caps 决策必须保守」写成了这件事的阻塞。
 /// 逐字复核之后：那句话约束的是 **miss 路径**，而 miss 路径的答案**早就在代码里** ——
@@ -44,11 +44,11 @@ static VERIFIED_BUILD: Mutex<Option<std::collections::HashMap<String, String>>> 
 
 /// 纯函数：这一轮**能不能跳过**那两条预检连接。
 ///
-/// `verified` = [`VERIFIED_BUILD`] 里这台机器的记录（`None` = 没记过）。
+/// `verified` = [`VERIFIED_BUILD`] 里这台机器的记录（`None` = 没记过）；`mine` = 「我这一版」（`None` = 手上没带后端字节）。
 /// 判据是**逐字相等**，不是包含 —— 前缀相等会让 `abc123` 与 `abc123-dirty` 混为一谈
-/// （本区 F24 那一族）。
-pub(super) fn preflight_can_be_skipped(verified: Option<&str>, expected: &str) -> bool {
-    matches!(verified, Some(v) if v == expected)
+/// （本区 F24 那一族）。`mine` 是 `None` ⇒ 恒不跳（没有对照物，「那台就是这一版」无从说起）。
+pub(super) fn preflight_can_be_skipped(verified: Option<&str>, mine: Option<&str>) -> bool {
+    matches!((verified, mine), (Some(v), Some(m)) if v == m)
 }
 
 /// 读这台机器的自证记录。
@@ -93,13 +93,12 @@ pub(super) fn forget_verified_build(origin: &str) {
 /// hello → 重连死循环。而只有**会先剥离该 flag** 的后端才声明对应能力（见 backend
 /// `CAPABILITIES` 注释），故「声明了 = 发该 flag 安全」——比 build_id 精确匹配更强更干净，
 /// 且直接闭合 2026-07-09「身份确认不了就全降级」事故（能力由后端自报，不靠脆弱身份链）。
-/// monitor **认识**的能力 token。
+/// monitor **认识**的能力 token：契约 crate 那一份（后端 `CAPABILITIES` 取的也是它）。
 ///
 /// U-CC1：它与 [`decide_stream_flags`] 是同一份事实 —— 由
 /// `known_capability_tokens_match_decide_stream_flags` 钉住。
 /// 有它才能回答「backend 声明了一个我们不认识的能力」这个问题（漂移记账的第四个面）。
-///
-const KNOWN_CAPABILITY_TOKENS: &[&str] = &["bg", "tail-only"];
+const KNOWN_CAPABILITY_TOKENS: &[&str] = deploy_contract::STREAM_CAPABILITIES;
 
 /// U-CC1 第四个面的写点：hello 里**不认识的**能力 token 记一笔。记在 `origin`（那台远端）名下。
 /// 只记账，行为一字不改（不认识的 token 本来就按保守缺省忽略）。
@@ -164,29 +163,15 @@ mod stream_flag_gate_tests;
 /// `as_u64()` 读 `v`，这里与之同宽以便直接比较，无需转换。
 pub(super) const EXPECTED_PROTO_V: u64 = 1;
 
-/// 本 monitor 期望的 backend build_id。
+/// F66（#58③）：monitor **内嵌** backend 声明的能力 token（契约 crate `STREAM_CAPABILITIES`，后端 hello 交的是同一份）。
 ///
-/// **SS-B（issue #33/#29）已单源**：值来自编译期 env `BACKEND_BUILD_ID`，由 `build.rs` 从
-/// `src/backend/lib.rs::BUILD_ID` 抠出 emit——与后端源码、F08b 内嵌二进制的
-/// build_id **同一事实源**，无需手工同步（F08b 消除了 F06 时的手工同步债）。
-pub(crate) const EXPECTED_BACKEND_BUILD_ID: &str = env!("BACKEND_BUILD_ID");
-
-/// F66（#58③）：monitor **内嵌** backend 声明的能力 token（= backend `lib.rs::CAPABILITIES`）。
-///
-/// 用途：部署侧确认「装的是当前内嵌 build」（`confirmed_build == EXPECTED_BACKEND_BUILD_ID`）
-/// 时，第一次连接还没收到 hello，用这份常量预知后端能力、直接发对应 flag——省一轮
-/// 「降级→收 hello→重连升级」的往返（等价旧 build_id 门控的乐观路径，但换成能力粒度）。
-/// 收到真实 hello 后一律以 backend **自报**的 `capabilities` 为准（见 `hello_confirmed`）。
-///
-/// **单一事实源（SS-B，同 `EXPECTED_BACKEND_BUILD_ID`）**：值来自 `build.rs::emit_backend_
-/// capabilities` 从 backend `lib.rs::CAPABILITIES` 抠出的编译期 env `BACKEND_CAPABILITIES`
-/// （逗号分隔）——**不再手抄**（审计 B1/S1：手抄副本漂移时乐观路径可能声明当前 backend
-/// 不剥离的 flag → §26 死循环窄窗；单源杜绝之）。
+/// 用途：部署侧确认「那台装的就是手上这一版」时，第一次连接还没收到 hello，用这份常量预知后端能力、
+/// 直接发对应 flag —— 省一轮「降级→收 hello→重连升级」的往返。收到真实 hello 后一律以 backend
+/// **自报**的 `capabilities` 为准（见 `hello_confirmed`）。
 pub(super) fn embedded_backend_capabilities() -> Vec<String> {
-    env!("BACKEND_CAPABILITIES")
-        .split(',')
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
+    deploy_contract::STREAM_CAPABILITIES
+        .iter()
+        .map(|s| s.to_string())
         .collect()
 }
 
@@ -195,27 +180,36 @@ pub(super) fn embedded_backend_capabilities() -> Vec<String> {
 pub enum VersionVerdict {
     /// 协议版本 + build_id 都匹配 —— 无需提示。
     Ok,
-    /// 协议版本相同，但 build_id 不同 —— backend 偏旧/偏新，建议更新（非阻断，F08 将自动重推）。
-    StaleBuild { reported: String },
+    /// 协议版本相同，但手上没带后端字节（「我这一版」是 `None`）—— 版本不可比：不判旧、不发起换装，只按那台报的接。
+    Incomparable { reported: String },
+    /// 协议版本相同，但 build_id 与「我这一版」（`mine`）不同 —— backend 偏旧/偏新（非阻断；旧的下次连上换掉）。
+    StaleBuild { reported: String, mine: String },
     /// 协议大版本不符 —— 渲染可能异常，醒目提示需更新后端（仍不 hard-disconnect：
     /// 解析器向前兼容，能解析的仍照常呈现）。
     Incompatible { reported_v: u64 },
 }
 
-/// 纯函数版本协商：协议版本优先于 build_id（协议不兼容是更严重的问题）。
+/// 纯函数版本协商：协议版本优先于 build_id（协议不兼容是更严重的问题）。`mine` = 「我这一版」（`byte_table::my_backend_id`）。
 ///
 /// - `reported_v != EXPECTED_PROTO_V` → `Incompatible`（无论 build_id）。
-/// - 协议同、`reported_build_id != EXPECTED_BACKEND_BUILD_ID` → `StaleBuild`。
+/// - 协议同、`mine` 是 `None` → `Incomparable`（手上没带后端字节，没有对照物）。
+/// - 协议同、`reported_build_id != mine` → `StaleBuild`。
 /// - 全同 → `Ok`。
-pub(super) fn negotiate_version(reported_v: u64, reported_build_id: &str) -> VersionVerdict {
-    if reported_v != EXPECTED_PROTO_V {
-        VersionVerdict::Incompatible { reported_v }
-    } else if reported_build_id != EXPECTED_BACKEND_BUILD_ID {
-        VersionVerdict::StaleBuild {
+pub(super) fn negotiate_version(
+    reported_v: u64,
+    reported_build_id: &str,
+    mine: Option<&str>,
+) -> VersionVerdict {
+    match mine {
+        _ if reported_v != EXPECTED_PROTO_V => VersionVerdict::Incompatible { reported_v },
+        None => VersionVerdict::Incomparable {
             reported: reported_build_id.to_string(),
-        }
-    } else {
-        VersionVerdict::Ok
+        },
+        Some(m) if reported_build_id != m => VersionVerdict::StaleBuild {
+            reported: reported_build_id.to_string(),
+            mine: m.to_string(),
+        },
+        Some(_) => VersionVerdict::Ok,
     }
 }
 
@@ -226,27 +220,35 @@ pub(super) fn version_warning(
     reported_build_id: &str,
     label: &str,
     remote_older: bool,
+    mine: Option<&str>,
 ) -> Option<String> {
-    match negotiate_version(reported_v, reported_build_id) {
+    match negotiate_version(reported_v, reported_build_id, mine) {
         VersionVerdict::Ok => None,
+        VersionVerdict::Incomparable { reported } => Some(copy_text(
+            "rsSshSource.version.noOwnBytes",
+            &[
+                ("label", &label.to_string()),
+                ("reported", &reported.to_string()),
+            ],
+        )),
         // 按新旧分两句（部署只升不降）：
         //   那台旧 ⇒ 下次连上的部署预检会换掉它；那台不比这一版旧 ⇒ 这个 monitor 不会把它换回去。
         // 新旧不在这里比（从前调共享判定 `is_newer`，今天住后端 `control/deploy_plan.rs`）：本机常驻后端接上那一刻判过（`resident-verdict`），这里只按答挑句子。
         //   〔墓碑 —— 从前一句话不分新旧（`rsSshSource.version.buildMismatch`：「…建议更新后端（后续将支持自动部署）」），自动部署早已落地。〕
-        VersionVerdict::StaleBuild { reported } if remote_older => Some(copy_text(
+        VersionVerdict::StaleBuild { reported, mine } if remote_older => Some(copy_text(
             "rsSshSource.version.remoteOlder",
             &[
                 ("label", &label.to_string()),
                 ("reported", &reported.to_string()),
-                ("mine", &EXPECTED_BACKEND_BUILD_ID.to_string()),
+                ("mine", &mine.to_string()),
             ],
         )),
-        VersionVerdict::StaleBuild { reported } => Some(copy_text(
+        VersionVerdict::StaleBuild { reported, mine } => Some(copy_text(
             "rsSshSource.version.remoteNotOlder",
             &[
                 ("label", &label.to_string()),
                 ("reported", &reported.to_string()),
-                ("mine", &EXPECTED_BACKEND_BUILD_ID.to_string()),
+                ("mine", &mine.to_string()),
             ],
         )),
         VersionVerdict::Incompatible { .. } => Some(copy_text(

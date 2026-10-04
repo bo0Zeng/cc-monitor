@@ -67,7 +67,7 @@ fn the_stamp_scan_answer_maps_to_exactly_one_identity_state() {
     ));
 }
 
-/// I2b：那条命令只读、界标不写字面量、路径过引号、身份至少一个字符（与 `build.rs::bytes_build_id` 同一条纪律）。
+/// I2b：那条命令只读、界标不写字面量、路径过引号、身份至少一个字符（与 `identity_of_bytes` 同一条纪律）。
 #[test]
 fn the_stamp_scan_command_is_read_only_and_quoted() {
     // 落点是固定常量、以 shell 写法交进来（`"$HOME"` 在那台上展开），不再是要 quote 的外来路径。

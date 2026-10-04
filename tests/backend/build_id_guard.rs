@@ -3,8 +3,8 @@
 //! # 为什么需要它
 //!
 //! monitor 判「远端那台的后端该不该换」只有一条判据：
-//! `reported_build_id != EXPECTED_BACKEND_BUILD_ID`（`stream_source/version.rs`，值由 `build.rs`
-//! 从本文件抠出）。**不 bump ⇒ 已部署的旧后端报同一个 id ⇒ 不判 stale ⇒ 不自动重装
+//! 那台报的 build_id ≠「我这一版」（monitor 手上那份内嵌字节自报的 id，由发版从本文件的
+//! `BUILD_ID` 编出）。**不 bump ⇒ 已部署的旧后端报同一个 id ⇒ 不判 stale ⇒ 不自动重装
 //! ⇒ 整轮改动在已部署的远端休眠。**
 //!
 //! 这一课在 `main.rs` 的版本谱系里被写过两遍（p1r 段、p1t 段），`src/doc/INVARIANTS.md` §41.5
@@ -816,7 +816,7 @@ mod tests {
                 "backend 的子命令集变了（+{added:?} / -{removed:?}），而 BUILD_ID 还是 `{}`。\n\
                  \n\
                  **别只改这张表**。monitor 判「远端该不该换后端」只有一条判据：\n\
-                 `reported_build_id != EXPECTED_BACKEND_BUILD_ID`。不 bump ⇒ 已部署的旧 backend\n\
+                 那台报的 build_id ≠ monitor 内嵌字节自报的 id。不 bump ⇒ 已部署的旧 backend\n\
                  报同一个 id ⇒ 不判 stale ⇒ 不自动重装 ⇒ **你这一轮的改动在已部署的远端休眠**，\n\
                  用户只会拿到「版本过旧」。本仓已经因为这个栽过三次（p1r / p1t / G2）。\n\
                  \n\
@@ -854,39 +854,20 @@ mod tests {
     //   ② 跑不动它的人（交叉编译的 musl 二进制在 Windows 构建机上执行不了）——
     //      扫字节里的 `CC_MONITOR_BUILD_STAMP`。
 
-    /// 把一段字节里的身份戳扫出来（**去重后的全部取值**）。
-    ///
-    /// ⚠ 空串与非法字符一律不收：debug 构建里 `BUILD_STAMP_OPEN` / `BUILD_STAMP_CLOSE`
-    /// 这两个常量本身可能被并排放进 `.rodata`（本条第一版实测撞到过，扫出 `["", "p2e-dial"]`）
-    /// —— 那是**两个字面量挨着**，不是一个戳。收它就会把「有几个身份」这个读数变假。
+    /// 把一段字节里的身份戳扫出来（**去重后的全部取值**）—— 扫法只有一份：`deploy_contract::identity_of_bytes`
+    /// （monitor 构建期 · 运行期 · 后端部署计划同一个函数）。空串与非法字符一律不收：两个界标挨着
+    /// （debug 构建 `.rodata` 里真会出现的那一形）不是一个戳。
     fn build_ids_in(bytes: &[u8]) -> Vec<String> {
-        let open = crate::BUILD_STAMP_OPEN.as_bytes();
-        let close = crate::BUILD_STAMP_CLOSE.as_bytes();
-        let mut out: Vec<String> = Vec::new();
-        let mut i = 0usize;
-        while i + open.len() <= bytes.len() {
-            if &bytes[i..i + open.len()] == open {
-                let rest = &bytes[i + open.len()..];
-                let win = &rest[..rest.len().min(96)];
-                if let Some(e) = win.windows(close.len()).position(|w| w == close) {
-                    if let Ok(s) = std::str::from_utf8(&win[..e]) {
-                        let ok = !s.is_empty()
-                            && s.bytes().all(|b| {
-                                b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_')
-                            });
-                        if ok {
-                            out.push(s.to_string());
-                        }
-                    }
-                }
-                i += open.len();
-            } else {
-                i += 1;
-            }
+        use deploy_contract::RemoteIdentity as Id;
+        let marks = deploy_contract::Marks {
+            open: deploy_contract::STAMP_OPEN,
+            close: deploy_contract::STAMP_CLOSE,
+        };
+        match deploy_contract::identity_of_bytes(bytes, marks) {
+            Id::Stamp(id) => vec![id],
+            Id::Ambiguous(ids) => ids,
+            _ => Vec::new(),
         }
-        out.sort_unstable();
-        out.dedup();
-        out
     }
 
     /// 反向自检：**扫描器真的在扫**，不是恒答一个好看的答案。
@@ -901,8 +882,8 @@ mod tests {
         );
         let fake = format!(
             "{}zz-not-us{}",
-            crate::BUILD_STAMP_OPEN,
-            crate::BUILD_STAMP_CLOSE
+            deploy_contract::STAMP_OPEN,
+            deploy_contract::STAMP_CLOSE
         );
         assert_eq!(
             build_ids_in(fake.as_bytes()),
@@ -915,7 +896,11 @@ mod tests {
         want.sort();
         assert_eq!(build_ids_in(two.as_bytes()), want, "两个戳要认出两个");
         // 界标挨着（debug 构建 `.rodata` 里真会出现的那一形）不许被当成一个戳。
-        let adjacent = format!("{}{}", crate::BUILD_STAMP_OPEN, crate::BUILD_STAMP_CLOSE);
+        let adjacent = format!(
+            "{}{}",
+            deploy_contract::STAMP_OPEN,
+            deploy_contract::STAMP_CLOSE
+        );
         assert!(
             build_ids_in(adjacent.as_bytes()).is_empty(),
             "两个界标挨着被读成了一个身份 —— 那会让「有几个身份」这个读数变假"
@@ -1057,7 +1042,7 @@ mod tests {
         assert_eq!(
             decls, 1,
             "`lib.rs` 里 `const BUILD_ID` 的声明有 {decls} 处（应当 1）—— \n\
-             ⚠ `src/frontend/shell/build.rs::backend_lib_rs` 与 `release.yml` 两处都按\n\
+             ⚠ `release.yml` 与 `tests/scripts/re-embed.sh` 两处都按\n\
              「含 `const BUILD_ID` 的那一行」去抠**这份文件**；0 处 ⇒ 抠出 `unknown`，\n\
              多处 ⇒ 抠到哪一个看运气。\n\
              ⚠ 把它搬回 `main.rs` 也会让本条红 —— 那是刻意的：in-process 那条路**没有\n\
@@ -1069,7 +1054,7 @@ mod tests {
         );
         // 戳的两个界标也是身份住址的一部分：它们一变，扫字节那一侧全瞎。
         assert!(
-            !crate::BUILD_STAMP_OPEN.is_empty() && !crate::BUILD_STAMP_CLOSE.is_empty(),
+            !deploy_contract::STAMP_OPEN.is_empty() && !deploy_contract::STAMP_CLOSE.is_empty(),
             "身份戳的界标是空串 —— 扫字节那条路会把整份二进制当成一个戳"
         );
         assert!(

@@ -78,7 +78,8 @@ fn local_ccm_too_old_warning() -> Option<String> {
 /// # 它买到 / 买不到什么
 ///
 /// ✅ **买到**：「cc-monitor 装的那份 `ccm` 是不是**这一版**」—— 那份自报的 `build=`
-///   与本 monitor 编进来的 `BACKEND_BUILD_ID` 逐字比；外加 [`CC_SPAWN_NEEDS`] 四条能力在不在。
+///   与「我这一版」（`byte_table::my_backend_id`，手上那份内嵌字节自报的）逐字比；外加 [`CC_SPAWN_NEEDS`] 四条能力在不在。
+///   手上没带后端字节 ⇒ 版本不比、只说不可比，能力照查。
 /// ❌ **买不到**：「你 PATH 上那个 `ccm` 是谁」—— `cc-spawn` 在 bash 里调的是 PATH 上的那个，
 ///   而问 PATH 要走登录 shell（`bash -lic`），Windows 上没有那条路（`ccm_probe::probe_path_ccm`
 ///   的 Windows 臂同样回 `None`，`KU22` 待决）。⇒ **哪怕全对也回 `Some`**：
@@ -92,7 +93,7 @@ fn windows_ccm_too_old_warning() -> Option<String> {
     let st = crate::ccm_probe::local_ccm_entry_now(None);
     Some(windows_ccm_precheck(
         st.entry.as_deref().map(|e| (e, &st.ours)),
-        env!("BACKEND_BUILD_ID"),
+        crate::byte_table::my_backend_id(),
     ))
 }
 
@@ -102,12 +103,13 @@ fn windows_ccm_too_old_warning() -> Option<String> {
 /// 本仓唯一跑它的地方是云端 windows-latest；本条的判据在哪台机器上都跑。
 ///
 /// `ours`：`None` = cc-monitor 那份 `ccm` 还没装下来；`Some((住址, 名片))` = 装了并问过一次。
+/// `want_build`：「我这一版」；`None` = 手上没带后端字节（版本不可比）。
 /// 返回值**总是一句话**（理由见 [`local_ccm_too_old_warning`] 的 Windows 臂）。
 ///
 /// 原先的 `any(windows, test)` 门摘了：调用方按 `LOGIN_SHELL` 分派，两平台的构建里都有调用方。
 pub(crate) fn windows_ccm_precheck(
     ours: Option<(&str, &crate::ccm_probe::CcmProbeResult)>,
-    want_build: &str,
+    want_build: Option<&str>,
 ) -> String {
     // 〔CP1 台账 09-24〕这几句对用户可见（设置页 cc-bus 区）：不上 markdown 星号、不上 `{:?}` 数组形、
     //   不上工单号、不说内部推理 —— 台账那几行因此从「改」换成「保留」。
@@ -133,6 +135,25 @@ pub(crate) fn windows_ccm_precheck(
         .collect();
     let unknown = copy_text("rsCcBusDeploy.win.unknown", &[]);
     let build = card.build.as_deref().unwrap_or(&unknown);
+    let Some(want_build) = want_build else {
+        let lack = if missing.is_empty() {
+            String::new()
+        } else {
+            copy_text(
+                "rsCcBusDeploy.win.lackShort",
+                &[("list", &(join(&missing)).to_string())],
+            )
+        };
+        return copy_text(
+            "rsCcBusDeploy.win.noOwnBytes",
+            &[
+                ("at", &at.to_string()),
+                ("build", &build.to_string()),
+                ("lack", &lack),
+                ("pathCaveat", &path_caveat.to_string()),
+            ],
+        );
+    };
     if build != want_build {
         let lack = if missing.is_empty() {
             String::new()

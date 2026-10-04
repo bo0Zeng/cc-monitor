@@ -1498,9 +1498,9 @@ fn a_stranger_on_our_port_is_refused_out_loud_not_silently_reused() {
         "{{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"host_arch\":\"x86_64\",\
               \"claude_dir\":\"/h/.claude\",\"capabilities\":[],\"emits\":[],\"commands\":[]}}"
     );
-    assert_eq!(hello_verdict(&ours, "b1", &[]), HelloVerdict::Ours);
+    assert_eq!(hello_verdict(&ours, Some("b1"), &[]), HelloVerdict::Ours);
     // ① 版本不对
-    match hello_verdict(&ours, "b2", &[]) {
+    match hello_verdict(&ours, Some("b2"), &[]) {
         HelloVerdict::Stranger(w) => assert!(w.contains("b1") && w.contains("b2"), "{w}"),
         v => panic!("旧版本的后端被当成了我们的：{v:?}"),
     }
@@ -1508,14 +1508,23 @@ fn a_stranger_on_our_port_is_refused_out_loud_not_silently_reused() {
     //    这里不比（从前比 ⇒ 改了设置之后本机后端一个都接不上）。「另一个家」那一形由 host_env 比（`hx2_` 那一族）。
     let other_claude = ours.replace("/h/.claude", "/other/.claude");
     assert_ne!(other_claude, ours, "替换没落在靶上");
-    assert_eq!(hello_verdict(&other_claude, "b1", &[]), HelloVerdict::Ours);
+    assert_eq!(
+        hello_verdict(&other_claude, Some("b1"), &[]),
+        HelloVerdict::Ours
+    );
     // ③ 压根不是我们的协议
     assert!(matches!(
-        hello_verdict("HTTP/1.1 200 OK", "b1", &[]),
+        hello_verdict("HTTP/1.1 200 OK", Some("b1"), &[]),
         HelloVerdict::Stranger(_)
     ));
     assert!(matches!(
-        hello_verdict("", "b1", &[]),
+        hello_verdict("", Some("b1"), &[]),
+        HelloVerdict::Stranger(_)
+    ));
+    // ④ 手上没带后端字节（「我这一版」是 `None`）⇒ 不比 build、照那台报的接；不是我们的协议照样拒。
+    assert_eq!(hello_verdict(&ours, None, &[]), HelloVerdict::Ours);
+    assert!(matches!(
+        hello_verdict("HTTP/1.1 200 OK", None, &[]),
         HelloVerdict::Stranger(_)
     ));
 }
@@ -4370,11 +4379,11 @@ fn hx2_a_backend_started_for_another_data_dir_is_refused_out_loud() {
         ]
     };
     assert_eq!(
-        hello_verdict(&seen, "b1", &want("/iso/a")),
+        hello_verdict(&seen, Some("b1"), &want("/iso/a")),
         HelloVerdict::Ours,
         "同一份环境（外加一格不在名单里的 PATH）⇒ 该是我们的"
     );
-    match hello_verdict(&seen, "b1", &want("/iso/b")) {
+    match hello_verdict(&seen, Some("b1"), &want("/iso/b")) {
         HelloVerdict::Stranger(w) => {
             assert!(
                 w.contains("CCM_DATA_DIR")
@@ -4388,18 +4397,18 @@ fn hx2_a_backend_started_for_another_data_dir_is_refused_out_loud() {
     }
     // C-L5：值是汉字 ⇒ 与前面的汉字之间不隔空格
     assert!(
-        matches!(hello_verdict(&seen, "b1", &want("/iso/a")[..1]), HelloVerdict::Stranger(w) if w.contains("CCM_DATA_DIR：它用的是 /iso/a，这个 monitor 要的是没有")),
+        matches!(hello_verdict(&seen, Some("b1"), &want("/iso/a")[..1]), HelloVerdict::Stranger(w) if w.contains("CCM_DATA_DIR：它用的是 /iso/a，这个 monitor 要的是没有")),
         "它多一格（它住隔离的家，这一趟住默认的家）⇒ 该拒"
     );
     assert!(
         matches!(
-            hello_verdict(&hello_with(""), "b1", &want("/x")),
+            hello_verdict(&hello_with(""), Some("b1"), &want("/x")),
             HelloVerdict::Stranger(_)
         ),
         "hello 里没有 host_env（没被交任何一格）而这一趟要交 ⇒ 该拒"
     );
     assert_eq!(
-        hello_verdict(&hello_with(""), "b1", &[]),
+        hello_verdict(&hello_with(""), Some("b1"), &[]),
         HelloVerdict::Ours,
         "两边都空 ⇒ 我们的"
     );

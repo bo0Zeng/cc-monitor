@@ -552,7 +552,7 @@ pub fn run() {
                         // 回修前是 `tracing::info!`，连 `warn` 都不是。
                         //
                         // 触发场景不是理论：口按家目录算死，`hello_verdict` 逐字比
-                        // `BACKEND_BUILD_ID` ⇒ **升级 monitor 之后上一次脱离留下的那个
+                        // 「我这一版」（`byte_table::my_backend_id`）⇒ **升级 monitor 之后上一次脱离留下的那个
                         // backend 还在听同一个口** ⇒ `Stranger` ⇒ `Adopt::Refused`
                         // ⇒ 本机后端起不来，而界面上什么都不说。
                         // ⚠ 这是**常驻带来的新场景**：翻面之前 backend 153ms 就死了。

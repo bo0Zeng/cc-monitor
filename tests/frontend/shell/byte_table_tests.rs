@@ -541,3 +541,201 @@ fn musl_bytes_only_ever_land_on_linux_cells() {
 }
 
 // 承诺面「账本 == 代码」那条随 `promised` 搬进后端：`deploy_plan_tests::the_promise_face_in_the_ledger_equals_the_code`。
+
+// ═══ 「我这一版」只一个值 ═══════════════════════════════════════════════════════════════
+
+/// `build.rs` 的代码行里伸到本包之外的那几行（读后端源码就是这一形）。注释行剥掉：头注里讲「不读后端源码」是账，不是读。
+fn build_rs_reaches_outside(build_rs: &str) -> Vec<String> {
+    let code = guard_core::production_code(build_rs);
+    let outside = [
+        "\"..",
+        "../",
+        "src/backend",
+        "backend/lib.rs",
+        "backend/main.rs",
+    ];
+    code.lines()
+        .filter(|l| outside.iter().any(|w| l.contains(w)))
+        .map(|l| l.trim().to_string())
+        .collect()
+}
+
+/// ① **`build.rs` 不读后端源码**：它的代码里零处伸出本包（`..` / `src/backend` / 后端那两份源码的名字）。
+/// 「我这一版」只认手上那份内嵌字节自报的 id；源码 `BUILD_ID` 只在发版核对那一侧读（`release.yml` · `re-embed.sh --check`）。
+#[test]
+fn the_build_script_does_not_read_the_backend_source() {
+    let build_rs = read("src/frontend/shell/build.rs");
+    let hits = build_rs_reaches_outside(&build_rs);
+    assert!(
+        hits.is_empty(),
+        "`build.rs` 又伸到本包外面去读东西了：{hits:#?}\n\
+         「我这一版」只有一个值 —— 手上那份内嵌字节自报的 id；读源码 `BUILD_ID` 就又多出第二个值。"
+    );
+    // 正控：往里加一行读 `../../backend/lib.rs` 必须认得出来。
+    let planted = format!(
+        "{build_rs}\nfn planted() -> String {{ std::fs::read_to_string(\"../../backend/lib.rs\").unwrap() }}\n"
+    );
+    assert_eq!(
+        build_rs_reaches_outside(&planted).len(),
+        1,
+        "正控没认出来 —— 本条此刻是空真"
+    );
+}
+
+/// ② 壳生产段零处读源码 id（`BACKEND_BUILD_ID` · `EXPECTED_BACKEND_BUILD_ID`）；内嵌 id 的 env 只在 `my_backend_id` 里读一次；
+/// 「我这一版」的读点 == 登记的这几处（谁许读、只许一处）。
+#[test]
+fn my_version_is_read_only_through_my_backend_id() {
+    let root = repo_root().join("src/frontend/shell/src");
+    let source_id = format!("{}_BUILD_ID", "BACKEND");
+    let env_name = format!("\"{}_EMBEDDED_ID\"", "BACKEND");
+    let call = format!("{}_backend_id()", "my");
+    let mut env_reads: Vec<String> = Vec::new();
+    let mut callers = BTreeSet::new();
+    let mut scanned = 0usize;
+    for (p, text) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
+        scanned += 1;
+        let rel = p
+            .strip_prefix(&root)
+            .unwrap_or(&p)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let prod = guard_core::production_code(&text);
+        for l in prod.lines() {
+            assert!(
+                !l.contains(&source_id),
+                "{rel} 生产段又读源码 id 了：{}\n「我这一版」只认手上那份内嵌字节自报的（`my_backend_id`）。",
+                l.trim()
+            );
+            if l.contains(&env_name) {
+                env_reads.push(format!("{rel}: {}", l.trim()));
+            }
+        }
+        let def = format!("fn {call}");
+        if prod.lines().any(|l| l.contains(&call) && !l.contains(&def)) {
+            callers.insert(rel);
+        }
+    }
+    assert!(scanned > 50, "只扫到 {scanned} 份 .rs —— 扫描口坏了");
+    assert_eq!(
+        env_reads,
+        vec![format!("byte_table.rs: option_env!({env_name})")],
+        "内嵌 id 那个 env 不是只在 `my_backend_id` 里读一次"
+    );
+    let want: BTreeSet<String> = [
+        // 槽的身份（三槽同一个值）
+        "byte_table.rs",
+        // 版本判定 · 版本提示 · 跳预检 · 已验版本记忆 · 乐观能力集
+        "stream_source/run.rs",
+        // resident-verdict 问不问
+        "remote_resident.rs",
+        // 本机常驻 hello 比对
+        "local_backend_host.rs",
+        // Windows 预检
+        "cc_bus_deploy.rs",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+    assert_eq!(
+        callers, want,
+        "「我这一版」的读点与登记不符（多了 = 新开了一处取值路；少了 = 登记陈了）"
+    );
+}
+
+/// 编本包这一趟用的那个构建脚本（`build.rs` 编出来的那一份，路径由它自己交来）。
+fn this_build_script() -> std::path::PathBuf {
+    let Some(script) = option_env!("CCM_BUILD_SCRIPT_EXE") else {
+        panic!("构建脚本没交出自己的路径（`CCM_BUILD_SCRIPT_EXE`）");
+    };
+    let script = std::path::PathBuf::from(script);
+    assert!(script.is_file(), "构建脚本不在它说的地方：{script:?}");
+    script
+}
+
+/// 在一个临时目录里铺几份只带身份戳的假字节，真跑一趟构建脚本，回（stdout, stderr）。
+fn run_build_script(tag: &str, files: &[(&str, String)]) -> (String, String) {
+    let dir = std::env::temp_dir().join(format!("ccm-embed-agree-{}-{tag}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("out")).unwrap();
+    for (rel, body) in files {
+        let p = dir.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, body).unwrap();
+    }
+    let out = std::process::Command::new(this_build_script())
+        .current_dir(&dir)
+        .env_clear()
+        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+        .env("OUT_DIR", dir.join("out"))
+        .env("TARGET", env!("CCM_TARGET_TRIPLE"))
+        .output()
+        .expect("起不了构建脚本");
+    let _ = std::fs::remove_dir_all(&dir);
+    (
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
+/// ③ **内嵌的几份后端字节不是同一版 ⇒ 构建当场失败**；同一版 ⇒ 那个共同的 id 交给 monitor（`BACKEND_EMBEDDED_ID`）；
+/// 一份都没内嵌 ⇒ 不交（`my_backend_id()` 是 `None`）。真跑本包的构建脚本，喂的是只带身份戳的假字节。
+#[test]
+fn embedded_copies_must_agree_or_the_build_fails() {
+    let stamped = |id: &str| {
+        format!(
+            "\x7fELF fake {}{id}{} tail",
+            deploy_contract::STAMP_OPEN,
+            deploy_contract::STAMP_CLOSE
+        )
+    };
+    let musl = |a: &str, b: &str| {
+        vec![
+            ("embedded-backends/cc-monitor-backend-x86_64", stamped(a)),
+            ("embedded-backends/cc-monitor-backend-aarch64", stamped(b)),
+        ]
+    };
+    let emitted = |stdout: &str| -> Vec<String> {
+        stdout
+            .lines()
+            .filter_map(|l| l.strip_prefix("cargo:rustc-env=BACKEND_EMBEDDED_ID="))
+            .map(String::from)
+            .collect()
+    };
+    const DISAGREE: &str = "内嵌的几份后端字节不是同一版";
+
+    let (out, err) = run_build_script("same", &musl("p9a-one", "p9a-one"));
+    assert_eq!(
+        emitted(&out),
+        vec!["p9a-one".to_string()],
+        "同一版却没交出共同 id：{out}\n{err}"
+    );
+    assert!(!err.contains(DISAGREE), "同一版却说不是：{err}");
+
+    let (out, err) = run_build_script("musl", &musl("p9a-one", "p9b-two"));
+    assert!(
+        err.contains(DISAGREE) && err.contains("p9a-one") && err.contains("p9b-two"),
+        "两份 musl 不是同一版，构建没当场失败（或没点名两边）：{err}"
+    );
+    assert!(emitted(&out).is_empty(), "不是同一版却交出了一个 id：{out}");
+
+    let mut files = musl("p9a-one", "p9a-one");
+    files.push(("native-backend/cc-monitor-native", stamped("p9b-two")));
+    files.push((
+        "native-backend/cc-monitor-native.target",
+        format!("{}\n", env!("CCM_TARGET_TRIPLE")),
+    ));
+    let (out, err) = run_build_script("native", &files);
+    assert!(
+        err.contains(DISAGREE) && err.contains("cc-monitor-native"),
+        "本机那一份与 musl 不是同一版，构建没当场失败：{err}"
+    );
+    assert!(emitted(&out).is_empty(), "不是同一版却交出了一个 id：{out}");
+
+    let (out, err) = run_build_script("none", &[]);
+    assert!(
+        emitted(&out).is_empty(),
+        "一份字节都没有却交出了 id：{out}\n{err}"
+    );
+    assert!(!err.contains(DISAGREE), "{err}");
+}

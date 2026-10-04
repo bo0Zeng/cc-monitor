@@ -90,7 +90,16 @@ fn embedded_backend_binaries_present_and_valid() {
     for arch in ["x86_64", "aarch64"] {
         let key = key_of("Linux", arch).expect("表 A 认得这一格");
         let bin = pick(key).expect("内嵌二进制应存在");
-        assert!(!bin.build_id.is_empty(), "build_id 非空");
+        assert!(
+            bin.build_id.is_some_and(|id| !id.is_empty()),
+            "内嵌了字节却问不出身份：{:?}",
+            bin.build_id
+        );
+        assert_eq!(
+            bin.build_id,
+            crate::byte_table::my_backend_id(),
+            "这一槽的身份不是「我这一版」"
+        );
         assert_eq!(&bin.bytes[..4], b"\x7fELF", "{arch} 应是 ELF");
         assert!(bin.bytes.len() > 100_000, "{arch} 体积应非平凡");
     }
@@ -103,7 +112,7 @@ fn embedded_backend_binaries_present_and_valid() {
 /// （跑了会不会说真话）。少任何一条，另一条都能被一个恒答 `true` 的实现骗过去。
 #[test]
 fn the_build_stamp_witness_actually_bites() {
-    let (o, c) = (env!("BACKEND_STAMP_OPEN"), env!("BACKEND_STAMP_CLOSE"));
+    let (o, c) = (deploy_contract::STAMP_OPEN, deploy_contract::STAMP_CLOSE);
     let real = format!("头部随便什么{o}p9-sample{c}尾部随便什么");
     assert!(
         super::bytes_carry_build_stamp(real.as_bytes(), "p9-sample"),
@@ -146,11 +155,11 @@ fn the_build_stamp_witness_actually_bites() {
 /// 今天身份**只有一条来路**：`build.rs` 从二进制字节里扫 `CC_MONITOR_BUILD_STAMP`。
 /// 于是本条钉三件事：
 ///
-/// 1. 两个 `BackendBinary` 的 `build_id` **只许**是 `env!("BACKEND_EMBEDDED_ID_<ARCH>")`
+/// 1. 每一槽的 `build_id` **只许**是 `my_backend_id()`（`build.rs` 从内嵌字节里扫出、几份彼此相等的那一个）
 ///    —— 出现字面量、或退回源码 id（老 `pick()` 那条「问不出就拿源码顶上」的路）都红；
 /// 2. 部署路上**真的**跑了 [`bytes_carry_build_stamp`]，而且**不带前置条件**
 ///    （老写法 `!bin.id_from_manifest && …` 正是「有清单就整个跳过」）；
-/// 3. 界标那两个字面量**不许**在本文件里出现第二份（闭集唯一住址在后端源码）。
+/// 3. 界标那两个字面量**不许**在本文件里出现第二份（闭集唯一住址在契约 crate）。
 ///
 /// 顺带钉住 arch 那条跨文件契约的**另一半**：`build.rs` 期待的每个 arch，
 /// `byte_table.rs` 里都必须真有一槽（漏一个 ⇒ 取字节口对它返回 `None`，
@@ -170,23 +179,21 @@ fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
     let inits: Vec<&str> = table
         .lines()
         .map(str::trim)
-        .filter(|l| l.starts_with(&field) && l.contains("env!"))
+        .filter(|l| l.starts_with(&field))
         .collect();
     assert_eq!(
         inits.len(),
-        2,
-        "生产段里找到 {} 处 `{field}` 的 env 取值（应当 2：X86 / ARM）—— \
-             抽取器坏了或那两个 static 被改写了，本条会零命中地绿：{inits:?}",
+        3,
+        "生产段里找到 {} 处 `{field}` 取值（应当 3：X86 / ARM / 本机原生）—— \
+             抽取器坏了或那几槽被改写了，本条会零命中地绿：{inits:?}",
         inits.len()
     );
     for l in &inits {
-        assert!(
-            l.contains("env!(\"BACKEND_EMBEDDED_ID_"),
+        assert_eq!(
+            *l, "build_id: my_backend_id(),",
             "这一格的身份不是从**字节**来的：{l}\n\
-                 ★ 只有 `BACKEND_EMBEDDED_ID_<ARCH>` 是 `build.rs` 从这份二进制的字节里\n\
-                 扫出来的（`CC_MONITOR_BUILD_STAMP`）。退回 `BACKEND_BUILD_ID`（源码 id）\n\
-                 就是「问不出就拿源码的答案顶上」—— 把一个失败面换成一个假答案；\n\
-                 写一份 `.build_id` 旁文件再读它，是把标签换个地方抄（`KR70D1` 逐字点名的失效方向）。"
+                 ★ 只有 `my_backend_id()`（`build.rs` 从内嵌字节里扫出的 `BACKEND_EMBEDDED_ID`）是字节自报的；\n\
+                 写字面量、或写一份 `.build_id` 旁文件再读它，是把标签换个地方抄（`KR70D1` 逐字点名的失效方向）。"
         );
     }
     // ② 部署路真的跑了那道见证，而且**不带前置条件**。
@@ -210,23 +217,19 @@ fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
              恰恰在那一支里。⇒ 它必须无条件跑。",
         calls[0]
     );
-    // ③ 界标闭集只有一个住址（在后端源码里），本文件只许 `env!` 取。
-    for mark in [env!("BACKEND_STAMP_OPEN"), env!("BACKEND_STAMP_CLOSE")] {
-        assert!(
-            !table.contains(&format!("\"{mark}\"")),
-            "byte_table.rs 生产段里出现了界标字面量 `{mark}`"
-        );
+    // ③ 界标闭集只有一个住址（契约 crate），这两份生产段只许经 `deploy_contract` 取。
+    for mark in [deploy_contract::STAMP_OPEN, deploy_contract::STAMP_CLOSE] {
         assert!(
             !mark.is_empty(),
-            "`BACKEND_STAMP_OPEN/CLOSE` 是空串 —— `build.rs` 从后端源码抠界标失败了，\n\
-                 而空界标会让 `bytes_carry_build_stamp` 恒答 false ⇒ 自动部署整个静默关闭。"
+            "契约 crate 的界标是空串 —— 空界标会让 `bytes_carry_build_stamp` 恒答 false ⇒ 自动部署整个静默关闭"
         );
-        assert!(
-            !prod.contains(&format!("\"{mark}\"")),
-            "本文件生产段里出现了界标字面量 `{mark}` —— 闭集唯一住址在\n\
-                 `src/backend/main.rs`（`BUILD_STAMP_OPEN`/`CLOSE`），\n\
-                 这里只许 `env!(\"BACKEND_STAMP_OPEN\")` / `env!(\"BACKEND_STAMP_CLOSE\")` 取。"
-        );
+        for (name, code) in [("byte_table.rs", &table), ("sftp.rs", &prod)] {
+            assert!(
+                !code.contains(&format!("\"{mark}\"")),
+                "{name} 生产段里出现了界标字面量 `{mark}` —— 闭集唯一住址在契约 crate\n\
+                 （`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`），这里只许引那两个常量。"
+            );
+        }
     }
 
     // 跨文件契约的另一半：`build.rs` 期待的每个 arch，这里都要真有一份。
@@ -253,12 +256,11 @@ fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
     );
     for arch in &arches {
         assert!(
-            table.contains(&format!("BACKEND_EMBEDDED_ID_{}", arch.to_uppercase())),
-            "`build.rs` 会为 `{arch}` 嵌入二进制并发 `BACKEND_EMBEDDED_ID_{}`，\n\
+            table.contains(&format!("\"/backend-{arch}\"")),
+            "`build.rs` 会为 `{arch}` 把二进制拷进 `OUT_DIR/backend-{arch}`，\n\
                  而 `byte_table.rs` 生产段里没有对应的那一槽 ⇒ 取字节口对 (Linux, {arch}) 返回 `None`，\n\
                  **远端自动部署对这个 arch 悄悄关闭**（`build.rs` 那侧只 `cargo:warning=`，不会红）。\n\
-                 与「发版流水线要为每个 arch 备料」那条守的是同一个事故形状的两端。",
-            arch.to_uppercase()
+                 与「发版流水线要为每个 arch 备料」那条守的是同一个事故形状的两端。"
         );
     }
 }
@@ -369,7 +371,7 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
     // 上面那条按 arch 的清单只买到「它在校验的名单里」；这两条买的是**校验本身还在**。
     // 两个锚各自不可替代：
     //   · `ReadAllBytes` —— 它**真的把那份二进制读进来了**（不是 stat、不是读旁边的谁）；
-    //   · `const BUILD_STAMP_OPEN` —— 界标是**从后端源码抠的**，不是在 yml 里手抄一份
+    //   · `const STAMP_OPEN` —— 界标是**从契约 crate 的源码抠的**，不是在 yml 里手抄一份
     //     （手抄那一份哪天与源码漂开，校验会以「假红」的形式提醒错人）。
     for (needle, why) in [
         (
@@ -378,8 +380,8 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
                  而是它旁边的某个文件（`K-R70` 整件治的就是这个）",
         ),
         (
-            "const BUILD_STAMP_OPEN",
-            "身份戳的界标不是从后端源码抠的 —— 手抄一份就多一个会漂的住址；\
+            "const STAMP_OPEN",
+            "身份戳的界标不是从契约 crate 的源码抠的 —— 手抄一份就多一个会漂的住址；\
                  漂开那天校验会红，而红的原因与真病无关",
         ),
     ] {
@@ -771,11 +773,11 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     // ① 部署那几问（判定在本机常驻后端：`deploy-plan` 沿同一条 SSH 问那台；放字节经 `files` 链路）
     let fs = RemoteFs::open(&cfg).await.expect("开不了 files 链路");
     // 身份读那份字节自己的戳（那台 sshd 上真跑一次只读扫描），不读旁挂标记。
-    //   送去的字节里埋一段戳（界标取自 `build.rs` 交来的 env），其余是 3 MB 的噪声。
+    //   送去的字节里埋一段戳（界标取自契约 crate，与生产扫描同一对），其余是 3 MB 的噪声。
     let stamp = format!(
         "{}sr1b-id{}",
-        env!("BACKEND_STAMP_OPEN"),
-        env!("BACKEND_STAMP_CLOSE")
+        deploy_contract::STAMP_OPEN,
+        deploy_contract::STAMP_CLOSE
     );
     let mut bytes: Vec<u8> = (0..3_000_000u32).map(|i| (i * 7 % 251) as u8).collect();
     bytes.splice(1_000_000..1_000_000, stamp.bytes());

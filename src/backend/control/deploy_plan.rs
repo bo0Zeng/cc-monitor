@@ -56,10 +56,10 @@ const RETIRED_READ_MAX: u64 = 256 * 1024;
 /// 认从前那份三行入口时最多读多少（它几十字节；比这大就不是那一形 ⇒ 不读，按「不说自己是谁」显式失败）。
 const ENTRY_READ_MAX: u64 = 64 * 1024;
 
-/// 身份戳的两个界标（唯一住址在 `lib.rs`）。
+/// 身份戳的两个界标（住契约 crate）。
 const MARKS: Marks<'static> = Marks {
-    open: crate::BUILD_STAMP_OPEN,
-    close: crate::BUILD_STAMP_CLOSE,
+    open: deploy_contract::STAMP_OPEN,
+    close: deploy_contract::STAMP_CLOSE,
 };
 
 type Fut<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;

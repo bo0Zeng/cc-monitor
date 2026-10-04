@@ -11,13 +11,14 @@
    而且那份正文**同一个 job 里真的有人生成它**、生成器盘上真的在、生成出来的段真的非空。
 3. 〔`19b`，2026-09-19 立〕**产字节那条路**：条 63 承诺的每一格都有一条产线在本文件上
    （两向），本文件上没有第二条**没人登记**的产线（两向），每一处抠后端 `const BUILD_ID` /
-   身份戳界标的住址**实打指得到真东西**，而「抠不到」在 `build.rs` 那一侧是一条
-   **所有构建形态都响**的失败（`"unknown"` 兜底从类型上消失）。
+   身份戳界标的住址**实打指得到真东西**，而「半 bump」的发版核对两半都在：本文件把内嵌的
+   两份 musl 字节对上源码 `BUILD_ID`，`build.rs` 要求几份内嵌字节彼此同一版（不等当场失败，
+   `"unknown"` 兜底从类型上消失）。
 4. 〔`19c`，2026-09-19 立〕**`BUILD_ID` bump 的同拍债：re-embed**。产字节那条路的
    **本机那一端**有唯一一条命令（`tests/scripts/re-embed.sh`），它的配方与上面那条产线
    **同源**（target 两向集合相等 ＋ 旗标逐字相同）；它铺的落点与 `build.rs` 吃的落点
    两向相等、且**三个落点全部被 `.gitignore` 挡着**（两向）；`build.rs` 那几处守卫的
-   **出路只有这一个住址**，不许再手抄第二条产字节配方；mtime 那张安全网一条没撤。
+   **出路只有这一个住址**，不许再手抄第二条产字节配方。
    逐条与它买不到什么，见下面 `19c` 那一段的头注。
 5. 〔本拍 2026-09-23 立〕**本包的每一个 `[[bin]]` 都有一条登记过的入包路线**（⑭，
    两向集合相等），主二进制恰好一个、带 `required-features` 的 bin 零命中、
@@ -227,8 +228,8 @@ TRIPLES = {"x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"}
 #: ⇒ 本条不只比登记，还**实打去读那份文件**，抠不出恰好一行就红（⑩b）。
 IDENTITY_READS = {
     ("src/backend/lib.rs", "BUILD_ID"): 2,
-    ("src/backend/lib.rs", "BUILD_STAMP_OPEN"): 1,
-    ("src/backend/lib.rs", "BUILD_STAMP_CLOSE"): 1,
+    ("src/common/deploy-contract/src/lib.rs", "STAMP_OPEN"): 1,
+    ("src/common/deploy-contract/src/lib.rs", "STAMP_CLOSE"): 1,
 }
 
 # ══ `19c`（2026-09-19）：`BUILD_ID` bump 的同拍债 —— re-embed ═══════════════════
@@ -248,7 +249,7 @@ IDENTITY_READS = {
 # `tests/scripts/re-embed.sh`：一条真跑得起来的命令 ＋ 一条 `--check`。
 #
 # ⚠ **本组买不到什么**（与本文件头注第 4 条同一条边界，别读宽）：
-#   · ⑬a–⑬f 全是**盘上文本**的对拍 —— 「配方写得一样」≠「那条命令今天在这台机器上跑得出字节」
+#   · ⑬a–⑬e 全是**盘上文本**的对拍 —— 「配方写得一样」≠「那条命令今天在这台机器上跑得出字节」
 #     （它要 `cargo-zigbuild` ＋ `zig`，本判据一次都不装、不跑）。
 #   · ⑬g 真跑的是 `--check`（**只读**），不是 re-embed 本身。它在一棵**没铺字节**的树上
 #     只答得出「这里没有一份对不上的字节」——那不是「字节是对的」。
@@ -257,6 +258,8 @@ IDENTITY_READS = {
 
 #: re-embed 那条命令的本体。
 REEMBED_SH = "tests/scripts/re-embed.sh"
+#: 身份戳界标的住址（契约 crate；re-embed 与 `release.yml` 都从这一份抠）。
+MARKS_SRC = "src/common/deploy-contract/src/lib.rs"
 #: 落点的 gitignore 住址。
 BRIDGE_GITIGNORE = "src/frontend/shell/.gitignore"
 #: 🔴 `build.rs` 里那个**出路唯一住址**常量的值，逐字。
@@ -288,17 +291,12 @@ BANNED_RECIPE = [
     ("cargo zigbuild --target", "半条配方（漏了 `--release --locked`）⇒ 照它敲出来的字节不是发版那份"),
 ]
 
-#: ⑪ `build.rs` 那一侧：这两个函数**必须**以 panic 结束「抠不到」那一支，
-#: 且函数体里**不许**再出现兜底值（「`"unknown"` 这个值必须从类型上消失」）。
-#: 每条：(函数名, 禁词逐条, 为什么)
-NO_FALLBACK_FNS = [
-    ("backend_source_build_id", ['"unknown"', "unwrap_or_default()"],
-     "抠不到源码 `const BUILD_ID` 时给一个会参与比较的字符串 ⇒ 每台远端判 StaleBuild ⇒ "
-     "无限重装（真事故）"),
-    ("backend_stamp_marks", ["unwrap_or_default()"],
-     "抠不到身份戳界标时给一对空串 ⇒ 运行期拿空界标去扫，对**任何**字节都答不出身份 ⇒ "
-     "与 `\"unknown\"` 同族的静默恒假"),
-]
+#: ⑪ 「半 bump」的发版核对（monitor 的「我这一版」只认内嵌字节自报的 id，`build.rs` 不读后端源码）：
+#: 本文件把两份 musl 字节对上源码 `BUILD_ID`（`VERIFY_STEP`）；`build.rs` 要求几份内嵌字节彼此同一版
+#: （`AGREE_FN`：不等当场 panic，函数体里不许有兜底值）⇒ 产物里三份字节 id 相等且 == `BUILD_ID`。
+VERIFY_STEP = ("build-windows", "Place + verify embedded backends")
+AGREE_FN = "emit_embedded_id"
+AGREE_BANNED = ['"unknown"', "unwrap_or_default()"]
 
 # ══ 〔本拍 2026-09-23〕⑭ 本包的每一个 `[[bin]]` ↔ 安装包的清单 ═════════════════════
 #
@@ -997,27 +995,41 @@ def run_checks(emit):
               "住址指着一份没有那个 const 的文件，发版当场死在抽取上"
               % ("那份文件**读不到**" if hits is None else "命中 %d 行" % hits))
 
-    # ── ⑪ 「抠不到」在 `build.rs` 那一侧是一条所有构建形态都响的失败 ────────────
+    # ── ⑪ 半 bump 的发版核对：两份 musl 字节 == 源码 `BUILD_ID`（本文件）· 几份内嵌字节彼此同一版（`build.rs`）──
+    verify = next((str(st.get("run") or "") for jn, _, st in steps
+                   if (jn, str(st.get("name") or "")) == VERIFY_STEP), "")
+    for needle, why in [
+        ('foreach ($a in "x86_64","aarch64")', "两份 musl 逐个核"),
+        ("ReadAllBytes", "读的是那份字节本身"),
+        ('$want = "$open$src$close"', "拿源码 `BUILD_ID` 拼出要找的那一段戳"),
+        ("IndexOf($want)", "字节里找不到就红"),
+    ]:
+        check(needle in verify, "⑪发版核对·%s" % why,
+              "`%s / %s` 那一步里%s `%s` —— 少它，「内嵌字节自报的 id == 源码 `BUILD_ID`」这条"
+              "就没人核了（`build.rs` 刻意不读源码）" % (VERIFY_STEP[0], VERIFY_STEP[1],
+                                                     "有" if needle in verify else "**没有**", needle))
     brs = read_rel(BUILD_RS)
     check(brs is not None, "⑪地板·`%s` 读得到" % BUILD_RS, "%s" % (ROOT / BUILD_RS))
     if brs is not None:
-        for fname, banned, why in NO_FALLBACK_FNS:
-            body = rust_fn_body(brs, fname)
-            if body is None:
-                check(False, "⑪`%s` 找得到" % fname,
-                      "`%s` 里没有这个函数 —— 它被改名/删了，本条此刻是空真，按红记" % BUILD_RS)
-                continue
-            hit = [w for w in banned if w in body]
-            check(not hit, "⑪`%s` 没有兜底值" % fname,
-                  "函数体里出现 %r —— %s" % (hit, why))
-            check("panic!" in body, "⑪`%s` 抠不到就当场失败" % fname,
-                  "函数体里%s `panic!`（让「抠不到」在**所有**构建形态下都响，"
-                  "而不是只在恰好铺了字节的那种）" % ("有" if "panic!" in body else "**没有**"))
-        emitter = rust_fn_body(brs, "emit_backend_build_id")
-        wired = bool(emitter) and "backend_source_build_id()" in emitter
-        check(wired, "⑪`BACKEND_BUILD_ID` 的值取自那个会 panic 的住址",
-              "`emit_backend_build_id` %s 调 `backend_source_build_id()` —— 不调它 = "
-              "又开了一条绕过 panic 的取值路" % ("有" if wired else "**没有**"))
+        body = rust_fn_body(brs, AGREE_FN)
+        if body is None:
+            check(False, "⑪`%s` 找得到" % AGREE_FN,
+                  "`%s` 里没有这个函数 —— 它被改名/删了，本条此刻是空真，按红记" % BUILD_RS)
+        else:
+            hit = [w for w in AGREE_BANNED if w in body]
+            check(not hit, "⑪`%s` 没有兜底值" % AGREE_FN, "函数体里出现 %r" % hit)
+            check("panic!" in body and "BACKEND_EMBEDDED_ID" in body,
+                  "⑪几份内嵌字节不同版 ⇒ 构建当场失败，同版才交出共同 id",
+                  "`%s` 里 `panic!` %s、`BACKEND_EMBEDDED_ID` %s" % (
+                      AGREE_FN, "在" if "panic!" in body else "**不在**",
+                      "在" if "BACKEND_EMBEDDED_ID" in body else "**不在**"))
+        main = rust_fn_body(brs, "main") or ""
+        wired = all(w in main for w in ("embed_backends(&mut carried)",
+                                        "embed_native_backend(&mut carried)",
+                                        "%s(&carried)" % AGREE_FN))
+        check(wired, "⑪两条内嵌路的 id 都交给 `%s`" % AGREE_FN,
+              "`main` 里%s把两条内嵌路收来的 id 交给它 —— 漏一条 = 那一份不进「同一版」的核对" % (
+                  "" if wired else "**没有**"))
 
     # ── ⑫ 门禁 `muslbuild` 那一格的工具链版本 == 本文件真装的那两个 ──────────────
     #   G4 立那一格时逐字写着「版本一漂，本格的绿就不代表发版那趟会绿」——
@@ -1155,17 +1167,6 @@ def run_checks(emit):
               "代码行里出现 %r —— %s。（整行 `//` 注释已剥掉：墓碑逐字引着那段旧配方是账，不是指令）"
               % ([w for w, _ in hit], "；".join(why for _, why in hit) or "—"))
 
-    # ── ⑬f mtime 那张安全网还在，而且还在看**两份**源码 ─────────────────────────
-    #   ⚠ 它是安全网不是机制（理由住脚本头注）—— 但「不是机制」不等于可以撤：
-    #     撤了它，「字节比源码旧」这件事就只剩 id 那条硬校验在管，而 id 相同、
-    #     内容不同（同一个 `BUILD_ID` 下改了代码）那一格**只有 mtime 看得见**。
-    for want, why in [("backend_lib_rs()", "身份那一份"), ("backend_main_rs()", "分派那一份"),
-                      (".max()", "取较新的那个（只看一份 ⇒ 改另一份时它当场变瞎）")]:
-        check(want in eb, "⑬f mtime 安全网·%s" % want,
-              "`embed_backends` 里%s —— %s" % ("有" if want in eb else "**没有**", why))
-    check("比后端源码旧" in eb, "⑬f mtime 安全网还会出声",
-          "那条 `cargo:warning` 的文案%s在" % ("" if "比后端源码旧" in eb else "**不**"))
-
     # ── ⑬g 那条命令真跑得起来，而且**有数** ─────────────────────────────────────
     #   🔴 这一条是 ⑬ 的死值那一半（同 ⑧ 的形状）：不是「不报错」，是**有数**。
     #   ⚠ 它跑的是 `--check`（只读），**不是** re-embed 本身 —— 本判据不装 zig、不编任何东西。
@@ -1201,9 +1202,10 @@ def run_checks(emit):
     #     现打过一趟），本格在门禁里**不要求**真树铺了字节（字节不进仓，要求它会把每一棵
     #     新 clone 的树都判红；接不接进门禁是 `gate.sh` 的事，不在本件写区）。
     lib = read_rel("src/backend/lib.rs")
+    contract = read_rel(MARKS_SRC)
     sid = rust_str_const(lib, "BUILD_ID") if lib else None
-    sop = rust_str_const(lib, "BUILD_STAMP_OPEN") if lib else None
-    scl = rust_str_const(lib, "BUILD_STAMP_CLOSE") if lib else None
+    sop = rust_str_const(contract, "STAMP_OPEN") if contract else None
+    scl = rust_str_const(contract, "STAMP_CLOSE") if contract else None
     try:
         host = subprocess.run(["rustc", "-vV"], capture_output=True, text=True, timeout=30).stdout
         host = next((l.split(": ", 1)[1].strip() for l in host.splitlines() if l.startswith("host: ")), "")
@@ -1220,6 +1222,8 @@ def run_checks(emit):
             (d / "src" / "backend").mkdir(parents=True)
             (d / "tests" / "scripts" / "re-embed.sh").write_text(reembed, encoding="utf-8")
             (d / "src" / "backend" / "lib.rs").write_text(lib, encoding="utf-8")
+            (d / MARKS_SRC).parent.mkdir(parents=True)
+            (d / MARKS_SRC).write_text(contract, encoding="utf-8")
             if body is not None:
                 nd = d / "src" / "frontend" / "shell" / "native-backend"
                 nd.mkdir(parents=True)
@@ -1398,7 +1402,7 @@ def main():
           "⇒ 买到的是「**盘上这几份文本满足上面逐行列出的那些条件**」，**不是**「云端那一趟会绿」；"
           "⑨ 那几条尤其是 —— 「登记的那一步在文件里」≠「那一步在 runner 上编得出字节」，"
           "更不等于「那份字节在目标机器上跑得起来」。真机行为仍是**判不了**，不是「通过」。"
-          "🔴 **⑬（`19c`）那一组同一条边界**：⑬a–⑬f 全是盘上文本的对拍，"
+          "🔴 **⑬（`19c`）那一组同一条边界**：⑬a–⑬e 全是盘上文本的对拍，"
           "「配方写得一样」≠「那条命令今天跑得出字节」；⑬g 真跑的是 `--check`（只读），"
           "在一棵没铺字节的树上它只答得出「这里没有一份对不上的字节」，"
           "**不是**「字节是对的」，更不是「发版那一拍办完了」。"

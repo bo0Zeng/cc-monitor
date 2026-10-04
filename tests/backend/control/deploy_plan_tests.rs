@@ -45,8 +45,8 @@ fn fake_ack(nth: usize) -> Value {
 fn stamp(id: &str) -> String {
     format!(
         "{}{id}{}\n",
-        crate::BUILD_STAMP_OPEN,
-        crate::BUILD_STAMP_CLOSE
+        deploy_contract::STAMP_OPEN,
+        deploy_contract::STAMP_CLOSE
     )
 }
 

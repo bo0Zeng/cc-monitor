@@ -9,7 +9,6 @@
 
 use super::{
     forget_verified_build, preflight_can_be_skipped, record_verified_build, verified_build_of,
-    EXPECTED_BACKEND_BUILD_ID,
 };
 
 fn prod() -> String {
@@ -20,10 +19,10 @@ fn prod() -> String {
         .join("\n")
 }
 
-/// ★ 纯函数真值表：**只有逐字相等才许跳**。
+/// ★ 纯函数真值表：**只有逐字相等才许跳**；手上没带后端字节（「我这一版」是 `None`）⇒ 恒不跳。
 #[test]
 fn only_an_exact_build_match_may_skip_the_preflight() {
-    let e = "abc123";
+    let e = Some("abc123");
     assert!(
         preflight_can_be_skipped(Some("abc123"), e),
         "自证过就是期望 build ⇒ 该跳"
@@ -46,6 +45,12 @@ fn only_an_exact_build_match_may_skip_the_preflight() {
         !preflight_can_be_skipped(Some("abc"), e),
         "反方向的前缀也不许 —— `abc` 不是 `abc123`"
     );
+    for verified in [None, Some("abc123"), Some("")] {
+        assert!(
+            !preflight_can_be_skipped(verified, None),
+            "手上没带后端字节却跳了预检（记的是 {verified:?}）—— 没有对照物，「那台就是这一版」无从说起"
+        );
+    }
 }
 
 /// 记忆的存 / 取 / 抹。
@@ -86,7 +91,7 @@ fn the_memo_is_written_in_exactly_one_place() {
     );
 }
 
-/// ★ 跳过预检时，`confirmed_build` **必须**给期望值。
+/// ★ 跳过预检时，`confirmed_build` **必须**给「我这一版」。
 ///
 /// 给 `None` 的话 caps 阶梯会掉进「③ 空集全降级」—— 省两条连接换来
 /// **一轮降级 + 一轮升级重连**，比不跳还糟。
@@ -98,15 +103,13 @@ fn skipping_the_preflight_still_feeds_the_capability_ladder() {
     //   根本不起作用。实测对照（同一处撑大 `.map(|s| s)`）：`find_pinned` **通过**，
     //   `pin_line` **红**并报「没有任何一行 trim 之后等于…」。
     //   生产段那一行整行就是这个串，所以整行相等是**能用且更强**的写法。
-    guard_core::pin_line(&prod, "Some(EXPECTED_BACKEND_BUILD_ID.to_string())").unwrap_or_else(
-        |e| {
-            panic!(
-                "跳过预检那一支没有把 `confirmed_build` 置成期望值：{e}\n\
+    guard_core::pin_line(&prod, "mine.map(str::to_string)").unwrap_or_else(|e| {
+        panic!(
+            "跳过预检那一支没有把 `confirmed_build` 置成期望值：{e}\n\
                      ★ 置 `None` 会让 caps 掉进「空集全降级」⇒ 省下两条连接、换来一轮降级\n\
                      加一轮升级重连（`should_upgrade_reconnect`）—— **比不跳还糟**。"
-            )
-        },
-    );
+        )
+    });
 }
 
 /// ★ 失败路径必须抹记忆，而且**不止一处**（起流失败 + hello 身份不符）。
@@ -120,14 +123,5 @@ fn every_failure_path_forgets_the_memo() {
              ① 跳过预检后**起流失败**（backend 被删/被换旧）；\n\
              ② 收到 hello 但 **build_id 不是期望值**（装的不是当前 build）。\n\
              少一处，那台机器就会一直跳预检、一直失败，永远等不到重新部署。"
-    );
-}
-
-/// 期望 build_id 不是空串（否则真值表全塌）。
-#[test]
-fn the_expected_build_id_is_not_empty() {
-    assert!(
-        !EXPECTED_BACKEND_BUILD_ID.is_empty(),
-        "`EXPECTED_BACKEND_BUILD_ID` 是空串 —— 上面那些判据会退化"
     );
 }

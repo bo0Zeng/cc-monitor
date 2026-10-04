@@ -218,7 +218,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
         "BUILD_STAMP_LEN",
         "🔴 **一段定长数据的长度，不是任何东西的上限**：它逐字等于\
-             `BUILD_STAMP_OPEN.len() + BUILD_ID.len() + BUILD_STAMP_CLOSE.len()`，\
+             `STAMP_OPEN.len() + BUILD_ID.len() + STAMP_CLOSE.len()`（界标住契约 crate），\
              是 `CC_MONITOR_BUILD_STAMP` 那个 `static [u8; N]` 的 N。\
              它**没有「超了怎么办」这一格** —— 编译期算出来多少就是多少，\
              `BUILD_ID` 长一个字符它跟着长一个字符。\

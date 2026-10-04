@@ -953,12 +953,12 @@ fn never(_: &Path) -> bool {
     false
 }
 
-/// 带身份戳的一份假后端字节（界标取自 `build.rs` 交来的 env，与生产扫描同一对）。
+/// 带身份戳的一份假后端字节（界标取自契约 crate，与生产扫描同一对）。
 fn stamped(id: &str, salt: u8) -> Vec<u8> {
     let mut b: Vec<u8> = (0u8..=255).cycle().skip(salt as usize).take(2048).collect();
-    b.extend_from_slice(env!("BACKEND_STAMP_OPEN").as_bytes());
+    b.extend_from_slice(deploy_contract::STAMP_OPEN.as_bytes());
     b.extend_from_slice(id.as_bytes());
-    b.extend_from_slice(env!("BACKEND_STAMP_CLOSE").as_bytes());
+    b.extend_from_slice(deploy_contract::STAMP_CLOSE.as_bytes());
     b
 }
 

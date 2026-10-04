@@ -67,11 +67,20 @@ fn windows_precheck_really_probes_and_its_five_answers_are_distinguishable() {
     let old = card(true, CC_SPAWN_NEEDS, Some("p1a-older"));
     let lacking = card(true, &["detach"], Some(want));
     let answers = [
-        ("没装", windows_ccm_precheck(None, want)),
-        ("答不出", windows_ccm_precheck(Some((at, &dead)), want)),
-        ("不是这一版", windows_ccm_precheck(Some((at, &old)), want)),
-        ("缺能力", windows_ccm_precheck(Some((at, &lacking)), want)),
-        ("全对", windows_ccm_precheck(Some((at, &full)), want)),
+        ("没装", windows_ccm_precheck(None, Some(want))),
+        (
+            "答不出",
+            windows_ccm_precheck(Some((at, &dead)), Some(want)),
+        ),
+        (
+            "不是这一版",
+            windows_ccm_precheck(Some((at, &old)), Some(want)),
+        ),
+        (
+            "缺能力",
+            windows_ccm_precheck(Some((at, &lacking)), Some(want)),
+        ),
+        ("全对", windows_ccm_precheck(Some((at, &full)), Some(want))),
     ];
     for (i, (a, x)) in answers.iter().enumerate() {
         assert!(!x.is_empty(), "「{a}」那一档回了空话");
@@ -113,6 +122,37 @@ fn windows_precheck_really_probes_and_its_five_answers_are_distinguishable() {
         fine.contains("PATH") && fine.contains("那一份"),
         "「全对」那一档必须说清查的是 cc-monitor 那一份、不是 PATH 上那个：{fine}"
     );
+}
+
+/// 手上没带后端字节（「我这一版」是 `None`）：不说「不是这一版」也不说「是这一版」，只说版本不可比；能力照查。
+#[test]
+fn windows_precheck_without_own_bytes_says_incomparable() {
+    use crate::ccm_probe::CcmProbeResult;
+    let card = |caps: &[&str]| CcmProbeResult {
+        installed: true,
+        version: Some("5".into()),
+        capabilities: caps.iter().map(|c| c.to_string()).collect(),
+        build: Some("p1a-older".into()),
+        at: None,
+    };
+    let at = "$HOME/.cc-monitor/bin/ccm.exe";
+    let full = windows_ccm_precheck(Some((at, &card(CC_SPAWN_NEEDS))), None);
+    let caveat = crate::copy_table::copy_text("rsCcBusDeploy.win.pathCaveat", &[]);
+    assert_eq!(
+        full,
+        format!("cc-monitor 装的 ccm（{at}）p1a-older · 未带后端字节 · 版本不可比\n{caveat}")
+    );
+    let lacking = windows_ccm_precheck(Some((at, &card(&["detach"]))), None);
+    assert!(
+        lacking.contains("版本不可比") && lacking.contains("· 缺 tmux-size"),
+        "没带字节时缺的能力照样要点名：{lacking}"
+    );
+    for said in [&full, &lacking] {
+        assert!(
+            !said.contains("不是这一版") && !said.contains("是这一版"),
+            "没有对照物却判了版本：{said}"
+        );
+    }
 }
 
 /// Windows 上那条生产路径**真的接到了**纯函数上：回的是一句话（`None` 会把「查不了 PATH 上那个」

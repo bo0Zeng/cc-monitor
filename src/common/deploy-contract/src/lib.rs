@@ -7,7 +7,8 @@
 //! |---|---|---|
 //! | 表 A 的键与行（(OS, arch) · 有产线的格） | | [`Key`] · [`LINES`] · [`key_of`] · [`key_from_uname`] |
 //! | 拒绝的形状与对人说的话 | | [`Refusal`] · [`Refusal::say`] |
-//! | 身份戳的格式（读它字节里那段，不跑它） | | [`Marks`] · [`RemoteIdentity`] · [`identity_of_bytes`] · [`stamp_scan_cmd`] · [`interpret_stamp_scan`] · [`build_order`] |
+//! | 身份戳的格式（读它字节里那段，不跑它） | | [`STAMP_OPEN`] · [`STAMP_CLOSE`] · [`Marks`] · [`RemoteIdentity`] · [`identity_of_bytes`] · [`stamp_scan_cmd`] · [`interpret_stamp_scan`] · [`build_order`] |
+//! | 流模式能力 token（hello 的 `capabilities`） | | [`STREAM_CAPABILITIES`] |
 //! | 计划答话的形状 | `IPC-PROTOCOL.md` 的 `deploy-plan` | [`DeployAction`] · [`LegacyVerdict`] |
 //! | 落点路径 · 旧入口两形的记号 | | [`LEGACY_ENTRY_REL`] · [`LEGACY_BACKEND_REL`] · [`SHIM_MARK`] · [`LAUNCHER_MARK`] |
 //!
@@ -17,7 +18,7 @@
 //! # 不在本 crate 的
 //!
 //! - 字节本身（`include_bytes!` 那几槽）与「这一版带没带那一格」—— monitor `byte_table.rs`（放字节的一侧才知道）；
-//! - 身份戳的两个界标 —— 唯一住址在后端源码（`lib.rs` 的 `BUILD_STAMP_OPEN` / `BUILD_STAMP_CLOSE`），这里只收参数（[`Marks`]）；
+//! - `BUILD_ID` —— 留在后端（进了这里就又成了 monitor 读得到的源码常量；monitor 的「我这一版」只认手上那份字节自报的）；
 //! - 任何 IO（问那台、读盘、写）。
 
 use copy_core::copy_text;
@@ -269,8 +270,18 @@ fn not_utf8(s: &str) -> bool {
 
 // ═══ 身份：那台落点上那一份是谁 ═══════════════════════════════════════════════════════
 
-/// 身份戳的两个界标。**不写字面量**：唯一住址在后端源码（`lib.rs` 的 `BUILD_STAMP_OPEN` / `BUILD_STAMP_CLOSE`），
-/// 后端直接交那两个常量，monitor 交 `build.rs` 抠出来的 `BACKEND_STAMP_OPEN` / `BACKEND_STAMP_CLOSE`。
+/// 身份戳的开界标：后端二进制里那段 `<开><BUILD_ID><关>`（后端 `lib.rs::CC_MONITOR_BUILD_STAMP`）的头。
+/// 两侧都 `use` 这一份：后端拼戳 · monitor 构建期扫内嵌字节 · 运行期扫推出去的字节 · 远端扫落点那一份。
+pub const STAMP_OPEN: &str = "<<ccm-build-id:";
+/// 身份戳的关界标（见 [`STAMP_OPEN`]）。
+pub const STAMP_CLOSE: &str = ":ccm-build-id>>";
+
+/// 后端流模式声明的能力 token（hello 帧的 `capabilities`，字典序）：后端 `lib.rs::CAPABILITIES` 取它，
+/// monitor 拿它认 hello 里的 token、并在确认那台装的就是手上这一版时预知能力。
+/// 每个 token 都要有后端 `split_stream_flags` 的剥离分支（后端 `every_capability_token_is_strippable` 钉着）。
+pub const STREAM_CAPABILITIES: &[&str] = &["bg", "tail-only"];
+
+/// 身份戳的两个界标（扫描函数的参数形）。生产里两侧都交 [`STAMP_OPEN`] / [`STAMP_CLOSE`]，判据可换一对去验扫描本身。
 #[derive(Debug, Clone, Copy)]
 pub struct Marks<'a> {
     pub open: &'a str,
@@ -332,7 +343,7 @@ pub fn identity_of_bytes(bytes: &[u8], marks: Marks<'_>) -> RemoteIdentity {
 /// 在目标机器上扫身份戳的那一条命令（档 A：目标机器**自己的**只读工具，一次 exec，常数字节回传）。
 ///
 /// 正则与 `tests/scripts/re-embed.sh::bytes_id` 同一条（界标之间是 `[[:alnum:]_.-]`，这里要**至少一个字符** ——
-/// 两个界标在 `.rodata` 里挨着就是空串那一形，`build.rs::bytes_build_id` 也不收它）。**纯函数**。
+/// 两个界标在 `.rodata` 里挨着就是空串那一形，[`identity_of_bytes`] 也不收它）。**纯函数**。
 /// `word` 是那个文件在远端 shell 里的**写法**（固定落点常量，自带 `"$HOME"`），不是一条要 quote 的外来路径。
 pub fn stamp_scan_cmd(word: &str, marks: Marks<'_>) -> String {
     let ere = |s: &str| -> String {

@@ -162,13 +162,8 @@ fn upgrade_reconnect_converges() {
     assert!(!up((true, true), (false, false)));
 }
 
-/// F66：确认 `build.rs::emit_backend_capabilities` 那条单源管道真的通（非空、含当前
-/// token）——否则乐观路径静默退化成「第一轮降级 + hello 自愈」（仍正确，只慢一轮）。
+/// F66：乐观路径那份能力集就是契约 crate 那一份（后端 hello 交的同一份），不是手抄。
 /// 用 `contains` 而非精确相等：backend 将来加 token 时本测试仍过，不误红。
-///
-/// 这一句原先点的是 `EMBEDDED_BACKEND_CAPABILITIES`，**全仓零定义**
-/// ——管道上三个真名依次是：`build.rs::emit_backend_capabilities` → 编译期 env
-/// `BACKEND_CAPABILITIES` → `stream_source/version.rs::embedded_backend_capabilities`。
 #[test]
 fn embedded_capabilities_single_source_wired() {
     let caps = super::embedded_backend_capabilities();
@@ -177,48 +172,11 @@ fn embedded_capabilities_single_source_wired() {
         caps.contains(&"tail-only".to_string()),
         "单源应含 tail-only：{caps:?}"
     );
-}
-
-/// U-1（2026-08-01）：**`build_id` 那半单源管道一直没有等价断言。**
-///
-/// 〔墓碑 —— 本段原话逐字：「`build.rs::emit_backend_build_id` 抠不到就
-///  `unwrap_or_else(|| "unknown")` —— **静默退化**。一旦 backend crate 改名 /
-///  `BUILD_ID` 挪出 `main.rs` / `const` 写法换行，`EXPECTED_BACKEND_BUILD_ID` 会变成
-///  `"unknown"`，而**编译通过、测试全绿**，运行期把每台远端后端都判成 `StaleBuild`
-///  → 无限重装。」**那段描述在 `19b`（09-19）之前逐字为真。**〕
-///
-/// 🔴 **今天那条兜底没了**：`build.rs::backend_source_build_id()` 抠不到就**当场 panic**
-///⇒ 这一形在**所有**构建形态下都编不过，轮不到测试来发现。
-/// ⇒ 本条断言的**人群因此变小了**：它今天只逮得住「有人在 `lib.rs` 里把 `BUILD_ID`
-/// 真的写成 `"unknown"`」这一种（那是一次故意的手滑，不是路径漂）。
-/// ⚠ **留着它不是留一条恒真断言** —— 下面那两条形状检查（非空 / ≤64 / 字符集）
-/// 是它今天真正在买的东西；`"unknown"` 这一条降级为**便宜的第二道**。
-/// ⚠ 「路径漂」那一维今天由两处接住，都不在这里：`build.rs` 那条 panic（构建期）与
-/// `tests/evidence/K-R124-ruler.py` 的 ⑩（`release.yml` 里每一处抽取住址实打指得到真东西）。
-///
-/// capabilities 那半有 `embedded_capabilities_single_source_wired` 兜着，这半没有。
-/// U13 的仓库级重命名**必须**先有这条，否则那次重命名是静默失败。
-///
-/// 判据刻意宽松（不写死具体 id）：只要不是兜底值、且长得像一个 build id 就行 ——
-/// 写死 id 会让每次正常 bump 都误红，那种守卫最后会被人删掉。
-#[test]
-fn embedded_build_id_single_source_wired() {
-    let id = super::EXPECTED_BACKEND_BUILD_ID;
-    assert_ne!(
-        id, "unknown",
-        "`build.rs::emit_backend_build_id` 没抠到后端的 `const BUILD_ID` —— \
-             多半是路径失效（crate 改名 / 文件搬家）或 `const` 写法变了。\
-             它是**静默退化**：不修的话每台远端都会被判 StaleBuild 并无限重装。"
-    );
-    assert!(
-        !id.is_empty() && id.len() <= 64,
-        "build_id 形状可疑：{id:?}"
-    );
-    assert!(
-        id.chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.'),
-        "build_id 含意外字符（多半是抠错了行）：{id:?}"
-    );
+    let contract: Vec<String> = deploy_contract::STREAM_CAPABILITIES
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    assert_eq!(caps, contract, "乐观能力集与契约那一份漂开了");
 }
 
 /// 🔴 ★ **升级判定不许被 `if !tail_only` 包住**：`tail_only` 已开、`bg` 没开（用户后来打开了 showBgSessions）
@@ -226,7 +184,7 @@ fn embedded_build_id_single_source_wired() {
 ///
 /// 纯函数那两条（`upgrade_reconnect_converges` / `capability_gate_matrix`）**结构上看不见
 /// 调用点**，这一条按源文本钉：`if should_upgrade_reconnect(` 那一行的缩进，必须与同一个
-/// hello 分支里 `if build_id == EXPECTED_BACKEND_BUILD_ID {` 那一行**相同**
+/// hello 分支里 `if mine == Some(build_id.as_str()) {` 那一行**相同**
 /// （被任何一层 `if` 包住，缩进就会深一格）。
 /// ⚠ 买不到：「没包住但改成了别的等价短路」（例：`!tail_only && should_upgrade…`）——
 ///   下面第二条断言只挡了最直白的那一形。
@@ -243,7 +201,7 @@ fn the_upgrade_check_is_not_hidden_behind_the_tail_only_guard() {
         hits[0].len() - hits[0].trim_start().len()
     };
     let call = indent("if should_upgrade_reconnect(");
-    let anchor = indent("if build_id == EXPECTED_BACKEND_BUILD_ID {");
+    let anchor = indent("if mine == Some(build_id.as_str()) {");
     // hello 那一臂抽成了顶层函数 `on_hello`，锚点在函数体第一层（缩进 4）；更浅就是抽错了行。
     assert!(
         anchor >= 4,

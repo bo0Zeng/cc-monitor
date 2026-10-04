@@ -185,6 +185,25 @@ pub(crate) fn decode_verdict(v: &serde_json::Value) -> Result<Verdict, String> {
     Ok(Verdict { replace, older })
 }
 
+/// 换不换、旧不旧：「我这一版」（`mine`）有值才去问（`ask`，生产里是 [`ask_verdict`]）；手上没带后端字节（`None`）⇒
+/// **不问**、直接「接、不判旧」—— 没有可放的字节，换装无从发起，新旧也无从比（版本那句话说「不可比」）。
+pub(crate) async fn verdict_for<F, Fut>(
+    mine: Option<&'static str>,
+    ask: F,
+) -> Result<Verdict, String>
+where
+    F: FnOnce(&'static str) -> Fut,
+    Fut: std::future::Future<Output = Result<Verdict, String>>,
+{
+    match mine {
+        Some(m) => ask(m).await,
+        None => Ok(Verdict {
+            replace: false,
+            older: false,
+        }),
+    }
+}
+
 /// 问本机常驻后端「那台报 `theirs`，换还是接」。入参只有事实（手上这一版 · 那台报的 · 这一趟换过没有）。
 async fn ask_verdict(mine: &str, theirs: &str, replaced: bool) -> Result<Verdict, String> {
     use crate::backend_route::{route_call_error, Routed};
@@ -345,12 +364,10 @@ pub(crate) async fn attach(cfg: &RemoteConfig, flags: (bool, bool)) -> Result<Re
         let mut r = tokio::io::BufReader::new(link);
         let hello = read_line(&mut r, true).await?;
         let theirs = hello_build(&hello)?;
-        // 换不换问本机常驻后端（判定只在后端），这里只照做。
-        let verdict = ask_verdict(
-            crate::stream_source::EXPECTED_BACKEND_BUILD_ID,
-            &theirs,
-            replaced,
-        )
+        // 换不换问本机常驻后端（判定只在后端），这里只照做；手上没带后端字节 ⇒ 不问、照接。
+        let verdict = verdict_for(crate::byte_table::my_backend_id(), |mine| {
+            ask_verdict(mine, &theirs, replaced)
+        })
         .await?;
         if verdict.replace {
             tracing::info!(

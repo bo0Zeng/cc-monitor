@@ -112,6 +112,8 @@ path = "src/filewin/win_main.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+# 内嵌字节自报的身份：界标与扫法用契约 crate 那一份（后端拼戳 · 运行期扫字节同一份）。
+deploy-contract = { path = "../../common/deploy-contract" }
 
 [dependencies]
 # tray-icon feature 实际没用（前端不调系统托盘 API），移除以减小依赖体积。

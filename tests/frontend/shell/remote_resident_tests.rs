@@ -240,3 +240,65 @@ async fn a_tunnel_refused_for_forwarding_stops_at_the_first_try() {
     .await;
     assert_eq!((got, tries.load(Ordering::SeqCst)), (Ok(2), 3));
 }
+
+/// ④ 手上没带后端字节（「我这一版」是 `None`）⇒ `resident-verdict` **不问**、照接、不判旧（换装无从发起）；
+/// 有值 ⇒ 照问、照它答的做。问的那一方是个假后端：记下被问了几次、问的是哪一版。
+#[tokio::test]
+async fn without_own_bytes_the_resident_verdict_is_not_asked() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
+    let asked = AtomicUsize::new(0);
+    let with = Mutex::new(String::new());
+    let fake = |mine: &'static str| {
+        asked.fetch_add(1, Ordering::SeqCst);
+        *with.lock().unwrap() = mine.to_string();
+        async {
+            Ok(Verdict {
+                replace: true,
+                older: true,
+            })
+        }
+    };
+    let none = verdict_for(None, fake).await;
+    assert_eq!(
+        none,
+        Ok(Verdict {
+            replace: false,
+            older: false
+        }),
+        "没带字节却判了换 / 判了旧"
+    );
+    assert_eq!(
+        asked.load(Ordering::SeqCst),
+        0,
+        "没带字节却去问了 resident-verdict"
+    );
+
+    let fake = |mine: &'static str| {
+        asked.fetch_add(1, Ordering::SeqCst);
+        *with.lock().unwrap() = mine.to_string();
+        async {
+            Ok(Verdict {
+                replace: true,
+                older: true,
+            })
+        }
+    };
+    let some = verdict_for(Some("p9z-mine"), fake).await;
+    assert_eq!(
+        (
+            some,
+            asked.load(Ordering::SeqCst),
+            with.lock().unwrap().clone()
+        ),
+        (
+            Ok(Verdict {
+                replace: true,
+                older: true
+            }),
+            1,
+            "p9z-mine".to_string()
+        ),
+        "有「我这一版」却没照问 / 问的不是这一版"
+    );
+}

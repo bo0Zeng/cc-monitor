@@ -11544,6 +11544,16 @@
         "C-T1": "cc-spawn 是 cc-bus 自带的命令名，照原名指路；正则把 -spawn 当成了实现词"
       }
     },
+    "rsCcBusDeploy.win.noOwnBytes": {
+      "kind": "body",
+      "zh": "cc-monitor 装的 ccm（{at}）{build} · 未带后端字节 · 版本不可比{lack}\n{pathCaveat}",
+      "args": ["at", "build", "lack", "pathCaveat"]
+    },
+    "rsCcBusDeploy.win.lackShort": {
+      "kind": "body",
+      "zh": " · 缺 {list}",
+      "args": ["list"]
+    },
     "rsCcBusDeploy.win.unknown": {
       "kind": "body",
       "zh": "未知",
@@ -12439,6 +12449,11 @@
       "zh": "远端后端是旧版本（{build}，当前 {expected}），有些功能用不了。后台会话看不见，历史加载容易卡住。请在设置里重装这台机器的后端。",
       "args": ["build", "expected"]
     },
+    "rsSshSource.health.degradedNoOwnBytes": {
+      "kind": "body",
+      "zh": "远端后端 {build} 降级运行：后台会话不可见、历史易卡。未带后端字节 · 版本不可比",
+      "args": ["build"]
+    },
     "rsSshSource.upgrade.reconnect": {
       "kind": "error",
       "zh": "后端更新了，重新连接一次",
@@ -12458,6 +12473,11 @@
       "kind": "body",
       "zh": "远端 [{label}] 上的后端是 {reported}，不比这个 monitor（{mine}）旧 —— 多半是另一台更新过的 monitor 装的。这个 monitor 不会把它换回去；要一致，就把这个 monitor 也升级。",
       "args": ["label", "reported", "mine"]
+    },
+    "rsSshSource.version.noOwnBytes": {
+      "kind": "body",
+      "zh": "远端 [{label}] 后端 {reported} · 未带后端字节 · 版本不可比",
+      "args": ["label", "reported"]
     },
     "rsSshSource.health.overflowLost": {
       "kind": "body",
@@ -14065,6 +14085,11 @@
     "rsLocalBackendHost.local.machine": {
       "kind": "body",
       "zh": "本机",
+      "args": []
+    },
+    "rsLocalBackendHost.local.noStamp": {
+      "kind": "error",
+      "zh": "内嵌后端 · 版本不明",
       "args": []
     },
     "rsLocalBackendHost.adopt.waited": {

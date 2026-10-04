@@ -912,8 +912,8 @@ run_gate e2e-smoke '步数：`tests/e2e/*.py` 的 `py_compile` · `tests/e2e/exe
 # 三条产线**只由 `release.yml` 一个文件驱动** ⇒ 这张表的门禁**只能建在 `release.yml` 上**。
 # ⇒ 本格从 `19b` 起同时判：⑨ 承诺的平台 ↔ 产线两向相等、本文件里「编后端」的步骤 ↔ 登记
 #   两向相等、target triple 两向相等、runner 标签逐字；⑩ 每一处抠 `const BUILD_ID` /
-#   身份戳界标的住址**实打读那份文件**、抠不出恰好一行就红；⑪ `build.rs` 那一侧
-#   「抠不到」是一条**所有构建形态都响**的失败（`"unknown"` 兜底从类型上消失）；
+#   身份戳界标的住址**实打读那份文件**、抠不出恰好一行就红；⑪ 半 bump 的发版核对两半都在
+#   （内嵌校验把 musl 字节对上源码 `BUILD_ID` · `build.rs` 要求几份内嵌字节同一版）；
 #   ⑫ 本格 `muslbuild` 裁词里点名的工具链版本 == `release.yml` 真装的那两个。
 # 🔴 ⑩ 有现物：步 9 把 `BUILD_ID` 搬进 `lib.rs` 时，`release.yml` 里**两处**抽取只改了一处，
 #   另一处留在 `main.rs`（那里今天没有那个 const）⇒ 真发版会死在抽取上。本拍两件事一起做：

@@ -3966,34 +3966,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         ("tests/backend/readonly_guard.rs", "strip_cfg_test", 2),
-        // 🔴 〔步 `19c` 2026-09-19〕`build.rs::embed_backends` 里那个按 arch 分岔的
-        //    `c_cross_note` 局部变量**删了** —— 它是半 bump panic 文案里那条**手抄的
-        //    第二条产字节配方**的附注，而那整段配方在本拍撤掉了（出路收成一条命令
-        //    `tests/scripts/re-embed.sh`，与 `release.yml` 逐字同源）。
-        //    ⚠ **那段 08-25 的实测读数一个字没丢**：它搬进了那条命令自己的头注
-        //    （`ring` 的 C 要 `zig cc`，`rust-lld` 替不了，aarch64 不给就 rc=101）——
-        //    写在**跑那条命令的地方**，而不是一段没人会照着敲的 panic 文案里。
-        //    留在 `build.rs` 里的那一句逐字引用旧变量名，说的正是「那段话原先长什么样、
-        //    它搬去哪了」⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
-        //
-        // 🔴 **这个 `2` 不是笔误，而它背后是本函数自己的一处双计** —— 如实记，别读成
-        //    「盘上写了两遍」：`src/frontend/shell/build.rs` 里 `c_cross_note` **只出现一次**
-        //    〔现打 `grep -o … | wc -l` ＝ 1〕，而本条报的是 2。
-        //    根在 `dead_name_corpus()`：它先走 `"src"` 那棵树（`build.rs` 今天**就在
-        //    `src/` 底下**），走完之后又 `out.push(root.join("src/frontend/shell/build.rs"))`
-        //    **再收一遍** ⇒ 这一份文件的每一个散文名字都被数两遍。
-        //    〔现打验法：往 `build.rs` 末尾加一行只出现一次的
-        //     `// probe \`zz_probe_unique_name\``，本条当场报「盘上 2 处」。〕
-        //    ⚠ 那句显式 `push` 是搬树之前留下的（当年 `build.rs` 住 `src-tauri/`，
-        //    在所有根之外，非补不可）。**这正是本函数头注 09-18 那段话说的同一形**
-        //    ——「那些文件被数两遍…… 教训：发现一个形状之后，要把同形的全找一遍」——
-        //    那一拍改对了四个**目录**根，**漏了这一处单文件的显式 push**。
-        //    🔴 **本拍不改它**：动它就是动一条判据的人群，而且是往**变少**的方向动
-        //    （本仓纪律：地板在「变少」方向上是瞎的，这种改要单独一拍、带自己的死值验），
-        //    与 `19c` 的写区也不沾边。⇒ 按盘上现打的数登记，并把读数留在这里；
-        //    真要修，同拍要核的还有 `:1463` 那处**同形**的显式 push 与它那条
-        //    「四个根下 186 + build.rs 1」的分母自述（那句今天也已经陈了）。
-        ("src/frontend/shell/build.rs", "c_cross_note", 2),
         // Windows 预检从「说没做」换成真探测（`K-R69` 的
         //   `probe_binary_uncached`）⇒ 旧测试整条改写，头注逐字引旧名说明它为什么不在了。
         (
@@ -4892,7 +4864,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/stream/wire.rs", 2), // 1 → 2：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 //
         // +2：`install_remote_ccm_helper` 改名那两行。
         ("src/frontend/shell/README.md", 15), // 列 tmux 会话那一行改写（不再点旧名）⇒ 与前一拍同数 // 主线 13 ＋ MIG-1 本路增量 ⇒ 15（盘上现打） // −1：IPC 清单 MCP 那一段整段删了（带墓碑的那句注释随之走） // +2：mcp.rs 那一行（读面改问后端）· 远端项目目录旧名那句 // +1：远端读会话函数（本机远端合成一条）· 3 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 6 → 8：`atomic_write_string` 那一节 ＋ 远端删会话那道结构守卫 ·README 历史那一段重写（历史清单搬进本机后端），用量那句旧线索留着 // 11 → 13
-        ("src/frontend/shell/build.rs", 1),
         ("src/backend/agents/codex/token.rs", 1),
         // 6 → 10：派生改走 `bus-spawn` 原语，删了 SSH 那条构造器与对 `<local>` 的公共拒绝
         //   ⇒ 两块整段墓碑 ＋ 两处订正行（`cc_bus_send` 头注 · `kill_via_backend` 头注里那句旧拒绝）。

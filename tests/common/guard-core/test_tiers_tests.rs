@@ -374,7 +374,6 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/contract_crate_guard_tests.rs",   // 读 manifest 与生产源码
     "tests/frontend/shell/bus_identity_registry_tests.rs",
     "tests/frontend/shell/byte_cap_registry_tests.rs",
-    "tests/frontend/shell/byte_table_tests.rs",
     "tests/frontend/shell/ccm_cli_contract_tests.rs",
     "tests/frontend/shell/chan/webview_tests.rs",
     "tests/frontend/ui/alias-reads.vitest.ts", // 别名八问走通道：解码器读跨语言金样 aliases.golden.json ＋ 问对那台
@@ -556,6 +555,8 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/agents/claudecode/runs_tests.rs", // Claude Code 的子运行形状（子运行记录住址那一条碰临时目录）
     // SCAN → INTEGRATION：部署计划的编排（替身对面）＋ 读金样与后端历史表之外，`place-verdict` 帧面那一条真读写临时目录里的落点文件。
     "tests/backend/control/deploy_plan_tests.rs",
+    // SCAN → INTEGRATION：「内嵌的几份后端字节要彼此同一版」那一条真跑本包的构建脚本（临时目录里铺假字节）。
+    "tests/frontend/shell/byte_table_tests.rs",
     // 扫描层 → 集成层：读 gate.sh ＋ package.json 两份外部件（套件名单的唯一住址是门禁的 `run_e2e` 行）。
     "tests/frontend/shell/e2e_gate_registry_tests.rs",
     "tests/backend/observe/cc_bus_hooks_tests.rs", // 钩子诊断进后端：造一台假机器（临时目录里的 settings ＋ 程序）读回成品

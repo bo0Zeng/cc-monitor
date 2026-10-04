@@ -135,10 +135,10 @@ pub struct BackendBinary {
     pub machine: String,
 }
 
-/// 身份戳的两个界标（`build.rs` 从后端源码抠出来交进来；本文件不许出现那两个字面量）。本机那一份的身份（`local_backend.rs`）也用它。
+/// 身份戳的两个界标（住契约 crate，后端拼戳用的是同一份；本文件不许出现那两个字面量）。本机那一份的身份（`local_backend.rs`）也用它。
 pub(crate) const STAMP_MARKS: deploy_contract::Marks<'static> = deploy_contract::Marks {
-    open: env!("BACKEND_STAMP_OPEN"),
-    close: env!("BACKEND_STAMP_CLOSE"),
+    open: deploy_contract::STAMP_OPEN,
+    close: deploy_contract::STAMP_CLOSE,
 };
 
 /// 部署计划答话的形状住契约 crate `deploy-contract`（判定住后端 `control/deploy_plan.rs`）；本 crate 里还要它的几处从这里拿同一份名字。
@@ -274,7 +274,7 @@ async fn ask_plan_for(
 /// 照计划取字节：那一格这一版带着的那一份（`byte_table::pick`）。计划说的身份与字节自报的对不上 ⇒ 两侧漂了，不推。
 fn planned_binary(plan: &Plan) -> Result<BackendBinary, String> {
     crate::byte_table::pick(plan.key)
-        .map(|p| (p.bytes, p.build_id))
+        .and_then(|p| Some((p.bytes, p.build_id?)))
         .filter(|(_, id)| *id == plan.expected)
         .map(|(bytes, build_id)| BackendBinary {
             build_id,
@@ -430,19 +430,11 @@ fn remote_parent(path: &str) -> &str {
     }
 }
 
-/// 朴素子串搜索（8MB × 16B 一次性毫秒级；不为此引 memchr 依赖）。
-fn bytes_contain(haystack: &[u8], needle: &[u8]) -> bool {
-    !needle.is_empty() && haystack.windows(needle.len()).any(|w| w == needle)
-}
-
 /// 🔴 `K-R70`：**这份字节自己说得出它是 `build_id` 吗** —— 不看它旁边任何文件。
 ///
-/// 找的是后端那侧那段 `#[used] static CC_MONITOR_BUILD_STAMP`：
-/// `<开>` ＋ `BUILD_ID` ＋ `<关>`，两个界标的**唯一住址**在
-/// `src/backend/main.rs`（`BUILD_STAMP_OPEN` / `BUILD_STAMP_CLOSE`），
-/// 由 `build.rs` 抠出来经 `BACKEND_STAMP_OPEN` / `BACKEND_STAMP_CLOSE` 交到这里
-/// ⇒ 本文件里**不许出现那两个字面量**
-/// （`the_embedded_identity_comes_from_the_bytes_not_from_a_label` 在数它）。
+/// 找的是后端那侧那段 `#[used] static CC_MONITOR_BUILD_STAMP`：`<开>` ＋ `BUILD_ID` ＋ `<关>`，
+/// 扫法只有一份（`deploy_contract::identity_of_bytes`，恰好一个戳才是身份），界标见 [`STAMP_MARKS`]
+/// ⇒ 本文件里**不许出现那两个字面量**（`the_embedded_identity_comes_from_the_bytes_not_from_a_label` 在数它）。
 ///
 /// # 它买到的与买不到的
 ///
@@ -451,15 +443,9 @@ fn bytes_contain(haystack: &[u8], needle: &[u8]) -> bool {
 /// ⚠ 买不到：**防篡改**。谁都能往一段字节里塞一个假戳。它防的是漂移与手滑
 ///    （拿错文件 / 铺了旧产物 / 只 bump 源码没重编），不防恶意 —— 那要签名，不是戳。
 pub fn bytes_carry_build_stamp(bytes: &[u8], build_id: &str) -> bool {
-    if build_id.is_empty() {
-        return false;
-    }
-    let stamp = format!(
-        "{}{build_id}{}",
-        env!("BACKEND_STAMP_OPEN"),
-        env!("BACKEND_STAMP_CLOSE")
-    );
-    bytes_contain(bytes, stamp.as_bytes())
+    !build_id.is_empty()
+        && deploy_contract::identity_of_bytes(bytes, STAMP_MARKS)
+            == deploy_contract::RemoteIdentity::Stamp(build_id.to_string())
 }
 
 // 这里原来是按 arch 取字节的那个函数：两份 musl 的 `include_bytes!` 与一个只认 arch 的 `match`。

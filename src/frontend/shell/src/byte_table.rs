@@ -41,24 +41,33 @@ pub(crate) use deploy_contract::{Arch, Key, Os, Refusal, LINES};
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Picked {
     pub(crate) bytes: &'static [u8],
-    /// `build.rs` 从**这份字节**里扫出的身份戳（`K-R70`）。
-    pub(crate) build_id: &'static str,
+    /// 这份字节自报的身份（`K-R70`：`build.rs` 从内嵌字节里扫出、几份彼此相等的那一个，即 [`my_backend_id`]）。
+    pub(crate) build_id: Option<&'static str>,
+}
+
+/// 🔴 **「我这一版」只有这一个值**：手上那份内嵌后端字节自报的 id（`build.rs` 扫出几份内嵌字节、要求彼此相等，
+/// 以 `BACKEND_EMBEDDED_ID` 交来）。没内嵌（开发树 · 工作树）⇒ `None`：手上没有可放的字节，不判那台旧、
+/// 不发起换装，只按那台报的接，并说一句版本不可比。没有兜底串。
+///
+/// 版本判定 · 版本提示 · 跳预检 · 已验版本记忆 · `resident-verdict` · 本机常驻 hello · Windows 预检都只读它。
+pub(crate) const fn my_backend_id() -> Option<&'static str> {
+    option_env!("BACKEND_EMBEDDED_ID")
 }
 
 // ═══ 槽：本文件是全仓唯一 `include_bytes!` 可执行字节的地方 ═══════════════════════════
 
 /// 远端那两份 musl 后端（`build.rs::embed_backends` 放进 `OUT_DIR`）。
-/// 🔴 `K-R70`：`build_id` 只许是 `build.rs` 从**这份字节**里扫出的身份戳。
+/// 🔴 `K-R70`：`build_id` 只许是 `build.rs` 从内嵌字节里扫出的身份戳（[`my_backend_id`]）。
 #[cfg(embedded_backends)]
 mod musl_backend {
-    use super::Picked;
+    use super::{my_backend_id, Picked};
     pub(super) static X86: Picked = Picked {
         bytes: include_bytes!(concat!(env!("OUT_DIR"), "/backend-x86_64")),
-        build_id: env!("BACKEND_EMBEDDED_ID_X86_64"),
+        build_id: my_backend_id(),
     };
     pub(super) static ARM: Picked = Picked {
         bytes: include_bytes!(concat!(env!("OUT_DIR"), "/backend-aarch64")),
-        build_id: env!("BACKEND_EMBEDDED_ID_AARCH64"),
+        build_id: my_backend_id(),
     };
 }
 
@@ -68,14 +77,9 @@ mod musl_backend {
 /// `build.rs` 的 `NATIVE_BACKEND_DIR` / `NATIVE_BACKEND_FILE`（`the_native_backend_path_is_spelled_the_same_on_both_sides` 对拍）。
 #[cfg(embedded_native_backend)]
 fn native_backend() -> Option<Picked> {
-    let id = env!("BACKEND_NATIVE_ID");
-    if id.is_empty() {
-        // 走不到（`build.rs` 缺身份当场 panic），但不假设走不到：空身份拼不出释放名。
-        return None;
-    }
     Some(Picked {
         bytes: include_bytes!("../native-backend/cc-monitor-native"),
-        build_id: id,
+        build_id: my_backend_id(),
     })
 }
 
@@ -159,7 +163,7 @@ pub(crate) fn choose(key: Result<Key, Refusal>) -> Result<Picked, Refusal> {
 pub(crate) fn carried_backends() -> Vec<(Key, &'static str)> {
     LINES
         .iter()
-        .filter_map(|k| Some((*k, pick(*k)?.build_id)))
+        .filter_map(|k| Some((*k, pick(*k)?.build_id?)))
         .collect()
 }
 

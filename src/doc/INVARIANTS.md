@@ -1985,8 +1985,7 @@ no-op（真机反向实测：写错 starttime 时探针存活，不误伤无关�
   「快照 + miss 计数」。
 - **`BUILD_ID` 必须 bump**（现 `p1r-event-liveness`）：不 bump ⇒ 旧后端报同一个 id
   ⇒ 不被判 stale ⇒ 不自动重装 ⇒ **整轮改动在已部署的远端休眠**。
-  单一事实源：`build.rs::emit_backend_build_id` 从后端源码抠出，emit 成 monitor 的
-  `EXPECTED_BACKEND_BUILD_ID`。
+  monitor 拿它比的是手上那份内嵌字节自报的 id（`byte_table.rs::my_backend_id`）；内嵌字节由发版重编。
 - **死亡帧只带 name、不带 sid**：`#{@ccm_sid}` 在 hook 上下文会解析到**别的会话**
   （P0 实测；照直觉写会把活着的会话变灰）。name→sid 的映射 monitor 本来就有
   （最新那份 `tmux ls` 原文）⇒ **让知道的人去查，比让不知道的人硬传更稳。**

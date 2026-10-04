@@ -8,11 +8,11 @@
 //! 模块声明、`PROTO_VERSION`、身份那一块（`BUILD_ID` ＋ 戳）、`SUBCOMMANDS` 住这里；**分派留在 `main.rs`**。
 //!
 //! 🔴 **`BUILD_ID` 必须住这里，不能留在 `main.rs`** —— in-process 那条路**没有
-//! 那个 `main.rs`**，身份会跟着消失。它的三处盘上消费者已同拍改到本文件：
-//!   · `src/frontend/shell/build.rs`（`backend_lib_rs()` ⇒ 两条内嵌路的编译期期望值）
-//!   · `.github/workflows/release.yml`（清单里那个 build_id）
+//! 那个 `main.rs`**，身份会跟着消失。读它源码的只有发版核对那一侧（字节自报 == 这里的 `BUILD_ID`）：
+//!   · `.github/workflows/release.yml`（内嵌校验 · 版本对账）
+//!   · `tests/scripts/re-embed.sh`（`--check`）
 //!   · `tests/backend/build_id_guard.rs`（真身份住址的逐条核对）
-//! **别在第四处写它的住址。**
+//! monitor 不读它：monitor 的「我这一版」是手上那份内嵌字节自报的 id。**别在第四处写它的住址。**
 
 pub mod accounts; // 账号域：上游选择（`resolve` 那张决策表 ＋ 表 ＋ 凭据 ＋ 热重载）＋ `iso`。**不是中转**，不住 relay/
 #[cfg(test)]
@@ -78,9 +78,9 @@ pub mod stream; // 进后端的口 ① 帧面 ＋ 跨机问答原语：wire · i
 pub const PROTO_VERSION: u32 = 1;
 
 /// Backend build id reported in the `Hello` frame (#33 version negotiation).
-/// Human-readable, monotonic build/feature tag; the monitor compares it against
-/// `EXPECTED_BACKEND_BUILD_ID` and warns the user when a manually-deployed backend
-/// is stale (staleness 提示 + 部署确认)。
+/// Human-readable, monotonic build/feature tag; the monitor compares it against the id its own
+/// embedded backend bytes report and warns the user when a
+/// manually-deployed backend is stale (staleness 提示 + 部署确认)。
 ///
 /// **与 F66 `capabilities` 两轴正交（§26）**：`build_id` = backend 的**身份/构建版本**
 /// （改了后端二进制就该 bump，用于 staleness + 部署确认）；`capabilities` = 该版本
@@ -732,16 +732,10 @@ pub const PROTO_VERSION: u32 = 1;
 /// p6w-terminal-naming：session_added.container 改成 {host, terminal} 对象；capture-pane · tmux-list 删，tmux-name-mint → terminal-name-mint，sessions-tmux → sessions-where。
 pub const BUILD_ID: &str = "p6w-terminal-naming";
 
-/// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
-/// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
-/// 再经 `BACKEND_STAMP_OPEN` / `BACKEND_STAMP_CLOSE` 交给 monitor 生产段。
-/// **别在第二处写这两个字面量。**
-pub const BUILD_STAMP_OPEN: &str = "<<ccm-build-id:";
-/// 见 [`BUILD_STAMP_OPEN`]。
-pub const BUILD_STAMP_CLOSE: &str = ":ccm-build-id>>";
+// 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
 pub const BUILD_STAMP_LEN: usize =
-    BUILD_STAMP_OPEN.len() + BUILD_ID.len() + BUILD_STAMP_CLOSE.len();
+    deploy_contract::STAMP_OPEN.len() + BUILD_ID.len() + deploy_contract::STAMP_CLOSE.len();
 
 /// 编译期把 `<开>` ＋ `BUILD_ID` ＋ `<关>` 拼成一段**定长字节**。
 ///
@@ -756,7 +750,7 @@ pub const BUILD_STAMP_LEN: usize =
 pub const fn build_stamp() -> [u8; BUILD_STAMP_LEN] {
     let mut out = [0u8; BUILD_STAMP_LEN];
     let mut i = 0usize;
-    let open = BUILD_STAMP_OPEN.as_bytes();
+    let open = deploy_contract::STAMP_OPEN.as_bytes();
     let mut j = 0usize;
     while j < open.len() {
         out[i] = open[j];
@@ -770,7 +764,7 @@ pub const fn build_stamp() -> [u8; BUILD_STAMP_LEN] {
         i += 1;
         j += 1;
     }
-    let close = BUILD_STAMP_CLOSE.as_bytes();
+    let close = deploy_contract::STAMP_CLOSE.as_bytes();
     let mut j = 0usize;
     while j < close.len() {
         out[i] = close[j];
@@ -783,9 +777,9 @@ pub const fn build_stamp() -> [u8; BUILD_STAMP_LEN] {
 /// 🔴 `K-R70`：**这一份后端二进制自己带着的身份**。
 ///
 /// 拿到一份字节（内嵌的 / 装出来的 / 推到远端的那份都算），**不看它旁边任何文件**，
-/// 搜 [`BUILD_STAMP_OPEN`] 就问得出它是谁。消费者：
-/// `src/frontend/shell/build.rs`（内嵌两条路的构建期校验）· `src/frontend/shell/src/sftp.rs`
-/// （推远端之前的运行期见证）· 本 crate `build_id_guard` 的自扫判据。
+/// 搜 `deploy_contract::STAMP_OPEN` 就问得出它是谁（扫法 `deploy_contract::identity_of_bytes`）。消费者：
+/// monitor 构建期（内嵌字节自报的 id 就是 monitor 的「我这一版」）· monitor 运行期（推远端之前的见证）·
+/// 本 crate 的部署计划（落点那一份是谁）与 `build_id_guard` 的自扫判据。
 ///
 /// `#[used]` ＋ `#[no_mangle]`：前者挡「没人读它就优化掉」，后者让它在符号表里也留个名
 /// （`strip` 之后符号没了，**数据还在** —— 判据扫的是数据不是符号）。
@@ -1075,7 +1069,8 @@ pub const SUBCOMMANDS: &[&str] = &[
 //   `CAPABILITIES` 是一张声明表。in-process 那条路一样要问「这次调用是不是查询模式」。
 //   真正的分派（那个 `match`）仍然留在 `main.rs`，规格。
 
-/// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
+/// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。值住契约 crate
+/// （`deploy_contract::STREAM_CAPABILITIES`），monitor 认 token 读的是同一份。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
 /// （闭合 2026-07-09「漏拷身份清单 → 确认不了 → 全降级」事故：能力由后端自己
 /// 声明，即使清单丢失也照开）。
@@ -1093,7 +1088,7 @@ pub const SUBCOMMANDS: &[&str] = &[
 ///
 // ⚠ **排序照字典序**（不是按加入时间）：`capability_ledger_guard::the_stream_flag_list_keeps_its_own_narrow_semantics`
 // 拿汇总那侧（排过序）与本表**逐项相等**。
-pub const CAPABILITIES: &[&str] = &["bg", "tail-only"];
+pub const CAPABILITIES: &[&str] = deploy_contract::STREAM_CAPABILITIES;
 
 // ══════════════════ 步 `8a`：能力清单的**汇总** —— 第 2 层 ══════════════════
 //

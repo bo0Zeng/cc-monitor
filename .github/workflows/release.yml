@@ -25,9 +25,8 @@ name: Release
 # ── 🔴 `19c`（2026-09-19）：本文件有一个**本机孪生** ─────────────────────────────
 #
 # `tests/scripts/re-embed.sh` 是「`BUILD_ID` bump 的同拍步骤」：开发树上 bump 了
-# `src/backend/lib.rs` 的 `const BUILD_ID` 之后，盘上那几份内嵌字节立刻变旧，
-# `src/frontend/shell/build.rs` 的半 bump 守卫当场 panic、**整棵树编不过**
-#（2026-09-18 实地踩过一次，四路 agent 同时中）。那条命令把它们重编回来。
+# `src/backend/lib.rs` 的 `const BUILD_ID` 之后，盘上那几份内嵌字节立刻变旧（monitor 照样编得过，
+# 按手上那份旧字节说话；「字节 == 源码」那条核对住下面的内嵌校验与那条命令的 `--check`）。那条命令把它们重编回来。
 # 🔴 **它与本文件下面那两步是同一条配方，不是两条**：
 #   · `Cross-compile backend for both musl targets` ↔ 脚本的 `REEMBED_TARGETS` ＋ `REEMBED_BUILD_FLAGS`
 #   · `Build local backend (native)`（两个 job 各一处）     ↔ 脚本的 `--native` 那一趟
@@ -83,9 +82,11 @@ on:
 # ⚠ 消费侧写成 `$env:CCM_BACKEND_IDENTITY_SRC`（两步都是 pwsh）。
 # ⚠ 判据那一侧同拍钉住：`K-R124-ruler.py` 的 ⑩ 会把本文件里每一处抽取的路径解出来，
 #   **实打去读那份文件**，抠不出恰好一个 const 就红 —— 住址指空这一形从此当场现形。
+# 身份戳的两个界标住契约 crate（后端拼戳 · monitor 扫字节两侧 `use` 同一份）⇒ 那一步抠界标读 `CCM_STAMP_MARKS_SRC`。
 env:
   PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}
   CCM_BACKEND_IDENTITY_SRC: src/backend/lib.rs
+  CCM_STAMP_MARKS_SRC: src/common/deploy-contract/src/lib.rs
 
 jobs:
   # ────────────────────────────────────────────────────────────────────────────
@@ -219,7 +220,7 @@ jobs:
           tool: cargo-zigbuild@0.23.0
 
       # cc-monitor-backend 是独立 crate（无 workspace），静态编译成 musl。
-      # build_id 由源码 const BUILD_ID 决定（src/frontend/shell/build.rs 同源解析），从源码编译天然版本一致。
+      # build_id 由源码 const BUILD_ID 决定（拼进字节里的身份戳），从源码编译天然版本一致。
       #
       # ⚠ **`--locked` 不是可选的**（2026-09-09 加）：两份 `Cargo.lock` 今天都钉着
       # `crypto-bigint 0.7.3`，而 **`0.7.0…0.7.4` 在 crates.io 上全部 yanked、只有 `0.7.5` 没被 yank**
@@ -297,9 +298,10 @@ jobs:
       #  它与刚编出来那份字节之间没有任何因果 —— 三个载体的清单永远一致，
       #  而「永远一致」证不了任何事（K-R68 · DECISIONS#R26 裁定零）。〕
       # 今天问的是**这份字节自己**：backend 里那段 `#[used] static CC_MONITOR_BUILD_STAMP`
-      # 逐字是 `<<ccm-build-id:$src:ccm-build-id>>`，界标的唯一住址在 `env.CCM_BACKEND_IDENTITY_SRC`
-      # 那份源码的 BUILD_STAMP_OPEN / BUILD_STAMP_CLOSE（这里按同一条既有机制从源码抠，不手抄）。
-      # 〔19b 订正：这两行原写 `main.rs`，步 9 之后那里没有界标了。〕
+      # 逐字是 `<开>$src<关>`，界标的唯一住址在 `env.CCM_STAMP_MARKS_SRC`（契约 crate 的 STAMP_OPEN / STAMP_CLOSE），
+      # `$src` 是 `env.CCM_BACKEND_IDENTITY_SRC` 那份源码的 BUILD_ID（这里从源码抠，不手抄）。
+      # 🔴 **半 bump 的发版核对就住这一步**：内嵌字节自报的 id 必须 == 源码 BUILD_ID。monitor 构建期只核
+      #   「几份内嵌字节彼此同一版」、不读后端源码 ⇒ 两份 musl 在这里对上源码，本机那一份由构建期对上它们。
       # ⚠ 用 Latin1 解字节流：只是把每个字节映成一个字符好做子串搜索，不是在解码文本。
       - name: Place + verify embedded backends
         shell: pwsh
@@ -313,24 +315,25 @@ jobs:
           }
           # 🔴 〔步 9 · 09-19〕从 main.rs 改成 lib.rs —— BUILD_ID 与身份戳界标已按
           # 前置 2 搬进后端库面（in-process 那条路没有那个 main.rs）。
-          #    `src/frontend/shell/build.rs::backend_lib_rs` 与本处是同一条住址，改一处就要改另一处；
-          #    `tests/backend/build_id_guard.rs` 那条判据钉着三处都指得到真东西。
+          #    `tests/scripts/re-embed.sh` 的 IDENTITY_SRC 与本处是同一条住址，改一处就要改另一处；
+          #    `tests/backend/build_id_guard.rs` 那条判据钉着它指得到真东西。
           # 🔴 〔19b · 09-19〕住址收进文件头那个 `env:` —— 本文件另有一步也要抠同一个 const，
           #    步 9 那次**只改了这一处**，另一处留在 main.rs 上指空了。读同一个量，不各写一份。
           $main = $env:CCM_BACKEND_IDENTITY_SRC
+          $marks = $env:CCM_STAMP_MARKS_SRC
           # 🔴 〔19b〕**抠不到要落在下面那句诊断上，不是落在 PowerShell 的空数组索引上。**
           #    原写法 `(...).Matches[0].Groups[1].Value` 在零命中时抛 "Cannot index into a null
           #    array" ⇒ 那句写好的「先修抽取」一个字都印不出来。读不出来时**显示什么**，
           #    是点名要答的一格 —— 这里答：印住址、印抠的是哪个 const、退 1。
           $mId    = Select-String -Path $main -Pattern 'const BUILD_ID: &str = "([^"]+)"'        | Select-Object -First 1
-          $mOpen  = Select-String -Path $main -Pattern 'const BUILD_STAMP_OPEN: &str = "([^"]+)"'  | Select-Object -First 1
-          $mClose = Select-String -Path $main -Pattern 'const BUILD_STAMP_CLOSE: &str = "([^"]+)"' | Select-Object -First 1
+          $mOpen  = Select-String -Path $marks -Pattern 'const STAMP_OPEN: &str = "([^"]+)"'  | Select-Object -First 1
+          $mClose = Select-String -Path $marks -Pattern 'const STAMP_CLOSE: &str = "([^"]+)"' | Select-Object -First 1
           $src   = if ($mId)    { $mId.Matches[0].Groups[1].Value }    else { $null }
           $open  = if ($mOpen)  { $mOpen.Matches[0].Groups[1].Value }  else { $null }
           $close = if ($mClose) { $mClose.Matches[0].Groups[1].Value } else { $null }
           if (-not $src -or -not $open -or -not $close) {
-            Write-Error ("从 $main 抠不出 BUILD_ID / 身份戳界标（BUILD_ID={0} OPEN={1} CLOSE={2}，空 = 那一行不在这份文件里）" -f $src, $open, $close)
-            Write-Error "——本步此刻是无效的（拿一个空戳去扫字节，任何字节都会被判「不是这套源码编的」）。先修抽取：住址在本文件头的 env.CCM_BACKEND_IDENTITY_SRC"
+            Write-Error ("从 $main / $marks 抠不出 BUILD_ID / 身份戳界标（BUILD_ID={0} OPEN={1} CLOSE={2}，空 = 那一行不在那份文件里）" -f $src, $open, $close)
+            Write-Error "——本步此刻是无效的（拿一个空戳去扫字节，任何字节都会被判「不是这套源码编的」）。先修抽取：住址在本文件头的 env.CCM_BACKEND_IDENTITY_SRC / env.CCM_STAMP_MARKS_SRC"
             exit 1
           }
           $want = "$open$src$close"

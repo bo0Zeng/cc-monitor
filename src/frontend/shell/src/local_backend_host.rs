@@ -225,9 +225,12 @@ pub(crate) enum HelloVerdict {
 /// 第三项：`want_env` = 这一趟要交给后端的那份环境；其中名在 [`HANDED_ENVS`] 的那几格必须与 hello 的
 /// `host_env`（后端原样回显它被交的那几格）**两向相等** —— 其中 `CCM_DATA_DIR` 那一格就是「它住哪个家」：
 /// 口虽按家算，撞口的仍可能是另一个家的后端，接上它就会把凭据与历史注解写进那个家。
+///
+/// 第二项：`want_build` = 「我这一版」（`byte_table::my_backend_id`）。`None`（手上没带后端字节）⇒ 不比 build、
+/// 照那台报的接（没有对照物，比了也只是拿一个不存在的值去拒人）；家与中转口那几格照比。
 pub(crate) fn hello_verdict(
     line: &str,
-    want_build: &str,
+    want_build: Option<&str>,
     want_env: &[(String, String)],
 ) -> HelloVerdict {
     let Ok(frame) = crate::stream_source::parse_frame(line) else {
@@ -241,12 +244,12 @@ pub(crate) fn hello_verdict(
             copy_text("rsLocalBackendHost.hello.notBackend", &[]).into(),
         );
     };
-    if build_id != want_build {
+    if let Some(ours) = want_build.filter(|w| build_id != w) {
         return HelloVerdict::Stranger(copy_text(
             "rsLocalBackendHost.hello.buildMismatch",
             &[
                 ("theirs", &build_id.to_string()),
-                ("ours", &want_build.to_string()),
+                ("ours", &ours.to_string()),
             ],
         ));
     }
@@ -356,7 +359,7 @@ fn probe_listen_port(port: u16, want_env: &[(String, String)]) -> Probe {
             ))
         }
     };
-    match hello_verdict(&line, env!("BACKEND_BUILD_ID"), want_env) {
+    match hello_verdict(&line, crate::byte_table::my_backend_id(), want_env) {
         HelloVerdict::Ours => Probe::Ours(sock, line),
         HelloVerdict::Stranger(why) => Probe::Stranger(why),
     }
@@ -619,7 +622,7 @@ pub(crate) fn running_backend_bin() -> Option<std::path::PathBuf> {
 /// 回修前只进了 `tracing::info!` —— **不是 `warn`，也没有任何东西到用户眼前。**
 ///
 /// 它有一个具体的触发场景，不是理论：端口按家目录确定性算（[`listen_port_for`]），
-/// 而 `hello_verdict` 拿 `env!("BACKEND_BUILD_ID")` 逐字比 —— **升级 monitor 之后，
+/// 而 `hello_verdict` 拿「我这一版」（`byte_table::my_backend_id`）逐字比 —— **升级 monitor 之后，
 /// 上一次脱离留下的那个后端还在听同一个口** ⇒ `Stranger` ⇒ `Adopt::Refused`
 /// ⇒ **本机后端起不来，而界面上什么都不说。**
 /// ⚠ 这一格是**常驻带来的新场景**：翻面之前 backend 153ms 就死了，根本不存在「上一个还在听」。
@@ -1476,8 +1479,12 @@ pub fn start_local_backend() -> StartOutcome {
     //  按 `TARGET` 内嵌的那份，Linux 那一格是 musl（开发树只有原生那份时给原生那份），不承诺 / 没带 ⇒ 那句拒绝的话。
     let this_machine = crate::byte_table::Key::this_machine();
     let embedded: Result<(&str, &[u8]), String> = crate::byte_table::choose(this_machine)
-        .map(|p| (p.build_id, p.bytes))
-        .map_err(|r| r.say(&copy_text("rsLocalBackendHost.local.machine", &[])));
+        .map_err(|r| r.say(&copy_text("rsLocalBackendHost.local.machine", &[])))
+        .and_then(|p| {
+            p.build_id
+                .map(|id| (id, p.bytes))
+                .ok_or_else(|| copy_text("rsLocalBackendHost.local.noStamp", &[]))
+        });
     // ★★ `K-P1`：**先走常驻那条路** —— 认得出已有实例就接上它，没有就起一个脱离的。
     //
     // 这就是「怎么起」那个注入点：`start_detached` 是**这一层**（宿主知识层）的东西，
