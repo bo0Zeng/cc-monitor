@@ -206,9 +206,12 @@ type Inner = {
   resultsEl: HTMLElement;
 };
 const inner = (v: HistoryView): Inner => v as unknown as Inner;
+// 每一轮也等一帧：加载落地后的重画排在下一帧（`scheduleRender`），不等它，`expand` 回的可能是
+// 马上要被换掉的那一组 —— 负载一高，测试就去收起一个已经不在页面上的元素。
 const settle = async (v: HistoryView): Promise<void> => {
   for (let i = 0; i < 5; i++) {
     await inner(v).lazyDrained();
+    await new Promise((r) => requestAnimationFrame(() => r(undefined)));
     await new Promise((r) => setTimeout(r, 0));
   }
 };
