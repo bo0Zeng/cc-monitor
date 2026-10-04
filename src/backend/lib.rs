@@ -724,7 +724,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p6r：4.1.0 —— 信任框不再自动答、中转按目标账号；别名表单互转交后端；谁说的一处判；本机那一份按家定门牌、钥匙只交文件；运行表不挂僵尸；活卡不挤正在流的主运行；↗ 精确到窗口；文件窗口不撑破 / 不截断 / 缩放；第二个前端的契约与终端 L1 三条命令。
 ///
 /// p6s：4.1.1 —— 起法请求、历史成品与搜索行带 agent，恢复按会话那一家；会话事实多上下文上限三项；--resident-ensure 刚起的常驻回空钥匙（每次起换新钥匙）；按 sid 找窗格（送字 · 抓屏 · 结束落在挂着它的窗格）。
-pub const BUILD_ID: &str = "p6s-resume-by-agent";
+///
+/// p6t-quota-ledger：中转按号记下回包里的额度头（5h / 7d 用量、重置时刻、状态），账号域落 quota.json；新帧命令 quota-read、变了推 quota_changed；订阅号令牌由账号域续期。
+pub const BUILD_ID: &str = "p6t-quota-ledger";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
