@@ -738,7 +738,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p6z-command-budget：每条阻塞档命令一个总期限（短于界面等待），命令集合不变。
 ///
 /// p7a-launch-account：起会话用哪个号由会话所在那台判（follow / account_unavailable），上次用的号由那台记；失败应答可带 data。
-pub const BUILD_ID: &str = "p7a-launch-account";
+///
+/// p7b-session-restart：新帧命令 session-restart（换号重启整条在会话所在那台做完）。
+pub const BUILD_ID: &str = "p7b-session-restart";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
