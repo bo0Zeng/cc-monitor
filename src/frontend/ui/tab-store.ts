@@ -77,7 +77,7 @@ export class TabStore {
   accountReadyOrigins = new Set<string>();
   /** account-ux U5：origin → 当前账号名。徽章「信息才显」比对：会话账号==它 → 不挂徽章。main.ts 定期喂。
    *  **只放 isSelectable 的账号**（main.ts 侧过滤）：不可选的当前账号对齐必失败，指着它说"你不一致"
-   *  是假信息，且与 U1 `resolveFollowAccount`「不可选就下沉」的语义保持一致。 */
+   *  是假信息。 */
   currentByOrigin = new Map<string, string>();
   activeId: string | null = null;
   /**

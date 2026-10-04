@@ -12,32 +12,60 @@ pub mod wire;
 #[cfg(test)]
 mod cli_parity;
 
+use crate::control::launch_account::{self as la, Settled};
 use serde_json::Value;
 
-type Answer = Result<Value, (&'static str, String)>;
+/// 失败：码 ＋ 那一句 ＋ 按码定形的 `data`（只有 `account_unavailable` 带：[`la::AccountUnavailable`]）。
+pub(crate) type Failed = (&'static str, String, Option<Value>);
+type Answer = Result<Value, Failed>;
 
 /// 入参按线上形状严格收（`deny_unknown_fields`）；收不下是契约错。
-fn decode<T: serde::de::DeserializeOwned>(args: &Value) -> Result<T, (&'static str, String)> {
+fn decode<T: serde::de::DeserializeOwned>(args: &Value) -> Result<T, Failed> {
     serde_json::from_value(args.clone()).map_err(|e| {
         (
             "bad_args",
             crate::common::contract::malformed(&e.to_string()),
+            None,
         )
     })
 }
 
-/// `launch-render-cli`：那台机器要跑的那一行 `ccm …`。成品 `{cmd}`；渲不出来 ⇒ `refused` ＋ 理由。
-pub(crate) fn answer_cli(args: &Value) -> Answer {
-    let req: wire::CliRenderRequest = decode(args)?;
-    let cmd = wire::render_ccm_launch(&req).map_err(|said| ("refused", said))?;
-    Ok(serde_json::json!({ "cmd": cmd }))
+/// 选不了号 ⇒ 命令级码 `account_unavailable`，`data` 是那一形。
+pub(crate) fn unavailable(u: la::AccountUnavailable) -> Failed {
+    let said = la::unavailable_said(&u);
+    ("account_unavailable", said, serde_json::to_value(u).ok())
 }
 
-/// `launch-local`：本机起会话那一行。成品 `{cmd, launchId}`；坏输入 / 目录不在 ⇒ `refused`。
-pub(crate) fn answer_local(args: &Value) -> Answer {
+/// 应答里的 `account`：实际用的号（账号库里的那一形；别的 ⇒ `null`）。
+pub(crate) fn launched(account: &Settled) -> Value {
+    match account {
+        Settled::Account(a) => serde_json::to_value(a).unwrap_or(Value::Null),
+        _ => Value::Null,
+    }
+}
+
+fn refused(said: String) -> Failed {
+    ("refused", said, None)
+}
+
+/// `launch-render-cli`：那台机器要跑的那一行 `ccm …`。成品 `{cmd, account}`；渲不出来 ⇒ `refused` ＋ 理由；
+/// 要的号选不了 ⇒ `account_unavailable`。
+pub(crate) fn answer_cli(args: &Value, facts: &la::Facts) -> Answer {
+    let req: wire::CliRenderRequest = decode(args)?;
+    let account = wire::settle(&req, facts).map_err(unavailable)?;
+    let cmd = wire::render_ccm_launch(&req, &account).map_err(refused)?;
+    Ok(serde_json::json!({ "cmd": cmd, "account": launched(&account) }))
+}
+
+/// `launch-local`：本机起会话那一行。成品 `{cmd, launchId, account}`；坏输入 / 目录不在 ⇒ `refused`；
+/// 要的号选不了 ⇒ `account_unavailable`。
+pub(crate) fn answer_local(args: &Value, facts: &la::Facts) -> Answer {
     let req: local::LocalLaunchRequest = decode(args)?;
-    let out = local::plan(&req, &local::Facts::PRODUCTION).map_err(|said| ("refused", said))?;
-    Ok(serde_json::json!({ "cmd": out.cmd, "launchId": out.launch_id }))
+    let account = local::settle(&req, facts).map_err(unavailable)?;
+    let out = local::plan(&req, &account, &local::Facts::PRODUCTION).map_err(refused)?;
+    Ok(
+        serde_json::json!({ "cmd": out.cmd, "launchId": out.launch_id, "account": launched(&account) }),
+    )
 }
 
 #[cfg(test)]

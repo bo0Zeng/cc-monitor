@@ -5,8 +5,9 @@
 use super::ccm_invocation::{
     ccm_argv, render_ccm_invocation, Action, CliAccount, CliSpec, Container,
 };
+use crate::control::launch_account::{self as la, AccountAsk, Settled};
 use serde::Deserialize;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// `launch-render-cli` 的上线入参（`deny_unknown_fields`：前端多送一个字段 ⇒ 拒，不静默吞）。
 #[derive(Debug, Deserialize)]
@@ -17,9 +18,13 @@ pub struct CliRenderRequest {
     pub action: WireAction,
     pub container: WireContainer,
     pub cwd: Option<String>,
-    pub account: WireAccount,
+    pub account: AccountAsk,
     pub ccm_sid: Option<String>,
+    /// 显式指定的模型（压过下面那张表）。
     pub model: Option<String>,
+    /// 这台的模型偏好表（号 → 模型，用户设置的原值）：判出来的号在表里 ⇒ 用那一条。
+    #[serde(default)]
+    pub models: BTreeMap<String, String>,
     pub launcher: String,
     pub default_launcher: String,
 }
@@ -39,48 +44,56 @@ pub enum WireContainer {
     Tmux { name: String, send_into: bool },
 }
 
-/// 远端只有两态：远端是 ssh 过去，那台机器上的继承态不是 monitor 的环境 ⇒ 没有「继承」那一态。
-#[derive(Debug, Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
-pub enum WireAccount {
-    Base,
-    /// `name` 说得出 ⇒ `--account`；只有 `configDir` ⇒ `--account-dir`；都没有 ⇒ 拒。
-    Account {
-        name: Option<String>,
-        #[serde(rename = "configDir")]
-        config_dir: Option<String>,
-    },
+/// 这一趟用哪个号（[`la::settle`]）。选不了 ⇒ `Err`。
+pub(crate) fn settle(
+    req: &CliRenderRequest,
+    facts: &la::Facts,
+) -> Result<Settled, la::AccountUnavailable> {
+    let sid = match &req.action {
+        WireAction::Resume { sid } => Some(sid.as_str()),
+        _ => None,
+    };
+    la::settle(&req.account, sid, &req.models, facts)
 }
 
-/// 渲成那一行；拒 ⇒ 理由。能力问这台后端自己（`ccm` 就是它，与 `--ccm-probe` 同一份）。
-pub fn render_ccm_launch(req: &CliRenderRequest) -> Result<String, String> {
+/// 渲成那一行（号已经判好）；拒 ⇒ 理由。能力问这台后端自己（`ccm` 就是它，与 `--ccm-probe` 同一份）。
+pub(crate) fn render_ccm_launch(
+    req: &CliRenderRequest,
+    account: &Settled,
+) -> Result<String, String> {
     let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::TMUX_PLATFORM)
         .into_iter()
         .map(str::to_string)
         .collect();
-    render_ccm_launch_with(req, &caps)
+    render_ccm_launch_with(req, account, &caps)
 }
 
 /// 同上，能力集由调用方给（夹具对拍用固定的一份，不随这台后端的平台变）。
 pub(crate) fn render_ccm_launch_with(
     req: &CliRenderRequest,
+    account: &Settled,
     caps: &BTreeSet<String>,
 ) -> Result<String, String> {
-    with_spec(req, false, |spec| render_ccm_invocation(spec, caps)).map_err(|r| r.reason())
+    with_spec(req, account, false, |spec| {
+        render_ccm_invocation(spec, caps)
+    })
+    .map_err(|r| r.reason())
 }
 
 /// 同一行的 argv 形；`detach` ⇒ 建进 tmux 之后不接进去（这台后端替人在 tmux 里起会话时用 —— 与界面那一行同一份映射、同一个渲染器）。
 pub(crate) fn ccm_launch_argv(
     req: &CliRenderRequest,
+    account: &Settled,
     caps: &BTreeSet<String>,
     detach: bool,
 ) -> Result<Vec<String>, String> {
-    with_spec(req, detach, |spec| ccm_argv(spec, caps)).map_err(|r| r.reason())
+    with_spec(req, account, detach, |spec| ccm_argv(spec, caps)).map_err(|r| r.reason())
 }
 
-/// 上线入参 ⇒ 渲染器那份 spec（唯一的映射）。
+/// 上线入参 ＋ 判好的号 ⇒ 渲染器那份 spec（唯一的映射）。
 fn with_spec<T>(
     req: &CliRenderRequest,
+    account: &Settled,
     detach: bool,
     f: impl FnOnce(&CliSpec) -> Result<T, super::ccm_invocation::Refusal>,
 ) -> Result<T, super::ccm_invocation::Refusal> {
@@ -96,12 +109,23 @@ fn with_spec<T>(
             send_into: *send_into,
         },
     };
-    let account = match &req.account {
-        WireAccount::Base => CliAccount::Base,
-        WireAccount::Account { name, config_dir } => CliAccount::Named {
-            name: name.as_deref(),
-            config_dir: config_dir.as_deref(),
-        },
+    // 远端是 ssh 过去，那台的继承态不是 monitor 的环境 ⇒ 不表态也落账号 0。
+    let (account, picked_model) = match account {
+        Settled::Base | Settled::Unsaid => (CliAccount::Base, None),
+        Settled::Account(a) => (
+            CliAccount::Named {
+                name: Some(a.name.as_str()),
+                config_dir: Some(a.config_dir.as_str()),
+            },
+            a.model.as_deref(),
+        ),
+        Settled::Dir(d) => (
+            CliAccount::Named {
+                name: None,
+                config_dir: Some(d.as_str()),
+            },
+            None,
+        ),
     };
     let spec = CliSpec {
         agent: &req.agent,
@@ -110,7 +134,7 @@ fn with_spec<T>(
         cwd: req.cwd.as_deref(),
         account,
         ccm_sid: req.ccm_sid.as_deref(),
-        model: req.model.as_deref(),
+        model: req.model.as_deref().or(picked_model),
         launcher: &req.launcher,
         default_launcher: &req.default_launcher,
         args: &[],
@@ -120,8 +144,3 @@ fn with_spec<T>(
     };
     f(&spec)
 }
-
-// `K-R95`：本机拉起载荷里「哪个号」那一格的键名由后端那一份生成给前端（生成物 ＋ 它的判据）。
-#[cfg(test)]
-#[path = "../../../../tests/backend/control/launch_render/launch_wire_k_r95_launch_render_facts.rs"]
-mod k_r95_launch_render_facts;

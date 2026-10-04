@@ -28,7 +28,7 @@ import { DEFAULT_AGENT, defaultLauncherOf } from "../agent-profile";
 import { mintFreshTmuxName, refuseUnmintable } from "../terminal-name-mint";
 import { isSelectable, currentWorkingAccount } from "../accounts";
 import { fetchAccounts } from "../account-reads";
-import { withAccount } from "../launch-account";
+import { chosenAccount } from "../launch-account";
 import { runRemoteLauncher } from "../remote-launch-run";
 import { probeMachine, ProbeStalled, type ConnTestResult, type ProbeStop } from "../remote-probe";
 import { pushPublicKey } from "../pubkey-push";
@@ -1038,10 +1038,8 @@ export class MachineCard {
       const command = cmdInput.value.trim() || defaultLauncherOf(DEFAULT_AGENT);
       const accName = acctSelect.value; // "" = 不指定
       close();
-      // A4：新会话无 sid → 不记 lastAccount；withAccount 统一解析注入（选的号不可选 ⇒ 不起、说清、给显式选择）。
-      await withAccount(origin, accName || null, (mods) =>
-        runRemoteLauncher(origin, DEFAULT_AGENT, cwd, name, command, mods),
-      );
+      // 选的号那台判（选不了 ⇒ 不起、说清、给显式选择）；「不指定」⇒ 账号 0。
+      await runRemoteLauncher(origin, DEFAULT_AGENT, cwd, name, command, { account: chosenAccount(null, accName || null) });
       })();
     });
     foot.append(cancel, start);

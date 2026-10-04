@@ -28,6 +28,7 @@ import { isSelectable, type Account, type SessionAccount } from "./accounts";
 import { fetchAccounts, fetchLocalAccounts, fetchSessionAccounts } from "./account-reads";
 import { standingOf, type Standing } from "./sessions-where";
 import { resumeLocalSessionAndWait } from "./local-resume";
+import { chosenAccount } from "./launch-account";
 import { mintForkTmuxName } from "./terminal-name-mint";
 import { askForkLaunch, type ForkAccountOption } from "./fork-ask";
 import { startForkedSession, type ForkStartDeps, type ForkStartOutcome } from "./fork-start";
@@ -169,16 +170,15 @@ function productionDeps(input: ForkFlowInput): ForkStartDeps {
         agent: FORK_AGENT,
         sid: a.sessionId,
         cwd: a.cwd,
-        account: { kind: "explicit", configDir: a.configDir, name: a.accountName },
+        account: chosenAccount(a.configDir, a.accountName),
         failureTitle: copyText("localResume.fork.failed"),
       })) === "arrived",
 
     startRemote: async (a) => {
       const behavior = await getBehavior();
       const launcher = await resolveResumeCommand(a.origin, behavior.resumeCommandRemote);
-      // `configDir: null` = 账号 0 = 什么都不注入；`mods.configDir` 收 `string | undefined`，
-      // 所以 null 要落成 undefined，**不能落成空串**（空值 ≠ 未设，见 accounts.ts Z01）。
-      const mods = { configDir: a.configDir ?? undefined };
+      // 用户在小窗里选的（或沿用源会话的）号的目录：`null` = 账号 0；有目录 ⇒ 原样交（那台 `--account-dir`）。
+      const mods = { account: chosenAccount(a.configDir, null) };
       // ★ 返回值必须往上传：那两条路失败时**不抛**，只弹自己的 toast 并回 false。
       const r = a.tmuxName
         ? await runRemoteResumeTmuxAndWait(a.origin, FORK_AGENT, a.sessionId, a.cwd, launcher, a.tmuxName, mods)

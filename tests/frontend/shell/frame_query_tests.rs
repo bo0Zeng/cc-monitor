@@ -430,6 +430,10 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "账号库那一族：生来就走通道（从没过 monitor）—— 那台后端做完回成品，界面 `account-ops.ts` 按生成的线上类型收",
     ),
     (
+        "accounts-set-default",
+        "设这台的默认号（起会话跟随时没有上次的号就落它）：设置账号页 · 状态栏账号选单 · 命令面板三处都经 `account-ops.ts::accountsSetDefault`；monitor 那份默认号删了",
+    ),
+    (
         "accounts-verify",
         "账号库那一族：生来就走通道（从没过 monitor）—— 那台后端做完回成品，界面 `account-ops.ts` 按生成的线上类型收",
     ),

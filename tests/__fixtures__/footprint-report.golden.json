@@ -258,6 +258,40 @@
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "本机或远端",
       "installable": true,
+      "note": "起会话账号记录：每个会话最近一次用哪个账号启动",
+      "path_declared": "~/.cc-monitor/launch-accounts.json",
+      "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/launch-accounts.json",
+      "source_label": "由 cc-monitor 现场生成的文本",
+      "state": {
+        "kind": "undetermined",
+        "why": "本机没找到（/nonexistent-footprint-golden/.cc-monitor/launch-accounts.json）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
+      },
+      "tier": "AppInstalls",
+      "tool_id": "accounts",
+      "tool_name": "多账号账号库",
+      "uninstallable": false
+    },
+    {
+      "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
+      "host_label": "本机或远端",
+      "installable": true,
+      "note": "起会话便条：启动会话时记下的账号，进程退出即清",
+      "path_declared": "~/.cc-monitor/launch-pending",
+      "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/launch-pending",
+      "source_label": "由 cc-monitor 现场生成的文本",
+      "state": {
+        "kind": "undetermined",
+        "why": "本机没找到（/nonexistent-footprint-golden/.cc-monitor/launch-pending）。这套东西装在 Claude Code 跑的那台上，很可能是某个远端；本页不连 SSH，远端状态请到对应页面查。"
+      },
+      "tier": "AppInstalls",
+      "tool_id": "accounts",
+      "tool_name": "多账号账号库",
+      "uninstallable": false
+    },
+    {
+      "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
+      "host_label": "本机或远端",
+      "installable": true,
       "note": "同步改写之前的原文放在这里。改写某个号的 .claude.json 之前留一份，每个号一份，下一次改写前换成新的；要找回就从这里拿。",
       "path_declared": "~/.cc-monitor/backups/accounts-mcp",
       "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/backups/accounts-mcp",

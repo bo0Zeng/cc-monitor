@@ -14,7 +14,9 @@ import type { Origin } from "./ipc/origin";
 import { LOCAL_ORIGIN } from "./backend-policy";
 import { commands } from "./ipc/commands";
 import { defaultLauncherOf } from "./agent-profile";
-import type { CliRenderRequest } from "./launch-cli-wire";
+import type { CliRenderRequest, CliRendered } from "./launch-cli-wire";
+import type { AccountAsk } from "./generated/AccountAsk";
+import type { LaunchedAccount } from "./generated/LaunchedAccount";
 import { copyText } from "./copy-table";
 
 /** 渲染是纯函数（本机那条多问一次目录在不在）；这个期限只挡「那台后端没在答」。 */
@@ -33,15 +35,29 @@ export function isRefusal(e: unknown): boolean {
   return e instanceof ControlError && e.error?.layer === "peer" && e.error.why === "refused";
 }
 
-/** 那一行 `ccm …`。通道 / 形状上的失败与那台后端的拒都抛（[`ControlError`]；拒 ⇒ [`isRefusal`] 为真）。 */
-export async function renderCli(origin: Origin, req: CliRenderRequest): Promise<string> {
+/** 应答里 `account` 那一格：`null` 或 `{name, configDir, model}`。 */
+function launchedOf(v: unknown): LaunchedAccount | null | undefined {
+  if (v === null) return null;
+  return isObj(v) &&
+    exactKeys(v, ["name", "configDir", "model"]) &&
+    typeof v.name === "string" &&
+    typeof v.configDir === "string" &&
+    (v.model === null || typeof v.model === "string")
+    ? (v as unknown as LaunchedAccount)
+    : undefined;
+}
+
+/** 那一行 `ccm …` ＋ 那台判出来实际用的号。通道 / 形状上的失败与那台后端的拒都抛（[`ControlError`]；拒 ⇒ [`isRefusal`] 为真；
+ *  要的号选不了 ⇒ `launch-account.ts::accountUnavailableOf` 认得出）。 */
+export async function renderCli(origin: Origin, req: CliRenderRequest): Promise<CliRendered> {
   const body = jsonBody({ ...req });
   const budget = budgetWithin(RENDER_BUDGET_MS);
   const v = await settle(origin, "launch-render-cli", chan.call(origin, "launch-render-cli", body, budget), refusals(origin));
-  if (!isObj(v) || !exactKeys(v, ["cmd"]) || typeof v.cmd !== "string" || v.cmd === "") {
-    throw unreadable(origin, "launch-render-cli", "cmd");
+  const account = isObj(v) ? launchedOf(v.account) : undefined;
+  if (!isObj(v) || !exactKeys(v, ["cmd", "account"]) || typeof v.cmd !== "string" || v.cmd === "" || account === undefined) {
+    throw unreadable(origin, "launch-render-cli", "cmd/account");
   }
-  return v.cmd;
+  return { cmd: v.cmd, account };
 }
 
 /** 本机起会话那一问的动作。 */
@@ -55,15 +71,16 @@ export interface LocalLaunchRequest {
   cwd: string | null;
   /** 自定义启动命令（空 / `null` = 没设）。 */
   launcher: string | null;
-  /** 缺席 = 继承（没表态）；形状见生成物 `LOCAL_LAUNCH_ACCOUNT_WIRE`。 */
-  account?: Record<string, unknown>;
+  /** 缺席 = 不表态（继承；接回那一形）；跟随 / 账号 0 / 用户点名由本机后端判。 */
+  account?: AccountAsk;
   tmuxName: string | null;
 }
 
-/** 本机后端出的成品：要在新终端里跑的那一行 ＋ 交给 `ccm` 放进进程环境的身份 token（接回那一格 `null`）。 */
+/** 本机后端出的成品：要在新终端里跑的那一行 ＋ 交给 `ccm` 放进进程环境的身份 token（接回那一格 `null`）＋ 实际用的号。 */
 export interface LocalLaunchPlan {
   cmd: string;
   launchId: string | null;
+  account: LaunchedAccount | null;
 }
 
 /** 问本机后端要这次拉起的那一行（不开窗口）。拒 ⇒ 抛。 */
@@ -80,26 +97,31 @@ export async function planLocalLaunch(req: LocalLaunchRequest): Promise<LocalLau
   const body = jsonBody(args);
   const budget = budgetWithin(RENDER_BUDGET_MS);
   const v = await settle(LOCAL_ORIGIN, "launch-local", chan.call(LOCAL_ORIGIN, "launch-local", body, budget), refusals(LOCAL_ORIGIN));
+  const account = isObj(v) ? launchedOf(v.account) : undefined;
   if (
     !isObj(v) ||
-    !exactKeys(v, ["cmd", "launchId"]) ||
+    !exactKeys(v, ["cmd", "launchId", "account"]) ||
     typeof v.cmd !== "string" ||
     v.cmd === "" ||
-    !(v.launchId === null || (typeof v.launchId === "string" && v.launchId !== ""))
+    !(v.launchId === null || (typeof v.launchId === "string" && v.launchId !== "")) ||
+    account === undefined
   ) {
-    throw unreadable(LOCAL_ORIGIN, "launch-local", "cmd/launchId");
+    throw unreadable(LOCAL_ORIGIN, "launch-local", "cmd/launchId/account");
   }
-  return { cmd: v.cmd, launchId: v.launchId };
+  return { cmd: v.cmd, launchId: v.launchId, account };
 }
 
-/** 本机起一个会话：问本机后端要那一行，交 monitor 在 `cwd` 开一个终端窗口跑它。回身份 token。失败抛（已说成一句）。
+/** 本机起一个会话：问本机后端要那一行，交 monitor 在 `cwd` 开一个终端窗口跑它。回那份成品（`preflight` 说不起 ⇒ `null`，没开窗）。
+ *  `preflight(configDir)`：开窗之前问一句（收的是本机后端判出来的那个号的目录；账号 0 / 不指定 ⇒ `undefined`）。失败抛（已说成一句）。
  *  ⚠ 类型上只收「新起 / resume」：接回（attach）只许经 [`planLocalLaunch`] 产串、交调用方自己那一跳开终端
  *  （`K-R106`：接回不是一次拉起，原先 monitor `launch_local` 入口那道闸今天是这条签名）。 */
 export async function launchLocal(
   req: LocalLaunchRequest & { action: Exclude<LocalLaunchAction, { kind: "attach" }> },
   terminalCwd: string,
-): Promise<string | null> {
+  preflight?: (configDir: string | undefined) => Promise<boolean>,
+): Promise<LocalLaunchPlan | null> {
   const plan = await planLocalLaunch(req);
+  if (preflight && !(await preflight(plan.account?.configDir))) return null;
   await commands.open_local_terminal({ cmd: plan.cmd, cwd: terminalCwd });
-  return plan.launchId;
+  return plan;
 }

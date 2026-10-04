@@ -7,6 +7,7 @@
 //!
 //! 要动 tmux / 读记录 / 起 ccm 的几样由入口经 [`Deps`] 交进来（control 不引用 observe），判据交替身。
 
+use super::launch_account::{self as la, AccountAsk, Settled};
 use super::launch_render::{local, wire};
 use crate::platform::child::{Budget, Child, Deadline};
 use serde_json::{json, Map, Value};
@@ -60,6 +61,8 @@ pub(crate) struct Deps<'a> {
     pub(crate) caps: &'a BTreeSet<String>,
     /// 本机那一形的事实（平台 · 目录在不在）。
     pub(crate) local_facts: local::Facts,
+    /// 起会话挑号要的事实（这台的账号库 · 某条会话上次用的号）。
+    pub(crate) accounts: &'a la::Facts<'a>,
 }
 
 /// 一个会话的结局。
@@ -76,6 +79,10 @@ pub(crate) struct Answer {
     pub(crate) bus: Option<Value>,
     /// 开终端那一形要跑的那一行。
     pub(crate) cmd: Option<String>,
+    /// 起的那一条实际用的号（`launch-local` 应答那一格同形；停 / 没起 ⇒ `null`）。
+    pub(crate) account: Value,
+    /// 选不了号那一项的那一形（同 `account_unavailable` 的 `data`；别的 ⇒ `null`）。
+    pub(crate) unavailable: Value,
 }
 
 impl Answer {
@@ -88,6 +95,8 @@ impl Answer {
             session: None,
             bus: None,
             cmd: None,
+            account: Value::Null,
+            unavailable: Value::Null,
         }
     }
     fn skipped(sid: &str, code: &str, detail: String) -> Self {
@@ -108,6 +117,8 @@ impl Answer {
             "session": self.session,
             "bus": self.bus,
             "cmd": self.cmd,
+            "account": self.account,
+            "unavailable": self.unavailable,
         })
     }
 }
@@ -255,53 +266,17 @@ fn stop_one(sid: &str, rows: Option<&[TmuxEntry]>, deps: &Deps) -> Answer {
 
 /// 一个要起的会话（已过形状关）。
 struct Item {
-    /// 这个会话是哪一家（线上的 kind）。
-    agent: String,
     sid: String,
     cwd: String,
-    account: Acct,
-    model: Option<String>,
+    account: AccountAsk,
+}
+
+/// 整批共用的几样：哪一家 · 启动器（用户设置的 resume 命令原值）· 这台的模型偏好表（原值）。
+struct Batch {
+    agent: String,
     launcher: String,
     default_launcher: String,
-}
-
-#[derive(Debug, Clone)]
-enum Acct {
-    Inherit,
-    Base,
-    Named {
-        name: Option<String>,
-        config_dir: String,
-    },
-}
-
-impl Acct {
-    fn config_dir(&self) -> Option<&str> {
-        match self {
-            Acct::Named { config_dir, .. } => Some(config_dir),
-            _ => None,
-        }
-    }
-    /// 界面那一行（`launch-render-cli`）的账号形：没有「继承」那一态 —— 同单个就地 resume，落账号 0。
-    fn wire(&self) -> wire::WireAccount {
-        match self {
-            Acct::Inherit | Acct::Base => wire::WireAccount::Base,
-            Acct::Named { name, config_dir } => wire::WireAccount::Account {
-                name: name.clone(),
-                config_dir: Some(config_dir.clone()),
-            },
-        }
-    }
-    fn local(&self) -> Option<local::LaunchAccount> {
-        match self {
-            Acct::Inherit => None,
-            Acct::Base => Some(local::LaunchAccount::Base),
-            Acct::Named { name, config_dir } => Some(local::LaunchAccount::Named {
-                config_dir: config_dir.clone(),
-                name: name.clone(),
-            }),
-        }
-    }
+    models: std::collections::BTreeMap<String, String>,
 }
 
 fn str_of<'v>(o: &'v Map<String, Value>, k: &str) -> Result<&'v str, CmdErr> {
@@ -315,17 +290,7 @@ fn item_of(v: &Value) -> Result<Item, CmdErr> {
         .as_object()
         .ok_or_else(|| bad("each item must be an object"))?;
     for k in o.keys() {
-        if ![
-            "agent",
-            "sid",
-            "cwd",
-            "account",
-            "model",
-            "launcher",
-            "defaultLauncher",
-        ]
-        .contains(&k.as_str())
-        {
+        if !["sid", "cwd", "account"].contains(&k.as_str()) {
             return Err(bad(&format!("unknown item field `{k}`")));
         }
     }
@@ -333,40 +298,37 @@ fn item_of(v: &Value) -> Result<Item, CmdErr> {
     if !shell_quote_core::session_id_ok(sid) {
         return Err(bad(&format!("not a session id: {sid:?}")));
     }
-    let a = o
-        .get("account")
-        .and_then(Value::as_object)
-        .ok_or_else(|| bad("missing object `account`"))?;
-    let account = match str_of(a, "kind")? {
-        "inherit" => Acct::Inherit,
-        "base" => Acct::Base,
-        "named" => Acct::Named {
-            name: a.get("name").and_then(Value::as_str).map(str::to_string),
-            config_dir: str_of(a, "configDir")?.to_string(),
-        },
-        k => return Err(bad(&format!("unknown account kind `{k}`"))),
-    };
-    let model = match o.get("model") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(s)) => Some(s.clone()),
-        Some(_) => return Err(bad("`model` must be a string or null")),
+    // 缺席 ＝ 跟随。
+    let account = match o.get("account") {
+        None => AccountAsk::Follow,
+        Some(a) => serde_json::from_value(a.clone()).map_err(|e| bad(&e.to_string()))?,
     };
     Ok(Item {
-        agent: str_of(o, "agent")?.to_string(),
         sid: sid.to_string(),
         cwd: str_of(o, "cwd")?.to_string(),
         account,
-        model,
+    })
+}
+
+fn batch_of(o: &Map<String, Value>) -> Result<Batch, CmdErr> {
+    let models = match o.get("models") {
+        None => Default::default(),
+        Some(m) => serde_json::from_value(m.clone())
+            .map_err(|_| bad("`models` must be an object of strings"))?,
+    };
+    Ok(Batch {
+        agent: str_of(o, "agent")?.to_string(),
         launcher: str_of(o, "launcher")?.to_string(),
         default_launcher: str_of(o, "defaultLauncher")?.to_string(),
+        models,
     })
 }
 
 /// 界面那一行的上线入参（`launch-render-cli`），由这一个起会话项拼：`tmux` = 要新建的会话名（`None` = 直路）。
 /// 单个那条在界面拼的就是这一份（直路：cwd 只在开终端那一形带；建进 tmux：带 cwd、打 sid 标记）。
-fn wire_req(it: &Item, tmux: Option<&str>, cwd: bool) -> wire::CliRenderRequest {
+fn wire_req(it: &Item, b: &Batch, tmux: Option<&str>, cwd: bool) -> wire::CliRenderRequest {
     wire::CliRenderRequest {
-        agent: it.agent.clone(),
+        agent: b.agent.clone(),
         action: wire::WireAction::Resume {
             sid: it.sid.clone(),
         },
@@ -378,30 +340,31 @@ fn wire_req(it: &Item, tmux: Option<&str>, cwd: bool) -> wire::CliRenderRequest 
             None => wire::WireContainer::None,
         },
         cwd: Some(it.cwd.clone()).filter(|c| cwd && !c.is_empty()),
-        account: it.account.wire(),
+        account: it.account.clone(),
         ccm_sid: tmux.map(|_| it.sid.clone()),
-        model: it.model.clone(),
-        launcher: it.launcher.clone(),
-        default_launcher: it.default_launcher.clone(),
+        model: None,
+        models: b.models.clone(),
+        launcher: b.launcher.clone(),
+        default_launcher: b.default_launcher.clone(),
     }
 }
 
 /// 本机那一形的入参（`launch-local`）。
-fn local_req(it: &Item, tmux: Option<String>) -> local::LocalLaunchRequest {
+fn local_req(it: &Item, b: &Batch, tmux: Option<String>) -> local::LocalLaunchRequest {
     local::LocalLaunchRequest {
-        agent: it.agent.clone(),
+        agent: b.agent.clone(),
         action: local::LocalAction::Resume {
             sid: it.sid.clone(),
         },
         cwd: Some(it.cwd.clone()).filter(|c| !c.is_empty()),
-        launcher: Some(it.launcher.clone()).filter(|l| l != &it.default_launcher),
-        account: it.account.local(),
+        launcher: Some(b.launcher.clone()).filter(|l| l != &b.default_launcher),
+        account: Some(it.account.clone()),
         tmux_name: tmux,
-        default_launcher: it.default_launcher.clone(),
+        default_launcher: b.default_launcher.clone(),
     }
 }
 
-/// `sessions-start`：`{mode, local, items}` ⇒ `{results}`。
+/// `sessions-start`：`{mode, local, agent, launcher, defaultLauncher, models?, items: [{sid, cwd, account?}]}` ⇒ `{results}`。
 pub(crate) fn start(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
     let o = args
         .as_object()
@@ -423,6 +386,7 @@ pub(crate) fn start(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
         return Err(bad(&format!("`items` must hold 1..={MAX_BATCH} entries")));
     }
     let items = raw.iter().map(item_of).collect::<Result<Vec<_>, _>>()?;
+    let batch = batch_of(o)?;
     for (i, it) in items.iter().enumerate() {
         if items[..i].iter().any(|x| x.sid == it.sid) {
             return Err(bad(&format!("duplicate session id: {:?}", it.sid)));
@@ -437,33 +401,74 @@ pub(crate) fn start(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
     };
     let results: Vec<Value> = items
         .iter()
-        .map(|it| start_one(it, rows.as_ref(), here, deps).to_json())
+        .map(|it| start_one(it, &batch, rows.as_ref(), here, deps).to_json())
         .collect();
     Ok(json!({ "results": results }))
 }
 
-/// 一个：先问记录在不在，再按那一形做。`rows` = tmux 那一形的名单（`Some(None)` = 这台没 tmux）；开终端那一形 `None`。
-fn start_one(it: &Item, rows: Option<&Option<Vec<TmuxEntry>>>, here: bool, deps: &Deps) -> Answer {
-    match (deps.record)(&it.sid, it.account.config_dir()) {
+/// 一个：先判用哪个号（选不了 ⇒ 跳过、不挡别的），再问记录在不在（查这个号那棵树），再按那一形做。
+/// `rows` = tmux 那一形的名单（`Some(None)` = 这台没 tmux）；开终端那一形 `None`。
+fn start_one(
+    it: &Item,
+    b: &Batch,
+    rows: Option<&Option<Vec<TmuxEntry>>>,
+    here: bool,
+    deps: &Deps,
+) -> Answer {
+    // 模型偏好只用在远端那一行上（本机那一行今天不带模型）。
+    let none = Default::default();
+    let models = if here { &none } else { &b.models };
+    let account = match la::settle(&it.account, Some(&it.sid), models, deps.accounts) {
+        Ok(a) => a,
+        Err(u) => {
+            return Answer {
+                unavailable: serde_json::to_value(&u).unwrap_or(Value::Null),
+                ..Answer::skipped(&it.sid, "account_unavailable", u.requested)
+            }
+        }
+    };
+    let root = match &account {
+        Settled::Account(a) => Some(a.config_dir.as_str()),
+        Settled::Dir(d) => Some(d.as_str()),
+        Settled::Base | Settled::Unsaid => None,
+    };
+    match (deps.record)(&it.sid, root) {
         Err(e) => return Answer::failed(&it.sid, ("bad_args", e)),
         Ok((false, root)) => return Answer::skipped(&it.sid, "record_gone", root),
         Ok((true, _)) => {}
     }
-    match rows {
-        Some(rows) => start_in_tmux(it, rows.as_deref(), here, deps),
-        None if here => start_window_here(it, deps),
-        None => match wire::render_ccm_launch_with(&wire_req(it, None, true), deps.caps) {
-            Ok(cmd) => Answer {
-                cmd: Some(cmd),
-                ..Answer::done(&it.sid)
-            },
-            Err(said) => Answer::failed(&it.sid, ("refused", said)),
+    let done = match rows {
+        Some(rows) => start_in_tmux(it, b, &account, rows.as_deref(), here, deps),
+        None if here => start_window_here(it, b, &account, deps),
+        None => {
+            match wire::render_ccm_launch_with(&wire_req(it, b, None, true), &account, deps.caps) {
+                Ok(cmd) => Answer {
+                    cmd: Some(cmd),
+                    ..Answer::done(&it.sid)
+                },
+                Err(said) => Answer::failed(&it.sid, ("refused", said)),
+            }
+        }
+    };
+    Answer {
+        account: if done.outcome == "done" {
+            super::launch_render::launched(&account)
+        } else {
+            Value::Null
         },
+        ..done
     }
 }
 
 /// 在 tmux 里起（不接进去）：在跑 ⇒ 不另起；空 tmux ⇒ 就地键入直路那一行；都不是 ⇒ 铸名、交那一行 ccm（`--detach`）。
-fn start_in_tmux(it: &Item, rows: Option<&[TmuxEntry]>, here: bool, deps: &Deps) -> Answer {
+fn start_in_tmux(
+    it: &Item,
+    b: &Batch,
+    account: &Settled,
+    rows: Option<&[TmuxEntry]>,
+    here: bool,
+    deps: &Deps,
+) -> Answer {
     let Some(rows) = rows else {
         return Answer::skipped(&it.sid, "no_tmux", String::new());
     };
@@ -477,7 +482,9 @@ fn start_in_tmux(it: &Item, rows: Option<&[TmuxEntry]>, here: bool, deps: &Deps)
             ..Answer::skipped(&it.sid, "ambiguous", ns.join(", "))
         },
         Standing::Idle(n) => {
-            let done = match wire::render_ccm_launch_with(&wire_req(it, None, false), deps.caps) {
+            let line =
+                wire::render_ccm_launch_with(&wire_req(it, b, None, false), account, deps.caps);
+            let done = match line {
                 Err(said) => Answer::failed(&it.sid, ("refused", said)),
                 Ok(line) => match (deps.send_into)(&n, &it.sid, &line) {
                     Ok(()) => Answer::done(&it.sid),
@@ -495,9 +502,19 @@ fn start_in_tmux(it: &Item, rows: Option<&[TmuxEntry]>, here: bool, deps: &Deps)
                 Err(e) => return Answer::failed(&it.sid, e),
             };
             let argv = if here {
-                local::plan_argv(&local_req(it, Some(name.clone())), &deps.local_facts, true)
+                local::plan_argv(
+                    &local_req(it, b, Some(name.clone())),
+                    account,
+                    &deps.local_facts,
+                    true,
+                )
             } else {
-                wire::ccm_launch_argv(&wire_req(it, Some(&name), true), deps.caps, true)
+                wire::ccm_launch_argv(
+                    &wire_req(it, b, Some(&name), true),
+                    account,
+                    deps.caps,
+                    true,
+                )
             };
             let done = match argv {
                 Err(said) => Answer::failed(&it.sid, ("refused", said)),
@@ -520,7 +537,7 @@ fn start_in_tmux(it: &Item, rows: Option<&[TmuxEntry]>, here: bool, deps: &Deps)
 }
 
 /// 本机开终端：同 `launch-local` 那一条（POSIX 上铸名建进 tmux；Windows 上直路）。
-fn start_window_here(it: &Item, deps: &Deps) -> Answer {
+fn start_window_here(it: &Item, b: &Batch, account: &Settled, deps: &Deps) -> Answer {
     let name = if deps.local_facts.windows {
         None
     } else {
@@ -529,8 +546,8 @@ fn start_window_here(it: &Item, deps: &Deps) -> Answer {
             Err(e) => return Answer::failed(&it.sid, e),
         }
     };
-    let req = local_req(it, name.clone());
-    match local::plan(&req, &deps.local_facts) {
+    let req = local_req(it, b, name.clone());
+    match local::plan(&req, account, &deps.local_facts) {
         Ok(p) => Answer {
             cmd: Some(p.cmd),
             session: name,

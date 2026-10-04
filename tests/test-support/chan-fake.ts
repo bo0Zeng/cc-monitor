@@ -97,8 +97,21 @@ export function sessionReadCalls(calls: ReadonlyArray<readonly unknown[]>, which
 export const UNSUPPORTED = { err: "Unsupported", body: [] as number[] };
 
 /** 通道那一跳「对端说不行」（`Peer{Refused}`，体是后端的 `{code, message}`）。 */
-export function refusedReply(code: string, message: string): { err: string; body: number[] } {
-  return { err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify({ code, message }))) };
+export function refusedReply(code: string, message: string, data?: unknown): { err: string; body: number[] } {
+  const body = data === undefined ? { code, message } : { code, message, data };
+  return { err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify(body))) };
+}
+
+/**
+ * 起会话那几条的替身答复里，判据可以让那台说「要的号选不了」：内层回 `{ unavailable: {...} }`（`account_unavailable` 的 `data`）。
+ * 也可以回 `{ account: {name, configDir, model} }` 说那台判出来实际用的号（缺 ⇒ `null`）。
+ */
+function launchOutcome(out: unknown): { unavailable?: unknown; account: unknown; cmd?: unknown } {
+  if (out !== null && typeof out === "object" && !Array.isArray(out)) {
+    const o = out as Record<string, unknown>;
+    if ("unavailable" in o || "account" in o) return { unavailable: o.unavailable, account: o.account ?? null, cmd: o.cmd };
+  }
+  return { account: null, cmd: out };
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -655,7 +668,6 @@ export function withHistoryReads(
             customTitle: nul(e.customTitle),
             hidden: e.hidden ?? false,
             updatedAt: e.updatedAt ?? 0,
-            lastAccount: nul(e.lastAccount),
           },
         });
       }
@@ -886,20 +898,32 @@ export function launchRenderShim(
         } catch (e) {
           throw refusedReply("refused", wordsOf(e));
         }
-        return chanReply({ cmd: typeof out === "string" ? out : `ccm <rendered:${JSON.stringify(body())}>` });
+        const o = launchOutcome(out);
+        if (o.unavailable !== undefined) throw refusedReply("account_unavailable", "unavailable", o.unavailable);
+        return chanReply({
+          cmd: typeof o.cmd === "string" ? o.cmd : `ccm <rendered:${JSON.stringify(body())}>`,
+          account: o.account,
+        });
       }
       case "launch-local": {
         const [name, old] = localLaunchOldArgs(body());
-        let out: unknown;
+        let raw: unknown;
         try {
-          out = await inner(name, old);
+          raw = await inner(name, old);
         } catch (e) {
           throw refusedReply("refused", wordsOf(e));
         }
-        if (name === "render_local_attach") return chanReply({ cmd: out ?? "ccm <backend-rendered-attach>", launchId: null });
+        const o = launchOutcome(raw);
+        if (o.unavailable !== undefined) throw refusedReply("account_unavailable", "unavailable", o.unavailable);
+        const out = o.cmd;
+        if (name === "render_local_attach") return chanReply({ cmd: out ?? "ccm <backend-rendered-attach>", launchId: null, account: null });
         if (name === "new_local_session")
-          return chanReply({ cmd: "ccm <backend-rendered-local-line>", launchId: typeof out === "string" && out !== "" ? out : null });
-        return chanReply({ cmd: "ccm <backend-rendered-local-line>", launchId: null });
+          return chanReply({
+            cmd: "ccm <backend-rendered-local-line>",
+            launchId: typeof out === "string" && out !== "" ? out : null,
+            account: o.account,
+          });
+        return chanReply({ cmd: "ccm <backend-rendered-local-line>", launchId: null, account: o.account });
       }
       default:
         return inner(cmd, args);

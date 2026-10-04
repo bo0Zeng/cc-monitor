@@ -351,8 +351,8 @@ export class TabMenu {
     // 说不清的两样都不给（会话也许还在跑）。
     if (state.liveness === "unseen") return;
     const resumeOnly = isResumeOnly(state);
-    // 本机已结束的 tab 不带账号选择（本机 Resume 走那条会话上次的号，
-    // 见 `launch-account.ts::localLaunchAccountSync`）⇒ 本机只进下面「换号重启」那一支。
+    // 本机已结束的 tab 不带账号选择（本机 Resume 跟随那条会话上次的号，本机后端判）
+    // ⇒ 本机只进下面「换号重启」那一支。
     if (isLocalOrigin(origin) && resumeOnly) return;
     const gen = menuGeneration(); // 捕获这一代菜单
     const accountOptions = await enumerateAccountModifiers(origin);

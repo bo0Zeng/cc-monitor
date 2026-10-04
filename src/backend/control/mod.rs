@@ -76,6 +76,8 @@ pub(crate) mod gate_rules;
 pub(crate) mod identity_tag;
 pub(crate) mod kill;
 pub(crate) mod launch;
+// 起会话用哪个号：判定（`pick`）＋「这条会话上次用哪个号起的」（ccm 留便条、观测侧认便条记账；后端自有状态，第四层）。
+pub(crate) mod launch_account;
 // 起会话的计划与渲染（从 monitor 搬来）：本机起会话 · `ccm …` 调用行 · 载荷 ＋ 外层 tmux 三格。
 pub mod launch_render;
 pub mod resident;

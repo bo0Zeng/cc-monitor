@@ -16,7 +16,6 @@ import { decodeAccountsList, decodeTrust } from "./accounts-decode";
 import type { AccountsState, SessionAccount } from "./accounts";
 // API key 那两问的成品（`apikey-routing`）住 `apikey-reads.ts`；本文件只给账号面包一层（`agent` 与账号清单同一个出处）。
 import { fetchApikeyRouting, type ApikeyRoutingView } from "./apikey-reads";
-import { getDefaultName } from "./account-prefs";
 import { copyText } from "./copy-table";
 
 const ACCOUNTS_TTL_MS = 30_000; // 账号列表极少变（迁移/登录才变），缓存久一点省 SSH
@@ -59,7 +58,6 @@ export async function fetchAccounts(origin: Origin, force = false): Promise<Acco
       oldBackend: false,
       meta: got.meta,
       accounts: got.accounts,
-      defaultName: await getDefaultName(origin),
       // Z01：后端说的「能用但有缺」（manifest 里没有账号 0）。
       notice: got.notice,
     };
@@ -71,7 +69,6 @@ export async function fetchAccounts(origin: Origin, force = false): Promise<Acco
       oldBackend: isOldBackend(e),
       meta: null,
       accounts: [],
-      defaultName: null,
       notice: null,
     };
   }

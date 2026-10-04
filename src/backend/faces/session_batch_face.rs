@@ -57,15 +57,23 @@ fn with_deps(args: &Value, f: impl FnOnce(&Deps) -> Answer) -> Answer {
         .into_iter()
         .map(str::to_string)
         .collect();
-    f(&Deps {
-        list: &list,
-        record: &record,
-        kill: &kill,
-        send_into: &send_into,
-        run_ccm: &run_ccm,
-        mint: &mint,
-        caps: &caps,
-        local_facts: crate::control::launch_render::local::Facts::PRODUCTION,
+    // 批量起说是哪一家（整批一格）；停 / 问样子用不着挑号。
+    let agent = args
+        .get("agent")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    crate::faces::launch_face::with_facts(agent, |accounts| {
+        f(&Deps {
+            list: &list,
+            record: &record,
+            kill: &kill,
+            send_into: &send_into,
+            run_ccm: &run_ccm,
+            mint: &mint,
+            caps: &caps,
+            local_facts: crate::control::launch_render::local::Facts::PRODUCTION,
+            accounts,
+        })
     })
 }
 

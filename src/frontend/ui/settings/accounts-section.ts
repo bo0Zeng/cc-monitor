@@ -12,7 +12,7 @@ import { openTerminal } from "../terminal-open";
 import { readApikeyStatus, writeApikeyKey, type ApikeyCredentialsStatus, type ApikeyRoutingView } from "../apikey-reads";
 import { LOCAL_ACCOUNTS_COPY, deriveUi, currentWorkingAccount, isSelectable, accountStatusBadge, accountLoginActionLabel, apikeyEndpointStateFor, type ApikeyEndpointState, type AccountsState, type Account } from "../accounts";
 import { fetchAccounts, fetchLocalAccounts, fetchLocalApikeyRouting, fetchMachineApikeyRouting, invalidateAccountsCache } from "../account-reads";
-import { setDefaultName, getModelForAccount, setModelForAccount } from "../account-prefs";
+import { getModelForAccount, setModelForAccount } from "../account-prefs";
 import { accountAvatarEl } from "../account-color";
 import { hostKey, readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 import { showActionFailureToast } from "../error-toast";
@@ -37,6 +37,7 @@ import {
   accountsLoginCmd,
   accountsRemove,
   accountsRepair,
+  accountsSetDefault,
   accountsRollback,
   accountsVerify,
   validateAcctName,
@@ -439,7 +440,7 @@ export class AccountsSection {
       `${state.accounts.length} ${LOCAL_ACCOUNTS_COPY.countSuffix} · ` +
         `${LOCAL_ACCOUNTS_COPY.manifestPrefix} ${state.meta.manifestPath}`,
     );
-    // 「当前账号」在本机与远端是**同一格**（`config.json` 的 `accounts.defaultName`），
+    // 「当前账号」在本机与远端是**同一格**（那台账号库清单里的默认号），
     // 所以这里就用那个既有的纯函数，不长第二套判定。
     const cur = currentWorkingAccount(state);
     const table = document.createElement("div");
@@ -1121,7 +1122,7 @@ export class AccountsSection {
     const actions = document.createElement("span");
     actions.className = "accounts-row-actions";
     // F07：每账号默认模型偏好——自由文本（模型 ID 会随时间变化，不硬编码枚举）；空 = 跟随该
-    // 账号自身默认，不下发 override。保存写本机 config.json（按这台机器分），不碰远端/manifest（同 defaultName）。
+    // 账号自身默认，不下发 override。保存写本机 config.json（按这台机器分），不碰远端/manifest。
     // Phase D 审计（UX）：此前保存无任何反馈（同文件其余动作都有 toast，这里是唯一的例外）+
     // 保存失败会真正无声消失（设置窗口没有主窗那个全局 unhandledrejection 兜底，见 main.ts）。
     // 已按 selectDefault 的既有模式补齐 try/catch + toast，且失败时保留原值只提示不落盘（配合
@@ -1215,8 +1216,8 @@ export class AccountsSection {
 
   private async selectDefault(origin: Origin, a: Account): Promise<void> {
     try {
-      await setDefaultName(origin, a.name);
-      // 默认账号按机器存：只清这一台的缓存。
+      await accountsSetDefault(origin, a.name);
+      // 默认账号住那台的账号库清单：只清这一台的缓存。
       invalidateAccountsCache(origin);
       await this.reload(true);
       void emit(SETTINGS_APPLIED_EVENT); // 让主窗状态栏 chip 同步

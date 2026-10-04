@@ -205,6 +205,12 @@ fn backend_rows_point_where_the_backend_itself_writes() {
         row("assets-catalog.json", h.join(rr::ASSET_CATALOG_REL), "file"),
         row("quota.json", h.join(rr::QUOTA_LEDGER_REL), "file"),
         row("rotation.json", h.join(rr::ROTATION_REL), "file"),
+        row(
+            "launch-accounts.json",
+            h.join(rr::LAUNCH_ACCOUNTS_REL),
+            "file",
+        ),
+        row("launch-pending/", h.join(rr::LAUNCH_NOTES_DIR_REL), "dir"),
         row("accounts/", h.join(rr::ACCOUNTS_DIR_REL), "dir"),
         row("accounts-mcp.json", h.join(rr::ACCOUNTS_MCP_REL), "file"),
         row(

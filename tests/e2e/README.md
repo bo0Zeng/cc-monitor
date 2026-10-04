@@ -292,7 +292,7 @@ fixtures / 驱动:
 1. **命令级整合(最全,主套件)**:`bash tests/e2e/resume-suite.sh`。逐边界:①`resume-cmd-driver.ts` 取真源命令串,
    ②断言命令形状(复用名/无 new-session/无 -N/`CLAUDE_CONFIG_DIR` 前缀),③真 send-keys 进 idle pane 的 sh,
    ④断言 argv.log(sid 命中行的 `CLAUDE_CONFIG_DIR` + `--resume`)与 `tmux list-sessions` 孤儿计数。覆盖:idle
-   就地复用无孤儿 / 无 tmux 新建注账号 / 带 pin 落 X 目录(两隔离账号) / 不带 pin 走基座 + `resolveFollowAccount`
+   就地复用无孤儿 / 无 tmux 新建注账号 / 带 pin 落 X 目录(两隔离账号) / 不带 pin 走基座
    落当前工作账号 / 重复 resume 幂等(create-gate 短路) / tmux 消失回退 / 会话仍 live 守卫不误动。
 2. **backend-frame 复活清灰(后端半场)**:`bash tests/e2e/resume-backend-frames.sh`(需仓内 debug 后端;缺则
    `CCM_E2E_BACKEND=<某 p1p+ 的 cc-monitor-backend>`)。序列 `SessionAdded`(live)→(kill fake-claude)

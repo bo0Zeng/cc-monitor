@@ -22,8 +22,12 @@ fn the_fixture_default_launcher_is_the_one_the_backend_says() {
 // 这里原来有三条：两条拿后端现场产出去逐字节钉 TS 渲染器源码里还留着的
 // 能力清单与两句「维度 …」降级理由（TS 渲染器已删，被钉的那一侧没了 ⇒ 整条退役；
 // 清单今天只有 `ccm_invocation.rs` 一份，`tests/e2e/ccm-contract-parity.sh` 改抽它），
-// 一条钉「`accounts.ts` 用计算键读 wire 键名」—— 那条与渲染器无关，搬去了它的生成器旁边
-// （`launch_wire_k_r95_launch_render_facts.rs`）。
+// 一条钉「`accounts.ts` 用计算键读 wire 键名」—— 那张键名表随界面那份挑号一起删了（线上那一格今天是生成的类型）。
+
+/// 号照请求原样当已判好（这一族比的是渲染，判号由 `launch_account_tests.rs` 钉）。
+fn as_asked(r: &super::super::wire::CliRenderRequest) -> crate::control::launch_account::Settled {
+    crate::control::launch_account::settled_as_asked(&r.account, &r.models)
+}
 
 /// ★ 计数自检：先证明「有东西可比」，再比。**ok 与 refusal 各自也要有下限** ——
 /// 只剩 ok 那半的话，「该降级却渲染出来了」就没人管了。
@@ -57,10 +61,11 @@ fn rust_cli_rendering_matches_the_typescript_golden_byte_for_byte() {
     for c in f.cases {
         // ★ 跑的是**生产命令本体**（`render_ccm_launch` 的本体 `_with`，能力喂夹具那一份），不是自己重搭一遍 spec。
         let caps: std::collections::BTreeSet<String> = c.caps.iter().cloned().collect();
-        let (got_ok, got) = match super::super::wire::render_ccm_launch_with(&c.req, &caps) {
-            Ok(cmd) => (true, cmd),
-            Err(r) => (false, r),
-        };
+        let (got_ok, got) =
+            match super::super::wire::render_ccm_launch_with(&c.req, &as_asked(&c.req), &caps) {
+                Ok(cmd) => (true, cmd),
+                Err(r) => (false, r),
+            };
         if got_ok != c.ok || got != c.out {
             bad.push(format!(
                 "  用例「{}」\n    期望: ok={} {:?}\n    Rust: ok={} {:?}",
@@ -87,7 +92,7 @@ fn the_production_cli_render_asks_this_backend_for_its_own_capabilities() {
         .find(|c| c.name == "new + base")
         .expect("夹具里没有「new + base」");
     assert_eq!(
-        super::super::wire::render_ccm_launch(&c.req).as_deref(),
+        super::super::wire::render_ccm_launch(&c.req, &as_asked(&c.req)).as_deref(),
         Ok(c.out.as_str()),
         "生产那一格没按这台后端自己的能力渲"
     );
@@ -183,7 +188,7 @@ fn every_monitor_launch_path_hands_over_one_ccm_line() {
     assert_eq!(got, PATHS, "夹具里的起会话路径与这张名单对不上");
     for c in f.cases.iter().filter(|c| c.name.starts_with("path:")) {
         let caps: std::collections::BTreeSet<String> = c.caps.iter().cloned().collect();
-        let line = super::super::wire::render_ccm_launch_with(&c.req, &caps)
+        let line = super::super::wire::render_ccm_launch_with(&c.req, &as_asked(&c.req), &caps)
             .unwrap_or_else(|e| panic!("「{}」渲不出来：{e}", c.name));
         let words = shell_words(&line);
         let ok = match words.first().map(String::as_str) {
@@ -211,7 +216,7 @@ fn emit_launch_render_for_e2e() {
         .expect("缺 CCM_E2E_RENDER_REQ —— 本出口只给 tests/e2e/launch-render-driver.ts 用");
     let req: super::super::wire::CliRenderRequest =
         serde_json::from_str(&raw).unwrap_or_else(|e| panic!("请求解析不了（{e}）：{raw}"));
-    match super::super::wire::render_ccm_launch(&req) {
+    match super::super::wire::render_ccm_launch(&req, &as_asked(&req)) {
         Ok(cmd) => {
             assert!(
                 !cmd.contains('\n'),

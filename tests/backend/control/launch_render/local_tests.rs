@@ -22,11 +22,21 @@ fn resume() -> LocalAction {
     LocalAction::Resume { sid: SID.into() }
 }
 
-fn named(dir: &str, name: Option<&str>) -> Option<LaunchAccount> {
-    Some(LaunchAccount::Named {
-        config_dir: dir.into(),
+fn named(dir: &str, name: Option<&str>) -> Option<AccountAsk> {
+    Some(AccountAsk::Named {
+        config_dir: Some(dir.into()),
         name: name.map(str::to_string),
     })
+}
+
+fn settled(r: &LocalLaunchRequest) -> Settled {
+    r.account.as_ref().map_or(Settled::Unsaid, |a| {
+        crate::control::launch_account::settled_as_asked(a, &Default::default())
+    })
+}
+
+fn go(r: &LocalLaunchRequest, f: &Facts) -> Result<Planned, String> {
+    plan(r, &settled(r), f)
 }
 
 const POSIX: Facts = Facts {
@@ -45,7 +55,7 @@ fn every_local_launch_shape_is_one_ccm_line() {
     let mut r = req(resume());
     r.tmux_name = Some("p-cc".into());
     r.account = named("/h/.claude-alt/work", Some("work"));
-    let out = plan(&r, &POSIX).unwrap();
+    let out = go(&r, &POSIX).unwrap();
     assert_eq!(
         out.cmd,
         format!("ccm --resume {SID} -- --ccm-tmux=p-cc --ccm-sid={SID} --ccm-agent claude --account work --ccm-launch-id {SID}")
@@ -55,15 +65,15 @@ fn every_local_launch_shape_is_one_ccm_line() {
     // 说不出名字 ⇒ 交目录。
     r.account = named("/h/.claude-alt/work", None);
     assert_eq!(
-        plan(&r, &POSIX).unwrap().cmd,
+        go(&r, &POSIX).unwrap().cmd,
         format!("ccm --resume {SID} -- --ccm-tmux=p-cc --ccm-sid={SID} --ccm-agent claude --account-dir /h/.claude-alt/work --ccm-launch-id {SID}")
     );
 
     // 账号 0 ⇒ `--base`；缺席 ⇒ 继承（一个账号旗标都不吐）。
-    r.account = Some(LaunchAccount::Base);
-    assert!(plan(&r, &POSIX).unwrap().cmd.contains(" --base "));
+    r.account = Some(AccountAsk::Base);
+    assert!(go(&r, &POSIX).unwrap().cmd.contains(" --base "));
     r.account = None;
-    let inherit = plan(&r, &POSIX).unwrap().cmd;
+    let inherit = go(&r, &POSIX).unwrap().cmd;
     assert!(
         !inherit.contains("--base") && !inherit.contains("--account"),
         "{inherit}"
@@ -72,7 +82,7 @@ fn every_local_launch_shape_is_one_ccm_line() {
     // 新起：身份 token 是现铸的 nonce，命令里带的就是交回去的那一个。
     let mut n = req(LocalAction::New);
     n.tmux_name = Some("w-cc".into());
-    let out = plan(&n, &POSIX).unwrap();
+    let out = go(&n, &POSIX).unwrap();
     let tok = out.launch_id.clone().unwrap();
     assert_eq!(tok.len(), 36);
     assert_eq!(
@@ -82,23 +92,23 @@ fn every_local_launch_shape_is_one_ccm_line() {
 
     // 自定义启动命令 ⇒ `--launcher`。
     n.launcher = Some("ccr code".into());
-    assert!(plan(&n, &POSIX)
+    assert!(go(&n, &POSIX)
         .unwrap()
         .cmd
         .contains(" --launcher 'ccr code'"));
 
     // 没有会话名 ⇒ 直路（命令照样是那一行 `ccm …`，只是不建 tmux）。
     let mut d = req(resume());
-    d.account = Some(LaunchAccount::Base);
+    d.account = Some(AccountAsk::Base);
     assert_eq!(
-        plan(&d, &POSIX).unwrap().cmd,
+        go(&d, &POSIX).unwrap().cmd,
         format!("ccm --resume {SID} -- --ccm-agent claude --base --ccm-launch-id {SID}")
     );
 
     // 接回：不起 agent ⇒ 不带身份 token。
     let mut a = req(LocalAction::Attach);
     a.tmux_name = Some("p-cc".into());
-    let out = plan(&a, &POSIX).unwrap();
+    let out = go(&a, &POSIX).unwrap();
     assert_eq!(out.cmd, "ccm -- --attach p-cc");
     assert_eq!(out.launch_id, None);
 }
@@ -117,16 +127,16 @@ fn the_identity_token_is_planted_and_handed_back() {
     };
     let mut r = req(resume());
     r.tmux_name = Some("p-cc".into());
-    let out = plan(&r, &POSIX).unwrap();
+    let out = go(&r, &POSIX).unwrap();
     assert_eq!(out.launch_id.as_deref(), Some(SID));
     assert_eq!(parsed_id(&out.cmd), SID);
-    let a = plan(&req(LocalAction::New), &POSIX).unwrap();
-    let b = plan(&req(LocalAction::New), &POSIX).unwrap();
+    let a = go(&req(LocalAction::New), &POSIX).unwrap();
+    let b = go(&req(LocalAction::New), &POSIX).unwrap();
     let (ta, tb) = (a.launch_id.clone().unwrap(), b.launch_id.clone().unwrap());
     assert_ne!(ta, tb, "两次新起铸出了同一个 token");
     assert_eq!(parsed_id(&a.cmd), ta);
     assert_eq!(
-        parsed_id(&plan(&req(LocalAction::New), &WINDOWS).unwrap().cmd).len(),
+        parsed_id(&go(&req(LocalAction::New), &WINDOWS).unwrap().cmd).len(),
         36
     );
 }
@@ -138,13 +148,13 @@ fn windows_launches_go_the_direct_way_and_attach_is_refused() {
     r.tmux_name = Some("p-cc".into());
     r.account = named("C:\\Users\\z\\.claude-alt\\work", None);
     assert_eq!(
-        plan(&r, &WINDOWS).unwrap().cmd,
+        go(&r, &WINDOWS).unwrap().cmd,
         format!("ccm --resume {SID} -- --ccm-agent claude --account-dir 'C:\\Users\\z\\.claude-alt\\work' --ccm-launch-id {SID}")
     );
     let mut a = req(LocalAction::Attach);
     a.tmux_name = Some("p-cc".into());
     assert_eq!(
-        plan(&a, &WINDOWS).unwrap_err(),
+        go(&a, &WINDOWS).unwrap_err(),
         copy_core::copy_text("rsHistory.attach.windows", &[])
     );
 }
@@ -158,15 +168,15 @@ fn bad_inputs_are_refused_before_anything_is_rendered() {
     };
     let mut n = req(LocalAction::New);
     n.cwd = Some("/nope".into());
-    assert!(plan(&n, &gone).unwrap_err().contains("/nope"));
+    assert!(go(&n, &gone).unwrap_err().contains("/nope"));
     let mut l = req(LocalAction::New);
     l.launcher = Some("claude; rm -rf ~".into());
-    assert!(plan(&l, &POSIX).is_err());
+    assert!(go(&l, &POSIX).is_err());
     let bad = req(LocalAction::Resume {
         sid: "--dangerously-skip-permissions".into(),
     });
-    assert!(plan(&bad, &POSIX).is_err());
-    assert!(plan(&req(LocalAction::Attach), &POSIX).is_err());
+    assert!(go(&bad, &POSIX).is_err());
+    assert!(go(&req(LocalAction::Attach), &POSIX).is_err());
 }
 
 /// 生产渲染器的真输出吐给 e2e（`tests/e2e/p3t-local-tmux.sh`）：串必须从这里出去，脚本里不手抄。
@@ -178,8 +188,8 @@ fn emit_local_launch_command_for_e2e() {
     let name = std::env::var("P3T_E2E_TMUX").unwrap_or_else(|_| "s1abcdef-cc".into());
     let mut r = req(LocalAction::Resume { sid });
     r.launcher = std::env::var("P3T_E2E_LAUNCHER").ok();
-    r.account = Some(LaunchAccount::Base);
+    r.account = Some(AccountAsk::Base);
     r.tmux_name = Some(name);
-    let cmd = plan(&r, &POSIX).expect("渲染不出来 —— e2e 无对象可跑").cmd;
+    let cmd = go(&r, &POSIX).expect("渲染不出来 —— e2e 无对象可跑").cmd;
     println!("P3T_CMD<<<{cmd}>>>");
 }

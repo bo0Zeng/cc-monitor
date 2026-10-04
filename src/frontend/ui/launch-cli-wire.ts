@@ -12,17 +12,27 @@ export type CliWireAction =
 /** `send_into: true` = 往已有的空 tmux 会话里就地 resume（外层包一层，键入直路那一行）。 */
 export type CliWireContainer = { kind: "none" } | { kind: "tmux"; name: string; send_into: boolean };
 
-/** 具名账号：`name` 说得出 ⇒ `--account`；只有 `configDir` ⇒ `--account-dir`。 */
-export type CliWireAccount = { kind: "base" } | { kind: "account"; name: string | null; configDir: string | null };
+/** 用哪个号：跟随 · 账号 0 · 用户点名（生成的类型，那台后端判）。 */
+export type { AccountAsk as CliWireAccount } from "./generated/AccountAsk";
+import type { AccountAsk } from "./generated/AccountAsk";
+import type { LaunchedAccount } from "./generated/LaunchedAccount";
 
 export interface CliRenderRequest {
   agent: string;
   action: CliWireAction;
   container: CliWireContainer;
   cwd: string | null;
-  account: CliWireAccount;
+  account: AccountAsk;
   ccmSid: string | null;
   model: string | null;
+  /** 那台的模型偏好表（原值，号 → 模型）：判出来的号在表里 ⇒ 用那一条。 */
+  models: Record<string, string>;
   launcher: string;
   defaultLauncher: string;
+}
+
+/** `launch-render-cli` 的成品：那一行 ＋ 实际用的号（账号 0 / 不指定 ⇒ `null`）。 */
+export interface CliRendered {
+  cmd: string;
+  account: LaunchedAccount | null;
 }

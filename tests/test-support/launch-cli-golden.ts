@@ -30,6 +30,8 @@ export interface CliGoldenCase {
   /** 那台 `ccm` 的能力：不上线（渲染在那台后端里、能力问它自己），只当对拍那一侧的输入落进夹具。 */
   caps: string[];
   ctx: LaunchContext;
+  /** 显式指定的模型（线上 `model`，压过偏好表；生产今天不发它，只 `print-parity` 那一条要）。 */
+  model?: string;
   /** 期望：渲得出（`true`，`out` 是命令）还是拒（`false`，`out` 是理由）。 */
   ok: boolean;
   /** **手写**的期望串（见文件头注）。 */
@@ -43,6 +45,7 @@ const base = (over: Partial<LaunchContext> = {}): LaunchContext => ({
   container: { kind: "none" },
   cwd: null,
   account: { kind: "base" },
+  models: {},
   launcherOverride: undefined,
   ccmSid: undefined,
   ...over,
@@ -52,18 +55,18 @@ const base = (over: Partial<LaunchContext> = {}): LaunchContext => ({
 export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
   // ---- ok 类 ----
   { name: "new + base", caps: ALL_CAPS, ctx: base(), ok: true, out: "ccm -- new --ccm-agent claude --base" },
-  { name: "new + 具名账号", caps: ALL_CAPS, ctx: base({ account: { kind: "account", name: "z", configDir: ACCT } }),
+  { name: "new + 具名账号", caps: ALL_CAPS, ctx: base({ account: { kind: "named", name: "z" } }),
     ok: true, out: "ccm -- new --ccm-agent claude --account z" },
-  { name: "只有目录没有名字 ⇒ --account-dir", caps: ALL_CAPS, ctx: base({ account: { kind: "account", configDir: ACCT } }),
+  { name: "只有目录没有名字 ⇒ --account-dir", caps: ALL_CAPS, ctx: base({ account: { kind: "named", configDir: ACCT } }),
     ok: true, out: "ccm -- new --ccm-agent claude --account-dir /home/u/.cc-monitor/accounts/z" },
   { name: "resume + tmux + 具名账号", caps: ALL_CAPS, ctx: base({
       action: { kind: "resume", sid: "abc-123" },
       container: { kind: "tmux", name: "cc-abc123", mode: "create" },
-      account: { kind: "account", name: "z", configDir: ACCT },
+      account: { kind: "named", name: "z" },
     }), ok: true, out: "ccm --resume abc-123 -- --ccm-tmux=cc-abc123 --ccm-agent claude --account z" },
   { name: "resume + cwd + model", caps: ALL_CAPS, ctx: base({
-      action: { kind: "resume", sid: "s1" }, cwd: "/w", modelOverride: "opus",
-    }), ok: true, out: "ccm --resume s1 --model opus -- --ccm-agent claude --base --cwd /w" },
+      action: { kind: "resume", sid: "s1" }, cwd: "/w", account: { kind: "named", name: "z" }, models: { z: "opus" },
+    }), ok: true, out: "ccm --resume s1 --model opus -- --ccm-agent claude --account z --cwd /w" },
   { name: "就地 resume：外层只包那一行直路", caps: ALL_CAPS, ctx: base({
       action: { kind: "resume", sid: "s1" },
       container: { kind: "tmux", name: "cc-x", mode: "send-into" },
@@ -86,7 +89,7 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
   { name: "建 tmux 会话而这台没有 tmux", caps: ALL_CAPS.filter((c) => c !== "tmux"), ctx: base({
       container: { kind: "tmux", name: "cc-x", mode: "create" },
     }), ok: false, out: "这台机器上的 ccm 做不到这样起会话（缺 tmux）" },
-  { name: "已触发的 model 维度要的能力缺失", caps: ALL_CAPS.filter((c) => c !== "model"), ctx: base({ modelOverride: "opus" }),
+  { name: "已触发的 model 维度要的能力缺失", caps: ALL_CAPS.filter((c) => c !== "model"), ctx: base({ account: { kind: "named", name: "z" }, models: { z: "opus" } }),
     ok: false, out: "这台机器上的 ccm 不认 model 这一项设置（缺 model）" },
   { name: "已触发的 account 维度要的能力缺失", caps: ALL_CAPS.filter((c) => c !== "account"), ctx: base(),
     ok: false, out: "这台机器上的 ccm 不认 account 这一项设置（缺 account）" },
@@ -96,18 +99,18 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
   { name: "Codex 会话 resume（直连）", caps: ALL_CAPS, ctx: planResumeDirect("codex", "s1", "/p", undefined, {}),
     ok: true, out: "ccm resume s1 -- --ccm-agent codex --base --cwd /p" },
   { name: "Codex 会话选了具名账号", caps: ALL_CAPS,
-    ctx: planResumeDirect("codex", "s1", "/p", undefined, { configDir: ACCT, accountName: "z" }),
+    ctx: planResumeDirect("codex", "s1", "/p", undefined, { account: { kind: "named", name: "z" } }),
     ok: false, out: "Codex 会话还不能选账号" },
   // ---- `path:` 那几条：monitor 每一条远端起会话路径真发出去的那一形（意图由生产 `plan*` 现造，与执行器同一个），
   //      Rust 侧逐条断言它们都只交一行 `ccm …`（`cli_parity` 的 `every_monitor_launch_path_hands_over_one_ccm_line`）。----
   { name: "path:远端直连 resume", caps: ALL_CAPS,
-    ctx: planResumeDirect(DEFAULT_AGENT, "s1", "/p", "claude", { configDir: ACCT, accountName: "z" }),
+    ctx: planResumeDirect(DEFAULT_AGENT, "s1", "/p", "claude", { account: { kind: "named", name: "z" } }),
     ok: true, out: `ccm --resume s1 -- --ccm-agent claude --account z --cwd /p` },
   { name: "path:远端 tmux 建会话 resume（换号重启 · 分叉）", caps: ALL_CAPS,
-    ctx: planResumeTmux(DEFAULT_AGENT, "s1", "/p", "claude", "cc-s1", { configDir: ACCT, accountName: "z" }),
+    ctx: planResumeTmux(DEFAULT_AGENT, "s1", "/p", "claude", "cc-s1", { account: { kind: "named", name: "z" } }),
     ok: true, out: `ccm --resume s1 -- --ccm-tmux=cc-s1 --ccm-sid=s1 --ccm-agent claude --account z --cwd /p` },
   { name: "path:分叉继承源会话的目录（说不出名字）", caps: ALL_CAPS,
-    ctx: planResumeTmux(DEFAULT_AGENT, "s1", "/p", "claude", "p-fork-cc", { configDir: ACCT }),
+    ctx: planResumeTmux(DEFAULT_AGENT, "s1", "/p", "claude", "p-fork-cc", { account: { kind: "named", configDir: ACCT } }),
     ok: true, out: `ccm --resume s1 -- --ccm-tmux=p-fork-cc --ccm-sid=s1 --ccm-agent claude --account-dir /home/u/.cc-monitor/accounts/z --cwd /p` },
   { name: "path:就地 resume 键进 pane 的那一行", caps: ALL_CAPS,
     ctx: { ...planResumeIntoExistingTmux(DEFAULT_AGENT, "s1", "cc-s1", "claude", {}), container: { kind: "none" } },
@@ -137,8 +140,8 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
   { name: "print-parity:resumeTmuxWithModel", caps: ALL_CAPS, ctx: base({
       action: { kind: "resume", sid: "p1" },
       container: { kind: "tmux", name: "cc-p1", mode: "create" },
-      cwd: "/tmp", launcherOverride: "claude", ccmSid: "p1", modelOverride: "opus",
-    }), ok: true, out: "ccm --resume p1 --model opus -- --ccm-tmux=cc-p1 --ccm-sid=p1 --ccm-agent claude --base --cwd /tmp" },
+      cwd: "/tmp", launcherOverride: "claude", ccmSid: "p1",
+    }), model: "opus", ok: true, out: "ccm --resume p1 --model opus -- --ccm-tmux=cc-p1 --ccm-sid=p1 --ccm-agent claude --base --cwd /tmp" },
 ];
 
 export function renderCliGoldenFixture(): string {
@@ -150,7 +153,7 @@ export function renderCliGoldenFixture(): string {
         name: c.name,
         // `req` 由生产代码构造（`buildCliRenderRequest`）：字段名 · `deny_unknown_fields` · 映射臂 · 请求构造漏没漏字段一次覆盖。
         caps: c.caps,
-        req: buildCliRenderRequest(c.ctx),
+        req: { ...buildCliRenderRequest(c.ctx), ...(c.model ? { model: c.model } : {}) },
         ok: c.ok,
         out: c.out,
       })),

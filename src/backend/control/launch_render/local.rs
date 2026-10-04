@@ -6,6 +6,7 @@
 //! 事实（平台 · 目录在不在）由 [`Facts`] 给，[`plan`] 是纯的 —— 判据喂确定的事实驱动生产那一条。
 
 use super::ccm_invocation as ci;
+use crate::control::launch_account::{self as la, AccountAsk, Settled};
 use copy_core::copy_text;
 use serde::Deserialize;
 use std::collections::BTreeSet;
@@ -23,9 +24,9 @@ pub(crate) struct LocalLaunchRequest {
     /// 自定义启动命令（空 / 纯空白 = 没设）。
     #[serde(default)]
     pub(crate) launcher: Option<String>,
-    /// 三态：缺席 = 调用方没表态（继承环境）· `base` = 显式账号 0 · `named` = 具名账号。
+    /// 缺席 = 不表态（继承环境；接回那一形）· 跟随 · 账号 0 · 用户点名（[`AccountAsk`]）。
     #[serde(default)]
-    pub(crate) account: Option<LaunchAccount>,
+    pub(crate) account: Option<AccountAsk>,
     /// 要建进 tmux 时的会话名（界面铸名口铸的；这里不铸 —— 撞名避让只有一个家）。
     #[serde(default)]
     pub(crate) tmux_name: Option<String>,
@@ -42,20 +43,6 @@ pub(crate) enum LocalAction {
     },
     /// 接回一个已有的 tmux 会话（名字走 `tmuxName`）：不起 agent ⇒ 不要账号、身份。
     Attach,
-}
-
-/// 「这次拉起用哪个号」—— 形状与界面 `LOCAL_LAUNCH_ACCOUNT_WIRE`（生成物）同一份。
-#[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub(crate) enum LaunchAccount {
-    Base,
-    Named {
-        #[serde(rename = "configDir")]
-        config_dir: String,
-        /// 说得出的那个名字；`None` ⇒ `--account-dir <目录>`。
-        #[serde(default)]
-        name: Option<String>,
-    },
 }
 
 /// [`plan`] 要的两样事实。生产那一份是 [`Facts::PRODUCTION`]。
@@ -84,9 +71,28 @@ pub(crate) struct Planned {
     pub(crate) launch_id: Option<String>,
 }
 
-/// 整条计划。拒 ⇒ `Err(那一句)`。
-pub(crate) fn plan(req: &LocalLaunchRequest, facts: &Facts) -> Result<Planned, String> {
-    plan_with(req, facts, false, |spec, caps| {
+/// 这一趟用哪个号（[`la::settle`]；缺席 ⇒ 不表态）。选不了 ⇒ `Err`。
+pub(crate) fn settle(
+    req: &LocalLaunchRequest,
+    facts: &la::Facts,
+) -> Result<Settled, la::AccountUnavailable> {
+    let sid = match &req.action {
+        LocalAction::Resume { sid } => Some(sid.as_str()),
+        _ => None,
+    };
+    match &req.account {
+        None => Ok(Settled::Unsaid),
+        Some(a) => la::settle(a, sid, &Default::default(), facts),
+    }
+}
+
+/// 整条计划（号已经判好）。拒 ⇒ `Err(那一句)`。
+pub(crate) fn plan(
+    req: &LocalLaunchRequest,
+    account: &Settled,
+    facts: &Facts,
+) -> Result<Planned, String> {
+    plan_with(req, account, facts, false, |spec, caps| {
         ci::render_ccm_invocation(spec, caps)
     })
     .map(|(cmd, launch_id)| Planned { cmd, launch_id })
@@ -96,15 +102,20 @@ pub(crate) fn plan(req: &LocalLaunchRequest, facts: &Facts) -> Result<Planned, S
 /// 这台后端替人在 tmux 里起会话时用（tab 栏在 tmux 里起）；名字是调用方铸好的。
 pub(crate) fn plan_argv(
     req: &LocalLaunchRequest,
+    account: &Settled,
     facts: &Facts,
     detach: bool,
 ) -> Result<Vec<String>, String> {
-    plan_with(req, facts, detach, |spec, caps| ci::ccm_argv(spec, caps)).map(|(argv, _)| argv)
+    plan_with(req, account, facts, detach, |spec, caps| {
+        ci::ccm_argv(spec, caps)
+    })
+    .map(|(argv, _)| argv)
 }
 
 /// 整条计划，渲成什么形由 `out` 定（一行字 · argv）。回 `(成品, 身份 token)`。
 fn plan_with<T>(
     req: &LocalLaunchRequest,
+    account: &Settled,
     facts: &Facts,
     detach: bool,
     out: impl Fn(&ci::CliSpec, &BTreeSet<String>) -> Result<T, ci::Refusal>,
@@ -119,6 +130,7 @@ fn plan_with<T>(
         };
         let cmd = with_spec(
             req,
+            account,
             ci::Action::Attach { name },
             Some(name),
             None,
@@ -140,13 +152,14 @@ fn plan_with<T>(
     // Windows 上没有 tmux ⇒ 直路（ccm 在那个 PowerShell 窗口里起 agent、等它退）。
     // §36（只绑 Windows）：Windows 这一行里不渲清嵌套会话变量的那一段 —— 清它们是 `ccm` 在最终 exec 那一处做的。
     let container = if facts.windows { None } else { name };
-    let cmd = with_spec(req, action, container, Some(&token), detach, &out)?;
+    let cmd = with_spec(req, account, action, container, Some(&token), detach, &out)?;
     Ok((cmd, Some(token)))
 }
 
 /// 本机那一形的入参 ⇒ 渲染器那份 spec（唯一的映射）。
 fn with_spec<T>(
     req: &LocalLaunchRequest,
+    account: &Settled,
     action: ci::Action,
     tmux: Option<&str>,
     launch_id: Option<&str>,
@@ -154,14 +167,18 @@ fn with_spec<T>(
     f: impl Fn(&ci::CliSpec, &BTreeSet<String>) -> Result<T, ci::Refusal>,
 ) -> Result<T, String> {
     let launcher = checked_launcher(req.launcher.as_deref())?;
-    // 账号三态逐态对：`base` ⇒ `--base`；具名 ⇒ `--account <名>` / `--account-dir <目录>`；缺席 ⇒ 继承（不吐）。
-    let account = match req.account.as_ref() {
-        Some(LaunchAccount::Base) => ci::CliAccount::Base,
-        Some(LaunchAccount::Named { name, config_dir }) => ci::CliAccount::Named {
-            name: name.as_deref(),
-            config_dir: Some(config_dir.as_str()),
+    // 账号逐态对：账号 0 ⇒ `--base`；账号库里的号 ⇒ `--account <名>`；只有目录 ⇒ `--account-dir`；不表态 ⇒ 继承（不吐）。
+    let account = match account {
+        Settled::Base => ci::CliAccount::Base,
+        Settled::Account(a) => ci::CliAccount::Named {
+            name: Some(a.name.as_str()),
+            config_dir: Some(a.config_dir.as_str()),
         },
-        None => ci::CliAccount::Inherit,
+        Settled::Dir(d) => ci::CliAccount::Named {
+            name: None,
+            config_dir: Some(d.as_str()),
+        },
+        Settled::Unsaid => ci::CliAccount::Inherit,
     };
     let sid = match action {
         ci::Action::Resume { sid } => Some(sid),

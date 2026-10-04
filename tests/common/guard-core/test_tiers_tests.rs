@@ -590,6 +590,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/control/ccm/claude_flags_tests.rs", // 读 claude --help 快照 ＋ PATH 上有就跑真 `claude --help`
     "tests/backend/control/ccm/plan_tests.rs",
     "tests/backend/control/exit_policy_tests.rs",
+    "tests/backend/control/launch_account_tests.rs",
     "tests/backend/control/files_commit_tests.rs",
     "tests/backend/control/files_extract_tests.rs",
     "tests/backend/control/files_upload_chunks_tests.rs",
@@ -658,12 +659,13 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/stderr_log_tests.rs",
     // 历史里恢复 ⇒ 起的是那个会话的那一家：临时家目录 ＋ 假启动器，re-exec 本测试二进制让 `ccm` exec 掉它。
     "tests/backend/control/launch_render/history_resume_e2e_tests.rs",
+    // 经 ccm 用某个号起一次 ⇒ 记到那条会话名下：临时家目录 ＋ 假启动器，re-exec 本测试二进制让 `ccm` exec 掉它。
+    "tests/backend/control/ccm/launch_note_e2e_tests.rs",
     "tests/backend/main_claim_tests.rs", // 先抢口再接日志：占一个真回环口
     "tests/backend/stream/wire_tests.rs",
     // `tests/frontend/shell/account_aliases_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
     // `tests/frontend/shell/adapter_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
     "tests/frontend/shell/auto_launch_tests.rs",
-    "tests/backend/control/launch_render/launch_wire_k_r95_launch_render_facts.rs",
     "tests/frontend/shell/local_backend_tests.rs",
     // 标识符放行判定的生成物（写 `src/frontend/ui/generated/judgment-rules.ts`）＋ 共用金样 ⇒ 写真文件 ⇒ 集成层。
     "tests/frontend/shell/payload_judgment_rules.rs",
@@ -873,6 +875,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/backend/control/launch_render/history_resume_e2e_tests.rs",
         "history_resume_child_entry_point",
         Trigger::Filter { by: "tests/backend/control/launch_render/history_resume_e2e_tests.rs", needle: "control::launch_render::history_resume_e2e::history_resume_child_entry_point" },
+    ),
+    (
+        "tests/backend/control/ccm/launch_note_e2e_tests.rs",
+        "launch_note_child_entry_point",
+        Trigger::Filter { by: "tests/backend/control/ccm/launch_note_e2e_tests.rs", needle: "control::ccm::launch_note_e2e::launch_note_child_entry_point" },
     ),
     (
         "tests/backend/stderr_log_tests.rs",

@@ -14,7 +14,7 @@
 //! 2. **写一条不丢别的**：夹具拷进临时目录 → 改一条 → 再读：其余每条逐格 == 金样；被改那条只变了 patch 那几格 ＋ `updatedAt`；
 //!    条目里 / 顶层认不出的键原样还在；被改那条身上的蛇形别名摘了（否则下次严格读读不懂）。
 //! 3. **读不懂就不写**：坏 JSON · 字段类型不对 · 同一格驼峰与蛇形都在 · 顶层不是对象 ⇒ 拒，文件逐字节不变。
-//! 4. patch 语义逐格照搬 monitor 从前那份（缺格 / `null` 不改；空白串清空）；忘掉一条；上次账号表；路径只认绝对路径。
+//! 4. patch 语义逐格照搬 monitor 从前那份（缺格 / `null` 不改；空白串清空）；忘掉一条；路径只认绝对路径。
 //!
 //! # 买不到
 //!
@@ -99,7 +99,7 @@ fn writing_one_entry_loses_nothing_else() {
         "没改的那一条（带认不出的键）原文变了"
     );
     let patched = after_raw["entries"][sid].as_object().unwrap();
-    for a in ["custom_title", "updated_at", "last_account"] {
+    for a in ["custom_title", "updated_at"] {
         assert!(
             !patched.contains_key(a),
             "被改那一条身上还留着蛇形别名 `{a}` —— 与驼峰那一格同时在，下一次严格读就读不懂了"
@@ -144,10 +144,6 @@ fn an_unreadable_file_is_never_overwritten() {
             matches!(load_at(&p), Loaded::Unreadable(_)),
             "读不懂要说「读不懂」，不许说成空表：{bad}"
         );
-        assert!(matches!(
-            last_accounts_of(load_at(&p)),
-            Err(("annotations_unreadable", _))
-        ));
     }
     // 临时文件没留下（写口的临时文件名是 `<那份文件名>.<pid>.ccm-tmp`）。
     let tmp = d.join(format!(
@@ -164,29 +160,19 @@ fn patch_semantics_match_what_the_monitor_did() {
     let p = temp_copy("patch");
     let sid = "0000aaaa-0000-4000-8000-000000000001";
     // null 不改（plain default：`null` 到不了「清空」那一档）。
-    let e = answer_annotate_at(
-        &p,
-        &json!({"sid": sid, "patch": {"customTitle": null, "lastAccount": null}}),
-        7,
-    )
-    .unwrap();
+    let e =
+        answer_annotate_at(&p, &json!({"sid": sid, "patch": {"customTitle": null}}), 7).unwrap();
     assert_eq!(e["entry"]["customTitle"], "占位标题一");
-    assert_eq!(e["entry"]["lastAccount"], "acct-a");
     // 空白串清空。
-    let e = answer_annotate_at(
-        &p,
-        &json!({"sid": sid, "patch": {"customTitle": "  ", "last_account": ""}}),
-        8,
-    )
-    .unwrap();
+    let e =
+        answer_annotate_at(&p, &json!({"sid": sid, "patch": {"customTitle": "  "}}), 8).unwrap();
     assert_eq!(e["entry"]["customTitle"], Value::Null);
-    assert_eq!(e["entry"]["lastAccount"], Value::Null);
     assert_eq!(e["entry"]["starred"], true, "没给的格被动了");
     // 新的一条：从缺省起。
     let e = answer_annotate_at(&p, &json!({"sid": "fresh", "patch": {"hidden": true}}), 9).unwrap();
     assert_eq!(
         e["entry"],
-        json!({"starred": false, "customTitle": null, "hidden": true, "updatedAt": 9, "lastAccount": null})
+        json!({"starred": false, "customTitle": null, "hidden": true, "updatedAt": 9})
     );
     // 坏入参拒，文件不动。
     let before = std::fs::read(&p).unwrap();
@@ -195,6 +181,8 @@ fn patch_semantics_match_what_the_monitor_did() {
         json!({"sid": "", "patch": {}}),
         json!({"sid": "x"}),
         json!({"sid": "x", "patch": {"bogus": 1}}),
+        // 「上次用哪个号起的」不归注解（会话所在那台的起会话账号记录）。
+        json!({"sid": "x", "patch": {"lastAccount": "a"}}),
         json!({"sid": "x", "patch": {"starred": "yes"}}),
     ] {
         assert_eq!(
@@ -240,26 +228,6 @@ fn a_missing_file_reads_empty_and_the_first_write_creates_it() {
     assert_eq!(raw["version"], 0);
     assert_eq!(raw["entries"]["s"]["starred"], true);
     let _ = std::fs::remove_dir_all(&d);
-}
-
-/// 上次账号表：只含真有的那几条。
-#[test]
-fn last_accounts_are_only_the_entries_that_have_one() {
-    let got = last_accounts_of(load_at(
-        &fixture_dir().join("history-metadata.fixture.json"),
-    ))
-    .unwrap();
-    assert_eq!(
-        got,
-        json!({"accounts": {
-            "0000aaaa-0000-4000-8000-000000000001": "acct-a",
-            "0000aaaa-0000-4000-8000-000000000002": "acct-b",
-        }})
-    );
-    assert_eq!(
-        last_accounts_of(Loaded::NoPath).unwrap_err().0,
-        "no_annotations"
-    );
 }
 
 /// 位置只跟着家走（期望手写）：默认 `<HOME>/.cc-monitor/history-metadata.json`；`CCM_DATA_DIR`（绝对）⇒ 它根上那一份；

@@ -4802,7 +4802,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 本机搜索改问本机后端（monitor 内存索引删了）⇒ 界面那两份点旧命令 / 旧函数名的散文各挂墓碑；
         //   冷读本机远端合成一条 ⇒ 漂移账登记表那一行旁注挂一块。
         ("src/frontend/ui/views/history-search.ts", 2), // +1：前端合并那一份（`mergeSearchResults`）删了，头注挂墓碑
-        ("src/frontend/ui/views/history.ts", 3), // +1：新开那一支原先调的 `validateLocalLaunch`
+        ("src/frontend/ui/views/history.ts", 2), // 3 → 2：新开那一支那段注释随起会话改由本机后端判号重写成现状
         ("tests/frontend/shell/drift_ledger_tests.rs", 2), // 1 → 2：`parse_for_kind` 那一句挂一块（它最后的活提名随 monitor 适配表的判据删了）
         // `src/frontend/shell/src/remote_history.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
         (
@@ -5082,7 +5082,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   `remote-launch.test.ts` 那一行摘了：套件重写，旧 TS 判定的墓碑随之走了（起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了））。
         // sid 那一族（J5）：TS `isValidSessionId` 与只剩那一格的 `validateLocalLaunch` 删了、wire 多报一格 `resumeSid`。
         // `wire.rs` · `launch-requests.ts` 两行摘了：两份重写成只渲 / 只构造那一行 `ccm …` 的请求；`launch-requests.vitest.ts` 随文件删了。
-        ("src/frontend/ui/local-resume.ts", 1),
+        // `local-resume.ts` 那一行摘了：头注随判号下沉重写成现状。
         (
             "tests/frontend/ui/launch-orchestration-single-home.vitest.ts",
             1,

@@ -5,6 +5,7 @@
  * |---|---|
  * | 建账号库（现在登录的身份收成默认号） | `accounts-init` |
  * | 新建一个号（订阅 / API；可导入凭据；可设默认） | `accounts-add` |
+ * | 设默认号（起会话跟随时没有上次的号就落它） | `accounts-set-default` |
  * | 删一个号 | `accounts-remove` |
  * | 修复（补链接 · 修权限 · 刷新邮箱 · 补别名） | `accounts-repair` |
  * | 按备份还原 | `accounts-rollback` |
@@ -151,6 +152,13 @@ export async function accountsAdd(origin: Origin, args: AccountAddArgs): Promise
   const body = jsonBody(args);
   const budget = budgetWithin(CHANGE_BUDGET_MS);
   return change(origin, "accounts-add", await settle(origin, "accounts-add", chan.call(origin, "accounts-add", body, budget), refusals()));
+}
+
+/** 设这台的默认号（那台账号库清单里 `isDefault` 那一格；跟随时没有上次的号就落它）。 */
+export async function accountsSetDefault(origin: Origin, name: string): Promise<AccountChange> {
+  const body = jsonBody({ name });
+  const budget = budgetWithin(CHANGE_BUDGET_MS);
+  return change(origin, "accounts-set-default", await settle(origin, "accounts-set-default", chan.call(origin, "accounts-set-default", body, budget), refusals()));
 }
 
 /** 删一个号。 */

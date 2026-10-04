@@ -1,6 +1,15 @@
 //! 命令表 · 终端与会话：`terminal-*` · `terminals-list` · `session-terminals` · `launch*` · `kill` · `sessions-*`。
 
-use crate::stream::inbound::spec::{CommandSpec, Run};
+use crate::stream::inbound::spec::{CommandSpec, Fail, Run};
+
+/// 起会话那几条的失败（码 ＋ 那一句 ＋ 按码定形的 `data`）⇒ 应答那一格。
+fn failed((code, message, data): crate::control::launch_render::Failed) -> Fail {
+    Fail {
+        code: code.to_string(),
+        message,
+        data,
+    }
+}
 
 pub(super) const SPECS: &[CommandSpec] = &[
     // 起会话那一行 `ccm …`（`control/launch_render/`）：交给终端的只有这一行，环境与中转地址归那台的 `ccm`。
@@ -8,46 +17,53 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "launch-local",
         doc_anchor: Some("#### `launch-local`"),
-        codes: &["bad_args", "refused"],
+        codes: &["bad_args", "refused", "account_unavailable"],
         fields: &[
             "account",
             "action",
             "cmd",
+            "configDir",
             "cwd",
             "defaultLauncher",
+            "kind",
             "launchId",
             "launcher",
+            "model",
+            "name",
             "tmuxName",
         ],
         takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::control::launch_render::answer_local(&r.args)
+        run: Run::BlockingData(|r| {
+            crate::faces::launch_face::answer_local(&r.args)
                 .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
+                .map_err(failed)
         }),
     },
     CommandSpec {
         name: "launch-render-cli",
         doc_anchor: Some("#### `launch-render-cli`"),
-        codes: &["bad_args", "refused"],
+        codes: &["bad_args", "refused", "account_unavailable"],
         fields: &[
             "account",
             "action",
             "ccmSid",
             "cmd",
+            "configDir",
             "container",
             "cwd",
             "defaultLauncher",
+            "kind",
             "launcher",
             "model",
+            "models",
+            "name",
         ],
         takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::control::launch_render::answer_cli(&r.args)
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
+        // 阻塞档：判号要读这台的账号清单与那份记录（同步文件 I/O）。
+        run: Run::BlockingData(|r| {
+            crate::faces::launch_face::answer_cli(&r.args)
+                .map(Some)
+                .map_err(failed)
         }),
     },
     // 〔「待迁」最后一行〕**开终端那一串**：`{machine, saved?, jump?, prefer?, command}` ⇒ `{command}`（一行 PowerShell：
@@ -296,6 +312,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "results",
             "session",
             "sid",
+            "unavailable",
             "why",
         ],
         takes_input: true,

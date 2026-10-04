@@ -142,9 +142,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "../../../../src/frontend/ui/views/history";
 import { TabManager } from "../../../../src/frontend/ui/tabs";
 import type { TabSessionActions } from "../../../../src/frontend/ui/tab-session-actions";
-import type { Account } from "../../../../src/frontend/ui/accounts";
 import { __resetAccountsCacheForTest } from "../../../../src/frontend/ui/account-reads";
-import { primeLocalLaunchAccounts, __resetLocalLaunchSnapshotForTests } from "../../../../src/frontend/ui/launch-account";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import { historyCalls, launchRenderShim, localLaunchCalls, withAccountReads, withHistoryReads } from "../../../test-support/chan-fake";
 
@@ -426,7 +424,7 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
       missing,
       "这些主路没把账号说出来 ⇒ ① 起会话落到 shell rc 那个默认号上（静默串号）；\n" +
         "② 中转那一格拼不出路由键（没有账号 id ⇒ 不注入）。\n" +
-        "取值口只有一个：`launch-account.ts::localLaunchAccountSync`（跟随）/ `explicitLocalAccountWire`（用户显式选的）。",
+        "要哪个号由 `launch-account.ts` 那几样说出（跟随 / 账号 0 / 点名），判号在本机后端。",
     ).toEqual([]);
   });
 
@@ -477,165 +475,16 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
   //   TS 那份算法删了（派生 ＋ 避让只在后端）⇒ 它要守的「只有一个家」换成「问后端铸名只有一个口」，
   //   住 `tests/frontend/ui/launch-orchestration-single-home.vitest.ts` K1（发 `terminal-name-mint` 的文件 == {terminal-name-mint.ts}，两向）——
   //   这里不再留第二把同义的尺子。
-
-  it("★★ 本机 resume 那两条也往 pin 里写（`D3 阻-2`：写入口先前结构上只走远端）", () => {
-    // 现打（`D3`，PM 复核属实）：`recordLastAccount` 的生产调用点**恰好 2**，
-    // 而两处**结构上只走远端** —— `withAccount(` 的 6 个生产调用点 6/6 在 `origin` 分支内；
-    // `restartWithAccount(` 的唯一调用点首行逐字 `if (tab.origin === null) return false;`。
-    // ⇒ 本机的 `list_last_accounts` **恒空** ⇒ 取值口那条「pin 优先」在本机永远走不到，
-    //   而那正是「参数位有、值恒空」那一形的另一半。
-    // tab 栏那条本机 resume 从 `src/frontend/ui/tabs.ts` 搬到了 `src/frontend/ui/tab-session-actions.ts`（逐字随行）。
-    // 那两条（tab 栏 · 历史页）的编排收进了 `local-resume.ts`（跟随那一态记 pin）。
-    for (const f of ["src/frontend/ui/local-resume.ts"]) {
-      const code = stripComments(readFileSync(resolve(REPO_ROOT, f), "utf8"), "ts");
-      expect(
-        (code.match(/recordLocalLaunchAccount\(/g) ?? []).length,
-        `${f} 里没有本机这条路的记账 —— 本机 pin 恒空，「pin 优先」那一支永远走不到`,
-      ).toBeGreaterThan(0);
-      // 不许 `await` 它（多一拍会撞那两条只放行一个微任务的 DOM 判据）。
-      expect(code).not.toContain("await recordLocalLaunchAccount");
-    }
-  });
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // `K-P5h` `KP5HD3`：**回填的那一跳挂在会话出生那条事件上**
-  //
-  // 🔴🔴 **本条与上面那组同病：它量的是「那一行字在不在」，不是「那件事发生没发生」。**
-  // `main.ts` **一个 export 都没有**（它是入口模块）⇒ 那一跳在本仓今天**没有任何办法
-  // 用行为判据驱动**（`session-accounts-poll.ts` 的头注为同一个理由把三条性质搬出了 `main.ts`）。
-  // ⇒ 本条**只买两件事**：① 那一跳还接在那条事件上；② 它没有偷偷变成一个定时器。
-  //   把 `resolvePendingLocalLaunches` 的函数体掏空、或把它接到一条错的事件上，
-  //   **本条照绿** —— 别把它读成「回填真的会被触发」。
-  //   反查那一跳本身的行为判据在 `accounts.vitest.ts` 与 `views/history-actions.vitest.ts`。
-  // ═══════════════════════════════════════════════════════════════════════
-  it("★ `K-P5h`：待回填由「会话出生」那条事件触发，**不是**由一个新定时器触发", () => {
-    const code = stripComments(readFileSync(resolve(REPO_ROOT, "src/frontend/ui/main.ts"), "utf8"), "ts");
-    // ① 那一跳还在，且**在 `onSessionStarted` 这个处理器里**（不是随便哪儿调一次）。
-    const handler = code.split("onSessionStarted:")[1] ?? "";
-    expect(
-      handler.length,
-      "`main.ts` 里没有 `onSessionStarted` 处理器了 —— 抽取器坏了，下面那条会零命中地绿",
-    ).toBeGreaterThan(50);
-    expect(
-      handler.slice(0, 800),
-      "回填那一跳没有接在 `session-started` 上 ⇒ 起完新会话之后再也没人来问，\n" +
-        "整条「拿 token 反查 sid」在生产上不会发生（而它的单测照样全绿）。",
-    ).toContain("resolvePendingLocalLaunches");
-    // ② 🔴 **不许在这条路上开一个新的周期唤醒** —— 本项目有一条已交付的性质是
-    //    「判活不靠定时轮询（内核一有事就通知）」，回填在这里起表就是开倒车。
-    //    ⚠ 这一格钉的是**本仓这一处**，全仓的调度点由 `polling_registry` 那两条管。
-    expect(handler.slice(0, 800)).not.toContain("setInterval");
-    expect(handler.slice(0, 800)).not.toContain("setTimeout");
-  });
-
-  it("★ 取值口只有一个（不许哪条路自己现算一个账号）", () => {
-    // 三条主路走那个唯一取值口；fork 那条是**用户在小窗里显式选的**，
-    // 它有自己的语义（选了账号 0 就要显式 `base`），所以不走这个口 —— 如实记，不强求。
-    // tab 栏那条本机 resume 从 `src/frontend/ui/tabs.ts` 搬到了 `src/frontend/ui/tab-session-actions.ts`（逐字随行）。
-    // tab 栏 · 历史页那两条的编排收进了 `local-resume.ts`；跟随那一态走 `localFollowPlan(`
-    //   （它就是 `localLaunchAccountSync` 那条规则，只多拆出 D-h 的「pin 选不了」一格），它自己住 `launch-account.ts`
-    //   （起停那一格从 `accounts.ts` 拆出来的住址）。
-    for (const [f, entry] of [
-      ["src/frontend/ui/local-resume.ts", /localFollowPlan\(/g],
-      ["src/frontend/ui/launch-account.ts", /localLaunchAccountSync\(/g],
-    ] as const) {
-      const code = readFileSync(resolve(REPO_ROOT, f), "utf8");
-      expect(
-        (code.match(entry) ?? []).length,
-        `${f} 里没调那个唯一取值口`,
-      ).toBeGreaterThan(0);
-      // 取值是同步的，**不许**有人给它加 `await`（那会多一拍，撞两条只放行一个微任务的判据）。
-      expect(code, `${f} 给那个取值口加了 await —— 主路的时序会多一拍`).not.toContain(
-        "await localLaunchAccountSync",
-      );
-    }
-    // 阴性对照：`fork-flow.ts` 那条**刻意**不走它（它是用户显式选的那一格）。
-    // 它交的是 `{ kind: "explicit", … }`，载荷形状（账号 0 ⇒ `base`）由 `launch-account.ts::explicitLocalAccountWire` 用生成物的键产。
-    const fork = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/fork-flow.ts"), "utf8");
-    expect(fork).not.toContain("localLaunchAccountSync");
-    expect(fork).toContain('kind: "explicit"');
-  });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// `K-H2b` `D4 阻-2`：**账号真的进了载荷、pin 真的被写进去**（行为，不是文本）
+// 本机起会话的主路把「要哪个号」交给本机后端（行为，驱动真的 `HistoryView` / `TabManager`）
 // ═════════════════════════════════════════════════════════════════════════════
 //
-// ★★ 它治的是什么（`D4` 两刀实测，逐字）：
-// 上面那一组判据钉的是「那几行字在不在」——`(code.match(/recordLocalLaunchAccount\(/g)).length > 0`
-// 与 `/\baccount\s*:/`。`D4` 用两刀证明那**买不到这件事发生没发生**：
-//   · 刀 `D2k6`：`views/history.ts` 起新会话那一行的 `account` 入参换成硬写的 `undefined`
-//     ⇒ **`1502 passed` 全绿**（那一行字还在，值没了）；
-//     ⚠ 这里**刻意不逐字复述那个锚点** —— 复述一次，下一个照「全仓 N 处一起切」的人
-//     就会把本段一起切掉（`阻-1` 那条病的形状，别在治它的这一拍里再长一次）。
-//   · 刀 `A2`：`launch-account.ts::recordLocalLaunchAccount` 的函数体掏空成永不生效、
-//     **调用文本一个字不动** ⇒ **`1502 passed` 全绿**（本机 pin 从此恒不写）。
-//
-// ⇒ 本组一律走**真的 `HistoryView`**：造一行、开右键菜单、点那两条，然后
-//    **取出那次 `invoke` 的第 2 个实参、直接读 `.account`**。
-// ⚠ **不许用 `toHaveBeenCalledWith` 的整对象比** —— `toEqual` 语义下
-//    `account: undefined` 与「没有这个键」**相等**，那两条断言对本格恒真（`D4 §D` 现打）。
-//
-// ⚠ **本组买不到什么**：它止于「monitor 发出去的那一发 `invoke` 载荷里有这个值」。
-//    「后端真的拿它拼出了前缀」由 `history.rs` / `payload.rs` 那几条买，
-//    「那一发真的走到中转」由 `KH2B1` 的端到端买。三段各买各的，别读成一段。
-describe("K-H2b D4 阻-2：主路的账号与 pin 是**行为**判据（驱动真的 HistoryView）", () => {
+// 判号住本机后端（跟随 ＝ 这条会话上次的号 → 这台的默认号）；界面交的就是「跟随」，不自己算、不记 pin。
+// ⚠ 取出那次调用的第 2 个实参直接读 `.account`（`toEqual` 下 `account: undefined` 与「没有这个键」相等）。
+describe("本机起会话的主路：交「跟随」给本机后端、界面一条 pin 都不写（驱动真的 HistoryView / TabManager）", () => {
   const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
-
-  const DIR_A = "/h/.claude-alt/acct-a";
-  const DIR_B = "/h/.claude-alt/acct-b";
-
-  function acct(name: string, configDir: string): Account {
-    return {
-      name,
-      email: `${name}@x.edu`,
-      configDir,
-      isDefault: false,
-      mode: "isolated",
-      exists: true,
-      loggedIn: true,
-      authKind: "subscription",
-      authReady: true,
-    };
-  }
-
-  /**
-   * 让 `invoke` 按一份**账号世界**回话。
-   *
-   * `accounts` 为空 ⇒ 取值口说不出账号（阴性对照那一档）。
-   * ⚠ 阴性对照**不靠时序**：主路那一脚 `primeLocalLaunchAccounts()` 是不等待的，
-   *   万一它抢在读值之前跑完，喂给它的也是这份空世界 ⇒ 两种排序下答案相同。
-   */
-  function serveAccounts(accounts: Account[], defaultName: string | null, pins: Record<string, string>): void {
-    invokeMock.mockImplementation(withHistoryReads(withAccountReads(launchRenderShim((cmd: string) => {
-      if (cmd === "list_local_accounts") {
-        return Promise.resolve({
-          available: true,
-          error: null,
-          notice: null,
-          meta: {
-            enabled: true,
-            acctsDir: "/h/.claude-alt",
-            manifestPath: "/h/.claude-alt/accounts.json",
-            updatedAt: null,
-            sharedStore: null,
-            count: accounts.length,
-            error: null,
-          },
-          accounts,
-        });
-      }
-      if (cmd === "load_config") return Promise.resolve({ accounts: { byMachine: { "<local>": { defaultName } } } });
-      if (cmd === "list_last_accounts") return Promise.resolve(pins);
-      return Promise.resolve(undefined);
-    }))));
-  }
-
-  /** 把快照**用生产段那条路**填热（`primeLocalLaunchAccounts` 是不等待的 ⇒ 这里冲一轮宏任务）。 */
-  async function warm(): Promise<void> {
-    primeLocalLaunchAccounts();
-    await new Promise((r) => setTimeout(r, 0));
-  }
 
   function proj(): Record<string, unknown> {
     return { projectPath: "/p", projectName: "P", projectDir: "pd", sessionCount: 2, starredCount: 0, hiddenCount: 0, lastActivity: 1, hasLive: false };
@@ -652,153 +501,13 @@ describe("K-H2b D4 阻-2：主路的账号与 pin 是**行为**判据（驱动�
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
     const items = [...document.querySelectorAll<HTMLButtonElement>(".history-context-item")];
     const btn = items.find((b) => b.textContent === label);
-    // 抽取器自检：菜单没出来 / 文案改了 ⇒ 下面整条在空转，必须红。
     expect(btn, `右键菜单里没有「${label}」—— 实得 ${JSON.stringify(items.map((b) => b.textContent))}`).toBeTruthy();
     btn!.click();
     await new Promise((r) => setTimeout(r, 0));
   }
 
-  /** 那一发 `invoke` 的第 2 个实参（**取出来直接读字段**，不做整对象比 —— 见本组头注）。 */
-  // 本机起会话改走通道 `launch-local` ⇒ 经 chan-fake 译回旧名字 ＋ 旧形参再看载荷。
-  function payloadOf(cmd: string): Record<string, unknown> {
-    const call = localLaunchCalls(invokeMock.mock.calls, cmd)[0];
-    expect(call, `一次 \`${cmd}\` 都没发出去 —— 主路根本没走到，下面的断言在空转`).toBeTruthy();
-    return call!;
-  }
-
-  /** 记 pin 的那一发（`recordLastAccount` → `update_history_metadata` 带 `lastAccount`）。 */
-  function pinWrites(): Array<Record<string, unknown>> {
-    // 记 pin 那一发改走通道（本机常驻后端 `history-annotate`），经 chan-fake 译回旧形参。
-    return historyCalls(invokeMock.mock.calls, "update_history_metadata").filter(
-      (a) => (a.patch as Record<string, unknown> | undefined)?.lastAccount !== undefined,
-    );
-  }
-
-  beforeEach(() => {
-    invokeMock.mockReset();
-    invokeMock.mockResolvedValue(undefined);
-    __resetAccountsCacheForTest();
-    __resetLocalLaunchSnapshotForTests();
-    document.body.replaceChildren();
-    document.querySelectorAll(".history-context-menu").forEach((n) => n.remove());
-  });
-
-  it("★★ resume 主路：载荷里的 `account` 是**那条会话的 pin**（不是常量、不是当前号）", async () => {
-    // pin 指 acct-a，而**当前账号是 acct-b** ⇒ 两个值不同 ⇒ 「随便回一个」也过不了。
-    serveAccounts([acct("acct-a", DIR_A), acct("acct-b", DIR_B)], "acct-b", { s1: "acct-a" });
-    await warm();
-    await clickRowAction("在新终端 resume");
-    expect(
-      payloadOf("resume_history_session").account,
-      "resume 的载荷里没有那条会话上次用的账号 ——\n" +
-        "① 起会话落到 shell rc 那个默认号上（静默串号）；② 中转那一格拼不出路由键。\n" +
-        "⚠ 这一条是**行为**：`account:` 那行字还在、值是 `undefined` 时它必须红。\n" +
-        "🔴 `K-R53`：**名字也必须在里面** —— 后端那条 ccm 路只会 `--account <名字>`，\n" +
-        "   只给目录 = 这条主路结构上到不了后端那条路，必然落第二实现。",
-    ).toEqual({ kind: "named", configDir: DIR_A, name: "acct-a" });
-  });
-
-  it("★★ 新开主路：载荷里的 `account` 是**当前账号**（与上一条取到不同的值 ⇒ 不是常量）", async () => {
-    serveAccounts([acct("acct-a", DIR_A), acct("acct-b", DIR_B)], "acct-b", { s1: "acct-a" });
-    await warm();
-    await clickRowAction("在该目录起新会话");
-    expect(
-      payloadOf("new_local_session").account,
-      "起新会话的载荷里没有当前账号 —— `D4` 刀 `D2k6` 正是把这一行的值换成 `undefined`，\n" +
-        "而当时全仓 `1502 passed` 全绿。\n" +
-        "🔴 `K-R53`：名字也必须在里面（理由同上一条）。",
-    ).toEqual({ kind: "named", configDir: DIR_B, name: "acct-b" });
-  });
-
-  it("★★ resume 之后 pin **真的被写进去**（`update_history_metadata` 带那个 sid 与那个名字）", async () => {
-    serveAccounts([acct("acct-a", DIR_A), acct("acct-b", DIR_B)], "acct-b", { s1: "acct-a" });
-    await warm();
-    await clickRowAction("在新终端 resume");
-    expect(
-      pinWrites(),
-      "本机 resume 之后一条 pin 都没写 —— `D4` 刀 `A2` 正是把 `recordLocalLaunchAccount`\n" +
-        "的函数体掏空、**调用文本一字不动**，而当时全仓 `1502 passed` 全绿。\n" +
-        "本机 pin 恒空 ⇒ 取值口那条「pin 优先」在本机永远走不到。",
-    ).toEqual([{ sessionId: "s1", patch: { lastAccount: "acct-a" } }]);
-  });
-
-  it("★ 阴性对照：说不出账号 ⇒ 载荷里是 `undefined`，且**一条 pin 都不写**", async () => {
-    // 空账号世界：快照冷（`beforeEach` 已 reset），而主路那一脚 prime 拿到的也是空的。
-    serveAccounts([], null, {});
-    await clickRowAction("在新终端 resume");
-    expect(
-      payloadOf("resume_history_session").account,
-      "说不出账号时它不该猜一个 —— 「不表态」= 逐字节旧行为",
-    ).toBeUndefined();
-    expect(pinWrites(), "说不出账号却往 pin 里写了一条 —— 那是把「不知道」写成了一条 pin").toEqual([]);
-    // 反空真：这一趟主路**真的走到了**（否则上面两条是「什么都没发生」的空真）。
-    expect(localLaunchCalls(invokeMock.mock.calls, "resume_history_session").length > 0).toBe(true);
-  });
-});
-
-describe("K-H2b D5 阻-2：tab 栏那条本机 resume 也是**行为**判据（驱动真的 TabManager）", () => {
-  // # 为什么这一组非有不可（分母写在最前）
-  //
-  // `localLaunchAccountSync(` 的**生产调用点恰好 3**（现打：`git ls-files -z | xargs -0 grep -Fn`
-  // 排掉 `*.vitest.ts` ⇒ `src/frontend/ui/tabs.ts:2246` · `src/frontend/ui/views/history.ts:1666` · `:1713`，
-  // 外加定义 1 处）。上一组（`D4 阻-2`）买的 4 条行为判据**全部驱动 `views/history.ts`**，
-  // 而 `tabs.ts` 那一处当时只有**文本**判据。`D5` 现打三刀：
-  //   · `X3a` 整个不传账号 ⇒ `2 failed`（**粗刀挡得住**）
-  //   · `X3b` `localLaunchAccountSync(sid)` → `(null)`（用当前号顶替这条会话的 pin，**静默串号**）⇒ **1509 全绿**
-  //   · `X3c` `recordLocalLaunchAccount(sid,…)` → `("",…)`（调用文本与两个标识符全留，pin 恒不写）⇒ **1509 全绿**
-  // ⇒ **粗刀挡得住、细刀漏得掉。** 本组把那两把细刀各买一条。
-  const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
-
-  const DIR_A = "/h/.claude-alt/acct-a";
-  const DIR_B = "/h/.claude-alt/acct-b";
-
-  function acct(name: string, configDir: string): Account {
-    return {
-      name,
-      email: `${name}@x.edu`,
-      configDir,
-      isDefault: false,
-      mode: "isolated",
-      exists: true,
-      loggedIn: true,
-      authKind: "subscription",
-      authReady: true,
-    };
-  }
-
-  /** 与上一组同一份「账号世界」：pin 指 `acct-a`，而当前号是 `acct-b` ⇒ 两个值不同。 */
-  function serveAccounts(accounts: Account[], defaultName: string | null, pins: Record<string, string>): void {
-    invokeMock.mockImplementation(withHistoryReads(withAccountReads(launchRenderShim((cmd: string) => {
-      if (cmd === "list_local_accounts") {
-        return Promise.resolve({
-          available: true,
-          error: null,
-          notice: null,
-          meta: {
-            enabled: true,
-            acctsDir: "/h/.claude-alt",
-            manifestPath: "/h/.claude-alt/accounts.json",
-            updatedAt: null,
-            sharedStore: null,
-            count: accounts.length,
-            error: null,
-          },
-          accounts,
-        });
-      }
-      if (cmd === "load_config") return Promise.resolve({ accounts: { byMachine: { "<local>": { defaultName } } } });
-      if (cmd === "list_last_accounts") return Promise.resolve(pins);
-      return Promise.resolve(undefined);
-    }))));
-  }
-
-  async function warm(): Promise<void> {
-    primeLocalLaunchAccounts();
-    await new Promise((r) => setTimeout(r, 0));
-  }
-
-  /** 建一个**本机**（`origin === null`）归档 tab，然后走 tab 栏那条 resume 主路。 */
-  async function resumeLocalTab(sid: string): Promise<TabManager> {
+  /** 建一个本机归档 tab，然后走 tab 栏那条 resume 主路。 */
+  async function resumeLocalTab(sid: string): Promise<void> {
     document.body.replaceChildren();
     const bar = document.createElement("div");
     const root = document.createElement("div");
@@ -806,21 +515,18 @@ describe("K-H2b D5 阻-2：tab 栏那条本机 resume 也是**行为**判据（�
     const tm = new TabManager(bar, root);
     tm.ensureTab(sid, "/home/u/p", `/p/${sid}.jsonl`, LOCAL_ORIGIN);
     tm.archiveTab(sid);
-    // 会话动作住 `tab-session-actions.ts`；`TabManager` 上不再留同名转交 ⇒ 直接指向新家。
     await (tm as unknown as { actions: TabSessionActions }).actions.resumeTab(sid);
     await new Promise((r) => setTimeout(r, 0));
-    return tm;
   }
 
-  // 本机起会话改走通道 `launch-local` ⇒ 经 chan-fake 译回旧名字 ＋ 旧形参再看载荷。
   function payloadOf(cmd: string): Record<string, unknown> {
     const call = localLaunchCalls(invokeMock.mock.calls, cmd)[0];
     expect(call, `一次 \`${cmd}\` 都没发出去 —— 主路根本没走到，下面的断言在空转`).toBeTruthy();
     return call!;
   }
 
+  /** 往历史注解里写「上次用的号」的那一发（今天一发都不该有）。 */
   function pinWrites(): Array<Record<string, unknown>> {
-    // 记 pin 那一发改走通道（本机常驻后端 `history-annotate`），经 chan-fake 译回旧形参。
     return historyCalls(invokeMock.mock.calls, "update_history_metadata").filter(
       (a) => (a.patch as Record<string, unknown> | undefined)?.lastAccount !== undefined,
     );
@@ -828,49 +534,23 @@ describe("K-H2b D5 阻-2：tab 栏那条本机 resume 也是**行为**判据（�
 
   beforeEach(() => {
     invokeMock.mockReset();
-    invokeMock.mockResolvedValue(undefined);
+    invokeMock.mockImplementation(withHistoryReads(withAccountReads(launchRenderShim(() => Promise.resolve(undefined)))));
     __resetAccountsCacheForTest();
-    __resetLocalLaunchSnapshotForTests();
     document.body.replaceChildren();
+    document.querySelectorAll(".history-context-menu").forEach((n) => n.remove());
   });
 
-  it("★★ tab 栏 resume：载荷里的 `account` 是**那条会话的 pin**（不是当前号）", async () => {
-    serveAccounts([acct("acct-a", DIR_A), acct("acct-b", DIR_B)], "acct-b", { t1: "acct-a" });
-    await warm();
+  it("★ 历史页 resume / 起新会话 · tab 栏 resume：交的都是「跟随」，界面一条 pin 都不写", async () => {
+    await clickRowAction("在新终端 resume");
+    expect(payloadOf("resume_history_session").account).toEqual({ kind: "follow" });
+    await clickRowAction("在该目录起新会话");
+    expect(payloadOf("new_local_session").account).toEqual({ kind: "follow" });
     await resumeLocalTab("t1");
-    expect(
-      payloadOf("resume_history_session").account,
-      "tab 栏那条本机 resume 没把**这条会话上次的账号**传下去 ——\n" +
-        "`D5` 刀 `X3b` 正是把这一处换成 `localLaunchAccountSync(null)`（用当前号顶替 pin），\n" +
-        "当时全仓 `1509 passed` 全绿。后果是**静默串号**：切过号之后 resume 落到当前号上，\n" +
-        "上游选择再按那个错的 id 换上**别人那一行的 key**。\n" +
-        "🔴 `K-R53`：名字也必须在里面 —— 后端那条 ccm 路只会 `--account <名字>`。",
-    ).toEqual({ kind: "named", configDir: DIR_A, name: "acct-a" });
-  });
-
-  it("★★ tab 栏 resume 之后 pin **真的被写进去**（带那个 sid 与那个名字）", async () => {
-    serveAccounts([acct("acct-a", DIR_A), acct("acct-b", DIR_B)], "acct-b", { t1: "acct-a" });
-    await warm();
-    await resumeLocalTab("t1");
-    expect(
-      pinWrites(),
-      "tab 栏那条本机 resume 之后一条 pin 都没写 ——\n" +
-        "`D5` 刀 `X3c` 正是把 `recordLocalLaunchAccount(sid, …)` 的第一个实参换成 `\"\"`\n" +
-        "（**调用文本与两个标识符全留**，函数首行 `if (!sid || !name) return;` ⇒ 恒不写），\n" +
-        "当时全仓 `1509 passed` 全绿。这条路的本机 pin 恒空 ⇒「pin 优先」在这条路上永远走不到。",
-    ).toEqual([{ sessionId: "t1", patch: { lastAccount: "acct-a" } }]);
-  });
-
-  it("★ 阴性对照：说不出账号 ⇒ 载荷里是 `undefined`，且**一条 pin 都不写**", async () => {
-    serveAccounts([], null, {});
-    await resumeLocalTab("t1");
-    expect(
-      payloadOf("resume_history_session").account,
-      "说不出账号时它不该猜一个 —— 「不表态」= 逐字节旧行为",
-    ).toBeUndefined();
-    expect(pinWrites(), "说不出账号却往 pin 里写了一条 —— 那是把「不知道」写成了一条 pin").toEqual([]);
-    // 反空真：这一趟主路**真的走到了**（否则上面两条是「什么都没发生」的空真）。
-    expect(localLaunchCalls(invokeMock.mock.calls, "resume_history_session").length > 0).toBe(true);
+    expect(localLaunchCalls(invokeMock.mock.calls, "resume_history_session").map((c) => c.account)).toEqual([
+      { kind: "follow" },
+      { kind: "follow" },
+    ]);
+    expect(pinWrites(), "界面又在替那台记「上次用的号」—— 那台看见会话起来时自己记").toEqual([]);
   });
 });
 

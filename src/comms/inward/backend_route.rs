@@ -63,8 +63,13 @@ pub enum CallError {
     Unavailable { cmd: String, code: String },
     /// 本地超时。`withdraw` 说对端那一半：没发出去 / 已补发撤单（best-effort）/ 对端不认撤单（要说出来）。
     Timeout { after: Duration, withdraw: Withdraw },
-    /// backend 回了 `ok:false`。`code`/`message` 原样透出（形状对齐 `--resolve` 的错误契约）。
-    Remote { code: String, message: String },
+    /// backend 回了 `ok:false`。`code`/`message` 原样透出（形状对齐 `--resolve` 的错误契约）；
+    /// `data` ＝ 那几个按码定了形的码带的 `data`（序列化好的 JSON 原文；别的码 ⇒ `None`）。
+    Remote {
+        code: String,
+        message: String,
+        data: Option<String>,
+    },
 }
 
 impl std::fmt::Display for CallError {
@@ -210,15 +215,14 @@ pub fn layer_call_error(e: &CallError, hop: u8) -> Layered {
             error: w::OursFault::Cancelled.into(),
             detail: text(e.to_string()),
         },
-        CallError::Remote { code, message } => Layered {
+        CallError::Remote {
+            code,
+            message,
+            data,
+        } => Layered {
             error: w::CallError::Peer {
                 why: w::PeerFault::Refused {
-                    body: w::Body(
-                        serde_json::to_vec(
-                            &serde_json::json!({ "code": code, "message": message }),
-                        )
-                        .unwrap_or_default(),
-                    ),
+                    body: w::Body(refusal_body(code, message, data.as_deref())),
                 },
             },
             detail: Detail::Remote {
@@ -227,6 +231,15 @@ pub fn layer_call_error(e: &CallError, hop: u8) -> Layered {
             },
         },
     }
+}
+
+/// 对端拒绝体 `{code, message}`；带了 `data` 的那几个码再多一格 `data`（没有 ⇒ 字节与从前逐字相同）。
+fn refusal_body(code: &str, message: &str, data: Option<&str>) -> Vec<u8> {
+    let mut v = serde_json::json!({ "code": code, "message": message });
+    if let Some(d) = data.and_then(|d| serde_json::from_str::<serde_json::Value>(d).ok()) {
+        v["data"] = d;
+    }
+    serde_json::to_vec(&v).unwrap_or_default()
 }
 
 /// [`layer_call_error`] 的产出：`05` 的分层错误 ＋ 给人看的那句话的原料。

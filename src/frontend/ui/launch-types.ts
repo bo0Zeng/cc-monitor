@@ -16,22 +16,19 @@ export type LaunchAction =
   | { kind: "resume"; sid: string }
   | { kind: "attach"; name: string };
 
-/** 账号只有两态：`account`（带配置目录，说得出名字时带名字）· `base`（账号 0）。远端没有「继承」那一态。 */
-export type LaunchAccount =
-  | { kind: "account"; name?: string; configDir: string }
-  | { kind: "base" };
+/** 起会话那一格「用哪个号」（线上 `AccountAsk`：跟随 · 账号 0 · 用户点名）—— 判定在那台后端。 */
+export type { AccountAsk as LaunchAccount } from "./generated/AccountAsk";
+import type { AccountAsk } from "./generated/AccountAsk";
 
 /**
- * 正交修饰的传递载体（解析前的原始形态：调用方手上的一个目录 / 一个名字 / 一个模型串 / 一个令牌）。
- * 命名字段而不是位置参数：`configDir` 与 `accountName` 同类型相邻，传错顺序 tsc 抓不到。
+ * 正交修饰（调用方手上的原值）：要哪个号 · 那台的模型偏好表（用户设置的原值，`{号: 模型}`）。
+ * 号缺席 ＝ 跟随（同那台后端的缺省）。
  */
 export interface LaunchModifiers {
-  /** 账号目录。 */
-  configDir?: string;
-  /** 与 `configDir` 成对：说得出名字 ⇒ `--account <名>`；只有目录 ⇒ `--account-dir <目录>`。 */
-  accountName?: string;
-  /** 该账号配置的默认模型偏好（本机 `config.json`）。 */
-  modelOverride?: string;
+  account?: AccountAsk;
+  models?: Record<string, string>;
+  /** 开终端之前问一句（收那台判出来的号的目录；账号 0 / 不指定 ⇒ `undefined`）；回 `false` ⇒ 不起（它自己已经说过了）。 */
+  preflight?: (configDir: string | undefined) => Promise<boolean>;
 }
 
 /** 调用方已解析好的具体意图。 */
@@ -41,9 +38,10 @@ export interface LaunchContext {
   action: LaunchAction;
   container: LaunchContainer;
   cwd: string | null;
-  account: LaunchAccount;
+  account: AccountAsk;
+  /** 那台的模型偏好表（原值）。 */
+  models: Record<string, string>;
   launcherOverride: string | undefined;
   /** 身份标记：建出来的 tmux 会话打上这个 sid（只有 tmux 建会话 resume 那一形设）。 */
   ccmSid: string | undefined;
-  modelOverride?: string;
 }

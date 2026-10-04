@@ -97,7 +97,7 @@ const EXPECTED: Record<string, unknown> = {
   theme: { bg: "#010203" },
   claudeDir: "/tmp/cfg1-claude",
   keybindings: KEYS,
-  accounts: { byMachine: { devbox: { defaultName: "a1", modelByAccount: { a1: "opus" } } } },
+  accounts: { byMachine: { devbox: { modelByAccount: { a1: "opus" } } } },
   remote: { enabled: true }, // 只写 enabled 那一格，不再整段写出一个空 hosts
 };
 
@@ -133,7 +133,6 @@ async function realm(): Promise<{
       theme.saveTheme({ bg: "#010203" }),
       paths.setClaudeDirOverride("/tmp/cfg1-claude"),
       kb.setKeybindings(KEYS),
-      acc.setDefaultName("devbox", "a1"),
       acc.setModelForAccount("devbox", "a1", "opus"),
       remote.patchRemoteConfig({ enabled: true }),
     ],
@@ -169,7 +168,6 @@ describe("CFG1 J1 · 两个 realm × 全部写者同时写，谁写的键谁的�
         "set theme",
         "set claudeDir",
         "set keybindings",
-        "set accounts.byMachine.devbox.defaultName",
         "set accounts.byMachine.devbox.modelByAccount.a1",
         "set remote.enabled",
       ].sort(),

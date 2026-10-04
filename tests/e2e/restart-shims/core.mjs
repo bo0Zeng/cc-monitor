@@ -150,6 +150,7 @@ function chanCall(op, body) {
     //   ⇒ 交给**生产那一条**：`launch-render-emit.sh` → 后端 `emit_launch_render_for_e2e` → 生产
     //   `control/launch_render/wire.rs::render_ccm_launch`（与 `launch-render-driver.ts` 同一个出口，一字不另写）。
     //   拒了 ⇒ 与后端 `launch_render::answer_cli` 同一个码 `refused`，原话带出去。
+    //   成品多一格 `account`（那台判出来实际用的号）：点了名 ⇒ 夹具账号表里那个号的目录；别的 ⇒ `null`。
     case "launch-render-cli": {
       let cmd;
       try {
@@ -157,11 +158,14 @@ function chanCall(op, body) {
       } catch (e) {
         refused("refused", String(e && e.message ? e.message : e));
       }
-      return enc({ cmd });
+      const asked = body.account || {};
+      const known = JSON.parse(process.env.CCM_ACCOUNTS_JSON || '{"accounts":[]}').accounts.find((a) => a.name === asked.name);
+      const account = asked.kind === "named" && known ? { name: known.name, configDir: known.configDir, model: null } : null;
+      return enc({ cmd, account });
     }
     case "history-annotate": {
-      // 换号成功后记账（`account-restart.ts`：kill ＋ resume 全成才记 pin）—— 问本机常驻后端 `history-annotate`。
-      //   记进序列（`record account=<名>`），回成品 `{entry}`（`history-reads.ts::decodeEntry` 逐键要的那一份）。
+      // 「上次用哪个号起的」不归界面记（那台看见会话以新号起来时自己记）⇒ 换号重启不该再来这里写它；
+      //   来了就记进序列（`record account=<名>`），套件里那条序列断言当场红。
       const patch = body.patch || {};
       if ("lastAccount" in patch) seq("record account=" + String(patch.lastAccount));
       return enc({
@@ -170,7 +174,6 @@ function chanCall(op, body) {
           customTitle: patch.customTitle ?? null,
           hidden: Boolean(patch.hidden),
           updatedAt: 0,
-          lastAccount: patch.lastAccount ?? null,
         },
       });
     }

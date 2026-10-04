@@ -38,11 +38,8 @@ vi.mock("../../../../src/frontend/ui/format", () => ({ formatTimestampSmart: () 
 import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "../../../../src/frontend/ui/views/history";
 import { runNewSessionRemote } from "../../../../src/frontend/ui/remote-launch-run";
-import type { AccountsState } from "../../../../src/frontend/ui/accounts";
 import { invalidateAccountsCache } from "../../../../src/frontend/ui/account-reads";
-import { __resetLocalLaunchSnapshotForTests, __setLocalLaunchSnapshotForTests } from "../../../../src/frontend/ui/launch-account";
-import { resolvePendingLocalLaunches, __resetPendingLocalLaunchesForTests, __pendingLocalLaunchCountForTests } from "../../../../src/frontend/ui/local-launch-backfill";
-import { historyCalls, isChanCall, launchRenderShim, linesReply, localLaunchCalls, tmuxMintCalls, withAccountReads, withHistoryReads } from "../../../test-support/chan-fake";
+import { historyCalls, launchRenderShim, localLaunchCalls, tmuxMintCalls, withHistoryReads } from "../../../test-support/chan-fake";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import { answerAskDialog, answerAskText, askDialogText, noAskDialog } from "../../../test-support/ask-dialog-driver.ts";
 import { showActionFailureToast } from "../../../../src/frontend/ui/error-toast";
@@ -134,95 +131,16 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     expect(call).toMatchObject({ cwd: "/p", launcher: null });
   });
 
-  // ═════════════════════════════════════════════════════════════════════════
-  // `K-P5h` `KP5HD2`：**起会话方拿回 token → 会话跑起来后把 sid 反查出来 → 补写 pin**
-  //
-  // ⚠ 本条是这条链上**唯一驱动 `views/history.ts` 那一跳**的判据：
-  //   `accounts.vitest.ts` 那两组量的是 `sidOfLaunch` 与待回填表**本身**，
-  //   把 `rememberLocalLaunch(launchId, …)` 这一行从 `runNewSession` 里删掉，
-  //   那两组**一条都不会红** —— 与 `D8 阻-1` 那次「判据的射程上界卡在下游」同形。
-  // ═════════════════════════════════════════════════════════════════════════
-  it("★★ `K-P5h`：本地起新会话 → 记住 token → 会话出现后把账号 pin 补写到反查出来的 sid 上", async () => {
-    __resetPendingLocalLaunchesForTests();
-    __resetLocalLaunchSnapshotForTests();
-    invalidateAccountsCache();
-    const TOKEN = "0198f0d2-1111-4222-8333-444455556666";
-    const ACCT = {
-      name: "acct-a",
-      email: "a@x.edu",
-      configDir: "/h/.claude-alt/acct-a",
-      isDefault: true,
-      mode: "isolated",
-      exists: true,
-      loggedIn: true,
-      authKind: "subscription" as const,
-      authReady: true,
-    };
-    invokeMock.mockImplementation(withHistoryReads(withAccountReads(launchRenderShim((cmd: string, args: unknown) => {
-      // ★ 会话真的跑起来了 —— 两条行里只有一条带着我们那个 token。
-      // 经通道问本机后端 `accounts-sessions`（原先是 E79 那条已退役的本机 Tauri 命令）。
-      if (isChanCall(cmd, args, "accounts-sessions")) {
-        return Promise.resolve(
-          linesReply([
-            { pid: 1, sessionId: "sid-other", cwd: "/w", configDir: null, account: null, bare: false, alive: true, launchId: "别人的" },
-            { pid: 2, sessionId: "sid-new", cwd: "/p", configDir: null, account: null, bare: false, alive: true, launchId: TOKEN },
-          ]),
-        );
-      }
-      switch (cmd) {
-        // 账号快照（`localLaunchAccountNameSync` 要它才说得出账号名）。
-        case "list_local_accounts":
-          return Promise.resolve({ available: true, error: null, meta: null, accounts: [ACCT], notice: null });
-        case "load_config":
-          return Promise.resolve({ accounts: { byMachine: { "<local>": { defaultName: "acct-a" } } } });
-        case "list_last_accounts":
-          return Promise.resolve({});
-        // ★ 起会话这一跳**交回身份 token**（`KP5HD1` 那一格的前端这一侧）。
-        case "new_local_session":
-          return Promise.resolve(TOKEN);
-        default:
-          return Promise.resolve({});
-      }
-    }))));
-
-    // ⚠ **快照要先喂热**：`primeLocalLaunchAccounts` 是**不等待**地踢出去的
-    //   （多等一拍会撞那两条只放行一个微任务的 DOM 判据，见 `localLaunchAccountSync` 头注），
-    //   所以起会话那一跳读到的很可能还是冷快照 —— 那是一条**已登记的诚实边界**，不是本条要量的东西。
-    //   本条量的是「**说得出账号名时，那次拉起被记住了**」。
-    const snap: AccountsState = {
-      origin: LOCAL_ORIGIN, // 账号面的本机就是 `LOCAL_ORIGIN`（`"__local__"` 已退役）
-      available: true,
-      oldBackend: false,
-      error: null,
-      notice: null,
-      meta: null,
-      accounts: [ACCT],
-      defaultName: "acct-a",
-    };
-    __setLocalLaunchSnapshotForTests(snap, {});
-
+  // 本地起新会话：号交本机后端判（跟随 ⇒ 这台的默认号）；界面不挂待回填、不写 pin（那台看见会话起来时自己记）。
+  it("本地起新会话 → 交「跟随」给本机后端，界面一条 pin 都不写", async () => {
+    invokeMock.mockImplementation(withHistoryReads(launchRenderShim(() => Promise.resolve(undefined))));
     const view = new HistoryView();
     const row = buildRow(view, entry(), proj());
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
     menuItem("在该目录起新会话")!.click();
-    // 冲一轮宏任务：起会话那一跳的 `await` 要落地。
     await new Promise((r) => setTimeout(r, 0));
-
-    // ① 起会话方**记住了**这次拉起（这一刻它手上只有 token，没有 sid）。
-    expect(
-      __pendingLocalLaunchCountForTests(),
-      "起完新会话没有挂上待回填 —— `rememberLocalLaunch` 那一行被摘了，\n" +
-        "或者交回来的 token 是空的（`new_local_session` 还在回 `void`）",
-    ).toBe(1);
-
-    // ② 会话出现之后（生产上由 `main.ts` 的 本机 `live` 格 事件触发这一跳），
-    //    sid 被反查出来、pin 落到**那一条**上。
-    await resolvePendingLocalLaunches();
-    const pin = historyCalls(invokeMock.mock.calls, "update_history_metadata");
-    expect(pin, "反查出 sid 之后没有补写账号 pin").toHaveLength(1);
-    // 🔴 判别格：落在 `sid-new` 上而不是 `sid-other` —— 这一格只有 token 说得出来。
-    expect(pin[0]).toMatchObject({ sessionId: "sid-new", patch: { lastAccount: "acct-a" } });
-    expect(__pendingLocalLaunchCountForTests()).toBe(0);
+    expect(localLaunchCalls(invokeMock.mock.calls, "new_local_session")[0]?.account).toEqual({ kind: "follow" });
+    expect(historyCalls(invokeMock.mock.calls, "update_history_metadata")).toEqual([]);
   });
 
   it("菜单「在该目录起新会话」远端 → runNewSessionRemote（不 invoke new_local_session）", async () => {
@@ -230,7 +148,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     const row = buildRow(view, entry({ origin: "hostA" }), proj({ origin: "hostA" }));
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
     menuItem("在该目录起新会话")!.click();
-    // account-ux U3：远端新会话现经 withAccount(await fetchAccounts) → 多冲一轮宏任务排空微任务队列。
+    // 远端新会话：号跟随（那台判）；多冲一轮宏任务排空微任务队列。
     await new Promise((r) => setTimeout(r, 0));
     expect(runNewRemote).toHaveBeenCalledTimes(1);
     expect(runNewRemote.mock.calls[0][0]).toBe("hostA");
@@ -242,28 +160,13 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
   // F05 Phase D 审计：runNewSession 走 `withAccount(origin, null, ..., {follow:{}})`——恒跟随
   // 解析（新会话无显式账号入口）。此前本文件从未验证过跟随解析真命中账号时，
   // `(cd, an) => runNewSessionRemote(..., cd, an)` 是否真把 an 转传。
-  it("菜单「在该目录起新会话」远端（跟随解析命中当前账号）→ runNewSessionRemote 收到真实 configDir + accountName", async () => {
-    // fetchAccounts 有模块级缓存(30s TTL)——上一条用例已经用默认 mock 值给 "hostA" 缓存过一次
-    // (不含 available 字段的错误响应)，不清掉这里会命中陈旧缓存、永远走不到下面的自定义 mock。
-    invalidateAccountsCache();
-    invokeMock.mockImplementation(withHistoryReads(withAccountReads((cmd: string) => {
-      if (cmd === "list_remote_accounts") {
-        return Promise.resolve({
-          available: true,
-          error: null,
-          meta: { enabled: true, acctsDir: "/h/.claude-alt", manifestPath: "/h/.claude-alt/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null },
-          accounts: [{ name: "z", email: "z@x.edu", configDir: "/h/.claude-alt/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true }],
-        });
-      }
-      return Promise.resolve(undefined);
-    })));
+  it("菜单「在该目录起新会话」远端 → runNewSessionRemote 收到「跟随」（新会话落那台的默认号，那台判）", async () => {
     const view = new HistoryView();
     const row = buildRow(view, entry({ origin: "hostA" }), proj({ origin: "hostA" }));
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
     menuItem("在该目录起新会话")!.click();
     await new Promise((r) => setTimeout(r, 0));
-    expect(runNewRemote).toHaveBeenCalledWith("hostA", "claude", "/p", "", { configDir: "/h/.claude-alt/z", accountName: "z", modelOverride: undefined });
-    invalidateAccountsCache(); // fetchAccounts 有模块级缓存,别泄漏进同文件其它测试
+    expect(runNewRemote).toHaveBeenCalledWith("hostA", "claude", "/p", "", { account: { kind: "follow" } });
   });
 
   // BACKLOG E35：「留空恢复默认」要真的清掉标题 —— 清空传**空串**（缺格 / `null` 在后端 patch 里都是「不改」）。
@@ -460,7 +363,6 @@ describe("K-R46：历史页 resume 的 tmux 名（行为）", () => {
   beforeEach(() => {
     invokeMock.mockReset();
     invokeMock.mockResolvedValue(undefined);
-    __resetLocalLaunchSnapshotForTests();
     invalidateAccountsCache(); // 模块级缓存，别让上面几组的 hostA 快照漏进来
     document.body.replaceChildren();
   });

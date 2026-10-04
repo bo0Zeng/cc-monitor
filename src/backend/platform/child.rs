@@ -396,8 +396,9 @@ impl Child {
 
     /// ccm 最终那一跳：POSIX 就地 exec（成功不返回）；Windows 起它、等它、交回它的退出码（由 `main` 退，模块里不退进程）。
     /// 起不来 ⇒ `Err`（调用方用自己的主语说）。stdio 照旧继承。
-    pub(crate) fn exec_replace(self) -> Result<i32, ChildFail> {
-        os::exec_replace(self.command())
+    /// `started(pid)`：将要跑这个程序的那个进程的 pid —— POSIX 是自己（exec 之前调），Windows 是起好的子进程（等它之前调）。
+    pub(crate) fn exec_replace(self, started: &dyn Fn(u32)) -> Result<i32, ChildFail> {
+        os::exec_replace(self.command(), started)
     }
 }
 
@@ -462,7 +463,8 @@ mod os {
         Ok(())
     }
 
-    pub(super) fn exec_replace(mut cmd: Command) -> Result<i32, ChildFail> {
+    pub(super) fn exec_replace(mut cmd: Command, started: &dyn Fn(u32)) -> Result<i32, ChildFail> {
+        started(std::process::id());
         Err(ChildFail::of_spawn(cmd.exec()))
     }
 
@@ -546,8 +548,11 @@ mod os {
         )))
     }
 
-    pub(super) fn exec_replace(mut cmd: Command) -> Result<i32, ChildFail> {
-        cmd.status()
+    pub(super) fn exec_replace(mut cmd: Command, started: &dyn Fn(u32)) -> Result<i32, ChildFail> {
+        let mut child = cmd.spawn().map_err(ChildFail::of_spawn)?;
+        started(child.id());
+        child
+            .wait()
             .map(|s| s.code().unwrap_or(1))
             .map_err(ChildFail::of_spawn)
     }

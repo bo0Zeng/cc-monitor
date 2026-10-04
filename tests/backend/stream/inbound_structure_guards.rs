@@ -370,6 +370,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-last-accounts"
                 // 本机起会话那一行：核一次「新起」的目录在不在（stat）。
                 | "launch-local"
+                // 远端那一行：判号要读这台的账号清单与起会话账号记录（同步文件 I/O）。
+                | "launch-render-cli"
                 // 本机那一份放不放：读一遍落点那个文件（约 10 MB，同步文件 I/O）。
                 | "place-verdict"
                 // 批量停 / 起：逐个起 tmux 子进程（同 `kill` / `launch`）。
@@ -377,7 +379,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "sessions-start"
                 | "sessions-where"
         );
-        let is_blocking = matches!(spec.run, Run::Blocking(_));
+        let is_blocking = matches!(spec.run, Run::Blocking(_) | Run::BlockingData(_));
         assert_eq!(
             is_blocking, expected_blocking,
             "`{}` 的 Run 档位与预期不符 —— 放错档的代价是「占住 worker」或「假装能取消」",

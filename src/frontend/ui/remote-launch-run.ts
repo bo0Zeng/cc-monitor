@@ -18,6 +18,9 @@ import {
   planAttach,
 } from "./launch-requests";
 import type { LaunchContext, LaunchModifiers } from "./launch-types";
+import type { AccountAsk } from "./generated/AccountAsk";
+import { accountUnavailableOf, refuseUnavailableAccount } from "./launch-account";
+import { machineModels } from "./account-prefs";
 import type { CliRenderRequest } from "./launch-cli-wire.ts";
 import { renderCli } from "./launch-render";
 import { showActionFailureToast } from "./error-toast";
@@ -29,7 +32,33 @@ import { arrivedBody, awaitArrival, expectArrival, type ArrivalMatch, type Launc
 
 /** 那台后端渲那一行；拒了 ⇒ 抛（带那台的原话，执行器那一格 catch 说出来），不换条路糊过去。 */
 async function renderLaunchCommand(origin: string, ctx: LaunchContext): Promise<string> {
-  return renderCli(origin, buildCliRenderRequest(ctx));
+  return (await renderCli(origin, buildCliRenderRequest(ctx))).cmd;
+}
+
+/**
+ * 渲那一行（那台判号）：要的号选不了 ⇒ 不起、给显式选择（点了 ⇒ `again(那个号)`）；别的失败 ⇒ 说成 `failedTitle` 那一句；
+ * 开窗之前问 `mods.preflight`（收那台判出来的号的目录）。说不起 ⇒ `null`。
+ */
+async function renderOrRefuse(
+  origin: string,
+  ctx: LaunchContext,
+  failedTitle: string,
+  mods: LaunchModifiers,
+  again: (account: AccountAsk) => unknown,
+): Promise<string | null> {
+  let r;
+  try {
+    const req = buildCliRenderRequest(ctx);
+    if (mods.models === undefined && ctx.action.kind !== "attach") req.models = await machineModels(origin);
+    r = await renderCli(origin, req);
+  } catch (err) {
+    const u = accountUnavailableOf(err);
+    if (u) refuseUnavailableAccount({ machine: origin, u, choose: (account) => again(account) as Promise<unknown> });
+    else showActionFailureToast(failedTitle, String(err));
+    return null;
+  }
+  if (mods.preflight && !(await mods.preflight(r.account?.configDir))) return null;
+  return r.cmd;
 }
 
 /** 空白 ⇒ 那一家的默认启动器（没配就是没配，不是一个判定）。字符集只在后端判。 */
@@ -55,12 +84,10 @@ export function buildCliRenderRequest(ctx: LaunchContext): CliRenderRequest {
         ? { kind: "tmux", name: ctx.container.name, send_into: ctx.container.mode === "send-into" }
         : { kind: "none" },
     cwd: ctx.cwd,
-    account:
-      ctx.account.kind === "account"
-        ? { kind: "account", name: ctx.account.name ?? null, configDir: ctx.account.configDir }
-        : { kind: "base" },
+    account: ctx.account,
     ccmSid: ctx.ccmSid ?? null,
-    model: ctx.modelOverride ?? null,
+    model: null,
+    models: ctx.models,
     launcher: launcherOrDefault(ctx.agent, ctx.launcherOverride ?? ""),
     defaultLauncher: defaultLauncherOf(ctx.agent),
   };
@@ -164,7 +191,7 @@ export async function runRemoteResume(
   sid: string,
   cwd: string,
   launcher: string,
-  mods: LaunchModifiers = {}, // 正交修饰（configDir/accountName/modelOverride），见 launch-types.ts
+  mods: LaunchModifiers = {}, // 正交修饰（要哪个号 · 那台的模型偏好表），见 launch-types.ts
   // Phase G（branch-anywhere）：返回值从 `void` 改成 `boolean`，与 `runRemoteResumeTmux`
   // 对齐（那边的头注逐字记着为什么要有返回值：account-ux 那次把「走到了第⑤步」当成
   // 「已 resume」）。既有调用点忽略返回值 ⇒ 行为逐字不变。
@@ -194,14 +221,11 @@ async function resumeDirectCore(
   mods: LaunchModifiers,
   wait: "expect" | "await",
 ): Promise<Opened> {
-  let cmd: string;
-  try {
-    const ctx = planResumeDirect(agent, sid, cwd, launcher, mods);
-    cmd = await renderLaunchCommand(origin, ctx);
-  } catch (err) {
-    showActionFailureToast(copyText("remoteLaunchRun.resume.buildFailed"), String(err));
-    return "unsent";
-  }
+  const ctx = planResumeDirect(agent, sid, cwd, launcher, mods);
+  const cmd = await renderOrRefuse(origin, ctx, copyText("remoteLaunchRun.resume.buildFailed"), mods, (account) =>
+    resumeDirectCore(origin, agent, sid, cwd, launcher, { ...mods, account }, wait),
+  );
+  if (cmd === null) return "unsent";
   return invokeLaunchOrCopyFallback(origin, cmd, {
     success: copyText("remoteLaunchRun.resume.started"),
     failureCopied: copyText("remoteLaunchRun.resume.failedCopied"),
@@ -233,14 +257,11 @@ async function resumeTmuxCore(
   mods: LaunchModifiers,
   wait: "expect" | "await",
 ): Promise<Opened> {
-  let cmd: string;
-  try {
-    const ctx = planResumeTmux(agent, sid, cwd, launcher, name, mods);
-    cmd = await renderLaunchCommand(origin, ctx);
-  } catch (err) {
-    showActionFailureToast(copyText("remoteLaunchRun.resumeTmux.buildFailed"), String(err));
-    return "unsent";
-  }
+  const ctx = planResumeTmux(agent, sid, cwd, launcher, name, mods);
+  const cmd = await renderOrRefuse(origin, ctx, copyText("remoteLaunchRun.resumeTmux.buildFailed"), mods, (account) =>
+    resumeTmuxCore(origin, agent, sid, cwd, launcher, name, { ...mods, account }, wait),
+  );
+  if (cmd === null) return "unsent";
   return invokeLaunchOrCopyFallback(origin, cmd, {
     success: copyText("remoteLaunchRun.resumeTmux.started"),
     failureCopied: copyText("remoteLaunchRun.resumeTmux.failedCopied"),
@@ -259,7 +280,7 @@ export async function runNewSessionRemote(
   agent: string,
   cwd: string,
   command: string,
-  mods: LaunchModifiers = {}, // 正交修饰（configDir/accountName/modelOverride），见 launch-types.ts
+  mods: LaunchModifiers = {}, // 正交修饰（要哪个号 · 那台的模型偏好表），见 launch-types.ts
 ): Promise<void> {
   // ★★ **默认名必须过铸名口**（F13）：同一个 cwd 点两次「起新会话」派生出同一个名字 ⇒ 撞上远端
   // `create-or-attach` 的幂等闸 ⇒ **静默接进第一个会话，而用户以为开了新的**（issue #76 那一族）。
@@ -282,16 +303,13 @@ export async function runRemoteLauncher(
   cwd: string,
   tmuxName: string,
   command: string,
-  mods: LaunchModifiers = {}, // 正交修饰（configDir/accountName/modelOverride），见 launch-types.ts
+  mods: LaunchModifiers = {}, // 正交修饰（要哪个号 · 那台的模型偏好表），见 launch-types.ts
 ): Promise<void> {
-  let cmd: string;
-  try {
-    const ctx = planLauncher(agent, cwd, tmuxName, command, mods);
-    cmd = await renderLaunchCommand(origin, ctx);
-  } catch (err) {
-    showActionFailureToast(copyText("remoteLaunchRun.launcher.buildFailed"), String(err));
-    return;
-  }
+  const ctx = planLauncher(agent, cwd, tmuxName, command, mods);
+  const cmd = await renderOrRefuse(origin, ctx, copyText("remoteLaunchRun.launcher.buildFailed"), mods, (account) =>
+    runRemoteLauncher(origin, agent, cwd, tmuxName, command, { ...mods, account }),
+  );
+  if (cmd === null) return;
   // 新开的会话拉起那一刻没有 sid：认它按「预期之后第一次出现、工作目录相同的新 sid」。
   await invokeLaunchOrCopyFallback(origin, cmd, {
     success: copyText("remoteLaunchRun.launcher.started"),

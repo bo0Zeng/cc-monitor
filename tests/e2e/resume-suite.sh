@@ -178,17 +178,14 @@ if AL="$(wait_argv_resume "$ACCT_B" "$SID3" 12)"; then
   if grep -qE "sid=$SID3 .*argv=--resume" "$REMOTE_DIR/argv.log" 2>/dev/null; then bad "B3 pin 泄漏:remote/base 目录也记到该 resume"; else ok "B3 pin 隔离:remote/base 目录无该 sid resume(不串号)"; fi
 else bad "B3 12s 内 B 目录 argv.log 无 resume"; fi
 
-# ── B4:不带 pin → 基座 + follow 解析当前工作账号（#75 主因）──────────────────────────────
-echo "-- B4 不带 pin:命令走基座(unset CLAUDE_CONFIG_DIR)+ resolveFollowAccount(真源)解析 --"
+# ── B4:不带 pin → 基座（跟随判号在那台后端）──────────────────────────────
+echo "-- B4 不带 pin:命令走基座(unset CLAUDE_CONFIG_DIR) --"
 SID4="$(cat /proc/sys/kernel/random/uuid)"; S4="cc-${SID4:0:8}"
 make_idle "$SID4" "$REMOTE_DIR" >/dev/null
 CMD4="$(drv into-existing "$SID4" "$S4" "$FAKE" -)"
 echo "   cmd: $CMD4"
 echo "$CMD4" | grep -qF -- " -- --ccm-agent claude --base " && ok "B4 基座命令带 --base（ccm 清掉 shell 残留旧号,#75 复用变体逃生口）" || bad "B4 基座命令缺 --base"
-# #75 主因:不带 pin 时的跟随解析——lastAccount 无 → 当前工作账号 current(真源 resolveFollowAccount)。
-STATE_B4='{"accounts":[{"name":"work","email":"","configDir":"'"$ACCT_A"'","isDefault":true,"mode":"isolated","exists":true,"loggedIn":true,"authKind":"subscription","authReady":true}]}'
-FOL="$(drv follow - work "$STATE_B4")"
-[ "$FOL" = "work" ] && ok "B4 无 pin → resolveFollowAccount 落当前工作账号 work(#75:不再散落基座错目录)" || bad "B4 follow 解析=$FOL(期望 work)"
+# 不带 pin 时跟随落哪个号由那台后端判（`launch_account.rs::pick`，Rust 判据 ＋ ccm 端到端那一条钉着）。
 fire_resume "$CMD4"
 if AL="$(wait_argv_resume "$BASE_DEFAULT" "$SID4" 12)"; then ok "B4 基座 resume 执行(argv 落默认隔离目录): $AL"; else bad "B4 12s 内基座 argv 无 resume"; fi
 

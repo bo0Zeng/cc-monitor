@@ -3,7 +3,7 @@
 use crate::stream::inbound::spec::{CommandSpec, Run};
 
 pub(super) const SPECS: &[CommandSpec] = &[
-    // **历史注解**（星标 / 改名 / 隐藏 / 上次用哪个号起）的读写者换成本机常驻后端 ——
+    // **历史注解**（星标 / 改名 / 隐藏）的读写者换成本机常驻后端 ——
     //   「文件留在原处、同一路径，不迁移、一条不丢」：文件住家里（`<家>/history-metadata.json`，后端按家推），
     //   写是第四层（`history_annotations.rs`，读不懂就拒写、只改那一条、认不出的键原样留着）。三条都是阻塞档（读写一份小文件）。
     CommandSpec {
@@ -19,7 +19,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "customTitle",
             "entry",
             "hidden",
-            "lastAccount",
             "patch",
             "sid",
             "starred",
@@ -49,14 +48,15 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 「这台上每条会话上次用哪个号起的」（起会话账号记录，会话所在那台各问一次）。读不懂 ⇒ `unreadable`。
     CommandSpec {
         name: "history-last-accounts",
         doc_anchor: Some("#### `history-last-accounts`"),
-        codes: &["annotations_unreadable", "no_annotations"],
+        codes: &["unreadable"],
         fields: &["accounts"],
         takes_input: false,
-        run: Run::Blocking(|r| {
-            crate::history::history_annotations::last_accounts(&r.args)
+        run: Run::Blocking(|_| {
+            crate::control::launch_account::answer_last_accounts()
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

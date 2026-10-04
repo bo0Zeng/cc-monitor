@@ -540,7 +540,7 @@ fn execute(plan: Plan) -> i32 {
                     copy_text("beCcm.execute.rejoin", &[("sid", sid), ("name", name)])
                 );
             }
-            exec_shell(&plan::render(&plan), &WHY_SHELL_ATTACH)
+            exec_shell(&plan::render(&plan), &WHY_SHELL_ATTACH, None)
         }
         Plan::Container(c) => {
             // 🔴 **这里从前有一段退让** —— 它只发生在真跑这条路上，
@@ -592,7 +592,7 @@ fn execute(plan: Plan) -> i32 {
             } else {
                 // 收尾片段以 ` && ` / `; ` 开头（它在 `--ccm-print` 里是接在建会话那段后面的）
                 // ⇒ 单独跑时前面补一个 `:`，**不重写一份**（重写就是第二处住址）。
-                exec_shell(&format!(":{tail}"), &WHY_SHELL_CONTAINER_TAIL)
+                exec_shell(&format!(":{tail}"), &WHY_SHELL_CONTAINER_TAIL, None)
             }
         }
         Plan::Direct(d) => exec_direct(d),
@@ -685,13 +685,14 @@ fn needs_shell(d: &plan::Direct) -> Option<&'static str> {
 /// 把一条渲好的命令串交给 `sh -c` 并**替换掉自己**。`why` = 这一趟为什么非得经 shell。
 ///
 /// 起进程点，已登记进 `readonly_guard::spawn_registry::ALLOWED`。
-fn exec_shell(line: &str, why: &str) -> i32 {
+fn exec_shell(line: &str, why: &str, account: Option<&str>) -> i32 {
     exec_or_spawn(
         Child::new("sh").arg("-c").arg(line),
         &format!(
             "{NO_SHELL}: {}",
             copy_text("beCcm.execShell.needsSh", &[("why", why)])
         ),
+        account,
     )
 }
 
@@ -710,9 +711,12 @@ fn exec_direct(d: &plan::Direct) -> i32 {
     if d.keeps_user_base_url {
         eprintln!("{}", copy_text("beCcm.relay.userBaseUrl", &[]));
     }
-    // 非得要 shell 的那几趟（判定与归因都只住 `needs_shell` 一处）⇒ 整条走 `sh -c`。
+    // 用的是账号库里一个说得出名字的号 ⇒ 最终那一跳给 agent 那个进程留张便条（观测侧据它记「这条会话用哪个号起的」）。
+    let account =
+        Some(d.account_name.as_str()).filter(|n| !n.is_empty() && !d.config_dir.is_empty());
+    // 非得要 shell 的那几趟（判定与归因都只住 `needs_shell` 一处）⇒ 整条走 `sh -c`（它最后一句 `exec`，pid 不变）。
     if let Some(why) = needs_shell(d) {
-        return exec_shell(&plan::render(&Plan::Direct(d.clone())), why);
+        return exec_shell(&plan::render(&Plan::Direct(d.clone())), why, account);
     }
     for k in &d.nested {
         std::env::remove_var(k);
@@ -748,7 +752,7 @@ fn exec_direct(d: &plan::Direct) -> i32 {
     let Some((prog, rest)) = d.argv.split_first() else {
         return die(&copy_text("beCcm.execDirect.noLauncher", &[]));
     };
-    exec_or_spawn(Child::new(prog).args(rest), &format!("'{prog}'"))
+    exec_or_spawn(Child::new(prog).args(rest), &format!("'{prog}'"), account)
 }
 
 /// 最终那一跳（`Child::exec_replace`：POSIX 就地 `exec`，Windows 起它、等它、交回退出码）。
@@ -756,8 +760,22 @@ fn exec_direct(d: &plan::Direct) -> i32 {
 /// `subject` = **起不来的是什么**。🔴 它不是装饰（`D7`）：从前这里只吐
 /// `ccm: 起不来 —— {e}`，而 `{e}` 在 Windows 上逐字是 `program not found`
 /// ⇒ 那句话**指不出是哪个 program**。⇒ 两处调用点各自把主语带进来（`sh -c` 那条还带上「为什么非得经它」）。
-fn exec_or_spawn(cmd: Child, subject: &str) -> i32 {
-    let e = match cmd.exec_replace() {
+///
+/// `account` ＝ 这一趟用的号（账号库里说得出名字的那一形）：起好那一刻给那个 pid 留便条；写不成只出声、照常起。
+fn exec_or_spawn(cmd: Child, subject: &str, account: Option<&str>) -> i32 {
+    let note = |pid: u32| {
+        let Some(name) = account else { return };
+        let Some(home) = crate::platform::paths::data_home() else {
+            return;
+        };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        if let Err(e) = crate::control::launch_account::leave_note(&home, pid, name, now) {
+            eprintln!("ccm: {e}");
+        }
+    };
+    let e = match cmd.exec_replace(&note) {
         Ok(code) => return code,
         Err(e) => e,
     };
@@ -774,3 +792,8 @@ fn exec_or_spawn(cmd: Child, subject: &str) -> i32 {
 #[cfg(test)]
 #[path = "../../../../tests/backend/control/ccm_tests.rs"]
 mod tests;
+
+// 经 ccm 用某个号起一次 ⇒ 那个号记到那条会话名下（假启动器是 POSIX shell 脚本、ccm 在那一形上 exec 掉子进程）。
+#[cfg(all(test, unix))]
+#[path = "../../../../tests/backend/control/ccm/launch_note_e2e_tests.rs"]
+mod launch_note_e2e;

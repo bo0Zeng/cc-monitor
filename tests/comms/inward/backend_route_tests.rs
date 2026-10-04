@@ -34,22 +34,27 @@ fn only_the_errors_that_prove_nothing_was_sent_allow_a_fallback() {
         CallError::Remote {
             code: "wrong_owner".into(),
             message: "sid=".into(),
+            data: None,
         },
         CallError::Remote {
             code: "too_many_windows".into(),
             message: "windows=3".into(),
+            data: None,
         },
         CallError::Remote {
             code: "kill_failed".into(),
             message: "boom".into(),
+            data: None,
         },
         CallError::Remote {
             code: "no_such_session".into(),
             message: "".into(),
+            data: None,
         },
         CallError::Remote {
             code: "invalid_args".into(),
             message: "未知 mode `attach-only`".into(),
+            data: None,
         },
     ];
     for e in &no_fallback {
@@ -130,6 +135,7 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
             CallError::Remote {
                 code: "wrong_owner".into(),
                 message: "sid=x".into(),
+                data: None,
             },
             Routed::Refused("wrong_owner/sid=x".into()),
         ),
@@ -210,6 +216,7 @@ fn the_layering_table_is_pinned_cell_by_cell() {
             CallError::Remote {
                 code: "wrong_owner".into(),
                 message: "x\u{0}y".into(),
+                data: None,
             },
             w::CallError::Peer {
                 why: w::PeerFault::Refused {
@@ -246,5 +253,31 @@ fn the_layering_table_is_pinned_cell_by_cell() {
         layer_no_channel(7),
         hop("open", w::Reach::NotSent, w::HopFault::Unreachable),
         "「没有控制通道」那一格不是 `Hop{{open, NotSent, Unreachable}}`"
+    );
+}
+
+/// 带 `data` 的失败（按码定形，今天只有 `account_unavailable`）：拒绝体多一格 `data`；没带的那一形字节不变（上表那几行）。
+/// 比的是解出来的 JSON（键序随 serde_json 的特性开关变，不是契约）。
+#[test]
+fn a_refusal_with_data_carries_it_in_the_body() {
+    let e = CallError::Remote {
+        code: "account_unavailable".into(),
+        message: "m".into(),
+        data: Some(r#"{"requested":"z","pinned":true,"listKnown":true,"alternative":null}"#.into()),
+    };
+    let w::CallError::Peer {
+        why: w::PeerFault::Refused { body },
+    } = layer_call_error(&e, 0).error
+    else {
+        panic!("带 data 的失败没落成对端拒绝");
+    };
+    let got: serde_json::Value = serde_json::from_slice(&body.0).expect("拒绝体是 JSON");
+    assert_eq!(
+        got,
+        serde_json::json!({
+            "code": "account_unavailable",
+            "message": "m",
+            "data": {"requested": "z", "pinned": true, "listKnown": true, "alternative": null},
+        })
     );
 }

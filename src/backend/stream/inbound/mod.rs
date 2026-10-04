@@ -52,7 +52,7 @@ use drain::{exit_after_drain_within, Drain};
 pub(crate) use drain::{DRAIN, DRAIN_DEADLINE};
 use sniff::sniff_id;
 pub use sniff::ID_SNIFF_BYTES;
-use spec::{BlockingHandler, BoxFut, CmdResult, Handler};
+use spec::{BlockingHandler, BoxFut, Fail, Handler, Outcome};
 pub(crate) use spec::{CommandSpec, Run};
 
 /// 单行上限。超过即整行丢弃 + 回 `line_too_long`。
@@ -215,7 +215,8 @@ async fn handle_line(
         Disposition::Done => {}
         Disposition::Reply(f) => send(replies, f).await,
         Disposition::Spawn(req, run) => {
-            spawn_handler(req, replies.clone(), running.clone(), run, true).await
+            let fut = move |r: Request| async move { run(r).await.map_err(Fail::from) };
+            spawn_handler(req, replies.clone(), running.clone(), fut, true).await
         }
         // ★ 同步阻塞处理器：进 `spawn_blocking` 的专用线程池，**不占 tokio worker**。
         //   `cancellable: false` —— `spawn_blocking` 起的活 abort 不了，说实话。
@@ -242,10 +243,10 @@ async fn handle_line(
                 .await
                 {
                     Ok(res) => res,
-                    Err(e) => Err((
+                    Err(e) => Err(Fail::from((
                         "handler_panicked".to_string(),
                         copy_text("beInbound.handleLine.internal", &[("e", &e.to_string())]),
-                    )),
+                    ))),
                 }
             };
             spawn_handler(req, replies.clone(), running.clone(), fut, false).await
@@ -390,7 +391,10 @@ fn dispatch(
         other => match lookup(other) {
             Some(spec) => match spec.run {
                 Run::Async(f) => Disposition::Spawn(req, Box::new(f)),
-                Run::Blocking(f) => Disposition::SpawnBlocking(req, Box::new(f)),
+                Run::Blocking(f) => {
+                    Disposition::SpawnBlocking(req, Box::new(move |r| f(r).map_err(Fail::from)))
+                }
+                Run::BlockingData(f) => Disposition::SpawnBlocking(req, Box::new(f)),
                 // `cancel` 在上面那条硬臂里处理完了，走不到这儿。
                 Run::Builtin => Disposition::Reply(err(
                     &req.id,
@@ -419,7 +423,7 @@ fn dispatch(
 pub fn uncancellable() -> Vec<String> {
     let mut names: Vec<String> = REGISTRY
         .iter()
-        .filter(|s| matches!(s.run, Run::Blocking(_)))
+        .filter(|s| matches!(s.run, Run::Blocking(_) | Run::BlockingData(_)))
         .map(|s| s.name.to_string())
         .collect();
     names.sort();
@@ -501,7 +505,7 @@ async fn spawn_handler<F, Fut>(
     cancellable: bool,
 ) where
     F: FnOnce(Request) -> Fut + Send + 'static,
-    Fut: std::future::Future<Output = CmdResult> + Send,
+    Fut: std::future::Future<Output = Outcome> + Send,
 {
     let id = req.id.clone();
 
@@ -554,7 +558,13 @@ async fn spawn_handler<F, Fut>(
                 message: None,
                 data,
             },
-            Err((code, message)) => err(&id_for_task, &code, &message),
+            Err(f) => Frame::Reply {
+                id: id_for_task.clone(),
+                ok: false,
+                code: Some(f.code),
+                message: Some(f.message),
+                data: f.data,
+            },
         };
         // 先摘登记再回应答：反过来的话，客户端收到应答后立刻发 cancel，
         // 可能命中一个已经跑完但还没摘掉的句柄，白 abort 一个空壳。

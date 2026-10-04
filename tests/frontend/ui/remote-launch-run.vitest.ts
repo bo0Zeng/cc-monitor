@@ -38,6 +38,7 @@ import {
 } from "../../../src/frontend/ui/remote-launch-run";
 import type { CliRenderRequest } from "../../../src/frontend/ui/launch-cli-wire";
 import { configuredLauncherFor } from "../../../src/frontend/ui/launch-requests";
+import { ControlError } from "../../../src/frontend/ui/control-said";
 
 const toastMock = showActionFailureToast as unknown as ReturnType<typeof vi.fn>;
 const arrivalMock = expectArrival as unknown as ReturnType<typeof vi.fn>;
@@ -55,12 +56,51 @@ function requests(): CliRenderRequest[] {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  render.renderCli.mockImplementation(async (_o: string, req: CliRenderRequest) => lineFor(req));
+  render.renderCli.mockImplementation(async (_o: string, req: CliRenderRequest) => ({ cmd: lineFor(req), account: null }));
   render.planLocalLaunch.mockResolvedValue({ cmd: "ccm -- --attach n-cc", launchId: null });
   term.openTerminal.mockResolvedValue(undefined);
   tmux.sendInto.mockResolvedValue({ verdict: "typed" });
   mint.mintFreshTmuxName.mockResolvedValue({ ok: true, name: "w-cc" });
   stubClipboard(vi.fn().mockResolvedValue(undefined));
+});
+
+describe("那台说「要的号选不了」⇒ 不开窗、说清、给显式选择", () => {
+  it("★ 跟随 ⇒ 那台回 account_unavailable ⇒ 零次开窗 ＋ 一条可点提示；点了 ⇒ 点名替代号再问一次、开窗", async () => {
+    const refusal = Object.assign(new ControlError("号选不了", "launch-render-cli refused: account_unavailable"), {});
+    Object.defineProperty(refusal, "error", {
+      value: {
+        layer: "peer",
+        why: "refused",
+        body: new TextEncoder().encode(
+          JSON.stringify({ code: "account_unavailable", message: "m", data: { requested: "z", pinned: true, listKnown: true, alternative: "b" } }),
+        ),
+      },
+    });
+    render.renderCli.mockImplementation(async (_o: string, req: CliRenderRequest) => {
+      if (req.account.kind === "follow") throw refusal;
+      return { cmd: lineFor(req), account: { name: "b", configDir: "/h/b", model: null } };
+    });
+    expect(await runRemoteResume("devbox", "claude", "sid-1", "/p", "")).toBe(false);
+    expect(term.openTerminal).not.toHaveBeenCalled();
+    expect(toastMock).toHaveBeenCalledTimes(1);
+    const [title, body, opts] = toastMock.mock.calls[0] as [string, string, { onClick?: () => void }];
+    expect(title).toBe("账号现在选不了，没有起会话");
+    expect(body).toContain("「z」");
+    opts.onClick!();
+    await vi.waitFor(() => expect(term.openTerminal).toHaveBeenCalledTimes(1));
+    expect(requests().map((r) => r.account)).toEqual([{ kind: "follow" }, { kind: "named", name: "b" }]);
+  });
+
+  it("开窗之前问 preflight：收的是那台判出来的号的目录；说不起 ⇒ 不开窗", async () => {
+    render.renderCli.mockImplementation(async (_o: string, req: CliRenderRequest) => ({
+      cmd: lineFor(req),
+      account: { name: "z", configDir: "/h/z", model: null },
+    }));
+    const preflight = vi.fn().mockResolvedValue(false);
+    expect(await runRemoteResume("devbox", "claude", "sid-1", "/p", "", { preflight })).toBe(false);
+    expect(preflight).toHaveBeenCalledWith("/h/z");
+    expect(term.openTerminal).not.toHaveBeenCalled();
+  });
 });
 
 describe("每条远端起会话路径：问那台要那一行，原样交给终端", () => {
@@ -74,16 +114,15 @@ describe("每条远端起会话路径：问那台要那一行，原样交给终�
     expect(arrivalMock).toHaveBeenCalledWith(expect.objectContaining({ origin: "devbox", match: { sid: "sid-1" }, tmuxName: null }));
   });
 
-  it("tmux 建会话 resume（换号重启 · 分叉的远端那一跳）：容器 create · 身份标记 · 账号带名字与目录", async () => {
+  it("tmux 建会话 resume（换号重启 · 分叉的远端那一跳）：容器 create · 身份标记 · 点名那个号", async () => {
     const r = await runRemoteResumeTmuxAndWait("devbox", "claude", "sid-1", "/p", "claude", "cc-sid1", {
-      configDir: "/h/.claude-alt/z",
-      accountName: "z",
+      account: { kind: "named", name: "z" },
     });
     expect(r).toBe("arrived");
     const [req] = requests();
     expect(req.container).toEqual({ kind: "tmux", name: "cc-sid1", send_into: false });
     expect(req.ccmSid).toBe("sid-1");
-    expect(req.account).toEqual({ kind: "account", name: "z", configDir: "/h/.claude-alt/z" });
+    expect(req.account).toEqual({ kind: "named", name: "z" });
     expect(term.openTerminal).toHaveBeenCalledWith("devbox", lineFor(req));
   });
 

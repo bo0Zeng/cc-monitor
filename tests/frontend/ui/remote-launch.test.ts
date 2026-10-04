@@ -38,17 +38,18 @@ function eq(actual: unknown, expected: unknown, msg?: string): void {
 console.log("remote-launch.test.ts");
 
 const req = buildCliRenderRequest;
-const ACCT = { configDir: "/h/.claude-alt/w", accountName: "w" };
+const ACCT = { account: { kind: "named", name: "w" } } as const;
 
-test("直连 resume：没有容器、cwd 原样、具名账号带名字与目录", () => {
+test("直连 resume：没有容器、cwd 原样、点名的号原样上线（那台判）", () => {
   eq(req(planResumeDirect("claude", "abc-123", "/home/pi/a'b", "claude", ACCT)), {
     agent: "claude",
     action: { kind: "resume", sid: "abc-123" },
     container: { kind: "none" },
     cwd: "/home/pi/a'b",
-    account: { kind: "account", name: "w", configDir: "/h/.claude-alt/w" },
+    account: { kind: "named", name: "w" },
     ccmSid: null,
     model: null,
+    models: {},
     launcher: "claude",
     defaultLauncher: AGENT_PROFILE.defaultLauncher,
   });
@@ -68,11 +69,11 @@ test("就地 resume：容器 send-into、不重打身份标记、没有 cwd", ()
   eq(r.cwd, null);
 });
 
-test("开新会话：动作 new、容器 create、没选账号 ⇒ 账号 0", () => {
+test("开新会话：动作 new、容器 create、没选账号 ⇒ 跟随（那台判：没有上次的号 ⇒ 它的默认号）", () => {
   const r = req(planLauncher("claude", "/p", " w-cc ", "claude"));
   eq(r.action, { kind: "new" });
   eq(r.container, { kind: "tmux", name: "w-cc", send_into: false });
-  eq(r.account, { kind: "base" });
+  eq(r.account, { kind: "follow" });
 });
 
 test("接回：不起 agent ⇒ 不带账号修饰", () => {
@@ -81,10 +82,9 @@ test("接回：不起 agent ⇒ 不带账号修饰", () => {
   eq(r.account, { kind: "base" });
 });
 
-test("只有目录没有名字（分叉继承源会话的目录）：名字 null、目录照带", () => {
-  eq(req(planResumeDirect("claude", "s1", "/p", "claude", { configDir: "/h/x" })).account, {
-    kind: "account",
-    name: null,
+test("只有目录没有名字（分叉继承源会话的目录）：只交目录", () => {
+  eq(req(planResumeDirect("claude", "s1", "/p", "claude", { account: { kind: "named", configDir: "/h/x" } })).account, {
+    kind: "named",
     configDir: "/h/x",
   });
 });
@@ -99,8 +99,10 @@ test("sid 前端不判：怪值原样上线（后端那一跳拒）", () => {
   eq(req(planResumeDirect("claude", "a; rm -rf /", "/p", "claude")).action, { kind: "resume", sid: "a; rm -rf /" });
 });
 
-test("模型偏好进 model 那一格", () => {
-  eq(req(planResumeDirect("claude", "s1", "", "claude", { modelOverride: "opus" })).model, "opus");
+test("模型偏好表原样进 models 那一格（那台判出号再取那一条）；model 那一格不由界面填", () => {
+  const r = req(planResumeDirect("claude", "s1", "", "claude", { models: { w: "opus" } }));
+  eq(r.models, { w: "opus" });
+  eq(r.model, null);
 });
 
 // F01 漂移守卫（INVARIANTS §31a）：`=名:` 精确目标形态编码在 Rust（`ccm_invocation.rs` · `control/tmux.rs::exact_target`）

@@ -154,7 +154,13 @@ fn history_resume_child_entry_point() {
         windows: false,
         is_dir: |_| true,
     };
-    let argv = super::local::plan_argv(&req, &facts, false).expect("渲得出那一行");
+    let argv = super::local::plan_argv(
+        &req,
+        &crate::control::launch_account::Settled::Unsaid,
+        &facts,
+        false,
+    )
+    .expect("渲得出那一行");
     eprintln!("ccm 那一行：{argv:?}");
     let code = crate::control::ccm::run(&argv[1..], &argv[..1], |_| Vec::new());
     panic!("ccm 没有 exec 掉自己（退出码 {code}）");

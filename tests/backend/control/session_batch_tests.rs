@@ -3,6 +3,26 @@
 use super::*;
 use std::cell::RefCell;
 
+/// 判号要的事实：这台只有一个号 `work`（能用）、没有谁的上次记录。
+fn with_accounts<T>(f: impl FnOnce(&la::Facts) -> T) -> T {
+    let library = || {
+        la::Library::of_product(&json!({ "meta": {"enabled": true}, "accounts": [{
+            "name": "work", "configDir": "/h/.cc/work", "isDefault": false, "mode": "isolated",
+            "exists": true, "authReady": true,
+        }]}))
+    };
+    f(&la::Facts {
+        has_accounts: true,
+        library: &library,
+        last: &|_| None,
+    })
+}
+
+/// 一批起的入参：整批那几格 ＋ 每项 `{sid, cwd, account}`。
+fn batch(mode: &str, local: bool, items: Vec<Value>) -> Value {
+    json!({ "mode": mode, "local": local, "agent": "claude", "launcher": "claude", "defaultLauncher": "claude", "items": items })
+}
+
 const A: &str = "aaaaaaaa-1111-2222-3333-444444444444";
 const B: &str = "bbbbbbbb-1111-2222-3333-444444444444";
 const C: &str = "cccccccc-1111-2222-3333-444444444444";
@@ -81,18 +101,21 @@ impl Rig {
             self.calls.borrow_mut().push(format!("mint {cwd}"));
             Ok("proj-cc-2".to_string())
         };
-        f(&Deps {
-            list: &list,
-            record: &record,
-            kill: &kill,
-            send_into: &send_into,
-            run_ccm: &run_ccm,
-            mint: &mint,
-            caps: &caps,
-            local_facts: local::Facts {
-                windows: false,
-                is_dir: |_| true,
-            },
+        with_accounts(|accounts| {
+            f(&Deps {
+                list: &list,
+                record: &record,
+                kill: &kill,
+                send_into: &send_into,
+                run_ccm: &run_ccm,
+                mint: &mint,
+                caps: &caps,
+                local_facts: local::Facts {
+                    windows: false,
+                    is_dir: |_| true,
+                },
+                accounts,
+            })
         })
     }
 }
@@ -176,7 +199,7 @@ fn a_malformed_batch_is_refused_whole() {
 }
 
 fn item(sid: &str, account: Value) -> Value {
-    json!({ "agent": "claude", "sid": sid, "cwd": "/w/proj", "account": account, "model": null, "launcher": "claude", "defaultLauncher": "claude" })
+    json!({ "sid": sid, "cwd": "/w/proj", "account": account })
 }
 
 /// 单个那一条那台后端会渲出的那一行（`launch-render-cli`，直连、不建容器）。
@@ -192,7 +215,7 @@ fn single_line(sid: &str, cwd: Option<&str>, account: Value) -> String {
         "launcher": "claude",
         "defaultLauncher": "claude",
     });
-    super::super::launch_render::answer_cli(&req).unwrap()["cmd"]
+    with_accounts(|f| super::super::launch_render::answer_cli(&req, f)).unwrap()["cmd"]
         .as_str()
         .unwrap()
         .to_string()
@@ -211,7 +234,7 @@ fn single_tmux_line(sid: &str, name: &str, account: Value) -> String {
         "launcher": "claude",
         "defaultLauncher": "claude",
     });
-    super::super::launch_render::answer_cli(&req).unwrap()["cmd"]
+    with_accounts(|f| super::super::launch_render::answer_cli(&req, f)).unwrap()["cmd"]
         .as_str()
         .unwrap()
         .to_string()
@@ -269,7 +292,15 @@ fn start_in_tmux_is_the_single_tmux_item_without_attaching() {
         row("b-cc", Some(B), false), // 空 tmux ⇒ 就地键入
     ]));
     rig.gone = vec![];
-    let args = json!({ "mode": "tmux", "local": false, "items": [item(A, acct.clone()), item(B, acct.clone()), item(C, acct.clone())] });
+    let args = batch(
+        "tmux",
+        false,
+        vec![
+            item(A, acct.clone()),
+            item(B, acct.clone()),
+            item(C, acct.clone()),
+        ],
+    );
     let out = rig.run(|d| start(&args, d)).unwrap();
     assert_eq!(
         outcomes(&out),
@@ -279,7 +310,7 @@ fn start_in_tmux_is_the_single_tmux_item_without_attaching() {
             (C.into(), "done".into(), Value::Null),
         ]
     );
-    let remote = json!({ "kind": "account", "name": "work", "configDir": "/h/.cc/work" });
+    let remote = json!({ "kind": "named", "name": "work" });
     // 空 tmux：键进去的是单个就地 resume 那一行（直路、不带 cwd），落在挂着 B 的那个窗格。
     assert_eq!(
         *rig.launched.borrow(),
@@ -313,7 +344,14 @@ fn start_skips_what_has_no_record_and_says_a_taken_name() {
     let mut rig = Rig::new(Some(vec![]));
     rig.gone = vec![A];
     rig.created = false;
-    let args = json!({ "mode": "tmux", "local": true, "items": [item(A, json!({ "kind": "inherit" })), item(B, json!({ "kind": "base" }))] });
+    let args = batch(
+        "tmux",
+        true,
+        vec![
+            item(A, json!({ "kind": "follow" })),
+            item(B, json!({ "kind": "base" })),
+        ],
+    );
     let out = rig.run(|d| start(&args, d)).unwrap();
     assert_eq!(
         outcomes(&out),
@@ -335,8 +373,7 @@ fn start_skips_what_has_no_record_and_says_a_taken_name() {
 fn a_window_start_renders_what_the_single_item_renders() {
     // 远端：同 `launch-render-cli` 直连那一行。
     let rig = Rig::new(None);
-    let args =
-        json!({ "mode": "window", "local": false, "items": [item(A, json!({ "kind": "base" }))] });
+    let args = batch("window", false, vec![item(A, json!({ "kind": "base" }))]);
     let out = rig.run(|d| start(&args, d)).unwrap();
     assert_eq!(
         out["results"][0]["cmd"],
@@ -344,16 +381,22 @@ fn a_window_start_renders_what_the_single_item_renders() {
     );
     assert!(rig.launched.borrow().is_empty());
     // 本机：同 `launch-local`（这台铸的名建进 tmux）；身份 token 用的就是 sid ⇒ 两次渲逐字相等。
-    let args = json!({ "mode": "window", "local": true, "items": [item(A, json!({ "kind": "inherit" }))] });
+    let args = batch("window", true, vec![item(A, json!({ "kind": "base" }))]);
     let out = rig.run(|d| start(&args, d)).unwrap();
-    let single = super::super::launch_render::answer_local(&json!({
-        "agent": "claude",
-        "action": { "kind": "resume", "sid": A },
-        "cwd": "/w/proj",
-        "launcher": null,
-        "tmuxName": "proj-cc-2",
-        "defaultLauncher": "claude",
-    }))
+    let single = with_accounts(|f| {
+        super::super::launch_render::answer_local(
+            &json!({
+                "agent": "claude",
+                "action": { "kind": "resume", "sid": A },
+                "cwd": "/w/proj",
+                "launcher": null,
+                "account": { "kind": "base" },
+                "tmuxName": "proj-cc-2",
+                "defaultLauncher": "claude",
+            }),
+            f,
+        )
+    })
     .unwrap();
     assert_eq!(out["results"][0]["cmd"], single["cmd"]);
     assert_eq!(out["results"][0]["session"], "proj-cc-2");
@@ -367,7 +410,7 @@ fn an_idle_sid_in_one_pane_of_a_shared_session_is_typed_with_its_sid() {
     let rows = vec![row("two-cc", Some(A), true), row("two-cc", Some(B), false)];
     assert_eq!(standing(&rows, B), Standing::Idle("two-cc".into()));
     let rig = Rig::new(Some(rows));
-    let args = json!({ "mode": "tmux", "local": false, "items": [item(B, acct)] });
+    let args = batch("tmux", false, vec![item(B, acct)]);
     let out = rig.run(|d| start(&args, d)).unwrap();
     assert_eq!(outcomes(&out), vec![(B.into(), "done".into(), Value::Null)]);
     let launched = rig.launched.borrow();
@@ -418,6 +461,11 @@ fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_ow
             windows: false,
             is_dir: |_| true,
         },
+        accounts: &la::Facts {
+            has_accounts: false,
+            library: &la::Library::default,
+            last: &|_| None,
+        },
     };
     let sids: Vec<String> = [A, B, C].map(str::to_string).to_vec();
     let t0 = std::time::Instant::now();
@@ -441,4 +489,34 @@ fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_ow
         assert!(!dir.join(later).exists(), "总期限用完了 {later} 还起了");
     }
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 一项选不了号 ⇒ 那一项 `skipped` 带 `account_unavailable`（`detail` 是要的那个号），不挡同批别的；
+/// 起成了的那一项说出实际用的号（缺 `account` ＝ 跟随）。
+#[test]
+fn an_item_whose_account_cannot_be_used_is_skipped_without_blocking_the_batch() {
+    let rig = Rig::new(Some(vec![]));
+    let args = batch(
+        "tmux",
+        false,
+        vec![
+            item(A, json!({ "kind": "named", "name": "gone" })),
+            json!({ "sid": B, "cwd": "/w/proj" }),
+        ],
+    );
+    let out = rig.run(|d| start(&args, d)).unwrap();
+    assert_eq!(
+        outcomes(&out),
+        vec![
+            (A.into(), "skipped".into(), json!("account_unavailable")),
+            (B.into(), "done".into(), Value::Null),
+        ]
+    );
+    assert_eq!(out["results"][0]["detail"], "gone");
+    assert_eq!(out["results"][0]["account"], Value::Null);
+    assert_eq!(
+        out["results"][1]["account"],
+        json!({ "name": "work", "configDir": "/h/.cc/work", "model": null })
+    );
+    assert_eq!(rig.ccm.borrow().len(), 1, "选不了号的那一项不许起");
 }

@@ -25,7 +25,7 @@
 import { commands } from "./ipc/commands";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
-import { LOCAL_ORIGIN } from "./ipc/origin";
+import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 
 // ─── 成品的形状（后端 `history_join.rs`；逐格 == 从前 monitor 那两个 ts-rs 生成物）───
@@ -82,7 +82,6 @@ export interface EntryMetadata {
   customTitle: string | null;
   hidden: boolean;
   updatedAt: number;
-  lastAccount: string | null;
 }
 
 /** 远端那一批：项目 ＋ 失败的那几台 ＋答了、但一个项目都没有的那几台（界面给它们画「这台还没有会话记录」）。 */
@@ -168,7 +167,6 @@ const ENTRY_KEYS = [
   "customTitle",
   "hidden",
   "updatedAt",
-  "lastAccount",
 ] as const;
 
 /** 成品外壳 `{rows, notice}`。 */
@@ -270,8 +268,7 @@ export function decodeEntry(v: unknown): EntryMetadata {
     isBool(e.starred) &&
     orNull(isStr)(e.customTitle) &&
     isBool(e.hidden) &&
-    isNum(e.updatedAt) &&
-    orNull(isStr)(e.lastAccount);
+    isNum(e.updatedAt);
   if (!ok)
     throw new HistoryShapeError(
       `history-annotate reply has the wrong shape: ${JSON.stringify(v)}`,
@@ -371,14 +368,13 @@ export async function fetchSessions(proj: {
   return decodeSessions(readJson(reply));
 }
 
-/** 改一条注解（星标 / 改名 / 隐藏 / 上次账号）。缺格或 `null` = 不改；标题 / 账号名给空白串 = 清空。 */
+/** 改一条注解（星标 / 改名 / 隐藏）。缺格或 `null` = 不改；标题给空白串 = 清空。 */
 export async function annotate(
   sessionId: string,
   patch: {
     starred?: boolean;
     customTitle?: string | null;
     hidden?: boolean;
-    lastAccount?: string | null;
   },
 ): Promise<EntryMetadata> {
   const body = jsonBody({ sid: sessionId, patch });
@@ -398,12 +394,12 @@ export async function forgetAnnotation(sessionId: string): Promise<void> {
   }
 }
 
-/** sid → 上次用哪个号起（只含真记过的那几条）。 */
-export async function lastAccounts(): Promise<Record<string, string>> {
+/** `origin` 那台记着的 sid → 上次用哪个号起（只含真记过的那几条；会话跑在哪台就问哪台）。 */
+export async function lastAccounts(origin: Origin): Promise<Record<string, string>> {
   const body = jsonBody({});
   const budget = budgetWithin(ANNOTATION_BUDGET_MS);
   const reply = await chan.call(
-    LOCAL_ORIGIN,
+    origin,
     "history-last-accounts",
     body,
     budget,

@@ -62,7 +62,6 @@ import { sessionCommands } from "./session-commands";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
 import { currentAccountForBadge } from "./accounts";
 import { fetchSessionAccounts, fetchAccounts } from "./account-reads";
-import { resolvePendingLocalLaunches } from "./local-launch-backfill";
 import { bindLaunchArrivals, noteLive } from "./launch-arrival";
 import { copyText } from "./copy-table";
 import { appStore } from "./app-store";
@@ -247,22 +246,12 @@ window.addEventListener("DOMContentLoaded", async () => {
       // `Promise.all` 只并行同一台的两条）⇒ N 台远端的一轮 = N 次往返串起来。
       // 现在走 `collectAccountRows`：**有上限（4）、保序**。判据在
       // `session-accounts-poll.vitest.ts`，`readyOrigins` / `currentByOrigin` 的语义原样搬过去。
-      const { rows, emailByName, readyOrigins, currentByOrigin } = await collectAccountRows(
+      const { rows, emailByName, readyOrigins, currentByOrigin, lastByS } = await collectAccountRows(
         cfg.hosts,
-        { fetchSessionAccounts, fetchAccounts, currentAccountForBadge },
+        { fetchSessionAccounts, fetchAccounts, currentAccountForBadge, lastAccounts },
         undefined,
         forceAccounts,
       );
-      // A4：sid → lastAccount（源②）。本机 history-metadata 读一次（远端会话的 lastAccount 也
-      // 由 cc-monitor 记在本机），live 探测不到时徽章兜底显「上次用本工具起」。失败 → 空表降级。
-      let lastByS = new Map<string, string>();
-      try {
-        // 问本机常驻后端（注解的读写者）。
-        const raw = await lastAccounts();
-        lastByS = new Map(Object.entries(raw));
-      } catch (e) {
-        console.warn("history-last-accounts failed:", e);
-      }
       if (mySeq !== refreshSeq) return; // I4：晚到的旧快照不覆盖新快照
       appStore.sessionAccounts.set({ rows, emailByName, lastByS, readyOrigins, currentByOrigin });
     } catch (e) {
@@ -642,15 +631,6 @@ window.addEventListener("DOMContentLoaded", async () => {
       // 没有就建骨架；已有（固定的 / 归档的）就对齐后端给的项目目录，再复活。
       tabs.createSkeletonTab(sessionId, meta.projectDir || null, LOCAL_ORIGIN, meta.kind, meta.name);
       if (had) tabs.reviveTab(sessionId);
-      // ★★ `K-P5h` `KP5HD3`：**「过一会儿再问」搭的是这条已有的事件，不是一个新定时器。**
-      //    身份 token 在会话起来**之前**就铸好了，而 `--session-accounts` 要进程已经在跑
-      //    才读得到 ⇒ 回填必然要等。等的办法有两种，这里选的是「内核一有事就通知」那种：
-      //    `sessions/<PID>.json` 一变，`lib.rs` 的 `session-changes-emitter` 就发这条事件 ——
-      //    **一条新会话出生正是它响的时刻**，也正是回填该问的时刻。
-      //    🔴 不排定时器：本项目有一条已交付的性质是「判活不靠定时轮询」，
-      //       在这里起一个新的周期唤醒就是开倒车（`polling_registry` 那两张表在管这件事）。
-      //    ⚠ 不 `await`：回填是补记账，失败也不该影响建 tab 这条主路（它自己吞异常）。
-      void resolvePendingLocalLaunches();
       // 本机骨架也在就绪点才到（与远端同一条路）⇒ 上次所在 tab 是本机会话时同样在这里补切。
       startup?.onAppeared(sessionId);
       noteLive(LOCAL_ORIGIN, sessionId, { cwd: meta.cwd }); // 起会话的真成功正信号

@@ -2,7 +2,7 @@
  * 主窗口上的面板与浮层：子 agent / 任务 / 账号 / 命令面板 / 会话内查找 / 大纲 / 监控板 / 历史 / 右键菜单 / 提示。
  */
 import type { Scene } from "./index";
-import type { World } from "../fake/types";
+import { Refuse, type World } from "../fake/types";
 import { defaultWorld } from "../fake/world";
 import { byText, click, key, mainReady, openTab, rightClick, sleep, type, waitFor } from "./helpers";
 
@@ -22,6 +22,27 @@ async function openCommandBar(): Promise<void> {
   await mainReady(ALL_TABS);
   await click(".status-cmdk");
   await waitFor(".command-bar-input");
+}
+
+/** devbox 上的「账单导出」那条已结束：tab 上的账号徽标来自那台记着的「上次用的号」。 */
+function remoteEndedWorld(): World {
+  const w = defaultWorld();
+  w.sessions[3].ended = true;
+  return w;
+}
+
+/** 同上，且那台说这条会话上次用的号（personal）现在选不了，替代是它的默认号 work。 */
+function accountGoneWorld(): World {
+  const w = remoteEndedWorld();
+  w.ops["launch-render-cli"] = () => {
+    throw new Refuse("account_unavailable", "账号 personal 不可用，未启动", {
+      requested: "personal",
+      pinned: true,
+      listKnown: true,
+      alternative: "work",
+    });
+  };
+  return w;
 }
 
 /** 分叉要先问的那种：源会话不在跑、那台也说不出它上次用的哪个号。 */
@@ -288,6 +309,35 @@ export const PANEL_SCENES: Scene[] = [
     }),
     storage: { "cc-monitor.tab-bar-w": "260", "cc-monitor.cmdk-hint.seen": "1", "cc-monitor.tasks-panel.collapsed": "0" },
   },
+  panel("panel-account-ended-last", "账号徽标 · 已结束的远端会话", "devbox 上已结束的「账单导出」：tab 上的账号徽标是那台记着的上次用的号（虚线）", async () => {
+    await mainReady(ALL_TABS);
+    await openTab(3);
+    await sleep(600);
+  }, remoteEndedWorld),
+  panel("panel-account-unavailable", "Resume · 上次用的号选不了", "右键已结束的「账单导出」→ Resume → 直连：那台说上次用的号 personal 选不了，不起、给「改用 work」的选择", async () => {
+    await mainReady(ALL_TABS);
+    await rightClick(document.querySelectorAll<HTMLElement>("#tab-bar .tab")[3]);
+    await click(await byText(".tab-context-menu-item", "Resume 这个会话"));
+    await click(await byText(".tab-context-menu-item", "直连 · 不建 tmux 会话"));
+    await waitFor(".ccm-toast-error");
+    await sleep(600);
+  }, accountGoneWorld),
+  panel("panel-batch-start-menu", "批量菜单 · 起会话", "Ctrl 点选两个 tab、右键：批量菜单里「在 tmux 里后台起 / 各开一个终端」", async () => {
+    await mainReady(ALL_TABS);
+    const tabs = document.querySelectorAll<HTMLElement>("#tab-bar .tab");
+    for (const i of [2, 3]) {
+      const r = tabs[i].getBoundingClientRect();
+      const at = { bubbles: true, cancelable: true, clientX: r.left + 20, clientY: r.top + r.height / 2, button: 0, ctrlKey: true };
+      tabs[i].dispatchEvent(new MouseEvent("click", at));
+      await sleep(150);
+    }
+    await rightClick(tabs[3]);
+    await sleep(600);
+  }, remoteEndedWorld),
+  panel("panel-cmdk-set-default", "命令面板 · 设当前账号", "命令面板里输入「当前账号」：每个号一条「设为当前账号」（写那台账号库清单的默认号）", async () => {
+    await openCommandBar();
+    await type(".command-bar-input", "当前账号");
+  }),
   panel("panel-account-reclick", "账号选单 · 再点一下徽标", "选单开着时再点一下账号徽标：选单收起", async () => {
     await mainReady(ALL_TABS);
     await click(".status-account");

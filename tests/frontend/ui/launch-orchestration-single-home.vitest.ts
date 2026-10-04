@@ -17,10 +17,10 @@
  * | K2 | 本机 resume 编排只有一个家 | 生产段以 resume 动作问本机后端起会话（`launchLocal(` / `planLocalLaunch(` ＋ `kind: "resume"`）的文件集合 == `{local-resume.ts}`（两向） |
  * | K3 | 问不到 ⇒ 不铸名 | `mintFreshTmuxName` 问不到 / 形状不认 ⇒ `ok:false`；本机 resume 问不到 ⇒ 交 `tmuxName: null` |
  *
- * | K4 | D-h：本机跟随时 pin 那个号选不了 ⇒ 不起、说清、给「用当前账号」的显式选择 | 零次本机 resume（`launch-local`）＋ 一条可点提示；点了 ⇒ 以当前号起；正控：pin 可选 ⇒ 带 pin 起 |
+ * | K4 | D-h：本机后端说「要的号选不了」⇒ 不开窗、说清、给显式选择 | 零次开窗 ＋ 一条可点提示；点了 ⇒ 以那台给的替代号点名再问一次；正控：那台判出号 ⇒ 照开 |
  *
- * K4 另守一处：D-h（「选不了原账号时 resume ⇒ 照 / D4：不静默换号，拒并说清、给「用当前账号」的显式选择」）
- * ＋「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」。远端那一半（`withAccount`）住 `accounts.vitest.ts`「〔FE1 · D-h〕」那几条。
+ * K4 另守一处：D-h（「选不了原账号时 resume ⇒ 照 / D4：不静默换号，拒并说清、给「用当前账号」的显式选择」）。
+ * 判号本身住那台后端（`control/launch_account.rs::pick`，Rust 判据逐条钉）；这里只钉界面照那台的话办。
  *
  * K3 的四个远端入口各有一条行为判据，住各自的测试文件（那里有现成的桩）：
  * `remote-launch-run.vitest.ts`「列不出会话 ⇒ 不起、出声」· `settings/remote-section.vitest.ts`「开新 Claude …」·
@@ -48,8 +48,6 @@ import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { mintFreshTmuxName } from "../../../src/frontend/ui/terminal-name-mint";
 import { resumeLocalSession } from "../../../src/frontend/ui/local-resume";
 import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
-import type { Account, AccountsState } from "../../../src/frontend/ui/accounts";
-import { __resetLocalLaunchSnapshotForTests, __setLocalLaunchSnapshotForTests } from "../../../src/frontend/ui/launch-account";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -129,12 +127,12 @@ describe("K3 · 列不出 ⇒ 不铸名（三态不许压成两态）", () => {
       localLaunchCalls(invokeMock.mock.calls, "resume_history_session")[0];
     replyMint(null);
     expect(
-      await resumeLocalSession({ agent: "claude", sid: "s1", cwd: "/home/u/proj", account: { kind: "explicit", configDir: null, name: null } }),
+      await resumeLocalSession({ agent: "claude", sid: "s1", cwd: "/home/u/proj", account: { kind: "base" } }),
     ).toBe(true);
     expect(sent().tmuxName).toBeNull();
     invokeMock.mockReset();
     replyMint("proj-cc-2");
-    await resumeLocalSession({ agent: "claude", sid: "s1", cwd: "/home/u/proj", account: { kind: "explicit", configDir: null, name: null } });
+    await resumeLocalSession({ agent: "claude", sid: "s1", cwd: "/home/u/proj", account: { kind: "base" } });
     expect(sent().tmuxName).toBe("proj-cc-2");
     expect(mintAsks).toEqual([{ origin: LOCAL_ORIGIN, args: { cwd: "/home/u/proj" } }]);
     // 账号 0 是**显式 `base`**，不是省略（省略 = 没表态 = 被 shell rc 里的默认号顶掉）。
@@ -152,81 +150,81 @@ describe("K3 · 列不出 ⇒ 不铸名（三态不许压成两态）", () => {
           : Promise.resolve(undefined),
     ));
     expect(
-      await resumeLocalSession({ agent: "claude", sid: "a b", cwd: "/p", account: { kind: "explicit", configDir: null, name: null } }),
+      await resumeLocalSession({ agent: "claude", sid: "a b", cwd: "/p", account: { kind: "base" } }),
     ).toBe(false);
     expect(localLaunchCalls(invokeMock.mock.calls, "resume_history_session")).toHaveLength(1);
     expect(vi.mocked(showActionFailureToast)).toHaveBeenCalledTimes(1);
   });
 });
 
-describe("K4 · D-h：本机跟随时 pin 那个号选不了 ⇒ 不起、说清、给显式选择", () => {
-  const acct = (name: string, ok: boolean): Account => ({
-    name,
-    email: `${name}@x`,
-    configDir: `/h/${name}`,
-    isDefault: false,
-    mode: "isolated",
-    exists: true,
-    loggedIn: ok,
-    authKind: "subscription",
-    authReady: ok,
-  });
-  const snapshot = (accounts: Account[], defaultName: string | null): AccountsState =>
-    ({
-      origin: LOCAL_ORIGIN,
-      available: true,
-      error: null,
-      notice: null,
-      meta: null,
-      accounts,
-      defaultName,
-    }) as unknown as AccountsState;
+describe("K4 · D-h：本机后端说「要的号选不了」⇒ 不开窗、说清、给显式选择", () => {
   const resumes = (): Array<Record<string, unknown>> =>
     localLaunchCalls(invokeMock.mock.calls, "resume_history_session");
+  const opened = (): number => invokeMock.mock.calls.filter(([c]) => String(c) === "open_local_terminal").length;
+  /** 那台：跟随 ⇒ 上次的号「z」选不了（替代是默认号「b」）；点名「b」⇒ 用 b 起。 */
+  const backend = (): void => {
+    invokeMock.mockImplementation(
+      launchRenderShim((cmd: string, args?: unknown) => {
+        if (cmd === "list_local_tmux") return Promise.resolve([]);
+        if (cmd !== "resume_history_session") return Promise.resolve(undefined);
+        const a = (args as { account?: { kind: string; name?: string } }).account;
+        return Promise.resolve(
+          a?.kind === "follow"
+            ? { unavailable: { requested: "z", pinned: true, listKnown: true, alternative: "b" } }
+            : { account: { name: a?.name ?? "", configDir: `/h/${a?.name ?? ""}`, model: null } },
+        );
+      }),
+    );
+  };
 
   beforeEach(() => {
     invokeMock.mockReset();
-    invokeMock.mockImplementation(launchRenderShim((cmd: string) => Promise.resolve(cmd === "list_local_tmux" ? [] : undefined)));
     vi.mocked(showActionFailureToast).mockReset();
-    __resetLocalLaunchSnapshotForTests();
+    backend();
   });
 
-  it("★ pin「z」选不了 ⇒ 零次拉起 ＋ 一条可点提示；点了 ⇒ 以当前号「b」起", async () => {
-    __setLocalLaunchSnapshotForTests(snapshot([acct("z", false), acct("b", true)], "b"), { s1: "z" });
+  it("★ 那台说上次的号「z」选不了 ⇒ 不开窗 ＋ 一条可点提示；点了 ⇒ 点名「b」再问一次、开窗", async () => {
     expect(await resumeLocalSession({ agent: "claude", sid: "s1", cwd: "/home/u/proj", account: { kind: "follow" } })).toBe(false);
-    expect(resumes(), "pin 选不了还起了 —— 落到 shell rc 里的默认号，静默换号（E7 本机那一形）").toEqual([]);
+    expect(opened(), "选不了还开了窗 —— 静默换号（E7 本机那一形）").toBe(0);
     const calls = vi.mocked(showActionFailureToast).mock.calls;
     expect(calls).toHaveLength(1);
     expect(calls[0][0]).toBe("账号现在选不了，没有起会话");
     expect(calls[0][1]).toContain("「z」");
     expect(calls[0][1]).toContain("「b」");
     calls[0][2]!.onClick!();
-    await vi.waitFor(() => expect(resumes()).toHaveLength(1));
-    expect(resumes()[0].account).toEqual({ kind: "named", configDir: "/h/b", name: "b" });
+    await vi.waitFor(() => expect(opened()).toBe(1));
+    expect(resumes().map((r) => r.account)).toEqual([{ kind: "follow" }, { kind: "named", name: "b" }]);
   });
 
-  it("正控：pin「z」可选 ⇒ 照起、带 z，不提示", async () => {
-    __setLocalLaunchSnapshotForTests(snapshot([acct("z", true), acct("b", true)], "b"), { s1: "z" });
-    expect(await resumeLocalSession({ agent: "claude", sid: "s1", cwd: "/home/u/proj", account: { kind: "follow" } })).toBe(true);
-    expect(resumes()[0].account).toEqual({ kind: "named", configDir: "/h/z", name: "z" });
+  it("正控：点名一个那台判得出的号 ⇒ 照开、不提示；请求里交的就是用户要的那一格（判号不在界面）", async () => {
+    expect(await resumeLocalSession({ agent: "claude", sid: "s1", cwd: "/home/u/proj", account: { kind: "named", name: "z" } })).toBe(true);
+    expect(opened()).toBe(1);
+    expect(resumes()[0].account).toEqual({ kind: "named", name: "z" });
     expect(vi.mocked(showActionFailureToast)).not.toHaveBeenCalled();
   });
+});
 
-  it("没有 pin ⇒ 当前号（没有原账号，谈不上换号）；快照冷 ⇒ 缺席（逐字节旧行为）", async () => {
-    __setLocalLaunchSnapshotForTests(snapshot([acct("b", true)], "b"), {});
-    await resumeLocalSession({ agent: "claude", sid: "s1", cwd: "/p", account: { kind: "follow" } });
-    expect(resumes()[0].account).toEqual({ kind: "named", configDir: "/h/b", name: "b" });
-    invokeMock.mockClear();
-    __resetLocalLaunchSnapshotForTests();
-    await resumeLocalSession({ agent: "claude", sid: "s1", cwd: "/p", account: { kind: "follow" } });
-    expect(resumes()[0].account).toBeUndefined();
-  });
+/**
+ * K5 · 起会话用哪个号**界面零处判**：跟随 / 降级 / 建议替代住会话所在那台的后端（`control/launch_account.rs::pick`）。
+ * 界面先前那四个函数（跟随编排 · 跟随解析 · 本机跟随计划 · 记不记 pin）全仓零命中；
+ * 线上 `named`（用户点名）只从一个入口出（`launch-account.ts::chosenAccount`）。
+ */
+describe("K5 · 起会话挑号界面零处判", () => {
+  const GONE = ["withAccount", "resolveLaunchAccount", "localFollowPlan", "followRecordName"];
+  const hits = (text: string): string[] => GONE.filter((n) => new RegExp(`\\b${n}\\b`).test(text));
 
-  it("Codex 会话没有账号这一维 ⇒ 不跟随（当前号在也不带）、不提示；请求说的是 codex", async () => {
-    __setLocalLaunchSnapshotForTests(snapshot([acct("z", false), acct("b", true)], "b"), { s1: "z" });
-    expect(await resumeLocalSession({ agent: "codex", sid: "s1", cwd: "/p", account: { kind: "follow" } })).toBe(true);
-    expect(resumes()[0].account).toBeUndefined();
-    expect(resumes()[0].agent).toBe("codex");
-    expect(vi.mocked(showActionFailureToast)).not.toHaveBeenCalled();
-  });
+  it("★ 那四个函数名在生产段零命中（正控：同一把尺子认得出一段写着它们的文本）", () => {
+    expect(hits("await withAccount(origin, null, run); localFollowPlan(sid)"), "尺子是瞎的").toEqual([
+      "withAccount",
+      "localFollowPlan",
+    ]);
+    const found = productionTsFiles()
+      .map((f) => ({ file: f.file, names: hits(f.text) }))
+      .filter((f) => f.names.length > 0);
+    expect(found, "界面又长出了起会话挑号的判定 —— 判号只在那台后端").toEqual([]);
+  }, SCAN_TIMEOUT_MS);
+
+  it("★ 线上 `named`（用户点名）只从 `launch-account.ts` 出（两向）", () => {
+    expect(filesMatching(/kind:\s*"named"/)).toEqual(["src/frontend/ui/launch-account.ts"]);
+  }, SCAN_TIMEOUT_MS);
 });

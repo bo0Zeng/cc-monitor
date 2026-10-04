@@ -424,9 +424,15 @@ impl InboundClient {
                 }
                 Ok(data)
             }
-            Ok(Ok(Outcome::Reply { code, message, .. })) => Err(CallError::Remote {
+            Ok(Ok(Outcome::Reply {
+                code,
+                message,
+                data,
+                ..
+            })) => Err(CallError::Remote {
                 code: code.unwrap_or_else(|| "unspecified".to_string()),
                 message: message.unwrap_or_default(),
+                data: data.map(|d| d.to_string()),
             }),
             Ok(Ok(Outcome::Cancelled)) => Err(CallError::Cancelled),
             // 登记条目被摘掉/连接没了 ⇒ 发送端 drop。

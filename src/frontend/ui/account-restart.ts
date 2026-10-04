@@ -4,13 +4,7 @@
 // 绝不续 resume（否则新旧两个进程抢同一会话）。在 A4 的账号解析/记账之上插入 [compact]→kill→resume。
 // 依赖经 import（vitest 可 vi.mock）；confirm / awaitCompact 两个交互点可注入，便于纯逻辑单测。
 //
-// **为何另起、不复用 A4 的 `withAccount`**（D 架构审计裁定，防下轮重新纠结）：两者语义天然不兼容——
-//   ① 不可选账号时：restart **中止**（破坏性重启绝不能退化用默认号）。withAccount 今天同样不起
-//      （先前是「降级默认起」），但它的出口是「说清 ＋ 给一个显式选择再起」，restart 这里没有那一步。
-//   ② 记 lastAccount 条件：withAccount run 后**无条件**记；restart **仅 kill+resume 全成后**才记
-//      （kill 失败提前 return、绝不记，见 §5.2 + vitest ④）。硬合需给 withAccount 加 abort-vs-degrade /
-//      条件记账 / run 前置 compact&kill 钩子三个开关，复杂度净增、收益为负。二者已共用 accounts.ts
-//      **同一批原语**（fetchAccounts / accountConfigDir / recordLastAccount），无逻辑漂移。故维持分离。
+// 用的号是用户在菜单里点名的那个（不跟随：换号重启的正题就是换成另一个号）；那台判它选不选得了。
 // 换号重启的是标签页里的会话 ⇒ 流跟的那一家。
 import { ACTIVE_AGENT } from "./agent-profile";
 import { askConfirm, type ConfirmFn } from "./ask-dialog";
@@ -19,8 +13,7 @@ import { isIdentityRefusal, offerResyncRetry } from "./resync";
 import { runRemoteResumeTmuxAndWait } from "./remote-launch-run";
 import { accountConfigDir, type SessionAccount } from "./accounts";
 import { fetchAccounts, checkTrust } from "./account-reads";
-import { getModelForAccount } from "./account-prefs";
-import { recordLastAccount } from "./launch-account";
+import { chosenAccount } from "./launch-account";
 import { showActionFailureToast } from "./error-toast";
 // 本机那一侧：`origin` 是 backend 的 `<local>`（账号面那个第二种写法已退役，只剩这一个）。
 // 〔审计 F 🔴-5〕「是不是本机」只经 `ipc/origin.ts` 判，这里不再自己比常量。
@@ -146,12 +139,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
     return false;
   }
 
-  // ⑤ 用新账号 resume（tmux 版，注入其 configDir）。失败走 runRemoteResumeTmux 既有剪贴板回退。
-  // F05：顺带把 accountName 传给它——本函数本来就已知这个名字（opts.accountName），线通进
-  // LaunchContext 供 CLI 渲染器吐 --account <名>（不改本文件的 accountConfigDir 解析逻辑本身，
-  // 见 F05 计划 §2 第2条：account-restart.ts 与 withAccount 是并列路径，不强行合并）。
-  // F07：同样补查一次该账号的模型偏好（withAccount 内部也做同一次查询——两条并列路径各自补
-  // 一次，同 F05 对 accountName 的处理模式）。
+  // ⑤ 用新账号 resume（tmux 版，点名那个号）。失败走 runRemoteResumeTmux 既有剪贴板回退。
   //
   // **本机那一跳**：编排上面五步两侧逐字共用（发按键 / 结束会话
   // 都按 origin 分流、`<local>` 走得通；账号清单与信任预检也按 origin 分流到本机后端），
@@ -160,9 +148,9 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   // | | 远端 | 本机 |
   // |---|---|---|
   // | 起法 | `runRemoteResumeTmux`（渲一条 ssh 命令、开终端，失败回退剪贴板） | `local-resume.ts::resumeLocalSession`（本机后端直接起，**没有剪贴板那条回退**） |
-  // | 账号怎么交 | `LaunchModifiers.configDir / accountName` | 载荷上的 `account`（用户点的那个具名号：目录 ＋ 名字，`K-R53`） |
+  // | 账号怎么交 | 用户点的那个号（点名，那台判它选不选得了） | 同左 |
   // | tmux 名 | 复用被 kill 让出来的旧名 | 同左 |
-  // | 模型偏好 | 交（`modelOverride`） | **交不了** —— 本机那条的载荷里没有模型这一格（如实登记，不假装），所以这里不去查它 |
+  // | 模型偏好 | 交那台的偏好表（那台按判出来的号取） | 本机那一行不带模型 |
   //
   // ⚠ 账号**不走**跟随（`follow`）：换号重启的正题恰恰是换成另一个号，跟随会把用户的选择丢了。
   const isLocal = isLocalOrigin(origin);
@@ -173,18 +161,16 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
         agent: ACTIVE_AGENT,
         sid: sessionId,
         cwd,
-        account: { kind: "explicit", configDir, name: accountName },
+        account: chosenAccount(configDir, accountName),
         tmuxName,
         launcher,
         failureTitle: copyText("localResume.restart.failed"),
       })
     : await runRemoteResumeTmuxAndWait(origin, ACTIVE_AGENT, sessionId, cwd, launcher, tmuxName, {
-        configDir,
-        accountName,
-        modelOverride: await getModelForAccount(origin, accountName),
+        account: chosenAccount(configDir, accountName),
       });
 
-  // ⑥ 记 lastAccount（源②）+ 提示。
+  // ⑥ 提示（「上次用哪个号起的」那台看见会话起来时自己记）。
   // **只有真拉起来了才算成功**（Phase G 审计）：此前无条件记账+报成功,而第⑤步的失败是
   // 确定性的（F34 launcher 含双引号被 launch.rs 拒 / tmux 名不合白名单 / 缺 OpenSSH）——
   // 那种情况下会话已被 kill 却没起来,还被钉上"上次用账号 X 起"、被批量对齐计成成功。
@@ -200,7 +186,6 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
     );
     return false;
   }
-  void recordLastAccount(sessionId, accountName);
   showActionFailureToast(
     copyText("accountRestart.done.title"),
     copyText("accountRestart.done.body", { name: accountName }),
@@ -252,7 +237,7 @@ export function restartLocateFailureMessage(
   // ⚠ `undefined`（老后端不出这个键）与 `null`（backend 说「不作数」）在这里是同一件事。
   const carriesOurLaunchMark = Boolean(row && row.alive && row.launchId);
   // 最后那句补救**只对远端成立**：本机归档 tab 的 Resume 不带账号选择
-  // （走 `localLaunchAccountSync`，沿用这条会话上次的号），「把此会话切到账号 X」在本机不存在。
+  // （跟随这条会话上次的号），「把此会话切到账号 X」在本机不存在。
   // 对本机说那句话，是在指一条走不通的路。
   const tail = opts.local
     ? copyText("accounts.restartLocate.tailLocal")

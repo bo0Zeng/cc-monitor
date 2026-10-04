@@ -21,9 +21,7 @@
 import { askConfirm, type ConfirmFn } from "./ask-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import type { SessionAccount } from "./accounts";
-import { localFollowPlan, withAccount } from "./launch-account";
-import { fetchAccounts } from "./account-reads";
-import { resolveAccount } from "./accounts";
+import { chosenAccount, FOLLOW, refuseUnavailableAccount, type AccountAsk } from "./launch-account";
 import { restartLocateFailureMessage } from "./account-restart";
 import { resumeLocalSession } from "./local-resume";
 import { restartWithAccount } from "./account-restart";
@@ -35,7 +33,6 @@ import { isLocalOrigin, isRemoteOrigin, type Origin } from "./ipc/origin";
 import { planRemoteFront, type RemoteFrontPlan } from "./remote-terminal-front";
 import { commands } from "./ipc/commands";
 import { probeSessionRecord, reasonOf, type RecordProbe } from "./session-reads";
-import { lastAccounts } from "./history-reads";
 import { getBehavior } from "./behavior";
 // F78：远端会话「打开工作目录」→ 用该机配置开文件窗口进入远端 cwd（而非只提示打不开）。老 SFTP 面板删了。
 import { openFileWindow } from "./file-window";
@@ -45,9 +42,9 @@ import {
   resolveResumeCommand,
 } from "./remote-config";
 import { standingOf } from "./sessions-where";
-import { callStart, callStop, planStarts, sayReply, type Reply, type StartItem } from "./tab-batch-run";
+import { callStart, callStop, sayReply, type Reply, type StartItem } from "./tab-batch-run";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
-import { ACTIVE_AGENT, defaultLauncherOf } from "./agent-profile";
+import { ACTIVE_AGENT } from "./agent-profile";
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
 import { decodeKilled, saidOfControl } from "./tmux-control";
@@ -139,24 +136,6 @@ export class TabSessionActions {
   }
 
   /**
-   * audit-fixes F01（修 B1，full-audit 阻塞）：resume 前**现读磁盘** pin，不读内存镜像
-   * `accountLastByS`。后者是 tab 徽章的 10s 刷新数据源，在①启动首轮刷新前（空 Map）②
-   * 上次账号那一问（本机后端 `history-last-accounts`）抛错被 main.ts 无条件覆写成空 ③刚显式钉 pin 后 10s 内还没轮询到，
-   * 这三种窗口里读它 → `withAccount` 的不-clobber 守卫拿到假 priorPin=null → 把磁盘真实
-   * pin 静默覆盖成全局当前账号。与 history.ts:1489 的「现读」同口径，三处 resume 一致。
-   * 读不到（无 pin / 查询失败）→ undefined → withAccount 落全局账号/基座，与旧行为一致
-   * （区别只是不再"错误地覆盖"既有 pin）。
-   */
-  private async readSessionPin(sid: string): Promise<string | undefined> {
-    try {
-      const map = await lastAccounts();
-      return map?.[sid];
-    } catch {
-      return undefined;
-    }
-  }
-
-  /**
    * **resume 一跳先问那台后端：这条会话的记录还在不在**（最后一条
    * 「对方那份记录也没了 ⇒ 重开必失败，要诚实报错，不许静默变成『起了个新会话』」）。
    *
@@ -169,9 +148,8 @@ export class TabSessionActions {
    *
    * 判定住那台的后端（只收 sid），这里只读答案 —— 前端不做文件存在性探测。
    *
-   * `configDir` = **这次 resume 要用的那个账号配置目录**（远端：`withAccount` 解析出的 `mods.configDir`；
-   * 本机：`localLaunchConfigDirSync`）。那台后端就在那棵树里找；不带（基座）⇒ 查它自己的家目录。
-   * 因此这一问挪到了账号解析**之后**：改之前它先于解析、只查家目录 ⇒ 会话起在另一个账号根下时误拦。
+   * `configDir` = **这次 resume 要用的那个账号配置目录**（那台后端判完号、开窗之前交回来的那一个）。
+   * 那台后端就在那棵树里找；不带（账号 0 / 不指定）⇒ 查它自己的家目录。
    */
   private async recordStillThere(tab: Tab, configDir?: string): Promise<boolean> {
     let probe: RecordProbe;
@@ -216,31 +194,17 @@ export class TabSessionActions {
   }
 
   /**
-   * 那台「重新对齐」过 ⇒ 它上面的固定条逐条问一次记录还在不在（与 resume 前那一问同一个
-   * `history-record`，查的是 resume 会用的那棵账号树，解析规则同 `withAccount` 跟随 / `localFollowPlan`）。
-   * 没了的**标出来**（`markRecord`）、说一句；**不自动摘** —— 点那条提示才摘（`unpin`）。问不到 / 说不清查哪棵树 ⇒ 不标。
+   * 那台「重新对齐」过 ⇒ 它上面的固定条逐条问一次记录还在不在（与 resume 前那一问同一个 `history-record`）。
+   * 号的记录树都链回同一份共享库 ⇒ 不按号分树，问那台的家。
+   * 没了的**标出来**（`markRecord`）、说一句；**不自动摘** —— 点那条提示才摘（`unpin`）。问不到 ⇒ 不标。
    */
   async flagPinsWithoutRecord(origin: string, pinned: Tab[], unpin: (sid: string) => void): Promise<void> {
     if (pinned.length === 0) return;
-    const local = isLocalOrigin(origin);
-    const state = local ? undefined : await fetchAccounts(origin).catch(() => undefined);
-    const pins = local ? undefined : await lastAccounts().catch(() => undefined);
     const gone: Tab[] = [];
     for (const tab of pinned) {
-      let configDir: string | undefined;
-      if (local) {
-        const plan = localFollowPlan(tab.sessionId);
-        if (plan.kind === "pinGone") continue;
-        configDir = plan.kind === "named" ? plan.configDir : undefined;
-      } else {
-        const lastAccount = pins?.[tab.sessionId] ?? null;
-        const r = state ? resolveAccount(state, { follow: { lastAccount } }) : lastAccount ? null : ({ kind: "base" } as const);
-        if (r === null || r.kind === "unavailable") continue;
-        configDir = r.kind === "account" ? r.configDir : undefined;
-      }
       let probe: RecordProbe;
       try {
-        probe = await probeSessionRecord(origin, tab.sessionId, configDir);
+        probe = await probeSessionRecord(origin, tab.sessionId, undefined);
       } catch {
         continue;
       }
@@ -273,54 +237,30 @@ export class TabSessionActions {
   async resumeTab(sid: string, accountName?: string, useBase = false): Promise<void> {
     const tab = this.host.tab(sid);
     if (!tab || this.refuseUnseen(tab)) return;
-    // 先问记录还在不在；不在 ⇒ 已经说过了，不开终端。
-    // 问的是**这次要用的那个账号根**：远端在 `withAccount` 解析之后问（下面 `run` 里），本机拿本机那一份。
+    // 用哪个号那台判（点名的号 / 账号 0 / 跟随这条会话上次的号）；判完、开窗之前问记录还在不在（查那个号那棵树）。
+    const account = askOf(accountName, useBase);
     const behavior = await getBehavior();
+    const preflight = (configDir: string | undefined): Promise<boolean> => this.recordStillThere(tab, configDir);
     if (isRemoteOrigin(tab.origin)) {
-      // A4：带账号统一走 withAccount（点击时重解析 configDir + 记 lastAccount 源②，与 history 同口径）。
-      // 本地账号切换是 A7，此处忽略（withAccount 只在远端调）。
       const origin = tab.origin;
-      const cwd = tab.projectDir ?? "";
-      await withAccount(
+      await runRemoteResume(
         origin,
-        accountName ?? null,
-        // `runRemoteResume` 现在返回 boolean（Phase G：别把失败读成成功）。这条路的
-        // 反馈由它自己的 toast 承担，`withAccount` 只要 `void` ⇒ 显式丢弃。
-        async (mods) => {
-          if (!(await this.recordStillThere(tab, mods.configDir))) return false; // 拦下 ⇒ 不记上次的账号
-          await runRemoteResume(
-            origin,
-            ACTIVE_AGENT,
-            sid,
-            cwd,
-            await resolveResumeCommand(origin, behavior.resumeCommandRemote),
-            mods,
-          );
-        },
-        {
-          sessionId: sid,
-          // 要的号（显式点的 / 这条会话的 pin）选不了 ⇒ `withAccount` 自己不起、说清、给「用当前账号」的显式选择
-          //   （三处先前各带一份「账号不可用」回调提示，提示完按基座起 —— 与提示说的也不一致）。
-          // account-ux U3:未显式选号 → 跟随(lastAccount sticky → 当前账号 → 基座)。显式选号维持 A4。
-          // audit-fixes F01(修 B1):pin 现读磁盘,不读内存镜像 accountLastByS（见 readSessionPin）。
-          // F01 步骤2:useBase = 显式「用基座 resume」——不注入、不跟随(老会话住基座,别被 follow
-          //   注入全局当前账号导致 claude --resume 在错数据目录找不到会话，即 #75 主因的逃生口)。
-          follow: accountName || useBase ? undefined : { lastAccount: await this.readSessionPin(sid) },
-        },
+        ACTIVE_AGENT,
+        sid,
+        tab.projectDir ?? "",
+        await resolveResumeCommand(origin, behavior.resumeCommandRemote),
+        { account, preflight },
       );
       return;
     }
-    // 本机 resume 的编排只有一份（`local-resume.ts`）：校验 sid → 铸名 → 起 → 记 pin。
-    //   这里先前逐字抄着一份（连同内联的「列本机 tmux → 铸名」六行），注释里记着 #75 · #76 ·
-    //   `D1 阻-1` · `D3 阻-2` 四次「这里修了、那里漏了」。账号跟随这条会话上次的号（同远端 `follow`）。
+    // 本机 resume 的编排只有一份（`local-resume.ts`）：铸名 → 起（本机后端判号）。
     await resumeLocalSession({
       agent: ACTIVE_AGENT,
       sid,
       cwd: tab.projectDir ?? "",
-      account: { kind: "follow" },
+      account,
       launcher: behavior.resumeCommandLocal,
-      // 记录还在不在，问的是**这次要用的那个账号根**（账号解析之后、拉起之前；远端那条在 `withAccount` 的 run 里问）。
-      preflight: (configDir) => this.recordStillThere(tab, configDir),
+      preflight,
     });
   }
 
@@ -333,7 +273,7 @@ export class TabSessionActions {
    * 一个具体、可关闭的成因）。
    *
    * F09：`accountName` 与 `resumeTab`（直连版）的参数顺序/语义对齐——此前本方法完全没有显式选号
-   * 能力（`withAccount` 恒传 `null`），是 account×container 没做到真正正交的一个实现缺口
+   * 能力（账号恒是跟随），是 account×container 没做到真正正交的一个实现缺口
    * （旧扁平菜单从未提供"把此归档会话切到账号 X（tmux）"这一项，反映的正是这个缺口）；flyout
    * 把 account 组与 container 组做成正交修饰后，这个缺口必须补上，否则"账号=X + 容器=tmux"
    * 这个组合在 UI 上可选却在实现上是假的。
@@ -342,58 +282,40 @@ export class TabSessionActions {
     if (this.resumingSids.has(sid)) return;
     this.resumingSids.add(sid);
     try {
-      await this.resumeTabTmuxInner(sid, accountName, useBase);
+      await this.resumeTabTmuxInner(sid, askOf(accountName, useBase));
     } finally {
       this.resumingSids.delete(sid);
     }
   }
 
-  private async resumeTabTmuxInner(
-    sid: string,
-    accountName: string | undefined,
-    useBase: boolean,
-  ): Promise<void> {
+  private async resumeTabTmuxInner(sid: string, account: AccountAsk): Promise<void> {
     const tab = this.host.tab(sid);
     if (!tab || isLocalOrigin(tab.origin) || this.refuseUnseen(tab)) return;
-    const behavior = await getBehavior();
-    const origin = tab.origin;
-    const launcher = (await resolveResumeCommand(origin, behavior.resumeCommandRemote)).trim() || defaultLauncherOf(ACTIVE_AGENT);
-    // 起法与批量「在 tmux 里后台起」同一条（那台判在不在跑 · 空 tmux 就地键入 · 铸名交一行 ccm，建完不接进去），
-    //   单个只多一步：起好之后开一个终端接进去。账号照旧经 `withAccount`（显式点的号 / 跟随上次的号）。
-    await withAccount(
-      origin,
-      accountName ?? null,
-      async (mods) => {
-        const item: StartItem = {
-          agent: ACTIVE_AGENT,
-          sid,
-          cwd: tab.projectDir ?? "",
-          account: mods.configDir ? { kind: "named", name: mods.accountName ?? null, configDir: mods.configDir } : { kind: "base" },
-          model: mods.modelOverride ?? null,
-          launcher,
-          defaultLauncher: defaultLauncherOf(ACTIVE_AGENT),
-        };
-        return this.startInTmuxThenAttach(tab, item, () => this.resumeTabTmuxInner(sid, accountName, useBase));
-      },
-      {
-        sessionId: sid,
-        // useBase / 显式选号 = 不跟随、不注入（老会话住基座，别被跟随注入全局账号）。pin 现读磁盘（见 readSessionPin）。
-        follow: accountName || useBase ? undefined : { lastAccount: await this.readSessionPin(sid) },
-      },
-    );
+    // 起法与批量「在 tmux 里后台起」同一条（那台判号 · 判在不在跑 · 空 tmux 就地键入 · 铸名交一行 ccm，建完不接进去），
+    //   单个只多一步：起好之后开一个终端接进去。
+    const item: StartItem = { sid, cwd: tab.projectDir ?? "", account };
+    await this.startInTmuxThenAttach(tab, item, (again) => this.resumeTabTmuxInner(sid, again ?? account));
   }
 
   /**
    * 交那台在 tmux 里起这一个（`sessions-start`，与批量同一条），起好了（或本来就在跑）开一个终端接进去。
-   * 回 `false` = 没起（记录没了 / 起不了）⇒ 调用方不记「上次用的号」。
+   * 要的号选不了 ⇒ 不起、给显式选择（点了 ⇒ `again(那个号)`）。回 `false` = 没起。
    */
-  private async startInTmuxThenAttach(tab: Tab, item: StartItem, again: () => Promise<void>): Promise<void | false> {
+  private async startInTmuxThenAttach(
+    tab: Tab,
+    item: StartItem,
+    again: (account?: AccountAsk) => Promise<void>,
+  ): Promise<void | false> {
     const origin = tab.origin;
     let r: Reply;
     try {
       [r] = await callStart(origin, "tmux", [item]);
     } catch (e) {
       showActionFailureToast(copyText("remoteLaunchRun.inPlace.notRun"), saidOfControl(e));
+      return false;
+    }
+    if (r.unavailable) {
+      refuseUnavailableAccount({ machine: origin, u: r.unavailable, choose: (account) => again(account) });
       return false;
     }
     if (r.why === "record_gone") {
@@ -410,7 +332,7 @@ export class TabSessionActions {
     }
     if (r.outcome === "failed" || r.session === null) {
       const said = sayReply(origin, "start", r);
-      if (r.why === "wrong_owner") offerResyncRetry(origin, tab.sessionId, copyText("remoteLaunchRun.inPlace.notRun"), said, again);
+      if (r.why === "wrong_owner") offerResyncRetry(origin, tab.sessionId, copyText("remoteLaunchRun.inPlace.notRun"), said, () => again());
       else showActionFailureToast(copyText("remoteLaunchRun.inPlace.notRun"), said);
       return false;
     }
@@ -427,17 +349,11 @@ export class TabSessionActions {
   }
 
   /** 本机：在那个空 tmux 里就地 resume，再开一个终端接进去（与批量同一条；账号跟随同本机 Resume）。 */
-  async resumeLocalInTmux(sid: string): Promise<void> {
+  async resumeLocalInTmux(sid: string, account: AccountAsk = FOLLOW): Promise<void> {
     const tab = this.host.tab(sid);
     if (!tab) return;
-    const plan = await planStarts(tab.origin, [tab]);
-    if (plan.items.length === 0) {
-      showActionFailureToast(copyText("remoteLaunchRun.inPlace.notRun"), plan.skipped[0]?.why ?? "");
-      return;
-    }
-    if ((await this.startInTmuxThenAttach(tab, plan.items[0], () => this.resumeLocalInTmux(sid))) !== false) {
-      plan.record.get(sid)?.();
-    }
+    const item: StartItem = { sid, cwd: tab.projectDir ?? "", account };
+    await this.startInTmuxThenAttach(tab, item, (again) => this.resumeLocalInTmux(sid, again ?? account));
   }
 
   /** A5：造一个「等该 sid compact 完成」的 awaitCompact——注册 waiter 与超时竞速，两路都清理 waiter
@@ -716,3 +632,8 @@ export function bringMonitorToFront(): void {
   });
 }
 
+/** 菜单那几格 ⇒ 起会话那一格：点了号 ⇒ 点名；「用账号 0」⇒ 账号 0；都没有 ⇒ 跟随（那台判）。 */
+function askOf(accountName: string | undefined, useBase: boolean): AccountAsk {
+  if (accountName) return chosenAccount(null, accountName);
+  return useBase ? chosenAccount(null, null) : FOLLOW;
+}

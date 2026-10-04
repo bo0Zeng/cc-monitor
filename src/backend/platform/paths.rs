@@ -203,6 +203,16 @@ pub(crate) fn home_dir() -> Option<PathBuf> {
     creds_core::store::home_dir()
 }
 
+/// 这台后端的数据目录（`CCM_DATA_DIR` 优先，否则 `<家>/.cc-monitor`；规矩住 `creds_core::store::monitor_data_dir`）。
+pub(crate) fn data_home() -> Option<PathBuf> {
+    creds_core::store::monitor_data_dir(
+        std::env::var(creds_core::store::DATA_DIR_ENV)
+            .ok()
+            .as_deref(),
+        home_dir(),
+    )
+}
+
 /// 同上，环境由 `get` 答（判据喂夹具、不改进程环境的那几个调用方用）。
 pub(crate) fn home_dir_from(get: &dyn Fn(&str) -> Option<std::ffi::OsString>) -> Option<PathBuf> {
     creds_core::store::home_dir_from(get)

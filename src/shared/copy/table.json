@@ -3836,11 +3836,6 @@
       "zh": "上次用的账号「{name}」现在选不了。单独右键这个标签点 Resume，可以改用当前账号。",
       "args": ["name"]
     },
-    "tabBatch.why.accountList": {
-      "kind": "error",
-      "zh": "读不到 {machine} 的账号清单。说不清上次用的账号「{name}」还能不能用。",
-      "args": ["machine", "name"]
-    },
     "tabMenu.kill.plain": {
       "kind": "action",
       "zh": "杀死会话",
@@ -14785,11 +14780,6 @@
       "zh": "会话ID 不合法（只许字母、数字、_ 和 -，最长 128）：{id}",
       "args": ["id"]
     },
-    "beHistoryAnnotations.lastAccountsOf.unknown": {
-      "kind": "error",
-      "zh": "找不到数据目录，星标和改名读不出来。没有家目录，或者数据目录设成了相对路径。",
-      "args": []
-    },
     "beHistoryAnnotations.needPath.unknown": {
       "kind": "error",
       "zh": "找不到数据目录，星标和改名没有写。{env} 设了却不是绝对路径，或者没有家目录。",
@@ -15750,16 +15740,6 @@
       "kind": "body",
       "zh": "{machine}上的会话现在说不清还在不在跑。cc-monitor 会一直重试，连上之后自己接上；这台机器连不连得上，在设置里看得到。",
       "args": ["machine"]
-    },
-    "launchAccount.lastAccount.notRecorded": {
-      "kind": "error",
-      "zh": "没记下这次用的账号",
-      "args": []
-    },
-    "launchAccount.lastAccount.notRecordedBody": {
-      "kind": "body",
-      "zh": "会话照常起了；下次恢复这条会话时不会自动选「{account}」。原因：{e}",
-      "args": ["account", "e"]
     },
     "settingsPanel.claudeDir.pickFailed": {
       "kind": "error",
@@ -19038,6 +19018,41 @@
       "kind": "error",
       "zh": "令牌端点的回包里缺新的登录",
       "args": []
+    },
+    "beLaunchAccount.book.unreadable": {
+      "kind": "error",
+      "zh": "{path} 读不出来，没有覆盖它：{e}",
+      "args": ["path", "e"]
+    },
+    "beLaunchAccount.write.failed": {
+      "kind": "error",
+      "zh": "起会话账号记录写不进 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "rsToolRegistry.tools.launchAccountsNote": {
+      "kind": "body",
+      "zh": "起会话账号记录：每个会话最近一次用哪个账号启动",
+      "args": []
+    },
+    "rsToolRegistry.tools.launchNotesNote": {
+      "kind": "body",
+      "zh": "起会话便条：启动会话时记下的账号，进程退出即清",
+      "args": []
+    },
+    "rsDataPaths.backend.launchAccounts": {
+      "kind": "body",
+      "zh": "起会话账号记录：每个会话最近一次用哪个账号启动",
+      "args": []
+    },
+    "rsDataPaths.backend.launchNotes": {
+      "kind": "body",
+      "zh": "起会话便条：启动会话时记下的账号，进程退出即清",
+      "args": []
+    },
+    "beLaunchAccount.unavailable.said": {
+      "kind": "error",
+      "zh": "账号 {name} 不可用，未启动",
+      "args": ["name"]
     }
   }
 }

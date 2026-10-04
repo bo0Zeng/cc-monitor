@@ -28,26 +28,16 @@ vi.mock("../../../src/frontend/ui/account-reads", () => ({
   fetchAccounts: vi.fn().mockResolvedValue({ accounts: [] }),
   checkTrust: vi.fn().mockResolvedValue({ available: true, trusted: true, known: true, error: null }),
 }));
-vi.mock("../../../src/frontend/ui/account-prefs", () => ({
-  getModelForAccount: vi.fn().mockResolvedValue(undefined), // F07：默认无模型偏好
-}));
-vi.mock("../../../src/frontend/ui/launch-account", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../../src/frontend/ui/launch-account")>()),
-  recordLastAccount: vi.fn().mockResolvedValue(undefined),
-}));
 
 import { runRemoteResumeTmuxAndWait } from "../../../src/frontend/ui/remote-launch-run";
 import { accountConfigDir } from "../../../src/frontend/ui/accounts";
 import { checkTrust } from "../../../src/frontend/ui/account-reads";
-import { getModelForAccount } from "../../../src/frontend/ui/account-prefs";
-import { recordLastAccount } from "../../../src/frontend/ui/launch-account";
 import { restartWithAccount, type RestartWithAccountOpts } from "../../../src/frontend/ui/account-restart";
 import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
 import { answerAskDialog } from "../../test-support/ask-dialog-driver.ts";
 
 const resumeTmux = runRemoteResumeTmuxAndWait as unknown as ReturnType<typeof vi.fn>;
 const acctConfigDir = accountConfigDir as unknown as ReturnType<typeof vi.fn>;
-const recordLast = recordLastAccount as unknown as ReturnType<typeof vi.fn>;
 const trust = checkTrust as unknown as ReturnType<typeof vi.fn>;
 
 function baseOpts(over: Partial<RestartWithAccountOpts> = {}): RestartWithAccountOpts {
@@ -106,14 +96,13 @@ describe("restartWithAccount（A5 换号重启编排 · §5）", () => {
     expect(resumeTmux).not.toHaveBeenCalled();
   });
 
-  it("happy（不 compact）→ 直接 kill（不发 Esc / /exit、不等它退）→ resume(注入 configDir) → 记 lastAccount", async () => {
+  it("happy（不 compact）→ 直接 kill（不发 Esc / /exit、不等它退）→ resume（点名那个号）", async () => {
     await restartWithAccount(baseOpts());
     // 编排发出的控制调用恰好只有 kill 一发：再敲回 `Escape` / `/exit`（或任何按键）这里就红。
     const control = invokeMock.mock.calls.filter((c) => c[0] === "tmux_send_keys" || c[0] === "kill_remote_tmux");
     // 带着会话 ID：同一个 tmux 会话里还有别的 claude 窗格时，后端只结束挂着它的那个窗格。
     expect(control).toEqual([["kill_remote_tmux", { origin: "devbox", target: "cc-s1abcdef", sid: "s1" }]]);
-    expect(resumeTmux).toHaveBeenCalledWith("devbox", "claude", "s1", "/w", "cct", "cc-s1abcdef", { configDir: "/h/z", accountName: "z", modelOverride: undefined });
-    expect(recordLast).toHaveBeenCalledWith("s1", "z");
+    expect(resumeTmux).toHaveBeenCalledWith("devbox", "claude", "s1", "/w", "cct", "cc-s1abcdef", { account: { kind: "named", name: "z" } });
   });
 
   it("③ compactFirst → 先 send /compact → 等完成 → kill → resume", async () => {
@@ -153,7 +142,6 @@ describe("restartWithAccount（A5 换号重启编排 · §5）", () => {
     );
     await restartWithAccount(baseOpts());
     expect(resumeTmux).not.toHaveBeenCalled();
-    expect(recordLast).not.toHaveBeenCalled();
   });
 });
 
@@ -166,43 +154,21 @@ describe("A5/Phase G：resume 真失败时不得上报成功", () => {
     resumeTmux.mockReset().mockResolvedValue("arrived");
   });
 
-  it("resume 成功 → 返回 true 且记 lastAccount", async () => {
+  it("resume 成功 → 返回 true（上次用的号由那台看见会话起来时自己记）", async () => {
     acctConfigDir.mockReturnValue("/h/.claude-alt/z");
     invokeMock.mockResolvedValue(undefined);
     const ok = await restartWithAccount(baseOpts({ confirm: () => true }));
     expect(ok).toBe(true);
-    expect(recordLast).toHaveBeenCalledWith("s1", "z");
   });
 
-  it("resume **失败**（命令构造失败/拉起失败，已回退剪贴板）→ 返回 false 且**不记** lastAccount", async () => {
+  it("resume **失败**（命令构造失败/拉起失败，已回退剪贴板）→ 返回 false", async () => {
     acctConfigDir.mockReturnValue("/h/.claude-alt/z");
     invokeMock.mockResolvedValue(undefined);
     resumeTmux.mockResolvedValue("unsent"); // ← 会话已被 kill，但新会话没起来
     const ok = await restartWithAccount(baseOpts({ confirm: () => true }));
     expect(ok).toBe(false); // ← 变异锚点：退回 `return true` 这里就红
-    expect(recordLast).not.toHaveBeenCalled(); // 没起来就别钉账号归属
   });
 
-  // R03 Phase D 对抗审计发现（重要，实测复现）：位置参数改 options bag 后，
-  // vitest 的 `toHaveBeenCalledWith` 对**对象**会忽略"值为 undefined 的键"，
-  // 但对**位置参数**是严格比 arity 的。本文件 :15 把 `getModelForAccount` 恒 mock 成
-  // `undefined`，于是全文件唯一那条 resumeTmux 断言只能钉 `modelOverride: undefined`
-  // ——审计实做变异：删掉 `account-restart.ts` bag 里的 `modelOverride,` → 本套件仍 12/12 全绿
-  // （改造前同一变异会因 arity 7≠8 转红）。**这是本次改造唯一真实的断言强度损失。**
-  // 补这条把 `modelOverride` 钉成非 undefined，让"并列路径漏传模型偏好"重新可被测试抓到
-  // （tsc 的 noUnusedLocals 也能抓，但那是另一道门，不该让测试这道门空着）。
-  it("R03：模型偏好经并列路径（account-restart 自己查、不走 withAccount）真的传进 resumeTmux", async () => {
-    acctConfigDir.mockReturnValue("/h/z");
-    vi.mocked(getModelForAccount).mockResolvedValue("opus");
-    invokeMock.mockResolvedValue(undefined);
-    await restartWithAccount(baseOpts({ confirm: () => true }));
-    expect(resumeTmux).toHaveBeenCalledWith("devbox", "claude", "s1", "/w", "cct", "cc-s1abcdef", {
-      configDir: "/h/z",
-      accountName: "z",
-      modelOverride: "opus",
-    });
-    vi.mocked(getModelForAccount).mockResolvedValue(undefined); // 复位，别泄漏给后续用例
-  });
 });
 
 // **本机那一侧**：编排前五步与远端逐字共用（只是 origin 换成 `<local>`），
@@ -214,7 +180,7 @@ describe("A3 本机换号重启（origin = <local>）", () => {
   const payloadOf = (cmd: string): Record<string, unknown> | undefined =>
     invokeMock.mock.calls.find((c) => c[0] === cmd)?.[1] as Record<string, unknown> | undefined;
 
-  it("happy：kill 带 `<local>`，resume 走本机那一跳、交的是**用户点的那个号**（名字 ＋ 目录）", async () => {
+  it("happy：kill 带 `<local>`，resume 走本机那一跳、交的是**用户点的那个号**（点名，那台判）", async () => {
     const ok = await restartWithAccount(baseOpts({ origin: LOCAL, tmuxName: "proj-cc", launcher: "" }));
     expect(ok).toBe(true);
     expect(invokeMock).toHaveBeenCalledWith("kill_remote_tmux", { origin: LOCAL, target: "proj-cc", sid: "s1" });
@@ -225,11 +191,8 @@ describe("A3 本机换号重启（origin = <local>）", () => {
       cwd: "/w",
       launcher: null, // 设置里没配本机 resume 命令 ⇒ 交 null，由后端用默认
       tmuxName: "proj-cc", // 旧名已被 kill 让出来，照远端那条一样复用
-      account: { kind: "named", configDir: "/h/z", name: "z" },
+      account: { kind: "named", name: "z" },
     });
-    // 本机那一跳交不了模型偏好 ⇒ 不去查它（查了也没地方放）。
-    expect(getModelForAccount).not.toHaveBeenCalled();
-    expect(recordLast).toHaveBeenCalledWith("s1", "z");
   });
 
   it("kill 在 resume **之前**（顺序是 §5.2 的硬约束，两侧同一条）", async () => {
@@ -247,7 +210,6 @@ describe("A3 本机换号重启（origin = <local>）", () => {
     const ok = await restartWithAccount(baseOpts({ origin: LOCAL, tmuxName: "proj-cc" }));
     expect(ok).toBe(false);
     expect(payloadOf("resume_history_session")).toBeUndefined();
-    expect(recordLast).not.toHaveBeenCalled();
   });
 
   it("本机 resume 失败 ⇒ false、不记账，提示里**不许**出现远端那条的剪贴板 / 远端终端", async () => {
@@ -256,7 +218,6 @@ describe("A3 本机换号重启（origin = <local>）", () => {
     );
     const ok = await restartWithAccount(baseOpts({ origin: LOCAL, tmuxName: "proj-cc" }));
     expect(ok).toBe(false);
-    expect(recordLast).not.toHaveBeenCalled();
     const toasts = vi.mocked(showActionFailureToast).mock.calls;
     const last = toasts.at(-1);
     expect(last?.[0]).toBe("旧会话已退出，但新会话没能自动起来");
@@ -268,17 +229,16 @@ describe("A3 本机换号重启（origin = <local>）", () => {
 });
 
 /**
- * 要求：「换号的 lastAccount / pin 只在等到之后才记（kill ＋ resume 全成才记，全成的定义换成『看见会话起来』）」。
+ * 要求：「换号重启全成的定义是『看见会话起来』」。
  */
 describe("FIX4 ④：换号重启等到会话起来才算成", () => {
-  it("远端发出去了但没看到会话起来 ⇒ false、不记账、不说「已用新账号重启」、也不另说失败（主窗口说过了）", async () => {
+  it("远端发出去了但没看到会话起来 ⇒ false、不说「已用新账号重启」、也不另说失败（主窗口说过了）", async () => {
     invokeMock.mockResolvedValue(undefined);
     resumeTmux.mockResolvedValue("missed");
     const toasts = vi.mocked(showActionFailureToast);
     toasts.mockClear();
     const ok = await restartWithAccount(baseOpts());
     expect(ok).toBe(false);
-    expect(recordLast).not.toHaveBeenCalled();
     expect(toasts.mock.calls.map((c) => c[0])).toEqual([]);
   });
 });

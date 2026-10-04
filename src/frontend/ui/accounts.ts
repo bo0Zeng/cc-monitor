@@ -2,14 +2,13 @@
 //
 // 账号 = 一个 CLAUDE_CONFIG_DIR。本模块只装「一个账号长什么样、它能不能选、它该显示成什么」：
 //   形状（`Account` · `AccountsState` · `SessionAccount`）· 降级判定（`deriveUi`）· 可用性唯一出口（`isSelectable`）·
-//   跟随 / 显式选号的解析（`resolveAccount`）· 徽章与本机那一节的界面文案。
+//   徽章与本机那一节的界面文案。起会话用哪个号由会话所在那台的后端判（这里不判）。
 //
 // 先前这一个文件（1527 行 · 61 export · 20 个生产 importer）跨账号 · 起停 · 历史三个域（审计 B §6 必须拆 4）。
 // 守的要求：「一个判定只有一个家」。按域拆开之后各住各的：
 //   - 经通道读 ＋ 缓存（`accounts-list` · `accounts-sessions` · `accounts-trust`）→ `account-reads.ts`
-//   - config.json 里的账号偏好（默认账号 · 每号模型）→ `account-prefs.ts`
-//   - 起会话挑哪个号（`withAccount` · 本机快照 · 载荷上的 `account` · 记 pin）→ `launch-account.ts`
-//   - 本机起新会话后拿身份 token 反查 sid 的待办表 → `local-launch-backfill.ts`
+//   - config.json 里的账号偏好（每号模型）→ `account-prefs.ts`
+//   - 起会话那一格「要哪个号」与「选不了」那个选择框 → `launch-account.ts`
 //   - 换号重启定位不到时的那句话 → `account-restart.ts`
 // 本文件从此**不 import 任何有 IO 的模块**（不碰通道、不碰 config、不碰历史注解）。
 import { isLocalOrigin, type Origin } from "./ipc/origin";
@@ -113,8 +112,6 @@ export interface AccountsState {
   oldBackend: boolean;
   meta: AccountsMeta | null;
   accounts: Account[];
-  /** 本机选择的默认账号（config.json）；缺省跟随 manifest 的 isDefault。 */
-  defaultName: string | null;
   /**
    * Z01：**能用但有缺**时的人话说明（`available` 仍是 true）。null = 无缺。
    * 「绝不静默降级」是它存在的全部理由——旧 backend / 旧的写清单那一侧会让账号 0
@@ -131,7 +128,7 @@ export type AccountsUi =
   | { kind: "needs-update"; reason: string } // 旧 backend（只有对端说「不认这条命令」那一形）
   | { kind: "query-failed"; reason: string } // 没问出来（够不着 / 期限到 / 对端说不行 / 形状不对）
   | { kind: "not-enabled"; manifestPath: string | null; reason: string } // 未迁移/无账号
-  | { kind: "ready"; accounts: Account[]; defaultName: string | null; notice: string | null };
+  | { kind: "ready"; accounts: Account[]; notice: string | null };
 
 // ------------------------------------------------------------ 纯函数
 
@@ -153,27 +150,17 @@ export function deriveUi(state: AccountsState): AccountsUi {
   return {
     kind: "ready",
     accounts: state.accounts,
-    defaultName: state.defaultName,
     notice: state.notice,
   };
 }
 
-/** 当前生效的默认账号名：本机 defaultName 优先，否则取 manifest isDefault，再否则第一个。 */
+/** 那台的默认账号：清单里 `isDefault` 的那一个，没有就第一个（起会话跟随时那台判的是同一条，这里只为画）。 */
 export function effectiveDefault(state: AccountsState): Account | null {
   if (state.accounts.length === 0) return null;
-  if (state.defaultName) {
-    const hit = state.accounts.find((a) => a.name === state.defaultName);
-    if (hit) return hit;
-  }
   return state.accounts.find((a) => a.isDefault) ?? state.accounts[0];
 }
 
-/**
- * 「当前账号」(account-ux)——`effectiveDefault` 的语义别名,值完全一致。
- * account-isolation 时期它只用来预选新会话对话框;本轮升格为 resume/新会话的**跟随默认**。
- * 换名不换存储(仍 config.json `accounts.defaultName`);给别名是让 follow 解析 / mismatch
- * 比对的调用点读作"当前账号"而非"默认",避免理解漂移。
- */
+/** 「当前账号」—— [`effectiveDefault`] 的语义别名（那台账号库清单里的默认号；设它走那台的 `accounts-set-default`）。 */
 export function currentWorkingAccount(state: AccountsState): Account | null {
   return effectiveDefault(state);
 }
@@ -307,7 +294,7 @@ export function isSelectable(a: Account): boolean {
   //   · 兜底渲染路径：`ENV_RESET_DIMENSION` 推 `unset-config-dir` op
   //
   // 真正缺的是**选择链路**，不是注入形态：
-  //   1. `accountConfigDir()` 对它返回 null ⇒ `resolveAccount` 说不出「用户显式选了账号 0」
+  //   1. `accountConfigDir()` 对它返回 null ⇒ 选号那一步说不出「用户显式选了账号 0」
   //      （只能说 `unavailable`，那是「你要的号不能用」，语义不同）
   //   2. `AccountModifierOption` 没有账号 0 这个选项
   //   3. `tabs.ts:2283` 那个 `opt.kind === "base" ? … : …` 三元**不会编译报错**地把新变体
@@ -346,34 +333,11 @@ export function accountColorsActive(state: AccountsState): boolean {
  * `currentWorkingAccount`(=`effectiveDefault`) 只挑"被指定/第一个"，不管它能不能用；而拿未过滤
  * 的值去判"不一致"，会让徽章指着一个系统自己永远不会 follow 过去的账号说"你不一致"。故账号
  * 徽章的 mismatch 判定统一用这个（F09 后：⚠k/⇄/批量对齐已删除，本函数现在只喂徽章
- * `tabs.ts::updateAccountBadge` 一处消费者）。与 U1 `resolveFollowAccount`「每级候选不可选就
- * 下沉」同一套语义。
+ * `tabs.ts::updateAccountBadge` 一处消费者）。
  */
 export function currentAccountForBadge(state: AccountsState): Account | null {
   const cur = currentWorkingAccount(state);
   return cur && isSelectable(cur) ? cur : null;
-}
-
-/**
- * account-ux U1:普通 resume 的**跟随账号**解析器(纯函数,vitest 锁死)。
- * 优先级(粘性优先):`会话 lastAccount → 当前账号 → null(基座)`。
- * 每级候选必须 `isSelectable`(isolated + **鉴权前提就绪** + 目录在)否则**下沉**下一级;
- * (K-A1 起第二项不再是「已登录」——订阅号那一支等价，api-key 号不看凭据文件)
- * 都不可选 → null(=不注入、落基座、逐字节旧行为)。
- * **显式选号不走此函数**——那条路维持 A4 语义(withAccount 的非空 accountName 分支)。
- */
-export function resolveFollowAccount(
-  state: AccountsState,
-  opts: { lastAccount?: string | null; current?: string | null },
-): string | null {
-  const pickable = (name: string | null | undefined): name is string => {
-    if (!name) return false;
-    const a = state.accounts.find((x) => x.name === name);
-    return !!a && isSelectable(a);
-  };
-  if (pickable(opts.lastAccount)) return opts.lastAccount;
-  if (pickable(opts.current)) return opts.current;
-  return null;
 }
 
 /**
@@ -561,65 +525,3 @@ export const LOCAL_ACCOUNTS_COPY = {
   },
 } as const;
 
-/**
- * F05：判别联合形态的账号解析结果——`AccountResolver` 目标（账本）。取代
- * "只吐 configDir、名字在解析完就被丢弃"的旧口径：`kind==="account"` 时同时带 `name` 和
- * `configDir`——线通给调用方后，`name` 才能继续往下传进 `LaunchContext`（F05 的核心交付：
- * 让 Rust `ccm_invocation.rs::DIMENSION_ORDER` 里 `account` 那一维说得出 `--account <名>`）。
- */
-export type AccountResolution =
-  | { kind: "account"; name: string; configDir: string }
-  | { kind: "base" }
-  /**
-   * 要的那个号选不了 ⇒ **不起**（D-h）。`pinned` = 这个号是会话自己的 pin（跟随那一支），
-   * 不是用户这一次点的。
-   */
-  | { kind: "unavailable"; requestedName?: string; pinned?: boolean };
-
-/**
- * F05：纯函数——从 `withAccount` 原内联逻辑抽出（显式选号 / 跟随解析两分支），决策逻辑本身
- * 逐字节不变，只是从"直接算出 configDir 就地用"变成"先返回一个自描述的判别联合"。
- * `opts.explicit` 非空 → 显式选号；命中 `isSelectable` → `account`，否则 → `unavailable`。
- * 否则若 `opts.follow` 存在 → `resolveFollowAccount`（lastAccount→当前账号→都不可选）解析：
- * 命中 → `account`；都不可选 → `base`（跟随下沉是静默语义，不是"不可用"，故不用 `unavailable`）。
- * 两者都不满足（无 accountName 也无 follow）→ `base`（今天的"默认起"逐字节旧行为）。
- */
-export function resolveAccount(
-  state: AccountsState,
-  opts: { explicit?: string | null; follow?: { lastAccount?: string | null } },
-): AccountResolution {
-  if (opts.explicit) {
-    const configDir = accountConfigDir(state, opts.explicit);
-    return configDir
-      ? { kind: "account", name: opts.explicit, configDir }
-      : { kind: "unavailable", requestedName: opts.explicit };
-  }
-  if (opts.follow) {
-    const current = currentWorkingAccount(state)?.name ?? null;
-    const priorPin = opts.follow.lastAccount ?? null;
-    // 🔴 D-h（「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」）：
-    //   会话有 pin、而 pin 那个号选不了 ⇒ **不下沉**，回 `unavailable`（调用方不起、说清、给「用当前账号」的显式选择）。
-    //   先前这里下沉到当前号 / 基座、不说一个字（E7）—— 用另一个号的订阅或 key 续了这场会话。
-    //   没有 pin 的会话照旧 当前号 → 基座（没有「原账号」，谈不上换号）。
-    if (priorPin) {
-      const a = state.accounts.find((x) => x.name === priorPin);
-      if (!a || !isSelectable(a)) return { kind: "unavailable", requestedName: priorPin, pinned: true };
-    }
-    const followName = resolveFollowAccount(state, { lastAccount: priorPin, current });
-    if (followName) {
-      const configDir = accountConfigDir(state, followName);
-      if (configDir) return { kind: "account", name: followName, configDir };
-    }
-    return { kind: "base" };
-  }
-  return { kind: "base" };
-}
-
-/**
- * 要的那个号选不了时，给用户的那个**显式选择**：当前账号（可选、且不是要的那个）；
- * 没有这样的号 ⇒ `null` = 「不指定账号」（落 `~/.claude` 那一份登录）。
- */
-export function alternativeAccountOf(state: AccountsState, requested: string): string | null {
-  const cur = currentWorkingAccount(state);
-  return cur && isSelectable(cur) && cur.name !== requested ? cur.name : null;
-}

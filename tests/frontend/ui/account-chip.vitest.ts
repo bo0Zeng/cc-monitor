@@ -23,7 +23,7 @@ import type { AccountsState, Account } from "../../../src/frontend/ui/accounts";
 import * as accountsMod from "../../../src/frontend/ui/accounts";
 // 读面与偏好从 `accounts.ts` 拆出去了（`account-reads.ts` / `account-prefs.ts`），桩打在它们真住的模块上。
 import * as readsMod from "../../../src/frontend/ui/account-reads";
-import * as prefsMod from "../../../src/frontend/ui/account-prefs";
+import * as opsMod from "../../../src/frontend/ui/account-ops";
 // `D4 阻-4`：命令面板那一侧的**生产段**（chip 的快照就是喂给它的）。
 import { buildAccountCommands } from "../../../src/frontend/ui/account-commands";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
@@ -89,7 +89,6 @@ function state(p: Partial<AccountsState>): AccountsState {
       error: null,
     },
     accounts: [],
-    defaultName: null,
     ...p,
   };
 }
@@ -128,11 +127,7 @@ describe("chipLabel", () => {
       chipLabel(state({ meta: { enabled: false, acctsDir: "/a", manifestPath: "/a/x", updatedAt: null, sharedStore: null, count: 0, error: null } })),
     ).toBe("未启用");
   });
-  it("ready → 显示当前默认账号名", () => {
-    const s = state({ accounts: [acct({ name: "z", isDefault: true }), acct({ name: "b" })], defaultName: "b" });
-    expect(chipLabel(s)).toBe("b");
-  });
-  it("ready 无 defaultName → 跟随 manifest isDefault", () => {
+  it("ready → 显示那台清单里的默认号（isDefault）", () => {
     const s = state({ accounts: [acct({ name: "z" }), acct({ name: "b", isDefault: true })] });
     expect(chipLabel(s)).toBe("b");
   });
@@ -152,12 +147,12 @@ describe("F1 chip 纯全局切换器（无 ⚠k）", () => {
     expect((chip as unknown as Record<string, unknown>).updateMismatchBadge).toBeUndefined();
   });
 
-  it("下拉列出账号 + 点非当前项 → 走 setDefaultName 切这台的默认号（DoD 正路）", async () => {
+  it("下拉列出账号 + 点非当前项 → 问那台 `accounts-set-default` 切这台的默认号（DoD 正路）", async () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ label: "devbox" })] });
     fetchAccountsMock.mockResolvedValue(
-      state({ accounts: [acct({ name: "wei" }), acct({ name: "amy" })], defaultName: "wei" }),
+      state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }),
     );
-    const setDef = vi.spyOn(prefsMod, "setDefaultName").mockResolvedValue(undefined);
+    const setDef = vi.spyOn(opsMod, "accountsSetDefault").mockResolvedValue({} as never);
     vi.spyOn(readsMod, "invalidateAccountsCache").mockImplementation(() => {});
     let changed = 0;
     const chip = new AccountChip({ openSettings: () => {}, onDefaultChanged: () => (changed += 1) });
@@ -167,7 +162,7 @@ describe("F1 chip 纯全局切换器（无 ⚠k）", () => {
     expect(items.length).toBe(2); // 下拉列出两个账号（全局切换器）
     const amy = [...items].find((b) => b.textContent?.includes("amy"))!;
     amy.click();
-    // selectDefault 链：setDefaultName → invalidateCache → refresh(含两次 async 数据源) → onDefaultChanged。
+    // selectDefault 链：accountsSetDefault → invalidateCache → refresh(含两次 async 数据源) → onDefaultChanged。
     for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
     expect(setDef).toHaveBeenCalledWith("devbox", "amy"); // 点非当前项 → 这台（devbox）切到 amy
     expect(changed).toBe(1); // 切完回调 onDefaultChanged（让 main.ts 重算会话归属）
@@ -185,7 +180,7 @@ describe("账号选单：再点 chip 收起；Esc 只关选单", () => {
   };
   async function mounted(): Promise<AccountChip> {
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ label: "devbox" })] });
-    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "wei" }), acct({ name: "amy" })], defaultName: "wei" }));
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }));
     const chip = new AccountChip({ openSettings: () => {} });
     document.body.appendChild(chip.element);
     await chip.refresh();
@@ -241,23 +236,23 @@ describe("account-ux U8 chip 头像休眠", () => {
 
   it("≥2 可选账号 → 显彩色头像", async () => {
     const chip = await mountWith(
-      state({ accounts: [acct({ name: "wei" }), acct({ name: "amy" })], defaultName: "wei" }),
+      state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }),
     );
     expect(icon(chip).querySelector(".acct-avatar")).not.toBeNull();
   });
 
   // chip 不再自存一份账号清单：store 里它那台换了一份（本窗口任何一次取回），它同一拍重画，不等自己 refresh。
   it("★ 〔GAP1〕store 里 chip 那台的账号清单换了 ⇒ 同一拍重画（不调 refresh、不再取）", async () => {
-    const chip = await mountWith(state({ accounts: [acct({ name: "wei" }), acct({ name: "amy" })], defaultName: "wei" }));
+    const chip = await mountWith(state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }));
     expect(chip.element.textContent).toContain("wei");
     const fetches = fetchAccountsMock.mock.calls.length;
-    putAccounts("devbox", state({ accounts: [acct({ name: "wei" }), acct({ name: "amy" })], defaultName: "amy" }));
+    putAccounts("devbox", state({ accounts: [acct({ name: "wei" }), acct({ name: "amy", isDefault: true })] }));
     expect(chip.element.textContent).toContain("amy");
     expect(fetchAccountsMock.mock.calls.length, "重画不该再取一次").toBe(fetches);
   });
 
   it("只有 1 个可选账号 → 退回 👤（颜色此时区分不了任何东西）", async () => {
-    const chip = await mountWith(state({ accounts: [acct({ name: "wei" })], defaultName: "wei" }));
+    const chip = await mountWith(state({ accounts: [acct({ name: "wei", isDefault: true })] }));
     expect(icon(chip).querySelector(".acct-avatar")).toBeNull();
     expect(icon(chip).textContent).toBe("👤");
   });
@@ -265,8 +260,7 @@ describe("account-ux U8 chip 头像休眠", () => {
   it("2 个账号但只有 1 个可选 → 仍休眠（数可选数，不是总数）", async () => {
     const chip = await mountWith(
       state({
-        accounts: [acct({ name: "wei" }), acct({ name: "amy", loggedIn: false, authReady: false })],
-        defaultName: "wei",
+        accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy", loggedIn: false, authReady: false })],
       }),
     );
     expect(icon(chip).querySelector(".acct-avatar")).toBeNull();
@@ -281,7 +275,7 @@ describe("：chip 上的用量面已退役（翻面判据）", () => {
   it("展开菜单不发任何 invoke，且没有「刷新用量」这个动作", async () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ label: "devbox" })] });
     fetchAccountsMock.mockResolvedValue(
-      state({ accounts: [acct({ name: "wei" }), acct({ name: "amy" })], defaultName: "wei" }),
+      state({ accounts: [acct({ name: "wei", isDefault: true }), acct({ name: "amy" })] }),
     );
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
@@ -319,7 +313,7 @@ describe("：chip 上的用量面已退役（翻面判据）", () => {
 describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
   async function menuRows(accounts: Account[], defaultName: string): Promise<HTMLButtonElement[]> {
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ label: "devbox" })] });
-    fetchAccountsMock.mockResolvedValue(state({ accounts, defaultName }));
+    fetchAccountsMock.mockResolvedValue(state({ accounts: accounts.map((a) => ({ ...a, isDefault: a.name === defaultName })) }));
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
     await chip.openMenu();
@@ -497,7 +491,7 @@ describe("K-H2b D1 阻-5：没有远端时 chip 渲染本机账号，徽章带 a
     document.querySelectorAll(".account-picker").forEach((el) => el.remove());
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue(
-      state({ accounts, defaultName: accounts[0]?.name ?? "" }),
+      state({ accounts: accounts.map((a, i) => ({ ...a, isDefault: i === 0 })) }),
     );
     const spy = vi.spyOn(readsMod, "fetchMachineApikeyRouting");
     if (routing === "fail") spy.mockRejectedValue(new Error("问不到"));
@@ -567,7 +561,6 @@ describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => 
         accountZeroAware: true,
       },
       accounts: [],
-      defaultName: null,
       notice: null,
     } as unknown as AccountsState);
     const chip = new AccountChip({ openSettings: () => {} });
@@ -584,7 +577,7 @@ describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => 
     document.querySelectorAll(".account-picker").forEach((el) => el.remove());
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue(
-      state({ accounts: [acct({ name: "acct-a", configDir: "/h/.claude-alt/acct-a" })], defaultName: "acct-a" }),
+      state({ accounts: [acct({ name: "acct-a", isDefault: true, configDir: "/h/.claude-alt/acct-a" })] }),
     );
     vi.spyOn(readsMod, "fetchLocalApikeyRouting").mockResolvedValue({ routed: [], running: false });
     const chip = new AccountChip({ openSettings: () => {} });
@@ -623,7 +616,9 @@ describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来
   async function localChip(accounts: Account[], defaultName: string | null): Promise<AccountChip> {
     document.querySelectorAll(".account-picker").forEach((el) => el.remove());
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
-    vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue(state({ accounts, defaultName }));
+    vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue(
+      state({ accounts: accounts.map((a) => ({ ...a, isDefault: a.name === defaultName })) }),
+    );
     vi.spyOn(readsMod, "fetchLocalApikeyRouting").mockResolvedValue({ routed: [], running: false });
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
@@ -672,7 +667,7 @@ describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来
     document.querySelectorAll(".account-picker").forEach((el) => el.remove());
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ host: "hostA" })] });
     fetchAccountsMock.mockResolvedValue(
-      state({ accounts: [acct({ name: "z", configDir: "/h/.claude-alt/z" })], defaultName: "z" }),
+      state({ accounts: [acct({ name: "z", isDefault: true, configDir: "/h/.claude-alt/z" })] }),
     );
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
@@ -685,7 +680,7 @@ describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     // `meta.enabled:false` ⇒ `deriveUi` 判 not-enabled ⇒ `refresh` 把 state 清回 null 并隐藏。
     vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue({
-      ...state({ accounts: [], defaultName: null }),
+      ...state({ accounts: []}),
       meta: { enabled: false, acctsDir: "", manifestPath: "", updatedAt: null, sharedStore: null, count: 0, error: null },
     } as unknown as AccountsState);
     vi.spyOn(readsMod, "fetchLocalApikeyRouting").mockResolvedValue({ routed: [], running: false });

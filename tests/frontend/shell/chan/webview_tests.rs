@@ -371,6 +371,7 @@ fn the_fallback_rule_equals_the_golden_file_the_ts_side_judges() {
             Inbound::Remote {
                 code: "wrong_owner".into(),
                 message: "m".into(),
+                data: None,
             },
         ),
     ];

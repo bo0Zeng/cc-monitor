@@ -838,6 +838,7 @@ fn watch_loop(
     // 注入「客户端索要了 pid / 原文」这两位（不进 `new` 的签名，理由在那两个字段的头注里）。
     state.with_pid = wants.with_pid;
     state.with_raw = wants.with_raw;
+    state.launch_home = crate::platform::paths::data_home();
     // 运行簿：与这条连接的流归位共用一本（流按它定归哪个运行）。
     state.runs.book = book;
     // All frames go out through a FrameSink: a bounded-channel sender that counts
@@ -1232,6 +1233,8 @@ struct ReaderState {
     with_raw: bool,
     /// 子运行：运行面 ＋ 这条连接的运行簿（[`watch_loop`] 换成 `spawn` 交进来的那一本；夹具用自带的一本）＋ 子运行记录的游标。
     runs: crate::observe::runs::RunTrack,
+    /// 起会话便条与账号记录住的那个家（`None` ⇒ 不认便条）。默认 `None`、不进 `new` 的签名（夹具不碰真家目录）；生产由 [`watch_loop`] 注入。
+    launch_home: Option<PathBuf>,
 }
 
 impl ReaderState {
@@ -1254,6 +1257,7 @@ impl ReaderState {
                 crate::agents::stream_run_faces(),
                 std::sync::Arc::default(),
             ),
+            launch_home: None,
         }
     }
 }
@@ -1968,6 +1972,8 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             });
         }
         // pidfile 重写（sid 没变）顺手对一次标签：外部改掉的 `@ccm_sid` 在这里被纠正。
+        // 便条也再认一次（Windows 上起好进程才写便条，可能晚于第一次宣告）。
+        adopt_launch_note(state, pid, &sid);
         return tag_identity(pid, &sid).1;
     }
     // Batch6-F22-①：同 pidfile 原地换 sid（/clear 等重写 sessionId）——旧 sid
@@ -2029,6 +2035,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     // 打不上的那两形（tmux 报错 / sid 形状不对）**说出来** —— 标没写上的会话
     // 之后过不了身份门，而「为什么」原先整条链零线索。
     let (container, wrote) = tag_identity(pid, &sid);
+    adopt_launch_note(state, pid, &sid);
     // P2：给这个进程实例挂 pidfd 看守（取代原先每 2s 一遍的判活扫描）。
     // `start` 就是上面 verdict 用过的那次 /proc 读，不再多读一次。
     arm_pid_watcher(&key_for_watch, pid, start, state);
@@ -2097,6 +2104,21 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         sink.send(state.runs.frame(&sid));
     }
     wrote
+}
+
+/// 「这条会话用哪个号起的」：`ccm` 给这个 pid 留过便条 ⇒ 记下 `sid → 号`（`control::launch_account::adopt`）。
+/// 触发时机与打标同一个：pidfile 出现 / 改写那一刻，`(pid, sid)` 只在这时同时在手。写不成只出声。
+fn adopt_launch_note(state: &ReaderState, pid: u32, sid: &str) {
+    let Some(home) = state.launch_home.as_deref() else {
+        return;
+    };
+    let started_at = |p: u32| {
+        crate::platform::proc::start_epoch_from_ticks(crate::platform::proc::proc_starttime(p))
+    };
+    let alive = |p: u32| crate::platform::proc::pid_alive(p).then(|| started_at(p));
+    if let Err(e) = crate::control::launch_account::adopt(home, pid, sid, started_at(pid), &alive) {
+        tracing::warn!("起会话账号没记上（pid {pid} · sid {sid}）：{e}");
+    }
 }
 
 /// **身份打标的唯一调用点**（首次宣告 · pidfile 重写 · tmux 探测到达 · `resync` 都经它）：打不上的那两形说出来，

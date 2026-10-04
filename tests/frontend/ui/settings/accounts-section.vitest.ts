@@ -127,7 +127,6 @@ function state(p: Partial<AccountsState>): AccountsState {
       error: null,
     },
     accounts: [],
-    defaultName: null,
     ...p,
   };
 }
@@ -301,8 +300,7 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
   const B = "amy"; // 槽 6
   const ready = (over: Partial<AccountsState> = {}): AccountsState =>
     state({
-      accounts: [acct({ name: A }), acct({ name: B, email: "amy@x.edu" })],
-      defaultName: A,
+      accounts: [acct({ name: A, isDefault: true }), acct({ name: B, email: "amy@x.edu" })],
       ...over,
     });
 
@@ -323,7 +321,7 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
 
   it("当前账号不可选（未登录）→ 横幅如实说不可用 + 幽灵头像，不装作在生效", async () => {
     fetchAccountsMock.mockResolvedValue(
-      state({ accounts: [acct({ name: A, loggedIn: false, authReady: false })], defaultName: A }),
+      state({ accounts: [acct({ name: A, isDefault: true, loggedIn: false, authReady: false })]}),
     );
     const el = await mount();
     const banner = el.querySelector(".accounts-current-banner")!;
@@ -465,7 +463,7 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
 
   it("🔴 A2：新建账号**不在维护折叠里**、**不是红色** —— 只有 1 个号时也一样", async () => {
     fetchAccountsMock.mockResolvedValue(
-      state({ accounts: [acct({ name: A })], defaultName: A }),
+      state({ accounts: [acct({ name: A, isDefault: true })]}),
     );
     const el = await mount();
     const form = el.querySelector<HTMLElement>(".accounts-new");
@@ -487,7 +485,7 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
   it("长 configDir 有 title 兜全文（列宽省略后仍可见）", async () => {
     const long = "/home/user/.claude-alt/some/very/deep/nested/path/for/account/z";
     fetchAccountsMock.mockResolvedValue(
-      state({ accounts: [acct({ name: "z", configDir: long })], defaultName: "z" }),
+      state({ accounts: [acct({ name: "z", isDefault: true, configDir: long })] }),
     );
     const el = await mount();
     const dir = el.querySelector<HTMLElement>(".accounts-row-dir")!;
@@ -502,7 +500,7 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
 // 换成一条**翻面**判据：账号表里不许再长出那个单元格，也不许再发那条命令。
 describe("：账号表上的用量单元格已退役（翻面判据）", () => {
   it("挂载后没有用量单元格 / 「查看用量」按钮，也没发任何 invoke", async () => {
-    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z", isDefault: true })] }));
     const el = await mount();
     expect(el.querySelector(".accounts-row-usage")).toBeNull();
     expect(el.querySelector(".accounts-usage-btn")).toBeNull();
@@ -515,7 +513,7 @@ describe("Z01 账号 0 在设置账号表里的呈现", () => {
 
   it("账号 0 有一行，且路径列说的是它的真实含义（不是空白、不是空串）", async () => {
     fetchAccountsMock.mockResolvedValue(
-      state({ accounts: [acct({ name: "z" }), zero], defaultName: "z" }),
+      state({ accounts: [acct({ name: "z", isDefault: true }), zero]}),
     );
     const el = await mount();
     const dirs = [...el.querySelectorAll(".accounts-row-dir")].map((d) => d.textContent);
@@ -547,7 +545,7 @@ describe("Z01 账号 0 在设置账号表里的呈现", () => {
 
 describe("维护区：核对 / 修复 / 回滚都问那台后端，确认在界面里", () => {
   const tick = () => new Promise((r) => setTimeout(r, 0));
-  const ready = (): AccountsState => state({ accounts: [acct({ name: "z" })], defaultName: "z" });
+  const ready = (): AccountsState => state({ accounts: [acct({ name: "z", isDefault: true })] });
   function wire(over: Record<string, Record<string, unknown>> = {}): Array<[string, unknown]> {
     const calls: Array<[string, unknown]> = [];
     invokeMock.mockImplementation((cmd: unknown, args: unknown) => {
@@ -800,11 +798,10 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     fetchAccountsMock.mockResolvedValue(
       state({
         accounts: [
-          acct({ name: "n1", configDir: "/h/.claude-alt/dir-one" }),
+          acct({ name: "n1", isDefault: true, configDir: "/h/.claude-alt/dir-one" }),
           acct({ name: "n2", configDir: "/h/.claude-alt/dir-two" }),
           acct({ name: "0", configDir: null, mode: "bare" }),
         ],
-        defaultName: "n1",
       }),
     );
     invokeMock.mockImplementation((cmd: string, args: unknown) =>
@@ -907,11 +904,10 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
   const three = () =>
     localState({
       accounts: [
-        acct({ name: L1, configDir: "/h/.claude-alt/wei" }),
+        acct({ name: L1, isDefault: true, configDir: "/h/.claude-alt/wei" }),
         acct({ name: L2, email: "amy@x.edu", configDir: "/h/.claude-alt/amy" }),
         acct({ name: L3, email: "kit@x.edu", configDir: "/h/.claude-alt/kit" }),
       ],
-      defaultName: L1,
     });
 
   /** 没有配任何远端 —— 本族每条都从这里出发。 */
@@ -1182,7 +1178,7 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
     // 反方向（本机页 + 配了远端 ⇒ 本机那一支）见下一条。
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
     fetchAccountsMock.mockResolvedValue(
-      state({ accounts: [acct({ name: L1 })], defaultName: L1 }),
+      state({ accounts: [acct({ name: L1, isDefault: true })]}),
     );
     const el = await mount();
     expect(fetchAccountsMock, "配了远端却没走远端那条读口").toHaveBeenCalled();
@@ -1205,7 +1201,7 @@ describe("S3：本机页就是本机（配了远端也一样）", () => {
   it("★ 本机页（store = null）＋ 配了远端 ⇒ 走本机那条读口，远端读口一次不调", async () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
     setCurrentMachine(LOCAL_ORIGIN);
-    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z", isDefault: true })] }));
     const el = await mount();
     expect(fetchLocalAccountsMock, "本机页上没去读本机的账号").toHaveBeenCalled();
     expect(fetchAccountsMock, "本机页上去读了远端的账号").not.toHaveBeenCalled();
@@ -1215,7 +1211,7 @@ describe("S3：本机页就是本机（配了远端也一样）", () => {
 
   it("★ 从 devbox 那一页切回本机页 ⇒ 这一节跟着切到本机（不停在 devbox）", async () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
-    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z", isDefault: true })] }));
     const el = await mount();
     // 前提：确实先站在 devbox 上（否则下面那条「切回来」是空真）。
     expect(el.querySelector(".accounts-table"), "前提：先得在 devbox 那一页上").not.toBeNull();
@@ -1289,7 +1285,7 @@ describe("S3：本机那一支的空态就地可用", () => {
       calls.push([cmd as string, args]);
       return isAccountsOp(cmd as string, args) ? accountsFakeInvoke(args) : Promise.resolve(undefined);
     });
-    fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: [acct({ name: "z", isDefault: true })] }));
     const el = await mount();
     expect(el.querySelector(".accounts-local-rc")).toBeNull();
     const verify = [...el.querySelectorAll<HTMLButtonElement>(".accounts-local .accounts-maint-ops button")].find(
@@ -1316,7 +1312,7 @@ describe("S3：本机清单的徽章说本机那一半的真话", () => {
   async function badgeWith(routing: (() => Promise<unknown>) | null): Promise<HTMLElement> {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     setCurrentMachine(LOCAL_ORIGIN);
-    fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: [KEYED], defaultName: "k" }));
+    fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: [KEYED]}));
     invokeMock.mockImplementation((cmd: string, args: unknown) =>
       isChanCall(cmd, args, "apikey-routing") && routing
         ? routing().then(chanReply)
@@ -1404,11 +1400,10 @@ describe("N-F2 本机那两格真的被写进账本", () => {
   const threeLocal = () =>
     localState({
       accounts: [
-        acct({ name: L1, configDir: "/h/.claude-alt/wei" }),
+        acct({ name: L1, isDefault: true, configDir: "/h/.claude-alt/wei" }),
         acct({ name: L2, email: "amy@x.edu", configDir: "/h/.claude-alt/amy" }),
         acct({ name: L3, email: "kit@x.edu", configDir: "/h/.claude-alt/kit" }),
       ],
-      defaultName: L1,
     });
 
   function noRemotes(): void {
@@ -1498,7 +1493,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     const multiOff = { kind: "fail", detail: "多账号没启用" };
     const got = [
       await remote(state(off())),
-      await remote(state({ accounts: [acct({ name: L1 })], defaultName: L1 })),
+      await remote(state({ accounts: [acct({ name: L1, isDefault: true })]})),
       await local(localState(off())),
       await local(threeLocal()),
     ];
@@ -1617,7 +1612,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     expect(
       await remote(() =>
         fetchAccountsMock.mockResolvedValue(
-          state({ accounts: [acct({ name: L1 }), acct({ name: L2 })], defaultName: L1 }),
+          state({ accounts: [acct({ name: L1, isDefault: true }), acct({ name: L2 })]}),
         ),
       ),
       "已启用那一支",
@@ -1730,7 +1725,7 @@ describe("A2：新建账号一张表单 ⇒ 那台后端一趟建好", () => {
 
   it("★ 判据 #9：API 号一趟建好 —— 预演不带 key，真建那一发带 key；不开终端、不另写 key、没有下拉", async () => {
     const calls = wire();
-    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z", isDefault: true })] }));
     const el = await mount();
     const form = await fill(el, "b", { key: "sk-ant-FOR-B", baseUrl: "https://api.example.com/v1" });
     expect(form.querySelector(".accounts-wiz-preview")?.textContent).toContain("（预演）accounts-add b");
@@ -1751,7 +1746,7 @@ describe("A2：新建账号一张表单 ⇒ 那台后端一趟建好", () => {
 
   it("★ 订阅号没导入凭据 ⇒ 建好后在终端里起 claude 登录，那一行是后端答的", async () => {
     const calls = wire();
-    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z", isDefault: true })] }));
     const el = await mount();
     await create(await fill(el, "b", { def: true }));
     expect(accountOps(calls).filter(([, , a]) => a.dryRun !== true)).toEqual([
@@ -1763,7 +1758,7 @@ describe("A2：新建账号一张表单 ⇒ 那台后端一趟建好", () => {
 
   it("订阅号从旧凭据导入 ⇒ 路径原样交给那台后端，不开终端", async () => {
     const calls = wire({ loginCmd: null });
-    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z", isDefault: true })] }));
     const el = await mount();
     await create(await fill(el, "b", { cred: "~/snap/b.json" }));
     expect(accountOps(calls).filter(([, , a]) => a.dryRun !== true)).toEqual([
@@ -1774,7 +1769,7 @@ describe("A2：新建账号一张表单 ⇒ 那台后端一趟建好", () => {
 
   it("号建好了、key 没写进去 ⇒ 说出来（错误提示），不假装成了", async () => {
     wire({ keyMasked: null, keyProblem: "账号建好了，API key 没存进去：盘满了" });
-    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z", isDefault: true })] }));
     const el = await mount();
     await create(await fill(el, "b", { key: "sk-1" }));
     const toasts = vi.mocked(showActionFailureToast).mock.calls;
@@ -1785,7 +1780,7 @@ describe("A2：新建账号一张表单 ⇒ 那台后端一趟建好", () => {
     invokeMock.mockImplementation((cmd: unknown, args: unknown) =>
       isAccountsOp(cmd as string, args) ? Promise.reject({ err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify({ code: "refused", message: "已经有叫 z 的账号了。" }))) }) : Promise.resolve(undefined),
     );
-    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z", isDefault: true })] }));
     const el = await mount();
     const form = await fill(el, "z");
     expect(form.querySelector(".accounts-maint-err")?.textContent).toContain("已经有叫 z 的账号了。");
@@ -1796,7 +1791,7 @@ describe("A2：新建账号一张表单 ⇒ 那台后端一趟建好", () => {
   it("删号：确认（默认号多说一句、带 force）→ 那台后端删", async () => {
     const calls = wire();
     fetchAccountsMock.mockResolvedValue(
-      state({ accounts: [acct({ name: "z", isDefault: true }), acct({ name: "b", configDir: "/h/.claude-alt/b" })], defaultName: "z" }),
+      state({ accounts: [acct({ name: "z", isDefault: true }), acct({ name: "b", configDir: "/h/.claude-alt/b" })] }),
     );
     const el = await mount();
     const dels = [...el.querySelectorAll<HTMLButtonElement>("button.danger")];
@@ -1836,7 +1831,7 @@ describe("S3：本机页新建账号", () => {
     setCurrentMachine(LOCAL_ORIGIN);
     writeText.mockReset().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-    fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: accts, defaultName: "z" }));
+    fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: accts}));
     return mount();
   }
   async function submit(el: HTMLElement, name: string, key?: string): Promise<void> {
@@ -1873,7 +1868,7 @@ describe("S3：本机页新建账号", () => {
 
   it("阴性对照：远端页上那张表单的提示一个字没变（换提示只发生在本机那一页）", async () => {
     wire("ok");
-    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z", isDefault: true })] }));
     const el = await mount();
     const form = el.querySelector(".accounts-new")!;
     expect(form.querySelector(".accounts-new-hint:not(:empty)")?.textContent).toBe(
@@ -1930,7 +1925,7 @@ describe("S3：本机页新建账号", () => {
 describe("ST1 切机器 pending：账号那一块", () => {
   it("切到 devbox、读还在路上：挂一行 aria-busy 的「正在读 devbox 的账号」；回来就撤", async () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host(), host({ label: "laptop" })] });
-    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z", isDefault: true })] }));
     const el = await mount();
     expect(el.querySelector("[data-pending=accounts]"), "前提：读完了不该还挂着").toBeNull();
     let release!: (v: AccountsState) => void;
@@ -1941,7 +1936,7 @@ describe("ST1 切机器 pending：账号那一块", () => {
     expect(busy, "读在路上时这一块是空的").toBeTruthy();
     expect(busy!.getAttribute("aria-busy")).toBe("true");
     expect(busy!.textContent).toContain("laptop");
-    release(state({ origin: "laptop", accounts: [acct({ name: "g1" })], defaultName: "g1" }));
+    release(state({ origin: "laptop", accounts: [acct({ name: "g1", isDefault: true })] }));
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
     expect(el.querySelector("[data-pending=accounts]")).toBeNull();
@@ -1961,7 +1956,7 @@ describe("〔RESYNC〕[刷新] 清这一页那台的账号缓存", () => {
   it("本机页、远端页各点一次 ⇒ 各清各的那台", async () => {
     const inval = vi.spyOn(accountReads, "invalidateAccountsCache").mockImplementation(() => {});
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [{ label: "devbox", host: "devbox" }] });
-    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z", isDefault: true })] }));
     const got: unknown[] = [];
     for (const origin of [LOCAL_ORIGIN, "devbox"]) {
       setCurrentMachine(origin);
@@ -1984,7 +1979,7 @@ describe("切机器：晚到的账号表作废，动作只打画它的那台", (
     vi.spyOn(accountReads, "fetchAccounts").mockImplementation((origin: string) =>
       origin === "devbox"
         ? new Promise((r) => (releaseAya = r))
-        : Promise.resolve(state({ origin: "nano", accounts: [acct({ name: "n1", configDir: "/h/n1" })], defaultName: "n1" })),
+        : Promise.resolve(state({ origin: "nano", accounts: [acct({ name: "n1", isDefault: true, configDir: "/h/n1" })] })),
     );
     setCurrentMachine("devbox");
     const s = loaded(new AccountsSection());
@@ -1994,7 +1989,7 @@ describe("切机器：晚到的账号表作废，动作只打画它的那台", (
     await tick();
     setCurrentMachine("nano");
     for (let i = 0; i < 6; i++) await tick();
-    releaseAya(state({ origin: "devbox", accounts: [acct({ name: "a1", configDir: "/h/a1" })], defaultName: "a1" }));
+    releaseAya(state({ origin: "devbox", accounts: [acct({ name: "a1", isDefault: true, configDir: "/h/a1" })] }));
     for (let i = 0; i < 8; i++) await tick();
     expect(s.element.querySelectorAll(".accounts-table").length).toBe(1);
     expect(s.element.querySelectorAll(".accounts-current-banner").length).toBe(1);
@@ -2006,7 +2001,7 @@ describe("切机器：晚到的账号表作废，动作只打画它的那台", (
     const asked: string[] = [];
     vi.spyOn(accountReads, "fetchAccounts").mockImplementation((origin: string) => {
       asked.push(origin);
-      return Promise.resolve(state({ origin, accounts: [acct({ name: "a1", configDir: "/h/a1" })], defaultName: "a1" }));
+      return Promise.resolve(state({ origin, accounts: [acct({ name: "a1", isDefault: true, configDir: "/h/a1" })] }));
     });
     setCurrentMachine("devbox");
     const el = await mount();
@@ -2023,7 +2018,7 @@ describe("切机器：晚到的账号表作废，动作只打画它的那台", (
     const asked: string[] = [];
     vi.spyOn(accountReads, "fetchAccounts").mockImplementation((origin: string) => {
       asked.push(origin);
-      return Promise.resolve(state({ origin, accounts: [acct({ name: `${origin}-1`, configDir: `/h/${origin}` })], defaultName: null }));
+      return Promise.resolve(state({ origin, accounts: [acct({ name: `${origin}-1`, configDir: `/h/${origin}` })] }));
     });
     setCurrentMachine("devbox");
     const el = await mount();
@@ -2039,7 +2034,7 @@ describe("切机器：晚到的账号表作废，动作只打画它的那台", (
     const asked: string[] = [];
     vi.spyOn(accountReads, "fetchAccounts").mockImplementation((origin: string) => {
       asked.push(origin);
-      return Promise.resolve(state({ origin, accounts: [acct({ name: `${origin}-1`, configDir: `/h/${origin}` })], defaultName: null }));
+      return Promise.resolve(state({ origin, accounts: [acct({ name: `${origin}-1`, configDir: `/h/${origin}` })] }));
     });
     setCurrentMachine("devbox");
     const el = await mount();
@@ -2055,7 +2050,7 @@ describe("增删号之后别名块重读", () => {
   it("★ 在 devbox 上删一个号 ⇒ 叫 devbox 那台已经展开的别名块重读", async () => {
     const reread = vi.spyOn(machineAliases, "rereadAliases").mockImplementation(() => {});
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ label: "devbox" })] });
-    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" }), acct({ name: "y", configDir: "/h/y" })], defaultName: "z" }));
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z", isDefault: true }), acct({ name: "y", configDir: "/h/y" })] }));
     setCurrentMachine("devbox");
     const el = await mount();
     expect(reread).not.toHaveBeenCalled();
@@ -2096,8 +2091,7 @@ describe("账号表布局：每行格数 == 轨道数，贴边轨道不是死宽
     setCurrentMachine(LOCAL_ORIGIN);
     fetchLocalAccountsMock.mockResolvedValue(
       localState({
-        accounts: [acct({ name: "work", configDir: "/h/w" }), acct({ name: "me", configDir: "/h/m" }), acct({ name: "0", configDir: null, mode: "bare" })],
-        defaultName: "work",
+        accounts: [acct({ name: "work", isDefault: true, configDir: "/h/w" }), acct({ name: "me", configDir: "/h/m" }), acct({ name: "0", configDir: null, mode: "bare" })],
       }),
     );
     const el = await mount();

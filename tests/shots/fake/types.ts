@@ -47,6 +47,8 @@ export class Refuse {
   constructor(
     readonly code: string,
     readonly message: string,
+    /** 按码定形的那几个码带的 `data`（例：`account_unavailable`）。 */
+    readonly data?: unknown,
   ) {}
 }
 

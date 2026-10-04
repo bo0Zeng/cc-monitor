@@ -35,8 +35,7 @@ vi.mock("../../../../src/frontend/ui/format", () => ({ formatTimestampSmart: () 
 import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "../../../../src/frontend/ui/views/history";
 import { runRemoteResume } from "../../../../src/frontend/ui/remote-launch-run";
-import { invalidateAccountsCache } from "../../../../src/frontend/ui/account-reads";
-import { launchRenderShim, localLaunchCalls, withAccountReads } from "../../../test-support/chan-fake";
+import { launchRenderShim, localLaunchCalls } from "../../../test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const runRemote = runRemoteResume as unknown as ReturnType<typeof vi.fn>;
@@ -90,47 +89,19 @@ describe("HistoryView 搜索卡片 resume (F85 #44)", () => {
   // history.ts::runResume 的 `(cd, an) => runRemoteResume(..., cd, an)` 接线本身。搜索卡片的
   // resume 按钮不带显式账号（`cardCtx.account` 恒 undefined，见 `buildSearchSession`），故这里
   // 走的是"跟随解析"分支——补一条"跟随解析真命中当前账号时 accountName 真的转传"的集成测试。
-  it("远端搜索卡片 resume（跟随解析命中当前账号）→ runRemoteResume 收到真实 configDir + accountName", async () => {
-    invalidateAccountsCache(); // fetchAccounts 有模块级缓存，防陈旧缓存挡住下面的自定义 mock
-    invokeMock.mockImplementation(withAccountReads((cmd: string) => {
-      if (cmd === "list_remote_accounts") {
-        return Promise.resolve({
-          available: true,
-          error: null,
-          meta: { enabled: true, acctsDir: "/h/.claude-alt", manifestPath: "/h/.claude-alt/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null },
-          accounts: [{ name: "z", email: "z@x.edu", configDir: "/h/.claude-alt/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true }],
-        });
-      }
-      if (cmd === "list_last_accounts") return Promise.resolve({}); // 无既有 pin → 落 current
-      return Promise.resolve(undefined);
-    }));
+  it("远端搜索卡片 resume → runRemoteResume 收到「跟随」（号那台判；界面不查账号库、不读 pin）", async () => {
     const view = new HistoryView();
     const card = buildCard(view, searchSession({ origin: "hostA" }));
     card.querySelector<HTMLButtonElement>(".search-session-resume")!.click();
     await new Promise((r) => setTimeout(r, 0));
-    expect(runRemote).toHaveBeenCalledWith("hostA", "claude", "s1", "/p", "", { configDir: "/h/.claude-alt/z", accountName: "z", modelOverride: undefined });
-    invalidateAccountsCache(); // fetchAccounts 有模块级缓存,别泄漏进同文件/同 worker 的其它测试
+    expect(runRemote).toHaveBeenCalledWith("hostA", "claude", "s1", "/p", "", { account: { kind: "follow" } });
   });
 
-  it("Codex 会话那一行：交的是 codex；它没有账号这一维 ⇒ 当前号在也不跟随、不带号", async () => {
-    invalidateAccountsCache();
-    invokeMock.mockImplementation(withAccountReads((cmd: string) => {
-      if (cmd === "list_remote_accounts") {
-        return Promise.resolve({
-          available: true,
-          error: null,
-          meta: { enabled: true, acctsDir: "/h/.claude-alt", manifestPath: "/h/.claude-alt/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null },
-          accounts: [{ name: "z", email: "z@x.edu", configDir: "/h/.claude-alt/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true }],
-        });
-      }
-      if (cmd === "list_last_accounts") return Promise.resolve({});
-      return Promise.resolve(undefined);
-    }));
+  it("Codex 会话那一行：交的是 codex；号照样交「跟随」（那一家没有账号这一维 ⇒ 那台什么都不选）", async () => {
     const view = new HistoryView();
     const card = buildCard(view, searchSession({ origin: "hostA", agent: "codex" }));
     card.querySelector<HTMLButtonElement>(".search-session-resume")!.click();
     await new Promise((r) => setTimeout(r, 0));
-    expect(runRemote).toHaveBeenCalledWith("hostA", "codex", "s1", "/p", "", {});
-    invalidateAccountsCache();
+    expect(runRemote).toHaveBeenCalledWith("hostA", "codex", "s1", "/p", "", { account: { kind: "follow" } });
   });
 });

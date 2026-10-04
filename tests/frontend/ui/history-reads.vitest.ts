@@ -113,9 +113,10 @@ describe("严格收：形状不对就抛，不猜", () => {
       customTitle: null,
       hidden: false,
       updatedAt: 1,
-      lastAccount: "a",
     };
     expect(decodeEntry({ entry: e })).toEqual(e);
+    // 「上次用哪个号起的」不归注解了：带着那一格 ⇒ 当形状不对。
+    expect(() => decodeEntry({ entry: { ...e, lastAccount: "a" } })).toThrow(HistoryShapeError);
     expect(() => decodeEntry({ entry: { ...e, extra: 1 } })).toThrow(
       HistoryShapeError,
     );
@@ -128,7 +129,7 @@ describe("严格收：形状不对就抛，不猜", () => {
 });
 
 describe("问的是谁、带了什么", () => {
-  it("本机项目 / 会话 / 改注解 / 上次账号：一律问 <local>，请求体逐键、显式给期限", async () => {
+  it("本机项目 / 会话 / 改注解问 <local>；上次账号问会话所在那台；请求体逐键、显式给期限", async () => {
     invokeMock.mockImplementation((_cmd: string, a: ChanCallArgs) => {
       switch (a.op) {
         case "history-projects":
@@ -143,7 +144,6 @@ describe("问的是谁、带了什么", () => {
                 customTitle: null,
                 hidden: false,
                 updatedAt: 9,
-                lastAccount: null,
               },
             }),
           );
@@ -156,7 +156,7 @@ describe("问的是谁、带了什么", () => {
     await fetchSessions({ projectDir: "-w-alpha" });
     await fetchSessions({ projectDir: "-w-alpha", origin: "dev" });
     await annotate("s1", { customTitle: "" });
-    await lastAccounts();
+    await lastAccounts("dev");
     const got = chanCalls().map((a) => [a.origin, a.op, chanArgsJson(a)]);
     expect(got).toEqual([
       ["<local>", "history-projects", {}],
@@ -171,7 +171,8 @@ describe("问的是谁、带了什么", () => {
         "history-annotate",
         { sid: "s1", patch: { customTitle: "" } },
       ],
-      ["<local>", "history-last-accounts", {}],
+      // 「上次用哪个号起的」问会话所在那台（每台各问一次）。
+      ["dev", "history-last-accounts", {}],
     ]);
     for (const a of chanCalls())
       expect(a.leftMs, `${a.op} 没给期限`).toBeGreaterThan(0);

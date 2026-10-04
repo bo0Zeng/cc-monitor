@@ -120,7 +120,7 @@ describe("C01 边界生成物", () => {
   it("派生 ts_rs::TS 的 Rust 源文件份数被钉住（自动发现的范围自检）", () => {
     // 这一条不是为了钉住某个数字，是为了让「新文件加了派生」这件事**红一次**
     // ——范围由 `tsDerivingSources()` 自动发现（不会漏），但**扩大范围要被看见**。
-    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(14); // +1（monitor `session_book.rs`：容器那一格的开放联合 `SessionContainer` / `TerminalHost`）// 子运行 +1（后端 `stream/wire.rs`：运行表那一格 `RunInfo` / `RunState`）// 扩展页 +1（后端 `assets/ext.rs`：扩展页那几问的线上形状）+1（后端 `agents/mod.rs`：`ToolCard` —— 一个 tool_use 画成哪一种卡，随 assistant 记录的 `toolCards` 带来）// 12 − 3（`messages.rs` 搬去后端 · `session_skeleton.rs` · `subagent.rs` 删了）＋ 1（后端 `agents/claudecode/schema.rs`：记录的线上形状从这里导出，范围扩到后端）// −2（`config_surface.rs` · `tool_registry.rs` 删了：足迹的申报表与判定进了后端，`ConfigSurfaceReport` / `SurfaceRow` / `SurfaceState` / `SettingsScope` / `EnvTier` 五个生成物出列，形状手写在 `src/frontend/ui/settings/footprint-reads.ts`，跨语言金样钉着）// −1（`pubkey.rs` 删了：公钥推送进本机后端，`PushResult` 生成物出列、形状手写在 `src/frontend/ui/pubkey-push.ts`）// 主线 18 ＋ MIG-1 −3（`port_forward.rs` · `backend/control/tmux.rs` · `stream_source/` 的测试连接）⇒ 15 // 24 → 23（`stream_source/` 不再派生：`ConnTestResult` 随测试连接那条命令删了，形状手写在 `src/frontend/ui/remote-probe.ts`）// 25 → 24（monitor `backend/control/tmux.rs` 不再派生：`TmuxSession` 随列会话那两条命令删了，形状手写在 `src/frontend/ui/tmux-reads.ts`，跨语言金样钉着）// 26 → 25（`port_forward.rs` 整份删了：转发账进本机常驻后端，`ForwardStatus` 出列，形状手写在 `src/frontend/ui/port-forward-reads.ts`）// 28 → 26（`skill_install.rs` 整份删了、`asset_sync.rs` 不再派生：skill 装卸与同步那一问进了后端 / 走通道，十个生成物同拍出列，形状手写在 `src/frontend/ui/skill-install-reads.ts` · `src/frontend/ui/assets-sync-reads.ts`）// −2（`mcp.rs` · `mcp_sync.rs` 整份删了：MCP 读写与推拉进了那台后端，五个生成物同拍出列，形状手写在 `src/frontend/ui/mcp-reads.ts` · `src/frontend/ui/mcp-sync-reads.ts`，解码器严格收）// −1（monitor `cc_bus.rs` 不再派生：驾驶舱读面的四个类型随两条读命令删了）// 主线 32 ＋ LOC1b −1（`search.rs` 删了）⇒ 31 // +1（`config.rs`：`ConfigEdit` —— config.json 按键补丁的线上形状，整份替换的 `save_config` 删了 〔散文墓碑〕） // 主线 33 ＋ 本路 -2 ⇒ 31 // 子步 6 −1（`remote_history.rs` 不再派生：`RemoteProjectsResult` 随远端项目清单那条命令删了；`history.rs` 仍派生 `BranchResult`，照旧在列） // 子步 3 −1（`accounts.rs` 整份删了：`AuthKind` / `RemoteAccount` 两个生成物没了产出者、同拍出列，形状手写在 `src/frontend/ui/accounts.ts`） // 主线 32 ＋ 本路 `session_skeleton.rs` ＋1（`SessionLinesPage`）⇒ 33 // 主线 31 ＋ AS2 +2 ＋ RM1f −1 ⇒ 32（跑出来核过） // +1（`skill_install.rs`：skill「装到这台」的六个形状） // 主线 31 ＋ AS2 +1（`asset_sync.rs`：`AssetsSynced` / `AssetsSyncRow` / `AssetsReach`） // 主线 31 ＋ AL1d -1 ＋ AS1 +1 ⇒ 31（跑出来核过；AS1：mcp_sync_preview / mcp_sync_apply，Both，新能力 `mcp.sync`） // **`lib.rs` −1**（「终端集成」五条命令退役，`CcStatusResponse` / `LegacyProfileEntry` / `CcPreviewResponse` 随之删了，`lib.rs` 从此不派生 TS 类型；合并主线 636cc1a0 按两边增量相加 31 − 1）； // **`plugins.rs` 删了 −1（`MarketplaceSurvey` / `MarketplaceEntry` 两个生成物同拍出列，形状改住 `settings/plugins-section.ts`）** // **`session_find.rs` / `session_outline.rs` 删了 −2、`session_skeleton.rs` 不再派生（`SessionIndexResult` 随骨架索引那条命令删了）−1** // **`shell_dialect.rs` +1**（`Shell`：别名三条命令的方言入参）； **`session_find.rs` +1**（`FindResult` / `FindHit`）； **`sftp_pool.rs` −1**（`TransferProgress` 随池子最后那条命令删了，那份文件从此不派生任何 TS 类型）； **`ssh_link.rs` +1**（`ConnectStage` 从 `stream_source/` 搬过去；`stream_source/` 自己还派生别的几个，照旧在列）； **`session_outline.rs` +1**（`UserInputsResult` / `UserInputEntry`）； **〔骨架〕`session_skeleton.rs` +1**（`SessionIndexResult`）； **`origin.rs` +1**（`Origin` —— 「这一趟问的是哪台机器」的唯一类型；生成物 `Origin.ts` ＝ `null | string`，与今天 TS 侧逐字等价 ⇒ 零协议变更）；** −2（`usage.rs` 与 `account_usage.rs` 整删：`UsageTotals`/`SessionUsageRow`/`UsageBucket` 与 `AccountUsageProbeResult` 四个生成物同拍出列）** // G6 tmux.rs +1；E79 accounts.rs +1；**P8a plugins.rs +1**；**PS1 cc_bus_deploy.rs +1**；**K-R49 account_aliases.rs +1**；**K-R65 tool_registry.rs +1**（`EnvTier` 上线 ⇒ 那一页按档的**值**分档，不再靠措辞猜）
+    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(15); // +1（后端 `control/launch_account.rs`：起会话那一格要哪个号 · 选不了那一形 · 实际用的号）// +1（monitor `session_book.rs`：容器那一格的开放联合 `SessionContainer` / `TerminalHost`）// 子运行 +1（后端 `stream/wire.rs`：运行表那一格 `RunInfo` / `RunState`）// 扩展页 +1（后端 `assets/ext.rs`：扩展页那几问的线上形状）+1（后端 `agents/mod.rs`：`ToolCard` —— 一个 tool_use 画成哪一种卡，随 assistant 记录的 `toolCards` 带来）// 12 − 3（`messages.rs` 搬去后端 · `session_skeleton.rs` · `subagent.rs` 删了）＋ 1（后端 `agents/claudecode/schema.rs`：记录的线上形状从这里导出，范围扩到后端）// −2（`config_surface.rs` · `tool_registry.rs` 删了：足迹的申报表与判定进了后端，`ConfigSurfaceReport` / `SurfaceRow` / `SurfaceState` / `SettingsScope` / `EnvTier` 五个生成物出列，形状手写在 `src/frontend/ui/settings/footprint-reads.ts`，跨语言金样钉着）// −1（`pubkey.rs` 删了：公钥推送进本机后端，`PushResult` 生成物出列、形状手写在 `src/frontend/ui/pubkey-push.ts`）// 主线 18 ＋ MIG-1 −3（`port_forward.rs` · `backend/control/tmux.rs` · `stream_source/` 的测试连接）⇒ 15 // 24 → 23（`stream_source/` 不再派生：`ConnTestResult` 随测试连接那条命令删了，形状手写在 `src/frontend/ui/remote-probe.ts`）// 25 → 24（monitor `backend/control/tmux.rs` 不再派生：`TmuxSession` 随列会话那两条命令删了，形状手写在 `src/frontend/ui/tmux-reads.ts`，跨语言金样钉着）// 26 → 25（`port_forward.rs` 整份删了：转发账进本机常驻后端，`ForwardStatus` 出列，形状手写在 `src/frontend/ui/port-forward-reads.ts`）// 28 → 26（`skill_install.rs` 整份删了、`asset_sync.rs` 不再派生：skill 装卸与同步那一问进了后端 / 走通道，十个生成物同拍出列，形状手写在 `src/frontend/ui/skill-install-reads.ts` · `src/frontend/ui/assets-sync-reads.ts`）// −2（`mcp.rs` · `mcp_sync.rs` 整份删了：MCP 读写与推拉进了那台后端，五个生成物同拍出列，形状手写在 `src/frontend/ui/mcp-reads.ts` · `src/frontend/ui/mcp-sync-reads.ts`，解码器严格收）// −1（monitor `cc_bus.rs` 不再派生：驾驶舱读面的四个类型随两条读命令删了）// 主线 32 ＋ LOC1b −1（`search.rs` 删了）⇒ 31 // +1（`config.rs`：`ConfigEdit` —— config.json 按键补丁的线上形状，整份替换的 `save_config` 删了 〔散文墓碑〕） // 主线 33 ＋ 本路 -2 ⇒ 31 // 子步 6 −1（`remote_history.rs` 不再派生：`RemoteProjectsResult` 随远端项目清单那条命令删了；`history.rs` 仍派生 `BranchResult`，照旧在列） // 子步 3 −1（`accounts.rs` 整份删了：`AuthKind` / `RemoteAccount` 两个生成物没了产出者、同拍出列，形状手写在 `src/frontend/ui/accounts.ts`） // 主线 32 ＋ 本路 `session_skeleton.rs` ＋1（`SessionLinesPage`）⇒ 33 // 主线 31 ＋ AS2 +2 ＋ RM1f −1 ⇒ 32（跑出来核过） // +1（`skill_install.rs`：skill「装到这台」的六个形状） // 主线 31 ＋ AS2 +1（`asset_sync.rs`：`AssetsSynced` / `AssetsSyncRow` / `AssetsReach`） // 主线 31 ＋ AL1d -1 ＋ AS1 +1 ⇒ 31（跑出来核过；AS1：mcp_sync_preview / mcp_sync_apply，Both，新能力 `mcp.sync`） // **`lib.rs` −1**（「终端集成」五条命令退役，`CcStatusResponse` / `LegacyProfileEntry` / `CcPreviewResponse` 随之删了，`lib.rs` 从此不派生 TS 类型；合并主线 636cc1a0 按两边增量相加 31 − 1）； // **`plugins.rs` 删了 −1（`MarketplaceSurvey` / `MarketplaceEntry` 两个生成物同拍出列，形状改住 `settings/plugins-section.ts`）** // **`session_find.rs` / `session_outline.rs` 删了 −2、`session_skeleton.rs` 不再派生（`SessionIndexResult` 随骨架索引那条命令删了）−1** // **`shell_dialect.rs` +1**（`Shell`：别名三条命令的方言入参）； **`session_find.rs` +1**（`FindResult` / `FindHit`）； **`sftp_pool.rs` −1**（`TransferProgress` 随池子最后那条命令删了，那份文件从此不派生任何 TS 类型）； **`ssh_link.rs` +1**（`ConnectStage` 从 `stream_source/` 搬过去；`stream_source/` 自己还派生别的几个，照旧在列）； **`session_outline.rs` +1**（`UserInputsResult` / `UserInputEntry`）； **〔骨架〕`session_skeleton.rs` +1**（`SessionIndexResult`）； **`origin.rs` +1**（`Origin` —— 「这一趟问的是哪台机器」的唯一类型；生成物 `Origin.ts` ＝ `null | string`，与今天 TS 侧逐字等价 ⇒ 零协议变更）；** −2（`usage.rs` 与 `account_usage.rs` 整删：`UsageTotals`/`SessionUsageRow`/`UsageBucket` 与 `AccountUsageProbeResult` 四个生成物同拍出列）** // G6 tmux.rs +1；E79 accounts.rs +1；**P8a plugins.rs +1**；**PS1 cc_bus_deploy.rs +1**；**K-R49 account_aliases.rs +1**；**K-R65 tool_registry.rs +1**（`EnvTier` 上线 ⇒ 那一页按档的**值**分档，不再靠措辞猜）
   });
 
   it("生成目录里只有生成物，且每个都带「不许手改」标记", () => {
@@ -143,6 +143,8 @@ describe("C01 边界生成物", () => {
       // 一类别名（名字 ＋ 一组 ccm 参数）· 渲染（纯）· 读回 · 写入。
       // 账号库那几条命令的线上形状（`acct-core::wire`，后端按它严格收入参、按它回成品；界面 `account-ops.ts` 用它）。
       "AccountAddArgs.ts",
+      // 起会话那一格「要哪个号」（跟随 · 账号 0 · 点名）与「选不了」那一形、实际用的号（后端 `control/launch_account.rs`）。
+      "AccountAsk.ts",
       "AccountChange.ts",
       "AccountInitArgs.ts",
       "AccountIsolateArgs.ts",
@@ -159,6 +161,7 @@ describe("C01 边界生成物", () => {
       "AccountRemoveArgs.ts",
       "AccountRepairArgs.ts",
       "AccountRollbackArgs.ts",
+      "AccountUnavailable.ts",
       "AliasChange.ts",
       "ApiMessage.ts", //             C04c
       // 资产目录同步的应答（`assets_sync`）：每一趟的结局 ＋ 可达表。
@@ -211,6 +214,7 @@ describe("C01 边界生成物", () => {
       //   （流里一格的体是 `SessionStreamFrame`）。
       "JsonlLinePayload.ts", //       C04c
       "JsonlRecord.ts", //            C04c（**线定义本身**：wire == serde_json::to_string(它)）
+      "LaunchedAccount.ts",
       "LocalCcmEntry.ts", // `K-R69`：本机那条 `ccm` 入口这一格（我们那一份 · PATH 上那一份 · 判词 · 那句话）
       "LogFileEntry.ts", // C04d 批4（LogFileInfo 的传递依赖）
       "LogFileInfo.ts", // C04d 批4（字节数 + 毫秒时间戳，两个量纲分开论证）
@@ -269,21 +273,13 @@ describe("C01 边界生成物", () => {
       // 标识符放行判定（`INVARIANTS §47` ①）里前端写入点要先说一句的那一格（模型名）—— 式子从 `shell-quote-core` 的常量现生成，
       // 前端不手抄规则。排在这里是默认排序：小写 `j` 在 `a` 之后、`l` 之前。
       "judgment-rules.ts",
-      // 🔴 `K-R95`（09-12）：**第二份值表**，源是
-      // `src/backend/control/launch_render/wire.rs::export_bindings_launch_render_facts`〔MIG-2 搬进后端〕。
-      // 三格：`ccm` 调用行每次无条件要求的能力集 · 八句降级理由的措辞 ·
-      // 本机拉起载荷里「哪个号」那一格的 wire 键名。三格此前都在前端各写一份
-      //（定框 `K28`：前端不许自己发明对外行为）。
-      "launch-render-facts.ts",
     ]);
     // `K-R93`：「谁生成的」这一格从此认**多种**标记（ts-rs / 上面那两个值表生成器）——
     // 让一个非 ts-rs 的生成物顶着 ts-rs 的头，那是往生成物里写一句假话。
     // ⚠ 「不许手改」那一格**一个字没放松**：两种生成物都必须带。
-    // `K-R95`：第三种标记 —— 值表生成器不止 `adapter.rs` 一个了。
     const GENERATED_BY = [
       TS_RS_HEADER,
       "src/backend/agents/mod.rs", // `agent-profile-table.ts` 的生成器随值的家进了后端注册表（从前是 monitor `adapter.rs`）
-      "src/backend/control/launch_render/wire.rs", // `launch-render-facts.ts` 的生成器随渲染搬进后端
       "src/frontend/shell/src/payload.rs", // `judgment-rules.ts`
     ];
     for (const f of files) {

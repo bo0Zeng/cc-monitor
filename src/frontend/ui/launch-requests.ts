@@ -4,12 +4,7 @@
  * 每一条都说是哪一家（`agent`）：怎么 resume、能不能选号由那台后端按它渲；启动器缺省取那一家的默认启动器。
  */
 import { DEFAULT_AGENT, defaultLauncherOf } from "./agent-profile.ts";
-import type { LaunchAccount, LaunchContext, LaunchModifiers } from "./launch-types.ts";
-
-/** 有目录 ⇒ 具名账号（名字说得出才带）；没有 ⇒ 账号 0。 */
-function accountOf(configDir?: string, name?: string): LaunchAccount {
-  return configDir ? { kind: "account", name, configDir } : { kind: "base" };
-}
+import type { LaunchContext, LaunchModifiers } from "./launch-types.ts";
 
 /**
  * 设置里配的 resume 命令（`cc` / `cct` 这类）是给默认那一家配的 ⇒ 只用在那一家的会话上；
@@ -32,10 +27,10 @@ export function planResumeDirect(
     action: { kind: "resume", sid },
     container: { kind: "none" },
     cwd: cwd.trim() || null,
-    account: accountOf(mods.configDir, mods.accountName),
+    account: mods.account ?? { kind: "follow" },
+    models: mods.models ?? {},
     launcherOverride: launcher,
     ccmSid: undefined,
-    modelOverride: mods.modelOverride,
   };
 }
 
@@ -53,10 +48,10 @@ export function planResumeTmux(
     action: { kind: "resume", sid },
     container: { kind: "tmux", name, mode: "create" },
     cwd: cwd.trim() || null,
-    account: accountOf(mods.configDir, mods.accountName),
+    account: mods.account ?? { kind: "follow" },
+    models: mods.models ?? {},
     launcherOverride: launcher ?? defaultLauncherOf(agent),
     ccmSid: sid, // 自建 resume 会话打完整 sid，供精确找回那个会话
-    modelOverride: mods.modelOverride,
   };
 }
 
@@ -73,10 +68,10 @@ export function planResumeIntoExistingTmux(
     action: { kind: "resume", sid },
     container: { kind: "tmux", name, mode: "send-into" },
     cwd: null,
-    account: accountOf(mods.configDir, mods.accountName),
+    account: mods.account ?? { kind: "follow" },
+    models: mods.models ?? {},
     launcherOverride: launcher,
     ccmSid: undefined, // 复用的会话建时已打过标，不重设
-    modelOverride: mods.modelOverride,
   };
 }
 
@@ -93,10 +88,10 @@ export function planLauncher(
     action: { kind: "new" },
     container: { kind: "tmux", name: tmuxName.trim(), mode: "create" },
     cwd: cwd.trim() || null,
-    account: accountOf(mods.configDir, mods.accountName),
+    account: mods.account ?? { kind: "follow" },
+    models: mods.models ?? {},
     launcherOverride: command,
     ccmSid: undefined,
-    modelOverride: mods.modelOverride,
   };
 }
 
@@ -108,6 +103,7 @@ export function planAttach(agent: string, name: string): LaunchContext {
     container: { kind: "tmux", name, mode: "attach-only" },
     cwd: null,
     account: { kind: "base" },
+    models: {},
     launcherOverride: undefined,
     ccmSid: undefined,
   };

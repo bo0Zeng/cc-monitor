@@ -452,6 +452,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 → {"id":"<opaque>","cmd":"<name>","args":{...}}          请求（一行一个）
 ← {"kind":"reply","id":"<opaque>","ok":true,"data":{…}}   成功（`data` 是命令的返回值，无返回值时省略）
 ← {"kind":"reply","id":"<opaque>","ok":false,"code":"…","message":"…"}
+← {"kind":"reply","id":"<opaque>","ok":false,"code":"…","message":"…","data":{…}}   少数几个码的失败带 `data`（形状按码定）
 ← {"kind":"cancelled","id":"<被取消的 id>"}
 → {"id":"<opaque>","cmd":"cancel","args":{"target":"<id>"}}
 ```
@@ -462,7 +463,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `cmd` | → | 命令名 |
 | `args` | → | 命令自己的参数对象，缺省 `{}` |
 | `ok` | ← | 成败。`true` 时 `code` / `message` **不上线**（skip_if_none） |
-| `data` | ← | 命令的返回值（如 `resolve` 的 CommandPlan）。无返回值的命令省略 |
+| `data` | ← | 命令的返回值（如 `resolve` 的 CommandPlan）。无返回值的命令省略。**失败时**只有协议文档里给那个码定了形的才带（今天只有 `account_unavailable`，见 `launch-render-cli`），别的失败不出这一格、字节与从前逐字相同 |
 | `code` / `message` | ← | 失败原因。形状**对齐 `--resolve` 已冻结的那套**（协议 v1 §3），不发明第二种错误 JSON |
 
 **四条刻意的选择：**
@@ -812,21 +813,27 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
 → {"id":"S2","cmd":"sessions-start","args":{
      "mode":"tmux" | "window",
      "local":true,                      // 这台是不是 monitor 所在那台（开终端那一形按它选本机 / 远端那一行）
-     "items":[{"agent":"claude","sid":"<sid>","cwd":"/x",
-               "account":{"kind":"inherit"} | {"kind":"base"} | {"kind":"named","name":"work","configDir":"/h/.cc/work"},
-               "model":null,"launcher":"claude","defaultLauncher":"claude"}]}}
+     "agent":"claude","launcher":"claude","defaultLauncher":"claude",   // 整批一份：哪一家 · 用户设置的 resume 命令原值
+     "models":{"work":"opus"},          // 可缺：这台的模型偏好表原值（{号: 模型}，只用在远端那一行上）
+     "items":[{"sid":"<sid>","cwd":"/x",
+               "account":{"kind":"follow"} | {"kind":"base"} | {"kind":"named","name":"work"}}]}}   // `account` 可缺 ＝ 跟随
 ← {"kind":"reply","id":"S1","ok":true,"data":{"results":[
      {"sid":"<sid>","outcome":"done" | "skipped" | "failed","why":null,"detail":"",
-      "session":"proj-cc","bus":{"removed":[],"failed":[],"unread":null},"cmd":null}]}}
+      "session":"proj-cc","bus":{"removed":[],"failed":[],"unread":null},"cmd":null,
+      "account":{"name":"work","configDir":"/h/.cc/work","model":"opus"} | null,
+      "unavailable":{"requested":"gone","pinned":true,"listKnown":true,"alternative":"work"} | null}]}}
 ```
 
 `results` 与入参逐个同序。`outcome`：`done` 做成了 · `skipped` 这一个不用做 / 做不了（`why` 说为什么）· `failed` 做了没成（`why` ＋ `detail` 是单个那一条的码与原话）。
-`session` = 落在哪个 tmux 会话上；`bus` 只有停那一条有（同 `kill`）；`cmd` 只有开终端那一形有（monitor 拿它开窗）。
+`session` = 落在哪个 tmux 会话上；`bus` 只有停那一条有（同 `kill`）；`cmd` 只有开终端那一形有（monitor 拿它开窗）；
+`account` = 起成了的那一条实际用的号（同 `launch-local` 应答那一格；停 / 没起 / 不指定号 ⇒ `null`）；
+`unavailable` = 选不了号的那一项的那一形（同 `account_unavailable` 的 `data`；别的 ⇒ `null`）。
 
 - **停**：`running` / `idle` ⇒ 结束那一个，同 `kill`（三道门、杀句柄、顺手注销 cc-bus），门里另核此刻有窗格挂着它（认完名字换了人 ⇒ `wrong_owner`）；
   同会话里还有别的 claude 窗格 ⇒ 只关挂着它的窗格（Gate 3 不适用），没有 ⇒ 整个会话。
   `none` ⇒ `skipped`/`not_in_tmux`；`ambiguous` ⇒ `skipped`/`ambiguous`（`detail` 列名字，不杀）。
-- **起**：先问记录还在不在（同 `history-record`，查 `account.configDir` 那棵树）—— 不在 ⇒ `skipped`/`record_gone`（`detail` = 查的那棵树）。
+- **起**：先判用哪个号（同 `launch-render-cli` 的 `account`）—— 选不了 ⇒ `skipped`/`account_unavailable`（`detail` = 要的那个号），不挡同批别的；
+  再问记录还在不在（同 `history-record`，查那个号那棵树）—— 不在 ⇒ `skipped`/`record_gone`（`detail` = 查的那棵树）。
   - `mode:"tmux"`（不接进去）：`running` ⇒ `skipped`/`running`；`ambiguous` ⇒ `skipped`/`ambiguous`（`session` 是第一个）；`idle` ⇒ 把直路那一行键入挂着它的那个窗格（同 `launch` 的 `send-into` 带 `ccm_sid`：过同一道身份门，送不进的码也同它）；
     `none` ⇒ 这台铸名（同 `terminal-name-mint`），交**界面「在 tmux 里 Resume」那一行**（远端同 `launch-render-cli`、本机同 `launch-local`，同一份映射、同一个渲染器）只多 `--detach`，
     由这台后端自己当 ccm 跑（环境、中转地址、身份标记、自检都由 ccm 那一趟做）；退出码 3（名字有人了）⇒ `failed`/`name_taken`，别的非零 ⇒ `failed`/`start_failed`（`detail` 是 ccm 的原话），15 s 没结束（或整批的总期限用完了）⇒ `failed`/`child_timed_out`。
@@ -1928,20 +1935,33 @@ monitor 每一条远端起会话路径（直连 resume · 建 tmux 会话 resume
 （原 monitor 的 Tauri 命令 `render_ccm_launch`〔散文墓碑〕搬进那台后端；载荷那一条随起会话只交一行 `ccm …` 删了。）
 
 ```text
-→ {"id":"c1","cmd":"launch-render-cli","args":{"agent":"claude","action":{"kind":"resume","sid":"s1"},"container":{"kind":"tmux","name":"cc-s1","send_into":false},"cwd":"/p","account":{"kind":"account","name":"z","configDir":"/home/u/.cc-monitor/accounts/z"},"ccmSid":"s1","model":null,"launcher":"claude","defaultLauncher":"claude"}}
-← {"kind":"reply","id":"c1","ok":true,"data":{"cmd":"ccm --resume s1 -- --ccm-tmux=cc-s1 --ccm-sid=s1 --ccm-agent claude --account z --cwd /p"}}
+→ {"id":"c1","cmd":"launch-render-cli","args":{"agent":"claude","action":{"kind":"resume","sid":"s1"},"container":{"kind":"tmux","name":"cc-s1","send_into":false},"cwd":"/p","account":{"kind":"follow"},"ccmSid":"s1","model":null,"models":{"z":"opus"},"launcher":"claude","defaultLauncher":"claude"}}
+← {"kind":"reply","id":"c1","ok":true,"data":{"cmd":"ccm --resume s1 -- --ccm-tmux=cc-s1 --ccm-sid=s1 --ccm-agent claude --account z --model opus --cwd /p",
+     "account":{"name":"z","configDir":"/home/u/.cc-monitor/accounts/z","model":"opus"}}}
+→ {"id":"c2","cmd":"launch-render-cli","args":{…,"account":{"kind":"named","name":"gone"},…}}
+← {"kind":"reply","id":"c2","ok":false,"code":"account_unavailable","message":"…",
+     "data":{"requested":"gone","pinned":false,"listKnown":true,"alternative":"z"}}
 ```
+
+**用哪个号这台自己判**（`control/launch_account.rs::pick`，三条起会话请求同一份）：`follow` ⇒ 这条会话上次用的号（这台家里的 `launch-accounts.json`）→ 这台的默认号（账号库清单里 `isDefault` 的那一个，没有就第一个）→ 不指定；
+上次那个号选不了 ⇒ **不起**（`account_unavailable`，`pinned:true`），绝不悄悄换成别的号。`named` ⇒ 用户点的那个号（选不了同样 `account_unavailable`）；只有 `configDir`、没有 `name` ⇒ 原样 `--account-dir`。
+「选得了」＝ 隔离模式 · 鉴权前提就绪 · 目录在（同 `accounts-list` 那一份成品）。
+「上次用哪个号起的」由这台记：`ccm` 最终那一跳给将要跑 agent 的那个进程留张便条（`launch-pending/<pid>.json`），这台的会话观测看见那个 pid 的会话时把 `sid → 号` 记下（便条留到进程不在才清）。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `agent` | → | **必填**：这个会话是哪一家（`claude` / `codex`）。resume 按那一家的写法渲（`--resume <sid>` · `resume <sid>`），`--ccm-agent <kind>` 恒显式写出（接回不写）；认不出 ⇒ `refused` 并列出认得的几家；那一家没有账号这一维却给了具名账号 ⇒ `refused` |
 | `action` | → | `{"kind":"new"}` · `{"kind":"resume","sid":…}` · `{"kind":"attach","name":…}` |
 | `container` | → | `{"kind":"none"}`（直路）· `{"kind":"tmux","name":…,"send_into":bool}`（建会话 / 键进已有 pane）|
-| `cwd` · `ccmSid` · `model` · `launcher` · `defaultLauncher` | → | 这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）|
-| `account` | → | `{"kind":"base"}` · `{"kind":"account","name"?:…,"configDir"?:…}`（说得出名字 ⇒ `--account`；只有目录 ⇒ `--account-dir`）|
+| `cwd` · `ccmSid` · `model` · `launcher` · `defaultLauncher` | → | 这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）；`model` = 显式指定的模型（压过 `models`）|
+| `models` | → | 可缺：这台的模型偏好表（`{号: 模型}`，用户设置的原值）；判出来的号在表里 ⇒ `--model` 用那一条 |
+| `account` | → | `{"kind":"follow"}` · `{"kind":"base"}` · `{"kind":"named","name"?:…,"configDir"?:…}`（有名字 ⇒ 按名字判、`configDir` 不看；只有目录 ⇒ `--account-dir`）—— 生成的类型 `AccountAsk` |
 | `cmd` | ← | 那一行 `ccm …` |
+| `account` | ← | 实际用的号 `{name, configDir, model}`（生成的类型 `LaunchedAccount`）；账号 0 / 不指定 ⇒ `null` |
 
-**错误码**：`bad_args`（入参形状不对）· `refused`（渲不出来：缺能力 · 说不出的修饰 · 坏值，理由原样；调用方**不回落、不拼第二条**）。
+**错误码**：`bad_args`（入参形状不对）· `refused`（渲不出来：缺能力 · 说不出的修饰 · 坏值，理由原样；调用方**不回落、不拼第二条**）·
+`account_unavailable`（要的号选不了 —— 没起。`data`（生成的类型 `AccountUnavailable`）：`requested` 要的那个号 · `pinned` 它是这条会话上次用的号（跟随）· `listKnown` 这台的账号清单读得出来 · `alternative` 这台的默认号（能用、且不是要的那个；没有 ⇒ `null`），界面据它给「改用某号」的显式选择、点了再以 `named` 重发）。
+阻塞档（要读这台的账号清单与那份记录）。
 CLI 面（`--launch-render-cli`）从 `inbound::REGISTRY` 派生，入参从 stdin 读。
 
 #### `launch-local`：本机起会话那一行 `ccm …`
@@ -1952,8 +1972,9 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 起 agent 的那几形带 `--ccm-launch-id <token>`（resume 用 sid，新起现铸一个 nonce）：`ccm` 把它放进 agent 进程环境（`CCM_LAUNCH_ID`），调用方拿它回填新会话的 sid。
 
 ```text
-→ {"id":"l1","cmd":"launch-local","args":{"agent":"claude","action":{"kind":"new"},"cwd":"/w","launcher":null,"account":null,"tmuxName":"w-cc","defaultLauncher":"claude"}}
-← {"kind":"reply","id":"l1","ok":true,"data":{"cmd":"ccm -- new --ccm-tmux=w-cc --ccm-agent claude --ccm-launch-id …","launchId":"…"}}
+→ {"id":"l1","cmd":"launch-local","args":{"agent":"claude","action":{"kind":"new"},"cwd":"/w","launcher":null,"account":{"kind":"follow"},"tmuxName":"w-cc","defaultLauncher":"claude"}}
+← {"kind":"reply","id":"l1","ok":true,"data":{"cmd":"ccm -- new --ccm-tmux=w-cc --ccm-agent claude --account z --ccm-launch-id …","launchId":"…",
+     "account":{"name":"z","configDir":"/home/u/.cc-monitor/accounts/z","model":null}}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -1962,13 +1983,14 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 | `action` | → | `{"kind":"new"}` · `{"kind":"resume","sid":…}` · `{"kind":"attach"}`（接回 `tmuxName` 那个会话，不起 agent）|
 | `cwd` | → | 只用来核「新起」那一格的目录在不在 |
 | `launcher` | → | 自定义启动命令（空 = 没设）|
-| `account` | → | 缺席 / `null`（继承）· `{"kind":"base"}` · `{"kind":"named","configDir":…,"name"?:…}` |
+| `account` | → | 缺席（不表态：继承；接回那一形）· 同 `launch-render-cli`（`follow` 什么都没选上 ⇒ 也是不表态）|
 | `tmuxName` | → | 建进 tmux 时的会话名（界面铸名口铸的，这里不铸）；缺 ⇒ 直路 |
 | `defaultLauncher` | → | 这一家 agent 的默认启动器（等于它就不吐 `--launcher`）|
 | `cmd` | ← | 那一行 `ccm …` |
 | `launchId` | ← | 交给 `ccm` 放进 agent 进程环境的身份 token；接回那一格 `null` |
+| `account` | ← | 同 `launch-render-cli`（本机那一行不带模型 ⇒ `model` 恒 `null`）|
 
-**错误码**：`bad_args` · `refused`（坏输入 · 目录不在 · Windows 上接回）。只上流面（`cli_control::STREAM_ONLY`：回的 token 要交回界面）。
+**错误码**：`bad_args` · `refused`（坏输入 · 目录不在 · Windows 上接回）· `account_unavailable`（同 `launch-render-cli`，带同一形 `data`）。只上流面（`cli_control::STREAM_ONLY`：回的 token 要交回界面）。
 
 #### 起会话那一行在最终 exec 那一处定的几样（`ccm`）
 
@@ -2333,20 +2355,20 @@ $ printf '%s' '{"dest":"/home/u/.cc-monitor/bin/ccm","machine":"本机"}' | .ccm
 
 #### `history-annotate`：改一条历史注解（2026-09-25）
 
-历史注解（星标 / 改名 / 隐藏 / 上次用哪个号起这个会话）的**读写者是本机常驻后端**（文件留在原处、同一路径，不迁移、一条不丢）。
+历史注解（星标 / 改名 / 隐藏）的**读写者是本机常驻后端**（文件留在原处、同一路径，不迁移、一条不丢）。
 那份文件就是 monitor 从前读写的 `<家>/history-metadata.json`（家 = `~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`）：那台后端按家推（推不出家 ⇒ `no_annotations`，不猜路径）。
 写是后端**自有状态**（`readonly_guard` 第四层）：先严格读一遍，读不懂 ⇒ `annotations_unreadable`、原文件一个字节不动；再在原文上只改那一条（其余条目与认不出的键原样留着）→ `O_EXCL` 临时文件 → 原子挪过去。
 
 ```text
 → {"id":"a1","cmd":"history-annotate","args":{"sid":"0f…","patch":{"starred":true}}}
-← {"kind":"reply","id":"a1","ok":true,"data":{"entry":{"starred":true,"customTitle":null,"hidden":false,"updatedAt":1727250000000,"lastAccount":null}}}
+← {"kind":"reply","id":"a1","ok":true,"data":{"entry":{"starred":true,"customTitle":null,"hidden":false,"updatedAt":1727250000000}}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `sid` | → | 会话 id |
-| `patch` | → | 要改的那几格：`starred` / `customTitle` / `hidden` / `lastAccount`（后两格也认蛇形 `custom_title` / `last_account`）。缺格或 `null` = 不改；标题 / 账号名给空白串 = 清空；多一格 ⇒ `bad_args` |
-| `entry` | ← | 改完的那一条：`starred` · `customTitle`（`null` = 没改过名）· `hidden` · `updatedAt`（毫秒，= 这一次）· `lastAccount`（`null` = 没记过） |
+| `patch` | → | 要改的那几格：`starred` / `customTitle` / `hidden`（`customTitle` 也认蛇形 `custom_title`）。缺格或 `null` = 不改；标题给空白串 = 清空；多一格 ⇒ `bad_args` |
+| `entry` | ← | 改完的那一条：`starred` · `customTitle`（`null` = 没改过名）· `hidden` · `updatedAt`（毫秒，= 这一次） |
 
 **错误码**：`bad_args` · `no_annotations`（这个后端没被交路径）· `annotations_unreadable`（那份文件读不懂 / 读不动 —— 没有覆盖它）· `io_failed`。
 ⚠ **CLI 面也有它**（`--history-annotate`，入参从 stdin 读）；一次性进程多半没被交路径 ⇒ `no_annotations`。
@@ -2368,9 +2390,9 @@ $ printf '%s' '{"dest":"/home/u/.cc-monitor/bin/ccm","machine":"本机"}' | .ccm
 **错误码**：同 `history-annotate`。
 ⚠ **CLI 面也有它**（`--history-forget`，入参从 stdin 读）；一次性进程多半没被交路径 ⇒ `no_annotations`。
 
-#### `history-last-accounts`：sid → 上次用哪个号起（2026-09-25，**只读**）
+#### `history-last-accounts`：sid → 上次用哪个号起（**只读**）
 
-账号徽章的回落来源（「上次用本工具带账号起」）与带账号 resume 前的现读。只含真记过账号的那几条。
+这台的起会话账号记录（`launch-accounts.json`，见 `launch-render-cli` 那一节末尾）：会话跑在哪台就问哪台，每台各问一次。账号徽章「不活的会话」那一级的来源。只含真记过账号的那几条。
 
 ```text
 → {"id":"l1","cmd":"history-last-accounts","args":{}}
@@ -2381,8 +2403,8 @@ $ printf '%s' '{"dest":"/home/u/.cc-monitor/bin/ccm","machine":"本机"}' | .ccm
 |---|---|---|
 | `accounts` | ← | `{sid: 账号名}` |
 
-**错误码**：`no_annotations` · `annotations_unreadable`（读不懂不说成「一条都没有」）。
-⚠ **CLI 面也有它**（`--history-last-accounts`，不读 stdin）；一次性进程多半没被交路径 ⇒ `no_annotations`。
+**错误码**：`unreadable`（那份记录读不懂 —— 不说成「一条都没有」）。没有这份文件 / 推不出家 ⇒ 空表。
+⚠ **CLI 面也有它**（`--history-last-accounts`，不读 stdin）。
 
 #### `remote-reach`：本机后端的可达表登记（2026-09-25）
 

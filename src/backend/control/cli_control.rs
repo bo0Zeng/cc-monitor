@@ -282,6 +282,7 @@ pub async fn run(args: &[String]) -> i32 {
     // ★ 这三行是本模块的全部：**派发落到 `REGISTRY` 自己的 `run`**。
     let outcome = match spec.run {
         Run::Blocking(f) => f(req),
+        Run::BlockingData(f) => f(req).map_err(|f| (f.code, f.message)),
         Run::Async(f) => f(req).await,
         Run::Builtin => {
             return emit_err(

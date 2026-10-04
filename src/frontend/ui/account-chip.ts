@@ -16,7 +16,7 @@
 // （chip 那一台答的两格事实，本机远端同一条路）。
 import { apikeyEndpointStateFor, deriveUi, currentWorkingAccount, accountColorsActive, isSelectable, accountStatusBadge, type AccountsState, type Account } from "./accounts";
 import { fetchAccounts, fetchLocalAccounts, fetchMachineApikeyRouting, invalidateAccountsCache } from "./account-reads";
-import { setDefaultName } from "./account-prefs";
+import { accountsSetDefault } from "./account-ops";
 import type { ApikeyRoutingView } from "./apikey-reads";
 import { accountAvatarEl } from "./account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "./remote-config";
@@ -370,8 +370,8 @@ export class AccountChip {
   private async selectDefault(a: Account): Promise<void> {
     this.closeMenu();
     try {
-      await setDefaultName(this.origin, a.name);
-      // 默认账号按机器存：只清这一台的缓存。
+      await accountsSetDefault(this.origin, a.name);
+      // 默认账号住那台的账号库清单：只清这一台的缓存。
       invalidateAccountsCache(this.origin);
       await this.refresh(true);
       // 立刻重算会话账号/⚠k（否则 currentByOrigin 要等下一拍 10s 轮询，期间"对齐"会把会话

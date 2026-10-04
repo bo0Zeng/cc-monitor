@@ -2,42 +2,36 @@
   "0000aaaa-0000-4000-8000-000000000001": {
     "customTitle": "占位标题一",
     "hidden": false,
-    "lastAccount": "acct-a",
     "starred": true,
     "updatedAt": 1727250000001
   },
   "0000aaaa-0000-4000-8000-000000000002": {
     "customTitle": "占位标题二（蛇形别名）",
     "hidden": true,
-    "lastAccount": "acct-b",
     "starred": false,
     "updatedAt": 1727250000002
   },
   "0000aaaa-0000-4000-8000-000000000003": {
     "customTitle": null,
     "hidden": false,
-    "lastAccount": null,
     "starred": false,
     "updatedAt": 0
   },
   "0000aaaa-0000-4000-8000-000000000004": {
     "customTitle": null,
     "hidden": true,
-    "lastAccount": null,
     "starred": true,
     "updatedAt": 0
   },
   "0000aaaa-0000-4000-8000-000000000005": {
     "customTitle": null,
     "hidden": true,
-    "lastAccount": null,
     "starred": false,
     "updatedAt": 1727250000005
   },
   "019a0000-0000-7000-8000-00000000c0de": {
     "customTitle": "codex 会话也按 sid 记",
     "hidden": false,
-    "lastAccount": null,
     "starred": true,
     "updatedAt": 0
   }

@@ -3,8 +3,8 @@
  *
  * 一批里同一台机器的那几个**一次**调用发过去，那台逐个答（能不能做、怎么做都是那台判 —— 每一个同单个菜单那一项）；
  * 不同机器并发各发各的，一台失败不挡别台（那一台的几个记成失败、说清为什么）。
- * 本文件只做调用方那一侧：按台分组 · 组请求（账号跟随与单个那条同一份解析：`launch-account.ts::resolveLaunchAccount`
- * / `localFollowPlan`，每台只取一次账号清单）· 按形状收 · 把每一个的结局说成一句人话 · 开终端那一形逐个开窗。
+ * 本文件只做调用方那一侧：按台分组 · 组请求（每项只交 sid 与目录，用哪个号那台自己判；整批带用户设置的 resume 命令与模型偏好表原值）·
+ * 按形状收 · 把每一个的结局说成一句人话 · 开终端那一形逐个开窗。
  */
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody } from "./ipc/chan-caller";
@@ -13,17 +13,9 @@ import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { killRefusals } from "./tmux-control";
 import type { Tab } from "./tab-model";
-import { fetchAccounts } from "./account-reads";
-import { lastAccounts } from "./history-reads";
-import { getModelForAccount } from "./account-prefs";
-import {
-  followRecordName,
-  localFollowPlan,
-  primeLocalLaunchAccounts,
-  recordLastAccount,
-  recordLocalLaunchAccount,
-  resolveLaunchAccount,
-} from "./launch-account";
+import { machineModels } from "./account-prefs";
+import type { AccountAsk, AccountUnavailable } from "./launch-account";
+import type { LaunchedAccount } from "./generated/LaunchedAccount";
 import { getBehavior } from "./behavior";
 import { resolveResumeCommand } from "./remote-config";
 import { ACTIVE_AGENT, defaultLauncherOf } from "./agent-profile";
@@ -47,9 +39,13 @@ export interface Reply {
   /** 停那一条：顺手从 cc-bus 名册注销的结局（形状同 `kill` 那一格）；别的 ⇒ `null`。 */
   bus: unknown;
   cmd: string | null;
+  /** 起成了的那一条实际用的号（停 / 没起 / 不指定 ⇒ `null`）。 */
+  account: LaunchedAccount | null;
+  /** 选不了号的那一项：那台说的那一形（别的 ⇒ `null`）。 */
+  unavailable: AccountUnavailable | null;
 }
 
-const KEYS = ["sid", "outcome", "why", "detail", "session", "bus", "cmd"] as const;
+const KEYS = ["sid", "outcome", "why", "detail", "session", "bus", "cmd", "account", "unavailable"] as const;
 
 /** 应答 ⇒ 逐个结局；形状不对（多一格缺一格 · 个数 / 次序对不上）⇒ 抛（两边版本对不上，不猜）。 */
 export function decodeBatch(origin: Origin, op: string, sids: readonly string[], v: unknown): Reply[] {
@@ -66,7 +62,9 @@ export function decodeBatch(origin: Origin, op: string, sids: readonly string[],
       !(r.why === null || typeof r.why === "string") ||
       typeof r.detail !== "string" ||
       !(r.session === null || typeof r.session === "string") ||
-      !(r.cmd === null || typeof r.cmd === "string")
+      !(r.cmd === null || typeof r.cmd === "string") ||
+      !(r.account === null || (isObj(r.account) && typeof r.account.name === "string" && typeof r.account.configDir === "string")) ||
+      !(r.unavailable === null || (isObj(r.unavailable) && typeof r.unavailable.requested === "string"))
     ) {
       return bad();
     }
@@ -105,6 +103,8 @@ export function sayReply(origin: Origin, op: "stop" | "start", r: Reply): string
       return copyText("tabBatch.why.running", { name: target });
     case "record_gone":
       return copyText("tabBatch.why.recordGone", { machine, root: r.detail });
+    case "account_unavailable":
+      return copyText("tabBatch.why.accountGone", { name: r.detail });
     case "name_taken":
       return copyText("tabBatch.why.nameTaken", { machine, name: target });
     case "child_timed_out":
@@ -148,7 +148,7 @@ export async function callStop(origin: Origin, sids: readonly string[]): Promise
 export async function callStart(origin: Origin, mode: "tmux" | "window", items: readonly StartItem[]): Promise<Reply[]> {
   const sids = items.map((i) => i.sid);
   const budget = budgetWithin(BATCH_BASE_MS + BATCH_EACH_MS * sids.length);
-  const body = jsonBody({ mode, local: isLocalOrigin(origin), items });
+  const body = jsonBody({ mode, local: isLocalOrigin(origin), ...(await batchSettings(origin)), items });
   const v = await settle(origin, "sessions-start", chan.call(origin, "sessions-start", body, budget), batchRefusals(origin));
   return decodeBatch(origin, "sessions-start", sids, v);
 }
@@ -170,81 +170,22 @@ export async function stopMany(tabs: readonly Tab[]): Promise<BatchOutcome[]> {
   return parts.flat();
 }
 
-/** 起会话要交给那台的一个（`sessions-start` 的 `items[i]`）。 */
+/** 起会话要交给那台的一个（`sessions-start` 的 `items[i]`）：`account` 缺 ＝ 跟随（那台判）。 */
 export interface StartItem {
-  /** 这个会话是哪一家（线上的 kind）。 */
-  agent: string;
   sid: string;
   cwd: string;
-  account: { kind: "inherit" } | { kind: "base" } | { kind: "named"; name: string | null; configDir: string };
-  model: string | null;
-  launcher: string;
-  defaultLauncher: string;
+  account?: AccountAsk;
 }
 
-/** 一台要起的那几个：能组出请求的 ＋ 账号那一关就过不去的（跳过）＋ 起成了之后要记的「上次用的号」。 */
-export interface StartPlan {
-  items: StartItem[];
-  skipped: BatchOutcome[];
-  record: Map<string, () => void>;
-}
-
-/** 账号跟随与单个那条 Resume 同一份解析（远端：每台一次账号清单 ＋ 一次「上次用的号」）。 */
-export async function planStarts(origin: Origin, list: readonly Tab[]): Promise<StartPlan> {
+/** 整批带的那几样（用户设置的原值）：哪一家 · resume 命令 · 那台的模型偏好表。标签页里的会话都是流跟的那一家。 */
+async function batchSettings(origin: Origin): Promise<Record<string, unknown>> {
   const behavior = await getBehavior();
-  // 标签页里的会话都是流跟的那一家（记录树那一家）。
   const agent = ACTIVE_AGENT;
   const defaultLauncher = defaultLauncherOf(agent);
-  const plan: StartPlan = { items: [], skipped: [], record: new Map() };
-  if (isLocalOrigin(origin)) {
-    primeLocalLaunchAccounts();
-    const launcher = behavior.resumeCommandLocal.trim() || defaultLauncher;
-    for (const t of list) {
-      const p = localFollowPlan(t.sessionId);
-      if (p.kind === "pinGone") {
-        plan.skipped.push({ sid: t.sessionId, outcome: "skipped", why: copyText("tabBatch.why.accountGone", { name: p.pin }) });
-        continue;
-      }
-      if (p.kind === "named") plan.record.set(t.sessionId, () => recordLocalLaunchAccount(t.sessionId, p.name));
-      plan.items.push({
-        agent,
-        sid: t.sessionId,
-        cwd: t.projectDir ?? "",
-        account: p.kind === "named" ? { kind: "named", name: p.name, configDir: p.configDir } : { kind: "inherit" },
-        model: null,
-        launcher,
-        defaultLauncher,
-      });
-    }
-    return plan;
-  }
-  const state = await fetchAccounts(origin).catch(() => undefined);
-  const pins = await lastAccounts().catch(() => ({}) as Record<string, string>);
-  const launcher = (await resolveResumeCommand(origin, behavior.resumeCommandRemote)).trim() || defaultLauncher;
-  for (const t of list) {
-    const prior = pins[t.sessionId] ?? null;
-    const r = resolveLaunchAccount(state, null, { lastAccount: prior });
-    if (r.kind === "unavailable") {
-      const why =
-        state?.available === true
-          ? copyText("tabBatch.why.accountGone", { name: r.requestedName ?? "" })
-          : copyText("tabBatch.why.accountList", { machine: machineName(origin), name: r.requestedName ?? "" });
-      plan.skipped.push({ sid: t.sessionId, outcome: "skipped", why });
-      continue;
-    }
-    const name = r.kind === "account" ? followRecordName(prior, r) : null;
-    if (name) plan.record.set(t.sessionId, () => void recordLastAccount(t.sessionId, name));
-    plan.items.push({
-      agent,
-      sid: t.sessionId,
-      cwd: t.projectDir ?? "",
-      account: r.kind === "account" ? { kind: "named", name: r.name, configDir: r.configDir } : { kind: "base" },
-      model: r.kind === "account" ? ((await getModelForAccount(origin, r.name)) ?? null) : null,
-      launcher,
-      defaultLauncher,
-    });
-  }
-  return plan;
+  const launcher = isLocalOrigin(origin)
+    ? behavior.resumeCommandLocal.trim() || defaultLauncher
+    : (await resolveResumeCommand(origin, behavior.resumeCommandRemote)).trim() || defaultLauncher;
+  return { agent, launcher, defaultLauncher, models: await machineModels(origin) };
 }
 
 /** 开终端那一形：后端渲好的那一行，monitor 开窗（本机同 `launch-local` 那条的开法，远端同 `openTerminal`）。 */
@@ -265,28 +206,20 @@ export async function startMany(tabs: readonly Tab[], mode: "tmux" | "window"): 
       const all = list.map((t) => t.sessionId);
       const no = offered(origin, "sessions-start", all);
       if (no) return no;
-      let plan: StartPlan;
+      const items: StartItem[] = list.map((t) => ({ sid: t.sessionId, cwd: t.projectDir ?? "" }));
+      let replies: Reply[];
       try {
-        plan = await planStarts(origin, list);
+        replies = await callStart(origin, mode, items);
       } catch (e) {
         return machineFailed(all, e);
       }
-      if (plan.items.length === 0) return plan.skipped;
-      const sids = plan.items.map((i) => i.sid);
-      let replies: Reply[];
-      try {
-        replies = await callStart(origin, mode, plan.items);
-      } catch (e) {
-        return [...plan.skipped, ...machineFailed(sids, e)];
-      }
-      const out: BatchOutcome[] = [...plan.skipped];
+      const out: BatchOutcome[] = [];
       for (const [i, r] of replies.entries()) {
         let o: BatchOutcome = { sid: r.sid, outcome: r.outcome, why: sayReply(origin, "start", r) };
         if (r.outcome === "done" && mode === "window" && r.cmd !== null) {
-          const failed = await openWindow(origin, r.cmd, plan.items[i].cwd);
+          const failed = await openWindow(origin, r.cmd, items[i].cwd);
           if (failed !== null) o = { sid: r.sid, outcome: "failed", why: failed };
         }
-        if (o.outcome === "done") plan.record.get(r.sid)?.();
         out.push(o);
       }
       return out;

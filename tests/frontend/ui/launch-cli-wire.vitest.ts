@@ -49,10 +49,11 @@ describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
     expect(tsFields).toEqual(rustReqFields);
   });
 
-  // 判据自带清单（遍历被测文件自己是恒真的）：一个请求结构 ＋ 三个枚举。载荷那条请求与它的四个类型随载荷渲染删了。
-  const DENY_WIRE_TYPES = ["CliRenderRequest", "WireAction", "WireContainer", "WireAccount"];
+  // 判据自带清单（遍历被测文件自己是恒真的）：一个请求结构 ＋ 两个枚举。载荷那条请求与它的四个类型随载荷渲染删了；
+  // `account` 那一格是三条起会话请求共用的 `AccountAsk`（住 `control/launch_account.rs`，同样 `deny_unknown_fields`）。
+  const DENY_WIRE_TYPES = ["CliRenderRequest", "WireAction", "WireContainer"];
 
-  test("Rust 侧四个入方向 wire 类型都带 deny_unknown_fields（多送字段必须被拒，不静默吞）", () => {
+  test("Rust 侧三个入方向 wire 类型都带 deny_unknown_fields（多送字段必须被拒，不静默吞）", () => {
     // 数量自检：将来加第五个类型时这条红，提醒把它加进上面的清单 ——
     // 只看**属性里**的，因为这些类型的文档注释里就写着这个词（M3 抓到过）。
     //
@@ -125,7 +126,8 @@ describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
   // 会让所有夹具/单测照常全绿 —— 那正是这一轮唯一实质的改动，也是最容易被悄悄回退的一处。
   test("生产渲染路径调的是后端，不是 TS 的 tryRenderCli", () => {
     // 渲染问那台后端（`launch-render.ts::renderCli` → 通道 `launch-render-cli`），探测结果不再由前端转交。
-    expect(RUN).toContain("return renderCli(origin, buildCliRenderRequest(ctx));");
+    expect(RUN).toContain("const req = buildCliRenderRequest(ctx);");
+    expect(RUN).toContain("r = await renderCli(origin, req);");
     // TS 的 `tryRenderCli` 已删；这一格留着挡「在本文件里再手写一个」。
     // 全仓那一格见下面那组。
     expect(/[^a-zA-Z]tryRenderCli\s*\(/.test(RUN)).toBe(false);

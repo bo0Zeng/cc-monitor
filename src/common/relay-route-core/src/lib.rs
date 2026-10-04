@@ -106,6 +106,12 @@ pub const QUOTA_LEDGER_REL: &str = ".cc-monitor/quota.json";
 /// 〔同上〕**账号轮换**（后端账号域写）：默认池与换号时机 · 每个会话的覆盖与此刻钉在哪个号 · 换号记录。
 pub const ROTATION_REL: &str = ".cc-monitor/rotation.json";
 
+/// 〔同上〕**起会话用的号**（后端观测侧写）：每条会话上次用哪个号起的（`sid → 号`），跟随选号读它。
+pub const LAUNCH_ACCOUNTS_REL: &str = ".cc-monitor/launch-accounts.json";
+
+/// 〔同上〕**起会话便条**（`ccm` 最终那一跳写、观测侧认完即清）：一个进程一张 `<pid>.json`（号 ＋ 时刻）。
+pub const LAUNCH_NOTES_DIR_REL: &str = ".cc-monitor/launch-pending";
+
 /// 账号库目录（相对家目录）那一段字面量，**全仓只写在这里**。宏而不是常量：足迹那张静态表要
 /// `concat!` 出带 `~/` 的那一形，`concat!` 只认字面量。别处一律用 [`ACCOUNTS_DIR_REL`]。
 #[macro_export]

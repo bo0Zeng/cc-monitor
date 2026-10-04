@@ -5,8 +5,28 @@ use crate::stream::wire::Request;
 /// 处理器：拿走 [`Request`]，返回一个可以在**独立 task** 上跑的 future。
 pub(super) type Handler = Box<dyn FnOnce(Request) -> BoxFut + Send>;
 /// 同步阻塞处理器（见 [`Disposition::SpawnBlocking`]）。
-pub(super) type BlockingHandler = Box<dyn FnOnce(Request) -> CmdResult + Send>;
+pub(super) type BlockingHandler = Box<dyn FnOnce(Request) -> Outcome + Send>;
 pub(super) type CmdResult = Result<Option<serde_json::Value>, (String, String)>;
+/// 一条命令的结局（应答那一帧由它出）：成功的返回值 · 失败（码 ＋ 原话 ＋ 按码定形的 `data`）。
+pub(crate) type Outcome = Result<Option<serde_json::Value>, Fail>;
+
+/// 命令级失败。`data` 只给在协议文档里按码定了形的那几个码（多数码没有 ⇒ 应答里不出这一格）。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Fail {
+    pub(crate) code: String,
+    pub(crate) message: String,
+    pub(crate) data: Option<serde_json::Value>,
+}
+
+impl From<(String, String)> for Fail {
+    fn from((code, message): (String, String)) -> Self {
+        Fail {
+            code,
+            message,
+            data: None,
+        }
+    }
+}
 pub(super) type BoxFut =
     std::pin::Pin<Box<dyn std::future::Future<Output = CmdResult> + Send + 'static>>;
 
@@ -24,6 +44,8 @@ pub(super) type BoxFut =
 pub(crate) enum Run {
     Async(fn(Request) -> BoxFut),
     Blocking(fn(Request) -> CmdResult),
+    /// 同 [`Run::Blocking`]，只是失败可以带按码定形的 `data`（起会话那几条：选不了号时带上要的号与替代）。
+    BlockingData(fn(Request) -> Outcome),
     Builtin,
 }
 

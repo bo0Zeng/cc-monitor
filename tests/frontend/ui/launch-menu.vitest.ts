@@ -34,7 +34,6 @@ function state(accounts: Account[], available = true): AccountsState {
     error: null,
     meta: null,
     accounts,
-    defaultName: null,
     notice: null,
   };
 }

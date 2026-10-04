@@ -358,6 +358,16 @@ fn backend_entries(
             copy_text("rsDataPaths.backend.rotation", &[]),
             DataClass::Truth,
         ),
+        file(
+            rr::LAUNCH_ACCOUNTS_REL,
+            copy_text("rsDataPaths.backend.launchAccounts", &[]),
+            DataClass::Truth,
+        ),
+        dir(
+            rr::LAUNCH_NOTES_DIR_REL,
+            copy_text("rsDataPaths.backend.launchNotes", &[]),
+            DataClass::Cache,
+        ),
         dir(
             rr::ACCOUNTS_DIR_REL,
             copy_text("rsDataPaths.backend.accounts", &[]),

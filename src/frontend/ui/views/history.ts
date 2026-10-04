@@ -38,12 +38,11 @@ import { liveRank, starRank, bumpCounted, isKnown } from "./counted";
 import { dispatcher } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
 import { runRemoteResume, runNewSessionRemote } from "../remote-launch-run";
-import { agentHasAccounts, DEFAULT_AGENT } from "../agent-profile";
+import { DEFAULT_AGENT } from "../agent-profile";
 import { configuredLauncherFor } from "../launch-requests";
 import { isSelectable } from "../accounts";
 import { fetchAccounts } from "../account-reads";
-import { withAccount, localLaunchAccountSync, localLaunchAccountNameSync, primeLocalLaunchAccounts } from "../launch-account";
-import { rememberLocalLaunch } from "../local-launch-backfill";
+import { chosenAccount, FOLLOW } from "../launch-account";
 import { arrivedBody, expectArrival } from "../launch-arrival";
 import { launchLocal } from "../launch-render";
 import {
@@ -116,7 +115,6 @@ import {
   fetchSessions,
   forgetAnnotation,
   historyReasonOf,
-  lastAccounts,
   type HistoryProject,
   type HistorySessionEntry,
 } from "../history-reads";
@@ -1669,106 +1667,47 @@ export class HistoryView {
   }
 
   private async runResume(ctx: RowActionCtx): Promise<void> {
-    // 按这个会话的那一家起（`ctx.agent`）。没有账号这一维的那一家不跟随上次的号；显式点了号照交，由那台明说不行。
-    const follows = agentHasAccounts(ctx.agent);
+    // 按这个会话的那一家起（`ctx.agent`）。用哪个号那台判：点了号 ⇒ 点名；没点 ⇒ 跟随这条会话上次的号
+    //   （没有账号这一维的那一家跟随什么都不选；点了号照交，由那台明说不行）。
+    const account = ctx.account ? chosenAccount(null, ctx.account) : FOLLOW;
     if (ctx.origin) {
-      // F41：远端 resume 一键拉起（wt.exe → `ssh -t …`），失败回退 F09 复制命令。
-      // F34：用户自定义远端 resume 命令（如 cct）—— 只用在默认那一家的会话上；空 = 后端默认
+      // 远端 resume 一键拉起（开终端跑 `ssh -t …`），失败回退复制命令。
+      // 用户自定义远端 resume 命令（如 cct）—— 只用在默认那一家的会话上；空 = 后端默认。
       const origin = ctx.origin;
       const behavior = await getBehavior();
       const launcher = configuredLauncherFor(ctx.agent, await resolveResumeCommand(origin, behavior.resumeCommandRemote));
-      if (!follows && !ctx.account) {
-        await runRemoteResume(origin, ctx.agent, ctx.sessionId, ctx.cwd, launcher, {});
-        return;
-      }
-      // account-ux U3:无显式选号 → 跟随。先读该会话的 pin(源②,本机后端 `history-last-accounts` 只读本地那份注解,
-      // 非远端 SSH)传给 follow,使「粘性优先」在 history 入口也成立——有 pin 走 pin、无 pin 走当前账号;
-      // 配合 withAccount 的不-clobber 记账,绝不把既有 pin 翻成当前账号(U3 审计 重要-1)。显式选号维持 A4。
-      let rowLastAccount: string | undefined;
-      if (!ctx.account) {
-        try {
-          const lastMap = await lastAccounts();
-          rowLastAccount = lastMap?.[ctx.sessionId];
-        } catch {
-          rowLastAccount = undefined;
-        }
-      }
-      // A4：带账号 resume 统一走 withAccount（resolve configDir → 不可选则不起、说清→ record 源②）。
-      await withAccount(
-        origin,
-        ctx.account ?? null,
-        // 同 tabs.ts：`runRemoteResume` 已改返回 boolean，这条路显式丢弃（反馈走它自己的 toast）。
-        async (mods) => {
-          // 没起成 ⇒ 不记「上次用的号」。
-          if (!(await runRemoteResume(origin, ctx.agent, ctx.sessionId, ctx.cwd, launcher, mods))) return false;
-        },
-        {
-          sessionId: ctx.sessionId,
-          // 要的号选不了 ⇒ `withAccount` 自己不起、说清、给显式选择（先前这里的提示完按基座起）。
-          follow: ctx.account ? undefined : { lastAccount: rowLastAccount },
-        },
-      );
+      await runRemoteResume(origin, ctx.agent, ctx.sessionId, ctx.cwd, launcher, { account });
     } else {
-      // 本机 resume 的编排只有一份（`local-resume.ts`）：校验 sid → 铸名 → 起 → 记 pin。
-      //   这里先前逐字抄着一份（`K-R46` 补铸名 · `K-H2b` 补账号 · `D3 阻-2` 补记 pin，三次都是
-      //   「tab 栏那条早有了、这条没有」）。账号跟随这条会话上次的号 —— 与上面远端那条 `follow` **同形**。
-      await resumeLocalSession({ agent: ctx.agent, sid: ctx.sessionId, cwd: ctx.cwd, account: { kind: "follow" } });
+      // 本机 resume 的编排只有一份（`local-resume.ts`）：铸名 → 起（本机后端判号）。
+      await resumeLocalSession({ agent: ctx.agent, sid: ctx.sessionId, cwd: ctx.cwd, account });
     }
   }
 
   private async runNewSession(ctx: RowActionCtx): Promise<void> {
-    // `D1 阻-1`：**不等待**地把账号快照踢一脚（等它就多一拍，撞两条只放行一个微任务的判据）。
-    primeLocalLaunchAccounts();
     const behavior = await getBehavior();
     if (ctx.origin) {
-      // 远端：薄封装 F53 拉起（tmux 名派生 + 默认拉起命令兜底都在 runNewSessionRemote 里，
-      // 本处既不知 tmux、也不知默认 agent；只传 F34 配置命令，空则传输层兜默认）。
-      // account-ux U3:远端新会话跟随当前账号（新会话无 sid → 不记账）。
+      // 远端：薄封装「在这台机开新会话」（tmux 名派生 + 默认拉起命令兜底都在 runNewSessionRemote 里）。
+      // 新会话没有上次的号 ⇒ 跟随落到那台的默认号（那台判）。
       const origin = ctx.origin;
-      await withAccount(
-        origin,
-        null,
-        async (mods) =>
-          runNewSessionRemote(
-            origin,
-            DEFAULT_AGENT,
-            ctx.cwd,
-            await resolveResumeCommand(origin, behavior.resumeCommandRemote),
-            mods,
-          ),
-        { follow: {} },
-      );
+      await runNewSessionRemote(origin, DEFAULT_AGENT, ctx.cwd, await resolveResumeCommand(origin, behavior.resumeCommandRemote), {
+        account: FOLLOW,
+      });
     } else {
       try {
-        // 本地：本机后端 `launch-local`（cc 优先 + F34 自定义，无 sid/resume flag）。
-        // 这里原来调一次 `validateLocalLaunch`〔散文墓碑〕（new 动作恒不 throw，只为「让本地那条路活过」）——
-        // 那个函数随它唯一的一格（sid 字符集，交 Rust 判）删了。
-        // ★★ `K-H2b` `D1 阻-1`：起新会话这条主路同样一个账号都不传。
-        //    ⚠ 它取的是**当前账号**（不是从别的会话继承 —— 那是 fork 的语义），
-        //    与远端那条 `runNewSessionRemote` 的 `withAccount(origin, null, …, {follow:{}})`
-        //    **同形**：新会话跟随当前账号。
-        // ★★ `K-P5h` `KP5HD2`：**这条命令现在把这次拉起的身份 token 交回来。**
-        // 现打的那条结构性事实（「没有一处在起新会话时知道 sid」）
-        //    在这一行上是活的：这一刻我们手上有 cwd、有账号，**就是没有 sid** ——
-        //    于是那条 `recordLocalLaunchAccount` 的 pin 今天写不出来
-        //    （`tabs.ts` 那条远端同形注释逐字写着「新会话无 sid → 不记账」）。
-        //    ⇒ 把 token 挂进待回填表，等这条会话真的跑起来之后拿它反查 sid 再补写 pin。
-        //    ⚠ **不 `await` 回填**（它要等进程起来，见 `resolvePendingLocalLaunches` 头注）；
-        //      这里只是登记，一拍都不多花 —— 那两条只放行一个微任务的 DOM 判据在盯着。
+        // 本地：本机后端 `launch-local`（cc 优先 + 自定义启动命令，无 sid/resume flag）；号跟随 ⇒ 本机的默认号（本机后端判）。
         // 计划与渲染问本机后端（`launch-local`），monitor 只在 cwd 开一个终端窗口跑那一串。
-        const launchId = await launchLocal(
+        await launchLocal(
           {
             action: { kind: "new" },
             // 程序还不能选 ⇒ 起默认那一家。
             agent: DEFAULT_AGENT,
             cwd: ctx.cwd,
             launcher: behavior.resumeCommandLocal || null,
-            account: localLaunchAccountSync(null),
+            account: FOLLOW,
             tmuxName: null,
           },
           ctx.cwd,
         );
-        if (launchId !== null) rememberLocalLaunch(launchId, localLaunchAccountNameSync(null));
         // 窗口开了不等于起来了：等本机后端报出一条在这个目录里新起的会话再说
         //   （身份 token 在 Windows 上读不回来，认它靠「之后第一次出现、同目录的新 sid」）。
         expectArrival({

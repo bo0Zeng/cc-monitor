@@ -79,6 +79,7 @@ function fanoutProbe(): {
       return state(origin);
     },
     currentAccountForBadge: (s) => s.accounts[0] ?? null,
+    lastAccounts: async () => ({}),
   };
   return { f, peak: () => peak, sessionForced, accountsForced };
 }
@@ -118,6 +119,7 @@ describe("collectAccountRows —— 扇出", () => {
         return state(origin);
       },
       currentAccountForBadge: (s) => s.accounts[0] ?? null,
+      lastAccounts: async () => ({}),
     };
     const out = await collectAccountRows([host("h0"), host("h1"), host("h2")], f, 3);
     expect(out.rows.map((r) => r.account)).toEqual(["h0", "h1", "h2"]);
@@ -139,6 +141,7 @@ describe("collectAccountRows —— 扇出", () => {
         return state(origin);
       },
       currentAccountForBadge: () => null,
+      lastAccounts: async () => ({}),
     };
     return collectAccountRows([host("a"), host("b"), host("c")], f).then(() => {
       expect(seen).toEqual(["a", "b", "c"]);
@@ -154,6 +157,7 @@ describe("collectAccountRows —— 扇出", () => {
         return state(origin, origin !== "bad");
       },
       currentAccountForBadge: (s) => (s.available ? (s.accounts[0] ?? null) : null),
+      lastAccounts: async () => ({}),
     };
     const out = await collectAccountRows([host("good"), host("bad")], f);
     expect([...out.readyOrigins]).toEqual(["good"]);
@@ -286,4 +290,23 @@ describe("accountsChangedItems（DL1：remote-backend-ready 迁 subscribe）", (
     expect(accountsChangedItems([unseen, closed])).toEqual({ changed: false, frames: 0 });
   });
 
+});
+
+describe("「上次用哪个号起的」每台各问一次那台，并起来", () => {
+  it("★ 两台各自记着的那几条都在；问不到的那一台不拖垮别台（它那几条当没有）", async () => {
+    const f: HostFetchers = {
+      fetchSessionAccounts: async () => [],
+      fetchAccounts: async (origin) => ({ origin, available: true, accounts: [] }) as unknown as AccountsState,
+      currentAccountForBadge: () => null,
+      lastAccounts: async (origin) => {
+        if (origin === "bad") throw new Error("没有控制通道");
+        return { [`s-${origin}`]: `acct-${origin}` };
+      },
+    };
+    const got = await collectAccountRows([host("devbox"), host("bad"), host("nano")], f);
+    expect([...got.lastByS]).toEqual([
+      ["s-devbox", "acct-devbox"],
+      ["s-nano", "acct-nano"],
+    ]);
+  });
 });

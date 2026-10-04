@@ -623,6 +623,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 额度账 · 账号轮换（后端账号域写；数据位置页按它列）。
     QUOTA_LEDGER_REL: NONE,
     ROTATION_REL: NONE,
+    // 起会话用的号 · 起会话便条（后端写；数据位置页按它列）。
+    LAUNCH_ACCOUNTS_REL: NONE,
+    LAUNCH_NOTES_DIR_REL: NONE,
     // 后端落点（`~/.cc-monitor/bin/ccm`，两半同一份）；TS 侧没有孪生（界面那句话里的路径在文案表里）。
     BACKEND_LANDING_REL: NONE,
     BACKEND_LANDING_SHELL: NONE,

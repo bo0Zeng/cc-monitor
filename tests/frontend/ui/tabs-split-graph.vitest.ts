@@ -219,19 +219,16 @@ const DEPS: Record<string, readonly string[]> = {
   //   本份从此与其余几份一样只经 `ipc/commands.ts` 说话。
   "src/frontend/ui/tab-session-actions.ts": [
     "npm:@tauri-apps/plugin-opener",
-    "src/frontend/ui/account-reads.ts", // 标记录没了的固定条：先解出 resume 会查的那棵账号树（同 `withAccount` 跟随）
     "src/frontend/ui/account-restart.ts",
     "src/frontend/ui/agent-profile.ts", // 起会话项的默认启动器
-    "src/frontend/ui/accounts.ts", // 同上（`resolveAccount`）
     "src/frontend/ui/ask-dialog.ts", // 杀会话的确认（原 `window.confirm`：真 app 里恒真值，等于没问）
     "src/frontend/ui/behavior.ts",
     "src/frontend/ui/copy-table.ts", // 杀空 tmux / 杀会话的确认与回执（说到会话状态）住文案表
     "src/frontend/ui/error-toast.ts",
     "src/frontend/ui/file-window.ts", // F78：远端会话「打开工作目录」（老 SFTP 面板删了，改开文件窗口）
-    "src/frontend/ui/history-reads.ts", // resume 前现读那条会话的 pin（上次账号表归本机常驻后端，经通道问 `history-last-accounts`）
     "src/frontend/ui/ipc/commands.ts",
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端各走哪条动作
-    // `withAccount` 随起停那一格从 `accounts.ts` 拆去了 `launch-account.ts`（本份对 `accounts.ts` 只剩 type-only）。
+    // 起会话那一格「要哪个号」与「选不了」那个选择框（判号在那台后端）。
     "src/frontend/ui/launch-account.ts",
     // 本机 resume 的编排收进 `local-resume.ts`（校验 sid · 铸名 · 账号 · 记 pin 都在里面）
     //   ⇒ 本份不再直接要 `launch-requests.ts`（sid 校验）与 `remote-launch.ts`（内联铸名那六行）。

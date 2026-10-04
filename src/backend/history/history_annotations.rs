@@ -15,8 +15,8 @@
 //!
 //! # 形状（与 monitor 从前那份**同形同注解**，逐格照搬）
 //!
-//! `{"version": u32, "entries": {sid: {"starred", "customTitle", "hidden", "updatedAt", "lastAccount"}}}`；
-//! 三个键认蛇形别名（`custom_title` / `updated_at` / `last_account`），缺格取缺省。
+//! `{"version": u32, "entries": {sid: {"starred", "customTitle", "hidden", "updatedAt"}}}`；
+//! 两个键认蛇形别名（`custom_title` / `updated_at`），缺格取缺省。「上次用哪个号起的」不在这里（会话所在那台的 `launch-accounts.json`）。
 //!
 //! # 写：**一条不丢**
 //!
@@ -53,8 +53,6 @@ pub struct Entry {
     pub hidden: bool,
     #[serde(default, rename = "updatedAt", alias = "updated_at")]
     pub updated_at: i64,
-    #[serde(default, rename = "lastAccount", alias = "last_account")]
-    pub last_account: Option<String>,
 }
 
 /// 整份文件 —— 与 monitor 从前那份 `HistoryMetadata` 同形。
@@ -173,7 +171,7 @@ fn lock_for_write(path: &Path) -> Result<crate::platform::lock::DirLock, (&'stat
 }
 
 /// 一次改动（线上 `patch`）—— 语义逐格照搬 monitor 从前那份 `MetadataPatch` ＋ `update_history_metadata`：
-/// 缺格 / `null` = 不改；标题 / 账号名给空白串 = 清空。
+/// 缺格 / `null` = 不改；标题给空白串 = 清空。
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Patch {
@@ -183,12 +181,10 @@ struct Patch {
     custom_title: Option<Option<String>>,
     #[serde(default)]
     hidden: Option<bool>,
-    #[serde(default, rename = "lastAccount", alias = "last_account")]
-    last_account: Option<Option<String>>,
 }
 
 /// 被改那一条身上要摘掉的蛇形别名（写回时一律驼峰）。
-const ALIASES: [&str; 3] = ["custom_title", "updated_at", "last_account"];
+const ALIASES: [&str; 2] = ["custom_title", "updated_at"];
 
 fn sid_arg(args: &Value) -> Result<&str, (&'static str, String)> {
     let sid = args.get("sid").and_then(Value::as_str).ok_or((
@@ -370,9 +366,6 @@ pub fn answer_annotate_at(
     if let Some(h) = patch.hidden {
         entry.hidden = h;
     }
-    if let Some(a) = patch.last_account {
-        entry.last_account = a.filter(|s| !s.trim().is_empty());
-    }
     entry.updated_at = now;
     put_entry(&mut raw, sid, Some(&entry));
     write_at(path, &raw).map_err(|e| ("io_failed", e))?;
@@ -395,29 +388,6 @@ pub fn answer_forget_at(path: &Path, args: &Value) -> Result<Value, (&'static st
     put_entry(&mut raw, sid, None);
     write_at(path, &raw).map_err(|e| ("io_failed", e))?;
     Ok(json!({ "removed": true }))
-}
-
-/// `history-last-accounts {}`：sid → 上次用哪个号起（只含真有的那几条）。读不懂 ⇒ 明拒（不说成「一条都没有」）。
-pub fn last_accounts(_args: &Value) -> Result<Value, (&'static str, String)> {
-    last_accounts_of(load())
-}
-
-/// [`last_accounts`] 的本体（读的结局由调用方给）。
-pub fn last_accounts_of(loaded: Loaded) -> Result<Value, (&'static str, String)> {
-    match loaded {
-        Loaded::NoPath => Err((
-            "no_annotations",
-            copy_text("beHistoryAnnotations.lastAccountsOf.unknown", &[]),
-        )),
-        Loaded::Unreadable(why) => Err(("annotations_unreadable", why)),
-        Loaded::Read(t) => {
-            let m: BTreeMap<String, String> = t
-                .into_iter()
-                .filter_map(|(sid, e)| e.last_account.map(|a| (sid, a)))
-                .collect();
-            Ok(json!({ "accounts": m }))
-        }
-    }
 }
 
 #[cfg(test)]

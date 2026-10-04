@@ -56,7 +56,7 @@ export type NamedAccountModifier = Extract<AccountModifierOption, { kind: "accou
  * **鉴权前提就绪** && exists —— K-A1 起第二项不再是裸 `loggedIn`，见
  * `Account.authReady`，后端按 `acct_core::auth_ready` 算好的那一格），**没有**复刻旧版 `appendAccountMenuItems` 那句 `if (!a.configDir)
  * continue`——这是有意的行为变化，不是遗漏：旧版对 `configDir` 落空的账号是**静默隐藏**菜单项
- * （用户看不到这个账号、不知道为什么），新版是**显示、点击后由 `withAccount` 说清**
+ * （用户看不到这个账号、不知道为什么），新版是**显示、点击后由那台后端判、选不了说清**
  * （今天是 `launch-account.ts::refuseUnavailableAccount`：不起、说是哪个号选不了、给「改用当前账号」的
  * 可点选择；`tab-menu.ts::buildResumeSubmenu` 走的正是这条路径）。显式反馈优于静默隐藏，故意不搬那条 continue。
  */

@@ -89,6 +89,8 @@ export interface HostFetchers {
   fetchSessionAccounts(origin: string, force?: boolean): Promise<SessionAccount[]>;
   fetchAccounts(origin: string, force?: boolean): Promise<AccountsState>;
   currentAccountForBadge(state: AccountsState): Account | null;
+  /** 那台记着的「每条会话上次用哪个号起的」（`history-last-accounts`，会话跑在哪台就问哪台）。 */
+  lastAccounts(origin: string): Promise<Record<string, string>>;
 }
 
 export interface AccountRows {
@@ -98,23 +100,30 @@ export interface AccountRows {
   readyOrigins: Set<string>;
   /** origin → 当前账号名，供 tab 徽章「信息才显」比对。 */
   currentByOrigin: Map<string, string>;
+  /** sid → 上次用哪个号起的（各台那份并起来；不活的会话徽章用它）。 */
+  lastByS: Map<string, string>;
 }
 
-/** 一台远端上的两条查询。 */
+/** 一台远端上的三条查询。 */
 async function oneHost(
   h: RemoteHostConfig,
   f: HostFetchers,
   forceAccounts: boolean,
-): Promise<{ origin: string; sessions: SessionAccount[]; state: AccountsState }> {
+): Promise<{ origin: string; sessions: SessionAccount[]; state: AccountsState; last: Record<string, string> }> {
   const origin = h.label || h.host;
-  const [sessions, state] = await Promise.all([
+  const [sessions, state, last] = await Promise.all([
     // ★ 显式 force：刷新者是这个缓存的**写者**，见模块头注。
     f.fetchSessionAccounts(origin, true),
     // ★ 默认不 force（账号列表 30s TTL，变化率低）；长连接刚握手完时才 force ——
     //   那之前缓存里可能是一份「没有控制通道」的不可用结果，不 force 会把它再端 30 秒。
     forceAccounts ? f.fetchAccounts(origin, true) : f.fetchAccounts(origin),
+    // 问不到（通道没起 / 那台读不懂那份记录）⇒ 这台一条都不算（徽章退到「—」，不猜）。
+    f.lastAccounts(origin).catch((e: unknown) => {
+      console.warn(`history-last-accounts @${origin} failed:`, e);
+      return {} as Record<string, string>;
+    }),
   ]);
-  return { origin, sessions, state };
+  return { origin, sessions, state, last };
 }
 
 /**
@@ -137,8 +146,10 @@ export async function collectAccountRows(
     emailByName: new Map(),
     readyOrigins: new Set(),
     currentByOrigin: new Map(),
+    lastByS: new Map(),
   };
-  for (const { origin, sessions, state } of per) {
+  for (const { origin, sessions, state, last } of per) {
+    for (const [sid, name] of Object.entries(last)) out.lastByS.set(sid, name);
     out.rows.push(...sessions);
     for (const a of state.accounts) if (a.email) out.emailByName.set(a.name, a.email);
     if (state.available) out.readyOrigins.add(origin);

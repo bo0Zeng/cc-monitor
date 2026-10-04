@@ -49,13 +49,16 @@ export function linesOf(body: Uint8Array): string[] {
     .filter((r) => r !== "");
 }
 
-/** 对端「不行」的那份体（后端的拒绝信封 `{code, message}`）⇒ `(code, message)`；解不出 ⇒ `null`。 */
-export function refusalOf(body: Uint8Array): { code: string; message: string } | null {
+/**
+ * 对端「不行」的那份体（后端的拒绝信封 `{code, message, data?}`）⇒ `(code, message, data)`；解不出 ⇒ `null`。
+ * `data` 只有协议里按码定了形的那几个码带（今天只有 `account_unavailable`），按码收的那一侧自己核形状。
+ */
+export function refusalOf(body: Uint8Array): { code: string; message: string; data?: unknown } | null {
   try {
     const v = readJson(body);
     if (v !== null && typeof v === "object") {
-      const { code, message } = v as { code?: unknown; message?: unknown };
-      if (typeof code === "string" && typeof message === "string") return { code, message };
+      const { code, message, data } = v as { code?: unknown; message?: unknown; data?: unknown };
+      if (typeof code === "string" && typeof message === "string") return data === undefined ? { code, message } : { code, message, data };
     }
   } catch {
     // 体不是 JSON ⇒ 当成没说原因

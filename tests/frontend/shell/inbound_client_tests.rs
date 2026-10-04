@@ -541,7 +541,8 @@ async fn an_error_reply_surfaces_code_and_message() {
         caller.await.expect("task").unwrap_err(),
         CallError::Remote {
             code: "bad_request".into(),
-            message: "缺 sid".into()
+            message: "缺 sid".into(),
+            data: None,
         }
     );
 }

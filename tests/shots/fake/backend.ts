@@ -164,7 +164,8 @@ export class FakeBackend {
 
 function refusal(e: unknown): { err: string; body: number[] } {
   if (e instanceof Refuse) {
-    return { err: "Refused", body: Array.from(enc.encode(JSON.stringify({ code: e.code, message: e.message }))) };
+    const body = e.data === undefined ? { code: e.code, message: e.message } : { code: e.code, message: e.message, data: e.data };
+    return { err: "Refused", body: Array.from(enc.encode(JSON.stringify(body))) };
   }
   return { err: "Refused", body: Array.from(enc.encode(JSON.stringify({ code: "shots", message: String(e) }))) };
 }

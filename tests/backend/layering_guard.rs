@@ -12,7 +12,7 @@
 //!
 //! # 为什么正向要**钉条数**而不是「随便跨」
 //!
-//! 允许跨层的边今天**恰好两个符号**，都由 `watcher` 发起、都有具体说得清的理由：
+//! 允许跨层的边今天是下面那张表里那几个符号，都由 `watcher` 发起、都有具体说得清的理由（表头注逐条写着），例如：
 //! `control::tmux_hook::install_hooks`（tmux hook 活在 server 内存里、每次 server 重起要重装，
 //! 而「server 起来了」只有 observe 知道）与 `control::identity_tag::tag`（`U-NP④`：
 //! `(pid, sid)` 只在 pidfile 事件那一刻同时在手，让 control 自己去发现只能靠轮询，
@@ -41,8 +41,11 @@ mod tests {
     /// 把 `shared/ccm` 那条每秒轮询消掉（用户 08-14：「不要轮询」「ccm 做到必须走后端」）。
     /// 反过来做只是把轮询从 ccm 搬到后端。
     ///
+    /// `launch_account::adopt`（起会话用的号）的答案**同型**：「这个 pid 跑的是哪条会话」只在 pidfile 出现 / 改写那一刻
+    /// 与 pid 同时在手；`ccm` 起会话时只知道 pid、不知道 sid（agent 自己铸），反过来做只能轮询。
     const ALLOWED_OBSERVE_TO_CONTROL: &[&str] = &[
         "crate::control::identity_tag::tag",
+        "crate::control::launch_account::adopt",
         "crate::control::tmux_hook::install_hooks",
     ];
 

@@ -488,6 +488,8 @@ pub(crate) struct Direct {
     pub(crate) account_env: String,
     /// 要 export 的账号目录。
     pub(crate) config_dir: String,
+    /// 那个目录是账号库里哪个号（说不出 ⇒ 空串：`--account-dir` / 继承来的）。
+    pub(crate) account_name: String,
     /// `--base`：显式 `unset CLAUDE_CONFIG_DIR`。
     pub(crate) unset_config_dir: bool,
     /// 要 unset 的嵌套标记（claude 四个 / codex 零个）。
@@ -1175,6 +1177,7 @@ pub(crate) fn build_among(
         inside_tmux: env.tmux.is_some(),
         account_env: env.account_env.clone(),
         config_dir,
+        account_name: account,
         unset_config_dir: o.use_base,
         nested: face
             .map(|f| f.nested_env.iter().map(|s| s.to_string()).collect())

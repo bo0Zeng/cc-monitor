@@ -1,41 +1,25 @@
 /**
- * tab 栏批量停 / 起交给那几台后端：同一台的那几个一次调用、各台各发一次（一台失败不挡别台）· 账号跟随每台只取一次清单 ·
+ * tab 栏批量停 / 起交给那几台后端：同一台的那几个一次调用、各台各发一次（一台失败不挡别台）· 每项只交 sid 与目录（用哪个号那台判）·
  * 每一个的结局说成单个那条会说的那句 · 开终端那一形逐个开窗。后端答什么由替身给（`chan_call` 那一跳），tmux / 会话一个都不起。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("../../../src/frontend/ui/account-reads", () => ({ fetchAccounts: vi.fn() }));
-vi.mock("../../../src/frontend/ui/history-reads", () => ({ lastAccounts: vi.fn() }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({ getBehavior: vi.fn() }));
 vi.mock("../../../src/frontend/ui/remote-config", () => ({ resolveResumeCommand: vi.fn() }));
-vi.mock("../../../src/frontend/ui/account-prefs", () => ({ getModelForAccount: vi.fn() }));
+vi.mock("../../../src/frontend/ui/account-prefs", () => ({ machineModels: vi.fn() }));
 vi.mock("../../../src/frontend/ui/terminal-open", () => ({ openTerminal: vi.fn() }));
-vi.mock("../../../src/frontend/ui/launch-account", async (orig) => {
-  const real = await orig<typeof import("../../../src/frontend/ui/launch-account")>();
-  return {
-    ...real,
-    localFollowPlan: vi.fn(() => ({ kind: "silent" })),
-    primeLocalLaunchAccounts: vi.fn(),
-    recordLastAccount: vi.fn(),
-    recordLocalLaunchAccount: vi.fn(),
-  };
-});
 
 import { invoke } from "@tauri-apps/api/core";
 import { stopMany, startMany, decodeBatch } from "../../../src/frontend/ui/tab-batch-run";
 import { killRefusals } from "../../../src/frontend/ui/tmux-control";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
-import { fetchAccounts } from "../../../src/frontend/ui/account-reads";
-import { lastAccounts } from "../../../src/frontend/ui/history-reads";
 import { getBehavior } from "../../../src/frontend/ui/behavior";
 import { resolveResumeCommand } from "../../../src/frontend/ui/remote-config";
-import { getModelForAccount } from "../../../src/frontend/ui/account-prefs";
+import { machineModels } from "../../../src/frontend/ui/account-prefs";
 import { openTerminal } from "../../../src/frontend/ui/terminal-open";
-import { recordLastAccount } from "../../../src/frontend/ui/launch-account";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
-import type { AccountsState } from "../../../src/frontend/ui/accounts";
 import { chanArgsJson, chanReply, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -65,6 +49,8 @@ const res = (sid: string, outcome: string, why: string | null = null, extra: Rec
   session: null,
   bus: null,
   cmd: null,
+  account: null,
+  unavailable: null,
   ...extra,
 });
 
@@ -74,18 +60,7 @@ beforeEach(() => {
   calls = [];
   vi.mocked(getBehavior).mockResolvedValue({ resumeCommandLocal: "", resumeCommandRemote: "" } as never);
   vi.mocked(resolveResumeCommand).mockResolvedValue("");
-  vi.mocked(getModelForAccount).mockResolvedValue("opus");
-  vi.mocked(lastAccounts).mockResolvedValue({ c: "work", e: "gone" });
-  vi.mocked(fetchAccounts).mockResolvedValue({
-    origin: "r1",
-    available: true,
-    error: null,
-    oldBackend: false,
-    meta: null,
-    defaultName: "work",
-    notice: null,
-    accounts: [{ name: "work", email: "", configDir: "/h/.cc/work", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true }],
-  } as unknown as AccountsState);
+  vi.mocked(machineModels).mockResolvedValue({ work: "opus" });
 });
 
 describe("批量停：每台一次、逐个答", () => {
@@ -118,13 +93,19 @@ describe("批量停：每台一次、逐个答", () => {
   });
 });
 
-describe("批量起：账号跟随同单个那条、每台只取一次清单", () => {
-  it("在 tmux 里起：上次用的号照跟、选不了的跳过不发；做成了才记上次用的号", async () => {
+describe("批量起：每项只交 sid 与目录，整批带用户设置的原值；用哪个号那台判", () => {
+  it("在 tmux 里起：请求逐键（每项 {sid, cwd}，整批 哪一家 · resume 命令 · 模型偏好表）；那台说选不了号的那一项照它说", async () => {
     backend((_o, _op, args) => ({
-      results: (args.items as { sid: string }[]).map((i) => res(i.sid, "done", null, { session: `${i.sid}-cc` })),
+      results: (args.items as { sid: string }[]).map((i) =>
+        i.sid === "e"
+          ? res("e", "skipped", "account_unavailable", {
+              detail: "gone",
+              unavailable: { requested: "gone", pinned: true, listKnown: true, alternative: "work" },
+            })
+          : res(i.sid, "done", null, { session: `${i.sid}-cc`, account: { name: "work", configDir: "/h/.cc/work", model: "opus" } }),
+      ),
     }));
     const out = await startMany([tab("c", "r1"), tab("e", "r1"), tab("f", "r1")], "tmux");
-    expect(vi.mocked(fetchAccounts)).toHaveBeenCalledTimes(1);
     expect(calls).toEqual([
       [
         "r1",
@@ -132,20 +113,23 @@ describe("批量起：账号跟随同单个那条、每台只取一次清单", (
         {
           mode: "tmux",
           local: false,
+          agent: "claude",
+          launcher: "claude",
+          defaultLauncher: "claude",
+          models: { work: "opus" },
           items: [
-            { agent: "claude", sid: "c", cwd: "/w/c", account: { kind: "named", name: "work", configDir: "/h/.cc/work" }, model: "opus", launcher: "claude", defaultLauncher: "claude" },
-            // 没有 pin 的那一个跟当前号（同单个那条的跟随），不是跳过。
-            { agent: "claude", sid: "f", cwd: "/w/f", account: { kind: "named", name: "work", configDir: "/h/.cc/work" }, model: "opus", launcher: "claude", defaultLauncher: "claude" },
+            { sid: "c", cwd: "/w/c" },
+            { sid: "e", cwd: "/w/e" },
+            { sid: "f", cwd: "/w/f" },
           ],
         },
       ],
     ]);
     expect(out.find((o) => o.sid === "e")).toEqual({ sid: "e", outcome: "skipped", why: copyText("tabBatch.why.accountGone", { name: "gone" }) });
-    expect(vi.mocked(recordLastAccount).mock.calls).toEqual([["c", "work"], ["f", "work"]]);
+    expect(out.filter((o) => o.outcome === "done").map((o) => o.sid)).toEqual(["c", "f"]);
   });
 
-  it("开终端：后端渲好的那一行逐个开窗；窗口开不出来的记失败、不记上次用的号", async () => {
-    vi.mocked(lastAccounts).mockResolvedValue({});
+  it("开终端：后端渲好的那一行逐个开窗；窗口开不出来的记失败", async () => {
     backend((_o, _op, args) => ({
       results: (args.items as { sid: string }[]).map((i) => res(i.sid, "done", null, { cmd: `ccm --resume ${i.sid}` })),
     }));
@@ -161,6 +145,5 @@ describe("批量起：账号跟随同单个那条、每台只取一次清单", (
       { sid: "x", outcome: "done", why: "" },
       { sid: "y", outcome: "failed", why: copyText("tabBatch.why.windowFailed", { detail: "Error: 开不了" }) },
     ]);
-    expect(vi.mocked(recordLastAccount).mock.calls).toEqual([["x", "work"]]);
   });
 });

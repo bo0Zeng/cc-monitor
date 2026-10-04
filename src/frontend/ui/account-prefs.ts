@@ -1,6 +1,6 @@
 /**
- * **账号偏好**：本机 config.json 里 `accounts.byMachine.<机器>` 那一段 —— 「在那台机器上起新会话默认用哪个号」
- * （`defaultName`）与「那台机器上每个号默认用哪个模型」（`modelByAccount`）。按机器分：各台常用同一套号名，
+ * **账号偏好**：本机 config.json 里 `accounts.byMachine.<机器>` 那一段 —— 「那台机器上每个号默认用哪个模型」
+ * （`modelByAccount`）。「那台起新会话默认用哪个号」住那台的账号库清单（`accounts-set-default`），不在这里。按机器分：各台常用同一套号名，
  * 在一台上设的不许改到别台的同名号。存在本机、不跨机器同步。键是机器的 origin（本机是 `<local>`）。
  *
  * 写口是按键补丁（`config.ts::patchConfig`）：每个写者只交它自己那一格的路径。
@@ -28,16 +28,14 @@ async function machinePrefs(origin: Origin, what: string): Promise<Record<string
   }
 }
 
-/** 读那台机器的默认账号名。无则 null。 */
-export async function getDefaultName(origin: Origin): Promise<string | null> {
-  const dn = (await machinePrefs(origin, "getDefaultName"))?.defaultName;
-  return typeof dn === "string" && dn ? dn : null;
-}
-
-/** 写那台机器的默认账号名。null = 清除（回退跟随那台的账号清单）。 */
-export async function setDefaultName(origin: Origin, name: string | null): Promise<void> {
-  const path = [CFG_KEY, BY_MACHINE, origin, "defaultName"] as const;
-  await patchConfig([name === null ? removeAt(path) : setAt(path, name)]);
+/** 那台机器的模型偏好表（`{号: 模型}`，用户设置的原值）。起会话时整张交给那台（它判出号再取那一条）。 */
+export async function machineModels(origin: Origin): Promise<Record<string, string>> {
+  const map = (await machinePrefs(origin, "machineModels"))?.[MODEL_MAP_KEY];
+  const out: Record<string, string> = {};
+  if (map && typeof map === "object") {
+    for (const [k, v] of Object.entries(map as Record<string, unknown>)) if (typeof v === "string" && v) out[k] = v;
+  }
+  return out;
 }
 
 /** F07：读那台机器上某个号的默认模型偏好。无则 undefined。 */

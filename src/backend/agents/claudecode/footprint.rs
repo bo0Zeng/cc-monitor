@@ -185,6 +185,23 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                     note: Some(Text(|| copy_text("rsToolRegistry.tools.rotationNote", &[]))),
                     effect: TouchEffect::OwnedFile,
                 },
+                // 起会话用的号：每条会话上次用哪个号起的（观测侧记）＋ ccm 起会话时留的便条（认完、进程不在了即清）。
+                TouchedFile {
+                    path: "~/.cc-monitor/launch-accounts.json",
+                    host: HostScope::Either,
+                    note: Some(Text(|| {
+                        copy_text("rsToolRegistry.tools.launchAccountsNote", &[])
+                    })),
+                    effect: TouchEffect::OwnedFile,
+                },
+                TouchedFile {
+                    path: "~/.cc-monitor/launch-pending",
+                    host: HostScope::Either,
+                    note: Some(Text(|| {
+                        copy_text("rsToolRegistry.tools.launchNotesNote", &[])
+                    })),
+                    effect: TouchEffect::OwnedFile,
+                },
                 // 同步改写某个号的配置文件之前，那份原文放这里（每个号一份）。
                 TouchedFile {
                     path: "~/.cc-monitor/backups/accounts-mcp",

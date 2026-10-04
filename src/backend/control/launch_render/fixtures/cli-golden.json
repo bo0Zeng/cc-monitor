@@ -33,6 +33,7 @@
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -66,12 +67,12 @@
         },
         "cwd": null,
         "account": {
-          "kind": "account",
-          "name": "z",
-          "configDir": "/home/u/.cc-monitor/accounts/z"
+          "kind": "named",
+          "name": "z"
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -105,12 +106,12 @@
         },
         "cwd": null,
         "account": {
-          "kind": "account",
-          "name": null,
+          "kind": "named",
           "configDir": "/home/u/.cc-monitor/accounts/z"
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -147,12 +148,12 @@
         },
         "cwd": null,
         "account": {
-          "kind": "account",
-          "name": "z",
-          "configDir": "/home/u/.cc-monitor/accounts/z"
+          "kind": "named",
+          "name": "z"
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -187,15 +188,19 @@
         },
         "cwd": "/w",
         "account": {
-          "kind": "base"
+          "kind": "named",
+          "name": "z"
         },
         "ccmSid": null,
-        "model": "opus",
+        "model": null,
+        "models": {
+          "z": "opus"
+        },
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --resume s1 --model opus -- --ccm-agent claude --base --cwd /w"
+      "out": "ccm --resume s1 --model opus -- --ccm-agent claude --account z --cwd /w"
     },
     {
       "name": "就地 resume：外层只包那一行直路",
@@ -231,6 +236,7 @@
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -268,6 +274,7 @@
         },
         "ccmSid": "sid-1",
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -305,6 +312,7 @@
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "mycc",
         "defaultLauncher": "claude"
       },
@@ -342,6 +350,7 @@
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -382,6 +391,7 @@
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -419,6 +429,7 @@
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -455,6 +466,7 @@
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -493,6 +505,7 @@
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -525,10 +538,14 @@
         },
         "cwd": null,
         "account": {
-          "kind": "base"
+          "kind": "named",
+          "name": "z"
         },
         "ccmSid": null,
-        "model": "opus",
+        "model": null,
+        "models": {
+          "z": "opus"
+        },
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -565,6 +582,7 @@
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -603,6 +621,7 @@
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -637,10 +656,11 @@
         },
         "cwd": "/p",
         "account": {
-          "kind": "base"
+          "kind": "follow"
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "codex",
         "defaultLauncher": "codex"
       },
@@ -675,12 +695,12 @@
         },
         "cwd": "/p",
         "account": {
-          "kind": "account",
-          "name": "z",
-          "configDir": "/home/u/.cc-monitor/accounts/z"
+          "kind": "named",
+          "name": "z"
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "codex",
         "defaultLauncher": "codex"
       },
@@ -715,12 +735,12 @@
         },
         "cwd": "/p",
         "account": {
-          "kind": "account",
-          "name": "z",
-          "configDir": "/home/u/.cc-monitor/accounts/z"
+          "kind": "named",
+          "name": "z"
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -757,12 +777,12 @@
         },
         "cwd": "/p",
         "account": {
-          "kind": "account",
-          "name": "z",
-          "configDir": "/home/u/.cc-monitor/accounts/z"
+          "kind": "named",
+          "name": "z"
         },
         "ccmSid": "s1",
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -799,12 +819,12 @@
         },
         "cwd": "/p",
         "account": {
-          "kind": "account",
-          "name": null,
+          "kind": "named",
           "configDir": "/home/u/.cc-monitor/accounts/z"
         },
         "ccmSid": "s1",
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -839,10 +859,11 @@
         },
         "cwd": null,
         "account": {
-          "kind": "base"
+          "kind": "follow"
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -879,10 +900,11 @@
         },
         "cwd": null,
         "account": {
-          "kind": "base"
+          "kind": "follow"
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -918,10 +940,11 @@
         },
         "cwd": "/p",
         "account": {
-          "kind": "base"
+          "kind": "follow"
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -962,6 +985,7 @@
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -1002,6 +1026,7 @@
         },
         "ccmSid": "p1",
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -1041,6 +1066,7 @@
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "CCMPROBE",
         "defaultLauncher": "claude"
       },
@@ -1081,6 +1107,7 @@
         },
         "ccmSid": null,
         "model": null,
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
@@ -1121,6 +1148,7 @@
         },
         "ccmSid": "p1",
         "model": "opus",
+        "models": {},
         "launcher": "claude",
         "defaultLauncher": "claude"
       },
