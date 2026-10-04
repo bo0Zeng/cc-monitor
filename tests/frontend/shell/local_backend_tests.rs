@@ -3068,7 +3068,12 @@ fn hx1_backend_stderr_lines_keep_their_level_capped_at_warn() {
         .expect("起子进程");
     let pid = child.id();
     let err = child.stderr.take().expect("stderr");
-    tracing::subscriber::with_default(sub, || super::drain_child_stderr_into_log(err, pid));
+    // 同 `inbound_client_tests` 抓日志那一处：另握一个空的 `Dispatch`，进来先重算 interest 缓存（并行时别的线程先碰到 callsite 会缓存成「没人要」）。
+    let _spare = tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
+    tracing::subscriber::with_default(sub, || {
+        tracing::callsite::rebuild_interest_cache();
+        super::drain_child_stderr_into_log(err, pid)
+    });
     let _ = child.wait();
     let text = String::from_utf8(buf.0.lock().unwrap().clone()).expect("utf8");
     let got: Vec<(String, String)> = text

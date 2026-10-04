@@ -61,7 +61,13 @@ pub(crate) fn heard(f: impl FnOnce()) -> Vec<String> {
         .with_writer(move || sink.clone())
         .with_ansi(false)
         .finish();
-    tracing::subscriber::with_default(sub, f);
+    // 另握一个空的 `Dispatch`：只剩一个登记的 dispatcher 时，tracing 按「碰到 callsite 的那条线程」的默认算 interest 并缓存 ——
+    // 并行的别的测试先碰到就缓存成「没人要」，这里就听不见。进来先重算一遍缓存。
+    let _spare = tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
+    tracing::subscriber::with_default(sub, || {
+        tracing::callsite::rebuild_interest_cache();
+        f()
+    });
     let text = String::from_utf8(buf.lock().unwrap().clone()).unwrap();
     text.lines().map(str::to_string).collect()
 }
