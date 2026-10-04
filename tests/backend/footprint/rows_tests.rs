@@ -596,6 +596,9 @@ fn every_host_declaration_is_pinned() {
         // 各号共用的用户级 MCP 与改写前的备份：那台后端自己的状态，账号库在哪台就写哪台 ⇒ `Either`。
         ("accounts", "~/.cc-monitor/accounts-mcp.json", Either),
         ("accounts", "~/.cc-monitor/backups/accounts-mcp", Either),
+        // 额度账 · 账号轮换：账号域自己的状态，在会话跑的那台（本机远端同形）。
+        ("accounts", "~/.cc-monitor/quota.json", Either),
+        ("accounts", "~/.cc-monitor/rotation.json", Either),
         // 🔴 `remote-daemon` → `backend`，而它今天有**三行**：
         //    同一份后端的三种载体（`K-R68` 现打）。三行的 `host` 逐条不同源：
         //    ① 安装包旁边那份与 ② 自释放那份都落在 monitor 跑着的**这台**（`Client`）；

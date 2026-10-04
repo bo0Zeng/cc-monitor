@@ -63,7 +63,10 @@ pub(crate) mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key
 
 pub(crate) use policy::Reload;
 
-use crate::relay::{AuthSwap, Base, Destination, Destinations, Mode, Ready, RouteKey, Startup};
+use crate::accounts::quota::ledger::{self, Ledger};
+use crate::relay::{
+    Ask, AuthSwap, Base, Destination, Destinations, Heard, Mode, Ready, RouteKey, Startup,
+};
 use creds_core::store::AuthStyle;
 use std::io::Write;
 use table::{RoutingTable, Row};
@@ -174,7 +177,8 @@ impl Ready for Upstreams {
         // `D1 阻-2`：把重载源接上 —— 没有这一行，那张表就是一张**启动快照**，
         // 用户在界面上配完 key 必须重启中转才生效（而不重启的症状是一个静默的 404）。
         // 推不出那份文件在哪 ⇒ 空表、无重载源（那句话装表时已经说了）。
-        let accounts = Accounts::new(table, *self);
+        let quota = Ledger::at(ledger::path_from(get)).ringing(ledger::bell());
+        let accounts = Accounts::new(table, *self).recording_to(std::sync::Arc::new(quota));
         std::sync::Arc::new(match source {
             Some((path, stamp)) => accounts.reloading_from(Reload::new(path, stamp)),
             None => accounts,
@@ -196,6 +200,8 @@ pub(crate) struct Accounts {
     upstreams: Upstreams,
     /// 重载源。`None` = 判据自己造的表（不从文件来）⇒ 永不重载。
     reload: Option<Reload>,
+    /// 额度账：回包头读成的快照按号记在这里（中转的 `observe` 口进来）。
+    quota: std::sync::Arc<Ledger>,
 }
 
 impl Accounts {
@@ -205,7 +211,14 @@ impl Accounts {
             table: std::sync::RwLock::new(table),
             upstreams,
             reload: None,
+            quota: std::sync::Arc::new(Ledger::at(None)),
         }
+    }
+
+    /// 额度账记到这一本（缺省是只在内存里的一本）。
+    pub(crate) fn recording_to(mut self, quota: std::sync::Arc<Ledger>) -> Self {
+        self.quota = quota;
+        self
     }
 
     /// `D1 阻-2`：把「从哪儿重读那张表」接上。**只有 `run_with` 那条真路走它。**
@@ -290,7 +303,13 @@ impl Destinations for Accounts {
     ///
     /// 那一格**不在这里**，在 [`dispatch_auth`] —— 三种鉴权处置与
     /// 「为什么 `Substitute` 的 key 是 `Option`」整段写在它头上。**一个事实一个住址。**
-    fn resolve(&self, mode: Mode, key: &RouteKey, act: &mut dyn FnMut(Destination<'_>)) {
+    fn resolve(
+        &self,
+        mode: Mode,
+        key: &RouteKey,
+        _ask: &Ask<'_>,
+        act: &mut dyn FnMut(Destination<'_>),
+    ) {
         // `D1 阻-2`：查表**之前**先看那份文件动过没有 —— 不然「界面上配完 key」要重启才生效，
         // 而不重启的症状是一个静默的 404（与「账号 id 打错」同形）。
         self.refresh_if_changed();
@@ -311,6 +330,18 @@ impl Destinations for Accounts {
 
     fn request_marks(&self) -> Vec<(&'static str, &'static str)> {
         crate::agents::context_marks()
+    }
+
+    /// 回包头 → 这一家的读法 → 额度账（记在答这一发的那个号名下：`tag` 就是那个号）。
+    fn observe(&self, _mode: Mode, key: &RouteKey, _ask: &Ask<'_>, seen: &Heard<'_>) {
+        let agent = key.seg1.as_str();
+        let Some(read) = crate::agents::quota_read_of(agent) else {
+            return;
+        };
+        let now = crate::accounts::quota::now_unix();
+        if let Some(reading) = read(seen.status, seen.headers, now) {
+            ledger::record_seen(&self.quota, agent, seen.tag, reading, now);
+        }
     }
 }
 
@@ -340,7 +371,7 @@ pub(crate) fn decide(
     let (agent, account) = (key.seg1.as_str(), key.seg2.as_str());
     match (mode, table.lookup(agent, account)) {
         // ── `/s/` 有行 ⇒ 鉴权由这一行说了算（三种处置见 `dispatch_auth`）─────
-        (Mode::Substitute, Some(row)) => dispatch_auth(row, act),
+        (Mode::Substitute, Some(row)) => dispatch_auth(row, account, act),
 
         // ── `/s/` 无行 ⇒ **404**（`§3.1` 第 2 行，今天的行为，一字不改）──────────
         (Mode::Substitute, None) => {
@@ -369,6 +400,7 @@ pub(crate) fn decide(
             //   走 `/t/` 时上游收到的是**客户端那把**，不是表里那把。
             act(Destination::Passthrough {
                 upstream: row.base(),
+                tag: account,
             });
         }
 
@@ -381,7 +413,10 @@ pub(crate) fn decide(
             // ① 登记过 ⇒ 发到**这一家自己那一行**，下游那份鉴权头逐字节原样上去
             //   （`/t/` 从来不代入）。⚠ 取的是 `upstreams.of(agent)`，**不是**某一个进程级的值 ——
             //   那个进程级常量今天整删了。
-            Some(base) => act(Destination::Passthrough { upstream: base }),
+            Some(base) => act(Destination::Passthrough {
+                upstream: base,
+                tag: account,
+            }),
             // ② 未登记 ⇒ 拒（`§3.1` 原写 502；改成我们拒的 4xx）。★ 这不是没做完，是照那条 🔴 做的 fail-closed：
             //   能选的只有「回落到某一家」（那条 🔴 明禁，后果逐字是「把 codex 的请求发给
             //   Anthropic」）与「拒」。选拒。
@@ -417,7 +452,7 @@ pub(crate) fn decide(
 /// —— 先前那个 `(key.is_some() && …) || style == NoAuth` 的复合条件（`K-R1` 头注
 /// 逐字警告过「只看前者的话 `NoAuth` 那一行会把客户端的真 key 原样送给一个声明了
 /// 不校验凭据的本地端点」）**整条搬到了这里**，中转再也没有第二处可以判错。
-fn dispatch_auth(row: &Row, act: &mut dyn FnMut(Destination<'_>)) {
+fn dispatch_auth(row: &Row, tag: &str, act: &mut dyn FnMut(Destination<'_>)) {
     let style = row.auth_style();
     let clear = headers_to_clear();
     match (row.key(), auth_header_of(style)) {
@@ -440,6 +475,7 @@ fn dispatch_auth(row: &Row, act: &mut dyn FnMut(Destination<'_>)) {
                     clear,
                     write: Some((name, value.as_str())),
                 },
+                tag,
             });
         }
         // ② 这个形状**不写任何头**（`AuthStyle::NoAuth`，`K-R1` 的「本地部署那一格」）
@@ -448,10 +484,12 @@ fn dispatch_auth(row: &Row, act: &mut dyn FnMut(Destination<'_>)) {
         (_, None) => act(Destination::Substitute {
             upstream: row.base(),
             auth: AuthSwap { clear, write: None },
+            tag,
         }),
         // ③ 没 key，而这个形状本来要写头 ⇒ 没东西可代入 ⇒ **原样转发**（订阅登录那一档）。
         (None, Some(_)) => act(Destination::Passthrough {
             upstream: row.base(),
+            tag,
         }),
     }
 }

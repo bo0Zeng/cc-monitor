@@ -1,0 +1,12 @@
+//! 额度与轮换：账号域里用量的唯一住址（额度账）＋ 满了换号的规则（轮换）。
+//!
+//! 数据只有一个来源：中转经手的回包头（读法住适配层，[`crate::agents::quota_read_of`]）。
+
+pub(crate) mod ledger;
+
+/// 此刻（unix 秒）。
+pub(crate) fn now_unix() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}

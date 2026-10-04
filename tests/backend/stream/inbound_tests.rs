@@ -551,6 +551,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔条 66〕「退出行为」那两条：同步文件 I/O（读 / 原子写 `~/.cc-monitor` 下那一份）。
         "exit-policy-read",
         "exit-policy-set",
+        "quota-read",
         // 功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
         "tasks-list",
         "mcp-read",
@@ -729,6 +730,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "accounts-trust", //
         "exit-policy-read",
         "exit-policy-set",
+        "quota-read",
         "tasks-list",
         "mcp-read",
         "tmux-list",

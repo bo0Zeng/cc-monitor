@@ -276,7 +276,7 @@ pub(crate) use door::keyed_with_key_on_disk;
 pub(crate) use route::segment_is_safe;
 /// 中转的**传输原语**：一行的上游是什么。上游选择解析它、焊进行里、原样交回（`Destination` 带着它）。
 /// ⚠ 它**经这里**交给上游选择（`upstream` 模块本身仍是私有的）—— 契约面上的每一样都住这个文件。
-pub(crate) use upstream::Base;
+pub(crate) use upstream::{fetch, Base, Fetched};
 
 /// 两个前缀 = 两种模式（「为什么用两个前缀而不是一个哨兵段」）。
 ///
@@ -361,7 +361,10 @@ pub(crate) struct AuthSwap<'a> {
 /// 按值返回就得把它 `String` 化一份带出来 —— 那是**多一份明文**，不是搬家）。
 pub(crate) enum Destination<'a> {
     /// 发到这个上游，**下游送来的 auth 头原样转发**。中转手里没有任何 key。
-    Passthrough { upstream: &'a Base },
+    ///
+    /// `tag`：上游选择给这个去处贴的不透明标签；中转不解读，回包头到了交 [`Destinations::observe`] 时原样递回
+    /// （同一条流上并发的几发各自认得出是哪个去处答的）。
+    Passthrough { upstream: &'a Base, tag: &'a str },
     /// 发到这个上游，**剥掉下游 auth、按上游选择交下来的那份材料换头**。
     ///
     /// ★★ 买到的那一格就在这里：上游与鉴权材料是**同一个变体的两个字段**，
@@ -379,6 +382,7 @@ pub(crate) enum Destination<'a> {
     Substitute {
         upstream: &'a Base,
         auth: AuthSwap<'a>,
+        tag: &'a str,
     },
     /// 这条路由不成立 ⇒ 中转回这个状态码，**一个字节都不发上游**。
     Refuse {
@@ -389,6 +393,25 @@ pub(crate) enum Destination<'a> {
         /// 为什么拒，一句人话：进响应体第二行（出声，不只给一个码）。
         why: &'static str,
     },
+}
+
+/// 这一发请求里中转交给上游选择看的那几样（只读）：流标签 ＋ 整份请求体。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Ask<'a> {
+    /// 请求头里取出的流标签（[`Destinations::stream_label_headers`]）；没有 ⇒ 空串。
+    pub(crate) label: &'a str,
+    /// 下游送来的整份请求体（中转先收全了才问去处）。
+    pub(crate) body: &'a [u8],
+}
+
+/// 上游回包头读完那一刻中转手里的东西。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Heard<'a> {
+    /// 答的那个去处的标签（[`Destination::Passthrough::tag`] 原样）。
+    pub(crate) tag: &'a str,
+    /// 状态行里的三位数字；读不出 ⇒ 0。
+    pub(crate) status: u16,
+    pub(crate) headers: &'a [(String, String)],
 }
 
 /// 上游选择对中转的**唯一**一个口。
@@ -414,7 +437,16 @@ pub(crate) trait Destinations: Send + Sync {
     /// 2. **`act` 里不许做流式转发**。上游选择的锁（`RwLock` 写优先）活到 `act` 返回为止；
     ///    把 `pump` 搬进来 = 「配一次 key」会被堵在最长那条在飞流后面（`D2 阻-4`）。
     ///    钉这一条的判据：`table_guard::the_upstream_selection_lock_does_not_outlive_the_streaming_pump`。
-    fn resolve(&self, mode: Mode, key: &RouteKey, act: &mut dyn FnMut(Destination<'_>));
+    fn resolve(
+        &self,
+        mode: Mode,
+        key: &RouteKey,
+        ask: &Ask<'_>,
+        act: &mut dyn FnMut(Destination<'_>),
+    );
+
+    /// 上游的回包头读完那一刻（还没往下游写一个字节）交回来看一眼：**只读**，答什么都不改中转的做法。缺省 ⇒ 不看。
+    fn observe(&self, _mode: Mode, _key: &RouteKey, _ask: &Ask<'_>, _seen: &Heard<'_>) {}
 
     /// 哪几个请求头给流打标签（第一个在请求里、值过段闸的那个）。中转不知道它们是谁的什么头，
     /// 只照这份名单取 —— 会话 id 归 agent 自己，启动器不往地址里塞（路由第 3 段随之退役）。

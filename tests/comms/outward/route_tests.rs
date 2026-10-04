@@ -224,7 +224,7 @@ fn the_passthrough_url_the_launch_answer_builds_parses_as_passthrough() {
         let mut out = String::new();
         crate::accounts::upstream_select::decide(&table, &ups, r.mode, k, &mut |d| {
             out = match d {
-                super::super::Destination::Passthrough { upstream } => {
+                super::super::Destination::Passthrough { upstream, .. } => {
                     format!("pass {}", upstream.host)
                 }
                 super::super::Destination::Refuse { status, reason, .. } => {

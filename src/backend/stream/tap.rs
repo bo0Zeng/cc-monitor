@@ -124,6 +124,8 @@ pub trait TapSource {
 /// 只交出**帧** —— tee 的事件类型不出本 crate。
 pub struct TapRx {
     rx: tokio::sync::mpsc::Receiver<TapEvent>,
+    /// 额度账显示变了的通道（变了推一帧 `quota_changed`）；`None` ＝ 不订（判据自己接的那一形）。
+    quota: Option<tokio::sync::watch::Receiver<u64>>,
     book: std::sync::Arc<crate::observe::runs::RunBook>,
     router: super::run_route::RunRouter,
     out: std::collections::VecDeque<Frame>,
@@ -148,6 +150,13 @@ impl TapSource for TapRx {
                     let fs = self.router.on_learned();
                     self.out.extend(fs);
                 }
+                alive = quota_moved(&mut self.quota) => {
+                    if alive {
+                        self.out.push_back(Frame::QuotaChanged);
+                    } else {
+                        self.quota = None;
+                    }
+                }
             }
         }
     }
@@ -156,7 +165,17 @@ impl TapSource for TapRx {
 /// 一条流连接接上了 ⇒ 从进程级 hub 拿一条新的 tap 接收端（两条载体各在「流开始」那一处调一次）。
 /// `book` 是这条连接的 watcher 写的那一本运行簿（流归位按它定归哪个运行）。
 pub fn attach(book: std::sync::Arc<crate::observe::runs::RunBook>) -> TapRx {
-    attach_rx(hub().attach(), book)
+    let mut rx = attach_rx(hub().attach(), book);
+    rx.quota = Some(crate::accounts::quota::ledger::bell().subscribe());
+    rx
+}
+
+/// 额度账显示变了 ⇒ `true`；通道没了 ⇒ `false`（调用方把它摘掉）；没订 ⇒ 永远不醒。
+async fn quota_moved(q: &mut Option<tokio::sync::watch::Receiver<u64>>) -> bool {
+    match q {
+        Some(r) => r.changed().await.is_ok(),
+        None => std::future::pending().await,
+    }
 }
 
 /// [`attach`] 的可喂那一半：接收端由调用方给（判据拿小容量通道）。
@@ -169,6 +188,7 @@ pub(crate) fn attach_rx(
         router: super::run_route::RunRouter::new(book.clone(), crate::agents::stream_families()),
         book,
         out: std::collections::VecDeque::new(),
+        quota: None,
     }
 }
 

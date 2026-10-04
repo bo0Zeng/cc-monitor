@@ -536,6 +536,13 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     DEFAULT: NONE,
     expose_for_auth_header: NONE,
     expose_for_persisting: NONE,
+    // 登录令牌（订阅号续期）：第三个明文出口 ＋ 读 / 写回 / 请求体三个纯函数；TS 侧零处碰凭据。
+    expose_for_token_request: NONE,
+    merge_secret: NONE,
+    merge_tokens: NONE,
+    refresh_body: NONE,
+    secret_in: NONE,
+    same_secret: NONE,
     field_value: NONE,
     FILE_NAME: NONE,
     from_field_value: NONE,
@@ -616,6 +623,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     POSIX_ALIASES_REL: NONE,
     PS_ALIASES_REL: NONE,
     SKILL_LEDGER_REL: NONE,
+    // 额度账 · 账号轮换（后端账号域写；数据位置页按它列）。
+    QUOTA_LEDGER_REL: NONE,
+    ROTATION_REL: NONE,
     // 后端落点（`~/.cc-monitor/bin/ccm`，两半同一份）；TS 侧没有孪生（界面那句话里的路径在文案表里）。
     BACKEND_LANDING_REL: NONE,
     BACKEND_LANDING_SHELL: NONE,

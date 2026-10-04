@@ -46,6 +46,8 @@ pub(crate) mod liveness;
 pub(crate) mod mcp;
 pub(crate) mod parse;
 pub mod paths;
+// 回包头里的额度那一族 → 通用的额度快照。
+pub(crate) mod quota;
 pub(crate) mod records;
 pub(crate) mod resume;
 // 子运行（子 agent）的形状：对账键 · 归属 · 派出链接 · 记录住址 · 请求自报身份的头。
@@ -84,6 +86,25 @@ pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     settings_env: Some(paths::SETTINGS_ENV),
     // 1M 上下文的请求在 `anthropic-beta` 里带 `context-1m-<日期>` 那一项；不带 ⇒ 这个模型的默认上下文。
     context_mark: Some(("anthropic-beta", "context-1m")),
+    quota: Some(quota::read),
+    login: Some(LOGIN),
+};
+
+/// 订阅号登录：`<配置目录>/.credentials.json` 的 `claudeAiOauth` 那一节；续期照 claude 自己的做法
+/// （JSON 体发到令牌端点、快过期 5 分钟内就续、拿配置目录里外那两把 `mkdir` 锁）。
+pub(crate) const LOGIN: super::LoginFace = super::LoginFace {
+    creds_file: acct_core::CREDENTIALS_NAME,
+    section: "claudeAiOauth",
+    access: "accessToken",
+    refresh: "refreshToken",
+    expires_ms: "expiresAt",
+    scopes: "scopes",
+    client_field: "clientId",
+    token_url: "https://platform.claude.com/v1/oauth/token",
+    client_id: "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
+    margin_ms: 300_000,
+    lock_inside: ".oauth_refresh.lock",
+    lock_beside: Some(".lock"),
 };
 
 /// 本家的**起会话事实**（注册表 `Adapter.launch` 那一格）：`ccm` 按它起、界面按生成物 `agent-profile-table.ts` 读，同一份。

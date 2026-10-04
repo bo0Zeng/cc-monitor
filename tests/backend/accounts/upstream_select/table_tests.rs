@@ -382,8 +382,8 @@ fn ask(t: &RoutingTable, u: &Upstreams, mode: Mode, seg1: &str, seg2: &str) -> S
     decide(t, u, mode, &key, &mut |d| {
         out = Some(match d {
             Destination::Refuse { status, reason, .. } => Said::Refuse(status, reason),
-            Destination::Passthrough { upstream } => Said::Passthrough(upstream.host_header()),
-            Destination::Substitute { upstream, auth } => Said::Substitute(
+            Destination::Passthrough { upstream, .. } => Said::Passthrough(upstream.host_header()),
+            Destination::Substitute { upstream, auth, .. } => Said::Substitute(
                 upstream.host_header(),
                 auth.write.map(|(_, v)| v.to_string()),
             ),

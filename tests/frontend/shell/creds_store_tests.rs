@@ -137,6 +137,11 @@ const PLAINTEXT_EXIT_SITES: &[(&str, usize, &str)] = &[
         1,
         "common/creds-core/src/store.rs",
     ),
+    (
+        "expose_for_token_request(",
+        1,
+        "common/creds-core/src/token.rs",
+    ),
 ];
 
 /// 本判据扫哪几棵树。**这就是「取明文恰好 N 处」那句全称的分母。**

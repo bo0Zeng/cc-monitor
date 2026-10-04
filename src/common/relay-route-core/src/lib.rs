@@ -100,6 +100,12 @@ pub const EXT_BACKUPS_DIR_REL: &str = ".cc-monitor/backups";
 /// 这台账号库里各号共用的用户级 MCP（共享集合 ＋ 上次同步时各号的样子；后端 `accounts/manage/mcp_share_exec.rs` 写，0600）。
 pub const ACCOUNTS_MCP_REL: &str = ".cc-monitor/accounts-mcp.json";
 
+/// 〔「一台机器一个家」〕**额度账**（后端账号域写）：这台各号最近一次从回包头看到的额度快照 ＋ 看到的时刻。
+pub const QUOTA_LEDGER_REL: &str = ".cc-monitor/quota.json";
+
+/// 〔同上〕**账号轮换**（后端账号域写）：默认池与换号时机 · 每个会话的覆盖与此刻钉在哪个号 · 换号记录。
+pub const ROTATION_REL: &str = ".cc-monitor/rotation.json";
+
 /// 账号库目录（相对家目录）那一段字面量，**全仓只写在这里**。宏而不是常量：足迹那张静态表要
 /// `concat!` 出带 `~/` 的那一形，`concat!` 只认字面量。别处一律用 [`ACCOUNTS_DIR_REL`]。
 #[macro_export]

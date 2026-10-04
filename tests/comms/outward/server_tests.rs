@@ -68,12 +68,12 @@ fn render_via_upstream_selection(
                 Destination::Refuse { status, .. } => {
                     panic!("{account} 那一行该在表里，上游选择却答了 Refuse {status}")
                 }
-                Destination::Passthrough { upstream } => {
+                Destination::Passthrough { upstream, .. } => {
                     render_upstream_request(head, rest, upstream, None, body_len)
                 }
                 // 上游选择交下来的是一个 `AuthSwap`（头名 ＋ 完整头值 ＋
                 // 要丢的头名全集），中转照写 ⇒ 这里原样把它递进渲染，**不许在判据里自己凑一份**。
-                Destination::Substitute { upstream, auth } => {
+                Destination::Substitute { upstream, auth, .. } => {
                     render_upstream_request(head, rest, upstream, Some(&auth), body_len)
                 }
             });

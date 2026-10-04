@@ -421,6 +421,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `reply` | `id`, `ok`, `data?`, `code?`, `message?` | **U6b-1**：**入方向命令的应答**。它刻意**复用出方向的 `kind` tag 空间**（不另开一条流），所以它在本表里有一行 —— 而它的完整语义（信封、`id` 不透明性、超时后登记谁摘、逐命令的 `data` 形状与错误码）住在下面的「入方向」小节。⚠ **本行只是清册登记**，不重复那一节的内容（同一份契约不许两处各写一份）。⚠ 它此前**只活在那一节的示例里、本表没有它的行** —— 仓外 aterm 的 KDoc 里那个错的帧数就是数本表数出来的 |
 | `cancelled` | `id` | **U6b-1**：某条入方向命令**被取消了**（`id` = 被取消的那条）。同 `reply`：复用 tag 空间、完整语义在「入方向」小节（含「不可取消」时为什么回 `reply{ok:false,code:"not_cancellable"}` 而不是本帧）。⚠ 同上，此前本表无此行 |
 | `accounts_changed` | —（无载荷） | **这台机器上的账号清单变了**（watcher 盯账号 manifest 所在目录，一批文件事件里 manifest 动了几次都只发一帧）。客户端收到就重拉一次账号清单（`accounts-list`）—— 清单本身不在帧里，唯一出口仍是那条查询。manifest 所在目录起步时不在 / 后来被删掉重建 ⇒ 这一路听不见（已知边界，代价只是不推帧）。monitor 收到交给前端：经通道 `subscribe(origin, "accounts-changed")` 那条流里一格 `Frame`（原先是裸 Tauri 事件 `remote-backend-ready`，已退役；句柄 `event_replay.rs`），账号表与 chip 随之重取 |
+| `quota_changed` | —（无载荷） | **这台的额度账显示得出来的那几格变了**（某个号各窗口取整后的百分比 · 重置时刻 · 状态 · 被拒 · 卡在哪个窗口 · 超额那一档）。客户端收到就重拉一次 `quota-read`（额度账的唯一出口仍是那条查询）。中转记账那一路发、走 tap 那条可丢的通道（额度账在盘上，丢了重拉就补上）。详见「额度账与账号轮换」小节 |
 | `tasks_changed` | `sid` | **这台机器上某个会话的任务清单变了**（watcher 递归盯 `<agent 家>/tasks/`，一批文件事件里同一个 sid 动了几次都只发一帧；`tasks/` 起步不在 ⇒ 它作为 `agent_home` 里的一个事件出现时挂上）。只带 sid：客户端收到就重问一次 `tasks-list` —— 清单本身不在帧里，唯一出口仍是那条查询。本机远端同一个二进制 ⇒ 同形（monitor 自己那份 notify 删了）。monitor 收到交给前端：经通道 `subscribe(origin, "session-tasks")` 那条流里一格 `Frame`（体 `{"sid": …}`）。丢了不可恢复（`overflow.lost` 带身份，subject = sid）|
 | `sessions_replayed` | —（无载荷） | **这台机器的活会话清单报完了**：`watch_loop` 的 Phase 1（同步扫 `sessions/`、对每个活 pidfile 发一帧 `session_added`）走完那一刻发**一次**，排在 Phase 1 所有帧之后、Phase 2 任何帧之前（同一个 sink、同一条线程）；`sessions/` 不在也照发（清单是空的，也是说完了）。**为什么要它**：客户端手里有一条「固定」的会话条目而这台还没报过它时，得分清「这台还没说完」（显示**说不清**）与「说完了、里面没有它」（显示**已结束**）—— 那张表的判据，此前线上没有任何东西分得开。丢了不可恢复（`overflow.lost` 带身份、subject 无）：客户端停在「说不清」，不会被说成已结束。monitor 收到发前端 `origin-sessions-listed {origin}`（与 `remote-session-added` 同一条线程、同序）|
 | `session_state` | `sid`, `state` | **会话账本的成品**：这条会话离开「活」之后是 `"reconnectable"`（claude 退了、它所在的窗格还挂着 `@ccm_sid`）还是 `"ended"`（进程没了、容器也没了，或被 `superseded` 顶替）。**由这台后端自己裁**（`observe/session_ledger.rs`：摘除原因 ＋ 它自己那份 tmux 快照；`@ccm_sid` 打在窗格上，一个 tmux 会话可挂几个；会话按 `#{session_id}` 认，改名不算关）。`superseded` 紧跟 `session_removed`；`gone` 等一份**摘除之后才起**的 tmux 观测来裁、紧跟那份观测（不拿摘除之前的快照裁，免得先报错一格再翻回来）。收割只对可重连的：它的 tmux 会话关了当场、哪个窗格都不挂它连续两份才落；活着的会话只认 pidfile。新连接第一份可观测的 tmux 快照里「挂着 `@ccm_sid`、却不在活会话里」的各发一帧 `reconnectable`，**排在 `sessions_replayed` 之前**（清单压到第一份快照之后才放）。客户端只收成品、不再查 tmux 原文。丢了不可恢复（`overflow.lost` 带身份）|
@@ -2051,6 +2052,40 @@ monitor **从不**对本机那条连接发 `relay-ensure`（本机那一个就�
 
 ⚠ **CLI 面也有它们**（`--relay-status` / `--relay-ensure`），入参从 stdin 读。
 这里原是帧面 `relay-status` / `relay-ensure`（远端那台上起一个脱离的 `--relay`）：中转只住常驻后端进程里（本机远端同形），那一族随远端回落一形删了。
+
+#### 额度账与账号轮换（10-03）—— **账号域自己的状态，不是用户文件**
+
+用量只有一个来源：这台常驻后端里的中转经手的回包头。中转把每个回包的状态码与头交给上游选择（只读），
+上游选择按那一家的读法（Claude：`anthropic-ratelimit-unified-*` 一族，读法住适配层 `agents/claudecode/quota.rs`）
+翻成通用的额度快照，按「哪一家 · 哪个号」记进额度账 `~/.cc-monitor/quota.json`（家同 API key 凭据那一份）。
+写者只有中转那一路；没走中转的会话（用户自己设了上游地址、或关了注入）看不到。API key 号的回包不带这一族头 ⇒ 只在被拒时记一条「几点能再用」。
+
+#### `quota-read`：这台的额度账（**只读**，**不读 stdin**）
+
+```text
+→ {"id":"q1","cmd":"quota-read"}
+← {"kind":"reply","id":"q1","ok":true,"data":{"state":"present","reason":null,"path":"/home/u/.cc-monitor/quota.json","now":1800000100,
+   "accounts":[{"agent":"claude-code","account":"q","seenAt":1800000000,
+                "reading":{"status":"allowed","refused":false,"limiting":"five_hour","resetsAt":1800003600,
+                           "windows":[{"name":"five_hour","used":0.42,"resetsAt":1800003600},{"name":"seven_day","used":0.1,"resetsAt":1800500000}]}}]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `state` | ← | `"present"`（读得懂）· `"absent"`（还没看到过任何回包）· `"unreadable"`（文件读不出来 / 家推不出来）。后两态不许合并 |
+| `reason` | ← | 只在 `unreadable` 时有：为什么读不出来；其余 `null` |
+| `path` | ← | 那份文件的绝对路径（家推不出来时 `null`） |
+| `now` | ← | 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟） |
+| `accounts` | ← | 每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号；`_` ＝ 起会话时没说是哪个号）· `seenAt` 最后一次看到的时刻 · `reading` 那一次的快照 |
+
+`reading` 的形状（通用，各家读法翻成它）：`status`（`allowed` · `warning` · `rejected`；回包没说 ⇒ 缺）· `refused`（这一发被上游拒了，状态码 429）·
+`limiting`（此刻卡着的窗口名）· `resetsAt`（卡着的那个窗口几点重置；被拒且没有这一族头时 = 现在 ＋ `retry-after`）·
+`windows`（`[{name, used?, resetsAt?, warnedAt?}]`，`used` 是比例、通常 0–1、可以超过 1；Claude 的窗口名 `five_hour` · `seven_day` · `seven_day_overage_included` · `overage`）·
+`overage?`（`{status?, resetsAt?, disabled?, inUse}`：付费超额那一档）。
+
+- 很久没流量的号只有「最后一次看到是几点」（`seenAt`），不编、不去探。
+- 每一次都现读盘（一次性 CLI 那一形里没有内存）。中转那一路：显示得出来的几格变了才立刻落盘并推 `quota_changed`；没变的观测盘上的 `seenAt` 至多落后 60 秒。
+- CLI 面随之多一条 `--quota-read`（不读 stdin）。
 
 #### `drift-report`：这台后端的漂移账（**不读 stdin**，只读、按需）
 

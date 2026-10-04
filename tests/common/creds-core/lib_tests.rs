@@ -123,6 +123,11 @@ const INNER_FIELD_USERS: &[(&str, Handling, &str)] = &[
         "`len() == 0`。clippy 要求有 `len` 就得有它；它读不出任何内容",
     ),
     (
+        "same_secret",
+        Handling::ReadsOnly,
+        "两份比一下是不是同一串，只回一个布尔（续期写回前的比对）；它交不出任何内容",
+    ),
+    (
         "masked",
         Handling::Derives,
         "派生出遮蔽形。**它交出去的不是明文** —— 短到看不出前后缀的整条遮掉，\
@@ -137,6 +142,11 @@ const INNER_FIELD_USERS: &[(&str, Handling, &str)] = &[
         "expose_for_persisting",
         Handling::HandsOut,
         "唯一的**落盘**出口。调用点恰好 1 处，在 `crates/creds-core/src/store.rs`",
+    ),
+    (
+        "expose_for_token_request",
+        Handling::HandsOut,
+        "唯一的**续期请求体**出口（订阅号续登录令牌：刷新令牌原样进那一发的请求体）。调用点恰好 1 处，在 `src/common/creds-core/src/token.rs`",
     ),
 ];
 
@@ -182,11 +192,16 @@ const SEALED_FNS: &[(&str, &str)] = &[
     ("len", "读字节数"),
     ("is_empty", "`len() == 0`"),
     ("masked", "从明文派生出遮蔽形"),
+    ("same_secret", "比两份是不是同一串，只回一个布尔"),
     (
         "expose_for_auth_header",
         "**出口**：上游选择算鉴权头的值（中转只拿算好的头材料）",
     ),
     ("expose_for_persisting", "**出口**：落盘"),
+    (
+        "expose_for_token_request",
+        "**出口**：续登录令牌那一发的请求体",
+    ),
 ];
 
 /// ★★★ **`K18` 的正主：边界由编译器守，本条只守登记表。**
@@ -376,7 +391,11 @@ fn every_fn_touching_the_inner_field_is_classified() {
         .collect();
     assert_eq!(
         hands_out,
-        vec!["expose_for_auth_header", "expose_for_persisting"],
+        vec![
+            "expose_for_auth_header",
+            "expose_for_persisting",
+            "expose_for_token_request"
+        ],
         "把明文原样交出去的 fn 变了。**这一格是本判据的全部意义** —— \n\
              把一个新出口标成 `ReadsOnly` 混进表里，正是这张表最容易退化成的样子。"
     );
@@ -419,6 +438,10 @@ const STRING_RETURNING_EXITS: &[(&str, &str)] = &[
     (
         "expose_for_persisting",
         "唯一的**落盘**出口。只出现在 creds-core 生产段，相等断言 == 1",
+    ),
+    (
+        "expose_for_token_request",
+        "唯一的**续期请求体**出口。只出现在 creds-core 生产段（`token.rs::refresh_body`），相等断言 == 1",
     ),
     (
         "masked",
@@ -558,7 +581,8 @@ fn the_type_has_no_second_impl_block_that_hands_the_inner_string_out() {
     }
 }
 
-/// ★★ **`KS2` 的「全断」那一格**：明文的出口**恰好两个**，而且都得具名。
+/// ★★ **`KS2` 的「全断」那一格**：明文的出口**恰好三个**，而且都得具名
+/// （第三个是订阅号续登录令牌那一发的请求体，理由写在 `SecretKey::expose_for_token_request` 头注里）。
 ///
 /// 上面 `secret_key_has_no_printing_shortcut` 守的是「不许有顺手打印的路」，
 /// 本条守的是另一件事：**不许有第三个出口**。两条缺一都不成立 ——
@@ -568,7 +592,7 @@ fn the_type_has_no_second_impl_block_that_hands_the_inner_string_out() {
 /// 量法：在 `impl SecretKey` 的**函数体窗口**里数「返回内层字段」的写法。
 /// ⚠ 窗口是**花括号配平切出来的 impl 块**，不是 `[\s\S]*?`（`KP4` 那两个价钱之一）。
 #[test]
-fn the_plaintext_has_exactly_two_named_exits() {
+fn the_plaintext_has_exactly_three_named_exits() {
     let prod = production();
     let at = guard_core::find_pinned(&prod, "impl SecretKey {")
         .expect("切不出 `impl SecretKey` —— 本条按红处理，不是绿");
@@ -587,15 +611,20 @@ fn the_plaintext_has_exactly_two_named_exits() {
     // 「把内层字段原样交出去」的唯一写法。
     let exits = block.matches("&self.0").count();
     assert_eq!(
-        exits, 2,
-        "`SecretKey` 交出明文的地方有 {exits} 处，登记的是 **2** 处：\n\
+        exits, 3,
+        "`SecretKey` 交出明文的地方有 {exits} 处，登记的是 **3** 处：\n\
              · `expose_for_auth_header` —— 上游选择算鉴权头的值、交中转写进上游请求（只在后端生产段）\n\
              · `expose_for_persisting`  —— 把它写回那份文件（只在 creds-core 生产段）\n\
+             · `expose_for_token_request` —— 续登录令牌那一发的请求体（只在 creds-core 生产段）\n\
              多一处 ⇒ **必须先在件计划里说清那一处是什么**（`KS2` 逐字：\
              加行是收紧、动断言是放宽，不许在实现里顺手把断言改大）"
     );
     // 两个名字都得真在（否则上面那个 2 可能来自两处匿名写法）。
-    for name in ["fn expose_for_auth_header", "fn expose_for_persisting"] {
+    for name in [
+        "fn expose_for_auth_header",
+        "fn expose_for_persisting",
+        "fn expose_for_token_request",
+    ] {
         assert_eq!(
             block.matches(name).count(),
             1,

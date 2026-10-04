@@ -42,7 +42,7 @@ use super::http1::{self, BodyView, RequestHead};
 use super::route;
 use super::tee::{RequestMark, SseSplitter, TeeSink};
 use super::upstream::{self, Base, Conn};
-use super::{AuthSwap, Destination, Destinations, StreamId};
+use super::{Ask, AuthSwap, Destination, Destinations, Heard, StreamId};
 use std::io::{BufReader, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, TcpStream};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -668,8 +668,12 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //    一条 SSE 长流可以跑几分钟 ⇒ `pump` 搬进来，「配一次 key」就会被堵在
     //    **最长那条在飞流**后面。⚠ 挂起时长**没实测**，这是读源码得出的形状。
     //    钉这一条的判据：`table_guard::the_upstream_selection_lock_does_not_outlive_the_streaming_pump`。
+    let label = stream_label(&head, &relay.stream_headers);
+    let ask = Ask { label, body: &body };
+    // 答的那个去处贴的标签（不透明，回包头到了原样交回 `observe`）。
+    let mut tag = String::new();
     let mut answered: Option<Answered> = None;
-    relay.dest.resolve(r.mode, &r.key, &mut |d| {
+    relay.dest.resolve(r.mode, &r.key, &ask, &mut |d| {
         answered = Some(match d {
             // 路由不成立 ⇒ 回这个码 ＋ 原因头 ＋ 那句为什么，**一个字节都不发上游**。
             Destination::Refuse {
@@ -682,25 +686,35 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
                 why,
             },
             // 下游那份 auth 头**原样转发**。中转手里没有任何 key。
-            Destination::Passthrough { upstream } => send_upstream(
-                upstream,
-                None,
-                &head,
-                &r.rest,
-                &body,
-                relay.upstream_deadline,
-            ),
+            Destination::Passthrough { upstream, tag: t } => {
+                t.clone_into(&mut tag);
+                send_upstream(
+                    upstream,
+                    None,
+                    &head,
+                    &r.rest,
+                    &body,
+                    relay.upstream_deadline,
+                )
+            }
             // 剥掉下游 auth，按这一行自己的说法写（`key` 为 `None` ＝ 什么都不写，
             // 那是 `AuthSwap::write == None` 那一档，理由整段住 `accounts::upstream_select::dispatch_auth`）。
             // ★★ 上游与 key 取自**同一个变体**，不是两个各自取的值。
-            Destination::Substitute { upstream, auth } => send_upstream(
+            Destination::Substitute {
                 upstream,
-                Some(&auth),
-                &head,
-                &r.rest,
-                &body,
-                relay.upstream_deadline,
-            ),
+                auth,
+                tag: t,
+            } => {
+                t.clone_into(&mut tag);
+                send_upstream(
+                    upstream,
+                    Some(&auth),
+                    &head,
+                    &r.rest,
+                    &body,
+                    relay.upstream_deadline,
+                )
+            }
         });
     });
     // 上游选择必须**恰好答一次**（契约写在 `Destinations::resolve` 头注里）。
@@ -749,36 +763,21 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //   ⚠ 读出错那一支（上游读期限到了 / 连接被重置）从「静默 FIN」变成「504（超时）或 502 ＋ why」：
     // 「把传输失败翻成一个 HTTP 响应，原样回给 agent」。
     //     下游那一侧此刻**一个字节都还没收到**（响应头还没写），所以回一个状态码不会与已发的字节打架。
-    let (headers, raw_resp) = {
-        let mut interim = 0usize;
-        loop {
-            let fail = |at, cause| UpstreamFailure::new(&who, at, cause);
-            let raw = match http1::read_response_head(&mut up, HEAD_CAP) {
-                Ok(Some(raw)) => raw,
-                Ok(None) => {
-                    let why = fail(FailedAt::ClosedBeforeAnswer, None);
-                    return respond_upstream_failed(&mut down_w, &why);
-                }
-                Err(e) => {
-                    return respond_upstream_failed(&mut down_w, &fail(FailedAt::NoAnswer, Some(e)))
-                }
-            };
-            let Some((status, headers)) = http1::parse_response(&raw) else {
-                return respond_upstream_failed(&mut down_w, &fail(FailedAt::NotHttp, None));
-            };
-            if http1::is_interim_status(&status) {
-                interim += 1;
-                if interim > INTERIM_RESPONSES_ALLOWED {
-                    return respond_upstream_failed(
-                        &mut down_w,
-                        &fail(FailedAt::OnlyInterim, None),
-                    );
-                }
-                continue;
-            }
-            break (headers, raw);
-        }
+    let (status_line, headers, raw_resp) = match read_final_head(&mut up, &who) {
+        Ok(h) => h,
+        Err(why) => return respond_upstream_failed(&mut down_w, &why),
     };
+    // 回包头读完、还没往下游写一个字节：交上游选择看一眼（只读）。
+    relay.dest.observe(
+        r.mode,
+        &r.key,
+        &ask,
+        &Heard {
+            tag: &tag,
+            status: http1::status_code(&status_line).unwrap_or(0),
+            headers: &headers,
+        },
+    );
     down_w.write_all(&rewrite_response_head(&raw_resp))?;
     down_w.flush()?;
 
@@ -787,7 +786,7 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     // ★ 路由键与流标签收成一个 `StreamId`—— 中转这一侧**没有业务名**；tee 只抄流标签（① 不问账号）。
     // 流标签取自请求自己带的头（会话 id 归 agent），不是路径段。
     let id = StreamId {
-        stream: stream_label(&head, &relay.stream_headers),
+        stream: label,
         owner: stream_label(&head, &relay.owner_headers),
     };
     // 这一发请求里名单上那几项在不在（只交布尔，头的值不出去）。
@@ -816,6 +815,33 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
 }
 
 /// 名单上每一项在这一发里在不在：那个头（可能出现几次）的逗号列表里有一项以它开头（大小写不论）。
+/// 读上游的**最终**回包头：1xx 丢掉再读，至多 [`INTERIM_RESPONSES_ALLOWED`] 条。回 `(状态行, 头表, 原始字节)`。
+fn read_final_head(
+    up: &mut Conn,
+    who: &Who,
+) -> Result<(String, Vec<(String, String)>, Vec<u8>), UpstreamFailure> {
+    let fail = |at, cause| UpstreamFailure::new(who, at, cause);
+    let mut interim = 0usize;
+    loop {
+        let raw = match http1::read_response_head(up, HEAD_CAP) {
+            Ok(Some(raw)) => raw,
+            Ok(None) => return Err(fail(FailedAt::ClosedBeforeAnswer, None)),
+            Err(e) => return Err(fail(FailedAt::NoAnswer, Some(e))),
+        };
+        let Some((status, headers)) = http1::parse_response(&raw) else {
+            return Err(fail(FailedAt::NotHttp, None));
+        };
+        if http1::is_interim_status(&status) {
+            interim += 1;
+            if interim > INTERIM_RESPONSES_ALLOWED {
+                return Err(fail(FailedAt::OnlyInterim, None));
+            }
+            continue;
+        }
+        return Ok((status, headers, raw));
+    }
+}
+
 fn request_marks(head: &RequestHead, marks: &[(&'static str, &'static str)]) -> Vec<RequestMark> {
     marks
         .iter()
@@ -1062,3 +1088,7 @@ fn rewrite_response_head(raw: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 #[path = "../../../tests/comms/outward/server_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/comms/outward/observe_retry_tests.rs"]
+mod observe_retry_tests;

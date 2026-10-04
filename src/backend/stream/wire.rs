@@ -484,6 +484,12 @@ pub enum Frame {
     /// 一批文件事件里 manifest 动了几次都只发一帧。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
     AccountsChanged,
 
+    /// **这台的额度账显示得出来的那几格变了**（某个号的用量取整后的百分比 · 重置时刻 · 状态 · 被拒）。
+    ///
+    /// 无载荷：客户端收到就重拉一次 `quota-read`（额度账的唯一出口仍是那条查询，同 `accounts_changed`）。
+    /// 走 tap 那条可丢的通道（额度账在盘上，丢了下一次变化或重拉就补上）。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    QuotaChanged,
+
     /// **这台机器上某个会话的任务清单变了**（`<agent 家>/tasks/<sid>/` 里有动静）。
     ///
     /// 只带 sid：客户端收到就重问一次 `tasks-list`（清单的唯一出口仍是那条查询，同 `accounts_changed`）。
@@ -744,6 +750,9 @@ impl Frame {
             Frame::Cancelled { .. } => false,
             // 一次状态变化的通知，没有「下一次必然重发」⇒ 保守（丢了客户端就一直拿着旧清单）。
             Frame::AccountsChanged => false,
+            // 额度账在盘上（`quota-read` 随时重拉得到），下一次变化也会再推 ⇒ 丢了可恢复。
+            // ⚠ 它**不走**出方向那条通道（走 tap 那条），列在这里只为穷尽。
+            Frame::QuotaChanged => true,
             // 同上一行：一次变化的通知，丢了那个会话的任务面板就停在旧的（带身份 subject = sid，客户端可重问）。
             Frame::TasksChanged { .. } => false,
             // 一次性的标记，没有「下一次必然重发」⇒ 丢了客户端就一直停在「说不清」
@@ -784,6 +793,7 @@ impl Frame {
             Frame::Reply { id, .. } => ("reply", Some(id.clone())),
             Frame::Cancelled { id } => ("cancelled", Some(id.clone())),
             Frame::AccountsChanged => ("accounts_changed", None),
+            Frame::QuotaChanged => ("quota_changed", None),
             Frame::TasksChanged { sid } => ("tasks_changed", Some(sid.clone())),
             Frame::SessionsReplayed => ("sessions_replayed", None),
             Frame::SessionFileGone { session_id, .. } => {

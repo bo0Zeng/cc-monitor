@@ -59,6 +59,8 @@ const UNIT: &[&str] = &[
     // 记录解释搬进后端：Claude 轮次判词（原 `observe/turn_detect_tests.rs`）· Codex 记录映射（原 monitor `codex_record_tests.rs`）·
     //   按路径读正文出成品那个核（新）。
     "tests/backend/agents/claudecode/turn_tests.rs",
+    "tests/backend/agents/claudecode/quota_tests.rs", // 回包头 → 额度快照：读法表的金样（纯函数）
+    "tests/common/creds-core/token_tests.rs",         // 登录令牌的读 · 写回 · 续期请求体（纯函数）
     "tests/backend/agents/codex/record_tests.rs",
     "tests/backend/observe/record_page_tests.rs",
     "tests/frontend/ui/startup-active.vitest.ts", // F19 启动时记住的那一格（按事件判的真值表）
@@ -638,6 +640,12 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/relay/door_tests.rs",
     "tests/backend/relay/host_tests.rs",
     "tests/comms/outward/server_tests.rs",
+    // 中转的 `observe` / `retry` 口走到账号域那一头：真中转 ＋ 生产段的上游选择 ＋ 按鉴权头作答的假上游。
+    "tests/comms/outward/observe_retry_tests.rs",
+    // 订阅号令牌：对一个回环上的假令牌端点续期、加锁、整份原子写回（真起监听 ＋ 临时目录）。
+    "tests/backend/accounts/oauth/oauth_tests.rs",
+    // 额度账：按号记账 · 落盘 · 读帧（临时目录里真写 `quota.json`）。
+    "tests/backend/accounts/quota/ledger_tests.rs",
     "tests/backend/relay/wire_golden.rs",
     // L2 真起子进程（re-exec 本测试二进制，fd 2 真被换走）
     // 〔MG1 合 SU1〕skill 装记录：临时家目录里真写 / 读 / 摘 `~/.cc-monitor/skill-installs.json` ⇒ 判别器判集成层。

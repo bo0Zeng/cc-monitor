@@ -1635,6 +1635,9 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
         // 它是发给 **aterm** 的（aterm 按 `emits` 门控消费）。
         "turn_end" => None,
 
+        // `quota_changed` 也是认识但不消费：界面怎么画额度还没定，今天要额度就发 `quota-read` 读整份。
+        "quota_changed" => None,
+
         // 未知 kind：向前兼容，跳过（调用方 warn）。绝不 panic。
         _ => None,
     }
@@ -1656,6 +1659,7 @@ const KNOWN_FRAME_KINDS: &[&str] = &[
     "link_end",
     "overflow",
     "probe",
+    "quota_changed",
     "reply",
     "session_added",
     "session_file_gone",

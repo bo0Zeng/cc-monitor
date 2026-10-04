@@ -18873,6 +18873,116 @@
       "kind": "body",
       "zh": "{agents} 的会话不在内容搜索里。",
       "args": ["agents"]
+    },
+    "beQuotaLedger.write.noParent": {
+      "kind": "error",
+      "zh": "{path} 没有上一级目录。",
+      "args": ["path"]
+    },
+    "beQuotaLedger.write.failed": {
+      "kind": "error",
+      "zh": "额度账写不进 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beQuotaLedger.write.unreadable": {
+      "kind": "error",
+      "zh": "{path} 读不出来，没有覆盖它：{e}",
+      "args": ["path", "e"]
+    },
+    "beQuotaLedger.read.noHome": {
+      "kind": "error",
+      "zh": "找不到这台机器的数据目录，额度账无处可读。",
+      "args": []
+    },
+    "rsDataPaths.backend.quota": {
+      "kind": "body",
+      "zh": "额度账：各账号最近一次看到的用量与重置时刻",
+      "args": []
+    },
+    "rsDataPaths.backend.rotation": {
+      "kind": "body",
+      "zh": "账号轮换：默认顺序、换号时机、各会话的账号与换号记录",
+      "args": []
+    },
+    "rsToolRegistry.tools.quotaNote": {
+      "kind": "body",
+      "zh": "额度账：经过中转的回包里看到的各账号用量",
+      "args": []
+    },
+    "rsToolRegistry.tools.rotationNote": {
+      "kind": "body",
+      "zh": "账号轮换：默认顺序、换号时机、各会话的账号与换号记录",
+      "args": []
+    },
+    "beOauthStore.read.notObject": {
+      "kind": "error",
+      "zh": "凭据文件不是一个 JSON 对象",
+      "args": []
+    },
+    "beOauthStore.read.notJson": {
+      "kind": "error",
+      "zh": "凭据文件不是 JSON",
+      "args": []
+    },
+    "beOauthStore.lock.failed": {
+      "kind": "error",
+      "zh": "拿不了续期锁 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beOauthStore.write.failed": {
+      "kind": "error",
+      "zh": "续好的登录写不回 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beOauth.unusable.notLoggedIn": {
+      "kind": "error",
+      "zh": "账号 {account} 没有登录",
+      "args": ["account"]
+    },
+    "beOauth.unusable.unreadable": {
+      "kind": "error",
+      "zh": "账号 {account} 的登录信息读不出来：{why}",
+      "args": ["account", "why"]
+    },
+    "beOauth.unusable.expired": {
+      "kind": "error",
+      "zh": "账号 {account} 的登录过期了，要重新登录",
+      "args": ["account"]
+    },
+    "beOauth.unusable.busy": {
+      "kind": "error",
+      "zh": "账号 {account} 的登录正在被别的程序续期，这一次没换过去",
+      "args": ["account"]
+    },
+    "beOauth.unusable.rejected": {
+      "kind": "error",
+      "zh": "账号 {account} 的登录续不上了（{status}），要重新登录",
+      "args": ["account", "status"]
+    },
+    "beOauth.unusable.failed": {
+      "kind": "error",
+      "zh": "账号 {account} 的登录续期没成：{why}",
+      "args": ["account", "why"]
+    },
+    "beOauth.unusable.writeFailed": {
+      "kind": "error",
+      "zh": "账号 {account} 的登录续好了但写不回去：{why}",
+      "args": ["account", "why"]
+    },
+    "beOauth.refresh.status": {
+      "kind": "error",
+      "zh": "令牌端点回了 {status}",
+      "args": ["status"]
+    },
+    "beOauth.refresh.notJson": {
+      "kind": "error",
+      "zh": "令牌端点的回包读不懂",
+      "args": []
+    },
+    "beOauth.refresh.missing": {
+      "kind": "error",
+      "zh": "令牌端点的回包里缺新的登录",
+      "args": []
     }
   }
 }

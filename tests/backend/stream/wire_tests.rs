@@ -339,6 +339,7 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
         (Frame::Cancelled { id: "r1".into() }, "cancelled"),
         // 账号清单变了（无载荷；逐字节形状另由 `link_frames_have_exactly_these_bytes` 钉）。
         (Frame::AccountsChanged, "accounts_changed"),
+        (Frame::QuotaChanged, "quota_changed"),
         // 某个会话的任务清单变了（只带 sid；逐字节形状由 `link_frames_have_exactly_these_bytes` 钉）。
         (Frame::TasksChanged { sid: "s1".into() }, "tasks_changed"),
         // 链路两帧（逐字节形状另由 `link_frames_have_exactly_these_bytes` 钉）。
@@ -483,6 +484,7 @@ fn link_frames_have_exactly_these_bytes() {
             "{\"kind\":\"link_end\",\"link\":\"m1.0-3\",\"error\":\"读链路下行失败\"}\n",
         ),
         (Frame::AccountsChanged, "{\"kind\":\"accounts_changed\"}\n"),
+        (Frame::QuotaChanged, "{\"kind\":\"quota_changed\"}\n"),
         (
             Frame::TasksChanged { sid: "s1".into() },
             "{\"kind\":\"tasks_changed\",\"sid\":\"s1\"}\n",

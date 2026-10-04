@@ -572,9 +572,19 @@ pub fn restore_account(
 /// ⇒ 签名逼着调用方在**写的那一刻**把盘上的当前内容递进来，
 /// 而不是递一份「界面打开时读的那一份」。这条约束写在类型上，不写在注释里。
 pub fn merge_key(current: &Map<String, Value>, key: &SecretKey) -> Map<String, Value> {
+    merge_secret(current, KEY_FIELD, key)
+}
+
+/// 把一格秘密并进一份刚从盘上读回来的文档（那一格换掉，其余键一个不动）。**落盘出口的唯一调用点**：
+/// API key（[`merge_key`]）与登录令牌（`token::merge_tokens`）都经它。
+pub fn merge_secret(
+    current: &Map<String, Value>,
+    field: &str,
+    key: &SecretKey,
+) -> Map<String, Value> {
     let mut out = current.clone();
     out.insert(
-        KEY_FIELD.to_string(),
+        field.to_string(),
         // ★ 用的是**落盘那个出口**，不是换头那个。两个出口的人群刻意不相交，
         //   见 `SecretKey::expose_for_persisting` 的头注。
         Value::String(key.expose_for_persisting().to_string()),

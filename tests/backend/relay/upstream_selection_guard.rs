@@ -78,7 +78,17 @@ pub(super) mod tests {
         "manage/scan.rs",
         "manage/verify.rs",
         "manage/wire.rs",
+        // 订阅号令牌：读 · 续 · 加锁整份写回。上游选择换到别的订阅号时问它要令牌；它不许认识上游选择与账号库管理。
+        "oauth/mod.rs",
+        "oauth/store.rs",
+        // 额度与轮换：额度账（用量的唯一住址）。上游选择可以问它（换号要看各号的额度），它不许认识上游选择与账号库管理。
+        "quota/ledger.rs",
+        "quota/mod.rs",
     ];
+
+    /// 账号域里**给上游选择用**的那几块（相对账号域根的顶层名）：上游选择可以引它们；
+    /// 它们自己不许引上游选择、也不许引账号库管理（否则上游选择经它们绕到了账号库管理）。
+    const SERVICE_BLOCKS: &[&str] = &["oauth", "quota"];
 
     /// ㈣ 上游选择用到的中转的东西（相对 `crate::relay::` 的路径）—— **接口面就这么宽**。
     ///
@@ -94,6 +104,8 @@ pub(super) mod tests {
     ///   ⇒ 契约面上的每一样都住那一个文件。
     /// ⚠ 多一项 = 上游选择又伸手拿了中转一样东西（要来这里说清为什么）；少一项 = 表腐了。
     const CONTRACT: &[&str] = &[
+        // 中转交给上游选择看的那一发请求（流标签 ＋ 请求体）：去处按会话换号要它。
+        "Ask",
         "AuthSwap",
         "Base",
         "Destination",
@@ -103,6 +115,8 @@ pub(super) mod tests {
         "Mode",
         "Ready",
         "RouteKey",
+        // 回包头读完那一刻中转交回来的东西（`observe`：额度账按号记账）。
+        "Heard",
         "Startup",
         // 常驻后端进程内起中转的入口；上游选择的 `host_relay` 把 `Boot` 递进去。
         "host",
@@ -641,6 +655,33 @@ pub(super) mod tests {
              放了代码它就成了两块共用的第三处"
         );
 
+        // 账号库管理那一块与「给上游选择用」的那几块分开看。
+        let block_of = |rel: &str| {
+            rel[domain_root.len()..]
+                .split('/')
+                .next()
+                .unwrap_or("")
+                .trim_end_matches(".rs")
+                .to_string()
+        };
+        let services: Vec<&(String, String)> = others
+            .iter()
+            .copied()
+            .filter(|(rel, _)| SERVICE_BLOCKS.contains(&block_of(rel).as_str()))
+            .collect();
+        let others: Vec<&(String, String)> = others
+            .iter()
+            .copied()
+            .filter(|(rel, _)| !SERVICE_BLOCKS.contains(&block_of(rel).as_str()))
+            .collect();
+        assert!(
+            !services.is_empty()
+                && SERVICE_BLOCKS
+                    .iter()
+                    .all(|b| services.iter().any(|(rel, _)| block_of(rel) == *b)),
+            "登记的服务块 {SERVICE_BLOCKS:?} 在盘上找不全 —— 表腐了"
+        );
+
         // 两块的名字。`accounts` 是域名，两块都住在它底下 ⇒ 不作判据词（路径那一半已经分得开）。
         let mut sel_vocab = upstream_selection_vocabulary(&selection);
         sel_vocab.remove("accounts");
@@ -693,6 +734,19 @@ pub(super) mod tests {
             back.is_empty(),
             "🔴 中转的上游选择引用了账号库管理那一块：\n  {}",
             back.join("\n  ")
+        );
+        // 服务块：不许引上游选择（依赖方向只许上游选择 → 它们），也不许引账号库管理（不给上游选择留绕过去的路）。
+        let up = cross_refs(&services, &[sel_mod.clone()], &sel_vocab);
+        assert!(
+            up.is_empty(),
+            "🔴 账号域的服务块引用了上游选择：\n  {}",
+            up.join("\n  ")
+        );
+        let side = cross_refs(&services, &iso_mods, &iso_vocab);
+        assert!(
+            side.is_empty(),
+            "🔴 账号域的服务块引用了账号库管理：\n  {}",
+            side.join("\n  ")
         );
     }
 }

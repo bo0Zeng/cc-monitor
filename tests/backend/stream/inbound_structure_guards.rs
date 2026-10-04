@@ -204,6 +204,8 @@ fn every_registered_command_declares_its_run_kind() {
                 // 不许占 tokio worker。开跑之后打不断 ⇒ `cancel` 命中回 `not_cancellable`。
                 | "exit-policy-read"
                 | "exit-policy-set"
+                // 额度账：读一份小文件（同步文件 I/O）。
+                | "quota-read"
                 // 功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
                 | "tasks-list"
                 // MCP 列表：读 `.claude.json` ＋ 一份 `.mcp.json`（同步文件 I/O）。
@@ -418,6 +420,7 @@ fn every_registered_command_declares_its_run_kind() {
         "accounts-trust", //
         "exit-policy-read",
         "exit-policy-set",
+        "quota-read",
         "tasks-list",
         "mcp-read",
         "tmux-list",

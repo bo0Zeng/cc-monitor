@@ -52,6 +52,7 @@
 
 pub mod perm;
 pub mod store;
+pub mod token;
 
 use std::fmt;
 
@@ -150,6 +151,11 @@ mod sealed {
             self.0.is_empty()
         }
 
+        /// 两份秘密是不是同一串（只回一个布尔；续期写回前比「盘上的还是不是发出去那一份」用）。
+        pub fn same_secret(&self, other: &SecretKey) -> bool {
+            self.0 == other.0
+        }
+
         /// **`KS6` 的后端那一半**：给前端看的东西**只有这一个形状**。
         ///
         /// 短到看不出前后缀的（`<= MASK_KEEP * 2`）**整条遮掉**——
@@ -223,6 +229,15 @@ mod sealed {
         ///    `src/backend` 三棵树**的生产段，两个出口各自的调用点数与住址都钉死。
         /// 另有后端那个 crate 内部的一格单断：`relay::creds_guard::the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate`。
         pub fn expose_for_persisting(&self) -> &str {
+            &self.0
+        }
+
+        /// ⚠⚠ **明文的第三个出口：续登录令牌那一发的请求体。**
+        ///
+        /// 订阅号的访问令牌会过期，续它要把**刷新令牌**原样发给令牌端点（放在请求体里，不是鉴权头）——
+        /// 它既不是「写鉴权头」也不是「落盘」，硬塞进那两个出口任一个都是把第三个出口藏起来。
+        /// ⇒ 第三个具名出口，**调用点恰好 1 处**：`src/common/creds-core/src/token.rs`（`refresh_body`，拼那一发的请求体）。
+        pub fn expose_for_token_request(&self) -> &str {
             &self.0
         }
     }

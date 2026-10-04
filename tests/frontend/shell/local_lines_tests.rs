@@ -204,9 +204,10 @@ const FRAMES: &[(&str, &str)] = &[
 
 #[test]
 fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
-    // 两向：表里的种类 ＋ 刻意不喂的那一种 == parse_frame 的全部臂。
+    // 两向：表里的种类 ＋ 刻意不喂的那两种（`parse_frame` 认识但回 `None`）== parse_frame 的全部臂。
     let mut fed: BTreeSet<String> = FRAMES.iter().map(|(k, _)| k.to_string()).collect();
     fed.insert("turn_end".into());
+    fed.insert("quota_changed".into());
     let all = parse_frame_kinds();
     assert!(
         all.len() >= 10,

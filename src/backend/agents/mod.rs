@@ -953,6 +953,128 @@ pub(crate) struct DefaultUpstream {
     /// 请求里说明「这一轮用的是扩展上下文」的那一项：（头名, 列表里那一项的前缀）。中转只记它在不在，会话事实据此定上限。
     /// `None` ＝ 这一家的请求说不出。
     pub(crate) context_mark: Option<(&'static str, &'static str)>,
+    /// 回包状态 ＋ 回包头（＋ 此刻，unix 秒）→ 通用的额度快照：这一家的读法（头名只住那一家）。
+    /// `None` ＝ 这一家的回包说不出额度；`Some` 答 `None` ＝ 这一个回包里没有额度信息。
+    pub(crate) quota: Option<QuotaRead>,
+    /// 订阅号登录那一格：令牌住哪、什么格式、怎么续、锁叫什么。`None` ＝ 这一家没有可换的订阅号登录。
+    pub(crate) login: Option<LoginFace>,
+}
+
+/// 一家的订阅号登录的格式知识（读写与续期在账号域 `accounts/oauth/`，这里只有这一家的名字与地址）。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct LoginFace {
+    /// 配置目录里那份凭据文件的名字。
+    pub(crate) creds_file: &'static str,
+    /// 凭据文件里放令牌的那一节，与节里的几格。
+    pub(crate) section: &'static str,
+    pub(crate) access: &'static str,
+    pub(crate) refresh: &'static str,
+    /// 访问令牌几点过期（毫秒时间戳）。
+    pub(crate) expires_ms: &'static str,
+    pub(crate) scopes: &'static str,
+    /// 这个号登录时用的客户端 id（缺 ⇒ [`Self::client_id`]）。
+    pub(crate) client_field: &'static str,
+    /// 令牌端点（续期发到这里）与缺省的客户端 id。
+    pub(crate) token_url: &'static str,
+    pub(crate) client_id: &'static str,
+    /// 还剩这么多毫秒就算快过期（同那一家自己的余量）。
+    pub(crate) margin_ms: u64,
+    /// 续期锁：配置目录里那一把的名字 · 配置目录旁边那一把的后缀（那一家自己续期时拿的同一套）。
+    pub(crate) lock_inside: &'static str,
+    pub(crate) lock_beside: Option<&'static str>,
+}
+
+/// 路由第 1 段 → 那一家的订阅号登录格式。
+pub(crate) fn login_of(route_id: &str) -> Option<LoginFace> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| a.upstream.as_ref())
+        .find(|u| u.route_id == route_id)
+        .and_then(|u| u.login)
+}
+
+/// 一家的额度读法（见 [`DefaultUpstream::quota`]）。
+pub(crate) type QuotaRead = fn(u16, &[(String, String)], u64) -> Option<QuotaReading>;
+
+/// 路由第 1 段 → 那一家的额度读法。
+pub(crate) fn quota_read_of(route_id: &str) -> Option<QuotaRead> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| a.upstream.as_ref())
+        .find(|u| u.route_id == route_id)
+        .and_then(|u| u.quota)
+}
+
+/// 限流器对一发的结论（各家的值翻成这三档）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum QuotaStatus {
+    Allowed,
+    /// 还能用，但越过了某条预警线。
+    Warning,
+    Rejected,
+}
+
+/// 一个额度窗口此刻的样子。
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct QuotaWindow {
+    /// 窗口名（那一家读法表里的值，如 5 小时 · 7 天）。
+    pub(crate) name: String,
+    /// 已用比例（通常 0–1，可以超过 1）。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) used: Option<f64>,
+    /// 几点重置（unix 秒）。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) resets_at: Option<u64>,
+    /// 越过了哪条预警线（比例）；没越过就没有。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) warned_at: Option<f64>,
+}
+
+/// 超额（付费额外用量）那一档。
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct QuotaOverage {
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) status: Option<QuotaStatus>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) resets_at: Option<u64>,
+    /// 为什么不可用（那一家的原值）。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) disabled: Option<String>,
+    /// 这一发正在用超额。
+    pub(crate) in_use: bool,
+}
+
+/// 一个回包读出来的额度快照（通用形状，账号域只认它）。
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct QuotaReading {
+    /// 限流器的结论；回包里没说 ⇒ `None`。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) status: Option<QuotaStatus>,
+    /// 这一发被上游拒了（没被服务）。
+    pub(crate) refused: bool,
+    /// 此刻卡着的那个窗口名。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) limiting: Option<String>,
+    /// 卡着的那个窗口几点重置（被拒时：到这一刻之前这个号用不了）。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) resets_at: Option<u64>,
+    pub(crate) windows: Vec<QuotaWindow>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) overage: Option<QuotaOverage>,
+}
+
+impl QuotaReading {
+    /// 各窗口里最高的已用比例；一个都说不出 ⇒ `None`。
+    pub(crate) fn peak_used(&self) -> Option<f64> {
+        self.windows
+            .iter()
+            .filter_map(|w| w.used)
+            .fold(None, |m, u| Some(m.map_or(u, |m: f64| m.max(u))))
+    }
 }
 
 /// 一家的用户级设置文件里「上游地址」那一格：住哪 · 怎么读出来 · 要贴的那一段长什么样（格式知识与那一次只读都在这一家）。

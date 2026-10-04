@@ -258,6 +258,64 @@ pub(crate) fn connect(base: &Base, deadline: Duration) -> std::io::Result<Conn> 
     Ok(Conn::Tls(Box::new(rustls::StreamOwned::new(conn, tcp))))
 }
 
+/// 一问一答读回来的整段回包。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Fetched {
+    /// 状态行里的三位数字；读不出 ⇒ 0。
+    pub(crate) status: u16,
+    pub(crate) headers: Vec<(String, String)>,
+    pub(crate) body: Vec<u8>,
+}
+
+/// 一问一答：发一整发（`Connection: close`）、读回整段回包。给后端自己要发的那几发用；
+/// 期限（连接上每一次读写）与回包体上限都由调用方给。回包体超过上限 ⇒ 错，不截断。
+pub(crate) fn fetch(
+    base: &Base,
+    method: &str,
+    rest: &str,
+    headers: &[(&str, &str)],
+    body: &[u8],
+    deadline: Duration,
+    cap: usize,
+) -> std::io::Result<Fetched> {
+    let mut up = connect(base, deadline)?;
+    let mut head = format!(
+        "{method} {} HTTP/1.1\r\nHost: {}\r\nAccept-Encoding: identity\r\nConnection: close\r\n",
+        base.upstream_target(rest),
+        base.host_header()
+    );
+    for (k, v) in headers {
+        head.push_str(&format!("{k}: {v}\r\n"));
+    }
+    head.push_str(&format!("Content-Length: {}\r\n\r\n", body.len()));
+    up.write_all(head.as_bytes())?;
+    up.write_all(body)?;
+    up.flush()?;
+    let bad = |what: &str| std::io::Error::new(std::io::ErrorKind::InvalidData, what.to_string());
+    let raw = super::http1::read_response_head(&mut up, cap)?.ok_or_else(|| bad("no answer"))?;
+    let (line, headers) = super::http1::parse_response(&raw).ok_or_else(|| bad("not http"))?;
+    let mut view = super::http1::BodyView::for_response(&headers);
+    let mut got = Vec::new();
+    let mut buf = [0u8; 8192];
+    loop {
+        let n = match up.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        got.extend_from_slice(&view.feed(&buf[..n], cap));
+        if got.len() > cap || view.take_dropped() > 0 {
+            return Err(bad("answer too large"));
+        }
+    }
+    Ok(Fetched {
+        status: super::http1::status_code(&line).unwrap_or(0),
+        headers,
+        body: got,
+    })
+}
+
 #[cfg(test)]
 #[path = "../../../tests/comms/outward/upstream_tests.rs"]
 mod tests;

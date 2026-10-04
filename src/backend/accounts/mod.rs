@@ -14,4 +14,6 @@
 //! 本文件只声明两块，不放任何代码 —— 放了就成了两块共用的第三处。
 
 pub mod manage;
+pub mod oauth;
+pub mod quota;
 pub mod upstream_select;

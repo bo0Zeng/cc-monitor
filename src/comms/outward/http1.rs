@@ -296,6 +296,14 @@ pub(crate) fn read_response_head<R: Read>(
     read_head(r, cap)
 }
 
+/// 状态行里的三位数字（`HTTP/1.1 429 Too Many Requests` ⇒ 429）；不是三位数字 ⇒ `None`。
+pub(crate) fn status_code(status_line: &str) -> Option<u16> {
+    let code = status_line.split(' ').nth(1)?;
+    (code.len() == 3 && code.bytes().all(|b| b.is_ascii_digit()))
+        .then(|| code.parse().ok())
+        .flatten()
+}
+
 /// 解析响应头部，返回 `(状态行, 头表)`。
 pub(crate) fn parse_response(raw: &[u8]) -> Option<(String, Vec<(String, String)>)> {
     let text = std::str::from_utf8(raw).ok()?;

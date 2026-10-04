@@ -874,6 +874,20 @@ mod tests {
              不是用户数据。第四层别的几份调它不算越门；第四层之外只有 `control/files_commit.rs` 建暂存区那一处（门）",
         ),
         (
+            "accounts/oauth/store.rs",
+            "**订阅号的凭据文件** `<那个号的配置目录>/.credentials.json`：续登录令牌之后整份写回。那一家的程序（claude）与账号域的 \
+             `oauth` 两个写者，所以在**跨进程锁**（配置目录）＋ 那一家自己的两把 `mkdir` 续期锁里做：写前比对盘上的刷新令牌还是不是发出去那个 → \
+             临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ 写满 → 原子挪过去；失败删自己的临时文件。\
+             锁目录建成即持有、续完即删（`remove_dir` 只删自己刚建的那两个空目录）。入口只有上游选择换号要令牌那一处（`oauth::access_token`）",
+        ),
+        (
+            "accounts/quota/ledger.rs",
+            "**额度账** `~/.cc-monitor/quota.json`：这台各号最近一次从回包头看到的额度快照 ＋ 看到的时刻。\
+             文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 账号域**自己的**状态，不是用户数据。\
+             在跨进程锁里读盘 → 换掉那一个号那一条 → `O_EXCL` 临时文件 → 写满 → 原子挪过去；只建 `~/.cc-monitor` 那一层；\
+             失败删自己的临时文件；读不懂的那份不覆盖。入口只有中转记账那一路（上游选择的 `observe`）—— 不是帧面命令",
+        ),
+        (
             "assets/skill_ledger.rs",
             "**skill 装记录** `~/.cc-monitor/skill-installs.json`：从别的机器装到这台的 skill，装时写进了哪几个文件 \
              （各自的摘要 ＋ 装之前在不在）。只删装时写进去的文件 —— 卸只删这里记着的。文件名 / 格式 / 落点都是本仓定的、\
@@ -885,6 +899,18 @@ mod tests {
 
     /// 第四层模块**能用**的写动词（`fs::` 之后那个词）。**闭集**。
     const OWN_STATE_VERBS: &[&str] = &["create_dir", "remove_file", "rename"];
+
+    /// 第四层里**另许删空目录**（`fs::remove_dir`，不含 `remove_dir_all`）的那几份：`(模块, 为什么)`。
+    /// 只给「锁就是一个目录」的那一形：别的程序定的锁协议（`mkdir` 即持有、`rmdir` 即放），要与它互斥就只能照它的做法。
+    const OWN_STATE_LOCK_DIRS: &[(&str, &str)] = &[(
+        "accounts/oauth/store.rs",
+        "订阅号续期锁：那个号自己的 claude 续期时拿的是两把 `mkdir` 锁（配置目录里那一把 · 旁边那一把），\
+         与它互斥就得拿同一套；续完 `rmdir` 掉自己刚建的那两个空目录（建不成 ⇒ 别人持着，一把都不删）",
+    )];
+
+    fn is_own_state_lock_dir(rel: &str) -> bool {
+        OWN_STATE_LOCK_DIRS.iter().any(|(p, _)| *p == rel)
+    }
 
     /// 第四层模块**仍然不许**出现的东西。`create(true)` 不含于 `create_new(true)`，不自伤；
     /// `remove_dir` 同时挡住 `remove_dir_all`。
@@ -914,6 +940,15 @@ mod tests {
 资产目录那两条（`assets-catalog` / `assets-catalog-merge`）；历史注解那两条（`history-annotate` / `history-forget`）；\
 skill 装记录那一条（`skill-install-record`）。\
              前端改那两份只有这一条路（`§3.3b ③`：前端要改它，走一条后端命令）",
+        ),
+        (
+            "accounts/oauth/mod.rs",
+            "订阅号续登录令牌那一处（`access_token`）：令牌快过期才续，续完整份写回 —— 没有帧命令可走（只在上游选择换到这个号、要它的令牌时才发生）",
+        ),
+        (
+            "accounts/upstream_select/mod.rs",
+            "上游选择对中转的那个口（`Destinations` 的实现）：回包头读完那一刻中转把状态与头交进来（`observe`），\
+             读成额度快照后记进额度账 —— 那一格没有帧命令可走（数据只从中转经手的回包来）",
         ),
         (
             "relay/listen.rs",
@@ -962,6 +997,23 @@ skill 装记录那一条（`skill-install-record`）。\
             "history/history_annotations.rs",
             "history_annotations::answer_",
             "stream/inbound.rs",
+        ),
+        // 订阅号凭据：写回（`write_tokens`）与续期锁（`with_refresh_lock`）都只从续期那一处（`oauth/mod.rs`）进。
+        (
+            "accounts/oauth/store.rs",
+            "store::write_tokens",
+            "accounts/oauth/mod.rs",
+        ),
+        (
+            "accounts/oauth/store.rs",
+            "store::with_refresh_lock",
+            "accounts/oauth/mod.rs",
+        ),
+        // 额度账：写口是记一条观测的那一个函数，门是上游选择对中转的那个口。
+        (
+            "accounts/quota/ledger.rs",
+            "ledger::record_seen",
+            "accounts/upstream_select/mod.rs",
         ),
         // 中转钥匙：门是中转起监听那一处，不是命令注册。
         ("relay/door.rs", "door::ensure_key", "relay/listen.rs"),
@@ -1202,10 +1254,13 @@ skill 装记录那一条（`skill-install-record`）。\
                 if let Err(why) = open_calls_are_all_exclusive(&prod) {
                     panic!("第四层模块 {}：{why}", path.display());
                 }
-                if let Some(pat) = OWN_STATE_STILL_FORBIDDEN
-                    .iter()
-                    .find(|p| prod.contains(**p))
-                {
+                if let Some(pat) = OWN_STATE_STILL_FORBIDDEN.iter().find(|p| {
+                    if **p == "fs::remove_dir" && is_own_state_lock_dir(&rel) {
+                        prod.contains("fs::remove_dir_all")
+                    } else {
+                        prod.contains(**p)
+                    }
+                }) {
                     panic!(
                         "第四层模块 {} 含 `{pat}`。这一层只写后端自己的那一份状态文件，\n\
                          做法只有「`O_EXCL` 临时文件 → 原子挪」一种；`{pat}` 不在那条路上。",
@@ -2652,6 +2707,11 @@ skill 装记录那一条（`skill-install-record`）。\
                         }
                         // 第四层那个闭集：只在第四层模块里放行。
                         if OWN_STATE_VERBS.contains(&full.as_str()) && is_own_state(&rel) {
+                            continue;
+                        }
+                        // 锁就是目录的那一形：只删空目录（`remove_dir_all` 照旧不许）。
+                        if full == "remove_dir" && is_own_state_lock_dir(&rel) && is_own_state(&rel)
+                        {
                             continue;
                         }
                         // 带权限位建目录：只在建自家目录的那一个模块里放行。
@@ -5304,6 +5364,8 @@ mod g6_dependency_signoff {
         assert!(scanned >= 60, "只扫到 {scanned} 份后端源文件 —— 遍历坏了");
         // 第二份：中转钥匙那一份（`relay/door.rs`，第四层登记）—— 钥匙文件出生即只给本人，同一份实现。
         let want: std::collections::BTreeSet<String> = [
+            // 第四份：订阅号续登录令牌之后写回那份凭据文件（`accounts/oauth/store.rs`，第四层登记）——出生即只给本人，同一份实现。
+            "accounts/oauth/store.rs".to_string(),
             "accounts/upstream_select/file_face.rs".to_string(),
             // 第三份：常驻监听口的钥匙 ＋ 远端常驻后端的 pid 文件（`control/resident.rs`，第四层登记）。
             "control/resident.rs".to_string(),

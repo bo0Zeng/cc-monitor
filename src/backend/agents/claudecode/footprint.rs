@@ -171,6 +171,20 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                     })),
                     effect: TouchEffect::OwnedFile,
                 },
+                // 额度账：各号最近一次从回包头看到的用量（中转那一路记，这台后端自己的状态）。
+                TouchedFile {
+                    path: "~/.cc-monitor/quota.json",
+                    host: HostScope::Either,
+                    note: Some(Text(|| copy_text("rsToolRegistry.tools.quotaNote", &[]))),
+                    effect: TouchEffect::OwnedFile,
+                },
+                // 账号轮换：默认池与换号时机 · 每个会话的覆盖与此刻钉在哪个号 · 换号记录。
+                TouchedFile {
+                    path: "~/.cc-monitor/rotation.json",
+                    host: HostScope::Either,
+                    note: Some(Text(|| copy_text("rsToolRegistry.tools.rotationNote", &[]))),
+                    effect: TouchEffect::OwnedFile,
+                },
                 // 同步改写某个号的配置文件之前，那份原文放这里（每个号一份）。
                 TouchedFile {
                     path: "~/.cc-monitor/backups/accounts-mcp",
