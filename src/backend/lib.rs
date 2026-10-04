@@ -736,7 +736,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p6y-child-primitive：后端起子进程收成一个原语（期限必填、杀整组、无条件清环境）；新命令级码 child_timed_out。
 ///
 /// p6z-command-budget：每条阻塞档命令一个总期限（短于界面等待），命令集合不变。
-pub const BUILD_ID: &str = "p6z-command-budget";
+///
+/// p7a-launch-account：起会话用哪个号由会话所在那台判（follow / account_unavailable），上次用的号由那台记；失败应答可带 data。
+pub const BUILD_ID: &str = "p7a-launch-account";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
