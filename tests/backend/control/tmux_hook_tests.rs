@@ -198,7 +198,7 @@ impl FakeTmux {
         )
     }
     /// 一次调用可以是 `;` 分开的一串命令（同 tmux：一串在它自己的队列里一口气跑完）；`hijack` 数的是**调用**次数。
-    fn run(&mut self, args: &[String]) -> Result<(bool, String), String> {
+    fn run(&mut self, args: &[String]) -> Result<(bool, String), RunErr> {
         let mut out = String::new();
         let mut set_slot = None;
         for cmd in args.split(|a| a == ";") {
@@ -224,7 +224,7 @@ impl FakeTmux {
                 ["set-hook", "-gu", k] => {
                     self.hooks.remove(&Self::key(k));
                 }
-                other => return Err(format!("假 tmux 不认：{other:?}")),
+                other => return Err(RunErr::NotRun(format!("假 tmux 不认：{other:?}"))),
             }
         }
         if let Some(slot) = set_slot {
@@ -457,7 +457,7 @@ fn hx2_real_tmux_reading_on_a_private_socket() {
     ])
     .status
     .success());
-    let mut run = |a: &[String]| -> Result<(bool, String), String> {
+    let mut run = |a: &[String]| -> Result<(bool, String), RunErr> {
         let mut v: Vec<&str> = Vec::new();
         v.extend(a.iter().map(String::as_str));
         let o = tmux(&v);
@@ -493,4 +493,49 @@ fn hx2_real_tmux_reading_on_a_private_socket() {
         Some(&Occupant::Foreign)
     );
     eprintln!("真 tmux 读数：{after:#?}");
+}
+
+/// watcher 的事件循环里就地装钩子：tmux 不应答 ⇒ 这一轮有界地放弃（只问了一发、过了期限就回），流不被拖住。
+#[cfg(unix)]
+#[test]
+fn an_unanswering_tmux_ends_the_hook_round_after_one_deadline() {
+    let dir = std::env::temp_dir().join(format!("ccm-hook-hang-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let calls = dir.join("calls");
+    let fake = dir.join("tmux");
+    std::fs::write(
+        &fake,
+        format!(
+            "#!/bin/sh\necho x >> '{}'\nexec sleep 30\n",
+            calls.display()
+        ),
+    )
+    .unwrap();
+    let within = crate::platform::child::Deadline::millis(300);
+    // 经 `/bin/sh <脚本>` 起（不直接 exec 刚写完的文件：并行 fork 下会撞 `ETXTBSY`）。
+    let mut run = |a: &[String]| run_tmux_via(Child::new("/bin/sh").arg(&fake), within, a);
+    let t0 = std::time::Instant::now();
+    let n = install_hooks_with(
+        &mut run,
+        &PathBuf::from("/opt/ccm/backend"),
+        4_000_003,
+        1,
+        &|_, _| false,
+    );
+    let took = t0.elapsed();
+    assert_eq!(n, 0);
+    let asked = std::fs::read_to_string(&calls)
+        .unwrap_or_default()
+        .lines()
+        .count();
+    assert_eq!(
+        asked, 1,
+        "超时之后还接着问 tmux（{asked} 发，用时 {took:?}）"
+    );
+    assert!(
+        took < std::time::Duration::from_millis(300 + 1_500),
+        "{took:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }

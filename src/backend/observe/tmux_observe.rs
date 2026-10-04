@@ -68,14 +68,12 @@ pub(crate) const TMUX_LS_FMT_FIELDS: usize = 8;
 //
 // 只留本调用点专属的两句：
 //
-// ① 本模块这两处都是 `sh -c <脚本字符串>` ⇒ 按那张表用 **env 形**。这里最要紧的不是
-//    「哪个更硬」，而是 [`tmux_probe_script`] 里有**两条 `exec` 分支**（有 / 没有 `timeout`）：
-//    一行 `.env` **结构性地**盖住两条，而改 argv 要在字符串里改两处，
-//    且漏掉没有 `timeout` 那条**只在缺 `timeout` 的机器上发作** ⇒ CI 与门禁沙箱永远绿。
+// ① 本模块这两处都是 `sh -c <脚本字符串>` ⇒ 按那张表用 **env 形**（挂 env 不动脚本串）。
 // ② [`query_tmux_server`] 那条脚本在测试里有一份**逐字复制**
 //    （`tests::tmux_server_query_yields_nothing_without_a_server`）⇒ 动脚本串会让两份漂开，
 //    而挂 env 一个字节都不用动它。
 use crate::common::tmux_utf8::{tab_underflow, UTF8_CLIENT_ENV};
+use crate::platform::child::Deadline;
 
 // ---------- P1（zero-poll-liveness）：tmux 观测的取值（原 `tmux_sessions` 帧的 `observation` 格；那一帧删了，只喂会话账本） ----------
 //
@@ -137,50 +135,25 @@ pub(super) enum TmuxObservation {
 /// 门控 + `exec` 的 rc 透传）要能在 CI 上用**假 tmux** 验证，不能只信字符串断言。
 /// ★★ **探测必须有上界**〔audit-0805 F09 / 报告 I-2〕。
 ///
-/// # 它此前会永久卡死整条 tmux 观测
+/// # 上界
 ///
-/// [`run_tmux_ls`] 的 `output()` 是**无超时**阻塞调用（它自己的头注就这么写着：
-/// 远端 tmux 卡死时「会永不返回」）。它跑在一次性后台线程里，所以不会冻住 reader ——
-/// **但 `watch_loop` 的 `tmux_inflight` 去重标志只在 [`start_tmux_probe`] 置位、只在收到 `TmuxObserved` 时清一处**。
-/// 线程永不返回 ⇒ 那一帧永不到达 ⇒ 标志**永远为真** ⇒ **此后一次 tmux 探测都不会再发起**，
-/// 而且**不发任何理由帧**（撞定框 **E4**：静默失败一律给身份）。
-///
-/// # 为什么把上界放在 shell 里而不是 Rust 里
-///
-/// Rust 侧加超时要引入一个 `Duration::from_*`，而后端有**零定时器**硬门禁
-/// （`no_timer_guard`：生产段 `Duration::from_*` 的处数必须**恰好等于**登记表条数，
-/// 「多一处就红」「登记表不是豁免清单」）。承接 **C8/C12** 与定框 **E6**。
-/// ⇒ 用 `timeout(1)`：**没有 Rust 定时器、没有新线程、不改线程模型**，
-/// 卡死变成一次有界失败 ⇒ `TmuxObserved` 照常到达 ⇒ 标志被清 ⇒ 观测能自愈。
-///
-/// # `timeout` 不在时怎么办
-///
-/// 用 `command -v` 门控（同这段脚本对 `tmux` 本身的做法），拿不到就**退回原样**。
-/// 这是**诚实降级**（承接 **C7**）：在没有 `timeout` 的系统上行为与从前一字不差，
-/// 而不是假装有上界。⚠ 代价要说清：那些系统上 I-2 **仍然存在**。
+/// 探测跑在一次性后台线程里，`watch_loop` 的 `tmux_inflight` 去重标志只在收到 `TmuxObserved` 时清：
+/// 探测永不返回 ⇒ 标志永远为真 ⇒ 此后一次探测都不会再发起、不出声。
+/// ⇒ 两发探测都经起子进程原语带期限跑（[`TMUX_PROBE_WITHIN`]，到点杀整组），超时落 `Unobservable`。
 fn tmux_probe_script() -> String {
     // `command -v` 分支与 `exec` 的写法住 `platform::shell::posix`（产出逐字节不变）。
     use crate::platform::shell::posix;
     posix::if_command(
         "tmux",
-        &posix::if_command(
-            "timeout",
-            &posix::exec(&[format!(
-                "timeout -s KILL {TMUX_PROBE_TIMEOUT_SECS} tmux ls -F '{TMUX_LS_FMT}' 2>/dev/null"
-            )]),
-            &posix::exec(&[format!("tmux ls -F '{TMUX_LS_FMT}' 2>/dev/null")]),
-        ),
+        &posix::exec(&[format!("tmux ls -F '{TMUX_LS_FMT}' 2>/dev/null")]),
         &format!("exit {TMUX_PROBE_NO_TMUX_RC}"),
     )
 }
 
-/// 探测的墙钟上界（秒）。
-///
-/// `tmux ls` 在健康机器上是毫秒级；给到 5 秒是为了容忍一次慢盘/高负载，
-/// 又远短于「用户会注意到 tmux 面板不更新」的时间尺度。
-/// ⚠ **超时后的 rc 会落进 [`classify_tmux_probe`] 的 `Unobservable`**（`-s KILL` ⇒ `code == None`
-/// 或 124）—— 那正是「观测无效」该有的语义，**不是**「零会话」（后者会误 retire 活会话）。
-const TMUX_PROBE_TIMEOUT_SECS: u32 = 5;
+/// 两发探测（`tmux ls` · `display-message`）各自的期限。`tmux ls` 在健康机器上是毫秒级；
+/// 5 s 容忍一次慢盘 / 高负载，又远短于「面板不更新」被注意到的时间尺度。
+/// 超时 ⇒ `Unobservable`（「我没看清」，不是「零会话」，后者会误 retire 活会话）。
+const TMUX_PROBE_WITHIN: Deadline = Deadline::secs(5);
 
 /// P1：把探测的 (rc, stdout) 折成四态。**可单测**（判据只有 rc + stdout 的形状，
 /// 刻意**不看 stderr**——P0 实测 stderr 有两种措辞，且拿英文消息当判据本身就是错的）。
@@ -231,21 +204,20 @@ fn classify_tmux_probe(code: Option<i32>, stdout: &str) -> TmuxObservation {
 ///
 /// P1 起返回四态分类而非裸 `String`——见 [`TmuxObservation`]。
 ///
-/// **无超时**：`output()` 是无超时阻塞调用，远端 tmux 卡死（D-state/socket 卡住/NFS home）时会永不返回。
-/// 故**只能在一次性后台线程里调用**（见 `watch_loop` 的 `tmux_inflight`），**绝不可**直接跑在 watch_loop
-/// 线程上——否则会冻结整个 reader（Line/notify/判活全停）。
+/// 带期限（[`TMUX_PROBE_WITHIN`]）；仍只在一次性后台线程里调（见 `watch_loop` 的 `tmux_inflight`），
+/// 不跑在 watch_loop 线程上 —— 卡到期限那几秒也不该冻住 reader。
 fn run_tmux_ls() -> TmuxObservation {
     // 🔴 `K-R55`（09-11）：起 shell 这一跳住适配层（`K33` 裁定二）。
     //    先前这里是裸 `Command::new("sh")` —— `K-R52` 的 A2「真漏」堆头一条。
     //    非 unix 上 `None` ⇒ 与搬之前逐字同一个落点（那时是 `output()` 返 `Err`）。
-    let Some(mut cmd) = crate::platform::shell::posix_shell(&tmux_probe_script()) else {
+    let Some(cmd) = crate::platform::shell::posix_shell(&tmux_probe_script()) else {
         tracing::warn!("本平台没有 POSIX shell ⇒ tmux ls 这一跳没有实现，整趟观测判为无效");
         return TmuxObservation::Unobservable;
     };
     match cmd
-        // K-R12：**一行盖住脚本里两条 `exec` 分支**（有/没有 `timeout`）。家在 `common::tmux_utf8`。
+        // K-R12：挂 env 不改脚本串。家在 `common::tmux_utf8`。
         .env(UTF8_CLIENT_ENV.0, UTF8_CLIENT_ENV.1)
-        .output()
+        .run(TMUX_PROBE_WITHIN)
     {
         Ok(out) => classify_tmux_probe(out.status.code(), &String::from_utf8_lossy(&out.stdout)),
         Err(e) => {
@@ -284,7 +256,7 @@ fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
         "exit 97",
     );
     // 🔴 `K-R55`（09-11）：同上，起 shell 这一跳住适配层。
-    let Some(mut cmd) = crate::platform::shell::posix_shell(&script) else {
+    let Some(cmd) = crate::platform::shell::posix_shell(&script) else {
         tracing::warn!("本平台没有 POSIX shell ⇒ 问不出 tmux server 的 pid 与 socket 路径");
         return (None, None);
     };
@@ -292,7 +264,7 @@ fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
         // K-R12：挂 env 而不是往 `script` 里插旗 —— 那条脚本在测试里有一份**逐字复制**
         // （`tests::tmux_server_query_yields_nothing_without_a_server`），改串会让两份漂开。
         .env(UTF8_CLIENT_ENV.0, UTF8_CLIENT_ENV.1)
-        .output()
+        .run(TMUX_PROBE_WITHIN)
     {
         Ok(o) => o,
         Err(e) => {

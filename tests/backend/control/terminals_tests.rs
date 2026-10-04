@@ -1,4 +1,5 @@
 use super::*;
+use std::process::Command;
 
 fn row(id: &str, name: &str, sid: &str, client: &str, program: &str) -> TermRow {
     TermRow {

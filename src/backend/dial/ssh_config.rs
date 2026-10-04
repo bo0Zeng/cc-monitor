@@ -11,7 +11,7 @@
 //! 从 monitor `stream_source/` 原样搬来（规则一个字没改）；monitor 从此一处 `.ssh` 都不读、不起 `ssh`（「monitor 零 SSH」字面成立）。
 //! 只读 `~/.ssh/config`，**不碰任何密钥文件**（`identityfile` 只问「在不在」，不读内容）。
 
-use crate::common::child_env::WithoutOwnEnv;
+use crate::platform::child::{Child, Deadline};
 use copy_core::copy_text;
 use serde::Serialize;
 
@@ -222,6 +222,9 @@ pub(crate) fn list_aliases() -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// `ssh -G` 一发的期限：界面等 `ssh-config-resolve` 的预算是 10 s，收一档到 5 s（只读配置、不建连接，正常毫秒级）。
+const SSH_G_WITHIN: Deadline = Deadline::secs(5);
+
 /// 用系统 `ssh -G <alias>` 解析一个别名。别名先过 allowlist、`-` 开头另挡；argv 直传、不过 shell。
 /// `ssh -G` 只读配置、不建连接。
 pub(crate) fn resolve(alias: &str) -> Result<ResolvedHost, CmdErr> {
@@ -235,19 +238,14 @@ pub(crate) fn resolve(alias: &str) -> Result<ResolvedHost, CmdErr> {
     if alias.starts_with('-') {
         return Err(("bad_alias", copy_text("beSshConfig.host.dashAlias", &[])));
     }
-    let out = std::process::Command::new("ssh")
-        .without_own_env()
+    let out = Child::new("ssh")
         .arg("-G")
         .arg(alias)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output()
+        .run(SSH_G_WITHIN)
         .map_err(|e| {
-            (
-                "failed",
-                copy_text("beSshConfig.host.sshGFailed", &[("e", &e.to_string())]),
-            )
+            e.into_cmd_err("failed", |e| {
+                copy_text("beSshConfig.host.sshGFailed", &[("e", &e.to_string())])
+            })
         })?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);

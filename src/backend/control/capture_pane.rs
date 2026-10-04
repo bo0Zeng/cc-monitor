@@ -51,10 +51,12 @@
 //! **值级**（这一处发出去的 argv 逐元素就是那条只读形）＋ **文本级**
 //! （生产段里不出现任何会改 tmux 状态的动词）＋ 反向自检（合成样本必须被逮到）。
 
-use crate::common::child_env::WithoutOwnEnv;
 use crate::common::tmux_utf8::UTF8_CLIENT_FLAG;
+use crate::platform::child::{Child, ChildFail, Deadline};
 use copy_core::copy_text;
-use std::process::{Command, Stdio};
+
+/// 抓一屏那一发的期限：界面等 `terminal-preview` 的预算是 20 s（抓屏 ＋ 问尺寸两发），tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
+const CAPTURE_WITHIN: Deadline = Deadline::secs(5);
 
 /// 命令级错误：`(code, message)`。与 [`super::launch`] / [`super::gate`] / [`super::kill`] 同型。
 pub(crate) type CmdErr = (&'static str, String);
@@ -171,11 +173,11 @@ pub(crate) struct RawCapture {
 /// 而真把 tmux 从 PATH 上摘掉不在沙箱门禁的射程内（那台沙箱自己要用 tmux）
 /// ⇒ 判据只能打这一处。⚠ **如实登记**：本条钉的是「这一档存在、且与另外两档
 /// 不同码不同话」，**不是**「在一台没装 tmux 的机器上实测过」。
-pub(crate) fn tmux_unavailable(e: &std::io::Error) -> CmdErr {
-    (
-        "no_tmux",
-        copy_text("beCapturePane.run.noTmux", &[("e", &e.to_string())]),
-    )
+/// 超时那一档另说（`child_timed_out`，原语的话）。
+pub(crate) fn tmux_unavailable(e: ChildFail) -> CmdErr {
+    e.into_cmd_err("no_tmux", |e| {
+        copy_text("beCapturePane.run.noTmux", &[("e", &e.to_string())])
+    })
 }
 
 /// 把一次原始读数判成结局。**纯函数。**
@@ -223,17 +225,14 @@ pub(crate) fn classify(raw: &RawCapture) -> Result<String, CmdErr> {
 /// `socket`：`None` = 让 tmux 自己按环境解析默认 socket（**生产恒 `None`**）；`Some(p)` = 显式 `-S <p>`，
 /// 只为让「真能拿回内容」在一个隔离的 tmux server 上测得出来。
 fn spawn_tmux(socket: Option<&str>, argv: &[&str]) -> Result<RawCapture, CmdErr> {
-    let mut cmd = Command::new("tmux").without_own_env();
+    let mut cmd = Child::new("tmux");
     if let Some(s) = socket {
-        cmd.args(["-S", s]);
+        cmd = cmd.args(["-S", s]);
     }
     let out = cmd
         .args(argv)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| tmux_unavailable(&e))?;
+        .run(CAPTURE_WITHIN)
+        .map_err(tmux_unavailable)?;
     Ok(RawCapture {
         code: out.status.code(),
         stdout: String::from_utf8_lossy(&out.stdout).into_owned(),

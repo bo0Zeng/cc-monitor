@@ -60,7 +60,7 @@ const POINTER_ONLY: &[(&str, &[&str], &str, &str)] = &[
         "backend 生产段起进程的处数",
         &["今天清单上有 ", "清单上共 "],
         "清单本身就是家",
-        "`readonly_guard.rs` 的 `ALLOWED` + 那条 `SPAWN_SITES_TODAY` 相等断言（不是地板）",
+        "`readonly_guard.rs` 的 `ALLOWED` 与生产段现打的起进程点两向相等（不是地板）",
     ),
     (
         "e2e 各套件的断言数地板",
@@ -95,7 +95,10 @@ const HAS_A_GUARD: &[(&str, &str)] = &[
         "wire 帧 kind 清单",
         "every_wire_frame_kind_has_a_row_in_the_frame_table",
     ),
-    ("backend 生产段起进程的处数", "SPAWN_SITES_TODAY"),
+    (
+        "backend 生产段起进程的处数",
+        "every_registered_entry_is_backed_by_a_real_spawn_site",
+    ),
     ("设置面板逐页清单", "pageTitles"),
 ];
 

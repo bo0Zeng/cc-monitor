@@ -33,23 +33,21 @@
 //! 搬之后那两条路走的是 `None` 臂，**落点逐字相同** ——
 //! 变的只有一件事：先前那是「碰巧撞出来的」，现在是**写出来的**。
 
-use crate::common::child_env::WithoutOwnEnv;
+use crate::platform::child::Child;
 pub(crate) mod dialect;
 pub(crate) mod posix;
 pub(crate) mod powershell;
 
 /// 备一条 `sh -c <脚本>`。**非 unix 上回 `None`** —— 那里没有 `sh`。
 ///
-/// 只负责「备好这条命令」，不 `spawn`、不 `output` —— 送出去那一下归调用方，
+/// 只负责「备好这条命令」，不起 —— 送出去那一下（`run` ＋ 期限）归调用方，
 /// 它还要往上挂环境变量（`UTF8_CLIENT_ENV` 那一族）与决定怎么读回来。
 ///
 /// ⚠ 本函数**不判脚本内容**：脚本是不是 POSIX 语法、跑不跑得动，那是调用方的事。
-pub(crate) fn posix_shell(script: &str) -> Option<std::process::Command> {
+pub(crate) fn posix_shell(script: &str) -> Option<Child> {
     #[cfg(unix)]
     {
-        let mut c = std::process::Command::new("sh").without_own_env();
-        c.arg("-c").arg(script);
-        Some(c)
+        Some(Child::new("sh").arg("-c").arg(script))
     }
     #[cfg(not(unix))]
     {
@@ -77,32 +75,20 @@ pub(crate) enum PsHost {
 /// 只给**固定脚本**用（`Get-Alias` · 执行策略那两句）；`-NoProfile` 让结果不被用户 profile 左右，`-NonInteractive` 让它绝不等人回车。
 /// 剥掉继承来的 `PSExecutionPolicyPreference`：那是父进程给的进程级策略，新开的 PowerShell 窗口没有它。
 /// 不 `spawn`，送出去那一下归调用方。
-pub(crate) fn powershell_on(host: PsHost, script: &str) -> Option<std::process::Command> {
+pub(crate) fn powershell_on(host: PsHost, script: &str) -> Option<Child> {
     speaks_powershell().then(|| powershell_command(host, script))
 }
 
-fn powershell_command(host: PsHost, script: &str) -> std::process::Command {
+fn powershell_command(host: PsHost, script: &str) -> Child {
     // 程序名写成字面量：起进程登记表（`tests/backend/readonly_guard.rs` 那张 `ALLOWED`）按它认是谁。
-    let mut c = match host {
-        PsHost::Desktop => std::process::Command::new("powershell.exe").without_own_env(),
-        PsHost::Core => std::process::Command::new("pwsh.exe").without_own_env(),
+    let c = match host {
+        PsHost::Desktop => Child::new("powershell.exe"),
+        PsHost::Core => Child::new("pwsh.exe"),
     };
-    c.args(["-NoProfile", "-NonInteractive", "-Command", script]);
-    c.env_remove("PSExecutionPolicyPreference");
-    hide_console(&mut c);
-    c
+    c.args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .env_remove("PSExecutionPolicyPreference")
+        .no_console_window()
 }
-
-/// `CREATE_NO_WINDOW`：挡掉 Windows 给控制台程序新开的那个黑框。别处没有控制台窗口这一说 ⇒ 什么都不做。
-#[cfg(windows)]
-fn hide_console(c: &mut std::process::Command) {
-    use std::os::windows::process::CommandExt as _;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    c.creation_flags(CREATE_NO_WINDOW);
-}
-
-#[cfg(not(windows))]
-fn hide_console(_c: &mut std::process::Command) {}
 
 /// 这台后端**说不说 PowerShell** —— 别名方言那一道闸（`assets/aliases::dialect_here`）只问它。
 /// 「本机」与「远端」对后端没有区别（本机＝不走 ssh 的远端）：PowerShell ⇔ 这台是 Windows。

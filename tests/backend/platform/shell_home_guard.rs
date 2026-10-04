@@ -285,7 +285,7 @@ const SQ_ELSEWHERE: &[(&str, &str, usize)] = &[
     // 报错句里「起不来的是哪个程序」那个主语，不进 shell。
     ("control/ccm/mod.rs", "'{", 1),
     // POSIX：tmux 的 `-F` 格式串是常量。
-    ("observe/tmux_observe.rs", "'{", 2),
+    ("observe/tmux_observe.rs", "'{", 1),
 ];
 
 fn sq_census_of(src: &str) -> BTreeMap<&'static str, usize> {

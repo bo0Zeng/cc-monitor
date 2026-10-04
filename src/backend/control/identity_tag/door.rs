@@ -3,8 +3,6 @@
 //! 测试构建里 `identity_tag.rs` 的 `#[cfg_attr(test, path = …)]` 把整个口换成
 //! `tests/backend/control/identity_tag_door.rs`：只交本线程注入的假 tmux，没注入就炸（`INVARIANTS §48.3`）。
 
-use crate::common::child_env::WithoutOwnEnv;
-
-pub(super) fn tmux() -> std::process::Command {
-    std::process::Command::new("tmux").without_own_env()
+pub(super) fn tmux() -> crate::platform::child::Child {
+    crate::platform::child::Child::new("tmux")
 }

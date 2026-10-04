@@ -224,19 +224,19 @@ pub(crate) fn builtin_alias_note(name: &str, aliases: &PsAliases) -> Option<Stri
     }
 }
 
+/// 问内建别名那一趟的期限：界面等别名那一族的预算是 30 s，收一档到 15 s。
+const GET_ALIAS_WITHIN: crate::platform::child::Deadline =
+    crate::platform::child::Deadline::secs(15);
+
 /// `Get-Alias` 那一段：只读、不吃任何用户输入。
 const GET_ALIAS_SCRIPT: &str = "Get-Alias | ForEach-Object { $_.Name + [char]9 + $_.Definition }";
 
 /// 起一次 5.1 的 `-NoProfile -NonInteractive -Command <固定脚本>`（这条 argv 与不弹窗那一格住 `platform::shell`）。
 /// `-NoProfile`：问的是**自带**那一份（用户 profile 里另加 / 删的别名不算）。这台没有 PowerShell ⇒ `Err`（说问不到）。
 fn ask_get_alias() -> PsAliases {
-    let mut cmd = crate::platform::shell::powershell_on(super::PsHost::Desktop, GET_ALIAS_SCRIPT)
+    let cmd = crate::platform::shell::powershell_on(super::PsHost::Desktop, GET_ALIAS_SCRIPT)
         .ok_or_else(|| copy_text("rsShellDialect.ps.noPowerShellHere", &[]))?;
-    let out = cmd
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .map_err(|e| e.to_string())?;
+    let out = cmd.run(GET_ALIAS_WITHIN).map_err(|e| e.to_string())?;
     if !out.status.success() {
         let why = format!(
             "exit {:?}: {}",

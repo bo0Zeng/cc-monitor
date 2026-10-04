@@ -32,6 +32,7 @@
 pub(crate) mod argv;
 pub(crate) mod plan;
 
+use crate::platform::child::Child;
 use argv::{Die, Early, Parsed};
 use copy_core::copy_text;
 use plan::{AccountTable, Env, Plan};
@@ -685,10 +686,8 @@ fn needs_shell(d: &plan::Direct) -> Option<&'static str> {
 ///
 /// 起进程点，已登记进 `readonly_guard::spawn_registry::ALLOWED`。
 fn exec_shell(line: &str, why: &str) -> i32 {
-    let mut cmd = std::process::Command::new("sh");
-    cmd.arg("-c").arg(line);
     exec_or_spawn(
-        cmd,
+        Child::new("sh").arg("-c").arg(line),
         &format!(
             "{NO_SHELL}: {}",
             copy_text("beCcm.execShell.needsSh", &[("why", why)])
@@ -749,51 +748,27 @@ fn exec_direct(d: &plan::Direct) -> i32 {
     let Some((prog, rest)) = d.argv.split_first() else {
         return die(&copy_text("beCcm.execDirect.noLauncher", &[]));
     };
-    let mut cmd = std::process::Command::new(prog);
-    cmd.args(rest);
-    exec_or_spawn(cmd, &format!("'{prog}'"))
+    exec_or_spawn(Child::new(prog).args(rest), &format!("'{prog}'"))
 }
 
-/// POSIX 上就地 `exec`（不多一层进程）；其余平台退成「起它 + 等它 + 透传退出码」。
-///
-/// ⚠ **Windows 没有 `exec` 原语** —— `K26` 那句「就地 `exec`」在 POSIX 上成立、
-/// 在 Windows 上不成立。这里不假装它成立，而是明确退成另一种形状。
+/// 最终那一跳（`Child::exec_replace`：POSIX 就地 `exec`，Windows 起它、等它、交回退出码）。
 ///
 /// `subject` = **起不来的是什么**。🔴 它不是装饰（`D7`）：从前这里只吐
 /// `ccm: 起不来 —— {e}`，而 `{e}` 在 Windows 上逐字是 `program not found`
-/// ⇒ 那句话**指不出是哪个 program**。真机读数为此只能靠
-/// 「同一个 launcher 在 `claude` 那趟 `EXIT=0`」反推出「找不到的是 `sh`」。
-/// ⇒ 现在两处调用点各自把主语带进来（`sh -c` 那条还带上「为什么非得经它」）。
-fn exec_or_spawn(mut cmd: std::process::Command, subject: &str) -> i32 {
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        let e = cmd.exec();
-        eprintln!(
-            "{}",
-            copy_text(
-                "beCcm.execOrSpawn.failed",
-                &[("subject", subject), ("e", &e.to_string())]
-            )
-        );
-        return 4;
-    }
-    #[cfg(not(unix))]
-    {
-        match cmd.status() {
-            Ok(s) => s.code().unwrap_or(1),
-            Err(e) => {
-                eprintln!(
-                    "{}",
-                    copy_text(
-                        "beCcm.execOrSpawn.failed",
-                        &[("subject", subject), ("e", &e.to_string())]
-                    )
-                );
-                4
-            }
-        }
-    }
+/// ⇒ 那句话**指不出是哪个 program**。⇒ 两处调用点各自把主语带进来（`sh -c` 那条还带上「为什么非得经它」）。
+fn exec_or_spawn(cmd: Child, subject: &str) -> i32 {
+    let e = match cmd.exec_replace() {
+        Ok(code) => return code,
+        Err(e) => e,
+    };
+    eprintln!(
+        "{}",
+        copy_text(
+            "beCcm.execOrSpawn.failed",
+            &[("subject", subject), ("e", &e.to_string())]
+        )
+    );
+    4
 }
 
 #[cfg(test)]

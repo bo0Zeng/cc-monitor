@@ -3,7 +3,7 @@
 //! # `K-G6` `KG62`：性质与人群，两行逐字（**这两行各自只许有一句**，`g6_scope_pins` 钉着）
 //!
 //! - **它守的性质是**：backend **进程自身**不许改动用户既有数据 —— 例外只有两档、都逐文件登记：新增文件须 `O_EXCL` 且只许在白名单模块里（白名单层，`D1` 08-01）；改动既有数据只许在**文件管理那一面**、每一处先过路径解析（不越根 ＋ 父目录解链接；从前是「先过 Claude 会话数据围栏」，用户「文件管理器全部都可以改. 不需要任何围栏」之后那道拿掉了）、且只从登记的那一扇门进来（第三层，波 5 · 用户 09-23 逐字「现在只允许后端的文件管理部分写文件」）。〔条 66〕另有一层**不是例外**、是把人群收回性质上：后端写**它自己的**状态文件（`~/.cc-monitor/backend.json` · 上游选择那份凭据文件，都不是用户数据）只许在逐文件登记的那几份模块里、动词闭集、只从一扇门进来（第四层）。⚠ `src/doc/INVARIANTS.md` §41.6 的「现措辞」今天**没有**第三层那一档 —— 改那条是产品裁决、不在本护栏写区，已报备。
-//! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段**源码文本**里 `fs::` / `File::` / `OpenOptions` 命名空间的调用（默认层 + 只读白名单 + 逃生口），外加另一张表：`Command::new` 的起进程点。
+//! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段**源码文本**里 `fs::` / `File::` / `OpenOptions` 命名空间的调用（默认层 + 只读白名单 + 逃生口），外加另一张表：`Child::new` 的起进程点（生产段 `Command::new` 只许住起子进程原语 `platform/child.rs`）。
 //!
 //! ⚠ **这两行今天不是同一件事，而「它们是同一件事」这一格钉不住 —— 靠纪律**（`KG62` 如实登记）：
 //! 「用户既有数据」是**语义**命题，人群是**文本形状**，两者之间没有可机检的桥。
@@ -2978,7 +2978,7 @@ mod spawn_registry {
             "plugin/invoke.rs",
             "<非字面量>",
             "`K-W1A`（08-26）：**插件通用调用口**里唯一一处起进程 —— argv 直传不过 shell，\
-             期限靠 `timeout` 当前缀交给子进程（零定时器铁律的另一侧）。\
+             期限由起子进程原语执行（调用方给秒数，到点杀整组）。\
              程序名是**查出来的路径**（PATH 里未必有用户级 bin 目录）⇒ 非字面量。\
              ⚠⚠ **本条从 `control/cc_bus.rs` 搬来，同轮把它的理由订正了**：\
              旧理由逐字写着「转调 `cc-list` / `cc-send`，**两条命令**共用」，而今天真实转调的是\
@@ -3140,8 +3140,8 @@ mod spawn_registry {
         for (name, raw) in &files {
             let prod = crate::guard_support::production_code(raw);
             let mut from = 0usize;
-            while let Some(rel) = prod[from..].find("Command::new(") {
-                let at = from + rel + "Command::new(".len();
+            while let Some(rel) = prod[from..].find("Child::new(") {
+                let at = from + rel + "Child::new(".len();
                 let tail = &prod[at..];
                 // ★★**非字面量也要记**。
                 //
@@ -3162,75 +3162,7 @@ mod spawn_registry {
                 from = at;
             }
         }
-        // ★ **相等，不是地板**。
-        //
-        // 原来这里是 `found.len() >= 4`。逐行核出：**地板式判据在「数字变大」这个方向上
-        // 不会红**，而这里恰恰是变大 —— 真值早已是 6，而它旁边那两段散文
-        // （`INVARIANTS.md` 与本条报错文案）一直停在 4，两年没人发现。
-        // 相等之后，加一处而不改这个数就会红；那正是「让人非看见不可」的地方。
-        //
-        // ⚠ 这个数**刻意不再枚举是哪几处** —— 那份清单的家是 `ALLOWED`，
-        // 在报错文案里再抄一遍就是下一处会腐的散文（定框 E12）。
-        // `U-NP④`（08-14）：8 → 9，新增 `control/identity_tag.rs` 的 `set-option @ccm_sid`。
-        // 探测那半复用 `control/gate.rs` 已有的 `display-message` ⇒ 只 +1 不是 +2。
-        // `K-R48`（09-11）：9 → 11，新增 `control/ccm/mod.rs` 两处
-        //（`sh -c <渲好的命令串>` 与 `exec <用户要起的 agent>`）——
-        // 那是 `shared/ccm` 那个 bash 脚本被删掉之后，它那两处 `exec` 的新住址。
-        // `K-R55`（09-11）：11 → 10。`observe/watcher.rs` 那**两处** `Command::new("sh")`
-        // 搬进了 `platform/shell.rs`，而那里**合成一处**（两跳共用同一条口）⇒ 净 −1。
-        // `K-R96`（09-12）：10 → 10，**净零**。`control/gate.rs` 那两处里的
-        // `list-sessions -F` 搬去了 `common/session_snapshot.rs`（`R52` 裁定一：
-        // Gate 判活改成向那张快照发一次询问）—— 一处走、一处来，`ALLOWED` 多一条键。
-        // ⚠ 这种「搬家」最容易在这里留下**两条都在**的痕迹（旧键还盖着已经不存在的调用点）。
-        // 复核法：`ALLOWED` 里那条 `control/gate.rs` 的理由栏今天只该说 `display-message`。
-        // ⚠ 这个数变小**不一定**是好事（它也可能是抽取坏了），所以顺带写清怎么复核：
-        // `grep -c 'Command::new(' `，逐文件看，`platform/shell.rs` 那份是新住址。
-        // `K-R86`（09-13）：10 → 11，新增 `control/capture_pane.rs` 的
-        // `tmux -u capture-pane -p -t '=名:'`。⚠ **这一处是真的新面，不是搬家**：
-        // 抓屏这件事此前后端侧一处都没有（`ALLOWED` 里那条新登记逐字写了它做什么）。
-        // ⚠ 它**只读**，而这张表的键分不出被调的子命令 ⇒ 「只读」由
-        // [`super::capture_is_read_only`] 单独钉，别把这一格的 +1 读成「只读性质有人证了」。
-        // `K-R87`（09-13）：11 → **13**，一次加两处，两处都是**真的新面**：
-        // ① `control/oneshot_session.rs` 的 `Command::new("tmux")` —— 那条路上三次 tmux 调用
-        //    （建 / 问在不在 / 杀）共用这**一处**，所以只 +1；
-        // ② 同一份文件里 `Command::new(<看门狗 launcher>)` —— 生产恒是 `setsid`，
-        //    程序名走变量 ⇒ 抽取器记成 `<非字面量>`，`ALLOWED` 里单独一条。
-        // 🔴 **PM 单子上写的是「11 → 12」**（`§2` 的「`K-R86` 现打交出来的两条」①）——
-        //    那是按「新增一处起进程点」估的，而本件真实新增的是**两处**：看门狗是另一个程序，
-        //    抽取器按 `Command::new(` 的**出现次数**数，不是按 `(文件, 程序)` 去重后的键数。
-        //    ⇒ 这里记 13，并把差额登记在件文件 `§8`。
-        // 🔴 〔删用量〕**13 → 11**：`control/oneshot_session.rs` 整份文件随用量 ③ 轴
-        //    （探针会话）退役 ⇒ 它那两处起进程点（`Command::new("tmux")` ＋ 看门狗那个
-        //    `Command::new(<非字面量>)`）一起没了，`ALLOWED` 里那两条同拍摘掉。
-        //    ⚠ **变少这一次是真的少了，不是抽取坏了**：`control/capture_pane.rs` 那一处还在
-        //    （拉屏预览在用），下面 `found` 的实测清单里看得见。
-        // **11 → 12**：`relay/machine.rs` 那一处（远端那台上起一个脱离的 `--relay`）。
-        //    ⚠ 真的新面，不是搬家：远端起中转这件事此前后端侧一处都没有（`ALLOWED` 里那条新登记写了它起什么）。
-        // **12 → 13**：`control/kill.rs` 多一处只读的 `tmux list-panes`（杀之前记下 pane 根进程 pid，杀成之后按它认 cc-bus 名册）。
-        //    键 `(control/kill.rs, tmux)` 不变，那条 `ALLOWED` 的理由同拍补了这一处。
-        // **13 → 14**：`control/resident.rs` 那一处（远端那台上起一个脱离的常驻后端，`--resident-ensure`）。
-        // **14 → 13**：`relay/machine.rs` 那一处（起脱离的 `--relay`）随那一族删了。
-        // **13 → 14**：`platform/shell.rs` 多一处 `powershell.exe`（别名方言问内建别名，从 monitor 搬来，真的新面）。
-        // ＋1：`dial/ssh_config.rs` 那一处（`ssh -G` 解析 ssh config，从 monitor 搬来 —— monitor 那一处同拍删了）。
-        // 基数 14 − DEL 1 ＋ MIG-1 1 ⇒ 14。
-        // 主线 14（含 MIG-3a 的 `powershell.exe`）＋ MIG-1 1（`dial/ssh_config.rs`）⇒ 15（现打核过）。
-        // **15 → 16**：`platform/shell/mod.rs` 按代起 PowerShell，程序名写成两个字面量（`powershell.exe` · `pwsh.exe`，后者是新面）。
-        // **16 → 17**：`observe/session_terminals.rs` 一处只读的 `tmux list-clients`（点 ↗ 时问谁连着这个会话）。
-        // 16 → 17：`control/session_batch.rs` 当 ccm 起自己（tab 栏在 tmux 里后台起，`ALLOWED` 里写明）。
-        // **17 → 18**（合并）：上面两行是两边各自的 16 → 17，各加一处，相加。
-        // **18 → 19**：`control/terminals.rs` 一处（终端管理 L1：列会话 · 列客户端 · 问尺寸只读，送字送键经 `launch.rs`，`ALLOWED` 里写明）。
-        // **19 → 18**：`control/kill.rs` 那一处只读 `list-panes` 并进 `control/gate.rs` 的那一处（按 sid 找窗格，读 pane pid 也走它）。
-        const SPAWN_SITES_TODAY: usize = 18;
-        assert_eq!(
-            found.len(),
-            SPAWN_SITES_TODAY,
-            "生产段扫到 {} 处起进程，登记时是 {SPAWN_SITES_TODAY} 处。\n\
-             变少 ⇒ 多半是**抽取坏了**，本断言在空转；变多 ⇒ 新增了起进程的面。\n\
-             两种都要人来看：把它加进 `ALLOWED` 并写明「做什么、为什么不违反收窄后的铁律」，\n\
-             然后把这个数一起改。**不许改回地板** —— 地板在变大方向上是瞎的。\n\
-             实际扫到：{found:?}",
-            found.len()
-        );
+        // 处数不再写死：键集与 `ALLOWED` 两向相等（这一条管正向，下面 `every_registered_entry_is_backed_by_a_real_spawn_site` 管反向）。
         let unregistered: Vec<&(String, String)> = found
             .iter()
             .filter(|(f, p)| !ALLOWED.iter().any(|(af, ap, ..)| af == f && ap == p))
@@ -3241,6 +3173,32 @@ mod spawn_registry {
              D1 把铁律收窄成「backend **进程自身**不许写用户既有数据」，代价是**必须逐条列举**\n\
              起进程的写面 —— 否则收窄就退化成「隔一层 exec 就绕过」。\n\
              把它加进 `ALLOWED` 并**写明它做什么、为什么不违反收窄后的铁律**。"
+        );
+    }
+
+    /// ★ 生产段 `Command::new(` **只许**出现在起子进程原语里（期限必填 · 杀整组 · 自有环境无条件摘都在那里做）。
+    /// 别处零命中；正控：原语那一份恰好一处（抽取没坏）。
+    #[test]
+    fn command_new_lives_only_in_the_spawn_primitive() {
+        let src = crate::guard_support::src_root();
+        let mut hits: Vec<(String, usize)> = Vec::new();
+        for (p, raw) in guard_core::scan_tree_excluding(&src, &["rs"], &[]) {
+            let rel = p
+                .strip_prefix(&src)
+                .unwrap_or(&p)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let n = crate::guard_support::production_code(&raw)
+                .matches("Command::new(")
+                .count();
+            if n > 0 {
+                hits.push((rel, n));
+            }
+        }
+        assert_eq!(
+            hits,
+            vec![("platform/child.rs".to_string(), 1)],
+            "生产段 `Command::new(` 只许住 `platform/child.rs`（恰好一处）。别处起子进程改走 `Child::new(…).run(期限)` / `detach` / `exec_replace`。"
         );
     }
 
@@ -3282,11 +3240,11 @@ mod spawn_registry {
             "../../src/backend/platform/shell/mod.rs"
         ));
         assert!(
-            hook.contains("Command::new(\"tmux\")"),
+            hook.contains("Child::new(\"tmux\")"),
             "清单登记了 tmux_hook 起 tmux，但生产段里找不到了 —— 幽灵条目"
         );
         assert!(
-            shell.contains("Command::new(\"sh\")"),
+            shell.contains("Child::new(\"sh\")"),
             "清单登记了 platform/shell.rs 起 sh，但生产段里找不到了 —— 幽灵条目"
         );
     }
@@ -3338,8 +3296,8 @@ mod spawn_registry {
                     &std::fs::read_to_string(&path).expect("read rs"),
                 );
                 let mut from = 0usize;
-                while let Some(at) = prod[from..].find("Command::new(") {
-                    let i = from + at + "Command::new(".len();
+                while let Some(at) = prod[from..].find("Child::new(") {
+                    let i = from + at + "Child::new(".len();
                     let tail = &prod[i..];
                     let prog = if tail.starts_with('"') {
                         match tail[1..].find('"') {
@@ -3484,7 +3442,7 @@ mod capture_is_read_only {
         );
         crate::guard_support::assert_no_test_code("capture_is_read_only", &prod);
         assert!(
-            prod.contains(&format!("Command::{}", "new(\"tmux\")")),
+            prod.contains(&format!("Child::{}", "new(\"tmux\")")),
             "那一处起进程不见了 —— 本模块声称盖的东西已经不在它声称的地方了"
         );
     }
@@ -3578,7 +3536,7 @@ mod capture_is_read_only {
     #[test]
     fn the_capture_site_is_one_shot() {
         let prod = site();
-        let spawns = prod.matches(&format!("Command::{}", "new(")).count();
+        let spawns = prod.matches(&format!("Child::{}", "new(")).count();
         assert_eq!(
             spawns, 1,
             "抓屏那一处的生产段里有 {spawns} 处起进程 —— 该恰好 1 处。\n\

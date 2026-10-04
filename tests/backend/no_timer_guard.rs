@@ -637,6 +637,14 @@ mod tests {
         "缩性质",
         "子运行的收场改由别的信号完全兜住（不再需要「久未再写」这一格）的那天 —— 与那一行登记一起摘。",
     ),
+        (
+        "platform/child.rs",
+        "Duration::from_millis(n)",
+        "起子进程原语的期限类型 `Deadline` 唯一造时长的地方：`Deadline` 只交给 `Child::run` 那一次有界等待，\
+         模块外拿不到它的时长（没有取值口），拿去做节拍做不到。调用点的期限常量都写成 `Deadline::secs(n)`，不另登记。",
+        "收窄人群",
+        "起子进程不再需要期限（或期限改由别处执行）的那天。",
+    ),
     ];
     // `relay/machine.rs` 那一行（差分探针的 socket 读写期限）摘了：「在不在」改由常驻后端进程内的状态答，探针删了。
 
@@ -663,6 +671,20 @@ mod tests {
             "子运行「久未动静 ⇒ 状态不明」要到点就判：会话空闲时不会再有它的文件事件，只靠事件判的话面板上的「在跑」永远冻住。\
              watcher 的事件循环（`runs::next_event`）只在有在跑的子运行时带期限地等，到点判一遍、表变了才出帧。",
             "最早那个在跑的子运行的 `seen + STALE_AFTER`（15 分钟）；没有在跑的 ⇒ 无期限地等、不醒。",
+        ),
+        (
+            "platform/child.rs",
+            "done_rx.recv_timeout(within.0)",
+            "起子进程原语（`Child::run`）等子进程结束的**一次有界等待**：阻塞档命令起的 tmux / ssh / PowerShell 卡住时，\
+             没有它整条命令（或 watcher 的事件循环）就一直挂着。到点杀整组、回超时；不循环、不复用。",
+            "调用点给的期限（`Deadline`，各调用点模块的常量）；子进程先结束就立刻醒。",
+        ),
+        (
+            "platform/child.rs",
+            "ev_rx.recv_timeout(DRAIN_AFTER_KILL.0)",
+            "超时杀组之后，等读输出的线程收尾的宽限：过了仍没收尾 ⇒ 输出管道被逃出组的进程攥着，放手并记一行日志。\
+             只在超时那一回、在等待线程里等一次。",
+            "`DRAIN_AFTER_KILL`（1 秒）；读线程先收尾就立刻醒。",
         ),
     ];
 
@@ -1336,9 +1358,10 @@ mod g6_reach {
         // 7 → **6**：`relay/machine.rs` 的 `PROBE_DEADLINE` 随差分探针删了（「在不在」改读进程内状态）。
         // 6 → **7**：多的那一条是 `observe/runs.rs` 的 `STALE_AFTER`（子运行「久未再写 ⇒ 状态不明」的阈值）。
         //   条数不变、格改了：它后来成了 `REGISTERED_DEADLINE_WAKES` 里 runs 那一处等的期限（cell `缩性质`）。
+        // 7 → **8**：多的那一条是 `platform/child.rs` 的 `Deadline`（起子进程原语的期限类型，只交给那一次有界等待）。
         assert_eq!(
-            registered, 7,
-            "登记表从 7 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
+            registered, 8,
+            "登记表从 8 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
              改它等于改判据的射程"
         );
     }
@@ -1424,25 +1447,6 @@ mod g6_reach {
             "禁用构件在人群里出现了：\n{}\n\
              ⇒ 那是本护栏的正题在红，不是本条 —— 先修那个，再回来看反例表",
             hits.join("\n")
-        );
-    }
-
-    /// ★ 一条**查过、但不算反例**的路，如实登记（免得下一轮有人再查一遍）。
-    ///
-    /// `plugin/invoke.rs` 用 `timeout` 当命令前缀交给子进程。
-    /// `is_call_of` 认不出 `Command::new("timeout")`（前面是引号、后面不是括号）⇒ **确实通过**，
-    /// 但它是**一次性期限**，不是周期唤醒 —— **形状不同，不算反例**。
-    /// 这一条钉住那个判断今天仍然成立：那处仍然只有命令前缀这一种用法。
-    #[test]
-    fn the_timeout_command_prefix_is_checked_and_is_not_a_counterexample() {
-        assert!(
-            !is_call_of("    let mut cmd = Command::new(\"timeout\");", "timeout"),
-            "`Command::new(\"timeout\")` 被当成了 `timeout(` 调用 —— \
-             那会是一次误红，而误红最省事的消法是把判据删掉"
-        );
-        assert!(
-            is_call_of("    let r = timeout(d, fut).await;", "timeout"),
-            "真的 `timeout(` 调用必须认出来，否则上面那条靠「什么都认不出」恒真"
         );
     }
 }

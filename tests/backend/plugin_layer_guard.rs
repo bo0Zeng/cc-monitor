@@ -187,21 +187,22 @@ fn the_port_guard_actually_bites() {
 // 再加一格阴性对照（喂真会违规的输入给判据的核）。
 // ───────────────────────────────────────────────────────────────────────
 
-/// 本层**动子进程环境**的三种调用形。⚠ 三者两两不含（`.env_clear(` 与 `.envs(`
+/// 本层**动子进程环境**的三种调用形。⚠ 三者两两不含（`.inherit_only(` 与 `.envs(`
 /// 都不含 `.env(`），所以下面那张普查表不会重复计数。
-const ENV_CALL_SHAPES: &[&str] = &[".env_clear(", ".env(", ".envs("];
+const ENV_CALL_SHAPES: &[&str] = &[".inherit_only(", ".env(", ".envs("];
 
-/// 今天的**登记面**：`(文件, 调用形, 处数)`。三处，全在同一个函数里。
+/// 今天的**登记面**：`(文件, 调用形, 处数)`。两处，全在同一个函数里。
 ///
-/// · `.env_clear(` 一处 —— 那一刀本身；
-/// · `.env(` 两处 —— ① 按白名单逐键喂 · ② 调用方**显式交办**的那几项
-///   （次序承重：② 排在后面 ⇒ 显式压过继承）。
+/// · `.inherit_only(` 一处 —— 清空环境、只按白名单从宿主继承（起子进程原语那一手）；
+/// · `.env(` 一处 —— 调用方**显式交办**的那几项（原语里排在继承之后 ⇒ 显式压过继承）。
 ///
 /// 🔴 **加第四处之前先回答一句**：它是在给「继承」这一侧再开一个口子吗？
 /// 是的话，正解是往 [`super::invoke::INHERITED_ENV_KEYS`] 里加一条并写为什么，
 /// **不是**在别处再写一段 `.env(`。
-const ENV_CALL_SITES: &[(&str, &str, usize)] =
-    &[("invoke.rs", ".env(", 2), ("invoke.rs", ".env_clear(", 1)];
+const ENV_CALL_SITES: &[(&str, &str, usize)] = &[
+    ("invoke.rs", ".env(", 1),
+    ("invoke.rs", ".inherit_only(", 1),
+];
 
 /// 判据的**核**：数出本层每个文件里各种「动子进程环境」的调用形各几处。
 ///
@@ -294,8 +295,7 @@ fn the_child_environment_allowlist_has_exactly_one_home() {
         "本层「动子进程环境」的调用面与登记的对不上。\n\
              **多出来的**：先回答一句「它是不是在给**继承**这一侧再开一个口子」——\
              是的话，正解是往 `invoke::INHERITED_ENV_KEYS` 里加一条并写为什么。\n\
-             **少了的**：`.env_clear(` 掉了 ⇒ 那条暗路又开了（子进程重新继承整份环境）；\
-             白名单那一处 `.env(` 掉了 ⇒ 白名单成了摆设，子进程连 `PATH` 都没有。\n\
+             **少了的**：`.inherit_only(` 掉了 ⇒ 那条暗路又开了（子进程重新继承整份环境）。\n\
              ⚠ 本条的采集面里**没有 `mod.rs`**（见本判据头注的射程段）。"
     );
 
@@ -557,7 +557,6 @@ pub(crate) fn classify(code: Option<i32>, detail: &str) -> Result<(), (String, S
         "        self.code == Some(TIMED_OUT_CODE)",
         "        md.permissions().mode() & 0o111 != 0",
         "            code: out.status.code(),",
-        "            vec![deadline_secs.to_string(), bin.display().to_string()],",
     ] {
         assert!(
             !some_of_int_literal(innocent) && !bare_int_match_arm(innocent),

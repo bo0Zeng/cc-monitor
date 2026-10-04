@@ -90,11 +90,11 @@ const REGISTERED: &[Launcher] = &[
         ledger_cmds: &[],
         // 🔴 **住址换了：`shared/ccm` → `control/ccm/mod.rs`。**
         //    〔用@09-11 `K33`〕那个 bash 脚本删了，`exec` 那一下搬进了后端二进制的
-        //    一次性模式（`exec_or_spawn`：POSIX 上 `CommandExt::exec`，非 unix 退成
-        //    「起它 + 等它 + 透传退出码」）。**这一处今天仍然没落身份**，理由见 `why`。
+        //    一次性模式（`exec_or_spawn` → 起子进程原语 `exec_replace`：POSIX 上 `CommandExt::exec`，
+        //    非 unix 退成「起它 + 等它 + 交回退出码」）。**这一处今天仍然没落身份**，理由见 `why`。
         anchors: &[
             ("src/backend/control/ccm/mod.rs", "fn exec_or_spawn(", 1),
-            ("src/backend/control/ccm/mod.rs", ".exec()", 1),
+            ("src/backend/control/ccm/mod.rs", ".exec_replace()", 1),
         ],
         plants: false,
         why: "今天没落，理由**换了一条，而且比原来那条硬**。原来写的是「`shared/ccm` 是 \

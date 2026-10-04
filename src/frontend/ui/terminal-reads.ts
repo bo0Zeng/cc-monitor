@@ -53,6 +53,8 @@ function previewRefusals(target: string): Refusals {
           return copyText("terminalReads.preview.ambiguous", { target, detail });
         case "unobservable":
           return copyText("terminalReads.preview.unobservable", { target, detail });
+        case "child_timed_out":
+          return copyText("terminalReads.preview.childTimedOut", { target, detail });
         default:
           return detail.trim() !== ""
             ? copyText("terminalReads.preview.otherCode", { target, detail })

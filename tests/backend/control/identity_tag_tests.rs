@@ -233,10 +233,8 @@ fn container_maps_every_tag_outcome_to_the_hand_written_table() {
 /// 正在 fork（子进程在 fork 与 exec 之间还攥着那份写 fd）⇒ `ETXTBSY`（全量跑时现打逮到过一次）。
 /// `sh` 只是**读**它，不受这一条影响。
 #[cfg(unix)]
-fn fake_cmd(p: &std::path::Path) -> std::process::Command {
-    let mut c = std::process::Command::new("/bin/sh");
-    c.arg(p);
-    c
+fn fake_cmd(p: &std::path::Path) -> crate::platform::child::Child {
+    crate::platform::child::Child::new("/bin/sh").arg(p)
 }
 
 #[cfg(unix)]
@@ -305,7 +303,7 @@ fn w5vis_s2_set_sid_carries_what_tmux_said() {
     // 起不来（程序不存在）⇒ 仍是 `Failed`，原因说清。
     let gone = std::env::temp_dir().join("ccm-w5vis-s2-definitely-not-here/tmux");
     match set_sid(
-        std::process::Command::new(&gone),
+        crate::platform::child::Child::new(&gone),
         "%9".into(),
         "abc",
         "tmux-1-9".into(),

@@ -75,6 +75,8 @@ export function killRefusals(target: string): Refusals {
           return copyText("tmuxControl.kill.tooManyWindows", { target, detail });
         case "kill_failed":
           return copyText("tmuxControl.kill.failed", { target, detail });
+        case "child_timed_out":
+          return copyText("tmuxControl.kill.childTimedOut", { target, detail });
         default:
           return detail.trim() !== "" ? copyText("tmuxControl.kill.otherCode", { target, detail }) : copyText("tmuxControl.kill.noReason", { target });
       }
@@ -148,6 +150,8 @@ function keysRefusals(target: string): Refusals {
           return copyText("tmuxControl.keys.unconfirmed", { target, detail });
         case "wrong_owner":
           return copyText("tmuxControl.keys.wrongOwner", { target, detail });
+        case "child_timed_out":
+          return copyText("tmuxControl.keys.childTimedOut", { target, detail });
         default:
           return detail.trim() !== "" ? copyText("tmuxControl.keys.otherCode", { target, detail }) : copyText("tmuxControl.keys.noReason", { target });
       }

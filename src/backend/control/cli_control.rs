@@ -13,8 +13,8 @@
 //! 不是「我记得要调同一个函数」。定框 `C1` 排除的正是「给本地单写一套控制逻辑」。
 //!
 //! ⇒ 由此白拿两条性质：
-//! · `readonly_guard::spawn_registry` 的 `SPAWN_SITES_TODAY` **一处不增**
-//!   （本模块零 `Command::new`；起进程仍只发生在 `control/launch.rs`、`control/kill.rs`）；
+//! · `readonly_guard::spawn_registry` 的起进程点**一处不增**
+//!   （本模块零 `Child::new`；起进程仍只发生在 `control/launch.rs`、`control/kill.rs`）；
 //! · `launch.rs` 头注那条「argv 直传，不过 shell」的性质原样继承 ——
 //!   CLI 面收 **stdin JSON** 而不是把参数摊进 argv，正是为了不引入一层 shell 解析把它丢掉。
 //!

@@ -101,7 +101,8 @@
     },
     "codes": [
       "invalid_args",
-      "unobservable"
+      "unobservable",
+      "child_timed_out"
     ]
   },
   "terminal-preview": {
@@ -158,7 +159,8 @@
       "no_server",
       "no_such_session",
       "capture_failed",
-      "unobservable"
+      "unobservable",
+      "child_timed_out"
     ]
   },
   "terminal-input": {
@@ -195,7 +197,8 @@
       "no_server",
       "no_such_session",
       "capture_failed",
-      "unobservable"
+      "unobservable",
+      "child_timed_out"
     ]
   }
 }

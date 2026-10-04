@@ -69,7 +69,7 @@ impl Rig {
             Ok(())
         };
         // 真 ccm：建会话撞名 ⇒ 退出码 3（响亮失败）。
-        let run_ccm = |argv: &[String]| -> Result<(i32, String, String), String> {
+        let run_ccm = |argv: &[String]| -> Result<(i32, String, String), CmdErr> {
             self.ccm.borrow_mut().push(argv.to_vec());
             Ok((
                 if self.created { 0 } else { 3 },

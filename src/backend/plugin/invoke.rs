@@ -1,27 +1,17 @@
 //! ③ **传 argv 起它** + ④ 的**骨架** —— 本层**唯一一处**起进程。
 //!
-//! # ★★ 期限住在**子进程**里，不在宿主里
+//! # 期限
 //!
-//! 病先说清楚：`Command::output()` **无限等**。被调的那个程序卡住（等锁、等网络、
-//! 自己写了个死循环），宿主这边就一直挂着 —— 而阻塞档的调用会占死一个 worker，
-//! `cancel` 对它是**空操作**。
-//!
-//! 而「在宿主里等一个期限」这条路是**被封死的**：宿主侧一个计时器都不许有
-//!（先 `try_wait` 轮询、后用带期限的接收，两版都被零定时器护栏当场逮住，而它是对的）。
-//!
-//! ⇒ 正确形状是**让子进程自己有期限**：找得到 `timeout(1)` 就拿它当 argv 前缀，
-//! 宿主这边仍然只是老老实实 `wait` 一个**注定会退出**的子进程 —— 零计时器。
-//!
-//! ⚠ 找不到 `timeout(1)` 就**如实降级**：裸跑、没有期限，不假装有保障。
-//! ★ 这句话此前只是一句头注（删了不会红）。现在它由 [`argv_for`] 的纯函数判据钉着：
-//! 没有 `timeout` 时 argv 的第一个词必须是那个插件自己，`deadline_secs` 一个字都不许出现。
+//! 被调的那个程序卡住（等锁、等网络、死循环），阻塞档的调用会占死一个 worker、`cancel` 对它是空操作。
+//! ⇒ 经起子进程原语带期限跑（`deadline_secs` 由调用方给）：到点杀整组，交成 [`TIMED_OUT_CODE`]。
+//! 不再依赖 PATH 上有没有 `timeout(1)`，Windows 上也有期限。
 //!
 //! # ④ 为什么只抽骨架
 //!
 //! 两个真实实现的退出码**语义互斥**（同一个码在一侧是「路由层拒绝」、在另一侧是
 //! 「撞名、该重试」）⇒ **码 → 语义的映射一定是每插件一份**。
 //! 本层只提供：怎么拿到码 · 怎么认出「被信号打断」（`code == None`）·
-//! `timeout(1)` 超时时用的那个码 · 怎么从两条流里摘一行诊断。
+//! 过了期限时交成的那个码 · 怎么从两条流里摘一行诊断。
 //!
 //! ★ **这一段此前只是散文（删了不会红）**。D1（08-26）的硬读数：把 `control/cc_bus.rs`
 //! 的码表原样抬进本文件、**只擦掉插件的名字** ⇒ `436 passed; 0 failed`，**一条不红**。
@@ -31,12 +21,11 @@
 //! ⚠ 两条各自**认不出**什么（具名常量来自本层与 control/observe 之外 · 非 `i32` 的码 ·
 //! 运行期从数据里读的表 · `mod.rs` 本身不在扫描面），逐条写在它们自己的头注里 —— 别读成全覆盖。
 
-use crate::common::child_env::WithoutOwnEnv;
+use crate::platform::child::{Child, ChildFail, Deadline};
 use copy_core::copy_text;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::path::Path;
 
-/// `timeout` 那条命令超时时的退出码（GNU coreutils）。
+/// 过了期限（原语杀了整组）时交成的退出码：与 GNU `timeout` 超时的码相同，调用方的码表据此认「超时」。
 ///
 /// ⚠ 引用它的文案里**别把它写成命令名紧跟左括号**的形状 —— 零定时器护栏按调用形态扫，
 /// 它剥注释但**不剥字符串**，写在错误消息里会被当成一处定时器调用。
@@ -53,7 +42,7 @@ pub(crate) const TIMED_OUT_CODE: i32 = 124;
 /// 而这条回程**没有协议、没有权限模型、没有审计**。
 /// 设计文档里没有它，代码里也没写它 —— 它是**默认行为**长出来的（`K-R26`）。
 ///
-/// ⇒ 修法是 [`run`] 先 `env_clear()`，再**只**按本表喂。
+/// ⇒ 修法是 [`run`] 清空环境、**只**按本表从宿主继承（原语的 `inherit_only`）。
 /// 关键在方向：不在表里的键**按构造**到不了子进程，不需要有人去维护一张「别漏这个」的黑名单。
 ///
 /// # 每个键一句为什么（**给不出论据的不进** —— 下面「考虑过而没进」那一段逐条记着）
@@ -129,7 +118,7 @@ pub(crate) struct Done {
 }
 
 impl Done {
-    /// 子进程是被那条期限命令收掉的吗。
+    /// 子进程是过了期限被收掉的吗。
     pub(crate) fn timed_out(&self) -> bool {
         self.code == Some(TIMED_OUT_CODE)
     }
@@ -154,69 +143,32 @@ pub(crate) fn first_line(bytes: &[u8]) -> String {
         .to_string()
 }
 
-/// ★ 真正要起的 `(程序, argv)` —— **纯函数**，好测。
-///
-/// 有期限命令：`<期限命令> <秒数> <插件> <参数…>`；
-/// 没有：`<插件> <参数…>`（**裸跑，没有期限** —— 这条降级由判据钉着）。
-pub(crate) fn argv_for(
-    bin: &Path,
-    args: &[&str],
-    deadline_secs: u64,
-    deadline_bin: Option<&Path>,
-) -> (PathBuf, Vec<String>) {
-    let (prog, mut argv): (PathBuf, Vec<String>) = match deadline_bin {
-        Some(t) => (
-            t.to_path_buf(),
-            vec![deadline_secs.to_string(), bin.display().to_string()],
-        ),
-        None => (bin.to_path_buf(), Vec::new()),
-    };
-    argv.extend(args.iter().map(|a| (*a).to_string()));
-    (prog, argv)
-}
-
-/// 在 `PATH` 上找那条期限命令。找不到就是 `None`（调用方会裸跑）。
-fn deadline_bin() -> Option<PathBuf> {
-    super::discover::on_path("timeout")
-}
-
-/// ★ **本层唯一一处起进程**（已登记进 `readonly_guard::spawn_registry::ALLOWED`）的构造：程序 · argv · 环境 · `stdin`。
+/// ★ **本层唯一一处起进程**（已登记进 `readonly_guard::spawn_registry::ALLOWED`）的构造：程序 · argv · 环境。
 ///
 /// 入参：`bin` 是已经找到的那个可执行文件（[`super::discover::find`] 的产出）；
 /// `args` **直传，不过 shell** ⇒ 参数里的元字符不构成注入面；
-/// `deadline_secs` 是给**子进程**的期限（`u64`，不是时长类型 —— 见模块头注第二段）；
-/// `env` 是额外的环境变量（有些插件的契约走 env 而不是参数）。
+/// `env` 是额外的环境变量（有些插件的契约走 env 而不是参数）。stdin 是空设备。
 ///
-/// `stdin` 一律关掉：被调的程序不该从宿主的输入里读东西。
-///
-/// ★ **环境是白名单，不是继承**（`K-R26`）：先 `env_clear()`，再按
-/// [`INHERITED_ENV_KEYS`] 逐键喂，最后才轮到调用方**显式**交办的 `env`。
-/// 次序是承重的 —— 调用方那一趟排在后面，它盖得住白名单里的同名键（显式压过继承）。
-fn command_for(bin: &Path, args: &[&str], deadline_secs: u64, env: &[(&str, &str)]) -> Command {
-    let (prog, argv) = argv_for(bin, args, deadline_secs, deadline_bin().as_deref());
-    let mut cmd = Command::new(&prog).without_own_env();
-    cmd.args(&argv).stdin(Stdio::null());
-    // ★ 先清空：不在白名单里的键**按构造**到不了子进程。
-    cmd.env_clear();
-    for (k, _why) in INHERITED_ENV_KEYS {
-        // 宿主没有这个键 ⇒ 子进程也不该有一个空的它（`""` 与「没有」不是同一件事：
-        // 空的 `PATH` 会让子进程在**当前目录**里找命令，那比没有更糟）。
-        if let Some(v) = std::env::var_os(k) {
-            cmd.env(k, v);
-        }
-    }
+/// ★ **环境是白名单，不是继承**（`K-R26`）：清空后只按 [`INHERITED_ENV_KEYS`] 从宿主继承，
+/// 再轮到调用方**显式**交办的 `env`（显式压过继承）。宿主没有的键子进程也没有
+/// （空的 `PATH` 会让子进程在当前目录里找命令，比没有更糟）。
+pub(crate) fn child_for(bin: &Path, args: &[&str], env: &[(&str, &str)]) -> Child {
+    let keys: Vec<&'static str> = INHERITED_ENV_KEYS.iter().map(|(k, _)| *k).collect();
+    let mut c = Child::new(bin).args(args).inherit_only(&keys);
     for (k, v) in env {
-        cmd.env(k, v);
+        c = c.env(k, v);
     }
-    cmd
+    c
 }
 
 /// 起不来的那一刻 → [`NotRun`]。
-fn not_run(bin: &Path, e: std::io::Error) -> NotRun {
+fn not_run(bin: &Path, e: ChildFail) -> NotRun {
     // ★ 参数太长要单独说：实测 200KB 必炸、120KB 能过 —— 内核的单参数上限是 128 KiB。
     #[cfg(unix)]
-    if e.raw_os_error() == Some(libc::E2BIG) {
-        return NotRun::ArgListTooLong;
+    if let ChildFail::Io(io) = &e {
+        if io.raw_os_error() == Some(libc::E2BIG) {
+            return NotRun::ArgListTooLong;
+        }
     }
     NotRun::Failed(copy_text(
         "beInvoke.notRun.failed",
@@ -225,17 +177,23 @@ fn not_run(bin: &Path, e: std::io::Error) -> NotRun {
 }
 
 /// 起它、**同步**等它退出（阻塞档的调用方用：它们本来就跑在 `spawn_blocking` 的线程上）。
+/// `deadline_secs` 是给它的期限；过了 ⇒ 整组被杀、交成 [`TIMED_OUT_CODE`]。
 pub(crate) fn run(
     bin: &Path,
     args: &[&str],
     deadline_secs: u64,
     env: &[(&str, &str)],
 ) -> Result<Done, NotRun> {
-    match command_for(bin, args, deadline_secs, env).output() {
+    match child_for(bin, args, env).run(Deadline::secs(deadline_secs)) {
         Ok(out) => Ok(Done {
             code: out.status.code(),
             stdout: out.stdout,
             stderr: out.stderr,
+        }),
+        Err(ChildFail::TimedOut { .. }) => Ok(Done {
+            code: Some(TIMED_OUT_CODE),
+            stdout: Vec::new(),
+            stderr: Vec::new(),
         }),
         Err(e) => Err(not_run(bin, e)),
     }

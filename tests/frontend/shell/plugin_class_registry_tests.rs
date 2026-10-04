@@ -402,27 +402,26 @@ fn cc_bus_is_reached_only_through_its_command_surface_today() {
     //    所以这一格由**两条一起**守：口那边恰好一处 · 壳这边零处。少哪一条都会漏掉
     //    一种真实的坏形状（多起一处 / 壳里又长回一处 = 绕开通用口）。
     let port = rust_production("src/backend/plugin/invoke.rs", 5_000);
-    guard_core::find_pinned(&port, "Command::new(").unwrap_or_else(|e| {
+    guard_core::find_pinned(&port, "Child::new(").unwrap_or_else(|e| {
         panic!(
             "通用调用口 `plugin/invoke.rs` 里的起进程口不是恰好一处：{e}\n\
                  ⇒ `E5` 的默认是「插件调用**复用**这一处口」，08-26 起那一处就住在这个文件里。\
                  一处都找不到 ⇒ 口又被搬走了（跟着改这里的文件名，别删断言）；\
                  多于一处 ⇒ 通用口自己开了第二条起进程的路。真要加，得同时做三件事：\
-                 改 `readonly_guard::spawn_registry::SPAWN_SITES_TODAY`（相等断言）\
-                 并在 `ALLOWED` 里写明理由 · 期限仍住子进程（`timeout` 前缀）· \
-                 找不到 `timeout` 时如实降级并写进头注。"
+                 在 `readonly_guard::spawn_registry::ALLOWED` 里写明理由（与现打两向相等）· \
+                 期限仍由起子进程原语执行（调用方给秒数）。"
         )
     });
     let shell = rust_production("src/backend/control/cc_bus.rs", 5_000);
     assert_eq!(
-        occurrences(&shell, "Command::new("),
+        occurrences(&shell, "Child::new("),
         0,
         "cc-bus 转调壳里又长回了起进程口（{} 处）——那等于**绕开通用调用口**。\n\
              ⇒ 08-26 之前这处口就住在这个壳里，`K-W1A` 把它抽进了 `plugin/invoke.rs`；\
              壳今天的身份只是那处口的**第一个消费者**。壳里再起进程 = 通用口白抽了，\
-             而且下一个插件会照着壳的样子再起一处（`SPAWN_SITES_TODAY` 9 → 10 → …）。\
+             而且下一个插件会照着壳的样子再起一处。\
              真有非走不可的理由，先去 `E5`/`EU3` 把账改了，再回来改这一条。",
-        occurrences(&shell, "Command::new(")
+        occurrences(&shell, "Child::new(")
     );
 
     // ④ 「零文件格式耦合」这句话**靠谁**成立 —— 那条判据还在，且针没缩。

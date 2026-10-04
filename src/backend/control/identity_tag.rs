@@ -272,18 +272,23 @@ pub(crate) fn tag(pid: u32, sid: &str) -> Outcome {
 #[cfg_attr(test, path = "../../../tests/backend/control/identity_tag_door.rs")]
 pub(crate) mod door;
 
+/// 打标那一发的期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
+const SET_SID_WITHIN: crate::platform::child::Deadline = crate::platform::child::Deadline::secs(5);
+
 /// 真写那一下：`set-option -p -t <窗格句柄> <事实键> <sid>`。
 ///
 /// 〔同形〕tmux 的 stderr **收下来进原因**（原先丢进 `Stdio::null()`，
-/// 失败只剩一个退出码 —— 「为什么没打上」要靠猜）。`cmd` 由调用方造（生产 = `Command::new("tmux")`），
+/// 失败只剩一个退出码 —— 「为什么没打上」要靠猜）。`cmd` 由调用方造（生产 = `Child::new("tmux")`），
 /// 判据换一个假 tmux 的绝对路径进来，不碰进程级 `PATH`（`gate_tests` 头注写过为什么不能 `set_var`）。
-fn set_sid(mut cmd: std::process::Command, target: String, sid: &str, terminal: String) -> Outcome {
+fn set_sid(
+    cmd: crate::platform::child::Child,
+    target: String,
+    sid: &str,
+    terminal: String,
+) -> Outcome {
     match cmd
         .args(["set-option", "-p", "-t", &target, "@ccm_sid", sid])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .output()
+        .run(SET_SID_WITHIN)
     {
         Ok(out) if out.status.success() => Outcome::Tagged(terminal),
         Ok(out) => Outcome::Failed(format!(
@@ -291,6 +296,7 @@ fn set_sid(mut cmd: std::process::Command, target: String, sid: &str, terminal: 
             out.status,
             super::launch::said_of(&out.stderr)
         )),
+        Err(e) if e.is_timed_out() => Outcome::Failed(e.to_string()),
         Err(e) => Outcome::Failed(format!("起不来 tmux：{e}")),
     }
 }

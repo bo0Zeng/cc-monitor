@@ -13,11 +13,13 @@
 //! - **先看见再送**：送的时候带上看到的那一屏的指纹（`seen_screen`），画面变了就不送、把新指纹交回去。
 //! - 只抓一次、只送一次：轮询归调用方（零定时器）。
 
-use crate::common::child_env::WithoutOwnEnv;
 use crate::common::tmux_utf8::UTF8_CLIENT_FLAG;
 use crate::control::gate::{self, Who};
+use crate::platform::child::{Child, ChildFail, Deadline};
 use serde_json::{json, Map, Value};
-use std::process::{Command, Stdio};
+
+/// 列名单 · 问尺寸那几发只读 tmux 的期限：界面等 `terminals-list` 的预算是 15 s（两发），tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
+const READ_TMUX_WITHIN: Deadline = Deadline::secs(5);
 
 /// 命令级错误：`(code, message)`。与 [`super::launch`] / [`super::gate`] 同型。
 pub(crate) type CmdErr = (&'static str, String);
@@ -70,21 +72,16 @@ pub(crate) struct On<'a> {
 
 impl On<'_> {
     /// 本模块唯一起进程的那一处（名单 · 身份门的探测 · 送字送键都经它造的命令）。
-    fn cmd(&self) -> Command {
-        let mut c = Command::new("tmux").without_own_env();
-        if let Some(s) = self.socket {
-            c.args(["-S", s]);
+    fn cmd(&self) -> Child {
+        let c = Child::new("tmux");
+        match self.socket {
+            Some(s) => c.args(["-S", s]),
+            None => c,
         }
-        c
     }
 
-    fn read(&self, args: &[&str]) -> std::io::Result<std::process::Output> {
-        self.cmd()
-            .args(args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
+    fn read(&self, args: &[&str]) -> Result<std::process::Output, ChildFail> {
+        self.cmd().args(args).run(READ_TMUX_WITHIN)
     }
 }
 
@@ -227,8 +224,8 @@ fn rows_on(on: On<'_>) -> Result<Listed, CmdErr> {
 fn rows_found_on(on: On<'_>) -> Result<Option<Listed>, CmdErr> {
     let out = match on.read(&[UTF8_CLIENT_FLAG, "list-panes", "-F", PANES_FMT, "-a"]) {
         Ok(o) => o,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(super::capture_pane::tmux_unavailable(&e)),
+        Err(ChildFail::NotFound(_)) => return Ok(None),
+        Err(e) => return Err(super::capture_pane::tmux_unavailable(e)),
     };
     if !out.status.success() {
         let said = String::from_utf8_lossy(&out.stderr).to_ascii_lowercase();
@@ -457,7 +454,7 @@ fn view_on(on: On<'_>, id: &str, color: bool, back: u32) -> Result<View, CmdErr>
             id,
             GEOMETRY_FMT,
         ])
-        .map_err(|e| super::capture_pane::tmux_unavailable(&e))?;
+        .map_err(super::capture_pane::tmux_unavailable)?;
     let geo = String::from_utf8_lossy(&out.stdout);
     let n: Vec<u32> = geo
         .trim_end_matches(['\n', '\r'])

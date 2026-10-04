@@ -27,9 +27,11 @@
 //! 命令级（本模块 / `gate`）：`invalid_args` · `no_tmux` · `no_such_session` ·
 //! `wrong_owner`（Gate 2 不通过）· `too_many_windows`（Gate 3 不通过）· `kill_failed`。
 
-use crate::common::child_env::WithoutOwnEnv;
+use crate::platform::child::{Child, Deadline};
 use copy_core::copy_text;
-use std::process::{Command, Stdio};
+
+/// `kill-session` / `kill-pane` 那一发的期限：界面等 `kill` 的预算是 10 s，tmux 一发收一档到 5 s（同 watcher 探测 tmux 的期限）。
+const KILL_TMUX_WITHIN: Deadline = Deadline::secs(5);
 
 /// 命令级错误：`(code, message)`。与 [`super::launch`] / [`super::gate`] 同型。
 type CmdErr = (&'static str, String);
@@ -125,18 +127,13 @@ fn run_expecting(
     }
     // 杀之前记下要走的那几个 pane 的根进程 pid：杀完按它认 cc-bus 名册里登记在这里的 id（不按会话名猜）。
     let panes = pane_pids(&handle, only.as_deref());
-    let out = Command::new("tmux")
-        .without_own_env()
+    let out = Child::new("tmux")
         .args(&argv)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output()
+        .run(KILL_TMUX_WITHIN)
         .map_err(|e| {
-            (
-                "no_tmux",
-                copy_text("beKill.run.noTmux", &[("e", &e.to_string())]),
-            )
+            e.into_cmd_err("no_tmux", |e| {
+                copy_text("beKill.run.noTmux", &[("e", &e.to_string())])
+            })
         })?;
     if out.status.success() {
         let bus = super::cc_bus::unregister_panes(name, &panes);

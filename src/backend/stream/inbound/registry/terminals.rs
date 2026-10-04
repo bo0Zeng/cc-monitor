@@ -86,7 +86,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "session-terminals",
         doc_anchor: Some("#### `session-terminals`"),
-        codes: &["bad_args", "no_such_session", "failed"],
+        codes: &["bad_args", "no_such_session", "failed", "child_timed_out"],
         fields: &[
             "activity",
             "clientAddr",
@@ -109,7 +109,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "terminals-list",
         doc_anchor: Some("#### `terminals-list` / `terminal-preview` / `terminal-input`"),
-        codes: &["invalid_args", "unobservable"],
+        codes: &["invalid_args", "unobservable", "child_timed_out"],
         fields: &[
             "agent",
             "can",
@@ -153,6 +153,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "no_such_session",
             "capture_failed",
             "unobservable",
+            "child_timed_out",
         ],
         fields: &[
             "capped",
@@ -184,6 +185,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "no_such_session",
             "capture_failed",
             "unobservable",
+            "child_timed_out",
         ],
         fields: &[
             "client",
@@ -206,7 +208,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "terminal-name-mint",
         doc_anchor: Some("#### `terminal-name-mint`"),
-        codes: &["invalid_args"],
+        codes: &["invalid_args", "child_timed_out"],
         fields: &["name"],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -227,6 +229,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "wrong_owner",
             "too_many_windows",
             "kill_failed",
+            "child_timed_out",
         ],
         fields: &["bus", "client", "killed", "name", "session", "sid"],
         takes_input: true,
@@ -314,6 +317,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "wrong_owner",
             "create_failed",
             "typed_unconfirmed",
+            "child_timed_out",
         ],
         // 〔`K-P2` `D` 阶段第三拍 09-03〕8 → 11：`agent` / `width` / `height`。
         // 那三个是「ccm 的 `--tmux` 真的改走这条路」逼出来的 —— 本地那条编排里

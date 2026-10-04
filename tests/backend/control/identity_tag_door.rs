@@ -34,13 +34,9 @@ pub(crate) fn isolate() -> Isolated {
 }
 
 /// 生产段 `door::tmux()` 的测试构建那一份。
-pub(crate) fn tmux() -> std::process::Command {
+pub(crate) fn tmux() -> crate::platform::child::Child {
     FAKE_TMUX.with(|f| match f.borrow().as_ref() {
-        Some(p) => {
-            let mut c = std::process::Command::new("/bin/sh");
-            c.arg(p);
-            c
-        }
+        Some(p) => crate::platform::child::Child::new("/bin/sh").arg(p),
         None => panic!(
             "进程内测试走到了 `identity_tag::tag` 却没注入假 tmux —— 先 \
              `let _iso = crate::control::identity_tag::door::isolate();`（INVARIANTS §48.3：\

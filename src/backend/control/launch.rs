@@ -10,7 +10,7 @@
 //!
 //! 今天 monitor 那条路是「渲染一整条 shell 串 → `ssh -t "bash -lic '<串>'"`」，于是
 //! 引号 / 转义 / 注入是一整类必须一直防的问题。本模块用
-//! `Command::new("tmux").args([...])` 直传 argv ⇒ **那类问题在这条路上不存在**，
+//! `Child::new("tmux").args([...])` 直传 argv ⇒ **那类问题在这条路上不存在**，
 //! 不是「被挡住了」。这是搬进后端最实在的收益之一。
 //!
 //! # ★ 这里的校验是**形状校验**，不是安全边界
@@ -50,9 +50,8 @@
 //! （用户以为在复用那个 idle 会话，实际上被丢进一个新建的空 shell）。
 //! 由 `send_into_never_creates_a_session` 钉住。
 
-use crate::common::child_env::WithoutOwnEnv;
+use crate::platform::child::{Child, Deadline};
 use copy_core::copy_text;
-use std::process::{Command, Stdio};
 
 /// 载荷 / 名字 / cwd 的长度上限。取值同 monitor 侧 `launch.rs::MAX_REMOTE_CMD` 的量级 ——
 /// 那是「一条人能读的启动命令」的宽松上界，不是安全阈值。
@@ -405,29 +404,25 @@ const SAID_CAP: usize = 400;
 
 /// 跑一次 tmux 子命令。**argv 直传，不过 shell。**
 fn tmux(args: &[&str]) -> Result<Ran, CmdErr> {
-    ran(Command::new("tmux").without_own_env(), args)
+    ran(Child::new("tmux"), args)
 }
 
-/// [`tmux`] 的本体：`cmd` 由调用方造（生产 = `Command::new("tmux")`；判据换一个假 tmux 的绝对路径，
+/// [`tmux`] 的本体：`cmd` 由调用方造（生产 = `Child::new("tmux")`；判据换一个假 tmux 的绝对路径，
 /// 不碰进程级 `PATH`）。stdout 照旧不要（这几条子命令本来就不往 stdout 写）。
-pub(crate) fn ran(mut cmd: Command, args: &[&str]) -> Result<Ran, CmdErr> {
-    match cmd
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output()
-    {
+pub(crate) fn ran(cmd: Child, args: &[&str]) -> Result<Ran, CmdErr> {
+    match cmd.args(args).run(LAUNCH_TMUX_WITHIN) {
         Ok(out) => Ok(Ran {
             ok: out.status.success(),
             said: said_of(&out.stderr),
         }),
-        Err(e) => Err((
-            "no_tmux",
-            copy_text("beLaunch.run.noTmux", &[("e", &e.to_string())]),
-        )),
+        Err(e) => Err(e.into_cmd_err("no_tmux", |e| {
+            copy_text("beLaunch.run.noTmux", &[("e", &e.to_string())])
+        })),
     }
 }
+
+/// 建会话 · 打标 · 送键那几发 tmux 各自的期限：界面等 `launch` 送键的预算是 10 s，tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
+const LAUNCH_TMUX_WITHIN: Deadline = Deadline::secs(5);
 
 /// 建会话之后那几步**次要动作**（失败不阻断键入载荷）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

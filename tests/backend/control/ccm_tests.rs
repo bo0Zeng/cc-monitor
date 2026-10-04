@@ -599,7 +599,7 @@ fn every_reason_for_needing_a_shell_is_declared_once_and_used_once() {
     );
     // 反向自检：抽取没坏（生产段里真有那两处起进程口）。
     assert_eq!(
-        prod.matches("Command::new(").count(),
+        prod.matches("Child::new(").count(),
         2,
         "本文件生产段的起进程口不是 2 处了 —— `readonly_guard::spawn_registry` 那个数要一起看"
     );

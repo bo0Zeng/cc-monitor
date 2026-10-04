@@ -1972,6 +1972,11 @@
       "zh": "抓取不了 {target} 的画面：这个会话不存在，可能刚结束（{detail}）",
       "args": ["target", "detail"]
     },
+    "terminalReads.preview.childTimedOut": {
+      "kind": "error",
+      "zh": "抓屏 {target}：{detail}",
+      "args": ["target", "detail"]
+    },
     "terminalReads.preview.failed": {
       "kind": "error",
       "zh": "抓取 {target} 的画面失败了，tmux 的原话：{detail}",
@@ -2032,6 +2037,11 @@
       "zh": "没有结束 {target}：它里面多开了别的窗口。为了不丢掉那些窗口，这次拒绝了（{detail}）",
       "args": ["target", "detail"]
     },
+    "tmuxControl.kill.childTimedOut": {
+      "kind": "error",
+      "zh": "结束 {target}：{detail}",
+      "args": ["target", "detail"]
+    },
     "tmuxControl.kill.failed": {
       "kind": "error",
       "zh": "结束 {target} 失败了，tmux 的原话：{detail}",
@@ -2075,6 +2085,11 @@
     "tmuxControl.keys.badRequest": {
       "kind": "error",
       "zh": "发送不了按键给 {target}：后端不接受这个请求（{detail}）",
+      "args": ["target", "detail"]
+    },
+    "tmuxControl.keys.childTimedOut": {
+      "kind": "error",
+      "zh": "送键到 {target}：{detail}",
       "args": ["target", "detail"]
     },
     "tmuxControl.keys.noTmux": {
@@ -3795,6 +3810,11 @@
       "kind": "error",
       "zh": "{machine} 上 tmux 会话名「{name}」已经被占了，没有起",
       "args": ["machine", "name"]
+    },
+    "tabBatch.why.childTimedOut": {
+      "kind": "error",
+      "zh": "{machine} 起会话：{detail}",
+      "args": ["machine", "detail"]
     },
     "tabBatch.why.startFailed": {
       "kind": "error",
@@ -14649,6 +14669,16 @@
       "kind": "error",
       "zh": "找错了程序：找到的 {want} 报的是 {saw}，多半是 PATH 上有个同名的无关命令。",
       "args": ["want", "saw"]
+    },
+    "beChild.run.timedOut": {
+      "kind": "error",
+      "zh": "{program} 无应答（{secs}s）",
+      "args": ["program", "secs"]
+    },
+    "beChild.run.lost": {
+      "kind": "error",
+      "zh": "{program}：等待线程中断，结果未知",
+      "args": ["program"]
     },
     "beDetach.detach.notUnix": {
       "kind": "error",

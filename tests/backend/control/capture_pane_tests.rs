@@ -1,4 +1,5 @@
 use super::*;
+use std::process::Command;
 
 fn raw(code: Option<i32>, stdout: &str, stderr: &str) -> RawCapture {
     RawCapture {
@@ -114,7 +115,9 @@ fn a_socket_with_no_server_says_so_in_its_own_words() {
 /// **没有**在一台真的没装 tmux 的机器上实测过 —— 沙箱自己要用 tmux。
 #[test]
 fn missing_tmux_and_missing_session_are_two_different_answers() {
-    let absent = tmux_unavailable(&std::io::Error::from(std::io::ErrorKind::NotFound));
+    let absent = tmux_unavailable(ChildFail::NotFound(std::io::Error::from(
+        std::io::ErrorKind::NotFound,
+    )));
     let gone =
         classify(&raw(Some(1), "", "can't find pane: =x:")).expect_err("目标不存在不许回成功");
     assert_ne!(

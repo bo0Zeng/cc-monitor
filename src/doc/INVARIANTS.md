@@ -2255,8 +2255,8 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 「有口没钥匙」⇒ **拒绝起**；空钥匙 ⇒ 按「没设」算；钥匙逐字节全等才算对（前缀 / 后缀 / 大小写都不算）；
 钥匙不对、形状不对、口被占着 —— 三种拒法**出声且彼此可分**。起它的那一方只交钥匙文件的路径（`CCM_LISTEN_TOKEN_FILE`，本机远端同一种）；
 常驻后端**绑上口之后**自己生成一把新的（128 位随机）、原子写进那份 `0600` 的文件（每次起都换 ⇒ 旧环境里漏出去的那把作废；抢不到口的不碰它），
-连上来的客户端每次读那份文件；钥匙本身不进任何进程的环境。常驻后端起子进程时还把起它的那一方交给它自己的那几格环境清掉（`common/child_env.rs`：
-监听口 · 钥匙文件 · 中转口 · 诊断文件）—— 它起的 tmux server 会把调用者的环境拷成全局环境、传给每个窗格。
+连上来的客户端每次读那份文件；钥匙本身不进任何进程的环境。常驻后端起子进程时还把起它的那一方交给它自己的那几格环境清掉（起子进程原语 `platform/child.rs` 无条件做，名单住 `common/child_env.rs`：
+监听口 · 钥匙文件 · 诊断文件；只有起常驻后端那一处经 `pass_own` 显式交）—— 它起的 tmux server 会把调用者的环境拷成全局环境、传给每个窗格。
 不认证的只有 hello 那一档（只读、读完即关），它泄露 `claude_dir` / `build_id` / 能力集，这是有意的取舍（`listen.rs` 头注「诚实边界」第 1 条）。
 
 **为什么不能松动**：回环 TCP **没有权限位** —— 同机任何本地进程（**含别的用户**）连得上那个口，
@@ -2266,7 +2266,7 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 `listen_tests.rs::empty_strings_count_as_unset` · `listen_tests.rs::an_empty_token_never_matches` · `listen_tests.rs::tokens_match_is_exact` ·
 `listen_tests.rs::attach_verdicts_are_three_distinct_faces` · `listen_tests.rs::the_two_tier_split_is_pinned_cell_by_cell`；
 不进环境：`local_backend_host_tests.rs::e2e_the_door_follows_the_home_not_the_claude_dir`（读常驻后端的 `/proc/<pid>/environ`）·
-`local_backend_host_tests.rs::e2e_children_of_the_resident_backend_carry_none_of_its_own_env` · `child_env_tests.rs::every_production_spawn_goes_through_it`；
+`local_backend_host_tests.rs::e2e_children_of_the_resident_backend_carry_none_of_its_own_env` · `child_tests.rs::a_real_child_sees_only_the_own_env_passed_on_purpose` · `readonly_guard.rs::spawn_registry`（生产段 `Command::new` 只住原语）；
 换钥匙 `main_claim_tests.rs::a_late_starter_that_cannot_claim_the_port_never_touches_the_log`（抢到口的换一把、`0600`、抢不到的不碰）·
 `resident_tests.rs::the_token_is_private_fresh_each_start_and_never_handed_through_the_environment`；
 宿主那一半 `local_backend_host_tests.rs::the_listen_token_file_is_read_fresh_and_never_written_by_the_host`（每次连现读 · 空文件支 · 宿主不写）·

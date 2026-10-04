@@ -509,12 +509,11 @@ fn every_sh_call_site_in_this_module_carries_the_utf8_env() {
         "逐处查只走到 {checked} 处 —— 切法坏了，上面那条等号是空转的"
     );
     // 反向：env 那一行不许被换成「往脚本串里插旗」。那一改会让 `query_tmux_server`
-    // 的脚本与测试里那份逐字复制漂开，而 `tmux_probe_script` 的两条 `exec` 分支
-    // 也会退回「要改两处、漏一处永远看不见」。
+    // 的脚本与测试里那份逐字复制漂开。
     assert!(
         !prod.contains("tmux -u ") && !prod.contains(" -u ls "),
         "本模块的脚本串里出现了 argv 形的旗 —— 这一侧按调用点形态该用 env 形，\
-             理由（两条 `exec` 分支 + 那份逐字复制）在文件上方那段注释里"
+             理由（那份逐字复制）在文件上方那段注释里"
     );
 }
 
@@ -679,26 +678,5 @@ fn a_timed_out_probe_is_unobservable_never_zero_sessions() {
             TmuxObservation::ServerEmpty
         ),
         "rc=0 且空 stdout 该是 ServerEmpty —— 上面那条不许把它一起吞了"
-    );
-}
-
-/// 探测脚本必须**带上界**，且 `timeout` 缺席时诚实退回〔audit-0805 F09，承接 C7〕。
-#[test]
-fn the_tmux_probe_is_bounded_and_degrades_honestly() {
-    let script = tmux_probe_script();
-    assert!(
-        script.contains("tmux ls"),
-        "抽取器自检：脚本里连 `tmux ls` 都没有 —— 拿错东西了：{script}"
-    );
-    assert!(
-        script.contains("timeout"),
-        "★ 探测没有上界。`run_tmux_ls` 的 `output()` 无超时，而 `watch_loop` 的 `tmux_inflight`\n\
-             只在收到 `TmuxObserved` 时清 —— 探测永不返回 ⇒ 标志永远为真 ⇒ **此后一次 tmux 探测\n\
-             都不会再发起，且不发任何理由帧**（报告 I-2）。实得：{script}"
-    );
-    assert!(
-        script.contains("command -v timeout"),
-        "★ `timeout` 必须门控。硬用它会在没有 coreutils 的系统上让整条探测直接失败 ——\n\
-             那是把一个「偶发卡死」换成「必然不可用」。要诚实降级（C7），不是赌它存在。实得：{script}"
     );
 }

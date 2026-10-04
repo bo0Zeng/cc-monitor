@@ -107,6 +107,8 @@ export function sayReply(origin: Origin, op: "stop" | "start", r: Reply): string
       return copyText("tabBatch.why.recordGone", { machine, root: r.detail });
     case "name_taken":
       return copyText("tabBatch.why.nameTaken", { machine, name: target });
+    case "child_timed_out":
+      return op === "stop" ? killRefusals(target).byCode(r.why, r.detail) : copyText("tabBatch.why.childTimedOut", { machine, detail: r.detail });
     default:
       return op === "stop"
         ? killRefusals(target).byCode(r.why, r.detail)

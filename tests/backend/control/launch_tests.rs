@@ -900,11 +900,7 @@ fn w5vis_s4_ran_keeps_what_the_real_process_said_on_stderr() {
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
     // 经 `/bin/sh <脚本>` 起（不直接 exec 刚写完的文件 —— 并行 fork 下会撞 `ETXTBSY`，见 `identity_tag_tests::fake_cmd`）。
-    let sh = || {
-        let mut c = std::process::Command::new("/bin/sh");
-        c.arg(&fake);
-        c
-    };
+    let sh = || crate::platform::child::Child::new("/bin/sh").arg(&fake);
     let r = ran(sh(), &["new-session", "-d"]).expect("起得来");
     assert_eq!(
         r,
@@ -915,7 +911,7 @@ fn w5vis_s4_ran_keeps_what_the_real_process_said_on_stderr() {
     );
     let r = ran(sh(), &["has-session"]).expect("起得来");
     assert!(r.ok);
-    let e = ran(std::process::Command::new(dir.join("gone")), &["x"]).unwrap_err();
+    let e = ran(crate::platform::child::Child::new(dir.join("gone")), &["x"]).unwrap_err();
     assert_eq!(e.0, "no_tmux");
     // `said_of`：没说话 ⇒ 那句占位；一个灌一整屏的 tmux 截在 `SAID_CAP` 之内（字符边界上）并标 `…`。
     assert_eq!(said_of(b"  \n"), "tmux 没说原因");

@@ -13,7 +13,8 @@
 //! ⇒ 一台机器一个常驻后端，与 Claude 目录、与哪一家 agent 都无关。钥匙与「谁在听」也住这个家，都由常驻后端自己写（本机远端一个写者）。
 //! ⚠ 钥匙会出现在 `--resident-ensure` 的 stdout 上：那一行只走 SSH 通道到 monitor 内存，不进日志（调用侧不许打印它）。
 
-use crate::common::child_env::WithoutOwnEnv;
+use crate::common::child_env::OWN_ENVS;
+use crate::platform::child::{Child, ChildFail};
 use std::path::{Path, PathBuf};
 
 use copy_core::copy_text;
@@ -323,23 +324,27 @@ pub(crate) fn child_env(
 }
 
 /// 起一个脱离的自己（常驻载体）：stdio 全空（SSH 断了它不跟着收 SIGPIPE）、自成进程组、不继承 `TMUX`。
+/// 自有那几格（口 · 钥匙文件 · 诊断文件）是**交给它自己用的**，经 `pass_own` 交；别的经 `env`。
 fn spawn_detached(exe: &Path, env: &[(String, String)]) -> Result<u32, (&'static str, String)> {
-    let mut cmd = std::process::Command::new(exe).without_own_env();
-    cmd.args(DEFAULT_STREAM_ARGS)
-        .env_remove("TMUX")
-        .envs(env.iter().cloned())
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-    crate::platform::detach::detach(&mut cmd).map_err(|e| ("unsupported", e))?;
-    cmd.spawn().map(|c| c.id()).map_err(|e| {
-        (
+    let mut cmd = Child::new(exe).args(DEFAULT_STREAM_ARGS).env_remove("TMUX");
+    for (k, v) in env {
+        cmd = if OWN_ENVS.contains(&k.as_str()) {
+            cmd.pass_own(k, v)
+        } else {
+            cmd.env(k, v)
+        };
+    }
+    cmd.detach().map_err(|e| match e {
+        ChildFail::Io(io) if io.kind() == std::io::ErrorKind::Unsupported => {
+            ("unsupported", io.to_string())
+        }
+        e => (
             "spawn_failed",
             copy_text(
                 "beResident.spawn.failed",
                 &[("exe", &exe.display().to_string()), ("e", &e.to_string())],
             ),
-        )
+        ),
     })
 }
 

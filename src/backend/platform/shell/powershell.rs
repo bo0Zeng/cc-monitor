@@ -3,6 +3,7 @@
 //! ⚠ 这一臂只到「编得过」：本机没有 PowerShell，这几句一次都没被 PowerShell 解析过。
 
 use super::PsHost;
+use crate::platform::child::Deadline;
 
 // ─── 执行策略：块装进 `$PROFILE` 之前先问这一代 PowerShell 会不会加载它 ───
 
@@ -86,14 +87,19 @@ $p = @(Get-CimInstance -ClassName Win32_Process -Property ProcessId, ParentProce
 
 /// 现问一次连接表与进程表（只读，5.1 那一代）：`Ok(那一行 JSON)`；这台没有 PowerShell / 起不来 / 报错 ⇒ `Err(原话)`。
 pub(crate) fn connection_and_process_tables() -> Result<String, String> {
-    run_fixed(PsHost::Desktop, CONN_PROC_QUERY)
+    run_fixed(PsHost::Desktop, CONN_PROC_QUERY, CONN_PROC_WITHIN)
 }
 
-/// 起那一代跑一段固定脚本：`Ok(stdout)`；起不来 / 非零退出 ⇒ `Err(原话)`。这台不说 PowerShell ⇒ `Err`。
-fn run_fixed(host: PsHost, script: &str) -> Result<String, String> {
-    let mut cmd = super::powershell_on(host, script)
+/// 问连接表 · 进程表那一趟的期限：界面等 `terminal-processes` 的预算是 15 s，收一档到 10 s。
+const CONN_PROC_WITHIN: Deadline = Deadline::secs(10);
+/// 问 / 设执行策略那一趟的期限：界面等别名那一族的预算是 30 s，收一档到 15 s。
+const POLICY_WITHIN: Deadline = Deadline::secs(15);
+
+/// 起那一代跑一段固定脚本：`Ok(stdout)`；起不来 / 非零退出 / 过了期限 ⇒ `Err(原话)`。这台不说 PowerShell ⇒ `Err`。
+fn run_fixed(host: PsHost, script: &str, within: Deadline) -> Result<String, String> {
+    let cmd = super::powershell_on(host, script)
         .ok_or_else(|| copy_core::copy_text("rsShellDialect.ps.noPowerShellHere", &[]))?;
-    let out = cmd.output().map_err(|e| e.to_string())?;
+    let out = cmd.run(within).map_err(|e| e.to_string())?;
     if !out.status.success() {
         return Err(format!(
             "exit {:?}: {}",
@@ -106,7 +112,7 @@ fn run_fixed(host: PsHost, script: &str) -> Result<String, String> {
 
 /// 现问这一代的执行策略（只读）。
 pub(crate) fn execution_policy(host: PsHost) -> ExecPolicy {
-    match run_fixed(host, POLICY_QUERY) {
+    match run_fixed(host, POLICY_QUERY, POLICY_WITHIN) {
         Ok(text) => read_policy_listing(host, &text),
         Err(e) => policy_unknown(host, e),
     }
@@ -114,6 +120,6 @@ pub(crate) fn execution_policy(host: PsHost) -> ExecPolicy {
 
 /// 设成当前用户 `RemoteSigned`（[`POLICY_ALLOW_LOCAL`]）再现问一次。设的那一下报错（组策略压着时 PowerShell 会报）⇒ 原话随回。
 pub(crate) fn allow_local_scripts(host: PsHost) -> (ExecPolicy, Option<String>) {
-    let set = run_fixed(host, POLICY_ALLOW_LOCAL).err();
+    let set = run_fixed(host, POLICY_ALLOW_LOCAL, POLICY_WITHIN).err();
     (execution_policy(host), set)
 }

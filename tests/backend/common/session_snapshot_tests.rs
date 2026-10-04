@@ -133,7 +133,7 @@ fn the_one_list_sessions_call_asks_for_a_utf8_client_before_the_subcommand() {
     ));
     crate::guard_support::assert_no_test_code("common/session_snapshot.rs", &prod);
 
-    let starts = prod.matches("Command::new(\"tmux\")").count();
+    let starts = prod.matches("Child::new(\"tmux\")").count();
     assert_eq!(
         starts, 1,
         "本模块起 tmux 的处数变了（实得 {starts}，登记 1）—— 它是**唯一**一处\

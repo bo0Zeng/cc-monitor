@@ -562,9 +562,9 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/observe/cc_bus_hooks_tests.rs", // 钩子诊断进后端：造一台假机器（临时目录里的 settings ＋ 程序）读回成品
     "tests/backend/control/tmux_hook_tests.rs", // 读真 `/proc` 的那一条进来之后判别器判集成（SCAN → INTEGRATION）
     "tests/backend/platform/lock_tests.rs",     // 目录锁：真目录、真线程
+    "tests/backend/platform/child_tests.rs",    // 起子进程原语：真子进程超时杀组 · 真 `env` 看环境
     "tests/backend/common/own_dir_tests.rs",    // O1–O3 自家目录一律 0700、建目录调用点两向登记
-    "tests/backend/common/child_env_tests.rs", // 起一个真 `env` 看子进程环境里没有常驻后端自有的那几格 ＋ 扫生产树的起进程处
-    "tests/frontend/shell/config_tests.rs",    // J2/J3 12 线程 × 20 轮并发补丁写 · 补丁语义
+    "tests/frontend/shell/config_tests.rs",     // J2/J3 12 线程 × 20 轮并发补丁写 · 补丁语义
     "tests/backend/control/overwrite_atomic_tests.rs", // W1 ulimit -f 下子进程写到一半被 SIGXFSZ 杀，目标仍是旧整份
     "tests/backend/stream/drain_tests.rs", // D2 真子进程 ＋ 真 SIGTERM：在飞阻塞命令做完才退
     "tests/common/shell-quote-core/lib_tests.rs", // 单元层 → 集成层：字节形 quote 由真 bash 读回来对拍

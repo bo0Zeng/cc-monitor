@@ -7,7 +7,7 @@
 //! - 读环境只抠写死的那几个键（`TMUX` · `TMUX_PANE` · `SSH_CONNECTION`），不回整份环境。
 //! - 零定时器：只在被问时答。读不了别人的进程 ⇒ 照实说 `unreadable`。
 
-use crate::common::child_env::WithoutOwnEnv;
+use crate::platform::child::{Child, Deadline};
 use serde::Serialize;
 use serde_json::{json, Value};
 
@@ -178,18 +178,17 @@ fn pane_ok(p: &str) -> bool {
         .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
 }
 
+/// `list-clients` 那一发的期限：界面等 `session-terminals` 的预算是 15 s，tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
+const LIST_CLIENTS_WITHIN: Deadline = Deadline::secs(5);
+
 /// 问那个 socket：连着 `pane` 所在会话的客户端（pid, 最近动静）。tmux 起不来 / 报错 ⇒ `failed`。
 fn list_clients(socket: &str, pane: &str) -> Result<Vec<(u32, u64)>, (&'static str, String)> {
-    let out = std::process::Command::new("tmux")
-        .without_own_env()
+    let out = Child::new("tmux")
         .arg(crate::common::tmux_utf8::UTF8_CLIENT_FLAG)
         .args(["-S", socket, "list-clients", "-t", pane, "-F"])
         .arg("#{client_pid} #{client_activity}")
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .output()
-        .map_err(|e| ("failed", format!("tmux: {e}")))?;
+        .run(LIST_CLIENTS_WITHIN)
+        .map_err(|e| e.into_cmd_err("failed", |e| format!("tmux: {e}")))?;
     if !out.status.success() {
         return Err((
             "failed",

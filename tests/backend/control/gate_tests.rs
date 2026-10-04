@@ -122,7 +122,7 @@ fn both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand() {
         crate::guard_support::production_code(include_str!("../../../src/backend/control/gate.rs"));
     crate::guard_support::assert_no_test_code("control/gate.rs", &prod);
 
-    let starts = prod.matches("Command::new(\"tmux\")").count();
+    let starts = prod.matches("Child::new(\"tmux\")").count();
     assert_eq!(
         starts, 1,
         "本模块起 tmux 的处数变了（实得 {starts}，登记 1）—— 新增的那一处也要带 `-u`，\

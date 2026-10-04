@@ -13,6 +13,7 @@
 fn the_posix_shell_carries_the_script_it_was_given() {
     let c = super::posix_shell("echo 甲乙丙").expect("unix 上必须备得出来");
     let args: Vec<String> = c
+        .built()
         .get_args()
         .map(|a| a.to_string_lossy().into_owned())
         .collect();
@@ -24,6 +25,7 @@ fn the_posix_shell_carries_the_script_it_was_given() {
     // 反空真：换一份脚本，argv 跟着变（否则上面那条可能断在一个常量上）。
     let other = super::posix_shell("true")
         .expect("unix 上必须备得出来")
+        .built()
         .get_args()
         .map(|a| a.to_string_lossy().into_owned())
         .collect::<Vec<_>>();
@@ -94,7 +96,7 @@ fn a_powershell_starts_without_profile_and_without_the_inherited_policy() {
         (PsHost::Desktop, "powershell.exe"),
         (PsHost::Core, "pwsh.exe"),
     ] {
-        let c = super::powershell_command(h, "Get-ExecutionPolicy");
+        let c = super::powershell_command(h, "Get-ExecutionPolicy").built();
         assert_eq!(c.get_program(), exe);
         let args: Vec<_> = c
             .get_args()

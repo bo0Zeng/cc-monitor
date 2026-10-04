@@ -372,7 +372,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "ssh-config-resolve",
         doc_anchor: Some("#### `ssh-config-resolve`"),
-        codes: &["invalid_args", "bad_alias", "failed"],
+        codes: &["invalid_args", "bad_alias", "failed", "child_timed_out"],
         fields: &["alias", "host", "keyPath", "port", "proxyJump", "user"],
         takes_input: true,
         run: Run::Blocking(|r| {

@@ -38,7 +38,7 @@
 //! 名字→sid 的映射由消费侧查表。本模块**连名字都不传**，所以这条陷阱在这里已不适用，
 //! 但注释留着 —— 将来若有人想「顺便把名字带上」，得先回头看这一条。
 
-use crate::common::child_env::WithoutOwnEnv;
+use crate::platform::child::{Child, ChildFail, Deadline};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -219,28 +219,56 @@ pub(crate) fn plan(board: &Board, me: (u32, u64), alive: &dyn Fn(u32, u64) -> bo
 }
 
 /// 跑一条 tmux 命令：`Ok((成功?, stdout))`；起不来 tmux ⇒ `Err`。生产 = [`run_tmux`]；判据喂一张内存里的 hook 表。
-pub(crate) type TmuxRun<'a> = &'a mut dyn FnMut(&[String]) -> Result<(bool, String), String>;
+pub(crate) type TmuxRun<'a> = &'a mut dyn FnMut(&[String]) -> Result<(bool, String), RunErr>;
 
 /// 生产那一个执行器。**socket 定位**：不传 `-L`/`-S`，靠继承的 `TMUX_TMPDIR` / 默认 socket ——
 /// backend 与它观测的那台 server 本来就在同一套 socket 语义下（`tmux ls` 探测也是这么跑的）。
-fn run_tmux(args: &[String]) -> Result<(bool, String), String> {
+fn run_tmux(args: &[String]) -> Result<(bool, String), RunErr> {
+    run_tmux_via(Child::new("tmux"), HOOK_TMUX_WITHIN, args)
+}
+
+/// 装钩子那几发 tmux 各自的期限：在 watcher 的事件循环里就地跑，一发 5 s（同 watcher 探测 tmux 的期限）；
+/// 超时 ⇒ 这一轮不装（[`install_hooks_with`]），流照走。
+const HOOK_TMUX_WITHIN: Deadline = Deadline::secs(5);
+
+/// [`run_tmux`] 的本体（命令与期限由调用方给：判据换一个不应答的假 tmux ＋ 短期限）。
+pub(crate) fn run_tmux_via(
+    tmux: Child,
+    within: Deadline,
+    args: &[String],
+) -> Result<(bool, String), RunErr> {
     // 读它的回话 ⇒ 打印通道按 UTF-8（`common/tmux_utf8.rs` 那条规矩：本机 argv 直传用旗，且排在子命令之前）。
-    let out = std::process::Command::new("tmux")
-        .without_own_env()
+    let out = tmux
         .arg(crate::common::tmux_utf8::UTF8_CLIENT_FLAG)
         .args(args)
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .map_err(|e| e.to_string())?;
+        .run(within)
+        .map_err(|e| match e {
+            ChildFail::TimedOut { .. } => RunErr::TimedOut(e.to_string()),
+            e => RunErr::NotRun(e.to_string()),
+        })?;
     Ok((
         out.status.success(),
         String::from_utf8_lossy(&out.stdout).into_owned(),
     ))
 }
 
+/// 一发 tmux 没答成：起不来 / 过了期限没答（后者 ⇒ 这一轮整个不装）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RunErr {
+    NotRun(String),
+    TimedOut(String),
+}
+
+impl std::fmt::Display for RunErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RunErr::NotRun(s) | RunErr::TimedOut(s) => f.write_str(s),
+        }
+    }
+}
+
 /// 读全段现状（三个事件各问一次）。任何一问没答成 ⇒ `Err(那个事件名 / 起不来的原因)`（判不了就不清、不挑；只进日志）。
-fn read_board(run: TmuxRun<'_>) -> Result<Board, String> {
+fn read_board(run: TmuxRun<'_>) -> Result<Board, RunErr> {
     let mut board = Board::new();
     for (ev, event) in HOOK_EVENTS.iter().enumerate() {
         match run(&hook_show_args(event))? {
@@ -249,7 +277,7 @@ fn read_board(run: TmuxRun<'_>) -> Result<Board, String> {
                     board.insert((ev, slot), occ);
                 }
             }
-            (false, _) => return Err(format!("show-hooks -g {event}")),
+            (false, _) => return Err(RunErr::NotRun(format!("show-hooks -g {event}"))),
         }
     }
     Ok(board)
@@ -289,12 +317,16 @@ pub(crate) fn install_hooks_with(
     for _ in 0..HOOK_SLOT_COUNT {
         let board = match read_board(run) {
             Ok(b) => b,
+            Err(RunErr::TimedOut(e)) => {
+                tracing::warn!("读 tmux 现有的 hook：{e} ⇒ 这一轮不装");
+                return 0;
+            }
             Err(e) => {
                 tracing::warn!(
                     "读不了 tmux 现有的 hook（{e}）⇒ 不清死槽，直接装进首选格 [{}]",
                     preferred_slot(pid)
                 );
-                return set_three(run, preferred_slot(pid), exe, pid, starttime);
+                return set_three(run, preferred_slot(pid), exe, pid, starttime).unwrap_or(0);
             }
         };
         let p = plan(&board, me, alive);
@@ -302,6 +334,10 @@ pub(crate) fn install_hooks_with(
             let event = HOOK_EVENTS[ev];
             match run(&hook_unset_args(event, slot)) {
                 Ok((true, _)) => {}
+                Err(RunErr::TimedOut(e)) => {
+                    tracing::warn!("摘 tmux hook {event}[{slot}]：{e} ⇒ 这一轮不装");
+                    return 0;
+                }
                 _ => tracing::warn!("摘 tmux hook {event}[{slot}] 没成"),
             }
         }
@@ -313,7 +349,9 @@ pub(crate) fn install_hooks_with(
             );
             return 0;
         };
-        let n = set_three(run, slot, exe, pid, starttime);
+        let Some(n) = set_three(run, slot, exe, pid, starttime) else {
+            return 0;
+        };
         let ours = match read_board(run) {
             Ok(after) => (0..HOOK_EVENTS.len())
                 .all(|ev| after.get(&(ev, slot)) == Some(&Occupant::Backend(pid, starttime))),
@@ -329,7 +367,8 @@ pub(crate) fn install_hooks_with(
     0
 }
 
-fn set_three(run: TmuxRun<'_>, slot: u32, exe: &Path, pid: u32, starttime: u64) -> usize {
+/// 装成的条数；`None` = tmux 过了期限没答（这一轮整个不装）。
+fn set_three(run: TmuxRun<'_>, slot: u32, exe: &Path, pid: u32, starttime: u64) -> Option<usize> {
     // 三条在**一次** tmux 调用里（命令之间用 `;` 分开）：tmux 把一个客户端的一串命令排进它自己的队列一口气跑完，
     //   另一个后端的那一串插不进中间 ⇒ 两个同时起的后端撞了同一格时，这一格要么整格是我、要么整格是它（装完那一读据此换格），
     //   不会出现「三个事件一半是我一半是它」、再被换格那一趟摘掉一半的残格。
@@ -341,14 +380,18 @@ fn set_three(run: TmuxRun<'_>, slot: u32, exe: &Path, pid: u32, starttime: u64) 
         args.extend(hook_set_args(event, slot, exe, pid, starttime));
     }
     match run(&args) {
-        Ok((true, _)) => HOOK_EVENTS.len(),
+        Ok((true, _)) => Some(HOOK_EVENTS.len()),
         Ok((false, _)) => {
             tracing::warn!("装 tmux hook [{slot}] 失败");
-            0
+            Some(0)
+        }
+        Err(RunErr::TimedOut(e)) => {
+            tracing::warn!("装 tmux hook [{slot}]：{e} ⇒ 这一轮不装");
+            None
         }
         Err(e) => {
             tracing::warn!("装 tmux hook [{slot}] 起不来 tmux：{e}");
-            0
+            Some(0)
         }
     }
 }

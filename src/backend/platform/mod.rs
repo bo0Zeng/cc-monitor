@@ -51,7 +51,7 @@
 //! - [`lock`]：后端自有状态文件（第四层）的跨进程锁 —— 锁那份文件所在的目录（unix `flock` · Windows 命名互斥量）
 //! - [`acct_view`]：账号库读盘的平台原语（不跟链接地看一项 · unix 权限位 · 这台做不做得了多账号）—— 只读
 //! - [`fs`]：文件管理写面的两样原语：不覆盖改名（`rename_noreplace`）· 开文件不跟链接的旗（`NO_FOLLOW`）
-//! - [`detach`]：把要起的子进程放进自己的进程组（远端那台的中转不许随 SSH 断而没了）· 插件口可打断的那一形也用它（让「杀一组」有组可杀）
+//! - [`child`]：后端起子进程的唯一原语（期限必填 · 超时杀整组 / 整个 Job · 自有环境无条件摘 · 脱离起 · ccm 最终那一跳）
 //! - `win_proc`：Windows 上判活 / 起始时刻 / 等进程退出的 Win32 读法（`OpenProcess` 一族），
 //!   只在 Windows 编译时存在（刻意不写 intra-doc 链接：本机 Linux 上它不存在，链接会悬空）
 //! - [`shell`]：`posix_shell`（`K-R55` 09-11 从 `observe/watcher.rs` 下沉 ——
@@ -66,7 +66,7 @@ pub(crate) mod acct_view;
 #[cfg(test)]
 #[path = "../../../tests/backend/platform/cfgless_guard.rs"]
 mod cfgless_guard;
-pub(crate) mod detach;
+pub(crate) mod child;
 #[cfg(test)]
 #[path = "../../../tests/backend/platform/fallback_guard.rs"]
 mod fallback_guard;

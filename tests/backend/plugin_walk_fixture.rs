@@ -1511,89 +1511,27 @@ mod tests {
         );
     }
 
-    /// `KW2E2` 的两条环境前提之一：**期限落在子进程上，不在宿主里** ——
-    /// 两条路各跑一趟，并且**说得出自己走的是哪一条**。
-    ///
-    /// # 为什么这一格非要「说得出口」
-    ///
-    /// `invoke::deadline_bin()` 找不到 `timeout(1)` 就**如实裸跑**（没有期限）。
-    /// 那条降级今天由 `argv_for` 的纯函数判据钉着形状，
-    /// 但**没有任何东西说得出「这台机器上今天走的是哪一条」** ——
-    /// 而「一个绿说不清测没测到」正是 `K-R24` 那一族刚教过的账。
-    ///
-    /// ⇒ 本格问那个真进程：**你的父进程是谁**。
-    /// · 有 `timeout(1)` ⇒ 父进程就是它 ⇒ 期限**真的**交给了子进程；
-    /// · 没有 ⇒ 父进程是测试进程自己 ⇒ **裸跑**，而这一格会把这件事说出来。
-    ///
-    /// ⚠ **不改进程环境**（`std::env::set_var` 与并行跑的别的判据是竞态 ——
-    /// 本 crate 里三处头注逐字写过这条），所以哪一条路被走到由机器决定，
-    /// 本格的责任是**分得出来**、并且**两条都有断言**。
+    /// `KW2E2` 的两条环境前提之一：**期限在每台机器上都有** —— 卡住的那条子命令被起子进程原语收掉，
+    /// 交成那个通用码、并被翻成插件自己的语义（不再看 PATH 上有没有 `timeout(1)`）。
     #[test]
     fn the_deadline_lands_on_the_child_not_on_the_host() {
         let root = build_fixture("deadline");
         let name = plugin_name();
         let (fixed, hint) = discovery_of(&root, &name);
         let bin = crate::plugin::discover::find(&name, &fixed, false, hint).expect("该找得到");
-        // ⚠ 把 `NotRun` 那两支的原文带上：「参数太大」（自己能修）与「那个程序坏了」
-        //（自己修不了）是两件事，合成一句「起不来」就是归错因（`invoke::NotRun` 的头注逐字）。
-        let out = crate::plugin::invoke::run(&bin, &probe_argv(), DEADLINE_SECS, &[])
-            .unwrap_or_else(|e| panic!("那个假插件没跑起来：{}", why_not_run(e)));
-        let text = String::from_utf8_lossy(&out.stdout).into_owned();
-        let answer = crate::plugin::probe::negotiate(&text, &name, REQUIRED_CAPS)
-            .unwrap_or_else(|e| panic!("协商没过：{}", e.message()));
-        let parent = answer
-            .extras
-            .iter()
-            .find(|(k, _)| k == "parent")
-            .map(|(_, v)| v.clone())
-            .unwrap_or_default();
+        let napped = crate::plugin::invoke::run(&bin, &[NAP_SUB], NAP_DEADLINE_SECS, &[])
+            .unwrap_or_else(|e| panic!("卡住那条子命令没跑起来：{}", why_not_run(e)));
         assert!(
-            !parent.is_empty(),
-            "问不出子进程的父进程是谁（`/proc` 读不到？）—— 本格此刻分不出两条路，\
-             按「判不了」记，不许当成绿"
+            napped.timed_out(),
+            "卡住的子进程没被期限收掉：code={:?}",
+            napped.code
         );
-
-        let deadline_cmd = crate::plugin::discover::on_path("timeout");
-        match &deadline_cmd {
-            Some(_) => {
-                // 路 ①：有期限命令 ⇒ 它必须是子进程的**父进程**。
-                assert_eq!(
-                    parent, "timeout",
-                    "这台机器上有期限命令，而子进程的父进程是 `{parent}` —— \
-                     期限没交给子进程，`argv_for` 那个前缀此刻没有落地"
-                );
-                // 而且它**真的会收**：卡住那条子命令必须被收掉，码是那个通用码。
-                let napped = crate::plugin::invoke::run(&bin, &[NAP_SUB], NAP_DEADLINE_SECS, &[])
-                    .unwrap_or_else(|e| panic!("卡住那条子命令没跑起来：{}", why_not_run(e)));
-                assert!(
-                    napped.timed_out(),
-                    "卡住的子进程没被期限收掉：code={:?}",
-                    napped.code
-                );
-                assert_eq!(napped.code, Some(TIMED_OUT_CODE));
-                assert_eq!(
-                    code_word(napped.code),
-                    "deadline_hit",
-                    "超时那一格没被翻成插件自己的语义"
-                );
-            }
-            None => {
-                // 路 ②：**没有**期限命令 ⇒ 裸跑。这一趟必须**说得出口**：
-                // 父进程不是期限命令，且 argv 里一个秒数都不许有。
-                assert_ne!(
-                    parent, "timeout",
-                    "这台机器上找不到期限命令，子进程的父进程却是它 —— 两个读数互相矛盾"
-                );
-                let (prog, argv) = crate::plugin::invoke::argv_for(&bin, &[NAP_SUB], 7, None);
-                assert_eq!(prog, bin, "裸跑时起的应当是插件自己");
-                assert!(
-                    !argv.contains(&"7".to_string()),
-                    "秒数漏进了插件的 argv：{argv:?}"
-                );
-                // 🔴 卡住那条子命令**故意不跑**：没有期限的裸跑会把门禁挂死。
-                //    这一格因此**只买到「说得出口」**，买不到「真被收掉」——如实写在这里。
-            }
-        }
+        assert_eq!(napped.code, Some(TIMED_OUT_CODE));
+        assert_eq!(
+            code_word(napped.code),
+            "deadline_hit",
+            "超时那一格没被翻成插件自己的语义"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1650,15 +1588,15 @@ mod tests {
         }
 
         // ② 交给子进程的只有 argv / env / 关掉的 stdin —— 没有回程端点。
-        let handed = crate::plugin::invoke::argv_for(
-            Path::new("/opt/p/tool"),
-            &["x"],
-            5,
-            Some(Path::new("/usr/bin/timeout")),
-        );
+        let handed: Vec<String> =
+            crate::plugin::invoke::child_for(Path::new("/opt/p/tool"), &["x"], &[])
+                .built()
+                .get_args()
+                .map(|a| a.to_string_lossy().into_owned())
+                .collect();
         assert_eq!(
-            handed.1,
-            vec!["5".to_string(), "/opt/p/tool".to_string(), "x".to_string()],
+            handed,
+            vec!["x".to_string()],
             "argv 的形状变了 —— 本格据它说「argv 里没有回程端点」"
         );
 
@@ -1700,9 +1638,9 @@ mod tests {
             "../../src/backend/plugin/invoke.rs"
         ));
         assert_eq!(
-            invoke_prod.matches("env_clear").count(),
+            invoke_prod.matches(".inherit_only(").count(),
             1,
-            "`plugin/invoke.rs` 的生产段里 `env_clear` 不是恰好一处。\n\
+            "`plugin/invoke.rs` 的生产段里 `.inherit_only(` 不是恰好一处。\n\
              **没有** ⇒ 那条暗路又开了：子进程重新继承后端的整份环境，\
              常驻口的地址与令牌跟着漏过去（本格头注 ② 段就是它的病历）。\n\
              **两处以上** ⇒ 先回答一句「哪一处是真的」—— 清两遍不会更干净，\

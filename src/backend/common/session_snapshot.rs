@@ -43,9 +43,8 @@
 //!   一个都不问那一列，而 watcher 那条路（`TMUX_LS_FMT`）里根本没有它 ——
 //!   带一列谁都不用、且有一半发布者填不出来的值，就是下一处静默的空串。
 
-use crate::common::child_env::WithoutOwnEnv;
+use crate::platform::child::{Child, Deadline};
 use copy_core::copy_text;
-use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 
 use crate::common::tmux_utf8::{tab_underflow, UTF8_CLIENT_FLAG};
@@ -212,21 +211,20 @@ const LIST_FMT_FIELDS: usize = 3;
 /// 🔴 **`K-R12`：`-u` 必须排在子命令之前。** 放到后面是 `rc=1 + unknown flag -u`，
 /// 而这里刻意不看退出码 ⇒ 那个响错会被压成「一个会话都没有」= 又一次静默失效。
 /// 由本模块测试段那条判据钉住次序（判据从 `control/gate.rs` 随这处调用点一起搬来）。
+/// `list-sessions` 那一发的期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限；界面等它的命令预算都在 10 s 以上）。
+const LIST_SESSIONS_WITHIN: Deadline = Deadline::secs(5);
+
 fn probe_tmux() -> Result<Vec<SessionRow>, CmdErr> {
-    let out = Command::new("tmux")
-        .without_own_env()
+    let out = Child::new("tmux")
         .args([UTF8_CLIENT_FLAG, "list-sessions", "-F", LIST_FMT])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
+        .run(LIST_SESSIONS_WITHIN)
         .map_err(|e| {
-            (
-                "no_tmux",
+            e.into_cmd_err("no_tmux", |e| {
                 copy_text(
                     "beSessionSnapshot.probeTmux.noTmux",
                     &[("e", &e.to_string())],
-                ),
-            )
+                )
+            })
         })?;
     Ok(parse_rows(&String::from_utf8_lossy(&out.stdout)))
 }

@@ -33,9 +33,11 @@
 //! 所以「目标在不在」的判据是**输出为空**，不是退出码。这与 monitor 侧
 //! `[ -z "$info" ] → CCM_NO_SESSION` 是同一条判据，刻意保持一致。
 
-use crate::common::child_env::WithoutOwnEnv;
+use crate::platform::child::{Child, Deadline};
 use copy_core::copy_text;
-use std::process::{Command, Stdio};
+
+/// 身份探测 · 列窗格那一发只读 tmux 的期限：界面等 `kill` / 送键的预算是 10 s，tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
+const PROBE_TMUX_WITHIN: Deadline = Deadline::secs(5);
 
 /// 命令级错误：`(code, message)`。与 [`super::launch`] 同型。
 pub(crate) type CmdErr = (&'static str, String);
@@ -162,12 +164,12 @@ pub(crate) fn probe(target: &str) -> Result<Option<Probed>, CmdErr> {
 
 /// 本模块起 tmux 的唯一构造处。`socket`：`None` = 让 tmux 按环境解析默认 socket（**生产恒 `None`**）；
 /// `Some(p)` = 显式 `-S <p>`（只为让「按 sid 找窗格」在隔离的 tmux server 上测得出来，同 `capture_pane::capture_on`）。
-fn tmux_on(socket: Option<&str>) -> Command {
-    let mut cmd = Command::new("tmux").without_own_env();
-    if let Some(s) = socket {
-        cmd.args(["-S", s]);
+fn tmux_on(socket: Option<&str>) -> Child {
+    let cmd = Child::new("tmux");
+    match socket {
+        Some(s) => cmd.args(["-S", s]),
+        None => cmd,
     }
-    cmd
 }
 
 /// 一个会话里的一个窗格（[`panes_on`] 的一行）。
@@ -198,9 +200,7 @@ pub(crate) fn panes_on(socket: Option<&str>, session: &str) -> Vec<PaneTag> {
             "-t",
             session,
         ])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
+        .run(PROBE_TMUX_WITHIN)
         .map(|o| parse_panes(&String::from_utf8_lossy(&o.stdout)))
         .unwrap_or_default()
 }
@@ -236,7 +236,7 @@ pub(crate) fn carrier<'a>(panes: &'a [PaneTag], sid: &str) -> Option<&'a PaneTag
 
 /// [`probe`] 的本体，`tmux` 由调用方造：[`super::identity_tag`] 经它自己那一个口递进来
 /// （测试构建里那个口是注入的假 tmux，`INVARIANTS §48.3`）。
-pub(crate) fn probe_with(mut tmux: Command, target: &str) -> Result<Option<Probed>, CmdErr> {
+pub(crate) fn probe_with(tmux: Child, target: &str) -> Result<Option<Probed>, CmdErr> {
     let out = tmux
         // K-R12：`-u` 必须在子命令**之前**（`display-message -u -p` 是 rc=1 的响错）。
         .args([
@@ -247,14 +247,11 @@ pub(crate) fn probe_with(mut tmux: Command, target: &str) -> Result<Option<Probe
             target,
             PROBE_FMT,
         ])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
+        .run(PROBE_TMUX_WITHIN)
         .map_err(|e| {
-            (
-                "no_tmux",
-                copy_text("beGate.probe.noTmux", &[("e", &e.to_string())]),
-            )
+            e.into_cmd_err("no_tmux", |e| {
+                copy_text("beGate.probe.noTmux", &[("e", &e.to_string())])
+            })
         })?;
     let text = String::from_utf8_lossy(&out.stdout);
     let line = text.trim_end_matches(['\n', '\r']);

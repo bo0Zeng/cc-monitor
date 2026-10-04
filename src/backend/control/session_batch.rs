@@ -8,7 +8,7 @@
 //! 要动 tmux / 读记录 / 起 ccm 的几样由入口经 [`Deps`] 交进来（control 不引用 observe），判据交替身。
 
 use super::launch_render::{local, wire};
-use crate::common::child_env::WithoutOwnEnv;
+use crate::platform::child::{Child, Deadline};
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
 
@@ -41,7 +41,7 @@ pub(crate) struct Deps<'a> {
     /// 就地键入：`(会话名, sid, 那一行)` ⇒ 同 `launch send-into`（带 sid：落在挂着它的那个窗格，身份按它判）。
     pub(crate) send_into: &'a dyn Fn(&str, &str, &str) -> Result<(), CmdErr>,
     /// 交一行 ccm（argv，`argv[0]` 是 `ccm`）⇒ `(退出码, stdout, stderr)`。生产那一份起这台后端自己（它就是 ccm）。
-    pub(crate) run_ccm: &'a dyn Fn(&[String]) -> Result<(i32, String, String), String>,
+    pub(crate) run_ccm: &'a dyn Fn(&[String]) -> Result<(i32, String, String), CmdErr>,
     /// 工作目录 ⇒ 这台铸的新会话名（同 `terminal-name-mint`）。
     pub(crate) mint: &'a dyn Fn(&str) -> Result<String, CmdErr>,
     /// 这台 ccm 会哪些（渲那一行用）。
@@ -488,7 +488,7 @@ fn start_in_tmux(it: &Item, rows: Option<&[TmuxEntry]>, here: bool, deps: &Deps)
                     Ok((_, _, err)) => {
                         Answer::failed(&it.sid, ("start_failed", err.trim().to_string()))
                     }
-                    Err(e) => Answer::failed(&it.sid, ("start_failed", e)),
+                    Err(e) => Answer::failed(&it.sid, e),
                 },
             };
             Answer {
@@ -520,18 +520,20 @@ fn start_window_here(it: &Item, deps: &Deps) -> Answer {
     }
 }
 
+/// 当 ccm 起自己那一趟的期限：界面等 `sessions-start` 的预算是 10 s ＋ 每个 6 s（单个 16 s），收一档到 15 s。
+const SELF_AS_CCM_WITHIN: Deadline = Deadline::secs(15);
+
 /// 交一行 ccm：这台后端自己就是 ccm（同一个二进制，argv 不过 shell）。不接进去（`--detach`），等它退出、收它的话。
 /// 去掉 `TMUX` / `TMUX_PANE`：单个那一项是在一个新开的终端里跑这一行，那里不在 tmux 里。
-pub(crate) fn run_self_as_ccm(argv: &[String]) -> Result<(i32, String, String), String> {
-    let me = std::env::current_exe().map_err(|e| e.to_string())?;
-    let out = std::process::Command::new(me)
-        .without_own_env()
+/// 失败 ⇒ 单个那一条的 `(码, 原话)`：起不来 ⇒ `start_failed`；过了期限 ⇒ `child_timed_out`。
+pub(crate) fn run_self_as_ccm(argv: &[String]) -> Result<(i32, String, String), CmdErr> {
+    let me = std::env::current_exe().map_err(|e| ("start_failed", e.to_string()))?;
+    let out = Child::new(me)
         .args(argv.iter().skip(1))
         .env_remove("TMUX")
         .env_remove("TMUX_PANE")
-        .stdin(std::process::Stdio::null())
-        .output()
-        .map_err(|e| e.to_string())?;
+        .run(SELF_AS_CCM_WITHIN)
+        .map_err(|e| e.into_cmd_err("start_failed", |e| e.to_string()))?;
     Ok((
         out.status.code().unwrap_or(-1),
         String::from_utf8_lossy(&out.stdout).into_owned(),

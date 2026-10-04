@@ -756,7 +756,7 @@ fn tmux_spawning_files(tree: &Tree) -> std::collections::BTreeSet<String> {
     tree.iter()
         .filter(|(_, src)| {
             let squeezed: String = src.chars().filter(|c| !c.is_whitespace()).collect();
-            squeezed.contains("Command::new(\"tmux\")")
+            squeezed.contains("Child::new(\"tmux\")")
                 || (src.contains("posix_shell(") && src.contains("tmux "))
         })
         .map(|(r, _)| r.clone())
@@ -1077,7 +1077,7 @@ fn the_tmux_reach_ruler_works_on_a_synthetic_tree() {
         ("c.rs", "pub fn go() {}"),
         (
             "d.rs",
-            "pub fn spawn() { let _ = std::process::Command::new(\"tmux\"); }",
+            "pub fn spawn() { let _ = crate::platform::child::Child::new(\"tmux\"); }",
         ),
         ("e.rs", "pub fn lonely() {}"),
     ]
