@@ -9,7 +9,7 @@
 //! let prod = src.split("\n#[cfg(test)]").next().unwrap_or(src);
 //! ```
 //!
-//! 它只在「文件里第一个测试模块之后再没有生产代码」时才是对的。`ssh_source.rs` 的
+//! 它只在「文件里第一个测试模块之后再没有生产代码」时才是对的。`stream_source/` 的
 //! 第一个测试模块在 804 行，而 `parse_frame` 在 1771 行 —— 拿那个近似去扫它，
 //! **扫描面直接归零到前 803 行**，守卫静默变瞎。
 //!
@@ -84,12 +84,12 @@
 //! # ⚠ 它服务哪条要求：**没有，它是量具不是判据**
 //!
 //! 本 crate 守的不是任何产品性质，是**别的判据不许变瞎**（上面那段的读数：便宜近似把
-//! `ssh_source.rs` 的扫描面砍到前 803 行）。⇒ **给它点一条业务要求会是一句假话。**
+//! `stream_source/` 的扫描面砍到前 803 行）。⇒ **给它点一条业务要求会是一句假话。**
 //!
 //! 它的方法学住址是（地板挡不住静默缩水）那一族。
 //! 而与它配套的**负对照**形状值得推广（＋ `P28`）：
 //! 每条源码扫描型守卫都该有一条「剥法没把我要扫的那一段剥掉」的判据 ——
-//! `ssh_source_write_half_guard` 的第一条就是那个样子。
+//! `stream_source::write_half_guard` 的第一条就是那个样子。
 //! 🔴 **那一形已经抽成原语了**：[`assert_stripper_keeps`]。
 //! 它比活样本多买一件（锚点必须被便宜近似丢掉 ⇒ 对照不许被填成恒真的），
 //! 少买一件（活样本那个字节数倍数刻意没抽上来 —— 那是一份文件的数）。
@@ -172,7 +172,7 @@ pub fn production_source(src: &str) -> String {
 ///
 /// [`test_module_ranges`] 的前一版判定逐字是 `mod_line.starts_with("mod ")` ——
 /// 于是 `pub(crate) mod tests {` 穿了过去，那份文件**整段测试代码留在生产段里**。
-/// `K-R74` 开发中间实打：`ssh_source.rs` 的测试模块加一个 `pub(crate)` 前缀，
+/// `K-R74` 开发中间实打：`stream_source/` 的测试模块加一个 `pub(crate)` 前缀，
 /// monitor 判定行 `1403 passed; 0 failed` 当场变成 `1399 passed; 10 failed`。
 ///
 /// **修法不是再列一张前缀表** —— 那是把同一个病换个写法再犯一次
@@ -1122,10 +1122,10 @@ pub fn assert_no_unstripped_test_module(who: &str, prod: &str) {
 /// （`guard_support_tests::main_production_section_keeps_its_load_bearing_items`）。
 ///
 /// 失效形状是现打过的：便宜近似 `src.split("\n#[cfg(test)]").next()` 只在
-/// 「第一个测试模块之后再没有生产代码」时才对。`ssh_source.rs` 的第一个测试模块在
+/// 「第一个测试模块之后再没有生产代码」时才对。`stream_source/` 的第一个测试模块在
 /// 804 行而 `parse_frame` 在 1771 行 ⇒ 扫描面**归零到前 803 行**，守卫静默变瞎。
 /// ⇒ 每条这样的守卫都该有一条这个形状的判据；活样本是
-/// `ssh_source_write_half_guard::the_shared_stripper_keeps_the_part_this_guard_must_scan`，
+/// `stream_source::write_half_guard::the_shared_stripper_keeps_the_part_this_guard_must_scan`，
 /// 本函数是把它**抽成一份**（一条形状出现 N 次就抽一个住址；
 /// 而这一族原先「八处各写一份」的账，本 crate 头注第一段就记着）。
 ///
@@ -1146,7 +1146,7 @@ pub fn assert_no_unstripped_test_module(who: &str, prod: &str) {
 ///   （`judge-not-in-exec-chain`），本条**不治**。⇒ 填的时候从那条守卫的针表里抄，
 ///   别另起一批好过的。
 /// - **不买字节数地板**：活样本里那句 `good.len() > cheap.len() * 2` **刻意没抽上来** ——
-///   那个倍数是 `ssh_source.rs` 一份文件的数（19% 存活），换一份文件就是假的；
+///   那个倍数是 `stream_source/` 一份文件的数（19% 存活），换一份文件就是假的；
 ///   而地板在「静默缩水」这个方向上本来就是瞎的。
 ///   第 3 件（逐针零命中）比它严，也不需要维护一个会漂的数。
 /// - **不买「这份文件里的针够全」**：它只判交进来的那几个。

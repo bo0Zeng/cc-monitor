@@ -6,11 +6,11 @@
 
 /// ★★ **出方向帧只许有一个写者**〔audit-0805 08-08，Phase G 第 60 件，D6〕。
 ///
-/// `inbound.rs` 头注逐字写着「`writer_task`（**出方向帧的唯一出口**）」。
+/// `stream/inbound/` 头注逐字写着「`writer_task`（**出方向帧的唯一出口**）」。
 /// 那句话撑着 NDJSON 在线上的完整性：两个写者并发写同一个 stdout，
 /// 帧就会**互相撕开**（半行 + 半行），而这条流**仓外 aterm 正在消费**（D6 契约冻结）。
 ///
-/// ⇒ 而它只是散文。08-08 实测：在 `inbound.rs` 加一个自己 `tokio::io::stdout()`
+/// ⇒ 而它只是散文。08-08 实测：在 `stream/inbound/` 加一个自己 `tokio::io::stdout()`
 /// 并 `write_all` 的函数，**backend 292 条判据一条不红**。
 ///
 /// # 人群与豁免
@@ -328,7 +328,7 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             "overflow",
         ),
         // 补上此前**测试段零构造**的三个变体。
-        // `Reply` 的上线形另有 `inbound.rs` 钉着；`TmuxSessionClosed` / `Cancelled`
+        // `Reply` 的上线形另有 `stream/inbound/` 钉着；`TmuxSessionClosed` / `Cancelled`
         // 此前**只有 monitor 侧「解析成 None」的负向断言** —— 那是消费方的行为，
         // 不是后端序列化形态：改掉 kind 标签或字段名，两边都不会红。
         (
@@ -1173,7 +1173,7 @@ fn hello_unavailable_is_additive_present_and_absent() {
 
 /// ★ S0：`cause` 的线上表现 —— `Gone` **不写字段**（additive，旧 monitor 原样工作），
 /// 只有 `Superseded` 才出现。这条同时是**跨语言双写点**的本侧锚：字面量
-/// `"superseded"` 与 monitor `src/frontend/shell/src/ssh_source.rs` 的解析处逐字一致。
+/// `"superseded"` 与 monitor `src/frontend/shell/src/stream_source/` 的解析处逐字一致。
 #[test]
 fn removal_cause_is_additive_on_the_wire() {
     let gone = to_line(&Frame::SessionRemoved {
@@ -1202,7 +1202,7 @@ fn removal_cause_is_additive_on_the_wire() {
 ///
 /// - 缺席：与本字段加进来之前逐字节相同。
 /// - `tmux` / `none`：字段按声明序排在 `waiting_for` 之后。这两个字面量是 monitor
-///   `ssh_source::parse_frame` 照着认的东西 —— 两边各写一遍，对不上时 monitor 把它当「不知道」，
+///   `stream_source::parse_frame` 照着认的东西 —— 两边各写一遍，对不上时 monitor 把它当「不知道」，
 ///   而「不知道」是合法值 ⇒ **不会有任何东西报错**，所以这里用精确字节钉。
 #[test]
 fn session_added_container_is_additive_with_two_literals() {
@@ -1237,7 +1237,7 @@ fn session_added_container_is_additive_with_two_literals() {
 }
 
 /// `session_state` 的**逐字节**金标准：两个取值、字段顺序 `sid` 在前。
-/// monitor `ssh_source::parse_frame` 照这两个字面量认它。
+/// monitor `stream_source::parse_frame` 照这两个字面量认它。
 #[test]
 fn mig1_session_state_has_exactly_these_bytes() {
     use crate::stream::wire::SessionFate;
@@ -1257,7 +1257,7 @@ fn mig1_session_state_has_exactly_these_bytes() {
 }
 
 /// `sessions_replayed` 的**逐字节**金标准：无载荷，只有 kind。
-/// monitor `ssh_source::parse_frame` 照这个字面量认它。
+/// monitor `stream_source::parse_frame` 照这个字面量认它。
 #[test]
 fn sessions_replayed_has_exactly_these_bytes() {
     assert_eq!(

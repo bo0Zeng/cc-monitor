@@ -55,7 +55,7 @@
 //! 得连那颗按钮一起改，那是下一刀的事（而且那一刀正好是「旧面板退役」那一刀）。
 
 use crate::copy_table::copy_text;
-use crate::ssh_source::RemoteConfig;
+use crate::stream_source::RemoteConfig;
 
 use super::proc::{open_in_new_process, OpenRequest, Unopened};
 

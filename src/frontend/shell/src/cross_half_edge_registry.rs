@@ -52,7 +52,7 @@
 ///
 /// # 为什么按「读者 → 被读」这一**对**做键，而不是行号
 ///
-/// 行号是最易腐的键（`ssh_source.rs` 六千行，动一处上面全移位）。
+/// 行号是最易腐的键（`stream_source/` 六千行，动一处上面全移位）。
 /// 实测每一对都**两两不同**，所以「文件对」是够用且稳定的键。
 #[cfg(test)]
 const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
@@ -65,13 +65,13 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "src/backend/control/kill.rs",
         "创建路径不许铸出后端 kill 形状门拒的名字：字符集的来源必须从后端 `parse_name` 现抠 \
          （本侧手抄一份就成了两侧同源的恒等）。原理由「拒绝文案两侧逐字同形」随 monitor 的杀会话发送端迁到界面退役；\
-         同拍删掉的三条边（`backend_launch_tests.rs` → `inbound.rs` · `backend_send_keys_tests.rs` → `launch.rs` · \
+         同拍删掉的三条边（`backend_launch_tests.rs` → `stream/inbound/` · `backend_send_keys_tests.rs` → `launch.rs` · \
          `inbound_client_tests.rs` → `launch.rs`）守的「发出去的字段 / mode 名 == 后端解析器认的」改由跨语言金样 \
          `tests/__fixtures__/tmux-control.golden.json` 钉（后端侧让请求样例过生产解析器，界面侧逐字断言发的就是那一份）",
     ),
     // `mcp_sync_tests.rs` 那两条边随 monitor 那份推拉编排一起删了（编排进了被写那台后端）。
     // 足迹的申报表与判据进了后端 ⇒ 原先 `tool_registry_tests.rs` → 后端 `assets/*`（五条装 / 卸口对拍）·
-    //   `config_surface_tests.rs` → `assets/mcp_edit.rs` · `footprint_remote_tests.rs` → `inbound.rs` 那七条成了后端 crate 内部的读，摘了；
+    //   `config_surface_tests.rs` → `assets/mcp_edit.rs` · `footprint_remote_tests.rs` → `stream/inbound/` 那七条成了后端 crate 内部的读，摘了；
     //   反过来长出几条 backend→monitor（申报表去钉 monitor 那一侧真放字节的口，见下）与 monitor→backend（monitor 的判据读申报表）。
     (
         "backend→monitor",
@@ -176,7 +176,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //   开窗那一跳的 `.env(k, v)` 由 monitor 自己的 `launch_tests.rs::every_terminal_window_backend_opens_carries_the_backend_path` 钉着。
     (
         "monitor→backend",
-        "tests/frontend/shell/ssh_source_emits_parity.rs",
+        "tests/frontend/shell/stream_source/emits_parity.rs",
         // 🔴 对端从 `main.rs` 改成 `lib.rs` —— `EMITS` 那张表按
         // 前置 1 搬进了后端库面。本行是**盘上现打出来的答案**：
         //    搬家当天这条判据逐字报「盘上有 `…/lib.rs`、登记里是 `…/main.rs`」。
@@ -187,7 +187,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //   monitor 不再读 `session_removed.cause`（去向由后端会话账本裁成 `session_state`）。
     (
         "monitor→backend",
-        "tests/frontend/shell/ssh_source_stream_flag_gate_tests.rs",
+        "tests/frontend/shell/stream_source/stream_flag_gate_tests.rs",
         "src/backend/lib.rs",
         "★★〔09-23 新增〕**monitor 发的每一条流模式 flag，         后端都必须认得并剥离** —— `the_stream_flags_monitor_sends_are_all_strippable`。         失效方向是本仓栽过的 §26：老后端把**不认识**的 `--flag` 当成一次性查询、         处理完就退出 ⇒ 无 hello ⇒ monitor 重连 ⇒ **死循环**。远端只剩常驻一形之后，「monitor 发的那几个字面量」住 `remote_resident::attach_line`（attach 行，远端 `listen::attach_flags` 认不得就整条拒）、         「后端认得哪几个」住 `backend::STREAM_FLAGS` —— 两处各写一份，         只有同时读两侧源码才验得了。         ⚠ 如实写它买不到什么：**文本级**（从生产函数体里抠 `push` 的那几个串），         不是真起一个老后端看它会不会退出。",
     ),

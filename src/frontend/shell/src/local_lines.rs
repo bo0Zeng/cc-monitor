@@ -1,5 +1,5 @@
 //! **本机会话内容的入口通道** —— 本机那条流上的内容帧从两条读循环送到
-//! [`crate::ssh_source::consume_local`]（再进与远端同一个 `LineIntake`）。
+//! [`crate::stream_source::consume_local`]（再进与远端同一个 `LineIntake`）。
 //!
 //! # 为什么要它
 //!
@@ -28,11 +28,11 @@
 use std::sync::{Arc, OnceLock};
 
 use crate::event_replay::EventReplay;
-use crate::ssh_source::{InboundFrame, LocalItem};
+use crate::stream_source::{InboundFrame, LocalItem};
 
 /// 通道容量（件数，一件 = 一帧）。
 ///
-/// 量级：`ssh_source` 远端那条「读帧任务 → 主循环」的通道是 1024 行，同一种东西、同一个消费者形状 ⇒ 取同一个数。
+/// 量级：`stream_source` 远端那条「读帧任务 → 主循环」的通道是 1024 行，同一种东西、同一个消费者形状 ⇒ 取同一个数。
 /// 满了是**背压**（送的一方等），不是丢。
 pub(crate) const LOCAL_LINES_CAPACITY: usize = 1024;
 
@@ -45,7 +45,7 @@ pub(crate) fn install(app: tauri::AppHandle, replay: Arc<EventReplay>) {
         tracing::error!("local_lines::install 被调了第二次 —— 本机内容消费者只许有一个，这次不起");
         return;
     }
-    tauri::async_runtime::spawn(crate::ssh_source::consume_local(
+    tauri::async_runtime::spawn(crate::stream_source::consume_local(
         rx,
         replay,
         crate::remote_health_out(app),

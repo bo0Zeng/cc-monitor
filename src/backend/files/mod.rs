@@ -979,7 +979,7 @@ pub const SHA256_HEX_LEN: usize = 64;
 ///
 /// 读的那一趟（[`answer_read_text`]）对交出去的字节算它；写面（`control/files_write.rs::overwrite_text_expecting`）
 /// 拿它比「盘上此刻那一份」、写成之后对新内容再算一次交回去。住读族这一侧，是因为读族不许伸手进写面
-/// （写面只有 `inbound.rs` 一扇门），反过来写面借读族一个纯函数不开新门。
+/// （写面只有 `stream/inbound/` 一扇门），反过来写面借读族一个纯函数不开新门。
 pub fn content_sha256(bytes: &[u8]) -> String {
     let mut d = ContentDigest::new();
     d.update(bytes);

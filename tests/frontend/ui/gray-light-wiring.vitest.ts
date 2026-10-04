@@ -4,7 +4,7 @@
  * # 为什么是这一段
  *
  * 08-13 全链真跑把 `#60` 的搜索面收到了**只剩前端**：后端每一跳都量到了，逐条有读数 ——
- * backend 发 `session_removed`（`cause=Gone`）· `ssh_source` 转发 ·
+ * backend 发 `session_removed`（`cause=Gone`）· `stream_source` 转发 ·
  * 消费者判 `tmux_origin=Some(...)` → `RemovedDisposition::Idle` → emit `session-idle`
  *（`remote session idle-tmux` 那行日志）。
  *

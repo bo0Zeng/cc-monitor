@@ -45,7 +45,7 @@ fn known_capability_tokens_match_decide_stream_flags() {
 /// 两侧同源的判据会恒真。
 #[test]
 fn the_stream_flags_monitor_sends_are_all_strippable() {
-    let backend_lib = include_str!("../../../src/backend/lib.rs");
+    let backend_lib = include_str!("../../../../src/backend/lib.rs");
     assert!(
         backend_lib.contains("pub const STREAM_FLAGS: &[&str]"),
         "后端侧 STREAM_FLAGS 不在预期文件里，双写点锚点已失效"
@@ -65,7 +65,7 @@ fn the_stream_flags_monitor_sends_are_all_strippable() {
     // 远端只剩常驻一形 ⇒ 旗标只经 attach 行（`remote_resident::attach_line`）交给那台，
     //   远端 `listen::attach_flags` 遇到不在 STREAM_FLAGS 里的词整条拒（不是静默忽略）。
     let rr = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/remote_resident.rs"
+        "../../../../src/frontend/shell/src/remote_resident.rs"
     ));
     let at = rr
         .find("pub(crate) fn attach_line(")
@@ -168,7 +168,7 @@ fn upgrade_reconnect_converges() {
 ///
 /// 这一句原先点的是 `EMBEDDED_BACKEND_CAPABILITIES`，**全仓零定义**
 /// ——管道上三个真名依次是：`build.rs::emit_backend_capabilities` → 编译期 env
-/// `BACKEND_CAPABILITIES` → `ssh_source.rs::embedded_backend_capabilities`。
+/// `BACKEND_CAPABILITIES` → `stream_source/version.rs::embedded_backend_capabilities`。
 #[test]
 fn embedded_capabilities_single_source_wired() {
     let caps = super::embedded_backend_capabilities();
@@ -232,9 +232,7 @@ fn embedded_build_id_single_source_wired() {
 ///   下面第二条断言只挡了最直白的那一形。
 #[test]
 fn the_upgrade_check_is_not_hidden_behind_the_tail_only_guard() {
-    let prod = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/ssh_source.rs"
-    ));
+    let prod = crate::guard_support::stream_source_production();
     let indent = |needle: &str| -> usize {
         let hits: Vec<&str> = prod.lines().filter(|l| l.contains(needle)).collect();
         assert_eq!(
@@ -246,8 +244,9 @@ fn the_upgrade_check_is_not_hidden_behind_the_tail_only_guard() {
     };
     let call = indent("if should_upgrade_reconnect(");
     let anchor = indent("if build_id == EXPECTED_BACKEND_BUILD_ID {");
+    // hello 那一臂抽成了顶层函数 `on_hello`，锚点在函数体第一层（缩进 4）；更浅就是抽错了行。
     assert!(
-        anchor >= 8,
+        anchor >= 4,
         "锚点缩进只有 {anchor} —— 抽错了行，本条此刻无效"
     );
     assert_eq!(
@@ -297,7 +296,7 @@ fn unknown_capabilities_are_booked_under_that_remote() {
 
 /// 后端 `lib.rs::STREAM_FLAGS` 的字面量（从后端源码摘，异源）。
 fn backend_stream_flags_cf1() -> std::collections::BTreeSet<String> {
-    let src = include_str!("../../../src/backend/lib.rs");
+    let src = include_str!("../../../../src/backend/lib.rs");
     let at = src
         .find("pub const STREAM_FLAGS: &[&str] = &[")
         .expect("后端 lib.rs 里找不到 `STREAM_FLAGS` 的定义");
@@ -351,16 +350,16 @@ fn both_carriers_start_the_backend_with_the_same_stream_flags_the_backend_strips
     );
     assert_eq!(
         LOCAL_STREAM_ARGS.contains(&"--tail-only"),
-        crate::ssh_source::LOCAL_STREAM_TAIL_ONLY,
+        crate::stream_source::LOCAL_STREAM_TAIL_ONLY,
         "起参里有没有 `--tail-only` 与本机消费者认定的「这条流是 tail-only」对不上 —— \
          要么历史整份重放两遍，要么历史一行都没有"
     );
     // 两条载体用的是**这一份**，不是各写一份字面量。
     let stdio = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/local_backend.rs"
+        "../../../../src/frontend/shell/src/local_backend.rs"
     ));
     let host = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/local_backend_host.rs"
+        "../../../../src/frontend/shell/src/local_backend_host.rs"
     ));
     assert_eq!(
         stdio.matches("LOCAL_STREAM_ARGS.iter()").count(),

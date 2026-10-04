@@ -1,6 +1,6 @@
 //! **`resync`（手动对齐）的帧面宿主** —— 薄壳，本体在 `observe/watcher.rs::resync`。
 //!
-//! 住顶层的理由同 `read_face`：`inbound.rs` 不许出现 `observe::`，`control/` 不许引用 `observe/`（`layering_guard`）。
+//! 住顶层的理由同 `read_face`：`stream/inbound/` 不许出现 `observe::`，`control/` 不许引用 `observe/`（`layering_guard`）。
 //! 用户按钮触发、不是节拍：零定时器铁律不变。
 
 use serde_json::{json, Value};

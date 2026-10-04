@@ -213,7 +213,7 @@ impl Source {
     /// ⚠ **刻意不回 `String`**：`origin_tests::no_new_raw_string_origin_parameters`
     /// 是一条递减棘轮 —— 「origin 归一 —— 这是地基」，
     /// 新代码一律用这个类型，不许再给这个概念造一种表达。
-    /// ⚠ 那个名字由 monitor 开窗时用 `origin_label()` 算（`filewin/entry.rs`），与 `ssh_source` 的 `stream_loop` 登记时
+    /// ⚠ 那个名字由 monitor 开窗时用 `origin_label()` 算（`filewin/entry.rs`），与 `stream_source` 的 `stream_loop` 登记时
     /// 用的是**同一个函数** —— 两处漂开的症状是「命令发给了一个谁都没登记过的
     /// origin，而且不报错」（`inbound_client::LOCAL_ORIGIN` 的头注记过同一形）。
     pub fn origin(&self) -> Origin {

@@ -63,16 +63,16 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     // ── 本函数里拼，但自由文本过了 shell_quote
     // 🔴 **这里原来还有两行，两行都出去了**：
     //    `remote_history.rs / stream_read_remote_session`（`--read-session`）与
-    //    `ssh_source.rs / fetch_snapshot`（`--read-session-tail`）。形状与理由同上面
+    //    `stream_source/snapshot.rs / fetch_snapshot`（`--read-session-tail`）。形状与理由同上面
     //    `K-R72` / `K-R104` / `K-R112` 那几笔：那两处的一次性 SSH exec 整条没了
     //    （改走长连接的 `history-read` / `history-tail`，`frame_query`）
     //    ⇒ 它们不再是「远端执行点」。
     // 🔴 **逐次拨号那一行也出去了**（`remote_history.rs` 的 `run_list_query`〔散文墓碑〕）：
     //    它的放行表 C4c 起是空的，已删 —— 同上面几笔的形状（那条一次性 SSH exec 整条没了）。
-    // `ssh_source.rs` 起远端流模式那一处出去了：那一形删了（远端只剩常驻，`remote_resident::attach`）。
+    // `stream_source/` 起远端流模式那一处出去了：那一形删了（远端只剩常驻，`remote_resident::attach`）。
     // `tmux.rs / list_remote_tmux` 出去了：列会话改问那台后端 `tmux-list`。
     // ── 只转发，不构造（命令来自调用方）
-    // `ssh_source.rs` 那一行（原语自己的定义）出去了：最后一个调用方（公钥推送）进了本机后端，原语随之删了
+    // `stream_source/` 那一行（原语自己的定义）出去了：最后一个调用方（公钥推送）进了本机后端，原语随之删了
     //   ⇒ 本表空了，下面那条判据改成「零处」（带正控）。
     // `cc_bus.rs / exec_read` 出去了：读收件箱改走后端 `bus-inbox`。
     // 〔09-28 裁 2〕`acct_iso_deploy.rs / exec_collect` 出去了：跑安装脚本 · 核 PATH 两步换成那台后端的 `acct-iso-install`。
@@ -281,7 +281,7 @@ fn every_remote_exec_declares_where_its_command_came_from() {
             Origin::PassThrough => {
                 per_class[3] += 1;
                 let is_param = body.contains(&format!("{arg}: &str"));
-                let is_definition = *f == "ssh_source.rs";
+                let is_definition = *f == "stream_source/exec.rs";
                 assert!(
                     is_param || is_definition,
                     "`{f}::{n}` 申报成只转发（{why}），但实参 `{arg}` 不是它的 `&str` 入参 —— \
@@ -293,7 +293,7 @@ fn every_remote_exec_declares_where_its_command_came_from() {
     // 常驻自检：某一类归零时上面那一支就没人行使，而它看起来照样绿。
     // ⚠ 本仓已连着六次栽在「新分支平时没人走」上，所以四类各要一个活样本。
     // `Const` 那一类收敛到零（最后一条 `probe_ccm_cli`〔散文墓碑〕 改问那台后端 `ccm-probe`）⇒ 那一支没有人群、自检只对余下三类。
-    // `Quoted` 那一类也收敛到零（最后一条 `ssh_source.rs` 起远端流模式那一处随那一形删了）⇒ 同上。
+    // `Quoted` 那一类也收敛到零（最后一条 `stream_source/` 起远端流模式那一处随那一形删了）⇒ 同上。
     // `Builder` 那一类也收敛到零（最后一条 `pubkey.rs` 的公钥推送进了本机后端 `pubkey-push`）⇒ 同上。
     assert_eq!(
         per_class,

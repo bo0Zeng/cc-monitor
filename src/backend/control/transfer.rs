@@ -17,7 +17,7 @@
 //!
 //! 下载要写**本机**用户选的落点（`.part` ＋ 改名上位）⇒ 那是一次用户文件的写，按 `INVARIANTS §41.6` 只许住文件管理那一面：
 //! 本模块登记在 `readonly_guard::MUTATING_FACE_MODULES`，改动动词只用闭集里的（`O_EXCL` 新建 · 接着写 · 改名 · 删文件），
-//! **每一处改动之前先过 `files_write::resolve_in_root`**（借用、不抄）；门仍只有 `inbound.rs`。
+//! **每一处改动之前先过 `files_write::resolve_in_root`**（借用、不抄）；门仍只有 `stream/inbound/`。
 //! 远端那一半（暂存区的写）一行都不在这里 —— 全经 `dial/sftp.rs` 的写原语（只许两处、先过 `fenced_remote`）。
 //!
 //! # 存亡规矩（逐字沿用旧传输台，那张表）
@@ -59,7 +59,7 @@ pub const TRANSFER_START: &str = "transfer-start";
 /// 撤。
 pub const TRANSFER_STOP: &str = "transfer-stop";
 
-/// 本模块的线上命令（`readonly_guard` 第三层 ④ 那条「门里够得到写面的命令」的一侧，与 `inbound.rs` 源码异源）。
+/// 本模块的线上命令（`readonly_guard` 第三层 ④ 那条「门里够得到写面的命令」的一侧，与 `stream/inbound/` 源码异源）。
 pub fn transfer_command_names() -> Vec<&'static str> {
     vec![
         TRANSFER_UPLOAD,
@@ -700,7 +700,7 @@ impl Desk {
         }
     }
 
-    /// **本面唯一的答口**（`inbound.rs` 那四条硬臂都经它进来，`files/module_boundary_guard::DOORS` 登记）。
+    /// **本面唯一的答口**（`stream/inbound/` 那四条硬臂都经它进来，`files/module_boundary_guard::DOORS` 登记）。
     pub fn answer_wire(&self, cmd: &str, id: &str, args: &serde_json::Value) -> Frame {
         match cmd {
             TRANSFER_UPLOAD => self.upload(id, args),

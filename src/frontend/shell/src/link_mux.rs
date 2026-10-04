@@ -432,7 +432,7 @@ pub(crate) fn b64_encode(bytes: &[u8]) -> String {
     out
 }
 
-/// 解码（下行块，`ssh_source::parse_frame` 解 `link_data` 时调）。严格：坏的就是坏的，不猜。
+/// 解码（下行块，`stream_source::parse_frame` 解 `link_data` 时调）。严格：坏的就是坏的，不猜。
 pub(crate) fn b64_decode(text: &str) -> Result<Vec<u8>, String> {
     let s = text.as_bytes();
     if s.len() % 4 != 0 {

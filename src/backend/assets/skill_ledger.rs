@@ -14,7 +14,7 @@
 //! - `created`：装之前这个路径不在 ⇒ `true`；装时盖掉了这台原有的一份 ⇒ `false`（卸它回不到装之前那一份 ⇒ 卸时要问）。
 //! - 同一个目录再装一次：并进去 —— 新路径加进来、已记的换新摘要、`created` 取第一次的。
 //!
-//! # 写口（全仓一个：[`answer_record`]，只从 `inbound.rs` 进 —— `readonly_guard` 第四层 ④）
+//! # 写口（全仓一个：[`answer_record`]，只从 `stream/inbound/` 进 —— `readonly_guard` 第四层 ④）
 //!
 //! - `{op:"add", name, files:{path:{digest, created}}}`：装完（或装到一半停下）monitor 把**真写成了的那几个**原样交回来
 //!   （摘要与 `created` 是这台后端自己在 `skill-install-plan` 里答的 `ledger` 那一格）。目录由本模块按 `skills 根 / name` 自己算，
@@ -502,7 +502,7 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
     Ok(json!({ "dir": dir, "name": name, "changed": changed, "remaining": left }))
 }
 
-/// `skill-install-record`：帧面入口（**写口**，只从 `inbound.rs` 进）。
+/// `skill-install-record`：帧面入口（**写口**，只从 `stream/inbound/` 进）。
 pub fn answer_record(args: &Value) -> Answer {
     let path = ledger_path().ok_or(("io_failed", copy_text("beSkillLedger.path.noHome", &[])))?;
     record_at(&path, None, args)

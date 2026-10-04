@@ -89,7 +89,7 @@ pub const ATTACH_OK_LINE: &str = "{\"attach\":\"ok\"}\n";
 /// 请求形如 `{"attach":"<32 位十六进制>"}` —— 本机实测 **51 字节**。8 KiB 给了两个量级余量。
 /// ⚠ **少了它就是一个无界堆分配**：这条连接的对端是**同机任何进程**，
 /// 它完全可以一直发字节不发换行。backend 侧为同一形栽过一次实测
-/// （`inbound.rs` 头注：喂 512 MiB 无换行的流 ⇒ RSS 从 6 MiB 涨到 518 MiB）。
+/// （`stream/inbound/` 头注：喂 512 MiB 无换行的流 ⇒ RSS 从 6 MiB 涨到 518 MiB）。
 /// 超限语义：**拒收 + 回错**（关连接并出声，不静默截断成一行「看起来对」的 JSON）。
 /// **登记住址** `src/frontend/shell/src/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
 pub const ATTACH_LINE_CAP: usize = 8 * 1024;
@@ -109,7 +109,7 @@ pub enum HandshakeLine {
 ///
 /// 机制是 `fill_buf`/`consume`：**超限之后只找换行、不再往 buf 里塞字节**
 /// ⇒ 整行的内存占用与行长无关。这段机制在本仓已有两处同构实现
-/// （`inbound.rs` 的读行循环 · `ssh_source::read_capped_line`），
+/// （`stream/inbound/` 的读行循环 · `stream_source::read_capped_line`），
 /// 三处共用的是**那条教训**，不是代码 —— 它们分别跨着 sync/async 与两个 crate 的边。
 ///
 /// ⚠ `cap` **是参数而不是直接读常量**：生产调用点传 [`ATTACH_LINE_CAP`]，

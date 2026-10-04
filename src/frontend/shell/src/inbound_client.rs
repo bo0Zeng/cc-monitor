@@ -4,7 +4,7 @@
 //!
 //! U6b-1/2/3 在后端侧建了完整的入方向：信封、`id` 回显、取消、单行上限、能力协商。
 //! 但 U8a-2 摸底实测出一件事：**monitor 侧一个字节都没往那条流的 stdin 写过**
-//! （`ssh_source.rs` 里写半边的唯一用法是 `probe_backend` 的 `shutdown()`，零数据字节）。
+//! （`stream_source/` 里写半边的唯一用法是 `probe_backend` 的 `shutdown()`，零数据字节）。
 //! ⇒ 那条通道在生产里**不可达**。本模块就是那条缺失的发送端。
 //!
 //! # 「Hello 之前不许写」做成不可表示（对称于后端的 `wire::HelloFlushed`）
@@ -25,8 +25,8 @@
 //!   `WriteHalf` 窗口。第一版是 `split()` 之后再 `park()`，审计实测在那个窗口里
 //!   插一句 `w.write(b"early\n")` ⇒ 两条护栏全绿，而那就是一次 Hello 之前的写。
 //! - 剩下的绕过方式：自己造一个假的 `InboundFrame::Hello` 去换见证（调用点显眼的胡来），
-//!   或者绕开本模块直接拿 `tokio::io::split` —— 后者由 `ssh_source` 的
-//!   `write_half_guard::ssh_source_never_splits_a_stream_itself` 拦（**零命中型**判据，
+//!   或者绕开本模块直接拿 `tokio::io::split` —— 后者由 `stream_source` 的
+//!   `write_half_guard::stream_source_never_splits_a_stream_itself` 拦（**零命中型**判据，
 //!   尾随注释绕不动）。
 //!
 //! # 超时归客户端
@@ -42,7 +42,7 @@
 
 use crate::chan::wire::{Offer, Withdraw, WITHDRAW_OP, WITHDRAW_REFUSED};
 use crate::copy_table::copy_text;
-use crate::ssh_source::InboundFrame;
+use crate::stream_source::InboundFrame;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -161,7 +161,7 @@ enum Outcome {
 /// ⚠ **不要以为关写半边就能让后端退出。** e2e 实测（`tests/e2e/inbound-backend-frames.sh` 第 9 条）：
 /// stdin EOF 只结束后端的入方向 reader **task**，进程照活。backend 只在
 /// ① `writer_task` 结束（stdout 关了）或 ② 收到停机信号 时退出（见其 `main.rs` 的 select）。
-/// `ssh_source::probe_backend` 里那句「backend 看到 EOF 自行退出」的老注释是错的 ——
+/// `stream_source::probe_backend` 里那句「backend 看到 EOF 自行退出」的老注释是错的 ——
 /// 它真正的收尾靠的是整条 SSH channel 被 drop。
 enum WriteJob {
     Line(String),
@@ -278,7 +278,7 @@ where
 ///
 /// # 为什么远端那条路用不了
 ///
-/// `attach_inbound_client`（`ssh_source.rs`）本身是泛型、传输无关的，本可直接复用；
+/// `attach_inbound_client`（`stream_source/run.rs`）本身是泛型、传输无关的，本可直接复用；
 /// 卡住的是它要的 [`ParkedWriter`] 只能由 [`split_and_park`] 产出，而那个函数要一个
 /// **可切的双工流**（SSH channel 读写同体）。本机没有。
 ///
@@ -549,7 +549,7 @@ impl InboundClient {
 
     /// **显式关掉写半边** —— backend 的入方向 reader 见 EOF 后寿终。
     ///
-    /// 原先只有一次性探测调它（`ssh_source::probe_backend`，随测试连接进本机后端删了）⇒ 今天只编进测试档。
+    /// 原先只有一次性探测调它（`stream_source::probe_backend`，随测试连接进本机后端删了）⇒ 今天只编进测试档。
     /// 长连接上调它 = 之后**再也发不出任何命令**，而连接看起来一切正常。
     /// 之所以做成一条要主动发的指令而不是「writer task 结束时顺手做」，就是为了让这个
     /// 区别在调用点显形。
@@ -636,7 +636,7 @@ impl InboundClient {
     ///
     /// 「超时不摘登记」那条设计有个前提：晚到的应答终会把登记摘掉。
     /// D 审计指出这个前提在**背压路径上不成立** —— backend 侧 cancel 的两条应答都是
-    /// `try_send`（`inbound.rs`），应答通道满时**静默丢弃**，被 abort 的命令也不补应答。
+    /// `try_send`（`stream/inbound/`），应答通道满时**静默丢弃**，被 abort 的命令也不补应答。
     /// 那条 id 就永远等不到任何帧，是真泄漏；每次超时消耗 2 格，128 次封死 256 格，
     /// **而且后端恢复之后也不会自愈**。
     ///
@@ -774,7 +774,7 @@ fn connection_nonce() -> String {
 // 每台远端主机一个客户端：origin → 当前连接的客户端
 // ============================================================================
 
-/// 形状同 `ssh_source::announced_registry`：origin 是那台机器的稳定身份。
+/// 形状同 `stream_source::announced_registry`：origin 是那台机器的稳定身份。
 /// 写者 = 各主机的 `stream_loop`（收到 hello 时登记、连接退出时摘除）。
 fn registry() -> &'static Mutex<HashMap<String, Arc<InboundClient>>> {
     static R: std::sync::OnceLock<Mutex<HashMap<String, Arc<InboundClient>>>> =

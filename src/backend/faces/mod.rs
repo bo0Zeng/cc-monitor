@@ -1,4 +1,4 @@
-//! 帧面宿主：只读查询与几条薄壳（本体在 `observe/` / `control/`，`inbound.rs` 不许出现 `observe::`）。
+//! 帧面宿主：只读查询与几条薄壳（本体在 `observe/` / `control/`，`stream/inbound/` 不许出现 `observe::`）。
 
 pub mod accounts_face; // 改账号库那几条命令的帧面宿主：本体在 accounts/manage/，接上 apikey 表与别名文件那两步
 pub mod feature_face; // 功能侧只读查询的帧面宿主（tasks-list …）—— 薄壳，本体在 observe/，与 read_face 分家的理由在它头注

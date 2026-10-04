@@ -10,14 +10,14 @@
 //! | F2 | 本机消费者的纯分派核真值表 | 期望手写 |
 //! | F3 | 两条读循环各恰好一处把交回的帧送进本机内容通道（送法各按载体）、各恰好一处送「流结束」 | 源码锚，恰好一处 |
 //! | F4 | 内容出口的调用方集合（`batch_to_payloads` / `on_line_batch_awaited` / `flush_lines` / `LineIntake::open` / `Batcher::new` / `SnapshotQueue::new`） | 全仓生产段扫描，两向集合相等 |
-//! | F5 | 两条载体的起参是同一份常量，且其中每一个旗标都 ∈ 后端 `STREAM_FLAGS`；`--tail-only` 在 ⟺ 消费者认定 tail-only | 后端源码 —— 住 `ssh_source_stream_flag_gate_tests.rs`（同一条跨半边已登记，不另开一条） |
+//! | F5 | 两条载体的起参是同一份常量，且其中每一个旗标都 ∈ 后端 `STREAM_FLAGS`；`--tail-only` 在 ⟺ 消费者认定 tail-only | 后端源码 —— 住 `stream_source/stream_flag_gate_tests.rs`（同一条跨半边已登记，不另开一条） |
 //! | F6 | 快照被撤时的补偿归档：本机不补、远端补 | — |
 //! | F7 | monitor 生产段里那套 watcher 的名字零命中（带正控） | — |
 //! | L1 | 本机起停帧 ⇒ 本机活会话表的起停事实（藏起来的 bg 不进；流断带上可重连那一摞） | 期望手写 |
 //! | F8 | 真后端 × 生产 stdio 读循环 ⇒ 宣告带 `path`/`lines`、新行的 `seq` == 行号（`#[ignore]`，由 `tests/evidence/CF1-local-lines.py` 带二进制跑） | 两侧各是真实现 |
 
 use super::*;
-use crate::ssh_source::{local_step, parse_frame, InboundFrame, LocalItem, LocalStep};
+use crate::stream_source::{local_step, parse_frame, InboundFrame, LocalItem, LocalStep};
 use std::collections::{BTreeSet, HashSet};
 
 // ─── 小工具：函数范围（rustfmt 保证收尾 `}` 与签名同缩进）───────────────────────────
@@ -97,14 +97,12 @@ fn tap() -> Option<tokio::sync::mpsc::Receiver<LocalItem>> {
 
 /// `parse_frame` 认得的全部 `kind`：从它的源码里摘（`"xxx" =>` 那几条臂）。
 fn parse_frame_kinds() -> BTreeSet<String> {
-    let prod = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/ssh_source.rs"
-    ));
+    let prod = crate::guard_support::stream_source_production();
     let lines: Vec<&str> = prod.lines().collect();
     let start = lines
         .iter()
         .position(|l| l.starts_with("pub fn parse_frame("))
-        .expect("ssh_source 生产段里找不到 `pub fn parse_frame(` —— 抽取面画错了");
+        .expect("stream_source 生产段里找不到 `pub fn parse_frame(` —— 抽取面画错了");
     let end = fn_end(&lines, start);
     let mut kinds = BTreeSet::new();
     for l in &lines[start..=end] {
@@ -437,39 +435,39 @@ fn every_line_leaves_through_the_one_intake_both_sources_share() {
     let cases: &[(&str, &[(&str, &str)], &str)] = &[
         (
             "batch_to_payloads(",
-            &[("ssh_source.rs", "flush_lines")],
+            &[("stream_source/batch.rs", "flush_lines")],
             "行 → 载荷只有一个出口；多一处 ⇒ 又长出一条不经 LineIntake 的内容路（本机 watcher 那一形）",
         ),
         (
             "on_line_batch_awaited(",
-            &[("ssh_source.rs", "flush_lines")],
+            &[("stream_source/batch.rs", "flush_lines")],
             "重放缓冲只有一个入口",
         ),
         (
             "flush_lines(",
             &[
-                ("ssh_source.rs", "fetch_snapshot"),
-                ("ssh_source.rs", "flush"),
-                ("ssh_source.rs", "line"),
+                ("stream_source/snapshot.rs", "fetch_snapshot"),
+                ("stream_source/batch.rs", "flush"),
+                ("stream_source/batch.rs", "line"),
             ],
             "冲批只从 LineIntake 的两个口与旁路快照走",
         ),
         (
             "LineIntake::open(",
             &[
-                ("ssh_source.rs", "consume_local"),
-                ("ssh_source.rs", "stream_loop"),
+                ("stream_source/local.rs", "consume_local"),
+                ("stream_source/run.rs", "stream_loop"),
             ],
             "两个帧源（远端 stream_loop · 本机 consume_local）各构造一次同一个收口",
         ),
         (
             "Batcher::new(",
-            &[("ssh_source.rs", "open")],
+            &[("stream_source/batch.rs", "open")],
             "攒批器只在收口里造 —— 远端若再自己造一个，就又是两份",
         ),
         (
             "SnapshotQueue::new(",
-            &[("ssh_source.rs", "open")],
+            &[("stream_source/batch.rs", "open")],
             "快照队列只在收口里造",
         ),
     ];
@@ -485,7 +483,7 @@ fn every_line_leaves_through_the_one_intake_both_sources_share() {
 #[test]
 fn only_remote_snapshots_compensate_with_a_session_ended() {
     use crate::origin::Origin;
-    use crate::ssh_source::compensates_on_cancel;
+    use crate::stream_source::compensates_on_cancel;
     assert!(
         !compensates_on_cancel(&Origin::local()),
         "本机快照被撤时补发 session-ended ⇒ 会把本机那边判成「可重连」的会话压成「已结束」\
@@ -496,9 +494,7 @@ fn only_remote_snapshots_compensate_with_a_session_ended() {
         "远端快照被撤时不补 ⇒ 已 flush 的那一块把刚归档的远端 tab 见行复活（D-B1 僵尸）"
     );
     // 消费者给本机收口的名字就是本机那个 origin（否则上面那一格判的不是它）。
-    let prod = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/ssh_source.rs"
-    ));
+    let prod = crate::guard_support::stream_source_production();
     guard_core::find_pinned(&prod, "let label = crate::origin::LOCAL.to_string();")
         .unwrap_or_else(|e| panic!("本机消费者的收口名字不是 `origin::LOCAL`：{e}"));
 }
@@ -727,7 +723,7 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
 #[test]
 fn the_local_product_core_matches_the_hand_written_table() {
     use crate::session_book::{Fate, In, LiveMeta};
-    use crate::ssh_source::local_product;
+    use crate::stream_source::local_product;
     // 带启动期令牌：成品要把它原样交给前端（`launch-arrival.ts` 认「我刚起的那条」）。
     const ADD_A: &str = r#"{"kind":"session_added","sid":"a","session_kind":"interactive","cwd":"/w","project_dir":"/w/p","name":"n","status":"busy","pid":42,"container":"tmux"}"#;
     const ADD_B_BG: &str = r#"{"kind":"session_added","sid":"b","session_kind":"bg"}"#;
@@ -822,7 +818,7 @@ fn a_session_file_notice_is_dispatched_unless_the_session_is_hidden() {
         LocalStep::Notice {
             sid: "a".into(),
             path: "/p/a.jsonl".into(),
-            change: crate::ssh_source::FileChange::Gone,
+            change: crate::stream_source::FileChange::Gone,
         }
     );
     assert_eq!(local_step(frame(ADD_B_BG), false, &mut h), LocalStep::Skip);
@@ -832,7 +828,7 @@ fn a_session_file_notice_is_dispatched_unless_the_session_is_hidden() {
         LocalStep::Notice {
             sid: "b".into(),
             path: "/p/b.jsonl".into(),
-            change: crate::ssh_source::FileChange::Truncated,
+            change: crate::stream_source::FileChange::Truncated,
         }
     );
 }

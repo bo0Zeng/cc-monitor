@@ -943,7 +943,7 @@ mod tests {
         }
         // ★**再按「调用」扫一遍** —— 上面那批针全是路径拼法。
         //
-        // 实测：往 `inbound.rs` 写
+        // 实测：往 `stream/inbound/` 写
         //   `use tokio::time::{self as _t, sleep};`
         //   `async fn probe() { loop { sleep(Duration::new(5, 0)).await; } }`
         // ——一个货真价实的无限周期唤醒，**六条判据全绿**：
@@ -1331,7 +1331,7 @@ mod g6_reach {
         //   那条一次性连接的 inactivity 上限，从界面侧搬进拨号代理）。keepalive 那一条只是换了住址。
         // 5 → **6**：多的那一条是 `relay/machine.rs` 的 `PROBE_DEADLINE`（远端「口上是不是我们的中转」
         //   那两发差分探针的一次阻塞上限）。同族于中转那两条 socket 期限，不驱动任何循环。
-        // 6 → **7**：多的那一条是 `inbound.rs` 的 `DRAIN_DEADLINE`（退出排空期限）—— 它是本表第一条
+        // 6 → **7**：多的那一条是 `stream/inbound/drain.rs` 的 `DRAIN_DEADLINE`（退出排空期限）—— 它是本表第一条
         //   **真会醒来**的登记（cell `缩性质`），调用那一处另住 `REGISTERED_DEADLINE_WAKES`。
         // 7 → **6**：`relay/machine.rs` 的 `PROBE_DEADLINE` 随差分探针删了（「在不在」改读进程内状态）。
         // 6 → **7**：多的那一条是 `observe/runs.rs` 的 `STALE_AFTER`（子运行「久未再写 ⇒ 状态不明」的阈值）。

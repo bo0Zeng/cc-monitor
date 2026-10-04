@@ -65,7 +65,7 @@ fn freeing_brings_the_live_count_back_down() {
 /// 也就是**几乎为零**，于是「内存没涨」这个断言**恒真**。
 /// ⚠ 它不会报错、不会 panic，只会**永远绿**。
 ///
-/// 风险不是假设的：`inbound.rs` 那条内存判据是 `#[tokio::test]`（current-thread），
+/// 风险不是假设的：`stream/inbound/` 那条内存判据是 `#[tokio::test]`（current-thread），
 /// 而**同一个文件里**就有 `#[tokio::test(flavor = "multi_thread", worker_threads = 4)]`。
 /// 照抄邻居的属性 = 把量具关掉，而**没有任何东西会红**。
 ///
@@ -147,7 +147,7 @@ fn every_test_that_uses_this_probe_stays_single_threaded() {
     // 抽取器自检：一个用户都没扫到时，下面那条会零命中地绿。
     assert!(
         users >= 2,
-        "只扫到 {users} 处 `reset_peak(` 调用（08-06 实测：`inbound.rs` 与 `common/fs.rs` 各一处）\
+        "只扫到 {users} 处 `reset_peak(` 调用（08-06 实测：`stream/inbound/` 与 `common/fs.rs` 各一处）\
              —— 抽取器坏了或量具没人用了，两种都要人来看"
     );
     assert!(

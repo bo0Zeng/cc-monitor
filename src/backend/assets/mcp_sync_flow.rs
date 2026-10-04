@@ -168,7 +168,7 @@ pub(crate) fn answer_preview(d: &dyn Door, facts: &dyn Facts, args: &Value) -> A
 }
 
 /// `mcp-sync-apply {name, at, def, fill, target}`：`target` = 看卡时这台那份的记号（不存在 = `null`）；`fill` = `{env: {键: 值}, headers: {…}}`
-/// （用户填的；没填的键沿用这台原有的值）。写完记进装记录（写口由 `inbound.rs` 递进来）。回 `{path, written, recordFailed}`。
+/// （用户填的；没填的键沿用这台原有的值）。写完记进装记录（写口由 `stream/inbound/` 递进来）。回 `{path, written, recordFailed}`。
 pub(crate) fn answer_apply(d: &dyn Door, record: Record, args: &Value) -> Answer {
     let name = str_arg(args, "name")?;
     let at = ExtLoc::from_arg(args.get("at"), "at")?;

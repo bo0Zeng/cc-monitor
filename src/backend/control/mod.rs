@@ -13,7 +13,7 @@
 //!   并已从白名单层搬到 `readonly_guard` 第三层（「改，但每一处先过围栏、且只从文件管理面来」）。
 //! - [`exit_policy`]（B2 · 条 66）：**写后端自己的那一份状态文件**
 //!   （`~/.cc-monitor/backend.json`，「退出行为」那个值）。它**不碰用户数据** ——
-//!   `readonly_guard` 为它单开一层「后端自有状态文件」（按文件登记、动词闭集、只从 `inbound.rs` 进），
+//!   `readonly_guard` 为它单开一层「后端自有状态文件」（按文件登记、动词闭集、只从 `stream/inbound/` 进），
 //!   理由与射程住那一层的登记表。
 //! - [`tmux_hook`]：**改 tmux server 状态**（`tmux set-hook -g`）+ **发信号**（`SIGUSR1`）。
 //! - [`gate`]（F03）：**§34 Gate 2（identity）在本侧的承载** —— 探一次 tmux 拿回

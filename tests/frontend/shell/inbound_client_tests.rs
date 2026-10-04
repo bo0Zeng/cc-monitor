@@ -149,7 +149,7 @@ fn the_only_way_to_build_an_inbound_client_is_into_client() {
 /// 本模块头注逐字写着「`BackendHello` 的**唯一构造入口**是 `from_hello_frame`」
 /// 与「`ParkedWriter` 的**唯一出口**是 `into_client`，而它要一个 `BackendHello`」。
 /// 整条「Hello 之前不许写」的类型保证就压在这两句上 ——
-/// `ssh_source` 那两条判据的诊断也是这么写的（「在这里直接写 = 静默绕过那条类型保证」）。
+/// `stream_source` 那两条判据的诊断也是这么写的（「在这里直接写 = 静默绕过那条类型保证」）。
 ///
 /// # 而它们是散文
 ///
@@ -1036,11 +1036,11 @@ fn the_shared_stripper_keeps_the_construction_site_this_guard_must_scan() {
 /// 握手里的能力事实从线上一路进 `Offer`，调用侧照它办：
 /// ① `unavailable` 列了的命令 ⇒ 不发、回 `Unavailable{code}`（与那台事后回的码同一个）；没列的照发。
 /// ② `uncancellable` 列了的命令超时 ⇒ `NotOffered`、一条撤单都不补；没列的 ⇒ `Asked`、补一条。
-/// 两侧异源：左边是真 hello 行经 `ssh_source::parse_frame` 解出来的，右边是本条手写的期望。
+/// 两侧异源：左边是真 hello 行经 `stream_source::parse_frame` 解出来的，右边是本条手写的期望。
 #[tokio::test]
 async fn the_hello_facts_decide_what_is_sent_and_what_is_withdrawn() {
     let line = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","kill","ping","launch"],"unavailable":[{"command":"kill","code":"no_tmux"},{"command":7}],"uncancellable":["launch",null]}"#;
-    let frame = crate::ssh_source::parse_frame(line).expect("是 hello");
+    let frame = crate::stream_source::parse_frame(line).expect("是 hello");
     let hello = BackendHello::from_hello_frame(&frame).expect("是 Hello 帧");
     let (mine, theirs) = tokio::io::duplex(64 * 1024);
     let client = park(mine).into_client(hello);
@@ -1096,7 +1096,7 @@ async fn the_hello_facts_decide_what_is_sent_and_what_is_withdrawn() {
 #[tokio::test]
 async fn a_resync_reply_refreshes_the_offer_with_the_facts_of_this_moment() {
     let line = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","kill","resync"],"unavailable":[{"command":"kill","code":"no_tmux"}]}"#;
-    let frame = crate::ssh_source::parse_frame(line).expect("是 hello");
+    let frame = crate::stream_source::parse_frame(line).expect("是 hello");
     let hello = BackendHello::from_hello_frame(&frame).expect("是 Hello 帧");
     let (mine, theirs) = tokio::io::duplex(64 * 1024);
     let client = park(mine).into_client(hello);

@@ -24,7 +24,7 @@
 //! - **`--resolve` 为一次极小的 RPC 单开一整条 SSH exec。**
 //!
 //! 载体是现成的：monitor 那头拿的是 `russh::ChannelStream`，**双工**，
-//! 而 `ssh_source.rs` 里 `stdin` 零命中 —— 那半条通道从来没人用过。
+//! 而 `stream_source/` 里 `stdin` 零命中 —— 那半条通道从来没人用过。
 //!
 //! # 信任边界
 //!

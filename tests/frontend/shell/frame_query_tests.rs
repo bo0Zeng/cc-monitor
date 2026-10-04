@@ -46,7 +46,7 @@ fn backend_command_blocks() -> Vec<(String, String)> {
     blocks
 }
 
-/// 后端 `inbound.rs` 生产段里把活交给 `read_face::answer`（或 `history_join::answer_*`）的帧命令名（**从后端源码数**）。
+/// 后端 `stream/inbound/` 生产段里把活交给 `read_face::answer`（或 `history_join::answer_*`）的帧命令名（**从后端源码数**）。
 fn backend_read_face_commands() -> Vec<String> {
     let got: Vec<String> = backend_command_blocks()
         .into_iter()
@@ -183,7 +183,7 @@ const CHANNELED: &[(&str, &str)] = &[
 /// **帧面只读查询那一族之外**、同样改成「前端经通道直接问、后端出成品」的帧命令 ——
 /// `(帧命令, 为什么迁、迁了之后解释住哪)`。它们不在 [`MOVED`] 里（不是 `C1` 那一族），但前端 `chan.call` 的
 /// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
-/// 每一条还要**真的**是后端登记的帧命令（从后端 `inbound.rs` 生产段数，异源）、monitor 生产段里**零**字面量。
+/// 每一条还要**真的**是后端登记的帧命令（从后端 `stream/inbound/` 生产段数，异源）、monitor 生产段里**零**字面量。
 const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // tab 栏多选的批量停 / 起（`src/frontend/ui/tab-batch-run.ts`）：一台一次、那台逐个判逐个答，monitor 从没有过这条命令。
     (
@@ -240,7 +240,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "history-run",
         "一个子运行的记录，按运行读（父记录 ＋ 子运行 ‖ 派出它的工具调用）：子运行住哪、哪条属于谁都问那台后端的适配层，成品 `{run, path, rows, end, more}`",
     ),
-    // `~/.ssh/config` 的解读从 monitor 三条 Tauri 命令（`ssh_source.rs` 里那三条，〔散文墓碑〕）搬进后端。
+    // `~/.ssh/config` 的解读从 monitor 三条 Tauri 命令（`stream_source/` 里那三条，〔散文墓碑〕）搬进后端。
     (
         "ssh-config-aliases",
         "别名清单：后端 `dial/ssh_config.rs` 读 `~/.ssh/config` 出成品 `{aliases}`；前端 `src/frontend/ui/ssh-config-reads.ts` 按形状收，monitor 零 `.ssh` 读面",
@@ -656,7 +656,7 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
     ),
 ];
 
-/// 后端 `inbound.rs` 生产段里登记的全部帧命令名（异源：从后端源码数，不读本文件的表）。
+/// 后端 `stream/inbound/` 生产段里登记的全部帧命令名（异源：从后端源码数，不读本文件的表）。
 fn backend_registered_commands() -> std::collections::BTreeSet<String> {
     backend_command_blocks()
         .into_iter()
@@ -681,13 +681,13 @@ const HELD_BACK: &[(&str, &str)] = &[
     // `history-subagents` 那一行摘了（命令换成出成品的 `history-subagent`，进了 [`CHANNELED`]）。
     (
         "history-read",
-        "**monitor 旁路快照的流机器在用**（续点 · 见证 · 分段编号，`ssh_source::fetch_snapshot`）：应答已是后端出的逐行成品\
+        "**monitor 旁路快照的流机器在用**（续点 · 见证 · 分段编号，`stream_source::fetch_snapshot`）：应答已是后端出的逐行成品\
          （`{rows: [{end, hash, message?, cwd?}]}`，记录解释住后端 `agents/claudecode/`），monitor 只编号、攒批、转交 —— \
          它是会话流那一路的输入，不是前端查询（同 `history-tail`）",
     ),
     (
         "history-tail",
-        "**归 CF2（`subscribe`）**：它不是前端查询，只被实时 tab 的快照续点用（`ssh_source` 的流机器）——\
+        "**归 CF2（`subscribe`）**：它不是前端查询，只被实时 tab 的快照续点用（`stream_source` 的流机器）——\
          会话流收口成 `subscribe`时由 CF2 处置，不属于 `call`",
     ),
     // 〔C4a 与 SR1a 合并〕SR1a 同波搬上来的 `history-index` / `history-user-inputs` / `history-find` 三行
@@ -1048,7 +1048,7 @@ fn client_for_test(
     tokio::io::BufReader<tokio::io::DuplexStream>,
 ) {
     let (mine, theirs) = tokio::io::duplex(64 * 1024);
-    let hello = BackendHello::from_hello_frame(&crate::ssh_source::InboundFrame::Hello {
+    let hello = BackendHello::from_hello_frame(&crate::stream_source::InboundFrame::Hello {
         v: 1,
         build_id: "test".into(),
         host_arch: "x86_64".into(),
@@ -1194,7 +1194,7 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
     // `subagent·rs` 的 `query` · `history·rs` 的 `stream_read_session_jsonl` · `session_skeleton·rs` 的 `read_session_lines` 三行摘了〔散文墓碑〕：
     //   那三条命令退役（界面经通道直问那台后端，期限在界面那一手造）。
     (
-        "ssh_source.rs",
+        "stream_source/snapshot.rs",
         "fetch_snapshot",
         3,
         "快照是两件事：先问图（一问，`PAGE_BUDGET`）· 读正文（分页，问图之后按要读的字节数给 `read_budget`）；\
@@ -1290,11 +1290,9 @@ fn every_deadline_is_made_where_its_job_begins_and_only_there() {
 fn paged_jobs_make_their_deadline_before_the_first_page() {
     // `(源码, 函数头, 翻页循环的起头)`：循环起头取各自生产代码里那一行的原文。
     // 历史浏览器读整份那一件（`history·rs` 那个 `stream_read_session_jsonl`〔散文墓碑〕）进了界面（期限在 `src/frontend/ui/record-reads.ts` 那一手造）。
-    let cases: [(&str, &str, &str); 1] = [(
-        include_str!("../../../src/frontend/shell/src/ssh_source.rs"),
-        "async fn fetch_snapshot(",
-        "'read: for ",
-    )];
+    let snapshot_src = crate::guard_support::stream_source_file("snapshot.rs");
+    let cases: [(&str, &str, &str); 1] =
+        [(&snapshot_src, "async fn fetch_snapshot(", "'read: for ")];
     fn made_after_loop(prod: &str, head: &str, loop_head: &str) -> Result<bool, String> {
         let at = guard_core::find_pinned(prod, head)?;
         let rest = &prod[at..];

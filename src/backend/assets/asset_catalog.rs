@@ -8,7 +8,7 @@
 //! # 它是什么 · 不是什么
 //!
 //! - **是后端自有状态**（`readonly_guard` 第四层）：`~/.cc-monitor/assets-catalog.json`，全仓只有本模块写它，
-//!   写口（`answer_*` 三条）只从 `inbound.rs` 那一扇门进来。**不是用户文件** —— 用户的 skill / `.mcp.json` 本模块一个字节都不写。
+//!   写口（`answer_*` 三条）只从 `stream/inbound/` 那一扇门进来。**不是用户文件** —— 用户的 skill / `.mcp.json` 本模块一个字节都不写。
 //! - **只记「有哪些、定义是什么」**：同步那条路上不往任何机器装东西（装要用户点，走文件管理那一面）。
 //! - 🔴 **目录里不带 MCP 的 `env` / `headers` 的值**（只带键名），`digest` 按整条原文算：目录是在用户没点任何东西时
 //!   自动抄到每台机器的，API key 不跟着走；「原样拷」发生在用户点「装」那一下、从来源那台现读。
@@ -970,7 +970,7 @@ fn update_now(
     update_at(&path, scan_here(), &machine_label(), incoming)
 }
 
-/// 扩展页那一问（**写口**，只从 `inbound.rs` 递出去）：这台现扫一次、记下，交回并好的整份（`visit` 见 [`update_with`]）。
+/// 扩展页那一问（**写口**，只从 `stream/inbound/` 递出去）：这台现扫一次、记下，交回并好的整份（`visit` 见 [`update_with`]）。
 pub(crate) fn answer_current(
     visit: bool,
 ) -> Result<(Catalog, Vec<String>), (&'static str, String)> {
@@ -987,7 +987,7 @@ pub(crate) fn answer_current(
     Ok((cat, problems))
 }
 
-/// 扩展页写备注那一问（**写口**，只从 `inbound.rs` 递出去）：这台现扫一次、把备注记进自己那一格，交回整份。
+/// 扩展页写备注那一问（**写口**，只从 `stream/inbound/` 递出去）：这台现扫一次、把备注记进自己那一格，交回整份。
 pub(crate) fn answer_note(key: &str, text: &str) -> Result<Catalog, (&'static str, String)> {
     let path =
         catalog_path().ok_or(("io_failed", copy_text("beAssetCatalog.write.noHome", &[])))?;

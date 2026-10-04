@@ -21,7 +21,7 @@ impl LocalBackend for Recorder {
     }
 }
 
-fn cfg() -> crate::ssh_source::RemoteConfig {
+fn cfg() -> crate::stream_source::RemoteConfig {
     serde_json::from_value(json!({
         "host": "10.0.0.2",
         "label": "dev",

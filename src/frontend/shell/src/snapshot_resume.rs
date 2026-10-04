@@ -3,7 +3,7 @@
 //! # 病
 //!
 //! 远端长连接每断一次（弱网上一小时可以断几次），重连后后端重新宣告每个会话，
-//! `ssh_source` 的快照分发器就对每个会话**从第 0 行起**把整份历史再拉一遍、再灌一遍前端 ——
+//! `stream_source` 的快照分发器就对每个会话**从第 0 行起**把整份历史再拉一遍、再灌一遍前端 ——
 //! 前端按 `(sid, seq)` 去重把它们全扔掉。一份 270 MB 的会话 = 每次重连 270 MB 白跑。
 //!
 //! # 形状
@@ -227,7 +227,7 @@ impl Walk {
         let k = self.arrived;
         self.arrived += 1;
         let seq = match self.first_seq {
-            None => crate::ssh_source::tail_seq(k, self.total, self.tail_from),
+            None => crate::stream_source::tail_seq(k, self.total, self.tail_from),
             Some(base) => base + k,
         };
         (seq >= self.skip_below).then_some(seq)

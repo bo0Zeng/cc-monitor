@@ -52,7 +52,7 @@
 
 pub(crate) mod creds; // `K-H2a`：从哪儿拿 key（**只读**）+ 读之前查一次权限（上游选择搬家带过来的）
                       // 这台机器上那份凭据文件的**帧面读写口**（`apikey-key-set` / `apikey-read`）。
-                      // 上游选择自己的状态文件，不是用户文件 ⇒ `readonly_guard` 第四层登记它，只从 `inbound.rs` 进来。
+                      // 上游选择自己的状态文件，不是用户文件 ⇒ `readonly_guard` 第四层登记它，只从 `stream/inbound/` 进来。
                       // ⚠ 它**不在**中转那条启动路径上：中转里的上游选择仍然只读（`creds`），写只在流模式的帧面上发生。
 pub(crate) mod file_face;
 // 起会话那一发走哪、注入什么（`ccm` 在最终 exec 那一处问）· 界面「这几个号在表里有没有行」（`apikey-routing`）——

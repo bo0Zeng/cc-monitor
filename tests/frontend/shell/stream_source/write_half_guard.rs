@@ -3,8 +3,7 @@
 //! # 🔴 它服务哪条要求：**这里没有条**〔`P20` 第二刀 2026-09-22 核过原文〕
 //!
 //! `INVARIANTS.md` 里没有任何一条讲这件事。最近邻是 `§24bis` 那句「**单写者已机器化**」，
-//! 而它点的是 idle 账单写者那条判据 `remote_idle_single_writer_guard`〔散文墓碑〕（随那本账删了）
-//! —— **同一个文件里的另一条判据、另一个对象**（那条守的是 `REMOTE_IDLE` 的写者，
+//! 而它说的是 idle 账单的写者（随那本账删了）—— **另一个对象**（那条守的是 `REMOTE_IDLE` 的写者，
 //! 本族守的是 TCP 的写半）。**缺条也是一种住址**；缺口登记在，
 //! 升格与否要用户拍（`§4.11.7 ⑥`）。
 //!
@@ -25,24 +24,18 @@ use crate::structural_scan::ScanReport;
 /// monitor 侧此前流行的那个近似（`split("\n#[cfg(test)]").next()`）会把扫描面
 /// 砍掉三分之二 —— 下面第一条测试把这个差距**实测**出来，免得它变成一句口号。
 fn prod() -> String {
-    let p = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/ssh_source.rs"
-    ));
-    guard_core::assert_no_test_code("ssh_source.rs", &p);
+    let p = crate::guard_support::stream_source_production();
+    guard_core::assert_no_test_code("stream_source/", &p);
     p
 }
 
 /// ★ 扫描面自检：共享剥法留住了要扫的部分，而便宜近似留不住。
 #[test]
 fn the_shared_stripper_keeps_the_part_this_guard_must_scan() {
-    let me = include_str!("../../../src/frontend/shell/src/ssh_source.rs");
-    let cheap = me.split("\n#[cfg(test)]").next().unwrap_or(me);
+    let me = crate::guard_support::stream_source_raw();
+    let cheap = me.split("\n#[cfg(test)]").next().unwrap_or(&me);
     let good = prod();
-    for anchor in [
-        "fn parse_frame",
-        "async fn stream_loop",
-        // `probe_backend`〔散文墓碑〕 那一锚随测试连接搬进本机后端删了。
-    ] {
+    for anchor in ["fn parse_frame", "async fn stream_loop"] {
         assert!(
             good.contains(anchor),
             "共享剥法把 `{anchor}` 剥掉了 —— 本护栏此刻扫不到它"
@@ -74,7 +67,7 @@ fn the_shared_stripper_keeps_the_part_this_guard_must_scan() {
 /// 处置按第 6 条纪律：不往判据上加正则，让违规不可表示。切分入口收成一个函数之后，
 /// 这条判据变成**零命中型** —— 尾随注释再怎么写都改变不了「这里出现了 `tokio::io::split(`」。
 #[test]
-fn ssh_source_never_splits_a_stream_itself() {
+fn stream_source_never_splits_a_stream_itself() {
     // 运行时拼，避免命中本行自己。
     //
     // ⚠⚠ **08-07：原来只有这一个 needle，而它只认「一种切法」。**
@@ -133,14 +126,14 @@ fn ssh_source_never_splits_a_stream_itself() {
     split_hits.dedup();
     assert!(
         split_hits.is_empty(),
-        "ssh_source 的生产段自己切流 / 自己持有流的一半了（{split_hits:?}）。\n\
+        "stream_source 的生产段自己切流 / 自己持有流的一半了（{split_hits:?}）。\n\
              切分与停放必须是同一步（`inbound_client::split_and_park`）—— 中间留一个 \
              写半边就等于留了一个「Hello 之前能写」的窗口，而那正是那一步要消掉的东西。\n\
              ⚠ 08-07 起本条同时认**切法**与**持有物**：只堵一种切法挡不住 `into_split()`。"
     );
     assert!(
         !prod.contains(split_apis[0].as_str()),
-        "ssh_source 的生产段自己切流了。\n\
+        "stream_source 的生产段自己切流了。\n\
              切分与停放必须是同一步（`inbound_client::split_and_park`）—— 中间留一个裸\n\
              `WriteHalf` 就等于留了一个「Hello 之前能写」的窗口，而那正是本轮要消灭的东西。"
     );
@@ -166,7 +159,7 @@ fn ssh_source_never_splits_a_stream_itself() {
 /// 写的能力整个交给了 `inbound_client`。这条是白名单的反面（「这里一处都不该有」），
 /// 所以它必须自带**匹配器自检** —— 否则「零命中」既可能是干净，也可能是名单漏了写法。
 #[test]
-fn ssh_source_never_writes_to_a_stream_itself() {
+fn stream_source_never_writes_to_a_stream_itself() {
     // 运行时拼，避免命中本文件里这几行自己。
     let needles: Vec<String> = [
         "write", // 覆盖 .write( / .write_all( / .write_buf( / .write_all_buf( / .write_vectored( / .write_u8(
@@ -256,9 +249,9 @@ fn ssh_source_never_writes_to_a_stream_itself() {
     //   切生产段」去量，只得到一条 —— 本文件有多个测试模块，那个切法在本工作区
     //   已记过四次。**量具要用被测者那一套**，这是第五次。
     const ALLOWED_IO_IMPORTS: &[&str] = &[
-        "use tokio::io::{AsyncBufReadExt, BufReader};",
-        // `use tokio::io::AsyncBufReadExt;` 这一行随 `fetch_snapshot` 改走长连接出去了
-        // （它读的那条 SSH 流没了）。反向锚点当场逮住它 —— 放行清单不许留死行。
+        // 目录拆开之后两样各住一份：读行那份（`exec.rs`）要 `AsyncBufReadExt`，流循环那份（`run.rs`）要 `BufReader`。
+        "use tokio::io::AsyncBufReadExt;",
+        "use tokio::io::BufReader;",
         // `use tokio::io::AsyncReadExt;` 也出去了：它只服务读拨号代理 ack 的那一段
         // （`.take(` 有界读），那一段搬进了通信层成员 `ssh_link.rs`。反向锚点同一刀逮住它。
     ];
@@ -294,7 +287,7 @@ fn ssh_source_never_writes_to_a_stream_itself() {
 
     assert!(
         hits.is_empty(),
-        "ssh_source 的生产段又开始自己写流了（{hits:?}）。\n\
+        "stream_source 的生产段又开始自己写流了（{hits:?}）。\n\
              写的能力在 U8a-2a 整个交给了 `inbound_client`：`ParkedWriter` 拿不到 Hello 见证\n\
              就换不出能写的东西。在这里直接写 = **静默绕过**那条类型保证。\n\
              真要发命令，走 `inbound_client::InboundClient::call`。"

@@ -339,11 +339,11 @@ fi
 
 # ── 9. 关掉写端**不许**把后端弄死 ───────────────────────────────────────────
 #
-# ⚠ 这条判据的第一版写反了：写的是「关写端 ⇒ backend 自退」，理由抄自 `ssh_source.rs`
+# ⚠ 这条判据的第一版写反了：写的是「关写端 ⇒ backend 自退」，理由抄自 `stream_source/`
 #    `probe_backend` 里那句「关掉写半边（backend 看到 EOF 自行退出）」。**那句话是错的**，
 #    本套件第一次跑就把它打红了。真实机制读 `main.rs` 的 select 就清楚：
 #    进程只在 ① writer_task 结束（stdout 关了）或 ② 收到停机信号 时退出；
-#    stdin EOF 只让**入方向 reader task**寿终（`inbound.rs` 那句「正常寿终」说的是 task）。
+#    stdin EOF 只让**入方向 reader task**寿终（`stream/inbound/` 那句「正常寿终」说的是 task）。
 #    monitor 的 probe 之所以能收尾，靠的是**整条 SSH channel 被 drop**，不是 stdin EOF。
 #
 # 于是这条反过来钉：关写端之后后端必须**还活着**。

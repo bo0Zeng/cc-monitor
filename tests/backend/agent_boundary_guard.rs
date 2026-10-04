@@ -186,7 +186,7 @@ mod tests {
          迁移**」——`S4` 走 additive：新字段 `homes`（`[{agent_kind, path}]`）承载 agent \
          维度、agent 名只出现在**值**里，`claude_dir` 原地不动 ⇒ 线上字节零变化。",
         "monitor 与 aterm **都**改读 `homes` 之后。monitor 那半 `S4` 已经做完 \
-         （`ssh_source.rs` 的 hello 解析已是「优先 `homes`、回退 `claude_dir`」）⇒ \
+         （`stream_source/` 的 hello 解析已是「优先 `homes`、回退 `claude_dir`」）⇒ \
          **只剩仓外 aterm 这一个卡点**，我们这边不欠。那天把这个字段从 `wire.rs` 删掉，\
          本条同轮摘登记（下面的幽灵检查会逼着摘）。",
     )];

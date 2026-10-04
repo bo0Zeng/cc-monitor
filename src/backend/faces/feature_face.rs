@@ -16,7 +16,7 @@
 //!
 //! # 形状与纪律（与 `read_face` 同）
 //!
-//! - 住顶层、不住 `observe/`：`inbound.rs` 不许出现 `observe::`；本文件只做换壳，
+//! - 住顶层、不住 `observe/`：`stream/inbound/` 不许出现 `observe::`；本文件只做换壳，
 //!   读的本体在 `observe/`（那一层今天就是 Claude 专属的）。
 //! - 应答都是**成品**：`tasks-list` → `{tasks: [...]}`
 //!   （字段语义住 `observe/tasks_query.rs::task_entry`），界面经通道直接问、按形状收。

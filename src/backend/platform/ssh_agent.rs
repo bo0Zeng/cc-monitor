@@ -4,7 +4,7 @@
 //! - Unix：`SSH_AUTH_SOCK` 指的那个 Unix 域套接字（由 `russh` 的 `connect_env` 读那个变量）；
 //! - Windows：Win10+/Win11 自带的 OpenSSH agent 监听**固定的命名管道**（Windows 上 `SSH_AUTH_SOCK` 不是标准）。
 //!
-//! 〔搬自界面侧 `ssh_source::authenticate_via_agent`〔散文墓碑〕 的连接那一半 —— 那一份只有 Windows 臂，
+//! 〔搬自界面侧 `stream_source::authenticate_via_agent`〔散文墓碑〕 的连接那一半 —— 那一份只有 Windows 臂，
 //! 非 Windows 直接报「不支持 ssh-agent」；拨号搬进后端之后两个平台都有了。〕
 //!
 //! ⚠ Windows 那一臂只在交叉编译上编得过，**零真机读数**。

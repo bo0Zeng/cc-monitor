@@ -273,7 +273,7 @@ pub(crate) fn open_failure_word(e: &russh::Error) -> Option<&'static str> {
     }
 }
 
-/// 一行阶段（`stages=true` 时在 ack 之前出）。**形状与界面 `ssh_source::ConnectStage` 逐字段相同** ——
+/// 一行阶段（`stages=true` 时在 ack 之前出）。**形状与界面 `stream_source::ConnectStage` 逐字段相同** ——
 /// 界面那一侧原样反序列化进它自己的类型，对拍判据住界面那侧。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]

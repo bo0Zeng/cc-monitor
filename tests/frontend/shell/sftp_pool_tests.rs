@@ -10,7 +10,7 @@
 
 use super::*;
 use crate::inbound_client::{park, register, unregister, BackendHello, LOCAL_ORIGIN};
-use crate::ssh_source::{parse_frame, InboundFrame};
+use crate::stream_source::{parse_frame, InboundFrame};
 use futures::stream::StreamExt;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};

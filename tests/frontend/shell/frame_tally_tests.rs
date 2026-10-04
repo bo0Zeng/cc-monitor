@@ -64,11 +64,11 @@ fn w5vis_the_summary_is_silent_only_when_nothing_was_dropped() {
 
 /// 三条读帧循环各自接了几处：`(文件, FrameTally::new 处数, note_unparsed 处数, note_bad_utf8 处数)`。
 ///
-/// - `ssh_source.rs`：读任务一本（只数非 UTF-8 —— 它按替换字符读）· 主循环一本（只数认不出的）；
+/// - `stream_source/`：读任务一本（只数非 UTF-8 —— 它按替换字符读）· 主循环一本（只数认不出的）；
 /// - `local_backend_host.rs`：脱离载体那条循环一本，两样都数（非 UTF-8 行在那里整行丢）；
 /// - `local_backend.rs`：stdio 载体那条循环一本，两样都数。
 const WIRED: &[(&str, usize, usize, usize)] = &[
-    ("src/frontend/shell/src/ssh_source.rs", 2, 1, 1),
+    ("src/frontend/shell/src/stream_source/run.rs", 2, 1, 1),
     ("src/frontend/shell/src/local_backend_host.rs", 1, 1, 1),
     ("src/frontend/shell/src/local_backend.rs", 1, 1, 1),
 ];
@@ -122,12 +122,12 @@ fn w5vis_no_frame_reader_skips_an_unparsed_frame_silently() {
         ),
         (
             "local_backend_host.rs",
-            "let Some(f) = crate::ssh_source::parse_frame(line) else {",
+            "let Some(f) = crate::stream_source::parse_frame(line) else {",
             "tally.note_unparsed(",
         ),
         (
             "local_backend.rs",
-            "let Some(frame) = crate::ssh_source::parse_frame(&line) else {",
+            "let Some(frame) = crate::stream_source::parse_frame(&line) else {",
             "tally.note_unparsed(",
         ),
     ];
@@ -146,9 +146,7 @@ fn w5vis_no_frame_reader_skips_an_unparsed_frame_silently() {
     let stdio = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/local_backend.rs"
     ));
-    let ssh = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/ssh_source.rs"
-    ));
+    let ssh = crate::guard_support::stream_source_production();
     for (f, head, must) in SKIPS {
         let prod = if *f == "local_backend.rs" {
             &stdio
@@ -162,14 +160,14 @@ fn w5vis_no_frame_reader_skips_an_unparsed_frame_silently() {
         );
     }
     guard_core::find_pinned(&ssh, "tally.note_unparsed(line)")
-        .unwrap_or_else(|e| panic!("ssh_source 主循环记账那一句不是恰好一处：{e}"));
+        .unwrap_or_else(|e| panic!("stream_source 主循环记账那一句不是恰好一处：{e}"));
     assert!(
         guard_core::find_pinned(&ssh, "skipping unparseable/unknown frame").is_err()
             && !guard_core::contains_word(&ssh, "skipping"),
-        "ssh_source 里逐帧 warn 那一句还在 —— 又回到一帧一行、从不计数"
+        "stream_source 里逐帧 warn 那一句还在 —— 又回到一帧一行、从不计数"
     );
     // 正控：旧形必须被认出（量具没瞎）。
-    let old = "let Some(f) = crate::ssh_source::parse_frame(line) else {\n    continue;\n};\n";
+    let old = "let Some(f) = crate::stream_source::parse_frame(line) else {\n    continue;\n};\n";
     let block = block_after(old, SKIPS[1].1).expect("旧形切得出那一支");
     assert!(
         guard_core::find_pinned(block, "tally.note_unparsed(").is_err(),

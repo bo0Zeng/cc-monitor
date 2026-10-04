@@ -129,9 +129,7 @@ fn gp1_both_triggers_are_wired_once_and_the_footprint_lists_the_legacy_file() {
         1,
         "部署按钮那一处没扫（或扫了不止一次）"
     );
-    let src = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/ssh_source.rs"
-    ));
+    let src = crate::guard_support::stream_source_production();
     assert_eq!(
         src.matches("crate::ccm_legacy::on_remote_ready(cfg)")
             .count(),

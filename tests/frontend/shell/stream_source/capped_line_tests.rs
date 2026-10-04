@@ -1,7 +1,6 @@
 /// ★ P8c：**收帧那条路真的记了观测分类**，且只记变化、只作观测。
 ///
-/// 钉源码形状而不是跑一条真流：那条臂住在需要真远端连接的 `async fn` 里
-///（`classify_tmux_observation`〔散文墓碑〕 当年被提成纯函数正是因为这个）。
+/// 钉源码形状而不是跑一条真流：那条臂住在需要真远端连接的 `async fn` 里。
 ///
 /// ⚠ 全程用 `find_pinned`（恰好一处 + 两侧有边界），**不用裸 `contains`** ——
 /// `needle_anchor_registry` 是条**递减棘轮**，它逐字写着「不许把上限调上去让今天好过」。
@@ -19,9 +18,7 @@
 /// 就连「收到了」这件事都没留下 —— 而那正是最需要知道的一格。
 #[test]
 fn the_session_added_arm_is_not_silent() {
-    let prod = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/ssh_source.rs"
-    ));
+    let prod = crate::guard_support::stream_source_production();
     let at = guard_core::find_pinned(&prod, "session-added: [{host_label}] sid={sid}")
         .expect("`SessionAdded` 那一臂必须留下一行「收到了」——否则全链失败时问不出帧到没到");
     // ⚠ **改成局部窗口，不求全局唯一**：那句 emit 生产段有 2 处（另一处是**重宣告**那条路），
@@ -40,8 +37,7 @@ fn the_session_added_arm_is_not_silent() {
     );
 }
 
-// 「摘账在 retire 之前」那两条（`remove_tmux_line`〔散文墓碑〕· 摘账紧挨 retire）删了：monitor 不再存 tmux 原文，
-//   收割在后端会话账本里（`tests/backend/observe/session_ledger_tests.rs` 的「tmux 会话关了当场已结束」）。
+// monitor 不存 tmux 原文；收割在后端会话账本里（`tests/backend/observe/session_ledger_tests.rs` 的「tmux 会话关了当场已结束」）。
 
 /// ★ 与上一条**成对**：`SessionRemoved` 那一臂也不许静默。
 ///
@@ -60,9 +56,7 @@ fn the_session_added_arm_is_not_silent() {
 fn the_session_removed_arm_is_not_silent() {
     // 「死亡那跳到没到」今天是两帧：`session_removed`（内容流收口）与紧跟的 `session_state`（后端裁的去向）。
     //   两行都要留；去向那一行排在转交**之前**（转交卡住时也留下「收到了」）。
-    let prod = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/ssh_source.rs"
-    ));
+    let prod = crate::guard_support::stream_source_production();
     guard_core::find_pinned(&prod, "session-removed: [{host_label}] sid={sid}").expect(
         "`SessionRemoved` 那一臂必须留下一行「收到了」——`#60`（灰灯不出现）问的正是「死亡这件事走到哪一步丢了」。",
     );
@@ -210,7 +204,7 @@ async fn an_empty_line_is_a_line_not_an_eof() {
 //
 // 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。
 // 失效形状是现打过的：便宜近似 `src.split("\n#[cfg(test)]").next()` 只在
-// 「第一个测试模块之后再没有生产代码」时才对。`ssh_source.rs` 今天 4490 行，
+// 「第一个测试模块之后再没有生产代码」时才对。`stream_source/` 今天 4490 行，
 // 第一个测试模块在 **909** 行 ⇒ 那个近似把扫描面砍到前 908 行，
 // 而本文件要扫的东西全在它**后面**（逐针行号写在下面）。
 // ⇒ 扫描面一旦静默缩水，本文件的判据会**零命中地绿**。
@@ -225,8 +219,8 @@ fn the_shared_stripper_keeps_the_arms_this_guard_must_scan() {
     // ⚠ 刻意用**整句**日志格式串而不是 `session-added`：本文件的判据本来就走
     //    `find_pinned`（恰好一处 + 两侧有边界），针的大小要和它一致。
     guard_core::assert_stripper_keeps(
-        "ssh_source_capped_line_tests",
-        include_str!("../../../src/frontend/shell/src/ssh_source.rs"),
+        "stream_source::capped_line_tests",
+        &crate::guard_support::stream_source_raw(),
         &[
             "session-added: [{host_label}] sid={sid}",
             "session-removed: [{host_label}] sid={sid}",

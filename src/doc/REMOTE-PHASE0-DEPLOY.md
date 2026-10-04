@@ -75,7 +75,7 @@ copy target\aarch64-unknown-linux-musl\release\cc-monitor-backend  ..\src/fronte
 > **⚠ 这三条挡不住「根本没有内嵌目录」那一档**（Phase E 审计 R3 订正）。干净 clone / CI 里
 > `embedded-backends/` 不存在 ⇒ 三条 panic 一条都够不着，`BACKEND_BUILD_ID` 静默变 `"unknown"`。
 > 兜这一档的**不是** `build.rs`，是 monitor 侧的
-> `src/frontend/shell/src/ssh_source_stream_flag_gate_tests.rs::embedded_build_id_single_source_wired`（断言它 ≠ `"unknown"`）。
+> `tests/frontend/shell/stream_source/stream_flag_gate_tests.rs::embedded_build_id_single_source_wired`（断言它 ≠ `"unknown"`）。
 > 发版链上二者都够得着：`release.yml` 的 `build-backends` 现场生成二进制**并写清单**
 > （`:56-58` 从源码抠 `BUILD_ID`），`build-windows` `:113-118` 还会再对拍一次。
 

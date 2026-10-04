@@ -362,7 +362,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// 解锁条件逐条核过：步 1（`CCM_RBIND_TOKEN` 进环境）与步 3（铸币口 ＋ 本地半）已落，
 /// monitor 已在协商到 `rbind-token` 时发 `--with-rbind-token`。
 /// 线上面这一拍动了：① `files-create/-mkdir/-rename/-delete/-chmod/-write-text`
-/// 两个命令面各 ＋6（写面只从 `inbound.rs` 那一扇门进，见 `files::module_boundary_guard`）；
+/// 两个命令面各 ＋6（写面只从 `stream/inbound/` 那一扇门进，见 `files::module_boundary_guard`）；
 /// ② `hello.capabilities` 的 `rbind-token` 从此有人认、有人发。
 /// ★ re-embed 归发版那一拍（同 p2d…p2n 的登记）；本机 `--native` 那份由合并那一拍重打。
 ///
@@ -659,7 +659,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p5n-files-toctou**（2026-09-28，FIX5 合并那一拍）：行为 —— 文件管理写面闭 TOCTOU：不覆盖改名 `platform::fs::rename_noreplace`（Linux `renameat2`）· 复制与新建先写旁名再不覆盖上位 · 第三层开文件全程 `O_NOFOLLOW`；文案扫描补 CSS `content:` / 入口 HTML 与 R1 认形状。子命令没变。
 ///
 /// ★★★ **p5o-files-grep-search-merge**（2026-09-28，J15 ＋ FILES3 合并那一拍）：新帧命令 `history-search-merge`（多机搜索合并排序进本机后端，`search-core::sort_by_recency`）·
-/// `files-grep`（文件管理器按内容搜：不跟链接、不跨文件系统、命中文件数与读字节有上界、可撤；另有 CLI 面）· 删无调用者的 `ssh_source::winner_address`。
+/// `files-grep`（文件管理器按内容搜：不跟链接、不跨文件系统、命中文件数与读字节有上界、可撤；另有 CLI 面）· 删无调用者的 `stream_source::winner_address`。
 ///
 /// ★★★ **p5p-probe-said-link-fallback**（2026-09-28，FIX5 续合并那一拍）：行为 / 协议 —— 盘不认 `RENAME_NOREPLACE` 时普通文件走 `link` ＋ `unlink`、目录拒并出声；
 /// `remote-probe` 结局那一行改人话（版本 · 能用 / 做不到几项 · 往返毫秒）＋ `backendGaps`。子命令没变。

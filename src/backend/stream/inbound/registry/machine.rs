@@ -359,7 +359,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // `~/.ssh/config` 的解读（`dial/ssh_config.rs`，从 monitor `ssh_source.rs` 原样搬来）。
+    // `~/.ssh/config` 的解读（`dial/ssh_config.rs`，从 monitor `stream_source/` 原样搬来）。
     //   阻塞档：读一份文件 ／ 起 `ssh -G`（只读配置、不建连接）并等它退出。
     CommandSpec {
         name: "ssh-config-aliases",

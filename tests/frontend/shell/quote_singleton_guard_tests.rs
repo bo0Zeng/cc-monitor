@@ -13,7 +13,7 @@ const ESCAPE_PLAIN: &str = r#""'\\''""#;
 /// POSIX shell 里「在单引号串中间嵌一个单引号」**恰好只有两种**做法：
 /// 闭合后用反斜杠转义（`'\''`），或闭合后用双引号包一个单引号（`'"'"'`）。
 /// 两种都正确、都常见。本守卫原来只认第一种 ——
-/// 实测：往 `ssh_source.rs` 加一份
+/// 实测：往 `stream_source/` 加一份
 /// `format!("'{}'", s.replace('\'', "'\"'\"'"))`（**功能完整的第二份实现**），
 /// 四条判据**全绿**；换成第一种写法则当场红。
 ///
@@ -139,7 +139,7 @@ fn the_sole_home_really_holds_the_implementation() {
     );
 }
 
-// 「monitor 侧的入口逐字节对拍」那一条删了：最后一个入口（`ssh_source` 里那层转调壳）随它唯一的生产调用方
+// 「monitor 侧的入口逐字节对拍」那一条删了：最后一个入口（`stream_source` 里那层转调壳）随它唯一的生产调用方
 //   （monitor 侧 Gate 1 前检，THIN 第 3 件删）零调用、一起删 ⇒ monitor 侧零个 quote 入口，要 quote 直调内核。
 //   更早摘掉的两个：`launch::posix_quote`〔散文墓碑〕（FIX4，远端 ssh 外壳随渲染进了本机后端）· `acct_iso_deploy::sq`（MIG-3a）。
 //   「不逃逸的第二份实现」那一形照旧由上面的零命中守卫 ＋ 唯一的家那两条挡（当年只比一个入口时，把 `posix_quote`〔散文墓碑〕

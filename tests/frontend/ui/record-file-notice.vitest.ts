@@ -5,7 +5,7 @@
  * 「原地整份改写 …… 从 0 重读并出声（与截短同一句话族）」。
  *
  * 前端认的三个取值（`record-file-notice.ts::RECORD_FILE_CHANGES`）== monitor 交出来的那三个
- * （`src/frontend/shell/src/ssh_source.rs::FileChange::as_wire` 源码里现抠，异源）—— 两向相等；再各有一句文案（表里现取）。
+ * （`src/frontend/shell/src/stream_source/local.rs::FileChange::as_wire` 源码里现抠，异源）—— 两向相等；再各有一句文案（表里现取）。
  * 正控：抠取器在合成语料上认得出三臂。
  */
 import { describe, expect, it } from "vitest";
@@ -29,7 +29,7 @@ describe("〔FW1〕记录文件出声的线上字面量", () => {
   });
 
   it("前端认的 == monitor 交的（两向），每一个都有一句文案", () => {
-    const src = readFileSync(join(__dirname, "../../../src/frontend/shell/src/ssh_source.rs"), "utf8");
+    const src = readFileSync(join(__dirname, "../../../src/frontend/shell/src/stream_source/local.rs"), "utf8");
     const wire = asWireLiterals(src);
     expect(wire.length, "monitor 那一侧一个都没抠到 —— 抠取器坏了").toBeGreaterThan(0);
     expect([...RECORD_FILE_CHANGES].sort()).toEqual(wire);

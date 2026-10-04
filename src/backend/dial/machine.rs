@@ -2,7 +2,7 @@
 //!
 //! 界面交来的是它手里那台机器的配置（设置页表单里**可能还没保存**的那一份 · 已保存的那一份 · 跳板那一台），形状就是界面
 //! `remote-config.ts` 的那一格（camelCase：`host` · `label` · `port` · `user` · `keyPath` · `hostKeyFingerprint` · `addresses` · `jump`）。
-//! 规则从 monitor `dial_host::request` / `ssh_source::RemoteConfig` 原样搬来：
+//! 规则从 monitor `dial_host::request` / `stream_source::RemoteConfig` 原样搬来：
 //!
 //! - 地址：`host` 排首，`addresses` 依次追加（`host` / `host:port` / `[v6]:port` / 裸 v6），按 `(host, port)` 去重保序；
 //! - 指纹：表单那一格有 ⇒ 用它；没有 ⇒ 已保存那一份、**且同一个 host** 的那一格（换了 host 不许继承）；

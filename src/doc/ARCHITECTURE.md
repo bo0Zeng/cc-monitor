@@ -51,7 +51,7 @@ cc-monitor 是 Claude Code 会话的**观察者和启动器**：`claude` 跑在�
                  ▼
    本机：管道  ·  远端：本机后端持有的那条 SSH 长连接（隧道）
                  ▼
-   monitor ssh_source.rs 的 LineIntake：攒批 · 静默窗 · 续点
+   monitor stream_source/batch.rs 的 LineIntake：攒批 · 静默窗 · 续点
    （本机那条经 local_lines.rs 进同一个收口）
                  ▼
    event_replay.rs：重放缓冲（每个会话只留尾巴）· 大小分流 · 就绪点
@@ -60,7 +60,7 @@ cc-monitor 是 Claude Code 会话的**观察者和启动器**：`claude` 跑在�
                 → record-timeline.ts（按 seq 插入）→ stream.ts → render.ts → DOM
 ```
 
-- **同一个收口**：远端那台后端的 `line` 帧沿 SSH 长连接回来，交给 `ssh_source.rs` 的 `LineIntake`；本机后端的帧走管道，进的是同一个收口。换的是源，不是管线。
+- **同一个收口**：远端那台后端的 `line` 帧沿 SSH 长连接回来，交给 `stream_source/batch.rs` 的 `LineIntake`；本机后端的帧走管道，进的是同一个收口。换的是源，不是管线。
 - **seq 是后端给的行号**，前端 `RecordTimeline` 按 seq 二分插入，后端交格的先后不影响画面。工具组合并是插入后的后处理：看左邻居是不是工具组。
 - **起停与状态也在这条流里**：会话账本整本在后端（`observe/session_ledger`），帧 `session_added` · `session_state` · `sessions_replayed` 随 `session-lines` 一起来，起停帧不吃 credit、不许丢。monitor 只留一份「那台说过的成品」缓存（`session_book.rs`），它自己唯一知道的事实是「到那台的连接断了」，那时那台的成品作废、界面说「说不清」。
 - **背压**：前端给 credit；实时行没有 credit 就丢，并在原位报 gap，前端按行号向那台后端补（帧命令 `history-lines`）。

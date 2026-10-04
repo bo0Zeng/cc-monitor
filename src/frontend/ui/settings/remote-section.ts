@@ -65,7 +65,7 @@ import { noteLocalCcm } from "./machine-aliases"; // 本机 ccm 那一格的唯�
 export { shouldShowResetFingerprint };
 import { makeInfoIcon } from "./info-icon";
 
-// C04d 批 5c：五个类型换成生成物（源 `ssh_source.rs`）。手写版与生成物**逐字等价** ⇒ 零漂移。
+// C04d 批 5c：五个类型换成生成物（源 `stream_source/`）。手写版与生成物**逐字等价** ⇒ 零漂移。
 import { importSshHosts, listSshHostAliases, resolveSshHost, type ImportGroup, type ImportMember } from "../ssh-config-reads";
 
 // E80（2026-08-01）：`describeStage` 与 `ConnectStage` 的再导出**搬去 `machine-card.ts`**。

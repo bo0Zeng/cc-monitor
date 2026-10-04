@@ -18,7 +18,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 use crate::copy_table::copy_text;
 use crate::dial_host::DialStream;
-use crate::ssh_source::RemoteConfig;
+use crate::stream_source::RemoteConfig;
 
 /// 起子进程之后等它把口 bind 上：开隧道失败（远端口上还没人）⇒ 隔一会儿再开，封顶这么多次。
 const TUNNEL_TRIES: u32 = 30;
@@ -69,7 +69,7 @@ impl AttachErr {
 /// 读 `--resident-ensure` / `--resident-stop` 那一趟的结果（纯函数）：退出 0 ⇒ stdout 那一行；退出 2 ⇒ stderr 的 `{code,message}`。
 /// `unsupported`（那台脱离不了，非 unix）明说「远端只支持 Unix」；老后端 ⇒ 「太旧」—— 都是失败，没有回落。
 pub(crate) fn parse_answer(
-    exec: &crate::ssh_source::RemoteExec,
+    exec: &crate::stream_source::RemoteExec,
 ) -> Result<serde_json::Value, AttachErr> {
     if exec.stdout.contains(OLD_BACKEND_MARKER) {
         return Err(copy_text("rsRemoteResident.ensure.tooOld", &[]).into());
@@ -127,14 +127,14 @@ async fn ensure(cfg: &RemoteConfig, replace: bool) -> Result<Ensured, AttachErr>
     // `ccm -- --resident-ensure`（打头的 `--` 让那台的 `ccm` 当后端用）。
     let mut cmd = format!(
         "{} {} --resident-ensure",
-        crate::ssh_source::BACKEND_CMD,
+        crate::stream_source::BACKEND_CMD,
         crate::local_backend::BACKEND_SEP
     );
     if replace {
         cmd.push_str(" --replace");
     }
     let exec =
-        crate::ssh_source::connect_and_exec_capture(cfg, &cmd, Some(OLD_BACKEND_MARKER)).await?;
+        crate::stream_source::connect_and_exec_capture(cfg, &cmd, Some(OLD_BACKEND_MARKER)).await?;
     Ok(parse_ensured(&parse_answer(&exec)?)?)
 }
 
@@ -222,7 +222,7 @@ async fn read_line(
     hello: bool,
 ) -> Result<String, String> {
     let mut buf = Vec::new();
-    let got = crate::ssh_source::read_capped_line(
+    let got = crate::stream_source::read_capped_line(
         r,
         &mut buf,
         // hello / attach 应答那一行：与本机宿主同一个上限（同一条监听协议）。
@@ -230,7 +230,7 @@ async fn read_line(
     )
     .await;
     match got {
-        Ok(crate::ssh_source::CappedLine::Line) => Ok(String::from_utf8_lossy(&buf)
+        Ok(crate::stream_source::CappedLine::Line) => Ok(String::from_utf8_lossy(&buf)
             .trim_end_matches(['\n', '\r'])
             .to_string()),
         Ok(_) if hello => Err(copy_text("rsRemoteResident.handshake.helloCut", &[])),
@@ -347,7 +347,7 @@ pub(crate) async fn attach(cfg: &RemoteConfig, flags: (bool, bool)) -> Result<Re
         let theirs = hello_build(&hello)?;
         // 换不换问本机常驻后端（判定只在后端），这里只照做。
         let verdict = ask_verdict(
-            crate::ssh_source::EXPECTED_BACKEND_BUILD_ID,
+            crate::stream_source::EXPECTED_BACKEND_BUILD_ID,
             &theirs,
             replaced,
         )
@@ -427,7 +427,7 @@ pub struct StopAnswer {
 }
 
 /// 读 `--resident-stop` 那一趟（纯函数）：三个词之外的一律是错，不猜（本机那一趟也经它，`local_backend_host::run_resident_stop`）。
-pub(crate) fn read_stop(exec: &crate::ssh_source::RemoteExec) -> Result<StopAnswer, String> {
+pub(crate) fn read_stop(exec: &crate::stream_source::RemoteExec) -> Result<StopAnswer, String> {
     let v = parse_answer(exec).map_err(AttachErr::said)?;
     let stopped = match v["stopped"].as_str() {
         Some("graceful") => StopWord::Graceful,
@@ -449,11 +449,11 @@ pub(crate) async fn stop(cfg: &RemoteConfig) -> Result<StopAnswer, String> {
     // 落点固定、打头的 `--` 让那台的 `ccm` 当后端用。
     let cmd = format!(
         "{} {} --resident-stop",
-        crate::ssh_source::BACKEND_CMD,
+        crate::stream_source::BACKEND_CMD,
         crate::local_backend::BACKEND_SEP
     );
     let exec =
-        crate::ssh_source::connect_and_exec_capture(cfg, &cmd, Some(OLD_BACKEND_MARKER)).await?;
+        crate::stream_source::connect_and_exec_capture(cfg, &cmd, Some(OLD_BACKEND_MARKER)).await?;
     read_stop(&exec)
 }
 

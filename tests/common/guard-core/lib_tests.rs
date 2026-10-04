@@ -194,7 +194,7 @@ fn keeps_production_code_that_follows_a_mid_file_test_module() {
 
 /// ★ U8a-2a 追加：把 monitor 侧那个便宜近似与本剥法**摆在同一份输入上对照**。
 ///
-/// 输入照抄 `ssh_source.rs` 的形状：第一个测试模块在中段，真正要扫的生产代码在它**后面**。
+/// 输入照抄 `stream_source/` 的形状：第一个测试模块在中段，真正要扫的生产代码在它**后面**。
 /// 近似做法会把后半段整个漏掉 —— 这条把「为什么要有这个 crate」变成一句可执行的话。
 #[test]
 fn the_cheap_split_approximation_would_lose_the_later_production_code() {
@@ -1185,7 +1185,7 @@ fn the_tree_walk_floor_actually_bites() {
 
 // ── P28D1-selftest：`assert_stripper_keeps` 的行为自检 ──
 
-/// 一份**照 `ssh_source.rs` 形状**造的夹具：第一个测试模块在中段，
+/// 一份**照 `stream_source/` 形状**造的夹具：第一个测试模块在中段，
 /// 真正要扫的生产代码在它**后面**。锚点表里的针必须住在后半段。
 fn p28_fixture() -> &'static str {
     "fn early() {}\n\

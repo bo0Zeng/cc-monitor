@@ -14,7 +14,7 @@
 
 use std::sync::OnceLock;
 
-/// 一个 `tap` 帧（`ssh_source::InboundFrame::Tap` 的载荷）。
+/// 一个 `tap` 帧（`stream_source::InboundFrame::Tap` 的载荷）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tap {
     pub stream: String,
@@ -33,7 +33,7 @@ pub enum TapBody {
 }
 
 /// 后端 `wire::TapEnd` 的两个线上字面量（**双写点**：后端那侧由 `wire_tests::tap_frames_have_exactly_these_bytes`
-/// 钉精确字节，这一侧由 `ssh_source_parse_frame_tests` 用同一串帧喂 `parse_frame` 钉）。
+/// 钉精确字节，这一侧由 `stream_source::parse_frame_tests` 用同一串帧喂 `parse_frame` 钉）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TapEnd {
     Done,

@@ -33,7 +33,7 @@
 //! # ★ 它一上岗就抓到**两个**真节拍器，而且我摸底时都数漏了
 //!
 //! 1. `bind.rs::run_heartbeat` = `loop { sleep(10s); cleanup_dead(); }` —— 无限、周期、无上限。
-//! 2. ★★ `ssh_source.rs` 的 **daemonless 数据轮询**（`BACKENDLESS_POLL_INTERVAL = 2s`）——
+//! 2. ★★ `stream_source/` 的 **daemonless 数据轮询**（`BACKENDLESS_POLL_INTERVAL = 2s`）——
 //!    **它与定框 C7（没有 daemonless）和 C8（不许轮询）直接冲突**，而且是本工作区的正题。
 //!    〔`K-R59` 09-11：**这一条已经退役** —— 定框 `K35` 把那一档整个取消。本段记的是
 //!     「它一上岗抓到了什么」，不是今天的清单；今天的清单以 `REGISTERED` 与
@@ -42,8 +42,8 @@
 //! **两个都此前完全没有被任何账本记过**：`polling_registry` 按设计不管 Rust 侧，
 //! `no_timer_guard` 只管 backend crate ⇒ 它们正落在「两个护栏各自划了范围、中间那块没人管」里。
 //!
-//! ⚠ 而且**我自己摸底时数漏了**：手工 grep 数出 8 处 `sleep`、`ssh_source` 只数到 1 处；
-//! 本表首跑用 `guard_core::production_code` 正确剥段后数出 **13 处**、`ssh_source` **4 处**、
+//! ⚠ 而且**我自己摸底时数漏了**：手工 grep 数出 8 处 `sleep`、`stream_source` 只数到 1 处；
+//! 本表首跑用 `guard_core::production_code` 正确剥段后数出 **13 处**、`stream_source` **4 处**、
 //! 还多出整个 `lib.rs` 的 3 处。**人数出来的和机器数出来的不一样** ——
 //! 与 `quote_singleton_guard` 那次（我数四份、它数五份）完全同形。
 //!

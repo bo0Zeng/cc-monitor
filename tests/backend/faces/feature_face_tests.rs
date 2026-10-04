@@ -9,7 +9,7 @@
 use super::*;
 
 /// 本族的帧命令 —— **要求点名的**那几样（任务列表 · 插件市场），写成帧面名。
-/// 它是判据的**异源**那一侧：下面那条从 `inbound.rs` 源码里数「谁把活交给了
+/// 它是判据的**异源**那一侧：下面那条从 `stream/inbound/` 源码里数「谁把活交给了
 /// `feature_face::answer`」，两边必须相等。
 // ＋ `mcp-read`（MCP 列表成品，读法住适配层）。
 // ＋ `hooks-diag`（cc-bus 钩子诊断成品，本体 `observe/cc_bus_hooks.rs`）。

@@ -578,7 +578,7 @@ fn dispatch_over_a_frame_sequence() {
 /// `accounts_changed`：认得出（无载荷，多余字段忽略）；
 /// 远端流收到它 ⇒ 交给前端（恰好一处）。
 /// 〔「前端只有两个动作」〕交法从裸 Tauri 事件（`remote-backend-ready`）换成通道订阅：
-/// 那一臂调 `replay.accounts_changed`（订了这台 `accounts-changed` 的订阅收一格 `Frame`），且**整份** `ssh_source.rs`
+/// 那一臂调 `replay.accounts_changed`（订了这台 `accounts-changed` 的订阅收一格 `Frame`），且**整份** `stream_source/`
 /// 生产段里那个裸事件的常量名零处（零命中带正控：同一个找法认得出这一臂真在调的那个名字）。
 #[test]
 fn accounts_changed_is_recognised_and_reaches_the_frontend_as_ready() {
@@ -591,9 +591,7 @@ fn accounts_changed_is_recognised_and_reaches_the_frontend_as_ready() {
         Some(InboundFrame::AccountsChanged),
         "多余字段该被忽略（additive）"
     );
-    let prod = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/ssh_source.rs"
-    ));
+    let prod = crate::guard_support::stream_source_production();
     let arm = guard_core::find_pinned(&prod, "Some(InboundFrame::AccountsChanged) =>")
         .expect("流循环里不是恰好一条 accounts_changed 的臂");
     // 臂体取到下一条 `Some(InboundFrame::` 臂为止（按字符切，不按字节数切 —— 中文注释会切在字中间）。
@@ -609,7 +607,7 @@ fn accounts_changed_is_recognised_and_reaches_the_frontend_as_ready() {
     let whole = guard_core::strip_comment_lines(&prod);
     assert!(
         !guard_core::contains_word(&whole, &dead),
-        "`{dead}` 又出现在 ssh_source 生产段里 —— 那个裸事件回来了"
+        "`{dead}` 又出现在 stream_source 生产段里 —— 那个裸事件回来了"
     );
     assert!(
         guard_core::contains_word(&whole, "accounts_changed"),
@@ -802,7 +800,7 @@ fn loc1b_the_pid_on_session_added_is_read_only_when_it_is_a_real_pid() {
 /// `why` 认不出 / 缺字段 ⇒ 整帧跳过（不猜成哪一种）。
 #[test]
 fn the_session_file_frames_are_known_and_an_unknown_why_is_dropped() {
-    use crate::ssh_source::FileChange;
+    use crate::stream_source::FileChange;
     assert_eq!(
         parse_frame(r#"{"kind":"session_file_gone","session_id":"s","path":"/p/s.jsonl"}"#),
         Some(InboundFrame::SessionFileNotice {
@@ -843,9 +841,7 @@ fn tasks_changed_is_recognised_and_reaches_the_frontend_stream() {
         Some(InboundFrame::TasksChanged { sid: "s1".into() })
     );
     assert_eq!(parse_frame(r#"{"kind":"tasks_changed"}"#), None);
-    let prod = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/ssh_source.rs"
-    ));
+    let prod = crate::guard_support::stream_source_production();
     assert_eq!(
         prod.matches("replay.tasks_changed(").count(),
         2,

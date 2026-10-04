@@ -23,7 +23,7 @@ fn repo_root() -> PathBuf {
 ///
 /// `§8` 步 3 逐字：「把传输面（SSH / SFTP / 池 / 重连）从 `monitor` 的 Rust 半
 /// **圈出来**，业务先不动」。现打的结论是：**那三份今天一份都圈不进来** ——
-/// `ssh_source.rs` / `sftp.rs` / `sftp_pool.rs` 的**公开面**上都命名了业务概念，
+/// `stream_source/` / `sftp.rs` / `sftp_pool.rs` 的**公开面**上都命名了业务概念，
 /// 而「**`C1` 的豁免必须为零**」⇒ 不许开口子，只能不圈 ＋ 写清。
 /// 逐份咬在哪（名字 · 处数 · 判词）写在那份读数里，**不在这里抄第二份**。
 /// ⚠ 〔2026-09-21 换射程后现打〕**三份一份都没掉到零** —— 处数掉了约 91%，
@@ -204,12 +204,12 @@ const REGISTERED: &[(&str, &str)] = &[
          ⚠ 它**不买**对端撤活与 `subscribe`（webview 这一侧本拍零条流）。",
     ),
     // ── `Q6` 选甲的收回：传输面洗干净的那两份──────────
-    //    ⚠ 四份候选里 `ssh_source.rs` / `pubkey.rs` **不收** —— 理由逐份住 `TRANSPORT_LEFT_OUTSIDE`；
+    //    ⚠ 四份候选里 `stream_source/` / `pubkey.rs` **不收** —— 理由逐份住 `TRANSPORT_LEFT_OUTSIDE`；
     //    `sftp_pool.rs` 是 `F7c` 独占，下一拍。
     (
         "src/comms/inward/ssh_link.rs",
         "面 A 的 **SSH 链路**那一段：在一条**交给它的**管子上读拨号代理的阶段行与 ack、收全结果 —— \
-四样里的「流」与「载荷」（ack 之后的字节它一个都不看）。它原来埋在 `ssh_source.rs` 里；\
+四样里的「流」与「载荷」（ack 之后的字节它一个都不看）。它原来埋在 `stream_source/` 里；\
          C2 把 SSH 的全部活搬进后端的拨号代理之后，界面侧与 SSH 有关的**传输**就只剩这一件。\
          起代理进程、读配置、定期限都在宿主 `dial_host.rs`（不是成员，做的正是 `C4`/`C5`/`X2` 不许成员做的事）。\
          ⚠ 它**不买**「代理拨得对」—— 那归后端 `dial_tests` 与读数脚本 `C2-dial-loopback.py`。",
@@ -2629,12 +2629,12 @@ const RELAY_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
 ///
 /// # 🔴 它不是「多一张表」，它补的是一个现打出来的洞
 ///
-/// 〔步 4 剩余那一路，2026-09-22〕死值验：把 `ssh_source.rs` 那处读环境变量**摘掉**
+/// 〔步 4 剩余那一路，2026-09-22〕死值验：把 `stream_source/` 那处读环境变量**摘掉**
 /// ⇒ 这一族当时那十六条**一条都没红**（那几份不是成员、也不在任何一张表里）。
 /// ⇒ 「面 A 还剩几处读盘」这件事**此前完全不在执行链上**：清掉一处、或者再长出一处，
 /// 都没有任何东西会说话。本条就是那条缺掉的腿。
-/// （同一刀真红的是**另一族** `ssh_source_dial_move_judge`，而它是**正着**钉住那处
-/// 环境变量必须在 ⇒ 清它是改设计，不是做清理。这一格的判词写在下面 `ssh_source.rs` 那一行。）
+/// （同一刀真红的是**另一族** `stream_source::dial_move_judge`，而它是**正着**钉住那处
+/// 环境变量必须在 ⇒ 清它是改设计，不是做清理。这一格的判词写在下面 `stream_source/` 那一行。）
 ///
 /// # 人群从哪来（**不是**「扫哪个目录」）
 ///
@@ -2653,7 +2653,7 @@ const RELAY_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
 /// 那个数**不写在任何一句散文里** —— 它是这张表第三列的**处数合计**，
 /// 由下面那条判据与 `expected_c4_sites` 做**相等**断言（不是地板）。
 /// ⇒ 清掉一处、或者再多长一处，两个方向都当场红。
-/// 〔本拍死值验：摘掉 `ssh_source.rs` 那处读环境变量 ⇒ 逐字
+/// 〔本拍死值验：摘掉 `stream_source/` 那处读环境变量 ⇒ 逐字
 ///  「不见了的（表写了而不咬）：["读环境OS"]」；往 `sftp.rs` 注一处 ⇒ 逐字
 ///  「多出来的（表没写）：["读字节"]」。〕
 ///
@@ -2664,7 +2664,7 @@ const RELAY_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
 /// ⚠ 这张表**不是**豁免清单，也**不是**待办清单：它只保证「为什么进不来」这段理由**不是假的**。
 const TRANSPORT_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
     (
-        "src/frontend/shell/src/ssh_source.rs",
+        "src/frontend/shell/src/stream_source/",
         &["C1", "X2"],
         &[],
         "**传输那一段已经搬出去了**：SSH 的全部活进了后端的拨号代理，\
@@ -2773,7 +2773,7 @@ fn criteria_biting(rel: &str, prod: &str) -> BTreeSet<&'static str> {
 ///
 /// # 🔴 为什么还要**判词那一层**（2026-09-22 被死值验逼出来的一格）
 ///
-/// 第一版只比**判据编号**的集合。死值验第一刀当场证否：`ssh_source.rs` 有两个 `C4` 判词，
+/// 第一版只比**判据编号**的集合。死值验第一刀当场证否：`stream_source/` 有两个 `C4` 判词，
 /// 摘掉其中一个之后编号那个集合**一个字都不变** ⇒ 十七条**全绿**。
 /// ⇒ 「集合粒度」在「少了一处」那个方向与**地板**一样瞎，而本仓正是反复栽在那上面。
 /// 本条因此多两层：逐份的 `C4` **判词**两向集合相等 ＋ 全表判词**处数**相等，
@@ -2829,15 +2829,24 @@ fn assert_left_outside(
     let mut c4_sites = 0usize;
     let mut diverged: Vec<String> = Vec::new();
     for (rel, ids, c4, why) in table {
-        let p = root.join(rel);
-        let raw = std::fs::read_to_string(&p).unwrap_or_else(|e| {
-            panic!(
-                "表里写着 `{rel}`（理由：{why}），而它读不出来：{e}\n\
-                 ⇒ 路径漂了 / 文件搬走了。**不许当成「那就少判一份」** ——\n\
-                 人群缩水与「全都合规」在终端上一模一样。"
-            )
-        });
-        let prod = production_of(rel, &raw);
+        // 以 `/` 结尾的那一格是一个目录（会话流来源拆成了一个目录）：整个目录的生产段当一份判。
+        let prod = if rel.ends_with('/') {
+            assert_eq!(
+                *rel, "src/frontend/shell/src/stream_source/",
+                "目录那一格只认会话流来源那个目录（理由：{why}）"
+            );
+            crate::guard_support::stream_source_production()
+        } else {
+            let p = root.join(rel);
+            let raw = std::fs::read_to_string(&p).unwrap_or_else(|e| {
+                panic!(
+                    "表里写着 `{rel}`（理由：{why}），而它读不出来：{e}\n\
+                     ⇒ 路径漂了 / 文件搬走了。**不许当成「那就少判一份」** ——\n\
+                     人群缩水与「全都合规」在终端上一模一样。"
+                )
+            });
+            production_of(rel, &raw)
+        };
         assert!(
             !prod.trim().is_empty(),
             "`{rel}` 的生产段剥完是空的 —— 剥法坏了，下面那条会在两个空集之间比对（恒绿）"
@@ -2856,7 +2865,7 @@ fn assert_left_outside(
         }
         // 🔴 **判词那一层也要两向相等** —— 只比判据编号的话，一份文件有两个 `C4` 判词时
         //    摘掉其中一个，编号那个集合**一个字都不变** ⇒ 「少了一处读盘」在盘上看不出来。
-        //    〔本拍死值验第一刀逮到的正是这一形：摘掉 `ssh_source` 那处读环境变量，
+        //    〔本拍死值验第一刀逮到的正是这一形：摘掉 `stream_source` 那处读环境变量，
         //     只比编号时十七条全绿。地板在「变少」方向是瞎的，集合粒度在这里也是。〕
         let want_c4: BTreeSet<&str> = c4.iter().copied().collect();
         let got_c4 = disk_and_env_tags_in(&prod);
@@ -2980,11 +2989,11 @@ fn the_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_na
 ///   写在表里各自那一行。
 #[test]
 fn the_transport_candidates_left_outside_are_blocked_by_exactly_the_criteria_the_prose_names() {
-    // `C4` 判词处数 5 → **4**：少的是 `ssh_source.rs` 的「读环境OS」——
+    // `C4` 判词处数 5 → **4**：少的是 `stream_source/` 的「读环境OS」——
     //   拨号代理二进制的解析（`CCM_DIAL_PROXY`）随拨号搬去了宿主 `dial_host.rs`（不是成员，那一处本来就归它）。
     // `C4` 判词处数 4 → **2**：少的是 `sftp_pool.rs` 的「开文件」「以选项开」——
     //   用户那次传输的本地那一头随传输台搬进了本机常驻后端（`control/transfer.rs`）。份数仍是 4（它还是候选，只剩 `X2`）。
-    // `C4` 判词处数 2 → **1**：少的是 `ssh_source.rs` 的「读文本」（读 `~/.ssh/config`）——
+    // `C4` 判词处数 2 → **1**：少的是 `stream_source/` 的「读文本」（读 `~/.ssh/config`）——
     //   「从 ssh config 导入」搬进后端 `dial/ssh_config.rs`。份数仍是 4。
     // 4 → 3：`pubkey.rs` 随公钥推送进本机后端删了。
     // 判词处数 1 → 0：那一处读盘就是 `pubkey.rs` 读本机 `.pub`（它搬进了本机后端）。

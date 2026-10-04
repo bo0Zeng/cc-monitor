@@ -15,7 +15,7 @@ const SOLE_HOME: &str = "src/backend/control/gate_rules.rs";
 /// （`starts_with("cc-")` 与 `rsplit_once("-cc-")`）——
 /// **恰好漏掉了今天真正在用的那个主形态**（S4b-3b 把命名从 `cc-<X>` 反转成 `<X>-cc`）。
 ///
-/// 后果实测：往 `ssh_source.rs` 加一份
+/// 后果实测：往 `stream_source/` 加一份
 /// `fn is_ours(n: &str) -> bool { n.ends_with("-cc") && n.len() > 3 }`
 /// —— 一份**只实现现行形态**的第二判定 —— 四条判据**全绿**。
 /// 这正是本模块头注自己写着「身份门漂了是安全洞」要防的东西。

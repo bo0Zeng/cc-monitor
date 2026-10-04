@@ -46,7 +46,7 @@
 //!    而 `std::process::Child` 也没有 `kill_on_drop` —— 那一格今天由各落点自己的
 //!    `wait()` / 显式 `kill()` 承担，**本模块不假装它在那边也买到了同一样东西**。
 //!    tokio 那一侧不同：[`spawn_managed_tokio`] 的 `JobKillOnClose` 会真的设
-//!    `kill_on_drop(true)`（那是 `cc_bus` / `ssh_source` 今天就有的做法）。
+//!    `kill_on_drop(true)`（那是 `cc_bus` / `stream_source` 今天就有的做法）。
 //! 3. **`Lifetime::Detached` 在 Windows 上不加任何 flag。** `process_group(0)` 是 POSIX 的东西；
 //!    Windows 那边「跟不跟着我死」由**有没有进 Job** 决定，而 `Detached` 就是「不进 Job」。
 //!    刻意不顺手加 `CREATE_NEW_PROCESS_GROUP` —— 那会改掉 `launch_powershell_window`
@@ -104,7 +104,7 @@ pub enum Lifetime {
 /// 今天真实存在的是**四**格：还有「不接管，跟着界面进程的 stderr 走」
 /// （`dial_host.rs::open` 逐字写着为什么）与「接出来当返回值读」
 /// （四处 `.output()`：`local_query` · `profile_installer` · `launch::ssh_client_available` ·
-/// `ssh_source::resolve_ssh_host`〔散文墓碑〕）。
+/// `stream_source::resolve_ssh_host`〔散文墓碑〕）。
 ///
 /// ⇒ 少这两格的话，那六处要么被迫改行为（拿现有两格之一硬套），要么绕开这个出口 ——
 /// **而后者正是本模块在关的那扇门**。两格换六处绕行，不划算。
@@ -322,7 +322,7 @@ impl std::ops::DerefMut for ManagedTokioChild {
 ///
 /// ⚠ **`JobKillOnClose` 在这一侧比同步那侧多买一样**：`kill_on_drop(true)`。
 /// 那是 tokio 的 `Child` 才有的东西（它默认**不**因句柄被 drop 而杀子进程），
-/// 而 `cc_bus` / `ssh_source` 今天就靠它 —— 三条（Job · `kill_on_drop` · 显式 kill）
+/// 而 `cc_bus` / `stream_source` 今天就靠它 —— 三条（Job · `kill_on_drop` · 显式 kill）
 /// 都留着：Job 没建成时另外两条至少还在。
 // 今天零生产调用方（唯一那一处 —— cc-bus 驾驶舱的本机 shell 读 —— 随读面改问后端删了）；
 //   它是唯一出口的 async 那一格（`spawn_managed_exit_sites` 钉着三个出口都在），下一处 tokio 起进程要走它。

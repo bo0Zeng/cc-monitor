@@ -236,7 +236,7 @@ fn forget_also_drops_the_session_accounting() {
 
 /// 两档那一套的名字：它们在任何一份生产代码里出现 = 分档（或那条登记命令）长回来了。
 /// 运行时拼，免得本文件自己的散文命中自己（本文件不在扫描面里，但 `include_str` 之类将来可能把它拉进来）。
-/// ⚠ 那张表的字段名（裸的 `tail_only`）**不进**针表：流模式旗标 `--tail-only` 在 `ssh_source.rs` 里也叫这个名字，
+/// ⚠ 那张表的字段名（裸的 `tail_only`）**不进**针表：流模式旗标 `--tail-only` 在 `stream_source/` 里也叫这个名字，
 /// 与重放缓冲无关（首跑现打：它是唯一一处命中）。那张表删掉之后编译器就管着它。
 fn two_tier_needles() -> [String; 2] {
     [

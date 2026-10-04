@@ -489,7 +489,7 @@ fn no_cross_half_edge_lives_in_production_code() {
     //   ⑤–⑯ 12 个判据**整份搬去了 `tests/`**（`backend_kill_tests.rs` ·
     //      `backend_launch_tests.rs` · `backend_send_keys_tests.rs` · `history_tests.rs`×2 ·
     //      `inbound_client_tests.rs`×2 · `local_backend_host_tests.rs` ·
-    //      `search_kou_jing_guard.rs` · `ssh_source_emits_parity.rs` ·
+    //      `search_kou_jing_guard.rs` · `stream_source/emits_parity.rs` ·
     //      `ssh_source_f032_idle_tests.rs` · `tmux_tests.rs`）——
     //      它们**按构造**没有生产段，上面那条正控逐个核过「它真的是测试文件」。
     // ⚠ 拧下去的是**分母**，不是灵敏度的门槛：3 个全都掉到空串，这条照样红。

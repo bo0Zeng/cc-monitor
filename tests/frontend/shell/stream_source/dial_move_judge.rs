@@ -26,7 +26,7 @@ use guard_core::production_code;
 ///
 /// 🔴 **`pub(crate)` 是承重的，别顺手收回去**：
 /// `dial_home_registry` 那条递减棘轮拿本表 `moved == false` 的**处数合计**当今天的读数，
-/// 再对着 `ssh_source.rs` 的 git 历史比「历史上出现过的最低档」。
+/// 再对着这张表旧住址（`ssh_source.rs`）的 git 历史比「历史上出现过的最低档」。
 /// 收回成私有 ⇒ 那条棘轮编不过；改成在那边抄一份数字 ⇒ 同一个值两个家，本区最贵的那条病。
 ///
 /// 🔴 **这张表就是「7 处里搬走 1 处」那句话的机器形态。** 第三栏 `false` 的每一行
@@ -34,7 +34,7 @@ use guard_core::production_code;
 /// 处数由下面的判据**从源码派生**再逐格比对，多一处少一处都红。
 pub(crate) const DIAL_SITES: &[(&str, usize, bool, &str, &str)] = &[
     (
-        "ssh_source.rs",
+        "stream_source/",
         0,
         true,
         "**搬走了**：跳板 · 一次性 exec · 收全 exec · 测试连接 · 后端长连接流全部改经拨号代理的宿主 \
@@ -70,14 +70,12 @@ const BODY_FLOOR_BYTES: usize = 120;
 fn corpus() -> Vec<(&'static str, String)> {
     vec![
         (
-            "ssh_source.rs",
-            production_code(include_str!(
-                "../../../src/frontend/shell/src/ssh_source.rs"
-            )),
+            "stream_source/",
+            crate::guard_support::stream_source_production(),
         ),
         (
             "sftp.rs",
-            production_code(include_str!("../../../src/frontend/shell/src/sftp.rs")),
+            production_code(include_str!("../../../../src/frontend/shell/src/sftp.rs")),
         ),
     ]
 }
@@ -160,8 +158,8 @@ fn backend_stream_dial_verdict(body: &str) -> Result<(), String> {
 fn the_backend_stream_entry_hands_the_dial_to_another_process() {
     let (_, prod) = corpus()
         .into_iter()
-        .find(|(n, _)| *n == "ssh_source.rs")
-        .expect("语料里没有 ssh_source.rs");
+        .find(|(n, _)| *n == "stream_source/")
+        .expect("语料里没有 stream_source/");
     // 流那一个原语（`connect_and_exec_cmd`）随最后一个调用方（公钥推送）进本机后端删了 ⇒
     //   本条的靶只剩收全那一个；「界面进程零拨号」照旧钉：整份生产段里零处自己拨、零处开流用法的链路。
     assert_eq!(
@@ -216,8 +214,8 @@ fn six_of_the_seven_dial_sites_are_still_in_this_process() {
         total, 0,
         "界面侧拨号调用点总数是 {total}，登记的是 **0**（**2 → 0**：SFTP 那一家 —— `sftp.rs` 1 ＋ \
              它用的 `inproc_dial.rs` 跳板 1 —— 进了本机常驻后端，界面进程零 SSH）。\n\
-             ⚠ **6 → 2**：`ssh_source.rs` 4 与 `port_forward.rs` 1 搬进拨号代理；\
-             `inproc_dial.rs` 那 1 处是 `ssh_source.rs` 原来那 4 处里的跳板一处**原样搬过去**的（只服务 SFTP）。\n\
+             ⚠ **6 → 2**：`stream_source/` 4 与 `port_forward.rs` 1 搬进拨号代理；\
+             `inproc_dial.rs` 那 1 处是 `stream_source/` 原来那 4 处里的跳板一处**原样搬过去**的（只服务 SFTP）。\n\
              这两个数必须一起动 —— 本表就是那句话的家。\n\
              ⚠ 棘轮史：**7**（`K-P6b` 件文件 09-06 现打，逐处点名）→ **6**：\n\
              `daemonless` 轮询流那一处**退役**（`K35`：没有「没有后端」这回事）。\n\
@@ -236,7 +234,7 @@ fn six_of_the_seven_dial_sites_are_still_in_this_process() {
     let moved = DIAL_SITES.iter().filter(|(_, _, m, ..)| *m).count();
     assert_eq!(
         moved, 2,
-        "登记表说有 {moved} 份文件的拨号已经搬走了（C2 之后 `ssh_source.rs` 与 `port_forward.rs` 两份；+ `sftp.rs`；\
+        "登记表说有 {moved} 份文件的拨号已经搬走了（C2 之后 `stream_source/` 与 `port_forward.rs` 两份；+ `sftp.rs`；\
 3 → 2：`port_forward.rs` 整份删了、那一行随之删）"
     );
 }
@@ -256,9 +254,6 @@ fn every_registered_dial_site_says_what_it_is_and_when_it_could_go() {
         );
     }
 }
-
-// 原来这里有一条 `every_registered_fallback_is_actually_decided_in_the_entry` 〔散文墓碑〕
-// （逐条回落在入口函数体里真的有一个判断在做它）—— 回落整张删了，它随之删。
 
 /// 🔴 **本件改动之前**的远端起流入口函数体，**逐字冻结**（那个入口随远端流模式一形删了，冻结的是历史文本）。
 ///
@@ -396,18 +391,14 @@ fn a_comment_only_edit_does_not_move_the_verdict() {
         .expect("只加了一行注释，判据就红了 ⇒ 刀太粗，它钉的是文本不是性质");
 }
 
-// 原来这里还有两条：请求行按蛇形键写（`the_request_line_is_written_with_snake_case_keys`）〔散文墓碑〕
-// 与代理二进制只从两处解析（`the_proxy_is_resolved_from_exactly_two_places_and_never_from_home`）〔散文墓碑〕。
-// 请求的造法与解析搬进了宿主 `dial_host`，前一条的性质由
-// `dial_host_tests::the_request_keys_are_the_ones_the_proxy_reads`〔散文墓碑〕接住（而且改成与后端源码异源对拍；今天是 `the_request_hands_over_the_machine_as_is`）；
-// 后一条的性质**改了**：`D11` 之后找不到代理要报而不是回落，开发树上要能找到，于是解析多了
-// 「本机后端自释放那一份」这一处（读 `~/.cc-monitor/bin`，登记在 `local_read_surface_registry`）。
+// 请求的造法与解析住宿主 `dial_host`：请求键由 `dial_host_tests::the_request_hands_over_the_machine_as_is` 与后端源码异源对拍；
+// 找不到代理要报而不是回落，解析含「本机后端自释放那一份」（读 `~/.cc-monitor/bin`，登记在 `local_read_surface_registry`）。
 
 // ── P28：给这条源码扫描型守卫立**负对照** ──
 //
 // 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。
 // 失效形状是现打过的：便宜近似 `src.split("\n#[cfg(test)]").next()` 只在
-// 「第一个测试模块之后再没有生产代码」时才对。`ssh_source.rs` 今天 4490 行，
+// 「第一个测试模块之后再没有生产代码」时才对。`stream_source/` 今天 4490 行，
 // 第一个测试模块在 **909** 行 ⇒ 那个近似把扫描面砍到前 908 行，
 // 而本文件要扫的东西全在它**后面**（逐针行号写在下面）。
 // ⇒ 扫描面一旦静默缩水，本文件的判据会**零命中地绿**。
@@ -423,12 +414,12 @@ fn the_shared_stripper_keeps_the_entry_body_this_guard_must_scan() {
     //    （`assert_stripper_keeps` 会为此当场红，而不是静默放过）。
     //    本条真正会缩水的那一段是原语的函数体（在第一个测试模块之后）。
     guard_core::assert_stripper_keeps(
-        "ssh_source_dial_move_judge · ssh_source.rs",
-        include_str!("../../../src/frontend/shell/src/ssh_source.rs"),
+        "stream_source::dial_move_judge · stream_source/",
+        &crate::guard_support::stream_source_raw(),
         // 锚点换成收全那一个原语（流那一个删了）；它同样在第一个测试模块之后。
         &["pub async fn connect_and_exec_capture("],
     );
-    // ⚠ 本判据的语料是**四份**文件，这里只立了 `ssh_source.rs` 那一份的对照 ——
+    // ⚠ 本判据的语料是**四份**文件，这里只立了 `stream_source/` 那一份的对照 ——
     //    另两份（`sftp.rs` / `port_forward.rs`；`inproc_dial.rs` 那份整份删了）的针在它们各自第一个测试模块**之前**，
     //    便宜近似留得住 ⇒ 立对照会恒真。**那不是「已守住」，是「这一形在那两份上不成立」。**
 }
@@ -437,7 +428,6 @@ fn the_shared_stripper_keeps_the_entry_body_this_guard_must_scan() {
 ///
 /// C2 那一版钉的是「== {SFTP 那一家}」（`inproc_dial.rs` · `sftp.rs`），逐字写着「SFTP 换走了 ⇒ 把 `inproc_dial.rs` 整份删掉、
 /// `Cargo.toml` 的 `russh` 一起删，本条改成零命中」—— 今天就是那样（SFTP 进本机常驻后端，界面进程零 SSH）。
-/// 〔墓碑 —— 旧名 `russh_lives_only_where_sftp_still_needs_it`〔散文墓碑〕：名字说的是「只剩 SFTP 还要它」，今天没有谁要它了。〕
 /// ⚠ 数的是**代码里点名**（`russh::` / `use russh` / `russh_sftp`）；买不到：经宏或别名间接用到它。
 /// 清单那一面（manifest 里没有这几条依赖）同条钉；「依赖树里有没有它」那面旗归 `dial_home_registry::russh_deps_in`。
 #[test]
@@ -486,7 +476,7 @@ fn russh_is_named_nowhere_in_the_monitor_crate() {
          界面经 `dial_host`（链路 · `RemoteFs`）与 `transfer-*` 够到它们。"
     );
     // 清单那一面：界面 crate 的依赖段里没有这两条（也没有只为它们而钉的 `primefield`）。
-    let manifest = include_str!("../../../src/frontend/shell/Cargo.toml");
+    let manifest = include_str!("../../../../src/frontend/shell/Cargo.toml");
     for dep in ["russh", "russh-sftp", "primefield"] {
         let line = format!("{dep} = ");
         assert!(

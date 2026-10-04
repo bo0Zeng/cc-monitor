@@ -1,7 +1,7 @@
 use super::*;
 
-fn probe_cfg() -> crate::ssh_source::RemoteConfig {
-    crate::ssh_source::RemoteConfig {
+fn probe_cfg() -> crate::stream_source::RemoteConfig {
+    crate::stream_source::RemoteConfig {
         host: "这个主机一定不存在-audit0805".into(),
         label: "probe".into(),
         port: 1,
@@ -758,7 +758,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     // 落点是固定的 `~/.cc-monitor/bin/ccm`（SFTP 那一侧家目录相对；台架的 sshd 要把 shell 的 `HOME` 也设成 `rhome`，
     //   身份扫描那一发走 shell、读的是 `"$HOME"/.cc-monitor/bin/ccm`）。
     let backend_path = format!("{rhome}/{LANDING_REL}");
-    let cfg = crate::ssh_source::RemoteConfig {
+    let cfg = crate::stream_source::RemoteConfig {
         host: s("host"),
         label: "sr1b-loopback".into(),
         port: v["port"].as_u64().unwrap() as u16,
@@ -973,9 +973,7 @@ fn the_auto_deploy_never_refuses_silently() {
 /// D2：调用方拿到 `Err` ⇒ 经远端健康通道恰发一条 `kind = "deploy"`（不阻断，照旧接着试连已有后端）。
 #[test]
 fn a_failed_auto_deploy_reaches_the_screen_through_remote_health() {
-    let prod = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/ssh_source.rs"
-    ));
+    let prod = crate::guard_support::stream_source_production();
     let at = guard_core::find_pinned(&prod, "crate::sftp::ensure_backend_deployed(cfg).await")
         .unwrap_or_else(|e| panic!("调用处不是恰好一处：{e}"));
     let rest = &prod[at..];

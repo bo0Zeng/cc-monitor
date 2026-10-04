@@ -21,7 +21,7 @@ fn repo_root() -> PathBuf {
 /// ⚠ 第二栏是**锚点**处数，不是 `DIAL_SITES` 那个**调用点**处数 —— 两个数不是一回事，
 /// 模块头注「两个数别读混」那一节写着为什么不合并。
 const SITES: &[(&str, usize, &str, &str)] = &[
-    // `ssh_source.rs`（3）与 `port_forward.rs`（1）两行**整行删了**：拨号与端口转发搬进了后端的
+    // `stream_source/`（3）与 `port_forward.rs`（1）两行**整行删了**：拨号与端口转发搬进了后端的
     // 拨号代理（`src/backend/dial/`），这两份文件里一处锚点都不剩。
     // **家变成空集**：最后一行 `inproc_dial.rs`（3 处：竞速握手 · 跳板上握手 · 跳板开隧道，
     //   只服务 SFTP）兑现了它写的解锁条件 ——「SFTP 换走那天这一行整行删掉，家变成空集，`russh` 同拍从
@@ -308,7 +308,7 @@ fn russh_deps_in(manifest: &str) -> Vec<String> {
 
 /// `DIAL_SITES` 那张表**历史上**住的地方 —— 下面要拿它去问 git 历史。
 ///
-/// 🔴 〔搬树 2026-09-18〕**这一行刻意仍然指着 `ssh_source.rs`。**
+/// 🔴 〔搬树 2026-09-18〕**这一行刻意仍然指着旧住址 `ssh_source.rs`**（今天它改名成了 `stream_source/`，历史在旧名下）。
 /// 剖分把那张表搬去了 [`DIAL_SITES_TODAY_REL`]，但**历史面在旧住址上** ——
 /// 那个新文件是被**剖**出来的、不是被 `mv` 出来的，`git log --follow` 追不到它的前身，
 /// 照新住址问历史只会拿到剖分那一刻起的一两份读数，棘轮的低档当场丢光。
@@ -317,19 +317,19 @@ fn russh_deps_in(manifest: &str) -> Vec<String> {
 const DIAL_SITES_REL: &str = "src/frontend/shell/src/ssh_source.rs";
 
 /// `DIAL_SITES` **今天**住的地方（仓根相对）。见 [`DIAL_SITES_REL`] 头注。
-const DIAL_SITES_TODAY_REL: &str = "tests/frontend/shell/ssh_source_dial_move_judge.rs";
+const DIAL_SITES_TODAY_REL: &str = "tests/frontend/shell/stream_source/dial_move_judge.rs";
 
 /// 找 `DIAL_SITES` 那张表表头的针 —— 🔴 **运行时拼，别写成字面量**。
 ///
 /// 承重，理由同 `scanning_guard_registry::ceiling_needle`：下面那个解析器要跑在
-/// **`ssh_source.rs` 的历史版本**上，而针一旦写成字面量，本文件里就多一处同形的串，
+/// **`DIAL_SITES_REL` 的历史版本**上，而针一旦写成字面量，本文件里就多一处同形的串，
 /// 将来谁把这两份文件合并 / 把解析器搬过去，「解析到的是哪一处」就由先后决定 ——
 /// 而错的方向是**静默的绿**。
 fn dial_sites_needle() -> String {
     format!("const DIAL_{}: &[(", "SITES")
 }
 
-/// 一份 `ssh_source.rs` 源码文本里，`DIAL_SITES` 中 `moved == false` 的**处数合计**。
+/// 一份旧住址（[`DIAL_SITES_REL`]）的历史源码文本里，`DIAL_SITES` 中 `moved == false` 的**处数合计**。
 ///
 /// 找不到那张表 ⇒ `None`（**不许默默当 0** —— 那正是件计划死值验要逮的那一形）。
 ///
@@ -384,7 +384,7 @@ fn unmoved_dial_sites_in(src: &str) -> Option<usize> {
 /// 🔴 它与 [`unmoved_dial_sites_in`] 是本模块的**两条腿**：
 /// 解析器偏了 / 被改成恒 0 ⇒ 两条腿对不上 ⇒ 当场红。
 fn unmoved_from_constant() -> usize {
-    crate::ssh_source::dial_move_judge::DIAL_SITES
+    crate::stream_source::dial_move_judge::DIAL_SITES
         .iter()
         .filter(|(_, _, moved, ..)| !*moved)
         .map(|(_, n, ..)| *n)
@@ -399,8 +399,8 @@ fn unmoved_from_constant() -> usize {
 #[test]
 fn the_interface_side_ssh_debt_is_one_number_and_it_is_printed() {
     // 🔴 〔搬树 2026-09-18〕语料跟着表搬：`DIAL_SITES` 今天住
-    //    `tests/frontend/shell/ssh_source_dial_move_judge.rs`（见 `DIAL_SITES_REL` 头注）。
-    let me = include_str!("ssh_source_dial_move_judge.rs");
+    //    `tests/frontend/shell/stream_source/dial_move_judge.rs`（见 `DIAL_SITES_REL` 头注）。
+    let me = include_str!("stream_source/dial_move_judge.rs");
     let parsed = unmoved_dial_sites_in(me).unwrap_or_else(|| {
         panic!(
             "在 `{DIAL_SITES_TODAY_REL}` 里找不到 `DIAL_SITES` 那张表（针：{}）——\n\
@@ -421,7 +421,7 @@ fn the_interface_side_ssh_debt_is_one_number_and_it_is_printed() {
     let deps = russh_deps_in(INTERFACE_MANIFEST);
     eprintln!(
         "〔界面侧 SSH 债 · 09-12 立〕过程那个数 = **{truth}** 处拨号还没搬走\
-             （口径：`ssh_source.rs::dial_move_judge::DIAL_SITES` 里 `moved == false` 那几行的\
+             （口径：`stream_source/mod.rs::dial_move_judge::DIAL_SITES` 里 `moved == false` 那几行的\
              `connect_session(` **调用点**合计，由 `K-P6b` 那条判据从生产段源码派生）；\
              ⚠ **它买不到**：`use russh` 的行数（那是写法不是依赖）· \
              传递依赖里有没有 `russh`（本模块只看 manifest 的直接依赖）· \
@@ -481,7 +481,7 @@ fn git_read(root: &Path, args: &[&str]) -> String {
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
-/// `ssh_source.rs` 每一个历史版本上那个数的读数 —— `(短 sha, 处数)`，外加**读不出来**的份数。
+/// [`DIAL_SITES_REL`] 每一个历史版本上那个数的读数 —— `(短 sha, 处数)`，外加**读不出来**的份数。
 ///
 /// ⚠ 读不出来的**不静默丢掉**：份数一起回，由调用方连读数印出来。
 /// 合法的一形：`DIAL_SITES` 是 `K-P6b`（09-06）才立的，早于它的提交里那张表不存在。
@@ -577,7 +577,7 @@ fn the_dial_debt_ratchet_never_turns_backwards() {
     // 🔴 这一格是本条的地基：`ratchet_backslide` 拿到空历史时回 `None`（绿），
     // 于是「git 读不到历史」与「棘轮没被倒着转」**输出完全相同**。
     // 会把历史面弄空的真实来路：浅克隆（`--depth 1`）· `DIAL_SITES` 被改了名
-    //（针是按名字认的）· `ssh_source.rs` 被拆开挪走了（`DIAL_SITES_REL` 就馊了）。
+    //（针是按名字认的）· `DIAL_SITES_REL` 那个旧住址的历史读不到了。
     assert!(
         hist.len() >= HISTORY_FLOOR,
         "只从 git 历史里读出 {} 份 `{DIAL_SITES_REL}` 的旧版本读数（地板 {HISTORY_FLOOR}，\
@@ -585,7 +585,7 @@ fn the_dial_debt_ratchet_never_turns_backwards() {
              ⇒ **本条此刻是空转的**：历史面一空，下面那一格恒真地绿。\n\
              常见来路：① 浅克隆把历史截掉了（要 `fetch-depth: 0`）；\n\
                        ② `DIAL_SITES` 被改了名（针是按名字认的）；\n\
-                       ③ `ssh_source.rs` 挪了位置 ⇒ `DIAL_SITES_REL`（`{DIAL_SITES_REL}`）馊了。\n\
+                       ③ `DIAL_SITES_REL`（`{DIAL_SITES_REL}`）馊了。\n\
              🔴 **不许靠调低地板让今天好过**。",
         hist.len()
     );

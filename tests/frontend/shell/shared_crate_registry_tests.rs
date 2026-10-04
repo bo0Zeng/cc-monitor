@@ -599,7 +599,7 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
              `CLAUDE_CONFIG_DIR` / `TMUX_TMPDIR`）＋ `/proc`（冒充会话的 `sleep` 要有启动时刻）。触发器是读数脚本 \
              `tests/evidence/CF1-local-lines.py`（设好 `CF1_BACKEND` 再按名字跑这一条，并核输出里那句 `CF1-LOCAL-LINES ok`）。\
              门禁那一格不先编后端二进制 ⇒ 进不了门禁。谁什么时候跑：改本机内容那条路（`local_lines` · 两条本机读循环 · \
-             `ssh_source::consume_local` / `LineIntake` · 后端 `observe/watcher.rs` 的 tail-only）的那一拍，交付前跑一趟、把输出贴进报告。",
+             `stream_source::consume_local` / `LineIntake` · 后端 `observe/watcher.rs` 的 tail-only）的那一拍，交付前跑一趟、把输出贴进报告。",
         ),
         (
             "screenshot_for_the_shots_tool",

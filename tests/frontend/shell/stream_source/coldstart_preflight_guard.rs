@@ -13,8 +13,11 @@ use super::{
 };
 
 fn prod() -> String {
-    let f = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/ssh_source.rs");
-    guard_core::production_source(&std::fs::read_to_string(f).expect("读不到本文件"))
+    crate::guard_support::stream_source_files()
+        .iter()
+        .map(|(_, src)| guard_core::production_source(src))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// ★ 纯函数真值表：**只有逐字相等才许跳**。

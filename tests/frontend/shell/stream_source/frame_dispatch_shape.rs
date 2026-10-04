@@ -19,9 +19,7 @@ fn the_backend_frame_dispatch_has_no_catch_all_arm() {
     // ⚠ **不能按首个 cfg-test 切**：本文件有十几个测试模块，第一个在 915 行，
     //   而要守的那条分派在 3552 行 —— 第一版就是这么写的，
     //   抽取器自检当场报「只扫到 0 条臂」。用共享原语剥全部测试段。
-    let prod = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/ssh_source.rs"
-    ));
+    let prod = crate::guard_support::stream_source_production();
     let lines: Vec<&str> = prod.lines().collect();
     let ind = |l: &str| l.len() - l.trim_start().len();
     let mut arms = 0usize;
@@ -102,7 +100,7 @@ fn the_backend_frame_dispatch_has_no_catch_all_arm() {
 //
 // 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。
 // 失效形状是现打过的：便宜近似 `src.split("\n#[cfg(test)]").next()` 只在
-// 「第一个测试模块之后再没有生产代码」时才对。`ssh_source.rs` 今天 4490 行，
+// 「第一个测试模块之后再没有生产代码」时才对。`stream_source/` 今天 4490 行，
 // 第一个测试模块在 **909** 行 ⇒ 那个近似把扫描面砍到前 908 行，
 // 而本文件要扫的东西全在它**后面**（逐针行号写在下面）。
 // ⇒ 扫描面一旦静默缩水，本文件的判据会**零命中地绿**。
@@ -119,8 +117,8 @@ fn the_shared_stripper_keeps_the_dispatch_this_guard_must_scan() {
     // ⇒ 这条把「那条分派与它的豁免函数都还在扫描面里」钉成逐针的事：
     //    第一条 `Some(InboundFrame::` 臂在 2553 行、`fn route_inbound_frame(` 在 2761 行。
     guard_core::assert_stripper_keeps(
-        "ssh_source_frame_dispatch_shape",
-        include_str!("../../../src/frontend/shell/src/ssh_source.rs"),
+        "stream_source::frame_dispatch_shape",
+        &crate::guard_support::stream_source_raw(),
         &["Some(InboundFrame::", "fn route_inbound_frame("],
     );
 }
@@ -129,9 +127,7 @@ fn the_shared_stripper_keeps_the_dispatch_this_guard_must_scan() {
 /// 与本机那条流同一个口；monitor 生产段里交 tap 的地方恰好两处：远端这一臂 ＋ 本机吸收点。
 #[test]
 fn the_remote_stream_hands_tap_frames_to_the_session_tap_with_its_own_origin() {
-    let prod = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/ssh_source.rs"
-    ));
+    let prod = crate::guard_support::stream_source_production();
     let arm = prod
         .lines()
         .find(|l| l.trim_start().starts_with("Some(InboundFrame::Tap(t)) =>"))
@@ -141,7 +137,7 @@ fn the_remote_stream_hands_tap_frames_to_the_session_tap_with_its_own_origin() {
         "远端流的 tap 帧没交 session_tap（或 origin 不是这台）：{arm}"
     );
     let local = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/local_backend.rs"
+        "../../../../src/frontend/shell/src/local_backend.rs"
     ));
     let n = prod.matches("session_tap::deliver(").count()
         + local.matches("session_tap::deliver(").count();

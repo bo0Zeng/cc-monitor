@@ -1,6 +1,6 @@
 //! 「`test_remote_connection`：界面把表单里（未保存的）那台配置交给本机后端，后端组拨号请求」·
 //! 「端口转发：流没起的远端不许拒，本机后端按配置自己拨」—— `dial/machine.rs` 的规则判据（从 monitor `dial_host::request` /
-//! `ssh_source::parse_address_line` 搬来：地址四形态 · 指纹只继承同一个 host 的 · 跳板查无 / 环都拒）。
+//! `stream_source::parse_address_line` 搬来：地址四形态 · 指纹只继承同一个 host 的 · 跳板查无 / 环都拒）。
 use super::*;
 
 fn m(v: Value) -> Machine {

@@ -584,7 +584,7 @@ fn tl2_fn_body<'a>(src: &'a str, name: &str) -> &'a str {
 /// C4e 交上来的缺口逐字：「`launch` 那条后端登记表的 `codes` **没列 `wrong_owner`**，而 `control/launch.rs::run` 经 `gate::admit` 真会回它」。
 /// 病根是「码表手写、没人从门那一侧核」。本条从**门的源码**派生：`admit` / `admit_destructive` 各自会回哪些码（连它们调的 `probe`），
 /// 再从 `inbound::REGISTRY` 的每一格找出「实现模块调了哪道门」，那一格的 `codes` 必须 ⊇ 那道门的码。
-/// 异源：码集合读 `gate.rs`，调用关系读各模块与 `inbound.rs` 的源码，被比的是运行期的 `REGISTRY`。
+/// 异源：码集合读 `gate.rs`，调用关系读各模块与 `stream/inbound/` 的源码，被比的是运行期的 `REGISTRY`。
 #[test]
 fn every_command_that_passes_the_gate_lists_the_gates_codes() {
     let gate =

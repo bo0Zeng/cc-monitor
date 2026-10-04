@@ -49,7 +49,7 @@ const REQUIRED_FACTS: &[(&str, &[&str], &str)] = &[
     ),
     (
         "远端那条数据流链：backend 的 JSONL 帧走一条 SSH 长连接回来",
-        &["ssh_source.rs", "JSONL", "长连接"],
+        &["stream_source/", "JSONL", "长连接"],
         "缺了它，读者会从 §1 的图得出「monitor 只读本机文件」——重写前的图只有本机两个源",
     ),
     (

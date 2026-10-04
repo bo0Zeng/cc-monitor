@@ -603,7 +603,7 @@ fn the_read_loop_really_calls_the_absorb_point() {
 async fn a_local_reply_reaches_the_caller_through_the_absorb_point() {
     use tokio::io::AsyncBufReadExt;
     let (mine, theirs) = tokio::io::duplex(4096);
-    let hello = crate::ssh_source::InboundFrame::Hello {
+    let hello = crate::stream_source::InboundFrame::Hello {
         v: 1,
         build_id: "t".into(),
         host_arch: "x86_64".into(),
@@ -632,7 +632,7 @@ async fn a_local_reply_reaches_the_caller_through_the_absorb_point() {
         .as_str()
         .unwrap()
         .to_string();
-    let reply = crate::ssh_source::parse_frame(&format!(
+    let reply = crate::stream_source::parse_frame(&format!(
         r#"{{"kind":"reply","id":{id:?},"ok":true,"data":{{"pong":1}}}}"#
     ))
     .unwrap();
@@ -865,8 +865,8 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
             .expect("读 hello 失败");
         let _ = probe.kill();
         let _ = probe.wait();
-        let frame = crate::ssh_source::parse_frame(&line).expect("首帧该是 hello");
-        let crate::ssh_source::InboundFrame::Hello { claude_dir, .. } = &frame else {
+        let frame = crate::stream_source::parse_frame(&line).expect("首帧该是 hello");
+        let crate::stream_source::InboundFrame::Hello { claude_dir, .. } = &frame else {
             panic!("首帧不是 hello：{line}");
         };
         assert_eq!(

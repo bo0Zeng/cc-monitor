@@ -274,7 +274,7 @@ fn the_two_apikey_rules_are_defined_only_in_acct_core() {
 //   这一条与它无关的对照挪到这里。
 #[test]
 fn shell_quote_via_the_shared_core() {
-    // `ssh_source` 那一层转调壳删了（零生产调用方），对照直指共享内核。
+    // `stream_source` 那一层转调壳删了（零生产调用方），对照直指共享内核。
     assert_eq!(
         shell_quote_core::posix_quote("/a/b c.jsonl"),
         "'/a/b c.jsonl'"

@@ -103,7 +103,7 @@ fn the_facts_really_live_in_the_sections_that_are_supposed_to_carry_them() {
 /// # 三条量法，都是量出来的
 ///
 /// 实测今天全部探针在 `ARCHITECTURE.md` 里的频次：**每条事实都至少有一个「只出现 1 次」
-/// 的锚**（`backend = 读` / `零轮询` / `ssh_source.rs` / `exec` / `原生构建` 各 1 次），
+/// 的锚**（`backend = 读` / `零轮询` / `stream_source/` / `exec` / `原生构建` 各 1 次），
 /// 而 M3 用的泛词是 `backend` **12** 次 · `事件` **8** 次 · `crate` **6** 次。
 /// 最高的现役探针是 `control/` **15** 次 —— 它靠同组的稀有锚兜着，本身不承重。
 ///

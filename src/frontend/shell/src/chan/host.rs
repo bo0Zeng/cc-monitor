@@ -42,7 +42,7 @@
 //! - ✅**生产上有了第一条流**：`transfer/<id>`（传输台那一趟的进度；
 //!   翻译住本文件末尾那一节，判据 `transfer_stream_tests` 走真回环 ＋ 真钥匙 ＋ 本句柄）。
 //!   🔴 **其余 `kind` 照旧一条流都没有**：`inbound_client` 只有「一问一答」，后端推上来的帧今天走
-//!   `ssh_source` 的 Tauri 事件那条路 ⇒ [`InboundBackends::subscribe`] 对别的 `kind` 仍原位回
+//!   `stream_source` 的 Tauri 事件那条路 ⇒ [`InboundBackends::subscribe`] 对别的 `kind` 仍原位回
 //!   `Closed{Peer(…)}`（对端说「没有这条流」），**不装作订阅成功**。
 //! - **对端撤活是尽力的**：外部前端撤单 ⇒ 路由器丢掉本 future（`router::run_call`）⇒ 那次 `inbound_client`
 //!   调用随之被丢 ⇒ 它的 `AbandonGuard` 补发一条 `cancel{target}`（best-effort、不等应答；判据

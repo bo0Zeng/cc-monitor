@@ -6,39 +6,39 @@ use super::*;
 use std::path::{Path, PathBuf};
 
 /// 本族的八条帧命令 —— **要求点名的那八条**，
-/// 写成帧面名。它是判据的**异源**那一侧：下面那条从 `inbound.rs` 源码里数「谁把活交给了
+/// 写成帧面名。它是判据的**异源**那一侧：下面那条从 `stream/inbound/` 源码里数「谁把活交给了
 /// `read_face::answer`」，两边必须相等。
 /// +2：`history-index` / `history-user-inputs`（要求「`--list-user-inputs` 与骨架
-/// `--read-session-from-offset --index` 上帧面」那一句 —— 异源仍是手抄的要求，不是 `inbound.rs`）。
+/// `--read-session-from-offset --index` 上帧面」那一句 —— 异源仍是手抄的要求，不是 `stream/inbound/`）。
 /// +1：`accounts-trust`（「仍在拨号的 `--account-trust` / `--account-trust-zero`」
-/// 随账号域一起上帧面 —— 异源是手抄的要求，不是 `inbound.rs`）。
+/// 随账号域一起上帧面 —— 异源是手抄的要求，不是 `stream/inbound/`）。
 const FAMILY: &[&str] = &[
     "accounts-list",
     "accounts-sessions",
     "accounts-trust",
     "history-index",
     "history-user-inputs",
-    // 按行号取回（异源是手抄的要求「后端给『从第 N 行起 k 行』的读口」，不是 `inbound.rs`）。
+    // 按行号取回（异源是手抄的要求「后端给『从第 N 行起 k 行』的读口」，不是 `stream/inbound/`）。
     "history-lines",
     // 会话内查找。
     "history-find",
-    // 会话事实出成品（异源是手抄的要求「三样由后端出成品」，不是 `inbound.rs`）。
+    // 会话事实出成品（异源是手抄的要求「三样由后端出成品」，不是 `stream/inbound/`）。
     "history-facts",
     // `history-projects` / `history-sessions` 出列：它们出成品（并注解 ＋ 判活 ＋ 远端那一跳），
     //   交给 `history_join`（历史跨机 join 的唯一的家；异源仍是手抄的要求）。
     "history-read",
-    // 记录还在不在（resume 一跳先问；异源是手抄的要求，不是 `inbound.rs`）。
+    // 记录还在不在（resume 一跳先问；异源是手抄的要求，不是 `stream/inbound/`）。
     "history-record",
     "history-search",
-    // 各台搜索结果合一份（异源是手抄的要求，不是 `inbound.rs`）。
+    // 各台搜索结果合一份（异源是手抄的要求，不是 `stream/inbound/`）。
     "history-search-merge",
-    // 按字节分页出记录行 · 漂移账（异源是手抄的要求，不是 `inbound.rs`）。
-    // 按运行读一个子运行的记录（异源是「子 agent 的流归各自的运行、通用层按运行读」那条要求，不是 `inbound.rs`）。
+    // 按字节分页出记录行 · 漂移账（异源是手抄的要求，不是 `stream/inbound/`）。
+    // 按运行读一个子运行的记录（异源是「子 agent 的流归各自的运行、通用层按运行读」那条要求，不是 `stream/inbound/`）。
     "history-run",
     "history-page",
     "drift-report",
     "history-tail",
-    // 这台后端的 stderr 诊断文件尾部（异源是手抄的要求「经那台后端的只读面」，不是 `inbound.rs`）。
+    // 这台后端的 stderr 诊断文件尾部（异源是手抄的要求「经那台后端的只读面」，不是 `stream/inbound/`）。
     "backend-log",
 ];
 

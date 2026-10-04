@@ -194,9 +194,7 @@ fn the_cursor_only_moves_on_contiguous_lines() {
 /// 锚串各恰好一处（`find_pinned`：裸 `contains` 在锚被撑大时照样绿）。
 #[test]
 fn the_snapshot_path_is_wired_through_the_cursor() {
-    let prod = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/ssh_source.rs"
-    ));
+    let prod = crate::guard_support::stream_source_production();
     for anchor in [
         "crate::snapshot_resume::plan_read(",
         "crate::snapshot_resume::cursor_of(&origin, sid)",
@@ -208,7 +206,7 @@ fn the_snapshot_path_is_wired_through_the_cursor() {
         "crate::snapshot_resume::forget(&crate::origin::Origin(self.origin_label.clone()), sid);",
     ] {
         guard_core::find_pinned(&prod, anchor)
-            .unwrap_or_else(|e| panic!("ssh_source 生产段里 `{anchor}` 不是恰好一处：{e}"));
+            .unwrap_or_else(|e| panic!("stream_source 生产段里 `{anchor}` 不是恰好一处：{e}"));
     }
 }
 
@@ -403,7 +401,7 @@ fn w5vis_the_witness_is_kept_cleared_or_replaced_by_what_the_walk_saw() {
     forget(o, s);
 }
 
-/// ④ 接线（剥注释后的 `ssh_source` 生产段，锚各恰好一处）：续传之前先读回见证那一段并核（在 `Walk::new` 之前）；
+/// ④ 接线（剥注释后的 `stream_source` 生产段，锚各恰好一处）：续传之前先读回见证那一段并核（在 `Walk::new` 之前）；
 /// 对不上 ⇒ 续点作废、改整份、交「被改过」那一格；走读时挑见证、立锚之后记下。正控：缺核那一步的合成语料必须被认出。
 #[test]
 fn w5vis_fetch_snapshot_checks_the_witness_before_it_resumes() {
@@ -425,9 +423,7 @@ fn w5vis_fetch_snapshot_checks_the_witness_before_it_resumes() {
         }
         Ok(())
     }
-    let prod = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/ssh_source.rs"
-    ));
+    let prod = crate::guard_support::stream_source_production();
     wired(&prod).unwrap_or_else(|e| panic!("{e}"));
     let old = prod.replacen(
         "crate::snapshot_resume::witness_holds(&w, &page.rows)",

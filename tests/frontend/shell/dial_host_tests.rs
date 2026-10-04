@@ -75,9 +75,9 @@ fn the_last_winner_goes_over_as_prefer_while_the_config_is_unchanged() {
     let c = cfg("c2-dial-host-b");
     let req = request(&c, "stream", serde_json::json!({})).unwrap();
     assert_eq!(req["prefer"], serde_json::Value::Null, "没连过 ⇒ 不交");
-    crate::ssh_source::record_last_good(
+    crate::stream_source::record_last_good(
         &c,
-        &crate::ssh_source::Endpoint {
+        &crate::stream_source::Endpoint {
             host: "10.0.0.9".into(),
             port: 2222,
         },
@@ -229,9 +229,10 @@ async fn loopback_roundtrip_through_the_resident_backend() {
     // ① 字节流那两段（`head -n1` 往返 · 关写半边链路收工）删了：monitor 不再开 `stream` 用法的链路
     //   （那个一次性 exec 原语随公钥推送进本机后端一起走了）；后端那一侧的流用法照旧由 `remote-probe` 与后端判据驱动。
     // ② 收全：stdout / stderr / 退出码
-    let ex = crate::ssh_source::connect_and_exec_capture(&cfg, "echo o; echo e >&2; exit 5", None)
-        .await
-        .expect("收全失败");
+    let ex =
+        crate::stream_source::connect_and_exec_capture(&cfg, "echo o; echo e >&2; exit 5", None)
+            .await
+            .expect("收全失败");
     assert_eq!(
         (ex.stdout.as_str(), ex.stderr.as_str(), ex.exit_status),
         ("o\n", "e\n", Some(5))

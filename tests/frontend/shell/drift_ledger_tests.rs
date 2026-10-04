@@ -320,25 +320,25 @@ const FEEDERS: &[(&str, &str, Whose, &str)] = &[
     // 本机远端的冷读合成一条：记账那一跳挪进 `SessionPager::page`（`history.rs`），
     //   `stream_read_session_jsonl` 本身不再解析；远端那一支 `stream_read_remote_session`〔散文墓碑〕那一行随它删了。
     // `lib.rs::run`（`Local`，「本机 jsonl watcher 那一批」）那一行摘了：
-    //   本机会话的行从此是本机后端的 `line` 帧，经 `ssh_source·rs::flush_lines`（`Given`，origin 是本机）进账。
+    //   本机会话的行从此是本机后端的 `line` 帧，经 `stream_source/batch·rs::flush_lines`（`Given`，origin 是本机）进账。
     // `("search.rs", "build_one", Local)` 那一行摘了：本机搜索改问本机后端，monitor 内存索引删了。
     // `("session_map.rs", "is_interactive", Local)` 换成下面这一行：本机判活改由本机后端的帧来之后，
     //   「未登记的会话 kind」那一笔在本机那条流上记（monitor 不再自己扫 pidfile）。
     (
-        "ssh_source.rs",
+        "stream_source/local.rs",
         "book_unknown_local_kind",
         Whose::Local,
         "本机那条流的 `session_added.session_kind`：只看本机（记在本机名下）",
     ),
     (
-        "ssh_source.rs",
+        "stream_source/version.rs",
         "note_unknown_capabilities",
         Whose::Given,
         "参数 `origin`",
     ),
     (
-        "ssh_source.rs",
-        "stream_loop",
+        "stream_source/run.rs",
+        "on_hello",
         Whose::Given,
         "hello 那一段：那台的 `host_label`",
     ),
@@ -361,7 +361,7 @@ fn fn_end(lines: &[&str], start: usize) -> usize {
 }
 
 /// 某一行**所在**的函数：往回找 `fn <名>`，且它的体要把这一行包住
-/// （外层 fn 里先定义过一个嵌套 `fn drop` 之类、体已收尾的，不算 —— `ssh_source·rs::stream_loop` 现打过）。
+/// （外层 fn 里先定义过一个嵌套 `fn drop` 之类、体已收尾的，不算 —— `stream_source/run·rs::stream_loop` 现打过）。
 fn enclosing_fn_of(lines: &[&str], at: usize) -> Option<(String, usize)> {
     for i in (0..=at).rev() {
         let l = lines[i];

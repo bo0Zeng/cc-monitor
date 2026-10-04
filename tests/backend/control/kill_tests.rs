@@ -113,7 +113,7 @@ fn kill_uses_the_destructive_gate_not_the_plain_one() {
 /// monitor 那一跳只搬字节 —— 成品的键、拒绝码的集合从此只有后端这一侧与金样说了算。
 ///
 /// 三格各自异源：请求样例过**生产**解析器 [`parse_name`] · 成品 == 生产构造器 [`reply`] ·
-/// 码集合 == 后端登记表 `inbound::REGISTRY` 那一块（手写在 `inbound.rs`，不从本文件派生）。
+/// 码集合 == 后端登记表 `inbound::REGISTRY` 那一块（手写在 `stream/inbound/registry/terminals.rs`，不从本文件派生）。
 #[test]
 fn the_kill_product_matches_the_cross_language_golden() {
     let g: serde_json::Value =

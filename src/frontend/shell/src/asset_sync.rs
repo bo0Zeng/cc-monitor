@@ -7,7 +7,7 @@
 //!
 //! # 它做的两件事
 //!
-//! 1. **连上那一刻**（[`on_remote_ready`]，`ssh_source.rs` 在远端那条流握手成功时调）：那台的后端认得资产目录
+//! 1. **连上那一刻**（[`on_remote_ready`]，`stream_source/` 在远端那条流握手成功时调）：那台的后端认得资产目录
 //!    ⇒ 把「怎么够到那台」（拨号请求 ＋ 那台后端的路径）交给本机常驻后端 `assets-sync`，由**它**沿池里那条 SSH
 //!    拉 / 并 / 推（`src/backend/assets/asset_sync.rs`）。后台跑，不挡收帧。
 //! 2. **界面看机器页前**：界面经通道直问本机后端 `assets-sync`（只报 `origin`，够到那台用握手时登记的那一行，
@@ -41,7 +41,7 @@ const BUDGET: Duration = Duration::from_secs(180);
 //   按形状收（`src/frontend/ui/assets-sync-reads.ts`）；这里只剩流握手那一刻交事实（`on_remote_ready`），应答原样记日志。
 
 /// 一台远端的入参：`origin` ＋ 拨号请求（`capture` 用法；后端会再钉一遍）。那台后端的路径不交：落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`。
-pub(crate) fn args_for(cfg: &crate::ssh_source::RemoteConfig) -> Result<Value, String> {
+pub(crate) fn args_for(cfg: &crate::stream_source::RemoteConfig) -> Result<Value, String> {
     let dial = crate::dial_host::request(cfg, "capture", json!({}))?;
     Ok(json!({
         "origin": cfg.origin_label(),
@@ -75,7 +75,7 @@ impl LocalBackend for ResidentBackend {
 
 /// 可测的那一半：那一台（流握手那一刻）→ 入参 → 本机后端；应答原样交回（只记日志，monitor 不解释它）。
 pub(crate) async fn sync_with(
-    target: &crate::ssh_source::RemoteConfig,
+    target: &crate::stream_source::RemoteConfig,
     local: &impl LocalBackend,
 ) -> Result<Value, String> {
     local.call(args_for(target)?).await
@@ -92,7 +92,7 @@ pub(crate) const REACH_CMD: &str = "remote-reach";
 const REACH_BUDGET: Duration = Duration::from_secs(10);
 
 /// 把「怎么够到那台」登记进本机后端的可达表（本机后端太旧不认 ⇒ 报，调用方只记一行 warn）。
-async fn register_reach(cfg: &crate::ssh_source::RemoteConfig) -> Result<(), String> {
+async fn register_reach(cfg: &crate::stream_source::RemoteConfig) -> Result<(), String> {
     let args = args_for(cfg)?;
     let client = crate::dial_host::local_backend_accepting(REACH_CMD).await?;
     client
@@ -111,10 +111,10 @@ async fn register_reach(cfg: &crate::ssh_source::RemoteConfig) -> Result<(), Str
         })
 }
 
-/// 远端那条流握手成功那一刻（`ssh_source.rs::stream_loop`）：
+/// 远端那条流握手成功那一刻（`stream_source/run.rs::stream_loop`）：
 /// ①**无条件**把「怎么够到那台」登记进本机后端的可达表（历史跨机 join 要它，老远端也要）；
 /// ② 那台认得资产目录 ⇒ 后台让本机后端对它做一趟同步；不认 ⇒ 不碰（老后端不认一次性子命令会进流模式）。
-pub(crate) fn on_remote_ready(cfg: &crate::ssh_source::RemoteConfig, remote_accepts: bool) {
+pub(crate) fn on_remote_ready(cfg: &crate::stream_source::RemoteConfig, remote_accepts: bool) {
     let label = cfg.origin_label();
     {
         let cfg = cfg.clone();

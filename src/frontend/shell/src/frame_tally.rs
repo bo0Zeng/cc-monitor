@@ -8,11 +8,11 @@
 //! - 这一行不是合法 UTF-8 的（远端那条按替换字符读、本机脱离载体那条整行丢）⇒ [`FrameTally::note_bad_utf8`]。
 //!
 //! 说话的节奏：每种第 1、2、4、8 … 次（2 的幂）说一行（带累计数与那一行的开头），其余只数 ——
-//! 一条活几个小时的流上**看得见在丢**，又不会一帧一行把日志刷满（`ssh_source::parse_frame` 那段
+//! 一条活几个小时的流上**看得见在丢**，又不会一帧一行把日志刷满（`stream_source::parse_frame` 那段
 //! `turn_end` 注释写过逐帧刷 warn 的代价：噪声，且真正的坏帧淹没在里面）。
 //! 流结束（这本账被丢掉）时 [`Drop`] 出一行总账；两样都是 0 就不说。
 //!
-//! 三个读帧的地方：远端 `ssh_source::stream_loop`（读任务数非 UTF-8、主循环数认不出）·
+//! 三个读帧的地方：远端 `stream_source::stream_loop`（读任务数非 UTF-8、主循环数认不出）·
 //! 本机脱离载体 `local_backend_host::attach_stream` · 本机 stdio 载体 `local_backend` 的 stdout 读循环。
 //! 接线由 `tests/frontend/shell/frame_tally_tests.rs` 的判据按文件逐一钉住。
 

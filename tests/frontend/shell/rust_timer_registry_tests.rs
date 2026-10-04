@@ -124,7 +124,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     // `src/port_forward.rs` 那一行（accept 瞬时错误 100ms 退避）**删了**：accept 循环整个搬进了
     //   后端的拨号代理（`src/backend/dial/uses.rs::forward`），而后端不许睡 ⇒ 那一侧改成「accept 失败就收工并出声」。
     // ★★ 🔴 `K-R59`（09-11）：**这里原来是本表抓到的第二个真节拍器，那一条今天退役了。**
-    //    它是 `src/ssh_source.rs` 的 `BACKENDLESS_POLL_INTERVAL = 2s`（`loop { …; sleep(2s) }`），
+    //    它是 `src/stream_source/` 的 `BACKENDLESS_POLL_INTERVAL = 2s`（`loop { …; sleep(2s) }`），
     //    登记里逐字写着它「与**定框 C7 直接冲突**」「也与 **C8**（不许轮询）冲突」，
     //    而退役条件当时写的是「**远端自动部署可靠到可以删掉这个开关**……今天无人认领，
     //    如实记未排期」。
@@ -132,15 +132,20 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     //      而且不是走「自动部署可靠了」那条路，是直接取消那一档。**
     //    ★ 这一条与 `watcher.rs` 那条（F11）同形：**退役的验收证据就是本表先红在
     //      「少一处 = 退役了」上，删掉登记才绿。** 不是靠人说「我改好了」。
-    // `src/inproc_dial.rs` 那一行（`RACE_STAGGER * i`：进程内多端点竞速的错开起拨，C2 从 `ssh_source.rs`
+    // `src/inproc_dial.rs` 那一行（`RACE_STAGGER * i`：进程内多端点竞速的错开起拨，C2 从 `stream_source/`
     //   原样搬去的那一份）摘了 —— 那份文件整份删了（界面进程零 SSH）。竞速今天住本机后端 `dial/connect.rs`（同时起拨：后端零定时器）。
     (
-        "src/ssh_source.rs",
+        "src/stream_source/snapshot.rs",
         "wait-for-condition",
-        2,
-        "两处：① 快照读失败时 `if attempt == 1 { sleep(1s) }` —— **只重试一次**；\
-             ② 重连退避 `sleep(backoff)`，序列 2→4→8→16→**30 上限**。\
-             ⚠ ② 的外层重连循环确实无限，但**它等的是「下次重连时机」，不是节拍** —— \
+        1,
+        "快照读失败时 `if attempt == 1 { sleep(1s) }` —— **只重试一次**。",
+    ),
+    (
+        "src/stream_source/run.rs",
+        "wait-for-condition",
+        1,
+        "重连退避 `sleep(backoff)`，序列 2→4→8→16→**30 上限**。\
+             ⚠ 外层重连循环确实无限，但**它等的是「下次重连时机」，不是节拍** —— \
              连上之后由 `stream_loop` 阻塞驱动；断线才回到这里。上限 30s 是明写的常量。",
     ),
     // `src/lib.rs` 那一行（`remote-bind-scan` 那条等标题的线程）随窗口标题那一套删了：lib.rs 从此零处。
@@ -393,7 +398,7 @@ fn every_ticker_names_its_event_source_and_owner() {
              （文件事件 + rescan 请求）合成一个 `WatchEvent` enum，主循环改无超时 `recv()`。\
              ★ **本条判据就是那次退役的验收证据**：改完代码后它先红在「少一处 = 退役了」上，\
              删掉登记才绿 —— 退役不是靠人说「我改好了」。\n\
-             · 3 → 2（09-11 `K-R59`）：`ssh_source.rs` 的 **daemonless 2s 真退役了** —— \
+             · 3 → 2（09-11 `K-R59`）：`stream_source/` 的 **daemonless 2s 真退役了** —— \
              用户原话「不要有 daemonless。没有没有后端的情况。」，那一整段轮询读随之删除。\
              ⚠ **别把它读成「自动部署终于可靠了」**（那是这条登记当年自己写的退役条件）：\
              实际走的是另一条路 —— **那一档整个取消**。\n\
@@ -559,7 +564,7 @@ const SHELL_WAKES: &[(&str, &str, &str, usize, &str)] = &[
     //    连同它们的新住址一起没了（`REGISTERED` 里那条 `account_usage.rs` 已删、
     //    backend 的 `control/oneshot_session.rs` 也已删）。本表**仍然是空的**，
     //    而空的理由从「搬走了」变成「那件事不做了」。零命中守卫照旧管这一族。
-    // ★ 与 `watcher.rs`（F11）· `ssh_source.rs` 的 daemonless（`K-R59`）同形：
+    // ★ 与 `watcher.rs`（F11）· `stream_source/` 的 daemonless（`K-R59`）同形：
     //   **退役的验收证据就是本表先红在「少一处 = 退役了」上，删掉登记才绿。**
     //   不是靠人说「我改好了」。
     //

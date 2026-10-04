@@ -33,7 +33,7 @@ use tokio::sync::watch;
 
 use crate::backend_route::{route_call_error, Routed};
 use crate::inbound_client::InboundClient;
-use crate::ssh_source::RemoteConfig;
+use crate::stream_source::RemoteConfig;
 
 /// 开单：上传。载荷 `{"local_path"}`，回 `{"id","key"}`（`key` 是暂存件的键，提交时交给远端后端）。
 pub const TRANSFER_UPLOAD: &str = "transfer-upload";

@@ -4,7 +4,7 @@
 /// `BUILD_ID` 这一族按前置 1、2 搬进了后端库面（in-process 那条路
 /// **没有那个 `main.rs`**）。⚠ 下面那句 `expect` 的文案一起改，否则它报的是一个
 /// **今天不存在的文件名**，下一个人会照着它去错的地方找。
-const BACKEND_MAIN: &str = include_str!("../../../src/backend/lib.rs");
+const BACKEND_MAIN: &str = include_str!("../../../../src/backend/lib.rs");
 
 fn backend_emits() -> Vec<String> {
     let i = BACKEND_MAIN
@@ -57,7 +57,7 @@ fn every_kind_the_backend_emits_is_known_to_the_monitor() {
 /// 而这一句仍当成现状在说。
 #[test]
 fn known_kinds_matches_parse_frame() {
-    let src = include_str!("../../../src/frontend/shell/src/ssh_source.rs");
+    let src = crate::guard_support::stream_source_file("frame.rs");
     let at = src
         .find("fn parse_frame")
         .expect("找不到 parse_frame —— 抽取坏了");

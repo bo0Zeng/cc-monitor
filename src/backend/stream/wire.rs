@@ -13,7 +13,7 @@ use std::collections::HashMap;
 /// Serializes with an external `kind` tag, e.g.
 /// `{"kind":"hello","v":1,...}` or `{"kind":"session_added","sid":"..."}`.
 /// [`Frame::SessionRemoved`] 的原因。**双写点**：字面量 `"superseded"` 与 monitor
-/// `src/frontend/shell/src/ssh_source.rs` 的解析处逐字一致，由 monitor 侧
+/// `src/frontend/shell/src/stream_source/` 的解析处逐字一致，由 monitor 侧
 /// `removal_cause_wire_literal_stays_in_sync`〔散文墓碑〕 钉住（同 `TMUX_LS_FMT` 的纪律）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -44,7 +44,7 @@ impl RemovalCause {
 /// 不多起进程）。**判不了就不写这个字段**（缺席 ≠ `none`）：环境读不到、pane 不在默认 socket 上、
 /// 探测失败、非 Linux —— 都是「不知道」。
 ///
-/// 线上两个字面量 `"tmux"` / `"none"` 与 monitor `ssh_source::parse_frame` 逐字一致。
+/// 线上两个字面量 `"tmux"` / `"none"` 与 monitor `stream_source::parse_frame` 逐字一致。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionContainer {
@@ -57,7 +57,7 @@ pub enum SessionContainer {
 /// [`Frame::SessionState`] 的 `state`：**一条会话离开「活」之后是什么** ——
 /// 那台机器的后端自己裁（`observe::session_ledger`：摘除原因 ＋ 它自己那份 tmux 快照），客户端只收成品、不再猜。
 ///
-/// 线上两个字面量 `"reconnectable"` / `"ended"` 与 monitor `ssh_source::parse_frame` 逐字一致。
+/// 线上两个字面量 `"reconnectable"` / `"ended"` 与 monitor `stream_source::parse_frame` 逐字一致。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionFate {
@@ -301,7 +301,7 @@ pub enum Frame {
         /// `tail -c +(N+1)`。给 offset 续拉/截断检测（`seq` 是 per-stream 序数、非 resume 键）。
         /// 注：`Frame` 仅 derive `Serialize`，故此 `#[serde(default)]` 在**本 crate 装饰性**。
         ///
-        /// 两个前端都读它：monitor 记续点（`ssh_source.rs` 的 `"line"` 分支 · `snapshot_resume.rs`），
+        /// 两个前端都读它：monitor 记续点（`stream_source/batch.rs` 的 `"line"` 分支 · `snapshot_resume.rs`），
         /// 第二个前端拿它续拉（冻结，`wire_tests::the_shapes_the_second_frontend_reads_stay_put`）。
         #[serde(default)]
         byte_offset: u64,
@@ -709,7 +709,7 @@ impl Frame {
     /// # 这条判据是对的，此前错的是「它没有被应用到出方向」
     ///
     /// 仓里对同一类问题已经推理过一次，而且完全正确 —— 只是给 `reply` 帧做的：
-    /// `inbound.rs` 让应答走**独立通道**且用 `.send().await` 阻塞背压，
+    /// `stream/inbound/mod.rs` 让应答走**独立通道**且用 `.send().await` 阻塞背压，
     /// 头注逐字「丢一条应答会让客户端永远等下去」。
     /// **判据是「可恢复的才允许丢」，而出方向那条 10 000 容量的通道里混着两种性质完全不同的东西**，
     /// 丢弃策略却是**按通道**定的、不是按帧种类定的。本函数补的就是这个分类。
@@ -935,7 +935,7 @@ impl HelloFlushed {
 
 /// 写出 Hello 帧并 flush，成功则产出 [`HelloFlushed`] 见证。
 ///
-/// **这是 `HelloFlushed` 的唯一来源。** 放 `wire.rs` 而不是 `inbound.rs`：
+/// **这是 `HelloFlushed` 的唯一来源。** 放 `wire.rs` 而不是 `stream/inbound/`：
 /// 握手是协议管道的事，让入方向模块去写出方向的首帧会把职责搅浑。
 pub async fn write_and_flush_hello<W: tokio::io::AsyncWrite + Unpin>(
     out: &mut W,

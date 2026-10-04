@@ -204,7 +204,7 @@ acct-core = { path = "../../common/acct-core" }
 # U8a-2a：源码扫描型守卫的「只留生产段」剥法，与远端后端共用同一份。
 # **必须是 dev-dependency** —— 守卫全在 `cfg(test)` 里，它没有理由进发布二进制。
 # 起因：monitor 侧的守卫此前各写便宜近似（`split("\n#[cfg(test)]").next()`），
-# 那个近似在 `ssh_source.rs` 上会把扫描面砍掉三分之二（详见 guard-core 头注）。
+# 那个近似在 `stream_source/` 上会把扫描面砍掉三分之二（详见 guard-core 头注）。
 guard-core = { path = "../../common/guard-core" }
 # `Origin` 编进 `chan-core` 之后，本包测试档里别的生成类型（会话流那几帧）嵌着它 ⇒ dev 侧开它的 TS 派生（发布二进制不开）。
 chan-core = { path = "../../common/chan-core", features = ["ts"] }

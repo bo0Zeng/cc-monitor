@@ -1,7 +1,7 @@
 //! SS-D：远端**自部署**的业务那一半（issue #29 自动部署 F08 · 手动安装 / 卸载 · `ccm` 入口）＋ 别名块的规划。
 //!
 //! 执行那一半（SFTP）不在本模块：经本机常驻后端的 `files` 链路（见下「本模块手里已经没有 SFTP 了」）。
-//! 〔墓碑 —— 从前这里逐字「复用 `ssh_source::connect_session` 的全套 host-key 指纹校验 + publickey/agent 鉴权，
+//! 〔墓碑 —— 从前这里逐字「复用 `stream_source::connect_session` 的全套 host-key 指纹校验 + publickey/agent 鉴权，
 //!  在一条已鉴权的 russh 连接上开 SFTP 子系统」—— 那条进程内拨号随 SR1b 删了。〕
 //!
 //! ## 只读铁律豁免（INVARIANT §1 / 账本 SS-G）—— 穷举登记见 `src/doc/INVARIANTS.md §1`
@@ -39,7 +39,7 @@
 use crate::copy_table::copy_text;
 
 use crate::dial_host::{Readback, RemoteFs};
-use crate::ssh_source::RemoteConfig;
+use crate::stream_source::RemoteConfig;
 
 /// 判定一次远端上传的读回结果。**纯函数，可测**——远端往返塞不进单测，
 /// 但"读回的字节该不该判通过"这条判据可以，而它正是此前完全缺失的那一环。
@@ -356,7 +356,7 @@ async fn sweep_leftovers(leftovers: &[String], fs: &RemoteFs, origin: &str) {
 /// 它拒了 ⇒ [`DeployError::Refused`]；② 照计划取字节（[`planned_binary`]）、需要则开 `files` 链路 mkdir -p + 原子上传；
 /// ③ 照计划清旧落点那份字节。
 ///
-/// **不阻断**：调用方（ssh_source::run）拿到 `Err` 仍接着试连已有后端（手动部署的后端照样能连），
+/// **不阻断**：调用方（stream_source::run）拿到 `Err` 仍接着试连已有后端（手动部署的后端照样能连），
 /// 但那句话经远端健康通道（`kind = "deploy"`）发到界面上，不再只是一行日志。
 /// 返回值：`Ok(build_id)` = 已**确认**远端后端就是手上这份字节（部署成功或已是这一版）。调用方据此决定
 /// 是否传新版才认识的流模式参数（如 `--with-bg`）——`Err` 一律降级不传，

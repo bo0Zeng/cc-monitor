@@ -17,7 +17,7 @@
 
 use super::*;
 use crate::inbound_client::{park, BackendHello};
-use crate::ssh_source::{parse_frame, InboundFrame};
+use crate::stream_source::{parse_frame, InboundFrame};
 use serde_json::Value;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};

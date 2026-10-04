@@ -416,7 +416,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/frontend/shell/src/ssh_source.rs",
+        "src/frontend/shell/src/stream_source/snapshot.rs",
         "SNAPSHOT_MAX_BYTES",
         512 * 1024 * 1024,
         "首连快照单会话体量",
@@ -439,7 +439,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/frontend/shell/src/ssh_source.rs",
+        "src/frontend/shell/src/stream_source/exec.rs",
         "EXEC_CAPTURE_MAX_BYTES",
         4 * 1024 * 1024,
         "一次 exec 的 stdout/stderr 各自收集量",
@@ -478,7 +478,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     // 🔴 `K-R59`（09-11，定框 `K35`）：这里原来有**两条** ——
     //    `BACKENDLESS_READ_CAP`（8 MiB，单文件单轮读，超了分轮续读）与
     //    `BACKENDLESS_DISCOVER_CAP`（4 MiB，`find` 发现命令的 stdout，超了截断+说清）。
-    //    它们随 `ssh_source.rs` 那一整段 `daemonless` 轮询读一起退役 ——
+    //    它们随 `stream_source/` 那一整段 `daemonless` 轮询读一起退役 ——
     //    **不是「上限放宽了」，是被它们限住的那条读根本不存在了。**
     (
         "src/frontend/shell/src/launch.rs",
@@ -582,9 +582,9 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     // 第七条不是内联字面量，是**压根没有上限**：backend 出方向单行此前走无界 `read_line`。
     // ⚠ 它的数**刻意不等于** backend 侧的 `MAX_LINE_BYTES`（1 MiB，入方向命令信封）——
     // 实测本机 525,132 行 jsonl 里有 78 行超过 1 MiB、最长 2.97 MiB，
-    // 抄过去就是丢真实数据。理由全文在 `ssh_source.rs::BACKEND_FRAME_LINE_CAP` 头注。
+    // 抄过去就是丢真实数据。理由全文在 `stream_source/exec.rs::BACKEND_FRAME_LINE_CAP` 头注。
     (
-        "src/frontend/shell/src/ssh_source.rs",
+        "src/frontend/shell/src/stream_source/exec.rs",
         "BACKEND_FRAME_LINE_CAP",
         64 * 1024 * 1024,
         "backend **出方向单行**（一帧 = 一条 Claude jsonl 行）",
@@ -1679,7 +1679,7 @@ const UNCAPPED_STREAM_READS: &[(&str, &str, &str)] = &[
     //    它欠的是「整读一条远端 SSH exec 的 stdout，没有上限」。
     //    编排搬上后端帧面之后，本模块**不再读任何流** —— 抓回来的那一屏是一条
     //    `capture-pane` 帧应答的 `screen` 字段，而**帧那一层自己有单行上限**
-    //    （backend 侧 `inbound.rs` 的超长行处理 + monitor 侧收帧那一层）。
+    //    （backend 侧 `stream/inbound/` 的超长行处理 + monitor 侧收帧那一层）。
     //    ⇒ 这一处不再属于「异步流整读」那个人群，留着就是幽灵条目。
     // 〔09-28 裁 2〕`acct_iso_deploy.rs` 那一行删了：部署脚本那次 ssh exec 不在了（落进用户目录改问那台后端 `acct-iso-install`）。
     (
@@ -1870,7 +1870,7 @@ fn every_uncapped_stream_read_has_an_owner() {
     // （只有外层 30s 超时兜着），三个 `#[tauri::command]` 调用方，生产路径；
     // 以及 `stream_read_remote_session`〔散文墓碑〕 —— 它有 `MAX_SESSION_BYTES` 总量，
     // 但那是**读完再判**，一条超大行在 `read_line` 返回前就把内存吃光了。
-    // 两处都已改走 `ssh_source::read_capped_line`。
+    // 两处都已改走 `stream_source::read_capped_line`。
     //
     // ⇒ 针按**读的动作**取，不按某一个方法名取。
     let reads: Vec<String> = ["to_end", "to_string", "line", "until"]
@@ -1953,7 +1953,7 @@ fn every_uncapped_stream_read_has_an_owner() {
 /// `BACKEND_FRAME_LINE_CAP` 在三个地方被提到（有界读的判断处 · 措辞函数 · 消费点的
 /// `warn!`），而报告只发生在**第三处** —— 按每处提及去要求 marker 会造出两条假红。
 ///
-/// ⇒ 换个取样单位：**处置分支本身**。人群 = `ssh_source.rs` 生产段里每一处
+/// ⇒ 换个取样单位：**处置分支本身**。人群 = `stream_source/` 整个目录生产段里每一处
 /// `CappedLine::TooLong` 的处置臂。要求：
 /// ① 每一臂都得说点什么（至少 `warn!`）—— 定框 **E4**：静默失败要给身份；
 /// ② **至少有一臂**把它抬到用户能看见的那一层（原位 `Gap`：主帧读那一臂交 `Ok(None)`）——
@@ -1963,10 +1963,7 @@ fn every_uncapped_stream_read_has_an_owner() {
 /// 紧邻的别的语句里恰好有 marker ⇒ 假绿。与隔壁那条同源取舍。
 #[test]
 fn the_drop_and_report_semantics_is_honoured_at_every_over_limit_arm() {
-    let root = repo_root();
-    let raw = std::fs::read_to_string(root.join("src/frontend/shell/src/ssh_source.rs"))
-        .expect("ssh_source.rs 读不到 —— 文件搬了就把这条一起改");
-    let prod = guard_core::production_code(&raw);
+    let prod = crate::guard_support::stream_source_production();
     let lines: Vec<&str> = prod.lines().collect();
     let mut arms = 0usize;
     let mut silent = Vec::new();
@@ -1984,7 +1981,7 @@ fn the_drop_and_report_semantics_is_honoured_at_every_over_limit_arm() {
         const WINDOW: usize = 12;
         let body = lines[i..(i + WINDOW).min(lines.len())].join("\n");
         if !body.contains("warn!") {
-            silent.push(format!("  ssh_source.rs:{}", i + 1));
+            silent.push(format!("  stream_source/ 生产段第 {} 行", i + 1));
         }
         if body.contains("frame_tx.send(Ok(None))") {
             reported += 1; // 原位 `Gap` 那一路（主循环 `LineIntake::lost`）

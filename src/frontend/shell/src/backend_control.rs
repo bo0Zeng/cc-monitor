@@ -3,7 +3,7 @@
 //! # 这一层认识什么、不认识什么
 //!
 //! 它只认识 **origin**（本机是 [`crate::inbound_client::LOCAL_ORIGIN`]，远端是用户配的 label）。
-//! 它**不认识 ssh、不认识进程监护** —— 那两样分别住 `ssh_source` 与 `local_backend_host`。
+//! 它**不认识 ssh、不认识进程监护** —— 那两样分别住 `stream_source` 与 `local_backend_host`。
 //! 远端怎么起，由 `lib.rs` 在启动时注册一个**重起闭包**（把 replay / app handle / tx 那几个
 //! 克隆关进去），本层只按 origin 找把手。
 //!
@@ -201,7 +201,7 @@ pub async fn backend_start(origin: String) -> Result<String, String> {
         )
     })?;
     // ⚠ **A2**：`JoinHandle` 完成之后**不会变成 `None`**〔D 阶段补审 08-11 修〕。
-    // 原来判据是 `slot.handle.is_some()` ⇒ `ssh_source::run` 一旦返回（`lib.rs` 记 error 后
+    // 原来判据是 `slot.handle.is_some()` ⇒ `stream_source::run` 一旦返回（`lib.rs` 记 error 后
     // task 结束），此后每次点「起」都恒回「已经在跑」，而实际上**一条流都没有**；
     // 用户只能先点「停」（abort 一个已结束的 handle）再点「起」。
     // ⇒ 改问 tokio 句柄的 `is_finished()`：**跑着才算在跑**。

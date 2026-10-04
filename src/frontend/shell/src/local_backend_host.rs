@@ -230,13 +230,13 @@ pub(crate) fn hello_verdict(
     want_build: &str,
     want_env: &[(String, String)],
 ) -> HelloVerdict {
-    let Some(frame) = crate::ssh_source::parse_frame(line) else {
+    let Some(frame) = crate::stream_source::parse_frame(line) else {
         return HelloVerdict::Stranger(copy_text(
             "rsLocalBackendHost.hello.notBackendLine",
             &[("bytes", &(line.len()).to_string())],
         ));
     };
-    let crate::ssh_source::InboundFrame::Hello { build_id, .. } = &frame else {
+    let crate::stream_source::InboundFrame::Hello { build_id, .. } = &frame else {
         return HelloVerdict::Stranger(
             copy_text("rsLocalBackendHost.hello.notBackend", &[]).into(),
         );
@@ -830,7 +830,7 @@ fn shout_if_the_ledger_refused(rec: Option<crate::backend_policy::Recorded>) {
 /// `park_owned_writer` · `read_capped_line`），没有把一个绑传输的循环硬掰成泛型 ——
 /// 那是 `local_stdio_consumer` 头注自己给的分寸。
 fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), String> {
-    let frame = crate::ssh_source::parse_frame(hello_line)
+    let frame = crate::stream_source::parse_frame(hello_line)
         .ok_or_else(|| copy_text("rsLocalBackendHost.stream.badFirstLine", &[]))?;
     let witness = crate::inbound_client::BackendHello::from_hello_frame(&frame)
         .ok_or_else(|| copy_text("rsLocalBackendHost.stream.notHello", &[]))?;
@@ -862,7 +862,7 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
         crate::inbound_client::LOCAL_ORIGIN
     );
     tauri::async_runtime::spawn(async move {
-        use crate::ssh_source::{CappedLine, BACKEND_FRAME_LINE_CAP};
+        use crate::stream_source::{CappedLine, BACKEND_FRAME_LINE_CAP};
         let mut reader = tokio::io::BufReader::new(rd);
         let mut buf: Vec<u8> = Vec::new();
         // ★ `K-P3b`：**我们这一侧的读端怎么结束的**。初值只在真读到 EOF 时才成立 ——
@@ -871,8 +871,12 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
         // 这条载体上丢了几行 / 几帧 —— 原先两处裸 `continue` 一声不吭；记账，流结束出总账。
         let mut tally = crate::frame_tally::FrameTally::new("本机常驻后端（脱离载体）");
         loop {
-            match crate::ssh_source::read_capped_line(&mut reader, &mut buf, BACKEND_FRAME_LINE_CAP)
-                .await
+            match crate::stream_source::read_capped_line(
+                &mut reader,
+                &mut buf,
+                BACKEND_FRAME_LINE_CAP,
+            )
+            .await
             {
                 Ok(CappedLine::Eof) => break,
                 Ok(CappedLine::TooLong(bytes)) => {
@@ -896,7 +900,7 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
                 }
                 continue;
             };
-            let Some(f) = crate::ssh_source::parse_frame(line) else {
+            let Some(f) = crate::stream_source::parse_frame(line) else {
                 if let Some(n) = tally.note_unparsed(line) {
                     tracing::warn!("{n}");
                 }
@@ -1299,7 +1303,7 @@ fn run_resident_stop_within(
             ))
         }
     };
-    crate::remote_resident::read_stop(&crate::ssh_source::RemoteExec {
+    crate::remote_resident::read_stop(&crate::stream_source::RemoteExec {
         stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
         stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
         exit_status: out.code.and_then(|c| u32::try_from(c).ok()),

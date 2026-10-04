@@ -78,7 +78,7 @@ pub(crate) fn decode_verdict(v: &serde_json::Value) -> Result<Verdict, String> {
 }
 
 /// 问本机常驻后端「那台的旧入口怎么办」。入参只有事实：怎么够到那台（与 `files` 链路同一份拨号请求）。
-async fn ask_verdict(cfg: &crate::ssh_source::RemoteConfig) -> Result<Verdict, String> {
+async fn ask_verdict(cfg: &crate::stream_source::RemoteConfig) -> Result<Verdict, String> {
     use crate::backend_route::{route_call_error, Routed};
     let dial = crate::dial_host::transfer_dial(cfg)?;
     let client = crate::dial_host::local_backend_accepting(RETIRED_CMD).await?;
@@ -143,17 +143,17 @@ pub(crate) async fn apply<D: Door>(door: &D, verdict: Verdict) -> Result<Swept, 
 }
 
 /// 问一次、照答办一次（部署按钮 · 那台长连接握手完成，两个触发点同一个入口）。
-pub(crate) async fn sweep(cfg: &crate::ssh_source::RemoteConfig) -> Result<Swept, String> {
+pub(crate) async fn sweep(cfg: &crate::stream_source::RemoteConfig) -> Result<Swept, String> {
     let verdict = ask_verdict(cfg).await?;
     let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
     apply(&door, verdict).await
 }
 
-/// 升级那一格：那台的长连接握手完成那一刻，后台扫一次（`ssh_source` 在 `asset_sync::on_remote_ready` 旁边调）。
+/// 升级那一格：那台的长连接握手完成那一刻，后台扫一次（`stream_source` 在 `asset_sync::on_remote_ready` 旁边调）。
 ///
 /// **每次连上都扫**，不只在「这一轮自动部署真写了字节」时扫：跳过预检那一格（`skip_preflight`）根本不跑部署，
 /// 升级那一轮流若恰好没起来就永远删不掉；扫一次 ＝ 问一次本机常驻后端 `deploy-retired`（只读 SFTP stat，不在就停）。结局只进日志（足迹那一页看得到现状）。
-pub(crate) fn on_remote_ready(cfg: &crate::ssh_source::RemoteConfig) {
+pub(crate) fn on_remote_ready(cfg: &crate::stream_source::RemoteConfig) {
     let cfg = cfg.clone();
     let origin = cfg.origin_label();
     tauri::async_runtime::spawn(async move {

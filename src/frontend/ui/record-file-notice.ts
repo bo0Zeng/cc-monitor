@@ -15,7 +15,7 @@
 import { copyText } from "./copy-table";
 import s from "./record-file-notice.module.css";
 
-/** 线上三个字面量（monitor `ssh_source::FileChange::as_wire`）。 */
+/** 线上三个字面量（monitor `stream_source::FileChange::as_wire`）。 */
 export const RECORD_FILE_CHANGES = ["gone", "truncated", "rewritten"] as const;
 export type RecordFileChange = (typeof RECORD_FILE_CHANGES)[number];
 

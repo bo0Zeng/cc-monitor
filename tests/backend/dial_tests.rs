@@ -11,7 +11,7 @@
 //! # 甲半在哪
 //!
 //! 甲半（界面这一侧：backend 那条长连接流不再自己拨号）住
-//! `../../frontend/shell/src/ssh_source.rs` 的测试模块 —— **两侧各扫各的 crate**，
+//! `../../frontend/shell/src/stream_source/` 的测试模块 —— **两侧各扫各的 crate**，
 //! 刻意不从这里 `include_str!` 伸到对面去（那会新增一条跨轨编译期边，
 //! 而那张登记表不在本轮写区里）。
 
@@ -167,7 +167,7 @@ fn the_link_arms_are_actually_wired_into_the_dispatch() {
     ));
     assert!(
         inbound_prod.len() > 3_000,
-        "剥完 inbound.rs 生产段只剩 {} 字节 —— 剥法坏了，本条此刻在空转",
+        "剥完 stream/inbound/ 生产段只剩 {} 字节 —— 剥法坏了，本条此刻在空转",
         inbound_prod.len()
     );
     // 运行时拼，免得本模块自己的文本被别的扫描器命中。
@@ -183,12 +183,12 @@ fn the_link_arms_are_actually_wired_into_the_dispatch() {
         assert_eq!(
             inbound_prod.matches(arm.as_str()).count(),
             1,
-            "`inbound.rs` 生产段里 `{arm}` 不是恰好 1 条硬臂"
+            "`stream/inbound/` 生产段里 `{arm}` 不是恰好 1 条硬臂"
         );
         assert_eq!(
             inbound_prod.matches(call.as_str()).count(),
             1,
-            "`inbound.rs` 生产段里 `{call}` 不是恰好 1 处 —— `{cmd}` 那条臂没接到链路表上"
+            "`stream/inbound/` 生产段里 `{call}` 不是恰好 1 处 —— `{cmd}` 那条臂没接到链路表上"
         );
         // 反向自检：把这一处调用剔掉，本条必须看得见（否则它在测「文本里有这个词」）。
         let without = inbound_prod.replace(call.as_str(), "nothing_at_all(");
@@ -274,7 +274,7 @@ fn the_corpus_floor_is_not_far_below_the_real_corpus() {
 
 /// `--dial` 的请求行按**蛇形键**读。这条钉的是两端的字段名对得上。
 ///
-/// ⚠ 它只钉本侧的读法；界面那侧写的是什么，由 `ssh_source` 的判据钉。
+/// ⚠ 它只钉本侧的读法；界面那侧写的是什么，由 `stream_source` 的判据钉。
 /// **两侧各钉一半** —— 与 `build_id_guard` / `protocol_doc_guard` 的分工同形。
 #[test]
 fn the_request_line_is_read_with_snake_case_keys() {

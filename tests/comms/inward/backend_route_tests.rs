@@ -91,7 +91,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   它们守的那件事没丢：Rust 这一侧的分层判定照旧只在 `backend_route::layer_call_error` 一处（通道宿主 `host.rs` 用它）；
     //   F14 那条「能不能回落」在界面那一侧的同义一份（`ipc/chan-caller.ts::provablyNotSent`）由跨语言金样
     //   `tests/__fixtures__/reach-collapse.golden.json` 与本侧 `route_call_error` 对拍（`chan/webview_tests.rs`）。
-    // `ssh_source.rs` 那一行（08-08 扩面逮出的第四个发送端：`probe_backend`〔散文墓碑〕 里那条 `ping`，只渲染诊断串、不做回落决策）
+    // `stream_source/` 那一行（08-08 扩面逮出的第四个发送端：`probe_backend`〔散文墓碑〕 里那条 `ping`，只渲染诊断串、不做回落决策）
     //   摘了：测试连接搬进本机后端（`dial/probe.rs`），monitor 这一侧不再发那一问。
 
     // **`cc_bus.rs` 那一行退役了**：P4f 起它把 cc-bus 写面（发消息 · 收掉 · 派生 · 查在线）经后端的
@@ -225,7 +225,7 @@ enum Verdict {
     /// ⚠ 与上面那一档**刻意分开**：`ExemptPendingF14` 说的是「本该走分流器、
     /// 但今天还差一步」，这一档说的是「**根本没有回落这回事**」。
     /// 合成一档会让「欠着」与「不适用」长得一样。
-    /// 今天没有住户（唯一那个 `ssh_source.rs` 的探测随测试连接搬进本机后端）；档位留着，下一个探测型发送端来了照样得表态。
+    /// 今天没有住户（唯一那个 `stream_source/` 的探测随测试连接搬进本机后端）；档位留着，下一个探测型发送端来了照样得表态。
     #[allow(dead_code)]
     ProbeOnlyNoFallbackDecision,
     /// **纯路由器**：它的 `.call(` 调的是**别人注入的句柄**，自己够不着任何后端发送端，
@@ -278,7 +278,7 @@ fn every_backend_sender_is_registered_and_uses_the_one_router() {
     //   声称的是「monitor 侧走后端的**所有**控制命令共用」。实测：把一个 `.call(`
     //   发送端放在 `tmux.rs`（目录之外）并让它自己判回落，**全仓 989 条判据一条不红**
     //   —— **声称的范围与人群的范围不是同一个**。改扫整棵 monitor 源码树。
-    //   ★ 扩面当场逮出**第四个真实发送端**（`ssh_source.rs` 的探测 ping），此前整个在扫描面之外。
+    //   ★ 扩面当场逮出**第四个真实发送端**（`stream_source/` 的探测 ping），此前整个在扫描面之外。
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     // 目录里所有「走后端」的文件：生产段出现 `.call(` 的。
     // 另一个动词 `.call_until(`（`InboundClient::call_until`：截止时刻由调用方给的那一形）同样是发送 ——

@@ -1347,13 +1347,13 @@ pub fn extraction_failure_reason(dir: &Path, err: &str) -> String {
     )
 }
 
-/// [`local_stdio_consumer`] 用的**同步有界读行** —— 远端 `ssh_source::read_capped_line` 的孪生。
+/// [`local_stdio_consumer`] 用的**同步有界读行** —— 远端 `stream_source::read_capped_line` 的孪生。
 ///
 /// # 为什么不复用那一份
 ///
 /// 那一份是 `async`（吃 `AsyncBufRead`），而本机消费者跑在**裸 `std::thread`** 上。
 /// 机制可以同构，代码跨不了 sync/async 这道边。
-/// ⇒ **共用的是上限常量**（`ssh_source::BACKEND_FRAME_LINE_CAP`），那才是会漂的东西；
+/// ⇒ **共用的是上限常量**（`stream_source::BACKEND_FRAME_LINE_CAP`），那才是会漂的东西；
 /// 机制各写一份，两边头注互指。
 ///
 /// # 机制：`fill_buf`/`consume`，超限之后只找换行、不再往 buf 里塞字节
@@ -1372,7 +1372,7 @@ pub fn extraction_failure_reason(dir: &Path, err: &str) -> String {
 /// 原版用 `BufReader::lines()`，那是 **UTF-8 严格**的，一个坏字节就回 `InvalidData`，
 /// 而调用方把它和 EOF 一起 `break` ⇒ backend 被我们读死、还被记成一次「崩溃」，
 /// 三次之后**整个进程周期不再起来**，日志写「崩了 3 次」——**一个错误的诊断**。
-/// 远端那条路早就明确取了相反的取舍（`ssh_source` 里 `from_utf8_lossy`，注释逐字
+/// 远端那条路早就明确取了相反的取舍（`stream_source` 里 `from_utf8_lossy`，注释逐字
 /// 「非 UTF-8 不该让整条连接死掉」），本机这条当时把它漏了。
 ///
 /// 行旁边多回一位「这一行不是合法 UTF-8、按替换字符读的」，
@@ -1433,8 +1433,8 @@ fn decode_line(buf: Vec<u8>) -> (String, bool) {
 
 /// 本机后端的**流模式起参** —— 两条载体（stdio 监护 · 常驻脱离）共用这一份。
 ///
-/// - `--tail-only`：连接不重放历史，历史由 monitor 经旁路快照拉（与远端同一套：`ssh_source::LineIntake`）。
-///   本机内容消费者据此认定「这条流恒为 tail-only」（`ssh_source::LOCAL_STREAM_TAIL_ONLY`）。
+/// - `--tail-only`：连接不重放历史，历史由 monitor 经旁路快照拉（与远端同一套：`stream_source::LineIntake`）。
+///   本机内容消费者据此认定「这条流恒为 tail-only」（`stream_source::LOCAL_STREAM_TAIL_ONLY`）。
 /// - `--with-bg`：bg 会话也宣告、也发行 —— 本机会话内容从这条流来之后，少了它 bg 会话的内容就静默没了
 ///   （monitor 的 `showBgSessions` 缺省是开的）。显示与否在 monitor 那一侧按 `session_kind` 定。
 ///
@@ -1494,14 +1494,14 @@ pub(crate) const BACKEND_SEP: &str = "--";
 /// ⚠ 交回而不是在这里就地送：两条读循环一条是 tokio 任务、一条是裸线程，送法不同（`local_lines` 头注）。
 /// 其余帧仍就地吸收，返回 `None`。
 pub(crate) fn absorb_local_frame(
-    frame: crate::ssh_source::InboundFrame,
+    frame: crate::stream_source::InboundFrame,
     client: Option<&std::sync::Arc<crate::inbound_client::InboundClient>>,
-) -> Option<crate::ssh_source::InboundFrame> {
-    use crate::ssh_source::InboundFrame;
+) -> Option<crate::stream_source::InboundFrame> {
+    use crate::stream_source::InboundFrame;
     match frame {
         // 本机的 tmux 观测两种帧 monitor 不再消费（后端也不再发，那两帧删了）：
         //   收割与「可重连」由本机后端的会话账本裁（`observe/session_ledger.rs`），成品 `session_state` 走下面那一臂进本机内容通道。
-        //   〔从前这里记 tmux 原文账（`ssh_source::record_tmux_raw`〔散文墓碑〕）＋ 本机收割器（`local_idle_retirements`〔散文墓碑〕）；
+        //   〔从前这里记 tmux 原文账（`stream_source::record_tmux_raw`〔散文墓碑〕）＋ 本机收割器（`local_idle_retirements`〔散文墓碑〕）；
         //    `session_added` 这一臂还记容器（`session_facts::note_container`〔散文墓碑〕）——容器今天随活会话成品一起进 `session_book`。〕
         InboundFrame::Reply {
             id,
@@ -1582,7 +1582,7 @@ pub(crate) fn absorb_local_frame(
 ///
 /// # 复用边界（为什么不用 `stream_loop`）
 ///
-/// `ssh_source::stream_loop` **不是泛型**：它吃 `&RemoteConfig` + `&tauri::AppHandle`，
+/// `stream_source::stream_loop` **不是泛型**：它吃 `&RemoteConfig` + `&tauri::AppHandle`，
 /// 还管重放 / 会话变更 / 连接状态 / hello 确认。本机没有那些。
 /// 但它下面那三个零件**是纯的**，本函数复用的正是它们：
 /// `parse_frame(&str) -> Option<InboundFrame>` · `BackendHello::from_hello_frame(&InboundFrame)` ·
@@ -1642,36 +1642,37 @@ pub(crate) fn local_stdio_consumer(
     // 这条载体上跳过了几帧认不出的、几行不是合法 UTF-8 —— 记账，流结束出总账。
     let mut tally = crate::frame_tally::FrameTally::new("本机后端（stdio 载体）");
     loop {
-        let line = match read_capped_line_sync(&mut rd, crate::ssh_source::BACKEND_FRAME_LINE_CAP) {
-            Ok(Some(None)) => {
-                // 超长整行丢了 ⇒ 原位说出来（与远端 / 常驻载体同形：订阅收一格 `Gap`）。
-                crate::local_lines::line_lost_blocking();
-                continue;
-            }
-            Ok(Some(Some((l, lossy)))) => {
-                if lossy {
-                    if let Some(n) = tally.note_bad_utf8(l.as_bytes()) {
-                        tracing::warn!("{n}");
-                    }
+        let line =
+            match read_capped_line_sync(&mut rd, crate::stream_source::BACKEND_FRAME_LINE_CAP) {
+                Ok(Some(None)) => {
+                    // 超长整行丢了 ⇒ 原位说出来（与远端 / 常驻载体同形：订阅收一格 `Gap`）。
+                    crate::local_lines::line_lost_blocking();
+                    continue;
                 }
-                l
-            }
-            Ok(None) => break, // EOF = 流结束 = 判死
-            Err(e) => {
-                // 真读错误（不是坏字节 —— 那条已被 `from_utf8_lossy` 吸收）。
-                // ⚠ **子进程可能还活着** ⇒ 报 `Early`，让 `supervise` 补一刀（B4）。
-                tracing::warn!("本机后端 stdout 读错误（{e}）；按早退处理");
-                // ★ `K-P3b`：那句错**原样**带上去 —— 账上那一行要它
-                //   （`B1` 逐字：「读坏了」说的是我们这一侧，**不算它崩了一次**）。
-                reader_end = crate::backend_policy::ReaderEnd::Broken(e.to_string());
-                early = true;
-                break;
-            }
-        };
+                Ok(Some(Some((l, lossy)))) => {
+                    if lossy {
+                        if let Some(n) = tally.note_bad_utf8(l.as_bytes()) {
+                            tracing::warn!("{n}");
+                        }
+                    }
+                    l
+                }
+                Ok(None) => break, // EOF = 流结束 = 判死
+                Err(e) => {
+                    // 真读错误（不是坏字节 —— 那条已被 `from_utf8_lossy` 吸收）。
+                    // ⚠ **子进程可能还活着** ⇒ 报 `Early`，让 `supervise` 补一刀（B4）。
+                    tracing::warn!("本机后端 stdout 读错误（{e}）；按早退处理");
+                    // ★ `K-P3b`：那句错**原样**带上去 —— 账上那一行要它
+                    //   （`B1` 逐字：「读坏了」说的是我们这一侧，**不算它崩了一次**）。
+                    reader_end = crate::backend_policy::ReaderEnd::Broken(e.to_string());
+                    early = true;
+                    break;
+                }
+            };
         if line.is_empty() {
             continue; // 空行
         }
-        let Some(frame) = crate::ssh_source::parse_frame(&line) else {
+        let Some(frame) = crate::stream_source::parse_frame(&line) else {
             if let Some(n) = tally.note_unparsed(&line) {
                 tracing::warn!("{n}");
             }
@@ -1695,7 +1696,7 @@ pub(crate) fn local_stdio_consumer(
         // 日志取自**帧**而不是 client —— `InboundClient` 的 `commands` 是私有的，
         // 为了打一行日志去开访问器是把封装换成方便。帧的字段本来就是公开的。
         let (build_id, commands) = match &frame {
-            crate::ssh_source::InboundFrame::Hello {
+            crate::stream_source::InboundFrame::Hello {
                 build_id, commands, ..
             } => (build_id.clone(), commands.clone()),
             // `from_hello_frame` 只对 `Hello` 返回 `Some` ⇒ 走不到这里。

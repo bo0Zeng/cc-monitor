@@ -494,7 +494,7 @@ fn the_three_questions_in_33b_have_todays_answers() {
 
     // 🔴 〔条 80 「不要管旧配置」〕**量法 ③ 与第三问一起删了。**
     //    原先它量那一档的三个载体：`remote-config.ts` 的落盘字段 `"daemonless",` ·
-    //    `machine-card.ts` 的 `daemonlessInput` · `ssh_source.rs` 的 `daemonless_stream_loop`。
+    //    `machine-card.ts` 的 `daemonlessInput` · `stream_source/` 的 `daemonless_stream_loop`。
     //    `K-R59`（09-11）早把前两个删了，条 80 又删掉最后那块墓碑
     //    （`LEGACY_NO_BACKEND_KEY`）⇒ **三格在盘上全部不存在，恒 false**
     //    ⇒ 判词恒为「已退役」⇒ 与文档**永远对得上** ⇒ 那是三条恒绿的判据。
@@ -641,7 +641,7 @@ fn each_registered_status_still_matches_reality() {
             // ⇒ 改成读真正的家，并加一条「文件必须存在」的断言，杜绝同样的静默空转。
             "posix-quote-has-one-home" => (
                 {
-                    // 从前读 monitor `ssh_source.rs` 那层转调壳（`shell_quote`〔散文墓碑〕）转不转内核；那层壳零生产调用、删了
+                    // 从前读 monitor `stream_source/` 那层转调壳（`shell_quote`〔散文墓碑〕）转不转内核；那层壳零生产调用、删了
                     //   ⇒ 量法改读家本身（唯一性另由 `quote_singleton_guard` 守）。
                     let home = "src/common/shell-quote-core/src/lib.rs";
                     assert!(
@@ -707,7 +707,7 @@ fn each_registered_status_still_matches_reality() {
 ///
 /// # 它是怎么被发现的
 ///
-/// Phase G 的全局变异抽样里，把 backend `inbound.rs` 的 `unknown_command`
+/// Phase G 的全局变异抽样里，把 backend `stream/inbound/` 的 `unknown_command`
 /// **三处一起改名**成 `unknown_cmd` —— **backend 253 条全绿**。
 /// 而 `src/doc/IPC-PROTOCOL.md` 逐条列着六个**协议级**错误码，语义是
 /// 「客户端代码写错了，别重试」—— 那是**仓外可见的契约**（`resolve` 那条已经与 aterm 冻结）。
@@ -722,7 +722,7 @@ fn each_registered_status_still_matches_reality() {
 #[test]
 fn the_protocol_level_error_codes_in_the_doc_are_the_ones_the_backend_uses() {
     const IPC: &str = include_str!("../../../src/doc/IPC-PROTOCOL.md");
-    let marker = "**协议级**由 `inbound.rs` 独占 ——";
+    let marker = "**协议级**由 `stream/inbound/` 独占 ——";
     let at = IPC.find(marker).unwrap_or_else(|| {
         panic!(
             "`IPC-PROTOCOL.md` 里找不到锚点 {marker:?} —— 那句话被改写了。\n\
@@ -764,7 +764,7 @@ fn the_protocol_level_error_codes_in_the_doc_are_the_ones_the_backend_uses() {
         in_doc.len()
     );
     let backend = std::fs::read_to_string(repo_root().join("src/backend/stream/inbound/mod.rs"))
-        .expect("读不到后端的 inbound.rs");
+        .expect("读不到后端的 stream/inbound/");
     let prod = guard_core::production_code(&backend);
     let missing: Vec<&&str> = in_doc
         .iter()

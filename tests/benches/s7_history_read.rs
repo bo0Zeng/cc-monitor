@@ -65,7 +65,7 @@ use std::time::Instant;
 //   它没有静默：`winchk-backend`（跨 target `--all-targets`）当场红。
 const BIN: &str = env!("CARGO_BIN_EXE_cc-monitor-backend");
 
-/// 生产里快照拉取用的 N（`src/frontend/shell/src/ssh_source.rs` 的 `SNAPSHOT_TAIL_LINES`）。
+/// 生产里快照拉取用的 N（`src/frontend/shell/src/stream_source/snapshot.rs` 的 `SNAPSHOT_TAIL_LINES`）。
 const SNAPSHOT_TAIL_LINES: usize = 500;
 
 /// 大文件那几格的计时次数。15 MB 一趟几十毫秒，9 次够出 min/p50/max 又不拖慢门禁。

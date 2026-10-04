@@ -1195,7 +1195,7 @@ mod tests {
         }
     }
 
-    /// ★ **R4**：协议级错误码是**闭集**，且只有 `inbound.rs` 可以发。
+    /// ★ **R4**：协议级错误码是**闭集**，且只有 `stream/inbound/` 可以发。
     ///
     /// # 为什么要分层（设计审计 · 视角 A · P6）
     ///
@@ -1208,14 +1208,14 @@ mod tests {
     /// 改它会破坏那份契约 ⇒ 如实登记，不顺手改。
     #[test]
     fn protocol_level_codes_are_never_emitted_from_the_control_layer() {
-        // 协议级闭集。**只有 `inbound.rs` 可以发这些。**
+        // 协议级闭集。**只有 `stream/inbound/` 可以发这些。**
         const PROTOCOL_CODES: &[&str] = &[
             "line_too_long",
             "unknown_command",
             "duplicate_id",
             "handler_panicked",
             "not_cancellable",
-            // 后端在收场（排空停不下来的那一档）时新来的阻塞命令：与命令无关、只有 `inbound.rs` 判得了。
+            // 后端在收场（排空停不下来的那一档）时新来的阻塞命令：与命令无关、只有 `stream/inbound/` 判得了。
             "shutting_down",
         ];
         // 逐个文件扫 `control/`（`observe/` 不产 code，不在本条范围）。
@@ -1256,7 +1256,7 @@ mod tests {
         assert!(
             violations.is_empty(),
             "{violations:?}\n\
-             协议级 code 的语义是「客户端代码写错了，别重试」，只有 `inbound.rs` 有资格判定它。\n\
+             协议级 code 的语义是「客户端代码写错了，别重试」，只有 `stream/inbound/` 有资格判定它。\n\
              命令自己的失败请用命令级 code（并登记进 `CommandSpec::codes`）。"
         );
 

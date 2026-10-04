@@ -6,11 +6,11 @@
 //! 这一枚标记是**盘上那一侧**的凭据（登记那一侧在
 //! `tests/frontend/shell/comm_boundary_registry_tests.rs` 的 `REGISTERED`，两向集合相等）。
 //! 盖上它 = **上锁**：本文件从此被 `C1`–`C5` ＋ `X1`–`X6` 十一条一起管着。
-//! 用户 `Q6` 裁「甲」（先承认传输面脏、C2 洗干净再收）—— 这一份就是从 `ssh_source.rs` 里洗出来的那段传输。
+//! 用户 `Q6` 裁「甲」（先承认传输面脏、C2 洗干净再收）—— 这一份就是从 `stream_source/` 里洗出来的那段传输。
 //!
 //! # 它为什么是通信层成员
 //!
-//! 它原来埋在 `ssh_source.rs` 里（那时连 `russh` 握手也在界面进程里跑）。把 SSH 的全部活
+//! 它原来埋在 `stream_source/` 里（那时连 `russh` 握手也在界面进程里跑）。把 SSH 的全部活
 //! 搬进后端的拨号代理之后，界面这一侧与 SSH 有关的**传输**只剩「读代理的应答」这一件 —— 就是本文件。
 //! 那四样它只碰两样：**流**（交给它的管子）与**载荷**（ack 之后的字节它不看）。
 //!
@@ -34,7 +34,7 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt};
 /// 后端拨号代理在 ack 之前逐行报出来（请求带 `stages=true` 时），本侧**原样反序列化**进这个类型 ——
 /// 形状两侧逐字段相同（后端 `dial::Stage`），对拍判据住 `ssh_link_tests.rs`。
 /// 阶段取 russh 能干净观测的粒度 —— 不含 KEX（HostKey 触发即隐含 TCP ＋ KEX 已过）。
-/// 搬自 `ssh_source.rs`：类型名与线上形状一个字没动（前端生成物 `ConnectStage.ts` 只有这段注释变了）。
+/// 搬自 `stream_source/`：类型名与线上形状一个字没动（前端生成物 `ConnectStage.ts` 只有这段注释变了）。
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
@@ -77,7 +77,7 @@ pub struct Ack {
     pub endpoint: Option<String>,
     /// 同一条胜者，结构化 —— 记 last-good 用它（地址不在界面进程里解析）。
     #[serde(default)]
-    pub winner: Option<crate::ssh_source::Endpoint>,
+    pub winner: Option<crate::stream_source::Endpoint>,
     /// 这一趟目标那台是否已严格校验指纹（后端组请求时定的，`dial/machine.rs`）。
     #[serde(default)]
     pub strict: bool,

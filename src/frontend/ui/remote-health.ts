@@ -1,7 +1,7 @@
 /**
  * 远端健康提示通道（SS-F，issue #32 起）。
  *
- * 后端远端数据源（ssh_source）把「拥塞丢行（#32 overflow）/ 版本不符（#33）」等
+ * 后端远端数据源（stream_source）把「拥塞丢行（#32 overflow）/ 版本不符（#33）」等
  * **非致命**健康事件经 `remote-health` Tauri 事件回传；这里单一 listener 收下、按
  * `origin|kind` 节流（拥塞期一台机器可能连发，避免 toast 刷屏）后弹一个灰色 info
  * toast（复用 error-toast.ts 的 toast 栈，不另造 UI）。

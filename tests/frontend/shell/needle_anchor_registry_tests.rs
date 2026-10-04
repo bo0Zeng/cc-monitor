@@ -605,7 +605,7 @@ fn the_extractor_counts_only_disk_corpora() {
 
 /// ★ **负对照**：`P28` 补的这两个洞，**旧口径在同一份夹具上是零命中**。
 ///
-/// 形态照 `ssh_source_write_half_guard::the_shared_stripper_keeps_the_part_this_guard_must_scan`
+/// 形态照 `stream_source::write_half_guard::the_shared_stripper_keeps_the_part_this_guard_must_scan`
 /// —— 判的不是产品性质，是「**这把尺子够得着我说它够得着的那一段**」。
 ///
 /// 🔴 **为什么不能只断言「语料变量集非空」**：旧口径在下面这两份夹具上，

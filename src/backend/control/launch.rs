@@ -21,7 +21,7 @@
 //!
 //! # ★ 错误码分两层
 //!
-//! - **协议级**（`inbound.rs` 独占）：`bad_request`（信封 JSON 坏了）· `line_too_long` ·
+//! - **协议级**（`stream/inbound/` 独占）：`bad_request`（信封 JSON 坏了）· `line_too_long` ·
 //!   `unknown_command` · `duplicate_id` · `handler_panicked` · `not_cancellable`。
 //!   语义是「**客户端代码写错了**，别重试」。
 //! - **命令级**（本模块）：`invalid_args` · `no_tmux` · `no_such_session` · `create_failed` ·

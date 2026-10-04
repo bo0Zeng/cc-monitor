@@ -6,11 +6,11 @@
 //! 每 10 秒对每台机器握一次手」。那 8 条今天全是**一次性子命令**：monitor 每问一次就
 //! 新开一条 TCP+SSH+鉴权，exec 一次本二进制，读完 stdout 就断。
 //! 而同一台机器上**已经有一条**长连接（流模式那条），入方向早就能一问一答
-//! （`inbound.rs`）—— 缺的只是这 8 条没登记上去。
+//! （`stream/inbound/`）—— 缺的只是这 8 条没登记上去。
 //!
 //! # 为什么住顶层，而不是 `observe/`
 //!
-//! 与 `files/` 同一个理由：`inbound.rs` 不许出现 `observe::`
+//! 与 `files/` 同一个理由：`stream/inbound/` 不许出现 `observe::`
 //! （`inbound_structure_guards::inbound_never_reaches_into_the_observe_layer`），
 //! 而查询的本体就住 `observe/`。⇒ 本文件是那道线**之外**的一层薄宿主：
 //! 解帧面的 `args`、把输出装进应答、给错误一个 code。**查询本身一行不在这里** ——
@@ -40,7 +40,7 @@ pub(crate) const READ_PAGE_BYTES: usize = 1 << 20;
 
 /// 单行比一页还长时，最多续读到多长（超过 ⇒ `oversized_line`）。
 ///
-/// monitor 那头单帧上限 64 MiB（`ssh_source::BACKEND_FRAME_LINE_CAP`），而字节进 JSON 串
+/// monitor 那头单帧上限 64 MiB（`stream_source::BACKEND_FRAME_LINE_CAP`），而字节进 JSON 串
 /// 要转义（引号、反斜杠）—— 留一半余量。
 pub(crate) const LINE_CAP_BYTES: usize = 32 << 20;
 
@@ -475,7 +475,7 @@ fn lines(f: impl FnOnce(&mut CappedBuf) -> Result<(), (&'static str, String)>) -
     Ok(json!({ "lines": rows }))
 }
 
-/// `accounts-trust` 的拒绝码（CLI 那一臂给的是 `String`）→ 帧面的 `&'static str`。**闭集，与 `inbound.rs`
+/// `accounts-trust` 的拒绝码（CLI 那一臂给的是 `String`）→ 帧面的 `&'static str`。**闭集，与 `stream/inbound/registry/accounts.rs`
 /// 那一块的 `codes` 同一张**；认不出的一律 `failed`（不把一个没登记的码漏上线）。
 fn trust_code(c: &str) -> &'static str {
     // ⚠ agent 那一层自己的码（读 / 解析那家的配置文件失败）**不在表里**：通用层不认任何一家 agent 的名字

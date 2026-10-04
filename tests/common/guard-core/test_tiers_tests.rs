@@ -151,10 +151,10 @@ const UNIT: &[&str] = &[
     // `session_map_f13_tests.rs` 与 `session_map_linux_liveness.rs` 随 monitor 自己那份本机判活删了。
     "tests/frontend/shell/sftp_pool_tests.rs",
     "tests/comms/inward/ssh_link_tests.rs",
-    "tests/frontend/shell/ssh_source_batcher_tests.rs",
-    "tests/frontend/shell/ssh_source_seam_tests.rs",
-    "tests/frontend/shell/ssh_source_snapshot_tail_tests.rs",
-    "tests/frontend/shell/ssh_source_snapshot_tests.rs",
+    "tests/frontend/shell/stream_source/batcher_tests.rs",
+    "tests/frontend/shell/stream_source/seam_tests.rs",
+    "tests/frontend/shell/stream_source/snapshot_tail_tests.rs",
+    "tests/frontend/shell/stream_source/snapshot_tests.rs",
     // 足迹申报表的两份判据随表搬进后端（原 `tests/frontend/shell/tool_registry_{environment,not_managed}_tests.rs`）。
     "tests/backend/footprint/registry_environment_tests.rs",
     "tests/backend/footprint/registry_not_managed_tests.rs",
@@ -446,16 +446,16 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/spawn_managed_exit_sites.rs",
     "tests/frontend/shell/spawn_managed_tests.rs",
     "tests/frontend/ui/events-tap-machines.vitest.ts", // 读 `src/frontend/ui/main.ts` 的 tap 订阅清单
-    "tests/frontend/shell/ssh_source_capped_line_tests.rs",
-    "tests/frontend/shell/ssh_source_coldstart_perf_guard.rs",
-    "tests/frontend/shell/ssh_source_coldstart_preflight_guard.rs",
-    "tests/frontend/shell/ssh_source_dial_move_judge.rs",
-    "tests/frontend/shell/ssh_source_emits_parity.rs",
-    "tests/frontend/shell/ssh_source_frame_dispatch_shape.rs",
-    "tests/frontend/shell/ssh_source_parse_frame_tests.rs",
-    "tests/frontend/shell/ssh_source_stream_flag_gate_tests.rs",
-    "tests/frontend/shell/ssh_source_tier1_tests.rs",
-    "tests/frontend/shell/ssh_source_write_half_guard.rs",
+    "tests/frontend/shell/stream_source/capped_line_tests.rs",
+    "tests/frontend/shell/stream_source/coldstart_perf_guard.rs",
+    "tests/frontend/shell/stream_source/coldstart_preflight_guard.rs",
+    "tests/frontend/shell/stream_source/dial_move_judge.rs",
+    "tests/frontend/shell/stream_source/emits_parity.rs",
+    "tests/frontend/shell/stream_source/frame_dispatch_shape.rs",
+    "tests/frontend/shell/stream_source/parse_frame_tests.rs",
+    "tests/frontend/shell/stream_source/stream_flag_gate_tests.rs",
+    "tests/frontend/shell/stream_source/tier1_tests.rs",
+    "tests/frontend/shell/stream_source/write_half_guard.rs",
     "tests/frontend/shell/sync_command_registry_tests.rs", // 同步 IPC 命令的调用闭包零 `block_on` / 零同步连后端（`INVARIANTS §10`）
     "tests/frontend/shell/tmux_backend_gate_guard_tests.rs",
     "tests/backend/footprint/registry_tests.rs", // 原 `tests/frontend/shell/tool_registry_tests.rs` 随申报表搬进后端
@@ -1371,6 +1371,11 @@ fn rust_repo_text_needles() -> Vec<String> {
         ("read_to_", "string("),
         ("read_", "dir("),
         ("fs::", "read("),
+        // 壳 `guard_support` 读会话流来源那个目录的几个口（目录拆开之后，读那份源码的判据经它们读）。
+        ("stream_source_", "files("),
+        ("stream_source_", "file("),
+        ("stream_source_", "production("),
+        ("stream_source_", "raw("),
     ]
     .iter()
     .map(|(a, b)| format!("{a}{b}"))

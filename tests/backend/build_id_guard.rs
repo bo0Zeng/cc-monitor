@@ -3,7 +3,7 @@
 //! # 为什么需要它
 //!
 //! monitor 判「远端那台的后端该不该换」只有一条判据：
-//! `reported_build_id != EXPECTED_BACKEND_BUILD_ID`（`ssh_source.rs`，值由 `build.rs`
+//! `reported_build_id != EXPECTED_BACKEND_BUILD_ID`（`stream_source/version.rs`，值由 `build.rs`
 //! 从本文件抠出）。**不 bump ⇒ 已部署的旧后端报同一个 id ⇒ 不判 stale ⇒ 不自动重装
 //! ⇒ 整轮改动在已部署的远端休眠。**
 //!

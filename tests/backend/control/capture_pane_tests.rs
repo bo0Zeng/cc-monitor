@@ -312,7 +312,7 @@ fn the_argv_is_the_read_only_capture_form_in_this_exact_order() {
 /// 于是「成品长什么样」「拒绝码有哪几个」从此只有后端这一侧与金样说了算，TS 那一半在 `tests/frontend/ui/tmux-control.vitest.ts`。
 ///
 /// 三格各自异源：请求样例过**生产**解析器（`kill::parse_name`，抓屏复用它）· 成品 == 生产构造器 [`reply`] ·
-/// 码集合 == 后端登记表 `inbound::REGISTRY` 那一块（手写在 `inbound.rs`，不从本文件派生）。
+/// 码集合 == 后端登记表 `inbound::REGISTRY` 那一块（手写在 `stream/inbound/registry/terminals.rs`，不从本文件派生）。
 #[test]
 fn the_capture_product_matches_the_cross_language_golden() {
     let g: serde_json::Value =

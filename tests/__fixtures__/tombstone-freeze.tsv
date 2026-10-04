@@ -7,8 +7,6 @@ REGISTERED	src/frontend/shell/src/remote_resident.rs		1
 REGISTERED	src/frontend/ui/cards/diff.ts		1
 REGISTERED	src/frontend/ui/cards/interactive.ts		1
 REGISTERED	src/frontend/ui/tmux-sessions.ts		1
-REGISTERED	tests/frontend/shell/ssh_source_write_half_guard.rs		2
-REGISTERED	tests/frontend/shell/ssh_source_capped_line_tests.rs		2
 REGISTERED	tests/frontend/shell/rust_timer_registry_tests.rs		1
 REGISTERED	src/frontend/shell/src/bind.rs		1
 REGISTERED	src/backend/observe/tmux_observe.rs		3
@@ -51,7 +49,6 @@ REGISTERED	tests/frontend/shell/history_tests.rs		10
 REGISTERED	tests/frontend/shell/write_site_registry_tests.rs		8
 REGISTERED	tests/backend/control/files_write_tests.rs		2
 REGISTERED	tests/backend/assets/aliases/block_tests.rs		6
-REGISTERED	tests/frontend/shell/ssh_source_dial_move_judge.rs		5
 REGISTERED	tests/backend/main_argv_table_guard.rs		1
 REGISTERED	tests/evidence/C2-dial-loopback.py		1
 REGISTERED	src/frontend/shell/src/sftp.rs		11
@@ -113,7 +110,6 @@ REGISTERED	tests/frontend/shell/plugin_class_registry_tests.rs		2
 REGISTERED	tests/frontend/shell/polling_registry_tests.rs		1
 REGISTERED	tests/frontend/shell/sftp_tests.rs		16
 REGISTERED	tests/frontend/shell/shared_crate_registry_tests.rs		1
-REGISTERED	tests/frontend/shell/ssh_source_snapshot_tail_tests.rs		1
 REGISTERED	tests/frontend/shell/structural_scan_tests.rs		1
 REGISTERED	tests/frontend/shell/tmux_backend_gate_guard_tests.rs		8
 REGISTERED	tests/backend/footprint/registry_environment_tests.rs		1
@@ -147,7 +143,6 @@ REGISTERED	src/frontend/shell/src/backend_policy.rs		2
 REGISTERED	src/frontend/ui/settings/backend-section.ts		2
 REGISTERED	src/backend/accounts/upstream_select/mod.rs		3
 REGISTERED	src/comms/outward/mod.rs		1
-REGISTERED	src/frontend/shell/src/ssh_source.rs		25
 REGISTERED	src/backend/footprint/registry.rs		9
 REGISTERED	tests/frontend/shell/exec_site_registry_tests.rs		5
 REGISTERED	tests/backend/observe/accounts_query_tests.rs		2
@@ -198,7 +193,6 @@ REGISTERED	src/frontend/shell/src/ccm_legacy.rs		1
 REGISTERED	src/common/deploy-contract/src/lib.rs		1
 REGISTERED	tests/backend/control/deploy_plan_tests.rs		1
 REGISTERED	tests/frontend/shell/lib_invariant_population_tests.rs		2
-REGISTERED	tests/frontend/shell/ssh_source_tier1_tests.rs		2
 REGISTERED	src/frontend/ui/settings/machine-card.ts		1
 REGISTERED	src/backend/control/ccm/mod.rs		3
 REGISTERED	src/backend/control/ccm/plan.rs		1
@@ -284,11 +278,6 @@ TOMBSTONED	src/frontend/shell/src/local_backend.rs	record_tmux_raw	1
 TOMBSTONED	src/frontend/shell/src/bind.rs	is_process_alive	1
 TOMBSTONED	src/frontend/shell/src/lib.rs	load_with_changes	1
 TOMBSTONED	src/frontend/shell/src/platform/spawn.rs	is_process_alive	1
-TOMBSTONED	src/frontend/shell/src/ssh_source.rs	f032_idle_tests	1
-TOMBSTONED	src/frontend/shell/src/ssh_source.rs	list_ssh_host_aliases	1
-TOMBSTONED	src/frontend/shell/src/ssh_source.rs	reannounce_after_reconnect	1
-TOMBSTONED	src/frontend/shell/src/ssh_source.rs	record_tmux_raw	1
-TOMBSTONED	src/frontend/shell/src/ssh_source.rs	tmux_snapshot_exposure_tests	1
 TOMBSTONED	src/doc/INVARIANTS.md	classify_tmux_observation	1
 TOMBSTONED	src/doc/INVARIANTS.md	find_tmux_origin_for_sid	1
 TOMBSTONED	src/doc/INVARIANTS.md	is_process_alive	1
@@ -298,13 +287,8 @@ TOMBSTONED	src/doc/INVARIANTS.md	tmux_origin_for_sid	1
 TOMBSTONED	src/doc/IPC-PROTOCOL.md	removal_cause_wire_literal_stays_in_sync	1
 TOMBSTONED	tests/frontend/shell/inbound_client_tests.rs	removal_cause_wire_literal_stays_in_sync	1
 TOMBSTONED	tests/frontend/shell/rust_timer_registry_tests.rs	is_process_alive	1
-TOMBSTONED	tests/frontend/shell/ssh_source_capped_line_tests.rs	classify_tmux_observation	1
-TOMBSTONED	tests/frontend/shell/ssh_source_capped_line_tests.rs	remove_tmux_line	1
-TOMBSTONED	tests/frontend/shell/ssh_source_write_half_guard.rs	remote_idle_single_writer_guard	1
 TOMBSTONED	src/frontend/shell/src/parity_ledger.rs	resolve_ssh_host	1
 TOMBSTONED	src/frontend/shell/src/spawn_managed.rs	resolve_ssh_host	1
-TOMBSTONED	src/frontend/shell/src/ssh_source.rs	resolve_ssh_host	1
-TOMBSTONED	src/frontend/shell/src/ssh_source.rs	import_ssh_hosts	1
 TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	the_alias_capabilities_speak_through_one_command_family	1
 TOMBSTONED	src/backend/platform/shell/dialect.rs	look_on_path	1
 TOMBSTONED	src/backend/agents/claudecode/paths.rs	claude_data_fence	1
@@ -402,7 +386,6 @@ TOMBSTONED	src/backend/platform/ssh_agent.rs	authenticate_via_agent	1
 TOMBSTONED	src/frontend/shell/src/lib.rs	sftp_move_ledger	1
 TOMBSTONED	tests/frontend/shell/local_origin_registry_tests.rs	connect_via_jump	2
 TOMBSTONED	tests/backend/footprint/registry_tests.rs	sftp_move_ledger	1
-TOMBSTONED	tests/frontend/shell/ssh_source_dial_move_judge.rs	russh_lives_only_where_sftp_still_needs_it	1
 TOMBSTONED	src/common/creds-core/src/lib.rs	verify_uploaded_bytes	1
 TOMBSTONED	tests/backend/readonly_guard.rs	the_backend_tree_has_no_remote_write_today_and_the_scan_face_is_not_empty	1
 TOMBSTONED	tests/naming/account-vs-relay-naming.vitest.ts	start_local_relay	1
@@ -410,10 +393,6 @@ TOMBSTONED	tests/backend/main_argv_table_guard.rs	the_dial_arm_is_actually_wired
 TOMBSTONED	src/backend/observe/search_query.rs	merge_search_results	1
 TOMBSTONED	src/frontend/filewin/src/fonts.rs	too_big_to_save	1
 TOMBSTONED	src/frontend/filewin/src/fonts.rs	read_only_notice	1
-TOMBSTONED	tests/frontend/shell/ssh_source_dial_move_judge.rs	every_registered_fallback_is_actually_decided_in_the_entry	1
-TOMBSTONED	tests/frontend/shell/ssh_source_dial_move_judge.rs	the_request_line_is_written_with_snake_case_keys	1
-TOMBSTONED	tests/frontend/shell/ssh_source_dial_move_judge.rs	the_proxy_is_resolved_from_exactly_two_places_and_never_from_home	1
-TOMBSTONED	tests/frontend/shell/ssh_source_snapshot_tail_tests.rs	parse_snapshot_meta	1
 TOMBSTONED	tests/frontend/shell/filewin/entry_tests.rs	an_empty_path_asks_the_remote_for_home_and_opens_nothing_when_it_cannot	1
 TOMBSTONED	tests/frontend/shell/filewin/entry_tests.rs	a_directory_we_cannot_list_is_an_error_not_a_blank_window	1
 TOMBSTONED	src/frontend/shell/src/filewin/entry.rs	list_first_screen	2
@@ -546,7 +525,6 @@ TOMBSTONED	tests/frontend/shell/sftp_family_registry_tests.rs	sftp_cancel_transf
 TOMBSTONED	tests/frontend/shell/sftp_family_registry_tests.rs	sftp_read_text_for_edit	1
 TOMBSTONED	src/backend/faces/read_face.rs	with_apikey_table	1
 TOMBSTONED	src/frontend/shell/src/frame_query.rs	run_list_query	1
-TOMBSTONED	src/frontend/shell/src/ssh_source.rs	run_list_query	1
 TOMBSTONED	src/backend/footprint/registry.rs	run_list_query	1
 TOMBSTONED	tests/frontend/shell/frame_query_tests.rs	run_list_query	1
 TOMBSTONED	tests/frontend/shell/byte_cap_registry_tests.rs	run_list_query	1
@@ -581,7 +559,6 @@ TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	remote_acct_iso_shellinit
 TOMBSTONED	tests/frontend/ui/ipc/commands.vitest.ts	remote_acct_iso_shellinit	1
 TOMBSTONED	src/backend/footprint/registry.rs	is_safe_remote_backend_path	1
 TOMBSTONED	tests/frontend/shell/sftp_tests.rs	is_safe_remote_backend_path	1
-TOMBSTONED	tests/frontend/shell/ssh_source_tier1_tests.rs	backend_path_for_shell	1
 TOMBSTONED	tests/frontend/shell/local_backend_tests.rs	remote_shim_sets_no_environment_of_its_own	1
 TOMBSTONED	tests/frontend/shell/lib_invariant_population_tests.rs	every_read_of_the_backend_path_field_is_registered	1
 TOMBSTONED	tests/frontend/shell/sftp_tests.rs	both_remote_path_sinks_still_ask_their_fence	1
@@ -640,14 +617,10 @@ TOMBSTONED	tests/backend/observe/tmux_list_tests.rs	parse_tmux_ls	1
 TOMBSTONED	tests/frontend/shell/inbound_client_tests.rs	capture_pane_args	1
 TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	the_tmux_manage_row_stops_waiting_for_a_backend_primitive	2
 TOMBSTONED	tests/frontend/ui/tmux-reads.vitest.ts	parse_tmux_ls	1
-TOMBSTONED	src/frontend/shell/src/ssh_source.rs	probe_control_channel	2
-TOMBSTONED	src/frontend/shell/src/ssh_source.rs	pump_inbound_replies	1
 TOMBSTONED	tests/backend/dial_probe_tests.rs	the_control_probe_writes_nothing_to_an_old_backend	1
-TOMBSTONED	tests/frontend/shell/ssh_source_dial_move_judge.rs	the_request_keys_are_the_ones_the_proxy_reads	1
 TOMBSTONED	src/backend/agents/codex/parse.rs	codex_sid_from_rollout	1
 TOMBSTONED	src/backend/agents/codex/record.rs	token_usage_fields	1
 TOMBSTONED	src/frontend/shell/src/frame_query.rs	parse_session_lines	1
-TOMBSTONED	src/frontend/shell/src/ssh_source.rs	snapshot_line_countable	1
 TOMBSTONED	src/frontend/ui/cards/index.ts	codex_sid_from_rollout	1
 TOMBSTONED	src/frontend/ui/cards/index.ts	kind_of_record_name	1
 TOMBSTONED	tests/backend/observe/record_page_tests.rs	parse_for_kind_dispatches_claude_and_codex	1

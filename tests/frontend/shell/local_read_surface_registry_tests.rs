@@ -27,10 +27,17 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     // 这里原来有 `src/history.rs` 的 `write` 一行（写操作恰好也读 dir 来定位文件：
     //   `delete_history_session` · `create_branch_session`，4 处）。两件都改经后端（删会话 `files-delete-session`〔散文墓碑〕
     //   只收 sid · 本机分叉 exec 本机后端 `--fork-session`），本进程不再解析 dir 来定位要写的那一份 ⇒ 4 → 0，摘行。
+    // 会话流来源拆成目录：原先一行 7 处按住址分两行（帧解析那份 5 · 流循环那份 2），口径不变。
     (
-        "src/ssh_source.rs",
+        "src/stream_source/run.rs",
         "remote",
-        7, // 9 → 7：测试连接那一份 hello 人读摘要（`claude_home_from_hello` 的一处调用 ＋ 解构出的 `claude_dir`）随测试连接搬进本机后端删了
+        2,
+        "流循环 hello 那一臂解出的远端 `claude_dir`（打日志用）。口径同下一行：说的是**远端**主机的 claude 目录，不是本机读面 ⇒ 不属 F10。",
+    ),
+    (
+        "src/stream_source/frame.rs",
+        "remote",
+        5, // 9 → 7：测试连接那一份 hello 人读摘要（`claude_home_from_hello` 的一处调用 ＋ 解构出的 `claude_dir`）随测试连接搬进本机后端删了
         "★ **说的全是远端主机的 claude 目录**：backend `hello` 帧的 `claude_dir` 字段。\
              **根本不是本机读面** ⇒ 不属 F10。\
              〔`K-R59` 09-11：**10 → 9**。退役的那 1 行是原先并列写在这里的第二样 —— \

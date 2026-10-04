@@ -17,7 +17,7 @@ use copy_core::copy_text;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
-/// 这台 key 表的几口，由门递进来（生产：`inbound.rs` 递 `file_face` 那几个；判据给落在临时目录上的那一份）。
+/// 这台 key 表的几口，由门递进来（生产：`stream/inbound/` 递 `file_face` 那几个；判据给落在临时目录上的那一份）。
 pub(crate) struct KeyDoor<'a> {
     /// 写一个号的 key（`{configDir, key, baseUrl}`）。
     pub(crate) set: &'a dyn Fn(&Value) -> file_face::FileFaceAnswer,

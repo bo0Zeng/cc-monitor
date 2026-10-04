@@ -45,7 +45,7 @@
 //!
 //! 〔「前端只有两个动作」〕`accounts-changed` 顶掉的是最后一个裸 Tauri 事件 `remote-backend-ready`
 //! （原常量 `REMOTE_BACKEND_READY`〔散文墓碑〕，住 `ui_contract.rs` 的 `events`）。它与 `session-lines` 住同一张订阅表，因为「那台看不看得见」
-//! 只有一个家（下面的 `seen`）—— 另起一个句柄就得再养一份同样的表、在 `ssh_source` 同样的几处再喂一遍。
+//! 只有一个家（下面的 `seen`）—— 另起一个句柄就得再养一份同样的表、在 `stream_source` 同样的几处再喂一遍。
 //!
 //! 一格 = 一行（[`crate::ui_contract::SessionStreamFrame`]：`{"line": …}` 或成批那一段的边界 `{"batch": …}`）；
 //! `Item::Frame.seq` 是这条订阅里的**位置**（0, 1, 2 …，连续），不是行号。
@@ -364,7 +364,7 @@ fn lifecycle_replay(
     };
     // 旁路快照在途的电平：只在有在途时补一格（前端初值就是 0）。
     let mut before = Vec::new();
-    let level = crate::ssh_source::snapshot_inflight_level();
+    let level = crate::stream_source::snapshot_inflight_level();
     if level > 0 && only.is_none() {
         before.push(body_of(&SessionStreamFrame::SnapshotInflight(
             crate::ui_contract::SnapshotInflightPayload { count: level },
@@ -473,7 +473,7 @@ impl EventReplay {
 
     /// 行进重放缓冲的**唯一**入口：先进 `history`，再**当场**交给每一条已过就绪点、订了它的订阅 ——
     /// 小批（< [`INCREMENTAL_BATCH_THRESHOLD`]）逐行交，大批切块、带 `batch` 边界。
-    /// 大 batch 的块序列**在调用方任务内交完才返回**（Batch5-F17 审计 R1）——`ssh_source` 的攒批 flush
+    /// 大 batch 的块序列**在调用方任务内交完才返回**（Batch5-F17 审计 R1）——`stream_source` 的攒批 flush
     /// 用它，保证行先于随后的 SessionRemoved/断连归档交出去（issue #20 / FIX 2 的顺序契约），
     /// 同时对后端帧流形成天然背压（交的期间不再收帧）。
     ///
@@ -986,7 +986,7 @@ impl EventReplay {
         self.credit_changed.notify_waiters();
     }
 
-    /// 那台机器的内容流接上了 / 断了（`ssh_source` 的连接与本机那条流的起落调它）⇒ 订了它的每条订阅
+    /// 那台机器的内容流接上了 / 断了（`stream_source` 的连接与本机那条流的起落调它）⇒ 订了它的每条订阅
     /// 原位收一格 `Seen` / `Unseen`（状态没变就不重复说）。
     pub fn origin_seen(&self, origin: &crate::origin::Origin, seen: bool) {
         let origin = origin.as_wire_str();

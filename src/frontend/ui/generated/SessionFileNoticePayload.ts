@@ -9,6 +9,6 @@ export type SessionFileNoticePayload = { session_id: string,
  */
 origin: string, path: string, 
 /**
- * `"gone"` / `"truncated"` / `"rewritten"`（[`crate::ssh_source::FileChange::as_wire`]）。
+ * `"gone"` / `"truncated"` / `"rewritten"`（[`crate::stream_source::FileChange::as_wire`]）。
  */
 change: string, };

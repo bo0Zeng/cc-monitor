@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use crate::assets::door::{self, Door};
 
 type Answer = Result<Value, (&'static str, String)>;
-/// 装记录的写口（`skill_ledger::answer_record`）—— **由门（`inbound.rs`）递进来**，本模块不直呼它（第四层判据 ④）。
+/// 装记录的写口（`skill_ledger::answer_record`）—— **由门（`stream/inbound/`）递进来**，本模块不直呼它（第四层判据 ④）。
 pub(crate) type Record<'a> = &'a dyn Fn(&Value) -> Result<Value, (&'static str, String)>;
 
 /// 装记录里这一件叫什么（记录按 `skills 根 / name` 算目录 ⇒ 就是 `<skills 根>/cc-bus`）。

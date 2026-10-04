@@ -258,7 +258,7 @@ enum Kind {
     Channel,
     /// 线上类型（`chan::wire::*`，那一套）。**要的就是它。**
     Wire,
-    // 「跨机传输那一族够到的 app 侧类型」（`Transfer`，末一条是开窗配置的类型 `ssh_source::RemoteConfig`）清零删了：种子只带那台的名字。
+    // 「跨机传输那一族够到的 app 侧类型」（`Transfer`，末一条是开窗配置的类型 `stream_source::RemoteConfig`）清零删了：种子只带那台的名字。
     // 这里原来还有一类「后端今天没有这条命令」（同机复制：池子那条复制命令 ＋
     //   它的裁决类型，2 条）。后端有了 `files-copy` 之后两条都换走了通道 ⇒ 这一类清零，随之删掉
     //   （`every_declared_edge_falls_in_a_live_category` 逐字要求「一条边都没有就从 `Kind` 里删掉」）。
@@ -363,7 +363,7 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("profile_installer::ccm_bin_dir_rel", Kind::Carried),
     ("platform::fs::make_executable", Kind::Carried),
     ("platform::fs::ensure_private_dir", Kind::Carried),
-    ("ssh_source::RemoteConfig", Kind::Config),
+    ("stream_source::RemoteConfig", Kind::Config),
     // 开窗种子带上机器名单（「复制到另一台」那一问的下拉）：已有的配置读口，不新建数据源。
     ("load_remote_configs", Kind::Config),
     // 左栏「其他机器」点一台：按名字取那台的配置（与「在此打开终端」同一个读口）。

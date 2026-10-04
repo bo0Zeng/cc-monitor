@@ -13,8 +13,8 @@ fn jline(
     seq: u64,
     message: Option<&str>,
     cwd: Option<&str>,
-) -> ssh_source::JsonlLine {
-    ssh_source::JsonlLine {
+) -> stream_source::JsonlLine {
+    stream_source::JsonlLine {
         session_id: session_id.to_string(),
         path: PathBuf::from("/tmp/projects/proj/s-abc.jsonl"),
         seq,

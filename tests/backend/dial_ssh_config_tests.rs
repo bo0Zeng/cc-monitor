@@ -1,4 +1,4 @@
-//! 「`ssh -G` 解析与 `~/.ssh/config` 读取搬进本机常驻后端」—— `dial/ssh_config.rs` 的规则判据（从 monitor `ssh_source_tier1_tests.rs` 原样搬来）。
+//! 「`ssh -G` 解析与 `~/.ssh/config` 读取搬进本机常驻后端」—— `dial/ssh_config.rs` 的规则判据（从 monitor `stream_source/tier1_tests.rs` 原样搬来）。
 use super::*;
 
 /// ★ 那一处读出来的东西**只许是别名**：配置里的敏感值一个都不许流出去。

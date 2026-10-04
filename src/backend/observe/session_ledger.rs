@@ -1,7 +1,7 @@
 //! 〔「一切判定都在后端」〕**会话账本**：这台机器上一条会话离开「活」之后是
 //! **可重连**（claude 退了、tmux 会话还在）还是**已结束**，由这台后端自己裁、发成品帧 [`Frame::SessionState`]。
 //!
-//! 原先这一套住 monitor（`ssh_source` 的 tmux 原文账 · idle 账 · `classify_removed` · 两份收割器 · 重连后重新裁），
+//! 原先这一套住 monitor（`stream_source` 的 tmux 原文账 · idle 账 · `classify_removed` · 两份收割器 · 重连后重新裁），
 //! 本机远端各一份。搬进来之后本机远端同一份代码（`INVARIANTS §40`），客户端只收成品。
 //!
 //! # 形状：看着自己发出去的帧

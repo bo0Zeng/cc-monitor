@@ -36,7 +36,7 @@ enum Why {
     /// 只设一次：`OnceLock::set` 第二次回 `Err` 是设计（第一次那个值留着）。
     SetOnce,
     /// 控制面让位：应答通道满了宁丢这一条应答也不等 —— 等就把读循环堵死、后面的 `cancel` 连解析都轮不到
-    /// （`inbound.rs` 里 `cancel` 那一臂的头注：「丢一条 cancel 应答，远比堵死读循环便宜」）；调用方按自己的期限收场。
+    /// （`stream/inbound/` 里 `cancel` 那一臂的头注：「丢一条 cancel 应答，远比堵死读循环便宜」）；调用方按自己的期限收场。
     Backpressure,
     /// 别路在改：这一处住在另一路的写区里，本路不碰；那一路合并时这一行要随之删 / 改。
     OtherLane,
@@ -222,8 +222,8 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     // 下面两行随 Job Object 那一段搬进 `platform/spawn.rs`（处数不变）。
     ("src/frontend/shell/src/platform/spawn.rs", "let _ = CloseHandle(job);", 2, Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/frontend/shell/src/platform/spawn.rs", "let _ = windows::Win32::Foundation::CloseHandle(h);", 1, Why::Reap, "Windows 句柄 / 内存释放"),
-    ("src/frontend/shell/src/ssh_source.rs", "let _ = frame_tx.send(Err(\"ssh backend stdout closed (EOF / connection dropped)\".to_string())).await;", 1, Why::PeerGone, ""),
-    ("src/frontend/shell/src/ssh_source.rs", "let _ = frame_tx.send(Err(format!(\"ssh backend stdout read error: {e}\"))).await;", 1, Why::PeerGone, ""),
+    ("src/frontend/shell/src/stream_source/run.rs", "let _ = frame_tx.send(Err(\"ssh backend stdout closed (EOF / connection dropped)\".to_string())).await;", 1, Why::PeerGone, ""),
+    ("src/frontend/shell/src/stream_source/run.rs", "let _ = frame_tx.send(Err(format!(\"ssh backend stdout read error: {e}\"))).await;", 1, Why::PeerGone, ""),
     ("src/common/host-core/src/atomic.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
     // capture 带 stdin 那一形：写那一行失败时回一行失败的 ack；ack 本身写不出去 ⇒ 链路已死，同上面那几条。
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(copy_text(\"beUses.exec.stdinLost\", &[(\"e\", &e.to_string())])", 1, Why::DeadLink, ""),

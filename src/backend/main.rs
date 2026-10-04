@@ -511,7 +511,7 @@ async fn handshake_one(
     };
     let mut r = tokio::io::BufReader::new(r);
     // ⚠ **有上限地读** —— 对端是同机任何进程，它完全可以一直发字节不发换行，
-    // 而无界读就是无界堆分配（backend 侧为同一形栽过一次实测，见 `inbound.rs` 头注）。
+    // 而无界读就是无界堆分配（backend 侧为同一形栽过一次实测，见 `stream/inbound/` 头注）。
     let line = match listen::read_capped_line(&mut r, listen::ATTACH_LINE_CAP).await {
         Ok(listen::HandshakeLine::Line(l)) => l,
         Ok(listen::HandshakeLine::Eof) => {

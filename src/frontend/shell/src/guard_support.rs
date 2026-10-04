@@ -97,6 +97,65 @@ pub(crate) fn backend_registry_sources() -> Vec<(String, String)> {
     out
 }
 
+/// 会话流来源那个目录（`src/frontend/shell/src/stream_source/`）下的**每一份**源文件：`(仓内相对路径, 原文)`，按路径排。
+///
+/// 那份东西从一份文件拆成一个目录之后，人群曾经是「那一份文件」的判据，人群现在是这一整个目录 ——
+/// 只看其中一份会安静地少一块人群（不红，只是扫不全）。
+pub(crate) fn stream_source_files() -> Vec<(String, String)> {
+    let root = repo_root();
+    let mut out: Vec<(String, String)> =
+        guard_core::scan_tree_excluding(&crate_src_root().join("stream_source"), &["rs"], &[])
+            .into_iter()
+            .map(|(path, src)| {
+                let rel = path
+                    .strip_prefix(&root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                (rel, src)
+            })
+            .collect();
+    out.sort();
+    assert!(
+        out.len() >= 2
+            && out
+                .iter()
+                .any(|(rel, _)| rel == "src/frontend/shell/src/stream_source/mod.rs"),
+        "会话流来源目录只扫到 {} 份 —— 住址坏了，用它的判据会在空人群上恒绿",
+        out.len()
+    );
+    out
+}
+
+/// [`stream_source_files`] 各份的**生产段**（逐份剥测试段之后）按路径顺序接成一段。
+/// 判据要的是「整个会话流来源里有没有 / 有几处」时用它；要逐份报住址的用 [`stream_source_files`]。
+pub(crate) fn stream_source_production() -> String {
+    stream_source_files()
+        .iter()
+        .map(|(_, src)| guard_core::production_code(src))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// 会话流来源目录里**一份**文件的原文（`name` 是目录内文件名，如 `run.rs`）。
+pub(crate) fn stream_source_file(name: &str) -> String {
+    let rel = format!("src/frontend/shell/src/stream_source/{name}");
+    stream_source_files()
+        .into_iter()
+        .find(|(r, _)| *r == rel)
+        .unwrap_or_else(|| panic!("会话流来源目录里没有 `{name}` —— 住址坏了"))
+        .1
+}
+
+/// [`stream_source_files`] 各份的**原文**（不剥测试段）按路径顺序接成一段。
+pub(crate) fn stream_source_raw() -> String {
+    stream_source_files()
+        .into_iter()
+        .map(|(_, src)| src)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/guard_support_tests.rs"]
 mod tests;

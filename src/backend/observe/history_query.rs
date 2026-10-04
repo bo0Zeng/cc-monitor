@@ -104,7 +104,7 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
 ///
 /// **代价如实记**：`sessionIds` 与 `sessionCount` 同源同一趟 `read_dir`，
 /// **零额外 I/O**；涨的只有输出字节（每会话 ~38 B）。monitor 侧单行上限是 64 MiB
-/// （`ssh_source::BACKEND_FRAME_LINE_CAP`），要撞上它得一个项目下约 170 万个会话。
+/// （`stream_source::BACKEND_FRAME_LINE_CAP`），要撞上它得一个项目下约 170 万个会话。
 ///
 /// ⚠ **它与 `sessionCount` 恒等长，这是契约的一部分** —— 下游据此判「空清单」是
 /// 「真的没有会话」还是「这一行坏了」（`sessionCount > 0` 而清单空 ⇒ 后者，不许当成 0）。

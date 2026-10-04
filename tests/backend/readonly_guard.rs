@@ -2615,7 +2615,7 @@ mod tests {
         // ★**先堵逃生口**：把 `std::fs` 的条目导入进作用域，
         // 调用点就不再带 `fs::` 前缀，下面那套按 `fs::` / `File::` 锚定的白名单**整条看不见**。
         //
-        // 实测：往 `inbound.rs` 写
+        // 实测：往 `stream/inbound/` 写
         //   `use std::fs::{self as _f, write};`
         //   `fn probe(p: &Path) -> io::Result<()> { write(p, b"x") }`
         // ——一次货真价实的写盘，**六条判据全绿**。而这守的是用户级只读红线。
@@ -6567,7 +6567,7 @@ backend 今天**只在一处**开子系统（`dial/sftp.rs`，SFTP 住本机常�
             .collect();
         // 住址 `dial/mod.rs` → `dial/uses.rs`：拨号代理拆成三份，开 channel 之后那一段
         //   住 `uses.rs`。处数仍是**一份文件**；它里面多了 `capture` 那一臂（同一条 exec，收全输出）——
-        //   那一臂此前在界面进程里（`ssh_source::connect_and_exec_capture`），是搬家，不是新长的能力。
+        //   那一臂此前在界面进程里（`stream_source::connect_and_exec_capture`），是搬家，不是新长的能力。
         assert_eq!(
             sites,
             vec!["dial/uses.rs"],

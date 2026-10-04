@@ -138,12 +138,12 @@ mod user_files; // RW1：monitor 够用户文件的唯一开口 —— 读·算�
                 // SS-D 统一 SFTP 写层（issue #29 自动部署 F08；后续 F11/F10 复用）。
 mod sftp;
 // SSH-remote Phase 0 (issue #15)：从 setup() 调用 —— 当 config.json 的
-// `remote.enabled = true` 时，ssh_source::run 作为**附加**数据源与本机那条流
+// `remote.enabled = true` 时，stream_source::run 作为**附加**数据源与本机那条流
 // 并行跑（aggregate：本地 + 远端 session 同时显示为 Tab）。本机会话内容也经本模块的
 // `LineIntake` / `consume_local` 走同一个出口（flush_lines → batch_to_payloads → on_line_batch_awaited）；
 // 远端行带 origin=host 标签。
 mod ccm_probe;
-mod ssh_source;
+mod stream_source;
 // 拨号应答的客户端（通信层面 A 的 SSH 链路那一段）。
 #[path = "../../../comms/inward/ssh_link.rs"] // 通信层成员，同上
 mod ssh_link;
@@ -153,7 +153,7 @@ mod ssh_link;
 mod dial_host;
 // 链路的 monitor 这一侧：在本机后端那条流上多路复用到各远端的字节流（`link-*`）。
 mod link_mux;
-// 本机会话内容的入口通道：本机两条读循环把后端的内容帧送进来，交给与远端同一个 `ssh_source::LineIntake`。
+// 本机会话内容的入口通道：本机两条读循环把后端的内容帧送进来，交给与远端同一个 `stream_source::LineIntake`。
 mod local_lines;
 // 三条读帧循环共用的丢帧账（认不出的帧 · 非 UTF-8 行：计数、按 2 的幂次说、流结束出总账）。
 mod frame_tally;
@@ -267,7 +267,7 @@ use tauri::{Emitter, Listener, Manager};
 ///
 /// ⚠ 勿把上面"子会话不注册 pidfile"泛化：CC 2.1.x 的 backend **后台任务**
 /// (--fork-session) 会写 pidfile（kind:"bg" + jobId）——那类由后端的 kind 交互性过滤处理
-/// （Batch6-F21；本机也是本机后端那一份，藏不藏在 `ssh_source::local_hides`），与本处嵌套环境清洗无关。
+/// （Batch6-F21；本机也是本机后端那一份，藏不藏在 `stream_source::local_hides`），与本处嵌套环境清洗无关。
 /// 完整排查：src/doc/DEVELOPMENT.md 常见问题节。
 ///
 /// 返回实际清掉的 key（供 caller 在 logging 就绪后留痕——本函数必须在任何线程
@@ -652,7 +652,7 @@ pub fn run() {
             session_book::install_sink(book_tx);
 
             // 本机会话内容**不再**由 monitor 自己 watch：它是本机后端的 `line` 帧，
-            // 经 `local_lines` → `ssh_source::consume_local` → 与远端同一个 `LineIntake`。
+            // 经 `local_lines` → `stream_source::consume_local` → 与远端同一个 `LineIntake`。
             // 原来这里起 monitor 自己的 jsonl watcher（`watcher.rs`，已删：第二套游标与 seq）、
             // 还有那条「会话后到 ⇒ 强制重扫」的兜底通道 —— 后端宣告会话时先 prime、历史走旁路快照，那个竞态不在了。
 
@@ -705,7 +705,7 @@ pub fn run() {
 
             // SSH-remote Phase 0 (issue #15)：远端是**纯附加**数据源。config.json 的
             // `remote.enabled = true` 且配置完整 → 在本机那条流之外**额外**起一条
-            // ssh_source::run（aggregate：本地 + 远端 session 同时显示）。否则（默认 /
+            // stream_source::run（aggregate：本地 + 远端 session 同时显示）。否则（默认 /
             // 无 remote 配置）此块不执行，本地路径与历史 bit-for-bit 一致。
             let remote_cfgs = load_remote_configs();
             if !remote_cfgs.is_empty() {
@@ -714,8 +714,8 @@ pub fn run() {
                     remote_cfgs.len()
                 );
 
-                // 每台远端各起一条 ssh_source::run（多机 #30），与本机那条流同一个内容收口
-                // （`ssh_source::LineIntake` → flush_lines）；会话成品交 `session_book` → 上面那唯一的出口线程。
+                // 每台远端各起一条 stream_source::run（多机 #30），与本机那条流同一个内容收口
+                // （`stream_source::LineIntake` → flush_lines）；会话成品交 `session_book` → 上面那唯一的出口线程。
                 // `connected` 是 connection-healthy signal（每台一份）：stream_loop 收到 backend
                 // hello 时置 true，run() 的重连循环据此判定本次是否连上过（连上过→下次立即快速
                 // 重连，否则指数退避）。远端**不**门控 frontend-ready（实时流，无"初始扫完成"概念；
@@ -745,10 +745,10 @@ pub fn run() {
                             // 否则「上次连上过 ⇒ 立即快速重连」这个判断会拿着旧账做决定。
                             let connected = Arc::new(std::sync::atomic::AtomicBool::new(true));
                             if let Err(e) =
-                                ssh_source::run(cfg, replay, remote_health_out(app), connected).await
+                                stream_source::run(cfg, replay, remote_health_out(app), connected).await
                             {
                                 // S8/S9 会把"connection dropped"做成显眼的前端提示；先大声 log。
-                                tracing::error!("ssh_source::run [{label}] exited: {e}");
+                                tracing::error!("stream_source::run [{label}] exited: {e}");
                             }
                         })
                     };
@@ -990,7 +990,7 @@ pub(crate) fn load_show_bg_sessions() -> bool {
 }
 
 /// SSH-remote（issue #15 / 多机 #30）：从 monitor 的 config.json 读 `remote` 段，构造
-/// **0..N 个** [`ssh_source::RemoteConfig`]。**空 Vec = 本地模式**（与历史 bit-for-bit
+/// **0..N 个** [`stream_source::RemoteConfig`]。**空 Vec = 本地模式**（与历史 bit-for-bit
 /// 一致）：config.json 不存在 / 解析失败 / 无 `remote` 键 / `enabled != true` / 无任何
 /// 合法 host → 空 Vec。
 ///
@@ -1014,15 +1014,15 @@ pub(crate) fn load_show_bg_sessions() -> bool {
 /// 〔「不为旧配置留兼容」〕旧单对象形态（`"remote": { "enabled": true, "host": …, … }`，
 /// 没有 `hosts` 数组）**不再认**：[`parse_remote_hosts`] 回 `Err`，这里照原样落一条 `error!` 日志、不连任何远端 ——
 /// 不再把它悄悄当成一台，也不装作「没配远端」（D4）。
-/// `remote-health` 事件的出口：窗口把手只在这一层，交给 `ssh_source`（它不认识 GUI 宿主）的是一个闭包。
-pub(crate) fn remote_health_out(app: tauri::AppHandle) -> ssh_source::HealthOut {
+/// `remote-health` 事件的出口：窗口把手只在这一层，交给 `stream_source`（它不认识 GUI 宿主）的是一个闭包。
+pub(crate) fn remote_health_out(app: tauri::AppHandle) -> stream_source::HealthOut {
     Arc::new(move |payload| {
         app.emit(ui_contract::events::REMOTE_HEALTH, payload)
             .map_err(|e| e.to_string())
     })
 }
 
-pub(crate) fn load_remote_configs() -> Vec<ssh_source::RemoteConfig> {
+pub(crate) fn load_remote_configs() -> Vec<stream_source::RemoteConfig> {
     let Some(cfg_path) = config::resolve_config_path() else {
         return Vec::new();
     };
@@ -1061,14 +1061,14 @@ pub(crate) const REMOTE_HOSTS_UNRECOGNIZED: &str =
 /// 没有它 ⇒ `Err`（旧单对象那一支删了）。重复 label 后缀化去重。
 fn parse_remote_hosts(
     remote: &serde_json::Map<String, serde_json::Value>,
-) -> Result<Vec<ssh_source::RemoteConfig>, &'static str> {
+) -> Result<Vec<stream_source::RemoteConfig>, &'static str> {
     let Some(arr) = remote.get("hosts").and_then(|v| v.as_array()) else {
         return Err(REMOTE_HOSTS_UNRECOGNIZED);
     };
     let host_objs: Vec<&serde_json::Map<String, serde_json::Value>> =
         arr.iter().filter_map(|v| v.as_object()).collect();
 
-    let mut out: Vec<ssh_source::RemoteConfig> = Vec::new();
+    let mut out: Vec<stream_source::RemoteConfig> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     for obj in host_objs {
         let Some(mut cfg) = parse_host_obj(obj) else {
@@ -1096,7 +1096,7 @@ fn parse_remote_hosts(
 /// 解析单个 host JSON 对象 → RemoteConfig；缺必填字段(host/user) → None+warn。
 fn parse_host_obj(
     obj: &serde_json::Map<String, serde_json::Value>,
-) -> Option<ssh_source::RemoteConfig> {
+) -> Option<stream_source::RemoteConfig> {
     let str_field = |k: &str| {
         obj.get(k)
             .and_then(|v| v.as_str())
@@ -1146,7 +1146,7 @@ fn parse_host_obj(
         _ => Vec::new(),
     };
 
-    Some(ssh_source::RemoteConfig {
+    Some(stream_source::RemoteConfig {
         label,
         host,
         port,
@@ -1159,7 +1159,7 @@ fn parse_host_obj(
 }
 
 /// 按 label 选台。无匹配 → None。
-pub(crate) fn load_remote_config_by_label(label: &str) -> Option<ssh_source::RemoteConfig> {
+pub(crate) fn load_remote_config_by_label(label: &str) -> Option<stream_source::RemoteConfig> {
     load_remote_configs()
         .into_iter()
         .find(|c| c.origin_label() == label)
@@ -1167,7 +1167,7 @@ pub(crate) fn load_remote_config_by_label(label: &str) -> Option<ssh_source::Rem
 
 /// 把后端帧里来的一批 `JsonlLine` 组成可 emit 的 `JsonlLinePayload`。
 ///
-/// v2.4.2 issue #2 抽出的最小 seam。今天它**只有一个**生产调用方：`ssh_source::flush_lines`
+/// v2.4.2 issue #2 抽出的最小 seam。今天它**只有一个**生产调用方：`stream_source::flush_lines`
 /// （远端流 · 本机流 · 旁路快照三路的行都从那里出去）。
 ///
 /// **这里不解释记录**：这一行在渲染模型里是什么（`message`）、进不进界面（有没有 `message`）、
@@ -1176,7 +1176,7 @@ pub(crate) fn load_remote_config_by_label(label: &str) -> Option<ssh_source::Rem
 /// `origin`：数据来源。载荷上的 `origin` 字段由它派生：本机 ⇒ 不带（前端 Tab 标题不加前缀，与历史一致）；远端 ⇒ 那台的名字
 /// （issue #15，前端 Tab 标题加 `[host]` 前缀以区分本地/远端）。
 pub(crate) fn batch_to_payloads(
-    lines: Vec<ssh_source::JsonlLine>,
+    lines: Vec<stream_source::JsonlLine>,
     origin: &crate::origin::Origin,
     runs: &mut SkipRuns,
 ) -> Vec<ui_contract::JsonlLinePayload> {

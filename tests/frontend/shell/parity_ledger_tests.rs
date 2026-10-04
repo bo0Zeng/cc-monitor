@@ -345,7 +345,7 @@ const ASYMMETRY_REASONS: &[(&str, Asym, &str)] = &[
 ///
 /// **以它为准，不以 `#[tauri::command]` 属性为准**：属性只说「它能当命令」，
 /// `generate_handler!` 才说「前端真能调到」。（漏注册是**运行时** `command not found`、
-/// 不是编译错——`ssh_source.rs` 里有一条注释专门警告过这件事。）
+/// 不是编译错——`stream_source/` 里有一条注释专门警告过这件事。）
 fn registered_commands() -> BTreeSet<String> {
     let src = std::fs::read_to_string(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -898,7 +898,7 @@ enum FrameVerdict {
 /// **那一刀在这一处不生效**（自摘恒空转），别把它算成一道保险。
 const REMOTE_ONLY_MARKS: &[&str] = &[
     "load_remote_config_by_label(",
-    "ssh_source::",
+    "stream_source::",
     "refuse_local_write(",
     "RemoteConfig",
     "sftp_pool::",

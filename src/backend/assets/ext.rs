@@ -843,7 +843,7 @@ fn pick_source<'c, 'a>(
 pub(crate) type Current<'a> =
     &'a dyn Fn(bool) -> Result<(Catalog, Vec<String>), (&'static str, String)>;
 
-/// `ext-list {visit}`：这台现扫一次、记下（`current` = 目录的写口，由 `inbound.rs` 递进来），出表。
+/// `ext-list {visit}`：这台现扫一次、记下（`current` = 目录的写口，由 `stream/inbound/` 递进来），出表。
 pub(crate) fn answer_list(
     args: &Value,
     current: Current,

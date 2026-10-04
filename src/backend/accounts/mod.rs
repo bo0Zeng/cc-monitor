@@ -2,7 +2,7 @@
 //!
 //! | 块 | 是什么 | 谁用它 |
 //! |---|---|---|
-//! | [`upstream`] | 中转的**上游选择**（apikey 端点改写）：`(agent, 账号)` 路由表 · 凭据文件（中转里只读）· 热重载 ＋ 这台机器上那份凭据文件的帧面读写口 | 常驻后端里中转的装配口 `upstream::host_relay` · `inbound.rs` 的 `apikey-key-set` / `apikey-read` |
+//! | [`upstream`] | 中转的**上游选择**（apikey 端点改写）：`(agent, 账号)` 路由表 · 凭据文件（中转里只读）· 热重载 ＋ 这台机器上那份凭据文件的帧面读写口 | 常驻后端里中转的装配口 `upstream::host_relay` · `stream/inbound/` 的 `apikey-key-set` / `apikey-read` |
 //! | [`manage`] | 这台机器上的**账号库**：建库 · 加号 / 删号 · 核对 · 修复 · 隔离 · 回滚 · 账号别名 | `faces/accounts_face.rs`（`accounts-*` 那几条改账号库的帧命令） |
 //!
 //! ⚠ **它们不共用一张登记表**：上游选择的那几条判据（`relay::upstream_selection_guard` 的上游选择根、

@@ -1,6 +1,6 @@
 //! 〔「后端持有全部 SSH」〕**测试连接**：界面把设置页表单里那台（可能还没保存的）配置交过来，
 //! 本机常驻后端组拨号请求（[`super::machine`]）、拨一次（短命探活，不进连接池）、回结局 —— monitor 那条 Tauri 命令
-//! `test_remote_connection` 与它手里那份探针退役（原住 `ssh_source.rs`）。
+//! `test_remote_connection` 与它手里那份探针退役（原住 `stream_source/`）。
 //!
 //! 三步，每步的结论都进回包（部分成功照样回，不当错误）：
 //!

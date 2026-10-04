@@ -33,7 +33,7 @@ use tokio::io::BufReader;
 use crate::inbound_client::{self, InboundClient};
 use crate::link_mux::LinkStream;
 use crate::ssh_link::{self, Ack, ConnectStage, LinkError};
-use crate::ssh_source::{RemoteConfig, RemoteExec};
+use crate::stream_source::{RemoteConfig, RemoteExec};
 
 /// 等代理回 ack 的上限：握手看门狗（黑洞地址 TCP 连上后握手可以无限阻塞）。与界面侧原来那条
 /// `HANDSHAKE_DEADLINE` 同值。后端不许有 `timeout(`（`no_timer_guard`），⇒ 看门狗在这里执行：
@@ -118,9 +118,9 @@ fn agent_sock() -> Option<String> {
 ///
 /// 这里只交宿主手里的几样事实（`C4`：读配置是宿主的事）：
 /// - `machine`：这一台（`RemoteConfig` 的 camelCase 形状，与界面那一格同形）；
-/// - `saved`：盘上同名的那一份（`ssh_source::run` 手里那份是起来时读的 —— 固化指纹之后，靠它让之后的重连转严格）；
+/// - `saved`：盘上同名的那一份（`stream_source::run` 手里那份是起来时读的 —— 固化指纹之后，靠它让之后的重连转严格）；
 /// - `jump`：跳板那一台的配置（查不到 ⇒ `null`，后端照 fail-closed 拒）；
-/// - `prefer`：上次赢的那条（结构化，[`crate::ssh_source::last_good_for`]；配置改过就失效）；
+/// - `prefer`：上次赢的那条（结构化，[`crate::stream_source::last_good_for`]；配置改过就失效）；
 /// - `agent_sock`：界面进程此刻的 ssh-agent（常驻后端活得比界面长）。
 pub(crate) fn request(
     cfg: &RemoteConfig,
@@ -155,7 +155,7 @@ pub(crate) fn machine_facts(cfg: &RemoteConfig) -> serde_json::Value {
         "machine": cfg,
         "saved": crate::load_remote_config_by_label(&origin),
         "jump": jump,
-        "prefer": crate::ssh_source::last_good_for(cfg).map(|e| serde_json::json!({ "host": e.host, "port": e.port })),
+        "prefer": crate::stream_source::last_good_for(cfg).map(|e| serde_json::json!({ "host": e.host, "port": e.port })),
     })
 }
 
@@ -401,11 +401,11 @@ async fn open(
     settle_host_key(cfg, req, &ack);
     // 竞速胜者记成 last-good（下次当 `prefer` 交回去排首）—— 后端交的是结构化的 `winner`，这里不解析地址。
     if let Some(won) = &ack.winner {
-        crate::ssh_source::record_last_good(cfg, won);
+        crate::stream_source::record_last_good(cfg, won);
     }
     let origin = cfg.origin_label();
     tracing::info!(
-        "[perf] ssh_source [{origin}] SSH 握手+鉴权 {}ms（经本机常驻后端的链路：开链路＋[池里没有时]TCP＋握手＋指纹校验＋auth＋开通道；\
+        "[perf] stream_source [{origin}] SSH 握手+鉴权 {}ms（经本机常驻后端的链路：开链路＋[池里没有时]TCP＋握手＋指纹校验＋auth＋开通道；\
          winner={:?}；指纹 {:?}）",
         t_handshake.elapsed().as_millis(),
         ack.endpoint,
@@ -624,7 +624,7 @@ fn settle_one(path: &std::path::Path, origin: &str, host: &str, verdict: PinVerd
     }
 }
 
-// `open_stream`〔散文墓碑〕（`use:"stream"` 的一条 exec 字节流）删了：唯一的问者 `ssh_source` 那个一次性 exec 原语随公钥推送进本机后端一起走了。
+// `open_stream`〔散文墓碑〕（`use:"stream"` 的一条 exec 字节流）删了：唯一的问者 `stream_source` 那个一次性 exec 原语随公钥推送进本机后端一起走了。
 
 /// **一条到远端常驻后端监听口的隧道**（链路 `use:"tunnel"`：本机常驻后端在池里那条 SSH 连接上开
 /// direct-tcpip 到远端 `127.0.0.1:port`）。出生带一次性总时限；接成流之后由调用方摘（`remote_resident::attach`）。

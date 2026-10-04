@@ -1,4 +1,5 @@
 use super::*;
+use crate::stream_source::RemoteConfig;
 
 /// ★★ **本机 `~/.ssh` 的读面：恰好一处，且只读 `config`**〔audit-0805 08-08，Phase G 第 85 件〕。
 ///
@@ -28,7 +29,7 @@ fn the_local_ssh_read_surface_is_exactly_one_site() {
     /// 按写法取样正是本工作区一直在治的病（`join(SSH_DIR)` 换个常量就绕过去了）。
     /// ⇒ 人群取「谁提到了这个目录」，**本机还是远端由登记回答**，不由语法判。
     const SSH_SITES: &[(&str, &str, &str, &str)] = &[
-        // `ssh_source.rs` 读 `~/.ssh/config` 那一行走了：导入搬进后端 `dial/ssh_config.rs`
+        // `stream_source/` 读 `~/.ssh/config` 那一行走了：导入搬进后端 `dial/ssh_config.rs`
         //   ⇒ monitor 生产段碰本机 `.ssh` 的从此是零处（下面只剩拼给远端的那一行）。
         // `pubkey.rs` 那一行（拼给远端的 `authorized_keys` 那一串）也走了：公钥推送进了本机后端（`pubkey-push`），
         //   读本机那份 `.pub` 也在那里 ⇒ monitor 生产段碰 `.ssh` 的**零处**。人群空了，下面那条正控保证尺子不是瞎的。
@@ -41,17 +42,17 @@ fn the_local_ssh_read_surface_is_exactly_one_site() {
         "只扫到 {} 个 .rs —— 遍历坏了，本条会零命中地绿",
         files.len()
     );
-    // 被测的 `ssh_source.rs` —— 它走普通遍历**本来就在**人群里，这一份是补的第二份。
+    // 被测的 `stream_source/` —— 它走普通遍历**本来就在**人群里，这一份是补的第二份。
     // ⚠ 先前这一行写着「本文件被 `scan_tree!` 按构造摘掉了
     //   （它是调用者）⇒ 手动补回」。那一刀**在这一处不生效**（判据由 `#[path]`
     //   挂载 ⇒ `file!()` 是折返路径 ⇒ 后缀比不命中），而且今天的调用者是本判据文件、
-    //   不是 `ssh_source.rs`。重复在这里无害（下面 `found` 排序后 `dedup`），
+    //   不是 `stream_source/`。重复在这里无害（下面 `found` 排序后 `dedup`），
     //   而它**刻意不删**：它把「被测那一份一定在人群里」钉成一件不依赖扫描面的事。
     // ⚠ **变量名刻意不叫 `me`**：`needle_anchor` 棘轮按**文件文本**推断「语料变量」，
     // 而本文件另一条判据里有一句刻意演示旧近似的 `me.split("\n#[cfg(test)]")`（见 2890 行附近）。
     // 叫 `me` 会让那处旧 split 被算成「语料变量上的裸匹配」，棘轮当场红 —— 08-08 实测过。
     // 名字影响判据结果，这件事本身值得写下来。
-    let self_src = std::fs::read_to_string(root.join("ssh_source.rs")).expect("读不到本文件");
+    let self_src = crate::guard_support::stream_source_raw();
     let mut corpus: Vec<(String, String)> = files
         .iter()
         .map(|(p, s)| {
@@ -61,7 +62,7 @@ fn the_local_ssh_read_surface_is_exactly_one_site() {
             )
         })
         .collect();
-    corpus.push(("ssh_source.rs".to_string(), self_src));
+    corpus.push(("stream_source/".to_string(), self_src));
 
     let dot = format!(".{}", "ssh");
     let mut found: Vec<String> = Vec::new();
@@ -198,11 +199,9 @@ fn next_backoff_doubles_then_caps() {
 //   随那几个函数搬进后端 `dial/machine.rs`：`tests/backend/dial_machine_tests.rs` 的 `address_lines_read_the_four_shapes_and_refuse_garbage`
 //   与 `a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first`（后者同拍新加）。
 
-// F45 那两条（`winner_address`〔散文墓碑〕：没连过 ⇒ `host:port`；连过 ⇒ 上次赢的那条，地址配置改过即失效）随被测函数删了：
-//   远端开终端进了本机后端（`terminal-ssh`），那个函数零生产调用。两半各有等价判据、不补：
+// 远端开终端在本机后端（`terminal-ssh`）。首选地址的两半判据：
 //   「上次赢的那条排首 / 已不在这台地址里就不动」⇒ 后端 `dial_machine_tests::a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first`
 //   ＋ 开终端那一行 `dial_terminal_tests::the_address_is_the_first_in_race_order_so_the_last_winner_is_used`；
 //   「地址配置改过 ⇒ 上次那条失效」⇒ monitor `dial_host_tests::the_last_winner_goes_over_as_prefer_while_the_config_is_unchanged`。
 
-// `backendPath` 那一格删了（落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`）⇒ 从前那道放行判定
-//   `backend_path_for_shell`〔散文墓碑〕与它的两条判据没有外来值可判，一起删了。
+// 后端落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`，没有外来值可判。

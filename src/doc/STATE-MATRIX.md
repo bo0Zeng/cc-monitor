@@ -12,7 +12,7 @@
 
 | State 类型 | 注册位置 | 创建位置 | Arc 所有权 |
 |---|---|---|---|
-| ~~`Arc<session_map::SessionMap>`~~ 已删 | — | — | 本机活会话表改由本机后端那条流的起停帧喂，住进程级的一张（`session_map::local()`，不 manage）；写者只有本机那条流的消费者（`ssh_source::consume_local` ⇒ `session_map::feed`），读者：本机 emitter · `frontend-ready` 对账 · `list_active_sessions`〔散文墓碑〕 / `list_session_activity`〔散文墓碑〕 |
+| ~~`Arc<session_map::SessionMap>`~~ 已删 | — | — | 本机活会话表改由本机后端那条流的起停帧喂，住进程级的一张（`session_map::local()`，不 manage）；写者只有本机那条流的消费者（`stream_source::consume_local` ⇒ `session_map::feed`），读者：本机 emitter · `frontend-ready` 对账 · `list_active_sessions`〔散文墓碑〕 / `list_session_activity`〔散文墓碑〕 |
 | `Arc<event_replay::EventReplay>` | `lib.rs::setup()` `app.manage(replay.clone())` | `EventReplay::new()` | 共享：setup 局部 + frontend-ready listener + jsonl async pump + State |
 | `Arc<bind::BindRegistry>` | `lib.rs::setup()` `app.manage(bind_registry.clone())` | `BindRegistry::spawn()` | 共享：setup 局部 + `session-book-emitter` 线程 + `bind-await-watcher` 线程 + `bind-heartbeat` 线程 + State（另起的 `monitor-up-mark` 线程只占着两样系统对象，不持有它） |
 | `Arc<bind::SidHwndCache>` | `lib.rs::setup()` `app.manage(sid_hwnd_cache.clone())` | `SidHwndCache::load()` | 共享：setup 局部 + `session-book-emitter` 线程 + State |
@@ -72,7 +72,7 @@ Arc 不只通过 State 共享，还通过 `.clone()` 喂给 spawn 出去的线�
 
 | Arc | 还在哪持有 |
 |---|---|
-| 会话成品缓存 `session_book::book()`（进程级，**非 State**；替掉 LOC1b 那张本机活会话表） | (1) 两条流（`ssh_source::stream_loop` · `consume_local`）经 `session_book::feed` 交成品（**唯一写口**） (2) `session-book-emitter` 线程（转交会话流 ＋ 拉前绑定） (3) 就绪点 / 开窗重放（`event_replay.rs::lifecycle_replay`） |
+| 会话成品缓存 `session_book::book()`（进程级，**非 State**；替掉 LOC1b 那张本机活会话表） | (1) 两条流（`stream_source::stream_loop` · `consume_local`）经 `session_book::feed` 交成品（**唯一写口**） (2) `session-book-emitter` 线程（转交会话流 ＋ 拉前绑定） (3) 就绪点 / 开窗重放（`event_replay.rs::lifecycle_replay`） |
 | ~~`remote_active`~~ 已删（THIN 09-29 订正本行） | 连同写它的那条远端会话 emitter 线程一起没了：活 / 可重连 / 已结束的账住那台后端 `src/backend/observe/session_ledger.rs::SessionLedger`（发帧唯一出口上那一问），monitor 只收成品、存进上一行那本 `session_book`（INVARIANTS § 24 顶注） |
 | `bind_registry` | (1) `BindRegistry::spawn()` 内部启动的 `bind-await-watcher` + `bind-heartbeat` 两个线程 (2) `session-book-emitter` 线程 (`bind_for_emitter`) (3) `app.manage` |
 | `sid_hwnd_cache` | (1) `session-book-emitter` 线程 (`cache_for_emitter`) (2) `app.manage` |

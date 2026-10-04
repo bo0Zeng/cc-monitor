@@ -47,8 +47,8 @@ fn the_verdict_answer_is_read_strictly() {
     }
 }
 
-fn exec(stdout: &str, stderr: &str, code: Option<u32>) -> crate::ssh_source::RemoteExec {
-    crate::ssh_source::RemoteExec {
+fn exec(stdout: &str, stderr: &str, code: Option<u32>) -> crate::stream_source::RemoteExec {
+    crate::stream_source::RemoteExec {
         stdout: stdout.into(),
         stderr: stderr.into(),
         exit_status: code,
@@ -218,8 +218,8 @@ async fn a_tunnel_refused_for_forwarding_stops_at_the_first_try() {
     let said = copy_text("rsRemoteResident.tunnel.forwardingProhibited", &[]);
     assert_eq!(got, Err(AttachErr::Unsupported(said.clone())));
     assert_eq!(
-        crate::ssh_source::after_round(Some(said.clone()), std::time::Duration::from_secs(2)),
-        crate::ssh_source::AfterRound::Stop(said),
+        crate::stream_source::after_round(Some(said.clone()), std::time::Duration::from_secs(2)),
+        crate::stream_source::AfterRound::Stop(said),
         "这一形之后整条流还按退避重连"
     );
 

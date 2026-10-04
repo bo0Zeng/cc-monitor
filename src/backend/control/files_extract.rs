@@ -760,7 +760,7 @@ fn answer_link(args: &serde_json::Value) -> Answer {
     }))
 }
 
-/// 线上入口（只从 `inbound.rs` 那一扇门来）。
+/// 线上入口（只从 `stream/inbound/` 那一扇门来）。
 pub fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
     match wire_name {
         "files-extract" => answer_extract(args),

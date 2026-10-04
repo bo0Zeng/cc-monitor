@@ -2,7 +2,7 @@
 //!
 //! 从前这一层住 monitor（`user_files.rs`：读 → 算 → 经那台后端 `files-peek` / `files-put` 交写）。
 //! D 组的计算进了后端之后，算的与写的是同一台后端 ⇒ 门就是本进程里那几条 `files-*` 帧命令本身
-//! （实现住 `stream/inbound/doors.rs::LocalFiles`：`readonly_guard` 第三层只许 `inbound.rs` 够得着写面）。
+//! （实现住 `stream/inbound/doors.rs::LocalFiles`：`readonly_guard` 第三层只许 `stream/inbound/` 够得着写面）。
 //! 写的规则（CAS · 相同不写 · 备份 · 暂存旁名换名上位 · 回读比对 · 回滚）仍只有 `files_write::put_text` 那一份。
 
 use copy_core::copy_text;

@@ -2,7 +2,7 @@
 //!
 //! 活 / 可重连 / 已结束由那台机器的后端裁（`src/backend/observe/session_ledger.rs`，帧 `session_added` · `session_state` ·
 //! `sessions_replayed`），本机远端同一形。monitor 这一侧只做三件事：
-//! ① 两条流（远端 `ssh_source::stream_loop` · 本机 `ssh_source::consume_local`）把成品交进来（[`feed`]）；
+//! ① 两条流（远端 `stream_source::stream_loop` · 本机 `stream_source::consume_local`）把成品交进来（[`feed`]）；
 //! ② 按原样转给前端（出口由 `lib.rs` 装：[`Out`] ⇒ 事件 ＋ 拉前那几样副作用）；
 //! ③ 留一份最新成品，给 F5 / 开窗的重放用（[`Book::replay`]，就绪点在会话流里原位交）。
 //!

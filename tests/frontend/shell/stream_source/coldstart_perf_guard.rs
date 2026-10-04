@@ -16,36 +16,36 @@
 const PHASES: &[(&str, &str, &str)] = &[
     (
         "部署预检",
-        "async fn stream_loop",
-        "[perf] ssh_source [{host_label}] 部署预检 {}ms（",
+        "async fn open_round",
+        "[perf] stream_source [{host_label}] 部署预检 {}ms（",
     ),
     (
         "起流",
-        "async fn stream_loop",
-        "[perf] ssh_source [{host_label}] 起流 {}ms（",
+        "async fn open_round",
+        "[perf] stream_source [{host_label}] 起流 {}ms（",
     ),
     (
         "首个 hello",
-        "async fn stream_loop",
-        "[perf] ssh_source [{host_label}] 首个 hello T+{}ms（",
+        "fn on_hello",
+        "[perf] stream_source [{host_label}] 首个 hello T+{}ms（",
     ),
     // 握手那一段搬进了拨号代理，量它的埋点跟着搬到宿主 `dial_host.rs::open`
-    //   （原住 `ssh_source.rs` 里的 `connect_session`；SFTP 那一份也随 `inproc_dial.rs` 整份删了，握手今天只在本机后端 `dial/connect.rs`）。
+    //   （原住 `stream_source/` 里的 `connect_session`；SFTP 那一份也随 `inproc_dial.rs` 整份删了，握手今天只在本机后端 `dial/connect.rs`）。
     //   ⚠ 量的东西多了一次**起代理进程** —— 那是认下来的代价，埋点让它看得见。
     (
         "SSH 握手+鉴权",
         "async fn open",
-        "[perf] ssh_source [{origin}] SSH 握手+鉴权 {}ms（",
+        "[perf] stream_source [{origin}] SSH 握手+鉴权 {}ms（",
     ),
 ];
 
-/// 埋点住两份文件：流循环在 `ssh_source.rs`，握手在拨号代理的宿主 `dial_host.rs`。
+/// 埋点住两份文件：流循环在 `stream_source/`，握手在拨号代理的宿主 `dial_host.rs`。
 /// 阶段表每一行按「它在哪个函数里」去对应的那一份里找。
-fn source_of(sig: &str) -> &'static str {
+fn source_of(sig: &str) -> String {
     if sig == "async fn open" {
-        include_str!("../../../src/frontend/shell/src/dial_host.rs")
+        include_str!("../../../../src/frontend/shell/src/dial_host.rs").to_string()
     } else {
-        include_str!("../../../src/frontend/shell/src/ssh_source.rs")
+        crate::guard_support::stream_source_raw()
     }
 }
 
@@ -70,14 +70,14 @@ fn body_of(src: &str, sig: &str) -> String {
 
 #[test]
 fn the_three_most_expensive_cold_start_phases_each_emit_a_perf_line() {
-    let src = include_str!("../../../src/frontend/shell/src/ssh_source.rs");
+    let src = crate::guard_support::stream_source_raw();
     assert!(
         src.len() > 100_000,
         "只读到 {} 字节 —— 抽取器坏了",
         src.len()
     );
     for (phase, sig, needle) in PHASES {
-        let body = body_of(source_of(sig), sig);
+        let body = body_of(&source_of(sig), sig);
         assert!(
             body.contains(needle),
             "冷启动阶段「{phase}」在 `{sig}` 里没有 `[perf]` 埋点（找的是 `{needle}`）。\n\
@@ -90,12 +90,12 @@ fn the_three_most_expensive_cold_start_phases_each_emit_a_perf_line() {
 }
 
 /// 本文件的 `[perf]` 条数不许降（**递减棘轮**：埋点只许多不许少）。
-/// 「本文件」= `ssh_source.rs` ＋ 握手那一段搬去的 `dial_host.rs`（两份合起来数）。
+/// 「本文件」= `stream_source/` ＋ 握手那一段搬去的 `dial_host.rs`（两份合起来数）。
 #[test]
 fn the_perf_probes_in_this_file_only_grow() {
     let src = [
-        include_str!("../../../src/frontend/shell/src/ssh_source.rs"),
-        include_str!("../../../src/frontend/shell/src/dial_host.rs"),
+        crate::guard_support::stream_source_raw(),
+        include_str!("../../../../src/frontend/shell/src/dial_host.rs").to_string(),
     ]
     .concat();
     // ⚠ 只数**发射点所在的那一行**（trim 后以那个字面量开头）——
@@ -105,7 +105,7 @@ fn the_perf_probes_in_this_file_only_grow() {
     //（前一次是 `body_of` 的锚点命中了 `PHASES` 表里的字符串）。
     let n = src
         .lines()
-        .filter(|l| l.trim_start().starts_with("\"[perf] ssh_source [{"))
+        .filter(|l| l.trim_start().starts_with("\"[perf] stream_source [{"))
         .count();
     assert!(
         n >= 4,
