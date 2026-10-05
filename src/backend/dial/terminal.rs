@@ -1,20 +1,21 @@
-//! 〔「待迁」最后一行〕**给一台远端开终端要跑的那一串** —— `ssh -t[ -J …] …` 外壳与
-//! PowerShell 窗口载荷，在本机常驻后端里渲（原住 monitor `launch.rs` 的 `build_remote_ssh_ps_command`〔散文墓碑〕，逐字搬来）。
+//! 〔「待迁」最后一行〕**给一台远端开终端要跑的那一串** —— `ssh -t[ -J …] …` 外壳，按这台电脑的终端方言渲
+//! （Windows：PowerShell 窗口载荷；别处：一行 POSIX shell），在本机常驻后端里渲。
 //!
 //! 界面交来的是那台机器的配置（`{machine, saved?, jump?, prefer?}`，monitor 从它自己的机器表与「上次赢的那条」给出，
 //! 同 `remote-probe` / `pubkey-push` 那几格）＋ 要在那台跑的命令 `command`。组请求走唯一那一份 [`super::machine::resolve`]
-//! （地址排序 · 跳板查无 / 环都在那里），这里只把它渲成一行 PowerShell：
+//! （地址排序 · 跳板查无 / 环都在那里），这里只把它渲成一行：
 //!
-//! `& ssh -t[ -J <跳板用户>@<跳板>[:口]] -p <口>[ -i '<钥匙>'] -o 'UserKnownHostsFile=<cc-monitor 那份>' <用户>@<地址> -- '<bash -lic ''…''>'`
+//! - PowerShell：`& ssh -t[ -J <跳板用户>@<跳板>[:口]] -p <口>[ -i '<钥匙>'] -o 'UserKnownHostsFile=<cc-monitor 那份>' <用户>@<地址> -- '<bash -lic ''…''>'`
+//! - POSIX：同一组参数，不带 `& `，引号按 POSIX 单引号写（`'bash -lic '\''…'\'''`）。
 //!
 //! - 地址取竞速顺序的第一条（交了 `prefer` 且它仍在这台的地址里 ⇒ 就是上次赢的那条，F45：终端与数据源走同一条路）；
-//! - 远端命令包成 `bash -lic '<命令>'`（PATH / 别名按「用户粘贴进交互终端」解析），再以 PowerShell 单引号字面量嵌入；
+//! - 远端命令包成 `bash -lic '<命令>'`（PATH / 别名按「用户粘贴进交互终端」解析），再以本机方言的单引号字面量嵌入；
 //! - 主机钥匙认 cc-monitor 自己那份 known_hosts（[`super::known_hosts`]：握手时认下的那把），终端里不再问、不写用户的 `~/.ssh`；
 //!   跳板那一跳（`-J`）是 ssh 另起的一个进程，不吃 `-o`，仍走 ssh 自己的默认；
 //! - 钥匙路径尾 `\` 剥掉（PS < 7.3 给含空格参数加壳时尾部 `\"` 会吃掉收尾引号）；没给钥匙 ⇒ 走 ssh-agent，不带 `-i`。
 //!
-//! 拒（`refused`，说清哪一格）：命令空 / 超长 / 含控制符 / 含双引号（PowerShell 5.1 向原生程序传参对内嵌 `"` 有历史畸变，
-//! 那是**这条送法**的约束）· 用户名 / 地址 / 跳板用户 / 跳板地址出了白名单（它们是拼进命令体的裸词）。
+//! 拒（`refused`，说清哪一格）：命令空 / 超长 / 含控制符 · PowerShell 那一形另拒双引号（PowerShell 5.1 向原生程序传参对内嵌 `"`
+//! 有历史畸变，那是**那条送法**的约束）· 用户名 / 地址 / 跳板用户 / 跳板地址出了白名单（它们是拼进命令体的裸词）。
 //! 只算不起：不拨号、不开窗（开窗是 monitor 的事，它只开窗）。
 
 use copy_core::copy_text;
@@ -46,8 +47,8 @@ fn host_ok(h: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | ':' | '[' | ']'))
 }
 
-/// 要在那台跑的命令：非空 · 不超长 · 无控制符 · 无双引号。
-fn check_command(cmd: &str) -> Result<(), CmdErr> {
+/// 要在那台跑的命令：非空 · 不超长 · 无控制符 · PowerShell 那一形另要无双引号。
+fn check_command(cmd: &str, powershell: bool) -> Result<(), CmdErr> {
     if cmd.trim().is_empty() {
         return Err(refused(copy_text("beTerminal.refuse.empty", &[])));
     }
@@ -63,7 +64,7 @@ fn check_command(cmd: &str) -> Result<(), CmdErr> {
     if cmd.chars().any(char::is_control) {
         return Err(refused(copy_text("beTerminal.refuse.control", &[])));
     }
-    if cmd.contains('"') {
+    if powershell && cmd.contains('"') {
         return Err(refused(copy_text("beTerminal.refuse.doubleQuote", &[])));
     }
     Ok(())
@@ -103,11 +104,11 @@ fn known_hosts_value(path: &str) -> String {
 
 /// ` -o 'UserKnownHostsFile=<cc-monitor 那份>'`：终端那一跳认 cc-monitor 握手时认下的那把钥匙（`super::known_hosts`），
 /// 不再问一遍、也不写用户的 `~/.ssh/known_hosts`；主机钥匙核对照旧开着。家目录说不出 ⇒ 不带（照 ssh 自己的默认）。
-pub(crate) fn known_hosts_arg(path: Option<&std::path::Path>) -> String {
+pub(crate) fn known_hosts_arg(path: Option<&std::path::Path>, powershell: bool) -> String {
     match path {
         Some(p) => format!(
             " -o {}",
-            ps_literal(&format!(
+            literal(powershell, &format!(
                 "UserKnownHostsFile={}",
                 known_hosts_value(&p.to_string_lossy())
             ))
@@ -116,9 +117,18 @@ pub(crate) fn known_hosts_arg(path: Option<&std::path::Path>) -> String {
     }
 }
 
-/// 一份拨号请求 ＋ 命令 ⇒ 那一行 PowerShell（见模块头注）。
-pub(crate) fn render(req: &super::DialRequest) -> Result<String, CmdErr> {
-    check_command(&req.command)?;
+/// 本机终端方言的单引号字面量。
+fn literal(powershell: bool, s: &str) -> String {
+    if powershell {
+        ps_literal(s)
+    } else {
+        shell_quote_core::posix_quote(s)
+    }
+}
+
+/// 一份拨号请求 ＋ 命令 ⇒ 这台电脑终端里跑的那一行（`powershell` ＝ 本机终端是不是 PowerShell，见模块头注）。
+pub(crate) fn render(req: &super::DialRequest, powershell: bool) -> Result<String, CmdErr> {
+    check_command(&req.command, powershell)?;
     if !user_ok(&req.user) {
         return Err(refused(copy_text(
             "beTerminal.refuse.user",
@@ -144,7 +154,7 @@ pub(crate) fn render(req: &super::DialRequest) -> Result<String, CmdErr> {
         .as_deref()
         .map(|k| k.trim().trim_end_matches('\\'))
     {
-        Some(k) if !k.is_empty() => format!(" -i {}", ps_literal(k)),
+        Some(k) if !k.is_empty() => format!(" -i {}", literal(powershell, k)),
         _ => String::new(),
     };
     let jump = match &req.jump {
@@ -152,13 +162,14 @@ pub(crate) fn render(req: &super::DialRequest) -> Result<String, CmdErr> {
         None => String::new(),
     };
     let wrapped = format!("bash -lic {}", shell_quote_core::posix_quote(&req.command));
-    let known = known_hosts_arg(super::known_hosts::path().as_deref());
+    let known = known_hosts_arg(super::known_hosts::path().as_deref(), powershell);
     Ok(format!(
-        "& ssh -t{jump} -p {port}{key}{known} {user}@{host} -- {cmd}",
+        "{call}ssh -t{jump} -p {port}{key}{known} {user}@{host} -- {cmd}",
+        call = if powershell { "& " } else { "" },
         port = first.port,
         user = req.user,
         host = first.host,
-        cmd = ps_literal(&wrapped),
+        cmd = literal(powershell, &wrapped),
     ))
 }
 
@@ -213,11 +224,16 @@ pub(crate) fn command_for_cwd(cwd: &Value) -> Result<String, CmdErr> {
     }
 }
 
-/// 帧命令 `terminal-ssh`：`{machine, saved?, jump?, prefer?, command | cwd}` ⇒ `{command: "<那一行 PowerShell>"}`。
+/// 帧命令 `terminal-ssh`：`{machine, saved?, jump?, prefer?, command | cwd}` ⇒ `{command: "<本机终端里跑的那一行>"}`。
 /// `command`（主界面交成品命令）与 `cwd`（文件窗口「在此打开终端」只交意图，命令由 [`command_for_cwd`] 拼）**恰好给一个**。
 pub(crate) fn answer(args: &Value) -> Result<Value, CmdErr> {
+    answer_in(args, crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL)
+}
+
+/// [`answer`] 按给定的本机终端方言渲（判据两种方言都量）。
+pub(crate) fn answer_in(args: &Value, powershell: bool) -> Result<Value, CmdErr> {
     let req = super::machine::resolve(&dial_args(args)?)?;
-    Ok(json!({ "command": render(&req)? }))
+    Ok(json!({ "command": render(&req, powershell)? }))
 }
 
 /// `command` 与 `cwd` 恰好给一个；给的是 `cwd` ⇒ 由 [`command_for_cwd`] 拼好放进 `command`（拨号请求只认 `command`）。
