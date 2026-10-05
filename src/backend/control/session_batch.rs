@@ -477,7 +477,15 @@ fn start_one(
         true => start_in_tmux(it, b, &account, rows, here, deps),
         false if here => start_window_here(it, b, &account, rows, deps),
         false => {
-            match wire::render_ccm_launch_with(&wire_req(it, b, None, true), &account, deps.caps) {
+            let line = own_entry(deps).and_then(|entry| {
+                wire::render_ccm_launch_with(
+                    &wire_req(it, b, None, true),
+                    &account,
+                    deps.caps,
+                    &entry,
+                )
+            });
+            match line {
                 Ok(cmd) => Answer {
                     cmd: Some(cmd),
                     ..Answer::done(&it.sid)
@@ -525,8 +533,14 @@ fn start_in_tmux(
             }
         }
         Standing::Idle(n) => {
-            let line =
-                wire::render_ccm_launch_with(&wire_req(it, b, None, false), account, deps.caps);
+            let line = own_entry(deps).and_then(|entry| {
+                wire::render_ccm_launch_with(
+                    &wire_req(it, b, None, false),
+                    account,
+                    deps.caps,
+                    &entry,
+                )
+            });
             let done = match line {
                 Err(said) => Answer::failed(&it.sid, ("refused", said)),
                 Ok(line) => match (deps.send_into)(&n, &it.sid, &line) {
@@ -580,6 +594,12 @@ fn fork_base<'a>(it: &'a Item, rows: &'a [TmuxEntry]) -> NameBase<'a> {
     NameBase::ForkOf(source)
 }
 
+/// 这台 `ccm` 的入口（那几行直接叫它，不靠 `PATH`）。
+fn own_entry(deps: &Deps) -> Result<String, String> {
+    (deps.local_facts.entry)()
+        .ok_or_else(|| copy_core::copy_text("beLaunchRender.entry.noHome", &[]))
+}
+
 /// 以 `name` 新建一个 tmux 会话、在里面起这一个（交一行 ccm，`--detach`）。换号重启复用让出来的旧名也走这一条。
 pub(crate) fn start_named(
     it: &Item,
@@ -597,12 +617,15 @@ pub(crate) fn start_named(
             true,
         )
     } else {
-        wire::ccm_launch_argv(
-            &wire_req(it, b, Some(&name), true),
-            account,
-            deps.caps,
-            true,
-        )
+        own_entry(deps).and_then(|entry| {
+            wire::ccm_launch_argv(
+                &wire_req(it, b, Some(&name), true),
+                account,
+                deps.caps,
+                &entry,
+                true,
+            )
+        })
     };
     let done = match argv {
         Err(said) => Answer::failed(&it.sid, ("refused", said)),

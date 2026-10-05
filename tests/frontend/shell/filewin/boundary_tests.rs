@@ -360,6 +360,8 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     // 自带的那份窗口程序：字节 · 放下来 · 放到哪 · 放的时候那两样平台知识（`proc::resolve_window_bin`）。
     ("byte_table::native_filewin", Kind::Carried),
     ("local_backend::place_local_program", Kind::Carried),
+    // 窗口进程的 stderr 一条最多收多少字节：与被监护子进程那一份同一个上界（不另起一个数）。
+    ("local_backend::STDERR_MAX_LINE_BYTES", Kind::Carried),
     ("profile_installer::ccm_bin_dir_rel", Kind::Carried),
     ("platform::fs::make_executable", Kind::Carried),
     ("platform::fs::ensure_private_dir", Kind::Carried),

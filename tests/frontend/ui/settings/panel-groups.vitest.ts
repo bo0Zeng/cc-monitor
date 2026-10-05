@@ -7,6 +7,7 @@
 // 那四个组名随之消失 —— 所以这里是**跟着功能改**，不是把碍事的断言删掉。
 // 新断言比旧的更强：旧的只点名 4 个组 + 抽查几个子分节；新的是**逐页的完整清单**
 // ——少一块、多一块、搬错页，三种都红。
+import { getCurrentMachine } from "../../../../src/frontend/ui/settings/machine-context";
 import { describe, it, expect, vi } from "vitest";
 
 // refresh spy 守 F82b 段移动没丢 this.remoteSection/this.dataSection 字段（丢了 open() 的
@@ -34,6 +35,7 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
   RemoteSection: class {
     originOfPage = (): string | null => null;
+    isUnconfiguredPage = (id: string): boolean => (globalThis as { __blankPage?: string }).__blankPage === id;
     element = document.createElement("div");
     refresh = remoteRefresh;
     constructor(opts?: {
@@ -441,6 +443,22 @@ describe("S2 设置面板分页结构", () => {
     );
     expect(visible).toHaveLength(1);
     expect(visible[0]!.textContent).toContain("CONN");
+  });
+
+  it("★ 进一张空白卡的页（还没填名称 / 地址）：不切当前机器、按机器的那几块不搬过去（不去问一台不存在的机器）", async () => {
+    document.body.replaceChildren();
+    (globalThis as { __blankPage?: string }).__blankPage = "machine:devbox";
+    try {
+      new SettingsPanel({ windowMode: true });
+      await tick();
+      const before = getCurrentMachine();
+      [...document.querySelectorAll<HTMLButtonElement>(".settings-nav-item")].find((b) => b.textContent === "devbox")!.click();
+      expect(getCurrentMachine()).toBe(before);
+      const acct = document.querySelector<HTMLElement>('.settings-page[data-route-id="machine:devbox#acct"]');
+      expect(acct?.querySelector(".accounts-section-stub") ?? null).toBeNull();
+    } finally {
+      delete (globalThis as { __blankPage?: string }).__blankPage;
+    }
   });
 
   it("★ 切到远端机器页 → 那几块分节各自落进「账号 / 终端」栏；cc-bus 钩子那一块不在任何一栏", async () => {

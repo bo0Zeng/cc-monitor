@@ -201,6 +201,16 @@ export class SettingsRouter {
     }
   }
 
+  /** 改一页的名字（机器改了名称）：导航项与页头一起改。没这一页 ⇒ 不动。 */
+  setTitle(id: string, title: string): void {
+    const entry = this.routes.get(id);
+    if (!entry || entry.route.title === title) return;
+    entry.route = { ...entry.route, title };
+    entry.navButton.textContent = title;
+    const head = this.pages.get(id)?.querySelector<HTMLElement>(":scope > .settings-page-head .settings-page-title");
+    if (head) head.textContent = title;
+  }
+
   /** S4b-2：某一页的内容容器（页头之下那块）。给宿主往里搬 DOM 用。 */
   pageContentOf(id: string): HTMLElement | null {
     return this.routes.get(id)?.route.element ?? null;

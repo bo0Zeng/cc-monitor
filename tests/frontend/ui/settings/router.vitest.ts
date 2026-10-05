@@ -26,6 +26,18 @@ function navButtons(r: SettingsRouter): HTMLButtonElement[] {
 }
 
 describe("SettingsRouter", () => {
+  it("★ 改页名：导航项与页头一起改，别的页不动", () => {
+    const r = new SettingsRouter({ landingId: "machines" });
+    r.addRoute({ id: "machines", title: "机器", element: page("m") });
+    r.addRoute({ id: "machine:a", title: "未命名机器", element: page("a"), parentId: "machines" });
+    r.setTitle("machine:a", "lx");
+    expect(navButtons(r).map((b) => b.textContent)).toEqual(["机器", "lx"]);
+    const head = r.element.querySelector<HTMLElement>('[data-route-id="machine:a"] .settings-page-title');
+    expect(head?.textContent).toBe("lx");
+    r.setTitle("nope", "x");
+    expect(navButtons(r).map((b) => b.textContent)).toEqual(["机器", "lx"]);
+  });
+
   it("注册第一页就有东西可看（不会开局空白）", () => {
     const r = new SettingsRouter({ landingId: "machines" });
     r.addRoute({ id: "app", title: "应用", element: page("app") });

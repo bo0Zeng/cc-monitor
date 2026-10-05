@@ -1029,7 +1029,11 @@ export class SettingsPanel {
     //   这里亮一块「此区块加载失败」，与 `safeBlock` 同一个样子。
     let backend: BackendSection | undefined;
     try {
-      backend = new BackendSection({ headless: true, hosted: true });
+      backend = new BackendSection({
+        headless: true,
+        hosted: true,
+        onLinkSeen: (origin) => this.remoteSection?.noteLedgerChanged(origin),
+      });
       this.backendSection = backend;
     } catch (e) {
       machinesPage.appendChild(
@@ -1091,6 +1095,7 @@ export class SettingsPanel {
               this.pagesLoaded.delete(id);
             },
             navigateToMachinePage: (id) => router.navigate(id),
+            renameMachinePage: (id, title) => router.setTitle(id, title),
           },
         });
         this.remoteSection = sec;
@@ -1278,6 +1283,8 @@ export class SettingsPanel {
       if (!id.startsWith(MACHINE_PAGE_PREFIX)) return;
       const isLocal = id === LOCAL_MACHINE_PAGE_ID;
       // 页 id 建卡时定死、不跟着改名走 ⇒ 这页讲的是哪台问机器列表（改过名的是新名；刚导入的是它的别名）。
+      // 还没填主机地址的卡不是一台连得上的机器 ⇒ 不切当前机器、不把按机器的那几块搬过来（它们会去问一台不存在的机器）。
+      if (!isLocal && this.remoteSection?.isUnconfiguredPage(id)) return;
       const before = getCurrentMachine();
       setCurrentMachine(
         isLocal ? LOCAL_ORIGIN : (this.remoteSection?.originOfPage(id) ?? id.slice(MACHINE_PAGE_PREFIX.length)),

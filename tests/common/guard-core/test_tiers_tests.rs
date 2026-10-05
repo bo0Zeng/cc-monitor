@@ -268,6 +268,8 @@ const UNIT: &[&str] = &[
     "tests/backend/control/launch_render/local_tests.rs",
     "tests/frontend/ui/tab-batch-menu.vitest.ts", // 批量菜单：后端那两件与宿主都是替身
     "tests/frontend/ui/tab-batch-run.vitest.ts",  // 批量停 / 起交给那几台：`chan_call` 那一跳是替身
+    "tests/frontend/ui/terminal-front-pending.vitest.ts", // ↗ 在飞不重发 ＋「进行中」的显隐时刻（假定时器）
+    "tests/backend/dial_known_hosts_tests.rs", // cc-monitor 那份 known_hosts 的合并（纯函数）
 ];
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。

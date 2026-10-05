@@ -109,6 +109,9 @@ pub const ROTATION_REL: &str = ".cc-monitor/rotation.json";
 /// 〔同上〕**起会话用的号**（后端观测侧写）：每条会话上次用哪个号起的（`sid → 号`），跟随选号读它。
 pub const LAUNCH_ACCOUNTS_REL: &str = ".cc-monitor/launch-accounts.json";
 
+/// 〔同上〕**主机钥匙**（后端拨号侧写，OpenSSH 格式）：握手认下的每台主机钥匙；开终端那一行交给 `ssh` 认它，不再问、不写用户的 `~/.ssh`。
+pub const KNOWN_HOSTS_REL: &str = ".cc-monitor/known_hosts";
+
 /// 〔同上〕**起会话便条**（`ccm` 最终那一跳写、观测侧认完即清）：一个进程一张 `<pid>.json`（号 ＋ 时刻）。
 pub const LAUNCH_NOTES_DIR_REL: &str = ".cc-monitor/launch-pending";
 

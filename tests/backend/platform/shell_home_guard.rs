@@ -286,6 +286,8 @@ const SQ_ELSEWHERE: &[(&str, &str, usize)] = &[
     ("assets/aliases/form.rs", "'{", 1),
     // 报错句里「起不来的是哪个程序」那个主语，不进 shell。
     ("control/ccm/mod.rs", "'{", 1),
+    // `ssh -o UserKnownHostsFile=…` 那个值里 ssh 自己切词认的单引号（整串随后再过 `ps_literal`）。
+    ("dial/terminal.rs", "'{", 1),
     // POSIX：tmux 的 `-F` 格式串是常量。
     ("observe/tmux_observe.rs", "'{", 1),
 ];

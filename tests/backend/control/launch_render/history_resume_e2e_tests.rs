@@ -153,6 +153,7 @@ fn history_resume_child_entry_point() {
     let facts = super::local::Facts {
         windows: false,
         is_dir: |_| true,
+        entry: || Some("ccm".into()),
     };
     let argv = super::local::plan_argv(
         &req,

@@ -59,6 +59,10 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "TH32CS_SNAPPROCESS",
+        "**标志位**不是体量：`CreateToolhelp32Snapshot` 那一问「要进程表」的那个位（`platform/win_tables.rs`）。",
+    ),
+    (
         "TREE_SLICE",
         "**条数**不是字节：文件窗口删一整棵树时一趟让后端至多删几条（`filewin/writeops.rs`）；删够了后端停在两条之间、回还剩几条，窗口接着发下一趟，不限任何读写的体量。",
     ),

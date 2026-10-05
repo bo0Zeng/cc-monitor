@@ -61,11 +61,15 @@ fn rust_cli_rendering_matches_the_typescript_golden_byte_for_byte() {
     for c in f.cases {
         // ★ 跑的是**生产命令本体**（`render_ccm_launch` 的本体 `_with`，能力喂夹具那一份），不是自己重搭一遍 spec。
         let caps: std::collections::BTreeSet<String> = c.caps.iter().cloned().collect();
-        let (got_ok, got) =
-            match super::super::wire::render_ccm_launch_with(&c.req, &as_asked(&c.req), &caps) {
-                Ok(cmd) => (true, cmd),
-                Err(r) => (false, r),
-            };
+        let (got_ok, got) = match super::super::wire::render_ccm_launch_with(
+            &c.req,
+            &as_asked(&c.req),
+            &caps,
+            "ccm",
+        ) {
+            Ok(cmd) => (true, cmd),
+            Err(r) => (false, r),
+        };
         if got_ok != c.ok || got != c.out {
             bad.push(format!(
                 "  用例「{}」\n    期望: ok={} {:?}\n    Rust: ok={} {:?}",
@@ -91,11 +95,28 @@ fn the_production_cli_render_asks_this_backend_for_its_own_capabilities() {
         .into_iter()
         .find(|c| c.name == "new + base")
         .expect("夹具里没有「new + base」");
+    // 生产那一格叫的是这台后端自己的入口（绝对路径），不是 `PATH` 上的 `ccm`：夹具里的 `ccm` 换成它，其余逐字节同。
+    let entry = crate::platform::paths::installed_ccm_entry().expect("测试进程有家目录");
+    let want = format!(
+        "{} {}",
+        super::super::ccm_invocation::argv(&entry),
+        c.out.strip_prefix("ccm ").expect("夹具那一行以 ccm 打头")
+    );
     assert_eq!(
         super::super::wire::render_ccm_launch(&c.req, &as_asked(&c.req)).as_deref(),
-        Ok(c.out.as_str()),
-        "生产那一格没按这台后端自己的能力渲"
+        Ok(want.as_str()),
+        "生产那一格没按这台后端自己的能力与入口渲"
     );
+    assert!(
+        entry.ends_with(&format!(
+            ".cc-monitor{}bin{}ccm{}",
+            std::path::MAIN_SEPARATOR,
+            std::path::MAIN_SEPARATOR,
+            std::env::consts::EXE_SUFFIX
+        )),
+        "{entry}"
+    );
+    assert!(std::path::Path::new(&entry).is_absolute(), "{entry}");
 }
 
 /// 按 POSIX 单引号规则切一行（渲染器只用 `posix_quote` 的单引号形，`'\''` 那一形也认）。
@@ -187,8 +208,9 @@ fn every_monitor_launch_path_hands_over_one_ccm_line() {
     assert_eq!(got, PATHS, "夹具里的起会话路径与这张名单对不上");
     for c in f.cases.iter().filter(|c| c.name.starts_with("path:")) {
         let caps: std::collections::BTreeSet<String> = c.caps.iter().cloned().collect();
-        let line = super::super::wire::render_ccm_launch_with(&c.req, &as_asked(&c.req), &caps)
-            .unwrap_or_else(|e| panic!("「{}」渲不出来：{e}", c.name));
+        let line =
+            super::super::wire::render_ccm_launch_with(&c.req, &as_asked(&c.req), &caps, "ccm")
+                .unwrap_or_else(|e| panic!("「{}」渲不出来：{e}", c.name));
         let words = shell_words(&line);
         let ok = match words.first().map(String::as_str) {
             Some("ccm") => true,

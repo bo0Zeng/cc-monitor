@@ -80,6 +80,23 @@ export interface TabBarViewHost {
   rereadAll(): Promise<void>;
 }
 
+/**
+ * 右键菜单开在指针底下时，这颗 tab 的悬停提示（`title`）别压在菜单第一项上：先摘掉，指针离开这颗 tab 再放回
+ * （离开之前重画过的照样带回，放回的是那一刻的值）。
+ */
+function hideTooltipUntilLeave(root: HTMLElement): void {
+  if (!root.hasAttribute("title")) return;
+  const kept = root.title;
+  root.removeAttribute("title");
+  root.addEventListener(
+    "mouseleave",
+    () => {
+      if (!root.hasAttribute("title")) root.title = kept;
+    },
+    { once: true },
+  );
+}
+
 export class TabBarView {
   /** sessionId → button DOM refs，避免 refreshTabBar 每次重建整个 bar */
   readonly tabButtons = new Map<string, TabButtonRefs>();
@@ -157,6 +174,11 @@ export class TabBarView {
     if (sid === undefined) return null;
     const sub = t.closest(".tab-cwd, .tab-focus, .tab-close");
     return { sid, root: root as HTMLElement, sub: sub && root.contains(sub) ? sub : null };
+  }
+
+  /** ↗ 在飞超过一会儿 ⇒ 这颗 tab 的 ↗ 进「进行中」（转圈、不可再点由 `frontOnce` 挡）。 */
+  setFrontPending(sid: string, on: boolean): void {
+    this.tabButtons.get(sid)?.root.querySelector(".tab-focus")?.classList.toggle("in-flight", on);
   }
 
   private onBarClick(e: MouseEvent): void {
@@ -242,6 +264,7 @@ export class TabBarView {
     const hit = this.hitOf(e);
     if (!hit) return;
     e.preventDefault();
+    hideTooltipUntilLeave(hit.root);
     this.host.openMenu(e, hit.sid);
   }
 

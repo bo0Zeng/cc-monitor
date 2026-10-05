@@ -1,7 +1,7 @@
 //! 帧命令 `terminal-processes`：那台报来的「此刻显示这个会话的终端」（`session-terminals` 的 `terminals` 原样交来）
 //! ⇒ **这台电脑上开着那条连接的进程，和它往上的进程链**；或一条说得出的原因。
 //!
-//! - 事实只来自一趟只读的系统查询（`platform::shell::powershell::connection_and_process_tables`：已建立的 TCP 连接表 ＋
+//! - 事实只来自一趟只读的系统查询（`platform::connection_and_process_tables`，直调系统接口：已建立的 TCP 连接表 ＋
 //!   进程表的进程号 · 父进程号 · 名字 · 启动时刻四格）。不读任何进程的命令行、不读别的进程的内存。
 //! - 判定全在这里：四元组全等认拥有者 · 往上数进程链（父进程比子进程晚起 ⇒ 那个进程号被复用过，链在那里断）·
 //!   对不上时分「不在这台电脑上」与「这台电脑对不上」。窗口那一跳归 monitor。
@@ -80,10 +80,7 @@ pub(crate) enum Found {
 
 /// 帧面入口：现问系统那一趟。
 pub(crate) fn answer(args: &Value) -> Result<Value, CmdErr> {
-    answer_with(
-        args,
-        crate::platform::shell::powershell::connection_and_process_tables,
-    )
+    answer_with(args, crate::platform::connection_and_process_tables)
 }
 
 /// [`answer`] 的本体，系统那一趟是参数（判据喂合成的 JSON）。入参先验，验不过不去问系统。

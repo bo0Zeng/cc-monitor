@@ -114,6 +114,8 @@ export interface MachinePagesHost {
   ): void;
   removeMachinePage(id: string): void;
   navigateToMachinePage(id: string): void;
+  /** 机器改了名称：那一页的导航项与页头跟着改（没有这一页 ⇒ 不动）。 */
+  renameMachinePage?(id: string, title: string): void;
   /**
    * 🔴 步 3：**这一趟「同步机器页」收尾了**（成或败都叫一次）。
    *
@@ -639,6 +641,14 @@ export class RemoteSection {
    * 某一页此刻讲的是哪台：按那张卡现在的名字（改过名的是新名）。还没名字的空白卡、不是机器页 ⇒ `null`。
    * 页 id 建卡时定死、不跟着改名走，所以「切到这一页 = 看哪台」要问这里，不能从页 id 里抠。
    */
+  /** 这一页的卡还没填主机地址（不是一台连得上的机器：名字填了也一样）。 */
+  isUnconfiguredPage(pageId: string): boolean {
+    for (const [card, id] of this.pageIdOf) {
+      if (id === pageId) return card.collect().host.trim() === "";
+    }
+    return false;
+  }
+
   originOfPage(pageId: string): string | null {
     for (const [card, id] of this.pageIdOf) {
       if (id === pageId) return hostKey(card.collect()) || null;
@@ -660,6 +670,7 @@ export class RemoteSection {
     if (!row) return;
     const nameBtn = row.querySelector<HTMLElement>(".remote-machine-open");
     if (nameBtn) nameBtn.textContent = card.displayName();
+    this.pages.renameMachinePage?.(pageId, card.displayName());
     const strip = row.querySelector<HTMLElement>(".remote-machine-status");
     if (strip) {
       renderStatusCells(
@@ -667,6 +678,14 @@ export class RemoteSection {
         readStatus(card.persistedKey ?? hostKey(card.collect())),
       );
     }
+    // 账本变了 ⇒「诊断」同一拍重算（测试连接通过之后不该还写着「连接：未测过」）。
+    this.renderGaps(this.original.hosts);
+  }
+
+  /** 那台的账本被别处写了（后端那几格画出「已连上」时记的两格）⇒ 那一行与「诊断」重画。 */
+  noteLedgerChanged(origin: string): void {
+    const card = this.cards.find((c) => (c.persistedKey ?? hostKey(c.collect())) === origin);
+    if (card) this.refreshMachineRow(card);
   }
 
   private removeCard(card: MachineCard): void {

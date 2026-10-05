@@ -176,3 +176,34 @@ fn every_win32_atomic_replace_hands_over_a_long_path() {
         }
     }
 }
+
+// ── 要求：「连着重启 monitor 三次，主窗外框左上 x 78 → 52 → 26，每起一次左移 26 px」──
+
+/// 主窗 / 设置窗每次起都摆在工作区正中：左上只由尺寸与工作区定（入参里没有「它原来在哪」）
+/// ⇒ 重启 N 次位置不漂（期望手算：工作区 1280×712，外框 1116×780 ⇒ 高夹到 712、内框 1100×673，左上 (82, 0)）。
+#[test]
+fn restarting_n_times_lands_the_window_in_the_same_place() {
+    let work = WorkArea {
+        x: 0,
+        y: 0,
+        w: 1280,
+        h: 712,
+    };
+    let landed = center_in_work_area((1116, 780), (1100, 741), work);
+    assert_eq!(landed, ((1100, 673), (82, 0)));
+    // 放得下的设置窗：尺寸不动、正中；副屏在左边（负坐标）照样摆进那一块正中。
+    assert_eq!(
+        center_in_work_area((776, 600), (760, 561), work),
+        ((760, 561), (252, 56))
+    );
+    let left = WorkArea {
+        x: -1920,
+        y: 0,
+        w: 1920,
+        h: 1040,
+    };
+    assert_eq!(
+        center_in_work_area((800, 600), (784, 561), left),
+        ((784, 561), (-1360, 220))
+    );
+}

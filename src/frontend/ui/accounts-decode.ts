@@ -42,14 +42,15 @@ export function decodeAccountsList(v: unknown): {
   const m = v.meta;
   if (
     !isObj(m) ||
-    !sameKeys(m, ["enabled", "acctsDir", "manifestPath", "updatedAt", "sharedStore", "count", "error"]) ||
+    !sameKeys(m, ["enabled", "acctsDir", "manifestPath", "updatedAt", "sharedStore", "count", "error", "unsupported"]) ||
     typeof m.enabled !== "boolean" ||
     typeof m.acctsDir !== "string" ||
     typeof m.manifestPath !== "string" ||
     !nullableStr(m.updatedAt) ||
     !nullableStr(m.sharedStore) ||
     typeof m.count !== "number" ||
-    !nullableStr(m.error)
+    !nullableStr(m.error) ||
+    !nullableStr(m.unsupported)
   ) {
     return bad("meta");
   }
@@ -101,6 +102,7 @@ export function decodeAccountsList(v: unknown): {
     sharedStore: m.sharedStore,
     count: m.count,
     error: m.error,
+    unsupported: m.unsupported,
   };
   return { meta, accounts, notice: v.notice };
 }

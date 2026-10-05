@@ -147,6 +147,7 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/platform/child.rs", "let _ = piped_tx.send(Ev::Piped(o, e));", 1, Why::PeerGone, "等待线程已按放手收尾 ⇒ 读完的输出没人收"),
     ("src/backend/platform/child.rs", "let _ = r.read_to_end(&mut buf);", 1, Why::Drain, "读子进程输出到底；读错只少尾巴几个字节，退出码与超时照旧判"),
     ("src/backend/relay/key.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
+    ("src/backend/dial/known_hosts.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回（记进日志），删不掉只剩一份临时件"),
     ("src/backend/control/resident.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "钥匙 / pid 文件的原子写临时件：换名失败之后删它；主错误已在回"),
     ("src/backend/control/resident.rs", "let _ = log_dir_chain(&h);", 1, Why::Diag, "诊断文件那层目录建不了 ⇒ 子进程装不上 stderr 文件、照旧 null（「写不进去不拖垮后端」）；这是一次性子命令，stderr 只许一行 JSON 信封，没有第二个地方可说"),
     ("src/backend/faces/read_face.rs", "let _ = BACKEND_LOG.set(path);", 1, Why::SetOnce, "`main.rs` 装上 stderr 诊断文件之后交一次"),

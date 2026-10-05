@@ -910,6 +910,13 @@ mod tests {
              `skill-install-record`（＋ 派生的 CLI 面）",
         ),
         (
+            "dial/known_hosts.rs",
+            "**主机钥匙** `~/.cc-monitor/known_hosts`（OpenSSH 格式）：本后端握手认下的各台主机钥匙，开终端那一行交给 `ssh` 认它。\
+             文件名 / 格式 / 落点都是本仓定的、只有终端那一跳的 `ssh` 读它 ⇒ 拨号侧**自己的**状态，不是用户数据（用户的 `~/.ssh` 一个字节不碰）。\
+             读盘 → 换掉那一台那一行（同一把不写）→ 临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ 写满 → 原子挪过去；\
+             只建 `~/.cc-monitor` 那一层；失败删自己的临时文件。入口只有握手认下钥匙那一处（`dial/connect.rs` 的钥匙核对）—— 不是帧面命令",
+        ),
+        (
             "control/launch_account.rs",
             "**起会话用的号**：`ccm` 最终那一跳给将要跑 agent 的进程留的便条 `~/.cc-monitor/launch-pending/<pid>.json`（号 ＋ 时刻，\
              一个进程一张、各写各的）＋ 观测侧认便条记下的 `~/.cc-monitor/launch-accounts.json`（`sid → 号`）。文件名 / 格式 / 落点 \
@@ -957,6 +964,10 @@ mod tests {
     /// 门改成「每个写口自己的那一扇」，`inbound.rs` 那几个写口照旧只许 `inbound.rs` 碰（一格没松）。
     /// 入方向拆成目录之后（10-03），命令注册那几个写口的门收紧到**持有那条命令的那一族文件**（例：`apikey-key-set` 的写口只许账号那一族碰），比「整个 `inbound.rs` 都算门」更紧。
     const OWN_STATE_DOORS: &[(&str, &str)] = &[
+        (
+            "dial/connect.rs",
+            "握手时核对主机钥匙那一处（`Checker`）：认下了（与固化的指纹相等 / 首连认下）才记进 cc-monitor 那份 known_hosts。不是帧面命令",
+        ),
         (
             "stream/inbound/registry/machine.rs",
             "命令注册里机器那一族 —— `exit-policy-set` 一条（帧面与派生的 CLI 面共用）。\
@@ -1079,6 +1090,12 @@ mod tests {
         ),
         // 中转钥匙：门是中转起监听那一处，不是命令注册。
         ("relay/key.rs", "key::ensure_key", "relay/listen.rs"),
+        // 主机钥匙：门是握手核对钥匙那一处，不是命令注册。
+        (
+            "dial/known_hosts.rs",
+            "known_hosts::remember",
+            "dial/connect.rs",
+        ),
         // stderr 诊断文件：写口是装它的那一个函数，门是 `main.rs`。
         // 装它（`install_from_env`）与滚它（`stderr_writer`，交给 `tracing`）都会写，都只许 `main.rs` 碰 ⇒ 两条针各钉一个写口。
         // 〔从前针取模块前缀 `stderr_log::`：起子进程清环境那一处（`common/child_env.rs`）要点那个变量的**名字**
@@ -5402,6 +5419,8 @@ mod g6_dependency_signoff {
             "accounts/upstream_select/file_face.rs".to_string(),
             // 第三份：常驻监听口的钥匙 ＋ 远端常驻后端的 pid 文件（`control/resident.rs`，第四层登记）。
             "control/resident.rs".to_string(),
+            // 第五份：主机钥匙那一份（`dial/known_hosts.rs`，第四层登记）—— 出生即只给本人，同一份实现。
+            "dial/known_hosts.rs".to_string(),
             "relay/key.rs".to_string(),
         ]
         .into_iter()

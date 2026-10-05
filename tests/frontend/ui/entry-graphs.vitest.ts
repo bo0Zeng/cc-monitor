@@ -337,7 +337,11 @@ function selectorsOf(css: string): string[][] {
       continue;
     }
     if (depthInRule) {
-      if (c === "}") depthInRule = false;
+      // 声明里的字符串（`content: ""`）上面那一支已经并进 buf 了：出规则时清掉，别漏进下一条的选择器。
+      if (c === "}") {
+        depthInRule = false;
+        buf = "";
+      }
       continue;
     }
     if (c === ";") {

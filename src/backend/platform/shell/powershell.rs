@@ -1,4 +1,4 @@
-//! **PowerShell 那几句写法** —— 执行策略的读与设 · 连接表与进程表的现问，只调这里。
+//! **PowerShell 那几句写法** —— 执行策略的读与设 · `--ccm-print` 在 Windows 上那一行的写法，只调这里。
 //!
 //! ⚠ 这一臂只到「编得过」：本机没有 PowerShell，这几句一次都没被 PowerShell 解析过。
 
@@ -78,20 +78,6 @@ fn policy_unknown(host: PsHost, error: String) -> ExecPolicy {
 
 // ─── 连接表 ＋ 进程表：↗ 那一问「这条连接是这台电脑上哪个进程开的、它往上是谁」───
 
-/// 一趟固定脚本、不吃任何输入：已建立的 TCP 连接（两端地址与端口 ＋ 拥有者进程号）＋ 进程表**只取四格**
-/// （进程号 · 父进程号 · 名字 · 启动时刻，后者换成 FILETIME；`-Property` 只向系统要这四格）。打成一行 JSON。
-const CONN_PROC_QUERY: &str = "$ErrorActionPreference = 'Stop'; \
-$t = @(Get-NetTCPConnection -State Established | ForEach-Object { [pscustomobject]@{ la = $_.LocalAddress; lp = $_.LocalPort; ra = $_.RemoteAddress; rp = $_.RemotePort; pid = $_.OwningProcess } }); \
-$p = @(Get-CimInstance -ClassName Win32_Process -Property ProcessId, ParentProcessId, Name, CreationDate | ForEach-Object { [pscustomobject]@{ pid = $_.ProcessId; ppid = $_.ParentProcessId; name = $_.Name; start = $(if ($_.CreationDate) { $_.CreationDate.ToFileTimeUtc() } else { 0 }) } }); \
-[pscustomobject]@{ tcp = $t; proc = $p } | ConvertTo-Json -Depth 3 -Compress";
-
-/// 现问一次连接表与进程表（只读，5.1 那一代）：`Ok(那一行 JSON)`；这台没有 PowerShell / 起不来 / 报错 ⇒ `Err(原话)`。
-pub(crate) fn connection_and_process_tables() -> Result<String, String> {
-    run_fixed(PsHost::Desktop, CONN_PROC_QUERY, CONN_PROC_WITHIN)
-}
-
-/// 问连接表 · 进程表那一趟的期限：界面等 `terminal-processes` 的预算是 15 s，收一档到 10 s。
-const CONN_PROC_WITHIN: Deadline = Deadline::secs(10);
 /// 问 / 设执行策略那一趟的期限：界面等别名那一族的预算是 30 s，收一档到 15 s。
 const POLICY_WITHIN: Deadline = Deadline::secs(15);
 
@@ -122,4 +108,37 @@ pub(crate) fn execution_policy(host: PsHost) -> ExecPolicy {
 pub(crate) fn allow_local_scripts(host: PsHost) -> (ExecPolicy, Option<String>) {
     let set = run_fixed(host, POLICY_ALLOW_LOCAL, POLICY_WITHIN).err();
     (execution_policy(host), set)
+}
+
+// ─── 一行命令的 PowerShell 写法（`ccm --ccm-print` / 别名预览在 Windows 上吐的那一行）───
+// 与 `posix.rs` 那几句一一对应；词由调用方先过 `dialect::ps_literal`。
+
+/// `$env:VAR = <词>; `
+pub(crate) fn set_env(var: &str, word: &str) -> String {
+    format!("$env:{var} = {word}; ")
+}
+
+/// `Remove-Item Env:A, Env:B -ErrorAction Ignore; `（不在也不报）。
+pub(crate) fn remove_env<S: AsRef<str>>(vars: &[S]) -> String {
+    let names: Vec<String> = vars.iter().map(|v| format!("Env:{}", v.as_ref())).collect();
+    format!("Remove-Item {} -ErrorAction Ignore; ", names.join(", "))
+}
+
+/// `Set-Location -LiteralPath <词>; `
+pub(crate) fn set_location(dir_word: &str) -> String {
+    format!("Set-Location -LiteralPath {dir_word}; ")
+}
+
+/// 跑那条命令：`& <词> <词> …`（第一个词是程序名）。
+pub(crate) fn call<S: AsRef<str>>(words: &[S]) -> String {
+    let w: Vec<&str> = words.iter().map(AsRef::as_ref).collect();
+    format!("& {}", w.join(" "))
+}
+
+/// 一个词：`<head>` ＋ 家目录底下 `rel` 那份文件的内容（现读、去掉尾部换行）＋ `<tail>`（head / tail 已成词）。
+pub(crate) fn home_file_between(head: &str, rel: &str, tail: &str) -> String {
+    format!(
+        "({head} + (Get-Content -Raw -LiteralPath (Join-Path $HOME {})).Trim() + {tail})",
+        super::dialect::ps_literal(rel)
+    )
 }

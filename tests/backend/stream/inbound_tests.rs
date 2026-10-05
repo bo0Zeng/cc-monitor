@@ -562,7 +562,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "tasks-list",
         "mcp-read",
         "session-terminals",  // 读 `/proc` ＋ 起一次 `tmux list-clients`
-        "terminal-processes", // 起一趟 PowerShell（连接表 ＋ 进程表）
+        "terminal-processes", // 读系统连接表 ＋ 进程表（每个进程开一次句柄问启动时刻）
         "terminal-name-mint", // 问一次会话快照 = 起一次 `tmux`
         "terminals-list",     // 终端管理 L1：起 tmux（列会话 ＋ 列客户端）
         "terminal-preview",   // 起 tmux（抓屏 ＋ 问尺寸）
@@ -742,7 +742,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "tasks-list",
         "mcp-read",
         "session-terminals",  // 读 `/proc` ＋ 起一次 `tmux list-clients`
-        "terminal-processes", // 起一趟 PowerShell（连接表 ＋ 进程表）
+        "terminal-processes", // 读系统连接表 ＋ 进程表（每个进程开一次句柄问启动时刻）
         "terminal-name-mint", // 问一次会话快照 = 起一次 `tmux`
         "terminals-list",     // 终端管理 L1：起 tmux（列会话 ＋ 列客户端）
         "terminal-preview",   // 起 tmux（抓屏 ＋ 问尺寸）

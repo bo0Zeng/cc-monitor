@@ -56,6 +56,7 @@ use tokio::io::AsyncWriteExt;
 
 mod connect;
 pub(crate) mod forwards; // 端口转发的账（起 · 停 · 列三条帧命令）
+pub(crate) mod known_hosts; // cc-monitor 自己那份 known_hosts（握手认下的钥匙；开终端那一行交给 ssh）
 pub mod link;
 pub(crate) mod machine; // 一台机器的配置 → 拨号请求（后端持有全部 SSH）
 mod pool;

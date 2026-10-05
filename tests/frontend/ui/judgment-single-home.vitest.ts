@@ -603,6 +603,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   "host-core": {
     atomic_write_json: NONE,
     fit_into_work_area: NONE,
+    // 主窗 / 设置窗摆进工作区正中（宿主那一侧用；TS 侧没有孪生）。
+    center_in_work_area: NONE,
     win32_long_path: NONE,
   },
   "relay-route-core": {
@@ -626,6 +628,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 起会话用的号 · 起会话便条（后端写；数据位置页按它列）。
     LAUNCH_ACCOUNTS_REL: NONE,
     LAUNCH_NOTES_DIR_REL: NONE,
+    // 主机钥匙（后端拨号侧写；开终端那一行交给 ssh；数据位置页按它列）。
+    KNOWN_HOSTS_REL: NONE,
     // 后端落点（`~/.cc-monitor/bin/ccm`，两半同一份）；TS 侧没有孪生（界面那句话里的路径在文案表里）。
     BACKEND_LANDING_REL: NONE,
     BACKEND_LANDING_SHELL: NONE,

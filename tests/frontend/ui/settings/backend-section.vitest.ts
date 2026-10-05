@@ -124,6 +124,7 @@ import COPY_TABLE from "../../../../src/shared/copy/table.json";
 // 「健康」那一格的成品金样：Rust 侧由生产的 `health_face` 现产、逐格相等（`backend_policy_tests.rs`），这里读同一份。
 import HEALTH_GOLDEN from "../../../__fixtures__/backend-health.golden.json";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/backend-policy";
+import { readStatus } from "../../../../src/frontend/ui/settings/machine-status";
 
 // 那四句由后端出成品（`exit-policy-read` 的 `said`，判定与十格穷举住 `exit_policy_tests.rs`）；
 //   这里只取表里的原文当桩里后端回的那一句，判界面原样摆、不再判。
@@ -235,6 +236,27 @@ describe("P2s backend 开关区", () => {
     await flush();
     const rows = [...s.element.querySelectorAll<HTMLElement>(".backend-row")];
     expect(rows.map((r) => r.dataset.origin)).toEqual([LOCAL_ORIGIN, "甲机"]);
+  });
+
+  it("★ 远端那台画出「已连上」⇒ 连接 · backend 两格记 ✓ 并叫宿主重画；没连着 ⇒ 不写", async () => {
+    localStorage.clear();
+    const seen: string[] = [];
+    status = { channel: true, pid: 42 };
+    new BackendSection({ headless: true, onLinkSeen: (o) => void seen.push(o) });
+    await flush();
+    await flush();
+    expect(readStatus("甲机").connection?.kind).toBe("ok");
+    expect(readStatus("甲机").backend?.kind).toBe("ok");
+    expect(readStatus(LOCAL_ORIGIN).connection, "本机不走 ssh，不记连接").toBeUndefined();
+    expect(seen).toEqual(["甲机"]);
+    localStorage.clear();
+    status = { channel: false };
+    new BackendSection({ headless: true, onLinkSeen: (o) => void seen.push(o) });
+    await flush();
+    await flush();
+    expect(readStatus("甲机").connection).toBeUndefined();
+    expect(seen).toEqual(["甲机"]);
+    status = { channel: true, pid: 42 };
   });
 
   it("每台机各查各的状态", async () => {

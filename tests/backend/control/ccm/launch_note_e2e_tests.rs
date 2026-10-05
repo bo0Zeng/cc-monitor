@@ -140,6 +140,7 @@ fn launch_note_child_entry_point() {
     let facts = crate::control::launch_render::local::Facts {
         windows: false,
         is_dir: |_| true,
+        entry: || Some("ccm".into()),
     };
     // 判号走生产那一份事实（这台的账号库 · 这台家里的记录）。
     let account = crate::faces::launch_face::with_facts("claude", |f| {

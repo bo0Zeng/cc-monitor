@@ -152,7 +152,7 @@ cat > "$CCM_SHIM_ACCOUNTS/accounts.json" <<JSON
 JSON
 CMD="$(npx tsx "$DRIVER" into-existing "$SID" "$SESSION" "$FAKE" e2e)"
 echo "   cmd: $CMD"
-echo "$CMD" | grep -qF "send-keys -t '=$SESSION:' 'ccm --resume $SID " && ! echo "$CMD" | grep -q "new-session\|--ccm-tmux" \
+echo "$CMD" | grep -qF "send-keys -t '=$SESSION:' '$CCM_ENTRY --resume $SID " && ! echo "$CMD" | grep -q "new-session\|--ccm-tmux" \
   && ok "resume 命令就地复用 $SESSION、无 new-session(#76)" \
   || bad "resume 命令未就地复用"
 MARK_REVIVE="$(wc -l <"$FRAMES")"

@@ -12,6 +12,11 @@ fn machine(host: &str, user: &str, port: u16, key: Option<&str>) -> Value {
     json!({ "host": host, "user": user, "port": port, "keyPath": key, "label": host })
 }
 
+/// 开终端那一行里认 cc-monitor 那份 known_hosts 的那一段（测试进程的家目录下）。
+fn kh() -> String {
+    known_hosts_arg(crate::dial::known_hosts::path().as_deref())
+}
+
 fn run(m: Value, cmd: &str) -> Result<String, CmdErr> {
     answer(&json!({ "machine": m, "command": cmd }))
         .map(|v| v["command"].as_str().unwrap().to_string())
@@ -30,7 +35,7 @@ fn the_basic_shape_goes_through_the_agent_and_wraps_the_payload_only_twice() {
     let remote = "unset X; cd '/home/pi' && claude --resume s1";
     let got = run(machine("pi.local", "pi", 22, None), remote).unwrap();
     assert!(
-        got.starts_with("& ssh -t -p 22 pi@pi.local -- "),
+        got.starts_with(&format!("& ssh -t -p 22{} pi@pi.local -- ", kh())),
         "基本形态（agent 无 -i）: {got}"
     );
     let inner = unps(got.rsplit_once("-- ").unwrap().1);
@@ -55,7 +60,10 @@ fn a_key_and_a_port_render_as_flags_and_the_key_is_ps_quoted() {
     )
     .unwrap();
     assert!(
-        got.starts_with("& ssh -t -p 2222 -i 'C:\\Users\\z''s\\id_ed25519' u@10.0.0.2 -- "),
+        got.starts_with(&format!(
+            "& ssh -t -p 2222 -i 'C:\\Users\\z''s\\id_ed25519'{} u@10.0.0.2 -- ",
+            kh()
+        )),
         "{got}"
     );
     assert!(got.contains("bash -lic ''claude --resume s1''"), "{got}");
@@ -79,7 +87,7 @@ fn the_address_is_the_first_in_race_order_so_the_last_winner_is_used() {
     assert!(plain["command"]
         .as_str()
         .unwrap()
-        .starts_with("& ssh -t -p 22 u@lan.example -- "));
+        .starts_with(&format!("& ssh -t -p 22{} u@lan.example -- ", kh())));
     let won = answer(
         &json!({ "machine": m, "prefer": { "host": "10.0.0.9", "port": 2200 }, "command": "x" }),
     )
@@ -88,7 +96,7 @@ fn the_address_is_the_first_in_race_order_so_the_last_winner_is_used() {
         won["command"]
             .as_str()
             .unwrap()
-            .starts_with("& ssh -t -p 2200 u@10.0.0.9 -- "),
+            .starts_with(&format!("& ssh -t -p 2200{} u@10.0.0.9 -- ", kh())),
         "上次赢的那条没排首：{won}"
     );
 }
@@ -103,15 +111,15 @@ fn the_jump_hop_renders_as_dash_j_and_a_missing_or_looping_jump_is_refused() {
         got["command"]
             .as_str()
             .unwrap()
-            .starts_with("& ssh -t -J pi@jump.local -p 22 u@t -- "),
+            .starts_with(&format!("& ssh -t -J pi@jump.local -p 22{} u@t -- ", kh())),
         "{got}"
     );
     let got = answer(&json!({ "machine": m, "jump": j(2222), "command": "x" })).unwrap();
     assert!(
-        got["command"]
-            .as_str()
-            .unwrap()
-            .starts_with("& ssh -t -J pi@jump.local:2222 -p 22 u@t -- "),
+        got["command"].as_str().unwrap().starts_with(&format!(
+            "& ssh -t -J pi@jump.local:2222 -p 22{} u@t -- ",
+            kh()
+        )),
         "{got}"
     );
     // fail-closed：跳板交不来 ⇒ 拒（绝不静默直连目标）；指自己 ⇒ 环。
@@ -213,7 +221,7 @@ fn every_rendered_remote_command(cwds: &[&str]) -> Vec<(String, String)> {
             req["cwd"] = cwd.clone();
             let r: wire::CliRenderRequest = serde_json::from_value(req).unwrap();
             let account = crate::control::launch_account::settled_as_asked(&r.account, &r.models);
-            if let Ok(cmd) = wire::render_ccm_launch_with(&r, &account, &caps) {
+            if let Ok(cmd) = wire::render_ccm_launch_with(&r, &account, &caps, "ccm") {
                 out.push((format!("cli {} · cwd {cwd}", c["name"]), cmd));
             }
         }
@@ -347,4 +355,34 @@ fn a_cwd_intent_renders_exactly_like_the_command_it_stands_for() {
     ] {
         assert_eq!(answer(&bad).unwrap_err().0, "invalid_args", "{bad}");
     }
+}
+
+/// 终端那一跳认 cc-monitor 自己那份 known_hosts：`-o UserKnownHostsFile=<那份>` 在、主机钥匙核对没被关
+/// （不出现 `StrictHostKeyChecking` / `/dev/null` 那一类）；路径带空格 / `'` / `%` 照 ssh 的切词规矩写。
+#[test]
+fn the_terminal_hop_trusts_the_monitor_known_hosts_without_disabling_the_check() {
+    let got = run(machine("10.0.0.2", "u", 2222, None), "claude").unwrap();
+    let file = crate::dial::known_hosts::path().unwrap();
+    let want = format!(
+        " -o {} ",
+        ps_literal(&format!("UserKnownHostsFile={}", file.display()))
+    );
+    assert!(got.contains(&want), "{got}");
+    assert!(
+        !got.contains("StrictHostKeyChecking") && !got.contains("/dev/null"),
+        "{got}"
+    );
+    assert_eq!(
+        known_hosts_arg(Some(std::path::Path::new(
+            r"C:\Users\O'Neil A\.cc-monitor\known_hosts"
+        ))),
+        r" -o 'UserKnownHostsFile=''C:\Users\O\''Neil A\.cc-monitor\known_hosts'''"
+    );
+    assert_eq!(
+        known_hosts_arg(Some(std::path::Path::new(
+            "/home/u/100%/.cc-monitor/known_hosts"
+        ))),
+        " -o 'UserKnownHostsFile=/home/u/100%%/.cc-monitor/known_hosts'"
+    );
+    assert_eq!(known_hosts_arg(None), "");
 }

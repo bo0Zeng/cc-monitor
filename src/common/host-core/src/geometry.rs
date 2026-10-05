@@ -38,3 +38,29 @@ pub fn fit_into_work_area(
     );
     (new_inner != inner || pos != outer_pos).then_some((new_inner, pos))
 }
+
+/// **一扇窗摆在工作区正中**（纯函数；物理像素）：尺寸照 [`fit_into_work_area`] 夹，左上只由尺寸与工作区定 ——
+/// 与它原来在哪无关。monitor 主窗与设置窗每次起都这么摆：不记位置时交给系统的默认落点，
+/// Windows 每开一扇新窗就挪一格（重启一次左移 26 px）。回 `(新内框, 新外框左上)`。
+pub fn center_in_work_area(
+    outer: (u32, u32),
+    inner: (u32, u32),
+    work: WorkArea,
+) -> ((u32, u32), (i32, i32)) {
+    let chrome = (
+        outer.0.saturating_sub(inner.0),
+        outer.1.saturating_sub(inner.1),
+    );
+    let fitted = (outer.0.min(work.w), outer.1.min(work.h));
+    let new_inner = (
+        fitted.0.saturating_sub(chrome.0),
+        fitted.1.saturating_sub(chrome.1),
+    );
+    let mid = |lo: i32, span: u32, len: u32| -> i32 {
+        lo.saturating_add(i32::try_from((span - len) / 2).unwrap_or(0))
+    };
+    (
+        new_inner,
+        (mid(work.x, work.w, fitted.0), mid(work.y, work.h, fitted.1)),
+    )
+}

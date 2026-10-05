@@ -2646,3 +2646,23 @@ body.settings-window-mode .settings-panel {
     margin-top: 6px;
   }
 }
+
+@layer components {
+  /* 别名 · 终端接入：长路径（ccm 落点、$PROFILE）在框内折行，不把整页撑出横向滚动条 */
+  .ccm-path-ccm,
+  .ccm-alias-preview {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  /* 「加到用户级 PATH」那段脚本：代码不折行，长行在自己的框里横滚，不撑宽整页 */
+  .ccm-user-path-cmd {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .ccm-access-connect {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: left;
+  }
+}

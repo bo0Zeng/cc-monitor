@@ -58,6 +58,32 @@ pub(crate) struct Checker {
     reported: Arc<Mutex<BTreeMap<String, String>>>,
     stages: StageSink,
     endpoint: String,
+    /// 这一趟连的是哪台（主机 ＋ 口，同开终端那一行写的那一对）：认下的钥匙按它记进 cc-monitor 那份 known_hosts。
+    host: String,
+    port: u16,
+    /// 记到哪份（生产 = [`super::known_hosts::path`]；判据给 `None` ⇒ 不碰盘）。
+    known_hosts: Option<std::path::PathBuf>,
+}
+
+impl Checker {
+    /// 认下了 ⇒ 记进 cc-monitor 那份 known_hosts（开终端那一跳的 `ssh` 认同一把，不再问）。
+    fn accepted(&self, key: &PublicKey) -> Result<bool, russh::Error> {
+        match key.to_openssh() {
+            Ok(line) => {
+                let algo_and_blob: Vec<&str> = line.split_whitespace().take(2).collect();
+                if let Some(file) = &self.known_hosts {
+                    super::known_hosts::remember(
+                        file,
+                        &self.host,
+                        self.port,
+                        &algo_and_blob.join(" "),
+                    );
+                }
+            }
+            Err(e) => tracing::warn!("known_hosts：钥匙写不成 OpenSSH 形：{e}"),
+        }
+        Ok(true)
+    }
 }
 
 impl client::Handler for Checker {
@@ -83,7 +109,7 @@ impl client::Handler for Checker {
             Some(expected) => {
                 if actual == expected.trim() {
                     tracing::info!("dial: host key 指纹校验通过：{actual}");
-                    Ok(true)
+                    self.accepted(server_public_key)
                 } else {
                     // 失配时附上实际 key 的算法：分得开「合法换 key 类型」与「同类型 key 被换」。
                     let alg = server_public_key.algorithm();
@@ -98,7 +124,7 @@ impl client::Handler for Checker {
                 tracing::warn!(
                     "dial: **未经校验**接受 host key {actual}（TOFU）—— 界面侧应当把它固化回配置，之后转严格校验。"
                 );
-                Ok(true)
+                self.accepted(server_public_key)
             }
         }
     }
@@ -273,6 +299,9 @@ async fn race(
                     reported,
                     stages: stages.clone(),
                     endpoint: ep_label.clone(),
+                    host: ep.host.clone(),
+                    port: ep.port,
+                    known_hosts: super::known_hosts::path(),
                 };
                 let r = match tcp_hop(&ep).await {
                     Ok((tcp, compress)) => {
@@ -537,6 +566,9 @@ pub(crate) async fn establish(
                 reported: Arc::clone(&reported),
                 stages: stages.clone(),
                 endpoint: ep_label,
+                host: req.host.clone(),
+                port: req.port,
+                known_hosts: super::known_hosts::path(),
             };
             let session = client::connect_stream(
                 config(req.probe, compress_inner),

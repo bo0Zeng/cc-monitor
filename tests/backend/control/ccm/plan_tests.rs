@@ -2144,3 +2144,56 @@ fn codex_runs_without_the_shared_daemon_and_without_an_account() {
         format!("{bus} cd '/p' && exec codex --no-daemon")
     );
 }
+
+/// Windows 本机的终端是 PowerShell ⇒ `--ccm-print` / 别名预览那一行照 PowerShell 写（同一条计划、逐项对应 POSIX 那一行）：
+/// 清环境 `Remove-Item Env:…` · 设环境 `$env:X = '…'` · 中转地址现读钥匙文件 · `Set-Location` · `& 'claude' …`。
+#[test]
+fn on_windows_the_printed_line_speaks_powershell() {
+    use crate::platform::shell::dialect::Shell;
+    let ps = |args: &[&str]| {
+        render_for(
+            &plan_of(args, &env(), &AccountTable::default()),
+            Shell::PowerShell,
+        )
+    };
+    let nested = "Remove-Item Env:CLAUDECODE, Env:CLAUDE_CODE_ENTRYPOINT, Env:CLAUDE_CODE_SESSION_ID, Env:CLAUDE_CODE_CHILD_SESSION -ErrorAction Ignore";
+    assert_eq!(
+        ps(&["--cwd", "/w/z's work", "--", "-p", "hi there"]),
+        format!("{nested}; Set-Location -LiteralPath '/w/z''s work'; & 'claude' '-p' 'hi there'")
+    );
+    assert_eq!(
+        ps(&["--cwd", "/p", "--base"]),
+        format!("Remove-Item Env:CLAUDE_CONFIG_DIR -ErrorAction Ignore; {nested}; Set-Location -LiteralPath '/p'; & 'claude'")
+    );
+    // 同一条计划在 POSIX 那一侧照旧（真跑经 `sh -c` 的那一趟读的是它）。
+    let p = plan_of(&["--cwd", "/p"], &env(), &AccountTable::default());
+    assert_eq!(render_for(&p, Shell::Posix), render(&p));
+    // 中转地址：钥匙现读家目录底下那份文件，不进打印出来的命令。
+    let mut d = match p {
+        Plan::Direct(d) => d,
+        other => panic!("{other:?}"),
+    };
+    let url = relay_route_core::base_url(
+        relay_route_core::PORT,
+        relay_route_core::RouteMode::Passthrough,
+        "claude-code",
+        "claude",
+    )
+    .unwrap();
+    let (head, tail) = crate::accounts::upstream_select::endpoint::base_url_halves(&url).unwrap();
+    d.relay = Some(url.clone());
+    let line = render_for(&Plan::Direct(d.clone()), Shell::PowerShell);
+    let url_word = crate::platform::shell::powershell::home_file_between(
+        &crate::platform::shell::dialect::ps_literal(head),
+        relay_route_core::KEY_FILE_REL,
+        &crate::platform::shell::dialect::ps_literal(tail),
+    );
+    assert!(
+        line.contains(&format!("$env:ANTHROPIC_BASE_URL = {url_word}; ")),
+        "{line}"
+    );
+    assert!(
+        !line.contains("unset ") && !line.contains("export ") && !line.contains("exec "),
+        "{line}"
+    );
+}

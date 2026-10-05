@@ -1992,12 +1992,13 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 monitor 每一条远端起会话路径（直连 resume · 建 tmux 会话 resume〔换号重启 · 分叉〕· 开新会话 · 接回 · 就地 resume）都问那台后端要这一行；
 交给终端的**只是这一行**（就地 resume 回落那一形外层只包一层 `tmux send-keys … ; tmux attach`）。环境、中转地址、身份标记由**那台的 `ccm`**
-在最终 exec 那一处定。`ccm` 就是这台后端本身 ⇒ 能力问它自己（与 `--ccm-probe` 同一份）。**纯函数**（不起进程、不碰盘）。
+在最终 exec 那一处定。`ccm` 就是这台后端本身 ⇒ 能力问它自己（与 `--ccm-probe` 同一份）；那一行叫的是它自己的入口**绝对路径**
+`<家>/.cc-monitor/bin/ccm`（交互 shell 的 `PATH` 上未必有 `ccm`，没装接入块的远端就没有；家目录说不出 ⇒ `refused`）。**纯函数**（不起进程、不碰盘）。
 （原 monitor 的 Tauri 命令 `render_ccm_launch`〔散文墓碑〕搬进那台后端；载荷那一条随起会话只交一行 `ccm …` 删了。）
 
 ```text
 → {"id":"c1","cmd":"launch-render-cli","args":{"agent":"claude","action":{"kind":"resume","sid":"s1"},"container":{"kind":"tmux","name":"cc-s1","send_into":false},"cwd":"/p","account":{"kind":"follow"},"ccmSid":"s1","model":null,"models":{"z":"opus"},"launcher":"claude","defaultLauncher":"claude"}}
-← {"kind":"reply","id":"c1","ok":true,"data":{"cmd":"ccm --resume s1 -- --ccm-tmux=cc-s1 --ccm-sid=s1 --ccm-agent claude --account z --model opus --cwd /p",
+← {"kind":"reply","id":"c1","ok":true,"data":{"cmd":"/home/u/.cc-monitor/bin/ccm --resume s1 -- --ccm-tmux=cc-s1 --ccm-sid=s1 --ccm-agent claude --account z --model opus --cwd /p",
      "account":{"name":"z","configDir":"/home/u/.cc-monitor/accounts/z","model":"opus"}}}
 → {"id":"c2","cmd":"launch-render-cli","args":{…,"account":{"kind":"named","name":"gone"},…}}
 ← {"kind":"reply","id":"c2","ok":false,"code":"account_unavailable","message":"…",
@@ -2030,11 +2031,12 @@ CLI 面（`--launch-render-cli`）从 `inbound::REGISTRY` 派生，入参从 std
 本机那几形（新起 · resume · 接回）。回的是要在**本机一个新终端窗口里跑的那一行**；开窗口是 monitor 的事（`open_local_terminal`）。
 （原 monitor `history.rs` 的 `new_local_session` / `resume_history_session` / `render_local_attach`〔散文墓碑〕搬进本机后端。）
 POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux ⇒ 直路（`ccm` 在那个 PowerShell 窗口里起 agent），接回说不出 ⇒ 拒。
+同 `launch-render-cli`，叫的是这台入口的绝对路径（Windows 上写成 `& '<家>\.cc-monitor\bin\ccm.exe' …`）。
 起 agent 的那几形带 `--ccm-launch-id <token>`（resume 用 sid，新起现铸一个 nonce）：`ccm` 把它放进 agent 进程环境（`CCM_LAUNCH_ID`），调用方拿它回填新会话的 sid。
 
 ```text
 → {"id":"l1","cmd":"launch-local","args":{"agent":"claude","action":{"kind":"new"},"cwd":"/w","launcher":null,"account":{"kind":"follow"},"tmuxName":"w-cc","defaultLauncher":"claude"}}
-← {"kind":"reply","id":"l1","ok":true,"data":{"cmd":"ccm -- new --ccm-tmux=w-cc --ccm-agent claude --account z --ccm-launch-id …","launchId":"…",
+← {"kind":"reply","id":"l1","ok":true,"data":{"cmd":"/home/u/.cc-monitor/bin/ccm -- new --ccm-tmux=w-cc --ccm-agent claude --account z --ccm-launch-id …","launchId":"…",
      "account":{"name":"z","configDir":"/home/u/.cc-monitor/accounts/z","model":null}}}
 ```
 
@@ -2762,7 +2764,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `agent` | → | 必填：这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）。只有它是这台机器 apikey 表的那一家时，表里的行才算数（条 49） |
-| `meta` | ← | `{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error}`（同 `--list-accounts` 首行去掉分帧用的 `kind` / `accountZeroAware`）。账号库目录跟着家走（`~/.cc-monitor/accounts`），没有另指位置的入参 |
+| `meta` | ← | `{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported}`（同 `--list-accounts` 首行去掉分帧用的 `kind` / `accountZeroAware`；`unsupported` = 这台做不了多账号时那一句，做得了 ⇒ `null`）。账号库目录跟着家走（`~/.cc-monitor/accounts`），没有另指位置的入参 |
 | `accounts` | ← | 每账号一个对象，字段同 `--list-accounts` 的账号行；**并上了这台机器自己那份 apikey 表**：表里有行的号 `authKind` 是 `api-key`、`authReady` 按 `acct_core::auth_ready`（规则住 `acct-core`，CLI 那一臂不并表） |
 | `notice` | ← | 「能用但有缺」：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）时的一句话；否则 `null` |
 
@@ -3607,8 +3609,9 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 ```
 
 入参：`terminals` —— 那台 `session-terminals` 回话里那一格原样（1–16 格；每格要有 `ssh`：四段或 `null`，别的格不看）。
-这台**只做一趟只读的系统查询**（`powershell.exe -NoProfile -NonInteractive`，固定脚本、不吃入参）：`Get-NetTCPConnection -State Established`
-（两端地址与端口 ＋ 拥有者进程号）＋ `Get-CimInstance Win32_Process` **只取四格**（进程号 · 父进程号 · 名字 · 启动时刻）。
+这台**只做一趟只读的系统查询**（直调系统接口、不吃入参）：`GetExtendedTcpTable` 里已建立的连接
+（两端地址与端口 ＋ 拥有者进程号，IPv4 / IPv6）＋ `CreateToolhelp32Snapshot` 的进程表 **只取四格**（进程号 · 父进程号 · 名字 ·
+启动时刻，后者 `GetProcessTimes`，开不出句柄 ⇒ 0）。
 不读任何进程的命令行、不读别的进程的内存。然后按交来的顺序逐格试，第一个对上的就是它：
 - 四元组全等（本机地址 = `clientAddr`、本机端口 = `clientPort`、对面 = `serverAddr`:`serverPort`；IPv4 映射的 IPv6 认成 IPv4，作用域去掉）⇒
   拥有那条连接的进程，往上数父进程，到桌面外壳（`explorer.exe`）之前为止；父进程不在表里 / 比子进程晚起（进程号被复用过）⇒ 链在那里断。
@@ -3616,7 +3619,7 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
   都没有 ⇒ `elsewhere`（带 `addr` = 那台看到的对面地址）。`ssh: null` ⇒ `not-ssh`。都对不上 ⇒ 报第一格的原因。
 
 出：`chain` 每格 `{pid, name, start}`（开着那条连接的进程在前；`start` 是启动时刻 FILETIME，0 = 系统没给）；对不上 ⇒ `chain: []` ＋ `why`
-（`not-ssh` · `elsewhere`（＋ `addr`）· `mismatch` · `query-failed` —— 这台没有 PowerShell / 查询报错 / 两张表对不上，原话进日志）。
+（`not-ssh` · `elsewhere`（＋ `addr`）· `mismatch` · `query-failed` —— 这台不是 Windows / 查询报错 / 两张表对不上，原话进日志）。
 窗口那一跳不在这里（归 monitor）。码：`bad_args`（缺 `terminals` / 空 / 超 16 格 / 某格缺 `ssh` / 地址端口认不出；验不过不去问系统）。只上帧面（`STREAM_ONLY`）。
 
 #### `terminal-ssh`：给一台远端开终端要跑的那一串（09-28；「待迁」最后一行：ssh 外壳与 PowerShell 窗口载荷由本机后端渲，monitor 只开终端）
@@ -4081,7 +4084,7 @@ rc=2
 > 用量的**聚合轴**整轴退役 ⇒ 子命令与它的实现（那份 `usage_query.rs`，**已删**）一起删了，
 > monitor 侧的 fan-out 消费者同拍删除。`SUBCOMMANDS` 27 → 25（另一条是 `--oneshot-session`）。〕
 
-- `--list-accounts`（A2 多账号，`src/backend/observe/accounts_query.rs`）→ 读账号库清单（`~/.cc-monitor/accounts/accounts.json`，契约 v1）。**首行** `{"kind":"accounts-meta","enabled":bool,"acctsDir","manifestPath","updatedAt","sharedStore","count","error"}`，其后每账号一行 `{name,email,configDir,isDefault,mode,exists,loggedIn}`。**"未启用多账号"是正常状态**：manifest 缺失/坏/版本不支持 → `enabled:false` + `error` 人话原因 + **exit 0**（不是错误）。`loggedIn` 仅 stat `.credentials.json` 存在性。账号库目录只跟着家走：`$HOME/.cc-monitor/accounts`（没有另指位置的参数或环境变量）
+- `--list-accounts`（A2 多账号，`src/backend/observe/accounts_query.rs`）→ 读账号库清单（`~/.cc-monitor/accounts/accounts.json`，契约 v1）。**首行** `{"kind":"accounts-meta","enabled":bool,"acctsDir","manifestPath","updatedAt","sharedStore","count","error","unsupported"}`，其后每账号一行 `{name,email,configDir,isDefault,mode,exists,loggedIn}`。**"未启用多账号"是正常状态**：manifest 缺失/坏/版本不支持 → `enabled:false` + `error` 人话原因 + **exit 0**（不是错误）。`loggedIn` 仅 stat `.credentials.json` 存在性。账号库目录只跟着家走：`$HOME/.cc-monitor/accounts`（没有另指位置的参数或环境变量）
 - `--session-accounts`（A2；`launchId` 是 `K-P5f`）→ 扫 `<claude_dir>/sessions/<PID>.json` 拿 pid，读 `/proc/<pid>/environ` **只抠三个写死的键**（`CLAUDE_CONFIG_DIR` · `CCM_LAUNCH_ID` ·`ANTHROPIC_BASE_URL`——最后那个的值带中转钥匙，只折成 `viaRelay` 一个布尔、值本身不出参；**键名不是参数**，所以这条查询不是「任意环境变量读」原语，也**绝不回传整个环境快照**），`CLAUDE_CONFIG_DIR` 反查 manifest 得账号名。每条一行 `{pid,sessionId,cwd,configDir,account,bare,alive,launchId,viaRelay}`（`viaRelay` = 这条会话的上游地址是不是本机中转那一形：`true` / `false` / `null` = 不知道（进程已死 / 环境这一刻取不到）；机器页「停」本机后端之前据它数几条会断；老后端不出这个键 ⇒ 读成 `null`）。`account:null` = 查不到（**不猜**）；**`bare:true` = 进程活着、`/proc/<pid>/environ` 这一刻读得到、而没设 `CLAUDE_CONFIG_DIR`（裸起）——这个布尔的语义钉死在那一个变量上，加了第二个键也没有拓宽它**（没设 `CCM_LAUNCH_ID` 由 `launchId:null` 自己表达）。⚠ 「读得到」这个合取项是 `K-R21`（09-03）补的，**语义是收窄不是拓宽**：environ 在 exec 窗口里（60–140 µs）与进程成僵尸之后**读得到却回 0 字节 / 读不到**，从前那一刻会被报成斩钉截铁的 `account:"<账号0>"` + `bare:true`，而 `alive` 仍是 `true`（判活读的是 `/proc/<pid>/stat`，与 `environ` 不是同一次读）⇒ **一条真跑在别的账号下的会话会被报成账号 0 的，且无声无息**。现在那一刻报 `configDir:null` + `account:null` + `bare:false`（=「不知道」，**出参形状没变、没有新字段**）。`launchId` = 起会话方铸进这条会话进程环境的**身份 token**（写侧是 `ccm` 自己：`control/ccm/plan.rs::LAUNCH_ID_ENV`），`null` = **不作数**，五种原因合并且**刻意不区分**：没设 / 形状过不了白名单（`[A-Za-z0-9_-]`，1..=128）/ **同一个 token 落在一条以上活会话上** / 进程已死 / **读那一刻环境取不到**。⚠ 第五种是 `K-R21` 现打出来的，**它一直都在、只是从前混在「没设」里数不出来**（读侧那个 `Option` 装着四件事）——这不是新增了一种行为，是把「四种」这句旧话订正成实话；`configDir` 那一半已经把它拆出来了，身份这一半仍按「要区分就得给出参加状态位 = 改上线契约」那条裁定合并着。⚠ **`launchId` 不是硬真相**：它是**继承型**环境变量（claude spawn 的子进程原样继承），后端只能判「同一批里唯一」，判不出「确实是它的」——父会话已退出时那个继承值仍会被报出来。**additive**：老后端不出这个键，下游读成 `null`。⇒ 账号那一半（`configDir`/`account`/`bare`）仍是"某条**正在跑**的会话属于哪个账号"的唯一硬真相（会话 jsonl 里没有任何账号字段）；身份那一半（`launchId`）**不是**，别把上一句读到它头上
 - `--account-trust <configDir> <cwd>`（A2）→ 换号 resume 前的信任预检（首次用某账号进某目录，CC 会弹信任确认、会卡住自动化）。单行 `{"trusted":bool,"known":bool,"error":null}`。**安全**：`configDir` 必须逐字 ∈ manifest 的账号列表，否则 exit 2 + stderr `{"code":"unknown_config_dir",...}`——避免退化成任意文件读原语；**只回三个布尔/字符串字段，绝不回传 `.claude.json` 内容**（内含 `mcpServers` 的环境变量，可能有 API key）
 - `--account-trust-zero <cwd>`（A2）→ **账号 0**（未启用多账号时那个原生身份）的信任预检，返回形状同 `--account-trust`。**为什么单开一个动词而不是给 `--account-trust` 传空 `configDir`**：账号 0 没有 config dir，而空串是被明令禁止的拼法（空值 ≠ 未设）；且它的 `.claude.json` 原生根是 `$HOME`、不在共享账号库里 ⇒ 路径来源本就不同，合并只能靠哨兵值区分，比多一个动词更易错。**不收任何文件/配置目录路径参数**：它收 `cwd`，但那只当 `projects` 里的**查表键**，`.claude.json` 的根写死 `$HOME` ⇒ 连"任意文件读"的面都没有（`account_trust_zero_takes_no_path_argument` 钉住）

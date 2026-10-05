@@ -373,6 +373,12 @@ export class AccountsSection {
         AccountsSection.info(out, copyText("accounts.status.queryFailedBody", { reason: ui.reason }));
         return;
       case "not-enabled":
+        // 这台做不了多账号（后端判、说那一句）⇒ 一开始就说，不摆启用那一套；这一格是「不适用」，不是「缺」。
+        if (state.meta?.unsupported) {
+          this.note(origin, "accounts", { kind: "na", detail: state.meta.unsupported });
+          AccountsSection.info(out, state.meta.unsupported);
+          return;
+        }
         // 〔缺口二〕启用没启用记在 accounts（启用着只是零个号 ⇒ 读到了）。
         this.note(origin, "accounts", this.enabledFacet(state.meta?.enabled === true));
         this.renderInitWizard(out, origin, ui.manifestPath, ui.reason, "remote");
@@ -417,6 +423,12 @@ export class AccountsSection {
       // 档二：**后端不在** —— 后端答了「不可用」，那句原因在 `state.error` 里。
       this.note(local, "accounts", { kind: "fail", detail: copyText("accounts.local.noBackend") });
       this.localFail(box, state.error ?? LOCAL_ACCOUNTS_COPY.unknownReason);
+      return;
+    }
+    if (!state.meta?.enabled && state.meta?.unsupported) {
+      // 这台做不了多账号（后端判、说那一句）⇒ 一开始就说，不摆启用那一套；这一格是「不适用」，不是「缺」。
+      this.note(local, "accounts", { kind: "na", detail: state.meta.unsupported });
+      AccountsSection.line(box, "accounts-info accounts-local-unsupported", state.meta.unsupported);
       return;
     }
     if (!state.meta?.enabled || state.accounts.length === 0) {

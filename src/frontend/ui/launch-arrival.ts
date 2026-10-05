@@ -12,6 +12,7 @@
  * 工作目录相同的新 sid」。
  */
 import { emit, listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { copyText } from "./copy-table";
 import { machineName } from "./control-said";
 import { showActionFailureToast } from "./error-toast";
@@ -26,6 +27,10 @@ const WORDS_LINES = 6;
 export const LAUNCH_EXPECT_EVENT = "launch-arrival-expect";
 /** 主窗口 → 发起方：带票的那一件等到了没有（载荷 `{ ticket, arrived }`）。 */
 export const LAUNCH_DONE_EVENT = "launch-arrival-done";
+/** 主窗口 → 发起方所在的那扇窗：等到了 / 没等到那一句也在那里说一遍（发起方常在设置窗里，主窗口被它挡着）。 */
+export const LAUNCH_SAID_EVENT = "launch-arrival-said";
+/** 主窗口的标签（与 Rust `MAIN_WINDOW_LABEL` 同值）。 */
+const MAIN_WINDOW = "main";
 /** 发起方自己的上界：主窗口没回话（不存在的形态）也不许一直挂着 —— 比预算多留 15 秒给抓屏与回话。 */
 const AWAIT_CAP_MS = ARRIVAL_BUDGET_MS + 15_000;
 
@@ -44,6 +49,33 @@ export interface ArrivalSpec {
   arrived: { title: string; body: string } | null;
   /** 带票 ⇒ 主窗口等到 / 等不到时回一声（[`awaitArrival`]）。 */
   ticket?: string;
+  /** 发起方所在的窗口（不是主窗口 ⇒ 那一句在那里也说一遍）。由 [`expectArrival`] 填。 */
+  from?: string;
+}
+
+/** 那一句：主窗口里说，发起方在别的窗口 ⇒ 那里也说一遍。 */
+interface Said {
+  to: string;
+  title: string;
+  body: string;
+  level: "info" | "error";
+  durationMs: number;
+}
+
+function say(p: ArrivalSpec, title: string, body: string, level: "info" | "error", durationMs: number): void {
+  showActionFailureToast(title, body, { level, durationMs });
+  if (p.from === undefined || p.from === MAIN_WINDOW) return;
+  const said: Said = { to: p.from, title, body, level, durationMs };
+  emit(LAUNCH_SAID_EVENT, said).catch((e: unknown) => console.warn("[launch-arrival] 交不给发起方那扇窗：", e));
+}
+
+/** 这扇窗的标签；没有 Tauri 宿主 ⇒ `undefined`。 */
+function thisWindow(): string | undefined {
+  try {
+    return getCurrentWindow().label;
+  } catch {
+    return undefined;
+  }
 }
 
 /** 那台报上来的一条活会话里认它要用的那一样。 */
@@ -105,13 +137,13 @@ async function sayMissed(p: ArrivalSpec): Promise<void> {
       body = copyText("launchArrival.missed.noScreen", { secs, machine, name: p.tmuxName, why: String(e) });
     }
   }
-  showActionFailureToast(copyText("launchArrival.missed.title"), body, { level: "error", durationMs: 15000 });
+  say(p, copyText("launchArrival.missed.title"), body, "error", 15000);
 }
 
 /** 发起方（任何窗口）：命令已经发出去了 ⇒ 交主窗口等那台报出这条会话再说起来了。 */
 export function expectArrival(spec: ArrivalSpec): void {
   // 交不过去（没有 Tauri 宿主）⇒ 这一趟没人等：记一笔，不替它说起没起来。
-  emit(LAUNCH_EXPECT_EVENT, spec).catch((e: unknown) => console.warn("[launch-arrival] 交不给主窗口：", e));
+  emit(LAUNCH_EXPECT_EVENT, { ...spec, from: spec.from ?? thisWindow() }).catch((e: unknown) => console.warn("[launch-arrival] 交不给主窗口：", e));
 }
 
 /** 主窗口：收下一件「等它」。 */
@@ -169,7 +201,7 @@ export function noteLive(origin: Origin, sid: string, seen: LiveSeen): void {
     if (key(p.origin) !== k || !arrivalMatches(p.match, sid, seen, p.before)) continue;
     clearTimeout(p.timer);
     pending.delete(p);
-    if (p.arrived !== null) showActionFailureToast(p.arrived.title, p.arrived.body, { level: "info", durationMs: 6000 });
+    if (p.arrived !== null) say(p, p.arrived.title, p.arrived.body, "info", 6000);
     answer(p, true);
   }
   let s = seenLive.get(k);
@@ -180,6 +212,17 @@ export function noteLive(origin: Origin, sid: string, seen: LiveSeen): void {
 /** 主窗口：接上发起方交过来的预期（`main.ts` 装一次）。 */
 export function bindLaunchArrivals(): void {
   void listen<ArrivalSpec>(LAUNCH_EXPECT_EVENT, (e) => watchArrival(e.payload));
+}
+
+/** 主窗口之外的窗口（设置窗 · 会话窗）：主窗口交回来的那一句，是给这扇窗的就在这里说。 */
+export function bindLaunchEcho(): void {
+  const me = thisWindow();
+  if (me === undefined || me === MAIN_WINDOW) return;
+  void listen<Said>(LAUNCH_SAID_EVENT, (e) => {
+    if (e.payload.to === me) {
+      showActionFailureToast(e.payload.title, e.payload.body, { level: e.payload.level, durationMs: e.payload.durationMs });
+    }
+  });
 }
 
 /** 只给判据用。 */

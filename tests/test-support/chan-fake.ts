@@ -396,6 +396,7 @@ export async function accountReadReply(which: AccountRead, res: unknown): Promis
     sharedStore: m?.sharedStore ?? null,
     count: m?.count ?? accounts.length,
     error: m?.error ?? null,
+    unsupported: m?.unsupported ?? null,
   };
   return chanReply({ meta, accounts, notice: r.notice ?? null });
 }

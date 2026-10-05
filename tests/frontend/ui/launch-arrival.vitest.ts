@@ -136,3 +136,44 @@ describe("FIX4 ④ 带票的等", () => {
     expect(arrivedBody("<local>")).toBe("本机上报出了这个会话。");
   });
 });
+
+/** 从设置窗起的会话：主窗口说的那一句（起来了 / 没看到）也交回发起方那扇窗（主窗口常被设置窗挡着，WIN4 那一形「一声不出」）。 */
+describe("发起方在别的窗口 ⇒ 那一句也交回那扇窗", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    toast.mockReset();
+    capture.mockReset();
+    vi.mocked(emit).mockClear();
+    __resetArrivalsForTests();
+  });
+  afterEach(() => {
+    __resetArrivalsForTests();
+    vi.useRealTimers();
+  });
+  const echoed = () => vi.mocked(emit).mock.calls.filter((c) => c[0] === "launch-arrival-said").map((c) => c[1]);
+
+  it("没看到 ⇒ 交回 settings；起来了 ⇒ 交回 settings；发起方就是主窗口 / 没说 ⇒ 不交", async () => {
+    capture.mockResolvedValue("ccm: 无法进入目录: /home/u/nope\n");
+    watchArrival(spec({ tmuxName: "nope-cc", from: "settings" }));
+    await vi.advanceTimersByTimeAsync(ARRIVAL_BUDGET_MS + 1);
+    expect(echoed()).toEqual([
+      {
+        to: "settings",
+        title: "命令发出去了，但没看到会话起来",
+        body: "等了 45 秒，devbox 上没有报出这个会话。tmux 会话「nope-cc」最后几行：\nccm: 无法进入目录: /home/u/nope",
+        level: "error",
+        durationMs: 15000,
+      },
+    ]);
+    vi.mocked(emit).mockClear();
+    watchArrival(spec({ match: { sid: "s2" }, from: "settings" }));
+    noteLive("devbox", "s2", seen(null));
+    expect(echoed()).toEqual([{ to: "settings", title: "起来了", body: "B", level: "info", durationMs: 6000 }]);
+    vi.mocked(emit).mockClear();
+    watchArrival(spec({ match: { sid: "s3" }, from: "main" }));
+    watchArrival(spec({ match: { sid: "s4" } }));
+    noteLive("devbox", "s3", seen(null));
+    noteLive("devbox", "s4", seen(null));
+    expect(echoed()).toEqual([]);
+  });
+});

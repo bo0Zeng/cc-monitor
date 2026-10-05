@@ -435,6 +435,10 @@ fn scan_accounts(
         m.insert("sharedStore".into(), shared_store);
         m.insert("count".into(), count.into());
         m.insert("error".into(), err_text);
+        m.insert(
+            "unsupported".into(),
+            crate::platform::acct_view::unsupported_said().into(),
+        );
         m
     };
     match load_manifest(accts_dir) {

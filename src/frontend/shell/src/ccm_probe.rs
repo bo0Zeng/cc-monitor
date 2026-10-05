@@ -851,7 +851,10 @@ pub(crate) fn local_ccm_entry_now(fresh: Option<bool>) -> LocalCcmEntry {
             (on_path, v, old_entry)
         }
     };
-    let message = render_path_ccm_hint(verdict, &ours, &on_path, entry.as_deref(), old_entry);
+    let shown = installed
+        .zip(entry.as_deref())
+        .map(|(p, e)| crate::platform::login_shell::ccm_entry_shown(p, e));
+    let message = render_path_ccm_hint(verdict, &ours, &on_path, shown.as_deref(), old_entry);
     let (ok, summary) = local_ccm_cell(installed.is_some(), ours_bytes, verdict, &on_path);
     LocalCcmEntry {
         entry,

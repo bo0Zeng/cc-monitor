@@ -469,6 +469,17 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒 3 个"
       expect([e1.defaultPrevented, e2.defaultPrevented]).toEqual([true, true]);
     });
 
+    it("右键开菜单时这颗 tab 的悬停提示先收起（不压在菜单上），指针离开再放回", () => {
+      const r = make(2);
+      const b = btn(r, "s0");
+      const was = b.title;
+      expect(was, "台架里 tab 没有悬停提示，下面空转").not.toBe("");
+      b.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+      expect(b.hasAttribute("title")).toBe(false);
+      b.dispatchEvent(new MouseEvent("mouseleave"));
+      expect(b.title).toBe(was);
+    });
+
     it("组头上的点击不当成 tab 手势（委托只认 tab 按钮）", () => {
       const r = make(3, 2);
       (r.bar.querySelector(".tab-group-del") as HTMLElement).dispatchEvent(

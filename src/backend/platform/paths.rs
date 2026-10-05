@@ -203,6 +203,21 @@ pub(crate) fn home_dir() -> Option<PathBuf> {
     creds_core::store::home_dir()
 }
 
+/// 这台后端自己在盘上的入口 `<家>/.cc-monitor/bin/ccm[.exe]`（后端落点，本机远端同一处）。起会话那一行直接叫它：
+/// 终端里交互 shell 的 `PATH` 上未必有 `ccm`（没装接入块的远端就没有）。家目录说不出 ⇒ `None`。
+pub(crate) fn installed_ccm_entry() -> Option<String> {
+    let rel = format!(
+        "{}{}",
+        relay_route_core::BACKEND_LANDING_REL,
+        std::env::consts::EXE_SUFFIX
+    );
+    let mut p = home_dir()?;
+    for seg in rel.split('/') {
+        p.push(seg);
+    }
+    Some(p.to_string_lossy().into_owned())
+}
+
 /// 这台后端的数据目录（`CCM_DATA_DIR` 优先，否则 `<家>/.cc-monitor`；规矩住 `creds_core::store::monitor_data_dir`）。
 pub(crate) fn data_home() -> Option<PathBuf> {
     creds_core::store::monitor_data_dir(

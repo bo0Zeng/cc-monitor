@@ -498,6 +498,37 @@ export class TabSessionActions {
   }
 }
 
+/** ↗ 在飞的会话：同一个会话在飞时再点不重发。 */
+const frontInFlight = new Set<string>();
+/** 过了这么久还没结果才进「进行中」（防闪）；一旦进了，至少停这么久。 */
+export const FRONT_PENDING_AFTER_MS = 300;
+export const FRONT_PENDING_MIN_MS = 400;
+
+/**
+ * ↗ 的一次点击：同一个会话在飞 ⇒ 不重发；`run` 超过 [`FRONT_PENDING_AFTER_MS`] 还没完 ⇒ `pending(true)`
+ * （按钮进「进行中」），完了且已停够 [`FRONT_PENDING_MIN_MS`] ⇒ `pending(false)`。
+ */
+export async function frontOnce(sid: string, run: () => Promise<void>, pending: (on: boolean) => void): Promise<void> {
+  if (frontInFlight.has(sid)) return;
+  frontInFlight.add(sid);
+  let shownAt: number | null = null;
+  const show = window.setTimeout(() => {
+    shownAt = Date.now();
+    pending(true);
+  }, FRONT_PENDING_AFTER_MS);
+  try {
+    await run();
+  } finally {
+    window.clearTimeout(show);
+    if (shownAt !== null) {
+      const left = FRONT_PENDING_MIN_MS - (Date.now() - shownAt);
+      if (left > 0) await new Promise<void>((r) => window.setTimeout(r, left));
+      pending(false);
+    }
+    frontInFlight.delete(sid);
+  }
+}
+
 /**
  * 拉对应终端到前台。v1.7 实现：后端查 sid_hwnd_cache + 复合指纹校验 + SetForegroundWindow。
  *

@@ -84,7 +84,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
     // 那台报来的终端 ⇒ 这台电脑上开着那条连接的进程链：`{terminals}` ⇒ `{chain:[{pid, name, start}…], why?, addr?}`
-    //   （`dial/terminal_processes.rs`）。阻塞档：起一趟 PowerShell（连接表 ＋ 进程表四格）并等它退出。只在被问时答。
+    //   （`dial/terminal_processes.rs`）。阻塞档：直调系统接口读连接表 ＋ 进程表四格（每个进程开一次句柄问启动时刻）。只在被问时答。
     CommandSpec {
         name: "terminal-processes",
         doc_anchor: Some("#### `terminal-processes`"),

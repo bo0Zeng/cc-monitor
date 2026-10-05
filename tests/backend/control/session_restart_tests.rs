@@ -118,6 +118,7 @@ impl Rig {
             local_facts: local::Facts {
                 windows: false,
                 is_dir: |_| true,
+                entry: crate::platform::paths::installed_ccm_entry,
             },
             accounts: &facts,
         })

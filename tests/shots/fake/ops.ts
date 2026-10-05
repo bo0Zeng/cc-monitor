@@ -61,6 +61,7 @@ export function defaultOps(): Record<string, OpHandler> {
         sharedStore: "/home/user/.cc-monitor/accounts/shared",
         count: ACCOUNTS.length,
         error: null,
+        unsupported: null,
       },
       notice: null,
     }),

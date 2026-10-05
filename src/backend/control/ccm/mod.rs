@@ -297,7 +297,7 @@ pub fn run(args: &[String], process_argv: &[String], running: RunningScan) -> i3
                 Err(Die(msg)) => return die(&msg),
             };
             if o.print {
-                println!("{}", plan::render(&plan));
+                println!("{}", plan::render_for(&plan, plan::terminal_shell()));
                 return 0;
             }
             execute(plan)
@@ -427,7 +427,7 @@ pub(crate) fn answer_print(
         Err(Die(msg)) => return Err(("refused", msg)),
     };
     let plan = plan_of(&o, Env::for_preview(), false).map_err(|Die(msg)| ("refused", msg))?;
-    Ok(serde_json::json!({ "line": plan::render(&plan) }))
+    Ok(serde_json::json!({ "line": plan::render_for(&plan, plan::terminal_shell()) }))
 }
 
 /// 帧命令 `terminal-name-mint`：**起会话要一个终端名 —— 问这台**（这一版宿主只有 tmux，铸的是 tmux 会话名）。

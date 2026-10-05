@@ -129,7 +129,7 @@ function footprint(): unknown {
 const acctDir = (name: string): string => `/home/dev/.cc-accts/${name}`;
 const OPS: Record<string, (origin: string, body: Json) => unknown> = {
   "accounts-list": () => ({
-    meta: { enabled: true, acctsDir: "/home/dev/.cc-accts", manifestPath: "/home/dev/.cc-accts/accounts.json", updatedAt: "2026-09-20T02:00:00Z", sharedStore: null, count: ACCOUNTS.length, error: null },
+    meta: { enabled: true, acctsDir: "/home/dev/.cc-accts", manifestPath: "/home/dev/.cc-accts/accounts.json", updatedAt: "2026-09-20T02:00:00Z", sharedStore: null, count: ACCOUNTS.length, error: null, unsupported: null },
     accounts: ACCOUNTS.map((a, i) => ({ ...a, configDir: acctDir(a.name), isDefault: i === 0, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true })),
     notice: null,
   }),

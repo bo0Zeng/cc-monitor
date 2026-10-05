@@ -588,14 +588,29 @@ pub(crate) fn pick_chain_window(
                 &[("name", &l.name)],
             )),
         },
-        ChainHit::Nothing => {
-            let name = chain.first().map(|l| l.name.as_str()).unwrap_or_default();
-            Err(copy_text(
-                "rsBind.front.noWindow",
-                &[("name", &name.to_string())],
-            ))
-        }
+        // 链上有一个控制台 shell 却没有窗口 ⇒ 它的终端窗口归了链外的程序（Windows 默认终端把它交给了 Windows Terminal），
+        // 不是在后台跑；整条链连个 shell 都没有 ⇒ 真在后台。
+        ChainHit::Nothing => match chain.iter().find(|l| is_console_shell(&l.name)) {
+            Some(shell) => Err(copy_text(
+                "rsBind.front.hostedElsewhere",
+                &[("shell", &shell.name)],
+            )),
+            None => {
+                let name = chain.first().map(|l| l.name.as_str()).unwrap_or_default();
+                Err(copy_text(
+                    "rsBind.front.noWindow",
+                    &[("name", &name.to_string())],
+                ))
+            }
+        },
     }
+}
+
+/// 交互终端里的 shell（有它 ⇒ 这一串进程是开在一个终端窗口里的）。
+fn is_console_shell(name: &str) -> bool {
+    ["powershell.exe", "pwsh.exe", "cmd.exe"]
+        .iter()
+        .any(|s| name.eq_ignore_ascii_case(s))
 }
 
 /// 生产那一份「握手表里作数的那一条」：查表 ＋ 此刻的起始时刻 ＋ 窗口三重校验。

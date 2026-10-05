@@ -296,7 +296,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "tmux-list"
                 // 谁在显示这个会话：读 `/proc` ＋ 在 tmux 里时起一次 `tmux list-clients` 并等它退出。
                 | "session-terminals"
-                // 认终端进程：起一趟 PowerShell（连接表 ＋ 进程表）并等它退出。
+                // 认终端进程：读系统连接表 ＋ 进程表（每个进程开一次句柄问启动时刻）。
                 | "terminal-processes"
                 // 铸 tmux 名：问一次会话快照 = 起一次 `tmux` 并等它退出。
                 | "terminal-name-mint"

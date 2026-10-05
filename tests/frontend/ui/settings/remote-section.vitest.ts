@@ -339,11 +339,13 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     )[] = [];
     const removed: string[] = [];
     const navigated: string[] = [];
+    const renamed: { id: string; title: string }[] = [];
     return {
       added,
       addedParts,
       removed,
       navigated,
+      renamed,
       host: {
         addMachinePage: (
           id: string,
@@ -356,6 +358,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
         },
         removeMachinePage: (id: string) => void removed.push(id),
         navigateToMachinePage: (id: string) => void navigated.push(id),
+        renameMachinePage: (id: string, title: string) => void renamed.push({ id, title }),
       },
     };
   }
@@ -436,6 +439,24 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   // 这两条在修之前**各自都有绿测试**（改名一条、删除一条），只是从没人把它们串起来
   // ——「组合未覆盖」，不是断言造假。所以这里刻意写成**两步串一起**的场景。
 
+  it("★ 空白卡（还没填名称 / 地址）不是任何一台机器：宿主据此不切机器、不去扫足迹", async () => {
+    const p = fakePages();
+    const sec = await mount([mkH("a", "1.1.1.1")], p.host);
+    [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "+ 添加机器")!.click();
+    const blank = p.added.map((a) => a.id).find((i) => i !== LOCAL_MACHINE_PAGE_ID && i !== "machine:a")!;
+    expect(blank).toBeTruthy();
+    expect(sec.isUnconfiguredPage(blank)).toBe(true);
+    expect(sec.isUnconfiguredPage("machine:a")).toBe(false);
+    // 填了名字、没填主机：仍不是一台连得上的机器。
+    const page = p.added.find((x) => x.id === blank)!;
+    const label = page.element.querySelectorAll<HTMLInputElement>('input[type="text"]')[0]!;
+    label.value = "box2";
+    label.dispatchEvent(new Event("input"));
+    label.dispatchEvent(new Event("change"));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(sec.isUnconfiguredPage(blank)).toBe(true);
+  });
+
   it("★ 连点两次「+ 添加机器」不许抛（空白卡的 origin 是空串，页 id 会撞）", async () => {
     const p = fakePages();
     const sec = await mount([], p.host);
@@ -477,6 +498,18 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       .map((r) => r.dataset.pageId)
       .filter((i) => i !== LOCAL_MACHINE_PAGE_ID);
     expect(rowIds, "被删那台的列表行要消失，b 那行还在").toEqual(["machine:b"]);
+  });
+
+  it("★ 卡片改了名称：左栏导航那一项跟着改（不必重开设置窗）", async () => {
+    const p = fakePages();
+    await mount([mkH("a", "1.1.1.1")], p.host);
+    const page = p.added.find((a) => a.id === "machine:a")!;
+    const label = page.element.querySelectorAll<HTMLInputElement>('input[type="text"]')[0]!;
+    label.value = "lx";
+    label.dispatchEvent(new Event("input"));
+    label.dispatchEvent(new Event("change"));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(p.renamed.at(-1)).toEqual({ id: "machine:a", title: "lx" });
   });
 
   it("★ 页 id 只许在一个地方算出来（现算公式不许再出现）", () => {
@@ -820,6 +853,20 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     ipcReplies.delete("backend_status");
     await mount([], fakePages().host);
     expect(readStatus(LOCAL_MACHINE_KEY).backend).toBeUndefined();
+  });
+
+  /** 账本被别处写了（后端那几格画出「已连上」）⇒ 那一台那一行与「诊断」同一拍重画，不再说「连接：未测过」。 */
+  it("★ 那台账本变了 ⇒ 诊断同一拍重算", async () => {
+    localStorage.clear();
+    const sec = await mount([mkH("a", "1.1.1.1")], fakePages().host);
+    const facetsOfA = (): (string | undefined)[] =>
+      [...sec.element.querySelectorAll<HTMLElement>('.remote-gap[data-origin="a"]')].map((i) => i.dataset.facet);
+    expect(facetsOfA()).toContain("connection");
+    recordFacet("a", "connection", { kind: "ok", at: Date.now() });
+    recordFacet("a", "backend", { kind: "ok", at: Date.now() });
+    sec.noteLedgerChanged("a");
+    expect(facetsOfA()).not.toContain("connection");
+    expect(facetsOfA()).not.toContain("backend");
   });
 
   /**

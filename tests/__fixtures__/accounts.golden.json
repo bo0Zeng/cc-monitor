@@ -42,6 +42,7 @@
       "error": null,
       "manifestPath": "<root>/accts/accounts.json",
       "sharedStore": "<root>/shared",
+      "unsupported": null,
       "updatedAt": "t0"
     },
     "notice": null

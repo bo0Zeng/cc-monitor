@@ -408,7 +408,7 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
     let mut pids: Vec<u32> = Vec::new();
     let mut codes: Vec<String> = Vec::new();
     for trip in 1..=3 {
-        let child = spawn_window(&req).unwrap_or_else(|e| {
+        let (child, _tail) = spawn_window(&req).unwrap_or_else(|e| {
             panic!("第 {trip} 趟连进程都起不来：{e}\n⚠ 这一形是台架坏了，不是被测性质红了")
         });
         pids.push(child.id());
@@ -450,7 +450,7 @@ fn the_seed_really_arrives_on_the_child_process_stdin() {
     std::env::set_var(BIN_ENV, stdin_eating_stand_in());
     let req = synthetic_request();
     let seed = encode_request(&req).expect("序列化");
-    let mut child = spawn_window(&req).expect("起不了替身进程 —— 台架坏了");
+    let (mut child, _tail) = spawn_window(&req).expect("起不了替身进程 —— 台架坏了");
     std::env::remove_var(BIN_ENV);
     let mut seen = String::new();
     std::io::Read::read_to_string(
@@ -600,9 +600,10 @@ fn a_window_that_dies_after_being_judged_open_is_still_reported() {
     assert_eq!(r.map(|(_, n)| n), Ok(3), "活过预算的那一形该先回成功");
     let said = said.expect("判成功之后退出码 7 退了，却一句都没交");
     let why = copy_text("rsFilewinProc.late.exited", &[("st", "exit status: 7")]);
+    assert_eq!(said, exit_said(&why, &[]));
     assert_eq!(
         said,
-        copy_text("rsFilewinProc.open.seeStderr", &[("why", &why)])
+        copy_text("rsFilewinProc.open.noStderr", &[("why", &why)])
     );
     let (r, said) = run(0);
     assert!(r.is_ok());
@@ -865,4 +866,50 @@ fn the_spawn_result_is_never_thrown_away() {
         at_spawn < at_check,
         "那一跳排在起进程**之前** —— 那时还没有进程可看"
     );
+}
+
+/// 窗口进程开不了窗时**它自己说的原因**（stderr）要回到那一句话里，而且认得出的原因说人话：
+/// ① 一句不说就带着 stderr 退（缺 OpenGL 2.0 那一形，egui 的原话）⇒ 「显卡不支持 OpenGL 2.0」；
+/// ② 别的原话 ⇒ 带最后几行；③ stderr 是空的 ⇒ 说它没留下。
+#[cfg(unix)]
+#[test]
+fn the_window_process_own_reason_reaches_the_sentence() {
+    use std::os::unix::fs::PermissionsExt;
+    let _g = ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("filewin-stderr-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("造不出临时目录");
+    let req = synthetic_request();
+    let run = |tag: &str, err: &str| {
+        let p = dir.join(format!("err-{tag}.sh"));
+        std::fs::write(
+            &p,
+            format!("#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' {err} >&2\nexit 1\n"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::env::set_var(BIN_ENV, &p);
+        let r = open_in_new_process(&req, Box::new(|_| {}));
+        std::env::remove_var(BIN_ENV);
+        match r {
+            Err(Unopened::Process(e)) => e,
+            other => panic!("{tag}：带着 stderr 退了，却回了：{other:?}"),
+        }
+    };
+    let why = copy_text("rsFilewinProc.open.exited", &[("st", "exit status: 1")]);
+    assert_eq!(
+        run("gl", "'Error: egui_glow requires opengl 2.0+.'"),
+        copy_text("rsFilewinProc.cause.noOpenGl", &[("why", &why)])
+    );
+    assert_eq!(
+        run("other", "'line a' 'line b'"),
+        copy_text(
+            "rsFilewinProc.open.stderrTail",
+            &[("why", &why), ("tail", "line a\nline b")]
+        )
+    );
+    assert_eq!(
+        exit_said(&why, &[]),
+        copy_text("rsFilewinProc.open.noStderr", &[("why", &why)])
+    );
+    std::fs::remove_dir_all(&dir).ok();
 }

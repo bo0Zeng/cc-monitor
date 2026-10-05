@@ -44,6 +44,13 @@ pub(crate) fn multi_account_supported() -> Result<(), &'static str> {
     }
 }
 
+/// 这台系统做不了多账号时那一句（做得了 ⇒ `None`）。账号清单的 `meta.unsupported` 与账号库改动那一道闸都按它说。
+pub(crate) fn unsupported_said() -> Option<String> {
+    multi_account_supported()
+        .err()
+        .map(|os| copy_core::copy_text("beAcctWire.platform.unsupported", &[("os", os)]))
+}
+
 /// `p` 这一项是什么（不跟链接）。读链接成功 ⇒ 它就是一条链接；否则按跟过去的元数据认。
 pub(crate) fn item(p: &Path) -> Item {
     if let Ok(t) = std::fs::read_link(p) {

@@ -83,6 +83,20 @@ pub(crate) mod stderr_fd;
 pub(crate) mod tcp_rtt;
 #[cfg(windows)]
 pub(crate) mod win_proc;
+#[cfg(windows)]
+pub(crate) mod win_tables;
+
+/// ↗ 那一问的系统事实（已建立的 TCP 连接表 ＋ 进程表，一行 JSON）。只有 Windows 有这一问；别的平台 ⇒ `Err`。
+pub(crate) fn connection_and_process_tables() -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        win_tables::connection_and_process_tables()
+    }
+    #[cfg(not(windows))]
+    {
+        Err("connection / process tables are only read on Windows".to_string())
+    }
+}
 // Windows 判活那一臂在本机（Linux）够得着的那几半：纯换算 · 与 Linux 同契约的映射 · 唯一住址。
 #[cfg(test)]
 #[path = "../../../tests/backend/platform/win_proc_contract_tests.rs"]

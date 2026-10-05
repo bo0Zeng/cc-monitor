@@ -14,6 +14,7 @@ import { loadTheme } from "./theme";
 import { SettingsPanel } from "./settings";
 import { dispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
+import { bindLaunchEcho } from "./launch-arrival";
 
 // Vite HMR：任何热更新一律整页重载（理由见 `main.ts` 同名那段：部分热替换会让旧 listener 与新代码并存）。
 if (import.meta.hot) {
@@ -47,4 +48,6 @@ async function bootstrapSettings(): Promise<void> {
   //   overlay.close(Esc) 与录制都不依赖 bind。（原手搓的 window Esc 监听会双关窗，已删。）
   dispatcher.applyOverrides(await getKeybindings());
   dispatcher.start();
+  // 从这扇窗起的会话：主窗口等到 / 没等到的那一句也在这里说（主窗口常被这扇窗挡着）。
+  bindLaunchEcho();
 }

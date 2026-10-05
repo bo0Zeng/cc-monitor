@@ -556,6 +556,28 @@
   font-size: 14px;
 }
 
+/* ↗ 在飞超过 300ms：图标换成 14px 转圈（不确定进度），完了收回。 */
+.tab-focus.in-flight {
+  position: relative;
+  color: transparent;
+}
+.tab-focus.in-flight::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  box-sizing: border-box;
+  border: 2px solid var(--border-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: tab-focus-spin 0.8s linear infinite;
+}
+
+@keyframes tab-focus-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .tab-cwd {
   /* emoji 字号略小，跟 ↗ 视觉权重一致 */
   font-size: 12px;

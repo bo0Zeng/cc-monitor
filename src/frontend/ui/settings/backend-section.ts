@@ -52,6 +52,7 @@ import { makeInfoIcon } from "./info-icon";
 import { LOCAL_ORIGIN } from "../backend-policy";
 import { copyText } from "../copy-table";
 import { formatBytes } from "../format";
+import { recordFacet } from "./machine-status";
 import { askConfirm, type ConfirmFn } from "../ask-dialog";
 import { fetchSessionAccountsOrNull } from "../account-reads";
 import type { SessionAccount } from "../accounts";
@@ -261,6 +262,7 @@ export class BackendSection {
    * 只装「后端清单里有、机器列表里没有」的那几台（见 `refresh` 的头注）。
    */
   private readonly hosted: boolean;
+  private readonly onLinkSeen: ((origin: string) => void) | undefined;
   /** 后端清单（`backend_machines`）。`null` = 还没问到 —— 那时寄居的四格先不画。 */
   private registered: Set<string> | null = null;
 
@@ -274,8 +276,11 @@ export class BackendSection {
       hosted?: boolean;
       confirm?: ConfirmFn;
       sessions?: (origin: Origin) => Promise<SessionAccount[] | null>;
+      /** 远端那台画出「已连上」之后（连接 · backend 两格已记进账本）叫一声，宿主据它重画那一行与「诊断」。 */
+      onLinkSeen?: (origin: string) => void;
     } = {},
   ) {
+    this.onLinkSeen = opts.onLinkSeen;
     this.hosted = opts.hosted ?? false;
     this.confirm = opts.confirm ?? askConfirm;
     this.sessions = opts.sessions ?? fetchSessionAccountsOrNull;
@@ -708,6 +713,18 @@ export class BackendSection {
     }
   }
 
+  /**
+   * **远端那几台 `connection` / `backend` 两格的实况写点**：常驻那条连接此刻通着（同一次 `backend_status`，不另问）
+   * ⇒ 两格都记 ✓（连着、后端在答 —— 会话就是从那里流过来的）。没连着 ⇒ **不写**（「此刻没连着」不是「连不上」，
+   * 上一次「测试连接」的结论照留）。
+   */
+  private noteRemoteLink(origin: string): void {
+    const detail = copyText("remote.local.connected");
+    recordFacet(origin, "connection", { kind: "ok", detail });
+    recordFacet(origin, "backend", { kind: "ok", detail });
+    this.onLinkSeen?.(origin);
+  }
+
   /** 画一次状态，并把「通道在不在」返回给 `settleStatus` 判落定。查不到回 `null`。 */
   private async paintStatus(origin: string): Promise<boolean | null> {
     const cells = this.cellHosts.get(origin);
@@ -720,6 +737,7 @@ export class BackendSection {
       const pid = typeof st.pid === "number" ? `（pid ${st.pid}）` : "";
       state.textContent = on ? copyText("backend.status.connected", { pid }) : copyText("backend.status.notConnected");
       state.dataset.on = String(on);
+      if (on && !isLocalOrigin(origin)) this.noteRemoteLink(origin);
       // 那个值问那台机器的后端要（**每次现问**，不用上一次的）；问不到就是 `null`。
       let answer: ExitAnswer | null;
       try {

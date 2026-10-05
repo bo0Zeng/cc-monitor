@@ -628,3 +628,16 @@ fn the_windows_probe_scripts_write_utf8_bytes_themselves() {
         }
     }
 }
+
+/// 「cc-monitor 这一份在哪」那一句：Windows 上写绝对路径（不写 `$HOME/…`）；POSIX 照旧写 `$HOME/…`（与生成进命令里的那一形同）。
+#[test]
+fn where_our_ccm_lives_is_said_in_the_platform_own_way() {
+    use crate::platform::login_shell::LoginShell;
+    let abs = std::path::Path::new(r"C:\Users\u\.cc-monitor\bin\ccm.exe");
+    let home_form = "$HOME/.cc-monitor/bin/ccm.exe";
+    assert_eq!(
+        LoginShell::PowerShell.entry_shown(abs, home_form),
+        r"C:\Users\u\.cc-monitor\bin\ccm.exe"
+    );
+    assert_eq!(LoginShell::Posix.entry_shown(abs, home_form), home_form);
+}

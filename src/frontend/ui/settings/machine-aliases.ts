@@ -343,7 +343,7 @@ function buildAliasForm(initial: AliasForm, host: FormHost): HTMLElement {
   adv.appendChild(advGrid);
 
   // ── 会执行：… · 这一条的问题 / 撞名 · [保存] [取消] ──
-  const wouldRun = el("pre", "");
+  const wouldRun = el("pre", "ccm-alias-preview");
   wouldRun.dataset.role = "would-run";
   const notes = el("div", "settings-hint");
   notes.dataset.role = "form-notes";
@@ -655,8 +655,9 @@ export function buildAliasManager(opts: {
   const row = (a: Alias): HTMLElement => {
     const r = el("div", "settings-row machine-aliases-row");
     r.append(el("code", "", a.name), el("span", "settings-hint", describeArgs(a.args)));
-    // 点了才建、才挂（不用 `hidden` 切：这一格的外观没有自己的规则）。
+    // 点了才建、才挂（不用 `hidden` 切）。
     const previewOut = document.createElement("pre");
+    previewOut.className = "ccm-alias-preview";
     previewOut.dataset.role = "alias-preview";
     r.title = copyText("machineAliases.aliasPreview.hint");
     r.addEventListener("click", () => {
@@ -777,14 +778,14 @@ export function buildAliasManager(opts: {
       const r = el("div", "settings-cc-profile-status");
       r.appendChild(el("span", "settings-cc-profile-badge settings-cc-badge-warn", copyText("machineAliases.access.off")));
       if (t) {
-        const b = button(copyText("machineAliases.access.connectTo", { path: t.path }), "settings-btn-primary", () => void runRc("install", t.path));
+        const b = button(copyText("machineAliases.access.connectTo", { path: t.path }), "settings-btn-primary ccm-access-connect", () => void runRc("install", t.path));
         b.title = shell === "powershell" ? copyText("machineAliases.powershell.blockInstallTitle") : copyText("machineAliases.posix.blockInstallTitle");
         r.appendChild(b);
       }
       accessRows.appendChild(r);
     } else if (t && !t.block.present) {
       // 人在「换一份」里另选了一份 ⇒ 也给它一颗「接入」。
-      accessRows.appendChild(button(copyText("machineAliases.access.connectTo", { path: t.path }), "", () => void runRc("install", t.path)));
+      accessRows.appendChild(button(copyText("machineAliases.access.connectTo", { path: t.path }), "ccm-access-connect", () => void runRc("install", t.path)));
     }
     const warn: string[] = [];
     for (const c of cands) {

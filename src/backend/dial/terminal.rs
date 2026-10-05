@@ -5,10 +5,12 @@
 //! 同 `remote-probe` / `pubkey-push` 那几格）＋ 要在那台跑的命令 `command`。组请求走唯一那一份 [`super::machine::resolve`]
 //! （地址排序 · 跳板查无 / 环都在那里），这里只把它渲成一行 PowerShell：
 //!
-//! `& ssh -t[ -J <跳板用户>@<跳板>[:口]] -p <口>[ -i '<钥匙>'] <用户>@<地址> -- '<bash -lic ''…''>'`
+//! `& ssh -t[ -J <跳板用户>@<跳板>[:口]] -p <口>[ -i '<钥匙>'] -o 'UserKnownHostsFile=<cc-monitor 那份>' <用户>@<地址> -- '<bash -lic ''…''>'`
 //!
 //! - 地址取竞速顺序的第一条（交了 `prefer` 且它仍在这台的地址里 ⇒ 就是上次赢的那条，F45：终端与数据源走同一条路）；
 //! - 远端命令包成 `bash -lic '<命令>'`（PATH / 别名按「用户粘贴进交互终端」解析），再以 PowerShell 单引号字面量嵌入；
+//! - 主机钥匙认 cc-monitor 自己那份 known_hosts（[`super::known_hosts`]：握手时认下的那把），终端里不再问、不写用户的 `~/.ssh`；
+//!   跳板那一跳（`-J`）是 ssh 另起的一个进程，不吃 `-o`，仍走 ssh 自己的默认；
 //! - 钥匙路径尾 `\` 剥掉（PS < 7.3 给含空格参数加壳时尾部 `\"` 会吃掉收尾引号）；没给钥匙 ⇒ 走 ssh-agent，不带 `-i`。
 //!
 //! 拒（`refused`，说清哪一格）：命令空 / 超长 / 含控制符 / 含双引号（PowerShell 5.1 向原生程序传参对内嵌 `"` 有历史畸变，
@@ -89,6 +91,31 @@ fn jump_arg(j: &super::JumpHop) -> Result<String, CmdErr> {
     Ok(format!(" -J {}@{}{port}", j.user, j.host))
 }
 
+/// `-o UserKnownHostsFile=<那份>` 的值：`ssh` 自己按空白切词（单引号成对、`\'` 是字面的 `'`），`%` 是它的占位符 ⇒ 照它的规矩写。
+fn known_hosts_value(path: &str) -> String {
+    let p = path.replace('%', "%%");
+    if p.chars().any(|c| c.is_whitespace() || c == '\'') {
+        format!("'{}'", p.replace('\'', "\\'"))
+    } else {
+        p
+    }
+}
+
+/// ` -o 'UserKnownHostsFile=<cc-monitor 那份>'`：终端那一跳认 cc-monitor 握手时认下的那把钥匙（`super::known_hosts`），
+/// 不再问一遍、也不写用户的 `~/.ssh/known_hosts`；主机钥匙核对照旧开着。家目录说不出 ⇒ 不带（照 ssh 自己的默认）。
+pub(crate) fn known_hosts_arg(path: Option<&std::path::Path>) -> String {
+    match path {
+        Some(p) => format!(
+            " -o {}",
+            ps_literal(&format!(
+                "UserKnownHostsFile={}",
+                known_hosts_value(&p.to_string_lossy())
+            ))
+        ),
+        None => String::new(),
+    }
+}
+
 /// 一份拨号请求 ＋ 命令 ⇒ 那一行 PowerShell（见模块头注）。
 pub(crate) fn render(req: &super::DialRequest) -> Result<String, CmdErr> {
     check_command(&req.command)?;
@@ -125,8 +152,9 @@ pub(crate) fn render(req: &super::DialRequest) -> Result<String, CmdErr> {
         None => String::new(),
     };
     let wrapped = format!("bash -lic {}", shell_quote_core::posix_quote(&req.command));
+    let known = known_hosts_arg(super::known_hosts::path().as_deref());
     Ok(format!(
-        "& ssh -t{jump} -p {port}{key} {user}@{host} -- {cmd}",
+        "& ssh -t{jump} -p {port}{key}{known} {user}@{host} -- {cmd}",
         port = first.port,
         user = req.user,
         host = first.host,

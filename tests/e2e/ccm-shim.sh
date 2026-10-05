@@ -27,6 +27,11 @@ export HOME="$CCM_SHIM_DIR/home"
 # 账号库只跟着家走：本趟的那一份就是沙箱家目录底下这一份（写它的套件先核它在沙箱里）。
 CCM_SHIM_ACCOUNTS="$HOME/.cc-monitor/accounts"
 mkdir -p "$CCM_SHIM_ACCOUNTS"
+# 后端在真部署里的落点（起会话那一行直接叫它的绝对路径，不靠 PATH）：沙箱家里也放一份。
+CCM_ENTRY="$HOME/.cc-monitor/bin/ccm"
+mkdir -p "$HOME/.cc-monitor/bin"
+ln -s "$CCM_E2E_BIN" "$CCM_ENTRY"
+export CCM_ENTRY
 export CC_BUS_HOME="$CCM_SHIM_DIR/cc-bus"
 unset CLAUDE_CONFIG_DIR CC_BUS_SCRIPTS CCM_ENV CCM_LAUNCH_ID \
   ANTHROPIC_BASE_URL CCM_RELAY_PORT CCM_RELAY_ALL_SESSIONS

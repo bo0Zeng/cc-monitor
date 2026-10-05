@@ -218,17 +218,23 @@ fn every_emit_to_targets_a_webview_window_not_a_bare_label() {
 
 // 「一扇窗夹进工作区」那条真值判据随判定搬去了 `tests/common/host-core/lib_tests.rs`。
 
-/// 三扇 Tauri 窗开出来都经那一个判定夹一次（主窗在 `setup` 里、设置窗与会话窗在建窗之后）—— 在执行链上。
+/// 三扇 Tauri 窗开出来都经判定夹一次（主窗在 `setup` 里、设置窗与会话窗在建窗之后）—— 在执行链上：
+/// 主窗与设置窗摆正中（重启不漂），会话窗照它自己的落点夹进工作区。
 #[test]
 fn every_tauri_window_is_fitted_once_after_it_is_built() {
     let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/lib.rs"));
     assert_eq!(
         prod.matches("fit_window_to_work_area(&").count(),
-        3,
-        "主窗 · 设置窗 · 会话窗三处开窗之后各夹一次"
+        1,
+        "会话窗开窗之后夹一次"
+    );
+    assert_eq!(
+        prod.matches("center_window_in_work_area(&").count(),
+        2,
+        "主窗 · 设置窗开窗之后各摆一次正中"
     );
     assert!(
-        prod.contains("fit_window_to_work_area(&window);"),
+        prod.contains("center_window_in_work_area(&window);"),
         "主窗那一处不在"
     );
 }

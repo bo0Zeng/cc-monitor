@@ -134,7 +134,7 @@ SID1="$(cat /proc/sys/kernel/random/uuid)"; S1="cc-${SID1:0:8}"
 make_idle "$SID1" "$REMOTE_DIR" >/dev/null
 CMD1="$(drv into-existing "$SID1" "$S1" "$FAKE" -)"
 echo "   cmd: $CMD1"
-if echo "$CMD1" | grep -qF "send-keys -t '=$S1:' 'ccm --resume $SID1 " && ! echo "$CMD1" | grep -q "new-session\|--ccm-tmux"; then
+if echo "$CMD1" | grep -qF "send-keys -t '=$S1:' '$CCM_ENTRY --resume $SID1 " && ! echo "$CMD1" | grep -q "new-session\|--ccm-tmux"; then
   ok "B1 命令复用原名 $S1、无 new-session(就地 resume,治 #76 根因)"
 else bad "B1 命令未就地复用(含 new-session 或名不符)"; fi
 BEFORE1="$(session_exists "$S1")"
@@ -152,12 +152,12 @@ SID2="$(cat /proc/sys/kernel/random/uuid)"; S2="cc-${SID2:0:8}"
 # 执行验证交给下面非阻塞的 tmux-new 形态,两者共用同一个 Rust 载荷渲染,注入语义一致)。
 CMD2D="$(drv direct "$SID2" "$CWD_DIR" "$FAKE" a)"
 echo "   direct: $CMD2D"
-echo "$CMD2D" | grep -q "^ccm --resume $SID2 -- --ccm-agent claude --account a " && ok "B2 直连命令是一行 ccm、点名账号 A（--account a）" || bad "B2 直连命令缺账号 A"
+echo "$CMD2D" | grep -q "^$CCM_ENTRY --resume $SID2 -- --ccm-agent claude --account a " && ok "B2 直连命令是一行 ccm、点名账号 A（--account a）" || bad "B2 直连命令缺账号 A"
 # tmux-new 形态(resumeTabTmux 归档分支):新建 cc-<sid8> 会话 + @ccm_sid,真执行 → argv 落 A。
 CMD2T="$(drv tmux-new "$SID2" "$CWD_DIR" "$FAKE" "$S2" a)"
 echo "   tmux-new: $CMD2T"
 SESSIONS+=("$S2")
-echo "$CMD2T" | grep -q "^ccm --resume $SID2 -- --ccm-tmux=$S2 --ccm-sid=$SID2 " && ok "B2 tmux-new 是一行 ccm：建 $S2 并带身份标记" || bad "B2 tmux-new 命令形状不符"
+echo "$CMD2T" | grep -q "^$CCM_ENTRY --resume $SID2 -- --ccm-tmux=$S2 --ccm-sid=$SID2 " && ok "B2 tmux-new 是一行 ccm：建 $S2 并带身份标记" || bad "B2 tmux-new 命令形状不符"
 fire_resume "$CMD2T"
 if AL="$(wait_argv_resume "$ACCT_A" "$SID2" 12)"; then
   echo "   argv(A): $AL"

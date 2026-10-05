@@ -188,7 +188,7 @@ pub struct CliSpec<'a> {
 }
 
 /// argv token 的 quote：只在含 ccm 允许字符集之外的东西时才包单引号。
-fn argv(token: &str) -> String {
+pub(crate) fn argv(token: &str) -> String {
     let safe = !token.is_empty()
         && token.chars().all(|c| {
             c.is_ascii_alphanumeric()
@@ -305,6 +305,23 @@ pub fn render_ccm_invocation(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<
         Parts::Argv(tokens) => Ok(tokens.iter().map(|t| argv(t)).collect::<Vec<_>>().join(" ")),
         Parts::Shell(line) => Ok(line),
     }
+}
+
+/// 同一行给 PowerShell（Windows 本机终端）：`argv[0]` 是入口的绝对路径 ⇒ `& '<路径>' …`
+/// （PowerShell 里带引号的命令名要 `&` 才叫得起来）。就地 resume 那一形是一串 POSIX shell ⇒ 拒。
+pub fn render_ccm_invocation_ps(
+    spec: &CliSpec,
+    caps: &BTreeSet<String>,
+) -> Result<String, Refusal> {
+    let tokens = ccm_argv(spec, caps)?;
+    let (head, rest) = tokens.split_first().ok_or(Refusal::AttachNeedsTmux)?;
+    Ok(std::iter::once(format!(
+        "& {}",
+        crate::platform::shell::dialect::ps_literal(head)
+    ))
+    .chain(rest.iter().map(|t| argv(t)))
+    .collect::<Vec<_>>()
+    .join(" "))
 }
 
 /// 同一行的 argv 形（不过 shell，`argv[0]` 是 `ccm_path`）：后端自己起这一趟时用它（[`render_ccm_invocation`] 就是把它逐个引号化连起来）。

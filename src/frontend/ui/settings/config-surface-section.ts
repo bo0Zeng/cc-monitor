@@ -498,8 +498,9 @@ export class ConfigSurfaceSection {
       }
       this.last = null;
       this.copyBtn.disabled = true;
-      this.body.textContent = copyText("configSurface.refresh.failed", { e: String(e) });
-      showActionFailureToast(copyText("configSurface.refresh.failedTitle"), String(e));
+      const said = e instanceof Error ? e.message : String(e);
+      this.body.textContent = copyText("configSurface.refresh.failed", { e: said });
+      showActionFailureToast(copyText("configSurface.refresh.failedTitle"), said);
     }
   }
 

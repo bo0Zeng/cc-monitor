@@ -75,6 +75,7 @@ import {
   bringRemoteTerminalToFront,
   bringTerminalToFront,
   e2eLog,
+  frontOnce,
   forgetSession,
 } from "./tab-session-actions";
 
@@ -130,8 +131,8 @@ export class TabManager {
     this.bar = new TabBarView(this.store, this.prefs, barEl, {
       refreshTabBar: () => this.refreshTabBar(),
       openTabCwd: (sid) => this.openTabCwd(sid),
-      bringTerminalToFront: (sid) => bringTerminalToFront(sid),
-      bringRemoteTerminalToFront: (sid) => this.bringRemoteFront(sid),
+      bringTerminalToFront: (sid) => this.front(sid, () => bringTerminalToFront(sid)),
+      bringRemoteTerminalToFront: (sid) => this.front(sid, () => this.bringRemoteFront(sid)),
       closeTab: (sid) => this.closeTab(sid),
       switchTo: (sid) => this.switchTo(sid),
       pick: (sid, how) => this.pick(sid, how),
@@ -1372,11 +1373,17 @@ export class TabManager {
     // 还有终端可去（活着，或可重连：登录 shell 的 ssh 窗还在）才拉。
     if (!tab || !hasTerminal(tab.state)) return;
     // 远端 Tab → 点那一刻现查此刻显示它的本机终端；本地 Tab → 原 sid_hwnd_cache 路径。
+    const sid = this.store.activeId;
     if (isRemoteOrigin(tab.origin)) {
-      void this.bringRemoteFront(this.store.activeId);
+      void this.front(sid, () => this.bringRemoteFront(sid));
     } else {
-      void bringTerminalToFront(this.store.activeId);
+      void this.front(sid, () => bringTerminalToFront(sid));
     }
+  }
+
+  /** ↗ 的每个入口都经这里：在飞时不重发，慢了按钮进「进行中」。 */
+  private front(sid: string, run: () => Promise<void>): Promise<void> {
+    return frontOnce(sid, run, (on) => this.bar.setFrontPending(sid, on));
   }
 
   /** 远端 tab 的 ↗：没有终端连着时，提示里点一下就在新终端里接回（同「在 tmux 里接着用」那一项）。 */

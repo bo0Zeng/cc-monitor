@@ -24,3 +24,19 @@ pub const LOGIN_SHELL: LoginShell = if cfg!(windows) {
 } else {
     LoginShell::Posix
 };
+
+/// 界面上「cc-monitor 这一份 ccm 在哪」那一句的写法：POSIX 写 `$HOME/…`（与生成进命令里的那一形同）；
+/// Windows 写绝对路径（`$HOME/…` 不是那边说路径的样子）。
+pub fn ccm_entry_shown(abs: &std::path::Path, home_form: &str) -> String {
+    LOGIN_SHELL.entry_shown(abs, home_form)
+}
+
+impl LoginShell {
+    /// [`ccm_entry_shown`] 按这一族答（判据两族都喂得到）。
+    pub fn entry_shown(self, abs: &std::path::Path, home_form: &str) -> String {
+        match self {
+            LoginShell::PowerShell => abs.display().to_string(),
+            LoginShell::Posix => home_form.to_string(),
+        }
+    }
+}

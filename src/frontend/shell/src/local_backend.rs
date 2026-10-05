@@ -598,7 +598,7 @@ const STDERR_LOG_BUDGET_BYTES: u64 = 256 * 1024;
 /// ⚠ 超了**不丢字节**：这一段照记，只是末尾打一句 [`STDERR_CUT_MARK`] 说「它在这里被切开」，
 /// 余下的字节成为下一条。⇒ 超限语义是「**截断+说清**」里的「说清」那一半承重 ——
 /// 没有那句标记的话，日志里会出现一条**看起来完整、其实是半句**的诊断。
-const STDERR_MAX_LINE_BYTES: u64 = 8 * 1024;
+pub(crate) const STDERR_MAX_LINE_BYTES: u64 = 8 * 1024;
 
 /// 一行被 [`STDERR_MAX_LINE_BYTES`] 切开时贴在断口上的话。
 const STDERR_CUT_MARK: &str = " …〔这一行超过单行上界，在此切开，下一条接着它〕";

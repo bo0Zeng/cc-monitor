@@ -1549,6 +1549,11 @@
       "zh": "取不到系统随机数，没有起会话。",
       "args": []
     },
+    "beLaunchRender.entry.noHome": {
+      "kind": "error",
+      "zh": "家目录未知，找不到 ~/.cc-monitor/bin/ccm，没有起会话。",
+      "args": []
+    },
     "beResident.token.noRandom": {
       "kind": "error",
       "zh": "取不到系统随机数，做不出常驻后端的钥匙。没有起。",
@@ -8819,9 +8824,19 @@
       "zh": "文件窗口连不上主程序：{e}",
       "args": ["e"]
     },
-    "rsFilewinProc.open.seeStderr": {
+    "rsFilewinProc.open.stderrTail": {
       "kind": "error",
-      "zh": "{why}。原因在它自己的错误输出里（和界面进程的错误输出在一起）。",
+      "zh": "{why}。它的错误输出最后几行：\n{tail}",
+      "args": ["why", "tail"]
+    },
+    "rsFilewinProc.open.noStderr": {
+      "kind": "error",
+      "zh": "{why}。它没留下错误输出。",
+      "args": ["why"]
+    },
+    "rsFilewinProc.cause.noOpenGl": {
+      "kind": "error",
+      "zh": "这台电脑的显卡（驱动）不支持 OpenGL 2.0（{why}）。",
       "args": ["why"]
     },
     "rsFilewinProc.open.failedWhy": {
@@ -11840,6 +11855,11 @@
       "kind": "error",
       "zh": "开着那条连接的程序（{name}）没有窗口。它是在后台跑的",
       "args": ["name"]
+    },
+    "rsBind.front.hostedElsewhere": {
+      "kind": "error",
+      "zh": "未切换：{shell} 的窗口归 Windows Terminal 托管（默认终端交接）。改在 Windows Terminal 里新开 PowerShell 标签页再连接，即可切到",
+      "args": ["shell"]
     },
     "rsBind.front.severalWindows": {
       "kind": "error",
@@ -19007,6 +19027,11 @@
     "rsToolRegistry.tools.launchNotesNote": {
       "kind": "body",
       "zh": "起会话便条：启动会话时记下的账号，进程退出即清",
+      "args": []
+    },
+    "rsDataPaths.backend.knownHosts": {
+      "kind": "body",
+      "zh": "主机钥匙：拨号时认下的各台主机钥匙，开终端时 ssh 按它核对",
       "args": []
     },
     "rsDataPaths.backend.launchAccounts": {

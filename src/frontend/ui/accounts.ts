@@ -71,6 +71,8 @@ export interface AccountsMeta {
   sharedStore: string | null;
   count: number;
   error: string | null;
+  /** 这台做不了多账号时后端说的那一句（做得了 ⇒ `null`；线上恒有这一格，本地造的夹具可以不写）。 */
+  unsupported?: string | null;
 }
 
 export interface SessionAccount {

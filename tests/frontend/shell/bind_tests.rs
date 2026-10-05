@@ -252,9 +252,27 @@ fn without_a_registration_the_window_is_the_first_one_up_the_chain_and_only_if_i
     // 开着两个窗口 ⇒ 分不清，说出是哪个程序。
     let two = pick_chain_window(&chain, none, wins(&[(500, &[0x22, 0x33])]), start).unwrap_err();
     assert!(two.contains("WindowsTerminal.exe"), "{two}");
-    // 整条链都没有窗口 ⇒ 说开着连接的那个程序没有窗口。
-    let nowin = pick_chain_window(&chain, none, wins(&[]), start).unwrap_err();
-    assert!(nowin.contains("ssh.exe") && nowin != two, "{nowin}");
+    // 链上有 PowerShell 却一个窗口都没有（Windows 默认终端把它交给了 Windows Terminal，窗口属主不在链上）
+    // ⇒ 说终端窗口归别的程序托管、怎么改，不说「在后台跑」。
+    let handed = pick_chain_window(&chain, none, wins(&[]), start).unwrap_err();
+    assert_eq!(
+        handed,
+        copy_text(
+            "rsBind.front.hostedElsewhere",
+            &[("shell", "powershell.exe")]
+        )
+    );
+    // 整条链连个 shell 都没有 ⇒ 真在后台：说开着连接的那个程序没有窗口。
+    let bg: Vec<ChainLink> = serde_json::from_value(serde_json::json!([
+        { "pid": 700, "name": "ssh.exe", "start": 4000 },
+        { "pid": 650, "name": "svchost.exe", "start": 3000 },
+    ]))
+    .unwrap();
+    let nowin = pick_chain_window(&bg, none, wins(&[]), start).unwrap_err();
+    assert_eq!(
+        nowin,
+        copy_text("rsBind.front.noWindow", &[("name", "ssh.exe")])
+    );
 }
 
 /// ★ 链上某个 PowerShell 在握手表里登记过、且作数 ⇒ 用它登记的那个窗口，哪怕 Windows Terminal 开着好几个窗口

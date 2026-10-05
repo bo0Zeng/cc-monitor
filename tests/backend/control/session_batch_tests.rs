@@ -130,6 +130,7 @@ impl Rig {
                 local_facts: local::Facts {
                     windows: false,
                     is_dir: |_| true,
+                    entry: crate::platform::paths::installed_ccm_entry,
                 },
                 accounts,
             })
@@ -477,6 +478,7 @@ fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_ow
         local_facts: local::Facts {
             windows: false,
             is_dir: |_| true,
+            entry: crate::platform::paths::installed_ccm_entry,
         },
         accounts: &la::Facts {
             has_accounts: false,

@@ -451,7 +451,8 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     ("src/frontend/ui/tab-context-menu.ts", "setTimeout", 3, "① ② hover 菜单的 150ms 开 / 250ms 关延时（二级 flyout；`closeTabContextMenu` 统一清）③ 0ms 下一拍挂右键菜单关闭监听。都是一次性 UI 延时，不取数。"),
     // 〔拆 `tabs.ts` 子步 5〕会话动作搬进 `tab-session-actions.ts` ⇒ 原 ② ③ ④ ⑧ ⑨ 五处跟着走（下一行）：8 = 3 ＋ 5。
     // 5 → 3：`awaitExitFor` 的 ③ `stop(false)` 上限与 ④ 1s 轮询随它一起删了（换号重启直接 kill，不再等退出）。
-    ("src/frontend/ui/tab-session-actions.ts", "setTimeout", 2, "⑧ ⑨ 两处 `bring_*_terminal_to_front` 的 invoke 超时拒绝。都是一次性，不是周期取数。编号沿用 `tabs.ts` 那一行拆开之前的原号。"),
+    // 2 → 4：↗ 的「进行中」两处（`frontOnce`：超过 300ms 才进 · 进了至少停 400ms），都是一次性。
+    ("src/frontend/ui/tab-session-actions.ts", "setTimeout", 4, "⑧ ⑨ 两处 `bring_*_terminal_to_front` 的 invoke 超时拒绝。都是一次性，不是周期取数。编号沿用 `tabs.ts` 那一行拆开之前的原号。⑩ ⑪ `frontOnce`：↗ 在飞超过 300ms 才把按钮换成「进行中」· 进了之后至少停 400ms 再收（防闪），一次性。"),
     ("src/frontend/ui/views/grid-monitor.ts", "setInterval", 1, "1s 重绘 —— 按格差量（没变的一拍零 DOM 写），不再整表重建。**ui-clock，不取数**，见 `REGISTERED` 那条。"),
     ("src/frontend/ui/views/history.ts", "requestAnimationFrame", 1, "展开/收起项目后合并重画一次列表，`rafPending` 标志防重入。一次性。"),
     ("src/frontend/ui/views/history.ts", "setTimeout", 2, "3 → 2：原先的 ① `waitForIndexThenSearch`（等本机索引就绪的 1 秒等待，F14 第四刀）随本机内存索引删了 —— 本机搜索改问本机后端，没有「索引中」。② 0ms 下一拍挂条目右键菜单的关闭监听。③ ★ **F07 下半新增**：搜索框输入去抖（250ms，每次输入前 `clearTimeout`）—— **一次性延时不是周期唤醒**，加它正是为了**减少**下游那三个放大器被触发的次数。"),

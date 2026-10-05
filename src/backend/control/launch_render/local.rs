@@ -51,12 +51,15 @@ pub(crate) struct Facts {
     /// 本地终端是 PowerShell（Windows）还是 POSIX shell。Windows 上没有 tmux ⇒ 一律直路。
     pub(crate) windows: bool,
     pub(crate) is_dir: fn(&str) -> bool,
+    /// 这台 `ccm` 的入口（绝对路径）：那一行直接叫它，不靠终端 `PATH`。说不出 ⇒ `None`（拒）。
+    pub(crate) entry: fn() -> Option<String>,
 }
 
 impl Facts {
     pub(crate) const PRODUCTION: Facts = Facts {
         windows: crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL,
         is_dir: dir_exists,
+        entry: crate::platform::paths::installed_ccm_entry,
     };
 }
 
@@ -92,8 +95,13 @@ pub(crate) fn plan(
     account: &Settled,
     facts: &Facts,
 ) -> Result<Planned, String> {
+    let windows = facts.windows;
     plan_with(req, account, facts, false, |spec, caps| {
-        ci::render_ccm_invocation(spec, caps)
+        if windows {
+            ci::render_ccm_invocation_ps(spec, caps)
+        } else {
+            ci::render_ccm_invocation(spec, caps)
+        }
     })
     .map(|(cmd, launch_id)| Planned { cmd, launch_id })
 }
@@ -121,6 +129,7 @@ fn plan_with<T>(
     out: impl Fn(&ci::CliSpec, &BTreeSet<String>) -> Result<T, ci::Refusal>,
 ) -> Result<(T, Option<String>), String> {
     let name = req.tmux_name.as_deref().filter(|n| !n.is_empty());
+    let entry = (facts.entry)().ok_or_else(|| copy_text("beLaunchRender.entry.noHome", &[]))?;
     if let LocalAction::Attach = req.action {
         if facts.windows {
             return Err(copy_text("rsHistory.attach.windows", &[]));
@@ -135,6 +144,7 @@ fn plan_with<T>(
             Some(name),
             None,
             detach,
+            &entry,
             &out,
         )?;
         return Ok((cmd, None));
@@ -152,7 +162,16 @@ fn plan_with<T>(
     // Windows 上没有 tmux ⇒ 直路（ccm 在那个 PowerShell 窗口里起 agent、等它退）。
     // §36（只绑 Windows）：Windows 这一行里不渲清嵌套会话变量的那一段 —— 清它们是 `ccm` 在最终 exec 那一处做的。
     let container = if facts.windows { None } else { name };
-    let cmd = with_spec(req, account, action, container, Some(&token), detach, &out)?;
+    let cmd = with_spec(
+        req,
+        account,
+        action,
+        container,
+        Some(&token),
+        detach,
+        &entry,
+        &out,
+    )?;
     Ok((cmd, Some(token)))
 }
 
@@ -164,6 +183,7 @@ fn with_spec<T>(
     tmux: Option<&str>,
     launch_id: Option<&str>,
     detach: bool,
+    ccm_path: &str,
     f: impl Fn(&ci::CliSpec, &BTreeSet<String>) -> Result<T, ci::Refusal>,
 ) -> Result<T, String> {
     let launcher = checked_launcher(req.launcher.as_deref())?;
@@ -198,7 +218,7 @@ fn with_spec<T>(
         default_launcher: &req.default_launcher,
         args: &[],
         launch_id,
-        ccm_path: "ccm",
+        ccm_path,
         detach,
     };
     // 能力是这台 ccm 自己的（渲染就在这台后端里）。

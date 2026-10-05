@@ -176,9 +176,9 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           用户一关 `CTRL_CLOSE_EVENT` 就把文件窗口杀了；egui 那个窗口自己会出来，它不需要控制台。\
           `Detached` 是**承重的**，与 `lib.rs::open_with_os` 逐字同形：这条 Tauri 命令一返回句柄就丢，\
           `JobKillOnClose` 会在那一瞬间把刚开出来的窗口收掉；顺带买到「关掉 monitor 不带走已开的文件窗口」。\
-          `Inherit` 与 C2 那一版的拨号代理同形（SR1a 起它不再起进程）：它 stderr 上只有「窗口为什么没立起来」那一句，\
-          接管它要再起一条泵。⚠ 代价如实记：装机那份 GUI app 没有 stderr 控制台 ⇒ 那句话今天会丢。",
-     "Hidden · Detached · Inherit"),
+          `Captured`：它 stderr 上是「窗口为什么没立起来」那几句（例如缺 OpenGL 2.0），双击起的 GUI app 没有 stderr 可跟 \
+          ⇒ 接出来，一条线程读到 EOF、逐行记进 monitor 日志、留最后几行给开窗没成 / 开了又退那一句话。",
+     "Hidden · Detached · Captured"),
     ("local_backend_host.rs", "run_resident_stop_within", "`<本机后端> --resident-stop`（不经 shell）",
      "停本机常驻后端：本机远端同一条 —— 在这台机器上跑一次那个一次性子命令，\
           由它做「请它收尾 → 宽限期内按 pidfd 等 → 到点强杀」（同机监督者，k8s / systemd 同形），monitor 只拿回结局。\

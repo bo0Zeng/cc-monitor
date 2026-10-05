@@ -243,14 +243,16 @@ pub fn resolve_window_bin_in(
 ///   ⇒ Job 句柄一关，刚开出来的窗口当场被收掉。
 ///   ⚠ 顺带一格**刻意的**：用户关掉 monitor 时，已经开着的文件窗口**不跟着走** ——
 ///   那正是「像系统自己的文件管理器一样」那句裁决的样子。
-/// - `StderrSink::Inherit` —— 诊断跟着界面进程的 stderr 走。理由与
-///   `dial_host.rs::open` 逐字同形：接管它要再起一条泵，
-///   而这个子进程的 stderr 上只有「窗口为什么没立起来」那一句话。
+/// - `StderrSink::Captured` —— 它的 stderr 上是「窗口为什么没立起来」那几句（例如缺 OpenGL 2.0）：
+///   双击起的 monitor 没有 stderr 可跟，跟过去就等于丢了 ⇒ 接出来，逐行记进 monitor 的日志，
+///   最后几行留给开窗没成 / 开了又退那一句话（[`StderrTail`]）。
 ///
 /// # Errors
 ///
 /// 二进制找不到 · `spawn` 失败 · 种子写不进去（含子进程当场死掉那一形的 `EPIPE`）。
-pub fn spawn_window(req: &OpenRequest) -> Result<crate::spawn_managed::ManagedChild, String> {
+pub fn spawn_window(
+    req: &OpenRequest,
+) -> Result<(crate::spawn_managed::ManagedChild, StderrTail), String> {
     use crate::spawn_managed::{ConsolePolicy, Lifetime, StderrSink};
     let bin = resolve_window_bin()?;
     let seed = encode_request(req)?;
@@ -264,7 +266,7 @@ pub fn spawn_window(req: &OpenRequest) -> Result<crate::spawn_managed::ManagedCh
         &mut cmd,
         ConsolePolicy::Hidden,
         Lifetime::Detached,
-        StderrSink::Inherit,
+        StderrSink::Captured,
     )
     .map_err(|e| {
         copy_text(
@@ -272,8 +274,74 @@ pub fn spawn_window(req: &OpenRequest) -> Result<crate::spawn_managed::ManagedCh
             &[("bin", &(bin.display()).to_string()), ("e", &e.to_string())],
         )
     })?;
+    let tail = StderrTail::drain(child.stderr.take(), child.id());
     write_seed(&mut child, &seed)?;
-    Ok(child)
+    Ok((child, tail))
+}
+
+/// 窗口进程 stderr 留几行给那一句话。
+const STDERR_TAIL_LINES: usize = 4;
+
+/// 窗口进程的 stderr：一条线程读到 EOF，逐行记进 monitor 的日志、留最后几行。
+pub struct StderrTail {
+    reader: Option<std::thread::JoinHandle<Vec<String>>>,
+}
+
+impl StderrTail {
+    fn drain(err: Option<std::process::ChildStderr>, pid: u32) -> Self {
+        let reader = err.map(|err| {
+            std::thread::spawn(move || {
+                use std::io::{BufRead, Read};
+                let mut r = std::io::BufReader::new(err);
+                let mut tail: std::collections::VecDeque<String> = Default::default();
+                let mut buf = Vec::new();
+                loop {
+                    buf.clear();
+                    match (&mut r)
+                        .take(crate::local_backend::STDERR_MAX_LINE_BYTES)
+                        .read_until(b'\n', &mut buf)
+                    {
+                        Ok(0) | Err(_) => break,
+                        Ok(_) => {}
+                    }
+                    let line = String::from_utf8_lossy(&buf).trim_end().to_string();
+                    if line.is_empty() {
+                        continue;
+                    }
+                    tracing::warn!("文件窗口进程（pid {pid}）stderr：{line}");
+                    if tail.len() == STDERR_TAIL_LINES {
+                        tail.pop_front();
+                    }
+                    tail.push_back(line);
+                }
+                tail.into_iter().collect()
+            })
+        });
+        StderrTail { reader }
+    }
+
+    /// 进程已经退了之后调：等那条线程读到 EOF，交最后几行（没接上 / 读线程没了 ⇒ 空）。
+    fn finish(self) -> Vec<String> {
+        self.reader.and_then(|h| h.join().ok()).unwrap_or_default()
+    }
+}
+
+/// 开窗没成 / 开了又退那一句：`why`（退出码那一句）＋ 它 stderr 最后几行说的原因。
+/// 认得出的原因说人话（缺 OpenGL 2.0）；认不出照原话带最后几行；一行都没有 ⇒ 说它没留下原因。
+pub fn exit_said(why: &str, tail: &[String]) -> String {
+    let all = tail.join("\n");
+    let lower = all.to_ascii_lowercase();
+    if lower.contains("opengl") && lower.contains("2.0") {
+        return copy_text("rsFilewinProc.cause.noOpenGl", &[("why", why)]);
+    }
+    if tail.is_empty() {
+        copy_text("rsFilewinProc.open.noStderr", &[("why", why)])
+    } else {
+        copy_text(
+            "rsFilewinProc.open.stderrTail",
+            &[("why", why), ("tail", &all)],
+        )
+    }
 }
 
 /// 把种子写进那条 stdin **并关掉它**（关掉 = EOF = 「给完了」）。
@@ -332,7 +400,7 @@ pub enum Unopened {
 pub type LateExit = Box<dyn FnOnce(String) + Send + 'static>;
 
 pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, usize), Unopened> {
-    let mut child = spawn_window(req).map_err(Unopened::Process)?;
+    let (mut child, tail) = spawn_window(req).map_err(Unopened::Process)?;
     let pid = child.id();
     let Some(out) = child.stdout.take() else {
         if let Err(e) = child.kill() {
@@ -340,7 +408,7 @@ pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, us
                 "收不掉那个窗口进程（{e}）—— 它说的话对不上约定，可能还会开出一个没人认的窗口"
             );
         }
-        reap_later(child, None, None);
+        reap_later(child, None, tail, None);
         return Err(Unopened::Process(copy_text(
             "rsFilewinProc.spawn.noStdout",
             &[],
@@ -350,7 +418,7 @@ pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, us
     let n = match read_ready(&mut out) {
         Ok(Some(Ready::Listed(n))) => n,
         Ok(Some(Ready::Failed(said))) => {
-            reap_later(child, Some(out), None);
+            reap_later(child, Some(out), tail, None);
             return Err(Unopened::Said(said));
         }
         Ok(None) => {
@@ -359,10 +427,7 @@ pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, us
                 Ok(st) => copy_text("rsFilewinProc.open.exited", &[("st", &st.to_string())]),
                 Err(e) => copy_text("rsFilewinProc.open.failedWhy", &[("e", &e.to_string())]),
             };
-            return Err(Unopened::Process(copy_text(
-                "rsFilewinProc.open.seeStderr",
-                &[("why", &why)],
-            )));
+            return Err(Unopened::Process(exit_said(&why, &tail.finish())));
         }
         Err(garbled) => {
             // 说了一句不是约定形状的话 ⇒ 两端契约漂了；它接下来会不会开窗说不准 ⇒ 收掉它，不留一个没人认的窗口。
@@ -371,7 +436,7 @@ pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, us
                     "收不掉那个窗口进程（{e}）—— 它说的话对不上约定，可能还会开出一个没人认的窗口"
                 );
             }
-            reap_later(child, Some(out), None);
+            reap_later(child, Some(out), tail, None);
             return Err(Unopened::Process(garbled));
         }
     };
@@ -384,13 +449,18 @@ pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, us
             Ok(None) => copy_text("rsFilewinProc.open.failed", &[]),
             Err(e) => copy_text("rsFilewinProc.open.failedWhy", &[("e", &e.to_string())]),
         };
-        reap_later(child, Some(out), None);
-        return Err(Unopened::Process(copy_text(
-            "rsFilewinProc.open.seeStderr",
-            &[("why", &why.to_string())],
-        )));
+        // 已经退了（预算内结束）⇒ 等它的 stderr 读完、带着原因说。
+        let said = if matches!(child.try_wait(), Ok(Some(_))) {
+            let s = exit_said(&why, &tail.finish());
+            reap_later(child, Some(out), StderrTail { reader: None }, None);
+            s
+        } else {
+            reap_later(child, Some(out), tail, None);
+            exit_said(&why, &[])
+        };
+        return Err(Unopened::Process(said));
     }
-    reap_later(child, Some(out), Some(late));
+    reap_later(child, Some(out), tail, Some(late));
     Ok((pid, n))
 }
 
@@ -480,6 +550,7 @@ pub fn read_ready(r: &mut impl std::io::BufRead) -> Result<Option<Ready>, String
 fn reap_later(
     child: crate::spawn_managed::ManagedChild,
     out: Option<std::io::BufReader<std::process::ChildStdout>>,
+    tail: StderrTail,
     late: Option<LateExit>,
 ) {
     std::thread::spawn(move || {
@@ -490,13 +561,14 @@ fn reap_later(
         }
         match child.wait_for_status() {
             Ok(st) if !st.success() => {
+                let tail = tail.finish();
                 tracing::warn!("文件窗口开出来之后又退出了：{st}");
                 if let Some(say) = late {
                     let why = copy_text("rsFilewinProc.late.exited", &[("st", &st.to_string())]);
-                    say(copy_text("rsFilewinProc.open.seeStderr", &[("why", &why)]));
+                    say(exit_said(&why, &tail));
                 }
             }
-            Ok(_) => {}
+            Ok(_) => drop(tail.finish()),
             Err(e) => tracing::warn!("收不掉那个窗口进程（{e}）—— 内核里会留一条僵尸记录"),
         }
     });

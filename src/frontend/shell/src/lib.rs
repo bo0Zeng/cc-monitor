@@ -410,6 +410,41 @@ pub(crate) fn fit_window_to_work_area(w: &tauri::WebviewWindow) {
     }
 }
 
+/// 主窗 / 设置窗：每次起都摆在所在显示器工作区正中（[`host_core::center_in_work_area`]），尺寸照样夹进去。
+/// 不摆的话位置交给系统的默认落点，Windows 每开一扇新窗就挪一格 ⇒ 重启一次左移 26 px。问不到 ⇒ 不动。
+pub(crate) fn center_window_in_work_area(w: &tauri::WebviewWindow) {
+    let (Some(work), Ok(pos), Ok(outer), Ok(inner)) = (
+        work_area_of(w),
+        w.outer_position(),
+        w.outer_size(),
+        w.inner_size(),
+    ) else {
+        tracing::info!("窗口 {} 问不到尺寸或工作区 —— 不摆", w.label());
+        return;
+    };
+    let ((iw, ih), (x, y)) = host_core::center_in_work_area(
+        (outer.width, outer.height),
+        (inner.width, inner.height),
+        work,
+    );
+    tracing::info!(
+        "窗口 {} 摆进工作区 {work:?} 正中：内框 {}×{} → {iw}×{ih}，外框左上 ({},{}) → ({x},{y})",
+        w.label(),
+        inner.width,
+        inner.height,
+        pos.x,
+        pos.y
+    );
+    if (iw, ih) != (inner.width, inner.height) {
+        if let Err(e) = w.set_size(tauri::PhysicalSize::new(iw, ih)) {
+            tracing::warn!("窗口 {} 缩不进工作区：{e}", w.label());
+        }
+    }
+    if let Err(e) = w.set_position(tauri::PhysicalPosition::new(x, y)) {
+        tracing::warn!("窗口 {} 摆不到正中：{e}", w.label());
+    }
+}
+
 // 这里先前是 `D7 阻-3` 那条缝（`ExitShutdownSinks` ＋ 它的收口点）：退出臂按现问的「退出行为」
 // 收掉 monitor 另起的那个本机中转。中转并进本机常驻后端之后，本机固定两个进程（monitor ＋ 常驻后端），
 // 中转随后端按「退出行为」留或退⇒ 退出臂里不再有第三个进程要收，那条缝连同它的判据一起删掉。
@@ -599,9 +634,9 @@ pub fn run() {
                 tracing::warn!("面 A 通道没起来：{e}");
             }
 
-            // 主窗的初始尺寸（`tauri.conf.json`）夹进工作区：小屏上底边别压在任务栏下。
+            // 主窗的初始尺寸（`tauri.conf.json`）夹进工作区（小屏上底边别压在任务栏下）、摆在正中（重启不漂）。
             if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-                fit_window_to_work_area(&window);
+                center_window_in_work_area(&window);
             }
 
             // Debug build 自动开 DevTools(CCM_NO_DEVTOOLS=1 抑制——远程实测/E2E 时省半屏)
@@ -1352,8 +1387,8 @@ async fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
         .background_color(tauri::window::Color(0x2b, 0x2a, 0x27, 0xff))
         .build()
         .map_err(|e| format!("create settings window failed: {e}"))?;
-    // 820 高在 768 高的屏上放不下 ⇒ 夹进工作区。
-    fit_window_to_work_area(&w);
+    // 820 高在 768 高的屏上放不下 ⇒ 夹进工作区；摆在正中（每次开都同一处，不跟着系统默认落点漂）。
+    center_window_in_work_area(&w);
     Ok(())
 }
 

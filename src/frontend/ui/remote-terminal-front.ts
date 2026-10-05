@@ -10,7 +10,7 @@ import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 
-/** 每一问的期限：那台读 `/proc` ＋ 问一次 tmux；本机起一趟 PowerShell（冷启动要几秒）。 */
+/** 每一问的期限：那台读 `/proc` ＋ 问一次 tmux；本机读一次系统连接表与进程表。 */
 const ASK_BUDGET_MS = 15_000;
 
 /** 前两问的结局：进程链（原样交 monitor），或一句话（`reattach` = 可以在新终端里接回）。 */

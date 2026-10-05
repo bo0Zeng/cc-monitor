@@ -39,10 +39,15 @@ fn go(r: &LocalLaunchRequest, f: &Facts) -> Result<Planned, String> {
 const POSIX: Facts = Facts {
     windows: false,
     is_dir: |_| true,
+    entry: || Some("ccm".into()),
 };
+/// Windows 那一行叫入口的写法：PowerShell 单引号字面量前面加 `&`（带引号的命令名要它才叫得起来）。
+const WIN_ENTRY_LITERAL: &str = r"'C:\Users\u\.cc-monitor\bin\ccm.exe'";
+
 const WINDOWS: Facts = Facts {
     windows: true,
     is_dir: |_| true,
+    entry: || Some(r"C:\Users\u\.cc-monitor\bin\ccm.exe".into()),
 };
 
 /// 每一形的成品（期望手写）：都以 `ccm ` 打头，起 agent 的那几格带上交回调用方的那个身份 token。
@@ -109,8 +114,10 @@ fn every_local_launch_shape_is_one_ccm_line() {
 fn the_identity_token_is_planted_and_handed_back() {
     let parsed_id = |cmd: &str| -> String {
         let words: Vec<String> = cmd.split_whitespace().map(str::to_string).collect();
-        assert_eq!(words[0], "ccm", "{cmd}");
-        match crate::control::ccm::argv::parse(&words[1..]) {
+        // Windows 那一行是 `& '<入口>' …`。
+        let skip = if words[0] == "&" { 2 } else { 1 };
+        assert!(words[0] == "ccm" || words[1] == WIN_ENTRY_LITERAL, "{cmd}");
+        match crate::control::ccm::argv::parse(&words[skip..]) {
             Ok(crate::control::ccm::argv::Parsed::Opts(o)) => o.launch_id,
             other => panic!("`ccm` 不认这一行：{cmd}（{:?}）", other.err()),
         }
@@ -139,7 +146,7 @@ fn windows_launches_go_the_direct_way_and_attach_is_refused() {
     r.account = named("work");
     assert_eq!(
         go(&r, &WINDOWS).unwrap().cmd,
-        format!("ccm --resume {SID} -- --ccm-agent claude --account work --ccm-launch-id {SID}")
+        format!("& {WIN_ENTRY_LITERAL} --resume {SID} -- --ccm-agent claude --account work --ccm-launch-id {SID}")
     );
     let mut a = req(LocalAction::Attach);
     a.tmux_name = Some("p-cc".into());
@@ -155,6 +162,7 @@ fn bad_inputs_are_refused_before_anything_is_rendered() {
     let gone = Facts {
         windows: false,
         is_dir: |_| false,
+        entry: || Some("ccm".into()),
     };
     let mut n = req(LocalAction::New);
     n.cwd = Some("/nope".into());

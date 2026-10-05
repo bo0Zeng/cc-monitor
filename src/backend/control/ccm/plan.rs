@@ -1191,6 +1191,26 @@ pub(crate) fn build_among(
     }))
 }
 
+/// 同一条计划写成 `shell` 那种方言（`--ccm-print` · 别名预览）：PowerShell 只有直路那一形（Windows 上没有 tmux，
+/// 容器路 / 接回在那里起不了），别的形照 POSIX。真跑要经 `sh -c` 的那一趟恒用 [`render`]。
+pub(crate) fn render_for(plan: &Plan, shell: crate::platform::shell::dialect::Shell) -> String {
+    match (shell, plan) {
+        (crate::platform::shell::dialect::Shell::PowerShell, Plan::Direct(d)) => {
+            render_direct_ps(d)
+        }
+        _ => render(plan),
+    }
+}
+
+/// 这台的终端说哪种方言（Windows 本机 = PowerShell）。
+pub(crate) fn terminal_shell() -> crate::platform::shell::dialect::Shell {
+    if crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL {
+        crate::platform::shell::dialect::Shell::PowerShell
+    } else {
+        crate::platform::shell::dialect::Shell::Posix
+    }
+}
+
 /// `--ccm-print`：吐出这一趟的**等价 shell**。全部来自 [`Plan`] ⇒ 与真跑同源。
 pub(crate) fn render(plan: &Plan) -> String {
     match plan {
@@ -1345,6 +1365,47 @@ fn render_direct(d: &Direct) -> String {
     }
     let words: Vec<String> = d.argv.iter().map(|a| qarg(a)).collect();
     line.push_str(&posix::exec(&words));
+    line
+}
+
+/// 直路那一行的 PowerShell 写法：与 [`render_direct`] 逐项对应（设 / 清环境 · 中转地址现读钥匙文件 · 换目录 · 跑）。
+/// `CCM_ENV` 是一段 POSIX shell，原样留在最前面（真跑那一趟要经 `sh`）；cc-bus 身份配方整段只在 tmux 里生效，Windows 上没有 tmux ⇒ 不写。
+fn render_direct_ps(d: &Direct) -> String {
+    use crate::platform::shell::dialect::ps_literal as pq;
+    use crate::platform::shell::powershell as ps;
+    let mut line = String::new();
+    if !d.ccm_env.is_empty() {
+        line.push_str(&format!("{}; ", d.ccm_env));
+    }
+    let cfg_env = &d.account_env;
+    if !d.config_dir.is_empty() {
+        line.push_str(&ps::set_env(cfg_env, &pq(&d.config_dir)));
+    }
+    if d.unset_config_dir && !cfg_env.is_empty() {
+        line.push_str(&ps::remove_env(&[cfg_env]));
+    }
+    if !d.nested.is_empty() {
+        line.push_str(&ps::remove_env(&d.nested));
+    }
+    if !d.launch_id.is_empty() {
+        line.push_str(&ps::set_env(LAUNCH_ID_ENV, &pq(&d.launch_id)));
+    }
+    if let Some(url) = &d.relay {
+        let word = match crate::accounts::upstream_select::endpoint::base_url_halves(url) {
+            Some((head, tail)) => {
+                ps::home_file_between(&pq(head), relay_route_core::KEY_FILE_REL, &pq(tail))
+            }
+            None => pq(url),
+        };
+        line.push_str(&ps::set_env(BASE_URL_ENV, &word));
+    } else if d.clears_inherited_relay {
+        line.push_str(&ps::remove_env(&[BASE_URL_ENV]));
+    }
+    if !d.cwd.is_empty() {
+        line.push_str(&ps::set_location(&pq(&d.cwd)));
+    }
+    let words: Vec<String> = d.argv.iter().map(|a| pq(a)).collect();
+    line.push_str(&ps::call(&words));
     line
 }
 

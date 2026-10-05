@@ -65,16 +65,24 @@ pub(crate) fn render_ccm_launch(
         .into_iter()
         .map(str::to_string)
         .collect();
-    render_ccm_launch_with(req, account, &caps)
+    let entry = own_entry()?;
+    render_ccm_launch_with(req, account, &caps, &entry)
 }
 
-/// 同上，能力集由调用方给（夹具对拍用固定的一份，不随这台后端的平台变）。
+/// 这台 `ccm` 的入口（绝对路径）：那一行直接叫它 —— 远端交互 shell 的 `PATH` 上未必有 `ccm`（没装接入块就没有）。
+pub(crate) fn own_entry() -> Result<String, String> {
+    crate::platform::paths::installed_ccm_entry()
+        .ok_or_else(|| copy_core::copy_text("beLaunchRender.entry.noHome", &[]))
+}
+
+/// 同上，能力集与入口由调用方给（夹具对拍用固定的一份，不随这台后端的平台与家目录变）。
 pub(crate) fn render_ccm_launch_with(
     req: &CliRenderRequest,
     account: &Settled,
     caps: &BTreeSet<String>,
+    ccm_path: &str,
 ) -> Result<String, String> {
-    with_spec(req, account, false, |spec| {
+    with_spec(req, account, false, ccm_path, |spec| {
         render_ccm_invocation(spec, caps)
     })
     .map_err(|r| r.reason())
@@ -85,9 +93,10 @@ pub(crate) fn ccm_launch_argv(
     req: &CliRenderRequest,
     account: &Settled,
     caps: &BTreeSet<String>,
+    ccm_path: &str,
     detach: bool,
 ) -> Result<Vec<String>, String> {
-    with_spec(req, account, detach, |spec| ccm_argv(spec, caps)).map_err(|r| r.reason())
+    with_spec(req, account, detach, ccm_path, |spec| ccm_argv(spec, caps)).map_err(|r| r.reason())
 }
 
 /// 上线入参 ＋ 判好的号 ⇒ 渲染器那份 spec（唯一的映射）。
@@ -95,6 +104,7 @@ fn with_spec<T>(
     req: &CliRenderRequest,
     account: &Settled,
     detach: bool,
+    ccm_path: &str,
     f: impl FnOnce(&CliSpec) -> Result<T, super::ccm_invocation::Refusal>,
 ) -> Result<T, super::ccm_invocation::Refusal> {
     let action = match &req.action {
@@ -131,7 +141,7 @@ fn with_spec<T>(
         default_launcher: &req.default_launcher,
         args: &[],
         launch_id: None,
-        ccm_path: "ccm",
+        ccm_path,
         detach,
     };
     f(&spec)

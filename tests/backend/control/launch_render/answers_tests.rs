@@ -41,9 +41,11 @@ fn attach_req() -> Value {
 #[test]
 fn the_cli_product_is_one_cmd_and_a_refusal_is_the_refused_code() {
     let v = answer_cli(&attach_req()).unwrap();
+    let entry =
+        super::ccm_invocation::argv(&crate::platform::paths::installed_ccm_entry().unwrap());
     assert_eq!(
         v,
-        serde_json::json!({"cmd": "ccm -- --attach cc-foo", "account": null})
+        serde_json::json!({"cmd": format!("{entry} -- --attach cc-foo"), "account": null})
     );
     let mut bad = attach_req();
     bad["action"] = serde_json::json!({"kind": "resume", "sid": "-x"});
@@ -91,7 +93,13 @@ fn the_local_request_and_product_have_their_registered_shapes() {
     let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
     keys.sort_unstable();
     assert_eq!(keys, ["account", "cmd", "launchId"]);
-    assert!(v["cmd"].as_str().unwrap().starts_with("ccm "), "{v}");
+    let entry = crate::platform::paths::installed_ccm_entry().unwrap();
+    let head = if crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL {
+        format!("& {} ", crate::platform::shell::dialect::ps_literal(&entry))
+    } else {
+        format!("{} ", super::ccm_invocation::argv(&entry))
+    };
+    assert!(v["cmd"].as_str().unwrap().starts_with(&head), "{v}");
 }
 
 /// 跟随 ⇒ 应答说出实际用的号；点名一个选不了的号 ⇒ `account_unavailable`，`data` 是那一形。

@@ -368,6 +368,11 @@ fn backend_entries(
             copy_text("rsDataPaths.backend.launchNotes", &[]),
             DataClass::Cache,
         ),
+        file(
+            rr::KNOWN_HOSTS_REL,
+            copy_text("rsDataPaths.backend.knownHosts", &[]),
+            DataClass::Cache,
+        ),
         dir(
             rr::ACCOUNTS_DIR_REL,
             copy_text("rsDataPaths.backend.accounts", &[]),

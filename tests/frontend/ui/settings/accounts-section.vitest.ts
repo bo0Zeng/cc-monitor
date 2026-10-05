@@ -991,6 +991,22 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
     expect(seen).not.toContain("账号功能在远端 Linux 上");
   });
 
+  it("★ 这台做不了多账号（后端说的那一句）→ 一开始就说，不摆启用表单；账号那一格记「不适用」不记「缺」", async () => {
+    noRemotes();
+    const said = "这台机器（windows）上还不支持多账号。";
+    fetchLocalAccountsMock.mockResolvedValue(
+      localState({
+        accounts: [],
+        meta: { enabled: false, acctsDir: "", manifestPath: "", updatedAt: null, sharedStore: null, count: 0, error: null, unsupported: said },
+      }),
+    );
+    const el = await mount();
+    expect(el.querySelector(".accounts-local-unsupported")?.textContent).toBe(said);
+    expect(el.querySelector(".accounts-wizard"), "做不了还摆启用那一套").toBeNull();
+    expect(el.querySelector(".accounts-local-empty-title")).toBeNull();
+    expect(readStatus(LOCAL_MACHINE_KEY).accounts?.kind).toBe("na");
+  });
+
   it("★ NF1bD1 空态：一个隔离账号都没有 → 说「还没有隔离账号 + 下一步」，不是「先去配远端」", async () => {
     noRemotes();
     fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: [] }));

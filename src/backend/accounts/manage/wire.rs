@@ -97,14 +97,17 @@ pub(crate) fn run_mcp(d: &dyn Door, req: &McpRequest) -> Result<AccountMcpView, 
 
 /// 这台做不做得了多账号（不做 ⇒ `unsupported`）。
 fn supported() -> Result<(), Refusal> {
-    let os = crate::platform::acct_view::multi_account_supported()
-        .err()
-        .or_else(|| layout::face().is_none().then_some(std::env::consts::OS));
-    match os {
-        None => Ok(()),
-        Some(os) => Err((
+    if let Some(said) = crate::platform::acct_view::unsupported_said() {
+        return Err(("unsupported", said));
+    }
+    match layout::face() {
+        Some(_) => Ok(()),
+        None => Err((
             "unsupported",
-            copy_text("beAcctWire.platform.unsupported", &[("os", os)]),
+            copy_text(
+                "beAcctWire.platform.unsupported",
+                &[("os", std::env::consts::OS)],
+            ),
         )),
     }
 }
