@@ -759,6 +759,8 @@ pub(crate) struct ChildFace {
 #[derive(Clone, Copy)]
 pub(crate) struct StreamFace {
     pub(crate) fold: fn(&str) -> Vec<StreamEv>,
+    /// 一件被截断的事件（只有开头那一截）⇒ 只从开头认得出的那几格（类型 · 应答标识）；认不出 ⇒ 空。不许出字。
+    pub(crate) fold_clipped: fn(&str) -> Vec<StreamEv>,
 }
 
 /// 归一流事件（界面只收这个，不收任何一家的原始事件）。

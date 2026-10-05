@@ -108,3 +108,50 @@ fn each_known_responses_event_folds_and_everything_else_is_silent() {
         assert!(fold(quiet).is_empty(), "不该出事件：{quiet}");
     }
 }
+
+/// ★ 截断的那一件（开头 / 收尾那几件带整份应答对象、常超上限）：只从开头认类型与 `response.id`；
+/// 认不出（id 在截断处之后 · 类型不是那几样 · 根本不是对象）⇒ 空，绝不出字。正文换成占位。
+#[test]
+fn a_clipped_event_yields_only_what_its_head_names() {
+    let cap = comms_outward::test_support::tee::TAP_DATA_CAP;
+    let pad = "x".repeat(cap * 2);
+    let clip = |s: &str| s[..cap.min(s.len())].to_string();
+    let created = format!(
+        r#"{{"type":"response.created","sequence_number":0,"response":{{"id":"resp_9","object":"response","created_at":1,"status":"in_progress","instructions":"{pad}","tools":[]}}}}"#
+    );
+    assert_eq!(
+        fold_clipped(&clip(&created)),
+        vec![StreamEv::Start {
+            rid: "resp_9".into()
+        }]
+    );
+    let completed = format!(
+        r#"{{"type":"response.completed","sequence_number":9,"response":{{"id":"resp_9","output":[{{"type":"message","content":[{{"type":"output_text","text":"{pad}"}}]}}]}}}}"#
+    );
+    assert_eq!(
+        fold_clipped(&clip(&completed)),
+        vec![StreamEv::Stop { ok: true }]
+    );
+    assert_eq!(
+        fold_clipped(&clip(&format!(
+            r#"{{"type":"response.failed","response":{{"error":"{pad}"}}}}"#
+        ))),
+        vec![StreamEv::Stop { ok: false }]
+    );
+    for quiet in [
+        // id 落在截断处之后 ⇒ 认不出开始（不猜）。
+        format!(
+            r#"{{"type":"response.created","response":{{"instructions":"{pad}","id":"resp_9"}}}}"#
+        ),
+        // 字的增量被截断 ⇒ 半截内容不是内容，不出字。
+        format!(r#"{{"type":"response.output_text.delta","output_index":0,"delta":"{pad}"}}"#),
+        format!(r#"{{"pad":"{pad}","type":"response.created"}}"#),
+        format!("[{pad}"),
+    ] {
+        assert!(
+            fold_clipped(&clip(&quiet)).is_empty(),
+            "不该出事件：{}",
+            &quiet[..60]
+        );
+    }
+}

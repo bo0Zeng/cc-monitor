@@ -4239,6 +4239,7 @@ fn tee_line(ev: &TapEvent) -> String {
     }
     let (data, end) = match &ev.body {
         TapBody::Data(d) => (Some(d.as_str()), None),
+        TapBody::Clipped { head, .. } => (Some(head.as_str()), Some("clipped")),
         TapBody::End { broken } => (None, Some(if *broken { "broken" } else { "done" })),
     };
     serde_json::to_string(&TeeLine {

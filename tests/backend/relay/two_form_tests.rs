@@ -148,25 +148,32 @@ fn a_key_carried_in_the_key_header_gets_in_and_is_not_forwarded() {
     );
 }
 
-/// 一条最小的 Responses 流（一轮：开始 · 一块正文 · 一段字 · 说完）。
-const RESPONSES_OK: &str = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n\
-data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\"}}\n\n\
-data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\"}}\n\n\
-data: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"delta\":\"ok\"}\n\n\
-data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\"}}\n\n";
+/// 一条 Responses 流（一轮：开始 · 一块正文 · 一段字 · 说完）。开头与收尾那两件照真流的形带整份应答对象
+/// （含整段系统提示，真读数 18 KB 量级 ⇒ 超 tee 的单件上限；正文换成占位）。
+fn responses_ok() -> &'static str {
+    let pad = "x".repeat(20 * 1024);
+    Box::leak(format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n\
+data: {{\"type\":\"response.created\",\"sequence_number\":0,\"response\":{{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"in_progress\",\"instructions\":\"{pad}\",\"tools\":[]}}}}\n\n\
+data: {{\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{{\"type\":\"message\"}}}}\n\n\
+data: {{\"type\":\"response.output_text.delta\",\"output_index\":0,\"delta\":\"ok\"}}\n\n\
+data: {{\"type\":\"response.completed\",\"sequence_number\":4,\"response\":{{\"id\":\"resp_1\",\"status\":\"completed\",\"instructions\":\"{pad}\"}}}}\n\n"
+    ).into_boxed_str())
+}
 
 /// ★★ Codex 那一家照真请求的形发（钥匙在钥匙头里、地址里没有钥匙段）：
 /// ① 先一发 WebSocket 升级 ⇒ 426、一个字节不到上游；② 改发 `POST …/responses` ⇒ 带 `ChatGPT-Account-ID` 的落 ChatGPT 那一支、
 /// 不带的落 API 那一支（反向：API 形的那一发不许落到 ChatGPT 那一支）；③ tee 出的流标签 ＝ `session-id` 的值，
-/// 主运行（`thread-id` ＝ `session-id`）归主运行、子 agent（`thread-id` 是它自己的）归它，流折得出开始 · 字 · 收尾（活卡要的那几件）。
+/// 主运行（`thread-id` ＝ `session-id`）归主运行、子 agent（`thread-id` 是它自己的）归它，流折得出开始 · 字 · 收尾（活卡要的那几件）——
+/// 开头那一件超 tee 单件上限（截断形）也照样认得出开始。
 /// 真上游换成两个假上游（路径前缀照真上游的形）。
 #[test]
 fn a_codex_shaped_round_gets_426_then_picks_its_upstream_by_login_form_and_routes_its_runs() {
     use crate::accounts::upstream_select::UpstreamPick;
     use crate::agents::StreamEv;
     use crate::stream::wire::Frame;
-    let chatgpt = spawn_name_upstream(RESPONSES_OK);
-    let api = spawn_name_upstream(RESPONSES_OK);
+    let chatgpt = spawn_name_upstream(responses_ok());
+    let api = spawn_name_upstream(responses_ok());
     let base = |up: &NameUpstream, path: &str| {
         comms_outward::Base::parse(&format!("http://127.0.0.1:{}{path}", up.addr.port())).unwrap()
     };

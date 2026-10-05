@@ -9,8 +9,8 @@
 //!
 //! - **四样东西**：`stream`（请求自带的会话标识头，中转不解释它）· `resp`（本进程第几个响应）·
 //!   `n`（这一个响应里第几个事件，从 0 连续）· 事件原文 / 收尾方式。**不带路由那两段**：挂载物 ① 不问账号。
-//! - **丢必须说，而且说在原位**：每个事件**先占号再投递**；投不进（宿主通道满 / 没人连着）、单个事件超
-//!   [`TAP_DATA_CAP`]、解码那一路丢了半行 ⇒ 号照占、事件没了 ⇒ 接收侧看 `n` 连不连得上就知道丢在哪两个号之间
+//! - **丢必须说，而且说在原位**：每个事件**先占号再投递**；单个事件超 [`TAP_DATA_CAP`] ⇒ 只交开头那一截、明标截断与原长
+//!   （[`TapBody::Clipped`]；有的协议开头那一件就带整份应答对象）；投不进（宿主通道满 / 没人连着）、解码那一路丢了半行 ⇒ 号照占、事件没了 ⇒ 接收侧看 `n` 连不连得上就知道丢在哪两个号之间
 //!   （`Gap{from_seq,to_seq}` 那一形，纯算术，不要旁路计数行）。收尾那一件带「一共占了几个号」⇒ 尾巴上的缺口也看得见。
 //! - **永不阻塞转发**：`TapPort::offer` 的契约是「立刻答收没收」（宿主用 `try_send`）。
 //! - **事件原文是敌手可控的字节**：原样交出去（内容一律原样透传），上线时是 `tap` 帧里的**一个 JSON 串**，
@@ -95,6 +95,9 @@ pub struct TapEvent {
 pub enum TapBody {
     /// 一个 SSE 事件：`data:` 后面那段原文（敌手可控字节，原样；上线时是一个 JSON 串，不参与帧结构）。
     Data(String),
+    /// 一个超 [`TAP_DATA_CAP`] 的事件：只交开头那 `head`（不超上限、在字符边界上切）＋ 原长 `len`（字节）。
+    /// **它不是完整的事件**：接收侧只许从开头认那几格（类型 · 标识），不许当整件内容用。
+    Clipped { head: String, len: u64 },
     /// 这个响应不会再有事件了。`broken` = 转发以错误收尾（下游 / 上游断了），否则上游正常说完。
     End { broken: bool },
 }
@@ -114,10 +117,10 @@ pub trait TapPort: Send + Sync {
 /// 一项的「在不在」：（头名, 那一项的前缀）＋ 这一发带没带。
 pub type RequestMark = ((&'static str, &'static str), bool);
 
-/// 单个事件原文的字节上限。超了**不交**、号照占（缺口可见）。
+/// 单个事件原文的字节上限。超了只交开头这么多、标成截断（[`TapBody::Clipped`]）。
 ///
-/// 值怎么定的：上游的 SSE 是 token 级增量，开头那一件带整份 usage 也在 KiB 级；
-/// 16 KiB 以上的一个事件只可能来自不正常的上游。它同时把「宿主通道满载」封在 `容量 × 16 KiB`。
+/// 值怎么定的：上游的 SSE 是 token 级增量，增量事件在 KiB 级；开头 / 收尾那一件在有的协议里带整份应答对象（含整段系统提示），
+/// 远超这个数，但接收侧从它要的只有开头那几格。它同时把「宿主通道满载」封在 `容量 × 16 KiB`。
 /// 登记住址 `src/frontend/shell/src/byte_cap_registry.rs`（尺寸类常量不登记就红）。
 pub const TAP_DATA_CAP: usize = 16 * 1024;
 
@@ -173,18 +176,28 @@ impl TeeSink {
         }
     }
 
-    /// 一个 SSE 事件：先占号，再投递（投不进 / 超界 ⇒ 号照占，缺口在接收侧可算）。
+    /// 一个 SSE 事件：先占号，再投递（投不进 ⇒ 号照占，缺口在接收侧可算；超界 ⇒ 交开头那一截、标截断）。
     pub(crate) fn event(&self, id: super::StreamId<'_>, at: &mut TeeStream, payload: &str) {
         let n = at.take();
-        if payload.len() <= TAP_DATA_CAP {
-            let _ = self.port.offer(TapEvent {
-                stream: id.stream.to_string(),
-                owner: id.owner.to_string(),
-                resp: at.resp,
-                n,
-                body: TapBody::Data(payload.to_string()),
-            });
-        }
+        let body = if payload.len() <= TAP_DATA_CAP {
+            TapBody::Data(payload.to_string())
+        } else {
+            let mut cut = TAP_DATA_CAP;
+            while !payload.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            TapBody::Clipped {
+                head: payload[..cut].to_string(),
+                len: payload.len() as u64,
+            }
+        };
+        let _ = self.port.offer(TapEvent {
+            stream: id.stream.to_string(),
+            owner: id.owner.to_string(),
+            resp: at.resp,
+            n,
+            body,
+        });
     }
 
     /// 解码那一路（`SseSplitter` / `ChunkedView` 超上限）丢掉了字节：那一截里至少有一个事件没成形

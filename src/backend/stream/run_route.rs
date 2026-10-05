@@ -116,9 +116,12 @@ impl RunRouter {
         }
         if !self.resps.contains_key(&resp) {
             // 头一件不是 0 号 ⇒ 开头丢了（对账键在里面）；没有会话标签 ⇒ 对不上任何 tab。都不收。
-            let TapBody::Data(d) = &ev.body else {
-                self.lose(resp, Lost::Head);
-                return Vec::new();
+            let d = match &ev.body {
+                TapBody::Data(_) | TapBody::Clipped { .. } => &ev.body,
+                TapBody::End { .. } => {
+                    self.lose(resp, Lost::Head);
+                    return Vec::new();
+                }
             };
             if ev.n != 0 {
                 self.lose(resp, Lost::Head);
@@ -129,7 +132,7 @@ impl RunRouter {
                 return Vec::new();
             }
             let Some(family) = self.families.iter().copied().find(|f| {
-                (f.face.fold)(d)
+                fold_body(f.face, d)
                     .iter()
                     .any(|e| matches!(e, StreamEv::Start { .. }))
             }) else {
@@ -176,7 +179,7 @@ impl RunRouter {
         }
         r.raw_next += 1;
         let items: Vec<Item> = match ev.body {
-            TapBody::Data(d) => (r.face.fold)(&d)
+            body @ (TapBody::Data(_) | TapBody::Clipped { .. }) => fold_body(r.face, &body)
                 .into_iter()
                 .map(|e| {
                     if let StreamEv::Start { rid } = &e {
@@ -254,6 +257,15 @@ impl RunRouter {
             self.bury(resp);
         }
         out
+    }
+}
+
+/// 一件事 ⇒ 那一家协议面折出的归一事件（截断的那一件只走它的截断折法）。
+fn fold_body(face: StreamFace, body: &TapBody) -> Vec<StreamEv> {
+    match body {
+        TapBody::Data(d) => (face.fold)(d),
+        TapBody::Clipped { head, .. } => (face.fold_clipped)(head),
+        TapBody::End { .. } => Vec::new(),
     }
 }
 

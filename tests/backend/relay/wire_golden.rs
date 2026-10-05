@@ -499,6 +499,7 @@ fn tee_line(ev: &crate::relay::TapEvent) -> String {
     }
     let (data, end) = match &ev.body {
         crate::relay::TapBody::Data(d) => (Some(d.as_str()), None),
+        crate::relay::TapBody::Clipped { head, .. } => (Some(head.as_str()), Some("clipped")),
         crate::relay::TapBody::End { broken } => {
             (None, Some(if *broken { "broken" } else { "done" }))
         }
