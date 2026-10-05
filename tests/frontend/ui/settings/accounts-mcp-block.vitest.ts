@@ -5,8 +5,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const invokeMock = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invokeMock(...a) }));
 const askConfirmMock = vi.fn();
-vi.mock("../../../../src/frontend/ui/ask-dialog", () => ({ askConfirm: (...a: unknown[]) => askConfirmMock(...a) }));
-vi.mock("../../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+vi.mock("../../../../src/frontend/ui/kit/dialog", () => ({ confirmDialog: (s: { body?: string }) => askConfirmMock(s.body) }));
+vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 
 import { chanArgsJson, chanReply, type ChanCallArgs } from "../../../test-support/chan-fake";
 import { renderSharedMcp } from "../../../../src/frontend/ui/settings/accounts-mcp-block";

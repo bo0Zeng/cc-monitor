@@ -1,0 +1,54 @@
+/* 进度（C14）。 */
+@layer components {
+  .progressSpinner {
+    display: inline-block;
+    flex: none;
+    width: var(--icon-size-compact);
+    height: var(--icon-size-compact);
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    opacity: 0.85;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .progressRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+    width: 100%;
+    font-size: var(--font-size-small);
+    color: var(--text-2);
+  }
+
+  .progressTrack {
+    flex: 1;
+    height: 4px;
+    overflow: hidden;
+    border-radius: var(--radius-s);
+    background: var(--border-soft);
+  }
+
+  .progressFill {
+    height: 100%;
+    background: var(--accent);
+    transform-origin: left;
+  }
+
+  .progressReadout {
+    flex: none;
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .progressSpinner {
+      animation-duration: 2.4s;
+    }
+  }
+}

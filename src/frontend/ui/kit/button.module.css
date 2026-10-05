@@ -1,0 +1,122 @@
+/* 按钮（C1）· 切换按钮（C21）· 按钮行。 */
+@layer components {
+  .btnButton {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    height: var(--control-h);
+    padding: 0 var(--control-pad-x);
+    border: 1px solid transparent;
+    border-radius: var(--radius-m);
+    background: transparent;
+    color: var(--text);
+    font-size: var(--font-size-base);
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background var(--dur-press),
+      color var(--dur-press),
+      border-color var(--dur-press);
+  }
+
+  .btnButton[data-size="compact"] {
+    height: var(--control-h-compact);
+    padding: 0 var(--control-pad-x-compact);
+    gap: var(--space-2);
+    font-size: var(--font-size-small);
+  }
+
+  .btnButton[data-kind="primary"] {
+    background: var(--accent-strong);
+    color: var(--text-on-strong);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .btnButton[data-kind="primary"]:not([aria-disabled="true"]):hover {
+    background: color-mix(in srgb, var(--accent-strong) 94%, var(--text-on-strong));
+  }
+
+  .btnButton[data-kind="danger"] {
+    background: var(--error-strong);
+    color: var(--text-on-strong);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .btnButton[data-kind="danger"]:not([aria-disabled="true"]):hover {
+    background: color-mix(in srgb, var(--error-strong) 94%, var(--text-on-strong));
+  }
+
+  .btnButton[data-kind="secondary"],
+  .btnButton[data-kind="danger-text"] {
+    border-color: var(--border-medium);
+  }
+
+  .btnButton[data-kind="danger-text"] {
+    color: var(--error-text);
+  }
+
+  .btnButton[data-kind="icon"] {
+    width: var(--control-h);
+    padding: 0;
+  }
+
+  .btnButton[data-kind="icon"][data-size="compact"] {
+    width: var(--control-h-compact);
+  }
+
+  .btnButton[data-kind="secondary"]:not([aria-disabled="true"]):hover,
+  .btnButton[data-kind="danger-text"]:not([aria-disabled="true"]):hover {
+    background: var(--state-hover);
+    border-color: var(--text-faint);
+  }
+
+  .btnButton[data-kind="ghost"],
+  .btnButton[data-kind="icon"] {
+    color: var(--text-2);
+  }
+
+  .btnButton[data-kind="ghost"]:not([aria-disabled="true"]):hover,
+  .btnButton[data-kind="icon"]:not([aria-disabled="true"]):hover {
+    background: var(--state-active);
+    color: var(--text);
+  }
+
+  .btnButton:not([data-kind="primary"], [data-kind="danger"]):active {
+    background: var(--state-active);
+  }
+
+  .btnButton:is([data-kind="primary"], [data-kind="danger"]):active {
+    filter: brightness(0.92);
+  }
+
+  .btnButton[aria-pressed="true"] {
+    background: var(--state-active);
+    color: var(--text);
+  }
+
+  .btnButton[aria-pressed="true"] > svg {
+    color: var(--accent);
+  }
+
+  .btnButton[aria-disabled="true"] {
+    opacity: var(--state-disabled-opacity);
+    cursor: default;
+  }
+
+  .btnButton[data-busy="true"] {
+    cursor: progress;
+  }
+
+  .btnLabel:empty {
+    display: none;
+  }
+
+  .btnRow {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-4);
+  }
+}

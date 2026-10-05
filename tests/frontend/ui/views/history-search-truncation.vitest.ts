@@ -33,7 +33,7 @@ vi.mock("../../../../src/frontend/ui/views/session-viewer", () => ({
 vi.mock("../../../../src/frontend/ui/keybindings/registry", () => ({
   dispatcher: { pushOverlay: vi.fn(), popOverlay: vi.fn() },
 }));
-vi.mock("../../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("../../../../src/frontend/ui/remote-launch-run", () => ({
   runRemoteResume: vi.fn().mockResolvedValue(undefined),
   runNewSessionRemote: vi.fn().mockResolvedValue(undefined),

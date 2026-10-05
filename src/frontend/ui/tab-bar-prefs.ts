@@ -39,7 +39,7 @@ import { patchConfig, type ConfigEdit } from "./config";
 import type { Tab } from "./tab-model";
 import { ENDED, UNSEEN, isLive } from "./tab-session-state";
 import { copyText } from "./copy-table";
-import { showActionFailureToast } from "./error-toast";
+import { toast } from "./kit/toast";
 import type { TabStore } from "./tab-store";
 import type { Origin } from "./ipc/origin";
 
@@ -50,7 +50,7 @@ import type { Origin } from "./ipc/origin";
  */
 export function sayCollectionRefusal(r: CollectionRefusal): void {
   const { title, body } = collectionRefusalText(r);
-  showActionFailureToast(title, body, { level: "info", durationMs: 6000 });
+  toast(title, body, { level: "info" });
 }
 
 /** 落盘偏好要宿主做的三件事。 */
@@ -319,7 +319,7 @@ export class TabBarPrefs {
       await patchConfig(edits);
     } catch (e) {
       console.warn("[tab-collections] 落盘失败:", e);
-      showActionFailureToast(copyText("tabBar.persist.collectionsFailed"), String(e));
+      toast(copyText("tabBar.persist.collectionsFailed"), String(e));
     }
   }
 
@@ -474,7 +474,7 @@ export class TabBarPrefs {
       await setPinned(next);
     } catch (e) {
       console.warn("[tab-bar] 固定落盘失败:", e);
-      showActionFailureToast(copyText("tabBar.persist.pinnedFailed"), String(e)); // 同 `persistCollections`
+      toast(copyText("tabBar.persist.pinnedFailed"), String(e)); // 同 `persistCollections`
     }
   }
 
@@ -532,7 +532,7 @@ export class TabBarPrefs {
       await setTabOrder(this.store.savedOrder);
     } catch (e) {
       console.warn("[tab-bar] 顺序落盘失败:", e);
-      showActionFailureToast(copyText("tabBar.persist.orderFailed"), String(e)); // 同 `persistCollections`
+      toast(copyText("tabBar.persist.orderFailed"), String(e)); // 同 `persistCollections`
     }
   }
 

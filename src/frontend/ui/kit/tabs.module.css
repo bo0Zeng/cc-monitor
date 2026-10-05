@@ -1,0 +1,61 @@
+/* 页内分栏（C5）· 分段按钮（C23）。 */
+@layer components {
+  .tabs {
+    display: flex;
+    gap: var(--space-1);
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .tabsSegmented {
+    display: inline-flex;
+    height: var(--control-h);
+    overflow: hidden;
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-m);
+  }
+
+  .tabsItem {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: 0 var(--control-pad-x);
+    border: none;
+    background: transparent;
+    color: var(--text-2);
+    font-size: var(--font-size-base);
+    cursor: pointer;
+    transition:
+      background var(--dur-press),
+      color var(--dur-press),
+      border-color var(--dur-press);
+  }
+
+  .tabsItem:hover {
+    color: var(--text);
+  }
+
+  .tabsItem:focus-visible {
+    outline-offset: calc(-1 * var(--focus-ring));
+  }
+
+  .tabs .tabsItem {
+    height: var(--row-h-tab);
+    margin-bottom: -1px;
+    border-bottom: 2px solid transparent;
+  }
+
+  .tabs .tabsItem[aria-selected="true"] {
+    border-bottom-color: var(--accent);
+    color: var(--text);
+  }
+
+  .tabsSegmented .tabsItem + .tabsItem {
+    border-left: 1px solid var(--border-soft);
+  }
+
+  .tabsSegmented .tabsItem[aria-checked="true"] {
+    background: var(--state-active);
+    box-shadow: inset 0 -2px 0 var(--accent);
+    color: var(--text);
+  }
+}

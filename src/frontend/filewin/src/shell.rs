@@ -1027,7 +1027,7 @@ impl FileWindow {
         }
         match found {
             // 🔴 像素那一步在这儿，用的是那**唯一住址**的步距（`rows::row_pitch`）——
-            //    第一版这里乘的是 `ROW_HEIGHT`，漏了行间距，滚偏 14%。
+            //    第一版这里乘的是行高，漏了行间距，滚偏 14%。
             Some(i) => Some(Ok(i as f32 * pitch)),
             None => {
                 // 找不到就把高亮也撤掉 —— 留着等于在屏幕上标一个不存在的东西。

@@ -44,7 +44,7 @@ import { noteLocalCcm } from "./machine-aliases"; // 本机 ccm 那一格的唯�
 /** 起/停之后轮询状态的次数与间隔 —— 命令是「发出去就返回」的，不轮询看到的是操作前的状态。 */
 const SETTLE_TRIES = 30;
 const SETTLE_INTERVAL_MS = 100;
-import { showActionFailureToast } from "../error-toast";
+import { toast } from "../kit/toast";
 import { resync, resyncSaid } from "../resync";
 import { emit } from "@tauri-apps/api/event";
 import { RESYNC_DONE_EVENT } from "./events";
@@ -53,7 +53,8 @@ import { LOCAL_ORIGIN } from "../backend-policy";
 import { copyText } from "../copy-table";
 import { formatBytes } from "../format";
 import { recordFacet } from "./machine-status";
-import { askConfirm, type ConfirmFn } from "../ask-dialog";
+import { confirmDialog, type ConfirmFn } from "../kit/dialog";
+import { machineName } from "../control-said";
 import { fetchSessionAccountsOrNull } from "../account-reads";
 import type { SessionAccount } from "../accounts";
 
@@ -282,7 +283,7 @@ export class BackendSection {
   ) {
     this.onLinkSeen = opts.onLinkSeen;
     this.hosted = opts.hosted ?? false;
-    this.confirm = opts.confirm ?? askConfirm;
+    this.confirm = opts.confirm ?? confirmDialog;
     this.sessions = opts.sessions ?? fetchSessionAccountsOrNull;
     this.element = document.createElement("div");
     this.element.className = "settings-section backend-section";
@@ -461,10 +462,10 @@ export class BackendSection {
       if (isLocalOrigin(origin) && hostOs() !== "windows") {
         noteLocalCcm(true).catch((e: unknown) => console.warn("[resync] 本机 ccm 那一格没重问：", e));
       }
-      showActionFailureToast(copyText("backend.resync.doneTitle"), resyncSaid(r), { level: "info", durationMs: 6000 });
+      toast(copyText("backend.resync.doneTitle"), resyncSaid(r), { level: "info" });
       void emit(RESYNC_DONE_EVENT, { origin }); // ㉟①：主窗口标出这台上记录没了的固定条
     } catch (e) {
-      showActionFailureToast(copyText("backend.resync.failed"), e instanceof Error ? e.message : String(e));
+      toast(copyText("backend.resync.failed"), e instanceof Error ? e.message : String(e));
     } finally {
       btn.disabled = false;
     }
@@ -667,7 +668,15 @@ export class BackendSection {
     // 远端也问：远端中转住在那台的常驻后端里，停它就停了中转。
     if (what === "stop") {
       const warn = stopWarning(await this.sessions(origin));
-      if (warn !== null && !(await this.confirm(warn))) {
+      if (
+        warn !== null &&
+        !(await this.confirm({
+          title: copyText("backend.stop.title", { machine: machineName(origin) }),
+          action: copyText("backend.stop.action"),
+          danger: true,
+          body: warn,
+        }))
+      ) {
         for (const b of btns) b.disabled = false;
         return;
       }
@@ -683,7 +692,7 @@ export class BackendSection {
         console.info(`[P2s] ${origin} stop: ${end.stopped} ${end.pid ?? ""}`);
       }
     } catch (e) {
-      showActionFailureToast(what === "start" ? copyText("backend.start.failed") : copyText("backend.stop.failed"), String(e));
+      toast(what === "start" ? copyText("backend.start.failed") : copyText("backend.stop.failed"), String(e));
     }
     await this.settleStatus(origin, what === "start");
     for (const b of btns) b.disabled = false;
@@ -709,7 +718,7 @@ export class BackendSection {
     } catch (e) {
       // 存不下就**把勾回退**——否则屏上写着 A 而实际是 B，比报错更坏。
       box.checked = !want;
-      showActionFailureToast(copyText("backend.policy.saveFailed"), e instanceof Error ? e.message : String(e));
+      toast(copyText("backend.policy.saveFailed"), e instanceof Error ? e.message : String(e));
     }
   }
 

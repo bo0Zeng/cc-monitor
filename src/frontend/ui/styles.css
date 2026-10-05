@@ -9,95 +9,6 @@
  */
 
 @layer components {
-/* issue #10：Tab 右键上下文菜单（极简浮层，挂 body） */
-.tab-context-menu {
-  position: fixed;
-  z-index: var(--z-menu);
-  min-width: 140px;
-  background: var(--bg-2);
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  padding: 4px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-}
-
-.tab-context-menu-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  background: transparent;
-  border: none;
-  color: var(--text);
-  font: inherit;
-  font-size: var(--font-size-small);
-  padding: 6px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.tab-context-menu-item:hover {
-  background: var(--overlay-hover);
-}
-
-/* F79：破坏性项（杀死会话）红色——禁用占位（检测 tmux…）不上红、置灰。 */
-.tab-context-menu-item.is-danger:not(:disabled) {
-  color: var(--error);
-}
-
-.tab-context-menu-item.is-danger:hover:not(:disabled) {
-  background: var(--error);
-  color: var(--bg-2);
-}
-
-.tab-context-menu-item:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-/* F09：二级 flyout（动作 × 修饰）——悬停/点击展开，见 tabs.ts::makeTabMenuButton。 */
-.tab-context-menu-item-wrap {
-  position: relative;
-}
-
-.tab-context-menu-item.has-submenu {
-  position: relative;
-  padding-right: 22px;
-}
-
-.tab-context-menu-item.has-submenu::after {
-  content: var(--mark-submenu);
-  position: absolute;
-  right: 8px;
-}
-
-.tab-context-submenu {
-  display: none;
-  position: absolute;
-  left: 100%;
-  top: 0;
-  margin-left: 2px;
-}
-
-/* F09 Phase D 审计（UX，重要）：窄窗口/宽 tab-bar 组合下右侧放不下时，tabs.ts::
-   flipSubmenuIfOverflowing 加这个 class，改成向左展开，避免级联 flyout 跑出视口变死菜单。 */
-.tab-context-submenu.flip-left {
-  left: auto;
-  right: 100%;
-  margin-left: 0;
-  margin-right: 2px;
-}
-
-.tab-context-menu-item-wrap.is-open > .tab-context-submenu {
-  display: block;
-}
-
-/* F09 Phase D 审计（UX，建议）：Resume flyout 里"跟随默认账号"与"换账号"两组的纯展示性分隔线。 */
-.tab-context-menu-divider {
-  height: 1px;
-  margin: 4px 8px;
-  background: var(--border-strong);
-}
-
 /* === Tab Bar === */
 
 #tab-bar {
@@ -171,59 +82,6 @@
   }
 }
 
-/* ── 顶栏图标：内联 SVG（devbench F09，2026-08-10）──────────────────────────
- *
- * 用户实测报告（08-10）：「右上角那些不显示 emoji，反而显示一些奇怪的东西，
- * 根本不知道是什么」。他在 Linux 上跑，而本项目原本 Windows 优先 ——
- * 作者本机有 Segoe UI Symbol / Segoe UI Emoji，所以那几个字符一直看着是好的。
- *
- * ★ 成因是**两类字符混在一起**，都会变豆腐块但原因不同：
- *   · `⚙ ◷ ▦ ∑ ⌨` **不是 emoji**，是数学/几何符号 —— 靠系统**正文字体**覆盖
- *   · `🗺 🗂` 才是真 emoji —— 要**emoji 字体**（Noto Color Emoji 之类）
- *   换成「另一个符号」只是换一个赌注，所以改成不依赖任何字体的 SVG。
- *
- * 为什么是 CSS mask 而不是把 SVG 塞进 DOM：
- *   ① 本项目有避免 `innerHTML` 的纪律（`command-bar.ts` 头注逐字「全 textContent，
- *      无 innerHTML」），塞 SVG 要么用 innerHTML 要么写一堆 `createElementNS`
- *   ② mask + `background-color: currentColor` ⇒ **图标自动跟随 `color`**，
- *      hover 与主题切换一行都不用改（这些按钮本来就靠 `color: var(--text-2)` 变色）
- *   ③ data URI 打进 bundle，离线可用、零额外请求
- *
- * ⚠ 图标形状**没有判据**（诚实边界 5g：机检管不了「画得好不好看」，靠人看）。
- * 有判据的是两件事：TS 侧不许再用字符当图标 · 每个 trigger 都要有这里的图标定义。
- */
-.settings-trigger::before,
-.history-trigger::before,
-.grid-monitor-trigger::before,
-.sftp-trigger::before,
-.status-cmdk-icon::before {
-  content: "";
-  display: block;
-  width: 17px;
-  height: 17px;
-  background-color: currentColor;
-  /* stylelint-disable property-no-vendor-prefix -- `-webkit-mask-*` 在这里是**必要的**，
-     不是历史遗留：Tauri 在 Linux 上用 **WebKitGTK**，而 WebKit 对无前缀 `mask` 简写的支持
-     直到很近才跟上。删掉前缀 ⇒ 图标在 Linux 上不显示，而本件治的 bug（用户 08-10 实测
-     「右上角那些…根本不知道是什么」）**正是在 Linux 上报的** —— 那等于把它原样复发一遍。
-     ⚠ 豁免范围刻意只包这一个块（`stylelint-enable` 紧跟在末尾），不放开整份文件。 */
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-  mask-position: center;
-  -webkit-mask-size: contain;
-  mask-size: contain;
-}
-
-/* 命令面板提示：键盘 */
-.status-cmdk-icon::before {
-  -webkit-mask-image: var(--icon-keyboard);
-  mask-image: var(--icon-keyboard);
-  width: 15px;
-  height: 15px;
-}
-/* stylelint-enable property-no-vendor-prefix */
-
 /* 栏顶常驻「重新读取」：恒为 #tab-bar 第一个子元素，滚动时贴顶。 */
 .tab-bar-reread {
   position: sticky;
@@ -238,7 +96,7 @@
   margin: 0 6px 4px;
   background: var(--bg-2);
   border: 1px solid var(--border-strong);
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   color: var(--text-2);
   font: inherit;
   cursor: pointer;
@@ -338,7 +196,7 @@
 
 .tab-pin {
   flex: none;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   line-height: 1;
   opacity: 0.85;
 }
@@ -426,7 +284,7 @@
 /* 点一行在它下面展开它的时间线。 */
 .agent-row-clickable {
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
 }
 
 .agent-row-clickable:hover {
@@ -481,7 +339,7 @@
   font-size: var(--font-size-xs);
   color: var(--accent);
   border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   padding: 0 7px;
 }
 
@@ -519,8 +377,8 @@
 }
 .tab-badge {
   background: var(--accent);
-  color: #fff;
-  border-radius: 10px;
+  color: var(--text-on-strong);
+  border-radius: var(--radius-xl);
   padding: 0 6px;
   font-size: var(--font-size-xs);
   line-height: 16px;
@@ -537,7 +395,7 @@
   margin-left: 4px;
   width: 16px;
   height: 16px;
-  border-radius: 3px;
+  border-radius: var(--radius-s);
   color: var(--text-2);
   font-size: var(--font-size-mono);
   line-height: 1;
@@ -553,7 +411,7 @@
 }
 
 .tab-focus {
-  font-size: 14px;
+  font-size: var(--font-size-base);
 }
 
 /* ↗ 在飞超过 300ms：图标换成 14px 转圈（不确定进度），完了收回。 */
@@ -580,7 +438,7 @@
 
 .tab-cwd {
   /* emoji 字号略小，跟 ↗ 视觉权重一致 */
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 /* === Tab 撕离拖拽（tear-off） === */
@@ -605,10 +463,10 @@
   background: var(--card);
   color: var(--text);
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-m);
   font: inherit;
   font-size: var(--font-size-base);
-  box-shadow: 0 4px 16px var(--overlay-shadow);
+  box-shadow: var(--shadow-float);
 }
 
 /* armed（指针落到 tab bar 下方）：强调色边/底，信号"松手即弹独立窗口"。 */
@@ -700,7 +558,7 @@
    contain-intrinsic-size 显式覆盖 120px 兜底(它匹配 .stream-content > *)。 */
 .stream-more-above {
   text-align: center;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   color: var(--text-2);
   padding: 6px 0 10px;
   user-select: none;
@@ -737,12 +595,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: var(--font-size-mono);
   line-height: 1;
   color: var(--text-faint);
   background: var(--card);
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-m);
   cursor: pointer;
   opacity: 0;
   transition:
@@ -777,8 +635,8 @@
       不需要任何刷新管线。 */
 .branch-fold-wrap .viewer-branch-btn {
   border-style: dashed;
-  color: var(--warn, #b8860b);
-  border-color: var(--warn, #b8860b);
+  color: var(--warn);
+  border-color: var(--warn);
 }
 
 .branch-fold-wrap .viewer-branch-btn::after {
@@ -787,13 +645,13 @@
   position: absolute;
   right: -3px;
   bottom: -4px;
-  font-size: 9px;
+  font-size: var(--font-size-xs);
   line-height: 1;
   opacity: 0.9;
 }
 
 .branch-fold-wrap .viewer-branch-btn:hover {
-  color: var(--warn, #b8860b);
+  color: var(--warn);
   background: var(--overlay-hover);
 }
 
@@ -801,7 +659,7 @@
 .card-user {
   background: var(--card);
   border: 1px solid var(--border-strong);
-  border-radius: 16px;
+  border-radius: var(--radius-xl);
   padding: 10px 16px;
   max-width: 80%;
   margin-left: auto;
@@ -896,7 +754,7 @@
 .card-body code {
   background: var(--bg-2);
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   font-family: var(--font-mono);
   font-size: 0.9em;
 }
@@ -906,7 +764,7 @@
   margin: 12px 0;
   background: var(--bg-2);
   border: 1px solid var(--border-strong);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   overflow: hidden;
 }
 
@@ -935,7 +793,7 @@
   font: inherit;
   font-size: var(--font-size-xs);
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   transition:
     color 120ms,
     background 120ms;
@@ -970,7 +828,7 @@
   border-left: 3px solid var(--accent);
   padding: 6px 14px;
   margin: 6px 0;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   display: flex;
   align-items: baseline;
   gap: 10px;
@@ -1010,7 +868,7 @@
   border-left: 3px solid var(--text-2);
   padding: 6px 14px;
   margin: 6px 0;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   display: flex;
   align-items: baseline;
   gap: 10px;
@@ -1043,7 +901,7 @@
   border-left: 3px solid var(--text-faint);
   padding: 6px 14px;
   margin: 6px 0;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   font-family: var(--font-mono);
   font-size: var(--font-size-small);
 }
@@ -1094,7 +952,7 @@
 .block-plan {
   border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
   border-left: 3px solid var(--accent);
-  border-radius: 6px;
+  border-radius: var(--radius-m);
   padding: 8px 12px;
   margin: 6px 0;
   background: color-mix(in srgb, var(--accent) 6%, transparent);
@@ -1133,7 +991,7 @@
   font-size: var(--font-size-xs);
   color: var(--accent);
   border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   padding: 0 8px;
 }
 
@@ -1153,7 +1011,7 @@
   align-items: baseline;
   gap: 8px;
   padding: 3px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
 }
 
 .ask-option-label {
@@ -1207,7 +1065,7 @@
   font-size: var(--font-size-xs);
   color: var(--error);
   border: 1px solid color-mix(in srgb, var(--error) 55%, transparent);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   padding: 0 8px;
 }
 
@@ -1228,7 +1086,7 @@
 .card-api-retry {
   background: transparent;
   border-left: 3px solid var(--error);
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   padding: 3px 12px;
   margin: 4px 0;
   color: var(--text-2);
@@ -1242,7 +1100,7 @@
 .card-compact {
   background: transparent;
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border-radius: var(--radius-l);
   padding: 0;
   margin: 8px 0;
   overflow: hidden;
@@ -1302,7 +1160,7 @@
   padding: 0;
   background: transparent;
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border-radius: var(--radius-l);
   overflow: hidden;
 }
 
@@ -1353,7 +1211,7 @@
 .block-collapsible {
   margin: 4px 0;
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border-radius: var(--radius-l);
   background: transparent;
   overflow: hidden;
 }
@@ -1444,7 +1302,7 @@
 .block-result-mode {
   background: transparent;
   border: 1px solid var(--border-soft);
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   padding: 2px 8px;
   font-family: inherit;
   font-size: var(--font-size-xs);
@@ -1484,7 +1342,7 @@
   background: var(--bg-2);
   color: var(--text-2);
   border: 1px solid var(--border-strong);
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   cursor: pointer;
 }
 
@@ -1535,7 +1393,7 @@
 
 .block-tool-result-inline.block-error > .block-summary {
   color: var(--error);
-  background: rgba(217, 104, 104, 0.06);
+  background: color-mix(in srgb, var(--error) 6%, transparent);
 }
 
 .block-tool-result-inline[open] > .block-summary {
@@ -1629,7 +1487,7 @@
   margin: 8px 0;
   padding: 8px 10px;
   background: var(--overlay-dim);
-  border-radius: 6px;
+  border-radius: var(--radius-m);
 }
 
 .block-agent-error {
@@ -1646,7 +1504,7 @@
   background: var(--overlay-dim);
   padding: 6px 10px;
   margin: 6px 0;
-  border-radius: 6px;
+  border-radius: var(--radius-m);
   border-left: 2px solid var(--warn);
 }
 
@@ -1681,8 +1539,8 @@
   font-size: var(--font-size-small);
   color: var(--text-2);
   background: transparent;
-  border: 1px solid var(--border, #3a342e);
-  border-radius: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
   cursor: pointer;
   opacity: 0.75;
   transition:
@@ -1693,22 +1551,17 @@
 
 .status-cmdk:hover {
   opacity: 1;
-  color: var(--text, #d6cfc6);
-  border-color: var(--border-strong, #55493c);
-}
-
-.status-cmdk-icon {
-  font-size: 0.95em;
-  line-height: 1;
+  color: var(--text);
+  border-color: var(--border-strong);
 }
 
 .status-cmdk kbd {
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
   font-size: 0.85em;
   padding: 0 4px;
-  border: 1px solid var(--border, #3a342e);
+  border: 1px solid var(--border);
   border-bottom-width: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   background: var(--field-bg);
   color: var(--text-2);
 }
@@ -1722,8 +1575,8 @@
   align-items: center;
   gap: 2px;
   flex: none;
-  border: 1px solid var(--border-strong, #55493c);
-  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
   overflow: hidden;
 }
 
@@ -1743,13 +1596,13 @@
 
 .status-first-run-dismiss {
   padding: 1px 6px;
-  border-left: 1px solid var(--border, #3a342e);
+  border-left: 1px solid var(--border);
   line-height: 1;
 }
 
 .status-first-run-open:hover,
 .status-first-run-dismiss:hover {
-  color: var(--text, #d6cfc6);
+  color: var(--text);
   background: var(--field-bg);
 }
 
@@ -1764,7 +1617,7 @@
   inset: 0;
   /* 邻居 `.settings-cc-modal-backdrop` 用的是 `rgba()`，那是 stylelint 基线里已有的
    * 50 条告警之一。**新写的别再添一条**——同一个颜色，用现代写法。 */
-  background: rgb(0 0 0 / 60%);
+  background: var(--overlay-backdrop);
   z-index: var(--z-modal);
   display: flex;
   align-items: center;
@@ -1772,9 +1625,9 @@
 }
 
 .fork-ask {
-  background: var(--bg, #1f1b16);
-  border: 1px solid var(--border-strong, #5a5046);
-  border-radius: 10px;
+  background: var(--card);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-xl);
   padding: 20px;
   min-width: 420px;
   max-width: 560px;
@@ -1785,13 +1638,13 @@
 
 .fork-ask-title {
   font-weight: 600;
-  color: var(--text, #d6cfc6);
-  font-size: 14px;
+  color: var(--text);
+  font-size: var(--font-size-base);
 }
 
 .fork-ask-lead {
-  color: var(--text-2, #bcb5a8);
-  font-size: 12px;
+  color: var(--text-2);
+  font-size: var(--font-size-small);
   line-height: 1.6;
 }
 
@@ -1799,8 +1652,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--text, #d6cfc6);
-  font-size: 12px;
+  color: var(--text);
+  font-size: var(--font-size-small);
 }
 
 .fork-ask-label {
@@ -1810,18 +1663,18 @@
 .fork-ask-account,
 .fork-ask-cwd {
   flex: 1;
-  background: var(--bg-2, #2a2520);
-  border: 1px solid var(--border, #3a342e);
-  border-radius: 6px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
   padding: 5px 8px;
-  color: var(--text, #d6cfc6);
-  font-size: 12px;
+  color: var(--text);
+  font-size: var(--font-size-small);
 }
 
 /* 「为什么要问」——原样端出推断层给的理由，弱化呈现（是背景不是指令）。 */
 .fork-ask-why {
   color: var(--text-2);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   line-height: 1.5;
 }
 
@@ -1850,7 +1703,7 @@
 .empty-state code {
   background: var(--overlay-deep);
   padding: 0 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-s);
   font-size: var(--font-size-small);
 }
 
@@ -1862,7 +1715,7 @@
   padding: 0;
   border-left: 2px solid var(--border-strong);
   background: linear-gradient(to right, var(--overlay-dim), transparent 80%);
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   /* 视觉提示：被回退的内容比正常消息弱化 */
   opacity: 0.92;
 }
@@ -1877,7 +1730,7 @@
   font-size: var(--font-size-small);
   color: var(--text-2);
   outline: none;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
 }
 
 .branch-fold-header:hover {
@@ -1893,7 +1746,7 @@
 .branch-fold-arrow {
   display: inline-block;
   width: 10px;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   text-align: center;
   color: var(--text-faint);
   transition: transform 150ms ease;
@@ -1944,7 +1797,7 @@
 .status-tasks {
   background: transparent;
   border: 1px solid var(--border-soft);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   padding: 0 8px;
   height: 18px;
   /* 〔活规则里的死声明〕这里原有一条 `line-height: 16px`，被紧跟着的 `font: inherit`
@@ -1972,7 +1825,7 @@
 }
 
 .status-tasks-arrow {
-  font-size: 9px;
+  font-size: var(--font-size-xs);
   color: var(--text-faint);
 }
 
@@ -1990,9 +1843,9 @@
   max-height: 50vh;
   display: flex;
   flex-direction: column;
-  background: var(--bg-2);
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  background: var(--card);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-l);
   box-shadow: 0 -4px 16px var(--overlay-shadow);
   font-size: var(--font-size-small);
   overflow: hidden;
@@ -2017,7 +1870,7 @@
   background: transparent;
   border: 0;
   color: var(--text-2);
-  font-size: 18px;
+  font-size: var(--font-size-title);
   line-height: 1;
   cursor: pointer;
   padding: 0 4px;
@@ -2040,7 +1893,7 @@
   align-items: baseline;
   gap: 8px;
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   line-height: 1.5;
 }
 
@@ -2052,7 +1905,7 @@
   flex: 0 0 14px;
   text-align: center;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   color: var(--text-faint);
 }
 
@@ -2097,7 +1950,7 @@
   border: 1px solid var(--border-strong);
   color: var(--text);
   padding: 4px 12px;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   cursor: pointer;
   font: inherit;
   font-size: var(--font-size-small);
@@ -2127,7 +1980,7 @@
 
 .search-hit-flash {
   animation: search-hit-flash 2.2s ease-out;
-  border-radius: 6px;
+  border-radius: var(--radius-m);
 }
 
 /* === 历史会话只读查看器 === */
@@ -2232,11 +2085,11 @@
 .user-inputs-toggle {
   background: var(--bg-2);
   border: 1px solid var(--border-strong);
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   color: var(--text-2);
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   padding: 2px 8px;
 }
 
@@ -2284,10 +2137,10 @@
   margin-top: 4px;
   text-align: left;
   width: min(420px, 60vw);
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  box-shadow: 0 6px 18px rgb(0 0 0 / 35%);
-  background: var(--bg-2);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-float);
+  background: var(--card);
 }
 
 .session-find-modes {
@@ -2302,11 +2155,11 @@
 .session-find-close {
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   color: var(--text-2);
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   padding: 2px 8px;
 }
 
@@ -2338,9 +2191,9 @@
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border-strong);
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   padding: 3px 6px;
 }
 
@@ -2349,7 +2202,7 @@
   align-items: center;
   gap: 4px;
   color: var(--text-2);
-  font-size: 12px;
+  font-size: var(--font-size-small);
   white-space: nowrap;
   cursor: pointer;
 }
@@ -2357,7 +2210,7 @@
 .session-find-status {
   padding: 0 8px 6px;
   color: var(--text-2);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .session-find-hits {
@@ -2370,7 +2223,7 @@
 .session-find-hit mark {
   background: color-mix(in srgb, var(--accent) 40%, transparent);
   color: var(--text);
-  border-radius: 2px;
+  border-radius: var(--radius-s);
   padding: 0 1px;
 }
 
@@ -2394,17 +2247,17 @@
   margin-bottom: 6px;
   padding: 4px 8px;
   background: transparent;
-  border: 1px dashed var(--border, #555);
-  border-radius: 4px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-s);
   color: var(--color-link);
   font-family: ui-monospace, monospace;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   cursor: pointer;
   overflow-wrap: anywhere;
 }
 
 .tool-file-link:hover {
-  background: rgba(108, 182, 255, 0.1);
+  background: color-mix(in srgb, var(--color-link) 10%, transparent);
   border-style: solid;
 }
 
@@ -2418,7 +2271,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--overlay-backdrop);
 }
 
 .pane-preview-box {
@@ -2426,9 +2279,9 @@
   max-height: 85vh;
   display: flex;
   flex-direction: column;
-  background: var(--bg, #1e1e1e);
-  border: 1px solid var(--border-strong, #444);
-  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-l);
   overflow: hidden;
 }
 
@@ -2437,13 +2290,13 @@
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--border-strong, #444);
+  border-bottom: 1px solid var(--border-strong);
 }
 
 .pane-preview-title {
   flex: 1;
   font-weight: 600;
-  font-size: var(--font-size-small, 13px);
+  font-size: var(--font-size-small);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2452,15 +2305,15 @@
 .pane-preview-btn {
   padding: 3px 10px;
   background: transparent;
-  border: 1px solid var(--border-strong, #555);
-  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-s);
   color: inherit;
   cursor: pointer;
-  font-size: var(--font-size-small, 13px);
+  font-size: var(--font-size-small);
 }
 
 .pane-preview-btn:hover {
-  background: var(--overlay-hover, rgba(255, 255, 255, 0.06));
+  background: var(--overlay-hover);
 }
 
 .pane-preview-btn:disabled {
@@ -2473,10 +2326,10 @@
   padding: 12px 14px;
   overflow: auto;
   white-space: pre;
-  font-family: var(--font-mono, monospace);
-  font-size: var(--font-size-mono, 12px);
-  line-height: var(--line-height-mono, 1.35);
-  color: var(--text, #ddd);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-mono);
+  line-height: var(--line-height-mono);
+  color: var(--text);
 }
 
 /* account-ux U5：徽章 span 退化为纯容器（内含 .acct-avatar 头像，仅"不在当前账号"时出现）；
@@ -2501,7 +2354,7 @@
 /* P7a-2 D 补审：拖动排序的落点指示。被拖的那块会插到这个 tab **之前**。
    只搬不指示的话，「拖动排序」是一次盲操作 —— 松手前不知道会落在哪。 */
 .tab.drop-before {
-  box-shadow: inset 0 2px 0 0 var(--accent, #6aa9ff);
+  box-shadow: inset 0 2px 0 0 var(--accent);
 }
 
 /* `onto` 落点：**与这个 tab 成组**。
@@ -2539,7 +2392,7 @@
   color: var(--text-2);
   cursor: pointer;
   flex: 1;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   letter-spacing: 0.04em;
   overflow: hidden;
   text-align: left;
@@ -2568,9 +2421,9 @@
    （这个仓刚因为「能操作但没反应」撤掉过两个取色器）。 */
 .pin-revived-hint {
   border: 1px dashed var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-m);
   color: var(--text-2);
-  font-size: 13px;
+  font-size: var(--font-size-mono);
   line-height: 1.7;
   margin: 24px auto;
   max-width: 520px;
@@ -2580,10 +2433,10 @@
 .pin-revived-hint-btn {
   background: transparent;
   border: 1px solid var(--accent);
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   color: var(--text);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   margin-top: 8px;
   padding: 4px 12px;
 }

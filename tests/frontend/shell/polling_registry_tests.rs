@@ -421,7 +421,12 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
           ⚠ 不轮询的后果很具体：两个命令都是「发出去就返回」（`backend_start` 只 spawn 了监护线程、\
           `backend_stop` 只发 SIGKILL），命令一返回就画等于**每次操作后都显示操作前的状态**。"),
     ("src/frontend/ui/e2e-probe.ts", "requestAnimationFrame", 2, "★ **rAF 自链**：`sample` 每帧重排自己（起点 1 处 + 链内 1 处）。退出条件是 `stopReplayJitterProbe` 显式 `cancelAnimationFrame`。只在 e2e 探针里启用，不在正常路径上。"),
-    ("src/frontend/ui/error-toast.ts", "setTimeout", 1, "`durationMs` 后移除 toast。一次性。"),
+    // 通用组件（`kit/`）：都是一次性 UI 延时，不取数、不自链。
+    ("src/frontend/ui/kit/toast.ts", "setTimeout", 1, "到点收起这一条（纯告知 4s · 带动作 8s；悬停 / 焦点时清掉、离开后按剩下的时间重排）。一次性。"),
+    ("src/frontend/ui/kit/tooltip.ts", "setTimeout", 1, "悬停 500ms 才出提示；离开即 `clearTimeout`。一次性。"),
+    ("src/frontend/ui/kit/block.ts", "setTimeout", 2, "① 加载超过 300ms 才画骨架 ② 超过 10s 才写正在做什么；换态时都 `clearTimeout`。一次性。"),
+    ("src/frontend/ui/kit/interrupts.ts", "setTimeout", 1, "问后端「会打断什么」的 2s 上限：到点当有东西在跑；答到了 `clearTimeout`。一次性。"),
+    ("src/frontend/ui/kit/menu.ts", "setTimeout", 3, "① ② 子菜单悬停 150ms 开 / 250ms 关（关菜单时统一清）③ 右键开的菜单下一拍挂「点外面」监听。一次性。"),
     ("src/frontend/ui/launch-arrival.ts", "setTimeout", 2, "① 起会话之后等那台报出它的**预算**（`ARRIVAL_BUDGET_MS`）：每件预期一个、到点只说一次「没看到会话起来」，见到了当场 `clearTimeout`。② `awaitArrival` 发起方自己的上界（预算 ＋ 15 s：主窗口不回话也不挂着），回话一到就 `clearTimeout`。都是一次性，不重试、不取数。"),
     ("src/frontend/ui/events.ts", "setTimeout", 3, "① `scheduleBatchEnd` 的 batch-end 哨兵（每次重排前 `clearTimeout`，且有 `BATCH_HOLD_MAX_MS` 5min 防呆上限）② `setTimeout(drain, 0)` —— **队列 drain 自链**，退出条件是 `queue.length === 0`，由 `scheduled` 标志防重入。不是节拍器：没有队列就不会再排。原 ③（`makeYieldToMain` 的兜底）搬进 `yield-to-main.ts`（3 = 2 ＋ 1）。④（2 → 3）一台机器的会话流看不见了之后等 `UNSEEN_SAY_MS`（20 s）：还没看见才说一句是哪台、能做什么；又看见了当场 `clearTimeout`。每台每次看不见至多一个，一次性，不重试、不取数。"),
     // `src/frontend/ui/session-accounts-poll.ts` 的 `setInterval` ×1 这一行出去了（10s 账号轮询改事件驱动，理由见 `REGISTERED` 头上那段）。
@@ -447,15 +452,13 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     //   `tabs.ts` rAF 3 = 2 ＋ 1 · setTimeout 1 = 0 ＋ 1（`tabs.ts` 的 setTimeout 那一行因此整行删掉）。
     ("src/frontend/ui/tab-bar-view.ts", "requestAnimationFrame", 1, "③ ★ F15：`scheduleRefresh`（原 `TabManager.scheduleTabBarRefresh`） —— live 路上后台 tab 的 unread 徽标**帧末合批**（原来每来一行整刷一次 bar）。排一次位，不是自链。⚠ 只合批这一处，用户动作触发的十几个调用点仍是同步的（合批对它们无收益，反而把「点完立刻看到」变成「下一帧」）。"),
     ("src/frontend/ui/tab-bar-view.ts", "setTimeout", 1, "⑩ ★ F15：`scheduleRefresh`（原 `TabManager.scheduleTabBarRefresh`）的**无 rAF 兜底**，0ms、一次性。"),
-    // 〔拆 `tabs.ts` 子步 4〕右键菜单控件搬进 `tab-context-menu.ts` ⇒ 原 ⑤ ⑥ ⑦ 三处跟着走（下一行）：11 = 8 ＋ 3，一处没多一处没少。
-    ("src/frontend/ui/tab-context-menu.ts", "setTimeout", 3, "① ② hover 菜单的 150ms 开 / 250ms 关延时（二级 flyout；`closeTabContextMenu` 统一清）③ 0ms 下一拍挂右键菜单关闭监听。都是一次性 UI 延时，不取数。"),
     // 〔拆 `tabs.ts` 子步 5〕会话动作搬进 `tab-session-actions.ts` ⇒ 原 ② ③ ④ ⑧ ⑨ 五处跟着走（下一行）：8 = 3 ＋ 5。
     // 5 → 3：`awaitExitFor` 的 ③ `stop(false)` 上限与 ④ 1s 轮询随它一起删了（换号重启直接 kill，不再等退出）。
     // 2 → 4：↗ 的「进行中」两处（`frontOnce`：超过 300ms 才进 · 进了至少停 400ms），都是一次性。
     ("src/frontend/ui/tab-session-actions.ts", "setTimeout", 4, "⑧ ⑨ 两处 `bring_*_terminal_to_front` 的 invoke 超时拒绝。都是一次性，不是周期取数。编号沿用 `tabs.ts` 那一行拆开之前的原号。⑩ ⑪ `frontOnce`：↗ 在飞超过 300ms 才把按钮换成「进行中」· 进了之后至少停 400ms 再收（防闪），一次性。"),
     ("src/frontend/ui/views/grid-monitor.ts", "setInterval", 1, "1s 重绘 —— 按格差量（没变的一拍零 DOM 写），不再整表重建。**ui-clock，不取数**，见 `REGISTERED` 那条。"),
     ("src/frontend/ui/views/history.ts", "requestAnimationFrame", 1, "展开/收起项目后合并重画一次列表，`rafPending` 标志防重入。一次性。"),
-    ("src/frontend/ui/views/history.ts", "setTimeout", 2, "3 → 2：原先的 ① `waitForIndexThenSearch`（等本机索引就绪的 1 秒等待，F14 第四刀）随本机内存索引删了 —— 本机搜索改问本机后端，没有「索引中」。② 0ms 下一拍挂条目右键菜单的关闭监听。③ ★ **F07 下半新增**：搜索框输入去抖（250ms，每次输入前 `clearTimeout`）—— **一次性延时不是周期唤醒**，加它正是为了**减少**下游那三个放大器被触发的次数。"),
+    ("src/frontend/ui/views/history.ts", "setTimeout", 1, "3 → 2：原先的 ① `waitForIndexThenSearch`（等本机索引就绪的 1 秒等待，F14 第四刀）随本机内存索引删了 —— 本机搜索改问本机后端，没有「索引中」。2 → 1：② 下一拍挂条目右键菜单关闭监听那一处随菜单换成 `kit/menu.ts` 走了。③ ★ **F07 下半新增**：搜索框输入去抖（250ms，每次输入前 `clearTimeout`）—— **一次性延时不是周期唤醒**，加它正是为了**减少**下游那三个放大器被触发的次数。"),
     ("src/frontend/ui/views/session-viewer.ts", "requestAnimationFrame", 5, "① ② 两处 `maybeFillAbove` —— **向上补料的 rAF 链**，五道守卫在 `:418-426`（世代 / 已到顶 / 在途 等）③ 渲染批前先让状态文绘一帧 ④ ⑤ 双 rAF 后重发 `scrollIntoView`（等 content-visibility 材料化）。"),
     ("src/frontend/ui/views/session-viewer.ts", "setTimeout", 1, "2.2s 后移除搜索命中的闪烁 class。一次性。原 ①（`setTimeout(r, 0)` 让出主线程、等晚到的 Channel 块）随那条命令改走通道删了：页在同一个 Promise 链里交完。"),
     ("src/frontend/ui/yield-to-main.ts", "setTimeout", 1, "`makeYieldToMain` 探不到 `MessageChannel` 时的兜底 `setTimeout(run, 0)` —— 让出一跳，由调用方自链（重放 drain · 长回复分片渲染），退出条件在调用方：队列空 / 片渲完。不是节拍器。"),

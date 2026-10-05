@@ -95,7 +95,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/cards/index.ts", // onLine：这一行是不是 compact 摘要（换号重启的等待者）；子运行时间线用同一套渲染器
     "src/frontend/ui/cards/subagent.ts", // 运行表到了：派出子运行的那张卡标上是哪个、什么状态
     "src/frontend/ui/copy-table.ts", // W 关掉之后那条「已关闭 · 撤销」
-    "src/frontend/ui/error-toast.ts", // bringActiveTerminalToFront：非 Windows 说一句实话
+    "src/frontend/ui/kit/toast.ts", // bringActiveTerminalToFront：非 Windows 说一句实话
     "src/frontend/ui/fork-flow.ts", // startForkedSession（E78：fork-flow.vitest 钉「tabs.ts 调 runForkFlow」）
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端只经这一处判（线上缺省 = 本机的那一下表示法转换也在这里）
     "src/frontend/ui/live-card.ts", // 中转抄出的流式活卡：tap 格进状态机、同对账键的记录落盘即撤卡；子运行那几行
@@ -191,7 +191,7 @@ const DEPS: Record<string, readonly string[]> = {
   "src/frontend/ui/tab-bar-prefs.ts": [
     "src/frontend/ui/config.ts", // 分组一次改动的全部补丁一次 `patchConfig`
     "src/frontend/ui/copy-table.ts",
-    "src/frontend/ui/error-toast.ts", // 分组 / 固定 / 顺序落盘失败出声（INVARIANTS §12）·集合到上界那一句
+    "src/frontend/ui/kit/toast.ts", // 分组 / 固定 / 顺序落盘失败出声（INVARIANTS §12）·集合到上界那一句
     "src/frontend/ui/tab-bar-state.ts",
     "src/frontend/ui/tab-collections.ts",
     "src/frontend/ui/tab-session-state.ts",
@@ -199,32 +199,30 @@ const DEPS: Record<string, readonly string[]> = {
   // ⑤ 菜单放哪几项：账号 flyout · tmux 判据 · attach / 预览 · 菜单控件 · 会话动作。
   "src/frontend/ui/tab-menu.ts": [
     "src/frontend/ui/agent-profile.ts", // 接回交那台时要说是哪一家（标签页里的会话是流跟的那一家）
-    "src/frontend/ui/ask-dialog.ts", // 「新建集合…」问名字（原 `window.prompt`）
+    "src/frontend/ui/kit/dialog.ts", // 「新建集合…」问名字（原 `window.prompt`）
     "src/frontend/ui/control-said.ts", // 那台握手时说过做不到的几项置灰：`unavailableSaid`（事实住 monitor 那份 Offer）
     "src/frontend/ui/copy-table.ts", // 固定那一项的两句提示（说到会话状态）住文案表
-    "src/frontend/ui/error-toast.ts",
+    "src/frontend/ui/kit/toast.ts",
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端各给哪几项（原先是 backend-policy 的 LOCAL_ORIGIN ＋ 各处 `=== null`）
     "src/frontend/ui/launch-menu.ts",
     "src/frontend/ui/remote-launch-run.ts",
     "src/frontend/ui/tab-bar-prefs.ts", // 「加入集合 / 新建集合」到上界 ⇒ `sayCollectionRefusal`
     "src/frontend/ui/tab-collections.ts",
-    "src/frontend/ui/tab-context-menu.ts",
+    "src/frontend/ui/kit/menu.ts",
     "src/frontend/ui/tab-session-state.ts", // 给 Resume 还是给换号重启 · 本机「杀死会话」占位
     "src/frontend/ui/sessions-where.ts", // 在 tmux 里那几项亮不亮、写哪个名字：问那台（`sessions-where`）
     "src/frontend/ui/views/pane-preview.ts",
   ],
-  // ⑤ 菜单控件：零依赖（纯 DOM）。
-  "src/frontend/ui/tab-context-menu.ts": [],
   // ⑤ 会话动作。原先是「tab 层唯一直呼 invoke 的一份」；那 11 处收进了包装层，
   //   本份从此与其余几份一样只经 `ipc/commands.ts` 说话。
   "src/frontend/ui/tab-session-actions.ts": [
     "npm:@tauri-apps/plugin-opener",
     "src/frontend/ui/account-restart.ts",
     "src/frontend/ui/agent-profile.ts", // 起会话项的默认启动器
-    "src/frontend/ui/ask-dialog.ts", // 杀会话的确认（原 `window.confirm`：真 app 里恒真值，等于没问）
+    "src/frontend/ui/kit/dialog.ts", // 杀会话的确认（原 `window.confirm`：真 app 里恒真值，等于没问）
     "src/frontend/ui/behavior.ts",
     "src/frontend/ui/copy-table.ts", // 杀空 tmux / 杀会话的确认与回执（说到会话状态）住文案表
-    "src/frontend/ui/error-toast.ts",
+    "src/frontend/ui/kit/toast.ts",
     "src/frontend/ui/file-window.ts", // F78：远端会话「打开工作目录」（老 SFTP 面板删了，改开文件窗口）
     "src/frontend/ui/ipc/commands.ts",
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端各走哪条动作

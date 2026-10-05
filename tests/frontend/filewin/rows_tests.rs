@@ -132,6 +132,8 @@ fn a_non_virtual_scroll_area_materializes_every_single_row() {
 #[test]
 fn scrolling_moves_the_materialized_window_without_widening_it() {
     let ctx = egui::Context::default();
+    // 行高取主界面令牌（生产开窗第一拍就装主题；不装时行高退成 egui 的控件高，取整落点不同）。
+    crate::theme::install(&ctx, &crate::theme::testing::default_theme());
     let rows = rows(640_413);
     let _ = render_headless(&ctx, &rows, screen(), 0.0);
 
@@ -173,9 +175,9 @@ fn a_double_click_on_a_row_comes_back_as_that_rows_index() {
         "一屏连 4 行都没有，下面按坐标点就没意义"
     );
 
-    // 第 2 行的中心：列表从 y≈0 起，行高 ROW_HEIGHT ＋ item spacing。
+    // 第 2 行的中心：列表从 y≈0 起，一行一个行高。
     let want = 2usize;
-    let y = (want as f32 + 0.5) * ROW_HEIGHT;
+    let y = (want as f32 + 0.5) * crate::theme::metrics(&ctx).row_h;
     let pos = egui::pos2(60.0, y);
 
     let _ = render_headless_with_events(
@@ -259,10 +261,8 @@ fn a_double_click_anywhere_on_the_row_opens_that_row() {
     let rows = mixed_rows();
     let _ = render_headless_with_events(&ctx, &rows, screen(), 0.0, Vec::new());
     let cols = Columns::default();
-    let row1 = egui::Rect::from_min_size(
-        egui::pos2(0.0, ROW_HEIGHT),
-        egui::vec2(screen().x, ROW_HEIGHT),
-    );
+    let row_h = crate::theme::metrics(&ctx).row_h;
+    let row1 = egui::Rect::from_min_size(egui::pos2(0.0, row_h), egui::vec2(screen().x, row_h));
     let pos = cols.rects(row1)[1].center();
     let _ = render_headless_with_events(
         &ctx,

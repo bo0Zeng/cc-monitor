@@ -18,14 +18,14 @@
  * 不碰 tab 栏、不碰流 DOM。方法体逐字从 `tabs.ts` 搬来，唯一的改写是 `this.tabs.get(` 等四处宿主读数
  * 换成 `this.host.…`（同一个值，换了个取法）。
  */
-import { askConfirm, type ConfirmFn } from "./ask-dialog";
+import { confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import type { SessionAccount } from "./accounts";
 import { chosenAccount, FOLLOW, refuseUnavailableAccount, type AccountAsk } from "./launch-account";
 import { restartLocateFailureMessage } from "./account-restart";
 import { resumeLocalSession } from "./local-resume";
 import { restartWithAccount } from "./account-restart";
-import { showActionFailureToast } from "./error-toast";
+import { toast } from "./kit/toast";
 import { runRemoteResume, runRemoteAttach } from "./remote-launch-run";
 // 本机 = `LOCAL_ORIGIN`（`"<local>"`，与 Rust `origin.rs::LOCAL` 跨语言对拍）；
 // 「是不是本机」只经 `ipc/origin.ts` 判。`accounts.ts` 那个同名的 `"__local__"` 已退役 —— 全仓只剩一个本机表示。
@@ -110,7 +110,7 @@ export class TabSessionActions {
           : {}),
       });
     } catch (e) {
-      showActionFailureToast(copyText("tabSessionActions.openInWindow.failed"), String(e));
+      toast(copyText("tabSessionActions.openInWindow.failed"), String(e));
     }
   }
 
@@ -137,7 +137,7 @@ export class TabSessionActions {
       probe = await probeSessionRecord(tab.origin, tab.sessionId, configDir);
     } catch (e) {
       // 问不到 / 形状不对（旧后端）同「不知道」：只有一个明明白白的 `present: false` 才拦 —— 但说出来。
-      showActionFailureToast(
+      toast(
         copyText("tabSessionActions.recordUnknown.title"),
         reasonOf(e, copyText("tabSessionActions.recordUnknown.oldBackend")),
       );
@@ -145,7 +145,7 @@ export class TabSessionActions {
     }
     this.host.markRecord(tab.sessionId, probe.present);
     if (probe.present) return true;
-    showActionFailureToast(
+    toast(
       copyText("sessionState.recordGone.title"),
       copyText("sessionState.recordGone.body", {
         who: isLocalOrigin(tab.origin) ? copyText("tabSessionActions.who.local") : copyText("tabSessionActions.who.remote", { machine: tab.origin }),
@@ -163,12 +163,12 @@ export class TabSessionActions {
   async rereadMachines(origins: Iterable<string>): Promise<string[]> {
     const rs = await resyncMachines(origins);
     if (rs.length === 0) {
-      showActionFailureToast(copyText("resync.machines.title"), copyText("resync.machines.none"), { level: "info", durationMs: 4000 });
+      toast(copyText("resync.machines.title"), copyText("resync.machines.none"), { level: "info" });
       return [];
     }
     const ok = rs.filter((m) => "r" in m).map((m) => m.origin);
     const title = ok.length === rs.length ? copyText("resync.machines.title") : copyText("resync.machines.titlePartial");
-    showActionFailureToast(title, resyncMachinesSaid(rs), ok.length === rs.length ? { level: "info", durationMs: 6000 } : undefined);
+    toast(title, resyncMachinesSaid(rs), ok.length === rs.length ? { level: "info" } : undefined);
     return ok;
   }
 
@@ -191,10 +191,10 @@ export class TabSessionActions {
       if (!probe.present) gone.push(tab);
     }
     if (gone.length === 0) return;
-    showActionFailureToast(
+    toast(
       copyText("sessionState.pinGone.title"),
       copyText("sessionState.pinGone.body", { n: gone.length, names: gone.map((t) => t.title).join(", ") }),
-      { level: "info", durationMs: 20_000, onClick: () => gone.forEach((t) => unpin(t.sessionId)) },
+      { level: "info", onClick: () => gone.forEach((t) => unpin(t.sessionId)) },
     );
   }
 
@@ -207,7 +207,7 @@ export class TabSessionActions {
   /** 说不清（那台暂时看不见）⇒ 不恢复、说一句：会话也许还在跑，再起一份就是同一会话两个 claude。 */
   private refuseUnseen(tab: Tab): boolean {
     if (tab.state.liveness !== "unseen") return false;
-    showActionFailureToast(copyText("sessionState.unseen.noResume"), copyText("sessionState.unseen.tooltip"), {
+    toast(copyText("sessionState.unseen.noResume"), copyText("sessionState.unseen.tooltip"), {
       level: "info",
     });
     return true;
@@ -290,7 +290,7 @@ export class TabSessionActions {
     try {
       [r] = await callStart(origin, "tmux", [item]);
     } catch (e) {
-      showActionFailureToast(copyText("remoteLaunchRun.inPlace.notRun"), saidOfControl(e));
+      toast(copyText("remoteLaunchRun.inPlace.notRun"), saidOfControl(e));
       return false;
     }
     if (r.unavailable) {
@@ -299,7 +299,7 @@ export class TabSessionActions {
     }
     if (r.why === "record_gone") {
       this.host.markRecord(tab.sessionId, false);
-      showActionFailureToast(
+      toast(
         copyText("sessionState.recordGone.title"),
         copyText("sessionState.recordGone.body", {
           who: isLocalOrigin(origin) ? copyText("tabSessionActions.who.local") : copyText("tabSessionActions.who.remote", { machine: origin }),
@@ -312,16 +312,16 @@ export class TabSessionActions {
     if (r.outcome === "failed" || r.session === null) {
       const said = sayReply(origin, "start", r);
       if (r.why === "wrong_owner") offerResyncRetry(origin, tab.sessionId, copyText("remoteLaunchRun.inPlace.notRun"), said, () => again());
-      else showActionFailureToast(copyText("remoteLaunchRun.inPlace.notRun"), said);
+      else toast(copyText("remoteLaunchRun.inPlace.notRun"), said);
       return false;
     }
     if (r.outcome === "done") this.host.markRecord(tab.sessionId, true);
     // 在跑的不止一个 ⇒ 接第一个（接回可撤销），但说出来。
     if (r.why === "ambiguous") {
-      showActionFailureToast(
+      toast(
         copyText("tabSessionActions.dupes.title"),
         copyText("tabSessionActions.dupes.body", { n: r.detail.split(", ").length, name: r.session }),
-        { level: "info", durationMs: 8000 },
+        { level: "info" },
       );
     }
     await runRemoteAttach(origin, ACTIVE_AGENT, r.session);
@@ -355,10 +355,10 @@ export class TabSessionActions {
       // 间接信号；现在右键菜单是唯一入口，点了却什么反应都没有（含最长 5 分钟的 compact 等待），
       // 用户大概率以为没点中、再点一次——给个明确提示，别让破坏性操作的
       // in-flight 防抖对用户完全不可见。
-      showActionFailureToast(
+      toast(
         copyText("tabSessionActions.restart.busyTitle"),
         copyText("tabSessionActions.restart.busy"),
-        { level: "info", durationMs: 4000 },
+        { level: "info" },
       );
       return false;
     }
@@ -385,10 +385,10 @@ export class TabSessionActions {
     // 命中多个 ⇒ 拒（选错了不可逆）。那台在 `session-restart` 里照 sid 再找一次，这里只为把话说清、不白弹确认框。
     const standing = await standingOf(origin, sid);
     if (standing?.kind === "ambiguous") {
-      showActionFailureToast(
+      toast(
         copyText("tabSessionActions.restart.refusedTitle"),
         copyText("tabSessionActions.restart.dupes", { n: standing.names.length }),
-        { level: "info", durationMs: 8000 },
+        { level: "info" },
       );
       return false;
     }
@@ -399,7 +399,7 @@ export class TabSessionActions {
       const msg = restartLocateFailureMessage(this.host.sessionAccount(sid), {
         local: isLocalOrigin(origin),
       });
-      showActionFailureToast(msg.title, msg.body, { level: "info", durationMs: 8000 });
+      toast(msg.title, msg.body, { level: "info" });
       return false;
     }
     return await restartWithAccount({
@@ -426,7 +426,7 @@ export class TabSessionActions {
     const isLocal = isLocalOrigin(origin);
     const where = isLocal ? copyText("tabSessionActions.who.local") : copyText("tabSessionActions.who.remoteShort");
     const body = opts?.idle ? copyText("sessionState.killIdle.confirm") : copyText("tabSessionActions.kill.body", { where });
-    const confirmFn: ConfirmFn = opts?.confirm ?? askConfirm;
+    const confirmFn: ConfirmFn = opts?.confirm ?? confirmDialog;
     const machine = isLocal ? copyText("tabSessionActions.who.local") : origin;
     const message = copyText("tabSessionActions.kill.confirm", { name, machine, body, caveat: "" });
     const kill = async (): Promise<void> => {
@@ -434,14 +434,14 @@ export class TabSessionActions {
       try {
         [r] = await callStop(origin, [sid]);
       } catch (e) {
-        showActionFailureToast(copyText("tabSessionActions.kill.failed"), saidOfControl(e));
+        toast(copyText("tabSessionActions.kill.failed"), saidOfControl(e));
         return;
       }
       if (r.outcome !== "done") {
         const said = sayReply(origin, "stop", r);
         // 关卡 2 拒的 ⇒ 提示带「对齐后重试」（只对这个会话重验 ＋ 重打，再过一次关卡）。
         if (r.why === "wrong_owner") offerResyncRetry(origin, sid, copyText("tabSessionActions.kill.failed"), said, kill);
-        else showActionFailureToast(copyText("tabSessionActions.kill.failed"), said);
+        else toast(copyText("tabSessionActions.kill.failed"), said);
         return;
       }
       const killed = r.session ?? name;
@@ -456,13 +456,12 @@ export class TabSessionActions {
       } catch {
         bus = null;
       }
-      showActionFailureToast(copyText("tabSessionActions.kill.done"), bus === null ? done : `${done}\n${bus}`, {
+      toast(copyText("tabSessionActions.kill.done"), bus === null ? done : `${done}\n${bus}`, {
         level: "info",
-        durationMs: 6000,
       });
     };
     void (async () => {
-      if (!(await confirmFn(message, { danger: true }))) return;
+      if (!(await confirmFn({ title: copyText("tabSessionActions.kill.title", { name }), action: copyText("tabSessionActions.kill.action"), danger: true, body: message }))) return;
       await kill();
     })();
   }
@@ -483,7 +482,7 @@ export class TabSessionActions {
       const why = host
         ? copyText("tabSessionActions.openCwd.incomplete")
         : copyText("tabSessionActions.openCwd.noConfig");
-      showActionFailureToast(
+      toast(
         copyText("tabSessionActions.openCwd.title"),
         copyText("tabSessionActions.openCwd.body", { machine: tab.origin, cwd: tab.projectDir, why }),
         { level: "info" },
@@ -551,7 +550,7 @@ export function bringTerminalToFront(sessionId: string): Promise<void> {
   ]).catch((e) => {
     console.warn(`bring_terminal_to_front ${sessionId} failed:`, e);
     // P4.5: 改走统一 toast stack（去掉单例 #bring-terminal-toast 的"先到先被覆盖"问题）。
-    showActionFailureToast(copyText("tabSessionActions.front.failed"), String(e?.message ?? e));
+    toast(copyText("tabSessionActions.front.failed"), String(e?.message ?? e));
   });
 }
 
@@ -570,7 +569,7 @@ export async function bringRemoteTerminalToFront(
 ): Promise<void> {
   const failed = (e: unknown): void => {
     console.warn(`bring_remote_terminal_to_front ${sessionId} failed:`, e);
-    showActionFailureToast(copyText("tabSessionActions.front.failed"), String((e as Error)?.message ?? e));
+    toast(copyText("tabSessionActions.front.failed"), String((e as Error)?.message ?? e));
   };
   let plan: RemoteFrontPlan;
   try {
@@ -580,10 +579,10 @@ export async function bringRemoteTerminalToFront(
     return;
   }
   if ("said" in plan) {
-    showActionFailureToast(
+    toast(
       copyText("tabSessionActions.front.failed"),
       plan.said,
-      plan.reattach ? { onClick: reattach, durationMs: 8000 } : {},
+      plan.reattach ? { onClick: reattach } : {},
     );
     return;
   }

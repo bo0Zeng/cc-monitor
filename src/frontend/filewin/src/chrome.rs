@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use super::shell::FileWindow;
 use super::source::breadcrumbs;
-use super::theme::{bar_frame, palette, BAR_HEIGHT};
+use super::theme::{bar_frame, metrics, palette};
 use super::workspace::Workspace;
 
 /// 地址栏手输那一格的 egui id（Ctrl+L 把焦点给它）。
@@ -658,15 +658,16 @@ impl Workspace {
     pub fn chrome_ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let f = self.focus();
+        let bar_h = metrics(&ctx).bar_h;
         egui::Panel::top("filewin-toolbar")
             .frame(bar_frame(&ctx))
-            .exact_size(BAR_HEIGHT)
+            .exact_size(bar_h)
             .show_separator_line(false)
             .show(ui, |ui| self.pane_on_mut(f).toolbar_ui(ui));
         let (mut cmd, mut sidebar) = (None, false);
         egui::Panel::top("filewin-commands")
             .frame(bar_frame(&ctx))
-            .exact_size(BAR_HEIGHT - 4.0)
+            .exact_size(bar_h - 4.0)
             .show_separator_line(false)
             .show(ui, |ui| {
                 ui.horizontal_centered(|ui| {

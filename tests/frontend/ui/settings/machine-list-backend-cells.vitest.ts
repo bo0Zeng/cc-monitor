@@ -56,7 +56,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
     },
   ),
 }));
-vi.mock("../../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: () => {} }));
+vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: () => {} }));
 
 import { loadConfig } from "../../../../src/frontend/ui/config";
 import { RemoteSection } from "../../../../src/frontend/ui/settings/remote-section";

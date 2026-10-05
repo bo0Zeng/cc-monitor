@@ -14,7 +14,7 @@ import {
   planLauncher,
   planAttach,
 } from "../../../src/frontend/ui/launch-requests.ts";
-import { buildCliRenderRequest } from "../../../src/frontend/ui/remote-launch-run.ts";
+import { buildCliRenderRequest } from "../../../src/frontend/ui/launch-cli-wire.ts";
 
 let failed = 0;
 function test(name: string, fn: () => void): void {

@@ -9,7 +9,7 @@
  * 唯一的改写是宿主读数：`this.tabs.get(` / 集合 / 固定 换成 `this.host.…`，
  * 会话动作与 tmux 缓存换成 `this.actions.…` —— **都在点击 / 就绪那一刻现读**，与原先读字段的时机相同。
  */
-import { showActionFailureToast } from "./error-toast";
+import { toast } from "./kit/toast";
 import type { Tab } from "./tab-model";
 import { canResume, hasTerminal, isResumeOnly, type SessionState } from "./tab-session-state";
 import { copyText } from "./copy-table";
@@ -33,13 +33,13 @@ import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/
 import { openPanePreview } from "./views/pane-preview";
 import { standingOf } from "./sessions-where";
 import {
-  appendTabContextMenuItem,
+  appendMenuItem,
   menuGeneration,
-  removeTabContextMenuItem,
-  showTabContextMenu,
-  updateTabContextMenuItem,
-  type TabMenuItem,
-} from "./tab-context-menu";
+  removeMenuItem,
+  openMenu,
+  updateMenuItem,
+  type MenuItem,
+} from "./kit/menu";
 import type { TabSessionActions } from "./tab-session-actions";
 import { machineName, unavailableSaid } from "./control-said";
 
@@ -47,14 +47,14 @@ import { machineName, unavailableSaid } from "./control-said";
 const ITEM_OPS: Readonly<Record<string, string>> = { kill: "kill", preview: "terminal-preview", "resume-into": "launch" };
 
 /** 按 `origin` 那台的能力事实给一项置灰：做不到 ⇒ 不可点、字后面带一句为什么。 */
-export function gateByOffer(origin: Origin, item: TabMenuItem): TabMenuItem {
+export function gateByOffer(origin: Origin, item: MenuItem): MenuItem {
   const op = item.id !== undefined ? ITEM_OPS[item.id] : undefined;
   if (op === undefined || item.enabled === false) return item;
   const why = unavailableSaid(origin, op);
   if (why === null) return item;
   return { ...item, enabled: false, title: why, label: copyText("tabMenu.item.greyed", { label: item.label, why }), onClick: () => {} };
 }
-import { askText } from "./ask-dialog";
+import { askText } from "./kit/dialog";
 
 /** 菜单要宿主给的读数 / 回调。全是**现读**：菜单项的 `onClick` 在点下去那一刻才调它们。 */
 export interface TabMenuHost {
@@ -85,14 +85,14 @@ export class TabMenu {
   /** 右键一个 tab ⇒ 组这一代菜单的项、开菜单、再把要异步就绪的几格（attach 反查 / 本机 kill / 账号项）发出去。 */
   open(e: MouseEvent, sid: string): void {
     const t = this.host.tab(sid);
-    const items: TabMenuItem[] = [
+    const items: MenuItem[] = [
       { label: copyText("tabMenu.open.openInWindow"), onClick: () => void this.actions.openInNewWindow(sid) },
     ];
     // P7a-3（#61）：集合 —— **纯手动**〔用 08-11「手动建, 不要自动, 纯手动」〕。
     // 二级 flyout：现有集合各一条 + 「新建集合…」；已归组的再给一条「移出集合」。
     const here = this.host.collectionsLoaded() ? this.host.groupOf(sid) : null;
     // 成员上界随成员名单一起作废 ⇒ 「那一组满了」这一句也没了，加进去就是改这个 tab 的组 id。
-    const joinItems: TabMenuItem[] = this.host.collections()
+    const joinItems: MenuItem[] = this.host.collections()
       .filter((col) => col.id !== here?.id)
       .map((col) => ({
         label: col.name,
@@ -104,7 +104,7 @@ export class TabMenu {
         // 到上界先说，再问名字（不让用户白填一次）。
         const full = createRefusal(this.host.collections());
         if (full) return sayCollectionRefusal(full);
-        const name = await askText(copyText("tabMenu.collection.namePrompt"));
+        const name = await askText({ title: copyText("tabMenu.collection.title"), label: copyText("tabMenu.collection.namePrompt"), action: copyText("tabMenu.collection.action") });
         if (!name?.trim()) return;
         // 问名字那一会儿里别处又建满了 ⇒ 仍要说出来（判定在落盘偏好那一份里再过一次）。
         const why = this.host.foundGroup([sid], name, newCollectionId());
@@ -135,8 +135,8 @@ export class TabMenu {
     // F41 起本地与远端都是一键拉起新终端（远端=wt.exe 跑 ssh -t，失败才回退复制命令）。
     // F09：远端归档 tab 收敛成 1 个「Resume」一级项 + 二级 flyout（容器×账号，
     // §2.6）——顶层 tmux/直连两项跟随默认账号（sticky pin，同旧版 plain「Resume（tmux/直连）」
-    // 行为逐字节保持）；账号项（基座/具名账号，各自再嵌一层容器子选择）由 showTabContextMenu
-    // 后**异步追加**（appendAccountMenuItems→updateTabContextMenuItem，复用 F51 代次守卫），
+    // 行为逐字节保持）；账号项（基座/具名账号，各自再嵌一层容器子选择）由 openMenu
+    // 后**异步追加**（appendAccountMenuItems→updateMenuItem，复用 F51 代次守卫），
     // 消除同步 peek 的冷缓存分裂。本地归档仍单「Resume」（无容器/账号轴）。
     if (t && t.state.liveness === "unseen") {
       // 说不清（那台暂时看不见）：会话也许还在跑 ⇒ 不给恢复，说为什么。
@@ -183,7 +183,7 @@ export class TabMenu {
       );
     }
     // 那台握手时说过做不到的那几项置灰（事实住 monitor 那份 `Offer`）。
-    showTabContextMenu(e.clientX, e.clientY, t ? items.map((i) => gateByOffer(t.origin, i)) : items);
+    openMenu({ x: e.clientX, y: e.clientY }, t ? items.map((i) => gateByOffer(t.origin, i)) : items);
     if (remote !== null && t?.projectDir) void this.resolveRemoteTmuxItems(remote, sid);
     if (local) void this.resolveLocalTmuxItems(sid);
     // A4/A5：远端 tab → 异步追加账号项（归档=「把此会话切到账号 X（resume）」/ 活=「…（重启）」）。
@@ -196,19 +196,19 @@ export class TabMenu {
     const gen = menuGeneration();
     const s = await standingOf(origin, sid);
     if (gen !== menuGeneration()) return;
-    const drop = (...ids: string[]): void => ids.forEach((id) => removeTabContextMenuItem(id));
+    const drop = (...ids: string[]): void => ids.forEach((id) => removeMenuItem(id));
     if (s === undefined || s.kind === "none" || s.kind === "no_tmux") return drop("attach", "preview", "kill");
     const name = s.names[0];
     if (s.kind === "idle") {
       // 明说不可 attach 的会话不算空壳（前台不是 agent 是因为里面跑着别的东西）。
       if (!this.host.isAttachable(sid)) return drop("attach", "preview", "kill");
-      updateTabContextMenuItem("attach", {
+      updateMenuItem("attach", {
         id: "attach",
         label: copyText("tabMenu.attach.idle", { name }),
         onClick: () => void runRemoteAttach(origin, ACTIVE_AGENT, name),
       });
-      removeTabContextMenuItem("preview"); // 空 shell 没有 agent 画面可看
-      updateTabContextMenuItem("kill", gateByOffer(origin, {
+      removeMenuItem("preview"); // 空 shell 没有 agent 画面可看
+      updateMenuItem("kill", gateByOffer(origin, {
         id: "kill",
         label: copyText("tabMenu.kill.idle", { name }),
         danger: true,
@@ -217,28 +217,28 @@ export class TabMenu {
       return;
     }
     const ambiguous = s.kind === "ambiguous";
-    updateTabContextMenuItem("attach", {
+    updateMenuItem("attach", {
       id: "attach",
       label: ambiguous ? copyText("tabMenu.attach.dupes", { name, others: s.names.length - 1 }) : `Attach（tmux: ${name}）`,
       onClick: () => {
         // 命中多个 ⇒ 接第一个（接回可撤销），但说出来。
         if (ambiguous) {
-          showActionFailureToast(
+          toast(
             copyText("tabMenu.dupes.title"),
             copyText("tabMenu.dupes.body", { n: s.names.length, name }),
-            { level: "info", durationMs: 8000 },
+            { level: "info" },
           );
         }
         void runRemoteAttach(origin, ACTIVE_AGENT, name);
       },
     });
-    updateTabContextMenuItem("preview", gateByOffer(origin, {
+    updateMenuItem("preview", gateByOffer(origin, {
       id: "preview",
       label: copyText("tabMenu.resolveAttachMenuItem.preview"),
       onClick: () => void openPanePreview(origin, name, { terminal: s.terminals[0] }),
     }));
     // 命中多个 ⇒ 不给杀（破坏性，选错了不可逆）。
-    updateTabContextMenuItem("kill", gateByOffer(origin, ambiguous
+    updateMenuItem("kill", gateByOffer(origin, ambiguous
       ? { id: "kill", label: copyText("tabMenu.kill.dupes", { n: s.names.length }), danger: true, enabled: false, onClick: () => {} }
       : { id: "kill", label: copyText("tabMenu.kill.plain"), danger: true, onClick: () => this.actions.killInTmux(origin, sid, name) }));
   }
@@ -250,28 +250,28 @@ export class TabMenu {
     if (gen !== menuGeneration()) return;
     // 问不到（本机后端通道不在）/ 不在 tmux 里 ⇒ 不留一个假装能用的破坏性项。
     if (s === undefined || s.kind === "none" || s.kind === "no_tmux" || (s.kind === "idle" && !this.host.isAttachable(sid))) {
-      removeTabContextMenuItem("kill");
-      removeTabContextMenuItem("resume-into");
+      removeMenuItem("kill");
+      removeMenuItem("resume-into");
       return;
     }
     const name = s.names[0];
     if (s.kind === "idle") {
-      updateTabContextMenuItem("kill", gateByOffer(LOCAL_ORIGIN, {
+      updateMenuItem("kill", gateByOffer(LOCAL_ORIGIN, {
         id: "kill",
         label: copyText("tabMenu.kill.idle", { name }),
         danger: true,
         onClick: () => this.actions.killInTmux(LOCAL_ORIGIN, sid, name, { idle: true }),
       }));
       // 就地 resume 是非破坏性的，与杀并列。
-      updateTabContextMenuItem("resume-into", gateByOffer(LOCAL_ORIGIN, {
+      updateMenuItem("resume-into", gateByOffer(LOCAL_ORIGIN, {
         id: "resume-into",
         label: copyText("tabMenu.inPlace.idle", { name }),
         onClick: () => void this.actions.resumeLocalInTmux(sid),
       }));
       return;
     }
-    removeTabContextMenuItem("resume-into");
-    updateTabContextMenuItem("kill", gateByOffer(LOCAL_ORIGIN, s.kind === "ambiguous"
+    removeMenuItem("resume-into");
+    updateMenuItem("kill", gateByOffer(LOCAL_ORIGIN, s.kind === "ambiguous"
       ? { id: "kill", label: copyText("tabMenu.kill.dupesRefused", { n: s.names.length }), enabled: false, danger: true, onClick: () => {} }
       : { id: "kill", label: copyText("tabMenu.kill.named", { name }), danger: true, onClick: () => this.actions.killInTmux(LOCAL_ORIGIN, sid, name) }));
   }
@@ -283,12 +283,12 @@ export class TabMenu {
    * `resumeTabTmux` 不支持显式账号，是本功能顺带补上的实现缺口，见 §0/features/
    * F09-ui-convergence.md「实现期修正」）。
    */
-  private buildResumeSubmenu(sid: string, accountOptions: AccountModifierOption[]): TabMenuItem[] {
-    const containerLeaves = (accountName: string | undefined, useBase: boolean): TabMenuItem[] => [
+  private buildResumeSubmenu(sid: string, accountOptions: AccountModifierOption[]): MenuItem[] {
+    const containerLeaves = (accountName: string | undefined, useBase: boolean): MenuItem[] => [
       { label: "tmux", onClick: () => void this.actions.resumeTabTmux(sid, accountName, useBase) },
       { label: copyText("tabMenu.containerLeaves.direct"), onClick: () => void this.actions.resumeTab(sid, accountName, useBase) },
     ];
-    const items: TabMenuItem[] = [...containerLeaves(undefined, false)];
+    const items: MenuItem[] = [...containerLeaves(undefined, false)];
     if (accountOptions.length > 0) {
       // F09 Phase D 审计（UX，建议）：纯展示性分隔线——把上面"跟随默认账号"两项和下面"换账号"
       // 一组视觉分开，降低扫描成本（不增加点击次数，审计原话："综合任务时间…新版很可能相当
@@ -311,7 +311,7 @@ export class TabMenu {
    *  每个账号再嵌一层「直接重启/先压缩再重启」（danger，§5）。入参已收窄成 `NamedAccountModifier[]`
    *  （`kind === "account"` 那一支），基座在类型上就进不来——
    *  重启从不提供基座逃生口（旧版行为，restart 面对的是已在某账号下运行的活会话，不是老会话）。 */
-  private buildRestartSubmenu(sid: string, accounts: NamedAccountModifier[]): TabMenuItem[] {
+  private buildRestartSubmenu(sid: string, accounts: NamedAccountModifier[]): MenuItem[] {
     return accounts.map((a) => ({
       label: a.label,
       danger: true,
@@ -358,7 +358,7 @@ export class TabMenu {
     const accountOptions = await enumerateAccountModifiers(origin);
     if (gen !== menuGeneration()) return; // 菜单已换/已关
     if (resumeOnly) {
-      updateTabContextMenuItem("resume", {
+      updateMenuItem("resume", {
         id: "resume",
         label: copyText("tabMenu.item.resume"),
         submenu: this.buildResumeSubmenu(sid, accountOptions),
@@ -381,7 +381,7 @@ export class TabMenu {
     // 现在这是唯一入口，若不禁用，点了会静默命中 restartTabWithAccount 的 in-flight 守卫、
     // 什么反应都没有——菜单直接呈现"当前不可点"，而不是点了才知道（守卫本身仍在，这里只是让
     // UI 提前说实话）。
-    appendTabContextMenuItem({
+    appendMenuItem({
       id: "restart",
       label: copyText("tabMenu.restart.menu"),
       danger: true,

@@ -29,7 +29,7 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
     return Promise.resolve();
   },
 }));
-vi.mock("../../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 
 import { DataSection, LOGS_DIR_LABEL, describeDataClass } from "../../../../src/frontend/ui/settings/data-section";
 
@@ -87,7 +87,7 @@ describe("数据位置：给路径，不给删 / 清空", () => {
       "../ipc/commands": ["commands"],
       "@tauri-apps/plugin-opener": ["openPath"],
       "../reveal-in-folder": ["revealInFolder"],
-      "../error-toast": ["showActionFailureToast"],
+      "../kit/toast": ["toast"],
       "../local-storage": ["enumeratePrefix"],
       "../format": ["formatBytes"],
       "./skeleton": ["holdSkeletonHeight", "makeSkeleton"],

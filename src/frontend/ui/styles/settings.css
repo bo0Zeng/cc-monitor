@@ -41,18 +41,18 @@
 .settings-cc-profile-badge {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 12px;
+  border-radius: var(--radius-xl);
+  font-size: var(--font-size-small);
 }
 
 .settings-cc-badge-ok {
-  background: rgba(100, 180, 100, 0.15);
-  color: #98c898;
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+  color: var(--success);
 }
 
 .settings-cc-badge-warn {
-  background: rgba(200, 130, 80, 0.15);
-  color: var(--accent, #c25b3b);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
 }
 
 .settings-cc-profile-buttons {
@@ -68,19 +68,19 @@
   align-items: center;
   gap: 6px;
   margin-top: 10px;
-  font-size: 12px;
-  color: var(--text-2, #bcb5a8);
+  font-size: var(--font-size-small);
+  color: var(--text-2);
 }
 
 .settings-cc-stat-label {
-  color: var(--text-faint, #8a8275);
+  color: var(--text-faint);
   display: inline-flex;
   align-items: center;
 }
 
 .settings-cc-stat-value {
   font-weight: 600;
-  color: var(--text, #d6cfc6);
+  color: var(--text);
 }
 
 /* ! 信息图标 + hover tooltip
@@ -92,54 +92,30 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 1px solid var(--text-faint, #8a8275);
-  color: var(--text-faint, #8a8275);
-  font-size: 9px;
+  border: 1px solid var(--text-faint);
+  color: var(--text-faint);
+  font-size: var(--font-size-xs);
   font-weight: 700;
   cursor: help;
   margin-left: 6px;
   user-select: none;
   position: relative;
-  font-family: var(--font-base, sans-serif);
+  font-family: var(--font-base);
   line-height: 1;
 }
 
 .settings-info-icon:hover {
-  color: var(--text, #d6cfc6);
-  border-color: var(--text, #d6cfc6);
-}
-
-/* v1.7.13: tooltip 改 portal 模式（position: fixed + JS 算位置），
-   彻底脱离 .settings-body 的 overflow-y: auto 裁剪。位置完全由 JS 设置，CSS 只管样式 + 默认隐藏。 */
-.settings-info-tooltip {
-  display: none;
-  position: fixed;
-  /* top / left 由 JS 动态设 */
-  width: max-content;
-  min-width: 180px;
-  max-width: 280px;
-  padding: 8px 10px;
-  background: var(--bg-2, #2a2520);
-  border: 1px solid var(--border-strong, #5a5046);
-  border-radius: 6px;
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--text-2, #bcb5a8);
-  z-index: var(--z-toast);
-  text-align: left;
-  white-space: pre-line;
-  font-weight: 400;
-  pointer-events: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  color: var(--text);
+  border-color: var(--text);
 }
 
 /* === auto-launch toggle === */
 .settings-cc-autolaunch {
   margin-top: 14px;
   padding: 10px 12px;
-  border: 1px solid var(--border, #3a342e);
-  border-radius: 8px;
-  background: var(--bg-2, #2a2520);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  background: var(--bg-2);
 }
 
 .settings-checkbox {
@@ -152,20 +128,20 @@
 .settings-checkbox-label {
   cursor: pointer;
   user-select: none;
-  font-size: 13px;
-  color: var(--text, #d6cfc6);
+  font-size: var(--font-size-mono);
+  color: var(--text);
 }
 
 .settings-cc-autolaunch-path {
   margin-top: 6px;
   margin-left: 22px;
-  font-family: var(--font-mono, monospace);
-  font-size: 11px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
   word-break: break-all;
 }
 
 .settings-cc-autolaunch-path-value {
-  color: var(--text-2, #bcb5a8);
+  color: var(--text-2);
 }
 
 /* === Settings Panel === */
@@ -219,7 +195,7 @@ body.settings-window-mode .settings-panel {
   border: none;
   color: var(--text-2);
   cursor: pointer;
-  font-size: 18px;
+  font-size: var(--font-size-title);
   line-height: 1;
   padding: 0 4px;
 }
@@ -257,7 +233,7 @@ body.settings-window-mode .settings-panel {
   appearance: none;
   background: transparent;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-m);
   color: var(--text-2);
   cursor: pointer;
   font: inherit;
@@ -321,7 +297,7 @@ body.settings-window-mode .settings-panel {
    所以这里不必为空态设计。 */
 .remote-gaps {
   background: var(--bg-2);
-  border-radius: 6px;
+  border-radius: var(--radius-m);
   margin-bottom: 10px;
   padding: 8px 10px;
 }
@@ -358,7 +334,7 @@ body.settings-window-mode .settings-panel {
 }
 
 .settings-shell-h .settings-nav {
-  border-bottom: 1px solid var(--border, var(--bg-2));
+  border-bottom: 1px solid var(--border);
   flex-direction: row;
   gap: 4px;
   margin-bottom: 10px;
@@ -367,7 +343,7 @@ body.settings-window-mode .settings-panel {
 }
 
 .settings-shell-h .settings-nav-item {
-  border-radius: 6px 6px 0 0;
+  border-radius: var(--radius-m) var(--radius-m) 0 0;
 }
 
 .settings-shell-h .settings-content {
@@ -557,7 +533,7 @@ body.settings-window-mode .settings-panel {
 
 .settings-data-block {
   border: 1px solid var(--border-soft);
-  border-radius: 6px;
+  border-radius: var(--radius-m);
   padding: 8px 10px 4px 10px;
   background: color-mix(in srgb, var(--bg-2) 50%, transparent);
 }
@@ -662,7 +638,7 @@ body.settings-window-mode .settings-panel {
 .settings-data-item-open {
   background: transparent;
   border: 1px solid var(--border-soft);
-  border-radius: 3px;
+  border-radius: var(--radius-s);
   padding: 2px 8px;
   font-size: var(--font-size-xs);
   font-family: inherit;
@@ -720,7 +696,7 @@ body.settings-window-mode .settings-panel {
   padding: 8px 10px;
   background: color-mix(in srgb, var(--warn) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
-  border-radius: 6px;
+  border-radius: var(--radius-m);
   line-height: 1.5;
 }
 
@@ -739,7 +715,7 @@ body.settings-window-mode .settings-panel {
   /* 占用 .settings-group-title 的 8px 底部边距，折叠时也需要保留视觉间隔 */
   margin-bottom: 8px;
   padding: 2px 0;
-  border-radius: 3px;
+  border-radius: var(--radius-s);
   outline: none;
 }
 
@@ -756,7 +732,7 @@ body.settings-window-mode .settings-panel {
   display: inline-block;
   width: 12px;
   text-align: center;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-2);
   transition: transform 150ms ease;
   transform: rotate(0deg);
@@ -820,7 +796,7 @@ body.settings-window-mode .settings-panel {
   cursor: pointer;
   font: inherit;
   font-size: var(--font-size-small);
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   padding: 0;
   margin-left: 4px;
   transition:
@@ -838,7 +814,7 @@ body.settings-window-mode .settings-panel {
 .settings-btn-primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--text-on-strong);
 }
 
 .settings-btn-primary:hover {
@@ -866,9 +842,9 @@ body.settings-window-mode .settings-panel {
 .settings-banner {
   font-size: var(--font-size-small);
   color: var(--warn);
-  background: rgba(212, 160, 74, 0.08);
-  border: 1px solid rgba(212, 160, 74, 0.2);
-  border-radius: 6px;
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 20%, transparent);
+  border-radius: var(--radius-m);
   padding: 8px 12px;
   margin-bottom: 12px;
   display: none;
@@ -883,7 +859,7 @@ body.settings-window-mode .settings-panel {
   margin-top: 8px;
   padding: 8px 12px;
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-m);
   background: var(--bg);
   font-size: var(--font-size-small);
   display: flex;
@@ -902,8 +878,8 @@ body.settings-window-mode .settings-panel {
 .remote-stage-log {
   margin: 4px 0 8px;
   padding: 6px 8px;
-  border-left: 2px solid var(--border, #ccc);
-  font-size: 12px;
+  border-left: 2px solid var(--border);
+  font-size: var(--font-size-small);
   line-height: 1.5;
   opacity: 0.9;
   max-height: 160px;
@@ -932,7 +908,7 @@ body.settings-window-mode .settings-panel {
 }
 
 .remote-test-fp {
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
   color: var(--text);
   word-break: break-all;
 }
@@ -974,10 +950,10 @@ body.settings-window-mode .settings-panel {
   margin: 8px 0 0;
   padding: 8px 12px;
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-m);
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
   font-size: var(--font-size-small);
   line-height: 1.45;
   white-space: pre;
@@ -997,7 +973,7 @@ body.settings-window-mode .settings-panel {
   margin: 0;
   padding: 8px 12px 12px;
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border-radius: var(--radius-l);
   background: var(--bg);
 }
 
@@ -1015,7 +991,7 @@ body.settings-window-mode .settings-panel {
 .remote-machine-toggle {
   display: inline-block;
   width: 12px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-2);
 }
 
@@ -1050,7 +1026,7 @@ body.settings-window-mode .settings-panel {
   margin: 8px 0 4px;
   padding: 7px 10px;
   border-left: 3px solid var(--border-strong);
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   line-height: 1.55;
 }
 
@@ -1085,8 +1061,8 @@ body.settings-window-mode .settings-panel {
   max-height: 82vh;
   background: var(--bg-2);
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  box-shadow: 0 12px 40px var(--overlay-shadow);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-modal);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1111,7 +1087,7 @@ body.settings-window-mode .settings-panel {
   border: none;
   color: var(--text-2);
   cursor: pointer;
-  font-size: 18px;
+  font-size: var(--font-size-title);
   line-height: 1;
   padding: 0 6px;
 }
@@ -1180,7 +1156,7 @@ body.settings-window-mode .settings-panel {
 .kb-editor-chord.kb-editor-recording {
   color: var(--warn);
   background: var(--overlay-hover);
-  border-radius: 3px;
+  border-radius: var(--radius-s);
   padding-left: 8px;
   padding-right: 8px;
 }
@@ -1198,7 +1174,7 @@ body.settings-window-mode .settings-panel {
   color: var(--text-2);
   cursor: pointer;
   padding: 4px 10px;
-  border-radius: 3px;
+  border-radius: var(--radius-s);
   font-size: var(--font-size-small);
   margin-left: 4px;
 }
@@ -1230,7 +1206,7 @@ body.settings-window-mode .settings-panel {
   color: var(--text-2);
   cursor: pointer;
   padding: 6px 14px;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   font-size: var(--font-size-small);
 }
 
@@ -1256,7 +1232,7 @@ body.settings-window-mode .settings-panel {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--overlay-backdrop);
 }
 
 .launcher-box {
@@ -1265,21 +1241,21 @@ body.settings-window-mode .settings-panel {
   flex-direction: column;
   gap: 12px;
   padding: 16px 18px;
-  background: var(--bg, #1e1e1e);
-  border: 1px solid var(--border, #444);
-  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
 }
 
 .launcher-title {
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--font-size-base);
 }
 
 .launcher-field {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   opacity: 0.9;
 }
 
@@ -1287,11 +1263,11 @@ body.settings-window-mode .settings-panel {
 .launcher-field select {
   padding: 6px 8px;
   background: var(--field-bg);
-  border: 1px solid var(--border, #444);
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
   color: inherit;
   font-family: ui-monospace, monospace;
-  font-size: 13px;
+  font-size: var(--font-size-mono);
 }
 
 .launcher-foot {
@@ -1308,7 +1284,7 @@ body.settings-window-mode .settings-panel {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--overlay-backdrop);
 }
 
 .pf-panel {
@@ -1316,9 +1292,9 @@ body.settings-window-mode .settings-panel {
   max-height: 80vh;
   display: flex;
   flex-direction: column;
-  background: var(--bg, #1e1e1e);
-  border: 1px solid var(--border, #444);
-  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
   overflow: hidden;
 }
 
@@ -1327,7 +1303,7 @@ body.settings-window-mode .settings-panel {
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--border, #444);
+  border-bottom: 1px solid var(--border);
 }
 
 .pf-title {
@@ -1341,7 +1317,7 @@ body.settings-window-mode .settings-panel {
   align-items: center;
   gap: 6px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--border, #444);
+  border-bottom: 1px solid var(--border);
 }
 
 .pf-arrow {
@@ -1350,11 +1326,11 @@ body.settings-window-mode .settings-panel {
 
 .pf-input {
   padding: 4px 8px;
-  background: var(--bg, #2a2a2a);
-  border: 1px solid var(--border, #444);
-  border-radius: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
   color: inherit;
-  font-size: 13px;
+  font-size: var(--font-size-mono);
   min-width: 90px;
   flex: 1;
 }
@@ -1362,15 +1338,15 @@ body.settings-window-mode .settings-panel {
 .pf-btn {
   padding: 4px 10px;
   background: transparent;
-  border: 1px solid var(--border, #555);
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
   color: inherit;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size-mono);
 }
 
 .pf-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--state-active);
 }
 
 .pf-list {
@@ -1383,7 +1359,7 @@ body.settings-window-mode .settings-panel {
 
 .pf-empty {
   opacity: 0.6;
-  font-size: 13px;
+  font-size: var(--font-size-mono);
   padding: 8px 0;
 }
 
@@ -1392,14 +1368,14 @@ body.settings-window-mode .settings-panel {
   align-items: center;
   gap: 8px;
   padding: 5px 6px;
-  border: 1px solid var(--border, #444);
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
 }
 
 .pf-desc {
   flex: 1;
   font-family: ui-monospace, monospace;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   overflow-wrap: anywhere;
 }
 
@@ -1411,11 +1387,11 @@ body.settings-window-mode .settings-panel {
 }
 
 .pf-dot-ok {
-  background: var(--success, #3fb950);
+  background: var(--success);
 }
 
 .pf-dot-err {
-  background: var(--error, #f85149);
+  background: var(--error);
 }
 
 /* F57:~/.ssh/config 批量导入预览弹框。`--z-overlay` > 设置面板(`--z-view`)——从设置里点开,
@@ -1427,7 +1403,7 @@ body.settings-window-mode .settings-panel {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--overlay-backdrop);
 }
 
 .import-preview-box {
@@ -1437,14 +1413,14 @@ body.settings-window-mode .settings-panel {
   flex-direction: column;
   gap: 10px;
   padding: 16px 18px;
-  background: var(--bg, #1e1e1e);
-  border: 1px solid var(--border, #444);
-  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
 }
 
 .import-preview-title {
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--font-size-base);
 }
 
 .import-preview-list {
@@ -1459,8 +1435,8 @@ body.settings-window-mode .settings-panel {
   align-items: flex-start;
   gap: 8px;
   padding: 6px 8px;
-  border: 1px solid var(--border, #444);
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
 }
 
 .import-preview-body {
@@ -1474,14 +1450,14 @@ body.settings-window-mode .settings-panel {
 .import-preview-label {
   padding: 3px 6px;
   background: var(--field-bg);
-  border: 1px solid var(--border, #444);
-  border-radius: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
   color: inherit;
-  font-size: 13px;
+  font-size: var(--font-size-mono);
 }
 
 .import-preview-info {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   opacity: 0.7;
   overflow-wrap: anywhere;
 }
@@ -1490,7 +1466,7 @@ body.settings-window-mode .settings-panel {
   display: flex;
   align-items: center;
   gap: 3px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   opacity: 0.85;
   white-space: nowrap;
 }
@@ -1499,12 +1475,6 @@ body.settings-window-mode .settings-panel {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-}
-
-/* account-ux U6：chip 上的 ⚠k 不一致计数（k 个活会话不在当前账号）。仅信息，点 chip
-   进菜单才有对齐入口 → 不做成按钮、不抢眼，只用 warn 色示意。 */
-.account-picker-action.danger {
-  color: var(--warn, #d4a04a);
 }
 
 /* ============================================================
@@ -1537,7 +1507,7 @@ body.settings-window-mode .settings-panel {
   color: var(--text-2);
   background: transparent;
   border: 1px solid var(--border-strong);
-  border-radius: 5px;
+  border-radius: var(--radius-m);
   cursor: pointer;
 }
 
@@ -1555,7 +1525,7 @@ body.settings-window-mode .settings-panel {
   margin-bottom: 10px;
   border: 1px solid var(--border-strong);
   border-left: 3px solid var(--accent);
-  border-radius: 6px;
+  border-radius: var(--radius-m);
   background: var(--bg-2);
 }
 
@@ -1617,7 +1587,7 @@ body.settings-window-mode .settings-panel {
     auto 16px minmax(0, auto) minmax(0, 1.2fr) auto
     minmax(0, 0.8fr) auto;
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-m);
   overflow-x: auto;
 }
 
@@ -1688,7 +1658,7 @@ body.settings-window-mode .settings-panel {
 
 .accounts-row-dir {
   color: var(--text-faint);
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
 }
 
 /* 「信息才显」(用户决策③) 同源：健康态每行都一样，恒真的信息不携带信息，涂绿只会稀释真正
@@ -1716,7 +1686,7 @@ body.settings-window-mode .settings-panel {
   color: var(--text-2);
   background: transparent;
   border: 1px solid var(--border-strong);
-  border-radius: 5px;
+  border-radius: var(--radius-m);
   cursor: pointer;
 }
 
@@ -1734,7 +1704,7 @@ body.settings-window-mode .settings-panel {
   color: var(--text);
   background: transparent;
   border: 1px solid var(--border-strong);
-  border-radius: 5px;
+  border-radius: var(--radius-m);
 }
 
 .accounts-row-model:focus {
@@ -1757,14 +1727,14 @@ body.settings-window-mode .settings-panel {
   padding: 8px 10px;
   background: var(--bg-2);
   border: 1px solid var(--warn);
-  border-radius: 6px;
+  border-radius: var(--radius-m);
 }
 
 .accounts-info {
   padding: 8px 10px;
   background: var(--bg-2);
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-m);
   margin-top: 0;
 }
 
@@ -1802,7 +1772,7 @@ body.settings-window-mode .settings-panel {
   grid-template-columns:
     auto minmax(0, auto) minmax(0, 1.2fr) auto minmax(0, 1fr) auto auto;
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-m);
   /* 设置窗没有 min_inner_size，用户可以拖到很窄 —— 宁可横向滚也别把最右一格裁掉。 */
   overflow-x: auto;
 }
@@ -1866,7 +1836,7 @@ body.settings-window-mode .settings-panel {
 
 .accounts-local-row-dir {
   color: var(--text-faint);
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
 }
 
 /* 健康态 faint、异常态才上 warn —— 恒真的信息不携带信息，涂色只会稀释真正要跳出来的那几个。
@@ -1923,7 +1893,7 @@ body.settings-window-mode .settings-panel {
 
 .accounts-mcp-name {
   flex: 1;
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
 }
 
 .accounts-mcp-empty,
@@ -1978,8 +1948,8 @@ body.settings-window-mode .settings-panel {
   gap: 6px;
   margin-top: 12px;
   padding: 10px;
-  border: 1px solid var(--border, #3a342e);
-  border-radius: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
   background: color-mix(in srgb, var(--accent) 5%, transparent);
 }
 
@@ -2063,8 +2033,8 @@ body.settings-window-mode .settings-panel {
   gap: 8px;
   margin-top: 12px;
   padding: 10px;
-  border: 1px solid var(--border, #3a342e);
-  border-radius: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
   background: color-mix(in srgb, var(--accent) 5%, transparent);
 }
 
@@ -2119,7 +2089,7 @@ body.settings-window-mode .settings-panel {
   color: var(--text);
   background: transparent;
   border: 1px solid var(--border-strong);
-  border-radius: 5px;
+  border-radius: var(--radius-m);
 }
 
 /* T03 迁移后这个 class 挂在 paste-block 的根 div 上，不再是 .ccm-alias-gen-grid 的
@@ -2133,7 +2103,7 @@ body.settings-window-mode .settings-panel {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .accounts-wiz-name,
@@ -2141,17 +2111,17 @@ body.settings-window-mode .settings-panel {
 .accounts-maint-cred {
   padding: 6px 8px;
   background: var(--field-bg);
-  border: 1px solid var(--border, #444);
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
   color: inherit;
   font-family: ui-monospace, monospace;
-  font-size: 13px;
+  font-size: var(--font-size-mono);
 }
 
 .accounts-wiz-err,
 .accounts-maint-err {
   min-height: 1em;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   color: var(--error);
 }
 
@@ -2159,10 +2129,10 @@ body.settings-window-mode .settings-panel {
   margin: 0;
   padding: 8px 10px;
   background: var(--field-bg);
-  border: 1px solid var(--border, #3a342e);
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
   font-family: ui-monospace, monospace;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   white-space: pre-wrap;
   word-break: break-all;
   user-select: text;
@@ -2179,17 +2149,17 @@ body.settings-window-mode .settings-panel {
 .accounts-wiz-btns button,
 .accounts-maint button {
   padding: 5px 10px;
-  border: 1px solid var(--border, #444);
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
   background: var(--field-bg);
   color: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   cursor: pointer;
 }
 
 .accounts-wiz-btns button:hover:not(:disabled),
 .accounts-maint button:hover:not(:disabled) {
-  border-color: var(--accent, #c96442);
+  border-color: var(--accent);
 }
 
 .accounts-wiz-btns button:disabled,
@@ -2220,7 +2190,7 @@ body.settings-window-mode .settings-panel {
 .config-surface-source {
   font-weight: 400;
   color: var(--text-faint);
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 .config-surface-row,
@@ -2228,7 +2198,7 @@ body.settings-window-mode .settings-panel {
   border-left: 3px solid var(--text-faint);
   padding: 6px 10px;
   margin: 4px 0 4px 8px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--border-faint);
 }
 
 .config-surface-row.tone-ok,
@@ -2249,8 +2219,8 @@ body.settings-window-mode .settings-panel {
 
 .config-surface-path,
 .config-surface-scope-head {
-  font-family: var(--font-mono, monospace);
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
   color: var(--text);
 }
 
@@ -2263,12 +2233,12 @@ body.settings-window-mode .settings-panel {
 .config-surface-effect,
 .config-surface-undo,
 .config-surface-scope-detail {
-  font-size: 12px;
+  font-size: var(--font-size-small);
   color: var(--text-faint);
 }
 
 .config-surface-state {
-  font-size: 12px;
+  font-size: var(--font-size-small);
   color: var(--text-2);
 }
 
@@ -2291,8 +2261,8 @@ body.settings-window-mode .settings-panel {
 }
 
 .paste-block-out {
-  font-family: var(--font-mono, monospace);
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
   width: 100%;
   /* 迁移前 A3 是 <pre class="remote-wrapper-snippet">（`white-space: pre` + 横向滚动）。
      换成 textarea 后默认软换行，29 行的 wrapper 片段会被折得很难读——把语义补回来。 */
@@ -2303,12 +2273,12 @@ body.settings-window-mode .settings-panel {
 .paste-block-target,
 .paste-block-merge,
 .paste-block-activation {
-  font-size: 12px;
+  font-size: var(--font-size-small);
   color: var(--text-faint);
 }
 
 .paste-block-target {
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
 }
 
 /* T04：位置徽章（挂在路径行上，不占独立一行——审计核实 10 行里 9 行的"位置"
@@ -2318,9 +2288,9 @@ body.settings-window-mode .settings-panel {
   margin-right: 6px;
   padding: 0 5px;
   border: 1px solid var(--border-strong);
-  border-radius: 3px;
+  border-radius: var(--radius-s);
   font-family: var(--font-base);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--text-faint);
 }
 
@@ -2332,14 +2302,14 @@ body.settings-window-mode .settings-panel {
 }
 
 .settings-block-failed-msg {
-  font-size: 12px;
+  font-size: var(--font-size-small);
   color: var(--error);
   margin: 4px 0;
 }
 
 .settings-block-failed-out {
-  font-family: var(--font-mono, monospace);
-  font-size: 11px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
   width: 100%;
 }
 
@@ -2366,7 +2336,7 @@ body.settings-window-mode .settings-panel {
     background: var(--field-bg);
     color: var(--text);
     border: 1px solid var(--border-strong);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
   }
   .ext-filter {
     display: flex;
@@ -2410,7 +2380,7 @@ body.settings-window-mode .settings-panel {
     font-size: var(--font-size-xs);
     color: var(--accent);
     border: 1px solid var(--accent);
-    border-radius: 3px;
+    border-radius: var(--radius-s);
   }
   .ext-kind {
     font-size: var(--font-size-small);
@@ -2568,7 +2538,7 @@ body.settings-window-mode .settings-panel {
   .ext-targets {
     margin: 6px 0;
     border: 1px solid var(--border-medium);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
   }
   .ext-target {
     display: flex;
@@ -2596,7 +2566,7 @@ body.settings-window-mode .settings-panel {
     padding: 8px;
     background: var(--bg);
     border: 1px solid var(--border-medium);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
   }
   .ext-card-title {
     font-weight: 600;
@@ -2634,7 +2604,7 @@ body.settings-window-mode .settings-panel {
     background: var(--field-bg);
     color: var(--text);
     border: 1px solid var(--border-strong);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
   }
   .ext-card-suspect {
     color: var(--warn);

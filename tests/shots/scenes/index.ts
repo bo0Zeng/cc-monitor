@@ -8,11 +8,12 @@ import { PANEL_SCENES } from "./panels";
 import { SETTINGS_SCENES } from "./settings";
 import { HISTORY_SCENES } from "./history";
 import { RESTART_SCENES } from "./restart";
+import { KIT_SCENES } from "./kit";
 
 export interface Scene {
   id: string;
   /** 哪扇窗：主窗口 / 设置窗 / 查看窗。 */
-  page: "index" | "settings" | "viewer";
+  page: "index" | "settings" | "viewer" | "tests/shots/kit";
   /** 图集里的目录（按界面分）。 */
   dir: string;
   title: string;
@@ -34,7 +35,7 @@ export const DEFAULT_STORAGE: Record<string, string> = {
   "cc-monitor.cmdk-hint.seen": "1",
 };
 
-export const SCENES: Scene[] = [...MAIN_SCENES, ...PANEL_SCENES, ...RESTART_SCENES, ...HISTORY_SCENES, ...SETTINGS_SCENES];
+export const SCENES: Scene[] = [...MAIN_SCENES, ...PANEL_SCENES, ...RESTART_SCENES, ...HISTORY_SCENES, ...SETTINGS_SCENES, ...KIT_SCENES];
 
 export function sceneById(id: string): Scene {
   return (

@@ -1,0 +1,48 @@
+/* 折叠块（C9）。 */
+@layer components {
+  .fold {
+    width: 100%;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-l);
+  }
+
+  .foldHead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    height: var(--row-h);
+    padding: 0 var(--space-5);
+    border: none;
+    border-radius: var(--radius-l);
+    background: transparent;
+    color: var(--text);
+    font-size: var(--font-size-base);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .foldHead > svg {
+    color: var(--text-2);
+    transition: transform var(--dur-expand);
+  }
+
+  .foldHead[aria-expanded="true"] > svg {
+    transform: rotate(90deg);
+  }
+
+  .foldTitle {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .foldSummary {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .foldBody {
+    padding: var(--space-4) var(--space-5);
+    border-top: 1px solid var(--border-soft);
+  }
+}

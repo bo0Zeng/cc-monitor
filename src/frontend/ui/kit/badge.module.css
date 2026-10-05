@@ -1,0 +1,48 @@
+/* 徽标（C17）· 文字标记 · 键帽（C18）。 */
+@layer components {
+  .badgeCount {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-s);
+    background: var(--border-strong);
+    color: var(--text);
+    font-size: var(--font-size-xs);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+  .badgeCount[data-intent="warn"] {
+    background: var(--warn);
+    color: var(--bg-2);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .badgeTag {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 var(--space-3);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-s);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .badgeKbd {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border-medium);
+    border-bottom-width: 2px;
+    border-radius: var(--radius-s);
+    background: var(--bg-2);
+    color: var(--text-2);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+  }
+}

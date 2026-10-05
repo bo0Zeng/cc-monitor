@@ -16,6 +16,7 @@
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
+import { icon } from "./kit/icon";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { StartupActive } from "./startup-active";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -36,7 +37,8 @@ import { readContextLimits } from "./views/context-limit";
 import { loadConfig } from "./config";
 import { UsageHud } from "./usage-hud";
 import { recordFileWiring } from "./record-file-notice";
-import { bindErrorToast, showActionFailureToast } from "./error-toast";
+import { toast } from "./kit/toast";
+import { bindErrorToast } from "./backend-errors";
 import { bindRemoteHealthToast } from "./remote-health";
 // F83（#39）：顶栏远端文件入口——按远端主机数 0/1/N 分支（`sftp-host-picker.ts`）。
 import { openSftpFromTopbar, toggleSftpFromTopbar } from "./sftp-host-picker";
@@ -332,6 +334,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const settingsTrigger = document.createElement("button");
   settingsTrigger.type = "button";
   settingsTrigger.className = "settings-trigger";
+  settingsTrigger.appendChild(icon("settings"));
   settingsTrigger.title = copyText("main.topbar.settingsHint");
   settingsTrigger.setAttribute("aria-label", copyText("main.cmd.openSettings"));
   settingsTrigger.addEventListener("click", () => {
@@ -352,6 +355,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const historyTrigger = document.createElement("button");
   historyTrigger.type = "button";
   historyTrigger.className = "history-trigger";
+  historyTrigger.appendChild(icon("history"));
   historyTrigger.title = copyText("main.topbar.historyHint");
   historyTrigger.setAttribute("aria-label", copyText("main.topbar.openHistory"));
   // 纯字符的时钟符号（U+25F7），避免 emoji 跨平台/字体差异
@@ -365,6 +369,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const gridTrigger = document.createElement("button");
   gridTrigger.type = "button";
   gridTrigger.className = "grid-monitor-trigger";
+  gridTrigger.appendChild(icon("grid"));
   gridTrigger.title = copyText("main.topbar.gridHint");
   gridTrigger.setAttribute("aria-label", copyText("main.cmd.openGrid"));
   gridTrigger.addEventListener("click", () => overlays.toggle("grid"));
@@ -375,6 +380,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const sftpTrigger = document.createElement("button");
   sftpTrigger.type = "button";
   sftpTrigger.className = "sftp-trigger";
+  sftpTrigger.appendChild(icon("folder"));
   sftpTrigger.title = copyText("main.topbar.filesHint");
   sftpTrigger.setAttribute("aria-label", copyText("main.cmd.openFiles"));
   sftpTrigger.addEventListener("click", () => void toggleSftpFromTopbar(sftpTrigger));
@@ -436,10 +442,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     const cmdkHint = document.createElement("button");
     cmdkHint.type = "button";
     cmdkHint.className = "status-cmdk";
-    const icon = document.createElement("span");
-    icon.className = "status-cmdk-icon";
-    icon.setAttribute("aria-hidden", "true"); // F84b-fix：图标纯装饰，屏读器别念 U+2328 字形名
-    cmdkHint.appendChild(icon);
+    cmdkHint.appendChild(icon("keyboard", "compact"));
     const label = document.createElement("span");
     label.textContent = copyText("main.cmdk.label");
     cmdkHint.appendChild(label);
@@ -707,7 +710,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       if (cur) safeSet(LS_KEYS.lastActiveSid, cur);
     },
     sayGone: (sid) =>
-      showActionFailureToast(copyText("startupActive.gone.title"), copyText("startupActive.gone.body", { sid: sid.slice(0, 8) }), {
+      toast(copyText("startupActive.gone.title"), copyText("startupActive.gone.body", { sid: sid.slice(0, 8) }), {
         level: "info",
       }),
   });

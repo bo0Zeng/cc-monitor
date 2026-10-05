@@ -26,7 +26,7 @@
 // 缺的只是「这一行从哪台来」—— ST3 把它一路带到了写点。⇒ 每台机器子页的「足迹」栏问的就是**这一台**，
 // 回包带回它答的是哪台，**相等才画**（回声，同足迹那一格）。本机与远端同一套 DOM、同一条路。
 import { commands } from "../ipc/commands";
-import { showActionFailureToast } from "../error-toast";
+import { toast } from "../kit/toast";
 import { withPending } from "./pending";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { isLocalOrigin, type Origin } from "../ipc/origin";
@@ -278,7 +278,7 @@ export class DriftLedgerSection {
       this.copyBtn.textContent = copyText("driftLedger.copy.done");
       setTimeout(() => (this.copyBtn.textContent = copyText("driftLedger.copy.copyReport")), 1500);
     } catch (e) {
-      showActionFailureToast(copyText("driftLedger.copy.failed"), String(e));
+      toast(copyText("driftLedger.copy.failed"), String(e));
     }
   }
 }

@@ -20,7 +20,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 const toastMock = vi.fn();
-vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: (...a: unknown[]) => toastMock(...a) }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: (...a: unknown[]) => toastMock(...a) }));
 
 import { openFileWindow, fileWindowTheme, FILE_WINDOW_THEME_TOKENS } from "../../../src/frontend/ui/file-window";
 import type { RemoteHostConfig } from "../../../src/frontend/ui/remote-config";

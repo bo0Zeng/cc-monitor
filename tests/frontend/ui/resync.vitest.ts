@@ -17,8 +17,8 @@ import { resolve } from "node:path";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 const { toasts } = vi.hoisted(() => ({ toasts: [] as { headline: string; body: string; onClick?: () => void }[] }));
-vi.mock("../../../src/frontend/ui/error-toast", () => ({
-  showActionFailureToast: (headline: string, body: string, opts: { onClick?: () => void } = {}) => {
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({
+  toast: (headline: string, body: string, opts: { onClick?: () => void } = {}) => {
     toasts.push({ headline, body, onClick: opts.onClick });
   },
 }));

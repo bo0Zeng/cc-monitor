@@ -1,0 +1,32 @@
+/* 错误条 · 警告条（C15）。 */
+@layer components {
+  .banner {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+    width: 100%;
+    padding: var(--space-4) var(--space-5);
+    border-left: 3px solid var(--error);
+    border-radius: 0 var(--radius-m) var(--radius-m) 0;
+    background: var(--bg-2);
+    color: var(--text);
+    font-size: var(--font-size-mono);
+  }
+
+  .banner > svg {
+    color: var(--error);
+  }
+
+  .banner[data-intent="warn"] {
+    border-left-color: var(--warn);
+  }
+
+  .banner[data-intent="warn"] > svg {
+    color: var(--warn);
+  }
+
+  .bannerText {
+    flex: 1;
+    min-width: 0;
+  }
+}

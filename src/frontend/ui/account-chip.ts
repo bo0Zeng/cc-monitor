@@ -20,11 +20,11 @@ import { accountsSetDefault } from "./account-ops";
 import type { ApikeyRoutingView } from "./apikey-reads";
 import { accountAvatarEl } from "./account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "./remote-config";
-import { showActionFailureToast } from "./error-toast";
+import { toast } from "./kit/toast";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { appStore, putAccounts } from "./app-store";
-import { armPopupDismiss } from "./popup-dismiss";
+import { closeMenu, menuAnchoredOn, openMenu, type MenuItem } from "./kit/menu";
 
 // ------------------------------------------------------------ 纯函数（可测）
 
@@ -88,9 +88,6 @@ export class AccountChip {
     if (this.local && (!st || deriveUi(st).kind !== "ready")) return null;
     return st;
   }
-  private menu: HTMLElement | null = null;
-  /** 选单开着时的关法（点外面 · 再点 chip · Esc 走弹层栈，`popup-dismiss.ts`）；关掉时调它摘掉。 */
-  private menuDisarm: (() => void) | null = null;
 
   constructor(private deps: AccountChipDeps) {
     const btn = document.createElement("button");
@@ -186,8 +183,8 @@ export class AccountChip {
   }
 
   private async toggleMenu(): Promise<void> {
-    if (this.menu) {
-      this.closeMenu();
+    if (menuAnchoredOn(this.element)) {
+      closeMenu();
       return;
     }
     // `D1 阻-5`：**本机那一档没有 origin，但有账号** ⇒ 这道门改问「有没有状态」。
@@ -199,127 +196,53 @@ export class AccountChip {
     const st = this.accountPickerState();
     if (!st) return;
     const ui = deriveUi(st);
-    const menu = document.createElement("div");
-    menu.className = "account-picker";
-
+    const items: MenuItem[] = [];
     if (ui.kind !== "ready") {
-      // 未启用 / 需更新：只给一条"去设置/管理"
-      const info = document.createElement("div");
-      info.className = "account-picker-info";
-      info.textContent =
+      // 未启用 / 需更新：只给一条「去设置 / 管理」。
+      const info =
         ui.kind === "needs-update"
           ? copyText("accountChip.menu.backendOld")
           : ui.kind === "query-failed"
             ? copyText("accountChip.menu.queryFailed", { reason: ui.reason })
             : copyText("accountChip.menu.notEnabled");
-      menu.appendChild(info);
-      menu.appendChild(this.menuAction(copyText("accountChip.menu.manageDeploy"), () => this.deps.openSettings()));
+      items.push({ label: info, enabled: false }, { label: copyText("accountChip.menu.manageDeploy"), onClick: () => this.deps.openSettings() });
     } else {
       const def = currentWorkingAccount(st);
-      // F1：chip 是纯全局切换器——只列账号点选切当前账号；批量对齐随 F09 一并删除。
-      for (const a of ui.accounts) {
-        menu.appendChild(this.accountRow(a, def?.name === a.name));
-      }
-      const sep = document.createElement("div");
-      sep.className = "account-picker-sep";
-      menu.appendChild(sep);
-      menu.appendChild(this.menuAction(copyText("accountChip.menu.manage"), () => this.deps.openSettings()));
-      menu.appendChild(
-        this.menuAction(copyText("accountChip.menu.refresh"), () => {
-          // 账号缓存的键就是 origin（本机也一样，`"__local__"` 那个第二种写法已退役）⇒ 只清这一台。
-          invalidateAccountsCache(this.origin);
-          void this.refresh(true);
-        }),
+      for (const a of ui.accounts) items.push(this.accountItem(a, def?.name === a.name));
+      items.push(
+        { label: "", divider: true },
+        { label: copyText("accountChip.menu.manage"), onClick: () => this.deps.openSettings() },
+        {
+          label: copyText("accountChip.menu.refresh"),
+          onClick: () => {
+            // 账号缓存的键就是 origin ⇒ 只清这一台。
+            invalidateAccountsCache(this.origin);
+            void this.refresh(true);
+          },
+        },
       );
     }
-
-    const r = this.element.getBoundingClientRect();
-    menu.style.bottom = `${Math.max(4, window.innerHeight - r.top + 4)}px`;
-    menu.style.right = `${Math.max(4, window.innerWidth - r.right)}px`;
-    document.body.appendChild(menu);
-    this.menu = menu;
-    this.menuDisarm = armPopupDismiss(menu, this.element, () => this.closeMenu());
+    openMenu({ el: this.element, align: "end" }, items, { label: copyText("accountChip.menu.label") });
   }
 
-  private accountRow(a: Account, isCurrent: boolean): HTMLElement {
-    const row = document.createElement("button");
-    row.type = "button";
-    row.className = "account-picker-item";
+  /**
+   * 一个账号那一项：当前的打勾、头像、邮箱 ＋ 登录态（取值只住 `accounts.ts::accountStatusBadge`，与设置里那张账号表同源）；
+   * 每一项带上「走不走 apikey 端点改写」的三态（问不到 routing 时不表态）。
+   */
+  private accountItem(a: Account, isCurrent: boolean): MenuItem {
     const selectable = isSelectable(a);
-    if (!selectable) row.classList.add("disabled");
-    if (isCurrent) row.classList.add("current");
-
-    const mark = document.createElement("span");
-    mark.className = "account-picker-mark";
-    mark.textContent = isCurrent ? copyText("accountChip.row.current") : copyText("accountChip.row.other");
-    row.appendChild(mark);
-
-    row.appendChild(accountAvatarEl(a.name, { size: 16 }));
-
-    const name = document.createElement("span");
-    name.className = "account-picker-name";
-    name.textContent = a.name;
-    row.appendChild(name);
-
-    const email = document.createElement("span");
-    email.className = "account-picker-email";
-    email.textContent = a.email || "";
-    row.appendChild(email);
-
-    const status = document.createElement("span");
-    status.className = "account-picker-status";
-    // K-A1（第二轮）：三态（逃生口 / api-key（未配置端点）/ 未登录 / 已登录）的取值
-    // **只住** `accounts.ts::accountStatusBadge` —— 这里不再自己判。
-    //
-    // 为什么：这一段与设置里那张账号表（`settings/accounts-section.ts:661-672`）是**同职两处**，
-    // 渲染的是同一个概念（一个账号的登录态）。第一轮只改了设置那侧，结果 `KA6a` 那段文案
-    // 只堵了一半 —— api-key 号在**本菜单**里仍显示「已登录」，而那正是 `KA6a` 点名的坏体验。
-    // 现在两处同源，由 `account-availability-guard.vitest.ts` 钉住「不许再开第三处」。
-    //
-    // ⚠ 两处文案与第二轮替换**前**逐字不同，如实记在这里：
-    //   ① 订阅号缺凭据：「未登录 ⚠」→「未登录」+ `.warn` 类。
-    //      ★ **第三轮已裁：警示走 CSS，不进文本。** 上一轮把这一格写成「无解」，
-    //      那只在「⚠ 必须住在**文本**里」这个前提下成立 —— 把它挪到 CSS，冲突就没了：
-    //      语义住布尔（`accountStatusBadge` 的 `warn`）、呈现住 CSS
-    //      （`.account-picker-status.warn` —— 本轮新加，`src/frontend/ui/styles.css:6111-6119`）。
-    //      设置那侧本来就是这么做的（`.accounts-row-badge.warn`）⇒ 两处同职、同一套约定。
-    //      而 api-key 那格本来就该是 warn 色（选得中却连不上，那是警示态不是正常态），
-    //      它的文本仍逐字是「api-key（未配置端点）」—— 不拼任何字形。
-    //   ② in-place：title「in-place 模式：不支持按会话切号」→
-    //      「in-place 模式：cc-monitor 不支持对它按会话切号」（同义、更明确，但不逐字相同）。
-    // `K-H2b` `KH2B7`〔08-28 `D1 阻-4` 订正了这一段：先前它写着「远端全关掉时这里渲染的
-    // 就是本机账号」，而那是假的 —— `fetchAccounts` 只问 `list_remote_accounts`，
-    // `origin` 为 `null` 时 `refresh` 整个隐藏并 `return`，一行都渲染不到。〕
-    //
-    // ★ `D1 阻-5`：每一行带上「走不走 apikey 端点改写」的三态（那台后端答的两格事实，本机远端同一条路）。
-    //   问不到 routing（`null`）时**不表态** —— 回落到缺席那一档（只说条件、不下判断）。
-    const s = accountStatusBadge(
-      a,
-      this.apikeyRouting ? apikeyEndpointStateFor(a, this.apikeyRouting) : undefined,
-    );
-    status.textContent = s.text;
-    if (s.warn) status.classList.add("warn");
-    row.title = s.title;
-    row.appendChild(status);
-
-    if (selectable && !isCurrent) {
-      row.addEventListener("click", () => void this.selectDefault(a));
-    } else if (!selectable) {
-      row.addEventListener("click", (e) => e.preventDefault());
-    }
-    return row;
-  }
-
-  private menuAction(label: string, onClick: () => void): HTMLElement {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "account-picker-action";
-    b.textContent = label;
-    b.addEventListener("click", () => {
-      this.closeMenu();
-      onClick();
-    });
-    return b;
+    const badge = accountStatusBadge(a, this.apikeyRouting ? apikeyEndpointStateFor(a, this.apikeyRouting) : undefined);
+    return {
+      label: a.name,
+      checked: isCurrent,
+      avatar: accountAvatarEl(a.name, { size: 16 }),
+      note: a.email || undefined,
+      detail: badge.text,
+      detailTone: badge.warn ? "warn" : undefined,
+      title: badge.title,
+      enabled: selectable,
+      onClick: selectable && !isCurrent ? () => void this.selectDefault(a) : undefined,
+    };
   }
 
   /**
@@ -377,20 +300,17 @@ export class AccountChip {
       // 立刻重算会话账号/⚠k（否则 currentByOrigin 要等下一拍 10s 轮询，期间"对齐"会把会话
       // 打回刚被切走的旧账号——与用户意图正好相反）。
       this.deps.onDefaultChanged?.();
-      showActionFailureToast(
+      toast(
         copyText("accountChip.selectDefault.done"),
         copyText("accountChip.selectDefault.doneBody", { name: a.name, email: a.email ? `（${a.email}）` : "" }),
-        { level: "info", durationMs: 8000 },
+        { level: "info" },
       );
     } catch (e) {
-      showActionFailureToast(copyText("accountChip.selectDefault.failed"), String(e), { level: "error" });
+      toast(copyText("accountChip.selectDefault.failed"), String(e), { level: "error" });
     }
   }
 
   private closeMenu(): void {
-    this.menuDisarm?.();
-    this.menuDisarm = null;
-    this.menu?.remove();
-    this.menu = null;
+    if (menuAnchoredOn(this.element)) closeMenu();
   }
 }

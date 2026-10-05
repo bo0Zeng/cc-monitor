@@ -1,5 +1,5 @@
 /**
- * 在 jsdom 里「当用户」答 `src/frontend/ui/ask-dialog.ts` 弹出来的应用内对话框。
+ * 在 jsdom 里「当用户」答 `src/frontend/ui/kit/dialog.ts` 弹出来的应用内对话框。
  *
  * 判据点的是**真按钮**、等的是**真 Promise** —— 与真 app 同形（答案是异步到的）。
  * 从前各处 `vi.spyOn(window, "confirm").mockReturnValue(false)` 测的是一个同步的原生 `confirm`，
@@ -12,17 +12,18 @@ const flush = async (): Promise<void> => {
 };
 
 function current(): HTMLElement {
-  const d = document.querySelector<HTMLElement>('[role="dialog"]');
+  const d = document.querySelector<HTMLElement>('[aria-modal="true"]');
   expect(d, "没有弹出应用内对话框").not.toBeNull();
   return d!;
 }
 
-/** 当前对话框的正文。 */
+/** 当前对话框的标题 ＋ 正文（按钮行不算）。 */
 export function askDialogText(): string {
-  return current().firstElementChild?.textContent ?? "";
+  const [title, body] = [...current().children];
+  return `${title?.textContent ?? ""}\n${body?.textContent ?? ""}`;
 }
 
-/** 点「确定」（`true`）或「取消」（`false`），再让调用方那一串 `await` 走完。 */
+/** 点动作键（`true`）或「取消」（`false`），再让调用方那一串 `await` 走完。 */
 export async function answerAskDialog(ok: boolean): Promise<void> {
   const btns = current().querySelectorAll("button");
   (ok ? btns[1] : btns[0]).click();
@@ -38,5 +39,5 @@ export async function answerAskText(value: string | null): Promise<void> {
 
 /** 页面上没有对话框（没问、或已答完）。 */
 export function noAskDialog(): boolean {
-  return document.querySelector('[role="dialog"]') === null;
+  return document.querySelector('[aria-modal="true"]') === null;
 }

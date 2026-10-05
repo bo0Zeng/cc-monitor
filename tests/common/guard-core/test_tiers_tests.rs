@@ -174,7 +174,10 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/cards/json-prefix.vitest.ts", // firstLineOf / jsonPrefix 与原式对拍（纯函数）
     "tests/frontend/ui/config-fields.vitest.ts",
     "tests/frontend/ui/e2e-probe.vitest.ts",
-    "tests/frontend/ui/error-toast.vitest.ts",
+    "tests/frontend/ui/kit/toast.vitest.ts",
+    "tests/frontend/ui/kit/components.vitest.ts", // 通用组件各态（DOM 形状与行为）
+    "tests/frontend/ui/kit/interrupts.vitest.ts",
+    "tests/frontend/ui/kit/menu.vitest.ts",
     "tests/frontend/ui/events-burst.vitest.ts",
     "tests/frontend/ui/events-yield.vitest.ts",
     "tests/frontend/ui/file-window.vitest.ts",
@@ -205,7 +208,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/settings/diagnostics-section.vitest.ts",
     "tests/frontend/ui/settings/drift-ledger-section.vitest.ts",
     "tests/frontend/ui/settings/host-os.vitest.ts",
-    "tests/frontend/ui/settings/info-icon.vitest.ts",
+    "tests/frontend/ui/kit/tooltip.vitest.ts",
     "tests/frontend/ui/settings/machine-aliases.vitest.ts",
     "tests/frontend/ui/settings/machine-context.vitest.ts",
     "tests/frontend/ui/settings/machine-list-backend-cells.vitest.ts",
@@ -295,7 +298,9 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/record-file-notice.vitest.ts", // D-d：活会话 jsonl 不见了 / 被截短 / 被改写 ⇒ tab 顶一行提示
     "tests/frontend/ui/config-patch-fake.vitest.ts",  // 假盘对跨语言金样 config-patch.golden.json
     "tests/frontend/ui/tab-bar-width.vitest.ts", // J7 tab 栏宽度走存储接入层、零裸 localStorage
-    "tests/frontend/ui/ask-dialog.vitest.ts", // D1 生产 TS 零原生 confirm/prompt（AST 扫）· D1b askConfirm/askText 必 await ＋ 调用方清单
+    "tests/frontend/ui/kit/single-home.vitest.ts", // 对话框 · 菜单 · 悬停提示 · toast 只在 kit 里建（扫生产 TS）
+    "tests/frontend/ui/design-tokens.vitest.ts", // 对比度实算对规范表 · 令牌之外不写字面量（读 CSS）
+    "tests/frontend/ui/kit/dialog.vitest.ts", // D1 生产 TS 零原生 confirm/prompt（AST 扫）· D1b 对话框必 await ＋ 调用方清单
     "tests/frontend/ui/bg-flat.vitest.ts", // tab 栏通用代码零 bg 分叉（扫 `src/frontend/ui/tabs.ts` ＋ `src/tab-*.ts`）· CSS 零 `.tab-bg`
     "tests/frontend/ui/account-availability-guard.vitest.ts",
     "tests/frontend/ui/account-base-semantics.vitest.ts",
@@ -554,6 +559,7 @@ const SCAN: &[&str] = &[
 
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。
 const INTEGRATION: &[&str] = &[
+    "tests/backend/observe/interrupts_query_tests.rs", // 会打断什么：夹具家目录 ＋ 进程级活簿表
     "tests/backend/runs_guard.rs", // 子运行：扫描 ＋ 两套形状跑同一批运行判据（临时目录里造夹具）
     "tests/backend/agents/claudecode/runs_tests.rs", // Claude Code 的子运行形状（子运行记录住址那一条碰临时目录）
     // SCAN → INTEGRATION：部署计划的编排（替身对面）＋ 读金样与后端历史表之外，`place-verdict` 帧面那一条真读写临时目录里的落点文件。
@@ -743,6 +749,7 @@ const INTEGRATION: &[&str] = &[
 /// 支撑：测试树里**没有一条测试**的那几份（夹具 / helper）。不是一层，是让分区闭合的补集。
 /// ⚠ 一份真测试文件掉光了测试属性，判别器会把它判进这里 ⇒ 与登记不一致 ⇒ 红。
 const SUPPORT: &[&str] = &[
+    "tests/backend/observe/runs_testing.rs", // 往运行簿里直接记一个在跑的子运行
     "tests/backend/files/index_testing.rs",
     "tests/backend/control/identity_tag_door.rs", // `identity_tag` 起 tmux 那个口的测试构建那一份（假 tmux 注入，§48.3）
     "tests/backend/platform/child_tmux_fence.rs", // 子进程起前那一道的测试构建那一份（裸名 tmux 落到本进程的空 socket 目录）

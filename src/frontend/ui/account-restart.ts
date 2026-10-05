@@ -1,11 +1,13 @@
-// 换号重启：确认之后交会话所在那台一条 `session-restart` 做完（查号 → 先压缩并等摘要 → 停旧 → 同一终端名用新号起 → 等报出），
+// 重启切换：先问那台会打断什么（有才问一句），再交会话所在那台一条 `session-restart` 做完（查号 → 先压缩并等摘要 → 停旧 → 同一终端名用新号起 → 等报出），
 // 界面只拼确认框、按回复说一句、起成了开一个终端窗口接上。那台做到一半界面关了 / 刷新了，那台照样做完。
 //
 // 用的号是用户在菜单里点名的那个（不跟随：换号重启的正题就是换成另一个号）；那台判它选不选得了。
 // 换号重启的是标签页里的会话 ⇒ 流跟的那一家。
 import { chan } from "../../comms/inward/chan";
 import { ACTIVE_AGENT } from "./agent-profile";
-import { askConfirm, type ConfirmFn } from "./ask-dialog";
+import { type ConfirmFn } from "./kit/dialog";
+import { confirmInterrupts, type AskInterrupts } from "./kit/interrupts";
+import { askSessionInterrupts } from "./interrupt-reads";
 import { ControlError, machineName, settle, type Refusals } from "./control-said";
 import { budgetWithin, jsonBody, refusalOf } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
@@ -16,7 +18,7 @@ import { fetchAccounts, checkTrust } from "./account-reads";
 import { accountUnavailableOf } from "./launch-account";
 import { ARRIVAL_BUDGET_MS } from "./launch-arrival";
 import { startSettings } from "./tab-batch-run";
-import { showActionFailureToast } from "./error-toast";
+import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
 
 export interface RestartWithAccountOpts {
@@ -28,8 +30,10 @@ export interface RestartWithAccountOpts {
   accountName: string;
   /** 是否先在旧号上请求压缩、等压缩完再停（默认 false）。 */
   compactFirst: boolean;
-  /** 二次确认（默认应用内对话框；测试注入）。 */
+  /** 问话框（默认应用内对话框；测试注入）。 */
   confirm?: ConfirmFn;
+  /** 「会打断什么」那一问（默认问会话所在那台；测试注入）。 */
+  interrupts?: AskInterrupts;
   /** 起失败（旧的已停）时「再起一次」：用点名的号在 tmux 里起这一个并接上。 */
   startAgain?: () => Promise<void>;
   /** 那台说「不在终端里」时选哪一句话用的会话账号行（`restartLocateFailureMessage`）。 */
@@ -105,25 +109,27 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
     /* 读不到不影响主流程 */
   }
 
-  // 破坏性二次确认（真 app 里 `window.confirm` 是插件注入的 async 替身，恒真值 ⇒ 走应用内对话框）。
-  const confirmFn: ConfirmFn = opts.confirm ?? askConfirm;
-  const msg = copyText("accountRestart.confirm.body", {
-    name: accountName,
-    tmuxName,
-    compact: opts.compactFirst ? copyText("accountRestart.confirm.compactNote") : "",
-    trust: trustWarn,
+  // 先问那台「会打断什么」：什么都打断不了（也没有要提醒的）⇒ 直接做；有 ⇒ 按族列出来问一句（取消是默认焦点）。
+  const note = [opts.compactFirst ? copyText("accountRestart.confirm.compactNote") : "", trustWarn].map((x) => x.trim()).filter((x) => x !== "").join("\n");
+  const go = await confirmInterrupts({
+    title: copyText("accountRestart.confirm.title", { name: accountName }),
+    action: copyText("accountRestart.confirm.action"),
+    keep: [copyText("accountRestart.confirm.keep", { tmuxName })],
+    note: note === "" ? undefined : note,
+    ask: opts.interrupts ?? (() => askSessionInterrupts(origin, sessionId)),
+    confirm: opts.confirm,
   });
-  if (!(await confirmFn(msg, { danger: true }))) return false;
+  if (!go) return false;
 
   // 中途只说这一句；结局在最后说一次。
-  showActionFailureToast(
+  toast(
     copyText("accountRestart.running.title"),
     copyText("accountRestart.running.body", {
       name: accountName,
       tmuxName,
       compact: opts.compactFirst ? copyText("accountRestart.running.compactTag") : "",
     }),
-    { level: "info", durationMs: 8000 },
+    { level: "info" },
   );
 
   const body = jsonBody({
@@ -153,13 +159,13 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   await runRemoteAttach(origin, ACTIVE_AGENT, reply.terminal, { quiet: true });
   const compact = compactTag(reply.compact);
   if (reply.started === "arrived") {
-    showActionFailureToast(
+    toast(
       copyText("accountRestart.done.title"),
       copyText("accountRestart.done.body", { name: accountName, terminal: reply.terminal, compact }),
-      { level: "info", durationMs: 8000 },
+      { level: "info" },
     );
   } else {
-    showActionFailureToast(
+    toast(
       copyText("accountRestart.missed.title"),
       copyText("accountRestart.missed.body", {
         name: accountName,
@@ -167,7 +173,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
         secs: String(Math.round(ARRIVAL_BUDGET_MS / 1000)),
         compact,
       }),
-      { level: "error", durationMs: 15000 },
+      { level: "error" },
     );
   }
   return true;
@@ -179,26 +185,26 @@ function sayFailure(opts: RestartWithAccountOpts, e: unknown): void {
   const said = e instanceof Error ? e.message : String(e);
   const r = refusal(e);
   if (accountUnavailableOf(e)) {
-    showActionFailureToast(
+    toast(
       copyText("accountRestart.unselectable.title"),
       copyText("accountRestart.unselectable.body", { name: accountName }),
-      { level: "info", durationMs: 6000 },
+      { level: "info" },
     );
     return;
   }
   switch (r?.code) {
     case "ambiguous": {
       const names = Array.isArray(r.data.names) ? r.data.names : [];
-      showActionFailureToast(
+      toast(
         copyText("tabSessionActions.restart.refusedTitle"),
         copyText("tabSessionActions.restart.dupes", { n: names.length }),
-        { level: "info", durationMs: 8000 },
+        { level: "info" },
       );
       return;
     }
     case "not_in_terminal": {
       const m = restartLocateFailureMessage(opts.sessionAccount, { local: isLocalOrigin(origin) });
-      showActionFailureToast(m.title, m.body, { level: "info", durationMs: 8000 });
+      toast(m.title, m.body, { level: "info" });
       return;
     }
     case "stop_failed": {
@@ -209,21 +215,21 @@ function sayFailure(opts: RestartWithAccountOpts, e: unknown): void {
           await restartWithAccount(opts);
         });
       } else {
-        showActionFailureToast(copyText("accountRestart.aborted.title"), body, { level: "error", durationMs: 10000 });
+        toast(copyText("accountRestart.aborted.title"), body, { level: "error" });
       }
       return;
     }
     case "start_failed": {
       const terminal = typeof r.data.terminal === "string" ? r.data.terminal : "";
-      showActionFailureToast(
+      toast(
         copyText("accountRestart.startFailed.title"),
         copyText("accountRestart.startFailed.body", { machine: machineName(origin), terminal, detail: said, name: accountName }),
-        { level: "error", durationMs: 20000, onClick: opts.startAgain ? () => void opts.startAgain?.() : undefined },
+        { level: "error", onClick: opts.startAgain ? () => void opts.startAgain?.() : undefined },
       );
       return;
     }
     default:
-      showActionFailureToast(copyText("accountRestart.failed.title"), said, { level: "error", durationMs: 10000 });
+      toast(copyText("accountRestart.failed.title"), said, { level: "error" });
   }
 }
 

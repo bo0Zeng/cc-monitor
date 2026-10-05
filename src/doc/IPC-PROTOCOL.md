@@ -3850,6 +3850,22 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 - 那个 sid **没有任务目录** ⇒ 空 `lines`（诚实的空）；目录**在但读不了** ⇒ `failed`（不说成「没有任务」）。
 - 半截 / 解不成对象的文件跳过（写者持锁那一刻读到半截是正常时序）；单个文件超过 1 MiB ⇒ 跳过并 `warn!` 点名。
 
+#### `session-interrupts`：动一个会话之前，会打断什么（2026-10-05）
+
+```text
+→ {"id":"i1","cmd":"session-interrupts","args":{"sid":"0c1d…"}}
+← {"kind":"reply","id":"i1","ok":true,"data":{"families":[{"family":"turn","names":[]},{"family":"agent","names":["Explore"]},{"family":"task","names":["写判据"]}]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `sid` | → | 会话 id（空 / 缺 ⇒ `invalid_args`） |
+| `families` | ← | 按族的清单，空族不出现；一族都没有 ⇒ `[]`（界面直接做，不问） |
+| `family` | ← | `turn`（那个会话有一轮在跑：活着的 pidfile 里 `status` 是 `busy`）· `agent`（它派出去还在跑的子运行）· `task`（它任务表里 `in_progress` 的） |
+| `names` | ← | 显示名：子运行的标签（无标签用种类 / 运行号）· 任务主题；`turn` 那一族为空表 |
+
+只读、不拨号、不起进程。读不到（目录没有 / 读失败）按「没有」答；界面那一侧 2 秒等不到答复就按「有东西在跑」处理。判定只住后端 `observe/interrupts_query.rs`。宿主 `feature_face`（阻塞档）；CLI 面同样自动派生（`--session-interrupts`），已进 `SUBCOMMANDS`。
+
 #### `backend-log`：这台后端的 stderr 诊断文件尾部（2026-09-26）
 
 ```text

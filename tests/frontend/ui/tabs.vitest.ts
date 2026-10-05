@@ -159,7 +159,7 @@ vi.mock("../../../src/frontend/ui/cards", () => ({
 }));
 vi.mock("../../../src/frontend/ui/cards/subagent", () => ({ isAgentTool: () => false }));
 vi.mock("../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
-vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 // Batch14-F41：resumeTab 远端分支改走一键拉起 runner；behavior 提供 launcher 配置。
 vi.mock("../../../src/frontend/ui/remote-launch-run", () => ({
   runRemoteResume: vi.fn().mockResolvedValue(undefined),
@@ -210,7 +210,7 @@ import {
 import type { SessionFacts } from "../../../src/frontend/ui/session-reads";
 import { restartWithAccount } from "../../../src/frontend/ui/account-restart";
 import { invalidateAccountsCache } from "../../../src/frontend/ui/account-reads";
-import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
+import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
 import { __setHostOsForTests, type HostOs } from "../../../src/frontend/ui/settings/host-os";
 import {
   runRemoteResume,
@@ -235,6 +235,7 @@ import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, LIVE_UNKNOWN_HOST, 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
+import { closeMenu } from "../../../src/frontend/ui/kit/menu";
 import { answerAskDialog, answerAskText, askDialogText, noAskDialog } from "../../test-support/ask-dialog-driver.ts";
 import type { TabStore } from "../../../src/frontend/ui/tab-store";
 import type { TabBarView } from "../../../src/frontend/ui/tab-bar-view";
@@ -1272,7 +1273,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
   let tm: TabManager;
   beforeEach(() => {
     vi.clearAllMocks();
-    document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+    document.body.querySelectorAll("[role=menu]").forEach((n) => n.remove());
     tm = makeTM();
   });
 
@@ -1284,15 +1285,15 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     );
   };
   const attachBtn = (): HTMLButtonElement | null => {
-    const menu = document.body.querySelector(".tab-context-menu");
-    const items = [...(menu?.querySelectorAll(".tab-context-menu-item") ?? [])];
+    const menu = document.body.querySelector("[role=menu]");
+    const items = [...(menu?.querySelectorAll("[role^=menuitem]") ?? [])];
     return (
       (items as HTMLButtonElement[]).find((b) => b.textContent?.startsWith("Attach")) ?? null
     );
   };
   const killBtn = (): HTMLButtonElement | null => {
-    const menu = document.body.querySelector(".tab-context-menu");
-    const items = [...(menu?.querySelectorAll(".tab-context-menu-item") ?? [])];
+    const menu = document.body.querySelector("[role=menu]");
+    const items = [...(menu?.querySelectorAll("[role^=menuitem]") ?? [])];
     return (
       (items as HTMLButtonElement[]).find((b) => b.textContent?.includes("杀死会话")) ?? null
     );
@@ -1311,7 +1312,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
   it("〔REREAD〕tab 右键菜单里没有「重新读取」，它在栏顶", () => {
     tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
     rightClick("k1abcdef");
-    const labels = [...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? [])].map((b) => b.textContent);
+    const labels = [...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ?? [])].map((b) => b.textContent);
     expect(labels).toContain(copyText("tabMenu.open.openInWindow"));
     expect(labels.filter((l) => l?.includes("重新读取"))).toEqual([]);
     expect(document.body.querySelector(".tab-bar-reread")?.textContent).toContain("重新读取");
@@ -1401,8 +1402,8 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
   // 光有正面不够：把「空壳判定」删掉、无条件给这一格，正面照样绿 ——
   // 而那样会往一个**正在跑 claude** 的会话里再送一遍载荷（F14 逐字记着这个后果）。
   const resumeIntoBtn = (): HTMLButtonElement | null => {
-    const menu = document.body.querySelector(".tab-context-menu");
-    const items = [...(menu?.querySelectorAll(".tab-context-menu-item") ?? [])];
+    const menu = document.body.querySelector("[role=menu]");
+    const items = [...(menu?.querySelectorAll("[role^=menuitem]") ?? [])];
     return (
       (items as HTMLButtonElement[]).find((b) => b.textContent?.includes("就地 resume")) ?? null
     );
@@ -1569,7 +1570,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
   let tm: TabManager;
   beforeEach(() => {
     vi.clearAllMocks();
-    document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+    document.body.querySelectorAll("[role=menu]").forEach((n) => n.remove());
     tm = makeTM();
   });
 
@@ -1584,12 +1585,12 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
   // 结构上它们本来就在 DOM 里）——这正是测试想要的：不用先模拟 hover/click 展开就能直接
   // 断言/点击叶子，同今天真实用户"点开 Resume 再点 tmux"最终触达的是同一个按钮。
   const menuLabels = (): string[] =>
-    [...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? [])].map(
+    [...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ?? [])].map(
       (b) => b.textContent ?? "",
     );
   const clickItem = (label: string): void => {
     const btn = [
-      ...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? []),
+      ...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ?? []),
     ].find((b) => b.textContent === label) as HTMLButtonElement | undefined;
     btn?.click();
   };
@@ -1704,12 +1705,12 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
   // （两个分支都类型正确）。下面这组补的就是"点了哪个账号，就真的用哪个账号起"。
   /** 在某个父项的 flyout 里点某个叶子 label。 */
   const clickLeafUnder = (parent: string, leaf: string): void => {
-    const wrap = [...document.body.querySelectorAll(".tab-context-menu-item-wrap")].find(
+    const wrap = [...document.body.querySelectorAll("[role=none]")].find(
       (w) => (w.children[0] as HTMLElement)?.textContent === parent,
     );
     expect(wrap, `找不到父项 ${parent}`).toBeTruthy();
     const btn = [
-      ...wrap!.querySelectorAll(":scope > .tab-context-submenu > .tab-context-menu-item"),
+      ...wrap!.querySelectorAll(":scope > [role=menu] > [role^=menuitem]"),
     ].find((b) => b.textContent === leaf) as HTMLButtonElement | undefined;
     expect(btn, `父项 ${parent} 下找不到叶子 ${leaf}`).toBeTruthy();
     btn!.click();
@@ -1825,7 +1826,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
         : Promise.resolve(undefined),
     )));
     await openArchivedMenu();
-    expect(document.body.querySelectorAll(".tab-context-menu-divider").length).toBe(0);
+    expect(document.body.querySelectorAll("[role=separator]").length).toBe(0);
     invalidateAccountsCache();
   });
 
@@ -1847,12 +1848,12 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
       tm.archiveTab("r1");
       rightClick("r1");
       const resumeWrap = document.body.querySelector<HTMLElement>(
-        ".tab-context-menu > .tab-context-menu-item-wrap",
+        "[role=menu] > [role=none]",
       );
       expect(resumeWrap).not.toBeNull();
       resumeWrap!.dispatchEvent(new MouseEvent("mouseenter", { bubbles: false }));
       await vi.advanceTimersByTimeAsync(150); // 展开延迟
-      expect(resumeWrap!.classList.contains("is-open")).toBe(true);
+      expect(resumeWrap!.dataset.subOpen).toBe("true");
       // 账号数据这时才到达（fetchAccounts resolve）→ appendAccountMenuItems 换掉 Resume 节点。
       resolveAccounts({
         available: true,
@@ -1863,10 +1864,10 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
       await vi.advanceTimersByTimeAsync(0);
       await vi.advanceTimersByTimeAsync(0);
       const newWrap = document.body.querySelector<HTMLElement>(
-        ".tab-context-menu > .tab-context-menu-item-wrap",
+        "[role=menu] > [role=none]",
       );
       expect(newWrap).not.toBeNull();
-      expect(newWrap!.classList.contains("is-open")).toBe(true); // 没有无故收起
+      expect(newWrap!.dataset.subOpen).toBe("true"); // 没有无故收起
     } finally {
       vi.useRealTimers();
       invalidateAccountsCache();
@@ -1887,10 +1888,10 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
       tm.archiveTab("r1");
       rightClick("r1");
       const resumeWrap = document.body.querySelector<HTMLElement>(
-        ".tab-context-menu > .tab-context-menu-item-wrap",
+        "[role=menu] > [role=none]",
       );
       const resumeBtn = resumeWrap!.querySelector<HTMLButtonElement>(":scope > button")!;
-      const flyout = resumeWrap!.querySelector<HTMLElement>(".tab-context-submenu")!;
+      const flyout = resumeWrap!.querySelector<HTMLElement>("[role=menu][data-sub]")!;
 
       // 场景①：wrap 贴着右边界（right=380），flyout 估宽 150 → 380+150=530 > innerWidth(400) → 该 flip。
       HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
@@ -1899,7 +1900,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
         return origGBCR.call(this);
       };
       resumeBtn.click();
-      expect(flyout.classList.contains("flip-left")).toBe(true);
+      expect(flyout.dataset.flip).toBe("true");
       resumeBtn.click(); // 收起，复位状态
 
       // 场景②：wrap 靠左（right=50），同样估宽 150 → 50+150=200 < innerWidth(400) → 不该 flip。
@@ -1909,7 +1910,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
         return origGBCR.call(this);
       };
       resumeBtn.click();
-      expect(flyout.classList.contains("flip-left")).toBe(false);
+      expect(flyout.dataset.flip).toBeUndefined();
     } finally {
       HTMLElement.prototype.getBoundingClientRect = origGBCR;
       Object.defineProperty(window, "innerWidth", { value: origInnerWidth, configurable: true });
@@ -1935,19 +1936,19 @@ describe("F09 活会话右键：Restart 一级项 + flyout（换号重启，无�
       .root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
   };
   const menuLabels = (): string[] =>
-    [...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? [])].map(
+    [...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ?? [])].map(
       (b) => b.textContent ?? "",
     );
   const clickItem = (label: string): void => {
     const btn = [
-      ...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? []),
+      ...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ?? []),
     ].find((b) => b.textContent === label) as HTMLButtonElement | undefined;
     btn?.click();
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+    document.body.querySelectorAll("[role=menu]").forEach((n) => n.remove());
     invalidateAccountsCache();
     tm = makeTM();
   });
@@ -2031,7 +2032,7 @@ describe("F09 活会话右键：Restart 一级项 + flyout（换号重启，无�
     await flushMicro();
     await flushMicro();
     const restartBtn = [
-      ...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? []),
+      ...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ?? []),
     ].find((b) => b.textContent === "换号重启") as HTMLButtonElement | undefined;
     expect(restartBtn).not.toBeUndefined();
     expect(restartBtn?.disabled).toBe(true);
@@ -2057,7 +2058,7 @@ describe("K-P5g：tmux 定位不到时，那句提示真的由读回来的身份
   };
   const clickItem = (label: string): void => {
     const btn = [
-      ...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? []),
+      ...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ?? []),
     ].find((b) => b.textContent === label) as HTMLButtonElement | undefined;
     btn?.click();
   };
@@ -2106,7 +2107,7 @@ describe("K-P5g：tmux 定位不到时，那句提示真的由读回来的身份
 
   beforeEach(() => {
     vi.clearAllMocks();
-    document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+    document.body.querySelectorAll("[role=menu]").forEach((n) => n.remove());
     invalidateAccountsCache();
     tm = makeTM();
   });
@@ -2184,8 +2185,8 @@ describe("auto-e2e F-E4 可注入 confirm seam（killInTmux：交那台 sessions
     const msgs: string[] = [];
     home(tm).actions.killInTmux("hostA", "s1", "cc-idle1234", {
       idle: true,
-      confirm: (m: string) => {
-        msgs.push(m);
+      confirm: (m) => {
+        msgs.push(m.body ?? "");
         return true;
       },
     });
@@ -2201,8 +2202,8 @@ describe("auto-e2e F-E4 可注入 confirm seam（killInTmux：交那台 sessions
   it("killInTmux 非 idle → 文案含'正在运行的 Claude'（live 路径护栏）", async () => {
     const msgs: string[] = [];
     home(tm).actions.killInTmux("hostA", "s1", "cc-live1234", {
-      confirm: (m: string) => {
-        msgs.push(m);
+      confirm: (m) => {
+        msgs.push(m.body ?? "");
         return false;
       },
     });
@@ -2319,12 +2320,12 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
   };
   const menuItems = (): HTMLButtonElement[] =>
     [
-      ...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? []),
+      ...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ?? []),
     ] as HTMLButtonElement[];
 
   beforeEach(() => {
     vi.clearAllMocks();
-    document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+    document.body.querySelectorAll("[role=menu]").forEach((n) => n.remove());
     invalidateAccountsCache();
     tm = makeTM();
     (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation(withTmuxReads(withAccountReads((cmd: string) => {
@@ -3265,7 +3266,7 @@ describe("P7a-3 集合分组渲染", () => {
     flushBar();
     const root = [...bar.children].find((e) => e.classList.contains("tab")) as HTMLElement;
     root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
-    const labels = [...document.querySelectorAll(".tab-context-menu button")].map(
+    const labels = [...document.querySelectorAll("[role=menu] button")].map(
       (e) => e.textContent ?? "",
     );
     expect(labels.length, "菜单要真的开出来（否则本判据在空转）").toBeGreaterThan(0);
@@ -3278,7 +3279,7 @@ describe("P7a-3 集合分组渲染", () => {
     flushBar();
     const root = [...bar.children].find((e) => e.classList.contains("tab")) as HTMLElement;
     root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
-    const labels = [...document.querySelectorAll(".tab-context-menu button")].map(
+    const labels = [...document.querySelectorAll("[role=menu] button")].map(
       (e) => e.textContent ?? "",
     );
     expect(labels.join("|")).toContain("加入集合");
@@ -3292,12 +3293,12 @@ describe("P7a-3 集合分组渲染", () => {
       flushBar();
       const root = [...bar.children].find((e) => e.classList.contains("tab")) as HTMLElement;
       root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
-      const btn = [...document.querySelectorAll(".tab-context-menu button")].find(
+      const btn = [...document.querySelectorAll("[role=menu] button")].find(
         (e) => e.textContent === "新建集合…",
       ) as HTMLButtonElement | undefined;
       expect(btn, "菜单里要有「新建集合…」（否则本判据在空转）").toBeTruthy();
       btn!.click();
-      document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+      document.body.querySelectorAll("[role=menu]").forEach((n) => n.remove());
       for (let i = 0; i < 5; i++) await Promise.resolve();
     };
     const many = (n: number): { id: string; name: string }[] =>
@@ -3325,12 +3326,12 @@ describe("P7a-3 集合分组渲染", () => {
       flushBar();
       const root = home(tm).bar.tabButtons.get(sid)!.root;
       root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
-      const btn = [...document.querySelectorAll(".tab-context-menu button")].find(
+      const btn = [...document.querySelectorAll("[role=menu] button")].find(
         (e) => e.textContent === label,
       ) as HTMLButtonElement | undefined;
       expect(btn, `菜单里要有「${label}」（否则本判据在空转）`).toBeTruthy();
       btn!.click();
-      document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+      document.body.querySelectorAll("[role=menu]").forEach((n) => n.remove());
     };
     setCols([{ id: "g", name: "白天", tabs: ["b"] }]);
     click("a", "白天");
@@ -3408,7 +3409,7 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
-    document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+    document.body.querySelectorAll("[role=menu]").forEach((n) => n.remove());
     disk = {};
     // 🔴 config 走 `invoke` 这一层（与仓里 `src/frontend/ui/config.ts` 的真实链路一致）：
     //   上面的 `tab-bar-state` / `tab-collections` 因此是**真跑**的，
@@ -3569,7 +3570,7 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
     };
     const labels = (): string[] =>
       [
-        ...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ??
+        ...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ??
           []),
       ].map((b) => b.textContent ?? "");
 
@@ -3583,7 +3584,7 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
     rightClick("s1");
     expect(labels()).toContain("📌 固定此标签");
     (
-      [...document.body.querySelectorAll(".tab-context-menu-item")].find(
+      [...document.body.querySelectorAll("[role^=menuitem]")].find(
         (b) => b.textContent === "📌 固定此标签",
       ) as HTMLButtonElement
     ).click();
@@ -5791,12 +5792,12 @@ describe("tab 多选与批量菜单", () => {
     btn(sid).dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
   };
   const menuLabels = (): string[] =>
-    [...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? [])].map(
+    [...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ?? [])].map(
       (b) => b.textContent ?? "",
     );
   beforeEach(() => {
     vi.clearAllMocks();
-    document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+    document.body.querySelectorAll("[role=menu]").forEach((n) => n.remove());
     tm = makeTM();
     for (const sid of ["a", "b", "c", "d", "e"]) tm.ensureTab(sid, `/w/${sid}`, "p", LOCAL_ORIGIN);
     // c、d 在组里 ⇒ 条上看得到的顺序是 c d（组）· a b e（散），不是到达的顺序。
@@ -5823,6 +5824,7 @@ describe("tab 多选与批量菜单", () => {
     bar.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(drawnSelected(), "点空白清掉").toEqual([]);
     click("b", { ctrlKey: true });
+    closeMenu(); // 前面几条用例右键开过的菜单还压在弹层栈上（换了 DOM 不会自己出栈）
     dispatcher.applyOverrides({}); // 主窗口启动时那两下（键位表 ＋ 挂监听；Esc → 栈顶 overlay）
     dispatcher.start();
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));

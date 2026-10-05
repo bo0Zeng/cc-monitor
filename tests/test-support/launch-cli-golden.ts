@@ -10,7 +10,7 @@
  */
 import { AGENT_PROFILE, DEFAULT_AGENT } from "../../src/frontend/ui/agent-profile.ts";
 import type { LaunchContext } from "../../src/frontend/ui/launch-types.ts";
-import { buildCliRenderRequest } from "../../src/frontend/ui/remote-launch-run.ts";
+import { buildCliRenderRequest } from "../../src/frontend/ui/launch-cli-wire.ts";
 import {
   planAttach,
   planLauncher,

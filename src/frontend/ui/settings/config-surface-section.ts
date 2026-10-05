@@ -18,7 +18,7 @@
 // **一条硬纪律来自后端，前端不许在这里放水**：查不了的东西显示成「未确定 + 为什么」，
 // **绝不显示成"缺失"**。远端路径、相对项目目录的 `.mcp.json`、Windows 侧 `$PROFILE`
 // 本机都查不到，把它们画成红叉就是对能用的安装报假警报——B04 审计已经抓过一次同型病。
-import { showActionFailureToast } from "../error-toast";
+import { toast } from "../kit/toast";
 
 // 线上类型改住读者 `footprint-reads.ts`（成品由那台后端出，解码器按金样严格收；原 ts-rs 生成物随判定进后端删了）。
 // 本文件内部与 `.vitest.ts` 都用这些名字，所以 **import + 单独 re-export 都要有**：
@@ -262,7 +262,7 @@ function showButton(row: SurfaceRow, origin: Origin): HTMLElement | null {
 async function openOnMachine(origin: Origin, path: string): Promise<void> {
   const cfg = await resolveRemoteConfigByOrigin(origin);
   if (cfg) await openFileWindow(cfg, { revealFile: path });
-  else showActionFailureToast(copyText("fileWindow.openFileWindow.failed"), copyText("configSurface.row.noHostConfig", { machine: origin }));
+  else toast(copyText("fileWindow.openFileWindow.failed"), copyText("configSurface.row.noHostConfig", { machine: origin }));
 }
 
 /** 远端那一台答不了时那一句的 ⓘ —— 区分（答不出来 ≠ 没动过）只换位置（`§11.4` #4）。 */
@@ -500,7 +500,7 @@ export class ConfigSurfaceSection {
       this.copyBtn.disabled = true;
       const said = e instanceof Error ? e.message : String(e);
       this.body.textContent = copyText("configSurface.refresh.failed", { e: said });
-      showActionFailureToast(copyText("configSurface.refresh.failedTitle"), said);
+      toast(copyText("configSurface.refresh.failedTitle"), said);
     }
   }
 
@@ -675,7 +675,7 @@ export class ConfigSurfaceSection {
         this.copyBtn.textContent = copyText("configSurface.copy.copyReport");
       }, 1500);
     } catch (e) {
-      showActionFailureToast(copyText("configSurface.copy.failedTitle"), String(e));
+      toast(copyText("configSurface.copy.failedTitle"), String(e));
     }
   }
 }

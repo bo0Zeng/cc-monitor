@@ -1,0 +1,52 @@
+/* chip（C6）· 连接药丸。 */
+@layer components {
+  .chip {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-2);
+    height: var(--control-h-compact);
+    padding: 0 var(--control-pad-x-compact);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-m);
+    background: transparent;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    white-space: nowrap;
+    transition:
+      background var(--dur-press),
+      color var(--dur-press),
+      border-color var(--dur-press);
+  }
+
+  button.chip {
+    cursor: pointer;
+  }
+
+  button.chip:hover {
+    border-color: var(--border-strong);
+    background: var(--state-hover);
+    color: var(--text);
+  }
+
+  .chip[aria-expanded="true"] {
+    border-color: var(--border-medium);
+    background: var(--state-active);
+    color: var(--text);
+  }
+
+  .chip[data-intent="warn"] {
+    border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+    color: var(--warn);
+  }
+
+  .chip[data-intent="error"] {
+    border-color: color-mix(in srgb, var(--error) 40%, transparent);
+    color: var(--error-text);
+  }
+
+  .chip[data-intent="success"] {
+    border-color: color-mix(in srgb, var(--success) 40%, transparent);
+    color: var(--success);
+  }
+}

@@ -3,7 +3,7 @@
 // 这条链上每一段都是生产代码，一段都不在测试里另写：
 //
 //   生产 TS `launch-requests.ts::plan*`（意图 → LaunchContext）
-//     → 生产 TS `remote-launch-run.ts::buildCliRenderRequest`（renderLaunchCommand 用的同一个）
+//     → 生产 TS `launch-cli-wire.ts::buildCliRenderRequest`（renderLaunchCommand 用的同一个）
 //     → 环境变量 CCM_E2E_RENDER_REQ
 //     → `launch-render-emit.sh` → Rust `emit_launch_render_for_e2e`（#[ignore] 数据出口）→ 生产命令 `wire::render_ccm_launch`
 //
@@ -11,7 +11,7 @@
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildCliRenderRequest } from "../../src/frontend/ui/remote-launch-run.ts";
+import { buildCliRenderRequest } from "../../src/frontend/ui/launch-cli-wire.ts";
 import type { LaunchContext } from "../../src/frontend/ui/launch-types.ts";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../..");

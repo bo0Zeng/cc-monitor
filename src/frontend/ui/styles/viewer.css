@@ -46,7 +46,7 @@ body.viewer-mode .grid-monitor-trigger {
   border: 1px solid var(--border-strong);
   color: var(--text-2);
   padding: 3px 10px;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   cursor: pointer;
   font: inherit;
   font-size: var(--font-size-small);

@@ -39,6 +39,7 @@ pub(crate) mod search_rules;
 pub(crate) mod session_ledger;
 pub(crate) mod session_terminals; // `session-terminals`：此刻是哪个终端在显示这个会话（点 ↗ 时问一次）
                                   // 会话的任务列表（`tasks-list` 帧命令的本体；帧面宿主在顶层 `feature_face`）。
+pub(crate) mod interrupts_query; // `session-interrupts`：重启切换 / 结束之前，会打断什么（按族）
 pub(crate) mod tasks_query;
 // 「你说过的话」清单的纯核（四条口径的唯一住址）；argv 与分派在 `history_query`。
 // 运行簿：会话 ＝ 主运行 ＋ 子运行；只认「运行」，每家的形状问适配层（watcher 写、流归位读）。

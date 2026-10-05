@@ -5,12 +5,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
-vi.mock("../../../src/frontend/ui/ask-dialog", () => ({ askConfirm: vi.fn(), askText: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/dialog", () => ({ confirmDialog: vi.fn(), askText: vi.fn() }));
 
 import { openBatchMenu, type TabBatchHost, type TabBatchRun } from "../../../src/frontend/ui/tab-batch-menu";
-import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
-import { askText } from "../../../src/frontend/ui/ask-dialog";
+import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
+import { askText } from "../../../src/frontend/ui/kit/dialog";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { LIVE, ENDED, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
@@ -25,7 +25,7 @@ const calls = (f: unknown): unknown[][] => vi.mocked(f as () => void).mock.calls
 let run: TabBatchRun & { stop: ReturnType<typeof vi.fn>; start: ReturnType<typeof vi.fn>; confirm: ReturnType<typeof vi.fn> };
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
-const buttons = (): HTMLButtonElement[] => [...document.body.querySelectorAll<HTMLButtonElement>(".tab-context-menu-item")];
+const buttons = (): HTMLButtonElement[] => [...document.body.querySelectorAll<HTMLButtonElement>("[role^=menuitem]")];
 const press = async (label: string): Promise<void> => {
   const b = buttons().find((x) => x.textContent === label);
   expect(b, `菜单里没有「${label}」：${buttons().map((x) => x.textContent).join(" | ")}`).toBeDefined();
@@ -92,11 +92,13 @@ describe("批量菜单", () => {
     ]);
     open();
     await press(copyText("tabBatch.menu.stop", { n: 2 }));
-    const asked = run.confirm.mock.calls[0][0] as string;
+    const spec = run.confirm.mock.calls[0][0] as { body: string; danger?: boolean; action: string };
+    const asked = spec.body;
     expect(asked).toContain(copyText("tabBatch.stop.line", { title: "T-a", machine: "本机" }));
     expect(asked).toContain(copyText("tabBatch.stop.line", { title: "T-c", machine: "本机" }));
     expect(asked).not.toContain("T-b");
-    expect(run.confirm.mock.calls[0][1], "批量杀是撤不回的：确认框默认焦点要在「取消」").toEqual({ danger: true });
+    expect(spec.danger, "批量杀是撤不回的：确认框默认焦点要在「取消」").toBe(true);
+    expect(spec.action, "批量确认的数量写在按钮上").toBe(copyText("tabBatch.stop.action", { n: 2 }));
     expect(run.stop.mock.calls[0][0].map((t: Tab) => t.sessionId)).toEqual(["a", "c"]);
     expect(toastBody().split("\n")).toEqual([
       copyText("tabBatch.result.counts", { done: 1, skipped: 1, failed: 1 }),

@@ -113,7 +113,7 @@ vi.mock("../../../../src/frontend/ui/remote-config", () => ({
   hostKey: (h: { label: string; host: string }) => h.label.trim() || h.host,
 }));
 
-vi.mock("../../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: () => {} }));
+vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: () => {} }));
 // 「重新对齐」做完经 Tauri 事件通知主窗口；这里没有 Tauri 运行时 ⇒ 换成空的 emit。
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async () => {}), listen: vi.fn(async () => () => {}) }));
 
@@ -673,7 +673,7 @@ describe("〔HX1 · D-f〕停后端之前数走中转的会话", () => {
     const s = new BackendSection({
       headless: true,
       confirm: (m) => {
-        asked.push(m);
+        asked.push(m.body ?? "");
         return answer;
       },
       sessions: (o) => {

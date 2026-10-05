@@ -29,8 +29,8 @@ vi.mock("../../../../src/frontend/ui/terminal-reads", () => ({
 vi.mock("../../../../src/frontend/ui/control-said", () => ({
   saidOfControl: (e: unknown) => (e instanceof Error ? e.message : String(e)),
 }));
-vi.mock("../../../../src/frontend/ui/error-toast", () => ({
-  showActionFailureToast: (...a: unknown[]) => toast(...a),
+vi.mock("../../../../src/frontend/ui/kit/toast", () => ({
+  toast: (...a: unknown[]) => toast(...a),
 }));
 
 import { openPanePreview, closePanePreview } from "../../../../src/frontend/ui/views/pane-preview";

@@ -365,7 +365,7 @@ async fn run_over_stdio(hello: Frame, agent_home: PathBuf, wants: StreamWants) -
     // (c) Start the watcher reader; it returns the receiving half of the
     // bounded frame channel.
     // 运行簿：这条连接的 watcher 写、tap 那一路的流归位读（一条连接一本）。
-    let book = std::sync::Arc::new(observe::runs::RunBook::default());
+    let book = observe::runs::RunBook::shared();
     let (rx, poke) = observe::watcher::spawn(agent_home, wants, book.clone());
 
     // (c2) **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」。**
@@ -698,7 +698,7 @@ async fn serve_listening(
                 }
                 let id = clients.join();
                 let Attached { reader, writer, hello_flushed, flags } = att;
-                let book = std::sync::Arc::new(observe::runs::RunBook::default());
+                let book = observe::runs::RunBook::shared();
                 let (rx, poke) = observe::watcher::spawn(
                     agent_home.clone(),
                     flags.unwrap_or(defaults),

@@ -35,7 +35,7 @@
 //
 // 只产出待贴文本 + 复制到剪贴板。写用户的 `~/.bashrc` / `~/.claude/settings.json`
 // 是用户明确定过调的红线，有测试守着。
-import { showActionFailureToast } from "./error-toast";
+import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
 
 export interface PasteSpec {
@@ -134,29 +134,28 @@ export function buildPasteBlock(spec: PasteSpec): PasteBlock {
     const bad = spec.invalidReason?.(v) ?? null;
     if (bad !== null) {
       // **拒绝时绝不碰剪贴板**：把中文提示或半成品写进剪贴板，用户粘出去就是坏配置。
-      showActionFailureToast(copyText("pasteBlock.buildPasteBlock.notReady"), bad, {
+      toast(copyText("pasteBlock.buildPasteBlock.notReady"), bad, {
         level: "info",
-        durationMs: 4000,
       });
       return;
     }
     const clip = navigator.clipboard;
     if (!clip) {
-      showActionFailureToast(copyText("pasteBlock.buildPasteBlock.copyFailed"), copyText("pasteBlock.buildPasteBlock.noClipboard"), {
+      toast(copyText("pasteBlock.buildPasteBlock.copyFailed"), copyText("pasteBlock.buildPasteBlock.noClipboard"), {
         level: "error",
       });
       return;
     }
     void clip.writeText(v).then(
       () =>
-        showActionFailureToast(
+        toast(
           copyText("pasteBlock.buildPasteBlock.copied"),
           copyText("pasteBlock.buildPasteBlock.copiedBody", { target: spec.target, mergeNote: spec.mergeNote, activation: spec.activation }),
-          { level: "info", durationMs: 6000 },
+          { level: "info" },
         ),
       // **不许吞进 console**（这就是 A3 的缺陷）——用户点了按钮就得知道结果。
       () =>
-        showActionFailureToast(copyText("pasteBlock.buildPasteBlock.copyFailed"), copyText("pasteBlock.buildPasteBlock.noClipboard"), {
+        toast(copyText("pasteBlock.buildPasteBlock.copyFailed"), copyText("pasteBlock.buildPasteBlock.noClipboard"), {
           level: "error",
         }),
     );

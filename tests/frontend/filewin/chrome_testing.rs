@@ -1,15 +1,16 @@
 //! 判据用：一个目录视图连同它的框（工具条 · 命令栏 · 状态栏）跑一帧 —— 摆法与 `Workspace::chrome_ui` 同一套面板。
 
 use crate::shell::FileWindow;
-use crate::theme::BAR_HEIGHT;
+use crate::theme::metrics;
 
 /// 一帧：工具条 · 命令栏 · 状态栏 ＋ 正文（列表）。
 pub fn pane_with_chrome(ui: &mut egui::Ui, w: &mut FileWindow) {
+    let bar_h = metrics(ui.ctx()).bar_h;
     egui::Panel::top("t-toolbar")
-        .exact_size(BAR_HEIGHT)
+        .exact_size(bar_h)
         .show(ui, |ui| w.toolbar_ui(ui));
     egui::Panel::top("t-commands")
-        .exact_size(BAR_HEIGHT - 4.0)
+        .exact_size(bar_h - 4.0)
         .show(ui, |ui| {
             let items = w.command_items();
             if let Some(c) = ui

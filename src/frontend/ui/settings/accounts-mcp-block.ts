@@ -5,8 +5,8 @@
 import { copyText } from "../copy-table";
 import type { Origin } from "../ipc/origin";
 import { accountsMcpPick, accountsMcpRead, accountsMcpRemove, type AccountMcpView } from "../account-ops";
-import { askConfirm } from "../ask-dialog";
-import { showActionFailureToast } from "../error-toast";
+import { confirmDialog } from "../kit/dialog";
+import { toast } from "../kit/toast";
 import { saidOfControl } from "../control-said";
 
 function line(parent: HTMLElement, cls: string, text: string): HTMLElement {
@@ -70,20 +70,25 @@ export function renderSharedMcp(origin: Origin): HTMLElement {
 
   const done = (title: string, v: AccountMcpView): void => {
     const lines = v.changed.length > 0 ? [copyText("accountsMcp.change.synced", { accounts: v.changed.join(copyText("accountsMcp.list.sep")) })] : [];
-    showActionFailureToast(title, [...lines, ...v.notes].join("\n") || copyText("accountsMcp.block.newSessions"), {
+    toast(title, [...lines, ...v.notes].join("\n") || copyText("accountsMcp.block.newSessions"), {
       level: "info",
-      durationMs: 6000,
     });
     paint(v);
   };
 
   const remove = async (name: string, btn: HTMLButtonElement): Promise<void> => {
-    if (!(await askConfirm(copyText("accountsMcp.remove.confirm", { name })))) return;
+    const confirm = {
+      title: copyText("accountsMcp.remove.title", { name }),
+      action: copyText("accountsMcp.remove.action"),
+      danger: true,
+      body: copyText("accountsMcp.remove.confirm", { name }),
+    };
+    if (!(await confirmDialog(confirm))) return;
     btn.disabled = true;
     try {
       done(copyText("accountsMcp.remove.done", { name }), await accountsMcpRemove(origin, name));
     } catch (e) {
-      showActionFailureToast(copyText("accountsMcp.remove.failed"), saidOfControl(e), { level: "error" });
+      toast(copyText("accountsMcp.remove.failed"), saidOfControl(e), { level: "error" });
       btn.disabled = false;
     }
   };
@@ -93,7 +98,7 @@ export function renderSharedMcp(origin: Origin): HTMLElement {
     try {
       done(copyText("accountsMcp.pick.done", { name }), await accountsMcpPick(origin, name, from));
     } catch (e) {
-      showActionFailureToast(copyText("accountsMcp.pick.failed"), saidOfControl(e), { level: "error" });
+      toast(copyText("accountsMcp.pick.failed"), saidOfControl(e), { level: "error" });
       btn.disabled = false;
     }
   };

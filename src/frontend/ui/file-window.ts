@@ -21,7 +21,7 @@
  * ⇒ 这里 `await` 到的错是真错，原文放进 toast。成功不另外出声：窗口自己出现就是回应。
  */
 import { commands } from "./ipc/commands";
-import { showActionFailureToast } from "./error-toast";
+import { toast } from "./kit/toast";
 import type { RemoteHostConfig } from "./remote-config";
 import { copyText } from "./copy-table";
 
@@ -37,6 +37,8 @@ export const FILE_WINDOW_THEME_TOKENS = [
   "--text-2",
   "--text-faint",
   "--accent",
+  "--accent-strong",
+  "--selected-bg",
   "--border-strong",
   "--border-medium",
   "--border-soft",
@@ -47,12 +49,33 @@ export const FILE_WINDOW_THEME_TOKENS = [
   "--success",
   "--warn",
   "--error",
+  "--error-strong",
+  "--error-text",
   "--color-link",
   "--font-base",
   "--font-mono",
   "--font-size-base",
   "--font-size-mono",
   "--font-size-small",
+  "--font-size-title",
+  "--space-1",
+  "--space-2",
+  "--space-3",
+  "--space-4",
+  "--space-5",
+  "--space-6",
+  "--space-7",
+  "--space-8",
+  "--radius-s",
+  "--radius-m",
+  "--radius-l",
+  "--radius-xl",
+  "--control-h",
+  "--control-h-compact",
+  "--row-h",
+  "--icon-size",
+  "--shadow-float",
+  "--shadow-modal",
 ] as const;
 
 /** 此刻 `:root` 上那几格的计算值。 */
@@ -76,7 +99,7 @@ export async function openFileWindow(cfg: RemoteHostConfig, at?: FileWindowTarge
     await commands.open_file_window({ cfg, path, revealFile, theme: fileWindowTheme() });
     return true;
   } catch (e) {
-    showActionFailureToast(copyText("fileWindow.openFileWindow.failed"), String(e));
+    toast(copyText("fileWindow.openFileWindow.failed"), String(e));
     return false;
   }
 }

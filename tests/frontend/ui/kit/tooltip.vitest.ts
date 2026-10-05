@@ -1,5 +1,7 @@
 /**
- * E60：`makeInfoIcon` 的 tooltip **不许在 body 上越攒越多**。
+ * 悬停提示（C20，`kit/tooltip.ts`）：不许在 body 上越攒越多（E60，经设置里的 `?` 图标测）· 500ms 才出 · 同组立刻换 · 躲窗口边。
+ *
+ * E60：tooltip **不许在 body 上越攒越多**。
  *
  * 原来构造时就 `appendChild(document.body)`，而全文件没有任何回收路径。
  * `rebuildCards()` 每次重建全部 `MachineCard`、每开一次设置窗跑两遍，调用点已从 16 涨到 24。
@@ -9,10 +11,11 @@
  * 修法不是补 `destroy()`（那要 24 个调用点每一个都记得调 —— 一个靠自觉维持的不变量
  * 迟早会破，而且破了照样没人知道），而是让 tooltip **只在显示期间存在**。
  */
-import { describe, it, expect, beforeEach } from "vitest";
-import { makeInfoIcon, __liveTooltipCountForTests } from "../../../../src/frontend/ui/settings/info-icon";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import { makeInfoIcon } from "../../../../src/frontend/ui/settings/info-icon";
+import { attachTooltip, liveTooltipCount, placeTip, TOOLTIP_DELAY_MS } from "../../../../src/frontend/ui/kit/tooltip";
 
-const tipsInBody = () => document.querySelectorAll(".settings-info-tooltip").length;
+const tipsInBody = () => document.querySelectorAll('[role="tooltip"]').length;
 const hover = (el: HTMLElement) => el.dispatchEvent(new Event("mouseenter"));
 const leave = (el: HTMLElement) => el.dispatchEvent(new Event("mouseleave"));
 
@@ -34,7 +37,7 @@ describe("E60：tooltip 不泄漏", () => {
       host.remove(); // rebuildCards 就是这么干的
     }
     expect(tipsInBody()).toBe(0);
-    expect(__liveTooltipCountForTests()).toBe(0);
+    expect(liveTooltipCount()).toBe(0);
   });
 
   it("悬停时 tooltip 才出现，离开即从 DOM 摘掉（不是只 display:none）", () => {
@@ -44,7 +47,7 @@ describe("E60：tooltip 不泄漏", () => {
 
     hover(icon);
     expect(tipsInBody(), "悬停了却没显示 —— 功能坏了").toBe(1);
-    expect(document.querySelector(".settings-info-tooltip")?.textContent).toBe("这是说明");
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe("这是说明");
 
     leave(icon);
     expect(tipsInBody(), "只 display:none 的话这里会是 1 —— 那正是原来的泄漏").toBe(0);
@@ -102,3 +105,53 @@ describe("E60：tooltip 不泄漏", () => {
   });
 });
 
+
+describe("C20：出现时机与摆法", () => {
+  beforeEach(() => {
+    document.body.replaceChildren();
+    vi.useFakeTimers();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("悬停 500ms 才出；没到就离开 ⇒ 不出", () => {
+    vi.advanceTimersByTime(1000); // 与上一条用例里最后收起的那条拉开（不算同一组）
+    const a = document.createElement("button");
+    document.body.appendChild(a);
+    attachTooltip(a, "刷新");
+    a.dispatchEvent(new Event("mouseenter"));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS - 1);
+    expect(tipsInBody()).toBe(0);
+    vi.advanceTimersByTime(1);
+    expect(tipsInBody()).toBe(1);
+    a.dispatchEvent(new Event("mouseleave"));
+    expect(tipsInBody()).toBe(0);
+    vi.advanceTimersByTime(1000); // 离开够久：不再算「同一组里移过去」
+    a.dispatchEvent(new Event("mouseenter"));
+    a.dispatchEvent(new Event("mouseleave"));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS * 2);
+    expect(tipsInBody(), "没等到就离开了还出了").toBe(0);
+  });
+
+  it("同一组里移到下一个：立刻换，不再等；内容在显示那一刻现取", () => {
+    let chord = "Ctrl+R";
+    const [a, b] = [document.createElement("button"), document.createElement("button")];
+    document.body.append(a, b);
+    attachTooltip(a, "刷新");
+    attachTooltip(b, () => `重新连接 ${chord}`);
+    a.dispatchEvent(new Event("mouseenter"));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    a.dispatchEvent(new Event("mouseleave"));
+    chord = "F5";
+    b.dispatchEvent(new Event("mouseenter"));
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe("重新连接 F5");
+  });
+
+  it("躲窗口边：上面放不下翻到下方；左右夹进视口 8px", () => {
+    const host = { left: 2, top: 4, width: 20, height: 20, right: 22, bottom: 24 } as DOMRect;
+    const at = placeTip(host, { width: 100, height: 30 }, { width: 300, height: 200 });
+    expect(at.top).toBeGreaterThan(24);
+    expect(at.left).toBe(8);
+    const right = placeTip({ ...host, left: 290, right: 310 } as DOMRect, { width: 100, height: 30 }, { width: 300, height: 200 });
+    expect(right.left).toBe(300 - 8 - 100);
+  });
+});

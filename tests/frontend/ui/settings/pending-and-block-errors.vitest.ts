@@ -38,7 +38,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
     },
   ),
 }));
-vi.mock("../../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 
 import { ConfigSurfaceSection } from "../../../../src/frontend/ui/settings/config-surface-section";
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";

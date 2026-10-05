@@ -36,8 +36,8 @@ vi.mock("@tauri-apps/api/core", async () => {
 });
 // 改账号库那几件都先在界面里确认：判据替用户答（默认「确定」），并记下问了什么。
 const askConfirmMock = vi.fn();
-vi.mock("../../../../src/frontend/ui/ask-dialog", () => ({ askConfirm: (...a: unknown[]) => askConfirmMock(...a) }));
-vi.mock("../../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+vi.mock("../../../../src/frontend/ui/kit/dialog", () => ({ confirmDialog: (s: { body?: string }) => askConfirmMock(s.body) }));
+vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("../../../../src/frontend/ui/remote-config", async (orig) => ({ ...(await orig<object>()), readRemoteConfig: () => readRemoteConfigMock() }));
 
 import { readFileSync } from "node:fs";
@@ -70,7 +70,7 @@ import {
 } from "../../../../src/frontend/ui/settings/machine-status";
 import { computeGaps, summarizeGaps } from "../../../../src/frontend/ui/settings/readiness";
 import type { ApikeyCredentialsStatus } from "../../../../src/frontend/ui/apikey-reads";
-import { showActionFailureToast } from "../../../../src/frontend/ui/error-toast";
+import { toast as showActionFailureToast } from "../../../../src/frontend/ui/kit/toast";
 import * as accounts from "../../../../src/frontend/ui/accounts";
 // 读面从 `accounts.ts` 拆去了 `account-reads.ts`，桩打在它真住的模块上。
 import * as accountReads from "../../../../src/frontend/ui/account-reads";

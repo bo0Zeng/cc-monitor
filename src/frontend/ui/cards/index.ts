@@ -31,7 +31,7 @@ import { LS_KEYS, safeGet, safeSet } from "../local-storage";
 import { firstLineOf, formatTimestampShort, jsonPrefix } from "../format";
 import { openFileWindow } from "../file-window";
 import { resolveRemoteConfigByOrigin } from "../remote-config";
-import { showActionFailureToast } from "../error-toast";
+import { toast } from "../kit/toast";
 import { isRemoteOrigin, type Origin } from "../ipc/origin";
 
 /**
@@ -601,7 +601,7 @@ function buildRemoteFileLink(origin: string, filePath: string): HTMLElement {
 async function openRemoteFileInSftp(origin: string, filePath: string): Promise<void> {
   const cfg = await resolveRemoteConfigByOrigin(origin);
   if (!cfg) {
-    showActionFailureToast(copyText("cards.remoteFile.openFailed"), copyText("cards.remoteFile.noMachine", { machine: origin }));
+    toast(copyText("cards.remoteFile.openFailed"), copyText("cards.remoteFile.noMachine", { machine: origin }));
     return;
   }
   void openFileWindow(cfg, { revealFile: filePath });

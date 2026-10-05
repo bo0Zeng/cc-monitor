@@ -1,4 +1,5 @@
-import { defineConfig } from "vite";
+import { defineConfig, searchForWorkspaceRoot } from "vite";
+import { realpathSync } from "node:fs";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
@@ -83,6 +84,7 @@ export default defineConfig(async () => ({
   server: {
     port,
     strictPort: true,
+    fs: { allow: nodeModulesAllow() },
     host: host || false,
     hmr: host
       ? {
@@ -97,3 +99,17 @@ export default defineConfig(async () => ({
     },
   },
 }));
+
+/**
+ * 伺服白名单：仓根 ＋ `node_modules` 的真路径。工作树里 `node_modules` 常是指向主树的软链，
+ * 不加真路径那一格，`?raw` 导入的依赖文件（图标 svg）会被拒。
+ */
+export function nodeModulesAllow(): string[] {
+  const root = searchForWorkspaceRoot(process.cwd());
+  try {
+    return [root, realpathSync(`${root}/node_modules`)];
+  } catch {
+    return [root];
+  }
+}
+

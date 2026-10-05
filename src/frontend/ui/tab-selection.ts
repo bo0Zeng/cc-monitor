@@ -8,7 +8,7 @@
  * - tab 没了就从多选里掉出去（`retain`，整刷那一拍调）。
  */
 import { dispatcher, type OverlayHandle } from "./keybindings/registry";
-import { tabContextMenuOpen } from "./tab-context-menu";
+import { menuOpen } from "./kit/menu";
 
 export class TabSelection {
   private readonly picked = new Set<string>();
@@ -17,7 +17,7 @@ export class TabSelection {
     passes: "all", // 多选不盖住 tab：数字键 / ] [ 照常
     handleEsc: () => {
       // 菜单开着 ⇒ 这一下 Esc 是关菜单的（菜单自己听着），多选留着。
-      if (tabContextMenuOpen()) return false;
+      if (menuOpen()) return false;
       this.clear();
       this.changed();
       return true;

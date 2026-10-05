@@ -21,7 +21,7 @@ vi.mock("../../../src/frontend/ui/ipc/commands", () => ({
 }));
 vi.mock("../../../src/comms/inward/chan", async () => (await import("../../test-support/chan-stream-fake.ts")).chanStreamModule);
 const toast = vi.fn();
-vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: (...a: unknown[]) => toast(...a) }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: (...a: unknown[]) => toast(...a) }));
 
 import { bindEvents } from "../../../src/frontend/ui/events";
 import { streamFake } from "../../test-support/chan-stream-fake.ts";

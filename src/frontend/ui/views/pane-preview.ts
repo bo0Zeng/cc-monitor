@@ -8,7 +8,7 @@
  * `panePreview.*`，经 `copyText` 取；这里不再写任何中文字面量。
  */
 import { copyText } from "../copy-table";
-import { showActionFailureToast } from "../error-toast";
+import { toast } from "../kit/toast";
 import { saidOfControl } from "../control-said";
 import { previewText, type TerminalTarget } from "../terminal-reads";
 
@@ -83,7 +83,7 @@ export async function openPanePreview(origin: string, target: string, which: Ter
       loaded = true;
     } catch (e) {
       if (current !== overlay) return;
-      showActionFailureToast(copyText("panePreview.capture.failed"), saidOfControl(e), { level: "info" });
+      toast(copyText("panePreview.capture.failed"), saidOfControl(e), { level: "info" });
       if (!loaded) closePanePreview(); // 首次失败无内容可留 → 关
     } finally {
       if (current === overlay) refreshBtn.disabled = false; // overlay 已关/换则别碰旧按钮

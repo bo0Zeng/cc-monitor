@@ -77,7 +77,7 @@ vi.mock("../../../src/frontend/ui/record-reads", async (orig) => ({
 import { CommandBarView } from "../../../src/frontend/ui/views/command-bar";
 import { SessionFindPanel } from "../../../src/frontend/ui/views/session-find";
 import { dispatcher, type OverlayHandle } from "../../../src/frontend/ui/keybindings/registry";
-import { askConfirm } from "../../../src/frontend/ui/ask-dialog";
+import { confirmDialog } from "../../../src/frontend/ui/kit/dialog";
 import { TabManager, type Tab } from "../../../src/frontend/ui/tabs";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ENDED, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
@@ -163,7 +163,7 @@ describe("弹层栈：上面有浮层 / 对话框时单键不落到底下的 tab
   });
 
   it("确认框（模态）开着：W / 1 / Ctrl+K 都不生效，只有 Esc；关掉之后照常", async () => {
-    const p = askConfirm("杀死会话？", { danger: true });
+    const p = confirmDialog({ title: "结束会话 x", action: "结束", danger: true });
     press("KeyW");
     press("Digit1");
     press("KeyK", { ctrlKey: true });
@@ -219,11 +219,11 @@ describe("W 关掉已结束的当前 tab：给 8 秒撤销，撤销 ⇒ 原位 �
       tm.switchTo("b");
       tm.closeActiveIfArchived();
       expect(st.orderedIds).toEqual(["a", "c"]);
-      const toast = [...document.querySelectorAll(".ccm-toast")].find((t) =>
+      const toast = [...document.querySelectorAll("#kit-toast-stack > *")].find((t) =>
         t.textContent?.includes(copyText("tabBar.close.doneUnpinned", { title: b.title })),
       );
       expect(toast, "关了要说一句、带撤销").toBeTruthy();
-      toast!.querySelector<HTMLButtonElement>(".ccm-toast-action")!.click();
+      toast!.querySelector<HTMLButtonElement>("button")!.click();
       expect(st.orderedIds).toEqual(["a", "b", "c"]);
       expect(st.activeId).toBe("b");
       expect((st.tabs.get("b") as Tab).pinned).toBe(true);
@@ -299,14 +299,14 @@ describe("说不清（那台暂时看不见）的 tab 不给恢复", () => {
       new MouseEvent("contextmenu", { clientX: 1, clientY: 1 }),
       "u",
     );
-    const items = [...document.querySelectorAll<HTMLButtonElement>(".tab-context-menu-item")];
+    const items = [...document.querySelectorAll<HTMLButtonElement>("[role^=menuitem]")];
     const resume = items.filter((b) => b.textContent?.startsWith(copyText("tabMenu.item.resume")));
     expect(resume.length, "恢复那一项还在（置灰、说为什么）").toBe(1);
     expect(resume[0].disabled).toBe(true);
     expect(resume[0].textContent).toContain(copyText("sessionState.unseen.tooltip"));
     const actions = (tm as unknown as { actions: { resumeTab(sid: string): Promise<void> } }).actions;
     await actions.resumeTab("u");
-    const said = [...document.querySelectorAll(".ccm-toast")].some((t) =>
+    const said = [...document.querySelectorAll("#kit-toast-stack > *")].some((t) =>
       t.textContent?.includes(copyText("sessionState.unseen.noResume")),
     );
     expect(said, "点了要有回应：说不清 ⇒ 不起、说一句").toBe(true);

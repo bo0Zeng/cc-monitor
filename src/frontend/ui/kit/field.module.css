@@ -1,0 +1,93 @@
+/* 输入框（C2）。 */
+@layer components {
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    width: 100%;
+  }
+
+  .fieldLabel {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .fieldBox {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: var(--control-h);
+    padding: 0 var(--space-4);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-m);
+    background: var(--field-bg);
+    transition: border-color var(--dur-press);
+  }
+
+  .fieldBox:hover {
+    border-color: var(--text-faint);
+  }
+
+  .fieldBox:focus-within {
+    border-color: var(--field-border-focus);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+
+  .field[data-error="true"] .fieldBox {
+    border-color: var(--error);
+  }
+
+  .field[data-readonly="true"] .fieldBox {
+    padding-left: 0;
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .fieldBox:has(.fieldInput:disabled) {
+    opacity: var(--state-disabled-opacity);
+  }
+
+  .fieldPrefix {
+    color: var(--text-2);
+  }
+
+  .fieldInput {
+    flex: 1;
+    min-width: 0;
+    padding: var(--space-2) 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font-size: var(--font-size-base);
+    line-height: var(--line-height-ui);
+  }
+
+  textarea.fieldInput {
+    min-height: 64px;
+    resize: vertical;
+  }
+
+  .fieldInput::placeholder {
+    color: var(--field-placeholder);
+  }
+
+  .fieldNote {
+    display: flex;
+    gap: var(--space-3);
+    align-items: flex-start;
+    min-height: 1lh;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-ui);
+  }
+
+  .fieldNote > svg {
+    margin-top: 1px;
+    color: var(--error);
+  }
+
+  .field[data-error="true"] .fieldNote {
+    color: var(--text);
+  }
+}

@@ -184,4 +184,4 @@ Claude Code 给它 shell 里起的子进程注入 `CLAUDECODE=1` / `CLAUDE_CODE_
 
 ### 设置里的提示框不显示或错位
 
-DevTools Elements 看 `.settings-info-tooltip` 是否挂在 `<body>` 末尾，inline 的 `left` / `top` 是否在视口内。为什么挂 body 见 [ARCHITECTURE.md § 5](ARCHITECTURE.md#5-关键设计选择与理由)。
+DevTools Elements 看 `role="tooltip"` 那一块是否挂在 `<body>` 末尾，inline 的 `left` / `top` 是否在视口内。为什么挂 body 见 [ARCHITECTURE.md § 5](ARCHITECTURE.md#5-关键设计选择与理由)。

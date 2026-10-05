@@ -33,7 +33,7 @@ import { runRemoteLauncher } from "../remote-launch-run";
 import { probeMachine, ProbeStalled, type ConnTestResult, type ProbeStop } from "../remote-probe";
 import { pushPublicKey } from "../pubkey-push";
 import type { ResolvedHost } from "../ssh-config-reads";
-import { askConfirm } from "../ask-dialog";
+import { confirmDialog } from "../kit/dialog";
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { copyText } from "../copy-table";
 import { unavailableReason } from "../control-said";
@@ -718,9 +718,12 @@ export class MachineCard {
     const host =
       this.hostInput.value.trim() || this.labelInput.value.trim() || copyText("machineCard.resetFingerprint.thisHost");
     if (
-      !(await askConfirm(
-        copyText("machineCard.resetFingerprint.confirm", { host }),
-      ))
+      !(await confirmDialog({
+        title: copyText("machineCard.resetFingerprint.title", { host }),
+        action: copyText("machineCard.resetFingerprint.action"),
+        danger: true,
+        body: copyText("machineCard.resetFingerprint.confirm", { host }),
+      }))
     ) {
       return;
     }
@@ -1132,9 +1135,12 @@ export class MachineCard {
       return;
     }
     if (
-      !(await askConfirm(
-        copyText("machineCard.uninstall.confirm", { host: cfg.host }),
-      ))
+      !(await confirmDialog({
+        title: copyText("machineCard.uninstall.title", { host: cfg.host }),
+        action: copyText("machineCard.uninstall.action"),
+        danger: true,
+        body: copyText("machineCard.uninstall.confirm", { host: cfg.host }),
+      }))
     ) {
       return;
     }

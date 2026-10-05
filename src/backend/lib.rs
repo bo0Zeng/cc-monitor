@@ -1075,6 +1075,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `--resync` 摘了（`cli_control::STREAM_ONLY`：一次性进程里没有 watcher，答 `watchers: 0` 是假话）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--search",
     "--session-accounts",
+    "--session-interrupts",
     // `ssh-config-*` 三条帧命令自动派生的 CLI 面（理由同 `--tasks-list`）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--ssh-config-aliases",
     "--ssh-config-import",

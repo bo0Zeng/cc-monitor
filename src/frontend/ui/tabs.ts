@@ -9,7 +9,7 @@
  * | ② | **路由**：切到哪个 tab、谁有权切（手动 5s 保护 · 自动跟随）、记住上次的 tab | `main.ts` 快捷键 / 命令面板 / 启动选 active（`switchTo` · `cycleActive` · `jumpToIndex` · `applyBehavior` · `persistLastActive` · `onManualSwitch`）；`onLine` 里真用户输入（`userActive`） | `tab-router.ts` |
  * | ③ | **实时流视图**：每个 tab 的流 DOM、按 seq 门控建卡、尾部窗口 / 骨架 / 上翻补批 / 哨兵 / 大纲、重放批 | `events.ts` → `onBatchStart` · `onLine` · `onBatchEnd`；`main.ts` DEV 探针 `debugSnapshot` | `tab-stream-view.ts` |
  * | ④ | **tab 栏视图**：按钮 · 徽章 · 分组 · 拖动排序与成组 · 固定 · 顺序落盘 | 用户手势；`main.ts` 启动 `loadCollections` · `loadPinned` · `loadOrder` | `tab-bar-view.ts` · `tab-bar-drag.ts` · `tab-drop.ts`（纯落点算术）· `tab-bar-prefs.ts`（集合 / 固定 / 顺序三份落盘） |
- * | ⑤ | **会话动作**：右键菜单（resume · 换号重启 · attach · 预览 · 杀会话 · 集合 · 固定）与它背后的 IPC（开目录 · 新窗口 · 切到终端窗口） | 用户右键；`main.ts` 快捷键 / 命令面板（`bringActiveTerminalToFront` · `openActiveTabCwd` · `openActiveInNewWindow` · `closeActiveIfArchived`） | `tab-menu.ts`（菜单项怎么组）· `tab-context-menu.ts`（菜单这个控件）· `tab-session-actions.ts`（动作本身；IPC 经包装层 `ipc/commands.ts`） |
+ * | ⑤ | **会话动作**：右键菜单（resume · 换号重启 · attach · 预览 · 杀会话 · 集合 · 固定）与它背后的 IPC（开目录 · 新窗口 · 切到终端窗口） | 用户右键；`main.ts` 快捷键 / 命令面板（`bringActiveTerminalToFront` · `openActiveTabCwd` · `openActiveInNewWindow` · `closeActiveIfArchived`） | `tab-menu.ts`（菜单项怎么组）· `kit/menu.ts`（菜单这个控件，全产品一份）· `tab-session-actions.ts`（动作本身；IPC 经包装层 `ipc/commands.ts`） |
  *
  * 本文件拆完只剩 `TabManager` 这个**组装根**：对外 API（`main.ts` / `entry-viewer.ts` 调的那些）
  * 逐字不变，事件怎么在上面几份之间流转写在这里。拆分逐子步提交，每一步 `tabs.vitest` 全绿、断言不动。
@@ -25,7 +25,7 @@ import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-pane
 import type { JsonlLinePayload } from "./events";
 import { detectAccountMismatch, type SessionAccount } from "./accounts";
 import type { BehaviorConfig } from "./behavior";
-import { showActionFailureToast } from "./error-toast";
+import { toast, undoToast } from "./kit/toast";
 import { copyText } from "./copy-table";
 import { SeqSet, TailWindow } from "./live-window";
 import type { AgentsPanel } from "./agents-panel";
@@ -1188,12 +1188,7 @@ export class TabManager {
     const headline = tab.pinned
       ? copyText("tabBar.close.doneUnpinned", { title: tab.title })
       : copyText("tabBar.close.done", { title: tab.title });
-    showActionFailureToast(headline, "", {
-      level: "info",
-      durationMs: 8000,
-      action: { label: copyText("tabBar.close.undo"), run: () => this.undoClose(sid) },
-      onExpire: () => this.settleClose(sid),
-    });
+    undoToast(headline, () => this.undoClose(sid), () => this.settleClose(sid));
   }
 
   /** 撤销期里的那一个放回去：原位（顺序里原来那一格）· 原分组 · 原固定，并切回它。 */
@@ -1363,9 +1358,8 @@ export class TabManager {
     // 非 Windows 上 ↗ 的最后一跳是桩（每点必败）⇒ 按钮不渲；
     //   快捷键 / 命令面板（住 `main.ts`）还够得到这里 ⇒ 说一句实话，不发 IPC。见 `terminal-front.ts`。
     if (!terminalFrontAvailable()) {
-      showActionFailureToast(TERMINAL_FRONT_UNAVAILABLE_TITLE, TERMINAL_FRONT_UNAVAILABLE_DETAIL, {
+      toast(TERMINAL_FRONT_UNAVAILABLE_TITLE, TERMINAL_FRONT_UNAVAILABLE_DETAIL, {
         level: "info",
-        durationMs: 6000,
       });
       return;
     }

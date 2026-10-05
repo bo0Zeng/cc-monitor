@@ -41,8 +41,8 @@ import { setKeybindings } from "./store";
 // F82a：键位改动落盘后广播，主窗口跨窗热应用（事件名在中立模块，避免与 settings/panel 循环）。
 import { emit } from "@tauri-apps/api/event";
 import { SETTINGS_APPLIED_EVENT } from "../settings/events";
-import { askConfirm } from "../ask-dialog";
-import { showActionFailureToast } from "../error-toast";
+import { confirmDialog } from "../kit/dialog";
+import { toast } from "../kit/toast";
 import { copyText } from "../copy-table";
 
 export class KeybindingsEditor implements OverlayHandle {
@@ -266,9 +266,11 @@ export class KeybindingsEditor implements OverlayHandle {
     if (chord === null) {
       // Esc 改 overlay.close 自己时：强警告
       if (id === "overlay.close") {
-        const ok = await askConfirm(
-          copyText("keybindingEditor.applyChord.confirmUnbindClose"),
-        );
+        const ok = await confirmDialog({
+          title: copyText("keybindingEditor.applyChord.unbindCloseTitle"),
+          action: copyText("keybindingEditor.applyChord.unbindAction"),
+          body: copyText("keybindingEditor.applyChord.confirmUnbindClose"),
+        });
         if (!ok) {
           this.refreshRow(id);
           return;
@@ -283,9 +285,11 @@ export class KeybindingsEditor implements OverlayHandle {
     // overlay.close 改成非 Escape 时强警告
     if (id === "overlay.close" && chord !== "Escape") {
       const pretty = KeybindingDispatcher.prettyChord(chord);
-      const ok = await askConfirm(
-        copyText("keybindingEditor.applyChord.confirmRebindClose", { pretty }),
-      );
+      const ok = await confirmDialog({
+        title: copyText("keybindingEditor.applyChord.rebindCloseTitle"),
+        action: copyText("keybindingEditor.applyChord.rebindAction"),
+        body: copyText("keybindingEditor.applyChord.confirmRebindClose", { pretty }),
+      });
       if (!ok) {
         this.refreshRow(id);
         return;
@@ -298,9 +302,11 @@ export class KeybindingsEditor implements OverlayHandle {
       const ownerAction = findAction(owner);
       const ownerLabel = ownerAction?.label ?? owner;
       const pretty = KeybindingDispatcher.prettyChord(chord);
-      const ok = await askConfirm(
-        copyText("keybindingEditor.applyChord.confirmOverride", { pretty, ownerLabel }),
-      );
+      const ok = await confirmDialog({
+        title: copyText("keybindingEditor.applyChord.overrideTitle", { pretty }),
+        action: copyText("keybindingEditor.applyChord.overrideAction"),
+        body: copyText("keybindingEditor.applyChord.confirmOverride", { pretty, ownerLabel }),
+      });
       if (!ok) {
         this.refreshRow(id);
         return;
@@ -328,7 +334,12 @@ export class KeybindingsEditor implements OverlayHandle {
   }
 
   private async onResetAll(): Promise<void> {
-    if (!(await askConfirm(copyText("keybindingEditor.onResetAll.confirmResetAll")))) return;
+    const confirm = {
+      title: copyText("keybindingEditor.onResetAll.title"),
+      action: copyText("keybindingEditor.onResetAll.action"),
+      body: copyText("keybindingEditor.onResetAll.confirmResetAll"),
+    };
+    if (!(await confirmDialog(confirm))) return;
     for (const a of ACTIONS) {
       dispatcher.setOverride(a.id as ActionId, "");
     }
@@ -355,7 +366,7 @@ export class KeybindingsEditor implements OverlayHandle {
     } catch (e) {
       console.warn("[keybindings] persist failed:", e);
       // 从前只记日志：这次改的键位眼下生效、重启就回去，界面一句不说（E §3.3）。
-      showActionFailureToast(copyText("keybindings.persist.failed"), String(e));
+      toast(copyText("keybindings.persist.failed"), String(e));
     }
   }
 }

@@ -1,0 +1,19 @@
+/* 图标的三档尺寸（V9）；颜色随所在控件的 `color`。 */
+@layer components {
+  .icon {
+    flex: none;
+    width: var(--icon-size);
+    height: var(--icon-size);
+    vertical-align: middle;
+  }
+
+  .icon[data-size="compact"] {
+    width: var(--icon-size-compact);
+    height: var(--icon-size-compact);
+  }
+
+  .icon[data-size="empty"] {
+    width: var(--icon-size-empty);
+    height: var(--icon-size-empty);
+  }
+}

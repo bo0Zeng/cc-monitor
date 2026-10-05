@@ -1,0 +1,39 @@
+/* 卡片（C7）。 */
+@layer components {
+  .card {
+    width: 100%;
+    padding: var(--space-5) var(--space-6);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-l);
+    background: var(--bg);
+  }
+
+  .card[data-needs-you="true"] {
+    border-left: 3px solid var(--warn);
+    cursor: pointer;
+  }
+
+  .cardHead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    min-height: var(--control-h-compact);
+  }
+
+  .cardTitle {
+    flex: 1;
+    min-width: 0;
+    font-weight: var(--font-weight-strong);
+  }
+
+  .cardActions {
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  .cardBody {
+    margin-top: var(--space-3);
+    color: var(--text-2);
+    font-size: var(--font-size-mono);
+  }
+}

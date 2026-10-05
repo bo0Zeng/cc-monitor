@@ -19,14 +19,14 @@ vi.mock("../../../src/frontend/ui/tmux-control", () => ({ sendInto: tmux.sendInt
 const mint = vi.hoisted(() => ({ mintFreshTmuxName: vi.fn(), refuseUnmintable: vi.fn() }));
 vi.mock("../../../src/frontend/ui/terminal-name-mint", () => mint);
 vi.mock("../../../src/frontend/ui/resync", () => ({ offerResyncRetry: vi.fn() }));
-vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("../../../src/frontend/ui/launch-arrival", () => ({
   expectArrival: vi.fn(),
   awaitArrival: vi.fn().mockResolvedValue(true),
   arrivedBody: (o: string) => `报出了@${o}`,
 }));
 
-import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
+import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
 import { expectArrival } from "../../../src/frontend/ui/launch-arrival";
 import {
   runRemoteResume,

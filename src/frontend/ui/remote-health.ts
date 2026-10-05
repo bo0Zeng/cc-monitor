@@ -15,7 +15,7 @@
  */
 
 import { listen } from "@tauri-apps/api/event";
-import { showActionFailureToast } from "./error-toast";
+import { toast } from "./kit/toast";
 import { shouldShowHealthToast } from "./remote-health-throttle";
 
 // C02：改成 import 生成物（源：`src/frontend/shell/src/ui_contract.rs` 的 `RemoteHealthPayload`）。
@@ -60,9 +60,8 @@ export function bindRemoteHealthToast(): void {
     const now = Date.now();
     if (!shouldShowHealthToast(lastShown.get(key), now)) return;
     lastShown.set(key, now);
-    showActionFailureToast(headlineFor(p.kind), p.message || copyText("remoteHealth.bindRemoteHealthToast.noMessage"), {
+    toast(headlineFor(p.kind), p.message || copyText("remoteHealth.bindRemoteHealthToast.noMessage"), {
       level: "info",
-      durationMs: 8000,
     });
   });
 }

@@ -115,6 +115,7 @@ const FLOORS = {
  * 为什么这一向也要判：只写了正方向（「用了没定义」），而现打逮到的两条
  * 真缺陷全在**反方向** —— 正方向今天是干净的，只判它等于这一格永远绿。
  */
+const NEW_TOKEN = "规范新立、组件件待接";
 const UNUSED_TOKENS: Readonly<Record<string, string>> = {
   // 🔴 `--user` / `--assistant` 两条登记**摘掉了** —— 上一版这里逐字写着
   //    「裁完之后把这两行删掉，判据会提醒」。用户当天裁了：**撤掉那两个取色器**。
@@ -125,17 +126,10 @@ const UNUSED_TOKENS: Readonly<Record<string, string>> = {
   // 下面五条是新补的两族里**今天还没有消费者**的部分。
   // 设计要的是「族补齐」（免得下一个人再去猜 `--input-bg` 这种名字），
   // 消费者要等到那些控件下一次被动到时才自然接上 ⇒ 预留是刻意的，不是腐。
-  "--field-border": "表单族预留（族二）；今天输入框的边框还写着 --border-medium",
-  "--field-border-focus": "表单族预留；今天 :focus 各处自己写 --accent",
-  "--field-placeholder": "表单族预留；今天 ::placeholder 各处自己写 --text-faint",
   "--state-focus": "交互态族预留（族一）",
-  "--state-hover":
-    "交互态族（族一）。今天的两个消费者（老 SFTP 面板的按钮与行悬停）" +
-    "随面板整段 CSS 退役；族不拆 —— 同 `--state-focus`，等下一个悬停态自然接上",
-  "--state-disabled-opacity":
-    "交互态族预留。要「把散在各处的 0.45/0.5/0.55 收成一个 token」，" +
-    "而现打 `opacity: 0.x` 有 46 处、值域 0.35–0.95，**机械分不出哪些是「禁用/变灰」** " +
-    "（水印、悬停压暗、幽灵态混在一起）⇒ 收编要逐条读语义，本轮判不了，不硬做",
+  // 规范 V1–V12 新立的令牌里，通用组件还没接上的（组件件落地一个摘一个）。
+  "--dur-float-out": NEW_TOKEN,
+  "--space-8": NEW_TOKEN,
 } as const;
 
 describe("S30 ⓪ 量具自检（这几条不过，下面三格全是空转）", () => {
@@ -201,8 +195,8 @@ describe("S30 ⑤ 自定义属性对账，两个方向", () => {
         `  TS 设了但 CSS 没人用：${minus(fromTs, new Set(fromCss)).join(" ") || "（无）"}\n` +
         "左边多 ⇒ 写错了变量名（那条声明会被浏览器整条丢弃）；右边多 ⇒ setProperty 设了个没人读的名字。",
     ).toEqual(fromTs);
-    // 2 → 11：多了 `css-marks.ts` 那九个 `--mark-*`（CSS 伪元素里的符号从文案表来）。
-    expect(fromTs.length, "TS 侧一个 setProperty 都没扫到 ⇒ 上面那条会变成「两边都空」的假绿").toBe(11);
+    // 2 → 11：多了 `css-marks.ts` 那九个 `--mark-*`（CSS 伪元素里的符号从文案表来）；11 → 10：子菜单箭头改由图标件画（`--mark-submenu` 删）。
+    expect(fromTs.length, "TS 侧一个 setProperty 都没扫到 ⇒ 上面那条会变成「两边都空」的假绿").toBe(10);
   });
 
   it("② theme.ts 那 14 个旋钮，CSS 里必须都有默认值", () => {
@@ -313,8 +307,13 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // 229/339 → 230/340：「装到…」那张卡多记一格填的值。
   "src/frontend/ui/settings/ext-section.ts:230": "`this.drawer` —— 构造时收起",
   "src/frontend/ui/settings/ext-section.ts:340": "`this.drawer` —— 点开一行才拉出来",
-  "src/frontend/ui/error-toast.ts:153": // +1：加了 copyText 的 import ·+17：toast 可带一颗动作按钮（撤销）与到点收尾
-    "`existing.countEl` —— `existing` 是从一张 Map 里取回来的旧 toast，它的 countEl 在别处建的",
+  // 通用组件（`kit/`）：类名是 CSS Modules 的哈希名（`s.<类>`），静态推不出；那几个类都不写 `display`。
+  "src/frontend/ui/kit/dialog.ts:185": "填值框的错误句 `err`（`s.error`）—— 开时收起",
+  "src/frontend/ui/kit/dialog.ts:192": "同上 —— 校验不过时出现",
+  "src/frontend/ui/kit/dialog.ts:199": "同上 —— 重新输入时收起",
+  "src/frontend/ui/kit/fold.ts:39": "折叠块正文 `body`（`s.body`）",
+  "src/frontend/ui/kit/toast.ts:130": "合流计数 `same.countEl`（`s.count`）—— 合进第二条时出现",
+  "src/frontend/ui/kit/toast.ts:149": "同上 —— 建时收起",
   // ⚠ `606 → 614`：我在这份文件上方加了一段注释，**行号就漂了**。
   //    这条登记按**裸行号**做键 —— 那是它的固有脆弱：住址没变、内容没变，只因为
   //    上面多了几行就要来改一次。纪律 4 说的是同一件事
@@ -342,7 +341,7 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    `perMachineFallbackHint`，语义一字未动。
   // `792 → 793` / `1288 → 1297` / `1301 → 1310`：`panel.ts` 多了资产目录那一行 import 与那一块登记，三处语义一字未动。
   // 〔W5-UI ＋ CFG1 合并〕W5-UI 那三处 +4 与 CFG1 +3 叠加（`panel.ts` 785 → 792 · 1289 → 1296 · 1302 → 1309；`history.ts` 1612 → 1616），语义一字未动。原注：`785 → 789` / `1289 → 1293` / `1302 → 1306`：`panel.ts` 多一行 import（应用内对话框）＋ 选目录失败那处 catch 多三行出声，三处语义一字未动。
-  "src/frontend/ui/settings/panel.ts:848": // 行号 +11：主窗口翻行为开关之后同步那两个开关（监听 ＋ 摆值的私有方法） // 行号 +1：多一行 import（「直接敲的也走中转」那一块） // 行号 −1：钩子那一块的 import 删了 // 行号 −1：代码全景卸口那一块的 import 删了 // 〔合并扩展页 × 账号库〕按合并后的文件现打（扩展页 +2）· 账号库收进后端：−1（本机账号读口那一行 import 随「为每个账号加一条」删了）· 同上 · −7：逃生口 forceLaunchPayloadRenderer 那段缓存字段删了 · +35：openInner 拆出两个私有方法 · +2：多两行 import
+  "src/frontend/ui/settings/panel.ts:852": // +4：重置外观那一问带标题与动作名 · // 行号 +11：主窗口翻行为开关之后同步那两个开关（监听 ＋ 摆值的私有方法） // 行号 +1：多一行 import（「直接敲的也走中转」那一块） // 行号 −1：钩子那一块的 import 删了 // 行号 −1：代码全景卸口那一块的 import 删了 // 〔合并扩展页 × 账号库〕按合并后的文件现打（扩展页 +2）· 账号库收进后端：−1（本机账号读口那一行 import 随「为每个账号加一条」删了）· 同上 · −7：逃生口 forceLaunchPayloadRenderer 那段缓存字段删了 · +35：openInner 拆出两个私有方法 · +2：多两行 import
     "`b.el` —— `b` 来自 `this.perMachineBlocks` 数组，元素由各 section 自己建，跨文件",
   // 🔴 兜底态那块提示的显隐。它的类名是
   //    `skeleton.ts::makeSkeleton` 挂上去的（`settings-hint`），**跨文件** ——
@@ -350,9 +349,9 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    ⚠ 顺带说清它安不安全：`settings-hint` 在 `src/frontend/ui/styles.css` 里**没有 display 规则**
   //      ⇒ UA 的 `[hidden] { display: none }` 不会被压过，那两句不是空写。
   //      这一条是**人工核过的**，不是这把尺子判的 —— 所以它在登记表里，不在绿里。
-  "src/frontend/ui/settings/panel.ts:1380": // 行号 +7（空白卡页不切机器那几行 ＋ 后端那几格的回调） // 行号 +11（同上） // 行号 +8：多一行 import ＋ 「终端」栏那一块登记七行 // 行号 −8：cc-bus 钩子那一块删了 // 行号 −7：import 一行 ＋ 全景卸口那一格六行删了 // 〔合并扩展页 × 账号库〕按合并后的文件现打（扩展页 −1）· 账号库收进后端：−2 · 行号 −6：字面量进表后几段多行拼接收成一行 · 再 −7（同上） · +1（别名管理器多传一行 origin） · +35 · +16：外观「高级」那一折 ＋ 全景卸口那一格 ＋ 认不出 OS 那一分支
+  "src/frontend/ui/settings/panel.ts:1384": // +4（同上） · // 行号 +7（空白卡页不切机器那几行 ＋ 后端那几格的回调） // 行号 +11（同上） // 行号 +8：多一行 import ＋ 「终端」栏那一块登记七行 // 行号 −8：cc-bus 钩子那一块删了 // 行号 −7：import 一行 ＋ 全景卸口那一格六行删了 // 〔合并扩展页 × 账号库〕按合并后的文件现打（扩展页 −1）· 账号库收进后端：−2 · 行号 −6：字面量进表后几段多行拼接收成一行 · 再 −7（同上） · +1（别名管理器多传一行 origin） · +35 · +16：外观「高级」那一折 ＋ 全景卸口那一格 ＋ 认不出 OS 那一分支
     "`this.perMachineFallbackHint` —— 类名由 `skeleton.ts::makeSkeleton` 挂，跨文件",
-  "src/frontend/ui/settings/panel.ts:1393": // 行号 +7（同上） // 行号 +11（同上） // 行号 +8（同上） // 行号 −8（同上） // 行号 −7（同上） // 〔合并扩展页 × 账号库〕按合并后的文件现打（扩展页 −1）· 账号库收进后端：−2 · 同上 · −7 · +1 · +35 · +16
+  "src/frontend/ui/settings/panel.ts:1397": // +4（同上） · // 行号 +7（同上） // 行号 +11（同上） // 行号 +8（同上） // 行号 −8（同上） // 行号 −7（同上） // 〔合并扩展页 × 账号库〕按合并后的文件现打（扩展页 −1）· 账号库收进后端：−2 · 同上 · −7 · +1 · +35 · +16
     "`this.perMachineFallbackHint` —— 同上（兜底态亮出来那一支）",
   // 🔴 「足迹」那一块里，本机那一整套的显隐包装。
   //    它**刻意不挂任何类**：只负责显隐、不要样式。挂了类就得在 CSS 里给它写规则
@@ -378,7 +377,7 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // 1516 → 1517：全文搜索那一处多一行注释（条数上限不在前端写），这一处本身没动。
   // 1548 → 1554：删历史会话的三处确认带上「撤不回」（默认焦点在取消）＋ 多两行 import（按会话的那一家恢复）＋ 搜索卡片多一格 `agent`，这一处本身没动。
   // 1554 → 1659：历史页上面那几段多了「没加载上」「按标题搜」「搜得不全说出来」的几十行，这一处本身没动。
-  "src/frontend/ui/views/history.ts:1657":
+  "src/frontend/ui/views/history.ts:1653": // −4：右键菜单换成全产品那一份 ·
     "`e.hidden = updated.hidden` —— 这一处根本不是「切某个组件的显隐」，是在把一条会话记录的 `hidden` 字段往回写",
 } as const;
 
@@ -519,6 +518,8 @@ const CARRIERS: StateCarriers = stateCarriers(REPO_ROOT, stripCodeComments);
  * 键是「文件 · 调用原文」（不按行号 —— ⑦ 那张表逐轮漂行号的教训）。
  */
 const STATE_CLASS_UNRESOLVED: Readonly<Record<string, string>> = {
+  "src/frontend/ui/kit/icon.ts · classList.add(s.icon)":
+    "图标件：svg 元素的 `className` 不是串、只能走 classList；`s.icon` 是 CSS Modules 哈希名，与 `data-*` 撞不了名",
   "src/frontend/ui/tab-bar-drag.ts · classList.toggle(cls, on)":
     "拖拽落点标记只动新旧两个（P3）：`cls` 是 `drop-before` / `drop-onto` 之一（同文件的常量），不是一个状态名的载体选择",
   "src/frontend/ui/usage-hud.ts · classList.remove(s.high)":

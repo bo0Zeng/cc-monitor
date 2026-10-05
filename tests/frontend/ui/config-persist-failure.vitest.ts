@@ -18,7 +18,7 @@ const boom = async (): Promise<void> => {
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), Channel: class {} }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(), listen: vi.fn(async () => () => {}) }));
-vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 // 分组的每一个动作把组表与几个 tab 的组 id 键装进一次 `patchConfig`（`TabBarPrefs.writeGroups`）⇒ 失败注入在写口这一层。
 //   别的几个写者在下面各自被替掉，不经这里。
 vi.mock("../../../src/frontend/ui/config", async (orig) => ({
@@ -40,7 +40,7 @@ vi.mock("../../../src/frontend/ui/keybindings/registry", () => ({
   KeybindingDispatcher: class {},
 }));
 
-import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
+import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import { KeybindingsEditor } from "../../../src/frontend/ui/keybindings/editor";

@@ -27,7 +27,7 @@ vi.mock("../../../src/frontend/ui/session-writes", () => ({
     return Promise.resolve({ sessionId: "new-sid-1234", jsonlPath: "/p/new.jsonl" });
   },
 }));
-vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 
 import { attachBranchButton, isOffMainCard, FOLD_WRAP_SELECTOR } from "../../../src/frontend/ui/branch-button";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";

@@ -6,7 +6,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../../../src/frontend/ui/config", async (orig) => (await import("./config-patch-fake")).mockedConfigModule(orig));
 // 记账失败要出声：只换 toast 这一个出口，判据读它收到了什么。
 // 账号选不了的那句提示由 `withAccount` 自己出（先前是调用方各带一个「账号不可用」回调）。
-vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { loadConfig } from "../../../src/frontend/ui/config";
@@ -18,7 +18,7 @@ import { restartLocateFailureMessage } from "../../../src/frontend/ui/account-re
 import { enumerateAccountModifiers } from "../../../src/frontend/ui/launch-menu";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
+import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
 import { accountUnavailableOf, chosenAccount, refuseUnavailableAccount, type AccountUnavailable } from "../../../src/frontend/ui/launch-account";
 import { ControlError } from "../../../src/frontend/ui/control-said";
 import { ChanError } from "../../../src/comms/inward/chan";

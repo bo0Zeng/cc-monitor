@@ -20,7 +20,7 @@
 // 且它的返回类型 C01 就已经生成好了。
 import { commands } from "../ipc/commands";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { showActionFailureToast } from "../error-toast";
+import { toast } from "../kit/toast";
 import { enumeratePrefix } from "../local-storage";
 import { formatBytes } from "../format";
 import { holdSkeletonHeight, makeSkeleton } from "./skeleton";
@@ -413,7 +413,7 @@ async function openItem(path: string): Promise<void> {
     await openPath(path);
   } catch (e) {
     console.warn(`[data-section] openPath ${path} failed:`, e);
-    showActionFailureToast(copyText("data.open.failed"), String(e));
+    toast(copyText("data.open.failed"), String(e));
   }
 }
 

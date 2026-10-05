@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 pub type Rgba = [u8; 4];
 
 /// 主界面那一侧要读、要交过来的令牌，**恰好**这些（多一个少一个都是错，[`Theme::from_tokens`] 两向都拒）。
-pub const THEME_TOKENS: [&str; 23] = [
+pub const THEME_TOKENS: [&str; 46] = [
     "--bg",
     "--bg-2",
     "--card",
@@ -18,6 +18,8 @@ pub const THEME_TOKENS: [&str; 23] = [
     "--text-2",
     "--text-faint",
     "--accent",
+    "--accent-strong",
+    "--selected-bg",
     "--border-strong",
     "--border-medium",
     "--border-soft",
@@ -28,12 +30,33 @@ pub const THEME_TOKENS: [&str; 23] = [
     "--success",
     "--warn",
     "--error",
+    "--error-strong",
+    "--error-text",
     "--color-link",
     "--font-base",
     "--font-mono",
     "--font-size-base",
     "--font-size-mono",
     "--font-size-small",
+    "--font-size-title",
+    "--space-1",
+    "--space-2",
+    "--space-3",
+    "--space-4",
+    "--space-5",
+    "--space-6",
+    "--space-7",
+    "--space-8",
+    "--radius-s",
+    "--radius-m",
+    "--radius-l",
+    "--radius-xl",
+    "--control-h",
+    "--control-h-compact",
+    "--row-h",
+    "--icon-size",
+    "--shadow-float",
+    "--shadow-modal",
 ];
 
 /// 解出来的那一套。字段与 [`THEME_TOKENS`] 一一对应。
@@ -49,8 +72,12 @@ pub struct Theme {
     pub text: Rgba,
     pub text2: Rgba,
     pub text_faint: Rgba,
-    /// 唯一的强调色。
+    /// 唯一的强调色（当前 / 选中 · 焦点 · 开关开）。
     pub accent: Rgba,
+    /// 主按钮底（白字过 4.5:1 的那一档）。
+    pub accent_strong: Rgba,
+    /// 选中行的淡底。
+    pub selected: Rgba,
     /// 边线四级（强 → 极淡）。
     pub border_strong: Rgba,
     pub border_medium: Rgba,
@@ -64,6 +91,9 @@ pub struct Theme {
     pub success: Rgba,
     pub warn: Rgba,
     pub error: Rgba,
+    /// 危险按钮底 · 红字。
+    pub error_strong: Rgba,
+    pub error_text: Rgba,
     pub link: Rgba,
     /// 字族列表（CSS 的写法拆开、去引号，按先后）。
     pub font_base: Vec<String>,
@@ -72,6 +102,31 @@ pub struct Theme {
     pub size_base: f32,
     pub size_mono: f32,
     pub size_small: f32,
+    pub size_title: f32,
+    /// 间距刻度 `--space-1` … `--space-8`。
+    pub space: [f32; 8],
+    /// 圆角四档：徽标 · 控件 · 浮层与菜单 · 对话框。
+    pub radius_s: f32,
+    pub radius_m: f32,
+    pub radius_l: f32,
+    pub radius_xl: f32,
+    /// 控件两档高 · 列表行高 · 图标尺寸。
+    pub control_h: f32,
+    pub control_h_compact: f32,
+    pub row_h: f32,
+    pub icon_size: f32,
+    /// 浮层（菜单 · 悬浮提示）与对话框的投影。
+    pub shadow_float: Shadow,
+    pub shadow_modal: Shadow,
+}
+
+/// 一道投影：偏移 · 模糊半径 · 颜色（CSS `box-shadow` 的 `x y blur color` 那一形）。
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Shadow {
+    pub x: f32,
+    pub y: f32,
+    pub blur: f32,
+    pub color: Rgba,
 }
 
 /// 一格令牌的计算值 → 颜色。认 `#rgb` · `#rgba` · `#rrggbb` · `#rrggbbaa` · `rgb()` / `rgba()`（逗号或空格分隔，`/` 带透明度）。
@@ -120,6 +175,27 @@ pub fn parse_css_color(raw: &str) -> Option<Rgba> {
     }
 }
 
+/// `0 6px 24px #00000073` → 一道投影（两段偏移 ＋ 模糊 ＋ 颜色；只认这一形，不猜）。
+pub fn parse_shadow(raw: &str) -> Option<Shadow> {
+    let parts: Vec<&str> = raw.split_whitespace().collect();
+    let [x, y, blur, color] = parts.as_slice() else {
+        return None;
+    };
+    let len = |p: &str| -> Option<f32> {
+        if p == "0" {
+            return Some(0.0);
+        }
+        let v: f32 = p.strip_suffix("px")?.parse().ok()?;
+        v.is_finite().then_some(v)
+    };
+    Some(Shadow {
+        x: len(x)?,
+        y: len(y)?,
+        blur: len(blur)?,
+        color: parse_css_color(color)?,
+    })
+}
+
 /// CSS 字族列表 → 名字一串（去引号、去空白，空项丢掉）。
 pub fn parse_font_families(raw: &str) -> Vec<String> {
     raw.split(',')
@@ -158,6 +234,11 @@ impl Theme {
         };
         let color = |name: &str| parse_css_color(&map[name]).ok_or_else(|| bad(name));
         let px = |name: &str| parse_px(&map[name]).ok_or_else(|| bad(name));
+        let shadow = |name: &str| parse_shadow(&map[name]).ok_or_else(|| bad(name));
+        let mut space = [0.0; 8];
+        for (i, v) in space.iter_mut().enumerate() {
+            *v = px(&format!("--space-{}", i + 1))?;
+        }
         let fams = |name: &str| {
             let v = parse_font_families(&map[name]);
             if v.is_empty() {
@@ -174,6 +255,8 @@ impl Theme {
             text2: color("--text-2")?,
             text_faint: color("--text-faint")?,
             accent: color("--accent")?,
+            accent_strong: color("--accent-strong")?,
+            selected: color("--selected-bg")?,
             border_strong: color("--border-strong")?,
             border_medium: color("--border-medium")?,
             border_soft: color("--border-soft")?,
@@ -184,12 +267,26 @@ impl Theme {
             success: color("--success")?,
             warn: color("--warn")?,
             error: color("--error")?,
+            error_strong: color("--error-strong")?,
+            error_text: color("--error-text")?,
             link: color("--color-link")?,
             font_base: fams("--font-base")?,
             font_mono: fams("--font-mono")?,
             size_base: px("--font-size-base")?,
             size_mono: px("--font-size-mono")?,
             size_small: px("--font-size-small")?,
+            size_title: px("--font-size-title")?,
+            space,
+            radius_s: px("--radius-s")?,
+            radius_m: px("--radius-m")?,
+            radius_l: px("--radius-l")?,
+            radius_xl: px("--radius-xl")?,
+            control_h: px("--control-h")?,
+            control_h_compact: px("--control-h-compact")?,
+            row_h: px("--row-h")?,
+            icon_size: px("--icon-size")?,
+            shadow_float: shadow("--shadow-float")?,
+            shadow_modal: shadow("--shadow-modal")?,
         })
     }
 }

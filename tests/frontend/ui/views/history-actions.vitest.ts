@@ -25,7 +25,7 @@ vi.mock("../../../../src/frontend/ui/views/session-viewer", () => ({
 vi.mock("../../../../src/frontend/ui/keybindings/registry", () => ({
   dispatcher: { pushOverlay: vi.fn(), popOverlay: vi.fn() },
 }));
-vi.mock("../../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("../../../../src/frontend/ui/remote-launch-run", () => ({
   runRemoteResume: vi.fn().mockResolvedValue(undefined),
   runNewSessionRemote: vi.fn().mockResolvedValue(undefined),
@@ -42,7 +42,7 @@ import { invalidateAccountsCache } from "../../../../src/frontend/ui/account-rea
 import { historyCalls, launchRenderShim, localLaunchCalls, tmuxMintCalls, withHistoryReads } from "../../../test-support/chan-fake";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import { answerAskDialog, answerAskText, askDialogText, noAskDialog } from "../../../test-support/ask-dialog-driver.ts";
-import { showActionFailureToast } from "../../../../src/frontend/ui/error-toast";
+import { toast as showActionFailureToast } from "../../../../src/frontend/ui/kit/toast";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -60,7 +60,7 @@ function buildRow(view: HistoryView, e: Record<string, unknown>, p: Record<strin
   return row;
 }
 function menuItems(): HTMLButtonElement[] {
-  return [...document.querySelectorAll<HTMLButtonElement>(".history-context-item")];
+  return [...document.querySelectorAll<HTMLButtonElement>("[role^=menuitem]")];
 }
 function menuItem(text: string): HTMLButtonElement | undefined {
   return menuItems().find((b) => b.textContent === text);
@@ -227,8 +227,8 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     expect(historyCalls(invokeMock.mock.calls, "delete_history_session").length > 0).toBe(false);
   });
 
-  // 删会话前看活不活：活着（条目说活 / tab 栏里活）⇒ 多问一句；说不清（`isLive: null`）⇒ 也多问；
-  //   确定不活 ⇒ 照原来那一问。多问那句答「不」⇒ 一趟 delete 都不发。异源：问了什么由文案表现取、发没发由 invoke 记录判。
+  // 删会话前看活不活：活着（条目说活 / tab 栏里活）⇒ 正文多一句；说不清（`isLive: null`）⇒ 也多一句；
+  //   确定不活 ⇒ 只有那一句。一件事一个框（C10）：答「不」⇒ 一趟 delete 都不发。异源：问了什么由文案表现取、发没发由 invoke 记录判。
   it("〔FW1〕删会话前看活不活：活 / 说不清多问一句，不活照旧；多问那句答不 ⇒ 不删", async () => {
     // 〔W5-UI 之后〕问的是应用内对话框：当用户读正文、点真按钮（`ask-dialog-driver`），答案异步到，与真 app 同形。
     const runOnce = async (over: Record<string, unknown>, liveInTabs: boolean, answers: boolean[]) => {
@@ -251,23 +251,27 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     const live = copyText("sessionState.deleteLive.confirm", { label: "T" });
     const unknown = copyText("sessionState.deleteUnknown.confirm", { label: "T" });
     const plain = copyText("history.delete.confirmLocal", { label: "T" });
-    expect(await runOnce({ isLive: true }, false, [true, true])).toEqual({ asked: [live, plain], deleted: true });
-    expect(await runOnce({ isLive: false }, true, [true, true]), "tab 栏里活着却没多问").toEqual({ asked: [live, plain], deleted: true });
-    expect(await runOnce({ isLive: null }, false, [true, true])).toEqual({ asked: [unknown, plain], deleted: true });
-    expect(await runOnce({ isLive: false }, false, [true])).toEqual({ asked: [plain], deleted: true });
-    expect(await runOnce({ isLive: true }, false, [false]), "多问那句答了不，还是删了").toEqual({ asked: [live], deleted: false });
+    const title = copyText("history.delete.title", { label: "T" });
+    expect(await runOnce({ isLive: true }, false, [true])).toEqual({ asked: [`${title}\n${live}\n\n${plain}`], deleted: true });
+    expect(await runOnce({ isLive: false }, true, [true]), "tab 栏里活着却没多说").toEqual({ asked: [`${title}\n${live}\n\n${plain}`], deleted: true });
+    expect(await runOnce({ isLive: null }, false, [true])).toEqual({ asked: [`${title}\n${unknown}\n\n${plain}`], deleted: true });
+    expect(await runOnce({ isLive: false }, false, [true])).toEqual({ asked: [`${title}\n${plain}`], deleted: true });
+    expect(await runOnce({ isLive: true }, false, [false]), "答了不，还是删了").toEqual({ asked: [`${title}\n${live}\n\n${plain}`], deleted: false });
   });
 
-  it("菜单开着按 Esc（经 handleEscape）→ 只关菜单，不误关整个历史视图", () => {
+  it("菜单开着按 Esc（经弹层栈）→ 只关菜单，不误关整个历史视图", async () => {
+    const { dispatcher } = await import("../../../../src/frontend/ui/keybindings/registry");
     const view = new HistoryView();
     (view as unknown as { isOpen: boolean }).isOpen = true; // 免全量 open() 的 invoke mock
     const row = buildRow(view, entry(), proj());
+    vi.mocked(dispatcher.pushOverlay).mockClear();
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
-    const inner = view as unknown as { openEntryMenu: HTMLElement | null; isOpen: boolean; handleEscape(): void };
-    expect(inner.openEntryMenu).toBeTruthy();
-    inner.handleEscape(); // 模拟 overlay dispatcher 的 Esc
-    expect(inner.openEntryMenu).toBeNull(); // 菜单关了
-    expect(inner.isOpen).toBe(true); // 视图没被误关
+    expect(document.querySelector('[role="menu"]')).toBeTruthy();
+    const layer = vi.mocked(dispatcher.pushOverlay).mock.calls.at(-1)?.[0];
+    expect(layer, "菜单没压进弹层栈").toBeTruthy();
+    layer!.handleEsc(); // 弹层栈把 Esc 交给栈顶那一层（菜单）
+    expect(document.querySelector('[role="menu"]'), "菜单没关").toBeNull();
+    expect((view as unknown as { isOpen: boolean }).isOpen, "视图被误关").toBe(true);
   });
 
   // 🔴 标题里的命令名跟上：`delete_remote_history_session` 已退役，〔散文墓碑〕
@@ -283,9 +287,9 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     const row = buildRow(view, entry({ origin: "hostA" }), p);
     row.querySelector<HTMLButtonElement>(".history-action-danger")!.click();
     await Promise.resolve();
-    // 远端删除走 SFTP 命令 + 二次确认（两次都得答「确定」才删）
-    await answerAskDialog(true);
-    expect(historyCalls(invokeMock.mock.calls, "delete_history_session").length > 0, "只答了一次就删了").toBe(false);
+    // 远端删除：一个框（标题带那台机器），答了才删。
+    expect(askDialogText()).toContain(copyText("history.delete.titleRemote", { label: "T", origin: "hostA" }));
+    expect(historyCalls(invokeMock.mock.calls, "delete_history_session").length > 0, "没答就删了").toBe(false);
     await answerAskDialog(true);
     // 🔴 判的是「**带着那台机器的 origin** 调了那条命令」——只判命令名不够：
     //    合并之后本机与远端**同名**，光判名字的话「远端删除误走了本机那条路」不会红。

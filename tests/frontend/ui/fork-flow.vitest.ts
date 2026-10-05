@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({
   getBehavior: () => ({ resumeCommandLocal: "", resumeCommandRemote: "" }),
 }));
@@ -21,7 +21,7 @@ vi.mock("../../../src/frontend/ui/launch-arrival", () => ({ awaitArrival: vi.fn(
 
 import { invoke } from "@tauri-apps/api/core";
 import { awaitArrival } from "../../../src/frontend/ui/launch-arrival";
-import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
+import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
 import { runRemoteAttach } from "../../../src/frontend/ui/remote-launch-run";
 import { openTerminal } from "../../../src/frontend/ui/terminal-open";
 import { askForkLaunch } from "../../../src/frontend/ui/fork-ask";

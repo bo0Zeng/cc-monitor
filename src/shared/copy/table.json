@@ -74,6 +74,16 @@
       "zh": "删除账号没成",
       "args": []
     },
+    "accounts.remove.title": {
+      "kind": "title",
+      "zh": "删除账号 {name}",
+      "args": ["name"]
+    },
+    "accounts.remove.action": {
+      "kind": "action",
+      "zh": "删除",
+      "args": []
+    },
     "accountsLocal.init.title": {
       "kind": "title",
       "zh": "这台机器还没启用多账号",
@@ -107,6 +117,16 @@
     "accounts.init.failed": {
       "kind": "error",
       "zh": "启用多账号没成",
+      "args": []
+    },
+    "accounts.init.title": {
+      "kind": "title",
+      "zh": "多账号 · {machine}",
+      "args": ["machine"]
+    },
+    "accounts.init.action": {
+      "kind": "action",
+      "zh": "启用",
       "args": []
     },
     "accounts.add.failed": {
@@ -174,6 +194,16 @@
       "zh": "修复没成",
       "args": []
     },
+    "accounts.repair.title": {
+      "kind": "title",
+      "zh": "修复账号库 · {machine}",
+      "args": ["machine"]
+    },
+    "accounts.repair.action": {
+      "kind": "action",
+      "zh": "修复",
+      "args": []
+    },
     "accounts.rollback.confirm": {
       "kind": "body",
       "zh": "在「{machine}」上按备份 {backup} 回滚：\n\n{steps}\n\n现场被换掉的那几份会挪进备份目录，不会直接删掉。继续？",
@@ -187,6 +217,16 @@
     "accounts.rollback.failed": {
       "kind": "error",
       "zh": "回滚没成",
+      "args": []
+    },
+    "accounts.rollback.title": {
+      "kind": "title",
+      "zh": "回滚账号库 · {machine}",
+      "args": ["machine"]
+    },
+    "accounts.rollback.action": {
+      "kind": "action",
+      "zh": "回滚",
       "args": []
     },
     "accounts.change.backup": {
@@ -248,6 +288,146 @@
       "kind": "error",
       "zh": "备份 {from} 里没有 {account} 那一行，没法放回去。",
       "args": ["account", "from"]
+    },
+    "kit.block.retry": {
+      "kind": "action",
+      "zh": "重试",
+      "args": []
+    },
+    "kit.dialog.cancel": {
+      "kind": "action",
+      "zh": "取消",
+      "args": []
+    },
+    "kit.dialog.more": {
+      "kind": "body",
+      "zh": "另外 {n} 个",
+      "args": ["n"]
+    },
+    "kit.drawer.close": {
+      "kind": "action",
+      "zh": "关闭",
+      "args": []
+    },
+    "kit.drawer.discard": {
+      "kind": "action",
+      "zh": "放弃",
+      "args": []
+    },
+    "kit.drawer.discardTitle": {
+      "kind": "title",
+      "zh": "放弃填写",
+      "args": []
+    },
+    "kit.empty.clearFilter": {
+      "kind": "action",
+      "zh": "清除过滤",
+      "args": []
+    },
+    "kit.empty.noMatch": {
+      "kind": "body",
+      "zh": "无匹配「{query}」",
+      "args": ["query"]
+    },
+    "kit.interrupts.agent": {
+      "kind": "body",
+      "zh": "在跑 agent",
+      "args": []
+    },
+    "kit.interrupts.cut": {
+      "kind": "body",
+      "zh": "中断",
+      "args": []
+    },
+    "kit.interrupts.edit": {
+      "kind": "body",
+      "zh": "未保存编辑",
+      "args": []
+    },
+    "kit.interrupts.keep": {
+      "kind": "body",
+      "zh": "保留",
+      "args": []
+    },
+    "kit.interrupts.many": {
+      "kind": "body",
+      "zh": "{label} ×{n}",
+      "args": ["label", "n"]
+    },
+    "kit.interrupts.named": {
+      "kind": "body",
+      "zh": "{label} {names}",
+      "args": ["label", "names"]
+    },
+    "kit.interrupts.noAnswer": {
+      "kind": "body",
+      "zh": "无应答 · 在跑的任务未确认",
+      "args": []
+    },
+    "kit.interrupts.task": {
+      "kind": "body",
+      "zh": "后台任务",
+      "args": []
+    },
+    "kit.interrupts.transfer": {
+      "kind": "body",
+      "zh": "在传文件",
+      "args": []
+    },
+    "kit.interrupts.turn": {
+      "kind": "body",
+      "zh": "当前轮次",
+      "args": []
+    },
+    "kit.pill.connecting": {
+      "kind": "body",
+      "zh": "{machine} 重新连接中",
+      "args": ["machine"]
+    },
+    "kit.pill.offline": {
+      "kind": "body",
+      "zh": "{machine} 离线",
+      "args": ["machine"]
+    },
+    "kit.pill.reconnectHint": {
+      "kind": "body",
+      "zh": "重新连接",
+      "args": []
+    },
+    "kit.pill.restored": {
+      "kind": "body",
+      "zh": "{machine} 已连接",
+      "args": ["machine"]
+    },
+    "kit.toast.close": {
+      "kind": "action",
+      "zh": "关闭",
+      "args": []
+    },
+    "kit.toast.count": {
+      "kind": "body",
+      "zh": "×{n}",
+      "args": ["n"]
+    },
+    "kit.toast.region": {
+      "kind": "aria",
+      "zh": "消息",
+      "args": []
+    },
+    "kit.toast.undo": {
+      "kind": "action",
+      "zh": "撤销",
+      "args": []
+    },
+    "kit.text.sep": {
+      "kind": "body",
+      "zh": " · ",
+      "args": []
+    },
+    "kit.text.ellipsis": {
+      "kind": "body",
+      "zh": "…",
+      "args": []
     },
     "rsToolRegistry.tools.accountsName": {
       "kind": "title",
@@ -3241,6 +3421,16 @@
       "zh": "确定恢复全部快捷键到默认？所有自定义会丢失。",
       "args": []
     },
+    "keybindingEditor.onResetAll.title": {
+      "kind": "title",
+      "zh": "全部快捷键恢复默认",
+      "args": []
+    },
+    "keybindingEditor.onResetAll.action": {
+      "kind": "action",
+      "zh": "恢复默认",
+      "args": []
+    },
     "keybindingEditor.applyChord.confirmOverride": {
       "kind": "body",
       "zh": "{pretty} 当前是「{ownerLabel}」。要覆盖吗？\n\n「{ownerLabel}」会被解绑（变成「未绑定」）。",
@@ -3254,6 +3444,36 @@
     "keybindingEditor.applyChord.confirmUnbindClose": {
       "kind": "body",
       "zh": "你正在解绑「关闭弹层」的快捷键。解绑后所有弹层只能点 × 关闭，无法用键盘退出。\n\n确定要继续吗？",
+      "args": []
+    },
+    "keybindingEditor.applyChord.unbindCloseTitle": {
+      "kind": "title",
+      "zh": "解绑「关闭弹层」",
+      "args": []
+    },
+    "keybindingEditor.applyChord.unbindAction": {
+      "kind": "action",
+      "zh": "解绑",
+      "args": []
+    },
+    "keybindingEditor.applyChord.rebindCloseTitle": {
+      "kind": "title",
+      "zh": "改绑「关闭弹层」",
+      "args": []
+    },
+    "keybindingEditor.applyChord.rebindAction": {
+      "kind": "action",
+      "zh": "改绑",
+      "args": []
+    },
+    "keybindingEditor.applyChord.overrideTitle": {
+      "kind": "title",
+      "zh": "覆盖 {pretty}",
+      "args": ["pretty"]
+    },
+    "keybindingEditor.applyChord.overrideAction": {
+      "kind": "action",
+      "zh": "覆盖",
       "args": []
     },
     "keybindingEditor.startRecording.recording": {
@@ -3409,6 +3629,11 @@
     "main.sftp.noMachine": {
       "kind": "error",
       "zh": "没有可用的远端机器",
+      "args": []
+    },
+    "main.sftp.pickHost": {
+      "kind": "title",
+      "zh": "机器",
       "args": []
     },
     "main.cmdk.hint": {
@@ -3696,6 +3921,16 @@
       "zh": "· {title}（{machine}）",
       "args": ["title", "machine"]
     },
+    "tabBatch.stop.title": {
+      "kind": "title",
+      "zh": "结束 {n} 个会话",
+      "args": ["n"]
+    },
+    "tabBatch.stop.action": {
+      "kind": "action",
+      "zh": "结束 {n} 个",
+      "args": ["n"]
+    },
     "tabBatch.action.stop": {
       "kind": "body",
       "zh": "杀死会话",
@@ -3946,6 +4181,16 @@
       "zh": "新建集合…",
       "args": []
     },
+    "tabMenu.collection.title": {
+      "kind": "title",
+      "zh": "新建集合",
+      "args": []
+    },
+    "tabMenu.collection.action": {
+      "kind": "action",
+      "zh": "新建",
+      "args": []
+    },
     "tabMenu.open.openInWindow": {
       "kind": "action",
       "zh": "在新窗口打开",
@@ -4065,6 +4310,16 @@
       "kind": "body",
       "zh": "将终止{where}这个 tmux 会话里正在运行的 Claude，没保存的交互会中断。",
       "args": ["where"]
+    },
+    "tabSessionActions.kill.title": {
+      "kind": "title",
+      "zh": "结束会话 {name}",
+      "args": ["name"]
+    },
+    "tabSessionActions.kill.action": {
+      "kind": "action",
+      "zh": "结束",
+      "args": []
     },
     "tabSessionActions.who.remoteShort": {
       "kind": "body",
@@ -4191,11 +4446,6 @@
       "zh": "应答无法解析",
       "args": []
     },
-    "accountRestart.confirm.body": {
-      "kind": "body",
-      "zh": "用账号「{name}」重启这个会话？\n\n会中断当前回合。先请会话自己退出，最多等 10 秒；再结束旧进程（tmux 会话 {tmuxName}）；然后用新账号 resume 同一个会话。{compact}{trust}",
-      "args": ["name", "tmuxName", "compact", "trust"]
-    },
     "accountRestart.confirm.compactNote": {
       "kind": "body",
       "zh": "\n会先在旧账号上 /compact，这样更省；可能要几分钟。",
@@ -4205,6 +4455,21 @@
       "kind": "body",
       "zh": "\n注意：这个账号还没信任这个目录，Claude Code 可能会在弹出的终端里问要不要信任。",
       "args": []
+    },
+    "accountRestart.confirm.title": {
+      "kind": "title",
+      "zh": "重启切换 → {name}",
+      "args": ["name"]
+    },
+    "accountRestart.confirm.action": {
+      "kind": "action",
+      "zh": "重启切换",
+      "args": []
+    },
+    "accountRestart.confirm.keep": {
+      "kind": "body",
+      "zh": "会话记录 · 终端 {tmuxName}",
+      "args": ["tmuxName"]
     },
     "accountRestart.unselectable.body": {
       "kind": "error",
@@ -4236,16 +4501,6 @@
       "zh": "已切当前账号",
       "args": []
     },
-    "accountChip.row.other": {
-      "kind": "body",
-      "zh": "○",
-      "args": []
-    },
-    "accountChip.row.current": {
-      "kind": "body",
-      "zh": "●",
-      "args": []
-    },
     "accountChip.menu.refresh": {
       "kind": "action",
       "zh": "刷新",
@@ -4275,6 +4530,11 @@
       "kind": "body",
       "zh": "这台的账号没查到：{reason}",
       "args": ["reason"]
+    },
+    "accountChip.menu.label": {
+      "kind": "title",
+      "zh": "账号",
+      "args": []
     },
     "accountChip.refresh.icon": {
       "kind": "body",
@@ -4491,19 +4751,14 @@
       "zh": "独立只读视图：地址里缺 ?viewer= 参数",
       "args": []
     },
-    "errorToast.showActionFailureToast.clickHint": {
-      "kind": "error",
-      "zh": "点击查看",
-      "args": []
-    },
-    "errorToast.showErrorToast.openLogHint": {
-      "kind": "error",
-      "zh": "点击打开 log 文件查看完整堆栈",
-      "args": []
-    },
     "errorToast.showErrorToast.noMessage": {
       "kind": "error",
       "zh": "没有消息内容",
+      "args": []
+    },
+    "errorToast.showErrorToast.openLog": {
+      "kind": "action",
+      "zh": "打开日志",
       "args": []
     },
     "fileWindow.openFileWindow.failed": {
@@ -5684,6 +5939,16 @@
       "zh": "装进去了。它能不能生效要看这台 PowerShell 的执行策略，见上面那一行。",
       "args": []
     },
+    "machineAliases.policy.title": {
+      "kind": "title",
+      "zh": "执行策略 RemoteSigned · {ps}",
+      "args": ["ps"]
+    },
+    "machineAliases.policy.action": {
+      "kind": "action",
+      "zh": "设置",
+      "args": []
+    },
     "machineAliases.powershell.blockInstallTitle": {
       "kind": "body",
       "zh": "把登记终端窗口、接上别名文件的那一小段装进这份 $PROFILE。只动 cc-monitor 那一小块，写前先备份、写后回读比对、不对就恢复。",
@@ -5929,6 +6194,16 @@
       "zh": "请先填好主机和用户再卸载后端。",
       "args": []
     },
+    "machineCard.uninstall.title": {
+      "kind": "title",
+      "zh": "从 {host} 卸载 cc-monitor",
+      "args": ["host"]
+    },
+    "machineCard.uninstall.action": {
+      "kind": "action",
+      "zh": "卸载",
+      "args": []
+    },
     "machineCard.status.installFailed": {
       "kind": "error",
       "zh": "装失败",
@@ -6127,6 +6402,16 @@
     "machineCard.resetFingerprint.thisHost": {
       "kind": "body",
       "zh": "该主机",
+      "args": []
+    },
+    "machineCard.resetFingerprint.title": {
+      "kind": "title",
+      "zh": "重置主机指纹 {host}",
+      "args": ["host"]
+    },
+    "machineCard.resetFingerprint.action": {
+      "kind": "action",
+      "zh": "重置",
       "args": []
     },
     "machineCard.build.expandedIcon": {
@@ -7110,6 +7395,16 @@
     "settingsPanel.appearance.resetConfirm": {
       "kind": "body",
       "zh": "确定要恢复全部外观默认？已保存的颜色和字体偏好会丢失。",
+      "args": []
+    },
+    "settingsPanel.appearance.resetTitle": {
+      "kind": "title",
+      "zh": "外观恢复默认",
+      "args": []
+    },
+    "settingsPanel.appearance.resetAction": {
+      "kind": "action",
+      "zh": "恢复默认",
       "args": []
     },
     "settingsPanel.save.failed": {
@@ -8627,6 +8922,16 @@
     "backend.stop.relayUnknown": {
       "kind": "body",
       "zh": "问不到现在有几条会话在走这台机器的中转。停了这台的后端之后，走中转的会话每一次请求都会失败，直到再起后端。仍然停？",
+      "args": []
+    },
+    "backend.stop.title": {
+      "kind": "title",
+      "zh": "停止 cc-monitor · {machine}",
+      "args": ["machine"]
+    },
+    "backend.stop.action": {
+      "kind": "action",
+      "zh": "停止",
       "args": []
     },
     "backend.start.failed": {
@@ -12884,15 +13189,25 @@
       "zh": "远端删除失败",
       "args": []
     },
-    "history.delete.confirmRemoteAgain": {
-      "kind": "body",
-      "zh": "再次确认：永久删除远端 [{origin}] 的「{label}」？",
-      "args": ["origin", "label"]
-    },
     "history.delete.confirmRemote": {
       "kind": "body",
       "zh": "删除远端会话「{label}」（机器 {origin}）？\n\n那台机器的后端会删掉这份会话记录，Claude Code 之后也无法 resume。\n此操作不可恢复。",
       "args": ["label", "origin"]
+    },
+    "history.delete.title": {
+      "kind": "title",
+      "zh": "删除会话 {label}",
+      "args": ["label"]
+    },
+    "history.delete.titleRemote": {
+      "kind": "title",
+      "zh": "删除会话 {label} · {origin}",
+      "args": ["label", "origin"]
+    },
+    "history.delete.action": {
+      "kind": "action",
+      "zh": "删除",
+      "args": []
     },
     "history.newSession.failed": {
       "kind": "error",
@@ -15681,16 +15996,6 @@
       "zh": "读不到{machine}的账号清单，说不清账号「{name}」还能不能用，这次没有起。点这条提示改用「不指定账号」起。",
       "args": ["machine", "name"]
     },
-    "askDialog.buttons.ok": {
-      "kind": "action",
-      "zh": "确定",
-      "args": []
-    },
-    "askDialog.buttons.cancel": {
-      "kind": "action",
-      "zh": "取消",
-      "args": []
-    },
     "events.stream.closedTitle": {
       "kind": "error",
       "zh": "会话更新停了",
@@ -15761,11 +16066,6 @@
       "zh": "已关闭「{title}」，也取消了固定",
       "args": ["title"]
     },
-    "tabBar.close.undo": {
-      "kind": "action",
-      "zh": "撤销",
-      "args": []
-    },
     "tabBar.persist.collectionsFailed": {
       "kind": "error",
       "zh": "分组没存上，重启后会回到上次存下的分组",
@@ -15801,6 +16101,16 @@
       "zh": "标题没改成",
       "args": []
     },
+    "history.rename.title": {
+      "kind": "title",
+      "zh": "会话标题",
+      "args": []
+    },
+    "history.rename.action": {
+      "kind": "action",
+      "zh": "保存",
+      "args": []
+    },
     "history.hide.failed": {
       "kind": "error",
       "zh": "隐藏没改成",
@@ -15815,6 +16125,16 @@
       "kind": "error",
       "zh": "没有广播：发件人的 id 不合法（{detail}）",
       "args": ["detail"]
+    },
+    "ccBus.broadcast.title": {
+      "kind": "title",
+      "zh": "广播 · {n} 个 agent",
+      "args": ["n"]
+    },
+    "ccBus.broadcast.action": {
+      "kind": "action",
+      "zh": "广播",
+      "args": []
     },
     "bePlan.build.launcherRefused": {
       "kind": "error",
@@ -17474,11 +17794,6 @@
       "zh": "文件窗口起不来（程序内部出错）：{e}",
       "args": ["e"]
     },
-    "cssMarks.menu.submenu": {
-      "kind": "body",
-      "zh": "▸",
-      "args": []
-    },
     "cssMarks.tab.ended": {
       "kind": "body",
       "zh": " ·",
@@ -18457,6 +18772,16 @@
     "accountsMcp.remove.failed": {
       "kind": "error",
       "zh": "没删成",
+      "args": []
+    },
+    "accountsMcp.remove.title": {
+      "kind": "title",
+      "zh": "删除 MCP {name}",
+      "args": ["name"]
+    },
+    "accountsMcp.remove.action": {
+      "kind": "action",
+      "zh": "删除",
       "args": []
     },
     "accountsMcp.conflict.head": {

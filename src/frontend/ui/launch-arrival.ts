@@ -15,7 +15,7 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { copyText } from "./copy-table";
 import { machineName } from "./control-said";
-import { showActionFailureToast } from "./error-toast";
+import { toast } from "./kit/toast";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { previewByTmuxName } from "./terminal-reads";
 
@@ -59,13 +59,12 @@ interface Said {
   title: string;
   body: string;
   level: "info" | "error";
-  durationMs: number;
 }
 
-function say(p: ArrivalSpec, title: string, body: string, level: "info" | "error", durationMs: number): void {
-  showActionFailureToast(title, body, { level, durationMs });
+function say(p: ArrivalSpec, title: string, body: string, level: "info" | "error"): void {
+  toast(title, body, { level });
   if (p.from === undefined || p.from === MAIN_WINDOW) return;
-  const said: Said = { to: p.from, title, body, level, durationMs };
+  const said: Said = { to: p.from, title, body, level };
   emit(LAUNCH_SAID_EVENT, said).catch((e: unknown) => console.warn("[launch-arrival] 交不给发起方那扇窗：", e));
 }
 
@@ -137,7 +136,7 @@ async function sayMissed(p: ArrivalSpec): Promise<void> {
       body = copyText("launchArrival.missed.noScreen", { secs, machine, name: p.tmuxName, why: String(e) });
     }
   }
-  say(p, copyText("launchArrival.missed.title"), body, "error", 15000);
+  say(p, copyText("launchArrival.missed.title"), body, "error");
 }
 
 /** 发起方（任何窗口）：命令已经发出去了 ⇒ 交主窗口等那台报出这条会话再说起来了。 */
@@ -201,7 +200,7 @@ export function noteLive(origin: Origin, sid: string, seen: LiveSeen): void {
     if (key(p.origin) !== k || !arrivalMatches(p.match, sid, seen, p.before)) continue;
     clearTimeout(p.timer);
     pending.delete(p);
-    if (p.arrived !== null) say(p, p.arrived.title, p.arrived.body, "info", 6000);
+    if (p.arrived !== null) say(p, p.arrived.title, p.arrived.body, "info");
     answer(p, true);
   }
   let s = seenLive.get(k);
@@ -220,7 +219,7 @@ export function bindLaunchEcho(): void {
   if (me === undefined || me === MAIN_WINDOW) return;
   void listen<Said>(LAUNCH_SAID_EVENT, (e) => {
     if (e.payload.to === me) {
-      showActionFailureToast(e.payload.title, e.payload.body, { level: e.payload.level, durationMs: e.payload.durationMs });
+      toast(e.payload.title, e.payload.body, { level: e.payload.level });
     }
   });
 }

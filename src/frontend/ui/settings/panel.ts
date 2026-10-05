@@ -38,7 +38,7 @@ import { claudeDirProblem } from "./claude-dir-check";
 import { createUnknownKeysBar, rerenderUnknownKeys } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
 import { getCurrentMachine, setCurrentMachine } from "./machine-context";
 import { LOCAL_ORIGIN } from "../ipc/origin";
-import { showActionFailureToast } from "../error-toast"; // 行为设置落盘失败出声
+import { toast } from "../kit/toast"; // 行为设置落盘失败出声
 import {
   LOCAL_MACHINE_PAGE_ID,
   MACHINE_PAGE_PREFIX,
@@ -63,7 +63,7 @@ import { KeybindingsEditor } from "../keybindings/editor";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { BEHAVIOR_TOGGLED_EVENT, SETTINGS_APPLIED_EVENT, type BehaviorToggled } from "./events";
-import { askConfirm } from "../ask-dialog";
+import { confirmDialog } from "../kit/dialog";
 import { copyText } from "../copy-table";
 
 /**
@@ -578,7 +578,7 @@ export class SettingsPanel {
     } catch (e) {
       console.warn("save behavior failed:", e);
       // 从前只记日志：勾选框已经翻了、盘上没变，界面一句不说（E §3.3）。
-      showActionFailureToast(copyText("settings.behavior.saveFailed"), String(e));
+      toast(copyText("settings.behavior.saveFailed"), String(e));
     }
   }
 
@@ -750,7 +750,11 @@ export class SettingsPanel {
 
   private async resetAll(): Promise<void> {
     if (
-      !(await askConfirm(copyText("settingsPanel.appearance.resetConfirm")))
+      !(await confirmDialog({
+        title: copyText("settingsPanel.appearance.resetTitle"),
+        action: copyText("settingsPanel.appearance.resetAction"),
+        body: copyText("settingsPanel.appearance.resetConfirm"),
+      }))
     ) {
       return;
     }

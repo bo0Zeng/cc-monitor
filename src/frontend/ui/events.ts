@@ -3,7 +3,7 @@ import { commands } from "./ipc/commands";
 import { chan, type HopFault, type HopTag, type Item, type Sub } from "../../comms/inward/chan";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
-import { showActionFailureToast } from "./error-toast";
+import { toast } from "./kit/toast";
 import { ACCOUNTS_CHANGED_KIND, ACCOUNTS_CHANGED_WINDOW, accountsChangedItems } from "./session-accounts-poll";
 import { SESSION_TASKS_KIND, SESSION_TASKS_WINDOW, tasksChangedItems } from "./tasks-stream";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -368,7 +368,7 @@ function sayUnseen(origin: Origin, ever: boolean, why: HopFault, openSettings: (
         ? copyText("events.unseen.overrunTitle", { machine })
         : copyText("events.unseen.unreachableTitle", { machine });
   const body = ever ? copyText("events.unseen.lostBody", { machine }) : copyText("events.unseen.neverBody", { machine });
-  showActionFailureToast(title, body, openSettings ? { action: { label: copyText("main.cmd.openSettings"), run: openSettings } } : {});
+  toast(title, body, openSettings ? { action: { label: copyText("main.cmd.openSettings"), run: openSettings } } : {});
 }
 
 /** bindEvents 选项。 */
@@ -755,7 +755,7 @@ export async function bindEvents(
         onSeenAgain(origin); // 关了另有一句（下面），不再说「看不见」
         // 〔E §3.3〕这条流是这台机器会话更新的唯一来源；关了之后什么都不会再来 ⇒ 必须让人知道
         //   （原先只打 console：界面照旧，看起来只是「没动静」）。句柄只在拒绝 / 出错时关，正常收尾不走这里。
-        showActionFailureToast(
+        toast(
           copyText("events.stream.closedTitle"),
           isLocalOrigin(origin)
             ? copyText("events.stream.closedLocal")

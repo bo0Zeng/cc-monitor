@@ -20,9 +20,9 @@ import type { LaunchContext, LaunchModifiers } from "./launch-types";
 import type { AccountAsk } from "./generated/AccountAsk";
 import { accountUnavailableOf, refuseUnavailableAccount } from "./launch-account";
 import { machineModels } from "./account-prefs";
-import type { CliRenderRequest } from "./launch-cli-wire.ts";
+import { buildCliRenderRequest } from "./launch-cli-wire.ts";
 import { renderCli } from "./launch-render";
-import { showActionFailureToast } from "./error-toast";
+import { toast } from "./kit/toast";
 import { defaultLauncherOf } from "./agent-profile";
 // 起新会话的名字只从一个家取：`terminal-name-mint.ts`（列名单 ＋ 铸名 ＋ 「列不出 ⇒ 不起」）。
 import { mintFreshTmuxName, refuseUnmintable } from "./terminal-name-mint";
@@ -53,43 +53,11 @@ async function renderOrRefuse(
   } catch (err) {
     const u = accountUnavailableOf(err);
     if (u) refuseUnavailableAccount({ machine: origin, u, choose: (account) => again(account) as Promise<unknown> });
-    else showActionFailureToast(failedTitle, String(err));
+    else toast(failedTitle, String(err));
     return null;
   }
   if (mods.preflight && !(await mods.preflight(r.account?.configDir))) return null;
   return r.cmd;
-}
-
-/** 空白 ⇒ 那一家的默认启动器（没配就是没配，不是一个判定）。字符集只在后端判。 */
-function launcherOrDefault(agent: string, launcher: string): string {
-  return launcher.trim() || defaultLauncherOf(agent);
-}
-
-/**
- * 把意图摊成 `launch-render-cli` 的上线形状 —— 「起什么」交给那台后端的唯一住址。
- * 入库夹具 `cli-golden.json` 的 `req` 由同一个函数现产（`launch-cli-golden.ts`），Rust 侧拿生产 wire 类型反序列化、跑生产命令比 `out`。
- */
-export function buildCliRenderRequest(ctx: LaunchContext): CliRenderRequest {
-  return {
-    agent: ctx.agent,
-    action:
-      ctx.action.kind === "resume"
-        ? { kind: "resume", sid: ctx.action.sid }
-        : ctx.action.kind === "attach"
-          ? { kind: "attach", name: ctx.action.name }
-          : { kind: "new" },
-    container:
-      ctx.container.kind === "tmux"
-        ? { kind: "tmux", name: ctx.container.name, send_into: ctx.container.mode === "send-into" }
-        : { kind: "none" },
-    cwd: ctx.cwd,
-    account: ctx.account,
-    ccmSid: ctx.ccmSid ?? null,
-    model: null,
-    models: ctx.models,
-    launcher: launcherOrDefault(ctx.agent, ctx.launcherOverride ?? ""),
-    defaultLauncher: defaultLauncherOf(ctx.agent),
-  };
 }
 
 interface LaunchToasts {
@@ -145,7 +113,7 @@ async function invokeLaunchOrCopyFallback(
         arrived: { title: toasts.success, body: arrivedBody(origin) },
       });
     } else if (after.kind === "claim") {
-      showActionFailureToast(toasts.success, toasts.successDetail ?? "", { level: "info", durationMs: 6000 });
+      toast(toasts.success, toasts.successDetail ?? "", { level: "info" });
     }
     return "sent";
   } catch (err) {
@@ -170,10 +138,10 @@ async function invokeLaunchOrCopyFallback(
     // ★ 本机没有 ssh 那一跳，文案不能照抄远端那句。
     const where =
       isLocalOrigin(origin) ? copyText("remoteLaunchRun.copyFallback.runLocal") : copyText("remoteLaunchRun.copyFallback.runRemote", { machine: origin });
-    showActionFailureToast(
+    toast(
       headline,
       `${String(err)}\n${where}\n${cmd}`,
-      { level: "info", durationMs: 10000 },
+      { level: "info" },
     );
     return "unsent";
   }
@@ -268,7 +236,7 @@ export async function runRemoteAttach(origin: string, agent: string, name: strin
   try {
     cmd = await renderLaunchCommand(origin, planAttach(agent, name));
   } catch (err) {
-    showActionFailureToast(copyText("remoteLaunchRun.attach.buildFailed"), String(err));
+    toast(copyText("remoteLaunchRun.attach.buildFailed"), String(err));
     return;
   }
   await invokeLaunchOrCopyFallback(origin, cmd, {

@@ -4,7 +4,7 @@
  * 转发账住本机常驻后端：起 / 停 / 列经通道直接问它（`../port-forward-reads.ts`），
  * 转发走本机后端池里到那台的 SSH 连接（复用连接大脑）。
  */
-import { showActionFailureToast } from "../error-toast";
+import { toast } from "../kit/toast";
 import { hostKey, readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 
 // `connCount`：累计连接数，按**累计连接数**量纲算 2^53-1 条（每秒 1000 连接要 28.5 万年）⇒ `number` 够用。
@@ -127,7 +127,7 @@ class PortForwardPanel {
     try {
       forwards = await listForwards();
     } catch (e) {
-      showActionFailureToast(copyText("portForward.reload.listFailed"), String(e));
+      toast(copyText("portForward.reload.listFailed"), String(e));
     }
     this.listEl.innerHTML = "";
     if (forwards.length === 0) {
@@ -159,20 +159,20 @@ class PortForwardPanel {
     const remoteHost = this.rhostInput.value.trim();
     const remotePort = Number.parseInt(this.rportInput.value, 10);
     if (!origin) {
-      showActionFailureToast(copyText("portForward.onStart.title"), copyText("portForward.onStart.noRemote"));
+      toast(copyText("portForward.onStart.title"), copyText("portForward.onStart.noRemote"));
       return;
     }
     const validPort = (p: number): boolean => Number.isInteger(p) && p > 0 && p <= 65535;
     if (!validPort(localPort)) {
-      showActionFailureToast(copyText("portForward.onStart.title"), copyText("portForward.onStart.badLocalPort"));
+      toast(copyText("portForward.onStart.title"), copyText("portForward.onStart.badLocalPort"));
       return;
     }
     if (!remoteHost) {
-      showActionFailureToast(copyText("portForward.onStart.title"), copyText("portForward.onStart.noHost"));
+      toast(copyText("portForward.onStart.title"), copyText("portForward.onStart.noHost"));
       return;
     }
     if (!validPort(remotePort)) {
-      showActionFailureToast(copyText("portForward.onStart.title"), copyText("portForward.onStart.badRemotePort"));
+      toast(copyText("portForward.onStart.title"), copyText("portForward.onStart.badRemotePort"));
       return;
     }
     try {
@@ -185,7 +185,7 @@ class PortForwardPanel {
       this.rportInput.value = "";
       await this.reload();
     } catch (e) {
-      showActionFailureToast(copyText("portForward.onStart.failed"), String(e));
+      toast(copyText("portForward.onStart.failed"), String(e));
     }
   }
 
@@ -194,7 +194,7 @@ class PortForwardPanel {
       await stopForward(id);
       await this.reload();
     } catch (e) {
-      showActionFailureToast(copyText("portForward.onStop.failed"), String(e));
+      toast(copyText("portForward.onStop.failed"), String(e));
     }
   }
 }

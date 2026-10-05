@@ -29,7 +29,7 @@ vi.mock("../../../../src/frontend/ui/views/session-viewer", () => ({
 vi.mock("../../../../src/frontend/ui/keybindings/registry", () => ({
   dispatcher: { pushOverlay: vi.fn(), popOverlay: vi.fn() },
 }));
-vi.mock("../../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("../../../../src/frontend/ui/remote-launch-run", () => ({ runRemoteResume: vi.fn() }));
 vi.mock("../../../../src/frontend/ui/behavior", () => ({ getBehavior: () => ({}) }));
 vi.mock("../../../../src/frontend/ui/format", () => ({ formatTimestampSmart: () => "时间" }));
@@ -39,7 +39,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { historyCalls, withHistoryReads, type HistoryRead } from "../../../test-support/chan-fake";
 import { HistoryView } from "../../../../src/frontend/ui/views/history";
 import { LS_KEYS } from "../../../../src/frontend/ui/local-storage";
-import { showActionFailureToast } from "../../../../src/frontend/ui/error-toast";
+import { toast as showActionFailureToast } from "../../../../src/frontend/ui/kit/toast";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;

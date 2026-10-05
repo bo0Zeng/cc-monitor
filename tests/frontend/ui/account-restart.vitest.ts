@@ -8,7 +8,7 @@ vi.mock("../../../src/comms/inward/chan", async (orig) => {
   return { ...real, chan: { call } };
 });
 vi.mock("../../../src/frontend/ui/remote-launch-run", () => ({ runRemoteAttach: vi.fn().mockResolvedValue(undefined) }));
-vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("../../../src/frontend/ui/resync", () => ({ offerResyncRetry: vi.fn() }));
 vi.mock("../../../src/frontend/ui/tab-batch-run", () => ({
   startSettings: vi.fn().mockResolvedValue({ agent: "claude", launcher: "claude", defaultLauncher: "claude", models: { z: "opus" } }),
@@ -24,7 +24,7 @@ import { checkTrust } from "../../../src/frontend/ui/account-reads";
 import { offerResyncRetry } from "../../../src/frontend/ui/resync";
 import { restartWithAccount, COMPACT_WITHIN_MS, type RestartWithAccountOpts } from "../../../src/frontend/ui/account-restart";
 import { ARRIVAL_BUDGET_MS } from "../../../src/frontend/ui/launch-arrival";
-import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
+import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { answerAskDialog } from "../../test-support/ask-dialog-driver.ts";
 
@@ -38,7 +38,17 @@ const reply = (over: Record<string, unknown> = {}) =>
   enc({ compact: "skipped", started: "arrived", terminal: "proj-cc", account: { name: "z", configDir: "/h/z", model: "opus" }, ...over });
 
 function opts(over: Partial<RestartWithAccountOpts> = {}): RestartWithAccountOpts {
-  return { origin: "devbox", sessionId: "s1", cwd: "/w", tmuxName: "proj-cc", accountName: "z", compactFirst: false, confirm: () => true, ...over };
+  return {
+    origin: "devbox",
+    sessionId: "s1",
+    cwd: "/w",
+    tmuxName: "proj-cc",
+    accountName: "z",
+    compactFirst: false,
+    confirm: () => true,
+    interrupts: async () => ({ families: [{ family: "turn", names: [] }] }),
+    ...over,
+  };
 }
 const titles = (): string[] => toast.mock.calls.map((c) => c[0] as string);
 
@@ -46,6 +56,46 @@ beforeEach(() => {
   vi.clearAllMocks();
   call.mockResolvedValue(reply());
   trust.mockResolvedValue({ available: true, trusted: true, known: true, error: null });
+});
+
+describe("重启切换之前：先问那台会打断什么（I12）", () => {
+  it("什么都打断不了（也没有要提醒的）⇒ 不问，直接交那台", async () => {
+    const confirm = vi.fn().mockReturnValue(false);
+    expect(await restartWithAccount(opts({ confirm, interrupts: async () => ({ families: [] }) }))).toBe(true);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(call.mock.calls.map((c) => c[1])).toEqual(["session-restart"]);
+  });
+
+  it("有在跑的 ⇒ 按族列在「中断」那一段、保留那一段写终端名；动作键红、取消是默认焦点那一侧", async () => {
+    const confirm = vi.fn().mockReturnValue(false);
+    await restartWithAccount(
+      opts({ confirm, interrupts: async () => ({ families: [{ family: "turn", names: [] }, { family: "agent", names: ["Explore"] }] }) }),
+    );
+    const spec = confirm.mock.calls[0][0];
+    expect(spec.danger).toBe(true);
+    expect(spec.rows).toEqual([
+      { label: copyText("kit.interrupts.cut"), items: [copyText("kit.interrupts.turn"), `${copyText("kit.interrupts.agent")} Explore`] },
+      { label: copyText("kit.interrupts.keep"), items: [copyText("accountRestart.confirm.keep", { tmuxName: "proj-cc" })] },
+    ]);
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it("那台没答 ⇒ 当有东西在跑：照问、框里写无应答", async () => {
+    const confirm = vi.fn().mockReturnValue(false);
+    await restartWithAccount(opts({ confirm, interrupts: () => Promise.reject(new Error("gone")) }));
+    expect(confirm.mock.calls[0][0].rows[0].items).toEqual([copyText("kit.interrupts.noAnswer")]);
+  });
+
+  it("不注入那一问 ⇒ 经通道问会话所在那台的 `session-interrupts`（带 sid），按形状收", async () => {
+    call.mockImplementation(async (_o: string, op: string) =>
+      op === "session-interrupts" ? enc({ families: [{ family: "task", names: ["写判据"] }] }) : reply(),
+    );
+    const confirm = vi.fn().mockReturnValue(false);
+    await restartWithAccount(opts({ confirm, interrupts: undefined }));
+    const [origin, op, body] = call.mock.calls[0];
+    expect([origin, op, JSON.parse(new TextDecoder().decode(body))]).toEqual(["devbox", "session-interrupts", { sid: "s1" }]);
+    expect(confirm.mock.calls[0][0].rows[0].items).toEqual([`${copyText("kit.interrupts.task")} 写判据`]);
+  });
 });
 
 describe("换号重启：界面交那台一条命令", () => {
@@ -87,7 +137,7 @@ describe("换号重启：界面交那台一条命令", () => {
     const confirm = vi.fn().mockReturnValue(false);
     await restartWithAccount(opts({ confirm }));
     expect(trust).toHaveBeenCalledWith("devbox", "/h/z", "/w");
-    expect(String(confirm.mock.calls[0][0])).toContain(copyText("accountRestart.confirm.trustWarn").trim());
+    expect(String(confirm.mock.calls[0][0].body)).toContain(copyText("accountRestart.confirm.trustWarn").trim());
   });
 
   it("起成了 ⇒ 开终端接上那个终端名（不另说话）、最后说一次；中途只一句「重启切换中」", async () => {

@@ -9,11 +9,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(() => Promise.resolve()), listen: vi.fn(() => Promise.resolve(() => {})) }));
-vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("../../../src/frontend/ui/terminal-reads", () => ({ previewByTmuxName: vi.fn() }));
 
 import { emit } from "@tauri-apps/api/event";
-import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
+import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
 import { previewByTmuxName } from "../../../src/frontend/ui/terminal-reads";
 import {
   ARRIVAL_BUDGET_MS,
@@ -71,7 +71,7 @@ describe("等它", () => {
     expect(toast).not.toHaveBeenCalled();
     noteLive("devbox", "s1", seen(null));
     noteLive("devbox", "s1", seen(null));
-    expect(toast.mock.calls).toEqual([["起来了", "B", { level: "info", durationMs: 6000 }]]);
+    expect(toast.mock.calls).toEqual([["起来了", "B", { level: "info" }]]);
     await vi.advanceTimersByTimeAsync(ARRIVAL_BUDGET_MS + 1);
     expect(toast).toHaveBeenCalledTimes(1);
   });
@@ -162,13 +162,12 @@ describe("发起方在别的窗口 ⇒ 那一句也交回那扇窗", () => {
         title: "命令发出去了，但没看到会话起来",
         body: "等了 45 秒，devbox 上没有报出这个会话。tmux 会话「nope-cc」最后几行：\nccm: 无法进入目录: /home/u/nope",
         level: "error",
-        durationMs: 15000,
       },
     ]);
     vi.mocked(emit).mockClear();
     watchArrival(spec({ match: { sid: "s2" }, from: "settings" }));
     noteLive("devbox", "s2", seen(null));
-    expect(echoed()).toEqual([{ to: "settings", title: "起来了", body: "B", level: "info", durationMs: 6000 }]);
+    expect(echoed()).toEqual([{ to: "settings", title: "起来了", body: "B", level: "info" }]);
     vi.mocked(emit).mockClear();
     watchArrival(spec({ match: { sid: "s3" }, from: "main" }));
     watchArrival(spec({ match: { sid: "s4" } }));

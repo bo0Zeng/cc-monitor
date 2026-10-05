@@ -91,13 +91,13 @@ import { flipBehavior } from "../../../src/frontend/ui/behavior-toggle";
 import { dispatcher, type OverlayHandle } from "../../../src/frontend/ui/keybindings/registry";
 import { TasksPanel, type TaskEntry } from "../../../src/frontend/ui/tasks-panel";
 import { AgentsPanel } from "../../../src/frontend/ui/agents-panel";
-import { showTabContextMenu } from "../../../src/frontend/ui/tab-context-menu";
+import { closeMenu, openMenu } from "../../../src/frontend/ui/kit/menu";
 import { TabManager, type Tab } from "../../../src/frontend/ui/tabs";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ENDED, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
 import type { TabStore } from "../../../src/frontend/ui/tab-store";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { closeSftpHostPicker, toggleSftpFromTopbar } from "../../../src/frontend/ui/sftp-host-picker";
+import { toggleSftpFromTopbar } from "../../../src/frontend/ui/sftp-host-picker";
 import { sessionCommands } from "../../../src/frontend/ui/session-commands";
 import { buildToolGroup, addToToolGroup, renderMessage, type RenderContext } from "../../../src/frontend/ui/cards/index";
 import type { JsonlRecord } from "../../../src/frontend/ui/generated/JsonlRecord";
@@ -225,8 +225,8 @@ describe("tab 右键菜单躲窗口边：放不下就往上 / 往左翻，贴边
   afterEach(() => rect.mockRestore());
 
   const at = (x: number, y: number): [string, string] => {
-    showTabContextMenu(x, y, [{ label: "一项", onClick: () => {} }]);
-    const m = document.querySelector<HTMLElement>("body > .tab-context-menu")!;
+    openMenu({ x, y }, [{ label: "一项", onClick: () => {} }]);
+    const m = document.querySelector<HTMLElement>("body > [role=menu]")!;
     return [m.style.left, m.style.top];
   };
 
@@ -252,7 +252,7 @@ describe("已结束的 tab 在右键菜单里关得掉（窄窗里那颗 × 看�
     const st = inside(tm).store;
     (st.tabs.get("b") as Tab).state = ENDED;
     const menu = (tm as unknown as { menu: { open(e: MouseEvent, sid: string): void } }).menu;
-    const items = (): HTMLButtonElement[] => [...document.querySelectorAll<HTMLButtonElement>(".tab-context-menu-item")];
+    const items = (): HTMLButtonElement[] => [...document.querySelectorAll<HTMLButtonElement>("[role^=menuitem]")];
     const close = copyText("tabMenu.item.close");
     menu.open(new MouseEvent("contextmenu", { clientX: 1, clientY: 1 }), "a");
     expect(items().some((b) => b.textContent === close)).toBe(false);
@@ -285,7 +285,7 @@ describe("说不清（那台暂时看不见）不当已结束：tab 上是另一
     // 右键菜单里能关，悬停说它若还在跑、连上那台之后会回来。
     const menu = (tm as unknown as { menu: { open(e: MouseEvent, sid: string): void } }).menu;
     menu.open(new MouseEvent("contextmenu", { clientX: 1, clientY: 1 }), "u");
-    const item = [...document.querySelectorAll<HTMLButtonElement>(".tab-context-menu-item")].find(
+    const item = [...document.querySelectorAll<HTMLButtonElement>("[role^=menuitem]")].find(
       (b) => b.textContent === copyText("tabMenu.item.close"),
     )!;
     expect(item.title).toBe(copyText("tabMenu.close.unseenHint", { machine: "pi" }));
@@ -297,7 +297,7 @@ describe("说不清（那台暂时看不见）不当已结束：tab 上是另一
 });
 
 describe("顶栏远端文件的多机选单：再点按钮收起；Esc 只关它", () => {
-  afterEach(() => closeSftpHostPicker());
+  afterEach(() => closeMenu());
 
   const press = (el: Element): void => {
     el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
@@ -307,13 +307,13 @@ describe("顶栏远端文件的多机选单：再点按钮收起；Esc 只关它
     const btn = document.createElement("button");
     document.body.appendChild(btn);
     await toggleSftpFromTopbar(btn);
-    expect(document.querySelectorAll(".sftp-host-picker")).toHaveLength(1);
+    expect(document.querySelectorAll("[role=menu]")).toHaveLength(1);
     press(btn);
     await toggleSftpFromTopbar(btn);
-    expect(document.querySelectorAll(".sftp-host-picker")).toHaveLength(0);
+    expect(document.querySelectorAll("[role=menu]")).toHaveLength(0);
     await toggleSftpFromTopbar(btn);
     press(document.body);
-    expect(document.querySelectorAll(".sftp-host-picker")).toHaveLength(0);
+    expect(document.querySelectorAll("[role=menu]")).toHaveLength(0);
   });
 
   it("Esc 只关选单，不越过下面那层（多选 / 查找）", async () => {
@@ -322,7 +322,7 @@ describe("顶栏远端文件的多机选单：再点按钮收起；Esc 只关它
     document.body.appendChild(btn);
     await toggleSftpFromTopbar(btn);
     esc();
-    expect([document.querySelectorAll(".sftp-host-picker").length, below.hits]).toEqual([0, 0]);
+    expect([document.querySelectorAll("[role=menu]").length, below.hits]).toEqual([0, 0]);
     esc();
     expect(below.hits).toBe(1);
     dispatcher.popOverlay(below);
@@ -420,7 +420,7 @@ describe("快捷键翻「自动跟随 / 自动切到前台」：说一句翻成�
     await flipBehavior("autoFollowUserActive", (b) => applied.push(b.autoFollowUserActive));
     expect(behavior.saved.map((b) => b.autoFollowUserActive)).toEqual([false]);
     expect(applied).toEqual([false]);
-    expect([...document.querySelectorAll(".ccm-toast")].map((t) => t.textContent ?? "").join("|")).toContain(
+    expect([...document.querySelectorAll("#kit-toast-stack > *")].map((t) => t.textContent ?? "").join("|")).toContain(
       copyText("behaviorToggle.autoFollow.off"),
     );
     expect(vi.mocked(emit).mock.calls).toEqual([

@@ -42,7 +42,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
     get_log_file_info: () => Promise.resolve(logInfo.value),
   },
 }));
-vi.mock("../../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: opened }));
 
 import { DiagnosticsSection } from "../../../../src/frontend/ui/settings/diagnostics-section";

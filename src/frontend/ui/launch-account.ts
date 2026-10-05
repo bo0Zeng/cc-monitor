@@ -11,7 +11,7 @@ import { ChanError } from "../../comms/inward/chan";
 import { refusalOf } from "./ipc/chan-caller";
 import { ControlError } from "./control-said";
 import { isLocalOrigin } from "./ipc/origin";
-import { showActionFailureToast } from "./error-toast";
+import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
 
 export type { AccountAsk, AccountUnavailable };
@@ -66,9 +66,8 @@ export function refuseUnavailableAccount(r: {
       : alt === null
         ? copyText("accountPick.refused.explicitGoneToBase", { name })
         : copyText("accountPick.refused.explicitGoneToCurrent", { name, current: alt });
-  showActionFailureToast(copyText("accountPick.refused.title"), body, {
+  toast(copyText("accountPick.refused.title"), body, {
     level: "error",
-    durationMs: 15000,
     onClick: () => void r.choose(chosenAccount(alt)),
   });
 }

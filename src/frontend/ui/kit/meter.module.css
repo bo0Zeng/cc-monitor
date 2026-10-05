@@ -1,0 +1,64 @@
+/* 计量条（C22）。 */
+@layer components {
+  .meter {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    width: 100%;
+    font-size: var(--font-size-small);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .meterLabel,
+  .meterReset {
+    flex: none;
+    color: var(--text-2);
+  }
+
+  .meterTrack {
+    flex: 1;
+    height: 4px;
+    overflow: hidden;
+    border-radius: var(--radius-s);
+    background: var(--border-soft);
+  }
+
+  .meterFill {
+    display: block;
+    height: 100%;
+    background: var(--text-2);
+    transform-origin: left;
+  }
+
+  .meterValue {
+    flex: none;
+    min-width: 4ch;
+    text-align: right;
+  }
+
+  .meter[data-state="near"] .meterFill {
+    background: var(--warn);
+  }
+
+  .meter[data-state="near"] .meterValue {
+    color: var(--warn);
+  }
+
+  .meter[data-state="refused"] .meterFill {
+    background: var(--error);
+  }
+
+  .meter[data-state="refused"] .meterValue {
+    color: var(--error-text);
+  }
+
+  .meter[data-state="stale"] .meterFill {
+    background: repeating-linear-gradient(135deg, var(--text-2) 0 3px, transparent 3px 6px);
+  }
+
+  .meter[data-state="none"] .meterTrack {
+    height: 2px;
+    background: none;
+    border: 1px dashed var(--border-medium);
+  }
+}

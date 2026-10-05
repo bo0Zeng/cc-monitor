@@ -214,7 +214,8 @@ fn egui_does_not_keep_state_per_row_we_have_scrolled_past() {
     const FRAMES: usize = 40;
     let rows = corpus::synth_rows(ROWS, 0xF1);
     let screen = egui::vec2(SCREEN.0, SCREEN.1);
-    let total_h = ROWS as f32 * (super::super::rows::ROW_HEIGHT + 4.0);
+    let row_h = crate::theme::metrics(&egui::Context::default()).row_h;
+    let total_h = ROWS as f32 * (row_h + 4.0);
     let span = (total_h - SCREEN.1).max(1.0);
 
     // 偏移序列：甲恒 0，乙扫全程。**帧数一模一样。**

@@ -11,7 +11,7 @@
 // 分叉只对记录树那一家（流跟的那一家）的会话做 ⇒ 分叉出来的会话也是它。
 import { ACTIVE_AGENT as FORK_AGENT } from "./agent-profile";
 import { isLocalOrigin, isRemoteOrigin, type Origin } from "./ipc/origin";
-import { showActionFailureToast } from "./error-toast";
+import { toast } from "./kit/toast";
 import { isSelectable, type Account } from "./accounts";
 import { fetchAccounts, fetchLocalAccounts } from "./account-reads";
 import { refuseUnavailableAccount } from "./launch-account";
@@ -51,7 +51,7 @@ async function listForkAccounts(origin: Origin): Promise<string[]> {
 /** 交那台起这一项 → 开窗 / 接回 → 等那台报出。失败那一路自己出声、回 `false`；号选不了 ⇒ 给显式选择（点了以那个号再起一次）。 */
 async function startFork(origin: Origin, s: ForkStart): Promise<boolean> {
   const failed = (said: string): false => {
-    showActionFailureToast(copyText("forkFlow.runForkFlow.failed"), said);
+    toast(copyText("forkFlow.runForkFlow.failed"), said);
     return false;
   };
   let r: Reply;
@@ -83,10 +83,10 @@ async function startFork(origin: Origin, s: ForkStart): Promise<boolean> {
 async function launchAndSay(origin: Origin, s: ForkStart): Promise<boolean> {
   const ok = await startFork(origin, s);
   if (ok) {
-    showActionFailureToast(
+    toast(
       copyText("forkFlow.done.title"),
       copyText("forkFlow.done.body", { id: s.item.sid.slice(0, 8) }),
-      { level: "info", durationMs: 8000 },
+      { level: "info" },
     );
   }
   return ok;
@@ -118,7 +118,7 @@ export async function runForkFlow(input: ForkFlowInput): Promise<ForkStartOutcom
     );
   } catch (err) {
     // 抛出来的（IPC reject…）在这里变成提示；返回 `failed` 而不是 `cancelled` —— 调用方据此区分「出错了」与「用户自己收手」。
-    showActionFailureToast(copyText("forkFlow.runForkFlow.failed"), String(err));
+    toast(copyText("forkFlow.runForkFlow.failed"), String(err));
     return "failed";
   }
 }

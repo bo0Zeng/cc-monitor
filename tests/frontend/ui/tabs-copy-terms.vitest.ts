@@ -8,13 +8,13 @@
  * - 串味提示与杀会话确认框里那句 ⇒ 不说标记（`@ccm_sid` 禁：说后果「认不出是哪个会话」），
  *   不派「重装 ccm 助手」这件活（「ccm 助手」是 `ccm` 那一条里点名禁的叫法）。
  *
- * # 判据：tab 层 13 份的**字符串字面量**里，这几个词零命中（带正控）
+ * # 判据：tab 层 12 份的**字符串字面量**里，这几个词零命中（带正控）
  *
  * - 词从哪来：`拉前` / `@ccm_sid` 两条的扫描器**取自术语表本身**（`scannerOf`，异源：表是 CP2a 立的，
  *   不是本文件定的）；「ccm 助手」在表里没有独立条目（写在 `ccm` 那一条的语境里），本文件补一个字面扫描器。
  * - 扫什么：用 TypeScript 编译器真解析出来的字符串 / 模板字面量（注释不算 —— 注释里讲历史是允许的）。
  * - 正控：同一套扫描器喂改之前的原文，必须每个词都命中（否则零命中是因为扫描器坏了）；
- *   抽取器自检：13 份里抽得出字面量，且认得出改之后的新词。
+ *   抽取器自检：12 份里抽得出字面量，且认得出改之后的新词。
  *
  * # 买不到
  *
@@ -33,7 +33,7 @@ import { describe, expect, it } from "vitest";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { loadTable, loadTerms, scannerOf } from "../../copy/copy-support.ts";
 
-/** tab 层：拆之前的 `tabs.ts` 拆成的这 13 份（与 `tabs-split-graph.vitest.ts` 的登记表同一群）。 */
+/** tab 层：拆之前的 `tabs.ts` 拆成的这 12 份（与 `tabs-split-graph.vitest.ts` 的登记表同一群）。 */
 const TAB_LAYER = [
   "src/frontend/ui/tabs.ts",
   "src/frontend/ui/tab-model.ts",
@@ -46,7 +46,6 @@ const TAB_LAYER = [
   "src/frontend/ui/tab-bar-drag.ts",
   "src/frontend/ui/tab-bar-prefs.ts",
   "src/frontend/ui/tab-menu.ts",
-  "src/frontend/ui/tab-context-menu.ts",
   "src/frontend/ui/tab-session-actions.ts",
 ];
 
@@ -66,7 +65,7 @@ export function stringLiterals(src: string): string[] {
 }
 
 /**
- * 〔全量抽表〕tab 层的界面文字搬进了文案表 ⇒ 「这 13 份说的话」= 它们的字面量 ＋ 它们经 `copyText("key")` 取的那些表条目。
+ * 〔全量抽表〕tab 层的界面文字搬进了文案表 ⇒ 「这 12 份说的话」= 它们的字面量 ＋ 它们经 `copyText("key")` 取的那些表条目。
  * 只数字面量的话，抽完之后本判据就对着一个空集零命中（正控那条会先红，提醒这里要跟着改）。
  */
 const TABLE = loadTable();
@@ -103,7 +102,7 @@ describe("〔U2〕tab 层的界面文字：拉前 / @ccm_sid / ccm 助手 /〔S4
     expect([...new Set(before.flatMap(hitsOf))].sort()).toEqual(["@ccm_sid", "ccm 助手", "拉前", "英文实现词"].sort());
   });
 
-  it("★ 抽取器自检：13 份里抽得出字面量，且认得出改之后的新词", () => {
+  it("★ 抽取器自检：12 份里抽得出字面量，且认得出改之后的新词", () => {
     const all = TAB_LAYER.flatMap((f) => spokenIn(readFileSync(resolve(REPO_ROOT, f), "utf8")));
     expect(all.length, "一个字面量都没抽到 —— 抽取器坏了").toBeGreaterThan(200);
     expect(all).toContain("切到终端窗口失败");
@@ -112,7 +111,7 @@ describe("〔U2〕tab 层的界面文字：拉前 / @ccm_sid / ccm 助手 /〔S4
     expect(all).toContain("Attach（tmux: ）");
   });
 
-  it("★ 零命中：13 份的字符串字面量里一处都没有", () => {
+  it("★ 零命中：12 份的字符串字面量里一处都没有", () => {
     const found: string[] = [];
     for (const f of TAB_LAYER) {
       for (const s of spokenIn(readFileSync(resolve(REPO_ROOT, f), "utf8"))) {

@@ -15,7 +15,7 @@ import { accountUnavailableOf, refuseUnavailableAccount, type AccountAsk } from 
 import { getBehavior } from "./behavior";
 import { configuredLauncherFor } from "./launch-requests";
 import { mintFreshTmuxName } from "./terminal-name-mint";
-import { showActionFailureToast } from "./error-toast";
+import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
 import { arrivedBody, expectArrival } from "./launch-arrival";
 
@@ -81,9 +81,8 @@ async function resumeLocalCore(req: LocalResumeRequest): Promise<"unsent" | "sen
       });
       return "unsent";
     }
-    showActionFailureToast(copyText("localResume.launch.failed"), String(err), {
+    toast(copyText("localResume.launch.failed"), String(err), {
       level: "error",
-      durationMs: 10000,
     });
     return "unsent";
   }

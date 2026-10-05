@@ -4,7 +4,7 @@
 import { emit } from "@tauri-apps/api/event";
 import { getBehavior, setBehavior, type BehaviorConfig } from "./behavior";
 import { BEHAVIOR_TOGGLED_EVENT, type BehaviorToggled } from "./settings/events";
-import { showActionFailureToast } from "./error-toast";
+import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
 
 export type BehaviorSwitch = "autoFollowUserActive" | "bringMonitorToFrontOnUserActive";
@@ -21,7 +21,7 @@ export async function flipBehavior(which: BehaviorSwitch, apply: (b: BehaviorCon
   const next: BehaviorConfig = { ...cur, [which]: !cur[which] };
   await setBehavior(next);
   apply(next);
-  showActionFailureToast(said(which, next[which]), "", { level: "info" });
+  toast(said(which, next[which]), "", { level: "info" });
   const payload: BehaviorToggled = {
     autoFollowUserActive: next.autoFollowUserActive,
     bringMonitorToFrontOnUserActive: next.bringMonitorToFrontOnUserActive,

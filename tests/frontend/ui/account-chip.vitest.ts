@@ -41,7 +41,7 @@ beforeEach(() => {
   // 陈旧 `.account-picker` 菜单会一直挂在全局 DOM 里，后面用 `document.querySelector(...)`
   // 全局查询的测试可能命中的是上一条测试遗留的菜单而不是本次刚开的（同 `tabs.vitest.ts` 的
   // `.tab-context-menu` 清理惯例，这里补一份）。
-  document.querySelectorAll(".account-picker").forEach((n) => n.remove());
+  document.querySelectorAll('[role="menu"]').forEach((n) => n.remove());
 });
 
 function host(p: Partial<RemoteHostConfig>): RemoteHostConfig {
@@ -158,7 +158,7 @@ describe("F1 chip 纯全局切换器（无 ⚠k）", () => {
     const chip = new AccountChip({ openSettings: () => {}, onDefaultChanged: () => (changed += 1) });
     await chip.refresh();
     await chip.openMenu();
-    const items = document.querySelectorAll<HTMLButtonElement>(".account-picker-item");
+    const items = document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]');
     expect(items.length).toBe(2); // 下拉列出两个账号（全局切换器）
     const amy = [...items].find((b) => b.textContent?.includes("amy"))!;
     amy.click();
@@ -171,7 +171,7 @@ describe("F1 chip 纯全局切换器（无 ⚠k）", () => {
 
 // 选单的关法：点外面 · 再点 chip · Esc（Esc 走快捷键的弹层栈，一下只关最上面那一层）。
 describe("账号选单：再点 chip 收起；Esc 只关选单", () => {
-  const menus = (): number => document.querySelectorAll(".account-picker").length;
+  const menus = (): number => document.querySelectorAll('[role="menu"]').length;
   const press = (el: Element): void => void el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
   const tap = async (el: HTMLElement): Promise<void> => {
     press(el);
@@ -285,7 +285,7 @@ describe("：chip 上的用量面已退役（翻面判据）", () => {
       (c) => !(c[0] === "chan_call" && (c[1] as { op?: string })?.op === "apikey-routing"),
     );
     expect(others).toEqual([]);
-    const actions = [...document.querySelectorAll<HTMLButtonElement>(".account-picker-action")].map(
+    const actions = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].map(
       (b) => b.textContent,
     );
     expect(actions).not.toContain("刷新用量");
@@ -317,18 +317,18 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
     await chip.openMenu();
-    const items = [...document.querySelectorAll<HTMLButtonElement>(".account-picker-item")];
+    const items = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')];
     // 地板：菜单没渲染出来 ⇒ 下面每一条都会在空集合上「找不到行」而崩，不会静静地绿。
     expect(items.length, "菜单没把账号渲染出来 —— 下面的断言测不到任何东西").toBe(accounts.length);
     return items;
   }
   const rowOf = (items: HTMLButtonElement[], name: string): HTMLButtonElement =>
-    items.find((el) => el.querySelector(".account-picker-name")?.textContent === name)!;
+    items.find((el) => el.querySelector('[data-part="label"]')?.textContent === name)!;
   const statusElOf = (row: HTMLButtonElement): HTMLElement =>
-    row.querySelector<HTMLElement>(".account-picker-status")!;
+    row.querySelector<HTMLElement>('[data-part="detail"]')!;
   const statusOf = (row: HTMLButtonElement): string => statusElOf(row).textContent ?? "";
   /** 「这一格有没有拿到警示呈现」—— 第三轮裁定之后，⚠ 住这儿，不住 `textContent`。 */
-  const warnOf = (row: HTMLButtonElement): boolean => statusElOf(row).classList.contains("warn");
+  const warnOf = (row: HTMLButtonElement): boolean => statusElOf(row).dataset.intent === "warn";
 
   it("★ Y2：api-key 号（缺订阅凭据）在菜单里写「api-key（未配置端点）」——不是「已登录」，也不是「未登录 ⚠」", async () => {
     // `authReady: true` 不是我编的：`acct_core::auth_ready` 对 api-key 那一支逐字 `=> true`
@@ -457,11 +457,12 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     // 抽取器自检：先确认这把尺子够得着这个文件（不然下面两条是空真）。
     expect(cssLines.length, "读到的主窗 CSS 只有几行 —— 尺子坏了").toBeGreaterThan(1000);
     expect(settingsCssLines.length, "读到的设置窗 CSS 只有几行 —— 尺子坏了").toBeGreaterThan(1000);
-    expect(cssLines, "读到的不是主窗 CSS —— 连基准那条规则都没有").toContain(
-      ".account-picker-status {",
-    );
-    expect(cssLines, "`.account-picker-status.warn` 没有 CSS 宿主 ⇒ chip 那格的警示态与正常态长得一模一样").toContain(
-      ".account-picker-status.warn {",
+    // chip 的选单是全产品那一个弹出菜单（`kit/menu`），警示态的宿主在它的 CSS Modules 里。
+    const menuCss = readFileSync(`${REPO_ROOT}/src/frontend/ui/kit/menu.module.css`, "utf8").split("\n").map((l) => l.trim());
+    expect(cssLines.length).toBeGreaterThan(1000);
+    expect(menuCss, "读到的不是菜单的 CSS —— 连基准那条规则都没有").toContain(".menuDetail {");
+    expect(menuCss, "菜单右侧那格的警示态没有 CSS 宿主 ⇒ 警示态与正常态长得一模一样").toContain(
+      '.menuDetail[data-intent="warn"] {',
     );
     // 同职第二处也一起钉住（设置那张表），免得「治了这一处、没治所有同职的地方」。
     expect(settingsCssLines, "设置那张账号表的 `.accounts-row-badge.warn` 宿主没了 —— 同一套约定的另一半").toContain(
@@ -488,7 +489,7 @@ describe("K-H2b D1 阻-5：没有远端时 chip 渲染本机账号，徽章带 a
     // ⚠ 本组同一条测试里会开三次菜单，而 `toggleMenu` 把菜单 append 到 `document.body`、
     //    **不会先关旧的**（既有测试每条只开一次，所以从没撞上）⇒ 每次先扫干净，
     //    否则数出来的是三次的**累加**（本轮实测：应为 2，实得 4）。
-    document.querySelectorAll(".account-picker").forEach((el) => el.remove());
+    document.querySelectorAll('[role="menu"]').forEach((el) => el.remove());
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue(
       state({ accounts: accounts.map((a, i) => ({ ...a, isDefault: i === 0 })) }),
@@ -499,16 +500,16 @@ describe("K-H2b D1 阻-5：没有远端时 chip 渲染本机账号，徽章带 a
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
     await chip.openMenu();
-    const items = [...document.querySelectorAll<HTMLButtonElement>(".account-picker-item")];
+    const items = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')];
     expect(items.length, "没有远端时 chip 一行都没渲染 —— 那正是 `阻-4` 那句假话的真实形状").toBe(
       accounts.length,
     );
     return items;
   }
   const rowOf = (items: HTMLButtonElement[], name: string): HTMLButtonElement =>
-    items.find((el) => el.querySelector(".account-picker-name")?.textContent === name)!;
+    items.find((el) => el.querySelector('[data-part="label"]')?.textContent === name)!;
   const statusOf = (row: HTMLButtonElement): string =>
-    row.querySelector<HTMLElement>(".account-picker-status")!.textContent ?? "";
+    row.querySelector<HTMLElement>('[data-part="detail"]')!.textContent ?? "";
 
   const apiKey = (name: string, dir: string) =>
     acct({ name, configDir: dir, authKind: "api-key", loggedIn: false, authReady: true });
@@ -574,7 +575,7 @@ describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => 
   });
 
   it("★ 本机那一档不渲染「刷新用量」那个静默死按钮", async () => {
-    document.querySelectorAll(".account-picker").forEach((el) => el.remove());
+    document.querySelectorAll('[role="menu"]').forEach((el) => el.remove());
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue(
       state({ accounts: [acct({ name: "acct-a", isDefault: true, configDir: "/h/.claude-alt/acct-a" })] }),
@@ -583,7 +584,7 @@ describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => 
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
     await chip.openMenu();
-    const labels = [...document.querySelectorAll(".account-picker *")].map((e) => e.textContent);
+    const labels = [...document.querySelectorAll('[role="menu"] *')].map((e) => e.textContent);
     // 非空对照：菜单确实渲染出来了（否则下面那条 not.toContain 是空真）。
     expect(labels).toContain("管理账号…");
     // 正题：那个按钮在本机那一档是死的（`loadCurrentAccountUsage` 首行就 return）。
@@ -614,7 +615,7 @@ describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => 
 describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来", () => {
   /** 起一个「没有远端」的 chip，本机账号由 `fetchLocalAccounts` 给。 */
   async function localChip(accounts: Account[], defaultName: string | null): Promise<AccountChip> {
-    document.querySelectorAll(".account-picker").forEach((el) => el.remove());
+    document.querySelectorAll('[role="menu"]').forEach((el) => el.remove());
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue(
       state({ accounts: accounts.map((a) => ({ ...a, isDefault: a.name === defaultName })) }),
@@ -627,9 +628,9 @@ describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来
   /** chip 菜单里**能点选**的那几个号（`disabled` 的那几行不算 —— 它们点了也不切）。 */
   async function pickableInMenu(chip: AccountChip): Promise<string[]> {
     await chip.openMenu();
-    return [...document.querySelectorAll<HTMLButtonElement>(".account-picker-item")]
-      .filter((el) => !el.classList.contains("disabled"))
-      .map((el) => el.querySelector(".account-picker-name")?.textContent ?? "");
+    return [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')]
+      .filter((el) => !el.disabled)
+      .map((el) => el.querySelector('[data-part="label"]')?.textContent ?? "");
   }
   /** 命令面板那一侧**真的**产出的那几个号（走生产段 `buildAccountCommands`）。 */
   function pickableInCommandBar(chip: AccountChip): string[] {
@@ -664,7 +665,7 @@ describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来
   });
 
   it("★ 远端那一档照旧（放宽只加了本机那一半，没有改远端那一半）", async () => {
-    document.querySelectorAll(".account-picker").forEach((el) => el.remove());
+    document.querySelectorAll('[role="menu"]').forEach((el) => el.remove());
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ host: "hostA" })] });
     fetchAccountsMock.mockResolvedValue(
       state({ accounts: [acct({ name: "z", isDefault: true, configDir: "/h/.claude-alt/z" })] }),
@@ -676,7 +677,7 @@ describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来
   });
 
   it("★ `D2 阻-7` 不许被这一格顺手放宽：本机也没有 manifest ⇒ 两边都空", async () => {
-    document.querySelectorAll(".account-picker").forEach((el) => el.remove());
+    document.querySelectorAll('[role="menu"]').forEach((el) => el.remove());
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     // `meta.enabled:false` ⇒ `deriveUi` 判 not-enabled ⇒ `refresh` 把 state 清回 null 并隐藏。
     vi.spyOn(readsMod, "fetchLocalAccounts").mockResolvedValue({

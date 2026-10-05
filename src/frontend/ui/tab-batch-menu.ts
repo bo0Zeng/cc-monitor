@@ -10,11 +10,11 @@
 import type { Tab } from "./tab-model";
 import { canResume, hasTerminal, isResumeOnly } from "./tab-session-state";
 import { copyText } from "./copy-table";
-import { showTabContextMenu, type TabMenuItem } from "./tab-context-menu";
+import { openMenu, type MenuItem } from "./kit/menu";
 import { createRefusal, newCollectionId, type CollectionRefusal, type TabCollection } from "./tab-collections";
 import { sayCollectionRefusal } from "./tab-bar-prefs";
-import { askConfirm, askText, type ConfirmFn } from "./ask-dialog";
-import { showActionFailureToast } from "./error-toast";
+import { confirmDialog, askText, type ConfirmFn } from "./kit/dialog";
+import { toast } from "./kit/toast";
 import { machineName } from "./control-said";
 import { startMany, stopMany, type BatchOutcome } from "./tab-batch-run";
 
@@ -38,7 +38,7 @@ export interface TabBatchRun {
   confirm: ConfirmFn;
 }
 
-export const PRODUCTION_RUN: TabBatchRun = { stop: stopMany, start: startMany, confirm: askConfirm };
+export const PRODUCTION_RUN: TabBatchRun = { stop: stopMany, start: startMany, confirm: confirmDialog };
 
 /** 把一批 tab 按一个谓词分成「能做的」与「跳过的（原因：一句，或按 tab 说）」。 */
 function split(tabs: readonly Tab[], ok: (t: Tab) => boolean, why: string | ((t: Tab) => string)): [Tab[], BatchOutcome[]] {
@@ -67,9 +67,8 @@ export function sayBatch(action: string, tabs: readonly Tab[], outcomes: readonl
   for (const o of outcomes) {
     if (o.outcome === "failed") lines.push(copyText("tabBatch.result.failedLine", { title: title(o.sid), why: o.why }));
   }
-  showActionFailureToast(copyText("tabBatch.result.title", { action }), lines.join("\n"), {
+  toast(copyText("tabBatch.result.title", { action }), lines.join("\n"), {
     level: n("failed") > 0 ? "error" : "info",
-    durationMs: 10000,
   });
 }
 
@@ -88,7 +87,7 @@ export function openBatchMenu(
   done: () => void = () => {},
 ): void {
   const tabs = sids.map((s) => host.tab(s)).filter((t): t is Tab => t !== undefined);
-  const item = (label: string, n: number, onClick: () => void | Promise<void>, danger = false): TabMenuItem => ({
+  const item = (label: string, n: number, onClick: () => void | Promise<void>, danger = false): MenuItem => ({
     label,
     danger,
     enabled: n > 0,
@@ -101,13 +100,19 @@ export function openBatchMenu(
   });
   const [stoppable, notStoppable] = split(tabs, (t) => hasTerminal(t.state), unseenOr(copyText("tabBatch.why.ended")));
   const [startable, notStartable] = split(tabs, (t) => canResume(t.state), unseenOr(copyText("tabBatch.why.live")));
-  const items: TabMenuItem[] = [
+  const items: MenuItem[] = [
     { label: copyText("tabBatch.menu.head", { n: tabs.length }), enabled: false, onClick: () => {} },
     item(copyText("tabBatch.menu.stop", { n: stoppable.length }), stoppable.length, async () => {
       const list = stoppable
         .map((t) => copyText("tabBatch.stop.line", { title: t.title, machine: machineName(t.origin) }))
         .join("\n");
-      if (!(await run.confirm(copyText("tabBatch.stop.confirm", { n: stoppable.length, list }), { danger: true }))) return;
+      const confirm = {
+        title: copyText("tabBatch.stop.title", { n: stoppable.length }),
+        action: copyText("tabBatch.stop.action", { n: stoppable.length }),
+        danger: true,
+        body: copyText("tabBatch.stop.confirm", { n: stoppable.length, list }),
+      };
+      if (!(await run.confirm(confirm))) return;
       sayBatch(copyText("tabBatch.action.stop"), tabs, [...(await run.stop(stoppable)), ...notStoppable]);
     }, true),
     item(copyText("tabBatch.menu.startTmux", { n: startable.length }), startable.length, async () => {
@@ -130,7 +135,7 @@ export function openBatchMenu(
     );
   }
   if (host.collectionsLoaded()) {
-    const join: TabMenuItem[] = host.collections().map((col) => {
+    const join: MenuItem[] = host.collections().map((col) => {
       const [movable, already] = split(tabs, (t) => t.group !== col.id, copyText("tabBatch.why.inThatGroup"));
       return item(copyText("tabBatch.menu.joinOne", { name: col.name, n: movable.length }), movable.length, () =>
         local(copyText("tabBatch.action.join", { name: col.name }), tabs, movable, already, (s) => host.joinGroup(s, col.id)),
@@ -141,7 +146,7 @@ export function openBatchMenu(
         // 同单个菜单「新建集合…」：到上界先说，再问名字；整批进同一个新组。
         const full = createRefusal(host.collections());
         if (full) return sayCollectionRefusal(full);
-        const name = await askText(copyText("tabMenu.collection.namePrompt"));
+        const name = await askText({ title: copyText("tabMenu.collection.title"), label: copyText("tabMenu.collection.namePrompt"), action: copyText("tabMenu.collection.action") });
         if (!name?.trim()) return;
         const why = host.foundGroup(tabs.map((t) => t.sessionId), name, newCollectionId());
         if (why) return sayCollectionRefusal(why);
@@ -162,5 +167,5 @@ export function openBatchMenu(
       local(copyText("tabBatch.action.close"), tabs, closable, notClosable, (s) => host.closeTabs(s)),
     ),
   );
-  showTabContextMenu(e.clientX, e.clientY, items);
+  openMenu({ x: e.clientX, y: e.clientY }, items);
 }

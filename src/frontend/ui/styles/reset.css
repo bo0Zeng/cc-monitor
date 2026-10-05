@@ -9,6 +9,12 @@
     box-sizing: border-box;
   }
 
+  /* 键盘焦点环：每个能 Tab 到的东西都有，鼠标点不出（`:focus-visible`）。组件要换形状在自己那层盖。 */
+  :focus-visible {
+    outline: var(--focus-ring) solid var(--accent);
+    outline-offset: var(--focus-ring);
+  }
+
   html,
   body {
     margin: 0;

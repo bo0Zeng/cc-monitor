@@ -87,6 +87,11 @@ export function defaultOps(): Record<string, OpHandler> {
       accounts: Object.fromEntries(w.sessions.map((s, i) => [s.sid, ACCOUNTS[i % 2].name])),
     }),
     "tasks-list": (_o, req, w) => ({ tasks: w.sessions.find((s) => s.sid === req.sid)?.tasks ?? [] }),
+    // 会打断什么：合成世界里每个会话都当它有一轮在跑、带它在做的任务。
+    "session-interrupts": (_o, req, w) => {
+      const tasks = (w.sessions.find((s) => s.sid === req.sid)?.tasks ?? []).filter((t) => t.status === "in_progress").map((t) => t.subject);
+      return { families: [{ family: "turn", names: [] }, ...(tasks.length ? [{ family: "task", names: tasks }] : [])] };
+    },
     "history-lines": (_o, req, w) => {
       const s = sessionByPath(w, req.path);
       const from = Number(req.from ?? 0);

@@ -8,7 +8,7 @@
  */
 import { copyText } from "./copy-table";
 import { ControlError, exactKeys, isObj, settle, unreadable, type Refusals } from "./control-said";
-import { showActionFailureToast } from "./error-toast";
+import { toast } from "./kit/toast";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, refusalOf } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
@@ -113,15 +113,14 @@ export function isIdentityRefusal(e: unknown): boolean {
  * `said` 是调用方已经说好的那句失败。
  */
 export function offerResyncRetry(origin: Origin, sid: string | undefined, headline: string, said: string, again: () => Promise<void>): void {
-  showActionFailureToast(headline, `${said}\n${copyText("resync.retry.hint")}`, {
-    durationMs: 15_000,
+  toast(headline, `${said}\n${copyText("resync.retry.hint")}`, {
     onClick: () =>
       void (async () => {
         try {
           await resync(origin, sid);
           await again();
         } catch (e) {
-          showActionFailureToast(copyText("resync.retry.failed"), e instanceof Error ? e.message : String(e));
+          toast(copyText("resync.retry.failed"), e instanceof Error ? e.message : String(e));
         }
       })(),
   });

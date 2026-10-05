@@ -8,8 +8,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const toastMock = vi.fn();
-vi.mock("../../../src/frontend/ui/error-toast", () => ({
-  showActionFailureToast: (...a: unknown[]) => toastMock(...a),
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({
+  toast: (...a: unknown[]) => toastMock(...a),
 }));
 
 import { buildPasteBlock, type PasteSpec } from "../../../src/frontend/ui/paste-block";

@@ -1,0 +1,118 @@
+/* 对话框（C10）。 */
+@layer components {
+  .dialogBackdrop {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-7);
+    background: var(--overlay-backdrop);
+  }
+
+  .dialogPanel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    width: min(560px, 100%);
+    min-width: min(400px, 100%);
+    max-height: calc(100vh - 48px);
+    padding: var(--space-7);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-xl);
+    background: var(--card);
+    box-shadow: var(--shadow-modal);
+    animation: rise var(--dur-float-in) ease-out;
+  }
+
+  @keyframes rise {
+    from {
+      transform: translateY(4px);
+      opacity: 0;
+    }
+  }
+
+  .dialogTitle {
+    margin: 0;
+    font-size: var(--font-size-title);
+    font-weight: var(--font-weight-strong);
+    line-height: var(--line-height-ui);
+    overflow-wrap: anywhere;
+  }
+
+  .dialogBody {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-height: 0;
+    overflow-y: auto;
+    color: var(--text);
+    line-height: var(--line-height-base);
+  }
+
+  .dialogText {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .dialogRow {
+    display: flex;
+    gap: var(--space-5);
+  }
+
+  .dialogRowLabel {
+    flex: none;
+    min-width: 3em;
+    color: var(--text-2);
+  }
+
+  .dialogList {
+    max-height: 240px;
+    overflow-y: auto;
+    padding: var(--space-3) var(--space-5);
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+    font-size: var(--font-size-mono);
+  }
+
+  .dialogMore {
+    color: var(--text-2);
+  }
+
+  .dialogFieldWrap {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .dialogInput {
+    height: var(--control-h);
+    padding: 0 var(--space-4);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-m);
+    background: var(--field-bg);
+    color: var(--text);
+    font-size: var(--font-size-base);
+  }
+
+  .dialogInput:focus {
+    border-color: var(--field-border-focus);
+    outline: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+
+  .dialogInput[aria-invalid="true"] {
+    border-color: var(--error);
+  }
+
+  .dialogError {
+    font-size: var(--font-size-small);
+  }
+
+  .dialogError > svg {
+    margin-right: var(--space-3);
+    color: var(--error);
+  }
+}

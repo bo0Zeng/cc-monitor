@@ -17,7 +17,7 @@
  *   新窗口里的页面自己加载那一段不在这里 —— 那一段归设置窗自己的骨架（`skeleton.ts`）。
  */
 import { commands } from "../ipc/commands";
-import { showActionFailureToast } from "../error-toast";
+import { toast } from "../kit/toast";
 import { copyText } from "../copy-table";
 
 let inFlight: Promise<void> | null = null;
@@ -35,7 +35,7 @@ export function openSettingsWindow(trigger?: HTMLButtonElement | null): Promise<
   inFlight = commands
     .open_settings_window()
     .catch((e: unknown) => {
-      showActionFailureToast(copyText("openSettings.openSettingsWindow.failed"), String(e), { level: "error" });
+      toast(copyText("openSettings.openSettingsWindow.failed"), String(e), { level: "error" });
     })
     .finally(() => {
       inFlight = null;

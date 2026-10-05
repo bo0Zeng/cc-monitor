@@ -1,5 +1,6 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from "vitest/config";
+import { nodeModulesAllow } from "./vite.config";
 
 // DOM 单元测试（jsdom 环境）。**只挑 *.vitest.ts**，与既有手写 node 测试（*.test.ts，
 // 由 `tsx tests/X.test.ts` 跑纯函数）分流，互不干扰。新增需 DOM/模块 mock 的测试写成
@@ -44,6 +45,7 @@ process.env.LANG = "zh_CN.UTF-8";
 //   `LANG` 留着管 ICU 本身与子进程。`TZ` 两边都认，不用另钉。
 
 export default defineConfig({
+  server: { fs: { allow: nodeModulesAllow() } },
   test: {
     environment: "jsdom",
     include: ["tests/**/*.vitest.ts"],

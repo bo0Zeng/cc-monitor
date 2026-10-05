@@ -35,7 +35,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({
   getBehavior: vi.fn().mockResolvedValue({ resumeCommandLocal: "" }),
 }));
@@ -47,7 +47,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { mintFreshTmuxName } from "../../../src/frontend/ui/terminal-name-mint";
 import { resumeLocalSession } from "../../../src/frontend/ui/local-resume";
-import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
+import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 

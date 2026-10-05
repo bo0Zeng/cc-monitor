@@ -13,7 +13,13 @@ use super::*;
 /// `feature_face::answer`」，两边必须相等。
 // ＋ `mcp-read`（MCP 列表成品，读法住适配层）。
 // ＋ `hooks-diag`（cc-bus 钩子诊断成品，本体 `observe/cc_bus_hooks.rs`）。
-const FAMILY: &[&str] = &["hooks-diag", "mcp-read", "session-terminals", "tasks-list"];
+const FAMILY: &[&str] = &[
+    "hooks-diag",
+    "mcp-read",
+    "session-interrupts",
+    "session-terminals",
+    "tasks-list",
+];
 
 fn scratch(tag: &str) -> std::path::PathBuf {
     let d = std::env::temp_dir().join(format!("rm1b-face-{tag}-{}", std::process::id()));

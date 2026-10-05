@@ -34,7 +34,7 @@ import { fetchAccounts } from "../account-reads";
 import { LOCAL_ORIGIN } from "../backend-policy";
 
 // 读面经通道直接问后端（`bus-state` / `bus-inbox`），形状由 `cc-bus-control.ts` 的解码器严格收。
-import { askConfirm } from "../ask-dialog";
+import { confirmDialog } from "../kit/dialog";
 import { copyText } from "../copy-table";
 import { DEFAULT_AGENT, listAgents } from "../agent-profile";
 
@@ -578,7 +578,12 @@ export class CcBusSection {
     const text = this.broadcastInput.value.trim();
     if (!text) return;
     const n = this.state?.agents.length ?? 0;
-    if (!(await askConfirm(copyText("ccBus.broadcast.confirm", { n, text })))) return;
+    const confirm = {
+      title: copyText("ccBus.broadcast.title", { n }),
+      action: copyText("ccBus.broadcast.action"),
+      body: copyText("ccBus.broadcast.confirm", { n, text }),
+    };
+    if (!(await confirmDialog(confirm))) return;
     this.broadcastBtn.disabled = true;
     try {
       this.statusEl.textContent = await broadcast(origin, text);

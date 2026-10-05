@@ -26,7 +26,7 @@ import { commands } from "../ipc/commands";
 import { chan } from "../../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
 import { isLocalOrigin } from "../ipc/origin";
-import { showActionFailureToast } from "../error-toast"; // `K-R135`：用户级 PATH 那一格的失败要出声
+import { toast } from "../kit/toast"; // `K-R135`：用户级 PATH 那一格的失败要出声
 import { buildPasteBlock } from "../paste-block";
 import { DEFAULT_AGENT, listAgents } from "../agent-profile";
 // 别名六问走通道、那台后端出成品（`../alias-reads`）；类型随成品住那边。
@@ -43,7 +43,7 @@ import type {
   Shell,
   TmuxMode,
 } from "../alias-reads";
-import { askConfirm, type ConfirmFn } from "../ask-dialog";
+import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import {
   AliasesStale,
   aliasFromForm,
@@ -926,7 +926,7 @@ export function buildAliasManager(opts: {
       pasteText = await renderAliasBlock(opts.origin(), t.path);
     } catch (e) {
       pasteText = "";
-      showActionFailureToast(copyText("machineAliases.preview.failed"), String(e instanceof Error ? e.message : e));
+      toast(copyText("machineAliases.preview.failed"), String(e instanceof Error ? e.message : e));
     }
     pasteBox.hidden = false;
     paste.refresh();
@@ -956,7 +956,12 @@ export function buildAliasManager(opts: {
     if (!allowHost) return;
     const host = allowHost;
     const ps = psName(host);
-    if (!(await (opts.confirm ?? askConfirm)(copyText("machineAliases.policy.confirm", { ps })))) return;
+    const confirm = {
+      title: copyText("machineAliases.policy.title", { ps }),
+      action: copyText("machineAliases.policy.action"),
+      body: copyText("machineAliases.policy.confirm", { ps }),
+    };
+    if (!(await (opts.confirm ?? confirmDialog)(confirm))) return;
     allowBtn.disabled = true;
     let said: string;
     try {
@@ -982,7 +987,7 @@ export function buildAliasManager(opts: {
     try {
       await openPath(path);
     } catch (e) {
-      showActionFailureToast(copyText("machineAliases.openRc.failed"), copyText("machineAliases.openRc.failedBody", { e: String(e), path }));
+      toast(copyText("machineAliases.openRc.failed"), copyText("machineAliases.openRc.failedBody", { e: String(e), path }));
     }
   };
 
@@ -1157,7 +1162,7 @@ export function buildUserPathBlock(): HTMLElement {
       if (what === "add") await commands.ccm_user_path_add();
       else await commands.ccm_user_path_remove();
     } catch (e) {
-      showActionFailureToast(
+      toast(
         what === "add" ? copyText("machineAliases.userPath.addFailed") : copyText("machineAliases.userPath.removeFailed"),
         String(e),
       );
@@ -1276,7 +1281,7 @@ function buildPsExtras(): PsExtras {
       try {
         await commands.cc_set_auto_launch({ enabled });
       } catch (e) {
-        showActionFailureToast(copyText("machineAliases.ps.saveFailed"), String(e));
+        toast(copyText("machineAliases.ps.saveFailed"), String(e));
         autoLaunchCheckbox.checked = !enabled;
       }
     })();

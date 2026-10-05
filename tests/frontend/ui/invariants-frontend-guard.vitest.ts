@@ -104,12 +104,13 @@ describe("P21 ⓪ 量具自检（这几条不过，下面六格全是空转）",
     //    它挂在 `document.body` 上、不在 ② 的表里）。
     //    22 → 21：少的是 `.panorama-view`（代码全景页随它的 CSS 一起删了；同样挂在 `document.body` 上、不在 ② 的表里）。
     //    21 → 20：少的是 `.settings-cc-modal-backdrop`（别名块的预览浮层删了 —— 「我自己贴」就地给接入那几行；它挂在 `document.body` 上）。
+    //    20 → 14：右键菜单 · 历史右键 · 选主机 · 账号选单 · 说明提示 · toast 栈六个浮层并进通用组件（`kit/` 的 CSS Modules，都挂 `document.body`）。
     expect(
       fixedSelectors().length,
-      `CSS 里声明 \`position: fixed\` 的选择器有 ${fixedSelectors().length} 个（10-01 实测 20）。\n` +
+      `CSS 里声明 \`position: fixed\` 的选择器有 ${fixedSelectors().length} 个（10-05 实测 14）。\n` +
         "★ 变多 = 新加了一个浮层 ⇒ 去 ② 的登记表里交代它挂在哪；\n" +
         "★ 变少 = 要么真删了一个，要么**切规则那一刀又漏了**（第一版漏了 9 条，报 16）。",
-    ).toBe(20);
+    ).toBe(14);
   });
 
   it("🔴 正控：`alert(` 的量具对合成样本判得出「有」与「没有」两种", () => {

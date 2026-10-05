@@ -324,14 +324,19 @@ pub fn show_grep_rows(ui: &mut egui::Ui, hits: &[String], tally: &mut GrepTally)
     egui::ScrollArea::vertical()
         .auto_shrink([false; 2])
         .id_salt("filewin-grep-hits")
-        .show_rows(ui, super::rows::ROW_HEIGHT, hits.len(), |ui, range| {
-            for i in range {
-                tally.rows_materialized += 1;
-                if ui.link(&hits[i]).clicked() {
-                    tally.jump = Some(i);
+        .show_rows(
+            ui,
+            super::theme::metrics(ui.ctx()).row_h,
+            hits.len(),
+            |ui, range| {
+                for i in range {
+                    tally.rows_materialized += 1;
+                    if ui.link(&hits[i]).clicked() {
+                        tally.jump = Some(i);
+                    }
                 }
-            }
-        });
+            },
+        );
 }
 
 /// 点了第 `i` 条命中 ⇒ `(它所在的目录, 它的名字)`；下标越界 ⇒ `None`。

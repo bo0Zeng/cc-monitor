@@ -16,7 +16,7 @@ import { bindEvents } from "./events";
 import { TabManager } from "./tabs";
 import { terminalFrontAvailable } from "./terminal-front";
 import { loadTheme } from "./theme";
-import { bindErrorToast } from "./error-toast";
+import { bindErrorToast } from "./backend-errors";
 import { dispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
 import { turnEndNotifier } from "./turn-notify";

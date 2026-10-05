@@ -20,7 +20,7 @@
 import type { Origin } from "./ipc/origin";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
-import { showActionFailureToast } from "./error-toast";
+import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
 
 export type MintOutcome = { ok: true; name: string } | { ok: false; why: string };
@@ -62,9 +62,9 @@ export function mintFreshTmuxName(origin: Origin, cwd: string): Promise<MintOutc
 
 /** 远端铸不出名字 ⇒ 不起，说清是哪台、为什么（D4）。 */
 export function refuseUnmintable(origin: Origin, why: string): void {
-  showActionFailureToast(
+  toast(
     copyText("tmuxMint.refused.title"),
     copyText("tmuxMint.refused.body", { machine: origin, reason: why }),
-    { level: "error", durationMs: 10000 },
+    { level: "error" },
   );
 }

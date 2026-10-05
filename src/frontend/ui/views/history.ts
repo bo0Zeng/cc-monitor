@@ -36,7 +36,7 @@ import { SessionViewer, type ViewerOptions } from "./session-viewer";
 // JS 会安静地把 `null` 当 0（`Number(null)` / `null > 0` / `null + 1`），那正是本件在治的病。
 import { liveRank, starRank, bumpCounted, isKnown } from "./counted";
 import { dispatcher } from "../keybindings/registry";
-import { showActionFailureToast } from "../error-toast";
+import { toast } from "../kit/toast";
 import { runRemoteResume, runNewSessionRemote } from "../remote-launch-run";
 import { DEFAULT_AGENT } from "../agent-profile";
 import { configuredLauncherFor } from "../launch-requests";
@@ -120,7 +120,8 @@ import {
 } from "../history-reads";
 // 搜索那三个线上类型的家从 Rust `search.rs` 的生成物换到 `history-search.ts`（本机也改问本机后端，那份 Rust 删了）。
 import type { Hit as SearchHit, SearchResult, SessionHits as SearchSessionHits } from "./history-search";
-import { askConfirm, askText } from "../ask-dialog";
+import { confirmDialog, askText } from "../kit/dialog";
+import { appendMenuItem, closeMenu, menuGeneration, openMenu, type MenuItem } from "../kit/menu";
 
 interface SessionTreeNode {
   entry: HistorySessionEntry;
@@ -276,9 +277,8 @@ export class HistoryView {
    */
   private expandedForks: Set<string> = loadExpandedForks();
   /** F96：当前打开的条目右键菜单（单例；开新菜单/点空白/Esc 前先关它）。 */
-  private openEntryMenu: HTMLElement | null = null;
-  /** F96：菜单的 document 级关闭监听（pointerdown/keydown 共用一个）；closeEntryMenu 反注册。 */
-  private entryMenuClose: ((ev: Event) => void) | null = null;
+  /** 开着的条目菜单是哪一代（`kit/menu` 的代次；关了 ⇒ `null`）。 */
+  private entryMenuGen: number | null = null;
 
   constructor() {
     this.root = this.build();
@@ -391,13 +391,9 @@ export class HistoryView {
     return true;
   }
 
-  /** Esc 优先级：F96 右键菜单 > 查看器 > 整个历史视图。main.ts / overlay dispatcher 调本方法。
-   *  ★ 菜单优先必须在这里判——菜单挂 document 冒泡相 keydown，而 overlay dispatcher 挂 window
-   *  捕获相（恒先触发），单靠菜单自己的监听拦不住「Esc 关菜单」，会误关整个历史视图。 */
+  /** Esc：查看器 > 整个历史视图（右键菜单自己压在弹层栈最上面，Esc 先到它）。 */
   handleEscape(): void {
-    if (this.openEntryMenu) {
-      this.closeEntryMenu();
-    } else if (this.viewer) {
+    if (this.viewer) {
       this.closeViewer();
     } else {
       this.close();
@@ -443,12 +439,12 @@ export class HistoryView {
       const got = await fetchLocalProjects();
       local = got.projects;
       localEmpty = local.length === 0;
-      if (got.notice) showActionFailureToast(copyText("history.refresh.noticeTitle"), got.notice);
+      if (got.notice) toast(copyText("history.refresh.noticeTitle"), got.notice);
     } catch (e) {
       localFailed = historyReasonOf(e);
     }
     if (seq !== this.refreshSeq) return; // 被更新的 refresh 抢占
-    if (localFailed !== null) showActionFailureToast(copyText("history.refresh.localFailed"), localFailed);
+    if (localFailed !== null) toast(copyText("history.refresh.localFailed"), localFailed);
     this.emptyOrigins = new Set<string | undefined>(this.emptyRemotes);
     if (localEmpty) this.emptyOrigins.add(undefined);
     // 先用「本地 + 已有远端缓存」渲染一帧（远端缓存命中时这就是最终态）。
@@ -477,7 +473,7 @@ export class HistoryView {
         // 下次 open 重试失败台（对齐 F76 前「每次 open 重扫、瞬断下次自愈」），仍渲染已拿到的台。
         this.remoteCache = null;
         safeRemove(LS_KEYS.historyRemoteSources); // F76b(#46):不完整快照不持久(免下次启动暖绘残缺列表)
-        showActionFailureToast(
+        toast(
           copyText("history.refresh.partialTitle"),
           copyText("history.refresh.partialHosts", { hosts: res.failedHosts.join(copyText("history.refresh.hostSep")) }),
         );
@@ -487,7 +483,7 @@ export class HistoryView {
     } catch (e) {
       if (seq !== this.refreshSeq) return;
       // 全部台失败（Err）→ 保住旧缓存不覆盖（force 也不预清，失败时降级复用更稳）；本地已渲染，仅 toast。
-      showActionFailureToast(copyText("history.refresh.remoteFailed"), String(e));
+      toast(copyText("history.refresh.remoteFailed"), String(e));
     }
   }
 
@@ -521,7 +517,7 @@ export class HistoryView {
         // 没加载上 ≠ 没有会话：不留那份空缓存（不然展开永远写「没有会话」、也不再问），记一笔「没加载上」。
         this.sessionCache.delete(key);
         this.failedProjects.add(key);
-        showActionFailureToast(proj.origin ? copyText("history.sessions.remoteFailed") : copyText("history.sessions.failed"), historyReasonOf(e));
+        toast(proj.origin ? copyText("history.sessions.remoteFailed") : copyText("history.sessions.failed"), historyReasonOf(e));
       } finally {
         this.loadingProjects.delete(key);
       }
@@ -1625,7 +1621,7 @@ export class HistoryView {
     } catch (err) {
       console.warn("star update failed:", err);
       // 从前只记日志：点了星标、什么都没变、也不说（E §3.3）。改名 / 隐藏同。
-      showActionFailureToast(copyText("history.star.failed"), String(err));
+      toast(copyText("history.star.failed"), String(err));
     }
   }
 
@@ -1633,7 +1629,7 @@ export class HistoryView {
     const e = ctx.entry;
     if (!e) return;
     const cur = e.customTitle ?? e.aiTitle ?? "";
-    const next = await askText(copyText("history.rename.prompt"), { initial: cur });
+    const next = await askText({ title: copyText("history.rename.title"), label: copyText("history.rename.prompt"), action: copyText("history.rename.action"), initial: cur });
     if (next === null) return;
     try {
       // 清空传**空串**（缺格 / `null` = 不改 —— 从前这里传 `null`，而 monitor 那份 patch 同样把 `null` 读成「不改」，
@@ -1643,7 +1639,7 @@ export class HistoryView {
       this.renderList();
     } catch (err) {
       console.warn("rename failed:", err);
-      showActionFailureToast(copyText("history.rename.failed"), String(err));
+      toast(copyText("history.rename.failed"), String(err));
     }
   }
 
@@ -1662,7 +1658,7 @@ export class HistoryView {
       this.renderList();
     } catch (err) {
       console.warn("hide toggle failed:", err);
-      showActionFailureToast(copyText("history.hide.failed"), String(err));
+      toast(copyText("history.hide.failed"), String(err));
     }
   }
 
@@ -1717,7 +1713,7 @@ export class HistoryView {
           arrived: { title: copyText("history.newSession.started"), body: arrivedBody(LOCAL_ORIGIN) },
         });
       } catch (err) {
-        showActionFailureToast(copyText("history.newSession.failed"), String(err));
+        toast(copyText("history.newSession.failed"), String(err));
       }
     }
   }
@@ -1730,38 +1726,32 @@ export class HistoryView {
     // 删之前看活不活：活着 ⇒ 多问一句（Claude 还往旧文件里写，之后 resume 不到）；
     //   说不清（这条路答不出，`isLive === null`）⇒ 也多问一句（09-25 裁）。确定不活 ⇒ 照原来那一问 / 两问。
     const liveness = deleteLiveness(e.isLive, this.liveInTabs(e.sessionId));
-    //   〔W5-UI 之后〕问一律走应用内对话框（`askConfirm`；原生 `confirm` 在真 app 里恒真、从来不拦）。
-    if (liveness === "live" && !(await askConfirm(copyText("sessionState.deleteLive.confirm", { label }), { danger: true }))) return;
-    if (liveness === "unknown" && !(await askConfirm(copyText("sessionState.deleteUnknown.confirm", { label }), { danger: true }))) return;
+    // 一件事一个框（活不活、远端还是本机，都并进这一问的正文）。
+    const lines = [
+      liveness === "live" ? copyText("sessionState.deleteLive.confirm", { label }) : null,
+      liveness === "unknown" ? copyText("sessionState.deleteUnknown.confirm", { label }) : null,
+      e.origin ? copyText("history.delete.confirmRemote", { label, origin: e.origin }) : copyText("history.delete.confirmLocal", { label }),
+    ].filter((l): l is string => l !== null);
+    const ok = await confirmDialog({
+      title: e.origin ? copyText("history.delete.titleRemote", { label, origin: e.origin }) : copyText("history.delete.title", { label }),
+      action: copyText("history.delete.action"),
+      danger: true,
+      body: lines.join("\n\n"),
+    });
+    if (!ok) return;
     if (e.origin) {
-      // 远端删除更危险（删的是别人机器上的文件）→ 二次确认。删那一下由那台机器的后端做。
-      const ok1 = await askConfirm(
-        copyText("history.delete.confirmRemote", { label, origin: e.origin }),
-        { danger: true },
-      );
-      if (!ok1) return;
-      const ok2 = await askConfirm(
-        copyText("history.delete.confirmRemoteAgain", { origin: e.origin, label }),
-        { danger: true },
-      );
-      if (!ok2) return;
       try {
         // 与本机那条是**同一条命令**了，只是 origin 不同。界面经通道直说那台后端（`session-writes.ts::deleteSession`）。
         await deleteSession(e.origin, e.sessionId);
       } catch (err) {
-        showActionFailureToast(copyText("history.delete.remoteFailed"), String(err));
+        toast(copyText("history.delete.remoteFailed"), String(err));
         return;
       }
     } else {
-      const ok = await askConfirm(
-        copyText("history.delete.confirmLocal", { label }),
-        { danger: true },
-      );
-      if (!ok) return;
       try {
         await deleteSession(LOCAL_ORIGIN, e.sessionId);
       } catch (err) {
-        showActionFailureToast(copyText("history.delete.failed"), String(err));
+        toast(copyText("history.delete.failed"), String(err));
         return;
       }
     }
@@ -1795,91 +1785,49 @@ export class HistoryView {
     this.renderList();
   }
 
-  /** F96：条目/搜索卡片右键 → 极简上下文菜单（守 SS-1，不抽共享组件、不复用 tabs 私有函数）。 */
+  /** 条目 / 搜索卡片右键 → 弹出菜单（全产品那一份）。远端会话的「用账号 X resume」异步追加。 */
   private showEntryMenu(x: number, y: number, ctx: RowActionCtx): void {
-    this.closeEntryMenu();
-    const menu = document.createElement("div");
-    menu.className = "history-context-menu";
-    menu.style.left = `${x}px`;
-    menu.style.top = `${y}px`;
-    for (const def of actionsFor(ctx)) {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = "history-context-item";
-      if (def.danger) item.classList.add("is-danger");
-      item.textContent = def.label(ctx);
-      item.addEventListener("click", () => {
-        this.closeEntryMenu();
-        void this.runOf(def.id)(ctx);
-      });
-      menu.appendChild(item);
-    }
-    document.body.appendChild(menu);
-    this.openEntryMenu = menu;
-    // A4：远端会话——异步追加「用账号 X resume」项（先显标准项，账号项 fetch 完再挂，缓存暖则几乎无感）。
-    if (ctx.origin) void this.appendAccountResumeItems(menu, ctx);
-    // 关闭监听：Esc 键 / 菜单外 pointerdown 才关（点菜单内边距/非 Esc 键 → 早退不关）。
-    // ★ 不用 `{once:true}`——它会在早退那次就摘掉监听，导致「按过任意非 Esc 键后 Esc 再关不掉」
-    // 「点 padding 后外部点击再关不掉」。改为常驻监听、由 closeEntryMenu 显式反注册。
-    const close = (ev: Event): void => {
-      if (ev instanceof KeyboardEvent && ev.key !== "Escape") return;
-      if (ev.type === "pointerdown" && menu.contains(ev.target as Node)) return;
-      this.closeEntryMenu();
-    };
-    this.entryMenuClose = close;
-    // 下一拍才挂（避免开菜单这次 contextmenu 自身派发的 pointerdown 立即关掉）。
-    setTimeout(() => {
-      if (this.openEntryMenu !== menu) return; // 期间已被新菜单/关闭取代 → 别挂陈旧监听
-      document.addEventListener("pointerdown", close);
-      document.addEventListener("keydown", close);
-    }, 0);
+    const items: MenuItem[] = actionsFor(ctx).map((def) => ({
+      label: def.label(ctx),
+      danger: def.danger,
+      onClick: () => void this.runOf(def.id)(ctx),
+    }));
+    openMenu({ x, y }, items, { onClose: () => (this.entryMenuGen = null) });
+    this.entryMenuGen = menuGeneration();
+    if (ctx.origin) void this.appendAccountResumeItems(this.entryMenuGen, ctx);
   }
 
   /**
-   * A4：给远端会话菜单追加「用账号 X resume」项（每个可选账号一条）。**异步**——不阻塞菜单弹出。
-   * 只在 ≥2 个可选账号时出（<2 无可切换意义）；账号库不可用（旧/未启用）安静不加（§7 降级）。
-   * 追加前校验菜单仍是当前打开的那个（防 fetch 期间已换/已关，避免挂到陈旧 DOM）。
+   * 远端会话菜单追加「用账号 X resume」（每个可选账号一条）。异步，不挡菜单弹出；
+   * 只在 ≥2 个可选账号时出；账号库不可用安静不加；追加前核对菜单还是这一代。
    */
-  private async appendAccountResumeItems(menu: HTMLElement, ctx: RowActionCtx): Promise<void> {
+  private async appendAccountResumeItems(gen: number, ctx: RowActionCtx): Promise<void> {
     if (!ctx.origin) return;
     let state;
     try {
       state = await fetchAccounts(ctx.origin);
     } catch {
-      return; // fetch 失败 → 就不加账号项，默认 resume 仍可用
+      return;
     }
-    if (!state.available) return; // 旧 backend / 未启用 → 安静降级
+    if (!state.available) return;
     const selectable = state.accounts.filter(isSelectable);
-    if (selectable.length < 2) return; // 无可切换选择就不加噪
-    if (this.openEntryMenu !== menu) return; // fetch 期间菜单已变/已关
-    const sep = document.createElement("div");
-    sep.className = "history-context-sep";
-    menu.appendChild(sep);
+    if (selectable.length < 2) return;
+    if (menuGeneration() !== gen) return;
+    appendMenuItem({ label: "", divider: true });
     for (const a of selectable) {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = "history-context-item";
-      item.textContent = copyText("history.accountResume.item", { name: a.name });
-      item.title = copyText("history.accountResume.hint", { name: a.name, email: a.email ? ` · ${a.email}` : "" });
-      item.addEventListener("click", () => {
-        this.closeEntryMenu();
-        void this.runResume({ ...ctx, account: a.name });
+      appendMenuItem({
+        label: copyText("history.accountResume.item", { name: a.name }),
+        title: copyText("history.accountResume.hint", { name: a.name, email: a.email ? ` · ${a.email}` : "" }),
+        onClick: () => void this.runResume({ ...ctx, account: a.name }),
       });
-      menu.appendChild(item);
     }
   }
 
   private closeEntryMenu(): void {
-    if (this.entryMenuClose) {
-      document.removeEventListener("pointerdown", this.entryMenuClose);
-      document.removeEventListener("keydown", this.entryMenuClose);
-      this.entryMenuClose = null;
-    }
-    if (this.openEntryMenu) {
-      this.openEntryMenu.remove();
-      this.openEntryMenu = null;
-    }
+    if (this.entryMenuGen !== null && menuGeneration() === this.entryMenuGen) closeMenu();
+    this.entryMenuGen = null;
   }
+
 
   private buildEntryRow(
     e: HistorySessionEntry,

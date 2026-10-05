@@ -7,7 +7,7 @@
  * - 「全仓 `window.prompt/confirm` 的收口 | 独立一件（牵扯 `plugin:dialog` 的 ACL）」。
  * - `INVARIANTS §13`「任何用 `position: fixed` 实现的浮层 …… **必须**挂到 `document.body`」。
  *
- * # 为什么这不是洁癖（`src/frontend/ui/ask-dialog.ts` 头注）
+ * # 为什么这不是洁癖（`src/frontend/ui/kit/dialog.ts` 头注）
  *
  * `tauri-plugin-dialog` 往 webview 注入的 `window.confirm` 是 `async` 的 ⇒ 返回 Promise、永远真值 ⇒
  * 真 app 里每一处 `if (!window.confirm(m)) return;` 都不拦。jsdom 的 `window.confirm` 是同步原生实现，
@@ -16,17 +16,17 @@
  * | 格 | 判什么 | 形态 |
  * |---|---|---|
  * | D1 | 生产 TS 里引用原生 `confirm` / `prompt`（裸调用，或 `window.` / `globalThis.` / `self.` 成员，调用或取值） | TS AST，**零命中**；正控：合成样本逐形各恰 1 处、近似形 0 处 |
- * | D1b | 生产 TS 里每一处**调用** `askConfirm` / `askText` 都是 `await` 的操作数（没 `await` 的 Promise 恒真值 —— 正是原生替身那个病） | TS AST，未 await 的调用 **零命中**；正控同上；另钉「被调用的地方恰好是改过的那几份文件」两向相等 |
- * | D2 | `askConfirm` / `askText` 的结算语义 | 确定 / 取消 / 遮罩 / Esc（经真 `dispatcher`）/ Enter / 顶掉上一个 / 挂 body / 正文不解释 HTML |
+ * | D1b | 生产 TS 里每一处**调用** `confirmDialog` / `askText` / `confirmInterrupts` 都是 `await` 的操作数（没 `await` 的 Promise 恒真值 —— 正是原生替身那个病） | TS AST，未 await 的调用 **零命中**；正控同上；另钉「被调用的地方恰好是改过的那几份文件」两向相等 |
+ * | D2 | `confirmDialog` / `askText` 的结算语义 | 确定 / 取消 / 遮罩 / Esc（经真 `dispatcher`）/ Enter / 顶掉上一个 / 挂 body / 正文不解释 HTML · 标题与动作名 · 逐项清单 · 填了东西点遮罩不关 · 框里报错 · Tab 不出框 |
  *
  * `alert` 不在 D1：它归 `INVARIANTS §12`，由 `tests/frontend/ui/invariants-frontend-guard.vitest.ts` ① 守。
  */
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import ts from "typescript";
 
-import { askConfirm, askText } from "../../../src/frontend/ui/ask-dialog";
-import { dispatcher } from "../../../src/frontend/ui/keybindings/registry";
-import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
+import { confirmDialog, askText, LIST_MAX, type ConfirmSpec } from "../../../../src/frontend/ui/kit/dialog";
+import { dispatcher } from "../../../../src/frontend/ui/keybindings/registry";
+import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../../test-support/production-sources.ts";
 
 // ─────────────────────────────── D1 ───────────────────────────────
 
@@ -82,7 +82,7 @@ describe("D1 · 生产 TS 零处原生 confirm / prompt", () => {
       expect(nativeDialogRefs("probe.ts", src).length, src).toBe(1);
     }
     const negatives = [
-      `await askConfirm("x");`,
+      `await confirmDialog({ title: "x", action: "y" });`,
       `opts.confirm("y");`,
       `const confirmFn = opts?.confirm;`,
       `tab.prompt("z");`,
@@ -99,22 +99,22 @@ describe("D1 · 生产 TS 零处原生 confirm / prompt", () => {
     const files = productionTsFiles("src");
     expect(files.length, "人群为空 —— 下面的零命中是空真").toBeGreaterThan(100);
     expect(
-      files.some((f) => f.file === "src/frontend/ui/ask-dialog.ts"),
+      files.some((f) => f.file === "src/frontend/ui/kit/dialog.ts"),
       "人群里没有对话框模块本身 —— 遍历口径变了",
     ).toBe(true);
     const hits = files.flatMap((f) => nativeDialogRefs(f.file, f.text));
     expect(
       hits.map((h) => `${h.file}:${h.line}  ${h.text}`),
-      "这些地方还在用原生弹窗 —— 真 app 里 window.confirm 返回 Promise（永远真值），等于没问；改用 src/frontend/ui/ask-dialog.ts 的 askConfirm / askText",
+      "这些地方还在用原生弹窗 —— 真 app 里 window.confirm 返回 Promise（永远真值），等于没问；改用 src/frontend/ui/kit/dialog.ts 的 confirmDialog / askText",
     ).toEqual([]);
   }, SCAN_TIMEOUT_MS); // 全仓生产 TS 逐份建 AST：整套并跑时 5 s 默认期限不够（现打 7.8 s）
 });
 
 // ─────────────────────────────── D1b ───────────────────────────────
 
-const ASKS = new Set(["askConfirm", "askText"]);
+const ASKS = new Set(["confirmDialog", "askText", "confirmInterrupts"]);
 
-/** 一份源码里调用 `askConfirm` / `askText` 的地方：`[全部调用, 其中没被 await 的]`。 */
+/** 一份源码里调用对话框的地方：`[全部调用, 其中没被 await 的]`。 */
 function askCalls(file: string, text: string): { all: Hit[]; unawaited: Hit[] } {
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const all: Hit[] = [];
@@ -136,6 +136,7 @@ function askCalls(file: string, text: string): { all: Hit[]; unawaited: Hit[] } 
 
 /** 本路改过、今天调用对话框的文件（期望手写，不从扫描结果派生）。 */
 const ASK_CALLERS = [
+  "src/frontend/ui/account-restart.ts", // 重启切换：「会打断什么」那一问
   "src/frontend/ui/keybindings/editor.ts",
   "src/frontend/ui/settings/accounts-mcp-block.ts",
   "src/frontend/ui/settings/accounts-section.ts",
@@ -149,20 +150,20 @@ const ASK_CALLERS = [
 
 describe("D1b · 对话框的答案一律 await", () => {
   it("🔴 正控：没 await 的调用认得出，await 的（含括号、`!await`）不认", () => {
-    const bad = [`if (!askConfirm("a")) return;`, `const ok = askText("b");`, `void askConfirm("c");`];
+    const bad = [`if (!confirmDialog(s)) return;`, `const ok = askText(t);`, `void confirmDialog(s);`];
     for (const src of bad) expect(askCalls("p.ts", src).unawaited.length, src).toBe(1);
     const good = [
-      `if (!(await askConfirm("a"))) return;`,
-      `const n = await askText("b", { initial: "x" });`,
-      `if (!await askConfirm("c")) return;`,
-      `const f = opts.confirm ?? askConfirm;`,
+      `if (!(await confirmDialog(s))) return;`,
+      `const n = await askText(t);`,
+      `if (!await confirmDialog(s)) return;`,
+      `const f = opts.confirm ?? confirmDialog;`,
     ];
     for (const src of good) expect(askCalls("p.ts", src).unawaited, src).toEqual([]);
-    expect(askCalls("p.ts", `const f = opts.confirm ?? askConfirm;`).all, "取值不是调用").toEqual([]);
+    expect(askCalls("p.ts", `const f = opts.confirm ?? confirmDialog;`).all, "取值不是调用").toEqual([]);
   });
 
   it("★ 生产 TS 里没 await 的对话框调用 == ∅；调用它的文件 == 手写清单（两向）", () => {
-    const files = productionTsFiles("src").filter((f) => f.file !== "src/frontend/ui/ask-dialog.ts");
+    const files = productionTsFiles("src").filter((f) => !f.file.startsWith("src/frontend/ui/kit/"));
     const per = files.map((f) => ({ file: f.file, ...askCalls(f.file, f.text) }));
     expect(per.flatMap((p) => p.unawaited).map((h) => `${h.file}:${h.line}  ${h.text}`)).toEqual([]);
     expect(
@@ -174,71 +175,89 @@ describe("D1b · 对话框的答案一律 await", () => {
 
 // ─────────────────────────────── D2 ───────────────────────────────
 
-const dialog = (): HTMLElement | null => document.querySelector<HTMLElement>('[role="dialog"]');
+const dialog = (): HTMLElement | null => document.querySelector<HTMLElement>('[aria-modal="true"]');
 const buttons = (): HTMLButtonElement[] => [...(dialog()?.querySelectorAll("button") ?? [])];
 const okBtn = (): HTMLButtonElement => buttons()[1];
 const cancelBtn = (): HTMLButtonElement => buttons()[0];
 const escape = (): void => {
   window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
 };
+const backdropDown = (): void => {
+  dialog()!.parentElement!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+};
+const ask = (over: Partial<ConfirmSpec> = {}): Promise<boolean> => confirmDialog({ title: "结束会话 orders", action: "结束", ...over });
 
-describe("D2 · askConfirm / askText 的结算语义", () => {
+describe("D2 · confirmDialog / askText 的结算语义（C10）", () => {
   beforeAll(() => {
-    // 与主窗 / 设置窗启动时同一条路（INVARIANTS「复用 dispatcher 的独立窗口必须自调 start ＋ applyOverrides」）：
-    // Esc 经 overlay 栈到栈顶。
+    // 与主窗 / 设置窗启动时同一条路：Esc 经弹层栈到栈顶。
     dispatcher.applyOverrides({});
     dispatcher.start();
   });
   afterEach(() => {
-    // 每条结束时不许留下没结算的对话框（留下 = 永挂的 Promise）
     expect(dialog(), "有一个对话框没结算就被留在了页面上").toBeNull();
   });
 
-  it("确定 ⇒ true；遮罩挂在 document.body 下（INVARIANTS §13）；正文是纯文本、换行原样", async () => {
-    const p = askConfirm("删掉 <b>x</b>？\n\n不可恢复。");
+  it("标题 ＋ 正文 ＋ 取消在左 · 动作在右；确认 ⇒ true；遮罩挂 body；正文是纯文本", async () => {
+    const p = ask({ body: "删掉 <b>x</b>\n\n撤不回" });
     const d = dialog()!;
     expect(d.parentElement?.parentElement, "遮罩没挂在 body 上").toBe(document.body);
+    expect(d.querySelector("h2")?.textContent).toBe("结束会话 orders");
     expect(d.querySelector("b"), "正文被当成 HTML 解释了").toBeNull();
-    expect(d.textContent).toContain("删掉 <b>x</b>？\n\n不可恢复。");
-    expect(document.activeElement, "确认框打开时焦点不在「确定」上").toBe(okBtn());
+    expect(d.textContent).toContain("删掉 <b>x</b>\n\n撤不回");
+    expect(buttons().map((b) => b.textContent)).toEqual(["取消", "结束"]);
+    expect(document.activeElement, "一般确认打开时焦点在动作键上").toBe(okBtn());
     okBtn().click();
     await expect(p).resolves.toBe(true);
   });
 
-  it("撤不回的确认（danger）：默认焦点在「取消」，不在确认键上", async () => {
-    const p = askConfirm("杀死这 30 个会话？\n" + "· x\n".repeat(30), { danger: true });
-    expect(document.activeElement, "危险确认打开时焦点该在「取消」").toBe(cancelBtn());
+  it("危险确认：确认键红（data-kind=danger）、默认焦点在「取消」", async () => {
+    const p = ask({ danger: true });
+    expect(okBtn().dataset.kind).toBe("danger");
+    expect(document.activeElement).toBe(cancelBtn());
     cancelBtn().click();
     await expect(p).resolves.toBe(false);
   });
 
-  it("取消按钮 · 点遮罩 · Esc ⇒ false", async () => {
-    const a = askConfirm("a");
+  it("逐项 `中断` / `保留`：空的那段不画；清单超过 8 项只列前 8 ＋「另外 n 个」", async () => {
+    const p = ask({
+      rows: [
+        { label: "中断", items: ["当前轮次"] },
+        { label: "保留", items: [] },
+      ],
+      list: Array.from({ length: LIST_MAX + 3 }, (_, i) => `s${i}`),
+    });
+    const t = dialog()!.textContent ?? "";
+    expect(t).toContain("中断");
+    expect(t).not.toContain("保留");
+    expect(t).toContain(`s${LIST_MAX - 1}`);
+    expect(t).not.toContain(`s${LIST_MAX}`);
+    expect(t).toContain("另外 3 个");
+    cancelBtn().click();
+    await p;
+  });
+
+  it("取消按钮 · 点遮罩 · Esc ⇒ false；点面板本身不结算", async () => {
+    const a = ask();
     cancelBtn().click();
     await expect(a).resolves.toBe(false);
-
-    const b = askConfirm("b");
-    dialog()!.parentElement!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const b = ask();
+    backdropDown();
     await expect(b).resolves.toBe(false);
-
-    const c = askConfirm("c");
+    const c = ask();
     escape();
     await expect(c).resolves.toBe(false);
-  });
-
-  it("点面板本身（不是遮罩）不结算", async () => {
-    const p = askConfirm("p");
-    dialog()!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const d = ask();
+    dialog()!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     expect(dialog(), "点了面板就关了").not.toBeNull();
     okBtn().click();
-    await expect(p).resolves.toBe(true);
+    await expect(d).resolves.toBe(true);
   });
 
-  it("Esc 只关对话框，不连带关下面那层 overlay", async () => {
+  it("Esc 只关对话框，不连带关下面那层", async () => {
     let under = 0;
     const below = { handleEsc: () => ((under += 1), true) };
     dispatcher.pushOverlay(below);
-    const p = askConfirm("上面那层");
+    const p = ask();
     escape();
     await expect(p).resolves.toBe(false);
     expect(under, "Esc 连带关了下面那层").toBe(0);
@@ -247,25 +266,30 @@ describe("D2 · askConfirm / askText 的结算语义", () => {
     dispatcher.popOverlay(below);
   });
 
-  it("新开一个会把上一个按取消结算（不留永挂的 Promise）", async () => {
-    const first = askConfirm("第一个");
-    const second = askConfirm("第二个");
+  it("新开一个会把上一个按取消结算；只认第一次结算", async () => {
+    const first = ask({ title: "第一个" });
+    const second = ask({ title: "第二个" });
     await expect(first).resolves.toBe(false);
-    expect(document.querySelectorAll('[role="dialog"]').length).toBe(1);
+    expect(document.querySelectorAll('[aria-modal="true"]').length).toBe(1);
     expect(dialog()!.textContent).toContain("第二个");
     okBtn().click();
+    escape();
     await expect(second).resolves.toBe(true);
   });
 
-  it("只认第一次结算：确定之后再 Esc 不改答案", async () => {
-    const p = askConfirm("x");
-    okBtn().click();
-    escape();
-    await expect(p).resolves.toBe(true);
+  it("Tab 只在框内循环（末尾 → 第一个，Shift+Tab 反过来）", async () => {
+    const p = ask();
+    okBtn().focus();
+    dialog()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+    expect(document.activeElement).toBe(cancelBtn());
+    dialog()!.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true }));
+    expect(document.activeElement).toBe(okBtn());
+    cancelBtn().click();
+    await p;
   });
 
-  it("askText：初值全选；Enter / 确定 ⇒ 原值（不 trim）；取消一类 ⇒ null（与空串分开）", async () => {
-    const a = askText("名字", { initial: "旧名" });
+  it("askText：初值全选；Enter / 动作键 ⇒ 原值（不 trim）；取消 ⇒ null（与空串分开）", async () => {
+    const a = askText({ title: "新建集合", action: "新建", initial: "旧名" });
     const inp = dialog()!.querySelector("input")!;
     expect(inp.value).toBe("旧名");
     expect(document.activeElement).toBe(inp);
@@ -274,32 +298,44 @@ describe("D2 · askConfirm / askText 的结算语义", () => {
     inp.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await expect(a).resolves.toBe("  新名 ");
 
-    const b = askText("名字");
-    dialog()!.querySelector("input")!.value = "";
+    const b = askText({ title: "t", action: "a" });
     okBtn().click();
     await expect(b).resolves.toBe("");
 
-    const c = askText("名字", { initial: "x" });
+    const c = askText({ title: "t", action: "a", initial: "x" });
     escape();
     await expect(c).resolves.toBeNull();
   });
 
-  it("确定按钮的字可以换；默认两颗按钮的字取自文案表", async () => {
-    const p = askConfirm("x", { okLabel: "删除" });
-    expect(buttons().map((b) => b.textContent)).toEqual(["取消", "删除"]);
-    cancelBtn().click();
-    await p;
-    const q = askConfirm("y");
-    expect(buttons().map((b) => b.textContent)).toEqual(["取消", "确定"]);
+  it("askText：填了东西点遮罩不关（防丢输入）；没改动点遮罩 ＝ 取消", async () => {
+    const a = askText({ title: "t", action: "a", initial: "x" });
+    dialog()!.querySelector("input")!.value = "改过";
+    backdropDown();
+    expect(dialog(), "填了东西被遮罩关掉了").not.toBeNull();
     okBtn().click();
-    await q;
+    await expect(a).resolves.toBe("改过");
+    const b = askText({ title: "t", action: "a", initial: "x" });
+    backdropDown();
+    await expect(b).resolves.toBeNull();
+  });
+
+  it("askText 校验不过：错误写在框里、不关；改了再交就过", async () => {
+    const p = askText({ title: "t", action: "a", validate: (v) => (v.trim() === "" ? "名字为空" : null) });
+    okBtn().click();
+    const d = dialog()!;
+    expect(d, "校验不过就关了").not.toBeNull();
+    expect(d.textContent).toContain("名字为空");
+    expect(d.querySelector("input")!.getAttribute("aria-invalid")).toBe("true");
+    d.querySelector("input")!.value = "ok";
+    okBtn().click();
+    await expect(p).resolves.toBe("ok");
   });
 
   it("结算后焦点回到打开之前的那个元素", async () => {
     const before = document.createElement("button");
     document.body.appendChild(before);
     before.focus();
-    const p = askConfirm("x");
+    const p = ask();
     expect(document.activeElement).not.toBe(before);
     cancelBtn().click();
     await p;

@@ -45,6 +45,19 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
             // 应答**是成品** `{tasks: [...]}`（此前是原样对象的 `lines`，字段由 monitor 解）。
             capped(json!({ "tasks": crate::observe::tasks_query::session_tasks(home, sid)? }))
         }
+        // 动一个会话之前会打断什么（按族的成品）。
+        "session-interrupts" => {
+            crate::observe::interrupts_query::answer_at(home, args).map_err(|(c, m)| {
+                (
+                    if c == "invalid_args" {
+                        "invalid_args"
+                    } else {
+                        "failed"
+                    },
+                    m,
+                )
+            })
+        }
         // 此刻是哪个终端在显示这个会话（↗ 点那一刻问一次）：那台读那个进程 / 连着它的 tmux 客户端的环境。
         "session-terminals" => crate::observe::session_terminals::answer_at(home, args),
         // cc-bus 钩子诊断出成品：这台自己的 `settings.json` ＋ stat（本机远端同一条，monitor 那两条 Tauri 命令删了）。

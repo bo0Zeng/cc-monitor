@@ -598,6 +598,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     parse_css_color: NONE,
     parse_font_families: NONE,
     parse_px: NONE,
+    parse_shadow: NONE,
   },
   // 前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写（含交给 Win32 的长路径形）· 窗口夹进工作区；TS 侧零孪生。
   "host-core": {

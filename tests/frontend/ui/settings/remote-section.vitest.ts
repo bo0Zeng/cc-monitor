@@ -1340,7 +1340,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const pageA = pageOf(p, "machine:a");
     [...pageA.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("machineCard.deploy.uninstall"))!.click();
     await tick();
-    [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("askDialog.buttons.ok"))!.click();
+    [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("machineCard.uninstall.action"))!.click();
     for (let i = 0; i < 4; i++) await tick();
     expect(readStatus("a").backend?.detail).not.toBe(copyText("machineCard.status.uninstalled"));
     ipcReplies.clear();

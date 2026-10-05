@@ -324,6 +324,19 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 动一个会话之前会打断什么（`observe/interrupts_query.rs`）：按族答，界面只画。只读。
+    CommandSpec {
+        name: "session-interrupts",
+        doc_anchor: Some("#### `session-interrupts`"),
+        codes: &["invalid_args", "failed"],
+        fields: &["families", "family", "names", "sid"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::feature_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     // 换号重启（`control/session_restart.rs`）：查号 → 找终端 → 先压缩（可选，等摘要）→ 停旧 → 同一终端名用新号起 → 等报出，全在这台做完。
     //   可撤档：步与步之间撤单生效；停旧 ＋ 起新不可分（拿退出排空的票），开跑之后撤也做完。失败可带按码定形的 `data`。
     CommandSpec {

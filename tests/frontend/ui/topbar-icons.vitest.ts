@@ -10,7 +10,7 @@
  *
  * 成因是**两类字符混在一起**（都变豆腐块，但原因不同）：
  * `⚙ ◷ ▦ ∑ ⌨` 是数学/几何符号，靠**正文字体**覆盖；`🗺 🗂` 才是真 emoji，要 **emoji 字体**。
- * ⇒ 换成「另一个符号」只是换一个赌注，所以改成 CSS mask + data-URI SVG（零字体依赖）。
+ * ⇒ 换成「另一个符号」只是换一个赌注，所以改成 SVG（零字体依赖；今天是 `kit/icon.ts` 的 Phosphor 线形）。
  *
  * # 人群怎么取（这条是本文件最要紧的设计）
  *
@@ -87,29 +87,18 @@ describe("F09 顶栏图标不依赖字体", () => {
         "\n\n那些字符在缺字体的系统上会变成豆腐块 —— 用户 2026-08-10 实测报告：\n" +
         "「右上角那些不显示 emoji，反而显示一些奇怪的东西，根本不知道是什么」。\n" +
         "⚠ 换成另一个符号只是换一个赌注（`⚙◷▦∑` 靠正文字体、`🗺🗂` 靠 emoji 字体，两类都会缺）。\n" +
-        "⇒ 正确做法：在 `styles.css` 里给这个 class 加一条 `::before` + `mask-image`，\n" +
-        "   TS 侧什么都不设。图标定义见那里的 `--icon-*` 变量。",
+        "⇒ 正确做法：挂 `kit/icon.ts` 的 `icon(…)`（Phosphor 线形 SVG）。",
     ).toEqual([]);
   });
 
-  it("每个 -trigger 按钮都要有对应的 CSS 图标定义（正向，不只是禁字符）", () => {
+  it("每个 -trigger 按钮都挂了一个图标件（正向，不只是禁字符）", () => {
     const main = read("src/frontend/ui/main.ts");
-    const css = read("src/frontend/ui/styles.css");
     const classes = triggerClasses(main);
-
-    // 抽取器自检：CSS 里必须真有图标定义块，否则下面逐条断言全靠运气。
-    expect(
-      css.includes("--icon-"),
-      "`styles.css` 里找不到 `--icon-*` 图标变量 —— 抽取器坏了或图标定义被删了",
-    ).toBe(true);
-
-    const missing = classes.filter((c) => !css.includes(`.${c}::before`));
-    expect(
-      missing,
-      "这些顶栏按钮没有 CSS 图标定义：\n  " +
-        missing.join("\n  ") +
-        "\n\n⚠ 只禁掉字符是不够的 —— 那样按钮会变成一个**空方块**，比豆腐块更糟。\n" +
-        "在 `styles.css` 加 `.<class>::before { mask-image: var(--icon-x); }` 并定义那个变量。",
-    ).toEqual([]);
+    const missing = classes.filter((c) => {
+      const v = new RegExp(`(\\w+)\\.className = "${c}"`).exec(main)?.[1];
+      return v === undefined || !main.includes(`${v}.appendChild(icon(`);
+    });
+    expect(missing, "这些顶栏按钮没挂图标（`kit/icon.ts` 的 `icon(…)`）").toEqual([]);
   });
+
 });

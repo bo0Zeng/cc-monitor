@@ -1,0 +1,52 @@
+/* 抽屉（C11）。 */
+@layer components {
+  .drawerDim {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-overlay);
+    background: var(--overlay-dim);
+  }
+
+  .drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: var(--z-overlay);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    padding: var(--space-6);
+    border-left: 1px solid var(--border-medium);
+    border-radius: var(--radius-xl) 0 0 var(--radius-xl);
+    background: var(--card);
+    box-shadow: var(--shadow-modal);
+    animation: slide-in var(--dur-expand) ease-out;
+  }
+
+  @keyframes slide-in {
+    from {
+      transform: translateX(16px);
+      opacity: 0;
+    }
+  }
+
+  .drawerHead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  .drawerTitle {
+    flex: 1;
+    margin: 0;
+    font-size: var(--font-size-title);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .drawerBody {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+}

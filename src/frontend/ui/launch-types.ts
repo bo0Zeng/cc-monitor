@@ -2,7 +2,7 @@
  * 「起一个会话」的意图（纯类型叶子模块，零 import）。
  *
  * 一个动作 ＋ 一个容器 ＋ 若干正交修饰（账号 · 模型 · 身份标记 · 启动期令牌）。它被摊成线上请求交给那台后端，
- * 渲出来的永远是一行 `ccm …`（`remote-launch-run.ts::buildCliRenderRequest` → 帧命令 `launch-render-cli`）；
+ * 渲出来的永远是一行 `ccm …`（`launch-cli-wire.ts::buildCliRenderRequest` → 帧命令 `launch-render-cli`）；
  * 环境、中转地址、身份标记由那台机器上的 `ccm` 自己做，界面一句 shell 都不拼。
  */
 

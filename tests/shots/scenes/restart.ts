@@ -44,18 +44,18 @@ const reply = (over: Record<string, unknown>) => () => ({
 async function openConfirm(): Promise<void> {
   await mainReady(ALL_TABS);
   await rightClick(document.querySelectorAll<HTMLElement>("#tab-bar .tab")[DEVBOX_TAB]);
-  await click(await byText(".tab-context-menu-item", "换号重启"));
-  await click(await byText(".tab-context-menu-item", "work"));
-  await click(await byText(".tab-context-menu-item", "先压缩上下文再重启"));
-  await waitFor("[role='dialog']");
+  await click(await byText("[role^=menuitem]", "换号重启"));
+  await click(await byText("[role^=menuitem]", "work"));
+  await click(await byText("[role^=menuitem]", "先压缩上下文再重启"));
+  await waitFor("[aria-modal='true']");
   await sleep(400);
 }
 
 async function confirmAndWait(): Promise<void> {
   await openConfirm();
-  const btns = document.querySelectorAll<HTMLButtonElement>("[role='dialog'] button");
+  const btns = document.querySelectorAll<HTMLButtonElement>("[aria-modal='true'] button");
   await click(btns[btns.length - 1]);
-  await waitFor(".ccm-toast");
+  await waitFor("#kit-toast-stack > *");
   await sleep(900);
 }
 

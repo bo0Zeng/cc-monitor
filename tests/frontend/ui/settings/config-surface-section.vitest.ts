@@ -32,8 +32,8 @@ vi.mock("../../../../src/frontend/ui/remote-config", () => ({
   resolveRemoteConfigByOrigin: (o: string) => Promise.resolve(o === "devbox" ? AYA_CFG : null),
 }));
 const toastMock = vi.fn();
-vi.mock("../../../../src/frontend/ui/error-toast", () => ({
-  showActionFailureToast: (...a: unknown[]) => toastMock(...a),
+vi.mock("../../../../src/frontend/ui/kit/toast", () => ({
+  toast: (...a: unknown[]) => toastMock(...a),
 }));
 
 import {

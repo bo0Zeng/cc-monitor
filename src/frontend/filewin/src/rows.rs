@@ -31,8 +31,8 @@ use egui::{ScrollArea, Ui};
 
 use super::kind;
 use super::source::{mtime_text, Listed, Sort, SortBy};
+use super::theme::metrics;
 use super::theme::palette;
-pub use super::theme::ROW_HEIGHT;
 
 /// 这一趟画了什么 —— 判据靠它说话，生产也靠它做诊断。
 ///
@@ -280,7 +280,7 @@ pub fn show_header(ui: &mut Ui, cols: &mut Columns, sort: Sort) -> Option<SortBy
 /// 画一屏文件行（详情视图）。**虚拟滚动**：只物化看得见的那几行。
 ///
 /// 🔴 这是**唯一**一条画文件列表的路。行与行之间不留缝（`item_spacing.y = 0`），
-/// 一行恰好 [`ROW_HEIGHT`] ⇒ 「滚到第 i 行」的偏移是 `i × ROW_HEIGHT`（[`row_pitch`]），算出来的，不是找出来的。
+/// 一行恰好一个行高（`theme::Metrics::row_h`）⇒ 「滚到第 i 行」的偏移是 `i × 行高`（[`row_pitch`]），算出来的，不是找出来的。
 pub fn show_file_rows(
     ui: &mut Ui,
     rows: &[Listed],
@@ -297,7 +297,8 @@ pub fn show_file_rows(
         if let Some(y) = scroll_offset_y {
             area = area.vertical_scroll_offset(y);
         }
-        area.show_rows(ui, ROW_HEIGHT, rows.len(), |ui, range| {
+        let row_h = metrics(ui.ctx()).row_h;
+        area.show_rows(ui, row_h, rows.len(), |ui, range| {
             tally.first_row = range.start;
             tally.last_row = range.end;
             for i in range {
@@ -348,19 +349,20 @@ pub fn show_file_rows(
 ///
 /// # 它与 [`show_file_rows`] 共享的那一条性质
 ///
-/// 同一个 `show_rows`（**虚拟滚动**）、同一个 [`ROW_HEIGHT`]。
+/// 同一个 `show_rows`（**虚拟滚动**）、同一个行高。
 /// `limit` 默认 1000（`src/doc/IPC-PROTOCOL.md §10`）给了条数一个上界，
 /// 但**那个上界不是这一侧给的** ⇒ 不许靠它偷懒用 `show`。
 /// 由 `tests::the_hit_list_materializes_the_same_few_rows_no_matter_how_many_hits`
 /// 钉成一条**相等**断言（同本模块那条虚拟滚动判据的形状）。
 pub fn show_hit_rows(ui: &mut Ui, hits: &[String], tally: &mut HitTally) {
     tally.total_rows = hits.len();
+    let row_h = metrics(ui.ctx()).row_h;
     ScrollArea::vertical()
         .auto_shrink([false; 2])
         // 同一帧里可能还有那条目录列表的 `ScrollArea`（切换时两者不同时在），
         // 给它一撮自己的盐，免得两块区域抢同一个 id。
         .id_salt("filewin-hits")
-        .show_rows(ui, ROW_HEIGHT, hits.len(), |ui, range| {
+        .show_rows(ui, row_h, hits.len(), |ui, range| {
             tally.first_row = range.start;
             tally.last_row = range.end;
             for i in range {
@@ -405,8 +407,9 @@ fn paint_one_row(
     cols: &Columns,
 ) -> RowHit {
     let p = palette(ui.ctx());
+    let m = metrics(ui.ctx());
     let (rect, _) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), ROW_HEIGHT),
+        egui::vec2(ui.available_width(), m.row_h),
         egui::Sense::hover(),
     );
     // 点 · 拖，但不进 Tab 顺序（同表头那一条理由）。
@@ -417,14 +420,14 @@ fn paint_one_row(
     );
     let band = rect.shrink2(egui::vec2(2.0, 1.0));
     if revealed || mark.picked {
-        ui.painter().rect_filled(band, 4.0, p.picked);
+        ui.painter().rect_filled(band, m.radius_m, p.picked);
     } else if row.hovered() {
-        ui.painter().rect_filled(band, 4.0, p.hover);
+        ui.painter().rect_filled(band, m.radius_m, p.hover);
     }
     if mark.cursor {
         ui.painter().rect_stroke(
             band,
-            4.0,
+            m.radius_m,
             egui::Stroke::new(1.0, p.accent),
             egui::StrokeKind::Inside,
         );
@@ -446,7 +449,7 @@ fn paint_one_row(
     let painter = ui.painter().clone();
     let icon = painter.layout_no_wrap(
         kind::icon(k).to_string(),
-        egui::FontId::proportional(ROW_HEIGHT * 0.6),
+        egui::FontId::proportional(m.icon),
         icon_color,
     );
     let ix = name_c.left() + PAD;
@@ -455,7 +458,7 @@ fn paint_one_row(
         icon,
         icon_color,
     );
-    let nx = ix + ROW_HEIGHT * 0.6 + 8.0;
+    let nx = ix + m.icon + m.space[3];
     // 名字读不出来（不是 UTF-8）⇒ 名字后面跟一个提醒记号（单独一段，警示色）。
     let warn = r.lossy_name.then(|| {
         painter.layout_no_wrap(
@@ -561,9 +564,9 @@ pub fn reveal_index(rows: &[Listed], name: &str) -> Option<usize> {
     rows.iter().position(|r| r.name == name)
 }
 
-/// 一行占多高（行间不留缝 ⇒ 就是 [`ROW_HEIGHT`]）。「滚到第 i 行」用它算偏移。
-pub fn row_pitch(_ui: &Ui) -> f32 {
-    ROW_HEIGHT
+/// 一行占多高（行间不留缝 ⇒ 就是行高令牌）。「滚到第 i 行」用它算偏移。
+pub fn row_pitch(ui: &Ui) -> f32 {
+    metrics(ui.ctx()).row_h
 }
 
 /// 人读的大小。**不是** `format!("{size}")` —— 列表里一列宽度有限。

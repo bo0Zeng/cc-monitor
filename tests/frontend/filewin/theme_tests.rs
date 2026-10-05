@@ -107,3 +107,62 @@ fn the_window_paints_no_colour_of_its_own() {
     let own = std::fs::read_to_string(format!("{dir}/theme.rs")).unwrap();
     assert!(guard_core::production_code(&own).contains("Color32::from_rgba_unmultiplied("));
 }
+
+/// 尺寸也只从主题来：改主界面的控件高 · 行高 · 圆角 · 间距 · 标题字号 · 投影 ⇒ egui 的样子与 [`Metrics`] 跟着变（不许自己写数）。
+#[test]
+fn the_sizes_come_from_the_tokens_too() {
+    let mut toks = default_tokens();
+    for (k, v) in [
+        ("--control-h", "31px"),
+        ("--row-h", "33px"),
+        ("--radius-m", "5px"),
+        ("--radius-l", "9px"),
+        ("--radius-xl", "13px"),
+        ("--space-4", "9px"),
+        ("--space-7", "25px"),
+        ("--font-size-title", "19px"),
+        ("--selected-bg", "#11223344"),
+        ("--shadow-float", "0 3px 9px #00000040"),
+        ("--shadow-modal", "1px 14px 44px #00000050"),
+    ] {
+        toks.insert(k.into(), v.into());
+    }
+    let t = Theme::from_tokens(&toks).unwrap();
+    let ctx = egui::Context::default();
+    install(&ctx, &t);
+    let s = ctx.global_style();
+    assert_eq!(s.spacing.interact_size.y, 31.0);
+    assert_eq!(s.spacing.item_spacing.x, 9.0);
+    assert_eq!(s.spacing.window_margin, egui::Margin::same(25));
+    assert_eq!(
+        s.visuals.widgets.inactive.corner_radius,
+        egui::CornerRadius::same(5)
+    );
+    assert_eq!(s.visuals.menu_corner_radius, egui::CornerRadius::same(9));
+    assert_eq!(s.visuals.window_corner_radius, egui::CornerRadius::same(13));
+    assert_eq!(s.text_styles[&egui::TextStyle::Heading].size, 19.0);
+    assert_eq!(s.visuals.popup_shadow.offset, [0, 3]);
+    assert_eq!(s.visuals.popup_shadow.blur, 9);
+    assert_eq!(s.visuals.window_shadow.offset, [1, 14]);
+    assert_eq!(
+        palette(&ctx).picked,
+        egui::Color32::from_rgba_unmultiplied(0x11, 0x22, 0x33, 0x44)
+    );
+    let m = metrics(&ctx);
+    assert_eq!(
+        (m.row_h, m.control_h, m.bar_h),
+        (33.0, 31.0, 31.0 + 2.0 * t.space[2])
+    );
+}
+
+/// 投影只认 `x y blur color` 那一形，别的写法不猜。
+#[test]
+fn shadows_parse_only_the_one_shape() {
+    let s = filewin_contract::parse_shadow("0 6px 24px #00000073").unwrap();
+    assert_eq!(
+        (s.x, s.y, s.blur, s.color),
+        (0.0, 6.0, 24.0, [0, 0, 0, 0x73])
+    );
+    assert!(filewin_contract::parse_shadow("0 6px 24px 2px #000").is_none());
+    assert!(filewin_contract::parse_shadow("inset 0 1px #000").is_none());
+}

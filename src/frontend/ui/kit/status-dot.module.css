@@ -1,0 +1,57 @@
+/* 状态点（V10）。固定宽，状态变了不挤动旁边的字。 */
+@layer components {
+  .dot {
+    display: inline-block;
+    flex: none;
+    width: var(--dot-size);
+    height: var(--dot-size);
+    border-radius: 50%;
+  }
+
+  .dot[data-size="compact"] {
+    width: var(--dot-size-compact);
+    height: var(--dot-size-compact);
+  }
+
+  .dot[data-state="running"] {
+    background: var(--success);
+    animation: breathe var(--dur-breathe) ease-in-out infinite;
+  }
+
+  @keyframes breathe {
+    50% {
+      opacity: 0.6;
+    }
+  }
+
+  .dot[data-state="needs-you"] {
+    background: var(--warn);
+  }
+
+  .dot[data-state="idle"] {
+    background: var(--text-2);
+  }
+
+  .dot[data-state="exited"] {
+    border: 1.5px solid var(--text-2);
+  }
+
+  .dot[data-state="ended"] {
+    border: 1.5px solid var(--text-faint);
+  }
+
+  .dot[data-state="unknown"] {
+    border: 1.5px dashed var(--text-2);
+  }
+
+  .dot[data-state="gone"] {
+    height: 1.5px;
+    margin-block: auto;
+    border-radius: var(--radius-s);
+    background: var(--text-faint);
+  }
+
+  .dot[data-state="failed"] {
+    background: var(--error);
+  }
+}

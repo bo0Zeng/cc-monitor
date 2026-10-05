@@ -51,7 +51,7 @@
   border: none;
   color: var(--text-2);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   font: inherit;
   z-index: var(--z-chrome);
 }
@@ -60,36 +60,6 @@
   background: var(--overlay-hover);
   color: var(--text);
 }
-
-/* stylelint-disable property-no-vendor-prefix -- 理由同 `src/frontend/ui/styles.css` 顶栏图标那一段：
-   WebKitGTK 要 `-webkit-mask-*`，删前缀图标在 Linux 上不显示。〔三入口拆分〕那一段的公共块
-   留在 `styles.css`（viewer 的 `.status-cmdk-icon` 也用它），逐个图标的这几块只有主窗要，
-   所以豁免在这里**自成一对**，不跨文件。 */
-/* 设置：滑块（三条带钮的横线）—— 比齿轮好画且在小尺寸下更清楚 */
-.settings-trigger::before {
-  -webkit-mask-image: var(--icon-settings);
-  mask-image: var(--icon-settings);
-}
-
-/* 历史：时钟 */
-.history-trigger::before {
-  -webkit-mask-image: var(--icon-history);
-  mask-image: var(--icon-history);
-}
-
-/* 多 agent 监控：2×2 网格 */
-.grid-monitor-trigger::before {
-  -webkit-mask-image: var(--icon-grid);
-  mask-image: var(--icon-grid);
-}
-
-/* SFTP 文件面板：文件夹 */
-.sftp-trigger::before {
-  -webkit-mask-image: var(--icon-folder);
-  mask-image: var(--icon-folder);
-}
-
-/* stylelint-enable property-no-vendor-prefix */
 
 /* 历史浏览器入口 —— 紧邻设置按钮左边 */
 .history-trigger {
@@ -105,9 +75,9 @@
   border: none;
   color: var(--text-2);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   font: inherit;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   z-index: var(--z-chrome);
 }
 
@@ -130,9 +100,9 @@
   border: none;
   color: var(--text-2);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   font: inherit;
-  font-size: 15px;
+  font-size: var(--font-size-prose);
   z-index: var(--z-chrome);
 }
 
@@ -155,46 +125,15 @@
   border: none;
   color: var(--text-2);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   font: inherit;
-  font-size: 15px;
+  font-size: var(--font-size-prose);
   z-index: var(--z-chrome);
 }
 
 .grid-monitor-trigger:hover {
   background: var(--overlay-hover);
   color: var(--text);
-}
-
-/* F83：多台远端时的选主机浮层（body-level fixed，照 history 菜单）。 */
-.sftp-host-picker {
-  position: fixed;
-  z-index: var(--z-menu);
-  min-width: 160px;
-  background: var(--bg-2);
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  box-shadow: 0 4px 16px var(--overlay-shadow);
-  padding: 4px;
-  display: flex;
-  flex-direction: column;
-}
-
-.sftp-host-picker-item {
-  text-align: left;
-  background: transparent;
-  border: none;
-  color: var(--text);
-  cursor: pointer;
-  padding: 6px 10px;
-  border-radius: 4px;
-  font: inherit;
-  font-size: var(--font-size-small);
-  white-space: nowrap;
-}
-
-.sftp-host-picker-item:hover {
-  background: var(--overlay-hover);
 }
 
 /* F91（#27）：多 agent 监控 —— 全屏 overlay。
@@ -227,7 +166,7 @@
   font: inherit;
   font-size: var(--font-size-small);
   padding: 4px 10px;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
 }
 
 .grid-monitor-back:hover {
@@ -284,7 +223,7 @@
   text-align: left;
   background: var(--overlay-hover);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-m);
   padding: 8px 10px;
   cursor: pointer;
   font: inherit;
@@ -340,7 +279,7 @@
 .grid-monitor-badge {
   font-size: var(--font-size-xs);
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-s);
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text-2);
@@ -367,8 +306,8 @@
 /* F91b（batch17）：选中 cell 高亮（去模态——点 cell 不再关板，改高亮 + 底部 peek）。
    F91b-fix(batch18)：增强辨识度——一屏几十个 cell 里 1px 边框太弱，加背景微调 + 2px 环。 */
 .grid-monitor-cell.is-selected {
-  border-color: var(--accent, #7aa2f7);
-  box-shadow: 0 0 0 2px var(--accent, #7aa2f7) inset;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent) inset;
   background: var(--state-active);
 }
 
@@ -408,7 +347,7 @@
   font-size: var(--font-size-xs);
   color: var(--text-2);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--radius-s);
   padding: 0 5px;
   flex-shrink: 0;
 }
@@ -420,13 +359,13 @@
 .grid-monitor-peek-jump {
   flex-shrink: 0;
   background: transparent;
-  border: 1px solid var(--accent, #7aa2f7);
-  color: var(--accent, #7aa2f7);
+  border: 1px solid var(--accent);
+  color: var(--accent);
   cursor: pointer;
   font: inherit;
   font-size: var(--font-size-small);
   padding: 3px 10px;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
 }
 
 .grid-monitor-peek-jump:hover {
@@ -442,7 +381,7 @@
   font: inherit;
   font-size: var(--font-size-small);
   padding: 3px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
 }
 
 .grid-monitor-peek-close:hover {
@@ -485,14 +424,14 @@
 
 .grid-monitor-peek-agent {
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-s);
   border: 1px solid var(--border);
   color: var(--text-2);
 }
 
 .grid-monitor-peek-agent.status-running {
-  color: var(--accent, #7aa2f7);
-  border-color: var(--accent, #7aa2f7);
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .grid-monitor-peek-agent.status-failed,
@@ -516,7 +455,7 @@
 }
 
 .grid-monitor-peek-file {
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   color: var(--text-2);
   overflow: hidden;
@@ -543,10 +482,10 @@
   max-height: 60vh;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  background: var(--card);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-modal);
   overflow: hidden;
 }
 
@@ -587,7 +526,7 @@
 .command-bar-item-hint {
   flex-shrink: 0;
   color: var(--text-faint);
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
   font-size: var(--font-size-xs);
 }
 
@@ -619,13 +558,13 @@
   0%,
   100% {
     opacity: 0.75;
-    border-color: var(--border, #3a342e);
+    border-color: var(--border);
   }
   50% {
     opacity: 1;
-    color: var(--text, #d6cfc6);
-    border-color: var(--accent, #7aa2f7);
-    box-shadow: 0 0 6px 1px var(--accent, #7aa2f7);
+    color: var(--text);
+    border-color: var(--accent);
+    box-shadow: 0 0 6px 1px var(--accent);
   }
 }
 
@@ -651,7 +590,7 @@
 
 .cc-bus-view-bar {
   align-items: center;
-  border-bottom: 1px solid var(--border, var(--bg-2));
+  border-bottom: 1px solid var(--border);
   display: flex;
   gap: 10px;
   padding: 8px 12px;
@@ -714,7 +653,7 @@
   border: 1px solid var(--border-strong);
   color: var(--text);
   padding: 4px 10px;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   font: inherit;
   font-size: var(--font-size-mono);
   min-width: 200px;
@@ -729,7 +668,7 @@
   border: 1px solid var(--border-strong);
   color: var(--text);
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   font: inherit;
   font-size: var(--font-size-small);
   cursor: pointer;
@@ -750,7 +689,7 @@
   border: 1px solid var(--border-strong);
   color: var(--text-2);
   padding: 4px 10px;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   cursor: pointer;
   font: inherit;
   font-size: var(--font-size-small);
@@ -827,7 +766,7 @@
 
 .history-origin-chip {
   padding: 2px 10px;
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text-2);
@@ -903,7 +842,7 @@
 .history-origin-badge {
   flex-shrink: 0;
   padding: 1px 7px;
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   background: var(--overlay-dim);
   border: 1px solid var(--border);
   font-family: var(--font-mono);
@@ -974,7 +913,7 @@
   border: none;
   color: var(--text-faint);
   cursor: pointer;
-  font-size: 9px;
+  font-size: var(--font-size-xs);
   padding: 0;
   margin-top: 4px;
   user-select: none;
@@ -992,7 +931,7 @@
 .history-fork-orphan {
   flex-shrink: 0;
   margin-top: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   color: var(--text-faint);
   font-style: italic;
   cursor: help;
@@ -1012,7 +951,7 @@
 .history-mode-toggle {
   display: inline-flex;
   border: 1px solid var(--border-strong);
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -1064,7 +1003,7 @@
 }
 
 .search-session-host {
-  color: var(--accent, #6aa8ff);
+  color: var(--accent);
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   font-weight: 600;
@@ -1102,10 +1041,10 @@
   border: 1px solid transparent;
   color: var(--text-2);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   width: 24px;
   height: 24px;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   padding: 0;
   flex-shrink: 0;
   display: inline-flex;
@@ -1136,7 +1075,7 @@
   font-size: var(--font-size-xs);
   font-family: var(--font-mono);
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-s);
   color: var(--text-2);
   background: var(--bg-2);
   border: 1px solid var(--border-soft);
@@ -1157,7 +1096,7 @@
 .search-hit-snippet mark {
   background: color-mix(in srgb, var(--accent) 40%, transparent);
   color: var(--text);
-  border-radius: 2px;
+  border-radius: var(--radius-s);
   padding: 0 1px;
 }
 
@@ -1200,18 +1139,18 @@
   border: none;
   color: var(--text-faint);
   cursor: pointer;
-  font-size: 18px;
+  font-size: var(--font-size-title);
   padding: 0 4px;
   line-height: 1;
   flex-shrink: 0;
 }
 
 .history-star.is-starred {
-  color: #e0a93f;
+  color: var(--warn);
 }
 
 .history-star:hover {
-  color: #e0a93f;
+  color: var(--warn);
 }
 
 .history-main {
@@ -1258,7 +1197,7 @@
 .history-chip {
   display: inline-block;
   padding: 1px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   background: var(--overlay-dim);
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
@@ -1266,7 +1205,7 @@
 }
 
 .history-chip.history-live {
-  background: rgba(111, 176, 116, 0.15);
+  background: color-mix(in srgb, var(--success) 15%, transparent);
   color: var(--live);
 }
 
@@ -1281,10 +1220,10 @@
   border: 1px solid transparent;
   color: var(--text-2);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--font-size-base);
   width: 28px;
   height: 28px;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -1302,44 +1241,4 @@
   border-color: var(--error);
 }
 
-/* F96：历史条目右键菜单（镜像 tab-context-menu 视觉语言，不复用其私有 JS）。 */
-.history-context-menu {
-  position: fixed;
-  z-index: var(--z-menu);
-  min-width: 160px;
-  background: var(--bg-2);
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  padding: 4px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-}
-
-.history-context-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  background: transparent;
-  border: none;
-  color: var(--text);
-  font: inherit;
-  font-size: var(--font-size-small);
-  padding: 6px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.history-context-item:hover {
-  background: var(--overlay-hover);
-}
-
-.history-context-item.is-danger {
-  color: var(--error);
-}
-
-/* A4：账号 resume 项与标准项之间的分隔线 */
-.history-context-sep {
-  height: 1px;
-  margin: 4px 6px;
-  background: var(--border-strong);
-}
 }

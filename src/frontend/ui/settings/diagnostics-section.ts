@@ -16,7 +16,7 @@ import { commands } from "../ipc/commands";
 import { makeInfoIcon } from "./info-icon";
 import { holdSkeletonHeight } from "./skeleton";
 import { withPending } from "./pending";
-import { showActionFailureToast } from "../error-toast";
+import { toast } from "../kit/toast";
 import { formatBytes } from "../format";
 import { markRestartNeeded } from "./restart-notice"; // S7：待生效改动的唯一去处
 import { openPath } from "@tauri-apps/plugin-opener";
@@ -354,7 +354,7 @@ export class DiagnosticsSection {
     try {
       await openPath(this.backendPath);
     } catch (e) {
-      showActionFailureToast(copyText("diagnostics.backend.openFailed"), String(e));
+      toast(copyText("diagnostics.backend.openFailed"), String(e));
     }
   }
 
@@ -380,15 +380,15 @@ export class DiagnosticsSection {
         // 两者并存是刻意的：toast 是「刚刚这一下的回执」（事件），
         // 条子是「还欠着没生效」（状态）—— S7 的判据表分的正是这两类。
         markRestartNeeded(copyText("diagnostics.save.fileSwitch"));
-        showActionFailureToast(
+        toast(
           copyText("diagnostics.save.done"),
           copyText("diagnostics.save.restartNeeded"),
-          { level: "info", durationMs: 6000 },
+          { level: "info" },
         );
       }
       await this.refresh();
     } catch (e) {
-      showActionFailureToast(copyText("diagnostics.save.failed"), String(e));
+      toast(copyText("diagnostics.save.failed"), String(e));
       // 失败 → 回退到当前实际值
       await this.refresh();
     }
@@ -398,7 +398,7 @@ export class DiagnosticsSection {
     try {
       await commands.open_log_file();
     } catch (e) {
-      showActionFailureToast(copyText("diagnostics.openFile.failed"), String(e));
+      toast(copyText("diagnostics.openFile.failed"), String(e));
     }
   }
 
@@ -406,7 +406,7 @@ export class DiagnosticsSection {
     try {
       await commands.open_log_dir();
     } catch (e) {
-      showActionFailureToast(copyText("diagnostics.openDir.failed"), String(e));
+      toast(copyText("diagnostics.openDir.failed"), String(e));
     }
   }
 }

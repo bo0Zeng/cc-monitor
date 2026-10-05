@@ -15,7 +15,7 @@ import { fetchAccounts, fetchLocalAccounts, fetchLocalApikeyRouting, fetchMachin
 import { getModelForAccount, setModelForAccount } from "../account-prefs";
 import { accountAvatarEl } from "../account-color";
 import { hostKey, readRemoteConfig, type RemoteHostConfig } from "../remote-config";
-import { showActionFailureToast } from "../error-toast";
+import { toast } from "../kit/toast";
 // 本机那一支新长的字全走文案表：一处取文，判据按表逐条量。
 import { copyText } from "../copy-table";
 // 本机那个串（后端那个本机表示），以及「本机刻意不开终端窗口」那句话的跨语言标记（唯一住址在 `remote-launch-run.ts`）。
@@ -43,7 +43,7 @@ import {
   validateAcctName,
   type AccountChange,
 } from "../account-ops";
-import { askConfirm } from "../ask-dialog";
+import { confirmDialog } from "../kit/dialog";
 import { machineName, saidOfControl } from "../control-said";
 
 /**
@@ -570,9 +570,8 @@ export class AccountsSection {
   private async openLogin(origin: Origin, cmd: string): Promise<void> {
     try {
       await openTerminal(origin, cmd);
-      showActionFailureToast(copyText("accounts.login.launched"), copyText("accounts.login.launchedNext"), {
+      toast(copyText("accounts.login.launched"), copyText("accounts.login.launchedNext"), {
         level: "info",
-        durationMs: 5000,
       });
     } catch (err) {
       let copied = true;
@@ -589,9 +588,8 @@ export class AccountsSection {
         : copied
           ? copyText("accountsLocal.new.failedCopied")
           : copyText("accountsLocal.new.failedNotCopied");
-      showActionFailureToast(headline, copyText("accountsLocal.new.pasteBody", { reason: String(err), cmd }), {
+      toast(headline, copyText("accountsLocal.new.pasteBody", { reason: String(err), cmd }), {
         level: byDesign ? "info" : "error",
-        durationMs: 10000,
       });
     }
   }
@@ -602,7 +600,7 @@ export class AccountsSection {
     try {
       cmd = await accountsLoginCmd(origin, a.name);
     } catch (e) {
-      showActionFailureToast(copyText("accounts.login.failed"), saidOfControl(e), { level: "error" });
+      toast(copyText("accounts.login.failed"), saidOfControl(e), { level: "error" });
       return;
     }
     await this.openLogin(origin, cmd);
@@ -614,12 +612,13 @@ export class AccountsSection {
     const msg = a.isDefault
       ? copyText("accounts.remove.confirmDefault", { machine, name: a.name })
       : copyText("accounts.remove.confirm", { machine, name: a.name });
-    if (!(await askConfirm(msg))) return;
+    const confirm = { title: copyText("accounts.remove.title", { name: a.name }), action: copyText("accounts.remove.action"), danger: true, body: msg };
+    if (!(await confirmDialog(confirm))) return;
     try {
       const done = await accountsRemove(origin, a.isDefault ? { name: a.name, force: true } : { name: a.name });
       this.changed(origin, copyText("accounts.remove.done", { name: a.name }), done);
     } catch (e) {
-      showActionFailureToast(copyText("accounts.remove.failed"), saidOfControl(e), { level: "error" });
+      toast(copyText("accounts.remove.failed"), saidOfControl(e), { level: "error" });
     }
   }
 
@@ -708,13 +707,13 @@ export class AccountsSection {
       if (!plan || !validateAcctName(name).ok) return;
       void (async () => {
         const msg = copyText("accounts.init.confirm", { machine: machineName(origin), name, steps: stepList(plan) });
-        if (!(await askConfirm(msg))) return;
+        if (!(await confirmDialog({ title: copyText("accounts.init.title", { machine: machineName(origin) }), action: copyText("accounts.init.action"), body: msg }))) return;
         bApply.disabled = true;
         try {
           const done = await accountsInit(origin, { name });
           this.changed(origin, copyText("accounts.init.done", { name }), done);
         } catch (e) {
-          showActionFailureToast(copyText("accounts.init.failed"), saidOfControl(e), { level: "error" });
+          toast(copyText("accounts.init.failed"), saidOfControl(e), { level: "error" });
           bApply.disabled = false;
         }
       })();
@@ -868,11 +867,11 @@ export class AccountsSection {
     try {
       got = await accountsAdd(origin, req);
     } catch (e) {
-      showActionFailureToast(copyText("accounts.add.failed"), saidOfControl(e), { level: "error" });
+      toast(copyText("accounts.add.failed"), saidOfControl(e), { level: "error" });
       return;
     }
     this.changed(origin, copyText("accounts.add.done", { name: req.name }), got);
-    if (got.keyProblem) showActionFailureToast(copyText("accounts.add.keyFailed"), got.keyProblem, { level: "error" });
+    if (got.keyProblem) toast(copyText("accounts.add.keyFailed"), got.keyProblem, { level: "error" });
     if (got.loginCmd) await this.openLogin(origin, got.loginCmd);
   }
 
@@ -888,13 +887,12 @@ export class AccountsSection {
     try {
       // 经通道交那台机器的后端（`apikey-key-set`，账号 id 由后端推）；先前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕。
       await writeApikeyKey(origin, configDir, key, baseUrl);
-      showActionFailureToast(copyText("accounts.writeApikey.done"), copyText("accounts.writeApikey.doneBody", { name }), {
+      toast(copyText("accounts.writeApikey.done"), copyText("accounts.writeApikey.doneBody", { name }), {
         level: "info",
-        durationMs: 3000,
       });
       void this.reload(true);
     } catch (e) {
-      showActionFailureToast(copyText("accounts.writeApikey.failed"), String(e));
+      toast(copyText("accounts.writeApikey.failed"), String(e));
     }
   }
 
@@ -1000,7 +998,7 @@ export class AccountsSection {
         out.appendChild(line);
       }
     } catch (e) {
-      showActionFailureToast(copyText("accounts.verify.failed"), saidOfControl(e), { level: "error" });
+      toast(copyText("accounts.verify.failed"), saidOfControl(e), { level: "error" });
     } finally {
       btn.disabled = false;
     }
@@ -1012,18 +1010,17 @@ export class AccountsSection {
     try {
       const plan = await accountsRepair(origin, { dryRun: true });
       if (plan.steps.length === 0) {
-        showActionFailureToast(copyText("accounts.repair.nothing"), plan.notes.join("\n") || copyText("accounts.repair.nothingBody"), {
+        toast(copyText("accounts.repair.nothing"), plan.notes.join("\n") || copyText("accounts.repair.nothingBody"), {
           level: "info",
-          durationMs: 4000,
         });
         return;
       }
       const msg = copyText("accounts.repair.confirm", { machine: machineName(origin), steps: stepList(plan) });
-      if (!(await askConfirm(msg))) return;
+      if (!(await confirmDialog({ title: copyText("accounts.repair.title", { machine: machineName(origin) }), action: copyText("accounts.repair.action"), body: msg }))) return;
       const done = await accountsRepair(origin, {});
       this.changed(origin, copyText("accounts.repair.done"), done);
     } catch (e) {
-      showActionFailureToast(copyText("accounts.repair.failed"), saidOfControl(e), { level: "error" });
+      toast(copyText("accounts.repair.failed"), saidOfControl(e), { level: "error" });
     } finally {
       btn.disabled = false;
     }
@@ -1039,11 +1036,11 @@ export class AccountsSection {
         backup: plan.backup ?? "",
         steps: stepList(plan),
       });
-      if (!(await askConfirm(msg))) return;
+      if (!(await confirmDialog({ title: copyText("accounts.rollback.title", { machine: machineName(origin) }), action: copyText("accounts.rollback.action"), danger: true, body: msg }))) return;
       const done = await accountsRollback(origin, plan.backup ? { backup: plan.backup } : {});
       this.changed(origin, copyText("accounts.rollback.done"), done);
     } catch (e) {
-      showActionFailureToast(copyText("accounts.rollback.failed"), saidOfControl(e), { level: "error" });
+      toast(copyText("accounts.rollback.failed"), saidOfControl(e), { level: "error" });
     } finally {
       btn.disabled = false;
     }
@@ -1063,7 +1060,7 @@ export class AccountsSection {
       if (a.skipped.length) lines.push(copyText("accounts.change.aliasesSkipped", { names: a.skipped.join(sep), path: a.path }));
       if (a.note) lines.push(a.note);
     }
-    showActionFailureToast(title, lines.join("\n"), { level: "info", durationMs: 6000 });
+    toast(title, lines.join("\n"), { level: "info" });
     invalidateAccountsCache(origin);
     void this.reload(true);
     // 增删号会改那台的别名清单：已经展开的别名块跟着重读。
@@ -1153,14 +1150,14 @@ export class AccountsSection {
       try {
         await setModelForAccount(origin, a.name, next || null);
         lastSaved = next;
-        showActionFailureToast(
+        toast(
           next ? copyText("accounts.model.saved") : copyText("accounts.model.cleared"),
           next ? copyText("accounts.model.savedBody", { name: a.name, next }) : copyText("accounts.model.clearedBody", { name: a.name }),
-          { level: "info", durationMs: 3000 },
+          { level: "info" },
         );
       } catch (e) {
         // 校验失败（非法字符集）等——不落盘，保留用户已输入的文本以便就地修正。
-        showActionFailureToast(copyText("accounts.model.failed"), String(e), { level: "error" });
+        toast(copyText("accounts.model.failed"), String(e), { level: "error" });
       }
     };
     modelInput.addEventListener("blur", () => void saveModel());
@@ -1183,15 +1180,14 @@ export class AccountsSection {
     copy.addEventListener("click", () => {
       const text = a.configDir ?? "";
       if (!text) {
-        showActionFailureToast(copyText("accounts.row.baseNoDir"), copyText("accounts.row.baseNoDirBody"), {
+        toast(copyText("accounts.row.baseNoDir"), copyText("accounts.row.baseNoDirBody"), {
           level: "info",
-          durationMs: 3000,
         });
         return;
       }
       void navigator.clipboard?.writeText(text).then(
-        () => showActionFailureToast(copyText("accounts.copy.done"), text, { level: "info", durationMs: 2500 }),
-        () => showActionFailureToast(copyText("accounts.copy.failed"), copyText("accounts.copy.noClipboard"), { level: "error" }),
+        () => toast(copyText("accounts.copy.done"), text, { level: "info" }),
+        () => toast(copyText("accounts.copy.failed"), copyText("accounts.copy.noClipboard"), { level: "error" }),
       );
     });
     actions.appendChild(copy);
@@ -1233,13 +1229,13 @@ export class AccountsSection {
       invalidateAccountsCache(origin);
       await this.reload(true);
       void emit(SETTINGS_APPLIED_EVENT); // 让主窗状态栏 chip 同步
-      showActionFailureToast(
+      toast(
         copyText("accounts.setDefault.done"),
         copyText("accounts.setDefault.doneBody", { name: a.name }),
-        { level: "info", durationMs: 4000 },
+        { level: "info" },
       );
     } catch (e) {
-      showActionFailureToast(copyText("accounts.setDefault.failed"), String(e), { level: "error" });
+      toast(copyText("accounts.setDefault.failed"), String(e), { level: "error" });
     }
   }
 

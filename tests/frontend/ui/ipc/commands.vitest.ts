@@ -60,7 +60,7 @@ vi.mock("../../../../src/frontend/ui/views/session-viewer", () => ({
 vi.mock("../../../../src/frontend/ui/keybindings/registry", () => ({
   dispatcher: { pushOverlay: vi.fn(), popOverlay: vi.fn() },
 }));
-vi.mock("../../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("../../../../src/frontend/ui/remote-launch-run", () => ({
   runRemoteResume: vi.fn().mockResolvedValue(undefined),
   runNewSessionRemote: vi.fn().mockResolvedValue(undefined),
@@ -499,7 +499,7 @@ describe("本机起会话的主路：交「跟随」给本机后端、界面一�
     const row = (view as unknown as { buildEntryRow(e: unknown, p: unknown): HTMLElement }).buildEntryRow(entry(), proj());
     document.body.appendChild(row);
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
-    const items = [...document.querySelectorAll<HTMLButtonElement>(".history-context-item")];
+    const items = [...document.querySelectorAll<HTMLButtonElement>("[role^=menuitem]")];
     const btn = items.find((b) => b.textContent === label);
     expect(btn, `右键菜单里没有「${label}」—— 实得 ${JSON.stringify(items.map((b) => b.textContent))}`).toBeTruthy();
     btn!.click();
@@ -537,7 +537,7 @@ describe("本机起会话的主路：交「跟随」给本机后端、界面一�
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(launchRenderShim(() => Promise.resolve(undefined)))));
     __resetAccountsCacheForTest();
     document.body.replaceChildren();
-    document.querySelectorAll(".history-context-menu").forEach((n) => n.remove());
+    document.querySelectorAll("[role=menu]").forEach((n) => n.remove());
   });
 
   it("★ 历史页 resume / 起新会话 · tab 栏 resume：交的都是「跟随」，界面一条 pin 都不写", async () => {

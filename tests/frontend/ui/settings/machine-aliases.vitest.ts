@@ -200,7 +200,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     document.body.replaceChildren();
   });
 
-  async function mount(confirm?: (msg: string) => boolean): Promise<HTMLDetailsElement> {
+  async function mount(confirm?: (spec: { body?: string }) => boolean): Promise<HTMLDetailsElement> {
     const m = await import("../../../../src/frontend/ui/settings/machine-aliases");
     const el = m.buildAliasManager({ platform: plat, origin: () => "<local>", confirm }) as HTMLDetailsElement;
     document.body.appendChild(el);
@@ -544,7 +544,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
       const asked: string[] = [];
       let answer = false;
       const el = await mount((msg) => {
-        asked.push(msg);
+        asked.push(msg.body ?? "");
         return answer;
       });
       await open(el);

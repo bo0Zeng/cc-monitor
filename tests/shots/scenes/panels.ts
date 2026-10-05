@@ -134,8 +134,8 @@ export const PANEL_SCENES: Scene[] = [
     await mainReady(ALL_TABS);
     await rightClick("#tab-bar .tab");
     await sleep(800);
-    await click(await byText(".tab-context-menu-item", "杀死会话"));
-    await waitFor("[role='dialog']");
+    await click(await byText("[role^=menuitem]", "杀死会话"));
+    await waitFor("[aria-modal='true']");
     await sleep(400);
   }),
   panel("panel-close-undo", "W 关掉已结束的 tab 之后", "切到已结束的「周报草稿」按 W：tab 先摘下来，右下角给 8 秒「撤销」", async () => {
@@ -163,8 +163,8 @@ export const PANEL_SCENES: Scene[] = [
       }
       await rightClick(tabs[0]);
       await sleep(600);
-      await click(await byText(".tab-context-menu-item", "杀死会话"));
-      await waitFor("[role='dialog']");
+      await click(await byText("[role^=menuitem]", "杀死会话"));
+      await waitFor("[aria-modal='true']");
       await sleep(400);
     }),
     height: 220,
@@ -173,7 +173,7 @@ export const PANEL_SCENES: Scene[] = [
     await mainReady(ALL_TABS);
     await rightClick(document.querySelectorAll("#tab-bar .tab")[3]);
     await sleep(800);
-    await click(await byText(".tab-context-menu-item", "预览画面"));
+    await click(await byText("[role^=menuitem]", "预览画面"));
     await waitFor(".pane-preview-box");
     await sleep(700);
   }),
@@ -192,7 +192,7 @@ export const PANEL_SCENES: Scene[] = [
   panel("panel-account", "账号选单", "状态栏点账号徽标：切默认账号的选单", async () => {
     await mainReady(ALL_TABS);
     await click(".status-account");
-    await waitFor(".account-picker");
+    await waitFor("[role=menu]");
     await sleep(500);
   }),
   panel("panel-cmdk", "命令面板", "Ctrl+K：全部命令（含切到各会话）", async () => {
@@ -324,9 +324,9 @@ export const PANEL_SCENES: Scene[] = [
   panel("panel-account-unavailable", "Resume · 上次用的号选不了", "右键已结束的「账单导出」→ Resume → 直连：那台说上次用的号 personal 选不了，不起、给「改用 work」的选择", async () => {
     await mainReady(ALL_TABS);
     await rightClick(document.querySelectorAll<HTMLElement>("#tab-bar .tab")[3]);
-    await click(await byText(".tab-context-menu-item", "Resume 这个会话"));
-    await click(await byText(".tab-context-menu-item", "直连 · 不建 tmux 会话"));
-    await waitFor(".ccm-toast-error");
+    await click(await byText("[role^=menuitem]", "Resume 这个会话"));
+    await click(await byText("[role^=menuitem]", "直连 · 不建 tmux 会话"));
+    await waitFor("#kit-toast-stack > [data-level=error]");
     await sleep(600);
   }, accountGoneWorld),
   panel("panel-batch-start-menu", "批量菜单 · 起会话", "Ctrl 点选两个 tab、右键：批量菜单里「在 tmux 里后台起 / 各开一个终端」", async () => {
@@ -348,7 +348,7 @@ export const PANEL_SCENES: Scene[] = [
   panel("panel-account-reclick", "账号选单 · 再点一下徽标", "选单开着时再点一下账号徽标：选单收起", async () => {
     await mainReady(ALL_TABS);
     await click(".status-account");
-    await waitFor(".account-picker");
+    await waitFor("[role=menu]");
     await sleep(300);
     await click(".status-account");
     await sleep(500);
@@ -356,7 +356,7 @@ export const PANEL_SCENES: Scene[] = [
   panel("panel-sftp-reclick", "文件按钮 · 再点一下", "选机器的小单开着时再点一下文件按钮：小单收起", async () => {
     await mainReady(ALL_TABS);
     await click(".sftp-trigger");
-    await waitFor(".sftp-host-picker");
+    await waitFor("[role=menu]");
     await sleep(300);
     await click(".sftp-trigger");
     await sleep(500);

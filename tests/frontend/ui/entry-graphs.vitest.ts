@@ -94,7 +94,6 @@ const FORBIDDEN_IN_SETTINGS: readonly { pat: string; what: string }[] = [
   { pat: "src/frontend/ui/tab-drop.ts", what: "tab 管理（落点算术）" },
   { pat: "src/frontend/ui/tab-bar-prefs.ts", what: "tab 管理（集合 / 固定 / 顺序落盘）" },
   { pat: "src/frontend/ui/tab-menu.ts", what: "tab 管理（右键菜单项）" },
-  { pat: "src/frontend/ui/tab-context-menu.ts", what: "tab 管理（右键菜单控件）" },
   { pat: "src/frontend/ui/tab-session-actions.ts", what: "tab 管理（会话动作）" },
   { pat: "src/frontend/ui/main.ts", what: "主窗口 bootstrap" },
   { pat: "src/frontend/ui/entry-main.ts", what: "主窗口入口" },
@@ -714,11 +713,42 @@ function moduleStacking(
  */
 const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/usage-hud.module.css": { stacked: true, why: "`.chip` 叠在全局 `.status-tasks` 上（usage-hud.ts 里 btn.className 同时挂 status-tasks 与 s.chip）" },
-  "src/frontend/ui/ask-dialog.module.css": { stacked: false, why: "应用内对话框：遮罩 / 面板 / 正文 / 文本框 / 按钮行只挂自己的哈希类" },
   "src/frontend/ui/live-card.module.css": { stacked: false, why: "活卡（`live-card-view.ts` 画）：卡 / 顶上那行 / 正文只挂自己的哈希类（不叠全局类）" },
   "src/frontend/ui/record-file-notice.module.css": { stacked: false, why: "tab 顶上「记录文件不见了 / 已从头重读」那一句：只挂自己的哈希类 `.notice`（不叠全局类）" },
   "src/frontend/ui/tab-group-rename.module.css": { stacked: false, why: "组头就地改名的输入框只挂自己的哈希类" },
+  "src/frontend/ui/kit/icon.module.css": { stacked: false, why: "图标件：svg 只挂自己的哈希类" },
+  "src/frontend/ui/kit/badge.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/banner.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/block.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/button.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/card.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/chip.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/dialog.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/drawer.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/empty.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/field.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/fold.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/list-row.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/menu.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/meter.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/progress.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/skeleton.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/status-dot.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/switch.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/tabs.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/toast.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/tooltip.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
 };
+
+/**
+ * 通用组件里还没有任何一面用上的那几件（地基先立、各面照稿施工时接上）。登记了却已经进了某个窗口 ⇒ 红（摘掉登记）；
+ * 没登记又不在任何窗口里 ⇒ 照旧红。只许缩。
+ */
+const KIT_AWAITING_FACES: ReadonlySet<string> = new Set(
+  ["badge", "banner", "block", "card", "chip", "drawer", "empty", "field", "fold", "list-row", "meter", "progress", "skeleton", "status-dot", "switch", "tabs"].map(
+    (k) => `src/frontend/ui/kit/${k}.module.css`,
+  ),
+);
 
 describe("〔UC2〕CSS Modules 在构建产物里（件 10）", () => {
   it("每份 .module.css 都进了某个窗口的模块图；每个类在产物 CSS 里恰有一个哈希名、原名不出现、哈希名在那个窗口的 JS 里真出现", () => {
@@ -727,6 +757,10 @@ describe("〔UC2〕CSS Modules 在构建产物里（件 10）", () => {
     let judged = 0;
     for (const f of mods) {
       const wins = (Object.keys(WINDOWS) as Win[]).filter((w) => CLOSURES[w].modules.has(f));
+      if (KIT_AWAITING_FACES.has(f)) {
+        expect(wins, `${f} 已经有窗口用上了 —— 把它从 KIT_AWAITING_FACES 里摘掉`).toEqual([]);
+        continue;
+      }
       expect(wins, `${f} 不在任何窗口的模块图里 —— 没有代码导入它，它进不了产物`).not.toEqual([]);
       expect(MODULE_CLASSES[f].length, `${f} 里一个类都没抽到 —— 下面零命中地绿`).toBeGreaterThan(0);
       for (const w of wins) {
@@ -886,5 +920,40 @@ describe("子步 3 · 层真包进去（对构建产物）", () => {
       const inVendor = vendorish.filter(([, ls]) => ls.has("vendor")).length;
       expect(inVendor, `${html}：第三方类一个都不在 vendor 层里`).toBeGreaterThan(20);
     }
+  });
+});
+
+describe("图标：打进产物的只有用到的那几个", () => {
+  const ICON_TS = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/kit/icon.ts"), "utf8");
+  /** 登记表里导入的 svg 文件名。 */
+  const registered = [...ICON_TS.matchAll(/@phosphor-icons\/core\/assets\/regular\/([a-z0-9-]+)\.svg\?raw/g)].map((m) => m[1]);
+  /** 登记表的名字（`SVG` 那张表的键）。 */
+  const names = [...(/const SVG = \{([^}]*)\}/.exec(ICON_TS)?.[1] ?? "").matchAll(/^\s*(\w+):/gm)].map((m) => m[1]);
+
+  it("三扇窗的产物里 Phosphor 的 svg == 登记表导入的那几份（整包没进来）", () => {
+    const built = new Set<string>();
+    for (const win of Object.keys(WINDOWS) as Win[])
+      for (const id of CLOSURES[win].modules) {
+        const m = /@phosphor-icons\/core\/assets\/regular\/([a-z0-9-]+)\.svg/.exec(id);
+        if (m) built.add(m[1]);
+        expect(id.includes("@phosphor-icons/core/dist"), `整包进了产物：${id}`).toBe(false);
+      }
+    expect(registered.length, "登记表一个导入都没切到 —— 量具坏了").toBeGreaterThan(0);
+    expect([...built].sort()).toEqual([...new Set(registered)].sort());
+  });
+
+  it("登记的每个名字都有人用，用到的都登记了", () => {
+    // 用到 ＝ 导入图标件的生产文件里以字面量写出那个名字（`icon("x")`、按态取名的表、`icon: "x"` 这几形都是字面量）。
+    const used = new Set<string>();
+    const importsIcon = /from "(?:\.\.?\/)+(?:kit\/)?icon"/;
+    for (const f of productionTsFiles()) {
+      if (f.file.endsWith("kit/icon.ts") || !importsIcon.test(f.text)) continue;
+      for (const m of f.text.matchAll(/"(\w+)"/g)) if (names.includes(m[1])) used.add(m[1]);
+    }
+    const called = new Set<string>();
+    for (const f of productionTsFiles()) for (const m of f.text.matchAll(/\bicon\(\s*"(\w+)"/g)) called.add(m[1]);
+    expect(names.length).toBe(registered.length);
+    expect([...used].sort()).toEqual([...names].sort());
+    expect([...called].filter((c) => !names.includes(c)), "叫了没登记的名字").toEqual([]);
   });
 });

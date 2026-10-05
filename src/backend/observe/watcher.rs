@@ -2625,6 +2625,31 @@ pub fn running_sessions(agent_home: &Path) -> Vec<(String, u32)> {
         .collect()
 }
 
+/// `sid` 那个会话此刻有没有一轮在跑：活着的交互会话 pidfile 里 `status` 是 `busy`（判活同 [`running_sessions`]）。
+pub(crate) fn session_busy(agent_home: &Path, sid: &str) -> bool {
+    let dir = pidfile_dir(agent_home);
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return false;
+    };
+    entries
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| is_session_json(p))
+        .any(|p| {
+            let Some(pid) = file_stem_str(&p).and_then(|s| s.parse::<u32>().ok()) else {
+                return false;
+            };
+            let Ok(bytes) = std::fs::read(&p) else {
+                return false;
+            };
+            parse_session_id(&bytes).as_deref() == Some(sid)
+                && parse_status(&bytes).as_deref() == Some("busy")
+                && pid_alive(pid)
+                && non_interactive_kind(&bytes).is_none()
+                && add_time_check(pid, &bytes, &p).is_ok()
+        })
+}
+
 /// Parse the pidfile's `kind` field ("interactive" / "bg" …，Batch6-F21)。
 /// None = 字段缺失（旧 CC）或不可读 → 调用方放行。
 fn parse_kind(bytes: &[u8]) -> Option<String> {
@@ -2651,6 +2676,12 @@ fn file_mtime_epoch(path: &Path) -> Option<u64> {
         .duration_since(std::time::UNIX_EPOCH)
         .ok()
         .map(|d| d.as_secs())
+}
+
+/// pidfile 的 `status`（busy / idle / shell / waiting）；缺或不可读 ⇒ `None`。
+fn parse_status(bytes: &[u8]) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    v.get("status")?.as_str().map(str::to_string)
 }
 
 /// Pure parse of the `sessionId` field out of a sessions JSON blob.

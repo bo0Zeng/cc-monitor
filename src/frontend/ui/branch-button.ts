@@ -32,7 +32,7 @@
 import { forkSession, type BranchResult } from "./session-writes";
 // 本机 = `LOCAL_ORIGIN`（`"<local>"`，Rust 侧 `origin.rs::LOCAL`，跨语言对拍）。
 import type { Origin } from "./ipc/origin";
-import { showActionFailureToast } from "./error-toast";
+import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
 
 /** off-main 的卡片被 `BranchFolder` 包进这个容器里。判据的唯一锚点。 */
@@ -112,7 +112,7 @@ export function attachBranchButton(
         window.setTimeout(() => (btn.textContent = copyText("branchButton.attachBranchButton.icon")), 2000);
         opts.onForked(res);
       } catch (err) {
-        showActionFailureToast(copyText("branchButton.attachBranchButton.failed"), String(err));
+        toast(copyText("branchButton.attachBranchButton.failed"), String(err));
       } finally {
         btn.dataset.busy = "0";
       }

@@ -1,0 +1,28 @@
+/* 骨架占位（C19）。 */
+@layer components {
+  .skelSkeleton {
+    width: 100%;
+  }
+
+  .skelRow {
+    display: flex;
+    align-items: center;
+    height: var(--row-h);
+    padding: 0 var(--space-4);
+  }
+
+  .skelBar {
+    width: 60%;
+    height: 10px;
+    border-radius: var(--radius-s);
+    background: var(--state-active);
+  }
+
+  .skelBar[data-w="1"] {
+    width: 44%;
+  }
+
+  .skelBar[data-w="2"] {
+    width: 72%;
+  }
+}

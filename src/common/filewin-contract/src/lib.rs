@@ -12,7 +12,7 @@
 use copy_core::copy_text;
 
 pub mod theme;
-pub use theme::{parse_css_color, Rgba, Theme, THEME_TOKENS};
+pub use theme::{parse_css_color, parse_shadow, Rgba, Shadow, Theme, THEME_TOKENS};
 
 /// 覆盖「那份二进制在哪」的环境变量。
 ///
