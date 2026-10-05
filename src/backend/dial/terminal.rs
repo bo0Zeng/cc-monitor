@@ -108,10 +108,13 @@ pub(crate) fn known_hosts_arg(path: Option<&std::path::Path>, powershell: bool) 
     match path {
         Some(p) => format!(
             " -o {}",
-            literal(powershell, &format!(
-                "UserKnownHostsFile={}",
-                known_hosts_value(&p.to_string_lossy())
-            ))
+            literal(
+                powershell,
+                &format!(
+                    "UserKnownHostsFile={}",
+                    known_hosts_value(&p.to_string_lossy())
+                )
+            )
         ),
         None => String::new(),
     }
