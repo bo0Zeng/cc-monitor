@@ -492,12 +492,23 @@ pub fn run() {
     // 闭包内同时 install_error_emitter（&self 借用）+ app.manage(clone)
     let logging_state = logging_state;
 
-    // issue #9：single-instance lock。**必须是第一个 plugin**（Tauri 官方 plugin 要求）。
-    // 第二个 cc-monitor 实例启动 → 触发本回调（在第一个实例里跑）→ 把主窗口
-    // unminimize + show + set_focus → 第二个实例立即退出（plugin 内部处理）。
-    // 详 src/doc/INVARIANTS.md § 16。
+    // issue #9：single-instance lock。**必须是第一个 plugin**（Tauri 官方 plugin 要求）。各平台都注册
+    // （Windows：user 级互斥量；Linux：会话总线上的名字）。第二个 cc-monitor 实例启动 → 触发本回调（在第一个实例里跑）
+    // → 把主窗口 unminimize + show + set_focus → 第二个实例立即退出（plugin 内部处理）。详 src/doc/INVARIANTS.md § 16。
     let mut builder = tauri::Builder::default();
-    // Windows 那两件（单实例插件 · WebView2 最大化 / 全屏后内容错位的修复）住壳的平台层：别处原样返回。
+    builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+        // 第二个实例若带 --background（开机自启竞态下偶发）→ 只 show 不抢焦点；普通双击照常置前。
+        let background = args.iter().any(|a| a == "--background");
+        tracing::info!("second cc-monitor instance detected (background={background})");
+        if let Some(win) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+            let _ = win.unminimize();
+            let _ = win.show();
+            if !background {
+                let _ = win.set_focus();
+            }
+        }
+    }));
+    // Windows 那一件（WebView2 最大化 / 全屏后内容错位的修复）住壳的平台层：别处原样返回。
     builder = crate::platform::window::desktop_fixes(builder);
 
     // ST1「关窗改隐藏」的另一半：设置窗关窗 = **隐藏**，永不自己销毁
