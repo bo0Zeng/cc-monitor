@@ -21,12 +21,15 @@
 #
 # ## 本机安全
 #
-# 全程**不碰 tmux**（本套件不建任何会话），`claude_dir` 一律在 `/tmp` 下的临时目录，
+# 本套件不建任何会话，但后端起来就会探 tmux、装会话钩子 ⇒ 挂 shim，落在本趟的私有 server 上
+#（10-05 实测：没挂的时候后端把钩子装到了缺省 server 上，开发机上那是用户正在用的那台）。`claude_dir` 一律在 `/tmp` 下的临时目录，
 # 假会话的 pid 用一个自己起的 `sleep`（不是真 claude，`C7`）。
 . "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -o pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=tests/e2e/tmux-shim.sh
+. "$REPO/tests/e2e/tmux-shim.sh" e2eRewatch
 D="${CCM_E2E_BACKEND_BIN:-${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend}"  # 认 `CARGO_TARGET_DIR`（门禁与工作树都把 target 放在仓外）
 [ -x "$D" ] || { echo "需要后端二进制：$D（先 cargo build -p cc-monitor-backend）"; exit 1; }
 
@@ -37,7 +40,7 @@ export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
 export RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
 export HOME="$W/home"
 mkdir -p "$HOME"
-cleanup() { rm -rf -- "$W"; }
+cleanup() { rm -rf -- "$W"; tmux_shim_cleanup; }
 trap cleanup EXIT
 
 fail=0

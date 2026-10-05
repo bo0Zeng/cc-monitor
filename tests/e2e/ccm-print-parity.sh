@@ -14,6 +14,9 @@
 set -o pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
+# 后端起会话名时会列一遍 tmux 会话 ⇒ 挂 shim，落在本趟的私有 server 上（没挂就列的是缺省那台、开发机上用户正在用的）。
+# shellcheck source=tests/e2e/tmux-shim.sh
+. "$HERE/tmux-shim.sh" e2ePrintParity
 
 PASS=0; FAIL=0
 ck() { if [ "$2" = "$3" ]; then printf 'PASS | %s\n' "$1"; PASS=$((PASS+1))
@@ -39,7 +42,7 @@ CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
   echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd src/backend && cargo build --bin cc-monitor-backend\`" >&2
   exit 2
 }
-BIN="$(mktemp -d)"; NOHOME="$(mktemp -d)"; trap 'rm -rf "$BIN" "$NOHOME"' EXIT
+BIN="$(mktemp -d)"; NOHOME="$(mktemp -d)"; trap 'rm -rf "$BIN" "$NOHOME"; tmux_shim_cleanup' EXIT
 ln -s "$CCM_NATIVE" "$BIN/ccm"
 export PATH="$BIN:$PATH"
 

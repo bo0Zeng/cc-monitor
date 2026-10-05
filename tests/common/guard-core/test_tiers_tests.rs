@@ -751,6 +751,7 @@ const INTEGRATION: &[&str] = &[
 const SUPPORT: &[&str] = &[
     "tests/backend/files/index_testing.rs",
     "tests/backend/control/identity_tag_door.rs", // `identity_tag` 起 tmux 那个口的测试构建那一份（假 tmux 注入，§48.3）
+    "tests/backend/platform/child_tmux_fence.rs", // 子进程起前那一道的测试构建那一份（裸名 tmux 落到本进程的空 socket 目录）
     "tests/backend/sftp_rig.rs",
     "tests/frontend/shell/backend_kill_creation_detect.rs",
     "tests/frontend/filewin/copy_testing.rs",

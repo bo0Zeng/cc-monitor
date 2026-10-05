@@ -105,12 +105,10 @@ preflight() {
   # 正向：shim 必须看得见 canary（证明 shim 确实连着我们以为的那个 server）
   tmux has-session -t "=$canary" 2>/dev/null \
     || { echo "FATAL 自检：shim 看不见自己刚建的 canary —— shim 没连上隔离 socket"; exit 9; }
-  # 反向：默认 socket **绝不能**看得见它（证明隔离真的成立）
-  if "$REALTMUX" has-session -t "=$canary" 2>/dev/null; then
-    echo "FATAL 隔离失效：默认 socket 上出现了 canary '$canary' —— 立刻中止，"
-    echo "      绝不在开发机的真 socket 上跑测试（那里住着正在运行的会话）"
-    exit 9
-  fi
+  # 反向：真 tmux 显式问本趟的私有 socket 也看得见它（证明 shim 连的就是那台，不是缺省那台）。
+  #   不去问缺省 socket：问它本身就是在碰开发机上用户正在用的那台。
+  "$REALTMUX" -L "$SOCK" has-session -t "=$canary" 2>/dev/null \
+    || { echo "FATAL 隔离失效：canary '$canary' 不在私有 socket -L $SOCK 上 —— 立刻中止"; exit 9; }
   tmux kill-session -t "=$canary" 2>/dev/null
   echo "[自检] canary 双向断言通过：隔离生效（-L $SOCK）"
 }

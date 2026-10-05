@@ -30,13 +30,16 @@
 # ## 本机安全
 #
 # `CC_BUS_HOME` **与 `HOME`** 双双指向 `mktemp -d`，**绝不碰真实 `~/.cc-bus/`**
-#（下面有一道硬门：脚本眼里的 bus 不在沙箱内就直接 exit 9，且每建一个 bus 重验一次）。**本套件不用 tmux** —— 收发都走文件，
-# 于是 `C7i` 那条红线在这里天然不成立（没有任何 tmux 命令可写错）。
+#（下面有一道硬门：脚本眼里的 bus 不在沙箱内就直接 exit 9，且每建一个 bus 重验一次）。收发都走文件，
+# 但 `cc-send` 会照 `agents.tsv` 登记的窗格去敲门（`tmux send-keys -t =%1 …`）⇒ 挂 shim，敲门落在本趟的私有 server 上
+#（10-05 实测：没挂的时候那两下敲进了缺省 server 的 `%1` / `%2`，开发机上那是用户正在用的窗格）。
 # 起的进程只有 `cc-busd` 自己（一个 bash 循环），退出时按 pid 精确 kill，不用 pkill。
 . "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
 set -o pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=tests/e2e/tmux-shim.sh
+. "$REPO/tests/e2e/tmux-shim.sh" e2eQueueDrain
 S="$REPO/src/shared/cc-bus/scripts"
 command -v jq >/dev/null 2>&1 || { echo "需要 jq"; exit 1; }
 command -v flock >/dev/null 2>&1 || { echo "需要 flock"; exit 1; }
@@ -54,6 +57,7 @@ cleanup() {
   local p
   for p in ${BUSD_PIDS+"${BUSD_PIDS[@]}"}; do kill -CONT "$p" 2>/dev/null; kill -9 "$p" 2>/dev/null; done
   rm -rf "$SANDBOX"
+  tmux_shim_cleanup
 }
 trap cleanup EXIT
 

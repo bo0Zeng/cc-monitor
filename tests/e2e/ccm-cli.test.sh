@@ -9,6 +9,9 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
+# 后端起会话名时会列一遍 tmux 会话 ⇒ 挂 shim，落在本趟的私有 server 上（没挂就列的是缺省那台、开发机上用户正在用的）。
+# shellcheck source=tests/e2e/tmux-shim.sh
+. "$HERE/tmux-shim.sh" e2eCcmCli
 
 # ★★ `K-R48` 第二拍（09-11）：被测对象从 `shared/ccm`（bash）换成**后端二进制本体**。
 #   〔用@09-11 `K33`〕逐字「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」。
@@ -19,7 +22,7 @@ CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
 [ -x "$CCM_NATIVE" ] || {
   echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd src/backend && cargo build --bin cc-monitor-backend\`" >&2
   exit 2; }
-CCMDIR="$(mktemp -d)"; trap 'rm -rf "$CCMDIR"' EXIT
+CCMDIR="$(mktemp -d)"; trap 'rm -rf "$CCMDIR"; tmux_shim_cleanup' EXIT
 ln -s "$CCM_NATIVE" "$CCMDIR/ccm"
 CCM="$CCMDIR/ccm"
 # 中转那一格由 ccm 在最终 exec 那一处自己判（这台家目录下的钥匙 ＋ 回环口连得上）⇒ 不隔离的话，开发机上真跑着的
@@ -239,7 +242,7 @@ echo
 echo "===== 账号库住后端的家里（临时 HOME 端到端：建库 → 起会话 → 列账号）====="
 # 用户「即后端去.cc-monitor读数据」：账号库只跟着家目录走 —— 清单 `<家>/.cc-monitor/accounts/accounts.json`，
 # 每个号 `<家>/.cc-monitor/accounts/<号>/`；家目录下旧位置那份清单不读、不写。
-# 全程 `env -i`：只给 PATH 与临时 HOME，开发机会话里的任何变量都带不进来。
+# 全程 `env -i`：只给 PATH 与临时 HOME，开发机会话里的任何变量都带不进来（PATH 最前仍是 tmux shim）。
 AH="$(mktemp -d)"; mkdir -p "$AH/.claude/skills"
 printf '{"fake":"c"}' > "$AH/.claude/.credentials.json"
 printf '{"oauthAccount":{"emailAddress":"d@example.test"}}' > "$AH/.claude.json"
@@ -247,7 +250,7 @@ printf '{"oauthAccount":{"emailAddress":"d@example.test"}}' > "$AH/.claude.json"
 mkdir -p "$AH/.claude-alt/old"
 printf '{"version":1,"accounts":[{"name":"old","configDir":"%s","isDefault":true}]}\n' "$AH/.claude-alt/old" > "$AH/.claude-alt/accounts.json"
 OLD_SUM="$(cksum < "$AH/.claude-alt/accounts.json")"
-home_run() { env -i PATH=/usr/bin:/bin HOME="$AH" "$CCM" "$@" 2>&1; }
+home_run() { env -i PATH="$TMUX_SHIM_BIN:/usr/bin:/bin" HOME="$AH" "$CCM" "$@" 2>&1; }
 names_of() { home_run -- --list-accounts | tail -n +2 | sed -n 's/.*"name":"\([^"]*\)".*/\1/p' | tr '\n' ' '; }
 ck "建库前：只有旧位置那份清单 ⇒ 没启用多账号" "false" \
    "$(home_run -- --list-accounts | head -1 | sed -n 's/.*"enabled":\([a-z]*\).*/\1/p')"

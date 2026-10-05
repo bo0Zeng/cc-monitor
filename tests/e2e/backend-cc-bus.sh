@@ -56,13 +56,9 @@ tmux new-session -d -s "$_canary" -c /tmp 'sleep 60' 2>/dev/null
 if ! tmux has-session -t "=$_canary" 2>/dev/null; then
   echo "起飞前自检失败：shim 上建不出 canary"; exit 9
 fi
-if "$REALTMUX" -L default has-session -t "=$_canary" 2>/dev/null; then
-  # ⚠ **拦下之前先把自己留下的东西收干净**〔08-13 变异当场撞到〕：
-  #   第一版直接 `exit 9`，于是那个 canary **留在了用户的默认 socket 上** ——
-  #   一个"防止碰用户 tmux"的自检，自己碰了用户的 tmux。
-  #   ⇒ 收的是**按精确名字**的自己那一个，别的一律不碰。
-  "$REALTMUX" -L default kill-session -t "=$_canary" 2>/dev/null || true
-  echo "起飞前自检失败：canary 出现在**默认 socket** 上 —— shim 没拦住（已收回那个 canary）"
+# 另一向问的是本趟的私有 socket（显式 `-L`），不去问缺省那台：问缺省那台本身就是在碰用户的 tmux。
+if ! "$REALTMUX" -L "$_SOCK" has-session -t "=$_canary" 2>/dev/null; then
+  echo "起飞前自检失败：canary 不在本趟的私有 socket 上 —— 裸调的 tmux 没落到 shim 指的那台"
   exit 9
 fi
 tmux kill-session -t "=$_canary" 2>/dev/null || true

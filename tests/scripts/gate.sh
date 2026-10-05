@@ -24,7 +24,54 @@
 #
 # 真机 e2e 一律在本脚本里跑（`run_e2e`）；Windows 那一维由 `winchk` · `winchk-backend` · `winlink` 三格交叉编译盖，
 # 真 Windows 上的行为本脚本判不了（射程表 `GATE_BLIND` 在裁决那一刻逐条印出来）。
-# ── 起跑第一件事：**无条件**摘掉从开发机会话继承来的环境变量（按前缀，不按名单）─────────────────
+# ── 起跑之前：整趟门禁换进一层挂载命名空间，`/tmp/tmux-<uid>` 换成这一趟自己的目录 ─────────────
+# 后端（装钩子 · 观测 · 建会话）和不少测试裸调 `tmux`，不带 `-L` / `-S`：`TMUX*` 一摘就落到缺省 server
+# `/tmp/tmux-<uid>/default` —— 开发机上那是用户正在用的那台（10-05 实发：测试里起的后端往上面装钩子）。
+# 靠环境变量指路挡不住（e2e 各套开头还会再清一遍 `TMUX*`），所以用挂载：这一趟里每个进程（含各格的无网沙箱、
+# `env-sandbox` 的内层门禁）看到的 `/tmp/tmux-<uid>` 都是同一个私有目录（mktemp 建的 0700，tmux 认它安全），
+# 用户那台在构造上够不着；里外同一层挂载，各格看到的 socket 目录一致。
+# 私有目录里先放一台假的「用户默认 server」（一个会话 ＋ 几格已知钩子，`-v` 记下每个连上来的客户端），
+# `tmux-default` 那一格判它全程没有外来连接、原样不动。CI（`GITHUB_ACTIONS=true`）上不换：runner 上没有用户的 tmux。
+gate_tmux_q() { env -i PATH="$PATH" tmux -S "$1" "${@:2}"; }
+# 假 server 的快照：pid ＋ 全局钩子 ＋ 会话 ＋ 那个会话自己的选项与钩子（一个客户端连一次）。
+gate_tmux_snap() {
+  gate_tmux_q "$1" display -p '#{pid}' \; show-hooks -g \; list-sessions -F '#{session_name}' \
+    \; show-options -t gate-fake \; show-hooks -t gate-fake 2>&1
+}
+if [ -z "${GATE_TMUX_HOME:-}" ] && [ "${GITHUB_ACTIONS:-}" != true ]; then
+  command -v bwrap >/dev/null 2>&1 || { echo "GATE: FAIL —— 这台机器上没有 bwrap（装 bubblewrap）：换不了 tmux 目录，不许裸跑（测试会落到用户默认的 tmux 上）"; exit 2; }
+  gate_tmux_uid="$(id -u)"
+  gate_tmux_home="$(mktemp -d "${TMPDIR:-/tmp}/gate-tmux.XXXXXX")" || exit 2
+  mkdir -p "$gate_tmux_home.log"
+  # 挂载点要先在：宿主上还没有 `/tmp/tmux-<uid>` 时照 tmux 自己的样子建（0700），别让 bwrap 建出一个 tmux 不认的。
+  [ -d "/tmp/tmux-$gate_tmux_uid" ] || mkdir -m 700 "/tmp/tmux-$gate_tmux_uid"
+  ( cd "$gate_tmux_home.log" && gate_tmux_q "$gate_tmux_home/default" -v -f /dev/null \
+      new-session -d -s gate-fake 'sleep 2147483647' \
+      \; set-hook -g 'session-created[3]' 'run-shell -b true' \
+      \; set-hook -g 'session-closed[3]' 'run-shell -b true' \
+      \; set-hook -g 'session-renamed[3]' 'run-shell -b true' \
+      \; set-hook -g 'session-closed[60]' "run-shell -b \"'$gate_tmux_home.log/none/ccm' -- --tmux-notify 1 1\"" ) \
+    || { echo "GATE: FAIL —— 起不来假的默认 tmux server"; rm -rf -- "$gate_tmux_home" "$gate_tmux_home.log"; exit 2; }
+  gate_tmux_snap "$gate_tmux_home/default" > "$gate_tmux_home.log/base"
+  gate_tmux_pid="$(head -1 "$gate_tmux_home.log/base")"
+  # 挂载那一层由一个占位进程撑着，门禁本体用 nsenter 进去跑：直接当 bwrap 的子进程跑的话，AppArmor
+  #（`unpriv_bwrap`）不许它再建命名空间，各格的无网沙箱就起不来了。
+  bwrap --dev-bind / / --bind "$gate_tmux_home" "/tmp/tmux-$gate_tmux_uid" --die-with-parent -- \
+    sh -c 'echo $$ > "$1"; exec sleep infinity' _ "$gate_tmux_home.log/hold" </dev/null >/dev/null 2>&1 &
+  for _ in $(seq 1 50); do [ -s "$gate_tmux_home.log/hold" ] && break; sleep 0.1; done
+  gate_tmux_hold="$(cat "$gate_tmux_home.log/hold" 2>/dev/null)"
+  trap 'kill ${gate_tmux_hold:+"$gate_tmux_hold"} "$gate_tmux_pid" 2>/dev/null; rm -rf -- "$gate_tmux_home" "$gate_tmux_home.log"' EXIT
+  [ -n "$gate_tmux_hold" ] || { echo "GATE: FAIL —— 撑挂载那一层的占位进程起不来（bwrap）"; exit 2; }
+  nsenter -t "$gate_tmux_hold" -U -m --preserve-credentials -- env GATE_TMUX_HOME="$gate_tmux_home" \
+    bash -c 'cd -- "$1" && shift && exec bash "$@"' _ "$PWD" "$0" "$@"
+  exit $?
+fi
+if [ -n "${GATE_TMUX_HOME:-}" ] && [ "$(stat -c %d:%i "/tmp/tmux-$(id -u)/default" 2>/dev/null)" != "$(stat -c %d:%i "$GATE_TMUX_HOME/default" 2>/dev/null)" ]; then
+  echo "GATE: FAIL —— GATE_TMUX_HOME=$GATE_TMUX_HOME 在，而 /tmp/tmux-$(id -u)/default 不是它那台假 server：tmux 目录没换成，不跑"
+  exit 2
+fi
+
+# ── 换进挂载之后第一件事：**无条件**摘掉从开发机会话继承来的环境变量（按前缀，不按名单）─────────────────
 # 门禁常在 Claude Code / cc-monitor 起的会话里、tmux 窗格里跑；这几族是**那个会话**的状态，不是这棵树的：
 #   `CCM_*`（本机后端的监听口 · 中转口 · stderr 日志 · 凭据落点，都指真 `~/.cc-monitor`）·
 #   `CLAUDE*`（会话、账号目录）· `ANTHROPIC_*`（上游与中转）· `TMUX*`（所在窗格 · socket 目录）· `CC_BUS_*`（总线身份）。
@@ -76,6 +123,11 @@ if [ -n "$GATE_NONET_WHY" ]; then
   printf '  ·    %-14s %s\n' "无网沙箱" "用不了 —— ${GATE_NONET_WHY}；要包的格一律判红"
 elif [ "${#GATE_NONET[@]}" -gt 0 ]; then
   printf '  ·    %-14s %s\n' "无网沙箱" "e2e · cargo · backend 跑在新网络命名空间里（bwrap --unshare-net），连不到这台机器上的任何口"
+fi
+if [ -n "${GATE_TMUX_HOME:-}" ]; then
+  printf '  ·    %-14s %s\n' "tmux 目录" "整趟看到的 /tmp/tmux-$(id -u) 是这一趟自己的（$GATE_TMUX_HOME），缺省 server 是一台假的"
+else
+  printf '  ·    %-14s %s\n' "tmux 目录" "不换（GITHUB_ACTIONS=true：runner 上没有用户的 tmux）"
 fi
 # 在无网沙箱里跑一条命令；沙箱用不了时不跑，印原因、退非零。
 gate_nonet() {
@@ -148,6 +200,7 @@ GATE_GROUPS=()     # 盘上声明过的组名（`GATE_ONLY` 里写组名 = 点�
 GATE_RAN=()        # 这一趟**命令真的执行过并被判过**的格（规范名，现算）
 GATE_SKIPPED=()    # 这一趟被 GATE_ONLY 挡掉的格（短名，现算）
 declare -A GATE_MS=()   # 这一趟每格的墙钟（毫秒，规范名 → 数），进收据
+GATE_WIN=()        # 这一趟每格的起止（`<起 ms> <止 ms> <规范名>`）：`tmux-default` 拿它说外来连接出在哪一格
 GATE_PREP_MS=0          # e2e 前置那一趟 cargo build 的墙钟（不是格，单记）
 GATE_T0=""              # 整趟起点，下面定义完 `gate_now_ms` 就取
 
@@ -156,7 +209,7 @@ gate_now_ms() { local t="${EPOCHREALTIME//[!0-9]/}"; printf '%s' "$(( t / 1000 )
 gate_fmt_ms() { printf '%d.%d 秒' "$(( $1 / 1000 ))" "$(( $1 % 1000 / 100 ))"; }
 GATE_T0="$(gate_now_ms)"
 # 一格判完：记进 `GATE_RAN`，墙钟记进 `GATE_MS`。`$2` 是这一格起跑那一刻的 `gate_now_ms`。
-gate_ran() { GATE_RAN+=("$1"); GATE_MS["$1"]=$(( $(gate_now_ms) - $2 )); }
+gate_ran() { GATE_RAN+=("$1"); GATE_MS["$1"]=$(( $(gate_now_ms) - $2 )); GATE_WIN+=("$2 $(gate_now_ms) $1"); }
 gate_took() { gate_fmt_ms "${GATE_MS[$1]:-0}"; }
 
 # 这一格这一趟要不要跑。返回 0 = 跑。`$2`（可选）是它所在的组名。
@@ -1625,6 +1678,48 @@ run_gate comm-boundary '判过的条数 = 通信层那一族这一趟真跑过�
          gate_family comm-boundary tests/frontend/shell/comm_boundary_registry_tests.rs monitor comm_boundary_registry::tests::
 run_gate test-tiers '判过的条数 = 测试层分级那一族这一趟真跑过的条数；声明的名字集合 == 真跑过的集合' \
          gate_family test-tiers tests/common/guard-core/test_tiers_tests.rs guard-core test_tiers::
+
+# ── `tmux-default`：缺省 tmux server 全程没人碰 ─────────────────────────────────────────────
+# 文件头那层挂载把 `/tmp/tmux-<uid>` 换成了这一趟的私有目录，里面的 `default` 是起跑前放好的一台假 server
+#（会话 `gate-fake` ＋ 段外三格、后端段里一格「死后端」的已知钩子）。各格里该用的都是各自的私有 server，
+# 谁裸调 `tmux`（不带 `-L` / `-S`）就连到这台上。判：① 默认位置上的 socket 仍是它（同一个 inode，隔离还在）；
+# ② 它的 `-v` 日志里，起跑那两个客户端之外一个新客户端都没有；③ 快照（pid · 全局钩子 · 会话 · 会话选项与钩子）
+# 与起跑时逐字相同 —— 后端装钩子、清死槽、给会话打标都会改它。外来连接按「落在哪一格 · 发的什么命令」归并印出来。
+# 只读假的那台；用户真那台在挂载外面，本格碰不到也不去读。放在最后一格：前面各格都跑完了再判。
+gate_tmux_default() {
+  local s n now base t at cwd w g a b nm
+  [ -n "${GATE_TMUX_HOME:-}" ] || { printf 'tmux-default: 没换 tmux 目录（CI 上不换）—— 没有假的缺省 server，判不了\n'; return 1; }
+  s="$GATE_TMUX_HOME/default"
+  if [ "$(stat -c %d:%i "/tmp/tmux-$(id -u)/default" 2>/dev/null)" != "$(stat -c %d:%i "$s" 2>/dev/null)" ]; then
+    printf 'tmux-default: /tmp/tmux-%s/default 已经不是起跑时那台假 server（被删 / 换掉了）\n' "$(id -u)"; return 1
+  fi
+  base="$(cat "$GATE_TMUX_HOME.log/base")"
+  n="$(cat "$GATE_TMUX_HOME.log"/tmux-server-*.log 2>/dev/null | grep -cE '^[0-9.]+ new client ')"
+  if [ "$n" != 2 ]; then
+    printf 'tmux-default: 缺省 server 上来过 %s 个外来客户端（起跑那 2 个之外）：\n' "$(( n - 2 ))"
+    cat "$GATE_TMUX_HOME.log"/tmux-server-*.log |
+      awk '$2 == "new" && $3 == "client" { if (++c > 2) tm[$4] = $1 }
+           $4 == "IDENTIFY_CLIENTPID" && ($3 in tm) { who["client-" $5] = tm[$3]; delete tm[$3] }
+           $2 == "message:" && ($3 in who) { t = who[$3]; $1 = $2 = $3 = $4 = ""; print t, substr($0, 5) }' |
+      while read -r t cwd; do
+        at="${t%%.*}${t#*.}"; at="$(( ${at:0:13} ))"; w="（不在任何一格里）"
+        for g in "${GATE_WIN[@]}"; do
+          read -r a b nm <<<"$g"; if [ "$at" -ge "$a" ] && [ "$at" -le "$b" ]; then w="$nm"; fi
+        done
+        printf '  · %s · %s\n' "$w" "${cwd:0:48}"
+      done | sort | uniq -c | head -80
+    return 1
+  fi
+  now="$(gate_tmux_snap "$s")"
+  if [ "$now" != "$base" ]; then
+    diff <(printf '%s\n' "$base") <(printf '%s\n' "$now") | head -30
+    printf 'tmux-default: 缺省 server 的钩子 / 会话 / 会话选项与起跑时不同（上面的 diff）\n'; return 1
+  fi
+  printf 'tmux-default: 1 passed（缺省 server 上零外来连接，钩子 %s 格、会话、会话选项与起跑时逐字相同）\n' \
+    "$(printf '%s\n' "$base" | grep -c '^session-')"
+}
+run_gate tmux-default '不是数出来的数：整趟门禁跑完，挂载换进来的那台假的缺省 tmux server 零外来连接、钩子与会话原样不动才绿。⚠ 只盖门禁里跑的东西；单跑的 cargo test / e2e 不经门禁就没有这层挂载' \
+         gate_tmux_default
 
 
 # pb check 不打「passed」，单独判：它自己会打 `FAIL=<n> BROKEN=<n>`。

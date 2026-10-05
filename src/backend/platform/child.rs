@@ -175,6 +175,10 @@ impl ChildFail {
 /// 命令级码：这条命令起的子进程过了期限没结束（已杀整组）。
 pub(crate) const TIMED_OUT: &str = "child_timed_out";
 
+/// 起子进程前最后一道：生产构建里是空的；测试构建换成 `tests/` 那一份（裸名 `tmux` 落到本进程自己的空 socket 目录）。
+#[cfg_attr(test, path = "../../../tests/backend/platform/child_tmux_fence.rs")]
+mod tmux_fence;
+
 /// 要起的那个子进程（程序 · argv · 显式环境）。stdin 恒为空设备（今天没有调用方要喂它）。
 pub(crate) struct Child {
     program: OsString,
@@ -291,6 +295,7 @@ impl Child {
         if self.no_console_window {
             os::no_console_window(&mut c);
         }
+        tmux_fence::apply(&self.program, &self.envs, &mut c);
         c
     }
 
