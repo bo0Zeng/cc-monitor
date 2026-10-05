@@ -70,6 +70,51 @@ fn only_the_exact_key_as_the_first_segment_gets_in() {
     }
 }
 
+/// ①′ 钥匙在钥匙头里：对的过、路径原样；错 / 两个头 / 路径里也有钥匙段 ⇒ `BadKey`；
+/// 带了钥匙头就不再认路径里那一把（两处都有 ⇒ 拒，不猜以哪一把为准）。
+#[test]
+fn the_key_may_ride_in_the_key_header_instead_of_the_path() {
+    let k = Key::for_tests();
+    let h = relay_route_core::KEY_HEADER;
+    let target = "/t/codex/0/responses";
+    assert_eq!(
+        admit(&req(target, &format!("{LOOP}{h}: {TEST_KEY}\r\n")), &k),
+        Verdict::Pass(target.into()),
+        "钥匙头里那一把对 ⇒ 过，路径原样交给路由"
+    );
+    assert_eq!(
+        admit(
+            &req(target, &format!("{LOOP}x-cc-monitor-key: {TEST_KEY}\r\n")),
+            &k
+        ),
+        Verdict::Pass(target.into()),
+        "头名不分大小写"
+    );
+    let wrong = format!("{}0", &TEST_KEY[..TEST_KEY.len() - 1]);
+    for (path, headers) in [
+        (target.to_string(), format!("{LOOP}{h}: {wrong}\r\n")),
+        (
+            target.to_string(),
+            format!("{LOOP}{h}: {TEST_KEY}\r\n{h}: {TEST_KEY}\r\n"),
+        ),
+        (
+            format!("/{TEST_KEY}{target}"),
+            format!("{LOOP}{h}: {TEST_KEY}\r\n"),
+        ),
+        (
+            format!("/{TEST_KEY}{target}"),
+            format!("{LOOP}{h}: {wrong}\r\n"),
+        ),
+        (target.to_string(), format!("{LOOP}{h}: \r\n")),
+    ] {
+        assert_eq!(
+            admit(&req(&path, &headers), &k),
+            Verdict::BadKey,
+            "{path:?} ＋ {headers:?} 不该过门"
+        );
+    }
+}
+
 /// ③ `Origin` 那一问：带了就拒，**不管值是什么**、不管钥匙对不对（排在钥匙之前）。
 #[test]
 fn any_origin_header_is_refused_before_the_key_is_looked_at() {

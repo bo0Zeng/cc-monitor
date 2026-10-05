@@ -2038,7 +2038,9 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 **性质**：中转口（回环；住常驻后端进程内，本机远端同一份代码）每一条请求在读请求体、问上游选择**之前**过三问：
 带 `Origin` ⇒ **403**（浏览器页面发的请求）；`Host` 不是回环字面量（`127.0.0.1` · `localhost` · `[::1]`，可带口）、缺或不止一个 ⇒ **421**（防 DNS rebinding）；
 路径第一段不是钥匙（没有 / 错 / 前缀 / 多一截 / 大小写不同 / 空段）⇒ **403**，比对定长时间（与控制口同一份 `listen::tokens_match`）。
-过了才剥掉那一段交给路由（`/s/` 与 `/t/` 一样要过）⇒ 「钥匙对、表里没这一行」仍是 **404**，与 403 **可分**；三种拒法各带一句说得清是哪一问的话。
+钥匙也可以在钥匙头 `X-Cc-Monitor-Key` 里（那一家的上游地址只能写进它自己的配置、钥匙另经环境交给它时）：带了这个头就只认头里那一把（恰一个），
+路径第一段也是钥匙形 ⇒ 两处都有 ⇒ **403**；中转转上游前把这个头剥掉。
+过了才剥掉那一段交给路由（`/s/` 与 `/t/` 一样要过；钥匙在头里那一形路径原样）⇒ 「钥匙对、表里没这一行」仍是 **404**，与 403 **可分**；三种拒法各带一句说得清是哪一问的话。
 钥匙 256 位（OS 密码学随机数），住**中转所在那台机器**的 `~/.cc-monitor/relay-key`（`0600`），由中转自己在**绑上口之后**读回或铸（只有绑上口的那一个会写）；
 拿不到钥匙 ⇒ **不起**（出声、后端照常）。钥匙**跨中转重起不变** —— 端口是固定常量，老会话手里的 URL 重起后本来就还有效，换钥匙会打断每一条活会话。
 **钥匙只从那份文件进 agent 进程自己的 env**：交给终端的那一行 `ccm …` 不带中转地址也不带钥匙；`ccm` 直路在自己进程里读那份文件、拼进 agent 进程的环境再 exec，
@@ -2054,7 +2056,8 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 **为什么不能松动**：回环 TCP 没有权限位；中转会**代入账号的凭据**去打上游 —— 门开着，同机任何进程（别的 OS 用户、浏览器里的一张网页）就能以这个账号的额度与身份发请求。
 路由键第三段（会话 id / nonce）是公开可铸的标签，**不是**认证。
 
-**谁在守**：`door_tests.rs::only_the_exact_key_as_the_first_segment_gets_in` · `door_tests.rs::any_origin_header_is_refused_before_the_key_is_looked_at` ·
+**谁在守**：`door_tests.rs::only_the_exact_key_as_the_first_segment_gets_in` · `door_tests.rs::the_key_may_ride_in_the_key_header_instead_of_the_path` ·
+`two_form_tests.rs::a_key_carried_in_the_key_header_gets_in_and_is_not_forwarded` · `door_tests.rs::any_origin_header_is_refused_before_the_key_is_looked_at` ·
 `door_tests.rs::only_a_loopback_literal_host_gets_in` · `door_tests.rs::the_three_refusals_are_distinct_faces` ·
 `key_tests.rs::the_key_file_is_minted_once_private_and_read_back_across_restarts`（`0600` · 跨重起同一把 · 坏文件换新）· `key_tests.rs::the_key_file_and_the_key_shape_come_from_the_shared_crate`（钥匙路径与形状只住共享 crate `relay-route-core`，两半同一个 const）·
 `server_tests.rs::rk1_the_door_refuses_without_the_key_and_that_is_not_a_404` · `server_tests.rs::rk1_browser_and_rebinding_requests_are_refused_but_the_cli_shape_passes` ·

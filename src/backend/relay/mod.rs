@@ -45,3 +45,6 @@ mod observe_retry_tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/relay/server_tests.rs"]
 mod server_tests;
+#[cfg(test)]
+#[path = "../../../tests/backend/relay/two_form_tests.rs"]
+mod two_form_tests;

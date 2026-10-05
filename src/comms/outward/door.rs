@@ -12,9 +12,11 @@
 //!
 //! 1. 带 `Origin` ⇒ [`Verdict::Browser`]（**403**）—— 浏览器发的请求一律带它；claude CLI 现打不带（`RK1.md §5.1`）；
 //! 2. `Host` 不是回环字面量（或没有、或不止一个）⇒ [`Verdict::NotLoopbackHost`]（**421**，防 DNS rebinding）；
-//! 3. 路径第一段不是钥匙 ⇒ [`Verdict::BadKey`]（**403**）；比对定长时间（[`tokens_match`]，与后端控制口同一份）。
+//! 3. 钥匙不对 ⇒ [`Verdict::BadKey`]（**403**）；比对定长时间（[`tokens_match`]，与后端控制口同一份）。
+//!    钥匙在路径第一段，或在钥匙头里（`relay_route_core::KEY_HEADER`：那一家的地址写在它自己的配置里、钥匙另经环境交给它）：
+//!    带了钥匙头 ⇒ 只认头里那一把（恰一个），路径第一段也是钥匙形 ⇒ 两处都有、说不清以哪一把为准 ⇒ 拒；没带 ⇒ 认路径第一段。
 //!
-//! 过了才剥掉 `/<钥匙>`，余下的交给 `route::parse`（一字不改）⇒ 表里没这一行仍是 **404**，与 403 可分。
+//! 过了才剥掉 `/<钥匙>`（钥匙在头里那一形路径原样），余下的交给 `route::parse`（一字不改）⇒ 表里没这一行仍是 **404**，与 403 可分。
 //!
 //! # ⚠ 诚实边界
 //!
@@ -82,7 +84,7 @@ impl Verdict {
             Verdict::BadKey => Some((
                 FORBIDDEN,
                 "bad-key",
-                "relay: missing or wrong relay key (first path segment)",
+                "relay: missing or wrong relay key (first path segment, or the key header)",
             )),
         }
     }
@@ -110,12 +112,23 @@ pub fn admit(head: &RequestHead, key: &Key) -> Verdict {
     };
     let (seg, rest) = match after.find('/') {
         Some(i) => (&after[..i], &after[i..]),
-        None => return Verdict::BadKey,
+        None => (after, ""),
     };
-    if !tokens_match(seg, key.expose()) {
-        return Verdict::BadKey;
+    let mut in_header = head
+        .headers
+        .iter()
+        .filter(|(k, _)| k.eq_ignore_ascii_case(relay_route_core::KEY_HEADER));
+    match (in_header.next(), in_header.next()) {
+        (None, _) if !rest.is_empty() && tokens_match(seg, key.expose()) => {
+            Verdict::Pass(rest.to_string())
+        }
+        (Some((_, v)), None)
+            if tokens_match(v.trim(), key.expose()) && !relay_route_core::key_shape_ok(seg) =>
+        {
+            Verdict::Pass(head.target.clone())
+        }
+        _ => Verdict::BadKey,
     }
-    Verdict::Pass(rest.to_string())
 }
 
 /// `Host` 那一格是不是回环字面量：`127.0.0.1` · `localhost` · `[::1]`，可带 `:<十进制口>`。大小写不敏感。

@@ -635,10 +635,7 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
             );
         }
     };
-    if head
-        .header("upgrade")
-        .is_some_and(|v| !v.trim().is_empty())
-    {
+    if head.header("upgrade").is_some_and(|v| !v.trim().is_empty()) {
         return respond_and_drain(&mut down_w, UPGRADE_REQUIRED, "no-upgrade");
     }
     if head.is_chunked_body() {
@@ -1093,6 +1090,7 @@ pub fn render_upstream_request(
     //      连那份名单都没有 ⇒ 它也不可能自己凑一份缩水的。
     for (k, v) in &head.headers {
         if http1::is_hop_by_hop(k)
+            || k.eq_ignore_ascii_case(relay_route_core::KEY_HEADER)
             || k.eq_ignore_ascii_case("host")
             || k.eq_ignore_ascii_case("accept-encoding")
             || k.eq_ignore_ascii_case("content-length")
