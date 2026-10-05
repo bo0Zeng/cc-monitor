@@ -744,7 +744,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p7c-fork-launch：分叉之后起的推断由后端出（session-fork 回复带 launch），sessions-start 收 fresh_terminal / fork_of；named 只剩名字。
 ///
 /// p7d-quota-rotation：额度满了自动换号、不重启（中转 retry 口 ＋ 账号域轮换）；新帧命令 rotation-* 五条与推送 rotation_changed。
-pub const BUILD_ID: &str = "p7d-quota-rotation";
+///
+/// p7e-codex-who：Codex 记录「谁说的」在适配层认对；通用层按家取、不取第一家（命令集合不变）。
+pub const BUILD_ID: &str = "p7e-codex-who";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
