@@ -359,7 +359,7 @@ impl Hop {
                 self.stuck(a.sid, rec, &skipped);
                 let reply = crate::agents::limit_reply_of(a.agent)?;
                 Some(Go::Hold {
-                    reply: reply(back.at, back.slot.as_deref()),
+                    reply: reply(back.at, a.now, back.slot.as_deref()),
                 })
             }
         }

@@ -118,18 +118,29 @@ pub(crate) fn read(status: u16, headers: &[(String, String)], now: u64) -> Optio
     })
 }
 
-/// 「用满」回包：照真被拒那一发的形状 —— 429、限流器那一族头说 `rejected`、卡着的窗口与几点重置、体是 `rate_limit_error`。
-/// 超额那一族不给（缺 ＝ 没有超额兜着，claude 照「用满」处理）；用量比例不给（不编数）。
+/// 说不出卡在哪个窗口时，重置时刻离此刻多远以内标 5 小时那一个（更远标 7 天那一个）。
+const FIVE_HOURS: u64 = 5 * 3600;
+
+/// 「用满」回包：照真被拒那一发的形状 —— 429、限流器那一族头说 `rejected`、卡着的窗口与几点重置、`retry-after`、体是 `rate_limit_error`。
+/// - 窗口那一格（`representative-claim`）永远带：缺了 claude 认不成「用满」（当成服务端临时限流、退避重试后报错，也不会到点续）。
+///   说得出卡在哪个窗口 ⇒ 照它；说不出 ⇒ 按远近标：5 小时以内 `five_hour`、更远 `seven_day`（只关显示用词，重置时刻照真的）。
+/// - `retry-after` ＝ 离重置还有几秒（至少 1）：按量号的 claude 据它决定等到点再发还是当场报错。
+/// - 超额那一族不给（缺 ＝ 没有超额兜着，claude 照「用满」处理）；用量比例不给（不编数）。
+///
 /// claude 照它原生的样子显示「用满 · 几点重置」，开着自动续时到点自己续。
-pub(crate) fn limit_reply(reset_at: u64, slot: Option<&str>) -> LimitReply {
+pub(crate) fn limit_reply(reset_at: u64, now: u64, slot: Option<&str>) -> LimitReply {
     let at = reset_at.to_string();
+    let wait = reset_at.saturating_sub(now).max(1);
+    let by_distance = if wait <= FIVE_HOURS { "5h" } else { "7d" };
+    let slot = slot.unwrap_or(by_distance);
     let mut headers = vec![
         ("content-type".to_string(), "application/json".to_string()),
         (format!("{PREFIX}status"), "rejected".to_string()),
         (format!("{PREFIX}reset"), at.clone()),
+        ("retry-after".to_string(), wait.to_string()),
     ];
     let window = |slot: &str| WINDOWS.iter().find(|(name, _)| slot_of(name) == Some(slot));
-    if let Some((name, tail)) = slot.and_then(window) {
+    if let Some((name, tail)) = window(slot).or_else(|| window(by_distance)) {
         headers.push((format!("{PREFIX}representative-claim"), name.to_string()));
         headers.push((format!("{PREFIX}{tail}-reset"), at));
     }

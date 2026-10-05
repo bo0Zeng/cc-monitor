@@ -2147,7 +2147,7 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 
 **到上限没号可换**（阈值模式、池里没有 N% 以下能接的号）：
 - `continue`：此刻的号只是到了 N% ⇒ 留在它上面照发；它**真被拒**（回包被拒，或额度账上被拒未到重置）⇒ 退一步按池序取首个**没被拒**、也没在付费超额上的号（不管 N%）；都不行 ⇒ 原样交回上游的拒绝。
-- `stop`：这一发**不发上游**，中转回一份那一家自己认得的「用满」回包（形状住适配层，claude 那一家：`429 Too Many Requests` ＋ `anthropic-ratelimit-unified-status: rejected` · `-reset` · `-representative-claim` · `-<窗口>-reset`，体 `{"type":"error","error":{"type":"rate_limit_error",…}}`；中转另带原因头 `X-Cc-Monitor-Reason: at-limit`），
+- `stop`：这一发**不发上游**，中转回一份那一家自己认得的「用满」回包（形状住适配层，claude 那一家：`429 Too Many Requests` ＋ `anthropic-ratelimit-unified-status: rejected` · `-reset` · `-representative-claim`（永远带：说不出卡在哪个窗口 ⇒ 重置时刻在 5 小时以内标 `five_hour`、更远标 `seven_day`）· `-<窗口>-reset` ＋ `retry-after`（离重置还有几秒，至少 1），体 `{"type":"error","error":{"type":"rate_limit_error",…}}`；中转另带原因头 `X-Cc-Monitor-Reason: at-limit`），
   重置时刻 ＝ 池里最早回到 N% 以下的那一刻（一个号几个窗口过了 N% ⇒ 都重置才算；被拒的号按它的重置时刻）。换过去的号当场被拒（重发那一路）也回这一份。会话记一条 `{"held": {"n"}}`（`fromResetsAt` ＝ 那一刻）、推 `rotation_changed`；
   池里有号回到 N% 以下 ⇒ 下一发照常走。这份回包不进额度账（上游没答过）。说不出几点有号回来 ⇒ 照 `continue` 办。不送字、不起醒点：claude 开着 `autoContinueAtUsageLimit` 时照回包里的重置时刻自己续。
   那一家适配层给不出这一形 ⇒ 对它 `stop` 不成立、照 `continue` 办（`rotation-session-read` 的 `atLimit` 照实标）。「被拒才换」模式下没有 N%，`stop` 与 `continue` 同。换过去的会话钉在新号上（随会话持久，后端重启后第一发就走它）；

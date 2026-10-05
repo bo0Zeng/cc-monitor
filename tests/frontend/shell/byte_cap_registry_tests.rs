@@ -197,6 +197,11 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              不限任何字节量。",
     ),
     (
+        "FIVE_HOURS",
+        "**时间**不是体量：claude 那份「用满」回包说不出卡在哪个窗口时，重置时刻离此刻多少秒以内标 5 小时那个窗口\
+             （后端 `agents/claudecode/quota·rs::limit_reply`；更远标 7 天那个）。不限任何字节量。",
+    ),
+    (
         "LEFTOVER_STALE_SECS",
         "**时间**不是体量：部署残件（`put_atomic` 的临时件 / 备份件）多久没动过才算没人要（秒）；远大于 monitor 等一次 put 的 600 秒。",
     ),

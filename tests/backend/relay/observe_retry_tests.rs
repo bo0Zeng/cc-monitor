@@ -654,6 +654,7 @@ fn is_held_reply(resp: &str, at: u64) -> bool {
         && resp.contains("anthropic-ratelimit-unified-status: rejected\r\n")
         && resp.contains(&format!("anthropic-ratelimit-unified-reset: {at}\r\n"))
         && resp.contains("anthropic-ratelimit-unified-representative-claim: five_hour\r\n")
+        && resp.contains("\r\nretry-after: ")
         && resp.contains("X-Cc-Monitor-Reason: at-limit\r\n")
         && resp.contains("\"rate_limit_error\"")
 }

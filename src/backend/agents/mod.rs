@@ -1035,8 +1035,8 @@ pub(crate) struct LimitReply {
     pub(crate) body: Vec<u8>,
 }
 
-/// （几点重置 unix 秒, 卡着的那个窗口的语义位 `5h` / `7d`）→ 这一家的「用满」回包。
-pub(crate) type LimitReplyOf = fn(u64, Option<&str>) -> LimitReply;
+/// （几点重置 unix 秒, 此刻 unix 秒, 卡着的那个窗口的语义位 `5h` / `7d`，说不出 ⇒ `None`）→ 这一家的「用满」回包。
+pub(crate) type LimitReplyOf = fn(u64, u64, Option<&str>) -> LimitReply;
 
 /// 路由第 1 段 → 那一家的「用满」回包（见 [`DefaultUpstream::limit_reply`]）。
 pub(crate) fn limit_reply_of(route_id: &str) -> Option<LimitReplyOf> {

@@ -188,7 +188,7 @@ fn the_adapter_registry_hands_this_reading_to_the_relay_route_of_claude() {
 #[test]
 fn the_limit_reply_reads_back_as_refused_until_its_reset() {
     let at = NOW + 1800;
-    let r = limit_reply(at, Some("7d"));
+    let r = limit_reply(at, NOW, Some("7d"));
     assert_eq!(r.status, "429 Too Many Requests");
     let got = read(429, &r.headers, NOW).expect("读得出");
     assert!(got.refused);
@@ -198,14 +198,58 @@ fn the_limit_reply_reads_back_as_refused_until_its_reset() {
     let body: serde_json::Value = serde_json::from_slice(&r.body).expect("体是 JSON");
     assert_eq!(body["type"], "error");
     assert_eq!(body["error"]["type"], "rate_limit_error");
-    // 说不出卡在哪个窗口 ⇒ 不编那一格。
-    let r = limit_reply(at, None);
-    assert!(!r
-        .headers
-        .iter()
-        .any(|(k, _)| k.ends_with("representative-claim")));
+}
+
+fn claim_and_retry_after(r: &crate::agents::LimitReply) -> (Option<&str>, Option<&str>) {
+    let get = |name: &str| {
+        r.headers
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
+    };
+    (
+        get("anthropic-ratelimit-unified-representative-claim"),
+        get("retry-after"),
+    )
+}
+
+/// 窗口那一格缺了，claude 就认不成「用满」（当成服务端临时限流、退避重试十次后报错，也不会到点自己续）⇒ 永远带。
+/// 说不出卡在哪个窗口 ⇒ 按重置时刻的远近标：5 小时以内 `five_hour`，更远 `seven_day`；说得出 ⇒ 照它，不看远近。
+/// `retry-after` ＝ 离重置还有几秒（至少 1）：按量号的 claude 据它决定等到点再发还是当场报错。
+#[test]
+fn the_limit_reply_always_names_a_window_and_says_when_to_retry() {
+    let five_hours = 5 * 3600;
+    let r = limit_reply(NOW + five_hours, NOW, None);
     assert_eq!(
-        read(429, &r.headers, NOW).and_then(|x| x.resets_at),
-        Some(at)
+        claim_and_retry_after(&r),
+        (Some("five_hour"), Some("18000"))
     );
+    let r = limit_reply(NOW + five_hours + 1, NOW, None);
+    assert_eq!(
+        claim_and_retry_after(&r),
+        (Some("seven_day"), Some("18001"))
+    );
+    let r = limit_reply(NOW + 60, NOW, Some("7d"));
+    assert_eq!(claim_and_retry_after(&r), (Some("seven_day"), Some("60")));
+    let r = limit_reply(NOW + 60, NOW, Some("5h"));
+    assert_eq!(claim_and_retry_after(&r), (Some("five_hour"), Some("60")));
+    assert_eq!(
+        claim_and_retry_after(&limit_reply(NOW, NOW, None)).1,
+        Some("1")
+    );
+    assert_eq!(
+        claim_and_retry_after(&limit_reply(NOW - 5, NOW, Some("5h"))).1,
+        Some("1")
+    );
+    for r in [
+        limit_reply(NOW + 60, NOW, None),
+        limit_reply(NOW + 60, NOW, Some("7d")),
+    ] {
+        let got = read(429, &r.headers, NOW).expect("读得出");
+        assert_eq!(
+            got.resets_at,
+            Some(NOW + 60),
+            "重置时刻照 reset 头，不被 retry-after 盖掉"
+        );
+    }
 }
