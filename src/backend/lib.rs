@@ -752,7 +752,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p7g-quota-show：额度显示态由后端出成品（quota-read / rotation-* 只加格），命令集合不变。
 ///
 /// p7h-autostart：自动起算 —— 号的 5h 窗口空着时那台后端替它发一句开始计时；+ autostart-read / autostart-set（只走流）· 推送 autostart_changed。
-pub const BUILD_ID: &str = "p7h-autostart";
+///
+/// p7i-autostart-out：自动起算挪出后端（成独立 skill quota-warm）；-autostart-read / -autostart-set · -autostart_changed。只留按工作目录藏 ~/.cc-monitor/autostart 的会话。
+pub const BUILD_ID: &str = "p7i-autostart-out";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
