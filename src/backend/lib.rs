@@ -758,7 +758,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p7j-writers：会话事实多 writers（此刻持着这条会话的活进程）；起会话遇到已有活进程在写那条会话就拒；cc-bus 超时说实际等了多久。
 ///
 /// p7k-atlimit：轮换多 atLimit（continue 软阈值 · stop 硬上限回那一家自己认得的用满回包）；被拒而阈值以下无号可接 ⇒ 取首个没被拒的。
-pub const BUILD_ID: &str = "p7k-atlimit";
+///
+/// p7l-interrupts：界面地基 ＋ 只读命令 session-interrupts（进行中的轮次 · 在跑的子 agent · 进行中的任务），界面「会打断什么」一问读它。
+pub const BUILD_ID: &str = "p7l-interrupts";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
