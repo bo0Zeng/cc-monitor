@@ -115,6 +115,8 @@ pub(crate) struct Done {
     pub(crate) code: Option<i32>,
     pub(crate) stdout: Vec<u8>,
     pub(crate) stderr: Vec<u8>,
+    /// 过了期限被收掉的那一次：原语交回的实际等了多久（整秒，向上取整；被命令总期限截短时是截短后的那个数）。没超时 ⇒ `None`。
+    pub(crate) waited_secs: Option<u64>,
 }
 
 impl Done {
@@ -177,7 +179,7 @@ fn not_run(bin: &Path, e: ChildFail) -> NotRun {
 }
 
 /// 起它、**同步**等它退出（阻塞档的调用方用：它们本来就跑在 `spawn_blocking` 的线程上）。
-/// `deadline_secs` 是给它的期限；过了 ⇒ 整组被杀、交成 [`TIMED_OUT_CODE`]。
+/// `deadline_secs` 是给它的期限；过了 ⇒ 整组被杀、交成 [`TIMED_OUT_CODE`]（`waited_secs` 是原语说的实际等了多久）。
 pub(crate) fn run(
     bin: &Path,
     args: &[&str],
@@ -189,11 +191,13 @@ pub(crate) fn run(
             code: out.status.code(),
             stdout: out.stdout,
             stderr: out.stderr,
+            waited_secs: None,
         }),
-        Err(ChildFail::TimedOut { .. }) => Ok(Done {
+        Err(ChildFail::TimedOut { after, .. }) => Ok(Done {
             code: Some(TIMED_OUT_CODE),
             stdout: Vec::new(),
             stderr: Vec::new(),
+            waited_secs: Some(after.shown_secs()),
         }),
         Err(e) => Err(not_run(bin, e)),
     }

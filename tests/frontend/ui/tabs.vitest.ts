@@ -5246,6 +5246,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     touchedFiles: [],
     usage: null,
     projectDir: null,
+    writers: [],
     ...p,
   });
   const line = (sid: string, seq: number, origin: string | null = null) =>
@@ -5290,6 +5291,28 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect(tab.forkedFromSessionId).toBe("abcd1234-parent");
     expect(tab.title.startsWith("↳ ")).toBe(true);
     expect(document.body.querySelector<HTMLElement>('[title*="从 abcd1234 fork 而来"]')).not.toBeNull();
+  });
+
+  it("成品说不止一个进程在写这条会话 ⇒ tab 的悬停提示多一行；一个 ⇒ 不说；会话结束了 ⇒ 不说", async () => {
+    let writers = [4242, 5252];
+    answerFacts(() => facts({ writers }));
+    tm.onLine(line("dup", 0));
+    await settle();
+    const tab = home(tm).store.tabs.get("dup")!;
+    const tip = () => document.querySelector<HTMLElement>(".tab")!.title.split("\n");
+    const said = copyText("tabBarView.tab.writers", { n: 2 });
+    expect(tab.writers).toEqual([4242, 5252]);
+    expect(tip()).toContain(said);
+    writers = [4242];
+    tm.onLine(line("dup", 1));
+    await settle();
+    expect(tip()).not.toContain(said);
+    writers = [4242, 5252];
+    tm.onLine(line("dup", 2));
+    await settle();
+    expect(tip()).toContain(said);
+    tm.archiveTab("dup");
+    expect(tip()).not.toContain(said);
   });
 
   // 刚起的会话宣告时还没有记录（或老后端宣告不带）⇒ 后端读到记录开头之后经会话事实给项目目录，标题跟上；行里的 cwd 不读。

@@ -43,6 +43,7 @@ function fakeTab(sid: string, over: Partial<Tab> = {}): Tab {
     kind: null,
     activity: null,
     forkedFromSessionId: null,
+    writers: [],
     unread: 0,
     ...over,
   } as unknown as Tab;

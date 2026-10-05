@@ -34,18 +34,21 @@ fn a_signal_death_is_not_an_exit_code() {
         code: None,
         stdout: Vec::new(),
         stderr: Vec::new(),
+        waited_secs: None,
     };
     assert!(!killed.timed_out(), "码是 None 不该被算成超时");
     let expired = Done {
         code: Some(TIMED_OUT_CODE),
         stdout: Vec::new(),
         stderr: Vec::new(),
+        waited_secs: None,
     };
     assert!(expired.timed_out());
     let ok = Done {
         code: Some(0),
         stdout: Vec::new(),
         stderr: Vec::new(),
+        waited_secs: None,
     };
     assert!(!ok.timed_out());
 }
@@ -57,18 +60,21 @@ fn the_diagnosis_prefers_stderr_and_falls_back_to_stdout() {
         code: Some(1),
         stdout: b"out-1\nout-2\n".to_vec(),
         stderr: b"\n  \nerr-1\nerr-2\n".to_vec(),
+        waited_secs: None,
     };
     assert_eq!(d.diagnosis(), "err-1", "stderr 里的第一行非空内容没被取到");
     let d2 = Done {
         code: Some(1),
         stdout: b"out-1\n".to_vec(),
         stderr: b"   \n".to_vec(),
+        waited_secs: None,
     };
     assert_eq!(d2.diagnosis(), "out-1", "stderr 全空白时没退回 stdout");
     let d3 = Done {
         code: Some(1),
         stdout: Vec::new(),
         stderr: Vec::new(),
+        waited_secs: None,
     };
     assert_eq!(d3.diagnosis(), "");
 }

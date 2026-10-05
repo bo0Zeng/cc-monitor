@@ -63,6 +63,19 @@ pub(crate) struct Deps<'a> {
     pub(crate) local_facts: local::Facts,
     /// 起会话挑号要的事实（这台的账号库 · 某条会话上次用的号）。
     pub(crate) accounts: &'a la::Facts<'a>,
+    /// sid ⇒ 此刻持着它的活进程 pid（这台的 pidfile，升序）。起之前问：已有在写的 ⇒ 不再起一个。
+    pub(crate) writers: &'a dyn Fn(&str) -> Vec<u32>,
+}
+
+/// 原因码：这条会话已有活进程在写，没起（再起一个就是两个进程同写一份记录）。
+pub(crate) const ALREADY_LIVE: &str = "session_already_live";
+
+/// pid 列表的那一串（`detail` 与话里同一形）。
+pub(crate) fn pids_said(pids: &[u32]) -> String {
+    pids.iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// 铸名的基名从哪来（同 `terminal-name-mint` 的 `cwd` / `forkOf`）。
@@ -473,8 +486,10 @@ fn start_one(
         Ok((true, _)) => {}
     }
     let rows = rows.and_then(Option::as_deref);
+    let live = (deps.writers)(&it.sid);
     let done = match tmux {
-        true => start_in_tmux(it, b, &account, rows, here, deps),
+        true => start_in_tmux(it, b, &account, rows, here, &live, deps),
+        false if !live.is_empty() => already_live(&it.sid, &live),
         false if here => start_window_here(it, b, &account, rows, deps),
         false => {
             let line = own_entry(deps).and_then(|entry| {
@@ -504,13 +519,20 @@ fn start_one(
     }
 }
 
-/// 在 tmux 里起（不接进去）：在跑 ⇒ 不另起；空 tmux ⇒ 就地键入直路那一行；都不是 ⇒ 铸名、交那一行 ccm（`--detach`）。
+/// 已有活进程在写 ⇒ 这一项跳过，`detail` 是那几个 pid。
+fn already_live(sid: &str, live: &[u32]) -> Answer {
+    Answer::skipped(sid, ALREADY_LIVE, pids_said(live))
+}
+
+/// 在 tmux 里起（不接进去）：在跑 ⇒ 不另起；已有活进程在写（不在这台的 tmux 里跑着）⇒ 不起；
+/// 空 tmux ⇒ 就地键入直路那一行；都不是 ⇒ 铸名、交那一行 ccm（`--detach`）。
 fn start_in_tmux(
     it: &Item,
     b: &Batch,
     account: &Settled,
     rows: Option<&[TmuxEntry]>,
     here: bool,
+    live: &[u32],
     deps: &Deps,
 ) -> Answer {
     let Some(rows) = rows else {
@@ -525,6 +547,7 @@ fn start_in_tmux(
             session: ns.first().cloned(),
             ..Answer::skipped(&it.sid, "ambiguous", ns.join(", "))
         },
+        _ if !live.is_empty() => already_live(&it.sid, live),
         // 必铸新名的那一项不键进已有的终端。
         Standing::Idle(_) | Standing::None if it.fresh => {
             match fresh_name(fork_base(it, rows), rows, deps) {

@@ -101,6 +101,8 @@ export function sayReply(origin: Origin, op: "stop" | "start", r: Reply): string
       return copyText("tabBatch.why.ambiguous", { machine, names: r.detail });
     case "running":
       return copyText("tabBatch.why.running", { name: target });
+    case "session_already_live":
+      return copyText("tabBatch.why.alreadyLive", { machine, pids: r.detail });
     case "record_gone":
       return copyText("tabBatch.why.recordGone", { machine, root: r.detail });
     case "account_unavailable":

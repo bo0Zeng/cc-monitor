@@ -236,15 +236,18 @@ fn run_as(name: &str, args: &[&str], as_id: Option<&str>) -> Result<Done, CmdErr
     })
 }
 
-/// 超时那条的说法 —— 两个命令共用一份文案。
-fn timed_out_err() -> (String, String) {
+/// 超时那条的说法 —— 几个命令共用一份文案。`secs` ＝ 实际等了多久（[`waited_secs`]）。
+fn timed_out_err(secs: u64) -> (String, String) {
     (
         "timed_out".to_string(),
-        copy_text(
-            "beCcBus.timedOut.say",
-            &[("secs", &timeout_secs().to_string())],
-        ),
+        copy_text("beCcBus.timedOut.say", &[("secs", &secs.to_string())]),
     )
+}
+
+/// 这一趟实际等了多久：过了期限被收掉的 ⇒ 原语交回的那个数（被命令总期限截短时就是截短后的）；
+/// 码是 124 却不是我们收的（它自己这么退的）⇒ 给它的那个期限。
+pub(crate) fn waited_secs(out: &Done) -> u64 {
+    out.waited_secs.unwrap_or_else(timeout_secs)
 }
 
 /// 机器可读形的首行标记（`cc-list --tsv` / `cc-agents --tsv` / `cc-log`）。老 cc-bus 不认 `--tsv`、
@@ -365,7 +368,11 @@ pub(crate) fn parse_spawned_tsv(
 /// `the_only_exit_code_constants_here_are_the_registered_generic_ones`）——
 /// 它们认的是**形状**、不认插件的名字，所以第二个插件的码表抬上去也会红。
 /// 各自认不出什么，写在它们自己的头注里。
-pub(crate) fn classify_send(code: Option<i32>, detail: &str) -> Result<(), (String, String)> {
+pub(crate) fn classify_send(
+    code: Option<i32>,
+    detail: &str,
+    waited: u64,
+) -> Result<(), (String, String)> {
     match code {
         Some(0) => Ok(()),
         // cc-send 自己的白名单校验（`仅 [A-Za-z0-9_-]`）
@@ -378,7 +385,7 @@ pub(crate) fn classify_send(code: Option<i32>, detail: &str) -> Result<(), (Stri
             "rejected".to_string(),
             copy_text("beCcBus.send.rejected", &[("detail", &detail.to_string())]),
         )),
-        Some(TIMED_OUT_CODE) => Err(timed_out_err()),
+        Some(TIMED_OUT_CODE) => Err(timed_out_err(waited)),
         Some(c) => Err((
             "failed".to_string(),
             copy_text(
@@ -546,7 +553,7 @@ pub(crate) fn roster_agents(rows: &[RosterRow]) -> Vec<serde_json::Value> {
 fn read_via(name: &str, args: &[&str]) -> Result<String, (String, String)> {
     let out = run(name, args).map_err(|(c, m)| (c.to_string(), m))?;
     if out.timed_out() {
-        return Err(timed_out_err());
+        return Err(timed_out_err(waited_secs(&out)));
     }
     match out.code {
         Some(0) => Ok(String::from_utf8_lossy(&out.stdout).into_owned()),
@@ -813,7 +820,7 @@ fn kill_id(id: &str) -> Result<serde_json::Value, (String, String)> {
     let detail = out.diagnosis();
     match out.code {
         Some(0) => {}
-        Some(TIMED_OUT_CODE) => return Err(timed_out_err()),
+        Some(TIMED_OUT_CODE) => return Err(timed_out_err(waited_secs(&out))),
         // cc-kill 自己的白名单校验（非法 id）
         Some(2) => {
             return Err((
@@ -983,7 +990,7 @@ fn deliver(to: &str, text: &str, from: Option<&str>) -> Result<(), (String, Stri
         (c.to_string(), m)
     })?;
     let detail = out.diagnosis();
-    classify_send(out.code, &detail)
+    classify_send(out.code, &detail, waited_secs(&out))
 }
 
 /// `bus-send` 的成品 —— 从 [`send_for_inbound`] 里原样抽出来（逻辑不动），理由同 [`list_reply`]。
@@ -1289,7 +1296,7 @@ pub(crate) fn spawn_for_inbound(
     let argv = spawn_argv(&a);
     let refs: Vec<&str> = argv.iter().map(String::as_str).collect();
     let out = run_as("cc-spawn", &refs, None).map_err(|(c, m)| (c.to_string(), m))?;
-    classify_spawn(out.code, &out.diagnosis())?;
+    classify_spawn(out.code, &out.diagnosis(), waited_secs(&out))?;
     let said = String::from_utf8_lossy(&out.stdout).trim().to_string();
     Ok(spawn_reply(&said))
 }
@@ -1305,7 +1312,11 @@ pub(crate) fn spawn_reply(said: &str) -> serde_json::Value {
 }
 
 /// `cc-spawn` 的退出码 → 语义码 —— 纯函数（表在 [`spawn_for_inbound`] 头注）。
-pub(crate) fn classify_spawn(code: Option<i32>, detail: &str) -> Result<(), (String, String)> {
+pub(crate) fn classify_spawn(
+    code: Option<i32>,
+    detail: &str,
+    waited: u64,
+) -> Result<(), (String, String)> {
     match code {
         Some(0) => Ok(()),
         Some(2) => Err((
@@ -1313,7 +1324,7 @@ pub(crate) fn classify_spawn(code: Option<i32>, detail: &str) -> Result<(), (Str
             copy_text("beCcBus.spawn.refused", &[("detail", &detail.to_string())]),
         )),
         Some(TIMED_OUT_CODE) => {
-            let (c, m) = timed_out_err();
+            let (c, m) = timed_out_err(waited);
             Err((c, copy_text("beCcBus.spawn.timedOut", &[("reason", &m)])))
         }
         Some(c) => Err((

@@ -538,6 +538,67 @@ fn the_three_products_match_the_cross_language_golden() {
     );
 }
 
+/// `history-facts` 的 `writers`：这台 pidfile 里同一个会话 id 有两个活进程 ⇒ 两个 pid 都在（升序）；
+/// 一个活一个死 ⇒ 只剩活的那一个（界面那一句只在不止一个时说）。pidfile 照真 claude 的形状写（`procStart` 对得上）。
+#[cfg(target_os = "linux")]
+#[test]
+fn facts_name_every_live_process_writing_the_session() {
+    let home = scratch("writers");
+    let sid = "bbbbbbbb-1111-2222-3333-444444444444";
+    let dir = home.join("projects").join("-w");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("{sid}.jsonl"));
+    std::fs::write(
+        &path,
+        "{\"type\":\"user\",\"uuid\":\"w-1\",\"message\":{\"content\":\"q\"}}\n",
+    )
+    .unwrap();
+    let pids = crate::observe::watcher::pidfile_dir(&home);
+    std::fs::create_dir_all(&pids).unwrap();
+    let pidfile = |pid: u32, ticks: u64| {
+        let body = format!(
+            r#"{{"pid":{pid},"sessionId":"{sid}","kind":"interactive","procStart":"{ticks}"}}"#
+        );
+        std::fs::write(pids.join(format!("{pid}.json")), body).unwrap();
+    };
+    let spawn = || {
+        let c = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let ticks = crate::platform::proc::proc_starttime(c.id()).expect("读得到起始时刻");
+        pidfile(c.id(), ticks);
+        c
+    };
+    let writers = || {
+        answer_at(&home, "history-facts", &serde_json::json!({ "path": path })).unwrap()["writers"]
+            .clone()
+    };
+    let (mut a, mut b) = (spawn(), spawn());
+    let mut want = vec![a.id(), b.id()];
+    want.sort_unstable();
+    let two = writers();
+    // 一个死了（pidfile 还留着）⇒ 不算。
+    let _ = b.kill();
+    let _ = b.wait();
+    let one = writers();
+    let _ = a.kill();
+    let _ = a.wait();
+    let none = writers();
+    let _ = std::fs::remove_dir_all(&home);
+    assert_eq!(
+        two,
+        serde_json::json!(want),
+        "两个活进程持着同一个会话 id，没都报出来"
+    );
+    assert_eq!(
+        one,
+        serde_json::json!([a.id()]),
+        "死了的那个进程还被算成在写"
+    );
+    assert_eq!(none, serde_json::json!([]));
+}
+
 /// `history-facts` 的 `limits`：设置里的上限表随请求交来、上限在这里定；形状不对 ⇒ `bad_args`。
 #[test]
 fn history_facts_applies_the_limits_it_is_given() {

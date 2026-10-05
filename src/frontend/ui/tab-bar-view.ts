@@ -621,6 +621,10 @@ export class TabBarView {
     if (isLive(tab.state) && actStatus === "waiting" && tab.activity?.waitingFor) {
       titleParts.push(copyText("tabBarView.tab.waiting", { waitingFor: tab.activity.waitingFor }));
     }
+    // 同一条会话不止一个活进程在写（后端会话事实的 `writers`）：只对活着的会话说（结束了的那一份是陈旧的）。
+    if (isLive(tab.state) && tab.writers.length > 1) {
+      titleParts.push(copyText("tabBarView.tab.writers", { n: tab.writers.length }));
+    }
     // issue #63①：fork 会话在 tooltip 里标出血缘(徽标 `↳` 在标题上、来源 sid 在此)。
     if (tab.forkedFromSessionId) {
       titleParts.push(copyText("tabBarView.tab.forkedFrom", { id: tab.forkedFromSessionId.slice(0, 8) }));

@@ -4,6 +4,8 @@
 //! - 步与步之间是 await 点：撤单（或界面关了不再等）在那里生效。**停旧 ＋ 起新是不可分的一步**：拿退出排空的票、在阻塞线程上一口气做完，
 //!   开跑之后撤单也照样做完（只停不起会把会话丢在半路）。
 //! - 停失败 ⇒ `stop_failed`，**一定不起新的**（新旧两个进程会抢同一条会话）。起失败（旧的已停）⇒ `start_failed`，`data` 带终端名。
+//! - 另有活进程在写这条会话 ⇒ `session_already_live`（`data` 带那几个 pid），不起新的：开动前写它的不止一个 ⇒ 什么都不动；
+//!   停完旧的再核一次，除了停掉的那个还有 ⇒ 旧的已停、新的不起。
 //! - 压缩：问适配层「请求压缩那一句」；不支持 ⇒ `unsupported` 照常往下；到期限没见摘要 ⇒ `timed_out` 照常往下。
 //!
 //! 要动 tmux / 读观测的几样由入口经 [`Host`] 交进来（control 不引用 observe），判据交替身。
@@ -115,8 +117,14 @@ pub(crate) fn parse(args: &Value) -> Result<Req, Failed> {
     })
 }
 
-/// 开动之前那一步：点名的号选得了 ＋ 这条会话恰好在一个终端里跑着 ⇒ `(号, 终端名)`。
-fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String), Failed> {
+/// 这条会话另有活进程在写（`pids`）⇒ 不起新的（`data`：`{pids}`）。
+fn already_live(said: String, pids: &[u32]) -> Failed {
+    (batch::ALREADY_LIVE, said, Some(json!({ "pids": pids })))
+}
+
+/// 开动之前那一步：点名的号选得了 ＋ 这条会话恰好在一个终端里跑着 ＋ 写它的活进程至多一个（就是那个终端里的）
+/// ⇒ `(号, 终端名, 此刻写它的那几个 pid)`。
+fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, Vec<u32>), Failed> {
     let _total = Budget::start(SESSIONS_WHERE_TOTAL);
     // 模型偏好只用在远端那一行上（本机那一行不带模型，同批量起）。
     let none = Default::default();
@@ -140,7 +148,20 @@ fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String), Failed> {
         )
     };
     match rows.as_deref().map(|r| batch::standing(r, &req.item.sid)) {
-        Some(Standing::Running(name)) => Ok((account, name)),
+        Some(Standing::Running(name)) => {
+            let live = (deps.writers)(&req.item.sid);
+            if live.len() > 1 {
+                let said = copy_core::copy_text(
+                    "beSessionRestart.live.before",
+                    &[
+                        ("n", &live.len().to_string()),
+                        ("pids", &batch::pids_said(&live)),
+                    ],
+                );
+                return Err(already_live(said, &live));
+            }
+            Ok((account, name, live))
+        }
         Some(Standing::Ambiguous(names)) => Err((
             "ambiguous",
             copy_core::copy_text(
@@ -153,11 +174,23 @@ fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String), Failed> {
     }
 }
 
-/// 不可分的那一步：停旧（失败 ⇒ 不起）→ 同一个名字用新号起。
-fn swap(req: &Req, account: &Settled, name: &str, deps: &Deps) -> Result<(), Failed> {
+/// 不可分的那一步：停旧（失败 ⇒ 不起）→ 停完核一次：除了停掉的那个（`mine` ＝ 开动前写它的那几个）另有活进程在写 ⇒ 不起
+/// → 同一个名字用新号起。
+fn swap(req: &Req, account: &Settled, name: &str, mine: &[u32], deps: &Deps) -> Result<(), Failed> {
     let _total = Budget::start(SWAP_TOTAL);
     if let Err((why, said)) = (deps.kill)(name, &req.item.sid) {
         return Err(("stop_failed", said, Some(json!({ "why": why }))));
+    }
+    let others: Vec<u32> = (deps.writers)(&req.item.sid)
+        .into_iter()
+        .filter(|p| !mine.contains(p))
+        .collect();
+    if !others.is_empty() {
+        let said = copy_core::copy_text(
+            "beSessionRestart.live.afterStop",
+            &[("pids", &batch::pids_said(&others))],
+        );
+        return Err(already_live(said, &others));
     }
     let a = batch::start_named(
         &req.item,
@@ -231,7 +264,7 @@ async fn compact<H: Host>(req: &Req, name: &str, host: &H) -> Compact {
 pub(crate) async fn run<H: Host>(args: Value, host: H) -> Result<Value, Fault> {
     let req = std::sync::Arc::new(parse(&args).map_err(owned)?);
     let r = req.clone();
-    let (account, name) = host
+    let (account, name, mine) = host
         .blocking(move |d| prepare(&r, d).map_err(owned))
         .await?;
     let compact = compact(&req, &name, &host).await;
@@ -239,7 +272,7 @@ pub(crate) async fn run<H: Host>(args: Value, host: H) -> Result<Value, Fault> {
     let arrival = host.watch_arrival(&req.item.sid).await;
     let (r, a, n) = (req.clone(), account.clone(), name.clone());
     match host
-        .critical(move |d| swap(&r, &a, &n, d).map_err(owned))
+        .critical(move |d| swap(&r, &a, &n, &mine, d).map_err(owned))
         .await
     {
         None => {

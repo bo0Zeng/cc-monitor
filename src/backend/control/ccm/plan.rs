@@ -937,12 +937,25 @@ pub(crate) fn build_among(
             } else {
                 env.inherited_config_dir.as_deref()
             };
-            Some(
-                scan(dir.map(std::path::Path::new))
-                    .into_iter()
-                    .find(|(s, _)| s == sid)
-                    .map(|(_, pid)| pid),
-            )
+            let mut pids: Vec<u32> = scan(dir.map(std::path::Path::new))
+                .into_iter()
+                .filter(|(s, _)| s == sid)
+                .map(|(_, pid)| pid)
+                .collect();
+            pids.sort_unstable();
+            // 已经不止一个进程在写它 ⇒ 接哪一个都不对、更不另起：明说是哪几个。
+            if pids.len() > 1 {
+                let said: Vec<String> = pids.iter().map(u32::to_string).collect();
+                return Err(Die(copy_text(
+                    "bePlan.build.manyWriters",
+                    &[
+                        ("sid", sid),
+                        ("n", &pids.len().to_string()),
+                        ("pids", &said.join(", ")),
+                    ],
+                )));
+            }
+            Some(pids.first().copied())
         }
         _ => None,
     };

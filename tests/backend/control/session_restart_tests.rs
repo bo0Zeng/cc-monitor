@@ -30,6 +30,9 @@ struct Rig {
     summarize: bool,
     kill_err: Option<&'static str>,
     ccm_exit: i32,
+    /// 持着这条会话的活进程：停旧之前 · 停旧之后（替身的 pidfile）。
+    live_before: Vec<u32>,
+    live_after: Vec<u32>,
     calls: Mutex<Vec<String>>,
 }
 
@@ -53,6 +56,8 @@ impl Rig {
             summarize: false,
             kill_err: None,
             ccm_exit: 0,
+            live_before: vec![],
+            live_after: vec![],
             calls: Mutex::new(vec![]),
         }
     }
@@ -107,6 +112,13 @@ impl Rig {
             library: &library,
             last: &|_| None,
         };
+        let writers = |_: &str| -> Vec<u32> {
+            if self.did("kill") > 0 {
+                self.live_after.clone()
+            } else {
+                self.live_before.clone()
+            }
+        };
         f(&Deps {
             list: &list,
             record: &record,
@@ -121,6 +133,7 @@ impl Rig {
                 entry: crate::platform::paths::installed_ccm_entry,
             },
             accounts: &facts,
+            writers: &writers,
         })
     }
 }
@@ -336,4 +349,48 @@ fn cancelling_while_waiting_for_the_summary_stops_nothing_and_starts_nothing() {
 fn session_restart_is_cancellable() {
     assert!(crate::stream::inbound::command_names().contains(&"session-restart"));
     assert!(!crate::stream::inbound::uncancellable().contains(&"session-restart".to_string()));
+}
+
+/// 写这条会话的活进程不止一个（终端里那个之外另有一个）⇒ `session_already_live`（`data.pids`），不停、不起。
+#[test]
+fn two_live_writers_refuse_the_restart_before_anything_moves() {
+    let mut rig = Rig::new("two-writers");
+    rig.live_before = vec![11, 12];
+    let (out, rig) = go(rig, args(true, 1000));
+    let (code, _, data) = out.unwrap_err();
+    assert_eq!(code, "session_already_live");
+    assert_eq!(data, Some(json!({ "pids": [11, 12] })));
+    assert_eq!(
+        rig.did("kill") + rig.did("ccm") + rig.did("send"),
+        0,
+        "{:?}",
+        rig.calls()
+    );
+}
+
+/// 停完旧的再核：自己停掉的那个（开动前就在写的）还没退干净不算 ⇒ 照常起；
+/// 停的这段时间里另有一个进程接上了这条会话 ⇒ `session_already_live`、旧的已停、新的不起。
+#[test]
+fn after_the_stop_only_someone_else_still_writing_holds_the_start() {
+    let mut rig = Rig::new("own-writer");
+    rig.live_before = vec![11];
+    rig.live_after = vec![11];
+    let (out, rig) = go(rig, args(false, 0));
+    assert!(out.is_ok(), "自己停掉的那个把自己拦住了：{out:?}");
+    assert_eq!(rig.did("ccm"), 1);
+
+    let mut rig = Rig::new("new-writer");
+    rig.live_before = vec![11];
+    rig.live_after = vec![11, 13];
+    let (out, rig) = go(rig, args(false, 0));
+    let (code, _, data) = out.unwrap_err();
+    assert_eq!(code, "session_already_live");
+    assert_eq!(data, Some(json!({ "pids": [13] })));
+    assert_eq!(rig.did("kill"), 1);
+    assert_eq!(
+        rig.did("ccm"),
+        0,
+        "另有进程在写，还起了新的：{:?}",
+        rig.calls()
+    );
 }

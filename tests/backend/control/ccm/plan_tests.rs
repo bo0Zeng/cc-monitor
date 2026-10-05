@@ -1815,6 +1815,37 @@ fn fix_a_resume_of_a_session_running_outside_tmux_is_refused_and_says_where() {
     );
 }
 
+fn two_writers_scan(_: Option<&std::path::Path>) -> Vec<(String, u32)> {
+    vec![
+        ("sid-1".into(), 5252),
+        ("sid-2".into(), 1),
+        ("sid-1".into(), 4242),
+    ]
+}
+
+/// 注入的扫描说 `sid-1` 有两个活进程在写 ⇒ 拒并说出两个 pid（升序）：tmux 里认得出也不接（接哪一个都不对），更不另起。
+#[test]
+fn a_resume_of_a_session_two_processes_are_writing_is_refused() {
+    let t = AccountTable::default();
+    let mut e = env();
+    e.running_sessions = Some(two_writers_scan);
+    let a: Vec<String> = ["--resume", "sid-1"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let Parsed::Opts(o) = parse(&a).expect("解析") else {
+        panic!()
+    };
+    for rows in [&[("other", "")][..], &[("work", "sid-1")][..]] {
+        let Die(said) =
+            build(&o, &e, &t, Some(&snapshot_rows(rows))).expect_err("两个在写还接上 / 另起了");
+        assert!(
+            said.contains("4242, 5252") && said.contains("sid-1"),
+            "{said}"
+        );
+    }
+}
+
 // ── 起会话只有 ccm 一处：monitor 交来的三个选项 ＋ 中转地址在最终 exec 那一处定 ──
 
 /// 原排列直接喂解析器（新选项不走上面那个换排列的夹具）。

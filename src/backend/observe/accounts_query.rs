@@ -631,6 +631,24 @@ pub(crate) fn live_session_ids(agent_home: &Path) -> std::collections::BTreeSet<
         .collect()
 }
 
+/// 此刻持着 `sid` 的活交互进程 pid（同一批 pidfile、同 [`live_session_ids`] 的判活；后台任务不算），升序。
+/// 不止一个 ⇒ 同一条会话有几个进程在同时写。
+pub(crate) fn session_writers(agent_home: &Path, sid: &str) -> Vec<u32> {
+    let mut pids: Vec<u32> = pidfiles(agent_home)
+        .into_iter()
+        .filter(|(_, v)| v.get("sessionId").and_then(|x| x.as_str()) == Some(sid))
+        .filter(|(_, v)| {
+            v.get("kind")
+                .and_then(|k| k.as_str())
+                .is_none_or(|k| k == "interactive")
+        })
+        .filter(|(pid, v)| crate::platform::proc::session_alive(*pid, parse_procstart_ticks(v)))
+        .map(|(pid, _)| pid)
+        .collect();
+    pids.sort_unstable();
+    pids
+}
+
 /// `--session-accounts`：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。
 pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
     // 向适配层要「会话进程环境里该读哪两个键」只问这一次（账号 · 上游地址）。

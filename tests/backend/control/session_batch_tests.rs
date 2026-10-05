@@ -56,6 +56,8 @@ struct Rig {
     cwd_name: &'static str,
     /// 按分叉铸回的名字：缺 ⇒ 同这台的基名规则（`fork_tmux_base`，不避让）。
     fork_name: Option<&'static str>,
+    /// 此刻持着某个 sid 的活进程（替身的 pidfile）。
+    live: Vec<(&'static str, u32)>,
 }
 
 impl Rig {
@@ -70,6 +72,7 @@ impl Rig {
             kill_err: None,
             cwd_name: "proj-cc-2",
             fork_name: None,
+            live: vec![],
         }
     }
     fn run<T>(&self, f: impl FnOnce(&Deps) -> T) -> T {
@@ -118,6 +121,13 @@ impl Rig {
                 }
             })
         };
+        let writers = |sid: &str| -> Vec<u32> {
+            self.live
+                .iter()
+                .filter(|(s, _)| *s == sid)
+                .map(|(_, p)| *p)
+                .collect()
+        };
         with_accounts(|accounts| {
             f(&Deps {
                 list: &list,
@@ -133,6 +143,7 @@ impl Rig {
                     entry: crate::platform::paths::installed_ccm_entry,
                 },
                 accounts,
+                writers: &writers,
             })
         })
     }
@@ -357,6 +368,50 @@ fn start_in_tmux_is_the_single_tmux_item_without_attaching() {
     assert_eq!(out["results"][2]["session"], "proj-cc-2");
 }
 
+/// 已有活进程在写那条会话（不在这台 tmux 里跑着）⇒ 那一项不起、说出 pid，不挡同批别的；
+/// tmux 里跑着它的那一项照旧答 `running`（界面据它接回去，不是起）。开终端那一形同样不起。
+#[test]
+fn a_session_some_live_process_is_writing_is_not_started_again() {
+    let acct = json!({ "kind": "named", "name": "work" });
+    let mut rig = Rig::new(Some(vec![
+        row("a-cc", Some(A), true),  // 在跑
+        row("b-cc", Some(B), false), // 空 tmux，可它在别处有活进程
+    ]));
+    rig.live = vec![(A, 101), (B, 202), (C, 303), (C, 304)];
+    let args = batch(
+        "tmux",
+        false,
+        vec![
+            item(A, acct.clone()),
+            item(B, acct.clone()),
+            item(C, acct.clone()),
+        ],
+    );
+    let out = rig.run(|d| start(&args, d)).unwrap();
+    assert_eq!(
+        outcomes(&out),
+        vec![
+            (A.into(), "skipped".into(), json!("running")),
+            (B.into(), "skipped".into(), json!("session_already_live")),
+            (C.into(), "skipped".into(), json!("session_already_live")),
+        ]
+    );
+    assert_eq!(out["results"][1]["detail"], "202");
+    assert_eq!(out["results"][2]["detail"], "303, 304");
+    assert!(
+        rig.launched.borrow().is_empty(),
+        "键进了已有活进程的那条会话"
+    );
+    assert!(rig.ccm.borrow().is_empty(), "另起了一个进程去写同一条会话");
+    // 开终端那一形（本机 / 远端）同样不渲那一行。
+    for here in [true, false] {
+        let args = batch("window", here, vec![item(B, acct.clone())]);
+        let out = rig.run(|d| start(&args, d)).unwrap();
+        assert_eq!(out["results"][0]["why"], "session_already_live", "{out}");
+        assert_eq!(out["results"][0]["cmd"], Value::Null);
+    }
+}
+
 #[test]
 fn start_skips_what_has_no_record_and_says_a_taken_name() {
     let mut rig = Rig::new(Some(vec![]));
@@ -485,6 +540,7 @@ fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_ow
             library: &la::Library::default,
             last: &|_| None,
         },
+        writers: &|_| Vec::new(),
     };
     let sids: Vec<String> = [A, B, C].map(str::to_string).to_vec();
     let t0 = std::time::Instant::now();

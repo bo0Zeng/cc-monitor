@@ -129,6 +129,14 @@ describe("批量起：每项只交 sid 与目录，整批带用户设置的原�
     expect(out.filter((o) => o.outcome === "done").map((o) => o.sid)).toEqual(["c", "f"]);
   });
 
+  it("那台说已有进程在写那一项 ⇒ 说出那几个 pid，不当成起不来", async () => {
+    backend((_o, _op, args) => ({
+      results: (args.items as { sid: string }[]).map((i) => res(i.sid, "skipped", "session_already_live", { detail: "4242, 5252" })),
+    }));
+    const [o] = await startMany([tab("c", "r1")], "tmux");
+    expect(o).toEqual({ sid: "c", outcome: "skipped", why: copyText("tabBatch.why.alreadyLive", { machine: "r1", pids: "4242, 5252" }) });
+  });
+
   it("开终端：后端渲好的那一行逐个开窗；窗口开不出来的记失败", async () => {
     backend((_o, _op, args) => ({
       results: (args.items as { sid: string }[]).map((i) => res(i.sid, "done", null, { cmd: `ccm --resume ${i.sid}` })),

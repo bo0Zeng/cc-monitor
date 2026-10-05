@@ -340,11 +340,11 @@ fn the_override_dir_wins_over_the_fixed_places() {
 /// （把两档并成一个码，用户就分不出「名字写错了」和「被 ACL 拦了」）。
 #[test]
 fn the_three_exit_codes_map_to_three_different_meanings() {
-    assert!(classify_send(Some(0), "").is_ok());
-    let bad = classify_send(Some(2), "x").unwrap_err().0;
-    let rej = classify_send(Some(3), "x").unwrap_err().0;
-    let other = classify_send(Some(9), "x").unwrap_err().0;
-    let killed = classify_send(None, "x").unwrap_err().0;
+    assert!(classify_send(Some(0), "", 10).is_ok());
+    let bad = classify_send(Some(2), "x", 10).unwrap_err().0;
+    let rej = classify_send(Some(3), "x", 10).unwrap_err().0;
+    let other = classify_send(Some(9), "x", 10).unwrap_err().0;
+    let killed = classify_send(None, "x", 10).unwrap_err().0;
     assert_ne!(bad, rej, "「收件人非法」与「被路由层拦」必须分得开");
     assert_ne!(bad, other);
     assert_ne!(rej, other);
@@ -512,16 +512,19 @@ fn bus_spawn_reads_the_id_from_what_cc_spawn_said_and_never_guesses() {
 /// 退出码分档：2 ⇒ invalid_args · 124 ⇒ timed_out **且说清「可能已经起来了、别直接重试」** · 其它 ⇒ failed。
 #[test]
 fn bus_spawn_timeout_warns_that_the_agent_may_already_be_running() {
-    assert!(classify_spawn(Some(0), "").is_ok());
-    assert_eq!(classify_spawn(Some(2), "x").unwrap_err().0, "invalid_args");
-    let (c, m) = classify_spawn(Some(TIMED_OUT_CODE), "x").unwrap_err();
+    assert!(classify_spawn(Some(0), "", 10).is_ok());
+    assert_eq!(
+        classify_spawn(Some(2), "x", 10).unwrap_err().0,
+        "invalid_args"
+    );
+    let (c, m) = classify_spawn(Some(TIMED_OUT_CODE), "x", 10).unwrap_err();
     assert_eq!(c, "timed_out");
     assert!(
         m.contains("可能已经起来了") && m.contains("直接重试"),
         "超时那句没把「副作用可能已经发生」说出来 —— 用户会直接重试、再起一个真 agent：{m}"
     );
-    assert_eq!(classify_spawn(Some(1), "x").unwrap_err().0, "failed");
-    assert_eq!(classify_spawn(None, "x").unwrap_err().0, "failed");
+    assert_eq!(classify_spawn(Some(1), "x", 10).unwrap_err().0, "failed");
+    assert_eq!(classify_spawn(None, "x", 10).unwrap_err().0, "failed");
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -775,4 +778,22 @@ fn senders_and_broadcast_recipients_are_judged_before_they_reach_cc_send() {
             None
         );
     }
+}
+
+/// 超时那句说的秒数 ＝ 实际等了多久：命令总期限把一发截短到 1 s（cc-bus 自己的期限是 10 s）⇒ 话里是 1，不是 10。
+/// 真起一个睡着的子进程走同一个原语（`plugin::invoke::run`），再经 cc-bus 这一侧的分档出那句话。
+#[cfg(unix)]
+#[test]
+fn a_timeout_says_how_long_it_actually_waited() {
+    use crate::platform::child::{Budget, Deadline};
+    let _total = Budget::start(Deadline::secs(1));
+    let out = crate::plugin::invoke::run(std::path::Path::new("sleep"), &["30"], 10, &[])
+        .unwrap_or_else(|_| panic!("起不来 sleep"));
+    assert!(out.timed_out());
+    assert_eq!(out.waited_secs, Some(1), "原语交回的不是截短后的那个时长");
+    let (code, said) = classify_send(out.code, "", waited_secs(&out)).unwrap_err();
+    assert_eq!(code, "timed_out");
+    assert!(said.contains("等了 1 s") && !said.contains("10"), "{said}");
+    let (_, said) = classify_spawn(out.code, "", waited_secs(&out)).unwrap_err();
+    assert!(said.contains("等了 1 s"), "{said}");
 }

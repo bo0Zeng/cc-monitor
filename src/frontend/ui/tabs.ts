@@ -674,6 +674,7 @@ export class TabManager {
       projectDir,
       aiTitle: null,
       forkedFromSessionId: null, // issue #63①：后端的会话事实到了才有（`onSessionFacts`）
+      writers: [], // 同上
       origin,
       state: LIVE, // 见了行 / 宣告了才建 ⇒ 活着；早到的死亡信号在下面落实
       // **不做自动固定**（照 `tab-collections.ts` 那条「手动建，不要自动」的先例，
@@ -1135,7 +1136,7 @@ export class TabManager {
 
   /**
    * 后端的一份会话事实到了（`views/facts-source.ts`）⇒ 落到 tab 上（`applyFacts`，纯投影），
-   * 只刷变了的那几块：分叉 ⇒ 标题 `↳`（issue #63①）· usage ⇒ HUD（F88b，只 active）。
+   * 只刷变了的那几块：分叉 ⇒ 标题 `↳`（issue #63①）· 在写它的进程 ⇒ tab 的悬停提示 · usage ⇒ HUD（F88b，只 active）。
    * 改动文件集没有推的去处（监控板 peek 是现取）。
    */
   private onSessionFacts(sid: string, f: SessionFacts): void {
@@ -1145,7 +1146,7 @@ export class TabManager {
     if (ch.forkedFrom || ch.projectDir) {
       tab.title = this.computeTitle(tab);
       this.refreshTabBar();
-    }
+    } else if (ch.writers) this.refreshTabBar();
     if ((ch.usage || ch.projectDir) && sid === this.store.activeId) this.publishActive();
   }
 

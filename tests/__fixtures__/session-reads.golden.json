@@ -12,7 +12,8 @@
       "model": "m-g",
       "peakPromptTokens": 6,
       "promptTokens": 6
-    }
+    },
+    "writers": []
   },
   "history-find": {
     "hits": [

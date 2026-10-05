@@ -132,6 +132,8 @@ export interface SessionFacts {
   usage: UsageFact | null;
   /** 会话的项目目录（会话起在哪个目录；那台后端读记录开头给的）。开头里还没有 ⇒ `null`。 */
   projectDir: string | null;
+  /** 此刻持着这条会话的活进程 pid（那台的 pidfile，升序）。不止一个 ⇒ 几个进程在同时写这条会话。 */
+  writers: number[];
 }
 
 /** 会话事实的回包。`available == false` 时 `facts` 缺席、`failure` 是种类、`reason` 是给人看的原因（**不是错误**）。 */
@@ -215,7 +217,8 @@ export function decodeFacts(v: unknown): SessionFacts {
   const bad = (): never => {
     throw new ShapeError("history-facts", copyText("sessionReads.missing.facts"));
   };
-  if (!isObj(v) || !exactKeys(v, ["end", "forkedFrom", "projectDir", "touchedFiles", "usage"])) return bad();
+  if (!isObj(v) || !exactKeys(v, ["end", "forkedFrom", "projectDir", "touchedFiles", "usage", "writers"])) return bad();
+  if (!Array.isArray(v.writers) || !v.writers.every(isNum)) return bad();
   if (!isNum(v.end) || !(v.forkedFrom === null || isStr(v.forkedFrom))) return bad();
   if (!(v.projectDir === null || isStr(v.projectDir))) return bad();
   if (!Array.isArray(v.touchedFiles) || !v.touchedFiles.every(isStr)) return bad();
@@ -247,6 +250,7 @@ export function decodeFacts(v: unknown): SessionFacts {
     touchedFiles: v.touchedFiles as string[],
     usage,
     projectDir: v.projectDir as string | null,
+    writers: v.writers as number[],
   };
 }
 

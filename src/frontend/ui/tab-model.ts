@@ -47,6 +47,8 @@ export interface Tab {
    * `forkedFrom`，它此前只在历史树用）。
    */
   forkedFromSessionId: string | null;
+  /** 此刻持着这条会话的活进程 pid（后端会话事实的 `writers`，到了才有）。不止一个 ⇒ 几个进程在同时写这条会话。 */
+  writers: number[];
   /**
    * issue #15：数据来源主机标签。本机 = `LOCAL_ORIGIN`（标题无前缀）；远端（如 "raspberrypi.local"）
    * = 远端 SSH 主机名，标题加 `[origin]` 前缀以区分本地/远端。首条 line 帧的 origin

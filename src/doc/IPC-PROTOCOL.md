@@ -854,6 +854,8 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
   `none` ⇒ `skipped`/`not_in_tmux`；`ambiguous` ⇒ `skipped`/`ambiguous`（`detail` 列名字，不杀）。
 - **起**：先判用哪个号（同 `launch-render-cli` 的 `account`）—— 选不了 ⇒ `skipped`/`account_unavailable`（`detail` = 要的那个号），不挡同批别的；
   再问记录还在不在（同 `history-record`，查那个号那棵树）—— 不在 ⇒ `skipped`/`record_gone`（`detail` = 查的那棵树）。
+  要真起一个之前（下面除 `running` / `ambiguous` 之外的每一支）再看这台 pidfile 里有没有活进程持着这个 sid（同 `history-facts` 的 `writers`）——
+  有 ⇒ `skipped`/`session_already_live`（`detail` = 那几个 pid，`, ` 隔开），不起（再起一个就是两个进程同写一份记录）。
   - `mode:"tmux"`（不接进去）：`running` ⇒ `skipped`/`running`；`ambiguous` ⇒ `skipped`/`ambiguous`（`session` 是第一个）；`idle` ⇒ 把直路那一行键入挂着它的那个窗格（同 `launch` 的 `send-into` 带 `ccm_sid`：过同一道身份门，送不进的码也同它）；
     `none` ⇒ 这台铸名（同 `terminal-name-mint`），交**界面「在 tmux 里 Resume」那一行**（远端同 `launch-render-cli`、本机同 `launch-local`，同一份映射、同一个渲染器）只多 `--detach`，
     由这台后端自己当 ccm 跑（环境、中转地址、身份标记、自检都由 ccm 那一趟做）；退出码 3（名字有人了）⇒ `failed`/`name_taken`，别的非零 ⇒ `failed`/`start_failed`（`detail` 是 ccm 的原话），15 s 没结束（或整批的总期限用完了）⇒ `failed`/`child_timed_out`。
@@ -890,7 +892,7 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
 一步一步（全在这台）：
 
 1. **查号**：同 `sessions-start` 那一项的 `{"kind":"named"}` —— 选不了 ⇒ `account_unavailable`（同一形 `data`），什么都不动。
-2. **找终端**：同 `sessions-where` —— 恰好一个在跑的 ⇒ 用它；在跑的不止一个 ⇒ `ambiguous`（`data`：`{names}`，按名单顺序），什么都不动；
+2. **找终端**：同 `sessions-where` —— 恰好一个在跑的 ⇒ 用它（这台 pidfile 里写它的活进程不止一个 ⇒ `session_already_live`，`data`：`{pids}`，什么都不动）；在跑的不止一个 ⇒ `ambiguous`（`data`：`{names}`，按名单顺序），什么都不动；
    没有在跑的（空 tmux / 没有带着它的 / 这台没 tmux）⇒ `not_in_terminal`，什么都不动。名单看不见 ⇒ `unobservable`。
 3. **先压缩**（`compact_first`）：问适配层这一家请求压缩用哪一句（不支持 ⇒ `unsupported`），先盯住那条会话的记录（读法同会话流的续读：只读新字节、截短 / 改写从头重读），
    再把那一句送进那个终端（同 `launch` 的 `send-into` 带 `ccm_sid`），等记录里出现一条压缩摘要（判定同 `line` 帧里 `compactSummary` 那一种来源）：
@@ -898,6 +900,7 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
 4. **停旧 ＋ 同名起新**（不可分的一步）：先盯住 pidfile 目录（此刻在跑的那个进程不算），停那个终端（同 `kill` 带 `sid`）——
    失败 ⇒ `stop_failed`（`data`：`{why}` ＝ 停那一步的码，如 `wrong_owner`），**不起新的**；停成了 ⇒ 用同一个名字建会话、用点名的号起（同 `sessions-start` 的 tmux 那一形、`none` 那一支，名字不铸、用让出来的这一个）——
    失败 ⇒ `start_failed`（`data`：`{terminal, why}` ＝ 终端名 ＋ 起那一步的码；旧的已停，界面据它给「再起一次」，就是那一项的 `sessions-start`）。
+   停成了、起新的之前再核一次：除了开动前写它的那个（停掉的就是它），这台 pidfile 里还有别的活进程持着这个 sid ⇒ `session_already_live`（`data`：`{pids}` ＝ 那几个），**不起新的**（旧的已停）。
 5. **等报出**：`arrive_within_ms` 内这条会话由一个新进程报出（pidfile）⇒ `started:"arrived"`，否则 `missed`（会话名在，里面没见到它起来）。
 
 **撤单在停旧之前有效**：它是可撤档，步与步之间看撤单（撤在第 1–3 步 ⇒ 不停、不起，回 `cancelled`）；第 4 步拿退出排空的票、在阻塞线程上一口气做完 ——
@@ -905,7 +908,7 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
 
 可带 `client`（自报的前端，同 `kill`）：送那一句与停那一步带它过「哪个前端的会话」那一维。
 
-命令级码：`invalid_args`（字段缺 / 形状不对 / 期限超界）· `unobservable` · `account_unavailable` · `not_in_terminal` · `ambiguous` · `stop_failed` · `start_failed`。
+命令级码：`invalid_args`（字段缺 / 形状不对 / 期限超界）· `unobservable` · `account_unavailable` · `not_in_terminal` · `ambiguous` · `session_already_live` · `stop_failed` · `start_failed`。
 只给界面用：命令行那一侧逐个 `--kill` 再直接敲 `ccm --resume` 就是它。
 
 #### `launch`：平面 ②（远端执行面）——真的建 tmux 会话（U8a-2b）
@@ -3878,7 +3881,7 @@ CLI 面随之自动多一条 `--history-find`。
 
 ```text
 → {"id":"q12","cmd":"history-facts","args":{"path":"/home/u/.claude/projects/-p/s.jsonl"}}
-← {"kind":"reply","id":"q12","ok":true,"data":{"end":5120088,"forkedFrom":null,"projectDir":"/p","touchedFiles":["/p/a.ts"],"usage":{"promptTokens":41250,"model":…,"peakPromptTokens":352000,"limit":1000000,"limitFrom":"observed"}}}
+← {"kind":"reply","id":"q12","ok":true,"data":{"end":5120088,"forkedFrom":null,"projectDir":"/p","touchedFiles":["/p/a.ts"],"usage":{"promptTokens":41250,"model":…,"peakPromptTokens":352000,"limit":1000000,"limitFrom":"observed"},"writers":[4711]}}
 → {"id":"q13","cmd":"history-facts","args":{"path":"…/s.jsonl","prior":{上一次的 data 原样},"limits":{"haiku":200000}}}
 ```
 
@@ -3892,6 +3895,7 @@ CLI 面随之自动多一条 `--history-find`。
 | `touchedFiles` | ← | 写类工具（Edit / Write / MultiEdit → `file_path`，NotebookEdit → `notebook_path`）碰过的文件，原样、去重、近因序（最近碰的在末尾），至多 1000 条（超 ⇒ 丢最久没碰的） |
 | `usage` | ← | 文件序最后一条 `input_tokens + cache_creation_input_tokens + cache_read_input_tokens > 0` 的 assistant 记录 ⇒ `{promptTokens, model, peakPromptTokens, limit, limitFrom}`（`model` 缺 ⇒ `null`）；一条都没有 ⇒ `null`。`peakPromptTokens` = 全会话最大的一轮。**上下文上限的唯一判定**（`facts_query::context_limit`）：本进程里的中转看见过这个会话（会话 id ＝ 记录文件名 ＝ 中转的流标签）的请求 ⇒ 带过 `anthropic-beta` 里 `context-1m…` 那一项是 1M、没带过是默认 200k，`relay`（中转只记那一项在不在，`observe/relay_marks.rs`，随进程）；中转没看见过 ⇒ `limits` 里最长匹配的子串 ⇒ `setting` · 模型名带 `[1m]` ⇒ 1M `model` · 见过超过 200k 的一轮 ⇒ 1M `observed` · 判不出 ⇒ `assumed`（`limit` 只是占位的 1M，界面不算百分比、只写用了多少）；任何一档小于 `peakPromptTokens` ⇒ 按 `observed`（至少 1M）⇒ `limit` 恒 ≥ `peakPromptTokens`，百分比不会超过 100。状态栏与监控板读同一个 `limit` |
 | `projectDir` | ← | 会话的项目目录：适配层读记录开头给（与 `session_added.project_dir` 同一个函数），读到即锁定；开头里还没有 ⇒ `null`（下一次再读） |
+| `writers` | ← | 此刻持着这条会话的活进程 pid（这台 pidfile 目录里活着的交互进程、判活同历史清单的「活着」那一格），升序；每次现查、不累加（`prior` 里那一份不用）。不止一个 ⇒ 同一条会话有几个进程在同时写（界面在 tab 上说一句）。不留 pidfile 的那一家恒 `[]` |
 
 - 本体 `observe/facts_query.rs`（claude 的写类工具表也住那里：进适配层会让「加一个 agent 通用层要改几处」那只许降的棘轮涨一格）。子 agent 的列表与状态不在这里：那是运行表（`session_runs`），判定只有那一处。
 - 整份超过 32 MiB ⇒ `too_large`（不截断）。界面经通道直接问（`src/frontend/ui/session-reads.ts`），本机与远端同一条路；老后端不认 ⇒ `unsupported`（界面说「不可用」，不当成空）。

@@ -24,6 +24,7 @@
 //! | `touchedFiles` | `assistant` 记录里写类工具（[`EDIT_TOOL_PATH_KEYS`]）的路径，去重、**近因序**（再碰一次移到末尾），至多 [`TOUCHED_FILES_KEEP`] 条 |
 //! | `usage` | `assistant` 记录的 `message.usage` 三项 prompt token 之和 > 0 ⇒ `{promptTokens, model}`，文件序最后一条胜；`peakPromptTokens` 取全会话最大；上限见 [`context_limit`] |
 //! | `projectDir` | 适配层 `RecordFace.project_dir`（只读记录开头）；读到即锁定，不在本文件的逐行扫描里 |
+//! | `writers` | 这台 pidfile 里此刻持着这条会话的活进程（`observe::accounts_query::session_writers`）；每次现查，不在逐行扫描里 |
 //!
 //! # 快路
 //!
@@ -82,6 +83,9 @@ pub(crate) struct SessionFacts {
     /// 会话的项目目录（会话起在哪个目录）：适配层读记录开头给（`agents::project_dir_of`），读到即锁定；
     /// 开头里还没有 ⇒ `null`，下一次再读。与会话宣告那一帧的 `project_dir` 同一个函数。
     pub(crate) project_dir: Option<String>,
+    /// 此刻持着这条会话的活进程 pid（这台的 pidfile，判活同会话宣告那一路），升序；不累加，每次现查（`prior` 里那一份不用）。
+    /// 不止一个 ⇒ 同一条会话有几个进程在同时写。不留 pidfile 的那一家恒空。
+    pub(crate) writers: Vec<u32>,
 }
 
 /// 最新 usage ＋ 这份会话的上下文上限（状态栏与监控板读同一个数；百分比是排版，在前端）。
@@ -178,7 +182,14 @@ pub(crate) fn context_limit(
 /// 调用方交回来的 `prior` ⇒ [`SessionFacts`]。**形状必须恰好是本文件出的那一形**：缺格 / 多格 / 类型不对 ⇒ 拒
 /// （serde 对 `Option` 缺格默认读成 `None`，所以键集合先逐层核一遍 —— 不猜）。
 pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
-    const TOP: &[&str] = &["end", "forkedFrom", "projectDir", "touchedFiles", "usage"];
+    const TOP: &[&str] = &[
+        "end",
+        "forkedFrom",
+        "projectDir",
+        "touchedFiles",
+        "usage",
+        "writers",
+    ];
     const USAGE: &[&str] = &[
         "limit",
         "limitFrom",

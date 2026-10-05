@@ -197,6 +197,7 @@ describe("〔STC〕第五问：会话事实", () => {
       touchedFiles: ["/w/a.ts"],
       usage: { promptTokens: 6, model: "m-g", peakPromptTokens: 6, limit: 1_000_000, limitFrom: "assumed" },
       projectDir: "/g/proj",
+      writers: [],
     });
   });
 
@@ -213,6 +214,8 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(decodeFacts({ ...good, usage: { ...u, limitFrom: "relay" } }).usage?.limitFrom).toBe("relay");
     expect(() => decodeFacts({ ...good, usage: { ...u, limit: "1M" } })).toThrow(/读不懂/);
     expect(() => decodeFacts({ ...good, projectDir: 1 })).toThrow(/读不懂/);
+    expect(() => decodeFacts({ ...good, writers: ["4711"] }), "pid 只收数").toThrow(/读不懂/);
+    expect(decodeFacts({ ...good, writers: [11, 12] }).writers).toEqual([11, 12]);
     expect(decodeFacts({ ...good, usage: null, forkedFrom: null, projectDir: null }).usage).toBeNull(); // null 是合法的「没有」
   });
 

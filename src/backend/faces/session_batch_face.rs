@@ -2,7 +2,8 @@
 //!
 //! 本体住 `control/`，而 tmux 名单与记录在不在住观测层（`control → observe` 是反向边）⇒ 由这层顶层壳补上，与 `fork_face` 同形。
 //! tmux 名单 = 终端名单那一趟（挂着 sid 的窗格各一行）· 记录在不在 = `history-record` 那一问 · 杀 = `kill`（按 sid 认窗格）·
-//! 就地键入 = `launch send-into`（带 sid ⇒ 落在挂着它的那个窗格）· 铸名 = `terminal-name-mint` · 起会话 = 这台后端自己当 ccm 跑那一行。
+//! 就地键入 = `launch send-into`（带 sid ⇒ 落在挂着它的那个窗格）· 铸名 = `terminal-name-mint` · 起会话 = 这台后端自己当 ccm 跑那一行 ·
+//! 谁在写 = 这台 pidfile 里持着那个 sid 的活进程（`observe::accounts_query::session_writers`）。
 
 use crate::control::session_batch::{self as batch, Deps, TmuxEntry};
 use serde_json::Value;
@@ -54,6 +55,12 @@ pub(crate) fn with_deps_as<T>(client: Option<&str>, agent: &str, f: impl FnOnce(
         )
         .map(|v| v["name"].as_str().unwrap_or_default().to_string())
     };
+    let writers = |sid: &str| {
+        crate::observe::accounts_query::session_writers(
+            &crate::observe::history_query::agent_home(),
+            sid,
+        )
+    };
     let caps = crate::ccm_launcher_with(crate::TMUX_PLATFORM)
         .into_iter()
         .map(str::to_string)
@@ -69,6 +76,7 @@ pub(crate) fn with_deps_as<T>(client: Option<&str>, agent: &str, f: impl FnOnce(
             caps: &caps,
             local_facts: crate::control::launch_render::local::Facts::PRODUCTION,
             accounts,
+            writers: &writers,
         })
     })
 }
