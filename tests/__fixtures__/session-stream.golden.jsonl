@@ -24,6 +24,8 @@
 {"kind":"quota_changed"}
 {"kind":"rotation_changed","sid":"s1"}
 {"kind":"rotation_changed","sid":"s1"}
+{"kind":"autostart_changed"}
+{"kind":"autostart_changed"}
 {"kind":"tasks_changed","sid":"s1"}
 {"kind":"tasks_changed","sid":"s1"}
 {"kind":"sessions_replayed"}

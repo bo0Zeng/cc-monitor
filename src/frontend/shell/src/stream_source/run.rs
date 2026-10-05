@@ -503,9 +503,12 @@ async fn stream_loop(
             // 远端中转住进远端常驻后端（进程内），它抄出来的 SSE 事件沿这条流回来 ⇒ 与本机那条流同一个口转前端
             //   （origin = 这台；标签就是 claude 自己的 sid，不用对账）。从不阻塞、不进内容通道。
             Some(InboundFrame::Tap(t)) => crate::session_tap::deliver(&host_label, t),
-            // 认识但不消费的三种（理由在变体上）。
+            // 认识但不消费的四种（理由在变体上）。
             Some(
-                InboundFrame::TurnEnd | InboundFrame::QuotaChanged | InboundFrame::RotationChanged,
+                InboundFrame::TurnEnd
+                | InboundFrame::QuotaChanged
+                | InboundFrame::RotationChanged
+                | InboundFrame::AutostartChanged,
             ) => {}
             // 不认识的种类 / 形状不对：`take` 已记账、每种说过一次；跳过，绝不中断流。
             None => {}

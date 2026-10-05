@@ -1975,6 +1975,10 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     if !pid_alive(pid) {
         return false;
     }
+    // 自动起算那一趟（工作目录是这台家里的 `autostart/`）不成 tab —— 判据与历史页同一处。
+    if pidfile_cwd(&bytes).is_some_and(|c| super::history_query::hidden_cwd(&c)) {
+        return false;
+    }
     // Batch6-F21: interactivity gate. CC 2.1.x 的后端后台任务
     // (--fork-session --resume) **会**写 sessions/<PID>.json（kind:"bg" +
     // jobId）——"子会话不注册 pidfile"的旧假设已过期。bg 进程是自己 pidfile
@@ -2585,6 +2589,15 @@ pub(crate) fn pidfile_dir(agent_home: &Path) -> PathBuf {
 }
 
 /// `kind` 在且不是 `interactive` ⇒ `Some(kind)`（后台任务，不是交互会话）；缺字段（旧 CC）⇒ `None` 放行。
+/// pidfile 里那一家写下的工作目录（`cwd`）。
+fn pidfile_cwd(bytes: &[u8]) -> Option<String> {
+    serde_json::from_slice::<serde_json::Value>(bytes)
+        .ok()?
+        .get("cwd")?
+        .as_str()
+        .map(str::to_string)
+}
+
 fn non_interactive_kind(bytes: &[u8]) -> Option<String> {
     parse_kind(bytes).filter(|k| k != "interactive")
 }

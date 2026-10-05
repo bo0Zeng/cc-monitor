@@ -224,3 +224,40 @@ fn sessions_without_a_directory_join_the_most_recent_group() {
     );
     assert_eq!(g(&[(None, 1), (None, 2)]), vec!["", ""]);
 }
+
+/// 自动起算那一趟的会话（工作目录是这台家里的 `autostart/`）不进项目清单；同一个记录目录里别的目录照常出。
+#[test]
+fn autostart_sessions_are_hidden_from_the_project_list() {
+    let root = tmp_root("autostart");
+    let home = root.join("data");
+    let auto = home.join(relay_route_core::file_name_of(
+        relay_route_core::AUTOSTART_DIR_REL,
+    ));
+    std::fs::create_dir_all(&auto).unwrap();
+    let dir = root.join("projects").join("-x");
+    std::fs::create_dir_all(&dir).unwrap();
+    let put = |sid: &str, cwd: &Path| {
+        std::fs::write(
+            dir.join(format!("{sid}.jsonl")),
+            format!("{}\n", serde_json::json!({ "cwd": cwd.to_string_lossy() })),
+        )
+        .unwrap();
+    };
+    put("mine", Path::new("/home/u/proj"));
+    put("auto", &auto);
+    let rows = project_rows_hiding(&dir, "-x", &|c| hidden_cwd_in(&home, c));
+    let paths: Vec<&str> = rows
+        .iter()
+        .map(|r| r["projectPath"].as_str().unwrap())
+        .collect();
+    assert_eq!(paths, vec!["/home/u/proj"]);
+    // 记录里的目录是解析过链接的那一形：家经一条链接到达时也认得出。
+    #[cfg(unix)]
+    {
+        let link = root.join("link-data");
+        std::os::unix::fs::symlink(&home, &link).unwrap();
+        assert!(hidden_cwd_in(&link, &auto.to_string_lossy()));
+    }
+    assert!(!hidden_cwd_in(&home, "/home/u/proj"));
+    let _ = std::fs::remove_dir_all(&root);
+}

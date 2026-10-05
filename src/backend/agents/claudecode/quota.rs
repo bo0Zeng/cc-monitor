@@ -27,6 +27,21 @@ pub(crate) const WINDOWS: &[(&str, &str)] = &[
 
 const REFUSED: u16 = 429;
 
+/// 让一个号的 5h 窗口开始计时的那一趟（`claude` 的参数）：`-p` 不交互 · 最便宜的模型 · 不给工具 · 不落会话记录 ·
+/// 只读项目级设置（用户级的钩子、插件不跑）· 不起 MCP 服务器 · 一句话。claude 2.1.289 上用这一组实发过：空闲的号回包里的 5h 重置 ≈ 发送时刻 ＋ 5h。
+pub(crate) const OPEN_WINDOW: &[&str] = &[
+    "-p",
+    "--model",
+    "haiku",
+    "--tools",
+    "",
+    "--no-session-persistence",
+    "--setting-sources",
+    "project",
+    "--strict-mcp-config",
+    "hi",
+];
+
 /// 窗口名 → 语义位：5 小时那一个是 `5h`；7 天那几个（含分模型的）是 `7d`；超额那一档没有语义位。
 pub(crate) fn slot_of(name: &str) -> Option<&'static str> {
     match name {

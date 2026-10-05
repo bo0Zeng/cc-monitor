@@ -42,6 +42,15 @@ use super::*;
 /// 形状抄 `readonly_guard::spawn_registry::ALLOWED`：把「为什么这条不上」写成**数据**，
 /// 好让机检对着它比 —— 散文里说一遍，下一个人加命令时看不见。
 const NOT_ON_CLI: &[(&str, &str)] = &[
+    // 自动起算的读 / 写。
+    (
+        "autostart-read",
+        "「正在发」与「这一段空闲期试过了」只住常驻后端那一个进程的内存：一次性进程里读不到，答出来的「下一次」是假话 ⇒ 只上帧面（`STREAM_ONLY`）。",
+    ),
+    (
+        "autostart-set",
+        "改了开关要当场叫醒常驻后端里的醒点（打开那一刻空闲就发）；一次性进程写了盘也叫不醒它 ⇒ 只上帧面（`STREAM_ONLY`）。",
+    ),
     // tab 栏多选的批量停 / 起。
     (
         "sessions-stop",
@@ -386,6 +395,8 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "hooks-diag",
         // 这台「直接敲的也走中转」装没装 ＋ 要贴的那一段：无入参（问的就是「这台」）。
         "relay-optin",
+        // 这台各订阅号的自动起算：无入参（问的就是「这台」）。
+        "autostart-read",
     ];
     let declared: Vec<&str> = REGISTRY
         .iter()

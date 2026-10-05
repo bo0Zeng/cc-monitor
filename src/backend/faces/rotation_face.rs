@@ -95,7 +95,7 @@ impl Ctx {
         }
     }
 
-    fn is_api(&self, agent: &str, a: &str) -> bool {
+    pub(crate) fn is_api(&self, agent: &str, a: &str) -> bool {
         (self.rows)(agent, a).is_some()
             || self
                 .hop

@@ -179,11 +179,12 @@ const FRAMES: &[(&str, &str)] = &[
 
 #[test]
 fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
-    // 两向：表里的种类 ＋ 刻意不喂的那三种（认识但不消费）== parse_frame 的全部臂。
+    // 两向：表里的种类 ＋ 刻意不喂的那四种（认识但不消费）== parse_frame 的全部臂。
     let mut fed: BTreeSet<String> = FRAMES.iter().map(|(k, _)| k.to_string()).collect();
     fed.insert("turn_end".into());
     fed.insert("quota_changed".into());
     fed.insert("rotation_changed".into());
+    fed.insert("autostart_changed".into());
     let all = crate::guard_support::parse_frame_kinds();
     assert_eq!(
         fed, all,

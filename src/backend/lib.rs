@@ -1904,6 +1904,8 @@ pub const EMITS: &[&str] = &[
     "quota_changed",
     // 某个会话的轮换 / 「账号」格变了（换号那一路与帧面改轮换那一路真发，走 tap 那条可丢的通道；登记 = 承诺真发）。
     "rotation_changed",
+    // 这台的自动起算显示得出来的那几格变了（自动起算那一路真发，走 tap 那条可丢的通道；登记 = 承诺真发）。
+    "autostart_changed",
     // 某个会话的任务清单变了（watcher 盯 `<agent 家>/tasks/`，登记 = 承诺真发，已接线）。
     "tasks_changed",
     // 活会话清单报完了（watch_loop Phase 1 走完那一刻发一次，登记 = 承诺真发，已接线）。

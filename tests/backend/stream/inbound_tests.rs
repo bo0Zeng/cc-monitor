@@ -558,6 +558,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "rotation-set",
         "rotation-session-read",
         "rotation-session-set",
+        // 自动起算：读额度账 · 账号库 · 凭据文件 ＋ 锁里原子写 `rotation.json`（同步文件 I/O）。
+        "autostart-read",
+        "autostart-set",
         // 功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
         "tasks-list",
         "mcp-read",
@@ -739,6 +742,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "rotation-set",
         "rotation-session-read",
         "rotation-session-set",
+        "autostart-read",
+        "autostart-set",
         "tasks-list",
         "mcp-read",
         "session-terminals",  // 读 `/proc` ＋ 起一次 `tmux list-clients`

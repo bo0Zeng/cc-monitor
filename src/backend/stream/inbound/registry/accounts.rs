@@ -1,4 +1,4 @@
-//! 命令表 · 账号：`accounts-*` · `apikey-*` · `quota-read` · `rotation-*`。
+//! 命令表 · 账号：`accounts-*` · `apikey-*` · `quota-read` · `rotation-*` · `autostart-*`。
 
 use crate::stream::inbound::spec::{CommandSpec, Run};
 use crate::stream::inbound::LocalFiles;
@@ -94,6 +94,29 @@ pub(super) const SPECS: &[CommandSpec] = &[
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
             })
+        }),
+    },
+    // 自动起算（帧面宿主 `faces/autostart_face.rs`）：每号开关与时段读 / 写。同步文件 I/O ⇒ 阻塞档。
+    CommandSpec {
+        name: "autostart-read",
+        doc_anchor: Some("#### `autostart-read`"),
+        codes: &[],
+        fields: &["accounts", "now", "path", "reason", "state"],
+        takes_input: false,
+        run: Run::Blocking(|_r| Ok(Some(crate::faces::autostart_face::answer_read()))),
+    },
+    CommandSpec {
+        name: "autostart-set",
+        doc_anchor: Some("#### `autostart-set`"),
+        codes: &["bad_args", "io_failed"],
+        fields: &[
+            "account", "accounts", "enabled", "now", "path", "reason", "state", "window",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::autostart_face::answer_set(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     // **上游选择**那份凭据文件在**这台机器上**的读写口 —— 上游选择自己的状态，
