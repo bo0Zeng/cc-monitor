@@ -45,6 +45,7 @@ use crate::accounts::quota::rotation::{
     self, Book, Rotation, RotationStore, SessionEntry, SwitchOutcome, SwitchRecord, SwitchWhy,
     Unready,
 };
+use crate::accounts::quota::show;
 use crate::accounts::upstream_select::rotate::{account_ok, Hop};
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
@@ -56,9 +57,13 @@ type Answer = Result<Value, (&'static str, String)>;
 /// `(agent, 号)` → 这台 key 表里那一行：没有 ⇒ `None`；有 ⇒ 接不接得上。
 type Rows = Box<dyn Fn(&str, &str) -> Option<bool> + Send + Sync>;
 
+/// 这台此刻活着的会话（sid 集合）。
+type Live = Box<dyn Fn() -> std::collections::BTreeSet<String> + Send + Sync>;
+
 pub(crate) struct Ctx {
     pub(crate) hop: Hop,
     pub(crate) rows: Rows,
+    pub(crate) live: Live,
 }
 
 impl Ctx {
@@ -80,6 +85,12 @@ impl Ctx {
                 (agent == crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT
                     && rows.iter().any(|r| r == a))
                 .then_some(true)
+            }),
+            // 判活同历史清单那一处：pidfile 里的会话 id ＋ 进程还是同一个。
+            live: Box::new(|| {
+                crate::observe::accounts_query::live_session_ids(
+                    &crate::observe::history_query::agent_home(),
+                )
             }),
         }
     }
@@ -120,23 +131,105 @@ fn read_book(ctx: &Ctx) -> (&'static str, Option<String>, Book) {
     }
 }
 
-/// 默认轮换的线上形状（读与写回同一形）。
+/// 默认轮换的线上形状（读与写回同一形）。`followers` ＝ 跟随它的活会话有几个。
 fn default_wire(ctx: &Ctx) -> Value {
     let (state, reason, book) = read_book(ctx);
+    let live = (ctx.live)();
+    let followers = book
+        .sessions
+        .iter()
+        .filter(|(sid, s)| s.follow && live.contains(*sid))
+        .count();
     json!({
         "state": state,
         "reason": reason,
         "path": ctx.hop.store.path().map(|p| p.display().to_string()),
         "rotation": book.default_rotation(),
+        "followers": followers,
     })
 }
 
 /// 凭据文件那一家（账号库是它的）：默认轮换里新勾的按量号按它判。
 const LIBRARY_AGENT: &str = crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT;
 
+/// `quota-read`：这台的额度账，每条带上显示态（「快满」按这台默认轮换的 N）；另给账号库里从没出过数的号、
+/// 此刻发得出去的号、最早回来的那个。
+pub(crate) fn answer_quota_read() -> Value {
+    quota_read_with(&Ctx::here(), crate::accounts::quota::now_unix())
+}
+
+pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> Value {
+    let mut v = ledger::answer_of(ctx.hop.quota.path(), now);
+    let seen: Vec<ledger::Observed> =
+        serde_json::from_value(v["accounts"].clone()).unwrap_or_default();
+    let lib = ctx.hop.library();
+    let n = show::near_of(ctx.hop.store.now().default_rotation().when);
+    let shown = |agent: &str, account: &str, o: Option<&ledger::Observed>| {
+        let slot = crate::agents::window_slot_of(agent);
+        show::show(
+            o.map(|o| (&o.reading, o.seen_at)),
+            ctx.hop
+                .show_facts(agent, &lib, account, &|a| (ctx.rows)(agent, a)),
+            n,
+            now,
+            &|w| slot.and_then(|f| f(w)),
+        )
+    };
+    let mut usable: Vec<String> = Vec::new();
+    let mut earliest: Option<(u64, String)> = None;
+    let mut rows: Vec<Value> = Vec::new();
+    for o in &seen {
+        let sh = shown(&o.agent, &o.account, Some(o));
+        if show::usable(&sh) {
+            usable.push(o.account.clone());
+        }
+        if let Some(at) = show::back_at(&sh, &o.reading, now) {
+            if earliest.as_ref().is_none_or(|(t, _)| at < *t) {
+                earliest = Some((at, o.account.clone()));
+            }
+        }
+        let mut row = serde_json::to_value(o).unwrap_or_default();
+        if let (Some(r), Value::Object(m)) = (
+            row.as_object_mut(),
+            serde_json::to_value(&sh).unwrap_or_default(),
+        ) {
+            r.extend(m);
+        }
+        rows.push(row);
+    }
+    let unseen: Vec<Value> = lib
+        .accounts
+        .iter()
+        .filter(|a| !seen.iter().any(|o| o.agent == LIBRARY_AGENT && o.account == a.id))
+        .map(|a| {
+            let sh = shown(LIBRARY_AGENT, &a.id, None);
+            if show::usable(&sh) {
+                usable.push(a.id.clone());
+            }
+            let mut one = json!({"agent": LIBRARY_AGENT, "account": a.id, "kind": sh.kind, "login": sh.login});
+            if let Some(id) = sh.sub_id {
+                one["subId"] = json!(id);
+            }
+            one
+        })
+        .collect();
+    v["accounts"] = Value::Array(rows);
+    v["unseen"] = Value::Array(unseen);
+    v["usableNow"] = json!(usable);
+    v["earliestReturn"] = earliest.map_or(
+        Value::Null,
+        |(at, account)| json!({"account": account, "at": at}),
+    );
+    v
+}
+
 /// `rotation-read`：这台的默认轮换。
 pub(crate) fn answer_read() -> Answer {
-    Ok(default_wire(&Ctx::here()))
+    Ok(answer_read_with(&Ctx::here()))
+}
+
+pub(crate) fn answer_read_with(ctx: &Ctx) -> Value {
+    default_wire(ctx)
 }
 
 /// `rotation-set`：整份写回这台的默认轮换（`{rotation}`）；不合法整份拒、说哪一格。
@@ -186,11 +279,12 @@ pub(crate) fn answer_session_read(args: &Value) -> Answer {
 pub(crate) fn answer_session_read_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
     let sids = sids_of(args, "sids")?;
     let (state, reason, book) = read_book(ctx);
+    let live = (ctx.live)();
     let mut sessions = Map::new();
     for sid in sids {
         let agent = book.sessions.get(&sid).map(|s| s.agent.clone());
         let row = |a: &str| agent.as_deref().and_then(|g| (ctx.rows)(g, a));
-        let one = ctx.hop.view(&book, &sid, &row, now);
+        let one = ctx.hop.view(&book, &sid, &row, &|x| live.contains(x), now);
         sessions.insert(
             sid,
             serde_json::to_value(one).map_err(|e| ("failed", e.to_string()))?,
@@ -306,6 +400,9 @@ pub(crate) fn hot_one(ctx: &Ctx, sid: &str, target: &str, now: u64) -> SwitchOut
     let Some(s) = book.sessions.get(sid) else {
         return skipped("noRelay");
     };
+    if !(ctx.live)().contains(sid) {
+        return skipped("ended");
+    }
     if crate::agents::login_of(&s.agent).is_none() {
         return skipped("agentHasNoAccounts");
     }

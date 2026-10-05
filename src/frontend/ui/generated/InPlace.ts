@@ -3,4 +3,4 @@
 /**
  * 能不能不重启换号（会话一级的原因码；目标号接不上另在「切换」结果里说）。
  */
-export type InPlace = "ok" | "noRelay" | "machineNotMulti" | "agentHasNoAccounts";
+export type InPlace = "ok" | "noRelay" | "ended" | "machineNotMulti" | "agentHasNoAccounts";

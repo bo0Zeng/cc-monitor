@@ -2082,7 +2082,12 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 ← {"kind":"reply","id":"q1","ok":true,"data":{"state":"present","reason":null,"path":"/home/u/.cc-monitor/quota.json","now":1800000100,
    "accounts":[{"agent":"claude-code","account":"q","seenAt":1800000000,
                 "reading":{"status":"allowed","refused":false,"limiting":"five_hour","resetsAt":1800003600,
-                           "windows":[{"name":"five_hour","used":0.42,"resetsAt":1800003600},{"name":"seven_day","used":0.1,"resetsAt":1800500000}]}}]}}
+                           "windows":[{"name":"five_hour","used":0.42,"resetsAt":1800003600},{"name":"seven_day","used":0.1,"resetsAt":1800500000}]},
+                "kind":"sub","state":"ok","stale":false,"limiting":"5h",
+                "slots":[{"slot":"5h","pct":42,"resetsAt":1800003600},{"slot":"7d","pct":10,"resetsAt":1800500000}],
+                "login":"ok","subId":"3f9c0e…"}],
+   "unseen":[{"agent":"claude-code","account":"team","kind":"sub","login":"needsLogin"}],
+   "usableNow":["q"],"earliestReturn":null}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -2091,12 +2096,29 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 | `reason` | ← | 只在 `unreadable` 时有：为什么读不出来；其余 `null` |
 | `path` | ← | 那份文件的绝对路径（家推不出来时 `null`） |
 | `now` | ← | 这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟） |
-| `accounts` | ← | 每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号；`_` ＝ 起会话时没说是哪个号）· `seenAt` 最后一次看到的时刻 · `reading` 那一次的快照 |
+| `accounts` | ← | 每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号；`_` ＝ 起会话时没说是哪个号）· `seenAt` 最后一次看到的时刻 · `reading` 那一次的快照；另带显示态几格（见下） |
+| `unseen` | ← | 账号库里有、额度账上从没出过数的号：`{agent, account, kind, login, subId?}`（几格同下）|
+| `usableNow` | ← | 此刻发得出去的号（路由第 2 段）：登录拿得到、不是被拒 / 超额在兜（快满 · 数旧 · 没采样 · 上一窗已过都算）|
+| `earliestReturn` | ← | 被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null` |
 
 `reading` 的形状（通用，各家读法翻成它）：`status`（`allowed` · `warning` · `rejected`；回包没说 ⇒ 缺）· `refused`（这一发被上游拒了，状态码 429）·
 `limiting`（此刻卡着的窗口名）· `resetsAt`（卡着的那个窗口几点重置；被拒且没有这一族头时 = 现在 ＋ `retry-after`）·
 `windows`（`[{name, used?, resetsAt?, warnedAt?}]`，`used` 是比例、通常 0–1、可以超过 1；Claude 的窗口名 `five_hour` · `seven_day` · `seven_day_overage_included` · `overage`）·
 `overage?`（`{status?, resetsAt?, disabled?, inUse}`：付费超额那一档）。
+
+**显示态**（每条 `accounts` 只加，判定全在后端、界面只按词拼；会话那一份见 `rotation-session-read` 的 `quota`，同一形）：
+
+| 格 | 说明 |
+|---|---|
+| `kind` | `sub`（订阅号）· `api`（按量号：这台 key 表里有它，或账号库说它是）|
+| `state` | `ok` · `near`（有 `5h` / `7d` 窗口用到 N%、未重置 —— 与轮换「到 N% 换」同一个判法 —— 或回包说越过了预警线）· `refused`（上次被拒、重置时刻未到；回包没给时刻也算）· `overageInUse`（订阅号正用付费超额）· `resetSinceSeen`（卡着的那个窗口看到之后已重置：上次的数不再作数）。`unseen` 只出现在会话那一份（那个号没出过数）|
+| `stale` | 最后一次看到距今超过 30 分钟（与 `state` 叠着画）|
+| `limiting?` | 按钮上那个窗口的语义位 `5h` / `7d`（卡着的那个；回包没说 ⇒ 用得最多的那个）；没有分窗口的数 ⇒ 缺 |
+| `slots` | `[{slot, pct?, resetsAt?}]`：`5h` · `7d` 各一格（有数的才出；同一语义位几个窗口取用得最多的）；`pct` 取整、可超过 100 |
+| `login` | `ok` · `needsLogin`（只对订阅号：凭据文件不在或读不出账号身份）· `needsKey`（只对按量号：这台 key 表里没有它）|
+| `subId?` | 同一订阅的稳定标识：账号身份加固定前缀做 SHA-256、取前 12 字节十六进制。两台看到的同一订阅相同（界面据此并成一行、取 `seenAt` 新的），由它反推不出原值；订阅号读得出身份才有 |
+
+`near` 的 N：这台默认轮换是「到 N% 换」⇒ N，否则 80（`accounts/quota/show.rs::NEAR_DEFAULT`）；30 分钟是 `show.rs::STALE_AFTER`。界面不判这两样。
 
 - 很久没流量的号只有「最后一次看到是几点」（`seenAt`），不编、不去探。
 - 每一次都现读盘（一次性 CLI 那一形里没有内存）。中转那一路：显示得出来的几格变了才立刻落盘并推 `quota_changed`；没变的观测盘上的 `seenAt` 至多落后 60 秒。
@@ -2124,7 +2146,7 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 ```text
 → {"id":"r1","cmd":"rotation-read"}
 ← {"kind":"reply","id":"r1","ok":true,"data":{"state":"present","reason":null,"path":"/home/u/.cc-monitor/rotation.json",
-   "rotation":{"order":[{"start":true},"work","api"],"enabled":["work"],"when":"full"}}}
+   "rotation":{"order":[{"start":true},"work","api"],"enabled":["work"],"when":"full"},"followers":4}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -2133,10 +2155,11 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 | `reason` | ← | 只在 `unreadable` 时有 |
 | `path` | ← | 那份文件的绝对路径（家推不出 ⇒ `null`）|
 | `rotation` | ← | 默认轮换；没动过 / 读不出 ⇒ 缺省那一份（只有占位、`"full"`）|
+| `followers` | ← | 跟随默认轮换、此刻活着的会话有几个（判活同历史清单：pidfile 里的会话 id ＋ 进程还是同一个）|
 
 #### `rotation-set`：写这台的默认轮换
 
-`→ {"cmd":"rotation-set","args":{"rotation":{order, enabled, when}}}`，整份写回，应答同 `rotation-read`（`state` · `reason` · `path` · `rotation`）。`order` 里占位恰好 1 个；
+`→ {"cmd":"rotation-set","args":{"rotation":{order, enabled, when}}}`，整份写回，应答同 `rotation-read`（`state` · `reason` · `path` · `rotation` · `followers`）。`order` 里占位恰好 1 个；
 号不许重复、不许是 `_`；`enabled` 只许是 `order` 里的号；不合法 ⇒ `bad_args`，`message` 点名哪一格（如 `` `enabled[0]` ``），一个字节不写。
 **新勾上的按量号由后端挪到 `order` 末尾**（订阅号用完才轮到它；前端不自己挪）。写不进 ⇒ `io_failed`。跟随默认的会话随之改（各推一帧 `rotation_changed`）。
 
@@ -2148,7 +2171,8 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
     "4f…":{"state":"present","agent":"claude-code","follow":true,
            "account":{"start":"work","current":"personal","since":1800000000,"inPlace":"ok",
                       "history":[{"at":1800000000,"from":"work","to":"personal","why":{"full":{"w":"5h"}},"fromResetsAt":1800003600}]},
-           "next":"team"},
+           "next":"team",
+           "quota":{"kind":"sub","state":"near","stale":false,"limiting":"5h","slots":[{"slot":"5h","pct":86,"resetsAt":1800003600}],"login":"ok","subId":"3f9c0e…"}},
     "9a…":{"state":"absent","inPlace":"noRelay"}}}}
 ```
 
@@ -2158,10 +2182,11 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 | `state` · `reason` · `now` | ← | 那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒 |
 | `sessions` | ← | 每个 sid 一份。这台中转没见过的 ⇒ `{"state":"absent","inPlace":"noRelay"}`（照实标，不整批失败）；见过的 ⇒ `"state":"present"` ＋ 下面几格 |
 | `agent` · `follow` · `custom?` | ← | 哪一家 · 跟随默认 · 自己那一份（跟随时也留着）|
-| `account` | ← | `start`（起这个会话进程的号，`_` 原样）· `current`（此刻走的号）· `since` · `history[]`（先的在前）· `inPlace`：能不能不重启换 —— `ok` · `noRelay` · `machineNotMulti`（没建账号库）· `agentHasNoAccounts` |
+| `account` | ← | `start`（起这个会话进程的号，`_` 原样）· `current`（此刻走的号）· `since` · `history[]`（先的在前）· `inPlace`：能不能不重启换 —— `ok` · `noRelay` · `ended`（会话进程已不在，判活同 `rotation-read` 的 `followers`）· `machineNotMulti`（没建账号库）· `agentHasNoAccounts`。那台连不上时根本答不了这一问，界面用连接层的「连不上」 |
 | `next?` | ← | 此刻的号触发了会换到谁（只看盘上的登录，不续令牌）；没有 ⇒ 缺 |
 | `blocked?` | ← | 发不出去了（此刻的号被拒、轮换里没有能接的）⇒ `{earliest?: {account, at}}`（池里最早回来的那个）；能发 ⇒ 缺。超额在兜不算 |
 | `fallbackApi?` | ← | 这台可用（key 表里有）、不在这个会话轮换里、没被拒的按量号；没有 ⇒ 缺 |
+| `quota` | ← | 此刻那个号（`account.current`）的显示态，同 `quota-read` 的显示态几格；`near` 按**这个会话**的 N（跟随 ⇒ 默认轮换的，没设 80）；那个号没出过数 ⇒ `state: "unseen"` |
 
 #### `rotation-session-set`：改一批会话的轮换
 
@@ -2173,7 +2198,7 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 #### `rotation-switch`：现在就换
 
 `→ {"cmd":"rotation-switch","args":{"sessions":[…],"target":"team","mode":"hot" | "restart"}}` ⇒ `{"sessions":{sid: 结果}}`，结果
-`{"state":"done"}` · `{"state":"skipped","code"}`（不重启换不成立：`noRelay` · `agentHasNoAccounts` · `machineNotMulti`）·
+`{"state":"done"}` · `{"state":"skipped","code"}`（不重启换不成立：`noRelay` · `ended` · `agentHasNoAccounts` · `machineNotMulti`）·
 `{"state":"failed","code"}`（`targetNeedsLogin`：目标订阅号拿不到令牌（续期失败照实报）或账号身份 · `targetNeedsKey` · `ioFailed`）。
 
 - `hot`：`sessions` 是会话 id；把会话钉到 `target`、记一条 `manualHot`，下一发起就走它（进程仍用起它的号的配置目录）。

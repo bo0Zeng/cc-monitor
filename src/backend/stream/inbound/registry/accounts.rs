@@ -18,9 +18,18 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "quota-read",
         doc_anchor: Some("#### `quota-read`"),
         codes: &[],
-        fields: &["accounts", "now", "path", "reason", "state"],
+        fields: &[
+            "accounts",
+            "earliestReturn",
+            "now",
+            "path",
+            "reason",
+            "state",
+            "unseen",
+            "usableNow",
+        ],
         takes_input: false,
-        run: Run::Blocking(|_r| Ok(Some(crate::accounts::quota::ledger::answer_read()))),
+        run: Run::Blocking(|_r| Ok(Some(crate::faces::rotation_face::answer_quota_read()))),
     },
     // 换号那一族（帧面宿主 `faces/rotation_face.rs`）：默认轮换读 / 写 · 一批会话的轮换与「账号」格读 / 写 · 现在就换。
     //   同步文件 I/O ⇒ 阻塞档；「现在就换」里重启换那一半要等 `session-restart` ⇒ 异步、失败可带码。
@@ -28,7 +37,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "rotation-read",
         doc_anchor: Some("#### `rotation-read`"),
         codes: &[],
-        fields: &["path", "reason", "rotation", "state"],
+        fields: &["followers", "path", "reason", "rotation", "state"],
         takes_input: false,
         run: Run::Blocking(|_r| {
             crate::faces::rotation_face::answer_read()
@@ -40,7 +49,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "rotation-set",
         doc_anchor: Some("#### `rotation-set`"),
         codes: &["bad_args", "io_failed"],
-        fields: &["path", "reason", "rotation", "state"],
+        fields: &["followers", "path", "reason", "rotation", "state"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::rotation_face::answer_set(&r.args)

@@ -1,0 +1,225 @@
+//! ★ 额度的**显示态**（纯函数）：一个号此刻该画成什么样 —— 界面与手机端只按这里给的词拼，不自己判。
+//!
+//! | 态 | 判 |
+//! |---|---|
+//! | `unseen` | 额度账上没有它 |
+//! | `refused` | 上次那一发被拒、重置时刻未到（回包没给时刻也算） |
+//! | `overageInUse` | 订阅号正在用付费超额、卡着的窗口未重置 |
+//! | `resetSinceSeen` | 卡着的那个窗口（被拒 · 超额 · 按钮那个窗口）看到之后已经重置过了：上次的数不再作数 |
+//! | `near` | 有语义位的窗口用到 N%、未重置（同轮换的「到阈值」一个判法），或回包说越过了预警线 |
+//! | `ok` | 其余 |
+//!
+//! 另叠一格 `stale`：最后一次看到距今超过 [`STALE_AFTER`]。N 由调用方给：这台的账用默认轮换的 N，会话那一份用会话的 N；
+//! 没设（满了才换）⇒ [`NEAR_DEFAULT`]。
+
+use super::decide::{self, Kind};
+use crate::agents::{QuotaReading, QuotaStatus};
+use serde::{Deserialize, Serialize};
+
+/// 没设「到 N% 换」时，「快满」的门槛（%）。
+pub(crate) const NEAR_DEFAULT: u8 = 80;
+
+/// 最后一次看到距今超过这么多秒 ⇒ 数旧。
+pub(crate) const STALE_AFTER: u64 = 30 * 60;
+
+/// 画出来的语义位，按这个次序出。
+const SLOTS: [&str; 2] = ["5h", "7d"];
+
+/// 显示态。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub enum QuotaState {
+    Ok,
+    Near,
+    Refused,
+    OverageInUse,
+    Unseen,
+    ResetSinceSeen,
+}
+
+/// 这个号此刻拿不拿得到能用的登录：订阅号看凭据文件 ＋ 账号身份（`ok` / `needsLogin`）；按量号看这台 key 表里有没有它（`ok` / `needsKey`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub enum LoginState {
+    Ok,
+    /// 订阅号：要重新登录。
+    NeedsLogin,
+    /// 按量号：这台 key 表里没有它的 key（只对按量号出）。
+    NeedsKey,
+}
+
+/// 一个语义位（`5h` / `7d`）的那一格：取整的百分比 · 几点重置（说不出 ⇒ 缺）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct SlotShow {
+    pub slot: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
+    pub pct: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional, type = "number"))]
+    pub resets_at: Option<u64>,
+}
+
+/// 一个号的显示态。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct QuotaShow {
+    pub kind: Kind,
+    pub state: QuotaState,
+    /// 最后一次看到距今超过 30 分钟（与 `state` 叠着画）。
+    pub stale: bool,
+    /// 按钮上那个窗口的语义位（卡着的那个；回包没说 ⇒ 用得最多的那个）；没有分窗口的数 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
+    pub limiting: Option<String>,
+    /// `5h` · `7d` 各一格（有数的才出）。
+    pub slots: Vec<SlotShow>,
+    pub login: LoginState,
+    /// 同一订阅的稳定标识（账号身份的散列，不含原值）：两台看到的同一订阅它相同。订阅号读得出身份才有。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
+    pub sub_id: Option<String>,
+}
+
+/// 「快满」的门槛：轮换是「到 N% 换」⇒ N；否则 [`NEAR_DEFAULT`]。
+pub(crate) fn near_of(when: super::rotation::RotationWhen) -> u8 {
+    match when {
+        super::rotation::RotationWhen::Threshold { n } => n,
+        super::rotation::RotationWhen::Full => NEAR_DEFAULT,
+    }
+}
+
+/// 一个号除额度账之外的几格（种类 · 登录 · 订阅标识），由宿主读好交进来。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Facts {
+    pub(crate) kind: Kind,
+    pub(crate) login: LoginState,
+    pub(crate) sub_id: Option<String>,
+}
+
+fn slots_of(r: &QuotaReading, slot: &dyn Fn(&str) -> Option<&'static str>) -> Vec<SlotShow> {
+    SLOTS
+        .iter()
+        .filter_map(|s| {
+            // 同一语义位有几个窗口（7 天那几个）⇒ 取用得最多的那个。
+            let w = r
+                .windows
+                .iter()
+                .filter(|w| slot(&w.name) == Some(*s))
+                .max_by(|a, b| {
+                    a.used
+                        .unwrap_or(f64::MIN)
+                        .total_cmp(&b.used.unwrap_or(f64::MIN))
+                })?;
+            Some(SlotShow {
+                slot: (*s).to_string(),
+                pct: w.used.map(|u| (u * 100.0).round().max(0.0) as u32),
+                resets_at: w.resets_at,
+            })
+        })
+        .collect()
+}
+
+/// ★ 判一个号的显示态。`seen` ＝ 额度账上那一条（快照 ＋ 看到的时刻）；`n` ＝ 「快满」的门槛。
+pub(crate) fn show(
+    seen: Option<(&QuotaReading, u64)>,
+    facts: Facts,
+    n: u8,
+    now: u64,
+    slot: &dyn Fn(&str) -> Option<&'static str>,
+) -> QuotaShow {
+    let Some((r, seen_at)) = seen else {
+        return QuotaShow {
+            kind: facts.kind,
+            state: QuotaState::Unseen,
+            stale: false,
+            limiting: None,
+            slots: Vec::new(),
+            login: facts.login,
+            sub_id: facts.sub_id,
+        };
+    };
+    let slots = slots_of(r, slot);
+    let limiting = r
+        .limiting
+        .as_deref()
+        .and_then(slot)
+        .filter(|s| slots.iter().any(|x| x.slot == *s))
+        .map(str::to_string)
+        .or_else(|| {
+            slots
+                .iter()
+                .max_by_key(|x| x.pct.unwrap_or(0))
+                .map(|x| x.slot.clone())
+        });
+    let passed = |t: Option<u64>| t.is_some_and(|t| t <= now);
+    let shown_reset = limiting
+        .as_deref()
+        .and_then(|l| slots.iter().find(|x| x.slot == l))
+        .and_then(|x| x.resets_at)
+        .or(r.resets_at);
+    let overage = facts.kind == Kind::Sub && r.overage.as_ref().is_some_and(|o| o.in_use);
+    let state = if (r.refused || overage) && passed(r.resets_at) {
+        QuotaState::ResetSinceSeen
+    } else if r.refused {
+        QuotaState::Refused
+    } else if decide::overage_in_use(r, facts.kind, now) {
+        QuotaState::OverageInUse
+    } else if passed(shown_reset) {
+        QuotaState::ResetSinceSeen
+    } else if decide::window_over(r, n, now, slot).is_some()
+        || r.status == Some(QuotaStatus::Warning)
+    {
+        QuotaState::Near
+    } else {
+        QuotaState::Ok
+    };
+    QuotaShow {
+        kind: facts.kind,
+        state,
+        stale: now.saturating_sub(seen_at) > STALE_AFTER,
+        limiting,
+        slots,
+        login: facts.login,
+        sub_id: facts.sub_id,
+    }
+}
+
+/// 此刻用不了的号几点回来（被拒 · 超额在兜 ⇒ 卡着的窗口的重置时刻；说不出 ⇒ `None`）。
+pub(crate) fn back_at(s: &QuotaShow, r: &QuotaReading, now: u64) -> Option<u64> {
+    matches!(s.state, QuotaState::Refused | QuotaState::OverageInUse)
+        .then_some(r.resets_at)
+        .flatten()
+        .filter(|t| *t > now)
+}
+
+/// 此刻发得出去：登录拿得到，且不是被拒 / 超额在兜（快满 · 数旧 · 没采样 · 上一窗已过都算能发）。
+pub(crate) fn usable(s: &QuotaShow) -> bool {
+    s.login == LoginState::Ok && !matches!(s.state, QuotaState::Refused | QuotaState::OverageInUse)
+}
+
+/// 同一订阅的稳定标识：账号身份加一个固定前缀做 SHA-256，取前 12 字节的十六进制。不加每台的盐 ⇒ 两台算出来相同；
+/// 账号身份是随机的 128 位 ⇒ 由它反推不出原值。
+pub(crate) fn sub_id_of(identity: &str) -> String {
+    let d = ring::digest::digest(
+        &ring::digest::SHA256,
+        format!("cc-monitor/subscription\0{identity}").as_bytes(),
+    );
+    d.as_ref()[..12]
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/accounts/quota/show_tests.rs"]
+mod tests;

@@ -256,12 +256,7 @@ fn write_entry(path: &Path, entry: Observed) -> Result<(), String> {
     result
 }
 
-/// 帧命令 `quota-read`：现读这台的额度账（不读内存 —— 一次性 CLI 那一形里内存是空的）。
-pub(crate) fn answer_read() -> serde_json::Value {
-    let path = path_from(&|k| std::env::var(k).ok());
-    answer_of(path.as_deref(), super::now_unix())
-}
-
+/// 帧命令 `quota-read` 的底子：现读这台的额度账（不读内存 —— 一次性 CLI 那一形里内存是空的）；显示态由帧面宿主补上。
 pub(crate) fn answer_of(path: Option<&Path>, now: u64) -> serde_json::Value {
     let (state, reason, accounts) = match path.map(read_at) {
         None => (

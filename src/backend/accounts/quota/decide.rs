@@ -13,11 +13,21 @@
 //! 一个都没有 ⇒ 不换（被拒就原样交回上游的拒绝）。候选只从池里、且不含试过的 ⇒ 一发请求至多换「池子大小」次，不打转。
 
 use super::rotation::{RotationWhen, SwitchWhy, Unready};
-use crate::agents::QuotaReading;
+use crate::agents::{QuotaReading, QuotaWindow};
 
-/// 号的种类（接超额只找订阅号）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Kind {
+/// 号的种类（接超额只找订阅号）：线上 `sub` · `api`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "QuotaKind"
+    )
+)]
+pub enum Kind {
     Sub,
     Api,
 }
@@ -82,19 +92,29 @@ fn full_why(r: &QuotaReading, f: &Facts<'_>) -> SwitchWhy {
     }
 }
 
+/// ★ 「用到 N%」的唯一判法：有语义位（`5h` / `7d`）的窗口里，第一个用到 `n`%、还没重置的。轮换的「到阈值」与显示态的「快满」都问它。
+pub(crate) fn window_over<'r>(
+    r: &'r QuotaReading,
+    n: u8,
+    now: u64,
+    slot: &dyn Fn(&str) -> Option<&'static str>,
+) -> Option<&'r QuotaWindow> {
+    r.windows
+        .iter()
+        .filter(|w| slot(&w.name).is_some())
+        .find(|w| w.used.is_some_and(|u| u * 100.0 >= f64::from(n)) && live(w.resets_at, now))
+}
+
 /// 阈值模式下过了阈值、还没重置的那个窗口的重置时刻（`Some(None)` ＝ 过了、说不出几点重置）。
 fn over_threshold(r: &QuotaReading, f: &Facts<'_>) -> Option<(u8, Option<u64>)> {
     let RotationWhen::Threshold { n } = f.when else {
         return None;
     };
-    r.windows
-        .iter()
-        .filter(|w| (f.slot)(&w.name).is_some())
-        .find(|w| w.used.is_some_and(|u| u * 100.0 >= f64::from(n)) && live(w.resets_at, f.now))
-        .map(|w| (n, w.resets_at))
+    window_over(r, n, f.now, f.slot).map(|w| (n, w.resets_at))
 }
 
-fn overage_in_use(r: &QuotaReading, kind: Kind, now: u64) -> bool {
+/// 订阅号正在用付费超额、卡着的窗口还没重置。
+pub(crate) fn overage_in_use(r: &QuotaReading, kind: Kind, now: u64) -> bool {
     kind == Kind::Sub && r.overage.as_ref().is_some_and(|o| o.in_use) && live(r.resets_at, now)
 }
 

@@ -5,6 +5,7 @@
 pub(crate) mod decide;
 pub(crate) mod ledger;
 pub(crate) mod rotation;
+pub(crate) mod show;
 
 /// 此刻（unix 秒）。
 pub(crate) fn now_unix() -> u64 {

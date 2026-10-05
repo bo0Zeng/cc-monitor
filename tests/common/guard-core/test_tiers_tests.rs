@@ -64,6 +64,7 @@ const UNIT: &[&str] = &[
     "tests/backend/agents/claudecode/turn_tests.rs",
     "tests/backend/agents/claudecode/quota_tests.rs", // 回包头 → 额度快照：读法表的金样（纯函数）
     "tests/backend/accounts/quota/decide_tests.rs",   // 换号的唯一判定（纯函数）
+    "tests/backend/accounts/quota/show_tests.rs",     // 额度显示态（纯函数）
     "tests/common/creds-core/token_tests.rs",         // 登录令牌的读 · 写回 · 续期请求体（纯函数）
     "tests/backend/observe/record_page_tests.rs",
     "tests/frontend/ui/startup-active.vitest.ts", // F19 启动时记住的那一格（按事件判的真值表）

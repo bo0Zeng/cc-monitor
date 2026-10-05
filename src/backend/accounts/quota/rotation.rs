@@ -155,6 +155,8 @@ pub enum InPlace {
     Ok,
     /// 这台的中转没见过这个会话的请求（没走中转）。
     NoRelay,
+    /// 会话的进程已经不在了（恢复时再选号）。
+    Ended,
     /// 这台没建账号库。
     MachineNotMulti,
     /// 这一家没有可换的账号。
@@ -226,6 +228,8 @@ pub struct SessionRotation {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(test, ts(optional))]
     pub fallback_api: Option<String>,
+    /// 此刻那个号的显示态（「快满」按这个会话的 N）。
+    pub quota: super::show::QuotaShow,
 }
 
 /// 一个会话在这台查得到吗：查得到 ⇒ 那一份；中转没见过 ⇒ 只说能不能不重启换。
@@ -249,7 +253,7 @@ pub enum SessionRotationState {
 pub enum SwitchOutcome {
     #[serde(rename = "done")]
     Switched,
-    /// 没动它（不重启换不成立：`noRelay` · `machineNotMulti` · `agentHasNoAccounts`）。
+    /// 没动它（不重启换不成立：`noRelay` · `ended` · `machineNotMulti` · `agentHasNoAccounts`）。
     Skipped { code: String },
     /// 动了没成（`targetNeedsLogin` · `targetNeedsKey` · 重启换那一路的失败码原样）。
     #[serde(rename = "failed")]

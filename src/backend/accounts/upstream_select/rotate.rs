@@ -15,6 +15,7 @@ use crate::accounts::quota::rotation::{
     self, AccountAt, AccountCell, Blocked, Book, InPlace, RotationStore, SessionEntry,
     SessionRotation, SessionRotationState, SwitchRecord, SwitchWhy, Unready,
 };
+use crate::accounts::quota::show::{self, LoginState};
 use crate::agents::{IdentityCell, LoginFace, QuotaReading};
 use crate::relay::{AuthSwap, Destination, Mode, RouteKey};
 use creds_core::SecretKey;
@@ -145,6 +146,10 @@ impl Hop {
         id: &str,
     ) -> Option<(PathBuf, Option<PathBuf>)> {
         let home = self.home.as_deref()?;
+        if id == super::endpoint::UNDECLARED_ACCOUNT_SEGMENT {
+            // 起会话时没说是哪个号 ⇒ 那一家的默认配置目录（同账号 0）。
+            return Some(((face.base_dir)(home), Some(home.to_path_buf())));
+        }
         match &lib.find(id)?.dir {
             Some(d) => Some((d.clone(), None)),
             None => Some(((face.base_dir)(home), Some(home.to_path_buf()))),
@@ -388,8 +393,8 @@ impl Hop {
         self.settle(a, heard_from, v, ready)
     }
 
-    /// 订阅号「拿得到登录」的只读那一版（不续令牌）：配置目录在 · 有凭据文件 · 读得出身份。
-    fn login_on_disk(&self, agent: &str, lib: &Library, account: &str) -> Result<(), Unready> {
+    /// 订阅号「拿得到登录」的只读那一版（不续令牌）：配置目录在 · 有凭据文件 · 读得出身份（交回身份）。
+    fn who_on_disk(&self, agent: &str, lib: &Library, account: &str) -> Result<String, Unready> {
         let face = crate::agents::login_of(agent).ok_or(Unready::NeedsLogin)?;
         let (dir, base) = self
             .dir_of(&face, lib, account)
@@ -401,8 +406,37 @@ impl Hop {
             return Err(Unready::NeedsLogin);
         }
         self.identity(&face, &dir, base.as_deref())
-            .map(|_| ())
             .ok_or(Unready::NeedsLogin)
+    }
+
+    /// 一个号显示态要的几格：种类 · 登录（只读，不续令牌）· 订阅标识（账号身份的散列，原值不出这里）。
+    pub(crate) fn show_facts(
+        &self,
+        agent: &str,
+        lib: &Library,
+        account: &str,
+        row: &dyn Fn(&str) -> Option<bool>,
+    ) -> show::Facts {
+        let kind = kind_with(row, lib, account);
+        let (login, sub_id) = match kind {
+            Kind::Api => (
+                if row(account) == Some(true) {
+                    LoginState::Ok
+                } else {
+                    LoginState::NeedsKey
+                },
+                None,
+            ),
+            Kind::Sub => match self.who_on_disk(agent, lib, account) {
+                Ok(who) => (LoginState::Ok, Some(show::sub_id_of(&who))),
+                Err(_) => (LoginState::NeedsLogin, None),
+            },
+        };
+        show::Facts {
+            kind,
+            login,
+            sub_id,
+        }
     }
 
     /// 帧面「现在就换」：目标号此刻接不接得上（订阅号要真拿到令牌 —— 快过期就续，续不上照实报）。
@@ -425,12 +459,14 @@ impl Hop {
         self.prepare(&a, &self.library(), target).map(|_| ())
     }
 
-    /// 帧面：一个会话的那一份（「账号」格 ＋ 下一个 · 卡住 · 可用按量号）。只读：不记、不续令牌。
+    /// 帧面：一个会话的那一份（「账号」格 ＋ 下一个 · 卡住 · 可用按量号 · 此刻那个号的显示态）。只读：不记、不续令牌。
+    /// `live(sid)` ＝ 这个会话的进程此刻还活着。
     pub(crate) fn view(
         &self,
         book: &Book,
         sid: &str,
         row: &dyn Fn(&str) -> Option<bool>,
+        live: &dyn Fn(&str) -> bool,
         now: u64,
     ) -> SessionRotationState {
         let lib = self.library();
@@ -439,7 +475,9 @@ impl Hop {
                 in_place: InPlace::NoRelay,
             };
         };
-        let in_place = if crate::agents::login_of(&s.agent).is_none() {
+        let in_place = if !live(sid) {
+            InPlace::Ended
+        } else if crate::agents::login_of(&s.agent).is_none() {
             InPlace::AgentHasNoAccounts
         } else if !lib.enabled {
             InPlace::MachineNotMulti
@@ -477,7 +515,7 @@ impl Hop {
                 Kind::Api => (row(x) == Some(true))
                     .then_some(())
                     .ok_or(Unready::NeedsKey),
-                Kind::Sub => self.login_on_disk(&s.agent, &lib, x),
+                Kind::Sub => self.who_on_disk(&s.agent, &lib, x).map(|_| ()),
             }
         };
         let next = decide::next_of(&f, &mut ready);
@@ -503,6 +541,16 @@ impl Hop {
             })
             .map(str::to_string)
             .next();
+        let quota = show::show(
+            self.quota
+                .entry(&s.agent, &s.current)
+                .as_ref()
+                .map(|o| (&o.reading, o.seen_at)),
+            self.show_facts(&s.agent, &lib, &s.current, row),
+            show::near_of(rot.when),
+            now,
+            &slot_of,
+        );
         SessionRotationState::Present(Box::new(SessionRotation {
             agent: s.agent.clone(),
             follow: s.follow,
@@ -517,13 +565,18 @@ impl Hop {
             next,
             blocked,
             fallback_api,
+            quota,
         }))
     }
 }
 
 /// 号的种类：key 表里有行、或账号库说它是按量号 ⇒ 按量号；其余是订阅号。
 fn kind_of(a: &Turn<'_>, lib: &Library, account: &str) -> Kind {
-    if (a.row)(account).is_some() || lib.find(account).is_some_and(|x| x.api) {
+    kind_with(a.row, lib, account)
+}
+
+fn kind_with(row: &dyn Fn(&str) -> Option<bool>, lib: &Library, account: &str) -> Kind {
+    if row(account).is_some() || lib.find(account).is_some_and(|x| x.api) {
         Kind::Api
     } else {
         Kind::Sub

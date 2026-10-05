@@ -27,6 +27,8 @@ fn dead_token_endpoint() -> crate::accounts::oauth::TokenEndpoint {
 
 struct Home {
     root: std::path::PathBuf,
+    /// 此刻活着的会话（`saw` 记下的都活着，`end` 摘掉）。
+    live: Arc<std::sync::Mutex<std::collections::BTreeSet<String>>>,
 }
 
 impl Home {
@@ -47,7 +49,10 @@ impl Home {
         )
         .expect("identity");
         std::fs::create_dir_all(root.join("accts").join("c")).expect("mkdir");
-        Self { root }
+        Self {
+            root,
+            live: Arc::default(),
+        }
     }
 
     /// 账号库：a（起会话的号）· b（有登录）· c（没登录）· api（按量号，key 表里有）。
@@ -74,12 +79,21 @@ impl Home {
                 Some(dead_token_endpoint()),
             ),
             rows: Box::new(|_, a| (a == "api").then_some(true)),
+            live: {
+                let live = Arc::clone(&self.live);
+                Box::new(move || live.lock().expect("lock").clone())
+            },
         }
     }
 
     fn saw(&self, ctx: &Ctx, sid: &str) {
         rotation::face_change(&ctx.hop.store, |b| b.saw(sid, "claude-code", "a", now()))
             .expect("write");
+        self.live.lock().expect("lock").insert(sid.to_string());
+    }
+
+    fn end(&self, sid: &str) {
+        self.live.lock().expect("lock").remove(sid);
     }
 }
 
@@ -259,4 +273,230 @@ fn the_switch_arguments_are_shaped_per_mode() {
         restart_args(&item, "b"),
         json!({"sid": "s-1", "cwd": "/p", "compact_first": false, "account": "b"})
     );
+}
+
+// ── 额度显示态（`quota-read` 的每条 · 没出过数的号 · 此刻可用 · 最早回来）────────────────────
+
+fn seen(ctx: &Ctx, account: &str, used_5h: f64, refused_until: Option<u64>) {
+    use crate::agents::{QuotaReading, QuotaStatus, QuotaWindow};
+    let now = now();
+    let r = match refused_until {
+        Some(t) => QuotaReading {
+            status: None,
+            refused: true,
+            limiting: None,
+            resets_at: Some(t),
+            windows: Vec::new(),
+            overage: None,
+        },
+        None => QuotaReading {
+            status: Some(QuotaStatus::Allowed),
+            refused: false,
+            limiting: Some("five_hour".into()),
+            resets_at: Some(now + 3_600),
+            windows: vec![QuotaWindow {
+                name: "five_hour".into(),
+                used: Some(used_5h),
+                resets_at: Some(now + 3_600),
+                warned_at: None,
+            }],
+            overage: None,
+        },
+    };
+    ledger::record_seen(&ctx.hop.quota, "claude-code", account, r, now);
+}
+
+/// ★ `quota-read`：原有几格一格不动，每条加显示态；「快满」按这台默认轮换的 N（没设 80%）；
+/// 没出过数的号另列；此刻可用 · 最早回来；应答里零令牌、零账号身份原值。
+#[test]
+fn quota_read_adds_the_display_state_and_the_machine_summary() {
+    let home = Home::new("quota");
+    let ctx = home.ctx();
+    seen(&ctx, "a", 0.5, None);
+    seen(&ctx, "b", 0.86, None);
+    seen(&ctx, "api", 0.0, Some(now() + 600));
+    let got = quota_read_with(&ctx, now());
+    let row = |acct: &str| {
+        got["accounts"]
+            .as_array()
+            .expect("accounts")
+            .iter()
+            .find(|r| r["account"] == acct)
+            .cloned()
+            .expect("row")
+    };
+    let b = row("b");
+    let keys: std::collections::BTreeSet<&str> = b
+        .as_object()
+        .expect("obj")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "agent", "account", "seenAt", "reading", "kind", "state", "stale", "limiting", "slots",
+            "login", "subId"
+        ]
+        .into_iter()
+        .collect()
+    );
+    assert_eq!(
+        (&b["kind"], &b["state"], &b["login"], &b["limiting"]),
+        (&json!("sub"), &json!("near"), &json!("ok"), &json!("5h"))
+    );
+    assert_eq!(b["slots"][0]["pct"], 86);
+    assert_eq!(b["subId"], show::sub_id_of(UUID_B));
+    assert_eq!(
+        (&row("a")["state"], &row("a")["login"]),
+        (&json!("ok"), &json!("needsLogin")),
+        "a 的配置目录没有登录"
+    );
+    let api = row("api");
+    assert_eq!(
+        (&api["kind"], &api["state"], &api["login"]),
+        (&json!("api"), &json!("refused"), &json!("ok"))
+    );
+    assert_eq!(
+        got["unseen"],
+        json!([{"agent": "claude-code", "account": "c", "kind": "sub", "login": "needsLogin"}])
+    );
+    assert_eq!(got["usableNow"], json!(["b"]));
+    assert_eq!(
+        got["earliestReturn"],
+        json!({"account": "api", "at": now() + 600})
+    );
+    let text = got.to_string();
+    for secret in [UUID_B, B_TOKEN, "fake-refresh-of-b"] {
+        assert!(!text.contains(secret), "{secret} 漏进了应答");
+    }
+    // 默认轮换改成「到 90% 换」⇒ 86% 不再算快满。
+    answer_set_with(
+        &ctx,
+        &json!({"rotation": {"order": [{"start": true}], "enabled": [], "when": {"threshold": {"n": 90}}}}),
+    )
+    .expect("ok");
+    let got = quota_read_with(&ctx, now());
+    let b = got["accounts"]
+        .as_array()
+        .expect("accounts")
+        .iter()
+        .find(|r| r["account"] == "b")
+        .cloned()
+        .expect("row");
+    assert_eq!(b["state"], "ok");
+}
+
+/// ★ 同一订阅：两台各有一个号目录、身份相同 ⇒ 标识相同；身份不同 ⇒ 不同。
+#[test]
+fn the_same_subscription_on_two_machines_gets_the_same_id() {
+    let here = Home::new("sub-here");
+    let there = Home::new("sub-there");
+    let c = here.root.join("accts").join("c");
+    let far = (now() + 3600) * 1000;
+    std::fs::write(
+        c.join(".credentials.json"),
+        format!("{{\"claudeAiOauth\":{{\"accessToken\":\"fake-c\",\"refreshToken\":\"fake-rc\",\"expiresAt\":{far}}}}}"),
+    )
+    .expect("creds");
+    std::fs::write(
+        c.join(".claude.json"),
+        "{\"oauthAccount\":{\"accountUuid\":\"cccccccc-3333-4333-8333-cccccccccccc\"}}",
+    )
+    .expect("identity");
+    let id = |h: &Home, acct: &str| {
+        let ctx = h.ctx();
+        quota_read_with(&ctx, now())["unseen"]
+            .as_array()
+            .expect("unseen")
+            .iter()
+            .find(|u| u["account"] == acct)
+            .map(|u| u["subId"].clone())
+            .expect("unseen row")
+    };
+    assert_eq!(id(&here, "b"), id(&there, "b"));
+    assert!(id(&here, "b").is_string());
+    assert_ne!(id(&here, "c"), id(&here, "b"));
+}
+
+/// ★ 默认轮换的 `followers`：跟随它、且此刻活着的会话（自定义的、已结束的不算）。
+#[test]
+fn followers_count_only_live_sessions_on_the_default() {
+    let home = Home::new("followers");
+    let ctx = home.ctx();
+    for sid in ["s-1", "s-2", "s-3"] {
+        home.saw(&ctx, sid);
+    }
+    home.end("s-2");
+    answer_session_set_with(&ctx, &json!({"sids": ["s-3"], "rotation": "custom"}), now())
+        .expect("ok");
+    assert_eq!(answer_read_with(&ctx)["followers"], 1);
+}
+
+/// ★ 会话已结束 ⇒ `inPlace = ended`，不重启换跳过它（`skipped{ended}`）。
+#[test]
+fn an_ended_session_says_so_and_is_not_hot_switched() {
+    let home = Home::new("ended");
+    let ctx = home.ctx();
+    home.saw(&ctx, "s-1");
+    home.end("s-1");
+    let got = answer_session_read_with(&ctx, &json!({"sids": ["s-1"]}), now()).expect("ok");
+    assert_eq!(got["sessions"]["s-1"]["account"]["inPlace"], "ended");
+    assert_eq!(
+        hot_one(&ctx, "s-1", "b", now()),
+        SwitchOutcome::Skipped {
+            code: "ended".into()
+        }
+    );
+    assert_eq!(ctx.hop.store.now().sessions["s-1"].current, "a");
+}
+
+/// ★ 会话那一份带它此刻那个号的显示态，「快满」按这个会话的 N（跟随 ⇒ 默认的；没设 80%）。
+#[test]
+fn a_session_shows_its_current_account_by_its_own_n() {
+    let home = Home::new("session-n");
+    let ctx = home.ctx();
+    home.saw(&ctx, "s-1");
+    seen(&ctx, "a", 0.86, None);
+    let state = |ctx: &Ctx| {
+        answer_session_read_with(ctx, &json!({"sids": ["s-1"]}), now()).expect("ok")["sessions"]
+            ["s-1"]["quota"]["state"]
+            .clone()
+    };
+    assert_eq!(state(&ctx), "near");
+    answer_session_set_with(
+        &ctx,
+        &json!({"sids": ["s-1"], "rotation": {"custom": {"order": [{"start": true}], "enabled": [], "when": {"threshold": {"n": 90}}}}}),
+        now(),
+    )
+    .expect("ok");
+    assert_eq!(state(&ctx), "ok");
+}
+
+/// ★ 按量号这台 key 表里没有它 ⇒ `login = needsKey`，绝不说 `needsLogin`（那是订阅号「要重新登录」）。
+#[test]
+fn an_api_account_without_a_key_needs_a_key_not_a_login() {
+    let home = Home::new("needs-key");
+    let mut ctx = home.ctx();
+    ctx.rows = Box::new(|_, _| None);
+    let got = quota_read_with(&ctx, now());
+    let api = got["unseen"]
+        .as_array()
+        .expect("unseen")
+        .iter()
+        .find(|u| u["account"] == "api")
+        .cloned()
+        .expect("api 那一行");
+    assert_eq!(
+        (&api["kind"], &api["login"]),
+        (&json!("api"), &json!("needsKey"))
+    );
+    let c = got["unseen"]
+        .as_array()
+        .expect("unseen")
+        .iter()
+        .find(|u| u["account"] == "c")
+        .cloned()
+        .expect("c 那一行");
+    assert_eq!(c["login"], "needsLogin", "订阅号照旧");
 }
