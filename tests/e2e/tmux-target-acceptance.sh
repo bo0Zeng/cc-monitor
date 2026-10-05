@@ -14,7 +14,6 @@ REPO="$(cd "$HERE/../.." && pwd)"
 SP="$(mktemp -d)"
 trap 'rm -rf "$SP"' EXIT
 # 生产命令串来自**生产渲染链**（不手搓等价命令）——见 tmux-target-emit.mts 头注
-(cd "$REPO" && npx tsx tests/e2e/tmux-target-emit.mts) > "$SP/f01-cmds.tsv"
 # shellcheck source=tests/e2e/tmux-shim.sh
 . "$HERE/tmux-shim.sh" --names-only
 SOCK="$(e2e_run_name ccmF01)" || exit 2
@@ -28,6 +27,10 @@ export PATH="$SHIM:$PATH"
 # 起会话交出去的是一行 `ccm …` ⇒ 后端二进制以 `ccm` 之名上 PATH（要先 build：.build/backend/debug/cc-monitor-backend），沙箱无条件给。
 # shellcheck source=tests/e2e/ccm-shim.sh
 . "$HERE/ccm-shim.sh"
+# 取串必须在换家目录之后：起会话那一行直接叫 `<家>/.cc-monitor/bin/ccm` 的绝对路径，先取串就会指到开发机上真装的那一份
+# （本机碰巧有 ⇒ 跑的是它、假绿；CI 上没有 ⇒ 红）。
+(cd "$REPO" && npx tsx tests/e2e/tmux-target-emit.mts) > "$SP/f01-cmds.tsv"
+grep -qF "$CCM_ENTRY" "$SP/f01-cmds.tsv" || { echo "取出的起会话那一行没指向本趟沙箱里的 ccm（$CCM_ENTRY）"; exit 1; }
 # 收尾只收自己这一趟那台（中途退出也收，别留一台孤儿 server）。
 trap 'e2e_tmux_reap "$TMUX_BIN" "$SOCK"; ccm_shim_cleanup; rm -rf "$SP"' EXIT
 
