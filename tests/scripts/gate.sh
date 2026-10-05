@@ -40,19 +40,6 @@ for gate_v in $(compgen -e); do
   esac
 done
 unset gate_v
-# TMUX_TMPDIR 摘完再**无条件**指到这一趟自己的空目录（不是留空）：后端装 tmux 钩子、观测 tmux 都不带 `-L` / `-S`，
-# 靠 TMUX_TMPDIR 找 server；留空就落到用户默认那台（`/tmp/tmux-<uid>/default`，下面的无网沙箱与宿主共用 /tmp）⇒
-# 测试里起的后端往用户真 tmux 上装钩子（10-05 实发：钩子指着工作树里的测试二进制）。收尾只收这个目录里自己的 server。
-GATE_TMUX_DIR="$(mktemp -d "${TMPDIR:-/tmp}/gate-tmux.XXXXXX")"
-export TMUX_TMPDIR="$GATE_TMUX_DIR"
-gate_tmux_reap() {
-  local s
-  for s in "$GATE_TMUX_DIR"/tmux-*/*; do
-    [ -S "$s" ] && tmux -S "$s" kill-server 2>/dev/null
-  done
-  rm -rf "$GATE_TMUX_DIR"
-}
-trap gate_tmux_reap EXIT
 set -uo pipefail
 
 # 🔴 **仓根 = 本脚本的上两级**（`tests/scripts/gate.sh` ⇒ `../..`）。
@@ -74,8 +61,7 @@ printf '  ·    %-14s %s\n' "环境" "摘掉了 ${#gate_scrubbed[@]} 个从开�
 #   · 其余一律包；bwrap 不在、或起不来新网络命名空间 ⇒ 要包的格全红并说原因，不退回裸跑。
 # 包的格：每一套 e2e（`run_e2e`）· `cargo` · `backend`（单测里起后端、tmux、Xvfb）。
 #   `env-sandbox` 不包：它自己造一台假开发机、在里面起内层门禁，由内层去包；`weak-net` 在 docker 里自己造网，不碰。
-# 用户默认 tmux 的 socket 目录在沙箱里盖成一层空目录：就算哪一处漏了 TMUX_TMPDIR，也够不着用户真那台。
-GATE_NONET=(bwrap --dev-bind / / --proc /proc --tmpfs "/tmp/tmux-$(id -u)" --unshare-net --die-with-parent --)
+GATE_NONET=(bwrap --dev-bind / / --proc /proc --unshare-net --die-with-parent --)
 GATE_NONET_WHY=""
 if [ "${GITHUB_ACTIONS:-}" = true ]; then
   GATE_NONET=()
