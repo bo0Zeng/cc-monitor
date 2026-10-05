@@ -115,7 +115,7 @@ fn the_default_rotation_is_written_whole_and_refused_whole() {
     .expect("ok");
     assert_eq!(
         got["rotation"],
-        json!({"order": [{"start": true}, "b", "c", "api"], "enabled": ["api", "b"], "when": {"threshold": {"n": 90}}})
+        json!({"order": [{"start": true}, "b", "c", "api"], "enabled": ["api", "b"], "when": {"threshold": {"n": 90}}, "atLimit": "continue"})
     );
     assert_eq!(got["state"], "present");
     let before = std::fs::read(home.root.join(rotation::FILE_NAME)).expect("read");
@@ -126,6 +126,13 @@ fn the_default_rotation_is_written_whole_and_refused_whole() {
     .expect_err("应拒");
     assert_eq!(code, "bad_args");
     assert!(msg.contains("enabled[0]"), "{msg}");
+    let (code, msg) = answer_set_with(
+        &ctx,
+        &json!({"rotation": {"order": [{"start": true}, "b"], "enabled": ["b"], "when": "full", "atLimit": "halt"}}),
+    )
+    .expect_err("应拒");
+    assert_eq!(code, "bad_args");
+    assert!(msg.contains("atLimit"), "{msg}");
     assert_eq!(
         std::fs::read(home.root.join(rotation::FILE_NAME)).expect("read"),
         before

@@ -1,7 +1,7 @@
 //! 换号的唯一判定：触发 · 按序取首个能接的 · 超额规矩 · 不打转。
 
-use super::{decide, Facts, Kind, Verdict};
-use crate::accounts::quota::rotation::{RotationWhen, SwitchWhy, Unready};
+use super::{decide, Back, Facts, Kind, Verdict};
+use crate::accounts::quota::rotation::{AtLimit, RotationWhen, SwitchWhy, Unready};
 use crate::agents::{QuotaOverage, QuotaReading, QuotaWindow};
 use std::collections::BTreeMap;
 
@@ -36,12 +36,17 @@ fn overage(r: QuotaReading) -> QuotaReading {
 }
 
 fn slot(n: &str) -> Option<&'static str> {
-    (n == "five_hour").then_some("5h")
+    match n {
+        "five_hour" => Some("5h"),
+        "seven_day" => Some("7d"),
+        _ => None,
+    }
 }
 
 struct World {
     pool: Vec<String>,
     when: RotationWhen,
+    at_limit: AtLimit,
     seen: BTreeMap<String, QuotaReading>,
     api: Vec<String>,
     unready: BTreeMap<String, Unready>,
@@ -52,6 +57,7 @@ impl World {
         Self {
             pool: pool.iter().map(|s| s.to_string()).collect(),
             when: RotationWhen::Full,
+            at_limit: AtLimit::Continue,
             seen: BTreeMap::new(),
             api: Vec::new(),
             unready: BTreeMap::new(),
@@ -76,6 +82,7 @@ impl World {
         let f = Facts {
             pool: &self.pool,
             when: self.when,
+            at_limit: self.at_limit,
             current,
             now: NOW,
             heard,
@@ -230,6 +237,106 @@ fn threshold_mode_switches_on_the_next_request() {
     w.seen
         .insert("a".into(), reading(false, 0.99, Some(NOW + 60)));
     assert_eq!(w.judge("a", None, &[]).0, Verdict::Stay);
+}
+
+/// ★ 阈值模式、池里其余的号都过了阈值：此刻的号**被拒** ⇒ 退一步按序取首个没被拒的（过了阈值也取）；
+/// 那几个也被拒了 ⇒ 不换（原样交回）；只是**过了阈值**（没被拒）⇒ 照旧留在此刻的号上照发。
+#[test]
+fn a_refusal_falls_back_to_the_first_unrefused_account_past_the_threshold() {
+    let mut w = World::new(&["a", "b", "c"]);
+    w.when = RotationWhen::Threshold { n: 90 };
+    w.seen
+        .insert("b".into(), reading(true, 1.0, Some(NOW + 60)));
+    w.seen
+        .insert("c".into(), reading(false, 0.92, Some(NOW + 60)));
+    let refused = reading(true, 1.0, Some(NOW + 600));
+    let (v, asked) = w.judge("a", Some(&refused), &["a"]);
+    assert_eq!(
+        v,
+        Verdict::Switch {
+            to: "c".into(),
+            why: full5h(),
+            from_resets_at: Some(NOW + 600),
+            skipped: vec![]
+        }
+    );
+    assert_eq!(asked, ["c"], "被拒的 b 不该被问");
+    // 发之前：额度账上此刻的号被拒 ⇒ 同一条退路。
+    w.seen.insert("a".into(), refused.clone());
+    assert!(matches!(w.judge("a", None, &[]).0, Verdict::Switch { to, .. } if to == "c"));
+    // 退路上的号也被拒 ⇒ 没得换。
+    w.seen
+        .insert("c".into(), reading(true, 1.0, Some(NOW + 60)));
+    assert!(matches!(
+        w.judge("a", Some(&refused), &["a"]).0,
+        Verdict::Stuck { .. }
+    ));
+    // 只是过了阈值（没被拒）、其余的也都过了 ⇒ 留在此刻的号上，不退。
+    w.seen
+        .insert("a".into(), reading(false, 0.95, Some(NOW + 60)));
+    w.seen
+        .insert("c".into(), reading(false, 0.92, Some(NOW + 60)));
+    assert!(matches!(
+        w.judge("a", None, &[]).0,
+        Verdict::Stuck {
+            why: SwitchWhy::Threshold { n: 90 },
+            ..
+        }
+    ));
+}
+
+/// ★ 硬上限：阈值以下没有能接的 ⇒ 不发（`Hold`），回来的时刻 ＝ 池里最早回到阈值以下的那一刻；
+/// 一个号几个窗口都过了阈值 ⇒ 都重置了才算回来（取最晚那个窗口）；被拒触发也不退到过了阈值的号；软阈值同一情形照旧。
+#[test]
+fn a_hard_limit_holds_until_the_earliest_account_is_back_under_the_threshold() {
+    let mut w = World::new(&["a", "b", "c"]);
+    w.when = RotationWhen::Threshold { n: 90 };
+    w.at_limit = AtLimit::Stop;
+    w.seen
+        .insert("a".into(), reading(false, 0.95, Some(NOW + 600)));
+    // b：5h 过了阈值、几点重置早，但 7d 也过了、更晚 ⇒ b 要到 7d 重置才回来。
+    let mut b = reading(false, 0.92, Some(NOW + 100));
+    b.windows.push(QuotaWindow {
+        name: "seven_day".into(),
+        used: Some(0.93),
+        resets_at: Some(NOW + 5000),
+        warned_at: None,
+    });
+    w.seen.insert("b".into(), b);
+    w.seen
+        .insert("c".into(), reading(true, 1.0, Some(NOW + 900)));
+    let want = Verdict::Hold {
+        n: 90,
+        back: Back {
+            account: "a".into(),
+            at: NOW + 600,
+            slot: Some("5h".into()),
+        },
+        skipped: vec![],
+    };
+    assert_eq!(w.judge("a", None, &[]).0, want);
+    // 此刻的号被拒：硬上限不退到过了阈值的号。
+    let refused = reading(true, 1.0, Some(NOW + 600));
+    assert!(matches!(
+        w.judge("a", Some(&refused), &["a"]).0,
+        Verdict::Hold { .. }
+    ));
+    // 说不出几点回来 ⇒ 照软阈值办（留在此刻的号上照发）。
+    w.seen.insert("a".into(), reading(false, 0.95, None));
+    w.seen.insert("c".into(), reading(true, 1.0, None));
+    w.seen.insert("b".into(), reading(false, 0.95, None));
+    assert!(matches!(w.judge("a", None, &[]).0, Verdict::Stuck { .. }));
+    // 软阈值：同一情形不 `Hold`。
+    w.at_limit = AtLimit::Continue;
+    w.seen
+        .insert("a".into(), reading(false, 0.95, Some(NOW + 600)));
+    assert!(matches!(w.judge("a", None, &[]).0, Verdict::Stuck { .. }));
+    // 「被拒才换」模式下 `stop` 不成立（没有 N%）：照常换到没被拒的 b。
+    w.when = RotationWhen::Full;
+    w.at_limit = AtLimit::Stop;
+    assert!(
+        matches!(w.judge("a", Some(&refused), &["a"]).0, Verdict::Switch { to, .. } if to == "b")
+    );
 }
 
 /// ★ 超额规矩：订阅号在用付费超额 ⇒ 轮换里还有未满的订阅号就换（按量号不算）；都满才留在超额（`toOverage`）。

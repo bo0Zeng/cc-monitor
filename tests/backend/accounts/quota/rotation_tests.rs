@@ -83,6 +83,14 @@ fn a_bad_rotation_is_refused_whole_naming_the_cell() {
             json!({"order": [{"start": true}], "enabled": [], "when": "full", "x": 1}),
             "unknown field `x`",
         ),
+        (
+            json!({"order": [{"start": true}], "enabled": [], "when": "full", "atLimit": "halt"}),
+            "`atLimit`",
+        ),
+        (
+            json!({"order": [{"start": true}], "enabled": [], "when": "full", "atLimit": null}),
+            "`atLimit`",
+        ),
     ];
     for (v, cell) in cases {
         let e = rotation_from(&v, 1..=1, &ok, &none, None).expect_err("应拒");
@@ -94,7 +102,18 @@ fn a_bad_rotation_is_refused_whole_naming_the_cell() {
         json!({"threshold": {"n": 90}}),
     );
     let r = rotation_from(&good, 1..=1, &ok, &none, None).expect("ok");
-    assert_eq!(serde_json::to_value(&r).expect("json"), good);
+    // 缺 `atLimit` ⇒ `continue`，读回时照写出来。
+    let mut back = good.clone();
+    back["atLimit"] = json!("continue");
+    assert_eq!(serde_json::to_value(&r).expect("json"), back);
+    let mut stop = good.clone();
+    stop["atLimit"] = json!("stop");
+    let r = rotation_from(&stop, 1..=1, &ok, &none, None).expect("ok");
+    assert_eq!(r.at_limit, AtLimit::Stop);
+    assert_eq!(serde_json::to_value(&r).expect("json"), stop);
+    // 盘上旧的那一份（没有这一格）读得进来、当 `continue`。
+    let old: Rotation = serde_json::from_value(good.clone()).expect("旧盘上形状");
+    assert_eq!(old.at_limit, AtLimit::Continue);
     assert!(rotation_from(
         &rot(json!(["a"]), json!(["a"]), json!("full")),
         0..=1,

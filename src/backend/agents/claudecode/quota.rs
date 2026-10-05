@@ -13,7 +13,7 @@
 //! 被拒以状态码为准（429）：有这一族头时卡在哪、几点重置照头说；没有（API key 号的回包永远没有这一族）⇒
 //! 几点能再用看 `retry-after`（秒）。`status = rejected` 但回的是 200（超额兜着）不算被拒。
 
-use crate::agents::{QuotaOverage, QuotaReading, QuotaStatus, QuotaWindow};
+use crate::agents::{LimitReply, QuotaOverage, QuotaReading, QuotaStatus, QuotaWindow};
 
 const PREFIX: &str = "anthropic-ratelimit-unified-";
 
@@ -116,6 +116,32 @@ pub(crate) fn read(status: u16, headers: &[(String, String)], now: u64) -> Optio
         windows,
         overage,
     })
+}
+
+/// 「用满」回包：照真被拒那一发的形状 —— 429、限流器那一族头说 `rejected`、卡着的窗口与几点重置、体是 `rate_limit_error`。
+/// 超额那一族不给（缺 ＝ 没有超额兜着，claude 照「用满」处理）；用量比例不给（不编数）。
+/// claude 照它原生的样子显示「用满 · 几点重置」，开着自动续时到点自己续。
+pub(crate) fn limit_reply(reset_at: u64, slot: Option<&str>) -> LimitReply {
+    let at = reset_at.to_string();
+    let mut headers = vec![
+        ("content-type".to_string(), "application/json".to_string()),
+        (format!("{PREFIX}status"), "rejected".to_string()),
+        (format!("{PREFIX}reset"), at.clone()),
+    ];
+    let window = |slot: &str| WINDOWS.iter().find(|(name, _)| slot_of(name) == Some(slot));
+    if let Some((name, tail)) = slot.and_then(window) {
+        headers.push((format!("{PREFIX}representative-claim"), name.to_string()));
+        headers.push((format!("{PREFIX}{tail}-reset"), at));
+    }
+    let body = serde_json::json!({
+        "type": "error",
+        "error": {"type": "rate_limit_error", "message": "usage limit reached"},
+    });
+    LimitReply {
+        status: "429 Too Many Requests",
+        headers,
+        body: body.to_string().into_bytes(),
+    }
 }
 
 #[cfg(test)]

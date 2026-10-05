@@ -337,6 +337,33 @@ fn respond_body_and_drain(
     r
 }
 
+/// 上游选择给的现成回包 ⇒ 整段字节：状态行 ＋ 它给的头（`Content-Length` / `Connection` 由这里写，它给了也不照抄；带换行的头丢掉）＋ 原因头 ＋ 体。
+fn render_reply(status: &str, reason: &str, headers: &[(String, String)], body: &[u8]) -> Vec<u8> {
+    let mut head = format!("HTTP/1.1 {status}\r\n");
+    for (k, v) in headers.iter().filter(|(k, v)| {
+        !k.eq_ignore_ascii_case("content-length")
+            && !k.eq_ignore_ascii_case("connection")
+            && !k.contains(['\r', '\n'])
+            && !v.contains(['\r', '\n'])
+    }) {
+        head.push_str(&format!("{k}: {v}\r\n"));
+    }
+    head.push_str(&format!(
+        "Content-Length: {}\r\n{REASON_HEADER}: {reason}\r\nConnection: close\r\n\r\n",
+        body.len()
+    ));
+    let mut out = head.into_bytes();
+    out.extend_from_slice(body);
+    out
+}
+
+/// 回一份现成回包、把已经到的请求字节排掉（同 [`respond_body_and_drain`]）。
+fn reply_and_drain(down: &mut TcpStream, bytes: &[u8]) -> std::io::Result<()> {
+    let r = down.write_all(bytes).and_then(|()| down.flush());
+    drain_arrived(down);
+    r
+}
+
 /// 上两条共用的「排掉已经到了的」那一半（理由整段在 [`respond_and_drain`] 头注）。
 fn drain_arrived(down: &mut TcpStream) {
     let _ = down.set_nonblocking(true);
@@ -354,12 +381,13 @@ fn drain_arrived(down: &mut TcpStream) {
     let _ = down.set_nonblocking(false);
 }
 
-/// 上游选择答完那一刻，中转手里的**三种**结局（下游看到的字节各不相同）。
+/// 上游选择答完那一刻，中转手里的**四种**结局（下游看到的字节各不相同）。
 ///
 /// | 结局 | 下游看到 | 上游收到过字节吗 |
 /// |---|---|---|
 /// | `Sent` | 上游那条响应，逐块透传 | 是 |
 /// | `Refused` | 上游选择给的 4xx ＋ 原因头 ＋ 一句为什么（住 `accounts` 那一侧） | **否** |
+/// | `Replied` | 上游选择给的现成回包 ＋ 原因头 | **否** |
 /// | `UpstreamFailed` | 502 / 504 ＋ 原因头 ＋ 一句 `why`（[`UpstreamFailure`]） | 连不上 ⇒ 否；发到一半断了 ⇒ 发过一截 |
 ///
 /// 「发到一半断了」（先前的 `WriteFailed`）原先**什么都不回**（连接以错误收尾）：
@@ -372,6 +400,8 @@ enum Answered {
         reason: &'static str,
         why: &'static str,
     },
+    /// 上游选择给的现成回包（已拼成整段字节）。
+    Replied(Vec<u8>),
     UpstreamFailed(UpstreamFailure),
 }
 
@@ -676,6 +706,7 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
                 format!("{status}\n{why}\n"),
             )
         }
+        Answered::Replied(bytes) => return reply_and_drain(&mut down_w, &bytes),
         Answered::UpstreamFailed(why) => return respond_upstream_failed(&mut down_w, &why),
     };
 
@@ -736,6 +767,11 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
                     &mut next_tag,
                 ));
             });
+        // 换成一份现成回包 ⇒ 手上这个上游回包整个丢掉（下游一个字节都没收到过），回那一份。
+        if let Some(Answered::Replied(bytes)) = again {
+            drop(up);
+            return reply_and_drain(&mut down_w, &bytes);
+        }
         let Some(Answered::Sent(mut up2, who2)) = again else {
             break;
         };
@@ -802,6 +838,13 @@ fn dispatch(
             reason,
             why,
         },
+        // 现成回包：照拼，一个字节都不发上游。
+        Destination::Reply {
+            status,
+            reason,
+            headers,
+            body,
+        } => Answered::Replied(render_reply(status, reason, headers, body)),
         // 下游那份 auth 头**原样转发**。中转手里没有任何 key。
         Destination::Passthrough { upstream, tag } => {
             tag.clone_into(tag_out);

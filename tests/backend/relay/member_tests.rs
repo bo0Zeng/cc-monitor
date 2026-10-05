@@ -118,6 +118,7 @@ fn the_passthrough_url_the_launch_answer_builds_parses_as_passthrough() {
                     format!("refuse {status} {reason}")
                 }
                 Destination::Substitute { .. } => "substitute".to_string(),
+                Destination::Reply { status, .. } => format!("reply {status}"),
             }
         });
         out

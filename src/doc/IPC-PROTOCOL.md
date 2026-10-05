@@ -2132,26 +2132,34 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 #### 账号轮换：满了不重启换号（`rotation.json`）
 
 轮换住 `~/.cc-monitor/rotation.json`（账号域自己的状态）：这台的默认轮换 · 每个会话跟随默认还是用自己那一份（切回跟随时自己那一份留着）·
-此刻钉在哪个号 · 换号记录。一份轮换 = `{order, enabled, when}`：`order` 顺序，每格是一个号（路由第 2 段，即配置目录末段；账号 0 是 `0`）
-或起始账号占位 `{"start": true}`；`enabled` 勾上的号（占位恒算勾上）；`when` = `"full"`（被拒才换，缺省）或 `{"threshold": {"n": 50..=99}}`（用到 N% 就换）。
+此刻钉在哪个号 · 换号记录。一份轮换 = `{order, enabled, when, atLimit}`：`order` 顺序，每格是一个号（路由第 2 段，即配置目录末段；账号 0 是 `0`）
+或起始账号占位 `{"start": true}`；`enabled` 勾上的号（占位恒算勾上）；`when` = `"full"`（被拒才换，缺省）或 `{"threshold": {"n": 50..=99}}`（用到 N% 就换）；
+`atLimit` = `"continue"`（缺省，软阈值）或 `"stop"`（硬上限）：阈值模式下此刻的号到了 N%、池里没有 N% 以下能接的号时怎么办（见下）。写入时可缺（⇒ `continue`），读回恒带。
 缺省只有占位 ⇒ 不轮换。会话的实际池 = 按 `order`、占位换成起这个会话的号、只取勾上的、去重。
 
 **换号**（中转那一路，对 agent 透明）：上游回包被拒（429；读法同额度账）⇒ 按池**从头**取首个能接的号，用同一份请求体重发（下游一个字节都没收到过）；
 发之前额度账上此刻的号被拒未到重置 / 订阅号超额在用 / 到阈值 ⇒ 先换好再发。跳过：此刻的号 · 这一发试过的 · 满着的 · 接不上的（订阅号拿不到令牌或账号身份 ⇒
 `needsLogin`；按量号这台 key 表里没有 ⇒ `needsKey`；请求体里身份格认不准 ⇒ `unsureBody`，各记一条「跳过」）。超额在兜只找订阅号接，都满才留在超额（记 `toOverage`）。
-一发至多试池子大小个号（中转另有硬上限 8）；都不行 ⇒ 原样交回上游的拒绝。换过去的会话钉在新号上（随会话持久，后端重启后第一发就走它）；
+一发至多试池子大小个号（中转另有硬上限 8）；都不行 ⇒ 原样交回上游的拒绝。
+
+**到上限没号可换**（阈值模式、池里没有 N% 以下能接的号）：
+- `continue`：此刻的号只是到了 N% ⇒ 留在它上面照发；它**真被拒**（回包被拒，或额度账上被拒未到重置）⇒ 退一步按池序取首个**没被拒**、也没在付费超额上的号（不管 N%）；都不行 ⇒ 原样交回上游的拒绝。
+- `stop`：这一发**不发上游**，中转回一份那一家自己认得的「用满」回包（形状住适配层，claude 那一家：`429 Too Many Requests` ＋ `anthropic-ratelimit-unified-status: rejected` · `-reset` · `-representative-claim` · `-<窗口>-reset`，体 `{"type":"error","error":{"type":"rate_limit_error",…}}`；中转另带原因头 `X-Cc-Monitor-Reason: at-limit`），
+  重置时刻 ＝ 池里最早回到 N% 以下的那一刻（一个号几个窗口过了 N% ⇒ 都重置才算；被拒的号按它的重置时刻）。换过去的号当场被拒（重发那一路）也回这一份。会话记一条 `{"held": {"n"}}`（`fromResetsAt` ＝ 那一刻）、推 `rotation_changed`；
+  池里有号回到 N% 以下 ⇒ 下一发照常走。这份回包不进额度账（上游没答过）。说不出几点有号回来 ⇒ 照 `continue` 办。不送字、不起醒点：claude 开着 `autoContinueAtUsageLimit` 时照回包里的重置时刻自己续。
+  那一家适配层给不出这一形 ⇒ 对它 `stop` 不成立、照 `continue` 办（`rotation-session-read` 的 `atLimit` 照实标）。「被拒才换」模式下没有 N%，`stop` 与 `continue` 同。换过去的会话钉在新号上（随会话持久，后端重启后第一发就走它）；
 会话换了起它的号（重启换号 / 用别的号恢复）⇒ 钉号清掉。换到订阅号：鉴权头换成那个号的访问令牌（快过期就续），请求体 `metadata.user_id` 里的
 `account_uuid` 换成那个号的；换到按量号：照它在 key 表里那一行，那一格换成空串。令牌、刷新令牌、key 不进日志、帧、报错原文。
 
 换号记录每条 `{at, from, to, why, fromResetsAt?}`（`fromResetsAt` 那一刻原号几点重置，记下就不变）；`why`：`{"full": {"w"?: "5h"|"7d"}}` ·
-`{"threshold": {"n"}}` · `"manualHot"` · `"manualRestart"` · `{"skipped": {"account", "reason"}}` · `"toOverage"`。`from == to` 的是没换成的那几种。每会话至多留 32 条。
+`{"threshold": {"n"}}` · `"manualHot"` · `"manualRestart"` · `{"skipped": {"account", "reason"}}` · `"toOverage"` · `{"held": {"n"}}`（硬上限卡住、这一发没发上游）。`from == to` 的是没换成的那几种。每会话至多留 32 条。
 
 #### `rotation-read`：这台的默认轮换（**不读 stdin**）
 
 ```text
 → {"id":"r1","cmd":"rotation-read"}
 ← {"kind":"reply","id":"r1","ok":true,"data":{"state":"present","reason":null,"path":"/home/u/.cc-monitor/rotation.json",
-   "rotation":{"order":[{"start":true},"work","api"],"enabled":["work"],"when":"full"},"followers":4}}
+   "rotation":{"order":[{"start":true},"work","api"],"enabled":["work"],"when":"full","atLimit":"continue"},"followers":4}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -2159,13 +2167,13 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 | `state` | ← | `"present"` · `"absent"`（没动过）· `"unreadable"`（读不出 / 家推不出）|
 | `reason` | ← | 只在 `unreadable` 时有 |
 | `path` | ← | 那份文件的绝对路径（家推不出 ⇒ `null`）|
-| `rotation` | ← | 默认轮换；没动过 / 读不出 ⇒ 缺省那一份（只有占位、`"full"`）|
+| `rotation` | ← | 默认轮换；没动过 / 读不出 ⇒ 缺省那一份（只有占位、`"full"`、`"continue"`）|
 | `followers` | ← | 跟随默认轮换、此刻活着的会话有几个（判活同历史清单：pidfile 里的会话 id ＋ 进程还是同一个）|
 
 #### `rotation-set`：写这台的默认轮换
 
-`→ {"cmd":"rotation-set","args":{"rotation":{order, enabled, when}}}`，整份写回，应答同 `rotation-read`（`state` · `reason` · `path` · `rotation` · `followers`）。`order` 里占位恰好 1 个；
-号不许重复、不许是 `_`；`enabled` 只许是 `order` 里的号；不合法 ⇒ `bad_args`，`message` 点名哪一格（如 `` `enabled[0]` ``），一个字节不写。
+`→ {"cmd":"rotation-set","args":{"rotation":{order, enabled, when, atLimit?}}}`，整份写回，应答同 `rotation-read`（`state` · `reason` · `path` · `rotation` · `followers`）。`order` 里占位恰好 1 个；
+号不许重复、不许是 `_`；`enabled` 只许是 `order` 里的号；`atLimit` 只许 `"continue"` · `"stop"`（缺 ⇒ `continue`）；不合法 ⇒ `bad_args`，`message` 点名哪一格（如 `` `enabled[0]` ``），一个字节不写。
 **新勾上的按量号由后端挪到 `order` 末尾**（订阅号用完才轮到它；前端不自己挪）。写不进 ⇒ `io_failed`。跟随默认的会话随之改（各推一帧 `rotation_changed`）。
 
 #### `rotation-session-read`：一批会话的轮换与「账号」格
@@ -2176,7 +2184,7 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
     "4f…":{"state":"present","agent":"claude-code","follow":true,
            "account":{"start":"work","current":"personal","since":1800000000,"inPlace":"ok",
                       "history":[{"at":1800000000,"from":"work","to":"personal","why":{"full":{"w":"5h"}},"fromResetsAt":1800003600}]},
-           "next":"team",
+           "next":"team","atLimit":"continue",
            "quota":{"kind":"sub","state":"near","stale":false,"limiting":"5h","slots":[{"slot":"5h","pct":86,"resetsAt":1800003600}],"login":"ok","subId":"3f9c0e…"}},
     "9a…":{"state":"absent","inPlace":"noRelay"}}}}
 ```
@@ -2189,13 +2197,14 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 | `agent` · `follow` · `custom?` | ← | 哪一家 · 跟随默认 · 自己那一份（跟随时也留着）|
 | `account` | ← | `start`（起这个会话进程的号，`_` 原样）· `current`（此刻走的号）· `since` · `history[]`（先的在前）· `inPlace`：能不能不重启换 —— `ok` · `noRelay` · `ended`（会话进程已不在，判活同 `rotation-read` 的 `followers`）· `machineNotMulti`（没建账号库）· `agentHasNoAccounts`。那台连不上时根本答不了这一问，界面用连接层的「连不上」 |
 | `next?` | ← | 此刻的号触发了会换到谁（只看盘上的登录，不续令牌）；没有 ⇒ 缺 |
-| `blocked?` | ← | 发不出去了（此刻的号被拒、轮换里没有能接的）⇒ `{earliest?: {account, at}}`（池里最早回来的那个）；能发 ⇒ 缺。超额在兜不算 |
+| `blocked?` | ← | 发不出去了（此刻的号被拒、轮换里没有能接的；或硬上限卡住）⇒ `{earliest?: {account, at}}`（池里最早回来的那个；硬上限卡住时 ＝ 最早回到 N% 以下的那个、那一刻）；能发 ⇒ 缺。超额在兜不算 |
+| `atLimit` | ← | 到上限此刻**实际**照哪一档办：`"continue"` · `"stop"`。这个会话的轮换说 `stop`、这一家适配层给不出「用满」回包 ⇒ `"continue"` |
 | `fallbackApi?` | ← | 这台可用（key 表里有）、不在这个会话轮换里、没被拒的按量号；没有 ⇒ 缺 |
 | `quota` | ← | 此刻那个号（`account.current`）的显示态，同 `quota-read` 的显示态几格；`near` 按**这个会话**的 N（跟随 ⇒ 默认轮换的，没设 80）；那个号没出过数 ⇒ `state: "unseen"` |
 
 #### `rotation-session-set`：改一批会话的轮换
 
-`→ {"cmd":"rotation-session-set","args":{"sids":[…],"rotation":"follow" | "custom" | {"custom":{order, enabled, when}},"agent"?,"start"?}}`
+`→ {"cmd":"rotation-session-set","args":{"sids":[…],"rotation":"follow" | "custom" | {"custom":{order, enabled, when, atLimit?}},"agent"?,"start"?}}`
 ⇒ `{"sessions":{sid: {"state":"done"} | {"state":"skipped","code":"noRelay"}}}`。`"custom"` 恢复这个会话上一份自己的，没有就从默认起；
 `{"custom": …}` 整份写（占位 0 或 1 个，规矩同 `rotation-set`，新勾的按量号挪末尾）。这台没见过的会话要另给 `agent` 与 `start`（起它的号）才记得下，
 否则那一个 `skipped`。任何一份不合法 ⇒ 整批 `bad_args`、一个字节不写。

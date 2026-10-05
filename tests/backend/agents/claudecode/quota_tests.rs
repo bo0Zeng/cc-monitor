@@ -182,3 +182,30 @@ fn the_adapter_registry_hands_this_reading_to_the_relay_route_of_claude() {
     assert!(f(200, &sample, NOW).is_some());
     assert!(crate::agents::quota_read_of("no-such-agent").is_none());
 }
+
+/// 硬上限回的那份「用满」回包：429 ＋ 限流器那一族说 `rejected`、卡着的窗口与几点重置、体是 `rate_limit_error`；
+/// 用这一家自己的读法读回来 ＝ 被拒、到那一刻重置（claude 照它原生的样子显示「用满 · 几点重置」）。
+#[test]
+fn the_limit_reply_reads_back_as_refused_until_its_reset() {
+    let at = NOW + 1800;
+    let r = limit_reply(at, Some("7d"));
+    assert_eq!(r.status, "429 Too Many Requests");
+    let got = read(429, &r.headers, NOW).expect("读得出");
+    assert!(got.refused);
+    assert_eq!(got.resets_at, Some(at));
+    assert_eq!(got.limiting.as_deref(), Some("seven_day"));
+    assert!(got.overage.is_none(), "不说有超额兜着");
+    let body: serde_json::Value = serde_json::from_slice(&r.body).expect("体是 JSON");
+    assert_eq!(body["type"], "error");
+    assert_eq!(body["error"]["type"], "rate_limit_error");
+    // 说不出卡在哪个窗口 ⇒ 不编那一格。
+    let r = limit_reply(at, None);
+    assert!(!r
+        .headers
+        .iter()
+        .any(|(k, _)| k.ends_with("representative-claim")));
+    assert_eq!(
+        read(429, &r.headers, NOW).and_then(|x| x.resets_at),
+        Some(at)
+    );
+}

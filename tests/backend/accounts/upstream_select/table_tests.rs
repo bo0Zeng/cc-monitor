@@ -382,6 +382,7 @@ fn ask(t: &RoutingTable, u: &Upstreams, mode: Mode, seg1: &str, seg2: &str) -> S
     decide(t, u, mode, &key, &mut |d| {
         out = Some(match d {
             Destination::Refuse { status, reason, .. } => Said::Refuse(status, reason),
+            Destination::Reply { status, .. } => panic!("决策表不该答现成回包：{status}"),
             Destination::Passthrough { upstream, .. } => Said::Passthrough(upstream.host_header()),
             Destination::Substitute { upstream, auth, .. } => Said::Substitute(
                 upstream.host_header(),

@@ -431,10 +431,14 @@ impl Home {
     }
 
     fn set_default(&self, enabled: &[&str], when: serde_json::Value) {
+        self.set_default_at(enabled, when, "continue");
+    }
+
+    fn set_default_at(&self, enabled: &[&str], when: serde_json::Value, at_limit: &str) {
         let mut order = vec![serde_json::json!({"start": true})];
         order.extend(["a", "b"].iter().map(|a| serde_json::json!(a)));
         let r = rotation::rotation_from(
-            &serde_json::json!({"order": order, "enabled": enabled, "when": when}),
+            &serde_json::json!({"order": order, "enabled": enabled, "when": when, "atLimit": at_limit}),
             1..=1,
             &|a| a != "_",
             &|_| false,
@@ -609,6 +613,126 @@ fn threshold_mode_moves_the_next_request() {
     assert_eq!(got.lock().expect("lock").len(), 2);
     let s = home.session("s-1");
     assert_eq!(s.history[0].why, rotation::SwitchWhy::Threshold { n: 90 });
+}
+
+/// b 那个窗口几点重置（比 a 的早 ⇒ 池里最早回到阈值以下的是 b）。
+const B_BACK: u64 = 3_999_999_000;
+
+/// a 用到 95%；b 用到 92%（或被拒，`b_refused`）；两个都过了 90%。
+fn both_past_ninety(auth: Option<&str>, b_refused: bool) -> String {
+    if auth == Some(AGENT_TOKEN) {
+        return sse_200(
+            "anthropic-ratelimit-unified-status: allowed_warning\r\n\
+             anthropic-ratelimit-unified-representative-claim: five_hour\r\n\
+             anthropic-ratelimit-unified-5h-utilization: 0.95\r\n\
+             anthropic-ratelimit-unified-5h-reset: 4000000000\r\n",
+        );
+    }
+    if b_refused {
+        return format!(
+            "HTTP/1.1 429 Too Many Requests\r\n\
+             anthropic-ratelimit-unified-status: rejected\r\n\
+             anthropic-ratelimit-unified-reset: {B_BACK}\r\n\
+             anthropic-ratelimit-unified-representative-claim: five_hour\r\n\
+             anthropic-ratelimit-unified-5h-utilization: 1.0\r\n\
+             anthropic-ratelimit-unified-5h-reset: {B_BACK}\r\n\
+             Content-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+        );
+    }
+    sse_200(&format!(
+        "x-from: b\r\n\
+         anthropic-ratelimit-unified-status: allowed_warning\r\n\
+         anthropic-ratelimit-unified-representative-claim: five_hour\r\n\
+         anthropic-ratelimit-unified-5h-utilization: 0.92\r\n\
+         anthropic-ratelimit-unified-5h-reset: {B_BACK}\r\n"
+    ))
+}
+
+/// 下游拿到的是不是我们回的那份「用满」回包（重置时刻 `at`）。
+fn is_held_reply(resp: &str, at: u64) -> bool {
+    resp.starts_with("HTTP/1.1 429 Too Many Requests\r\n")
+        && resp.contains("anthropic-ratelimit-unified-status: rejected\r\n")
+        && resp.contains(&format!("anthropic-ratelimit-unified-reset: {at}\r\n"))
+        && resp.contains("anthropic-ratelimit-unified-representative-claim: five_hour\r\n")
+        && resp.contains("X-Cc-Monitor-Reason: at-limit\r\n")
+        && resp.contains("\"rate_limit_error\"")
+}
+
+/// ★ 硬上限：池里两个号都过了 90% ⇒ 第三发不发上游，回 claude 自己认得的「用满」回包，重置时刻 ＝ 池里最早回到 90% 以下的那一刻（b 的）；
+/// 会话记一条「卡住」；我们回的那份不进额度账（b 在账上仍是没被拒的 92%）。软阈值同一情形 ⇒ 第三发照发。
+#[test]
+fn a_hard_limit_answers_the_agent_with_its_own_limit_reply_instead_of_sending() {
+    fn answer(auth: Option<&str>) -> String {
+        both_past_ninety(auth, false)
+    }
+    let home = Home::new("hold");
+    home.set_default_at(&["b"], serde_json::json!({"threshold": {"n": 90}}), "stop");
+    let (up, got) = spawn_judging_upstream(answer);
+    let relay = home.relay(up);
+    assert!(!send_as_a(relay).contains("x-from: b"));
+    assert!(send_as_a(relay).contains("x-from: b"), "第二发换到 b");
+    let resp = send_as_a(relay);
+    assert!(is_held_reply(&resp, B_BACK), "{resp}");
+    assert_eq!(got.lock().expect("lock").len(), 2, "第三发不该到上游");
+    let s = home.session("s-1");
+    let last = s.history.last().expect("记了一条");
+    assert_eq!(
+        (last.why.clone(), last.from_resets_at, last.from == last.to),
+        (rotation::SwitchWhy::Held { n: 90 }, Some(B_BACK), true)
+    );
+    let quota = Ledger::at(Some(home.root.join(ledger::FILE_NAME)));
+    assert!(
+        !quota
+            .entry("claude-code", "b")
+            .expect("b 有账")
+            .reading
+            .refused,
+        "我们回的那份进了额度账"
+    );
+
+    let soft = Home::new("hold-soft");
+    soft.set_default(&["b"], serde_json::json!({"threshold": {"n": 90}}));
+    let (up, got) = spawn_judging_upstream(answer);
+    let relay = soft.relay(up);
+    for _ in 0..3 {
+        send_as_a(relay);
+    }
+    assert_eq!(got.lock().expect("lock").len(), 3, "软阈值：第三发照发");
+}
+
+/// ★ 硬上限、换过去的号当场被拒（重发那一路）⇒ 不把上游那份拒绝交下去，回我们那份（重置时刻 ＝ 池里最早回到 90% 以下的那一刻）。
+#[test]
+fn a_hard_limit_also_holds_when_the_resend_is_refused() {
+    fn answer(auth: Option<&str>) -> String {
+        both_past_ninety(auth, true)
+    }
+    let home = Home::new("hold-refused");
+    home.set_default_at(&["b"], serde_json::json!({"threshold": {"n": 90}}), "stop");
+    let (up, got) = spawn_judging_upstream(answer);
+    let relay = home.relay(up);
+    send_as_a(relay);
+    let resp = send_as_a(relay);
+    assert!(is_held_reply(&resp, B_BACK), "{resp}");
+    assert_eq!(got.lock().expect("lock").len(), 2);
+}
+
+/// 「到上限」此刻实际照哪一档办：给得出「用满」回包的那一家照说的办；给不出的那一家 `stop` 按 `continue`。
+#[test]
+fn stop_holds_only_for_an_agent_that_has_a_limit_reply() {
+    use crate::accounts::quota::rotation::AtLimit;
+    use crate::accounts::upstream_select::rotate::at_limit_in_effect;
+    assert_eq!(
+        at_limit_in_effect("claude-code", AtLimit::Stop),
+        AtLimit::Stop
+    );
+    assert_eq!(
+        at_limit_in_effect("no-such-agent", AtLimit::Stop),
+        AtLimit::Continue
+    );
+    assert_eq!(
+        at_limit_in_effect("claude-code", AtLimit::Continue),
+        AtLimit::Continue
+    );
 }
 
 /// ★ 超额在兜（200、限流器说已拒、超额在用）且轮换里还有未满的订阅号 ⇒ 下一发换。

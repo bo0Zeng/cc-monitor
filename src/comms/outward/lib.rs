@@ -278,6 +278,16 @@ pub enum Destination<'a> {
         /// 为什么拒，一句人话：进响应体第二行（出声，不只给一个码）。
         why: &'static str,
     },
+    /// 这一发不发上游，回这份现成的回包（状态行 · 头 · 体都由上游选择给，中转不解读，**一个字节都不发上游**）。
+    /// 中转只补 `Content-Length` · 原因头 · `Connection: close`。回包头不交 [`Destinations::observe`]（上游没答过）。
+    Reply {
+        /// 状态行里状态码那一截（如 `429 Too Many Requests`）。
+        status: &'a str,
+        /// 原因头的值（ASCII 短词，同 [`Destination::Refuse::reason`]）。
+        reason: &'static str,
+        headers: &'a [(String, String)],
+        body: &'a [u8],
+    },
 }
 
 /// 这一发请求里中转交给上游选择看的那几样（只读）：流标签 ＋ 整份请求体。

@@ -1023,6 +1023,28 @@ pub(crate) struct DefaultUpstream {
     pub(crate) window_slot: Option<fn(&str) -> Option<&'static str>>,
     /// 订阅号登录那一格：令牌住哪、什么格式、怎么续、锁叫什么。`None` ＝ 这一家没有可换的订阅号登录。
     pub(crate) login: Option<LoginFace>,
+    /// 这一家自己认得的「用满」回包（轮换的硬上限用它：这一发不发上游、回这一份）。`None` ＝ 给不出 ⇒ 对它硬上限不成立、按软阈值办。
+    pub(crate) limit_reply: Option<LimitReplyOf>,
+}
+
+/// 一份「用满」回包：状态行里状态码那一截 · 头 · 体。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LimitReply {
+    pub(crate) status: &'static str,
+    pub(crate) headers: Vec<(String, String)>,
+    pub(crate) body: Vec<u8>,
+}
+
+/// （几点重置 unix 秒, 卡着的那个窗口的语义位 `5h` / `7d`）→ 这一家的「用满」回包。
+pub(crate) type LimitReplyOf = fn(u64, Option<&str>) -> LimitReply;
+
+/// 路由第 1 段 → 那一家的「用满」回包（见 [`DefaultUpstream::limit_reply`]）。
+pub(crate) fn limit_reply_of(route_id: &str) -> Option<LimitReplyOf> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| a.upstream.as_ref())
+        .find(|u| u.route_id == route_id)
+        .and_then(|u| u.limit_reply)
 }
 
 /// 一家的订阅号登录的格式知识（读写与续期在账号域 `accounts/oauth/`，这里只有这一家的名字与地址）。

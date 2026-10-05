@@ -167,6 +167,7 @@ describe("C01 边界生成物", () => {
       "AccountUnavailable.ts",
       "AliasChange.ts",
       "ApiMessage.ts", //             C04c
+      "AtLimit.ts", //                换号：阈值模式下到了 N%、没号可换时 continue / stop（`Rotation.atLimit`）
       // 资产目录同步的应答（`assets_sync`）：每一趟的结局 ＋ 可达表。
       // K-A1：账号的**鉴权方式**（`subscription` | `api-key`）。
       // 加它之前 `RemoteAccount` 压根没有 ts_rs derive，两侧靠一行注释对齐 ⇒

@@ -12,7 +12,7 @@ use crate::accounts::oauth::{self, TokenEndpoint};
 use crate::accounts::quota::decide::{self, Facts, Kind, Verdict};
 use crate::accounts::quota::ledger::Ledger;
 use crate::accounts::quota::rotation::{
-    self, AccountAt, AccountCell, Blocked, Book, InPlace, RotationStore, SessionEntry,
+    self, AccountAt, AccountCell, AtLimit, Blocked, Book, InPlace, RotationStore, SessionEntry,
     SessionRotation, SessionRotationState, SwitchRecord, SwitchWhy, Unready,
 };
 use crate::accounts::quota::show::{self, LoginState};
@@ -73,6 +73,16 @@ pub(crate) enum Go {
         account: String,
         body: Option<Vec<u8>>,
     },
+    /// 硬上限卡住：这一发不发上游，回这一家的「用满」回包。
+    Hold { reply: crate::agents::LimitReply },
+}
+
+/// 这一份轮换的「到上限」此刻实际照哪一档办：说 `stop`、这一家却给不出「用满」回包 ⇒ `continue`。
+pub(crate) fn at_limit_in_effect(agent: &str, said: AtLimit) -> AtLimit {
+    match said {
+        AtLimit::Stop if crate::agents::limit_reply_of(agent).is_some() => AtLimit::Stop,
+        _ => AtLimit::Continue,
+    }
 }
 
 /// 一发请求在上游选择这一侧的事实（判的时候要的；按量号那几格由调用方从 key 表答）。
@@ -273,6 +283,7 @@ impl Hop {
         let f = Facts {
             pool: &pool,
             when: rot.when,
+            at_limit: at_limit_in_effect(a.agent, rot.at_limit),
             current,
             now: a.now,
             heard,
@@ -336,6 +347,20 @@ impl Hop {
                 };
                 self.stuck(a.sid, rec, &skipped);
                 None
+            }
+            Verdict::Hold { n, back, skipped } => {
+                let rec = SwitchRecord {
+                    at: a.now,
+                    from: current.to_string(),
+                    to: current.to_string(),
+                    why: SwitchWhy::Held { n },
+                    from_resets_at: Some(back.at),
+                };
+                self.stuck(a.sid, rec, &skipped);
+                let reply = crate::agents::limit_reply_of(a.agent)?;
+                Some(Go::Hold {
+                    reply: reply(back.at, back.slot.as_deref()),
+                })
             }
         }
     }
@@ -501,6 +526,7 @@ impl Hop {
         let f = Facts {
             pool: &pool,
             when: rot.when,
+            at_limit: at_limit_in_effect(&s.agent, rot.at_limit),
             current: &s.current,
             now,
             heard: None,
@@ -519,16 +545,29 @@ impl Hop {
             }
         };
         let next = decide::next_of(&f, &mut ready);
-        let blocked = (decide::refused_now(&f) && next.is_none()).then(|| Blocked {
-            earliest: pool
-                .iter()
-                .filter_map(|x| decide::back_at(x, &f).map(|at| (at, x)))
-                .min()
-                .map(|(at, x)| AccountAt {
-                    account: x.clone(),
-                    at,
+        let held = match decide::decide(&f, &mut ready) {
+            Verdict::Hold { back, .. } => Some(back),
+            _ => None,
+        };
+        let blocked = if let Some(back) = held {
+            Some(Blocked {
+                earliest: Some(AccountAt {
+                    account: back.account,
+                    at: back.at,
                 }),
-        });
+            })
+        } else {
+            (decide::refused_now(&f) && next.is_none()).then(|| Blocked {
+                earliest: pool
+                    .iter()
+                    .filter_map(|x| decide::back_at(x, &f).map(|at| (at, x)))
+                    .min()
+                    .map(|(at, x)| AccountAt {
+                        account: x.clone(),
+                        at,
+                    }),
+            })
+        };
         let fallback_api = lib
             .accounts
             .iter()
@@ -565,6 +604,7 @@ impl Hop {
             next,
             blocked,
             fallback_api,
+            at_limit: at_limit_in_effect(&s.agent, rot.at_limit),
             quota,
         }))
     }
@@ -621,5 +661,11 @@ pub(crate) fn dispatch_go(
             }
             _ => super::decide(table, upstreams, mode, key, act),
         },
+        Go::Hold { reply } => act(Destination::Reply {
+            status: reply.status,
+            reason: "at-limit",
+            headers: &reply.headers,
+            body: &reply.body,
+        }),
     }
 }

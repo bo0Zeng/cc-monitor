@@ -89,6 +89,7 @@ pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     quota: Some(quota::read),
     window_slot: Some(quota::slot_of),
     login: Some(LOGIN),
+    limit_reply: Some(quota::limit_reply),
 };
 
 /// 订阅号登录：`<配置目录>/.credentials.json` 的 `claudeAiOauth` 那一节；续期照 claude 自己的做法

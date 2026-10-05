@@ -451,6 +451,31 @@ mod tests {
         }
     }
 
+    /// 真过通用层起那个假插件；**只**对 `ETXTBSY` 有上限地重试（50 × 20ms），别的结果原样交回。
+    ///
+    /// 夹具是本进程刚写出来的：写的那一刻并行测试里别的线程恰好 fork，子进程在 exec 之前
+    /// 还攥着那份写 fd ⇒ 此刻 execve 它 = `ETXTBSY`（门禁全量跑时现打逮到过一次）。
+    /// 认 `os error 26`（errno），不认 `Text file busy`（随 locale 变）；同 `ccm_probe_tests` 那一处。
+    /// 不能像 `identity_tag_tests` 那样改经 `/bin/sh` 起：这里要证的正是通用层真的 exec 了它。
+    fn run_past_busy(
+        bin: &Path,
+        args: &[&str],
+        deadline_secs: u64,
+        env: &[(&str, &str)],
+    ) -> Result<crate::plugin::invoke::Done, crate::plugin::invoke::NotRun> {
+        let mut r = crate::plugin::invoke::run(bin, args, deadline_secs, env);
+        for _ in 0..50 {
+            match &r {
+                Err(crate::plugin::invoke::NotRun::Failed(m)) if m.contains("os error 26") => {
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                    r = crate::plugin::invoke::run(bin, args, deadline_secs, env);
+                }
+                _ => break,
+            }
+        }
+        r
+    }
+
     /// 走完一遍之后手上的东西 —— 正题那一格要逐跳核它。
     ///
     /// `Debug` 是**承重的**：反向那几格红的时候要把「它到底走成了什么样」原样端出来，
@@ -522,12 +547,11 @@ mod tests {
             knowledge: KNOWLEDGE[2],
         })?;
         let asked = argv();
-        let out = crate::plugin::invoke::run(&bin, &asked, DEADLINE_SECS, &[]).map_err(|e| {
-            Stop::CouldNotStart {
+        let out =
+            run_past_busy(&bin, &asked, DEADLINE_SECS, &[]).map_err(|e| Stop::CouldNotStart {
                 hop: HOPS[2],
                 why: why_not_run(e),
-            }
-        })?;
+            })?;
         if out.code != Some(0) {
             return Err(Stop::Inconsistent {
                 hop: HOPS[2],
@@ -562,18 +586,18 @@ mod tests {
             knowledge: KNOWLEDGE[4],
         })?;
         let (work_argv, work_env) = work();
-        let refused =
-            crate::plugin::invoke::run(&bin, &work_argv, DEADLINE_SECS, &[]).map_err(|e| {
-                Stop::CouldNotStart {
-                    hop: HOPS[4],
-                    why: why_not_run(e),
-                }
-            })?;
-        let sealed = crate::plugin::invoke::run(&bin, &work_argv, DEADLINE_SECS, &work_env)
-            .map_err(|e| Stop::CouldNotStart {
+        let refused = run_past_busy(&bin, &work_argv, DEADLINE_SECS, &[]).map_err(|e| {
+            Stop::CouldNotStart {
                 hop: HOPS[4],
                 why: why_not_run(e),
-            })?;
+            }
+        })?;
+        let sealed = run_past_busy(&bin, &work_argv, DEADLINE_SECS, &work_env).map_err(|e| {
+            Stop::CouldNotStart {
+                hop: HOPS[4],
+                why: why_not_run(e),
+            }
+        })?;
         // 「同一条 argv、只差那一项 env，结果必须不同」—— 少了这一句，
         // 一个恒答同一张脸的假插件也能走完全流程。
         if refused.code == sealed.code || refused.diagnosis().is_empty() {
@@ -1519,7 +1543,7 @@ mod tests {
         let name = plugin_name();
         let (fixed, hint) = discovery_of(&root, &name);
         let bin = crate::plugin::discover::find(&name, &fixed, false, hint).expect("该找得到");
-        let napped = crate::plugin::invoke::run(&bin, &[NAP_SUB], NAP_DEADLINE_SECS, &[])
+        let napped = run_past_busy(&bin, &[NAP_SUB], NAP_DEADLINE_SECS, &[])
             .unwrap_or_else(|e| panic!("卡住那条子命令没跑起来：{}", why_not_run(e)));
         assert!(
             napped.timed_out(),
@@ -1611,7 +1635,7 @@ mod tests {
         let bin = crate::plugin::discover::find(&name, &fixed, false, hint).expect("该找得到");
         // ⚠ 把 `NotRun` 那两支的原文带上：「参数太大」（自己能修）与「那个程序坏了」
         //（自己修不了）是两件事，合成一句「起不来」就是归错因（`invoke::NotRun` 的头注逐字）。
-        let out = crate::plugin::invoke::run(&bin, &probe_argv(), DEADLINE_SECS, &[])
+        let out = run_past_busy(&bin, &probe_argv(), DEADLINE_SECS, &[])
             .unwrap_or_else(|e| panic!("那个假插件没跑起来：{}", why_not_run(e)));
         let text = String::from_utf8_lossy(&out.stdout).into_owned();
         let answer = crate::plugin::probe::negotiate(&text, &name, REQUIRED_CAPS)
@@ -1777,7 +1801,7 @@ mod tests {
         let name = plugin_name();
         let (fixed, hint) = discovery_of(&root, &name);
         let bin = crate::plugin::discover::find(&name, &fixed, false, hint).expect("该找得到");
-        let out = crate::plugin::invoke::run(
+        let out = run_past_busy(
             &bin,
             &[ROSTER_SUB],
             DEADLINE_SECS,

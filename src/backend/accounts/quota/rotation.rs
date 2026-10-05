@@ -33,6 +33,19 @@ pub enum RotationWhen {
     Threshold { n: u8 },
 }
 
+/// 阈值模式下此刻的号到了 N%、池里没有 N% 以下的号可换时怎么办。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub enum AtLimit {
+    /// 软阈值（缺省）：留在此刻的号上照发；它真被拒时退一步取首个没被拒的号。
+    #[default]
+    Continue,
+    /// 硬上限：不再发上游，回一份那一家自己认得的「用满」回包（重置时刻 ＝ 池里最早回到 N% 以下的那一刻）。
+    Stop,
+}
+
 /// 轮换列表里的一格：起始账号占位，或一个号（路由第 2 段）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -51,7 +64,7 @@ pub struct StartSlot {
     pub start: bool,
 }
 
-/// 一份轮换：顺序 · 勾了哪几个 · 换号时机。起始账号占位恒算勾上。
+/// 一份轮换：顺序 · 勾了哪几个 · 换号时机 · 到上限没号可换时怎么办。起始账号占位恒算勾上。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -60,6 +73,9 @@ pub struct Rotation {
     pub order: Vec<RotationSlot>,
     pub enabled: Vec<String>,
     pub when: RotationWhen,
+    /// 盘上缺 ⇒ `continue`。
+    #[serde(default)]
+    pub at_limit: AtLimit,
 }
 
 impl Default for Rotation {
@@ -69,6 +85,7 @@ impl Default for Rotation {
             order: vec![RotationSlot::Start(StartSlot { start: true })],
             enabled: Vec::new(),
             when: RotationWhen::Full,
+            at_limit: AtLimit::Continue,
         }
     }
 }
@@ -127,6 +144,8 @@ pub enum SwitchWhy {
     Skipped { account: String, reason: Unready },
     /// 订阅号都满了，留在原号的付费超额上。
     ToOverage,
+    /// 硬上限：池里没有 `n`% 以下的号，这一发没发上游（`fromResetsAt` ＝ 池里最早回到 `n`% 以下的那一刻）。
+    Held { n: u8 },
 }
 
 /// 一条换号记录。`from == to` 的是没换成的那几种（跳过 · 留在超额）。
@@ -228,6 +247,8 @@ pub struct SessionRotation {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(test, ts(optional))]
     pub fallback_api: Option<String>,
+    /// 到上限此刻实际照哪一档办：轮换说 `stop`、这一家给不出「用满」回包 ⇒ `continue`。
+    pub at_limit: AtLimit,
     /// 此刻那个号的显示态（「快满」按这个会话的 N）。
     pub quota: super::show::QuotaShow,
 }
@@ -365,7 +386,7 @@ impl Book {
         push(s, rec);
     }
 
-    /// 没换成的那几种（跳过 · 留在超额）：自上一次真换号以来同一句已经记过 ⇒ 不再记。改了 ⇒ `true`。
+    /// 没换成的那几种（跳过 · 留在超额 · 硬上限卡住）：自上一次真换号以来同一句已经记过 ⇒ 不再记。改了 ⇒ `true`。
     pub(crate) fn note_stuck(
         &mut self,
         sid: &str,
@@ -391,7 +412,7 @@ impl Book {
                 },
             );
         }
-        if rec.why == SwitchWhy::ToOverage {
+        if matches!(rec.why, SwitchWhy::ToOverage | SwitchWhy::Held { .. }) {
             changed |= note(s, rec);
         }
         changed
@@ -602,7 +623,7 @@ fn write_locked<R>(path: &Path, f: impl FnOnce(&mut Book) -> R) -> Result<(R, Bo
 
 // ── 线上那一份轮换的读法（整份收、不合法整份拒并说哪一格） ─────────────────
 
-/// 读一份轮换：键恰好 `order` · `enabled` · `when`。`start_slots` ＝ 起始账号占位该有几个（默认恰好 1；会话自己那份 0 或 1）。
+/// 读一份轮换：键 `order` · `enabled` · `when`，可选 `atLimit`（`"continue"` · `"stop"`，缺 ⇒ `continue`）。`start_slots` ＝ 起始账号占位该有几个（默认恰好 1；会话自己那份 0 或 1）。
 /// `account_ok(号)` 判这一格当得了轮换里的号；`is_api(号)` 判按量号；`prior` 是改之前那一份：**新勾上的按量号挪到 `order` 末尾**（订阅号用完才轮到它）。
 /// 不合法 ⇒ `Err(哪一格、为什么)`（英文诊断，不进文案表）。
 pub(crate) fn rotation_from(
@@ -614,10 +635,10 @@ pub(crate) fn rotation_from(
 ) -> Result<Rotation, String> {
     let o = v
         .as_object()
-        .ok_or("rotation must be an object {order, enabled, when}")?;
+        .ok_or("rotation must be an object {order, enabled, when, atLimit?}")?;
     if let Some(k) = o
         .keys()
-        .find(|k| !matches!(k.as_str(), "order" | "enabled" | "when"))
+        .find(|k| !matches!(k.as_str(), "order" | "enabled" | "when" | "atLimit"))
     {
         return Err(format!("unknown field `{k}`"));
     }
@@ -687,6 +708,12 @@ pub(crate) fn rotation_from(
         }
         _ => return Err("`when` must be \"full\" or {\"threshold\":{\"n\":50..=99}}".into()),
     };
+    let at_limit = match o.get("atLimit") {
+        None => AtLimit::Continue,
+        Some(Value::String(s)) if s == "continue" => AtLimit::Continue,
+        Some(Value::String(s)) if s == "stop" => AtLimit::Stop,
+        Some(_) => return Err("`atLimit` must be \"continue\" or \"stop\"".into()),
+    };
     let was = |a: &str| prior.is_some_and(|p| p.enabled.iter().any(|e| e == a));
     let newly: Vec<RotationSlot> = enabled
         .iter()
@@ -699,6 +726,7 @@ pub(crate) fn rotation_from(
         order,
         enabled,
         when,
+        at_limit,
     })
 }
 

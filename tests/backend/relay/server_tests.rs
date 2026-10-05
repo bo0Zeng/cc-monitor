@@ -65,6 +65,9 @@ fn render_via_upstream_selection(
             Destination::Refuse { status, .. } => {
                 panic!("{account} 那一行该在表里，上游选择却答了 Refuse {status}")
             }
+            Destination::Reply { status, .. } => {
+                panic!("{account} 那一行该在表里，上游选择却答了现成回包 {status}")
+            }
             Destination::Passthrough { upstream, .. } => {
                 render_upstream_request(head, rest, upstream, None, body_len)
             }
@@ -3683,6 +3686,12 @@ const STATUS_HOMES: &[(&str, &str, StatusGroup)] = &[
         StatusGroup::UpstreamFailed,
     ),
     // 门拒绝那两个码：它们住门那一份文件（`door.rs::FORBIDDEN` / `MISDIRECTED`）。
+    // 轮换硬上限回的那一份：那一家自己认得的「用满」回包，住适配层（状态码照它真被拒时的那一个）。
+    (
+        "agents/claudecode/quota.rs",
+        "429 Too Many Requests",
+        StatusGroup::AgentLimit,
+    ),
     ("comms-outward/door.rs", "403 Forbidden", StatusGroup::Door),
     (
         "comms-outward/door.rs",
@@ -3702,6 +3711,8 @@ enum StatusGroup {
     Busy,
     /// 中转自己的传输失败 —— 上游那侧。
     UpstreamFailed,
+    /// 轮换硬上限：照那一家真被拒时的样子回（下游据它停下这一轮；原因头分得出是我们回的）。
+    AgentLimit,
     /// 门拒绝（没钥匙 / 错钥匙 / 带 Origin ⇒ 403 · Host 非回环 ⇒ 421）。**与 404 不相交** ——
     /// 「钥匙不对」与「钥匙对、表里没这一行」必须可分（`INVARIANTS §48.1a`）。
     Door,
@@ -3815,12 +3826,18 @@ fn every_status_we_make_has_one_home_and_the_three_groups_are_disjoint() {
         set(&[403, 421]),
         "门拒绝那一组"
     );
+    assert_eq!(
+        codes_of(StatusGroup::AgentLimit),
+        set(&[429]),
+        "轮换硬上限那一组"
+    );
     // ① 两两不相交（`D7`：同码 ⇒ 分不清是我们配错了还是上游挂了）。
     let groups = [
         StatusGroup::Unreadable,
         StatusGroup::NoRoute,
         StatusGroup::Busy,
         StatusGroup::UpstreamFailed,
+        StatusGroup::AgentLimit,
         StatusGroup::Door,
     ];
     for (i, a) in groups.iter().enumerate() {
