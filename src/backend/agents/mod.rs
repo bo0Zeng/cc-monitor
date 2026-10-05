@@ -958,6 +958,8 @@ pub(crate) struct DefaultUpstream {
     /// 回包状态 ＋ 回包头（＋ 此刻，unix 秒）→ 通用的额度快照：这一家的读法（头名只住那一家）。
     /// `None` ＝ 这一家的回包说不出额度；`Some` 答 `None` ＝ 这一个回包里没有额度信息。
     pub(crate) quota: Option<QuotaRead>,
+    /// 额度窗口名 → 语义位（`5h` / `7d`；别的窗口 ⇒ `None`）。界面与换号记录只认语义位，不认各家的窗口名。
+    pub(crate) window_slot: Option<fn(&str) -> Option<&'static str>>,
     /// 订阅号登录那一格：令牌住哪、什么格式、怎么续、锁叫什么。`None` ＝ 这一家没有可换的订阅号登录。
     pub(crate) login: Option<LoginFace>,
 }
@@ -984,6 +986,34 @@ pub(crate) struct LoginFace {
     /// 续期锁：配置目录里那一把的名字 · 配置目录旁边那一把的后缀（那一家自己续期时拿的同一套）。
     pub(crate) lock_inside: &'static str,
     pub(crate) lock_beside: Option<&'static str>,
+    /// 一个号的账号身份住哪份文件：（配置目录, 账号 0 时的家目录）→ 那份文件。
+    pub(crate) identity_file: fn(&Path, Option<&Path>) -> PathBuf,
+    /// 那份文件里的账号身份（请求里跟着鉴权一起换的那一格的值）；读不到 ⇒ `None`。
+    pub(crate) identity_in: fn(&Path) -> Option<String>,
+    /// 请求体里那一格账号身份换成给的值（按量号给空串）；只动那几个字节。
+    pub(crate) rewrite_identity: fn(&[u8], &str) -> IdentityCell,
+    /// 账号 0（没设配置目录的那个号）的配置目录：家目录 → 它。
+    pub(crate) base_dir: fn(&Path) -> PathBuf,
+}
+
+/// 请求体里账号身份那一格换没换成。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum IdentityCell {
+    /// 请求体里没有这一格 ⇒ 原样发。
+    Absent,
+    /// 换好了的整份请求体（只差那一格）。
+    Rewritten(Vec<u8>),
+    /// 有这一格，但认不准是哪几个字节 ⇒ 不能拿这份请求体换号。
+    Unsure,
+}
+
+/// 路由第 1 段 → 那一家的额度窗口语义位读法。
+pub(crate) fn window_slot_of(route_id: &str) -> Option<fn(&str) -> Option<&'static str>> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| a.upstream.as_ref())
+        .find(|u| u.route_id == route_id)
+        .and_then(|u| u.window_slot)
 }
 
 /// 路由第 1 段 → 那一家的订阅号登录格式。

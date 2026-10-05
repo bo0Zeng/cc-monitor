@@ -136,6 +136,9 @@ pub fn apply_downstream_deadline(
 /// 超了回 [`UPSTREAM_UNREACHABLE`]（502）：那已经不是一个正常的上游。
 const INTERIM_RESPONSES_ALLOWED: usize = 8;
 
+/// 一发请求至多换几次去处重发（上游选择自己另有上限；这一个只防打转）。
+pub const RETRY_HARD_CAP: usize = 8;
+
 /// 中转的运行期状态。**一个进程一份**，跨连接共享。
 ///
 /// # ⚠⚠ 这里**曾经**有两个字段，`K-H2` 把它们删掉了 —— 经过记在这里
@@ -645,48 +648,14 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     let mut tag = String::new();
     let mut answered: Option<Answered> = None;
     relay.dest.resolve(r.mode, &r.key, &ask, &mut |d| {
-        answered = Some(match d {
-            // 路由不成立 ⇒ 回这个码 ＋ 原因头 ＋ 那句为什么，**一个字节都不发上游**。
-            Destination::Refuse {
-                status,
-                reason,
-                why,
-            } => Answered::Refused {
-                status,
-                reason,
-                why,
-            },
-            // 下游那份 auth 头**原样转发**。中转手里没有任何 key。
-            Destination::Passthrough { upstream, tag: t } => {
-                t.clone_into(&mut tag);
-                send_upstream(
-                    upstream,
-                    None,
-                    &head,
-                    &r.rest,
-                    &body,
-                    relay.upstream_deadline,
-                )
-            }
-            // 剥掉下游 auth，按这一行自己的说法写（`key` 为 `None` ＝ 什么都不写，
-            // 那是 `AuthSwap::write == None` 那一档，理由整段住 `accounts::upstream_select::dispatch_auth`）。
-            // ★★ 上游与 key 取自**同一个变体**，不是两个各自取的值。
-            Destination::Substitute {
-                upstream,
-                auth,
-                tag: t,
-            } => {
-                t.clone_into(&mut tag);
-                send_upstream(
-                    upstream,
-                    Some(&auth),
-                    &head,
-                    &r.rest,
-                    &body,
-                    relay.upstream_deadline,
-                )
-            }
-        });
+        answered = Some(dispatch(
+            d,
+            &head,
+            &r.rest,
+            &body,
+            relay.upstream_deadline,
+            &mut tag,
+        ));
     });
     // 上游选择必须**恰好答一次**（契约写在 `Destinations::resolve` 头注里）。
     // 一次都不答 ＝ 下游会拿到一个没有任何 HTTP 响应的 FIN，那正是 `阻-3(D3)`
@@ -734,21 +703,49 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //   ⚠ 读出错那一支（上游读期限到了 / 连接被重置）从「静默 FIN」变成「504（超时）或 502 ＋ why」：
     // 「把传输失败翻成一个 HTTP 响应，原样回给 agent」。
     //     下游那一侧此刻**一个字节都还没收到**（响应头还没写），所以回一个状态码不会与已发的字节打架。
-    let (status_line, headers, raw_resp) = match read_final_head(&mut up, &who) {
+    let (mut status_line, mut headers, mut raw_resp) = match read_final_head(&mut up, &who) {
         Ok(h) => h,
         Err(why) => return respond_upstream_failed(&mut down_w, &why),
     };
-    // 回包头读完、还没往下游写一个字节：交上游选择看一眼（只读）。
-    relay.dest.observe(
-        r.mode,
-        &r.key,
-        &ask,
-        &Heard {
+    // 回包头读完、还没往下游写一个字节：交上游选择看一眼（只读），再问要不要换去处、用同一份请求体重发。
+    //   要 ⇒ 发新的那一发、读它的头，手上这个回包整个丢掉（下游一个字节都没收到过，对 agent 透明）；
+    //   新的那一发没发出去 / 头读不出来 ⇒ 不再换，把手上这个原样往下游送。重发至多 [`RETRY_HARD_CAP`] 次。
+    let mut tried: Vec<String> = vec![tag.clone()];
+    loop {
+        let heard = Heard {
             tag: &tag,
             status: http1::status_code(&status_line).unwrap_or(0),
             headers: &headers,
-        },
-    );
+        };
+        relay.dest.observe(r.mode, &r.key, &ask, &heard);
+        if tried.len() > RETRY_HARD_CAP {
+            break;
+        }
+        let names: Vec<&str> = tried.iter().map(String::as_str).collect();
+        let mut next_tag = String::new();
+        let mut again: Option<Answered> = None;
+        relay
+            .dest
+            .retry(r.mode, &r.key, &ask, &heard, &names, &mut |d| {
+                again = Some(dispatch(
+                    d,
+                    &head,
+                    &r.rest,
+                    &body,
+                    relay.upstream_deadline,
+                    &mut next_tag,
+                ));
+            });
+        let Some(Answered::Sent(mut up2, who2)) = again else {
+            break;
+        };
+        tried.push(next_tag.clone());
+        let Ok((s2, h2, raw2)) = read_final_head(&mut up2, &who2) else {
+            break;
+        };
+        (up, tag) = (up2, next_tag);
+        (status_line, headers, raw_resp) = (s2, h2, raw2);
+    }
     down_w.write_all(&rewrite_response_head(&raw_resp))?;
     down_w.flush()?;
 
@@ -785,7 +782,53 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     Ok(())
 }
 
-/// 名单上每一项在这一发里在不在：那个头（可能出现几次）的逗号列表里有一项以它开头（大小写不论）。
+/// 上游选择的一个答案 → 照做（发上游 / 记下要回的拒绝）。`tag_out` 收下这个去处的标签。
+fn dispatch(
+    d: Destination<'_>,
+    head: &RequestHead,
+    rest: &str,
+    body: &[u8],
+    deadline: std::time::Duration,
+    tag_out: &mut String,
+) -> Answered {
+    match d {
+        // 路由不成立 ⇒ 回这个码 ＋ 原因头 ＋ 那句为什么，**一个字节都不发上游**。
+        Destination::Refuse {
+            status,
+            reason,
+            why,
+        } => Answered::Refused {
+            status,
+            reason,
+            why,
+        },
+        // 下游那份 auth 头**原样转发**。中转手里没有任何 key。
+        Destination::Passthrough { upstream, tag } => {
+            tag.clone_into(tag_out);
+            send_upstream(upstream, None, head, rest, body, deadline)
+        }
+        // 剥掉下游 auth，按这一行自己的说法写（`key` 为 `None` ＝ 什么都不写，
+        // 那是 `AuthSwap::write == None` 那一档，理由整段住 `accounts::upstream_select::dispatch_auth`）。
+        // ★★ 上游与 key 取自**同一个变体**，不是两个各自取的值。请求体给了就换整份（中转不解读）。
+        Destination::Substitute {
+            upstream,
+            auth,
+            body: swapped,
+            tag,
+        } => {
+            tag.clone_into(tag_out);
+            send_upstream(
+                upstream,
+                Some(&auth),
+                head,
+                rest,
+                swapped.unwrap_or(body),
+                deadline,
+            )
+        }
+    }
+}
+
 /// 读上游的**最终**回包头：1xx 丢掉再读，至多 [`INTERIM_RESPONSES_ALLOWED`] 条。回 `(状态行, 头表, 原始字节)`。
 fn read_final_head(
     up: &mut Conn,
@@ -813,6 +856,7 @@ fn read_final_head(
     }
 }
 
+/// 名单上每一项在这一发里在不在：那个头（可能出现几次）的逗号列表里有一项以它开头（大小写不论）。
 fn request_marks(head: &RequestHead, marks: &[(&'static str, &'static str)]) -> Vec<RequestMark> {
     marks
         .iter()

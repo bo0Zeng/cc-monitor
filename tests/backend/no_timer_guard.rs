@@ -653,6 +653,14 @@ mod tests {
         "收窄人群",
         "换号重启不再等压缩摘要与会话报出（或等待改由别处执行）的那天 —— 与那一行登记一起摘。",
     ),
+        (
+        "accounts/upstream_select/rotate.rs",
+        "Duration::from_millis(15_000)",
+        "换号要续订阅号令牌时那一发的 socket 读写期限（`rotate::TOKEN_DEADLINE`，交给 `oauth::TokenEndpoint` → 中转的一问一答原语）：\
+         一次阻塞的上限，到点那一发报错返回、不重试，不让任何线程自己醒来。不是定时器。",
+        "收窄人群",
+        "续令牌那一发的期限改由别处给（或换号不再续令牌）的那天。",
+    ),
     ];
     // `relay/machine.rs` 那一行（差分探针的 socket 读写期限）摘了：「在不在」改由常驻后端进程内的状态答，探针删了。
 
@@ -1429,9 +1437,10 @@ mod g6_reach {
         //   条数不变、格改了：它后来成了 `REGISTERED_DEADLINE_WAKES` 里 runs 那一处等的期限（cell `缩性质`）。
         // 7 → **8**：多的那一条是 `platform/child.rs` 的 `Deadline`（起子进程原语的期限类型，只交给那一次有界等待）。
         // 8 → **9**：多的那一条是 `observe/one_wait.rs` 的一次性等待期限（换号重启等压缩 / 等会话报出，值由发起方给）。
+        // 9 → **10**：多的那一条是 `accounts/upstream_select/rotate.rs` 的 `TOKEN_DEADLINE`（换号续令牌那一发的 socket 读写上限）。
         assert_eq!(
-            registered, 9,
-            "登记表从 9 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
+            registered, 10,
+            "登记表从 10 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
              改它等于改判据的射程"
         );
     }

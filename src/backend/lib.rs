@@ -873,6 +873,12 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--exit-policy-read",
     "--quota-read",
+    // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`）自动派生的 CLI 面；除 `--rotation-read` 外入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--rotation-read",
+    "--rotation-set",
+    "--rotation-session-read",
+    "--rotation-session-set",
+    "--rotation-switch",
     "--exit-policy-set",
     // 上游选择那份凭据文件在这台机器上的两条命令（`inbound::REGISTRY` 的 `apikey-*`）
     // 自动派生的 CLI 面。⚠ `--apikey-key-set` 的入参（含 key）**从 stdin 读**（`takes_input: true`），
@@ -1888,6 +1894,8 @@ pub const EMITS: &[&str] = &[
     "accounts_changed",
     // 这台的额度账显示得出来的那几格变了（中转记账那一路真发，走 tap 那条可丢的通道；登记 = 承诺真发）。
     "quota_changed",
+    // 某个会话的轮换 / 「账号」格变了（换号那一路与帧面改轮换那一路真发，走 tap 那条可丢的通道；登记 = 承诺真发）。
+    "rotation_changed",
     // 某个会话的任务清单变了（watcher 盯 `<agent 家>/tasks/`，登记 = 承诺真发，已接线）。
     "tasks_changed",
     // 活会话清单报完了（watch_loop Phase 1 走完那一刻发一次，登记 = 承诺真发，已接线）。

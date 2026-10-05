@@ -63,6 +63,7 @@ const UNIT: &[&str] = &[
     //   按路径读正文出成品那个核（新）。
     "tests/backend/agents/claudecode/turn_tests.rs",
     "tests/backend/agents/claudecode/quota_tests.rs", // 回包头 → 额度快照：读法表的金样（纯函数）
+    "tests/backend/accounts/quota/decide_tests.rs",   // 换号的唯一判定（纯函数）
     "tests/common/creds-core/token_tests.rs",         // 登录令牌的读 · 写回 · 续期请求体（纯函数）
     "tests/backend/agents/codex/record_tests.rs",
     "tests/backend/observe/record_page_tests.rs",
@@ -654,6 +655,12 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/accounts/oauth/oauth_tests.rs",
     // 额度账：按号记账 · 落盘 · 读帧（临时目录里真写 `quota.json`）。
     "tests/backend/accounts/quota/ledger_tests.rs",
+    // 换号那一族的帧命令：默认轮换 · 一批会话的那一份 · 改会话轮换 · 不重启换（临时家目录、假凭据）。
+    "tests/backend/faces/rotation_face_tests.rs",
+    // 轮换配置：整份收 · 钉号与记录 · 落盘与重读（临时目录里真写 `rotation.json`）。
+    "tests/backend/accounts/quota/rotation_tests.rs",
+    // 换号时请求体里的账号身份：读哪个号的 `.claude.json`（临时目录里真写）· 只换那几个字节。
+    "tests/backend/agents/claudecode/accounts_tests.rs",
     "tests/backend/relay/wire_golden.rs",
     // L2 真起子进程（re-exec 本测试二进制，fd 2 真被换走）
     // 〔MG1 合 SU1〕skill 装记录：临时家目录里真写 / 读 / 摘 `~/.cc-monitor/skill-installs.json` ⇒ 判别器判集成层。

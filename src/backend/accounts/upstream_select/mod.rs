@@ -59,7 +59,8 @@ pub(crate) mod file_face;
 // 那张表的唯一住址。
 pub(crate) mod endpoint;
 mod policy; // 热重载（`accounts/policy.rs`；今天住 `accounts/upstream_select/policy.rs`）
-pub(crate) mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key 焊死的一个值**
+pub mod rotate;
+pub(crate) mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key 焊死的一个值** // 换号：这个会话这一发走哪个号（问轮换 · 备令牌与身份 · 钉号）
 
 pub(crate) use policy::Reload;
 
@@ -135,7 +136,7 @@ impl Upstreams {
 ///
 /// 装配要同时叫得出两层的名字。依赖方向只许上游选择 → 中转（上游选择本来就用中转的契约类型），
 /// 反过来就是「中转层里有账号」—— 那正是用户 2026-09-24 那句话要拆掉的。
-/// ⇒ 中转的 `host` 收一个 `&dyn Startup`，本函数把 [`Boot`] 递进去；中转的生产段里
+/// ⇒ 中转的 `host` 收一个 `&dyn Startup`，本函数把 [`Rotating`] 递进去；中转的生产段里
 ///   **一个上游选择的名字都没有**（`relay::upstream_selection_guard` ㈢ 零命中）。
 ///
 /// 交没交端口、起没起来由中转答（`relay::Hosted`）；本函数一行逻辑都没有，只做接线 ——
@@ -143,10 +144,12 @@ impl Upstreams {
 /// 先前还有一条 `--relay`（独立中转进程）的装配口，随那一形删了；中转只剩这一个宿主。
 /// tee 的落点是进程级那一个 tap 口（`crate::stream::tap::port`）—— 本函数只递，上游选择不碰它交出去的任何一件事
 /// （② 不碰响应体）。
-pub fn host_relay() -> String {
+///
+/// `library`：这台的账号库怎么读（宿主交进来 —— 上游选择不认识账号库管理）；换号要它找各号的配置目录。
+pub fn host_relay(library: rotate::LibraryRead) -> String {
     crate::relay::host(
         &|k| std::env::var(k).ok(),
-        &Boot,
+        &Rotating(library),
         crate::stream::tap::port(),
     )
     .to_string()
@@ -156,15 +159,28 @@ pub fn host_relay() -> String {
 ///
 /// ★ 中转**叫不出**它的名字：[`host_relay`] 把它递进中转的 `host`，中转只见得到
 /// `Startup` / `Ready` / `Destinations` 三个契约口。钉这一条的判据：`upstream_selection_guard`（㈢ 零命中）。
-pub(crate) struct Boot;
+/// 上游选择在中转启动路径上交给中转的那一只手（[`Startup`]）：装上换号（额度满了换到轮换里下一个号），
+/// 带着这台的账号库怎么读。判据交一份空账号库 ⇒ 永远只走起会话那个号。
+pub(crate) struct Rotating(pub(crate) rotate::LibraryRead);
 
-impl Startup for Boot {
+impl Startup for Rotating {
     fn check(&self, get: &dyn Fn(&str) -> Option<String>) -> Option<Box<dyn Ready>> {
-        Upstreams::from_env(get).map(|u| Box::new(u) as Box<dyn Ready>)
+        Upstreams::from_env(get).map(|upstreams| {
+            Box::new(Booted {
+                upstreams,
+                library: std::sync::Arc::clone(&self.0),
+            }) as Box<dyn Ready>
+        })
     }
 }
 
-impl Ready for Upstreams {
+/// 起监听之前验过的那一份：默认上游 ＋（生产）账号库怎么读。
+pub(crate) struct Booted {
+    upstreams: Upstreams,
+    library: rotate::LibraryRead,
+}
+
+impl Ready for Booted {
     /// 读一次凭据 → 装表 → 出声 → 起上游选择 → 接上热重载。
     ///
     /// ⚠ 这五步先前**长在中转的 `run_with` 里**（逐个直呼本层的名字）；今天是本层的私事。
@@ -173,12 +189,25 @@ impl Ready for Upstreams {
         get: &dyn Fn(&str) -> Option<String>,
         out: &mut dyn Write,
     ) -> std::sync::Arc<dyn Destinations> {
-        let (table, source) = load_credentials(get, &self, out);
+        let Booted { upstreams, library } = *self;
+        let (table, source) = load_credentials(get, &upstreams, out);
         // `D1 阻-2`：把重载源接上 —— 没有这一行，那张表就是一张**启动快照**，
         // 用户在界面上配完 key 必须重启中转才生效（而不重启的症状是一个静默的 404）。
         // 推不出那份文件在哪 ⇒ 空表、无重载源（那句话装表时已经说了）。
-        let quota = Ledger::at(ledger::path_from(get)).ringing(ledger::bell());
-        let accounts = Accounts::new(table, *self).recording_to(std::sync::Arc::new(quota));
+        let quota = std::sync::Arc::new(Ledger::at(ledger::path_from(get)).ringing(ledger::bell()));
+        let mut accounts =
+            Accounts::new(table, upstreams).recording_to(std::sync::Arc::clone(&quota));
+        let store = crate::accounts::quota::rotation::RotationStore::at(
+            crate::accounts::quota::rotation::path_from(get),
+        );
+        let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into));
+        accounts = accounts.rotating_with(rotate::Hop::new(
+            std::sync::Arc::new(store),
+            quota,
+            home,
+            library,
+            None,
+        ));
         std::sync::Arc::new(match source {
             Some((path, stamp)) => accounts.reloading_from(Reload::new(path, stamp)),
             None => accounts,
@@ -202,6 +231,8 @@ pub(crate) struct Accounts {
     reload: Option<Reload>,
     /// 额度账：回包头读成的快照按号记在这里（中转的 `observe` 口进来）。
     quota: std::sync::Arc<Ledger>,
+    /// 换号（不装 ⇒ 永远走起会话的号）。
+    hop: Option<rotate::Hop>,
 }
 
 impl Accounts {
@@ -212,7 +243,43 @@ impl Accounts {
             upstreams,
             reload: None,
             quota: std::sync::Arc::new(Ledger::at(None)),
+            hop: None,
         }
+    }
+
+    /// 装上换号（额度满了换到轮换里下一个号）。
+    pub(crate) fn rotating_with(mut self, hop: rotate::Hop) -> Self {
+        self.hop = Some(hop);
+        self
+    }
+
+    /// 那张表的读锁 —— 上游选择取它**只在这一处**；守卫活到调用方用完（`resolve` / `retry` 里活到 `act` 返回）。
+    fn table(&self) -> std::sync::RwLockReadGuard<'_, RoutingTable> {
+        self.table.read().expect("lock")
+    }
+
+    /// 换号那一侧要的这一发事实（按量号那几格现问表）。
+    fn rotate_ask<'a>(
+        &self,
+        key: &'a RouteKey,
+        ask: &Ask<'a>,
+        row: &'a dyn Fn(&str) -> Option<bool>,
+    ) -> rotate::Turn<'a> {
+        rotate::Turn {
+            agent: key.seg1.as_str(),
+            start: key.seg2.as_str(),
+            sid: ask.label,
+            body: ask.body,
+            row,
+            now: crate::accounts::quota::now_unix(),
+        }
+    }
+
+    /// 这个号在表里那一行：没有 ⇒ `None`；有 ⇒ 接不接得上（有 key，或这一行本来就不写鉴权头）。
+    fn row_of(&self, agent: &str, account: &str) -> Option<bool> {
+        self.table()
+            .lookup(agent, account)
+            .map(|r| r.key().is_some() || auth_header_of(r.auth_style()).is_none())
     }
 
     /// 额度账记到这一本（缺省是只在内存里的一本）。
@@ -307,7 +374,7 @@ impl Destinations for Accounts {
         &self,
         mode: Mode,
         key: &RouteKey,
-        _ask: &Ask<'_>,
+        ask: &Ask<'_>,
         act: &mut dyn FnMut(Destination<'_>),
     ) {
         // `D1 阻-2`：查表**之前**先看那份文件动过没有 —— 不然「界面上配完 key」要重启才生效，
@@ -315,8 +382,14 @@ impl Destinations for Accounts {
         self.refresh_if_changed();
         // ⚠ 这个读锁活到本函数返回为止 —— 而 `resolve` 的契约禁止调用方在 `act` 里做
         //   流式转发（见 `Destinations::resolve` 头注第 2 条硬约束）⇒ 锁不跨 `pump`。
-        let table = self.table.read().expect("lock");
-        decide(&table, &self.upstreams, mode, key, act);
+        // 换号那一问（可能要续令牌 ⇒ 有网络 IO）在取读锁**之前**做完，锁里只照备好的去处交给中转。
+        let row = |a: &str| self.row_of(&key.seg1, a);
+        let go = match &self.hop {
+            Some(h) => h.steer(&self.rotate_ask(key, ask, &row)),
+            None => rotate::Go::Start,
+        };
+        let table = self.table();
+        rotate::dispatch_go(&table, &self.upstreams, mode, key, go, act);
     }
 
     /// 名单只从适配层来（`agents::session_headers`，与默认上游同一张注册表）。
@@ -333,6 +406,36 @@ impl Destinations for Accounts {
     }
 
     /// 回包头 → 这一家的读法 → 额度账（记在答这一发的那个号名下：`tag` 就是那个号）。
+    /// 回包被拒（读法同 `observe`）⇒ 问轮换要下一个号；要到了就按它备好的去处重发（锁外备料、锁里交）。
+    fn retry(
+        &self,
+        mode: Mode,
+        key: &RouteKey,
+        ask: &Ask<'_>,
+        seen: &Heard<'_>,
+        tried: &[&str],
+        act: &mut dyn FnMut(Destination<'_>),
+    ) {
+        let Some(h) = &self.hop else {
+            return;
+        };
+        let Some(read) = crate::agents::quota_read_of(&key.seg1) else {
+            return;
+        };
+        let now = crate::accounts::quota::now_unix();
+        let Some(reading) = read(seen.status, seen.headers, now).filter(|r| r.refused) else {
+            return;
+        };
+        let tried: Vec<String> = tried.iter().map(|t| t.to_string()).collect();
+        let row = |a: &str| self.row_of(&key.seg1, a);
+        let Some(go) = h.on_refused(&self.rotate_ask(key, ask, &row), seen.tag, &reading, &tried)
+        else {
+            return;
+        };
+        let table = self.table();
+        rotate::dispatch_go(&table, &self.upstreams, mode, key, go, act);
+    }
+
     fn observe(&self, _mode: Mode, key: &RouteKey, _ask: &Ask<'_>, seen: &Heard<'_>) {
         let agent = key.seg1.as_str();
         let Some(read) = crate::agents::quota_read_of(agent) else {
@@ -371,7 +474,7 @@ pub(crate) fn decide(
     let (agent, account) = (key.seg1.as_str(), key.seg2.as_str());
     match (mode, table.lookup(agent, account)) {
         // ── `/s/` 有行 ⇒ 鉴权由这一行说了算（三种处置见 `dispatch_auth`）─────
-        (Mode::Substitute, Some(row)) => dispatch_auth(row, account, act),
+        (Mode::Substitute, Some(row)) => dispatch_auth(row, account, None, act),
 
         // ── `/s/` 无行 ⇒ **404**（`§3.1` 第 2 行，今天的行为，一字不改）──────────
         (Mode::Substitute, None) => {
@@ -452,7 +555,7 @@ pub(crate) fn decide(
 /// —— 先前那个 `(key.is_some() && …) || style == NoAuth` 的复合条件（`K-R1` 头注
 /// 逐字警告过「只看前者的话 `NoAuth` 那一行会把客户端的真 key 原样送给一个声明了
 /// 不校验凭据的本地端点」）**整条搬到了这里**，中转再也没有第二处可以判错。
-fn dispatch_auth(row: &Row, tag: &str, act: &mut dyn FnMut(Destination<'_>)) {
+fn dispatch_auth(row: &Row, tag: &str, body: Option<&[u8]>, act: &mut dyn FnMut(Destination<'_>)) {
     let style = row.auth_style();
     let clear = headers_to_clear();
     match (row.key(), auth_header_of(style)) {
@@ -468,13 +571,14 @@ fn dispatch_auth(row: &Row, tag: &str, act: &mut dyn FnMut(Destination<'_>)) {
             //    ⚠ 为什么搬：中转的类型面上不许再出现 `creds-core` 的类型（`C2`）
             //      ⇒ 「把 `AuthStyle` 翻成 HTTP」与「把 key 拼成头值」**同属上游选择的判断**，
             //      中转只拿到一个 `(头名, 完整头值)` 照写。
-            let value = format!("{prefix}{}", k.expose_for_auth_header());
+            let value = header_value(prefix, k);
             act(Destination::Substitute {
                 upstream: row.base(),
                 auth: AuthSwap {
                     clear,
                     write: Some((name, value.as_str())),
                 },
+                body,
                 tag,
             });
         }
@@ -484,6 +588,7 @@ fn dispatch_auth(row: &Row, tag: &str, act: &mut dyn FnMut(Destination<'_>)) {
         (_, None) => act(Destination::Substitute {
             upstream: row.base(),
             auth: AuthSwap { clear, write: None },
+            body,
             tag,
         }),
         // ③ 没 key，而这个形状本来要写头 ⇒ 没东西可代入 ⇒ **原样转发**（订阅登录那一档）。
@@ -507,6 +612,12 @@ fn dispatch_auth(row: &Row, tag: &str, act: &mut dyn FnMut(Destination<'_>)) {
 /// 本层管**翻译**（那个词对应哪个头、值前面加什么）· 中转管**照写**（它只看见一个串）。
 ///
 /// ⚠ 穷尽 `match`：加一个成员**编译不过** —— 这一格是编译器买的，不是一条文本判据买的。
+/// 鉴权头的值：前缀 ＋ 明文。★★ **整个后端生产段里唯一一处把明文取出来的地方**（`KS2`）：
+/// 按量号那一行的 key 与换号时订阅号的访问令牌都经这里拼成头值，交中转照写。
+fn header_value(prefix: &str, k: &creds_core::SecretKey) -> String {
+    format!("{prefix}{}", k.expose_for_auth_header())
+}
+
 pub(crate) fn auth_header_of(style: AuthStyle) -> Option<(&'static str, &'static str)> {
     match style {
         AuthStyle::Bearer => Some(("Authorization", "Bearer ")),

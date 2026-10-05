@@ -87,6 +87,7 @@ pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     // 1M 上下文的请求在 `anthropic-beta` 里带 `context-1m-<日期>` 那一项；不带 ⇒ 这个模型的默认上下文。
     context_mark: Some(("anthropic-beta", "context-1m")),
     quota: Some(quota::read),
+    window_slot: Some(quota::slot_of),
     login: Some(LOGIN),
 };
 
@@ -105,6 +106,10 @@ pub(crate) const LOGIN: super::LoginFace = super::LoginFace {
     margin_ms: 300_000,
     lock_inside: ".oauth_refresh.lock",
     lock_beside: Some(".lock"),
+    identity_file: accounts::identity_file,
+    identity_in: accounts::identity_in,
+    rewrite_identity: accounts::rewrite_identity,
+    base_dir: accounts::shared_root_in,
 };
 
 /// 请求压缩上下文用的那一句（注册表 `Adapter.compact_request` 那一格）：在会话里敲的斜杠命令。

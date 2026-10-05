@@ -283,6 +283,11 @@ fn every_registered_command_declares_its_run_kind() {
                 | "exit-policy-set"
                 // 额度账：读一份小文件（同步文件 I/O）。
                 | "quota-read"
+                // 轮换：读 / 锁里原子写 `rotation.json`（同步文件 I/O）。
+                | "rotation-read"
+                | "rotation-set"
+                | "rotation-session-read"
+                | "rotation-session-set"
                 // 功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
                 | "tasks-list"
                 // MCP 列表：读 `.claude.json` ＋ 一份 `.mcp.json`（同步文件 I/O）。
@@ -500,6 +505,10 @@ fn every_registered_command_declares_its_run_kind() {
         "exit-policy-read",
         "exit-policy-set",
         "quota-read",
+        "rotation-read",
+        "rotation-set",
+        "rotation-session-read",
+        "rotation-session-set",
         "tasks-list",
         "mcp-read",
         "tmux-list",
@@ -586,6 +595,8 @@ fn every_registered_command_declares_its_run_kind() {
         "sessions-where",
         // 换号重启：可撤档（步与步之间 await，起 tmux 的几步自己挪到阻塞线程池）。
         "session-restart",
+        // 现在就换：异步（重启换那一半等 `session-restart`；不重启换那一半自己挪到阻塞线程池）。
+        "rotation-switch",
         // 终端管理 L1 三条：阻塞（起 tmux）。
         "terminals-list",
         "terminal-preview",

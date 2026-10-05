@@ -1,0 +1,126 @@
+//! 「现在就换」（`rotation-switch`）的帧面宿主：不重启换交给 [`super::rotation_face`] 那一半（钉号 · 记一条）；
+//! 重启换逐个交给 `session-restart`（成了再记一条）。单住一份：只有这一条够得着 tmux（经 `session-restart`）。
+
+use super::rotation_face::{hot_one, outcome, record, Ctx};
+use crate::accounts::quota::rotation::{SwitchOutcome, SwitchWhy};
+use crate::accounts::upstream_select::rotate::account_ok;
+use serde_json::{json, Map, Value};
+use std::sync::Arc;
+
+type Answer = Result<Value, (&'static str, String)>;
+
+fn bad(detail: &str) -> (&'static str, String) {
+    ("bad_args", crate::common::contract::malformed(detail))
+}
+
+/// 「现在就换」的入参：`{sessions, target, mode}`。不重启换 ⇒ `sessions` 是会话 id；重启换 ⇒ 每项是
+/// `session-restart` 的入参（缺 `account`，用 `target`）。
+pub(crate) struct SwitchAsk {
+    target: String,
+    restart: bool,
+    items: Vec<Value>,
+}
+
+pub(crate) fn switch_ask(args: &Value) -> Result<SwitchAsk, (&'static str, String)> {
+    let target = args
+        .get("target")
+        .and_then(Value::as_str)
+        .filter(|s| account_ok(s))
+        .ok_or_else(|| bad("`target` must be an account id"))?
+        .to_string();
+    let restart = match args.get("mode").and_then(Value::as_str) {
+        Some("hot") => false,
+        Some("restart") => true,
+        _ => return Err(bad("`mode` must be \"hot\" or \"restart\"")),
+    };
+    let items = args
+        .get("sessions")
+        .and_then(Value::as_array)
+        .ok_or_else(|| bad("`sessions` must be an array"))?
+        .clone();
+    for (i, it) in items.iter().enumerate() {
+        let sid = if restart {
+            it.get("sid").and_then(Value::as_str)
+        } else {
+            it.as_str()
+        };
+        if !sid.is_some_and(shell_quote_core::session_id_ok) {
+            return Err(bad(&format!(
+                "`sessions[{i}]` must be {}",
+                if restart {
+                    "an object with a session id `sid`"
+                } else {
+                    "a session id"
+                }
+            )));
+        }
+    }
+    Ok(SwitchAsk {
+        target,
+        restart,
+        items,
+    })
+}
+
+/// 重启换交给 `session-restart` 的那一份：原样 ＋ `account` ＝ 目标号。
+pub(crate) fn restart_args(item: &Value, target: &str) -> Value {
+    let mut one = item.clone();
+    one["account"] = Value::from(target);
+    one
+}
+
+/// `rotation-switch`：现在就换（`{sessions, target, mode}`）→ 每个会话 `done` / `skipped{code}` / `failed{code}`。
+/// 不重启换在这里做完；重启换逐个交给 `session-restart`（成了再记一条）。
+pub(crate) async fn answer_switch(args: Value) -> Answer {
+    let ask = switch_ask(&args)?;
+    let now = crate::accounts::quota::now_unix();
+    let mut out = Map::new();
+    if !ask.restart {
+        let ask = Arc::new(ask);
+        let a = Arc::clone(&ask);
+        let done = tokio::task::spawn_blocking(move || {
+            let ctx = Ctx::here();
+            a.items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(|sid| (sid.to_string(), hot_one(&ctx, sid, &a.target, now)))
+                .collect::<Vec<_>>()
+        })
+        .await
+        .map_err(|e| ("failed", e.to_string()))?;
+        for (sid, o) in done {
+            out.insert(sid, outcome(o)?);
+        }
+        return Ok(json!({ "sessions": out }));
+    }
+    for item in ask.items {
+        let sid = item["sid"].as_str().unwrap_or_default().to_string();
+        let o = match crate::faces::session_restart_face::answer(restart_args(&item, &ask.target))
+            .await
+        {
+            Ok(_) => {
+                let (s, t) = (sid.clone(), ask.target.clone());
+                tokio::task::spawn_blocking(move || {
+                    let ctx = Ctx::here();
+                    let from = ctx
+                        .hop
+                        .store
+                        .now()
+                        .sessions
+                        .get(&s)
+                        .map_or_else(|| t.clone(), |e| e.current.clone());
+                    if ctx.hop.store.now().sessions.contains_key(&s) {
+                        record(&ctx, &s, &from, &t, SwitchWhy::ManualRestart, now)
+                    } else {
+                        SwitchOutcome::Switched
+                    }
+                })
+                .await
+                .map_err(|e| ("failed", e.to_string()))?
+            }
+            Err((code, _, _)) => SwitchOutcome::NotSwitched { code },
+        };
+        out.insert(sid, outcome(o)?);
+    }
+    Ok(json!({ "sessions": out }))
+}

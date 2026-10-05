@@ -424,6 +424,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `cancelled` | `id` | **U6b-1**：某条入方向命令**被取消了**（`id` = 被取消的那条）。同 `reply`：复用 tag 空间、完整语义在「入方向」小节（含「不可取消」时为什么回 `reply{ok:false,code:"not_cancellable"}` 而不是本帧）。⚠ 同上，此前本表无此行 |
 | `accounts_changed` | —（无载荷） | **这台机器上的账号清单变了**（watcher 盯账号 manifest 所在目录，一批文件事件里 manifest 动了几次都只发一帧）。客户端收到就重拉一次账号清单（`accounts-list`）—— 清单本身不在帧里，唯一出口仍是那条查询。manifest 所在目录起步时不在 / 后来被删掉重建 ⇒ 这一路听不见（已知边界，代价只是不推帧）。monitor 收到交给前端：经通道 `subscribe(origin, "accounts-changed")` 那条流里一格 `Frame`（原先是裸 Tauri 事件 `remote-backend-ready`，已退役；句柄 `event_replay.rs`），账号表与 chip 随之重取 |
 | `quota_changed` | —（无载荷） | **这台的额度账显示得出来的那几格变了**（某个号各窗口取整后的百分比 · 重置时刻 · 状态 · 被拒 · 卡在哪个窗口 · 超额那一档）。客户端收到就重拉一次 `quota-read`（额度账的唯一出口仍是那条查询）。中转记账那一路发、走 tap 那条可丢的通道（额度账在盘上，丢了重拉就补上）。详见「额度账与账号轮换」小节 |
+| `rotation_changed` | `sid` | **这台某个会话的轮换或「账号」格变了**（中转换了号 · 记了一条 · 改了它的轮换 · 它跟随的默认轮换改了）。客户端收到就重问一次 `rotation-session-read`（那一份的唯一出口仍是那条查询）。写轮换的那个后端进程发、走 tap 那条可丢的通道（轮换在盘上，丢了重问就补上）。详见「额度账与账号轮换」小节 |
 | `tasks_changed` | `sid` | **这台机器上某个会话的任务清单变了**（watcher 递归盯 `<agent 家>/tasks/`，一批文件事件里同一个 sid 动了几次都只发一帧；`tasks/` 起步不在 ⇒ 它作为 `agent_home` 里的一个事件出现时挂上）。只带 sid：客户端收到就重问一次 `tasks-list` —— 清单本身不在帧里，唯一出口仍是那条查询。本机远端同一个二进制 ⇒ 同形（monitor 自己那份 notify 删了）。monitor 收到交给前端：经通道 `subscribe(origin, "session-tasks")` 那条流里一格 `Frame`（体 `{"sid": …}`）。丢了不可恢复（`overflow.lost` 带身份，subject = sid）|
 | `sessions_replayed` | —（无载荷） | **这台机器的活会话清单报完了**：`watch_loop` 的 Phase 1（同步扫 `sessions/`、对每个活 pidfile 发一帧 `session_added`）走完那一刻发**一次**，排在 Phase 1 所有帧之后、Phase 2 任何帧之前（同一个 sink、同一条线程）；`sessions/` 不在也照发（清单是空的，也是说完了）。**为什么要它**：客户端手里有一条「固定」的会话条目而这台还没报过它时，得分清「这台还没说完」（显示**说不清**）与「说完了、里面没有它」（显示**已结束**）—— 那张表的判据，此前线上没有任何东西分得开。丢了不可恢复（`overflow.lost` 带身份、subject 无）：客户端停在「说不清」，不会被说成已结束。monitor 收到发前端 `origin-sessions-listed {origin}`（与 `remote-session-added` 同一条线程、同序）|
 | `session_state` | `sid`, `state` | **会话账本的成品**：这条会话离开「活」之后是 `"reconnectable"`（claude 退了、它所在的窗格还挂着 `@ccm_sid`）还是 `"ended"`（进程没了、容器也没了，或被 `superseded` 顶替）。**由这台后端自己裁**（`observe/session_ledger.rs`：摘除原因 ＋ 它自己那份 tmux 快照；`@ccm_sid` 打在窗格上，一个 tmux 会话可挂几个；会话按 `#{session_id}` 认，改名不算关）。`superseded` 紧跟 `session_removed`；`gone` 等一份**摘除之后才起**的 tmux 观测来裁、紧跟那份观测（不拿摘除之前的快照裁，免得先报错一格再翻回来）。收割只对可重连的：它的 tmux 会话关了当场、哪个窗格都不挂它连续两份才落；活着的会话只认 pidfile。新连接第一份可观测的 tmux 快照里「挂着 `@ccm_sid`、却不在活会话里」的各发一帧 `reconnectable`，**排在 `sessions_replayed` 之前**（清单压到第一份快照之后才放）。客户端只收成品、不再查 tmux 原文。丢了不可恢复（`overflow.lost` 带身份）|
@@ -2098,6 +2099,87 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 - 很久没流量的号只有「最后一次看到是几点」（`seenAt`），不编、不去探。
 - 每一次都现读盘（一次性 CLI 那一形里没有内存）。中转那一路：显示得出来的几格变了才立刻落盘并推 `quota_changed`；没变的观测盘上的 `seenAt` 至多落后 60 秒。
 - CLI 面随之多一条 `--quota-read`（不读 stdin）。
+
+#### 账号轮换：满了不重启换号（`rotation.json`）
+
+轮换住 `~/.cc-monitor/rotation.json`（账号域自己的状态）：这台的默认轮换 · 每个会话跟随默认还是用自己那一份（切回跟随时自己那一份留着）·
+此刻钉在哪个号 · 换号记录。一份轮换 = `{order, enabled, when}`：`order` 顺序，每格是一个号（路由第 2 段，即配置目录末段；账号 0 是 `0`）
+或起始账号占位 `{"start": true}`；`enabled` 勾上的号（占位恒算勾上）；`when` = `"full"`（被拒才换，缺省）或 `{"threshold": {"n": 50..=99}}`（用到 N% 就换）。
+缺省只有占位 ⇒ 不轮换。会话的实际池 = 按 `order`、占位换成起这个会话的号、只取勾上的、去重。
+
+**换号**（中转那一路，对 agent 透明）：上游回包被拒（429；读法同额度账）⇒ 按池**从头**取首个能接的号，用同一份请求体重发（下游一个字节都没收到过）；
+发之前额度账上此刻的号被拒未到重置 / 订阅号超额在用 / 到阈值 ⇒ 先换好再发。跳过：此刻的号 · 这一发试过的 · 满着的 · 接不上的（订阅号拿不到令牌或账号身份 ⇒
+`needsLogin`；按量号这台 key 表里没有 ⇒ `needsKey`；请求体里身份格认不准 ⇒ `unsureBody`，各记一条「跳过」）。超额在兜只找订阅号接，都满才留在超额（记 `toOverage`）。
+一发至多试池子大小个号（中转另有硬上限 8）；都不行 ⇒ 原样交回上游的拒绝。换过去的会话钉在新号上（随会话持久，后端重启后第一发就走它）；
+会话换了起它的号（重启换号 / 用别的号恢复）⇒ 钉号清掉。换到订阅号：鉴权头换成那个号的访问令牌（快过期就续），请求体 `metadata.user_id` 里的
+`account_uuid` 换成那个号的；换到按量号：照它在 key 表里那一行，那一格换成空串。令牌、刷新令牌、key 不进日志、帧、报错原文。
+
+换号记录每条 `{at, from, to, why, fromResetsAt?}`（`fromResetsAt` 那一刻原号几点重置，记下就不变）；`why`：`{"full": {"w"?: "5h"|"7d"}}` ·
+`{"threshold": {"n"}}` · `"manualHot"` · `"manualRestart"` · `{"skipped": {"account", "reason"}}` · `"toOverage"`。`from == to` 的是没换成的那几种。每会话至多留 32 条。
+
+#### `rotation-read`：这台的默认轮换（**不读 stdin**）
+
+```text
+→ {"id":"r1","cmd":"rotation-read"}
+← {"kind":"reply","id":"r1","ok":true,"data":{"state":"present","reason":null,"path":"/home/u/.cc-monitor/rotation.json",
+   "rotation":{"order":[{"start":true},"work","api"],"enabled":["work"],"when":"full"}}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `state` | ← | `"present"` · `"absent"`（没动过）· `"unreadable"`（读不出 / 家推不出）|
+| `reason` | ← | 只在 `unreadable` 时有 |
+| `path` | ← | 那份文件的绝对路径（家推不出 ⇒ `null`）|
+| `rotation` | ← | 默认轮换；没动过 / 读不出 ⇒ 缺省那一份（只有占位、`"full"`）|
+
+#### `rotation-set`：写这台的默认轮换
+
+`→ {"cmd":"rotation-set","args":{"rotation":{order, enabled, when}}}`，整份写回，应答同 `rotation-read`（`state` · `reason` · `path` · `rotation`）。`order` 里占位恰好 1 个；
+号不许重复、不许是 `_`；`enabled` 只许是 `order` 里的号；不合法 ⇒ `bad_args`，`message` 点名哪一格（如 `` `enabled[0]` ``），一个字节不写。
+**新勾上的按量号由后端挪到 `order` 末尾**（订阅号用完才轮到它；前端不自己挪）。写不进 ⇒ `io_failed`。跟随默认的会话随之改（各推一帧 `rotation_changed`）。
+
+#### `rotation-session-read`：一批会话的轮换与「账号」格
+
+```text
+→ {"id":"r2","cmd":"rotation-session-read","args":{"sids":["4f…","9a…"]}}
+← {"kind":"reply","id":"r2","ok":true,"data":{"state":"present","reason":null,"now":1800000100,"sessions":{
+    "4f…":{"state":"present","agent":"claude-code","follow":true,
+           "account":{"start":"work","current":"personal","since":1800000000,"inPlace":"ok",
+                      "history":[{"at":1800000000,"from":"work","to":"personal","why":{"full":{"w":"5h"}},"fromResetsAt":1800003600}]},
+           "next":"team"},
+    "9a…":{"state":"absent","inPlace":"noRelay"}}}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `sids` | → | 会话 id 的数组 |
+| `state` · `reason` · `now` | ← | 那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒 |
+| `sessions` | ← | 每个 sid 一份。这台中转没见过的 ⇒ `{"state":"absent","inPlace":"noRelay"}`（照实标，不整批失败）；见过的 ⇒ `"state":"present"` ＋ 下面几格 |
+| `agent` · `follow` · `custom?` | ← | 哪一家 · 跟随默认 · 自己那一份（跟随时也留着）|
+| `account` | ← | `start`（起这个会话进程的号，`_` 原样）· `current`（此刻走的号）· `since` · `history[]`（先的在前）· `inPlace`：能不能不重启换 —— `ok` · `noRelay` · `machineNotMulti`（没建账号库）· `agentHasNoAccounts` |
+| `next?` | ← | 此刻的号触发了会换到谁（只看盘上的登录，不续令牌）；没有 ⇒ 缺 |
+| `blocked?` | ← | 发不出去了（此刻的号被拒、轮换里没有能接的）⇒ `{earliest?: {account, at}}`（池里最早回来的那个）；能发 ⇒ 缺。超额在兜不算 |
+| `fallbackApi?` | ← | 这台可用（key 表里有）、不在这个会话轮换里、没被拒的按量号；没有 ⇒ 缺 |
+
+#### `rotation-session-set`：改一批会话的轮换
+
+`→ {"cmd":"rotation-session-set","args":{"sids":[…],"rotation":"follow" | "custom" | {"custom":{order, enabled, when}},"agent"?,"start"?}}`
+⇒ `{"sessions":{sid: {"state":"done"} | {"state":"skipped","code":"noRelay"}}}`。`"custom"` 恢复这个会话上一份自己的，没有就从默认起；
+`{"custom": …}` 整份写（占位 0 或 1 个，规矩同 `rotation-set`，新勾的按量号挪末尾）。这台没见过的会话要另给 `agent` 与 `start`（起它的号）才记得下，
+否则那一个 `skipped`。任何一份不合法 ⇒ 整批 `bad_args`、一个字节不写。
+
+#### `rotation-switch`：现在就换
+
+`→ {"cmd":"rotation-switch","args":{"sessions":[…],"target":"team","mode":"hot" | "restart"}}` ⇒ `{"sessions":{sid: 结果}}`，结果
+`{"state":"done"}` · `{"state":"skipped","code"}`（不重启换不成立：`noRelay` · `agentHasNoAccounts` · `machineNotMulti`）·
+`{"state":"failed","code"}`（`targetNeedsLogin`：目标订阅号拿不到令牌（续期失败照实报）或账号身份 · `targetNeedsKey` · `ioFailed`）。
+
+- `hot`：`sessions` 是会话 id；把会话钉到 `target`、记一条 `manualHot`，下一发起就走它（进程仍用起它的号的配置目录）。
+- `restart`：`sessions` 每项是 `session-restart` 的入参（不带 `account`，用 `target`），逐个交给它；成了记一条 `manualRestart`，
+  败了 `failed` 带 `session-restart` 的失败码原样。「会中断什么」那一问在发起之前（同 `session-restart`）。
+- 入参不合法 ⇒ `bad_args`。
+
+CLI 面随之多 `--rotation-read`（不读 stdin）与 `--rotation-set` · `--rotation-session-read` · `--rotation-session-set` · `--rotation-switch`（stdin 一段 JSON ＝ `args`）。
 
 #### `drift-report`：这台后端的漂移账（**不读 stdin**，只读、按需）
 

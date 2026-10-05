@@ -22,6 +22,8 @@
 {"kind":"accounts_changed"}
 {"kind":"quota_changed"}
 {"kind":"quota_changed"}
+{"kind":"rotation_changed","sid":"s1"}
+{"kind":"rotation_changed","sid":"s1"}
 {"kind":"tasks_changed","sid":"s1"}
 {"kind":"tasks_changed","sid":"s1"}
 {"kind":"sessions_replayed"}

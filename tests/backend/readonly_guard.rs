@@ -895,6 +895,13 @@ mod tests {
              失败删自己的临时文件；读不懂的那份不覆盖。入口只有中转记账那一路（上游选择的 `observe`）—— 不是帧面命令",
         ),
         (
+            "accounts/quota/rotation.rs",
+            "**账号轮换** `~/.cc-monitor/rotation.json`：这台的默认轮换 · 各会话跟随还是自己那一份 · 此刻钉在哪个号 · 换号记录。\
+             文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 账号域**自己的**状态，不是用户数据。\
+             在跨进程锁里读盘 → 改 → `O_EXCL` 临时文件 → 写满 → 原子挪过去；只建 `~/.cc-monitor` 那一层；失败删自己的临时文件；\
+             读不懂的那份不覆盖。入口两扇：中转换号那一路（上游选择）· 帧面改轮换 / 现在就换那一路",
+        ),
+        (
             "assets/skill_ledger.rs",
             "**skill 装记录** `~/.cc-monitor/skill-installs.json`：从别的机器装到这台的 skill，装时写进了哪几个文件 \
              （各自的摘要 ＋ 装之前在不在）。只删装时写进去的文件 —— 卸只删这里记着的。文件名 / 格式 / 落点都是本仓定的、\
@@ -977,6 +984,16 @@ mod tests {
              读成额度快照后记进额度账 —— 那一格没有帧命令可走（数据只从中转经手的回包来）",
         ),
         (
+            "accounts/upstream_select/rotate.rs",
+            "上游选择换号那一份：中转看见一个会话的第一发 · 被拒 / 发之前满着要换号 ⇒ 记下会话、钉号、记一条为什么 —— \
+             那一格没有帧命令可走（换号发生在中转经手的那一发上）",
+        ),
+        (
+            "faces/rotation_face.rs",
+            "换号那一族的帧面宿主（`rotation-set` · `rotation-session-set` · `rotation-switch`）：前端改默认轮换、改会话轮换、\
+             现在就换，只有这一族命令（帧面与派生的 CLI 面共用）",
+        ),
+        (
             "relay/listen.rs",
             "中转起监听那一处（`prepare`，常驻后端进程内起中转；`--relay` 那一形删了）：**绑上口之后、说「在听」之前** \
              拿钥匙。它不是帧面命令 —— 钥匙是中转进门的前提，不是前端要改的值；只有绑上了口的那一个会写 ⇒ 不会两个中转抢着铸",
@@ -1048,6 +1065,17 @@ mod tests {
             "accounts/quota/ledger.rs",
             "ledger::record_seen",
             "accounts/upstream_select/mod.rs",
+        ),
+        // 账号轮换：中转换号那一路只从上游选择换号那一份进，帧面那一路只从换号的帧面宿主进。
+        (
+            "accounts/quota/rotation.rs",
+            "rotation::relay_change",
+            "accounts/upstream_select/rotate.rs",
+        ),
+        (
+            "accounts/quota/rotation.rs",
+            "rotation::face_change",
+            "faces/rotation_face.rs",
         ),
         // 中转钥匙：门是中转起监听那一处，不是命令注册。
         ("relay/key.rs", "key::ensure_key", "relay/listen.rs"),

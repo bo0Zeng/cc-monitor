@@ -1,4 +1,4 @@
-//! 命令表 · 账号：`accounts-*` · `apikey-*` · `quota-read`。
+//! 命令表 · 账号：`accounts-*` · `apikey-*` · `quota-read` · `rotation-*`。
 
 use crate::stream::inbound::spec::{CommandSpec, Run};
 use crate::stream::inbound::LocalFiles;
@@ -21,6 +21,71 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &["accounts", "now", "path", "reason", "state"],
         takes_input: false,
         run: Run::Blocking(|_r| Ok(Some(crate::accounts::quota::ledger::answer_read()))),
+    },
+    // 换号那一族（帧面宿主 `faces/rotation_face.rs`）：默认轮换读 / 写 · 一批会话的轮换与「账号」格读 / 写 · 现在就换。
+    //   同步文件 I/O ⇒ 阻塞档；「现在就换」里重启换那一半要等 `session-restart` ⇒ 异步、失败可带码。
+    CommandSpec {
+        name: "rotation-read",
+        doc_anchor: Some("#### `rotation-read`"),
+        codes: &[],
+        fields: &["path", "reason", "rotation", "state"],
+        takes_input: false,
+        run: Run::Blocking(|_r| {
+            crate::faces::rotation_face::answer_read()
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "rotation-set",
+        doc_anchor: Some("#### `rotation-set`"),
+        codes: &["bad_args", "io_failed"],
+        fields: &["path", "reason", "rotation", "state"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::rotation_face::answer_set(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "rotation-session-read",
+        doc_anchor: Some("#### `rotation-session-read`"),
+        codes: &["bad_args", "failed"],
+        fields: &["now", "reason", "sessions", "sids", "state"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::rotation_face::answer_session_read(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "rotation-session-set",
+        doc_anchor: Some("#### `rotation-session-set`"),
+        codes: &["bad_args", "failed", "io_failed"],
+        fields: &["agent", "rotation", "sessions", "sids", "start"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::rotation_face::answer_session_set(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "rotation-switch",
+        doc_anchor: Some("#### `rotation-switch`"),
+        codes: &["bad_args", "failed"],
+        fields: &["mode", "sessions", "target"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::faces::rotation_switch_face::answer_switch(r.args)
+                    .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
     },
     // **上游选择**那份凭据文件在**这台机器上**的读写口 —— 上游选择自己的状态，
     //   不是用户文件（判清全文）⇒ 写口登记在 `readonly_guard` 第四层，

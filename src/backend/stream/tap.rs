@@ -126,6 +126,8 @@ pub struct TapRx {
     rx: tokio::sync::mpsc::Receiver<TapEvent>,
     /// 额度账显示变了的通道（变了推一帧 `quota_changed`）；`None` ＝ 不订（判据自己接的那一形）。
     quota: Option<tokio::sync::watch::Receiver<u64>>,
+    /// 某个会话的轮换 / 「账号」格变了的通道（变了推一帧 `rotation_changed`）；`None` ＝ 不订。
+    rotation: Option<tokio::sync::broadcast::Receiver<String>>,
     book: std::sync::Arc<crate::observe::runs::RunBook>,
     router: super::run_route::RunRouter,
     out: std::collections::VecDeque<Frame>,
@@ -157,6 +159,12 @@ impl TapSource for TapRx {
                         self.quota = None;
                     }
                 }
+                moved = rotation_moved(&mut self.rotation) => match moved {
+                    Some(Some(sid)) => self.out.push_back(Frame::RotationChanged { sid }),
+                    // 落后丢了几件：可丢的通道，客户端下一次变化或重问就补上。
+                    Some(None) => {}
+                    None => self.rotation = None,
+                }
             }
         }
     }
@@ -167,6 +175,7 @@ impl TapSource for TapRx {
 pub fn attach(book: std::sync::Arc<crate::observe::runs::RunBook>) -> TapRx {
     let mut rx = attach_rx(hub().attach(), book);
     rx.quota = Some(crate::accounts::quota::ledger::bell().subscribe());
+    rx.rotation = Some(crate::accounts::quota::rotation::changes().subscribe());
     rx
 }
 
@@ -174,6 +183,21 @@ pub fn attach(book: std::sync::Arc<crate::observe::runs::RunBook>) -> TapRx {
 async fn quota_moved(q: &mut Option<tokio::sync::watch::Receiver<u64>>) -> bool {
     match q {
         Some(r) => r.changed().await.is_ok(),
+        None => std::future::pending().await,
+    }
+}
+
+/// 某个会话变了 ⇒ `Some(Some(sid))`；落后丢了几件 ⇒ `Some(None)`；通道没了 ⇒ `None`（调用方把它摘掉）；没订 ⇒ 永远不醒。
+async fn rotation_moved(
+    r: &mut Option<tokio::sync::broadcast::Receiver<String>>,
+) -> Option<Option<String>> {
+    use tokio::sync::broadcast::error::RecvError;
+    match r {
+        Some(r) => match r.recv().await {
+            Ok(sid) => Some(Some(sid)),
+            Err(RecvError::Lagged(_)) => Some(None),
+            Err(RecvError::Closed) => None,
+        },
         None => std::future::pending().await,
     }
 }
@@ -189,6 +213,7 @@ pub(crate) fn attach_rx(
         book,
         out: std::collections::VecDeque::new(),
         quota: None,
+        rotation: None,
     }
 }
 

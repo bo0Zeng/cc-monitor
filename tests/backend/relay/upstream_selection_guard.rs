@@ -59,6 +59,8 @@ pub(super) mod tests {
         "file_face.rs",
         "mod.rs",
         "policy.rs",
+        // 换号：这个会话这一发走哪个号（问轮换 · 备令牌与身份 · 钉号）；账号库由宿主读好交进来。
+        "rotate.rs",
         "table.rs",
     ];
 
@@ -84,8 +86,11 @@ pub(super) mod tests {
         "oauth/mod.rs",
         "oauth/store.rs",
         // 额度与轮换：额度账（用量的唯一住址）。上游选择可以问它（换号要看各号的额度），它不许认识上游选择与账号库管理。
+        "quota/decide.rs",
         "quota/ledger.rs",
         "quota/mod.rs",
+        // 轮换配置（rotation.json）与换号的唯一判定（纯）：上游选择换号时问它们；它们不认识上游选择与账号库管理。
+        "quota/rotation.rs",
     ];
 
     /// 账号域里**给上游选择用**的那几块（相对账号域根的顶层名）：上游选择可以引它们；
@@ -98,7 +103,7 @@ pub(super) mod tests {
     /// |---|---|
     /// | `Destinations` · `Destination` · `AuthSwap` · `Mode` · `RouteKey` | 请求路径上那一问一答|
     /// | `Startup` · `Ready` | 启动路径上那两步（起监听前验配置 · 起监听后交出 `Destinations`）|
-    /// | `host` | 常驻后端进程内起中转的装配（`accounts::upstream_select::host_relay` 把 `Boot` 递进中转的入口）。依赖方向只许上游选择 → 中转，所以装配住这一侧 |
+    /// | `host` | 常驻后端进程内起中转的装配（`accounts::upstream_select::host_relay` 把 `Rotating` 递进中转的入口）。依赖方向只许上游选择 → 中转，所以装配住这一侧 |
     /// | `Base` | 一行的上游是什么 —— 中转的**传输原语**，上游选择解析它、焊进行里、原样交回 |
     /// | `segment_is_safe` | 「这个账号 id 当得了路由段吗」与中转切键用的是**同一个谓词**（`route.rs` 头注逐字论证过为什么不许各写一份）|
     ///
@@ -120,7 +125,7 @@ pub(super) mod tests {
         // 回包头读完那一刻中转交回来的东西（`observe`：额度账按号记账）。
         "Heard",
         "Startup",
-        // 常驻后端进程内起中转的入口；上游选择的 `host_relay` 把 `Boot` 递进去。
+        // 常驻后端进程内起中转的入口；上游选择的 `host_relay` 把 `Rotating` 递进去。
         "host",
         // 出「直接敲的也走中转」那一段（`relay-optin`）时把这台的钥匙插进地址（只交插好的地址）。
         "keyed_with_key_on_disk",

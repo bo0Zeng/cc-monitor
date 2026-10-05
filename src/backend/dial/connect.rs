@@ -200,6 +200,13 @@ fn config(probe: bool, compress: bool) -> Arc<client::Config> {
 /// 拨 TCP，拨通后问内核这一跳的往返时间、过一遍判准。回 `(socket, 跨这一跳的字节压不压)` ——
 /// 判准的答案过了闸（[`RUSSH_ZLIB_SOUND`]）才算数。
 async fn tcp_hop(ep: &Endpoint) -> std::io::Result<(tokio::net::TcpStream, bool)> {
+    // 测试档不许出网：目的地不是本机回环（回环判定只有 `upstream_is_loopback` 那一个家）⇒ 当场 panic，不连、不解析名字。
+    #[cfg(test)]
+    assert!(
+        upstream_url_core::upstream_is_loopback(&ep.host),
+        "测试档不许出网：{}",
+        ep.host
+    );
     let tcp = tokio::net::TcpStream::connect((ep.host.as_str(), ep.port)).await?;
     let rtt = crate::platform::tcp_rtt::rtt_us(&tcp);
     let judged = compression_for(tcp.peer_addr()?.ip(), rtt);

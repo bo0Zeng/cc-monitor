@@ -216,6 +216,13 @@ fn tls_config() -> Arc<rustls::ClientConfig> {
 ///
 
 pub fn connect(base: &Base, deadline: Duration) -> std::io::Result<Conn> {
+    // 测试档不许出网：目的地不是本机回环（回环判定只有 `upstream_is_loopback` 那一个家）⇒ 当场 panic，不连、不解析名字。
+    #[cfg(any(test, feature = "test-support"))]
+    assert!(
+        upstream_url_core::upstream_is_loopback(&base.host),
+        "测试档不许出网：{}",
+        base.host
+    );
     let tcp = TcpStream::connect((base.host.as_str(), base.port))?;
     // ★ Nagle 两个方向都要关。参考实现登记过：没关会让 p95 塌到 3504ms。
     tcp.set_nodelay(true)?;

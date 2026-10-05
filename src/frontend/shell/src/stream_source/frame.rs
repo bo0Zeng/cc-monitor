@@ -223,6 +223,8 @@ pub enum InboundFrame {
     TurnEnd,
     /// 那台的额度账变了（`quota_changed`）。认识但不消费：界面要额度就发 `quota-read` 读整份。
     QuotaChanged,
+    /// 那台某个会话的轮换 / 「账号」格变了（`rotation_changed`，只带 sid）。认识但不消费：界面要就发 `rotation-session-read`。
+    RotationChanged,
 }
 
 /// 拥塞提示的**措辞**：有没有不可恢复的丢失，说法完全不同。
@@ -621,6 +623,11 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
         }
         // 认识但不消费：界面要额度就发 `quota-read` 读整份。
         "quota_changed" => InboundFrame::QuotaChanged,
+        // 认识但不消费：界面要就发 `rotation-session-read`。形状照样判。
+        "rotation_changed" => {
+            req_str(obj, k, "sid")?;
+            InboundFrame::RotationChanged
+        }
         _ => return Err(Unread::UnknownKind(kind.to_string())),
     })
 }

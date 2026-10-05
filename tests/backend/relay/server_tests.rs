@@ -1402,7 +1402,8 @@ fn relay_child_process_entry_point() {
     });
     // ⚠ 凭据那份文件住家里，父进程一定会把家（`CCM_DATA_DIR`）指到夹具目录
     //   （见 `spawn_relay_child_with_creds`）。**绝不能让判据去读用户真实的那份凭据。**
-    let said = crate::accounts::upstream_select::host_relay();
+    let said =
+        crate::accounts::upstream_select::host_relay(std::sync::Arc::new(|_| Default::default()));
     eprintln!("[relay-child] {said}");
     loop {
         std::thread::park();

@@ -851,6 +851,10 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "换号重启：没 tmux ⇒ 这条会话不在任何终端里，答 `not_in_terminal`（与「名单里没有它」同一个码）",
     ),
     (
+        "rotation-switch",
+        "现在就换：不重启换用不着 tmux（Windows 照做）；重启换那一半逐个交给 `session-restart`，没 tmux ⇒ 那个会话 `failed{not_in_terminal}`、命令照答",
+    ),
+    (
         "sessions-stop",
         "批量停：没 tmux ⇒ 逐个答「这台没 tmux」跳过、命令照答（停的对象本来就只在 tmux 里）",
     ),

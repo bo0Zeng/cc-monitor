@@ -27,6 +27,15 @@ pub(crate) const WINDOWS: &[(&str, &str)] = &[
 
 const REFUSED: u16 = 429;
 
+/// 窗口名 → 语义位：5 小时那一个是 `5h`；7 天那几个（含分模型的）是 `7d`；超额那一档没有语义位。
+pub(crate) fn slot_of(name: &str) -> Option<&'static str> {
+    match name {
+        "five_hour" => Some("5h"),
+        n if n.starts_with("seven_day") => Some("7d"),
+        _ => None,
+    }
+}
+
 fn header<'h>(headers: &'h [(String, String)], name: &str) -> Option<&'h str> {
     headers
         .iter()

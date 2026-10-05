@@ -265,6 +265,8 @@ pub enum Destination<'a> {
     Substitute {
         upstream: &'a Base,
         auth: AuthSwap<'a>,
+        /// 换掉整份请求体（`None` ＝ 原样发下游送来的那一份）。中转不解读它，只照发、照算长度。
+        body: Option<&'a [u8]>,
         tag: &'a str,
     },
     /// 这条路由不成立 ⇒ 中转回这个状态码，**一个字节都不发上游**。
@@ -330,6 +332,21 @@ pub trait Destinations: Send + Sync {
 
     /// 上游的回包头读完那一刻（还没往下游写一个字节）交回来看一眼：**只读**，答什么都不改中转的做法。缺省 ⇒ 不看。
     fn observe(&self, _mode: Mode, _key: &RouteKey, _ask: &Ask<'_>, _seen: &Heard<'_>) {}
+
+    /// [`Self::observe`] 之后紧接着问：要不要换一个去处、用同一份请求体再发一次（下游一个字节都还没收到）。
+    /// 要 ⇒ 调一次 `act`（约束同 [`Self::resolve`]）；不要 ⇒ 不调（中转把手上这个回包原样往下游送）。
+    /// `tried` ＝ 这一发已经发过的各个去处的标签（先发的在前，最后一个就是 `seen.tag`）；上限由实现方定，
+    /// 中转另有一个硬上限防打转。缺省 ⇒ 不换。
+    fn retry(
+        &self,
+        _mode: Mode,
+        _key: &RouteKey,
+        _ask: &Ask<'_>,
+        _seen: &Heard<'_>,
+        _tried: &[&str],
+        _act: &mut dyn FnMut(Destination<'_>),
+    ) {
+    }
 
     /// 哪几个请求头给流打标签（第一个在请求里、值过段闸的那个）。中转不知道它们是谁的什么头，
     /// 只照这份名单取 —— 会话 id 归 agent 自己，启动器不往地址里塞（路由第 3 段随之退役）。

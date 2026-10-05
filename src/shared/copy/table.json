@@ -18879,6 +18879,26 @@
       "zh": "找不到这台机器的数据目录，额度账无处可读。",
       "args": []
     },
+    "beRotation.write.noParent": {
+      "kind": "error",
+      "zh": "{path} 没有上一级目录。",
+      "args": ["path"]
+    },
+    "beRotation.write.failed": {
+      "kind": "error",
+      "zh": "轮换配置写不进 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beRotation.write.unreadable": {
+      "kind": "error",
+      "zh": "{path} 读不出来，没有覆盖它：{e}",
+      "args": ["path", "e"]
+    },
+    "beRotation.read.noHome": {
+      "kind": "error",
+      "zh": "找不到这台机器的数据目录，轮换配置无处可存。",
+      "args": []
+    },
     "rsDataPaths.backend.quota": {
       "kind": "body",
       "zh": "额度账：各账号最近一次看到的用量与重置时刻",

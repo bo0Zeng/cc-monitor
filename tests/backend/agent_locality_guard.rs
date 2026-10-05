@@ -180,6 +180,22 @@ mod tests {
              不是哪个 agent 的 `sessions/` 目录布局 —— 合并只读 `updatedAt` / `hitCount` / `hitsTruncated` 三格。",
         ),
         (
+            "faces/rotation_face.rs",
+            "\"sessions\"",
+            "这是换号那一族**线上的字段名**（一批会话各自的结果 / 那一份，`rotation-session-*` · `rotation-switch`），\
+             不是哪个 agent 的 `sessions/` 目录布局。",
+        ),
+        (
+            "faces/rotation_switch_face.rs",
+            "\"sessions\"",
+            "同上一条：「现在就换」的入参与每个会话的结果那一格（`rotation-switch`），不是目录布局。",
+        ),
+        (
+            "stream/inbound/registry/accounts.rs",
+            "\"sessions\",",
+            "同上一条：换号那一族命令登记的入参 / 应答字段名（`fields` 表），不是目录布局。",
+        ),
+        (
             "stream/inbound/registry/history.rs",
             "\"sessions\",",
             "同上一条：`history-search-merge` 那条命令登记的应答字段名（`fields` 表），不是目录布局。",

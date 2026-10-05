@@ -553,6 +553,11 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "exit-policy-read",
         "exit-policy-set",
         "quota-read",
+        // 轮换：读 / 锁里原子写 `rotation.json`（同步文件 I/O）。
+        "rotation-read",
+        "rotation-set",
+        "rotation-session-read",
+        "rotation-session-set",
         // 功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
         "tasks-list",
         "mcp-read",
@@ -730,6 +735,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "exit-policy-read",
         "exit-policy-set",
         "quota-read",
+        "rotation-read",
+        "rotation-set",
+        "rotation-session-read",
+        "rotation-session-set",
         "tasks-list",
         "mcp-read",
         "session-terminals",  // 读 `/proc` ＋ 起一次 `tmux list-clients`
@@ -813,6 +822,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "sessions-where",
         // 换号重启：可撤档（步与步之间 await；起 tmux 那几步自己挪到阻塞线程池）。
         "session-restart",
+        // 现在就换：异步（重启换那一半等 `session-restart`；不重启换那一半自己挪到阻塞线程池）。
+        "rotation-switch",
         // 传输四条：硬臂，就地记账（起跑那一下只 `spawn`、不 await）⇒ 不阻塞。
         "transfer-upload",
         "transfer-download",

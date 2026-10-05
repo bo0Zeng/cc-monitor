@@ -520,30 +520,49 @@ mod tests {
             .find(|(p, _)| p.ends_with("server.rs"))
             .expect("扫不到 `server.rs` —— 取法坏了，本条按红处理");
 
-        let at = guard_core::find_pinned(server, "relay.dest.resolve(")
-            .expect("切不出中转那一问（`relay.dest.resolve(`）—— 本条按红处理，不是绿");
-        let block =
-            brace_block(server, at).expect("`resolve` 那个实参块的花括号没配平 —— 按红处理");
+        // 两个窗口：交给 `resolve` 与 `retry` 的闭包（两处都在上游选择的锁里调 `act`），以及它们都调的 `dispatch` 本体。
+        let window = |needle: &str| {
+            let at = guard_core::find_pinned(server, needle)
+                .unwrap_or_else(|e| panic!("切不出 `{needle}`（{e:?}）—— 本条按红处理，不是绿"));
+            brace_block(server, at)
+                .unwrap_or_else(|| panic!("`{needle}` 那个实参块的花括号没配平 —— 按红处理"))
+        };
+        let asks = [
+            window("relay.dest.resolve("),
+            window(".retry(r.mode, &r.key"),
+        ];
+        let dispatch = window("fn dispatch(");
 
-        // 反空真自检㈠：真的切到了那个闭包（它里面必须有三支里的两支）。
+        // 反空真自检㈠：两个闭包都只把答案交给 `dispatch`，`dispatch` 里真有那几支。
+        for block in asks {
+            assert!(
+                block.contains("dispatch("),
+                "切出来的窗口里没有 `dispatch(` —— 取法坏了，下面的断言在空转。窗口：{block}"
+            );
+        }
         assert!(
-            block.contains("Destination::Refuse") && block.contains("Destination::Substitute"),
-            "切出来的窗口里没有 `Destination` 的分支 —— 取法坏了，下面的断言在空转。窗口：{block}"
+            dispatch.contains("Destination::Refuse")
+                && dispatch.contains("Destination::Substitute"),
+            "`dispatch` 窗口里没有 `Destination` 的分支 —— 取法坏了。窗口：{dispatch}"
         );
         // 反空真自检㈡：窗口没有跨进下一个 item（`pump` 那一段在它之后，不许被吃进来）。
-        assert!(
-            !block.contains("let outcome = pump("),
-            "`resolve` 的实参块窗口跨进了后面那一段 —— 窗口无界，本条的结论不算数"
-        );
+        for block in asks.iter().chain([&dispatch]) {
+            assert!(
+                !block.contains("let outcome = pump("),
+                "窗口跨进了后面那一段 —— 窗口无界，本条的结论不算数"
+            );
+        }
 
-        // ★ 正题：闭包里一处 `pump(` 都不许有。
-        assert_eq!(
-            block.matches("pump(").count(),
-            0,
-            "上游选择的读锁活到 `resolve` 返回为止，而这个闭包里出现了 `pump(`：\n\
-             ⇒ 一条 SSE 长流会把那把读锁按住几分钟。`RwLock` 写优先 ⇒ \n\
-             用户配一次 key 会被堵在**最长那条在飞流**后面。窗口：{block}"
-        );
+        // ★ 正题：闭包与 `dispatch` 里一处 `pump(` 都不许有。
+        for block in asks.iter().chain([&dispatch]) {
+            assert_eq!(
+                block.matches("pump(").count(),
+                0,
+                "上游选择的读锁活到 `resolve` / `retry` 返回为止，而这个窗口里出现了 `pump(`：\n\
+                 ⇒ 一条 SSE 长流会把那把读锁按住几分钟。`RwLock` 写优先 ⇒ \n\
+                 用户配一次 key 会被堵在**最长那条在飞流**后面。窗口：{block}"
+            );
+        }
         // 反空真：`pump(` 真的在这份生产段里（只是在窗口**外面**）——
         // 否则上面那条 `== 0` 可能只是因为这份文件里压根没有 `pump`。
         assert!(

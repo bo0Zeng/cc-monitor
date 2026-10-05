@@ -3,7 +3,7 @@
 //! ⚠ 只装 Claude Code 自己的布局与格式。**账号清单（manifest）与配置目录白名单不在这里** ——
 //! 那是账号库的格式（`accounts/manage/model.rs` 读写、`observe/accounts_query.rs` 只读）。
 
-use crate::agents::{AccountsFace, IdentityClass, IdentityRoot};
+use crate::agents::{AccountsFace, IdentityCell, IdentityClass, IdentityRoot};
 use crate::common::fs::read_regular_capped;
 use std::path::Path;
 
@@ -89,6 +89,70 @@ pub(crate) fn oauth_email_in(p: &Path) -> Option<String> {
         .map(str::to_string)
 }
 
+/// 一个号的账号身份住哪：配置目录里那份 `.claude.json`；账号 0 的在家目录下（给了 `base_home`）。
+pub(crate) fn identity_file(config_dir: &Path, base_home: Option<&Path>) -> std::path::PathBuf {
+    config_path_in(base_home.unwrap_or(config_dir))
+}
+
+/// 那份文件里的账号身份：`oauthAccount.accountUuid`（请求体 `metadata.user_id` 里 `account_uuid` 那一格的值）。
+/// 读不了 / 没有 / 不像一个 id ⇒ `None`。
+pub(crate) fn identity_in(p: &Path) -> Option<String> {
+    let bytes = read_regular_capped(p, MAX_CONFIG_BYTES).ok()?;
+    let v: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    v.get("oauthAccount")?
+        .get("accountUuid")?
+        .as_str()
+        .filter(|s| !s.is_empty() && identity_chars_ok(s))
+        .map(str::to_string)
+}
+
+fn identity_chars_ok(s: &str) -> bool {
+    s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+fn user_id_identity(body: &serde_json::Value) -> Option<Option<String>> {
+    let Some(raw) = body.get("metadata").and_then(|m| m.get("user_id")) else {
+        return Some(None);
+    };
+    let inner: serde_json::Value = serde_json::from_str(raw.as_str()?).ok()?;
+    match inner.get("account_uuid") {
+        None => Some(None),
+        Some(v) => v.as_str().map(|s| Some(s.to_string())),
+    }
+}
+
+/// 请求体里账号身份那一格（`metadata.user_id` 这段 JSON 串里的 `account_uuid`）换成 `uuid`：只换那几个字节，别的一个字节不动。
+/// 没有这一格 ⇒ [`IdentityCell::Absent`]；那几个字节在整份里不是恰好一处、或换完读回来对不上 ⇒ [`IdentityCell::Unsure`]。
+pub(crate) fn rewrite_identity(body: &[u8], uuid: &str) -> IdentityCell {
+    if !identity_chars_ok(uuid) {
+        return IdentityCell::Unsure;
+    }
+    let Ok(v) = serde_json::from_slice::<serde_json::Value>(body) else {
+        return IdentityCell::Absent;
+    };
+    let old = match user_id_identity(&v) {
+        Some(None) => return IdentityCell::Absent,
+        Some(Some(old)) => old,
+        None => return IdentityCell::Unsure,
+    };
+    let cell = |u: &str| format!("\\\"account_uuid\\\":\\\"{u}\\\"");
+    let Ok(text) = std::str::from_utf8(body) else {
+        return IdentityCell::Unsure;
+    };
+    let needle = cell(&old);
+    if text.matches(&needle).count() != 1 {
+        return IdentityCell::Unsure;
+    }
+    let out = text.replacen(&needle, &cell(uuid), 1).into_bytes();
+    let back = serde_json::from_slice::<serde_json::Value>(&out)
+        .ok()
+        .and_then(|v| user_id_identity(&v));
+    if back != Some(Some(uuid.to_string())) {
+        return IdentityCell::Unsure;
+    }
+    IdentityCell::Rewritten(out)
+}
+
 /// 读取上限。这份文件会被 MCP 配置撑大，给 32MB。
 /// 安全：`read_regular_capped` 的 `is_file` 挡 FIFO/设备（审计实测 symlink→`/dev/zero`
 /// 6 秒涨 11GB），`take` 限量。
@@ -132,3 +196,7 @@ pub(crate) fn trust_of_config(p: &Path, cwd: &str) -> Result<String, (String, St
             .to_string(),
     )
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/agents/claudecode/accounts_tests.rs"]
+mod tests;
