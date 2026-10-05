@@ -205,8 +205,8 @@ pub(crate) fn relay_with(
     routed: &[String],
     listening: &dyn Fn(u16, &str) -> bool,
 ) -> Result<Option<String>, String> {
-    let registered = super::Upstreams::from_env(&|k| std::env::var(k).ok())
-        .is_some_and(|u| u.of(agent).is_some());
+    let registered =
+        super::Upstreams::from_env(&|k| std::env::var(k).ok()).is_some_and(|u| u.has(agent));
     match decide_launch(agent, account, all_sessions, port, routed, registered) {
         Endpoint::None => Ok(None),
         Endpoint::Inject { url, .. } if listening(port, &url) => Ok(Some(url)),
@@ -339,8 +339,8 @@ pub(crate) fn answer_optin(_args: &Value) -> EndpointAnswer {
         .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noHome", &[])))?;
     let (agent, face) = crate::agents::settings_env_face()
         .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noAgent", &[])))?;
-    let registered = super::Upstreams::from_env(&|k| std::env::var(k).ok())
-        .is_some_and(|u| u.of(agent).is_some());
+    let registered =
+        super::Upstreams::from_env(&|k| std::env::var(k).ok()).is_some_and(|u| u.has(agent));
     Ok(optin_at(
         &home,
         agent,

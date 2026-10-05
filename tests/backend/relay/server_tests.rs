@@ -60,7 +60,7 @@ fn render_via_upstream_selection(
     };
     let mut out = None;
     let upstreams = upstreams_without_env();
-    accounts::decide(t, &upstreams, Mode::Substitute, &key, &mut |d| {
+    accounts::decide(t, &upstreams, Mode::Substitute, &key, &[], &mut |d| {
         out = Some(match d {
             Destination::Refuse { status, .. } => {
                 panic!("{account} 那一行该在表里，上游选择却答了 Refuse {status}")

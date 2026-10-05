@@ -91,14 +91,67 @@ pub(crate) const CREDENTIALS_FILE_AGENT: &str = crate::agents::credentials_file_
 // 用户「写死, 跟着适配层」⇒ 那一格搬回 `agents::Adapter::upstream`（claude-code 那一行住 `agents/claudecode`），
 // 本层只经 `agents::default_upstreams` 读 —— 形状（每家一行 · 每家一个旋钮 · 未登记即拒）一格不变，只换了住址。
 
-/// 适配层那一格（`agents::Adapter::upstream`）解析之后的样子：`路由名 → Base`。**一个进程一份**，首次装表与每次重载共用。
+/// 适配层那一格（`agents::Adapter::upstream`）解析之后的样子：`路由名 → 那一家的默认上游`。**一个进程一份**，首次装表与每次重载共用。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Upstreams {
-    by_agent: std::collections::BTreeMap<&'static str, Base>,
+    by_agent: std::collections::BTreeMap<&'static str, UpstreamPick>,
+}
+
+/// 一家的默认上游解析之后：一个，或按这一发带没带那个头二选一（`agents::Fallback` 的两形）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum UpstreamPick {
+    One(Base),
+    ByHeader {
+        header: &'static str,
+        present: Base,
+        absent: Base,
+    },
+}
+
+impl UpstreamPick {
+    /// 这一发（它带的头名，`names`）发到哪个。头名比对不分大小写。
+    pub(crate) fn for_names(&self, names: &[&str]) -> &Base {
+        match self {
+            UpstreamPick::One(b) => b,
+            UpstreamPick::ByHeader {
+                header,
+                present,
+                absent,
+            } => {
+                if names.iter().any(|n| n.eq_ignore_ascii_case(header)) {
+                    present
+                } else {
+                    absent
+                }
+            }
+        }
+    }
+
+    /// 一家的那一格 ＋ 它的旋钮值（`None` ＝ 没配）⇒ 解析好的。配了旋钮 ⇒ 一律发到那个值。认不出 ⇒ `None`。
+    pub(crate) fn parse(fallback: crate::agents::Fallback, knob: Option<&str>) -> Option<Self> {
+        use crate::agents::Fallback;
+        let one = |u: &str| Base::parse(u).ok();
+        Some(match (knob, fallback) {
+            (Some(k), _) => UpstreamPick::One(one(k)?),
+            (None, Fallback::One(u)) => UpstreamPick::One(one(u)?),
+            (
+                None,
+                Fallback::ByHeader {
+                    header,
+                    present,
+                    absent,
+                },
+            ) => UpstreamPick::ByHeader {
+                header,
+                present: one(present)?,
+                absent: one(absent)?,
+            },
+        })
+    }
 }
 
 impl Upstreams {
-    /// 读每一家的环境旋钮、解析成 `Base`。**任何一家认不出就是 `None`** ——
+    /// 读每一家的环境旋钮、解析成 [`UpstreamPick`]。**任何一家认不出就是 `None`** ——
     /// 调用方出声并退 2，不跳过那一家、不回落到别家的值。
     ///
     /// ⚠ 取值器是**注入的**（与 `listen::run_reading` 同一条纪律：判据不许去改进程环境）。
@@ -109,8 +162,7 @@ impl Upstreams {
         // 默认上游只查适配层（`agents::Adapter::upstream`）。
         for a in crate::agents::default_upstreams() {
             let raw = get(a.env);
-            let base = Base::parse(raw.as_deref().unwrap_or(a.fallback)).ok()?;
-            by_agent.insert(a.route_id, base);
+            by_agent.insert(a.route_id, UpstreamPick::parse(a.fallback, raw.as_deref())?);
         }
         // 凭据文件那一家必须登记过，否则那份文件里的行**没有默认上游可取**。
         // 这是一条构造期的事实，由 `table_tests` 那条相等断言钉着；这里只是不让它静默成立。
@@ -119,14 +171,19 @@ impl Upstreams {
             .then_some(Self { by_agent })
     }
 
-    /// 这一家的默认上游。**未登记就是 `None`**，不许拿别家的顶上。
-    pub(crate) fn of(&self, agent: &str) -> Option<&Base> {
-        self.by_agent.get(agent)
+    /// 这一家登记了默认上游没有。
+    pub(crate) fn has(&self, agent: &str) -> bool {
+        self.by_agent.contains_key(agent)
     }
 
-    /// 凭据文件那一家的默认上游。构造时已经查过它在 ⇒ 这里拿得到。
+    /// 这一家、这一发（它带的头名）的默认上游。**未登记就是 `None`**，不许拿别家的顶上。
+    pub(crate) fn of(&self, agent: &str, names: &[&str]) -> Option<&Base> {
+        self.by_agent.get(agent).map(|p| p.for_names(names))
+    }
+
+    /// 凭据文件那一家的默认上游（那份文件里的行都是 API key 号，不按头分）。构造时已经查过它在 ⇒ 这里拿得到。
     fn of_credentials_file(&self) -> &Base {
-        &self.by_agent[CREDENTIALS_FILE_AGENT]
+        self.by_agent[CREDENTIALS_FILE_AGENT].for_names(&[])
     }
 }
 
@@ -389,7 +446,7 @@ impl Destinations for Accounts {
             None => rotate::Go::Start,
         };
         let table = self.table();
-        rotate::dispatch_go(&table, &self.upstreams, mode, key, go, act);
+        rotate::dispatch_go(&table, &self.upstreams, mode, key, ask.names, go, act);
     }
 
     /// 名单只从适配层来（`agents::session_headers`，与默认上游同一张注册表）。
@@ -433,7 +490,7 @@ impl Destinations for Accounts {
             return;
         };
         let table = self.table();
-        rotate::dispatch_go(&table, &self.upstreams, mode, key, go, act);
+        rotate::dispatch_go(&table, &self.upstreams, mode, key, ask.names, go, act);
     }
 
     fn observe(&self, _mode: Mode, key: &RouteKey, _ask: &Ask<'_>, seen: &Heard<'_>) {
@@ -506,6 +563,7 @@ pub(crate) fn decide(
     upstreams: &Upstreams,
     mode: Mode,
     key: &RouteKey,
+    names: &[&str],
     act: &mut dyn FnMut(Destination<'_>),
 ) {
     // ★ 两个不透明段在这里、**只在这里**被读成业务名。
@@ -546,13 +604,13 @@ pub(crate) fn decide(
         }
 
         // ── `/t/` 无行 ⇒ 按 `seg1` 取该 agent 的默认上游；未登记 ⇒ **404**（我们拒的）────
-        (Mode::Passthrough, None) => match upstreams.of(agent) {
+        (Mode::Passthrough, None) => match upstreams.of(agent, names) {
             // 🔴 **要求：「按 `seg1` 取该 agent
             //   的默认上游；`seg1` 未登记 ⇒ `Refuse { "502", "这个 agent 没有登记上游" }`。
             //   **不许回落到某一个写死的常量**」。
             //
             // ① 登记过 ⇒ 发到**这一家自己那一行**，下游那份鉴权头逐字节原样上去
-            //   （`/t/` 从来不代入）。⚠ 取的是 `upstreams.of(agent)`，**不是**某一个进程级的值 ——
+            //   （`/t/` 从来不代入）。⚠ 取的是 `upstreams.of(agent, …)`，**不是**某一个进程级的值 ——
             //   那个进程级常量今天整删了。
             Some(base) => act(Destination::Passthrough {
                 upstream: base,

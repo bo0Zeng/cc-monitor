@@ -441,6 +441,7 @@ mod tests {
                 &upstreams,
                 crate::relay::Mode::Substitute,
                 &key,
+                &[],
                 &mut |d| {
                     if let crate::relay::Destination::Substitute { auth, .. } = d {
                         seen = Some((

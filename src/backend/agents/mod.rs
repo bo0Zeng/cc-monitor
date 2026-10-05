@@ -1318,8 +1318,8 @@ pub(crate) struct DefaultUpstream {
     pub(crate) route_id: &'static str,
     /// 盖掉内置默认的环境变量名。**每家一个**（「每家一个」：不留「覆盖哪一家说不清」的全局旋钮）。
     pub(crate) env: &'static str,
-    /// 没配 `env` 时这一家发到哪儿。
-    pub(crate) fallback: &'static str,
+    /// 没配 `env` 时这一家发到哪儿（配了 ⇒ 一律发到那个值）。
+    pub(crate) fallback: Fallback,
     /// 这一家进程读哪个环境变量找上游：`ccm` 起会话时中转地址经它注入，继承来的那一条（用户自己的端点 · 别的号的中转）也只看它。
     pub(crate) base_url_env: &'static str,
     /// 这一家的请求里**它自己带着会话标识**的那个头（中转拿它给流打标签）。`None` = 说不出 ⇒ 流不带标签。
@@ -1397,6 +1397,17 @@ pub(crate) fn limit_reply_of(route_id: &str) -> Option<LimitReplyOf> {
         .filter_map(|a| a.upstream.as_ref())
         .find(|u| u.route_id == route_id)
         .and_then(|u| u.limit_reply)
+}
+
+/// 一家的内置默认上游：一个，或按这一发自己带没带某个头二选一（同一家两种登录各有真上游时；只看头名、不看值）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Fallback {
+    One(&'static str),
+    ByHeader {
+        header: &'static str,
+        present: &'static str,
+        absent: &'static str,
+    },
 }
 
 /// 一家的订阅号登录的格式知识（读写与续期在账号域 `accounts/oauth/`，这里只有这一家的名字与地址）。

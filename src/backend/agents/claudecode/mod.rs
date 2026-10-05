@@ -74,7 +74,7 @@ pub(crate) const AGENT_KIND: &str = "claude";
 pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     route_id: "claude-code",
     env: "CCM_AGENT_UPSTREAM_CLAUDE_CODE",
-    fallback: "https://api.anthropic.com",
+    fallback: super::Fallback::One("https://api.anthropic.com"),
     base_url_env: paths::BASE_URL_ENV,
     // 真 claude（2.1.283）每条 `POST /v1/messages` 都带它：UUID 形，== 它落盘的 jsonl 文件名。
     session_header: Some("x-claude-code-session-id"),

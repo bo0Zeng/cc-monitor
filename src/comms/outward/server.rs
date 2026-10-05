@@ -673,7 +673,12 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //    **最长那条在飞流**后面。⚠ 挂起时长**没实测**，这是读源码得出的形状。
     //    钉这一条的判据：`table_guard::the_upstream_selection_lock_does_not_outlive_the_streaming_pump`。
     let label = stream_label(&head, &relay.stream_headers);
-    let ask = Ask { label, body: &body };
+    let names: Vec<&str> = head.headers.iter().map(|(k, _)| k.as_str()).collect();
+    let ask = Ask {
+        label,
+        body: &body,
+        names: &names,
+    };
     // 答的那个去处贴的标签（不透明，回包头到了原样交回 `observe`）。
     let mut tag = String::new();
     let mut answered: Option<Answered> = None;
