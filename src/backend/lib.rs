@@ -760,7 +760,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p7k-atlimit：轮换多 atLimit（continue 软阈值 · stop 硬上限回那一家自己认得的用满回包）；被拒而阈值以下无号可接 ⇒ 取首个没被拒的。
 ///
 /// p7l-interrupts：界面地基 ＋ 只读命令 session-interrupts（进行中的轮次 · 在跑的子 agent · 进行中的任务），界面「会打断什么」一问读它。
-pub const BUILD_ID: &str = "p7l-interrupts";
+///
+/// p7m-within：请求信封多 within_ms（发起方期限），阻塞档命令的总期限按它减余量装、后端只留上限。
+pub const BUILD_ID: &str = "p7m-within";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
