@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """`K-R124` 的判据本体 —— **发版那条流水线的两件事：闸没被偷偷改过 · 正文是我们写的那份。**
 
-# 它守的性质是（六句）
+# 它守的性质是（七句）
 
 1. 〔`KR114D1`，`K-R114` 09-14 立〕`release.yml` 里「发不发布」那个闸
    （`env.PUBLISH` 的**字面** ＋ 每一处「往 Release 上写」与 CI 门那一步的 `if:`）
@@ -30,6 +30,10 @@
    （⑮，两向集合相等）。它落地时盘上**就有现物**：搬树之后 `release.yml` 里五处还写着
    `src/frontend/shell/target/release/…`，而那条坏得完全静默 —— Release 建得出来、上面一个
    安装包都没有。逐条住下面 ⑮ 那一段的头注。
+7. **Release 资产 ↔ 登记表**（⑯）：`RELEASING.md` §2.2 那张表是资产名的登记（手机端照它下载）。
+   两处发布步骤的 `files:` ↔ 登记两向一一对上；登记、交叉编译、改名成资产的 musl 目标都等于
+   x86_64 / aarch64；每份校验和恰好一步生成、排在发布前，算的那几份 ↔ 登记里进它的资产两向一一对上。
+   ⚠ 只认文件名；glob 那几样（deb · 安装器 · msi）真叫什么由打包器定，它判不了。
 
 # 🔴 第 3 句为什么归这份判据，而不是归 `platform` 那一格
 
@@ -792,6 +796,59 @@ def parse_workflow(text):
     return doc if isinstance(doc, dict) else {}
 
 
+# ── ⑯ Release 资产登记 ──────────────────────────────────────────────────────
+#: 资产登记的唯一住址：`RELEASING.md` §2.2 两个标记之间那张表（手机端照它下载）。
+ASSET_DOC = "src/doc/RELEASING.md"
+ASSET_BEGIN = "<!-- 发版资产登记：起 -->"
+ASSET_END = "<!-- 发版资产登记：止 -->"
+#: 手机端契约：远端后端两个 musl 目标，资产名 `cc-monitor-backend-<arch>`。
+BACKEND_ASSET_PREFIX = "cc-monitor-backend-"
+MUSL_ARCHES = {"x86_64", "aarch64"}
+STAGE_STEP = ("build-backends", "Stage binaries")
+
+
+def asset_registry():
+    """登记表 → [(资产名, job, 校验和文件名或 None)]；表抠不出给 `None`。"""
+    text = read_rel(ASSET_DOC)
+    if not text or text.count(ASSET_BEGIN) != 1 or text.count(ASSET_END) != 1:
+        return None
+    body = text.split(ASSET_BEGIN, 1)[1].split(ASSET_END, 1)[0]
+    rows = []
+    for line in body.splitlines():
+        cells = [c.strip().strip("`") for c in line.strip().strip("|").split("|")]
+        if len(cells) != 4 or cells[0] in ("资产", "") or set(cells[0]) <= set("-"):
+            continue
+        rows.append((cells[0], cells[1], None if cells[2] in ("—", "-", "") else cells[2]))
+    return rows
+
+
+def leaf(path):
+    """路径的最后一段（`/` 与 `\\` 都认：Windows 那一步写反斜杠）。"""
+    return re.split(r"[\\/]", path.strip().strip('"'))[-1]
+
+
+def match_both_ways(globs, names):
+    """glob 叶名 ↔ 登记名，一一对上才算：回 (没人认的 glob, 没 glob 认的名, 认了不止一个的)。"""
+    import fnmatch
+    hits = {g: [n for n in names if fnmatch.fnmatchcase(n, g)] for g in globs}
+    lone_globs = sorted(g for g, h in hits.items() if not h)
+    multi = sorted(g for g, h in hits.items() if len(h) > 1)
+    covered = collections.Counter(n for h in hits.values() for n in h)
+    lone_names = sorted(n for n in names if covered[n] != 1)
+    return lone_globs, lone_names, multi
+
+
+def hashed_files(run):
+    """校验和那一步算的那几份（叶名）：bash 的 `for f in …; do` 或 pwsh 的 `$want = @(…)`。"""
+    m = re.search(r"^\s*for f in (.+?); do\s*$", run, re.M)
+    if m:
+        return [leaf(t) for t in m.group(1).split()]
+    m = re.search(r"\$want = @\((.+?)\)", run)
+    if m:
+        return [leaf(t) for t in re.findall(r'"([^"]+)"', m.group(1))]
+    return None
+
+
 # ── 判据 ────────────────────────────────────────────────────────────────────
 def run_checks(emit):
     fails = []
@@ -1383,6 +1440,75 @@ def run_checks(emit):
           "⇒ Release 上一个安装包都没有）；后者是「那棵树的产物从此没人拿」"
           % (sorted(got_roots - want_roots), sorted(want_roots - got_roots), declared,
              {k: sorted(set(v))[:3] for k, v in sorted(roots.items())}))
+
+    # ══ ⑯ Release 资产名 · 两个 musl 目标 · 校验和 ↔ 登记表（手机端照登记表下载）════════
+    reg = asset_registry()
+    check(bool(reg), "⑯地板·资产登记表抠得出来",
+          "`%s` 两个标记之间现打 %d 行" % (ASSET_DOC, len(reg or [])))
+    reg = reg or []
+    pub_jobs = {}
+    for jname, idx, st in pubsteps:
+        pub_jobs.setdefault(jname, []).append((idx, st))
+    reg_jobs = {j for _, j, _ in reg}
+    check(reg_jobs == set(pub_jobs), "⑯a登记的 job ↔ 有发布步骤的 job，两向集合相等",
+          "登记有而没发布 %s · 发布了而没登记 %s"
+          % (sorted(reg_jobs - set(pub_jobs)), sorted(set(pub_jobs) - reg_jobs)))
+    for jname in sorted(pub_jobs):
+        globs = []
+        for _, st in pub_jobs[jname]:
+            globs += [leaf(x) for x in str((st.get("with") or {}).get("files") or "").splitlines() if x.strip()]
+        names = [n for n, j, _ in reg if j == jname]
+        lg, ln, multi = match_both_ways(globs, names)
+        check(not (lg or ln or multi), "⑯b资产名·%s 的 `files:` ↔ 登记，两向一一对上" % jname,
+              "没登记的上传 %s · 登记了没上传 %s · 一条认了几个 %s（上传 %r）"
+              % (lg, ln, multi, globs))
+
+    reg_arches = {n[len(BACKEND_ASSET_PREFIX):] for n, _, _ in reg if n.startswith(BACKEND_ASSET_PREFIX)}
+    musl_run = "".join(str(st.get("run") or "") for jn, _, st in steps
+                       if (jn, st.get("name")) == MUSL_STEP)
+    built = set(re.findall(r"--target ([a-z0-9_]+)-unknown-linux-musl\b", musl_run))
+    stage_run = "".join(str(st.get("run") or "") for jn, _, st in steps
+                        if (jn, st.get("name")) == STAGE_STEP)
+    staged = set(re.findall(r"\.build/backend/([a-z0-9_]+)-unknown-linux-musl/release/cc-monitor-backend"
+                            r" staged/" + re.escape(BACKEND_ASSET_PREFIX) + r"\1\s*$", stage_run, re.M))
+    check(reg_arches == built == staged == MUSL_ARCHES,
+          "⑯c两个 musl 目标·登记 ↔ 交叉编译 ↔ 改名成资产，都等于手机端要的那两个",
+          "登记 %s · 编 %s · 改名 %s · 契约 %s"
+          % (sorted(reg_arches), sorted(built), sorted(staged), sorted(MUSL_ARCHES)))
+
+    sums = sorted({c for _, _, c in reg if c})
+    orphans = sorted(n for n, _, c in reg if c is None and n not in sums)
+    check(bool(sums) and not orphans, "⑯d每样资产都进一份校验和",
+          "校验和文件 %s · 没进任何一份的 %s" % (sums, orphans))
+    for sname in sums:
+        jobs_of = {j for n, j, _ in reg if n == sname}
+        covered = [n for n, j, c in reg if c == sname]
+        cov_jobs = {j for n, j, c in reg if c == sname}
+        check(len(jobs_of) == 1 and cov_jobs == jobs_of,
+              "⑯d校验和文件·%s 登记了、且只校验同一 job 的资产" % sname,
+              "它自己登记在 %s · 它校验的资产在 %s" % (sorted(jobs_of), sorted(cov_jobs)))
+        if len(jobs_of) != 1:
+            continue
+        jname = next(iter(jobs_of))
+        first_pub = min((i for i, _ in pub_jobs.get(jname, [])), default=-1)
+        gens = [(i, str(st.get("run") or "")) for jn, i, st in steps
+                if jn == jname and sname in str(st.get("run") or "") and i < first_pub]
+        check(len(gens) == 1, "⑯d生成步骤·%s 在 %s 里恰好一步、排在发布前" % (sname, jname),
+              "现打 %d 步（第 %s 步）" % (len(gens), [i for i, _ in gens]))
+        if len(gens) != 1:
+            continue
+        run = gens[0][1]
+        got = hashed_files(run)
+        lg, ln, multi = match_both_ways(got or [], covered)
+        check(got is not None and not (lg or ln or multi),
+              "⑯d算的那几份·%s ↔ 登记里进它的资产，两向一一对上" % sname,
+              "算了没登记 %s · 登记了没算 %s · 一条认了几个 %s（算的 %r）—— 后一样就是 4.1.1 那趟："
+              "两个后端上传了却不在 `SHA256SUMS-linux.txt` 里，手机端校验不了"
+              % (lg, ln, multi, got))
+        cnt = re.findall(r'\[ "\$n" -eq (\d+) \]', run)
+        check(all(int(x) == len(got or []) for x in cnt),
+              "⑯d份数守卫·%s 那一步的恒等 == 算的份数" % sname,
+              "守卫写 %s · 算的 %d 份" % (cnt, len(got or [])))
 
     return (1 if fails else 0), passes[0], fails
 

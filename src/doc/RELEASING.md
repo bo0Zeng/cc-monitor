@@ -49,21 +49,25 @@ git push origin vX.Y.Z                     # tag push 触发 release.yml
 
 ### 2.2 产物
 
-**Windows**（`build-windows`）：
+下面这张表是 Release 资产的**登记**：资产名、由哪个 job 上传、进哪份校验和。`release.yml` 两处发布步骤的 `files:` 与它两向相等，两份校验和由各自 job 里的生成步骤逐个算、算的那几份也与它两向相等（门禁 `release-gate` 那一格核）。改资产名先改这张表。
 
-- `cc-monitor_X.Y.Z_x64-setup.exe` — NSIS 安装器
-- `cc-monitor_X.Y.Z_x64_en-US.msi` — MSI（后缀是 `en-US`：`tauri.conf.json` 没配 WiX 语言 ⇒ 走默认）
-- `cc-monitor.exe` — 裸 exe（名字是 `src/frontend/shell/Cargo.toml` 里主 `[[bin]]` 的名字；包名仍是 `monitor`）
-- `SHA256SUMS.txt` — 校验和
+🔴 **手机端照它下载**：手机端（cc-monitor-mobile）从 Release 下载两个远端后端，按 `SHA256SUMS-linux.txt` 与字节里的身份戳校验。后端两行（两个 musl 目标 x86_64 / aarch64）与校验和文件名不随手改；要改就与手机端同拍。
 
-**Linux**（`build-linux`）：
+<!-- 发版资产登记：起 -->
+| 资产 | job | 校验和 | 是什么 |
+|---|---|---|---|
+| `cc-monitor_X.Y.Z_x64-setup.exe` | build-windows | `SHA256SUMS.txt` | NSIS 安装器 |
+| `cc-monitor_X.Y.Z_x64_en-US.msi` | build-windows | `SHA256SUMS.txt` | MSI（后缀是 `en-US`：`tauri.conf.json` 没配 WiX 语言 ⇒ 走默认） |
+| `cc-monitor.exe` | build-windows | `SHA256SUMS.txt` | 裸 exe（名字是 `src/frontend/shell/Cargo.toml` 里主 `[[bin]]` 的名字；包名仍是 `monitor`） |
+| `SHA256SUMS.txt` | build-windows | — | Windows 那三样的校验和 |
+| `cc-monitor_X.Y.Z_amd64.deb` | build-linux | `SHA256SUMS-linux.txt` | Debian / Ubuntu 安装包 |
+| `cc-monitor` | build-linux | `SHA256SUMS-linux.txt` | Linux 裸二进制 |
+| `cc-monitor-backend-x86_64` | build-linux | `SHA256SUMS-linux.txt` | 远端后端，musl 静态（x86_64） |
+| `cc-monitor-backend-aarch64` | build-linux | `SHA256SUMS-linux.txt` | 远端后端，musl 静态（aarch64） |
+| `SHA256SUMS-linux.txt` | build-linux | — | Linux 那四样的校验和 |
+<!-- 发版资产登记：止 -->
 
-- `cc-monitor_X.Y.Z_amd64.deb`
-- `cc-monitor` — 裸二进制
-- `SHA256SUMS-linux.txt`
-- `cc-monitor-backend-x86_64` / `cc-monitor-backend-aarch64` — 远端后端的 musl 静态二进制（外部项目自部署要拿它）。身份在字节自己里（`<<ccm-build-id:…:ccm-build-id>>`），要问它是谁就 `grep -a` 那个串，或跑 `./cc-monitor-backend --ccm-probe` 读 `build=` 那一行。
-
-这张表的权威是 `release.yml` 里两处发布步骤的 `files:`，引用前以它为准。
+远端后端的身份在字节自己里（`<<ccm-build-id:…:ccm-build-id>>`），要问它是谁就 `grep -a` 那个串，或跑 `./cc-monitor-backend --ccm-probe` 读 `build=` 那一行。
 
 发布到 https://github.com/bo0Zeng/cc-monitor/releases/tag/vX.Y.Z
 

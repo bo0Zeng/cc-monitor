@@ -696,14 +696,15 @@ jobs:
           n=0
           # 二进制名是 `src/frontend/shell/Cargo.toml` 里主 `[[bin]]` 的名字 `cc-monitor`（包名仍是 `monitor`）——
           # 与 build-windows 里的 `cc-monitor.exe` 同源；打包器按 `default-run` 认它做主二进制。
-          for f in .build/shell/release/bundle/deb/*.deb .build/shell/release/cc-monitor; do
+          # 两个远端后端也进这一份：手机端从 Release 下它们、按这份校验（登记表在 src/doc/RELEASING.md §2.2）。
+          for f in .build/shell/release/bundle/deb/*.deb .build/shell/release/cc-monitor backend-artifacts/cc-monitor-backend-x86_64 backend-artifacts/cc-monitor-backend-aarch64; do
             [ -f "$f" ] || { echo "::error::产物不在盘上：$f —— 产物根搬过一次（见 build-windows 那一步的头注）"; exit 1; }
             # 只把**路径**收成 basename，别顺手把 hash 也剥了
             #（`sed 's#.*/##'` 是贪婪的，会把 "hash  path/to/" 整段吃掉）。
             sha256sum "$f" | awk '{n = split($2, p, "/"); print $1 "  " p[n]}' >> SHA256SUMS-linux.txt
             n=$((n + 1))
           done
-          [ "$n" -eq 2 ] || { echo "::error::产物份数对不上：要 2（deb ＋ 裸二进制），现打 $n"; exit 1; }
+          [ "$n" -eq 4 ] || { echo "::error::产物份数对不上：要 4（deb · 裸二进制 · 两个远端后端），现打 $n"; exit 1; }
           cat SHA256SUMS-linux.txt
 
       # ── 🔴**安装包的二进制清单 ↔ 本包声明的那几个，两向集合相等** ────────
