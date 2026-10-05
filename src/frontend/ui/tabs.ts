@@ -356,21 +356,11 @@ export class TabManager {
   }
 
   /**
-   * G6：分叉产出新会话文件之后 —— **起它**。
-   *
-   * 「不杀旧会话、起新会话」是用户对这个功能的原话，所以这里对源会话一个字都不碰：
-   * 只查它的事实（活没活、哪个账号、在哪个 tmux），拿去给新会话配参数。
-   * 两个调用点（批量渲染 / 逐行渲染）走同一条路，行为不许分裂。
+   * 分叉产出新会话文件之后 —— **起它**（对源会话一个字都不碰）。
+   * 起会话要的三格那台已推好（`res.launch`）；起会话与反馈全在 `runForkFlow` 里，这里只说「哪台 + 分叉结果」。
    */
   private async startForkedSession(tab: Tab, res: BranchResult): Promise<void> {
-    // E78：查事实、起会话、反馈**全在 `runForkFlow` 里** —— 这里只说「我是谁 + 分叉结果」。
-    // 此前这三步在本文件与 `session-viewer.ts` 各写一遍（连 toast 文案都是逐字重复的双写点）。
-    await runForkFlow({
-      origin: tab.origin,
-      newSessionId: res.sessionId,
-      sourceSessionId: tab.sessionId,
-      cwd: tab.projectDir,
-    });
+    await runForkFlow({ origin: tab.origin, newSessionId: res.sessionId, sourceSessionId: tab.sessionId, launch: res.launch });
   }
 
   /**

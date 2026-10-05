@@ -69,6 +69,8 @@ pub mod files_extract;
 // 上传的块形：把送进暂存区的块拼成暂存件（SFTP 起始目录不是后端 home 时走这条）。
 pub mod files_upload_chunks;
 pub mod files_write;
+// 分叉之后起：新会话的工作目录 / 号 / 终端从哪知道（逐格知道 ＋ 来源码 / 不知道 ＋ 原因码，不猜）。
+pub(crate) mod fork_launch;
 pub mod fork_write;
 pub(crate) mod gate;
 // §34 Gate 2 与 tmux 会话名两条规则（原共享 crate `gate-core`：monitor 那一侧的门删了，只剩本层用）。

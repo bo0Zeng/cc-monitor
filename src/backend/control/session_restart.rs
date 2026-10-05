@@ -102,9 +102,10 @@ pub(crate) fn parse(args: &Value) -> Result<Req, Failed> {
             sid: sid.to_string(),
             cwd: s("cwd")?.to_string(),
             account: AccountAsk::Named {
-                name: Some(account.to_string()),
-                config_dir: None,
+                name: account.to_string(),
             },
+            fresh: false,
+            fork_of: None,
         },
         compact_first: flag("compact_first")?,
         compact_within_ms: ms_of(o, "compact_within_ms")?,

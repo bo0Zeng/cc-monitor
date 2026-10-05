@@ -45,11 +45,18 @@ function accountGoneWorld(): World {
   return w;
 }
 
-/** 分叉要先问的那种：源会话不在跑、那台也说不出它上次用的哪个号。 */
+/** 分叉要先问的那种：源会话不在跑 ⇒ 那台推不出号与终端（`session-fork` 回复里那两格「不知道 · 已退出」）。 */
 function forkAskWorld(): World {
   const w = defaultWorld();
-  w.ops["history-last-accounts"] = () => ({ accounts: {} });
-  w.ops["accounts-sessions"] = () => ({ lines: [] });
+  w.ops["session-fork"] = () => ({
+    sessionId: "5e55f0f0-0000-4000-8000-00000000f0f0",
+    jsonlPath: "/home/user/.claude/projects/-home-user-work-notes/5e55f0f0-0000-4000-8000-00000000f0f0.jsonl",
+    launch: {
+      cwd: { kind: "known", value: "/home/user/work/notes", from: "record" },
+      account: { kind: "unknown", why: "exited" },
+      terminal: { kind: "unknown", why: "exited" },
+    },
+  });
   return w;
 }
 

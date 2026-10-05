@@ -80,45 +80,6 @@
       "out": "ccm -- new --ccm-agent claude --account z"
     },
     {
-      "name": "只有目录没有名字 ⇒ --account-dir",
-      "caps": [
-        "new",
-        "resume",
-        "attach",
-        "tmux",
-        "account",
-        "model",
-        "cwd",
-        "agent",
-        "launcher",
-        "ccm-sid",
-        "print",
-        "detach",
-        "tmux-size"
-      ],
-      "req": {
-        "agent": "claude",
-        "action": {
-          "kind": "new"
-        },
-        "container": {
-          "kind": "none"
-        },
-        "cwd": null,
-        "account": {
-          "kind": "named",
-          "configDir": "/home/u/.cc-monitor/accounts/z"
-        },
-        "ccmSid": null,
-        "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude"
-      },
-      "ok": true,
-      "out": "ccm -- new --ccm-agent claude --account-dir /home/u/.cc-monitor/accounts/z"
-    },
-    {
       "name": "resume + tmux + 具名账号",
       "caps": [
         "new",
@@ -788,48 +749,6 @@
       },
       "ok": true,
       "out": "ccm --resume s1 -- --ccm-tmux=cc-s1 --ccm-sid=s1 --ccm-agent claude --account z --cwd /p"
-    },
-    {
-      "name": "path:分叉继承源会话的目录（说不出名字）",
-      "caps": [
-        "new",
-        "resume",
-        "attach",
-        "tmux",
-        "account",
-        "model",
-        "cwd",
-        "agent",
-        "launcher",
-        "ccm-sid",
-        "print",
-        "detach",
-        "tmux-size"
-      ],
-      "req": {
-        "agent": "claude",
-        "action": {
-          "kind": "resume",
-          "sid": "s1"
-        },
-        "container": {
-          "kind": "tmux",
-          "name": "p-fork-cc",
-          "send_into": false
-        },
-        "cwd": "/p",
-        "account": {
-          "kind": "named",
-          "configDir": "/home/u/.cc-monitor/accounts/z"
-        },
-        "ccmSid": "s1",
-        "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude"
-      },
-      "ok": true,
-      "out": "ccm --resume s1 -- --ccm-tmux=p-fork-cc --ccm-sid=s1 --ccm-agent claude --account-dir /home/u/.cc-monitor/accounts/z --cwd /p"
     },
     {
       "name": "path:就地 resume 键进 pane 的那一行",

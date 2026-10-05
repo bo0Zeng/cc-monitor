@@ -38,7 +38,6 @@ export interface CliGoldenCase {
   out: string;
 }
 
-const ACCT = "/home/u/.cc-monitor/accounts/z";
 const base = (over: Partial<LaunchContext> = {}): LaunchContext => ({
   agent: DEFAULT_AGENT,
   action: { kind: "new" },
@@ -57,8 +56,6 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
   { name: "new + base", caps: ALL_CAPS, ctx: base(), ok: true, out: "ccm -- new --ccm-agent claude --base" },
   { name: "new + 具名账号", caps: ALL_CAPS, ctx: base({ account: { kind: "named", name: "z" } }),
     ok: true, out: "ccm -- new --ccm-agent claude --account z" },
-  { name: "只有目录没有名字 ⇒ --account-dir", caps: ALL_CAPS, ctx: base({ account: { kind: "named", configDir: ACCT } }),
-    ok: true, out: "ccm -- new --ccm-agent claude --account-dir /home/u/.cc-monitor/accounts/z" },
   { name: "resume + tmux + 具名账号", caps: ALL_CAPS, ctx: base({
       action: { kind: "resume", sid: "abc-123" },
       container: { kind: "tmux", name: "cc-abc123", mode: "create" },
@@ -109,9 +106,6 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
   { name: "path:远端 tmux 建会话 resume（换号重启 · 分叉）", caps: ALL_CAPS,
     ctx: planResumeTmux(DEFAULT_AGENT, "s1", "/p", "claude", "cc-s1", { account: { kind: "named", name: "z" } }),
     ok: true, out: `ccm --resume s1 -- --ccm-tmux=cc-s1 --ccm-sid=s1 --ccm-agent claude --account z --cwd /p` },
-  { name: "path:分叉继承源会话的目录（说不出名字）", caps: ALL_CAPS,
-    ctx: planResumeTmux(DEFAULT_AGENT, "s1", "/p", "claude", "p-fork-cc", { account: { kind: "named", configDir: ACCT } }),
-    ok: true, out: `ccm --resume s1 -- --ccm-tmux=p-fork-cc --ccm-sid=s1 --ccm-agent claude --account-dir /home/u/.cc-monitor/accounts/z --cwd /p` },
   { name: "path:就地 resume 键进 pane 的那一行", caps: ALL_CAPS,
     ctx: { ...planResumeIntoExistingTmux(DEFAULT_AGENT, "s1", "cc-s1", "claude", {}), container: { kind: "none" } },
     ok: true, out: `ccm --resume s1 -- --ccm-agent claude --base` },

@@ -1,6 +1,11 @@
 use super::*;
 use std::path::PathBuf;
 
+/// 帧面那一格 `launch` 的替身（推断本身由 `fork_launch_tests.rs` 钉）。
+fn no_launch(_: &Path, _: &str) -> serde_json::Value {
+    serde_json::Value::Null
+}
+
 fn tmp(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("ccm-fork-{tag}-{}", std::process::id()));
     std::fs::create_dir_all(p.join("projects").join("proj")).unwrap();
@@ -182,15 +187,41 @@ fn the_frame_face_and_the_cli_face_are_one_fork() {
     let root = tmp("wire");
     seed(&root, "srcsid");
     let via_cli = run_inner(&root, &sargs(&["--fork-session", "srcsid", "u2"])).unwrap();
-    let via_wire =
-        answer_wire_at(&root, &serde_json::json!({"sid": "srcsid", "uuid": "u2"})).unwrap();
+    // 帧面那一格 `launch` 由入口交：它拿到的是源会话那份记录与源 sid。
+    let asked = std::cell::RefCell::new(Vec::new());
+    let via_wire = answer_wire_at(
+        &root,
+        &serde_json::json!({"sid": "srcsid", "uuid": "u2"}),
+        &|source, sid| {
+            asked
+                .borrow_mut()
+                .push((source.to_path_buf(), sid.to_string()));
+            serde_json::json!({"facts": "from the face"})
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        asked.into_inner(),
+        vec![(
+            root.join("projects").join("proj").join("srcsid.jsonl"),
+            "srcsid".to_string()
+        )]
+    );
+    assert_eq!(
+        via_wire["launch"],
+        serde_json::json!({"facts": "from the face"})
+    );
     let cli_v = serde_json::to_value(&via_cli).unwrap();
     let keys = |v: &serde_json::Value| -> Vec<String> {
         let mut k: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
         k.sort();
         k
     };
-    assert_eq!(keys(&via_wire), keys(&cli_v), "两个入口的形状不一样了");
+    // 帧面只比 CLI 那一行（对 aterm 冻结的 `--fork-session`）多 `launch` 一格。
+    let mut cli_keys = keys(&cli_v);
+    cli_keys.push("launch".into());
+    cli_keys.sort();
+    assert_eq!(keys(&via_wire), cli_keys, "两个入口的形状不一样了");
     let read_rows = |p: &str, sid: &str| -> String {
         std::fs::read_to_string(p).unwrap().replace(sid, "<SID>")
     };
@@ -229,11 +260,15 @@ fn the_frame_face_refuses_bad_args_before_touching_the_disk() {
         serde_json::json!({"sid": "", "uuid": "u2"}),
         serde_json::json!({"sid": 1, "uuid": "u2"}),
     ] {
-        let (code, _) = answer_wire_at(&root, &bad).expect_err("该拒");
+        let (code, _) = answer_wire_at(&root, &bad, &no_launch).expect_err("该拒");
         assert_eq!(code, "bad_args", "{bad}");
     }
-    let (code, msg) =
-        answer_wire_at(&root, &serde_json::json!({"sid": "nosuch", "uuid": "u2"})).unwrap_err();
+    let (code, msg) = answer_wire_at(
+        &root,
+        &serde_json::json!({"sid": "nosuch", "uuid": "u2"}),
+        &no_launch,
+    )
+    .unwrap_err();
     assert_eq!(code, "fork_failed");
     assert!(msg.contains("nosuch"), "{msg}");
     assert_eq!(std::fs::read(&src).unwrap(), before, "拒了却动了源文件");
@@ -263,19 +298,24 @@ fn the_fork_ids_are_whitelisted_at_the_frame_face() {
             serde_json::json!({"sid": bad, "uuid": "u2"}),
             serde_json::json!({"sid": "srcsid", "uuid": bad}),
         ] {
-            let (code, msg) = answer_wire_at(&root, &args).expect_err("该拒");
+            let (code, msg) = answer_wire_at(&root, &args, &no_launch).expect_err("该拒");
             assert_eq!(code, "bad_args", "{args} ⇒ {msg}");
             assert!(msg.contains("非法"), "{args} ⇒ {msg}");
         }
     }
     assert_eq!(std::fs::read(&src).unwrap(), before, "拒了却动了源文件");
-    let ok = answer_wire_at(&root, &serde_json::json!({"sid": "srcsid", "uuid": "u2"}))
-        .expect("真实形状的 id 放得过");
+    let ok = answer_wire_at(
+        &root,
+        &serde_json::json!({"sid": "srcsid", "uuid": "u2"}),
+        &no_launch,
+    )
+    .expect("真实形状的 id 放得过");
     assert!(ok["sessionId"].as_str().is_some_and(|s| s.len() <= 64));
     assert!(
         answer_wire_at(
             &root,
-            &serde_json::json!({"sid": "srcsid", "uuid": "a".repeat(64)})
+            &serde_json::json!({"sid": "srcsid", "uuid": "a".repeat(64)}),
+            &no_launch
         )
         .map_err(|(c, _)| c)
         .err()

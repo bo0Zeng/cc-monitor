@@ -163,7 +163,7 @@ fn every_refusal_reason_is_pinned_byte_for_byte() {
     }
 }
 
-/// 账号维度恒表态：`--base` · `--account <名>` · `--account-dir <目录>` · 继承（不吐）· 名字目录都没有 ⇒ 整条放弃。
+/// 账号维度恒表态：`--base` · `--account <名>` · 继承（不吐）。
 #[test]
 fn the_account_dimension_has_its_five_shapes() {
     let with = |a: CliAccount<'static>| {
@@ -176,31 +176,12 @@ fn the_account_dimension_has_its_five_shapes() {
         "ccm -- new --ccm-agent claude --base"
     );
     assert_eq!(
-        with(CliAccount::Named {
-            name: Some("z"),
-            config_dir: Some("/h/.claude-alt/z")
-        })
-        .unwrap(),
+        with(CliAccount::Named { name: "z" }).unwrap(),
         "ccm -- new --ccm-agent claude --account z"
-    );
-    assert_eq!(
-        with(CliAccount::Named {
-            name: None,
-            config_dir: Some("/h/.claude-alt/z")
-        })
-        .unwrap(),
-        "ccm -- new --ccm-agent claude --account-dir /h/.claude-alt/z"
     );
     assert_eq!(
         with(CliAccount::Inherit).unwrap(),
         "ccm -- new --ccm-agent claude"
-    );
-    assert_eq!(
-        with(CliAccount::Named {
-            name: None,
-            config_dir: None
-        }),
-        Err(Refusal::DimensionCannotSpeak("account".into()))
     );
 }
 
@@ -215,10 +196,7 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
             send_into: false,
         },
         cwd: Some("/w d"),
-        account: CliAccount::Named {
-            name: Some("z"),
-            config_dir: None,
-        },
+        account: CliAccount::Named { name: "z" },
         ccm_sid: Some("s1"),
         model: Some("opus"),
         launcher: "ccr code",
@@ -298,23 +276,10 @@ fn every_value_is_judged_before_it_becomes_a_ccm_argument() {
         ),
         (
             CliSpec {
-                account: CliAccount::Named {
-                    name: Some("a b"),
-                    config_dir: None,
-                },
+                account: CliAccount::Named { name: "a b" },
                 ..base_spec()
             },
             "IdentifierRefused { slot: Account",
-        ),
-        (
-            CliSpec {
-                account: CliAccount::Named {
-                    name: None,
-                    config_dir: Some("rel/z"),
-                },
-                ..base_spec()
-            },
-            "FreeTextRefused { slot: AccountDir",
         ),
         (
             CliSpec {
@@ -424,16 +389,7 @@ fn an_agent_without_accounts_refuses_a_named_account_and_says_so() {
     let mut s = base_spec();
     s.agent = "codex";
     s.action = Action::Resume { sid: "s1" };
-    for named in [
-        CliAccount::Named {
-            name: Some("z"),
-            config_dir: None,
-        },
-        CliAccount::Named {
-            name: None,
-            config_dir: Some("/h/.claude-alt/z"),
-        },
-    ] {
+    for named in [CliAccount::Named { name: "z" }] {
         s.account = named;
         let r = render(&s);
         assert_eq!(
@@ -447,10 +403,7 @@ fn an_agent_without_accounts_refuses_a_named_account_and_says_so() {
     s.account = CliAccount::Inherit;
     assert_eq!(render(&s).unwrap(), "ccm resume s1 -- --ccm-agent codex");
     s.agent = "claude";
-    s.account = CliAccount::Named {
-        name: Some("z"),
-        config_dir: None,
-    };
+    s.account = CliAccount::Named { name: "z" };
     assert_eq!(
         render(&s).unwrap(),
         "ccm --resume s1 -- --ccm-agent claude --account z"

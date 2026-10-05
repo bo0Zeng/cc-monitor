@@ -1039,7 +1039,7 @@ export class MachineCard {
       const accName = acctSelect.value; // "" = 不指定
       close();
       // 选的号那台判（选不了 ⇒ 不起、说清、给显式选择）；「不指定」⇒ 账号 0。
-      await runRemoteLauncher(origin, DEFAULT_AGENT, cwd, name, command, { account: chosenAccount(null, accName || null) });
+      await runRemoteLauncher(origin, DEFAULT_AGENT, cwd, name, command, { account: chosenAccount(accName || null) });
       })();
     });
     foot.append(cancel, start);

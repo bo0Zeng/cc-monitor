@@ -8,14 +8,15 @@
 // 生产 `buildCliRenderRequest` → 生产 Rust `render_ccm_launch`），产出是那一行 `ccm …`。
 //
 // 用法(每个 mode 打印一行 stdout):
-//   into-existing <sid> <name> <launcher> [configDir]   -> planResumeIntoExistingTmux → 生产渲染
-//   tmux-new      <sid> <cwd> <launcher> <name> [configDir] -> planResumeTmux → 生产渲染
-//   direct        <sid> <cwd> <launcher> [configDir] -> planResumeDirect → 生产渲染
+//   into-existing <sid> <name> <launcher> [account]   -> planResumeIntoExistingTmux → 生产渲染
+//   tmux-new      <sid> <cwd> <launcher> <name> [account] -> planResumeTmux → 生产渲染
+//   direct        <sid> <cwd> <launcher> [account] -> planResumeDirect → 生产渲染
 //   （`mint-name` 那个 mode 删了：tmux 名的派生 ＋ 避让只在后端 `terminal-name-mint`，前端那份铸名口没了）
 //   （`follow` 那个 mode 删了：跟随判号住那台后端 `control/launch_account.rs::pick`，由 Rust 判据与 ccm 端到端那一条钉）
 //   acct-dir      <name> <stateJson>                      -> accountConfigDir(路径或 "<none>")
 //
-// configDir 传字面 "-" 或省略 = 跟随（判据渲染这一侧当「不表态」，远端那一行落 `--base`）；给了 = 点名那个目录（`--account-dir`）。
+// account 传字面 "-" 或省略 = 跟随（判据渲染这一侧当「不表态」，远端那一行落 `--base`）；给了 = 点名那个号（`--account <名>`，
+// 号要登记在沙箱家目录的账号清单里：调用它的套件自己写那份 `accounts.json`）。
 import {
   planResumeIntoExistingTmux,
   planResumeTmux,
@@ -31,8 +32,8 @@ function opt(v: string | undefined): string | undefined {
   return v === undefined || v === "-" || v === "" ? undefined : v;
 }
 
-function acct(dir: string | undefined): LaunchModifiers {
-  return dir === undefined ? {} : { account: { kind: "named", configDir: dir } };
+function acct(name: string | undefined): LaunchModifiers {
+  return name === undefined ? {} : { account: { kind: "named", name } };
 }
 
 const [mode, ...a] = process.argv.slice(2);

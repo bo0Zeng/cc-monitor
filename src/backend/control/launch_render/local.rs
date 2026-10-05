@@ -167,16 +167,11 @@ fn with_spec<T>(
     f: impl Fn(&ci::CliSpec, &BTreeSet<String>) -> Result<T, ci::Refusal>,
 ) -> Result<T, String> {
     let launcher = checked_launcher(req.launcher.as_deref())?;
-    // 账号逐态对：账号 0 ⇒ `--base`；账号库里的号 ⇒ `--account <名>`；只有目录 ⇒ `--account-dir`；不表态 ⇒ 继承（不吐）。
+    // 账号逐态对：账号 0 ⇒ `--base`；账号库里的号 ⇒ `--account <名>`；不表态 ⇒ 继承（不吐）。
     let account = match account {
         Settled::Base => ci::CliAccount::Base,
         Settled::Account(a) => ci::CliAccount::Named {
-            name: Some(a.name.as_str()),
-            config_dir: Some(a.config_dir.as_str()),
-        },
-        Settled::Dir(d) => ci::CliAccount::Named {
-            name: None,
-            config_dir: Some(d.as_str()),
+            name: a.name.as_str(),
         },
         Settled::Unsaid => ci::CliAccount::Inherit,
     };

@@ -170,11 +170,16 @@ export async function stopMany(tabs: readonly Tab[]): Promise<BatchOutcome[]> {
   return parts.flat();
 }
 
-/** 起会话要交给那台的一个（`sessions-start` 的 `items[i]`）：`account` 缺 ＝ 跟随（那台判）。 */
+/**
+ * 起会话要交给那台的一个（`sessions-start` 的 `items[i]`）：`account` 缺 ＝ 跟随（那台判）；
+ * `fresh_terminal` ＝ 那台必铸新终端名、`fork_of` ＝ 源会话 sid（分叉出来的那一条：新名从源会话此刻的终端名铸）。
+ */
 export interface StartItem {
   sid: string;
   cwd: string;
   account?: AccountAsk;
+  fresh_terminal?: boolean;
+  fork_of?: string;
 }
 
 /** 起会话带的那几样（用户设置的原值）：哪一家 · resume 命令 · 那台的模型偏好表。标签页里的会话都是流跟的那一家。批量起与换号重启共用。 */
@@ -188,8 +193,8 @@ export async function startSettings(origin: Origin): Promise<Record<string, unkn
   return { agent, launcher, defaultLauncher, models: await machineModels(origin) };
 }
 
-/** 开终端那一形：后端渲好的那一行，monitor 开窗（本机同 `launch-local` 那条的开法，远端同 `openTerminal`）。 */
-async function openWindow(origin: Origin, cmd: string, cwd: string): Promise<string | null> {
+/** 开终端那一形：后端渲好的那一行，monitor 开窗（本机同 `launch-local` 那条的开法，远端同 `openTerminal`）。开不了 ⇒ 那一句。 */
+export async function openWindow(origin: Origin, cmd: string, cwd: string): Promise<string | null> {
   try {
     if (isLocalOrigin(origin)) await commands.open_local_terminal({ cmd, cwd });
     else await openTerminal(origin, cmd);

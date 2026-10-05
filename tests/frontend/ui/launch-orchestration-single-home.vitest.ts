@@ -24,7 +24,7 @@
  *
  * K3 的四个远端入口各有一条行为判据，住各自的测试文件（那里有现成的桩）：
  * `remote-launch-run.vitest.ts`「列不出会话 ⇒ 不起、出声」· `settings/remote-section.vitest.ts`「开新 Claude …」·
- * `tabs.vitest.ts`「tmux 全新 resume …」· `fork-start.vitest.ts`「铸不出名字且要进 tmux …」。每条都配正控。
+ * `tabs.vitest.ts`「tmux 全新 resume …」。每条都配正控（分叉出来的那一条由那台起会话时自己铸名，`sessions-start` 的 `fresh_terminal`）。
  *
  * # 同波别的路长出新成员时会怎么红
  *

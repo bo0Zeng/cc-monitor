@@ -146,7 +146,11 @@ else bad "claude 死后会话没了($GRAY_ALIVE) 或没裁成可重连(不该):$
 # ── 3. REVIVE:跑真源就地 resume 命令(复用原名)→ fake-claude 复活 → SessionAdded 再现 = 清灰 ──
 echo "-- 就地 resume(生产渲染链 planResumeIntoExistingTmux → render_ccm_launch,复用 $SESSION,账号目录 = 后端所看目录)--"
 # configDir = backend 监视目录 → 复活的 fake-claude pidfile 落这里,backend 判活得到 = 后端复活。
-CMD="$(npx tsx "$DRIVER" into-existing "$SID" "$SESSION" "$FAKE" "$CLAUDE_DIR")"
+# 后端监视的那个目录登记成沙箱账号清单里的一个号，按名字点它。
+cat > "$CCM_SHIM_ACCOUNTS/accounts.json" <<JSON
+{ "version": 1, "accounts": [ { "name": "e2e", "configDir": "$CLAUDE_DIR", "isDefault": false } ] }
+JSON
+CMD="$(npx tsx "$DRIVER" into-existing "$SID" "$SESSION" "$FAKE" e2e)"
 echo "   cmd: $CMD"
 echo "$CMD" | grep -qF "send-keys -t '=$SESSION:' 'ccm --resume $SID " && ! echo "$CMD" | grep -q "new-session\|--ccm-tmux" \
   && ok "resume 命令就地复用 $SESSION、无 new-session(#76)" \

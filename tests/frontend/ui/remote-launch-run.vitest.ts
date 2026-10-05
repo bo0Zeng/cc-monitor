@@ -30,7 +30,6 @@ import { showActionFailureToast } from "../../../src/frontend/ui/error-toast";
 import { expectArrival } from "../../../src/frontend/ui/launch-arrival";
 import {
   runRemoteResume,
-  runRemoteResumeTmuxAndWait,
   runNewSessionRemote,
   runRemoteLauncher,
   runRemoteAttach,
@@ -114,18 +113,6 @@ describe("每条远端起会话路径：问那台要那一行，原样交给终�
     expect(arrivalMock).toHaveBeenCalledWith(expect.objectContaining({ origin: "devbox", match: { sid: "sid-1" }, tmuxName: null }));
   });
 
-  it("tmux 建会话 resume（换号重启 · 分叉的远端那一跳）：容器 create · 身份标记 · 点名那个号", async () => {
-    const r = await runRemoteResumeTmuxAndWait("devbox", "claude", "sid-1", "/p", "claude", "cc-sid1", {
-      account: { kind: "named", name: "z" },
-    });
-    expect(r).toBe("arrived");
-    const [req] = requests();
-    expect(req.container).toEqual({ kind: "tmux", name: "cc-sid1", send_into: false });
-    expect(req.ccmSid).toBe("sid-1");
-    expect(req.account).toEqual({ kind: "named", name: "z" });
-    expect(term.openTerminal).toHaveBeenCalledWith("devbox", lineFor(req));
-  });
-
   it("开新会话（机器卡片 · 历史页）：名字问那台铸、动作 new、按工作目录认", async () => {
     await runNewSessionRemote("devbox", "claude", "/p", "");
     expect(mint.mintFreshTmuxName).toHaveBeenCalledWith("devbox", "/p");
@@ -175,7 +162,7 @@ describe("失败怎么说", () => {
     render.renderCli.mockRejectedValue(new Error("那台说：会话 ID 不合法"));
     const writeText = vi.fn().mockResolvedValue(undefined);
     stubClipboard(writeText);
-    expect(await runRemoteResumeTmuxAndWait("devbox", "claude", "-x", "/p", "claude", "cc-x")).toBe("unsent");
+    expect(await runRemoteResume("devbox", "claude", "-x", "/p", "claude")).toBe(false);
     expect(term.openTerminal).not.toHaveBeenCalled();
     expect(writeText).not.toHaveBeenCalled();
     expect(toastMock).toHaveBeenCalledWith(expect.any(String), expect.stringContaining("会话 ID 不合法"));

@@ -22,19 +22,7 @@ fn with_deps(args: &Value, f: impl FnOnce(&Deps) -> Answer) -> Answer {
 
 /// 同 [`with_deps`]，前端与那一家已经取好（换号重启每一步在自己的阻塞线程上各拼一份）。
 pub(crate) fn with_deps_as<T>(client: Option<&str>, agent: &str, f: impl FnOnce(&Deps) -> T) -> T {
-    let list = || -> Result<Option<Vec<TmuxEntry>>, String> {
-        let rows = crate::control::terminals::rows_here().map_err(|(_, m)| m)?;
-        Ok(rows.map(|rows| {
-            rows.into_iter()
-                .map(|r| TmuxEntry {
-                    agent: crate::agents::is_agent_process(&r.program),
-                    terminal: r.handle(),
-                    sid: (!r.sid.is_empty()).then_some(r.sid),
-                    name: r.name,
-                })
-                .collect()
-        }))
-    };
+    let list = tmux_rows;
     let record = |sid: &str, dir: Option<&str>| -> Result<(bool, String), String> {
         crate::observe::history_query::record_for(
             &crate::observe::history_query::agent_home(),
@@ -55,9 +43,13 @@ pub(crate) fn with_deps_as<T>(client: Option<&str>, agent: &str, f: impl FnOnce(
         crate::control::launch::run(&req).map(|_| ())
     };
     let run_ccm = |argv: &[String]| crate::control::session_batch::run_self_as_ccm(argv);
-    let mint = |cwd: &str| {
+    let mint = |base: batch::NameBase| {
+        let args = match base {
+            batch::NameBase::Cwd(cwd) => serde_json::json!({ "cwd": cwd }),
+            batch::NameBase::ForkOf(source) => serde_json::json!({ "forkOf": source }),
+        };
         crate::control::ccm::terminal_name_mint_with(
-            &serde_json::json!({ "cwd": cwd }),
+            &args,
             crate::common::session_snapshot::global(),
         )
         .map(|v| v["name"].as_str().unwrap_or_default().to_string())
@@ -79,6 +71,21 @@ pub(crate) fn with_deps_as<T>(client: Option<&str>, agent: &str, f: impl FnOnce(
             accounts,
         })
     })
+}
+
+/// 这台的 tmux 名单（挂着 sid 的窗格各一行）；`Ok(None)` ＝ 这台没装 tmux；`Err` ＝ 看不见。分叉那一格也读它。
+pub(crate) fn tmux_rows() -> Result<Option<Vec<TmuxEntry>>, String> {
+    let rows = crate::control::terminals::rows_here().map_err(|(_, m)| m)?;
+    Ok(rows.map(|rows| {
+        rows.into_iter()
+            .map(|r| TmuxEntry {
+                agent: crate::agents::is_agent_process(&r.program),
+                terminal: r.handle(),
+                sid: (!r.sid.is_empty()).then_some(r.sid),
+                name: r.name,
+            })
+            .collect()
+    }))
 }
 
 /// `sessions-where`：`{sids}` ⇒ 每个的样子（菜单就绪时问）。

@@ -463,35 +463,17 @@ export class SessionViewer {
       sourceSessionId: sidFromJsonlPath(jsonlPath),
       origin,
       cwd,
-      onForked: (res) =>
-        void this.startForkedSession(res, sidFromJsonlPath(jsonlPath), cwd ?? null, origin),
+      onForked: (res) => void this.startForkedSession(res, sidFromJsonlPath(jsonlPath), origin),
     });
   }
 
   /**
-   * G6：分叉产出新会话文件之后 —— **起它**（不碰原会话）。
-   * 与实时 tab 那条走**同一个** `runForkFlow`，两处行为不许分裂。
+   * 分叉产出新会话文件之后 —— **起它**（不碰原会话）。与实时 tab 那条走**同一个** `runForkFlow`，两处行为不许分裂；
+   * 起会话要的三格那台已推好（`res.launch`）。
    */
-  private async startForkedSession(
-    res: BranchResult,
-    sourceSessionId: string,
-    cwd: string | null,
-    origin: Origin,
-  ): Promise<void> {
-    // E78：与实时 tab 那条走**同一句** —— 查事实、起会话、反馈全在 `runForkFlow` 里。
-    // `sourceSessionId` 是**源**会话的（新会话此刻还没起，查它必定"查不到"、白弹一次窗）。
-    await runForkFlow({
-      origin,
-      newSessionId: res.sessionId,
-      sourceSessionId,
-      cwd,
-    });
+  private async startForkedSession(res: BranchResult, sourceSessionId: string, origin: Origin): Promise<void> {
+    await runForkFlow({ origin, newSessionId: res.sessionId, sourceSessionId, launch: res.launch });
   }
-
-  // G6：原来这里有个 `resumeBranch`（分叉后弹 toast、用户再点一下才 resume）。
-  // 它被 `fork-flow.ts` 顶掉了——分叉之后**直接起**，而且远端/本机、带不带账号、
-  // 进不进 tmux 全在那一条路上决定。它那条 F06 纪律（sid 校验先于任何 IPC 往返）
-  // **没有丢**，搬进了 `fork-flow.ts` 的 `startLocal`。
 
   /** F39:增量批后幂等重建 fold(branchRecords 全量;未渲染 uuid 的卡不在 DOM,自然跳过) */
   private rebuildFold(): void {

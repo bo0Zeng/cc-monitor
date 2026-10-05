@@ -114,17 +114,9 @@ fn with_spec<T>(
         Settled::Base | Settled::Unsaid => (CliAccount::Base, None),
         Settled::Account(a) => (
             CliAccount::Named {
-                name: Some(a.name.as_str()),
-                config_dir: Some(a.config_dir.as_str()),
+                name: a.name.as_str(),
             },
             a.model.as_deref(),
-        ),
-        Settled::Dir(d) => (
-            CliAccount::Named {
-                name: None,
-                config_dir: Some(d.as_str()),
-            },
-            None,
         ),
     };
     let spec = CliSpec {

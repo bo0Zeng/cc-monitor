@@ -22,11 +22,8 @@ fn resume() -> LocalAction {
     LocalAction::Resume { sid: SID.into() }
 }
 
-fn named(dir: &str, name: Option<&str>) -> Option<AccountAsk> {
-    Some(AccountAsk::Named {
-        config_dir: Some(dir.into()),
-        name: name.map(str::to_string),
-    })
+fn named(name: &str) -> Option<AccountAsk> {
+    Some(AccountAsk::Named { name: name.into() })
 }
 
 fn settled(r: &LocalLaunchRequest) -> Settled {
@@ -54,20 +51,13 @@ fn every_local_launch_shape_is_one_ccm_line() {
     // resume：身份 token 就是那个 sid。
     let mut r = req(resume());
     r.tmux_name = Some("p-cc".into());
-    r.account = named("/h/.claude-alt/work", Some("work"));
+    r.account = named("work");
     let out = go(&r, &POSIX).unwrap();
     assert_eq!(
         out.cmd,
         format!("ccm --resume {SID} -- --ccm-tmux=p-cc --ccm-sid={SID} --ccm-agent claude --account work --ccm-launch-id {SID}")
     );
     assert_eq!(out.launch_id.as_deref(), Some(SID));
-
-    // 说不出名字 ⇒ 交目录。
-    r.account = named("/h/.claude-alt/work", None);
-    assert_eq!(
-        go(&r, &POSIX).unwrap().cmd,
-        format!("ccm --resume {SID} -- --ccm-tmux=p-cc --ccm-sid={SID} --ccm-agent claude --account-dir /h/.claude-alt/work --ccm-launch-id {SID}")
-    );
 
     // 账号 0 ⇒ `--base`；缺席 ⇒ 继承（一个账号旗标都不吐）。
     r.account = Some(AccountAsk::Base);
@@ -146,10 +136,10 @@ fn the_identity_token_is_planted_and_handed_back() {
 fn windows_launches_go_the_direct_way_and_attach_is_refused() {
     let mut r = req(resume());
     r.tmux_name = Some("p-cc".into());
-    r.account = named("C:\\Users\\z\\.claude-alt\\work", None);
+    r.account = named("work");
     assert_eq!(
         go(&r, &WINDOWS).unwrap().cmd,
-        format!("ccm --resume {SID} -- --ccm-agent claude --account-dir 'C:\\Users\\z\\.claude-alt\\work' --ccm-launch-id {SID}")
+        format!("ccm --resume {SID} -- --ccm-agent claude --account work --ccm-launch-id {SID}")
     );
     let mut a = req(LocalAction::Attach);
     a.tmux_name = Some("p-cc".into());

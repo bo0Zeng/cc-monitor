@@ -47,6 +47,9 @@ use std::path::Path;
 struct ForkResult {
     session_id: String,
     jsonl_path: String,
+    /// 源会话那份记录（不上线：帧面拿它收「分叉之后起」的事实）。
+    #[serde(skip)]
+    source: std::path::PathBuf,
 }
 
 /// 单份会话 jsonl 的读取上限。
@@ -133,9 +136,13 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
 /// 与对 aterm 冻结的那一条（argv 两个位置参数）撞名。
 /// ⚠ 入口住顶层壳 `fork_face.rs`（它找家目录）：本层自己找就得问 `observe::`（反向边）或多问一次适配层。
 /// 帧面 `session-fork` 的本体（家目录由顶层壳 `fork_face` 交进来；判据直接喂夹具家目录）。
+///
+/// 帧面回复比 CLI 那一行多一格 `launch`（分叉之后起要的三格事实）：由入口按「源会话那份记录 ＋ 源 sid」收齐交回（`launch`），
+/// 本层不读观测层。
 pub(crate) fn answer_wire_at(
     agent_home: &Path,
     args: &serde_json::Value,
+    launch: &dyn Fn(&Path, &str) -> serde_json::Value,
 ) -> Result<serde_json::Value, (&'static str, String)> {
     let field = |k: &str| {
         args.get(k)
@@ -174,9 +181,12 @@ pub(crate) fn answer_wire_at(
         }
     }
     // `run_inner` 只读第 1、2 格（第 0 格是 argv 形里的子命令名，本入口没有）。
-    let argv = [String::new(), sid, uuid];
+    let argv = [String::new(), sid.clone(), uuid];
     let res = run_inner(agent_home, &argv).map_err(|m| ("fork_failed", m))?;
-    serde_json::to_value(&res).map_err(|e| ("fork_failed", format!("serialize: {e}")))
+    let mut v =
+        serde_json::to_value(&res).map_err(|e| ("fork_failed", format!("serialize: {e}")))?;
+    v["launch"] = launch(&res.source, &sid);
+    Ok(v)
 }
 
 fn fail(code: &str, message: &str) -> i32 {
@@ -212,6 +222,7 @@ fn run_inner(agent_home: &Path, args: &[String]) -> Result<ForkResult, String> {
     Ok(ForkResult {
         session_id: new_sid,
         jsonl_path: out_path.to_string_lossy().into_owned(),
+        source,
     })
 }
 

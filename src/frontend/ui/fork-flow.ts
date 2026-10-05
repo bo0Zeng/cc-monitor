@@ -1,39 +1,27 @@
 /**
- * G6（branch-anywhere）：分叉之后**真的把会话起起来** —— 把 G3b-2 的编排器接到真依赖上。
+ * 分叉之后**真的把会话起起来** —— `fork-start.ts` 的编排接到真依赖上（追问小窗 · `sessions-start` · 开窗 / 接回 · 等那台报出）。
  *
- * `fork-start.ts` 是纯编排（三条判断，依赖全注入、可直测）；本模块是它的**唯一生产接线**：
- * 把 `ask` / `startLocal` / `startRemote` 换成真弹窗、真 IPC、真 ssh。
+ * 调用点有两个（历史查看器 `views/session-viewer.ts` 与实时 tab `tabs.ts`），「分叉完怎么起」在两边必须一模一样 ⇒ 接线只有这一份，
+ * 调用点只交「哪台 · 新旧两个 sid · 那台推出的三格」（`session-fork` 回复的 `launch`）。
  *
- * # 为什么这层单独存在，而不是直接写进两个调用点
- *
- * 调用点有两个（历史查看器 `views/session-viewer.ts` 与实时 tab `tabs.ts`），
- * 「分叉完怎么起」在两边**必须一模一样** —— 否则同一个 `⑂` 在两个地方行为不同，
- * 正是账本第 3 行要治的那种分裂。所以接线只有这一份。
- *
- * # 为什么本模块不 import `tabs.ts`
- *
- * `tabs.ts` 挂 `⑂`（→ `branch-button.ts`）→ 分叉成功 → 调本模块。本模块再回头 import
- * `tabs.ts` 就成环了。而「源会话在哪个 tmux 里」那一问（今天问那台后端 `sessions-where`）
- * 原本正住在 `tabs.ts` 里 —— 所以 G6 把那一族判据搬进了叶子模块 `sessions-where.ts`，
- * 两边都从那里取。`tabs.ts` 原样 re-export，既有 import 面零改动。
+ * 起：交那台 `sessions-start` 一项（带 `fresh_terminal` ＋ `fork_of`：那台必铸新终端名，从源会话此刻的终端名铸）。`tmux` 那一形起好后开一个终端接回去；
+ * `window` 那一形拿那台渲好的那一行开窗。「起了」＝ 看见那台报出分叉出来的会话（等到才说「已分叉」；没等到那一句主窗口说过了）。
  */
 
 // 分叉只对记录树那一家（流跟的那一家）的会话做 ⇒ 分叉出来的会话也是它。
 import { ACTIVE_AGENT as FORK_AGENT } from "./agent-profile";
 import { isLocalOrigin, isRemoteOrigin, type Origin } from "./ipc/origin";
 import { showActionFailureToast } from "./error-toast";
-import { getBehavior } from "./behavior";
-import { resolveResumeCommand } from "./remote-config";
-import { isSelectable, type Account, type SessionAccount } from "./accounts";
-import { fetchAccounts, fetchLocalAccounts, fetchSessionAccounts } from "./account-reads";
-import { standingOf, type Standing } from "./sessions-where";
-import { resumeLocalSessionAndWait } from "./local-resume";
-import { chosenAccount } from "./launch-account";
-import { mintForkTmuxName } from "./terminal-name-mint";
-import { askForkLaunch, type ForkAccountOption } from "./fork-ask";
-import { startForkedSession, type ForkStartDeps, type ForkStartOutcome } from "./fork-start";
-import type { ForkLaunchInput } from "./fork-launch";
-import { runRemoteResumeAndWait, runRemoteResumeTmuxAndWait } from "./remote-launch-run";
+import { isSelectable, type Account } from "./accounts";
+import { fetchAccounts, fetchLocalAccounts } from "./account-reads";
+import { refuseUnavailableAccount } from "./launch-account";
+import { askForkLaunch } from "./fork-ask";
+import { startForkedSession, type ForkStart, type ForkStartDeps, type ForkStartOutcome } from "./fork-start";
+import type { ForkLaunch } from "./session-writes";
+import { callStart, openWindow, sayReply, type Reply } from "./tab-batch-run";
+import { saidOfControl } from "./control-said";
+import { runRemoteAttach } from "./remote-launch-run";
+import { awaitArrival } from "./launch-arrival";
 import { copyText } from "./copy-table";
 
 export interface ForkFlowInput {
@@ -41,195 +29,95 @@ export interface ForkFlowInput {
   origin: Origin;
   /** 刚分叉出来的**新**会话 sid。 */
   newSessionId: string;
-  /**
-   * **源**会话 sid。查事实查的是它 —— 新会话此刻还没起，查它必定「查不到」，
-   * 那样每次分叉都会白弹一次窗。两个调用点各有各的拿法（实时 tab 手里就有 `tab.sessionId`；
-   * 历史查看器只有路径，而历史会话的文件名就是 sid），**那不是重复，是两种不同的输入**。
-   */
+  /** **源**会话 sid。 */
   sourceSessionId: string;
-  /** 源会话的工作目录（新会话的起始目录）。 */
-  cwd: string | null;
-}
-
-/** 一次分叉要用到的「源会话事实」，喂给 `runForkFlow`。 */
-export interface ForkSourceFacts {
-  source: ForkLaunchInput;
-  /** 源会话所在 tmux 名（新名要避开它）。 */
-  sourceTmuxName: string | null;
-  // `takenTmuxNames` 删了：避让在那台后端（`terminal-name-mint {forkOf}`），前端不再拿名单自己铸。
+  /** 那台推出的三格（`session-fork` 回复的 `launch`）。 */
+  launch: ForkLaunch;
 }
 
 /**
- * 从两份**已经取回来的**远端快照推源会话事实。纯函数，故可直测。
- *
- * ★ 两个信号各答各的，**不许互相顶替**：
- * - **活没活着 / 在哪个 tmux 里** → tmux 清单（`@ccm_sid` 精确匹配，INVARIANTS §30）
- * - **属于哪个账号** → pidfile（`--session-accounts`）。tmux 清单里**没有**账号信息。
- *
- * 所以「tmux 里找到了、但账号查不到」是一个**真实且常见**的状态（账号功能没启用 /
- * 没启用多账号）。此时必须落成 `liveConfigDir: undefined`（= 活着但不知道账号），
- * **不是** `null`（= 确认账号 0）—— 后者会让分叉静默起在账号 0 上。
- */
-export function deriveForkSource(
-  rows: readonly SessionAccount[] | null | undefined,
-  standing: Standing | null | undefined,
-  sid: string,
-  cwd: string | null,
-): ForkSourceFacts {
-  const row = rows?.find((r) => r.sessionId === sid && r.alive);
-  // 「在哪个 tmux 会话里跑」那台后端判（`sessions-where`）：在跑的取第一个（命中多个也取第一个）。
-  const running = standing?.kind === "running" || standing?.kind === "ambiguous";
-  const tmuxName = running ? (standing.names[0] ?? null) : null;
-  const live = Boolean(row) || running;
-  return {
-    source: {
-      sourceIsLive: live,
-      sourceCwd: cwd,
-      // `row` 缺席时**故意留 undefined**（见函数头注），不要写成 `?? null`。
-      liveConfigDir: row ? row.configDir : undefined,
-      liveTmuxName: tmuxName,
-    },
-    sourceTmuxName: tmuxName,
-  };
-}
-
-/**
- * 取源会话事实。取数失败一律降级成「不知道」（⇒ 弹窗问一次），**绝不**降级成一个具体值。
- *
- * ~~**本机没有对侧探针**~~（之后有了；与远端同一条路）：backend 的 `--session-accounts` 是远端专属，本机侧至今没有
- * 「某 sid 现在跑在哪个账号下」的查询（`local_accounts.rs` 只枚举账号，不认会话）。
- * 所以本机一律按「查不出来」处理 —— 问一次，而不是拿当前账号顶替。
- */
-export async function collectForkSource(
-  origin: Origin,
-  sid: string,
-  cwd: string | null,
-): Promise<ForkSourceFacts> {
-  if (isLocalOrigin(origin)) {
-    // E79：本机侧**现在有对侧探针了**（`--session-accounts`，Linux 才有 ——
-    // 要读 `/proc/<pid>/environ`）。此前这里硬编码「查不出来」，于是分叉一个**正跑着的**
-    // 本机会话也要白弹一次追问小窗，而那个 pidfile 就在本机、monitor 明明够得着。
-    //
-    // 平台答不出时（Windows）后端会明说答不出 ⇒ 这里照旧落「不知道」，走追问那条路。
-    // **「查不出来」与「查了但没有」在这里是同一个结论，但理由不同**（两种都回空行集）。
-    // 经通道问本机后端（与远端同一个 `fetchSessionAccounts`；`force`：分叉要此刻的读数）。
-    //   查不到 ⇒ 空行集 ⇒ 「不知道」，不猜。
-    const rows: SessionAccount[] = await fetchSessionAccounts(origin, true);
-    // 本机这条路不进 tmux（`fork-start.ts` 已把 tmux 那一格摘掉），所以只用账号那一半。
-    const facts = deriveForkSource(rows, null, sid, cwd);
-    return {
-      source: { ...facts.source, liveTmuxName: null },
-      sourceTmuxName: null,
-    };
-  }
-  // 源会话在哪个 tmux 会话里：问那台（问不到 ⇒ `undefined` ⇒ 不知道）。
-  const [rows, standing] = await Promise.all([
-    fetchSessionAccounts(origin).catch(() => [] as SessionAccount[]),
-    standingOf(origin, sid),
-  ]);
-  return deriveForkSource(rows, standing, sid, cwd);
-}
-
-/**
- * 列可选账号喂给追问小窗。查不到（账号功能没启用 / 远端不可达）→ **空清单**，
+ * 可选的号（名字）喂给追问小窗。查不到（账号功能没启用 / 远端不可达）→ **空清单**，
  * 小窗仍然弹、仍然能选「账号 0」—— 账号列不出来不该把整条分叉路堵死。
  */
-async function listForkAccounts(origin: Origin): Promise<ForkAccountOption[]> {
+async function listForkAccounts(origin: Origin): Promise<string[]> {
   try {
     const state = isLocalOrigin(origin) ? await fetchLocalAccounts() : await fetchAccounts(origin);
-    return state.accounts
-      .filter((a: Account) => isSelectable(a) && a.configDir !== null)
-      .map((a: Account) => ({ name: a.name, configDir: a.configDir }));
+    return state.accounts.filter((a: Account) => isSelectable(a) && a.configDir !== null).map((a: Account) => a.name);
   } catch {
     return [];
   }
 }
 
-/** 生产依赖。抽出来是为了让 `runForkFlow` 只剩「组装 + 转交」一句话。 */
+/** 交那台起这一项 → 开窗 / 接回 → 等那台报出。失败那一路自己出声、回 `false`；号选不了 ⇒ 给显式选择（点了以那个号再起一次）。 */
+async function startFork(origin: Origin, s: ForkStart): Promise<boolean> {
+  const failed = (said: string): false => {
+    showActionFailureToast(copyText("forkFlow.runForkFlow.failed"), said);
+    return false;
+  };
+  let r: Reply;
+  try {
+    [r] = await callStart(origin, s.mode, [s.item]);
+  } catch (e) {
+    return failed(saidOfControl(e));
+  }
+  if (r.unavailable) {
+    refuseUnavailableAccount({
+      machine: origin,
+      u: r.unavailable,
+      choose: (account) => launchAndSay(origin, { ...s, item: { ...s.item, account } }),
+    });
+    return false;
+  }
+  if (r.outcome !== "done") return failed(sayReply(origin, "start", r));
+  if (s.mode === "window") {
+    if (r.cmd === null) return failed(sayReply(origin, "start", r));
+    const unopened = await openWindow(origin, r.cmd, s.item.cwd);
+    if (unopened !== null) return failed(unopened);
+  } else if (r.session !== null) {
+    await runRemoteAttach(origin, FORK_AGENT, r.session, { quiet: true });
+  }
+  return awaitArrival({ origin, match: { sid: s.item.sid }, tmuxName: r.session, arrived: null });
+}
+
+/** 起成了说一句「已分叉」。 */
+async function launchAndSay(origin: Origin, s: ForkStart): Promise<boolean> {
+  const ok = await startFork(origin, s);
+  if (ok) {
+    showActionFailureToast(
+      copyText("forkFlow.done.title"),
+      copyText("forkFlow.done.body", { id: s.item.sid.slice(0, 8) }),
+      { level: "info", durationMs: 8000 },
+    );
+  }
+  return ok;
+}
+
+/** 生产依赖。 */
 function productionDeps(input: ForkFlowInput): ForkStartDeps {
   return {
-    ask: async (facts, slots) =>
+    ask: async (launch, slots) =>
       askForkLaunch({
-        facts,
+        launch,
         slots,
         accounts: await listForkAccounts(input.origin),
-        // 远端会话惯例住在 tmux 里（断线能 attach 回来）；本机那条路根本不问 tmux
-        // （`fork-start.ts` 已把这一格摘掉），所以这里给 false 也走不到。
+        // 远端会话惯例住在 tmux 里（断线能 attach 回来）；本机那条路不问终端那一格。
         defaultUseTmux: isRemoteOrigin(input.origin),
       }),
-
-    // 本机那一跳走 resume 编排的唯一一份（`local-resume.ts`）：sid 校验先于任何 IPC（F06）、
-    //   名字现铸（`K-R46`：后端故意不铸，不传 ⇒ 不进容器；这条路上尤其贵 —— 分叉是全仓唯一说得出
-    //   「账号 0」的生产路，而 POSIX 后端只有那一态渲染得出容器）、账号是**用户在小窗里显式选的**：
-    //   账号 0 ⇒ 显式 `base`（不是省略：省略 = 没表态 = 被 shell rc 里的默认号顶掉），具名 ⇒ 名字说得出才带（`K-R53`）。
-    //   ⚠ 这里铸的是**新会话自己**的 `<项目名>-cc`（避让本机现有名字），与远端那条「避开源会话的名字」
-    //     （`fork-start.ts` 问那台后端 `terminal-name-mint {forkOf}`）不是一回事。失败它自己出声，这里只回布尔（与 `startRemote` 同形）。
-    // 「起了」= 看见那台报出分叉出来的会话（等到才说「已分叉」；没等到那一句主窗口说过了）。
-    startLocal: async (a) =>
-      (await resumeLocalSessionAndWait({
-        agent: FORK_AGENT,
-        sid: a.sessionId,
-        cwd: a.cwd,
-        account: chosenAccount(a.configDir, a.accountName),
-        failureTitle: copyText("localResume.fork.failed"),
-      })) === "arrived",
-
-    startRemote: async (a) => {
-      const behavior = await getBehavior();
-      const launcher = await resolveResumeCommand(a.origin, behavior.resumeCommandRemote);
-      // 用户在小窗里选的（或沿用源会话的）号的目录：`null` = 账号 0；有目录 ⇒ 原样交（那台 `--account-dir`）。
-      const mods = { account: chosenAccount(a.configDir, null) };
-      // ★ 返回值必须往上传：那两条路失败时**不抛**，只弹自己的 toast 并回 false。
-      const r = a.tmuxName
-        ? await runRemoteResumeTmuxAndWait(a.origin, FORK_AGENT, a.sessionId, a.cwd, launcher, a.tmuxName, mods)
-        : await runRemoteResumeAndWait(a.origin, FORK_AGENT, a.sessionId, a.cwd, launcher, mods);
-      return r === "arrived";
-    },
-
-    // 分叉会话的 tmux 名问那台后端铸（派生 ＋ 避让都在那一台）。
-    mintForkName: mintForkTmuxName,
+    start: (s) => launchAndSay(input.origin, s),
   };
 }
 
 /**
- * **分叉之后的全部事情**：查源会话事实 → 编排（该问就问一次）→ 起 → 反馈。
- *
- * # E78：为什么连成功 toast 都收进来
- *
- * 此前 `collectForkSource` → `runForkFlow` → 成功 toast 这三步由**两个调用点各写一遍**
- * （约 15 行，连文案都是逐字重复的双写点、无守卫）。Phase G 审计点名：本模块自称
- * 「唯一生产接线」而真正共享的只有中段 —— **名不副实的抽象比没有抽象更坏**，
- * 因为它让人以为改一处就够了。
- *
- * ⇒ 现在调用点只剩「我是谁 + 分叉结果」，`⑂` 在两处的行为**在结构上**不可能分裂。
- *
- * 失败**必须可见**：编排里任何一步抛出来都变成 toast，绝不静默
- * （`runRemoteResume*` 自己那两条失败路径已经各带 toast + 剪贴板回退，所以那边只回 false）。
+ * **分叉之后的全部事情**：编排（不知道的那几格问一次）→ 起 → 反馈。失败**必须可见**：编排里任何一步抛出来都变成提示，绝不静默。
  */
 export async function runForkFlow(input: ForkFlowInput): Promise<ForkStartOutcome> {
   try {
-    const facts = await collectForkSource(input.origin, input.sourceSessionId, input.cwd);
-    const outcome = await startForkedSession(
-      {
-        newSessionId: input.newSessionId,
-        origin: input.origin,
-        source: facts.source,
-        sourceTmuxName: facts.sourceTmuxName,
-      },
+    return await startForkedSession(
+      { newSessionId: input.newSessionId, sourceSessionId: input.sourceSessionId, origin: input.origin, launch: input.launch },
       productionDeps(input),
     );
-    if (outcome === "started") {
-      showActionFailureToast(
-        copyText("forkFlow.done.title"),
-        copyText("forkFlow.done.body", { id: input.newSessionId.slice(0, 8) }),
-        { level: "info", durationMs: 8000 },
-      );
-    }
-    // `cancelled`（用户自己收手）与 `failed`（已经弹过失败 toast）都不再叠一个反馈。
-    return outcome;
   } catch (err) {
-    // 抛出来的（本机 sid 校验失败、IPC reject…）在这里变成 toast；返回 `failed` 而不是
-    // `cancelled` —— 调用方据此区分「出错了」与「用户自己收手」。
+    // 抛出来的（IPC reject…）在这里变成提示；返回 `failed` 而不是 `cancelled` —— 调用方据此区分「出错了」与「用户自己收手」。
     showActionFailureToast(copyText("forkFlow.runForkFlow.failed"), String(err));
     return "failed";
   }

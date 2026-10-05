@@ -572,7 +572,6 @@ pub(crate) fn derive_tmux_name(cwd: &str) -> String {
 ///
 /// 源是源会话所在的 tmux 名；源会话已退出、没有 tmux 名可继承时调用方交它的 cwd（同一个净化器 ⇒ 产不出非法名，
 /// Phase G 审计抓过的那一下：`/home/pi/proj-fork-cc`）。**必须与源名不同**，否则 `ccm` 会把新会话接进原会话那个窗口。
-/// 原住前端 `fork-launch.ts::forkTmuxName`，照 J7 搬来。
 pub(crate) fn fork_tmux_base(source: &str) -> String {
     let seg = name_segment(source.strip_suffix("-cc").unwrap_or(source));
     let seg = if seg.is_empty() {

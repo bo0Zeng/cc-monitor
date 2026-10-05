@@ -584,6 +584,6 @@ export function bringMonitorToFront(): void {
 
 /** 菜单那几格 ⇒ 起会话那一格：点了号 ⇒ 点名；「用账号 0」⇒ 账号 0；都没有 ⇒ 跟随（那台判）。 */
 function askOf(accountName: string | undefined, useBase: boolean): AccountAsk {
-  if (accountName) return chosenAccount(null, accountName);
-  return useBase ? chosenAccount(null, null) : FOLLOW;
+  if (accountName) return chosenAccount(accountName);
+  return useBase ? chosenAccount(null) : FOLLOW;
 }

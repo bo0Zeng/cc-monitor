@@ -51,10 +51,22 @@ export function machineOps(): Record<string, OpHandler> {
     "apikey-routing": () => ({ routed: [`${HOME}/.cc-monitor/accounts/api`], running: true }),
     "accounts-mcp-read": () => ({ enabled: true, servers: ["docs-search", "issue-tracker"], conflicts: [], changed: [], notes: [] }),
     "drift-report": () => ({ faces: [] }),
-    "session-fork": () => ({
-      sessionId: "5e55f0f0-0000-4000-8000-00000000f0f0",
-      jsonlPath: `${HOME}/.claude/projects/-home-user-work-orders/5e55f0f0-0000-4000-8000-00000000f0f0.jsonl`,
-    }),
+    // 起新会话要的三格那台推：源会话在跑 ⇒ 号与终端都知道；已结束 ⇒ 号与终端说不出（码同真后端）。
+    "session-fork": (_o, req, w) => {
+      const s = w.sessions.find((x) => x.sid === req.sid);
+      const live = s !== undefined && !s.ended;
+      return {
+        sessionId: "5e55f0f0-0000-4000-8000-00000000f0f0",
+        jsonlPath: `${HOME}/.claude/projects/-home-user-work-orders/5e55f0f0-0000-4000-8000-00000000f0f0.jsonl`,
+        launch: {
+          cwd: s ? { kind: "known", value: s.cwd, from: "record" } : { kind: "unknown", why: "no_cwd" },
+          account: live ? { kind: "known", value: null, from: "process" } : { kind: "unknown", why: "exited" },
+          terminal: live
+            ? { kind: "known", value: { host: "tmux", terminal: `tmux-cc-${s.cwd.split(/[/\\]/).pop()}` }, from: "terminal_list" }
+            : { kind: "unknown", why: "exited" },
+        },
+      };
+    },
     "aliases-render": () => JSON.parse(JSON.stringify(ALIASES_GOLDEN.renderReply).split("<HOME>").join(HOME)),
     "forward-list": () => ({
       forwards: [

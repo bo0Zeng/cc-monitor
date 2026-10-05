@@ -52,6 +52,10 @@ struct Rig {
     ccm: RefCell<Vec<Vec<String>>>,
     created: bool,
     kill_err: Option<&'static str>,
+    /// 这台按工作目录铸回的名字（替身不避让：避让是这台快照的事）。
+    cwd_name: &'static str,
+    /// 按分叉铸回的名字：缺 ⇒ 同这台的基名规则（`fork_tmux_base`，不避让）。
+    fork_name: Option<&'static str>,
 }
 
 impl Rig {
@@ -64,6 +68,8 @@ impl Rig {
             ccm: RefCell::new(vec![]),
             created: true,
             kill_err: None,
+            cwd_name: "proj-cc-2",
+            fork_name: None,
         }
     }
     fn run<T>(&self, f: impl FnOnce(&Deps) -> T) -> T {
@@ -97,9 +103,20 @@ impl Rig {
                 String::new(),
             ))
         };
-        let mint = |cwd: &str| -> Result<String, CmdErr> {
-            self.calls.borrow_mut().push(format!("mint {cwd}"));
-            Ok("proj-cc-2".to_string())
+        let mint = |base: NameBase| -> Result<String, CmdErr> {
+            Ok(match base {
+                NameBase::Cwd(cwd) => {
+                    self.calls.borrow_mut().push(format!("mint {cwd}"));
+                    self.cwd_name.to_string()
+                }
+                NameBase::ForkOf(source) => {
+                    self.calls.borrow_mut().push(format!("mint-fork {source}"));
+                    self.fork_name.map_or_else(
+                        || crate::control::ccm::plan::fork_tmux_base(source),
+                        str::to_string,
+                    )
+                }
+            })
         };
         with_accounts(|accounts| {
             f(&Deps {
@@ -286,7 +303,7 @@ fn the_standing_of_a_sid_is_judged_once_for_menu_stop_and_start() {
 
 #[test]
 fn start_in_tmux_is_the_single_tmux_item_without_attaching() {
-    let acct = json!({ "kind": "named", "name": "work", "configDir": "/h/.cc/work" });
+    let acct = json!({ "kind": "named", "name": "work" });
     let mut rig = Rig::new(Some(vec![
         row("a-cc", Some(A), true),  // 在跑 ⇒ 不另起
         row("b-cc", Some(B), false), // 空 tmux ⇒ 就地键入
@@ -406,7 +423,7 @@ fn a_window_start_renders_what_the_single_item_renders() {
 /// （`launch send-into` 按 sid 落在挂着它的那个窗格），不只按会话名送（那会落在会话当前的窗格 —— 多半是另一个正在跑的 claude）。
 #[test]
 fn an_idle_sid_in_one_pane_of_a_shared_session_is_typed_with_its_sid() {
-    let acct = json!({ "kind": "named", "name": "work", "configDir": "/h/.cc/work" });
+    let acct = json!({ "kind": "named", "name": "work" });
     let rows = vec![row("two-cc", Some(A), true), row("two-cc", Some(B), false)];
     assert_eq!(standing(&rows, B), Standing::Idle("two-cc".into()));
     let rig = Rig::new(Some(rows));
@@ -448,7 +465,7 @@ fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_ow
     let run_ccm = |_: &[String]| -> Result<(i32, String, String), CmdErr> {
         Ok((0, String::new(), String::new()))
     };
-    let mint = |_: &str| -> Result<String, CmdErr> { Ok(String::new()) };
+    let mint = |_: NameBase| -> Result<String, CmdErr> { Ok(String::new()) };
     let deps = Deps {
         list: &list,
         record: &record,
@@ -519,4 +536,138 @@ fn an_item_whose_account_cannot_be_used_is_skipped_without_blocking_the_batch() 
         json!({ "name": "work", "configDir": "/h/.cc/work", "model": null })
     );
     assert_eq!(rig.ccm.borrow().len(), 1, "选不了号的那一项不许起");
+}
+
+// ───────────────────────────── 分叉出来的那一条：必铸新终端名 ─────────────────────────────
+
+const N: &str = "eeeeeeee-1111-2222-3333-444444444444";
+
+fn fresh_item(sid: &str) -> Value {
+    json!({ "sid": sid, "cwd": "/x/proj", "account": { "kind": "base" }, "fresh_terminal": true, "fork_of": A })
+}
+
+/// 父会话占着 `proj-cc`；替身按工作目录铸的也正是 `proj-cc`（不避让）⇒ 要铸新名的那一项起出来的终端名一定不是它。
+#[test]
+fn a_fresh_terminal_item_never_lands_on_the_parent_terminal_name() {
+    let mut rig = Rig::new(Some(vec![row("proj-cc", Some(A), true)]));
+    rig.cwd_name = "proj-cc";
+    let out = rig
+        .run(|d| start(&batch("tmux", false, vec![fresh_item(N)]), d))
+        .unwrap();
+    let r = &out["results"][0];
+    assert_eq!(r["outcome"], "done", "{out}");
+    assert_ne!(r["session"], "proj-cc", "新会话落进了父会话那个终端名");
+    assert_eq!(r["session"], "proj-fork-cc");
+    let ccm = rig.ccm.borrow();
+    assert_eq!(ccm.len(), 1);
+    assert!(
+        ccm[0].contains(&"--ccm-tmux=proj-fork-cc".to_string()),
+        "{ccm:?}"
+    );
+    assert!(!ccm[0].iter().any(|t| t == "--ccm-tmux=proj-cc"), "{ccm:?}");
+    // 基名从源会话此刻那个终端的名字来。
+    assert!(rig
+        .calls
+        .borrow()
+        .contains(&"mint-fork proj-cc".to_string()));
+
+    // 本机开终端那一形：名字同本机 Resume（按工作目录铸、这台避让），同样不落在父会话那个名字上。
+    let mut here = Rig::new(Some(vec![row("proj-cc", Some(A), true)]));
+    here.cwd_name = "proj-cc-2";
+    let out = here
+        .run(|d| start(&batch("window", true, vec![fresh_item(N)]), d))
+        .unwrap();
+    let r = &out["results"][0];
+    assert_eq!(r["outcome"], "done", "{out}");
+    assert_eq!(r["session"], "proj-cc-2");
+    assert!(
+        r["cmd"].as_str().unwrap().contains("--ccm-tmux=proj-cc-2"),
+        "{out}"
+    );
+}
+
+/// 这台铸回来的名字仍落在名单里某个上（快照晚了一拍）⇒ 不起、说名字被占，绝不复用。
+#[test]
+fn a_fresh_name_that_is_already_listed_is_refused_not_reused() {
+    let mut rig = Rig::new(Some(vec![row("proj-fork-cc", Some(B), true)]));
+    rig.fork_name = Some("proj-fork-cc");
+    let out = rig
+        .run(|d| start(&batch("tmux", false, vec![fresh_item(N)]), d))
+        .unwrap();
+    let r = &out["results"][0];
+    assert_eq!(
+        (r["outcome"].clone(), r["why"].clone(), r["session"].clone()),
+        (json!("failed"), json!("name_taken"), json!("proj-fork-cc"))
+    );
+    assert!(rig.ccm.borrow().is_empty(), "撞名了还起了");
+    // 本机开终端那一形：这台铸回的名字（快照晚了一拍）正是父会话那个 ⇒ 同样不起。
+    let mut here = Rig::new(Some(vec![row("proj-cc", Some(A), true)]));
+    here.cwd_name = "proj-cc";
+    let out = here
+        .run(|d| start(&batch("window", true, vec![fresh_item(N)]), d))
+        .unwrap();
+    assert_eq!(out["results"][0]["why"], "name_taken");
+    assert_eq!(out["results"][0]["cmd"], Value::Null);
+}
+
+/// 要铸新名的那一项不键进已有的终端（哪怕那个终端挂着它）；不带这一格的照旧就地键入。
+#[test]
+fn a_fresh_terminal_item_is_never_typed_into_an_existing_terminal() {
+    let rig = Rig::new(Some(vec![row("n-idle", Some(N), false)]));
+    let out = rig
+        .run(|d| start(&batch("tmux", false, vec![fresh_item(N)]), d))
+        .unwrap();
+    assert_eq!(out["results"][0]["session"], "proj-fork-cc");
+    assert!(rig.launched.borrow().is_empty(), "键进了已有的终端");
+    let plain = Rig::new(Some(vec![row("n-idle", Some(N), false)]));
+    let out = plain
+        .run(|d| {
+            start(
+                &batch("tmux", false, vec![item(N, json!({ "kind": "base" }))]),
+                d,
+            )
+        })
+        .unwrap();
+    assert_eq!(out["results"][0]["session"], "n-idle");
+}
+
+/// 新名从源会话此刻所在终端的名字铸（自定义的名字照旧：`work-cc` ⇒ `work-fork-cc`）；源会话不在任何终端里 ⇒ 从工作目录铸。
+#[test]
+fn a_fresh_name_comes_from_the_source_terminal_name_else_from_the_cwd() {
+    let rig = Rig::new(Some(vec![row("work-cc", Some(A), true)]));
+    let out = rig
+        .run(|d| start(&batch("tmux", false, vec![fresh_item(N)]), d))
+        .unwrap();
+    assert_eq!(out["results"][0]["session"], "work-fork-cc", "{out}");
+    assert!(rig
+        .calls
+        .borrow()
+        .contains(&"mint-fork work-cc".to_string()));
+    // 源会话已退出（终端里只剩 shell 的也不算）⇒ 按工作目录。
+    for rows in [vec![], vec![row("work-cc", Some(A), false)]] {
+        let rig = Rig::new(Some(rows));
+        let out = rig
+            .run(|d| start(&batch("tmux", false, vec![fresh_item(N)]), d))
+            .unwrap();
+        assert_eq!(out["results"][0]["session"], "proj-fork-cc", "{out}");
+        assert!(rig
+            .calls
+            .borrow()
+            .contains(&"mint-fork /x/proj".to_string()));
+    }
+}
+
+#[test]
+fn fresh_terminal_and_fork_of_are_checked() {
+    let rig = Rig::new(Some(vec![]));
+    for bad in [
+        json!({ "sid": N, "cwd": "/x", "fresh_terminal": "yes" }),
+        json!({ "sid": N, "cwd": "/x", "fresh_terminal": true, "fork_of": "a b" }),
+        json!({ "sid": N, "cwd": "/x", "fork_of": A }),
+    ] {
+        let (code, _) = rig
+            .run(|d| start(&batch("tmux", false, vec![bad.clone()]), d))
+            .unwrap_err();
+        assert_eq!(code, "invalid_args", "{bad}");
+    }
 }

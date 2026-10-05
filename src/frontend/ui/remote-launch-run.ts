@@ -13,7 +13,6 @@ import { openTerminal } from "./terminal-open";
 import { isLocalOrigin } from "./ipc/origin";
 import {
   planResumeDirect,
-  planResumeTmux,
   planLauncher,
   planAttach,
 } from "./launch-requests";
@@ -28,7 +27,7 @@ import { defaultLauncherOf } from "./agent-profile";
 // 起新会话的名字只从一个家取：`terminal-name-mint.ts`（列名单 ＋ 铸名 ＋ 「列不出 ⇒ 不起」）。
 import { mintFreshTmuxName, refuseUnmintable } from "./terminal-name-mint";
 import { copyText } from "./copy-table";
-import { arrivedBody, awaitArrival, expectArrival, type ArrivalMatch, type LaunchWait } from "./launch-arrival";
+import { arrivedBody, expectArrival, type ArrivalMatch } from "./launch-arrival";
 
 /** 那台后端渲那一行；拒了 ⇒ 抛（带那台的原话，执行器那一格 catch 说出来），不换条路糊过去。 */
 async function renderLaunchCommand(origin: string, ctx: LaunchContext): Promise<string> {
@@ -109,13 +108,11 @@ interface LaunchToasts {
  */
 type AfterOpen =
   | { kind: "expect"; match: ArrivalMatch; tmuxName: string | null }
-  // 同 `expect`，但等主窗口回话、把「等到了没有」交回调用方（换号重启 · 分叉据它才说成了、才记账）。
-  | { kind: "await"; match: ArrivalMatch; tmuxName: string | null }
   | { kind: "silent" }
   | { kind: "claim" };
 
-/** 窗口那一跳的结局：没真发出去 · 发出去了（不等）· 等到了 / 没等到。 */
-type Opened = LaunchWait | "sent";
+/** 窗口那一跳的结局：没真发出去 · 发出去了（等那台报出交给主窗口）。 */
+type Opened = "unsent" | "sent";
 const sent = (o: Opened): boolean => o !== "unsent";
 
 /** 账本对 `remote-launch-run.ts` 的既定最终形态之一：「剪贴板回退集中一处」。
@@ -147,8 +144,6 @@ async function invokeLaunchOrCopyFallback(
         tmuxName: after.tmuxName,
         arrived: { title: toasts.success, body: arrivedBody(origin) },
       });
-    } else if (after.kind === "await") {
-      return (await awaitArrival({ origin, match: after.match, tmuxName: after.tmuxName, arrived: null })) ? "arrived" : "missed";
     } else if (after.kind === "claim") {
       showActionFailureToast(toasts.success, toasts.successDetail ?? "", { level: "info", durationMs: 6000 });
     }
@@ -192,24 +187,9 @@ export async function runRemoteResume(
   cwd: string,
   launcher: string,
   mods: LaunchModifiers = {}, // 正交修饰（要哪个号 · 那台的模型偏好表），见 launch-types.ts
-  // Phase G（branch-anywhere）：返回值从 `void` 改成 `boolean`，与 `runRemoteResumeTmux`
-  // 对齐（那边的头注逐字记着为什么要有返回值：account-ux 那次把「走到了第⑤步」当成
-  // 「已 resume」）。既有调用点忽略返回值 ⇒ 行为逐字不变。
+  // 回「真发出去了吗」（失败那一路自己出声）：别把「走到了最后一步」当成「已 resume」。
 ): Promise<boolean> {
-  return sent(await resumeDirectCore(origin, agent, sid, cwd, launcher, mods, "expect"));
-}
-
-/** 同 [`runRemoteResume`]，但等那台报出会话 ⇒ 交回「等到了没有」（分叉据它才说「已分叉」）。 */
-export async function runRemoteResumeAndWait(
-  origin: string,
-  agent: string,
-  sid: string,
-  cwd: string,
-  launcher: string,
-  mods: LaunchModifiers = {},
-): Promise<LaunchWait> {
-  const o = await resumeDirectCore(origin, agent, sid, cwd, launcher, mods, "await");
-  return o === "sent" ? "missed" : o;
+  return sent(await resumeDirectCore(origin, agent, sid, cwd, launcher, mods));
 }
 
 async function resumeDirectCore(
@@ -219,54 +199,17 @@ async function resumeDirectCore(
   cwd: string,
   launcher: string,
   mods: LaunchModifiers,
-  wait: "expect" | "await",
 ): Promise<Opened> {
   const ctx = planResumeDirect(agent, sid, cwd, launcher, mods);
   const cmd = await renderOrRefuse(origin, ctx, copyText("remoteLaunchRun.resume.buildFailed"), mods, (account) =>
-    resumeDirectCore(origin, agent, sid, cwd, launcher, { ...mods, account }, wait),
+    resumeDirectCore(origin, agent, sid, cwd, launcher, { ...mods, account }),
   );
   if (cmd === null) return "unsent";
   return invokeLaunchOrCopyFallback(origin, cmd, {
     success: copyText("remoteLaunchRun.resume.started"),
     failureCopied: copyText("remoteLaunchRun.resume.failedCopied"),
     failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
-  }, { kind: wait, match: { sid }, tmuxName: null });
-}
-
-/** 同 [`runRemoteResumeTmux`]，但等那台报出会话 ⇒ 交回「等到了没有」（换号重启 · 分叉据它才说成了、才记账）。 */
-export async function runRemoteResumeTmuxAndWait(
-  origin: string,
-  agent: string,
-  sid: string,
-  cwd: string,
-  launcher: string,
-  name: string,
-  mods: LaunchModifiers = {},
-): Promise<LaunchWait> {
-  const o = await resumeTmuxCore(origin, agent, sid, cwd, launcher, name, mods, "await");
-  return o === "sent" ? "missed" : o;
-}
-
-async function resumeTmuxCore(
-  origin: string,
-  agent: string,
-  sid: string,
-  cwd: string,
-  launcher: string,
-  name: string,
-  mods: LaunchModifiers,
-  wait: "expect" | "await",
-): Promise<Opened> {
-  const ctx = planResumeTmux(agent, sid, cwd, launcher, name, mods);
-  const cmd = await renderOrRefuse(origin, ctx, copyText("remoteLaunchRun.resumeTmux.buildFailed"), mods, (account) =>
-    resumeTmuxCore(origin, agent, sid, cwd, launcher, name, { ...mods, account }, wait),
-  );
-  if (cmd === null) return "unsent";
-  return invokeLaunchOrCopyFallback(origin, cmd, {
-    success: copyText("remoteLaunchRun.resumeTmux.started"),
-    failureCopied: copyText("remoteLaunchRun.resumeTmux.failedCopied"),
-    failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
-  }, { kind: wait, match: { sid }, tmuxName: name });
+  }, { kind: "expect", match: { sid }, tmuxName: null });
 }
 
 /**

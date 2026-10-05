@@ -1,189 +1,83 @@
 /**
- * G3b-2（branch-anywhere）：分叉出新会话文件之后 —— **把它起起来**。
+ * 分叉出新会话文件之后 —— **把它起起来**：那台推出的三格（`session-fork` 回复的 `launch`）里不知道的那几格问一次 → 调 `sessions-start`。
  *
- * G3a 回答「参数该是什么」（`fork-launch.ts`），G3b-1 让后端能带账号，
- * 本模块负责**编排**：推断 → 该问就问一次 → 起会话。
+ * 推断住那台后端（`control/fork_launch.rs`）；「新会话一定铸新终端名、不复用父会话的」也在那台（那一项带 `fresh_terminal` ＋ 源会话 `fork_of`，
+ * 新名从源会话此刻的终端名铸）。
+ * 这里只剩两条：**不知道就问、且只问一次**（知道的一格都不问）；**不知道又没答的绝不替用户填**（号落账号 0：不注入任何身份）。
+ * 本模块只起新的，对原会话一个字都不碰。
  *
- * # 为什么把 `ask` / `startLocal` / `startRemote` 注入进来
- *
- * 这三件都是副作用（弹窗、拉终端、走 ssh），而本模块真正要守的是**判断**：
- * 「什么时候该问」「不知道的时候绝不替用户填」「tmux 名一定要换」。
- * 注入之后这些判断可以被直接测，不必去驱动一个真弹窗 —— 同 `readiness.ts` 注入
- * `statusOf` 的思路。
- *
- * # 「两个都活着」在这里的落点
- *
- * 本模块**只起新的**，对原会话一个字都不碰（不 kill、不 attach、不 resume）。
- * 唯一会伤到它的是 **tmux 名撞车** —— 同名会让 `ccm` 把新会话 attach 进原窗口，
- * 那就变成「一个窗口两条对话轮流出现」，正好毁掉这个功能的意义。所以名字必须换。
+ * `ask` / `start` 注入进来（弹窗与起会话都是副作用），判断可以直接测。
  */
 
-import {
-  inferForkLaunch,
-  slotsNeedingInput,
-  type ForkLaunchFacts,
-  type ForkLaunchInput,
-} from "./fork-launch";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
-import type { MintOutcome } from "./terminal-name-mint";
-import { copyText } from "./copy-table";
+import { chosenAccount } from "./launch-account";
+import type { ForkLaunch } from "./session-writes";
+import type { StartItem } from "./tab-batch-run";
 
-/** 用户在追问小窗里给的答案。只覆盖 `unknown` 的那几格。 */
+/** 要问的一格（按呈现顺序）。 */
+export type ForkAskSlot = "account" | "terminal" | "cwd";
+
+/** 用户在追问小窗里给的答案。只覆盖不知道的那几格。 */
 export interface ForkChoices {
-  /** `null` = 账号 0（不注入 `CLAUDE_CONFIG_DIR`）。 */
-  configDir?: string | null;
-  /**
-   * `K-R53`：**用户挑的那个号的名字**，与 `configDir` 是同一次选择的两半。
-   *
-   * 后端那条 ccm 路只会 `--account <名字>`（`shared/ccm:606`）⇒ 只给目录 = 那次拉起
-   * 结构上到不了后端那条路。小窗那一侧本来就有名字（`ForkAccountOption.name`，
-   * 它就是 `<option>` 的显示文本），这里只是把它一起带下去，**不是**在下游从目录反推
-   *（推错 ⇒ ccm 当场 `die`，理由住 `history.rs` 的 `LaunchAccount::Named::name`）。
-   *
-   * `null` = 账号 0（那一态根本不需要名字）。缺席 = 这一格没问过。
-   */
-  accountName?: string | null;
+  /** 号名；`null` = 账号 0（不设配置目录）。 */
+  account?: string | null;
   /** 起在 tmux 里还是直连。 */
   useTmux?: boolean;
   cwd?: string;
 }
 
+/** 起会话交给那台的那一项（`sessions-start` 的 `items[0]`，带 `fresh_terminal` 与源会话 `fork_of`）与那一形。 */
+export interface ForkStart {
+  mode: "tmux" | "window";
+  item: StartItem & { fresh_terminal: true; fork_of: string };
+}
+
 export interface ForkStartDeps {
   /** 弹一次追问小窗。返回 `null` = 用户取消（**什么都不起**）。 */
-  ask: (facts: ForkLaunchFacts, slots: Array<keyof ForkLaunchFacts>) => Promise<ForkChoices | null>;
-  startLocal: (a: {
-    sessionId: string;
-    cwd: string;
-    configDir: string | null;
-    /**
-     * `K-R53`：这个号的名字，**说得出才有**。
-     *
-     * `null` 的两种来历，下游一视同仁（都不发 `--account`）：
-     * ① `configDir === null`（账号 0 —— 那一态走 `base`，本来就不要名字）；
-     * ② `facts.account.kind === "known"` —— 分叉时源会话是活的，继承的是它的**目录**，
-     *    盘上这一路从来没有过它的名字（`fork-launch.ts` 的 `Slot<string|null>` 装的就是目录）。
-     *    ⇒ 如实交 `null`，后端诚实短路回旧路，**不许在任何一侧从目录名反推**。
-     */
-    accountName: string | null;
-  }) => Promise<boolean>;
-  /**
-   * 起远端。**返回「真的拉起来了吗」** —— 远端那两条路（`runRemoteResume*`）失败时
-   * 自己弹 toast + 回退剪贴板并 `return false`，**不抛**。丢掉这个布尔就等于把失败
-   * 读成成功（account-ux Phase G 栽过一次，`remote-launch-run.ts` 的头注逐字记着）。
-   */
-  startRemote: (a: {
-    origin: string;
-    sessionId: string;
-    cwd: string;
-    configDir: string | null;
-    tmuxName: string | null;
-  }) => Promise<boolean>;
-  /**
-   * 问那台后端给分叉会话铸 tmux 名（`terminal-name-mint {forkOf}`：`<源名>-fork-cc`，必与源名不同、按那台的会话快照避让）。
-   * 问不到 ⇒ `ok:false` 带原因 ⇒ 选了 tmux 就不起（抛，由 `runForkFlow` 出声）—— 拿空集自己拼一个就是「不避让」，#76 的形状。
-   */
-  mintForkName: (origin: Origin, source: string) => Promise<MintOutcome>;
+  ask: (launch: ForkLaunch, slots: ForkAskSlot[]) => Promise<ForkChoices | null>;
+  /** 交那台起；回「真起来了吗」（失败那一路自己出声、回 `false`）。 */
+  start: (s: ForkStart) => Promise<boolean>;
 }
 
 export interface ForkStartInput {
   /** 刚分叉出来的新会话 sid。 */
   newSessionId: string;
+  /** 源会话 sid（那台从它此刻的终端名铸新名）。 */
+  sourceSessionId: string;
   /** 哪台机器（本机 = `LOCAL_ORIGIN`）。 */
   origin: Origin;
-  /** 源会话的事实（喂给 `inferForkLaunch`）。 */
-  source: ForkLaunchInput;
-  /** 源会话所在的 tmux 名（用来取一个**不同**的新名；源已退出 ⇒ 缺席，拿 cwd 当源）。 */
-  sourceTmuxName?: string | null;
-  // `takenTmuxNames`（已占用名，前端自己避让用）删了：避让在那台后端（[`ForkStartDeps.mintForkName`]）。
+  /** 那台推出的三格。 */
+  launch: ForkLaunch;
 }
 
 /** `failed` 与 `cancelled` 必须分开：前者要报错，后者是用户自己收手、不该再弹任何东西。 */
 export type ForkStartOutcome = "started" | "cancelled" | "failed";
 
-/**
- * 起那条分叉出来的会话。
- *
- * **只在真有 `unknown` 时才问**（`slotsNeedingInput` 为空就直接起）——
- * 否则每分叉一次弹一次窗，这个功能就没人用了。
- */
-export async function startForkedSession(
-  input: ForkStartInput,
-  deps: ForkStartDeps,
-): Promise<ForkStartOutcome> {
-  const facts = inferForkLaunch(input.source);
-  // G6：**本机这条路不进 tmux** —— `resume_history_session` 交给用户自配的拉起器，
-  // tmux 与否根本不在它的表达能力里。
-  // ⚠⚠ 括号里原本写「POSIX 是终端模拟器」——**那是假的**〔audit-0805 F08 / 报告 B-2〕：
-  // `platform/terminal.rs::launch_local_posix` 明写**不开终端模拟器**（stdio 全 null + `process_group(0)`），
-  // 产出的是一个无 tty 的进程。Windows 那半（`wt.exe`）是对的。
-  // ★ 这句与 `launch.rs` 那条头注**曾经互相矛盾**（一个说容器是 tmux、一个说是终端模拟器，
-  // 而代码里两个都没有）；两条已一并订正。
-  //
-  // ★★ **P3t（2026-08-11）：上面那句「本机这条路不进 tmux」正在变成过去时。**
-  // Rust 侧 `history.rs::launch_local` 现在先过 CLI 渲染器，拿到会话名就渲染
-  // `ccm resume <sid> --tmux=<名>` —— **POSIX 本机会进 tmux，Windows 不会**（用户逐字：
-  // 「windows不要tmux」）。所以下面那句「把 tmux 这格从追问清单里摘掉」**还没到该删的时候，
-  // 但它的理由已经换了**：不是「答案会被忽略」，而是**名字还传不下去** ——
-  // `resume_history_session` 的 `tmuxName` 今天没有调用点在传，
-  // 因为本机的「已占用名字」集合还不存在（`U11`），
-  // 而名字只许由 `mintTmuxName` 铸（全仓唯一带撞名避让的铸造口）。
-  // ⇒ P3t-Y2b 把名字接上之后，这一格要**按平台**决定摘不摘，不再是一律摘。
-  // 所以本机分叉时把 tmux 这格从追问清单里摘掉：**问一个答案会被忽略的问题，
-  // 比不问更坏** —— 用户会以为自己选了，而下面的 `startLocal` 压根不看。
-  const slots = slotsNeedingInput(facts).filter(
-    (s) => !(isLocalOrigin(input.origin) && s === "tmux"),
-  );
+/** 还要问的几格。本机那条路一律开终端（POSIX 上那台铸名建进 tmux、Windows 直路），终端那一格不问。 */
+export function slotsToAsk(launch: ForkLaunch, origin: Origin): ForkAskSlot[] {
+  const order: ForkAskSlot[] = ["account", "terminal", "cwd"];
+  return order.filter((k) => launch[k].kind === "unknown" && !(k === "terminal" && isLocalOrigin(origin)));
+}
 
+/** 起那条分叉出来的会话：只在真有不知道的格时问一次。 */
+export async function startForkedSession(input: ForkStartInput, deps: ForkStartDeps): Promise<ForkStartOutcome> {
+  const { launch, origin } = input;
+  const slots = slotsToAsk(launch, origin);
   let choices: ForkChoices = {};
   if (slots.length > 0) {
-    const answered = await deps.ask(facts, slots);
-    if (answered === null) return "cancelled"; // 用户取消 ⇒ 什么都不起
+    const answered = await deps.ask(launch, slots);
+    if (answered === null) return "cancelled";
     choices = answered;
   }
-
-  // ★ 每一格都是「知道就用知道的，不知道就用用户答的」。
-  //   **没有第三条路** —— 不知道且没答，就不该走到这里（`ask` 返回 null 已经拦掉）。
-  const cwd =
-    facts.cwd.kind === "known" ? facts.cwd.value : (choices.cwd ?? "");
-  const configDir =
-    facts.account.kind === "known" ? facts.account.value : (choices.configDir ?? null);
-  // `K-R53`：名字与目录是**同一次选择的两半**，所以取法也必须同形 ——
-  // 「知道就用知道的，不知道就用用户答的」。⚠ `known` 那一支**没有名字可知**
-  // （那一格装的是源会话的目录），如实 `null`，别在这里补一个推出来的。
-  const accountName =
-    facts.account.kind === "known" ? null : (choices.accountName ?? null);
-  const useTmux =
-    facts.tmux.kind === "known" ? facts.tmux.value : (choices.useTmux ?? false);
-
-  if (isLocalOrigin(input.origin)) {
-    // 本机：G3b-1 给 `resume_history_session` 加的 `configDir` 走这里。
-    // 本机路径不管 tmux（那是 PowerShell/POSIX 拉起器自己的事）。
-    // 与远端同形：失败时它已经出过声、回 `false` ⇒ `failed`（调用方不再叠成功提示）。
-    const launched = await deps.startLocal({
-      sessionId: input.newSessionId,
-      cwd,
-      configDir,
-      accountName,
-    });
-    return launched ? "started" : "failed";
-  }
-
-  // 远端：tmux 名**必须与原会话不同**，否则 ccm 会 attach 进原窗口。
-  // 名字问那台后端铸；问不到 ⇒ 不起（抛，由 `runForkFlow` 出声），不自己拼一个顶上。
-  let tmuxName: string | null = null;
-  if (useTmux) {
-    const minted = await deps.mintForkName(input.origin, input.sourceTmuxName ?? cwd ?? "fork");
-    if (!minted.ok) {
-      throw new Error(copyText("tmuxMint.refused.body", { machine: input.origin, reason: minted.why }));
-    }
-    tmuxName = minted.name;
-  }
-  const launched = await deps.startRemote({
-    origin: input.origin,
-    sessionId: input.newSessionId,
-    cwd,
-    configDir,
-    tmuxName,
+  // 每一格：知道就用知道的，不知道就用用户答的；号没答 ⇒ 账号 0（不拿任何号顶替）。
+  const cwd = launch.cwd.kind === "known" ? launch.cwd.value : (choices.cwd ?? "");
+  const account = chosenAccount(launch.account.kind === "known" ? launch.account.value : (choices.account ?? null));
+  const inTerminal =
+    launch.terminal.kind === "known" ? launch.terminal.value.host !== "none" : (choices.useTmux ?? false);
+  const mode = !isLocalOrigin(origin) && inTerminal ? "tmux" : "window";
+  const started = await deps.start({
+    mode,
+    item: { sid: input.newSessionId, cwd, account, fresh_terminal: true, fork_of: input.sourceSessionId },
   });
-  return launched ? "started" : "failed";
+  return started ? "started" : "failed";
 }

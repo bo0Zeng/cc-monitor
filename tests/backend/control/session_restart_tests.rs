@@ -94,7 +94,8 @@ impl Rig {
             note(format!("ccm {}", argv.join(" ")));
             Ok((self.ccm_exit, String::new(), "boom".to_string()))
         };
-        let mint = |_: &str| -> Result<String, batch::CmdErr> { Ok("minted".to_string()) };
+        let mint =
+            |_: batch::NameBase| -> Result<String, batch::CmdErr> { Ok("minted".to_string()) };
         let library = || {
             la::Library::of_product(&json!({ "meta": {"enabled": true}, "accounts": [{
                 "name": "work", "configDir": "/h/.cc/work", "isDefault": false, "mode": "isolated",

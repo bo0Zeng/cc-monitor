@@ -20,12 +20,11 @@ export type { AccountAsk, AccountUnavailable };
 export const FOLLOW: AccountAsk = { kind: "follow" };
 
 /**
- * **用户点名的那一个号**（菜单里点的 · 选择框里点的 · 分叉沿用源会话的）—— 线上 `named` 只从这里出。
- * `configDir === null` = 账号 0；说得出名字 ⇒ 按名字（那台判它选不选得了）；只有目录 ⇒ 原样交（那台 `--account-dir`）。
+ * **用户点名的那一个号**（菜单里点的 · 选择框里点的 · 分叉沿用源会话的，那台推出的名字）—— 线上 `named` 只从这里出。
+ * `null` = 账号 0；名字 ⇒ 按名字（那台判它选不选得了）。
  */
-export function chosenAccount(configDir: string | null, name: string | null): AccountAsk {
-  if (configDir === null && name === null) return { kind: "base" };
-  return name !== null ? { kind: "named", name } : { kind: "named", configDir: configDir ?? undefined };
+export function chosenAccount(name: string | null): AccountAsk {
+  return name === null ? { kind: "base" } : { kind: "named", name };
 }
 
 /** 这次失败是不是那台说「要的号选不了」；是 ⇒ 那一形（`data`）。 */
@@ -70,6 +69,6 @@ export function refuseUnavailableAccount(r: {
   showActionFailureToast(copyText("accountPick.refused.title"), body, {
     level: "error",
     durationMs: 15000,
-    onClick: () => void r.choose(chosenAccount(null, alt)),
+    onClick: () => void r.choose(chosenAccount(alt)),
   });
 }

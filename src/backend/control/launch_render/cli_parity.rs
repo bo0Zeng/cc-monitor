@@ -14,7 +14,8 @@ const FIXTURE: &str = include_str!("fixtures/cli-golden.json");
 /// 再加 `path:` 七条（monitor 每条远端起会话路径真发出去的那一形）。
 /// 29 → 27：「启动期令牌」那条 ok 与「坏令牌」那条拒随起会话时注的令牌删了。
 /// 27 → 29：按会话的那一家起 —— Codex resume 一条 ok，Codex 选号一条拒。
-const EXPECT_CASES: usize = 29;
+/// 29 → 27：「只有目录」那条 ok 与 `path:` 分叉继承目录那条随「按目录交号」那一形删了（分叉沿用的号今天是名字）。
+const EXPECT_CASES: usize = 27;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

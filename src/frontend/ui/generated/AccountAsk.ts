@@ -3,4 +3,4 @@
 /**
  * 线上 `account` 那一格（三条起会话请求同一份）：跟随 · 账号 0 · 用户点名。
  */
-export type AccountAsk = { "kind": "follow" } | { "kind": "base" } | { "kind": "named", name?: string, configDir?: string, };
+export type AccountAsk = { "kind": "follow" } | { "kind": "base" } | { "kind": "named", name: string, };

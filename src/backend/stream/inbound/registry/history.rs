@@ -307,12 +307,27 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     // 分叉：与 CLI `--fork-session` 同一个本体（`control/fork_write.rs::run_inner`，
     //   读 → 适配层的分叉变换（`agents::build_branch_records`）→ `O_EXCL` 新建）。本机远端同一条长连接；读整份 jsonl ⇒ 阻塞档。
+    //   回复多一格 `launch`：分叉之后起要的三格事实（`control/fork_launch.rs`，宿主 `faces/fork_face.rs` 收齐）。
     //   ⚠ 名字刻意不是 `fork-session`：自动派生的 CLI 面会与对 aterm 冻结的 `--fork-session`（argv 形）撞名。
     CommandSpec {
         name: "session-fork",
         doc_anchor: Some("#### `session-fork`"),
         codes: &["bad_args", "fork_failed"],
-        fields: &["jsonlPath", "sessionId", "sid", "uuid"],
+        fields: &[
+            "account",
+            "cwd",
+            "from",
+            "host",
+            "jsonlPath",
+            "kind",
+            "launch",
+            "sessionId",
+            "sid",
+            "terminal",
+            "uuid",
+            "value",
+            "why",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::fork_face::answer(&r.args)

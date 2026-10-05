@@ -1,8 +1,8 @@
 /**
  * G6（branch-anywhere）：分叉起会话前的**一次性追问小窗**。
  *
- * 只在 `slotsNeedingInput` 非空时出现 —— 也就是**只在源会话已经退出、我们真的查不出来**时。
- * 源会话还活着就一次都不问（那条判断在 `fork-start.ts`，本模块不重复它）。
+ * 只在那台推出的三格（`session-fork` 回复的 `launch`）里有不知道的格时出现 —— 主要是**源会话已经退出、真的查不出来**时。
+ * 什么时候问那条判断在 `fork-start.ts`，本模块不重复它；为什么不知道由那台给码，这里照码说。
  *
  * # 这个窗口存在的唯一理由
  *
@@ -14,25 +14,19 @@
  * # 为什么账号默认落在「账号 0」而不是「当前账号」
  *
  * 因为默认值会被大量用户直接回车确认。把「当前账号」摆在默认位，等于把
- * `fork-launch.ts` P1 那条防线（不拿当前账号顶替）绕过去了 —— 只不过多了一次点击。
+ * 「不拿当前账号顶替」那条防线绕过去了 —— 只不过多了一次点击。
  * 账号 0 = 不注入 `CLAUDE_CONFIG_DIR`，是**保守**的那个默认。
  */
 
-import type { ForkChoices } from "./fork-start";
-import type { ForkLaunchFacts } from "./fork-launch";
+import type { ForkAskSlot, ForkChoices } from "./fork-start";
+import type { ForkLaunch, ForkSlot } from "./session-writes";
 import { copyText } from "./copy-table";
 
-/** 可选账号。`configDir === null` 即账号 0。 */
-export interface ForkAccountOption {
-  name: string;
-  configDir: string | null;
-}
-
 export interface ForkAskOptions {
-  facts: ForkLaunchFacts;
-  slots: readonly (keyof ForkLaunchFacts)[];
-  /** 可选账号清单（不含账号 0，账号 0 由本模块固定摆在首位）。 */
-  accounts: readonly ForkAccountOption[];
+  launch: ForkLaunch;
+  slots: readonly ForkAskSlot[];
+  /** 可选的号（名字；不含账号 0，账号 0 由本模块固定摆在首位）。 */
+  accounts: readonly string[];
   /** tmux 复选框的初始态。远端默认勾上（远端会话惯例住在 tmux 里），本机传 false。 */
   defaultUseTmux: boolean;
   /** 挂载点，默认 `document.body`（测试可注入）。 */
@@ -41,6 +35,12 @@ export interface ForkAskOptions {
 
 /** 账号 0 在 `<select>` 里的 value（空串会被 falsy 判断吃掉，故用一个显式哨兵）。 */
 export const ACCOUNT_ZERO_VALUE = "__account_zero__";
+
+/** 号那一格为什么要问（那台给的码 ⇒ 这一句）。 */
+function accountWhy(s: ForkSlot<string | null>): string {
+  if (s.kind === "known") return "";
+  return s.why === "live_no_account" ? copyText("forkAsk.why.liveNoAccount") : copyText("forkAsk.why.exited");
+}
 
 /**
  * 弹一次追问小窗。resolve 到用户的选择；**取消（按钮 / Esc / 点背景）resolve 到 `null`**。
@@ -86,7 +86,7 @@ export function askForkLaunch(opts: ForkAskOptions): Promise<ForkChoices | null>
   modal.appendChild(lead);
 
   const askAccount = opts.slots.includes("account");
-  const askTmux = opts.slots.includes("tmux");
+  const askTmux = opts.slots.includes("terminal");
   const askCwd = opts.slots.includes("cwd");
 
   let accountSel: HTMLSelectElement | null = null;
@@ -102,11 +102,10 @@ export function askForkLaunch(opts: ForkAskOptions): Promise<ForkChoices | null>
     zero.value = ACCOUNT_ZERO_VALUE;
     zero.textContent = copyText("forkAsk.account.base");
     accountSel.appendChild(zero);
-    for (const a of opts.accounts) {
-      if (a.configDir === null) continue; // 账号 0 已经在首位，别重复
+    for (const name of opts.accounts) {
       const o = document.createElement("option");
-      o.value = a.configDir;
-      o.textContent = a.name;
+      o.value = name;
+      o.textContent = name;
       accountSel.appendChild(o);
     }
     row.append(label, accountSel);
@@ -114,10 +113,7 @@ export function askForkLaunch(opts: ForkAskOptions): Promise<ForkChoices | null>
 
     const why = document.createElement("div");
     why.className = "fork-ask-why";
-    // 把 `Slot.why` 原样端出来 —— 那句话是推断层给的**理由**，
-    // 在这里重写一遍就等于让两处各说一套。
-    why.textContent =
-      opts.facts.account.kind === "unknown" ? opts.facts.account.why : "";
+    why.textContent = accountWhy(opts.launch.account);
     modal.appendChild(why);
   }
 
@@ -189,15 +185,8 @@ export function askForkLaunch(opts: ForkAskOptions): Promise<ForkChoices | null>
     ok.addEventListener("click", () => {
       const choices: ForkChoices = {};
       if (accountSel) {
-        const zero = accountSel.value === ACCOUNT_ZERO_VALUE;
-        choices.configDir = zero ? null : accountSel.value;
-        // `K-R53`：名字与目录**一起交出去**（后端那条 ccm 路只会 `--account <名字>`）。
-        // ⚠ 从 `opts.accounts` 里查，**不是**读 `<option>` 的显示文本：显示文本是给人看的，
-        //   哪天加个后缀（「acct-a（默认）」）就会把一个查不到的名字传下去，
-        //   而 `shared/ccm` 对打错的 `--account` 是当场 `die`。
-        choices.accountName = zero
-          ? null
-          : (opts.accounts.find((a) => a.configDir === accountSel!.value)?.name ?? null);
+        // 交的是 `<option>` 的 value（号名本身），不是显示文本。
+        choices.account = accountSel.value === ACCOUNT_ZERO_VALUE ? null : accountSel.value;
       }
       if (tmuxBox) choices.useTmux = tmuxBox.checked;
       if (cwdInput && cwdInput.value.trim()) choices.cwd = cwdInput.value.trim();

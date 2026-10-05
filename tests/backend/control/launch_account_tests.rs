@@ -132,22 +132,11 @@ fn settle_maps_follow_and_named_onto_pick_and_attaches_the_model() {
         settle(&AccountAsk::Follow, None, &models, &facts),
         account("b", None)
     );
-    // 点名：按名字判（带来的目录不看）；只有目录 ⇒ 原样交。
-    let named = AccountAsk::Named {
-        name: Some("b".into()),
-        config_dir: Some("/elsewhere".into()),
-    };
+    // 点名：按名字判。
+    let named = AccountAsk::Named { name: "b".into() };
     assert_eq!(
         settle(&named, Some("s1"), &models, &facts),
         account("b", None)
-    );
-    let dir = AccountAsk::Named {
-        name: None,
-        config_dir: Some("/d".into()),
-    };
-    assert_eq!(
-        settle(&dir, None, &models, &facts),
-        Ok(Settled::Dir("/d".into()))
     );
     // 跟随却什么都选不上 ⇒ 不表态（不是显式账号 0）。
     let none = || lib(vec![acct("z", |a| a["authReady"] = json!(false))]);

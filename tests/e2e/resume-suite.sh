@@ -121,6 +121,12 @@ echo "== F-E2 resume 命令级整合套件（真源 builder + 真 tmux + fake-cl
 echo "repo=$REPO  remote=$REMOTE_DIR  acctA=$ACCT_A  acctB=$ACCT_B  base=$BASE_DEFAULT"
 rm -rf "$ACCT_A" "$ACCT_B" "$BASE_DEFAULT"
 mkdir -p "$ACCT_A/sessions" "$ACCT_A/projects" "$ACCT_B/sessions" "$ACCT_B/projects" "$BASE_DEFAULT/sessions" "$CWD_DIR"
+# 账号 A / B 登记进沙箱家目录的账号清单（起会话按名字点号，ccm 照清单落那个目录）。
+cat > "$CCM_SHIM_ACCOUNTS/accounts.json" <<JSON
+{ "version": 1, "accounts": [
+  { "name": "a", "configDir": "$ACCT_A", "isDefault": false },
+  { "name": "b", "configDir": "$ACCT_B", "isDefault": false } ] }
+JSON
 
 # ── B1:远端 archived + idle-tmux(灰) → Resume(tmux) 就地复用 cc-<sid8>,无 -N 孤儿 ──────────
 echo "-- B1 idle 就地复用(治 #76:复用名不产孤儿)--"
@@ -144,11 +150,11 @@ echo "-- B2 无 tmux → 新建 resume,注入账号 A 目录(直连 + tmux-new �
 SID2="$(cat /proc/sys/kernel/random/uuid)"; S2="cc-${SID2:0:8}"
 # 直连形态(resumeTab 路径):断言命令构造含账号 A 前缀(直连在前台跑 fake-claude 会阻塞,
 # 执行验证交给下面非阻塞的 tmux-new 形态,两者共用同一个 Rust 载荷渲染,注入语义一致)。
-CMD2D="$(drv direct "$SID2" "$CWD_DIR" "$FAKE" "$ACCT_A")"
+CMD2D="$(drv direct "$SID2" "$CWD_DIR" "$FAKE" a)"
 echo "   direct: $CMD2D"
-echo "$CMD2D" | grep -q "^ccm --resume $SID2 -- --ccm-agent claude --account-dir $ACCT_A " && ok "B2 直连命令是一行 ccm、带账号 A 目录（--account-dir $ACCT_A）" || bad "B2 直连命令缺账号 A"
+echo "$CMD2D" | grep -q "^ccm --resume $SID2 -- --ccm-agent claude --account a " && ok "B2 直连命令是一行 ccm、点名账号 A（--account a）" || bad "B2 直连命令缺账号 A"
 # tmux-new 形态(resumeTabTmux 归档分支):新建 cc-<sid8> 会话 + @ccm_sid,真执行 → argv 落 A。
-CMD2T="$(drv tmux-new "$SID2" "$CWD_DIR" "$FAKE" "$S2" "$ACCT_A")"
+CMD2T="$(drv tmux-new "$SID2" "$CWD_DIR" "$FAKE" "$S2" a)"
 echo "   tmux-new: $CMD2T"
 SESSIONS+=("$S2")
 echo "$CMD2T" | grep -q "^ccm --resume $SID2 -- --ccm-tmux=$S2 --ccm-sid=$SID2 " && ok "B2 tmux-new 是一行 ccm：建 $S2 并带身份标记" || bad "B2 tmux-new 命令形状不符"
@@ -163,12 +169,12 @@ else bad "B2 12s 内 A 目录 argv.log 无 resume(tmux-new)"; fi
 echo "-- B3 pin 账号 B:idle 复用 + 注入 B 目录(两隔离账号验证)--"
 SID3="$(cat /proc/sys/kernel/random/uuid)"; S3="cc-${SID3:0:8}"
 make_idle "$SID3" "$REMOTE_DIR" >/dev/null
-CMD3="$(drv into-existing "$SID3" "$S3" "$FAKE" "$ACCT_B")"
+CMD3="$(drv into-existing "$SID3" "$S3" "$FAKE" b)"
 echo "   cmd: $CMD3"
 # idle 复用是 send-keys 形态:整个载荷再被 posixQuote 包一层,内层 ' → '\''(故不按裸引号 grep);
 # 断言 export 前缀 + B 目录路径同时出现即可,真正的路由证据是下面 argv 落 B 目录。
-if echo "$CMD3" | grep -qF -- "--account-dir $ACCT_B"; then
-  ok "B3 pin 命令带账号 B 目录（--account-dir $ACCT_B）"
+if echo "$CMD3" | grep -qF -- "--account b"; then
+  ok "B3 pin 命令点名账号 B（--account b）"
 else bad "B3 pin 命令缺 B 前缀"; fi
 fire_resume "$CMD3"
 if AL="$(wait_argv_resume "$ACCT_B" "$SID3" 12)"; then
@@ -193,7 +199,7 @@ if AL="$(wait_argv_resume "$BASE_DEFAULT" "$SID4" 12)"; then ok "B4 基座 resum
 echo "-- B6a 重复 resume 幂等(create-gate 短路)--"
 SID6="$(cat /proc/sys/kernel/random/uuid)"; S6="cc-${SID6:0:8}"
 rm -f "$ACCT_A/argv.log"
-CMD6="$(drv tmux-new "$SID6" "/tmp/e2e-remote" "$FAKE" "$S6" "$ACCT_A")"
+CMD6="$(drv tmux-new "$SID6" "/tmp/e2e-remote" "$FAKE" "$S6" a)"
 SESSIONS+=("$S6")
 fire_resume "$CMD6"; sleep 1
 fire_resume "$CMD6"; sleep 1     # 第二次:会话已存在 → new-session 2>/dev/null 失败 → && 短路跳过 send-keys
@@ -236,7 +242,7 @@ echo "-- B6c 会话仍 live → create-gate 守卫不误动 --"
 SID8="$(cat /proc/sys/kernel/random/uuid)"; S8="cc-${SID8:0:8}"
 rm -f "$ACCT_A/argv.log"
 # 先真起一个 live(fake-claude 常驻,不 kill)——模拟目标会话仍活
-CMD8A="$(drv tmux-new "$SID8" "/tmp/e2e-remote" "$FAKE" "$S8" "$ACCT_A")"
+CMD8A="$(drv tmux-new "$SID8" "/tmp/e2e-remote" "$FAKE" "$S8" a)"
 SESSIONS+=("$S8")
 fire_resume "$CMD8A"; sleep 1
 N8_1="$(grep -cE "sid=$SID8 .*argv=--resume" "$ACCT_A/argv.log" 2>/dev/null || true)"

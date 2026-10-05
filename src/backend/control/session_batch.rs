@@ -55,14 +55,23 @@ pub(crate) struct Deps<'a> {
     pub(crate) send_into: &'a dyn Fn(&str, &str, &str) -> Result<(), CmdErr>,
     /// 交一行 ccm（argv，`argv[0]` 是 `ccm`）⇒ `(退出码, stdout, stderr)`。生产那一份起这台后端自己（它就是 ccm）。
     pub(crate) run_ccm: &'a dyn Fn(&[String]) -> Result<(i32, String, String), CmdErr>,
-    /// 工作目录 ⇒ 这台铸的新会话名（同 `terminal-name-mint`）。
-    pub(crate) mint: &'a dyn Fn(&str) -> Result<String, CmdErr>,
+    /// 基名从哪来 ⇒ 这台铸的新会话名（同 `terminal-name-mint`：按这台此刻的会话名避让）。
+    pub(crate) mint: &'a dyn Fn(NameBase) -> Result<String, CmdErr>,
     /// 这台 ccm 会哪些（渲那一行用）。
     pub(crate) caps: &'a BTreeSet<String>,
     /// 本机那一形的事实（平台 · 目录在不在）。
     pub(crate) local_facts: local::Facts,
     /// 起会话挑号要的事实（这台的账号库 · 某条会话上次用的号）。
     pub(crate) accounts: &'a la::Facts<'a>,
+}
+
+/// 铸名的基名从哪来（同 `terminal-name-mint` 的 `cwd` / `forkOf`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NameBase<'a> {
+    /// 工作目录 ⇒ `<项目名>-cc`。
+    Cwd(&'a str),
+    /// 分叉出来的那一条 ⇒ `<…>-fork-cc`（必与源名不同）。
+    ForkOf(&'a str),
 }
 
 /// 一个会话的结局。
@@ -164,7 +173,7 @@ pub(crate) enum Standing<T = String> {
 }
 
 /// 名单 ⇒ 这个 sid 的样子（带着它的那几行）。
-fn carriers<'a>(rows: &'a [TmuxEntry], sid: &str) -> Standing<&'a TmuxEntry> {
+pub(crate) fn carriers<'a>(rows: &'a [TmuxEntry], sid: &str) -> Standing<&'a TmuxEntry> {
     let carrying = |agent: bool| -> Vec<&TmuxEntry> {
         rows.iter()
             .filter(|r| r.sid.as_deref() == Some(sid) && r.agent == agent)
@@ -269,6 +278,10 @@ pub(crate) struct Item {
     pub(crate) sid: String,
     pub(crate) cwd: String,
     pub(crate) account: AccountAsk,
+    /// 必铸新终端名（分叉出来的那一条）：不就地键入已有的终端、不复用任何已有的名字（父会话那个尤其）。
+    pub(crate) fresh: bool,
+    /// 分叉出来的那一条的源会话 sid：新名从源会话此刻所在终端的名字铸（同 `terminal-name-mint` 的 `forkOf`）。
+    pub(crate) fork_of: Option<String>,
 }
 
 /// 整批共用的几样：哪一家 · 启动器（用户设置的 resume 命令原值）· 这台的模型偏好表（原值）。
@@ -290,7 +303,7 @@ fn item_of(v: &Value) -> Result<Item, CmdErr> {
         .as_object()
         .ok_or_else(|| bad("each item must be an object"))?;
     for k in o.keys() {
-        if !["sid", "cwd", "account"].contains(&k.as_str()) {
+        if !["sid", "cwd", "account", "fresh_terminal", "fork_of"].contains(&k.as_str()) {
             return Err(bad(&format!("unknown item field `{k}`")));
         }
     }
@@ -303,10 +316,31 @@ fn item_of(v: &Value) -> Result<Item, CmdErr> {
         None => AccountAsk::Follow,
         Some(a) => serde_json::from_value(a.clone()).map_err(|e| bad(&e.to_string()))?,
     };
+    let fresh = match o.get("fresh_terminal") {
+        None => false,
+        Some(v) => v
+            .as_bool()
+            .ok_or_else(|| bad("`fresh_terminal` must be a bool"))?,
+    };
+    let fork_of = match o.get("fork_of") {
+        None => None,
+        Some(v) => {
+            let s = v
+                .as_str()
+                .filter(|s| shell_quote_core::session_id_ok(s))
+                .ok_or_else(|| bad("`fork_of` must be a session id"))?;
+            if !fresh {
+                return Err(bad("`fork_of` goes with `fresh_terminal: true`"));
+            }
+            Some(s.to_string())
+        }
+    };
     Ok(Item {
         sid: sid.to_string(),
         cwd: str_of(o, "cwd")?.to_string(),
         account,
+        fresh,
+        fork_of,
     })
 }
 
@@ -393,24 +427,26 @@ pub(crate) fn start(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
         }
     }
     let _total = Budget::start(batch_total(items.len()));
-    // tmux 那一形先看一眼这台的名单（一批一次）；开终端那一形用不着。
-    let rows = if tmux {
+    // tmux 那一形先看一眼这台的名单（一批一次）；开终端那一形只有本机要铸新名的那几项用得着（核新名不落在已有的名字上）。
+    let fresh_here = here && !deps.local_facts.windows && items.iter().any(|i| i.fresh);
+    let rows = if tmux || fresh_here {
         Some((deps.list)().map_err(|m| ("unobservable", m))?)
     } else {
         None
     };
     let results: Vec<Value> = items
         .iter()
-        .map(|it| start_one(it, &batch, rows.as_ref(), here, deps).to_json())
+        .map(|it| start_one(it, &batch, tmux, rows.as_ref(), here, deps).to_json())
         .collect();
     Ok(json!({ "results": results }))
 }
 
 /// 一个：先判用哪个号（选不了 ⇒ 跳过、不挡别的），再问记录在不在（查这个号那棵树），再按那一形做。
-/// `rows` = tmux 那一形的名单（`Some(None)` = 这台没 tmux）；开终端那一形 `None`。
+/// `rows` = 这台的 tmux 名单（`Some(None)` = 这台没 tmux；没看 ⇒ `None`）。
 fn start_one(
     it: &Item,
     b: &Batch,
+    tmux: bool,
     rows: Option<&Option<Vec<TmuxEntry>>>,
     here: bool,
     deps: &Deps,
@@ -429,7 +465,6 @@ fn start_one(
     };
     let root = match &account {
         Settled::Account(a) => Some(a.config_dir.as_str()),
-        Settled::Dir(d) => Some(d.as_str()),
         Settled::Base | Settled::Unsaid => None,
     };
     match (deps.record)(&it.sid, root) {
@@ -437,10 +472,11 @@ fn start_one(
         Ok((false, root)) => return Answer::skipped(&it.sid, "record_gone", root),
         Ok((true, _)) => {}
     }
-    let done = match rows {
-        Some(rows) => start_in_tmux(it, b, &account, rows.as_deref(), here, deps),
-        None if here => start_window_here(it, b, &account, deps),
-        None => {
+    let rows = rows.and_then(Option::as_deref);
+    let done = match tmux {
+        true => start_in_tmux(it, b, &account, rows, here, deps),
+        false if here => start_window_here(it, b, &account, rows, deps),
+        false => {
             match wire::render_ccm_launch_with(&wire_req(it, b, None, true), &account, deps.caps) {
                 Ok(cmd) => Answer {
                     cmd: Some(cmd),
@@ -481,6 +517,13 @@ fn start_in_tmux(
             session: ns.first().cloned(),
             ..Answer::skipped(&it.sid, "ambiguous", ns.join(", "))
         },
+        // 必铸新名的那一项不键进已有的终端。
+        Standing::Idle(_) | Standing::None if it.fresh => {
+            match fresh_name(fork_base(it, rows), rows, deps) {
+                Ok(name) => start_named(it, b, account, name, here, deps),
+                Err(e) => not_minted(&it.sid, e),
+            }
+        }
         Standing::Idle(n) => {
             let line =
                 wire::render_ccm_launch_with(&wire_req(it, b, None, false), account, deps.caps);
@@ -496,11 +539,45 @@ fn start_in_tmux(
                 ..done
             }
         }
-        Standing::None => match (deps.mint)(&it.cwd) {
+        Standing::None => match (deps.mint)(NameBase::Cwd(&it.cwd)) {
             Ok(name) => start_named(it, b, account, name, here, deps),
             Err(e) => Answer::failed(&it.sid, e),
         },
     }
+}
+
+/// 铸不出新名：落在已有的名字上 ⇒ `session` 带那个名字（同 ccm 说名字被占那一形）。
+fn not_minted(sid: &str, e: CmdErr) -> Answer {
+    Answer {
+        session: (e.0 == "name_taken").then(|| e.1.clone()),
+        ..Answer::failed(sid, e)
+    }
+}
+
+/// 必铸新终端名：问这台铸（避让这台此刻的全部会话名），再核一遍不落在名单里任何一个上 ——
+/// 父会话那个名字绝不复用（同名 ⇒ `ccm` 会把新会话接进原会话那个窗口）。落上了 ⇒ `name_taken`，不起。
+/// 基名（`base`）由调用方定：后台起那一形按分叉那一形（[`fork_base`]），本机开终端那一形同本机 Resume（按工作目录）。
+fn fresh_name(base: NameBase, rows: &[TmuxEntry], deps: &Deps) -> Result<String, CmdErr> {
+    let name = (deps.mint)(base)?;
+    if rows.iter().any(|r| r.name == name) {
+        return Err(("name_taken", name));
+    }
+    Ok(name)
+}
+
+/// 分叉那一形的基名：源会话此刻所在终端的名字（在跑的那一个，同 `sessions-where`；命中多个取第一个）；
+/// 源会话不在任何终端里 ⇒ 这一项的工作目录。
+fn fork_base<'a>(it: &'a Item, rows: &'a [TmuxEntry]) -> NameBase<'a> {
+    let source = it
+        .fork_of
+        .as_deref()
+        .and_then(|sid| match carriers(rows, sid) {
+            Standing::Running(e) => Some(e.name.as_str()),
+            Standing::Ambiguous(es) => es.first().map(|e| e.name.as_str()),
+            Standing::Idle(_) | Standing::None => None,
+        })
+        .unwrap_or(&it.cwd);
+    NameBase::ForkOf(source)
 }
 
 /// 以 `name` 新建一个 tmux 会话、在里面起这一个（交一行 ccm，`--detach`）。换号重启复用让出来的旧名也走这一条。
@@ -543,15 +620,24 @@ pub(crate) fn start_named(
     }
 }
 
-/// 本机开终端：同 `launch-local` 那一条（POSIX 上铸名建进 tmux；Windows 上直路）。
-fn start_window_here(it: &Item, b: &Batch, account: &Settled, deps: &Deps) -> Answer {
-    let name = if deps.local_facts.windows {
-        None
-    } else {
-        match (deps.mint)(&it.cwd) {
-            Ok(n) => Some(n),
-            Err(e) => return Answer::failed(&it.sid, e),
+/// 本机开终端：同 `launch-local` 那一条（POSIX 上铸名建进 tmux；Windows 上直路）。`rows` ＝ 要铸新名那一项看过的名单。
+fn start_window_here(
+    it: &Item,
+    b: &Batch,
+    account: &Settled,
+    rows: Option<&[TmuxEntry]>,
+    deps: &Deps,
+) -> Answer {
+    let minted = match (deps.local_facts.windows, it.fresh) {
+        (true, _) => Ok(None),
+        (false, true) => {
+            fresh_name(NameBase::Cwd(&it.cwd), rows.unwrap_or_default(), deps).map(Some)
         }
+        (false, false) => (deps.mint)(NameBase::Cwd(&it.cwd)).map(Some),
+    };
+    let name = match minted {
+        Ok(n) => n,
+        Err(e) => return not_minted(&it.sid, e),
     };
     let req = local_req(it, b, name.clone());
     match local::plan(&req, account, &deps.local_facts) {

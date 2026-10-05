@@ -1072,11 +1072,9 @@ describe("launch-account：要哪个号 · 那台说选不了时给的那个选�
     new TextEncoder().encode(JSON.stringify(data === undefined ? { code, message: "m" } : { code, message: "m", data }));
   const U: AccountUnavailable = { requested: "z", pinned: true, listKnown: true, alternative: "b" };
 
-  it("点名那一格：账号 0 ⇒ base；有名字 ⇒ 按名字（目录不带）；只有目录 ⇒ 只交目录", () => {
-    expect(chosenAccount(null, null)).toEqual({ kind: "base" });
-    expect(chosenAccount("/h/z", "z")).toEqual({ kind: "named", name: "z" });
-    expect(chosenAccount(null, "z")).toEqual({ kind: "named", name: "z" });
-    expect(chosenAccount("/h/x", null)).toEqual({ kind: "named", configDir: "/h/x" });
+  it("点名那一格：账号 0 ⇒ base；名字 ⇒ 按名字（线上只有名字那一形）", () => {
+    expect(chosenAccount(null)).toEqual({ kind: "base" });
+    expect(chosenAccount("z")).toEqual({ kind: "named", name: "z" });
   });
 
   it("认得出「那台说要的号选不了」：通道层 / 控制层两种错都认；别的码 · 形状不对 · 别的层 ⇒ 不认", () => {

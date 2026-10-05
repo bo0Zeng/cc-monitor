@@ -400,7 +400,8 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
         //    400 的窗口够不到它的收尾 `})`，实测只扫到 3 处（应为 4）—— 那是**假绿**方向。
         // 两条 Tauri 命令退役：起本机会话 = 以 `new` / `resume` 动作调 `launch-render.ts::launchLocal(请求, 终端目录)`
         //   （计划与渲染问本机后端 `launch-local`）⇒ 调用点换成它；收尾是「请求体 `}` ＋ 第二个实参 ＋ `)`」。
-        /\blaunchLocal\s*\(\s*\{\s*action:\s*\{\s*kind:\s*"(resume|new)"[\s\S]{0,1200}?\}\s*,\s*[\w.]+\s*,?\s*\)/g,
+        //   终端目录之后还可以有别的实参（本机 resume 那一处还交「开窗之前问一句」）。
+        /\blaunchLocal\s*\(\s*\{\s*action:\s*\{\s*kind:\s*"(resume|new)"[\s\S]{0,1200}?\}\s*,\s*[\w.]+(?:\s*,\s*[\w.]+)*\s*,?\s*\)/g,
       )) {
         out.push({ file: f.slice(REPO_ROOT.length + 1), text: m[0], kind: m[1] });
       }

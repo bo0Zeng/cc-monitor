@@ -729,7 +729,10 @@ shell 串走 SSH、本机拒绝」的分叉。命名避让 / 登记进总线 / s
 
 ```text
 → {"id":"f1","cmd":"session-fork","args":{"sid":"0473c3a0-…","uuid":"9a1b2c3d-…"}}
-← {"kind":"reply","id":"f1","ok":true,"data":{"sessionId":"5f0e1d2c-…","jsonlPath":"/home/u/.claude/projects/-home-u-proj/5f0e1d2c-….jsonl"}}
+← {"kind":"reply","id":"f1","ok":true,"data":{"sessionId":"5f0e1d2c-…","jsonlPath":"/home/u/.claude/projects/-home-u-proj/5f0e1d2c-….jsonl",
+     "launch":{"cwd":{"kind":"known","value":"/home/u/proj","from":"record"},
+               "account":{"kind":"known","value":"work","from":"process"},
+               "terminal":{"kind":"unknown","why":"exited"}}}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -737,6 +740,19 @@ shell 串走 SSH、本机拒绝」的分叉。命名避让 / 登记进总线 / s
 | `sid` | → | 源会话 id（只收 sid、不收路径：按 sid 在记录树里找那份文件，`branch_core::find_session_file`） |
 | `uuid` | → | 从哪条消息处分叉 |
 | `sessionId` / `jsonlPath` | ← | 新会话的 id 与落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖） |
+| `launch` | ← | 起分叉出来的新会话要的三格：`cwd` · `account` · `terminal`，每格 `{kind:"known", value, from}` 或 `{kind:"unknown", why}` |
+
+`launch` 那三格由这台推（`control/fork_launch.rs`），**绝不猜**；句子由各前端照码说：
+
+| 格 | `value` | `from` | `why` |
+|---|---|---|---|
+| `cwd` | 源会话记录里的工作目录（记录开头第一条带它的那一条） | `record` | `no_cwd`（记录里没有） |
+| `account` | 号名；`null` ＝ 账号 0（不设配置目录） | `process`（源会话进程此刻的配置目录，同 `accounts-sessions`：没设 ＝ 账号 0，设了 ＝ 账号库里认得那个目录的号） | `exited`（源会话已退出）· `live_no_account`（活着，但说不出号：进程名单里没有它 · 那个目录账号库不认得 · 环境这一刻读不出） |
+| `terminal` | 同会话容器那一格：`{host:"tmux", terminal}`（终端名单那一行的句柄）· `{host:"none"}`（不在任何终端里） | `terminal_list`（挂着它的 `@ccm_sid`、前台是 agent 的那一个；命中多个取第一个） | `exited` |
+
+活着 ＝ 进程名单说它活着，或终端名单里有挂着它、前台是 agent 的；只剩 shell 的不算。号与终端只有活着才知道（已退出的会话 pidfile 已经没了、记录里没有号）。
+名单读不出不挡分叉：进程名单读不出 ⇒ 号那一格「不知道」；终端名单读不出 ⇒ 当不在任何终端里。
+起这条新会话走 `sessions-start` 那一项（`fresh_terminal: true`，见下）。
 
 与一次性子命令 `--fork-session <sid> <uuid>`（对 aterm 冻结的 argv 形）是**同一份本体**（`control/fork_write.rs::run_inner`：读 → 适配层的分叉变换（`agents/claudecode/branch.rs`，原共享 crate `branch-core`）→ `O_EXCL` 落盘）。
 ⚠ 名字刻意不叫 `fork-session`：帧面自动派生的 CLI 面会是 `--fork-session`，与那条冻结的 argv 形撞名；这一条的 CLI 面是 `--session-fork`（stdin 一段 JSON）。
@@ -816,7 +832,8 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
      "agent":"claude","launcher":"claude","defaultLauncher":"claude",   // 整批一份：哪一家 · 用户设置的 resume 命令原值
      "models":{"work":"opus"},          // 可缺：这台的模型偏好表原值（{号: 模型}，只用在远端那一行上）
      "items":[{"sid":"<sid>","cwd":"/x",
-               "account":{"kind":"follow"} | {"kind":"base"} | {"kind":"named","name":"work"}}]}}   // `account` 可缺 ＝ 跟随
+               "account":{"kind":"follow"} | {"kind":"base"} | {"kind":"named","name":"work"},   // 可缺 ＝ 跟随
+               "fresh_terminal":true,"fork_of":"<源会话 sid>"}]}}                                // 两格都可缺：false · 没有
 ← {"kind":"reply","id":"S1","ok":true,"data":{"results":[
      {"sid":"<sid>","outcome":"done" | "skipped" | "failed","why":null,"detail":"",
       "session":"proj-cc","bus":{"removed":[],"failed":[],"unread":null},"cmd":null,
@@ -838,6 +855,12 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
     `none` ⇒ 这台铸名（同 `terminal-name-mint`），交**界面「在 tmux 里 Resume」那一行**（远端同 `launch-render-cli`、本机同 `launch-local`，同一份映射、同一个渲染器）只多 `--detach`，
     由这台后端自己当 ccm 跑（环境、中转地址、身份标记、自检都由 ccm 那一趟做）；退出码 3（名字有人了）⇒ `failed`/`name_taken`，别的非零 ⇒ `failed`/`start_failed`（`detail` 是 ccm 的原话），15 s 没结束（或整批的总期限用完了）⇒ `failed`/`child_timed_out`。
   - `mode:"window"`：只渲那一行交回（本机同 `launch-local`：POSIX 上铸名建进 tmux；远端同 `launch-render-cli` 直连），窗口由 monitor 开。渲不出来 ⇒ `failed`/`refused`。
+- `fresh_terminal: true`（分叉出来的那一条）⇒ 这台**必铸新终端名**、绝不复用已有的（父会话那个尤其：同名 ⇒ `ccm` 会把新会话接进原会话那个窗口）：
+  不键进已有的终端（`idle` 也铸新名另起）；基名按分叉那一形（同 `terminal-name-mint` 的 `forkOf`，按这台此刻的会话名避让）：
+  `fork_of`（源会话 sid，只许与 `fresh_terminal: true` 一起）此刻在跑的那个终端（同 `sessions-where`，命中多个取第一个）的名字 ⇒ `work-cc` 铸 `work-fork-cc`；
+  源会话不在任何终端里（或没给 `fork_of`）⇒ 这一项的 `cwd` ⇒ `<项目名>-fork-cc`。
+  铸回的名字仍落在这台名单里某一个上 ⇒ `failed`/`name_taken`（`session` 是那个名字），不起。
+  本机开终端那一形名字同本机 Resume（按 `cwd` 铸 `<项目名>-cc`、这台避让），同样核不落在已有的名字上；远端开终端那一形不铸名（那台 `ccm` 自己避让）。
 - 这台没装 tmux ⇒ 停与 `mode:"tmux"` 逐个 `skipped`/`no_tmux`。
 
 三条都可带 `client`（自报的前端，同 `kill`）：停与就地键入那一步带它过「哪个前端的会话」那一维（别的前端的 ⇒ 那一个 `failed`/`wrong_owner`）。
@@ -1981,7 +2004,7 @@ monitor 每一条远端起会话路径（直连 resume · 建 tmux 会话 resume
 ```
 
 **用哪个号这台自己判**（`control/launch_account.rs::pick`，三条起会话请求同一份）：`follow` ⇒ 这条会话上次用的号（这台家里的 `launch-accounts.json`）→ 这台的默认号（账号库清单里 `isDefault` 的那一个，没有就第一个）→ 不指定；
-上次那个号选不了 ⇒ **不起**（`account_unavailable`，`pinned:true`），绝不悄悄换成别的号。`named` ⇒ 用户点的那个号（选不了同样 `account_unavailable`）；只有 `configDir`、没有 `name` ⇒ 原样 `--account-dir`。
+上次那个号选不了 ⇒ **不起**（`account_unavailable`，`pinned:true`），绝不悄悄换成别的号。`named` ⇒ 用户点的那个号（选不了同样 `account_unavailable`）。
 「选得了」＝ 隔离模式 · 鉴权前提就绪 · 目录在（同 `accounts-list` 那一份成品）。
 「上次用哪个号起的」由这台记：`ccm` 最终那一跳给将要跑 agent 的那个进程留张便条（`launch-pending/<pid>.json`），这台的会话观测看见那个 pid 的会话时把 `sid → 号` 记下（便条留到进程不在才清）。
 
@@ -1992,7 +2015,7 @@ monitor 每一条远端起会话路径（直连 resume · 建 tmux 会话 resume
 | `container` | → | `{"kind":"none"}`（直路）· `{"kind":"tmux","name":…,"send_into":bool}`（建会话 / 键进已有 pane）|
 | `cwd` · `ccmSid` · `model` · `launcher` · `defaultLauncher` | → | 这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）；`model` = 显式指定的模型（压过 `models`）|
 | `models` | → | 可缺：这台的模型偏好表（`{号: 模型}`，用户设置的原值）；判出来的号在表里 ⇒ `--model` 用那一条 |
-| `account` | → | `{"kind":"follow"}` · `{"kind":"base"}` · `{"kind":"named","name"?:…,"configDir"?:…}`（有名字 ⇒ 按名字判、`configDir` 不看；只有目录 ⇒ `--account-dir`）—— 生成的类型 `AccountAsk` |
+| `account` | → | `{"kind":"follow"}` · `{"kind":"base"}` · `{"kind":"named","name":…}`（按名字判）—— 生成的类型 `AccountAsk` |
 | `cmd` | ← | 那一行 `ccm …` |
 | `account` | ← | 实际用的号 `{name, configDir, model}`（生成的类型 `LaunchedAccount`）；账号 0 / 不指定 ⇒ `null` |
 
@@ -2039,7 +2062,7 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
   环境里继承来的是**我们的中转那一形**（外层 shell / 上一趟留下的，属于别的号）⇒ 不认：按**这一发的目标账号**重问；
   这一发不注入 ⇒ 清掉它。容器路（`--ccm-tmux`）不把它带进 pane —— pane 里那一趟走到这里自己问（只带用户自己的端点）。
 - **身份**：`--ccm-launch-id` ⇒ `CCM_LAUNCH_ID`；`--ccm-sid=` ⇒ tmux 会话上的 `@ccm_sid`。
-- **账号**：`--account <名>` · `--account-dir <目录>`（说不出名字时）· `--base`。
+- **账号**：`--account <名>` · `--account-dir <目录>`（命令行上直接给目录）· `--base`。
 - 同号会话**有活着的 agent 进程**才回接那个窗口；只剩窗口上的标记（进程已退）⇒ 原地续上。
 
 #### 额度账与账号轮换（10-03）—— **账号域自己的状态，不是用户文件**

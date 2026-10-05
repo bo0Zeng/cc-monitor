@@ -8,18 +8,17 @@
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { askForkLaunch, ACCOUNT_ZERO_VALUE } from "../../../src/frontend/ui/fork-ask";
-import type { ForkLaunchFacts } from "../../../src/frontend/ui/fork-launch";
+import type { ForkLaunch } from "../../../src/frontend/ui/session-writes";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
-const FACTS: ForkLaunchFacts = {
-  cwd: { kind: "known", value: "/home/u/p", from: "会话记录里的 cwd" },
-  account: { kind: "unknown", why: "源会话已退出：账号只记在 pidfile 里" },
-  tmux: { kind: "unknown", why: "源会话已退出：它当初在不在 tmux 里无从查起" },
+/** 那台推出的三格（`session-fork` 回复的 `launch`）：源会话已退出。 */
+const FACTS: ForkLaunch = {
+  cwd: { kind: "known", value: "/home/u/p", from: "record" },
+  account: { kind: "unknown", why: "exited" },
+  terminal: { kind: "unknown", why: "exited" },
 };
 
-const ACCOUNTS = [
-  { name: "z", configDir: "/home/u/.claude-alt/z" },
-  { name: "b", configDir: "/home/u/.claude-alt/b" },
-];
+const ACCOUNTS = ["z", "b"];
 
 const q = <T extends Element>(sel: string): T => {
   const el = document.querySelector<T>(sel);
@@ -32,8 +31,8 @@ describe("askForkLaunch", () => {
 
   it("只渲染要问的那几格（cwd 已知 → 不出现输入框）", async () => {
     const p = askForkLaunch({
-      facts: FACTS,
-      slots: ["account", "tmux"],
+      launch: FACTS,
+      slots: ["account", "terminal"],
       accounts: ACCOUNTS,
       defaultUseTmux: true,
     });
@@ -47,7 +46,7 @@ describe("askForkLaunch", () => {
   /** ★★ 默认值会被大量用户直接确认掉，所以默认位上不许摆「当前账号」。 */
   it("★★ 账号默认落在账号 0（不注入），列表里的账号都不是默认", async () => {
     const p = askForkLaunch({
-      facts: FACTS,
+      launch: FACTS,
       slots: ["account"],
       accounts: ACCOUNTS,
       defaultUseTmux: false,
@@ -56,46 +55,28 @@ describe("askForkLaunch", () => {
     expect(sel.value).toBe(ACCOUNT_ZERO_VALUE);
     expect(sel.options[0].textContent).toContain("账号 0");
     q<HTMLButtonElement>(".fork-ask-ok").click();
-    expect((await p)?.configDir, "账号 0 ⇒ null，不是空串").toBeNull();
+    expect((await p)?.account, "账号 0 ⇒ null，不是空串").toBeNull();
   });
 
-  it("选了某个账号 → 回它的 configDir **与名字**", async () => {
+  it("选了某个号 → 回它的名字（`<option>` 的 value，不是显示文本）", async () => {
     const p = askForkLaunch({
-      facts: FACTS,
+      launch: FACTS,
       slots: ["account"],
       accounts: ACCOUNTS,
       defaultUseTmux: false,
     });
     const sel = q<HTMLSelectElement>(".fork-ask-account");
-    sel.value = "/home/u/.claude-alt/b";
+    sel.value = "b";
+    sel.options[sel.selectedIndex].textContent = "b（默认）"; // 显示文本改了也不影响交的名字
     q<HTMLButtonElement>(".fork-ask-ok").click();
-    const answered = await p;
-    expect(answered?.configDir).toBe("/home/u/.claude-alt/b");
-    // `K-R53`：后端那条 ccm 路只会 `--account <名字>`，只给目录 = 这条分叉路到不了它。
-    // ⚠ 名字必须是**从 `accounts` 清单里查的**，不是 `<option>` 的显示文本：
-    //   显示文本哪天加个后缀（「b（默认）」）就会把一个查不到的名字传下去，
-    //   而 `shared/ccm` 对打错的 `--account` 是当场 `die`（退出码 2）。
-    expect(answered?.accountName, "用户挑的号的名字没跟着回来").toBe("b");
-  });
-
-  it("★ 账号 0 ⇒ 名字也是 `null`（那一态走 `base`，本来就不要名字）", async () => {
-    const p = askForkLaunch({
-      facts: FACTS,
-      slots: ["account"],
-      accounts: ACCOUNTS,
-      defaultUseTmux: false,
-    });
-    q<HTMLButtonElement>(".fork-ask-ok").click(); // 默认位就是账号 0
-    const answered = await p;
-    expect(answered?.configDir).toBeNull();
-    expect(answered?.accountName).toBeNull();
+    expect((await p)?.account, "用户挑的号的名字没跟着回来").toBe("b");
   });
 
   /** ★★ 取消必须是 `null`。`{}` 会被 `startForkedSession` 当成"用户确认了默认值"照常起。 */
   it("★★ 取消 → null（三条路都是：按钮 / Esc / 点背景）", async () => {
     for (const how of ["button", "esc", "backdrop"] as const) {
       const p = askForkLaunch({
-        facts: FACTS,
+        launch: FACTS,
         slots: ["account"],
         accounts: ACCOUNTS,
         defaultUseTmux: false,
@@ -110,7 +91,7 @@ describe("askForkLaunch", () => {
 
   it("★ 点弹窗本体（不是背景）不算取消", async () => {
     const p = askForkLaunch({
-      facts: FACTS,
+      launch: FACTS,
       slots: ["account"],
       accounts: ACCOUNTS,
       defaultUseTmux: false,
@@ -123,8 +104,8 @@ describe("askForkLaunch", () => {
 
   it("tmux 复选框的初始态由调用方给（远端默认勾上）", async () => {
     const p = askForkLaunch({
-      facts: FACTS,
-      slots: ["tmux"],
+      launch: FACTS,
+      slots: ["terminal"],
       accounts: [],
       defaultUseTmux: true,
     });
@@ -133,30 +114,33 @@ describe("askForkLaunch", () => {
     expect((await p)?.useTmux).toBe(true);
   });
 
-  it("★ 把推断层给的「为什么要问」原样端出来，不在这儿另写一套说法", async () => {
-    const p = askForkLaunch({
-      facts: FACTS,
-      slots: ["account"],
-      accounts: [],
-      defaultUseTmux: false,
-    });
-    expect(q<HTMLElement>(".fork-ask-why").textContent).toBe(
-      FACTS.account.kind === "unknown" ? FACTS.account.why : "",
-    );
-    q<HTMLButtonElement>(".fork-ask-cancel").click();
-    await p;
+  it("★ 号那一格为什么要问：照那台给的码说（已退出 · 活着但说不出号各一句）", async () => {
+    for (const [why, key] of [
+      ["exited", "forkAsk.why.exited"],
+      ["live_no_account", "forkAsk.why.liveNoAccount"],
+    ] as const) {
+      const p = askForkLaunch({
+        launch: { ...FACTS, account: { kind: "unknown", why } },
+        slots: ["account"],
+        accounts: [],
+        defaultUseTmux: false,
+      });
+      expect(q<HTMLElement>(".fork-ask-why").textContent).toBe(copyText(key));
+      q<HTMLButtonElement>(".fork-ask-cancel").click();
+      await p;
+    }
   });
 
   it("账号列表为空（账号功能没启用）→ 仍能选账号 0，不把整条路堵死", async () => {
     const p = askForkLaunch({
-      facts: FACTS,
+      launch: FACTS,
       slots: ["account"],
       accounts: [],
       defaultUseTmux: false,
     });
     expect(q<HTMLSelectElement>(".fork-ask-account").options).toHaveLength(1);
     q<HTMLButtonElement>(".fork-ask-ok").click();
-    expect((await p)?.configDir).toBeNull();
+    expect((await p)?.account).toBeNull();
   });
 
 
@@ -170,13 +154,13 @@ describe("askForkLaunch", () => {
    */
   it("★★ 第二个小窗开起来时，第一个必须被**结算成取消**（不是只摘 DOM）", async () => {
     const first = askForkLaunch({
-      facts: FACTS,
+      launch: FACTS,
       slots: ["account"],
       accounts: ACCOUNTS,
       defaultUseTmux: false,
     });
     const second = askForkLaunch({
-      facts: FACTS,
+      launch: FACTS,
       slots: ["account"],
       accounts: ACCOUNTS,
       defaultUseTmux: false,
@@ -191,7 +175,7 @@ describe("askForkLaunch", () => {
 
   it("★ 正常结算之后，孤儿监听不该还在（否则下一次全局 Esc 会被吞）", async () => {
     const p = askForkLaunch({
-      facts: FACTS,
+      launch: FACTS,
       slots: ["account"],
       accounts: [],
       defaultUseTmux: false,
@@ -210,7 +194,7 @@ describe("askForkLaunch", () => {
 
   it("关掉之后 DOM 不留残渣（含 keydown 监听——连开两次不会互相干扰）", async () => {
     const p1 = askForkLaunch({
-      facts: FACTS,
+      launch: FACTS,
       slots: ["account"],
       accounts: [],
       defaultUseTmux: false,
@@ -220,7 +204,7 @@ describe("askForkLaunch", () => {
     expect(document.querySelector(".fork-ask-backdrop")).toBeNull();
 
     const p2 = askForkLaunch({
-      facts: FACTS,
+      launch: FACTS,
       slots: ["account"],
       accounts: [],
       defaultUseTmux: false,

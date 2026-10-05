@@ -1669,7 +1669,7 @@ export class HistoryView {
   private async runResume(ctx: RowActionCtx): Promise<void> {
     // 按这个会话的那一家起（`ctx.agent`）。用哪个号那台判：点了号 ⇒ 点名；没点 ⇒ 跟随这条会话上次的号
     //   （没有账号这一维的那一家跟随什么都不选；点了号照交，由那台明说不行）。
-    const account = ctx.account ? chosenAccount(null, ctx.account) : FOLLOW;
+    const account = ctx.account ? chosenAccount(ctx.account) : FOLLOW;
     if (ctx.origin) {
       // 远端 resume 一键拉起（开终端跑 `ssh -t …`），失败回退复制命令。
       // 用户自定义远端 resume 命令（如 cct）—— 只用在默认那一家的会话上；空 = 后端默认。

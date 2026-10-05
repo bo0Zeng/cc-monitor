@@ -81,13 +81,6 @@ test("接回：不起 agent ⇒ 不带账号修饰", () => {
   eq(r.account, { kind: "base" });
 });
 
-test("只有目录没有名字（分叉继承源会话的目录）：只交目录", () => {
-  eq(req(planResumeDirect("claude", "s1", "/p", "claude", { account: { kind: "named", configDir: "/h/x" } })).account, {
-    kind: "named",
-    configDir: "/h/x",
-  });
-});
-
 test("launcher：空白 ⇒ 默认启动器；带注入字符的原样上线（字符集只在后端判）", () => {
   eq(req(planResumeDirect("claude", "s1", "", "")).launcher, AGENT_PROFILE.defaultLauncher);
   eq(req(planResumeDirect("claude", "s1", "", "   ")).launcher, AGENT_PROFILE.defaultLauncher);

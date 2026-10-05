@@ -64,8 +64,6 @@ pub enum FreeTextSlot {
     AgentArg,
     /// 一个**已有**会话的名字（`--attach <名>` · 就地 resume 的目标；`gate_rules::existing_tmux_name_issue`）。
     AttachTarget,
-    /// `--account-dir <目录>`（`acct_core::config_dir_ok`）。
-    AccountDir,
 }
 
 impl Refusal {
@@ -99,10 +97,6 @@ impl Refusal {
                 }
                 FreeTextSlot::AttachTarget => copy_text(
                     "rsCcmInvocation.refusal.freeTextAttach",
-                    &[("value", value)],
-                ),
-                FreeTextSlot::AccountDir => copy_text(
-                    "rsCcmInvocation.refusal.freeTextAccountDir",
                     &[("value", value)],
                 ),
             },
@@ -161,10 +155,9 @@ pub enum Container<'a> {
 /// 账号维度的三态。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CliAccount<'a> {
-    /// 具名账号：说得出名字 ⇒ `--account <名>`；只说得出目录 ⇒ `--account-dir <目录>`；都没有 ⇒ 整条放弃。
+    /// 账号库里的一个号 ⇒ `--account <名>`。
     Named {
-        name: Option<&'a str>,
-        config_dir: Option<&'a str>,
+        name: &'a str,
     },
     Base,
     /// 调用方没表态（继承）：一个旗标都不吐，省略在 ccm 上有确定语义（`plan.rs::resolve_account`）。
@@ -276,18 +269,7 @@ const DIMENSION_ORDER: &[Dim] = &[
         applies: |_| true,
         cli_flags: |s| match s.account {
             CliAccount::Base => Some(vec!["--base".into()]),
-            CliAccount::Named { name: Some(n), .. } => {
-                Some(vec!["--account".into(), n.to_string()])
-            }
-            CliAccount::Named {
-                name: None,
-                config_dir: Some(d),
-            } => Some(vec!["--account-dir".into(), d.to_string()]),
-            // 名字与目录都说不出 ⇒ 整条放弃。
-            CliAccount::Named {
-                name: None,
-                config_dir: None,
-            } => None,
+            CliAccount::Named { name } => Some(vec!["--account".into(), name.to_string()]),
             CliAccount::Inherit => Some(vec![]),
         },
         caps: &["account"],
@@ -504,20 +486,10 @@ fn identifiers_ok(spec: &CliSpec) -> Result<(), Refusal> {
     if let Some(s) = spec.ccm_sid.filter(|s| !shell_quote_core::session_id_ok(s)) {
         return bad(IdentifierSlot::CcmSid, s);
     }
-    match spec.account {
-        CliAccount::Named { name: Some(n), .. } if !shell_quote_core::account_name_ok(n) => {
-            return bad(IdentifierSlot::Account, n);
+    if let CliAccount::Named { name } = spec.account {
+        if !shell_quote_core::account_name_ok(name) {
+            return bad(IdentifierSlot::Account, name);
         }
-        CliAccount::Named {
-            name: None,
-            config_dir: Some(d),
-        } if !acct_core::config_dir_ok(d) => {
-            return Err(Refusal::FreeTextRefused {
-                slot: FreeTextSlot::AccountDir,
-                value: format!("{d:?}"),
-            });
-        }
-        _ => {}
     }
     if let Some(m) = spec.model.filter(|m| !shell_quote_core::model_name_ok(m)) {
         return bad(IdentifierSlot::Model, m);

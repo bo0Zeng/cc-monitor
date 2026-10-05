@@ -3341,21 +3341,6 @@
       "zh": "就地 resume 未执行",
       "args": []
     },
-    "remoteLaunchRun.resumeTmux.failedCopied": {
-      "kind": "error",
-      "zh": "拉起失败，已复制 tmux resume 命令",
-      "args": []
-    },
-    "remoteLaunchRun.resumeTmux.started": {
-      "kind": "body",
-      "zh": "已在 tmux 里 resume",
-      "args": []
-    },
-    "remoteLaunchRun.resumeTmux.buildFailed": {
-      "kind": "error",
-      "zh": "生成不了 tmux resume 命令",
-      "args": []
-    },
     "remoteLaunchRun.resume.failedCopied": {
       "kind": "error",
       "zh": "拉起失败，已复制 resume 命令",
@@ -4591,62 +4576,12 @@
       "zh": "✓ 已从这一轮分叉并起新会话",
       "args": []
     },
-    "forkLaunch.slot.ask": {
-      "kind": "body",
-      "zh": "{label}：需要你选一次 —— {why}",
-      "args": ["label", "why"]
-    },
-    "forkLaunch.slot.same": {
-      "kind": "body",
-      "zh": "{label}：跟原会话一致（据{from}）",
-      "args": ["label", "from"]
-    },
-    "forkLaunch.slot.cwd": {
-      "kind": "body",
-      "zh": "工作目录",
-      "args": []
-    },
-    "forkLaunch.slot.tmux": {
-      "kind": "body",
-      "zh": "是否在 tmux 里跑",
-      "args": []
-    },
-    "forkLaunch.slot.account": {
-      "kind": "body",
-      "zh": "账号",
-      "args": []
-    },
-    "forkLaunch.from.tmuxList": {
-      "kind": "body",
-      "zh": "tmux 会话清单",
-      "args": []
-    },
-    "forkLaunch.exited.tmux": {
-      "kind": "error",
-      "zh": "原会话已退出，查不到它当时在不在 tmux 里",
-      "args": []
-    },
-    "forkLaunch.from.process": {
-      "kind": "body",
-      "zh": "原会话的进程",
-      "args": []
-    },
-    "forkLaunch.inferForkLaunch.liveNoAccount": {
+    "forkAsk.why.liveNoAccount": {
       "kind": "error",
       "zh": "原会话还在跑，但查不到它用的是哪个账号",
       "args": []
     },
-    "forkLaunch.inferForkLaunch.noCwd": {
-      "kind": "error",
-      "zh": "原会话的记录里没有工作目录",
-      "args": []
-    },
-    "forkLaunch.from.record": {
-      "kind": "body",
-      "zh": "会话记录",
-      "args": []
-    },
-    "forkLaunch.exited.account": {
+    "forkAsk.why.exited": {
       "kind": "body",
       "zh": "原会话已退出，查不到它当时用的账号",
       "args": []
@@ -12724,11 +12659,6 @@
       "zh": "会话标识 {value} 不合法（1 到 128 位，只许字母数字与 - _）",
       "args": ["value"]
     },
-    "rsCcmInvocation.refusal.freeTextAccountDir": {
-      "kind": "error",
-      "zh": "账号目录 {value} 用不了。要绝对路径，不含 .. 段、控制字符与 shell 元字符",
-      "args": ["value"]
-    },
     "rsCcmInvocation.refusal.idAccount": {
       "kind": "error",
       "zh": "账号名 {value} 用不了（字母数字开头，只许字母数字与 _ -，最长 32）",
@@ -15669,11 +15599,6 @@
     "localResume.launch.failed": {
       "kind": "error",
       "zh": "恢复失败",
-      "args": []
-    },
-    "localResume.fork.failed": {
-      "kind": "error",
-      "zh": "起分叉会话失败",
       "args": []
     },
     "accountPick.machine.local": {

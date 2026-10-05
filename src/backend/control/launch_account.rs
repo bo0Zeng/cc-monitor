@@ -159,14 +159,9 @@ pub enum AccountAsk {
     /// 这条会话上次用的号 → 这台的默认号 → 不指定（新起的会话没有上次的号）。
     Follow,
     Base,
-    /// 用户点名：说得出名字 ⇒ 按名字判（`configDir` 不看）；只有目录（分叉沿用源会话的目录）⇒ 原样交 `ccm`。
+    /// 用户点名的那个号（按名字判；分叉沿用源会话的号也是名字，由这台从源会话推出）。
     Named {
-        #[serde(default)]
-        #[cfg_attr(test, ts(optional))]
-        name: Option<String>,
-        #[serde(default, rename = "configDir")]
-        #[cfg_attr(test, ts(optional))]
-        config_dir: Option<String>,
+        name: String,
     },
 }
 
@@ -201,8 +196,6 @@ pub(crate) enum Settled {
     Base,
     /// 账号库里的一个号。
     Account(LaunchedAccount),
-    /// 只有目录（名字说不出）。
-    Dir(String),
 }
 
 /// 三条起会话请求共用：线上那一格 ＋ 这条会话（resume 才有）⇒ 用哪个号。选不了 ⇒ `Err`（`account_unavailable` 的 `data`）。
@@ -214,13 +207,9 @@ pub(crate) fn settle(
 ) -> Result<Settled, AccountUnavailable> {
     let asked = match asked {
         AccountAsk::Base => return Ok(Settled::Base),
-        AccountAsk::Named {
-            name: None,
-            config_dir: Some(d),
-        } => return Ok(Settled::Dir(d.clone())),
         AccountAsk::Follow if !facts.has_accounts => return Ok(Settled::Unsaid),
         AccountAsk::Follow => Asked::Follow,
-        AccountAsk::Named { name, .. } => Asked::Named(name.clone().unwrap_or_default()),
+        AccountAsk::Named { name } => Asked::Named(name.clone()),
     };
     let last = match (&asked, sid) {
         (Asked::Follow, Some(sid)) => (facts.last)(sid),
@@ -238,24 +227,17 @@ pub(crate) fn settle(
     }
 }
 
-/// 判据用：号照请求原样当已判好（判定本身由 `launch_account_tests.rs` 钉；渲染那几族只看映射）。
+/// 判据用：号照请求原样当已判好（判定本身由 `launch_account_tests.rs` 钉；渲染那几族只看映射）。点名的号的目录取 `/h/.cc/<名>`。
 #[cfg(test)]
 pub(crate) fn settled_as_asked(a: &AccountAsk, models: &BTreeMap<String, String>) -> Settled {
     match a {
         AccountAsk::Follow => Settled::Unsaid,
         AccountAsk::Base => Settled::Base,
-        AccountAsk::Named {
-            name: Some(n),
-            config_dir,
-        } => Settled::Account(LaunchedAccount {
-            name: n.clone(),
-            config_dir: config_dir.clone().unwrap_or_default(),
-            model: models.get(n).cloned(),
+        AccountAsk::Named { name } => Settled::Account(LaunchedAccount {
+            name: name.clone(),
+            config_dir: format!("/h/.cc/{name}"),
+            model: models.get(name).cloned(),
         }),
-        AccountAsk::Named {
-            name: None,
-            config_dir,
-        } => Settled::Dir(config_dir.clone().unwrap_or_default()),
     }
 }
 

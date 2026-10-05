@@ -178,7 +178,6 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/events-yield.vitest.ts",
     "tests/frontend/ui/file-window.vitest.ts",
     "tests/frontend/ui/fork-ask.vitest.ts",
-    "tests/frontend/ui/fork-launch.vitest.ts",
     "tests/frontend/ui/fork-start.vitest.ts",
     "tests/frontend/ui/format.test.ts",
     "tests/frontend/ui/height-estimate.vitest.ts",
@@ -273,6 +272,7 @@ const UNIT: &[&str] = &[
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
 const SCAN: &[&str] = &[
+    "tests/backend/control/fork_launch_tests.rs", // 分叉之后起的推断（纯函数）＋ 读跨语言金样那一条
     "tests/frontend/ui/ext-reads.vitest.ts", // 扩展页几问走通道：严格收 ＋ 问对那台（假通道 ＋ 金样）
     "tests/frontend/ui/settings/ext-section.vitest.ts", // 扩展页：表 · 抽屉 · 确认卡（假通道）＋ 界面零判定扫描
     "tests/frontend/ui/settings/relay-optin-section.vitest.ts", // 「终端」栏直接敲的也走中转：严格收（金样）＋ 照态画（假通道）＋ 读口源码只问 relay-optin
