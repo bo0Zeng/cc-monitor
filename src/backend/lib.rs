@@ -754,7 +754,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p7h-autostart：自动起算 —— 号的 5h 窗口空着时那台后端替它发一句开始计时；+ autostart-read / autostart-set（只走流）· 推送 autostart_changed。
 ///
 /// p7i-autostart-out：自动起算挪出后端（成独立 skill quota-warm）；-autostart-read / -autostart-set · -autostart_changed。只留按工作目录藏 ~/.cc-monitor/autostart 的会话。
-pub const BUILD_ID: &str = "p7i-autostart-out";
+///
+/// p7j-writers：会话事实多 writers（此刻持着这条会话的活进程）；起会话遇到已有活进程在写那条会话就拒；cc-bus 超时说实际等了多久。
+pub const BUILD_ID: &str = "p7j-writers";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
