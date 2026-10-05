@@ -83,7 +83,10 @@ fn read_config_base_url(home: &Path) -> (PathBuf, SettingsBaseUrl) {
         }
         Err(e) => Err(SettingsUnreadable::Io(e.to_string())),
         Ok(m) if !m.is_file() => Err(SettingsUnreadable::NotFile),
-        Ok(m) if m.len() > CONFIG_CAP_BYTES => Err(SettingsUnreadable::TooLarge(CONFIG_CAP_BYTES)),
+        Ok(m) if m.len() > CONFIG_CAP_BYTES => {
+            let error = SettingsUnreadable::TooLarge(CONFIG_CAP_BYTES);
+            Err(error)
+        }
         Ok(_) => std::fs::read_to_string(&file).map_err(|e| SettingsUnreadable::Io(e.to_string())),
     };
     let found = match raw {
