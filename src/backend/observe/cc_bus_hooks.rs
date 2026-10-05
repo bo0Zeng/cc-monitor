@@ -249,7 +249,9 @@ pub(crate) fn answer() -> HooksReport {
     answer_at(
         home.as_deref(),
         &crate::observe::history_query::agent_home(),
-        crate::agents::skills_root().as_deref(),
+        crate::assets::asset_kind()
+            .and_then(crate::agents::skills_root)
+            .as_deref(),
         !matches!(
             crate::TMUX_PLATFORM,
             crate::TmuxPlatform::AbsentUnlessExeOnPath

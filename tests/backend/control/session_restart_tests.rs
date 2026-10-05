@@ -164,8 +164,10 @@ impl Host for Host_ {
         crate::agents::compact_request_of(agent)
     }
     async fn watch_compact(&self, _sid: &str) -> Result<Ears, String> {
-        crate::observe::one_wait::record_line(&self.0.record, crate::agents::is_compact_summary)
-            .map(Ears::Real)
+        crate::observe::one_wait::record_line(&self.0.record, |v| {
+            crate::agents::is_compact_summary(crate::agents::record_tree_kind().unwrap(), v)
+        })
+        .map(Ears::Real)
     }
     async fn watch_arrival(&self, _sid: &str) -> Result<Ears, String> {
         Ok(Ears::Fake(Said(true)))

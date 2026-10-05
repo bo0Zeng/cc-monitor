@@ -65,7 +65,6 @@ const UNIT: &[&str] = &[
     "tests/backend/agents/claudecode/quota_tests.rs", // 回包头 → 额度快照：读法表的金样（纯函数）
     "tests/backend/accounts/quota/decide_tests.rs",   // 换号的唯一判定（纯函数）
     "tests/common/creds-core/token_tests.rs",         // 登录令牌的读 · 写回 · 续期请求体（纯函数）
-    "tests/backend/agents/codex/record_tests.rs",
     "tests/backend/observe/record_page_tests.rs",
     "tests/frontend/ui/startup-active.vitest.ts", // F19 启动时记住的那一格（按事件判的真值表）
     "tests/backend/dial_machine_tests.rs",        // 机器配置 → 拨号请求的规则
@@ -484,6 +483,8 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/launch-no-shell-in-ts.vitest.ts", // 条 1（接替 session-backend-gate）
     // 铸名 / 本机 resume 编排各只有一个家（读生产段全集 ⇒ 扫描层）。
     "tests/frontend/ui/launch-orchestration-single-home.vitest.ts",
+    // UNIT → SCAN：Codex 记录「谁说的」读金样（`include_str!` 读 `tests/__fixtures__/codex-speaker.golden.jsonl`）。
+    "tests/backend/agents/codex/record_tests.rs",
     "tests/backend/agents/sse_anthropic_tests.rs", // Anthropic 流的折法 ＋ 台架那一轮（读 `tests/__fixtures__/tap-bench.json`，随折法从界面那一侧搬来）
     // `tests/frontend/ui/liveness-process-names-parity.vitest.ts` 删：判活进程名的前端那一份随判定进了后端，
     //   后端两处（tmux 那一格 · cmdline 判活）今天读同一张 `agents/claudecode/cards.rs::PROCESS_NAMES`，对拍无对象。

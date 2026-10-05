@@ -922,7 +922,7 @@ pub(crate) struct Env {
 impl Env {
     pub(crate) fn here() -> Env {
         Env {
-            skills: crate::agents::skills_root(),
+            skills: super::asset_kind().and_then(crate::agents::skills_root),
             user_mcp: crate::accounts::manage::mcp_share_exec::user_mcp_file(),
             ledger: super::skill_ledger::ledger_path(),
             home: crate::platform::paths::home_dir(),
@@ -933,7 +933,8 @@ impl Env {
     pub(crate) fn skill_root(&self, at: &ExtLoc) -> Option<PathBuf> {
         match at {
             ExtLoc::User => self.skills.clone(),
-            ExtLoc::Project { dir } => crate::agents::skill_root_at(Some(Path::new(dir))),
+            ExtLoc::Project { dir } => super::asset_kind()
+                .and_then(|k| crate::agents::skill_root_at(k, Some(Path::new(dir)))),
         }
     }
 }

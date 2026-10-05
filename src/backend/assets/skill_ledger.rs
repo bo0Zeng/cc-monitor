@@ -376,7 +376,8 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
                 // 项目级 skill：根由适配层按那个项目算（同 `skill-install-plan` 答 `dir` 的那一处）。
                 None if project.is_some() => {
                     let p = crate::assets::mcp_edit::project_root(project.unwrap_or_default())?;
-                    crate::agents::skill_root_at(Some(Path::new(&p)))
+                    super::asset_kind()
+                        .and_then(|k| crate::agents::skill_root_at(k, Some(Path::new(&p))))
                         .ok_or(("io_failed", copy_text("beSkillLedger.add.noRoot", &[])))?
                         .join(&name)
                         .display()
@@ -385,7 +386,8 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
                 None => {
                     let root = match skills_root {
                         Some(r) => r.to_path_buf(),
-                        None => crate::agents::skills_root()
+                        None => super::asset_kind()
+                            .and_then(crate::agents::skills_root)
                             .ok_or(("io_failed", copy_text("beSkillLedger.add.noRoot", &[])))?,
                     };
                     root.join(&name).display().to_string()

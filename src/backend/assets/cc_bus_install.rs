@@ -235,7 +235,9 @@ pub(crate) fn state_at(skills: &Path) -> Value {
 }
 
 fn skills_root() -> Result<PathBuf, (&'static str, String)> {
-    crate::agents::skills_root().ok_or(("refused", copy_text("beCcBusInstall.root.unknown", &[])))
+    super::asset_kind()
+        .and_then(crate::agents::skills_root)
+        .ok_or(("refused", copy_text("beCcBusInstall.root.unknown", &[])))
 }
 
 /// `cc-bus-install-state {}` → [`state_at`]。

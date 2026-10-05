@@ -208,7 +208,10 @@ fn run_inner(agent_home: &Path, args: &[String]) -> Result<ForkResult, String> {
     let source = crate::agents::find_session_file(&projects_root(agent_home), source_sid)?;
     let lines = read_jsonl(&source)?;
     let new_sid = new_session_id(source_sid);
-    let records = crate::agents::build_branch_records(&lines, message_uuid, source_sid, &new_sid)?;
+    // 分叉变换问这份记录归的那一家。
+    let kind = crate::agents::record_kind_of(&source).unwrap_or_default();
+    let records =
+        crate::agents::build_branch_records(kind, &lines, message_uuid, source_sid, &new_sid)?;
 
     // 落点 = 源文件同目录（那已是 projects 下某个项目目录），文件名 = 新 sid。
     let dir = source

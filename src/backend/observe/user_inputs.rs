@@ -47,6 +47,11 @@ pub(crate) struct UserInputRow {
     pub(crate) excerpt: String,
 }
 
+/// 用户输入列表读的是记录树那一家的记录（`agents::record_tree_kind`）。
+fn tree() -> &'static str {
+    crate::agents::record_tree_kind().unwrap_or_default()
+}
+
 /// 一行 jsonl → 是用户输入就给一条 [`UserInputRow`]，不是 ⇒ `None`。**纯函数**。
 /// 解析不出的行（半截 / 非 JSON）⇒ `None`；判定本身在 [`user_input_of`]。
 pub(crate) fn user_input_row(line: &[u8]) -> Option<UserInputRow> {
@@ -61,7 +66,7 @@ pub(crate) fn user_input_row(line: &[u8]) -> Option<UserInputRow> {
 /// 顺带问一句「是不是用户输入」就不用再解析一遍 —— 首屏的「索引」与「大纲清单」由此合成一趟读
 /// （那条欠账）。**判定没有第二份**：两个出口都调这里。
 pub(crate) fn user_input_of(v: &Value) -> Option<UserInputRow> {
-    user_input_given(v, crate::agents::user_text_of(v).as_ref())
+    user_input_given(v, crate::agents::user_text_of(tree(), v).as_ref())
 }
 
 /// 同 [`user_input_of`]，「谁说的」已经判过（骨架索引那一行顺手也要它，不判两遍）。
@@ -69,7 +74,7 @@ pub(crate) fn user_input_given(
     v: &Value,
     said: Option<&crate::agents::UserText>,
 ) -> Option<UserInputRow> {
-    if crate::agents::run_of_record(v).is_some() {
+    if crate::agents::run_of_record(tree(), v).is_some() {
         return None;
     }
     let uuid = v

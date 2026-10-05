@@ -296,22 +296,39 @@ pub enum ToolCard {
 pub(crate) type BranchFn =
     fn(&[serde_json::Value], &str, &str, &str) -> Result<Vec<serde_json::Value>, String>;
 
-/// 记录树那一家按 sid 找会话文件 —— 通用层（分叉 · 「记录还在不在」）按 sid 找文件的唯一入口。没有哪一家答得了 ⇒ 照实拒。
+/// 按 sid 找会话文件 —— 通用层（分叉 · 「记录还在不在」）按 sid 找文件的唯一入口：逐家问，谁认得算谁。
+/// 没有哪一家答得了 ⇒ 照实拒（都答不出 ⇒ 第一家说的那一句）。
 pub(crate) fn find_session_file(records_root: &Path, sid: &str) -> Result<PathBuf, String> {
-    match stream_record_face().and_then(|r| r.find_session) {
-        Some(f) => f(records_root, sid),
-        None => Err(format!("no agent adapter can locate session {sid:?}")),
-    }
+    find_session_file_among(REGISTRY, records_root, sid)
 }
 
-/// 记录树那一家的分叉记录变换 —— 通用层（`control/fork_write.rs`）分叉的唯一入口。没有哪一家答得了 ⇒ 照实拒。
+/// [`find_session_file`] 的可喂夹具那一半。
+pub(crate) fn find_session_file_among(
+    registry: &[Adapter],
+    records_root: &Path,
+    sid: &str,
+) -> Result<PathBuf, String> {
+    let mut first_err = None;
+    for find in registry.iter().filter_map(|a| a.records?.find_session) {
+        match find(records_root, sid) {
+            Ok(p) => return Ok(p),
+            Err(e) => {
+                first_err.get_or_insert(e);
+            }
+        }
+    }
+    Err(first_err.unwrap_or_else(|| format!("no agent adapter can locate session {sid:?}")))
+}
+
+/// `kind` 那一家的分叉记录变换 —— 通用层（`control/fork_write.rs`）分叉的唯一入口。那一家答不了 ⇒ 照实拒。
 pub(crate) fn build_branch_records(
+    kind: &str,
     lines: &[serde_json::Value],
     message_uuid: &str,
     src_sid: &str,
     new_sid: &str,
 ) -> Result<Vec<serde_json::Value>, String> {
-    match stream_record_face().and_then(|r| r.branch) {
+    match record_face(kind).and_then(|r| r.branch) {
         Some(f) => f(lines, message_uuid, src_sid, new_sid),
         None => Err("no agent adapter can fork a session".to_string()),
     }
@@ -663,14 +680,14 @@ impl RunFaces {
     }
 }
 
-/// 流式 watcher 跟的那一家的运行面（没有 ⇒ [`RunFaces::NONE`]）。
-pub(crate) fn stream_run_faces() -> RunFaces {
-    stream_record_face().map_or(RunFaces::NONE, |r| RunFaces::of(&r))
+/// `kind` 那一家的运行面（没有 ⇒ [`RunFaces::NONE`]）。
+pub(crate) fn run_faces(kind: &str) -> RunFaces {
+    record_face(kind).map_or(RunFaces::NONE, |r| RunFaces::of(&r))
 }
 
-/// 一条已解析的记录在会话里属于哪个运行（主运行 ⇒ `None`）—— 通用层（大纲 · 骨架索引）判「这条是不是子运行的」的唯一入口。
-pub(crate) fn run_of_record(v: &serde_json::Value) -> Option<RunMark> {
-    stream_run_faces().run_of(v)
+/// `kind` 那一家的一条已解析记录在会话里属于哪个运行（主运行 ⇒ `None`）—— 通用层（大纲 · 骨架索引）判「这条是不是子运行的」的唯一入口。
+pub(crate) fn run_of_record(kind: &str, v: &serde_json::Value) -> Option<RunMark> {
+    run_faces(kind).run_of(v)
 }
 
 /// 一家的记录文本面（原共享 crate `search-core` 里 Claude 记录文本那一半）：函数指针（同 [`Adapter::home`]，不立 trait）。
@@ -685,29 +702,29 @@ pub(crate) struct TextFace {
     pub(crate) user: fn(&serde_json::Value) -> Option<UserText>,
 }
 
-/// 记录树那一家（同 [`stream_record_face`]）的文本面。
-fn text_face() -> Option<TextFace> {
-    stream_record_face().and_then(|r| r.text)
+/// `kind` 那一家的文本面。
+fn text_face(kind: &str) -> Option<TextFace> {
+    record_face(kind).and_then(|r| r.text)
 }
 
-/// 记录树那一家怎么抽正文 —— 通用层够它的唯一入口。没有哪一家答得了 ⇒ 空串（不搜、不摘）。
-pub(crate) fn main_text(content: &serde_json::Value) -> String {
-    text_face().map_or_else(String::new, |t| (t.main)(content))
+/// `kind` 那一家怎么抽正文 —— 通用层够它的唯一入口。那一家答不了 ⇒ 空串（不搜、不摘）。
+pub(crate) fn main_text(kind: &str, content: &serde_json::Value) -> String {
+    text_face(kind).map_or_else(String::new, |t| (t.main)(content))
 }
 
-/// 记录树那一家怎么抽工具内容。没有哪一家答得了 ⇒ 空串。
-pub(crate) fn tool_text(content: &serde_json::Value, is_assistant: bool) -> String {
-    text_face().map_or_else(String::new, |t| (t.tool)(content, is_assistant))
+/// `kind` 那一家怎么抽工具内容。那一家答不了 ⇒ 空串。
+pub(crate) fn tool_text(kind: &str, content: &serde_json::Value, is_assistant: bool) -> String {
+    text_face(kind).map_or_else(String::new, |t| (t.tool)(content, is_assistant))
 }
 
-/// 记录树那一家判这条记录是谁说的。没有哪一家答得了 ⇒ `None`。
-pub(crate) fn user_text_of(v: &serde_json::Value) -> Option<UserText> {
-    text_face().and_then(|t| (t.user)(v))
+/// `kind` 那一家判这条记录是谁说的。那一家答不了 ⇒ `None`。
+pub(crate) fn user_text_of(kind: &str, v: &serde_json::Value) -> Option<UserText> {
+    text_face(kind).and_then(|t| (t.user)(v))
 }
 
 /// 人在这条记录里说的话（[`UserText::speech`]）；不是人说的 ⇒ `None`。
-pub(crate) fn human_speech(v: &serde_json::Value) -> Option<String> {
-    user_text_of(v)?.speech()
+pub(crate) fn human_speech(kind: &str, v: &serde_json::Value) -> Option<String> {
+    user_text_of(kind, v)?.speech()
 }
 
 /// 删历史会话那一条要问适配层的两件事 —— 那是记录布局的知识，文件管理写面不认；
@@ -720,25 +737,27 @@ pub(crate) struct SessionDelete {
     pub(crate) is_record: fn(&Path) -> bool,
 }
 
-/// 记录树那一家（同 [`stream_record_face`]）的删会话两问。
-fn session_delete() -> Option<SessionDelete> {
-    stream_record_face().and_then(|r| r.delete)
-}
-
-/// 窄口之一：sid ⇒ 要删的那一份。没有哪一家答得了 ⇒ 照实拒。
+/// 窄口之一：sid ⇒ 要删的那一份。逐家问（声明了删会话两问的那几家），谁认得算谁；
+/// 都答不出 ⇒ 第一家说的那一句；没有哪一家答得了 ⇒ 照实拒。
 pub(crate) fn locate_session_for_delete(sid: &str) -> Result<PathBuf, String> {
-    match session_delete() {
-        Some(d) => (d.locate)(sid),
-        None => Err(copy_core::copy_text(
-            "beFilesWrite.session.noReader",
-            &[("id", sid)],
-        )),
+    let mut first_err = None;
+    for d in REGISTRY.iter().filter_map(|a| a.records?.delete) {
+        match (d.locate)(sid) {
+            Ok(p) => return Ok(p),
+            Err(e) => {
+                first_err.get_or_insert(e);
+            }
+        }
     }
+    Err(first_err
+        .unwrap_or_else(|| copy_core::copy_text("beFilesWrite.session.noReader", &[("id", sid)])))
 }
 
-/// 窄口之二：这一份是不是会话记录（没有哪一家答得了 ⇒ 不是）。
+/// 窄口之二：这一份是不是会话记录 —— 这份记录归哪一家（[`record_face_of`]）就问哪一家；那一家答不了 ⇒ 不是。
 pub(crate) fn is_session_record(p: &Path) -> bool {
-    session_delete().is_some_and(|d| (d.is_record)(p))
+    record_face_of(p)
+        .and_then(|r| r.delete)
+        .is_some_and(|d| (d.is_record)(p))
 }
 
 /// 一行原文在渲染模型里的样子 —— 适配层给，通用层只搬（`message` 的字段通用层一个都不读）。
@@ -752,14 +771,41 @@ pub(crate) struct ParsedLine {
     pub(crate) cwd: Option<String>,
 }
 
-/// 一份已过围栏的会话记录是哪一家的：落在某一家合成历史的根下 ⇒ 那一家；否则 ⇒ 家目录记录树那一家
-/// （注册表里**没有**合成历史面的那一家 —— 它的会话就住在按项目分的记录树里，流式 watcher 跟的也是它）。
-pub(crate) fn record_face_of(path: &Path) -> Option<RecordFace> {
-    record_face_among(REGISTRY, path)
+/// 注册表里 `kind` 那一家。认不出 ⇒ `None`。
+fn adapter_among<'a>(registry: &'a [Adapter], kind: &str) -> Option<&'a Adapter> {
+    registry.iter().find(|a| a.kind == kind)
 }
 
-/// [`record_face_of`] 的可喂夹具那一半。
-pub(crate) fn record_face_among(registry: &[Adapter], path: &Path) -> Option<RecordFace> {
+/// 给定注册表里**恰一家**满足 `has` ⇒ 它的 kind；一家都没有、或不止一家 ⇒ `None`（显式失败，不按注册序挑）。
+/// 请求里没说是哪一家、而那一格今天只有一家声明的那几处用它（调用行写明是哪一格）。
+pub(crate) fn sole_kind_among(
+    registry: &[Adapter],
+    has: impl Fn(&Adapter) -> bool,
+) -> Option<&'static str> {
+    let mut hit = registry.iter().filter(|a| has(a));
+    match (hit.next(), hit.next()) {
+        (Some(a), None) => Some(a.kind),
+        _ => None,
+    }
+}
+
+/// [`sole_kind_among`] 在生产注册表上。
+pub(crate) fn sole_kind(has: impl Fn(&Adapter) -> bool) -> Option<&'static str> {
+    sole_kind_among(REGISTRY, has)
+}
+
+/// `kind` 那一家的记录解释面。认不出 ⇒ `None`。
+pub(crate) fn record_face(kind: &str) -> Option<RecordFace> {
+    adapter_among(REGISTRY, kind).and_then(|a| a.records)
+}
+
+/// 一份已过围栏的会话记录是哪一家的：落在某一家合成历史的根下 ⇒ 那一家；否则 ⇒ 家目录记录树那一家（[`record_tree_kind`]）。
+pub(crate) fn record_kind_of(path: &Path) -> Option<&'static str> {
+    record_kind_among(REGISTRY, path)
+}
+
+/// [`record_kind_of`] 的可喂夹具那一半。
+pub(crate) fn record_kind_among(registry: &[Adapter], path: &Path) -> Option<&'static str> {
     let under = |root: PathBuf| {
         let root = std::fs::canonicalize(&root).unwrap_or(root);
         path.starts_with(root)
@@ -767,24 +813,30 @@ pub(crate) fn record_face_among(registry: &[Adapter], path: &Path) -> Option<Rec
     registry
         .iter()
         .find(|a| a.history.and_then(|h| (h.root)()).is_some_and(under))
-        .or_else(|| registry.iter().find(|a| a.history.is_none()))
-        .and_then(|a| a.records)
-}
-
-/// 家目录记录树那一家（注册表里没有合成历史面的那一家）的 kind：历史清单的记录树那一支与全文搜索的会话都是它的。
-pub(crate) fn record_tree_kind() -> Option<&'static str> {
-    REGISTRY
-        .iter()
-        .find(|a| a.history.is_none())
         .map(|a| a.kind)
+        .or_else(|| record_tree_kind_among(registry))
 }
 
-/// 流式 watcher 跟的那一家（家目录记录树那一家）的记录解释面。
-pub(crate) fn stream_record_face() -> Option<RecordFace> {
-    REGISTRY
-        .iter()
-        .find(|a| a.history.is_none())
+/// 这份会话记录归的那一家的记录解释面（[`record_kind_of`]）。
+pub(crate) fn record_face_of(path: &Path) -> Option<RecordFace> {
+    record_face_among(REGISTRY, path)
+}
+
+/// [`record_face_of`] 的可喂夹具那一半。
+pub(crate) fn record_face_among(registry: &[Adapter], path: &Path) -> Option<RecordFace> {
+    record_kind_among(registry, path)
+        .and_then(|k| adapter_among(registry, k))
         .and_then(|a| a.records)
+}
+
+/// 家目录记录树那一家的 kind：**恰一家**有记录解释面、却没有合成历史面（它的会话住在按项目分的记录树里）。
+/// 历史清单的记录树那一支、全文搜索、流式 watcher 跟的都是它。不止一家 ⇒ `None`（说不清是哪一家，不猜）。
+pub(crate) fn record_tree_kind() -> Option<&'static str> {
+    record_tree_kind_among(REGISTRY)
+}
+
+fn record_tree_kind_among(registry: &[Adapter]) -> Option<&'static str> {
+    sole_kind_among(registry, |a| a.history.is_none() && a.records.is_some())
 }
 
 /// 找项目目录时记录开头至多读多少字节。带它的那一条实测在前一 KiB 内；上界是给几百 MB 的大会话的：不整读。
@@ -884,9 +936,14 @@ pub(crate) struct AccountsFace {
     pub(crate) watched: &'static [&'static str],
 }
 
-/// 这台机器上账号库的布局（注册表里第一家带账号库布局的；一台机器只有一套账号库）。
-pub(crate) fn accounts_face() -> Option<AccountsFace> {
-    REGISTRY.iter().find_map(|a| a.accounts)
+/// `kind` 那一家的账号库布局。认不出 / 那一家没有 ⇒ `None`。
+pub(crate) fn accounts_face(kind: &str) -> Option<AccountsFace> {
+    accounts_face_among(REGISTRY, kind)
+}
+
+/// [`accounts_face`] 的可喂夹具那一半。
+pub(crate) fn accounts_face_among(registry: &[Adapter], kind: &str) -> Option<AccountsFace> {
+    adapter_among(registry, kind).and_then(|a| a.accounts)
 }
 
 /// 注册表里带足迹面的那几家（按注册表顺序）。
@@ -917,16 +974,20 @@ pub(crate) struct McpEntry {
     pub source: String,
 }
 
-/// 注册表里第一家有 MCP 读面的，读一遍（今天只有 Claude 一家）。`None` = 没有哪一家认得 MCP。
-pub(crate) fn mcp_read_among(registry: &[Adapter], project_dir: Option<&Path>) -> Option<McpRead> {
-    registry
-        .iter()
-        .find_map(|a| a.mcp.map(|f| (f.read)(project_dir)))
+/// `kind` 那一家的 MCP 读面，读一遍。`None` = 那一家不认得 MCP。
+pub(crate) fn mcp_read_among(
+    registry: &[Adapter],
+    kind: &str,
+    project_dir: Option<&Path>,
+) -> Option<McpRead> {
+    adapter_among(registry, kind)
+        .and_then(|a| a.mcp)
+        .map(|f| (f.read)(project_dir))
 }
 
 /// [`mcp_read_among`] 对本机注册表 —— 帧命令 `mcp-read` 的读法入口。
-pub(crate) fn mcp_read(project_dir: Option<&Path>) -> Option<McpRead> {
-    mcp_read_among(REGISTRY, project_dir)
+pub(crate) fn mcp_read(kind: &str, project_dir: Option<&Path>) -> Option<McpRead> {
+    mcp_read_among(REGISTRY, kind, project_dir)
 }
 
 /// 一家的默认上游：路由里叫它什么 · 盖掉内置默认的那个旋钮 · 内置默认。三格焊在一起
@@ -1336,29 +1397,37 @@ pub(crate) fn asset_sightings(projects: &[String], user_mcp: Option<&Path>) -> V
         .collect()
 }
 
-/// skill 的根：注册表里**第一家**有资产面的那一家（今天只有一家）。
-/// ⚠ 第二家也有 skill 的那天，这里要按 kind 选 —— 那时 `skill-read` / `skill-install-plan` 的入参得带上 kind。
-pub(crate) fn skills_root() -> Option<PathBuf> {
-    REGISTRY
-        .iter()
-        .find_map(|a| a.assets.and_then(|f| (f.skills_root)()))
+/// `kind` 那一家的资产面。
+fn asset_face_among(registry: &[Adapter], kind: &str) -> Option<AssetFace> {
+    adapter_among(registry, kind).and_then(|a| a.assets)
 }
 
-/// skill 的根：`None` = 用户级（同 [`skills_root`]），`Some(项目目录)` = 那个项目里的（同一家）。
-pub(crate) fn skill_root_at(project: Option<&Path>) -> Option<PathBuf> {
+/// `kind` 那一家的用户级 skill 根。那一家没有资产面 ⇒ `None`。
+pub(crate) fn skills_root(kind: &str) -> Option<PathBuf> {
+    skill_root_among(REGISTRY, kind, None)
+}
+
+/// `kind` 那一家的 skill 根：`None` = 用户级（同 [`skills_root`]），`Some(项目目录)` = 那个项目里的。
+pub(crate) fn skill_root_at(kind: &str, project: Option<&Path>) -> Option<PathBuf> {
+    skill_root_among(REGISTRY, kind, project)
+}
+
+/// [`skill_root_at`] 的可喂夹具那一半。
+pub(crate) fn skill_root_among(
+    registry: &[Adapter],
+    kind: &str,
+    project: Option<&Path>,
+) -> Option<PathBuf> {
+    let f = asset_face_among(registry, kind)?;
     match project {
-        None => skills_root(),
-        Some(p) => REGISTRY
-            .iter()
-            .find_map(|a| a.assets.map(|f| (f.project_skills_root)(p))),
+        None => (f.skills_root)(),
+        Some(p) => Some((f.project_skills_root)(p)),
     }
 }
 
-/// 用户级 MCP 住的那份文件（同 [`skills_root`]：注册表里第一家有资产面的那一家）。
-pub(crate) fn user_mcp_file() -> Option<PathBuf> {
-    REGISTRY
-        .iter()
-        .find_map(|a| a.assets.and_then(|f| (f.user_mcp_file)()))
+/// `kind` 那一家的用户级 MCP 住的那份文件。
+pub(crate) fn user_mcp_file(kind: &str) -> Option<PathBuf> {
+    asset_face_among(REGISTRY, kind).and_then(|f| (f.user_mcp_file)())
 }
 
 /// **这个后端认得哪几个 agent**。加一个 agent = 加一行（+ 上面加一行 `mod`）。
@@ -1396,9 +1465,9 @@ pub(crate) fn compact_request_of(kind: &str) -> Option<&'static str> {
         .and_then(|a| a.compact_request)
 }
 
-/// 这条记录是不是压缩之后续接用的摘要（记录树那一家判，同渲染模型里 `compactSummary` 那一种来源）。
-pub(crate) fn is_compact_summary(v: &serde_json::Value) -> bool {
-    user_text_of(v).is_some_and(|t| t.speaker == Speaker::CompactSummary)
+/// `kind` 那一家的这条记录是不是压缩之后续接用的摘要（同渲染模型里 `compactSummary` 那一种来源）。
+pub(crate) fn is_compact_summary(kind: &str, v: &serde_json::Value) -> bool {
+    user_text_of(kind, v).is_some_and(|t| t.speaker == Speaker::CompactSummary)
 }
 
 /// **这台机器上看得见哪些 agent** —— 直接产出 `hello.homes` 的那张表〔`S5`，`G1` 成功标准③〕。

@@ -95,7 +95,8 @@ pub(crate) fn user_mcp_file() -> Option<std::path::PathBuf> {
     let home = crate::platform::paths::home_dir()?;
     store_file_in(&home.display().to_string())
         .map(std::path::PathBuf::from)
-        .or_else(crate::agents::user_mcp_file)
+        // 今天只管 Claude 的用户级 MCP 文件（唯一声明了资产面的那一家）。Codex 的 MCP 来了改这里。
+        .or_else(|| crate::assets::asset_kind().and_then(crate::agents::user_mcp_file))
 }
 
 /// 一个号的配置文件 ⇒ 服务器表（文件不在 ⇒ 空表）。

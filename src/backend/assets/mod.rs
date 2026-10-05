@@ -13,6 +13,12 @@ pub(crate) mod mcp_sync_flow;
 pub(crate) mod pubkey;
 pub(crate) mod skill_flow;
 
+/// 资产面那一家（读 / 装 skill · 用户级 MCP 文件）：注册表里**唯一**声明了资产面的那一家（今天只有 Claude）；两家都声明 ⇒ `None`、照实拒。
+/// ⚠ Codex 的 skill 根来了（扩展位置带上程序这一维），改这里：由请求说是哪一家。
+pub(crate) fn asset_kind() -> Option<&'static str> {
+    crate::agents::sole_kind(|a| a.assets.is_some())
+}
+
 // 从 crate 根归进来（纯搬家，资产那一行）。
 pub mod asset_catalog; // 资产目录：帧面 `assets-catalog` / `assets-catalog-merge`（后端自有状态 `~/.cc-monitor/assets-catalog.json`，第四层；一个用户文件都不写）
 pub mod asset_sync; // 资产目录的自动同步：帧面 `assets-sync`（本机常驻后端沿池里那条 SSH 拉 / 并 / 推；写口由 inbound 递进来）

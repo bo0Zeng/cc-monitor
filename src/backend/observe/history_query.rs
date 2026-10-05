@@ -967,8 +967,10 @@ pub(crate) fn index_row(line: &[u8], offset: u64, len: u64) -> IndexRow {
     };
     row.t = v.get("type").and_then(|t| t.as_str()).map(str::to_string);
     row.u = v.get("uuid").and_then(|u| u.as_str()).map(str::to_string);
-    row.sc = crate::agents::run_of_record(&v).is_some();
-    let said = crate::agents::user_text_of(&v);
+    // 骨架索引读的是记录树那一家的记录。
+    let kind = crate::agents::record_tree_kind().unwrap_or_default();
+    row.sc = crate::agents::run_of_record(kind, &v).is_some();
+    let said = crate::agents::user_text_of(kind, &v);
     row.sp = said
         .as_ref()
         .map(|u| u.speaker.kind())
@@ -1603,7 +1605,8 @@ fn analyze_session(p: &Path) -> serde_json::Value {
                     }
                 }
                 Some("user") if excerpt.is_empty() => {
-                    if let Some(said) = crate::agents::human_speech(&v) {
+                    let kind = crate::agents::record_tree_kind().unwrap_or_default();
+                    if let Some(said) = crate::agents::human_speech(kind, &v) {
                         excerpt = super::search_rules::truncate_excerpt(&said, 120);
                     }
                 }

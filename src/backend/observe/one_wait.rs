@@ -62,7 +62,7 @@ fn arm(dir: &Path, seen: impl FnMut() -> bool + Send + 'static) -> Result<Armed,
 /// 等 `record` 里**此刻之后**长出满足 `hit` 的一条（已有的行不算）。读法同流式 watcher 的续读（[`Follow`]）。
 pub(crate) fn record_line(
     record: &Path,
-    hit: fn(&serde_json::Value) -> bool,
+    hit: impl Fn(&serde_json::Value) -> bool + Send + 'static,
 ) -> Result<Armed, String> {
     let dir = record
         .parent()
@@ -79,7 +79,8 @@ pub(crate) fn record_line(
 /// 等 `sid` 那份会话记录里此刻之后出现一条压缩摘要（记录按 sid 在这台的记录树里找，同分叉那一找）。
 pub(crate) fn compact_summary(agent_home: &Path, sid: &str) -> Result<Armed, String> {
     let record = crate::observe::history_query::session_record(agent_home, sid)?;
-    record_line(&record, crate::agents::is_compact_summary)
+    let kind = crate::agents::record_kind_of(&record).unwrap_or_default();
+    record_line(&record, move |v| crate::agents::is_compact_summary(kind, v))
 }
 
 /// 等 `sid` 由一个**此刻还没在跑**的进程报出（pidfile 目录里一份活的、认得是它的 pidfile）。

@@ -389,3 +389,72 @@ fn maps_events_to_unrecognized_preserving_raw() {
         JsonlRecord::Unrecognized { .. }
     ));
 }
+
+// ─── 谁说的：金样（只采结构：字段名 · 类型 · 判别值；正文全是占位）───
+
+const SPEAKER_GOLDEN: &str = include_str!("../../../__fixtures__/codex-speaker.golden.jsonl");
+
+/// 金样每一行：一条 rollout 记录 ⇒ 成品里的 `userText`（不是用户角色的记录 ⇒ `null`）。
+#[test]
+fn speaker_golden() {
+    let mut n = 0;
+    for row in SPEAKER_GOLDEN.lines().filter(|l| !l.trim().is_empty()) {
+        let row: Value = serde_json::from_str(row).unwrap();
+        let case = row["case"].as_str().unwrap();
+        let raw = row["line"].to_string();
+        let got = parsed_line(&raw).unwrap().unwrap().message;
+        assert_eq!(
+            got.get("userText").cloned().unwrap_or(Value::Null),
+            row["userText"],
+            "金样 {case} 判错了"
+        );
+        n += 1;
+    }
+    assert!(n >= 20, "金样只读到 {n} 行");
+}
+
+/// Codex 能写出来的那几类来源，金样里每一类至少一行（漏了一类 ⇒ 那一类没人钉）。
+#[test]
+fn speaker_golden_covers_every_source_codex_writes() {
+    let kinds: std::collections::BTreeSet<String> = SPEAKER_GOLDEN
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .filter_map(|r| {
+            r["userText"]["speaker"]["kind"]
+                .as_str()
+                .map(str::to_string)
+        })
+        .collect();
+    for want in [
+        "human",
+        "system",
+        "interrupt",
+        "bashInput",
+        "taskNotification",
+        "agentMessage",
+        "agentTask",
+        "coordinator",
+        "compactSummary",
+        "toolResult",
+    ] {
+        assert!(kinds.contains(want), "金样里没有 {want}");
+    }
+}
+
+/// 首条真用户话与渲染那一侧同一个判定：注入 · 中断 · 来信都跳过，`!` 命令照人说的算。
+#[test]
+fn excerpt_uses_the_same_speaker() {
+    let user = |text: &str, kinds: &[&str]| {
+        json!({"type": "message", "role": "user",
+               "content": [{"type": "input_text", "text": text}],
+               "internal_chat_message_metadata_passthrough": {"content_item_kinds": kinds}})
+    };
+    assert_eq!(
+        message_said(&user("<x>", &["environments.environment_context"])).and_then(|s| s.speech()),
+        None
+    );
+    assert_eq!(
+        message_said(&user("<y>", &["user.text"])).and_then(|s| s.speech()),
+        Some("<y>".to_string())
+    );
+}

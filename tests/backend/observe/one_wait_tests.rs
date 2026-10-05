@@ -36,13 +36,18 @@ fn rt() -> tokio::runtime::Runtime {
         .expect("起运行时")
 }
 
+/// 夹具是记录树那一家的记录。
+fn tree() -> &'static str {
+    crate::agents::record_tree_kind().unwrap()
+}
+
 /// 夹具那一条确实是适配层认的压缩摘要（否则下面几条的「等到」是空的）。
 #[test]
 fn the_fixture_line_is_what_the_adapter_calls_a_compact_summary() {
     let v: serde_json::Value = serde_json::from_str(&summary()).unwrap();
-    assert!(crate::agents::is_compact_summary(&v));
+    assert!(crate::agents::is_compact_summary(tree(), &v));
     let v: serde_json::Value = serde_json::from_str(&said(1)).unwrap();
-    assert!(!crate::agents::is_compact_summary(&v));
+    assert!(!crate::agents::is_compact_summary(tree(), &v));
 }
 
 /// 期限内写进一条压缩摘要 ⇒ 等到，且写进去之后很快就回（不拖到期限）。装之前就在的那一条摘要不算。
@@ -52,7 +57,7 @@ fn a_summary_written_in_time_is_seen_promptly_and_an_old_one_does_not_count() {
     let rec = d.join("s.jsonl");
     append(&rec, &said(1));
     append(&rec, &summary());
-    let armed = record_line(&rec, crate::agents::is_compact_summary).expect("装");
+    let armed = record_line(&rec, |v| crate::agents::is_compact_summary(tree(), v)).expect("装");
     let writer = {
         let rec = rec.clone();
         std::thread::spawn(move || {
@@ -73,7 +78,7 @@ fn a_summary_written_in_time_is_seen_promptly_and_an_old_one_does_not_count() {
     let d = scratch("old");
     let rec = d.join("s.jsonl");
     append(&rec, &summary());
-    let armed = record_line(&rec, crate::agents::is_compact_summary).expect("装");
+    let armed = record_line(&rec, |v| crate::agents::is_compact_summary(tree(), v)).expect("装");
     let got = rt().block_on(armed.within(300));
     let _ = std::fs::remove_dir_all(&d);
     assert!(!got, "装之前就在的那条被当成了新的");
@@ -85,7 +90,7 @@ fn nothing_written_returns_at_the_deadline() {
     let d = scratch("late");
     let rec = d.join("s.jsonl");
     append(&rec, &said(1));
-    let armed = record_line(&rec, crate::agents::is_compact_summary).expect("装");
+    let armed = record_line(&rec, |v| crate::agents::is_compact_summary(tree(), v)).expect("装");
     let writer = {
         let rec = rec.clone();
         std::thread::spawn(move || append(&rec, &said(2)))
@@ -108,7 +113,7 @@ fn a_rewritten_record_is_reread_from_the_start() {
     for n in 0..20 {
         append(&rec, &said(n));
     }
-    let armed = record_line(&rec, crate::agents::is_compact_summary).expect("装");
+    let armed = record_line(&rec, |v| crate::agents::is_compact_summary(tree(), v)).expect("装");
     let writer = {
         let (rec, tmp) = (rec.clone(), d.join("s.jsonl.tmp"));
         std::thread::spawn(move || {

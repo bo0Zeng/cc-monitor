@@ -3,7 +3,7 @@
 //!
 //! 人群：后端 `src/backend/` 生产段（`guard_core::production_code`：剥注释与测试段）里**字符串字面量的内容**
 //! （转义与续行解开；字符字面量不算）。数的是 [`NEEDLES`] 那张方言专属语法字面量清单，`(文件, 记号) → 处数`：
-//! ① `platform/shell/` 之外 == [`PROSE`]（两处散文里提到 `exec` 这个词，不产 shell；两向相等）；
+//! ① `platform/shell/` 之外 == [`PROSE`]（几处散文里提到 `exec` 这个词，不产 shell；两向相等）；
 //! ② `platform/shell/` 之内量得到的记号集 == 清单 − [`NOT_WRITTEN_HERE`]（两向：清单没有死行，适配层也没丢一格）。
 //! 正控：合成语料上字面量抽取器认得转义 / 续行 / 原始串、不数注释与字符字面量；往一份消费者副本里塞一行渲染数得出。
 //!
@@ -54,6 +54,8 @@ const PROSE: &[(&str, &str, usize)] = &[
     ("platform/proc.rs", "exec ", 1),
     // 足迹申报表里 `ccm` 远端那一份碰的 rc 文件（`~/.bashrc`，一条**申报路径**，给人看「动过哪份文件」，不产 shell）。
     ("footprint/registry.rs", ".bashrc", 1),
+    // Codex 旧版记录里一句系统警告的起头（「谁说的」按它认系统注入，照 Codex 源码逐字抄），不产 shell。
+    ("agents/codex/record.rs", "exec ", 1),
 ];
 
 const HOME: &str = "platform/shell/";

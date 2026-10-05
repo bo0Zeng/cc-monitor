@@ -89,7 +89,8 @@ fn skill_dir(args: &Value, name: &str) -> Result<(PathBuf, PathBuf), (&'static s
             ))
         }
     };
-    let root = crate::agents::skill_root_at(project.as_deref().map(Path::new))
+    let root = super::asset_kind()
+        .and_then(|k| crate::agents::skill_root_at(k, project.as_deref().map(Path::new)))
         .ok_or(("io_failed", copy_text("beSkillInstall.read.noRoot", &[])))?;
     let dir = root.join(name);
     Ok((root, dir))

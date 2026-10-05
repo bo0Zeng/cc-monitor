@@ -373,7 +373,11 @@ impl M {
         let skills = self.env.skills.clone().unwrap();
         let ledger = self.env.ledger.clone().unwrap();
         let root = match args.get("project").and_then(Value::as_str) {
-            Some(p) => crate::agents::skill_root_at(Some(Path::new(p))).unwrap(),
+            Some(p) => crate::agents::skill_root_at(
+                crate::assets::asset_kind().unwrap(),
+                Some(Path::new(p)),
+            )
+            .unwrap(),
             None => skills.clone(),
         };
         let record = |a: &Value| super::super::skill_ledger::record_at(&ledger, Some(&skills), a);

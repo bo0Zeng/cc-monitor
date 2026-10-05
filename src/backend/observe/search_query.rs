@@ -806,17 +806,24 @@ pub(crate) fn record_text(v: &Value, include_tools: bool) -> Option<RecordText> 
         _ => return None,
     };
     let content_v = v.get("message").and_then(|m| m.get("content"));
+    // 搜的是记录树那一家的记录。
+    let kind = crate::agents::record_tree_kind().unwrap_or_default();
     // user 那侧只搜人说的话（agent 发来的 · 后台通知 · 系统注入都不算 user 命中）。
     let raw_main = if is_assistant {
-        content_v.map(crate::agents::main_text).unwrap_or_default()
+        content_v
+            .map(|c| crate::agents::main_text(kind, c))
+            .unwrap_or_default()
     } else {
-        crate::agents::human_speech(v).unwrap_or_default()
+        crate::agents::human_speech(kind, v).unwrap_or_default()
     };
     let main = search_rules::truncate_plain(&raw_main, MAIN_CAP);
     let tool = if include_tools {
         content_v
             .map(|c| {
-                search_rules::truncate_plain(&crate::agents::tool_text(c, is_assistant), TOOL_CAP)
+                search_rules::truncate_plain(
+                    &crate::agents::tool_text(kind, c, is_assistant),
+                    TOOL_CAP,
+                )
             })
             .unwrap_or_default()
     } else {

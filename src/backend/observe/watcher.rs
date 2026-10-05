@@ -1254,7 +1254,7 @@ impl ReaderState {
             with_pid: false,
             with_raw: false,
             runs: crate::observe::runs::RunTrack::new(
-                crate::agents::stream_run_faces(),
+                crate::agents::run_faces(stream_kind()),
                 std::sync::Arc::default(),
             ),
             launch_home: None,
@@ -1757,9 +1757,14 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
     n
 }
 
+/// 流式 watcher 跟的那一家：今天只跟记录树那一家（`agents::record_tree_kind`）；Codex 的发现与判活随实时流那一路接。
+fn stream_kind() -> &'static str {
+    crate::agents::record_tree_kind().unwrap_or_default()
+}
+
 /// 一行交出去：`Line` 帧，是轮次结束就紧跟一帧 `TurnEnd`。增量读与写端死后收尾（[`catch_up_session`]）共用这一份。
 ///
-/// 这一行在渲染模型里是什么、是不是一轮的结束，都问注册表里流式那一家的记录解释面（`agents::stream_record_face`）；
+/// 这一行在渲染模型里是什么、是不是一轮的结束，都问注册表里流式那一家的记录解释面（`agents::record_face`）；
 /// 本函数只搬。解析不出 ⇒ 帧照发（占号）、不带成品。对账键与派出链接记进运行簿（回：运行表变没变）。
 fn send_line(
     session_id: &str,
@@ -1769,7 +1774,7 @@ fn send_line(
     sink: &mut FrameSink,
 ) -> bool {
     let runs = &state.runs;
-    let face = crate::agents::stream_record_face();
+    let face = crate::agents::record_face(stream_kind());
     let parsed = face.and_then(|f| match (f.parse)(&line.raw) {
         Ok(Some(p)) if p.displayable => Some(p),
         _ => None,

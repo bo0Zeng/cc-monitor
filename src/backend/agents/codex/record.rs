@@ -30,6 +30,8 @@ pub enum CodexRecordKind {
     ToolCall,
     /// response_item.custom_tool_call_output / function_call_output。
     ToolResult,
+    /// agent 之间的一封信：response_item.agent_message（0.159 写）· 顶层 inter_agent_communication。
+    AgentMail,
     /// event_msg task_started/turn_started（一轮开始）。
     TurnStarted,
     /// event_msg task_complete/turn_complete —— **turn-end 边沿**（F3；uuid=turn_id）。
@@ -59,11 +61,13 @@ pub fn classify(v: &Value) -> CodexRecordKind {
         "session_meta" => K::SessionMeta,
         "turn_context" => K::TurnContext,
         "world_state" => K::WorldState,
+        "inter_agent_communication" => K::AgentMail,
         "response_item" => match payload_type(payload) {
             Some("message") => K::Message,
             Some("reasoning") => K::Reasoning,
             Some("custom_tool_call" | "function_call" | "local_shell_call") => K::ToolCall,
             Some("custom_tool_call_output" | "function_call_output") => K::ToolResult,
+            Some("agent_message") => K::AgentMail,
             _ => K::Other, // 未知 response_item 子型（前向兼容）
         },
         "event_msg" => match payload_type(payload).map(normalize_event) {
@@ -143,24 +147,307 @@ pub fn call_id(v: &Value) -> Option<&str> {
     unwrap_envelope(v)?.1.get("call_id").and_then(Value::as_str)
 }
 
-/// role=user 但正文是 **CLI 注入的上下文块**（非真用户输入 ⇒ 系统注入、界面不画）。判据：trim 后以
-/// 已知注入标记起头。**去噪集与 aterm 2C / 事实对照 doc §63 对齐（3 标记）**——真机核（devbox `~/.codex`，
-/// 两端同机同数据）47 条 user msg = 34 真输入 + 2 `<environment_context>` + 5 `<recommended_plugins>` +
-/// 6 `# AGENTS.md instructions`，**34 真输入 0 误判**：
-/// - `<environment_context>`（cwd/shell/…）、`<recommended_plugins>`（插件清单）——干净 XML wrapper。
-/// - `# AGENTS.md instructions`——AGENTS.md 注入头，真机恒 `# AGENTS.md instructions\n\n<INSTRUCTIONS>\n…`
-///   （机器生成、结构唯一 = 特征前缀，真用户几乎不以此整串起头；裸 `# xxx` markdown 标题不匹配）。
-///
-/// **不认** `You have an MCP server…`（MCP 指令注入无干净特征前缀、怕误伤正文 → 保守留，两端一致）。
-pub(crate) fn is_injected_context(text: &str) -> bool {
+// ─── 谁说的：字段先、具名框后、认不出归人（与 Claude 那一份同一个顺序）───
+
+/// 记录级的宿主注解 `internal_chat_message_metadata_passthrough.content_item_kinds`：与 `content` 逐项对齐的种类名。
+fn content_kinds(payload: &Value) -> Option<Vec<&str>> {
+    let kinds = payload
+        .get("internal_chat_message_metadata_passthrough")?
+        .get("content_item_kinds")?
+        .as_array()?;
+    Some(kinds.iter().map(|k| k.as_str().unwrap_or("")).collect())
+}
+
+/// 一个种类名说的是哪一类来源。种类表照 Codex 源码（`core/src/context/*.rs` 各片段的 `content_kind`，0.159.2）抄。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KindSays {
+    /// 人说的：`user.*`，以及 Codex 判「这是不是用户授权」时也保守算作用户的那几种。
+    Human,
+    Interrupt,
+    Shell,
+    SubagentNotice,
+    AgentMail,
+    Compact,
+    System,
+    /// 表里没有：归人（与 Claude 同规矩）。
+    Unknown,
+}
+
+/// 不以 `.instructions` 结尾、也不在 `environments.*` · `plugins.*` 下的系统注入种类（源码逐个列）。
+const SYSTEM_KINDS: &[&str] = &[
+    "apply_patch.legacy_exec_command_warning",
+    "compaction.auto_fallback_prompt",
+    "current_time.reminder",
+    "current_time.unavailable",
+    "extension.internal_context",
+    "generic.developer_instructions",
+    "generic.developer_policy",
+    "hooks.additional_context",
+    "images.resize_notice",
+    "managed_config.developer_instructions",
+    "model.base_instructions",
+    "model_switch.legacy_mismatch_warning",
+    "multi_agent.usage_hint",
+    "network_proxy.rule_saved",
+    "permissions.approved_command_prefix_saved",
+    "realtime_conversation.delegation",
+    "rollout_budget.remaining_tokens",
+    "skills.catalog",
+    "skills.selected_skill_instructions",
+    "token_budget.context_window",
+    "token_budget.context_window_guidance",
+    "token_budget.remaining_tokens",
+    "token_budget.reminder",
+    "tools.deferred_namespaces",
+    "unified_exec.legacy_process_limit_warning",
+    "user_verification.notice",
+];
+
+fn kind_says(kind: &str) -> KindSays {
+    match kind {
+        k if k.starts_with("user.") => KindSays::Human,
+        ""
+        | "unknown"
+        | "images.preparation_error"
+        | "images.unsupported"
+        | "audio.unsupported" => KindSays::Human,
+        "generic.turn_aborted" => KindSays::Interrupt,
+        "shell.user_command" => KindSays::Shell,
+        "multi_agent.subagent_notification" => KindSays::SubagentNotice,
+        "multi_agent.inter_agent_message"
+        | "multi_agent.inter_agent_completion_message"
+        | "agent_message_board.notification" => KindSays::AgentMail,
+        "compaction.summary" => KindSays::Compact,
+        k if k.ends_with(".instructions")
+            || k.starts_with("environments.")
+            || k.starts_with("plugins.")
+            || k.starts_with("guardian.")
+            || k.starts_with("memories.")
+            || SYSTEM_KINDS.contains(&k) =>
+        {
+            KindSays::System
+        }
+        _ => KindSays::Unknown,
+    }
+}
+
+/// 没有宿主注解时（旧版记录）认的具名框：照 Codex 认「上下文片段」的那张匹配表
+/// （`core/src/context/contextual_user_message.rs`）与各片段的起头标记抄；不分大小写，只认起头。
+const SYSTEM_FRAMES: &[&str] = &[
+    "<user_instructions>",
+    "# AGENTS.md instructions",
+    "<environment_context>",
+    "<external_",
+    "<agent_message_board_notification>",
+    "<skill>",
+    "<codex_internal_context",
+    "<goal_context>",
+    "<recommended_plugins>",
+    "Warning: The maximum number of unified exec processes you can keep open is",
+    "Warning: apply_patch was requested via ",
+    "Warning: Your account was flagged for potentially high-risk cyber activity",
+];
+const SHELL_FRAME: &str = "<user_shell_command>";
+const ABORT_FRAME: &str = "<turn_aborted>";
+const NOTICE_FRAME: &str = "<subagent_notification>";
+
+fn opens_with(t: &str, mark: &str) -> bool {
+    t.get(..mark.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(mark))
+}
+
+fn framed_says(text: &str) -> KindSays {
     let t = text.trim_start();
-    [
-        "<environment_context>",
-        "<recommended_plugins>",
-        "# AGENTS.md instructions",
-    ]
-    .iter()
-    .any(|m| t.starts_with(m))
+    if opens_with(t, SHELL_FRAME) {
+        KindSays::Shell
+    } else if opens_with(t, ABORT_FRAME) {
+        KindSays::Interrupt
+    } else if opens_with(t, NOTICE_FRAME) {
+        KindSays::SubagentNotice
+    } else if SYSTEM_FRAMES.iter().any(|m| opens_with(t, m)) {
+        KindSays::System
+    } else {
+        KindSays::Human
+    }
+}
+
+/// `<名>…</名>` 里的那一段（不在 ⇒ `None`）。
+fn between<'a>(t: &'a str, open: &str, close: &str) -> Option<&'a str> {
+    let rest = &t[t.find(open)? + open.len()..];
+    Some(rest[..rest.find(close)?].trim())
+}
+
+/// `!` 命令：`<user_shell_command><command>…</command><result>…</result></user_shell_command>` ⇒ 那一行命令。
+fn shell(text: &str) -> Speaker {
+    Speaker::BashInput {
+        command: between(text, "<command>", "</command>")
+            .unwrap_or_default()
+            .to_string(),
+    }
+}
+
+/// 子 agent 收场通知：框里是 `{"agent_path", "status"}`；`status` 是串或单键对象（键 ＝ 状态名）。
+fn subagent_notice(text: &str) -> Speaker {
+    let body = between(text, NOTICE_FRAME, "</subagent_notification>")
+        .and_then(|b| serde_json::from_str::<Value>(b).ok())
+        .unwrap_or(Value::Null);
+    let status = match body.get("status") {
+        Some(Value::String(s)) => Some(s.clone()),
+        Some(Value::Object(o)) => o.keys().next().cloned(),
+        _ => None,
+    };
+    Speaker::TaskNotification {
+        task_id: body
+            .get("agent_path")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        status,
+        summary: None,
+        tool_use_id: None,
+    }
+}
+
+/// agent 之间的一封信（`Message Type: …` 头 ＋ `Payload:` 之后是正文）的头里那几格。
+struct Mail<'a> {
+    kind: Option<&'a str>,
+    sender: Option<&'a str>,
+    payload: &'a str,
+}
+
+fn mail_of(text: &str) -> Mail<'_> {
+    let head = |name: &str| {
+        text.lines()
+            .find_map(|l| l.strip_prefix(name))
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+    };
+    let payload = text
+        .find("Payload:")
+        .map_or("", |i| text[i + "Payload:".len()..].trim());
+    Mail {
+        kind: head("Message Type:"),
+        sender: head("Sender:"),
+        payload,
+    }
+}
+
+/// 一封信是谁说的：`author` 是收信方的上级（收信方路径在它底下）⇒ 主会话那一侧发来的（派活 ⇒ `agentTask`，后来的话 ⇒ `coordinator`）；
+/// 否则 ⇒ 子 agent（或同级）发来的，`FINAL_ANSWER` ＝ 交回。
+fn mail_said(text: &str, author: Option<&str>, recipient: Option<&str>) -> UserText {
+    let m = mail_of(text);
+    let from = author.or(m.sender);
+    let from_above = match (from, recipient) {
+        (Some(a), Some(r)) => {
+            r.len() > a.len() && r.starts_with(a) && r[a.len()..].starts_with('/')
+        }
+        _ => false,
+    };
+    match (from_above, m.kind) {
+        (true, Some("NEW_TASK")) => UserText {
+            speaker: Speaker::AgentTask,
+            text: m.payload.to_string(),
+            pasted: Vec::new(),
+        },
+        (true, _) => UserText::of(Speaker::Coordinator),
+        (false, kind) => UserText::of(Speaker::AgentMessage {
+            from: from.map(str::to_string),
+            name: None,
+            handback: kind == Some("FINAL_ANSWER"),
+        }),
+    }
+}
+
+fn said_as(says: KindSays, text: &str, human_text: String) -> UserText {
+    match says {
+        KindSays::Human | KindSays::Unknown => UserText {
+            speaker: Speaker::Human,
+            text: human_text,
+            pasted: Vec::new(),
+        },
+        KindSays::Interrupt => UserText::of(Speaker::Interrupt),
+        KindSays::Shell => UserText::of(shell(text)),
+        KindSays::SubagentNotice => UserText::of(subagent_notice(text)),
+        KindSays::AgentMail => mail_said(text, None, None),
+        KindSays::Compact => UserText {
+            speaker: Speaker::CompactSummary,
+            text: text.trim().to_string(),
+            pasted: Vec::new(),
+        },
+        KindSays::System => UserText::of(Speaker::System),
+    }
+}
+
+/// 有宿主注解时：先看有没有非人的那几类（中断 · `!` 命令 · 通知 · 来信 · 压缩摘要），再看有没有人说的那几项
+/// （正文只取那几项），全是系统注入 ⇒ 系统；剩下的（种类表里没有）⇒ 人。注解与 `content` 对不齐 ⇒ `None`（退到具名框）。
+fn by_kinds(kinds: &[&str], items: &[Value]) -> Option<UserText> {
+    if kinds.is_empty() || kinds.len() != items.len() {
+        return None;
+    }
+    let says: Vec<KindSays> = kinds.iter().map(|k| kind_says(k)).collect();
+    let text_of = |i: usize| flatten_text(&Value::Array(vec![items[i].clone()]));
+    let special =
+        |k: KindSays| !matches!(k, KindSays::Human | KindSays::System | KindSays::Unknown);
+    if let Some(i) = says.iter().position(|k| special(*k)) {
+        return Some(said_as(says[i], &text_of(i), String::new()));
+    }
+    let human: Vec<String> = (0..items.len())
+        .filter(|&i| says[i] == KindSays::Human)
+        .map(text_of)
+        .collect();
+    if !human.is_empty() {
+        return Some(said_as(
+            KindSays::Human,
+            "",
+            human.join("\n").trim().to_string(),
+        ));
+    }
+    if says.iter().all(|k| *k == KindSays::System) {
+        return Some(UserText::of(Speaker::System));
+    }
+    let all = flatten_text(&Value::Array(items.to_vec()));
+    Some(said_as(KindSays::Unknown, "", all.trim().to_string()))
+}
+
+/// 一条 `response_item.message`（`role` ∈ user / developer / assistant）是谁说的；是 agent 自己的回复 ⇒ `None`。
+pub(crate) fn message_said(payload: &Value) -> Option<UserText> {
+    let role = payload.get("role").and_then(Value::as_str);
+    let content = payload.get("content").unwrap_or(&Value::Null);
+    let items = content.as_array().map(Vec::as_slice).unwrap_or(&[]);
+    let kinds = content_kinds(payload);
+    let text = flatten_text(content);
+    match role {
+        Some("developer") => {
+            // 中断那一句这一版写在 developer 里（种类 `generic.turn_aborted`）；其余 developer 一律系统。
+            let interrupt = kinds
+                .as_ref()
+                .is_some_and(|k| k.iter().any(|k| kind_says(k) == KindSays::Interrupt));
+            Some(UserText::of(if interrupt {
+                Speaker::Interrupt
+            } else {
+                Speaker::System
+            }))
+        }
+        Some("assistant") => {
+            // 别的 agent 的来信这一版也可能以 assistant 角色写进来（种类说得出）；其余是这一家自己的回复。
+            let mail = kinds
+                .as_ref()
+                .is_some_and(|k| k.iter().any(|k| kind_says(k) == KindSays::AgentMail));
+            mail.then(|| mail_said(&text, None, None))
+        }
+        _ => Some(
+            kinds
+                .as_deref()
+                .and_then(|k| by_kinds(k, items))
+                .unwrap_or_else(|| said_as(framed_says(&text), &text, text.trim().to_string())),
+        ),
+    }
+}
+
+/// agent 之间的一封信（`response_item.agent_message` · 顶层 `inter_agent_communication`）是谁说的。
+fn agent_mail_said(payload: &Value) -> UserText {
+    let text = flatten_text(payload.get("content").unwrap_or(&Value::Null));
+    let s = |k: &str| payload.get(k).and_then(Value::as_str);
+    mail_said(&text, s("author"), s("recipient"))
 }
 
 /// session_meta 的 `payload.timestamp`（会话起始，F1a list 的 lastActivity 兜底）。非 session_meta → None。
@@ -206,26 +493,18 @@ pub fn to_jsonl_record(v: &Value, raw: &str) -> JsonlRecord {
     let id = payload_id(v);
     match classify(v) {
         K::Message => {
-            let text = flatten_text(payload_field(v, "content").unwrap_or(&Value::Null));
+            let payload = unwrap_envelope(v).map_or(&Value::Null, |(_, p)| p);
+            let text = flatten_text(payload.get("content").unwrap_or(&Value::Null));
             let content = text_blocks(&text);
-            match message_role(v) {
-                Some("assistant") => assistant_rec(id, ts, "assistant", content),
-                // developer = 系统指令 ⇒ 系统注入（保文本、界面不画）。
-                Some("developer") => user_rec(id, ts, content, UserText::of(Speaker::System)),
-                // role=user：CLI 注入的上下文块是系统注入；其余是人说的话。
-                _ => {
-                    let said = if is_injected_context(&text) {
-                        UserText::of(Speaker::System)
-                    } else {
-                        UserText {
-                            speaker: Speaker::Human,
-                            text: text.trim().to_string(),
-                            pasted: Vec::new(),
-                        }
-                    };
-                    user_rec(id, ts, content, said)
-                }
+            match message_said(payload) {
+                Some(said) => user_rec(id, ts, content, said),
+                None => assistant_rec(id, ts, "assistant", content),
             }
+        }
+        K::AgentMail => {
+            let payload = unwrap_envelope(v).map_or(&Value::Null, |(_, p)| p);
+            let text = flatten_text(payload.get("content").unwrap_or(&Value::Null));
+            user_rec(id, ts, text_blocks(&text), agent_mail_said(payload))
         }
         K::Reasoning => {
             // 真机 summary 恒 [] → 空文本给空 blocks（免 Thinking("") 噪音）。
@@ -315,7 +594,7 @@ fn assistant_rec(uuid: String, ts: Option<String>, role: &str, content: Value) -
     }
 }
 
-/// 用户角色的一条：谁说的由本家判好（[`is_injected_context`] · role），不走 Claude 那一份。
+/// 用户角色的一条：谁说的由本家判好（[`message_said`] · [`agent_mail_said`]），不走 Claude 那一份。
 fn user_rec(uuid: String, ts: Option<String>, content: Value, said: UserText) -> JsonlRecord {
     JsonlRecord::User {
         uuid,

@@ -15,7 +15,8 @@ const SHARE_EXCLUDE_EXACT: &[&str] = &["accounts"];
 
 /// 这台机器上账号库的布局（注册表里那一家的；没有 ⇒ 这台做不了多账号，`wire` 那一层先拒）。
 pub(crate) fn face() -> Option<AccountsFace> {
-    crate::agents::accounts_face()
+    // 今天只管 Claude 的账号库（唯一声明了账号库的那一家；两家都声明 ⇒ `None`、照实拒）。Codex 多账号来了改这里。
+    crate::agents::sole_kind(|a| a.accounts.is_some()).and_then(crate::agents::accounts_face)
 }
 
 /// 身份那几项：`(名, 原生根是家目录, 是身份本体)`。

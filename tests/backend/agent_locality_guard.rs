@@ -1047,4 +1047,108 @@ mod tests {
             "④ 打中了合法的值判别 —— `D3` 逐字：agent 维度**只许出现在值里**"
         );
     }
+    /// ⑨ 通用层零处「按注册序取第一家」：`agents/mod.rs` 生产段里每一次在注册表上 `find` / `find_map`，
+    /// 闭包都得按键比（`kind` · 路由名 · 名字）；不按键比的只许是下面登记的那几形（各带理由与处数，处数对不上就红 ——
+    /// 收掉一处要同轮改这张表，多出一处要先说清楚为什么不是「取第一家」）。
+    const FIRST_PICK_ALLOWED: &[(&str, usize, &str)] = &[
+        (
+            "is_default",
+            2,
+            "声明的缺省那一家（`LaunchFace::is_default`，`agents_tests` 钉着恰一家）",
+        ),
+        (
+            "is_some_and(under)",
+            1,
+            "按路径：记录落在那一家合成历史的根下（各家的根不相交）",
+        ),
+        ("settings_env", 1, "直接敲的也走中转那一格：随中转那一路收"),
+    ];
+
+    /// 按键比的那几形：闭包里有其一 ⇒ 是「问那一家」，不是「取第一家」。
+    const KEYED: &[&str] = &["== kind", ".kind ==", "== route_id", "== name"];
+
+    /// `src` 里每一次 `.find(` / `.find_map(` 的整个实参（括号配平）。
+    fn find_calls(src: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        for pat in [".find(", ".find_map("] {
+            let mut from = 0;
+            while let Some(i) = src[from..].find(pat) {
+                let open = from + i + pat.len() - 1;
+                let mut depth = 0usize;
+                let mut end = src.len();
+                for (j, c) in src[open..].char_indices() {
+                    match c {
+                        '(' => depth += 1,
+                        ')' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = open + j + 1;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                out.push(
+                    src[open..end]
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                );
+                from = open + 1;
+            }
+        }
+        out
+    }
+
+    /// 不按键比、也不在登记表里的那几次（＝ 取第一家）；登记表那几形各数到几处。
+    fn first_picks(src: &str) -> (Vec<String>, Vec<usize>) {
+        let mut bad = Vec::new();
+        let mut seen = vec![0; FIRST_PICK_ALLOWED.len()];
+        for call in find_calls(src) {
+            if KEYED.iter().any(|k| call.contains(k)) {
+                continue;
+            }
+            match FIRST_PICK_ALLOWED
+                .iter()
+                .position(|(m, _, _)| call.contains(m))
+            {
+                Some(i) => seen[i] += 1,
+                None => bad.push(call),
+            }
+        }
+        (bad, seen)
+    }
+
+    #[test]
+    fn the_general_layer_never_takes_the_first_family_by_registry_order() {
+        let (_, src) = sources()
+            .into_iter()
+            .find(|(rel, _)| rel == "agents/mod.rs")
+            .expect("agents/mod.rs 不在扫描的人群里");
+        let (bad, seen) = first_picks(&src);
+        assert!(
+            bad.is_empty(),
+            "`agents/mod.rs` 里按注册序取了第一家（闭包不按 kind 比）：{bad:#?}\n\
+             ⇒ 改成按 kind 取（入参带 kind，调用方说是哪一家），或逐家问。"
+        );
+        for ((marker, want, why), got) in FIRST_PICK_ALLOWED.iter().zip(&seen) {
+            assert_eq!(
+                got, want,
+                "登记的「{marker}」（{why}）数到 {got} 处、登记 {want} 处 —— 收掉了就同轮改登记表"
+            );
+        }
+    }
+
+    /// ⑨ 的正控：判定真认得出「取第一家」，也不误伤按 kind 取。
+    #[test]
+    fn the_first_pick_detector_catches_a_synthetic_first_pick() {
+        let first = "REGISTRY.iter().find_map(|a| a.assets.and_then(|f| (f.skills_root)()))\n\
+                     registry.iter().find(|a| a.history.is_none()).and_then(|a| a.records)";
+        let (bad, _) = first_picks(first);
+        assert_eq!(bad.len(), 2, "认不出取第一家：{bad:?}");
+        let keyed = "registry.iter().find(|a| a.kind == kind).and_then(|a| a.records)";
+        let (bad, _) = first_picks(keyed);
+        assert!(bad.is_empty(), "把按 kind 取判成了取第一家：{bad:?}");
+    }
 }

@@ -590,3 +590,211 @@ fn project_dir_is_the_first_cwd_in_the_head_and_reading_is_bounded() {
     );
     std::fs::remove_dir_all(&dir).ok();
 }
+
+// ─── 通用层按 kind 显式取（不按注册序取「第一家」）───────────────────────────
+//
+// 合成注册表上两家同时声明资产面 · MCP 读面 · 账号库 · 找会话文件；问后一家 ⇒ 落到后一家（按注册序取第一家的话会落到前一家）。
+
+fn alpha_skills() -> Option<PathBuf> {
+    Some(PathBuf::from("/alpha/skills"))
+}
+fn beta_skills() -> Option<PathBuf> {
+    Some(PathBuf::from("/beta/skills"))
+}
+fn alpha_project_skills(p: &Path) -> PathBuf {
+    p.join(".alpha-skills")
+}
+fn beta_project_skills(p: &Path) -> PathBuf {
+    p.join(".beta-skills")
+}
+fn alpha_mcp_file() -> Option<PathBuf> {
+    Some(PathBuf::from("/alpha/mcp.json"))
+}
+fn beta_mcp_file() -> Option<PathBuf> {
+    Some(PathBuf::from("/beta/mcp.json"))
+}
+fn no_sightings(_: &[String], _: Option<&Path>) -> Sightings {
+    Sightings::default()
+}
+fn alpha_mcp(_: Option<&Path>) -> McpRead {
+    McpRead {
+        dirs: vec!["alpha".into()],
+        ..McpRead::default()
+    }
+}
+fn beta_mcp(_: Option<&Path>) -> McpRead {
+    McpRead {
+        dirs: vec!["beta".into()],
+        ..McpRead::default()
+    }
+}
+fn alpha_find(_: &Path, sid: &str) -> Result<PathBuf, String> {
+    (sid == "alpha-sid")
+        .then(|| PathBuf::from("/alpha/rec"))
+        .ok_or_else(|| "alpha: not mine".to_string())
+}
+fn beta_find(_: &Path, sid: &str) -> Result<PathBuf, String> {
+    (sid == "beta-sid")
+        .then(|| PathBuf::from("/beta/rec"))
+        .ok_or_else(|| "beta: not mine".to_string())
+}
+fn shared_root(home: &Path) -> PathBuf {
+    home.to_path_buf()
+}
+fn no_email(_: &Path) -> Option<String> {
+    None
+}
+fn no_line(_: &str) -> Result<Option<ParsedLine>, String> {
+    Ok(None)
+}
+fn no_sid(_: &Path) -> Option<String> {
+    None
+}
+
+const fn records(find: fn(&Path, &str) -> Result<PathBuf, String>) -> RecordFace {
+    RecordFace {
+        parse: no_line,
+        sid: no_sid,
+        turn_end: None,
+        find_session: Some(find),
+        branch: None,
+        drift: None,
+        text: None,
+        delete: None,
+        response_id: None,
+        run_of: None,
+        child_link: None,
+        children: None,
+        project_dir: None,
+    }
+}
+
+const fn accounts(config_file: &'static str) -> AccountsFace {
+    AccountsFace {
+        identity: &[],
+        config_file,
+        user_mcp_key: "servers",
+        shared_root,
+        email_in: no_email,
+        watched: &[],
+    }
+}
+
+fn two_families() -> Vec<Adapter> {
+    let row = |kind: &'static str,
+               assets: AssetFace,
+               mcp: fn(Option<&Path>) -> McpRead,
+               acc: AccountsFace,
+               find: fn(&Path, &str) -> Result<PathBuf, String>| Adapter {
+        kind,
+        home: synth_home_unknown,
+        account_env: None,
+        assets: Some(assets),
+        history: None,
+        upstream: None,
+        mcp: Some(McpFace { read: mcp }),
+        footprint: None,
+        accounts: Some(acc),
+        records: Some(records(find)),
+        processes: None,
+        launch: None,
+        compact_request: None,
+    };
+    vec![
+        row(
+            "alpha",
+            AssetFace {
+                scan: no_sightings,
+                skills_root: alpha_skills,
+                project_skills_root: alpha_project_skills,
+                user_mcp_file: alpha_mcp_file,
+            },
+            alpha_mcp,
+            accounts("alpha.json"),
+            alpha_find,
+        ),
+        row(
+            "beta",
+            AssetFace {
+                scan: no_sightings,
+                skills_root: beta_skills,
+                project_skills_root: beta_project_skills,
+                user_mcp_file: beta_mcp_file,
+            },
+            beta_mcp,
+            accounts("beta.json"),
+            beta_find,
+        ),
+    ]
+}
+
+#[test]
+fn each_question_lands_on_the_family_it_names_not_the_first_one() {
+    let reg = two_families();
+    let proj = Path::new("/p");
+    assert_eq!(
+        skill_root_among(&reg, "beta", None),
+        Some(PathBuf::from("/beta/skills"))
+    );
+    assert_eq!(
+        skill_root_among(&reg, "beta", Some(proj)),
+        Some(PathBuf::from("/p/.beta-skills"))
+    );
+    assert_eq!(
+        skill_root_among(&reg, "alpha", None),
+        Some(PathBuf::from("/alpha/skills"))
+    );
+    assert_eq!(
+        mcp_read_among(&reg, "beta", None).map(|r| r.dirs),
+        Some(vec!["beta".to_string()])
+    );
+    assert_eq!(
+        accounts_face_among(&reg, "beta").map(|a| a.config_file),
+        Some("beta.json")
+    );
+    // 认不出的那一家 ⇒ 没有，不落到第一家。
+    assert_eq!(skill_root_among(&reg, "gamma", None), None);
+    assert!(mcp_read_among(&reg, "gamma", None).is_none());
+    assert!(accounts_face_among(&reg, "gamma").is_none());
+}
+
+#[test]
+fn finding_a_session_asks_every_family_and_whoever_knows_it_answers() {
+    let reg = two_families();
+    let root = Path::new("/records");
+    assert_eq!(
+        find_session_file_among(&reg, root, "beta-sid"),
+        Ok(PathBuf::from("/beta/rec"))
+    );
+    assert_eq!(
+        find_session_file_among(&reg, root, "alpha-sid"),
+        Ok(PathBuf::from("/alpha/rec"))
+    );
+    assert_eq!(
+        find_session_file_among(&reg, root, "nobody"),
+        Err("alpha: not mine".to_string())
+    );
+}
+
+/// 请求里没说是哪一家时那几处取「唯一声明了那一格的那一家」：两家都声明 ⇒ 说不出（`None`，照实拒），不按注册序挑。
+#[test]
+fn the_sole_family_is_answered_only_when_there_is_exactly_one() {
+    let reg = two_families();
+    assert_eq!(sole_kind_among(&reg, |a| a.assets.is_some()), None);
+    assert_eq!(sole_kind_among(&reg, |a| a.accounts.is_some()), None);
+    assert_eq!(record_tree_kind_among(&reg), None);
+    assert_eq!(
+        sole_kind_among(&reg[1..], |a| a.assets.is_some()),
+        Some("beta")
+    );
+    assert_eq!(sole_kind_among(&reg, |a| a.launch.is_some()), None);
+    // 生产注册表上今天各恰一家（账号库 · 资产面 · MCP 读面 · 记录树）。
+    for (what, got) in [
+        ("账号库", sole_kind(|a| a.accounts.is_some())),
+        ("资产面", sole_kind(|a| a.assets.is_some())),
+        ("MCP 读面", sole_kind(|a| a.mcp.is_some())),
+        ("记录树", record_tree_kind()),
+    ] {
+        assert!(got.is_some(), "生产注册表上「{what}」不是恰一家");
+    }
+}

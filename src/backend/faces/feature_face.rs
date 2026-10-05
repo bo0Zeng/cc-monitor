@@ -59,7 +59,7 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
             })?;
             capped(v)
         }
-        // MCP 列表出成品：读法住适配层那一格（`agents::mcp_read`，注册表里第一家认得 MCP 的），这里只换壳。
+        // MCP 列表出成品：读法住适配层那一格（`agents::mcp_read`，唯一声明了 MCP 读面的那一家），这里只换壳。
         "mcp-read" => {
             let dir = match args.get("projectDir") {
                 None | Some(Value::Null) => None,
@@ -80,7 +80,10 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
                     Some(std::path::PathBuf::from(d))
                 }
             };
-            let read = crate::agents::mcp_read(dir.as_deref()).unwrap_or_default();
+            // 读 MCP 的那一家：唯一声明了 MCP 读面的那一家（今天只有 Claude）；Codex 的 MCP 来了由请求说是哪一家。
+            let read = crate::agents::sole_kind(|a| a.mcp.is_some())
+                .and_then(|k| crate::agents::mcp_read(k, dir.as_deref()))
+                .unwrap_or_default();
             capped(mcp_reply(&read))
         }
         other => Err((

@@ -11,8 +11,8 @@
 //!
 //! - 会话 = `<codex home>/sessions/**/rollout-<ts>-<uuid>.jsonl`；sid = 文件名末尾那个 UUID（`parse::codex_sid_from_path`，不像就跳过）。
 //! - cwd = 开头那条 `session_meta.cwd`（[`project_dir`]；缺 / 坏 ⇒ 空串，归「(codex)」组）；修改时刻 = 文件 mtime（毫秒）。
-//! - 首条真用户话 = 前 200 行里第一条 `response_item.message` 且 `role == "user"`，文本拍平后去掉**注入的上下文**
-//!   （`record::is_injected_context`，与渲染那一侧同一份）；取前 200 个字符。
+//! - 首条真用户话 = 前 200 行里第一条人说的 `response_item.message`（`role == "user"`，「谁说的」用
+//!   `record::message_said`，与渲染那一侧同一份）；取前 200 个字符。
 //!
 //! Codex 没有 pidfile ⇒ 判活答不了（「不知道」，不是「没活」）；Codex 的会话目录里也没有项目概念（按 cwd 分组是通用层的事）。
 
@@ -22,9 +22,8 @@ use std::path::Path;
 
 use super::parse;
 
-// 「注入的上下文」那张表与数组文本拍平只住 [`super::record`] 一份（渲染那一侧从 monitor 搬进来之后，
-//   同一个模块里没有理由再留第二份、再靠判据对拍）。
-use super::record::{flatten_text, is_injected_context};
+// 「谁说的」只住 [`super::record`] 一份（与渲染那一侧同一个判定）。
+use super::record::message_said;
 
 /// 会话的项目目录 ＝ 开头那条 `session_meta` 的 `cwd`（注册表 `RecordFace.project_dir`；只读开头、有上界）。
 pub(crate) fn project_dir(p: &Path) -> Option<String> {
@@ -107,9 +106,7 @@ pub(crate) fn first_user_excerpt(path: &Path) -> String {
         {
             continue;
         }
-        let text = payload.get("content").map(flatten_text).unwrap_or_default();
-        let t = text.trim();
-        if !t.is_empty() && !is_injected_context(t) {
+        if let Some(t) = message_said(payload).and_then(|s| s.speech()) {
             return t.chars().take(200).collect();
         }
     }
