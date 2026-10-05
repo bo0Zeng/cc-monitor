@@ -231,13 +231,20 @@ struct RequestLine<'a> {
     id: &'a str,
     cmd: &'a str,
     args: &'a serde_json::Value,
+    within_ms: u64,
 }
 
 /// 🔴 **真序列化一次**：这条命令发到后端时那一行有多少字节（**不含**行尾 `\n` ——
-/// 后端的上限数的就是换行之前那一段）。`id` 按最长的算（[`REQUEST_ID_ROOM`]）。
+/// 后端的上限数的就是换行之前那一段）。`id` 按最长的算（[`REQUEST_ID_ROOM`]），发起方期限那一格按最长的数位算。
 pub fn request_line_len(cmd: &str, args: &serde_json::Value) -> usize {
     let id = "0".repeat(REQUEST_ID_ROOM);
-    serde_json::to_vec(&RequestLine { id: &id, cmd, args }).map_or(usize::MAX, |v| v.len())
+    serde_json::to_vec(&RequestLine {
+        id: &id,
+        cmd,
+        args,
+        within_ms: u64::MAX,
+    })
+    .map_or(usize::MAX, |v| v.len())
 }
 
 /// 整份装得进**一条** `files-write-text` 吗（真序列化量，按最长 id）。

@@ -207,7 +207,7 @@ fn rt() -> tokio::runtime::Runtime {
 
 fn go(rig: Rig, a: Value) -> (Result<Value, Fault>, Arc<Rig>) {
     let rig = Arc::new(rig);
-    let out = rt().block_on(run(a, Host_(rig.clone())));
+    let out = rt().block_on(run(a, None, Host_(rig.clone())));
     (out, rig)
 }
 
@@ -317,7 +317,7 @@ fn cancelling_while_waiting_for_the_summary_stops_nothing_and_starts_nothing() {
     let host = Host_(rig.clone());
     let rt = rt();
     rt.block_on(async {
-        let task = tokio::spawn(run(args(true, 60_000), host));
+        let task = tokio::spawn(run(args(true, 60_000), None, host));
         // 等到那一句送出去（此刻正在等摘要），再撤。
         for _ in 0..200 {
             if rig.did("send") == 1 {

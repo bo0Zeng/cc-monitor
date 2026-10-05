@@ -65,7 +65,7 @@ mkfifo "$IN"
 
 # ── ★ 跨轨对拍的那条行（monitor `encode_request` 的逐字节产物）───────────────────
 # 改这里 ⇒ monitor 侧 `the_e2e_ping_line_is_exactly_what_the_encoder_produces` 变红。
-INBOUND_PING_LINE='{"id":"e2e-ping-1","cmd":"ping","args":null}'
+INBOUND_PING_LINE='{"id":"e2e-ping-1","cmd":"ping","args":null,"within_ms":10000}'
 
 # ★ U8a-2c-1 跨轨对拍：**这一行是 monitor 的 `launch_args` + `encode_request` 的产物**
 # （由 monitor 侧 `the_e2e_send_into_line_is_exactly_what_the_encoder_produces` 逐字节钉住）。
@@ -79,7 +79,7 @@ INBOUND_PING_LINE='{"id":"e2e-ping-1","cmd":"ping","args":null}'
 #   也就是说这个夹具此前用的是一个**生产永远不会产生的值**：跨轨钉钉住了「编码形状」，
 #   钉不住「值是否真实」。改名后两侧必须 lockstep（只改一侧 ⇒ monitor 的
 #   `the_e2e_send_into_line_is_exactly_what_the_encoder_produces` 当场红，实测过）。
-INBOUND_SEND_INTO_LINE='{"id":"e2e-si-1","cmd":"launch","args":{"mode":"send-into","name":"e2e-si-fixed-cc","payload":"true"}}'
+INBOUND_SEND_INTO_LINE='{"id":"e2e-si-1","cmd":"launch","args":{"mode":"send-into","name":"e2e-si-fixed-cc","payload":"true"},"within_ms":10000}'
 
 echo "== U8a-2a 入方向真进程端到端 =="
 echo "backend: $BACKEND"

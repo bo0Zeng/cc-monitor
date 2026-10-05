@@ -15,18 +15,16 @@
 
 use crate::common::tmux_utf8::UTF8_CLIENT_FLAG;
 use crate::control::gate::{self, Who};
-use crate::platform::child::{Budget, Child, ChildFail, Deadline};
+use crate::platform::child::{Child, ChildFail, Deadline};
 use serde_json::{json, Map, Value};
 
 /// 列名单 · 问尺寸那几发只读 tmux 的期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
 const READ_TMUX_WITHIN: Deadline = Deadline::secs(5);
 
-/// `terminals-list` 整条命令的总期限（窗格 · 客户端两发）：界面等它 15 s（`terminal-reads.ts` 的 `LIST_BUDGET_MS`），短 2 s。
-pub(crate) const TERMINALS_LIST_TOTAL: Deadline = Deadline::secs(13);
-/// `terminal-preview` 整条命令的总期限（名单两发 ＋ 抓屏 ＋ 问尺寸）：界面等它 20 s（`terminal-reads.ts` 的 `PREVIEW_BUDGET_MS`），短 2 s。
-pub(crate) const TERMINAL_PREVIEW_TOTAL: Deadline = Deadline::secs(18);
-/// `terminal-input` 整条命令的总期限（名单 · 过门 · 比画面 · 送字 · 送不成再探）：界面无调用方（手机端在用），与预览同一个。
-pub(crate) const TERMINAL_INPUT_TOTAL: Deadline = TERMINAL_PREVIEW_TOTAL;
+/// `terminals-list` 整条命令总期限的上限（窗格 · 客户端两发）。
+pub(crate) const TERMINALS_LIST_CAP: Deadline = Deadline::secs(13);
+/// `terminal-preview` 与 `terminal-input` 整条命令总期限的上限（名单两发 ＋ 抓屏 ＋ 问尺寸；名单 · 过门 · 比画面 · 送字 · 送不成再探）。
+pub(crate) const TERMINAL_PREVIEW_CAP: Deadline = Deadline::secs(18);
 
 /// 命令级错误：`(code, message)`。与 [`super::launch`] / [`super::gate`] 同型。
 pub(crate) type CmdErr = (&'static str, String);
@@ -881,17 +879,14 @@ pub(crate) fn input_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
 
 /// 帧面入口（生产：默认 socket）。
 pub(crate) fn list_for_inbound(args: &Value) -> Result<Value, (String, String)> {
-    let _total = Budget::start(TERMINALS_LIST_TOTAL);
     list_on(On::default(), args).map_err(|(c, m)| (c.to_string(), m))
 }
 
 pub(crate) fn preview_for_inbound(args: &Value) -> Result<Value, (String, String)> {
-    let _total = Budget::start(TERMINAL_PREVIEW_TOTAL);
     preview_on(On::default(), args).map_err(|(c, m)| (c.to_string(), m))
 }
 
 pub(crate) fn input_for_inbound(args: &Value) -> Result<Value, (String, String)> {
-    let _total = Budget::start(TERMINAL_INPUT_TOTAL);
     input_on(On::default(), args).map_err(|(c, m)| (c.to_string(), m))
 }
 

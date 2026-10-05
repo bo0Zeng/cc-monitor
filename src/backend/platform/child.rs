@@ -17,8 +17,8 @@
 //!
 //! # 整条命令的总期限
 //!
-//! 一条阻塞档命令里连发几发时，命令入口装一个 [`Budget`]：各发共用剩下的时间（`run` 取「自己的期限」与「剩下的」里小的那个），
-//! 没剩 ⇒ 不起、直接回超时。总期限短于界面等这条命令的时间：超时时先答的是后端那句准话。
+//! 一条阻塞档命令里连发几发时，分派那一层装一个 [`Budget`]：各发共用剩下的时间（`run` 取「自己的期限」与「剩下的」里小的那个），
+//! 没剩 ⇒ 不起、直接回超时。总期限 ＝ 后端登记的上限与发起方给的截止时刻（[`Until`]）里早的那个：发起方放手之前，先答的是后端那句准话。
 
 use crate::common::child_env::OWN_ENVS;
 use copy_core::copy_text;
@@ -52,7 +52,7 @@ impl Deadline {
 
 /// 一条阻塞档命令的**总期限**：这条命令里各发子进程共用剩下的时间。
 ///
-/// 挂在执行这条命令的线程上（阻塞档一条命令占一根线程），**只由命令入口装**，深层函数不装；
+/// 挂在执行这条命令的线程上（阻塞档一条命令占一根线程），**只由分派那一层装**（[`Budget::capped`]），命令本身不装；
 /// 守卫掉了就还原成装之前的样子（线程池复用这根线程跑下一条命令时不残留）。嵌套只收紧、不放宽。
 #[must_use] // 总期限只在守卫活着时有效
 pub(crate) struct Budget {
@@ -72,9 +72,29 @@ thread_local! {
     static SPAN: Cell<Option<Span>> = const { Cell::new(None) };
 }
 
+/// 发起方给的截止时刻：分派那一层收到请求时把「发起方期限 − 余量」换成的绝对时刻（之后只收紧、不重新计时）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Until(Instant);
+
+impl Until {
+    /// 从现在起 `d`；远到钟面装不下 ⇒ `None`（等于没给）。
+    pub(crate) fn after(d: Deadline) -> Option<Until> {
+        now().checked_add(d.0).map(Until)
+    }
+}
+
 impl Budget {
+    /// 按上限 `cap` 装；发起方给了截止时刻 ⇒ 取上限与「到那一刻还剩多少」里小的那个（已过 ⇒ 零：一发都不起）。
+    pub(crate) fn capped(cap: Deadline, until: Option<Until>) -> Budget {
+        let total = match until {
+            Some(Until(t)) => Deadline(cap.0.min(t.saturating_duration_since(now()))),
+            None => cap,
+        };
+        Budget::start(total)
+    }
+
     /// 从现在起 `total`。这根线程上已有更紧的 ⇒ 沿用那个（只收紧、不放宽）。
-    pub(crate) fn start(total: Deadline) -> Budget {
+    fn start(total: Deadline) -> Budget {
         let mine = Span {
             total,
             ends: now() + total.0,

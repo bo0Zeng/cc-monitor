@@ -117,7 +117,7 @@ impl BackendDoor {
         }
         // 请求一行装不装得下：后端一行上限 1 MiB（`inbound::MAX_LINE_BYTES`，本侧的镜像是
         // [`REQUEST_LINE_CAP`]）。装不下当场说清，不发 —— 发了只会换来一句 `line_too_long`。
-        let line = crate::inbound_client::encode_request("0", cmd, &args);
+        let line = crate::inbound_client::encode_request("0", cmd, &args, Some(DOOR_TIMEOUT));
         if line.len() > REQUEST_LINE_CAP {
             return Err(Refused::Other(copy_text(
                 "rsUserFiles.ask.tooBig",

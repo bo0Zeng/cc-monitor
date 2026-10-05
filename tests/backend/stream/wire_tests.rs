@@ -1598,6 +1598,7 @@ const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     ("request", "id", "string"),
     ("request", "cmd", "string"),
     ("request", "args", "object"),
+    ("request", "within_ms", "number"),
 ];
 
 /// 每一种帧都填满（可选格全给值），这样「这一格还在不在、是什么类型」才看得见。
@@ -1671,7 +1672,7 @@ fn json_type(v: &Value) -> &'static str {
     }
 }
 
-/// 冻结表里的每一格，在真序列化出来的帧里都在、类型对；请求信封三键由真解析器认得、缺 `id` / `cmd` 就不认。
+/// 冻结表里的每一格，在真序列化出来的帧里都在、类型对；请求信封四键由真解析器认得、缺 `id` / `cmd` 就不认（`within_ms` 可缺）。
 #[test]
 fn the_shapes_the_second_frontend_reads_stay_put() {
     let frames = every_frame_the_second_frontend_reads();
@@ -1693,8 +1694,9 @@ fn the_shapes_the_second_frontend_reads_stay_put() {
     assert_eq!(kinds_seen.len(), frames.len(), "样本里有冻结表没登记的帧");
 
     let req: Request =
-        serde_json::from_str(r#"{"id":"1","cmd":"ping","args":{"a":1}}"#).expect("三键信封不认了");
-    let v = serde_json::json!({"id": req.id, "cmd": req.cmd, "args": req.args});
+        serde_json::from_str(r#"{"id":"1","cmd":"ping","args":{"a":1},"within_ms":10000}"#)
+            .expect("四键信封不认了");
+    let v = serde_json::json!({"id": req.id, "cmd": req.cmd, "args": req.args, "within_ms": req.within_ms});
     let keys: Vec<&str> = SECOND_FRONTEND_READS
         .iter()
         .filter(|(k, _, _)| *k == "request")
@@ -1703,7 +1705,7 @@ fn the_shapes_the_second_frontend_reads_stay_put() {
             *f
         })
         .collect();
-    assert_eq!(keys, ["id", "cmd", "args"]);
+    assert_eq!(keys, ["id", "cmd", "args", "within_ms"]);
     for missing in [r#"{"cmd":"ping","args":{}}"#, r#"{"id":"1","args":{}}"#] {
         assert!(
             serde_json::from_str::<Request>(missing).is_err(),

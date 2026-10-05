@@ -70,8 +70,11 @@ pub(crate) fn restart_args(item: &Value, target: &str) -> Value {
 }
 
 /// `rotation-switch`：现在就换（`{sessions, target, mode}`）→ 每个会话 `done` / `skipped{code}` / `failed{code}`。
-/// 不重启换在这里做完；重启换逐个交给 `session-restart`（成了再记一条）。
-pub(crate) async fn answer_switch(args: Value) -> Answer {
+/// 不重启换在这里做完；重启换逐个交给 `session-restart`（成了再记一条；各步都收紧到这一发的截止时刻 `until`）。
+pub(crate) async fn answer_switch(
+    args: Value,
+    until: Option<crate::platform::child::Until>,
+) -> Answer {
     let ask = switch_ask(&args)?;
     let now = crate::accounts::quota::now_unix();
     let mut out = Map::new();
@@ -95,8 +98,11 @@ pub(crate) async fn answer_switch(args: Value) -> Answer {
     }
     for item in ask.items {
         let sid = item["sid"].as_str().unwrap_or_default().to_string();
-        let o = match crate::faces::session_restart_face::answer(restart_args(&item, &ask.target))
-            .await
+        let o = match crate::faces::session_restart_face::answer(
+            restart_args(&item, &ask.target),
+            until,
+        )
+        .await
         {
             Ok(_) => {
                 let (s, t) = (sid.clone(), ask.target.clone());

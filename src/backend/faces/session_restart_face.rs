@@ -79,8 +79,11 @@ impl Host for Prod {
     }
 }
 
-/// `session-restart`。
-pub(crate) async fn answer(args: Value) -> Result<Value, restart::Fault> {
+/// `session-restart`。`until`：发起方的截止时刻（分派那一层给）。
+pub(crate) async fn answer(
+    args: Value,
+    until: Option<crate::platform::child::Until>,
+) -> Result<Value, restart::Fault> {
     let client =
         crate::control::gate::requester_of(&args).map_err(|(c, m)| (c.to_string(), m, None))?;
     let agent = args
@@ -88,5 +91,5 @@ pub(crate) async fn answer(args: Value) -> Result<Value, restart::Fault> {
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
-    restart::run(args, Prod { client, agent }).await
+    restart::run(args, until, Prod { client, agent }).await
 }

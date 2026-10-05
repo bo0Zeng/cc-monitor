@@ -394,6 +394,8 @@ fn req(id: &str, cmd: &str) -> Request {
         id: id.into(),
         cmd: cmd.into(),
         args: serde_json::Value::Null,
+        within_ms: None,
+        until: None,
     }
 }
 

@@ -61,13 +61,13 @@ pub(crate) mod form;
 use crate::assets::door::{self, Door};
 use crate::control::ccm::argv::flag;
 // 方言住后端 OS 适配层（原住本目录）。
-use crate::platform::child::{Budget, Deadline};
+use crate::platform::child::Deadline;
 use crate::platform::shell::dialect::{self, Listed, RestTo, Shell};
 
-/// `aliases-read` 整条命令的总期限（每一代 PowerShell 问一次执行策略，最多两发）：界面等别名那一族 30 s（`alias-reads.ts` 的 `ALIAS_BUDGET_MS`），短 2 s。
-pub(crate) const ALIASES_READ_TOTAL: Deadline = Deadline::secs(28);
-/// `powershell-policy-set` 整条命令的总期限（设一发 ＋ 再问一发）：界面等它 30 s（同上），短 2 s。
-pub(crate) const POLICY_SET_TOTAL: Deadline = Deadline::secs(28);
+/// `aliases-read` 整条命令总期限的上限（每一代 PowerShell 问一次执行策略，最多两发）。
+pub(crate) const ALIASES_READ_CAP: Deadline = Deadline::secs(28);
+/// `powershell-policy-set` 整条命令总期限的上限（设一发 ＋ 再问一发）。
+pub(crate) const POLICY_SET_CAP: Deadline = Deadline::secs(28);
 
 /// 交给方言的那条调用形状：`ccm` 那个词与 `--` 分界住 `control::ccm`，适配层不往上够 ⇒ 由这里交下去。
 pub(crate) const CALL: dialect::Call<'static> = dialect::Call {
@@ -920,7 +920,6 @@ pub(crate) fn answer_render(args: &Value) -> Answer {
 
 /// `aliases-read {shell, rcPath?}` → [`AliasListing`]。
 pub(crate) fn answer_read(d: &dyn Door, args: &Value) -> Answer {
-    let _total = Budget::start(ALIASES_READ_TOTAL);
     let shell = shell_arg(args)?;
     dialect_here(shell).map_err(refused)?;
     to_value(&read_via(d, shell, opt_str(args, "rcPath")?).map_err(refused)?)
@@ -1003,7 +1002,6 @@ pub(crate) fn answer_block_remove(d: &dyn Door, args: &Value) -> Answer {
 /// `powershell-policy-set {host}` → `{policy, setError}`：那一代 PowerShell 当前用户那一档设成
 /// `RemoteSigned`，再现问一次。只做这一件固定的事（不收策略值）；界面只在用户点了、确认了之后发。这台不说 PowerShell ⇒ 拒。
 pub(crate) fn answer_policy_set(args: &Value) -> Answer {
-    let _total = Budget::start(POLICY_SET_TOTAL);
     dialect_here(Shell::PowerShell).map_err(refused)?;
     let host: crate::platform::shell::PsHost =
         serde_json::from_value(args.get("host").cloned().unwrap_or(Value::Null))

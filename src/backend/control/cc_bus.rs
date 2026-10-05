@@ -69,20 +69,19 @@
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
-use crate::platform::child::{Budget, Deadline};
+use crate::platform::child::Deadline;
 use crate::plugin::invoke::Done;
 use crate::plugin::invoke::NotRun;
 use crate::plugin::invoke::TIMED_OUT_CODE;
 
-/// `bus-list` 整条命令的总期限（`cc-list` ＋ 列 tmux 会话）：界面等它 15 s（`cc-bus-control.ts` 的 `ONLINE_BUDGET_MS`），短 2 s。
-pub(crate) const BUS_LIST_TOTAL: Deadline = Deadline::secs(13);
-/// `bus-state` 整条命令的总期限（`cc-list` ＋ `cc-agents` ＋ 列 tmux 会话）：界面等它 30 s（`READ_BUDGET_MS`），短 2 s。
-pub(crate) const BUS_STATE_TOTAL: Deadline = Deadline::secs(28);
-/// `bus-send` 整条命令的总期限（`cc-send` ＋ 问收件人在不在：`cc-list` ＋ 列 tmux 会话）：界面等它 30 s（`WRITE_BUDGET_MS`），短 2 s。
-pub(crate) const BUS_SEND_TOTAL: Deadline = Deadline::secs(28);
-/// `bus-broadcast` 整条命令的总期限（`cc-list` ＋ 列 tmux 会话 ＋ 每个收件人一发 `cc-send`，整批共用；用完了剩下的各自进 `failed`）：
-/// 界面等它 30 s（`WRITE_BUDGET_MS`），短 2 s。
-pub(crate) const BUS_BROADCAST_TOTAL: Deadline = Deadline::secs(28);
+/// `bus-list` 整条命令总期限的上限（`cc-list` ＋ 列 tmux 会话）。
+pub(crate) const BUS_LIST_CAP: Deadline = Deadline::secs(13);
+/// `bus-state` 整条命令总期限的上限（`cc-list` ＋ `cc-agents` ＋ 列 tmux 会话）。
+pub(crate) const BUS_STATE_CAP: Deadline = Deadline::secs(28);
+/// `bus-send` 整条命令总期限的上限（`cc-send` ＋ 问收件人在不在：`cc-list` ＋ 列 tmux 会话）。
+pub(crate) const BUS_SEND_CAP: Deadline = Deadline::secs(28);
+/// `bus-broadcast` 整条命令总期限的上限（`cc-list` ＋ 列 tmux 会话 ＋ 每个收件人一发 `cc-send`，整批共用；用完了剩下的各自进 `failed`）。
+pub(crate) const BUS_BROADCAST_CAP: Deadline = Deadline::secs(28);
 
 /// 找不到时那句话的**尾巴** —— 这是 cc-bus 自己的话，通用层不该认识它。
 static NOT_INSTALLED_HINT: std::sync::LazyLock<String> =
@@ -589,7 +588,6 @@ fn spawned_via_cc_agents() -> Result<(Vec<serde_json::Value>, usize), (String, S
 }
 
 pub(crate) fn list_for_inbound() -> Result<serde_json::Value, (String, String)> {
-    let _total = Budget::start(BUS_LIST_TOTAL);
     Ok(list_reply(agents_via_cc_list()?))
 }
 
@@ -624,7 +622,6 @@ pub(crate) fn list_reply(agents: Vec<serde_json::Value>) -> serde_json::Value {
 /// 登记时间 · 派生时间 · 坏行数由 cc-bus 新加的机器可读形（`cc-list --tsv` / `cc-agents --tsv`）答，
 /// 仍不读那两份 `.tsv`（`cc_bus_boundary_guard`）；驾驶舱经通道直接问本条（monitor 那条 shell 读退役）。
 pub(crate) fn state_for_inbound() -> Result<serde_json::Value, (String, String)> {
-    let _total = Budget::start(BUS_STATE_TOTAL);
     let (agents, sk_agents) = roster()?;
     let (spawned, sk_spawned) = spawned_via_cc_agents()?;
     let sessions = super::gate::list_sessions().ok();
@@ -957,7 +954,6 @@ pub(crate) fn kill_reply(id: &str, killed: bool, stale_only: bool) -> serde_json
 pub(crate) fn send_for_inbound(
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, (String, String)> {
-    let _total = Budget::start(BUS_SEND_TOTAL);
     let (to, text, from) = parse_send(args).map_err(|(c, m)| (c.to_string(), m))?;
     deliver(&to, &text, from.as_deref())?;
     // ★ 投出去之后，把「有没有人会读」也一并回答〔用@08-13 那条架构点的另一半〕。
@@ -1121,7 +1117,6 @@ pub(crate) fn broadcast_reply(
 pub(crate) fn broadcast_for_inbound(
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, (String, String)> {
-    let _total = Budget::start(BUS_BROADCAST_TOTAL);
     let (text, from) = parse_broadcast(args).map_err(|(c, m)| (c.to_string(), m))?;
     let agents = agents_via_cc_list()?;
     let plan = pick_broadcast_targets(&agents, from.as_deref().unwrap_or(""));

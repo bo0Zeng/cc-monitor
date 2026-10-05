@@ -11,7 +11,7 @@
 //! 从 monitor `stream_source/` 原样搬来（规则一个字没改）；monitor 从此一处 `.ssh` 都不读、不起 `ssh`（「monitor 零 SSH」字面成立）。
 //! 只读 `~/.ssh/config`，**不碰任何密钥文件**（`identityfile` 只问「在不在」，不读内容）。
 
-use crate::platform::child::{Budget, Child, Deadline};
+use crate::platform::child::{Child, Deadline};
 use copy_core::copy_text;
 use serde::Serialize;
 
@@ -290,13 +290,11 @@ pub(crate) fn answer_resolve(args: &serde_json::Value) -> Result<serde_json::Val
     resolve(alias).map(|r| to_value(&r))
 }
 
-/// `ssh-config-import` 整条命令的总期限（每个别名一发 `ssh -G`，整批共用；用完了剩下的别名各自超时、照「解析失败」跳过）：
-/// 界面等它 30 s（`ssh-config-reads.ts` 的 `SSH_IMPORT_BUDGET_MS`），短 2 s。
-pub(crate) const SSH_IMPORT_TOTAL: Deadline = Deadline::secs(28);
+/// `ssh-config-import` 整条命令总期限的上限（每个别名一发 `ssh -G`，整批共用；用完了剩下的别名各自超时、照「解析失败」跳过）。
+pub(crate) const SSH_IMPORT_CAP: Deadline = Deadline::secs(28);
 
 /// `ssh-config-import` 的成品。
 pub(crate) fn answer_import() -> serde_json::Value {
-    let _total = Budget::start(SSH_IMPORT_TOTAL);
     serde_json::json!({ "groups": to_value(&import()) })
 }
 

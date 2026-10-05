@@ -312,7 +312,12 @@ fn the_e2e_ping_line_is_exactly_what_the_encoder_produces() {
     );
     assert_eq!(
         format!("{literal}\n"),
-        encode_request("e2e-ping-1", "ping", &Value::Null),
+        encode_request(
+            "e2e-ping-1",
+            "ping",
+            &Value::Null,
+            Some(Duration::from_millis(10_000))
+        ),
         "\ne2e 脚本喂给真后端的行与 monitor 编码器的产物不一致。\n\
              改了编码器就把脚本里那条 `INBOUND_PING_LINE` 一起改（反之亦然）——\n\
              它们必须是同一份事实，否则 e2e 是在验证一个 monitor 永远不会发的形状。"
@@ -407,7 +412,12 @@ fn the_e2e_send_into_line_is_exactly_what_the_encoder_produces() {
     assert_eq!(line["args"]["mode"], "send-into");
     assert_eq!(
         format!("{literal}\n"),
-        encode_request(line["id"].as_str().expect("id"), "launch", &line["args"]),
+        encode_request(
+            line["id"].as_str().expect("id"),
+            "launch",
+            &line["args"],
+            line["within_ms"].as_u64().map(Duration::from_millis)
+        ),
         "e2e 那一行的信封不是 monitor 那一跳会产出的那一行（键序 / 空白对不上）"
     );
 }
@@ -482,13 +492,45 @@ fn the_e2e_command_list_matches_the_backend_command_table() {
 
 #[test]
 fn encode_request_is_byte_stable_and_matches_the_backend_envelope() {
-    let line = encode_request("abc-0", "ping", &serde_json::json!({}));
+    let args = serde_json::json!({});
+    let line = encode_request("abc-0", "ping", &args, None);
     assert_eq!(line, "{\"id\":\"abc-0\",\"cmd\":\"ping\",\"args\":{}}\n");
+    let carried = encode_request("abc-0", "ping", &args, Some(Duration::from_millis(1_500)));
+    assert_eq!(
+        carried,
+        "{\"id\":\"abc-0\",\"cmd\":\"ping\",\"args\":{},\"within_ms\":1500}\n"
+    );
+    let tiny = encode_request("abc-0", "ping", &args, Some(Duration::from_micros(300)));
+    assert!(
+        tiny.contains("\"within_ms\":1}"),
+        "不足 1 ms 该记 1：{tiny}"
+    );
     // 反向：backend 侧就是拿它当 `Request` 反序列化的，字段名必须对得上。
-    let v: Value = serde_json::from_str(line.trim_end()).expect("必须是合法 JSON");
-    for k in ["id", "cmd", "args"] {
-        assert!(v.get(k).is_some(), "信封缺字段 `{k}`：{line}");
+    let v: Value = serde_json::from_str(carried.trim_end()).expect("必须是合法 JSON");
+    for k in ["id", "cmd", "args", "within_ms"] {
+        assert!(v.get(k).is_some(), "信封缺字段 `{k}`：{carried}");
     }
+}
+
+/// 信封里带的期限就是这一发的等待：发起方给多久，那一行的 `within_ms` 就是多久（写出去之前花掉的那一点除外）。
+#[tokio::test]
+async fn the_envelope_carries_the_wait_this_call_was_given() {
+    let (client, mut peer) = client_on_duplex(&["ping"]);
+    let c = client.clone();
+    let caller = tokio::spawn(async move {
+        c.call("ping", Value::Null, Duration::from_millis(7_000))
+            .await
+    });
+    let line = next_line(&mut peer).await;
+    let req: Value = serde_json::from_str(line.trim_end()).expect("请求是合法 JSON");
+    let within = req["within_ms"].as_u64().expect("信封里没带期限");
+    assert!(
+        (6_500..=7_000).contains(&within),
+        "这一发等 7000 ms，信封里带的是 {within}"
+    );
+    let id = req["id"].as_str().expect("有 id").to_string();
+    assert!(client.route_reply(&id, true, None, None, None));
+    caller.await.expect("caller task").expect("call 成功");
 }
 
 #[tokio::test]

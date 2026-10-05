@@ -278,6 +278,7 @@ const UNIT: &[&str] = &[
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
 const SCAN: &[&str] = &[
+    "tests/backend/control/kill_tests.rs", // INTEGRATION → SCAN：总期限那条挪进 `stream/caps_tests.rs`（走真分派），剩下的读跨语言金样
     "tests/backend/control/fork_launch_tests.rs", // 分叉之后起的推断（纯函数）＋ 读跨语言金样那一条
     "tests/frontend/ui/ext-reads.vitest.ts", // 扩展页几问走通道：严格收 ＋ 问对那台（假通道 ＋ 金样）
     "tests/frontend/ui/settings/ext-section.vitest.ts", // 扩展页：表 · 抽屉 · 确认卡（假通道）＋ 界面零判定扫描
@@ -609,7 +610,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/control/files_toctou_tests.rs", // TOCTOU 闭合的竞争判据：临时目录上真改名 / 真复制 / 真链接
     "tests/backend/control/fork_write_tests.rs",
     "tests/backend/control/identity_tag_tests.rs",
-    "tests/backend/control/kill_tests.rs", // SCAN → INTEGRATION：总期限那条在隔离子进程里拿假 tmux 真跑一趟结束会话
+    "tests/backend/stream/caps_tests.rs", // 总期限归发起方：隔离子进程里拿假 tmux 真走一趟分派，带 / 不带 / 带坏了的期限各一条
     "tests/backend/control/session_batch_tests.rs", // UNIT → INTEGRATION：整批总期限那条真起一个卡住的子进程
     "tests/backend/control/session_restart_tests.rs", // 等压缩那几条盯真记录文件（真 inotify）
     "tests/backend/control/launch_tests.rs", // 由扫描层挪来：S4 那条判据真起一个假 tmux 子进程（`ran` 收 stderr）
@@ -867,9 +868,9 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/backend/control/files_write_tests.rs", needle: "control::files_write::tests::own_home_child_entry_point" },
     ),
     (
-        "tests/backend/control/kill_tests.rs",
-        "kill_budget_child",
-        Trigger::Filter { by: "tests/backend/control/kill_tests.rs", needle: "control::kill::tests::kill_budget_child" },
+        "tests/backend/stream/caps_tests.rs",
+        "caps_child",
+        Trigger::Filter { by: "tests/backend/stream/caps_tests.rs", needle: "stream::inbound::caps_tests::caps_child" },
     ),
     (
         "tests/backend/stream/drain_tests.rs",

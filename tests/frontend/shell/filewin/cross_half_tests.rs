@@ -11,10 +11,13 @@ use cc_monitor_filewin::editor::{
 
 const SAVE_PATH: &str = "/srv/data/app.conf";
 
+/// 发起方期限那一格最长的数位（窗口量的时候按它留位子）。
+const LONGEST_WITHIN: std::time::Duration = std::time::Duration::from_millis(u64::MAX);
+
 /// 只用来占位的摘要。
 const SHA0: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
-/// 🔴 **窗口量的那一行 == monitor 真发出去的那一行**（按最长的 id 算）。
+/// 🔴 **窗口量的那一行 == monitor 真发出去的那一行**（按最长的 id、最长的发起方期限算）。
 ///
 /// 异源：另一侧是 monitor 那一侧真正编请求行的纯函数 `inbound_client::encode_request`，
 /// 不是本模块的 [`request_line_len`]。语料覆盖会被转义变长的每一类
@@ -39,8 +42,12 @@ fn the_measured_save_line_is_byte_for_byte_the_line_that_is_sent() {
                 commit_args(SAVE_PATH, key, 17, content.len(), SHA0),
             ),
         ] {
-            let sent =
-                crate::inbound_client::encode_request(&"0".repeat(REQUEST_ID_ROOM), cmd, &args);
+            let sent = crate::inbound_client::encode_request(
+                &"0".repeat(REQUEST_ID_ROOM),
+                cmd,
+                &args,
+                Some(LONGEST_WITHIN),
+            );
             assert!(sent.ends_with('\n'));
             assert_eq!(
                 request_line_len(cmd, &args),
@@ -69,6 +76,7 @@ fn chunks_reassemble_exactly_each_fits_one_line_and_each_is_filled() {
             &"0".repeat(REQUEST_ID_ROOM),
             CMD_STAGE_CHUNK,
             &stage_args(key, u64::MAX, chunk),
+            Some(LONGEST_WITHIN),
         )
         .len()
             - 1

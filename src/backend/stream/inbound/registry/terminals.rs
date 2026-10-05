@@ -378,7 +378,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         takes_input: true,
         run: Run::AsyncData(|r| {
             Box::pin(async move {
-                crate::faces::session_restart_face::answer(r.args)
+                crate::faces::session_restart_face::answer(r.args, r.until)
                     .await
                     .map(Some)
                     .map_err(|(code, message, data)| Fail {

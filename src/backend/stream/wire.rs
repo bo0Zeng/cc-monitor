@@ -925,7 +925,7 @@ pub fn b64_decode(text: &str) -> Result<Vec<u8>, String> {
 /// U6b-1：**入方向**请求信封。只 `Deserialize` —— backend 是读的那一方。
 ///
 /// ```text
-/// {"id":"<opaque>","cmd":"<name>","args":{...}}
+/// {"id":"<opaque>","cmd":"<name>","args":{...},"within_ms":10000}
 /// ```
 ///
 /// `id` **不透明**：backend 不解析、不校验格式、只回显。谁生成谁负责唯一 —— 客户端。
@@ -936,6 +936,18 @@ pub struct Request {
     pub cmd: String,
     #[serde(default)]
     pub args: serde_json::Value,
+    /// 发起方这一发愿意等多久（毫秒）。可缺；不是正整数 ⇒ 当没带（不拒）。
+    #[serde(default, deserialize_with = "lenient_ms")]
+    pub within_ms: Option<u64>,
+    /// 分派那一层由 `within_ms` 减余量换成的截止时刻（不上线）。
+    #[serde(skip)]
+    pub(crate) until: Option<crate::platform::child::Until>,
+}
+
+/// `within_ms` 的宽读：只认正整数，别的（字符串 · 负数 · 小数 · 零 · null）一律当没带。
+fn lenient_ms<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<u64>, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(v.as_u64().filter(|&n| n > 0))
 }
 
 /// Serialize a frame to its compact one-line wire form with a trailing `\n`.

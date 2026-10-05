@@ -404,7 +404,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `--with-pid` | | `session_added` 帧附 `pid`（本机 ↗ 按它找父 PowerShell 绑窗口）。只有本机那条流发它（本机后端与 monitor 同一份构建），不对应能力 token；**默认关** ⇒ 没发这条 flag 的客户端收到的 `session_added` 字节与本字段加进来之前**一字不差** |
 | `--with-raw` | | `line` 帧附 `raw`（那一行记录的原文，去掉行尾换行）。给自己解析记录的第二个前端；同 `--with-pid` 不对应能力 token（老后端把它当未知旗标忽略、照常起流，客户端按 `line` 上有没有 `raw` 认）；**默认关** ⇒ 没发这条 flag 的客户端收到的 `line` 字节与本字段加进来之前**一字不差**。监听口那一形写进 attach 行的 `flags`（只认本表里的旗标） |
 
-**两个前端吃同一个后端**：桌面端（monitor）与第二个前端（手机端）。第二个前端按字段读下面这几格，缺一格就把整帧当坏帧丢 ⇒ 它们**冻结**：不许改名、删、换类型，只许加新字段。清单（帧 kind → 字段）：`hello` `v` `build_id` `host_arch` `claude_dir` `capabilities` `emits` · `line` `session_id` `path` `seq` `byte_offset` `raw`（`--with-raw`）· `session_added` `sid` `path` `session_kind` `cwd` `name` `lines` `status` `waiting_for` `agent_kind` `liveness_confidence` `attachable` · `session_status` `sid` `status` `waiting_for` `liveness_confidence` · `session_removed` `sid` `cause` · `overflow` `dropped` `lost` `lost_truncated` · `turn_end` `session_id` `uuid` · 入方向请求信封 `id` `cmd` `args`。判据 `wire_tests::the_shapes_the_second_frontend_reads_stay_put`（表在那里，类型逐格对）。
+**两个前端吃同一个后端**：桌面端（monitor）与第二个前端（手机端）。第二个前端按字段读下面这几格，缺一格就把整帧当坏帧丢 ⇒ 它们**冻结**：不许改名、删、换类型，只许加新字段。清单（帧 kind → 字段）：`hello` `v` `build_id` `host_arch` `claude_dir` `capabilities` `emits` · `line` `session_id` `path` `seq` `byte_offset` `raw`（`--with-raw`）· `session_added` `sid` `path` `session_kind` `cwd` `name` `lines` `status` `waiting_for` `agent_kind` `liveness_confidence` `attachable` · `session_status` `sid` `status` `waiting_for` `liveness_confidence` · `session_removed` `sid` `cause` · `overflow` `dropped` `lost` `lost_truncated` · `turn_end` `session_id` `uuid` · 入方向请求信封 `id` `cmd` `args` `within_ms`（可缺）。判据 `wire_tests::the_shapes_the_second_frontend_reads_stay_put`（表在那里，类型逐格对）。
 
 **部署**：第二个前端从 GitHub Release 下载远端后端字节（`cc-monitor-backend-x86_64` / `-aarch64`），按 `SHA256SUMS-linux.txt` 与字节里的身份戳校验。资产名、两个 musl 目标与校验和文件名登记在 [RELEASING.md § 2.2](RELEASING.md)，门禁 `release-gate` 对着 `release.yml` 两向核；只许加，改就两边同拍。
 
@@ -452,7 +452,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 现在后端在**同一条流连接**上读 stdin，monitor 侧的发送端见下「客户端侧语义」。
 
 ```text
-→ {"id":"<opaque>","cmd":"<name>","args":{...}}          请求（一行一个）
+→ {"id":"<opaque>","cmd":"<name>","args":{...},"within_ms":10000}   请求（一行一个；`within_ms` 可缺）
 ← {"kind":"reply","id":"<opaque>","ok":true,"data":{…}}   成功（`data` 是命令的返回值，无返回值时省略）
 ← {"kind":"reply","id":"<opaque>","ok":false,"code":"…","message":"…"}
 ← {"kind":"reply","id":"<opaque>","ok":false,"code":"…","message":"…","data":{…}}   少数几个码的失败带 `data`（形状按码定）
@@ -465,6 +465,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `id` | → ← | **不透明串**。后端 **不解析、不校验格式、不规范化，只回显**。谁生成谁负责唯一 —— 客户端。后端自己发号的话重连后号段会撞（同 §F90「不许拿会变的东西当持久键」）。含 emoji / 超长 / 纯数字都照原样回 |
 | `cmd` | → | 命令名 |
 | `args` | → | 命令自己的参数对象，缺省 `{}` |
+| `within_ms` | → | **可缺**。发起方这一发愿意等多久（毫秒，正整数）。后端从收到这一行起减余量 2 s 换成截止时刻，阻塞档命令的总期限取「登记的上限」与它里早的那个（见「命令级 `child_timed_out`」）。缺 / 不是正整数（字符串 · 负数 · 小数 · 零 · `null`）⇒ 当没带、按上限，**不拒**。monitor 每一发都带（那一问还剩多少）；`cancel` 不带 |
 | `ok` | ← | 成败。`true` 时 `code` / `message` **不上线**（skip_if_none） |
 | `data` | ← | 命令的返回值（如 `resolve` 的 CommandPlan）。无返回值的命令省略。**失败时**只有协议文档里给那个码定了形的才带（`account_unavailable`，见 `launch-render-cli`；`ambiguous` · `stop_failed` · `start_failed`，见 `session-restart`），别的失败不出这一格、字节与从前逐字相同 |
 | `code` / `message` | ← | 失败原因。形状**对齐 `--resolve` 已冻结的那套**（协议 v1 §3），不发明第二种错误 JSON |
@@ -518,7 +519,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | 事项 | 归属 | 做法 |
 |---|---|---|
 | `id` 生成 | 客户端 | `<连接 nonce>-<单调序号>`。nonce 每条连接一套 ⇒ 重连后号段不撞，后端的 `duplicate_id` 正常打不到 |
-| 超时 | 客户端 | `call(cmd, args, timeout)` 自带，且**覆盖「写入 + 等应答」两段**（共用一个 deadline）。只裹后半段的话，写半边被反压卡住时它会无视自己的 timeout 永久挂起 —— 上面第 4 条（应答通道满时阻塞入方向）正是那条链的一环。等应答超时后**补发一条 `cancel`**（best-effort）让后端别白跑；写入超时则不补（那条命令根本没入队） |
+| 超时 | 客户端 | `call(cmd, args, timeout)` 自带，且**覆盖「写入 + 等应答」两段**（共用一个 deadline）；编信封那一刻还剩多少原样放进 `within_ms`。只裹后半段的话，写半边被反压卡住时它会无视自己的 timeout 永久挂起 —— 上面第 4 条（应答通道满时阻塞入方向）正是那条链的一环。等应答超时后**补发一条 `cancel`**（best-effort）让后端别白跑；写入超时则不补（那条命令根本没入队） |
 | 超时后的登记 | 客户端 | **不摘**。摘了的话晚到的 `reply`/`cancelled` 会落进「未登记的 id」，每次超时刷一条 warn ——而那是预期内的事。登记由路由侧摘，`oneshot` 送不出去即知调用方已走 |
 | 并发上限 | 客户端 | 同时在等的命令 ≤ 256（同后端应答通道容量）。**满之前先回收「调用方已走」的登记**（`oneshot::Sender::is_closed`）—— 否则背压路径下后端的 cancel 应答被 `try_send` 丢掉，那条 id 永远等不到帧，表只涨不落且不自愈 |
 | 能力门控 | 客户端 | `hello.commands` 里没有的命令**直接拒**，一个字节都不发。旧后端无该字段 ⇒ 空集 ⇒ 不发任何入方向命令 |
@@ -995,7 +996,7 @@ F04c 那个裸键 mode `send-keys-raw`（打断当前回合的 `Escape`、不附
 | 会话已存在（幂等短路，**不重复 resume**） | true | — | false / false |
 | `send-into` 键入成功 | true | — | false / true |
 | tmux 不在 PATH | false | `no_tmux` | 没起成 |
-| 某一发 tmux 过了期限没答（一发 5 s，整条命令 8 s） | false | `child_timed_out` | 不确定走到了哪一步 —— 先看名单再决定重试 |
+| 某一发 tmux 过了期限没答（一发 5 s，整条命令至多 8 s） | false | `child_timed_out` | 不确定走到了哪一步 —— 先看名单再决定重试 |
 | `send-into` 但会话不存在 | false | `no_such_session` | 没起成 |
 | `send-into` 但会话不是本工具的（§34 Gate 2，原先这一行漏了） | false | `wrong_owner` | 没起成 —— 没往别人的会话里打字 |
 | 建不出来且也不存在 | false | `create_failed` | 没起成 |
@@ -1023,11 +1024,13 @@ pane 处于 **copy-mode**（用户滚了一下轮子）时 `send-keys` **照样�
 登记它的命令：`kill` · `launch` · `terminals-list` · `terminal-preview` · `terminal-input` · `session-terminals` · `ssh-config-resolve` · `terminal-name-mint`；
 `sessions-stop` / `sessions-start` 在单个那一条上回（`failed`/`child_timed_out`）。语义是「那台的那个程序此刻没应答」，可以重试。
 **整条命令另有一个总期限**：连发几发子进程的命令，各发共用剩下的时间（每发只等「自己的期限」与「剩下的」里小的那个）；
-总期限用完 ⇒ 后面那几发不起、直接回这个码，`message` 里的秒数是总期限。总期限比界面等这条命令的时间短 2 s
-（`kill` · `launch` · `sessions-where` 8 s · `terminals-list` 13 s · `terminal-preview` / `terminal-input` 18 s ·
-`ssh-config-import` 28 s · `bus-list` 13 s · `bus-state` / `bus-send` / `bus-broadcast` 28 s · `aliases-read` / `powershell-policy-set` 28 s）；
-`sessions-stop` / `sessions-start` 整批一个：8 s ＋ 每个 6 s，用完了剩下的各自回 `failed`/`child_timed_out`。
-调用方等一条命令的时间要长于它的总期限，超时时先到的才是后端这句。
+总期限用完 ⇒ 后面那几发不起、直接回这个码，`message` 里的秒数是总期限。总期限由分派那一层装：
+信封带了 `within_ms` ⇒ 取「登记的上限」与「`within_ms` − 2 s」里小的那个（那 2 s 留给回程与发起方收尾：发起方放手之前先到的是后端这句）；
+没带（CLI 面 · 不带这一格的前端）⇒ 按上限。上限（`kill` · `launch` · `sessions-where` 8 s · `terminals-list` 13 s · `terminal-preview` / `terminal-input` 18 s ·
+`ssh-config-import` 28 s · `bus-list` 13 s · `bus-state` / `bus-send` / `bus-broadcast` 28 s · `aliases-read` / `powershell-policy-set` 28 s ·
+`sessions-stop` / `sessions-start` 整批 392 s，即底数 8 s ＋ 每个 6 s 按一批最多 64 个算）；整批的用完了剩下的各自回 `failed`/`child_timed_out`。
+`session-restart`（与 `rotation-switch` 的重启换）不在阻塞档：定位 8 s · 送压缩那一句 8 s · 停旧 ＋ 起新 22 s 各按自己的上限装，同样收紧到 `within_ms` − 2 s 那一刻。
+发起方要在 `within_ms` 里说实话：给得比它真等的长，超时时先到的就是发起方自己那句。
 （⚠ `resolve` 今天仍回命令级 `bad_request` —— 它与仓外 aterm 的一次性契约冻结在 2026-07-18，
 两条路复用同一个纯函数，改它会破坏那份契约。如实登记，不顺手改。）
 
@@ -3727,7 +3730,7 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 **入参：无**。全部别名逐个 `ssh-config-resolve`（解析失败的跳过），同 `(keyPath, user, 基名前缀)` 的聚成一组 = 同一台机器的多个地址：
 `label`（单成员组 = 完整别名，多成员 = 基名）· `host` / `port` / `user` / `keyPath`（组首）· `addresses`（其余地址，端口不同则 `host:port`）·
 `jump`（组内首个非空 proxyjump）· `members`（`alias` / `host` / `port` / `proxyJump`，界面「拆分」时据此还原）。
-整条命令总期限 28 s（每个别名一发 `ssh -G`，共用）：用完了剩下的别名照「解析失败」跳过。
+整条命令总期限上限 28 s（每个别名一发 `ssh -G`，共用；信封带了 `within_ms` 再收紧）：用完了剩下的别名照「解析失败」跳过。
 
 #### `forward-start`：起一条本地端口转发（MIG-1，09-28，F58 `-L`）
 

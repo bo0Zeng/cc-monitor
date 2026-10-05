@@ -544,7 +544,8 @@ fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_ow
     };
     let sids: Vec<String> = [A, B, C].map(str::to_string).to_vec();
     let t0 = std::time::Instant::now();
-    let v = stop_within(&sids, &deps, Deadline::millis(600)).expect("整批照回");
+    let _total = crate::platform::child::Budget::capped(Deadline::millis(600), None);
+    let v = stop(&json!({ "sids": sids }), &deps).expect("整批照回");
     let took = t0.elapsed();
     let got = outcomes(&v);
     for (sid, outcome, why) in &got {

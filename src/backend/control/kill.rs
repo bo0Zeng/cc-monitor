@@ -27,14 +27,14 @@
 //! 命令级（本模块 / `gate`）：`invalid_args` · `no_tmux` · `no_such_session` ·
 //! `wrong_owner`（Gate 2 不通过）· `too_many_windows`（Gate 3 不通过）· `kill_failed`。
 
-use crate::platform::child::{Budget, Child, Deadline};
+use crate::platform::child::{Child, Deadline};
 use copy_core::copy_text;
 
 /// `kill-session` / `kill-pane` 那一发的期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
 const KILL_TMUX_WITHIN: Deadline = Deadline::secs(5);
 
-/// `kill` 整条命令的总期限（探身份 · 列窗格 · 杀 · 顺手注销 cc-bus 共用）：界面等它 10 s（`tmux-control.ts` 的 `CONTROL_BUDGET_MS`），短 2 s。
-pub(crate) const KILL_TOTAL: Deadline = Deadline::secs(8);
+/// `kill` 整条命令总期限的上限（探身份 · 列窗格 · 杀 · 顺手注销 cc-bus 共用）。
+pub(crate) const KILL_CAP: Deadline = Deadline::secs(8);
 
 /// 命令级错误：`(code, message)`。与 [`super::launch`] / [`super::gate`] 同型。
 type CmdErr = (&'static str, String);
@@ -164,7 +164,6 @@ fn pane_pids(handle: &str, only: Option<&[String]>) -> Vec<u32> {
 pub(crate) fn kill_for_inbound(
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, (String, String)> {
-    let _total = Budget::start(KILL_TOTAL);
     let name = parse_name(args).map_err(|(c, m)| (c.to_string(), m))?;
     let client = super::gate::requester_of(args).map_err(|(c, m)| (c.to_string(), m))?;
     // 带了 `sid` ⇒ 结束挂着它的那个窗格（会话里还有别的 claude 窗格时不关整个会话）。

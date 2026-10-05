@@ -387,7 +387,8 @@ impl InboundClient {
         }
         let id = self.next_id();
         let rx = self.register(&id, None).ok_or(CallError::TooManyPending)?;
-        let line = WriteJob::Line(encode_request(&id, cmd, &args));
+        // 这一问还剩多少原样放进信封：后端按它（减它自己的余量）装这条命令的总期限。
+        let line = WriteJob::Line(encode_request(&id, cmd, &args, Some(timeout)));
         match tokio::time::timeout_at(deadline, self.writes.send(line)).await {
             Ok(Ok(())) => {}
             Ok(Err(_)) => {
@@ -618,7 +619,12 @@ impl InboundClient {
             tracing::debug!("登记表满，跳过超时补发的 cancel：target={target}");
             return;
         };
-        let line = encode_request(&id, WITHDRAW_OP, &serde_json::json!({ "target": target }));
+        let line = encode_request(
+            &id,
+            WITHDRAW_OP,
+            &serde_json::json!({ "target": target }),
+            None,
+        );
         // `try_send`：这是 best-effort 的收尾，绝不为它阻塞调用方。
         if self.writes.try_send(WriteJob::Line(line)).is_err() {
             self.take_pending(&id);
@@ -652,19 +658,28 @@ struct RequestLine<'a> {
     id: &'a str,
     cmd: &'a str,
     args: &'a Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    within_ms: Option<u64>,
 }
 
 /// 把一条命令编成线上的一行（含行尾 `\n`）。**纯函数。**
 ///
-/// 对侧是 `src/backend/stream/wire.rs::Request`（`{id, cmd, args}`，`args` 可缺省）。
+/// 对侧是 `src/backend/stream/wire.rs::Request`（`{id, cmd, args, within_ms?}`，`args` 可缺省）。
+/// `within`：发起方这一发还愿意等多久（调用方给的，这里只换成毫秒搬上线；不足 1 ms 记 1）；`None` ⇒ 不带这一格。
 ///
 /// # 为什么可以 `expect`
 ///
 /// `serde_json::Value` 在类型上就装不下会让序列化失败的东西：`Number` 不可能是 NaN/Inf，
-/// `Map` 的键恒为 `String`。三个字段全是 `&str`/`&Value` ⇒ 这个 `to_string` 不可失败。
-pub fn encode_request(id: &str, cmd: &str, args: &Value) -> String {
-    let mut s = serde_json::to_string(&RequestLine { id, cmd, args })
-        .expect("RequestLine 只含 &str/&Value，序列化不可失败");
+/// `Map` 的键恒为 `String`。字段只有 `&str`/`&Value`/`u64` ⇒ 这个 `to_string` 不可失败。
+pub fn encode_request(id: &str, cmd: &str, args: &Value, within: Option<Duration>) -> String {
+    let within_ms = within.map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX).max(1));
+    let mut s = serde_json::to_string(&RequestLine {
+        id,
+        cmd,
+        args,
+        within_ms,
+    })
+    .expect("RequestLine 只含 &str/&Value/u64，序列化不可失败");
     s.push('\n');
     s
 }

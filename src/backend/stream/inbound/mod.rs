@@ -39,11 +39,13 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 
+mod caps;
 mod doors;
 mod drain;
 mod sniff;
 mod spec;
 
+pub(crate) use caps::install as install_total;
 pub use doors::watch_account_mcp;
 pub(crate) use doors::LocalFiles;
 pub use drain::{exit_after_drain, shutdown_listener, SHUTTING_DOWN};
@@ -203,7 +205,7 @@ async fn handle_line(
     if raw.is_empty() {
         return; // 空行（含 CRLF 的裸 \r 之后）静默跳过
     }
-    let req: Request = match serde_json::from_slice(raw) {
+    let mut req: Request = match serde_json::from_slice(raw) {
         Ok(r) => r,
         Err(e) => {
             // 坏 JSON 时 `id` 无从得知 —— 回空 id，客户端按「上一条没应答」超时处理。
@@ -211,6 +213,8 @@ async fn handle_line(
             return;
         }
     };
+    // 发起方期限从收到这一行起算：减余量换成截止时刻，这条命令里装总期限的各处都收紧到它。
+    req.until = caps::until_of(req.within_ms);
     match dispatch(req, replies, running, links, xfers) {
         Disposition::Done => {}
         Disposition::Reply(f) => send(replies, f).await,
@@ -241,6 +245,7 @@ async fn handle_line(
                 // 票跟着阻塞闭包走：闭包跑完才落（外层被 abort 也照样数着）。
                 match tokio::task::spawn_blocking(move || {
                     let _ticket = ticket;
+                    let _total = caps::install(&r);
                     run(r)
                 })
                 .await
@@ -655,6 +660,11 @@ async fn send(replies: &mpsc::Sender<Frame>, frame: Frame) {
 #[cfg(test)]
 #[path = "../../../../tests/backend/stream/inbound_tests.rs"]
 mod tests;
+
+// 阻塞档命令的总期限：信封里的发起方期限 · 后端登记的上限。
+#[cfg(test)]
+#[path = "../../../../tests/backend/stream/caps_tests.rs"]
+mod caps_tests;
 
 // 退出排空的判据（闸本体 · 真子进程 ＋ 真信号 · 接线）。
 // 〔p3q 门禁 winchk-backend 红后补〕判据里用了 `std::os::unix` / `libc::kill` / FIFO —— 只在 unix 上编；Windows 那一形的排空没量（HX1.md 买不到）。

@@ -10,11 +10,11 @@
 //!
 //! 要动 tmux / 读观测的几样由入口经 [`Host`] 交进来（control 不引用 observe），判据交替身。
 
-use super::launch::LAUNCH_TOTAL;
+use super::launch::LAUNCH_CAP;
 use super::launch_account::{self as la, AccountAsk, Settled};
 use super::launch_render::Failed;
-use super::session_batch::{self as batch, Batch, Deps, Item, Standing, SESSIONS_WHERE_TOTAL};
-use crate::platform::child::{Budget, Deadline};
+use super::session_batch::{self as batch, Batch, Deps, Item, Standing, SESSIONS_WHERE_CAP};
+use crate::platform::child::{Budget, Deadline, Until};
 use serde_json::{json, Map, Value};
 use std::future::Future;
 
@@ -28,9 +28,9 @@ fn owned((c, m, d): Failed) -> Fault {
 /// 两个期限的上界（兜坏输入；界面今天给的是几分钟）。
 pub(crate) const MAX_WAIT_MS: u64 = 3_600_000;
 
-/// 停旧 ＋ 起新那一步的总期限：停一次（同 `kill` 的总期限）＋ 起一个（同一个的批量起）。界面等这条命令的是两个等待 ＋ `RESTART_BASE_MS`。
-pub(crate) const SWAP_TOTAL: Deadline =
-    Deadline::secs(8 + batch::BATCH_TOTAL_BASE_SECS + batch::BATCH_TOTAL_EACH_SECS);
+/// 停旧 ＋ 起新那一步总期限的上限：停一次（`kill` 的 8 s）＋ 起一个（一批起的底数 8 s ＋ 一个 6 s）。
+/// 三步（定位 · 送压缩那一句 · 停旧＋起新）各在自己的阻塞线程上按各自的上限装，都再收紧到发起方的截止时刻。
+pub(crate) const SWAP_CAP: Deadline = Deadline::secs(8 + 8 + 6);
 
 /// 一次装好的等待：交期限（毫秒）⇒ 等到没有。
 pub(crate) trait Wait: Send + 'static {
@@ -66,6 +66,8 @@ pub(crate) struct Req {
     arrive_within_ms: u64,
     local: bool,
     batch: Batch,
+    /// 发起方的截止时刻（分派那一层给；CLI 面没有）。
+    until: Option<Until>,
 }
 
 fn bad(why: &str) -> Failed {
@@ -114,6 +116,7 @@ pub(crate) fn parse(args: &Value) -> Result<Req, Failed> {
         arrive_within_ms: ms_of(o, "arrive_within_ms")?,
         local: flag("local")?,
         batch: batch::batch_of(o).map_err(|(c, m)| (c, m, None))?,
+        until: None,
     })
 }
 
@@ -125,7 +128,7 @@ fn already_live(said: String, pids: &[u32]) -> Failed {
 /// 开动之前那一步：点名的号选得了 ＋ 这条会话恰好在一个终端里跑着 ＋ 写它的活进程至多一个（就是那个终端里的）
 /// ⇒ `(号, 终端名, 此刻写它的那几个 pid)`。
 fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, Vec<u32>), Failed> {
-    let _total = Budget::start(SESSIONS_WHERE_TOTAL);
+    let _total = Budget::capped(SESSIONS_WHERE_CAP, req.until);
     // 模型偏好只用在远端那一行上（本机那一行不带模型，同批量起）。
     let none = Default::default();
     let models = if req.local { &none } else { &req.batch.models };
@@ -177,7 +180,7 @@ fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, Vec<u32>), Failed
 /// 不可分的那一步：停旧（失败 ⇒ 不起）→ 停完核一次：除了停掉的那个（`mine` ＝ 开动前写它的那几个）另有活进程在写 ⇒ 不起
 /// → 同一个名字用新号起。
 fn swap(req: &Req, account: &Settled, name: &str, mine: &[u32], deps: &Deps) -> Result<(), Failed> {
-    let _total = Budget::start(SWAP_TOTAL);
+    let _total = Budget::capped(SWAP_CAP, req.until);
     if let Err((why, said)) = (deps.kill)(name, &req.item.sid) {
         return Err(("stop_failed", said, Some(json!({ "why": why }))));
     }
@@ -243,10 +246,10 @@ async fn compact<H: Host>(req: &Req, name: &str, host: &H) -> Compact {
     let Ok(ears) = host.watch_compact(&req.item.sid).await else {
         return Compact::Failed;
     };
-    let (name, sid) = (name.to_string(), req.item.sid.clone());
+    let (name, sid, until) = (name.to_string(), req.item.sid.clone(), req.until);
     let sent = host
         .blocking(move |d| {
-            let _total = Budget::start(LAUNCH_TOTAL);
+            let _total = Budget::capped(LAUNCH_CAP, until);
             (d.send_into)(&name, &sid, &line).is_ok()
         })
         .await;
@@ -261,8 +264,15 @@ async fn compact<H: Host>(req: &Req, name: &str, host: &H) -> Compact {
 }
 
 /// `session-restart` 本体 ⇒ `{compact, started, terminal, account}`。
-pub(crate) async fn run<H: Host>(args: Value, host: H) -> Result<Value, Fault> {
-    let req = std::sync::Arc::new(parse(&args).map_err(owned)?);
+/// `until`：发起方的截止时刻（分派那一层由请求信封换来；没带 ⇒ 各步只按上限）。
+pub(crate) async fn run<H: Host>(
+    args: Value,
+    until: Option<Until>,
+    host: H,
+) -> Result<Value, Fault> {
+    let mut req = parse(&args).map_err(owned)?;
+    req.until = until;
+    let req = std::sync::Arc::new(req);
     let r = req.clone();
     let (account, name, mine) = host
         .blocking(move |d| prepare(&r, d).map_err(owned))

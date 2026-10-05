@@ -280,7 +280,11 @@ pub async fn run(args: &[String]) -> i32 {
         id: CLI_REQUEST_ID.to_string(),
         cmd: spec.name.to_string(),
         args: cli_args,
+        within_ms: None,
+        until: None,
     };
+    // 总期限与帧面同一处装：登记了上限的（都在阻塞档）按上限装，CLI 面没有发起方期限；别的命令不装（`None`）。
+    let total = crate::stream::inbound::install_total(&req);
     // ★ 这三行是本模块的全部：**派发落到 `REGISTRY` 自己的 `run`**。
     let outcome = match spec.run {
         Run::Blocking(f) => f(req),
@@ -294,6 +298,7 @@ pub async fn run(args: &[String]) -> i32 {
             )
         }
     };
+    drop(total);
     match outcome {
         Ok(v) => {
             println!("{}", v.unwrap_or_else(|| serde_json::json!({})));
