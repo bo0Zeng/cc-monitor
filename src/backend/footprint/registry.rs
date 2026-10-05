@@ -937,7 +937,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         named: "xdg-terminal-exec",
         host: HostScope::Client,
         why: Text(|| copy_text("rsToolRegistry.env.terminalExitWhy", &[])),
-        site: "platform/terminal.rs::TERMINAL_EXITS",
+        site: "platform/terminal.rs::EMULATORS",
     },
     UnmanagedEnv {
         id: "git",

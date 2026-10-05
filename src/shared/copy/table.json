@@ -4032,18 +4032,6 @@
       "zh": "在本机 bash 里运行",
       "args": []
     },
-    "remoteLaunchRun.copyFallback.noWindowManual": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "本机不开终端窗口 · 手动复制以下命令",
-      "args": []
-    },
-    "remoteLaunchRun.copyFallback.noWindowCopied": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "命令已复制 · 终端里粘贴运行",
-      "args": []
-    },
     "launchRender.refused.onMachine": {
       "kind": "error",
       "role": "报错",
@@ -7783,6 +7771,42 @@
       "waive": {
         "C-W1": "⋯ 指认机器行上同形的那个菜单按钮"
       }
+    },
+    "settingsPanel.terminal.label": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "终端",
+      "args": []
+    },
+    "settingsPanel.terminal.help": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "开终端窗口用它 · 恢复 · 接回 · 登录 · 在此打开终端",
+      "args": []
+    },
+    "settingsPanel.terminal.auto": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "自动",
+      "args": []
+    },
+    "settingsPanel.terminal.autoNone": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "未找到",
+      "args": []
+    },
+    "settingsPanel.terminal.custom": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "自定义…",
+      "args": []
+    },
+    "settingsPanel.terminal.customPlaceholder": {
+      "kind": "control",
+      "role": "标签",
+      "zh": "命令前缀",
+      "args": []
     },
     "resumeSelect.option.inherit": {
       "kind": "control",
@@ -12752,6 +12776,13 @@
         "C-W13": "「」里是 Windows 可选功能的名字（系统设置里的叫法），不是本程序界面上的名字"
       }
     },
+    "rsLaunch.remote.noSsh": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "本机未装 ssh 客户端 · 装 openssh-client",
+      "args": [],
+      "limited": ["SSH"]
+    },
     "rsLaunch.terminalDial.local": {
       "kind": "error",
       "role": "报错",
@@ -12767,9 +12798,32 @@
     "rsLaunch.posix.noTerminalWindow": {
       "kind": "body",
       "role": "说明",
-      "zh": "本机非 Windows · 不替你挑终端 · 会话在 tmux 里\n命令已复制 · 在你的 bash 里粘贴运行",
-      "args": [],
-      "limited": ["tmux"]
+      "zh": "未找到终端 · 设置 → 通用 → 终端",
+      "args": []
+    },
+    "rsLaunch.posix.setTerminalMissing": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未找到终端 {name} · 设置 → 通用 → 终端",
+      "args": ["name"]
+    },
+    "terminalOpen.noTerminal.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "未找到终端",
+      "args": []
+    },
+    "terminalOpen.noTerminal.detail": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "在设置里指定一个终端",
+      "args": []
+    },
+    "terminalOpen.noTerminal.settings": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "设置",
+      "args": []
     },
     "beTerminal.refuse.empty": {
       "kind": "error",
@@ -12819,12 +12873,6 @@
       "role": "报错",
       "zh": "拒绝启动 · 跳板 host 含非法字符 · {jumpHost}",
       "args": ["jumpHost"]
-    },
-    "rsLaunch.local.notOnWindows": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "程序出错",
-      "args": []
     },
     "rsLaunch.local.spawnFailed": {
       "kind": "error",
@@ -14358,7 +14406,7 @@
     "rsToolRegistry.env.terminalExitWhy": {
       "kind": "body",
       "role": "说明",
-      "zh": "POSIX 上开终端窗口只经它",
+      "zh": "Linux 开终端窗口首选 · 缺失时探常见终端",
       "args": []
     },
     "rsToolRegistry.env.terminalExitName": {

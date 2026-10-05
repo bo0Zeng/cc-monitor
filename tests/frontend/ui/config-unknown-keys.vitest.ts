@@ -91,6 +91,7 @@ const CENSUS: readonly string[] = [
   "showBgSessions",
   "resumeCommand",
   "localResumeCommand",
+  "terminal", // src/frontend/ui/settings/terminal-row.ts（壳开终端时只读）
   "resumeCommandPresets",
   "resumeInTmux",
   "notifyTurnEnd",
@@ -210,7 +211,8 @@ describe("P12 ③ 登记表自己得是真的（否则上面每一条都在拿�
     //   「退出行为」那个值搬到后端所在那台机器上）。少的就是它这一个，别的主人一个没动。
     // 9 → 10：补上 `src/frontend/shell/src/logging.rs`（`diagnostics` 那一键的主人，Rust 写的）。多的就是它这一个。
     // 10 → 11：补上 `src/frontend/ui/local-machine-prefs.ts`（本机那一格恢复命令覆盖 `localResumeCommand` 的主人）。
-    expect(owners.size, `主人 ${owners.size} 个（现打 11）`).toBe(11);
+    // 11 → 12：`terminal` 那一键（设置 → 通用 → 恢复 → 终端，`src/frontend/ui/settings/terminal-row.ts`）。
+    expect(owners.size, `主人 ${owners.size} 个（现打 12）`).toBe(12);
   });
 
   it("★ 每个登记的主人文件真的在盘上，而且那个键名逐字出现在它里面", () => {

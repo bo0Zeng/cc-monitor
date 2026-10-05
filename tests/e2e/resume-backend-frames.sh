@@ -2,8 +2,8 @@
 # auto-e2e F-E2(backend-frame 级,后端半场):resume idle 就地复用的**复活清灰**边界——单测碰不到的
 # 跨进程/tmux 判活边沿。不需 GUI/SSH:backend 二进制指向隔离 fixture 跑,读它 stdout 线协议帧。
 # **为何 backend-frame 级是复活断言的诚实天花板**:前端 `[e2e] tab-state ... archived→live` 需整个 app
-# 在跑,而 Linux 上 GUI resume 触发经 `platform/terminal.rs::launch_powershell_window` 仅 Windows → 必回退剪贴板、
-# 绝不执行(结构性,见 tests/e2e/README + resume-suite.sh 头注)。故复活的**执行**由本脚本用生产渲染链造的
+# 在跑,而 GUI resume 触发要真开终端窗口(`platform/terminal.rs::open_local`),无头门禁不开窗
+# (见 tests/e2e/README + resume-suite.sh 头注)。故复活的**执行**由本脚本用生产渲染链造的
 # 命令驱动(命令级),复活的**检测**(灰→live)由后端判活边沿断言(后端半场)。
 # 序列:
 #   gen-idle-tmux(fake-claude 活 + @ccm_sid)        → SessionAdded(sid)      = live

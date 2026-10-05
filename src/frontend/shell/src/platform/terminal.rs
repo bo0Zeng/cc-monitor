@@ -1,242 +1,302 @@
-//! 开终端窗口的平台那一半〔余下〕：壳里平台 cfg 的唯一住址（同 [`super::fs`]）。
-//! 原住 `launch.rs`，逐字搬来（头注与判据来历一个字没动）：POSIX 那条路（规范化终端出口 · `bash -lic` 的 spawn 计划）·
-//! Windows 那条路（`wt.exe` / `powershell.exe` 开窗 · `ssh.exe` 预检）。「跑什么」的校验与 argv 照旧住 `launch.rs::build_local_posix_argv`；
-//! 两条 Tauri 命令（`open_terminal_window` · `open_local_terminal`）也留在 `launch.rs`，经本文件的 [`open_local`] · [`ssh_client_missing`] 分平台。
+//! 开终端窗口的平台那一半：壳里平台 cfg 的唯一住址（同 [`super::fs`]）。
+//! POSIX：挑一个终端（设置里指定的 · 系统出口 · 常见终端逐个探）开窗跑 `bash -lic <命令>`；
+//! Windows：`wt.exe` / `powershell.exe` 开窗 · `ssh.exe` 预检。「跑什么」的校验与 argv 住 `launch.rs::build_local_posix_argv`；
+//! 两条 Tauri 命令（`open_terminal_window` · `open_local_terminal`）也留在 `launch.rs`，都经本文件的 [`open_local`] 开窗。
 
 use crate::copy_table::copy_text;
 
-/// 上一条的**下一跳**：`(argv, 终端出口)` → 真正要 spawn 的 `(program, args)`。
-///
-/// # 为什么它非抽出来不可〔`K-H2b` `D6` 第九拍，08-29〕
-///
-/// `K-H2b` 那条「中转前缀真的拼上去了」的判据量的是
-/// **`history::launch_local` 交给送法的那一串**。送法拿到之后再动手，那条判据看不见 ——
-/// 收工前按铁律 15 找「第八层」时实打过两刀，两刀都在这一跳附近：
-/// - 在 [`build_local_posix_argv`] 里剥掉 `export ANTHROPIC_BASE_URL=…; ` ⇒ **当时全绿**
-///   （隔壁那条透传判据只喂一个不带前缀的 payload ⇒ 输入域 = 1，与 `D6 阻-2` 同族）；
-/// - 在 `launch_local_posix_via` 里、`build_local_posix_argv` **之后**剥 ⇒ **也全绿**
-///   （那一段当时就地拼 `Command`，没有任何纯函数可打）。
-///
-/// ⇒ 两刀的修法是同一条：**把这一跳也变成纯函数**，让「载荷逐字节走过去」有东西钉。
-///
-/// # 🔴 本函数返回之后那 3 行 —— **今天有判据了，两支各一条**〔`D7 阻-1` / `D7 阻-2`，08-29〕
-///
-/// 本函数返回之后只剩 3 行（`Command::new(program)` · `.args(&args)` ·
-/// 以及 `cwd` / `env` / `stdio` / `process_group` 那几个设置）——
-/// **在那 3 行里再剥一次前缀，实打 `1229 passed` 全绿**（刀 `Z1c`，08-29）。
-///
-/// 🔴🔴 **先前这里逐字写着「要买它得真开一个窗口再去看那个进程的 argv」—— 那是假话。**
-/// `D7` 照既有那条 `local_posix_spawn_actually_runs_the_command` 的形状写了一条判据量过：
-/// 带刀 `Z1c` `1229 passed; 1 failed`（红）· 干净树 `1230 passed; 0 failed`（绿）
-/// ⇒ **不用开窗 · 不用真终端 · 不用动 `paths.rs` · 不用 `set_var("HOME")` ·
-/// 不用 `--test-threads=1` · 不用 `#[ignore]`。**
-/// ★ 「做不到」也是一个断言，而那一句只对**它当时想写的那一种**判据成立
-///（同族第二次；上一次是 `InjectFactSources` 头注 ㈠ 那条「要动真实家目录」）。
-///
-/// ⇒ 今天那 3 行由**两条**判据看着，一支一条（`term` 是这条链的分叉点，两支都买）：
-/// - `term = None`（无窗口回落）⇒ `the_spawned_process_really_gets_the_relay_prefix_without_a_terminal`
-///   （观测点 = 起出去的那个进程自己看到的 `ANTHROPIC_BASE_URL`）；
-/// - `term = Some(...)`（开窗）⇒ `the_terminal_we_hand_the_command_to_really_gets_the_relay_prefix`
-///   （观测点 = **假终端**自己收到的 argv；`#!/bin/sh` 脚本打 `"$@"`，**没有窗口会弹出来**）。
-///
-/// 🔴 **为什么非两条不可**：刀 `L10`（剥前缀**只放在 `term.is_some()` 那一支**）
-/// **活过了只买 `None` 那一支的修法** —— 装上走 `None` 的判据之后它仍然 `1229` 全绿、
-/// `GATE: OK`，而**生产上装了规范化终端出口的机器走的正是开窗那一支**。
-/// ⇒ **这条链上的每一条判据，两支都要有；只买一支买到的是「判据去的那一支」。**
-/// **「跑什么」的全部** —— 载荷校验 + argv + 终端包装，一跳到底。
-///
-/// ★ `launch_local_posix_via` 因此只剩「**怎么起**」（`cwd` / `env` / `stdio` / `process_group`）。
-/// 这条边界是**实打逼出来的**：先前那两段（[`build_local_posix_argv`] 与就地拼 `Command`）
-/// 中间隔着一跳没有判据，在那里剥掉中转前缀 ⇒ 全绿。
+/// 常见终端怎么交给它一条命令：`(程序名, 命令前垫的参数)`，各家约定不同（逐个照它的用法串核过；后面整串 argv 原样接上）。
+/// 先两个「交给系统定」的出口（freedesktop `xdg-terminal-exec` —— Ubuntu 26.04 的「默认终端」就按它的配置走 ·
+/// Debian / Ubuntu alternatives 的 `x-terminal-emulator`，Debian 政策要它收 `-e <命令> <参数…>`），再各桌面的默认与常见终端。
+#[cfg(not(windows))]
+pub(crate) const EMULATORS: &[(&str, &[&str])] = &[
+    ("xdg-terminal-exec", &["--"]),
+    ("x-terminal-emulator", &["-e"]),
+    // GNOME 一系：Ptyxis（Ubuntu 25.10 起 · Fedora 41 起默认）· GNOME Console（上游默认）· GNOME Terminal。都收 `-- <命令…>`。
+    ("ptyxis", &["--"]),
+    ("kgx", &["--"]),
+    ("gnome-terminal", &["--"]),
+    ("konsole", &["-e"]),
+    // Xfce / MATE：`-x` ＝「命令行剩下的全部在终端里跑」（它们的 `-e` 收一整个字符串，不用）。
+    ("xfce4-terminal", &["-x"]),
+    ("mate-terminal", &["-x"]),
+    ("qterminal", &["-e"]),
+    ("tilix", &["-e"]),
+    ("ghostty", &["-e"]),
+    ("kitty", &[]),
+    ("alacritty", &["-e"]),
+    ("wezterm", &["start", "--"]),
+    ("foot", &[]),
+    ("xterm", &["-e"]),
+];
+
+/// 各桌面自己的默认终端（按 `XDG_CURRENT_DESKTOP` 里的名字，大小写不论）：自动挑时提到两个系统出口之后、别的具名终端之前。
+#[cfg(not(windows))]
+pub(crate) const DESKTOP_DEFAULTS: &[(&str, &[&str])] = &[
+    ("GNOME", &["ptyxis", "kgx", "gnome-terminal"]),
+    ("KDE", &["konsole"]),
+    ("XFCE", &["xfce4-terminal"]),
+    ("MATE", &["mate-terminal"]),
+    ("LXQt", &["qterminal"]),
+];
+
+/// 自动挑的顺序：两个系统出口 → 这个桌面的默认（[`DESKTOP_DEFAULTS`]）→ [`EMULATORS`] 里其余的原序。
+#[cfg(not(windows))]
+pub(crate) fn auto_order(desktop: &str) -> Vec<&'static str> {
+    let mut names: Vec<&'static str> = EMULATORS[..2].iter().map(|(n, _)| *n).collect();
+    for d in desktop.split(':') {
+        for (de, firsts) in DESKTOP_DEFAULTS {
+            if d.eq_ignore_ascii_case(de) {
+                for n in firsts.iter() {
+                    if !names.contains(n) {
+                        names.push(n);
+                    }
+                }
+            }
+        }
+    }
+    for (n, _) in EMULATORS {
+        if !names.contains(n) {
+            names.push(n);
+        }
+    }
+    names
+}
+
+/// 设置里那一格（config.json `terminal`）：空 ⇒ 自动；等于表里某个名字 ⇒ 照它的约定；
+/// 否则当命令前缀按空白切开，命令接在后面（`<前缀> bash -lic …`）。
+#[cfg(not(windows))]
+fn prefix_of(setting: &str) -> Vec<String> {
+    let s = setting.trim();
+    match EMULATORS.iter().find(|(n, _)| *n == s) {
+        Some((n, before)) => std::iter::once(*n)
+            .chain(before.iter().copied())
+            .map(String::from)
+            .collect(),
+        None => s.split_whitespace().map(String::from).collect(),
+    }
+}
+
+/// 这一趟用哪个终端 ⇒ 它的 argv 前缀（命令接在后面）。自动挑一个都没探到 ⇒ `Ok(None)`（[`TerminalOpen::NoWindow`]：
+/// 前端照实说并给设置入口）；设置里指定的那个不在 ⇒ `Err`（一句说清是哪个、去哪改；不退成自动挑到的别的终端）。
+/// 纯函数：设置 · 桌面 · 「这个程序在不在」都是入参（判据不碰真机器）。
+#[cfg(not(windows))]
+pub(crate) fn pick_terminal_from(
+    setting: Option<&str>,
+    desktop: &str,
+    exists: &dyn Fn(&str) -> bool,
+) -> Result<Option<Vec<String>>, String> {
+    match setting.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(s) => {
+            let prefix = prefix_of(s);
+            if exists(&prefix[0]) {
+                Ok(Some(prefix))
+            } else {
+                Err(copy_text(
+                    "rsLaunch.posix.setTerminalMissing",
+                    &[("name", &prefix[0])],
+                ))
+            }
+        }
+        None => Ok(auto_order(desktop)
+            .into_iter()
+            .find(|n| exists(n))
+            .map(prefix_of)),
+    }
+}
+
+/// 设置里那一格的原值（config.json `terminal`；没设 / 读不动 ⇒ `None` ＝ 自动）。
+#[cfg(not(windows))]
+fn terminal_setting() -> Option<String> {
+    let raw = std::fs::read_to_string(crate::config::resolve_config_path()?).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    v.get("terminal")?.as_str().map(String::from)
+}
+
+#[cfg(not(windows))]
+fn current_desktop() -> String {
+    std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default()
+}
+
+/// 生产那一问：按设置 ＋ 这台的 `PATH` 挑。
+#[cfg(not(windows))]
+pub(crate) fn pick_terminal() -> Result<Option<Vec<String>>, String> {
+    pick_terminal_from(
+        terminal_setting().as_deref(),
+        &current_desktop(),
+        &program_exists,
+    )
+}
+
+/// 设置页那一行要画的事实：自动会挑谁 · 本机探到了哪些 · 设置里现在是什么。界面只画，不判。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalChoices {
+    /// 这台电脑上开终端要不要挑（Windows 上恒开 PowerShell ⇒ `false`，那一行不出现）。
+    pub applies: bool,
+    /// 自动会挑的那个；一个都没探到 ⇒ `None`。
+    pub auto: Option<String>,
+    /// 本机探到的（按自动挑的顺序）。
+    pub found: Vec<String>,
+    /// 设置里那一格的原值（空 ＝ 自动）。
+    pub setting: String,
+}
+
+/// [`TerminalChoices`] 的纯函数那一半。
+#[cfg(not(windows))]
+pub(crate) fn terminal_choices_from(
+    setting: Option<&str>,
+    desktop: &str,
+    exists: &dyn Fn(&str) -> bool,
+) -> TerminalChoices {
+    let found: Vec<String> = auto_order(desktop)
+        .into_iter()
+        .filter(|n| exists(n))
+        .map(String::from)
+        .collect();
+    TerminalChoices {
+        applies: true,
+        auto: found.first().cloned(),
+        found,
+        setting: setting.unwrap_or_default().trim().to_string(),
+    }
+}
+
+pub fn terminal_choices() -> TerminalChoices {
+    #[cfg(not(windows))]
+    {
+        terminal_choices_from(
+            terminal_setting().as_deref(),
+            &current_desktop(),
+            &program_exists,
+        )
+    }
+    #[cfg(windows)]
+    {
+        TerminalChoices {
+            applies: false,
+            auto: None,
+            found: Vec::new(),
+            setting: String::new(),
+        }
+    }
+}
+
+/// `PATH` 里（或给的是路径时那个文件本身）有没有这个可执行文件。
+#[cfg(not(windows))]
+fn program_exists(cmd: &str) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    let runnable = |p: &std::path::Path| {
+        std::fs::metadata(p)
+            .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    };
+    if cmd.contains('/') {
+        return runnable(std::path::Path::new(cmd));
+    }
+    std::env::var_os("PATH")
+        .map(|paths| std::env::split_paths(&paths).any(|d| runnable(&d.join(cmd))))
+        .unwrap_or(false)
+}
+
+/// 窗口里命令跑完之后留一个交互 shell（同 Windows 那一形的 `-NoExit`）：出错时用户看得见那句话，窗口不闪退。
+/// 命令本身作为 `$1` 原样交进去（不拼进脚本串）。
+#[cfg(not(windows))]
+pub(crate) const KEEP_OPEN: &str = r#"eval "$1"; exec "${SHELL:-bash}" -l"#;
+
+/// 命令串 → 真正要 spawn 的 `(program, args)`：终端前缀 ＋ `bash -lic <留窗脚本> bash <命令>`。
+/// 整跳是纯函数，判据量它产出的东西（载荷逐字节在最后一格）。
 #[cfg(not(windows))]
 pub(crate) fn local_posix_spawn_plan(
     cmd: &str,
-    term: Option<&str>,
+    term: &[String],
 ) -> Result<(String, Vec<String>), String> {
     let argv = crate::launch::build_local_posix_argv(cmd)?;
     Ok(build_local_posix_spawn(term, &argv))
 }
 
 #[cfg(not(windows))]
-pub(crate) fn build_local_posix_spawn(
-    term: Option<&str>,
-    argv: &[String],
-) -> (String, Vec<String>) {
+pub(crate) fn build_local_posix_spawn(term: &[String], argv: &[String]) -> (String, Vec<String>) {
+    // argv = [bash, -lic, <命令>]（`build_local_posix_argv`）。
+    let (shell, flags, payload) = (&argv[0], &argv[1], &argv[2]);
+    let tail = [
+        shell.clone(),
+        flags.clone(),
+        KEEP_OPEN.to_string(),
+        shell.clone(),
+        payload.clone(),
+    ];
+    let program = std::path::Path::new(&term[0])
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
+    let args = if ONE_STRING.contains(&program) {
+        // 收一整串的那几家：整条 argv 按 POSIX 单引号拼成一个参数（它们按 shell 词法切回去，内容逐字节不变）。
+        let joined = tail
+            .iter()
+            .map(|a| shell_quote_core::posix_quote(a))
+            .collect::<Vec<_>>()
+            .join(" ");
+        term[1..].iter().cloned().chain([joined]).collect()
+    } else {
+        term[1..].iter().cloned().chain(tail).collect()
+    };
+    (term[0].clone(), args)
+}
+
+/// 命令前缀之后只收**一个**参数、自己按 shell 词法切开的终端：Tilix（`-e` 后面多于一个参数时它用空格拼起来、只给带空格的那几格
+/// 加双引号，不转义 `\` 与单引号 ⇒ 任意载荷会走样；只给一个参数时原样交 shell 词法切）。
+#[cfg(not(windows))]
+pub(crate) const ONE_STRING: &[&str] = &["tilix"];
+
+/// 在 **POSIX 本机**开一个终端窗口跑一条命令（不经 ssh、不经 PowerShell）：挑到终端 ⇒ 开窗；一个都没探到 ⇒ [`TerminalOpen::NoWindow`]
+/// （不回落到无窗口直起：要人交互的那一行跑在看不见的地方等于没跑）；设置里指定的不在 ⇒ `Err`。
+#[cfg(not(windows))]
+pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<TerminalOpen, String> {
+    open_window_via(cmd, cwd, pick_terminal()?.as_deref())
+}
+
+/// [`launch_local_posix`] 挑完终端之后那一跳，终端是入参（判据传 `None` / 假终端，不在开发者桌面上开真窗口）。
+#[cfg(not(windows))]
+pub(crate) fn open_window_via(
+    cmd: &str,
+    cwd: Option<&str>,
+    term: Option<&[String]>,
+) -> Result<TerminalOpen, String> {
     match term {
-        // `xdg-terminal-exec` / `x-terminal-emulator` 都收 `-- <argv…>` 之后的命令行。
-        Some(t) => (
-            t.to_string(),
-            std::iter::once("--".to_string())
-                .chain(argv.iter().cloned())
-                .collect(),
-        ),
-        None => (argv[0].clone(), argv[1..].to_vec()),
+        Some(t) => launch_local_posix_via(cmd, cwd, t).map(|()| TerminalOpen::Opened),
+        None => Ok(TerminalOpen::NoWindow),
     }
 }
 
-/// P5L-Y3：**规范化**终端出口，有序候选。
-///
-/// # 为什么是这两个，为什么**不探测具体终端**
-///
-/// 用户逐字〔用 08-12〕：「**纯 bash 的意思是暂时不考虑其他终端, 但是所有的功能都要一样**」。
-/// 那句话反对的是**终端专属集成**（像 Windows 那条 `wt.exe` 带专属参数的路）——
-/// 而下面这两个恰恰是**不挑**的出口：freedesktop 的 `xdg-terminal-exec` 与 Debian 的
-/// `x-terminal-emulator` 都把「用哪个终端」交还给桌面/用户配置。
-///
-/// ⇒ **绝不在这里列 gnome-terminal / konsole / alacritty 之类的具名终端**。
-/// 那才是「挑」，也正是「会在别人机器上错」的来源。
-///
-/// # ★★ 为什么表里**只有一个**（D 阶段补审 08-12）
-///
-/// 第一版还放了 `x-terminal-emulator`。D 阶段核参数约定时发现**它们的约定未必一样**：
-/// · `xdg-terminal-exec` 的用法串逐字 `[options] [--] [command [arguments ...]]` ⇒ `--` **已核实**；
-/// · `x-terminal-emulator` 是 **Debian alternatives 的间接层** —— 本机指向 `ptyxis`
-///   （man 逐字 `[-- PROGRAM ARGUMENTS]`，且「In general, you should use `--`」，对得上），
-///   但**别的机器上它可能指向 `xterm`/`gnome-terminal`，那些的传统约定是 `-e <command>`**。
-///
-/// ⇒ 用一个**未核实**的约定去开窗，失败形态正是原判据担心的那个：
-/// 终端开出来了、命令没跑，用户看到一个空白窗口且极难归因。
-/// **宁可少覆盖一台机器，也不要开一个空白窗口。**
-///
-/// 要加回来的话，正确形状是「每个出口带自己的参数构造器」，而不是共用一个 `--`。
-#[cfg(not(windows))]
-pub(crate) const TERMINAL_EXITS: &[&str] = &["xdg-terminal-exec"];
-
-/// P5L-Y1：挑一个存在的终端出口。都不在 ⇒ `None`（调用方诚实降级，见 `launch_local_posix`）。
-///
-/// **纯函数化的那一半**（`pick_terminal_exit_from`）供判据用 —— 生产这条只是喂它一个真实探针。
-#[cfg(not(windows))]
-pub(crate) fn pick_terminal_exit() -> Option<&'static str> {
-    pick_terminal_exit_from(TERMINAL_EXITS, &|c| which_exists(c))
-}
-
-/// 判据入口：候选表与「在不在」的判定都作为参数进来，好在不依赖真实机器的前提下钉顺序。
-#[cfg(not(windows))]
-pub(crate) fn pick_terminal_exit_from(
-    candidates: &[&'static str],
-    exists: &dyn Fn(&str) -> bool,
-) -> Option<&'static str> {
-    candidates.iter().copied().find(|c| exists(c))
-}
-
-#[cfg(not(windows))]
-fn which_exists(cmd: &str) -> bool {
-    std::env::var_os("PATH")
-        .map(|paths| {
-            std::env::split_paths(&paths).any(|d| {
-                let p = d.join(cmd);
-                std::fs::metadata(&p).map(|m| m.is_file()).unwrap_or(false)
-            })
-        })
-        .unwrap_or(false)
-}
-
-/// L1：在 **POSIX 本机**跑一条命令 —— 不经 ssh、不经 PowerShell。
-///
-/// 这是 §40「本地 = 不走 ssh 的远端」在传输层的落点：远端那条路是
-/// `ssh -t host -- 'bash -lic <cmd>'`，本地就是把 `ssh` 那一跳**去掉**，其余不变。
-///
-/// 三处设计：
-/// - **不开 GUI 终端窗口**。POSIX 上没有「唯一的终端」这种东西：开窗口要先猜用户用哪个
-///   终端模拟器，是平白引入一个会在别人机器上错的决定。
-///   ⚠⚠ **这条原本还有半句，断言容器一定是 tmux（`ccm --tmux` 自己会建）—— 那是假的**
-///   〔audit-0805 F08 / 报告 B-2〕：生产构造出来的是 `cc --resume <sid>`，**不带 `--tmux`**
-///   （带 `--tmux` 的别名是 `cct`），而 `shared/ccm` 的 `use_tmux` 默认 0
-///   ⇒ 走的是非容器分支 `exec "${argv[@]}"`。加上这里 stdio 全 null，
-///   **产出的是一个无 tty、无 tmux 的进程**，不是「留在 tmux 里等 attach」。
-///   ★ 同一条推理本仓在别处写对过：`src/doc/IPC-PROTOCOL.md` 逐字
-///   「决定性的事实是 `stdin` 不接键盘（`stdin=DEVNULL`）—— 用户敲进去的字会被脚本吃掉」。
-///   ★★ **P3t（2026-08-11）已经改了一半，本段随之更新。**
-/// 本机起会话的计划（今天在本机后端 `local.rs::plan`）现在**先过 CLI 渲染器**（`render_local_ccm`），渲得出来就带
-///   `--tmux` ⇒ ccm 走容器分支、会话留在 tmux 里有真 tty，本函数只负责把它拉起来。
-///   上面那句「产出的是一个无 tty、无 tmux 的进程」现在只描述**回落那条路**
-///   （渲染器拒了才走的 `build_local_posix_command`），由 〔散文墓碑〕
-///   `the_local_resume_payload_has_no_session_container_today` 继续钉； 〔散文墓碑〕
-///   正面事实由 `the_rendered_local_command_really_carries_the_container` 钉。 〔散文墓碑〕
-///   ⚠ 会话名要由前端传下来（P3t-Y2b；前端问本机后端的 `terminal-name-mint` 铸，问不到 ⇒ `None` ⇒ 走回落）。
-///   功能后果（claude 在 `stdin=/dev/null` 下具体怎么表现）红线内**没实测**，是推的。
-/// - **脱离 app 的进程组**（`process_group(0)`）+ stdio 全 null：
-///   否则子进程会跟着 app 的 Ctrl-C 一起走，也会把 app 的 stdio 占住。
-/// - **起一条线程收尸**。`process_group` 不改变父子关系 ⇒ 不 `wait` 就留僵尸。
-///   线程随子进程结束而结束（`ccm` 建完会话就返回，是短命进程）。
-#[cfg(not(windows))]
-pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<(), String> {
-    launch_local_posix_via(cmd, cwd, pick_terminal_exit())
-}
-
-/// P5L：把「用哪个终端出口」做成**入参**。
-///
-/// ★ 这不是为了好看，是**判据不能在开发者桌面上开真窗口**：
-/// 既有的 `local_posix_spawn_actually_runs_the_command` 是一条**真跑**的行为测试，
-/// 改之前它直接 spawn `bash`；接上终端出口之后它会**真的弹出一个终端窗口**
-/// —— 实测跑了一次（本机 `xdg-terminal-exec` → `ptyxis`）。
-/// ⇒ 出口作为参数进来，判据传 `None` 走无窗口那条 —— **或者传一个自己造的假终端脚本**。
-///
-/// 🔴🔴 **订正〔`D7 阻-2`，08-29〕：先前这里逐字写着「开窗那条路因此没有行为级判据
-/// （只有形状判据）」—— 那句话在 `P5L` 那一轮是对的，今天是假话，而且它宽了两格。**
-/// - 载荷那一半：`the_local_argv_hands_the_command_through_byte_for_byte_prefix_and_all`
-///   喂 `Some("xdg-terminal-exec")` 走的就是开窗那一支（`D7 §A3` 现打）；
-/// - spawn 那一半：`the_terminal_we_hand_the_command_to_really_gets_the_relay_prefix`
-///   喂一个**假终端**（临时目录里的 `#!/bin/sh` 脚本，把 `"$@"` 写进文件）——
-///   `Command::new(program)` 拿绝对路径直接 exec 它，**没有任何窗口会弹出来**。
-/// ⇒ **「不能在开发者桌面上开真窗口」≠「开窗那一支买不到」**：前者是真的，后者是
-///   把「做不到的那一种做法」说成了「做不到这件事」。
-///
-/// ⚠ **今天仍然没有的**：真终端（`xdg-terminal-exec` → 用户配的那个模拟器）拿到 argv
-/// 之后**会不会照着跑**。那是它自己的约定，本仓测不到 ⇒ 真机验收归 `auto-e2e`。
-/// 别把「我们交出去的那一份是对的」读成「窗口真开出来了」。
+/// 终端作为入参：判据喂一个自己造的假终端脚本，不在开发机上弹真窗口。
 #[cfg(not(windows))]
 pub(crate) fn launch_local_posix_via(
     cmd: &str,
     cwd: Option<&str>,
-    term: Option<&str>,
+    term: &[String],
 ) -> Result<(), String> {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     use std::process::{Command, Stdio};
 
-    // ★★ `K-H2b` `D6` 第九拍：**「跑什么」整段收成一个纯函数**，本函数只剩「怎么起」。
-    //    先前这里是 `build_local_posix_argv` + 就地拼 `Command` 两段，中间那一跳
-    //    **没有任何判据** —— 实打：在这两段之间插一个剥掉 `export ANTHROPIC_BASE_URL=…; `
-    //    的映射，`1229 passed` 全绿（第八层的下游版本）。
     let (program, args) = local_posix_spawn_plan(cmd, term)?;
-    // ★★ P5L-Y1（`U14`〔用 08-12〕「要做，功能必须一样」）：**真开一个终端窗口**。
-    //
-    // 改之前这里是 `Stdio::null()` 直接 spawn ⇒ 产出一个**无 tty、无窗口**的进程
-    //（`P3t` 摸底记下的那条：用户敲进去的字会被脚本吃掉）。
-    //
-    // ⚠ **载荷一个字不改**：`argv` 原样进终端的参数位。本件只加「怎么开窗」，不碰「开什么」。
-    let opened_window = term.is_some();
-    if !opened_window {
-        // 诚实降级：一个规范化出口都没有 ⇒ 回落到改之前那条无窗口的路，**并说清**。
-        // 不静默、也不报一个与真实原因无关的错。
-        tracing::warn!(
-            "本机没有规范化终端出口（试过 {TERMINAL_EXITS:?}）—— \
-             回落到无窗口直起；命令仍会跑，但没有可交互的终端"
-        );
-    }
     let mut builder = Command::new(&program);
     builder.args(&args);
     // 只有真实存在的目录才作起始目录（与 Windows 那条路同一条纪律）。
     if let Some(d) = cwd.filter(|c| std::path::Path::new(c).is_dir()) {
         builder.current_dir(d);
     }
-    // F06b-1d（C9）：backend 把后端路径交给它亲手开的这个窗口 —— 窗口里那次 `ccm resume`
-    // 据此去调 `--resolve`（旧 `shared/ccm::resolve_from_backend` 〔散文墓碑〕，`K-R48` 已删；
-    // 今天那一问在后端进程内直接答）。local_backend 不在就不设。
+    // 后端把后端路径交给它亲手开的这个窗口（窗口里那次 `ccm` 据此找到本机后端）。local_backend 不在就不设。
     if let Some((k, v)) = crate::local_backend::backend_bin_env_for_window(
         crate::local_backend_host::running_backend_bin(),
     ) {
         builder.env(k, v);
     }
     builder.stdin(Stdio::null()).stdout(Stdio::null());
-    // 三条策略：
-    // · `Hidden` —— POSIX 上没有「控制台窗口」这回事，这一条在这儿是空的；
-    //   **窗口是 `program` 自己开的**（`local_posix_spawn_plan` 选出来的那个终端出口），
-    //   不是 `CreateProcess` 的 flag 开的。别把它读成「这条路不开窗」。
-    // · `Detached` —— 先前那句 `process_group(0)` 就是这一条：否则终端里 Ctrl-C 的
-    //   SIGINT 会打到整个前台进程组，monitor 和用户刚开的会话一起走。
-    // · `Null` —— 它的 stdio 本来就全 null（stdin/stdout 在上面），真正说话的是它开出来的
-    //   那个终端窗口；接进我们的滚动日志只会把终端的噪声灌进去。
+    // `Hidden`：POSIX 上没有控制台窗口这回事，窗口是终端程序自己开的 · `Detached`：别跟着 monitor 的进程组收信号 ·
+    // `Null`：说话的是它开出来的那个窗口。
     let mut child = spawn_managed_cmd(
         &mut builder,
         ConsolePolicy::Hidden,
@@ -244,25 +304,12 @@ pub(crate) fn launch_local_posix_via(
         StderrSink::Null,
     )
     .map_err(|e| copy_text("rsLaunch.local.spawnFailed", &[("e", &e.to_string())]))?;
+    // `process_group` 不改父子关系 ⇒ 收尸线程（终端程序多半很快把窗口交给自己的服务进程就退）。
     std::thread::spawn(move || {
         let _ = child.wait();
     });
-    tracing::info!(
-        "launch: local posix exec (no ssh){}",
-        if opened_window {
-            " · 已开终端窗口"
-        } else {
-            " · 无窗口回落"
-        }
-    );
+    tracing::info!("launch: 已开终端窗口（{program}）");
     Ok(())
-}
-
-/// Windows 宿主上没有这条路：Windows **本地**走 L2 的 PowerShell 分支，不是本函数。
-/// 保留同名同签名，是为了让调用点不必自己写 `cfg`（平台差异收在这一层）。
-#[cfg(windows)]
-pub fn launch_local_posix(_cmd: &str, _cwd: Option<&str>) -> Result<(), String> {
-    Err(copy_text("rsLaunch.local.notOnWindows", &[]).into())
 }
 
 /// 在新终端窗口跑一条 PowerShell 命令（加载用户 profile、`-NoExit` 保留窗口）。
@@ -460,59 +507,39 @@ pub(crate) fn ssh_client_available() -> bool {
     .unwrap_or(false)
 }
 
-/// 开终端那一问要不要先说「本机缺 OpenSSH 客户端」：只有 Windows 这一问有意义（它的窗口里跑的是 `ssh.exe`）；别处恒 `false`
-/// （POSIX 上开窗只走 [`open_window`]，没有终端出口时回 [`TerminalOpen::NoWindow`]）。
-pub fn ssh_client_missing() -> bool {
+/// 开远端终端之前先查本机有没有 ssh 客户端：缺了窗口里只会报「找不到命令」（spawn 本身成功 ⇒ 前端误报成功）。
+/// 缺 ⇒ 那一句怎么装的话；在 ⇒ `None`。
+pub fn ssh_client_missing() -> Option<String> {
     #[cfg(windows)]
-    {
-        !ssh_client_available()
-    }
+    let missing = !ssh_client_available();
     #[cfg(not(windows))]
-    {
-        false
-    }
+    let missing = !program_exists("ssh");
+    missing.then(|| {
+        if cfg!(windows) {
+            copy_text("rsLaunch.remote.noOpenSsh", &[])
+        } else {
+            copy_text("rsLaunch.remote.noSsh", &[])
+        }
+    })
 }
 
-/// 开窗那一下**成了**的两种结局（真失败走 `Err`，一句人话）。调用方按它判「这是既定设计」，不按哪句话里的字判。
+/// 开窗那一下**成了**的两种结局（真失败走 `Err`，一句人话）。调用方按它判，不按哪句话里的字判。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TerminalOpen {
     /// 开了一个终端窗口。
     Opened,
-    /// 这台按既定设计不开窗：POSIX 上没有规范化终端出口（不替你挑终端模拟器）。
+    /// 这台找不到能开的终端（POSIX：设置里没指定、自动也没探到）。前端照实说、给设置入口。
     NoWindow,
 }
 
-/// 开一个终端窗口跑 `command`（「这台电脑能不能开终端窗口、用哪个」只在这一处答）：Windows 开 PowerShell 窗口；
-/// POSIX 有规范化终端出口（[`pick_terminal_exit`]）就交它开窗，没有 ⇒ [`TerminalOpen::NoWindow`]
-/// （不回落到无窗口直起：要人交互的那一行跑在看不见的地方等于没跑）。
-pub fn open_window(command: &str) -> Result<TerminalOpen, String> {
-    #[cfg(windows)]
-    {
-        launch_powershell_window(command, None).map(|()| TerminalOpen::Opened)
-    }
-    #[cfg(not(windows))]
-    {
-        open_window_via(command, pick_terminal_exit())
-    }
-}
-
-/// [`open_window`] 的 POSIX 本体，终端出口是入参（判据传 `None` / 假终端，不在开发者桌面上开真窗口）。
-#[cfg(not(windows))]
-pub(crate) fn open_window_via(command: &str, term: Option<&str>) -> Result<TerminalOpen, String> {
-    match term {
-        Some(t) => launch_local_posix_via(command, None, Some(t)).map(|()| TerminalOpen::Opened),
-        None => Ok(TerminalOpen::NoWindow),
-    }
-}
-
-/// 在本机开一个终端窗口跑 `cmd`（工作目录 `cwd`，不在就不设）：POSIX 交用户的终端出口（[`launch_local_posix`]）；
-/// Windows 开 PowerShell 窗口（[`launch_powershell_window`]）。
-pub fn open_local(cmd: &str, cwd: Option<&str>) -> Result<(), String> {
+/// 在本机开一个终端窗口跑 `cmd`（工作目录 `cwd`，不在就不设）—— 「这台电脑能不能开终端窗口、用哪个」只在这一处答：
+/// POSIX 按设置 / 探到的终端开（[`launch_local_posix`]）；Windows 开 PowerShell 窗口（[`launch_powershell_window`]）。
+pub fn open_local(cmd: &str, cwd: Option<&str>) -> Result<TerminalOpen, String> {
     #[cfg(not(windows))]
     let out = launch_local_posix(cmd, cwd);
     #[cfg(windows)]
-    let out = launch_powershell_window(cmd, cwd);
+    let out = launch_powershell_window(cmd, cwd).map(|()| TerminalOpen::Opened);
     out
 }
 

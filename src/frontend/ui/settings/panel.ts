@@ -15,6 +15,7 @@
  */
 
 import { onMachineState } from "../machine-feed";
+import { buildTerminalRow } from "./terminal-row";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   applyTheme,
@@ -309,6 +310,8 @@ export class SettingsPanel {
   /** 恢复命令那一格（各台的默认）与它的预设条 · 存失败时的那一句。 */
   private resumeSelect!: ResumeSelect;
   private resumeError!: HTMLElement;
+  /** 「终端」那一行的位置（恢复组里，恢复命令下面；只在要挑终端的平台上画）。 */
+  private readonly terminalSlot = document.createElement("div");
   private remoteLauncherWarning!: HTMLElement; // F08：越层启动器诊断提示（只诊断，不代改）
   private onBehaviorChange?: (cfg: BehaviorConfig) => void;
   /** F82a：见 SettingsPanelOptions.windowMode。 */
@@ -1282,6 +1285,11 @@ export class SettingsPanel {
       headActions: this.logsSection ? [this.logsSection.headButton()] : [],
     });
     this.loadOnFirstVisit(PAGE.logs, () => this.logsSection?.loadNow());
+    this.loadOnFirstVisit(PAGE.general, () => {
+      void buildTerminalRow()
+        .then((row) => this.terminalSlot.replaceChildren(...(row ? [row] : [])))
+        .catch((e: unknown) => console.warn("[settings] terminal row", e));
+    });
     router.onNavigate((id) => {
       if (id === PAGE.ext) this.extSection?.loadNow();
     });
@@ -1496,6 +1504,8 @@ export class SettingsPanel {
     this.resumeError.className = "settings-row-error";
     this.resumeError.hidden = true;
     group.appendChild(this.resumeError);
+    // 「终端」那一行（判定在壳的平台层）：通用页第一次可见时问、问回来才画。
+    group.appendChild(this.terminalSlot);
     this.resumeInTmuxSw = this.behaviorSwitch(group, copyText("settingsPanel.behavior.resumeInTmux"), copyText("settingsPanel.behavior.resumeInTmuxHelp"), (on) => ({
       resumeInTmux: on,
     }));

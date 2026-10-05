@@ -905,6 +905,8 @@ pub fn run() {
             // 「某会话属于哪个账号」那两条（本机 E79 · 远端 A2）退役：
             //   本机与远端同一条路 —— 前端经通道 `chan_call` 说 `accounts-sessions`。
             launch::open_terminal_window,
+            // 设置页「终端」那一行的事实（挑终端的判定住平台层）。
+            launch::terminal_choices,
             launch::terminal_dial,
             // 池子那十二条 Tauri 命令〔散文墓碑〕随老面板与窗口改走通道一起删了；
             // 最后一条（零流量复制）随门禁那一格退役一起删了 ⇒ 池子零条 Tauri 命令。

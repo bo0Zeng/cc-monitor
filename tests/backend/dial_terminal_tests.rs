@@ -420,7 +420,7 @@ fn the_posix_line_hands_ssh_the_same_arguments_a_real_shell_would() {
     std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
 
     let cmd = r#"unset X; cd '/home/u/it'\''s 文档' && echo "$HOME" && claude --resume s1"#;
-    let mut m = machine("10.0.0.2", "u", 2222, Some("/home/u/my key's/id"));
+    let mut m = machine("192.0.2.3", "u", 2222, Some("/home/u/my key's/id"));
     m["jump"] = json!("bastion");
     let jump = json!({ "host": "jump.local", "user": "pi", "port": 22, "label": "bastion" });
     let line = answer_in(
@@ -463,7 +463,7 @@ fn the_posix_line_hands_ssh_the_same_arguments_a_real_shell_would() {
         "/home/u/my key's/id",
         "-o",
         &known,
-        "u@10.0.0.2",
+        "u@192.0.2.3",
         "--",
         &format!("bash -lic {}", shell_quote_core::posix_quote(cmd)),
     ]

@@ -19,9 +19,8 @@ import type { AccountAsk, AccountUnavailable } from "./launch-account";
 import type { LaunchedAccount } from "./generated/LaunchedAccount";
 import { resumeCommandFor } from "./remote-config";
 import { defaultLauncherOf } from "./agent-profile";
-import { openTerminal } from "./terminal-open";
+import { openLocalTerminal, openTerminal } from "./terminal-open";
 import { configuredLauncherFor } from "./launch-requests";
-import { commands } from "./ipc/commands";
 
 /** 一个 tab 的结局（`why` 是给人看的那一句；做成了 ⇒ 空串）。 */
 export interface BatchOutcome {
@@ -198,7 +197,7 @@ export async function startSettings(origin: Origin, agent: string): Promise<Reco
 /** 开终端那一形：后端渲好的那一行，monitor 开窗（本机同 `launch-local` 那条的开法，远端同 `openTerminal`）。开不了 ⇒ 那一句。 */
 export async function openWindow(origin: Origin, cmd: string, cwd: string): Promise<string | null> {
   try {
-    if (isLocalOrigin(origin)) await commands.open_local_terminal({ cmd, cwd });
+    if (isLocalOrigin(origin)) await openLocalTerminal(cmd, cwd);
     else await openTerminal(origin, cmd);
     return null;
   } catch (e) {

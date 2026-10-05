@@ -129,6 +129,22 @@ export const HISTORY_SCENES: Scene[] = [
     world: withQuota,
   },
   {
+    ...hist("history-resume-no-terminal", "历史 · 恢复 · 找不到终端", "本机那条已结束的会话点［恢复］，这台一个终端都没探到：右下「未找到终端」＋［设置］（直达 通用 → 终端），命令不进剪贴板", async () => {
+      await openHistory();
+      await click(await byText('.history-view [role="option"]', "周报草稿"));
+      await sleep(900);
+      await click(await waitFor('.history-view [data-role="resume"] button:not([aria-haspopup])'));
+      await sleep(900);
+    }),
+    world: () => {
+      const w = defaultWorld();
+      w.ops = { ...w.ops, "launch-local": () => ({ cmd: "ccm --resume s3", account: null }) };
+      w.commands = { ...w.commands, open_local_terminal: () => "noWindow" };
+      w.quiet = [...(w.quiet ?? []), "terminal-name-mint"];
+      return w;
+    },
+  },
+  {
     ...hist("history-05b-resume-picked", "历史 · 恢复菜单 · 挪了勾", "▾ 里点 personal、点「在 tmux 里」：只挪勾、菜单不关；主按钮按勾着的那一组起", async () => {
       await openHistory();
       await click(await byText('.history-view [role="option"]', "支付回调验签"));

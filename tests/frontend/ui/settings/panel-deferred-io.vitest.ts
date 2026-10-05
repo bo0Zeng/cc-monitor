@@ -131,6 +131,9 @@ const LANDING_IPC = ["load_config", "backend_machines", "backend_status"] as con
  * （那三发 —— `local_ccm_entry_status` · `aliases_read` · `aliases_render` —— 由 `machine-aliases.vitest.ts` 钉）。
  * 下面「点进本机页 ⇒ 恰好 `MACHINE_PAGE_IPC`」那一条因此也在替它作证：本机页上多挂一块别名，一发都没多。
  */
+/** 通用页本身那一发：恢复组里「终端」那一行的事实（第一次可见时问）。 */
+const GENERAL_PAGE_IPC = ["terminal_choices"] as const;
+
 const APP_PAGE_IPC = [
   "diagnostics_report",
   "get_diagnostics_config",
@@ -209,14 +212,17 @@ describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
     }
   });
 
-  it("〔ST2 · 步 15〕「应用」那三发拆到两个子页：日志 ⇒ 恰好日志两发 · 数据位置 ⇒ 恰好那一发 · 应用 / 外观 ⇒ 零发", async () => {
+  it("〔ST2 · 步 15〕「应用」那三发拆到两个子页：日志 ⇒ 恰好日志两发 · 数据位置 ⇒ 恰好那一发 · 通用 ⇒ 只问终端那一行 · 外观 ⇒ 零发", async () => {
     new SettingsPanel({ windowMode: true });
     await tick();
     let mark = ipc.calls.length;
     visit("general");
+    await tick();
+    expect(since(mark), "通用页只问「终端」那一行的事实").toEqual(uniq([...GENERAL_PAGE_IPC]));
+    mark = ipc.calls.length;
     visit("appearance");
     await tick();
-    expect(since(mark), "「应用」与「外观」两页上没有要读的东西").toEqual([]);
+    expect(since(mark), "「外观」页上没有要读的东西").toEqual([]);
     mark = ipc.calls.length;
     visit("logs");
     await tick();

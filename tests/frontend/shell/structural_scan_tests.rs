@@ -2669,12 +2669,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_monitor_wrapper_really_delegates",
             1,
         ),
-        // 远端开终端那一行（ssh 外壳）随渲染搬进本机后端 `dial/terminal.rs`：点旧名的散文。
-        (
-            "src/backend/dial/terminal.rs",
-            "build_remote_ssh_ps_command",
-            1,
-        ),
         // 「在此打开终端」那一串（`cd <目录> && exec $SHELL -l`）随「窗口只交意图」从文件窗口搬进本机后端 `dial/terminal.rs::command_for_cwd`。
         ("src/backend/dial/terminal.rs", "build_open_terminal_cmd", 1),
         (
@@ -3349,11 +3343,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    脚本与它那一族判据删了（`K33`：「不要有什么 bash 脚本」），而**散文里那几处
         //    点名它们的句子留着是有用的**（它们说的正是「这个东西为什么不在了」）
         //    ⇒ 按第②条出路走：加 `PROSE_NAME_TOMBSTONE` 标记 ＋ 在这里记一笔账。
-        (
-            "src/frontend/shell/src/platform/terminal.rs", // 原 `launch.rs`（开窗的平台臂连同头注搬来）
-            "resolve_from_backend",
-            1,
-        ),
         // 🔴 `list_history_projects` 改问本机后端要 `--list-projects`
         //    ⇒ 项目级那一段（`analyze_project_dir`）连同它唯一的调用点一起删了。
         // 那一行（`history.rs` · `analyze_project_dir` · 1）摘了：挂那块墓碑的是 `list_history_projects` 的头注，
@@ -4144,21 +4133,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         (
-            "src/frontend/shell/src/platform/terminal.rs", // 原 `launch.rs`（开窗的平台臂连同头注搬来）
-            "build_local_posix_command",
-            1,
-        ), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
-        (
-            "src/frontend/shell/src/platform/terminal.rs", // 原 `launch.rs`（开窗的平台臂连同头注搬来）
-            "the_local_resume_payload_has_no_session_container_today",
-            1,
-        ), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
-        (
-            "src/frontend/shell/src/platform/terminal.rs", // 原 `launch.rs`（开窗的平台臂连同头注搬来）
-            "the_rendered_local_command_really_carries_the_container",
-            1,
-        ), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
-        (
             "tests/frontend/shell/local_backend_host_tests.rs",
             "the_launch_side_really_asks_the_backend_and_uses_its_answer",
             1,
@@ -4536,7 +4510,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/shell/src/creds_store.rs", 6), // +2：两处「GP1 那一版经 `write_key_on`」
         ("src/frontend/shell/src/platform/fs.rs", 2), // 1 → 2：`atomic_replace` 从 `config.rs` 搬来，头注那一处随之
         ("src/frontend/shell/src/platform/spawn.rs", 1), // 随 `spawn_managed.rs` 的平台原语搬来的那一块
-        ("src/frontend/shell/src/platform/terminal.rs", 5), // 6 → 5：点「中转取点只经接缝」那条旧判据的那块改写成说今天的去向（起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了）） // 0 → 6：开窗的平台臂从 `launch.rs` 搬来，头注里的六处随之
+        ("src/frontend/shell/src/platform/terminal.rs", 1), // 5 → 1：POSIX 那一半重写（挑终端），旧头注连同四处墓碑删了 // 6 → 5：点「中转取点只经接缝」那条旧判据的那块改写成说今天的去向（起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了）） // 0 → 6：开窗的平台臂从 `launch.rs` 搬来，头注里的六处随之
         (
             "tests/backend/accounts/upstream_select/file_face_tests.rs",
             6,
@@ -4842,7 +4816,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/shell/src/quote_singleton_guard.rs", 3), // 2 → 3：病史里 `stream_source` 那层转调壳随零生产调用删了，挂墓碑 // 1 → 2：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑 // 〔09-28 裁 2〕新贴：病史里那第五份 sq 随跑安装脚本退役
         // 新贴：ssh 外壳（`build_remote_ssh_ps_command` 一族）搬进本机后端 `dial/terminal.rs`，
         //   新家头注点来历一块 · monitor 那侧判据原处各挂一块（六条搬走的期望 · 那个转发别名）。
-        ("src/backend/dial/terminal.rs", 2), // 1 → 2：「在此打开终端」那一串的拼法从文件窗口搬来，点旧名一块
+        ("src/backend/dial/terminal.rs", 1), // 2 → 1：头注改写成按方言渲，点旧名那一处删了 // 1 → 2：「在此打开终端」那一串的拼法从文件窗口搬来，点旧名一块
         ("tests/frontend/ui/views/history-search.vitest.ts", 1), // 合并那三条搬进后端，原处一块
         ("tests/frontend/shell/launch_tests.rs", 2),
         ("tests/frontend/shell/quote_singleton_guard_tests.rs", 2),
