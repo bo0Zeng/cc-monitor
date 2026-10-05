@@ -2999,8 +2999,11 @@ fn the_upstream_selection_asks_exactly_its_registered_upstream_knob() {
     });
     assert_eq!(
         asked.lock().expect("lock").clone(),
-        vec!["CCM_AGENT_UPSTREAM_CLAUDE_CODE".to_string()],
-        "上游选择该问的上游旋钮（今天只登记了 claude-code 一家）不是这一个"
+        vec![
+            "CCM_AGENT_UPSTREAM_CLAUDE_CODE".to_string(),
+            "CCM_AGENT_UPSTREAM_CODEX".to_string()
+        ],
+        "上游选择该问的上游旋钮（登记了 claude-code · codex 两家）不是这两个"
     );
 }
 

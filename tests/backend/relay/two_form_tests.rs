@@ -147,3 +147,146 @@ fn a_key_carried_in_the_key_header_gets_in_and_is_not_forwarded() {
         seen[0].names
     );
 }
+
+/// 一条最小的 Responses 流（一轮：开始 · 一块正文 · 一段字 · 说完）。
+const RESPONSES_OK: &str = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n\
+data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\"}}\n\n\
+data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\"}}\n\n\
+data: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"delta\":\"ok\"}\n\n\
+data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\"}}\n\n";
+
+/// ★★ Codex 那一家照真请求的形发（钥匙在钥匙头里、地址里没有钥匙段）：
+/// ① 先一发 WebSocket 升级 ⇒ 426、一个字节不到上游；② 改发 `POST …/responses` ⇒ 带 `ChatGPT-Account-ID` 的落 ChatGPT 那一支、
+/// 不带的落 API 那一支（反向：API 形的那一发不许落到 ChatGPT 那一支）；③ tee 出的流标签 ＝ `session-id` 的值，
+/// 主运行（`thread-id` ＝ `session-id`）归主运行、子 agent（`thread-id` 是它自己的）归它，流折得出开始 · 字 · 收尾（活卡要的那几件）。
+/// 真上游换成两个假上游（路径前缀照真上游的形）。
+#[test]
+fn a_codex_shaped_round_gets_426_then_picks_its_upstream_by_login_form_and_routes_its_runs() {
+    use crate::accounts::upstream_select::UpstreamPick;
+    use crate::agents::StreamEv;
+    use crate::stream::wire::Frame;
+    let chatgpt = spawn_name_upstream(RESPONSES_OK);
+    let api = spawn_name_upstream(RESPONSES_OK);
+    let base = |up: &NameUpstream, path: &str| {
+        comms_outward::Base::parse(&format!("http://127.0.0.1:{}{path}", up.addr.port())).unwrap()
+    };
+    let ups = Upstreams::from_env(&|_| None).unwrap().with_pick(
+        "codex",
+        UpstreamPick::ByHeader {
+            header: "ChatGPT-Account-ID",
+            present: base(&chatgpt, "/backend-api/codex"),
+            absent: base(&api, "/v1"),
+        },
+    );
+    let taps = Arc::new(Taps::default());
+    let relay = spawn_relay_with(ups, Arc::clone(&taps));
+    let key = format!(
+        "{}: {}\r\n",
+        relay_route_core::KEY_HEADER,
+        super::key::key_tests::TEST_KEY
+    );
+    const SID: &str = "019a0000-0000-7000-8000-00000000c0de";
+    const CHILD: &str = "019a0000-0000-7000-8000-0000000c41d0";
+
+    let ws = send_raw(
+        relay,
+        &format!("GET /t/codex/_/responses HTTP/1.1\r\nHost: 127.0.0.1\r\n{key}Connection: Upgrade\r\nUpgrade: websocket\r\nsession-id: {SID}\r\nthread-id: {SID}\r\n\r\n"),
+    );
+    assert!(
+        ws.starts_with("HTTP/1.1 426 "),
+        "升级那一发没回 426：{ws:?}"
+    );
+    assert!(
+        chatgpt.seen.lock().unwrap().is_empty() && api.seen.lock().unwrap().is_empty(),
+        "升级那一发到了上游"
+    );
+
+    let post = |thread: &str, chatgpt_form: bool| {
+        let account = if chatgpt_form {
+            "ChatGPT-Account-ID: acct\r\n"
+        } else {
+            ""
+        };
+        send_raw(
+            relay,
+            &format!("POST /t/codex/_/responses HTTP/1.1\r\nHost: 127.0.0.1\r\n{key}Authorization: Bearer x\r\n{account}session-id: {SID}\r\nthread-id: {thread}\r\nContent-Length: 2\r\n\r\n{{}}"),
+        )
+    };
+    assert!(post(SID, true).starts_with("HTTP/1.1 200"));
+    assert!(post(CHILD, true).starts_with("HTTP/1.1 200"));
+    assert!(post(SID, false).starts_with("HTTP/1.1 200"));
+    let lines = |u: &NameUpstream| -> Vec<String> {
+        u.seen
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|s| s.line.clone())
+            .collect()
+    };
+    assert_eq!(
+        lines(&chatgpt),
+        vec!["POST /backend-api/codex/responses HTTP/1.1"; 2],
+        "ChatGPT 形的两发"
+    );
+    assert_eq!(
+        lines(&api),
+        vec!["POST /v1/responses HTTP/1.1"],
+        "API 形那一发"
+    );
+
+    // tee 那一侧：三段流，每段 4 件数据 ＋ 收尾；标签 ＝ session-id 的值。
+    let mut events = Vec::new();
+    for _ in 0..200 {
+        events = taps.0.lock().unwrap().clone();
+        if events.len() >= 15 {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert_eq!(events.len(), 15, "tee 件数不对：{}", events.len());
+    assert!(
+        events.iter().all(|e| e.stream == SID),
+        "流标签不是 session-id 的值"
+    );
+    let mut router = crate::stream::run_route::RunRouter::new(
+        Arc::new(crate::observe::runs::RunBook::default()),
+        crate::agents::stream_families(),
+    );
+    let mut by_resp: std::collections::BTreeMap<u64, (Option<String>, Vec<StreamEv>)> =
+        Default::default();
+    for e in events {
+        for f in router.on_tap(e) {
+            if let Frame::Tap { run, resp, ev, .. } = f {
+                let slot = by_resp.entry(resp).or_insert((run.clone(), Vec::new()));
+                assert_eq!(slot.0, run, "同一段流归了两个运行");
+                slot.1.extend(ev);
+            }
+        }
+    }
+    let runs: Vec<Option<String>> = by_resp.values().map(|(r, _)| r.clone()).collect();
+    assert_eq!(
+        runs,
+        vec![None, Some(CHILD.to_string()), None],
+        "主运行 / 子 agent 归位不对"
+    );
+    for (_, evs) in by_resp.values() {
+        assert_eq!(
+            evs,
+            &vec![
+                StreamEv::Start {
+                    rid: "resp_1".into()
+                },
+                StreamEv::Block {
+                    i: 0,
+                    kind: crate::agents::BlockKind::Text,
+                    tool: None
+                },
+                StreamEv::Text {
+                    i: 0,
+                    s: "ok".into()
+                },
+                StreamEv::Stop { ok: true },
+            ]
+        );
+    }
+}

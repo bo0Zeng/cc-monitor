@@ -35,10 +35,8 @@
 //! 做的 fail-closed** —— 先前它对**每一个** `seg1` 都成立（那张表还不存在），今天只对
 //! 表里没有的那几家成立。别把它改成「查不到就透传」：透传到哪一家？那正是要拆掉的那个回落。
 //!
-//! ⚠ **今天只登记了一家**（`claude-code`，适配层那一格）。codex **刻意没登记** —— 它的默认上游
-//! 是哪一个、它认不认 base URL 的覆盖，本仓**零证据**（`C7`：不起真 agent），
-//! 而把一个猜的值写进这张表，就是把「未登记直接拒」换成「静默发去一个猜的地方」。
-//! 登记它的那一天，改的只是注册表里 codex 那一行的 `upstream` 那一格，**形状不用改**。
+//! 登记了两家（`claude-code` · `codex`，都在适配层那一格）。codex 那一家同一个地址两种登录都用，
+//! 默认上游按这一发带没带 `ChatGPT-Account-ID` 二选一（[`UpstreamPick::ByHeader`]，只看头名）。
 //!
 //! # ⚠ 「怎么验」那一栏与「不许回落到写死的常量」—— 今天**不再互斥**
 //!
@@ -169,6 +167,13 @@ impl Upstreams {
         by_agent
             .contains_key(CREDENTIALS_FILE_AGENT)
             .then_some(Self { by_agent })
+    }
+
+    /// 判据用：把一家的默认上游换成给的那一份（真上游换成假上游）。
+    #[cfg(test)]
+    pub(crate) fn with_pick(mut self, agent: &'static str, pick: UpstreamPick) -> Self {
+        self.by_agent.insert(agent, pick);
+        self
     }
 
     /// 这一家登记了默认上游没有。

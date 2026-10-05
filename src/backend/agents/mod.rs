@@ -1862,8 +1862,7 @@ pub(crate) fn user_mcp_file(kind: &str) -> Option<PathBuf> {
 pub(crate) const REGISTRY: &[Adapter] = &[
     Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), accounts: Some(claudecode::accounts::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH), compact_request: Some(claudecode::COMPACT_REQUEST), local: Some(claudecode::LOCAL) },
     // codex 今天没有账号维度（`account_env: None`）：选号对它说不出，起法与 `ccm` 都明说不行。
-    // codex **刻意不登记**默认上游：它的默认上游是哪一个、认不认 base URL 覆盖，本仓零证据（`C7`）⇒ 未登记即拒（fail-closed）。
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, assets: None, history: Some(codex::HISTORY), upstream: None, mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH), compact_request: None, local: None },
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, assets: None, history: Some(codex::HISTORY), upstream: Some(codex::relay::UPSTREAM), mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH), compact_request: None, local: None },
 ];
 
 /// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。
