@@ -273,8 +273,10 @@ fn the_powershell_block_carries_only_the_handshake() {
     // 按词，不按子串〔§5 2l〕：语料里一出现 `function ccm`，`contains` 就假红。
     assert!(!guard_core::contains_word(&out, "function cc"));
     assert!(!out.contains("{{"), "模板里还有没填的占位：{out}");
-    // v6 → v7：每开一个 PowerShell 就登记一次（块尾那一行，不等、不出声）。
-    assert!(out.contains("BEGIN v7"));
+    // v7 → v8：窗口标签 ＋ 带标签的那层 ssh。
+    assert!(out.contains("BEGIN v8"));
+    assert!(out.contains("$env:LC_CCM_WINDOW"));
+    assert!(out.contains("-o SendEnv=LC_CCM_WINDOW"));
     assert!(out.contains("cc-monitor END"));
 }
 
@@ -467,12 +469,13 @@ fn an_older_powershell_block_is_flagged_and_a_fresh_one_is_not() {
     // v4 → v5：数据目录搬到 `~/.cc-monitor`，v4 块的 `$ccmDir` 是旧住址 ⇒ 装着 v4 的人也重装一次。
     // v5 → v6：`function cc` 挪进清单，块只剩握手 ＋ 接上别名文件 ⇒ 装着 v5 的人重装一次。
     // v6 → v7：每开一个 PowerShell 就登记一次（不再只在敲 cc 时）⇒ 装着 v6 的人重装一次，远端会话的 ↗ 才认得出窗口。
+    // v7 → v8：窗口标签经那层 ssh 送到远端 ⇒ 装着 v7 的人重装一次，经跳板 / 改端口的终端 ↗ 才切得到。
     assert_eq!(
-        cur, "v7",
+        cur, "v8",
         "模板版本串变了就来改这里（并想清楚：旧块的人要不要重装）"
     );
     let ps = std::path::Path::new("/h/p.ps1");
-    for old_ver in ["v2", "v3", "v4", "v5", "v6"] {
+    for old_ver in ["v2", "v3", "v4", "v5", "v6", "v7"] {
         let old = format!(
             "# === cc-monitor BEGIN {old_ver} ===\nfunction __ccm_bind {{}}\n# === cc-monitor END ===\n"
         );
@@ -1302,8 +1305,15 @@ fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
         "{ps}"
     );
     let block = render_cc_code(std::path::Path::new("/_"));
-    assert!(
-        !block.lines().any(|l| l.trim().starts_with("& ")),
+    // 块里唯一的调用行是那层 ssh 交给系统 ssh 的那一行。
+    let block_invokes: Vec<&str> = block
+        .lines()
+        .map(str::trim)
+        .filter(|l| l.starts_with("& "))
+        .collect();
+    assert_eq!(
+        block_invokes,
+        ["& $exe.Source -o SendEnv=LC_CCM_WINDOW @args"],
         "别名块里又有调用行了 —— `cc` 住清单\n{block}"
     );
     let names =

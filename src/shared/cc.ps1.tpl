@@ -1,4 +1,4 @@
-# === cc-monitor BEGIN v7 ===
+# === cc-monitor BEGIN v8 ===
 # 自动生成 — 卸载请用 cc-monitor 设置面板 [卸载]，或手动删除 BEGIN/END 之间所有内容。
 # 文档: https://github.com/bo0Zeng/cc-monitor
 
@@ -165,6 +165,14 @@ function __ccm_bind {
     if (-not (Test-Path (Join-Path $ccmDir "ps-registry\$PID.json"))) {
         Write-Warning "cc-monitor: 绑定超时 (monitor 没在跑？)"
     }
+}
+# 这个窗口的标签（进程号-起始时刻，与登记表同一个键）：经下面那层 ssh 送到远端，远端只回显，↗ 先按它找窗口。
+try { $env:LC_CCM_WINDOW = '{0}-{1}' -f $PID, [System.Diagnostics.Process]::GetCurrentProcess().StartTime.ToFileTime() } catch {}
+# ssh 包一层：带上窗口标签（远端 sshd 默认收 LC_* 变量；不收就只是没送到）。其余参数原样交给系统的 ssh。
+function ssh {
+    $exe = Get-Command ssh -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $exe) { Write-Error 'ssh: command not found'; return }
+    & $exe.Source -o SendEnv=LC_CCM_WINDOW @args
 }
 # 每开一个 PowerShell 登记一次（不等、不出声）。
 __ccm_bind -Background
