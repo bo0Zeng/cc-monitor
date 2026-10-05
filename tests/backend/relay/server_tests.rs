@@ -1057,6 +1057,44 @@ fn an_unparsable_content_length_is_refused_with_400_instead_of_dropping_the_body
     );
 }
 
+/// ★ 协议升级（`Upgrade: websocket` 的 `GET`）进门之后当场 426 ＋ 原因头，一个字节都不发上游；
+/// 同一个中转上普通那一发照样到上游（非空对照）。
+#[test]
+fn an_upgrade_request_is_answered_426_and_never_reaches_upstream() {
+    let up = spawn_fake_upstream(None);
+    let (relay_addr, _relay, _tee) = spawn_relay(up.addr);
+    let mut warm = send_request(relay_addr, "/s/agentA/acctA/v1/messages", "");
+    let mut sink0 = Vec::new();
+    warm.read_to_end(&mut sink0).expect("read warmup");
+    assert_eq!(
+        up.seen.lock().expect("lock").len(),
+        1,
+        "非空对照：真打到上游"
+    );
+
+    let (got, clean) = send_raw(
+        relay_addr,
+        &format!(
+            "GET /{}/t/agentA/acctA/v1/responses HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
+            super::key::key_tests::TEST_KEY
+        ),
+    );
+    assert!(
+        got.starts_with("HTTP/1.1 426 "),
+        "升级请求该回 426（拿到的是：{got:?}）"
+    );
+    assert!(
+        got.contains(&format!("{REASON_HEADER}: no-upgrade")),
+        "426 要带原因头（拿到的是：{got:?}）"
+    );
+    assert!(clean, "426 要送得到（拿到的是：{got:?}）");
+    assert_eq!(
+        up.seen.lock().expect("lock").len(),
+        1,
+        "升级请求被转到了上游"
+    );
+}
+
 /// 一个**按脚本发字节**的假上游：先原样吐 `script`，再吐一条最小 SSE 响应。
 /// 只给 `重要-1(D3)`（1xx）那条判据用 —— `spawn_fake_upstream` 的形状里塞不进「前缀」。
 fn spawn_scripted_upstream(script: &'static str) -> SocketAddr {
@@ -3726,6 +3764,11 @@ const STATUS_HOMES: &[(&str, &str, StatusGroup)] = &[
         "504 Gateway Timeout",
         StatusGroup::UpstreamFailed,
     ),
+    (
+        "comms-outward/server.rs",
+        "426 Upgrade Required",
+        StatusGroup::NoUpgrade,
+    ),
     // 门拒绝那两个码：它们住门那一份文件（`door.rs::FORBIDDEN` / `MISDIRECTED`）。
     // 轮换硬上限回的那一份：那一家自己认得的「用满」回包，住适配层（状态码照它真被拒时的那一个）。
     (
@@ -3754,6 +3797,8 @@ enum StatusGroup {
     UpstreamFailed,
     /// 轮换硬上限：照那一家真被拒时的样子回（下游据它停下这一轮；原因头分得出是我们回的）。
     AgentLimit,
+    /// 下游要协议升级（中转不做 ⇒ 426，客户端据它改走普通请求）。
+    NoUpgrade,
     /// 门拒绝（没钥匙 / 错钥匙 / 带 Origin ⇒ 403 · Host 非回环 ⇒ 421）。**与 404 不相交** ——
     /// 「钥匙不对」与「钥匙对、表里没这一行」必须可分（`INVARIANTS §48.1a`）。
     Door,
@@ -3872,6 +3917,11 @@ fn every_status_we_make_has_one_home_and_the_three_groups_are_disjoint() {
         set(&[429]),
         "轮换硬上限那一组"
     );
+    assert_eq!(
+        codes_of(StatusGroup::NoUpgrade),
+        set(&[426]),
+        "协议升级那一组"
+    );
     // ① 两两不相交（`D7`：同码 ⇒ 分不清是我们配错了还是上游挂了）。
     let groups = [
         StatusGroup::Unreadable,
@@ -3880,6 +3930,7 @@ fn every_status_we_make_has_one_home_and_the_three_groups_are_disjoint() {
         StatusGroup::UpstreamFailed,
         StatusGroup::AgentLimit,
         StatusGroup::Door,
+        StatusGroup::NoUpgrade,
     ];
     for (i, a) in groups.iter().enumerate() {
         for b in &groups[i + 1..] {

@@ -83,6 +83,9 @@ const BAD_REQUEST: &str = "400 Bad Request";
 const LENGTH_REQUIRED: &str = "411 Length Required";
 /// 下游请求体超 `BODY_CAP`。
 const PAYLOAD_TOO_LARGE: &str = "413 Payload Too Large";
+/// 下游要协议升级（`Upgrade` 头，WebSocket 那一形）：本中转只搬普通 HTTP，不转上游、当场明说。
+/// 转出去的话上游回什么码都有（400 之类会让客户端这一轮直接报错）；426 是「改用普通请求」的通行码。
+const UPGRADE_REQUIRED: &str = "426 Upgrade Required";
 /// 路径**根本不是路由的形状**。与上游选择那个 404（表里没这一行）同属「路由不成立」一组，原因头不同。
 const NOT_A_ROUTE: &str = "404 Not Found";
 /// 在飞连接顶满（`listen.rs::INFLIGHT_CONNECTIONS`）或起不了连接线程。**「我们这侧现在吃不下」**。
@@ -632,6 +635,12 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
             );
         }
     };
+    if head
+        .header("upgrade")
+        .is_some_and(|v| !v.trim().is_empty())
+    {
+        return respond_and_drain(&mut down_w, UPGRADE_REQUIRED, "no-upgrade");
+    }
     if head.is_chunked_body() {
         return respond_and_drain(&mut down_w, LENGTH_REQUIRED, "length-required");
     }
@@ -728,8 +737,8 @@ pub fn serve_one(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //
     // 今天：1xx 一律**读掉丢弃**再读下一条，直到拿到非 1xx 的那条；
     // 超过 `INTERIM_RESPONSES_ALLOWED` 条就回 [`UPSTREAM_UNREACHABLE`]（那已经不是一个正常的上游）。
-    // ⚠ `101 Switching Protocols` 也是 1xx：本中转**不支持**协议升级
-    //   （`Upgrade` / `Connection` 都在逐跳表里、根本转不到上游），真收到 101 就会
+    // ⚠ `101 Switching Protocols` 也是 1xx：本中转**不支持**协议升级（带 `Upgrade` 的请求进门后当场回 426，
+    //   转出去的请求里 `Upgrade` / `Connection` 也都在逐跳表里），真收到 101 就会
     //   继续往下读，而其后是隧道字节不是 HTTP 头 ⇒ `parse_response` 失败 ⇒ **502**。
     //   那是个**定义好的**结局，不是「当成最终响应发下去」。
     //
