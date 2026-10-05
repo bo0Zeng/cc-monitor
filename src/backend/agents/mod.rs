@@ -66,6 +66,7 @@ pub mod claudecode;
 // 上游协议的流面（按协议分，不按 agent 分）。
 pub(crate) mod codex;
 pub(crate) mod sse_anthropic;
+pub(crate) mod sse_openai_responses;
 
 /// **夹具家** —— 本区验收件的最小假 agent。
 ///
