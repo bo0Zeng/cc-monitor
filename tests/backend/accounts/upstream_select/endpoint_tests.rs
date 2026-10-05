@@ -519,3 +519,25 @@ fn optin_product_is_the_golden_the_ui_decodes() {
     );
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// ★ `relay-optin` 按家取那一格：入参缺 `agent` ⇒ `bad_args`（不猜是哪一家）；登记了这一形的家取到它自己那一格，
+/// 没登记的名字 ⇒ `bad_args`（入参认不出）。
+#[test]
+fn relay_optin_takes_the_family_from_its_args() {
+    assert_eq!(
+        answer_optin(&serde_json::json!({})).unwrap_err().0,
+        "bad_args"
+    );
+    assert_eq!(
+        answer_optin(&serde_json::json!({"agent": "agent-unregistered"}))
+            .unwrap_err()
+            .0,
+        "bad_args"
+    );
+    let cc = crate::agents::settings_env_face("claude-code").expect("claude-code 有这一形");
+    assert_eq!(
+        (cc.snippet)("http://x"),
+        (crate::agents::claudecode::paths::SETTINGS_ENV.snippet)("http://x")
+    );
+    assert!(crate::agents::settings_env_face("agent-unregistered").is_none());
+}

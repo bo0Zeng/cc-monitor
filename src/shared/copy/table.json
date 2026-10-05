@@ -15959,7 +15959,7 @@
     "beUpstreamEndpoint.optin.noAgent": {
       "kind": "error",
       "role": "报错",
-      "zh": "没有 agent 能这样接中转",
+      "zh": "这一家 agent 不能这样接中转",
       "args": []
     },
     "beUpstreamEndpoint.optin.notFile": {

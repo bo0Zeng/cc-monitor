@@ -4,7 +4,7 @@
 //! |---|---|---|
 //! | [`relay_for_exec`] | 这个号这一发指到哪个中转地址（或不指；地址不随会话变，不带会话段；怎么交给那一家由它的注入格定）· 不在时拒还是直连 | `ccm` 在最终 exec 那一处（`control/ccm/plan.rs`）；别名预览走 [`relay_for_preview`] |
 //! | `apikey-routing` | 这几个号在这台的表里有没有行 · 这台的中转在不在 | 界面经 `chan.call` 直接问（账号页徽章） |
-//! | `relay-optin` | 直接敲的那一家也走中转：这台那份用户级设置文件里写没写、对不对 ＋ 要贴的那一段（后端只读、不写那份文件） | 界面经 `chan.call` 直接问（机器页「终端」栏） |
+//! | `relay-optin` | 直接敲的那一家（入参 `agent`）也走中转：这台那份用户级设置文件里写没写、对不对 ＋ 要贴的那一段（后端只读、不写那份文件） | 界面经 `chan.call` 直接问（机器页「终端」栏） |
 //!
 //! 起会话只有 `ccm` 一处：环境、中转地址由那台机器上的 `ccm` 自己定，界面只交一行 `ccm …`。
 //!
@@ -336,14 +336,15 @@ pub(crate) fn optin_state(found: &SettingsBaseUrl, expected: Option<&str>) -> Op
     }
 }
 
-/// `relay-optin`：入参 `{}` → `{state, note, missing, source, snippet, listening}`。
+/// `relay-optin`：入参 `{agent}`（适配器 id）→ 那一家的 `{state, note, missing, source, snippet, listening}`。
 ///
 /// 该贴的那一条 ＝ 决策表里「没表态是哪个号」那一发（[`decide_launch`]，全量注入按「是」—— 贴这一段就是用户自己选了全量）插上这台的钥匙；
 /// 已装 ⇒ 不再带那一段（钥匙只在要贴的时候才出这台）。只读：那份文件由用户自己合并，后端一个字节不写。
-pub(crate) fn answer_optin(_args: &Value) -> EndpointAnswer {
+pub(crate) fn answer_optin(args: &Value) -> EndpointAnswer {
+    let agent = agent_arg(args)?;
     let home = crate::platform::paths::home_dir()
         .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noHome", &[])))?;
-    let (agent, face) = crate::agents::settings_env_face()
+    let face = crate::agents::settings_env_face(agent)
         .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noAgent", &[])))?;
     let registered =
         super::Upstreams::from_env(&|k| std::env::var(k).ok()).is_some_and(|u| u.has(agent));

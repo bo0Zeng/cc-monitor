@@ -149,9 +149,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "relay-optin",
         summary: "直接敲的 agent 也走中转",
-        codes: &["failed"],
-        fields: &[out("listening", "这台我们的中转此刻在不在听（与 `apikey-routing.running` 同一个判准）"), out("missing", "那一段为什么生成不了（这台的中转还没起来过、没有钥匙 · 决策表不给这一条）；已装 / 生成得了 ⇒ 空串"), out("note", "那份文件为什么读不了（`unreadable` 才有，其余空串）"), out("snippet", "要合并进 `env` 的那一段（**带钥匙**：设置文件里写不了 `$(cat …)`）；`installed` 或生成不了 ⇒ `null`"), out("source", "读的是哪份文件（这台后端看到的路径）"), out("state", "`installed`（写着的就是现在那一条）· `stale`（是我们那一形")],
-        takes_input: false,
+        codes: &["bad_args", "failed"],
+        fields: &[arg("agent", "哪一家的那一份（适配器 id）。空串 ⇒ 默认那一家；注册表里没有 ⇒ `bad_args`，那句话列出认得的几家"), out("listening", "这台我们的中转此刻在不在听（与 `apikey-routing.running` 同一个判准）"), out("missing", "那一段为什么生成不了（这台的中转还没起来过、没有钥匙 · 决策表不给这一条）；已装 / 生成得了 ⇒ 空串"), out("note", "那份文件为什么读不了（`unreadable` 才有，其余空串）"), out("snippet", "要合并进那份文件的那一段（**带钥匙**：设置文件里写不了 `$(cat …)`）；`installed` 或生成不了 ⇒ `null`"), out("source", "读的是哪份文件（这台后端看到的路径）"), out("state", "`installed`（写着的就是现在那一条）· `stale`（是我们那一形")],
+        takes_input: true,
         run: Run::Blocking(|r| {
             crate::accounts::upstream_select::endpoint::answer_optin(&r.args)
                 .map(Some)

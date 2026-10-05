@@ -139,9 +139,9 @@ pub(crate) fn stale_ccm(
     })
 }
 
-/// 直接敲的 agent 也走中转：`relay-optin` 那一份 ＋ 那份设置文件现在的内容。
+/// 直接敲的 agent 也走中转：`relay-optin` 那一份（默认那一家）＋ 那份设置文件现在的内容。
 fn relay() -> Option<Relay> {
-    let v = crate::accounts::upstream_select::endpoint::answer_optin(&Value::Null).ok()?;
+    let v = crate::accounts::upstream_select::endpoint::answer_optin(&serde_json::json!({ "agent": "" })).ok()?;
     let state = v.get("state")?.as_str()?.to_string();
     let path = v.get("source")?.as_str()?.to_string();
     let snippet: Option<Value> = v

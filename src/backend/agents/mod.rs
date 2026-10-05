@@ -1633,12 +1633,13 @@ pub(crate) fn default_upstreams() -> impl Iterator<Item = &'static DefaultUpstre
     REGISTRY.iter().filter_map(|a| a.upstream.as_ref())
 }
 
-/// 注册表里第一家声明了「直接敲的也走中转」那一格的：`(路由名, 那一格)`。没有 ⇒ `None`。
-pub(crate) fn settings_env_face() -> Option<(&'static str, SettingsEnvFace)> {
+/// 路由名那一家「直接敲的也走中转」那一格。没登记 / 没有这一形 ⇒ `None`。
+pub(crate) fn settings_env_face(route_id: &str) -> Option<SettingsEnvFace> {
     REGISTRY
         .iter()
         .filter_map(|a| a.upstream.as_ref())
-        .find_map(|u| u.settings_env.map(|f| (u.route_id, f)))
+        .find(|u| u.route_id == route_id)
+        .and_then(|u| u.settings_env)
 }
 
 /// 各家登记的会话标识头（注册序、去重）：中转经上游选择拿到这份名单，按它从请求里认会话 —— 会话 id 归 agent 自己。
