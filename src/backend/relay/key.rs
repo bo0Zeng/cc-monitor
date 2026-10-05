@@ -13,8 +13,9 @@
 //!
 //! # 钥匙怎么到 agent 手里（不在本文件，但本文件的住址是它的另一半）
 //!
-//! `ccm` 在最终 exec 那一处注入 `ANTHROPIC_BASE_URL`：直路在自己进程里读这个文件、把钥匙拼进 agent 进程的环境
-//! （经本文件 [`keyed_with_key_on_disk`]）；非得经 shell 那一趟写成**读这个文件的命令替换** `$(cat ~/<KEY_FILE_REL>)`
+//! `ccm` 在最终 exec 那一处照那一家的注入格（`agents::Inject`）做：认地址环境变量的那一家，直路在自己进程里读这个文件、
+//! 把钥匙拼进那个变量（经本文件 [`keyed_with_key_on_disk`]）；地址只能拼进参数的那一家，地址不带钥匙、钥匙本身进
+//! `relay_route_core::KEY_ENV`（经 [`key_on_disk`]）。非得经 shell 那一趟写成**读这个文件的命令替换** `$(cat ~/<KEY_FILE_REL>)`
 //! （`control/ccm/plan.rs::relay_export`，shell 写法出自 `platform/shell/posix.rs::home_file_between`）。
 //! ⇒ 钥匙只从这个文件进 agent 进程自己的 env；交给终端的那一行、`tmux send-keys` 的 argv、shell 历史、webview 里都没有它。
 //! 两半的相对路径是同一个 const（共享 crate `relay_route_core::KEY_FILE_REL`），不再各写一份再对拍。
@@ -50,6 +51,12 @@ pub(crate) fn read_key(path: &Path) -> Option<Key> {
 pub(crate) fn keyed_with_key_on_disk(home: &Path, url: &str) -> Option<String> {
     let key = read_key(&home.join(KEY_FILE_REL))?;
     relay_route_core::keyed_base_url(url, key.expose())
+}
+
+/// 这台盘上那把钥匙本身（**只读**）：起会话时放进 agent 进程环境 `relay_route_core::KEY_ENV` 那一形用
+/// （那一家的地址只能写进它自己的配置、地址里不带钥匙段，钥匙由它带在钥匙头里）。不在 / 形状不对 ⇒ `None`。
+pub(crate) fn key_on_disk(home: &Path) -> Option<String> {
+    read_key(&home.join(KEY_FILE_REL)).map(|k| k.expose().to_string())
 }
 
 /// 中转起来时拿钥匙：读回；没有或坏了就铸一把新的落盘。**本模块唯一的写口**

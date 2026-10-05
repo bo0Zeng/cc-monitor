@@ -2,7 +2,7 @@
 //!
 //! | 口 | 答什么 | 谁问 |
 //! |---|---|---|
-//! | [`relay_for_exec`] | 这个号这一发往 `ANTHROPIC_BASE_URL` 里写哪个中转地址（或不写；地址不随会话变，不带会话段）· 不在时拒还是直连 | `ccm` 在最终 exec 那一处（`control/ccm/plan.rs`）；别名预览走 [`relay_for_preview`] |
+//! | [`relay_for_exec`] | 这个号这一发指到哪个中转地址（或不指；地址不随会话变，不带会话段；怎么交给那一家由它的注入格定）· 不在时拒还是直连 | `ccm` 在最终 exec 那一处（`control/ccm/plan.rs`）；别名预览走 [`relay_for_preview`] |
 //! | `apikey-routing` | 这几个号在这台的表里有没有行 · 这台的中转在不在 | 界面经 `chan.call` 直接问（账号页徽章） |
 //! | `relay-optin` | 直接敲的那一家也走中转：这台那份用户级设置文件里写没写、对不对 ＋ 要贴的那一段（后端只读、不写那份文件） | 界面经 `chan.call` 直接问（机器页「终端」栏） |
 //!
@@ -151,7 +151,7 @@ pub(crate) fn relay_port(get: &dyn Fn(&str) -> Option<String>) -> u16 {
         .unwrap_or(PORT)
 }
 
-/// **ccm 在最终 exec 那一处问的那一句**：这一发往 `ANTHROPIC_BASE_URL` 里写哪个地址（不带钥匙；`None` = 不注入）。
+/// **ccm 在最终 exec 那一处问的那一句**：这一发指到哪个中转地址（不带钥匙；`None` = 不注入）。
 /// ccm 是一次性进程，中转住同机的常驻后端里 ⇒「在不在」= 这台家目录下的钥匙读得到，且回环口连得上（连不上立刻被拒，不等）。
 /// 钥匙那一格先判：口上的是别人（同机另一个用户）的中转时，这个用户没有那一把，当它不在。
 pub(crate) fn relay_for_exec(
@@ -177,6 +177,12 @@ pub(crate) fn relay_for_exec(
 pub(crate) fn keyed_for_exec(url: &str, get: &dyn Fn(&str) -> Option<String>) -> Option<String> {
     let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))?;
     crate::relay::keyed_with_key_on_disk(&home, url)
+}
+
+/// 这台盘上那把钥匙本身（地址里不带钥匙段的那一家要它进 agent 进程环境）。没有家目录 / 钥匙不在 ⇒ `None`。只读。
+pub(crate) fn key_for_exec(get: &dyn Fn(&str) -> Option<String>) -> Option<String> {
+    let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))?;
+    crate::relay::key_on_disk(&home)
 }
 
 /// 同上，答的是常驻后端自己（别名预览 `ccm-print`）：中转就在本进程里，读本进程的监听状态。

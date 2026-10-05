@@ -85,7 +85,7 @@ pub(crate) fn agents() -> Vec<&'static str> {
 ///
 /// # `base-url-across-tmux` 是怎么来的
 ///
-/// 它声明的是「**我会把 `ANTHROPIC_BASE_URL` 带过 tmux 的进程边界**」——
+/// 它声明的是「**我会把那一家的地址变量（`ANTHROPIC_BASE_URL` 那一类）带过 tmux 的进程边界**」——
 /// tmux server 的 `update-environment` 默认列表不含它，外层那句 `export`
 /// 在边界上会被整个吃掉（`plan.rs` 那段注释逐字「账号注入 100% 失效，**实测过**」）。
 /// 带过去的只有用户自己的端点；我们的中转地址属于某个号，pane 里那一趟按目标账号自己问。
@@ -806,16 +806,23 @@ fn exec_direct(d: &plan::Direct) -> i32 {
     if d.unset_config_dir && !cfg_env.is_empty() {
         std::env::remove_var(cfg_env);
     }
-    if let Some(url) = &d.relay {
-        // 钥匙从这台的钥匙文件读进 agent 进程环境（不进 argv、不进打印出来的命令）。读不到 ⇒ 不起（注进去每一发都被中转拒）。
-        match crate::accounts::upstream_select::endpoint::keyed_for_exec(url, &|k| {
-            std::env::var(k).ok()
-        }) {
-            Some(keyed) => std::env::set_var(&d.base_url_env, keyed),
-            None => return die(&copy_text("beCcm.relay.noKey", &[])),
+    // 钥匙从这台的钥匙文件读进 agent 进程环境（不进 argv、不进打印出来的命令）。读不到 ⇒ 不起（注进去每一发都被中转拒）。
+    let get = |k: &str| std::env::var(k).ok();
+    match (&d.relay, &d.relay_via) {
+        (Some(url), plan::RelayVia::Env(var)) => {
+            match crate::accounts::upstream_select::endpoint::keyed_for_exec(url, &get) {
+                Some(keyed) => std::env::set_var(var, keyed),
+                None => return die(&copy_text("beCcm.relay.noKey", &[])),
+            }
         }
-    } else if d.clears_inherited_relay {
-        std::env::remove_var(&d.base_url_env);
+        (Some(_), plan::RelayVia::Args) => {
+            match crate::accounts::upstream_select::endpoint::key_for_exec(&get) {
+                Some(key) => std::env::set_var(relay_route_core::KEY_ENV, key),
+                None => return die(&copy_text("beCcm.relay.noKey", &[])),
+            }
+        }
+        (None, plan::RelayVia::Env(var)) if d.clears_inherited_relay => std::env::remove_var(var),
+        _ => {}
     }
     if !d.cwd.is_empty() && std::env::set_current_dir(&d.cwd).is_err() {
         return die(&copy_text(

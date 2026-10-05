@@ -1320,8 +1320,6 @@ pub(crate) struct DefaultUpstream {
     pub(crate) env: &'static str,
     /// 没配 `env` 时这一家发到哪儿（配了 ⇒ 一律发到那个值）。
     pub(crate) fallback: Fallback,
-    /// 这一家进程读哪个环境变量找上游：`ccm` 起会话时中转地址经它注入，继承来的那一条（用户自己的端点 · 别的号的中转）也只看它。
-    pub(crate) base_url_env: &'static str,
     /// 这一家的请求里**它自己带着会话标识**的那个头（中转拿它给流打标签）。`None` = 说不出 ⇒ 流不带标签。
     pub(crate) session_header: Option<&'static str>,
     /// 这一家的上游说哪种流协议（归一流的折法）。`None` ＝ 它的流不折（活卡认不得）。
@@ -1352,6 +1350,9 @@ pub(crate) struct DefaultUpstream {
     pub(crate) login: Option<LoginFace>,
     /// 这一家自己认得的「用满」回包（轮换的硬上限用它：这一发不发上游、回这一份）。`None` ＝ 给不出 ⇒ 对它硬上限不成立、按软阈值办。
     pub(crate) limit_reply: Option<LimitReplyOf>,
+    /// 起会话时怎么把这一家指到中转（`ccm` 最终 exec 那一处照这一格做）。是 [`Inject::Env`] 的那一家，
+    /// 继承来的那一条地址（用户自己的端点 · 别的号的中转）也只看那个变量。
+    pub(crate) inject: Inject,
 }
 
 /// 一份「用满」回包：状态行里状态码那一截 · 头 · 体。
@@ -1397,6 +1398,30 @@ pub(crate) fn limit_reply_of(route_id: &str) -> Option<LimitReplyOf> {
         .filter_map(|a| a.upstream.as_ref())
         .find(|u| u.route_id == route_id)
         .and_then(|u| u.limit_reply)
+}
+
+/// 怎么把一家指到中转。地址都由上游选择给（不带钥匙）；钥匙只从钥匙文件进 agent 进程的环境，不进 argv。
+#[derive(Clone, Copy)]
+pub(crate) enum Inject {
+    /// 插上钥匙的地址放进这个环境变量。
+    Env(&'static str),
+    /// 不带钥匙的地址拼成这几个参数（垫在透传之前）；钥匙放进环境变量 `relay_route_core::KEY_ENV`，
+    /// 由这一家自己带在钥匙头 `relay_route_core::KEY_HEADER` 里（地址只能经它自己的配置改的那一家）。
+    Args(fn(&str) -> Vec<String>),
+}
+
+/// 某一家（wire 上的 kind）在给定注册表里怎么指到中转。认不出 / 没登记默认上游 ⇒ `None`。
+pub(crate) fn inject_among(registry: &[Adapter], kind: &str) -> Option<Inject> {
+    registry
+        .iter()
+        .find(|a| a.kind == kind)
+        .and_then(|a| a.upstream.as_ref())
+        .map(|u| u.inject)
+}
+
+/// [`inject_among`] 在生产注册表上。
+pub(crate) fn inject_of(kind: &str) -> Option<Inject> {
+    inject_among(REGISTRY, kind)
 }
 
 /// 一家的内置默认上游：一个，或按这一发自己带没带某个头二选一（同一家两种登录各有真上游时；只看头名、不看值）。
@@ -1850,14 +1875,13 @@ pub(crate) fn account_env_of(kind: &str) -> Option<&'static str> {
         .and_then(|a| a.account_env)
 }
 
-/// 某一家找上游读的那个环境变量（[`DefaultUpstream::base_url_env`]）。认不出这家 / 这一家没登记上游 ⇒ `None`
-/// （`ccm` 对它不注入中转、也不清继承来的那一条）。
+/// 某一家找上游读的那个环境变量（注入格是 [`Inject::Env`] 的那个变量）。认不出这家 / 没登记上游 / 地址只能拼进参数 ⇒ `None`
+/// （`ccm` 对它不往环境里注入中转地址、也不清继承来的那一条）。
 pub(crate) fn base_url_env_of(kind: &str) -> Option<&'static str> {
-    REGISTRY
-        .iter()
-        .find(|a| a.kind == kind)
-        .and_then(|a| a.upstream.as_ref())
-        .map(|u| u.base_url_env)
+    match inject_of(kind) {
+        Some(Inject::Env(v)) => Some(v),
+        _ => None,
+    }
 }
 
 /// 某一家请求压缩上下文用的那一句（[`Adapter::compact_request`]）。认不出这家 / 这一家不支持 ⇒ `None`。

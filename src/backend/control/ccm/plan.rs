@@ -22,9 +22,17 @@ use shell_quote_core::posix_quote as sq;
 
 /// 本机起新会话回填 sid 用的身份 token 那个环境变量（读侧 `observe/accounts_query.rs` 的同名常量）。
 
-/// 直路注入中转地址那一句（`--ccm-print` 与非得经 shell 那一趟同一份）。`var` ＝ 这一家找上游读的那个环境变量。
+/// 直路注入中转地址那一句（`--ccm-print` 与非得经 shell 那一趟同一份）：`var` ＝ 那一家认的地址环境变量。
 pub(crate) fn relay_export(var: &str, url: &str) -> String {
     posix::export(var, &relay_word(url))
+}
+
+/// 地址只能拼进参数的那一家：钥匙本身进 [`relay_route_core::KEY_ENV`] 那一句（钥匙写成读钥匙文件的命令替换）。
+fn key_export() -> String {
+    posix::export(
+        relay_route_core::KEY_ENV,
+        &posix::home_file_between("\"", relay_route_core::KEY_FILE_REL, "\""),
+    )
 }
 
 /// 一条不带钥匙的中转地址 ⇒ `--ccm-print` 里那个 shell 词：钥匙段写成读那台钥匙文件的命令替换（钥匙不进打印出来的命令）。
@@ -88,7 +96,7 @@ pub(crate) struct Env {
     /// 问「此刻哪些会话在跑」的那一次扫描（观测层的，由入口注入 —— control 不引用 observe）。
     /// 入参 = 这一趟要用的账号配置目录（`None` = agent 自己的默认家目录）。`None` = 这一趟不问（预览 / 不是 resume）。
     pub(crate) running_sessions: Option<super::RunningScan>,
-    /// 这一发往 [`Self::base_url_env`] 里写什么（上游选择那张决策表，入口注入）。`None` = 不问（判据 / 不起 agent）。
+    /// 这一发指到哪个中转地址（上游选择那张决策表，入口注入）。`None` = 不问（判据 / 不起 agent）。
     pub(crate) relay: Option<RelayAsk>,
 }
 
@@ -503,14 +511,25 @@ pub(crate) struct Direct {
     pub(crate) argv: Vec<String>,
     /// 这一趟有没有身份面（claude 有、codex 没有）。
     pub(crate) has_identity: bool,
-    /// 这一家找上游读的那个环境变量（见 [`Env::base_url_env`]；没登记上游 ⇒ 空串，下面两格恒为空 / 假）。
-    pub(crate) base_url_env: String,
     /// 要注入的中转地址（不带钥匙；钥匙在 exec 那一刻从那台的钥匙文件读）。`None` = 不注入。
     pub(crate) relay: Option<String>,
+    /// 这一家怎么指到中转（适配层那一格的计划形）。
+    pub(crate) relay_via: RelayVia,
     /// 环境里本来就有一个不是我们注入的上游地址（用户自己的端点）⇒ 不动它，说一句。
     pub(crate) keeps_user_base_url: bool,
     /// 环境里继承来的是我们的中转那一形（别的号的），而这一发不注入 ⇒ exec 之前清掉它。
     pub(crate) clears_inherited_relay: bool,
+}
+
+/// 一家怎么指到中转，落到计划里的样子（[`crate::agents::Inject`] 的两形；没登记 ⇒ [`RelayVia::None`]）。
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) enum RelayVia {
+    /// 插上钥匙的地址进这个环境变量（继承来的我们那一形不注入时清掉它）。
+    Env(String),
+    /// 不带钥匙的地址已经拼进 argv；钥匙进 [`relay_route_core::KEY_ENV`]。
+    Args,
+    #[default]
+    None,
 }
 
 /// POSIX argv 元素的**最省引号**写法：能裸写就裸写。
@@ -811,7 +830,7 @@ pub(crate) fn resolve_account(
 /// |---|---|---|
 /// | 工作目录（`--cwd` / 当前目录） | 绝对路径（`Path::is_absolute`，Windows 上认 `C:\` 那一形）· 没有 `..` 段 | NUL / CR / LF |
 /// | 透传给 agent 的参数 · 登记备注（可以跨行：多行初始任务） | — | NUL / CR（`shell_quote_core::arg_text_ok`） |
-/// | 继承来的 `CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` | — | NUL / CR / LF |
+/// | 继承来的账号目录变量 / 地址变量（`CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` 那一类） | — | NUL / CR / LF |
 ///
 /// 〔`INVARIANTS §47` ③〕**启动器不在上表**：它是命令片段（带参数 · alias · 路径），不是自由文本 ——
 /// 过全仓那一张白名单 `shell_quote_core::launcher_refused_char`（与 monitor 本机 `history.rs` · 远端载荷 `payload.rs` 同一条；
@@ -1133,20 +1152,17 @@ pub(crate) fn build_among(
     }
 
     // ── 非容器路（最终 exec 的那一处）────────────────────────────────────
-    let mut argv = launcher_words(&launcher, &env.home);
-    // 这一家要垫在最前面的参数（Codex 的 `--no-daemon`）；透传里自己写了的不重复垫。
-    for a in face.map_or(&[][..], |f| f.launch_args) {
-        if !o.passthru.iter().any(|p| p == a) {
-            argv.push((*a).to_string());
-        }
-    }
-    argv.extend(o.passthru.iter().cloned());
     // 中转地址只在这里定，按**这一发的目标账号**问上游选择那张表（容器路的 pane 里那一趟也走到这里）。
     // 环境里继承来的：用户自己的端点 ⇒ 不动、说一句；我们的中转那一形（别的号的）⇒ 不认，重问，
     // 这一发不注入时还要清掉它（否则 agent 拿着别的号的路由出去）。
+    let relay_via = match crate::agents::inject_among(registry, &o.agent) {
+        Some(crate::agents::Inject::Env(v)) => RelayVia::Env(v.to_string()),
+        Some(crate::agents::Inject::Args(_)) => RelayVia::Args,
+        None => RelayVia::None,
+    };
     let keeps_user_base_url = user_base_url(env).is_some();
     let relay = match (keeps_user_base_url, env.relay, face) {
-        (false, Some(ask), Some(f)) if !env.base_url_env.is_empty() => {
+        (false, Some(ask), Some(f)) if relay_via != RelayVia::None => {
             let account = if !config_dir.is_empty() {
                 LaunchAccount::Named {
                     config_dir: config_dir.clone(),
@@ -1171,10 +1187,26 @@ pub(crate) fn build_among(
     };
     let clears_inherited_relay = relay.is_none()
         && !keeps_user_base_url
+        && matches!(relay_via, RelayVia::Env(_))
         && env
             .inherited_base_url
             .as_deref()
             .is_some_and(|v| !v.is_empty());
+
+    let mut argv = launcher_words(&launcher, &env.home);
+    // 这一家要垫在最前面的参数（Codex 的 `--no-daemon`）；透传里自己写了的不重复垫。
+    for a in face.map_or(&[][..], |f| f.launch_args) {
+        if !o.passthru.iter().any(|p| p == a) {
+            argv.push((*a).to_string());
+        }
+    }
+    // 地址只能拼进参数的那一家：不带钥匙的地址垫在透传之前（钥匙走环境，见 [`RelayVia::Args`]）。
+    if let (Some(url), Some(crate::agents::Inject::Args(words))) =
+        (&relay, crate::agents::inject_among(registry, &o.agent))
+    {
+        argv.extend(words(url));
+    }
+    argv.extend(o.passthru.iter().cloned());
 
     Ok(Plan::Direct(Direct {
         ccm_env: env.ccm_env.clone(),
@@ -1192,8 +1224,8 @@ pub(crate) fn build_among(
         cwd,
         argv,
         has_identity: face.is_some_and(|f| f.has_identity),
-        base_url_env: env.base_url_env.clone(),
         relay,
+        relay_via,
         keeps_user_base_url,
         clears_inherited_relay,
     }))
@@ -1360,10 +1392,13 @@ fn render_direct(d: &Direct) -> String {
     if !d.nested.is_empty() {
         line.push_str(&posix::unset(&d.nested));
     }
-    if let Some(url) = &d.relay {
-        line.push_str(&relay_export(&d.base_url_env, url));
-    } else if d.clears_inherited_relay {
-        line.push_str(&posix::unset(&[&d.base_url_env]));
+    match (&d.relay, &d.relay_via) {
+        (Some(url), RelayVia::Env(var)) => line.push_str(&relay_export(var, url)),
+        (Some(_), RelayVia::Args) => line.push_str(&key_export()),
+        (None, RelayVia::Env(var)) if d.clears_inherited_relay => {
+            line.push_str(&posix::unset(&[var]))
+        }
+        _ => {}
     }
     if !d.cwd.is_empty() {
         line.push_str(&format!("cd {} && ", sq(&d.cwd)));
@@ -1392,16 +1427,24 @@ fn render_direct_ps(d: &Direct) -> String {
     if !d.nested.is_empty() {
         line.push_str(&ps::remove_env(&d.nested));
     }
-    if let Some(url) = &d.relay {
-        let word = match crate::accounts::upstream_select::endpoint::base_url_halves(url) {
-            Some((head, tail)) => {
-                ps::home_file_between(&pq(head), relay_route_core::KEY_FILE_REL, &pq(tail))
-            }
-            None => pq(url),
-        };
-        line.push_str(&ps::set_env(&d.base_url_env, &word));
-    } else if d.clears_inherited_relay {
-        line.push_str(&ps::remove_env(&[&d.base_url_env]));
+    match (&d.relay, &d.relay_via) {
+        (Some(url), RelayVia::Env(var)) => {
+            let word = match crate::accounts::upstream_select::endpoint::base_url_halves(url) {
+                Some((head, tail)) => {
+                    ps::home_file_between(&pq(head), relay_route_core::KEY_FILE_REL, &pq(tail))
+                }
+                None => pq(url),
+            };
+            line.push_str(&ps::set_env(var, &word));
+        }
+        (Some(_), RelayVia::Args) => line.push_str(&ps::set_env(
+            relay_route_core::KEY_ENV,
+            &ps::home_file_between(&pq(""), relay_route_core::KEY_FILE_REL, &pq("")),
+        )),
+        (None, RelayVia::Env(var)) if d.clears_inherited_relay => {
+            line.push_str(&ps::remove_env(&[var]))
+        }
+        _ => {}
     }
     if !d.cwd.is_empty() {
         line.push_str(&ps::set_location(&pq(&d.cwd)));
