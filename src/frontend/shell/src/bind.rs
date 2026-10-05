@@ -353,8 +353,10 @@ pub enum FrontOutcome {
     Unclear,
     /// 找到了，系统不许抢前台（它在任务栏闪）。
     Refused,
-    /// 链上有控制台 shell 却没有窗口：窗口归了链外的程序（默认终端交接给了 Windows Terminal）。`program` 是开着那条连接的程序。
+    /// 链上有控制台 shell 却没有窗口（默认终端交接给了 Windows Terminal），借它的控制台挂记号标题也借不到。`program` 是开着那条连接的程序。
     HostedByWt { program: String },
+    /// 默认终端交接那一形：记号标题挂上了，没有哪个窗口带着它 ⇒ 它在 Windows Terminal 某个窗口的后台标签页里。
+    BackgroundTab { program: String },
     /// 整条链连个 shell 都没有：真在后台。
     NoWindow { program: String },
     /// 这台系统没有「按句柄找 / 验 / 拉前窗口」这一族。
@@ -611,13 +613,26 @@ pub(crate) fn walk_chain<'a>(
     ChainHit::Nothing
 }
 
+/// 点击那一刻在链上那个控制台 shell 上挂一次记号标题、按标题找窗口的结局（默认终端交接那一档）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TitleProbe {
+    /// 带着记号标题的那个窗口。
+    Found(FoundWindow),
+    /// 记号挂上了，没有哪个窗口的标题带着它（Windows Terminal 只把前台标签页的标题给窗口）。
+    NotShown,
+    /// 借不到那个控制台。
+    Unavailable,
+}
+
 /// 进程链 ⇒ 要拉的那个窗口：链上登记过的 PowerShell ⇒ 它登记的窗口（精确到窗口）；否则终端窗口的属主恰好一个窗口 ⇒ 它；
-/// 好几个 ⇒ 分不清（不挑，交出候选）；整条链都没有 ⇒ 没有窗口。`start_of` 读属主的起始时刻。
+/// 好几个 ⇒ 分不清（不挑，交出候选）；链上只有一个没有窗口的控制台 shell（默认终端交接）⇒ 在它的控制台上挂一次记号标题
+/// 按标题找（`probe`）；整条链都没有 ⇒ 没有窗口。`start_of` 读属主的起始时刻。
 pub(crate) fn pick_chain_window(
     chain: &[ChainLink],
     registered: impl Fn(u32) -> Option<HwndEntry>,
     windows_of: impl Fn(u32) -> Vec<isize>,
     start_of: impl Fn(u32) -> u64,
+    probe: impl Fn(u32) -> TitleProbe,
 ) -> Result<FoundWindow, FrontOutcome> {
     match walk_chain(chain, registered, windows_of) {
         ChainHit::Registered(e) => Ok(FoundWindow::of(&e)),
@@ -636,13 +651,72 @@ pub(crate) fn pick_chain_window(
         // 不是在后台跑；整条链连个 shell 都没有 ⇒ 真在后台。
         ChainHit::Nothing => {
             let program = chain.first().map(|l| l.name.clone()).unwrap_or_default();
-            if chain.iter().any(|l| is_console_shell(&l.name)) {
-                Err(FrontOutcome::HostedByWt { program })
-            } else {
-                Err(FrontOutcome::NoWindow { program })
+            match chain.iter().find(|l| is_console_shell(&l.name)) {
+                Some(shell) => match probe(shell.pid) {
+                    TitleProbe::Found(w) => Ok(w),
+                    TitleProbe::NotShown => Err(FrontOutcome::BackgroundTab { program }),
+                    TitleProbe::Unavailable => Err(FrontOutcome::HostedByWt { program }),
+                },
+                None => Err(FrontOutcome::NoWindow { program }),
             }
         }
     }
+}
+
+/// 生产那一份记号标题探针：借 `pid` 的控制台挂 `ccm-front-<pid>-<随机>`，按标题子串找窗口（标题经 Windows Terminal
+/// 转到窗口上要一会儿 ⇒ 最多等 600 ms，同握手那条的重试）。
+fn probe_by_marker_title(pid: u32) -> TitleProbe {
+    let marker = format!(
+        "ccm-front-{pid}-{}",
+        &uuid::Uuid::new_v4().simple().to_string()[..8]
+    );
+    let hit = crate::platform::console_title::with_marker_title(pid, &marker, || {
+        for _ in 0..12 {
+            if let Some(m) = find_window_by_marker_substr(&marker) {
+                return Some(m);
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        None
+    });
+    match hit {
+        None => TitleProbe::Unavailable,
+        Some(None) => TitleProbe::NotShown,
+        Some(Some(m)) => TitleProbe::Found(FoundWindow {
+            hwnd: m.hwnd,
+            owner_pid: m.owner_pid,
+            owner_proc_start: crate::platform::pid::creation_filetime(m.owner_pid)
+                .map(|ft| ft.0)
+                .unwrap_or(0),
+        }),
+    }
+}
+
+/// 那台回显的窗口标签（`<PowerShell 进程号>-<起始时刻>`，接入块设的）⇒ 握手表里那一条：同一个 PowerShell（起始时刻对得上）、
+/// 登记还作数（`holding`）。几个终端按交来的顺序（最近动静在前），第一个对上的就是它。
+pub(crate) fn labeled_registration(
+    terminals: &[serde_json::Value],
+    holding: impl Fn(u32) -> Option<HwndEntry>,
+) -> Option<HwndEntry> {
+    terminals
+        .iter()
+        .filter_map(|t| t.get("window")?.as_str()?.split_once('-'))
+        .filter_map(|(p, s)| Some((p.parse::<u32>().ok()?, s.parse::<u64>().ok()?)))
+        .find_map(|(pid, start)| {
+            holding(pid).filter(|e| e.ps_proc_start.trim().parse::<u64>().ok() == Some(start))
+        })
+}
+
+/// ↗ 远端那一格先按窗口标签找：对上了 ⇒ 校验、拉前，回那一次的结局；没有标签 / 对不上 ⇒ `None`（接着按连接对）。
+pub fn bring_labeled_window(
+    terminals: &[serde_json::Value],
+    bind: &BindRegistry,
+) -> Option<FrontOutcome> {
+    if !crate::platform::hwnd::SUPPORTED {
+        return None;
+    }
+    labeled_registration(terminals, |pid| holding_registration(bind, pid))
+        .map(|e| bring_found_window(&FoundWindow::of(&e)))
 }
 
 /// 交互终端里的 shell（有它 ⇒ 这一串进程是开在一个终端窗口里的）。
@@ -676,6 +750,7 @@ pub fn bring_chain_window(chain: &[ChainLink], bind: &BindRegistry) -> FrontOutc
                 .map(|ft| ft.0)
                 .unwrap_or(0)
         },
+        probe_by_marker_title,
     );
     match picked {
         Ok(w) => bring_found_window(&w),

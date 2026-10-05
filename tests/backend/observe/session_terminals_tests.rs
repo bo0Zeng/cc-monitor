@@ -56,8 +56,8 @@ fn attach_client(sock: &std::path::Path, ssh: &str, window: Option<&str>) -> Chi
         c.env("LC_CCM_WINDOW", w);
     }
     c.stdin(Stdio::null())
-    .stdout(Stdio::null())
-    .stderr(Stdio::null());
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     c.spawn().expect("起不来 script —— 本组要它造 pty")
 }
 
@@ -105,7 +105,11 @@ fn inside_tmux_the_answer_is_the_clients_attached_right_now() {
     assert!(wait_until(10, || clients(&sock) == 1), "客户端 A 没连上");
     // tmux 的动静是秒级的：隔开一秒多，B 才是「更近」的那个。
     std::thread::sleep(Duration::from_millis(1300));
-    let mut b = attach_client(&sock, "fd00::7 50000 fd00::1 2222", Some("4242-133000000000000000"));
+    let mut b = attach_client(
+        &sock,
+        "fd00::7 50000 fd00::1 2222",
+        Some("4242-133000000000000000"),
+    );
     assert!(wait_until(10, || clients(&sock) == 2), "客户端 B 没连上");
 
     let got = shown_by(pane_pid).unwrap();
@@ -242,8 +246,20 @@ fn ssh_connection_is_four_fields_or_nothing() {
         assert_eq!(parse_ssh_connection(bad), None, "{bad:?} 不该认");
     }
     // 窗口标签：`<进程号>-<起始时刻>` 才回显，别的形状一律不带。
-    assert_eq!(window_label(" 4242-133000000000000000 "), Some("4242-133000000000000000".into()));
-    for bad in ["", "4242", "-1", "4242-", "a-1", "1-2-3", "12345678901-1", "1-123456789012345678901"] {
+    assert_eq!(
+        window_label(" 4242-133000000000000000 "),
+        Some("4242-133000000000000000".into())
+    );
+    for bad in [
+        "",
+        "4242",
+        "-1",
+        "4242-",
+        "a-1",
+        "1-2-3",
+        "12345678901-1",
+        "1-123456789012345678901",
+    ] {
         assert_eq!(window_label(bad), None, "{bad:?} 不该认");
     }
     assert_eq!(
