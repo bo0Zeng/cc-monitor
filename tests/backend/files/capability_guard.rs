@@ -515,6 +515,8 @@ fn the_find_fields_match_what_the_call_really_returns() {
 #[test]
 fn the_index_rebuild_fields_match_what_the_call_really_returns() {
     let _lock = resident_lock();
+    // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
+    let _serial = crate::files::index::testing::serial();
     let fx = crate::files::index::tests::make_tree("rebuild-fields", 2, 3, 0);
     let v = answer(
         "files.index.rebuild",
@@ -567,6 +569,8 @@ fn the_index_rebuild_fields_match_what_the_call_really_returns() {
 #[test]
 fn a_rebuild_on_an_unreadable_root_is_refused_without_touching_the_resident_index() {
     let _lock = resident_lock();
+    // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
+    let _serial = crate::files::index::testing::serial();
     let fx = crate::files::index::tests::make_tree("rebuild-keep", 2, 2, 0);
     answer(
         "files.index.rebuild",
@@ -661,6 +665,8 @@ fn the_browse_fields_match_what_the_call_really_returns() {
 #[test]
 fn the_new_two_capabilities_declared_codes_are_not_ghosts() {
     let _lock = resident_lock();
+    // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
+    let _serial = crate::files::index::testing::serial();
     for (cap, args, want) in [
         // `path` 那一族与同族其余两条逐字同一条路（`path_arg`）。
         (
