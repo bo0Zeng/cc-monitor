@@ -207,3 +207,21 @@ fn restarting_n_times_lands_the_window_in_the_same_place() {
         ((784, 561), (-1360, 220))
     );
 }
+
+/// 开窗那一刻问到的外框比内框还小（Linux GTK 上窗口还没映射时的占位尺寸）⇒ 不许把窗「夹」成那个占位尺寸。
+#[test]
+fn a_placeholder_outer_size_smaller_than_the_inner_does_not_shrink_the_window() {
+    let work = WorkArea {
+        x: 0,
+        y: 0,
+        w: 1400,
+        h: 900,
+    };
+    let (inner, pos) = center_in_work_area((149, 35), (1100, 800), work);
+    assert_eq!(inner, (1100, 800));
+    assert_eq!(pos, (150, 50));
+    assert_eq!(
+        fit_into_work_area((10, 10), (149, 35), (1100, 800), work),
+        None
+    );
+}
