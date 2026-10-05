@@ -412,7 +412,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         both(Frame::AccountsChanged),
         both(Frame::QuotaChanged),
         both(Frame::RotationChanged { sid: s("s1") }),
-        both(Frame::AutostartChanged),
         both(Frame::TasksChanged { sid: s("s1") }),
         both(Frame::SessionsReplayed),
         both(Frame::SessionFileGone {
@@ -624,10 +623,6 @@ fn link_frames_have_exactly_these_bytes() {
         ),
         (Frame::AccountsChanged, "{\"kind\":\"accounts_changed\"}\n"),
         (Frame::QuotaChanged, "{\"kind\":\"quota_changed\"}\n"),
-        (
-            Frame::AutostartChanged,
-            "{\"kind\":\"autostart_changed\"}\n",
-        ),
         (
             Frame::RotationChanged { sid: "s1".into() },
             "{\"kind\":\"rotation_changed\",\"sid\":\"s1\"}\n",

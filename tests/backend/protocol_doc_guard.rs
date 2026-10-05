@@ -130,12 +130,6 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "assets/asset_sync.rs",
         include_str!("../../src/backend/assets/asset_sync.rs"),
     ),
-    // 自动起算那一趟交给 `claude` 的参数（`OPEN_WINDOW`）是 `"--x"` 字面量 ⇒ 派生的文件集把它扫了进来；
-    // 它们是子进程旗标，登记在 `CHILD_PROCESS_FLAGS`（从对拍里按文件摘掉、由那条接盘判据接住）。
-    (
-        "agents/claudecode/quota.rs",
-        include_str!("../../src/backend/agents/claudecode/quota.rs"),
-    ),
     // 历史跨机 join：本机后端在远端跑 `--list-projects` / `--list-sessions`（那台的 CLI 老子命令）——
     //   同 `asset_sync.rs`：它不分派，是**发**这两个子命令的一方；登记之后那两个字面量受对拍约束。
     (
@@ -273,20 +267,6 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
         &["--resume"],
         "`claude` 那一家 resume 的 flag 形字面量（`agents/claudecode/resume.rs::RESUME_TOKEN`，起会话事实的唯一住址）：\
          它是 claude 这个子进程的命令面，后端 argv 从不认它，线上契约里也没有它的位置。",
-    ),
-    // 自动起算那一趟交给 `claude` 的参数：子进程在仓外 ⇒ ② 那一侧读 `claude --help` 里这几个旗标的那一份摘录。
-    (
-        "agents/claudecode/quota.rs",
-        "tests/__fixtures__/claude-print-flags.txt",
-        &[
-            "--model",
-            "--no-session-persistence",
-            "--setting-sources",
-            "--strict-mcp-config",
-            "--tools",
-        ],
-        "`claude` 那一家「让额度窗口开始计时」那一趟的参数（`agents/claudecode/quota.rs::OPEN_WINDOW`，自动起算经 ccm 起它）：\
-         它们是 claude 这个子进程的命令面，后端 argv 从不认它们，线上契约里也没有它们的位置。",
     ),
     (
         "agents/codex/resume.rs",
@@ -775,15 +755,6 @@ mod tests {
                             })
                     })
                     .flatten()
-                    .collect()
-            } else if child.ends_with(".txt") {
-                // 仓外程序 `--help` 里那几行的摘录：每行第一个词是它认的一个旗标。
-                script
-                    .lines()
-                    .filter(|l| !l.trim_start().starts_with('#'))
-                    .filter_map(|l| l.split_whitespace().next())
-                    .filter(|w| w.starts_with("--"))
-                    .map(str::to_string)
                     .collect()
             } else if script.lines().any(|l| l.trim() == "while true; do") {
                 shell_loop_flags(&script)

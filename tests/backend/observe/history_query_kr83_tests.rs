@@ -225,14 +225,12 @@ fn sessions_without_a_directory_join_the_most_recent_group() {
     assert_eq!(g(&[(None, 1), (None, 2)]), vec!["", ""]);
 }
 
-/// 自动起算那一趟的会话（工作目录是这台家里的 `autostart/`）不进项目清单；同一个记录目录里别的目录照常出。
+/// 工作目录是这台家里 `autostart/` 的会话不进项目清单；同一个记录目录里别的目录照常出。
 #[test]
-fn autostart_sessions_are_hidden_from_the_project_list() {
+fn sessions_in_the_hidden_dir_are_left_out_of_the_project_list() {
     let root = tmp_root("autostart");
     let home = root.join("data");
-    let auto = home.join(relay_route_core::file_name_of(
-        relay_route_core::AUTOSTART_DIR_REL,
-    ));
+    let auto = home.join("autostart");
     std::fs::create_dir_all(&auto).unwrap();
     let dir = root.join("projects").join("-x");
     std::fs::create_dir_all(&dir).unwrap();

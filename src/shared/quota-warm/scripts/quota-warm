@@ -1,0 +1,245 @@
+#!/usr/bin/env python3
+"""quota-warm：让各账号的 5h 窗口尽早开始计时。
+
+读 `ccm -- --quota-read` 看每个号的 5h 重置时刻：
+- 窗口在计时（重置时刻在将来）⇒ 不动，等它到点；
+- 窗口已过期、或这台中转从没见过这个号的数 ⇒ 用这个号发一句最短的话，让窗口开始计时
+  （在计时中的窗口不会因此被推后；没见过的号只有发一句才知道它此刻的状态）；
+- 被拒（5h 或 7d 用满）⇒ 等到它重置；
+- 登录失效 ⇒ 记一行，过一阵再看。
+
+发法：官方 `claude -p` 经 ccm 起、走本机中转（额度账由中转记下），haiku · 不给工具 · 不起 MCP ·
+关掉思考 · 不落会话记录 · 系统提示词换成一句，工作目录用 `~/.cc-monitor/autostart`（后端在历史与会话列表里藏掉它）。
+实测一发（claude 2.1.289）：输入约 870 token（claude 自带、去不掉的那一段）· 输出 4 token。
+不换系统提示词时约 6.8k token：缓存热时按一成价算，可隔几小时才发一次时缓存早过期、要按写缓存价付 ⇒ 换掉更省。
+
+用法：
+  quota-warm status             只读：列出各号的重置时刻
+  quota-warm once               跑一趟（该发的发）后退出
+  quota-warm run                先跑一趟，之后按最早的重置时刻自己醒来再跑，一直跑
+  选项：--accounts work,personal（不给 ⇒ 账号库里所有已登录的号）· --system '只回复字母a' · --text a · --model haiku · --dry-run
+"""
+
+import argparse
+import fcntl
+import json
+import os
+import subprocess
+import sys
+import time
+from datetime import datetime
+
+HOME = os.path.expanduser("~")
+CCM_HOME = os.path.join(HOME, ".cc-monitor")
+CCM = os.path.join(CCM_HOME, "bin", "ccm")
+ACCOUNTS_DIR = os.path.join(CCM_HOME, "accounts")
+WORK_DIR = os.path.join(CCM_HOME, "autostart")
+LOG = os.path.join(CCM_HOME, "logs", "quota-warm.log")
+LOCK = os.path.join(CCM_HOME, "quota-warm.lock")
+
+MARGIN_S = 60          # 重置时刻之后再等这么久才看（重置时刻按整点 / 十分对齐，留余量）
+RETRY_S = 15 * 60      # 发了没出新数 / 读不到额度账 ⇒ 过这么久再试
+LOGIN_RETRY_S = 60 * 60
+SEND_TIMEOUT_S = 120
+SLEEP_CHUNK_S = 600    # 长睡分段：机器休眠醒来后按真实时刻重算
+
+
+def stamp(t=None):
+    t = time.time() if t is None else t
+    d = datetime.fromtimestamp(t)
+    return d.strftime("%H:%M") if d.date() == datetime.now().date() else d.strftime("%m-%d %H:%M")
+
+
+def log(msg):
+    line = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} {msg}"
+    print(line, flush=True)
+    try:
+        os.makedirs(os.path.dirname(LOG), exist_ok=True)
+        with open(LOG, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except OSError:
+        pass
+
+
+def clean_env():
+    """交给 ccm 的环境：去掉本进程从某个 claude 会话里继承来的那几格，免得发到别的号 / 别的中转上。"""
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not (
+            k.startswith(("CCM_", "CLAUDE_CODE_", "ANTHROPIC_"))
+            or k in ("CLAUDE_CONFIG_DIR", "TMUX", "TMUX_PANE")
+        )
+    }
+    env["MAX_THINKING_TOKENS"] = "0"
+    env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+    return env
+
+
+def quota_read():
+    p = subprocess.run(
+        [CCM, "--", "--quota-read"],
+        env=clean_env(), cwd=HOME, capture_output=True, text=True, timeout=60,
+    )
+    if p.returncode != 0:
+        raise RuntimeError(f"quota-read 退出码 {p.returncode}: {p.stderr.strip()[:200]}")
+    d = json.loads(p.stdout)
+    return d.get("data", d)
+
+
+def slot(entry, name):
+    for s in entry.get("slots") or []:
+        if s.get("slot") == name:
+            return s
+    return None
+
+
+def judge(q, name):
+    """一个号此刻怎么办 ⇒ (动作, 醒点, 说明)。动作：send · wait · skip。"""
+    now = q.get("now") or time.time()
+    entry = next((a for a in q.get("accounts", []) if a.get("account") == name), None)
+    if entry is None:
+        unseen = next((u for u in q.get("unseen", []) if u.get("account") == name), None)
+        if unseen is None:
+            return "skip", None, "这台账号库里没有这个号"
+        if unseen.get("login") not in (None, "ok"):
+            return "wait", now + LOGIN_RETRY_S, f"登录：{unseen.get('login')}"
+        return "send", None, "没见过数（只有发一句才知道）"
+    if entry.get("login") not in (None, "ok"):
+        return "wait", now + LOGIN_RETRY_S, f"登录：{entry.get('login')}"
+    s5, s7 = slot(entry, "5h"), slot(entry, "7d")
+    if entry.get("state") == "refused":
+        blocker = slot(entry, entry.get("limiting") or "5h") or s5
+        at = (blocker or {}).get("resetsAt")
+        if at and at > now:
+            return "wait", at + MARGIN_S, f"被拒（{entry.get('limiting')}）↻{stamp(at)}"
+    if s7 and (s7.get("pct") or 0) >= 100 and (s7.get("resetsAt") or 0) > now:
+        return "wait", s7["resetsAt"] + MARGIN_S, f"7d 用满 ↻{stamp(s7['resetsAt'])}"
+    if s5 and (s5.get("resetsAt") or 0) > now:
+        return "wait", s5["resetsAt"] + MARGIN_S, f"5h {s5.get('pct')}% ↻{stamp(s5['resetsAt'])}"
+    return "send", None, "5h 窗口已过期" if s5 else "没有 5h 窗口"
+
+
+def send(name, system, text, model):
+    acct = os.path.join(ACCOUNTS_DIR, name)
+    os.makedirs(WORK_DIR, mode=0o700, exist_ok=True)
+    argv = [
+        CCM, "-p", "--model", model, "--tools", "", "--no-session-persistence",
+        "--setting-sources", "project", "--strict-mcp-config", "--output-format", "json",
+        "--system-prompt", system, text, "--", "--account-dir", acct, "--cwd", WORK_DIR,
+    ]
+    try:
+        p = subprocess.run(
+            argv, env=clean_env(), cwd=WORK_DIR, stdin=subprocess.DEVNULL,
+            capture_output=True, text=True, timeout=SEND_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        return False, "超时"
+    try:
+        d = json.loads(p.stdout)
+        u = d.get("usage") or {}
+        return (not d.get("is_error")), (
+            f"in {u.get('input_tokens')} · cache {u.get('cache_read_input_tokens')} · "
+            f"out {u.get('output_tokens')}"
+        )
+    except (ValueError, AttributeError):
+        return False, f"退出码 {p.returncode}，回包读不懂"
+
+
+def library_accounts():
+    """账号库里有登录文件的号（`~/.cc-monitor/accounts/<名>/.credentials.json`），按名排。"""
+    try:
+        return sorted(
+            n for n in os.listdir(ACCOUNTS_DIR)
+            if os.path.isfile(os.path.join(ACCOUNTS_DIR, n, ".credentials.json"))
+        )
+    except OSError:
+        return []
+
+
+def one_pass(accounts, system, text, model, dry_run):
+    """跑一趟，回下一次该醒的时刻。"""
+    try:
+        q = quota_read()
+    except Exception as e:  # noqa: BLE001 —— 读不到就过一阵再试，不让常驻那一形死掉
+        log(f"读额度账失败：{e}")
+        return time.time() + RETRY_S
+    wakes = []
+    for name in accounts:
+        action, at, why = judge(q, name)
+        if action == "send":
+            if dry_run:
+                log(f"{name}: {why} ⇒ 该发（--dry-run，没发）")
+                continue
+            started = time.time()
+            ok, info = send(name, system, text, model)
+            try:
+                q2 = quota_read()
+                e2 = next((a for a in q2.get("accounts", []) if a.get("account") == name), None)
+                heard = bool(e2 and (e2.get("seenAt") or 0) >= started - 5)
+                a2, at2, why2 = judge(q2, name)
+            except Exception:  # noqa: BLE001
+                heard, a2, at2, why2 = False, None, None, ""
+            if ok and heard and a2 == "wait":
+                log(f"{name}: {why} ⇒ 发了（{info}）⇒ {why2}")
+                wakes.append(at2)
+            else:
+                log(f"{name}: {why} ⇒ 发了没成（{info}；额度账{'有' if heard else '没有'}新数）⇒ {stamp(time.time() + RETRY_S)} 再试")
+                wakes.append(time.time() + RETRY_S)
+        elif action == "wait":
+            log(f"{name}: {why}")
+            wakes.append(at)
+        else:
+            log(f"{name}: {why}，跳过")
+    return min(wakes) if wakes else None
+
+
+def status(accounts):
+    q = quota_read()
+    for name in accounts:
+        action, at, why = judge(q, name)
+        print(f"{name:10} {why}" + ("  ⇒ 该发" if action == "send" else ""))
+
+
+def hold_lock():
+    os.makedirs(CCM_HOME, exist_ok=True)
+    f = open(LOCK, "w")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        sys.exit("另一个 quota-warm 正在跑（锁：%s）" % LOCK)
+    f.write(str(os.getpid()))
+    f.flush()
+    return f
+
+
+def main():
+    ap = argparse.ArgumentParser(description="让各账号的 5h 窗口尽早开始计时")
+    ap.add_argument("mode", choices=["status", "once", "run"])
+    ap.add_argument("--accounts", help="逗号分隔的账号名（不给 ⇒ 账号库里所有已登录的号）")
+    ap.add_argument("--system", default="只回复字母a", help="换上的系统提示词")
+    ap.add_argument("--text", default="a", help="发的那一句")
+    ap.add_argument("--model", default="haiku")
+    ap.add_argument("--dry-run", action="store_true", help="只判、不发")
+    a = ap.parse_args()
+    accounts = [x for x in (a.accounts.split(",") if a.accounts else library_accounts()) if x]
+    if a.mode == "status":
+        status(accounts)
+        return
+    lock = hold_lock()  # noqa: F841 —— 进程活着就一直持着
+    log(f"开始（{a.mode}）：{', '.join(accounts)}")
+    while True:
+        wake = one_pass(accounts, a.system, a.text, a.model, a.dry_run)
+        if a.mode == "once":
+            return
+        if wake is None:
+            log("没有要看的号，退出")
+            return
+        wake = max(wake, time.time() + 30)
+        log(f"下次 {stamp(wake)}")
+        while (left := wake - time.time()) > 0:
+            time.sleep(min(left, SLEEP_CHUNK_S))
+
+
+if __name__ == "__main__":
+    main()

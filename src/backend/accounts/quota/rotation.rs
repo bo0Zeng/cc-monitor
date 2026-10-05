@@ -304,9 +304,6 @@ pub(crate) struct Book {
     pub(crate) default: Option<Rotation>,
     #[serde(default)]
     pub(crate) sessions: BTreeMap<String, SessionEntry>,
-    /// 自动起算：每个号（路由第 2 段）的开关 ＋ 时段 ＋ 上次起算 / 失败（[`super::autostart`]）。
-    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
-    pub(crate) autostart: BTreeMap<String, super::autostart::AutoConf>,
 }
 
 impl Book {
@@ -494,7 +491,7 @@ impl RotationStore {
     }
 
     /// 在跨进程锁里读盘 → 改 → 原子写回 → 缓存跟上；改到的会话各响一下（[`changes`]）。读不懂的那一份不覆盖。
-    /// 外面只经三扇门进来：中转那一路（[`relay_change`]）· 帧面那一路（[`face_change`]）· 自动起算那一路（[`autostart_change`]）。
+    /// 外面只经两扇门进来：中转那一路（[`relay_change`]）与帧面那一路（[`face_change`]）。
     fn change<R>(&self, f: impl FnOnce(&mut Book) -> R) -> Result<R, String> {
         let mut g = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         let (r, before, after) = match self.path.as_deref() {
@@ -526,14 +523,6 @@ pub(crate) fn relay_change<R>(
 
 /// 帧面那一路的写口（改默认轮换 · 改会话轮换 · 现在就换）。
 pub(crate) fn face_change<R>(
-    store: &RotationStore,
-    f: impl FnOnce(&mut Book) -> R,
-) -> Result<R, String> {
-    store.change(f)
-}
-
-/// 自动起算那一路的写口（开关 · 时段 · 上次起算 / 失败）。
-pub(crate) fn autostart_change<R>(
     store: &RotationStore,
     f: impl FnOnce(&mut Book) -> R,
 ) -> Result<R, String> {

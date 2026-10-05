@@ -1021,9 +1021,6 @@ pub(crate) struct DefaultUpstream {
     pub(crate) quota: Option<QuotaRead>,
     /// 额度窗口名 → 语义位（`5h` / `7d`；别的窗口 ⇒ `None`）。界面与换号记录只认语义位，不认各家的窗口名。
     pub(crate) window_slot: Option<fn(&str) -> Option<&'static str>>,
-    /// 让一个号的额度窗口开始计时的那一趟：交给这一家程序的参数（不交互 · 最便宜的模型 · 一句 · 不落会话记录 · 不跑钩子与 MCP）。
-    /// 自动起算经 `ccm` 起它（走中转 ⇒ 回包头照常进额度账）。`None` ＝ 这一家没有这一形。
-    pub(crate) open_window: Option<&'static [&'static str]>,
     /// 订阅号登录那一格：令牌住哪、什么格式、怎么续、锁叫什么。`None` ＝ 这一家没有可换的订阅号登录。
     pub(crate) login: Option<LoginFace>,
 }
@@ -1069,15 +1066,6 @@ pub(crate) enum IdentityCell {
     Rewritten(Vec<u8>),
     /// 有这一格，但认不准是哪几个字节 ⇒ 不能拿这份请求体换号。
     Unsure,
-}
-
-/// 路由第 1 段 → 那一家「让额度窗口开始计时」那一趟的参数。
-pub(crate) fn open_window_args_of(route_id: &str) -> Option<&'static [&'static str]> {
-    REGISTRY
-        .iter()
-        .filter_map(|a| a.upstream.as_ref())
-        .find(|u| u.route_id == route_id)
-        .and_then(|u| u.open_window)
 }
 
 /// 路由第 1 段 → 那一家的额度窗口语义位读法。

@@ -1,7 +1,0 @@
-# 自动起算那一趟交给 `claude` 的旗标：摘自 `claude --help`（Claude Code 2.1.289，2026-10-05），一行一个、第一个词是旗标。
-# 同一天用这一组经中转真发过一次（空闲的号回包里的 5h 重置 ≈ 发送时刻 ＋ 5h）。claude 升级后旗标改名 ⇒ 重摘这几行。
---model <model>                       Model for the current session
---no-session-persistence              Disable session persistence - sessions will not be saved to disk (only works with --print)
---setting-sources <sources>           Comma-separated list of setting sources to load (user, project, local)
---strict-mcp-config                   Only use MCP servers from --mcp-config, ignoring all other MCP configurations
---tools <tools...>                    Specify the list of available tools from the built-in set. Use "" to disable all tools

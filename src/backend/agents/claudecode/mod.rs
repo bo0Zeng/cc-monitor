@@ -88,7 +88,6 @@ pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     context_mark: Some(("anthropic-beta", "context-1m")),
     quota: Some(quota::read),
     window_slot: Some(quota::slot_of),
-    open_window: Some(quota::OPEN_WINDOW),
     login: Some(LOGIN),
 };
 

@@ -205,7 +205,6 @@ fn backend_rows_point_where_the_backend_itself_writes() {
         row("assets-catalog.json", h.join(rr::ASSET_CATALOG_REL), "file"),
         row("quota.json", h.join(rr::QUOTA_LEDGER_REL), "file"),
         row("rotation.json", h.join(rr::ROTATION_REL), "file"),
-        row("autostart/", h.join(rr::AUTOSTART_DIR_REL), "dir"),
         row(
             "launch-accounts.json",
             h.join(rr::LAUNCH_ACCOUNTS_REL),

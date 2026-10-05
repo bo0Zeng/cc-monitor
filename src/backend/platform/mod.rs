@@ -48,7 +48,6 @@
 //! - [`ssh_agent`]：连本机 ssh-agent（Unix 套接字 / Windows 命名管道）—— 拨号代理没配私钥路径时用
 //! - [`stderr_fd`]：把本进程的 fd 2 换到一份文件上 · 问它多长（脱离常驻的后端把 stderr 落盘，`crate::stderr_log`）
 //! - [`tcp_rtt`]：一条已连上的 TCP 的往返时间（问内核 `TCP_INFO`，不掐表）—— 压缩判准要它（`dial/connect.rs::compression_for`）
-//! - [`local_time`]：某一刻本地时间比 UTC 快多少秒（POSIX `localtime_r` · Windows 时区换算）—— 自动起算的时段按它算
 //! - [`lock`]：后端自有状态文件（第四层）的跨进程锁 —— 锁那份文件所在的目录（unix `flock` · Windows 命名互斥量）
 //! - [`acct_view`]：账号库读盘的平台原语（不跟链接地看一项 · unix 权限位 · 这台做不做得了多账号）—— 只读
 //! - [`fs`]：文件管理写面的两样原语：不覆盖改名（`rename_noreplace`）· 开文件不跟链接的旗（`NO_FOLLOW`）
@@ -73,7 +72,6 @@ pub(crate) mod child;
 mod fallback_guard;
 pub(crate) mod fs;
 pub(crate) mod liveness;
-pub(crate) mod local_time;
 pub(crate) mod lock;
 pub(crate) mod paths;
 pub(crate) mod pidwatch;

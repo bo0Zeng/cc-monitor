@@ -288,9 +288,6 @@ fn every_registered_command_declares_its_run_kind() {
                 | "rotation-set"
                 | "rotation-session-read"
                 | "rotation-session-set"
-                // 自动起算：读额度账 · 账号库 · 凭据文件 ＋ 锁里原子写 `rotation.json`（同步文件 I/O）。
-                | "autostart-read"
-                | "autostart-set"
                 // 功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
                 | "tasks-list"
                 // MCP 列表：读 `.claude.json` ＋ 一份 `.mcp.json`（同步文件 I/O）。
@@ -512,8 +509,6 @@ fn every_registered_command_declares_its_run_kind() {
         "rotation-set",
         "rotation-session-read",
         "rotation-session-set",
-        "autostart-read",
-        "autostart-set",
         "tasks-list",
         "mcp-read",
         "tmux-list",

@@ -128,8 +128,6 @@ pub struct TapRx {
     quota: Option<tokio::sync::watch::Receiver<u64>>,
     /// 某个会话的轮换 / 「账号」格变了的通道（变了推一帧 `rotation_changed`）；`None` ＝ 不订。
     rotation: Option<tokio::sync::broadcast::Receiver<String>>,
-    /// 自动起算显示变了的通道（变了推一帧 `autostart_changed`）；`None` ＝ 不订。
-    autostart: Option<tokio::sync::watch::Receiver<u64>>,
     book: std::sync::Arc<crate::observe::runs::RunBook>,
     router: super::run_route::RunRouter,
     out: std::collections::VecDeque<Frame>,
@@ -161,13 +159,6 @@ impl TapSource for TapRx {
                         self.quota = None;
                     }
                 }
-                alive = quota_moved(&mut self.autostart) => {
-                    if alive {
-                        self.out.push_back(Frame::AutostartChanged);
-                    } else {
-                        self.autostart = None;
-                    }
-                }
                 moved = rotation_moved(&mut self.rotation) => match moved {
                     Some(Some(sid)) => self.out.push_back(Frame::RotationChanged { sid }),
                     // 落后丢了几件：可丢的通道，客户端下一次变化或重问就补上。
@@ -185,11 +176,10 @@ pub fn attach(book: std::sync::Arc<crate::observe::runs::RunBook>) -> TapRx {
     let mut rx = attach_rx(hub().attach(), book);
     rx.quota = Some(crate::accounts::quota::ledger::bell().subscribe());
     rx.rotation = Some(crate::accounts::quota::rotation::changes().subscribe());
-    rx.autostart = Some(crate::accounts::quota::autostart::bell().subscribe());
     rx
 }
 
-/// 额度账（或自动起算）显示变了 ⇒ `true`；通道没了 ⇒ `false`（调用方把它摘掉）；没订 ⇒ 永远不醒。
+/// 额度账显示变了 ⇒ `true`；通道没了 ⇒ `false`（调用方把它摘掉）；没订 ⇒ 永远不醒。
 async fn quota_moved(q: &mut Option<tokio::sync::watch::Receiver<u64>>) -> bool {
     match q {
         Some(r) => r.changed().await.is_ok(),
@@ -224,7 +214,6 @@ pub(crate) fn attach_rx(
         out: std::collections::VecDeque::new(),
         quota: None,
         rotation: None,
-        autostart: None,
     }
 }
 

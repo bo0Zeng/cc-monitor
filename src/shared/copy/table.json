@@ -19024,11 +19024,6 @@
       "zh": "起会话账号记录：每个会话最近一次用哪个账号启动",
       "args": []
     },
-    "rsToolRegistry.tools.autostartNote": {
-      "kind": "body",
-      "zh": "自动起算：替空闲账号发最短请求起算 5h 窗口时的工作目录",
-      "args": []
-    },
     "rsToolRegistry.tools.launchNotesNote": {
       "kind": "body",
       "zh": "起会话便条：启动会话时记下的账号，进程退出即清",
@@ -19042,11 +19037,6 @@
     "rsDataPaths.backend.launchAccounts": {
       "kind": "body",
       "zh": "起会话账号记录：每个会话最近一次用哪个账号启动",
-      "args": []
-    },
-    "rsDataPaths.backend.autostart": {
-      "kind": "body",
-      "zh": "自动起算：起算请求的工作目录",
       "args": []
     },
     "rsDataPaths.backend.launchNotes": {

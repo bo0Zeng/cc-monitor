@@ -1267,6 +1267,42 @@ fn sid_change_in_place_retires_old_sid() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// pidfile 的工作目录是这台家里的 `autostart/` ⇒ 不宣告成会话（与历史页同一条判据）；同一个活进程换个目录就照常宣告。
+/// 只把那个目录的字符串写进临时目录里的 pidfile，不碰那个目录本身。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_pidfile_in_the_hidden_dir_is_not_announced() {
+    let _iso = crate::control::identity_tag::door::isolate();
+    let hidden = crate::platform::paths::data_home()
+        .expect("测试环境有家目录")
+        .join("autostart");
+    let dir = std::env::temp_dir().join(format!("ccm-hiddencwd-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let pid = std::process::id();
+    let ticks = proc_starttime(pid).expect("own starttime");
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"), false, false);
+    let path = dir.join(format!("{pid}.json"));
+    let write = |sid: &str, cwd: &str| {
+        let body = serde_json::json!({
+            "pid": pid, "sessionId": sid, "cwd": cwd, "kind": "interactive", "procStart": ticks.to_string(),
+        });
+        std::fs::write(&path, body.to_string()).unwrap();
+    };
+
+    write("sid-hidden", &hidden.to_string_lossy());
+    assert!(!process_session_added(&path, &mut state, &mut sink));
+    assert!(rx.try_recv().is_err(), "藏起来的那一趟不许出帧");
+    assert!(state.active_sids.is_empty());
+
+    write("sid-shown", "/x");
+    process_session_added(&path, &mut state, &mut sink);
+    assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "sid-shown"));
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// backend-09：`process_jsonl` 对 turn-end 记录发 **Line 后紧跟 TurnEnd**；非 turn-end 只发 Line；
 /// **畸形行照发 Line、不 panic、无 TurnEnd**（§2.1 逐行转发 + turn-end 是 raw 之外额外边沿）。
 #[test]

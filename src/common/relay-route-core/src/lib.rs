@@ -106,9 +106,6 @@ pub const QUOTA_LEDGER_REL: &str = ".cc-monitor/quota.json";
 /// 〔同上〕**账号轮换**（后端账号域写）：默认池与换号时机 · 每个会话的覆盖与此刻钉在哪个号 · 换号记录。
 pub const ROTATION_REL: &str = ".cc-monitor/rotation.json";
 
-/// 〔同上〕**自动起算的工作目录**（后端账号域建）：替号发起算请求的那一趟 `claude -p` 在这里跑；历史与会话列表按它藏掉这些会话。
-pub const AUTOSTART_DIR_REL: &str = ".cc-monitor/autostart";
-
 /// 〔同上〕**起会话用的号**（后端观测侧写）：每条会话上次用哪个号起的（`sid → 号`），跟随选号读它。
 pub const LAUNCH_ACCOUNTS_REL: &str = ".cc-monitor/launch-accounts.json";
 

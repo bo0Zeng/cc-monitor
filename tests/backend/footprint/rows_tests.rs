@@ -599,8 +599,6 @@ fn every_host_declaration_is_pinned() {
         // 额度账 · 账号轮换：账号域自己的状态，在会话跑的那台（本机远端同形）。
         ("accounts", "~/.cc-monitor/quota.json", Either),
         ("accounts", "~/.cc-monitor/rotation.json", Either),
-        // 自动起算那一趟 `claude -p` 的工作目录：账号库在哪台就在哪台。
-        ("accounts", "~/.cc-monitor/autostart", Either),
         // 起会话用的号与起会话便条：会话跑的那台的后端自己的状态。
         ("accounts", "~/.cc-monitor/launch-accounts.json", Either),
         ("accounts", "~/.cc-monitor/launch-pending", Either),

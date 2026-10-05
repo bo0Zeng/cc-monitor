@@ -59,10 +59,6 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
-        "EPOCH_GAP",
-        "**时间换算常量**不是体量：1601-01-01 到 1970-01-01 的 100 纳秒数（`platform/local_time.rs` 把 unix 秒换成 Windows 的 FILETIME）。",
-    ),
-    (
         "TH32CS_SNAPPROCESS",
         "**标志位**不是体量：`CreateToolhelp32Snapshot` 那一问「要进程表」的那个位（`platform/win_tables.rs`）。",
     ),

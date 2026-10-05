@@ -902,13 +902,6 @@ mod tests {
              读不懂的那份不覆盖。入口两扇：中转换号那一路（上游选择）· 帧面改轮换 / 现在就换那一路",
         ),
         (
-            "accounts/quota/autostart_send.rs",
-            "**自动起算的工作目录** `~/.cc-monitor/autostart/`：替号发起算请求那一趟 `claude -p` 的工作目录。\
-             落点是本仓定的、里面不放任何东西（那一趟不落会话记录）⇒ 账号域**自己的**状态，不是用户数据。\
-             只经后端建自家目录的那一个函数建 `~/.cc-monitor` 与它这一层（0700、已在的不动），不写不删任何文件。\
-             入口只有自动起算醒点到点发那一句之前那一处（`faces/autostart_waker.rs`）—— 不是帧面命令",
-        ),
-        (
             "assets/skill_ledger.rs",
             "**skill 装记录** `~/.cc-monitor/skill-installs.json`：从别的机器装到这台的 skill，装时写进了哪几个文件 \
              （各自的摘要 ＋ 装之前在不在）。只删装时写进去的文件 —— 卸只删这里记着的。文件名 / 格式 / 落点都是本仓定的、\
@@ -971,14 +964,6 @@ mod tests {
     /// 门改成「每个写口自己的那一扇」，`inbound.rs` 那几个写口照旧只许 `inbound.rs` 碰（一格没松）。
     /// 入方向拆成目录之后（10-03），命令注册那几个写口的门收紧到**持有那条命令的那一族文件**（例：`apikey-key-set` 的写口只许账号那一族碰），比「整个 `inbound.rs` 都算门」更紧。
     const OWN_STATE_DOORS: &[(&str, &str)] = &[
-        (
-            "faces/autostart_face.rs",
-            "自动起算的帧面宿主：`autostart-set` 改开关 / 时段 · 醒点记上次 / 失败（都写 `rotation.json` 的 `autostart`，经同一个记账函数）",
-        ),
-        (
-            "faces/autostart_waker.rs",
-            "自动起算的醒点（常驻后端里一条只醒在真期限上的线程，不是帧命令）：到点建工作目录、起那一趟",
-        ),
         (
             "dial/connect.rs",
             "握手时核对主机钥匙那一处（`Checker`）：认下了（与固化的指纹相等 / 首连认下）才记进 cc-monitor 那份 known_hosts。不是帧面命令",
@@ -1092,12 +1077,6 @@ mod tests {
             "ledger::record_seen",
             "accounts/upstream_select/mod.rs",
         ),
-        // 自动起算的工作目录：建它（并起那一趟）只从醒点那一处进。
-        (
-            "accounts/quota/autostart_send.rs",
-            "autostart_send::run_ccm",
-            "faces/autostart_waker.rs",
-        ),
         // 账号轮换：中转换号那一路只从上游选择换号那一份进，帧面那一路只从换号的帧面宿主进。
         (
             "accounts/quota/rotation.rs",
@@ -1108,12 +1087,6 @@ mod tests {
             "accounts/quota/rotation.rs",
             "rotation::face_change",
             "faces/rotation_face.rs",
-        ),
-        // 自动起算那一路（开关 · 时段 · 上次起算 / 失败）只从自动起算的帧面宿主（含醒点）进。
-        (
-            "accounts/quota/rotation.rs",
-            "rotation::autostart_change",
-            "faces/autostart_face.rs",
         ),
         // 中转钥匙：门是中转起监听那一处，不是命令注册。
         ("relay/key.rs", "key::ensure_key", "relay/listen.rs"),
@@ -1659,11 +1632,6 @@ mod tests {
         "common/own_dir.rs",
         "后端建自家目录的那一个函数（`ensure_private_dir`）：只有「建一层目录、已在不动」这一个动词，没有一份文件被读—改—写；\
          而且它正是拿锁之前那一步（锁的就是它建出来的目录）—— 它自己再拿锁是先有鸡还是先有蛋",
-    ),
-    (
-        "accounts/quota/autostart_send.rs",
-        "自动起算的工作目录只建一层空目录（经后端建自家目录的那一个函数），里面一个文件都不写：\
-         没有「读出来、改一格、整份写回」那一步 ⇒ 没有后写盖掉先写可丢",
     ),
     (
         "control/resident.rs",
@@ -3189,15 +3157,6 @@ mod spawn_registry {
              **不是**后端进程自身写用户既有数据。只从帧命令 `sessions-start`（tmux 那一形、那台没有带着这个 sid 的会话）进来。",
             "缩性质",
             "起会话改由别的入口在后端起的那天摘掉。⚠ 不许往这一处底下加第二种用途 —— 它起的永远是本二进制的 ccm 那一趟。",
-        ),
-        (
-            "accounts/quota/autostart_send.rs",
-            "<非字面量>",
-            "自动起算：**本后端这个二进制自己**（`current_exe`）当 ccm 起一次官方 `claude -p`（一句、不给工具、不落会话记录、\
-             走这台的中转），让那个号的 5h 窗口开始计时。argv 不过 shell、stdin 空、有期限（到点杀整组）。被起的是 ccm 那一趟，\
-             它自己的起法由本护栏照样管；**不是**后端进程自身写用户既有数据。只从自动起算的醒点进来（`faces/autostart_waker.rs`）。",
-            "缩性质",
-            "起算改由别的入口发（或那一家给出不起进程的开窗办法）的那天摘掉。⚠ 不许往这一处底下加第二种用途 —— 它起的永远是本二进制的 ccm 那一趟。",
         ),
         (
             "control/resident.rs",

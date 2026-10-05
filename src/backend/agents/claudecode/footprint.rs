@@ -185,15 +185,6 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                     note: Some(Text(|| copy_text("rsToolRegistry.tools.rotationNote", &[]))),
                     effect: TouchEffect::OwnedFile,
                 },
-                // 自动起算：替号发起算请求的那一趟 `claude -p` 的工作目录（账号域建）。
-                TouchedFile {
-                    path: "~/.cc-monitor/autostart",
-                    host: HostScope::Either,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.autostartNote", &[])
-                    })),
-                    effect: TouchEffect::OwnedFile,
-                },
                 // 起会话用的号：每条会话上次用哪个号起的（观测侧记）＋ ccm 起会话时留的便条（认完、进程不在了即清）。
                 TouchedFile {
                     path: "~/.cc-monitor/launch-accounts.json",

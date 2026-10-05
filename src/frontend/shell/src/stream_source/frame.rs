@@ -225,8 +225,6 @@ pub enum InboundFrame {
     QuotaChanged,
     /// 那台某个会话的轮换 / 「账号」格变了（`rotation_changed`，只带 sid）。认识但不消费：界面要就发 `rotation-session-read`。
     RotationChanged,
-    /// 那台的自动起算变了（`autostart_changed`）。认识但不消费：界面要就发 `autostart-read` 读整份。
-    AutostartChanged,
 }
 
 /// 拥塞提示的**措辞**：有没有不可恢复的丢失，说法完全不同。
@@ -630,8 +628,6 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
             req_str(obj, k, "sid")?;
             InboundFrame::RotationChanged
         }
-        // 认识但不消费：界面要自动起算就发 `autostart-read` 读整份。
-        "autostart_changed" => InboundFrame::AutostartChanged,
         _ => return Err(Unread::UnknownKind(kind.to_string())),
     })
 }

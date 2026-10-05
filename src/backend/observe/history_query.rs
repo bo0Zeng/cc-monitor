@@ -209,8 +209,11 @@ fn project_rows(dir: &Path, dir_name: &str) -> Vec<serde_json::Value> {
     project_rows_hiding(dir, dir_name, &hidden_cwd)
 }
 
-/// 自动起算那一趟 `claude -p` 的会话（工作目录是这台家里的 `autostart/`）：历史页与会话列表都不出它。
-/// **判据只在这一处**（项目清单按它摘组、观测侧按 pidfile 的目录不宣告）。
+/// 这台家里那个不出会话的工作目录（`~/.cc-monitor/autostart/`）：在那里跑的 `claude`（例如替号开额度窗口的那一句）
+/// 历史页与会话列表都不出。后端不建它、不往里写，只按它藏。
+const HIDDEN_DIR: &str = "autostart";
+
+/// 工作目录是 [`HIDDEN_DIR`] 的会话不出。**判据只在这一处**（项目清单按它摘组、观测侧按 pidfile 的目录不宣告）。
 pub(crate) fn hidden_cwd(cwd: &str) -> bool {
     crate::platform::paths::data_home().is_some_and(|home| hidden_cwd_in(&home, cwd))
 }
@@ -218,9 +221,7 @@ pub(crate) fn hidden_cwd(cwd: &str) -> bool {
 /// [`hidden_cwd`] 的本体：`data_home` 由调用方给（判据喂夹具）。记录里的目录是那一家解析过链接的那一形 ⇒ 两形都认
 /// （解开链接经 observe 唯一那道路径解析 [`super::fence::Fence`]）。
 pub(crate) fn hidden_cwd_in(data_home: &Path, cwd: &str) -> bool {
-    let dir = data_home.join(relay_route_core::file_name_of(
-        relay_route_core::AUTOSTART_DIR_REL,
-    ));
+    let dir = data_home.join(HIDDEN_DIR);
     let cwd = Path::new(cwd);
     cwd == dir || super::fence::Fence::at(&dir).is_ok_and(|f| cwd == f.root())
 }

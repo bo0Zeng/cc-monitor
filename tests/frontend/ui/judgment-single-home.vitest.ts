@@ -625,8 +625,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 额度账 · 账号轮换（后端账号域写；数据位置页按它列）。
     QUOTA_LEDGER_REL: NONE,
     ROTATION_REL: NONE,
-    // 自动起算的工作目录（后端账号域建；历史与会话列表按它藏；数据位置页按它列）。
-    AUTOSTART_DIR_REL: NONE,
     // 起会话用的号 · 起会话便条（后端写；数据位置页按它列）。
     LAUNCH_ACCOUNTS_REL: NONE,
     LAUNCH_NOTES_DIR_REL: NONE,

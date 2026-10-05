@@ -40,7 +40,6 @@ fn kind_of(f: &InboundFrame) -> &'static str {
         InboundFrame::TurnEnd => "turn_end",
         InboundFrame::QuotaChanged => "quota_changed",
         InboundFrame::RotationChanged => "rotation_changed",
-        InboundFrame::AutostartChanged => "autostart_changed",
     }
 }
 

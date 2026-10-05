@@ -65,9 +65,7 @@ const UNIT: &[&str] = &[
     "tests/backend/agents/claudecode/quota_tests.rs", // 回包头 → 额度快照：读法表的金样（纯函数）
     "tests/backend/accounts/quota/decide_tests.rs",   // 换号的唯一判定（纯函数）
     "tests/backend/accounts/quota/show_tests.rs",     // 额度显示态（纯函数）
-    "tests/backend/accounts/quota/autostart_tests.rs", // 自动起算该不该发、醒在哪一刻（纯函数，假钟）
-    "tests/backend/accounts/quota/autostart_send_tests.rs", // 自动起算交给 ccm 的那一行 · 结果怎么记（纯函数）
-    "tests/common/creds-core/token_tests.rs", // 登录令牌的读 · 写回 · 续期请求体（纯函数）
+    "tests/common/creds-core/token_tests.rs",         // 登录令牌的读 · 写回 · 续期请求体（纯函数）
     "tests/backend/observe/record_page_tests.rs",
     "tests/frontend/ui/startup-active.vitest.ts", // F19 启动时记住的那一格（按事件判的真值表）
     "tests/backend/dial_machine_tests.rs",        // 机器配置 → 拨号请求的规则
@@ -663,10 +661,6 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/accounts/quota/ledger_tests.rs",
     // 换号那一族的帧命令：默认轮换 · 一批会话的那一份 · 改会话轮换 · 不重启换（临时家目录、假凭据）。
     "tests/backend/faces/rotation_face_tests.rs",
-    // 自动起算的帧命令：临时家目录里真写 `rotation.json`。
-    "tests/backend/faces/autostart_face_tests.rs",
-    // 自动起算的醒点（假钟 · 假额度账 · 假起那一趟）＋ 起那一趟（假 ccm 脚本、真起子进程、真建目录）。
-    "tests/backend/faces/autostart_waker_tests.rs",
     // 轮换配置：整份收 · 钉号与记录 · 落盘与重读（临时目录里真写 `rotation.json`）。
     "tests/backend/accounts/quota/rotation_tests.rs",
     // 换号时请求体里的账号身份：读哪个号的 `.claude.json`（临时目录里真写）· 只换那几个字节。

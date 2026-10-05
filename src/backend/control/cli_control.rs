@@ -156,9 +156,6 @@ pub(crate) fn cli_exposed(spec: &CommandSpec) -> bool {
 /// `forward-*` 同理：转发账住本进程（常驻那一个）；一次性进程开出来的转发随进程退出就没了、列出来恒空。
 pub(crate) const STREAM_ONLY: &[&str] = &[
     "resync",
-    // 自动起算：「正在发」「这一段试过了」与醒点都住常驻那一个进程；一次性进程里读不到前两样、写了也叫不醒醒点 ⇒ 答的是假话。
-    "autostart-read",
-    "autostart-set",
     "apikey-routing",
     // 「直接敲的也走中转」那一段的「中转在不在」同样读本进程的监听状态。
     "relay-optin",

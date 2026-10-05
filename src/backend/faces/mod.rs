@@ -1,8 +1,6 @@
 //! 帧面宿主：只读查询与几条薄壳（本体在 `observe/` / `control/`，`stream/inbound/` 不许出现 `observe::`）。
 
 pub mod accounts_face; // 改账号库那几条命令的帧面宿主：本体在 accounts/manage/，接上 apikey 表与别名文件那两步
-pub mod autostart_face; // 自动起算：每号开关与时段的读写 ＋ 判定要的那几样现读 ＋ 记结果
-pub mod autostart_waker; // 自动起算的醒点：常驻后端里只醒在真期限上的那条线程（到点替号发那一句 · 卡住会话到点推一次）
 pub mod feature_face; // 功能侧只读查询的帧面宿主（tasks-list …）—— 薄壳，本体在 observe/，与 read_face 分家的理由在它头注
 pub mod fork_face;
 pub mod launch_face; // 帧面 `launch-local` / `launch-render-cli` 的宿主壳：交起会话挑号要的事实（账号库 · 上次的号） // 帧面 `session-fork` 的宿主壳：找家目录、交 `control/fork_write`（本体与 CLI `--fork-session` 同一份）
