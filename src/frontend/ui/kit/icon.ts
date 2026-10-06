@@ -23,6 +23,11 @@ import tray from "@phosphor-icons/core/assets/regular/tray.svg?raw";
 import arrowsLeftRight from "@phosphor-icons/core/assets/regular/arrows-left-right.svg?raw";
 import dotsSixVertical from "@phosphor-icons/core/assets/regular/dots-six-vertical.svg?raw";
 import caretDown from "@phosphor-icons/core/assets/regular/caret-down.svg?raw";
+import arrowsClockwise from "@phosphor-icons/core/assets/regular/arrows-clockwise.svg?raw";
+import arrowSquareOut from "@phosphor-icons/core/assets/regular/arrow-square-out.svg?raw";
+import dotsThree from "@phosphor-icons/core/assets/regular/dots-three.svg?raw";
+import pushPin from "@phosphor-icons/core/assets/regular/push-pin.svg?raw";
+import files from "@phosphor-icons/core/assets/regular/files.svg?raw";
 import s from "./icon.module.css";
 
 const SVG = {
@@ -43,6 +48,11 @@ const SVG = {
   swap: arrowsLeftRight,
   drag: dotsSixVertical,
   caretDown: caretDown,
+  refresh: arrowsClockwise,
+  front: arrowSquareOut,
+  more: dotsThree,
+  pin: pushPin,
+  files: files,
 } as const;
 
 export type IconName = keyof typeof SVG;

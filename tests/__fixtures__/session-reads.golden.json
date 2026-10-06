@@ -1,7 +1,26 @@
 {
   "history-facts": {
-    "end": 765,
+    "end": 876,
     "forkedFrom": "src-0",
+    "lastSay": {
+      "at": "t5",
+      "text": "done"
+    },
+    "needs": null,
+    "pending": [
+      {
+        "at": "t3",
+        "id": "tu-1",
+        "name": "Edit",
+        "what": "/w/a.ts"
+      },
+      {
+        "at": "t4",
+        "id": "tu-3",
+        "name": "Agent",
+        "what": null
+      }
+    ],
     "projectDir": "/g/proj",
     "touchedFiles": [
       "/w/a.ts"

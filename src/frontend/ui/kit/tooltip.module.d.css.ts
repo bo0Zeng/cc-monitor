@@ -2,5 +2,6 @@
 declare const classes: {
   readonly tip: string;
   readonly tipCard: string;
+  readonly tipHold: string;
 };
 export default classes;

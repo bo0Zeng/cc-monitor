@@ -273,7 +273,7 @@ describe("说不清（那台暂时看不见）不当已结束：tab 上是另一
     tm.switchTo("e");
     tm.switchTo("u");
     const btn = (sid: string): HTMLElement =>
-      [...document.querySelectorAll<HTMLElement>(".tab")].find((el) => el.title.startsWith((st.tabs.get(sid) as Tab).title))!;
+      (tm as unknown as { bar: { tabButtons: Map<string, { root: HTMLElement }> } }).bar.tabButtons.get(sid)!.root;
     expect([btn("u").classList.contains("unseen"), btn("u").classList.contains("ended")]).toEqual([true, false]);
     expect([btn("e").classList.contains("unseen"), btn("e").classList.contains("ended")]).toEqual([false, true]);
     // 中键：已结束的关、说不清的不关。

@@ -1,13 +1,13 @@
 /**
- * 〔拆 `tabs.ts` ④〕**tab 栏视图**：每个 tab 一颗按钮（状态灯 · 标题 · 账号徽章 · 未读数 · 📌 ·
- * 📂 / ↗ / × 三个子动作）、按集合分的组容器、整刷（删 / 建 / 更新 / 排序）与帧末合批、栏顶「重新读取」。
+ * 〔拆 `tabs.ts` ④〕**标签页栏视图**：栏顶一排（全局入口 · 刷新）· 「需要你 N」· 机器离线条 · 列表（分组 ＋ 每个会话一行）。
+ *
+ * 一行：状态点（V10）· 窄窗两字母 · 机器徽标（远端）· 项目名 ＋ 标题（后台多一个齿轮）· 行尾（等批准 / 未读数 · 额度 `✕` ·
+ * 与默认不同的账号头像 · 图钉）· 悬停时盖在行尾的动作（目录 · ↗ · 更多 / 关闭）。悬停卡（kit 悬停提示的卡式）锚在行右侧。
+ * 一句话怎么写全从 `session-face.ts` 取（状态点 · 状态句 · peek · 需要你）；这里只排。
  *
  * 只画、只把用户手势转交出去：点按钮切 tab、按下起拖、右键开菜单、子动作按钮 —— 做事的都经
  * `TabBarViewHost` 交给宿主（路由 / 拖拽 / 菜单 / 会话动作），本文件不 import 它们。
  * 读的状态：`TabStore`（tab 集合 · 顺序 · 当前 tab · 账号快照）与 `TabBarPrefs`（集合）。
- *
- * 字段与方法逐字从 `tabs.ts` 搬来（`refreshTabBar` 的主体成了 `refresh`，拖拽守卫留在 `TabManager` 那一层；
- * `scheduleTabBarRefresh` 成了 `scheduleRefresh`），唯一的改写：按钮上那几处转交换成 `this.host.…`。
  */
 import { sessionBadge, shouldShowAccountBadge, detectAccountMismatch } from "./accounts";
 import { accountAvatarEl } from "./account-color";
@@ -19,17 +19,35 @@ import { closesWithoutMenu, hasTerminal, isLive, stateView } from "./tab-session
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
-import { dispatcher, type OverlayHandle } from "./keybindings/registry";
+import { dispatcher, KeybindingDispatcher, type OverlayHandle } from "./keybindings/registry";
 import rs from "./tab-group-rename.module.css";
 import qs from "./tab-quota.module.css";
 import { appStore } from "./app-store";
 import { tabBlockedOf } from "./acct-view";
 import { copyText } from "./copy-table";
+import { icon } from "./kit/icon";
+import { statusDot } from "./kit/status-dot";
+import { countBadge, tag, kbd } from "./kit/badge";
+import { attachTooltip, delegateTooltip } from "./kit/tooltip";
+import { abbrOf, dotLabel, dotOf, fullTitle, machineOf, needsOf, needsOrder, needsWord, nextNeeds, peekLine, stateLine, titleParts, sinceText } from "./session-face";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
 export interface TabButtonRefs {
   root: HTMLButtonElement;
+  /** 状态点（kit V10）。 */
+  dot: HTMLSpanElement;
+  /** 窄窗那一格的两个字母。 */
+  abbr: HTMLSpanElement;
+  /** 远端的机器徽标（本机藏着）。 */
+  machine: HTMLSpanElement;
+  /** 标题前的项目名（`--text-2`）。 */
+  proj: HTMLSpanElement;
+  /** 后台会话（分身）的齿轮。 */
+  bg: HTMLSpanElement;
+  /** 标题正文那一格。 */
   label: HTMLSpanElement;
+  /** 行尾「等批准 / 等回答 / 需要你」（琥珀字，换掉未读数）。 */
+  needs: HTMLSpanElement;
   badge: HTMLSpanElement;
   /** 额度：被卡住的会话标题后那一格红字 `✕ 5h`（能发时藏着）。 */
   quotaBadge: HTMLSpanElement;
@@ -81,26 +99,16 @@ export interface TabBarViewHost {
   takeSuppressedClick(sid: string): boolean;
   /** 右键：开这个 tab 的菜单。 */
   openMenu(e: MouseEvent, sid: string): void;
-  /** 栏顶「重新读取」：有打开 tab 的每台对齐 ＋ 补读一次；做完才 resolve。 */
+  /** 栏顶「刷新」：有打开 tab 的每台对齐 ＋ 补读一次；做完才 resolve。 */
   rereadAll(): Promise<void>;
+  /** 行尾「更多」：开这个 tab 的菜单（锚在那颗按钮上）。 */
+  openMenuAt(anchor: HTMLElement, sid: string): void;
+  /** 离线条的［重新连接］：那台断着在退避里等 ⇒ 立刻重拨。 */
+  reconnect(origin: string): void;
 }
 
-/**
- * 右键菜单开在指针底下时，这颗 tab 的悬停提示（`title`）别压在菜单第一项上：先摘掉，指针离开这颗 tab 再放回
- * （离开之前重画过的照样带回，放回的是那一刻的值）。
- */
-function hideTooltipUntilLeave(root: HTMLElement): void {
-  if (!root.hasAttribute("title")) return;
-  const kept = root.title;
-  root.removeAttribute("title");
-  root.addEventListener(
-    "mouseleave",
-    () => {
-      if (!root.hasAttribute("title")) root.title = kept;
-    },
-    { once: true },
-  );
-}
+/** 窄窗（< 980）：栏收成 44px，悬停卡宽 260。 */
+const NARROW_PX = 980;
 
 export class TabBarView {
   /** sessionId → button DOM refs，避免 refreshTabBar 每次重建整个 bar */
@@ -126,16 +134,27 @@ export class TabBarView {
    */
   private readonly sidOf = new WeakMap<Element, string>();
 
-  /**
-   * 〔「重新读取对所有tab生效」〕栏顶常驻的一颗：永远是 `barEl` 的第一个子元素（整刷的散 tab 游标从它之后起）。
-   * 点击走下面那个委托的 click；在飞时 `disabled`，不重入。
-   */
+  /** 栏顶一排：全局入口（宿主经 [`mountHeadActions`] 交进来）· 刷新。 */
+  private readonly headEl: HTMLDivElement;
+  private readonly headActs: HTMLSpanElement;
+  /** 栏顶右端「刷新」：点击走下面那个委托的 click；在飞时 `disabled`，不重入。 */
   private readonly rereadBtn: HTMLButtonElement;
+  /** 「需要你 N」：有人在等你才出。 */
+  private readonly needsEl: HTMLButtonElement;
+  private readonly needsCount: HTMLSpanElement;
+  /** 「需要你」那一条右端的键帽（按当前键位现拼，出现时才拼）。 */
+  private readonly needsKbd: HTMLSpanElement;
+  /** 机器离线条（一台一条）。 */
+  private readonly downEl: HTMLDivElement;
+  /** 列表：分组 ＋ 每个会话一行（滚动的是它）。 */
+  readonly listEl: HTMLDivElement;
+  /** 机器 → 它看不见是从何时起（`markOriginDown`）；连上了摘掉。 */
+  private readonly downSince = new Map<string, number>();
 
   constructor(
     private readonly store: TabStore,
     private readonly prefs: TabBarPrefs,
-    private readonly barEl: HTMLElement,
+    barEl: HTMLElement,
     private readonly host: TabBarViewHost,
   ) {
     // **事件委托**：整条栏只在 `barEl` 上挂三个监听器，不再每个 tab 挂 10 个
@@ -148,16 +167,74 @@ export class TabBarView {
     barEl.addEventListener("click", (e) => this.onBarClick(e));
     barEl.addEventListener("mousedown", (e) => this.onBarMouseDown(e));
     barEl.addEventListener("contextmenu", (e) => this.onBarContextMenu(e));
+    this.headEl = document.createElement("div");
+    this.headEl.className = "tab-bar-head";
+    this.headActs = document.createElement("span");
+    this.headActs.className = "tab-bar-head-acts";
+    const sp = document.createElement("span");
+    sp.className = "tab-bar-head-sp";
     this.rereadBtn = document.createElement("button");
-    this.rereadBtn.className = "tab-bar-reread";
-    this.rereadBtn.title = copyText("tabBar.reread.hint");
-    const icon = document.createElement("span");
-    icon.textContent = copyText("tabBar.reread.icon");
-    const text = document.createElement("span");
-    text.className = "tab-bar-reread-text";
-    text.textContent = copyText("tabBar.reread.label");
-    this.rereadBtn.append(icon, text);
-    barEl.prepend(this.rereadBtn);
+    this.rereadBtn.type = "button";
+    this.rereadBtn.className = "tab-bar-reread tab-bar-icon";
+    this.rereadBtn.setAttribute("aria-label", copyText("tabBar.head.refresh"));
+    this.rereadBtn.appendChild(icon("refresh"));
+    attachTooltip(this.rereadBtn, () => copyText("tabBar.reread.hint"));
+    this.headEl.append(this.headActs, sp, this.rereadBtn);
+
+    this.needsEl = document.createElement("button");
+    this.needsEl.type = "button";
+    this.needsEl.className = "tab-needs";
+    this.needsEl.style.display = "none";
+    const needsDot = statusDot("needs-you", copyText("sessionFace.dot.needs"), "compact");
+    const needsText = document.createElement("span");
+    needsText.className = "tab-needs-text";
+    needsText.textContent = copyText("tabBar.needs.label");
+    this.needsCount = document.createElement("span");
+    this.needsCount.className = "tab-needs-count";
+    const needsSp = document.createElement("span");
+    needsSp.className = "tab-bar-head-sp";
+    this.needsKbd = document.createElement("span");
+    this.needsKbd.className = "tab-needs-kbd";
+    this.needsEl.append(needsDot, needsText, this.needsCount, needsSp, this.needsKbd);
+    attachTooltip(this.needsEl, () => this.needsList(), { placement: "right", hold: true });
+
+    this.downEl = document.createElement("div");
+    this.downEl.className = "tab-machine-down";
+
+    this.listEl = document.createElement("div");
+    this.listEl.className = "tab-list";
+    barEl.prepend(this.headEl, this.needsEl, this.downEl, this.listEl);
+    // 悬停卡与行尾动作的悬停提示都委托在列表上：一行零个监听器（与点击 / 拖拽同一条规矩）。
+    delegateTooltip(this.listEl, ".tab", (el) => {
+      const sid = this.sidOf.get(el);
+      return sid === undefined ? null : this.hoverCard(sid);
+    }, { placement: "right", hold: true, width: () => (window.innerWidth < NARROW_PX ? 260 : 300) });
+    delegateTooltip(this.listEl, ".tab-cwd, .tab-focus, .tab-more, .tab-close", (el) => actHint(el));
+  }
+
+  /** 栏顶左边那几颗全局入口（会话总览 · 文件 · 历史 · 设置）：宿主建好交进来，这里只摆。 */
+  mountHeadActions(buttons: HTMLElement[]): void {
+    this.headActs.replaceChildren(...buttons);
+  }
+
+  /** 那台看不见了（会话流 `unseen` 格）⇒ 记下从何时起；连上了（报完清单）⇒ 摘掉。 */
+  markOriginDown(origin: string, down: boolean, at: number = Date.now()): void {
+    if (down) {
+      if (!this.downSince.has(origin)) this.downSince.set(origin, at);
+    } else this.downSince.delete(origin);
+  }
+
+  /** 跳到下一个需要你的会话（`Ctrl+J` · 点「需要你」那一条）。没有 ⇒ 什么都不做。 */
+  nextNeedsSid(): string | null {
+    const order = needsOrder(this.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined));
+    return nextNeeds(order, this.store.activeId);
+  }
+
+  /** 此刻需要你的会话数（窗口标题用）。 */
+  needsCountNow(): number {
+    let n = 0;
+    for (const t of this.store.tabs.values()) if (needsOf(t)) n++;
+    return n;
   }
 
   private reread(): void {
@@ -177,7 +254,7 @@ export class TabBarView {
     if (!root) return null;
     const sid = this.sidOf.get(root);
     if (sid === undefined) return null;
-    const sub = t.closest(".tab-cwd, .tab-focus, .tab-close");
+    const sub = t.closest(".tab-cwd, .tab-focus, .tab-close, .tab-more");
     return { sid, root: root as HTMLElement, sub: sub && root.contains(sub) ? sub : null };
   }
 
@@ -191,6 +268,20 @@ export class TabBarView {
       this.reread();
       return;
     }
+    if (e.target instanceof Node && this.needsEl.contains(e.target)) {
+      const next = this.nextNeedsSid();
+      if (next !== null) this.host.switchTo(next);
+      return;
+    }
+    if (e.target instanceof Element && typeof e.target.closest === "function") {
+      const re = e.target.closest<HTMLElement>("[data-reconnect]");
+      if (re && this.downEl.contains(re)) {
+        this.host.reconnect(re.dataset.reconnect ?? "");
+        return;
+      }
+    }
+    // 栏顶那一排、需要你、离线条之外的才算「条上」：点在列表外不清多选。
+    if (!(e.target instanceof Node && this.listEl.contains(e.target))) return;
     const hit = this.hitOf(e);
     if (!hit) {
       // 条上空白（不是 tab、不是组头）⇒ 清掉多选。
@@ -204,6 +295,8 @@ export class TabBarView {
       if (sub.classList.contains("tab-cwd")) {
         // 📂 打开工作目录（cwd）—— 系统默认文件管理器
         void this.host.openTabCwd(sid);
+      } else if (sub.classList.contains("tab-more")) {
+        this.host.openMenuAt(sub as HTMLElement, sid);
       } else if (sub.classList.contains("tab-focus")) {
         // ↗ 拉对应终端窗口。非 Windows 不渲（`terminal-front.ts`）——不渲就点不到。
         const t = this.store.tabs.get(sid);
@@ -269,7 +362,6 @@ export class TabBarView {
     const hit = this.hitOf(e);
     if (!hit) return;
     e.preventDefault();
-    hideTooltipUntilLeave(hit.root);
     this.host.openMenu(e, hit.sid);
   }
 
@@ -322,9 +414,9 @@ export class TabBarView {
     // 组容器只在建的那一刻 `appendChild` 到 `barEl` 末尾、之后从不挪（挪的只有 tab 按钮），
     // 删的时候同时出 `groupEls` ⇒ **`groupEls` 的插入序就是组容器在 DOM 里的顺序**，最后一个就是它。
     // 没有组时从栏顶那颗「重新读取」之后起，它恒在第一个。
-    let lastGroup: HTMLElement = this.rereadBtn;
+    let lastGroup: HTMLElement | null = null;
     for (const g of this.groupEls.values()) lastGroup = g.wrap;
-    cursors.set(this.barEl, lastGroup);
+    cursors.set(this.listEl, lastGroup);
     for (const sid of this.store.orderedIds) {
       const tab = this.store.tabs.get(sid);
       if (!tab) continue;
@@ -339,7 +431,7 @@ export class TabBarView {
       // 在哪个组读 tab 自己的 `group`（组表只有 `{id, name}`，不再扫成员名单）。
       const col =
         tab.group === null ? undefined : this.prefs.collections.find((c) => c.id === tab.group);
-      const host = col ? this.groupElFor(col) : this.barEl;
+      const host = col ? this.groupElFor(col) : this.listEl;
       // 排序：希望此 button 出现在**同容器内**前一个之后。
       const prev = cursors.get(host) ?? null;
       const targetNext: ChildNode | null = prev ? prev.nextSibling : host.firstChild;
@@ -348,8 +440,97 @@ export class TabBarView {
       }
       cursors.set(host, refs.root);
     }
+    this.updateNeedsStrip();
+    this.updateMachineDown();
 
     this.store.notify();
+  }
+
+  /** 「需要你 N」：N ≥ 1 才出。 */
+  private updateNeedsStrip(): void {
+    const n = this.needsCountNow();
+    this.needsEl.style.display = n === 0 ? "none" : "";
+    if (n === 0) return;
+    const chord = dispatcher.effectiveChord("needs.next");
+    const pretty = chord ? KeybindingDispatcher.prettyChord(chord) : "";
+    if (this.needsKbd.dataset.chord !== pretty) {
+      this.needsKbd.dataset.chord = pretty;
+      this.needsKbd.replaceChildren(...(pretty ? [kbd(pretty)] : []));
+    }
+    if (this.needsCount.dataset.n !== String(n)) {
+      this.needsCount.dataset.n = String(n);
+      this.needsCount.replaceChildren(...[countBadge(n, "warn")].filter((b): b is HTMLSpanElement => b !== null));
+    }
+    this.needsEl.setAttribute("aria-label", copyText("tabBar.needs.aria", { n }));
+  }
+
+  /** 悬停「需要你」那一条：每个在等你的会话与它等的那一句（等得最久的在前）。 */
+  private needsList(): HTMLElement | null {
+    const tabs = needsOrder(this.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined));
+    if (tabs.length === 0) return null;
+    const box = document.createElement("div");
+    box.className = "tab-needs-list";
+    const now = Date.now();
+    for (const sid of tabs) {
+      const t = this.store.tabs.get(sid)!;
+      const row = document.createElement("div");
+      row.className = "tab-needs-row";
+      const head = document.createElement("div");
+      head.className = "tab-needs-row-head";
+      head.append(statusDot("needs-you", copyText("sessionFace.dot.needs"), "compact"));
+      const name = document.createElement("span");
+      name.textContent = fullTitle(t);
+      const st = document.createElement("span");
+      st.className = "tab-needs-row-state";
+      st.textContent = stateLine(t, now).text;
+      head.append(name, st);
+      row.appendChild(head);
+      const what = needsOf(t)?.what;
+      if (what) {
+        const q = document.createElement("div");
+        q.className = "tab-needs-row-what";
+        q.textContent = what;
+        row.appendChild(q);
+      }
+      box.appendChild(row);
+    }
+    return box;
+  }
+
+  /** 机器离线条：看不见的那台、还有状态不明的会话 ⇒ 一条（`{machine} 离线 · N 会话状态不明 / 采样 3m 前［重新连接］`）。 */
+  private updateMachineDown(): void {
+    const now = Date.now();
+    const rows: { origin: string; n: number; since: number }[] = [];
+    for (const [origin, since] of this.downSince) {
+      let n = 0;
+      for (const t of this.store.tabs.values()) if (t.origin === origin && t.state.liveness === "unseen") n++;
+      if (n > 0) rows.push({ origin, n, since });
+    }
+    const drawn = rows.map((r) => `${r.origin}\u0000${r.n}\u0000${sinceText(r.since, now)}`).join("\u0001");
+    if (this.downEl.dataset.drawn === drawn) return;
+    this.downEl.dataset.drawn = drawn;
+    this.downEl.replaceChildren(
+      ...rows.map((r) => {
+        const row = document.createElement("div");
+        row.className = "tab-machine-down-row";
+        row.appendChild(statusDot("unknown", copyText("sessionState.unseen.name"), "compact"));
+        const body = document.createElement("span");
+        body.className = "tab-machine-down-body";
+        const l1 = document.createElement("span");
+        l1.textContent = copyText("tabBar.machineDown.body", { machine: r.origin, n: r.n });
+        const l2 = document.createElement("span");
+        l2.className = "tab-machine-down-seen";
+        l2.textContent = copyText("tabBar.machineDown.seen", { ago: sinceText(r.since, now) ?? "0s" });
+        body.append(l1, l2);
+        const re = document.createElement("button");
+        re.type = "button";
+        re.className = "tab-machine-down-act";
+        re.dataset.reconnect = r.origin;
+        re.textContent = copyText("tabBar.machineDown.reconnect");
+        row.append(body, re);
+        return row;
+      }),
+    );
   }
 
   /**
@@ -406,7 +587,7 @@ export class TabBarView {
       const list = document.createElement("div");
       list.className = "tab-group-list";
       wrap.append(head, list);
-      this.barEl.appendChild(wrap);
+      this.listEl.appendChild(wrap);
       g = { wrap, head, list };
       this.groupEls.set(col.id, g);
     }
@@ -485,18 +666,10 @@ export class TabBarView {
   }
 
   /**
-   * F09（R7 语义反转）：账号徽章从"仅不一致时才显示的警示信号"改为"账号已知即恒显示的身份
-   * 标识"——门（`shouldShowAccountBadge`）通过 + 账号已知（源③已知除外）就显示，不再要求
-   * `detectAccountMismatch` 为真。旧版"不一致才显示"这条信息没有消失，只是从"触发显示的唯一
-   * 条件"降级为"视觉区分的一个维度"：一致态也显示头像（用户能一眼看出这个会话归属哪个账号），
-   * 不一致态仍用 tooltip 追加"与当前账号不一致"提示，且沿用既有 live 实心/last 幽灵区分
-   * （不新增视觉语言）。⇄ 一键对齐按钮随对齐全套一并删除（见 features/F09-ui-convergence.md
-   * §1"不做什么"——批量/一键对齐是组合层便利,不做等价替代,用户改走 flyout 逐会话操作）。
+   * 账号头像：**只在这个会话用的号与那台的默认号不同时出**（全都出 ⇒ 每行一块、信息为零，规范 V2）；
+   * 默认号不知道 ⇒ 不出（说不出「不同」）。悬停卡里永远写账号。头像悬停说「账号 {name}」。
    */
   private updateAccountBadge(refs: TabButtonRefs, sid: string, tab: Tab): void {
-    // 先算出**要画成什么样**，与上次画出去的一样就一个 DOM 都不写。
-    // 原先每次整刷都 `textContent=""` ＋ 新建一个头像 span（3 次内联样式写）＋ 写 title ＋ 写 display，
-    // 20 个 tab 就是每次整刷 20 个新 span、20 个旧 span 变垃圾。
     const hide = (): void => {
       if (refs.acctDrawn === "") return;
       refs.acctDrawn = "";
@@ -504,166 +677,163 @@ export class TabBarView {
       refs.acctBadge.className = "tab-acct-badge";
       refs.acctBadge.style.display = "none";
     };
-    if (!shouldShowAccountBadge(tab.origin, this.store.accountReadyOrigins)) return hide();
-    const b = sessionBadge(
-      sid,
-      tab.origin,
-      this.store.sessionAccountsByS,
-      this.store.accountEmailByName,
-      this.store.accountLastByS,
-    );
-    if (!b || !b.account) return hide(); // 未知账号（源③）→ 退 hover；顺带把 b.account 窄化为 string
-    const ghost = b.source === "last";
-    const current = isRemoteOrigin(tab.origin)
-      ? this.store.currentByOrigin.get(tab.origin) ?? null
-      : null;
-    const mismatch = detectAccountMismatch(b.account, current);
-    // 头像是 `(账号名, 幽灵态)` 的纯函数（`account-color.ts::accountAvatarEl`）；提示文字是
-    // `(b.tooltip, 不一致时的当前账号)` 的纯函数（下面那一行）⇒ 这几样就是全部输出。
-    const drawn = `${b.account}\u0000${ghost ? 1 : 0}\u0000${b.tooltip}\u0000${mismatch ? current : ""}`;
+    const account = this.accountOf(sid, tab);
+    if (account === null) return hide();
+    const current = this.store.currentByOrigin.get(tab.origin) ?? null;
+    if (!detectAccountMismatch(account.name, current)) return hide();
+    const drawn = `${account.name}\u0000${account.ghost ? 1 : 0}`;
     if (refs.acctDrawn === drawn) return;
     refs.acctDrawn = drawn;
     refs.acctBadge.textContent = "";
     refs.acctBadge.className = "tab-acct-badge";
-    refs.acctBadge.appendChild(accountAvatarEl(b.account, { size: 14, ghost }));
-    refs.acctBadge.title = mismatch ? copyText("tabBarView.badge.mismatch", { tooltip: b.tooltip, current: String(current) }) : b.tooltip;
+    refs.acctBadge.appendChild(accountAvatarEl(account.name, { size: 14, ghost: account.ghost }));
+    refs.acctBadge.title = copyText("tabBar.hover.account", { name: account.name });
     refs.acctBadge.style.display = "";
   }
 
+  /** 这个会话用的号（`ghost` ＝ 上次用的、不是此刻探到的）；不知道 ⇒ `null`。 */
+  private accountOf(sid: string, tab: Tab): { name: string; ghost: boolean } | null {
+    if (!shouldShowAccountBadge(tab.origin, this.store.accountReadyOrigins)) return null;
+    const b = sessionBadge(sid, tab.origin, this.store.sessionAccountsByS, this.store.accountEmailByName, this.store.accountLastByS);
+    if (!b || !b.account) return null;
+    return { name: b.account, ghost: b.source === "last" };
+  }
+
   private createTabButton(sid: string): TabButtonRefs {
-    // 按钮本身**一个监听器都不挂** —— 手势全在 `barEl` 上委托（见构造体）。
+    // 按钮本身**一个监听器都不挂** —— 手势全在 `barEl` 上委托（见构造体）；悬停卡经 kit 挂在根上。
     const root = document.createElement("button");
     root.className = "tab";
     this.sidOf.set(root, sid);
+    const span = (cls: string): HTMLSpanElement => {
+      const e = document.createElement("span");
+      e.className = cls;
+      return e;
+    };
 
-    const dot = document.createElement("span");
-    dot.className = "live-dot";
-    root.appendChild(dot);
+    const dot = statusDot("running", copyText("sessionFace.dot.running"), "compact");
+    dot.classList.add("tab-dot");
+    dot.removeAttribute("title"); // 悬停卡说状态；点上不再挂一层原生提示
+    const abbr = span("tab-abbr");
+    const machine = tag("");
+    machine.classList.add("tab-machine");
+    machine.style.display = "none";
+    const titleEl = span("tab-title");
+    const proj = span("tab-proj");
+    const bg = span("tab-gear");
+    bg.appendChild(icon("settings", "compact"));
+    bg.title = copyText("tabBarView.tab.bgHint");
+    bg.style.display = "none";
+    const label = span("tab-label");
+    titleEl.append(proj, bg, label);
 
-    const label = document.createElement("span");
-    label.className = "tab-title";
-    root.appendChild(label);
-
+    const trail = span("tab-trail");
+    const needs = span("tab-needs-word");
     // 额度：被卡住的会话标题后红字 `✕ 5h`（与「等批准」同位）。默认藏着，updateTabButton 按会话的轮换格填。
     const quotaBadge = document.createElement("span");
     quotaBadge.className = qs.tabQuotaBlocked;
     quotaBadge.style.display = "none";
-    root.appendChild(quotaBadge);
-
-    // A3：账号徽章（该会话属于哪个账号）。默认隐藏，updateTabButton 按 sessionBadge 填。
-    const acctBadge = document.createElement("span");
-    acctBadge.className = "tab-acct-badge";
+    const badge = span("tab-badge");
+    const acctBadge = span("tab-acct-badge");
     acctBadge.style.display = "none";
-    root.appendChild(acctBadge);
-
-    const badge = document.createElement("span");
-    badge.className = "tab-badge";
-    root.appendChild(badge);
-
-    // 📌 固定角标。默认不显（CSS `.tab:not(.pinned) .tab-pin { display:none }`），
-    // `updateTabButton` 只翻 `.pinned` 这一个类 —— 与其它 5 个子元素同一套「一次性 append、
-    // 可见性交给 class」的形状（见 `.tab .tab-badge` 那条注释）。
-    const pinBadge = document.createElement("span");
-    pinBadge.className = "tab-pin";
-    pinBadge.textContent = copyText("tabBarView.tab.pinIcon");
+    // 图钉：纯展示、不可点（固定是右键菜单那一项的事）。可见性交给 `.pinned` 类。
+    const pinBadge = span("tab-pin");
+    pinBadge.appendChild(icon("pin", "compact"));
     pinBadge.title = copyText("tabBarView.tab.pinHint");
-    root.appendChild(pinBadge);
+    trail.append(needs, quotaBadge, badge, acctBadge, pinBadge);
 
-    // 📂 打开工作目录（cwd）—— 系统默认文件管理器
-    const cwdBtn = document.createElement("span");
-    cwdBtn.className = "tab-cwd";
-    cwdBtn.textContent = copyText("tabBarView.tab.cwdIcon");
-    cwdBtn.title = copyText("tabBarView.tab.cwdHint");
-    root.appendChild(cwdBtn);
+    // 行尾动作：悬停 / 焦点时盖在行尾（带同色底与渐隐），标题不挪位。
+    const acts = span("tab-acts");
+    // 行尾动作的悬停提示委托在列表上（`actHint`）；这里只给读屏名。
+    const act = (cls: string, name: Parameters<typeof icon>[0], label: string): HTMLSpanElement => {
+      const b = span(cls);
+      b.setAttribute("role", "button");
+      b.setAttribute("aria-label", label);
+      b.appendChild(icon(name, "compact"));
+      return b;
+    };
+    const cwdBtn = act("tab-cwd", "folder", copyText("tabBarView.tab.cwdHint"));
+    acts.appendChild(cwdBtn);
+    // ↗ 切到终端：只 Windows 渲（`terminal-front.ts`）。
+    if (terminalFrontAvailable()) acts.appendChild(act("tab-focus", "front", copyText("tabBarView.tab.terminalHint")));
+    acts.appendChild(act("tab-more", "more", copyText("tabBarView.tab.moreHint")));
+    acts.appendChild(act("tab-close", "close", copyText("tabBarView.tab.closeHint")));
 
-    // ↗ 拉对应终端窗口（v1.7 用 sid_hwnd_cache）。非 Windows 不渲（`terminal-front.ts`）。
-    if (terminalFrontAvailable()) {
-      const focusBtn = document.createElement("span");
-      focusBtn.className = "tab-focus";
-      focusBtn.textContent = copyText("tabBarView.tab.terminalIcon");
-      focusBtn.title = copyText("tabBarView.tab.terminalHint");
-      root.appendChild(focusBtn);
-    }
+    root.append(dot, abbr, machine, titleEl, trail, acts);
 
-    const closeBtn = document.createElement("span");
-    closeBtn.className = "tab-close";
-    closeBtn.textContent = copyText("tabBarView.tab.closeIcon");
-    closeBtn.title = copyText("tabBarView.tab.closeHint");
-    root.appendChild(closeBtn);
+    return { root, dot, abbr, machine, proj, bg, label, needs, badge, quotaBadge, acctBadge, cwdBtn, pinBadge, drawn: null, acctDrawn: "" };
+  }
 
-    return { root, label, badge, quotaBadge, acctBadge, cwdBtn, pinBadge, drawn: null, acctDrawn: "" };
+  /**
+   * 悬停卡（C12）：标题全名 · 机器 · 目录 · 状态句（点 ＋ 一句，在等你时琥珀）· peek 一句 · 账号 · 分叉自 · 写入进程 · `5 切到这里`。
+   * 卡里没有能点的东西；peek 拿不到就不出那一行。tab 已经没了 ⇒ 不出。
+   */
+  hoverCard(sid: string): HTMLElement | null {
+    const tab = this.store.tabs.get(sid);
+    if (!tab) return null;
+    const now = Date.now();
+    const card = document.createElement("div");
+    card.className = "tab-hover";
+    const line = (cls: string, text: string): HTMLDivElement => {
+      const d = document.createElement("div");
+      d.className = cls;
+      d.textContent = text;
+      return d;
+    };
+    card.appendChild(line("tab-hover-title", fullTitle(tab)));
+    const where = line("tab-hover-row", machineOf(tab));
+    card.appendChild(where);
+    if (tab.projectDir) card.appendChild(line("tab-hover-row tab-hover-mono", tab.projectDir));
+    const st = stateLine(tab, now);
+    const state = document.createElement("div");
+    state.className = st.needs ? "tab-hover-state tab-hover-need" : "tab-hover-state";
+    const d = dotOf(tab);
+    state.append(statusDot(d, dotLabel(d), "compact"), document.createTextNode(st.text));
+    card.appendChild(state);
+    const peek = peekLine(tab);
+    if (peek) card.appendChild(line("tab-hover-peek", peek));
+    const acct = this.accountOf(sid, tab);
+    if (acct) card.appendChild(line("tab-hover-row", copyText("tabBar.hover.account", { name: acct.name })));
+    if (tab.forkedFromSessionId) card.appendChild(line("tab-hover-row", copyText("tabBar.hover.forked", { id: tab.forkedFromSessionId.slice(0, 8) })));
+    if (isLive(tab.state) && tab.writers.length > 1) card.appendChild(line("tab-hover-row", copyText("tabBarView.tab.writers", { n: tab.writers.length })));
+    const blocked = tabBlockedOf(appStore.sessionRotation.get().get(sid));
+    if (blocked) card.appendChild(line("tab-hover-row tab-hover-blocked", blocked.hover));
+    const pos = this.visibleOrder().indexOf(sid);
+    if (pos >= 0 && pos < 9) card.appendChild(line("tab-hover-foot", copyText("tabBar.hover.key", { key: String(pos + 1) })));
+    return card;
   }
 
   private updateTabButton(refs: TabButtonRefs, sid: string, tab: Tab): void {
     // 先把**要画成什么样**整个算出来，与上次画出去的比 —— 一样就一个 DOM 都不写。
-    //
-    // ⚠ 下面那几个 `classList.toggle(x, 布尔)` 状态没变时本来就不写（DOM 规范：`force` 与现状一致
-    //   直接返回，不跑 update steps、不排 mutation record）；**真在每次整刷里写 DOM 的是 `title`**
-    //   （属性赋值不管值变没变都写）。这一段早退省下的是那次写 ＋ 这一堆字符串拼接。
     const active = sid === this.store.activeId;
     // 多选里的样子（`.selected`）与「当前 tab」（`.active`）是两件事，两个类各画各的。
     const selected = this.host.isSelected(sid);
-    // 两个轴怎么画（类 · 提示句）只从 `stateView` 取：已结束（只能 resume）· 说不清（那台看不见）· 可重连（死了、容器还在）。
+    // 两轴怎么画（类）只从 `stateView` 取：已结束（只能 resume）· 状态不明（那台看不见）· Claude 已退出（死了、容器还在）。
     const view = stateView(tab.state);
     const ended = view.ended;
     const unseen = view.unseen;
-    // 固定：**只多一个 📌 角标，位置一个字不动**（`§B.3b`：没有「固定区」，
-    // pin 管的是「别丢」不是「排前面」；位置由 `§C` 的顺序落盘管，两者不抢）。
     const pinned = tab.pinned;
     const hasCwd = !!tab.projectDir;
-    // FIX 5 / Feature ②（issue #15）：远端 Tab 的 cwd 是 Pi 上的路径，
-    // 本地不存在，故 .remote 类只隐藏「打开工作目录」📂（CSS）。「调出终端」↗ 现在保留
-    // 给远端 —— 点击走 bringRemoteTerminalToFront（点那一刻现查此刻显示它的本机终端）。
     const remote = isRemoteOrigin(tab.origin);
-    // issue #23 红绿灯：busy=绿（.live-dot 默认色）/ idle·shell=红 / waiting=黄。
-    // activity 为 null（旧版 CC / 远端 v1）不加类 → 维持现状绿点。
-    // F91：语义抽到 session-status.ts 供 tab-bar 与 mission-control grid 共用（逐字节等价）。
     const actStatus = tab.activity?.status ?? null;
-    const lightClass = activityLightClass(actStatus);
-    // audit-fixes F03.2：可重连（claude 退但 tmux 会话仍在）。灯不被 `.ended` 隐藏，
-    // `.reconnectable` 把 .live-dot 覆写成暗色、压过红绿黄。
+    const lightClass = isLive(tab.state) ? activityLightClass(actStatus) : "";
     const reconnectable = view.reconnectable;
-    // 第一行恒是标题全名（远端带机器名）：窄窗收成点、宽栏长标题被截时，悬停才认得出是谁。
-    const titleParts: string[] = [tab.title];
-    // 下一行说状态（活着不说）。
-    if (view.tooltip !== null) titleParts.push(view.tooltip);
-    // 「等待操作」只对活着的会话说：可重连的会话 claude 已经没了，留着的活动信号是陈旧的
-    // （改两轴之前灯被 CSS 盖住了，tooltip 却还挂着这一句）。
-    if (isLive(tab.state) && actStatus === "waiting" && tab.activity?.waitingFor) {
-      titleParts.push(copyText("tabBarView.tab.waiting", { waitingFor: tab.activity.waitingFor }));
-    }
-    // 同一条会话不止一个活进程在写（后端会话事实的 `writers`）：只对活着的会话说（结束了的那一份是陈旧的）。
-    if (isLive(tab.state) && tab.writers.length > 1) {
-      titleParts.push(copyText("tabBarView.tab.writers", { n: tab.writers.length }));
-    }
-    // issue #63①：fork 会话在 tooltip 里标出血缘(徽标 `↳` 在标题上、来源 sid 在此)。
-    if (tab.forkedFromSessionId) {
-      titleParts.push(copyText("tabBarView.tab.forkedFrom", { id: tab.forkedFromSessionId.slice(0, 8) }));
-    }
-    // 额度：被卡住了（此刻的号被拒、轮换里没有能接的）⇒ 标题后红字 ＋ 悬停多一行。判定是后端给的 `blocked`。
-    const blocked = tabBlockedOf(appStore.sessionRotation.get().get(sid));
-    if (blocked) titleParts.push(blocked.hover);
-    const title = titleParts.join("\n");
+    const dot = dotOf(tab);
+    const n = needsOf(tab);
+    const needsText = n ? needsWord(n.kind) : "";
+    const parts = titleParts(tab);
     const unread = tab.unread > 0 && !active;
-    // 未读数只在有未读时写（没未读时徽标由 CSS 藏，文字留着上一次的，与原来逐字相同）。
-    const unreadText = unread ? (tab.unread > 99 ? "99+" : String(tab.unread)) : "";
+    // 未读数只在有未读、又不在等你时出（等你 ＞ 未读数）。
+    const unreadText = unread && !n ? (tab.unread > 99 ? "99+" : String(tab.unread)) : "";
+    // 空闲、跑完你还没看 ⇒ 标题 600 字重（点开即恢复）。
+    const unseenDone = unread && dot === "idle";
+    const blocked = tabBlockedOf(appStore.sessionRotation.get().get(sid));
+    const titleText = `${parts.forked ? "↳ " : ""}${parts.title}`;
+    const abbr = abbrOf(tab);
 
-    const flags = [
-      active,
-      selected,
-      ended,
-      unseen,
-      pinned,
-      hasCwd,
-      remote,
-      lightClass === "act-idle",
-      lightClass === "act-waiting",
-      reconnectable,
-      unread,
-    ]
+    const flags = [active, selected, ended, unseen, pinned, hasCwd, remote, lightClass === "act-idle", lightClass === "act-waiting", reconnectable, unreadText !== "", unseenDone, n !== null, parts.bg]
       .map((b) => (b ? "1" : "0"))
       .join("");
-    const drawn = `${flags}\u0000${title}\u0000${tab.title}\u0000${unreadText}\u0000${blocked?.text ?? ""}`;
+    const drawn = [flags, dot, titleText, parts.proj ?? "", unreadText, needsText, blocked?.text ?? "", abbr, remote ? tab.origin : ""].join("\u0000");
     if (refs.drawn !== drawn) {
       refs.drawn = drawn;
       refs.root.classList.toggle("active", active);
@@ -676,17 +846,53 @@ export class TabBarView {
       refs.root.classList.toggle("act-idle", lightClass === "act-idle");
       refs.root.classList.toggle("act-waiting", lightClass === "act-waiting");
       refs.root.classList.toggle("reconnectable", reconnectable);
-      if (refs.root.title !== title) refs.root.title = title;
-      refs.root.classList.toggle("has-unread", unread);
-      if (refs.label.textContent !== tab.title) {
-        refs.label.textContent = tab.title;
+      refs.root.classList.toggle("has-unread", unreadText !== "");
+      refs.root.classList.toggle("unseen-done", unseenDone);
+      refs.root.classList.toggle("waiting-you", n !== null);
+      // 只写真变了的那几格（一个状态变了 ⇒ 这颗按钮上恰好：类 · 点的样子 · 点的读屏名）。
+      if (refs.dot.dataset.state !== dot) {
+        refs.dot.dataset.state = dot;
+        refs.dot.setAttribute("aria-label", dotLabel(dot));
       }
-      if (unread && refs.badge.textContent !== unreadText) {
-        refs.badge.textContent = unreadText;
-      }
-      refs.quotaBadge.style.display = blocked === null ? "none" : "";
-      refs.quotaBadge.textContent = blocked?.text ?? "";
+      if (refs.label.textContent !== titleText) refs.label.textContent = titleText;
+      setText(refs.proj, parts.proj ?? "");
+      setShown(refs.proj, parts.proj !== null);
+      setShown(refs.bg, parts.bg);
+      setText(refs.abbr, abbr);
+      setShown(refs.machine, remote);
+      if (remote) setText(refs.machine, tab.origin);
+      setText(refs.needs, needsText);
+      setShown(refs.needs, n !== null);
+      setText(refs.badge, unreadText);
+      setShown(refs.quotaBadge, blocked !== null);
+      setText(refs.quotaBadge, blocked?.text ?? "");
     }
-    this.updateAccountBadge(refs, sid, tab); // A3：账号徽章随 tab 更新一并刷新
+    this.updateAccountBadge(refs, sid, tab); // 账号头像随 tab 更新一并刷新
   }
+}
+
+/** 字变了才写（整刷里一格没变就一个 DOM 都不写）。 */
+function setText(el: HTMLElement, text: string): void {
+  if (el.textContent !== text) el.textContent = text;
+}
+
+/** 显 / 藏：变了才写。 */
+function setShown(el: HTMLElement, on: boolean): void {
+  const want = on ? "" : "none";
+  if (el.style.display !== want) el.style.display = want;
+}
+
+/** 行尾那几颗动作的悬停提示（按类认是哪一颗）。 */
+function actHint(el: HTMLElement): string | null {
+  if (el.classList.contains("tab-cwd")) return withKey(copyText("tabBarView.tab.cwdHint"), "tab.open-cwd");
+  if (el.classList.contains("tab-focus")) return withKey(copyText("tabBarView.tab.terminalHint"), "terminal.bring-front");
+  if (el.classList.contains("tab-close")) return withKey(copyText("tabBarView.tab.closeHint"), "tab.close-archived");
+  if (el.classList.contains("tab-more")) return copyText("tabBarView.tab.moreHint");
+  return null;
+}
+
+/** 悬停提示「名字 · 当前键位」（键位按 `config.json.keybindings` 现拼；没绑键只写名字）。 */
+function withKey(name: string, action: Parameters<typeof dispatcher.effectiveChord>[0]): string {
+  const chord = dispatcher.effectiveChord(action);
+  return chord ? `${name} · ${KeybindingDispatcher.prettyChord(chord)}` : name;
 }

@@ -30,13 +30,19 @@
      随归档抽屉一起消失了：抽屉不存在 ⇒ 没有那个没认领格子的 grid item ⇒
      不需要给它开一行，`main` 也不必再跨两行。
      ⚠ 承诺的「左边 450px 空地消失」就是这一刀。 */
+  /* 会话头（主窗口稿 §5.13）占主区顶上一行：没有当前会话时 `hidden` ⇒ 不进网格，那一行 `auto` 收成 0。 */
   grid-template-areas:
+    "tabs head"
     "tabs main"
     "status status";
   grid-template-columns: auto minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) 24px;
+  grid-template-rows: auto minmax(0, 1fr) 24px;
   height: 100vh;
   position: relative;
+}
+
+#session-head {
+  grid-area: head;
 }
 
 #message-stream {

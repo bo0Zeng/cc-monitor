@@ -140,6 +140,11 @@ function ensurePermission(mod: NotifyMod): Promise<boolean> {
   return permPromise;
 }
 
+/** 发一条系统通知（「需要你」那条也走这里：同一份权限检查）。 */
+export async function notifySend(title: string, body: string): Promise<void> {
+  return pluginSend(title, body);
+}
+
 async function pluginSend(title: string, body: string): Promise<void> {
   const mod = await import("@tauri-apps/plugin-notification");
   if (!(await ensurePermission(mod))) return;

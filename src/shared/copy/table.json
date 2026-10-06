@@ -1884,17 +1884,17 @@
     },
     "sessionState.reconnectable.name": {
       "kind": "body",
-      "zh": "可重连",
+      "zh": "Claude 已退出",
       "args": []
     },
     "sessionState.ended.tooltip": {
       "kind": "body",
-      "zh": "这个会话已结束",
+      "zh": "已结束 · 可恢复",
       "args": []
     },
     "sessionState.reconnectable.tooltip": {
       "kind": "body",
-      "zh": "程序退了，终端还在 —— 可以接回去",
+      "zh": "Claude 已退出 · tmux 会话在",
       "args": []
     },
     "sessionState.liveAttachable.tooltip": {
@@ -1919,12 +1919,12 @@
     },
     "sessionState.gone.tooltip": {
       "kind": "body",
-      "zh": "这个会话已结束，它的记录也不在了，没法 resume",
+      "zh": "记录已不在 · 不可恢复",
       "args": []
     },
     "sessionState.unseen.name": {
       "kind": "body",
-      "zh": "说不清",
+      "zh": "状态不明",
       "args": []
     },
     "sessionState.unseen.noResume": {
@@ -1934,7 +1934,7 @@
     },
     "sessionState.unseen.tooltip": {
       "kind": "body",
-      "zh": "现在看不见那台机器，说不清这个会话还在不在",
+      "zh": "状态不明 · 机器不可见",
       "args": []
     },
     "tabCollections.full.collectionsTitle": {
@@ -3776,11 +3776,6 @@
       "zh": "多 agent 监控（跨机器只读并排）",
       "args": []
     },
-    "main.topbar.openHistory": {
-      "kind": "aria",
-      "zh": "打开历史会话浏览器",
-      "args": []
-    },
     "main.topbar.historyHint": {
       "kind": "body",
       "zh": "历史会话浏览器 (H)",
@@ -5036,65 +5031,30 @@
       "zh": "Resume 这个会话",
       "args": []
     },
-    "tabBarView.tab.forkedFrom": {
-      "kind": "body",
-      "zh": "↳ 从 {id} fork 而来",
-      "args": ["id"]
-    },
-    "tabBarView.tab.waiting": {
-      "kind": "body",
-      "zh": "等待操作：{waitingFor}",
-      "args": ["waitingFor"]
-    },
     "tabBarView.tab.writers": {
       "kind": "body",
-      "zh": "{n} 个进程在写",
+      "zh": "写入进程 ×{n}",
       "args": ["n"]
     },
     "tabBarView.tab.closeHint": {
       "kind": "body",
-      "zh": "关闭 Tab",
-      "args": []
-    },
-    "tabBarView.tab.closeIcon": {
-      "kind": "body",
-      "zh": "×",
+      "zh": "关闭标签页",
       "args": []
     },
     "tabBarView.tab.terminalHint": {
       "kind": "body",
-      "zh": "调出对应终端（反引号键）",
-      "args": []
-    },
-    "tabBarView.tab.terminalIcon": {
-      "kind": "body",
-      "zh": "↗",
+      "zh": "切到终端",
       "args": []
     },
     "tabBarView.tab.cwdHint": {
       "kind": "body",
-      "zh": "打开工作目录 (E)",
-      "args": []
-    },
-    "tabBarView.tab.cwdIcon": {
-      "kind": "body",
-      "zh": "📂",
+      "zh": "打开工作目录",
       "args": []
     },
     "tabBarView.tab.pinHint": {
       "kind": "body",
-      "zh": "已固定：关掉 app 再打开它还在",
+      "zh": "已固定",
       "args": []
-    },
-    "tabBarView.tab.pinIcon": {
-      "kind": "body",
-      "zh": "📌",
-      "args": []
-    },
-    "tabBarView.badge.mismatch": {
-      "kind": "body",
-      "zh": "{tooltip} · 与当前账号「{current}」不一致",
-      "args": ["tooltip", "current"]
     },
     "tabBarView.group.dissolveHint": {
       "kind": "body",
@@ -17186,19 +17146,9 @@
       "zh": "对齐后重试没有成功",
       "args": []
     },
-    "tabBar.reread.label": {
-      "kind": "action",
-      "zh": "重新读取",
-      "args": []
-    },
-    "tabBar.reread.icon": {
-      "kind": "body",
-      "zh": "⟳",
-      "args": []
-    },
     "tabBar.reread.hint": {
       "kind": "body",
-      "zh": "对所有打开的 tab 生效。每台机器对齐一次，在跟的会话都从上次读到的地方接着读",
+      "zh": "刷新 · 各机器会话",
       "args": []
     },
     "resync.machines.title": {
@@ -17468,11 +17418,6 @@
       "kind": "error",
       "zh": "文件窗口起不来（程序内部出错）：{e}",
       "args": ["e"]
-    },
-    "cssMarks.tab.ended": {
-      "kind": "body",
-      "zh": " ·",
-      "args": []
     },
     "cssMarks.branch.mark": {
       "kind": "body",
@@ -20394,6 +20339,41 @@
       "zh": "重新连接",
       "args": []
     },
+    "tabBar.head.refresh": {
+      "kind": "aria",
+      "zh": "刷新",
+      "args": []
+    },
+    "tabBar.needs.label": {
+      "kind": "action",
+      "zh": "需要你",
+      "args": []
+    },
+    "tabBar.needs.aria": {
+      "kind": "aria",
+      "zh": "需要你 {n}",
+      "args": ["n"]
+    },
+    "tabBar.needs.hint": {
+      "kind": "body",
+      "zh": "下一个需要你的会话",
+      "args": []
+    },
+    "tabBar.machineDown.body": {
+      "kind": "body",
+      "zh": "{machine} 离线 · {n} 会话状态不明",
+      "args": ["machine", "n"]
+    },
+    "tabBar.machineDown.seen": {
+      "kind": "body",
+      "zh": "采样 {ago} 前",
+      "args": ["ago"]
+    },
+    "tabBar.machineDown.reconnect": {
+      "kind": "action",
+      "zh": "重新连接",
+      "args": []
+    },
     "rsFilewinChrome.link.readOnly": {
       "kind": "body",
       "zh": "离线 · 只读",
@@ -20577,6 +20557,196 @@
     "rsFilewinEditPage.crumb.more": {
       "kind": "body",
       "zh": "…",
+      "args": []
+    },
+    "tabBar.hover.key": {
+      "kind": "body",
+      "zh": "{key} 切到这里",
+      "args": ["key"]
+    },
+    "tabBar.hover.account": {
+      "kind": "body",
+      "zh": "账号 {name}",
+      "args": ["name"]
+    },
+    "tabBar.hover.forked": {
+      "kind": "body",
+      "zh": "分叉自 {id}",
+      "args": ["id"]
+    },
+    "tabBarView.tab.moreHint": {
+      "kind": "body",
+      "zh": "更多",
+      "args": []
+    },
+    "tabBarView.tab.bgHint": {
+      "kind": "body",
+      "zh": "分身会话",
+      "args": []
+    },
+    "sessionFace.dot.running": {
+      "kind": "body",
+      "zh": "运行中",
+      "args": []
+    },
+    "sessionFace.dot.needs": {
+      "kind": "body",
+      "zh": "需要你",
+      "args": []
+    },
+    "sessionFace.dot.idle": {
+      "kind": "body",
+      "zh": "空闲",
+      "args": []
+    },
+    "sessionFace.dot.failed": {
+      "kind": "body",
+      "zh": "出错",
+      "args": []
+    },
+    "sessionFace.machine.local": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "sessionFace.state.waiting": {
+      "kind": "body",
+      "zh": "{kind} · {waited}",
+      "args": ["kind", "waited"]
+    },
+    "sessionFace.state.running": {
+      "kind": "body",
+      "zh": "运行中 · 调用 {tool}",
+      "args": ["tool"]
+    },
+    "sessionFace.state.runningFor": {
+      "kind": "body",
+      "zh": "运行中 · 调用 {tool} · {dur}",
+      "args": ["tool", "dur"]
+    },
+    "sessionFace.state.idleSeen": {
+      "kind": "body",
+      "zh": "空闲 · 完成 {ago} 前",
+      "args": ["ago"]
+    },
+    "sessionFace.state.idleUnseen": {
+      "kind": "body",
+      "zh": "空闲 · 完成 {ago} 前 · 未看",
+      "args": ["ago"]
+    },
+    "sessionFace.state.unseen": {
+      "kind": "body",
+      "zh": "状态不明 · {machine} 不可见",
+      "args": ["machine"]
+    },
+    "sessionHead.act.find": {
+      "kind": "body",
+      "zh": "在会话里找",
+      "args": []
+    },
+    "sessionHead.act.resume": {
+      "kind": "action",
+      "zh": "恢复",
+      "args": []
+    },
+    "sessionHead.act.openTerm": {
+      "kind": "action",
+      "zh": "在终端里打开",
+      "args": []
+    },
+    "sessionHead.act.reconnect": {
+      "kind": "action",
+      "zh": "重新连接",
+      "args": []
+    },
+    "needs.bar.approve": {
+      "kind": "body",
+      "zh": "等批准 · {tool}",
+      "args": ["tool"]
+    },
+    "needs.bar.answer": {
+      "kind": "body",
+      "zh": "等回答",
+      "args": []
+    },
+    "needs.bar.plan": {
+      "kind": "body",
+      "zh": "计划 · 等批准",
+      "args": []
+    },
+    "needs.bar.unknown": {
+      "kind": "body",
+      "zh": "需要你",
+      "args": []
+    },
+    "needs.bar.sub": {
+      "kind": "body",
+      "zh": "{waited} · 在终端里答",
+      "args": ["waited"]
+    },
+    "needs.bar.subBare": {
+      "kind": "body",
+      "zh": "在终端里答",
+      "args": []
+    },
+    "needs.bar.front": {
+      "kind": "action",
+      "zh": "切到终端",
+      "args": []
+    },
+    "needs.bar.openTerm": {
+      "kind": "action",
+      "zh": "在终端里打开",
+      "args": []
+    },
+    "needs.windowTitle.base": {
+      "kind": "title",
+      "zh": "cc-monitor",
+      "args": []
+    },
+    "needs.windowTitle.count": {
+      "kind": "title",
+      "zh": "cc-monitor · 需要你 {n}",
+      "args": ["n"]
+    },
+    "needs.notify.title": {
+      "kind": "title",
+      "zh": "{title}（{machine}）· {kind}",
+      "args": ["title", "machine", "kind"]
+    },
+    "settingsPanel.behavior.notifyNeeds": {
+      "kind": "control",
+      "zh": "需要你 · 系统通知",
+      "args": []
+    },
+    "sessionHead.attach.none": {
+      "kind": "error",
+      "zh": "在终端里打开失败 · {machine} 无 tmux 会话",
+      "args": ["machine"]
+    },
+    "tabBar.needsKind.approve": {
+      "kind": "body",
+      "zh": "等批准",
+      "args": []
+    },
+    "tabBar.needsKind.answer": {
+      "kind": "body",
+      "zh": "等回答",
+      "args": []
+    },
+    "tabBar.needsKind.plan": {
+      "kind": "body",
+      "zh": "等批准",
+      "args": []
+    },
+    "tabBar.needsKind.unknown": {
+      "kind": "body",
+      "zh": "需要你",
+      "args": []
+    },
+    "cssMarks.sep.dot": {
+      "kind": "body",
+      "zh": "·",
       "args": []
     }
   }

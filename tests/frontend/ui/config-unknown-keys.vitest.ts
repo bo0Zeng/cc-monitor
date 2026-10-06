@@ -94,6 +94,7 @@ const CENSUS: readonly string[] = [
   "resumeCommandLocalPresets",
   "resumeCommandRemotePresets",
   "notifyTurnEnd",
+  "notifyNeeds",
   // `forceLaunchPayloadRenderer` 退役 ⇒ 这一行删，两份普查恒等地各少一键。
   // 现打反扫 Rust 侧补一个：`src/frontend/shell/src/logging.rs::write_diagnostics_to_config` 写的 `diagnostics`。
   //   上面那句「Rust 侧另读三个」漏了它 ⇒ 存过一次诊断设置的用户，设置页「认不出的键」提示条会把它点名（假警报）。

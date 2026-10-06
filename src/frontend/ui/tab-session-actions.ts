@@ -160,6 +160,11 @@ export class TabSessionActions {
    * tab 栏「重新读取」：`origins` 里每台一次整机对齐 ＋ 补读，做完按台说一句。补出来的行照常经流到达。
    * 回成功的那几台（调用方对它们做「对齐做完」那一步）。
    */
+  /** 离线条的［重新连接］：那台断着在退避里等 ⇒ 立刻重拨一次（壳那一侧 `backend_start`：流在跑就是「别等了」）。 */
+  reconnect(origin: string): void {
+    void commands.backend_start({ origin }).catch((e: unknown) => console.warn("reconnect failed:", e));
+  }
+
   async rereadMachines(origins: Iterable<string>): Promise<string[]> {
     const rs = await resyncMachines(origins);
     if (rs.length === 0) {

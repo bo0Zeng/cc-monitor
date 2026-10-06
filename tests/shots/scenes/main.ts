@@ -4,7 +4,7 @@
 import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { Convo } from "../fake/records";
-import { defaultWorld, LOCAL, session } from "../fake/world";
+import { answerConvo, defaultWorld, LOCAL, session } from "../fake/world";
 import { mainReady, openTab, rightClick, scrollStream, sleep } from "./helpers";
 
 const W = 1280;
@@ -65,6 +65,14 @@ function longWorld(): World {
     c.say(`第 ${i} 步完成：删掉 ${12 + (i % 30)} 行重复样式，引用改到共享组件。`, 30_000 + i * 900);
   }
   w.sessions = [session(9, LOCAL, "/home/user/work/monorepo", c, { status: "busy", sid })];
+  return w;
+}
+
+/** gpu-01 上那个会话在等你回答（提问工具）。 */
+function answerWorld(): World {
+  const w = defaultWorld();
+  const s = w.sessions[5];
+  w.sessions[5] = { ...s, status: "waiting", waitingFor: "dialog open", waitingSinceMs: Date.now() - 300_000, idle: false, records: answerConvo(s.sid, s.cwd).records };
   return w;
 }
 
@@ -135,6 +143,17 @@ export const MAIN_SCENES: Scene[] = [
   main("main-waiting", "主窗口 · 等授权的会话", "第二个 tab：会话在等用户点授权（黄灯）", async () => {
     await mainReady(ALL_TABS);
     await openTab(1);
+  }),
+  main("main-needs-answer", "主窗口 · 需要你：等回答", "gpu-01 上的会话在等你回答：栏顶「需要你 2」、行尾「等回答」、钉条是那一问（远端在 tmux 里 ⇒ 在终端里打开）", async () => {
+    await mainReady(ALL_TABS);
+    await openTab(5);
+    await sleep(600);
+  }, answerWorld),
+  main("main-hover-card", "主窗口 · 标签页悬停卡", "悬停第二个标签页 500ms：全名 · 机器 · 目录 · 状态句 · 它在等的那一句 · 数字键", async () => {
+    await mainReady(ALL_TABS);
+    const row = document.querySelectorAll<HTMLElement>("#tab-bar .tab")[1];
+    row.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    await sleep(800);
   }),
   main("main-ended", "主窗口 · 已结束的会话", "第三个 tab：会话已结束（tab 灰、斜体）", async () => {
     await mainReady(ALL_TABS);

@@ -12,11 +12,7 @@
 /* viewer 窗口照样 new 一个 TabManager（`main.ts` bootstrapViewer），主窗的 chrome 在这里一律藏。
 S24 那段说归档抽屉也要在这张单子里 —— 抽屉删了，单子里早已没有它。 */
 body.viewer-mode #tab-bar,
-body.viewer-mode #tab-bar-resizer,
-body.viewer-mode .settings-trigger,
-body.viewer-mode .history-trigger,
-body.viewer-mode .sftp-trigger,
-body.viewer-mode .grid-monitor-trigger {
+body.viewer-mode #tab-bar-resizer {
   display: none;
 }
 

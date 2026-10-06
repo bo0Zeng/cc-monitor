@@ -13,7 +13,7 @@ import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { copyText } from "./copy-table";
 
 /** 宽度夹在这两个值之间（px）。 */
-const MIN_W = 110;
+const MIN_W = 200;
 const MAX_W = 340;
 
 const clampW = (w: number): number => Math.min(MAX_W, Math.max(MIN_W, w));

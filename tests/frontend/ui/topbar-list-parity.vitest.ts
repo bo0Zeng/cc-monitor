@@ -24,7 +24,7 @@
  *
  * - **不买「tier-2 那一档真的跑过」** —— 它照旧要真 Windows。本条只对账清单。
  * - **不买那张表里 `.status-cmdk` 那一项** —— 它不是 `*-trigger`，派生器抽不到它
- *   （派生器的正则逐字是 `className = "([a-z-]*trigger)"`）。⇒ 它在下面被**显式登记**
+ *   （派生器的正则逐字是 `headButton("([a-z-]*trigger)"`）。⇒ 它在下面被**显式登记**
  *   为「非 trigger 的那一项」，而那一行本身是手写的、**没有第二个源可对**。
  * - **不买「这些按钮在真浏览器里点得动」** —— 那正是 tier-2 那一档的活。
  * - **不买 `main.ts` 之外的顶栏入口** —— 派生器只读 `main.ts`。哪天顶栏搬家，
@@ -45,7 +45,8 @@ function read(rel: string): string {
  * 同一件事只有一种取法，否则两把尺子会各自漂。
  */
 function derivedTriggers(main: string): string[] {
-  return [...main.matchAll(/className = "([a-z-]*trigger)"/g)].map((m) => m[1]);
+  // 顶栏入口搬进标签页栏顶之后经 `headButton("<class>", "<图标>", …)` 建（同一个 class 名，tier-2 照旧按它点）。
+  return [...main.matchAll(/headButton\("([a-z-]*trigger)"/g)].map((m) => m[1]);
 }
 
 /** tier-2 那张手写表里**不是** `*-trigger` 的那几项 —— 派生器抽不到它们。 */

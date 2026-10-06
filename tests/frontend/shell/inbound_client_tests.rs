@@ -1205,4 +1205,21 @@ async fn the_link_fact_follows_register_unregister_and_failed_rounds() {
     tokio::time::timeout(Duration::from_secs(2), kick_handle(&origin).notified())
         .await
         .expect("拨过「重新连接」，连接循环没被叫醒");
+    // 断着时拨、还没用掉就连上了 ⇒ 那份许可作废（下一次断线照常退避）。
+    kick(&origin);
+    register(&origin, client.clone());
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), kick_handle(&origin).notified())
+            .await
+            .is_err(),
+        "连上之后，断线时那一下「重新连接」的许可还留着"
+    );
+    // 连着时拨 ⇒ 不做事、不留许可。
+    kick(&origin);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), kick_handle(&origin).notified())
+            .await
+            .is_err(),
+        "连着时拨「重新连接」留下了许可"
+    );
 }

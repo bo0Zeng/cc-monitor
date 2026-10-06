@@ -10,6 +10,7 @@
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { icon, type IconName } from "./icon";
 import s from "./menu.module.css";
+import { hideTooltips } from "./tooltip";
 
 export interface MenuItem {
   id?: string;
@@ -258,6 +259,8 @@ export function openMenu(anchor: MenuAnchor, items: MenuItem[], opts: { onClose?
     return false;
   }
   closeMenu();
+  // 菜单弹出时收起悬停提示 / 悬停卡：不许压在菜单第一项上。
+  hideTooltips();
   const root = document.createElement("div");
   root.className = s.menu;
   root.setAttribute("role", "menu");

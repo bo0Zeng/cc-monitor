@@ -194,3 +194,20 @@ fn routing_without_a_client_is_reported_not_panicked() {
 
 // 控制通道往返探测那两条（真发 ping 并等应答 · 对旧后端一个字节不发）随测试连接搬进后端：
 //   `tests/backend/dial_probe_tests.rs`（`a_hello_that_answers_ping_is_all_green` · `an_old_backend_without_commands_says_too_old`）。
+
+/// 「重新连接」：退避里睡着的那一条，一拨立刻醒；别台的拨不吵它（「连着时不留许可 · 连上作废」那两半在 `inbound_client_tests`）。
+#[tokio::test]
+async fn reconnect_wakes_only_the_loop_waiting_on_that_machine() {
+    use crate::inbound_client::{kick, kick_handle};
+    let a = kick_handle("seam-wake-a");
+    let waiting = tokio::spawn(async move { a.notified().await });
+    tokio::task::yield_now().await;
+    kick("seam-wake-b");
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    assert!(!waiting.is_finished(), "别台的「重新连接」吵醒了这一台");
+    kick("seam-wake-a");
+    tokio::time::timeout(Duration::from_secs(2), waiting)
+        .await
+        .expect("拨了「重新连接」没醒")
+        .unwrap();
+}

@@ -66,6 +66,7 @@ function readPresets(raw: unknown): string[] {
 }
 
 const KEY_NOTIFY_TURN_END = "notifyTurnEnd";
+const KEY_NOTIFY_NEEDS = "notifyNeeds";
 
 // 这里原来有落盘键 `forceLaunchPayloadRenderer`（由 `forceLegacyLaunchRenderer` 改名而来）：
 //   「强制远端启动走载荷渲染器、绕开 `ccm …` 调用行」的手动逃生口，无界面入口、只能手改 config.json，
@@ -108,6 +109,8 @@ export interface BehaviorConfig {
    * 默认 true。热更：turn-notify.ts 每次判定读缓存，设置保存时刷新缓存。
    */
   notifyTurnEnd: boolean;
+  /** 有会话开始等你（批准 / 回答 / 计划）且主窗口不在前台时发系统通知。默认 true；与上一格分开。 */
+  notifyNeeds: boolean;
 }
 
 const DEFAULTS: BehaviorConfig = {
@@ -119,6 +122,7 @@ const DEFAULTS: BehaviorConfig = {
   resumeCommandLocalPresets: [],
   resumeCommandRemotePresets: [],
   notifyTurnEnd: true,
+  notifyNeeds: true,
 };
 
 /** 读行为字段；缺失 / 类型不对走默认值，永不抛。 */
@@ -160,10 +164,14 @@ export function behaviorIn(cfg: Record<string, unknown>): BehaviorConfig {
       typeof cfg[KEY_NOTIFY_TURN_END] === "boolean"
         ? (cfg[KEY_NOTIFY_TURN_END] as boolean)
         : DEFAULTS.notifyTurnEnd,
+    notifyNeeds:
+      typeof cfg[KEY_NOTIFY_NEEDS] === "boolean"
+        ? (cfg[KEY_NOTIFY_NEEDS] as boolean)
+        : DEFAULTS.notifyNeeds,
   };
 }
 
-/** 保存行为字段。只交这 9 个顶层键（按键补丁），不动 theme / diagnostics 等。 */
+/** 保存行为字段。只交这 10 个顶层键（按键补丁），不动 theme / diagnostics 等。 */
 export async function setBehavior(next: BehaviorConfig): Promise<void> {
   await patchConfig([
     setAt([KEY_AUTO_FOLLOW], next.autoFollowUserActive),
@@ -174,5 +182,6 @@ export async function setBehavior(next: BehaviorConfig): Promise<void> {
     setAt([KEY_RESUME_LOCAL_PRESETS], next.resumeCommandLocalPresets),
     setAt([KEY_RESUME_REMOTE_PRESETS], next.resumeCommandRemotePresets),
     setAt([KEY_NOTIFY_TURN_END], next.notifyTurnEnd),
+    setAt([KEY_NOTIFY_NEEDS], next.notifyNeeds),
   ]);
 }

@@ -717,6 +717,8 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/acct-session.module.css": { stacked: true, why: "换号条 · 提示条：类经小工具函数挂，量具认不出挂到哪，按「叠」算（实际只挂自己的哈希类）" },
   "src/frontend/ui/tab-quota.module.css": { stacked: false, why: "tab 标题后 `✕ 5h` 那一格：只挂自己的哈希类（不叠全局类）" },
   "src/frontend/ui/live-card.module.css": { stacked: false, why: "活卡（`live-card-view.ts` 画）：卡 / 顶上那行 / 正文只挂自己的哈希类（不叠全局类）" },
+  "src/frontend/ui/needs-bar.module.css": { stacked: false, why: "「需要你」钉条（`needs-bar.ts`）：只挂自己的哈希类" },
+  "src/frontend/ui/session-head.module.css": { stacked: false, why: "会话头（`session-head.ts`）：只挂自己的哈希类" },
   "src/frontend/ui/record-file-notice.module.css": { stacked: false, why: "tab 顶上「记录文件不见了 / 已从头重读」那一句：只挂自己的哈希类 `.notice`（不叠全局类）" },
   "src/frontend/ui/tab-group-rename.module.css": { stacked: false, why: "组头就地改名的输入框只挂自己的哈希类" },
   "src/frontend/ui/kit/icon.module.css": { stacked: false, why: "图标件：svg 只挂自己的哈希类" },
@@ -748,8 +750,8 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
  * 没登记又不在任何窗口里 ⇒ 照旧红。只许缩。
  */
 const KIT_AWAITING_FACES: ReadonlySet<string> = new Set(
-  // banner · drawer · fold · meter · tabs 已由主窗口的「账号」面板用上。
-  ["badge", "block", "card", "chip", "empty", "field", "list-row", "progress", "skeleton", "status-dot", "switch"].map(
+  // banner · drawer · fold · meter · tabs 已由主窗口的「账号」面板用上；badge · status-dot 由标签页栏（状态点 · 机器徽标 · 「需要你」计数）用上。
+  ["block", "card", "chip", "empty", "field", "list-row", "progress", "skeleton", "switch"].map(
     (k) => `src/frontend/ui/kit/${k}.module.css`,
   ),
 );

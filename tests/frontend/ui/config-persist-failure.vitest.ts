@@ -58,6 +58,7 @@ function behaviorPanel(): { onBehaviorToggle(): Promise<void> } {
     bringFrontCheckbox: cb(),
     showBgCheckbox: cb(),
     notifyTurnEndCheckbox: cb(),
+    notifyNeedsCheckbox: cb(),
     resumeLocalInput: input(),
     resumeRemoteInput: input(),
     resumeLocalPresets: [],

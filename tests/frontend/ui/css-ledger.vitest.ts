@@ -111,8 +111,8 @@ const FLOORS = {
   cssFiles: 8,
   /** CSS 选择器里的类名个数（现打 777）。 */
   cssClasses: 600,
-  /** `z-index` 声明条数（现打 39）。 */
-  zIndexDecls: 30,
+  /** `z-index` 声明条数（现打 29：顶栏四个入口搬进标签页栏顶，浮在消息流上的那四条 `z-index` 随之删了）。 */
+  zIndexDecls: 22,
   /** 代码侧扫出来的类名形 token 个数（现打 2438）。 */
   literals: 1500,
   /** 第三方 CSS 自产的类名个数（现打 184，来自 katex ＋ highlight.js）。 */
@@ -301,15 +301,6 @@ const DESCENDING_SPECIFICITY_EXCEPTIONS: readonly {
   },
   // ── src/frontend/ui/styles.css：tab 规则（U4 写区，未判）──
   { file: "src/frontend/ui/styles.css", later: ".tab-pin", earlier: ".tab:not(.pinned) .tab-pin", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
-  { file: "src/frontend/ui/styles.css", later: ".tab-title", earlier: ".tab.ended .tab-title", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
-  { file: "src/frontend/ui/styles.css", later: ".live-dot", earlier: ".tab.ended .live-dot", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
-  { file: "src/frontend/ui/styles.css", later: ".tab-badge", earlier: ".tab .tab-badge", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
-  { file: "src/frontend/ui/styles.css", later: ".tab-close", earlier: ".tab:not(.ended) .tab-close", kind: "harmless", why: "〔U4 判〕同属性只有 `display`（`n: 2` 里另一处是只设 `font-size` 的那条，不相交）；高特异度那条赢正是作者要的：× 只在已结束时露出，已结束时 ↗ / 📂 藏起来" },
-  { file: "src/frontend/ui/styles.css", later: ".tab-close:hover", earlier: ".tab:not(.ended) .tab-close", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
-  { file: "src/frontend/ui/styles.css", later: ".tab-focus", earlier: ".tab.ended .tab-focus", n: 2, kind: "harmless", why: "〔U4 判〕同属性只有 `display`（`n: 2` 里另一处是只设 `font-size` 的那条，不相交）；高特异度那条赢正是作者要的：× 只在已结束时露出，已结束时 ↗ / 📂 藏起来" },
-  { file: "src/frontend/ui/styles.css", later: ".tab-focus:hover", earlier: ".tab.ended .tab-focus", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
-  { file: "src/frontend/ui/styles.css", later: ".tab-cwd", earlier: ".tab.ended .tab-cwd", n: 2, kind: "harmless", why: "〔U4 判〕同属性只有 `display`（`n: 2` 里另一处是只设 `font-size` 的那条，不相交）；高特异度那条赢正是作者要的：× 只在已结束时露出，已结束时 ↗ / 📂 藏起来" },
-  { file: "src/frontend/ui/styles.css", later: ".tab-cwd:hover", earlier: ".tab.ended .tab-cwd", kind: "harmless", why: "〔U4 判〕两边属性不相交（前者只设 `display`），先后翻转不改变任何一个声明的胜负" },
   // ── src/frontend/ui/styles/settings.css：〔C §2.2 ·  待拍 2〕ST3 那 15 条逐条判完 ──
   //   读法：两条规则的声明逐条对（`postcss` 现打），再到 TS 里核两个选择器能不能落在同一个元素上。
   //   结论 15 条全是 `harmless`（互斥伪类 / 属性不相交 / 结构上打不到同一元素 / 高特异度那条正是作者要的），

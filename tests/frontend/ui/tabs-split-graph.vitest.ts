@@ -171,7 +171,12 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/app-store.ts", // 同上：会话的轮换格从 store 读
     "src/frontend/ui/copy-table.ts", // 按钮上的图标 · 悬停提示 · 集合名提示进了文案表
     "src/frontend/ui/ipc/origin.ts", // 远端 tab 才挂 `.remote` / 走远端那条 ↗
-    "src/frontend/ui/keybindings/registry.ts", // 组头就地改名：改名时 Esc 走 overlay 栈
+    "src/frontend/ui/keybindings/registry.ts", // 组头就地改名：改名时 Esc 走 overlay 栈；悬停提示里现拼键位
+    "src/frontend/ui/kit/badge.ts", // 机器徽标 · 「需要你」计数 · 键帽
+    "src/frontend/ui/kit/icon.ts", // 行尾动作 · 刷新 · 图钉 · 齿轮（Phosphor）
+    "src/frontend/ui/kit/status-dot.ts", // 状态点（V10）
+    "src/frontend/ui/kit/tooltip.ts", // 悬停卡（锚在行右侧）· 行尾动作的悬停提示
+    "src/frontend/ui/session-face.ts", // 一个会话读成什么：状态点 · 状态句 · peek · 需要你（标签页行 · 会话头 · 悬停卡同一份）
     "src/frontend/ui/tab-group-rename.module.css", // 组头就地改名那个输入框的样式（UC2：新样式一律 module）
     "src/frontend/ui/tab-quota.module.css", // `✕ 5h` 那一格的样式
     "src/frontend/ui/session-status.ts",

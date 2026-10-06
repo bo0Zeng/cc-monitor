@@ -84,6 +84,7 @@ import { ENDED, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
 import { invoke } from "@tauri-apps/api/core";
 import type { TabStore } from "../../../src/frontend/ui/tab-store";
 import type { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
+import { fullTitle } from "../../../src/frontend/ui/session-face";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { RunTimeline } from "../../../src/frontend/ui/run-timeline";
 import { buildAgentCard, markRunCard } from "../../../src/frontend/ui/cards/subagent";
@@ -338,16 +339,19 @@ describe("重启后各台都报完了、组员一个都没回来的组不留空�
   });
 });
 
-describe("tab 的悬停提示第一行是标题", () => {
-  it("活着的普通 tab 也有提示（标题全名），已结束的标题之后再说状态", () => {
+describe("tab 的悬停卡第一行是标题全名", () => {
+  it("活着的普通 tab 也有卡（标题全名在第一行），已结束的状态句说已结束", () => {
     const tm = makeTabs(["a", "b"]);
     const st = inside(tm).store;
     (st.tabs.get("b") as Tab).state = ENDED;
     tm.switchTo("b");
     tm.switchTo("a");
-    const tips = [...document.querySelectorAll<HTMLElement>(".tab")].map((el) => el.title.split("\n"));
-    expect(tips.map((t) => t[0])).toEqual([(st.tabs.get("a") as Tab).title, (st.tabs.get("b") as Tab).title]);
-    expect(tips[1][1]).toBe(copyText("sessionState.ended.tooltip"));
+    const bar = (tm as unknown as { bar: { hoverCard(sid: string): HTMLElement | null } }).bar;
+    const cards = ["a", "b"].map((sid) => bar.hoverCard(sid)!);
+    expect(cards.map((c) => c.firstElementChild?.textContent)).toEqual(["a", "b"].map((sid) => fullTitle(st.tabs.get(sid) as Tab)));
+    expect(cards[1].querySelector(".tab-hover-state")?.textContent).toBe(copyText("sessionState.ended.tooltip"));
+    // tab 不在了 ⇒ 不出卡。
+    expect(bar.hoverCard("gone")).toBeNull();
   });
 });
 
@@ -488,6 +492,9 @@ describe("上下文占用：状态栏与监控板读同一个上限（后端定�
     touchedFiles: [],
     projectDir: null,
     writers: [],
+    pending: [],
+    lastSay: null,
+    needs: null,
     usage: { promptTokens: 350_000, model: "claude-opus-5-5", peakPromptTokens: 350_000, limit, limitFrom },
   });
   it("中转说是 1M：35%（不是 175%）；状态栏与监控板同一个数", () => {

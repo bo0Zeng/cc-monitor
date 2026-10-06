@@ -3982,7 +3982,7 @@ CLI 面随之自动多一条 `--history-find`。
 
 ```text
 → {"id":"q12","cmd":"history-facts","args":{"path":"/home/u/.claude/projects/-p/s.jsonl"}}
-← {"kind":"reply","id":"q12","ok":true,"data":{"end":5120088,"forkedFrom":null,"projectDir":"/p","touchedFiles":["/p/a.ts"],"usage":{"promptTokens":41250,"model":…,"peakPromptTokens":352000,"limit":1000000,"limitFrom":"observed"},"writers":[4711]}}
+← {"kind":"reply","id":"q12","ok":true,"data":{"end":5120088,"forkedFrom":null,"lastSay":{"text":"改好了。","at":"…"},"needs":{"kind":"approve","tool":"Bash","what":"rm -rf build/","sinceMs":1700000000000},"pending":[{"id":"toolu_1","name":"Bash","what":"rm -rf build/","at":"…"}],"projectDir":"/p","touchedFiles":["/p/a.ts"],"usage":{"promptTokens":41250,"model":…,"peakPromptTokens":352000,"limit":1000000,"limitFrom":"observed"},"writers":[4711]}}
 → {"id":"q13","cmd":"history-facts","args":{"path":"…/s.jsonl","prior":{上一次的 data 原样},"limits":{"haiku":200000}}}
 ```
 
@@ -3997,6 +3997,9 @@ CLI 面随之自动多一条 `--history-find`。
 | `usage` | ← | 文件序最后一条 `input_tokens + cache_creation_input_tokens + cache_read_input_tokens > 0` 的 assistant 记录 ⇒ `{promptTokens, model, peakPromptTokens, limit, limitFrom}`（`model` 缺 ⇒ `null`）；一条都没有 ⇒ `null`。`peakPromptTokens` = 全会话最大的一轮。**上下文上限的唯一判定**（`facts_query::context_limit`）：本进程里的中转看见过这个会话（会话 id ＝ 记录文件名 ＝ 中转的流标签）的请求 ⇒ 带过 `anthropic-beta` 里 `context-1m…` 那一项是 1M、没带过是默认 200k，`relay`（中转只记那一项在不在，`observe/relay_marks.rs`，随进程）；中转没看见过 ⇒ `limits` 里最长匹配的子串 ⇒ `setting` · 模型名带 `[1m]` ⇒ 1M `model` · 见过超过 200k 的一轮 ⇒ 1M `observed` · 判不出 ⇒ `assumed`（`limit` 只是占位的 1M，界面不算百分比、只写用了多少）；任何一档小于 `peakPromptTokens` ⇒ 按 `observed`（至少 1M）⇒ `limit` 恒 ≥ `peakPromptTokens`，百分比不会超过 100。状态栏与监控板读同一个 `limit` |
 | `projectDir` | ← | 会话的项目目录：适配层读记录开头给（与 `session_added.project_dir` 同一个函数），读到即锁定；开头里还没有 ⇒ `null`（下一次再读） |
 | `writers` | ← | 此刻持着这条会话的活进程 pid（这台 pidfile 目录里活着的交互进程、判活同历史清单的「活着」那一格），升序；每次现查、不累加（`prior` 里那一份不用）。不止一个 ⇒ 同一条会话有几个进程在同时写（界面在 tab 上说一句）。不留 pidfile 的那一家恒 `[]` |
+| `pending` | ← | 还没有结果的工具调用，文件序：`[{id, name, what, at}]`。assistant 记录里的 `tool_use` 进，user 记录里同 id 的 `tool_result` 来了摘；user 记录里没有 `tool_result`（你又发了一句 · 中断）⇒ 全摘。`what` ＝ 主参数一行（Bash → `command` · 读写工具 → 路径 · Grep / Glob → `pattern` · WebFetch → `url` · WebSearch → `query` · Task / Agent → `description` · AskUserQuestion → 第一问；头一个非空行、至多 160 字），没登记的工具 ⇒ `null`；`at` ＝ 那条记录的 `timestamp` 原样。至多 16 条（超 ⇒ 丢最早的）。累加、随 `prior` 续传 |
+| `lastSay` | ← | 文件序最后一段 assistant 正文（`text` 块）的头一个非空行（至多 160 字）＋ 那条记录的 `timestamp`：`{text, at}`；一段都没有 ⇒ `null`。悬停卡「它最后一句」用 |
+| `needs` | ← | **需要你**：这台 pidfile 里持着这条会话的活交互进程说 `status: "waiting"` ⇒ `{kind, tool, what, sinceMs}`，否则 `null`。`tool` ＝ 等的那个调用的工具名（判不出 ⇒ `null`）。种类的唯一判定（`facts_query::needs_of`）：`pending` 里有 AskUserQuestion ⇒ `answer`（`what` 是那一问）· 有 ExitPlanMode ⇒ `plan` · 否则 `waitingFor` 带 `permission` 且有没结果的调用 ⇒ `approve`（`what` 是最早那一步的主参数）· 其余 ⇒ `unknown`（不猜）。`sinceMs` ＝ pidfile 的 `statusUpdatedAt`（epoch ms），没有 ⇒ `null`。每次现查、不累加（`prior` 里那一份不用） |
 
 - 本体 `observe/facts_query.rs`（claude 的写类工具表也住那里：进适配层会让「加一个 agent 通用层要改几处」那只许降的棘轮涨一格）。子 agent 的列表与状态不在这里：那是运行表（`session_runs`），判定只有那一处。
 - 整份超过 32 MiB ⇒ `too_large`（不截断）。界面经通道直接问（`src/frontend/ui/session-reads.ts`），本机与远端同一条路；老后端不认 ⇒ `unsupported`（界面说「不可用」，不当成空）。

@@ -649,6 +649,30 @@ pub(crate) fn session_writers(agent_home: &Path, sid: &str) -> Vec<u32> {
     pids
 }
 
+/// 那台 pidfile 说这条会话**此刻在等人**（`status: "waiting"`）：等的是哪一类（`waitingFor` 原样）· 从何时起等（`statusUpdatedAt`，epoch ms）。
+/// 判活同 [`session_writers`]；不在等 / 没有活进程持着它 ⇒ `None`。几个进程同时持着、有一个在等 ⇒ 取它（等得最早的那个）。
+/// 「等的是什么」不在这里判：配上记录里那个还没有结果的工具调用，在 `facts_query::needs_of`。
+pub(crate) fn session_wait(agent_home: &Path, sid: &str) -> Option<super::facts_query::PidWait> {
+    pidfiles(agent_home)
+        .into_iter()
+        .filter(|(_, v)| v.get("sessionId").and_then(|x| x.as_str()) == Some(sid))
+        .filter(|(_, v)| v.get("status").and_then(|x| x.as_str()) == Some("waiting"))
+        .filter(|(_, v)| {
+            v.get("kind")
+                .and_then(|k| k.as_str())
+                .is_none_or(|k| k == "interactive")
+        })
+        .filter(|(pid, v)| crate::platform::proc::session_alive(*pid, parse_procstart_ticks(v)))
+        .map(|(_, v)| super::facts_query::PidWait {
+            waiting_for: v
+                .get("waitingFor")
+                .and_then(|x| x.as_str())
+                .map(str::to_string),
+            since_ms: v.get("statusUpdatedAt").and_then(serde_json::Value::as_u64),
+        })
+        .min_by_key(|w| w.since_ms.unwrap_or(u64::MAX))
+}
+
 /// `--session-accounts`：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。
 pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
     // 向适配层要「会话进程环境里该读哪两个键」只问这一次（账号 · 上游地址）。

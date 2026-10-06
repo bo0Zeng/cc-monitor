@@ -729,6 +729,8 @@ pub fn register(origin: &str, client: Arc<InboundClient>) {
         old.shutdown();
     }
     set_link(origin, Link::Up);
+    // 断线时按过、还没用掉的「重新连接」许可作废（见 [`kick`]）。
+    lock(link_book()).kicks.remove(origin);
 }
 
 /// 摘除 —— **只摘自己那条**。重连时新连接可能已经登记上来了，
@@ -818,8 +820,13 @@ pub fn kick_handle(origin: &str) -> Arc<tokio::sync::Notify> {
         .clone()
 }
 
-/// 「重新连接」：叫醒那台的连接循环，不等退避睡满（它此刻没在睡 ⇒ 记一下，下一回一睡就醒）。
+/// 「重新连接」：叫醒那台的连接循环，不等退避睡满。
+/// 连着 ⇒ 不做事；断着而它此刻没在睡 ⇒ 记一下，下一回一睡就醒；连上那一刻这份许可作废（[`register`]），
+/// 不会留到下一次断线时白白跳过一轮退避。主窗口与文件窗口的［重新连接］都只走这一处。
 pub fn kick(origin: &str) {
+    if link_of(origin) == Link::Up {
+        return;
+    }
     kick_handle(origin).notify_one();
 }
 

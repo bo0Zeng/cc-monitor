@@ -109,14 +109,15 @@ const BOTH: readonly Mode[] = ["default", "viewer"];
  * 判红条件一个字没动。`settings.html` 里没有 `#app`（设置窗不再需要把它 `display:none` 掉），
  * 所以本文件对 settings 仍是 N/A（理由见抬头「settings 那一半」）。
  */
-const STATIC_IDS: readonly { expr: string; selector: string; why: string }[] = [
+const STATIC_IDS: readonly { expr: string; selector: string; why: string; only?: Mode }[] = [
   { expr: '<div id="tab-bar">', selector: "#tab-bar", why: "静态 DOM；viewer 里靠 display:none 退出 grid" },
+  { expr: '<div id="session-head" hidden>', selector: "#session-head", why: "静态 DOM（只主窗口）：会话头的占位，起步时被 `SessionHead.el` 顶掉（同 id）；没有当前会话时不显示", only: "default" },
   { expr: '<main id="message-stream">', selector: "#message-stream", why: "静态 DOM" },
   { expr: '<div id="status-bar">', selector: "#status-bar", why: "静态 DOM" },
 ];
 const HTML_OF: Record<Mode, string> = { default: "index.html", viewer: "viewer.html" };
 const STATIC_CHILDREN: readonly AppChild[] = (Object.keys(HTML_OF) as Mode[]).flatMap((mode) =>
-  STATIC_IDS.map((c) => ({ file: HTML_OF[mode], expr: c.expr, selector: c.selector, modes: [mode], why: c.why })),
+  STATIC_IDS.filter((c) => c.only === undefined || c.only === mode).map((c) => ({ file: HTML_OF[mode], expr: c.expr, selector: c.selector, modes: [mode], why: c.why })),
 );
 
 /** JS 插进 `#app` 的那些。`expr` 必须与源码逐字相同 —— 尺 A 拿它对账。 */
@@ -143,34 +144,7 @@ const INSERTED_CHILDREN: readonly AppChild[] = [
     modes: ["default"],
     why: "bootstrapMain 经 `mountTabBarResizer()` 建；viewer 路不建（CSS 另有一条兜底隐藏）",
   },
-  {
-    file: "src/frontend/ui/main.ts",
-    expr: "settingsTrigger",
-    selector: ".settings-trigger",
-    modes: ["default"],
-    why: "六个顶栏 trigger 都只在 bootstrapMain 建",
-  },
-  {
-    file: "src/frontend/ui/main.ts",
-    expr: "historyTrigger",
-    selector: ".history-trigger",
-    modes: ["default"],
-    why: "同上",
-  },
-  {
-    file: "src/frontend/ui/main.ts",
-    expr: "gridTrigger",
-    selector: ".grid-monitor-trigger",
-    modes: ["default"],
-    why: "同上",
-  },
-  {
-    file: "src/frontend/ui/main.ts",
-    expr: "sftpTrigger",
-    selector: ".sftp-trigger",
-    modes: ["default"],
-    why: "同上",
-  },
+  // 顶栏那四个入口（设置 · 历史 · 会话总览 · 文件）搬进了标签页栏顶（`TabBarView.mountHeadActions`），不再是 `#app` 的孩子。
   {
     // 〔三入口拆分〕`bootstrapViewer` 从 `main.ts` 搬到了 viewer 窗自己的入口模块。
     file: "src/frontend/ui/entry-viewer.ts",
@@ -659,8 +633,8 @@ describe("S24 · #app 的每个直接子元素都认领了格子", () => {
         : new RegExp(`\\b${leaf}\\.className\\s*=\\s*"${name}(?:[ "])`);
       expect(pat.test(hay), `${c.file} 的 \`${c.expr}\` 应该被赋成 \`${c.selector}\``).toBe(true);
     }
-    // html 里那几个静态的（主窗口 `index.html` ＋ viewer 窗 `viewer.html`，各三个）
-    expect(STATIC_CHILDREN.length, "静态人群空了 —— 下面那条零命中地绿").toBe(6);
+    // html 里那几个静态的（主窗口 `index.html` 四个 ＋ viewer 窗 `viewer.html` 三个）
+    expect(STATIC_CHILDREN.length, "静态人群空了 —— 下面那条零命中地绿").toBe(7);
     for (const c of STATIC_CHILDREN) {
       expect(readFileSync(join(REPO_ROOT, c.file), "utf8"), `${c.file} 里没有 ${c.expr}`).toContain(c.expr);
     }

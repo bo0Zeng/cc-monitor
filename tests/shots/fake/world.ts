@@ -157,6 +157,21 @@ function smallConvo(sid: string, cwd: string, title: string, ask: string, answer
   return c;
 }
 
+/** 在等你批准的那一个：说完一句、跑一条要批准的 Bash（还没有结果）。 */
+function waitingConvo(sid: string): Convo {
+  const c = smallConvo(sid, "/home/user/work/web-console", "表格分页改成虚拟滚动", "表格超过一万行就卡，改成虚拟滚动。", "改成按可见区渲染了，一万行首屏从 1.8 秒降到 90 毫秒。");
+  c.user("顺手把构建产物清一下重打个包。");
+  c.tool("Bash", { command: "rm -rf build/ && npm run build", description: "清掉重打包" }, null, { card: "command" });
+  return c;
+}
+
+/** 在等你回答的那一个（gpu-01 上）：提问工具还没有结果。 */
+export function answerConvo(sid: string, cwd: string): Convo {
+  const c = smallConvo(sid, cwd, "排序模型蒸馏", "蒸馏用哪个老师模型？", "我先看一下现有的检查点。");
+  c.tool("AskUserQuestion", { questions: [{ question: "老师模型用 v7 还是 v8？", options: [{ label: "v7" }, { label: "v8" }] }] }, null, { card: "interactive" });
+  return c;
+}
+
 export function defaultWorld(): World {
   const rich = richConvo(sidOf(1), "/home/user/work/orders");
   const s1 = session(1, LOCAL, "/home/user/work/orders", rich.convo, {
@@ -176,7 +191,7 @@ export function defaultWorld(): World {
   });
   const sessions: SessionSpec[] = [
     s1,
-    session(2, LOCAL, "/home/user/work/web-console", smallConvo(sidOf(2), "/home/user/work/web-console", "表格分页改成虚拟滚动", "表格超过一万行就卡，改成虚拟滚动。", "好的，先量一下现在的渲染耗时，再换成按可见区渲染。"), { status: "waiting", waitingFor: "permission prompt" }),
+    session(2, LOCAL, "/home/user/work/web-console", waitingConvo(sidOf(2)), { status: "waiting", waitingFor: "permission prompt", waitingSinceMs: Date.now() - 120_000 }),
     session(3, LOCAL, "/home/user/work/notes", smallConvo(sidOf(3), "/home/user/work/notes", "周报草稿", "把这周的提交整理成周报。", "整理好了，按模块分了三段。"), { status: "idle", ended: true }),
     session(4, "devbox", "/srv/app/billing", smallConvo(sidOf(4), "/srv/app/billing", "账单导出改成流式", "导出大账单时内存会涨到 4G，改成流式写。", "改成边查边写 CSV，峰值内存降到 120M。", 140_000), { status: "busy", relay: "wide" }),
     session(5, "devbox", "/srv/app/gateway", smallConvo(sidOf(5), "/srv/app/gateway", "网关限流配置", "给 /api/search 加每用户限流。", "已加：每用户每秒 5 次，突发 10。"), { status: "idle", kind: "bg" }),

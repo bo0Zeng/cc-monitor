@@ -391,3 +391,187 @@ fn the_relay_tells_the_context_window_when_it_saw_the_session() {
         "中转说默认、却见过超过 200k 的一轮（中转起来之前的那几轮）⇒ 不可能是 200k"
     );
 }
+
+fn user_text(t: &str) -> Value {
+    json!({"type": "user", "message": {"content": t}})
+}
+
+/// ★ 没结果的调用：结果来了按 id 摘、你又发一句全摘；文件序；主参数按工具取（提问取第一问，没登记的不给）。
+#[test]
+fn pending_calls_follow_their_results() {
+    let recs = vec![
+        assistant(vec![
+            tool_use(
+                "b1",
+                "Bash",
+                json!({"command": "rm -rf build/ && npm run build\nsecond"}),
+            ),
+            tool_use("r1", "Read", json!({"file_path": "/p/a.ts"})),
+            tool_use("z1", "Unlisted", json!({"x": 1})),
+        ]),
+        result("r1"),
+    ];
+    let f = scan_all(&jsonl(&recs));
+    let names: Vec<(&str, Option<&str>)> = f
+        .pending
+        .iter()
+        .map(|p| (p.name.as_str(), p.what.as_deref()))
+        .collect();
+    assert_eq!(
+        names,
+        vec![
+            ("Bash", Some("rm -rf build/ && npm run build")),
+            ("Unlisted", None)
+        ]
+    );
+    assert_eq!(f.pending[0].at.as_deref(), Some("t-a"));
+    // 你又发了一句 ⇒ 那一轮过去了，没结果的全摘。
+    let mut more = recs.clone();
+    more.push(user_text("next"));
+    assert!(scan_all(&jsonl(&more)).pending.is_empty());
+    // 提问取第一问。
+    let ask = vec![assistant(vec![tool_use(
+        "q1",
+        "AskUserQuestion",
+        json!({"questions": [{"question": "release 也重试？"}, {"question": "second"}]}),
+    )])];
+    assert_eq!(
+        scan_all(&jsonl(&ask)).pending[0].what.as_deref(),
+        Some("release 也重试？")
+    );
+    // 上界：只留最近的 PENDING_KEEP 条。
+    let many: Vec<Value> = (0..PENDING_KEEP + 3)
+        .map(|i| {
+            assistant(vec![tool_use(
+                &format!("m{i}"),
+                "Bash",
+                json!({"command": "x"}),
+            )])
+        })
+        .collect();
+    let f = scan_all(&jsonl(&many));
+    assert_eq!(f.pending.len(), PENDING_KEEP);
+    assert_eq!(f.pending[0].id, "m3");
+}
+
+/// ★ 最后一句：文件序最后一段正文的头一个非空行，截到 SAY_CHARS。
+#[test]
+fn last_say_is_the_first_line_of_the_last_text() {
+    let long = "字".repeat(SAY_CHARS + 5);
+    let recs = vec![
+        json!({"type": "assistant", "timestamp": "t1", "message": {"content": [{"type": "text", "text": "first"}]}}),
+        json!({"type": "assistant", "timestamp": "t2", "message": {"content": [{"type": "text", "text": "\n\n  结论一行  \n细节"}]}}),
+        assistant(vec![tool_use("b1", "Bash", json!({"command": "x"}))]),
+    ];
+    let f = scan_all(&jsonl(&recs));
+    assert_eq!(
+        f.last_say,
+        Some(LastSay {
+            text: "结论一行".into(),
+            at: Some("t2".into())
+        })
+    );
+    let f = scan_all(&jsonl(&[
+        json!({"type": "assistant", "message": {"content": [{"type": "text", "text": long}]}}),
+    ]));
+    let t = f.last_say.unwrap().text;
+    assert_eq!(t.chars().count(), SAY_CHARS + 1);
+    assert!(t.ends_with('…'));
+}
+
+/// ★ 需要你：那台说在等才有；种类配记录里没结果的那一步判，判不出不猜。
+#[test]
+fn needs_is_decided_from_the_wait_and_the_pending_call() {
+    let call = |id: &str, name: &str, what: Option<&str>| PendingCall {
+        id: id.into(),
+        name: name.into(),
+        what: what.map(str::to_string),
+        at: None,
+    };
+    let wait = |w: Option<&str>| PidWait {
+        waiting_for: w.map(str::to_string),
+        since_ms: Some(42),
+    };
+    let bash = vec![call("b", "Bash", Some("rm -rf build/"))];
+    // 不在等 ⇒ 没有。
+    assert_eq!(needs_of(&bash, None), None);
+    // 批准框 ＋ 一步没结果 ⇒ 批准那一步。
+    assert_eq!(
+        needs_of(&bash, Some(&wait(Some("permission prompt")))),
+        Some(Needs {
+            kind: NeedsKind::Approve,
+            tool: Some("Bash".into()),
+            what: Some("rm -rf build/".into()),
+            since_ms: Some(42)
+        })
+    );
+    // 提问 ⇒ 回答（不看 waitingFor）；计划 ⇒ 批准计划。
+    let ask = vec![call("q", "AskUserQuestion", Some("要不要？"))];
+    assert_eq!(
+        needs_of(&ask, Some(&wait(Some("dialog open"))))
+            .unwrap()
+            .kind,
+        NeedsKind::Answer
+    );
+    assert_eq!(
+        needs_of(&ask, Some(&wait(None))).unwrap().what.as_deref(),
+        Some("要不要？")
+    );
+    let plan = vec![call("p", "ExitPlanMode", None)];
+    let n = needs_of(&plan, Some(&wait(None))).unwrap();
+    assert_eq!(
+        (n.kind, n.tool.as_deref(), n.what),
+        (NeedsKind::Plan, Some("ExitPlanMode"), None)
+    );
+    // 说不出是哪种框 · 没有没结果的调用 ⇒ 判不出（不猜成批准）。
+    for (pending, w) in [
+        (bash.clone(), Some("dialog open")),
+        (bash.clone(), None),
+        (vec![], Some("permission prompt")),
+    ] {
+        let n = needs_of(&pending, Some(&wait(w))).unwrap();
+        assert_eq!(
+            (n.kind, n.tool, n.what),
+            (NeedsKind::Unknown, None, None),
+            "{w:?} / {}",
+            pending.len()
+        );
+    }
+}
+
+/// 快路对拍补上新三格：没结果的调用在时，它的结果 · 你发的一句都得过滤器放行；别人的结果照旧拦。
+#[test]
+fn the_fast_path_keeps_pending_and_last_say_exact() {
+    let recs = vec![
+        assistant(vec![
+            tool_use("b1", "Bash", json!({"command": "x"})),
+            tool_use("b2", "Bash", json!({"command": "y"})),
+        ]),
+        json!({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "other", "content": "big"}]}}),
+        result("b1"),
+        json!({"type": "assistant", "message": {"content": [{"type": "text", "text": "no usage here"}]}}),
+        user_text("next"),
+        assistant(vec![tool_use("b3", "Bash", json!({"command": "z"}))]),
+    ];
+    let text = jsonl(&recs);
+    let fast = scan_all(&text);
+    let mut slow = SessionFacts::default();
+    for line in text.lines() {
+        slow.end += line.len() as u64 + 1;
+        if let Some(v) = parse_line(line.as_bytes()) {
+            note_record(&mut slow, &v);
+        }
+    }
+    assert_eq!(fast, slow);
+    assert_eq!(fast.pending.len(), 1);
+    // 正控：有没结果的调用时，别人的工具结果照旧不解析。
+    let f = scan_all(&jsonl(&recs[..1]));
+    assert!(!could_matter(
+        br#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"other"}]}}"#,
+        &f
+    ));
+    assert!(could_matter(
+        br#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"b2"}]}}"#,
+        &f
+    ));
+}

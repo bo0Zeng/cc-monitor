@@ -134,7 +134,39 @@ export interface SessionFacts {
   projectDir: string | null;
   /** 此刻持着这条会话的活进程 pid（那台的 pidfile，升序）。不止一个 ⇒ 几个进程在同时写这条会话。 */
   writers: number[];
+  /** 还没有结果的工具调用（文件序：正在跑 / 在等批准的那几步）。 */
+  pending: PendingCall[];
+  /** 最后一段正文的头一行（悬停卡「它最后一句」）。 */
+  lastSay: { text: string; at: string | null } | null;
+  /** 需要你：那台说在等、等的是什么（后端 `facts_query::needs_of` 判；界面不猜）。不在等 ⇒ `null`。 */
+  needs: Needs | null;
 }
+
+/** 一个还没有结果的工具调用（后端 `facts_query::PendingCall`）。 */
+export interface PendingCall {
+  id: string;
+  name: string;
+  /** 主参数一行（Bash 的命令 · 读写工具的路径 · 提问的第一问）；没有 ⇒ `null`。 */
+  what: string | null;
+  /** 那条记录的时刻（ISO 原样）；没有 ⇒ `null`。 */
+  at: string | null;
+}
+
+/** 「需要你」的种类：批准一步 · 回答一问 · 批准计划 · 判不出（只说在等你）。 */
+export type NeedsKind = "approve" | "answer" | "plan" | "unknown";
+
+/** 「需要你」的成品（后端 `facts_query::Needs`）。 */
+export interface Needs {
+  kind: NeedsKind;
+  /** 等的是哪个工具调用（工具名原样）；判不出 ⇒ `null`。 */
+  tool: string | null;
+  /** 批准：那一步的主参数；回答：问题头一行；其余 ⇒ `null`。 */
+  what: string | null;
+  /** 何时起等（epoch ms）；没有 ⇒ `null`。 */
+  sinceMs: number | null;
+}
+
+const NEEDS_KIND: ReadonlySet<string> = new Set(["approve", "answer", "plan", "unknown"]);
 
 /** 会话事实的回包。`available == false` 时 `facts` 缺席、`failure` 是种类、`reason` 是给人看的原因（**不是错误**）。 */
 export type FactsResult =
@@ -152,6 +184,7 @@ const READ_BUDGET_MS = 30_000;
 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
 const isStr = (v: unknown): v is string => typeof v === "string";
+const strOrNull = (x: unknown): x is string | null => x === null || isStr(x);
 
 /**
  * 应答形状不对。给人看的那句（`message`）不带内部名；哪条命令、缺了什么住 `detail`，只进日志。
@@ -217,7 +250,25 @@ export function decodeFacts(v: unknown): SessionFacts {
   const bad = (): never => {
     throw new ShapeError("history-facts", copyText("sessionReads.missing.facts"));
   };
-  if (!isObj(v) || !exactKeys(v, ["end", "forkedFrom", "projectDir", "touchedFiles", "usage", "writers"])) return bad();
+  if (!isObj(v) || !exactKeys(v, ["end", "forkedFrom", "lastSay", "needs", "pending", "projectDir", "touchedFiles", "usage", "writers"])) return bad();
+  if (!Array.isArray(v.pending)) return bad();
+  const pending: PendingCall[] = [];
+  for (const p of v.pending) {
+    if (!isObj(p) || !exactKeys(p, ["at", "id", "name", "what"]) || !isStr(p.id) || !isStr(p.name) || !strOrNull(p.what) || !strOrNull(p.at)) return bad();
+    pending.push({ id: p.id, name: p.name, what: p.what, at: p.at });
+  }
+  let lastSay: SessionFacts["lastSay"] = null;
+  if (v.lastSay !== null) {
+    const l = v.lastSay;
+    if (!isObj(l) || !exactKeys(l, ["at", "text"]) || !isStr(l.text) || !strOrNull(l.at)) return bad();
+    lastSay = { text: l.text, at: l.at };
+  }
+  let needs: Needs | null = null;
+  if (v.needs !== null) {
+    const n = v.needs;
+    if (!isObj(n) || !exactKeys(n, ["kind", "sinceMs", "tool", "what"]) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs))) return bad();
+    needs = { kind: n.kind as NeedsKind, tool: n.tool, what: n.what, sinceMs: n.sinceMs as number | null };
+  }
   if (!Array.isArray(v.writers) || !v.writers.every(isNum)) return bad();
   if (!isNum(v.end) || !(v.forkedFrom === null || isStr(v.forkedFrom))) return bad();
   if (!(v.projectDir === null || isStr(v.projectDir))) return bad();
@@ -251,6 +302,9 @@ export function decodeFacts(v: unknown): SessionFacts {
     usage,
     projectDir: v.projectDir as string | null,
     writers: v.writers as number[],
+    pending,
+    lastSay,
+    needs,
   };
 }
 

@@ -7,6 +7,7 @@
 // 渲染 / Tauri IPC），无法像现有 *.test.ts 那样在裸 node 里测。这里用 jsdom 提供真 DOM、
 // 把重协作者 mock 成空壳，于是能在真 TabManager 实例上断言状态翻转。
 
+import { fullTitle } from "../../../src/frontend/ui/session-face";
 import { type Mock, describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ★ audit-0805 F15 第 1 步：**先让「每行调了几次」变得可测**。
@@ -295,6 +296,17 @@ function makeTM(): TabManager {
   return new TabManager(barEl, streamRootEl);
 }
 
+/** 这个 tab 的悬停卡（标签页栏的 `hoverCard`；取代原先挂在按钮上的原生 title）。 */
+function cardOf(tm: TabManager, sid: string): HTMLElement | null {
+  return (tm as unknown as { bar: { hoverCard(sid: string): HTMLElement | null } }).bar.hoverCard(sid);
+}
+
+/** 悬停卡逐行的字（第一行是标题全名）。 */
+function cardText(tm: TabManager, sid: string): string {
+  const c = cardOf(tm, sid);
+  return c ? [...c.children].map((x) => x.textContent ?? "").join("\n") : "";
+}
+
 describe("TabManager 生命周期", () => {
   let tm: TabManager;
   beforeEach(() => {
@@ -544,17 +556,18 @@ describe("TabManager 生命周期", () => {
     const t = tm.ensureTab("tt1", "/x", "p", "pi");
     const btn = () => document.querySelector<HTMLElement>(".tab")!;
     // 第一行恒是标题；下面几行说状态
+    // 悬停卡：第一行恒是标题全名；状态句那一行只从两轴 ＋ 活动信号派生（`session-face.ts::stateLine`）。
     const said = () => {
-      const [head, ...rest] = btn().title.split("\n");
-      expect(head).toBe(t.title);
-      return rest.join("\n");
+      const c = cardOf(tm, "tt1")!;
+      expect(c.firstElementChild?.textContent).toBe(fullTitle(t));
+      return c.querySelector(".tab-hover-state")?.textContent;
     };
     tm.updateActivity("tt1", "waiting", "permission prompt");
-    expect(said(), "活着：不说状态，只说在等什么").toBe("等待操作：permission prompt");
+    expect(said(), "活着、在等：种类还没到 ⇒ 只说需要你（不猜，也不印英文原样）").toBe(copyText("tabBar.needsKind.unknown"));
     tm.markTmuxIdle("tt1"); // 活动信号还留着（可重连不清它），但 claude 已经没了
-    expect(said()).toBe("程序退了，终端还在 —— 可以接回去");
+    expect(said()).toBe(copyText("sessionState.reconnectable.tooltip"));
     tm.archiveTab("tt1");
-    expect(said()).toBe("这个会话已结束");
+    expect(said()).toBe(copyText("sessionState.ended.tooltip"));
     expect([btn().classList.contains("ended"), btn().classList.contains("reconnectable")]).toEqual([true, false]);
   });
 
@@ -1314,8 +1327,8 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     rightClick("k1abcdef");
     const labels = [...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ?? [])].map((b) => b.textContent);
     expect(labels).toContain(copyText("tabMenu.open.openInWindow"));
-    expect(labels.filter((l) => l?.includes("重新读取"))).toEqual([]);
-    expect(document.body.querySelector(".tab-bar-reread")?.textContent).toContain("重新读取");
+    expect(labels.filter((l) => l?.includes("重新读取") || l === copyText("tabBar.head.refresh"))).toEqual([]);
+    expect(document.body.querySelector(".tab-bar-reread")?.getAttribute("aria-label")).toBe(copyText("tabBar.head.refresh"));
   });
 
   // 栏顶一按 ⇒ 有打开 tab 的每台**恰好一次**整机 `resync`（不带 sid），台数 == 机器数（两向：多一台少一台都红）；
@@ -1343,7 +1356,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     tm.ensureTab("b1abcdef", "/home/b", "/p/b1.jsonl", "box");
     tm.archiveTab("b1abcdef"); // 已结束的也在栏上 ⇒ 那台也算
     const btn = document.body.querySelector<HTMLButtonElement>(".tab-bar-reread")!;
-    expect(btn.parentElement!.firstElementChild).toBe(btn); // 没有组时散 tab 排在它之后，它恒在栏顶
+    expect(btn.closest(".tab-bar-head"), "它在栏顶那一排（不在列表里）").not.toBeNull();
     btn.click();
     await flush();
     btn.click(); // 在飞：不重入
@@ -2540,15 +2553,13 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
     expect(el?.querySelector(".acct-avatar")).not.toBeNull();
     expect(el?.querySelector(".acct-avatar.ghost")).toBeNull(); // live = 实心
   });
-  // F09（R7 语义反转）：徽章从"仅不一致才挂"变成"账号已知即恒显示身份"——一致态也挂头像，
-  // 只是 tooltip 不带"不一致"后缀（视觉区分靠 live 实心/last 幽灵，不是挂/不挂本身）。
-  it("会话账号 == 当前账号 → 仍挂徽章（恒显身份），tooltip 不含「不一致」", () => {
+  // 主窗口稿 §5.1.2（用户 10-05 认）：头像**只在这个会话的号 ≠ 那台默认号时出**——全都出 ⇒ 每行一块、信息为零（规范 V2）。
+  // 悬停卡里永远写账号（下一条）；头像悬停说「账号 {name}」。
+  it("会话账号 == 默认账号 → 不挂头像；悬停卡里照样写账号", () => {
     tm.ensureTab("r1", "/w", "/p/r1.jsonl", "devbox");
     feed([liveRow("r1", "z")], new Map(), new Map([["devbox", "z"]]));
-    const el = badge();
-    expect(el?.style.display).not.toBe("none");
-    expect(el?.querySelector(".acct-avatar")).not.toBeNull();
-    expect(el?.title).not.toContain("不一致");
+    expect(badge()?.style.display).toBe("none");
+    expect(cardText(tm, "r1")).toContain(copyText("tabBar.hover.account", { name: "z" }));
   });
   it("lastAccount 软来源且 != 当前 → 幽灵头像", () => {
     tm.ensureTab("r1", "/w", "/p/r1.jsonl", "devbox");
@@ -2562,12 +2573,11 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
     feed([], new Map(), new Map([["devbox", "z"]]));
     expect(badge()?.style.display).toBe("none");
   });
-  it("当前账号未就绪(currentByOrigin 无该 origin) → 仍挂徽章（会话自己的账号已知，身份展示不需要先知道 current），但不判定为不一致（不猜）", () => {
+  it("默认账号未就绪(currentByOrigin 无该 origin) → 不挂头像（说不出「不同」，不猜）；悬停卡里写账号", () => {
     tm.ensureTab("r1", "/w", "/p/r1.jsonl", "devbox");
     feed([liveRow("r1", "b")], new Map(), new Map()); // 无 current
-    const el = badge();
-    expect(el?.style.display).not.toBe("none");
-    expect(el?.title).not.toContain("不一致");
+    expect(badge()?.style.display).toBe("none");
+    expect(cardText(tm, "r1")).toContain(copyText("tabBar.hover.account", { name: "b" }));
   });
 
 });
@@ -2873,7 +2883,7 @@ describe("已结束的 tab 留在原位灰着（原「P7a-1 独立归档区」�
     tm2.switchTo("a");
     tm2.archiveTab("b");
     (tm2 as unknown as { refreshTabBar: () => void }).refreshTabBar();
-    const inBar = [...orphanBar.children].filter((e) => e.classList.contains("tab"));
+    const inBar = [...(orphanBar.querySelector(".tab-list") ?? orphanBar).children].filter((e) => e.classList.contains("tab"));
     expect(inBar, "两个都该还在主栏 —— 一个都不许被挪进孤儿容器").toHaveLength(2);
   });
 
@@ -2918,7 +2928,7 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
   const order = (): string[] => home(tm).store.orderedIds;
   /** jsdom 的 getBoundingClientRect 恒零 ⇒ 按主栏里的顺序给每个 tab 造一条 40px 的带。 */
   const stubRects = (): void => {
-    const kids = [...bar.children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
+    const kids = [...(bar.querySelector(".tab-list") ?? bar).children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
     kids.forEach((el, i) => {
       el.getBoundingClientRect = () =>
         ({ top: i * 40, height: 40, bottom: i * 40 + 40, left: 0, right: 100 }) as DOMRect;
@@ -2928,7 +2938,7 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
     // ⚠ tab 根元素上**没有** sid 属性（实测：`createTabButton` 只设 class）。
     // 主栏里的 DOM 顺序 == `orderedIds` 里主栏那部分的顺序（`refreshTabBar` 保证），
     // ⇒ 按下标取，别按文本猜。第一版按 `title.includes(sid)` 找，恒取到第一个 ⇒ 两条判据假红。
-    const roots = [...bar.children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
+    const roots = [...(bar.querySelector(".tab-list") ?? bar).children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
     const idx = order().indexOf(sid);
     const root = roots[idx];
     expect(root, `主栏里找不到 ${sid}`).toBeTruthy();
@@ -2962,7 +2972,7 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
     tm.ensureTab("c", "/c3", "p", LOCAL_ORIGIN);
     flushBar();
     stubRects();
-    const roots = [...bar.children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
+    const roots = [...(bar.querySelector(".tab-list") ?? bar).children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
     const marked = (): number => bar.querySelectorAll(".tab.drop-before").length;
 
     roots[2].dispatchEvent(
@@ -3000,7 +3010,7 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
     flushBar();
     stubRects();
     const before = [...order()];
-    const roots = [...bar.children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
+    const roots = [...(bar.querySelector(".tab-list") ?? bar).children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
     roots[0].dispatchEvent(
       new MouseEvent("mousedown", { button: 0, clientX: 10, clientY: 0, bubbles: true }),
     );
@@ -3053,9 +3063,9 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
     expect(order(), "前置：d 没到之前顺序照旧").toEqual(["a", "b", "c"]);
     // 主栏子节点的「长相顺序」。用 textContent 而不是下标 —— 少一个、换一个、多一个都要能看出来。
     const barSnap = (): string =>
-      [...bar.children].map((e) => `${e.className}#${e.textContent ?? ""}`).join(" | ");
+      [...(bar.querySelector(".tab-list") ?? bar).children].map((e) => `${e.className}#${e.textContent ?? ""}`).join(" | ");
 
-    const roots = [...bar.children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
+    const roots = [...(bar.querySelector(".tab-list") ?? bar).children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
     // 拖最后那个（c），指针停在第一条（a，0..40）的上半 ⇒ 落点 = a 之前。
     roots[2].dispatchEvent(
       new MouseEvent("mousedown", { button: 0, clientX: 10, clientY: 0, bubbles: true }),
@@ -3090,7 +3100,7 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
       "d",
       "b",
     ]);
-    const barTabs = [...bar.children].filter((e) => e.classList.contains("tab"));
+    const barTabs = [...(bar.querySelector(".tab-list") ?? bar).children].filter((e) => e.classList.contains("tab"));
     expect(barTabs.length, "四个 tab 都在主栏里").toBe(4);
   });
 
@@ -3110,8 +3120,8 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
     flushBar();
     stubRects();
     const barTabText = (): string[] =>
-      [...bar.children].filter((e) => e.classList.contains("tab")).map((e) => e.textContent ?? "");
-    const roots = [...bar.children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
+      [...(bar.querySelector(".tab-list") ?? bar).children].filter((e) => e.classList.contains("tab")).map((e) => e.textContent ?? "");
+    const roots = [...(bar.querySelector(".tab-list") ?? bar).children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
     roots[2].dispatchEvent(
       new MouseEvent("mousedown", { button: 0, clientX: 10, clientY: 0, bubbles: true }),
     );
@@ -3179,7 +3189,7 @@ describe("P7a-3 集合分组渲染", () => {
     // 成员真的在组里（两个），非成员一个都不在。
     expect(group.querySelectorAll(".tab-group-list > .tab")).toHaveLength(2);
     // 非成员直挂主栏（不是任何组的子孙）。
-    const loose = [...bar.children].filter((e) => e.classList.contains("tab"));
+    const loose = [...(bar.querySelector(".tab-list") ?? bar).children].filter((e) => e.classList.contains("tab"));
     expect(loose).toHaveLength(1);
   });
 
@@ -3264,7 +3274,7 @@ describe("P7a-3 集合分组渲染", () => {
     // 同族先例就在旁边一行：「viewer 窗口共享 localStorage，禁写 last-active（防污染主窗口记忆）」。
     tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN);
     flushBar();
-    const root = [...bar.children].find((e) => e.classList.contains("tab")) as HTMLElement;
+    const root = [...(bar.querySelector(".tab-list") ?? bar).children].find((e) => e.classList.contains("tab")) as HTMLElement;
     root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
     const labels = [...document.querySelectorAll("[role=menu] button")].map(
       (e) => e.textContent ?? "",
@@ -3277,7 +3287,7 @@ describe("P7a-3 集合分组渲染", () => {
     tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN);
     await tm.loadCollections(); // mock 的 config 是空的 ⇒ 集合为空，但「拉过」为真
     flushBar();
-    const root = [...bar.children].find((e) => e.classList.contains("tab")) as HTMLElement;
+    const root = [...(bar.querySelector(".tab-list") ?? bar).children].find((e) => e.classList.contains("tab")) as HTMLElement;
     root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
     const labels = [...document.querySelectorAll("[role=menu] button")].map(
       (e) => e.textContent ?? "",
@@ -3291,7 +3301,7 @@ describe("P7a-3 集合分组渲染", () => {
     await tm.loadCollections();
     const clickNew = async (): Promise<void> => {
       flushBar();
-      const root = [...bar.children].find((e) => e.classList.contains("tab")) as HTMLElement;
+      const root = [...(bar.querySelector(".tab-list") ?? bar).children].find((e) => e.classList.contains("tab")) as HTMLElement;
       root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
       const btn = [...document.querySelectorAll("[role=menu] button")].find(
         (e) => e.textContent === "新建集合…",
@@ -3347,7 +3357,7 @@ describe("P7a-3 集合分组渲染", () => {
     tm.ensureTab("b", "/c2", "p", LOCAL_ORIGIN); // 散的
     setCols([{ id: "g1", name: "白天", tabs: ["a"] }]);
     flushBar();
-    const kids = [...bar.children];
+    const kids = [...(bar.querySelector(".tab-list") ?? bar).children];
     const gi = kids.findIndex((e) => e.classList.contains("tab-group"));
     const ti = kids.findIndex((e) => e.classList.contains("tab"));
     expect(gi, "组容器要在").toBeGreaterThanOrEqual(0);
@@ -3369,7 +3379,7 @@ describe("P7a-3 集合分组渲染", () => {
     // 「没删掉会话」是**没有发生的事** ⇒ 钉逐项相等，不是钉「没崩」。
     expect(order(), "集合是个视图，不是容器").toEqual(before);
     expect(bar.querySelector(".tab-group"), "组容器该没了").toBeNull();
-    expect([...bar.children].filter((e) => e.classList.contains("tab"))).toHaveLength(2);
+    expect([...(bar.querySelector(".tab-list") ?? bar).children].filter((e) => e.classList.contains("tab"))).toHaveLength(2);
     expect(home(tm).store.tabs.get("a")!.group, "解散 ⇒ 组员回到散 tab").toBeNull();
   });
 
@@ -3559,7 +3569,7 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
     expect(root.classList.contains("pinned"), "还没固定就显角标 ⇒ 这个类没在跟着值走").toBe(false);
     tm.togglePin("s1");
     expect(root.classList.contains("pinned"), "固定了却不显 —— 用户看不出哪些是固定的").toBe(true);
-    expect(root.querySelector(".tab-pin")?.textContent, "角标元素不在 / 内容不对").toBe("📌");
+    expect(root.querySelector(".tab-pin svg"), "角标元素不在 / 不是图标件（Phosphor 图钉）").not.toBeNull();
   });
 
   it("右键菜单：那一项的文案跟着状态翻转；没资格时整项不出现", async () => {
@@ -4549,14 +4559,13 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     tm = makeTM();
   });
 
-  it("★ G3：容器事实落在活会话上（tooltip 第一行说它）；早到的暂存、建 tab 时落实；死了之后来的不改死的那一格", () => {
+  it("★ G3：容器事实落在活会话上；早到的暂存、建 tab 时落实；死了之后来的不改死的那一格", () => {
+    // 悬停卡（主窗口稿 §5.1.3）不再单列容器那一句：活会话的状态句只说在干什么；容器决定的是右键 / 会话头给哪几样。
     tm.noteContainer("c1", { form: "hosted", host: "tmux", terminal: "tmux-3-7" }); // 早于建 tab
     const t = tm.ensureTab("c1", "/x", "p", "pi");
     expect(t.state).toEqual(LIVE_ATTACHABLE);
-    expect(btn().title).toBe(`${t.title}\n在 tmux 会话里运行：程序退了也能接回去`);
     tm.noteContainer("c1", { form: "none" });
     expect(t.state).toEqual(LIVE_RESUMABLE);
-    expect(btn().title).toBe(`${t.title}\n不在 tmux 会话里：程序退了只能 resume`);
     tm.archiveTab("c1");
     tm.noteContainer("c1", { form: "hosted", host: "tmux", terminal: null }); // 晚到：死了的那一格由死的那一刻说了算
     expect(t.state).toEqual(ENDED);
@@ -4567,7 +4576,6 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     const t = tm.ensureTab("c3", "/x", "p", "pi");
     tm.noteContainer("c3", { form: "other", host: "hosted" });
     expect(t.state).toEqual(LIVE_UNKNOWN_HOST);
-    expect(btn().title).toBe(`${t.title}\n终端形式未知`);
     expect(warn.mock.calls.filter((c) => String(c[0]).includes("host=hosted")).length).toBe(1);
     warn.mockRestore();
   });
@@ -4593,9 +4601,9 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     for (const sid of ["p1", "p2", "p3"]) expect(tabOf(sid).state).toEqual(UNSEEN);
     // T4：说不清那一刻，tab 的提示句 · 状态名 · 固定空态，一处都不许说「已结束」。
     const said = (): string =>
-      [...document.querySelectorAll<HTMLElement>(".tab")].map((b) => b.title).join("\n") +
+      ["p1", "p2", "p3"].map((sid) => cardText(tm, sid)).join("\n") +
       [...document.querySelectorAll<HTMLElement>(".pin-revived-hint")].map((n) => n.textContent).join("\n");
-    expect(said()).toContain("说不清");
+    expect(said()).toContain(copyText("sessionState.unseen.name"));
     expect(said()).not.toContain("已结束");
     // 本机清单报完：p3 在清单里 ⇒ 活；p2 不在 ⇒ 已结束；远端那条不受本机清单影响。
     tm.markOriginSeen(LOCAL_ORIGIN, new Set(["p3"]));
@@ -4628,7 +4636,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
       "本机的 /h/.claude/projects 里找不到会话 g1 的记录，resume 接不上它，所以没有打开终端。", // C-L5：值是汉字 ⇒ 不隔
     );
     expect(tabOf("g1").state).toEqual(GONE);
-    expect(btn().title).toBe(`${tabOf("g1").title}\n这个会话已结束，它的记录也不在了，没法 resume`);
+    expect(cardOf(tm, "g1")?.querySelector(".tab-hover-state")?.textContent).toBe(copyText("sessionState.gone.tooltip"));
     probe = { present: true, root: "/h/.claude/projects" };
     await home(tm).actions.resumeTab("g1");
     expect(tabOf("g1").state).toEqual(ENDED);
@@ -4694,8 +4702,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
 describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
   let tm: TabManager;
   const tabOf = (sid: string): Tab => home(tm).store.tabs.get(sid)!;
-  const titles = (): string =>
-    [...document.querySelectorAll<HTMLElement>(".tab")].map((b) => b.title).join("\n");
+  const titles = (): string => [...home(tm).store.tabs.keys()].map((sid) => cardText(tm, sid)).join("\n");
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -4713,7 +4720,7 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     expect([tabOf("u1").state, tabOf("u2").state]).toEqual([UNSEEN, UNSEEN]);
     expect(tabOf("o1").state, "别的机器不受牵连").toEqual(LIVE);
     // 两颗的提示句都说「说不清」、零处「已结束」（改之前断连那一刻这里是两句「这个会话已结束」）。
-    expect(titles().split("说不清").length - 1).toBe(2);
+    expect(titles().split(copyText("sessionState.unseen.name")).length - 1).toBe(2);
     expect(titles()).not.toContain("已结束");
     // 死透了的不动：已结束 / 记录没了收到 unseen 照旧（正控：这时才出现「已结束」）。
     tm.ensureTab("u3", "/x", "p", "pi");
@@ -5191,7 +5198,7 @@ describe.each([
     arrive(["host", "sub", "other"]);
     (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
     const bar = document.body.firstElementChild as HTMLElement;
-    const roots = [...bar.children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
+    const roots = [...(bar.querySelector(".tab-list") ?? bar).children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
     roots.forEach((el, i) => {
       el.getBoundingClientRect = () =>
         ({ top: i * 40, height: 40, bottom: i * 40 + 40, left: 0, right: 100 }) as DOMRect;
@@ -5248,6 +5255,9 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     usage: null,
     projectDir: null,
     writers: [],
+    pending: [],
+    lastSay: null,
+    needs: null,
     ...p,
   });
   const line = (sid: string, seq: number, origin: string | null = null) =>
@@ -5291,7 +5301,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     const tab = home(tm).store.tabs.get("fork-sid")!;
     expect(tab.forkedFromSessionId).toBe("abcd1234-parent");
     expect(tab.title.startsWith("↳ ")).toBe(true);
-    expect(document.body.querySelector<HTMLElement>('[title*="从 abcd1234 fork 而来"]')).not.toBeNull();
+    expect(cardText(tm, "fork-sid"), "悬停卡标出来源 sid 前 8 位").toContain(copyText("tabBar.hover.forked", { id: "abcd1234" }));
   });
 
   it("成品说不止一个进程在写这条会话 ⇒ tab 的悬停提示多一行；一个 ⇒ 不说；会话结束了 ⇒ 不说", async () => {
@@ -5300,7 +5310,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onLine(line("dup", 0));
     await settle();
     const tab = home(tm).store.tabs.get("dup")!;
-    const tip = () => document.querySelector<HTMLElement>(".tab")!.title.split("\n");
+    const tip = () => cardText(tm, "dup").split("\n");
     const said = copyText("tabBarView.tab.writers", { n: 2 });
     expect(tab.writers).toEqual([4242, 5252]);
     expect(tip()).toContain(said);
@@ -5821,7 +5831,8 @@ describe("tab 多选与批量菜单", () => {
     click("e", { shiftKey: true });
     expect(drawnSelected(), "锚点不动，换一头").toEqual(["a", "b", "e"]);
     const bar = document.body.firstElementChild as HTMLElement;
-    bar.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    // 空白 ＝ 列表里没有 tab 的地方（列表撑满栏顶那几条之下的整格）。
+    (bar.querySelector(".tab-list") as HTMLElement).dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(drawnSelected(), "点空白清掉").toEqual([]);
     click("b", { ctrlKey: true });
     closeMenu(); // 前面几条用例右键开过的菜单还压在弹层栈上（换了 DOM 不会自己出栈）

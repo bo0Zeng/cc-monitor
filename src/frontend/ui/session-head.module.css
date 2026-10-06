@@ -1,0 +1,100 @@
+/* 会话头（主窗口稿 §5.13）：40 高 · `--bg` 底 · 下边一道细线；窄时先藏目录、再藏状态一句，标题至少留 160px。 */
+@layer components {
+  .shHead {
+    container-type: inline-size;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    height: 40px;
+    min-width: 0;
+    padding: 0 var(--space-3) 0 var(--space-6);
+    border-bottom: 1px solid var(--border-faint);
+    background: var(--bg);
+  }
+
+  .shTitle {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    font-weight: var(--font-weight-strong);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .shWhere,
+  .shDir,
+  .shState {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    white-space: nowrap;
+  }
+
+  .shDir {
+    /* 窄了先缩目录（标题留着）。 */
+    flex: 0 4 auto;
+    min-width: 0;
+    overflow: hidden;
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+    text-overflow: ellipsis;
+  }
+
+  .shDir::before,
+  .shState::before {
+    margin-right: var(--space-3);
+    color: var(--text-faint);
+    font-family: var(--font-base);
+    content: var(--mark-sep);
+  }
+
+  .shNeed {
+    color: var(--warn);
+  }
+
+  .shSp {
+    flex: 1;
+  }
+
+  .shExtra,
+  .shActs {
+    display: flex;
+    flex: none;
+    gap: 2px;
+    align-items: center;
+  }
+
+  .shIb {
+    display: inline-grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-m);
+    background: transparent;
+    color: var(--text-2);
+    cursor: pointer;
+  }
+
+  .shIb:hover {
+    background: var(--state-hover);
+    color: var(--text);
+  }
+
+  .shIb:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+
+  @container (width < 640px) {
+    .shDir {
+      display: none;
+    }
+  }
+
+  @container (width < 480px) {
+    .shState {
+      display: none;
+    }
+  }
+}

@@ -210,6 +210,8 @@ pub async fn backend_start(origin: String) -> Result<String, String> {
         .as_ref()
         .is_some_and(|h| !h.inner().is_finished())
     {
+        // 在跑、但断着在退避里等 ⇒ 立刻重拨一次（主窗口那条 `{machine} 离线` 的［重新连接］走的就是这里）。
+        crate::inbound_client::kick(&origin);
         return Ok(format!("{origin} 的流已经在跑（C8①：每台机只许一个）"));
     }
     slot.handle = Some((slot.respawn)());

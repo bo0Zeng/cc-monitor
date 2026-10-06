@@ -51,7 +51,8 @@ function isSymbolChar(ch: string): boolean {
 
 /** 顶栏按钮的 class 全集 —— **从源码派生**，不是手写清单。 */
 function triggerClasses(main: string): string[] {
-  return [...main.matchAll(/className = "([a-z-]*trigger)"/g)].map((m) => m[1]);
+  // 顶栏入口搬进标签页栏顶之后经 `headButton("<class>", "<图标>", …)` 建（`tests/frontend/ui/topbar-list-parity.vitest.ts` 同形）。
+  return [...main.matchAll(/headButton\("([a-z-]*trigger)"/g)].map((m) => m[1]);
 }
 
 describe("F09 顶栏图标不依赖字体", () => {
@@ -94,11 +95,11 @@ describe("F09 顶栏图标不依赖字体", () => {
   it("每个 -trigger 按钮都挂了一个图标件（正向，不只是禁字符）", () => {
     const main = read("src/frontend/ui/main.ts");
     const classes = triggerClasses(main);
-    const missing = classes.filter((c) => {
-      const v = new RegExp(`(\\w+)\\.className = "${c}"`).exec(main)?.[1];
-      return v === undefined || !main.includes(`${v}.appendChild(icon(`);
-    });
-    expect(missing, "这些顶栏按钮没挂图标（`kit/icon.ts` 的 `icon(…)`）").toEqual([]);
+    // 每个入口的第二个实参是图标名；`headButton` 自己把它挂成 `icon(…)`。
+    const missing = classes.filter((c) => !new RegExp(`headButton\\("${c}", "\\w+"`).test(main));
+    expect(missing, "这些顶栏按钮没给图标名（`kit/icon.ts` 的 `icon(…)`）").toEqual([]);
+    const body = /const headButton = [\s\S]*?\n {2}\};/.exec(main)?.[0] ?? "";
+    expect(body.includes("b.appendChild(icon(name))"), "`headButton` 不再挂 `icon(…)` 了").toBe(true);
   });
 
 });

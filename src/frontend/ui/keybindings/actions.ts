@@ -77,6 +77,8 @@ export const ACTIONS: ReadonlyArray<Action> = [
     default: "KeyN",
     available: true,
   },
+  // 跳到下一个需要你的会话（等得最久的在前）。带 Ctrl：任何时候都要能按到，单键 J 在只读主视图上容易误触。
+  { id: "needs.next", label: copyText("tabBar.needs.hint"), category: "Tab", default: "Ctrl+KeyJ", available: true },
   // 会话内查找（大纲在同一块面板里）。与命令栏同理带 Ctrl：
   // 查找要能在任何时候唤起，而单键 F 在只读主视图上容易误触；Ctrl+KeyF 全表空闲（`actions.vitest.ts` 查重）。
   // ⚠ 只搜当前 tab 这一份会话；跨全部会话的全文搜索在历史浏览器里（它没有独立快捷键，`app.search-history` 那个预留位已删）。

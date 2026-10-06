@@ -140,7 +140,9 @@ export class TabManager {
       beginDrag: (e, sid, root) => this.dragger.begin(e, sid, root),
       takeSuppressedClick: (sid) => this.dragger.takeSuppressedClick(sid),
       openMenu: (e, sid) => this.openMenu(e, sid),
+      openMenuAt: (el, sid) => this.openMenu(el, sid),
       rereadAll: () => this.rereadAll(),
+      reconnect: (origin) => this.reconnect(origin),
     });
     this.dragger = new TabBarDrag(this.store, this.prefs, barEl, this.bar.tabButtons, {
       refreshTabBar: () => this.refreshTabBar(),
@@ -277,8 +279,8 @@ export class TabManager {
   }
 
   /** 右键一个选中的 tab（多选 ≥ 2）⇒ 批量菜单；右键一个没选中的 ⇒ 清掉多选，照旧单个菜单。 */
-  private openMenu(e: MouseEvent, sid: string): void {
-    if (this.selection.size >= 2 && this.selection.has(sid)) {
+  private openMenu(e: MouseEvent | HTMLElement, sid: string): void {
+    if (e instanceof MouseEvent && this.selection.size >= 2 && this.selection.has(sid)) {
       openBatchMenu(e, this.selection.inOrder(this.bar.visibleOrder()), this.batchHost);
       return;
     }
@@ -713,6 +715,9 @@ export class TabManager {
       latestPromptTokens: null, // F88b：HUD context% 数据
       latestModel: null,
       latestContextLimit: null,
+      needs: null,
+      pending: [],
+      lastSay: null,
       facts: new FactsSource(
         () => {
           // 问的是**当前**那一份 tab 的路径与机器（`parentPath` 由首条行回填；没有 ⇒ 这一趟不要）。
@@ -1025,6 +1030,7 @@ export class TabManager {
    */
   markOriginSeen(origin: Origin, liveSids?: ReadonlySet<string>): void {
     this.store.seenOrigins.add(origin);
+    this.bar.markOriginDown(origin, false);
     this.settleUnarrivedOnce();
     let changed = false;
     for (const tab of this.store.tabs.values()) {
@@ -1083,6 +1089,7 @@ export class TabManager {
    */
   markOriginUnseen(origin: Origin): void {
     this.store.seenOrigins.delete(origin);
+    this.bar.markOriginDown(origin, true);
     let changed = false;
     for (const tab of this.store.tabs.values()) {
       if (tab.origin !== origin || !this.applyState(tab, "unseen")) continue;
@@ -1101,6 +1108,66 @@ export class TabManager {
    * 栏顶「重新读取」：栏上每个 tab 所在的机器各对齐 ＋ 补读一次（`resyncMachines` 去重、并行）；
    * 成功的那几台照「对齐做完」标出记录没了的固定条（与设置页「重新对齐」同一步）。
    */
+  /** 栏顶左边那几颗全局入口（宿主建好交进来）。 */
+  mountHeadActions(buttons: HTMLElement[]): void {
+    this.bar.mountHeadActions(buttons);
+  }
+
+  /** `Ctrl+J` · 点「需要你」：跳到下一个需要你的会话（等得最久的在前；当前就是 ⇒ 下一个）。 */
+  jumpToNextNeeds(): void {
+    const sid = this.bar.nextNeedsSid();
+    if (sid !== null) this.switchTo(sid);
+  }
+
+  /** 此刻需要你的会话数（窗口标题 · 系统通知用）。 */
+  needsCount(): number {
+    return this.bar.needsCountNow();
+  }
+
+  /** 全部 tab，按条上看到的顺序（窗口标题 · 系统通知数「需要你」用）。 */
+  tabsInOrder(): Tab[] {
+    return this.bar.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined);
+  }
+
+  /** 会话头 · 「需要你」钉条读的那一份：当前 tab（没有 ⇒ `null`）。 */
+  activeTab(): Tab | null {
+    const sid = this.store.activeId;
+    return sid === null ? null : (this.store.tabs.get(sid) ?? null);
+  }
+
+  /** 会话头 / 钉条的［恢复 ▾］。 */
+  openResumeFor(anchor: HTMLElement, sid: string): void {
+    this.menu.openResumeMenu(anchor, sid);
+  }
+
+  /** 会话头 / 钉条的［在终端里打开］（远端、在 tmux 里）。 */
+  attachInTerminal(sid: string): void {
+    void this.menu.attachRemote(sid);
+  }
+
+  /** 会话头的 ↗ 与行尾那颗同一条路。 */
+  frontFor(sid: string): void {
+    const tab = this.store.tabs.get(sid);
+    if (!tab || !hasTerminal(tab.state) || !terminalFrontAvailable()) return;
+    if (isRemoteOrigin(tab.origin)) void this.front(sid, () => this.bringRemoteFront(sid));
+    else void this.front(sid, () => bringTerminalToFront(sid));
+  }
+
+  /** 会话头的「打开工作目录」。 */
+  openCwdOf(sid: string): void {
+    void this.openTabCwd(sid);
+  }
+
+  /** 这个 tab 的菜单锚在一颗按钮上（会话头「更多」）。 */
+  openMenuFor(anchor: HTMLElement, sid: string): void {
+    this.openMenu(anchor, sid);
+  }
+
+  /** 离线条的［重新连接］：那台断着在退避里等 ⇒ 立刻重拨一次（壳那一侧 `backend_start`：在跑就是「别等了」）。 */
+  reconnect(origin: string): void {
+    this.actions.reconnect(origin);
+  }
+
   private async rereadAll(): Promise<void> {
     const ok = await this.actions.rereadMachines([...this.store.tabs.values()].map((t) => t.origin));
     for (const o of ok) void this.flagPinsWithoutRecord(o);
@@ -1153,6 +1220,10 @@ export class TabManager {
       if (clearedIdle) this.refreshTabBar();
       return;
     }
+    // 需要你的种类与那一句在会话事实里（后端配着记录判）：状态一变就再要一份；不在等了 ⇒ 手上那份当场作废（不等回包）。
+    if (act?.status !== "waiting") tab.needs = null;
+    tab.facts.markStale();
+    void tab.facts.refresh();
     tab.activity = act;
     this.refreshTabBar();
   }
@@ -1169,7 +1240,7 @@ export class TabManager {
     if (ch.forkedFrom || ch.projectDir) {
       tab.title = this.computeTitle(tab);
       this.refreshTabBar();
-    } else if (ch.writers) this.refreshTabBar();
+    } else if (ch.writers || ch.needs || ch.peek) this.refreshTabBar();
     if ((ch.usage || ch.projectDir) && sid === this.store.activeId) this.publishActive();
   }
 

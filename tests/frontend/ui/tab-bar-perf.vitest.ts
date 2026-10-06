@@ -45,6 +45,9 @@ function fakeTab(sid: string, over: Partial<Tab> = {}): Tab {
     forkedFromSessionId: null,
     writers: [],
     unread: 0,
+    needs: null,
+    pending: [],
+    lastSay: null,
     ...over,
   } as unknown as Tab;
 }
@@ -67,6 +70,8 @@ interface Rig {
 function rig(n: number, grouped = 0): Rig {
   const store = new TabStore();
   store.accountReadyOrigins.add("pi");
+  // 账号头像只在「这个会话的号 ≠ 那台的默认号」时出（主窗口稿 §5.1.2）：那台默认号是 dave ⇒ 远端那一半都与它不同。
+  store.currentByOrigin.set("pi", "dave");
   for (let i = 0; i < n; i++) {
     const sid = `s${i}`;
     const remote = i % 2 === 1;
@@ -94,7 +99,9 @@ function rig(n: number, grouped = 0): Rig {
     beginDrag: vi.fn(),
     takeSuppressedClick: vi.fn().mockReturnValue(false),
     openMenu: vi.fn(),
+    openMenuAt: vi.fn(),
     rereadAll: vi.fn().mockResolvedValue(undefined),
+    reconnect: vi.fn(),
   };
   const bar = document.createElement("div");
   bar.id = "tab-bar";
@@ -174,21 +181,23 @@ describe("P2 ＋ P7 ＋ P1：整刷改成差量刷", () => {
       // 〔「删掉树」〕10 → 9：少了 `.tab-bg` 那一个开关（bg tab 不再有自己的样式）。
       // 9 → 10：多选里的样子 `.selected` 那一个开关。
       // 10 → 11：说不清（那台看不见）`.unseen` 那一个开关。
+      // 11 → 13：主窗口稿 §5.1.2 的两个：跑完你还没看（`.unseen-done`，标题 600）· 在等你（`.waiting-you`，窄窗字母琥珀）。
       (r.store.tabs.get("s5") as { pinned: boolean }).pinned = true;
       r.view.refresh();
-      expect(spy).toHaveBeenCalledTimes(11);
+      expect(spy).toHaveBeenCalledTimes(13);
     } finally {
       spy.mockRestore();
     }
   });
 
-  it("一个 tab 的红绿灯变了 ⇒ 恰好 1 条记录、落在那颗按钮上（两向：别的按钮 0 条）", () => {
+  it("一个 tab 的红绿灯变了 ⇒ 恰好 3 条记录、全落在那颗按钮上（类 · 状态点的样子 · 状态点的读屏名；两向：别的按钮 0 条）", () => {
     const r = make(20, 4);
     r.take();
     (r.store.tabs.get("s7") as { activity: unknown }).activity = { status: "idle", waitingFor: null };
     r.view.refresh();
     const recs = r.take();
-    expect(recs.map((x) => ownerSid(r, x))).toEqual(["s7"]);
+    expect(recs.map((x) => ownerSid(r, x))).toEqual(["s7", "s7", "s7"]);
+    expect(recs.map((x) => x.attributeName).sort()).toEqual(["aria-label", "class", "data-state"]);
     expect(r.view.tabButtons.get("s7")!.root.classList.contains("act-idle")).toBe(true);
   });
 
@@ -205,7 +214,7 @@ describe("P2 ＋ P7 ＋ P1：整刷改成差量刷", () => {
   });
 });
 
-describe("P4：启动 N 个会话各报一次红绿灯 ⇒ DOM 写总数是 N，不是 N²", () => {
+describe("P4：启动 N 个会话各报一次红绿灯 ⇒ DOM 写总数是 3N，不是 N²（每颗：类 · 状态点 · 读屏名）", () => {
   /** 照 `tabs.ts::syncActivitySnapshot`：每个会话一次 `updateActivity` ⇒ 每次一次整刷。 */
   const startupWrites = (n: number): number => {
     const r = make(n);
@@ -216,9 +225,9 @@ describe("P4：启动 N 个会话各报一次红绿灯 ⇒ DOM 写总数是 N，
     }
     return r.take().length;
   };
-  it("N = 10 ⇒ 10 条；N = 30 ⇒ 30 条", () => {
-    expect(startupWrites(10)).toBe(10);
-    expect(startupWrites(30)).toBe(30);
+  it("N = 10 ⇒ 30 条；N = 30 ⇒ 90 条", () => {
+    expect(startupWrites(10)).toBe(30);
+    expect(startupWrites(30)).toBe(90);
   });
 });
 
@@ -255,10 +264,11 @@ describe("P6：整刷不把 `barEl.children` 物化成数组", () => {
     r.prefs.collections.push({ id: "c2", name: "组二" });
     r.store.tabs.get("s2")!.group = "c2";
     r.view.refresh();
-    const kids = [...r.bar.children];
-    // 栏顶那颗「重新读取」恒在第一个（R）。
-    const kind = (e: Element): string => (e.classList.contains("tab-bar-reread") ? "R" : e.classList.contains("tab-group") ? "G" : "t");
-    expect(kids.map(kind).join("")).toBe("RGGttt");
+    // 栏顶一排 · 需要你 · 离线条 · 列表四块恒在；组与散 tab 都在列表里。
+    expect([...r.bar.children].map((e) => e.className)).toEqual(["tab-bar-head", "tab-needs", "tab-machine-down", "tab-list"]);
+    const kids = [...r.view.listEl.children];
+    const kind = (e: Element): string => (e.classList.contains("tab-group") ? "G" : "t");
+    expect(kids.map(kind).join("")).toBe("GGttt");
   });
 });
 
@@ -352,14 +362,18 @@ describe("P3：拖拽时矩形只量一次、落点标记只动变了的那两�
   });
 });
 
-describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒 3 个", () => {
-  it("建 TabBarView 挂 3 个（都在 barEl 上）；之后新建 M 个 tab 的整刷里 `addEventListener` 0 次（M = 5 与 M = 40）", () => {
+describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒定那几个", () => {
+  it("建 TabBarView：手势三个在 barEl 上、悬停两组（卡 · 行尾动作）各四个在列表上、栏顶两颗各五个；之后新建 M 个 tab 的整刷里 `addEventListener` 0 次（M = 5 与 M = 40）", () => {
     for (const m of [5, 40]) {
       const spy = vi.spyOn(EventTarget.prototype, "addEventListener");
       try {
         const r = make(0);
-        expect(spy.mock.calls.map((c) => c[0]).sort(), "构造：恰好三个委托").toEqual(["click", "contextmenu", "mousedown"]);
-        expect(spy.mock.contexts.every((ctx) => ctx === r.bar), "三个都挂在 barEl 上").toBe(true);
+        const on = (el: EventTarget): string[] =>
+          spy.mock.calls.filter((_, i) => spy.mock.contexts[i] === el).map((c) => c[0] as string).sort();
+        expect(on(r.bar), "手势：恰好三个委托").toEqual(["click", "contextmenu", "mousedown"]);
+        expect(on(r.view.listEl), "悬停：卡与行尾动作两组委托").toEqual(["focusin", "focusin", "focusout", "focusout", "mouseout", "mouseout", "mouseover", "mouseover"]);
+        // 栏顶「刷新」与「需要你」那一条各一份悬停提示（固定两颗，不随 tab 数涨）。
+        expect(spy.mock.calls.length, "构造总数恒定").toBe(3 + 8 + 2 * 5);
         spy.mockClear();
         for (let i = 0; i < m; i++) {
           r.store.tabs.set(`n${i}`, fakeTab(`n${i}`));
@@ -470,15 +484,24 @@ describe("P8：事件委托 —— 每个 tab 零监听器，整条栏恒 3 个"
       expect([e1.defaultPrevented, e2.defaultPrevented]).toEqual([true, true]);
     });
 
-    it("右键开菜单时这颗 tab 的悬停提示先收起（不压在菜单上），指针离开再放回", () => {
-      const r = make(2);
-      const b = btn(r, "s0");
-      const was = b.title;
-      expect(was, "台架里 tab 没有悬停提示，下面空转").not.toBe("");
-      b.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
-      expect(b.hasAttribute("title")).toBe(false);
-      b.dispatchEvent(new MouseEvent("mouseleave"));
-      expect(b.title).toBe(was);
+    it("悬停卡委托在列表上：指针进一行 500ms 出卡（第一行是标题全名）、移到下一行立刻换；行上不挂原生提示", () => {
+      vi.useFakeTimers();
+      try {
+        const r = make(2);
+        const tips = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('[role="tooltip"]')];
+        btn(r, "s0").dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+        vi.advanceTimersByTime(499);
+        expect(tips()).toHaveLength(0);
+        vi.advanceTimersByTime(1);
+        expect(tips().map((t) => t.querySelector(".tab-hover-title")?.textContent)).toEqual(["s0"]);
+        btn(r, "s0").dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: btn(r, "s1") }));
+        btn(r, "s1").dispatchEvent(new MouseEvent("mouseover", { bubbles: true, relatedTarget: btn(r, "s0") }));
+        expect(tips().map((t) => t.querySelector(".tab-hover-title")?.textContent), "同组立刻换").toEqual(["s1"]);
+        expect(btn(r, "s0").hasAttribute("title")).toBe(false);
+        for (const t of tips()) t.remove();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("组头上的点击不当成 tab 手势（委托只认 tab 按钮）", () => {

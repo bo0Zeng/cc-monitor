@@ -66,6 +66,7 @@ export const CONFIG_KEY_OWNERS = {
   resumeCommandLocalPresets: "src/frontend/ui/behavior.ts",
   resumeCommandRemotePresets: "src/frontend/ui/behavior.ts",
   notifyTurnEnd: "src/frontend/ui/behavior.ts",
+  notifyNeeds: "src/frontend/ui/behavior.ts",
   // `forceLaunchPayloadRenderer` 退役（`src/frontend/ui/behavior.ts` 那段注释写了为什么）⇒ 这一键删掉，盘上还写着它就当未知键点名。
   // src/frontend/shell/src/logging.rs —— **Rust 写的**顶层键（设置页「诊断」经 `set_diagnostics_config`）。
   // 从前漏登记：用户存过一次诊断设置，「认不出的键」提示条就把 `diagnostics` 点名（假警报）。

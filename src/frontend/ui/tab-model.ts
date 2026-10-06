@@ -17,6 +17,7 @@ import type { FactsSource } from "./views/facts-source";
 import type { ToolUseSeen } from "./cards/index";
 import type { Origin } from "./ipc/origin";
 import type { SessionState } from "./tab-session-state";
+import type { Needs, PendingCall } from "./session-reads";
 
 // 原先这里是 `TabStatus = "live" | "archived"`（与下面的 `tmuxIdle` 一起挤着两个轴）。
 //   会话状态改住 `tab-session-state.ts` 的 `SessionState`（活性 × 可恢复性），字段是 `Tab.state`。
@@ -103,6 +104,12 @@ export interface Tab {
   latestModel: string | null;
   /** 这份会话的上下文上限（后端定的，见 `session-reads.ts::UsageFact`）；判不出 ⇒ `null`（只写用了多少）。与上两格同一份成品。 */
   latestContextLimit: number | null;
+  /** 需要你（后端 `history-facts` 的 `needs`：种类 · 那一句 · 何时起等）；不在等 ⇒ `null`。与 `activity` 对不上时以后者为准（见 `tab-needs.ts`）。 */
+  needs: Needs | null;
+  /** 还没有结果的工具调用（后端 `pending`，文件序）：悬停卡「在做什么」。 */
+  pending: PendingCall[];
+  /** 最后一段正文的头一行（后端 `lastSay`）：悬停卡「它最后一句」。 */
+  lastSay: { text: string; at: string | null } | null;
   /**
    * 这份会话的事实从哪来：问后端要（`views/facts-source.ts`）。
    * 上面四样（分叉血缘 · agent 列表 · 改动文件集 · 最新 usage）只经它落下来 —— `onLine` 上不再有旁路记账员。
@@ -206,7 +213,7 @@ export interface TabsSummary {
   dead: number;
 }
 
-function projectNameFromCwd(dir: string): string | null {
+export function projectNameFromCwd(dir: string): string | null {
   const normalized = dir.replace(/\\/g, "/").replace(/\/+$/, "");
   const last = normalized.split("/").filter(Boolean).pop();
   return last ?? null;

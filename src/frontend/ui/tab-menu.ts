@@ -87,7 +87,8 @@ export class TabMenu {
   ) {}
 
   /** 右键一个 tab ⇒ 组这一代菜单的项、开菜单、再把要异步就绪的几格（attach 反查 / 本机 kill / 账号项）发出去。 */
-  open(e: MouseEvent, sid: string): void {
+  /** 开在指针底下（右键）或锚在一颗按钮上（行尾 / 会话头「更多」）。 */
+  open(e: MouseEvent | HTMLElement, sid: string): void {
     const t = this.host.tab(sid);
     const items: MenuItem[] = [
       { label: copyText("tabMenu.open.openInWindow"), onClick: () => void this.actions.openInNewWindow(sid) },
@@ -200,12 +201,38 @@ export class TabMenu {
       });
     }
     // 那台握手时说过做不到的那几项置灰（事实住 monitor 那份 `Offer`）。
-    openMenu({ x: e.clientX, y: e.clientY }, t ? items.map((i) => gateByOffer(t.origin, i)) : items);
+    openMenu(e instanceof HTMLElement ? { el: e, align: "end" } : { x: e.clientX, y: e.clientY }, t ? items.map((i) => gateByOffer(t.origin, i)) : items);
     if (remote !== null && t?.projectDir) void this.resolveRemoteTmuxItems(remote, sid);
     if (local) void this.resolveLocalTmuxItems(sid);
     // A4/A5：远端 tab → 异步追加账号项（归档=「把此会话切到账号 X（resume）」/ 活=「…（重启）」）。
     // 本机 tab 也进来（`<local>`）—— 只拿「换号重启」那一项，见 appendAccountMenuItems。
     if (t) void this.appendAccountMenuItems(t.origin, sid, t.state);
+  }
+
+  /**
+   * 会话头 / 「需要你」钉条的［恢复 ▾］：只开恢复那几项（本机一项；远端照右键那份子菜单：容器 × 账号）。
+   */
+  openResumeMenu(anchor: HTMLElement, sid: string): void {
+    const t = this.host.tab(sid);
+    if (!t || !canResume(t.state)) return;
+    if (isRemoteOrigin(t.origin)) openMenu({ el: anchor, align: "end" }, this.buildResumeSubmenu(sid, []).map((i) => gateByOffer(t.origin, i)));
+    else openMenu({ el: anchor, align: "end" }, [{ label: copyText("tabMenu.item.resume"), onClick: () => void this.actions.resumeTab(sid) }]);
+  }
+
+  /**
+   * 会话头 / 钉条的［在终端里打开］（远端、在 tmux 里）：问那台这个会话在哪个 tmux 会话里，接上第一个（命中多个照右键那条说出来）；
+   * 那台说没有 ⇒ 说一句，不开窗。
+   */
+  async attachRemote(sid: string): Promise<void> {
+    const t = this.host.tab(sid);
+    if (!t || !isRemoteOrigin(t.origin)) return;
+    const s = await standingOf(t.origin, sid);
+    if (s === undefined || s.kind === "none" || s.kind === "no_tmux" || s.names.length === 0) {
+      toast(copyText("sessionHead.attach.none", { machine: t.origin }), "", { level: "warn" });
+      return;
+    }
+    if (s.kind === "ambiguous") toast(copyText("tabMenu.dupes.title"), copyText("tabMenu.dupes.body", { n: s.names.length, name: s.names[0] }), { level: "info" });
+    void runRemoteAttach(t.origin, ACTIVE_AGENT, s.names[0]);
   }
 
   /** 远端：那台答回这个会话的样子 ⇒ Attach · 预览 · 杀死三格就位（菜单已换 / 已关 ⇒ 不动）。 */

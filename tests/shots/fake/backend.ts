@@ -94,7 +94,11 @@ export class FakeBackend {
       const only = sub.kind.startsWith("session-lines/") ? sub.kind.slice("session-lines/".length) : null;
       this.sendFrames(sub, this.sessionFrames(sub.origin, only));
       if (this.world.droppedMachines?.includes(sub.origin)) {
-        setTimeout(() => this.send(sub, [{ t: "unseen", idx: 1, tag: "read", why: "Dropped" }]), 1500);
+        // 断了：壳那一侧的会话账本把这台的成品作废（会话流里一格 `unseen`：那台还活着的 / 可重连的一律状态不明），通道再说一声。
+        setTimeout(() => {
+          this.sendFrames(sub, [{ unseen: { origin: sub.origin } } as SessionStreamFrame]);
+          this.send(sub, [{ t: "unseen", idx: 1, tag: "read", why: "Dropped" }]);
+        }, 1500);
       }
     } else if (sub.kind === "session-tap" || sub.kind === "accounts-changed" || sub.kind === "session-tasks" || sub.kind === "quota-changed") {
       this.send(sub, [{ t: "seen", from: null }]);

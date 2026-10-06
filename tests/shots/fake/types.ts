@@ -26,6 +26,8 @@ export interface SessionSpec {
   /** Claude 的 status 原值：busy / idle / waiting / shell；`null` = 不说。 */
   status: string | null;
   waitingFor: string | null;
+  /** 在等你时从何时起等（epoch ms；`history-facts` 的 `needs.sinceMs`）。缺 ⇒ 不知道。 */
+  waitingSinceMs?: number;
   container: SessionContainer;
   records: JsonlRecord[];
   runs: RunInfo[];

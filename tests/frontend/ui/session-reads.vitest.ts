@@ -192,12 +192,18 @@ describe("〔STC〕第五问：会话事实", () => {
   it("★★ 金样：TS 解码器读得懂后端真出的会话事实（逐字段）", () => {
     const f = decodeFacts(golden["history-facts"]);
     expect(f).toEqual({
-      end: 765,
+      end: 876,
       forkedFrom: "src-0",
       touchedFiles: ["/w/a.ts"],
       usage: { promptTokens: 6, model: "m-g", peakPromptTokens: 6, limit: 1_000_000, limitFrom: "assumed" },
       projectDir: "/g/proj",
       writers: [],
+      pending: [
+        { id: "tu-1", name: "Edit", what: "/w/a.ts", at: "t3" },
+        { id: "tu-3", name: "Agent", what: null, at: "t4" },
+      ],
+      lastSay: { text: "done", at: "t5" },
+      needs: null,
     });
   });
 
@@ -217,6 +223,13 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(() => decodeFacts({ ...good, writers: ["4711"] }), "pid 只收数").toThrow(/读不懂/);
     expect(decodeFacts({ ...good, writers: [11, 12] }).writers).toEqual([11, 12]);
     expect(decodeFacts({ ...good, usage: null, forkedFrom: null, projectDir: null }).usage).toBeNull(); // null 是合法的「没有」
+    // 需要你：种类只认那四种，三格恰好；没结果的调用逐条恰好四格。
+    const needs = { kind: "approve", tool: "Bash", what: "rm -rf build/", sinceMs: 42 };
+    expect(decodeFacts({ ...good, needs }).needs).toEqual(needs);
+    expect(() => decodeFacts({ ...good, needs: { ...needs, kind: "guess" } }), "种类只认那四种").toThrow(/读不懂/);
+    expect(() => decodeFacts({ ...good, needs: { kind: "plan", tool: null, what: null } }), "缺 sinceMs").toThrow(/读不懂/);
+    expect(() => decodeFacts({ ...good, pending: [{ id: "x", name: "Bash", what: null }] }), "缺 at").toThrow(/读不懂/);
+    expect(() => decodeFacts({ ...good, lastSay: { text: 1, at: null } })).toThrow(/读不懂/);
   });
 
   it("★ 说对的帧命令、对的请求体：没有令牌 ⇒ 只带 path；有 ⇒ 令牌原样放进 prior；失败折成 available:false ＋ 种类", async () => {

@@ -208,6 +208,7 @@ pub async fn run(
             () = kick.notified() => true,
         };
         if kicked {
+            tracing::info!("stream_source [{}] 重新连接：不等退避，立刻重拨", cfg.origin_label());
             backoff = RECONNECT_MIN;
         } else if !connected.load(Ordering::Acquire) {
             backoff = next_backoff(backoff); // 仍没连上 → 指数退避增长

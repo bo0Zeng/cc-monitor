@@ -22,4 +22,9 @@
     padding: var(--space-4) var(--space-5);
     white-space: normal;
   }
+
+  /* 卡可以被指针移进去（标签页悬停卡）：卡里不放能点的东西，移进去只为不在半路收掉。 */
+  .tipHold {
+    pointer-events: auto;
+  }
 }

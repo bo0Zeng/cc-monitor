@@ -13,7 +13,8 @@
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { makeInfoIcon } from "../../../../src/frontend/ui/settings/info-icon";
-import { attachTooltip, liveTooltipCount, placeTip, TOOLTIP_DELAY_MS } from "../../../../src/frontend/ui/kit/tooltip";
+import { attachTooltip, CARD_CLOSE_MS, delegateTooltip, hideTooltips, liveTooltipCount, placeCardRight, placeTip, TOOLTIP_DELAY_MS } from "../../../../src/frontend/ui/kit/tooltip";
+import { closeMenu, openMenu } from "../../../../src/frontend/ui/kit/menu";
 
 const tipsInBody = () => document.querySelectorAll('[role="tooltip"]').length;
 const hover = (el: HTMLElement) => el.dispatchEvent(new Event("mouseenter"));
@@ -153,5 +154,68 @@ describe("C20：出现时机与摆法", () => {
     expect(at.left).toBe(8);
     const right = placeTip({ ...host, left: 290, right: 310 } as DOMRect, { width: 100, height: 30 }, { width: 300, height: 200 });
     expect(right.left).toBe(300 - 8 - 100);
+  });
+
+  it("卡式锚在宿主右侧、顶对齐；右边放不下翻到左侧；上下夹进视口", () => {
+    const host = { left: 0, top: 100, width: 260, height: 30, right: 260, bottom: 130 } as DOMRect;
+    expect(placeCardRight(host, { width: 300, height: 200 }, { width: 1280, height: 800 })).toEqual({ left: 266, top: 100 });
+    expect(placeCardRight({ ...host, left: 1000, right: 1260 } as DOMRect, { width: 300, height: 200 }, { width: 1280, height: 800 }).left).toBe(1000 - 6 - 300);
+    expect(placeCardRight({ ...host, top: 700, bottom: 730 } as DOMRect, { width: 300, height: 200 }, { width: 1280, height: 800 }).top).toBe(800 - 8 - 200);
+  });
+
+  it("★ 卡式（hold）：离开宿主不立刻关 —— 指针移进卡里留着；离开宿主与卡 120ms 才关", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const card = document.createElement("div");
+    card.textContent = "卡";
+    attachTooltip(host, () => card, { hold: true, placement: "right" });
+    host.dispatchEvent(new Event("mouseenter"));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    const tip = document.querySelector<HTMLElement>('[role="tooltip"]')!;
+    expect(tip).not.toBeNull();
+    host.dispatchEvent(new Event("mouseleave"));
+    tip.dispatchEvent(new Event("mouseenter"));
+    vi.advanceTimersByTime(CARD_CLOSE_MS * 3);
+    expect(tipsInBody(), "移进卡里：不收").toBe(1);
+    tip.dispatchEvent(new Event("mouseleave"));
+    vi.advanceTimersByTime(CARD_CLOSE_MS - 1);
+    expect(tipsInBody()).toBe(1);
+    vi.advanceTimersByTime(1);
+    expect(tipsInBody()).toBe(0);
+  });
+
+  it("★ 委托式：一个容器四个监听器管它里面每一行；移到下一行卡跟着换；`content` 回 null 那一行不出", () => {
+    const root = document.createElement("div");
+    const rows = ["a", "b", "c"].map((t) => {
+      const r = document.createElement("div");
+      r.className = "row";
+      r.textContent = t;
+      root.appendChild(r);
+      return r;
+    });
+    document.body.appendChild(root);
+    delegateTooltip(root, ".row", (el) => (el.textContent === "c" ? null : `行 ${el.textContent}`));
+    rows[0].dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe("行 a");
+    rows[0].dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: rows[1] }));
+    rows[1].dispatchEvent(new MouseEvent("mouseover", { bubbles: true, relatedTarget: rows[0] }));
+    expect(document.querySelector('[role="tooltip"]')?.textContent, "同一组：立刻换").toBe("行 b");
+    rows[1].dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: rows[2] }));
+    rows[2].dispatchEvent(new MouseEvent("mouseover", { bubbles: true, relatedTarget: rows[1] }));
+    expect(tipsInBody()).toBe(0);
+  });
+
+  it("★ 菜单弹出时收起悬停提示（不许压在菜单第一项上）", () => {
+    const host = document.createElement("button");
+    document.body.appendChild(host);
+    attachTooltip(host, "提示");
+    host.dispatchEvent(new Event("mouseenter"));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    expect(tipsInBody()).toBe(1);
+    openMenu({ x: 1, y: 1 }, [{ label: "一项", onClick: () => {} }]);
+    expect(tipsInBody()).toBe(0);
+    closeMenu();
+    hideTooltips(); // 空着时调也无事
   });
 });

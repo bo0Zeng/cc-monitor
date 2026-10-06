@@ -38,6 +38,7 @@ import { loadConfig } from "./config";
 import { UsageHud } from "./usage-hud";
 import { recordFileWiring } from "./record-file-notice";
 import { toast } from "./kit/toast";
+import { attachTooltip } from "./kit/tooltip";
 import { bindErrorToast } from "./backend-errors";
 import { bindRemoteHealthToast } from "./remote-health";
 // F83（#39）：顶栏远端文件入口——按远端主机数 0/1/N 分支（`sftp-host-picker.ts`）。
@@ -71,6 +72,9 @@ import { bindLaunchArrivals, noteLive } from "./launch-arrival";
 import { copyText } from "./copy-table";
 import { appStore } from "./app-store";
 import { OverlayRouter } from "./overlay-router";
+import { SessionHead } from "./session-head";
+import { NeedsBar, NeedsWatch } from "./needs-bar";
+import { notifySend } from "./turn-notify";
 
 // === 启动 perf 测量 ===
 // performance.now() 自页面 navigation start 起；前端各阶段时间点。
@@ -175,6 +179,35 @@ window.addEventListener("DOMContentLoaded", async () => {
   //   没等到就明说（`src/frontend/ui/startup-active.ts`）。原先的 30 s 启动窗口（迟到的宣告静默不切、窗口内记忆早被别的 tab 写掉）换成按事件判。
   let startup: StartupActive | null = null;
 
+  // 会话头（主区顶上 40px）与「需要你」钉条（消息流底部）：只读当前 tab，做事经 `tabs` 那几条。
+  const sessionHead = new SessionHead({
+      active: () => tabs.activeTab(),
+      openCwd: (sid) => tabs.openCwdOf(sid),
+      front: (sid) => tabs.frontFor(sid),
+      find: () => tabs.openFind(),
+      more: (anchor, sid) => tabs.openMenuFor(anchor, sid),
+      resume: (anchor, sid) => tabs.openResumeFor(anchor, sid),
+      attach: (sid) => tabs.attachInTerminal(sid),
+      reconnect: (origin) => tabs.reconnect(origin),
+  });
+  document.getElementById("session-head")?.replaceWith(sessionHead.el);
+  const needsBar = new NeedsBar({
+    active: () => tabs.activeTab(),
+    front: (sid) => tabs.frontFor(sid),
+    attach: (sid) => tabs.attachInTerminal(sid),
+  });
+  streamRoot.appendChild(needsBar.el);
+  const needsWatch = new NeedsWatch({
+    setTitle: (title) => {
+      document.title = title;
+      void getCurrentWindow().setTitle(title).catch((e: unknown) => console.warn("set title failed:", e));
+    },
+    isFocused: () => document.hasFocus(),
+    enabled: async () => (await getBehavior()).notifyNeeds,
+    send: notifySend,
+    now: () => Date.now(),
+  });
+
   const tabs = new TabManager(
     tabBar,
     streamRoot,
@@ -185,6 +218,12 @@ window.addEventListener("DOMContentLoaded", async () => {
       statusMsg.textContent =
         live > 0 ? copyText("main.status.watching") : copyText("main.status.waiting");
       empty.style.display = total > 0 ? "none" : "";
+      // 会话头 · 「需要你」钉条 · 窗口标题与系统通知：跟着标签页栏一起刷（构造途中也会叫到 ⇒ 排到下一拍）。
+      queueMicrotask(() => {
+        sessionHead.render();
+        needsBar.render();
+        needsWatch.observe(tabs.tabsInOrder());
+      });
     },
     tasksPanel,
     agentsPanel,
@@ -311,6 +350,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   };
   void loadContextLimits();
   tabs.active.subscribe((a) => {
+    // 切了 tab ⇒ 会话头与「需要你」钉条换成这一个。
+    sessionHead.render();
+    needsBar.render();
     usageHud.setActive(a.model, a.promptTokens, a.contextLimit);
     usageHud.setUnavailable(a.unavailable);
     // 状态栏账号按钮 = 本会话；面板开着就跟着换成那个会话（不关）。
@@ -360,16 +402,24 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 宽度经 `LS_KEYS` ＋ `safeGet/safeSet` 记忆（D §D5：原先住这里、直调 localStorage、键不在登记里）。
   mountTabBarResizer();
 
-  const settingsTrigger = document.createElement("button");
-  settingsTrigger.type = "button";
-  settingsTrigger.className = "settings-trigger";
-  settingsTrigger.appendChild(icon("settings"));
-  settingsTrigger.title = copyText("main.topbar.settingsHint");
-  settingsTrigger.setAttribute("aria-label", copyText("main.cmd.openSettings"));
-  settingsTrigger.addEventListener("click", () => {
+  // 栏顶一排全局入口（会话总览 · 文件 · 历史 · 设置）：图标按钮 ＋ 悬停「名字 · 当前键位」，摆进标签页栏顶（不再浮在消息流上）。
+  const headButton = (cls: string, name: Parameters<typeof icon>[0], label: string, hint: () => string, onClick: () => void): HTMLButtonElement => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = `tab-bar-icon ${cls}`;
+    b.setAttribute("aria-label", label);
+    b.appendChild(icon(name));
+    attachTooltip(b, hint);
+    b.addEventListener("click", onClick);
+    return b;
+  };
+  const hintWithKey = (name: string, action: Parameters<typeof dispatcher.effectiveChord>[0] | null): (() => string) => () => {
+    const chord = action === null ? null : dispatcher.effectiveChord(action);
+    return chord ? `${name} · ${KeybindingDispatcher.prettyChord(chord)}` : name;
+  };
+  const settingsTrigger = headButton("settings-trigger", "settings", copyText("main.cmd.openSettings"), hintWithKey(copyText("main.topbar.settingsHint"), "app.open-settings"), () => {
     void openSettingsWindow(settingsTrigger); // F82a：开独立设置窗口（非浮层）· ST1：点了有反馈
   });
-  document.getElementById("app")?.appendChild(settingsTrigger);
 
   // 历史浏览器入口 —— 顶栏右侧，紧邻设置按钮左边
   // v2.5+: HistoryView 不再接管 streamRoot，自挂 body 作 fixed overlay
@@ -381,39 +431,18 @@ window.addEventListener("DOMContentLoaded", async () => {
   overlays.register("history", historyView);
   // 删会话前看活不活：条目自己那一格可能是列表拉下来那一刻的，tab 栏是此刻的。
   historyView.liveInTabs = (sid) => tabs.isSessionLive(sid);
-  const historyTrigger = document.createElement("button");
-  historyTrigger.type = "button";
-  historyTrigger.className = "history-trigger";
-  historyTrigger.appendChild(icon("history"));
-  historyTrigger.title = copyText("main.topbar.historyHint");
-  historyTrigger.setAttribute("aria-label", copyText("main.topbar.openHistory"));
-  // 纯字符的时钟符号（U+25F7），避免 emoji 跨平台/字体差异
-  historyTrigger.addEventListener("click", () => overlays.toggle("history"));
-  document.getElementById("app")?.appendChild(historyTrigger);
+  const historyTrigger = headButton("history-trigger", "history", copyText("main.cmd.openHistory"), hintWithKey(copyText("main.topbar.historyHint"), "app.toggle-history"), () => overlays.toggle("history"));
 
   // F91（#27）：多 agent 并排监控入口 —— 顶栏右侧一排（SFTP 入口左边，right:104px）。跨机器只读
   // mission-control 状态板（一屏看所有会话实时状态，点卡片跳会话；只读——不派发/不驱动 agent）。
   const gridMonitorView = new GridMonitorView(tabs);
   overlays.register("grid", gridMonitorView);
-  const gridTrigger = document.createElement("button");
-  gridTrigger.type = "button";
-  gridTrigger.className = "grid-monitor-trigger";
-  gridTrigger.appendChild(icon("grid"));
-  gridTrigger.title = copyText("main.topbar.gridHint");
-  gridTrigger.setAttribute("aria-label", copyText("main.cmd.openGrid"));
-  gridTrigger.addEventListener("click", () => overlays.toggle("grid"));
-  document.getElementById("app")?.appendChild(gridTrigger);
+  const gridTrigger = headButton("grid-monitor-trigger", "grid", copyText("main.cmd.openGrid"), hintWithKey(copyText("main.topbar.gridHint"), null), () => overlays.toggle("grid"));
 
   // F83（#39）：顶栏远端文件入口 —— 设置搬独立窗后腾出的入口位。点击按远端主机数分支：
   // 0 台提示 / 1 台直开 / 多台选单（选单见 openSftpFromTopbar）。终点是原生文件窗口（`file-window.ts`）。
-  const sftpTrigger = document.createElement("button");
-  sftpTrigger.type = "button";
-  sftpTrigger.className = "sftp-trigger";
-  sftpTrigger.appendChild(icon("folder"));
-  sftpTrigger.title = copyText("main.topbar.filesHint");
-  sftpTrigger.setAttribute("aria-label", copyText("main.cmd.openFiles"));
-  sftpTrigger.addEventListener("click", () => void toggleSftpFromTopbar(sftpTrigger));
-  document.getElementById("app")?.appendChild(sftpTrigger);
+  const sftpTrigger = headButton("sftp-trigger", "files", copyText("main.cmd.openFiles"), hintWithKey(copyText("main.topbar.filesHint"), null), () => void toggleSftpFromTopbar(sftpTrigger));
+  tabs.mountHeadActions([gridTrigger, sftpTrigger, historyTrigger, settingsTrigger]);
 
   // S6（settings-ia）：cc-bus 驾驶舱从设置里搬出来，成为顶层运营视图。
   // **刻意不加第 7 个顶栏图标** —— F84 加命令面板时就为「顶栏已拥挤」立过先例
@@ -577,6 +606,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
   dispatcher.bind("tab.close-archived", () => tabs.closeActiveIfArchived());
   dispatcher.bind("tab.open-cwd", () => tabs.openActiveTabCwd());
+  dispatcher.bind("needs.next", () => tabs.jumpToNextNeeds());
   dispatcher.bind("tab.pop-out", () => tabs.openActiveInNewWindow());
   // 会话内查找（大纲同一块面板）；历史查看器开着时落在它上面（它盖在 tab 上）。
   dispatcher.bind("session.find", () => {

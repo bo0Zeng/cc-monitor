@@ -25,6 +25,9 @@
 //! | `usage` | `assistant` 记录的 `message.usage` 三项 prompt token 之和 > 0 ⇒ `{promptTokens, model}`，文件序最后一条胜；`peakPromptTokens` 取全会话最大；上限见 [`context_limit`] |
 //! | `projectDir` | 适配层 `RecordFace.project_dir`（只读记录开头）；读到即锁定，不在本文件的逐行扫描里 |
 //! | `writers` | 这台 pidfile 里此刻持着这条会话的活进程（`observe::accounts_query::session_writers`）；每次现查，不在逐行扫描里 |
+//! | `pending` | `assistant` 记录里的工具调用，等到 `user` 记录里同 id 的 `tool_result` 才摘；你又发了一句（`user` 记录里没有 `tool_result`）⇒ 全摘。文件序，至多 [`PENDING_KEEP`] 条 |
+//! | `lastSay` | 文件序最后一段 `assistant` 正文（`text` 块）的头一个非空行，至多 [`SAY_CHARS`] 字 |
+//! | `needs` | 那台 pidfile 说在等（[`PidWait`]）⇒ 配上 `pending` 判种类（[`needs_of`]）；每次现查，不累加 |
 //!
 //! # 快路
 //!
@@ -62,6 +65,60 @@ fn edit_path_key(name: &str) -> Option<&'static str> {
         .map(|(_, k)| *k)
 }
 
+/// 交互工具：在等你**回答**的 · 在等你**批准计划**的。别的工具在等 ⇒ 等你批准它（`waitingFor` 说是批准框时）。
+const ANSWER_TOOLS: &[&str] = &["AskUserQuestion"];
+const PLAN_TOOLS: &[&str] = &["ExitPlanMode"];
+
+/// 工具 → 「它在做什么」那一格取哪个入参（一行人话的主参数）。没登记的工具 ⇒ 不给（界面只写工具名）。
+const WHAT_KEYS: &[(&str, &str)] = &[
+    ("Bash", "command"),
+    ("Read", "file_path"),
+    ("Edit", "file_path"),
+    ("Write", "file_path"),
+    ("MultiEdit", "file_path"),
+    ("NotebookEdit", "notebook_path"),
+    ("Grep", "pattern"),
+    ("Glob", "pattern"),
+    ("WebFetch", "url"),
+    ("WebSearch", "query"),
+    ("Task", "description"),
+    ("Agent", "description"),
+];
+
+/// 没结果的工具调用至多留几条（并发调用一批也就几条；超 ⇒ 丢最早的）。
+pub(crate) const PENDING_KEEP: usize = 16;
+/// 一行人话至多几个字（工具主参数 · 最后一段正文的头一行）。
+pub(crate) const SAY_CHARS: usize = 160;
+
+/// 头一个非空行，压成一行、至多 [`SAY_CHARS`] 字（超 ⇒ 截断加 `…`）。空 ⇒ `None`。
+fn one_line(s: &str) -> Option<String> {
+    let line = s.lines().map(str::trim).find(|l| !l.is_empty())?;
+    let mut out: String = line.chars().take(SAY_CHARS).collect();
+    if line.chars().count() > SAY_CHARS {
+        out.push('…');
+    }
+    Some(out)
+}
+
+/// 一个工具调用的主参数一行（[`WHAT_KEYS`]；提问工具取第一问）。
+fn what_of(name: &str, input: Option<&Value>) -> Option<String> {
+    let input = input?;
+    if ANSWER_TOOLS.contains(&name) {
+        return input
+            .get("questions")
+            .and_then(Value::as_array)
+            .and_then(|q| q.first())
+            .and_then(|q| q.get("question"))
+            .and_then(Value::as_str)
+            .and_then(one_line);
+    }
+    let key = WHAT_KEYS
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, k)| *k)?;
+    input.get(key).and_then(Value::as_str).and_then(one_line)
+}
+
 /// 改动文件集至多留多少条（超 ⇒ 丢最久没碰的）。
 ///
 /// 为什么要上界：成品要原样回传当续传令牌，而一条请求行 ≤ `inbound::MAX_LINE_BYTES`（1 MiB）。
@@ -86,6 +143,103 @@ pub(crate) struct SessionFacts {
     /// 此刻持着这条会话的活进程 pid（这台的 pidfile，判活同会话宣告那一路），升序；不累加，每次现查（`prior` 里那一份不用）。
     /// 不止一个 ⇒ 同一条会话有几个进程在同时写。不留 pidfile 的那一家恒空。
     pub(crate) writers: Vec<u32>,
+    /// 还没有结果的工具调用（文件序，正在跑 / 在等批准的那几步）。
+    pub(crate) pending: Vec<PendingCall>,
+    /// 最后一段正文的头一行（悬停卡「它最后一句」）。
+    pub(crate) last_say: Option<LastSay>,
+    /// **需要你**：那台说在等、等的是什么（不累加，每次现查；`prior` 里那一份不用）。不在等 ⇒ `null`。
+    pub(crate) needs: Option<Needs>,
+}
+
+/// 一个还没有结果的工具调用。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct PendingCall {
+    /// 工具调用 id（等它的 `tool_result` 来摘）。
+    pub(crate) id: String,
+    /// 工具名原样。
+    pub(crate) name: String,
+    /// 主参数一行（[`WHAT_KEYS`]；提问取第一问）；没登记 / 入参里没有 ⇒ `null`。
+    pub(crate) what: Option<String>,
+    /// 那条记录的 `timestamp` 原样（从何时起在跑）；没有 ⇒ `null`。
+    pub(crate) at: Option<String>,
+}
+
+/// 最后一段正文。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LastSay {
+    pub(crate) text: String,
+    /// 那条记录的 `timestamp` 原样；没有 ⇒ `null`。
+    pub(crate) at: Option<String>,
+}
+
+/// 「需要你」的种类。判不出 ⇒ `Unknown`（只说在等你，不猜）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum NeedsKind {
+    /// 批准一个工具调用。
+    Approve,
+    /// 回答一个问题。
+    Answer,
+    /// 批准计划。
+    Plan,
+    Unknown,
+}
+
+/// **需要你**的成品：种类 · 等的那一句 · 从何时起等。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct Needs {
+    pub(crate) kind: NeedsKind,
+    /// 等的是哪个工具调用（工具名原样）；判不出 ⇒ `null`。
+    pub(crate) tool: Option<String>,
+    /// 批准：那一步的主参数；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
+    pub(crate) what: Option<String>,
+    /// 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。
+    pub(crate) since_ms: Option<u64>,
+}
+
+/// 那台 pidfile 说「在等」（`observe::accounts_query::session_wait`）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PidWait {
+    /// `waitingFor` 原样（`permission prompt` · `dialog open` …）。
+    pub(crate) waiting_for: Option<String>,
+    pub(crate) since_ms: Option<u64>,
+}
+
+/// **「需要你」的唯一判定**：那台说在等 ＋ 记录里最早一个还没结果的调用。
+/// - 那个调用是提问工具 ⇒ 回答（问题原文）；是计划工具 ⇒ 批准计划；
+/// - 别的工具、且那台说是批准框（`waitingFor` 带 `permission`）⇒ 批准（那一步的主参数）；
+/// - 其余（没有没结果的调用 · 说不出是哪种框）⇒ 判不出，不猜。
+pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Option<Needs> {
+    let wait = wait?;
+    let first = pending.first();
+    let asks = pending
+        .iter()
+        .find(|p| ANSWER_TOOLS.contains(&p.name.as_str()));
+    let plan = pending
+        .iter()
+        .find(|p| PLAN_TOOLS.contains(&p.name.as_str()));
+    let permission = wait
+        .waiting_for
+        .as_deref()
+        .is_some_and(|w| w.to_ascii_lowercase().contains("permission"));
+    let (kind, call) = if let Some(a) = asks {
+        (NeedsKind::Answer, Some(a))
+    } else if let Some(p) = plan {
+        (NeedsKind::Plan, Some(p))
+    } else if let (Some(p), true) = (first, permission) {
+        (NeedsKind::Approve, Some(p))
+    } else {
+        (NeedsKind::Unknown, None)
+    };
+    Some(Needs {
+        kind,
+        tool: call.map(|c| c.name.clone()),
+        what: call.and_then(|c| c.what.clone()),
+        since_ms: wait.since_ms,
+    })
 }
 
 /// 最新 usage ＋ 这份会话的上下文上限（状态栏与监控板读同一个数；百分比是排版，在前端）。
@@ -185,6 +339,9 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     const TOP: &[&str] = &[
         "end",
         "forkedFrom",
+        "lastSay",
+        "needs",
+        "pending",
         "projectDir",
         "touchedFiles",
         "usage",
@@ -200,6 +357,19 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     exact_keys(v, TOP, "prior")?;
     if !v["usage"].is_null() {
         exact_keys(&v["usage"], USAGE, "prior.usage")?;
+    }
+    if !v["lastSay"].is_null() {
+        exact_keys(&v["lastSay"], &["at", "text"], "prior.lastSay")?;
+    }
+    if !v["needs"].is_null() {
+        exact_keys(
+            &v["needs"],
+            &["kind", "sinceMs", "tool", "what"],
+            "prior.needs",
+        )?;
+    }
+    for p in v["pending"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
+        exact_keys(p, &["at", "id", "name", "what"], "prior.pending[]")?;
     }
     serde_json::from_value(v.clone()).map_err(|e| format!("`prior` is not a facts product: {e}"))
 }
@@ -258,6 +428,13 @@ fn could_matter(line: &[u8], facts: &SessionFacts) -> bool {
     (facts.forked_from.is_none() && contains(line, b"\"forkedFrom\""))
         || contains(line, b"\"usage\"")
         || contains(line, b"\"tool_use\"")
+        || (contains(line, b"\"assistant\"") && contains(line, b"\"text\""))
+        // 有没结果的调用：它的结果（行里带着它的 id）· 你又发了一句（`user` 记录、没有工具结果）。
+        // 别人的工具结果（常是整份文件内容）照旧连解析都不做。
+        || (!facts.pending.is_empty()
+            && contains(line, b"\"user\"")
+            && (!contains(line, b"\"tool_result\"")
+                || facts.pending.iter().any(|p| contains(line, p.id.as_bytes()))))
 }
 
 fn contains(hay: &[u8], needle: &[u8]) -> bool {
@@ -275,16 +452,47 @@ fn note_record(f: &mut SessionFacts, v: &Value) {
         .get("message")
         .and_then(|m| m.get("content"))
         .and_then(Value::as_array);
+    let at = v
+        .get("timestamp")
+        .and_then(Value::as_str)
+        .map(str::to_string);
     match v.get("type").and_then(Value::as_str) {
+        Some("user") => note_user(f, v),
         Some("assistant") => {
             if let Some(blocks) = blocks {
                 for b in blocks {
+                    if b.get("type").and_then(Value::as_str) == Some("text") {
+                        if let Some(text) = b.get("text").and_then(Value::as_str).and_then(one_line)
+                        {
+                            f.last_say = Some(LastSay {
+                                text,
+                                at: at.clone(),
+                            });
+                        }
+                        continue;
+                    }
                     if b.get("type").and_then(Value::as_str) != Some("tool_use") {
                         continue;
                     }
                     let Some(name) = b.get("name").and_then(Value::as_str) else {
                         continue;
                     };
+                    if let Some(id) = b
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .filter(|i| !i.is_empty())
+                    {
+                        f.pending.retain(|p| p.id != id);
+                        f.pending.push(PendingCall {
+                            id: id.to_string(),
+                            name: name.to_string(),
+                            what: what_of(name, b.get("input")),
+                            at: at.clone(),
+                        });
+                        if f.pending.len() > PENDING_KEEP {
+                            f.pending.remove(0);
+                        }
+                    }
                     if let Some(key) = edit_path_key(name) {
                         if let Some(p) = b
                             .get("input")
@@ -300,6 +508,32 @@ fn note_record(f: &mut SessionFacts, v: &Value) {
             note_usage(f, v);
         }
         _ => {}
+    }
+}
+
+/// `user` 记录：带着工具结果 ⇒ 摘掉结果对上的那几个调用；没有工具结果（你发的一句 · 中断）⇒ 没结果的全摘（那一轮过去了）。
+fn note_user(f: &mut SessionFacts, v: &Value) {
+    if f.pending.is_empty() {
+        return;
+    }
+    let content = v.get("message").and_then(|m| m.get("content"));
+    let results: Vec<&str> = content
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter(|b| b.get("type").and_then(Value::as_str) == Some("tool_result"))
+                .filter_map(|b| b.get("tool_use_id").and_then(Value::as_str))
+                .collect()
+        })
+        .unwrap_or_default();
+    let has_result_block = content.and_then(Value::as_array).is_some_and(|a| {
+        a.iter()
+            .any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result"))
+    });
+    if has_result_block {
+        f.pending.retain(|p| !results.contains(&p.id.as_str()));
+    } else {
+        f.pending.clear();
     }
 }
 

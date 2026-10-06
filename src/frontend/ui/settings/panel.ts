@@ -304,6 +304,7 @@ export class SettingsPanel {
   private autoFollowCheckbox!: HTMLInputElement;
   private showBgCheckbox!: HTMLInputElement;
   private notifyTurnEndCheckbox!: HTMLInputElement;
+  private notifyNeedsCheckbox!: HTMLInputElement;
   // F34：自定义 resume 命令（本地 / 远端）
   private resumeLocalInput!: HTMLInputElement;
   private resumeRemoteInput!: HTMLInputElement;
@@ -432,6 +433,7 @@ export class SettingsPanel {
       this.bringFrontCheckbox,
       this.showBgCheckbox,
       this.notifyTurnEndCheckbox,
+      this.notifyNeedsCheckbox,
       this.resumeLocalInput,
       this.resumeRemoteInput,
     ];
@@ -454,6 +456,7 @@ export class SettingsPanel {
     // E62：记下打开设置时的值，只有**真的改了**才供货（每次 toggle 都标会把噪音变回来）。
     this.showBgOriginal = behavior.showBgSessions;
     this.notifyTurnEndCheckbox.checked = behavior.notifyTurnEnd;
+    this.notifyNeedsCheckbox.checked = behavior.notifyNeeds;
     this.resumeLocalInput.value = behavior.resumeCommandLocal;
     this.resumeRemoteInput.value = behavior.resumeCommandRemote;
     // ⚠ `?? []` 不是防 `behaviorIn`（它总会填缺省），是防**这一排 chip 掀翻整个面板**：
@@ -559,6 +562,7 @@ export class SettingsPanel {
         this.resumeRemoteInput.value,
       ),
       notifyTurnEnd: this.notifyTurnEndCheckbox.checked,
+      notifyNeeds: this.notifyNeedsCheckbox.checked,
     };
     try {
       await setBehavior(next);
@@ -1486,6 +1490,20 @@ export class SettingsPanel {
     notifyLabel.textContent = copyText("settingsPanel.behavior.turnNotify");
     notifyRow.appendChild(notifyLabel);
     group.appendChild(notifyRow);
+
+    // 4b. 需要你 · 系统通知（主窗口稿 §5.6：默认开、只在主窗口不在前台时发；与上一格分开）
+    const needsRow = document.createElement("label");
+    needsRow.className = "settings-row settings-row-checkbox";
+    this.notifyNeedsCheckbox = document.createElement("input");
+    this.notifyNeedsCheckbox.type = "checkbox";
+    this.notifyNeedsCheckbox.className = "settings-checkbox";
+    this.notifyNeedsCheckbox.addEventListener("change", () => void this.onBehaviorToggle());
+    needsRow.appendChild(this.notifyNeedsCheckbox);
+    const needsLabel = document.createElement("span");
+    needsLabel.className = "settings-checkbox-label";
+    needsLabel.textContent = copyText("settingsPanel.behavior.notifyNeeds");
+    needsRow.appendChild(needsLabel);
+    group.appendChild(needsRow);
 
     // 5. F34：自定义 resume 启动命令（历史浏览器 ↺ 用）。change 事件（失焦/回车）保存，
     //    避免逐键写盘。本地命令后端有防注入校验（仅字母数字 -_. 空格）。

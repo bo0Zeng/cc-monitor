@@ -10,44 +10,182 @@
 
 @layer components {
 /* === Tab Bar === */
+/* 主窗口稿 §5.1：栏顶一排（36 高）· 「需要你 N」· 机器离线条 · 列表（滚动的只是它）。
+   一行 30 高、左 2px 条（当前 = `--accent`）、状态点固定一列、标题一行省略、行尾徽标靠右；
+   行尾动作悬停 / 焦点时盖在行尾（同色底 ＋ 渐隐），标题不挪位。 */
 
 #tab-bar {
   grid-area: tabs;
-  /* 🔴：显式成为**层叠上下文** —— tab 栏内部的东西关在里面，
-     逃不出去和 `#app` 里的叔伯元素（那六个 trigger）比 z-index。
-     `position: relative` 只为开这个上下文，不改任何几何（grid item 原地不动）。 */
+  /* 显式成为层叠上下文：tab 栏内部的东西关在里面。`position: relative` 只为开这个上下文。 */
   position: relative;
   z-index: var(--z-base);
-  width: var(--tab-bar-w, 150px);
+  width: var(--tab-bar-w, 260px);
   background: var(--bg-2);
   border-right: 1px solid var(--border-strong);
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 4px 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
-/* F33：窄窗折叠成图标条——只剩状态灯，悬停有原生 title。
-   内容列 780px + 栏 + 呼吸空间放不下 ⇒ 980px 以下折叠。
- *
- * 🔴 S24（=）：断点从 JS 搬进 CSS。
- * 改前是 `main.ts` 一个 `resize` 监听按 `innerWidth < 980` 往 body 上挂
- * `.tabbar-collapsed`，而这里的规则再读那个类 —— 一个纯视觉断点绕了一圈 JS，
- * 代价是「窄窗启动先闪一下宽栏才折叠」。那个类现打**只被写、从没被读**
- * （全仓唯一读者就是本段 CSS）⇒ 删监听 + 媒体查询是等价替换。
- *
- * ⚠ **为什么前缀是 `body:not(.viewer-mode)` 而不是干脆去掉**（踩过的坑，别改回去）：
- * 去掉 `body.tabbar-collapsed` 会让每条选择器**少一个类**，而下面两条靠那一个类
- * 才压得过后文同族规则 —— `.tab`（本文件 `.tab{}` 在更后面）、
- * `.tab.ended .live-dot`（原名 `.tab.archived`）
- * （`.tab.act-idle .live-dot` 同特异度、在更后面）⇒ 直接去掉会让这两条**当场失效**。
- * （〔「删掉树」〕原先还有第三条 —— bg tab 的 `⌞` 前缀，随 bg 树的样式一起删了。）
- * `:not(.viewer-mode)` 同样算一个类 ⇒ 特异度逐条与改前**完全相同**；
- * 而语义上也正好：viewer 窗口里 `#tab-bar` 本就 `display:none`，折叠样式是空跑。
- * 死值验（两个真引擎 × 7 格 computed，改前「挂类/不挂类」5 格有差异）见
- * `tests/evidence/S24-css-readings.md` §步5。 */
+.tab-bar-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--border-faint);
+}
+
+.tab-bar-head-acts {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tab-bar-head-sp {
+  flex: 1;
+}
+
+.tab-bar-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-m);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.tab-bar-icon:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.tab-bar-icon:disabled {
+  cursor: default;
+  opacity: var(--state-disabled-opacity);
+}
+
+.tab-bar-icon:hover:not(:disabled) {
+  background: var(--state-hover);
+  color: var(--text);
+}
+
+/* 「需要你 N」：琥珀 14% 淡底 ＋ 琥珀 40% 边 ＋ 计数徽标（主窗口稿 §4.3 提给规范 C17 的形）。 */
+.tab-needs {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  margin: 6px 6px 2px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  border-radius: var(--radius-m);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-small);
+  cursor: pointer;
+}
+
+.tab-needs-count {
+  display: inline-flex;
+}
+
+.tab-needs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 280px;
+}
+
+.tab-needs-row-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tab-needs-row-state {
+  margin-left: auto;
+  color: var(--warn);
+  white-space: nowrap;
+}
+
+.tab-needs-row-what {
+  margin-top: 2px;
+  padding: 4px 6px;
+  border-radius: var(--radius-m);
+  background: var(--bg-2);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+/* 机器离线条（I5「过期」）：一台一条；连上了自己消失。 */
+.tab-machine-down {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tab-machine-down:empty {
+  display: none;
+}
+
+.tab-machine-down-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 6px 6px 0;
+  padding: 6px 8px;
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-m);
+  background: var(--card);
+  font-size: var(--font-size-small);
+}
+
+.tab-machine-down-row > [role="img"] {
+  margin-top: 5px;
+}
+
+.tab-machine-down-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-machine-down-seen {
+  color: var(--text-2);
+}
+
+.tab-machine-down-act {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-link);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tab-list {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 4px 0 8px;
+}
+
+/* 窄窗（< 980，规范 I8 偏离：每格 = 状态点 ＋ 项目名两个字母）：栏收成 44px，栏顶竖排，「需要你」收成「● N」。 */
 @media (width < 980px) {
   body:not(.viewer-mode) #tab-bar {
     width: 44px;
@@ -55,165 +193,163 @@
   body:not(.viewer-mode) #tab-bar-resizer {
     display: none;
   }
-  body:not(.viewer-mode) .tab {
-    justify-content: center;
-    padding: 0 4px;
+  body:not(.viewer-mode) .tab-bar-head,
+  body:not(.viewer-mode) .tab-bar-head-acts {
+    flex-direction: column;
+    height: auto;
+    padding: 6px 0;
   }
-  body:not(.viewer-mode) .tab-bar-reread .tab-bar-reread-text,
+  body:not(.viewer-mode) .tab-bar-head-sp,
+  body:not(.viewer-mode) .tab-needs-text,
+  body:not(.viewer-mode) .tab-needs kbd,
+  body:not(.viewer-mode) .tab-needs .tab-bar-head-sp,
+  body:not(.viewer-mode) .tab-machine-down-body,
+  body:not(.viewer-mode) .tab-machine-down-act,
   body:not(.viewer-mode) .tab .tab-title,
-  body:not(.viewer-mode) .tab .tab-badge,
-  body:not(.viewer-mode) .tab .tab-cwd,
-  body:not(.viewer-mode) .tab .tab-focus,
-  body:not(.viewer-mode) .tab .tab-close {
-    /* S21 步 8：`!important` 已摘 —— 特异度 (0,3,1) 本来就压得过后面那条
-       `.tab-close, .tab-focus, .tab-cwd { display: inline-flex }` (0,1,0)。
-       死值验：两个真引擎里摘掉 `!important` 前后 computed 逐格相同（读数见
-       `tests/evidence/S21-css-readings.md` §步8）。 */
+  body:not(.viewer-mode) .tab .tab-trail,
+  body:not(.viewer-mode) .tab .tab-machine,
+  body:not(.viewer-mode) .tab .tab-acts,
+  body:not(.viewer-mode) .tab-group-head > * {
     display: none;
   }
-  /* 折叠态已结束的 tab 只剩空行（常态下灯被隐藏、靠斜体标题辨认）→ 给暗色点当占位标识 */
-  body:not(.viewer-mode) .tab.ended .live-dot {
+  body:not(.viewer-mode) .tab-needs {
+    justify-content: center;
+    height: 26px;
+    margin: 6px 4px;
+    padding: 0;
+    gap: 3px;
+  }
+  body:not(.viewer-mode) .tab-machine-down-row {
+    justify-content: center;
+    margin: 6px 4px 0;
+    padding: 6px 0;
+  }
+  body:not(.viewer-mode) .tab {
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    height: 36px;
+    padding: 0;
+  }
+  body:not(.viewer-mode) .tab .tab-abbr {
     display: block;
-    background: var(--text-faint);
   }
-  /* 折叠态未读徽标（99+ 数字）没了 → 用灯外圈光环代偿 */
-  body:not(.viewer-mode) .tab.has-unread:not(.active) .live-dot {
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+  body:not(.viewer-mode) .tab-group-head {
+    height: 10px;
+    margin: 6px 8px 2px;
+    padding: 0;
+    border-top: 1px solid var(--border-soft);
   }
-}
-
-/* 栏顶常驻「重新读取」：恒为 #tab-bar 第一个子元素，滚动时贴顶。 */
-.tab-bar-reread {
-  position: sticky;
-  top: 0;
-  z-index: var(--z-sticky);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  flex: none;
-  height: 26px;
-  margin: 0 6px 4px;
-  background: var(--bg-2);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-s);
-  color: var(--text-2);
-  font: inherit;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.tab-bar-reread:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-
-.tab-bar-reread:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--overlay-hover);
 }
 
 .tab {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
-  background: transparent;
-  border: none;
-  color: var(--text-2);
-  padding: 0 8px 0 10px;
-  font: inherit;
-  cursor: pointer;
-  border-left: 2px solid transparent;
-  flex: none;
-  height: 30px;
   width: 100%;
+  height: 30px;
+  flex: none;
+  padding: 0 6px 0 10px;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-base);
   text-align: left;
-  white-space: nowrap;
+  cursor: pointer;
 }
 
 .tab:hover {
-  color: var(--text);
-  background: var(--overlay-hover);
+  background: var(--state-hover);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .tab.active {
-  color: var(--text);
   border-left-color: var(--accent);
-  background: var(--overlay-hover);
+  background: var(--state-active);
 }
 
-/* 多选里的 tab：一圈内描边（不动盒模型；与「当前 tab」的左边条分得开，与拖放成组的 outline 也不撞） */
 .tab.selected {
-  color: var(--text);
-  box-shadow: inset 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
 }
-
-/* 已结束（原名 .archived；会话状态的两轴与呈现住 tab-session-state.ts） */
-.tab.ended {
-  opacity: 0.55;
-}
-
-.tab.ended .tab-title {
-  color: var(--text-2);
-  font-style: italic;
-}
-
-.tab.ended .tab-title::after {
-  content: var(--mark-ended);
-  color: var(--text-2);
-  margin-left: 2px;
-}
-
-/* refreshTabBar 局部更新（v1.6）：所有 5 个子元素一次性 append，visibility 由 class 控制
- * 避免每次 ondLine/状态变化时 replaceChildren 重建按钮（长会话每秒数十次重绘开销大） */
-.tab .tab-badge {
-  display: none;
-}
-
-.tab.has-unread:not(.active) .tab-badge {
-  display: inline-flex;
-}
-
-.tab.ended .live-dot,
-.tab.ended .tab-focus,
-.tab.ended .tab-cwd,
-.tab.unseen .tab-focus,
-.tab.unseen .tab-cwd {
-  display: none;
-}
-
-.tab:not(.has-cwd) .tab-cwd {
-  display: none;
-}
-
-/* 📌 固定角标。
-   🔴 **没有「固定区」** —— 固定的 tab 留在原位，只多这一个角标：
-   pin 管的是「别丢」，不是「排前面」（位置由 §C 的顺序落盘管，两者不抢）。
-   与 .tab-badge 同族：一次性 append、可见性交给 class，不在 refreshTabBar 里建节点。 */
-.tab:not(.pinned) .tab-pin {
-  display: none;
-}
-
-.tab-pin {
-  flex: none;
-  font-size: var(--font-size-xs);
-  line-height: 1;
-  opacity: 0.85;
-}
-
-.tab:not(.ended) .tab-close {
-  display: none;
-}
-
-/* F78（#55）：远端 Tab 的 📂「打开工作目录」不再隐藏——点它现在在文件窗口里进入该远端 cwd
-   （openTabCwd 远端分支：按 origin 找该机配置 → openFileWindow；原先是老 SFTP 面板）。找不到配置才回退 info 提示。
-   （原 FIX 5/issue #15 因本地打不开而隐藏；F83 起 SFTP 入口就绪，本地打不开的 cwd 改由 SFTP 浏览。） */
 
 .tab-title {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-proj {
+  margin-right: 4px;
+  color: var(--text-2);
+}
+
+.tab-gear {
+  margin-right: 3px;
+  color: var(--text-2);
+  vertical-align: -2px;
+}
+
+/* 空闲、跑完你还没看：标题 600（点开即恢复）。 */
+.tab.unseen-done .tab-label {
+  font-weight: var(--font-weight-strong);
+}
+
+/* 已结束：项目名与标题 `--text-2`，不斜体。 */
+.tab.ended .tab-proj,
+.tab.ended .tab-label {
+  color: var(--text-2);
+}
+
+.tab-abbr {
+  display: none;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  line-height: 1;
+}
+
+.tab.active .tab-abbr {
+  color: var(--text);
+}
+
+.tab.waiting-you .tab-abbr {
+  color: var(--warn);
+}
+
+.tab-machine {
+  flex: none;
+}
+
+.tab-trail {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.tab-needs-word {
+  color: var(--warn);
+  font-size: var(--font-size-small);
+  white-space: nowrap;
+}
+
+.tab:not(.pinned) .tab-pin {
+  display: none;
+}
+
+.tab-pin {
+  display: inline-flex;
+  color: var(--text-faint);
 }
 
 .live-dot {
@@ -222,28 +358,6 @@
   border-radius: 50%;
   background: var(--live);
   flex-shrink: 0;
-}
-
-/* issue #23 红绿灯：busy=绿（默认 --live）；idle/shell=红（等输入）；waiting=黄
-   （等权限/弹窗决定，呼吸提醒）。activity 未知（旧版 CC / 远端 v1）不加类保持绿。 */
-.tab.act-idle .live-dot {
-  background: var(--error);
-}
-
-.tab.act-waiting .live-dot {
-  background: var(
-    --warn
-  ); /* 主题 token（同红灯用 --error），用户改主题两灯一起跟 */
-  animation: act-waiting-pulse 1.2s ease-in-out infinite;
-}
-
-/* audit-fixes F03.2：可重连——claude 退出但 tmux 会话仍在（可 attach 回去）。原名 .tmux-idle。
-   灯不被 .ended 隐藏，此规则覆写 .live-dot 为暗色、压过红绿黄。放在 act-* 之后
-   =同特异性靠源序取胜；animation:none 停掉 waiting 呼吸。说不清（那台暂时看不见）同一盏暗灯。 */
-.tab.reconnectable .live-dot,
-.tab.unseen .live-dot {
-  background: var(--text-faint);
-  animation: none;
 }
 
 /* F91：mission-control grid 的红绿灯点——类直接叠在 .live-dot 上（cell 无 .tab 祖先），
@@ -376,45 +490,76 @@
   color: var(--text-faint);
 }
 .tab-badge {
+  padding: 0 6px;
+  border-radius: var(--radius-xl);
   background: var(--accent);
   color: var(--text-on-strong);
-  border-radius: var(--radius-xl);
-  padding: 0 6px;
   font-size: var(--font-size-xs);
   line-height: 16px;
   min-width: 18px;
   text-align: center;
 }
 
+.tab-badge:empty {
+  display: none;
+}
+
+/* 行尾动作：悬停 / 焦点时盖在行尾（同色底与渐隐），不预留位置（主窗口稿 §4.3 提给规范 C8）。 */
+.tab-acts {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  height: 22px;
+  visibility: hidden;
+  border-radius: var(--radius-m);
+  background: var(--bg-2);
+  box-shadow: -10px 0 8px var(--bg-2);
+}
+
+.tab.active .tab-acts {
+  background: color-mix(in srgb, var(--state-active) 100%, var(--bg-2));
+  box-shadow: -10px 0 8px var(--bg-2);
+}
+
+.tab:hover .tab-acts,
+.tab:focus-within .tab-acts {
+  visibility: visible;
+}
+
 .tab-close,
 .tab-focus,
-.tab-cwd {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: 4px;
-  width: 16px;
-  height: 16px;
-  border-radius: var(--radius-s);
+.tab-cwd,
+.tab-more {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-m);
   color: var(--text-2);
-  font-size: var(--font-size-mono);
-  line-height: 1;
   cursor: pointer;
   flex-shrink: 0;
 }
 
 .tab-close:hover,
 .tab-focus:hover,
-.tab-cwd:hover {
-  background: var(--overlay-hover);
+.tab-cwd:hover,
+.tab-more:hover {
+  background: var(--state-hover);
   color: var(--text);
 }
 
-.tab-focus {
-  font-size: var(--font-size-base);
+/* × 只给已结束 / 记录已不在（其余由「更多」占那一格）；目录只给本机且知道目录的；↗ 只给还有终端可去的。 */
+.tab:not(.ended) .tab-close,
+.tab.ended .tab-more,
+.tab.ended .tab-focus,
+.tab.unseen .tab-focus,
+.tab.remote .tab-cwd,
+.tab:not(.has-cwd) .tab-cwd {
+  display: none;
 }
 
-/* ↗ 在飞超过 300ms：图标换成 14px 转圈（不确定进度），完了收回。 */
+/* ↗ 在飞超过 300ms：图标换成转圈（不确定进度），完了收回。 */
 .tab-focus.in-flight {
   position: relative;
   color: transparent;
@@ -422,7 +567,7 @@
 .tab-focus.in-flight::after {
   content: "";
   position: absolute;
-  inset: 1px;
+  inset: 4px;
   box-sizing: border-box;
   border: 2px solid var(--border-soft);
   border-top-color: var(--accent);
@@ -436,9 +581,63 @@
   }
 }
 
-.tab-cwd {
-  /* emoji 字号略小，跟 ↗ 视觉权重一致 */
+/* 悬停卡（主窗口稿 §5.1.3）：标题 14/600 · 行 `--text-2` · 状态句（在等你琥珀）· peek 一段 · 底行数字键。 */
+.tab-hover {
   font-size: var(--font-size-small);
+  line-height: var(--line-height-ui);
+}
+
+.tab-hover-title {
+  display: -webkit-box;
+  margin-bottom: 4px;
+  overflow: hidden;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-strong);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.tab-hover-row {
+  margin-top: 3px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.tab-hover-mono {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.tab-hover-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+  color: var(--text);
+}
+
+.tab-hover-need {
+  color: var(--warn);
+}
+
+.tab-hover-peek {
+  margin: 4px 0 6px;
+  padding: 6px 8px;
+  border-radius: var(--radius-m);
+  background: var(--bg-2);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.tab-hover-blocked {
+  color: var(--error-text);
+}
+
+.tab-hover-foot {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--text-2);
 }
 
 /* === Tab 撕离拖拽（tear-off） === */
@@ -2375,44 +2574,52 @@
 .tab-group {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin: 4px 0;
 }
 
+/* 分组头：「⌄ 名字 计数」（26 高、`--text-2` 小字）；悬停出「解散分组」。 */
 .tab-group-head {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 0 6px;
+  height: 26px;
+  margin-top: 6px;
+  padding: 0 8px 0 6px;
+  color: var(--text-2);
+  font-size: var(--font-size-small);
 }
 
 .tab-group-name {
-  background: transparent;
-  border: 0;
-  color: var(--text-2);
-  cursor: pointer;
   flex: 1;
-  font-size: var(--font-size-xs);
-  letter-spacing: 0.04em;
+  min-width: 0;
   overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
   text-align: left;
   text-overflow: ellipsis;
-  text-transform: uppercase;
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .tab-group-del {
-  background: transparent;
+  visibility: hidden;
+  padding: 0 2px;
   border: 0;
+  background: transparent;
   color: var(--text-2);
   cursor: pointer;
-  padding: 0 2px;
+}
+
+.tab-group-head:hover .tab-group-del,
+.tab-group-head:focus-within .tab-group-del {
+  visibility: visible;
 }
 
 .tab-group-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
 }
 
 /* 复活出来的固定 tab 的**空态**。

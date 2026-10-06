@@ -143,10 +143,10 @@ describe("S2 / T2 呈现表（〔U4b〕7 态 → 类 · 状态名 · 提示句 =
       { ended: false, unseen: false, reconnectable: false, name: null, tooltip: "在 tmux 会话里运行：程序退了也能接回去" },
       { ended: false, unseen: false, reconnectable: false, name: null, tooltip: "不在 tmux 会话里：程序退了只能 resume" },
       { ended: false, unseen: false, reconnectable: false, name: null, tooltip: "终端形式未知" },
-      { ended: false, unseen: false, reconnectable: true, name: "可重连", tooltip: "程序退了，终端还在 —— 可以接回去" },
-      { ended: true, unseen: false, reconnectable: false, name: "已结束", tooltip: "这个会话已结束" },
-      { ended: true, unseen: false, reconnectable: false, name: "记录已不在", tooltip: "这个会话已结束，它的记录也不在了，没法 resume" },
-      { ended: false, unseen: true, reconnectable: false, name: "说不清", tooltip: "现在看不见那台机器，说不清这个会话还在不在" },
+      { ended: false, unseen: false, reconnectable: true, name: "Claude 已退出", tooltip: "Claude 已退出 · tmux 会话在" },
+      { ended: true, unseen: false, reconnectable: false, name: "已结束", tooltip: "已结束 · 可恢复" },
+      { ended: true, unseen: false, reconnectable: false, name: "记录已不在", tooltip: "记录已不在 · 不可恢复" },
+      { ended: false, unseen: true, reconnectable: false, name: "状态不明", tooltip: "状态不明 · 机器不可见" },
     ]);
   });
 
@@ -216,7 +216,7 @@ describe("S5 说到会话状态的字只在文案表 `sessionState.*`（零命�
     // 换号重启回执那一句进了文案表，改说「旧会话已退出」（说的是那一次重启里被杀掉的旧进程，不是 tab 的状态）⇒ 这一条豁免也撤掉。
     // 快捷键名「关闭已结束的 Tab」进了文案表（`sessionState.closeEnded.shortcut`），不再是源码字面量 ⇒ 这一条豁免撤掉。
   };
-  const NAMES = /已结束|可重连/g;
+  const NAMES = /已结束|Claude 已退出|可重连/g;
   const RETIRED = /归档|灰(?![色度阶])/g;
 
   it("★ 正控：字面量里的词命中、注释里的不算", () => {
@@ -246,7 +246,7 @@ describe("S5 说到会话状态的字只在文案表 `sessionState.*`（零命�
     expect(saying.filter((k) => !k.startsWith("sessionState."))).toEqual([]);
     expect(
       Object.entries(table)
-        .filter(([, e]) => e.zh === "已结束" || e.zh === "可重连")
+        .filter(([, e]) => e.zh === "已结束" || e.zh === "Claude 已退出")
         .map(([k]) => k)
         .sort(),
     ).toEqual(["sessionState.ended.name", "sessionState.reconnectable.name"]);

@@ -18,6 +18,10 @@ export interface FactsChange {
   usage: boolean;
   projectDir: boolean;
   writers: boolean;
+  /** 需要你那一格变了。 */
+  needs: boolean;
+  /** 悬停卡的那两样（没结果的调用 · 最后一句）变了。 */
+  peek: boolean;
 }
 
 /** 后端的一份成品 ⇒ tab 上的几样（整份替换，不合并；项目目录后端还没读到 ⇒ 不动 tab 上那一份）。 */
@@ -44,5 +48,11 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
   const writers = tab.writers.length !== f.writers.length || tab.writers.some((p, i) => p !== f.writers[i]);
   tab.writers = [...f.writers];
 
-  return { forkedFrom, touchedFiles, usage, projectDir, writers };
+  const needs = JSON.stringify(tab.needs) !== JSON.stringify(f.needs);
+  tab.needs = f.needs;
+  const peek = JSON.stringify([tab.pending, tab.lastSay]) !== JSON.stringify([f.pending, f.lastSay]);
+  tab.pending = f.pending;
+  tab.lastSay = f.lastSay;
+
+  return { forkedFrom, touchedFiles, usage, projectDir, writers, needs, peek };
 }

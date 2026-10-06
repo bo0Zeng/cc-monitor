@@ -502,6 +502,7 @@ fn golden_facts_session(home: &Path) -> String {
         r#"{"type":"assistant","uuid":"f-2","timestamp":"t3","message":{"model":"m-g","usage":{"input_tokens":1,"cache_creation_input_tokens":2,"cache_read_input_tokens":3},"content":[{"type":"tool_use","id":"tu-1","name":"Edit","input":{"file_path":"/w/a.ts"}},{"type":"tool_use","id":"tu-2","name":"Task","input":{"description":"scan","subagent_type":"Explore"}}]}}"#,
         r#"{"type":"user","uuid":"f-3","cwd":"/g/proj/sub","message":{"content":[{"type":"tool_result","tool_use_id":"tu-2","content":"ok"}]}}"#,
         r#"{"type":"assistant","uuid":"f-4","timestamp":"t4","message":{"content":[{"type":"tool_use","id":"tu-3","name":"Agent","input":{"prompt":"p1\np2"}}]}}"#,
+        r#"{"type":"assistant","uuid":"f-5","timestamp":"t5","message":{"content":[{"type":"text","text":"done\nmore"}]}}"#,
     ]
     .iter()
     .map(|r| format!("{r}\n"))
@@ -597,6 +598,56 @@ fn facts_name_every_live_process_writing_the_session() {
         "死了的那个进程还被算成在写"
     );
     assert_eq!(none, serde_json::json!([]));
+}
+
+/// `history-facts` 的 `needs`：这台 pidfile 说在等（`status: waiting`）⇒ 配上记录里没结果的那一步出成品（种类 · 那一句 · 何时起等）；
+/// 不在等 ⇒ `null`；在等的那个进程死了（pidfile 还留着）⇒ 不算。pidfile 照真 claude 的形状写（`procStart` 对得上）。
+#[cfg(target_os = "linux")]
+#[test]
+fn facts_say_what_the_session_is_waiting_for() {
+    let home = scratch("needs");
+    let sid = "cccccccc-1111-2222-3333-444444444444";
+    let dir = home.join("projects").join("-n");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("{sid}.jsonl"));
+    std::fs::write(
+        &path,
+        "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"rm -rf build/\"}}]}}\n",
+    )
+    .unwrap();
+    let pids = crate::observe::watcher::pidfile_dir(&home);
+    std::fs::create_dir_all(&pids).unwrap();
+    let mut c = std::process::Command::new("sleep")
+        .arg("30")
+        .spawn()
+        .unwrap();
+    let ticks = crate::platform::proc::proc_starttime(c.id()).expect("读得到起始时刻");
+    let pidfile = |status: &str| {
+        let body = format!(
+            r#"{{"pid":{},"sessionId":"{sid}","kind":"interactive","procStart":"{ticks}","status":"{status}","waitingFor":"permission prompt","statusUpdatedAt":1700000000000}}"#,
+            c.id()
+        );
+        std::fs::write(pids.join(format!("{}.json", c.id())), body).unwrap();
+    };
+    let needs = || {
+        answer_at(&home, "history-facts", &serde_json::json!({ "path": path })).unwrap()["needs"]
+            .clone()
+    };
+    pidfile("waiting");
+    let waiting = needs();
+    pidfile("busy");
+    let busy = needs();
+    pidfile("waiting");
+    let _ = c.kill();
+    let _ = c.wait();
+    let dead = needs();
+    let _ = std::fs::remove_dir_all(&home);
+    assert_eq!(
+        waiting,
+        serde_json::json!({"kind": "approve", "tool": "Bash", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64})
+    );
+    assert_eq!(busy, serde_json::Value::Null, "不在等却报了需要你");
+    assert_eq!(dead, serde_json::Value::Null, "在等的进程死了还算需要你");
 }
 
 /// `history-facts` 的 `limits`：设置里的上限表随请求交来、上限在这里定；形状不对 ⇒ `bad_args`。

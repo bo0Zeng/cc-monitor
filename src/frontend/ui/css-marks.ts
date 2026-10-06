@@ -11,7 +11,7 @@ function cssString(text: string): string {
 }
 
 export function installCssMarks(root: HTMLElement = document.documentElement): void {
-  root.style.setProperty("--mark-ended", cssString(copyText("cssMarks.tab.ended")));
+  root.style.setProperty("--mark-sep", cssString(copyText("cssMarks.sep.dot")));
   root.style.setProperty("--mark-branch", cssString(copyText("cssMarks.branch.mark")));
   root.style.setProperty("--mark-chosen", cssString(copyText("cssMarks.ask.chosen")));
   root.style.setProperty("--mark-closed", cssString(copyText("cssMarks.fold.closed")));

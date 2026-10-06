@@ -165,7 +165,40 @@ export function defaultOps(): Record<string, OpHandler> {
         const limit = relay === "std" && peak <= 200_000 ? 200_000 : 1_000_000;
         usage = { promptTokens: sum(last.message.usage), model: last.message.model, peakPromptTokens: peak, limit, limitFrom: from };
       }
-      return { end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage };
+      // 没结果的调用 · 最后一句 · 需要你：照后端 `facts_query` 那几条口径（结果按 id 摘、你发一句全摘；在等 ⇒ 配上没结果的那一步）。
+      const what = (name: string, input: Record<string, unknown> | undefined): string | null => {
+        if (!input) return null;
+        if (name === "AskUserQuestion") return ((input.questions as { question?: string }[] | undefined)?.[0]?.question ?? null) || null;
+        const key = ({ Bash: "command", Read: "file_path", Edit: "file_path", Write: "file_path", Grep: "pattern", Glob: "pattern", WebFetch: "url" } as Record<string, string>)[name];
+        const v = key ? input[key] : undefined;
+        return typeof v === "string" ? (v.split("\n").find((l) => l.trim()) ?? "").trim() || null : null;
+      };
+      let pending: { id: string; name: string; what: string | null; at: string | null }[] = [];
+      let lastSay: { text: string; at: string | null } | null = null;
+      for (const r of recs) {
+        const content = (r as { message?: { content?: unknown } }).message?.content;
+        const at = (r as { timestamp?: string }).timestamp ?? null;
+        if (r.type === "assistant" && Array.isArray(content)) {
+          for (const b of content as { type: string; id?: string; name?: string; text?: string; input?: Record<string, unknown> }[]) {
+            if (b.type === "text" && b.text?.trim()) lastSay = { text: b.text.split("\n").find((l) => l.trim())!.trim().slice(0, 160), at };
+            if (b.type === "tool_use" && b.id && b.name) pending.push({ id: b.id, name: b.name, what: what(b.name, b.input), at });
+          }
+        } else if (r.type === "user") {
+          const results = Array.isArray(content) ? (content as { type: string; tool_use_id?: string }[]).filter((b) => b.type === "tool_result") : [];
+          pending = results.length > 0 ? pending.filter((p) => !results.some((b) => b.tool_use_id === p.id)) : [];
+        }
+      }
+      let needs: { kind: string; tool: string | null; what: string | null; sinceMs: number | null } | null = null;
+      if (s?.status === "waiting") {
+        const ask = pending.find((p) => p.name === "AskUserQuestion");
+        const plan = pending.find((p) => p.name === "ExitPlanMode");
+        const sinceMs = s.waitingSinceMs ?? null;
+        if (ask) needs = { kind: "answer", tool: ask.name, what: ask.what, sinceMs };
+        else if (plan) needs = { kind: "plan", tool: plan.name, what: null, sinceMs };
+        else if (pending[0] && /permission/i.test(s.waitingFor ?? "")) needs = { kind: "approve", tool: pending[0].name, what: pending[0].what, sinceMs };
+        else needs = { kind: "unknown", tool: null, what: null, sinceMs };
+      }
+      return { end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage, writers: [], pending, lastSay, needs };
     },
     "history-run": (_o, req, w) => {
       const s = sessionByPath(w, req.parent);
