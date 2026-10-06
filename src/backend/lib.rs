@@ -792,7 +792,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p8a-probe-cells：测试连接的结局只报版本与做不到几项（不再报能用几项），界面逐段出 ✓。
 ///
 /// p8b-history-old-gone：删 history-projects / history-sessions（界面已全问 history-list）。
-pub const BUILD_ID: &str = "p8b-history-old-gone";
+///
+/// p8c-machine-state：拨号 ack 带 reason 闭集码；ssh-config-import 收 known、每组带 inList。
+pub const BUILD_ID: &str = "p8c-machine-state";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
