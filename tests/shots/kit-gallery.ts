@@ -167,7 +167,7 @@ function overview(): void {
   document.body.append(
     section("状态点 · 图标 · 进度 · 计量条", "V10 · V9 · C14 · C22", "g-cols4", [
       ["状态点八态", dotList],
-      ["图标（常规 16 · 紧凑 14 · 空态 32）", row(icon("settings"), icon("history"), icon("grid"), icon("folder"), icon("keyboard", "compact"), icon("search", "compact"), icon("empty", "empty"))],
+      ["图标（常规 16 · 紧凑 14 · 空态 32）", row(icon("settings"), icon("history"), icon("grid"), icon("folder"), icon("command", "compact"), icon("search", "compact"), icon("empty", "empty"))],
       ["进度条 · 转圈", stage(prog.root, row(spinner(), h("span", "g-fake", "连接 devbox…")))],
       [
         "计量条：常态 · 到阈值 · 被拒 · 数旧 · 无采样",

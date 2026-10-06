@@ -69,6 +69,16 @@ export function setDisabled(b: HTMLButtonElement, why: string | null): void {
   b.title = why;
 }
 
+/** 换按钮上的字（进行中时换的是还原后的那一份）。 */
+export function setButtonLabel(b: HTMLButtonElement, text: string): void {
+  if (b.dataset.busy === "true") {
+    b.dataset.label = text;
+    return;
+  }
+  const label = labels.get(b);
+  if (label && label.textContent !== text) label.textContent = text;
+}
+
 /** 进行中：字换成 `busyLabel` ＋ 转圈，宽度钉在原宽；`null` ⇒ 还原。 */
 export function setBusy(b: HTMLButtonElement, busyLabel: string | null): void {
   const label = labels.get(b);

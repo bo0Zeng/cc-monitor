@@ -1,6 +1,6 @@
 /**
- * issue #23：当前会话的子 agent 面板 —— status bar 一枚 chip（`N agents (M 在跑)`，0 个隐藏）＋ 点击展开 popover，
- * 与 task 面板同位同形态 ⇒ 两块同一时刻只开一块（`status-popovers.ts`）；看得见时在 Esc 弹层栈上。子运行只在这里列，不进主 tab 的消息流。
+ * issue #23：当前会话的子 agent —— status bar 一枚 chip（`agent 2 · 1 在跑`，都结束了 `agent 3`，0 个不渲染），点了交宿主开 / 收底部抽屉的「agent」页。
+ * 子运行只在这里列，不进主 tab 的消息流；这个会话没有 agent ⇒ 页里写空态。
  *
  * 数据是那台后端的运行表（`session_runs`，`runs.ts::RunBoard`）：标签 · 状态 · 最近一件事 · 派出它的那次工具调用。
  * **状态只读后端给的那一份**，面板不自己判（「有结果 ⇒ 完成」「会话不忙 ⇒ 中止」这类判断一条都没有）。
@@ -8,14 +8,13 @@
  * 列哪些（有上界）：在跑的全列 ＋ 最近结束的 `RECENT_ENDED` 个；其余（含状态不明的）收进「更早的」，点开才列（`runs.ts::panelGroups`）。
  * 每行：图标 · [类别] · 标签 · 状态 · 最近：…；点一行就在它下面展开它的实时时间线（按运行读，宿主留着、续读），再点收起。
  *
- * UI 外壳复用 tasks-popover 的 CSS 类（同形态零新外壳样式）；行样式 .agent-* 自有。
- * 挂到 `#app` 里当 fixed popover。折叠状态写 localStorage（LS_KEYS.agentsPanelCollapsed，全局单例）。
+ * 行样式 .agent-* 自有。
  */
 
-import { LS_KEYS, safeGet, safeSet } from "./local-storage";
-import { dispatcher } from "./keybindings/registry";
-import { popoverExpanded, popoverShown } from "./status-popovers";
 import { copyText } from "./copy-table";
+import { chip } from "./kit/chip";
+import type { IconName } from "./kit/icon";
+import { emptyState } from "./kit/empty";
 import type { RunInfo } from "./generated/RunInfo";
 import { panelGroups, runLabel, runLastText, runStateIcon, runStateText, type LiveBlockView } from "./runs";
 
@@ -26,23 +25,27 @@ export interface AgentsPanelHost {
   liveOf(sid: string, run: string): LiveBlockView | null;
 }
 
-function loadCollapsed(): boolean {
-  return safeGet(LS_KEYS.agentsPanelCollapsed) !== "0";
-}
+/** chip 前面那颗图标。 */
+const CHIP_ICON: IconName = "agent";
 
 export class AgentsPanel {
-  /** 挂到 status-bar 里当 chip。click 切换 collapsed。 */
+  /** 挂到 status-bar 里当 chip：点了交宿主（开 / 收底部抽屉的「agent」页）。 */
   readonly summaryElement: HTMLButtonElement;
-  /** 挂到 #app 里当 fixed popover（复用 tasks-popover 外壳样式）。 */
-  readonly popoverElement: HTMLElement;
+  /** 底部抽屉「agent」页的内容。 */
+  readonly pageElement: HTMLElement;
+  /** chip 被点了（宿主接到抽屉上）。 */
+  onChip: (() => void) | null = null;
+  /** chip 上的字变了（宿主同步到抽屉页签）。 */
+  onLabel: ((label: string) => void) | null = null;
+  /** 「打开窗口 ›」要把这一页摆到眼前（宿主开抽屉到这一页）。 */
+  onReveal: (() => void) | null = null;
 
-  private summaryArrow: HTMLElement;
   private summaryText: HTMLElement;
   private list: HTMLUListElement;
+  private empty: HTMLElement;
 
   private runs: RunInfo[] = [];
   private activeSid: string | null = null;
-  private collapsed: boolean;
   /** 「更早的」那一组展开着没有（换会话就收起）。 */
   private olderOpen = false;
   /** 点开着时间线的那几行（`sid\0run`）。 */
@@ -55,55 +58,30 @@ export class AgentsPanel {
   private older: RunInfo[] = [];
   /** main.ts 注入（时间线由 TabManager 建、留着）。 */
   host: AgentsPanelHost | null = null;
-  /** 浮层此刻在 Esc 弹层栈上（⇔ 看得见）。 */
-  private stacked = false;
-  /** 跟着当前 tab 走、不盖住 tab 栏 ⇒ 不拦快捷键（与任务面板同）。 */
-  readonly passes = "all" as const;
 
   constructor() {
-    this.collapsed = loadCollapsed();
-    popoverExpanded(this, !this.collapsed);
+    this.summaryElement = chip({ text: "", icon: CHIP_ICON, onClick: () => this.onChip?.() }) as HTMLButtonElement;
+    this.summaryElement.classList.add("status-agents");
+    this.summaryElement.style.display = "none"; // 没有子 agent ⇒ 不渲染
+    this.summaryElement.setAttribute("aria-expanded", "false");
+    this.summaryText = this.summaryElement.querySelector("span") as HTMLElement;
 
-    this.summaryElement = document.createElement("button");
-    this.summaryElement.type = "button";
-    this.summaryElement.className = "status-tasks status-agents";
-    this.summaryElement.style.display = "none";
-
-    this.summaryArrow = document.createElement("span");
-    this.summaryArrow.className = "status-tasks-arrow";
-    this.summaryArrow.textContent = copyText("agentsPanel.arrow.collapsed");
-    this.summaryElement.appendChild(this.summaryArrow);
-
-    this.summaryText = document.createElement("span");
-    this.summaryText.className = "status-tasks-text";
-    this.summaryElement.appendChild(this.summaryText);
-
-    this.summaryElement.addEventListener("click", () => this.setCollapsed(!this.collapsed));
-
-    this.popoverElement = document.createElement("div");
-    this.popoverElement.className = "tasks-popover agents-popover";
-    this.popoverElement.style.display = "none";
-
-    const popHead = document.createElement("div");
-    popHead.className = "tasks-popover-head";
-    const popTitle = document.createElement("span");
-    popTitle.className = "tasks-popover-title";
-    popTitle.textContent = "Agents";
-    popHead.appendChild(popTitle);
-    const closeBtn = document.createElement("button");
-    closeBtn.type = "button";
-    closeBtn.className = "tasks-popover-close";
-    closeBtn.textContent = copyText("agentsPanel.ctor.close");
-    closeBtn.title = copyText("agentsPanel.ctor.closeHint");
-    closeBtn.addEventListener("click", () => this.setCollapsed(true));
-    popHead.appendChild(closeBtn);
-    this.popoverElement.appendChild(popHead);
-
+    this.pageElement = document.createElement("div");
+    this.pageElement.className = "agents-page";
     this.list = document.createElement("ul");
-    this.list.className = "tasks-popover-list";
-    this.popoverElement.appendChild(this.list);
+    this.list.className = "agents-list";
+    this.empty = emptyState({ icon: "agent", text: copyText("agentsPanel.page.empty") });
+    this.render(true);
+  }
 
-    this.applyCollapsedArrow();
+  /** 页签上的字（有 agent ⇒ 与 chip 同字；没有 ⇒ 页名）。 */
+  get label(): string {
+    return this.runs.length > 0 && this.activeSid !== null ? (this.summaryText.textContent ?? "") : copyText("agentsPanel.page.title");
+  }
+
+  /** 抽屉开到 / 离开这一页（宿主调）：chip 的「开着」跟着变。 */
+  setVisible(on: boolean): void {
+    this.summaryElement.setAttribute("aria-expanded", String(on));
   }
 
   /** 当前会话与它的运行表（切 tab / 运行表到了时调）。 */
@@ -129,49 +107,14 @@ export class AgentsPanel {
     this.render(false);
   }
 
-  /** dispatcher overlay 接口（只在看得见时在栈上）。 */
-  handleEsc(): void {
-    this.setCollapsed(true);
-  }
-
-  /** 把这个子运行摆到眼前（消息流里 agent 事件条的「打开窗口 ›」）：展开面板、点开它那一行的时间线。不在表里 ⇒ 只展开面板。 */
+  /** 把这个子运行摆到眼前（消息流里 agent 事件条的「打开窗口 ›」）：开到这一页、点开它那一行的时间线。不在表里 ⇒ 只开到这一页。 */
   reveal(run: string): void {
-    if (this.collapsed) this.setCollapsed(false);
+    this.onReveal?.();
     if (this.runs.some((r) => r.run === run)) {
       this.open.add(this.keyOf(run));
       this.render(true);
       this.nodes.get(`row\u0000${this.keyOf(run)}`)?.scrollIntoView({ block: "nearest" });
     }
-  }
-
-  /** 收起（状态栏另一块浮层开了 ⇒ 这一块让位）。 */
-  collapse(): void {
-    if (!this.collapsed) this.setCollapsed(true);
-  }
-
-  /** 弹层栈跟着「浮层此刻看得见」走（与任务面板同一条）。 */
-  private syncLayer(): void {
-    const shown = this.popoverElement.style.display !== "none";
-    if (shown === this.stacked) return;
-    this.stacked = shown;
-    if (shown) {
-      dispatcher.pushOverlay(this);
-      popoverShown(this);
-    } else {
-      dispatcher.popOverlay(this);
-    }
-  }
-
-  private setCollapsed(collapsed: boolean): void {
-    this.collapsed = collapsed;
-    safeSet(LS_KEYS.agentsPanelCollapsed, collapsed ? "1" : "0");
-    popoverExpanded(this, !collapsed);
-    this.applyCollapsedArrow();
-    this.render(true);
-  }
-
-  private applyCollapsedArrow(): void {
-    this.summaryArrow.textContent = this.collapsed ? copyText("agentsPanel.arrow.collapsed") : copyText("agentsPanel.arrow.expanded");
   }
 
   private keyOf(run: string): string {
@@ -195,17 +138,18 @@ export class AgentsPanel {
   }
 
   private render(force: boolean): void {
-    if (this.runs.length === 0 || this.activeSid === null) {
+    const none = this.runs.length === 0 || this.activeSid === null;
+    if (none) {
       this.summaryElement.style.display = "none";
-      this.popoverElement.style.display = "none";
+      if (this.pageElement.firstChild !== this.empty) this.pageElement.replaceChildren(this.empty);
       this.drawn = "";
-      this.syncLayer();
+      this.place([]);
+      this.onLabel?.(this.label);
       return;
     }
     const g = panelGroups(this.runs);
     const shown = [...g.running, ...g.recent, ...(this.olderOpen ? g.older : [])];
     const sig = JSON.stringify([
-      this.collapsed,
       this.olderOpen,
       [...this.open],
       g.older.length,
@@ -215,11 +159,11 @@ export class AgentsPanel {
     this.drawn = sig;
 
     this.summaryElement.style.display = "";
-    this.popoverElement.style.display = this.collapsed ? "none" : "";
-    this.syncLayer();
+    if (this.pageElement.firstChild !== this.list) this.pageElement.replaceChildren(this.list);
     const running = g.running.length;
     this.summaryText.textContent =
-      running > 0 ? copyText("agentsPanel.render.summary", { n: this.runs.length, running }) : `${this.runs.length} agents`;
+      running > 0 ? copyText("agentsPanel.render.summary", { n: this.runs.length, running }) : copyText("agentsPanel.render.summaryDone", { n: this.runs.length });
+    this.onLabel?.(this.label);
 
     const items: HTMLElement[] = [];
     if (g.running.length > 0) items.push(this.head("running", copyText("agentsPanel.group.running")), ...g.running.flatMap((r) => this.row(r)));
@@ -313,7 +257,7 @@ export class AgentsPanel {
       });
       return el;
     });
-    row.className = `tasks-popover-item agent-row agent-${r.state} agent-row-clickable`;
+    row.className = `agent-row agent-${r.state} agent-row-clickable`;
     row.dataset.run = r.run;
 
     const spans: HTMLElement[] = [];

@@ -5446,7 +5446,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect(seen, "值没变却通知了").toEqual([]);
     tm.switchTo("v2");
     await vi.waitFor(() => expect(seen.length).toBe(1));
-    expect(seen).toEqual([{ sid: "v2", model: null, promptTokens: null, contextLimit: null, unavailable: null, projectDir: null }]);
+    expect(seen).toEqual([{ sid: "v2", model: null, promptTokens: null, contextLimit: null, limitFrom: "assumed", unavailable: null, projectDir: null }]);
   });
 
   it("要不到（老后端不认这条命令）⇒ active 的 HUD 出声（原因非空）、此后不再问；可用 ⇒ 说 null", async () => {

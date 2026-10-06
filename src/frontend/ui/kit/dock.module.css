@@ -1,0 +1,104 @@
+/* 底部抽屉：主区底部、状态栏之上；把消息流往上推。 */
+@layer components {
+  .dockSlot {
+    min-height: 0;
+  }
+
+  .dock {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    border-top: 1px solid var(--border-medium);
+    background: var(--card);
+  }
+
+  .dockEdge {
+    position: absolute;
+    top: -3px;
+    right: 0;
+    left: 0;
+    z-index: var(--z-chrome);
+    height: 6px;
+    cursor: ns-resize;
+  }
+
+  .dockEdge:hover,
+  .dockEdge:focus-visible {
+    background: color-mix(in srgb, var(--accent) 35%, transparent);
+    outline: none;
+  }
+
+  .dockHead {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-3);
+    padding: 0 var(--space-4) 0 var(--space-5);
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .dockTabs {
+    display: flex;
+    gap: var(--space-1);
+  }
+
+  .dockTab {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    height: var(--row-h-tab);
+    margin-bottom: -1px;
+    padding: 0 var(--control-pad-x);
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      color var(--dur-press),
+      border-color var(--dur-press);
+  }
+
+  .dockTab:hover {
+    color: var(--text);
+  }
+
+  .dockTab:focus-visible {
+    outline-offset: calc(-1 * var(--focus-ring));
+  }
+
+  .dockTab[aria-selected="true"] {
+    border-bottom-color: var(--accent);
+    color: var(--text);
+  }
+
+  .dockSp {
+    flex: 1;
+  }
+
+  .dockKey {
+    padding: 0 4px;
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: var(--radius-s);
+    background: var(--field-bg);
+    color: var(--text-2);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+  }
+
+  .dockBody {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .dockPage {
+    height: 100%;
+    overflow: auto;
+  }
+}

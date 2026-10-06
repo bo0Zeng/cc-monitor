@@ -19,6 +19,8 @@ import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, RECONNECTABLE, UNSEEN } from "../..
 import { abbrOf, dotOf, needsOf, needsOrder, nextNeeds, peekLine, stateLine, titleParts } from "../../../src/frontend/ui/session-face";
 import { NeedsBar, NeedsWatch, NOTIFY_WAIT_MS, answerWhere, needsHeadline } from "../../../src/frontend/ui/needs-bar";
 import { SessionHead } from "../../../src/frontend/ui/session-head";
+import { TerminalPage, type TerminalReads } from "../../../src/frontend/ui/terminal-page";
+import type { TerminalSend, TerminalSent } from "../../../src/frontend/ui/terminal-reads";
 import { fmtDur } from "../../../src/frontend/ui/quota-lines";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
@@ -309,7 +311,7 @@ describe("「需要你」钉条 · 窗口标题 · 系统通知", () => {
 
 describe("会话头", () => {
   const head = (t: Tab | null) => {
-    const host = { active: () => t, openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn() };
+    const host = { active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn() };
     const h = new SessionHead(host);
     document.body.appendChild(h.el);
     h.render(NOW);
@@ -317,13 +319,15 @@ describe("会话头", () => {
   };
   const labels = (el: HTMLElement): string[] => [...el.querySelectorAll("button")].map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
 
-  it("★ 标题全名 · 机器 · 目录 · 状态一句；在等你时状态那一句琥珀；右边：目录（本机）· 查找 · 更多", () => {
+  it("★ 标题全名 · 机器 · 目录 · 状态一句；在等你时状态那一句琥珀；右边：目录（本机）· 看它的终端 · 查找 · 更多", () => {
     const { h, host } = head(tab("a", { aiTitle: "加重试", projectDir: "/w/orders", activity: waiting, needs: approve() }));
     expect(h.el.textContent).toContain("orders 加重试");
     expect(h.el.textContent).toContain(copyText("sessionFace.machine.local"));
     expect(h.el.textContent).toContain("/w/orders");
-    expect(labels(h.el)).toEqual([copyText("tabBarView.tab.cwdHint"), copyText("sessionHead.act.find"), copyText("tabBarView.tab.moreHint")]);
+    expect(labels(h.el)).toEqual([copyText("tabBarView.tab.cwdHint"), copyText("sessionHead.act.terminal"), copyText("sessionHead.act.find"), copyText("tabBarView.tab.moreHint")]);
     h.el.querySelectorAll("button")[1].click();
+    expect(host.viewTerminal).toHaveBeenCalled();
+    h.el.querySelectorAll("button")[2].click();
     expect(host.find).toHaveBeenCalled();
   });
 
@@ -336,11 +340,190 @@ describe("会话头", () => {
     const re = [...unseen.h.el.querySelectorAll("button")].find((b) => b.textContent === copyText("sessionHead.act.reconnect"))!;
     re.click();
     expect(unseen.host.reconnect).toHaveBeenCalledWith("gpu-01");
+    expect(labels(head(tab("e", { state: ENDED })).h.el), "已结束：没有终端可去，不出「看它的终端」").not.toContain(copyText("sessionHead.act.terminal"));
     const live = labels(head(tab("d")).h.el);
     for (const x of ["sessionHead.act.resume", "sessionHead.act.openTerm", "sessionHead.act.reconnect"] as const) expect(live).not.toContain(copyText(x));
   });
 
   it("没有当前会话 ⇒ 不显示", () => {
     expect(head(null).h.el.style.display).toBe("none");
+  });
+});
+
+describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键）", () => {
+  type Row = Awaited<ReturnType<TerminalReads["list"]>>[number];
+  const row = (sid: string, over: Partial<Row> = {}): Row => ({ terminal: `tmux-${sid}`, tmuxName: `${sid}-cc`, sid, clients: 0, input: "shared", programExited: false, inputNo: null, ...over });
+  const flush = async (): Promise<void> => {
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+  };
+  function rig(rows: Row[], cur: { t: Tab | null }) {
+    let shots = 0;
+    const sent: { what: TerminalSend; seen: string | null }[] = [];
+    let reply: () => Promise<TerminalSent> = async () => ({ result: "delivered" });
+    const reads: TerminalReads = {
+      list: vi.fn(async () => rows),
+      shot: vi.fn(async () => {
+        shots++;
+        return { text: `屏 ${shots}`, screen: `fp${shots}`, at: 1_700_000_000 };
+      }),
+      send: vi.fn(async (_o, _t, what, seen) => {
+        sent.push({ what, seen });
+        return reply();
+      }),
+    };
+    const host = { active: () => cur.t, front: vi.fn(), focusStream: vi.fn() };
+    const page = new TerminalPage(host, reads);
+    document.body.appendChild(page.el);
+    page.sessionChanged();
+    return { page, reads, host, sent, shotCount: () => shots, setReply: (r: () => Promise<TerminalSent>) => (reply = r) };
+  }
+  const box = (p: TerminalPage): HTMLTextAreaElement => p.el.querySelector("textarea")!;
+  const key = (el: HTMLElement, k: string, o: KeyboardEventInit = {}): void => void el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...o }));
+
+  it("★ 开到这一页：按会话认出那一行、抓一屏；后台那一行写「后台 · 输入直达」；开着不轮询", async () => {
+    vi.useFakeTimers();
+    try {
+      const r = rig([row("x"), row("a")], { t: tab("a") });
+      r.page.setVisible(true);
+      await flush();
+      expect(r.page.el.querySelector("pre")?.textContent).toBe("屏 1");
+      expect(r.page.el.textContent).toContain(copyText("terminal.tag.tmux", { name: "a-cc" }));
+      expect(r.page.el.textContent).toContain(copyText("terminal.input.nobody"));
+      expect(r.page.el.textContent).toContain(copyText("terminal.input.to", { title: "a", machine: copyText("sessionFace.machine.local") }));
+      vi.advanceTimersByTime(60_000);
+      await flush();
+      expect([vi.mocked(r.reads.list).mock.calls.length, r.shotCount()]).toEqual([1, 1]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("★ 有终端窗口连着（tmux）⇒「另有终端窗口 ×1 · 输入会混在一起」；名单里没有：活着 ⇒ 非 cc-monitor 启动，已结束 ⇒ 已结束 · 无终端", async () => {
+    const a = rig([row("a", { clients: 1 })], { t: tab("a") });
+    a.page.setVisible(true);
+    await flush();
+    expect(a.page.el.textContent).toContain(copyText("terminal.input.shared", { n: 1 }));
+    expect(a.page.el.textContent).toContain(copyText("terminal.tag.windows", { n: 1 }));
+    const b = rig([], { t: tab("b") });
+    b.page.setVisible(true);
+    await flush();
+    expect(b.page.el.textContent).toContain(copyText("terminal.empty.notOurs"));
+    expect(vi.mocked(b.reads.shot)).not.toHaveBeenCalled();
+    const c = rig([], { t: tab("c", { state: ENDED }) });
+    c.page.setVisible(true);
+    await flush();
+    expect(c.page.el.textContent).toContain(copyText("terminal.empty.ended", { state: copyText("sessionState.ended.name") }));
+  });
+
+  it("★ 回车送字并补回车、带上看到的那一屏的指纹；送到了清框、写「已送达」，0.5 · 1.5 · 3 秒各再抓一次；Ctrl+回车只送字；Shift+回车与组字不送", async () => {
+    vi.useFakeTimers();
+    try {
+      const r = rig([row("a")], { t: tab("a") });
+      r.page.setVisible(true);
+      await flush();
+      const b = box(r.page);
+      b.value = "/usage";
+      key(b, "Enter", { shiftKey: true });
+      key(b, "Enter", { isComposing: true });
+      await flush();
+      expect(r.sent).toEqual([]);
+      key(b, "Enter");
+      await flush();
+      expect(r.sent).toEqual([{ what: { text: "/usage", enter: true }, seen: "fp1" }]);
+      expect(b.value).toBe("");
+      expect(r.page.el.textContent).toContain(copyText("terminal.input.delivered"));
+      for (const ms of [500, 1000, 1500]) {
+        vi.advanceTimersByTime(ms);
+        await flush();
+      }
+      expect(r.shotCount()).toBe(4);
+      b.value = "y";
+      key(b, "Enter", { ctrlKey: true });
+      await flush();
+      expect(r.sent[1].what).toEqual({ text: "y", enter: false });
+      b.value = "字".repeat(2001);
+      b.dispatchEvent(new Event("input"));
+      const send = [...r.page.el.querySelectorAll("button")].find((x) => x.textContent?.startsWith(copyText("terminal.input.send")))!;
+      expect(send.textContent).toBe(copyText("terminal.input.sendLong", { n: "2,001" }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("★ 画面已经变了 ⇒ 不送、字留着、重抓一次；不知道送没送到 ⇒ 照实说、不重发；没送到 ⇒ 字留着、给［重试］", async () => {
+    const r = rig([row("a")], { t: tab("a") });
+    r.page.setVisible(true);
+    await flush();
+    const b = box(r.page);
+    b.value = "1";
+    r.setReply(async () => ({ result: "refused", why: "screen-changed", screen: "fp9" }));
+    key(b, "Enter");
+    await flush();
+    expect([b.value, r.shotCount()]).toEqual(["1", 2]);
+    expect(r.page.el.textContent).toContain(copyText("terminal.input.screenChanged"));
+    r.setReply(async () => ({ result: "unsure" }));
+    key(b, "Enter");
+    await flush();
+    expect(r.page.el.textContent).toContain(copyText("terminal.input.unsure", { machine: copyText("sessionFace.machine.local") }));
+    expect([r.sent.length, b.value]).toEqual([2, "1"]);
+    r.setReply(async () => {
+      throw new Error("连不上");
+    });
+    key(b, "Enter");
+    await flush();
+    expect(b.value).toBe("1");
+    const retry = [...r.page.el.querySelectorAll("button")].find((x) => x.textContent === copyText("terminal.input.retry"));
+    expect(retry).toBeDefined();
+  });
+
+  it("★ 后端说送不了（别的前端的会话）⇒ 框与键都灰、写为什么，点了也不送", async () => {
+    const r = rig([row("a", { inputNo: "not-yours" })], { t: tab("a") });
+    r.page.setVisible(true);
+    await flush();
+    expect(box(r.page).disabled).toBe(true);
+    expect(box(r.page).placeholder).toBe(copyText("terminal.input.readOnly", { why: copyText("terminal.why.notYours") }));
+    const esc = [...r.page.el.querySelectorAll("button")].find((x) => x.textContent === "Esc")!;
+    expect(esc.getAttribute("aria-disabled")).toBe("true");
+    expect(await r.page.send({ key: "esc" })).toBe(false);
+    expect(vi.mocked(r.reads.send)).not.toHaveBeenCalled();
+  });
+
+  it("★ 没送的字按会话各记一份；切走时慢回来的名单不落到新会话上", async () => {
+    const cur: { t: Tab | null } = { t: tab("a") };
+    let release!: (v: Row[]) => void;
+    const r = rig([row("a"), row("b")], cur);
+    r.page.setVisible(true);
+    await flush();
+    const b = box(r.page);
+    b.value = "半句话";
+    vi.mocked(r.reads.list).mockImplementationOnce(() => new Promise((res) => (release = res)));
+    cur.t = tab("b");
+    r.page.sessionChanged();
+    expect(b.value).toBe("");
+    cur.t = tab("a");
+    r.page.sessionChanged();
+    await flush();
+    expect(box(r.page).value).toBe("半句话");
+    release([row("a", { clients: 3 }), row("b", { clients: 3 })]);
+    await flush();
+    r.page.sessionChanged(); // 同一个会话：只重画
+    expect(r.page.el.textContent).not.toContain(copyText("terminal.input.shared", { n: 3 }));
+  });
+
+  it("输入框里 Esc 只把焦点还给消息流；「切到终端」只在 ↗ 真能用时出", async () => {
+    vi.mocked(terminalFrontAvailable).mockReturnValue(true);
+    const r = rig([row("a")], { t: tab("a") });
+    r.page.setVisible(true);
+    await flush();
+    box(r.page).focus();
+    expect(r.page.escFromInput()).toBe(true);
+    expect(r.host.focusStream).toHaveBeenCalled();
+    const front = [...r.page.el.querySelectorAll("button")].find((x) => x.textContent?.includes(copyText("terminal.head.front")))!;
+    expect(front.style.display).toBe("");
+    front.click();
+    expect(r.host.front).toHaveBeenCalledWith("a");
+    vi.mocked(terminalFrontAvailable).mockReturnValue(false);
+    r.page.sessionChanged();
+    expect(front.style.display).toBe("none");
   });
 });

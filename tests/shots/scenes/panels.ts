@@ -117,8 +117,8 @@ export const PANEL_SCENES: Scene[] = [
   panel("panel-agent-run-open", "子 agent 面板 · 点开一个", "子 agent 面板里点开第一行（在跑的那一个排在前面）：它的时间线", async () => {
     await mainReady(ALL_TABS);
     await click(".status-agents");
-    await waitFor(".agents-popover .agent-row");
-    await click(".agents-popover .agent-row");
+    await waitFor("#bottom-drawer .agent-row");
+    await click("#bottom-drawer .agent-row");
     await sleep(1200);
   }),
   panel("panel-fork-ask", "从这一轮分叉", "已结束的会话里，用户那句话上的分叉按钮：源会话不在跑、说不清用哪个账号 ⇒ 先问", async () => {
@@ -177,16 +177,16 @@ export const PANEL_SCENES: Scene[] = [
     await waitFor(".pane-preview-box");
     await sleep(700);
   }),
-  panel("panel-agents", "子 agent 面板", "状态栏点「2 agents」：本会话的子 agent 列表（一个跑完、一个在跑）", async () => {
+  panel("panel-agents", "子 agent 面板", "状态栏点「agent 2 · 1 在跑」：本会话的子 agent 列表（一个跑完、一个在跑）", async () => {
     await mainReady(ALL_TABS);
     await click(".status-agents");
-    await waitFor(".agents-popover");
+    await waitFor("#bottom-drawer .agent-row");
     await sleep(500);
   }),
-  panel("panel-tasks", "任务面板", "状态栏点「4 tasks」：本会话的任务清单", async () => {
+  panel("panel-tasks", "任务面板", "状态栏点「任务 2/4」：本会话的任务清单", async () => {
     await mainReady(ALL_TABS);
-    await click(".status-tasks:not(.status-agents)");
-    await waitFor(".tasks-popover:not(.agents-popover)");
+    await click(".status-tasks");
+    await waitFor("#bottom-drawer .tasks-item");
     await sleep(500);
   }),
   panel("panel-account", "账号面板", "状态栏点账号按钮（本会话）：本会话的「账号」面板（缺省世界里中转还没见过这个会话）", async () => {
@@ -288,33 +288,33 @@ export const PANEL_SCENES: Scene[] = [
     await mainReady(ALL_TABS - 2);
     await sleep(800);
   }, closedWorld),
-  panel("panel-agents-tasks", "先开任务面板、再开子 agent 面板", "先点「4 tasks」再点「2 agents」：同一时刻只开一块", async () => {
+  panel("panel-agents-tasks", "先开任务面板、再开子 agent 面板", "先点「任务 2/4」再点「agent 2 · 1 在跑」：同一个抽屉换页", async () => {
     await mainReady(ALL_TABS);
-    await click(".status-tasks:not(.status-agents)");
-    await waitFor(".tasks-popover:not(.agents-popover)");
+    await click(".status-tasks");
+    await waitFor("#bottom-drawer .tasks-item");
     await click(".status-agents");
-    await waitFor(".agents-popover");
+    await waitFor("#bottom-drawer .agent-row");
     await sleep(500);
   }),
   panel("panel-agents-switch-back", "在别的 tab 上开了子 agent 面板再切回来", "第一个 tab 开着任务面板，切到没有任务的「表格分页」点开子 agent 面板，再切回第一个 tab：开着的仍是子 agent 面板", async () => {
     await mainReady(ALL_TABS);
-    await click(".status-tasks:not(.status-agents)");
-    await waitFor(".tasks-popover:not(.agents-popover)");
+    await click(".status-tasks");
+    await waitFor("#bottom-drawer .tasks-item");
     await openTab(1);
     await click(".status-agents");
-    await waitFor(".agents-popover");
+    await waitFor("#bottom-drawer .agent-row");
     await openTab(0);
     await sleep(500);
   }, agentsOnlyWorld),
   {
-    ...panel("panel-tasks-esc", "任务面板 · 启动就开着时按 Esc", "上次退出时任务面板开着：这次启动直接开着，按一下 Esc 收起", async () => {
+    ...panel("panel-tasks-esc", "任务页 · 启动就开着时按 Esc", "上次退出时抽屉开在任务页：这次启动直接开着，按一下 Esc 收起", async () => {
       await mainReady(ALL_TABS);
       await sleep(400);
       (document.activeElement as HTMLElement | null)?.blur();
       await key("Escape");
       await sleep(400);
     }),
-    storage: { "cc-monitor.tab-bar-w": "260", "cc-monitor.cmdk-hint.seen": "1", "cc-monitor.tasks-panel.collapsed": "0" },
+    storage: { "cc-monitor.tab-bar-w": "260", "cc-monitor.cmdk-hint.seen": "1", "cc-monitor.bottom-drawer": '{"page":"tasks","height":240}' },
   },
   panel("panel-account-ended-last", "账号徽标 · 已结束的远端会话", "devbox 上已结束的「账单导出」：tab 上的账号徽标是那台记着的上次用的号（虚线）", async () => {
     await mainReady(ALL_TABS);

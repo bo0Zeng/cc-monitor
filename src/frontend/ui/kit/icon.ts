@@ -11,7 +11,6 @@ import gearSix from "@phosphor-icons/core/assets/regular/gear-six.svg?raw";
 import clockCounterClockwise from "@phosphor-icons/core/assets/regular/clock-counter-clockwise.svg?raw";
 import squaresFour from "@phosphor-icons/core/assets/regular/squares-four.svg?raw";
 import folder from "@phosphor-icons/core/assets/regular/folder.svg?raw";
-import keyboard from "@phosphor-icons/core/assets/regular/keyboard.svg?raw";
 import x from "@phosphor-icons/core/assets/regular/x.svg?raw";
 import check from "@phosphor-icons/core/assets/regular/check.svg?raw";
 import caretRight from "@phosphor-icons/core/assets/regular/caret-right.svg?raw";
@@ -39,6 +38,13 @@ import starFill from "@phosphor-icons/core/assets/fill/star-fill.svg?raw";
 import chat from "@phosphor-icons/core/assets/regular/chat.svg?raw";
 import list from "@phosphor-icons/core/assets/regular/list.svg?raw";
 import plus from "@phosphor-icons/core/assets/regular/plus.svg?raw";
+import listChecks from "@phosphor-icons/core/assets/regular/list-checks.svg?raw";
+import robot from "@phosphor-icons/core/assets/regular/robot.svg?raw";
+import gauge from "@phosphor-icons/core/assets/regular/gauge.svg?raw";
+import command from "@phosphor-icons/core/assets/regular/command.svg?raw";
+import circleDashed from "@phosphor-icons/core/assets/regular/circle-dashed.svg?raw";
+import circleNotch from "@phosphor-icons/core/assets/regular/circle-notch.svg?raw";
+import terminalWindow from "@phosphor-icons/core/assets/regular/terminal-window.svg?raw";
 import s from "./icon.module.css";
 
 const SVG = {
@@ -46,7 +52,6 @@ const SVG = {
   history: clockCounterClockwise,
   grid: squaresFour,
   folder: folder,
-  keyboard: keyboard,
   close: x,
   check: check,
   caretRight: caretRight,
@@ -74,6 +79,13 @@ const SVG = {
   chat: chat,
   list: list,
   plus: plus,
+  tasks: listChecks,
+  agent: robot,
+  context: gauge,
+  command: command,
+  pending: circleDashed,
+  inProgress: circleNotch,
+  terminal: terminalWindow,
 } as const;
 
 export type IconName = keyof typeof SVG;

@@ -3420,7 +3420,7 @@
     },
     "keybindingActions.panel.tasks": {
       "kind": "action",
-      "zh": "Task 面板开 / 关",
+      "zh": "底部抽屉 · 任务",
       "args": []
     },
     "keybindingActions.behavior.autoFront": {
@@ -3800,7 +3800,7 @@
     },
     "main.cmdk.hint": {
       "kind": "body",
-      "zh": "打开命令面板：搜索并执行所有操作",
+      "zh": "搜索命令和会话",
       "args": []
     },
     "main.cmdk.label": {
@@ -3845,7 +3845,7 @@
     },
     "main.cmd.tasks": {
       "kind": "action",
-      "zh": "开 / 关 Task 面板",
+      "zh": "任务",
       "args": []
     },
     "main.cmd.terminalFrontKeywords": {
@@ -3952,21 +3952,6 @@
       "kind": "body",
       "zh": "拖拽调整 tab 栏宽度",
       "args": []
-    },
-    "main.status.waiting": {
-      "kind": "body",
-      "zh": "等待活跃 Claude Code 会话…",
-      "args": []
-    },
-    "main.status.watching": {
-      "kind": "body",
-      "zh": "监听中",
-      "args": []
-    },
-    "main.status.count": {
-      "kind": "body",
-      "zh": "活跃 {live}",
-      "args": ["live"]
     },
     "main.empty.noSessions": {
       "kind": "body",
@@ -4769,8 +4754,8 @@
       "args": []
     },
     "agentsPanel.render.summary": {
-      "kind": "body",
-      "zh": "{n} agents ({running} 在跑)",
+      "kind": "action",
+      "zh": "agent {n} · {running} 在跑",
       "args": ["n", "running"]
     },
     "agentsPanel.group.running": {
@@ -4792,26 +4777,6 @@
       "kind": "body",
       "zh": "最近：{last}",
       "args": ["last"]
-    },
-    "agentsPanel.arrow.expanded": {
-      "kind": "body",
-      "zh": "▼",
-      "args": []
-    },
-    "agentsPanel.arrow.collapsed": {
-      "kind": "body",
-      "zh": "▶",
-      "args": []
-    },
-    "agentsPanel.ctor.closeHint": {
-      "kind": "body",
-      "zh": "关闭",
-      "args": []
-    },
-    "agentsPanel.ctor.close": {
-      "kind": "action",
-      "zh": "×",
-      "args": []
     },
     "branchButton.attachBranchButton.failed": {
       "kind": "error",
@@ -5275,52 +5240,27 @@
     },
     "tasksPanel.status.other": {
       "kind": "body",
-      "zh": "•",
+      "zh": "其他",
       "args": []
     },
     "tasksPanel.status.failed": {
       "kind": "body",
-      "zh": "✗",
+      "zh": "已删除",
       "args": []
     },
     "tasksPanel.status.done": {
       "kind": "body",
-      "zh": "✓",
+      "zh": "完成",
       "args": []
     },
     "tasksPanel.status.inProgress": {
       "kind": "body",
-      "zh": "■",
+      "zh": "进行中",
       "args": []
     },
     "tasksPanel.status.pending": {
       "kind": "body",
-      "zh": "□",
-      "args": []
-    },
-    "tasksPanel.arrow.expanded": {
-      "kind": "body",
-      "zh": "▼",
-      "args": []
-    },
-    "tasksPanel.arrow.collapsed": {
-      "kind": "body",
-      "zh": "▶",
-      "args": []
-    },
-    "tasksPanel.ctor.closeHint": {
-      "kind": "body",
-      "zh": "关闭",
-      "args": []
-    },
-    "tasksPanel.ctor.close": {
-      "kind": "action",
-      "zh": "×",
-      "args": []
-    },
-    "tasksPanel.ctor.title": {
-      "kind": "title",
-      "zh": "任务列表",
+      "zh": "未开始",
       "args": []
     },
     "terminalFront.unavailable.detail": {
@@ -5342,21 +5282,6 @@
       "kind": "title",
       "zh": "Claude 完成一轮 · {tab}",
       "args": ["tab"]
-    },
-    "usageHud.render.noLimit": {
-      "kind": "body",
-      "zh": "看不出这个会话的上限，所以不算百分比。上下文用了 {tok} tokens（{model}）",
-      "args": ["tok", "model"]
-    },
-    "usageHud.render.approx": {
-      "kind": "body",
-      "zh": "活跃会话 context 占用 ≈ {rounded}%（{model}，最新一轮 {tok} tokens ÷ 模型上限）。近似值。",
-      "args": ["rounded", "model", "tok"]
-    },
-    "usageHud.render.factsUnavailable": {
-      "kind": "body",
-      "zh": "活跃会话的 context 占用、agent 列表、改动文件、分叉来源都要不到：{reason}",
-      "args": ["reason"]
     },
     "machineAliases.ps.saveFailed": {
       "kind": "error",
@@ -20708,6 +20633,71 @@
       "zh": "重试",
       "args": []
     },
+    "agentsPanel.render.summaryDone": {
+      "kind": "action",
+      "zh": "agent {n}",
+      "args": ["n"]
+    },
+    "usageHud.chip.pct": {
+      "kind": "action",
+      "zh": "上下文 {n}%",
+      "args": ["n"]
+    },
+    "usageHud.chip.none": {
+      "kind": "body",
+      "zh": "上下文 —",
+      "args": []
+    },
+    "usageHud.chip.tokens": {
+      "kind": "action",
+      "zh": "上下文 {tokens}",
+      "args": ["tokens"]
+    },
+    "usageHud.panel.label": {
+      "kind": "title",
+      "zh": "上下文用量",
+      "args": []
+    },
+    "usageHud.panel.usage": {
+      "kind": "body",
+      "zh": "最新一轮 {tok} / {limit} · {model}",
+      "args": ["tok", "limit", "model"]
+    },
+    "usageHud.panel.from": {
+      "kind": "body",
+      "zh": "上限来源：{from}",
+      "args": ["from"]
+    },
+    "usageHud.panel.fix": {
+      "kind": "action",
+      "zh": "改上限…",
+      "args": []
+    },
+    "usageHud.panel.unknownLimit": {
+      "kind": "title",
+      "zh": "上限未知 · 只显示用量",
+      "args": []
+    },
+    "usageHud.panel.tokensOnly": {
+      "kind": "body",
+      "zh": "最新一轮 {tok} · {model}",
+      "args": ["tok", "model"]
+    },
+    "usageHud.panel.setLimit": {
+      "kind": "action",
+      "zh": "设上限",
+      "args": []
+    },
+    "usageHud.panel.unavailable": {
+      "kind": "error",
+      "zh": "会话信息读取失败",
+      "args": []
+    },
+    "usageHud.panel.retry": {
+      "kind": "action",
+      "zh": "重试",
+      "args": []
+    },
     "sessionViewer.status.all": {
       "kind": "body",
       "zh": "{n} 条",
@@ -20827,6 +20817,326 @@
       "kind": "action",
       "zh": "列表",
       "args": []
+    },
+    "usageHud.from.relay": {
+      "kind": "body",
+      "zh": "中转请求",
+      "args": []
+    },
+    "usageHud.from.setting": {
+      "kind": "body",
+      "zh": "设置",
+      "args": []
+    },
+    "usageHud.from.model": {
+      "kind": "body",
+      "zh": "模型名",
+      "args": []
+    },
+    "usageHud.from.observed": {
+      "kind": "body",
+      "zh": "用量超过 200k",
+      "args": []
+    },
+    "statusBar.tasks.chip": {
+      "kind": "action",
+      "zh": "任务 {done}/{total}",
+      "args": ["done", "total"]
+    },
+    "statusBar.tasks.hint": {
+      "kind": "body",
+      "zh": "完成 {done} · 进行 {active} · 未开始 {open}",
+      "args": ["done", "active", "open"]
+    },
+    "tasksPanel.page.title": {
+      "kind": "title",
+      "zh": "任务",
+      "args": []
+    },
+    "tasksPanel.page.empty": {
+      "kind": "body",
+      "zh": "无任务",
+      "args": []
+    },
+    "agentsPanel.page.title": {
+      "kind": "title",
+      "zh": "agent",
+      "args": []
+    },
+    "agentsPanel.page.empty": {
+      "kind": "body",
+      "zh": "无 agent",
+      "args": []
+    },
+    "kit.dock.resize": {
+      "kind": "aria",
+      "zh": "调整抽屉高度",
+      "args": []
+    },
+    "kit.dock.escKey": {
+      "kind": "body",
+      "zh": "Esc",
+      "args": []
+    },
+    "kit.dock.close": {
+      "kind": "action",
+      "zh": "收起",
+      "args": []
+    },
+    "mainDrawer.ctor.label": {
+      "kind": "title",
+      "zh": "任务 · agent · 终端",
+      "args": []
+    },
+    "main.cmd.agents": {
+      "kind": "action",
+      "zh": "agent",
+      "args": []
+    },
+    "main.cmd.agentsKeywords": {
+      "kind": "body",
+      "zh": "agent 子任务 subagent",
+      "args": []
+    },
+    "keybindingActions.panel.agents": {
+      "kind": "control",
+      "zh": "底部抽屉 · agent",
+      "args": []
+    },
+    "terminal.page.title": {
+      "kind": "title",
+      "zh": "终端",
+      "args": []
+    },
+    "terminal.head.snapAt": {
+      "kind": "body",
+      "zh": "画面 {time}",
+      "args": ["time"]
+    },
+    "terminal.head.recapture": {
+      "kind": "action",
+      "zh": "重新看",
+      "args": []
+    },
+    "terminal.head.front": {
+      "kind": "action",
+      "zh": "切到终端",
+      "args": []
+    },
+    "terminal.tag.background": {
+      "kind": "body",
+      "zh": "后台",
+      "args": []
+    },
+    "terminal.tag.tmux": {
+      "kind": "body",
+      "zh": "tmux 会话 {name}",
+      "args": ["name"]
+    },
+    "terminal.tag.windows": {
+      "kind": "body",
+      "zh": "终端窗口 ×{n}",
+      "args": ["n"]
+    },
+    "terminal.bar.programExited": {
+      "kind": "body",
+      "zh": "{state} · 终端在",
+      "args": ["state"]
+    },
+    "terminal.input.to": {
+      "kind": "body",
+      "zh": "送往 {title} · {machine}",
+      "args": ["title", "machine"]
+    },
+    "terminal.input.nobody": {
+      "kind": "body",
+      "zh": "后台 · 输入直达",
+      "args": []
+    },
+    "terminal.input.shared": {
+      "kind": "body",
+      "zh": "另有终端窗口 ×{n} · 输入会混在一起",
+      "args": ["n"]
+    },
+    "terminal.input.placeholder": {
+      "kind": "control",
+      "zh": "回车送出 · Shift+回车换行 · Ctrl+回车仅送字",
+      "args": []
+    },
+    "terminal.input.readOnly": {
+      "kind": "control",
+      "zh": "{why} · 不可送",
+      "args": ["why"]
+    },
+    "terminal.input.send": {
+      "kind": "action",
+      "zh": "送出",
+      "args": []
+    },
+    "terminal.input.sendLong": {
+      "kind": "action",
+      "zh": "送出 {n} 字",
+      "args": ["n"]
+    },
+    "terminal.input.keys": {
+      "kind": "body",
+      "zh": "按键",
+      "args": []
+    },
+    "terminal.input.keyHint": {
+      "kind": "body",
+      "zh": "送 {key}",
+      "args": ["key"]
+    },
+    "terminal.input.delivered": {
+      "kind": "body",
+      "zh": "已送达",
+      "args": []
+    },
+    "terminal.input.failed": {
+      "kind": "error",
+      "zh": "未送达 · {why} · 内容保留",
+      "args": ["why"]
+    },
+    "terminal.input.unsure": {
+      "kind": "error",
+      "zh": "送达未知 · {machine} 无应答 · 未重发 · 先看画面",
+      "args": ["machine"]
+    },
+    "terminal.input.screenChanged": {
+      "kind": "error",
+      "zh": "画面已变 · 未送 · 先看画面",
+      "args": []
+    },
+    "terminal.input.retry": {
+      "kind": "action",
+      "zh": "重试",
+      "args": []
+    },
+    "terminal.why.notYours": {
+      "kind": "body",
+      "zh": "手机端内部会话",
+      "args": []
+    },
+    "terminal.why.notManaged": {
+      "kind": "body",
+      "zh": "非 cc-monitor 启动",
+      "args": []
+    },
+    "terminal.why.gone": {
+      "kind": "body",
+      "zh": "终端已不在",
+      "args": []
+    },
+    "terminal.why.ambiguous": {
+      "kind": "body",
+      "zh": "多个终端匹配",
+      "args": []
+    },
+    "terminal.why.other": {
+      "kind": "body",
+      "zh": "被拒",
+      "args": []
+    },
+    "terminal.empty.ended": {
+      "kind": "body",
+      "zh": "{state} · 无终端",
+      "args": ["state"]
+    },
+    "terminal.empty.endedHint": {
+      "kind": "body",
+      "zh": "恢复后在新终端中显示",
+      "args": []
+    },
+    "terminal.empty.notOurs": {
+      "kind": "body",
+      "zh": "非 cc-monitor 启动 · 画面 / 送字不可用",
+      "args": []
+    },
+    "terminal.empty.notOursHint": {
+      "kind": "body",
+      "zh": "ccm / 别名启动的可用",
+      "args": []
+    },
+    "terminal.empty.noSession": {
+      "kind": "body",
+      "zh": "无会话",
+      "args": []
+    },
+    "terminal.state.loading": {
+      "kind": "body",
+      "zh": "正在读取终端",
+      "args": []
+    },
+    "terminal.state.refresh": {
+      "kind": "action",
+      "zh": "刷新",
+      "args": []
+    },
+    "terminalReads.input.refused": {
+      "kind": "error",
+      "zh": "送往 {target} 被拒：{detail}",
+      "args": ["target", "detail"]
+    },
+    "terminalReads.input.noReason": {
+      "kind": "error",
+      "zh": "送往 {target} 被拒，无原因",
+      "args": ["target"]
+    },
+    "keybindingActions.panel.terminal": {
+      "kind": "control",
+      "zh": "底部抽屉 · 终端",
+      "args": []
+    },
+    "main.cmd.terminal": {
+      "kind": "action",
+      "zh": "终端",
+      "args": []
+    },
+    "main.cmd.terminalKeywords": {
+      "kind": "body",
+      "zh": "终端 terminal 画面 送字",
+      "args": []
+    },
+    "sessionHead.act.terminal": {
+      "kind": "action",
+      "zh": "看它的终端",
+      "args": []
+    },
+    "terminal.key.esc": {
+      "kind": "action",
+      "zh": "Esc",
+      "args": []
+    },
+    "terminal.key.ctrlC": {
+      "kind": "action",
+      "zh": "Ctrl-C",
+      "args": []
+    },
+    "terminal.key.up": {
+      "kind": "action",
+      "zh": "↑",
+      "args": []
+    },
+    "terminal.key.down": {
+      "kind": "action",
+      "zh": "↓",
+      "args": []
+    },
+    "terminal.key.tab": {
+      "kind": "action",
+      "zh": "Tab",
+      "args": []
+    },
+    "terminal.key.enter": {
+      "kind": "action",
+      "zh": "回车",
+      "args": []
+    },
+    "terminal.head.where": {
+      "kind": "body",
+      "zh": "{dir} · {machine}",
+      "args": ["dir", "machine"]
     }
   }
 }

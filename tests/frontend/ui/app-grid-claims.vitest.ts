@@ -124,17 +124,10 @@ const STATIC_CHILDREN: readonly AppChild[] = (Object.keys(HTML_OF) as Mode[]).fl
 const INSERTED_CHILDREN: readonly AppChild[] = [
   {
     file: "src/frontend/ui/main.ts",
-    expr: "tasksPanel.popoverElement",
-    selector: ".tasks-popover",
+    expr: "mainDrawer.dock.el",
+    selector: "#bottom-drawer",
     modes: ["default"],
-    why: "bootstrapMain 建；viewer 路不建",
-  },
-  {
-    file: "src/frontend/ui/main.ts",
-    expr: "agentsPanel.popoverElement",
-    selector: ".tasks-popover",
-    modes: ["default"],
-    why: "同上（className 是 `tasks-popover agents-popover`，认领靠前者）",
+    why: "bootstrapMain 建（底部抽屉，收着时 hidden 不进网格）；viewer 路不建",
   },
   {
     // 拖宽把手从 `main.ts` 搬进 tab 栏自己的模块（D §D5）。

@@ -7,33 +7,24 @@
  * **变更推送本机远端同形**：那台后端自己盯任务目录，变了发 `tasks_changed{sid}` 帧；
  * monitor 交进通道 `subscribe(origin, "session-tasks")`（{@link SESSION_TASKS_KIND}），界面收到那个 sid 就重问一次
  * （{@link tasksChangedItems} 读那一批格）。monitor 自己那条 notify 与 `task-update` 事件删了。
- * 「被切到的那一刻 / 面板被展开的那一刻」现问一次那条照旧（兜住订阅建立之前那一窗）。
+ * 「被切到的那一刻 / 抽屉开到这一页的那一刻」现问一次那条照旧（兜住订阅建立之前那一窗）。
  * sid → origin 由 {@link fetchSessionTasks} 记下（Tab 创建时那一次就带着 origin）。
  *
- * UI 形态（v2.3 调整后）：
- *  - **summary chip**：嵌入底部 status bar，显示「N tasks (X done, Y active, Z open)」+ ▶/▼
- *    点击切换 popover 折叠 / 展开。0 task 时灰显不可点。
- *  - **popover**：fixed 浮层贴在 status bar 上方往上展开（最高 50vh），含 task 完整列表；与子 agent 面板同一时刻只开一块
- *    （`status-popovers.ts`），看得见时在 Esc 弹层栈上
+ * 界面：
+ *  - **chip**：状态栏里 `任务 {做完}/{全部}`，悬停分项与键位；点了交宿主开 / 收底部抽屉的「任务」页。这个会话没有任务 ⇒ 不渲染。
+ *  - **抽屉页**：一个任务一行（状态图标 · 主题 · 在做的那一句），按 id 原地更新；这个会话没有任务 ⇒ 页里写空态。
  *
  * 全局单例：TabManager 维护 `Map<sid, TaskEntry[]>`，切 Tab / 收到 update 都同步给单例。
  * 同 sid 只显示自己的 task，跨 Tab 不混淆。
- *
- * 折叠状态写 `localStorage cc-monitor.tasks-panel.collapsed`（全局单例无 per-Tab 必要）。
- *
- * 状态 icon：
- *   pending      □
- *   in_progress  ■
- *   completed    ✓
- *   deleted      ✗
- *   未知值       •
  */
 
-import { dispatcher } from "./keybindings/registry";
-import { popoverExpanded, popoverShown } from "./status-popovers";
+import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
+import { chip } from "./kit/chip";
+import { attachTooltip } from "./kit/tooltip";
+import { icon, type IconName } from "./kit/icon";
+import { emptyState } from "./kit/empty";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson } from "./ipc/chan-caller";
-import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import type { Tab } from "./tab-model";
 
@@ -56,108 +47,78 @@ export type TaskEntry = {
 // `session-tasks` 那条流的串与读格函数住叶子模块 `src/frontend/ui/tasks-stream.ts`（`events.ts` 也要它，避免 import 成环）。
 export { SESSION_TASKS_KIND, SESSION_TASKS_WINDOW, tasksChangedItems } from "./tasks-stream";
 
-function loadCollapsed(): boolean {
-  const v = safeGet(LS_KEYS.tasksPanelCollapsed);
-  if (v === "1") return true;
-  if (v === "0") return false;
-  return true;
+/** 一个任务行前面那颗图标（状态 ⇒ 图标名）。 */
+function statusIconName(status: string): IconName {
+  switch (status) {
+    case "completed":
+      return "check";
+    case "in_progress":
+      return "inProgress";
+    case "deleted":
+      return "failed";
+    default:
+      return "pending";
+  }
 }
 
-function saveCollapsed(collapsed: boolean): void {
-  safeSet(LS_KEYS.tasksPanelCollapsed, collapsed ? "1" : "0");
-}
+/** chip 前面那颗图标。 */
+const CHIP_ICON: IconName = "tasks";
 
 export class TasksPanel {
-  /** 挂到 status-bar 里当 chip。click 切换 collapsed。 */
+  /** 挂到 status-bar 里当 chip：点了交宿主（开 / 收底部抽屉的「任务」页）。 */
   readonly summaryElement: HTMLButtonElement;
-  /** 挂到 #app 里当 fixed popover，向上从 status bar 浮出。 */
-  readonly popoverElement: HTMLElement;
+  /** 底部抽屉「任务」页的内容。 */
+  readonly pageElement: HTMLElement;
+  /** chip 被点了（宿主接到抽屉上）。 */
+  onChip: (() => void) | null = null;
+  /** chip 上的字变了（宿主同步到抽屉页签）。 */
+  onLabel: ((label: string) => void) | null = null;
 
-  private summaryArrow: HTMLElement;
   private summaryText: HTMLElement;
+  /** chip 悬停那一句（每次画时按此刻的分项现拼）。 */
+  private hint = "";
   private list: HTMLUListElement;
+  private empty: HTMLElement;
+  /** 画出来的行按任务 id 留着：任务表又来一份时原地改，不整表重建。 */
+  private readonly rows = new Map<string, HTMLLIElement>();
 
   private tasks: TaskEntry[] = [];
   /** 当前显示的 session（来自 TabManager.activeId）。`null` = 无 active Tab。 */
   private activeSid: string | null = null;
-  private collapsed: boolean;
   /** 远端现问的代次：慢的那次回来不许盖掉后发的那次（同 `plugins-section.ts` 的 `seq`）。 */
   private refreshSeq = 0;
-  /** 浮层此刻在 Esc 弹层栈上（⇔ 看得见）。 */
-  private stacked = false;
+  /** 抽屉此刻开在这一页。 */
+  private visible = false;
 
   constructor() {
-    this.collapsed = loadCollapsed();
-    popoverExpanded(this, !this.collapsed);
+    // === summary chip（C6）：`任务 2/4`；悬停分项与键位 ===
+    this.summaryElement = chip({ text: "", icon: CHIP_ICON, onClick: () => this.onChip?.() }) as HTMLButtonElement;
+    this.summaryElement.classList.add("status-tasks");
+    this.summaryElement.style.display = "none"; // 这个会话没有任务 ⇒ 不渲染
+    this.summaryElement.setAttribute("aria-expanded", "false");
+    this.summaryText = this.summaryElement.querySelector("span") as HTMLElement;
+    attachTooltip(this.summaryElement, () => this.hint);
 
-    // === summary chip ===
-    this.summaryElement = document.createElement("button");
-    this.summaryElement.type = "button";
-    this.summaryElement.className = "status-tasks";
-    this.summaryElement.style.display = "none"; // 默认隐藏，0 task 时一直隐藏
-
-    this.summaryArrow = document.createElement("span");
-    this.summaryArrow.className = "status-tasks-arrow";
-    this.summaryArrow.textContent = copyText("tasksPanel.arrow.collapsed");
-    this.summaryElement.appendChild(this.summaryArrow);
-
-    this.summaryText = document.createElement("span");
-    this.summaryText.className = "status-tasks-text";
-    this.summaryElement.appendChild(this.summaryText);
-
-    this.summaryElement.addEventListener("click", () => this.toggleCollapsed());
-
-    // === popover ===
-    this.popoverElement = document.createElement("div");
-    this.popoverElement.className = "tasks-popover";
-    this.popoverElement.style.display = "none";
-
-    const popHead = document.createElement("div");
-    popHead.className = "tasks-popover-head";
-    const popTitle = document.createElement("span");
-    popTitle.className = "tasks-popover-title";
-    popTitle.textContent = copyText("tasksPanel.ctor.title");
-    popHead.appendChild(popTitle);
-    const closeBtn = document.createElement("button");
-    closeBtn.type = "button";
-    closeBtn.className = "tasks-popover-close";
-    closeBtn.textContent = copyText("tasksPanel.ctor.close");
-    closeBtn.title = copyText("tasksPanel.ctor.closeHint");
-    closeBtn.addEventListener("click", () => this.setCollapsed(true));
-    popHead.appendChild(closeBtn);
-    this.popoverElement.appendChild(popHead);
-
+    // === 抽屉页 ===
+    this.pageElement = document.createElement("div");
+    this.pageElement.className = "tasks-page";
     this.list = document.createElement("ul");
-    this.list.className = "tasks-popover-list";
-    this.popoverElement.appendChild(this.list);
-
-    this.applyCollapsedClass();
+    this.list.className = "tasks-list";
+    this.empty = emptyState({ icon: "tasks", text: copyText("tasksPanel.page.empty") });
+    this.render();
   }
 
-  /** 跟着当前 tab 走、不盖住 tab 栏 ⇒ 不拦快捷键（切 tab 时它照开、换成新会话那一份）。 */
-  readonly passes = "all" as const;
-
-  /** dispatcher overlay 接口（只在看得见时在栈上）。 */
-  handleEsc(): void {
-    this.setCollapsed(true);
+  /** 页签上的字（有任务 ⇒ 与 chip 同字；没有 ⇒ 页名）。 */
+  get label(): string {
+    return this.tasks.length > 0 && this.activeSid !== null ? (this.summaryText.textContent ?? "") : copyText("tasksPanel.page.title");
   }
 
-  /** 收起（状态栏另一块浮层开了 ⇒ 这一块让位）。 */
-  collapse(): void {
-    this.setCollapsed(true);
-  }
-
-  /** 弹层栈跟着「浮层此刻看得见」走：启动就按记住的展开态显示、切到没任务的 tab 藏起来，都在这里进 / 出栈。 */
-  private syncLayer(): void {
-    const shown = this.popoverElement.style.display !== "none";
-    if (shown === this.stacked) return;
-    this.stacked = shown;
-    if (shown) {
-      dispatcher.pushOverlay(this);
-      popoverShown(this);
-    } else {
-      dispatcher.popOverlay(this);
-    }
+  /** 抽屉开到 / 离开这一页（宿主调）。开到的那一刻远端会话现问一次（看的就是这一刻的列表）。 */
+  setVisible(on: boolean): void {
+    if (on === this.visible) return;
+    this.visible = on;
+    this.summaryElement.setAttribute("aria-expanded", String(on));
+    if (on && this.activeSid !== null) void this.refreshIfRemote(this.activeSid);
   }
 
   /**
@@ -186,23 +147,16 @@ export class TasksPanel {
     this.render();
   }
 
-  /** 快捷键 (issue #5) 用：折叠 ↔ 展开切换 */
-  toggle(): void {
-    this.setCollapsed(!this.collapsed);
-  }
-
   private render(): void {
-    const total = this.tasks.length;
-    if (total === 0 || this.activeSid === null) {
-      this.summaryElement.style.display = "none";
-      this.popoverElement.style.display = "none";
-      this.syncLayer();
+    const total = this.activeSid === null ? 0 : this.tasks.length;
+    this.summaryElement.style.display = total === 0 ? "none" : "";
+    const body = total > 0 ? this.list : this.empty;
+    if (this.pageElement.firstChild !== body) this.pageElement.replaceChildren(body);
+    if (total === 0) {
+      this.place([]);
+      this.onLabel?.(this.label);
       return;
     }
-    this.summaryElement.style.display = "";
-    // popover 显示与否跟随折叠状态
-    this.popoverElement.style.display = this.collapsed ? "none" : "";
-    this.syncLayer();
 
     let completed = 0;
     let inProgress = 0;
@@ -223,71 +177,59 @@ export class TasksPanel {
           other += 1;
       }
     }
-    const segments: string[] = [];
-    if (completed > 0) segments.push(`${completed} done`);
-    if (inProgress > 0) segments.push(`${inProgress} active`);
-    if (pending > 0) segments.push(`${pending} open`);
-    if (other > 0) segments.push(`${other} other`);
-    this.summaryText.textContent =
-      segments.length > 0
-        ? `${total} tasks (${segments.join(", ")})`
-        : `${total} tasks`;
+    this.summaryText.textContent = copyText("statusBar.tasks.chip", { done: completed, total });
+    const chord = dispatcher.effectiveChord("panel.toggle-tasks");
+    const parts = copyText("statusBar.tasks.hint", { done: completed, active: inProgress, open: pending + other });
+    this.hint = chord ? `${parts} · ${KeybindingDispatcher.prettyChord(chord)}` : parts;
+    this.onLabel?.(this.label);
+    this.place(this.tasks.map((t) => this.row(t)));
+  }
 
-    // 列表全量 replace —— task 数典型 < 30 条
-    this.list.replaceChildren();
-    for (const t of this.tasks) {
-      const row = document.createElement("li");
-      row.className = `tasks-popover-item status-${cssStatus(t.status)}`;
-      row.setAttribute("data-task-id", t.id);
-
-      const icon = document.createElement("span");
-      icon.className = "tasks-popover-icon";
-      icon.textContent = statusIcon(t.status);
-      row.appendChild(icon);
-
-      const subject = document.createElement("span");
-      subject.className = "tasks-popover-subject";
-      subject.textContent = t.subject;
-      row.appendChild(subject);
-
-      if (t.description || t.activeForm) {
-        const parts: string[] = [];
-        if (t.activeForm) parts.push(`▶ ${t.activeForm}`);
-        if (t.description) parts.push(t.description);
-        row.title = parts.join("\n\n");
-      }
-
-      this.list.appendChild(row);
+  /** 列表换成 `items` 这一串：留着的行原地不动（只在次序不对时挪），没了的摘掉。 */
+  private place(items: HTMLLIElement[]): void {
+    let cur: ChildNode | null = this.list.firstChild;
+    for (const n of items) {
+      if (n === cur) cur = cur.nextSibling;
+      else this.list.insertBefore(n, cur);
     }
-  }
-
-  private toggleCollapsed(): void {
-    this.setCollapsed(!this.collapsed);
-  }
-
-  private setCollapsed(next: boolean): void {
-    if (next === this.collapsed) return;
-    this.collapsed = next;
-    saveCollapsed(next);
-    popoverExpanded(this, !next);
-    this.applyCollapsedClass();
-    // 展开的那一刻，远端会话现问一次（看的就是这一刻的列表）。
-    if (!next && this.activeSid !== null) void this.refreshIfRemote(this.activeSid);
-    // 0 task 时即使被 setCollapsed(false) 也不会 popoverElement 显示，
-    // render() 会强制 display:none
-    if (this.tasks.length > 0 && this.activeSid !== null) {
-      this.popoverElement.style.display = this.collapsed ? "none" : "";
+    while (cur) {
+      const next: ChildNode | null = cur.nextSibling;
+      cur.remove();
+      cur = next;
     }
-    this.syncLayer();
+    const keep = new Set(items);
+    for (const [id, el] of this.rows) if (!keep.has(el)) this.rows.delete(id);
   }
 
-  private applyCollapsedClass(): void {
-    this.summaryElement.classList.toggle("expanded", !this.collapsed);
-    this.summaryArrow.textContent = this.collapsed ? copyText("tasksPanel.arrow.collapsed") : copyText("tasksPanel.arrow.expanded");
-    this.summaryElement.setAttribute(
-      "aria-expanded",
-      this.collapsed ? "false" : "true",
-    );
+  /** 一个任务一行（按 id 留着，字与状态原地换）。 */
+  private row(t: TaskEntry): HTMLLIElement {
+    let row = this.rows.get(t.id);
+    if (!row) {
+      row = document.createElement("li");
+      row.dataset.taskId = t.id;
+      this.rows.set(t.id, row);
+    }
+    row.className = `tasks-item status-${cssStatus(t.status)}`;
+    const sig = JSON.stringify([t.status, t.subject, t.activeForm ?? null, t.description ?? null]);
+    if (row.dataset.sig === sig) return row;
+    row.dataset.sig = sig;
+    const ic = icon(statusIconName(t.status), "compact");
+    ic.setAttribute("aria-hidden", "false");
+    ic.setAttribute("role", "img");
+    ic.setAttribute("aria-label", statusText(t.status));
+    const subject = document.createElement("span");
+    subject.className = "tasks-subject";
+    subject.textContent = t.subject;
+    row.replaceChildren(ic, subject);
+    if (t.status === "in_progress" && t.activeForm) {
+      const now = document.createElement("span");
+      now.className = "tasks-now";
+      now.textContent = t.activeForm;
+      row.appendChild(now);
+    }
+    if (t.description) row.title = t.description;
+    else row.removeAttribute("title");
+    return row;
   }
 }
 
@@ -360,7 +302,8 @@ export async function fetchSessionTasks(
   }
 }
 
-function statusIcon(status: string): string {
+/** 读屏念的状态名。 */
+function statusText(status: string): string {
   switch (status) {
     case "pending":
       return copyText("tasksPanel.status.pending");

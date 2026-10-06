@@ -712,7 +712,7 @@ function moduleStacking(
  * 回来写清它叠不叠、为什么。
  */
 const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
-  "src/frontend/ui/usage-hud.module.css": { stacked: true, why: "`.chip` 叠在全局 `.status-tasks` 上（usage-hud.ts 里 btn.className 同时挂 status-tasks 与 s.chip）" },
+  "src/frontend/ui/usage-hud.module.css": { stacked: false, why: "状态栏「上下文」chip 与它的浮层：只挂自己的哈希类（chip 本身叠在 kit chip 的哈希类上，不是全局类）" },
   "src/frontend/ui/acct.module.css": { stacked: true, why: "状态栏账号按钮 `.acctChip` 叠在全局 `.status-account` 上（account-chip.ts 里 btn.className 同时挂两样）；面板里经小工具函数挂的类量具认不出挂到哪，按「叠」算" },
   "src/frontend/ui/acct-session.module.css": { stacked: true, why: "换号条 · 提示条：类经小工具函数挂，量具认不出挂到哪，按「叠」算（实际只挂自己的哈希类）" },
   "src/frontend/ui/tab-quota.module.css": { stacked: false, why: "tab 标题后 `✕ 5h` 那一格：只挂自己的哈希类（不叠全局类）" },
@@ -720,6 +720,8 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/live-card.module.css": { stacked: false, why: "活卡（`live-card-view.ts` 画）：卡 / 顶上那行 / 正文只挂自己的哈希类（不叠全局类）" },
   "src/frontend/ui/needs-bar.module.css": { stacked: false, why: "「需要你」钉条（`needs-bar.ts`）：只挂自己的哈希类" },
   "src/frontend/ui/session-head.module.css": { stacked: false, why: "会话头（`session-head.ts`）：只挂自己的哈希类" },
+  "src/frontend/ui/terminal-page.module.css": { stacked: false, why: "底部抽屉终端页（`terminal-page.ts`）：只挂自己的哈希类" },
+  "src/frontend/ui/kit/dock.module.css": { stacked: false, why: "底部抽屉件：只挂自己的哈希类（网格那一格的 id 由主窗口挂，不是类）" },
   "src/frontend/ui/record-file-notice.module.css": { stacked: false, why: "tab 顶上「记录文件不见了 / 已从头重读」那一句：只挂自己的哈希类 `.notice`（不叠全局类）" },
   "src/frontend/ui/tab-group-rename.module.css": { stacked: false, why: "组头就地改名的输入框只挂自己的哈希类" },
   "src/frontend/ui/kit/icon.module.css": { stacked: false, why: "图标件：svg 只挂自己的哈希类" },
@@ -756,8 +758,8 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
  */
 const KIT_AWAITING_FACES: ReadonlySet<string> = new Set(
   // banner · drawer · fold · meter · tabs 已由主窗口的「账号」面板用上；badge · status-dot 由标签页栏（状态点 · 机器徽标 · 「需要你」计数）用上；
-  // progress 由消息流过程里那一步的「在跑」转圈用上（主窗口第 2 批）；empty · skeleton · switch 由历史页（空态 · 骨架 · 筛选里的勾与单选）用上。
-  ["block", "card", "chip", "field", "list-row"].map(
+  // progress 由消息流过程里那一步的「在跑」转圈用上（主窗口第 2 批）；empty · skeleton · switch 由历史页（空态 · 骨架 · 筛选里的勾与单选）用上；chip 由状态栏（任务 · agent · 上下文）用上。
+  ["block", "card", "field", "list-row"].map(
     (k) => `src/frontend/ui/kit/${k}.module.css`,
   ),
 );
@@ -805,15 +807,15 @@ describe("〔UC2〕CSS Modules 在构建产物里（件 10）", () => {
     const want = Object.fromEntries(Object.entries(MODULE_STACKING).map(([f, v]) => [f, v.stacked]));
     expect(got, "module 叠没叠变了 / 有 module 没进手写表 —— 回 MODULE_STACKING 写清").toEqual(want);
     expect(Object.values(want).some(Boolean), "手写表里一份「叠」的都没有 —— 下面的次序判据零命中地绿").toBe(true);
-    // 量具正反控（合成源；`status-tasks` 必须真是全局类，否则正控空转）
-    expect(GLOBAL_CLASSES.has("status-tasks"), "正控用的全局类不在了 —— 换一个真全局类").toBe(true);
+    // 量具正反控（合成源；`status-cmdk` 必须真是全局类，否则正控空转）
+    expect(GLOBAL_CLASSES.has("status-cmdk"), "正控用的全局类不在了 —— 换一个真全局类").toBe(true);
     const probe = (body: string): boolean =>
       moduleStacking([{ file: "src/probe.ts", text: `import s from "./probe.module.css";\n${body}` }], "src/probe.module.css", GLOBAL_CLASSES).stacked;
-    expect(probe("el.className = `status-tasks ${s.a}`;"), "同一句里叠").toBe(true);
-    expect(probe(`el.className = s.a; el.classList.add("status-tasks");`), "同一接收者分两句叠").toBe(true);
-    expect(probe(`el.classList.toggle(s.a, on); el.className = "status-tasks";`), "toggle 挂上去也算").toBe(true);
+    expect(probe("el.className = `status-cmdk ${s.a}`;"), "同一句里叠").toBe(true);
+    expect(probe(`el.className = s.a; el.classList.add("status-cmdk");`), "同一接收者分两句叠").toBe(true);
+    expect(probe(`el.classList.toggle(s.a, on); el.className = "status-cmdk";`), "toggle 挂上去也算").toBe(true);
     expect(probe(`help(s.a);`), "认不出挂到哪 ⇒ 按叠算（保守）").toBe(true);
-    expect(probe(`a.className = s.a; b.className = "status-tasks";`), "不同元素不算叠").toBe(false);
+    expect(probe(`a.className = s.a; b.className = "status-cmdk";`), "不同元素不算叠").toBe(false);
     expect(probe(`a.className = s.a; a.classList.remove(s.a); a.className = "not-a-global-xyz";`), "非全局类 / remove 不算叠").toBe(false);
   }, TIMEOUT_MS); // 全仓生产 TS 逐份建 AST：整套并跑时 5 s 默认期限不够（现打 7.7 s）
 

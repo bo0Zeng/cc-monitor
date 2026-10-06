@@ -312,6 +312,7 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/frontend/ui/kit/dialog.ts:185": "填值框的错误句 `err`（`s.error`）—— 开时收起",
   "src/frontend/ui/kit/dialog.ts:192": "同上 —— 校验不过时出现",
   "src/frontend/ui/kit/dialog.ts:199": "同上 —— 重新输入时收起",
+  "src/frontend/ui/kit/dock.ts:146": "底部抽屉网格那一格 `this.el`（`s.dockSlot`，自己不写 display；竖排的 flex 在里层 `s.dock`）—— 收着时 hidden",
   "src/frontend/ui/kit/fold.ts:39": "折叠块正文 `body`（`s.body`）",
   // 只读查看器（历史页右边）：CSS Modules 的哈希名（`sv.<类>`）推不出；这几类都不写 `display`（kit 骨架自己写了 display ⇒ 包一层再切）。
   "src/frontend/ui/find-strip.ts:168": "会话内查找的命中清单 `strip`（`s.fsStrip`）—— 它写了 display:flex，CSS 里另有 `.fsStrip[hidden]` 收住",
@@ -518,9 +519,8 @@ const STATE_CLASS_UNRESOLVED: Readonly<Record<string, string>> = {
     "图标件：svg 元素的 `className` 不是串、只能走 classList；`s.icon` 是 CSS Modules 哈希名，与 `data-*` 撞不了名",
   "src/frontend/ui/tab-bar-drag.ts · classList.toggle(cls, on)":
     "拖拽落点标记只动新旧两个（P3）：`cls` 是 `drop-before` / `drop-onto` 之一（同文件的常量），不是一个状态名的载体选择",
-  "src/frontend/ui/usage-hud.ts · classList.remove(s.high)":
-    "CSS Modules（`usage-hud.module.css`）：`s.high` 是构建时哈希过的类名，不进全局命名空间，与 `data-*` 撞不了名",
-  "src/frontend/ui/usage-hud.ts · classList.toggle(s.high, rounded >= 80)": "同上（逼近自动 compact 时的预警态）",
+  "src/frontend/ui/usage-hud.ts · classList.add(s.hudChip)":
+    "CSS Modules（`usage-hud.module.css`）：`s.hudChip` 是构建时哈希过的类名（数字等宽那一条），不是状态名；预警态走 kit chip 的 `data-intent`",
   "src/frontend/ui/views/history-rows.ts · classList.add(s.hvDot)":
     "CSS Modules（`history.module.css`）：给 kit 建的元素（状态点 · 徽标 · 按钮 · 提示条）挂本页的版位类；哈希过的类名，不是状态名",
   "src/frontend/ui/views/history-rows.ts · classList.add(s.hvGroupNew)": "同上（项目头上的［＋ 新会话］）",

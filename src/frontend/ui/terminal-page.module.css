@@ -1,0 +1,174 @@
+/* 底部抽屉「终端」页：页头 · 头下条 · 画面 · 输入区。 */
+@layer components {
+  .term {
+    height: 100%;
+  }
+
+  .termBody {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .termLoading {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-5);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .termHead {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+    height: 32px;
+    padding: 0 var(--space-4) 0 var(--space-5);
+    border-bottom: 1px solid var(--border-soft);
+    font-size: var(--font-size-small);
+    white-space: nowrap;
+  }
+
+  .termTitle {
+    overflow: hidden;
+    color: var(--text);
+    font-weight: 600;
+    text-overflow: ellipsis;
+  }
+
+  .termWhere {
+    overflow: hidden;
+    color: var(--text-2);
+    text-overflow: ellipsis;
+  }
+
+  .termTag {
+    flex: none;
+    padding: 0 6px;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-s);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .termAt {
+    flex: none;
+    color: var(--text-faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .termSp {
+    flex: 1;
+  }
+
+  .termBar {
+    flex: none;
+  }
+
+  .termBarLine {
+    padding: 4px var(--space-5);
+    border-left: 3px solid var(--border-medium);
+    background: var(--bg-2);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .termScreen {
+    flex: 1;
+    min-height: 0;
+    margin: 0;
+    padding: var(--space-3) var(--space-5);
+    overflow: auto;
+    background: var(--bg-2);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-mono);
+    line-height: 1.4;
+    white-space: pre;
+  }
+
+  .termScreen[data-stale="true"] {
+    opacity: 0.62;
+  }
+
+  .termInput {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-5);
+    border-top: 1px solid var(--border-soft);
+    font-size: var(--font-size-small);
+  }
+
+  .termToRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+    color: var(--text-2);
+    white-space: nowrap;
+  }
+
+  .termTo {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .termOwner {
+    flex: none;
+    color: var(--text-2);
+  }
+
+  .termBoxRow {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-3);
+  }
+
+  .termBox {
+    flex: 1;
+    min-height: var(--control-h-compact);
+    padding: 3px 8px;
+    resize: none;
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-m);
+    background: var(--field-bg);
+    color: var(--text);
+    font: inherit;
+    line-height: 1.4;
+  }
+
+  .termBox:disabled {
+    opacity: 0.6;
+  }
+
+  .termKeys {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .termKeysLabel {
+    color: var(--text-2);
+  }
+
+  .termNote {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: 0;
+  }
+
+  .termNoteOk {
+    color: var(--success);
+  }
+
+  .termNoteError {
+    color: var(--error-text);
+  }
+}

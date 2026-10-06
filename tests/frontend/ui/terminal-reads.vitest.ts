@@ -18,7 +18,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ControlError } from "../../../src/frontend/ui/control-said";
-import { decodePreview, decodeTerminals, previewByTmuxName, previewText } from "../../../src/frontend/ui/terminal-reads";
+import { decodePreview, decodeSent, decodeShot, decodeTerminals, previewByTmuxName, previewText, sendToTerminal } from "../../../src/frontend/ui/terminal-reads";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, refusedReply, UNSUPPORTED, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
 
@@ -86,6 +86,34 @@ describe("抓一屏：金样与形状", () => {
     expect(rows.length).toBe((LIST.reply.terminals as unknown[]).length);
     expect(rows.every((r) => r.terminal !== "" && r.tmuxName !== "")).toBe(true);
     expect(() => decodeTerminals("devbox", { terminals: [{ terminal: "t" }] })).toThrow(/读不懂/);
+  });
+
+  it("★ 名单（终端页要的几格）：会话 ID · 连着几个终端窗口 · 输入在谁手里 · 能不能送（原因码原样）", () => {
+    const rows = decodeTerminals("devbox", LIST.reply);
+    expect(rows[0]).toMatchObject({ terminal: "tmux-1-1", sid: "sid-a", clients: 1, input: "shared", programExited: false, inputNo: null });
+    expect(rows[1]).toMatchObject({ terminal: "tmux-3", sid: null, clients: 0, inputNo: "not-yours" });
+  });
+
+  it("★ 抓一屏连指纹与时刻；送字送键的三种回话（取自金样）都读得出、认不出的 ⇒ 抛", () => {
+    const shot = decodeShot("devbox", PREVIEW.reply);
+    expect([shot.screen, shot.at]).toEqual([PREVIEW.reply.screen, PREVIEW.reply.captured_at]);
+    const INPUT = golden["terminal-input"] as unknown as { replies: unknown[] };
+    expect(INPUT.replies.map((r) => decodeSent("devbox", r))).toEqual([
+      { result: "delivered" },
+      { result: "refused", why: "screen-changed", screen: "0000000000000000" },
+      { result: "unsure" },
+    ]);
+    expect(() => decodeSent("devbox", { result: "maybe" })).toThrow(/读不懂/);
+  });
+
+  it("★ 送字带句柄 · 字 · 回车 · 看到的那一屏的指纹；送键只带键", async () => {
+    answer({ "terminal-input": { ok: { result: "delivered" } } });
+    await sendToTerminal("devbox", "tmux-1", { text: "/usage", enter: true }, "fp1", "demo");
+    await sendToTerminal("devbox", "tmux-1", { key: "esc" }, null, "demo");
+    expect(sentCalls()).toEqual([
+      ["devbox", "terminal-input", { terminal: "tmux-1", text: "/usage", enter: true, seen_screen: "fp1" }],
+      ["devbox", "terminal-input", { terminal: "tmux-1", key: "esc" }],
+    ]);
   });
 });
 

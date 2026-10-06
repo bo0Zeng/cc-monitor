@@ -54,6 +54,9 @@ import { collectAccountRows, createEventRefresher } from "./session-accounts-pol
 import { lastAccounts } from "./history-reads";
 import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
+import { MainDrawer } from "./main-drawer";
+import { TerminalPage } from "./terminal-page";
+import type { Tab } from "./tab-model";
 import { REVEAL_RUN_EVENT } from "./cards/speaker-bar";
 import { getBehavior } from "./behavior";
 import { flipBehavior } from "./behavior-toggle";
@@ -144,35 +147,42 @@ window.addEventListener("DOMContentLoaded", async () => {
   //   那个值搬到了后端所在那台机器上，由后端在决定那一刻现读 ⇒
   //   **没有东西要推了**，这一步整条删掉（留着就是第二个源头）。
 
+  // 状态栏：左边空着 · 这个会话的几枚（任务 · agent · 上下文 · 账号）· 竖线 · 命令。没内容的那枚不渲染。
   status.innerHTML = "";
-  const statusMsg = document.createElement("span");
-  statusMsg.className = "status-msg";
-  statusMsg.textContent = copyText("main.status.waiting");
-  status.appendChild(statusMsg);
-  const statusCount = document.createElement("span");
-  statusCount.className = "status-count";
-  statusCount.textContent = copyText("main.status.count", { live: 0 });
-  status.appendChild(statusCount);
+  const statusSpacer = document.createElement("span");
+  statusSpacer.className = "status-sp";
+  status.appendChild(statusSpacer);
+  const statusDivider = document.createElement("span");
+  statusDivider.className = "status-divider";
+  statusDivider.setAttribute("aria-hidden", "true");
 
-  // issue #11: Task 面板的 summary chip 嵌入 status bar 右侧（活跃数右边）；
-  // popover 浮层挂到 #app（fixed bottom 浮出）。两个元素由同一 TasksPanel 单例管。
+  // 这个会话的任务 · 子 agent：状态栏一枚 chip ＋ 底部抽屉里一页（抽屉在状态栏之上、主区底部，把消息流往上推）。
   const tasksPanel = new TasksPanel();
   status.appendChild(tasksPanel.summaryElement);
-  document.getElementById("app")?.appendChild(tasksPanel.popoverElement);
-
-  // issue #23: Agents 面板（subagent 列表 + 各自状态灯），同形态挂在 tasks chip 旁
   const agentsPanel = new AgentsPanel();
   status.appendChild(agentsPanel.summaryElement);
-  document.getElementById("app")?.appendChild(agentsPanel.popoverElement);
-  // 消息流里 agent 事件条的「打开窗口 ›」：把那个 agent 摆到眼前（agent 窗口那一稿落地之前是面板里它那一行的时间线）。
+  // 终端页跟着当前标签页走；`tabs` 在下面才建 ⇒ 先经一个口子取当前标签页，建好了再接上。
+  let activeTab: () => Tab | null = () => null;
+  const terminalPage = new TerminalPage({
+    active: () => activeTab(),
+    front: (sid) => tabs.frontFor(sid),
+    focusStream: () => {
+      const el = activeTab()?.streamEl;
+      if (!el) return;
+      if (el.tabIndex < 0) el.tabIndex = -1;
+      el.focus({ preventScroll: true });
+    },
+  });
+  const mainDrawer = new MainDrawer(tasksPanel, agentsPanel, terminalPage, () => (document.getElementById("app")?.clientHeight ?? window.innerHeight) - status.getBoundingClientRect().height);
+  mainDrawer.dock.el.id = "bottom-drawer";
+  document.getElementById("app")?.insertBefore(mainDrawer.dock.el, status);
+  // 消息流里 agent 事件条的「打开窗口 ›」：把那个 agent 摆到眼前（抽屉 agent 页里它那一行的时间线）。
   document.addEventListener(REVEAL_RUN_EVENT, (e) => {
     const run = (e as CustomEvent<{ run?: unknown }>).detail?.run;
     if (typeof run === "string") agentsPanel.reveal(run);
   });
 
-  // F88b（#52）：context% HUD chip——活跃会话「最新一轮 prompt token ÷ 模型上限」实时占用。
-  // 挂 agents chip 旁；TabManager.onActiveUsageChanged 喂数据。**只读 chip，不可点** ——
-  // 它当初点开的那个跨会话聚合视图（`views/usage-view.ts`）已随退役。
+  // 「上下文」chip：当前会话最新一轮占上限多少（后端定上限）；点开看用量与上限来源。
   const usageHud = new UsageHud();
   status.appendChild(usageHud.summaryElement);
 
@@ -188,6 +198,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 会话头（主区顶上 40px）与「需要你」钉条（消息流底部）：只读当前 tab，做事经 `tabs` 那几条。
   const sessionHead = new SessionHead({
       active: () => tabs.activeTab(),
+      viewTerminal: () => mainDrawer.dock.show("terminal"),
       openCwd: (sid) => tabs.openCwdOf(sid),
       front: (sid) => tabs.frontFor(sid),
       find: () => tabs.openFind(),
@@ -217,16 +228,14 @@ window.addEventListener("DOMContentLoaded", async () => {
   const tabs = new TabManager(
     tabBar,
     streamRoot,
-    ({ total, live }) => {
+    ({ total }) => {
       // tab 集合变了 ⇒ 新出现的会话问一次它那台的轮换格（构造途中也会叫到这里 ⇒ 排到下一拍，`tabs` 已赋值）。
       queueMicrotask(() => syncSessions(tabs.snapshotSessions()));
-      statusCount.textContent = copyText("main.status.count", { live });
-      statusMsg.textContent =
-        live > 0 ? copyText("main.status.watching") : copyText("main.status.waiting");
       empty.style.display = total > 0 ? "none" : "";
       // 会话头 · 「需要你」钉条 · 窗口标题与系统通知：跟着标签页栏一起刷（构造途中也会叫到 ⇒ 排到下一拍）。
       queueMicrotask(() => {
         sessionHead.render();
+        terminalPage.sessionChanged();
         needsBar.render();
         needsWatch.observe(tabs.tabsInOrder());
       });
@@ -234,6 +243,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     tasksPanel,
     agentsPanel,
   );
+  usageHud.host = { openSettings: () => void openSettingsWindow(), retry: () => tabs.retryActiveFacts() };
   // 活卡的画法（带 `.module.css`）只由主窗口入口装进来 —— 理由见 `live-card-view.ts` 头注。
   tabs.setLivePainter(livePainter);
   // P7a-3（#61）：启动时拉一次标签页集合（住 `config.json`，不是 localStorage —— 见
@@ -279,7 +289,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     onDefaultChanged: () => accountsRefresher.request(true),
   };
   const accountChip = new AccountChip(accountChipDeps);
-  status.appendChild(accountChip.element);
+  status.append(statusDivider, accountChip.element); // 还没有当前会话：账号排在竖线后（有会话时挪到前面那一组）
   void accountChip.refresh();
 
   // A3：账号徽章数据管道——定期对每台远端拉 session-accounts（哪条会话属于哪个号）+ 账号邮箱，
@@ -355,16 +365,20 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   };
   void loadContextLimits();
+  activeTab = () => tabs.activeTab();
   tabs.active.subscribe((a) => {
-    // 切了 tab ⇒ 会话头与「需要你」钉条换成这一个。
+    // 切了 tab ⇒ 会话头 · 「需要你」钉条 · 抽屉的终端页换成这一个。
     sessionHead.render();
+    terminalPage.sessionChanged();
     needsBar.render();
-    usageHud.setActive(a.model, a.promptTokens, a.contextLimit);
+    usageHud.setActive(a.model, a.promptTokens, a.contextLimit, a.limitFrom);
     usageHud.setUnavailable(a.unavailable);
-    // 状态栏账号按钮 = 本会话；面板开着就跟着换成那个会话（不关）。
+    // 状态栏账号按钮 = 本会话（排在竖线前那一组）；没有会话 ⇒ `默认 work`，排到竖线后。面板开着就跟着换成那个会话（不关）。
     const origin = a.sid === null ? null : tabs.originOf(a.sid);
     const cur = a.sid !== null && origin !== null ? { sid: a.sid, origin } : null;
     accountChip.setActive(cur);
+    if (cur !== null) statusDivider.before(accountChip.element);
+    else statusDivider.after(accountChip.element);
     followActive(cur, panelHost);
     if (a.sid !== null) acctSession.repaintBanner(a.sid); // 「还有多久」只在画的那一刻算：切到这个 tab 那一刻重算
   });
@@ -482,7 +496,9 @@ window.addEventListener("DOMContentLoaded", async () => {
       { id: "win-fullscreen", title: copyText("main.cmd.fullscreen"), keywords: copyText("main.cmd.fullscreenKeywords"), hint: chordHint("app.toggle-fullscreen"), run: () => { const w = getCurrentWindow(); void w.isFullscreen().then((f) => w.setFullscreen(!f)).catch((e) => console.warn("toggle-fullscreen failed:", e)); } },
       // ↗ 那一项只在 ↗ 真能用的机器上列出来（非 Windows 不列；门与 tab 上那颗按钮是同一道，见 `terminal-front-command.ts`）。
       ...terminalFrontCommand({ id: "term-front", title: copyText("main.cmd.terminalFront"), keywords: copyText("main.cmd.terminalFrontKeywords"), hint: chordHint("terminal.bring-front"), run: () => tabs.bringActiveTerminalToFront() }),
-      { id: "toggle-tasks", title: copyText("main.cmd.tasks"), keywords: copyText("main.cmd.tasksKeywords"), hint: chordHint("panel.toggle-tasks"), run: () => tasksPanel.toggle() },
+      { id: "toggle-tasks", title: copyText("main.cmd.tasks"), keywords: copyText("main.cmd.tasksKeywords"), hint: chordHint("panel.toggle-tasks"), run: () => mainDrawer.toggle("tasks") },
+      { id: "toggle-agents", title: copyText("main.cmd.agents"), keywords: copyText("main.cmd.agentsKeywords"), hint: chordHint("panel.toggle-agents"), run: () => mainDrawer.toggle("agents") },
+      { id: "toggle-terminal", title: copyText("main.cmd.terminal"), keywords: copyText("main.cmd.terminalKeywords"), hint: chordHint("panel.toggle-terminal"), run: () => mainDrawer.toggle("terminal") },
       { id: "tab-next", title: copyText("main.cmd.tabNext"), keywords: copyText("main.cmd.tabNextKeywords"), hint: chordHint("tab.next"), run: () => tabs.cycleActive(1) },
       { id: "tab-prev", title: copyText("main.cmd.tabPrev"), keywords: copyText("main.cmd.tabPrevKeywords"), hint: chordHint("tab.prev"), run: () => tabs.cycleActive(-1) },
     ];
@@ -521,7 +537,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     const cmdkHint = document.createElement("button");
     cmdkHint.type = "button";
     cmdkHint.className = "status-cmdk";
-    cmdkHint.appendChild(icon("keyboard", "compact"));
+    cmdkHint.appendChild(icon("command", "compact"));
     const label = document.createElement("span");
     label.textContent = copyText("main.cmdk.label");
     cmdkHint.appendChild(label);
@@ -541,7 +557,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       cmdkHint.classList.remove("first-run"); // 点过即消掉首运行高亮
       commandBar.toggle();
     });
-    status.appendChild(cmdkHint); // status-msg flex:1 把它顶到最右
+    status.appendChild(cmdkHint); // 竖线之后：全局那几枚
     // F84b-fix：首运行一次性微高亮（非模态），帮新用户注意到这个克制的角落入口；见过即不再。
     if (!safeGet(LS_KEYS.cmdkHintSeen)) {
       cmdkHint.classList.add("first-run");
@@ -636,7 +652,9 @@ window.addEventListener("DOMContentLoaded", async () => {
       .then((f) => w.setFullscreen(!f))
       .catch((e) => console.warn("toggle-fullscreen failed:", e));
   });
-  dispatcher.bind("panel.toggle-tasks", () => tasksPanel.toggle());
+  dispatcher.bind("panel.toggle-tasks", () => mainDrawer.toggle("tasks"));
+  dispatcher.bind("panel.toggle-agents", () => mainDrawer.toggle("agents"));
+  dispatcher.bind("panel.toggle-terminal", () => mainDrawer.toggle("terminal"));
   // 翻完说一句、并告诉设置窗（`behavior-toggle.ts`）。
   dispatcher.bind("behavior.toggle-auto-follow", () => void flipBehavior("autoFollowUserActive", (b) => tabs.applyBehavior(b)));
   dispatcher.bind("behavior.toggle-bring-monitor", () => void flipBehavior("bringMonitorToFrontOnUserActive", (b) => tabs.applyBehavior(b)));

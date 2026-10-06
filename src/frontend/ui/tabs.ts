@@ -580,6 +580,7 @@ export class TabManager {
       model: t?.latestModel ?? null,
       promptTokens: t?.latestPromptTokens ?? null,
       contextLimit: t?.latestContextLimit ?? null,
+      limitFrom: t?.latestLimitFrom ?? "assumed",
       unavailable: t?.facts.unavailableReason ?? null,
       projectDir: t?.projectDir ?? null,
     });
@@ -719,6 +720,7 @@ export class TabManager {
       latestPromptTokens: null, // F88b：HUD context% 数据
       latestModel: null,
       latestContextLimit: null,
+      latestLimitFrom: "assumed",
       needs: null,
       pending: [],
       lastSay: null,
@@ -1054,6 +1056,14 @@ export class TabManager {
       }
     }
     if (changed) this.refreshTabBar();
+  }
+
+  /** 当前会话的会话事实再问一次（状态栏「上下文」浮层里的［重试］）。 */
+  retryActiveFacts(): void {
+    const t = this.store.activeId === null ? undefined : this.store.tabs.get(this.store.activeId);
+    if (!t) return;
+    t.facts.markStale();
+    void t.facts.refresh();
   }
 
   /** 设置里的上下文上限表（随会话事实交给那台后端，上限在那里定）。 */

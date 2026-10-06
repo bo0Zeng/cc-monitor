@@ -19,7 +19,7 @@ import type { FactsSource } from "./views/facts-source";
 import type { ToolUseSeen } from "./cards/index";
 import type { Origin } from "./ipc/origin";
 import type { SessionState } from "./tab-session-state";
-import type { Needs, PendingCall } from "./session-reads";
+import type { Needs, PendingCall, UsageFact } from "./session-reads";
 
 // 原先这里是 `TabStatus = "live" | "archived"`（与下面的 `tmuxIdle` 一起挤着两个轴）。
 //   会话状态改住 `tab-session-state.ts` 的 `SessionState`（活性 × 可恢复性），字段是 `Tab.state`。
@@ -106,6 +106,8 @@ export interface Tab {
   latestModel: string | null;
   /** 这份会话的上下文上限（后端定的，见 `session-reads.ts::UsageFact`）；判不出 ⇒ `null`（只写用了多少）。与上两格同一份成品。 */
   latestContextLimit: number | null;
+  /** 上限从哪来（与上一格同一份成品；`assumed` ＝ 判不出）。 */
+  latestLimitFrom: UsageFact["limitFrom"];
   /** 需要你（后端 `history-facts` 的 `needs`：种类 · 那一句 · 何时起等）；不在等 ⇒ `null`。与 `activity` 对不上时以后者为准（见 `tab-needs.ts`）。 */
   needs: Needs | null;
   /** 还没有结果的工具调用（后端 `pending`，文件序）：悬停卡「在做什么」。 */

@@ -1,10 +1,11 @@
 /**
- * **会话头**（主区顶上 40px）：状态点 · 标题全名 · 「机器 · 目录」· 状态一句；右边：打开工作目录（本机）· 切到终端（Windows）·
+ * **会话头**（主区顶上 40px）：状态点 · 标题全名 · 「机器 · 目录」· 状态一句；右边：打开工作目录（本机）· 切到终端（Windows）· 看它的终端 ·
  * 在会话里找 · 更多（＝这个标签页的右键菜单）。按状态多一颗：已结束［恢复 ▾］· Claude 已退出（远端）［在终端里打开］·
  * 状态不明［重新连接］。窄时先藏目录、再藏状态一句（CSS 容器查询）。
  *
+ * 「看它的终端」开底部抽屉的终端页（会话还有终端可去才出）。
+ *
  * 只排版：一句话怎么写从 `session-face.ts` 取；做事的都交宿主（`TabManager` 那几条）。
- * 「看它的终端」那一颗等底部抽屉的终端页（还没有，不画点了没反应的按钮）。
  */
 import type { Tab } from "./tab-model";
 import { isRemoteOrigin } from "./ipc/origin";
@@ -21,6 +22,8 @@ import s from "./session-head.module.css";
 
 export interface SessionHeadHost {
   active(): Tab | null;
+  /** 开底部抽屉的终端页（跟着当前标签页走）。 */
+  viewTerminal(): void;
   openCwd(sid: string): void;
   front(sid: string): void;
   find(): void;
@@ -99,8 +102,10 @@ export class SessionHead {
     const st = stateLine(tab, now);
     const remote = isRemoteOrigin(tab.origin);
     const front = terminalFrontAvailable() && hasTerminal(tab.state);
+    // 看它的终端：会话还有终端可去才出（已结束的没有）。
+    const term = hasTerminal(tab.state);
     const extra = canResume(tab.state) ? "resume" : d === "exited" && remote ? "attach" : d === "unknown" ? "reconnect" : "";
-    const drawn = [tab.sessionId, d, fullTitle(tab), machineOf(tab), tab.projectDir ?? "", st.text, st.needs ? 1 : 0, remote ? 1 : 0, front ? 1 : 0, extra].join("\u0000");
+    const drawn = [tab.sessionId, d, fullTitle(tab), machineOf(tab), tab.projectDir ?? "", st.text, st.needs ? 1 : 0, remote ? 1 : 0, front ? 1 : 0, term ? 1 : 0, extra].join("\u0000");
     if (drawn === this.drawn) return;
     const sameSession = this.drawn?.split("\u0000")[0] === tab.sessionId;
     this.drawn = drawn;
@@ -123,11 +128,13 @@ export class SessionHead {
             : null;
     this.extra.replaceChildren(...(extraBtn ? [extraBtn] : []));
     // 右边一排随会话种类变（本机才有目录、Windows 才有 ↗）；同一个会话只在这两样变了时重建。
-    if (!sameSession || this.acts.dataset.shape !== `${remote ? 1 : 0}${front ? 1 : 0}`) {
-      this.acts.dataset.shape = `${remote ? 1 : 0}${front ? 1 : 0}`;
+    const shape = `${remote ? 1 : 0}${front ? 1 : 0}${term ? 1 : 0}`;
+    if (!sameSession || this.acts.dataset.shape !== shape) {
+      this.acts.dataset.shape = shape;
       const btns: HTMLButtonElement[] = [];
       if (!remote && tab.projectDir) btns.push(this.iconButton("folder", copyText("tabBarView.tab.cwdHint"), keyed(copyText("tabBarView.tab.cwdHint"), "tab.open-cwd"), () => this.host.openCwd(sid)));
       if (front) btns.push(this.iconButton("front", copyText("tabBarView.tab.terminalHint"), keyed(copyText("tabBarView.tab.terminalHint"), "terminal.bring-front"), () => this.host.front(sid)));
+      if (term) btns.push(this.iconButton("terminal", copyText("sessionHead.act.terminal"), keyed(copyText("sessionHead.act.terminal"), "panel.toggle-terminal"), () => this.host.viewTerminal()));
       btns.push(this.iconButton("search", copyText("sessionHead.act.find"), keyed(copyText("sessionHead.act.find"), "session.find"), () => this.host.find()));
       btns.push(this.iconButton("more", copyText("tabBarView.tab.moreHint"), () => copyText("tabBarView.tab.moreHint"), (b) => this.host.more(b, sid)));
       this.acts.replaceChildren(...btns);

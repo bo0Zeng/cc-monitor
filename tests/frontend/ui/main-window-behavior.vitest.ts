@@ -94,6 +94,8 @@ import { flipBehavior } from "../../../src/frontend/ui/behavior-toggle";
 import { dispatcher, type OverlayHandle } from "../../../src/frontend/ui/keybindings/registry";
 import { TasksPanel, type TaskEntry } from "../../../src/frontend/ui/tasks-panel";
 import { AgentsPanel } from "../../../src/frontend/ui/agents-panel";
+import { MainDrawer } from "../../../src/frontend/ui/main-drawer";
+import { TerminalPage, type TerminalReads } from "../../../src/frontend/ui/terminal-page";
 import { closeMenu, openMenu } from "../../../src/frontend/ui/kit/menu";
 import { TabManager, type Tab } from "../../../src/frontend/ui/tabs";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
@@ -141,72 +143,143 @@ beforeEach(() => {
 const task = (id: string): TaskEntry => ({ id, subject: `任务 ${id}`, status: "pending", blocks: [], blockedBy: [] });
 const run = (id: string): RunInfo => ({ run: id, state: "running", label: `子 ${id}`, kind: null, tool: null, last: null }) as unknown as RunInfo;
 
-function mountPanels(): { tasks: TasksPanel; agents: AgentsPanel } {
+const NO_TERMINALS: TerminalReads = { list: async () => [], shot: async () => ({ text: "", screen: "", at: 0 }), send: async () => ({ result: "delivered" }) };
+
+function mountPanels(): { tasks: TasksPanel; agents: AgentsPanel; drawer: MainDrawer } {
   const tasks = new TasksPanel();
   const agents = new AgentsPanel();
-  document.body.append(tasks.summaryElement, tasks.popoverElement, agents.summaryElement, agents.popoverElement);
-  return { tasks, agents };
+  const term = new TerminalPage({ active: () => null, front: () => {}, focusStream: () => {} }, NO_TERMINALS);
+  const drawer = new MainDrawer(tasks, agents, term, () => 800);
+  document.body.append(tasks.summaryElement, agents.summaryElement, drawer.dock.el);
+  return { tasks, agents, drawer };
 }
 
-describe("状态栏两块浮层：看得见 ⇔ 在 Esc 弹层栈上；同一时刻只开一块", () => {
-  it("上次退出时任务面板开着 ⇒ 启动后一有任务就看得见，一下 Esc 收起（不越过下面那层）", () => {
-    localStorage.setItem("cc-monitor.tasks-panel.collapsed", "0");
-    const below = floor();
-    const { tasks } = mountPanels();
-    tasks.setSession("s", [task("1")]);
-    expect(shown(tasks.popoverElement)).toBe(true);
-    esc();
-    expect(shown(tasks.popoverElement)).toBe(false);
-    expect(below.hits).toBe(0);
-    dispatcher.popOverlay(below);
-  });
-
-  it("展开着切到没任务的 tab ⇒ 藏起来、让出 Esc（这一下落到下面那层）", () => {
-    const below = floor();
-    const { tasks } = mountPanels();
-    tasks.setSession("s", [task("1")]);
-    tasks.summaryElement.click();
-    expect(shown(tasks.popoverElement)).toBe(true);
-    tasks.setSession("t", []);
-    expect(shown(tasks.popoverElement)).toBe(false);
-    esc();
-    expect(below.hits).toBe(1);
-    dispatcher.popOverlay(below);
-  });
-
-  it("子 agent 面板认 Esc；开了任务面板再开子 agent 面板 ⇒ 任务面板收起（反过来同样）", () => {
-    const below = floor();
+describe("状态栏这个会话的几枚：字从文案表来，没内容就不渲染", () => {
+  it("★ 任务 做完/全部（悬停分项）· agent N · M 在跑 / 都结束了只写 agent N · 没有就不渲染", () => {
     const { tasks, agents } = mountPanels();
+    const t = (id: string, status: string): TaskEntry => ({ ...task(id), status });
+    tasks.setSession("s", [t("1", "completed"), t("2", "completed"), t("3", "in_progress"), t("4", "pending")]);
+    expect([tasks.summaryElement.textContent, shown(tasks.summaryElement)]).toEqual(["任务 2/4", true]);
+    agents.setSession("s", [run("r1"), { ...run("r2"), state: "done" } as RunInfo]);
+    expect(agents.summaryElement.textContent).toBe("agent 2 · 1 在跑");
+    agents.setSession("s", [{ ...run("r1"), state: "done" } as RunInfo, { ...run("r2"), state: "done" } as RunInfo, { ...run("r3"), state: "done" } as RunInfo]);
+    expect(agents.summaryElement.textContent).toBe("agent 3");
+    tasks.setSession("t", []);
+    agents.setSession("t", []);
+    expect([shown(tasks.summaryElement), shown(agents.summaryElement)]).toEqual([false, false]);
+  });
+});
+
+describe("底部抽屉：任务 · agent 共用一个；看得见 ⇔ 在 Esc 弹层栈上", () => {
+  const open = (d: MainDrawer): string | null => (d.dock.el.hidden ? null : d.dock.current);
+  const tabText = (d: MainDrawer): string[] => [...d.dock.el.querySelectorAll("[role=tab]")].map((b) => b.textContent ?? "");
+  const pageOf = (d: MainDrawer): string => d.dock.el.querySelector<HTMLElement>("[role=tabpanel]:not([hidden])")?.textContent ?? "";
+
+  it("★ 点 chip 开到那一页；开着点另一枚 ⇒ 换页不关；点当前那枚 ⇒ 收起；页签就是 chip 的字", () => {
+    const { tasks, agents, drawer } = mountPanels();
     tasks.setSession("s", [task("1")]);
     agents.setSession("s", [run("r1")]);
+    expect(open(drawer)).toBeNull();
     tasks.summaryElement.click();
-    expect([shown(tasks.popoverElement), shown(agents.popoverElement)]).toEqual([true, false]);
+    expect([open(drawer), tasks.summaryElement.getAttribute("aria-expanded")]).toEqual(["tasks", "true"]);
+    expect(tabText(drawer)).toEqual(["任务 0/1", "agent 1 · 1 在跑", "终端"]);
     agents.summaryElement.click();
-    expect([shown(tasks.popoverElement), shown(agents.popoverElement)]).toEqual([false, true]);
-    tasks.summaryElement.click();
-    expect([shown(tasks.popoverElement), shown(agents.popoverElement)]).toEqual([true, false]);
+    expect([open(drawer), tasks.summaryElement.getAttribute("aria-expanded"), agents.summaryElement.getAttribute("aria-expanded")]).toEqual(["agents", "false", "true"]);
     agents.summaryElement.click();
+    expect(open(drawer)).toBeNull();
+  });
+
+  it("★ 一下 Esc 收起（不越过下面那层）；收着时 Esc 落到下面那层", () => {
+    const below = floor();
+    const { tasks, drawer } = mountPanels();
+    tasks.setSession("s", [task("1")]);
+    drawer.toggle("tasks");
     esc();
-    expect([shown(tasks.popoverElement), shown(agents.popoverElement), below.hits]).toEqual([false, false, 0]);
+    expect([open(drawer), below.hits]).toEqual([null, 0]);
     esc();
     expect(below.hits).toBe(1);
     dispatcher.popOverlay(below);
   });
 
-  it("任务面板展开着、切到没任务的 tab 上开子 agent 面板 ⇒ 切回来开着的仍是子 agent 面板（藏着的那块也收）", () => {
-    const { tasks, agents } = mountPanels();
+  it("★ 切到没有内容的会话：抽屉照开、页里写空态（不藏），Esc 照样收它；页签退成页名", () => {
+    const below = floor();
+    const { tasks, agents, drawer } = mountPanels();
     tasks.setSession("a", [task("1")]);
-    agents.setSession("a", [run("r1")]);
-    tasks.summaryElement.click();
+    drawer.toggle("tasks");
     tasks.setSession("b", []);
-    agents.setSession("b", [run("r2")]);
-    agents.summaryElement.click();
-    expect([shown(tasks.popoverElement), shown(agents.popoverElement)]).toEqual([false, true]);
-    tasks.setSession("a", [task("1")]);
-    agents.setSession("a", [run("r1")]);
-    expect([shown(tasks.popoverElement), shown(agents.popoverElement)]).toEqual([false, true]);
+    agents.setSession("b", []);
+    expect(open(drawer)).toBe("tasks");
+    expect(pageOf(drawer)).toBe("无任务");
+    expect(tabText(drawer)).toEqual(["任务", "agent", "终端"]);
     esc();
-    expect([shown(tasks.popoverElement), shown(agents.popoverElement)]).toEqual([false, false]);
+    expect([open(drawer), below.hits]).toEqual([null, 0]);
+    dispatcher.popOverlay(below);
+  });
+
+  it("★ 开没开、开哪页、多高记在本机：下次启动照上次；读不懂的格回到收着 · 240", () => {
+    const a = mountPanels();
+    a.drawer.toggle("agents");
+    expect(JSON.parse(localStorage.getItem("cc-monitor.bottom-drawer") ?? "{}")).toEqual({ page: "agents", height: 240 });
+    const b = mountPanels();
+    expect(open(b.drawer)).toBe("agents");
+    expect(b.drawer.dock.el.style.height).toBe("240px");
+    a.drawer.toggle("agents");
+    expect(JSON.parse(localStorage.getItem("cc-monitor.bottom-drawer") ?? "{}").page).toBeNull();
+    localStorage.setItem("cc-monitor.bottom-drawer", '{"page":"bogus","height":12}');
+    const c = mountPanels();
+    expect([open(c.drawer), c.drawer.dock.el.style.height]).toEqual([null, "240px"]);
+    b.drawer.dock.close();
+  });
+
+  it("★ 拖上边缘调高：夹在 120 到主区一半之间、记住；双击回到 240；键盘 ↑ 加 16", () => {
+    const { drawer } = mountPanels();
+    drawer.toggle("tasks");
+    const edge = drawer.dock.el.querySelector<HTMLElement>("[role=separator]")!;
+    const rect = vi.spyOn(drawer.dock.el, "getBoundingClientRect").mockReturnValue({ height: 240 } as DOMRect);
+    const ptr = (type: string, clientY: number): void => {
+      const e = new MouseEvent(type, { button: 0, clientY, bubbles: true });
+      Object.defineProperty(e, "pointerId", { value: 1 });
+      edge.dispatchEvent(e);
+    };
+    ptr("pointerdown", 500);
+    ptr("pointermove", 300);
+    expect(drawer.dock.el.style.height).toBe("400px"); // 主区 800 的一半
+    ptr("pointermove", 700);
+    expect(drawer.dock.el.style.height).toBe("120px");
+    ptr("pointerup", 700);
+    expect(JSON.parse(localStorage.getItem("cc-monitor.bottom-drawer") ?? "{}").height).toBe(120);
+    edge.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    expect(drawer.dock.el.style.height).toBe("240px");
+    edge.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+    expect(drawer.dock.el.style.height).toBe("256px");
+    rect.mockRestore();
+    drawer.dock.close();
+  });
+
+  it("页签上 ← → 换页；「打开窗口 ›」开到 agent 页", () => {
+    const { tasks, agents, drawer } = mountPanels();
+    tasks.setSession("s", [task("1")]);
+    agents.setSession("s", [run("r1")]);
+    drawer.toggle("tasks");
+    drawer.dock.el.querySelector("[role=tablist]")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    expect(open(drawer)).toBe("agents");
+    drawer.toggle("agents");
+    Element.prototype.scrollIntoView ??= () => {};
+    agents.reveal("r1");
+    expect(open(drawer)).toBe("agents");
+    drawer.dock.close();
+  });
+
+  it("任务表又来一份：同 id 的行原地改（不整表重建）", () => {
+    const { tasks, drawer } = mountPanels();
+    drawer.toggle("tasks");
+    tasks.setSession("s", [task("1"), task("2")]);
+    const row1 = drawer.dock.el.querySelector('[data-task-id="1"]');
+    tasks.setSession("s", [{ ...task("1"), status: "completed" }, task("2"), task("3")]);
+    expect(drawer.dock.el.querySelector('[data-task-id="1"]')).toBe(row1);
+    expect(row1?.className).toContain("status-completed");
+    expect(drawer.dock.el.querySelectorAll(".tasks-item").length).toBe(3);
+    drawer.dock.close();
   });
 });
 

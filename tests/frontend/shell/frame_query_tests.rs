@@ -264,6 +264,12 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "terminals-list",
         "那台的终端名单：后端 `control/terminals.rs` 出成品；前端 `src/frontend/ui/terminal-reads.ts` 收它要的那几格（只加不改的形状，多出来的格照收）",
     ),
+    // 终端页送字送键：能不能送（身份门 · 画面指纹）全在那台后端判，前端只照回话说。
+    (
+        "terminal-input",
+        "往那个终端送一段字 / 一颗键：后端 `control/terminals.rs::input_for_inbound` 过身份门、比画面指纹、回 `delivered` · `unsure` · `refused ＋ why`；\
+         前端 `src/frontend/ui/terminal-reads.ts::sendToTerminal` 问、底部抽屉终端页 `terminal-page.ts` 按回话说一句",
+    ),
     // 各台搜索结果合成一份：合并排序进本机后端（`search_rules::sort_by_recency`），界面逐台扇出。
     (
         "history-search-merge",

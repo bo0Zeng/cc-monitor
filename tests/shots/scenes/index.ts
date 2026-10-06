@@ -10,6 +10,7 @@ import { HISTORY_SCENES } from "./history";
 import { RESTART_SCENES } from "./restart";
 import { KIT_SCENES } from "./kit";
 import { ACCT_SCENES } from "./acct";
+import { DRAWER_SCENES } from "./drawer";
 
 export interface Scene {
   id: string;
@@ -36,7 +37,7 @@ export const DEFAULT_STORAGE: Record<string, string> = {
   "cc-monitor.cmdk-hint.seen": "1",
 };
 
-export const SCENES: Scene[] = [...MAIN_SCENES, ...PANEL_SCENES, ...RESTART_SCENES, ...HISTORY_SCENES, ...SETTINGS_SCENES, ...KIT_SCENES, ...ACCT_SCENES];
+export const SCENES: Scene[] = [...MAIN_SCENES, ...PANEL_SCENES, ...RESTART_SCENES, ...HISTORY_SCENES, ...SETTINGS_SCENES, ...KIT_SCENES, ...ACCT_SCENES, ...DRAWER_SCENES];
 
 export function sceneById(id: string): Scene {
   return (

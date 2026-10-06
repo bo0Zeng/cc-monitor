@@ -1,65 +1,105 @@
-// 用量 HUD chip 的 jsdom 测试：百分比按后端给的上限算、永远不超过 100 / 无 usage 隐藏 / ≥80% 高亮 / 纯只读。
+// 状态栏「上下文」chip 的 jsdom 测试：百分比按后端给的上限算、永远不超过 100 / 无 usage 不渲染 / ≥80% 琥珀 / 点开浮层与再点关。
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { UsageHud } from "../../../src/frontend/ui/usage-hud";
-// 高位预警的类名来自组件自己的 CSS Module（构建时哈希）—— 断言也经同一个导入取名，不写字面量。
-import s from "../../../src/frontend/ui/usage-hud.module.css";
+import { closePopover } from "../../../src/frontend/ui/kit/popover";
 
-describe("UsageHud", () => {
-  it("按后端给的上限算 → ctx N%，可见", () => {
+const text = (hud: UsageHud): string => hud.summaryElement.textContent ?? "";
+const intent = (hud: UsageHud): string | undefined => hud.summaryElement.dataset.intent;
+const panel = (): HTMLElement | null => document.querySelector<HTMLElement>("[role=dialog][aria-label='上下文用量']");
+
+beforeEach(() => {
+  closePopover();
+  document.body.innerHTML = "";
+});
+
+describe("状态栏「上下文」chip", () => {
+  it("按后端给的上限算 → 上下文 N%，可见", () => {
     const hud = new UsageHud();
-    hud.setActive("claude-opus-5-5", 350_000, 1_000_000);
-    expect(hud.summaryElement.textContent).toBe("ctx 35%");
+    hud.setActive("claude-opus-5-5", 350_000, 1_000_000, "model");
+    expect(text(hud)).toBe("上下文 35%");
     expect(hud.summaryElement.style.display).toBe("");
-    expect(hud.summaryElement.classList.contains(s.high)).toBe(false);
+    expect(intent(hud)).toBe("neutral");
   });
 
-  it("模型名不带 [1m] 的 1M 会话不再按 200k 算：用的是后端的上限，不是模型名", () => {
+  it("上限判不出：只写用了多少，不算百分比、不上色", () => {
     const hud = new UsageHud();
-    hud.setActive("claude-opus-5-5", 350_000, 1_000_000);
-    expect(hud.summaryElement.textContent).not.toBe("ctx 175%");
-  });
-
-  it("上限判不出（后端说 assumed ⇒ 没有上限）：只写用了多少，不算百分比、不预警", () => {
-    const hud = new UsageHud();
-    hud.setActive("claude-opus-5-5", 350_000, null);
-    expect(hud.summaryElement.textContent).toBe("ctx 350k");
-    expect(hud.summaryElement.style.display).toBe("");
-    expect(hud.summaryElement.classList.contains(s.high)).toBe(false);
-    hud.setActive("m", 1_250_000, null);
-    expect(hud.summaryElement.textContent).toBe("ctx 1.3M");
+    hud.setActive("claude-opus-5-5", 350_000, null, "assumed");
+    expect(text(hud)).toBe("上下文 350k");
+    expect(intent(hud)).toBe("neutral");
+    hud.setActive("m", 1_250_000, null, "assumed");
+    expect(text(hud)).toBe("上下文 1.3M");
   });
 
   it("永远不显示超过 100%", () => {
     const hud = new UsageHud();
-    hud.setActive("m", 250_000, 200_000);
-    expect(hud.summaryElement.textContent).toBe("ctx 100%");
+    hud.setActive("m", 250_000, 200_000, "observed");
+    expect(text(hud)).toBe("上下文 100%");
   });
 
-  it("promptTokens=null（无带 usage 记录）→ 隐藏，且清 is-high", () => {
+  it("≥80% ⇒ 琥珀；切到没有一轮回复的会话 ⇒ 不渲染、颜色清干净", () => {
     const hud = new UsageHud();
-    hud.setActive("claude-sonnet-5", 170_000, 200_000); // 先 85% → is-high
-    expect(hud.summaryElement.classList.contains(s.high)).toBe(true);
-    hud.setActive(null, null, null); // 再切到无 usage 会话
+    hud.setActive("claude-haiku-4", 170_000, 200_000, "model");
+    expect([text(hud), intent(hud)]).toEqual(["上下文 85%", "warn"]);
+    hud.setActive("claude-haiku-4", 158_000, 200_000, "model");
+    expect(intent(hud)).toBe("neutral");
+    hud.setActive("claude-sonnet-5", 170_000, 200_000, "model");
+    hud.setActive(null, null, null);
     expect(hud.summaryElement.style.display).toBe("none");
-    expect(hud.summaryElement.classList.contains(s.high)).toBe(false); // 隐藏时清干净
+    expect(intent(hud)).toBe("neutral");
   });
 
-  it("≥80% → is-high 高亮（逼近上限预警）", () => {
+  it("事实要不到 ⇒ 上下文 —（压过旧的数）；浮层里错误条＋［重试］交宿主", () => {
+    let retried = 0;
     const hud = new UsageHud();
-    hud.setActive("claude-haiku-4", 170_000, 200_000);
-    expect(hud.summaryElement.textContent).toBe("ctx 85%");
-    expect(hud.summaryElement.classList.contains(s.high)).toBe(true);
-  });
-
-  // chip 点下去打开的那个跨会话聚合视图整轴退役了：钉住 chip 今天是**纯只读**的。
-  it("chip 是纯只读：没有挂任何点击监听，也不长成可点的样子", () => {
-    const hud = new UsageHud();
-    hud.setActive("claude-opus-4-8", 10_000, 1_000_000);
-    expect(hud.summaryElement.style.cursor).toBe("default");
-    expect((hud as unknown as { onClick?: unknown }).onClick).toBeUndefined();
-    const before = hud.summaryElement.textContent;
+    hud.host = { openSettings: () => {}, retry: () => retried++ };
+    document.body.appendChild(hud.summaryElement);
+    hud.setActive("m", 170_000, 200_000, "model");
+    hud.setUnavailable("连不上 devbox");
+    expect([text(hud), intent(hud)]).toEqual(["上下文 —", "neutral"]);
     hud.summaryElement.click();
-    expect(hud.summaryElement.textContent).toBe(before);
+    expect(panel()?.textContent).toContain("会话信息读取失败");
+    [...(panel()?.querySelectorAll("button") ?? [])].find((b) => b.textContent === "重试")?.click();
+    expect([retried, panel()]).toEqual([1, null]);
+  });
+
+  it("★ 点开浮层：百分比 · 最新一轮 / 上限 · 模型 · 上限来源；再点 chip 关；［改上限…］去设置", () => {
+    let settings = 0;
+    const hud = new UsageHud();
+    hud.host = { openSettings: () => settings++, retry: () => {} };
+    document.body.appendChild(hud.summaryElement);
+    hud.setActive("claude-opus-5-5[1m]", 350_000, 1_000_000, "setting");
+    hud.summaryElement.click();
+    const p = panel();
+    expect(p?.textContent).toContain("上下文 35%");
+    expect(p?.textContent).toContain("最新一轮 350k / 1M · claude-opus-5-5");
+    expect(p?.textContent).toContain("上限来源：设置");
+    expect(hud.summaryElement.getAttribute("aria-expanded")).toBe("true");
+    hud.summaryElement.click();
+    expect(panel()).toBeNull();
+    expect(hud.summaryElement.getAttribute("aria-expanded")).toBe("false");
+    hud.summaryElement.click();
+    [...(panel()?.querySelectorAll("button") ?? [])].find((b) => b.textContent === "改上限…")?.click();
+    expect([settings, panel()]).toEqual([1, null]);
+  });
+
+  it("上限判不出时浮层第一行写「上限未知」，给［设上限］，不画进度条", () => {
+    const hud = new UsageHud();
+    document.body.appendChild(hud.summaryElement);
+    hud.setActive("m", 350_000, null, "assumed");
+    hud.summaryElement.click();
+    expect(panel()?.textContent).toContain("上限未知 · 只显示用量");
+    expect(panel()?.textContent).toContain("设上限");
+    expect(panel()?.textContent).not.toContain("%");
+  });
+
+  it("浮层开着时会话变成没有用量 ⇒ chip 不渲染、浮层一起关", () => {
+    const hud = new UsageHud();
+    document.body.appendChild(hud.summaryElement);
+    hud.setActive("m", 10_000, 200_000, "model");
+    hud.summaryElement.click();
+    expect(panel()).not.toBeNull();
+    hud.setActive(null, null, null);
+    expect(panel()).toBeNull();
   });
 });

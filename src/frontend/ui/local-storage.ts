@@ -21,9 +21,8 @@ const LS_PREFIX = "cc-monitor." as const;
 
 /** 集中常量。新加 key 必须在这里登记。 */
 export const LS_KEYS = {
-  tasksPanelCollapsed: "cc-monitor.tasks-panel.collapsed",
-  /** issue #23：agents 面板折叠状态（与 tasks 面板同形态的全局单例） */
-  agentsPanelCollapsed: "cc-monitor.agents-panel.collapsed",
+  /** 主窗口底部抽屉：开着哪一页、多高（`{"page":"tasks"|"agents"|"terminal"|null,"height":240}`）。纯界面偏好，丢了回到收着、缺省高。 */
+  bottomDrawer: "cc-monitor.bottom-drawer",
   // 🔴 `tabArchiveCollapsed` 删掉 —— 归档抽屉整个不存在了。
   //    用户逐字「没有归档这个东西，不要归档，就是灰 tab」。盘上遗留的那个键无人再读
   //    （条 80：不为盘上已有状态留兼容 ⇒ 不写清理，让它自然作废）。

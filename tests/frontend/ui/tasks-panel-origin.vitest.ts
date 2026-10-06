@@ -88,7 +88,7 @@ describe("RM1b：远端现问，本机不问", () => {
     expect(getSessionTasks).toHaveBeenCalledTimes(1);
     expect(getSessionTasks.mock.calls[0][0]).toEqual({ origin: "devbox", sessionId: "r1" });
     expect(p.summaryElement.style.display).toBe("");
-    expect(p.summaryElement.textContent).toContain("2 tasks");
+    expect(p.summaryElement.textContent).toContain("/2");
 
     getSessionTasks.mockReset();
     p.setSession("l1", [task("9")]);
@@ -96,7 +96,7 @@ describe("RM1b：远端现问，本机不问", () => {
     expect(getSessionTasks, "本机 tab 也去问了 —— 本机有 watcher 推送").toHaveBeenCalledTimes(0);
   });
 
-  it("展开面板那一刻，远端现问一次", async () => {
+  it("抽屉开到任务页那一刻，远端现问一次", async () => {
     getSessionTasks.mockResolvedValue([task("1")]);
     await fetchSessionTasks("r2", "devbox");
     const p = new TasksPanel();
@@ -104,13 +104,11 @@ describe("RM1b：远端现问，本机不问", () => {
     await settle();
     getSessionTasks.mockReset();
     getSessionTasks.mockResolvedValue([task("1"), task("2"), task("3")]);
-    // 先保证是折叠态，再展开。
-    if (p.summaryElement.getAttribute("aria-expanded") === "true") p.toggle();
     getSessionTasks.mockClear();
-    p.toggle();
+    p.setVisible(true);
     await settle();
     expect(getSessionTasks).toHaveBeenCalledTimes(1);
-    expect(p.summaryElement.textContent).toContain("3 tasks");
+    expect(p.summaryElement.textContent).toContain("/3");
   });
 
   it("★ 回来时已经切走（切到一个不必问的本机 tab）⇒ 不许盖到新 tab 上", async () => {
@@ -128,11 +126,11 @@ describe("RM1b：远端现问，本机不问", () => {
     // 切到本机 tab：本机不现问 ⇒ 代次没动，拦住那次迟到的只能是「sid 已经不是它」这一条。
     p.setSession("la", [task("9")]);
     await settle();
-    expect(p.summaryElement.textContent).toContain("1 tasks");
+    expect(p.summaryElement.textContent).toContain("/1");
     releaseA([task("1"), task("2"), task("3"), task("4"), task("5")]);
     await settle();
-    expect(p.summaryElement.textContent).toContain("1 tasks");
-    expect(p.summaryElement.textContent).not.toContain("5 tasks");
+    expect(p.summaryElement.textContent).toContain("/1");
+    expect(p.summaryElement.textContent).not.toContain("/5");
   });
 
   it("★ 同一个远端 tab 连问两次，慢的那次（先发的）不许盖掉快的那次（后发的）", async () => {
@@ -149,9 +147,9 @@ describe("RM1b：远端现问，本机不问", () => {
     p.setSession("rc", []);
     void p.refreshIfRemote("rc");
     await settle();
-    expect(p.summaryElement.textContent).toContain("2 tasks");
+    expect(p.summaryElement.textContent).toContain("/2");
     releaseFirst([task("1"), task("2"), task("3"), task("4"), task("5")]);
     await settle();
-    expect(p.summaryElement.textContent).toContain("2 tasks");
+    expect(p.summaryElement.textContent).toContain("/2");
   });
 });

@@ -142,6 +142,8 @@ export const ACTIONS: ReadonlyArray<Action> = [
 
   // ===== Panel =====
   { id: "panel.toggle-tasks", label: copyText("keybindingActions.panel.tasks"), category: "Panel", default: "KeyT", available: true },
+  { id: "panel.toggle-agents", label: copyText("keybindingActions.panel.agents"), category: "Panel", default: "KeyA", available: true },
+  { id: "panel.toggle-terminal", label: copyText("keybindingActions.panel.terminal"), category: "Panel", default: "Ctrl+Backquote", available: true },
 ] as const;
 
 /** 全部已注册 action 的 id 联合类型；调用方 `bind(id, ...)` 时 TS 检查拼写 */

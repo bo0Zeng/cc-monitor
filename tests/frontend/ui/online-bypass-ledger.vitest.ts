@@ -175,6 +175,7 @@ const FACT_FIELDS = [
   "latestPromptTokens",
   "latestModel",
   "latestContextLimit",
+  "latestLimitFrom",
   "forkedFromSessionId",
 ] as const;
 const MUTATORS = new Set(["set", "add", "delete", "clear"]);

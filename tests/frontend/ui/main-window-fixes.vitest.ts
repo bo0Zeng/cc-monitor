@@ -432,7 +432,6 @@ describe("消息流里的子 agent 卡：展开之后跟着长、读失败能再
 
 describe("agent 面板：运行表每来一帧不整表重建", () => {
   it("同一份再来 ⇒ 一个节点都不换；状态变了 ⇒ 行原地改字，键盘焦点与展开的时间线留着", () => {
-    localStorage.setItem("cc-monitor.agentsPanelCollapsed", "0");
     const timelines = new Map<string, HTMLElement>();
     const p = new AgentsPanel();
     p.host = {
@@ -444,11 +443,10 @@ describe("agent 面板：运行表每来一帧不整表重建", () => {
       closed: () => {},
       liveOf: () => null,
     };
-    document.body.append(p.summaryElement, p.popoverElement);
+    document.body.append(p.summaryElement, p.pageElement);
     const run = (id: string, state: string): RunInfo => ({ run: id, state, label: id, kind: "Explore", tool: `t-${id}` }) as never;
     p.setSession("s", [run("r1", "running"), run("r2", "running")]);
-    if (p.popoverElement.style.display === "none") p.summaryElement.click();
-    const rowOf = (id: string) => p.popoverElement.querySelector<HTMLElement>(`.agent-row[data-run="${id}"]`)!;
+    const rowOf = (id: string) => p.pageElement.querySelector<HTMLElement>(`.agent-row[data-run="${id}"]`)!;
     rowOf("r2").click(); // 展开 r2 的时间线
     const r1 = rowOf("r1");
     r1.focus();

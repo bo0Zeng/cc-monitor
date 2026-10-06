@@ -51,14 +51,14 @@ describe("ST1 点设置有反馈", () => {
     expect(btn.disabled).toBe(false);
   });
 
-  // 6 → 7：一台机器一直看不见时那条提示里的「打开设置」。
-  it("主窗那七个入口全走它：`main.ts` 里裸的 `commands.open_settings_window()` 零处、helper 调用 7 处", () => {
+  // 6 → 7：一台机器一直看不见时那条提示里的「打开设置」。7 → 8：状态栏「上下文」浮层里的［改上限…］/［设上限］。
+  it("主窗那八个入口全走它：`main.ts` 里裸的 `commands.open_settings_window()` 零处、helper 调用 8 处", () => {
     const code = readFileSync("src/frontend/ui/main.ts", "utf8")
       .split("\n")
       .filter((l) => !l.trim().startsWith("//"))
       .join("\n");
     expect([...code.matchAll(/commands\.open_settings_window\(/g)].length).toBe(0);
-    expect([...code.matchAll(/\bopenSettingsWindow\(/g)].length).toBe(7);
+    expect([...code.matchAll(/\bopenSettingsWindow\(/g)].length).toBe(8);
   });
 
   it("本模块不 import 设置面板（主窗的模块图里不该有它）", () => {

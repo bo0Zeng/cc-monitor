@@ -133,19 +133,19 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     const barEl = document.createElement("div");
     const streamRootEl = document.createElement("div");
     const panel = new AgentsPanel();
-    document.body.replaceChildren(barEl, streamRootEl, panel.summaryElement, panel.popoverElement);
+    document.body.replaceChildren(barEl, streamRootEl, panel.summaryElement, panel.pageElement);
     const tm = new TabManager(barEl, streamRootEl, undefined, undefined, panel);
     tm.setLivePainter(livePainter);
     return { tm, streamRootEl, panel };
   }
   const rowsIn = (panel: AgentsPanel) =>
-    [...panel.popoverElement.querySelectorAll<HTMLElement>(".agent-row")].map((r) => ({
+    [...panel.pageElement.querySelectorAll<HTMLElement>(".agent-row")].map((r) => ({
       run: r.dataset.run,
       icon: r.querySelector(".agent-icon")?.textContent,
       state: r.querySelector(".agent-state")?.textContent,
       cls: [...r.classList].find((c) => c.startsWith("agent-") && c !== "agent-row" && c !== "agent-row-clickable"),
     }));
-  const groupsIn = (panel: AgentsPanel) => [...panel.popoverElement.querySelectorAll(".agent-group")].map((g) => g.textContent);
+  const groupsIn = (panel: AgentsPanel) => [...panel.pageElement.querySelectorAll(".agent-group")].map((g) => g.textContent);
   const st = (s: RunState) => ({ icon: copyText(`runs.icon.${s}`), state: copyText(`runs.state.${s}`), cls: `agent-${s}` });
 
   // ① 前台跑完 ② 后台完成通知 ③ 后台失败 ④ 被叫停 ⑤ 被额度打断（无通知、子记录停写）⑥ 真在跑 —— 状态是后端判好给的。
@@ -169,7 +169,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     for (const r of SIX.filter((x) => x.run !== "w6")) expect(mainText, `主 tab 里出现了子运行「${r.label}」`).not.toContain(r.label);
     expect(streamRootEl.querySelectorAll("[data-run]").length, "主 tab 里有按运行标的行").toBe(0);
     // 正控：同一批标签在面板里（「更早的」那一组收着）。
-    const panelText = panel.popoverElement.textContent ?? "";
+    const panelText = panel.pageElement.textContent ?? "";
     for (const r of SIX.filter((x) => x.run !== "w5")) expect(panelText).toContain(r.label);
     expect(panelText).not.toContain("额度打断");
 
@@ -185,7 +185,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
       { run: "w2", ...st("done") },
       { run: "w1", ...st("done") },
     ]);
-    panel.popoverElement.querySelector<HTMLButtonElement>(".agent-older-toggle")!.click();
+    panel.pageElement.querySelector<HTMLButtonElement>(".agent-older-toggle")!.click();
     expect(rowsIn(panel).at(-1)).toEqual({ run: "w5", ...st("unknown") });
     expect(
       rowsIn(panel)
@@ -218,7 +218,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
       "done",
       copyText("runCard.summary.state", { title, state: copyText("runs.state.done") }),
     ]);
-    expect(panel.popoverElement.querySelector('.agent-row[data-run="w6"]')).toBeNull();
+    expect(panel.pageElement.querySelector('.agent-row[data-run="w6"]')).toBeNull();
   });
 
   it("派出它的那张工具卡标状态；点面板那一行 ⇒ 它下面展开它的时间线，再点收起", () => {
@@ -235,11 +235,11 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
       copyText("runCard.summary.state", { title, state: copyText("runs.state.failed") }),
     ]);
 
-    const row = () => panel.popoverElement.querySelector<HTMLElement>('.agent-row[data-run="w6"]')!;
+    const row = () => panel.pageElement.querySelector<HTMLElement>('.agent-row[data-run="w6"]')!;
     row().click();
     expect(row().getAttribute("aria-expanded")).toBe("true");
-    expect(panel.popoverElement.querySelector(".agent-timeline .block-agent-body")).not.toBeNull();
+    expect(panel.pageElement.querySelector(".agent-timeline .block-agent-body")).not.toBeNull();
     row().click();
-    expect(panel.popoverElement.querySelector(".agent-timeline")).toBeNull();
+    expect(panel.pageElement.querySelector(".agent-timeline")).toBeNull();
   });
 });

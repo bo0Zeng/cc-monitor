@@ -14,6 +14,7 @@ import type { TaskEntry } from "./tasks-panel";
 import type { Tab, TabsSummary } from "./tab-model";
 import { isLive, type ContainerEvent } from "./tab-session-state";
 import { Slice } from "./app-store";
+import type { UsageFact } from "./session-reads";
 
 /** 当前 tab 那一格对外的样子：HUD 要的 usage 与「会话事实要不到」的原因。 */
 export interface ActiveView {
@@ -22,18 +23,21 @@ export interface ActiveView {
   promptTokens: number | null;
   /** 上下文上限（后端定的）。 */
   contextLimit: number | null;
+  /** 上限从哪来（后端那一格）。 */
+  limitFrom: UsageFact["limitFrom"];
   /** 会话事实要不到的原因（`null` = 可用）。 */
   unavailable: string | null;
   /** 当前 tab 的项目目录（`Tab.projectDir`，后端给的那一格；独立窗口的顶栏标题读它）。 */
   projectDir: string | null;
 }
 
-const NO_ACTIVE: ActiveView = { sid: null, model: null, promptTokens: null, contextLimit: null, unavailable: null, projectDir: null };
+const NO_ACTIVE: ActiveView = { sid: null, model: null, promptTokens: null, contextLimit: null, limitFrom: "assumed", unavailable: null, projectDir: null };
 const sameActive = (a: ActiveView, b: ActiveView): boolean =>
   a.sid === b.sid &&
   a.model === b.model &&
   a.promptTokens === b.promptTokens &&
   a.contextLimit === b.contextLimit &&
+  a.limitFrom === b.limitFrom &&
   a.unavailable === b.unavailable &&
   a.projectDir === b.projectDir;
 const sameSummary = (a: TabsSummary, b: TabsSummary): boolean =>

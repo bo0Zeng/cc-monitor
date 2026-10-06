@@ -455,6 +455,7 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     // 〔拆 `tabs.ts` 子步 5〕会话动作搬进 `tab-session-actions.ts` ⇒ 原 ② ③ ④ ⑧ ⑨ 五处跟着走（下一行）：8 = 3 ＋ 5。
     // 5 → 3：`awaitExitFor` 的 ③ `stop(false)` 上限与 ④ 1s 轮询随它一起删了（换号重启直接 kill，不再等退出）。
     // 2 → 4：↗ 的「进行中」两处（`frontOnce`：超过 300ms 才进 · 进了至少停 400ms），都是一次性。
+    ("src/frontend/ui/terminal-page.ts", "setTimeout", 2, "① 底部抽屉终端页：送字送键之后 0.5 · 1.5 · 3 秒各再抓一屏（一次动作三次、换会话 / 收起即清，不自链、开着不轮询）② 「已送达」2 秒后收。一次性。"),
     ("src/frontend/ui/tab-session-actions.ts", "setTimeout", 4, "⑧ ⑨ 两处 `bring_*_terminal_to_front` 的 invoke 超时拒绝。都是一次性，不是周期取数。编号沿用 `tabs.ts` 那一行拆开之前的原号。⑩ ⑪ `frontOnce`：↗ 在飞超过 300ms 才把按钮换成「进行中」· 进了之后至少停 400ms 再收（防闪），一次性。"),
     ("src/frontend/ui/views/grid-monitor.ts", "setInterval", 1, "1s 重绘 —— 按格差量（没变的一拍零 DOM 写），不再整表重建。**ui-clock，不取数**，见 `REGISTERED` 那条。"),
     // 历史页照稿重做：旧页那一处 rAF（展开 / 收起后合并重画）随旧页删了。

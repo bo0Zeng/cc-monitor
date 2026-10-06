@@ -107,7 +107,35 @@ export function machineOps(): Record<string, OpHandler> {
         "─────────────────────────────────────────────────",
         "  ⏵⏵ accept edits on (shift+tab to cycle)",
       ].map((text) => ({ text })),
+      screen: "00000000000000a1",
+      captured_at: Math.floor(Date.parse("2026-10-06T10:42:05") / 1000),
     }),
+    // 终端名单：每个没结束的会话一个 tmux 终端；第一个会话有一个终端窗口连着，别的在后台。
+    "terminals-list": (o, _r, w) => ({
+      complete: true,
+      terminals: w.sessions
+        .filter((x) => !x.ended && x.origin === o)
+        .map((x, i) => {
+          const name = `cc-${x.cwd.split(/[/\\]/).pop()}`;
+          return {
+            terminal: `tmux-${name}`,
+            host: "tmux",
+            tmux_name: name,
+            title: name,
+            program: "claude",
+            cwd: x.cwd,
+            session: { sid: x.sid, agent: "claude" },
+            purpose: "normal",
+            started_by: { client: "ccm", mine: true },
+            clients: i === 0 ? [{ kind: "terminal-window", since: 1_700_000_000, last_activity: 1_700_000_100 }] : [],
+            input: "shared",
+            state: "running",
+            last_activity: 1_700_000_100,
+            can: { preview: true, input: true, end: true },
+          };
+        }),
+    }),
+    "terminal-input": () => ({ result: "delivered" }),
     "ssh-config-aliases": () => ({ aliases: ["devbox", "gpu-01", "win-laptop", "bastion"] }),
     "exit-policy-read": () => ({ state: "absent", killOnExit: false, reason: null, path: null, said: copyText("backendPolicy.exit.unattended") }),
     "footprint-report": () => footprint(),

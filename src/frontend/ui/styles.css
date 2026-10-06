@@ -359,7 +359,7 @@
   }
 }
 
-/* issue #23：agents 面板行——外壳复用 tasks-popover 类，行样式自有。态类 `agent-<态>` 由后端的运行表给（五态）。 */
+/* issue #23：agent 页的行。态类 `agent-<态>` 由后端的运行表给（五态）。 */
 .agent-row {
   display: flex;
   align-items: baseline;
@@ -2109,10 +2109,10 @@
   border-top: 1px solid var(--border-strong);
   font-size: var(--font-size-small);
   color: var(--text-2);
-  padding: 4px 12px;
+  padding: 0 12px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .status-msg {
@@ -2120,6 +2120,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 状态栏左边那一段空白：把这个会话的几枚与命令顶到右边。 */
+.status-sp {
+  flex: 1;
+}
+
+/* 这个会话的几枚与全局那几枚之间的竖线。 */
+.status-divider {
+  flex: none;
+  width: 1px;
+  height: 14px;
+  background: var(--border-medium);
 }
 
 /* F84b（batch17）：命令栏可发现性 chip —— 状态栏最右，克制常驻、点击开命令面板。
@@ -2283,11 +2296,6 @@
   margin-top: 4px;
 }
 
-.status-count {
-  font-family: var(--font-mono);
-  color: var(--text-2);
-}
-
 .empty-state small {
   display: block;
   margin-top: 8px;
@@ -2384,159 +2392,68 @@
   opacity: 1;
 }
 
-/* issue #11: Task 面板 —— summary chip 嵌入 status-bar，点击切换 popover 浮层。
-   popover 从 status-bar 上方往上展开，fixed 浮在消息流之上。 */
-
-/* 1) Status-bar 内的 summary chip */
-.status-tasks {
-  background: transparent;
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-xl);
-  padding: 0 8px;
-  height: 18px;
-  /* 〔活规则里的死声明〕这里原有一条 `line-height: 16px`，被紧跟着的 `font: inherit`
-     （简写，连 line-height 一起重设成继承值）整条盖掉 —— 它从来没生效过，删掉外观不变。
-     ⚠ 若本意就是 16px，要把它挪到 `font` 之后 —— 那会改可见样式，要目视，本轮没做。 */
-  font: inherit;
-  font-size: var(--font-size-small);
-  color: var(--text-2);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
-}
-
-.status-tasks:hover {
-  background: var(--overlay-hover);
-  color: var(--text);
-}
-
-.status-tasks.expanded {
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
-  color: var(--text);
-}
-
-.status-tasks-arrow {
-  font-size: var(--font-size-xs);
-  color: var(--text-faint);
-}
-
-.status-tasks.expanded .status-tasks-arrow {
-  color: var(--accent);
-}
-
-/* 2) Popover 浮层：fixed 贴在 status-bar 之上 */
-.tasks-popover {
-  position: fixed;
-  left: 12px;
-  right: 12px;
-  bottom: 28px; /* status-bar 高 24px + 一点呼吸 */
-  z-index: var(--z-float);
-  max-height: 50vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--card);
-  border: 1px solid var(--border-medium);
-  border-radius: var(--radius-l);
-  box-shadow: 0 -4px 16px var(--overlay-shadow);
-  font-size: var(--font-size-small);
-  overflow: hidden;
-}
-
-.tasks-popover-head {
-  display: flex;
-  align-items: center;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border-soft);
-  background: var(--bg);
-  flex: 0 0 auto;
-}
-
-.tasks-popover-title {
-  flex: 1;
-  font-weight: 500;
-  color: var(--text);
-}
-
-.tasks-popover-close {
-  background: transparent;
-  border: 0;
-  color: var(--text-2);
-  font-size: var(--font-size-title);
-  line-height: 1;
-  cursor: pointer;
-  padding: 0 4px;
-}
-
-.tasks-popover-close:hover {
-  color: var(--text);
-}
-
-.tasks-popover-list {
+/* 底部抽屉的「任务」「agent」两页：一个列表，空着时写空态。状态栏里那两枚 chip 是 kit chip（C6）。 */
+.tasks-list,
+.agents-list {
   list-style: none;
   margin: 0;
-  padding: 6px 6px;
-  overflow-y: auto;
-  flex: 1 1 auto;
+  padding: 6px 8px;
+  font-size: var(--font-size-small);
 }
 
-.tasks-popover-item {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
+.tasks-item,
+.agent-row {
   padding: 4px 8px;
   border-radius: var(--radius-s);
   line-height: 1.5;
 }
 
-.tasks-popover-item:hover {
-  background: var(--overlay-hover);
-}
-
-.tasks-popover-icon {
-  flex: 0 0 14px;
-  text-align: center;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-small);
-  color: var(--text-faint);
-}
-
-.tasks-popover-subject {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.tasks-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
   color: var(--text);
 }
 
-.tasks-popover-item.status-completed {
-  opacity: 0.6;
+.tasks-item:hover {
+  background: var(--overlay-hover);
 }
 
-.tasks-popover-item.status-completed .tasks-popover-subject {
+.tasks-item > svg {
+  flex: none;
+  color: var(--text-faint);
+}
+
+.tasks-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tasks-now {
+  overflow: hidden;
+  color: var(--text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tasks-item.status-completed,
+.tasks-item.status-deleted {
+  color: var(--text-faint);
+}
+
+.tasks-item.status-completed .tasks-subject,
+.tasks-item.status-deleted .tasks-subject {
   text-decoration: line-through;
 }
 
-.tasks-popover-item.status-completed .tasks-popover-icon {
-  color: var(--success);
+.tasks-item.status-in_progress {
+  background: var(--state-active);
 }
 
-.tasks-popover-item.status-in_progress {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-}
-
-.tasks-popover-item.status-in_progress .tasks-popover-icon {
-  color: var(--accent);
-}
-
-.tasks-popover-item.status-deleted {
-  opacity: 0.4;
-}
-
-.tasks-popover-item.status-deleted .tasks-popover-subject {
-  text-decoration: line-through;
+.tasks-item.status-in_progress > svg {
+  color: var(--live);
 }
 
 /* 从搜索结果跳进 viewer 后命中卡片的临时高亮 */
