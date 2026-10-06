@@ -2110,6 +2110,13 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
              下面那几条「零出现」就是空真。stdout 现在是：{:?}",
         relay.out()
     );
+    // ⚠ 第二发的 tap 行经子进程写者线程 → 管道 → 收集线程才到，下游读完时未必已落；
+    //   只等「有任一件」会在机器忙时抢在它前面读（门禁满载时真红过）⇒ 等它自己那一形。
+    assert!(
+        wait_until(|| relay.out().contains("\"resp\":1")),
+        "tap 上没有第二个响应 —— 两发没都抄到：{:?}",
+        relay.out()
+    );
     let out = relay.out();
     let err = relay.err();
     assert!(
@@ -2121,11 +2128,7 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
         "非空对照：子进程没报告它读到了凭据 —— 那条路没跑过：{err:?}"
     );
     // tee 只剩 `tap` 帧那一形：它**不带**账号那一格（「① 不问账号」）。
-    //   非空对照改成「两发都抄到了」（第二个响应的序号在），账号 id 零出现。
-    assert!(
-        out.contains("\"resp\":1"),
-        "tap 上没有第二个响应 —— 两发没都抄到：{out:?}"
-    );
+    //   非空对照是「两发都抄到了」（第二个响应的序号在，等法同上），账号 id 零出现。
     assert!(
         !out.contains("acct-a"),
         "tap 帧里出现了账号 id（① 不问账号）：{out:?}"
