@@ -263,6 +263,9 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/history-reads.vitest.ts",
     "tests/frontend/ui/views/history-time.vitest.ts",
     "tests/frontend/ui/resume-menu.vitest.ts",
+    "tests/frontend/ui/events-follow.vitest.ts",
+    "tests/frontend/ui/viewer-window-text.vitest.ts",
+    "tests/frontend/ui/views/session-viewer-follow.vitest.ts",
     "tests/frontend/ui/views/session-viewer-skeleton.vitest.ts",
     "tests/frontend/ui/views/user-input-panel.vitest.ts",
     "tests/common/upstream-url-core/lib_tests.rs", // 新共享 crate `upstream-url-core` 的判定（纯函数）

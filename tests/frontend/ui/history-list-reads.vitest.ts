@@ -68,6 +68,7 @@ describe("问的是谁、带了什么", () => {
     invokeMock.mockImplementation(() => Promise.resolve(chanReply({ rows: [], groups: [], total: 0, truncated: false, notice: null })));
     await fetchList(undefined, {});
     await fetchList("dev", { query: "回调", sort: "created", withinDays: 7, hidden: true, fresh: true });
+    await fetchList("dev", { sid: "s-1" });
     const got = invokeMock.mock.calls
       .filter((c) => c[0] === "chan_call")
       .map((c) => c[1] as ChanCallArgs)
@@ -75,6 +76,8 @@ describe("问的是谁、带了什么", () => {
     expect(got).toEqual([
       ["<local>", "history-list", {}, "number"],
       ["<local>", "history-list", { origin: "dev", query: "回调", sort: "created", within_days: 7, hidden: true, fresh: true }, "number"],
+      // 独立查看窗按会话 ID 要那一行。
+      ["<local>", "history-list", { origin: "dev", sid: "s-1" }, "number"],
     ]);
   });
 });

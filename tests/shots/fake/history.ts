@@ -12,7 +12,7 @@ interface Proj {
   path: string;
   /** 缺 = claude。 */
   agent?: string;
-  sessions: { sid: string; title: string; excerpt: string; agoMin: number; messages: number; live?: boolean; starred?: boolean; bg?: boolean; fork?: string; hits?: { kind: string; before: string; after: string }[] }[];
+  sessions: { sid: string; title: string; excerpt: string; agoMin: number; messages: number; live?: boolean; starred?: boolean; bg?: boolean; fork?: string; lastAccount?: string; hits?: { kind: string; before: string; after: string }[] }[];
 }
 
 const sid = (n: number): string => `0000${n.toString(16).padStart(4, "0")}-0000-4000-8000-0000000000${(n % 100).toString().padStart(2, "0")}`;
@@ -25,7 +25,7 @@ export const HISTORY: Proj[] = [
     path: "/home/user/work/orders",
     sessions: [
       { sid: "5e550001-0000-4000-8000-000000000001", title: "给订单服务加重试与超时", excerpt: "订单服务调用库存接口时偶尔超时…", agoMin: 3, messages: 42, live: true, hits: [{ kind: "user", before: "帮我加上", after: "（指数退避）和整体超时" }, { kind: "assistant", before: "统一做", after: " ＋ 退避 ＋ 整体超时" }] },
-      { sid: sid(11), title: "支付回调验签", excerpt: "支付回调偶尔验签失败，查一下", agoMin: 60 * 26, messages: 88, starred: true },
+      { sid: sid(11), title: "支付回调验签", excerpt: "支付回调偶尔验签失败，查一下", agoMin: 60 * 26, messages: 88, starred: true, lastAccount: "work" },
       { sid: sid(12), title: "订单导出 CSV", excerpt: "导出订单列表要支持按月份筛选", agoMin: 60 * 24 * 4, messages: 31, hits: [{ kind: "assistant", before: "导出失败时自动", after: "一次" }] },
       { sid: sid(13), title: "日志采样率", excerpt: "生产日志太多，加采样", agoMin: 60 * 24 * 9, messages: 12, bg: true },
     ],
@@ -106,6 +106,7 @@ export function historyOps(): Record<string, OpHandler> {
               customTitle: null,
               hidden: false,
               ...(s.fork ? { forkedFromSessionId: s.fork, forkedFromMessageUuid: "m-1" } : {}),
+              ...(s.lastAccount ? { lastAccount: s.lastAccount } : {}),
               status,
               can: {
                 resume: status === "live" ? "switch" : s.bg === true ? "bg" : "yes",

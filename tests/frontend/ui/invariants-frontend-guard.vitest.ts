@@ -406,12 +406,14 @@ describe("P21 ⑥ 条 22：独立窗口契约里 TS 这一侧的三项", () => {
   //   `streams` 选项订（`session-lines/<sid>`，留存由那条订阅当场交）。「先注册再触发」这一条的两半因此换了住址：
   //   ① viewer 这一侧：订阅**只**经 `await bindEvents(…, { streams })`；② `events.ts` 那一侧：所有 listen 注册完
   //   （`await Promise.all(registrations)`）之后才 `chan.subscribe(`（订阅一登记，句柄就可能开始交格）。
-  it("★ 22.3：viewer 的会话流**只**经 `await bindEvents(…, { streams })` 订；`bindEvents` 里先注册完 listen 再订", () => {
+  // 独立查看窗是只读查看器（与历史页右边同一个）：它那一个会话的流经 `SessionViewer` 的 `follow` ⇒ `events.ts::followSession`
+  //   订 `session-lines/<sid>`（留存由那条订阅当场交），先订再读记录；与整台机器那几条同一处 `chan.subscribe(`。
+  it("★ 22.3：viewer 的会话流**只**经查看器的 `follow`（`followSession` 订 `session-lines/<sid>`）；`bindEvents` 里先注册完 listen 再订", () => {
     const body = VIEWER ?? "";
-    const bind = body.indexOf("await bindEvents(");
-    expect(bind, "`bootstrapViewer` 里找不到 `await bindEvents(` —— 要么改名了，要么 `await` 被摘了").toBeGreaterThan(-1);
-    expect(/streams:\s*\[/.test(body.slice(bind)), "`bootstrapViewer` 的 `bindEvents` 没带 `streams` —— 独立窗口收不到会话内容").toBe(true);
+    expect(body.includes("bindEvents("), "独立查看窗不再整窗订会话流（只订它那一个会话）").toBe(false);
+    expect(/follow:\s*\{\s*sid,/.test(body), "`bootstrapViewer` 没把那个会话交给查看器跟着 —— 在跑的不会长").toBe(true);
     expect(body.includes("replay_session_to_window"), "退役的定向重放命令又回来了").toBe(false);
+    expect(codeOf("src/frontend/ui/events.ts").includes("`session-lines/${sid}`"), "`followSession` 订的不是那一个会话的流").toBe(true);
     // `events.ts` 那一半换判法：`bindEvents` 里最后几条 Tauri 监听两边各自退役（MIG-1 会话起停并进会话流 · MIG-3b `task-update`），
     //   「先注册完 listen 再订」没有可排的序了 ⇒ 判「那里一条异步注册的 `listen` 都没有」—— 谁长回来一条，这里先红，逼人把「等注册完」那一格补回来。
     const ev = codeOf("src/frontend/ui/events.ts");

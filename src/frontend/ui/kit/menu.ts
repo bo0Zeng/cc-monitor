@@ -19,6 +19,8 @@ export interface MenuItem {
   /** 右侧灰字：键位 / 补充（邮箱等）；`detailTone: "warn"` ＝ 那段是警示态（琥珀）。 */
   detail?: string;
   detailTone?: "warn";
+  /** 右侧灰字跟着同一菜单里的单选走：开的时候与每点一次单选之后各取一次（缺 ⇒ 用 `detail`）。 */
+  detailOf?: () => string;
   /** 紧跟在字后面的一段灰字（邮箱）。 */
   note?: string;
   /** 字前面的身份块（账号头像 · 状态点）。 */
@@ -36,6 +38,13 @@ export interface MenuItem {
   submenu?: MenuItem[];
   /** 分隔线（其余字段不看）。 */
   divider?: boolean;
+  /** 组名那一行（只读的小字，`label` 是组名；其余字段不看）。 */
+  heading?: boolean;
+  /**
+   * 单选组的组名：同一层里同组名的几项是一组单选，点一项 ⇒ 勾挪到它、菜单不关、再调 `onClick`。
+   * 当前勾在哪一项由 `checked: true` 给。
+   */
+  radio?: string;
 }
 
 export type MenuAnchor = { x: number; y: number } | { el: HTMLElement; align?: "start" | "end" };
@@ -54,6 +63,8 @@ const OPEN_SUB_MS = 150;
 const CLOSE_SUB_MS = 250;
 
 let current: Open | null = null;
+/** 跟着单选走的那几格右侧灰字（`detailOf`）。 */
+const liveDetails = new WeakMap<HTMLElement, () => string>();
 let generation = 0;
 
 /** 这一代菜单的代次（开 / 关菜单都自增）。 */
@@ -112,11 +123,20 @@ function makeItem(o: Open, it: MenuItem): HTMLElement {
     sep.setAttribute("role", "separator");
     return sep;
   }
+  if (it.heading) {
+    const h = document.createElement("div");
+    h.className = s.menuHeading;
+    h.setAttribute("role", "presentation");
+    h.textContent = it.label;
+    return h;
+  }
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = s.menuItem;
-  btn.setAttribute("role", it.checked !== undefined ? "menuitemradio" : "menuitem");
-  if (it.checked !== undefined) btn.setAttribute("aria-checked", String(it.checked));
+  const radio = it.radio !== undefined;
+  btn.setAttribute("role", it.checked !== undefined || radio ? "menuitemradio" : "menuitem");
+  if (it.checked !== undefined || radio) btn.setAttribute("aria-checked", String(it.checked === true));
+  if (radio) btn.dataset.radio = it.radio;
   if (it.danger) btn.dataset.variant = "danger";
   const lead = document.createElement("span");
   lead.className = s.menuLead;
@@ -135,13 +155,15 @@ function makeItem(o: Open, it: MenuItem): HTMLElement {
     n.textContent = it.note;
     btn.appendChild(n);
   }
-  if (it.detail) {
+  const detailText = it.detailOf ? it.detailOf() : it.detail;
+  if (detailText) {
     const d = document.createElement("span");
     d.className = s.menuDetail;
     d.dataset.part = "detail";
     if (it.detailTone) d.dataset.intent = it.detailTone;
-    d.textContent = it.detail;
+    d.textContent = detailText;
     btn.appendChild(d);
+    if (it.detailOf) liveDetails.set(d, it.detailOf);
   }
   if (it.body) {
     btn.dataset.twoLine = "true";
@@ -224,13 +246,36 @@ function makeItem(o: Open, it: MenuItem): HTMLElement {
     });
     return wrap;
   }
-  if (enabled) {
+  if (enabled && radio) {
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      checkRadio(btn);
+      it.onClick?.();
+      for (const d of o.root.querySelectorAll<HTMLElement>(`[data-part="detail"]`)) {
+        const f = liveDetails.get(d);
+        if (f) d.textContent = f();
+      }
+    });
+  } else if (enabled) {
     btn.addEventListener("click", () => {
       closeMenu();
       it.onClick?.();
     });
   }
   return btn;
+}
+
+/** 单选组里勾挪到这一项（同一层、同组名的其余几项去勾）。 */
+function checkRadio(btn: HTMLButtonElement): void {
+  const panel = btn.parentElement;
+  if (!panel) return;
+  for (const b of panel.querySelectorAll<HTMLButtonElement>(":scope > [data-radio]")) {
+    if (b.dataset.radio !== btn.dataset.radio) continue;
+    const on = b === btn;
+    b.setAttribute("aria-checked", String(on));
+    // 字前面那一格是每一项的第一个孩子（`makeItem` 先放它）。
+    b.firstElementChild?.replaceChildren(...(on ? [icon("check")] : []));
+  }
 }
 
 function onPointer(ev: PointerEvent): void {

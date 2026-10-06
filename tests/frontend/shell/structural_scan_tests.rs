@@ -4775,7 +4775,6 @@ fn every_prose_tombstone_mark_is_registered() {
         // `jsonl-line` / `jsonl-batch` 退役：头注点旧载荷名一块 · 独立窗口入口头注点旧定向重放命令一块 ·
         //   状态消费者矩阵那一行一块。
         ("src/frontend/shell/src/ui_contract.rs", 2), // 1 → 2：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑
-        ("src/frontend/ui/entry-viewer.ts", 1),
         ("src/doc/STATE-MATRIX.md", 3), // 1 → 3：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑
         // `parse_remote_hosts` 旧单对象那一支与守它的测试删了，接替它的判据头注挂一块。
         ("tests/frontend/shell/lib_remote_config_tests.rs", 2), // +1：JA1 点址那一行
@@ -5034,7 +5033,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // `send-into-backend.vitest.ts` 那一行摘了：那份随就地 resume 的前端编排一起删了（起在 tmux 里与批量收成一条、在那台后端做）。
         ("tests/frontend/ui/remote-launch-run.vitest.ts", 1), // 就地 resume 那组删了，点它的那一块
         ("tests/frontend/ui/tabs-split-graph.vitest.ts", 1), // tabs.ts 那几个 tmux 过滤的 re-export 删了
-        ("tests/frontend/ui/tabs.vitest.ts", 4), // 3 → 4：tmux↔sid 前端过滤那几组 · F74 tmux 叶子三条删了各一块（＋2），点 `fetchTmuxFresh` 那一组随取数点删了（−1）// 1 → 3：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑
+        ("tests/frontend/ui/tabs.vitest.ts", 3), // 4 → 3：恢复 ▸ 那一组判据重写，F74 那一块墓碑随之没了 // 3 → 4：tmux↔sid 前端过滤那几组 · F74 tmux 叶子三条删了各一块（＋2），点 `fetchTmuxFresh` 那一组随取数点删了（−1）// 1 → 3：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑
         ("tests/backend/history/history_join_tests.rs", 1), // 历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
         // `tests/frontend/shell/history_title_coverage.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
         ("tests/comms/inward/origin_tests.rs", 9), // 7 → 9 // 主线 5 ＋ MIG-3b +2（远端分叉 · 远端删会话两个分支函数删了）// +2：远端 MCP 写 / 删两个分支函数随 `mcp.rs` 删了 // // +1：远端项目目录那个分支删了 // +1：远端读会话函数（本机远端合成一条） // 历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑

@@ -117,7 +117,7 @@ const FORBIDDEN_IN_VIEWER: readonly { pat: string; what: string }[] = [
 const REQUIRED: Record<Win, readonly string[]> = {
   main: ["src/frontend/ui/main.ts", "src/frontend/ui/tabs.ts", "src/frontend/ui/render.ts", "npm:highlight.js", "npm:katex", "src/frontend/ui/views/history.ts"],
   settings: ["src/frontend/ui/entry-settings.ts", "src/frontend/ui/settings/panel.ts", "src/frontend/ui/theme.ts", "src/frontend/ui/keybindings/registry.ts", "src/frontend/ui/keybindings/editor.ts"],
-  viewer: ["src/frontend/ui/entry-viewer.ts", "src/frontend/ui/tabs.ts", "src/frontend/ui/render.ts", "npm:highlight.js", "npm:katex", "src/frontend/ui/theme.ts"],
+  viewer: ["src/frontend/ui/entry-viewer.ts", "src/frontend/ui/views/session-viewer.ts", "src/frontend/ui/render.ts", "npm:highlight.js", "npm:katex", "src/frontend/ui/theme.ts"],
 };
 
 /** 一个窗口的闭包：它会加载的全部 JS 模块 ＋ 全部 CSS 资产。 */

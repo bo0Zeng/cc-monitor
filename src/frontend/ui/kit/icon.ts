@@ -45,6 +45,7 @@ import command from "@phosphor-icons/core/assets/regular/command.svg?raw";
 import circleDashed from "@phosphor-icons/core/assets/regular/circle-dashed.svg?raw";
 import circleNotch from "@phosphor-icons/core/assets/regular/circle-notch.svg?raw";
 import terminalWindow from "@phosphor-icons/core/assets/regular/terminal-window.svg?raw";
+import arrowDown from "@phosphor-icons/core/assets/regular/arrow-down.svg?raw";
 import s from "./icon.module.css";
 
 const SVG = {
@@ -86,6 +87,7 @@ const SVG = {
   pending: circleDashed,
   inProgress: circleNotch,
   terminal: terminalWindow,
+  arrowDown: arrowDown,
 } as const;
 
 export type IconName = keyof typeof SVG;

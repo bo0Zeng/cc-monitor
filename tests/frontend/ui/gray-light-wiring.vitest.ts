@@ -97,16 +97,10 @@ describe("#60 最后一跳：会话流里的 idle 那一格真的走到 onSessio
         "① 没有 ⇒ 后端喊了灰灯、前端一个字不做（`#60` 的现象 1 就长这样）；\n" +
         "② 形状变了（接到别的函数）⇒ 灰灯变成归档或复活，UI 说的不是同一件事。",
     ).toBe(1);
-    // 视图窗：只认自己那个 sid（多开视图窗时不许互相置灰）。
-    // 〔三入口拆分 · 住址搬家〕视图窗的 bootstrap 从 `main.ts` 搬到了自己的入口 `entry-viewer.ts`
-    // （viewer.html 不再加载 `main.ts`）。钉的那一行一字未改，只是换了文件读。
-    const viewerLines = readFileSync(resolve(srcDirOf(__dirname), "entry-viewer.ts"), "utf8")
-      .split("\n")
-      .map((l) => l.trim());
-    expect(
-      viewerLines.filter((l) => l === "if (s === sid) tabs.markTmuxIdle(s);").length,
-      "视图窗少了 `if (s === sid) tabs.markTmuxIdle(s);` —— 它会停留在陈旧绿灯上。",
-    ).toBe(1);
+    // 独立查看窗不画灯（只读查看器，不建标签页）：起停走它自己那一条订阅（`followSession` 的 `live`），它不接 idle 那一格。
+    const viewer = readFileSync(resolve(srcDirOf(__dirname), "entry-viewer.ts"), "utf8");
+    expect(viewer.includes("markTmuxIdle"), "独立查看窗又接了灯 —— 它不建标签页，接了也没有灯可画").toBe(false);
+    expect(viewer.includes("follow: {"), "独立查看窗没跟着会话流（起停 · 跟着长都靠它）").toBe(true);
   });
 
   it("idle 与 ended 同队保序：先发的先到（灰灯不会插到该会话末行之前）", async () => {

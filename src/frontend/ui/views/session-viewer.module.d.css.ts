@@ -11,10 +11,16 @@ declare const classes: {
   readonly svLoading: string;
   readonly svMeta: string;
   readonly svPath: string;
+  readonly svPill: string;
+  readonly svPillRow: string;
   readonly svSaidFull: string;
   readonly svSaidPop: string;
   readonly svSaidShort: string;
+  readonly svSide: string;
+  readonly svSideHead: string;
   readonly svTitle: string;
   readonly svTools: string;
+  readonly svWinBody: string;
+  readonly svWinMain: string;
 };
 export default classes;

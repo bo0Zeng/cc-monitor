@@ -15,6 +15,8 @@
 //! 6. **排与截**：`activity` 按最后活动、`created` 按开始，`at` 就是那个键；`limit` 截 ⇒ `truncated`。
 //! 7. **分组**：有在跑的 → 有星标的 → 最近动过的；读不了的目录是一组、带原因。
 //! 8. **远端**：问那台的 `--history-list`（`raw`）一次，之后用记着的；`fresh` 再问；够不到 ⇒ `unreachable`。
+//! 10. **按会话 ID 要一行**（`sid`：独立查看窗开任意一个会话）：只回那一行（隐藏的、出了时间窗的也回）、不补父会话；
+//!     形状不对 ⇒ `bad_args`（先于 IO）；没有这个会话 ⇒ 空清单。
 //! 9. **跨语言金样** `tests/__fixtures__/history-list.golden.json`（TS 严格解码器读同一份，`tests/frontend/ui/history-list-reads.vitest.ts`）。
 //!
 //! # 买不到
@@ -305,6 +307,35 @@ fn filters_and_context_parents() {
         1_000 + 2 * 86_400_000,
     );
     assert_eq!(far["total"], 0);
+}
+
+/// ★ 判据 10：按会话 ID 要一行。
+#[test]
+fn one_session_by_id_ignores_the_other_filters() {
+    // S2 被隐藏；S5 有被隐藏的父会话 S4 —— 按 ID 要都只回那一行。
+    let v = answer(json!({"sid": S2, "query": "不会命中", "within_days": 1}));
+    assert_eq!(sids(&v), vec![S2], "隐藏的、搜索词不中的也回");
+    assert_eq!(v["total"], 1);
+    assert_eq!(find(&v, S2)["hidden"], true);
+    let v = answer(json!({"sid": S5}));
+    assert_eq!(sids(&v), vec![S5], "不补父会话");
+    assert!(find(&v, S5).get("context").is_none());
+    assert_eq!(
+        find(&v, S5)["jsonlPath"]
+            .as_str()
+            .map(|p| p.ends_with(".jsonl")),
+        Some(true)
+    );
+    // 正控：没有 sid ⇒ 照常（S2 隐藏不出）。
+    assert!(!sids(&answer(json!({}))).contains(&S2.to_string()));
+    assert!(sids(&answer(
+        json!({"sid": "0000dead-0000-4000-8000-000000000000"})
+    ))
+    .is_empty());
+    for bad in [json!(""), json!("a/b"), json!(7), json!("x".repeat(65))] {
+        let e = parse_ask(&json!({ "sid": bad })).expect_err("形状不对");
+        assert_eq!(e.0, "bad_args");
+    }
 }
 
 /// ★ 判据 6：排与截。

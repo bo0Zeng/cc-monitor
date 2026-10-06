@@ -316,9 +316,14 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/frontend/ui/kit/fold.ts:39": "折叠块正文 `body`（`s.body`）",
   // 只读查看器（历史页右边）：CSS Modules 的哈希名（`sv.<类>`）推不出；这几类都不写 `display`（kit 骨架自己写了 display ⇒ 包一层再切）。
   "src/frontend/ui/find-strip.ts:168": "会话内查找的命中清单 `strip`（`s.fsStrip`）—— 它写了 display:flex，CSS 里另有 `.fsStrip[hidden]` 收住",
-  "src/frontend/ui/views/session-viewer.ts:268": "头下那一条 `bannerEl`（`sv.svBanner`）—— 没有错误条时收起",
-  "src/frontend/ui/views/session-viewer.ts:273": "读取中的骨架外层 `loadingEl`（`sv.svLoading`）",
-  "src/frontend/ui/views/session-viewer.ts:278": "「你说过的话」清单 `this.said.panel` —— 由 `UserInputPanel` 建（类 `.user-inputs`，`styles.css` 那条规则头注逐字「绝不许出现 display」）",
+  "src/frontend/ui/views/session-viewer.ts:321": "头下那一条 `bannerEl`（`sv.svBanner`）—— 没有错误条时收起",
+  "src/frontend/ui/views/session-viewer.ts:326": "读取中的骨架外层 `loadingEl`（`sv.svLoading`）",
+  "src/frontend/ui/views/session-viewer.ts:331": "「你说过的话」清单 `this.said.panel` —— 由 `UserInputPanel` 建（类 `.user-inputs`，`styles.css` 那条规则头注逐字「绝不许出现 display」）",
+  "src/frontend/ui/views/session-viewer.ts:751": "「↓ 新内容」`newPill`（kit 按钮 ＋ `sv.svPill`）—— kit 按钮写了 display，CSS 里另有 `.svPill[hidden]` 收住",
+  "src/frontend/ui/views/session-viewer.ts:1086": "同上 —— 建时收起",
+  "src/frontend/ui/views/session-viewer.ts:917": "工具行 `toolsEl`（`sv.svTools`）—— 窗口那一形 Ctrl+F 才露；它写了 display:flex，CSS 里另有 `.svTools[hidden]` 收住",
+  "src/frontend/ui/views/session-viewer.ts:1105": "同上 —— 窗口那一形建时收起",
+  "src/frontend/ui/views/session-viewer.ts:1104": "头 `head`（`sv.svHead`）—— 窗口那一形不画（细顶栏担）；它写了 display:flex，CSS 里另有 `.svHead[hidden]` 收住",
   "src/frontend/ui/kit/toast.ts:130": "合流计数 `same.countEl`（`s.count`）—— 合进第二条时出现",
   "src/frontend/ui/kit/toast.ts:149": "同上 —— 建时收起",
   // ⚠ `606 → 614`：我在这份文件上方加了一段注释，**行号就漂了**。
@@ -531,6 +536,7 @@ const STATE_CLASS_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/frontend/ui/views/history.ts · classList.add(s.hvViews)": "同上（「按时间 | 按项目」那一条分栏）",
   "src/frontend/ui/views/history.ts · classList.add(s.hvFilterBtn)": "同上（「筛选」按钮：窄档只剩图标）",
   "src/frontend/ui/views/history.ts · classList.add(s.hvToList)": "同上（窄档内容头左端的「← 列表」）",
+  "src/frontend/ui/views/session-viewer.ts · classList.add(sv.svPill)": "「↓ 新内容」那颗 kit 按钮叠上自己的定位类（不是状态名；露 / 收由 `hidden` 管）",
   "src/frontend/ui/kit/split-button.ts · classList.add(s.splitMain)":
     "CSS Modules（`split-button.module.css`）：给拆分按钮的两半（kit 按钮）挂拼接用的版位类；哈希过的类名，不是状态名",
   "src/frontend/ui/kit/split-button.ts · classList.add(s.splitMore)": "同上（▾ 那一半）",

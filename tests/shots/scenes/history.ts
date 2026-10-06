@@ -27,6 +27,38 @@ async function row(n: number): Promise<HTMLElement> {
 
 const offline = (): ReturnType<typeof defaultWorld> => ({ ...defaultWorld(), historyDown: ["gpu-01"] });
 
+/** 额度账里有这几台的号的数（恢复菜单每个号后面 `5h N%`）。 */
+function withQuota(): ReturnType<typeof defaultWorld> {
+  const w = defaultWorld();
+  const now = (): number => Math.floor(Date.now() / 1000);
+  const acct = (account: string, pct5: number, pct7: number): Record<string, unknown> => ({
+    agent: "claude-code",
+    account,
+    seenAt: now() - 120,
+    reading: { refused: false },
+    kind: "sub",
+    state: "ok",
+    stale: false,
+    limiting: "5h",
+    slots: [
+      { slot: "5h", pct: pct5, resetsAt: now() + 5400 },
+      { slot: "7d", pct: pct7, resetsAt: now() + 86_400 * 3 },
+    ],
+    login: "ok",
+  });
+  w.ops["quota-read"] = () => ({
+    state: "present",
+    reason: null,
+    path: "/home/user/.cc-monitor/quota.json",
+    now: now(),
+    accounts: [acct("work", 41, 18), acct("personal", 12, 30)],
+    unseen: [],
+    usableNow: ["work", "personal"],
+    earliestReturn: null,
+  });
+  return w;
+}
+
 export const HISTORY_SCENES: Scene[] = [
   hist("history-01-by-time", "历史 · 按时间（默认）", "开历史页：按时间平铺，今天 · 昨天 · 本周 · 按月分段；点第一行，右边就地出内容", async () => {
     await openHistory();
@@ -85,13 +117,42 @@ export const HISTORY_SCENES: Scene[] = [
     await click(await byText(".history-view button", "2 个分叉"));
     await sleep(300);
   }),
-  hist("history-05-resume-menu", "历史 · 恢复菜单", "右边内容头的［恢复 ▾］点开 ▾：tmux / 不用 tmux × 账号，再加「在此目录新建会话」", async () => {
-    await openHistory();
-    await click(await byText('.history-view [role="option"]', "支付回调验签"));
-    await sleep(900);
-    await click(await waitFor('.history-view [data-role="resume"] button[aria-haspopup="menu"]'));
-    await sleep(500);
-  }),
+  {
+    ...hist("history-05-resume-menu", "历史 · 恢复菜单", "右边内容头的［恢复 ▾］点开 ▾：「账号」（每个号后面 5h 用量，上次用的标「上次」）与「运行于」两组单选，底下「在此目录新建会话」", async () => {
+      await openHistory();
+      await click(await byText('.history-view [role="option"]', "支付回调验签"));
+      await sleep(900);
+      await click(await waitFor('.history-view [data-role="resume"] button[aria-haspopup="menu"]'));
+      await sleep(600);
+    }),
+    world: withQuota,
+  },
+  {
+    ...hist("history-05b-resume-picked", "历史 · 恢复菜单 · 挪了勾", "▾ 里点 personal、点「在 tmux 里」：只挪勾、菜单不关；主按钮按勾着的那一组起", async () => {
+      await openHistory();
+      await click(await byText('.history-view [role="option"]', "支付回调验签"));
+      await sleep(900);
+      await click(await waitFor('.history-view [data-role="resume"] button[aria-haspopup="menu"]'));
+      await sleep(500);
+      await click(await byText('[role="menuitemradio"]', /personal/));
+      await click(await byText('[role="menuitemradio"]', "在 tmux 里"));
+      await sleep(300);
+    }),
+    world: withQuota,
+  },
+  {
+    ...hist("tab-resume-menu", "标签页 · 右键「恢复 ▸」", "已结束的标签页右键「恢复 ▸」：与历史页同一个组件，最上面多一行「恢复」（标签页没有主按钮）", async () => {
+      await mainReady(ALL_TABS);
+      const tab = await byText("#tab-bar .tab", "周报草稿");
+      const r = tab.getBoundingClientRect();
+      tab.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + 20, clientY: r.top + 10, button: 2 }));
+      await sleep(900);
+      const wrap = [...document.querySelectorAll<HTMLElement>('[role="menu"] > [role="none"]')].find((w) => w.textContent?.includes("Resume"));
+      wrap?.querySelector<HTMLElement>(":scope > button")?.click();
+      await sleep(500);
+    }),
+    world: withQuota,
+  },
   hist("history-06-codex", "历史 · Codex 会话", "Codex 会话：恢复按它自己那一家起；▾ 里不问账号，灰一行「Codex · 无账号维」", async () => {
     await openHistory();
     await click(await byText('.history-view [role="option"]', "Codex"));
@@ -145,14 +206,44 @@ export const HISTORY_SCENES: Scene[] = [
     page: "viewer",
     query: "viewer=5e550001-0000-4000-8000-000000000001",
     dir: "历史",
-    title: "查看窗",
-    desc: "一个会话另开在独立窗口里（tab 右键「在新窗口打开」）",
-    width: 1100,
-    height: 760,
+    title: "独立查看窗 · 在跑",
+    desc: "一个会话另开在独立窗口里：细顶栏 · 左边「你说过的话」一栏 · 消息流跟着长 · 状态栏「只读 · N 条 · 实时」",
+    width: 900,
+    height: 720,
     world: defaultWorld,
     act: async () => {
-      await waitFor("#message-stream .card", 15_000);
+      await waitFor(".session-viewer [data-uuid]", 15_000);
       await sleep(1500);
+    },
+  },
+  {
+    id: "viewer-window-ended",
+    page: "viewer",
+    query: "viewer=5e550003-0000-4000-8000-000000000003",
+    dir: "历史",
+    title: "独立查看窗 · 已结束",
+    desc: "已结束的会话也开得了：［恢复 ▾］· 状态栏「只读 · N 条 · 已结束」",
+    width: 900,
+    height: 720,
+    world: defaultWorld,
+    act: async () => {
+      await waitFor(".session-viewer [data-uuid]", 15_000);
+      await sleep(1200);
+    },
+  },
+  {
+    id: "viewer-window-narrow",
+    page: "viewer",
+    query: "viewer=5e550001-0000-4000-8000-000000000001",
+    dir: "历史",
+    title: "独立查看窗 · 窄于 760",
+    desc: "窄于 760：左边那一栏收起，顶栏左端那颗按钮开它",
+    width: 600,
+    height: 560,
+    world: defaultWorld,
+    act: async () => {
+      await waitFor(".session-viewer [data-uuid]", 15_000);
+      await sleep(1200);
     },
   },
 ];

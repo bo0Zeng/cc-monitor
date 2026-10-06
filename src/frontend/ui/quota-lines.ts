@@ -211,3 +211,15 @@ export function quotaBlocks(r: QuotaRead, tzOffsetMin: number, machine: string):
     ...r.unseen.map((u) => unseenBlock(u)),
   ];
 }
+
+/**
+ * 一个号的 5h 那一格（恢复菜单里每个号后面那一格）：`5h 41%` · 卡着的照显示态换字（`5h ✕` …）。
+ * 账上没有这个号、只在账号库里（没出过数）、按量号（没有分窗口）⇒ `null`（不出这一格）。
+ */
+export function fiveHourCell(r: QuotaRead | null | undefined, agent: string, account: string): string | null {
+  if (!r || r.state === "unreadable") return null;
+  const a = r.accounts.find((x) => x.account === account && x.agent === agent);
+  if (!a || a.kind === "api") return null;
+  const [slot, value] = slotRow(a, "5h", r.now, 0);
+  return copyText("resumeMenu.account.quota", { slot, value });
+}

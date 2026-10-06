@@ -220,6 +220,8 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/launch-menu.ts",
     "src/frontend/ui/remote-launch-run.ts",
     "src/frontend/ui/resume-menu.ts", // 「恢复 ▸」那一组选项怎么摆（历史页「恢复 ▾」同一个组件）
+    "src/frontend/ui/launch-account.ts", // 勾着的号 ⇒ 交那台判的那一问（`askOf`：本机在 tmux 里那一条要它）
+    "src/frontend/ui/new-session-in.ts", // 「恢复 ▸」最底下「在此目录新建会话」（历史页同一条）
     "src/frontend/ui/tab-bar-prefs.ts", // 「加入集合 / 新建集合」到上界 ⇒ `sayCollectionRefusal`
     "src/frontend/ui/tab-collections.ts",
     "src/frontend/ui/kit/menu.ts",

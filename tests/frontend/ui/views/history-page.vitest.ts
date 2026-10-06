@@ -40,13 +40,25 @@ vi.mock("../../../../src/frontend/ui/views/session-viewer", () => ({
   },
 }));
 vi.mock("../../../../src/frontend/ui/tmux-resume", () => ({ startInTmuxThenAttach: vi.fn().mockResolvedValue(undefined) }));
-vi.mock("../../../../src/frontend/ui/launch-menu", () => ({
-  enumerateAccountModifiers: vi.fn().mockResolvedValue([
-    { kind: "base", label: "账号 0" },
-    { kind: "account", name: "work", label: "work" },
-    { kind: "account", name: "home", label: "home" },
-  ]),
-}));
+// 那台的号由 `resumeAccounts` 现问（账号库 ＋ 额度账）；这里只替它答，菜单怎么摆用真的。
+vi.mock("../../../../src/frontend/ui/resume-menu", async (orig) => {
+  const real = await orig<typeof import("../../../../src/frontend/ui/resume-menu")>();
+  return {
+    ...real,
+    resumeAccounts: vi.fn(async (_origin: string, _agent: string, f: { hasAccounts: boolean; agentName: string; last?: string }) =>
+      f.hasAccounts
+        ? {
+            kind: "list",
+            items: [
+              { name: "work", label: "work", quota: "5h 41%", last: f.last === "work" },
+              { name: "home", label: "home", quota: null, last: f.last === "home" },
+              { name: null, label: "不指定账号 · ~/.claude", quota: null, last: false },
+            ],
+          }
+        : { kind: "none", agentName: f.agentName },
+    ),
+  };
+});
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoToast: vi.fn() }));
 vi.mock("../../../../src/frontend/ui/local-resume", () => ({ resumeLocalSession: vi.fn().mockResolvedValue(true) }));
 vi.mock("../../../../src/frontend/ui/remote-launch-run", () => ({
@@ -63,7 +75,7 @@ import { HistoryView } from "../../../../src/frontend/ui/views/history";
 import { toast } from "../../../../src/frontend/ui/kit/toast";
 import { resumeLocalSession } from "../../../../src/frontend/ui/local-resume";
 import { startInTmuxThenAttach } from "../../../../src/frontend/ui/tmux-resume";
-import { enumerateAccountModifiers } from "../../../../src/frontend/ui/launch-menu";
+import { resumeAccounts } from "../../../../src/frontend/ui/resume-menu";
 import { chanArgsJson, chanReply, refusedReply, type ChanCallArgs } from "../../../test-support/chan-fake";
 import { answerAskDialog, answerAskText, noAskDialog } from "../../../test-support/ask-dialog-driver.ts";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
@@ -136,7 +148,7 @@ beforeEach(() => {
   vi.mocked(toast).mockClear();
   vi.mocked(resumeLocalSession).mockClear();
   vi.mocked(startInTmuxThenAttach).mockClear();
-  vi.mocked(enumerateAccountModifiers).mockClear();
+  vi.mocked(resumeAccounts).mockClear();
   viewerStub.last = null;
   viewerStub.banner = null;
   world = { local: [], dev: [], fail: new Set(), search: "ok" };
@@ -416,7 +428,9 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
     [...head().querySelectorAll<HTMLButtonElement>("button")].find((b) => (b.textContent ?? "").includes(text) || b.getAttribute("aria-label") === text);
   const menuItems = (): string[] => [...document.querySelectorAll<HTMLElement>('[role^="menuitem"]')].map((e) => e.textContent ?? "");
   const menuItem = (label: string): HTMLElement | undefined =>
-    [...document.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find((b) => b.textContent?.startsWith(label));
+    [...document.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find(
+      (b) => b.querySelector('[data-part="label"]')?.textContent === label || b.textContent?.startsWith(label),
+    );
   // 前面那几格的筛选（关掉 dev 那台）记在本机，别带进来。
   beforeEach(() => localStorage.clear());
   const showRow = async (sid: string): Promise<void> => {
@@ -424,13 +438,17 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
     await flush(250);
   };
 
-  it("已结束的行：头上［恢复 ▾］＋ 新窗口 ＋ ⋯；第二行 项目 · 本机 · 路径 · 时间段；▾ ＝ tmux / 不用 tmux × 账号，再加「在此目录新建会话」", async () => {
+  it("已结束的行：头上［恢复 ▾］＋ 新窗口 ＋ ⋯；第二行 项目 · 本机 · 路径 · 时间段；▾ ＝ 账号 · 运行于两组单选 ＋「在此目录新建会话」", async () => {
     world.local = [row({ sessionId: "a", lastAccount: "work" })];
     const v = await opened();
     await showRow("a");
     expect(viewerStub.last).toMatchObject({ displayTitle: "标题 a", origin: "<local>", cwd: "/w/p" });
     const main = inHead(copyText("history.row.resume"))!;
-    expect(main.title).toBe(copyText("history.resume.hintAccount", { account: "work" }));
+    const pick = (account: string, tmux: boolean): string =>
+      copyText("resumeMenu.hint.pick", {
+        pick: copyText("resumeMenu.pick.account", { account, run: tmux ? copyText("resumeMenu.hint.tmux") : copyText("resumeMenu.run.direct") }),
+      });
+    expect(main.title, "没开过 ▾：上次的号 · 不用 tmux").toBe(pick("work", false));
     expect(inHead(copyText("history.menu.openWindow"))).toBeTruthy();
     expect(inHead(copyText("history.row.more"))).toBeTruthy();
     expect(head().textContent).toContain("p");
@@ -438,17 +456,35 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
     expect(head().textContent).toContain("/w/p");
     inHead(copyText("history.resume.more"))!.click();
     await flush();
-    expect(enumerateAccountModifiers).toHaveBeenCalledWith("<local>");
+    expect(vi.mocked(resumeAccounts).mock.calls[0].slice(0, 2)).toEqual(["<local>", "claude"]);
+    const headings = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="presentation"]')].map((e) => e.textContent);
+    expect(headings).toEqual([copyText("resumeMenu.group.account"), copyText("resumeMenu.group.run")]);
     const items = menuItems();
-    expect(items[0]).toContain("tmux");
+    const work = menuItem("work")!;
+    expect(work.querySelector(".acct-avatar"), "号前面它的头像").not.toBeNull();
+    expect(work.querySelector('[data-part="detail"]')?.textContent, "号后面它的 5h，上次用的那个标「上次」").toBe(copyText("resumeMenu.account.quotaLast", { quota: "5h 41%" }));
+    expect(items.indexOf(work.textContent ?? ""), "账号组在最上面").toBe(0);
+    expect(menuItem("work")!.getAttribute("aria-checked")).toBe("true");
+    expect(menuItem(copyText("resumeMenu.run.direct"))!.getAttribute("aria-checked")).toBe("true");
     expect(items).toContain(copyText("history.menu.newInDir"));
-    expect(items.some((t) => t.startsWith("work"))).toBe(true);
-    // 选「tmux」⇒ 不依赖标签页对象的那条起法，带这一行的那一家、目录、跟随的号
-    menuItem("tmux")!.click();
+    // 点单选只挪勾、菜单不关、什么都不起；主按钮的悬停跟着改
+    menuItem("home")!.click();
+    menuItem(copyText("resumeMenu.run.tmux"))!.click();
+    await flush();
+    expect(document.querySelector('[role="menu"]'), "点单选菜单不关").not.toBeNull();
+    expect(menuItem("work")!.getAttribute("aria-checked")).toBe("false");
+    expect(menuItem("home")!.getAttribute("aria-checked")).toBe("true");
+    expect(menuItem(copyText("resumeMenu.run.tmux"))!.getAttribute("aria-checked")).toBe("true");
+    expect(startInTmuxThenAttach).not.toHaveBeenCalled();
+    expect(resumeLocalSession).not.toHaveBeenCalled();
+    expect(main.title).toBe(pick("home", true));
+    // 主按钮按勾着的那一组起：tmux 那一支（不依赖标签页对象），带点名的号
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    main.click();
     await flush();
     expect(vi.mocked(startInTmuxThenAttach).mock.calls[0].slice(0, 2)).toEqual([
       { origin: "<local>", agent: "claude", sid: "a", cwd: "/w/p" },
-      { kind: "follow" },
+      { kind: "named", name: "home" },
     ]);
     expect(resumeLocalSession).not.toHaveBeenCalled();
     v.close();
@@ -470,19 +506,27 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
     expect(v.isVisible(), "起了 ⇒ 关历史页").toBe(false);
   });
 
-  it("点名一个号 ⇒ 带着它起（不用 tmux 那一支）", async () => {
+  it("勾基座 ⇒ 主按钮按基座起（不用 tmux 那一支）；勾只在这一页开着时记", async () => {
     world.dev = [row({ sessionId: "r" })];
     const v = await opened();
     await showRow("r");
     inHead(copyText("history.resume.more"))!.click();
     await flush();
-    expect(enumerateAccountModifiers).toHaveBeenCalledWith("dev");
+    expect(vi.mocked(resumeAccounts).mock.calls[0][0]).toBe("dev");
+    menuItem("不指定账号 · ~/.claude")!.click();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     const { runRemoteResume } = await import("../../../../src/frontend/ui/remote-launch-run");
-    const work = menuItem("work")!.parentElement!;
-    [...work.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((b) => b.textContent === copyText("tabMenu.containerLeaves.direct"))!.click();
+    inHead(copyText("history.row.resume"))!.click();
     await flush();
     expect(vi.mocked(runRemoteResume).mock.calls.at(-1)!.slice(0, 4)).toEqual(["dev", "claude", "r", "/w/p"]);
-    expect(vi.mocked(runRemoteResume).mock.calls.at(-1)![5]).toEqual({ account: { kind: "named", name: "work" } });
+    expect(vi.mocked(runRemoteResume).mock.calls.at(-1)![5]).toEqual({ account: { kind: "base" } });
+    v.close();
+    await v.open();
+    await flush();
+    await showRow("r");
+    expect(inHead(copyText("history.row.resume"))!.title, "重开页 ⇒ 回到默认那一组").toBe(
+      copyText("resumeMenu.hint.pick", { pick: copyText("resumeMenu.run.direct") }),
+    );
     v.close();
   });
 
@@ -494,10 +538,12 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
     ];
     const v = await opened();
     await showRow("cx");
-    expect(inHead(copyText("history.row.resume"))!.title).toBe(copyText("history.resume.hintAgent", { agent: "Codex" }));
+    expect(inHead(copyText("history.row.resume"))!.title).toBe(
+      copyText("resumeMenu.hint.pick", { pick: copyText("resumeMenu.pick.account", { account: "Codex", run: copyText("resumeMenu.run.direct") }) }),
+    );
     inHead(copyText("history.resume.more"))!.click();
     await flush();
-    expect(enumerateAccountModifiers).not.toHaveBeenCalled();
+    expect(vi.mocked(resumeAccounts).mock.calls[0][2]).toMatchObject({ hasAccounts: false, agentName: "Codex" });
     const na = menuItem(copyText("history.resume.noAccounts", { agent: "Codex" }))!;
     expect((na as HTMLButtonElement).disabled).toBe(true);
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));

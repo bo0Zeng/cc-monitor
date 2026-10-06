@@ -32,7 +32,8 @@ import { UnrenderedRanges } from "../render-window";
 // 查看器接骨架：与实时 tab **同一个** `SkeletonView`（占位 ＋ 只物化可见区）。
 import { SkeletonView, ledgerFromIndex } from "../skeleton-view";
 import { findInSession, readSessionIndex, type SessionIndexResult } from "../session-reads";
-import { readWholeSession } from "../record-reads";
+import { readLines, readWholeSession } from "../record-reads";
+import { followSession, type FollowEvent } from "../events";
 import { attachBranchButton } from "../branch-button";
 import { runForkFlow } from "../fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
 import type { BranchResult } from "../session-writes";
@@ -176,6 +177,27 @@ export interface ViewerOptions {
    * 对子 agent jsonl 建分支会产出残缺/无归属会话，故 F77 传 true 关掉该可操作面。
    */
   suppressBranch?: boolean;
+  /**
+   * 跟着这个会话长（在跑的会话；与独立查看窗同一条订阅 `session-lines/<sid>`）：先订、再读，读完之后流里来的接在后面。
+   * `live` = 打开那一刻它在不在跑（之后跟流里的起停）；`onLive` = 起了 / 结束了（宿主据此换头上的按钮）。
+   */
+  follow?: { sid: string; live: boolean; onLive?: (live: boolean) => void };
+  /** 底一行怎么说（缺 ⇒ `{n} 条` / `{n} 条 · 上翻加载更早` / `运行中 · 实时`）。 */
+  statusOf?: (s: ViewerStatus) => string;
+}
+
+/** 底一行要说的几件事。`following` = 真订着那一条流、那台看得见。 */
+export interface ViewerStatus {
+  n: number;
+  more: boolean;
+  live: boolean;
+  following: boolean;
+}
+
+/** 历史页里那一个查看器的底一行。 */
+function pageStatus(s: ViewerStatus): string {
+  if (s.live && s.following) return copyText("sessionViewer.status.live");
+  return s.more ? copyText("sessionViewer.status.more", { n: s.n }) : copyText("sessionViewer.status.all", { n: s.n });
 }
 
 const TAIL_INITIAL = 150; // 首屏渲染的末尾条数(实测 37MB 全量 65s → 首屏 1.1s)
@@ -203,8 +225,18 @@ function brokenCard(p: JsonlLinePayload, err: unknown): HTMLElement {
   return card;
 }
 
+/** 独立查看窗那一形：头由窗口的细顶栏担（这里不画）；「你说过的话」是左边一栏；底一行写进窗口的状态栏 `foot`。 */
+export interface ViewerShape {
+  window?: { foot: HTMLElement };
+}
+
 export class SessionViewer {
   private root: HTMLElement;
+  private shape: ViewerShape;
+  /** 窗口那一形的左栏与它的组名（`你说过的话 · N`）。 */
+  private sideBody: HTMLElement | null = null;
+  private sideHead: HTMLElement | null = null;
+  private toolsEl!: HTMLElement;
   private streamEl!: HTMLElement;
   private stream: MessageStream | null = null;
   // Batch13-F39:尾部优先增量渲染状态(load 时重建)
@@ -251,9 +283,30 @@ export class SessionViewer {
   private outlineWhere: { origin: string; jsonlPath: string } | null = null;
   /** 会话内查找：工具行的框 ＋ 框下就地展开的命中清单（主窗口的会话内查找复用同一个，`find-strip.ts`）。 */
   private find!: FindStrip;
+  /** 跟着长那一条订阅（`null` = 没在跟）。 */
+  private followSub: { stop(): void } | null = null;
+  /** 读完之前流里先来的行（读完再按 `seq` 接上）。 */
+  private followBuf: JsonlLinePayload[] = [];
+  private loaded = false;
+  private live = false;
+  private following = false;
+  private statusOf: (s: ViewerStatus) => string = pageStatus;
+  private onLive: ((live: boolean) => void) | undefined;
+  /** 「↓ 新内容」：不在底部时来了新内容 ⇒ 出；点它或滚回底部 ⇒ 收。 */
+  private newPill!: HTMLButtonElement;
+  private opts: ViewerOptions | null = null;
   // 「← 返回历史」那颗删了：历史页右边就地看（设计稿「文件与历史」乙4-④），列表一直在左边。
-  constructor() {
+  constructor(shape: ViewerShape = {}) {
+    this.shape = shape;
     this.root = this.build();
+  }
+
+  /** 窗口那一形：收起 / 展开左边「你说过的话」那一栏（窄于 760 默认收着）。 */
+  toggleSide(): void {
+    const body = this.sideBody;
+    if (!body) return;
+    const shown = body.dataset.side === "open" || (body.dataset.side !== "closed" && window.innerWidth >= 760);
+    body.dataset.side = shown ? "closed" : "open";
   }
 
   get element(): HTMLElement {
@@ -307,6 +360,23 @@ export class SessionViewer {
     this.disposeStream();
     this.outlineWhere = { origin: opts.origin, jsonlPath: opts.jsonlPath };
     const gen = ++this.loadGeneration;
+    this.opts = opts;
+    this.statusOf = opts.statusOf ?? pageStatus;
+    this.onLive = opts.follow?.onLive;
+    this.live = opts.follow?.live ?? false;
+    this.loaded = false;
+    this.followBuf = [];
+    this.showNewPill(false);
+    // 先订、再读：读的这段时间里写出来的行在流里等着，读完按 `seq` 接上（一行都不漏、重叠的去重）。
+    if (opts.follow) {
+      const sub = await followSession(opts.origin, opts.follow.sid, (e) => this.onFollow(gen, e));
+      if (this.loadGeneration !== gen) {
+        sub.stop();
+        return;
+      }
+      this.followSub = sub;
+      this.following = true;
+    }
     this.streamEl.replaceChildren();
     this.stream = new MessageStream(this.streamEl);
     this.turnFold = new TurnFold(this.stream.contentElement, this.streamEl, () => this.outlineWhere);
@@ -423,6 +493,11 @@ export class SessionViewer {
       requestAnimationFrame(() => void this.maybeFillAbove());
       // 索引到了就接骨架（首屏已经在了，不等它）
       void indexP.then((res) => this.attachSkeleton(gen, res));
+      // 读的这段时间里流里先来的行接上（重叠的按 `seq` 去掉）。
+      this.loaded = true;
+      const early = this.followBuf;
+      this.followBuf = [];
+      if (early.length > 0) this.appendLive(early);
     } catch (e) {
       if (this.loadGeneration !== gen) return;
       this.setLoading(false);
@@ -501,15 +576,7 @@ export class SessionViewer {
     this.stream.batchInsert(() => {
       for (let i = from; i < to; i++) {
         if (!this.unrendered!.contains(i)) continue; // 已渲染(岛重叠)跳过
-        const p = this.payloads[i];
-        try {
-          renderStreamRecord(p, this.renderCtx!, this.renderSink!);
-        } catch (err) {
-          // 显示不了 ⇒ 卡位上画「这一条显示不了」［复制详情］，原因进日志（不在状态行报数，R2-2-3）。
-          console.error("[session-viewer] renderStreamRecord 抛错", p, err);
-          const tl = this.renderSink!.timeline;
-          if (!tl.has(p.seq)) tl.insert({ seq: p.seq, element: brokenCard(p, err), kind: "card" });
-        }
+        this.renderOne(this.payloads[i]);
       }
     });
     this.unrendered.markRendered(from, to);
@@ -521,6 +588,17 @@ export class SessionViewer {
       for (const el of reconcilePendingToolResults(this.renderCtx)) {
         this.renderSink?.timeline.removeByElement(el);
       }
+    }
+  }
+
+  /** 画一条；显示不了 ⇒ 卡位上画「这一条显示不了」［复制详情］，原因进日志（不在状态行报数）。 */
+  private renderOne(p: JsonlLinePayload): void {
+    try {
+      renderStreamRecord(p, this.renderCtx!, this.renderSink!);
+    } catch (err) {
+      console.error("[session-viewer] renderStreamRecord 抛错", p, err);
+      const tl = this.renderSink!.timeline;
+      if (!tl.has(p.seq)) tl.insert({ seq: p.seq, element: brokenCard(p, err), kind: "card" });
     }
   }
 
@@ -579,9 +657,98 @@ export class SessionViewer {
     const fillable = this.unrendered
       ? this.unrendered.gapAbove(this.unrendered.lowestRenderedIdx()) !== null
       : false;
-    this.statusEl.textContent = fillable
-      ? copyText("sessionViewer.status.more", { n: total })
-      : copyText("sessionViewer.status.all", { n: total });
+    this.statusEl.textContent = this.statusOf({ n: total, more: fillable, live: this.live, following: this.following && this.followSub !== null });
+  }
+
+  // ==== 跟着长（在跑的会话） ====
+
+  /** 流里那一个会话的事（换了会话之后迟到的不认）。 */
+  private onFollow(gen: number, e: FollowEvent): void {
+    if (this.loadGeneration !== gen) return;
+    if (e.t === "lines") {
+      if (this.loaded) this.appendLive(e.lines);
+      else this.followBuf.push(...e.lines);
+    } else if (e.t === "gap") {
+      if (this.loaded) void this.catchUp(gen);
+    } else if (e.t === "live") {
+      if (this.live === e.live) return;
+      this.live = e.live;
+      if (this.loaded) this.updateStatus(this.payloads.length);
+      this.onLive?.(e.live);
+    } else {
+      this.following = e.seen;
+      if (this.loaded) this.updateStatus(this.payloads.length);
+      // 又看得见了 ⇒ 看不见那段时间里写出来的按行号补上。
+      if (e.seen && this.loaded) void this.catchUp(gen);
+    }
+  }
+
+  /** 已经有的最后一行的行号（没有 ⇒ -1）。 */
+  private lastSeq(): number {
+    return this.payloads.length > 0 ? this.payloads[this.payloads.length - 1].seq : -1;
+  }
+
+  /** 流里丢了行 / 断过 ⇒ 从已有的最后一行之后按行号读到末尾，接上。 */
+  private async catchUp(gen: number): Promise<void> {
+    const o = this.opts;
+    if (!o) return;
+    let from = this.lastSeq() + 1;
+    try {
+      for (;;) {
+        const page = await readLines(o.origin, o.jsonlPath, from, undefined, 15_000);
+        if (this.loadGeneration !== gen || !this.stream) return;
+        if (page.payloads.length > 0) this.appendLive(page.payloads);
+        if (page.eof || page.next <= from) return;
+        from = page.next;
+      }
+    } catch (e) {
+      console.warn("[session-viewer] 跟着长：补行没读到", e);
+    }
+  }
+
+  /**
+   * 新来的几行接在后面（`seq` 不比已有的最后一行大的去掉）：逐条画、配对工具结果、重折；
+   * 在底部 ⇒ 跟着贴底（`MessageStream` 自己贴）；往上翻了 ⇒ 不拽人，出「↓ 新内容」。
+   */
+  private appendLive(lines: JsonlLinePayload[]): void {
+    if (!this.stream || !this.renderCtx || !this.renderSink) return;
+    let last = this.lastSeq();
+    const fresh = [...lines].sort((a, b) => a.seq - b.seq).filter((p) => (p.seq > last ? ((last = p.seq), true) : false));
+    if (fresh.length === 0) return;
+    const atBottom = this.stream.stuckToBottom;
+    const meta: MetaSink = {
+      onBranchRecord: (br) => this.branchRecords.push(br),
+      onQueueOperation: (content) => this.folder?.addQueuedContent(content),
+      onTitleUpdate: () => {},
+    };
+    this.folder?.unwrapAll();
+    this.stream.batchInsert(() => {
+      for (const p of fresh) {
+        try {
+          routeMetaAndBranch(p, meta);
+        } catch (err) {
+          console.warn("[session-viewer] 跟着长：单条收集异常(跳过):", err);
+        }
+        this.payloads.push(p);
+        const u = (p.message as { uuid?: string }).uuid;
+        if (u) this.uuidToIdx.set(u, this.payloads.length - 1);
+        this.renderOne(p);
+      }
+    });
+    if (this.renderCtx) {
+      for (const el of reconcilePendingToolResults(this.renderCtx)) this.renderSink?.timeline.removeByElement(el);
+    }
+    this.rebuildFold();
+    const total = this.payloads.length;
+    this.countEl.textContent = copyText("sessionViewer.head.count", { n: total });
+    this.updateStatus(total);
+    this.rebuildUserInputs();
+    void this.turnFold?.refresh();
+    if (!atBottom) this.showNewPill(true);
+  }
+
+  private showNewPill(on: boolean): void {
+    if (this.newPill) this.newPill.hidden = !on;
   }
 
   /** R1:触发判定——不足一屏(无滚动条,事件永远不来)或滚近顶部 */
@@ -692,6 +859,7 @@ export class SessionViewer {
   /** 工具行那颗按钮跟着清单走：`你说过的话 · {n}`；0 条 / 要不到 ⇒ 灰着（原因挂在悬停上，同 `UserInputPanel` 的口径）。 */
   private syncSaid(): void {
     const n = this.said.panel.children.length;
+    if (this.sideHead) this.sideHead.textContent = n > 0 ? copyText("sessionViewer.tools.said", { n }) : copyText("sessionViewer.tools.saidNone");
     // 宽档写全（`你说过的话 · 12`）；中档、窄档只剩数字（图标在前面，乙4-⑧）。
     const full = document.createElement("span");
     full.className = sv.svSaidFull;
@@ -708,6 +876,7 @@ export class SessionViewer {
 
   /** 开「你说过的话」浮层（再点一次 ⇒ 收）：当前读到的那一句高亮、滚到它。清单平时收在查看器里（`saidHold`），浮层关了就回去。 */
   private openSaid(): void {
+    if (this.sideBody) return; // 窗口那一形：清单常在左边一栏
     const cur = this.currentSaid();
     for (const row of this.said.panel.querySelectorAll<HTMLElement>(".user-input-row")) {
       if (row === cur) row.setAttribute("aria-current", "true");
@@ -743,8 +912,9 @@ export class SessionViewer {
     return cur;
   }
 
-  /** Ctrl+F（动作 `session.find`）落在查看器上：焦点进查找框、全选。 */
+  /** Ctrl+F（动作 `session.find`）落在查看器上：焦点进查找框、全选（窗口那一形平时不露工具行，这时露出来）。 */
   openFind(): void {
+    this.toolsEl.hidden = false;
     this.find.focus();
   }
 
@@ -754,6 +924,11 @@ export class SessionViewer {
   }
 
   private disposeStream(): void {
+    this.followSub?.stop();
+    this.followSub = null;
+    this.following = false;
+    this.followBuf = [];
+    this.loaded = false;
     this.streamEl?.removeEventListener("scroll", this.onScrollFill);
     if (this.turnFold) {
       this.streamEl.removeEventListener("scroll", this.turnFold.releaseOnScroll);
@@ -828,6 +1003,7 @@ export class SessionViewer {
     // 工具行：「你说过的话 · N ▾」（浮层列出清单，点一句跳过去）· 会话内查找（Ctrl+F）。大纲只这一处（新-H10）。
     const tools = document.createElement("div");
     tools.className = sv.svTools;
+    this.toolsEl = tools;
     this.said = new UserInputPanel({
       jumpTo: (uuid) => {
         closePopover();
@@ -884,12 +1060,82 @@ export class SessionViewer {
     this.streamEl = document.createElement("div");
     this.streamEl.className = "stream session-viewer-stream";
     view.appendChild(this.streamEl);
+    // 滚回底部 ⇒「↓ 新内容」收起（贴底与否由 `MessageStream` 按滚动判）。
+    this.streamEl.addEventListener(
+      "scroll",
+      () => {
+        if (this.stream?.stuckToBottom) this.showNewPill(false);
+      },
+      { passive: true },
+    );
+
+    // 「↓ 新内容」：浮在消息流底边的正中（零高的一行，按钮往上浮）。
+    const pillRow = document.createElement("div");
+    pillRow.className = sv.svPillRow;
+    this.newPill = button({
+      label: copyText("sessionViewer.stream.newContent"),
+      icon: "arrowDown",
+      size: "compact",
+      onClick: () => {
+        this.stream?.scrollToBottom();
+        this.showNewPill(false);
+      },
+    });
+    this.newPill.classList.add(sv.svPill);
+    this.newPill.dataset.role = "new-content";
+    this.newPill.hidden = true;
+    pillRow.appendChild(this.newPill);
+    view.appendChild(pillRow);
 
     this.statusEl = document.createElement("div");
     this.statusEl.className = sv.svFoot;
     this.statusEl.dataset.role = "status";
     view.appendChild(this.statusEl);
 
+    if (this.shape.window) this.reshapeForWindow(view, head, tools, pillRow, this.shape.window.foot);
     return view;
+  }
+
+  /**
+   * 窗口那一形：头不画（窗口的细顶栏担）；工具行平时收着（Ctrl+F 才露）；「你说过的话」常在左边一栏（当前读到的那句高亮）；
+   * 底一行写进窗口的状态栏。
+   */
+  private reshapeForWindow(view: HTMLElement, head: HTMLElement, tools: HTMLElement, pillRow: HTMLElement, foot: HTMLElement): void {
+    head.hidden = true;
+    tools.hidden = true;
+    this.saidBtn.remove();
+    const body = document.createElement("div");
+    body.className = sv.svWinBody;
+    const side = document.createElement("aside");
+    side.className = sv.svSide;
+    side.dataset.role = "side";
+    const sideHead = document.createElement("div");
+    sideHead.className = sv.svSideHead;
+    side.append(sideHead, this.said.panel);
+    this.showSaidPanel(true);
+    const main = document.createElement("div");
+    main.className = sv.svWinMain;
+    main.append(this.bannerEl, tools, this.find.strip, this.loadingEl, this.streamEl, pillRow);
+    body.append(side, main);
+    this.statusEl.remove();
+    foot.replaceChildren();
+    foot.dataset.role = "status";
+    this.statusEl = foot;
+    view.appendChild(body);
+    this.sideBody = body;
+    this.sideHead = sideHead;
+    this.syncSaid();
+    // 读到哪一句：滚动时把视口顶上那一句之前最近的一句标成当前。
+    this.streamEl.addEventListener(
+      "scroll",
+      () => {
+        const cur = this.currentSaid();
+        for (const row of this.said.panel.querySelectorAll<HTMLElement>(".user-input-row")) {
+          if (row === cur) row.setAttribute("aria-current", "true");
+          else row.removeAttribute("aria-current");
+        }
+      },
+      { passive: true },
+    );
   }
 }

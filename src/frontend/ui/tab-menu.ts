@@ -1,7 +1,7 @@
 /**
  * 〔拆 `tabs.ts` ⑤〕**右键一个 tab，菜单里放哪几项** —— 以及那几格要异步就绪的项怎么就绪。
  *
- * 在新窗口打开 · 加入 / 移出集合 · 固定 · Resume（容器 × 账号 flyout）· 关闭标签 · Attach · 预览 ·
+ * 在新窗口打开 · 加入 / 移出集合 · 固定 · 恢复 ▸（与历史页「恢复 ▾」同一个组件）· 关闭标签 · Attach · 预览 ·
  * 杀死会话 · 就地 resume · 换号重启。在 tmux 里那几项（Attach · 预览 · 杀死 · 就地 resume）亮不亮、写哪个名字问那台后端（`sessions-where`）。项怎么画、菜单怎么开关住 `tab-context-menu.ts`；
  * 点下去真正做事的住 `tab-session-actions.ts`（本文件直接调它，不经 `TabManager` 转一手）。
  *
@@ -20,12 +20,10 @@ import {
   type TabCollection,
 } from "./tab-collections";
 import { sayCollectionRefusal } from "./tab-bar-prefs";
-import { resumeMenuItems } from "./resume-menu";
-import {
-  enumerateAccountModifiers,
-  type AccountModifierOption,
-  type NamedAccountModifier,
-} from "./launch-menu";
+import { defaultPick, resumeAccounts, resumeMenuItems, type ResumeAccounts, type ResumePick } from "./resume-menu";
+import { newSessionIn } from "./new-session-in";
+import { askOf } from "./launch-account";
+import { enumerateAccountModifiers, type NamedAccountModifier } from "./launch-menu";
 import { runRemoteAttach } from "./remote-launch-run";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
 import { ACTIVE_AGENT } from "./agent-profile";
@@ -150,18 +148,8 @@ export class TabMenu {
       const why = copyText("sessionState.unseen.tooltip");
       items.push({ label: copyText("tabMenu.item.greyed", { label, why }), enabled: false, title: why, onClick: () => {} });
     } else if (t && canResume(t.state)) {
-      if (isRemoteOrigin(t.origin)) {
-        items.push({
-          id: "resume",
-          label: copyText("tabMenu.item.resume"),
-          submenu: this.buildResumeSubmenu(sid, []),
-        });
-      } else {
-        items.push({
-          label: copyText("tabMenu.item.resume"),
-          onClick: () => void this.actions.resumeTab(sid),
-        });
-      }
+      // 恢复 ▸：与历史页「恢复 ▾」同一个组件（`resume-menu.ts`）；账号那一组等那台的号到了再换上（`appendAccountMenuItems`）。
+      items.push({ id: "resume", label: copyText("tabMenu.item.resume"), submenu: this.buildResumeSubmenu(sid, { kind: "off" }) });
     }
     // 关闭：已结束 · 记录没了 · 说不清（窄窗里那颗 × 看不见，这一项不靠它）。说不清的悬停说它若还在跑、连上那台之后会回来。
     if (t && isResumeOnly(t.state)) {
@@ -213,14 +201,17 @@ export class TabMenu {
   }
 
   /**
-   * 会话头 / 「需要你」钉条的［恢复 ▾］：只开恢复那几项（本机一项；远端照右键那份子菜单：容器 × 账号）。
+   * 会话头 / 「需要你」钉条的［恢复 ▾］：只开恢复那几项（与右键「恢复 ▸」同一份：恢复 · 账号 · 运行于 · 在此目录新建会话；号到了再开）。
    */
   openResumeMenu(anchor: HTMLElement, sid: string): void {
     const t = this.host.tab(sid);
     if (!t || !canResume(t.state)) return;
-    if (isRemoteOrigin(t.origin)) openMenu({ el: anchor, align: "end" }, this.buildResumeSubmenu(sid, []).map((i) => gateByOffer(t.origin, i)));
-    else openMenu({ el: anchor, align: "end" }, [{ label: copyText("tabMenu.item.resume"), onClick: () => void this.actions.resumeTab(sid) }]);
+    void this.resumeAccountsOf(t.origin).then((accounts) => {
+      if (anchor.isConnected) openMenu({ el: anchor, align: "end" }, this.buildResumeSubmenu(sid, accounts).map((i) => gateByOffer(t.origin, i)));
+    });
   }
+
+
 
   /**
    * 会话头 / 钉条的［在终端里打开］（远端、在 tmux 里）：问那台这个会话在哪个 tmux 会话里，接上第一个（命中多个照右键那条说出来）；
@@ -323,18 +314,36 @@ export class TabMenu {
       : { id: "kill", label: copyText("tabMenu.kill.named", { name }), danger: true, onClick: () => this.actions.killInTmux(LOCAL_ORIGIN, sid, name) }));
   }
 
+  /** 每个标签页「恢复 ▸」里勾着的那一组（本窗开着时记）。 */
+  private resumePicks = new Map<string, ResumePick>();
+
+  /** 那台的号 ⇒ 恢复菜单的账号组（标签页里的会话都是流跟的那一家）。 */
+  private resumeAccountsOf(origin: Origin): Promise<ResumeAccounts> {
+    return resumeAccounts(origin, ACTIVE_AGENT, { hasAccounts: true, agentName: ACTIVE_AGENT });
+  }
+
   /**
-   * F09：给「Resume」一级菜单项造 flyout——顶层 tmux/直连两项跟随默认账号（sticky pin，同旧版
-   * plain「Resume（tmux/直连）」逐字节保持）；若传入 `accountGroup`（异步账号数据已就绪），
-   * 追加基座与每个可选账号入口，各自再嵌一层 tmux/直连子选择——账号×容器真正正交（此前
-   * `resumeTabTmux` 不支持显式账号，是本功能顺带补上的实现缺口，见 §0/features/
-   * F09-ui-convergence.md「实现期修正」）。
+   * 「恢复 ▸」那一层：最上面一行「恢复」按勾着的那一组起（标签页没有主按钮）；账号 · 运行于两组单选；在此目录新建会话。
+   * 起法还是标签页这边那几条：tmux ⇒ 那台在 tmux 里起再接进去（本机同一条）；不用 tmux ⇒ 直接恢复。
    */
-  private buildResumeSubmenu(sid: string, accountOptions: AccountModifierOption[]): MenuItem[] {
-    // 选项怎么摆住 `resume-menu.ts`（历史页「恢复 ▾」同一个组件）；选了之后起会话还是标签页这边的那两条路。
-    return resumeMenuItems(accountOptions, (p) =>
-      void (p.tmux ? this.actions.resumeTabTmux(sid, p.account, p.useBase) : this.actions.resumeTab(sid, p.account, p.useBase)),
-    );
+  private buildResumeSubmenu(sid: string, accounts: ResumeAccounts): MenuItem[] {
+    let pick = this.resumePicks.get(sid);
+    if (!pick) this.resumePicks.set(sid, (pick = defaultPick()));
+    const t = this.host.tab(sid);
+    const dir = t?.projectDir ?? "";
+    return resumeMenuItems({
+      accounts,
+      pick,
+      run: (p) => void this.runResume(sid, p),
+      newInDir: t && dir ? () => void newSessionIn(isLocalOrigin(t.origin) ? undefined : t.origin, dir, ACTIVE_AGENT) : undefined,
+    });
+  }
+
+  private runResume(sid: string, p: ResumePick): Promise<void> {
+    const t = this.host.tab(sid);
+    if (!t) return Promise.resolve();
+    if (!p.tmux) return this.actions.resumeTab(sid, p.account, p.useBase);
+    return isLocalOrigin(t.origin) ? this.actions.resumeLocalInTmux(sid, askOf(p.account, p.useBase)) : this.actions.resumeTabTmux(sid, p.account, p.useBase);
   }
 
   /** F09：给「Restart」一级菜单项造 flyout——重启没有容器轴（对齐 §0 Plan agent 共识：restart
@@ -382,20 +391,16 @@ export class TabMenu {
     // 说不清的两样都不给（会话也许还在跑）。
     if (state.liveness === "unseen") return;
     const resumeOnly = isResumeOnly(state);
-    // 本机已结束的 tab 不带账号选择（本机 Resume 跟随那条会话上次的号，本机后端判）
-    // ⇒ 本机只进下面「换号重启」那一支。
-    if (isLocalOrigin(origin) && resumeOnly) return;
     const gen = menuGeneration(); // 捕获这一代菜单
-    const accountOptions = await enumerateAccountModifiers(origin);
-    if (gen !== menuGeneration()) return; // 菜单已换/已关
     if (resumeOnly) {
-      updateMenuItem("resume", {
-        id: "resume",
-        label: copyText("tabMenu.item.resume"),
-        submenu: this.buildResumeSubmenu(sid, accountOptions),
-      });
+      // 恢复 ▸ 的账号组（本机远端同一个组件）：那台的号到了换上。
+      const accounts = await this.resumeAccountsOf(origin);
+      if (gen !== menuGeneration() || accounts.kind === "off") return;
+      updateMenuItem("resume", { id: "resume", label: copyText("tabMenu.item.resume"), submenu: this.buildResumeSubmenu(sid, accounts) });
       return;
     }
+    const accountOptions = await enumerateAccountModifiers(origin);
+    if (gen !== menuGeneration()) return; // 菜单已换/已关
     // 活会话重启：旧版阈值——只在 ≥2 个可选具名账号（`kind === "account"`）时才提供，
     // 从不给基座（restart 面对的是已在某账号下运行的活会话，不是待迁移的老会话）。
     // R05：判别联合让"排除基座"变成类型收窄，`realAccounts` 因此是 `NamedAccountModifier[]`

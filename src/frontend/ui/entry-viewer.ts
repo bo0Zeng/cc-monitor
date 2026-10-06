@@ -1,26 +1,42 @@
 /**
- * **独立只读窗**的入口（`viewer.html?viewer=<sid>&origin=<机器>` 加载它）。：只含 tab 管理 ＋ 渲染栈。
+ * **独立查看窗**的入口（`viewer.html?viewer=<sid>&origin=<机器>` 加载它）：按会话 ID 开任意一个会话（在跑的跟着长，已结束的也开得了）。
  *
- * 🔴 本窗的模块图里**没有**设置面板 / 历史 / SFTP / 命令栏 —— 判据是
- * `tests/frontend/ui/entry-graphs.vitest.ts`（真跑 `vite build`，对本入口 chunk 的传递闭包做零命中断言），
- * 同一条还反过来钉住「tab 管理与渲染栈**确实在**」，免得零命中是因为整张图空了。
+ * 外壳：细顶栏（收起 / 展开「你说过的话」· `{项目} › {标题}` · 在跑徽标 ｜［恢复 ▾］或［切过去］· 打开目录 · Windows 上在跑的多「切到终端」）·
+ * 左侧「你说过的话」一栏 ＋ 消息流（与历史页右边同一个只读查看器、同一套卡）· 细状态栏 `只读 · {n} 条 · 实时` / `只读 · {n} 条 · 已结束`。
+ * 系统标题 `{会话标题} · {状态} · {项目}`（远端再加 `· {机器}`），状态变了跟着改。`Esc` 不关窗。
  *
- * 原先它加载 `index.html?viewer=<sid>`，由 `main.ts` 在 DOMContentLoaded 里分叉。
+ * 这一行的事实（标题 · 项目 · 记录在哪 · 在不在跑 · 能做什么）问那台的 `history-list`（`sid` 那一形：只要这一个会话）；
+ * 内容按记录读、在跑的订 `session-lines/<sid>` 跟着长（`SessionViewer` 的 `follow`）。
+ *
+ * 🔴 本窗的模块图里**没有**设置面板 / 历史页 / 命令栏 —— 判据是 `tests/frontend/ui/entry-graphs.vitest.ts`。
  */
 import "./entry-common"; // 全局错误捕获（模块副作用）
 import { installGlobalClickDelegation } from "./entry-render-common";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { emit } from "@tauri-apps/api/event";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
-import { basename } from "./format"; // F09：复用已测纯函数（去 main.ts 内联 basename 盲区；随老面板退役从 sftp/paths 搬来）
-import { bindEvents } from "./events";
-import { TabManager } from "./tabs";
-import { terminalFrontAvailable } from "./terminal-front";
 import { loadTheme } from "./theme";
 import { bindErrorToast } from "./backend-errors";
 import { dispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
-import { turnEndNotifier } from "./turn-notify";
 import { copyText } from "./copy-table";
+import { fetchList, type HistoryRow } from "./history-list-reads";
+import { SessionViewer } from "./views/session-viewer";
+import { button, setBusy, setDisabled } from "./kit/button";
+import { tag } from "./kit/badge";
+import { banner } from "./kit/banner";
+import { icon } from "./kit/icon";
+import { splitButton } from "./kit/split-button";
+import { defaultPick, resumeAccounts, resumeHint, resumeMenuItems, type ResumeAccounts, type ResumePick } from "./resume-menu";
+import { resumeHistoryRow } from "./history-resume";
+import { askOf, FOLLOW, type AccountAsk } from "./launch-account";
+import { newSessionIn } from "./new-session-in";
+import { revealInFolder } from "./reveal-in-folder";
+import { terminalFrontAvailable } from "./terminal-front";
+import { bringRemoteTerminalToFront, bringTerminalToFront } from "./tab-session-actions";
+import { startInTmuxThenAttach } from "./tmux-resume";
+import { SWITCH_TO_SESSION_EVENT } from "./window-events";
+import { windowStatus, windowTitle } from "./viewer-window-text";
 
 // Vite HMR：任何热更新一律整页重载（理由见 `main.ts` 同名那段）。
 if (import.meta.hot) {
@@ -30,95 +46,47 @@ if (import.meta.hot) {
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
-  // 主题尽早应用，避免渲染抖动
   await loadTheme();
-  const sid = new URLSearchParams(location.search).get("viewer");
+  const q = new URLSearchParams(location.search);
+  const sid = q.get("viewer");
+  const status = document.getElementById("status-bar");
   if (!sid) {
-    // 没带 sid 就没有东西可镜像。原先这种 URL 会落回主窗口的整套 bootstrap；
-    // 拆开之后本窗口没有那一套，如实说出来而不是白屏。
-    const status = document.getElementById("status-bar");
     if (status) status.textContent = copyText("entryViewer.module.missingParam");
     return;
   }
-  // 这个会话在哪台机器上（会话流 `subscribe(origin, kind)` 的寻址键）。缺 ⇒ 本机（旧的开窗 URL 只带 sid）。
-  const rawOrigin = new URLSearchParams(location.search).get("origin");
+  // 这个会话在哪台机器上（`history-list` 与会话流的寻址键）。缺 ⇒ 本机。
+  const rawOrigin = q.get("origin");
   const origin: Origin = rawOrigin === null || rawOrigin === "" || isLocalOrigin(rawOrigin) ? LOCAL_ORIGIN : rawOrigin;
   await bootstrapViewer(sid, origin);
 });
 
-/**
- * issue #10：独立只读窗口的精简 bootstrap。
- *
- * 复用 TabManager（按 confirmed 架构）但只喂该 sid 的事件、隐藏全部 chrome
- * （tab 栏 / 设置 / 历史，由 `body.viewer-mode` CSS 控制）→ 自动继承分支折叠 /
- * 启动滚动消抖 / tool-group 合并 等全部渲染能力。
- *
- * 数据：订一条会话流 `session-lines/<sid>`（通道 `subscribe`，只要这一个会话）——
- * 留存由这条订阅当场交、之后的实时行接着交（与主窗口同一个 seq 空间）。原来的定向重放命令
- * （`replay_session_to_window`〔散文墓碑〕）与实时广播事件一起退役。重叠由 `seen` set 按 seq 去重。
- * **不发 `frontend-ready`** —— 那是主窗口那几条整台机器的订阅的就绪点。
- */
 async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
   document.body.classList.add("viewer-mode");
-  // Batch14-F42：viewer 是独立 webview（自带一份 notifier 单例）且广播行照收——
-  // 只让主窗口发通知，否则重复通知 + "用户正聚焦 viewer"时主窗口误发。
-  turnEndNotifier.disable();
-  const tabBar = document.getElementById("tab-bar");
+  const app = document.getElementById("app");
   const streamRoot = document.getElementById("message-stream");
-  const status = document.getElementById("status-bar");
-  if (!tabBar || !streamRoot || !status) {
+  const statusEl = document.getElementById("status-bar");
+  if (!app || !streamRoot || !statusEl) {
     console.error("viewer: layout containers missing");
     return;
   }
-
-  status.innerHTML = "";
-  const statusMsg = document.createElement("span");
-  statusMsg.className = "status-msg";
-  statusMsg.textContent = copyText("entryViewer.bootstrapViewer.title");
-  status.appendChild(statusMsg);
-
-  const empty = document.createElement("div");
-  empty.className = "empty-state";
-  empty.textContent = copyText("entryViewer.bootstrapViewer.loading");
-  streamRoot.appendChild(empty);
-
-  // 复用 TabManager，过滤到本 sid；tab 栏由 .viewer-mode 隐藏。无 tasksPanel。
-  const tabs = new TabManager(tabBar, streamRoot, ({ total }) => {
-    empty.style.display = total > 0 ? "none" : "";
-  });
-  // Batch5-F19 R1：viewer 窗口共享 localStorage，禁写 last-active（防污染主窗口记忆）
-  tabs.persistLastActive = false;
-
-  // issue #10：slim 顶栏 —— 标题 + 调出终端 + 打开工作目录。按钮复用 TabManager 的
-  // bringActiveTerminalToFront / openActiveTabCwd（作用于其唯一的 active tab）。
-  const topbar = document.createElement("div");
-  topbar.className = "viewer-topbar";
-  const titleEl = document.createElement("span");
-  titleEl.className = "viewer-topbar-title";
-  titleEl.textContent = sid.slice(0, 8);
-  topbar.appendChild(titleEl);
-  const termBtn = document.createElement("button");
-  termBtn.type = "button";
-  termBtn.className = "viewer-topbar-btn";
-  termBtn.textContent = copyText("entryViewer.bootstrapViewer.terminal");
-  termBtn.title = copyText("entryViewer.bootstrapViewer.terminalHint");
-  termBtn.addEventListener("click", () => tabs.bringActiveTerminalToFront());
-  // ↗ 与 tab 上那颗同一道门（`terminal-front.ts`）：非 Windows 上最后一跳是桩、每点必败 ⇒ 不渲。
-  //   快捷键（下面的 `terminal.bring-front`）还够得到 `bringActiveTerminalToFront`，那里会说一句实话。
-  if (terminalFrontAvailable()) topbar.appendChild(termBtn);
-  const cwdBtn = document.createElement("button");
-  cwdBtn.type = "button";
-  cwdBtn.className = "viewer-topbar-btn";
-  cwdBtn.textContent = copyText("entryViewer.bootstrapViewer.cwd");
-  cwdBtn.title = copyText("entryViewer.bootstrapViewer.cwdHint");
-  cwdBtn.addEventListener("click", () => tabs.openActiveTabCwd());
-  topbar.appendChild(cwdBtn);
-  const appEl = document.getElementById("app");
-  appEl?.insertBefore(topbar, appEl.firstChild);
-
   installGlobalClickDelegation();
 
-  // 快捷键：最小化 + 真全屏 + issue #10 调出终端 / 打开 cwd（复用 tabs 的 active-tab 动作）。
+  // 细顶栏（`#app` 网格的 top 那一格）。
+  const topbar = document.createElement("div");
+  topbar.className = "viewer-topbar";
+  const sideBtn = button({ label: copyText("sessionViewer.tools.saidLabel"), kind: "icon", icon: "list", hint: copyText("sessionViewer.tools.saidLabel") });
+  sideBtn.dataset.role = "side";
+  const crumbs = document.createElement("div");
+  crumbs.className = "viewer-topbar-title";
+  const acts = document.createElement("div");
+  acts.className = "viewer-topbar-acts";
+  topbar.append(sideBtn, crumbs, acts);
+  app.insertBefore(topbar, app.firstChild);
+
+  const viewer = new SessionViewer({ window: { foot: statusEl } });
+  streamRoot.replaceChildren(viewer.element);
+  sideBtn.addEventListener("click", () => viewer.toggleSide());
+
   dispatcher.bind("app.minimize", () => void getCurrentWindow().minimize());
   dispatcher.bind("app.toggle-fullscreen", () => {
     const w = getCurrentWindow();
@@ -127,47 +95,153 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
       .then((f) => w.setFullscreen(!f))
       .catch((e) => console.warn("toggle-fullscreen failed:", e));
   });
-  dispatcher.bind("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
-  dispatcher.bind("tab.open-cwd", () => tabs.openActiveTabCwd());
-  dispatcher.bind("session.find", () => tabs.openFind()); // 独立窗口里的那一个 tab 也能 Ctrl+F
+  dispatcher.bind("session.find", () => viewer.openFind());
   dispatcher.applyOverrides(await getKeybindings());
   dispatcher.start();
-
-  // 顶栏标题：项目目录末段 —— 读 tab 上后端给的那一格（会话事实 / 宣告），不从行里猜（行上的 cwd 会漂进子目录）。
-  tabs.active.subscribe((a) => {
-    const base = a.projectDir ? basename(a.projectDir) : "";
-    if (base) titleEl.textContent = base;
-  });
-  // 留存与实时行可能重叠 → 按 per-file seq 去重。
-  const seen = new Set<number>();
-  // **必须 await**：会话流订阅登记好再往下走。
-  // 会话流的格由通道按窗口定向交（`chan.ts`）。原先那一项按窗口作用域监听的选项随 `bindEvents` 里最后的 Tauri 监听一起删了。
-  await bindEvents(
-    {
-      onLine: (e) => {
-        if (e.session_id !== sid) return;
-        if (seen.has(e.seq)) return;
-        seen.add(e.seq);
-        tabs.onLine(e);
-      },
-      onSessionEnded: (s) => {
-        if (s === sid) tabs.archiveTab(s);
-      },
-      // audit-fixes F03.2：本 sid 的 idle-tmux 灰灯，与主窗一致（免视图窗停留陈旧绿灯）。
-      onSessionIdle: (s) => {
-        if (s === sid) tabs.markTmuxIdle(s);
-      },
-      onSessionStarted: (s) => {
-        if (s === sid) tabs.reviveTab(s);
-      },
-      // 那台机器看不见了 ⇒ 说不清（与主窗一致，免视图窗停在陈旧的「活」）。机器级：落这台上的那一条。
-      onOriginUnseen: (o) => tabs.markOriginUnseen(o),
-      onBatchStart: () => tabs.onBatchStart(),
-      onBatchEnd: () => tabs.onBatchEnd(),
-      onStreamGap: (o) => tabs.onStreamGap(o),
-    },
-    { streams: [{ origin, kind: `session-lines/${sid}` }] },
-  );
-
   bindErrorToast();
+
+  let row: HistoryRow | null;
+  try {
+    const list = await fetchList(isLocalOrigin(origin) ? undefined : origin, { sid });
+    row = list.rows.find((r) => r.sessionId === sid) ?? null;
+  } catch (e) {
+    viewer.showBanner(banner("error", copyText("sessionViewer.load.failed", { why: String(e) }), []));
+    return;
+  }
+  if (!row) {
+    // 记录不在了（被删了 / 那台没有这个会话）：顶上一条，窗口照留。
+    viewer.showBanner(banner("warn", copyText("viewerWindow.record.gone"), []));
+    return;
+  }
+  const r = row;
+  let live: boolean | null = r.status === "live" ? true : r.status === "ended" ? false : null;
+  const win = getCurrentWindow();
+  const paint = (): void => {
+    void win.setTitle(windowTitle(r, live)).catch(() => {});
+    crumbs.replaceChildren(...crumbsOf(r, live === true));
+    acts.replaceChildren(...actionsOf(r, live === true, viewer));
+  };
+  paint();
+  await viewer.load({
+    jsonlPath: r.jsonlPath,
+    displayTitle: r.untitled ? copyText("history.row.untitled") : r.label,
+    origin,
+    cwd: r.projectPath,
+    suppressBranch: !r.can.fork,
+    statusOf: windowStatus,
+    follow: {
+      sid,
+      live: live === true,
+      onLive: (l) => {
+        live = l;
+        paint();
+      },
+    },
+  });
+}
+
+/** `{项目} › {标题}` ＋ 在跑的徽标。 */
+function crumbsOf(r: HistoryRow, live: boolean): Node[] {
+  const project = document.createElement("span");
+  project.className = "viewer-topbar-project";
+  project.textContent = r.projectName;
+  const sep = icon("caretRight", "compact");
+  const title = document.createElement("span");
+  title.className = "viewer-topbar-label";
+  title.textContent = r.untitled ? copyText("history.row.untitled") : r.label;
+  title.title = title.textContent;
+  const out: Node[] = [project, sep, title];
+  if (live) {
+    const b = tag(copyText("history.row.live"));
+    b.dataset.emph = "live";
+    out.push(b);
+  }
+  if (r.agentTag) out.push(tag(r.agentTag));
+  return out;
+}
+
+/** 右端：［恢复 ▾］或［切过去］· 打开目录（本机）· Windows 上在跑的「切到终端」。 */
+function actionsOf(r: HistoryRow, live: boolean, viewer: SessionViewer): HTMLElement[] {
+  const out: HTMLElement[] = [];
+  if (live) {
+    // 切过去：主窗口拉前、切到那个会话的标签页（窗口留着）。
+    out.push(
+      button({
+        label: copyText("history.row.switch"),
+        kind: "primary",
+        size: "compact",
+        hint: copyText("history.row.switchHint"),
+        onClick: () => void emit(SWITCH_TO_SESSION_EVENT, { sessionId: r.sessionId }).catch((e: unknown) => console.warn("[viewer] 交不给主窗口：", e)),
+      }),
+    );
+  } else {
+    out.push(resumeControl(r, viewer));
+  }
+  if (!r.origin && r.projectPath) {
+    out.push(button({ label: copyText("history.menu.openDir"), kind: "icon", icon: "folder", hint: copyText("history.menu.openDir"), onClick: () => void revealInFolder(r.projectPath) }));
+  }
+  if (live && terminalFrontAvailable()) {
+    const origin = r.origin ?? LOCAL_ORIGIN;
+    out.push(
+      button({
+        label: copyText("tabBarView.tab.terminalHint"),
+        kind: "icon",
+        icon: "front",
+        hint: copyText("tabBarView.tab.terminalHint"),
+        onClick: () =>
+          void (r.origin
+            ? bringRemoteTerminalToFront(origin, r.sessionId, () =>
+                void startInTmuxThenAttach({ origin, agent: r.agent, sid: r.sessionId, cwd: r.projectPath }, FOLLOW, { again: async () => {} }),
+              )
+            : bringTerminalToFront(r.sessionId)),
+      }),
+    );
+  }
+  return out;
+}
+
+/** ［恢复 ▾］：与历史页同一个组件；起了 ⇒ 主窗口那边等它出现（窗口留着）；没起 ⇒ 消息流上面一条错误条 ＋［重试］。 */
+function resumeControl(r: HistoryRow, viewer: SessionViewer): HTMLElement {
+  const pick: ResumePick = defaultPick();
+  let accounts: ResumeAccounts = !r.can.accounts
+    ? { kind: "none", agentName: r.agentTag ?? r.agent }
+    : r.lastAccount
+      ? { kind: "list", items: [{ name: r.lastAccount, label: r.lastAccount, quota: null, last: true }] }
+      : { kind: "off" };
+  // 选不了的号：那台不起、给替代 ⇒ 点了替代 ⇒ 带那个号再起一次（`again`）。
+  const go = async (account: AccountAsk = askOf(pick.account, pick.useBase)): Promise<void> => {
+    viewer.showBanner(null);
+    setBusy(sb.main, copyText("history.resume.busy"));
+    try {
+      await resumeHistoryRow(r, { tmux: pick.tmux, account }, (a) => go(a ?? account));
+    } catch (e) {
+      const said = copyText("history.resume.failed", { machine: r.origin ?? copyText("history.filter.local"), why: String(e) });
+      const retry = button({ label: copyText("history.group.retry"), size: "compact", onClick: () => void go(account) });
+      viewer.showBanner(banner("error", said, [retry]));
+    } finally {
+      setBusy(sb.main, null);
+    }
+  };
+  const sb = splitButton({
+    label: copyText("history.row.resume"),
+    hint: resumeHint(accounts, pick),
+    onClick: () => void go(),
+    moreLabel: copyText("history.resume.more"),
+    items: async () => {
+      accounts = await resumeAccounts(r.origin ?? LOCAL_ORIGIN, r.agent, { hasAccounts: r.can.accounts, agentName: r.agentTag ?? r.agent, last: r.lastAccount });
+      sb.main.title = resumeHint(accounts, pick);
+      return resumeMenuItems({
+        accounts,
+        pick,
+        onChange: (p) => (sb.main.title = resumeHint(accounts, p)),
+        newInDir: () => void newSessionIn(r.origin, r.projectPath, r.agent),
+      });
+    },
+  });
+  sb.root.dataset.role = "resume";
+  if (r.can.resume === "bg") {
+    setDisabled(sb.main, copyText("history.row.bgHint"));
+    setDisabled(sb.more, copyText("history.row.bgHint"));
+  }
+  return sb.root;
 }

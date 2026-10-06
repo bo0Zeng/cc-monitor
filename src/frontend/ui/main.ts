@@ -28,6 +28,7 @@ import { terminalFrontCommand } from "./terminal-front-command";
 import { loadTheme } from "./theme";
 import { SETTINGS_APPLIED_EVENT } from "./settings";
 import { RESYNC_DONE_EVENT } from "./settings/events";
+import { SWITCH_TO_SESSION_EVENT, type SwitchToSession } from "./window-events";
 import { listen } from "@tauri-apps/api/event";
 import { HistoryView } from "./views/history";
 import { CcBusView } from "./views/cc-bus-view";
@@ -407,6 +408,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   void listen<{ origin: string }>(RESYNC_DONE_EVENT, (e) => void tabs.flagPinsWithoutRecord(e.payload.origin));
   // 任何窗口起会话之后交过来的「等它」都在这里收（主窗口订着每台的会话流）。
   bindLaunchArrivals();
+  // 独立查看窗里点［切过去］⇒ 主窗口拉到前面、切到那个会话的标签页。
+  void listen<SwitchToSession>(SWITCH_TO_SESSION_EVENT, (e) => {
+    tabs.switchTo(e.payload.sessionId);
+    const w = getCurrentWindow();
+    void w.unminimize().then(() => w.setFocus()).catch(() => {});
+  });
   void listen(SETTINGS_APPLIED_EVENT, () => {
     void loadTheme(); // 主题：loadTheme 内部 applyTheme
     void getBehavior().then((b) => tabs.applyBehavior(b)); // 行为

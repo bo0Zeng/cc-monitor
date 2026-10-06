@@ -31,19 +31,12 @@ import { annotate, forgetAnnotation, historyReasonOf } from "../history-reads";
 import { fetchList, mergeByAt, mergeGroups, type HistoryGroup, type HistoryList, type HistoryRow } from "../history-list-reads";
 import { searchAllMachines, type SearchResult, type SessionHits } from "./history-search";
 import { SessionViewer, viewerPath, type ViewerHead } from "./session-viewer";
-import { resumeMenuItems } from "../resume-menu";
-import { enumerateAccountModifiers } from "../launch-menu";
-import { startInTmuxThenAttach } from "../tmux-resume";
+import { defaultPick, resumeAccounts, resumeHint, resumeMenuItems, type ResumeAccounts, type ResumePick } from "../resume-menu";
 import { deleteSession } from "../session-writes";
-import { resumeLocalSession } from "../local-resume";
-import { runRemoteResume, runNewSessionRemote } from "../remote-launch-run";
-import { resolveResumeCommand } from "../remote-config";
-import { configuredLauncherFor } from "../launch-requests";
-import { getBehavior } from "../behavior";
-import { askOf, FOLLOW, type AccountAsk } from "../launch-account";
-import { launchLocal } from "../launch-render";
-import { arrivedBody, expectArrival } from "../launch-arrival";
+import { askOf, type AccountAsk } from "../launch-account";
 import { revealInFolder } from "../reveal-in-folder";
+import { resumeHistoryRow } from "../history-resume";
+import { newSessionIn } from "../new-session-in";
 import { groupHead, hitsBlock, labelOf, machineTag, rowBadges, rowKey, sectionHead, sessionRow, strip, type RowHooks } from "./history-rows";
 import { sectionKey, sectionLabel, spanText } from "./history-time";
 import s from "./history.module.css";
@@ -114,6 +107,8 @@ export class HistoryView {
   private contentSeq = 0;
   private selected: string | null = null;
   private shown: string | null = null;
+  /** 每行「恢复 ▾」里勾着的那一组（只在这一页开着时记）。 */
+  private picks = new Map<string, ResumePick>();
   private previewTimer: ReturnType<typeof setTimeout> | null = null;
   private openForks = new Set<string>(safeGetJson<string[]>(LS_KEYS.historyExpandedForks) ?? []);
   private openGroups = new Set<string>();
@@ -161,6 +156,7 @@ export class HistoryView {
 
   close(): void {
     if (!this.isOpen) return;
+    this.picks.clear();
     this.seq++;
     this.contentSeq++;
     closePopover();
@@ -709,7 +705,7 @@ export class HistoryView {
             else this.openGroups.add(gk);
             this.renderNow();
           },
-          onNew: () => void this.newSessionIn(g.origin, g.projectPath, g.agent),
+          onNew: () => void newSessionIn(g.origin, g.projectPath, g.agent),
           onRetry: () => this.refresh(true, keyOf(g.origin)),
         }),
       );
@@ -886,6 +882,8 @@ export class HistoryView {
       cwd: r.projectPath,
       scrollToUuid: jumpTo,
       suppressBranch: !r.can.fork,
+      // 在跑的跟着长（与独立查看窗同一条订阅）；起了 / 结束了 ⇒ 重问那一台的清单（头上［切过去］／［恢复］跟着那台的判定换）。
+      follow: r.status === "live" ? { sid: r.sessionId, live: true, onLive: () => this.refresh(r.origin !== undefined, r.origin ?? "") } : undefined,
     });
   }
 
@@ -919,24 +917,19 @@ export class HistoryView {
   }
 
   /**
-   * 「恢复 ▾」（乙4-⑤）：主按钮 ＝ 默认那一种（上次的号 · 不用 tmux）；▾ ＝ 与标签页「恢复 ▸」同一套选项（`resume-menu.ts`）＋ 在此目录新建会话。
-   * 在跑的 ⇒［切过去］；分身会话 ⇒ 灰着说为什么。
+   * 「恢复 ▾」：主按钮按勾着的那一组起（默认：上次的号 · 不用 tmux；悬停说清用哪个号、进不进 tmux）；
+   * ▾ ＝ 与标签页「恢复 ▸」同一个组件（`resume-menu.ts`）＋ 在此目录新建会话。在跑的 ⇒［切过去］；分身会话 ⇒ 灰着说为什么。
    */
   private resumeControl(r: HistoryRow): HTMLElement {
     if (r.can.resume === "switch") {
       return button({ label: copyText("history.row.switch"), kind: "primary", hint: copyText("history.row.switchHint"), onClick: () => void this.resume(r) });
     }
-    const hint = r.agentTag
-      ? copyText("history.resume.hintAgent", { agent: r.agentTag })
-      : r.lastAccount
-        ? copyText("history.resume.hintAccount", { account: r.lastAccount })
-        : copyText("history.resume.hintPlain");
     const sb = splitButton({
       label: copyText("history.row.resume"),
-      hint,
+      hint: resumeHint(this.hintAccounts(r), this.pickOf(r)),
       onClick: () => void this.resume(r),
       moreLabel: copyText("history.resume.more"),
-      items: () => this.resumeItems(r),
+      items: () => this.resumeItems(r, sb.main),
     });
     sb.root.dataset.role = "resume";
     if (r.can.resume === "bg") {
@@ -946,15 +939,38 @@ export class HistoryView {
     return sb.root;
   }
 
-  /** ▾ 的项：账号（能选号的那一家才问那台）× 怎么开（tmux / 不用 tmux），再加「在此目录新建会话」。 */
-  private async resumeItems(r: HistoryRow): Promise<MenuItem[]> {
-    const accounts = r.can.accounts ? await enumerateAccountModifiers(r.origin ?? LOCAL_ORIGIN) : [];
-    const items = resumeMenuItems(accounts, (p) => void this.resumeWith(r, { tmux: p.tmux, account: askOf(p.account, p.useBase) }));
-    if (!r.can.accounts) {
-      items.push({ label: "", divider: true }, { label: copyText("history.resume.noAccounts", { agent: r.agentTag ?? r.agent }), enabled: false, onClick: () => {} });
-    }
-    items.push({ label: "", divider: true }, { label: copyText("history.menu.newInDir"), icon: "plus", onClick: () => void this.newSessionIn(r.origin, r.projectPath, r.agent) });
-    return items;
+  /** 这一行勾着的那一组（没动过 ⇒ 默认那一组）。 */
+  private pickOf(r: HistoryRow): ResumePick {
+    const k = rowKey(r);
+    let p = this.picks.get(k);
+    if (!p) this.picks.set(k, (p = defaultPick()));
+    return p;
+  }
+
+  /** 菜单还没开过时悬停用的账号事实：这一家没有账号这一维 ⇒ 那一家的名字；有上次的号 ⇒ 它。 */
+  private hintAccounts(r: HistoryRow): ResumeAccounts {
+    if (!r.can.accounts) return { kind: "none", agentName: r.agentTag ?? r.agent };
+    if (!r.lastAccount) return { kind: "off" };
+    return { kind: "list", items: [{ name: r.lastAccount, label: r.lastAccount, quota: null, last: true }] };
+  }
+
+  /** ▾ 的项：账号（能选号的那一家才问那台）· 运行于 · 在此目录新建会话；勾一挪，主按钮的悬停跟着改。 */
+  private async resumeItems(r: HistoryRow, main: HTMLButtonElement): Promise<MenuItem[]> {
+    const accounts = await resumeAccounts(r.origin ?? LOCAL_ORIGIN, r.agent, {
+      hasAccounts: r.can.accounts,
+      agentName: r.agentTag ?? r.agent,
+      last: r.lastAccount,
+    });
+    const pick = this.pickOf(r);
+    main.title = resumeHint(accounts, pick);
+    return resumeMenuItems({
+      accounts,
+      pick,
+      onChange: (p) => {
+        if (main.getAttribute("aria-disabled") !== "true") main.title = resumeHint(accounts, p);
+      },
+      newInDir: () => void newSessionIn(r.origin, r.projectPath, r.agent),
+    });
   }
 
   // ───────────────────────── 动作 ─────────────────────────
@@ -986,9 +1002,10 @@ export class HistoryView {
     };
   }
 
-  /** 恢复（默认那一种：上次的号 · 不用 tmux —— 设置里还没有「默认在不在 tmux 里」那一格）；在跑的 ⇒ 切过去。 */
+  /** 恢复（按这一行勾着的那一组；没动过 ⇒ 上次的号 · 不用 tmux）；在跑的 ⇒ 切过去。 */
   private resume(r: HistoryRow): Promise<void> {
-    return this.resumeWith(r, { tmux: false, account: FOLLOW });
+    const p = this.pickOf(r);
+    return this.resumeWith(r, { tmux: p.tmux, account: askOf(p.account, p.useBase) });
   }
 
   /**
@@ -1002,23 +1019,12 @@ export class HistoryView {
       this.close();
       return;
     }
-    const origin = r.origin ?? LOCAL_ORIGIN;
     const main = this.shown === rowKey(r) ? this.viewer?.element.querySelector<HTMLButtonElement>(`[data-role="resume"] > button`) : null;
     if (main) setBusy(main, copyText("history.resume.busy"));
     this.viewer?.showBanner(null);
     try {
-      if (how.tmux) {
-        const started = await startInTmuxThenAttach({ origin, agent: r.agent, sid: r.sessionId, cwd: r.projectPath }, how.account, {
-          again: (a) => this.resumeWith(r, { tmux: true, account: a ?? how.account }),
-        });
-        if (started === false) return;
-      } else if (r.origin) {
-        const behavior = await getBehavior();
-        const launcher = configuredLauncherFor(r.agent, await resolveResumeCommand(r.origin, behavior.resumeCommandRemote));
-        await runRemoteResume(r.origin, r.agent, r.sessionId, r.projectPath, launcher, { account: how.account });
-      } else {
-        await resumeLocalSession({ agent: r.agent, sid: r.sessionId, cwd: r.projectPath, account: how.account });
-      }
+      const started = await resumeHistoryRow(r, how, (a) => this.resumeWith(r, { tmux: how.tmux, account: a ?? how.account }));
+      if (!started) return;
       this.close();
     } catch (e) {
       const said = copyText("history.resume.failed", { machine: r.origin ?? copyText("history.filter.local"), why: String(e) });
@@ -1050,7 +1056,7 @@ export class HistoryView {
       { label: r.hidden ? copyText("history.menu.unhide") : copyText("history.menu.hide"), onClick: () => void this.hide(r) },
       { label: "", divider: true },
       ...(r.origin ? [] : [{ label: copyText("history.menu.openDir"), icon: "folder" as const, onClick: () => void revealInFolder(r.projectPath) }]),
-      { label: copyText("history.menu.newInDir"), onClick: () => void this.newSessionIn(r.origin, r.projectPath, r.agent) },
+      { label: copyText("history.menu.newInDir"), onClick: () => void newSessionIn(r.origin, r.projectPath, r.agent) },
       { label: "", divider: true },
       {
         label: copyText("history.menu.delete"),
@@ -1129,21 +1135,6 @@ export class HistoryView {
     }
     toast(copyText("history.delete.done", { label }), "", { level: "success" });
     this.refresh(false, keyOf(r.origin));
-  }
-
-  /** 在这个目录开一个新会话（主窗口稿那一个起会话的路；号跟随那台的默认号）。 */
-  private async newSessionIn(origin: string | undefined, dir: string, agent: string): Promise<void> {
-    const behavior = await getBehavior();
-    try {
-      if (origin) {
-        await runNewSessionRemote(origin, agent, dir, await resolveResumeCommand(origin, behavior.resumeCommandRemote), { account: FOLLOW });
-      } else {
-        await launchLocal({ action: { kind: "new" }, agent, cwd: dir, launcher: behavior.resumeCommandLocal || null, account: FOLLOW, tmuxName: null }, dir);
-        expectArrival({ origin: LOCAL_ORIGIN, match: { cwd: dir }, tmuxName: null, arrived: { title: copyText("history.newSession.started", { dir }), body: arrivedBody(LOCAL_ORIGIN) } });
-      }
-    } catch (e) {
-      toast(copyText("history.newSession.failed", { why: String(e) }), "");
-    }
   }
 }
 

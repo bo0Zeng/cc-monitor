@@ -3988,11 +3988,6 @@
       "zh": "用账号「{label}」重启这个会话",
       "args": ["label"]
     },
-    "tabMenu.containerLeaves.direct": {
-      "kind": "action",
-      "zh": "直连 · 不建 tmux 会话",
-      "args": []
-    },
     "tabMenu.kill.idle": {
       "kind": "action",
       "zh": "杀死会话 · 空的 tmux 会话 {name}",
@@ -4823,39 +4818,9 @@
       "zh": "已复制",
       "args": []
     },
-    "entryViewer.bootstrapViewer.cwdHint": {
-      "kind": "body",
-      "zh": "打开工作目录 (E)",
-      "args": []
-    },
-    "entryViewer.bootstrapViewer.cwd": {
-      "kind": "action",
-      "zh": "📂 目录",
-      "args": []
-    },
-    "entryViewer.bootstrapViewer.terminalHint": {
-      "kind": "body",
-      "zh": "调出对应终端窗口（反引号键）",
-      "args": []
-    },
-    "entryViewer.bootstrapViewer.terminal": {
-      "kind": "action",
-      "zh": "↗ 终端",
-      "args": []
-    },
-    "entryViewer.bootstrapViewer.loading": {
-      "kind": "body",
-      "zh": "加载中…",
-      "args": []
-    },
-    "entryViewer.bootstrapViewer.title": {
-      "kind": "title",
-      "zh": "独立只读视图",
-      "args": []
-    },
     "entryViewer.module.missingParam": {
       "kind": "error",
-      "zh": "独立只读视图：地址里缺 ?viewer= 参数",
+      "zh": "窗口出错 · 无会话可显示",
       "args": []
     },
     "errorToast.showErrorToast.noMessage": {
@@ -20703,6 +20668,16 @@
       "zh": "{n} 条",
       "args": ["n"]
     },
+    "sessionViewer.status.live": {
+      "kind": "body",
+      "zh": "运行中 · 实时",
+      "args": []
+    },
+    "sessionViewer.stream.newContent": {
+      "kind": "action",
+      "zh": "新内容",
+      "args": []
+    },
     "sessionViewer.status.more": {
       "kind": "body",
       "zh": "{n} 条 · 上翻加载更早",
@@ -20778,21 +20753,6 @@
       "zh": "前 {n} 处 · 共 {total} 处",
       "args": ["n", "total"]
     },
-    "history.resume.hintAccount": {
-      "kind": "body",
-      "zh": "恢复 · {account} · 不用 tmux",
-      "args": ["account"]
-    },
-    "history.resume.hintPlain": {
-      "kind": "body",
-      "zh": "恢复 · 不用 tmux",
-      "args": []
-    },
-    "history.resume.hintAgent": {
-      "kind": "body",
-      "zh": "恢复 · {agent} 会话",
-      "args": ["agent"]
-    },
     "history.resume.more": {
       "kind": "action",
       "zh": "恢复方式",
@@ -20807,6 +20767,91 @@
       "kind": "action",
       "zh": "恢复中…",
       "args": []
+    },
+    "viewerWindow.title.local": {
+      "kind": "title",
+      "zh": "{title} · {state} · {project}",
+      "args": ["title", "state", "project"]
+    },
+    "viewerWindow.title.remote": {
+      "kind": "title",
+      "zh": "{title} · {state} · {project} · {machine}",
+      "args": ["title", "state", "project", "machine"]
+    },
+    "viewerWindow.status.live": {
+      "kind": "body",
+      "zh": "只读 · {n} 条 · 实时",
+      "args": ["n"]
+    },
+    "viewerWindow.status.ended": {
+      "kind": "body",
+      "zh": "只读 · {n} 条 · {state}",
+      "args": ["n", "state"]
+    },
+    "viewerWindow.status.plain": {
+      "kind": "body",
+      "zh": "只读 · {n} 条",
+      "args": ["n"]
+    },
+    "viewerWindow.record.gone": {
+      "kind": "body",
+      "zh": "会话记录已删除",
+      "args": []
+    },
+    "resumeMenu.group.account": {
+      "kind": "title",
+      "zh": "账号",
+      "args": []
+    },
+    "resumeMenu.group.run": {
+      "kind": "title",
+      "zh": "运行于",
+      "args": []
+    },
+    "resumeMenu.run.tmux": {
+      "kind": "action",
+      "zh": "在 tmux 里",
+      "args": []
+    },
+    "resumeMenu.run.direct": {
+      "kind": "action",
+      "zh": "不用 tmux",
+      "args": []
+    },
+    "resumeMenu.account.base": {
+      "kind": "action",
+      "zh": "不指定账号 · ~/.claude",
+      "args": []
+    },
+    "resumeMenu.account.last": {
+      "kind": "body",
+      "zh": "上次",
+      "args": []
+    },
+    "resumeMenu.account.quotaLast": {
+      "kind": "body",
+      "zh": "{quota} · 上次",
+      "args": ["quota"]
+    },
+    "resumeMenu.account.quota": {
+      "kind": "body",
+      "zh": "{slot} {value}",
+      "args": ["slot", "value"]
+    },
+    "resumeMenu.hint.tmux": {
+      "kind": "body",
+      "zh": "tmux 里",
+      "args": []
+    },
+    "resumeMenu.pick.account": {
+      "kind": "body",
+      "zh": "{account} · {run}",
+      "args": ["account", "run"]
+    },
+    "resumeMenu.hint.pick": {
+      "kind": "body",
+      "zh": "恢复 · {pick}",
+      "args": ["pick"]
     },
     "history.page.resize": {
       "kind": "aria",

@@ -60,12 +60,13 @@ describe("〔U2〕命令面板的 ↗：非 Windows 不列", () => {
 describe("〔S4〕viewer 顶栏的 ↗：与 tab 上那颗同一道门", () => {
   it("★ 接线：termBtn 挂进顶栏恰好一处，且那一处就是门后面那一句", () => {
     const code = stripComments(readFileSync(resolve(REPO_ROOT, "src/frontend/ui/entry-viewer.ts"), "utf8"), "ts");
-    // 抽取器自检：顶栏真的读到了（隔壁那颗「目录」按钮在）。
-    expect(code).toContain("topbar.appendChild(cwdBtn);");
-    expect((code.match(/\.appendChild\(termBtn\)/g) ?? []).length, "termBtn 挂进去的份数").toBe(1);
+    // 抽取器自检：顶栏右端真的读到了（隔壁那颗「打开目录」按钮在）。
+    expect(code).toContain('hint: copyText("history.menu.openDir")');
+    // 「切到终端」只在一处建，且就在门后面（在跑 ＆ 这台系统上 ↗ 的最后一跳不是桩）。
+    expect((code.match(/copyText\("tabBarView\.tab\.terminalHint"\)/g) ?? []).length, "「切到终端」那颗的字出现的份数（读屏名 ＋ 悬停）").toBe(2);
     expect(
-      (code.match(/if \(terminalFrontAvailable\(\)\) topbar\.appendChild\(termBtn\);/g) ?? []).length,
-      "termBtn 没有挂在 terminalFrontAvailable 门后面 —— 非 Windows 上它又会渲出来",
+      (code.match(/if \(live && terminalFrontAvailable\(\)\) \{\s*const origin = r\.origin \?\? LOCAL_ORIGIN;\s*out\.push\(\s*button\(\{\s*label: copyText\("tabBarView\.tab\.terminalHint"\)/g) ?? []).length,
+      "「切到终端」没有挂在 terminalFrontAvailable 门后面 —— 非 Windows 上它又会渲出来",
     ).toBe(1);
   });
 });

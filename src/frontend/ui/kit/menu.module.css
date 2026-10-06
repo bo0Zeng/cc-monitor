@@ -147,6 +147,13 @@
     color: var(--text-2);
   }
 
+  .menuHeading {
+    padding: var(--space-3) var(--space-4) var(--space-1);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-strong);
+  }
+
   .menuDivider {
     height: 1px;
     margin: var(--space-2) var(--space-3);

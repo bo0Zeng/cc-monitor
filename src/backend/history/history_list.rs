@@ -5,10 +5,11 @@
 //! # 形状
 //!
 //! ```text
-//! history-list {origin?, raw?, fresh?, query?, sort?, within_days?, hidden?, limit?}
+//! history-list {origin?, raw?, fresh?, sid?, query?, sort?, within_days?, hidden?, limit?}
 //!   raw: true      这台自己的清单（不并注解、不筛不排）——远端那一支问的就是它（那台的 CLI 面 `--history-list`）
 //!   origin 缺席    这台；给了 = 可达表里那一台：问那台 `raw`（它自己判活、自己读上次的号），结果在本进程记着、`fresh` 才再问
 //!   ⇒ 并上这台的注解（星标 · 改名 · 隐藏）⇒ 筛（隐藏 · 时间 · 搜索词）⇒ 补上被筛掉的分叉父会话（`context`）⇒ 排 ⇒ 截
+//!   sid: 只要那一个会话那一行（独立查看窗按会话 ID 开任意一个会话，含已结束的、隐藏的）：别的筛一概不看、不补父会话
 //!   ⇒ {rows, groups, total, truncated, notice}
 //! ```
 //!
@@ -119,6 +120,8 @@ fn with_group(mut v: Value, dir: &str) -> Value {
 /// 入参（帧面那几格）。
 #[derive(Debug, Default)]
 pub(crate) struct Ask {
+    /// 只要这一个会话（别的筛不看）。
+    pub sid: Option<String>,
     pub query: Option<String>,
     pub by_created: bool,
     pub within_ms: Option<i64>,
@@ -131,6 +134,17 @@ fn bad(what: &str) -> (&'static str, String) {
 }
 
 pub(crate) fn parse_ask(args: &Value) -> Result<Ask, (&'static str, String)> {
+    // 会话 ID 的形状与 `history-record` 同一条（`[A-Za-z0-9-]`，1..=64），先于任何 IO。
+    let sid = match args.get("sid") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(s))
+            if (1..=64).contains(&s.len())
+                && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') =>
+        {
+            Some(s.clone())
+        }
+        Some(_) => return Err(bad("`sid` must be a session id ([A-Za-z0-9-], 1..=64)")),
+    };
     let query = match args.get("query") {
         None | Some(Value::Null) => None,
         Some(Value::String(s)) => Some(s.trim().to_lowercase()).filter(|s| !s.is_empty()),
@@ -161,6 +175,7 @@ pub(crate) fn parse_ask(args: &Value) -> Result<Ask, (&'static str, String)> {
         },
     };
     Ok(Ask {
+        sid,
         query,
         by_created,
         within_ms,
@@ -281,6 +296,9 @@ pub(crate) fn answer_from(
         v[k].as_i64().unwrap_or(0)
     };
     let kept = |v: &Value| {
+        if let Some(sid) = ask.sid.as_deref() {
+            return v["sessionId"].as_str() == Some(sid);
+        }
         (ask.hidden || !v["hidden"].as_bool().unwrap_or(false))
             && ask.within_ms.is_none_or(|w| key(v) >= now_ms - w)
             && ask.query.as_deref().is_none_or(|q| hits(v, q))
@@ -297,7 +315,9 @@ pub(crate) fn answer_from(
         .filter_map(|v| v["sessionId"].as_str().map(str::to_string))
         .collect();
     let mut parents = BTreeSet::new();
-    for v in &out {
+    // 按会话 ID 要一行 ⇒ 不补父会话。
+    let forks: &[Value] = if ask.sid.is_some() { &[] } else { &out };
+    for v in forks {
         if let Some(p) = v["forkedFromSessionId"].as_str() {
             if !present.contains(p) && by_sid.contains_key(p) {
                 parents.insert(p.to_string());

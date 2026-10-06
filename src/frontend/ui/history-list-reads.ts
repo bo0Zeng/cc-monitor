@@ -90,6 +90,8 @@ export interface HistoryList {
 
 /** 问的那几格（缺 = 后端缺省）。 */
 export interface HistoryListAsk {
+  /** 只要这一个会话那一行（独立查看窗；别的筛后端不看）。 */
+  sid?: string;
   query?: string;
   sort?: "activity" | "created";
   withinDays?: number;
@@ -225,6 +227,7 @@ export async function fetchList(origin: string | undefined, ask: HistoryListAsk)
   // 只带给了的那几格（缺 = 后端缺省）。
   const args = {
     ...(origin ? { origin } : {}),
+    ...(ask.sid ? { sid: ask.sid } : {}),
     ...(ask.query ? { query: ask.query } : {}),
     ...(ask.sort ? { sort: ask.sort } : {}),
     ...(ask.withinDays ? { within_days: ask.withinDays } : {}),

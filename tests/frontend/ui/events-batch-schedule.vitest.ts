@@ -395,8 +395,8 @@ describe("bindEvents 的接线", () => {
   it("每一处调用都带 await（漏一个 = 启动时历史全丢，实测白屏只剩状态栏）", () => {
     expect(
       callSites.length,
-      "一处 `bindEvents(` 调用都没扫到（08-08 实测 2 处，都在 main.ts）—— 遍历或过滤坏了，本条此刻无效",
-    ).toBeGreaterThanOrEqual(2);
+      "一处 `bindEvents(` 调用都没扫到（今天 main.ts 一处；独立查看窗改走 `followSession`）—— 遍历或过滤坏了，本条此刻无效",
+    ).toBeGreaterThanOrEqual(1);
     const bare = callSites.filter((c) => !c.text.startsWith("await ") && !c.text.includes("= await "));
     expect(
       bare.map((c) => `${c.file}:${c.line}: ${c.text}`),

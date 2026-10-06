@@ -1580,7 +1580,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
   });
 });
 
-describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（tmux/直连）", () => {
+describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」同一个组件（恢复 · 账号 · 运行于 · 在此目录新建会话）", () => {
   let tm: TabManager;
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1595,261 +1595,162 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
         new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }),
       );
   };
-  // F09：querySelectorAll 会连带找到嵌套 flyout 里的叶子项（jsdom 不管 CSS display:none，
-  // 结构上它们本来就在 DOM 里）——这正是测试想要的：不用先模拟 hover/click 展开就能直接
-  // 断言/点击叶子，同今天真实用户"点开 Resume 再点 tmux"最终触达的是同一个按钮。
+  // querySelectorAll 连带找到嵌套 flyout 里的项（jsdom 不管 CSS 的显隐）：不用先模拟悬停展开就能点到同一个按钮。
+  const labelOf = (b: Element): string => b.querySelector('[data-part="label"]')?.textContent ?? b.textContent ?? "";
   const menuLabels = (): string[] =>
-    [...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ?? [])].map(
-      (b) => b.textContent ?? "",
-    );
-  const clickItem = (label: string): void => {
-    const btn = [
-      ...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ?? []),
-    ].find((b) => b.textContent === label) as HTMLButtonElement | undefined;
-    btn?.click();
+    [...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ?? [])].map(labelOf);
+  const item = (label: string): HTMLButtonElement | undefined =>
+    [...(document.body.querySelector("[role=menu]")?.querySelectorAll<HTMLButtonElement>("[role^=menuitem]") ?? [])].find((b) => labelOf(b) === label);
+  const flyout = (): HTMLElement => {
+    const wrap = [...document.body.querySelectorAll("[role=none]")].find((w) => labelOf(w.children[0]) === "Resume 这个会话");
+    expect(wrap, "找不到「恢复 ▸」那一项").toBeTruthy();
+    return wrap!.querySelector<HTMLElement>(":scope > [role=menu]")!;
   };
-
-  it("归档远端 tab → 收敛成 1 个「Resume」一级项 + flyout（tmux/直连），旧扁平字符串消失", async () => {
-    // 零会话 ＋ 那台后端铸了基名（名字问后端，替身写死它铸了什么）。
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_remote_tmux" ? Promise.resolve([]) : cmd === "tmux_name_mint" ? Promise.resolve("proj-cc") : Promise.resolve(undefined),
-    ));
-    tm.ensureTab("r1", "/home/pi/proj", "p", "devbox");
-    tm.archiveTab("r1");
-    rightClick("r1");
-    const labels = menuLabels();
-    expect(labels).toContain("Resume 这个会话");
-    expect(labels).toContain("tmux");
-    expect(labels).toContain("直连 · 不建 tmux 会话");
-    expect(labels).not.toContain("Resume（直连）");
-    expect(labels).not.toContain("Resume（tmux）");
-    // tmux 叶子 → 交那台这一个（在不在跑 · 铸名 · 判号都在那台）；账号跟随。
-    vi.mocked(callStart).mockResolvedValue([{ sid: "r1", outcome: "done", why: null, detail: "", session: "proj-cc", bus: null, cmd: null }] as never);
-    clickItem("tmux");
-    await flushMicro();
-    await flushMicro();
-    expect(vi.mocked(callStart).mock.calls[0].slice(0, 2)).toEqual(["devbox", "tmux"]);
-    expect(vi.mocked(callStart).mock.calls[0][2]).toEqual([{ sid: "r1", cwd: "/home/pi/proj", account: { kind: "follow" } }]);
-    expect(runRemoteAttach).toHaveBeenCalledWith("devbox", "claude", "proj-cc");
-    // 直连叶子 → runRemoteResume
-    rightClick("r1");
-    clickItem("直连 · 不建 tmux 会话");
-    await flushMicro();
-    // 默认 resume（没点号）⇒ 跟随，交给那台判。
-    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", "cct", { account: { kind: "follow" }, preflight: expect.any(Function) });
-  });
-
-  // 〔散文墓碑〕F74 tmux 叶子那三条（命中活会话 attach · 原名被占挑不撞名 · 老 wrapper 不按目录猜）：判定挪进那台后端
-  //   （`session_batch_tests.rs` 的 standing 一族 ＋ 起在 tmux 里那条），单个这一侧只交一个 sid、照回答接进去（上面那个 describe）。
-
-  it("归档本地 tab → 仍单「Resume」(无 flyout，无 tmux/直连叶子)", () => {
-    tm.ensureTab("l1", "/home/u/p", "p", LOCAL_ORIGIN);
-    tm.archiveTab("l1");
-    rightClick("l1");
-    const labels = menuLabels();
-    expect(labels).toContain("Resume 这个会话");
-    expect(labels).not.toContain("tmux");
-    expect(labels).not.toContain("直连 · 不建 tmux 会话");
-  });
-
-  it("F09：账号数据就绪后（恰好 1 个可选账号）→ Resume flyout 追加「不指定账号 · 用远端 ~/.claude 那套凭据」，不追加具名账号", async () => {
-    invalidateAccountsCache(); // 防陈旧缓存命中挡住下面的自定义 mock
-    vi.mocked(invoke).mockImplementation(withHistoryReads(withAccountReads((cmd: string) =>
-      cmd === "list_remote_accounts"
-        ? Promise.resolve({
-            available: true,
-            error: null,
-            meta: { enabled: true, acctsDir: "/h/.claude-alt", manifestPath: "/h/.claude-alt/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null },
-            accounts: [{ name: "z", email: "z@x.edu", configDir: "/h/.claude-alt/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true }],
-          })
-        : Promise.resolve(undefined),
-    )));
-    tm.ensureTab("r1", "/home/pi/proj", "p", "devbox");
-    tm.archiveTab("r1");
-    rightClick("r1");
-    await flushMicro();
-    await flushMicro();
-    const labels = menuLabels();
-    expect(labels).toContain("不指定账号 · 用远端 ~/.claude 那套凭据");
-    // 只有 1 个可选账号 → 不追加具名账号项（同旧版阈值，见 launch-menu.ts）。
-    expect(labels).not.toContain("z");
-    clickItem("不指定账号 · 用远端 ~/.claude 那套凭据");
-    // 基座项本身也带 submenu（tmux/直连），点它只展开/切换，不直接执行——不该调用任何 resume。
-    expect(callStart).not.toHaveBeenCalled();
-    expect(runRemoteResume).not.toHaveBeenCalled();
-    invalidateAccountsCache(); // 别泄漏进后续测试
-  });
-
-  it("F09：≥2 可选账号 → Resume flyout 含每个具名账号，账号×容器真正正交（此前实现缺口已补）", async () => {
-    invalidateAccountsCache();
-    vi.mocked(invoke).mockImplementation(withHistoryReads(withAccountReads((cmd: string) =>
-      cmd === "list_remote_accounts"
-        ? Promise.resolve({
-            available: true,
-            error: null,
-            meta: { enabled: true, acctsDir: "/h/.claude-alt", manifestPath: "/h/.claude-alt/accounts.json", updatedAt: null, sharedStore: null, count: 2, error: null },
-            accounts: [
-              { name: "z", email: "z@x.edu", configDir: "/h/.claude-alt/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true },
-              { name: "b", email: "b@x.edu", configDir: "/h/.claude-alt/b", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true },
-            ],
-          })
-        : Promise.resolve(undefined),
-    )));
-    tm.ensureTab("r1", "/home/pi/proj", "p", "devbox");
-    tm.archiveTab("r1");
-    rightClick("r1");
-    await flushMicro();
-    await flushMicro();
-    const labels = menuLabels();
-    expect(labels).toContain("z");
-    expect(labels).toContain("b");
-    // 具名账号项各自也带 tmux/直连子选择——用 querySelectorAll 能拿到的叶子总数量佐证（顶层
-    // tmux/直连 2 个 + 基座下 2 个 + z 下 2 个 + b 下 2 个 = 8 个 container 叶子）。
-    const containerLeafCount = labels.filter((l) => l === "tmux" || l === "直连 · 不建 tmux 会话").length;
-    expect(containerLeafCount).toBe(8);
-    invalidateAccountsCache();
-  });
-
-  // ---- R05 Phase D 审计（重要）：本功能唯一实质重写的那一行 `tabs.ts` 的三元表达式
-  // （`opt.kind === "base" ? containerLeaves(undefined, true) : containerLeaves(opt.name, false)`）
-  // **此前零测试覆盖**。审计做了三个变异全部存活：把基座分支的 useBase 改 false（= #75 逃生口
-  // 退化成 follow 注入）、把具名账号分支的 opt.name 改 undefined（= 点「用 b resume」实际跟随
-  // 默认号）、把具名账号分支的 useBase 改 true —— `npm test` 全绿。
-  // 既有断言只查 label 集合与叶子**数量**，从不点开某个账号的叶子看真实调用参数；tsc 也帮不上忙
-  // （两个分支都类型正确）。下面这组补的就是"点了哪个账号，就真的用哪个账号起"。
-  /** 在某个父项的 flyout 里点某个叶子 label。 */
-  const clickLeafUnder = (parent: string, leaf: string): void => {
-    const wrap = [...document.body.querySelectorAll("[role=none]")].find(
-      (w) => (w.children[0] as HTMLElement)?.textContent === parent,
-    );
-    expect(wrap, `找不到父项 ${parent}`).toBeTruthy();
-    const btn = [
-      ...wrap!.querySelectorAll(":scope > [role=menu] > [role^=menuitem]"),
-    ].find((b) => b.textContent === leaf) as HTMLButtonElement | undefined;
-    expect(btn, `父项 ${parent} 下找不到叶子 ${leaf}`).toBeTruthy();
-    btn!.click();
+  const settle = async (): Promise<void> => {
+    for (let i = 0; i < 12; i++) await flushMicro();
   };
+  const RESUME = copyText("history.row.resume");
+  const TMUX = copyText("resumeMenu.run.tmux");
+  const DIRECT = copyText("resumeMenu.run.direct");
+  const BASE = copyText("resumeMenu.account.base");
 
-  const twoAccounts = (extraName?: string) =>
+  const accounts = (...names: string[]) =>
     vi.mocked(invoke).mockImplementation(withHistoryReads(withAccountReads((cmd: string) =>
       cmd === "list_remote_accounts"
         ? Promise.resolve({
             available: true,
             error: null,
-            meta: { enabled: true, acctsDir: "/h", manifestPath: "/h/accounts.json", updatedAt: null, sharedStore: null, count: 2, error: null },
-            accounts: [
-              { name: "z", email: "z@x", configDir: "/h/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true },
-              { name: extraName ?? "b", email: "b@x", configDir: `/h/${extraName ?? "b"}`, isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true },
-            ],
+            meta: { enabled: true, acctsDir: "/h", manifestPath: "/h/accounts.json", updatedAt: null, sharedStore: null, count: names.length, error: null },
+            accounts: names.map((name, i) => ({ name, email: `${name}@x`, configDir: `/h/${name}`, isDefault: i === 0, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true })),
           })
-        // `list_remote_tmux` 回真实线上形状（零会话 = 空表）。先前落进 `undefined`（线上不存在的值），
-        //   铸名那一格把它读成「没问到」⇒ 不起 —— 桩要说一个真答案，别让它碰巧走通。
         : cmd === "list_remote_tmux"
           ? Promise.resolve([])
-          // 名字问那台后端铸：替身写死它铸了基名。
           : cmd === "tmux_name_mint"
             ? Promise.resolve("proj-cc")
             : Promise.resolve(undefined),
     )));
 
-  const openArchivedMenu = async (): Promise<void> => {
-    tm.ensureTab("r1", "/home/pi/proj", "p", "devbox");
-    tm.archiveTab("r1");
-    rightClick("r1");
-    await flushMicro();
-    await flushMicro();
+  const openArchived = async (sid = "r1", origin: string = "devbox"): Promise<void> => {
+    tm.ensureTab(sid, "/home/pi/proj", "p", origin);
+    tm.archiveTab(sid);
+    rightClick(sid);
+    await settle();
   };
 
-  it("R05：点「不指定账号 · 用远端 ~/.claude 那套凭据」下的直连 → useBase 生效（configDir 为空），#75 逃生口不退化", async () => {
+  it("远端：一级项 ＋ flyout（最上面「恢复」· 运行于两项单选 · 在此目录新建会话）；点单选只挪勾、菜单不关；「恢复」按勾着的那一组起", async () => {
     invalidateAccountsCache();
-    twoAccounts();
-    await openArchivedMenu();
-    clickLeafUnder("不指定账号 · 用远端 ~/.claude 那套凭据", "直连 · 不建 tmux 会话");
-    await flushMicro();
-    expect(runRemoteResume).toHaveBeenCalledWith(
-      "devbox", "claude", "r1", "/home/pi/proj", "cct",
-      { account: { kind: "base" }, preflight: expect.any(Function) },
-    );
-    invalidateAccountsCache();
-  });
-
-  it("R05：点具名账号「b」下的直连 → 真的用 b 起（不是跟随默认号）", async () => {
-    invalidateAccountsCache();
-    twoAccounts();
-    await openArchivedMenu();
-    clickLeafUnder("b", "直连 · 不建 tmux 会话");
-    await flushMicro();
-    expect(runRemoteResume).toHaveBeenCalledWith(
-      "devbox", "claude", "r1", "/home/pi/proj", "cct",
-      expect.objectContaining({ account: { kind: "named", name: "b" } }),
-    );
-    invalidateAccountsCache();
-  });
-
-  it("R05：点具名账号「z」下的 tmux → 走 tmux 路径且带 z", async () => {
-    invalidateAccountsCache();
-    twoAccounts();
-    await openArchivedMenu();
-    clickLeafUnder("z", "tmux");
-    await flushMicro();
-    await flushMicro();
-    expect(vi.mocked(callStart).mock.calls[0][2]).toEqual([
-      expect.objectContaining({ sid: "r1", account: { kind: "named", name: "z" } }),
+    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
+      cmd === "list_remote_tmux" ? Promise.resolve([]) : cmd === "tmux_name_mint" ? Promise.resolve("proj-cc") : Promise.resolve(undefined),
+    ));
+    await openArchived();
+    const fly = flyout();
+    expect([...fly.children].map((c) => (c.getAttribute("role") === "presentation" ? `[${c.textContent}]` : c.getAttribute("role") === "separator" ? "—" : labelOf(c)))).toEqual([
+      RESUME, "—", `[${copyText("resumeMenu.group.run")}]`, TMUX, DIRECT, "—", copyText("history.menu.newInDir"),
     ]);
+    expect(item(RESUME)!.textContent, "「恢复」右侧灰字是勾着的方式").toContain(DIRECT);
+    // 点「在 tmux 里」：只挪勾，什么都不起
+    item(TMUX)!.click();
+    await settle();
+    expect(document.body.querySelector("[role=menu]"), "点单选菜单不关").not.toBeNull();
+    expect(item(TMUX)!.getAttribute("aria-checked")).toBe("true");
+    expect(callStart).not.toHaveBeenCalled();
+    expect(item(RESUME)!.textContent).toContain(copyText("resumeMenu.hint.tmux"));
+    // 「恢复」⇒ 交那台在 tmux 里起这一个（在不在跑 · 铸名 · 判号都在那台）；账号跟随
+    vi.mocked(callStart).mockResolvedValue([{ sid: "r1", outcome: "done", why: null, detail: "", session: "proj-cc", bus: null, cmd: null }] as never);
+    item(RESUME)!.click();
+    await settle();
+    expect(vi.mocked(callStart).mock.calls[0].slice(0, 2)).toEqual(["devbox", "tmux"]);
+    expect(vi.mocked(callStart).mock.calls[0][2]).toEqual([{ sid: "r1", cwd: "/home/pi/proj", account: { kind: "follow" } }]);
+    expect(runRemoteAttach).toHaveBeenCalledWith("devbox", "claude", "proj-cc");
+    // 勾在这个 tab 上记着：再开还是 tmux；挪回不用 tmux ⇒ 直接恢复
+    rightClick("r1");
+    await settle();
+    expect(item(TMUX)!.getAttribute("aria-checked")).toBe("true");
+    item(DIRECT)!.click();
+    item(RESUME)!.click();
+    await settle();
+    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", "cct", { account: { kind: "follow" }, preflight: expect.any(Function) });
+  });
+
+  it("本机：同一个组件（不再是单独一项）；在 tmux 里 ⇒ 本机那一条（交本机后端在 tmux 里起再接进去）", async () => {
+    invalidateAccountsCache();
+    vi.mocked(callStart).mockResolvedValue([{ sid: "l1", outcome: "done", why: null, detail: "", session: "p-cc", bus: null, cmd: null }] as never);
+    await openArchived("l1", LOCAL_ORIGIN);
+    expect(menuLabels()).toEqual(expect.arrayContaining([RESUME, TMUX, DIRECT]));
+    item(TMUX)!.click();
+    item(RESUME)!.click();
+    await settle();
+    expect(vi.mocked(callStart).mock.calls[0].slice(0, 2)).toEqual([LOCAL_ORIGIN, "tmux"]);
+  });
+
+  it("那台只有一个可选号：账号组照出（那个号 ＋ 基座）；勾基座再「恢复」⇒ useBase（#75 逃生口不退化）", async () => {
+    invalidateAccountsCache();
+    accounts("z");
+    await openArchived();
+    expect(menuLabels()).toEqual(expect.arrayContaining(["z", BASE]));
+    expect(item("z")!.getAttribute("role")).toBe("menuitemradio");
+    item(BASE)!.click();
+    expect(callStart).not.toHaveBeenCalled();
+    expect(runRemoteResume).not.toHaveBeenCalled();
+    item(RESUME)!.click();
+    await settle();
+    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", "cct", { account: { kind: "base" }, preflight: expect.any(Function) });
     invalidateAccountsCache();
   });
 
-  // R05 Phase D 审计（第 4 题，**实测修了一个真 bug**）：账号名允许下划线
-  // （当时 `settings/acct-deploy.ts::validateAcctName` 放行 `[A-Za-z0-9._-]`、只禁首字符 `-`/`.`；今天它读生成物、
-  // 与建号工具同一条 —— 首字符要字母数字，`__base__` 在表单里建不出来了，但下面那条理由照旧成立），
-  // 故一个**真实账号**完全可以叫 `__base__`；何况账号也能在 app 之外直接写进账号库、
-  // 根本不过这道校验。改造前 `isBase = opt.id === "__base__"` 会把它判成基座：
-  // 点它 → 静默落基座、用户选的号被吞掉（R11/R08 那族「看起来生效了，只是用了错的号」），
-  // 且 `filter(o => o.id !== "__base__")` 连带把它从 realAccounts 里滤掉 → Restart 入口凭空消失。
-  // 审计双向实测过：改动前这两条红、改动后绿。判别联合把"是基座"从**值域内的保留名**
-  // 变成**类型上的另一支**，从根上消掉了碰撞。
-  it("R05：真实账号恰好叫 __base__ → 当成账号而非基座（保留名碰撞已从类型上消除）", async () => {
+  it("两个号：勾 b ⇒ 真的用 b 起（不是跟随）；勾 z ＋ 在 tmux 里 ⇒ tmux 那条且带 z（账号 × 方式两组正交）", async () => {
     invalidateAccountsCache();
-    twoAccounts("__base__");
-    await openArchivedMenu();
-    clickLeafUnder("__base__", "直连 · 不建 tmux 会话");
-    await flushMicro();
-    expect(runRemoteResume).toHaveBeenCalledWith(
-      "devbox", "claude", "r1", "/home/pi/proj", "cct",
-      expect.objectContaining({ account: { kind: "named", name: "__base__" } }),
-    );
+    accounts("z", "b");
+    await openArchived();
+    item("b")!.click();
+    item(RESUME)!.click();
+    await settle();
+    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", "cct", expect.objectContaining({ account: { kind: "named", name: "b" } }));
+    rightClick("r1");
+    await settle();
+    item("z")!.click();
+    item(TMUX)!.click();
+    item(RESUME)!.click();
+    await settle();
+    expect(vi.mocked(callStart).mock.calls[0][2]).toEqual([expect.objectContaining({ sid: "r1", account: { kind: "named", name: "z" } })]);
     invalidateAccountsCache();
   });
 
-  it("R05：账号名为 __base__ 时不吞掉 Restart 入口（改造前 realAccounts 会误过滤它）", async () => {
+  // 账号名允许 `__base__`（账号也能在 app 之外写进账号库）：它是一个号，不是基座 —— 基座在类型上是另一支（`name: null`）。
+  it("真实账号恰好叫 __base__ ⇒ 当成账号而非基座", async () => {
     invalidateAccountsCache();
-    twoAccounts("__base__");
+    accounts("z", "__base__");
+    await openArchived();
+    item("__base__")!.click();
+    item(RESUME)!.click();
+    await settle();
+    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", "cct", expect.objectContaining({ account: { kind: "named", name: "__base__" } }));
+    invalidateAccountsCache();
+  });
+
+  it("账号名为 __base__ 时不吞掉换号重启入口", async () => {
+    invalidateAccountsCache();
+    accounts("z", "__base__");
     tm.ensureTab("r2", "/home/pi/proj", "p", "devbox");
     rightClick("r2");
-    await flushMicro();
-    await flushMicro();
+    await settle();
     expect(menuLabels()).toContain("换号重启");
     invalidateAccountsCache();
   });
 
-  it("R05：0 可选账号 → 不渲染分隔线（`length > 0` 那道闸；审计变异 M7 曾存活）", async () => {
+  it("那台没开多账号 ⇒ 账号组不出", async () => {
     invalidateAccountsCache();
     vi.mocked(invoke).mockImplementation(withHistoryReads(withAccountReads((cmd: string) =>
-      cmd === "list_remote_accounts"
-        ? Promise.resolve({ available: false, error: null, meta: null, accounts: [] })
-        : Promise.resolve(undefined),
+      cmd === "list_remote_accounts" ? Promise.resolve({ available: false, error: null, meta: null, accounts: [] }) : Promise.resolve(undefined),
     )));
-    await openArchivedMenu();
-    expect(document.body.querySelectorAll("[role=separator]").length).toBe(0);
+    await openArchived();
+    const heads = [...flyout().querySelectorAll('[role="presentation"]')].map((e) => e.textContent);
+    expect(heads).toEqual([copyText("resumeMenu.group.run")]);
     invalidateAccountsCache();
   });
 
-  // F09 Phase D 审计（UX，阻塞）：用户手快，右键后账号数据（异步 fetchAccounts）还没回来就已经
-  // hover 展开了 Resume 的顶层 flyout（此时只有 tmux/直连两项）；账号数据一到，
-  // appendAccountMenuItems 用 updateTabContextMenuItem 整体替换 Resume 这个 DOM 节点，新节点
-  // 默认无 is-open——flyout 会在鼠标没动的情况下无预警"啪"地收起。直接命中 R4"悬停+点击都可
-  // 触发"这条契约。用假计时器复现"先 hover 展开、后台数据才到达"这个时序。
-  it("F09：账号数据到达前已 hover 展开 Resume flyout → 数据到达后 flyout 仍保持展开（不无故收起）", async () => {
+  // 用户手快：号还没到就已悬停展开了「恢复 ▸」；号一到整项换掉，flyout 不许无故收起。
+  it("号到达前已悬停展开 flyout ⇒ 号到了之后 flyout 仍展开", async () => {
     invalidateAccountsCache();
     vi.useFakeTimers();
     try {
@@ -1861,26 +1762,20 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
       tm.ensureTab("r1", "/home/pi/proj", "p", "devbox");
       tm.archiveTab("r1");
       rightClick("r1");
-      const resumeWrap = document.body.querySelector<HTMLElement>(
-        "[role=menu] > [role=none]",
-      );
+      const resumeWrap = document.body.querySelector<HTMLElement>("[role=menu] > [role=none]");
       expect(resumeWrap).not.toBeNull();
       resumeWrap!.dispatchEvent(new MouseEvent("mouseenter", { bubbles: false }));
       await vi.advanceTimersByTimeAsync(150); // 展开延迟
       expect(resumeWrap!.dataset.subOpen).toBe("true");
-      // 账号数据这时才到达（fetchAccounts resolve）→ appendAccountMenuItems 换掉 Resume 节点。
       resolveAccounts({
         available: true,
         error: null,
         meta: { enabled: true, acctsDir: "/h", manifestPath: "/h/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null },
         accounts: [{ name: "z", email: "z@x", configDir: "/h/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true }],
       });
-      await vi.advanceTimersByTimeAsync(0);
-      await vi.advanceTimersByTimeAsync(0);
-      const newWrap = document.body.querySelector<HTMLElement>(
-        "[role=menu] > [role=none]",
-      );
-      expect(newWrap).not.toBeNull();
+      for (let i = 0; i < 12; i++) await vi.advanceTimersByTimeAsync(0);
+      const newWrap = document.body.querySelector<HTMLElement>("[role=menu] > [role=none]");
+      expect(newWrap).not.toBe(resumeWrap);
       expect(newWrap!.dataset.subOpen).toBe("true"); // 没有无故收起
     } finally {
       vi.useRealTimers();
@@ -1888,11 +1783,8 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     }
   });
 
-  // F09 Phase D 审计（UX，重要）：tab-bar 可拖到 340px 宽（main.ts::clampW 硬上限），三级级联
-  // 从这个位置起算，窄窗口下最深一级 flyout 会溢出右边界变死菜单。用 stub 过的
-  // getBoundingClientRect 模拟"右侧放不下"/"放得下"两种视口几何，锁定 flipSubmenuIfOverflowing
-  // 的判断逻辑（不是测真实像素渲染，是测这个函数会不会在该加 flip-left 时加、不该加时不加）。
-  it("F09：右侧空间不够时 Resume flyout 加 flip-left，够用时不加", async () => {
+  // tab 栏可拖到 340px 宽，窄窗下 flyout 会溢出右边界：右侧放不下 ⇒ 往左翻。
+  it("右侧空间不够时 flyout 往左翻，够用时不翻", async () => {
     invalidateAccountsCache();
     const origInnerWidth = window.innerWidth;
     const origGBCR = HTMLElement.prototype.getBoundingClientRect;
@@ -1901,30 +1793,24 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
       tm.ensureTab("r1", "/home/pi/proj", "p", "devbox");
       tm.archiveTab("r1");
       rightClick("r1");
-      const resumeWrap = document.body.querySelector<HTMLElement>(
-        "[role=menu] > [role=none]",
-      );
+      const resumeWrap = document.body.querySelector<HTMLElement>("[role=menu] > [role=none]");
       const resumeBtn = resumeWrap!.querySelector<HTMLButtonElement>(":scope > button")!;
-      const flyout = resumeWrap!.querySelector<HTMLElement>("[role=menu][data-sub]")!;
-
-      // 场景①：wrap 贴着右边界（right=380），flyout 估宽 150 → 380+150=530 > innerWidth(400) → 该 flip。
+      const fly = resumeWrap!.querySelector<HTMLElement>("[role=menu][data-sub]")!;
       HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
         if (this === resumeWrap) return { right: 380 } as DOMRect;
-        if (this === flyout) return { width: 0 } as DOMRect; // 未展开时宽度未知，函数内部兜底成 150
+        if (this === fly) return { width: 0 } as DOMRect; // 未展开时宽度未知，兜底成 160
         return origGBCR.call(this);
       };
       resumeBtn.click();
-      expect(flyout.dataset.flip).toBe("true");
-      resumeBtn.click(); // 收起，复位状态
-
-      // 场景②：wrap 靠左（right=50），同样估宽 150 → 50+150=200 < innerWidth(400) → 不该 flip。
+      expect(fly.dataset.flip).toBe("true");
+      resumeBtn.click();
       HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
         if (this === resumeWrap) return { right: 50 } as DOMRect;
-        if (this === flyout) return { width: 0 } as DOMRect;
+        if (this === fly) return { width: 0 } as DOMRect;
         return origGBCR.call(this);
       };
       resumeBtn.click();
-      expect(flyout.dataset.flip).toBeUndefined();
+      expect(fly.dataset.flip).toBeUndefined();
     } finally {
       HTMLElement.prototype.getBoundingClientRect = origGBCR;
       Object.defineProperty(window, "innerWidth", { value: origInnerWidth, configurable: true });
@@ -2368,7 +2254,7 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
     );
   });
 
-  it("本机**归档** tab 不拉账号清单（本机 Resume 不带账号选择，只有活会话才有换号重启）", async () => {
+  it("本机**归档** tab：「恢复 ▸」拉账号清单（与历史页「恢复 ▾」同一个组件、同一套选项）；不出换号重启", async () => {
     tm.ensureTab("l1", "/w", "/p/l1.jsonl", LOCAL_ORIGIN);
     home(tm).store.tabs.get("l1")!.state = ENDED;
     rightClick("l1");
@@ -2376,7 +2262,7 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
     await flushMicro();
     expect(
       accountReadCalls((invoke as unknown as ReturnType<typeof vi.fn>).mock.calls, "list_local_accounts"),
-    ).toHaveLength(0);
+    ).toHaveLength(1);
     expect(menuItems().map((b) => b.textContent)).not.toContain("换号重启");
   });
 
@@ -4851,14 +4737,14 @@ describe("〔U4b〕main.ts 接线", () => {
       n("      tabs.markOriginSeen(origin);\n      startup?.onListed(origin);"), // 同一格顺手交「启动时记住的那一格」
     ]).toEqual([0, 1, 1]);
   });
-  // 「那台机器看不见了」两个窗口各接一处（主窗 ＋ 独立会话窗；入口脚本没有 DOM 判据够得着）。
-  it("★〔GP1〕session-unseen 接线：main.ts 恰一处 · entry-viewer.ts 恰一处", () => {
+  // 「那台机器看不见了」主窗接一处（入口脚本没有 DOM 判据够得着）；独立查看窗不建标签页，看不见走它那一条订阅（`followSession` 的 `sight`）。
+  it("★〔GP1〕session-unseen 接线：main.ts 恰一处 · entry-viewer.ts 零处（不建标签页）", () => {
     const n = (file: string, needle: string): number =>
       readFileSync(resolve(REPO_ROOT, file), "utf8").split(needle).length - 1;
     expect([
       n("src/frontend/ui/main.ts", "onOriginUnseen: (origin) => tabs.markOriginUnseen(origin)"),
-      n("src/frontend/ui/entry-viewer.ts", "onOriginUnseen: (o) => tabs.markOriginUnseen(o)"),
-    ]).toEqual([1, 1]);
+      n("src/frontend/ui/entry-viewer.ts", "TabManager"),
+    ]).toEqual([1, 0]);
   });
 });
 

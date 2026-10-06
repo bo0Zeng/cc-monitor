@@ -16,40 +16,62 @@ body.viewer-mode #tab-bar-resizer {
   display: none;
 }
 
-/* issue #10：独立窗口 slim 顶栏（标题 + 调出终端 + 打开目录） */
+/* 独立查看窗的细顶栏：收起 / 展开左栏 · `{项目} › {标题}` · 徽标 ｜［恢复 ▾］或［切过去］· 打开目录 · 切到终端。 */
 .viewer-topbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border-soft);
   background: var(--bg-2);
-  border-bottom: 1px solid var(--border-strong);
 }
 
 .viewer-topbar-title {
+  display: flex;
   flex: 1;
+  align-items: center;
+  gap: var(--space-3);
   min-width: 0;
   color: var(--text);
-  font-size: var(--font-size-small);
-  white-space: nowrap;
+  font-size: var(--font-size-base);
+}
+
+.viewer-topbar-project {
+  flex: none;
+  color: var(--text-2);
+}
+
+.viewer-topbar-title > svg {
+  flex: none;
+  color: var(--text-faint);
+}
+
+.viewer-topbar-label {
   overflow: hidden;
+  min-width: 0;
+  font-weight: var(--font-weight-strong);
+  white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.viewer-topbar-btn {
-  flex-shrink: 0;
-  background: transparent;
-  border: 1px solid var(--border-strong);
-  color: var(--text-2);
-  padding: 3px 10px;
-  border-radius: var(--radius-s);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--font-size-small);
+.viewer-topbar [data-emph="live"] {
+  border-color: var(--success);
+  color: var(--success);
 }
 
-.viewer-topbar-btn:hover {
-  color: var(--text);
-  background: var(--overlay-hover);
+.viewer-topbar-acts {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* 状态栏：只读 · 条数 · 实时 / 已结束。 */
+body.viewer-mode #status-bar {
+  padding: 0 var(--space-5);
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+  line-height: 24px;
 }
 }

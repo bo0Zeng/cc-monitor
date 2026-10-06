@@ -1350,6 +1350,7 @@ async fn open_session_in_new_window(
             &title
         })
         .inner_size(900.0, 720.0)
+        .min_inner_size(480.0, 360.0)
         // Batch7-F23B：与主窗口 backgroundColor 一致——合成间隙露底为主题深色
         // 而非 WebView2 默认白（tauri.conf.json 主窗口同款 #2b2a27）
         .background_color(tauri::window::Color(0x2b, 0x2a, 0x27, 0xff));

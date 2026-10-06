@@ -137,6 +137,73 @@
     font-size: var(--font-size-small);
   }
 
+  /* 独立查看窗：左边「你说过的话」一栏（220，可收；窄于 760 默认收着）＋ 右边消息流。 */
+  .svWinBody {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .svSide {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    width: 220px;
+    overflow-y: auto;
+    border-right: 1px solid var(--border-soft);
+    background: var(--bg-2);
+  }
+
+  .svWinBody[data-side="closed"] > .svSide {
+    display: none;
+  }
+
+  @media (max-width: 759px) {
+    .svWinBody:not([data-side="open"]) > .svSide {
+      display: none;
+    }
+  }
+
+  .svSideHead {
+    flex: none;
+    padding: var(--space-5) var(--space-5) var(--space-3);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .svWinMain {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  /* 窗口那一形：头不画、工具行平时收着（这两块写了 display，`hidden` 要在这里收住）。 */
+  .svHead[hidden],
+  .svTools[hidden] {
+    display: none;
+  }
+
+  .svPillRow {
+    position: relative;
+    flex: none;
+    height: 0;
+  }
+
+  .svPill {
+    position: absolute;
+    bottom: var(--space-5);
+    left: 50%;
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-float);
+    transform: translateX(-50%);
+  }
+
+  .svPill[hidden] {
+    display: none;
+  }
+
   .svFoot {
     flex: none;
     padding: var(--space-3) var(--space-6);

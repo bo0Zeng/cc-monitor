@@ -887,9 +887,81 @@ export async function bindEvents(
   await Promise.all(
     plan.map(async ({ origin, kind, window, feed }) => {
       const hold: StreamHold = { sub: null, owed: 0 };
-      hold.sub = await chan.subscribe(origin, kind, null, window, (items) => feed(origin, hold, items));
+      hold.sub = await openStream(origin, kind, window, (items) => feed(origin, hold, items));
     }),
   );
+}
+
+/** 订一条流（前端对通信层 `subscribe` 的唯一调用点：整台机器的那几条与单个会话那一条都经这里）。 */
+function openStream(origin: Origin, kind: string, window: number, sink: (items: Item[]) => void): Promise<Sub> {
+  return chan.subscribe(origin, kind, null, window, sink);
+}
+
+/** 跟着一个会话（查看器 · 独立查看窗）：流里那一个会话的事。 */
+export type FollowEvent =
+  /** 新的记录行（含订阅当场交的留存；已经有的由调用方按 `seq` 去重）。 */
+  | { t: "lines"; lines: JsonlLinePayload[] }
+  /** 流里丢了几行（前端落后了）：调用方按行号补。 */
+  | { t: "gap" }
+  /** 会话起了 / 结束了。 */
+  | { t: "live"; live: boolean }
+  /** 那台看不看得见（看不见 ⇒ 这条流此刻不在交东西）。 */
+  | { t: "sight"; seen: boolean };
+
+/**
+ * **跟着一个会话**：订 `session-lines/<sid>`（与独立查看窗同一条订阅；留存订阅当场交、之后的实时行接着交），
+ * 每一批格翻成 [`FollowEvent`] 交给 `sink`；吃 credit 的格交完当场还。返回时 monitor 那一侧已登记好。
+ */
+export async function followSession(origin: Origin, sid: string, sink: (e: FollowEvent) => void): Promise<{ stop(): void }> {
+  const hold: StreamHold = { sub: null, owed: 0 };
+  const exempt: readonly string[] = CREDIT_EXEMPT_FRAMES;
+  const feed = (items: Item[]): void => {
+    const lines: JsonlLinePayload[] = [];
+    let used = 0;
+    const out: FollowEvent[] = [];
+    for (const it of items) {
+      if (it.t === "frame") {
+        let f: Record<string, unknown> | null = null;
+        try {
+          const v: unknown = JSON.parse(it.body);
+          f = v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+        } catch {
+          f = null;
+        }
+        const kind = f ? Object.keys(f)[0] : undefined;
+        if (kind === undefined || !exempt.includes(kind)) used += 1;
+        if (!f) continue;
+        const line = f.line as JsonlLinePayload | undefined;
+        if (line && line.session_id === sid) lines.push(line);
+        else if ("ended" in f && (f.ended as { session_id?: string }).session_id === sid) out.push({ t: "live", live: false });
+        else if ("live" in f && (f.live as { session_id?: string }).session_id === sid) out.push({ t: "live", live: true });
+        else if ("unseen" in f) out.push({ t: "sight", seen: false });
+      } else if (it.t === "gap") {
+        out.push({ t: "gap" });
+      } else if (it.t === "unseen" || it.t === "closed") {
+        out.push({ t: "sight", seen: false });
+      } else if (it.t === "seen") {
+        out.push({ t: "sight", seen: true });
+      }
+    }
+    // 吃 credit 的格当场还（订阅返回之前到的欠着，返回时一起还）。
+    if (used > 0) {
+      if (hold.sub) {
+        hold.sub.want(used + hold.owed);
+        hold.owed = 0;
+      } else {
+        hold.owed += used;
+      }
+    }
+    if (lines.length > 0) sink({ t: "lines", lines });
+    for (const e of out) sink(e);
+  };
+  hold.sub = await openStream(origin, `session-lines/${sid}`, STREAM_WINDOW, feed);
+  if (hold.owed > 0) {
+    hold.sub.want(hold.owed);
+    hold.owed = 0;
+  }
+  return { stop: () => hold.sub?.stop() };
 }
 
 /**

@@ -54,6 +54,35 @@ describe("C12 弹出菜单", () => {
     expect([run.mock.calls.length, menuOpen(), menus().length]).toEqual([1, false, 0]);
   });
 
+  it("组名一行只读、不进键盘走位；单选组：点一项 ⇒ 勾挪到它（同组别的去勾）、菜单不关、调它的 onClick；别的组不动；跟着单选走的灰字随之重取", () => {
+    const picked: string[] = [];
+    let words = "work · 不用 tmux";
+    openMenu({ x: 5, y: 5 }, [
+      { label: "恢复", detailOf: () => words },
+      { label: "账号", heading: true },
+      { label: "work", radio: "account", checked: true, onClick: () => picked.push("work") },
+      { label: "home", radio: "account", onClick: () => ((words = "home · 不用 tmux"), picked.push("home")) },
+      { label: "运行于", heading: true },
+      { label: "在 tmux 里", radio: "run", onClick: () => picked.push("tmux") },
+      { label: "不用 tmux", radio: "run", checked: true },
+    ]);
+    const heads = [...menus()[0].querySelectorAll('[role="presentation"]')].map((e) => e.textContent);
+    expect(heads).toEqual(["账号", "运行于"]);
+    const [resume, work, home, tmux, direct] = items();
+    expect(items().map((b) => b.getAttribute("role"))).toEqual(["menuitem", "menuitemradio", "menuitemradio", "menuitemradio", "menuitemradio"]);
+    expect([work, home, tmux, direct].map((b) => b.getAttribute("aria-checked"))).toEqual(["true", "false", "false", "true"]);
+    home.click();
+    expect(menuOpen(), "点单选菜单不关").toBe(true);
+    expect([work, home, tmux, direct].map((b) => b.getAttribute("aria-checked"))).toEqual(["false", "true", "false", "true"]);
+    expect([work.querySelector("svg"), home.querySelector("svg")].map((x) => x !== null), "勾跟着挪").toEqual([false, true]);
+    expect(resume.querySelector('[data-part="detail"]')?.textContent).toBe("home · 不用 tmux");
+    tmux.click();
+    expect([work, home, tmux, direct].map((b) => b.getAttribute("aria-checked"))).toEqual(["false", "true", "true", "false"]);
+    expect(picked).toEqual(["home", "tmux"]);
+    key("ArrowDown");
+    expect(document.activeElement, "组名那一行不进走位").toBe(resume);
+  });
+
   it("同一时刻一个；Esc 只关菜单（弹层栈）、不连带下面那层", () => {
     let under = 0;
     const below = { handleEsc: () => ((under += 1), true) };
