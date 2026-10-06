@@ -1,5 +1,5 @@
 /**
- * api-error.ts 纯逻辑断言脚本（主窗口稿 §5.2.5）：原因一词按后端给的种类出（界面不读报错对象）。
+ * api-error.ts 纯逻辑断言脚本：原因一词按后端给的种类出（界面不读报错对象）。
  *
  * 跑法：`npm run test:api-error`（tsx，零 DOM）。失败 throw 非零退出。DOM 那几条（并条 · 结局）在 `main-window-behavior.vitest.ts`。
  */

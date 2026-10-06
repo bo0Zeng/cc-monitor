@@ -10,7 +10,7 @@
 
 @layer components {
 /* === Tab Bar === */
-/* 主窗口稿 §5.1：栏顶一排（36 高）· 「需要你 N」· 机器离线条 · 列表（滚动的只是它）。
+/* 栏顶一排（36 高）· 「需要你 N」· 机器离线条 · 列表（滚动的只是它）。
    一行 30 高、左 2px 条（当前 = `--accent`）、状态点固定一列、标题一行省略、行尾徽标靠右；
    行尾动作悬停 / 焦点时盖在行尾（同色底 ＋ 渐隐），标题不挪位。 */
 
@@ -77,7 +77,7 @@
   color: var(--text);
 }
 
-/* 「需要你 N」：琥珀 14% 淡底 ＋ 琥珀 40% 边 ＋ 计数徽标（主窗口稿 §4.3 提给规范 C17 的形）。 */
+/* 「需要你 N」：琥珀 14% 淡底 ＋ 琥珀 40% 边 ＋ 计数徽标。 */
 .tab-needs {
   flex: none;
   display: flex;
@@ -475,7 +475,7 @@
   display: none;
 }
 
-/* 行尾动作：悬停 / 焦点时盖在行尾（同色底与渐隐），不预留位置（主窗口稿 §4.3 提给规范 C8）。 */
+/* 行尾动作：悬停 / 焦点时盖在行尾（同色底与渐隐），不预留位置。 */
 .tab-acts {
   position: absolute;
   top: 4px;
@@ -552,7 +552,7 @@
   }
 }
 
-/* 悬停卡（主窗口稿 §5.1.3）：标题 14/600 · 行 `--text-2` · 状态句（在等你琥珀）· peek 一段 · 底行数字键。 */
+/* 悬停卡：标题 14/600 · 行 `--text-2` · 状态句（在等你琥珀）· peek 一段 · 底行数字键。 */
 .tab-hover {
   font-size: var(--font-size-small);
   line-height: var(--line-height-ui);
@@ -1535,7 +1535,7 @@
   border-left: 2px solid var(--border-medium);
 }
 
-/* === 按轮折叠（主窗口稿 §5.2.2）：完成的轮过程折成一行，28 高 === */
+/* === 按轮折叠：完成的轮过程折成一行，28 高 === */
 .proc-line {
   display: flex;
   align-items: center;
@@ -1582,7 +1582,7 @@
   display: none;
 }
 
-/* === 轮次刻度（主窗口稿 §5.2.6）：正文区右缘 16px 一列，每轮一格 3px 短线；当前那一轮 --accent 加长，在等你的那一轮琥珀。
+/* === 轮次刻度：正文区右缘 16px 一列，每轮一格 3px 短线；当前那一轮 --accent 加长，在等你的那一轮琥珀。
    挂在 #message-stream 上、不随流滚；与 .stream / .session-find 同一套：切 tab 只翻 visibility。 */
 .turn-rail {
   position: absolute;
@@ -1732,7 +1732,7 @@
   text-overflow: ellipsis;
 }
 
-/* 过程里的一步一行（主窗口稿 §5.2.3）：28 高 · 图标 16 · 工具名 600 · 主参数等宽一行 · 说明 · 右侧小字。没有展开记号（点整行展开）。 */
+/* 过程里的一步一行：28 高 · 图标 16 · 工具名 600 · 主参数等宽一行 · 说明 · 右侧小字。没有展开记号（点整行展开）。 */
 .block-collapsible > .block-summary.block-step {
   display: flex;
   align-items: center;

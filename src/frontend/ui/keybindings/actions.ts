@@ -89,7 +89,7 @@ export const ACTIONS: ReadonlyArray<Action> = [
     default: "Ctrl+KeyF",
     available: true,
   },
-  // 过程默认展开 / 收起（主窗口稿 §5.2.2 · §5.7）：完成的轮把过程折成一行，这一键全部摊开 / 全部收回。带 Ctrl 同查找。
+  // 过程默认展开 / 收起：完成的轮把过程折成一行，这一键全部摊开 / 全部收回。带 Ctrl 同查找。
   {
     id: "session.toggle-process",
     label: copyText("keybindingActions.session.toggleProcess"),
@@ -97,7 +97,7 @@ export const ACTIONS: ReadonlyArray<Action> = [
     default: "Ctrl+KeyO",
     available: true,
   },
-  // 上 / 下一轮（主窗口稿 §5.2.6，轮次刻度的键盘那一半）。
+  // 上 / 下一轮（轮次刻度的键盘那一半）。
   { id: "session.prev-turn", label: copyText("keybindingActions.session.prevTurn"), category: "Tab", default: "Alt+ArrowUp", available: true },
   { id: "session.next-turn", label: copyText("keybindingActions.session.nextTurn"), category: "Tab", default: "Alt+ArrowDown", available: true },
 

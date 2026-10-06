@@ -429,7 +429,7 @@ pub struct ChildRunTag {
     pub kind: Option<String>,
 }
 
-/// 过程里一步的「一行人话」（主窗口稿 §5.2.3 · B5 前一半）：assistant 记录成品的 `toolSteps`（`tool_use.id` ⇒ 它）。
+/// 过程里一步的「一行人话」：assistant 记录成品的 `toolSteps`（`tool_use.id` ⇒ 它）。
 /// 怎么从入参里挑主参数与说明是各家的格式知识（`agents/<名>/steps.rs`）；界面只排版，不认入参结构。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]

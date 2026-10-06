@@ -52,6 +52,7 @@ fn net() -> Regex {
         ("(^|[^0-9A-Za-z.§/])[0-9]{2} ?", "§"),
         ("(?P<doc>[A-Z][A-Za-z0-9]*-[A-Za-z0-9]+) ", "§"),
         ("记录", " §"),
+        ("稿 ?", "§"),
     ];
     let alts: Vec<String> = eyes.iter().map(|(a, b)| format!("{a}{b}")).collect();
     Regex::new(&alts.join("|")).expect("检测网拼不成正则")
@@ -244,6 +245,9 @@ fn the_net_catches_outside_pointers_and_spares_in_repo_references() {
         format!("// 守的要求：B-decouple {}2.1", "§"), // 4 ✔ 带连字符，名字不是仓里的文档
         format!("// 见 `{}/78 {}1`", "设计", "§"), // 5 ✔ 带目录的写法归目录那一眼
         format!("正文 `四五六/78 {}1`。", "§"),    // 6 ✘ 合成语料打码后的形状
+        format!("/* 会话头（主窗口稿 {}5.13）：40 高 */", "§"), // 7 ✔ 设计稿的节号
+        format!("// 按钮上的字就是结果（额度稿{}5.2）", "§"), // 8 ✔ 稿与 § 之间不空格
+        "// 存成草稿再发".to_string(),             // 9 ✘ 不带 §
     ];
     let got: BTreeSet<usize> = lines
         .iter()
@@ -253,8 +257,8 @@ fn the_net_catches_outside_pointers_and_spares_in_repo_references() {
         .collect();
     assert_eq!(
         got,
-        BTreeSet::from([1, 4, 5]),
-        "检测网在合成夹具上抓到的行 ≠ 标定（该抓 1、4、5；该放过 2、3、6）—— 网坏了，全仓那条零命中不作数"
+        BTreeSet::from([1, 4, 5, 7, 8]),
+        "检测网在合成夹具上抓到的行 ≠ 标定（该抓 1、4、5、7、8；该放过 2、3、6、9）—— 网坏了，全仓那条零命中不作数"
     );
 }
 

@@ -139,7 +139,7 @@ function buildPlanCard(input: unknown, opts: { lazy?: boolean }): HTMLElement {
 }
 
 /**
- * 答了之后（主窗口稿 §5.2.7 · B7）：左条去掉、标题换成「提问」/「计划」、底行写答了什么（已批准 · 已选「…」· 未批准）；
+ * 答了之后：左条去掉、标题换成「提问」/「计划」、底行写答了什么（已批准 · 已选「…」· 未批准）；
  * 提问卡里被选的那几项高亮（按后端给的选项原文比对选项标签，排版）。答了什么由后端从结果里读出（`toolResults[].answer` / `.rejected`），
  * 界面不读 Claude Code 的英文原句。
  */

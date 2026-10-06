@@ -70,7 +70,7 @@ interface Rig {
 function rig(n: number, grouped = 0): Rig {
   const store = new TabStore();
   store.accountReadyOrigins.add("pi");
-  // 账号头像只在「这个会话的号 ≠ 那台的默认号」时出（主窗口稿 §5.1.2）：那台默认号是 dave ⇒ 远端那一半都与它不同。
+  // 账号头像只在「这个会话的号 ≠ 那台的默认号」时出：那台默认号是 dave ⇒ 远端那一半都与它不同。
   store.currentByOrigin.set("pi", "dave");
   for (let i = 0; i < n; i++) {
     const sid = `s${i}`;
@@ -181,7 +181,7 @@ describe("P2 ＋ P7 ＋ P1：整刷改成差量刷", () => {
       // 〔「删掉树」〕10 → 9：少了 `.tab-bg` 那一个开关（bg tab 不再有自己的样式）。
       // 9 → 10：多选里的样子 `.selected` 那一个开关。
       // 10 → 11：说不清（那台看不见）`.unseen` 那一个开关。
-      // 11 → 13：主窗口稿 §5.1.2 的两个：跑完你还没看（`.unseen-done`，标题 600）· 在等你（`.waiting-you`，窄窗字母琥珀）。
+      // 11 → 13：跑完你还没看（`.unseen-done`，标题 600）· 在等你（`.waiting-you`，窄窗字母琥珀）。
       (r.store.tabs.get("s5") as { pinned: boolean }).pinned = true;
       r.view.refresh();
       expect(spy).toHaveBeenCalledTimes(13);

@@ -1473,7 +1473,7 @@ export class SettingsPanel {
     notifyRow.appendChild(notifyLabel);
     group.appendChild(notifyRow);
 
-    // 4b. 需要你 · 系统通知（主窗口稿 §5.6：默认开、只在主窗口不在前台时发；与上一格分开）
+    // 4b. 需要你 · 系统通知（默认开、只在主窗口不在前台时发；与上一格分开）
     const needsRow = document.createElement("label");
     needsRow.className = "settings-row settings-row-checkbox";
     this.notifyNeedsCheckbox = document.createElement("input");

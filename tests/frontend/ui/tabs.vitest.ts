@@ -2440,7 +2440,7 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
     expect(el?.querySelector(".acct-avatar")).not.toBeNull();
     expect(el?.querySelector(".acct-avatar.ghost")).toBeNull(); // live = 实心
   });
-  // 主窗口稿 §5.1.2（用户 10-05 认）：头像**只在这个会话的号 ≠ 那台默认号时出**——全都出 ⇒ 每行一块、信息为零（规范 V2）。
+  // 头像**只在这个会话的号 ≠ 那台默认号时出**——全都出 ⇒ 每行一块、信息为零。
   // 悬停卡里永远写账号（下一条）；头像悬停说「账号 {name}」。
   it("会话账号 == 默认账号 → 不挂头像；悬停卡里照样写账号", () => {
     tm.ensureTab("r1", "/w", "/p/r1.jsonl", "devbox");
@@ -4447,7 +4447,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
   });
 
   it("★ G3：容器事实落在活会话上；早到的暂存、建 tab 时落实；死了之后来的不改死的那一格", () => {
-    // 悬停卡（主窗口稿 §5.1.3）不再单列容器那一句：活会话的状态句只说在干什么；容器决定的是右键 / 会话头给哪几样。
+    // 悬停卡不再单列容器那一句：活会话的状态句只说在干什么；容器决定的是右键 / 会话头给哪几样。
     tm.noteContainer("c1", { form: "hosted", host: "tmux", terminal: "tmux-3-7" }); // 早于建 tab
     const t = tm.ensureTab("c1", "/x", "p", "pi");
     expect(t.state).toEqual(LIVE_ATTACHABLE);

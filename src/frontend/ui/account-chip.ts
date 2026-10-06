@@ -444,7 +444,7 @@ export class AccountChip {
       // 立刻重算会话账号/⚠k（否则 currentByOrigin 要等下一拍 10s 轮询，期间"对齐"会把会话
       // 打回刚被切走的旧账号——与用户意图正好相反）。
       this.deps.onDefaultChanged?.();
-      // 选即生效、不另报：下拉合上、按钮上的字就是结果（额度稿 §5.2 底栏）。
+      // 选即生效、不另报：下拉合上、按钮上的字就是结果。
     } catch (e) {
       toast(copyText("accountChip.selectDefault.failed"), String(e), { level: "error" });
     }
