@@ -153,6 +153,8 @@ mod tests {
             (format!("settings{}\"", ".json"), "设置文件名"),
             (format!("join(\"ta{}\")", "sks"), "任务列表目录"),
             (format!("ANTHROPIC_BASE{}", "_URL"), "上游地址环境变量"),
+            (format!("\"cc{}\"", "t"), "别名名字（由那一家的 wrapper 名派生）"),
+            (format!("\"cc{}\"", "a"), "别名名字（由那一家的 wrapper 名派生）"),
         ]
     }
 

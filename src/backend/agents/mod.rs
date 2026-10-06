@@ -259,6 +259,12 @@ pub(crate) fn pick_adapter(id: Option<&str>) -> Result<&'static str, String> {
     pick_adapter_among(REGISTRY, id).map(|(_, f)| f.adapter_id)
 }
 
+/// `kind` 那一家的 shell wrapper 名（[`LaunchFace::launcher_alias`]）。认不出 / 没有 ⇒ `None`。
+/// 别名清单的名字由它派生：`<它>`（当前目录起）· `<它>t`（tmux 里起）· `<它>a`（接回）· 每个号 `<号><它>` / `<号><它>t`。
+pub(crate) fn wrapper_alias(kind: &str) -> Option<&'static str> {
+    launch_face_among(REGISTRY, kind).and_then(|f| f.launcher_alias)
+}
+
 /// 由我们起的那几家（带 [`LaunchFace`] 的，注册表序）—— `ccm --agent` 的闭集就是它，不另写一份。
 pub(crate) fn launchable_kinds() -> Vec<&'static str> {
     REGISTRY
