@@ -281,6 +281,14 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          `chunk_upload_tests.rs::the_mismatch_code_is_the_backend_one`。两侧各写一份 `sftp_home_mismatch`；\
          失效方向：两份漂开 ⇒ SFTP 起始目录不是后端 home 的那台机器上，窗口认不出那一码、不改走块形，上传永远做不成。",
     ),
+    (
+        "monitor→backend",
+        "tests/frontend/filewin/shell_tests.rs",
+        "src/backend/control/files_write.rs",
+        "★**窗口据以说「x 已存在」的码 == 后端写面登记的 `EXISTS`** —— \
+         `shell_tests.rs::the_exists_code_is_the_backends_one`。两侧各写一份 `exists`；\
+         失效方向：两份漂开 ⇒ 就地改名 / 新建撞名时那一格下面说的是系统那句长话，不是「x 已存在」。",
+    ),
     // `tests/frontend/shell/subagent_tests.rs` → 后端 `history_query.rs` 那一条边删了：它钉的是本机 exec 那条路
     //   「退出 2 ＋ `unknown argument`」的认法（`local_failure_kind`〔散文墓碑〕），那条路改走 `<local>` 长连接之后
     //   「老后端」由长连接的 `accepts` 当场判（与远端同一个判定），不再读后端 stderr 的措辞。

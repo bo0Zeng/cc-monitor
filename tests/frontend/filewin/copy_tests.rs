@@ -257,7 +257,7 @@ fn the_outcome_and_the_running_line_really_get_painted_and_no_cancel_button_is()
     let mut acted = None;
     let mut paint = |t: f64, acted: &mut Option<crate::progress::Act>| {
         painted_text(&ctx, screen, t, Vec::new(), |ui| {
-            if let Some(a) = crate::progress::table_ui(ui, &table) {
+            if let Some(a) = crate::progress::table_ui(ui, &table, false) {
                 *acted = Some(a);
             }
         })

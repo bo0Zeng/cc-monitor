@@ -273,6 +273,9 @@ pub struct FakeBackend {
     hold_grep: Option<std::sync::Arc<tokio::sync::Notify>>,
     /// `files-delete` 一趟一趟回的「还剩几条」（取一个用一个；用完 ⇒ 不带这一格，即删完了）。
     pub delete_left: std::sync::Arc<std::sync::Mutex<std::collections::VecDeque<u64>>>,
+    /// 路径换名（截图那几张）：`(窗口看到的前缀, 盘上真的前缀)` —— 进来的参数把前者换成后者再答，答出去的再换回来，
+    /// 窗口里的面包屑就是一台真机器那样的 `/home/user/…`，看不到沙箱路径。
+    pub alias: Option<(String, String)>,
 }
 
 impl FakeBackend {
@@ -292,6 +295,7 @@ impl FakeBackend {
             grep_reply: None,
             hold_grep: None,
             delete_left: Default::default(),
+            alias: None,
         }
     }
 
@@ -362,6 +366,12 @@ impl FakeBackend {
     }
 
     /// 给它一个家目录（窗口不开「只搜当前目录」时，搜的与重走的都是这一处）。
+    /// 见 [`Self::alias`]。
+    pub fn aliased(mut self, shown: &str, real: &std::path::Path) -> Self {
+        self.alias = Some((shown.to_string(), real.to_string_lossy().to_string()));
+        self
+    }
+
     pub fn homed(mut self, home: &std::path::Path) -> Self {
         self.home = Some(remote_form(&home.to_string_lossy()));
         self
@@ -391,6 +401,16 @@ impl FakeBackend {
                 ),
             },
             "files-index-status" => (true, None, None, Some(self.status_json())),
+            // 主目录：`homed` 给过 ⇒ 答它（「复制到另一台」那一块选择器缺省停在那台的主目录）；没给 ⇒ 读不到。
+            "files-home" => match &self.home {
+                Some(h) => (true, None, None, Some(serde_json::json!({ "path": h }))),
+                None => (
+                    false,
+                    Some("unreadable".into()),
+                    Some("主目录读不到".into()),
+                    None,
+                ),
+            },
             "files-index-rebuild" => {
                 // 不给 `path` ⇒ 家目录（同后端）。
                 let root = match args.get("path") {
@@ -831,7 +851,29 @@ impl FakeBackend {
                         None,
                     );
                 }
+                // 新名字带 `exists` ⇒ 「落点名被占了」那一档（后端 `exists`，就地改名 / 新建据它说「x 已存在」）。
+                let to = args
+                    .get(if cmd == "files-rename" { "to" } else { "rel" })
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                // 盘上真有那一项（截图那几张的合成目录）也算被占了。
+                let taken = !to.is_empty() && std::path::Path::new(root).join(to).exists();
+                if (cmd == "files-rename" || cmd == "files-mkdir")
+                    && (to.contains("exists") || taken)
+                {
+                    return (
+                        false,
+                        Some("exists".into()),
+                        Some("目标已经在了（不覆盖）".into()),
+                        None,
+                    );
+                }
                 let mut reply = serde_json::json!({ "path": root });
+                // 改权限：回改之前的位（撤销据它；合成值恒 0o644）。
+                if cmd == "files-chmod" {
+                    reply["mode"] = args.get("mode").cloned().unwrap_or_default();
+                    reply["before"] = serde_json::json!(0o644);
+                }
                 if cmd == "files-delete" {
                     if let Some(n) = self.delete_left.lock().unwrap().pop_front() {
                         reply["remaining"] = serde_json::json!(n);
@@ -840,7 +882,7 @@ impl FakeBackend {
                 (true, None, None, Some(reply))
             }
             // 新建空文件：同写面五条「只记下来、不落盘」；`root` 带 `refuse` ⇒ 围栏那一档，
-            //   `rel` 带 `exists` ⇒ 「目标已经在了」那一档（后端 `O_EXCL` 失败走的是 `io_failed`）。
+            //   `rel` 带 `exists` ⇒ 「目标已经在了」那一档（后端 `O_EXCL` 失败走的是 `exists`）。
             "files-create" => {
                 let root = args.get("root").and_then(|v| v.as_str()).unwrap_or("");
                 let rel = args.get("rel").and_then(|v| v.as_str()).unwrap_or("");
@@ -855,7 +897,7 @@ impl FakeBackend {
                 if rel.contains("exists") {
                     return (
                         false,
-                        Some("io_failed".into()),
+                        Some("exists".into()),
                         Some("目标已经在了（不覆盖）".into()),
                         None,
                     );
@@ -1083,6 +1125,20 @@ impl comms_inward::chan::router::Backends for Hosted {
         let args: serde_json::Value =
             serde_json::from_slice(&payload.0).unwrap_or(serde_json::Value::Null);
         let mut be = self.be.lock().unwrap();
+        // 路径换名：参数里窗口那一形 → 盘上那一形（答出去的在下面换回来）。
+        let swap = |v: &serde_json::Value, from: &str, to: &str| -> serde_json::Value {
+            serde_json::from_str(
+                &serde_json::to_string(v)
+                    .unwrap_or_default()
+                    .replace(from, to),
+            )
+            .unwrap_or(serde_json::Value::Null)
+        };
+        let alias = be.alias.clone();
+        let args = match &alias {
+            Some((shown, real)) => swap(&args, shown, real),
+            None => args,
+        };
         // 能力协商（同 `InboundClient::call` 第一行）：没声明的命令**一个字节都不发** ⇒ 不进记录。
         if !be.offered.iter().any(|c| c == &op.0) {
             return Box::pin(async {
@@ -1096,6 +1152,13 @@ impl comms_inward::chan::router::Backends for Hosted {
             .unwrap()
             .push(serde_json::json!({ "cmd": op.0, "args": args }));
         let (ok, code, message, data) = be.answer(&op.0, &args);
+        let (message, data) = match &alias {
+            Some((shown, real)) => (
+                message.map(|m| m.replace(real.as_str(), shown)),
+                data.map(|d| swap(&d, real, shown)),
+            ),
+            None => (message, data),
+        };
         let hold = if op.0 == "files-index-rebuild" {
             be.hold_rebuild.clone()
         } else if op.0 == "files-grep" {

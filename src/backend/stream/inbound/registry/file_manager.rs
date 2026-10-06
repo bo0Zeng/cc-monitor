@@ -70,7 +70,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "files-create",
         doc_anchor: Some("#### `files-create`"),
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        codes: &["bad_args", "bad_path", "exists", "io_failed", "refused"],
         fields: &["bytes", "content", "path", "rel", "root"],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -90,7 +90,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "files-mkdir",
         doc_anchor: Some("#### `files-mkdir`"),
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        codes: &["bad_args", "bad_path", "exists", "io_failed", "refused"],
         fields: &["path", "rel", "root"],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -102,7 +102,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "files-rename",
         doc_anchor: Some("#### `files-rename`"),
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        codes: &["bad_args", "bad_path", "exists", "io_failed", "refused"],
         fields: &["from", "path", "root", "to"],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -146,7 +146,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "no_unix_mode",
             "refused",
         ],
-        fields: &["mode", "path", "rel", "root"],
+        fields: &["before", "mode", "path", "rel", "root"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)

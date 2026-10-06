@@ -640,46 +640,46 @@ impl CopyBoard {
     /// 画覆盖确认框（模态）。「正在复制」与结局是「进度」表里的一行（`super::progress`，结局那一句从 [`outcome_notice`] 出来）。
     pub fn ui(&self, ui: &mut egui::Ui) {
         let asking = self.inner.lock().unwrap().asking.clone();
-        if !asking.is_empty() {
-            let mut answer: Option<bool> = None;
-            let (_, esc) = super::shell::modal(ui.ctx(), "filewin-copy-overwrite", |ui| {
-                if let [job] = asking.as_slice() {
-                    ui.heading(copy_text(
-                        "rsFilewinCopy.ui.askOverwrite",
-                        &[("name", &job.name.to_string())],
-                    ));
-                } else {
-                    ui.heading(copy_text(
-                        "rsFilewinCopy.ui.askOverwriteMany",
-                        &[("n", &asking.len().to_string())],
-                    ));
-                }
-                super::shell::modal_list(ui, |ui| {
-                    for job in &asking {
-                        ui.label(format!("{} → {}", job.from, job.to));
-                    }
-                });
-                ui.horizontal(|ui| {
-                    if ui
-                        .button(&copy_text("rsFilewinCopy.ui.overwrite", &[]))
-                        .clicked()
-                    {
-                        answer = Some(true);
-                    }
-                    if ui
-                        .button(&copy_text("rsFilewinCopy.ui.keep", &[]))
-                        .clicked()
-                    {
-                        answer = Some(false);
-                    }
-                });
-            });
-            if esc && answer.is_none() {
-                answer = Some(false);
-            }
-            if let Some(ok) = answer {
-                self.settle(ok);
-            }
+        if asking.is_empty() {
+            return;
+        }
+        // 同名那一问（kit 的对话框）：标题「x 已存在」/「同名 n」· 一块清单（名字 ｜ 落到哪）· ［跳过］（焦点）［覆盖］（危险）。
+        let title = if let [job] = asking.as_slice() {
+            copy_text("rsFilewinCopy.ui.askOverwrite", &[("name", &job.name)])
+        } else {
+            copy_text(
+                "rsFilewinCopy.ui.askOverwriteMany",
+                &[("n", &asking.len().to_string())],
+            )
+        };
+        let rows: Vec<super::kit::ListRow> = asking
+            .iter()
+            .map(|job| super::kit::ListRow {
+                icon: egui_phosphor::regular::FILE,
+                name: job.name.clone(),
+                meta: super::source::parent_dir(&job.to),
+            })
+            .collect();
+        let hit = super::kit::dialog(
+            ui.ctx(),
+            "filewin-copy-overwrite",
+            &title,
+            |ui| super::kit::list_box(ui, &rows, None),
+            &[
+                (
+                    copy_text("rsFilewinCopy.ui.keep", &[]),
+                    super::kit::Btn::Plain,
+                ),
+                (
+                    copy_text("rsFilewinCopy.ui.overwrite", &[]),
+                    super::kit::Btn::Danger,
+                ),
+            ],
+            0,
+            0,
+        );
+        if let Some(k) = hit {
+            self.settle(k == 1);
         }
     }
 }

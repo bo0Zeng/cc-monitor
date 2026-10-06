@@ -465,12 +465,12 @@ pub async fn probe_remote(
     .await
 }
 
-/// 〔有损名全寻址〕同 [`probe_remote`]（同一个口径：`stat` 失败算「不在」），路径由调用方给线上那一形（字符串或 `{"b16": …}`）。
-pub async fn probe_remote_at(
+/// 同 [`probe_remote_at`]，在 ⇒ 交回那台 `files-stat` 的应答（同名那张表要那台的大小与修改时间）；不在 / 读不到 ⇒ `None`。
+pub async fn stat_remote_at(
     line: &super::source::Line,
     origin: &super::source::Origin,
     remote_path: serde_json::Value,
-) -> bool {
+) -> Option<serde_json::Value> {
     super::source::ask(
         line,
         origin,
@@ -479,7 +479,16 @@ pub async fn probe_remote_at(
         PROBE_BUDGET,
     )
     .await
-    .is_ok()
+    .ok()
+}
+
+/// 〔有损名全寻址〕同 [`probe_remote`]（同一个口径：`stat` 失败算「不在」），路径由调用方给线上那一形（字符串或 `{"b16": …}`）。
+pub async fn probe_remote_at(
+    line: &super::source::Line,
+    origin: &super::source::Origin,
+    remote_path: serde_json::Value,
+) -> bool {
+    stat_remote_at(line, origin, remote_path).await.is_some()
 }
 
 /// 一次「那儿有没有东西」的往返上限（调用方给的期限）。
@@ -663,6 +672,10 @@ struct Board {
     via_backend: Option<String>,
     /// 开过单的暂存件键（[`DropBoard::note_staged`]）。
     staged: Vec<String>,
+    /// 同名那张表里「那台」那一格：名字 → (大小, 修改时间)，探「在不在」那一趟顺手记下（[`DropBoard::note_there`]）。
+    there: std::collections::HashMap<String, (Option<u64>, Option<u64>)>,
+    /// 这一摞一共几件（「不重名的 n 个照传」那一句要它）。
+    total: usize,
 }
 
 impl DropBoard {
@@ -681,6 +694,26 @@ impl DropBoard {
 
     pub fn is_asking(&self) -> bool {
         !self.inner.lock().unwrap().asking.is_empty()
+    }
+
+    /// 这一摞一共几件（摆问题之前交来）。
+    pub fn set_total(&self, n: usize) {
+        self.inner.lock().unwrap().total = n;
+    }
+
+    /// 探「在不在」那一趟在那台看到的大小与修改时间（同名那张表「那台」那一格）。
+    pub fn note_there(&self, name: &str, size: Option<u64>, mtime: Option<u64>) {
+        self.inner
+            .lock()
+            .unwrap()
+            .there
+            .insert(name.to_string(), (size, mtime));
+    }
+
+    /// 「取消整批」：一件都不传（不重名的也不传）—— 按下这一摞的「停」，再答「都不覆盖」。
+    pub fn settle_cancel(&self) -> bool {
+        self.desk.request();
+        self.settle(false)
     }
 
     /// 这一摞的取消台。**同一份**（`CancelDesk` 内部全是 `Arc`）。
@@ -858,56 +891,105 @@ impl DropBoard {
         tx.send(allowed).is_ok()
     }
 
-    /// 画覆盖确认框。**模态** —— 有问题在等的时候，列表那边不接受点击。
+    /// 画同名覆盖那一问（kit 的对话框，稿 12）：标题「同名 2 · devbox」· 一张表（☐ 名字 · 本机 · 那台，各写大小 · 时间）·
+    /// 「勾选的覆盖 · 未勾的跳过 · 不重名的 n 个照传」· ［取消整批］［全部跳过］（焦点）［覆盖勾选的 n 个］（危险）。
     /// 进度、停与结局不在这里画：这一趟是窗口底部「进度」表里的一行（`super::progress`）。
-    pub fn ui(&self, ui: &mut egui::Ui) {
-        let (asking, mut ticks) = {
+    pub fn ui(&self, ui: &mut egui::Ui, machine: &str) {
+        let (asking, mut ticks, there, total) = {
             let b = self.inner.lock().unwrap();
-            (b.asking.clone(), b.ticks.clone())
+            (b.asking.clone(), b.ticks.clone(), b.there.clone(), b.total)
         };
         if asking.is_empty() {
             return;
         }
-        let mut answer: Option<bool> = None;
+        let side = |size: Option<u64>, mtime: Option<u64>| {
+            let size = size.map(super::rows::human_size);
+            let when = mtime.map(|t| super::source::mtime_text(t).short);
+            [size, when]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .join(&copy_text("rsFilewinRows.tip.sep", &[]))
+        };
+        let rows: Vec<super::kit::ClashRow> = asking
+            .iter()
+            .map(|p| {
+                let local = std::fs::metadata(&p.local_path).ok();
+                let here = side(
+                    local.as_ref().map(std::fs::Metadata::len),
+                    local
+                        .as_ref()
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs()),
+                );
+                let (sz, mt) = there.get(&p.name).copied().unwrap_or((None, None));
+                super::kit::ClashRow {
+                    name: p.name.clone(),
+                    here,
+                    there: side(sz, mt),
+                }
+            })
+            .collect();
+        let n_on = ticks.iter().filter(|t| **t).count();
+        let others = total.saturating_sub(asking.len());
         let mut changed = false;
-        let (_, esc) = super::shell::modal(ui.ctx(), "filewin-overwrite", |ui| {
-            ui.heading(copy_text(
-                "rsFilewinTransfer.ui.askOverwrite",
-                &[("n", &(asking.len()).to_string())],
-            ));
-            ui.label(&copy_text("rsFilewinTransfer.ui.askOnce", &[]));
-            super::shell::modal_list(ui, |ui| {
-                for (i, p) in asking.iter().enumerate() {
-                    let mut t = ticks[i];
-                    if ui.checkbox(&mut t, &p.name).changed() {
-                        ticks[i] = t;
-                        changed = true;
-                    }
-                }
-            });
-            ui.horizontal(|ui| {
-                if ui
-                    .button(&copy_text("rsFilewinTransfer.ui.overwriteChecked", &[]))
-                    .clicked()
-                {
-                    answer = Some(true);
-                }
-                if ui
-                    .button(&copy_text("rsFilewinTransfer.ui.overwriteNone", &[]))
-                    .clicked()
-                {
-                    answer = Some(false);
-                }
-            });
-        });
+        let title = copy_text(
+            "rsFilewinTransfer.ui.askOverwrite",
+            &[("n", &asking.len().to_string()), ("machine", machine)],
+        );
+        let hit = super::kit::dialog(
+            ui.ctx(),
+            "filewin-overwrite",
+            &title,
+            |ui| {
+                let here = copy_text("rsFilewinTransfer.ui.here", &[]);
+                let name = copy_text("rsFilewinTransfer.ui.name", &[]);
+                changed = super::kit::clash_table(ui, [&name, &here, machine], &rows, &mut ticks);
+                ui.add_space(10.0);
+                let p = super::theme::palette(ui.ctx());
+                ui.label(
+                    egui::RichText::new(copy_text(
+                        "rsFilewinTransfer.ui.askOnce",
+                        &[("n", &others.to_string())],
+                    ))
+                    .color(p.text2),
+                );
+            },
+            &[
+                (
+                    copy_text("rsFilewinTransfer.ui.cancelAll", &[]),
+                    super::kit::Btn::Plain,
+                ),
+                (
+                    copy_text("rsFilewinTransfer.ui.overwriteNone", &[]),
+                    super::kit::Btn::Plain,
+                ),
+                (
+                    copy_text(
+                        "rsFilewinTransfer.ui.overwriteChecked",
+                        &[("n", &n_on.to_string())],
+                    ),
+                    super::kit::Btn::Danger,
+                ),
+            ],
+            1,
+            0,
+        );
         if changed {
             self.inner.lock().unwrap().ticks = ticks;
         }
-        if esc && answer.is_none() {
-            answer = Some(false);
-        }
-        if let Some(ok) = answer {
-            self.settle(ok);
+        match hit {
+            Some(0) => {
+                self.settle_cancel();
+            }
+            Some(1) => {
+                self.settle(false);
+            }
+            Some(_) => {
+                self.settle(true);
+            }
+            None => {}
         }
     }
 }

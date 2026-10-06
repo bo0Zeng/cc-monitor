@@ -211,7 +211,7 @@ impl CrossBoard {
         self.inner.lock().unwrap().last.clone()
     }
 
-    /// 画盖不盖那一问（模态）。在复制那一行（进度 ＋ 停）与结局是「进度」表里的一行（`super::progress`）。
+    /// 画盖不盖那一问（kit 的对话框：那一句 ＋［不复制］（焦点）［覆盖］（危险））。在复制那一行（进度 ＋ 停）与结局是「进度」表里的一行（`super::progress`）。
     pub fn ui(&self, ui: &mut egui::Ui) {
         let asking = self
             .inner
@@ -220,23 +220,227 @@ impl CrossBoard {
             .asking
             .as_ref()
             .map(|(s, _)| s.clone());
-        if let Some(said) = asking {
-            let (mut yes, mut no) = (false, false);
-            let (_, esc) = super::shell::modal(ui.ctx(), "filewin-cross-overwrite", |ui| {
-                ui.label(said);
-                ui.horizontal(|ui| {
-                    yes = ui
-                        .button(copy_text("rsFilewinCrossCopy.ask.overwrite", &[]))
-                        .clicked();
-                    no = ui
-                        .button(copy_text("rsFilewinCrossCopy.ask.skip", &[]))
-                        .clicked();
-                });
+        let Some(said) = asking else {
+            return;
+        };
+        let hit = super::kit::dialog(
+            ui.ctx(),
+            "filewin-cross-overwrite",
+            &said,
+            |_| {},
+            &[
+                (
+                    copy_text("rsFilewinCrossCopy.ask.skip", &[]),
+                    super::kit::Btn::Plain,
+                ),
+                (
+                    copy_text("rsFilewinCrossCopy.ask.overwrite", &[]),
+                    super::kit::Btn::Danger,
+                ),
+            ],
+            0,
+            0,
+        );
+        if let Some(k) = hit {
+            self.settle(k == 1);
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 「放到」那一块小目录选择器（稿 13）：那台的面包屑 ＋ 只列文件夹，双击进去，缺省那台的主目录，记住上次
+// ═══════════════════════════════════════════════════════════════════════
+
+/// 那一块选择器的共享落点（UI 线程读，tokio 那条写）。带代数：换了机器 / 换了目录，晚到的上一趟不许落进来。
+#[derive(Clone, Default)]
+pub struct DirPick {
+    inner: Arc<Mutex<Pick>>,
+}
+
+/// 选择器此刻摆的是什么。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Pick {
+    pub gen: u64,
+    /// 哪台（地址，不是给人看的名字）。
+    pub machine: String,
+    /// 在看那台的哪个目录（还没问到主目录 ⇒ 空）。
+    pub path: String,
+    /// 那个目录底下的文件夹（`None` ＝ 在读；`Err` ＝ 读不出那一句）。
+    pub dirs: Option<Result<Vec<String>, String>>,
+    /// 单击选中的那一个子文件夹（落点 ＝ 它；没选 ⇒ 落点 ＝ 在看的目录）。
+    pub picked: Option<String>,
+}
+
+impl Pick {
+    /// 落点目录（[`Self::picked`] 选了 ⇒ 它；否则在看的那个目录）。
+    pub fn target(&self) -> String {
+        match &self.picked {
+            Some(n) => super::writeops::join_remote(&self.path, n),
+            None => self.path.clone(),
+        }
+    }
+}
+
+/// 上一次在每一台上选到的落点（进程内记着；同一扇窗再开那一问就停在那儿）。
+static LAST_DIR: std::sync::LazyLock<Mutex<std::collections::HashMap<String, String>>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// 记下这一台上选到的落点。
+pub fn remember_dir(machine: &str, dir: &str) {
+    LAST_DIR
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(machine.to_string(), dir.to_string());
+}
+
+/// 这一台上次选到的落点（没有 ⇒ `None`，那就去问它的主目录）。
+pub fn last_dir(machine: &str) -> Option<String> {
+    LAST_DIR
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(machine)
+        .cloned()
+}
+
+impl DirPick {
+    /// 此刻摆的那一份（判据与界面看同一个值）。
+    pub fn shown(&self) -> Pick {
+        self.inner.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// 单击选中一个子文件夹（再点一次 ＝ 不选）。
+    pub fn pick(&self, name: &str) {
+        let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        g.picked = if g.picked.as_deref() == Some(name) {
+            None
+        } else {
+            Some(name.to_string())
+        };
+    }
+
+    /// 去那台的某个目录看（`path` 空 ⇒ 先问那台的主目录）：代数 +1、清掉旧的、起一趟。
+    pub fn go(
+        &self,
+        h: &tokio::runtime::Handle,
+        line: &super::source::Line,
+        machine: &str,
+        path: &str,
+        ctx: Option<egui::Context>,
+    ) {
+        let gen = {
+            let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            g.gen += 1;
+            g.machine = machine.to_string();
+            g.path = path.to_string();
+            g.dirs = None;
+            g.picked = None;
+            g.gen
+        };
+        let (me, line, machine, path) = (
+            self.clone(),
+            line.clone(),
+            machine.to_string(),
+            path.to_string(),
+        );
+        h.spawn(async move {
+            let to = comms_inward::chan::wire::Origin(machine.clone());
+            let path = if path.is_empty() {
+                match super::source::ask(
+                    &line,
+                    &to,
+                    "files-home",
+                    &serde_json::json!({}),
+                    super::transfer::PROBE_BUDGET,
+                )
+                .await
+                .and_then(|d| super::source::home_from_reply(&d))
+                {
+                    Ok(h) => h,
+                    Err(e) => {
+                        me.land(gen, None, Err(e), &ctx);
+                        return;
+                    }
+                }
+            } else {
+                path
+            };
+            let got = super::source::list_via_backend(
+                &line,
+                &to,
+                &path,
+                super::source::LS_LIMIT,
+                super::source::SortBy::Name,
+            )
+            .await
+            .map(|(rows, _)| {
+                rows.into_iter()
+                    .filter(|r| r.opens_as_dir() && !r.lossy_name)
+                    .map(|r| r.name.clone())
+                    .collect::<Vec<_>>()
             });
-            no |= esc;
-            if yes || no {
-                self.settle(yes);
+            me.land(gen, Some(path), got, &ctx);
+        });
+    }
+
+    /// 在那台在看的目录里新建一个文件夹（名字缺省「新建文件夹」），建好就选中它。
+    pub fn mkdir(
+        &self,
+        h: &tokio::runtime::Handle,
+        line: &super::source::Line,
+        ctx: Option<egui::Context>,
+    ) {
+        let now = self.shown();
+        if now.path.is_empty() {
+            return;
+        }
+        let name = copy_text("rsFilewinWriteops.inline.newDir", &[]);
+        let (me, line) = (self.clone(), line.clone());
+        h.spawn(async move {
+            let to = comms_inward::chan::wire::Origin(now.machine.clone());
+            let op = super::writeops::WriteOp::Mkdir {
+                path: super::writeops::join_remote(&now.path, &name),
+            };
+            let made = super::writeops::apply_remote_coded(&line, &to, &op, None).await;
+            let got = super::source::list_via_backend(
+                &line,
+                &to,
+                &now.path,
+                super::source::LS_LIMIT,
+                super::source::SortBy::Name,
+            )
+            .await
+            .map(|(rows, _)| {
+                rows.into_iter()
+                    .filter(|r| r.opens_as_dir() && !r.lossy_name)
+                    .map(|r| r.name.clone())
+                    .collect::<Vec<_>>()
+            });
+            me.land(now.gen, Some(now.path.clone()), got, &ctx);
+            if made.is_ok() {
+                me.inner.lock().unwrap_or_else(|e| e.into_inner()).picked = Some(name);
             }
+        });
+    }
+
+    fn land(
+        &self,
+        gen: u64,
+        path: Option<String>,
+        got: Result<Vec<String>, String>,
+        ctx: &Option<egui::Context>,
+    ) {
+        {
+            let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            if g.gen != gen {
+                return;
+            }
+            if let Some(p) = path {
+                g.path = p;
+            }
+            g.dirs = Some(got);
+        }
+        if let Some(c) = ctx {
+            c.request_repaint();
         }
     }
 }

@@ -16,7 +16,7 @@ export const FILEWIN_SCENES = [
   { id: "filewin-empty", scene: "empty", title: "文件窗口 · 空目录", desc: "进到一个空目录" },
   { id: "filewin-missing", scene: "missing", title: "文件窗口 · 目录不存在", desc: "进到一个不存在的目录：列表那里报错" },
   { id: "filewin-pull", scene: "pull", title: "文件窗口 · 下载在路上", desc: "一趟下载在路上：「进度」表收着，状态栏右端「进度 1」带一小条合计进度（点开是表里那一行）" },
-  { id: "filewin-mkdir-error", scene: "mkdir-error", title: "文件窗口 · 新建目录名字填错", desc: "新建目录那个框里名字是空的就点了确定：为什么没做成" },
+  { id: "filewin-mkdir-error", scene: "mkdir-error", title: "文件窗口 · 新建文件夹名字填错", desc: "就地新建文件夹那一格把名字清空了就回车：红边 ＋ 格子下面挂一句「名称为空」，那一格留着" },
   { id: "filewin-search", scene: "search", title: "文件窗口 · 按名字搜", desc: "工具条搜索框里输「retry」：全家目录里名字带它的文件。索引那一行的「扫描间隔 4242 秒」是合成后端故意给的怪数、命中路径是沙箱里的长路径" },
   { id: "filewin-progress", scene: "progress", title: "文件窗口 · 进度", desc: "窗口底部「进度」表：上传一摞与下载在跑（可停）· 删除文件夹在跑（那台撤不动，「停」灰着）· 上传失败（重试 2 个）· 复制到另一台完成；状态栏「进度 3」带红点" },
   { id: "filewin-stale", scene: "stale", title: "文件窗口 · 断线过期", desc: "和 devbox 断了：工具条下一条「devbox 离线 · 采样 13:40」＋［重新连接］；列表照常摆着上次那一屏；写类按钮灰（悬停「离线 · 只读」）" },
@@ -25,7 +25,12 @@ export const FILEWIN_SCENES = [
   { id: "filewin-edit-stale", scene: "edit-stale", title: "文件窗口 · 编辑页 · 盘上被改过", desc: "保存时盘上那份在打开之后被改过：编辑面顶一条「main.rs 已在盘上被修改」［覆盖］［放弃改动并重开］，字一个不动" },
   { id: "filewin-edit-close", scene: "edit-close", title: "文件窗口 · 关编辑页 · 没保存", desc: "改了没存点 ×：「关闭 main.rs · 未保存」「不保存 = 丢弃改动」［取消］［不保存］［保存］（焦点在保存）" },
   { id: "filewin-close-window", scene: "close-window", title: "文件窗口 · 关窗那一问", desc: "有没保存的编辑页与一趟在下的：「关闭文件窗口 · devbox」按族列出（未保存 · 传输中）；［取消］［全部保存后关闭］［仍然关闭］" },
-  { id: "filewin-delete-ask", scene: "delete-ask", title: "文件窗口 · 删除那一问", desc: "选中三个文件夹按 Delete：「删除 3 项」· 列名字（文件夹注明）· 不可恢复 · 取消在前、删除是危险按钮" },
+  { id: "filewin-delete-ask", scene: "delete-ask", title: "文件窗口 · 删除那一问", desc: "选中一个文件夹 ＋ 两个文件按 Delete（稿 09）：「删除 3 项」· 一块清单（图标 ＋ 名字 ｜ 右端「文件夹」/ 大小）· 不可恢复 · 取消（焦点）· 删除 3 项（危险）" },
+  { id: "filewin-rename-error", scene: "rename-error", title: "文件窗口 · 就地改名 · 填错", desc: "main.rs 上 F2：名字那一格成了输入框，改成 Cargo.toml 回车 ⇒ 后端回「已存在」：红边 ＋ 格子下面挂一句「Cargo.toml 已存在」，那一格留着（稿 07）" },
+  { id: "filewin-new-folder", scene: "new-folder", title: "文件窗口 · 就地新建文件夹 ＋ 改名回执", desc: "「新建 ▾ → 文件夹」：文件夹那一段之后冒出一行「新建文件夹」、名字整个选中；右下角是上一次改名的回执「已改名为 retry.rs［撤销］」（稿 08）" },
+  { id: "filewin-chmod", scene: "chmod", title: "文件窗口 · 改权限", desc: "「⋯ → 权限」：「改权限 · main.rs」·「当前 644」· 3 × 3 勾（勾了所有者 / 同组 / 其他人的执行）·「数字写法 755」两边联动 ·［取消］［改权限］（稿 10）" },
+  { id: "filewin-upload-clash", scene: "upload-clash", title: "文件窗口 · 上传遇到同名", desc: "上传三个文件、两个同名：「同名 2 · devbox」一张表（☐ 名字 · 本机 · devbox，各写大小 · 时间）·「勾选的覆盖 · 未勾的跳过 · 不重名的 1 个照传」·［取消整批］［全部跳过］［覆盖勾选的 n 个］（稿 12）" },
+  { id: "filewin-cross-copy", scene: "cross-copy", title: "文件窗口 · 复制到另一台", desc: "report.pdf「复制到另一台」：「复制到」下拉 gpu-01 ·「放到」那台的面包屑 ＋ 文件夹（选中 inbox）· 右上「新建文件夹」·「目标 gpu-01:…/inbox」·［取消］［复制到 gpu-01］（稿 13；合成后端一台答所有机器，那台的主目录是沙箱路径）" },
 ].map((s) => ({ ...s, dir: "文件窗口", width: 1280, height: 800 }));
 
 export async function shootFilewin({ repo, sandbox, out, scenes, env, buildEnv, children }) {
@@ -144,6 +149,15 @@ function layFixture(home) {
   }
   // 目录的修改时间最后钉（往里写文件会把它刷成现在）
   for (const [d, t] of dirs) utimesSync(path.join(dir, d), at(t), at(t));
+  // 「复制到另一台」那一张：那台主目录底下的几个文件夹（合成后端一台答所有机器）。
+  for (const d of ["datasets", "inbox", "runs", "ranker"]) mkdirSync(path.join(home, d), { recursive: true });
+  // 「上传遇到同名」那一张：本机那一侧的三份（两份与目录里同名）。
+  const local = path.join(home, "..", "..", "local");
+  mkdirSync(local, { recursive: true });
+  for (const [name, n, t] of [["main.rs", 612, "2026-10-01T13:50:00"], ["README.md", 34, "2026-09-12T10:00:00"], ["new.txt", 9, "2026-10-01T13:50:00"]]) {
+    writeFileSync(path.join(local, name), Buffer.alloc(n, 0x61));
+    utimesSync(path.join(local, name), at(t), at(t));
+  }
 }
 
 /** 挑一个没人用的显示号（没有套接字、也没有锁文件）。 */

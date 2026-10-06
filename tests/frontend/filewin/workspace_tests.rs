@@ -454,11 +454,12 @@ fn a_dropped_link_shows_the_strip_keeps_the_stale_listing_and_blocks_writes() {
         ws.pane_on(0).offline_refusal(crate::select::Action::Rename),
         Some(read_only.clone())
     );
+    // 下载也要那台（读也得连着）⇒ 同样灰着（「要不要那台机器」一处判，`offline_cmd`）。
     assert_eq!(
         ws.pane_on(0)
             .offline_refusal(crate::select::Action::Download),
-        None,
-        "下载是读，离线时也被挡了"
+        Some(read_only.clone()),
+        "下载要那台机器，离线时却没挡"
     );
     // 又连上：条没了，标签页重列一遍。
     ws.link.set(LinkSeen::Up);
@@ -881,8 +882,19 @@ async fn screenshot_for_the_shots_tool() {
     let dir = base.join("work").join("orders-service");
     // 预览那一栏的正文：合成后端按路径从内存里答（不读盘），工具把 main.rs 那一份一并给过来。
     let code = need("CCM_SHOTS_FILEWIN_PREVIEW");
-    let d = dir.to_string_lossy().to_string();
-    let mut offered = vec!["files-ls", "files-read-text", "files-stat", "files-home"];
+    // 窗口里看到的是一台真机器那样的路径（`/home/user/…`）：合成后端把它换成盘上的沙箱路径再答（[`FakeBackend::aliased`]），
+    //   面包屑里就没有沙箱那几级（场景名之类）。`dir` 是盘上那一份（读盘用），`vdir` / `d` 是窗口那一份。
+    let vhome = std::path::PathBuf::from("/home/user");
+    let vdir = vhome.join("work").join("orders-service");
+    let d = vdir.to_string_lossy().to_string();
+    let mut offered = vec![
+        "files-ls",
+        "files-read-text",
+        "files-stat",
+        "files-home",
+        "files-rename",
+        "files-mkdir",
+    ];
     offered.extend_from_slice(crate::find::COMMANDS);
     // 「n 个目录无权限［查看］」那一张：后端报 3 个、交 2 个名单。
     let declared = if scene == "unreadable" {
@@ -899,7 +911,8 @@ async fn screenshot_for_the_shots_tool() {
     };
     let be = FakeBackend::new(&offered, declared)
         .homed(&base)
-        .preindexed(&base);
+        .preindexed(&base)
+        .aliased("/home/user", &base);
     be.disk
         .lock()
         .unwrap()
@@ -917,16 +930,16 @@ async fn screenshot_for_the_shots_tool() {
         &crate::source::Origin("devbox".into()),
     );
     shelf.toggle(&d);
-    shelf.toggle(&dir.join("src").to_string_lossy());
+    shelf.toggle(&vdir.join("src").to_string_lossy());
     shelf.toggle("/etc");
     w.shelf = Some(shelf);
     let target = match scene.as_str() {
-        "empty" => dir.join("empty-dir").to_string_lossy().to_string(),
-        "missing" => dir.join("gone").to_string_lossy().to_string(),
+        "empty" => vdir.join("empty-dir").to_string_lossy().to_string(),
+        "missing" => vdir.join("gone").to_string_lossy().to_string(),
         _ => d.clone(),
     };
     // 窗口开在 d 上：先走开一步再回来，列表才真去问一趟（导航到当前目录是空操作）。
-    w.navigate_to(dir.join("src").to_string_lossy().to_string());
+    w.navigate_to(vdir.join("src").to_string_lossy().to_string());
     while w.listing.is_loading() {
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
@@ -940,7 +953,8 @@ async fn screenshot_for_the_shots_tool() {
     }
     // 合成后端的 files-ls 不送修改时间（真后端送）：照盘上补上。
     for r in w.listing.rows.lock().unwrap().iter_mut() {
-        r.mtime_secs = std::fs::metadata(&r.path)
+        let real = r.path.replacen("/home/user", &base.to_string_lossy(), 1);
+        r.mtime_secs = std::fs::metadata(&real)
             .ok()
             .and_then(|m| m.modified().ok())
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
@@ -991,16 +1005,17 @@ async fn screenshot_for_the_shots_tool() {
             crate::progress::Trip::Download {
                 board: w.pull.clone(),
                 name: "release.tar.gz".into(),
-                src: dir.join("release.tar.gz").to_string_lossy().to_string(),
+                src: vdir.join("release.tar.gz").to_string_lossy().to_string(),
                 dest: "~/下载/release.tar.gz".into(),
             },
             None,
             None,
         );
     }
-    // 新建目录那个框里名字是空的就点了确定：原因落在哪。
+    // 就地新建文件夹那一格把名字清空了就回车：原因挂在那一格下面。
     if scene == "mkdir-error" {
         w.begin_mkdir();
+        w.write_prompt_mut().unwrap().text.clear();
         w.confirm_write(None);
     }
     // 「进度」表（稿 11）：两趟在跑（上传一摞 · 下载）· 删除一个文件夹（那台撤不动 ⇒「停」灰着）· 上传失败 · 复制到另一台完成。
@@ -1029,7 +1044,7 @@ async fn screenshot_for_the_shots_tool() {
             Trip::Download {
                 board: down.clone(),
                 name: "logs-0930.zip".into(),
-                src: dir.join("logs-0930.zip").to_string_lossy().to_string(),
+                src: vdir.join("logs-0930.zip").to_string_lossy().to_string(),
                 dest: "~/下载/logs-0930.zip".into(),
             },
             None,
@@ -1095,7 +1110,68 @@ async fn screenshot_for_the_shots_tool() {
             .landed
             .store(at, std::sync::atomic::Ordering::SeqCst);
     }
-    // 删除那一问（选中三个文件夹 ⇒ 「删除 3 项」）。
+    let row_of = |w: &crate::shell::FileWindow, name: &str| {
+        w.listing
+            .rows
+            .lock()
+            .unwrap()
+            .iter()
+            .position(|r| r.name == name)
+            .unwrap()
+    };
+    // 就地改名填错（稿 07）：main.rs 改成 Cargo.toml、回车 ⇒ 后端回「已存在」（合成后端照盘上真文件判）。
+    if scene == "rename-error" {
+        let i = row_of(&w, "main.rs");
+        w.begin_rename(i);
+        w.write_prompt_mut().unwrap().text = "Cargo.toml".into();
+        w.confirm_write(None);
+    }
+    // 就地新建文件夹 ＋ 上一次改名的回执（稿 08）。
+    if scene == "new-folder" {
+        w.begin_mkdir();
+        w.receipt_undo = Some((
+            copy_core::copy_text("rsFilewinWriteops.inline.renamed", &[("name", "retry.rs")]),
+            vec![crate::writeops::WriteOp::Rename {
+                from: format!("{d}/retry.rs"),
+                to: format!("{d}/main.rs"),
+                raw: None,
+            }],
+        ));
+    }
+    // 改权限（稿 10）：main.rs 上「⋯ → 权限」；现值答回来之后（帧里）勾上三个执行位。
+    if scene == "chmod" {
+        let i = row_of(&w, "main.rs");
+        w.begin_chmod(i);
+    }
+    // 上传遇到同名（稿 12）：本机三份、两份同名。
+    if scene == "upload-clash" {
+        let local = base.join("..").join("..").join("local");
+        let items: Vec<crate::transfer::Pending> = ["main.rs", "README.md"]
+            .iter()
+            .filter_map(|n| {
+                crate::transfer::Pending::into_remote_dir(&local.join(n).to_string_lossy(), &d)
+            })
+            .collect();
+        for n in ["main.rs", "README.md"] {
+            let md = std::fs::metadata(dir.join(n)).unwrap();
+            w.board.note_there(
+                n,
+                Some(md.len()),
+                md.modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|t| t.as_secs()),
+            );
+        }
+        w.board.set_total(3);
+        std::mem::forget(w.board.ask(items));
+    }
+    // 复制到另一台（稿 13）：report.pdf ⇒ 那一问；选择器去那台的主目录、选中 inbox（帧里）。
+    if scene == "cross-copy" {
+        let i = row_of(&w, "report.pdf");
+        w.begin_cross(i);
+    }
+    // 删除那一问（稿 09：一个文件夹 ＋ 两个文件 ⇒ 「删除 3 项」）。
     if scene == "delete-ask" {
         let i = w
             .listing
@@ -1123,16 +1199,8 @@ async fn screenshot_for_the_shots_tool() {
                 None,
             );
         }
-        for _ in 0..2 {
-            w.apply_intent(
-                crate::select::Intent::Step {
-                    by: 1,
-                    extend: true,
-                },
-                0.0,
-                None,
-            );
-        }
+        // 再 Ctrl 点上 main.rs 与 notes.txt（选中态本体那一口，同键盘 / 点击走的那一个）。
+        w.pick_also(&["main.rs", "notes.txt"]);
         w.perform(crate::select::Action::Delete, None);
     }
     let open_unreadable = scene == "unreadable";
@@ -1211,6 +1279,19 @@ async fn screenshot_for_the_shots_tool() {
                     down.begin("logs-0930.zip");
                     down.progress(12, 100);
                     self.ws.begin_close_ask();
+                }
+                // 改权限：现值（644）答回来、预填过之后勾上三个执行位 ⇒ 755。
+                if self.n == 12 && self.scene == "chmod" {
+                    let pane = self.ws.pane_on_mut(0);
+                    if let Some(p) = pane.write_prompt_mut() {
+                        for k in [2, 5, 8] {
+                            p.toggle_bit(k);
+                        }
+                    }
+                }
+                // 复制到另一台：选择器读出那台主目录之后选中 inbox。
+                if self.n == 20 && self.scene == "cross-copy" {
+                    self.ws.pane_on_mut(0).cross_pick.pick("inbox");
                 }
                 if self.n == 10 && self.open_unreadable {
                     ui.ctx().data_mut(|d| {
@@ -1614,4 +1695,126 @@ fn opening_a_text_opens_an_edit_tab_beside_the_folder_and_again_switches_to_it()
     ws.pane_on_mut(0).want_close = true;
     d.frame(&mut ws, Vec::new());
     assert_eq!(ws.tabs_on(0), 2, "答了「不保存」那一页没关");
+}
+
+/// 「进度」表照行数长高：四趟在跑 ＋ 一趟上传失败（两个没成，自动摊开）⇒ 失败那一行与它底下每一句原因都整个画在表里，
+/// 不被状态栏压住、不在表的可见区外面。改值验：失败那一行不摊开（原因挤成一行截断）⇒ 本条红。
+/// ⚠ 无头帧里面板高度钉回旧的 214 本条照样绿（这一形只在真窗口的截图里看得出，`filewin-progress` 那一张）。
+#[test]
+fn the_progress_table_grows_to_show_an_expanded_failure_whole() {
+    use crate::progress::Trip;
+    let dir = "/srv/data";
+    let mut ws = Workspace::new(pane(dir, &["a.bin"]));
+    for k in 0..4 {
+        let down = crate::download::DownloadBoard::default();
+        ws.progress.add(
+            Trip::Download {
+                board: down.clone(),
+                name: format!("big-{k}.iso"),
+                src: format!("{dir}/big-{k}.iso"),
+                dest: format!("/tmp/big-{k}.iso"),
+            },
+            None,
+            None,
+        );
+        down.begin(&format!("big-{k}.iso"));
+        down.progress(1, 10);
+    }
+    let items: Vec<crate::transfer::Pending> = ["r-2.tar.gz", "r-3.tar.gz"]
+        .iter()
+        .filter_map(|n| crate::transfer::Pending::into_remote_dir(&format!("/tmp/{n}"), dir))
+        .collect();
+    let failed = crate::transfer::DropBoard::default();
+    ws.progress.add(
+        Trip::Upload {
+            board: failed.clone(),
+            items,
+            dir: "data".into(),
+        },
+        Some(dir.into()),
+        None,
+    );
+    failed.finish(crate::transfer::DropOutcome {
+        failed: vec![
+            ("r-2.tar.gz".into(), "磁盘满".into()),
+            ("r-3.tar.gz".into(), "没有权限".into()),
+        ],
+        ..Default::default()
+    });
+    let screen = egui::vec2(1280.0, 800.0);
+    let painted = frames_at(&mut ws, screen, 6);
+    assert!(ws.progress.is_open(), "有失败却没自动摊开「进度」表");
+    // 前提：这几行摆下来比旧的缺省表高（214）高 —— 不然本条量不出「表长高了」。
+    let want = crate::progress::table_height(&ws.progress, false);
+    assert!(want > 214.0, "前提不成立：表只要 {want} 高");
+    // 表头「进度」那一行之下才是表的可见区：每一趟（含最上面那几趟在跑的）都整个在它下面 —— 表长高了，不是滚走了。
+    let head = painted
+        .iter()
+        .find(|(t, _)| *t == copy_text("rsFilewinProgress.head.title", &[]))
+        .map(|(_, r)| *r)
+        .expect("表头没画出来");
+    let rows: Vec<&egui::Rect> = painted
+        .iter()
+        .filter(|(t, _)| t.contains("big-") || t.contains("r-2") || t.contains("r-3"))
+        .map(|(_, r)| r)
+        .collect();
+    assert!(rows.len() >= 6, "表里的行没画全：{painted:?}");
+    for r in &rows {
+        assert!(
+            r.top() >= head.bottom(),
+            "有一行滚到了表头上面（表没长高）：{r:?} · 表头 {head:?}"
+        );
+    }
+    // 状态栏那一条住窗口最底下 28 高：失败那几句的底边都要在它上面。
+    let floor = screen.y - 28.0;
+    for want in ["r-2.tar.gz：磁盘满", "r-3.tar.gz：没有权限"] {
+        let at: Vec<&egui::Rect> = painted
+            .iter()
+            .filter(|(t, _)| t == want)
+            .map(|(_, r)| r)
+            .collect();
+        assert_eq!(at.len(), 1, "「{want}」没画成单独一行：{painted:?}");
+        assert!(
+            at[0].bottom() <= floor && at[0].top() >= 0.0,
+            "「{want}」被状态栏压住 / 在表外：{:?}（状态栏顶 {floor}）",
+            at[0]
+        );
+    }
+}
+
+/// 断线时哪几件做不了 —— 唯一一处（`offline_cmd`）：要碰那台的一律「离线 · 只读」（含「终端」），只改看法的照常；连着时全都照常。
+#[test]
+fn offline_greys_exactly_what_needs_the_machine() {
+    use crate::chrome::Cmd;
+    use crate::select::Action as A;
+    let mut ws = Workspace::new(pane("/srv/data", &["a.bin"]));
+    let all = [
+        (Cmd::Mkdir, true),
+        (Cmd::NewFile, true),
+        (Cmd::Upload, true),
+        (Cmd::Term, true),
+        (Cmd::Across, true),
+        (Cmd::Act(A::Download), true),
+        (Cmd::Act(A::Edit), true),
+        (Cmd::Act(A::Delete), true),
+        (Cmd::Act(A::Properties), true),
+        (Cmd::Act(A::Open), false),
+        (Cmd::Sidebar, false),
+        (Cmd::Hidden, false),
+        (Cmd::Split, false),
+        (Cmd::Preview, false),
+    ];
+    for (c, _) in all {
+        assert_eq!(ws.pane_on(0).offline_cmd(c), None, "连着时 {c:?} 却灰了");
+    }
+    ws.link.set(crate::source::LinkSeen::Down);
+    let pane = ws.pane_on(0);
+    for (c, greyed) in all {
+        assert_eq!(
+            pane.offline_cmd(c).is_some(),
+            greyed,
+            "断线时 {c:?} 该{}灰",
+            if greyed { "" } else { "不" }
+        );
+    }
 }

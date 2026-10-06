@@ -29,3 +29,46 @@ fn marked_text_backs_exactly_the_given_spans() {
     );
     assert_eq!(b.text, "重试.rs");
 }
+
+/// 对话框底下那一排按钮的间距归对话框（一处）：正文把 `item_spacing` 改成 0 也漏不到按钮行。
+#[test]
+fn dialog_footer_buttons_keep_their_gap_whatever_the_body_does() {
+    let ctx = egui::Context::default();
+    let mut rects = Vec::new();
+    for _ in 0..2 {
+        let out = ctx.run_ui(egui::RawInput::default(), |ui| {
+            dialog(
+                ui.ctx(),
+                "kit-footer-gap",
+                "T",
+                |ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    ui.label("body");
+                },
+                &[
+                    ("A".to_string(), Btn::Plain),
+                    ("B".to_string(), Btn::Plain),
+                    ("C".to_string(), Btn::Danger),
+                ],
+                1,
+                0,
+            );
+        });
+        rects = crate::copy::testing::text_in_frame(&out)
+            .into_iter()
+            .filter(|(t, _)| ["A", "B", "C"].contains(&t.as_str()))
+            .map(|(_, r)| r)
+            .collect();
+        out.drop_without_applying_deltas();
+    }
+    rects.sort_by(|a, b| a.left().total_cmp(&b.left()));
+    assert_eq!(rects.len(), 3);
+    for w in rects.windows(2) {
+        // 字与字之间至少隔着两颗按钮的内边距 ＋ 间距；间距被吞掉时只剩内边距。
+        let pad = ctx.global_style().spacing.button_padding.x * 2.0;
+        assert!(
+            w[1].left() - w[0].right() > pad + 1.0,
+            "按钮挨在一起：{rects:?}"
+        );
+    }
+}

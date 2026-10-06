@@ -4,6 +4,8 @@
 use egui::text::{LayoutJob, TextFormat};
 use egui::{Color32, Ui};
 
+use copy_core::copy_text;
+
 use super::theme::{metrics, palette};
 
 /// 条的语气（规范 `C15`）：出错 · 警告 · 说明。
@@ -339,6 +341,8 @@ pub enum SideMark {
 pub struct Toast {
     pub text: String,
     pub action: Option<String>,
+    /// 调用方给的记号（点了动作 ⇒ [`Toasts::show`] 交回它；`0` ＝ 不带）：撤销那一下据它找要做的那几件。
+    pub tag: u64,
     /// 还剩几秒。
     pub left: f32,
 }
@@ -354,10 +358,16 @@ pub const TOAST_SECS: f32 = 8.0;
 
 impl Toasts {
     pub fn push(&mut self, text: String, action: Option<String>) {
+        self.push_tagged(text, action, 0);
+    }
+
+    /// 同 [`Self::push`]，带一个记号（点了动作 ⇒ [`Self::show`] 交回它）。
+    pub fn push_tagged(&mut self, text: String, action: Option<String>, tag: u64) {
         self.items.retain(|t| t.text != text);
         self.items.push(Toast {
             text,
             action,
+            tag,
             left: TOAST_SECS,
         });
         if self.items.len() > 3 {
@@ -365,8 +375,8 @@ impl Toasts {
         }
     }
 
-    /// 画在右下角（压在最上层）。回这一帧点了第几条的动作。
-    pub fn show(&mut self, ctx: &egui::Context, bottom_gap: f32) -> Option<usize> {
+    /// 画在右下角（压在最上层）。回这一帧点了动作的那一条的记号（[`Toast::tag`]）；点了动作那一条随即收掉。
+    pub fn show(&mut self, ctx: &egui::Context, bottom_gap: f32) -> Option<u64> {
         let p = palette(ctx);
         let dt = ctx.input(|i| i.stable_dt).min(0.1);
         let mut hit = None;
@@ -388,6 +398,10 @@ impl Toasts {
                         .inner_margin(egui::Margin::symmetric(14, 10))
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new(egui_phosphor::regular::CHECK)
+                                        .color(p.success),
+                                );
                                 ui.label(egui::RichText::new(&t.text).color(p.text));
                                 if let Some(a) = &t.action {
                                     if ui.button(a).clicked() {
@@ -405,11 +419,16 @@ impl Toasts {
                 t.left -= dt;
             }
         }
+        let tag = hit.map(|i| {
+            let tag = self.items[i].tag;
+            self.items.remove(i);
+            tag
+        });
         self.items.retain(|t| t.left > 0.0);
         if !self.items.is_empty() {
             ctx.request_repaint_after(std::time::Duration::from_millis(200));
         }
-        hit
+        tag
     }
 }
 
@@ -522,12 +541,30 @@ pub fn table_head(ui: &mut Ui, title: &str, action: &str, acted: &mut bool, coll
     );
 }
 
+/// 「进度」表一行底下那几行小字：失败的那一行摊开（每个没成的一行，稿 11「每个一句」）；别的态一行。
+pub fn task_lines(v: &super::progress::View) -> Vec<String> {
+    if v.detail.is_empty() {
+        return Vec::new();
+    }
+    if v.state == super::progress::State::Failed {
+        let sep = copy_text("rsFilewinProgress.detail.sep", &[]);
+        return v.detail.split(sep.as_str()).map(str::to_string).collect();
+    }
+    vec![v.detail.clone()]
+}
+
+/// 「进度」表一行占多高：一行小字 36；失败摊开的每多一行 ＋16。
+pub fn task_row_height(v: &super::progress::View) -> f32 {
+    36.0 + 16.0 * (task_lines(v).len().max(1) - 1) as f32
+}
+
 /// 「进度」表的一行（稿 11：图标 22 ｜ 标题 ＋ 一行小字 ｜ 进度条 240 ｜ 读数 150 右对齐等宽 ｜ 按钮）。回这一帧按下的动作。
 pub fn task_row(ui: &mut Ui, id: u64, v: &super::progress::View) -> Option<super::progress::Act> {
     use super::progress::State;
     let p = palette(ui.ctx());
     let w = ui.available_width();
-    let h = 36.0;
+    let lines = task_lines(v);
+    let h = task_row_height(v);
     let icon_c = match v.state {
         State::Running | State::Stopped => p.text2,
         State::Done => p.success,
@@ -560,14 +597,12 @@ pub fn task_row(ui: &mut Ui, id: u64, v: &super::progress::View) -> Option<super
                                 .truncate(),
                         )
                         .on_hover_text(&v.title);
-                        if !v.detail.is_empty() {
+                        for l in &lines {
                             ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(&v.detail).small().color(p.text2),
-                                )
-                                .truncate(),
+                                egui::Label::new(egui::RichText::new(l).small().color(p.text2))
+                                    .truncate(),
                             )
-                            .on_hover_text(&v.detail);
+                            .on_hover_text(l);
                         }
                     },
                 );
@@ -698,6 +733,7 @@ pub fn path_list(
             // 与菜单同一个浮层底（`Frame::popup`：不透明的浮层色 ＋ 浮层阴影）。
             egui::Frame::popup(&ui.ctx().global_style()).show(ui, |ui| {
                 ui.set_max_width(420.0);
+                let pad = ui.spacing().button_padding.x;
                 for (i, (shown, full)) in rows.iter().enumerate() {
                     let r = ui
                         .add(
@@ -711,13 +747,27 @@ pub fn path_list(
                             .truncate(),
                         )
                         .on_hover_text(full);
+                    // 悬停那一行右端一颗复制图标：点一下复制的是那条路径。
+                    if r.hovered() {
+                        ui.painter().text(
+                            r.rect.right_center() + egui::vec2(4.0, 0.0),
+                            egui::Align2::LEFT_CENTER,
+                            egui_phosphor::regular::COPY,
+                            egui::FontId::proportional(12.0),
+                            p.text2,
+                        );
+                    }
                     if r.clicked() {
                         hit = Some(i);
                     }
                 }
                 if let Some(t) = tail {
+                    // 「另外 n 个」与上面每一行的字对齐（按钮字的左内边距）。
                     ui.add_space(2.0);
-                    ui.label(egui::RichText::new(t).small().color(p.text2));
+                    ui.horizontal(|ui| {
+                        ui.add_space(pad);
+                        ui.label(egui::RichText::new(t).small().color(p.text2));
+                    });
                 }
             });
         });
@@ -763,9 +813,11 @@ pub fn dialog(
             ui.set_width(width);
             ui.label(egui::RichText::new(title).size(16.0).strong().color(p.text));
             ui.add_space(10.0);
-            body(ui);
+            ui.scope(body);
             ui.add_space(14.0);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // 按钮之间的间距是对话框自己的（规范 `C10` 一处）：正文改过 `item_spacing` 也漏不到这一排。
+                ui.spacing_mut().item_spacing.x = metrics(ui.ctx()).space[2];
                 let mut first_frame_focus = None;
                 for (i, (label, look)) in buttons.iter().enumerate().rev() {
                     let text = egui::RichText::new(label).color(match look {
@@ -797,6 +849,163 @@ pub fn dialog(
         hit = Some(cancel);
     }
     hit
+}
+
+/// 对话框里那一块清单的一行（稿 09：图标 ＋ 名字 ｜ 右端一格次级字）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ListRow {
+    pub icon: &'static str,
+    pub name: String,
+    pub meta: String,
+}
+
+/// 对话框里那一块清单（深一级的底、圆角；一行 28：图标 ＋ 名字左齐、右端一格次级字右齐等宽）；
+/// 超过窗高一半在块里滚；`more` ⇒ 末尾一行灰字（「另外 n 项」）。
+pub fn list_box(ui: &mut Ui, rows: &[ListRow], more: Option<&str>) {
+    let p = palette(ui.ctx());
+    let m = metrics(ui.ctx());
+    let h = ui.ctx().content_rect().height() * 0.5;
+    egui::Frame::new()
+        .fill(p.bg)
+        .corner_radius(8.0)
+        .inner_margin(egui::Margin::symmetric(12, 6))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            egui::ScrollArea::vertical().max_height(h).show(ui, |ui| {
+                for r in rows {
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(ui.available_width(), m.row_h),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            ui.label(egui::RichText::new(r.icon).color(p.text2));
+                            ui.add(
+                                egui::Label::new(egui::RichText::new(&r.name).color(p.text))
+                                    .truncate(),
+                            );
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.label(
+                                        egui::RichText::new(&r.meta).size(12.0).color(p.text2),
+                                    );
+                                },
+                            );
+                        },
+                    );
+                }
+                if let Some(t) = more {
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(ui.available_width(), m.row_h),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            ui.label(egui::RichText::new(t).color(p.text2));
+                        },
+                    );
+                }
+            });
+        });
+}
+
+/// 同名覆盖那张表的一行（稿 12：☐ 名字 · 本机（大小 · 时间）· 那台（大小 · 时间））。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClashRow {
+    pub name: String,
+    pub here: String,
+    pub there: String,
+}
+
+/// 同名覆盖那张表：表头（空 · 名字 · `here` · `there`）＋ 每行一个勾 ＋ 三格；勾上的那一行字是主色、没勾的次级色。
+/// `ticks` 与 `rows` 同长；回这一帧有没有勾动。
+pub fn clash_table(ui: &mut Ui, heads: [&str; 3], rows: &[ClashRow], ticks: &mut [bool]) -> bool {
+    let p = palette(ui.ctx());
+    let m = metrics(ui.ctx());
+    let mut changed = false;
+    let w = ui.available_width();
+    let cols = [
+        32.0,
+        (w - 32.0) * 0.36,
+        (w - 32.0) * 0.32,
+        (w - 32.0) * 0.32,
+    ];
+    let cell = |ui: &mut Ui, width: f32, add: &mut dyn FnMut(&mut Ui)| {
+        ui.allocate_ui_with_layout(
+            egui::vec2(width, m.row_h),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.set_width(width);
+                add(ui);
+            },
+        );
+    };
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        ui.horizontal(|ui| {
+            cell(ui, cols[0], &mut |_| {});
+            for (k, h) in heads.iter().enumerate() {
+                cell(ui, cols[k + 1], &mut |ui| {
+                    ui.label(egui::RichText::new(*h).size(12.0).color(p.text2));
+                });
+            }
+        });
+        let h = ui.ctx().content_rect().height() * 0.4;
+        egui::ScrollArea::vertical().max_height(h).show(ui, |ui| {
+            for (i, r) in rows.iter().enumerate() {
+                let on = ticks.get(i).copied().unwrap_or(false);
+                let fg = if on { p.text } else { p.text2 };
+                let line = ui.horizontal(|ui| {
+                    cell(ui, cols[0], &mut |ui| {
+                        let mut t = on;
+                        if ui.checkbox(&mut t, "").changed() {
+                            if let Some(x) = ticks.get_mut(i) {
+                                *x = t;
+                            }
+                            changed = true;
+                        }
+                    });
+                    cell(ui, cols[1], &mut |ui| {
+                        ui.add(
+                            egui::Label::new(egui::RichText::new(&r.name).strong().color(fg))
+                                .truncate(),
+                        );
+                    });
+                    cell(ui, cols[2], &mut |ui| {
+                        ui.label(egui::RichText::new(&r.here).color(fg));
+                    });
+                    cell(ui, cols[3], &mut |ui| {
+                        ui.label(egui::RichText::new(&r.there).color(fg));
+                    });
+                });
+                let y = line.response.rect.top();
+                ui.painter().hline(
+                    line.response.rect.x_range(),
+                    y,
+                    egui::Stroke::new(1.0, p.border_soft),
+                );
+            }
+        });
+    });
+    changed
+}
+
+/// 就地输入那一格下面挂的出错句（稿 07：浮层底 ＋ 错误图标 ＋ 一句；画在最上层，不挤动列表）。
+pub fn inline_error(ctx: &egui::Context, id: egui::Id, below: egui::Rect, text: &str) {
+    let p = palette(ctx);
+    egui::Area::new(id)
+        .order(egui::Order::Foreground)
+        .fixed_pos(below.left_bottom() + egui::vec2(16.0, 2.0))
+        .interactable(false)
+        .show(ctx, |ui| {
+            egui::Frame::popup(&ctx.global_style())
+                .inner_margin(egui::Margin::symmetric(10, 4))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new(egui_phosphor::regular::X_CIRCLE).color(p.error),
+                        );
+                        ui.label(egui::RichText::new(text).size(12.0).color(p.text));
+                    });
+                });
+        });
 }
 
 #[cfg(test)]

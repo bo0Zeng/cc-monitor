@@ -258,7 +258,14 @@ pub enum WriteRefusal {
     /// 读改写的**写那一半**发现：盘上那份已经不是调用方读到的那一份了
     /// （`files-put` 的 `expect` 对不上）⇒ 一个字节没写。调用方该**重读重算**，不是重试同一份。
     Stale(String),
+    /// 落点上**已经有一项**（新建 / 建目录 / 改名的目标名被占了），一个字节没动。线上码 [`EXISTS`]。
+    /// 与 [`WriteRefusal::Io`] 分开：调用方的下一步是**换一个名字**，不是重试（重试一万次也一样）。
+    /// 只有 `files-create` · `files-mkdir` · `files-rename` 回它，也只有它们声明。
+    Exists(String),
 }
+
+/// 命令级码：**落点上已经有一项**（`files-create` · `files-mkdir` · `files-rename` 声明）。
+pub const EXISTS: &str = "exists";
 
 /// 命令级码：**这个平台没有 unix 权限位**。只有 `files-chmod` 声明它。
 ///
@@ -279,6 +286,7 @@ impl WriteRefusal {
             WriteRefusal::Io(_) => "io_failed",
             WriteRefusal::Unsupported(_) => NO_UNIX_MODE,
             WriteRefusal::Stale(_) => "stale",
+            WriteRefusal::Exists(_) => EXISTS,
         }
     }
 
@@ -288,7 +296,8 @@ impl WriteRefusal {
             WriteRefusal::Refused(m)
             | WriteRefusal::Io(m)
             | WriteRefusal::Unsupported(m)
-            | WriteRefusal::Stale(m) => m.as_str(),
+            | WriteRefusal::Stale(m)
+            | WriteRefusal::Exists(m) => m.as_str(),
         }
     }
 }
@@ -312,13 +321,18 @@ pub fn create_new_file(
         .create_new(true)
         .open(&target)
         .map_err(|e| {
-            WriteRefusal::Io(copy_text(
+            let said = copy_text(
                 "beFilesWrite.create.failed",
                 &[
                     ("path", &target.display().to_string()),
                     ("e", &e.to_string()),
                 ],
-            ))
+            );
+            if e.kind() == std::io::ErrorKind::AlreadyExists {
+                WriteRefusal::Exists(said)
+            } else {
+                WriteRefusal::Io(said)
+            }
         })?;
     if let Some(p) = own_mode(&target, false) {
         f.set_permissions(p).map_err(|e| {
@@ -461,13 +475,18 @@ fn rename_no_clobber(
 pub fn make_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, WriteRefusal> {
     let target = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     std::fs::create_dir(&target).map_err(|e| {
-        WriteRefusal::Io(copy_text(
+        let said = copy_text(
             "beFilesWrite.copyTree.mkdirFailed",
             &[
                 ("path", &target.display().to_string()),
                 ("e", &e.to_string()),
             ],
-        ))
+        );
+        if e.kind() == std::io::ErrorKind::AlreadyExists {
+            WriteRefusal::Exists(said)
+        } else {
+            WriteRefusal::Io(said)
+        }
     })?;
     if let Some(p) = own_mode(&target, true) {
         std::fs::set_permissions(&target, p).map_err(|e| {
@@ -540,7 +559,7 @@ fn rename_entry_racing(
     match done {
         Ok(()) => Ok(dst),
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-            Err(WriteRefusal::Io(copy_text(
+            Err(WriteRefusal::Exists(copy_text(
                 "beFilesWrite.rename.exists",
                 &[("path", &dst.display().to_string())],
             )))
@@ -726,6 +745,15 @@ enum DeleteExpect {
 ///
 /// ⚠ 非 unix 平台上**如实回失败**，不假装改成了（`Permissions` 在那边只有一个只读位）。
 pub fn change_mode(root: &Path, rel: impl AsRef<Path>, mode: u32) -> Result<PathBuf, WriteRefusal> {
+    change_mode_reporting(root, rel, mode).map(|(p, _)| p)
+}
+
+/// 同 [`change_mode`]，另交**改之前**的权限位（低 12 位；读不到 ⇒ `None`）：调用方据它撤销。
+pub fn change_mode_reporting(
+    root: &Path,
+    rel: impl AsRef<Path>,
+    mode: u32,
+) -> Result<(PathBuf, Option<u32>), WriteRefusal> {
     let real = resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     if mode > 0o7777 {
         return Err(WriteRefusal::Refused(copy_text(
@@ -736,13 +764,16 @@ pub fn change_mode(root: &Path, rel: impl AsRef<Path>, mode: u32) -> Result<Path
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
+        let before = std::fs::metadata(&real)
+            .ok()
+            .map(|m| m.permissions().mode() & 0o7777);
         std::fs::set_permissions(&real, std::fs::Permissions::from_mode(mode)).map_err(|e| {
             WriteRefusal::Io(copy_text(
                 "beFilesWrite.chmod.failed",
                 &[("path", &real.display().to_string()), ("e", &e.to_string())],
             ))
         })?;
-        Ok(real)
+        Ok((real, before))
     }
     #[cfg(not(unix))]
     {
@@ -1163,9 +1194,10 @@ pub fn delete_tree_upto(
             );
             match e {
                 WriteRefusal::Refused(_) => WriteRefusal::Refused(said),
-                WriteRefusal::Io(_) | WriteRefusal::Unsupported(_) | WriteRefusal::Stale(_) => {
-                    WriteRefusal::Io(said)
-                }
+                WriteRefusal::Io(_)
+                | WriteRefusal::Unsupported(_)
+                | WriteRefusal::Stale(_)
+                | WriteRefusal::Exists(_) => WriteRefusal::Io(said),
             }
         })?;
         removed += 1;
@@ -2443,7 +2475,7 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
         purpose: "在用户指定的文件管理目标根底下，新建一份**此前不存在**的文件（`O_EXCL`）",
         args: &["content", "rel", "root"],
         fields: &["bytes", "path"],
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        codes: &["bad_args", "bad_path", EXISTS, "io_failed", "refused"],
     },
     // ── 〔波 5 ㈡ 09-23〕：**改动既有数据**的那五件 ──────────
     ManageCommand {
@@ -2451,14 +2483,14 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
         purpose: "新建一个目录（只建最后那一段；父目录不在就失败，不顺手补）",
         args: &["rel", "root"],
         fields: &["path"],
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        codes: &["bad_args", "bad_path", EXISTS, "io_failed", "refused"],
     },
     ManageCommand {
         name: "files-rename",
         purpose: "改名 / 同根内移动；**两个参数各过一遍路径解析**，目标已存在就拒（不覆盖）",
         args: &["from", "root", "to"],
         fields: &["path"],
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        codes: &["bad_args", "bad_path", EXISTS, "io_failed", "refused"],
     },
     ManageCommand {
         name: "files-delete",
@@ -2477,7 +2509,7 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
         purpose: "改 unix 权限位（低 12 位）；**跟链接**，所以落点解到底再判一次；\
 没有 unix 权限位的平台上回 `no_unix_mode`",
         args: &["mode", "rel", "root"],
-        fields: &["mode", "path"],
+        fields: &["before", "mode", "path"],
         codes: &["bad_args", "bad_path", "io_failed", NO_UNIX_MODE, "refused"],
     },
     // ──：窗口的「复制」换走通道 ──────────────────
@@ -2700,8 +2732,13 @@ fn answer_chmod(args: &serde_json::Value) -> Answer {
                 "missing `mode` or not a non-negative integer (decimal, e.g. 420 = 0o644)",
             ),
         ))?;
-    let done = change_mode(&root, &rel, mode).map_err(refusal)?;
-    Ok(serde_json::json!({ "path": path_json(&done), "mode": mode }))
+    let (done, before) = change_mode_reporting(&root, &rel, mode).map_err(refusal)?;
+    // `before`：改之前的低 12 位（撤销 ＝ 拿它再改一次）；读不到 ⇒ 不给这一格（不编一个数）。
+    let mut out = serde_json::json!({ "path": path_json(&done), "mode": mode });
+    if let Some(b) = before {
+        out["before"] = serde_json::json!(b);
+    }
+    Ok(out)
 }
 
 fn answer_copy(args: &serde_json::Value) -> Answer {

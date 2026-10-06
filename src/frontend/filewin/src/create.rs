@@ -33,61 +33,15 @@
 //! - 真远端上经这条命令建成过一份文件的读数（判据挂的是合成后端 ＋ 真回环口 ＋ 真钥匙）。
 //! - 窗口真画在屏幕上（要图形会话）；判据跑的是生产那个 `frame_body`，读这一帧画出来的字。
 
-use super::shell::{FileWindow, NO_LINE};
+use super::shell::FileWindow;
 use super::source::{Line, Origin};
-use super::writeops::{clean_name, join_remote, WriteOutcome, WRITE_BUDGET};
-use copy_core::copy_text;
-
-/// 工具栏上那颗按钮的字面。**唯一住址** —— 判据按同一个常量去找它画出来的字。
-pub static NEW_FILE_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinCreate.label.newFile", &[]));
+use super::writeops::WRITE_BUDGET;
 
 /// 后端那条命令（`files-create`）。
 pub const CMD_CREATE: &str = "files-create";
 
-/// 「新建空文件叫什么」那个框 —— **UI 线程自己的草稿**
-/// （同 [`super::writeops::WritePrompt`] 逐字的理由：正在输入的那几个字只有 UI 线程碰得到）。
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct NewFilePrompt {
-    /// 建在哪个目录里（＝ 摆出这个框那一刻的当前目录）。
-    pub dir: String,
-    /// 正在编辑的那几个字。
-    pub text: String,
-}
-
-impl NewFilePrompt {
-    pub fn new(dir: &str) -> Self {
-        Self {
-            dir: dir.to_string(),
-            text: String::new(),
-        }
-    }
-
-    /// 框上那一行提示。
-    /// 字从文案表取 ⇒ 回 `String`。
-    pub fn heading() -> String {
-        copy_text("rsFilewinCreate.heading.newFile", &[])
-    }
-
-    /// 框里那几个字 → 那份新文件的**完整路径**。
-    ///
-    /// 名字的规矩与「新建目录」**同一个函数**（[`clean_name`]：不许空、不许带 `/`、
-    /// 不许是 `.` / `..`）—— 两颗并排的「新建」按钮，一个名字在这颗上合法、在那颗上不合法，
-    /// 就是两套手感。
-    ///
-    /// # Errors
-    ///
-    /// 回一句给用户的话（调用方据此出声、把框留着）。
-    pub fn to_path(&self) -> Result<String, String> {
-        let name = clean_name(self.text.trim())?;
-        Ok(join_remote(&self.dir, &name))
-    }
-}
-
-/// 结果行 / 失败那一句里用的描述。
-pub fn label(path: &str) -> String {
-    format!("{} {path}", NEW_FILE_LABEL.as_str())
-}
+// 这里原来有「新建空文件叫什么」那个框（`NewFilePrompt`）与结果行那一句（`label`）：照稿改成就地新建（`writeops::WritePrompt::for_new`）、
+//   名字的规矩照旧问同一个 `clean_name`，那个框与那一句随样子一起删了。
 
 /// 真建一份 —— 经通道说 `files-create`，参数切成 `(root, rel)`，**不带 `content`**
 /// （契约逐字：不给 `content` ⇒ 新建一份空文件）。
@@ -101,6 +55,21 @@ pub fn label(path: &str) -> String {
 /// 经 [`super::source::said`] 翻过，原样交出去。
 pub async fn create_remote(line: &Line, origin: &Origin, path: &str) -> Result<(), String> {
     create_remote_at(line, origin, &super::source::RemotePath::plain(path)).await
+}
+
+/// 同 [`create_remote_at`]，失败时把对端的码一起交出来（就地新建据 `exists` 说「已存在」）。
+pub async fn create_remote_coded(
+    line: &Line,
+    origin: &Origin,
+    at: &super::source::RemotePath,
+) -> Result<(), super::source::Failed> {
+    let args = serde_json::json!({
+        "root": at.parent().wire(),
+        "rel": at.tail_wire(),
+    });
+    super::source::ask_coded(line, origin, CMD_CREATE, &args, WRITE_BUDGET)
+        .await
+        .map(|_| ())
 }
 
 /// 〔有损名全寻址〕同 [`create_remote`]，路径可以带字节（有损目录里新建：根发 `{"b16": …}`）。
@@ -119,120 +88,37 @@ pub async fn create_remote_at(
 }
 
 impl FileWindow {
-    /// 正摆着的那个框（判据与 [`Self::new_file_ui`] 用）。
-    pub fn new_file_prompt(&self) -> Option<&NewFilePrompt> {
-        self.new_file.as_ref()
+    /// 正摆着的新建空文件那一格（就地；判据看同一个值）。
+    pub fn new_file_prompt(&self) -> Option<&super::writeops::WritePrompt> {
+        self.write_prompt()
+            .filter(|p| matches!(p.kind, super::writeops::PromptKind::NewFile))
     }
 
-    /// 那个框里正在编辑的那几个字（`None` ＝ 没在问）。
-    ///
-    /// 它是**生产代码**：[`Self::new_file_ui`] 喂 `text_edit_singleline` 要的就是这个 `&mut`
-    /// （同 `shell::FileWindow::pull_dest_mut` 那一条：界面与判据走同一条路）。
+    /// 那一格里正在编辑的字。
     pub fn new_file_text_mut(&mut self) -> Option<&mut String> {
-        self.new_file.as_mut().map(|p| &mut p.text)
+        self.write_prompt_mut()
+            .filter(|p| matches!(p.kind, super::writeops::PromptKind::NewFile))
+            .map(|p| &mut p.text)
     }
 
-    /// 摆出「新建空文件」那个框。回值 ＝ 真的摆出来了。
+    /// 「新建 ▾ → 空文件」⇒ 列表里冒出一行「新建文件」、名字选中（同新建文件夹那一格）。
     pub fn begin_new_file(&mut self) -> bool {
-        *self.prompt_error.lock().unwrap() = None;
-        self.new_file = Some(NewFilePrompt::new(&self.cwd));
-        true
+        self.begin_inline(super::writeops::WritePrompt::for_new(&self.cwd, true))
     }
 
-    /// 收掉那个框，什么都不做。
+    /// 收掉那一格，什么都不建。
     pub fn cancel_new_file(&mut self) {
-        self.new_file = None;
-        *self.prompt_error.lock().unwrap() = None;
+        if self.new_file_prompt().is_some() {
+            self.cancel_write();
+        }
     }
 
-    /// 框里那几个字 → 一次 `files-create`。回值 ＝ 真的发出去了。
-    ///
-    /// ⚠ 名字不合法 / 没有运行时 / 没连上后端 ⇒ **框留着、出声**，不静默收掉
-    /// （收掉的话用户点了确定什么都没发生，与成功长得一模一样）。
-    /// 跑完落在写操作那块结果板上（[`super::writeops::WriteBoard::finish`]）⇒
-    /// 结果那一行照它的样子画，目录照它的节拍重列一次。
+    /// 那一格答完 ⇒ 发 `files-create`（填错 ⇒ 那一格下面说、留着；名字被占了 ⇒「x 已存在」）。
     pub fn confirm_new_file(&mut self, ctx: Option<egui::Context>) -> bool {
-        let Some(p) = self.new_file.clone() else {
+        if self.new_file_prompt().is_none() {
             return false;
-        };
-        let path = match p.to_path() {
-            Ok(path) => path,
-            Err(why) => {
-                *self.say_slot() = Some(why);
-                return false;
-            }
-        };
-        let Some(h) = self.rt.clone() else {
-            *self.say_slot() = Some(copy_text("rsFilewinCreate.confirm.noRuntime", &[]).into());
-            return false;
-        };
-        let Some(line) = self.line.clone() else {
-            *self.say_slot() = Some(NO_LINE.to_string());
-            return false;
-        };
-        let origin = self.source.origin();
-        let board = self.write_board.clone();
-        board.attach(ctx);
-        // 落点 ＝ 当前目录的字节 ＋ 新名字（合法 UTF-8 目录时与 `path` 逐字节同）。
-        let at = super::shell::join_path(
-            &self.cwd_path(),
-            super::source::remote_basename(&path).as_bytes(),
-        );
-        h.spawn(async move {
-            let out = match create_remote_at(&line, &origin, &at).await {
-                Ok(()) => WriteOutcome {
-                    ok: 1,
-                    ..WriteOutcome::default()
-                },
-                Err(e) => WriteOutcome {
-                    failed: vec![(label(&path), e)],
-                    ..WriteOutcome::default()
-                },
-            };
-            board.finish(out);
-        });
-        self.new_file = None;
-        *self.prompt_error.lock().unwrap() = None;
-        true
-    }
-
-    /// 画「新建空文件叫什么」那个框。**模态** —— 定下来之前不接别的。
-    pub(super) fn new_file_ui(&mut self, ui: &mut egui::Ui) {
-        if self.new_file.is_none() {
-            return;
         }
-        let (mut go, mut cancel) = (false, false);
-        let (_, esc) = super::shell::modal(ui.ctx(), "filewin-new-file", |ui| {
-            ui.heading(NewFilePrompt::heading());
-            if let Some(text) = self.new_file_text_mut() {
-                go |= super::shell::prompt_field(ui, text);
-            }
-            if let Some(e) = self.prompt_error() {
-                ui.colored_label(ui.visuals().error_fg_color, e);
-            }
-            ui.label(&copy_text("rsFilewinCreate.ui.sameDirOnly", &[]));
-            ui.horizontal(|ui| {
-                if ui
-                    .button(&copy_text("rsFilewinCreate.ui.ok", &[]))
-                    .clicked()
-                {
-                    go = true;
-                }
-                if ui
-                    .button(&copy_text("rsFilewinCreate.ui.cancel", &[]))
-                    .clicked()
-                {
-                    cancel = true;
-                }
-            });
-        });
-        cancel |= esc;
-        if cancel {
-            self.cancel_new_file();
-        } else if go {
-            let ctx = ui.ctx().clone();
-            self.confirm_new_file(Some(ctx));
-        }
+        self.commit_inline(ctx)
     }
 }
 

@@ -82,9 +82,9 @@ impl Applied {
 // 三条的靶子一起不在了；换成下面这一条 —— 它钉的是**反方向**：会话文件形状的路径不许再被任何东西挡在问答与 `apply` 之外。
 
 /// 🔴会话文件 / pidfile / subagent 记录 / 项目目录上的删除 · 改权限 · 改名 ⇒
-/// 该问的（删除 · 改权限）**照问一次**，答「做」就**原样交到 `apply`**；不问的（改名）直接交。
+/// 该问的（删除）**照问一次**，答「做」就**原样交到 `apply`**；不问的（改权限 · 改名：撤得回来，做完给回执）直接交。
 ///
-/// 反空真：`asked` 必须恰是那两件要问的（不是 0 —— 0 就是有东西在问答之前把它们拦了）。
+/// 反空真：`asked` 必须恰是那两件要问的删除（不是 0 —— 0 就是有东西在问答之前把它们拦了）。
 /// 用户原话「文件管理器全部都可以改. 不需要任何围栏」。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_session_file_path_is_asked_and_done_like_any_other() {
@@ -126,15 +126,15 @@ async fn a_session_file_path_is_asked_and_done_like_any_other() {
     .await;
     assert_eq!(
         asked.load(O::SeqCst),
-        3,
-        "要问的那三件（两件删除 ＋ 一件改权限）没有恰好都摆到人面前 —— 有东西在问答之前把它们拦了"
+        2,
+        "要问的那两件删除没有恰好都摆到人面前 —— 有东西在问答之前把它们拦了"
     );
     assert_eq!(
         applied.seen(),
         ops,
         "🔴 会话文件那几件没有原样交到 `apply` 手上"
     );
-    assert_eq!((out.asked, out.ok, out.skipped), (3, 4, 0), "{out:?}");
+    assert_eq!((out.asked, out.ok, out.skipped), (2, 4, 0), "{out:?}");
     assert!(out.failed.is_empty(), "{out:?}");
 }
 
@@ -212,7 +212,7 @@ async fn the_question_is_asked_exactly_once_for_the_whole_batch() {
     let tape = Tape::default();
     let times = AtomicUsize::new(0);
     let seen: std::sync::Mutex<Vec<WriteOp>> = std::sync::Mutex::new(Vec::new());
-    // 五件：三件要问（删 ×2 · 改权限 ×1）、两件不问（新建目录 · 改名）。
+    // 五件：两件要问（删 ×2）、三件不问（改权限 · 新建目录 · 改名）。
     let dels: Vec<WriteOp> = (0..2)
         .map(|i| WriteOp::Delete {
             path: format!("/srv/data/d{i}"),
@@ -265,7 +265,7 @@ async fn the_question_is_asked_exactly_once_for_the_whole_batch() {
         want,
         "那一问摆出来的不是**全部**要问的那几件"
     );
-    assert_eq!(out.asked, 3, "该问的件数不对");
+    assert_eq!(out.asked, 2, "该问的件数不对");
     let (c, a) = (
         tape.seq_of("confirm").expect("一次都没问"),
         tape.seq_of("apply").expect("一件都没做"),
@@ -418,12 +418,12 @@ async fn an_empty_batch_does_nothing_at_all() {
 // 谁要问、谁不要 —— 那张表得有人数
 // ════════════════════════════════════════════════════════════════════════
 
-/// 🔴 **相等断言**：要问的恰好是删除与改权限那两档。
+/// 🔴 **相等断言**：要问的恰好是删除那一档（照稿 10-05：改权限撤得回来 ⇒ 直接做 ＋ 回执［撤销］，不再问）。
 ///
 /// 逐条的理由住 `super` 头注 §四那张表。写成「至少删除要问」是地板，
-/// 而地板在「变少」方向上是瞎的 —— 有人把改权限那一档改成不问，地板不会红。
+/// 而地板在「变多」方向上是瞎的 —— 有人把改权限那一档改回去问，地板不会红。
 #[test]
-fn exactly_delete_and_chmod_ask_first() {
+fn exactly_delete_asks_first() {
     let all = vec![
         WriteOp::Mkdir { path: "/a".into() },
         WriteOp::Rename {
@@ -457,7 +457,6 @@ fn exactly_delete_and_chmod_ask_first() {
         vec![
             "删除文件 /a".to_string(),
             "删除目录 /a（连同里面全部内容）".to_string(),
-            "改权限 /a → 644".to_string()
         ],
         "要问的那几档变了 —— 连着 `super` 头注 §四那张表一起改，别只改代码"
     );
@@ -583,13 +582,13 @@ fn an_impossible_input_is_refused_with_a_reason_instead_of_a_guess() {
 #[test]
 fn every_box_says_what_it_is_asking() {
     let r = row("a.bin", false, false);
-    assert!(WritePrompt::for_mkdir("/srv").heading().contains("新建"));
-    assert!(WritePrompt::for_rename("/srv", &r)
-        .heading()
-        .contains("a.bin"));
-    assert!(WritePrompt::for_chmod("/srv", &r)
-        .heading()
-        .contains("八进制"));
+    // 就地那一格（新建 · 改名）没有标题：它画在列表那一行里；改权限那一问的标题点名是哪一项。
+    assert_eq!(WritePrompt::for_mkdir("/srv").heading(), "");
+    assert_eq!(WritePrompt::for_rename("/srv", &r).heading(), "");
+    assert_eq!(
+        WritePrompt::for_chmod("/srv", &r).heading(),
+        "改权限 · a.bin"
+    );
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -871,7 +870,7 @@ fn one_chmod_box_for_many_rows_yields_one_op_per_row() {
         ..row("\u{FFFD}", false, true)
     };
     let mut p = WritePrompt::for_chmod_many("/srv/data", &[&a, &d, &l]);
-    assert_eq!(p.heading(), "把这 3 项的权限改成（八进制）：");
+    assert_eq!(p.heading(), "改权限 · 3 项");
     assert_eq!(p.text, "", "批量那个框也不许预填（读不到现值）");
     p.text = "750".into();
     assert_eq!(
@@ -917,20 +916,30 @@ fn one_chmod_box_for_many_rows_yields_one_op_per_row() {
 /// P2：现值那一句 ＋ 预填 == 手写表（一项 · 多项同 · 多项不同 · 有一项读不到 · 空摞）。
 #[test]
 fn gp1_the_chmod_box_says_the_current_mode_and_prefills_only_what_it_really_read() {
-    let r = |line: &str, prefill: Option<&str>| ModeReadout {
+    let r = |line: &str, prefill: Option<&str>, modes: &[Option<u32>]| ModeReadout {
         line: line.to_string(),
         prefill: prefill.map(str::to_string),
+        modes: modes.to_vec(),
     };
     let cells: [(&[Option<u32>], ModeReadout); 6] = [
-        (&[Some(0o644)], r("现在是 644", Some("644"))),
-        (&[Some(0o4755)], r("现在是 4755", Some("4755"))),
-        (&[Some(0o750), Some(0o750)], r("现在是 750", Some("750"))),
+        (&[Some(0o644)], r("当前 644", Some("644"), &[Some(0o644)])),
+        (
+            &[Some(0o4755)],
+            r("当前 4755", Some("4755"), &[Some(0o4755)]),
+        ),
+        (
+            &[Some(0o750), Some(0o750)],
+            r("当前 750", Some("750"), &[Some(0o750), Some(0o750)]),
+        ),
         (
             &[Some(0o750), Some(0o644)],
-            r("这几项现在的权限不一样", None),
+            r("当前权限不一致", None, &[Some(0o750), Some(0o644)]),
         ),
-        (&[Some(0o644), None], r("读不到现在的权限", None)),
-        (&[], r("读不到现在的权限", None)),
+        (
+            &[Some(0o644), None],
+            r("当前权限不可读", None, &[Some(0o644), None]),
+        ),
+        (&[], r("当前权限不可读", None, &[])),
     ];
     for (modes, want) in cells {
         assert_eq!(mode_readout(modes), want, "mode_readout({modes:?})");
@@ -995,7 +1004,7 @@ fn gp1_a_late_answer_for_an_old_box_never_lands_on_the_new_one() {
     probe.land(new, vec![Some(0o600)]);
     assert_eq!(
         probe.readout().map(|r| r.line),
-        Some("现在是 600".to_string())
+        Some("当前 600".to_string())
     );
 }
 
@@ -1038,6 +1047,8 @@ fn deleting_asks_once_with_names_and_cannot_be_undone() {
             raw: None,
         })
         .collect();
+    // 右端那一格由调用方交来（文件夹写「文件夹」、文件写大小）；没交的那几项右端空着。
+    board.describe("/srv/d/f1", egui_phosphor::regular::FILE, "571 B".into());
     let mut rx = board.ask(ops);
     let ctx = egui::Context::default();
     let mut painted = Vec::new();
@@ -1049,10 +1060,159 @@ fn deleting_asks_once_with_names_and_cannot_be_undone() {
     let has = |t: &str| painted.iter().any(|(s, _)| s == t);
     assert!(has("删除 10 项"), "标题不对：{painted:?}");
     assert!(
-        has("f0 · 文件夹") && has("f7") && !has("f8"),
+        has("f0") && has("文件夹") && has("571 B") && has("f7") && !has("f8"),
         "该只列 8 个：{painted:?}"
     );
     assert!(has("另外 2 项") && has("不可恢复") && has("删除 10 项") && has("取消"));
     assert!(board.settle(false));
     assert_eq!(rx.try_recv().unwrap(), Vec::<WriteOp>::new(), "取消了还删");
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 照稿 10-05：改权限 3 × 3 · 就地那一格 · 回执与撤销
+// ════════════════════════════════════════════════════════════════════════
+
+/// 九格 ⇔ 数字写法两边联动；多选时各项不一样的那一位是「—」、不改它（逐项留原值）。
+#[test]
+fn the_chmod_grid_and_the_octal_field_follow_each_other() {
+    let a = row("a.sh", false, false);
+    let b = row("b.sh", false, false);
+    // 一项：读回 644 ⇒ 九格照它摆、那一栏预填 644。
+    let mut p = WritePrompt::for_chmod("/srv", &a);
+    apply_prefill(&mut p, &mode_readout(&[Some(0o644)]));
+    assert_eq!(p.text, "644");
+    assert_eq!(grid_text(&p.grid).as_deref(), Some("644"));
+    // 勾上所有者执行（第 2 格）⇒ 那一栏跟着成 744。
+    p.toggle_bit(2);
+    assert_eq!(p.text, "744");
+    // 那一栏改成 755 ⇒ 九格照它摆。
+    p.text = "755".into();
+    p.typed();
+    assert_eq!(grid_bits(&p.grid), (0o777, 0o755));
+    // 两项：640 与 600 ⇒ 同组读那一位（第 3 格）是「—」、那一栏空着。
+    let mut m = WritePrompt::for_chmod_many("/srv", &[&a, &b]);
+    apply_prefill(&mut m, &mode_readout(&[Some(0o640), Some(0o600)]));
+    assert_eq!(m.text, "");
+    assert_eq!(m.grid[3], None, "各项不一样的那一位没成「—」");
+    assert_eq!(m.grid[0], Some(true));
+    // 只勾上其他人读（第 6 格）⇒ 「—」那一位逐项留原值：640 → 644、600 → 604。
+    m.toggle_bit(6);
+    assert_eq!(m.text, "", "还有「—」却写出了一个整数");
+    let modes: Vec<u32> = m
+        .to_ops()
+        .expect("定了几位、其余读得到 ⇒ 算得出")
+        .into_iter()
+        .map(|o| match o {
+            WriteOp::Chmod { mode, .. } => mode,
+            _ => unreachable!(),
+        })
+        .collect();
+    assert_eq!(modes, vec![0o644, 0o604]);
+    // 读不到其中一项 ⇒ 「—」那几位算不出 ⇒ 拒（不猜）；整份填数字就照数字。
+    let mut u = WritePrompt::for_chmod_many("/srv", &[&a, &b]);
+    apply_prefill(&mut u, &mode_readout(&[Some(0o640), None]));
+    u.toggle_bit(0);
+    assert!(
+        u.to_ops().is_err(),
+        "有一项读不到、又有「—」，竟然算出了新值"
+    );
+    u.text = "700".into();
+    assert_eq!(u.to_ops().map(|v| v.len()), Ok(2));
+}
+
+/// 就地那一格：改名选中主名（`.env` 这种整个选中）· 新建缺省名整个选中 · 改成原名 ＝ 不改。
+#[test]
+fn the_inline_cell_selects_the_stem_and_a_same_name_rename_is_no_op() {
+    let r = row("main.rs", false, false);
+    let p = WritePrompt::for_rename("/srv/data", &r);
+    assert_eq!(p.select_chars(), 4, "主名（扩展名前）没选中");
+    assert_eq!(p.to_inline(), Ok(None), "改成原名却要发一趟");
+    let e = row(".env", false, false);
+    assert_eq!(WritePrompt::for_rename("/srv/data", &e).select_chars(), 4);
+    let n = WritePrompt::for_new("/srv/data", false);
+    assert_eq!(n.text, "新建文件夹");
+    assert_eq!(n.select_chars(), 5);
+    assert_eq!(
+        n.to_inline(),
+        Ok(Some(InlineGo::Op(WriteOp::Mkdir {
+            path: "/srv/data/新建文件夹".into()
+        })))
+    );
+    assert_eq!(
+        WritePrompt::for_new("/srv/data", true).to_inline(),
+        Ok(Some(InlineGo::Create("/srv/data/新建文件".into())))
+    );
+}
+
+/// 回执：删除「已删除 n 项」不带撤销 · 改权限带撤销（撤销的件数对不上 ⇒ 不带）· 有没做成的 ⇒ 那一句、不带撤销。
+#[test]
+fn receipts_say_what_was_done_and_carry_an_undo_only_when_it_is_whole() {
+    let ch = |p: &str, m: u32| WriteOp::Chmod {
+        path: p.into(),
+        mode: m,
+        raw: None,
+    };
+    let ok = WriteOutcome {
+        ok: 1,
+        ..WriteOutcome::default()
+    };
+    let del = WriteOp::Delete {
+        path: "/s/a".into(),
+        is_dir: false,
+        raw: None,
+    };
+    assert_eq!(
+        receipt_of(&ok, &[del.clone()], &[]),
+        Some(("已删除 1 项".to_string(), Vec::new()))
+    );
+    assert_eq!(
+        receipt_of(
+            &ok,
+            &[ch("/s/deploy.sh", 0o755)],
+            &[ch("/s/deploy.sh", 0o644)]
+        ),
+        Some((
+            "已把 deploy.sh 改成 755".to_string(),
+            vec![ch("/s/deploy.sh", 0o644)]
+        ))
+    );
+    assert_eq!(
+        receipt_of(
+            &ok,
+            &[ch("/s/a", 0o755), ch("/s/b", 0o755)],
+            &[ch("/s/a", 0o644)]
+        ),
+        Some(("已改权限 · 2 项".to_string(), Vec::new())),
+        "撤销只撤得回一半却给了撤销"
+    );
+    let bad = WriteOutcome {
+        failed: vec![("删除文件 /s/a".into(), "盘满了".into())],
+        ..WriteOutcome::default()
+    };
+    assert_eq!(
+        receipt_of(&bad, &[], &[]),
+        Some((
+            "未完成 1 项 · 删除文件 /s/a · 盘满了".to_string(),
+            Vec::new()
+        ))
+    );
+}
+
+/// 改权限的撤销据后端回的 `before`：回了 ⇒ 改回那个数；没回（老后端）⇒ 不给撤销（不猜）。
+#[test]
+fn a_chmod_undo_comes_from_the_backends_before_or_not_at_all() {
+    let op = WriteOp::Chmod {
+        path: "/s/run.sh".into(),
+        mode: 0o755,
+        raw: None,
+    };
+    assert_eq!(
+        chmod_undo(&op, &serde_json::json!({ "mode": 493, "before": 420 })),
+        Some(WriteOp::Chmod {
+            path: "/s/run.sh".into(),
+            mode: 0o644,
+            raw: None
+        })
+    );
+    assert_eq!(chmod_undo(&op, &serde_json::json!({ "mode": 493 })), None);
 }

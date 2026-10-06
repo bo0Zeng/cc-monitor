@@ -996,7 +996,27 @@ pub fn eta(got: u64, total: u64, elapsed: f64) -> Option<String> {
 }
 
 /// 画那张表（窗口底部一块）。回这一帧按了哪颗按钮。
-pub fn table_ui(ui: &mut egui::Ui, progress: &Progress) -> Option<Act> {
+/// 表里一行此刻画成什么：断线时在跑的那几行写「等待重连」（不报失败）。
+fn row_view(j: &Job, offline: bool) -> View {
+    let mut v = j.view();
+    if offline && v.state == State::Running {
+        v.detail = copy_text("rsFilewinProgress.row.waitLink", &[]);
+    }
+    v
+}
+
+/// 表要多高才把每一行（含失败摊开的那几行小字）都摆下：表头 32 ＋ 每行的高 ＋ 上下边距。调用方再夹到它的上限（超了在表里滚）。
+pub fn table_height(progress: &Progress, offline: bool) -> f32 {
+    32.0 + progress
+        .jobs()
+        .iter()
+        .filter(|j| j.shown())
+        .map(|j| super::kit::task_row_height(&row_view(j, offline)))
+        .sum::<f32>()
+        + 12.0
+}
+
+pub fn table_ui(ui: &mut egui::Ui, progress: &Progress, offline: bool) -> Option<Act> {
     let jobs = progress.jobs();
     let mut act = None;
     let mut clear = false;
@@ -1008,13 +1028,25 @@ pub fn table_ui(ui: &mut egui::Ui, progress: &Progress) -> Option<Act> {
         &mut clear,
         &mut collapse,
     );
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
     egui::ScrollArea::vertical()
         .auto_shrink([false; 2])
         .show(ui, |ui| {
             for j in jobs.iter().filter(|j| j.shown()) {
-                let v = j.view();
+                let v = row_view(j, offline);
+                let top = ui.cursor().top();
                 if let Some(a) = super::kit::task_row(ui, j.id, &v) {
                     act = Some(a);
+                }
+                // 刚失败的那一行（自动摊开表的那一下）滚进视野、整行看得见。
+                if v.state == State::Failed && j.ended.is_some_and(|t| now.saturating_sub(t) <= 2) {
+                    let r = egui::Rect::from_x_y_ranges(
+                        ui.max_rect().x_range(),
+                        top..=ui.cursor().top(),
+                    );
+                    ui.scroll_to_rect(r, None);
                 }
             }
         });

@@ -92,6 +92,9 @@ pub struct Workspace {
     pub zoom: Zoom,
     /// 右下角那一摞回执（一次性的那几句：键位做不成的原因 · 跳到隐藏文件 · 开另一台 …）。
     pub toasts: super::kit::Toasts,
+    /// 带［撤销］的回执：记号 → 撤销要做的那几件（点了交给焦点那一栏直接做）。
+    undo_for: std::collections::HashMap<u64, Vec<super::writeops::WriteOp>>,
+    undo_tag: u64,
     /// 上一句收成回执的话（同一句摆着不再收第二次）。
     toasted: Option<String>,
     /// 上一帧发出去的窗口标题（变了才再发）。
@@ -221,6 +224,8 @@ impl Workspace {
             other: Default::default(),
             zoom: Zoom::default(),
             toasts: Default::default(),
+            undo_for: Default::default(),
+            undo_tag: 0,
             toasted: None,
             title: None,
             progress,
@@ -1004,6 +1009,15 @@ impl Workspace {
                 if let Some(r) = t.pane.receipt.take() {
                     self.toasts.push(r, None);
                 }
+                if let Some((r, undo)) = t.pane.receipt_undo.take() {
+                    self.undo_tag += 1;
+                    self.undo_for.insert(self.undo_tag, undo);
+                    self.toasts.push_tagged(
+                        r,
+                        Some(copy_text("rsFilewinWriteops.receipt.undo", &[])),
+                        self.undo_tag,
+                    );
+                }
             }
         }
         let said = self.notice.clone();
@@ -1013,7 +1027,16 @@ impl Workspace {
             }
             self.toasted = said;
         }
-        self.toasts.show(&ctx, 36.0);
+        if let Some(tag) = self.toasts.show(&ctx, 36.0) {
+            if let Some(ops) = self.undo_for.remove(&tag) {
+                let f = self.focus;
+                self.pane_on_mut(f).start_undo(ops, Some(ctx.clone()));
+            }
+        }
+        // 已经过了时的那几条回执带的撤销不再留着。
+        let live: std::collections::HashSet<u64> =
+            self.toasts.items.iter().map(|t| t.tag).collect();
+        self.undo_for.retain(|k, _| live.contains(k));
         self.close_ask_ui(&ctx);
     }
 

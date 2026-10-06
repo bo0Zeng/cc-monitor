@@ -79,7 +79,7 @@
 //! | 操作 | 问不问 | 理由 |
 //! |---|---|---|
 //! | 删除 | **问** | 不可撤销。同旧面板 `src/sftp/panel.ts` 那一处 `window.confirm` |
-//! | 改权限 | **问** | 一样能弄坏一场正在跑的会话（把 jsonl 改成不可读），**而它不像删除那样显眼** |
+//! | 改权限 | 不问 | 〔照稿 10-05〕直接做 ＋ 回执「已把 x 改成 755［撤销］」：撤得回来就不问（规范 `I1`）；后端回改之前的位（`before`），撤销 ＝ 拿它再改一次 |
 //! | 新建目录 | 不问 | 同名由**服务端**报错 ⇒ 天然毁不了东西（旧面板那处注释逐字记着这一点） |
 //! | 改名 | 不问 | 目标已存在时由服务端拒（SFTP 的 `RENAME` 不覆盖）；而且它**可逆** |
 //!
@@ -244,8 +244,8 @@ impl WriteOp {
     /// 这一件动手之前要不要问人。**逐条的理由住本模块头注 §四那张表。**
     pub fn needs_confirm(&self) -> bool {
         match self {
-            WriteOp::Delete { .. } | WriteOp::Chmod { .. } => true,
-            WriteOp::Mkdir { .. } | WriteOp::Rename { .. } => false,
+            WriteOp::Delete { .. } => true,
+            WriteOp::Chmod { .. } | WriteOp::Mkdir { .. } | WriteOp::Rename { .. } => false,
         }
     }
 }
@@ -345,6 +345,20 @@ pub async fn apply_remote_in(
     op: &WriteOp,
     root_raw: Option<&[u8]>,
 ) -> Result<(), String> {
+    apply_remote_coded(line, origin, op, root_raw)
+        .await
+        .map(|_| ())
+        .map_err(|f| f.said)
+}
+
+/// 同 [`apply_remote_in`]，但交回**最后一趟的应答**（改权限的 `before` 撤销要用）与对端的码
+/// （就地改名 / 新建据 `exists` 在那一格下面说「已存在」）。
+pub async fn apply_remote_coded(
+    line: &Line,
+    origin: &Origin,
+    op: &WriteOp,
+    root_raw: Option<&[u8]>,
+) -> Result<serde_json::Value, super::source::Failed> {
     let (cmd, mut args) = match op {
         WriteOp::Mkdir { path } => (
             "files-mkdir",
@@ -366,10 +380,13 @@ pub async fn apply_remote_in(
         WriteOp::Rename { from, to, raw } => {
             let root = parent_dir(from);
             if parent_dir(to) != root {
-                return Err(copy_text(
-                    "rsFilewinWriteops.remote.renameSameDir",
-                    &[("op", &(op.label()).to_string())],
-                ));
+                return Err(super::source::Failed {
+                    code: None,
+                    said: copy_text(
+                        "rsFilewinWriteops.remote.renameSameDir",
+                        &[("op", &(op.label()).to_string())],
+                    ),
+                });
             }
             (
                 "files-rename",
@@ -395,9 +412,9 @@ pub async fn apply_remote_in(
     // 删一整棵树：一趟一段，`remaining` 不是 0 就接着发同一个请求，直到删完 / 出错
     // （此前一趟删到底，窗口 120 秒等不到就说失败，而后端照删）。别的写操作一趟就完。
     loop {
-        let d = super::source::ask(line, origin, cmd, &args, budget_for(op)).await?;
+        let d = super::source::ask_coded(line, origin, cmd, &args, budget_for(op)).await?;
         if remaining_of(&d) == 0 {
-            return Ok(());
+            return Ok(d);
         }
     }
 }
@@ -439,6 +456,10 @@ pub fn delete_op(r: &Listed) -> WriteOp {
 /// ⚠ 与后端那一侧无关：后端那几条都在阻塞档、开跑之后打不断；这个数只管「窗口等多久」。
 pub const WRITE_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
 
+/// 后端写面「落点名被占了」那个码（后端 `control/files_write.rs::EXISTS`，判据读两侧源码钉相等）：
+/// 就地改名 / 新建据它在那一格下面说「x 已存在」，不把系统那句长话搬上来。
+pub const EXISTS: &str = "exists";
+
 /// 删除那一问最多列几项（其余写「另外 n 项」）。
 pub const DELETE_LIST_MAX: usize = 8;
 
@@ -458,6 +479,17 @@ pub enum PromptKind {
     Rename { from: String, raw: Option<Vec<u8>> },
     /// 把**这几项**的权限改成框里那个八进制数（一项 = 单改；N 项 = 批量改，一次问完）。
     Chmod { targets: Vec<ChmodTarget> },
+    /// 在 `dir` 里新建一份空文件（就地，同新建目录那一格）。
+    NewFile,
+}
+
+/// 就地输入那一格答完之后要做的那一件。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum InlineGo {
+    /// 新建目录 · 改名：写面那一件。
+    Op(WriteOp),
+    /// 新建空文件：`files-create` 落在这条路径上。
+    Create(String),
 }
 
 /// 改权限那个框里的一项：路径 ＋ 名字的原始字节（有损名才有）。
@@ -483,6 +515,11 @@ pub struct WritePrompt {
     /// 改权限那个框：读回来的现值**已经处理过一次**了（预填过，或决定不预填）。
     /// 只预填一次 —— 用户清空那一栏之后不再被塞回去。
     pub prefilled: bool,
+    /// 改权限那个框的 3 × 3 勾（所有者 · 同组 · 其他人 × 读 · 写 · 执行，下标 `0..9` ＝ 位 `8 - i`）：
+    /// `None` ＝「—」（多选时各项这一位不一样 / 读不到 ⇒ 这一位不改）。与「数字写法」那一栏两边联动（[`Self::toggle_bit`] · [`Self::typed`]）。
+    pub grid: [Option<bool>; 9],
+    /// 改权限那个框逐项读回来的现值（与 `targets` 同序；`None` ＝ 那一项没读到）。勾里有「—」时据它逐项算新值。
+    pub known: Vec<Option<u32>>,
 }
 
 impl WritePrompt {
@@ -493,6 +530,8 @@ impl WritePrompt {
             src_name: String::new(),
             text: String::new(),
             prefilled: false,
+            grid: [None; 9],
+            known: Vec::new(),
         }
     }
 
@@ -510,6 +549,8 @@ impl WritePrompt {
             src_name: r.name.clone(),
             text: r.name.clone(),
             prefilled: false,
+            grid: [None; 9],
+            known: Vec::new(),
         }
     }
 
@@ -542,17 +583,16 @@ impl WritePrompt {
             },
             text: String::new(),
             prefilled: false,
+            grid: [None; 9],
+            known: Vec::new(),
         }
     }
 
     /// 框上那一行提示。
     pub fn heading(&self) -> String {
         match &self.kind {
-            PromptKind::Mkdir => copy_text("rsFilewinWriteops.heading.mkdir", &[]),
-            PromptKind::Rename { .. } => copy_text(
-                "rsFilewinWriteops.heading.rename",
-                &[("name", &self.src_name.to_string())],
-            ),
+            // 就地那一格没有标题（画在列表那一行里）。
+            PromptKind::Mkdir | PromptKind::Rename { .. } | PromptKind::NewFile => String::new(),
             PromptKind::Chmod { targets } if targets.len() > 1 => copy_text(
                 "rsFilewinWriteops.heading.chmodMany",
                 &[("n", &(targets.len()).to_string())],
@@ -589,6 +629,8 @@ impl WritePrompt {
     pub fn to_ops(&self) -> Result<Vec<WriteOp>, String> {
         let t = self.text.trim();
         match &self.kind {
+            // 新建空文件不是写面那一件（`files-create`）：走 [`Self::to_inline`]。
+            PromptKind::NewFile => Err(copy_text("rsFilewinWriteops.toOp.notOne", &[("n", "0")])),
             PromptKind::Mkdir => {
                 let name = clean_name(t)?;
                 Ok(vec![WriteOp::Mkdir {
@@ -612,21 +654,165 @@ impl WritePrompt {
                 }])
             }
             PromptKind::Chmod { targets } => {
-                let mode = parse_mode(t)?;
                 if targets.is_empty() {
                     return Err(copy_text("rsFilewinWriteops.toOps.nothingToChmod", &[]));
                 }
-                Ok(targets
+                // 「数字写法」那一栏有字 ⇒ 照它（整份一个数）；空着 ⇒ 照 3 × 3 勾：定了的位照勾，「—」那几位逐项留原值。
+                if !t.is_empty() {
+                    let mode = parse_mode(t)?;
+                    return Ok(targets
+                        .iter()
+                        .map(|c| WriteOp::Chmod {
+                            path: c.path.clone(),
+                            mode,
+                            raw: c.raw.clone(),
+                        })
+                        .collect());
+                }
+                let (mask, want) = grid_bits(&self.grid);
+                if mask == 0 {
+                    return Err(copy_text("rsFilewinWriteops.mode.empty", &[]));
+                }
+                targets
                     .iter()
-                    .map(|c| WriteOp::Chmod {
-                        path: c.path.clone(),
-                        mode,
-                        raw: c.raw.clone(),
+                    .enumerate()
+                    .map(|(i, c)| {
+                        let old = match self.known.get(i).copied().flatten() {
+                            Some(old) => old,
+                            // 有「—」那一位、而这一项读不到现值 ⇒ 算不出它的新值：不猜，要整份填数字。
+                            None if mask != 0o777 => {
+                                return Err(copy_text("rsFilewinWriteops.mode.needFull", &[]))
+                            }
+                            None => 0,
+                        };
+                        Ok(WriteOp::Chmod {
+                            path: c.path.clone(),
+                            mode: (old & !mask) | want,
+                            raw: c.raw.clone(),
+                        })
                     })
-                    .collect())
+                    .collect()
             }
         }
     }
+}
+
+impl WritePrompt {
+    /// 是不是就地那一格（新建目录 · 新建空文件 · 改名：画在列表那一行里，不是对话框）。
+    pub fn is_inline(&self) -> bool {
+        !matches!(self.kind, PromptKind::Chmod { .. })
+    }
+
+    /// 新建那一格：列表里冒出一行、名字缺省「新建文件夹」/「新建文件」、整个名字选中。
+    pub fn for_new(dir: &str, file: bool) -> Self {
+        let mut p = Self::for_mkdir(dir);
+        if file {
+            p.kind = PromptKind::NewFile;
+            p.text = copy_text("rsFilewinWriteops.inline.newFile", &[]);
+        } else {
+            p.text = copy_text("rsFilewinWriteops.inline.newDir", &[]);
+        }
+        p
+    }
+
+    /// 打开那一帧要选中前几个字：改名 ⇒ 主名（最后一个 `.` 之前；`.env` 这种点开头的整个选中）；新建 ⇒ 整个名字。
+    pub fn select_chars(&self) -> usize {
+        let n = self.text.chars().count();
+        match self.kind {
+            PromptKind::Rename { .. } => match self.text.rfind('.') {
+                Some(i) if i > 0 => self.text[..i].chars().count(),
+                _ => n,
+            },
+            _ => n,
+        }
+    }
+
+    /// 就地那一格答完 ⇒ 要做的那一件；`Ok(None)` ＝ 改名改成原名（＝不改，不报错）。
+    ///
+    /// # Errors
+    ///
+    /// 一句给用户的话（挂在那一格下面，那一格留着）。
+    pub fn to_inline(&self) -> Result<Option<InlineGo>, String> {
+        match &self.kind {
+            PromptKind::NewFile => {
+                let name = clean_name(self.text.trim())?;
+                Ok(Some(InlineGo::Create(join_remote(&self.dir, &name))))
+            }
+            PromptKind::Rename { from, raw } => {
+                let name = clean_name(self.text.trim())?;
+                if &join_remote(&self.dir, &name) == from && raw.is_none() {
+                    return Ok(None);
+                }
+                self.to_op().map(|o| Some(InlineGo::Op(o)))
+            }
+            _ => self.to_op().map(|o| Some(InlineGo::Op(o))),
+        }
+    }
+
+    /// 点了第 `i` 格（「—」⇒ 勾上；勾 ⇔ 不勾）⇒ 九格都定了的话「数字写法」那一栏跟着写成三位数，有「—」就空着。
+    pub fn toggle_bit(&mut self, i: usize) {
+        if let Some(b) = self.grid.get_mut(i) {
+            *b = Some(!b.unwrap_or(false));
+        }
+        self.text = grid_text(&self.grid).unwrap_or_default();
+    }
+
+    /// 「数字写法」那一栏改了 ⇒ 是一个能用的数就把九格照它摆；不是就不动九格（框上那一句说为什么）。
+    pub fn typed(&mut self) {
+        if let Ok(m) = parse_mode(self.text.trim()) {
+            self.grid = grid_of(Some(m & 0o777));
+        }
+    }
+}
+
+/// 一个权限位 → 九格（`None` ⇒ 九格都是「—」）。
+pub fn grid_of(mode: Option<u32>) -> [Option<bool>; 9] {
+    let mut g = [None; 9];
+    if let Some(m) = mode {
+        for (i, b) in g.iter_mut().enumerate() {
+            *b = Some(m & (1 << (8 - i)) != 0);
+        }
+    }
+    g
+}
+
+/// 逐项的现值 → 九格：每一位各项都一样 ⇒ 那一位；不一样 / 有一项读不到 ⇒ 「—」。
+pub fn grid_of_many(modes: &[Option<u32>]) -> [Option<bool>; 9] {
+    let mut g = [None; 9];
+    let Some(all) = modes.iter().copied().collect::<Option<Vec<u32>>>() else {
+        return g;
+    };
+    for (i, b) in g.iter_mut().enumerate() {
+        let bit = 1 << (8 - i);
+        let mut vals = all.iter().map(|m| m & bit != 0);
+        if let Some(first) = vals.next() {
+            if vals.all(|v| v == first) {
+                *b = Some(first);
+            }
+        }
+    }
+    g
+}
+
+/// 九格 → （定了的那几位，勾上的那几位）。
+pub fn grid_bits(g: &[Option<bool>; 9]) -> (u32, u32) {
+    let (mut mask, mut want) = (0, 0);
+    for (i, b) in g.iter().enumerate() {
+        let bit = 1 << (8 - i);
+        if let Some(on) = b {
+            mask |= bit;
+            if *on {
+                want |= bit;
+            }
+        }
+    }
+    (mask, want)
+}
+
+/// 九格都定了 ⇒ 三位八进制那一串；有「—」⇒ `None`。
+pub fn grid_text(g: &[Option<bool>; 9]) -> Option<String> {
+    let (mask, want) = grid_bits(g);
+    (mask == 0o777).then(|| format!("{want:03o}"))
 }
 
 /// 一个能用的**名字**（不是路径）。
@@ -643,10 +829,7 @@ pub(super) fn clean_name(t: &str) -> Result<String, String> {
         return Err(copy_text("rsFilewinWriteops.name.empty", &[]));
     }
     if t.contains('/') {
-        return Err(copy_text(
-            "rsFilewinWriteops.name.hasSlash",
-            &[("name", &t.to_string())],
-        ));
+        return Err(copy_text("rsFilewinWriteops.name.hasSlash", &[]));
     }
     if t == "." || t == ".." {
         return Err(copy_text(
@@ -666,17 +849,10 @@ fn parse_mode(t: &str) -> Result<u32, String> {
     if t.is_empty() {
         return Err(copy_text("rsFilewinWriteops.mode.empty", &[]));
     }
-    let mode = u32::from_str_radix(t, 8).map_err(|_| {
-        copy_text(
-            "rsFilewinWriteops.mode.notOctal",
-            &[("text", &t.to_string())],
-        )
-    })?;
+    let mode =
+        u32::from_str_radix(t, 8).map_err(|_| copy_text("rsFilewinWriteops.mode.notOctal", &[]))?;
     if mode > 0o7777 {
-        return Err(copy_text(
-            "rsFilewinWriteops.mode.outOfRange",
-            &[("text", &t.to_string())],
-        ));
+        return Err(copy_text("rsFilewinWriteops.mode.outOfRange", &[]));
     }
     Ok(mode)
 }
@@ -698,6 +874,8 @@ pub struct ModeReadout {
     pub line: String,
     /// 预填进那一栏的八进制串；`None` = 不预填（各项不同 / 读不到）。
     pub prefill: Option<String>,
+    /// 逐项读回来的现值（原样；九格与「—」那几位据它算）。
+    pub modes: Vec<Option<u32>>,
 }
 
 /// 逐项读回来的权限位（`None` = 那一项没读到）⇒ 框上怎么说。
@@ -710,6 +888,7 @@ pub fn mode_readout(modes: &[Option<u32>]) -> ModeReadout {
     let unreadable = || ModeReadout {
         line: copy_text("rsFilewinWriteops.mode.unreadable", &[]),
         prefill: None,
+        modes: modes.to_vec(),
     };
     let Some(all) = modes.iter().copied().collect::<Option<Vec<u32>>>() else {
         return unreadable();
@@ -721,11 +900,13 @@ pub fn mode_readout(modes: &[Option<u32>]) -> ModeReadout {
         return ModeReadout {
             line: copy_text("rsFilewinWriteops.mode.mixed", &[]),
             prefill: None,
+            modes: modes.to_vec(),
         };
     }
     ModeReadout {
         line: copy_text("rsFilewinWriteops.mode.now", &[("mode", &format!("{m:o}"))]),
         prefill: Some(format!("{m:o}")),
+        modes: modes.to_vec(),
     }
 }
 
@@ -817,6 +998,8 @@ pub fn apply_prefill(p: &mut WritePrompt, r: &ModeReadout) {
         return;
     }
     p.prefilled = true;
+    p.known = r.modes.clone();
+    p.grid = grid_of_many(&r.modes);
     if p.text.is_empty() {
         if let Some(v) = &r.prefill {
             p.text = v.clone();
@@ -851,6 +1034,88 @@ struct Board {
     answer: Option<tokio::sync::oneshot::Sender<Vec<WriteOp>>>,
     /// 上一趟的结果（**画在窗口上**，不是 `println!`）。
     last: Option<WriteOutcome>,
+    /// 删除那一问每一项右端那一格（路径 → (图标, 「文件夹」/ 大小)）：调用方摆问题之前交来（[`WriteBoard::describe`]）。
+    shown: std::collections::HashMap<String, (&'static str, String)>,
+    /// 上一趟做成了的那几件 ＋ 撤销它们要做的那几件（改名 · 改权限才有）＋ 这一趟是不是撤销本身（撤销不再出回执）。
+    done: Vec<WriteOp>,
+    undo: Vec<WriteOp>,
+    quiet: bool,
+    /// 上一趟落地之后还没交出去的回执（[`WriteBoard::take_receipt`]）。
+    receipt: Option<(String, Vec<WriteOp>)>,
+}
+
+/// 一趟写操作的回执（规范 `I1`：撤得回来就不问 ⇒ 做完给回执 ＋［撤销］）。纯函数：判据直接喂它。
+///
+/// - 全是删除 ⇒ 「已删除 n 项」（不能撤）；
+/// - 全是改权限 ⇒ 一项「已把 x 改成 755」/ 多项「已改权限 · n 项」；`undo` 与做成的件数对得上才带撤销；
+/// - 有没做成的 ⇒ 「未完成 n 项 · 名字 · 原因」（不带撤销）；
+/// - 别的（新建 · 改名走就地那一路，不经这里）⇒ 不出回执。
+pub fn receipt_of(
+    out: &WriteOutcome,
+    done: &[WriteOp],
+    undo: &[WriteOp],
+) -> Option<(String, Vec<WriteOp>)> {
+    if !out.failed.is_empty() {
+        let (what, why) = &out.failed[0];
+        return Some((
+            copy_text(
+                "rsFilewinWriteops.result.failed",
+                &[
+                    ("n", &out.failed.len().to_string()),
+                    ("what", what),
+                    ("why", why),
+                ],
+            ),
+            Vec::new(),
+        ));
+    }
+    if done.is_empty() {
+        return None;
+    }
+    let undo = if undo.len() == done.len() {
+        undo.to_vec()
+    } else {
+        Vec::new()
+    };
+    if done.iter().all(|o| matches!(o, WriteOp::Delete { .. })) {
+        return Some((
+            copy_text(
+                "rsFilewinWriteops.result.deleted",
+                &[("n", &done.len().to_string())],
+            ),
+            Vec::new(),
+        ));
+    }
+    if done.iter().all(|o| matches!(o, WriteOp::Chmod { .. })) {
+        let text = match done {
+            [WriteOp::Chmod { path, mode, .. }] => copy_text(
+                "rsFilewinWriteops.result.chmodOne",
+                &[
+                    ("name", remote_basename(path)),
+                    ("mode", &format!("{mode:o}")),
+                ],
+            ),
+            _ => copy_text(
+                "rsFilewinWriteops.result.chmodMany",
+                &[("n", &done.len().to_string())],
+            ),
+        };
+        return Some((text, undo));
+    }
+    None
+}
+
+/// 改权限那一趟的应答 → 撤销它要做的那一件（后端回了 `before` 才有；没回 ⇒ `None`：撤不了就不给撤销，不猜）。
+pub fn chmod_undo(op: &WriteOp, reply: &serde_json::Value) -> Option<WriteOp> {
+    let WriteOp::Chmod { path, raw, .. } = op else {
+        return None;
+    };
+    let before = mode_of(&serde_json::json!({ "mode": reply.get("before")? }))?;
+    Some(WriteOp::Chmod {
+        path: path.clone(),
+        mode: before,
+        raw: raw.clone(),
+    })
 }
 
 impl WriteBoard {
@@ -892,14 +1157,47 @@ impl WriteBoard {
     }
 
     pub fn finish(&self, outcome: WriteOutcome) {
+        self.finish_with(outcome, Vec::new(), Vec::new(), true);
+    }
+
+    /// 同 [`Self::finish`]，另交做成了的那几件与撤销它们的那几件；`quiet` ⇒ 这一趟是撤销本身，不再出回执。
+    pub fn finish_with(
+        &self,
+        outcome: WriteOutcome,
+        done: Vec<WriteOp>,
+        undo: Vec<WriteOp>,
+        quiet: bool,
+    ) {
         {
             let mut b = self.inner.lock().unwrap();
             b.asking.clear();
             b.ticks.clear();
+            b.receipt = if quiet && outcome.failed.is_empty() {
+                None
+            } else {
+                receipt_of(&outcome, &done, &undo)
+            };
+            b.done = done;
+            b.undo = undo;
+            b.quiet = quiet;
             b.last = Some(outcome);
         }
         self.rounds.fetch_add(1, Ordering::SeqCst);
         self.poke();
+    }
+
+    /// 上一趟的回执（交一次就没了）。
+    pub fn take_receipt(&self) -> Option<(String, Vec<WriteOp>)> {
+        self.inner.lock().unwrap().receipt.take()
+    }
+
+    /// 删除那一问里这一项右端那一格（「文件夹」或大小）与图标。摆问题之前交来。
+    pub fn describe(&self, path: &str, icon: &'static str, meta: String) {
+        self.inner
+            .lock()
+            .unwrap()
+            .shown
+            .insert(path.to_string(), (icon, meta));
     }
 
     pub fn rounds(&self) -> u64 {
@@ -934,169 +1232,96 @@ impl WriteBoard {
         tx.send(allowed).is_ok()
     }
 
-    /// 画确认框与上一趟的结果。**模态** —— 有问题在等的时候，列表那边不接受点击。
-    ///
-    /// 原来这里还先画「被围栏挡住的那几件」（红字，`blocked` 那一段）；围栏拿掉之后那一段删了。
-    /// 失败那几件（含后端路径解析拒的）照旧必须在屏幕上出声 —— 「什么都没发生」与「做完了」在屏幕上分不开。
+    /// 画删除那一问（kit 的对话框，模态）。上一趟的结局不在这里画：做完的回执 ／ 没做成的那一句由窗口收成右下角回执
+    /// （[`Self::take_receipt`]）—— 失败照旧必须出声（「什么都没发生」与「做完了」在屏幕上分不开），只是不再是列表上方的红字。
     pub fn ui(&self, ui: &mut egui::Ui) {
-        let (asking, mut ticks, last) = {
-            let b = self.inner.lock().unwrap();
-            (b.asking.clone(), b.ticks.clone(), b.last.clone())
-        };
-        // 删除单独一问（规范 `C10`）：标题「删除 main.rs」/「删除 3 项」· 列出名字（多于 8 项只列 8 个 ＋「另外 n 项」）·
-        //   「不可恢复」· 按钮「取消」（焦点）「删除 / 删除 n 项」（危险）。删除撤不回 ⇒ 只问这一次，不再是勾选清单。
-        if !asking.is_empty() && asking.iter().all(|o| matches!(o, WriteOp::Delete { .. })) {
-            let n = asking.len();
-            let name_of = |o: &WriteOp| match o {
-                WriteOp::Delete { path, is_dir, .. } => {
-                    let name = super::source::remote_basename(path).to_string();
-                    if *is_dir {
-                        copy_text("rsFilewinWriteops.delete.rowDir", &[("name", &name)])
-                    } else {
-                        name
-                    }
-                }
-                _ => String::new(),
-            };
-            let title = if n == 1 {
-                let name = match &asking[0] {
-                    WriteOp::Delete { path, .. } => {
-                        super::source::remote_basename(path).to_string()
-                    }
-                    _ => String::new(),
-                };
-                copy_text("rsFilewinWriteops.delete.titleOne", &[("name", &name)])
-            } else {
-                copy_text(
-                    "rsFilewinWriteops.delete.titleMany",
-                    &[("n", &n.to_string())],
-                )
-            };
-            let go_label = if n == 1 {
-                copy_text("rsFilewinWriteops.delete.go", &[])
-            } else {
-                copy_text("rsFilewinWriteops.delete.goMany", &[("n", &n.to_string())])
-            };
-            let mut answer: Option<bool> = None;
-            let p = super::theme::palette(ui.ctx());
-            let (_, esc) = super::shell::modal(ui.ctx(), "filewin-delete-confirm", |ui| {
-                ui.heading(&title);
-                super::shell::modal_list(ui, |ui| {
-                    for o in asking.iter().take(DELETE_LIST_MAX) {
-                        ui.label(name_of(o));
-                    }
-                    if n > DELETE_LIST_MAX {
-                        ui.label(
-                            egui::RichText::new(copy_text(
-                                "rsFilewinWriteops.delete.more",
-                                &[("n", &(n - DELETE_LIST_MAX).to_string())],
-                            ))
-                            .color(p.text2),
-                        );
-                    }
-                });
-                ui.label(
-                    egui::RichText::new(copy_text("rsFilewinWriteops.delete.body", &[]))
-                        .color(p.text2),
-                );
-                ui.add_space(8.0);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let go = egui::Button::new(egui::RichText::new(&go_label).color(p.text))
-                        .fill(p.error_strong);
-                    if ui.add(go).clicked() {
-                        answer = Some(true);
-                    }
-                    let cancel = ui.button(copy_text("rsFilewinWriteops.delete.cancel", &[]));
-                    // 焦点先落在「取消」（撤不回的那一下要多按一次 Tab 才到）。
-                    if ui.memory(|m| m.focused().is_none()) {
-                        cancel.request_focus();
-                    }
-                    if cancel.clicked() {
-                        answer = Some(false);
-                    }
-                });
-            });
-            if esc && answer.is_none() {
-                answer = Some(false);
-            }
-            if let Some(go) = answer {
-                self.settle(go);
-            }
-        } else if !asking.is_empty() {
-            let mut answer: Option<bool> = None;
-            let mut changed = false;
-            let (_, esc) = super::shell::modal(ui.ctx(), "filewin-write-confirm", |ui| {
-                ui.heading(copy_text(
-                    "rsFilewinWriteops.confirm.ask",
-                    &[("n", &(asking.len()).to_string())],
-                ));
-                ui.colored_label(
-                    ui.visuals().warn_fg_color,
-                    &copy_text("rsFilewinWriteops.confirm.warn", &[]),
-                );
-                super::shell::modal_list(ui, |ui| {
-                    for (i, o) in asking.iter().enumerate() {
-                        let mut t = ticks[i];
-                        if ui.checkbox(&mut t, o.label()).changed() {
-                            ticks[i] = t;
-                            changed = true;
-                        }
-                    }
-                });
-                ui.horizontal(|ui| {
-                    if ui
-                        .button(&copy_text("rsFilewinWriteops.confirm.doChecked", &[]))
-                        .clicked()
-                    {
-                        answer = Some(true);
-                    }
-                    if ui
-                        .button(&copy_text("rsFilewinWriteops.confirm.doNone", &[]))
-                        .clicked()
-                    {
-                        answer = Some(false);
-                    }
-                });
-            });
-            if changed {
-                self.inner.lock().unwrap().ticks = ticks;
-            }
-            if esc && answer.is_none() {
-                answer = Some(false);
-            }
-            if let Some(go) = answer {
-                self.settle(go);
-            }
+        let asking = self.inner.lock().unwrap().asking.clone();
+        // 删除单独一问（规范 `C10`，稿 09）：标题「删除 main.rs」/「删除 3 项」· 一块清单（图标 ＋ 名字 ｜ 右端「文件夹」/ 大小；
+        //   多于 8 项只列 8 个 ＋「另外 n 项」）·「不可恢复」· 按钮「取消」（焦点）「删除 / 删除 n 项」（危险）。删除撤不回 ⇒ 只问这一次。
+        // 别的写操作不再问（改权限 · 改名 · 新建：直接做 ＋ 回执，撤得回来就不问）。
+        if asking.is_empty() {
+            return;
         }
-        if let Some(o) = &last {
-            if !o.failed.is_empty() {
-                ui.colored_label(
-                    ui.visuals().error_fg_color,
-                    copy_text(
-                        "rsFilewinWriteops.result.failed",
-                        &[
-                            ("n", &(o.failed.len()).to_string()),
-                            (
-                                "failed",
-                                &(o.failed
-                                    .iter()
-                                    .map(|(n, e)| format!("{n}（{e}）"))
-                                    .collect::<Vec<_>>()
-                                    .join(&copy_text("rsFilewinWriteops.result.failedSep", &[])))
-                                .to_string(),
-                            ),
-                        ],
-                    ),
-                );
-            } else if o.ok > 0 || o.skipped > 0 {
-                ui.label(copy_text(
-                    "rsFilewinWriteops.result.done",
-                    &[
-                        ("ok", &o.ok.to_string()),
-                        ("skipped", &o.skipped.to_string()),
-                    ],
-                ));
+        let shown = self.inner.lock().unwrap().shown.clone();
+        let n = asking.len();
+        let path_of = |o: &WriteOp| match o {
+            WriteOp::Delete { path, .. }
+            | WriteOp::Chmod { path, .. }
+            | WriteOp::Mkdir { path } => path.clone(),
+            WriteOp::Rename { from, .. } => from.clone(),
+        };
+        let title = if n == 1 {
+            copy_text(
+                "rsFilewinWriteops.delete.titleOne",
+                &[("name", remote_basename(&path_of(&asking[0])))],
+            )
+        } else {
+            copy_text(
+                "rsFilewinWriteops.delete.titleMany",
+                &[("n", &n.to_string())],
+            )
+        };
+        let go_label = if n == 1 {
+            copy_text("rsFilewinWriteops.delete.go", &[])
+        } else {
+            copy_text("rsFilewinWriteops.delete.goMany", &[("n", &n.to_string())])
+        };
+        let rows: Vec<super::kit::ListRow> = asking
+            .iter()
+            .take(DELETE_LIST_MAX)
+            .map(|o| {
+                let path = path_of(o);
+                let is_dir = matches!(o, WriteOp::Delete { is_dir: true, .. });
+                let (icon, meta) = shown.get(&path).cloned().unwrap_or_else(|| {
+                    if is_dir {
+                        (
+                            egui_phosphor::regular::FOLDER_SIMPLE,
+                            copy_text("rsFilewinWriteops.delete.rowDir", &[]),
+                        )
+                    } else {
+                        (egui_phosphor::regular::FILE, String::new())
+                    }
+                });
+                super::kit::ListRow {
+                    icon,
+                    name: remote_basename(&path).to_string(),
+                    meta,
+                }
+            })
+            .collect();
+        let more = (n > DELETE_LIST_MAX).then(|| {
+            copy_text(
+                "rsFilewinWriteops.delete.more",
+                &[("n", &(n - DELETE_LIST_MAX).to_string())],
+            )
+        });
+        let hit = super::kit::dialog(
+            ui.ctx(),
+            "filewin-delete-confirm",
+            &title,
+            |ui| {
+                super::kit::list_box(ui, &rows, more.as_deref());
+                ui.add_space(12.0);
+                ui.label(copy_text("rsFilewinWriteops.delete.body", &[]));
+            },
+            &[
+                (
+                    copy_text("rsFilewinWriteops.delete.cancel", &[]),
+                    super::kit::Btn::Plain,
+                ),
+                (go_label, super::kit::Btn::Danger),
+            ],
+            0,
+            0,
+        );
+        match hit {
+            Some(1) => {
+                self.settle(true);
             }
+            Some(_) => {
+                self.settle(false);
+            }
+            None => {}
         }
     }
 }

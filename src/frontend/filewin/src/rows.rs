@@ -583,7 +583,32 @@ pub fn show_file_rows(
     picked: Option<&super::select::Selection>,
     cols: &Columns,
 ) {
-    show_file_rows_with_tail(ui, rows, tally, scroll_offset_y, reveal, picked, cols, None);
+    show_file_rows_with_tail(
+        ui,
+        rows,
+        tally,
+        scroll_offset_y,
+        reveal,
+        picked,
+        cols,
+        None,
+        None,
+    );
+}
+
+/// 就地输入那一格（就地改名 · 就地新建，稿 07 / 08）：第 `row` 行的名字那一格换成一个输入框。
+///
+/// 填进来的：正在编辑的字 · 出错那一句（红边 ＋ 格子下面挂一句）· 这一帧要不要把焦点给它、选中前几个字（主名）。
+/// 交回去的：`outcome` ＝ `Some(true)` 回车 / 点别处（＝改）· `Some(false)` Esc（＝不改）。
+pub struct InlineCell<'a> {
+    pub row: usize,
+    pub text: &'a mut String,
+    pub error: Option<&'a str>,
+    /// `Some(n)` ⇒ 这一帧把焦点给输入框并选中前 `n` 个字（打开那一帧 · 出错回来那一帧）。
+    pub select: Option<usize>,
+    /// 在飞（改名 / 新建那一趟还没回）：输入框只读，不再交 `outcome`。
+    pub busy: bool,
+    pub outcome: Option<bool>,
 }
 
 /// 同 [`show_file_rows`]，最后一行之后再画一行次级色的字（「有 3 项读不出来」那一句）。
@@ -597,6 +622,7 @@ pub fn show_file_rows_with_tail(
     picked: Option<&super::select::Selection>,
     cols: &Columns,
     tail: Option<&str>,
+    mut inline: Option<&mut InlineCell>,
 ) {
     tally.total_rows = rows.len();
     ui.scope(|ui| {
@@ -643,7 +669,8 @@ pub fn show_file_rows_with_tail(
                 if kind::is_hidden(&r.name) {
                     tally.faded_rows.push(i);
                 }
-                let hit = paint_one_row(ui, i, r, revealed, mark, cols);
+                let cell = inline.as_deref_mut().filter(|c| c.row == i);
+                let hit = paint_one_row(ui, i, r, revealed, mark, cols, cell);
                 if let Some(m) = hit.picked {
                     tally.picked_click = Some((i, m));
                 }
@@ -692,6 +719,7 @@ fn paint_one_row(
     revealed: bool,
     mark: Mark,
     cols: &Columns,
+    inline: Option<&mut InlineCell>,
 ) -> RowHit {
     let p = palette(ui.ctx());
     let m = metrics(ui.ctx());
@@ -706,7 +734,8 @@ fn paint_one_row(
         egui::Sense::CLICK | egui::Sense::DRAG,
     );
     let band = rect.shrink2(egui::vec2(2.0, 1.0));
-    if revealed || mark.picked {
+    // 就地输入那一行画成选中（稿 08：冒出来的那一行带选中底）。
+    if revealed || mark.picked || inline.is_some() {
         ui.painter().rect_filled(band, m.radius_m, p.picked);
     } else if row.hovered() {
         ui.painter().rect_filled(band, m.radius_m, p.hover);
@@ -764,6 +793,46 @@ fn paint_one_row(
             p.warn,
         )
     });
+    // 就地输入：名字那一格换成输入框（红边 ＝ 填错了，错句挂在格子下面）；别的格照画。
+    let editing = inline.is_some();
+    if let Some(c) = inline {
+        let field = egui::Rect::from_min_max(
+            egui::pos2(nx - 6.0, rect.top() + 2.0),
+            egui::pos2(name_c.right() - PAD, rect.bottom() - 2.0),
+        );
+        let id = ui.id().with(("filewin-inline", index));
+        let stroke = if c.error.is_some() { p.error } else { p.accent };
+        let edit = egui::TextEdit::singleline(c.text)
+            .id(id)
+            .margin(egui::Margin::symmetric(6, 2))
+            .interactive(!c.busy)
+            .background_color(p.bg);
+        let resp = ui
+            .scope_builder(egui::UiBuilder::new().max_rect(field), |ui| {
+                ui.visuals_mut().selection.stroke = egui::Stroke::new(1.0, stroke);
+                ui.visuals_mut().widgets.inactive.bg_stroke = egui::Stroke::new(1.0, stroke);
+                ui.visuals_mut().widgets.hovered.bg_stroke = egui::Stroke::new(1.0, stroke);
+                ui.add_sized(field.size(), edit)
+            })
+            .inner;
+        if let Some(n) = c.select.take() {
+            resp.request_focus();
+            if let Some(mut st) = egui::text_edit::TextEditState::load(ui.ctx(), id) {
+                st.cursor.set_char_range(Some(egui::text::CCursorRange::two(
+                    egui::text::CCursor::new(0),
+                    egui::text::CCursor::new(n),
+                )));
+                st.store(ui.ctx(), id);
+            }
+        }
+        if !c.busy && resp.lost_focus() {
+            let esc = ui.input(|i| i.key_pressed(egui::Key::Escape));
+            c.outcome = Some(!esc);
+        }
+        if let Some(e) = c.error {
+            super::kit::inline_error(ui.ctx(), id.with("err"), field, e);
+        }
+    }
     let room = name_c.right() - nx - PAD - warn.as_ref().map_or(0.0, |w| w.size().x + 6.0);
     let g = one_line(ui, r.name.clone(), room, main);
     let gw = g.size().x;
@@ -795,12 +864,14 @@ fn paint_one_row(
         }
         tips.push((name_c, t));
     }
-    painter.with_clip_rect(name_c).galley(
-        egui::pos2(nx, rect.center().y - g.size().y / 2.0),
-        g,
-        main,
-    );
-    if let Some(w) = warn {
+    if !editing {
+        painter.with_clip_rect(name_c).galley(
+            egui::pos2(nx, rect.center().y - g.size().y / 2.0),
+            g,
+            main,
+        );
+    }
+    if let (Some(w), false) = (warn, editing) {
         painter.with_clip_rect(name_c).galley(
             egui::pos2(nx + gw + 6.0, rect.center().y - w.size().y / 2.0),
             w,

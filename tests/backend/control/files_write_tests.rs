@@ -418,11 +418,11 @@ fn a_clean_write_lands_once_and_never_overwrites() {
     let err = create_new_file(&root, "a.md", b"second").expect_err("同名第二次竟然成功了");
     // 🔴 档位在这一格是**承重**的：同名第二次是 `O_EXCL` 在开文件那一步兜住的，
     //    **不是**围栏拦的（围栏只判路径形状，它对「这条路径上已经有东西了」一无所知）。
-    //    ⇒ 码必须是 `io_failed`；写成 `refused` 就说明有人把两档混成了一档。
+    //    ⇒ 码必须是 `exists`（落点名被占了）；写成 `refused` 就说明有人把两档混成了一档。
     assert_eq!(
         err.code(),
-        "io_failed",
-        "同名第二次应该是 `O_EXCL` 兜的（`io_failed`），实得 `{}`：{err:?}",
+        "exists",
+        "同名第二次应该是 `O_EXCL` 兜的（`exists`），实得 `{}`：{err:?}",
         err.code()
     );
     assert!(
@@ -659,15 +659,15 @@ fn the_command_face_creates_an_empty_file_when_no_content_is_given() {
         "写进去的字节不对"
     );
 
-    // ★ 两档 code 在命令面这一侧**真的分得开**：同名第二次是 `O_EXCL` 兜的 ⇒ `io_failed`。
+    // ★ 两档 code 在命令面这一侧**真的分得开**：同名第二次是 `O_EXCL` 兜的 ⇒ `exists`。
     let (code, msg) = answer_wire(
         "files-create",
         &serde_json::json!({"root": root.to_str().expect("utf8"), "rel": "b.md"}),
     )
     .expect_err("同名第二次竟然成功了");
     assert_eq!(
-        code, "io_failed",
-        "同名第二次应该是 `O_EXCL` 兜的（`io_failed`），实得 `{code}`：{msg}"
+        code, "exists",
+        "同名第二次应该是 `O_EXCL` 兜的（`exists`），实得 `{code}`：{msg}"
     );
     assert_eq!(
         std::fs::read(root.join("b.md")).expect("读回第一份"),
@@ -754,6 +754,34 @@ fn mkdir_builds_one_level_even_where_a_session_file_would_sit() {
     make_dir(&root, "projects/-x").expect("🔴 项目目录建不出来");
     make_dir(&root, "projects/-x/abc.jsonl").expect("🔴 会话文件那个位置上建目录被拒了");
     assert!(root.join("projects/-x/abc.jsonl").is_dir());
+    // 那一段已经有一项 ⇒ `exists`（换名字才有意义），不是 `io_failed`。
+    let err = make_dir(&root, "skills").expect_err("同名第二次竟然建成了");
+    assert_eq!(err.code(), "exists", "{err:?}");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// ★ 改权限回**改之前**的权限位（撤销拿它再改一次）；改值验：先 0o640 ⇒ 回 420 以外的数就红。
+#[cfg(unix)]
+#[test]
+fn chmod_reports_the_mode_it_had_before() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let base = temp_root("chb");
+    let root = base.join("cfg");
+    std::fs::create_dir_all(&root).expect("建根");
+    std::fs::write(root.join("run.sh"), b"x").expect("铺");
+    std::fs::set_permissions(root.join("run.sh"), std::fs::Permissions::from_mode(0o640))
+        .expect("先收成 640");
+    let data = answer_wire(
+        "files-chmod",
+        &serde_json::json!({"root": root.to_str().expect("utf8"), "rel": "run.sh", "mode": 0o755}),
+    )
+    .expect("改权限被拒");
+    assert_eq!(data["mode"], serde_json::json!(0o755));
+    assert_eq!(
+        data["before"],
+        serde_json::json!(0o640),
+        "改之前那一格不对：{data}"
+    );
     std::fs::remove_dir_all(&base).ok();
 }
 
@@ -772,7 +800,7 @@ fn rename_moves_inside_the_root_never_overwrites_and_moves_a_session_file_too() 
 
     // 🔴 目标已在 ⇒ 拒，而且**两份内容都没动**。
     let err = rename_entry(&root, "c.md", "b.md").expect_err("改名顶掉了一份既有文件");
-    assert_eq!(err.code(), "io_failed", "{err:?}");
+    assert_eq!(err.code(), "exists", "{err:?}");
     assert_eq!(
         std::fs::read(root.join("b.md")).expect("b"),
         b"B",

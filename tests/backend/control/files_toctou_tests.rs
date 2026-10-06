@@ -47,7 +47,7 @@ fn a_rename_does_not_clobber_a_file_that_appears_after_the_paths_were_resolved()
     let got = rename_entry_racing(&base, Path::new("mine"), Path::new("theirs"), &mut || {
         std::fs::write(&target, b"theirs").unwrap();
     });
-    assert!(matches!(got, Err(WriteRefusal::Io(_))), "{got:?}");
+    assert!(matches!(got, Err(WriteRefusal::Exists(_))), "{got:?}");
     assert_eq!(
         std::fs::read(&target).unwrap(),
         b"theirs",

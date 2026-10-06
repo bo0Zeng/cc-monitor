@@ -735,7 +735,7 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             vec![file("a.bin"), file("b.bin"), file("c.bin")],
             vec![("a.bin", NONE), ("c.bin", CTRL)],
             "c.bin",
-            vec!["算大小", "改这 2 项的权限", "删除这 2 项"],
+            vec!["算大小", "改权限 · 2 项", "删除 2 项"],
         ),
         (
             "右键落在选中外：换成只选它",
@@ -1173,23 +1173,24 @@ async fn batch_chmod_and_a_recursive_delete_reach_the_wire_with_the_right_shapes
     assert!(w.perform(Action::Chmod, None), "批量改权限没摆出框");
     {
         let p = w.write_prompt.as_mut().expect("框没摆出来");
-        assert_eq!(p.heading(), "把这 3 项的权限改成（八进制）：");
+        assert_eq!(p.heading(), "改权限 · 3 项");
         p.text = "640".into();
     }
     assert!(w.confirm_write(None), "框里的字没变成一摞");
+    // 改权限不问（直接做 ＋ 回执［撤销］）；删除问一次。
     async fn settle(w: &mut FileWindow, round: u64) {
-        for _ in 0..400 {
-            if w.write_board.is_asking() {
-                break;
+        if round > 0 {
+            for _ in 0..400 {
+                if w.write_board.is_asking() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
             }
-            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            assert_eq!(w.write_board.asking().len(), 2, "一次问完那一摞件数不对");
+            assert!(w.write_board.settle(true));
+        } else {
+            assert!(!w.write_board.is_asking(), "改权限又问了一次");
         }
-        assert_eq!(
-            w.write_board.asking().len(),
-            if round == 0 { 3 } else { 2 },
-            "一次问完那一摞件数不对"
-        );
-        assert!(w.write_board.settle(true));
         for _ in 0..400 {
             if w.write_board.rounds() > round {
                 break;

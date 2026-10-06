@@ -427,8 +427,8 @@ fn menu_labels_are_the_row_buttons_labels() {
     assert_eq!(Rename.label(1), crate::writeops::RENAME_LABEL.as_str());
     assert_eq!(Chmod.label(1), crate::writeops::CHMOD_LABEL.as_str());
     assert_eq!(Delete.label(1), crate::writeops::DELETE_LABEL.as_str());
-    assert_eq!(Delete.label(3), "删除这 3 项");
-    assert_eq!(Chmod.label(3), "改这 3 项的权限");
+    assert_eq!(Delete.label(3), "删除 3 项");
+    assert_eq!(Chmod.label(3), "改权限 · 3 项");
     assert_eq!(Open.label(1), OPEN_LABEL.as_str());
 }
 

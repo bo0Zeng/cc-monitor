@@ -436,10 +436,9 @@ impl FileWindow {
             }
             ui.separator();
             // ── 这个目录 ── 和那台断着 ⇒ 新建 · 上传灰着、悬停「离线 · 只读」。
-            let offline = self.link.offline();
-            let read_only = copy_text("rsFilewinChrome.link.readOnly", &[]);
+            let new_why = self.offline_cmd(Cmd::Mkdir);
             let new_label = NEW_LABEL.clone();
-            let r = ui.add_enabled_ui(!offline, |ui| {
+            let r = ui.add_enabled_ui(new_why.is_none(), |ui| {
                 super::kit::menu(ui, (ph::PLUS, new_label.as_str(), ph::CARET_DOWN), |ui| {
                     if ui
                         .button((ph::FOLDER_PLUS, NEW_FOLDER_ITEM.as_str()))
@@ -454,16 +453,34 @@ impl FileWindow {
                     }
                 })
             });
-            if offline {
-                r.inner.on_disabled_hover_text(&read_only);
+            if let Some(w) = &new_why {
+                r.inner.on_disabled_hover_text(w);
             }
             let up = super::upload::UPLOAD_LABEL.as_str();
-            if kit::ghost(ui, ph::UPLOAD_SIMPLE, up, !offline, &read_only).clicked() {
+            let up_why = self.offline_cmd(Cmd::Upload);
+            if kit::ghost(
+                ui,
+                ph::UPLOAD_SIMPLE,
+                up,
+                up_why.is_none(),
+                up_why.as_deref().unwrap_or(""),
+            )
+            .clicked()
+            {
                 hit = Some(Cmd::Upload);
             }
+            let term_why = self.offline_cmd(Cmd::Term);
             if tier == Tier::Narrow {
                 super::kit::menu(ui, egui::RichText::new(ph::DOTS_THREE).size(16.0), |ui| {
-                    if ui.button(TERMINAL_LABEL.as_str()).clicked() {
+                    let r = ui.add_enabled(
+                        term_why.is_none(),
+                        egui::Button::new(TERMINAL_LABEL.as_str()),
+                    );
+                    let r = match &term_why {
+                        Some(w) => r.on_disabled_hover_text(w),
+                        None => r,
+                    };
+                    if r.clicked() {
                         hit = Some(Cmd::Term);
                     }
                     ui.separator();
@@ -496,10 +513,19 @@ impl FileWindow {
                 .on_hover_text(MORE_LABEL.as_str());
                 return;
             }
-            if kit::ghost(ui, ph::TERMINAL_WINDOW, TERMINAL_LABEL.as_str(), true, "")
-                .on_hover_text(copy_text("rsFilewinChrome.command.termHint", &[]))
-                .clicked()
-            {
+            let r = kit::ghost(
+                ui,
+                ph::TERMINAL_WINDOW,
+                TERMINAL_LABEL.as_str(),
+                term_why.is_none(),
+                term_why.as_deref().unwrap_or(""),
+            );
+            let r = if term_why.is_none() {
+                r.on_hover_text(copy_text("rsFilewinChrome.command.termHint", &[]))
+            } else {
+                r
+            };
+            if r.clicked() {
                 hit = Some(Cmd::Term);
             }
             ui.separator();
@@ -525,6 +551,7 @@ impl FileWindow {
                 }
             }
             if view.two {
+                let across_why = self.offline_cmd(Cmd::Across);
                 let r = kit::ghost(
                     ui,
                     ph::COPY,
@@ -533,10 +560,10 @@ impl FileWindow {
                     } else {
                         super::workspace::COPY_ACROSS_LABEL.as_str()
                     },
-                    true,
-                    "",
+                    across_why.is_none(),
+                    across_why.as_deref().unwrap_or(""),
                 );
-                let r = if icons_only {
+                let r = if icons_only && across_why.is_none() {
                     r.on_hover_text(super::workspace::COPY_ACROSS_LABEL.as_str())
                 } else {
                     r
@@ -1029,14 +1056,15 @@ impl Workspace {
         // 「进度」表（窗口底部一块，可拖高；在状态栏之上、左栏之下 ⇒ 横贯整个窗口宽，稿 11）。
         if self.progress.is_open() && !self.progress.is_empty() {
             let mut act = None;
+            // 表照行数长高（含失败摊开的那几行），到窗高六成为止；再多在表里滚。
+            let max = (ctx.content_rect().height() * 0.6).max(120.0);
+            let offline = self.link.offline();
+            let want = super::progress::table_height(&self.progress, offline);
             egui::Panel::bottom("filewin-progress")
                 .frame(bar_frame(&ctx))
-                .resizable(true)
-                .default_size(214.0)
-                .min_size(80.0)
-                .max_size((ctx.content_rect().height() * 0.6).max(120.0))
+                .exact_size(want.clamp(80.0, max))
                 .show(ui, |ui| {
-                    act = super::progress::table_ui(ui, &self.progress);
+                    act = super::progress::table_ui(ui, &self.progress, offline);
                 });
             if let Some(a) = act {
                 self.apply_progress_act(a, Some(ctx.clone()));

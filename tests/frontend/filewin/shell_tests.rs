@@ -1456,11 +1456,12 @@ fn the_window_starts_a_batch_through_the_shared_three_step_function() {
         "`writeops::run_writes(` 在 `shell.rs` 生产段里不是恰好一处 —— \
          多了就是长出了第二条确认流，少了就是这一条被绕过了"
     );
-    // 落点换成 `apply_remote_in`（根可以是当前目录的字节，有损名全寻址）；`apply_remote` 是它根为串时的那一形。
+    // 落点换成 `apply_remote_coded`（根可以是当前目录的字节，有损名全寻址；交回应答与码）。恰好两处：
+    //   一处在 `run_writes` 的 `apply` 里（删除问一次 · 改权限直接做），一处是就地那一格（新建 · 改名：不问，填错 / 被占在那一格下面说）。
     assert_eq!(
-        prod.matches("writeops::apply_remote_in(").count(),
-        1,
-        "做一件的落点不是恰好一处"
+        prod.matches("writeops::apply_remote_coded(").count(),
+        2,
+        "做一件的落点不是恰好两处"
     );
     // 🔴 窗口自己**不许**直接调那四条池命令 —— 它们只许经 `apply_remote` 走。
     for banned in [
@@ -2767,8 +2768,9 @@ fn gp1_a_chmod_box_without_a_line_says_the_current_mode_is_unreadable() {
     assert_eq!(
         w.mode_probe.readout(),
         Some(crate::writeops::ModeReadout {
-            line: "读不到现在的权限".to_string(),
+            line: "当前权限不可读".to_string(),
             prefill: None,
+            modes: vec![None],
         })
     );
     assert_eq!(w.write_prompt().map(|p| p.text.as_str()), Some(""));
@@ -3162,7 +3164,7 @@ fn a_download_in_flight_can_be_stopped_from_its_row_in_the_progress_table() {
     let mut paint = |ev: Vec<egui::Event>, acted: &mut Option<crate::progress::Act>| {
         t += 0.5;
         crate::copy::testing::painted_text(&ctx, egui::vec2(1280.0, 800.0), t, ev, |ui| {
-            if let Some(a) = crate::progress::table_ui(ui, &progress) {
+            if let Some(a) = crate::progress::table_ui(ui, &progress, false) {
                 *acted = Some(a);
             }
         })
@@ -3241,9 +3243,9 @@ fn of_two_listings_of_the_same_directory_only_the_last_one_sent_lands() {
     assert!(!l.is_loading());
 }
 
-/// 改名框里填错：原因画在**框里**（输入框下面、按钮上面），不画到框后面那一行（那一行被暗底盖着）。
+/// 就地改名填错：原因挂在**那一格下面**（稿 07），那一格留着；不画到列表上方那一行。
 #[test]
-fn a_bad_name_is_explained_inside_the_box() {
+fn a_bad_name_is_explained_under_the_cell() {
     let ctx = egui::Context::default();
     let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.txt")]);
     assert!(w.begin_rename(0));
@@ -3260,20 +3262,15 @@ fn a_bad_name_is_explained_inside_the_box() {
     let _ = paint(&mut w);
     let painted = paint(&mut w);
     let said = crate::copy::testing::rects_of(&painted, &why);
-    let heading = crate::copy::testing::rects_of(&painted, &w.write_prompt().unwrap().heading());
-    let ok = crate::copy::testing::rects_of(&painted, &copy_text("rsFilewinShell.write.ok", &[]));
-    assert_eq!(
-        (said.len(), heading.len(), ok.len()),
-        (1, 1, 1),
-        "{painted:?}"
-    );
+    let cell = crate::copy::testing::rects_of(&painted, "sub/b.txt");
+    assert_eq!((said.len(), cell.len()), (1, 1), "{painted:?}");
     assert!(
-        said[0].top() > heading[0].bottom() && said[0].bottom() < ok[0].top(),
-        "原因没画在框里：原因 {:?} · 框头 {:?} · 确定 {:?}",
+        said[0].top() >= cell[0].bottom(),
+        "原因没挂在那一格下面：原因 {:?} · 那一格 {:?}",
         said[0],
-        heading[0],
-        ok[0]
+        cell[0]
     );
+    assert!(w.write_prompt().is_some(), "填错了，那一格却收掉了");
     assert!(w.listing.error.lock().unwrap().is_none());
 }
 
@@ -3429,5 +3426,148 @@ fn entries_that_could_not_be_read_are_said() {
         crate::copy::testing::rects_of(&painted, &line).len(),
         1,
         "{painted:?}"
+    );
+}
+
+/// 等就地那一趟回来。**带上限，绝不挂死**。
+async fn settle_inline_of(w: &mut FileWindow) {
+    for _ in 0..600 {
+        if w.settle_inline() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    panic!("等了 3 秒就地那一趟还没回来");
+}
+
+/// 就地改名（稿 07 / 08）：名字被占了（后端 `exists`）⇒ 那一格留着、下面说「x 已存在」；
+/// 改成了 ⇒ 那一格收掉、选中新名字、回执「已改名为 x」带［撤销］，撤销那一件 ＝ 改回原名；点撤销 ⇒ 那一件真上线、不再出回执。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_inline_rename_says_exists_under_the_cell_or_lands_with_an_undo() {
+    let mut w = FileWindow::seeded(
+        Source::remote(synth_cfg("inline-rename")),
+        "/srv/data".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        vec![file_row("a.txt")],
+    );
+    let wired = crate::find::testing::wire_up(
+        "inline-rename",
+        crate::find::testing::FakeBackend::new(
+            &["files-rename", "files-ls"],
+            crate::find::testing::Declared::default(),
+        ),
+    )
+    .await;
+    w.attach_line(wired.line.clone());
+    assert!(w.begin_rename(0));
+    w.write_prompt.as_mut().unwrap().text = "exists.txt".into();
+    assert!(w.confirm_write(None), "合法名字却没发出去");
+    settle_inline_of(&mut w).await;
+    assert_eq!(
+        w.prompt_error().as_deref(),
+        Some("exists.txt 已存在"),
+        "名字被占了，那一格下面说的不对"
+    );
+    assert!(w.write_prompt().is_some(), "名字被占了，那一格却收掉了");
+    assert!(w.receipt_undo.is_none(), "没改成却给了回执");
+    // 换一个名字 ⇒ 改成。
+    w.write_prompt.as_mut().unwrap().text = "b.txt".into();
+    assert!(w.confirm_write(None));
+    settle_inline_of(&mut w).await;
+    assert!(w.write_prompt().is_none(), "改成了，那一格还摆着");
+    assert_eq!(w.reveal_name(), Some("b.txt"), "新名字没被选中");
+    let (text, undo) = w.receipt_undo.take().expect("改成了却没有带撤销的回执");
+    assert_eq!(text, "已改名为 b.txt");
+    assert_eq!(
+        undo,
+        vec![WriteOp::Rename {
+            from: "/srv/data/b.txt".into(),
+            to: "/srv/data/a.txt".into(),
+            raw: None
+        }]
+    );
+    let renames = |w: &crate::find::testing::Wired| -> Vec<serde_json::Value> {
+        w.log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r["cmd"] == "files-rename")
+            .map(|r| r["args"].clone())
+            .collect()
+    };
+    assert_eq!(renames(&wired).len(), 2);
+    // 点撤销 ⇒ 改回去那一件上线（不问），做完不再出回执。
+    let before = w.write_board.rounds();
+    assert!(w.start_undo(undo, None));
+    for _ in 0..600 {
+        if w.write_board.rounds() > before {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert_eq!(
+        renames(&wired).last(),
+        Some(&serde_json::json!({ "root": "/srv/data", "from": "b.txt", "to": "a.txt" })),
+        "撤销那一件不是改回原名"
+    );
+    w.settle_finished_writes();
+    assert!(
+        w.receipt_undo.is_none() && w.receipt.is_none(),
+        "撤销本身又出了回执"
+    );
+}
+
+/// 改权限直接做（不问）⇒ 回执「已把 x 改成 755」带［撤销］，撤销那一件 ＝ 改回后端回的 `before`。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_chmod_is_done_without_asking_and_offers_the_backends_before_as_undo() {
+    let mut w = FileWindow::seeded(
+        Source::remote(synth_cfg("chmod-undo")),
+        "/srv/data".to_string(),
+        tokio::runtime::Handle::try_current().ok(),
+        vec![file_row("deploy.sh")],
+    );
+    let wired = crate::find::testing::wire_up(
+        "chmod-undo",
+        crate::find::testing::FakeBackend::new(
+            &["files-chmod", "files-stat", "files-ls"],
+            crate::find::testing::Declared::default(),
+        ),
+    )
+    .await;
+    w.attach_line(wired.line.clone());
+    assert!(w.begin_chmod(0));
+    w.write_prompt.as_mut().unwrap().text = "755".into();
+    assert!(w.confirm_write(None));
+    for _ in 0..600 {
+        if w.write_board.rounds() >= 1 {
+            break;
+        }
+        assert!(!w.write_board.is_asking(), "改权限又问了一次");
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert!(w.settle_finished_writes());
+    let (text, undo) = w.receipt_undo.take().expect("改权限做完没有带撤销的回执");
+    assert_eq!(text, "已把 deploy.sh 改成 755");
+    assert_eq!(
+        undo,
+        vec![WriteOp::Chmod {
+            path: "/srv/data/deploy.sh".into(),
+            mode: 0o644,
+            raw: None
+        }]
+    );
+}
+
+/// 窗口认的「落点名被占了」那个码 == 后端写面登记的那一个（读两侧源码）。
+#[test]
+fn the_exists_code_is_the_backends_one() {
+    let be = include_str!("../../../src/backend/control/files_write.rs");
+    assert!(
+        be.contains(&format!(
+            "pub const EXISTS: &str = \"{}\";",
+            crate::writeops::EXISTS
+        )),
+        "后端那一侧的码不是 `{}`",
+        crate::writeops::EXISTS
     );
 }

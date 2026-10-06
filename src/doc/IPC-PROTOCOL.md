@@ -1506,7 +1506,8 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 
 **错误码**：`bad_path`（`root` 缺了 / 形状不对 / 空）· `bad_args`（`rel` 不是字符串、
 或 `content` 形状不对）· `refused`（**围栏**拦的 —— 换条路径才有意义）·
-`io_failed`（围栏放行了、盘上这一步没成：目标已存在 / 父目录不在或不可写 / 盘满 ——
+`exists`（落点上已经有一项，哪怕只是一条 symlink —— 换一个名字才有意义）·
+`io_failed`（围栏放行了、盘上这一步没成：父目录不在或不可写 / 盘满 ——
 重试才有意义）。
 ⚠ `refused` 与 `io_failed` **刻意分得开**：压成一个码，调用方就只能靠猜字符串前缀
 去分「这条路径本来就不许写」与「这一次没写成」，而那是会漂的。
@@ -1535,7 +1536,8 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
   （此前：「围栏只拦那几份具体的会话文件 …… `~/.claude` 底下的其余东西改得动」，用户 09-23 那一裁。）
   仍会拒的只有**路径解析**那几形：上跳 / 绝对路径 / 空段 / 父目录不在 / 解完链接跑出 `root`（跟链接的动词解到底再判）——
   它不限制改什么，只保证改的就是 `root ＋ rel` 那一格。
-- 错误码四个，与 `files-create` 同义：`bad_path` · `bad_args` · `refused`（路径解析拒的 / 形状不对）· `io_failed`（盘上没成）。
+- 错误码四个，与 `files-create` 同义：`bad_path` · `bad_args` · `refused`（路径解析拒的 / 形状不对）· `io_failed`（盘上没成）；
+  `files-mkdir` · `files-rename` 另有第五个 `exists`（落点名被占了，一个字节没动 —— 换名字才有意义；文件窗口就地改名 / 新建据它在那一格下面说「已存在」）。
 - ⚠ **判定与动手之间的窗**（TOCTOU）：能用原子原语闭合的已闭合 —— 改名不覆盖（`renameat2(RENAME_NOREPLACE)`；Windows `MoveFileExW` 不带替换旗）· 复制与 `files-put` 新建那一形先写同目录旁名再不覆盖上位 · 开文件全程 `O_NOFOLLOW`（Windows 没有等价开法）。仍开着：父目录在解析与动手之间被整个换掉 · 递归删 / 递归复制逐条的窗 · CAS 与换名之间 · `files-chmod` 跟链接。那块盘不认不覆盖改名（NFS、部分 FUSE）⇒ 普通文件走 `link` ＋ `unlink`（目标已在时 `link` 原子失败），目录拒（`refused`：「这个盘不支持不覆盖改名目录」），不退回先看后改。
 - ⚠ **真远端那一维没有读数**：五条全在本机文件系统上跑过。
 - **CLI 面同样有它们**（从命令注册那一处派生，与 `files-create` 同一条理由）：
@@ -1551,7 +1553,7 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `root` / `rel` | → | 目标根 ＋ 相对段。**只建最后那一段**：父目录不在 ⇒ `refused`（不顺手补中间几层） |
+| `root` / `rel` | → | 目标根 ＋ 相对段。**只建最后那一段**：父目录不在 ⇒ `refused`（不顺手补中间几层）；那一段已经有一项 ⇒ `exists` |
 | `path` | ← | 建出来的那个目录（父目录解完 symlink 的） |
 
 权限位是后端进程的缺省（受 umask）；建在这台机器 `~/.cc-monitor` 里的 ⇒ `0700`（unix）。
@@ -1569,7 +1571,7 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 | `from` / `to` | → | 两个相对段，**各过一遍路径解析**（只解 `from` 的话，`to` 半路一条链接就能把东西搬到根外） |
 | `path` | ← | 新名字的落点 |
 
-🔴 **`to` 已经在了 ⇒ 拒（`io_failed`），不覆盖**：unix 上系统那一步会静默顶掉已有目标，
+🔴 **`to` 已经在了 ⇒ 拒（`exists`），不覆盖**：unix 上系统那一步会静默顶掉已有目标，
 那是一次没人问过的覆盖。一次原子的不覆盖改名，没有先看后改的窗；盘不认这个旗 ⇒ 普通文件 `link` ＋ `unlink`、目录 `refused`（说「这个盘不支持不覆盖改名目录」）。
 
 #### `files-delete`：删一个文件或一个**空**目录（显式 `recursive` 才删整棵树）
@@ -1609,13 +1611,14 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 
 ```text
 → {"id":"w5","cmd":"files-chmod","args":{"root":"/home/u/docs","rel":"run.sh","mode":493}}
-← {"kind":"reply","id":"w5","ok":true,"data":{"path":"/home/u/docs/run.sh","mode":493}}
+← {"kind":"reply","id":"w5","ok":true,"data":{"path":"/home/u/docs/run.sh","mode":493,"before":420}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `root` / `rel` | → | 目标根 ＋ 相对段 |
 | `mode` | → ← | **十进制数值**（`493` = `0o755`），只收低 12 位；超出 ⇒ `refused`。出方向原样回送 |
+| `before` | ← | **改之前**的权限位（十进制、低 12 位）：撤销 ＝ 拿它再发一趟。读不到 ⇒ 不给这一格（不编一个数） |
 | `path` | ← | **解到底**的那个真路径 |
 
 🔴 **它跟链接** ⇒ 落点连最后一段也解到底再判一次：根里一条指向根外的链接不许借它把根外那一份改掉（此前的例子是「指向会话文件的链接」，那一形今天放行）。

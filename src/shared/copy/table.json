@@ -9434,21 +9434,6 @@
       "zh": "有一份文本开着",
       "args": []
     },
-    "rsFilewinShell.write.cancel": {
-      "kind": "action",
-      "zh": "取消",
-      "args": []
-    },
-    "rsFilewinShell.write.ok": {
-      "kind": "action",
-      "zh": "确定",
-      "args": []
-    },
-    "rsFilewinShell.write.sameDirOnly": {
-      "kind": "body",
-      "zh": "⚠ 只在这一个目录里，不许带 /。",
-      "args": []
-    },
     "rsFilewinShell.pull.cancel": {
       "kind": "action",
       "zh": "取消",
@@ -9814,69 +9799,39 @@
       "zh": "名称",
       "args": []
     },
-    "rsFilewinWriteops.result.done": {
-      "kind": "body",
-      "zh": "上一批 {ok} 件做完、{skipped} 件跳过",
-      "args": ["ok", "skipped"]
-    },
-    "rsFilewinWriteops.result.failedSep": {
-      "kind": "body",
-      "zh": "；",
-      "args": []
-    },
     "rsFilewinWriteops.result.failed": {
       "kind": "body",
-      "zh": "上一批 {n} 件没做成：{failed}",
-      "args": ["n", "failed"]
-    },
-    "rsFilewinWriteops.confirm.doNone": {
-      "kind": "action",
-      "zh": "都别做",
-      "args": []
-    },
-    "rsFilewinWriteops.confirm.doChecked": {
-      "kind": "action",
-      "zh": "做勾上的",
-      "args": []
-    },
-    "rsFilewinWriteops.confirm.warn": {
-      "kind": "body",
-      "zh": "⚠ 这一问只出现一次：勾完点确认。删除不可撤销。",
-      "args": []
-    },
-    "rsFilewinWriteops.confirm.ask": {
-      "kind": "body",
-      "zh": "这 {n} 件要做吗？",
-      "args": ["n"]
+      "zh": "未完成 {n} 项 · {what} · {why}",
+      "args": ["n", "what", "why"]
     },
     "rsFilewinWriteops.mode.outOfRange": {
       "kind": "error",
-      "zh": "「{text}」超出权限位的范围（最大 7777）—— 文件类型位不许在这儿改",
-      "args": ["text"]
+      "zh": "超出范围 · 最大 7777",
+      "args": []
     },
     "rsFilewinWriteops.mode.notOctal": {
       "kind": "error",
-      "zh": "「{text}」不是一个八进制数 —— 比如 644 或 755",
-      "args": ["text"]
+      "zh": "需三位数字 · 例 644",
+      "args": []
     },
     "rsFilewinWriteops.mode.empty": {
       "kind": "error",
-      "zh": "权限位是空的 —— 八进制，比如 644",
+      "zh": "权限为空",
       "args": []
     },
     "rsFilewinWriteops.name.isDir": {
       "kind": "error",
-      "zh": "「{name}」不是一个名字，它是目录本身",
+      "zh": "名称不能为 {name}",
       "args": ["name"]
     },
     "rsFilewinWriteops.name.hasSlash": {
       "kind": "error",
-      "zh": "「{name}」里带 / —— 这个框只改名字，不许在这儿写出一条别的路径",
-      "args": ["name"]
+      "zh": "名称不能含 /",
+      "args": []
     },
     "rsFilewinWriteops.name.empty": {
       "kind": "error",
-      "zh": "名字是空的",
+      "zh": "名称为空",
       "args": []
     },
     "rsFilewinWriteops.toOps.nothingToChmod": {
@@ -9895,24 +9850,14 @@
       "args": ["n"]
     },
     "rsFilewinWriteops.heading.chmodOne": {
-      "kind": "body",
-      "zh": "把 {name} 的权限改成（八进制）：",
+      "kind": "title",
+      "zh": "改权限 · {name}",
       "args": ["name"]
     },
     "rsFilewinWriteops.heading.chmodMany": {
-      "kind": "body",
-      "zh": "把这 {n} 项的权限改成（八进制）：",
+      "kind": "title",
+      "zh": "改权限 · {n} 项",
       "args": ["n"]
-    },
-    "rsFilewinWriteops.heading.rename": {
-      "kind": "body",
-      "zh": "把 {name} 改名为：",
-      "args": ["name"]
-    },
-    "rsFilewinWriteops.heading.mkdir": {
-      "kind": "body",
-      "zh": "在这个目录里新建一个目录，叫：",
-      "args": []
     },
     "rsFilewinWriteops.remote.renameSameDir": {
       "kind": "error",
@@ -10136,23 +10081,38 @@
     },
     "rsFilewinTransfer.ui.overwriteNone": {
       "kind": "action",
-      "zh": "全都不覆盖",
+      "zh": "全部跳过",
+      "args": []
+    },
+    "rsFilewinTransfer.ui.name": {
+      "kind": "control",
+      "zh": "名字",
+      "args": []
+    },
+    "rsFilewinTransfer.ui.here": {
+      "kind": "control",
+      "zh": "本机",
+      "args": []
+    },
+    "rsFilewinTransfer.ui.cancelAll": {
+      "kind": "action",
+      "zh": "取消整批",
       "args": []
     },
     "rsFilewinTransfer.ui.overwriteChecked": {
       "kind": "action",
-      "zh": "覆盖勾上的",
-      "args": []
+      "zh": "覆盖勾选的 {n} 个",
+      "args": ["n"]
     },
     "rsFilewinTransfer.ui.askOnce": {
       "kind": "body",
-      "zh": "⚠ 这一问只出现一次：勾完点确认，剩下的并行传。",
-      "args": []
+      "zh": "勾选的覆盖 · 未勾的跳过 · 不重名的 {n} 个照传",
+      "args": ["n"]
     },
     "rsFilewinTransfer.ui.askOverwrite": {
-      "kind": "body",
-      "zh": "远端已经有这 {n} 个，要覆盖吗？",
-      "args": ["n"]
+      "kind": "title",
+      "zh": "同名 {n} · {machine}",
+      "args": ["n", "machine"]
     },
     "rsFilewinTransfer.reply.missingField": {
       "kind": "error",
@@ -10171,7 +10131,7 @@
     },
     "rsFilewinCopy.ui.keep": {
       "kind": "action",
-      "zh": "别覆盖",
+      "zh": "跳过",
       "args": []
     },
     "rsFilewinCopy.ui.overwrite": {
@@ -10435,8 +10395,8 @@
       "args": ["e"]
     },
     "rsFilewinCopy.ui.askOverwriteMany": {
-      "kind": "body",
-      "zh": "远端已经有这 {n} 个同名文件了，要覆盖吗？",
+      "kind": "title",
+      "zh": "同名 {n}",
       "args": ["n"]
     },
     "rsFilewinCopy.batch.listSep": {
@@ -10480,8 +10440,8 @@
       "args": ["name"]
     },
     "rsFilewinCopy.ui.askOverwrite": {
-      "kind": "body",
-      "zh": "远端已经有 {name} 了，要覆盖吗？",
+      "kind": "title",
+      "zh": "{name} 已存在",
       "args": ["name"]
     },
     "rsFilewinCopy.remote.noBytes": {
@@ -10596,12 +10556,12 @@
     },
     "rsFilewinSelect.label.deleteMany": {
       "kind": "action",
-      "zh": "删除这 {n} 项",
+      "zh": "删除 {n} 项",
       "args": ["n"]
     },
     "rsFilewinSelect.label.chmodMany": {
       "kind": "action",
-      "zh": "改这 {n} 项的权限",
+      "zh": "改权限 · {n} 项",
       "args": ["n"]
     },
     "rsFilewinSelect.label.open": {
@@ -10738,36 +10698,6 @@
       "kind": "error",
       "zh": "{target} 看不出要高亮哪个文件",
       "args": ["target"]
-    },
-    "rsFilewinCreate.ui.cancel": {
-      "kind": "action",
-      "zh": "取消",
-      "args": []
-    },
-    "rsFilewinCreate.ui.ok": {
-      "kind": "action",
-      "zh": "确定",
-      "args": []
-    },
-    "rsFilewinCreate.ui.sameDirOnly": {
-      "kind": "body",
-      "zh": "⚠ 只在这一个目录里，不许带 /。已有同名的就不建，不会盖掉它。",
-      "args": []
-    },
-    "rsFilewinCreate.confirm.noRuntime": {
-      "kind": "error",
-      "zh": "新建不了，请重开这个窗口",
-      "args": []
-    },
-    "rsFilewinCreate.heading.newFile": {
-      "kind": "body",
-      "zh": "在这个目录里新建一个空文件，叫：",
-      "args": []
-    },
-    "rsFilewinCreate.label.newFile": {
-      "kind": "action",
-      "zh": "新建空文件",
-      "args": []
     },
     "rsFilewinBigfile.paint.lineLen": {
       "kind": "body",
@@ -14369,22 +14299,22 @@
     },
     "rsFilewinShell.mode.reading": {
       "kind": "body",
-      "zh": "正在读现在的权限…",
+      "zh": "读取当前权限…",
       "args": []
     },
     "rsFilewinWriteops.mode.unreadable": {
       "kind": "body",
-      "zh": "读不到现在的权限",
+      "zh": "当前权限不可读",
       "args": []
     },
     "rsFilewinWriteops.mode.mixed": {
       "kind": "body",
-      "zh": "这几项现在的权限不一样",
+      "zh": "当前权限不一致",
       "args": []
     },
     "rsFilewinWriteops.mode.now": {
       "kind": "body",
-      "zh": "现在是 {mode}",
+      "zh": "当前 {mode}",
       "args": ["mode"]
     },
     "rsSftp.ccmLegacy.checkFailed": {
@@ -16163,7 +16093,7 @@
     },
     "rsFilewinCrossCopy.ask.overwrite": {
       "kind": "action",
-      "zh": "盖掉",
+      "zh": "覆盖",
       "args": []
     },
     "rsFilewinCrossCopy.ask.skip": {
@@ -16172,8 +16102,8 @@
       "args": []
     },
     "rsFilewinCrossCopy.ask.taken": {
-      "kind": "body",
-      "zh": "{machine} 上已经有 {path} 了。盖掉它（没有备份，不可撤销），还是不复制？",
+      "kind": "title",
+      "zh": "{path} 已存在 · {machine}",
       "args": ["machine", "path"]
     },
     "rsFilewinCrossCopy.dir.notAbsolute": {
@@ -16188,28 +16118,38 @@
     },
     "rsFilewinCrossCopy.prompt.noMachine": {
       "kind": "error",
-      "zh": "要给机器名（与主窗口上那台的名字相同）",
+      "zh": "未选机器",
       "args": []
     },
     "rsFilewinCrossCopy.prompt.heading": {
       "kind": "title",
-      "zh": "把 {name} 复制到另一台",
+      "zh": "复制 {name} 到另一台",
       "args": ["name"]
     },
     "rsFilewinCrossCopy.prompt.machine": {
       "kind": "control",
-      "zh": "机器名",
+      "zh": "复制到",
       "args": []
     },
     "rsFilewinCrossCopy.prompt.dir": {
       "kind": "control",
-      "zh": "目标目录",
+      "zh": "放到",
       "args": []
     },
     "rsFilewinCrossCopy.prompt.hint": {
       "kind": "body",
-      "zh": "机器名与主窗口上那台的名字相同；目标目录空着就是那台的 home",
+      "zh": "目标 {machine}:{path}",
+      "args": ["machine", "path"]
+    },
+    "rsFilewinCrossCopy.prompt.noDirs": {
+      "kind": "body",
+      "zh": "无子文件夹",
       "args": []
+    },
+    "rsFilewinCrossCopy.prompt.go": {
+      "kind": "action",
+      "zh": "复制到 {machine}",
+      "args": ["machine"]
     },
     "beFilesExtract.entry.linkTooLong": {
       "kind": "error",
@@ -20106,8 +20046,8 @@
     },
     "rsFilewinWriteops.delete.rowDir": {
       "kind": "body",
-      "zh": "{name} · 文件夹",
-      "args": ["name"]
+      "zh": "文件夹",
+      "args": []
     },
     "rsFilewinWriteops.delete.more": {
       "kind": "body",
@@ -20132,6 +20072,91 @@
     "rsFilewinWriteops.delete.goMany": {
       "kind": "action",
       "zh": "删除 {n} 项",
+      "args": ["n"]
+    },
+    "rsFilewinWriteops.mode.needFull": {
+      "kind": "error",
+      "zh": "当前权限不可读 · 需填数字写法",
+      "args": []
+    },
+    "rsFilewinWriteops.chmod.go": {
+      "kind": "action",
+      "zh": "改权限",
+      "args": []
+    },
+    "rsFilewinWriteops.chmod.octal": {
+      "kind": "control",
+      "zh": "数字写法",
+      "args": []
+    },
+    "rsFilewinWriteops.chmod.exec": {
+      "kind": "control",
+      "zh": "执行",
+      "args": []
+    },
+    "rsFilewinWriteops.chmod.write": {
+      "kind": "control",
+      "zh": "写",
+      "args": []
+    },
+    "rsFilewinWriteops.chmod.read": {
+      "kind": "control",
+      "zh": "读",
+      "args": []
+    },
+    "rsFilewinWriteops.chmod.other": {
+      "kind": "control",
+      "zh": "其他人",
+      "args": []
+    },
+    "rsFilewinWriteops.chmod.group": {
+      "kind": "control",
+      "zh": "同组",
+      "args": []
+    },
+    "rsFilewinWriteops.chmod.owner": {
+      "kind": "control",
+      "zh": "所有者",
+      "args": []
+    },
+    "rsFilewinWriteops.inline.renamed": {
+      "kind": "body",
+      "zh": "已改名为 {name}",
+      "args": ["name"]
+    },
+    "rsFilewinWriteops.inline.exists": {
+      "kind": "error",
+      "zh": "{name} 已存在",
+      "args": ["name"]
+    },
+    "rsFilewinWriteops.inline.newFile": {
+      "kind": "control",
+      "zh": "新建文件",
+      "args": []
+    },
+    "rsFilewinWriteops.inline.newDir": {
+      "kind": "control",
+      "zh": "新建文件夹",
+      "args": []
+    },
+    "rsFilewinWriteops.receipt.undo": {
+      "kind": "action",
+      "zh": "撤销",
+      "args": []
+    },
+    "rsFilewinWriteops.result.chmodMany": {
+      "kind": "body",
+      "zh": "已改权限 · {n} 项",
+      "args": ["n"]
+    },
+    "rsFilewinWriteops.result.chmodOne": {
+      "kind": "body",
+      "zh": "已把 {name} 改成 {mode}",
+      "args": ["name", "mode"]
+    },
+    "rsFilewinWriteops.result.deleted": {
+      "kind": "body",
+      "zh": "已删除 {n} 项",
       "args": ["n"]
     },
     "rsFilewinProgress.head.title": {
@@ -20317,6 +20342,11 @@
     "rsFilewinProgress.detail.sep": {
       "kind": "body",
       "zh": " · ",
+      "args": []
+    },
+    "rsFilewinProgress.row.waitLink": {
+      "kind": "body",
+      "zh": "等待重连",
       "args": []
     },
     "rsFilewinProgress.nums.bytes": {

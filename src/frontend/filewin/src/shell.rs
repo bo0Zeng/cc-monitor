@@ -117,7 +117,7 @@ use super::rows::{show_hit_rows, HitTally, RenderTally};
 use super::select::{self, Action, Intent, Selection, TypeAhead};
 use super::source::{Line, Listed, Sort, Source};
 use super::transfer::{DropBoard, Pending};
-use super::writeops::{is_writable, WriteBoard, WriteOp, WritePrompt};
+use super::writeops::{is_writable, PromptKind, WriteBoard, WriteOp, WritePrompt};
 
 /// 接上通道时问那台能力事实的期限（一问一答，同读侧那几问的量级）。
 const OFFER_WITHIN: std::time::Duration = std::time::Duration::from_secs(10);
@@ -151,6 +151,9 @@ static MENU_SERIAL: AtomicU64 = AtomicU64::new(0);
 /// **扫源码买不到这个**（本仓 09-20 栽过一次：源码扫描那条与行为那条买的不是同一样东西，
 /// 前者看不见「按钮接没接到方法上」）。⇒ 由 Xvfb 那条真开窗的判据读它。
 static FONT_VERDICT: Mutex<Option<FontState>> = Mutex::new(None);
+
+/// 就地那一格那一趟的落点（UI 线程读，tokio 那条写）。
+type InlineDone = Arc<Mutex<Option<(u64, Result<String, super::source::Failed>)>>>;
 
 pub fn font_verdict() -> Option<FontState> {
     FONT_VERDICT.lock().unwrap().clone()
@@ -426,6 +429,8 @@ pub struct FileWindow {
     pub machines: Vec<String>,
     /// 「复制到另一台」那一问（UI 线程自己的）。
     cross_prompt: Option<super::cross_copy::CrossPrompt>,
+    /// 那一问里「放到」那一块小目录选择器（那台的文件夹；`cross_copy::DirPick`）。
+    pub cross_pick: super::cross_copy::DirPick,
     /// 复制到另一台那一趟的看板（盖不盖那一问 · 一条进度 · 结局）。
     pub cross_board: super::cross_copy::CrossBoard,
     /// 已经消化过几趟复制（同 [`Self::seen_rounds`]，两条路各一个数）。
@@ -460,6 +465,12 @@ pub struct FileWindow {
     write_prompt: Option<WritePrompt>,
     /// 改权限那个框的**现值**那一趟（UI 线程读，tokio 那条写；`writeops::ModeProbe`）。
     pub mode_probe: super::writeops::ModeProbe,
+    /// 就地那一格（改名 · 新建）答完发出去的那一趟落在这儿：`(第几趟, 成了 ⇒ 新名字 / 没成 ⇒ 码 ＋ 那句话)`。
+    inline_done: InlineDone,
+    /// 就地那一格发出去的趟数（晚到的上一趟不许落到这一格上）· 这一格在飞吗 · 下一帧要选中前几个字。
+    inline_gen: u64,
+    inline_busy: bool,
+    inline_select: Option<usize>,
     /// 已经消化过几摞写操作（同 [`Self::seen_rounds`]，每条路各一个数）。
     seen_write_rounds: u64,
     /// 🔴**往外拖**那一趟的共享落点（进度 · 结局）。
@@ -498,6 +509,8 @@ pub struct FileWindow {
     pub link: super::chrome::LinkState,
     /// 一次性的回执（「路径已复制」…）：窗口那一级每帧收走、摆成右下角的回执（规范 `C13`）。
     pub(super) receipt: Option<String>,
+    /// 带［撤销］的回执（改名 · 改权限做完）：那句话 ＋ 撤销要做的那几件。窗口那一级收走，点了撤销交回 [`Self::start_undo`]。
+    pub(super) receipt_undo: Option<(String, Vec<WriteOp>)>,
     /// 这个标签页开过的那几趟里，每一类最近那一趟在表里的号
     /// （换一块新看板时，上一趟改由窗口那一级在落地时重列目录，[`Self::track_job`]）。
     job_ids: Vec<(&'static str, u64)>,
@@ -540,8 +553,6 @@ pub struct FileWindow {
     /// ⚠ 刻意不写进 `listing.error`：那一格只在下一趟列目录时才清，
     ///   而「打字跳转没找到」是一句**下一次按键就过时**的话 ⇒ 下一次按键 / 点击就清掉。
     key_notice: Option<String>,
-    /// 「新建空文件叫什么」那个框。`None` = 没在问。逻辑住 [`super::create`]。
-    pub(super) new_file: Option<super::create::NewFilePrompt>,
     /// 书签（一个窗口一份，所有标签页 / 两栏共用；逻辑住 [`super::bookmarks`]）。
     /// `None` ＝ 没接上（判据里直接建的窗口）⇒ 书签栏不画。生产那条开窗路恒是 `Some`。
     pub shelf: Option<super::bookmarks::Shelf>,
@@ -639,18 +650,23 @@ impl FileWindow {
         self.line = Some(line);
     }
 
-    /// 和那台断着、而这一件要往那台写 ⇒ 「离线 · 只读」（菜单 · 命令栏悬停 · 键盘按了的回话同一句）。
+    /// 和那台断着、而这一件要碰那台 ⇒ 「离线 · 只读」（菜单 · 命令栏悬停 · 键盘按了的回话同一句）。
     pub fn offline_refusal(&self, a: Action) -> Option<String> {
-        let writes = matches!(
-            a,
-            Action::Copy
-                | Action::Extract
-                | Action::CrossCopy
-                | Action::Rename
-                | Action::Chmod
-                | Action::Delete
-        );
-        (writes && self.link.offline()).then(|| copy_text("rsFilewinChrome.link.readOnly", &[]))
+        self.offline_cmd(super::chrome::Cmd::Act(a))
+    }
+
+    /// 🔴 **断线时哪几件做不了 —— 唯一一处**：命令栏每一颗 · 菜单每一项 · 键盘都问它。
+    /// 要碰那台机器的（新建 · 上传 · 终端 · 复制到另一栏 · 选中项上的每一件，打开目录除外）⇒ 「离线 · 只读」；
+    /// 只改这一扇窗怎么看的（左栏 · 显示隐藏文件 · 双栏 · 预览）照常。打开目录照常点得动：进去那一下自己会说连不上。
+    pub fn offline_cmd(&self, c: super::chrome::Cmd) -> Option<String> {
+        use super::chrome::Cmd;
+        let needs_machine = match c {
+            Cmd::Sidebar | Cmd::Hidden | Cmd::Split | Cmd::Preview => false,
+            Cmd::Act(Action::Open) => false,
+            Cmd::Mkdir | Cmd::NewFile | Cmd::Upload | Cmd::Term | Cmd::Across | Cmd::Act(_) => true,
+        };
+        (needs_machine && self.link.offline())
+            .then(|| copy_text("rsFilewinChrome.link.readOnly", &[]))
     }
 
     /// 这件事在这台机器上做不到 ⇒ 那句为什么（菜单置灰的 hover · 键盘按了的回话）；做得到 / 没把握 ⇒ `None`。
@@ -709,6 +725,7 @@ impl FileWindow {
             copy_prompt: None,
             machines: Vec::new(),
             cross_prompt: None,
+            cross_pick: Default::default(),
             cross_board: super::cross_copy::CrossBoard::default(),
             seen_copy_rounds: 0,
             font: FontState::NotInstalled,
@@ -723,6 +740,10 @@ impl FileWindow {
             write_board: WriteBoard::default(),
             write_prompt: None,
             mode_probe: super::writeops::ModeProbe::default(),
+            inline_done: Default::default(),
+            inline_gen: 0,
+            inline_busy: false,
+            inline_select: None,
             seen_write_rounds: 0,
             pull: super::download::DownloadBoard::default(),
             pull_ask: None,
@@ -742,6 +763,7 @@ impl FileWindow {
             progress: Default::default(),
             link: Default::default(),
             receipt: None,
+            receipt_undo: None,
             job_ids: Vec::new(),
             props: None,
             status_wanted: false,
@@ -752,7 +774,6 @@ impl FileWindow {
             key_scroll: None,
             menu: None,
             key_notice: None,
-            new_file: None,
             shelf: None,
             focused: true,
             dragging: false,
@@ -1367,6 +1388,7 @@ impl FileWindow {
         // 🔴 **把窗口交给看板**，它自己会在「有问题要问 / 进度动了 / 跑完了」时敲一下。
         //   不交的话：进度条要等用户下次动鼠标才跳一格（egui 只在有事发生时才画下一帧）。
         board.attach(ctx);
+        board.set_total(items.len());
         self.drops_started += 1;
         let dir = super::source::parent_dir(&items[0].remote_path);
         let id = self.progress.add(
@@ -1384,42 +1406,49 @@ impl FileWindow {
             let (up_line, up_origin) = (line.clone(), origin.clone());
             let ask_board = board.clone();
             let up_board = board.clone();
-            let out =
-                super::transfer::run_drop(
-                    items,
-                    super::transfer::lanes(),
-                    move |p| {
-                        let line = line.clone();
-                        let origin = origin.clone();
-                        async move {
-                            super::transfer::probe_remote_at(&line, &origin, p.path_wire()).await
+            let probe_board = board.clone();
+            let out = super::transfer::run_drop(
+                items,
+                super::transfer::lanes(),
+                move |p| {
+                    let line = line.clone();
+                    let origin = origin.clone();
+                    let seen = probe_board.clone();
+                    async move {
+                        // 在 ⇒ 顺手记下那台的大小与修改时间（同名那张表「那台」那一格）。
+                        let got =
+                            super::transfer::stat_remote_at(&line, &origin, p.path_wire()).await;
+                        if let Some(v) = &got {
+                            seen.note_there(
+                                &p.name,
+                                v.get("size").and_then(serde_json::Value::as_u64),
+                                v.get("mtime_secs").and_then(serde_json::Value::as_u64),
+                            );
                         }
-                    },
-                    move |clashes| {
-                        let rx = ask_board.ask(clashes);
-                        async move { rx.await.unwrap_or_default() }
-                    },
-                    move |p| {
-                        let (line, origin) = (up_line.clone(), up_origin.clone());
-                        let b = up_board.clone();
-                        // 🔴**取消那道闸在这儿**：按过取消之后，还没起的那几件
-                        //   一件都不起，而且这一趟的 `transfer_id` 由那道闸造并登记
-                        //   （两件事一个落点，理由住 `launch_unless_cancelled`）。
-                        async move {
-                            let desk = b.cancels();
-                            let name = p.name.clone();
-                            super::transfer::launch_unless_cancelled(
-                                &desk,
-                                &name,
-                                |_id| async move {
-                                    super::transfer::upload_remote(&line, &origin, &p, &b).await
-                                },
-                            )
-                            .await
-                        }
-                    },
-                )
-                .await;
+                        got.is_some()
+                    }
+                },
+                move |clashes| {
+                    let rx = ask_board.ask(clashes);
+                    async move { rx.await.unwrap_or_default() }
+                },
+                move |p| {
+                    let (line, origin) = (up_line.clone(), up_origin.clone());
+                    let b = up_board.clone();
+                    // 🔴**取消那道闸在这儿**：按过取消之后，还没起的那几件
+                    //   一件都不起，而且这一趟的 `transfer_id` 由那道闸造并登记
+                    //   （两件事一个落点，理由住 `launch_unless_cancelled`）。
+                    async move {
+                        let desk = b.cancels();
+                        let name = p.name.clone();
+                        super::transfer::launch_unless_cancelled(&desk, &name, |_id| async move {
+                            super::transfer::upload_remote(&line, &origin, &p, &b).await
+                        })
+                        .await
+                    }
+                },
+            )
+            .await;
             board.finish(out);
         });
         true
@@ -1744,12 +1773,22 @@ impl FileWindow {
         else {
             return false;
         };
+        // 缺省机器：除开这一台、先挑别的远端，没有才是本机（下拉里改）；落点缺省那台上次选到的，没有就那台的主目录（选择器打开时去问）。
+        let here = self.source.origin().0;
+        let others: Vec<&String> = self.machines.iter().filter(|m| **m != here).collect();
+        let machine = others
+            .iter()
+            .find(|m| m.as_str() != super::cross_copy::LOCAL_ORIGIN)
+            .or(others.first())
+            .map(|m| super::cross_copy::shown_machine(m))
+            .unwrap_or_default();
         self.cross_prompt = Some(super::cross_copy::CrossPrompt {
             name,
             src,
-            machine: String::new(),
+            machine,
             dir: String::new(),
         });
+        self.cross_pick = Default::default();
         true
     }
 
@@ -1767,6 +1806,18 @@ impl FileWindow {
             *self.say_slot() = Some(copy_text("rsFilewinCrossCopy.prompt.noMachine", &[]));
             return false;
         }
+        // 落点 ＝ 选择器上选到的（还没读出来 ⇒ 空 ＝ 那台的主目录，`cross_copy::target_dir`）。
+        let pick = self.cross_pick.shown();
+        let p = if pick.machine == super::cross_copy::origin_of(&p.machine) && !pick.path.is_empty()
+        {
+            super::cross_copy::remember_dir(&pick.machine, &pick.target());
+            super::cross_copy::CrossPrompt {
+                dir: pick.target(),
+                ..p
+            }
+        } else {
+            p
+        };
         let Some(h) = self.rt.clone() else {
             *self.say_slot() = Some(copy_text("rsFilewinShell.size.noRuntime", &[]));
             return false;
@@ -1799,49 +1850,260 @@ impl FileWindow {
         true
     }
 
-    /// 画「复制到另一台」那一问。**模态**。
+    /// 画「复制到另一台」那一问（kit 的对话框，稿 13）：「复制到」下拉（别的机器 · 本机）·「放到」一块小目录选择器
+    /// （面包屑 ＋ 那台的文件夹，单击选中、双击进去，右上「新建文件夹」）·「目标 gpu-01:/home/user/inbox」· ［取消］［复制到 gpu-01］。
     fn cross_ui(&mut self, ui: &mut egui::Ui) {
         let Some(mut p) = self.cross_prompt.clone() else {
             return;
         };
-        let (mut go, mut cancel) = (false, false);
-        let (_, esc) = modal(ui.ctx(), "filewin-cross-copy", |ui| {
-            ui.heading(copy_text(
-                "rsFilewinCrossCopy.prompt.heading",
-                &[("name", &p.name)],
-            ));
-            ui.label(copy_text("rsFilewinCrossCopy.prompt.machine", &[]));
-            // 下拉选（本机 ＋ 已配远端，除开这一台），下面那一格照旧可以手填。
-            // 框里写的是给人看的名字（本机写「本机」），发出去时才换回机器的地址（`cross_copy::origin_of`）。
-            let here = self.source.origin().0;
-            egui::ComboBox::from_id_salt("filewin-cross-machine")
-                .selected_text(p.machine.clone())
-                .show_ui(ui, |ui| {
-                    for m in self.machines.iter().filter(|m| **m != here) {
-                        let shown = super::cross_copy::shown_machine(m);
-                        ui.selectable_value(&mut p.machine, shown.clone(), shown);
-                    }
-                });
-            go |= prompt_field(ui, &mut p.machine);
-            self.prompt_error_ui(ui);
-            ui.label(copy_text("rsFilewinCrossCopy.prompt.dir", &[]));
-            let r = ui.text_edit_singleline(&mut p.dir);
-            go |= r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            ui.label(copy_text("rsFilewinCrossCopy.prompt.hint", &[]));
-            ui.horizontal(|ui| {
-                go |= ui.button(super::cross_copy::CROSS_LABEL.as_str()).clicked();
-                cancel = ui
-                    .button(copy_text("rsFilewinShell.copyUi.cancel", &[]))
-                    .clicked();
-            });
-        });
+        let pal = super::theme::palette(ui.ctx());
+        let machine = super::cross_copy::origin_of(&p.machine);
+        // 选择器跟着下拉那台走：换了机器（或刚打开）⇒ 去那台上次的落点 / 主目录。
+        let mut pick = self.cross_pick.shown();
+        if !machine.is_empty() && pick.machine != machine {
+            if let (Some(h), Some(line)) = (self.rt.clone(), self.line.clone()) {
+                let start = super::cross_copy::last_dir(&machine).unwrap_or_default();
+                self.cross_pick
+                    .go(&h, &line, &machine, &start, Some(ui.ctx().clone()));
+                pick = self.cross_pick.shown();
+            }
+        }
+        let here = self.source.origin().0;
+        let machines: Vec<String> = self
+            .machines
+            .iter()
+            .filter(|m| **m != here)
+            .map(|m| super::cross_copy::shown_machine(m))
+            .collect();
+        let err = self.prompt_error();
+        let mut go_to: Option<String> = None;
+        let mut picked: Option<String> = None;
+        let mut mkdir = false;
+        let shown_machine = p.machine.clone();
+        let hit = super::kit::dialog(
+            ui.ctx(),
+            "filewin-cross-copy",
+            &copy_text("rsFilewinCrossCopy.prompt.heading", &[("name", &p.name)]),
+            |ui| {
+                ui.label(
+                    egui::RichText::new(copy_text("rsFilewinCrossCopy.prompt.machine", &[]))
+                        .color(pal.text2),
+                );
+                let w = ui.available_width();
+                egui::ComboBox::from_id_salt("filewin-cross-machine")
+                    .width(w)
+                    .selected_text(format!(
+                        "{}  {}",
+                        egui_phosphor::regular::DESKTOP,
+                        shown_machine
+                    ))
+                    .show_ui(ui, |ui| {
+                        for m in &machines {
+                            ui.selectable_value(&mut p.machine, m.clone(), m);
+                        }
+                    });
+                ui.add_space(10.0);
+                ui.label(
+                    egui::RichText::new(copy_text("rsFilewinCrossCopy.prompt.dir", &[]))
+                        .color(pal.text2),
+                );
+                egui::Frame::new()
+                    .fill(pal.bg)
+                    .corner_radius(8.0)
+                    .stroke(egui::Stroke::new(1.0, pal.border_soft))
+                    .inner_margin(egui::Margin::symmetric(10, 6))
+                    .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        // 面包屑：那台 › 一段一段（点哪一段回到那一级）；右端「新建文件夹」。
+                        ui.horizontal(|ui| {
+                            if ui
+                                .add(
+                                    egui::Button::new(
+                                        egui::RichText::new(super::cross_copy::shown_machine(
+                                            &pick.machine,
+                                        ))
+                                        .size(12.0)
+                                        .color(pal.text2),
+                                    )
+                                    .frame(false),
+                                )
+                                .clicked()
+                            {
+                                go_to = Some("/".to_string());
+                            }
+                            // 只摆最后三级，前面折成一颗「…」（点了到折起来的最深那一级）：那台的主目录可能很深。
+                            let crumbs: Vec<(String, String)> =
+                                super::source::breadcrumbs(&pick.path)
+                                    .into_iter()
+                                    .skip(1)
+                                    .collect();
+                            let keep = crumbs.len().saturating_sub(3);
+                            if keep > 0 {
+                                ui.label(
+                                    egui::RichText::new(egui_phosphor::regular::CARET_RIGHT)
+                                        .size(10.0)
+                                        .color(pal.faint),
+                                );
+                                if ui
+                                    .add(
+                                        egui::Button::new(
+                                            egui::RichText::new(copy_text(
+                                                "rsFilewinEditPage.crumb.more",
+                                                &[],
+                                            ))
+                                            .size(12.0)
+                                            .color(pal.text2),
+                                        )
+                                        .frame(false),
+                                    )
+                                    .clicked()
+                                {
+                                    go_to = Some(crumbs[keep - 1].1.clone());
+                                }
+                            }
+                            for (seg, at) in crumbs.into_iter().skip(keep) {
+                                ui.label(
+                                    egui::RichText::new(egui_phosphor::regular::CARET_RIGHT)
+                                        .size(10.0)
+                                        .color(pal.faint),
+                                );
+                                if ui
+                                    .add(
+                                        egui::Button::new(
+                                            egui::RichText::new(&seg).size(12.0).color(pal.text),
+                                        )
+                                        .frame(false),
+                                    )
+                                    .clicked()
+                                {
+                                    go_to = Some(at);
+                                }
+                            }
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    let r = ui.add_enabled(
+                                        !pick.path.is_empty(),
+                                        egui::Button::new(
+                                            egui::RichText::new(format!(
+                                                "{} {}",
+                                                egui_phosphor::regular::PLUS,
+                                                copy_text("rsFilewinWriteops.inline.newDir", &[])
+                                            ))
+                                            .size(12.0),
+                                        )
+                                        .frame(false),
+                                    );
+                                    mkdir = r.clicked();
+                                },
+                            );
+                        });
+                        ui.separator();
+                        let row_h = super::theme::metrics(ui.ctx()).row_h;
+                        egui::ScrollArea::vertical()
+                            .max_height(row_h * 5.0)
+                            .auto_shrink([false, true])
+                            .show(ui, |ui| match &pick.dirs {
+                                None => super::kit::skeleton_rows(ui, 3),
+                                Some(Err(e)) => {
+                                    ui.label(egui::RichText::new(e).color(pal.error_text));
+                                }
+                                Some(Ok(dirs)) if dirs.is_empty() => {
+                                    ui.label(
+                                        egui::RichText::new(copy_text(
+                                            "rsFilewinCrossCopy.prompt.noDirs",
+                                            &[],
+                                        ))
+                                        .color(pal.text2),
+                                    );
+                                }
+                                Some(Ok(dirs)) => {
+                                    for d in dirs {
+                                        let on = pick.picked.as_deref() == Some(d.as_str());
+                                        let (rect, r) = ui.allocate_exact_size(
+                                            egui::vec2(ui.available_width(), row_h),
+                                            egui::Sense::click(),
+                                        );
+                                        if on {
+                                            ui.painter().rect_filled(rect, 4.0, pal.picked);
+                                        } else if r.hovered() {
+                                            ui.painter().rect_filled(rect, 4.0, pal.hover);
+                                        }
+                                        ui.painter().text(
+                                            rect.left_center() + egui::vec2(8.0, 0.0),
+                                            egui::Align2::LEFT_CENTER,
+                                            format!(
+                                                "{}  {}",
+                                                egui_phosphor::regular::FOLDER_SIMPLE,
+                                                d
+                                            ),
+                                            egui::TextStyle::Body.resolve(ui.style()),
+                                            pal.text,
+                                        );
+                                        if r.double_clicked() {
+                                            go_to =
+                                                Some(super::writeops::join_remote(&pick.path, d));
+                                        } else if r.clicked() {
+                                            picked = Some(d.clone());
+                                        }
+                                    }
+                                }
+                            });
+                    });
+                ui.add_space(6.0);
+                if !pick.path.is_empty() {
+                    let target = copy_text(
+                        "rsFilewinCrossCopy.prompt.hint",
+                        &[("machine", &shown_machine), ("path", &pick.target())],
+                    );
+                    ui.add(
+                        egui::Label::new(egui::RichText::new(&target).size(12.0).color(pal.text2))
+                            .truncate(),
+                    )
+                    .on_hover_text(target);
+                }
+                if let Some(e) = &err {
+                    ui.label(egui::RichText::new(e).size(12.0).color(pal.error_text));
+                }
+            },
+            &[
+                (
+                    copy_text("rsFilewinShell.copyUi.cancel", &[]),
+                    super::kit::Btn::Plain,
+                ),
+                (
+                    copy_text(
+                        "rsFilewinCrossCopy.prompt.go",
+                        &[("machine", &shown_machine)],
+                    ),
+                    super::kit::Btn::Primary,
+                ),
+            ],
+            1,
+            0,
+        );
+        if let Some(n) = picked {
+            self.cross_pick.pick(&n);
+        }
+        if let (Some(h), Some(line)) = (self.rt.clone(), self.line.clone()) {
+            if let Some(to) = go_to {
+                self.cross_pick
+                    .go(&h, &line, &pick.machine, &to, Some(ui.ctx().clone()));
+            } else if mkdir {
+                self.cross_pick.mkdir(&h, &line, Some(ui.ctx().clone()));
+            }
+        }
         self.cross_prompt = Some(p);
-        if cancel || esc {
-            self.cross_prompt = None;
-            *self.prompt_error.lock().unwrap() = None;
-        } else if go {
-            let ctx = ui.ctx().clone();
-            self.confirm_cross(Some(ctx));
+        match hit {
+            Some(0) => {
+                self.cross_prompt = None;
+                *self.prompt_error.lock().unwrap() = None;
+            }
+            Some(_) => {
+                let ctx = ui.ctx().clone();
+                self.confirm_cross(Some(ctx));
+            }
+            None => {}
         }
     }
 
@@ -1903,6 +2165,11 @@ impl FileWindow {
         self.write_prompt.as_ref()
     }
 
+    /// 同 [`Self::write_prompt`]，可改（就地那一格里正在编辑的字）。
+    pub fn write_prompt_mut(&mut self) -> Option<&mut WritePrompt> {
+        self.write_prompt.as_mut()
+    }
+
     /// 摆出「新建目录」那个框。回值 = 真的摆出来了。
     ///
     /// 🔴〔2026-09-23 本机侧退役〕**`remote_only()` 那道共用闸整条删了。**
@@ -1912,8 +2179,16 @@ impl FileWindow {
     /// `if !self.remote_only() { return false; }`，那不是四道闸被删掉了，
     /// 是它们要守的那个状态整条不在了（逐条理由住 `super::source::Source` 头注）。
     pub fn begin_mkdir(&mut self) -> bool {
+        self.begin_inline(WritePrompt::for_new(&self.cwd, false))
+    }
+
+    /// 摆出就地那一格（改名 · 新建目录 · 新建空文件）：下一帧焦点给它、选中主名 / 整个名字。
+    pub(super) fn begin_inline(&mut self, p: WritePrompt) -> bool {
         *self.prompt_error.lock().unwrap() = None;
-        self.write_prompt = Some(WritePrompt::for_mkdir(&self.cwd));
+        self.inline_select = Some(p.select_chars());
+        self.inline_busy = false;
+        self.inline_gen += 1;
+        self.write_prompt = Some(p);
         true
     }
 
@@ -1926,9 +2201,7 @@ impl FileWindow {
         let Some(row) = self.writable_row(i) else {
             return false;
         };
-        *self.prompt_error.lock().unwrap() = None;
-        self.write_prompt = Some(WritePrompt::for_rename(&self.cwd, &row));
-        true
+        self.begin_inline(WritePrompt::for_rename(&self.cwd, &row))
     }
 
     /// 摆出「把第 `i` 行的权限改成」那个框。回值 = 真的摆出来了。
@@ -1978,6 +2251,7 @@ impl FileWindow {
         let Some(row) = self.writable_row(i) else {
             return false;
         };
+        self.describe_for_delete(&row);
         self.start_writes(vec![super::writeops::delete_op(&row)], ctx)
     }
 
@@ -1998,6 +2272,8 @@ impl FileWindow {
     /// 收掉那个框，什么都不做。
     pub fn cancel_write(&mut self) {
         self.write_prompt = None;
+        self.inline_busy = false;
+        self.inline_gen += 1;
         *self.prompt_error.lock().unwrap() = None;
     }
 
@@ -2009,6 +2285,9 @@ impl FileWindow {
         let Some(p) = self.write_prompt.clone() else {
             return false;
         };
+        if p.is_inline() {
+            return self.commit_inline(ctx);
+        }
         // 批量改权限那个框一次出 N 件 ⇒ `to_ops`（新建目录 / 改名恒一件）。
         let ops = match p.to_ops() {
             Ok(ops) => ops,
@@ -2025,12 +2304,141 @@ impl FileWindow {
         true
     }
 
+    /// 就地那一格答完（回车 / 点别处）⇒ 发那一趟；那一格留着、只读，回来了再收（[`Self::settle_inline`]）。
+    /// 填错 ⇒ 那一格下面说一句、留着；改名改成原名 ⇒ 当没改（不报错）。回值 ＝ 真的发出去了。
+    pub fn commit_inline(&mut self, ctx: Option<egui::Context>) -> bool {
+        let Some(p) = self.write_prompt.clone() else {
+            return false;
+        };
+        if self.inline_busy {
+            return false;
+        }
+        let go = match p.to_inline() {
+            Ok(Some(go)) => go,
+            Ok(None) => {
+                self.cancel_write();
+                return false;
+            }
+            Err(why) => {
+                *self.prompt_error.lock().unwrap() = Some(why);
+                self.inline_select = Some(p.select_chars());
+                return false;
+            }
+        };
+        let Some(h) = self.rt.clone() else {
+            *self.prompt_error.lock().unwrap() =
+                Some(copy_text("rsFilewinShell.writes.noRuntime", &[]));
+            return false;
+        };
+        let Some(line) = self.line.clone() else {
+            *self.prompt_error.lock().unwrap() = Some(NO_LINE.to_string());
+            return false;
+        };
+        *self.prompt_error.lock().unwrap() = None;
+        self.inline_busy = true;
+        self.inline_gen += 1;
+        let gen = self.inline_gen;
+        let origin = self.source.origin();
+        let root_raw = self.cwd_raw.clone();
+        let cwd = self.cwd_path();
+        let slot = self.inline_done.clone();
+        let name = super::source::remote_basename(match &go {
+            super::writeops::InlineGo::Op(WriteOp::Mkdir { path }) => path,
+            super::writeops::InlineGo::Op(WriteOp::Rename { to, .. }) => to,
+            super::writeops::InlineGo::Create(path) => path,
+            super::writeops::InlineGo::Op(_) => "",
+        })
+        .to_string();
+        h.spawn(async move {
+            let got = match go {
+                super::writeops::InlineGo::Op(op) => {
+                    super::writeops::apply_remote_coded(&line, &origin, &op, root_raw.as_deref())
+                        .await
+                        .map(|_| ())
+                }
+                super::writeops::InlineGo::Create(_) => {
+                    let at = join_path(&cwd, name.as_bytes());
+                    super::create::create_remote_coded(&line, &origin, &at).await
+                }
+            };
+            *slot.lock().unwrap() = Some((gen, got.map(|()| name)));
+            if let Some(c) = ctx {
+                c.request_repaint();
+            }
+        });
+        true
+    }
+
+    /// 就地那一趟回来了：成了 ⇒ 收那一格、重列、选中新名字（改名另给带［撤销］的回执）；
+    /// 名字被占了 ⇒ 那一格下面说「x 已存在」、焦点回去；别的没成 ⇒ 那一格下面说那句话。回值 ＝ 收到了。
+    pub fn settle_inline(&mut self) -> bool {
+        let Some((gen, got)) = self.inline_done.lock().unwrap().take() else {
+            return false;
+        };
+        if gen != self.inline_gen {
+            return false;
+        }
+        self.inline_busy = false;
+        match got {
+            Ok(name) => {
+                if let Some(p) = self.write_prompt.take() {
+                    if let (PromptKind::Rename { from, raw: None }, None) = (&p.kind, &self.cwd_raw)
+                    {
+                        let to = super::writeops::join_remote(&p.dir, &name);
+                        self.receipt_undo = Some((
+                            copy_text("rsFilewinWriteops.inline.renamed", &[("name", &name)]),
+                            vec![WriteOp::Rename {
+                                from: to,
+                                to: from.clone(),
+                                raw: None,
+                            }],
+                        ));
+                    }
+                }
+                *self.prompt_error.lock().unwrap() = None;
+                self.selection.clear_picked();
+                self.set_reveal(&name);
+                self.reload();
+            }
+            Err(f) => {
+                let why = if f.code.as_deref() == Some(super::writeops::EXISTS) {
+                    let name = self
+                        .write_prompt
+                        .as_ref()
+                        .map(|p| p.text.trim().to_string())
+                        .unwrap_or_default();
+                    copy_text("rsFilewinWriteops.inline.exists", &[("name", &name)])
+                } else {
+                    f.said
+                };
+                *self.prompt_error.lock().unwrap() = Some(why);
+                self.inline_select = self.write_prompt.as_ref().map(WritePrompt::select_chars);
+            }
+        }
+        true
+    }
+
+    /// 回执上点了［撤销］⇒ 那几件直接做（不问、不再出回执），做完重列。
+    pub fn start_undo(&mut self, ops: Vec<WriteOp>, ctx: Option<egui::Context>) -> bool {
+        self.start_writes_as(ops, ctx, true)
+    }
+
     /// 起一摞 `§4.6.4`：**一次问完，才动手。**（不再先过围栏）
     ///
     /// 🔴 三段的顺序不在这里，在 [`super::writeops::run_writes`] 的结构里 ——
     /// 这里只负责把「怎么问 · 怎么做」两个口接上去（同 [`Self::start_drop`]）。
     /// 而本函数接不上（**没运行时**）要**出声**，判据见 `shell_tests`。
     pub fn start_writes(&mut self, ops: Vec<WriteOp>, ctx: Option<egui::Context>) -> bool {
+        self.start_writes_as(ops, ctx, false)
+    }
+
+    /// 同 [`Self::start_writes`]；`quiet` ⇒ 这一摞是撤销本身（做完不再出回执）。
+    fn start_writes_as(
+        &mut self,
+        ops: Vec<WriteOp>,
+        ctx: Option<egui::Context>,
+        quiet: bool,
+    ) -> bool {
         if ops.is_empty() {
             return false;
         }
@@ -2075,7 +2483,12 @@ impl FileWindow {
         }
         self.writes_started += 1;
         // 〔有损名全寻址〕写的对象恒是当前目录的直接子项 ⇒ 根就是当前目录；有损 ⇒ 根发字节。
-        let root_raw = self.cwd_raw.clone();
+        // 撤销那一摞带的是整条路径（字符串）⇒ 根照路径切，不借这一栏的字节根；当前目录是有损名 ⇒ 不给撤销（字符串寻址不到）。
+        let root_raw = if quiet { None } else { self.cwd_raw.clone() };
+        let undoable = root_raw.is_none();
+        // 做成了的那几件 ＋ 撤销它们的那几件（改权限：后端回的 `before`）—— 回执据它说、［撤销］据它做。
+        let kept: Arc<Mutex<(Vec<WriteOp>, Vec<WriteOp>)>> = Arc::default();
+        let sink = kept.clone();
         h.spawn(async move {
             let ask_board = board.clone();
             let out = super::writeops::run_writes(
@@ -2088,14 +2501,30 @@ impl FileWindow {
                     let line = line.clone();
                     let origin = origin.clone();
                     let root_raw = root_raw.clone();
+                    let sink = sink.clone();
                     async move {
-                        super::writeops::apply_remote_in(&line, &origin, &op, root_raw.as_deref())
-                            .await
+                        let reply = super::writeops::apply_remote_coded(
+                            &line,
+                            &origin,
+                            &op,
+                            root_raw.as_deref(),
+                        )
+                        .await
+                        .map_err(|f| f.said)?;
+                        let mut k = sink.lock().unwrap();
+                        if let Some(u) =
+                            super::writeops::chmod_undo(&op, &reply).filter(|_| undoable)
+                        {
+                            k.1.push(u);
+                        }
+                        k.0.push(op);
+                        Ok(())
                     }
                 },
             )
             .await;
-            board.finish(out);
+            let (done, undo) = std::mem::take(&mut *kept.lock().unwrap());
+            board.finish_with(out, done, undo, quiet);
         });
         true
     }
@@ -2108,6 +2537,14 @@ impl FileWindow {
             return false;
         }
         self.seen_write_rounds = now;
+        // 做完的回执（删除 · 改权限 ＋［撤销］· 没做成的那一句）⇒ 窗口那一级摆成右下角回执。
+        if let Some((text, undo)) = self.write_board.take_receipt() {
+            if undo.is_empty() {
+                self.receipt = Some(text);
+            } else {
+                self.receipt_undo = Some((text, undo));
+            }
+        }
         // 删掉 / 改了名的那几个名字已经不在了 ⇒ 选中清掉（光标留着，理由住 `Selection::clear_picked`）。
         self.selection.clear_picked();
         self.reload();
@@ -3323,53 +3760,119 @@ impl FileWindow {
     /// ⚠ 与 [`super::writeops::WriteBoard::ui`] 分开两处，因为它们的状态住在两个地方：
     /// 这个框是 UI 线程自己的，那一摞（确认 / 结果）是跨线程的。
     fn write_ui(&mut self, ui: &mut egui::Ui) {
-        let Some(mut p) = self.write_prompt.clone() else {
+        // 就地那一格（改名 · 新建）画在列表那一行里（`frame_body`），不在这里。
+        let Some(mut p) = self.write_prompt.clone().filter(|p| !p.is_inline()) else {
             return;
         };
-        let (mut go, mut cancel) = (false, false);
-        // 改权限那个框：现值答回来了 ⇒ 预填至多一次（`writeops::apply_prefill`）。
-        let readout = matches!(p.kind, super::writeops::PromptKind::Chmod { .. }).then(|| {
-            self.mode_probe.attach(ui.ctx().clone());
-            self.mode_probe.readout()
-        });
-        if let Some(Some(r)) = &readout {
+        // 改权限（规范 `C10`，稿 10）：标题「改权限 · deploy.sh」·「当前 644」· 3 × 3 勾 ·「数字写法」两边联动 · ［取消］［改权限］。
+        // 现值答回来了 ⇒ 九格与那一栏预填至多一次（`writeops::apply_prefill`）。
+        self.mode_probe.attach(ui.ctx().clone());
+        let readout = self.mode_probe.readout();
+        if let Some(r) = &readout {
             super::writeops::apply_prefill(&mut p, r);
         }
-        let (_, esc) = modal(ui.ctx(), "filewin-write-prompt", |ui| {
-            ui.heading(p.heading());
-            match &readout {
-                Some(Some(r)) => {
-                    ui.label(r.line.as_str());
+        let pal = super::theme::palette(ui.ctx());
+        let err = self.prompt_error();
+        let mut typed = false;
+        let mut toggled: Option<usize> = None;
+        let mut enter = false;
+        let heads = [
+            copy_text("rsFilewinWriteops.chmod.read", &[]),
+            copy_text("rsFilewinWriteops.chmod.write", &[]),
+            copy_text("rsFilewinWriteops.chmod.exec", &[]),
+        ];
+        let who = [
+            copy_text("rsFilewinWriteops.chmod.owner", &[]),
+            copy_text("rsFilewinWriteops.chmod.group", &[]),
+            copy_text("rsFilewinWriteops.chmod.other", &[]),
+        ];
+        let hit = super::kit::dialog(
+            ui.ctx(),
+            "filewin-write-prompt",
+            &p.heading(),
+            |ui| {
+                let now = match &readout {
+                    Some(r) => r.line.clone(),
+                    None => copy_text("rsFilewinShell.mode.reading", &[]),
+                };
+                ui.label(egui::RichText::new(now).color(pal.text2));
+                ui.add_space(12.0);
+                egui::Grid::new("filewin-chmod-grid")
+                    .spacing(egui::vec2(36.0, 6.0))
+                    .show(ui, |ui| {
+                        ui.label("");
+                        for h in &heads {
+                            ui.label(egui::RichText::new(h).color(pal.text2));
+                        }
+                        ui.end_row();
+                        for (r, w) in who.iter().enumerate() {
+                            ui.label(w);
+                            for c in 0..3 {
+                                let k = r * 3 + c;
+                                let r = match p.grid[k] {
+                                    Some(on) => {
+                                        let mut on = on;
+                                        ui.checkbox(&mut on, "")
+                                    }
+                                    // 「—」：多选时各项这一位不一样 / 读不到 ⇒ 不改这一位，点一下才定。
+                                    None => ui.add(
+                                        egui::Checkbox::without_text(&mut false)
+                                            .indeterminate(true),
+                                    ),
+                                };
+                                if r.clicked() {
+                                    toggled = Some(k);
+                                }
+                            }
+                            ui.end_row();
+                        }
+                    });
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    ui.label(copy_text("rsFilewinWriteops.chmod.octal", &[]));
+                    let r = ui.add(
+                        egui::TextEdit::singleline(&mut p.text)
+                            .desired_width(88.0)
+                            .font(egui::TextStyle::Monospace),
+                    );
+                    typed = r.changed();
+                    enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                });
+                if let Some(e) = &err {
+                    ui.label(egui::RichText::new(e).size(12.0).color(pal.error_text));
                 }
-                Some(None) => {
-                    ui.label(copy_text("rsFilewinShell.mode.reading", &[]));
-                }
-                None => {}
-            }
-            go |= prompt_field(ui, &mut p.text);
-            self.prompt_error_ui(ui);
-            ui.label(&copy_text("rsFilewinShell.write.sameDirOnly", &[]));
-            ui.horizontal(|ui| {
-                if ui
-                    .button(&copy_text("rsFilewinShell.write.ok", &[]))
-                    .clicked()
-                {
-                    go = true;
-                }
-                if ui
-                    .button(&copy_text("rsFilewinShell.write.cancel", &[]))
-                    .clicked()
-                {
-                    cancel = true;
-                }
-            });
-        });
+            },
+            &[
+                (
+                    copy_text("rsFilewinWriteops.delete.cancel", &[]),
+                    super::kit::Btn::Plain,
+                ),
+                (
+                    copy_text("rsFilewinWriteops.chmod.go", &[]),
+                    super::kit::Btn::Primary,
+                ),
+            ],
+            1,
+            0,
+        );
+        if let Some(k) = toggled {
+            p.toggle_bit(k);
+        }
+        if typed {
+            p.typed();
+        }
         self.write_prompt = Some(p);
-        if cancel || esc {
-            self.cancel_write();
-        } else if go {
-            let ctx = ui.ctx().clone();
-            self.confirm_write(Some(ctx));
+        match hit {
+            Some(0) => self.cancel_write(),
+            Some(_) => {
+                let ctx = ui.ctx().clone();
+                self.confirm_write(Some(ctx));
+            }
+            None if enter => {
+                let ctx = ui.ctx().clone();
+                self.confirm_write(Some(ctx));
+            }
+            None => {}
         }
     }
 }
@@ -3386,6 +3889,17 @@ impl FileWindow {
     /// 选中态（判据与界面看同一个值）。
     pub fn selection(&self) -> &Selection {
         &self.selection
+    }
+
+    /// 〔只给截图那一格〕再 Ctrl 点上这几个名字（选中态本体那一口，同点击走的那一个）。
+    #[cfg(test)]
+    pub(crate) fn pick_also(&mut self, names: &[&str]) {
+        let rows = self.listing.rows.lock().unwrap().clone();
+        for n in names {
+            if let Some(k) = rows.iter().position(|r| r.name == *n) {
+                self.selection.click(&rows, k, egui::Modifiers::COMMAND);
+            }
+        }
     }
 
     /// 选中的**恰好那一项**叫什么；`Err(n)` ＝ 选中了 `n` 项（`n ≠ 1`）。
@@ -3515,7 +4029,6 @@ impl FileWindow {
             || self.copy_prompt.is_some()
             || self.cross_prompt.is_some()
             || self.pull_ask.is_some()
-            || self.new_file.is_some()
     }
 
     /// 做不成的那一下说的话落在哪：有框摆着 ⇒ 框里（[`Self::prompt_error`]）；否则 ⇒ 列表上方那一行。
@@ -3559,7 +4072,6 @@ impl FileWindow {
             || self.copy_prompt.is_some()
             || self.write_board.is_asking()
             || self.write_prompt.is_some()
-            || self.new_file.is_some()
             || self.pull_ask.is_some()
             // 工具栏「上传」那一问（框开着时键盘不许动列表）。
             || self.upload.is_open()
@@ -3761,9 +4273,24 @@ impl FileWindow {
                 self.key_notice = Some(select::refusal(Action::Delete, idx.len()));
                 return false;
             };
+            self.describe_for_delete(&row);
             ops.push(super::writeops::delete_op(&row));
         }
         self.start_writes(ops, ctx)
+    }
+
+    /// 删除那一问里这一行右端那一格：文件夹写「文件夹」（不写项数，前一路定的）、别的写大小；图标同列表。
+    fn describe_for_delete(&self, row: &super::source::Listed) {
+        let meta = if row.is_dir {
+            copy_text("rsFilewinWriteops.delete.rowDir", &[])
+        } else {
+            super::rows::human_size(row.size)
+        };
+        self.write_board.describe(
+            &row.path,
+            super::kind::icon(super::kind::icon_kind(row)),
+            meta,
+        );
     }
 
     /// 🔴 **胶水**：列表说「第 `i` 行被单击了（带着这几个修饰键）」→ 选中态跟着变。
@@ -4082,7 +4609,8 @@ impl FileWindow {
         self.props_ui(ui);
         // 后台那几趟（上传 · 下载 · 复制 · 解压 · 算大小 · 删除）的进度、停与结局不在这里画：
         //   它们是窗口底部「进度」表里的一行（`super::progress`，由 `Workspace` 画）。这里只剩每一趟开头那一问（模态，画在列表之前）。
-        self.board.ui(ui);
+        let machine = self.source.label();
+        self.board.ui(ui, &machine);
         self.copy_board.ui(ui);
         self.extract_board.ui(ui);
         self.cross_board.ui(ui);
@@ -4092,8 +4620,6 @@ impl FileWindow {
         //    同样模态、同样画在列表之前。
         self.write_board.ui(ui);
         self.write_ui(ui);
-        // 新建空文件那个框（同样模态、同样在前）。
-        self.new_file_ui(ui);
         // 🔴往外拖那两问。同样模态、同样在前。
         self.pull_ui(ui);
         // 「上传」那一问：确定之后走拖入那一条（先一次问完覆盖，再并行传）。
@@ -4118,6 +4644,7 @@ impl FileWindow {
         self.settle_finished_copies();
         self.settle_finished_extracts();
         self.settle_finished_writes();
+        self.settle_inline();
         // 每帧从零数起 —— 这两个数是「这一帧物化了多少行」，不是累计。
         self.tally = RenderTally::default();
         self.hits_tally = HitTally::default();
@@ -4217,7 +4744,12 @@ impl FileWindow {
             let rows = self.listing.rows.lock().unwrap();
             let loading = self.listing.is_loading();
             let failed = self.listing.error.lock().unwrap().is_some();
-            if rows.is_empty() && loading {
+            // 就地新建那一格（列表里冒出来的那一行）：空目录里也照样画列表。
+            let new_here = self
+                .write_prompt
+                .as_ref()
+                .is_some_and(|p| matches!(p.kind, PromptKind::Mkdir | PromptKind::NewFile));
+            if rows.is_empty() && loading && !new_here {
                 // 加载：300 ms 内什么都不画，之后骨架行。
                 let since = *self
                     .loading_since
@@ -4228,7 +4760,11 @@ impl FileWindow {
                     ui.ctx()
                         .request_repaint_after(std::time::Duration::from_millis(100));
                 }
-            } else if rows.is_empty() && !failed && self.listing.hidden.lock().unwrap().is_empty() {
+            } else if rows.is_empty()
+                && !failed
+                && !new_here
+                && self.listing.hidden.lock().unwrap().is_empty()
+            {
                 drop(rows);
                 self.loading_since = None;
                 match super::kit::empty_state(
@@ -4266,16 +4802,80 @@ impl FileWindow {
                         &[("n", &unreadable.to_string())],
                     )
                 });
+                // 就地那一格：新建 ⇒ 文件夹那一段之后插一行（名字缺省、选中）；改名 ⇒ 那一行的名字格换成输入框。
+                let mut text = String::new();
+                let mut shown: Option<Vec<super::source::Listed>> = None;
+                let mut at: Option<usize> = None;
+                if let Some(p) = self.write_prompt.as_ref().filter(|p| p.is_inline()) {
+                    text = p.text.clone();
+                    match &p.kind {
+                        PromptKind::Rename { from, .. } => {
+                            at = rows.iter().position(|r| &r.path == from);
+                        }
+                        kind => {
+                            let i = rows.iter().rposition(|r| r.is_dir).map_or(0, |i| i + 1);
+                            let mut v = rows.clone();
+                            v.insert(
+                                i,
+                                super::source::Listed::plain(super::source::Row {
+                                    name: text.clone(),
+                                    path: super::writeops::join_remote(&p.dir, &text),
+                                    is_dir: matches!(kind, PromptKind::Mkdir),
+                                    size: 0,
+                                    lossy_name: false,
+                                }),
+                            );
+                            shown = Some(v);
+                            at = Some(i);
+                        }
+                    }
+                }
+                let err = self.prompt_error();
+                let mut cell = at.map(|row| super::rows::InlineCell {
+                    row,
+                    text: &mut text,
+                    error: err.as_deref(),
+                    select: self.inline_select.take(),
+                    busy: self.inline_busy,
+                    outcome: None,
+                });
                 super::rows::show_file_rows_with_tail(
                     ui,
-                    &rows,
+                    shown.as_deref().unwrap_or(&rows),
                     &mut self.tally,
                     jump,
                     want.as_deref(),
                     Some(&self.selection),
                     &self.cols,
                     tail.as_deref(),
+                    cell.as_mut(),
                 );
+                let outcome = cell.and_then(|c| c.outcome);
+                drop(rows);
+                // 插进来的那一行不是目录里的一项 ⇒ 点到的下标挪回目录那一摞（点在那一行上 ＝ 没点）。
+                if let (Some(_), Some(i)) = (&shown, at) {
+                    let back = |x: usize| match x.cmp(&i) {
+                        std::cmp::Ordering::Less => Some(x),
+                        std::cmp::Ordering::Equal => None,
+                        std::cmp::Ordering::Greater => Some(x - 1),
+                    };
+                    let t = &mut self.tally;
+                    t.clicked = t.clicked.and_then(back);
+                    t.menu_clicked = t.menu_clicked.and_then(back);
+                    t.drag_started = t.drag_started.and_then(back);
+                    t.picked_click = t.picked_click.and_then(|(x, m)| back(x).map(|x| (x, m)));
+                }
+                if let Some(p) = self.write_prompt.as_mut().filter(|p| p.is_inline()) {
+                    p.text = text;
+                }
+                match outcome {
+                    Some(true) => {
+                        let ctx = ui.ctx().clone();
+                        self.commit_inline(Some(ctx));
+                    }
+                    Some(false) => self.cancel_write(),
+                    None => {}
+                }
             }
         }
         // ⚠ 这三条只对**目录列表**那一摞有意义（下标索引的是 `listing.rows`）。
@@ -4652,12 +5252,6 @@ pub(crate) fn modal<R>(
         && !r.any_popup_open
         && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
     (r.inner, esc)
-}
-
-/// 模态框里那一摞可能很长的条目：超过窗口一半高就在框里滚。
-pub(crate) fn modal_list(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
-    let h = ui.ctx().content_rect().height() * 0.5;
-    egui::ScrollArea::vertical().max_height(h).show(ui, add);
 }
 
 /// 框里那个单行输入框：框刚摆出来（没有谁拿着焦点）就把焦点给它；回 ＝ 在它里面按了回车。
