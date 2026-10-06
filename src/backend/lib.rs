@@ -788,7 +788,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p7y-system-body：Speaker::System 带 body（只在记录有时给，Codex 为 None）；会话内查找不搜注入；历史页只读查看器。
 ///
 /// p7z-history-sid：history-list 加 sid 一格（只要这一个会话那一行，隐藏 / 出窗也照回、不补父会话；形状不对回 bad_args）。
-pub const BUILD_ID: &str = "p7z-history-sid";
+///
+/// p8a-probe-cells：测试连接的结局只报版本与做不到几项（不再报能用几项），界面逐段出 ✓。
+pub const BUILD_ID: &str = "p8a-probe-cells";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
