@@ -208,6 +208,8 @@ pub struct Declared {
     /// `Some(b)` = 用例钉死（判据要单独喂 `stale` 那一侧）。
     pub stale: Option<bool>,
     pub unreadable_dirs: u64,
+    /// 读不进去的那几个目录（后端交前 20 个的线上形；夹具直接给）。
+    pub unreadable_paths: Vec<String>,
     pub truncated: bool,
     pub browse_watches: u64,
     pub browse_watch_cap: u64,
@@ -226,6 +228,7 @@ impl Default for Declared {
             age_secs: 7,
             stale: None,
             unreadable_dirs: 0,
+            unreadable_paths: Vec::new(),
             truncated: false,
             browse_watches: 0,
             browse_watch_cap: 64,
@@ -427,6 +430,7 @@ impl FakeBackend {
                         "entries": entries,
                         "resident_bytes": resident,
                         "unreadable_dirs": self.declared.unreadable_dirs,
+                        "unreadable_paths": self.declared.unreadable_paths,
                         "truncated": self.declared.truncated,
                     })),
                 )
@@ -973,6 +977,7 @@ impl FakeBackend {
             "entries": entries,
             "resident_bytes": resident,
             "unreadable_dirs": if missing { 0 } else { d.unreadable_dirs },
+            "unreadable_paths": if missing { Vec::new() } else { d.unreadable_paths.clone() },
             "truncated": if missing { false } else { d.truncated },
             "age_secs": if missing { 0 } else { d.age_secs },
             "rewalk_interval_secs": d.rewalk_interval_secs,

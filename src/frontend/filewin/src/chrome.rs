@@ -416,7 +416,7 @@ impl FileWindow {
             return Some(super::select::refusal(a, idx.len()));
         }
         drop(rows);
-        self.unavailable_here(a)
+        self.unavailable_here(a).or_else(|| self.offline_refusal(a))
     }
 
     /// 🔴 **命令栏**：左 侧栏开关 ｜ 这个目录（新建 ▾ · 上传 · 终端）｜ 选中的（下载 · 复制到另一台 · 改名 · 删除 · ⋯）｜ 右 看法（显示隐藏文件 · 双栏 · 预览）。
@@ -435,23 +435,30 @@ impl FileWindow {
                 hit = Some(Cmd::Sidebar);
             }
             ui.separator();
-            // ── 这个目录 ──
+            // ── 这个目录 ── 和那台断着 ⇒ 新建 · 上传灰着、悬停「离线 · 只读」。
+            let offline = self.link.offline();
+            let read_only = copy_text("rsFilewinChrome.link.readOnly", &[]);
             let new_label = NEW_LABEL.clone();
-            super::kit::menu(ui, (ph::PLUS, new_label.as_str(), ph::CARET_DOWN), |ui| {
-                if ui
-                    .button((ph::FOLDER_PLUS, NEW_FOLDER_ITEM.as_str()))
-                    .clicked()
-                {
-                    hit = Some(Cmd::Mkdir);
-                    ui.close();
-                }
-                if ui.button((ph::FILE_PLUS, NEW_FILE_ITEM.as_str())).clicked() {
-                    hit = Some(Cmd::NewFile);
-                    ui.close();
-                }
+            let r = ui.add_enabled_ui(!offline, |ui| {
+                super::kit::menu(ui, (ph::PLUS, new_label.as_str(), ph::CARET_DOWN), |ui| {
+                    if ui
+                        .button((ph::FOLDER_PLUS, NEW_FOLDER_ITEM.as_str()))
+                        .clicked()
+                    {
+                        hit = Some(Cmd::Mkdir);
+                        ui.close();
+                    }
+                    if ui.button((ph::FILE_PLUS, NEW_FILE_ITEM.as_str())).clicked() {
+                        hit = Some(Cmd::NewFile);
+                        ui.close();
+                    }
+                })
             });
+            if offline {
+                r.inner.on_disabled_hover_text(&read_only);
+            }
             let up = super::upload::UPLOAD_LABEL.as_str();
-            if kit::ghost(ui, ph::UPLOAD_SIMPLE, up, true, "").clicked() {
+            if kit::ghost(ui, ph::UPLOAD_SIMPLE, up, !offline, &read_only).clicked() {
                 hit = Some(Cmd::Upload);
             }
             if tier == Tier::Narrow {
@@ -605,10 +612,7 @@ impl FileWindow {
             Cmd::NewFile => {
                 self.begin_new_file();
             }
-            Cmd::Upload => match self.one_at_a_time(super::shell::Trip::Upload) {
-                Some(why) => self.set_key_notice(why),
-                None => self.upload.open(),
-            },
+            Cmd::Upload => self.upload.open(),
             Cmd::Term => {
                 self.open_terminal_here(ctx);
             }
@@ -621,13 +625,6 @@ impl FileWindow {
             }
             Cmd::Sidebar | Cmd::Split | Cmd::Preview | Cmd::Across => {}
         }
-    }
-
-    /// 在跑的传输有几个（上传 · 下载 · 跨机复制）。
-    pub fn transfers_running(&self) -> usize {
-        self.board.cancels().in_flight_names().len()
-            + usize::from(self.pull.in_flight().is_some())
-            + usize::from(self.cross_board.running().is_some())
     }
 
     /// 状态栏那一行写什么（左半）：项数 · 隐藏几项 · 选中几项（合计大小）；搜索结果摆着时写结果数。判据与界面看同一个值。
@@ -665,7 +662,16 @@ impl FileWindow {
     /// 缩放那一颗由窗口那一级画在它左边（[`Workspace::chrome_ui`]）。
     pub fn status_ui(&mut self, ui: &mut egui::Ui) {
         let p = palette(ui.ctx());
-        let mut toggle = false;
+        // 编辑页在前台：状态栏就是它的底条（行 · 列 · 编码 · 换行 · 大小 / 上限；超上限那一句在右端、`--error`）。
+        if let Some((line, over)) = self.editor_status(ui.ctx()) {
+            ui.add(egui::Label::new(egui::RichText::new(&line).color(p.text2)).truncate());
+            if let Some(o) = over {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(egui::RichText::new(o).color(p.error));
+                });
+            }
+            return;
+        }
         // 键位做不成的那一下（「没有以 q 开头的」「一次只能改一个名字」…）浮在左端，顶替项数那一句。
         match self.key_notice() {
             Some(n) => {
@@ -677,39 +683,7 @@ impl FileWindow {
                     .on_hover_text(line);
             }
         }
-        let n = self.transfers_running();
-        let unseen_fail = self.transfers_unseen() && !self.transfers_open;
-        if n > 0 || self.transfers_unseen() {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let caret = if self.transfers_open {
-                    ph::CARET_DOWN
-                } else {
-                    ph::CARET_UP
-                };
-                let text = if n > 0 {
-                    copy_text("rsFilewinChrome.status.transfers", &[("n", &n.to_string())])
-                } else {
-                    copy_text("rsFilewinChrome.status.progress", &[])
-                };
-                let r = ui.add(
-                    egui::Button::new(egui::RichText::new(format!("{text} {caret}")).small())
-                        .frame_when_inactive(false),
-                );
-                if unseen_fail {
-                    ui.painter().circle_filled(
-                        r.rect.left_center() + egui::vec2(8.0, 0.0),
-                        3.5,
-                        p.error,
-                    );
-                }
-                if r.clicked() {
-                    toggle = true;
-                }
-            });
-        }
-        if toggle {
-            self.transfers_open = !self.transfers_open;
-        }
+        // 右端「进度」那一颗归窗口那一级（那张表所有标签页共用）：`Workspace::chrome_ui` 画。
     }
 }
 
@@ -779,6 +753,87 @@ pub fn nav_keys(events: &[egui::Event]) -> Vec<NavKey> {
         .collect()
 }
 
+/// 那台此刻连没连着（整扇窗一份，每个标签页拿同一份；`link` 那条流写进来）。
+/// 没订上 / 流说不清 ⇒ `None`（当连着：不画断线条、不灰按钮）。
+#[derive(Clone, Default)]
+pub struct LinkState(Arc<Mutex<LinkInner>>);
+
+#[derive(Default)]
+struct LinkInner {
+    seen: Option<super::source::LinkSeen>,
+    /// 断了之后又连上过几次（窗口据它把每个标签页重列一遍）。
+    ups: u64,
+    /// 已经起了那条订阅。
+    watching: bool,
+}
+
+impl LinkState {
+    fn lock(&self) -> std::sync::MutexGuard<'_, LinkInner> {
+        match self.0.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        }
+    }
+
+    /// 那条流此刻说的。
+    pub fn seen(&self) -> Option<super::source::LinkSeen> {
+        self.lock().seen
+    }
+
+    /// 断着（在重连 / 离线）。
+    pub fn offline(&self) -> bool {
+        matches!(
+            self.seen(),
+            Some(super::source::LinkSeen::Reconnecting | super::source::LinkSeen::Down)
+        )
+    }
+
+    /// 流上来了一格。由断转连 ⇒ 记一次「又连上了」。
+    pub fn set(&self, s: super::source::LinkSeen) {
+        let mut g = self.lock();
+        let was_off = matches!(
+            g.seen,
+            Some(super::source::LinkSeen::Reconnecting | super::source::LinkSeen::Down)
+        );
+        if was_off && s == super::source::LinkSeen::Up {
+            g.ups += 1;
+        }
+        g.seen = Some(s);
+    }
+
+    /// 断了之后又连上过几次。
+    pub fn ups(&self) -> u64 {
+        self.lock().ups
+    }
+
+    /// 起那条订阅（整扇窗一次；流关了就停在最后那一格）。
+    pub fn watch(
+        &self,
+        rt: &tokio::runtime::Handle,
+        line: super::source::Line,
+        origin: super::source::Origin,
+        ctx: Option<egui::Context>,
+    ) {
+        {
+            let mut g = self.lock();
+            if g.watching {
+                return;
+            }
+            g.watching = true;
+        }
+        let me = self.clone();
+        rt.spawn(async move {
+            super::source::watch_link(&line, &origin, |s| {
+                me.set(s);
+                if let Some(c) = &ctx {
+                    c.request_repaint();
+                }
+            })
+            .await;
+        });
+    }
+}
+
 /// 左栏：这台机器的家目录问到了没有（问一次，整扇窗共用）。
 #[derive(Clone, Default)]
 pub struct Home(Arc<Mutex<HomeState>>);
@@ -832,6 +887,52 @@ impl Workspace {
             .exact_size(bar_h)
             .show_separator_line(false)
             .show(ui, |ui| self.pane_on_mut(f).toolbar_ui(ui));
+        // 和那台断着 ⇒ 工具条下一条窗口级警告条（稿 18）：在重连 ⇒「devbox 断开 · 重新连接中…」；
+        //   一轮没连上 ⇒「devbox 离线 · 采样 13:40」＋［重新连接］（采样 ＝ 摆着的这一屏是什么时候列到的）。
+        if let Some(seen) = self.link.seen().filter(|_| self.link.offline()) {
+            let machine = self.pane_on(f).source.label();
+            let (text, acts) = match seen {
+                super::source::LinkSeen::Reconnecting => (
+                    copy_text(
+                        "rsFilewinChrome.link.reconnecting",
+                        &[("machine", &machine)],
+                    ),
+                    Vec::new(),
+                ),
+                _ => {
+                    let at = self
+                        .pane_on(f)
+                        .listing
+                        .landed
+                        .load(std::sync::atomic::Ordering::SeqCst);
+                    let text = if at > 0 {
+                        copy_text(
+                            "rsFilewinChrome.link.offline",
+                            &[
+                                ("machine", &machine),
+                                ("time", &super::source::mtime_text(at).short),
+                            ],
+                        )
+                    } else {
+                        copy_text(
+                            "rsFilewinChrome.link.offlineNever",
+                            &[("machine", &machine)],
+                        )
+                    };
+                    (text, vec![copy_text("rsFilewinChrome.link.retry", &[])])
+                }
+            };
+            let mut hit = None;
+            egui::Panel::top("filewin-link")
+                .frame(egui::Frame::new())
+                .show_separator_line(false)
+                .show(ui, |ui| {
+                    hit = super::kit::banner(ui, super::kit::Tone::Warn, &text, &acts);
+                });
+            if hit == Some(0) {
+                self.retry_link();
+            }
+        }
         let mut cmd = None;
         let view = ViewState {
             sidebar: self.sidebar_open,
@@ -873,10 +974,10 @@ impl Workspace {
             .show_separator_line(false)
             .show(ui, |ui| {
                 ui.horizontal_centered(|ui| {
-                    // 缩放不是 100% ⇒ 状态栏常驻一颗「125%」，点了回 100%。
-                    if (zoom - 1.0).abs() > 0.001 {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // 缩放不是 100% ⇒ 状态栏常驻一颗「125%」，点了回 100%。
+                        if (zoom - 1.0).abs() > 0.001
+                            && ui
                                 .add(
                                     egui::Button::new(
                                         egui::RichText::new(copy_text(
@@ -889,22 +990,57 @@ impl Workspace {
                                 )
                                 .on_hover_text(copy_text("rsFilewinChrome.status.zoomReset", &[]))
                                 .clicked()
-                            {
-                                reset_zoom = true;
+                        {
+                            reset_zoom = true;
+                        }
+                        // 「进度」那一颗：表里一行都没有就不画；有在跑的写个数 ＋ 一小条；有没看过的失败带红点。
+                        if !self.progress.is_empty() {
+                            let n = self.progress.running();
+                            let label = if n > 0 {
+                                copy_text(
+                                    "rsFilewinChrome.status.transfers",
+                                    &[("n", &n.to_string())],
+                                )
+                            } else {
+                                copy_text("rsFilewinChrome.status.progress", &[])
+                            };
+                            let open = self.progress.is_open();
+                            let frac = (n > 0).then(|| self.progress.overall()).flatten();
+                            if super::kit::progress_chip(
+                                ui,
+                                &label,
+                                frac,
+                                self.progress.unseen_fail(),
+                                open,
+                            ) {
+                                self.progress.set_open(!open);
                             }
-                            ui.with_layout(
-                                egui::Layout::left_to_right(egui::Align::Center),
-                                |ui| self.pane_on_mut(f).status_ui(ui),
-                            );
+                        }
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            self.pane_on_mut(f).status_ui(ui)
                         });
-                    } else {
-                        self.pane_on_mut(f).status_ui(ui);
-                    }
+                    });
                 });
             });
         if reset_zoom {
             ctx.set_zoom_factor(1.0);
             self.zoom_reset();
+        }
+        // 「进度」表（窗口底部一块，可拖高；在状态栏之上、左栏之下 ⇒ 横贯整个窗口宽，稿 11）。
+        if self.progress.is_open() && !self.progress.is_empty() {
+            let mut act = None;
+            egui::Panel::bottom("filewin-progress")
+                .frame(bar_frame(&ctx))
+                .resizable(true)
+                .default_size(214.0)
+                .min_size(80.0)
+                .max_size((ctx.content_rect().height() * 0.6).max(120.0))
+                .show(ui, |ui| {
+                    act = super::progress::table_ui(ui, &self.progress);
+                });
+            if let Some(a) = act {
+                self.apply_progress_act(a, Some(ctx.clone()));
+            }
         }
         if self.sidebar_open {
             // 窗口窄了左栏跟着让（至多占三成），里面的字截成「…」。

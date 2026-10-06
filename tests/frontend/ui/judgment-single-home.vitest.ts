@@ -589,6 +589,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     terminal_open_cwd: NONE,
     // 「开另一台的文件窗口」那一问（窗口 → monitor），TS 侧零孪生。
     FILEWIN_OPEN_OP: NONE,
+    // 文件窗口断线条那一格（窗口订 `link`、点「重新连接」发 `link-retry`，monitor 自己接），TS 侧零孪生。
+    LINK_KIND: NONE,
+    LINK_RETRY_OP: NONE,
     filewin_open_args: NONE,
     filewin_open_theme: NONE,
     // 窗口的样子：令牌解成数只在这里（主界面那一侧只按名单读计算值、原样交过来，不解析；

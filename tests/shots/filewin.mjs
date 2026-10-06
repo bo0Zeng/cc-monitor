@@ -15,9 +15,17 @@ export const FILEWIN_SCENES = [
   { id: "filewin-split", scene: "split", title: "文件窗口 · 双栏", desc: "开了双栏：两栏同一个目录" },
   { id: "filewin-empty", scene: "empty", title: "文件窗口 · 空目录", desc: "进到一个空目录" },
   { id: "filewin-missing", scene: "missing", title: "文件窗口 · 目录不存在", desc: "进到一个不存在的目录：列表那里报错" },
-  { id: "filewin-pull", scene: "pull", title: "文件窗口 · 下载在路上", desc: "一趟下载在路上：进度那一行（转圈 · 已收 / 共 · 取消）" },
+  { id: "filewin-pull", scene: "pull", title: "文件窗口 · 下载在路上", desc: "一趟下载在路上：「进度」表收着，状态栏右端「进度 1」带一小条合计进度（点开是表里那一行）" },
   { id: "filewin-mkdir-error", scene: "mkdir-error", title: "文件窗口 · 新建目录名字填错", desc: "新建目录那个框里名字是空的就点了确定：为什么没做成" },
   { id: "filewin-search", scene: "search", title: "文件窗口 · 按名字搜", desc: "工具条搜索框里输「retry」：全家目录里名字带它的文件。索引那一行的「扫描间隔 4242 秒」是合成后端故意给的怪数、命中路径是沙箱里的长路径" },
+  { id: "filewin-progress", scene: "progress", title: "文件窗口 · 进度", desc: "窗口底部「进度」表：上传一摞与下载在跑（可停）· 删除文件夹在跑（那台撤不动，「停」灰着）· 上传失败（重试 2 个）· 复制到另一台完成；状态栏「进度 3」带红点" },
+  { id: "filewin-stale", scene: "stale", title: "文件窗口 · 断线过期", desc: "和 devbox 断了：工具条下一条「devbox 离线 · 采样 13:40」＋［重新连接］；列表照常摆着上次那一屏；写类按钮灰（悬停「离线 · 只读」）" },
+  { id: "filewin-unreadable", scene: "unreadable", title: "文件窗口 · 无权限目录清单", desc: "按名字搜，状态行「3 个目录无权限［查看］」点开：列后端交来的那两个目录（相对搜索起点）＋「另外 1 个」；点一行复制那条绝对路径（稿里没画，待认）" },
+  { id: "filewin-edit-page", scene: "edit-page", title: "文件窗口 · 编辑页", desc: "目录页上开 main.rs ⇒ 同一栏一个编辑页（标签「✎ main.rs」、未保存点）：头条面包屑 · 未保存 · 查找 · 保存 · ⋯；行号槽 ＋ 正文在面里滚；查找条浮在右上；状态栏是底条（行 · 列 · UTF-8 · LF · 大小 / 上限）" },
+  { id: "filewin-edit-stale", scene: "edit-stale", title: "文件窗口 · 编辑页 · 盘上被改过", desc: "保存时盘上那份在打开之后被改过：编辑面顶一条「main.rs 已在盘上被修改」［覆盖］［放弃改动并重开］，字一个不动" },
+  { id: "filewin-edit-close", scene: "edit-close", title: "文件窗口 · 关编辑页 · 没保存", desc: "改了没存点 ×：「关闭 main.rs · 未保存」「不保存 = 丢弃改动」［取消］［不保存］［保存］（焦点在保存）" },
+  { id: "filewin-close-window", scene: "close-window", title: "文件窗口 · 关窗那一问", desc: "有没保存的编辑页与一趟在下的：「关闭文件窗口 · devbox」按族列出（未保存 · 传输中）；［取消］［全部保存后关闭］［仍然关闭］" },
+  { id: "filewin-delete-ask", scene: "delete-ask", title: "文件窗口 · 删除那一问", desc: "选中三个文件夹按 Delete：「删除 3 项」· 列名字（文件夹注明）· 不可恢复 · 取消在前、删除是危险按钮" },
 ].map((s) => ({ ...s, dir: "文件窗口", width: 1280, height: 800 }));
 
 export async function shootFilewin({ repo, sandbox, out, scenes, env, buildEnv, children }) {

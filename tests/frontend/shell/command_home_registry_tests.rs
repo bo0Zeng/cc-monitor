@@ -251,6 +251,11 @@ const CHANNEL_OWN: &[(&str, Own, &str)] = &[
         Own::Window,
         "文件窗口左栏「其他机器」点一台：窗口不起进程，monitor 按名字取那台的配置、照开窗入口同一条路另起一个窗口进程（一窗一机）",
     ),
+    (
+        "link-retry",
+        Own::Window,
+        "文件窗口断线条上「重新连接」：连接循环住 monitor（`stream_source::run`），叫醒它不等退避睡满；连没连上看 `link` 那条流",
+    ),
 ];
 
 /// `HOST_OPS`（代码那一侧）== [`CHANNEL_OWN`]（登记那一侧），两向；每一行都写了理由。

@@ -211,16 +211,15 @@ impl CrossBoard {
         self.inner.lock().unwrap().last.clone()
     }
 
-    /// 画：盖不盖那一问（模态）· 在复制那一行（进度 ＋ 取消）· 上一趟的结局。
+    /// 画盖不盖那一问（模态）。在复制那一行（进度 ＋ 停）与结局是「进度」表里的一行（`super::progress`）。
     pub fn ui(&self, ui: &mut egui::Ui) {
-        let (running, asking, last) = {
-            let d = self.inner.lock().unwrap();
-            (
-                d.running.clone(),
-                d.asking.as_ref().map(|(s, _)| s.clone()),
-                d.last.clone(),
-            )
-        };
+        let asking = self
+            .inner
+            .lock()
+            .unwrap()
+            .asking
+            .as_ref()
+            .map(|(s, _)| s.clone());
         if let Some(said) = asking {
             let (mut yes, mut no) = (false, false);
             let (_, esc) = super::shell::modal(ui.ctx(), "filewin-cross-overwrite", |ui| {
@@ -237,41 +236,6 @@ impl CrossBoard {
             no |= esc;
             if yes || no {
                 self.settle(yes);
-            }
-        }
-        if let Some(name) = &running {
-            let (got, total) = self.seen(name);
-            ui.horizontal(|ui| {
-                ui.spinner();
-                super::shell::fit_label(
-                    ui,
-                    copy_text(
-                        "rsFilewinCrossCopy.ui.running",
-                        &[
-                            ("name", name),
-                            ("got", &super::rows::human_size(got / 2)),
-                            ("total", &super::rows::human_size(total / 2)),
-                        ],
-                    ),
-                    260.0,
-                );
-                if total > 0 {
-                    ui.add(egui::ProgressBar::new(got as f32 / total as f32).desired_width(160.0));
-                }
-                if ui
-                    .button(copy_text("rsFilewinCrossCopy.ui.cancel", &[]))
-                    .clicked()
-                {
-                    self.cancel();
-                }
-            });
-        }
-        if let Some(o) = &last {
-            let text = outcome_text(o);
-            if matches!(o, Outcome::Failed { .. }) {
-                ui.colored_label(ui.visuals().warn_fg_color, text);
-            } else {
-                ui.label(text);
             }
         }
     }

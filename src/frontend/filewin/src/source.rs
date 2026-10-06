@@ -1157,6 +1157,58 @@ pub async fn watch_coded(
     }
 }
 
+/// 那台此刻连没连着（`link` 那条流的一格；monitor 的连接循环说了算，窗口不猜）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LinkSeen {
+    Up,
+    /// 刚断、正在重连。
+    Reconnecting,
+    /// 重连一轮没连上（或从没连上）。
+    Down,
+}
+
+/// 订「那台连没连着」那条流（[`filewin_contract::LINK_KIND`]，monitor 自己接）到它关掉为止；每一格交给 `on`。
+/// 对端说「没有这条流」/ 流关了 ⇒ 回（窗口当作说不清：不画断线条）。
+pub async fn watch_link(line: &Line, origin: &Origin, mut on: impl FnMut(LinkSeen)) {
+    use comms_inward::chan::wire::{Comms, HopFault, Item, Kind, Sub};
+    use futures::StreamExt as _;
+    let mut sub = line.subscribe(
+        origin,
+        &Kind(filewin_contract::LINK_KIND.to_string()),
+        None,
+        WATCH_CREDIT,
+    );
+    while let Some(item) = sub.next().await {
+        match item {
+            Item::Seen { .. } => on(LinkSeen::Up),
+            Item::Unseen {
+                why: HopFault::Dropped,
+                ..
+            } => on(LinkSeen::Reconnecting),
+            Item::Unseen { .. } => on(LinkSeen::Down),
+            Item::Frame { .. } | Item::Gap { .. } => {}
+            Item::Closed { .. } => return,
+        }
+        sub.want(1);
+    }
+}
+
+/// 「重新连接」：叫醒那台的连接循环（[`filewin_contract::LINK_RETRY_OP`]，monitor 自己接；回 `{}`）。连没连上看 [`watch_link`]，
+/// 这一下本身没送到 ⇒ 记一行（断线条照旧摆着，人可以再点）。
+pub async fn kick_link(line: &Line, origin: &Origin) {
+    if let Err(why) = ask(
+        line,
+        origin,
+        filewin_contract::LINK_RETRY_OP,
+        &serde_json::json!({}),
+        std::time::Duration::from_secs(5),
+    )
+    .await
+    {
+        tracing::warn!("link-retry not delivered: {why}");
+    }
+}
+
 /// 一趟传输看完了（[`watch`] 的成功那一形）：字节数 ＋上传那一路的整份摘要（提交时的 `expect`）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Watched {

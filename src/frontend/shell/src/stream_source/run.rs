@@ -153,6 +153,10 @@ pub async fn run(
         .await;
         // 这条连接没了 ⇒ 订了这台会话流的那些订阅原位收一格 `Unseen`（不是终点）。
         replay.origin_seen(&crate::origin::Origin(cfg.origin_label()), false);
+        // 这一轮一次都没握上手 ⇒ 那台记成「离线」（文件窗口那一条由「重新连接中…」换成「离线 · 采样 …」＋［重新连接］）。
+        if !connected.load(Ordering::Acquire) {
+            crate::inbound_client::note_round_failed(&cfg.origin_label());
+        }
         if hello_confirmed.is_some() && !connected.load(Ordering::Acquire) {
             tracing::warn!(
                 "stream_source hello 自愈轮未收到 hello,回退降级模式(backend 可能被换旧)"
@@ -197,8 +201,15 @@ pub async fn run(
             }
         };
         tracing::info!("stream_source reconnecting in {:?}", wait);
-        tokio::time::sleep(wait).await;
-        if !connected.load(Ordering::Acquire) {
+        // 「重新连接」（文件窗口那一条上的按钮，经通道 `link-retry`）⇒ 不等退避睡满，当场再连一轮、退避从头算。
+        let kick = crate::inbound_client::kick_handle(&cfg.origin_label());
+        let kicked = tokio::select! {
+            () = tokio::time::sleep(wait) => false,
+            () = kick.notified() => true,
+        };
+        if kicked {
+            backoff = RECONNECT_MIN;
+        } else if !connected.load(Ordering::Acquire) {
             backoff = next_backoff(backoff); // 仍没连上 → 指数退避增长
         }
     }

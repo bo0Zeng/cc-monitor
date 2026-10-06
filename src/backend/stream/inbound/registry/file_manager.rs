@@ -375,6 +375,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "skipped_mounts",
             "truncated",
             "unreadable_dirs",
+            "unreadable_paths",
         ],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -466,6 +467,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "stale",
             "truncated",
             "unreadable_dirs",
+            "unreadable_paths",
         ],
         takes_input: false,
         run: Run::Blocking(|r| {

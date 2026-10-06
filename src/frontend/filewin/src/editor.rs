@@ -460,6 +460,8 @@ pub struct Pane {
     pub(crate) fresh: bool,
     /// 光标被外面挪了（查找 · 替换）：下一帧把它滚进视野。
     pub(crate) reveal: bool,
+    /// 上一次存成的那一刻（UNIX 秒；编辑页头条「已保存 13:42」）。
+    pub saved_at: Option<u64>,
 }
 
 /// 编辑面那一截查找替换的状态。
@@ -527,6 +529,7 @@ impl Pane {
             find: FindBar::default(),
             fresh: true,
             reveal: false,
+            saved_at: None,
         }
     }
 
@@ -551,6 +554,10 @@ impl Pane {
         self.base_sha256 = sha256;
         self.last_save = Some(Ok(()));
         self.stale = false;
+        self.saved_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map(|d| d.as_secs());
     }
 
     /// 存盘撞上 `stale` ⇒ 同 [`Self::mark_failed`]（字一个不动、基准不动），外加摆出那两颗按钮。
@@ -587,6 +594,21 @@ pub enum Close {
     Now,
     /// 🔴 改了没存 ⇒ **先问**（这一刀的「不静默丢弃」）。
     NeedsConfirm,
+}
+
+/// 第 `at` 个**字**在第几行、第几列（都从 1 数；列按字数）。编辑页底条「行 12 · 列 5」。
+pub fn line_col(text: &str, at: usize) -> (usize, usize) {
+    let mut line = 1;
+    let mut col = 1;
+    for c in text.chars().take(at) {
+        if c == '\n' {
+            line += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+    }
+    (line, col)
 }
 
 /// 判一遍关窗这一下。

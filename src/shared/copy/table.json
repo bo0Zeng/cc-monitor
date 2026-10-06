@@ -9419,26 +9419,6 @@
       "zh": "有写操作还没回话",
       "args": []
     },
-    "rsFilewinShell.busy.listSep": {
-      "kind": "body",
-      "zh": "、",
-      "args": []
-    },
-    "rsFilewinShell.busy.uploading": {
-      "kind": "body",
-      "zh": "正在上传 {names}",
-      "args": ["names"]
-    },
-    "rsFilewinShell.busy.downloading": {
-      "kind": "body",
-      "zh": "正在下载 {n}",
-      "args": ["n"]
-    },
-    "rsFilewinShell.busy.copying": {
-      "kind": "body",
-      "zh": "正在复制 {n}",
-      "args": ["n"]
-    },
     "rsFilewinShell.busy.io": {
       "kind": "body",
       "zh": "正在读写 {path}",
@@ -9504,26 +9484,6 @@
       "zh": "把「{name}」存到哪儿？",
       "args": ["name"]
     },
-    "rsFilewinShell.pull.failed": {
-      "kind": "error",
-      "zh": "拖到 {dest} 没成：{why}",
-      "args": ["dest", "why"]
-    },
-    "rsFilewinShell.pull.done": {
-      "kind": "body",
-      "zh": "已存到 {dest}（{size}）",
-      "args": ["dest", "size"]
-    },
-    "rsFilewinShell.pull.progress": {
-      "kind": "body",
-      "zh": "正在拖出 {name}：{got} / {total}",
-      "args": ["name", "got", "total"]
-    },
-    "rsFilewinShell.editor.close": {
-      "kind": "action",
-      "zh": "关闭",
-      "args": []
-    },
     "rsFilewinShell.editor.save": {
       "kind": "action",
       "zh": "保存",
@@ -9531,48 +9491,28 @@
     },
     "rsFilewinShell.editor.saveFailed": {
       "kind": "error",
-      "zh": "存不回去：{why}",
+      "zh": "保存失败 · {why}",
       "args": ["why"]
-    },
-    "rsFilewinShell.editor.saved": {
-      "kind": "body",
-      "zh": "已存",
-      "args": []
-    },
-    "rsFilewinShell.editor.overLimit": {
-      "kind": "error",
-      "zh": "已经超过 {limit} 的上限 {n} 字节 —— 存不回去",
-      "args": ["limit", "n"]
     },
     "rsFilewinShell.editor.keep": {
       "kind": "action",
-      "zh": "先别关",
+      "zh": "取消",
       "args": []
     },
     "rsFilewinShell.editor.discard": {
       "kind": "action",
-      "zh": "丢掉，关",
+      "zh": "不保存",
       "args": []
     },
     "rsFilewinShell.editor.unsavedWarn": {
       "kind": "body",
-      "zh": "关掉就丢掉你敲的那些东西了 —— 远端那份还是旧的。",
+      "zh": "不保存 = 丢弃改动",
       "args": []
     },
     "rsFilewinShell.editor.unsaved": {
       "kind": "body",
-      "zh": "{name} 改了还没存",
+      "zh": "关闭 {name} · 未保存",
       "args": ["name"]
-    },
-    "rsFilewinShell.editor.saving": {
-      "kind": "body",
-      "zh": "正在存 {path}…",
-      "args": ["path"]
-    },
-    "rsFilewinShell.editor.reading": {
-      "kind": "body",
-      "zh": "正在读 {path}…",
-      "args": ["path"]
     },
     "rsFilewinShell.save.noRuntime": {
       "kind": "error",
@@ -10184,16 +10124,6 @@
       "zh": "书签读不出来：{e}",
       "args": ["e"]
     },
-    "rsFilewinTransfer.ui.done": {
-      "kind": "body",
-      "zh": "上一趟 {ok} 件传完、{skipped} 件跳过",
-      "args": ["ok", "skipped"]
-    },
-    "rsFilewinTransfer.ui.failedSep": {
-      "kind": "body",
-      "zh": "；",
-      "args": []
-    },
     "rsFilewinTransfer.ui.redone": {
       "kind": "error",
       "zh": "传上去的那份中间有坏的一段，已整份重传：{names}",
@@ -10202,16 +10132,6 @@
     "rsFilewinTransfer.upload.noDigest": {
       "kind": "error",
       "zh": "传输没有交回校验值，没法比对，没有写进目标。请重开 app 再传。",
-      "args": []
-    },
-    "rsFilewinTransfer.ui.failed": {
-      "kind": "body",
-      "zh": "上一趟 {n} 件失败：{failed}",
-      "args": ["n", "failed"]
-    },
-    "rsFilewinTransfer.ui.cancelling": {
-      "kind": "body",
-      "zh": "已经按过取消了，还没起的那几件不会再起",
       "args": []
     },
     "rsFilewinTransfer.ui.overwriteNone": {
@@ -10248,11 +10168,6 @@
       "kind": "body",
       "zh": "这一趟被取消了",
       "args": []
-    },
-    "rsFilewinCopy.ui.copying": {
-      "kind": "body",
-      "zh": "正在那台机器上复制 {name} …",
-      "args": ["name"]
     },
     "rsFilewinCopy.ui.keep": {
       "kind": "action",
@@ -10444,20 +10359,10 @@
       "zh": "；",
       "args": []
     },
-    "rsFilewinSize.ui.running": {
-      "kind": "body",
-      "zh": "正在那台机器上算 {name} 的大小 …",
-      "args": ["name"]
-    },
     "rsFilewinShell.size.noRuntime": {
       "kind": "error",
       "zh": "算大小启动不了，请重开这个窗口",
       "args": []
-    },
-    "rsFilewinShell.busy.sizing": {
-      "kind": "body",
-      "zh": "正在算 {name} 的大小",
-      "args": ["name"]
     },
     "rsFilewinShell.editor.findLabel": {
       "kind": "control",
@@ -10501,7 +10406,7 @@
     },
     "rsFilewinShell.editor.findBig": {
       "kind": "body",
-      "zh": "大文件模式没有查找替换",
+      "zh": "大文件模式 · 长行不换行 · 无查找替换",
       "args": []
     },
     "rsFilewinPicker.ui.browse": {
@@ -10746,12 +10651,12 @@
     },
     "rsFilewinEditor.stale.overwrite": {
       "kind": "action",
-      "zh": "仍然覆盖",
+      "zh": "覆盖",
       "args": []
     },
     "rsFilewinEditor.stale.reopen": {
       "kind": "action",
-      "zh": "丢掉改动，重新打开",
+      "zh": "放弃改动并重开",
       "args": []
     },
     "rsFilewinEditor.reply.noDigest": {
@@ -16186,16 +16091,6 @@
       "zh": "不解了",
       "args": []
     },
-    "rsFilewinExtract.ui.running": {
-      "kind": "body",
-      "zh": "正在那台机器上解压 {name} …",
-      "args": ["name"]
-    },
-    "rsFilewinExtract.busy.running": {
-      "kind": "body",
-      "zh": "正在解压 {name}",
-      "args": ["name"]
-    },
     "beFilesExtract.args.unknownCmd": {
       "kind": "error",
       "zh": "请求格式不对：「{cmd}」不是解压命令",
@@ -16281,16 +16176,6 @@
       "zh": "{machine} 上已经有 {path} 了。盖掉它（没有备份，不可撤销），还是不复制？",
       "args": ["machine", "path"]
     },
-    "rsFilewinCrossCopy.ui.running": {
-      "kind": "body",
-      "zh": "正在复制 {name} 到另一台：{got} / {total}",
-      "args": ["name", "got", "total"]
-    },
-    "rsFilewinCrossCopy.ui.cancel": {
-      "kind": "action",
-      "zh": "取消",
-      "args": []
-    },
     "rsFilewinCrossCopy.dir.notAbsolute": {
       "kind": "error",
       "zh": "目标目录要以 / 起头（给的是 {dir}）",
@@ -16300,11 +16185,6 @@
       "kind": "error",
       "zh": "问不到 {machine} 那台的后端：{why}",
       "args": ["machine", "why"]
-    },
-    "rsFilewinCrossCopy.busy.running": {
-      "kind": "body",
-      "zh": "正在复制 {name} 到另一台",
-      "args": ["name"]
     },
     "rsFilewinCrossCopy.prompt.noMachine": {
       "kind": "error",
@@ -19014,31 +18894,6 @@
       "zh": "{want} 是隐藏文件，已显示隐藏文件",
       "args": ["want"]
     },
-    "rsFilewinShell.oneAtATime.upload": {
-      "kind": "error",
-      "zh": "上一批还在上传，传完了再传这一批",
-      "args": []
-    },
-    "rsFilewinShell.oneAtATime.download": {
-      "kind": "error",
-      "zh": "上一个还在下载，下完了再下这一个",
-      "args": []
-    },
-    "rsFilewinShell.oneAtATime.copy": {
-      "kind": "error",
-      "zh": "上一趟还在复制，复制完了再复制",
-      "args": []
-    },
-    "rsFilewinShell.oneAtATime.cross": {
-      "kind": "error",
-      "zh": "上一趟复制到另一台还没完，完了再复制",
-      "args": []
-    },
-    "rsFilewinShell.edit.elsewhere": {
-      "kind": "error",
-      "zh": "另一栏开着一份文本，先把它关掉再开这一份",
-      "args": []
-    },
     "rsFilewinCrossCopy.prompt.localMachine": {
       "kind": "control",
       "zh": "本机",
@@ -20278,6 +20133,421 @@
       "kind": "action",
       "zh": "删除 {n} 项",
       "args": ["n"]
+    },
+    "rsFilewinProgress.head.title": {
+      "kind": "title",
+      "zh": "进度",
+      "args": []
+    },
+    "rsFilewinProgress.head.clear": {
+      "kind": "action",
+      "zh": "清除已完成",
+      "args": []
+    },
+    "rsFilewinProgress.action.stop": {
+      "kind": "action",
+      "zh": "停",
+      "args": []
+    },
+    "rsFilewinProgress.action.retry": {
+      "kind": "action",
+      "zh": "重试",
+      "args": []
+    },
+    "rsFilewinProgress.action.retryN": {
+      "kind": "action",
+      "zh": "重试 {n} 个",
+      "args": ["n"]
+    },
+    "rsFilewinProgress.action.resume": {
+      "kind": "action",
+      "zh": "接着传",
+      "args": []
+    },
+    "rsFilewinProgress.stop.uncancellable": {
+      "kind": "body",
+      "zh": "{machine} 上开始后不可停止",
+      "args": ["machine"]
+    },
+    "rsFilewinProgress.stop.noHandle": {
+      "kind": "body",
+      "zh": "开始后不可停止",
+      "args": []
+    },
+    "rsFilewinProgress.upload.running": {
+      "kind": "body",
+      "zh": "上传 {n} 个文件 → {dir}",
+      "args": ["n", "dir"]
+    },
+    "rsFilewinProgress.upload.detail": {
+      "kind": "body",
+      "zh": "{name} · {k}/{n}",
+      "args": ["name", "k", "n"]
+    },
+    "rsFilewinProgress.upload.done": {
+      "kind": "body",
+      "zh": "已上传 {n} 个文件",
+      "args": ["n"]
+    },
+    "rsFilewinProgress.upload.skipped": {
+      "kind": "body",
+      "zh": "跳过同名 {n}",
+      "args": ["n"]
+    },
+    "rsFilewinProgress.upload.failed": {
+      "kind": "error",
+      "zh": "上传失败 {n}",
+      "args": ["n"]
+    },
+    "rsFilewinProgress.upload.stopped": {
+      "kind": "body",
+      "zh": "已停：传了 {a} 个，还有 {b} 个没传",
+      "args": ["a", "b"]
+    },
+    "rsFilewinProgress.download.running": {
+      "kind": "body",
+      "zh": "下载 {name}",
+      "args": ["name"]
+    },
+    "rsFilewinProgress.download.detail": {
+      "kind": "body",
+      "zh": "→ {dest}",
+      "args": ["dest"]
+    },
+    "rsFilewinProgress.download.done": {
+      "kind": "body",
+      "zh": "已存到 {path}",
+      "args": ["path"]
+    },
+    "rsFilewinProgress.download.failed": {
+      "kind": "error",
+      "zh": "下载失败 · {name}",
+      "args": ["name"]
+    },
+    "rsFilewinProgress.download.stopped": {
+      "kind": "body",
+      "zh": "已停 · {name}",
+      "args": ["name"]
+    },
+    "rsFilewinProgress.copy.running": {
+      "kind": "body",
+      "zh": "复制 {n} 项",
+      "args": ["n"]
+    },
+    "rsFilewinProgress.copy.runningOne": {
+      "kind": "body",
+      "zh": "复制 {name}",
+      "args": ["name"]
+    },
+    "rsFilewinProgress.copy.done": {
+      "kind": "body",
+      "zh": "已复制 {n} 项",
+      "args": ["n"]
+    },
+    "rsFilewinProgress.copy.skipped": {
+      "kind": "body",
+      "zh": "跳过 {names}",
+      "args": ["names"]
+    },
+    "rsFilewinProgress.copy.failed": {
+      "kind": "error",
+      "zh": "复制失败 {n}",
+      "args": ["n"]
+    },
+    "rsFilewinProgress.cross.running": {
+      "kind": "body",
+      "zh": "复制 {name} → {machine}",
+      "args": ["name", "machine"]
+    },
+    "rsFilewinProgress.cross.done": {
+      "kind": "body",
+      "zh": "已复制 {name} → {machine}",
+      "args": ["name", "machine"]
+    },
+    "rsFilewinProgress.cross.skipped": {
+      "kind": "body",
+      "zh": "未覆盖 · {name}",
+      "args": ["name"]
+    },
+    "rsFilewinProgress.cross.failed": {
+      "kind": "error",
+      "zh": "复制失败 · {name} → {machine}",
+      "args": ["name", "machine"]
+    },
+    "rsFilewinProgress.cross.stopped": {
+      "kind": "body",
+      "zh": "已停 · {name} → {machine}",
+      "args": ["name", "machine"]
+    },
+    "rsFilewinProgress.size.running": {
+      "kind": "body",
+      "zh": "计算大小 · {name}",
+      "args": ["name"]
+    },
+    "rsFilewinProgress.extract.running": {
+      "kind": "body",
+      "zh": "解压 {name}",
+      "args": ["name"]
+    },
+    "rsFilewinProgress.delete.running": {
+      "kind": "body",
+      "zh": "删除 {n} 项",
+      "args": ["n"]
+    },
+    "rsFilewinProgress.delete.runningOne": {
+      "kind": "body",
+      "zh": "删除 {name}",
+      "args": ["name"]
+    },
+    "rsFilewinProgress.delete.done": {
+      "kind": "body",
+      "zh": "已删除 {n} 项",
+      "args": ["n"]
+    },
+    "rsFilewinProgress.delete.failed": {
+      "kind": "error",
+      "zh": "删除失败 {n}",
+      "args": ["n"]
+    },
+    "rsFilewinProgress.detail.failedOne": {
+      "kind": "body",
+      "zh": "{name}：{why}",
+      "args": ["name", "why"]
+    },
+    "rsFilewinProgress.detail.sep": {
+      "kind": "body",
+      "zh": " · ",
+      "args": []
+    },
+    "rsFilewinProgress.nums.bytes": {
+      "kind": "body",
+      "zh": "{got} / {total}",
+      "args": ["got", "total"]
+    },
+    "rsFilewinProgress.nums.eta": {
+      "kind": "body",
+      "zh": "{bytes} · {left}",
+      "args": ["bytes", "left"]
+    },
+    "rsFilewinProgress.eta.secs": {
+      "kind": "body",
+      "zh": "约 {n}s",
+      "args": ["n"]
+    },
+    "rsFilewinProgress.eta.mins": {
+      "kind": "body",
+      "zh": "约 {n}m",
+      "args": ["n"]
+    },
+    "rsFilewinProgress.eta.hours": {
+      "kind": "body",
+      "zh": "约 {n}h",
+      "args": ["n"]
+    },
+    "rsFilewinChrome.link.reconnecting": {
+      "kind": "body",
+      "zh": "{machine} 断开 · 重新连接中…",
+      "args": ["machine"]
+    },
+    "rsFilewinChrome.link.offline": {
+      "kind": "body",
+      "zh": "{machine} 离线 · 采样 {time}",
+      "args": ["machine", "time"]
+    },
+    "rsFilewinChrome.link.offlineNever": {
+      "kind": "body",
+      "zh": "{machine} 离线",
+      "args": ["machine"]
+    },
+    "rsFilewinChrome.link.retry": {
+      "kind": "action",
+      "zh": "重新连接",
+      "args": []
+    },
+    "rsFilewinChrome.link.readOnly": {
+      "kind": "body",
+      "zh": "离线 · 只读",
+      "args": []
+    },
+    "rsFilewinFind.status.look": {
+      "kind": "action",
+      "zh": "查看",
+      "args": []
+    },
+    "rsFilewinFind.status.holesMore": {
+      "kind": "body",
+      "zh": "另外 {n} 个",
+      "args": ["n"]
+    },
+    "rsFilewinShell.receipt.pathCopied": {
+      "kind": "body",
+      "zh": "路径已复制",
+      "args": []
+    },
+    "rsFilewinEditPage.state.reading": {
+      "kind": "body",
+      "zh": "读取中…",
+      "args": []
+    },
+    "rsFilewinEditPage.state.saving": {
+      "kind": "body",
+      "zh": "保存中…",
+      "args": []
+    },
+    "rsFilewinEditPage.state.unsaved": {
+      "kind": "body",
+      "zh": "未保存",
+      "args": []
+    },
+    "rsFilewinEditPage.state.saved": {
+      "kind": "body",
+      "zh": "已保存 {time}",
+      "args": ["time"]
+    },
+    "rsFilewinEditPage.more.reload": {
+      "kind": "action",
+      "zh": "重新读取",
+      "args": []
+    },
+    "rsFilewinEditPage.more.download": {
+      "kind": "action",
+      "zh": "下载这份",
+      "args": []
+    },
+    "rsFilewinEditPage.more.reveal": {
+      "kind": "action",
+      "zh": "在列表里显示",
+      "args": []
+    },
+    "rsFilewinEditPage.find.hint": {
+      "kind": "action",
+      "zh": "查找",
+      "args": []
+    },
+    "rsFilewinEditPage.stale.line": {
+      "kind": "body",
+      "zh": "{name} 已在盘上被修改",
+      "args": ["name"]
+    },
+    "rsFilewinEditPage.offline.line": {
+      "kind": "body",
+      "zh": "{machine} 断开 · 改动保留",
+      "args": ["machine"]
+    },
+    "rsFilewinEditPage.action.retry": {
+      "kind": "action",
+      "zh": "重试",
+      "args": []
+    },
+    "rsFilewinEditPage.action.download": {
+      "kind": "action",
+      "zh": "下载到本机",
+      "args": []
+    },
+    "rsFilewinEditPage.foot.at": {
+      "kind": "body",
+      "zh": "行 {line} · 列 {col}",
+      "args": ["line", "col"]
+    },
+    "rsFilewinEditPage.foot.size": {
+      "kind": "body",
+      "zh": "{size} / {cap}",
+      "args": ["size", "cap"]
+    },
+    "rsFilewinEditPage.foot.overCap": {
+      "kind": "error",
+      "zh": "超上限 {n} B · 不可保存",
+      "args": ["n"]
+    },
+    "rsFilewinShell.editor.saveClose": {
+      "kind": "action",
+      "zh": "保存",
+      "args": []
+    },
+    "rsFilewinWorkspace.closeAsk.title": {
+      "kind": "body",
+      "zh": "关闭文件窗口 · {machine}",
+      "args": ["machine"]
+    },
+    "rsFilewinWorkspace.closeAsk.unsaved": {
+      "kind": "body",
+      "zh": "未保存",
+      "args": []
+    },
+    "rsFilewinWorkspace.closeAsk.transfers": {
+      "kind": "body",
+      "zh": "传输中",
+      "args": []
+    },
+    "rsFilewinWorkspace.closeAsk.deleting": {
+      "kind": "body",
+      "zh": "删除中",
+      "args": []
+    },
+    "rsFilewinWorkspace.closeAsk.extracting": {
+      "kind": "body",
+      "zh": "解压中",
+      "args": []
+    },
+    "rsFilewinWorkspace.closeAsk.sizing": {
+      "kind": "body",
+      "zh": "计算大小中",
+      "args": []
+    },
+    "rsFilewinWorkspace.closeAsk.listSep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
+    "rsFilewinWorkspace.closeAsk.up": {
+      "kind": "body",
+      "zh": "上传 {pct}%",
+      "args": ["pct"]
+    },
+    "rsFilewinWorkspace.closeAsk.down": {
+      "kind": "body",
+      "zh": "下载 {pct}%",
+      "args": ["pct"]
+    },
+    "rsFilewinWorkspace.closeAsk.copy": {
+      "kind": "body",
+      "zh": "复制 {pct}%",
+      "args": ["pct"]
+    },
+    "rsFilewinWorkspace.closeAsk.cancel": {
+      "kind": "action",
+      "zh": "取消",
+      "args": []
+    },
+    "rsFilewinWorkspace.closeAsk.saveAll": {
+      "kind": "action",
+      "zh": "全部保存后关闭",
+      "args": []
+    },
+    "rsFilewinWorkspace.closeAsk.force": {
+      "kind": "action",
+      "zh": "仍然关闭",
+      "args": []
+    },
+    "rsFilewinEditPage.find.count": {
+      "kind": "body",
+      "zh": "{k} / {n}",
+      "args": ["k", "n"]
+    },
+    "rsFilewinEditPage.find.close": {
+      "kind": "action",
+      "zh": "收起查找",
+      "args": []
+    },
+    "rsFilewinEditPage.crumb.sep": {
+      "kind": "body",
+      "zh": "›",
+      "args": []
+    },
+    "rsFilewinEditPage.crumb.more": {
+      "kind": "body",
+      "zh": "…",
+      "args": []
     }
   }
 }

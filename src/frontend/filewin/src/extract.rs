@@ -208,16 +208,15 @@ impl ExtractBoard {
         self.inner.lock().unwrap().last.clone()
     }
 
-    /// 画「正在解」、撞名那一问（模态）与上一趟的结局。
+    /// 画撞名那一问（模态）。「正在解」与结局是「进度」表里的一行（`super::progress`，那一句从 [`outcome_text`] 出来）。
     pub fn ui(&self, ui: &mut egui::Ui) {
-        let (running, asking, last) = {
-            let d = self.inner.lock().unwrap();
-            (
-                d.running.clone(),
-                d.asking.as_ref().map(|(s, _)| s.clone()),
-                d.last.clone(),
-            )
-        };
+        let asking = self
+            .inner
+            .lock()
+            .unwrap()
+            .asking
+            .as_ref()
+            .map(|(s, _)| s.clone());
         if let Some(said) = asking {
             let (mut fresh, mut skip) = (false, false);
             let (_, esc) = super::shell::modal(ui.ctx(), "filewin-extract-taken", |ui| {
@@ -234,24 +233,6 @@ impl ExtractBoard {
             skip |= esc;
             if fresh || skip {
                 self.settle(fresh);
-            }
-        }
-        if let Some(name) = &running {
-            ui.horizontal(|ui| {
-                ui.spinner();
-                super::shell::fit_label(
-                    ui,
-                    copy_text("rsFilewinExtract.ui.running", &[("name", name)]),
-                    0.0,
-                );
-            });
-        }
-        if let Some((name, o)) = &last {
-            let text = outcome_text(name, o);
-            if matches!(o, Outcome::Failed(_)) {
-                ui.colored_label(ui.visuals().warn_fg_color, text);
-            } else {
-                ui.label(text);
             }
         }
     }

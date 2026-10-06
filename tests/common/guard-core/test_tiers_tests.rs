@@ -142,6 +142,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/filewin/create_tests.rs",
     "tests/frontend/filewin/editor_tests.rs",
     "tests/frontend/filewin/preview_tests.rs",
+    "tests/frontend/filewin/progress_tests.rs", // 「进度」表：一趟一行 · 各自的状态与按钮 · 只留 50 行 · 撤不动的「停」灰着
     "tests/frontend/filewin/kind_tests.rs", // 文件种类：手写的名字 → 种类表 · 图标与词各不相同 · 按类型排
     "tests/frontend/filewin/kit_tests.rs",  // 窗口通用件：命中底色只加在给的那几段上
     "tests/frontend/filewin/chrome_tests.rs", // 窗口的框：历史 · 地址栏 · 导航键 · 状态栏 · 隐藏文件 · 表头（合成事件）

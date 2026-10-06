@@ -295,6 +295,8 @@ pub const CAPABILITIES: &[Capability] = &[
             "stale",
             "truncated",
             "unreadable_dirs",
+            // 读不进去的那几个目录（前 20 个，线上形）。
+            "unreadable_paths",
         ],
         codes: &[],
     },
@@ -321,6 +323,8 @@ pub const CAPABILITIES: &[Capability] = &[
             "skipped_mounts",
             "truncated",
             "unreadable_dirs",
+            // 读不进去的那几个目录（前 20 个，线上形）。
+            "unreadable_paths",
         ],
         // 🔴 `already_rebuilding`：非阻塞互斥抢不到那个位。
         //    它**刻意是一个码而不是回参里的一个布尔** —— 理由住 `answer_index_rebuild`。
@@ -949,6 +953,7 @@ fn answer_status() -> Answer {
         "entries": s.entries,
         "resident_bytes": s.resident_bytes,
         "unreadable_dirs": s.unreadable_dirs,
+        "unreadable_paths": unreadable_paths_json(),
         "truncated": s.truncated,
         "skipped_mounts": s.skipped_mounts,
         "age_secs": s.age_secs,
@@ -1026,9 +1031,18 @@ fn answer_index_rebuild(args: &serde_json::Value) -> Answer {
         "entries": stats.entries,
         "resident_bytes": stats.resident_bytes,
         "unreadable_dirs": stats.unreadable_dirs,
+        "unreadable_paths": unreadable_paths_json(),
         "truncated": stats.truncated,
         "skipped_mounts": stats.skipped_mounts,
     }))
+}
+
+/// 常驻那一份里读不进去的那几个目录，线上形（合法 UTF-8 ⇒ 字符串，否则 `{"b16": …}`）。
+fn unreadable_paths_json() -> Vec<serde_json::Value> {
+    index::unreadable_paths()
+        .iter()
+        .map(|b| raw::to_json(b))
+        .collect()
 }
 
 /// `files.browse` —— 告诉后端「用户现在在看哪几个目录」。

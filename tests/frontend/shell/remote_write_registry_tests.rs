@@ -522,7 +522,8 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
         // 33 → 34，多的是窗口包的平台层 `platform.rs`（一个池子符号都不碰）。
         // 34 → 38：样子 `theme.rs` · 窗口的框 `chrome.rs` · 文件种类 `kind.rs` · 属性框 `props.rs`（属性经通道问 `files-stat`；一个池子符号都不碰）。
         // 38 → 39，多的是窗口的通用件 `kit.rs`（一个池子符号都不碰）。
-        39,
+        // 39 → 40，多的是窗口底部那张「进度」表 `progress.rs`（只读各趟看板的读数，一个池子符号都不碰）。
+        40,
         "`filewin/` 那棵树现扫到 {} 份 `.rs`（2026-09-22 现打 14：copy · corpus · **download** · **editor** · entry · \
          find · fonts · mod · rows · scale · shell · source · transfer · writeops）\
          〔第十三刀 09-23：14 → 16，多的是 **proc** 与 **win_main**（窗口改独立进程：\

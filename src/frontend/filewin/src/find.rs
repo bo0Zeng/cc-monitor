@@ -122,6 +122,8 @@ pub const STATUS_FIELDS: &[&str] = &[
     "cold_first_build_secs",
     // 后端没走进去的挂载点个数。
     "skipped_mounts",
+    // 读不进去的那几个目录（前 20 个）。
+    "unreadable_paths",
 ];
 
 /// 一条命中。**持有原始字节，不持有字符串** —— 有损解码之后拿着替换字符回去找，找的是一个不存在的名字；
@@ -241,6 +243,8 @@ pub struct IndexStatus {
     pub cold_first_build_secs: u64,
     /// 根底下挂着的别的文件系统，后端没走进去的个数（那几个目录底下的搜不到）。
     pub skipped_mounts: u64,
+    /// 读不进去的那几个目录（后端交的前 20 个，原始字节）：状态行「n 个目录无权限［查看］」点开列它们。
+    pub unreadable_paths: Vec<Vec<u8>>,
 }
 
 fn field(d: &Value, k: &str) -> Result<Value, String> {
@@ -380,6 +384,17 @@ pub fn decode_status(d: &Value) -> Result<IndexStatus, String> {
         browse_watch_cap: need_u64(d, "browse_watch_cap")?,
         cold_first_build_secs: need_u64(d, "cold_first_build_secs")?,
         skipped_mounts: need_u64(d, "skipped_mounts")?,
+        unreadable_paths: field(d, "unreadable_paths")?
+            .as_array()
+            .ok_or_else(|| {
+                copy_text(
+                    "rsFilewinFind.reply.missingField",
+                    &[("k", &"unreadable_paths".to_string())],
+                )
+            })?
+            .iter()
+            .filter_map(decode_path)
+            .collect(),
     })
 }
 
@@ -565,12 +580,7 @@ pub fn holes_line(s: &IndexStatus) -> Vec<String> {
             &[("n", &s.entries.to_string())],
         ));
     }
-    if s.unreadable_dirs > 0 {
-        out.push(copy_text(
-            "rsFilewinFind.status.holes",
-            &[("n", &s.unreadable_dirs.to_string())],
-        ));
-    }
+    // 「n 个目录无权限」那一句不在这里：它带一颗［查看］（[`SearchBoard::status_ui`] 单独画）。
     if s.skipped_mounts > 0 {
         out.push(copy_text(
             "rsFilewinFind.status.skippedMounts",
@@ -578,6 +588,93 @@ pub fn holes_line(s: &IndexStatus) -> Vec<String> {
         ));
     }
     out
+}
+
+/// 状态行「n 个目录无权限［查看］」：点［查看］⇒ 下方一层浮层列后端交的那几个目录（相对搜索起点、等宽；
+/// 多于列出的 ⇒ 末行「另外 n 个」）；点一行 ⇒ 交出那条绝对路径（窗口复制它、右下角回执；不跳过去 —— 跳过去只会落到「无权限」那一条）。
+fn unreadable_ui(
+    ui: &mut egui::Ui,
+    st: &IndexStatus,
+    head: Option<&FindOutcome>,
+) -> Option<String> {
+    let p = super::theme::palette(ui.ctx());
+    let id = egui::Id::new("filewin-unreadable-list");
+    let mut open = ui.data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
+    // 「3 个目录无权限」＋［查看］摆成一小块（先量宽、再按左到右摆）：外面那一层是右到左，两样各自贴右会叠在一起。
+    let said = copy_text(
+        "rsFilewinFind.status.holes",
+        &[("n", &st.unreadable_dirs.to_string())],
+    );
+    let look_text = copy_text("rsFilewinFind.status.look", &[]);
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let w = ui
+        .painter()
+        .layout_no_wrap(said.clone(), font.clone(), p.warn)
+        .size()
+        .x
+        + ui.painter()
+            .layout_no_wrap(look_text.clone(), font, p.accent)
+            .size()
+            .x
+        + ui.spacing().item_spacing.x
+        + 2.0;
+    let look = ui
+        .allocate_ui_with_layout(
+            egui::vec2(w, ui.available_height()),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.add(
+                    egui::Label::new(egui::RichText::new(&said).color(p.warn)).selectable(false),
+                );
+                ui.link(&look_text)
+            },
+        )
+        .inner;
+    if look.clicked() {
+        open = !open;
+    }
+    let start = head.and_then(|o| o.start.clone());
+    let rows: Vec<(String, String)> = st
+        .unreadable_paths
+        .iter()
+        .map(|b| {
+            let full = String::from_utf8_lossy(b).to_string();
+            let shown = start
+                .as_deref()
+                .and_then(|s| relative_under(b, s))
+                .unwrap_or_else(|| full.clone());
+            (shown, full)
+        })
+        .collect();
+    let more = (st.unreadable_dirs as usize).saturating_sub(rows.len());
+    let tail = (more > 0).then(|| {
+        copy_text(
+            "rsFilewinFind.status.holesMore",
+            &[("n", &more.to_string())],
+        )
+    });
+    // 浮层挂在［查看］正下方（贴着窗口右缘放不下时 egui 把它往左推回窗口里）。
+    let hit = super::kit::path_list(
+        ui,
+        id.with("list"),
+        look.rect,
+        &mut open,
+        &rows,
+        tail.as_deref(),
+    );
+    ui.data_mut(|d| d.insert_temp(id, open));
+    hit.map(|i| rows[i].1.clone())
+}
+
+/// `path` 在 `start` 以下 ⇒ 相对它的那一段（`start` 自己 ⇒ `.`）；不在 ⇒ `None`（画绝对路径）。
+fn relative_under(path: &[u8], start: &[u8]) -> Option<String> {
+    let s = start.strip_suffix(b"/").unwrap_or(start);
+    let rest = path.strip_prefix(s)?;
+    if rest.is_empty() {
+        return Some(".".into());
+    }
+    let rest = rest.strip_prefix(b"/")?;
+    Some(String::from_utf8_lossy(rest).to_string())
 }
 
 /// **冷启动首建那一趟正在走**时状态行那一句（秒数是后端声明的）。
@@ -600,7 +697,7 @@ pub fn no_match_line(q: &str) -> String {
 }
 
 /// 状态行与结果表尾上点出来的事。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SearchAction {
     /// 「刷新」：重走文件清单。
     Refresh,
@@ -610,6 +707,8 @@ pub enum SearchAction {
     Retry,
     /// 翻页失败那一行的「重试」。
     RetryMore,
+    /// 「n 个目录无权限［查看］」那一层里点了一行：复制这条绝对路径。
+    CopyPath(String),
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1219,6 +1318,11 @@ impl SearchBoard {
                 if let Some(st) = &status {
                     for h in holes_line(st).into_iter().rev() {
                         ui.label(egui::RichText::new(h).color(p.warn));
+                    }
+                    if st.unreadable_dirs > 0 {
+                        if let Some(path) = unreadable_ui(ui, st, outcome_head.as_ref()) {
+                            act = Some(SearchAction::CopyPath(path));
+                        }
                     }
                 }
             });

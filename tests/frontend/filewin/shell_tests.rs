@@ -1951,7 +1951,7 @@ fn editing_window(name: &str, text: String) -> FileWindow {
     w
 }
 
-/// 跑几帧 `frame_body`，回最后一帧画出来的文字与编辑面那一块的矩形。
+/// 跑几帧 `frame_body`，回最后一帧画出来的文字与编辑面那一块（正文那个滚动区）的矩形。
 fn editor_frames(
     ctx: &egui::Context,
     w: &mut FileWindow,
@@ -1965,14 +1965,19 @@ fn editor_frames(
         painted =
             crate::copy::testing::painted_text(ctx, screen, t, Vec::new(), |ui| w.frame_body(ui));
     }
-    let area = ctx
-        .memory(|m| m.area_rect(egui::Id::new("filewin-editor")))
-        .expect("编辑面那一块没立起来");
-    (painted, area)
+    assert!(w.editing().is_some(), "编辑面那一块没立起来");
+    // 正文那个滚动区：编辑页头条之下、窗口底边之上（编辑页摆满它那一栏，`frame_body` 拿到的就是整屏）。
+    let head =
+        crate::copy::testing::rects_of(&painted, &copy_text("rsFilewinShell.editor.save", &[]));
+    let top = head.first().map_or(0.0, |r| r.bottom());
+    (
+        painted,
+        egui::Rect::from_min_max(egui::pos2(0.0, top), egui::pos2(screen.x, screen.y)),
+    )
 }
 
-/// 🔴 **长文件不把编辑面撑出窗口**：普通路径（几千行）· 大文件模式（全文过线 / 一行过线、长行不折）·
-/// 大窗口与缩小的窗口，四形里编辑面那一块都在窗口里，「保存」「关闭」两颗都画在窗口里。
+/// 🔴 **长文件不把编辑页撑出窗口**：普通路径（几千行）· 大文件模式（全文过线 / 一行过线、长行不折）·
+/// 大窗口与缩小的窗口，几形里正文都只画在窗口里（在编辑面里滚），头条上「保存」画在窗口里、恰好一颗。
 #[test]
 fn a_long_file_scrolls_inside_an_editor_that_stays_inside_the_window() {
     let long: String = (0..3000).map(|i| format!("line {i}\n")).collect();
@@ -1987,8 +1992,7 @@ fn a_long_file_scrolls_inside_an_editor_that_stays_inside_the_window() {
     assert!(crate::bigfile::judge(&big_total).is_some_and(|w| w.total_over()));
     assert!(crate::bigfile::judge(&big_line).is_some_and(|w| w.line_over()));
     let save = copy_text("rsFilewinShell.editor.save", &[]);
-    let close = copy_text("rsFilewinShell.editor.close", &[]);
-    for screen in [egui::vec2(1280.0, 800.0), egui::vec2(560.0, 360.0)] {
+    for screen in [egui::vec2(1280.0, 800.0), egui::vec2(640.0, 400.0)] {
         let whole = egui::Rect::from_min_size(egui::Pos2::ZERO, screen);
         for (name, text) in [
             ("long.rs", long.clone()),
@@ -2002,7 +2006,14 @@ fn a_long_file_scrolls_inside_an_editor_that_stays_inside_the_window() {
                 whole.contains_rect(area),
                 "{name} 在 {screen:?} 的窗口里：编辑面 {area:?} 出了窗口"
             );
-            for label in [&save, &close] {
+            // 正文那几段字（行号槽 ＋ 正文 / 大文件模式那几行）的可见部分都在窗口里：长文件在面里滚，不撑大编辑页。
+            for (t, r) in painted.iter().filter(|(t, _)| t.len() > 200) {
+                assert!(
+                    r.top() >= area.top() - 1.0,
+                    "{name}：正文画到了头条上面（{t:.20}… 在 {r:?}）"
+                );
+            }
+            for label in [&save] {
                 let at = crate::copy::testing::rects_of(&painted, label);
                 assert_eq!(at.len(), 1, "{name}：「{label}」画了 {} 次", at.len());
                 assert!(
@@ -2210,22 +2221,44 @@ fn prompts_take_enter_to_confirm_and_escape_to_cancel() {
     );
 }
 
-/// 🔴 **编辑面认 Esc**：没改过 ⇒ 关掉；改了没存 ⇒ 先问，在那一问上再按 Esc ＝「先别关」（字一个不少）。
+/// 🔴 **Esc 从不关编辑页**（稿 甲5 键盘表）：Esc 只收查找条；关这一页走 × / Ctrl+W（[`FileWindow::close_edit`]）——
+/// 没改过 ⇒ 关掉；改了没存 ⇒ 先问「关闭 x · 未保存」，在那一问上按 Esc ＝「取消」（字一个不少）。
 #[test]
-fn escape_closes_the_editor_and_asks_first_when_dirty() {
+fn escape_never_closes_the_editor_and_closing_a_dirty_one_asks_first() {
     let ctx = egui::Context::default();
     let mut w = editing_window("app.conf", "a=1\n".into());
+    w.find_open = true;
     step(&ctx, &mut w, Vec::new());
     step(&ctx, &mut w, Vec::new());
     step(&ctx, &mut w, vec![key_ev(egui::Key::Escape)]);
-    assert!(w.editing().is_none(), "没改过，按 Esc 却没关");
+    assert!(!w.find_open, "Esc 没收查找条");
+    step(&ctx, &mut w, vec![key_ev(egui::Key::Escape)]);
+    assert!(w.editing().is_some(), "按 Esc 把编辑页关了");
+    assert!(w.close_edit(), "没改过，关不掉");
     let mut w = editing_window("app.conf", "a=1\n".into());
     *w.editing_text_mut().unwrap() = "a=2\n".into();
     step(&ctx, &mut w, Vec::new());
+    assert!(!w.close_edit(), "改了没存却直接关了");
+    assert!(w.asking_discard(), "改了没存，关的时候没问");
     step(&ctx, &mut w, Vec::new());
-    step(&ctx, &mut w, vec![key_ev(egui::Key::Escape)]);
-    assert!(w.asking_discard(), "改了没存，按 Esc 却没问");
-    step(&ctx, &mut w, Vec::new());
+    let painted = crate::copy::testing::painted_text(
+        &ctx,
+        egui::vec2(1280.0, 800.0),
+        99.0,
+        Vec::new(),
+        |ui| w.frame_body(ui),
+    );
+    for label in [
+        copy_text("rsFilewinShell.editor.unsaved", &[("name", "app.conf")]),
+        copy_text("rsFilewinShell.editor.keep", &[]),
+        copy_text("rsFilewinShell.editor.discard", &[]),
+        copy_text("rsFilewinShell.editor.saveClose", &[]),
+    ] {
+        assert!(
+            crate::copy::testing::painted_contains(&painted, &label),
+            "那一问上没有「{label}」"
+        );
+    }
     step(&ctx, &mut w, vec![key_ev(egui::Key::Escape)]);
     assert!(!w.asking_discard(), "在那一问上按 Esc 没收掉问");
     assert_eq!(
@@ -3060,12 +3093,13 @@ fn zoom_keys_and_wheel_change_the_zoom_and_it_survives_a_reopen() {
 // 文件窗口的行为缺陷（同类后台活一次一趟 · 下载可停 · 列表落地 · 框里说原因 · 结局看得到 · 隐藏文件 · 命中不每帧克隆）
 // ════════════════════════════════════════════════════════════════════════
 
-/// 一摞上传还在飞（上一摞按过取消、还有几件排着）时再拖一摞进来：不起，说一句；**上一摞的取消不被清掉**
-/// （此前第二摞无条件复位取消台 ⇒ 第一摞取消不掉、排着的那几件接着传）。下载同理：在下的时候再要下载，不摆那一问。
+/// 一摞上传还在飞（人按过取消、还有几件排着）时再拖一摞进来：照样起，是「进度」表里**独立的一行**；
+/// **上一摞的取消不被清掉、也不传给新的一摞**（一趟一块看板、一张取消台 —— 此前一类只有一块，只能一次一趟）。
+/// 下载同理：在下的时候再要下载，照样摆「存到哪儿」。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_second_trip_of_the_same_kind_waits_and_leaves_the_first_ones_cancel_alone() {
+async fn a_second_trip_of_the_same_kind_runs_beside_the_first_and_leaves_its_cancel_alone() {
     let wired = crate::find::testing::wire_up(
-        "one-at-a-time",
+        "side-by-side",
         crate::find::testing::FakeBackend::new(
             &["files-ls"],
             crate::find::testing::Declared::default(),
@@ -3073,55 +3107,86 @@ async fn a_second_trip_of_the_same_kind_waits_and_leaves_the_first_ones_cancel_a
     )
     .await;
     let mut w = crate::find::testing::window_on(&wired, "/srv/data");
-    // 第一摞：起了还没收场（看板还没落那一趟的结局），人按了取消。
-    w.drops_started = 1;
-    w.board.cancels().request();
+    let items = w.pending_for(&["/tmp/x/first.bin".to_string()]);
+    assert!(w.start_drop(items, None), "第一摞没起来");
+    let first = w.board.clone();
+    first.cancels().request();
     let items = w.pending_for(&["/tmp/x/late.bin".to_string()]);
-    assert_eq!(items.len(), 1);
-    assert!(!w.start_drop(items, None), "上一摞还在飞，第二摞起来了");
+    assert!(w.start_drop(items, None), "上一摞还在飞，第二摞没起来");
     assert!(
-        w.board.cancels().is_cancelled(),
+        first.cancels().is_cancelled(),
         "第二摞把第一摞的取消清掉了 —— 排着的那几件会接着传"
     );
-    assert_eq!(
-        w.key_notice(),
-        Some(copy_text("rsFilewinShell.oneAtATime.upload", &[]).as_str())
+    assert!(
+        !w.board.cancels().is_cancelled(),
+        "第二摞接了第一摞的取消 —— 一件都起不来"
     );
-    // 下载：一趟在下 ⇒ 菜单 / 键盘再要下载不摆那一问。
+    let ups = w
+        .progress
+        .jobs()
+        .iter()
+        .filter(|j| matches!(j.trip, crate::progress::Trip::Upload { .. }))
+        .count();
+    assert_eq!(ups, 2, "两摞上传不是「进度」表里的两行");
+    // 下载：一趟在下 ⇒ 菜单 / 键盘再要下载照样摆那一问。
     let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
     w.pull.begin("big.iso");
     pick_row(&mut w, 0);
-    assert!(!w.perform(crate::select::Action::Download, None));
-    assert!(w.pull_ask().is_none(), "在下的时候又摆出了「存到哪儿」");
-    assert_eq!(
-        w.key_notice(),
-        Some(copy_text("rsFilewinShell.oneAtATime.download", &[]).as_str())
+    assert!(w.perform(crate::select::Action::Download, None));
+    assert!(
+        w.pull_ask().is_some(),
+        "在下的时候再要下载，没摆「存到哪儿」"
     );
 }
 
-/// 下载那一行有「取消」：点了 ⇒ 这一趟的取消台按下（订阅停掉，`.part` 留着续传）；下一趟开头复位，不被上一趟的取消拦下。
+/// 「进度」表上在下的那一行有「停」：点了 ⇒ 这一趟的取消台按下（订阅停掉，`.part` 留着续传）；
+/// 下一趟是另一块看板，不被上一趟的取消拦下。
 #[test]
-fn a_download_in_flight_can_be_cancelled_from_its_row() {
+fn a_download_in_flight_can_be_stopped_from_its_row_in_the_progress_table() {
     let ctx = egui::Context::default();
-    let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
-    w.pull.begin("big.iso");
+    let progress = crate::progress::Progress::default();
+    let board = crate::download::DownloadBoard::default();
+    board.begin("big.iso");
+    progress.add(
+        crate::progress::Trip::Download {
+            board: board.clone(),
+            name: "big.iso".into(),
+            src: "/srv/big.iso".into(),
+            dest: "/tmp/big.iso".into(),
+        },
+        None,
+        None,
+    );
     let mut t = 0.0;
-    let mut paint = |w: &mut FileWindow, ev: Vec<egui::Event>| {
+    let mut acted = None;
+    let mut paint = |ev: Vec<egui::Event>, acted: &mut Option<crate::progress::Act>| {
         t += 0.5;
         crate::copy::testing::painted_text(&ctx, egui::vec2(1280.0, 800.0), t, ev, |ui| {
-            w.frame_body(ui)
+            if let Some(a) = crate::progress::table_ui(ui, &progress) {
+                *acted = Some(a);
+            }
         })
     };
-    let _ = paint(&mut w, Vec::new());
-    let painted = paint(&mut w, Vec::new());
-    let at = crate::copy::testing::rects_of(&painted, crate::transfer::CANCEL_LABEL.as_str());
-    assert_eq!(at.len(), 1, "在下的那一行上没有取消：{painted:?}");
+    let _ = paint(Vec::new(), &mut acted);
+    let painted = paint(Vec::new(), &mut acted);
+    let stop = format!(
+        "{} {}",
+        egui_phosphor::regular::STOP,
+        copy_text("rsFilewinProgress.action.stop", &[])
+    );
+    let at = crate::copy::testing::rects_of(&painted, &stop);
+    assert_eq!(at.len(), 1, "在下的那一行上没有「停」：{painted:?}");
     let pos = at[0].center();
-    let _ = paint(&mut w, vec![egui::Event::PointerMoved(pos)]);
-    let _ = paint(&mut w, crate::rows::testing::click_at(pos));
-    assert!(w.pull.cancels().is_cancelled(), "点了取消，这一趟没被撤");
-    w.pull.begin("next.iso");
-    assert!(!w.pull.cancels().is_cancelled(), "上一趟的取消拦下了下一趟");
+    let _ = paint(vec![egui::Event::PointerMoved(pos)], &mut acted);
+    let _ = paint(crate::rows::testing::click_at(pos), &mut acted);
+    let Some(crate::progress::Act::Stop(id)) = acted else {
+        panic!("点了「停」却没交出停哪一趟：{acted:?}");
+    };
+    assert!(progress.stop(id));
+    assert!(board.cancels().is_cancelled(), "点了停，这一趟没被撤");
+    let next = crate::download::DownloadBoard::default();
+    next.begin("next.iso");
+    assert!(!next.cancels().is_cancelled(), "上一趟的取消拦下了下一趟");
 }
 
 /// 列表还在路上时换了排序：落地那一屏按**现在**那一档排（表头指着「大小」，行就按大小）。
@@ -3212,29 +3277,52 @@ fn a_bad_name_is_explained_inside_the_box() {
     assert!(w.listing.error.lock().unwrap().is_none());
 }
 
-/// 传输那一摞收起着：传完了（成功）⇒ 状态栏那颗开关留着（还没看过）；有失败 ⇒ 自己摊开。
+/// 「进度」表收起着：传完了（成功）⇒ 不自己摊开、状态栏那一颗还在（表里有一行）、没有红点；
+/// 有失败 ⇒ 自己摊开、红点亮着；人收起来红点还在，人自己再点开才算看过。
 #[test]
-fn a_transfer_outcome_is_not_lost_behind_a_collapsed_panel() {
-    let mut w = remote_window_with_rows("/srv/data", Vec::new());
-    w.transfers_open = false;
-    w.pull.begin("ok.bin");
-    w.pull.finish(crate::download::Outcome::Done {
+fn a_transfer_outcome_is_not_lost_behind_a_collapsed_table() {
+    let progress = crate::progress::Progress::default();
+    let pull = crate::download::DownloadBoard::default();
+    progress.add(
+        crate::progress::Trip::Download {
+            board: pull.clone(),
+            name: "ok.bin".into(),
+            src: "/srv/ok.bin".into(),
+            dest: "/tmp/ok.bin".into(),
+        },
+        None,
+        None,
+    );
+    pull.begin("ok.bin");
+    pull.finish(crate::download::Outcome::Done {
         dest: "/tmp/ok.bin".into(),
         bytes: 1,
     });
-    w.settle_transfer_outcomes();
-    assert!(
-        w.transfers_unseen(),
-        "传完了，收着的那一摞上没有任何东西提示"
+    progress.settle(0);
+    assert!(!progress.is_empty(), "传完了，状态栏上那一颗没了");
+    assert!(!progress.is_open(), "成功也自己摊开了");
+    assert!(!progress.unseen_fail(), "成功也亮了红点");
+    let up = crate::transfer::DropBoard::default();
+    progress.add(
+        crate::progress::Trip::Upload {
+            board: up.clone(),
+            items: Vec::new(),
+            dir: "data".into(),
+        },
+        Some("/srv/data".into()),
+        None,
     );
-    assert!(!w.transfers_open, "成功也自己摊开了");
-    w.board.finish(crate::transfer::DropOutcome {
+    up.finish(crate::transfer::DropOutcome {
         failed: vec![("x.bin".into(), "盘满了".into())],
         ..Default::default()
     });
-    w.settle_transfer_outcomes();
-    assert!(w.transfers_open, "有失败，那一摞却还收着");
-    assert!(!w.transfers_unseen(), "摊开着就算看过了");
+    progress.settle(0);
+    assert!(progress.is_open(), "有失败，那张表却还收着");
+    assert!(progress.unseen_fail(), "有失败，状态栏上没有红点");
+    progress.set_open(false);
+    assert!(progress.unseen_fail(), "收起来红点就没了 —— 失败没人看过");
+    progress.set_open(true);
+    assert!(!progress.unseen_fail(), "人点开看过了，红点还在");
 }
 
 /// 隐藏文件关着时跳到一个隐藏文件：打开显示隐藏文件、照样跳过去、说一句（此前说「它可能刚被删掉或改了名」）。

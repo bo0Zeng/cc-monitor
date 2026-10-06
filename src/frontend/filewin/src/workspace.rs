@@ -55,6 +55,20 @@ pub struct Side {
     pub active: usize,
 }
 
+/// 关窗那一问要列的：没保存的编辑页（名字）＋ 还在跑的那几趟（`(族名, [(图标, 名字, 右端那一格)])`）。
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CloseAsk {
+    pub unsaved: Vec<String>,
+    pub running: Vec<(String, Vec<(&'static str, String, String)>)>,
+}
+
+impl CloseAsk {
+    /// 关了什么都不丢。
+    pub fn is_empty(&self) -> bool {
+        self.unsaved.is_empty() && self.running.is_empty()
+    }
+}
+
 /// 窗口的最外一层。
 pub struct Workspace {
     sides: Vec<Side>,
@@ -74,8 +88,6 @@ pub struct Workspace {
     pub(super) home_go: bool,
     /// 左栏「其他机器」那一问的结局。
     pub(super) other: super::chrome::OtherSlot,
-    /// 点了关窗、正等编辑面「改了没存」那一问的回答（答「丢掉」⇒ 接着关）。
-    closing: bool,
     /// 整窗缩放（记在视图文件里，下次开窗照它）。
     pub zoom: Zoom,
     /// 右下角那一摞回执（一次性的那几句：键位做不成的原因 · 跳到隐藏文件 · 开另一台 …）。
@@ -84,6 +96,18 @@ pub struct Workspace {
     toasted: Option<String>,
     /// 上一帧发出去的窗口标题（变了才再发）。
     title: Option<String>,
+    /// 窗口底部那张「进度」表（每个标签页拿的是同一份；关掉标签页不带走它上面的那几趟）。
+    pub progress: super::progress::Progress,
+    /// 那台此刻连没连着（每个标签页拿同一份）。
+    pub link: super::chrome::LinkState,
+    /// 上一次照着「又连上了」重列过的次数（与 `link.ups()` 比）。
+    link_ups: u64,
+    /// 关窗那一问摆着（稿 17）。
+    closing_ask: bool,
+    /// 那一问答了「全部保存后关闭」：每一页存成了就关。
+    close_after_save: bool,
+    /// 那一问答了「仍然关闭」/ 那一问摆着时又点了一次 ×：下一次关窗请求放行。
+    force_close: bool,
 }
 
 /// 缩放的上下限与一步多少（Ctrl + = / -）。
@@ -177,7 +201,10 @@ pub fn tab_keys(events: &[egui::Event]) -> Vec<TabKey> {
 
 impl Workspace {
     /// 从开窗那一个标签页起步（它身上已经挂好了通道 · 运行时 · 书签 · 字体）。
-    pub fn new(first: FileWindow) -> Self {
+    pub fn new(mut first: FileWindow) -> Self {
+        first.in_workspace = true;
+        let progress = first.progress.clone();
+        let link = first.link.clone();
         let mut w = Self {
             sides: vec![Side {
                 tabs: vec![Tab { id: 0, pane: first }],
@@ -192,11 +219,16 @@ impl Workspace {
             home: Default::default(),
             home_go: false,
             other: Default::default(),
-            closing: false,
             zoom: Zoom::default(),
             toasts: Default::default(),
             toasted: None,
             title: None,
+            progress,
+            link,
+            link_ups: 0,
+            closing_ask: false,
+            close_after_save: false,
+            force_close: false,
         };
         w.sync_focus();
         w
@@ -287,6 +319,9 @@ impl Workspace {
         p.shelf = like.shelf.clone();
         p.machines = like.machines.clone();
         p.font = like.font.clone();
+        p.progress = like.progress.clone();
+        p.link = like.link.clone();
+        p.in_workspace = true;
         p.reload();
         p
     }
@@ -307,10 +342,13 @@ impl Workspace {
     }
 
     /// 把一个建好的目录视图作为新标签页挂到第 `side` 栏，并切过去（焦点随之给这一栏）。
-    pub fn add_tab(&mut self, side: usize, pane: FileWindow) -> bool {
+    pub fn add_tab(&mut self, side: usize, mut pane: FileWindow) -> bool {
         if side >= self.sides.len() {
             return false;
         }
+        pane.progress = self.progress.clone();
+        pane.link = self.link.clone();
+        pane.in_workspace = true;
         let id = self.mint_id();
         let s = &mut self.sides[side];
         s.tabs.push(Tab { id, pane });
@@ -322,10 +360,13 @@ impl Workspace {
     }
 
     /// 把一个建好的目录视图挂成右栏（只在一栏时；焦点给它）。回值 ＝ 真的挂上了。
-    pub fn add_side(&mut self, pane: FileWindow) -> bool {
+    pub fn add_side(&mut self, mut pane: FileWindow) -> bool {
         if self.sides.len() != 1 {
             return false;
         }
+        pane.progress = self.progress.clone();
+        pane.link = self.link.clone();
+        pane.in_workspace = true;
         let id = self.mint_id();
         self.sides.push(Side {
             tabs: vec![Tab { id, pane }],
@@ -359,6 +400,19 @@ impl Workspace {
             self.notice = Some(copy_text("rsFilewinWorkspace.closeTab.last", &[]).into());
             return false;
         }
+        // 编辑页：改了没存 ⇒ 切过去、摆「关闭 x · 未保存」那一问（答了再关，`settle_tab_wants`）；没改 ⇒ 直接关。
+        if self.sides[side].tabs[i].pane.edit_tab {
+            let dirty = self.sides[side].tabs[i]
+                .pane
+                .editing()
+                .is_some_and(super::editor::Pane::dirty);
+            if dirty {
+                self.select_tab(side, i);
+                self.sides[side].tabs[i].pane.close_edit();
+                return false;
+            }
+            return self.drop_tab(side, i);
+        }
         if let Some(why) = self.sides[side].tabs[i].pane.busy_reason() {
             self.notice = Some(copy_text(
                 "rsFilewinWorkspace.closeTab.busy",
@@ -366,7 +420,16 @@ impl Workspace {
             ));
             return false;
         }
+        self.drop_tab(side, i)
+    }
+
+    /// 真把第 `side` 栏第 `i` 个标签页拿掉（不再问）。它开过的那几趟照跑（「进度」表里的行），落地后由窗口这一级重列目录。
+    fn drop_tab(&mut self, side: usize, i: usize) -> bool {
+        if self.sides[side].tabs.len() <= 1 || i >= self.sides[side].tabs.len() {
+            return false;
+        }
         let s = &mut self.sides[side];
+        s.tabs[i].pane.orphan_jobs();
         s.tabs.remove(i);
         if s.active > i || s.active >= s.tabs.len() {
             s.active = s.active.saturating_sub(1);
@@ -374,6 +437,82 @@ impl Workspace {
         self.notice = None;
         self.sync_focus();
         true
+    }
+
+    /// 每帧一次：目录页要开的那一份 ⇒ 在同一栏开一个编辑页（同一份已开着 ⇒ 切过去，不开第二份）；
+    /// 编辑页点了面包屑 / 「在列表里显示」⇒ 同一栏切到 / 开一个目录页到那里；编辑页要关自己 ⇒ 关掉。
+    pub fn settle_tab_wants(&mut self, ctx: Option<egui::Context>) {
+        for k in 0..self.sides.len() {
+            let mut i = 0;
+            while i < self.sides[k].tabs.len() {
+                if let Some(w) = self.sides[k].tabs[i].pane.want_edit.take() {
+                    let open = self.sides[k].tabs.iter().position(|t| {
+                        t.pane.edit_tab
+                            && t.pane.edit_path().as_deref() == Some(w.row.path.as_str())
+                    });
+                    match open {
+                        Some(at) => {
+                            self.select_tab(k, at);
+                        }
+                        None => {
+                            let mut p = Self::spawn_editor(&self.sides[k].tabs[i].pane);
+                            p.begin_edit_at(w.row, w.at, w.refused, ctx.clone());
+                            self.add_tab(k, p);
+                        }
+                    }
+                }
+                if let Some(dir) = self.sides[k].tabs[i].pane.want_dir.take() {
+                    let reveal = self.sides[k].tabs[i].pane.want_reveal.take();
+                    let there = self.sides[k]
+                        .tabs
+                        .iter()
+                        .position(|t| !t.pane.edit_tab && t.pane.cwd == dir);
+                    let at = match there {
+                        Some(at) => {
+                            self.select_tab(k, at);
+                            at
+                        }
+                        None => {
+                            let mut p = Self::spawn_pane(&self.sides[k].tabs[i].pane);
+                            p.navigate_to(dir);
+                            self.add_tab(k, p);
+                            self.sides[k].tabs.len() - 1
+                        }
+                    };
+                    if let Some(n) = reveal {
+                        self.sides[k].tabs[at].pane.set_reveal(&n);
+                    }
+                }
+                if std::mem::take(&mut self.sides[k].tabs[i].pane.want_close) {
+                    if self.drop_tab(k, i) {
+                        continue;
+                    }
+                }
+                i += 1;
+            }
+        }
+    }
+
+    /// 照 `like` 那个目录页的样子起一个**编辑页**（同一台 · 同一条线 · 同一份书签 / 字体 / 进度表 / 连接状态），不列目录。
+    fn spawn_editor(like: &FileWindow) -> FileWindow {
+        let mut p = FileWindow::seeded(
+            like.source.clone(),
+            like.cwd.clone(),
+            like.rt.clone(),
+            Vec::<Listed>::new(),
+        );
+        p.cwd_raw = like.cwd_raw.clone();
+        if let Some(line) = like.line.clone() {
+            p.attach_line(line);
+        }
+        p.shelf = like.shelf.clone();
+        p.machines = like.machines.clone();
+        p.font = like.font.clone();
+        p.progress = like.progress.clone();
+        p.link = like.link.clone();
+        p.in_workspace = true;
+        p.edit_tab = true;
+        p
     }
 
     /// 开 / 收双栏。开 ⇒ 右边长出一栏（一个标签页，落在焦点那一栏的目录上），焦点给它；
@@ -392,7 +531,11 @@ impl Workspace {
                     ));
                     return false;
                 }
-                self.sides.pop();
+                if let Some(mut s) = self.sides.pop() {
+                    for t in &mut s.tabs {
+                        t.pane.orphan_jobs();
+                    }
+                }
                 self.focus = 0;
             }
             _ => return false,
@@ -489,56 +632,169 @@ impl Workspace {
 
     /// 标签上写什么：当前目录的最后一段（根就写 `/`）；手上有事的前面加「●」。
     pub fn tab_title(pane: &FileWindow) -> String {
+        if pane.edit_tab {
+            return pane.edit_name();
+        }
         let tail = super::source::remote_basename(&pane.cwd);
         let tail = if tail.is_empty() { "/" } else { tail };
         tail.to_string()
     }
 
-    /// 🔴 **点了关窗**（这一帧的输入里有关窗请求）：有东西会丢就拦下（`CancelClose`）并说出来 ——
-    /// 改了没存 ⇒ 切到那一页、摆它那一问（答「丢掉」之后接着关）；手上有活 ⇒ 切到那一页、说关标签页时那同一句话；
-    /// 那句话正摆着时又点了一次 ⇒ 照关。开着一份没改过的文本不拦。
+    /// 🔴 **点了关窗**（这一帧的输入里有关窗请求）：什么都不会丢 ⇒ 直接关；有没保存的编辑页 / 还在跑的那几趟 ⇒
+    /// 拦下（`CancelClose`）、摆「关闭文件窗口 · devbox」那一问（稿 17，[`Self::close_ask_ui`]）。
+    /// 那一问摆着时又点了一次 × ⇒ 照关（修缺陷那一路交的，认）。答了「全部保存后关闭」⇒ 每一页存成了就关；有一页没存成 ⇒ 作罢（那一页上的条说为什么）。
     pub fn guard_close(&mut self, ctx: &egui::Context) {
         if !ctx.input(|i| i.viewport().close_requested()) {
-            // 等的那一问答了：答「丢掉」⇒ 接着关；答「先别关」⇒ 作罢。
-            if self.closing && !self.panes().any(FileWindow::asking_discard) {
-                self.closing = false;
+            if self.close_after_save && !self.panes().any(|p| p.edits.save_pending()) {
+                self.close_after_save = false;
                 if !self.panes().any(|p| p.editing().is_some_and(|e| e.dirty())) {
+                    self.force_close = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 }
             }
             return;
         }
-        if !self.may_close() {
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        if self.force_close || self.closing_ask || self.close_ask().is_empty() {
+            return;
+        }
+        ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        self.closing_ask = true;
+    }
+
+    /// 关窗会打断什么：没保存的编辑页（名字）＋ 「进度」表里还在跑的那几趟（按族）。
+    pub fn close_ask(&self) -> CloseAsk {
+        let unsaved = self
+            .panes()
+            .filter(|p| p.editing().is_some_and(super::editor::Pane::dirty))
+            .map(FileWindow::edit_name)
+            .collect();
+        CloseAsk {
+            unsaved,
+            running: self.progress.running_for_close(),
         }
     }
 
-    /// 关得了吗；关不了 ⇒ 已经切到那一页、摆出那一问 / 那句话。
-    fn may_close(&mut self) -> bool {
-        let at = |ws: &Self, f: &dyn Fn(&FileWindow) -> bool| {
-            (0..ws.sides.len()).find_map(|k| {
-                (0..ws.sides[k].tabs.len())
-                    .find(|&i| f(&ws.sides[k].tabs[i].pane))
-                    .map(|i| (k, i))
-            })
-        };
-        if let Some((k, i)) = at(self, &|p| p.editing().is_some_and(|e| e.dirty())) {
-            self.select_tab(k, i);
-            self.sides[k].tabs[i].pane.close_edit();
-            self.closing = true;
+    /// 摆出关窗那一问（有东西会丢时；点 × 那一下走 [`Self::guard_close`]，截图与判据直接调它）。回值 ＝ 摆出来了。
+    pub fn begin_close_ask(&mut self) -> bool {
+        if self.close_ask().is_empty() {
             return false;
         }
-        let Some((k, i)) = at(self, &|p| p.work_reason().is_some()) else {
-            return true;
-        };
-        let why = self.sides[k].tabs[i].pane.work_reason().unwrap_or_default();
-        let said = copy_text("rsFilewinWorkspace.closeTab.busy", &[("why", &why)]);
-        if self.notice.as_deref() == Some(said.as_str()) {
-            return true;
+        self.closing_ask = true;
+        true
+    }
+
+    /// 关窗那一问正摆着吗。
+    pub fn closing_ask(&self) -> bool {
+        self.closing_ask
+    }
+
+    /// 「关闭文件窗口 · devbox」（规范 `C10` · `I12`）：按族列出会打断的（未保存 · 传输中 · 删除中 · 解压中 · 计算大小中）；
+    /// 按钮「取消」（焦点）·「全部保存后关闭」（只在有没保存的时出现）·「仍然关闭」（危险）。
+    pub fn close_ask_ui(&mut self, ctx: &egui::Context) {
+        if !self.closing_ask {
+            return;
         }
-        self.select_tab(k, i);
-        self.notice = Some(said);
-        false
+        let ask = self.close_ask();
+        if ask.is_empty() {
+            // 问着的工夫那几件都完了 ⇒ 没什么可问的了，收掉（不替人关窗）。
+            self.closing_ask = false;
+            return;
+        }
+        let p = super::theme::palette(ctx);
+        let machine = self.pane_on(self.focus).source.label();
+        let mut buttons = vec![(
+            copy_text("rsFilewinWorkspace.closeAsk.cancel", &[]),
+            super::kit::Btn::Plain,
+        )];
+        let save_all = !ask.unsaved.is_empty();
+        if save_all {
+            buttons.push((
+                copy_text("rsFilewinWorkspace.closeAsk.saveAll", &[]),
+                super::kit::Btn::Plain,
+            ));
+        }
+        buttons.push((
+            copy_text("rsFilewinWorkspace.closeAsk.force", &[]),
+            super::kit::Btn::Danger,
+        ));
+        let force_at = buttons.len() - 1;
+        let hit = super::kit::dialog(
+            ctx,
+            "filewin-close-ask",
+            &copy_text(
+                "rsFilewinWorkspace.closeAsk.title",
+                &[("machine", &machine)],
+            ),
+            |ui| {
+                egui::Frame::new()
+                    .fill(p.bg2)
+                    .corner_radius(8.0)
+                    .inner_margin(egui::Margin::symmetric(10, 8))
+                    .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        let head = |ui: &mut egui::Ui, t: String| {
+                            ui.label(egui::RichText::new(t).small().strong().color(p.text2));
+                        };
+                        if !ask.unsaved.is_empty() {
+                            head(ui, copy_text("rsFilewinWorkspace.closeAsk.unsaved", &[]));
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new(egui_phosphor::regular::PENCIL_SIMPLE)
+                                        .color(p.text2),
+                                );
+                                ui.label(
+                                    egui::RichText::new(ask.unsaved.join(&copy_text(
+                                        "rsFilewinWorkspace.closeAsk.listSep",
+                                        &[],
+                                    )))
+                                    .color(p.text),
+                                );
+                            });
+                        }
+                        for (group, rows) in &ask.running {
+                            ui.add_space(4.0);
+                            head(ui, group.clone());
+                            for (icon, name, right) in rows {
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(*icon).color(p.text2));
+                                    ui.label(egui::RichText::new(name).color(p.text));
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            ui.label(
+                                                egui::RichText::new(right).small().color(p.text2),
+                                            );
+                                        },
+                                    );
+                                });
+                            }
+                        }
+                    });
+            },
+            &buttons,
+            0,
+            0,
+        );
+        match hit {
+            Some(0) => self.closing_ask = false,
+            Some(i) if i == force_at => {
+                self.closing_ask = false;
+                self.force_close = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            Some(_) if save_all => {
+                self.closing_ask = false;
+                self.close_after_save = true;
+                for s in &mut self.sides {
+                    for t in &mut s.tabs {
+                        if t.pane.editing().is_some_and(super::editor::Pane::dirty) {
+                            t.pane.save_edit(Some(ctx.clone()));
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 
     /// 状态栏那颗「125%」点了：回 100% 并记下来。
@@ -590,19 +846,69 @@ impl Workspace {
         z
     }
 
-    /// 摆在屏幕上的那几页（每一栏当前那个标签页）里有一页开着编辑面（或正在读一份来开）⇒ 别的栏当前那一页记下
-    /// 「别处开着」（[`FileWindow::editor_elsewhere`]）：两个编辑面同时画会共用一套 egui id、互相抢输入。
-    /// 后台标签页的编辑面不画，碰不到别的编辑面，也不挡别人。
-    pub fn sync_editors(&mut self) {
-        let owner = (0..self.sides.len()).find(|&k| {
-            let s = &self.sides[k];
-            let p = &s.tabs[s.active].pane;
-            p.editing().is_some() || p.edits.opening().is_some()
-        });
-        for (k, s) in self.sides.iter_mut().enumerate() {
-            let active = s.active;
-            for (i, t) in s.tabs.iter_mut().enumerate() {
-                t.pane.editor_elsewhere = i == active && owner.is_some_and(|o| o != k);
+    /// 每帧一次：「进度」表落地那几趟（[`super::progress::Progress::settle`]）；
+    /// 开它的标签页已经关了 / 换了一块新看板的那几趟 ⇒ 正开在那个目录的标签页重列一次。
+    pub fn settle_progress(&mut self) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        let dirs = self.progress.settle(now);
+        if dirs.is_empty() {
+            return;
+        }
+        for s in &mut self.sides {
+            for t in &mut s.tabs {
+                if dirs.contains(&t.pane.cwd) {
+                    t.pane.reload();
+                }
+            }
+        }
+    }
+
+    /// 起「那台连没连着」那条订阅（整扇窗一次，拿焦点那一栏的线）；断了又连上 ⇒ 每个标签页重列一遍（过期那一屏换成新的）。
+    pub fn settle_link(&mut self, ctx: Option<egui::Context>) {
+        let f = self.focus;
+        let p = self.pane_on(f);
+        if let (Some(rt), Some(line)) = (p.rt.clone(), p.line.clone()) {
+            self.link.watch(&rt, line, p.source.origin(), ctx);
+        }
+        let ups = self.link.ups();
+        if ups != self.link_ups {
+            self.link_ups = ups;
+            for s in &mut self.sides {
+                for t in &mut s.tabs {
+                    t.pane.reload();
+                }
+            }
+        }
+    }
+
+    /// 断线条上「重新连接」：叫醒 monitor 里那台的连接循环（不等退避睡满）。
+    pub fn retry_link(&mut self) -> bool {
+        let p = self.pane_on(self.focus);
+        let (Some(rt), Some(line)) = (p.rt.clone(), p.line.clone()) else {
+            return false;
+        };
+        let origin = p.source.origin();
+        rt.spawn(async move { super::source::kick_link(&line, &origin).await });
+        true
+    }
+
+    /// 「进度」表上按下的那一颗：停 ⇒ 拨那一趟的撤单；重试 / 接着传 ⇒ 在焦点那一栏起一趟新的（同一台机器、同一条线）。
+    pub fn apply_progress_act(
+        &mut self,
+        a: super::progress::Act,
+        ctx: Option<egui::Context>,
+    ) -> bool {
+        use super::progress::Act;
+        let f = self.focus;
+        match a {
+            Act::Stop(id) => self.progress.stop(id),
+            Act::RetryUpload(items) | Act::Resume(items) => {
+                self.pane_on_mut(f).start_drop_items(items, ctx)
+            }
+            Act::RetryDownload { src, dest } => {
+                self.pane_on_mut(f).start_pull(&src, &dest, false, ctx)
             }
         }
     }
@@ -616,8 +922,8 @@ impl Workspace {
 
     /// 🔴 **每一帧的正文**（`eframe::App::ui` 只剩一句委派，判据直接喂它 —— 同 `FileWindow::frame_body`）。
     pub fn frame(&mut self, ui: &mut egui::Ui) {
-        // ── 同一时刻只有一个编辑面：一处开着（或正在读一份来开），别处都当有框摆着（不接键盘 · 菜单 · 拖入，不开第二个）──
-        self.sync_editors();
+        // ── 目录页要开的那一份 ⇒ 开一个编辑页（同一份已开着 ⇒ 切过去）；编辑页要去的目录 · 要关自己 ──
+        self.settle_tab_wants(Some(ui.ctx().clone()));
         // ── 整窗缩放：Ctrl + = / - / 0 · Ctrl + 滚轮 ──
         let ctx = ui.ctx().clone();
         self.apply_zoom(&ctx);
@@ -626,7 +932,11 @@ impl Workspace {
         // ── 导航键（Alt+← / → · 鼠标侧键 · F5 · Ctrl+L · Ctrl+F）· 开另一台那一问落地 ──
         self.apply_nav_keys(&ctx);
         self.settle_other();
-        // ── 窗口的框：工具条 · 命令栏 · 状态栏 · 左栏（`chrome.rs`）──
+        // ── 「进度」表：新落地的那几趟记下时刻 · 失败就摊开 · 开它的标签页已经不管了的，由这一级重列目录 ──
+        self.settle_progress();
+        // ── 那台连没连着：订一次那条流；断了又连上 ⇒ 每个标签页重列一遍 ──
+        self.settle_link(Some(ctx.clone()));
+        // ── 窗口的框：工具条 · 命令栏 · 状态栏 · 「进度」表 · 左栏（`chrome.rs`）──
         self.chrome_ui(ui);
         // ── 预览（右侧一块，跟焦点那一栏）──
         let mut preview_act = None;
@@ -689,6 +999,13 @@ impl Workspace {
             self.title = Some(title);
         }
         // ── 窗口那一级一次性的那几句（开另一台 · 关不了的原因 …）⇒ 右下角回执；键位做不成的那一下浮在状态栏左端 ──
+        for s in &mut self.sides {
+            for t in &mut s.tabs {
+                if let Some(r) = t.pane.receipt.take() {
+                    self.toasts.push(r, None);
+                }
+            }
+        }
         let said = self.notice.clone();
         if said != self.toasted {
             if let Some(t) = &said {
@@ -697,6 +1014,7 @@ impl Workspace {
             self.toasted = said;
         }
         self.toasts.show(&ctx, 36.0);
+        self.close_ask_ui(&ctx);
     }
 
     /// 一栏 / 两栏并排摆（在主底那一块里）。
@@ -814,14 +1132,19 @@ impl Workspace {
                         continue;
                     }
                     used += est;
+                    // 忙点：改了没存 ⇒ `--text-2` 实心点；这一页开的那几趟还有在跑的 / 手上攥着一问 ⇒ `--success`。
                     let busy = if t.pane.editing().is_some_and(|e| e.dirty()) {
                         Some(p.text2)
-                    } else if t.pane.busy_reason().is_some() {
+                    } else if !t.pane.edit_tab
+                        && (t.pane.has_running_jobs() || t.pane.busy_reason().is_some())
+                    {
                         Some(p.success)
                     } else {
                         None
                     };
-                    let icon = if t.pane.listing.is_loading() {
+                    let icon = if t.pane.edit_tab {
+                        egui_phosphor::regular::PENCIL_SIMPLE
+                    } else if t.pane.listing.is_loading() {
                         egui_phosphor::regular::CIRCLE_NOTCH
                     } else {
                         egui_phosphor::regular::FOLDER_SIMPLE

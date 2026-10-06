@@ -324,6 +324,163 @@ fn a_busy_tab_refuses_to_close_and_says_why() {
     assert_eq!(ws.tabs_on(0), 1);
 }
 
+/// 稿：关一个还有传输在跑的目录标签页 ⇒ **直接关**，传输照跑（它是「进度」表里的一行，不挂在标签页上）；
+/// 那一趟落地 ⇒ 正开在那个目录的标签页由窗口这一级重列（开它的那个标签页已经不在了）。
+#[test]
+fn closing_a_tab_with_a_transfer_running_closes_it_and_the_transfer_keeps_going() {
+    let mut ws = Workspace::new(pane("/srv", &["a"]));
+    assert!(ws.open_tab(0));
+    // 第 1 个标签页上有一摞上传在飞（表里一行；看板还没落结局）。
+    let board = crate::transfer::DropBoard::default();
+    let id = ws.progress.add(
+        crate::progress::Trip::Upload {
+            board: board.clone(),
+            items: Vec::new(),
+            dir: "srv".into(),
+        },
+        Some("/srv".into()),
+        None,
+    );
+    assert!(
+        ws.tab(0, 1).progress.same(&ws.progress),
+        "新标签页拿的不是窗口那一份「进度」表"
+    );
+    assert!(
+        ws.tab(0, 1).busy_reason().is_none(),
+        "在传的那一摞挡住了关标签页"
+    );
+    assert!(ws.close_tab(0, 1), "有传输在跑的标签页没关掉");
+    assert_eq!(ws.tabs_on(0), 1);
+    assert_eq!(ws.progress.running(), 1, "关了标签页，那一趟从表里没了");
+    // 关窗时它还算（关窗就没了）。
+    assert!(
+        ws.pane_on(0).work_reason().is_some(),
+        "关窗那一问没算上还在跑的那一趟"
+    );
+    // 那一趟的号要由窗口这一级接管（开它的标签页不在了）：落地 ⇒ 开在 /srv 的那个标签页重列一次。
+    ws.progress.orphan(id);
+    let before = ws
+        .pane_on(0)
+        .listing
+        .epoch
+        .load(std::sync::atomic::Ordering::SeqCst);
+    board.finish(crate::transfer::DropOutcome {
+        ok: 1,
+        ..Default::default()
+    });
+    ws.settle_progress();
+    assert!(
+        ws.pane_on(0)
+            .listing
+            .epoch
+            .load(std::sync::atomic::Ordering::SeqCst)
+            > before,
+        "那一趟落地了，开在那个目录的标签页没重列"
+    );
+    assert_eq!(ws.progress.running(), 0);
+}
+
+/// 稿 18：和那台断了 ⇒ 工具条下一条警告条（重连中 ⇒「devbox 断开 · 重新连接中…」，没按钮；一轮没连上 ⇒
+/// 「devbox 离线 · 采样 HH:MM」＋［重新连接］，时刻 ＝ 摆着那一屏列到的时刻）；列表照常摆着、F5 不把它换成一句「连不上」；
+/// 写类那几件说「离线 · 只读」做不了；又连上 ⇒ 条没了、每个标签页重列一遍。
+#[test]
+fn a_dropped_link_shows_the_strip_keeps_the_stale_listing_and_blocks_writes() {
+    use crate::source::LinkSeen;
+    let mut ws = Workspace::new(pane("/srv", &["a.txt", "b.txt"]));
+    let at = 1_700_000_000u64;
+    ws.pane_on(0)
+        .listing
+        .landed
+        .store(at, std::sync::atomic::Ordering::SeqCst);
+    let machine = ws.pane_on(0).source.label();
+    let screen = egui::vec2(1280.0, 800.0);
+    // 连着（流说了 Up）⇒ 没有条。
+    ws.link.set(LinkSeen::Up);
+    let painted = frames_at(&mut ws, screen, 3);
+    let retry = copy_text("rsFilewinChrome.link.retry", &[]);
+    assert!(!painted.iter().any(|(t, _)| *t == retry), "连着却有断线条");
+    // 刚断：在重连。
+    ws.link.set(LinkSeen::Reconnecting);
+    let painted = frames_at(&mut ws, screen, 3);
+    let said = copy_text(
+        "rsFilewinChrome.link.reconnecting",
+        &[("machine", &machine)],
+    );
+    assert!(
+        painted.iter().any(|(t, _)| *t == said),
+        "在重连却没说：{said}"
+    );
+    assert!(
+        !painted.iter().any(|(t, _)| *t == retry),
+        "在重连时就给了「重新连接」"
+    );
+    // 一轮没连上：离线 · 采样那一刻 ＋［重新连接］。
+    ws.link.set(LinkSeen::Down);
+    let painted = frames_at(&mut ws, screen, 3);
+    let said = copy_text(
+        "rsFilewinChrome.link.offline",
+        &[
+            ("machine", &machine),
+            ("time", &crate::source::mtime_text(at).short),
+        ],
+    );
+    assert!(
+        painted.iter().any(|(t, _)| *t == said),
+        "离线那一句没画：{said}"
+    );
+    assert!(
+        painted.iter().any(|(t, _)| *t == retry),
+        "离线却没有「重新连接」"
+    );
+    // 列表照常摆着；F5 不去问（问了只会把这一屏换成一句「连不上」）。
+    let before = ws
+        .pane_on(0)
+        .listing
+        .epoch
+        .load(std::sync::atomic::Ordering::SeqCst);
+    ws.pane_on(0).reload();
+    assert_eq!(
+        ws.pane_on(0)
+            .listing
+            .epoch
+            .load(std::sync::atomic::Ordering::SeqCst),
+        before,
+        "离线时 F5 还是去问了"
+    );
+    assert_eq!(ws.pane_on(0).listing.rows.lock().unwrap().len(), 2);
+    // 写类那几件做不了，说同一句。
+    let read_only = copy_text("rsFilewinChrome.link.readOnly", &[]);
+    assert_eq!(
+        ws.pane_on(0).offline_refusal(crate::select::Action::Rename),
+        Some(read_only.clone())
+    );
+    assert_eq!(
+        ws.pane_on(0)
+            .offline_refusal(crate::select::Action::Download),
+        None,
+        "下载是读，离线时也被挡了"
+    );
+    // 又连上：条没了，标签页重列一遍。
+    ws.link.set(LinkSeen::Up);
+    let painted = frames_at(&mut ws, screen, 3);
+    assert!(
+        !painted.iter().any(|(t, _)| *t == retry),
+        "连上了断线条还在"
+    );
+    assert!(
+        ws.pane_on(0)
+            .listing
+            .epoch
+            .load(std::sync::atomic::Ordering::SeqCst)
+            > before,
+        "又连上了却没重列那一屏"
+    );
+    assert_eq!(
+        ws.pane_on(0).offline_refusal(crate::select::Action::Rename),
+        None
+    );
+}
+
 #[test]
 fn splitting_and_unsplitting() {
     let mut ws = Workspace::new(pane("/srv/data", &["a"]));
@@ -695,6 +852,16 @@ fn across_args_cut_lossy_paths_by_their_bytes() {
     );
 }
 
+/// 今天本机时区的 `h:m` 那一刻（UNIX 秒；截图里「采样 13:40」那个时刻）。
+fn chrono_like_today_at(h: i64, m: i64) -> u64 {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64);
+    let off = crate::source::local_offset_at(now);
+    let day = (now + off).div_euclid(86_400) * 86_400;
+    (day + h * 3600 + m * 60 - off) as u64
+}
+
 /// 截图工具（`npm run shots`）那一格：不是判据。在私有 Xvfb 上开真窗口、画几帧、窗口内截屏存 PNG。
 /// 一个进程只许建一个事件循环 ⇒ 每张图一个进程，场景走环境变量：
 /// `CCM_SHOTS_FILEWIN_SCENE`（main · split · empty · missing · search）· `CCM_SHOTS_FILEWIN_OUT`（PNG）· `CCM_SHOTS_FILEWIN_DIR`（合成的家目录）·
@@ -717,7 +884,20 @@ async fn screenshot_for_the_shots_tool() {
     let d = dir.to_string_lossy().to_string();
     let mut offered = vec!["files-ls", "files-read-text", "files-stat", "files-home"];
     offered.extend_from_slice(crate::find::COMMANDS);
-    let be = FakeBackend::new(&offered, Declared::default())
+    // 「n 个目录无权限［查看］」那一张：后端报 3 个、交 2 个名单。
+    let declared = if scene == "unreadable" {
+        Declared {
+            unreadable_dirs: 3,
+            unreadable_paths: vec![
+                dir.join("secrets").to_string_lossy().to_string(),
+                dir.join("deploy/keys").to_string_lossy().to_string(),
+            ],
+            ..Declared::default()
+        }
+    } else {
+        Declared::default()
+    };
+    let be = FakeBackend::new(&offered, declared)
         .homed(&base)
         .preindexed(&base);
     be.disk
@@ -794,7 +974,7 @@ async fn screenshot_for_the_shots_tool() {
             );
         }
     }
-    if scene == "search" {
+    if scene == "search" || scene == "unreadable" {
         // 在工具条的搜索框里打字（合成事件，同 Ctrl+F 那个口），等那块板子落下一份答案。
         let ctx = egui::Context::default();
         ctx.run_ui(egui::RawInput::default(), |_| {})
@@ -807,12 +987,156 @@ async fn screenshot_for_the_shots_tool() {
     if scene == "pull" {
         w.pull.begin("release.tar.gz");
         w.pull.progress(1_200_000, 3_400_000);
+        w.progress.add(
+            crate::progress::Trip::Download {
+                board: w.pull.clone(),
+                name: "release.tar.gz".into(),
+                src: dir.join("release.tar.gz").to_string_lossy().to_string(),
+                dest: "~/下载/release.tar.gz".into(),
+            },
+            None,
+            None,
+        );
     }
     // 新建目录那个框里名字是空的就点了确定：原因落在哪。
     if scene == "mkdir-error" {
         w.begin_mkdir();
         w.confirm_write(None);
     }
+    // 「进度」表（稿 11）：两趟在跑（上传一摞 · 下载）· 删除一个文件夹（那台撤不动 ⇒「停」灰着）· 上传失败 · 复制到另一台完成。
+    if scene == "progress" {
+        use crate::progress::Trip;
+        let items: Vec<crate::transfer::Pending> =
+            ["release-1.tar.gz", "release-2.tar.gz", "release-3.tar.gz"]
+                .iter()
+                .filter_map(|n| crate::transfer::Pending::into_remote_dir(&format!("/tmp/{n}"), &d))
+                .collect();
+        let up = crate::transfer::DropBoard::default();
+        w.progress.add(
+            Trip::Upload {
+                board: up.clone(),
+                items: items.clone(),
+                dir: "orders-service".into(),
+            },
+            Some(d.clone()),
+            None,
+        );
+        up.cancels().mint("release-2.tar.gz");
+        up.progress("release-1.tar.gz", 20_000_000, 20_000_000);
+        up.progress("release-2.tar.gz", 4_400_000, 20_000_000);
+        let down = crate::download::DownloadBoard::default();
+        w.progress.add(
+            Trip::Download {
+                board: down.clone(),
+                name: "logs-0930.zip".into(),
+                src: dir.join("logs-0930.zip").to_string_lossy().to_string(),
+                dest: "~/下载/logs-0930.zip".into(),
+            },
+            None,
+            None,
+        );
+        down.begin("logs-0930.zip");
+        down.progress(58_000_000, 480_000_000);
+        let rm = crate::writeops::WriteBoard::default();
+        w.progress.add(
+            Trip::Delete {
+                board: rm,
+                base: 0,
+                name: "node_modules".into(),
+                n: 1,
+            },
+            Some(d.clone()),
+            Some(copy_text(
+                "rsFilewinProgress.stop.uncancellable",
+                &[("machine", "devbox")],
+            )),
+        );
+        let failed = crate::transfer::DropBoard::default();
+        w.progress.add(
+            Trip::Upload {
+                board: failed.clone(),
+                items: items.clone(),
+                dir: "orders-service".into(),
+            },
+            Some(d.clone()),
+            None,
+        );
+        failed.finish(crate::transfer::DropOutcome {
+            ok: 1,
+            failed: vec![
+                ("release-2.tar.gz".into(), "磁盘满".into()),
+                ("release-3.tar.gz".into(), "磁盘满".into()),
+            ],
+            ..Default::default()
+        });
+        let cross = crate::cross_copy::CrossBoard::default();
+        w.progress.add(
+            Trip::Cross {
+                board: cross.clone(),
+                name: "report.pdf".into(),
+                machine: "gpu-01".into(),
+            },
+            None,
+            None,
+        );
+        cross.finish(crate::cross_copy::Outcome::Done {
+            name: "report.pdf".into(),
+            machine: "gpu-01".into(),
+            path: "/home/user/inbox/report.pdf".into(),
+            bytes: 182_000,
+        });
+        w.progress.settle(chrono_like_today_at(13, 41));
+    }
+    // 断线 · 过期（稿 18）：那条流说「离线」；摆着的那一屏是 13:40 列到的。
+    if scene == "stale" {
+        w.link.set(crate::source::LinkSeen::Down);
+        let at = chrono_like_today_at(13, 40);
+        w.listing
+            .landed
+            .store(at, std::sync::atomic::Ordering::SeqCst);
+    }
+    // 删除那一问（选中三个文件夹 ⇒ 「删除 3 项」）。
+    if scene == "delete-ask" {
+        let i = w
+            .listing
+            .rows
+            .lock()
+            .unwrap()
+            .iter()
+            .position(|r| r.name == "docs")
+            .unwrap();
+        w.apply_intent(
+            crate::select::Intent::Edge {
+                end: false,
+                extend: false,
+            },
+            0.0,
+            None,
+        );
+        for _ in 0..i {
+            w.apply_intent(
+                crate::select::Intent::Step {
+                    by: 1,
+                    extend: false,
+                },
+                0.0,
+                None,
+            );
+        }
+        for _ in 0..2 {
+            w.apply_intent(
+                crate::select::Intent::Step {
+                    by: 1,
+                    extend: true,
+                },
+                0.0,
+                None,
+            );
+        }
+        w.perform(crate::select::Action::Delete, None);
+    }
+    let open_unreadable = scene == "unreadable";
+    let scene_name = scene.clone();
     let theme = crate::theme::testing::default_theme();
     let preview = scene == "main";
     let split = scene == "split";
@@ -822,12 +1146,76 @@ async fn screenshot_for_the_shots_tool() {
             n: u32,
             out: String,
             preview: bool,
+            open_unreadable: bool,
+            scene: String,
         }
         impl eframe::App for Shot {
             fn ui(&mut self, ui: &mut egui::Ui, _f: &mut eframe::Frame) {
                 self.n += 1;
                 if self.n == 5 && self.preview {
                     self.ws.set_preview(true);
+                }
+                // 编辑页那几张（稿 03 · 05 · 06 · 17）：目录页上开 main.rs ⇒ 同一栏开出编辑页；之后改一行（未保存）。
+                if self.n == 3 && self.scene.starts_with("edit")
+                    || self.n == 3 && self.scene == "close-window"
+                {
+                    let i = self
+                        .ws
+                        .pane_on(0)
+                        .listing
+                        .rows
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .position(|r| r.name == "main.rs");
+                    if let Some(i) = i {
+                        self.ws.pane_on_mut(0).begin_edit(i, Some(ui.ctx().clone()));
+                    }
+                }
+                if self.n == 15 && self.ws.pane_on(0).edit_tab {
+                    let pane = self.ws.pane_on_mut(0);
+                    if let Some(t) = pane.editing_text_mut() {
+                        t.insert_str(0, "// 重试那一段改成指数退避\n");
+                    }
+                    match self.scene.as_str() {
+                        "edit-page" => {
+                            pane.find_open = true;
+                            if let Some(f) = pane.find_bar_mut() {
+                                f.needle = "Retry".into();
+                            }
+                        }
+                        "edit-stale" => {
+                            if let Some(e) = pane.editing_mut() {
+                                e.mark_stale("main.rs 在你打开之后被改过".into());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                if self.n == 20 && self.scene == "edit-close" {
+                    let a = self.ws.active_on(0);
+                    self.ws.close_tab(0, a);
+                }
+                if self.n == 20 && self.scene == "close-window" {
+                    let down = crate::download::DownloadBoard::default();
+                    self.ws.progress.add(
+                        crate::progress::Trip::Download {
+                            board: down.clone(),
+                            name: "logs-0930.zip".into(),
+                            src: "/x/logs-0930.zip".into(),
+                            dest: "~/下载/logs-0930.zip".into(),
+                        },
+                        None,
+                        None,
+                    );
+                    down.begin("logs-0930.zip");
+                    down.progress(12, 100);
+                    self.ws.begin_close_ask();
+                }
+                if self.n == 10 && self.open_unreadable {
+                    ui.ctx().data_mut(|d| {
+                        d.insert_temp(egui::Id::new("filewin-unreadable-list"), true)
+                    });
                 }
                 if self.n == 20 && self.ws.sides() == 2 && !self.ws.pane_on(1).listing.is_loading()
                 {
@@ -888,6 +1276,8 @@ async fn screenshot_for_the_shots_tool() {
                     n: 0,
                     out,
                     preview,
+                    open_unreadable,
+                    scene: scene_name,
                 }))
             }),
         )
@@ -917,16 +1307,20 @@ fn an_editor_on_the_right_side_stays_in_the_right_side() {
     for _ in 0..4 {
         painted = d.frame(&mut ws, Vec::new());
     }
-    let area = d
-        .ctx
-        .memory(|m| m.area_rect(egui::Id::new("filewin-editor")))
-        .expect("编辑面没立起来");
+    // 编辑页头条上那颗「保存」只画在右栏里。
+    let save = rects_of(&painted, &copy_text("rsFilewinShell.editor.save", &[]));
+    assert_eq!(save.len(), 1, "编辑页没立起来");
+    let area = save[0];
     let whole = egui::Rect::from_min_size(egui::Pos2::ZERO, SCREEN);
-    assert!(whole.contains_rect(area), "编辑面 {area:?} 出了窗口");
+    assert!(whole.contains_rect(area), "编辑页 {area:?} 出了窗口");
     // 左栏那一行最右那一格（大小）：编辑面的左沿在它右边 ⇒ 没越过两栏的分界。
     let mut sizes = rects_of(&painted, &crate::rows::human_size(10));
     sizes.sort_by(|a, b| a.left().total_cmp(&b.left()));
-    assert_eq!(sizes.len(), 2, "两栏各一行，大小那一格该画两处");
+    assert_eq!(
+        sizes.len(),
+        1,
+        "左栏那一行的大小格该画一处（右栏是编辑页，不画列表）"
+    );
     assert_eq!(
         rects_of(&painted, "left-only.txt").len(),
         1,
@@ -979,68 +1373,114 @@ fn open_text(p: &mut FileWindow, text: &str) {
     assert!(p.settle_opened_edits());
 }
 
-/// 🔴 **点 × 关窗先看会不会丢东西**：后台标签里改了没存 ⇒ 拦下、切过去摆「改了没存」那一问；
-/// 答「丢掉」⇒ 接着关。开着一份没改过的文本不拦；什么都没有 ⇒ 直接关。
+/// 🔴 稿 17：点 × 关窗 —— 什么都不会丢 ⇒ 直接关；开着一份没改过的文本照样直接关；
+/// 有没保存的编辑页 / 还在跑的那几趟 ⇒ 拦下、摆「关闭文件窗口 · devbox」按族列出（未保存 · 传输中），
+/// 按钮「取消」·「全部保存后关闭」（只在有没保存的时出现）·「仍然关闭」；「取消」⇒ 作罢；那一问摆着时再点一次 × ⇒ 照关；「仍然关闭」⇒ 关。
 #[test]
-fn closing_the_window_asks_about_unsaved_text_first() {
+fn closing_the_window_asks_once_listing_unsaved_pages_and_running_trips() {
     let cancel = egui::ViewportCommand::CancelClose;
     let mut d = Drive::new();
-    // 什么都没有 ⇒ 不拦。
     let mut ws = two_sides(pane("/l", &["a"]), pane("/r", &["b"]));
-    assert!(!close_frame(&mut d, &mut ws, true).contains(&cancel));
-    // 没改过的一份 ⇒ 不拦。
+    assert!(
+        !close_frame(&mut d, &mut ws, true).contains(&cancel),
+        "什么都没有也拦了"
+    );
     open_text(ws.pane_on_mut(1), "x\n");
     assert!(
         !close_frame(&mut d, &mut ws, true).contains(&cancel),
         "没改过的文本也拦了关窗"
     );
-    // 左栏那一份改了没存、焦点在右栏 ⇒ 拦下，焦点切到左栏、那一问摆出来。
-    open_text(ws.pane_on_mut(0), "y\n");
-    *ws.pane_on_mut(0).editing_text_mut().unwrap() = "y2\n".into();
+    // 一页改了没存 ＋ 一趟下载在跑。
+    *ws.pane_on_mut(1).editing_text_mut().unwrap() = "x2\n".into();
+    let down = crate::download::DownloadBoard::default();
+    ws.progress.add(
+        crate::progress::Trip::Download {
+            board: down.clone(),
+            name: "logs.zip".into(),
+            src: "/r/logs.zip".into(),
+            dest: "/tmp/logs.zip".into(),
+        },
+        None,
+        None,
+    );
+    down.begin("logs.zip");
+    down.progress(12, 100);
     assert!(
         close_frame(&mut d, &mut ws, true).contains(&cancel),
-        "改了没存，关窗却没拦"
+        "有东西会丢，关窗却没拦"
     );
-    assert_eq!(ws.focus(), 0, "没切到改了没存的那一页");
-    assert!(ws.pane_on(0).asking_discard(), "拦下了却没问");
-    // 答「先别关」⇒ 作罢，不再自己关。
-    ws.pane_on_mut(0).keep_editing();
-    let cmds = close_frame(&mut d, &mut ws, false);
-    assert!(
-        !cmds.contains(&egui::ViewportCommand::Close),
-        "答了先别关却关了"
-    );
-    // 再点一次 ×，这回答「丢掉」⇒ 接着关。
-    assert!(close_frame(&mut d, &mut ws, true).contains(&cancel));
-    ws.pane_on_mut(0).discard_edit();
-    let cmds = close_frame(&mut d, &mut ws, false);
-    assert!(
-        cmds.contains(&egui::ViewportCommand::Close),
-        "答了丢掉却没接着关"
-    );
-}
-
-/// 🔴 **手上有活时点 × ⇒ 拦下、切过去说关标签页时那同一句话**；那句话摆着时再点一次 ⇒ 照关。
-#[test]
-fn closing_the_window_while_busy_says_why_and_a_second_click_closes() {
-    let cancel = egui::ViewportCommand::CancelClose;
-    let mut d = Drive::new();
-    let mut ws = two_sides(pane("/l", &["a"]), pane("/r", &["b"]));
-    ws.pane_on_mut(0).edits.begin_open("/l/a");
-    assert!(
-        close_frame(&mut d, &mut ws, true).contains(&cancel),
-        "在读着一份，关窗却没拦"
-    );
-    assert_eq!(ws.focus(), 0, "没切到有活的那一页");
-    let why = ws.pane_on(0).work_reason().unwrap();
-    assert_eq!(
-        ws.notice(),
-        Some(copy_text("rsFilewinWorkspace.closeTab.busy", &[("why", &why)]).as_str()),
-        "说的不是关标签页时那句话"
-    );
+    assert!(ws.closing_ask(), "拦下了却没问");
+    let painted = d.frame(&mut ws, Vec::new());
+    let has = |t: &str| painted.iter().any(|(p, _)| p == t);
+    for t in [
+        copy_text("rsFilewinWorkspace.closeAsk.title", &[("machine", "ws")]),
+        copy_text("rsFilewinWorkspace.closeAsk.unsaved", &[]),
+        "t.txt".to_string(),
+        copy_text("rsFilewinWorkspace.closeAsk.transfers", &[]),
+        "logs.zip".to_string(),
+        copy_text("rsFilewinWorkspace.closeAsk.down", &[("pct", "12")]),
+        copy_text("rsFilewinWorkspace.closeAsk.cancel", &[]),
+        copy_text("rsFilewinWorkspace.closeAsk.saveAll", &[]),
+        copy_text("rsFilewinWorkspace.closeAsk.force", &[]),
+    ] {
+        assert!(
+            has(&t),
+            "关窗那一问上没有「{t}」：{:?}",
+            painted.iter().map(|(p, _)| p).collect::<Vec<_>>()
+        );
+    }
+    // 那一问摆着时再点一次 × ⇒ 照关（不再拦）。
     assert!(
         !close_frame(&mut d, &mut ws, true).contains(&cancel),
-        "那句话摆着时再点一次，还是拦着"
+        "那一问摆着时再点 × 还是拦着"
+    );
+    // 只剩一趟在跑（没有没保存的）⇒ 那一问上没有「全部保存后关闭」。
+    let mut ws = two_sides(pane("/l", &["a"]), pane("/r", &["b"]));
+    let up = crate::transfer::DropBoard::default();
+    ws.progress.add(
+        crate::progress::Trip::Upload {
+            board: up,
+            items: Vec::new(),
+            dir: "l".into(),
+        },
+        Some("/l".into()),
+        None,
+    );
+    let mut d = Drive::new();
+    assert!(close_frame(&mut d, &mut ws, true).contains(&cancel));
+    let painted = d.frame(&mut ws, Vec::new());
+    let save_all = copy_text("rsFilewinWorkspace.closeAsk.saveAll", &[]);
+    assert!(
+        !painted.iter().any(|(p, _)| *p == save_all),
+        "没有没保存的也给了「全部保存后关闭」"
+    );
+    // 「仍然关闭」⇒ 关。
+    let force = rects_of(
+        &painted,
+        &copy_text("rsFilewinWorkspace.closeAsk.force", &[]),
+    );
+    assert_eq!(force.len(), 1);
+    d.frame(&mut ws, vec![egui::Event::PointerMoved(force[0].center())]);
+    d.t += 1.0;
+    let mut input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, SCREEN)),
+        time: Some(d.t),
+        events: crate::rows::testing::click_at(force[0].center()),
+        ..Default::default()
+    };
+    input
+        .viewports
+        .insert(egui::ViewportId::ROOT, Default::default());
+    let out = d.ctx.run_ui(input, |ui| ws.frame(ui));
+    let cmds = out
+        .viewport_output
+        .get(&egui::ViewportId::ROOT)
+        .map(|v| v.commands.clone())
+        .unwrap_or_default();
+    out.drop_without_applying_deltas();
+    assert!(
+        cmds.contains(&egui::ViewportCommand::Close),
+        "点了「仍然关闭」没关"
     );
 }
 
@@ -1126,40 +1566,52 @@ fn a_new_tab_or_side_keeps_a_non_utf8_directory_by_its_bytes() {
     );
 }
 
-/// 双栏时同一时刻只有一个编辑面：左边开着一份文本 ⇒ 右边不接键盘 · 菜单 · 拖入、也不开第二份（两个会共用一套 egui id 互相抢输入）。
+/// 稿 ⑤：目录页上打开一份文本 ⇒ **在同一栏开一个编辑页**（标签上是那个文件名，目录页还是目录页）；
+/// 同一份再开一次 ⇒ 切过去、不开第二份；另一份 ⇒ 另一页；另一栏照样能开自己的编辑页（左边改、右边翻目录）。
 #[test]
-fn only_one_editor_is_open_across_the_two_sides() {
-    let mut left = pane("/srv/a", &["a.txt"]);
-    left.edits.deliver(crate::editor::Arrived::Text {
-        path: "/srv/a/a.txt".into(),
-        name: "a.txt".into(),
-        text: "x".into(),
-        sha256: crate::find::testing::fake_sha256(""),
-    });
-    assert!(left.settle_opened_edits());
-    let right = pane("/srv/b", &["b.txt"]);
-    let mut ws = two_sides(left, right);
-    ws.focus_side(1);
+fn opening_a_text_opens_an_edit_tab_beside_the_folder_and_again_switches_to_it() {
+    let mut ws = two_sides(
+        pane("/srv/a", &["a.txt", "b.txt"]),
+        pane("/srv/b", &["c.txt"]),
+    );
     let mut d = Drive::new();
+    assert!(ws.pane_on_mut(0).begin_edit(0, None));
     d.frame(&mut ws, Vec::new());
-    let ctx = egui::Context::default();
-    assert!(
-        ws.pane_on(1).keys_blocked(&ctx),
-        "左边开着编辑面，右边照样接键盘"
-    );
-    assert!(!ws.pane_on_mut(1).begin_edit(0, None));
-    assert_eq!(
-        ws.pane_on(1).key_notice(),
-        Some(copy_text("rsFilewinShell.edit.elsewhere", &[]).as_str())
-    );
-    // 左边关掉之后右边就开得了（这里没有运行时 ⇒ 卡在下一道，说的是另一句）。
+    assert_eq!(ws.tabs_on(0), 2, "没在左栏开出编辑页");
+    assert_eq!(ws.active_on(0), 1, "开完没切过去");
+    assert!(ws.tab(0, 1).edit_tab && !ws.tab(0, 0).edit_tab);
+    assert_eq!(ws.tab(0, 0).cwd, "/srv/a", "目录页被换了");
+    assert_eq!(Workspace::tab_title(ws.tab(0, 1)), "a.txt");
+    assert_eq!(ws.tabs_on(1), 1, "开到右栏去了");
+    // 同一份再开一次 ⇒ 切过去。
+    assert!(ws.select_tab(0, 0));
+    assert!(ws.pane_on_mut(0).begin_edit(0, None));
+    d.frame(&mut ws, Vec::new());
+    assert_eq!(ws.tabs_on(0), 2, "同一份开了第二页");
+    assert_eq!(ws.active_on(0), 1, "同一份没切过去");
+    // 另一份 ⇒ 另一页。
+    assert!(ws.select_tab(0, 0));
+    assert!(ws.pane_on_mut(0).begin_edit(1, None));
+    d.frame(&mut ws, Vec::new());
+    assert_eq!(ws.tabs_on(0), 3);
+    assert_eq!(Workspace::tab_title(ws.tab(0, 2)), "b.txt");
+    // 右栏也开一份（左边那几页不碍事）。
+    ws.focus_side(1);
+    assert!(ws.pane_on_mut(1).begin_edit(0, None));
+    d.frame(&mut ws, Vec::new());
+    assert_eq!(ws.tabs_on(1), 2);
+    assert!(ws.pane_on(1).edit_tab);
+    // 没改过的编辑页点 × 直接关；改了没存的先问，答「不保存」才关。
+    open_text(ws.pane_on_mut(1), "x\n");
+    assert!(ws.close_tab(1, 1), "没改过的编辑页关不掉");
+    assert_eq!(ws.tabs_on(1), 1);
+    ws.select_tab(0, 2);
+    open_text(ws.pane_on_mut(0), "y\n");
+    *ws.pane_on_mut(0).editing_text_mut().unwrap() = "y2\n".into();
+    assert!(!ws.close_tab(0, 2), "改了没存的编辑页直接关了");
+    assert!(ws.tab(0, 2).asking_discard(), "没问「关闭 x · 未保存」");
     ws.pane_on_mut(0).discard_edit();
+    ws.pane_on_mut(0).want_close = true;
     d.frame(&mut ws, Vec::new());
-    assert!(!ws.pane_on(1).keys_blocked(&ctx), "左边关了，右边还被挡着");
-    ws.pane_on_mut(1).begin_edit(0, None);
-    assert_eq!(
-        ws.pane_on(1).listing.error.lock().unwrap().clone(),
-        Some(copy_text("rsFilewinShell.edit.noRuntime", &[])),
-        "左边关了，右边开一份还是被挡在「别处开着」那一道"
-    );
+    assert_eq!(ws.tabs_on(0), 2, "答了「不保存」那一页没关");
 }

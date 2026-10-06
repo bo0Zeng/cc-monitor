@@ -1173,3 +1173,36 @@ async fn a_resync_reply_refreshes_the_offer_with_the_facts_of_this_moment() {
         "`resync` 交回的当下事实没有换进 Offer"
     );
 }
+
+/// 文件窗口断线条那一格事实（`link` 流的来源）：登记 ⇒ `Up`；摘掉自己那条 ⇒ `Reconnecting`；连接循环一轮没连上 ⇒ `Down`；
+/// 从没登记过 ⇒ `Down`。每改一格订阅者醒一次，没变不醒。「重新连接」叫醒睡在退避里的那一位（先拨后等也算数）。
+#[tokio::test]
+async fn the_link_fact_follows_register_unregister_and_failed_rounds() {
+    let origin = format!("link-fact-{}", std::process::id());
+    assert_eq!(link_of(&origin), Link::Down, "从没连上过却不是 Down");
+    let mut rx = link_changes();
+    rx.borrow_and_update();
+    let line = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel"]}"#;
+    let frame = crate::stream_source::parse_frame(line).expect("是 hello");
+    let hello = BackendHello::from_hello_frame(&frame).expect("是 Hello 帧");
+    let (mine, _theirs) = tokio::io::duplex(1024);
+    let client = park(mine).into_client(hello);
+    register(&origin, client.clone());
+    assert_eq!(link_of(&origin), Link::Up);
+    assert!(rx.has_changed().unwrap(), "登记上了，订阅者没醒");
+    rx.borrow_and_update();
+    note_round_failed(&origin);
+    note_round_failed(&origin);
+    assert_eq!(link_of(&origin), Link::Down);
+    rx.borrow_and_update();
+    note_round_failed(&origin);
+    assert!(!rx.has_changed().unwrap(), "没变也叫醒了订阅者");
+    register(&origin, client.clone());
+    unregister(&origin, &client);
+    assert_eq!(link_of(&origin), Link::Reconnecting, "刚断却不是「重连中」");
+    // 「重新连接」：先拨、后等也醒（连接循环此刻不一定正睡着）。
+    kick(&origin);
+    tokio::time::timeout(Duration::from_secs(2), kick_handle(&origin).notified())
+        .await
+        .expect("拨过「重新连接」，连接循环没被叫醒");
+}

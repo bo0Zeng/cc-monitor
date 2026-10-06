@@ -728,6 +728,7 @@ pub fn register(origin: &str, client: Arc<InboundClient>) {
     if let Some(old) = old {
         old.shutdown();
     }
+    set_link(origin, Link::Up);
 }
 
 /// 摘除 —— **只摘自己那条**。重连时新连接可能已经登记上来了，
@@ -740,6 +741,86 @@ pub fn unregister(origin: &str, mine: &Arc<InboundClient>) {
     }
     drop(r);
     mine.shutdown();
+    if is_mine {
+        set_link(origin, Link::Reconnecting);
+    }
+}
+
+// ============================================================================
+// 那台机器此刻连没连着（文件窗口「断开 · 重新连接中…」「离线 · 采样 …」那一条的事实）
+// ============================================================================
+
+/// 一台机器那条长连接此刻的样子（由连接循环写：握上手 ⇒ `Up`；断了 ⇒ `Reconnecting`；重连一轮没连上 ⇒ `Down`）。
+///
+/// 窗口不猜：它订 `link` 那条流（`chan/host.rs`），这里是那条流的唯一来源。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Link {
+    Up,
+    /// 刚断、连接循环正在重连（还没有一轮失败）。
+    Reconnecting,
+    /// 重连至少一轮没连上（或从没连上过）。
+    Down,
+}
+
+struct LinkBook {
+    links: HashMap<String, Link>,
+    /// 每改一格 +1（订阅者据它醒）。
+    tick: tokio::sync::watch::Sender<u64>,
+    /// 「重新连接」那一下：叫醒那台的连接循环（它正睡在退避里）。
+    kicks: HashMap<String, Arc<tokio::sync::Notify>>,
+}
+
+fn link_book() -> &'static Mutex<LinkBook> {
+    static B: std::sync::OnceLock<Mutex<LinkBook>> = std::sync::OnceLock::new();
+    B.get_or_init(|| {
+        Mutex::new(LinkBook {
+            links: HashMap::new(),
+            tick: tokio::sync::watch::channel(0).0,
+            kicks: HashMap::new(),
+        })
+    })
+}
+
+fn set_link(origin: &str, l: Link) {
+    let mut b = lock(link_book());
+    if b.links.get(origin) == Some(&l) {
+        return;
+    }
+    b.links.insert(origin.to_string(), l);
+    b.tick.send_modify(|t| *t += 1);
+}
+
+/// 连接循环一轮没连上（这一轮里一次 hello 都没收到）⇒ 那台记成 `Down`。
+pub fn note_round_failed(origin: &str) {
+    set_link(origin, Link::Down);
+}
+
+/// 那台此刻的样子。从没登记过（连接循环还没起 / 一次都没连上）⇒ `Down`。
+pub fn link_of(origin: &str) -> Link {
+    lock(link_book())
+        .links
+        .get(origin)
+        .copied()
+        .unwrap_or(Link::Down)
+}
+
+/// 每改一格就醒一次的那个收端（`chan/host.rs` 的 `link` 流拿它等）。
+pub fn link_changes() -> tokio::sync::watch::Receiver<u64> {
+    lock(link_book()).tick.subscribe()
+}
+
+/// 那台连接循环睡退避时一起等的那一下（[`kick`] 拨它）。
+pub fn kick_handle(origin: &str) -> Arc<tokio::sync::Notify> {
+    lock(link_book())
+        .kicks
+        .entry(origin.to_string())
+        .or_insert_with(|| Arc::new(tokio::sync::Notify::new()))
+        .clone()
+}
+
+/// 「重新连接」：叫醒那台的连接循环，不等退避睡满（它此刻没在睡 ⇒ 记一下，下一回一睡就醒）。
+pub fn kick(origin: &str) {
+    kick_handle(origin).notify_one();
 }
 
 /// 取某台远端主机当前的入方向客户端。没连上/还没收到 hello → `None`。

@@ -349,8 +349,9 @@ const MAX_UNDO: usize = 1000;
 const NORMAL_ID: &str = "filewin-editor-text";
 
 /// 普通路径那个 `TextEdit` 的 id —— 编辑面的查找替换（`shell.rs`）要读 / 设它的选区。
-pub(crate) fn normal_editor_id() -> Id {
-    Id::new(NORMAL_ID)
+/// 按那份文件的路径分开（几个编辑页各是各的输入状态，两栏同时摆着两页也不互相抢）。
+pub(crate) fn normal_editor_id(path: &str) -> Id {
+    Id::new((NORMAL_ID, path))
 }
 
 /// 焦点在编辑面上时，方向键与 Tab 归编辑面（不拿去切焦点）。
@@ -1164,8 +1165,8 @@ impl BigSlot {
 }
 
 /// 从普通路径那个 `TextEdit` 的状态里把光标接过来（字 → 字节）。
-fn carried_cursor(ctx: &egui::Context, text: &str) -> usize {
-    egui::TextEdit::load_state(ctx, Id::new(NORMAL_ID))
+fn carried_cursor(ctx: &egui::Context, path: &str, text: &str) -> usize {
+    egui::TextEdit::load_state(ctx, normal_editor_id(path))
         .and_then(|s| s.cursor.char_range())
         .map_or(0, |r| {
             let k = r.primary.index.0;
@@ -1185,15 +1186,16 @@ pub fn show(ui: &mut Ui, pane: Option<&mut Pane>, view_h: f32) {
     let mut g = slot.lock();
     if g.is_none() {
         if let Some(why) = judge(&p.text) {
-            let at = carried_cursor(ui.ctx(), &p.text);
+            let at = carried_cursor(ui.ctx(), &p.path, &p.text);
             *g = Some(Doc::new(&p.text, why, at));
         }
     }
     match g.as_mut() {
         Some(doc) => doc.ui(ui, &mut p.text, view_h),
         None => {
-            let mut area = ScrollArea::vertical()
-                .id_salt("filewin-editor-scroll")
+            // 横竖两条滚动条都在编辑面里（稿 ⑤）：长行不折（行号槽与正文一行对一行），宽了横着滚。
+            let mut area = ScrollArea::both()
+                .id_salt(("filewin-editor-scroll", &p.path))
                 .auto_shrink([false, false])
                 .max_height(view_h)
                 .min_scrolled_height(view_h);
@@ -1201,21 +1203,52 @@ pub fn show(ui: &mut Ui, pane: Option<&mut Pane>, view_h: f32) {
                 area = area.scroll_offset(Vec2::ZERO);
             }
             let reveal = std::mem::take(&mut p.reveal);
+            let id = normal_editor_id(&p.path);
+            let faint = ui.visuals().weak_text_color();
             area.show(ui, |ui| {
-                let out = egui::TextEdit::multiline(&mut p.text)
-                    .id(Id::new(NORMAL_ID))
-                    .desired_rows(VIEW_ROWS)
-                    .desired_width(f32::INFINITY)
-                    .min_size(Vec2::new(0.0, view_h))
-                    .code_editor()
-                    .show(ui);
-                // 查找 / 替换把光标挪到了视野外 ⇒ 滚过去（打字与方向键由控件自己滚）。
-                if let Some(r) = reveal.then(|| out.state.cursor.char_range()).flatten() {
-                    let at = out.galley.pos_from_cursor(r.primary).translate(
-                        out.galley_pos.to_vec2() - Vec2::new(out.galley.rect.left(), 0.0),
-                    );
-                    ui.scroll_to_rect(at, None);
-                }
+                ui.horizontal_top(|ui| {
+                    // 行号槽：右对齐、淡一级，与正文同一份等宽字（一行对一行）。
+                    let lines = p.text.split('\n').count();
+                    let width = lines.to_string().len();
+                    let gutter: String = (1..=lines)
+                        .map(|n| format!("{n:>width$}"))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    ui.vertical(|ui| {
+                        ui.add_space(2.0);
+                        ui.add(
+                            egui::Label::new(egui::RichText::new(gutter).monospace().color(faint))
+                                .selectable(false)
+                                .extend(),
+                        );
+                    });
+                    let mut no_wrap = |ui: &Ui, buf: &dyn egui::TextBuffer, _w: f32| {
+                        let font = egui::TextStyle::Monospace.resolve(ui.style());
+                        let job = egui::text::LayoutJob::simple(
+                            buf.as_str().to_owned(),
+                            font,
+                            ui.visuals().text_color(),
+                            f32::INFINITY,
+                        );
+                        ui.fonts_mut(|f| f.layout_job(job))
+                    };
+                    let out = egui::TextEdit::multiline(&mut p.text)
+                        .id(id)
+                        .desired_rows(VIEW_ROWS)
+                        .desired_width(f32::INFINITY)
+                        .min_size(Vec2::new(0.0, view_h))
+                        .code_editor()
+                        .frame(egui::Frame::NONE)
+                        .layouter(&mut no_wrap)
+                        .show(ui);
+                    // 查找 / 替换把光标挪到了视野外 ⇒ 滚过去（打字与方向键由控件自己滚）。
+                    if let Some(r) = reveal.then(|| out.state.cursor.char_range()).flatten() {
+                        let at = out.galley.pos_from_cursor(r.primary).translate(
+                            out.galley_pos.to_vec2() - Vec2::new(out.galley.rect.left(), 0.0),
+                        );
+                        ui.scroll_to_rect(at, None);
+                    }
+                });
             });
         }
     }

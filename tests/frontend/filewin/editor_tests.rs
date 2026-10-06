@@ -714,7 +714,7 @@ fn window_editing(text: &str) -> (crate::shell::FileWindow, egui::Context) {
 }
 
 fn picked(ctx: &egui::Context) -> Option<(usize, usize)> {
-    egui::TextEdit::load_state(ctx, crate::bigfile::normal_editor_id())
+    egui::TextEdit::load_state(ctx, crate::bigfile::normal_editor_id("/srv/a.txt"))
         .and_then(|s| s.cursor.char_range())
         .map(|r| {
             let r = r.as_sorted_char_range();
@@ -723,12 +723,31 @@ fn picked(ctx: &egui::Context) -> Option<(usize, usize)> {
 }
 
 /// 窗口那条路：下一个 ⇒ 选中第一处、再下一个 ⇒ 第二处、上一个 ⇒ 回第一处；没有 ⇒ 查找栏上说「没找到」、选区不动；
-/// 替换 ⇒ 换掉选中那一处并选中下一处；全部替换 ⇒ 说换了几处、编辑框的字逐字等于手写期望。查找栏真画在编辑面上。
+/// 替换 ⇒ 换掉选中那一处并选中下一处；全部替换 ⇒ 说换了几处、编辑框的字逐字等于手写期望。
+/// 查找条平时收着（编辑页稿 ⑤），Ctrl+F 才浮出来、真画在编辑面上。
 #[test]
 fn find_and_replace_walk_the_editor_text_through_the_window() {
     let (mut w, ctx) = window_editing("x=1\nx=2\ny=3\n");
     let painted = crate::find::testing::frame_text(&ctx, &mut w, Vec::new());
-    for label in ["查找", "上一个", "下一个", "替换为", "全部替换"] {
+    assert!(
+        !painted.iter().any(|t| t == "全部替换"),
+        "没按 Ctrl+F 查找条就摆出来了"
+    );
+    let ctrl_f = egui::Event::Key {
+        key: egui::Key::F,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::COMMAND,
+    };
+    crate::find::testing::frame_text(&ctx, &mut w, vec![ctrl_f]);
+    let painted = crate::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    // 查找框 · 替换框空着时画的是提示字（「查找」「替换为」）；↑ ↓ × 是图标（悬停说「上一个」「下一个」）。
+    assert!(
+        painted.iter().any(|t| t.ends_with("查找")),
+        "编辑面上没画查找框"
+    );
+    for label in ["替换为", "替换", "全部替换"] {
         assert!(
             painted.iter().any(|t| t == label),
             "编辑面上没画「{label}」"
@@ -775,10 +794,12 @@ fn big_file_mode_has_no_find_and_says_so() {
     let big = "a".repeat(300 * 1024);
     let (mut w, ctx) = window_editing(&big);
     assert!(w.editing().unwrap().big.is_big(), "语料没进大文件模式");
+    w.find_open = true;
     let painted = crate::find::testing::frame_text(&ctx, &mut w, Vec::new());
+    let (foot, _) = w.editor_status(&ctx).expect("编辑页没有底条那一行");
     assert!(
-        painted.iter().any(|t| t == "大文件模式没有查找替换"),
-        "大文件模式没出声"
+        foot.contains(&copy_text("rsFilewinShell.editor.findBig", &[])),
+        "大文件模式没出声（底条那一行）：{foot}"
     );
     assert!(
         !painted.iter().any(|t| t == "全部替换"),

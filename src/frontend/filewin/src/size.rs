@@ -179,32 +179,6 @@ impl SizeBoard {
     pub fn last(&self) -> Option<Vec<SizeResult>> {
         self.inner.lock().unwrap().last.clone()
     }
-
-    /// 画「正在算」与上一摞的结局（结局那一句从 [`outcome_text`] 出来，原样画上去）。
-    pub fn ui(&self, ui: &mut egui::Ui) {
-        let (running, last) = {
-            let d = self.inner.lock().unwrap();
-            (d.running.clone(), d.last.clone())
-        };
-        if let Some(name) = &running {
-            ui.horizontal(|ui| {
-                ui.spinner();
-                super::shell::fit_label(
-                    ui,
-                    copy_text("rsFilewinSize.ui.running", &[("name", name)]),
-                    0.0,
-                );
-            });
-        }
-        if let Some(r) = &last {
-            let text = outcome_text(r);
-            if r.iter().any(Result::is_err) {
-                ui.colored_label(ui.visuals().warn_fg_color, text);
-            } else {
-                ui.label(text);
-            }
-        }
-    }
 }
 
 #[cfg(test)]

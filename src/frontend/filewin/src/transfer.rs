@@ -730,6 +730,37 @@ impl DropBoard {
         self.rounds.load(Ordering::SeqCst)
     }
 
+    /// 新开一趟用的一块新看板，只带上「这一窗」记着的两样（那台的 `$HOME` · 改走后端链路那一句），
+    /// 进度、取消、结局都是新的（一趟一块：互不清掉）。
+    pub fn fresh_like(&self) -> DropBoard {
+        let next = DropBoard::default();
+        {
+            let b = self.inner.lock().unwrap();
+            let mut n = next.inner.lock().unwrap();
+            n.backend_home = b.backend_home.clone();
+            n.via_backend = b.via_backend.clone();
+        }
+        *next.ctx.lock().unwrap() = self.ctx.lock().unwrap().clone();
+        next
+    }
+
+    /// 这一摞合起来走了多少 `(已传, 共)`（起过的那几件；还没起的不在里面）。
+    pub fn totals(&self) -> (u64, u64) {
+        let b = self.inner.lock().unwrap();
+        b.progress
+            .iter()
+            .fold((0, 0), |(g, t), (_, a, c)| (g + a, t + c))
+    }
+
+    /// 这一摞已经传完了几件（读数到顶的那几件）。
+    pub fn done_count(&self) -> usize {
+        let b = self.inner.lock().unwrap();
+        b.progress
+            .iter()
+            .filter(|(_, a, c)| *c > 0 && a >= c)
+            .count()
+    }
+
     /// 这一窗的上传是不是已经改走后端链路（`Some(为什么)`）。
     pub fn via_backend(&self) -> Option<String> {
         self.inner.lock().unwrap().via_backend.clone()
@@ -827,131 +858,56 @@ impl DropBoard {
         tx.send(allowed).is_ok()
     }
 
-    /// 画确认框与进度。**模态** —— 有问题在等的时候，列表那边不接受点击。
+    /// 画覆盖确认框。**模态** —— 有问题在等的时候，列表那边不接受点击。
+    /// 进度、停与结局不在这里画：这一趟是窗口底部「进度」表里的一行（`super::progress`）。
     pub fn ui(&self, ui: &mut egui::Ui) {
-        let (asking, mut ticks, progress, last, via) = {
+        let (asking, mut ticks) = {
             let b = self.inner.lock().unwrap();
-            (
-                b.asking.clone(),
-                b.ticks.clone(),
-                b.progress.clone(),
-                b.last.clone(),
-                b.via_backend.clone(),
-            )
+            (b.asking.clone(), b.ticks.clone())
         };
-        // 改走后端链路那一句（一窗一次；之后的上传都走那条，不再逐件说）。
-        if let Some(why) = via {
-            ui.colored_label(
-                ui.visuals().warn_fg_color,
-                copy_text("rsFilewinChunkUpload.route.switched", &[("why", &why)]),
-            );
+        if asking.is_empty() {
+            return;
         }
-        if !asking.is_empty() {
-            let mut answer: Option<bool> = None;
-            let mut changed = false;
-            let (_, esc) = super::shell::modal(ui.ctx(), "filewin-overwrite", |ui| {
-                ui.heading(copy_text(
-                    "rsFilewinTransfer.ui.askOverwrite",
-                    &[("n", &(asking.len()).to_string())],
-                ));
-                ui.label(&copy_text("rsFilewinTransfer.ui.askOnce", &[]));
-                super::shell::modal_list(ui, |ui| {
-                    for (i, p) in asking.iter().enumerate() {
-                        let mut t = ticks[i];
-                        if ui.checkbox(&mut t, &p.name).changed() {
-                            ticks[i] = t;
-                            changed = true;
-                        }
+        let mut answer: Option<bool> = None;
+        let mut changed = false;
+        let (_, esc) = super::shell::modal(ui.ctx(), "filewin-overwrite", |ui| {
+            ui.heading(copy_text(
+                "rsFilewinTransfer.ui.askOverwrite",
+                &[("n", &(asking.len()).to_string())],
+            ));
+            ui.label(&copy_text("rsFilewinTransfer.ui.askOnce", &[]));
+            super::shell::modal_list(ui, |ui| {
+                for (i, p) in asking.iter().enumerate() {
+                    let mut t = ticks[i];
+                    if ui.checkbox(&mut t, &p.name).changed() {
+                        ticks[i] = t;
+                        changed = true;
                     }
-                });
-                ui.horizontal(|ui| {
-                    if ui
-                        .button(&copy_text("rsFilewinTransfer.ui.overwriteChecked", &[]))
-                        .clicked()
-                    {
-                        answer = Some(true);
-                    }
-                    if ui
-                        .button(&copy_text("rsFilewinTransfer.ui.overwriteNone", &[]))
-                        .clicked()
-                    {
-                        answer = Some(false);
-                    }
-                });
+                }
             });
-            if changed {
-                self.inner.lock().unwrap().ticks = ticks;
-            }
-            if esc && answer.is_none() {
-                answer = Some(false);
-            }
-            if let Some(ok) = answer {
-                self.settle(ok);
-            }
-        }
-        for (name, got, total) in &progress {
-            let frac = if *total > 0 {
-                *got as f32 / *total as f32
-            } else {
-                0.0
-            };
-            ui.add(egui::ProgressBar::new(frac).text(format!("{name} {got}/{total}")));
-        }
-        // 🔴**那颗取消按钮**（单记的那一格）。
-        //    有东西在飞才画 —— 一颗常驻的、按下去什么都不取消的按钮比没有更坏。
-        if !self.desk.in_flight_ids().is_empty() {
             ui.horizontal(|ui| {
-                if ui.button(CANCEL_LABEL.as_str()).clicked() {
-                    self.desk.request();
+                if ui
+                    .button(&copy_text("rsFilewinTransfer.ui.overwriteChecked", &[]))
+                    .clicked()
+                {
+                    answer = Some(true);
                 }
-                if self.desk.is_cancelled() {
-                    ui.label(&copy_text("rsFilewinTransfer.ui.cancelling", &[]));
+                if ui
+                    .button(&copy_text("rsFilewinTransfer.ui.overwriteNone", &[]))
+                    .clicked()
+                {
+                    answer = Some(false);
                 }
             });
+        });
+        if changed {
+            self.inner.lock().unwrap().ticks = ticks;
         }
-        if let Some(o) = last {
-            // 从头重传过的那几件：成没成都要说（一次坏块 = 那一趟的续传本钱白花了，而且可能是网络 / 盘在出错）。
-            if !o.redone.is_empty() {
-                ui.colored_label(
-                    ui.visuals().warn_fg_color,
-                    copy_text(
-                        "rsFilewinTransfer.ui.redone",
-                        &[(
-                            "names",
-                            &o.redone
-                                .join(&copy_text("rsFilewinTransfer.ui.failedSep", &[])),
-                        )],
-                    ),
-                );
-            }
-            if !o.failed.is_empty() {
-                ui.colored_label(
-                    ui.visuals().error_fg_color,
-                    copy_text(
-                        "rsFilewinTransfer.ui.failed",
-                        &[
-                            ("n", &(o.failed.len()).to_string()),
-                            (
-                                "failed",
-                                &(o.failed
-                                    .iter()
-                                    .map(|(n, e)| format!("{n}（{e}）"))
-                                    .collect::<Vec<_>>()
-                                    .join(&copy_text("rsFilewinTransfer.ui.failedSep", &[])))
-                                .to_string(),
-                            ),
-                        ],
-                    ),
-                );
-            } else if o.ok > 0 || o.skipped > 0 {
-                ui.label(copy_text(
-                    "rsFilewinTransfer.ui.done",
-                    &[
-                        ("ok", &o.ok.to_string()),
-                        ("skipped", &o.skipped.to_string()),
-                    ],
-                ));
-            }
+        if esc && answer.is_none() {
+            answer = Some(false);
+        }
+        if let Some(ok) = answer {
+            self.settle(ok);
         }
     }
 }

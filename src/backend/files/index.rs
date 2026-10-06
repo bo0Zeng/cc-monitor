@@ -142,9 +142,14 @@ pub struct Snapshot {
     /// 而新鲜度要的正是一个**能跟别人对话**的时刻 —— 界面要显示「多久前更新的」。
     built_at: SystemTime,
     unreadable_dirs: usize,
+    /// 读不进去的那几个目录（原始字节，前 [`UNREADABLE_PATHS_MAX`] 个；窗口状态行「n 个目录无权限［查看］」列它们）。
+    unreadable_paths: Vec<Vec<u8>>,
     truncated: bool,
     skipped_mounts: usize,
 }
+
+/// 读不进去的目录最多记几个（数照旧记全，`unreadable_dirs`）。
+pub const UNREADABLE_PATHS_MAX: usize = 20;
 
 impl Snapshot {
     pub fn entries(&self) -> usize {
@@ -158,6 +163,11 @@ impl Snapshot {
 
     pub fn built_at(&self) -> SystemTime {
         self.built_at
+    }
+
+    /// 读不进去的那几个目录（前 [`UNREADABLE_PATHS_MAX`] 个，按遍历先后）。
+    pub fn unreadable_paths(&self) -> &[Vec<u8>] {
+        &self.unreadable_paths
     }
 
     pub fn root(&self) -> &[u8] {
@@ -232,6 +242,7 @@ pub fn build_with(root: &Path, device_of: impl Fn(&Path) -> Option<u64>) -> Snap
     let mut ends: Vec<u32> = Vec::new();
     let mut kinds: Vec<u8> = Vec::new();
     let mut unreadable_dirs = 0usize;
+    let mut unreadable_paths: Vec<Vec<u8>> = Vec::new();
     let mut truncated = false;
     let mut skipped_mounts = 0usize;
     let root_dev = device_of(root);
@@ -242,6 +253,10 @@ pub fn build_with(root: &Path, device_of: impl Fn(&Path) -> Option<u64>) -> Snap
             Ok(rd) => rd,
             Err(_) => {
                 unreadable_dirs += 1;
+                // 根自己读不进去不算（那是「拒」，`files-index-rebuild` 回 `unreadable`）；底下的记前几个。
+                if dir.as_path() != root && unreadable_paths.len() < UNREADABLE_PATHS_MAX {
+                    unreadable_paths.push(super::raw::path_bytes(&dir).to_vec());
+                }
                 continue;
             }
         };
@@ -283,6 +298,7 @@ pub fn build_with(root: &Path, device_of: impl Fn(&Path) -> Option<u64>) -> Snap
         root: super::raw::path_bytes(root).to_vec(),
         built_at: SystemTime::now(),
         unreadable_dirs,
+        unreadable_paths,
         truncated,
         skipped_mounts,
     }
@@ -384,6 +400,11 @@ pub fn is_stale(age_secs: u64) -> bool {
 }
 
 /// 常驻那一份被别人毒到不可用时（`RwLock` 中毒）也要**说得出话**，不 panic。
+/// 常驻那一份里读不进去的那几个目录（前 [`UNREADABLE_PATHS_MAX`] 个；还没建过 ⇒ 空）。
+pub fn unreadable_paths() -> Vec<Vec<u8>> {
+    with_resident(|s| s.map(|s| s.unreadable_paths().to_vec()).unwrap_or_default())
+}
+
 fn with_resident<T>(f: impl FnOnce(Option<&Snapshot>) -> T) -> T {
     match RESIDENT.read() {
         Ok(g) => f(g.as_ref()),

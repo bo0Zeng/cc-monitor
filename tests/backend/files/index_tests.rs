@@ -155,6 +155,56 @@ fn an_unreadable_root_is_counted_and_not_swallowed() {
     );
 }
 
+/// 读不进去的子目录：数照记，**名字也记**（前 [`UNREADABLE_PATHS_MAX`] 个，窗口「n 个目录无权限［查看］」列它们）；
+/// 根自己读不进去不进名单（那是「拒」）。期望手写：造 23 个锁死的子目录 ⇒ 数 23、名单 20 个、都在根底下。
+#[cfg(unix)]
+#[test]
+fn unreadable_subdirs_are_named_up_to_the_cap() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let _lock = resident_lock();
+    let root = std::env::temp_dir().join(format!("ccm-unreadable-names-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    let mut locked = Vec::new();
+    for k in 0..23 {
+        let d = root.join(format!("locked-{k:02}"));
+        std::fs::create_dir_all(&d).unwrap();
+        locked.push(d);
+    }
+    std::fs::create_dir_all(root.join("open")).unwrap();
+    std::fs::write(locked[0].join("probe"), b"x").unwrap();
+    for d in &locked {
+        std::fs::set_permissions(d, std::fs::Permissions::from_mode(0o000)).unwrap();
+    }
+    // 前提：这一趟不是以 root 跑（root 进得了 000 的目录，这一格就判不了）—— 看里面那一份还 stat 不 stat 得到。
+    let can_read = std::fs::metadata(locked[0].join("probe")).is_ok();
+    let snap = build(&root);
+    for d in &locked {
+        std::fs::set_permissions(d, std::fs::Permissions::from_mode(0o755)).ok();
+    }
+    std::fs::remove_dir_all(&root).ok();
+    assert!(
+        !can_read,
+        "以 root 跑的：000 的目录照样读得进，这一格判不了"
+    );
+    assert_eq!(snap.stats().unreadable_dirs, 23);
+    let names = snap.unreadable_paths();
+    assert_eq!(names.len(), UNREADABLE_PATHS_MAX, "名单没按上限截");
+    assert_eq!(UNREADABLE_PATHS_MAX, 20);
+    let root_bytes = root.to_string_lossy().to_string();
+    for n in names {
+        let n = String::from_utf8_lossy(n);
+        assert!(
+            n.starts_with(&root_bytes) && n.contains("/locked-"),
+            "名单里有不是那几个锁死目录的：{n}"
+        );
+    }
+    // 根读不进去（不存在）⇒ 数一个、名单空。
+    let missing = root.join("gone");
+    let snap = build(&missing);
+    assert_eq!(snap.stats().unreadable_dirs, 1);
+    assert!(snap.unreadable_paths().is_empty(), "根自己进了名单");
+}
+
 #[test]
 fn a_symlink_is_indexed_but_not_followed() {
     let _lock = resident_lock();

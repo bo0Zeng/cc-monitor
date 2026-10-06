@@ -165,11 +165,12 @@ const HOP: u8 = 1;
 /// 通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op：传输台开单两条（本机常驻后端的传输台，经中继 `sftp_pool.rs`）·
 /// 文件窗口「在此打开终端」（[`terminal_open`]）。其余一切照旧按 `origin` 去 `inbound_client`。
 /// 传输那两条从传输台那一份名单取（`sftp_pool::TRANSFER_OPS`，一份名单一个家）。
-pub(crate) const HOST_OPS: [&str; 4] = [
+pub(crate) const HOST_OPS: [&str; 5] = [
     crate::sftp_pool::TRANSFER_OPS[0],
     crate::sftp_pool::TRANSFER_OPS[1],
     filewin_contract::TERMINAL_OPEN_OP,
     filewin_contract::FILEWIN_OPEN_OP,
+    filewin_contract::LINK_RETRY_OP,
 ];
 
 /// 开终端那一行由本机后端渲（`src/backend/dial/terminal.rs`，与主界面 `terminal-open.ts` 问的同一条）。
@@ -194,6 +195,11 @@ impl Backends for InboundBackends {
             }
             if op.0 == filewin_contract::FILEWIN_OPEN_OP {
                 return Box::pin(filewin_open(origin, payload));
+            }
+            if op.0 == filewin_contract::LINK_RETRY_OP {
+                // 叫醒那台的连接循环（它睡在退避里）；连没连上由 `link` 那条流说。
+                inbound_client::kick(origin.as_wire_str());
+                return Box::pin(async { Ok(Body(b"{}".to_vec())) });
             }
             return Box::pin(terminal_open(origin, payload, left));
         }
@@ -231,6 +237,10 @@ impl Backends for InboundBackends {
         if let Some(id) = kind.0.strip_prefix(crate::sftp_pool::TRANSFER_KIND_PREFIX) {
             return transfer_stream(&origin, id, from);
         }
+        // 第二条：那台此刻连没连着（连接循环的事实，`inbound_client::link_of`）。
+        if kind.0 == filewin_contract::LINK_KIND {
+            return link_stream(&origin);
+        }
         // 别的 `kind` 今天照旧没有流。对端原位说「没有这条流」，不装作订阅成功、也不静默挂着。
         let _ = (origin, from);
         let body = serde_json::to_vec(&serde_json::json!({
@@ -246,6 +256,43 @@ impl Backends for InboundBackends {
     /// 那台的能力事实 = 它那条长连接握手时交出的那一份（`inbound_client` 登记表里，一个家）。
     fn offer(&self, origin: &Origin) -> Option<super::wire::Offer> {
         inbound_client::client_for(origin.as_wire_str()).map(|c| c.offer())
+    }
+}
+
+/// `link` 那条流：先交此刻的样子，之后每变一次交一格（没变不重复说）。连接循环那一侧的事实只住 `inbound_client`。
+fn link_stream(origin: &Origin) -> BoxStream<'static, Item> {
+    use futures::StreamExt as _;
+    let o = origin.as_wire_str().to_string();
+    let rx = inbound_client::link_changes();
+    futures::stream::unfold((rx, None, o), |(mut rx, last, o)| async move {
+        loop {
+            let now = inbound_client::link_of(&o);
+            if last != Some(now) {
+                return Some((link_item(now), (rx, Some(now), o)));
+            }
+            rx.changed().await.ok()?;
+        }
+    })
+    .boxed()
+}
+
+/// 连接循环的一格 → 流上的一格。
+fn link_item(l: inbound_client::Link) -> Item {
+    use super::wire::{HopFault, HopId};
+    let at = HopId {
+        idx: HOP,
+        tag: "open",
+    };
+    match l {
+        inbound_client::Link::Up => Item::Seen { from: None },
+        inbound_client::Link::Reconnecting => Item::Unseen {
+            at,
+            why: HopFault::Dropped,
+        },
+        inbound_client::Link::Down => Item::Unseen {
+            at,
+            why: HopFault::Unreachable,
+        },
     }
 }
 

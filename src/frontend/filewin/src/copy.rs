@@ -637,12 +637,9 @@ impl CopyBoard {
         tx.send(overwrite).is_ok()
     }
 
-    /// 画覆盖确认框 · 「正在复制」· **上一趟的结局**（从 [`outcome_notice`] 出来，原样画上去）。
+    /// 画覆盖确认框（模态）。「正在复制」与结局是「进度」表里的一行（`super::progress`，结局那一句从 [`outcome_notice`] 出来）。
     pub fn ui(&self, ui: &mut egui::Ui) {
-        let (asking, running, last) = {
-            let b = self.inner.lock().unwrap();
-            (b.asking.clone(), b.running.clone(), b.last.clone())
-        };
+        let asking = self.inner.lock().unwrap().asking.clone();
         if !asking.is_empty() {
             let mut answer: Option<bool> = None;
             let (_, esc) = super::shell::modal(ui.ctx(), "filewin-copy-overwrite", |ui| {
@@ -682,24 +679,6 @@ impl CopyBoard {
             }
             if let Some(ok) = answer {
                 self.settle(ok);
-            }
-        }
-        if let Some(name) = &running {
-            ui.horizontal(|ui| {
-                ui.spinner();
-                super::shell::fit_label(
-                    ui,
-                    copy_text("rsFilewinCopy.ui.copying", &[("name", &name.to_string())]),
-                    0.0,
-                );
-            });
-        }
-        if let Some(o) = &last {
-            let n = outcome_notice(o);
-            if n.loud {
-                ui.colored_label(ui.visuals().warn_fg_color, n.text);
-            } else {
-                ui.label(n.text);
             }
         }
     }

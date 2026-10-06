@@ -236,44 +236,69 @@ fn the_done_notice_says_how_many_bytes_and_where_and_is_quiet() {
     assert!(f.loud, "失败不是警告档 —— 那一行会混在普通提示里");
 }
 
-/// 🔴 **那句话真的被画到窗口上了**（生产那个 [`CopyBoard::ui`]，从这一帧的 galley 读回来）；
-/// 「在跑」时画一行「正在那台机器上复制」，而**不画**取消那颗按钮 ——
-/// 后端那一趟取消不掉，画出来就是一颗按了没用的按钮（阴性对照同一把尺子）。
+/// 🔴 **那一行真的被画到窗口上了**（生产那张「进度」表 `progress::table_ui`，从这一帧的 galley 读回来）；
+/// 「在跑」时画「复制 big.bin.copy」，「停」灰着 —— 后端那一趟撤不动，能按的「停」就是一颗按了没用的按钮。
 #[test]
 fn the_outcome_and_the_running_line_really_get_painted_and_no_cancel_button_is() {
     let screen = egui::vec2(1280.0, 800.0);
     let ctx = egui::Context::default();
     let board = CopyBoard::default();
+    let table = crate::progress::Progress::default();
+    table.add(
+        crate::progress::Trip::Copy {
+            board: board.clone(),
+            n: 1,
+            name: "big.bin.copy".into(),
+        },
+        Some("/srv".into()),
+        Some("撤不动".into()),
+    );
     board.begin("big.bin.copy");
-    let _ = painted_text(&ctx, screen, 0.0, Vec::new(), |ui| board.ui(ui));
-    let running = painted_text(&ctx, screen, 0.1, Vec::new(), |ui| board.ui(ui));
+    let mut acted = None;
+    let mut paint = |t: f64, acted: &mut Option<crate::progress::Act>| {
+        painted_text(&ctx, screen, t, Vec::new(), |ui| {
+            if let Some(a) = crate::progress::table_ui(ui, &table) {
+                *acted = Some(a);
+            }
+        })
+    };
+    let _ = paint(0.0, &mut acted);
+    let running = paint(0.1, &mut acted);
     assert!(
         !running.is_empty(),
         "这一帧一个字都没画出来 —— 量具塌了，下面几比在空转"
     );
+    let title = copy_text(
+        "rsFilewinProgress.copy.runningOne",
+        &[("name", "big.bin.copy")],
+    );
     assert!(
-        painted_contains(&running, "正在那台机器上复制 big.bin.copy"),
+        painted_contains(&running, &title),
         "在跑却没说在跑：{:?}",
         running.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>()
     );
+    let v = table.jobs()[0].view();
     assert!(
-        !painted_contains(&running, super::super::transfer::CANCEL_LABEL.as_str()),
-        "画了取消那颗按钮 —— 后端那一趟取消不掉，那是一颗按了没用的按钮"
+        matches!(v.button, Some((_, Err(_)))),
+        "「停」能按 —— 后端那一趟撤不动，那是一颗按了没用的按钮：{:?}",
+        v.button
     );
     board.finish(CopyOutcome::Done {
         asked: false,
         bytes: 42,
     });
-    let done = painted_text(&ctx, screen, 0.2, Vec::new(), |ui| board.ui(ui));
+    table.settle(0);
+    let done = paint(0.2, &mut acted);
     assert!(
-        painted_contains(&done, "复制完成：42 字节"),
+        painted_contains(
+            &done,
+            &copy_text("rsFilewinProgress.copy.done", &[("n", "1")])
+        ),
         "结局没画出来：{:?}",
         done.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>()
     );
-    assert!(
-        !painted_contains(&done, "正在那台机器上复制"),
-        "跑完了还说在跑"
-    );
+    assert!(!painted_contains(&done, &title), "跑完了还说在跑");
+    assert!(acted.is_none());
 }
 
 // ════════════════════════════════════════════════════════════════════════

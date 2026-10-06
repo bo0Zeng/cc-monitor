@@ -135,6 +135,14 @@ pub const TERMINAL_OPEN_OP: &str = "terminal-open";
 /// **monitor 自己接**、照开窗入口同一条路起一个新的窗口进程（一窗一机：不是在这个窗口里换机器）。
 pub const FILEWIN_OPEN_OP: &str = "filewin-open";
 
+/// 「那台此刻连没连着」那条流的 `kind`：窗口订它（寻址 ＝ 那台），**monitor 自己接**（连接循环的事实，不按 `origin` 转给后端）。
+/// 格子：连着 ⇒ `Seen`；刚断、在重连 ⇒ `Unseen{why: Dropped}`；重连一轮没连上 / 从没连上 ⇒ `Unseen{why: Unreachable}`。
+pub const LINK_KIND: &str = "link";
+
+/// 「重新连接」：窗口那一条警告条上的按钮 ⇒ 在通道上 `call` 这一条（寻址 ＝ 那台，参数空），
+/// **monitor 自己接**：叫醒那台的连接循环，不等退避睡满。回 `{}`；连没连上看 [`LINK_KIND`] 那条流。
+pub const LINK_RETRY_OP: &str = "link-retry";
+
 /// [`FILEWIN_OPEN_OP`] 的参数：发起那扇窗正在用的样子（新窗口照它画）。
 pub fn filewin_open_args(theme: &Theme) -> serde_json::Value {
     serde_json::json!({ "theme": theme })

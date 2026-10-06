@@ -480,6 +480,325 @@ pub fn progress(ui: &mut Ui, width: f32, frac: Option<f32>) {
     ui.painter().rect_filled(fill, 2.0, p.accent);
 }
 
+/// 一张表的头（32 高）：左标题 ＋ 右端一颗文字按钮与一颗收起（⌄）。
+pub fn table_head(ui: &mut Ui, title: &str, action: &str, acted: &mut bool, collapse: &mut bool) {
+    let p = palette(ui.ctx());
+    let w = ui.available_width();
+    let r = ui.allocate_ui_with_layout(
+        egui::vec2(w, 32.0),
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| {
+            ui.set_min_size(egui::vec2(w, 32.0));
+            ui.add_space(12.0);
+            ui.label(egui::RichText::new(title).strong().color(p.text));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add_space(4.0);
+                if ui
+                    .add(
+                        egui::Button::new(egui::RichText::new(egui_phosphor::regular::CARET_DOWN))
+                            .frame_when_inactive(false),
+                    )
+                    .clicked()
+                {
+                    *collapse = true;
+                }
+                if ui
+                    .add(
+                        egui::Button::new(egui::RichText::new(action).small().color(p.text2))
+                            .frame_when_inactive(false),
+                    )
+                    .clicked()
+                {
+                    *acted = true;
+                }
+            });
+        },
+    );
+    let rect = r.response.rect;
+    ui.painter().hline(
+        rect.x_range(),
+        rect.bottom(),
+        egui::Stroke::new(1.0, p.border_soft),
+    );
+}
+
+/// 「进度」表的一行（稿 11：图标 22 ｜ 标题 ＋ 一行小字 ｜ 进度条 240 ｜ 读数 150 右对齐等宽 ｜ 按钮）。回这一帧按下的动作。
+pub fn task_row(ui: &mut Ui, id: u64, v: &super::progress::View) -> Option<super::progress::Act> {
+    use super::progress::State;
+    let p = palette(ui.ctx());
+    let w = ui.available_width();
+    let h = 36.0;
+    let icon_c = match v.state {
+        State::Running | State::Stopped => p.text2,
+        State::Done => p.success,
+        State::Failed => p.error,
+    };
+    let mut hit = None;
+    let r = ui.push_id(("filewin-task", id), |ui| {
+        ui.allocate_ui_with_layout(
+            egui::vec2(w, h),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.set_min_size(egui::vec2(w, h));
+                ui.add_space(12.0);
+                ui.add_sized(
+                    [22.0, h],
+                    egui::Label::new(egui::RichText::new(v.icon).color(icon_c)),
+                );
+                ui.add_space(10.0);
+                // 进度条 240 ＋ 读数 150 ＋ 按钮约 110 ＋ 间距：窄了先缩进度条，标题一栏至少 120。
+                let bar = (ui.available_width() - 150.0 - 110.0 - 30.0 - 120.0).clamp(60.0, 240.0);
+                let what_w = (ui.available_width() - bar - 150.0 - 110.0 - 30.0).max(80.0);
+                ui.allocate_ui_with_layout(
+                    egui::vec2(what_w, h),
+                    egui::Layout::top_down(egui::Align::LEFT),
+                    |ui| {
+                        ui.set_width(what_w);
+                        ui.add_space(2.0);
+                        ui.add(
+                            egui::Label::new(egui::RichText::new(&v.title).color(p.text))
+                                .truncate(),
+                        )
+                        .on_hover_text(&v.title);
+                        if !v.detail.is_empty() {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(&v.detail).small().color(p.text2),
+                                )
+                                .truncate(),
+                            )
+                            .on_hover_text(&v.detail);
+                        }
+                    },
+                );
+                ui.add_space(10.0);
+                match v.frac {
+                    Some(f) => progress(ui, bar, f),
+                    None => {
+                        ui.add_space(bar);
+                    }
+                }
+                ui.add_space(10.0);
+                ui.allocate_ui_with_layout(
+                    egui::vec2(150.0, h),
+                    egui::Layout::right_to_left(egui::Align::Center),
+                    |ui| {
+                        ui.set_width(150.0);
+                        ui.label(egui::RichText::new(&v.nums).small().color(p.text2));
+                    },
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add_space(10.0);
+                    if let Some((label, a)) = &v.button {
+                        let stop = matches!(a, Ok(super::progress::Act::Stop(_)) | Err(_));
+                        let text = if stop {
+                            format!("{} {label}", egui_phosphor::regular::STOP)
+                        } else {
+                            label.clone()
+                        };
+                        let r = ui.add_enabled(a.is_ok(), egui::Button::new(text));
+                        let r = match a {
+                            Err(why) => r.on_disabled_hover_text(why),
+                            Ok(_) => r,
+                        };
+                        if r.clicked() {
+                            if let Ok(a) = a {
+                                hit = Some(a.clone());
+                            }
+                        }
+                    }
+                });
+            },
+        )
+        .response
+        .rect
+    });
+    let rect = r.inner;
+    ui.painter().hline(
+        rect.x_range(),
+        rect.bottom(),
+        egui::Stroke::new(1.0, p.border_soft.gamma_multiply(0.6)),
+    );
+    hit
+}
+
+/// 状态栏右端「进度」那一颗：有没看过的失败 ⇒ 左边一个红点；`frac` ⇒ 字后一小条合计进度；末尾 ⌃ / ⌄。回点了没有。
+pub fn progress_chip(ui: &mut Ui, label: &str, frac: Option<f32>, red: bool, open: bool) -> bool {
+    let p = palette(ui.ctx());
+    let caret = if open {
+        egui_phosphor::regular::CARET_DOWN
+    } else {
+        egui_phosphor::regular::CARET_UP
+    };
+    let font = egui::TextStyle::Small.resolve(ui.style());
+    let g = ui
+        .painter()
+        .layout_no_wrap(label.to_string(), font.clone(), p.text);
+    let gc = ui
+        .painter()
+        .layout_no_wrap(caret.to_string(), font, p.text2);
+    let dot = if red { 12.0 } else { 0.0 };
+    let bar = if frac.is_some() { 46.0 } else { 0.0 };
+    let w = 8.0 + dot + g.size().x + bar + 6.0 + gc.size().x + 8.0;
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 22.0), egui::Sense::click());
+    ui.painter().rect_stroke(
+        rect,
+        6.0,
+        egui::Stroke::new(1.0, p.border_soft),
+        egui::StrokeKind::Inside,
+    );
+    if resp.hovered() {
+        ui.painter().rect_filled(rect, 6.0, p.hover);
+    }
+    let cy = rect.center().y;
+    let mut x = rect.left() + 8.0;
+    if red {
+        ui.painter()
+            .circle_filled(egui::pos2(x + 3.5, cy), 3.5, p.error);
+        x += dot;
+    }
+    let gw = g.size().x;
+    ui.painter()
+        .galley(egui::pos2(x, cy - g.size().y / 2.0), g, p.text);
+    x += gw;
+    if let Some(f) = frac {
+        let b = egui::Rect::from_min_size(egui::pos2(x + 6.0, cy - 2.0), egui::vec2(40.0, 4.0));
+        ui.painter().rect_filled(b, 2.0, p.border_soft);
+        ui.painter().rect_filled(
+            egui::Rect::from_min_size(b.min, egui::vec2(40.0 * f.clamp(0.0, 1.0), 4.0)),
+            2.0,
+            p.accent,
+        );
+        x += bar;
+    }
+    ui.painter()
+        .galley(egui::pos2(x + 6.0, cy - gc.size().y / 2.0), gc, p.text2);
+    resp.clicked()
+}
+
+/// 一层挂在某颗控件下方的小清单（菜单那种浮层，`--card` 底）：每行等宽 12、悬停给第二格（全文）；末尾可多一行灰字。
+/// Esc / 点别处收（`open` 置假）。回这一帧点了第几行。
+pub fn path_list(
+    ui: &Ui,
+    id: egui::Id,
+    below: egui::Rect,
+    open: &mut bool,
+    rows: &[(String, String)],
+    tail: Option<&str>,
+) -> Option<usize> {
+    if !*open {
+        return None;
+    }
+    let p = palette(ui.ctx());
+    let mut hit = None;
+    let area = egui::Area::new(id)
+        .order(egui::Order::Foreground)
+        .fixed_pos(below.left_bottom() + egui::vec2(0.0, 4.0))
+        .show(ui.ctx(), |ui| {
+            // 与菜单同一个浮层底（`Frame::popup`：不透明的浮层色 ＋ 浮层阴影）。
+            egui::Frame::popup(&ui.ctx().global_style()).show(ui, |ui| {
+                ui.set_max_width(420.0);
+                for (i, (shown, full)) in rows.iter().enumerate() {
+                    let r = ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new(shown)
+                                    .monospace()
+                                    .size(12.0)
+                                    .color(p.text),
+                            )
+                            .frame_when_inactive(false)
+                            .truncate(),
+                        )
+                        .on_hover_text(full);
+                    if r.clicked() {
+                        hit = Some(i);
+                    }
+                }
+                if let Some(t) = tail {
+                    ui.add_space(2.0);
+                    ui.label(egui::RichText::new(t).small().color(p.text2));
+                }
+            });
+        });
+    let esc = ui.input(|i| i.key_pressed(egui::Key::Escape));
+    let at = ui.input(|i| i.pointer.interact_pos());
+    let clicked_out = ui.input(|i| i.pointer.any_pressed())
+        && !at.is_some_and(|a| area.response.rect.contains(a) || below.contains(a));
+    if esc || clicked_out || hit.is_some() {
+        *open = false;
+    }
+    hit
+}
+
+/// 对话框一颗按钮的样子（规范 `C10`）：普通 · 主按钮（强调色底）· 危险（错误色底）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Btn {
+    Plain,
+    Primary,
+    Danger,
+}
+
+/// 对话框（规范 `C10`）：压暗的底 ＋ 居中一块（浮层底、圆角、最宽 480 且不超过窗宽 − 48）：
+/// 标题（16 / 600）＋ 正文（调用方画）＋ 右下一排按钮。`focus` ＝ 打开时焦点在第几颗；Esc / 点压暗的底 ⇒ 当作点了第 `cancel` 颗。
+/// 回这一帧点了第几颗。
+pub fn dialog(
+    ctx: &egui::Context,
+    id: &str,
+    title: &str,
+    body: impl FnOnce(&mut Ui),
+    buttons: &[(String, Btn)],
+    focus: usize,
+    cancel: usize,
+) -> Option<usize> {
+    let p = palette(ctx);
+    let mut hit = None;
+    let width = (ctx.content_rect().width() - 48.0).clamp(240.0, 480.0);
+    let frame = egui::Frame::popup(&ctx.global_style())
+        .corner_radius(12.0)
+        .inner_margin(egui::Margin::same(24));
+    let shown = egui::Modal::new(egui::Id::new(id))
+        .frame(frame)
+        .show(ctx, |ui| {
+            ui.set_width(width);
+            ui.label(egui::RichText::new(title).size(16.0).strong().color(p.text));
+            ui.add_space(10.0);
+            body(ui);
+            ui.add_space(14.0);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let mut first_frame_focus = None;
+                for (i, (label, look)) in buttons.iter().enumerate().rev() {
+                    let text = egui::RichText::new(label).color(match look {
+                        Btn::Plain => p.text,
+                        Btn::Primary | Btn::Danger => p.text,
+                    });
+                    let b = match look {
+                        Btn::Plain => egui::Button::new(text),
+                        Btn::Primary => egui::Button::new(text).fill(p.accent_strong),
+                        Btn::Danger => egui::Button::new(text).fill(p.error_strong),
+                    };
+                    let r = ui.add(b);
+                    if i == focus {
+                        first_frame_focus = Some(r.id);
+                    }
+                    if r.clicked() {
+                        hit = Some(i);
+                    }
+                }
+                // 打开那一刻焦点落在 `focus` 那一颗（撤不回的那一下要多按一次 Tab 才到）。
+                if let Some(f) = first_frame_focus {
+                    if ui.memory(|m| m.focused().is_none()) {
+                        ui.memory_mut(|m| m.request_focus(f));
+                    }
+                }
+            });
+        });
+    if hit.is_none() && shown.should_close() {
+        hit = Some(cancel);
+    }
+    hit
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/frontend/filewin/kit_tests.rs"]
 mod tests;

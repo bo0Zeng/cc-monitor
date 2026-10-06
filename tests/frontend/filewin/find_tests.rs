@@ -800,6 +800,94 @@ async fn the_status_line_shows_the_numbers_the_backend_reports() {
     }
 }
 
+/// 状态行「n 个目录无权限［查看］」：点［查看］⇒ 一层浮层列后端交的那几个目录（相对搜索起点；多于交来的 ⇒「另外 n 个」）；
+/// 点一行 ⇒ 复制那条**绝对**路径、右下角回执「路径已复制」，**不**跳过去（跳过去只会落到「无权限」那一条）。数与名单都是后端报的。
+#[tokio::test]
+async fn the_unreadable_dirs_can_be_listed_and_a_click_copies_the_path() {
+    let tree = testing::plant("unreadable-list", 30, TREE_SEED).expect("造不出那棵树");
+    let root = tree.remote_root();
+    let declared = Declared {
+        unreadable_dirs: 3,
+        unreadable_paths: vec![format!("{root}/secret"), format!("{root}/a/locked")],
+        ..Declared::default()
+    };
+    let wired = testing::wire_up(
+        "unreadable-list",
+        FakeBackend::new(COMMANDS, declared)
+            .homed(&tree.root)
+            .preindexed(&tree.root),
+    )
+    .await;
+    let ctx = ctx_ready();
+    let mut w = testing::window_on(&wired, &root);
+    let before = w.search.rounds();
+    testing::type_into_search(&ctx, &mut w, NEEDLE);
+    testing::settle(&w.search, before, "unreadable-list").await;
+    let screen = egui::vec2(1280.0, 800.0);
+    let mut t = 10.0;
+    let mut paint = |w: &mut crate::shell::FileWindow, ev: Vec<egui::Event>| {
+        t += 0.5;
+        crate::copy::testing::painted_text(&ctx, screen, t, ev, |ui| w.frame_body(ui))
+    };
+    let _ = paint(&mut w, Vec::new());
+    let painted = paint(&mut w, Vec::new());
+    let look =
+        crate::copy::testing::rects_of(&painted, &copy_text("rsFilewinFind.status.look", &[]));
+    assert_eq!(look.len(), 1, "状态行上没有［查看］：{painted:?}");
+    assert!(crate::copy::testing::painted_contains(
+        &painted,
+        "3 个目录无权限"
+    ));
+    let rel = "a/locked";
+    assert!(
+        crate::copy::testing::rects_of(&painted, rel).is_empty(),
+        "没点［查看］就把名单摆出来了"
+    );
+    let _ = paint(&mut w, crate::rows::testing::click_at(look[0].center()));
+    let _ = paint(&mut w, Vec::new());
+    let painted = paint(&mut w, Vec::new());
+    let row = crate::copy::testing::rects_of(&painted, rel);
+    assert_eq!(
+        row.len(),
+        1,
+        "点了［查看］没列出那几个目录（相对搜索起点）：{painted:?}"
+    );
+    assert_eq!(crate::copy::testing::rects_of(&painted, "secret").len(), 1);
+    assert!(
+        crate::copy::testing::painted_contains(
+            &painted,
+            &copy_text("rsFilewinFind.status.holesMore", &[("n", "1")])
+        ),
+        "后端说 3 个、交了 2 个，末行没说「另外 1 个」"
+    );
+    let cwd = w.cwd.clone();
+    let out = ctx.run_ui(
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, screen)),
+            time: Some(t + 0.5),
+            events: crate::rows::testing::click_at(row[0].center()),
+            ..Default::default()
+        },
+        |ui| w.frame_body(ui),
+    );
+    let copied = out.platform_output.commands.iter().find_map(|c| match c {
+        egui::OutputCommand::CopyText(s) => Some(s.clone()),
+        _ => None,
+    });
+    out.drop_without_applying_deltas();
+    assert_eq!(
+        copied,
+        Some(format!("{root}/a/locked")),
+        "点了一行，复制的不是那条绝对路径"
+    );
+    assert_eq!(
+        w.receipt.as_deref(),
+        Some(copy_text("rsFilewinShell.receipt.pathCopied", &[]).as_str()),
+        "点了一行没给回执"
+    );
+    assert_eq!(w.cwd, cwd, "点了一行却跳过去了");
+}
+
 /// 等到那块板子挂上「冷启动首建正在走」。**带上限，绝不挂死**（同 [`testing::settle`]）。
 async fn until_first_build_shows(board: &SearchBoard, who: &str) -> u64 {
     for _ in 0..600 {
@@ -1228,7 +1316,7 @@ fn a_missing_field_is_a_loud_failure_not_a_silent_zero() {
         "unreadable_dirs": 0, "truncated": false, "age_secs": 7,
         "rewalk_interval_secs": 4242, "stale": false,
         "browse_watches": 1, "browse_watch_cap": 64, "cold_first_build_secs": 47,
-        "skipped_mounts": 0,
+        "skipped_mounts": 0, "unreadable_paths": [],
     });
     assert!(decode_status(&full).is_ok(), "完整那一份该解析得动");
     for k in STATUS_FIELDS {

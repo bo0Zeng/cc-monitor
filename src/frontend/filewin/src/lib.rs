@@ -277,6 +277,8 @@ pub mod kit;
 pub mod lossy_pull;
 // **预览**：右侧一块只读面板（已有的 `files-read-text`，自己的上限，最多一趟在飞）。
 pub mod preview;
+// 窗口底部那张「进度」表：一趟一行（上传 · 下载 · 复制 · 解压 · 算大小 · 删除），所有标签页共用一份。
+pub mod progress;
 // 右键「属性」：问那台 `files-stat`，摆一个框。
 pub mod props;
 // **原生选文件框**：上传 / 存到哪儿那两问的「浏览…」。
