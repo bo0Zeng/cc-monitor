@@ -279,6 +279,26 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "这台后端的家目录只在平台层答（`HOME` → `USERPROFILE`）：`files-home` 与暂存区都拼在它底下",
     ),
     (
+        "platform::paths::name_problem",
+        Kind::Platform,
+        "新建 / 建目录 / 改名的目标名在这台能不能用（Windows 与别处两套规则）：平台的事实",
+    ),
+    (
+        "platform::paths::NameProblem::Reserved",
+        Kind::Platform,
+        "同上一格：为什么不能用的三档，各配一句",
+    ),
+    (
+        "platform::paths::NameProblem::BadChar",
+        Kind::Platform,
+        "同上",
+    ),
+    (
+        "platform::paths::NameProblem::Trailing",
+        Kind::Platform,
+        "同上",
+    ),
+    (
         "platform::fs::rename_noreplace",
         Kind::Platform,
         "不覆盖改名（改名 · 复制上位 · 读改写新建那一形）：原子的「目标已在就失败」是平台原语",

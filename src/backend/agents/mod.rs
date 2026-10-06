@@ -484,6 +484,10 @@ pub struct StepResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub answer: Option<Answer>,
+    /// 命令失败时的退出码（结果里写着才有）。
+    #[serde(rename = "exitCode", skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub exit_code: Option<i32>,
 }
 
 /// 提问 / 计划答了什么（B7）。界面写「已批准」/「已选「{option}」」，不显示 Claude Code 的英文原句。

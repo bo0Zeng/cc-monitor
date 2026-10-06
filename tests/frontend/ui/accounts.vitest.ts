@@ -14,8 +14,6 @@ import { fakeCfg } from "./config-patch-fake";
 import { deriveUi, effectiveDefault, currentWorkingAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, detectAccountMismatch, isSelectable, accountConfigDir, badgeText, sessionBadge, shouldShowAccountBadge, isAccountZero, accountStatusBadge, apikeyEndpointStateFor, accountLoginActionLabel, type AccountsState, type Account, type SessionAccount } from "../../../src/frontend/ui/accounts";
 import { fetchAccounts, fetchSessionAccounts, fetchSessionAccountsOrNull, parseSessionAccountLines, invalidateAccountsCache, __resetAccountsCacheForTest, fetchLocalApikeyRouting } from "../../../src/frontend/ui/account-reads";
 import { getModelForAccount, setModelForAccount, moveMachinePrefs } from "../../../src/frontend/ui/account-prefs";
-import { restartLocateFailureMessage } from "../../../src/frontend/ui/account-restart";
-import { enumerateAccountModifiers } from "../../../src/frontend/ui/launch-menu";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
@@ -724,28 +722,6 @@ describe("K-A1 鉴权方式：api-key 号不再因为缺凭据文件而不可用
     );
   });
 
-  it("★ KAY2 级联⑤：真的进得了 resume/restart 那个菜单（走 launch-menu 的真实路径）", async () => {
-    // **不是重写一遍 filter** —— 这里驱动的是 `enumerateAccountModifiers`，
-    // 也就是 `tabs.ts` 渲染 flyout 时真正调的那个函数（它只过 `selectableAccounts`）。
-    loadCfg.mockResolvedValue({});
-    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => ({
-      available: true,
-      error: null,
-      meta: {
-        enabled: true,
-        acctsDir: "/a",
-        manifestPath: "/a/x.json",
-        updatedAt: null,
-        sharedStore: null,
-        count: 2,
-        error: null,
-      },
-      accounts: [acct({ name: "z" }), apiKey()],
-    }))));
-    const opts = await enumerateAccountModifiers("devbox");
-    expect(opts.map((o) => (o.kind === "account" ? o.name : "base"))).toEqual(["base", "z", "api"]);
-  });
-
   it("★〔DUP1〕只读后端算好的 authReady，不看 loggedIn（两个方向各一格）", () => {
     // 规则的唯一住址是 `acct_core::auth_ready`；这两格原来是可缺的，缺了由一个 TS 包装回落到 loggedIn ——
     // 那是订阅分支在 TS 里的第二份（登记表 `tests/frontend/ui/judgment-single-home.vitest.ts` J1）。
@@ -962,104 +938,12 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
 // 本组就是那两刀的反面：**掏空必须红，加回落也必须红。**
 
 // ═══════════════════════════════════════════════════════════════════════════
-// `K-P5g` `KP5GD1`：**读回来的身份 token 真有人拿它做决定**
-//
-// ★★ 本组的全部意义在于**分得开两件事**：
-//   ㈠「有人**读到**它」—— `K-P5f` 已经买到了（`launchId` 一路解析到前端类型上，
-//      本文件「parseSessionAccountLines」那一组钉着 —— 逐行解释从 Rust 搬到了前端）。**本组不重复买它。**
-//   ㈡「有人**拿它做决定**」—— 输出因这一格而**不同**，而输出里**一个字节都没有它**。
-//      ⇒ 「把读到的值显示出来」这种形态**喂不饱**下面那条 `★★`：token 不在输出里、
-//      输出却因它而变，那就只能是有人拿它分了一次岔。
-// ═══════════════════════════════════════════════════════════════════════════
-describe("K-P5g：换号重启定位不到 tmux 时，用身份 token 决定说哪一条成因", () => {
-  const TOKEN = "0198f0d2-1111-4222-8333-444455556666";
-  const row = (over: Partial<SessionAccount> = {}): SessionAccount => ({
-    pid: 4242,
-    sessionId: "s1",
-    cwd: "/w",
-    configDir: null,
-    account: null,
-    bare: true,
-    alive: true,
-    ...over,
-  });
-  // 「两条成因并排摆着」那句老话的锚点 —— 它在场 = 这次没把成因分开。
-  const BOTH_CAUSES = "或无法精确定位";
-
-  it("非空对照（尺子不是恒同一句）：没有身份 token ⇒ 还是那句「两条成因并排」的老话", () => {
-    const m = restartLocateFailureMessage(row({ launchId: null }));
-    expect(m.body).toContain(BOTH_CAUSES);
-    // 老后端的出参逐字节没有这个键 ⇒ `undefined`，必须与 `null` 同判。
-    expect(restartLocateFailureMessage(row())).toEqual(m);
-    // 行整个缺席（这条会话根本不在 `--session-accounts` 里）也走这一支。
-    expect(restartLocateFailureMessage(undefined)).toEqual(m);
-  });
-
-  it("正题：带着身份 token ⇒ 成因被判定成「tmux 标记丢了」，不再并排摆两条", () => {
-    const m = restartLocateFailureMessage(row({ launchId: TOKEN }));
-    expect(m.body).not.toContain(BOTH_CAUSES);
-    expect(m.body).toContain("身份标记");
-    expect(m.title).not.toBe(restartLocateFailureMessage(row({ launchId: null })).title);
-  });
-
-  it("★★ 判别格：两条输入只差 `launchId` 这一格 ⇒ 输出必须不同，且输出里没有那个 token", () => {
-    // ⚠ 这两个对象**逐字节只差 `launchId`**（同一个 `row()` 基座），所以下面那个不等式
-    // 只可能由那一格造成 —— 其余每一格都被固定住了。
-    const withMark = restartLocateFailureMessage(row({ launchId: TOKEN }));
-    const without = restartLocateFailureMessage(row({ launchId: null }));
-    expect(withMark).not.toEqual(without);
-    // 🔴 **这几行是「决定」与「显示」的分界**：token 一个字节都不许进输出
-    //（它是内部 nonce，给用户看毫无意义）。既然它不在输出里、输出却因它而变，
-    //   那就只能是**有人拿它分了一次岔**。死值验：把生产段那一行判断换成常量 `false`，
-    //   上面那条 `not.toEqual` 当场红；而任何只买到「读到了」的判据都不会红。
-    expect(withMark.body).not.toContain(TOKEN);
-    expect(withMark.title).not.toContain(TOKEN);
-    expect(without.body).not.toContain(TOKEN);
-  });
-
-  // 本机会话也会走到这句话 —— 最后那句补救**只对远端成立**。
-  it("A3：本机那一支不指「把此会话切到账号 X」（本机归档 Resume 不带账号选择），成因判定两支照旧", () => {
-    for (const r of [row({ launchId: null }), row({ launchId: TOKEN })]) {
-      const remote = restartLocateFailureMessage(r);
-      const local = restartLocateFailureMessage(r, { local: true });
-      expect(remote.body).toContain("把此会话切到账号 X");
-      expect(local.body).not.toContain("把此会话切到账号 X");
-      expect(local.title).toBe(remote.title); // 只换补救那一句，成因那一半一个字不动
-    }
-    // 缺省 = 远端（既有调用点逐字节不变）。
-    expect(restartLocateFailureMessage(row(), {})).toEqual(restartLocateFailureMessage(row()));
-  });
-
-  it("进程已死的行不作数：`alive:false` 上的 token 一律不参与这次判断", () => {
-    // backend 侧本来就不读死进程的 environ，但这一格**不靠上游守**：本函数自己判。
-    expect(restartLocateFailureMessage(row({ launchId: TOKEN, alive: false }))).toEqual(
-      restartLocateFailureMessage(row({ launchId: null })),
-    );
-  });
-
-  it("空串不是「有」：`launchId` 为空串读成没有（空值 ≠ 未设，本仓一贯口径）", () => {
-    expect(restartLocateFailureMessage(row({ launchId: "" }))).toEqual(
-      restartLocateFailureMessage(row({ launchId: null })),
-    );
-  });
-
-  it("⚠ 它答不到的（登记，不是缺陷）：文案强度只到「带着本工具铸的标记」", () => {
-    // `launchId` 是继承型环境变量，父会话已退出时那个继承值仍会被报出来
-    //（`K-P5f` 已把这一格单独登记）。⇒ 文案**不许**写成「一定是本工具直接拉起的」。
-    const m = restartLocateFailureMessage(row({ launchId: TOKEN }));
-    expect(m.body).toContain("带着 cc-monitor 起会话时留下的身份标记");
-    expect(m.body).not.toContain("一定是本工具");
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
 // `K-P5h` `KP5HD2`：**拿身份 token 回填新会话的 sid**
 //
-// ★★ 本组与上面 `K-P5g` 那组的分工：那组买的是「拿 token 分了一次岔」，
-//    本组买的是「**拿 token 说出了一个它自己里面没有的 sid**」——
+// ★★ 本组买的是「**拿 token 说出了一个它自己里面没有的 sid**」——
 //    输入里 token 与 sid 是两个独立的格，输出必须是**那一条**的 sid，
 //    而不是「第一条」「唯一一条」或任何与 token 无关的东西。
-// ⚠ **人群只算「新开」那一支**：`K-P5g` 已现打 resume 那一支会退化成布尔谓词
+// ⚠ **人群只算「新开」那一支**：resume 那一支会退化成布尔谓词
 //   （token 就是 sid ⇒ 答案要么是它自己要么 `null`），本组一格都不为它写。
 // ═══════════════════════════════════════════════════════════════════════════
 

@@ -542,23 +542,21 @@ fn the_box_turns_what_you_typed_into_an_op_in_this_very_directory() {
     );
 }
 
-/// 🔴 **拒得掉的那几档，一档都不许兜底编一个出来。**
-///
-/// 逐档的理由住 `super::clean_name` 与 `super::parse_mode`：
-/// 带 `/` = 把文件放到他没在看的目录里；`..` = 让服务端对着父目录动手；
-/// 权限超范围 = 把文件类型位也一起改（服务端行为未定义）。
+/// 🔴 **名字合不合法不在窗口判**：框里敲什么（去掉两头空白）就交什么，那台按它的平台判（`single`，不合 ⇒ `bad_name`）。
+/// 权限位与「改名成原名」这两档仍在这里拒：一个是这一格的写法，一个是没有要做的事。
+/// 逐档的理由住 `super::parse_mode`：权限超范围 = 把文件类型位也一起改（服务端行为未定义）。
 #[test]
 fn an_impossible_input_is_refused_with_a_reason_instead_of_a_guess() {
     let r = row("a.bin", false, false);
-    for bad in ["", "   ", "sub/x", "/abs", ".", ".."] {
+    for typed in ["", "sub/x", ".", "..", "CON"] {
         let mut p = WritePrompt::for_mkdir("/srv/data");
-        p.text = bad.into();
-        let why = p.to_op().expect_err(&format!("「{bad}」这个名字竟然过了"));
-        assert!(!why.is_empty(), "拒了却没说为什么");
-
-        let mut p = WritePrompt::for_rename("/srv/data", &r);
-        p.text = bad.into();
-        assert!(p.to_op().is_err(), "改名接受了「{bad}」");
+        p.text = format!(" {typed} ");
+        assert_eq!(
+            p.to_op().expect("名字交给那台判，窗口不拒"),
+            WriteOp::Mkdir {
+                path: format!("/srv/data/{typed}")
+            }
+        );
     }
     // 改名成原名 ⇒ 拒（没有要改的东西，而 SFTP 那侧会当成一次真 rename）。
     let mut p = WritePrompt::for_rename("/srv/data", &r);
@@ -1215,4 +1213,18 @@ fn a_chmod_undo_comes_from_the_backends_before_or_not_at_all() {
         })
     );
     assert_eq!(chmod_undo(&op, &serde_json::json!({ "mode": 493 })), None);
+}
+
+/// 就地新建 / 改名：用户敲的名字原样作 `rel` / `to` 交出去（名字里的 `/` 不当分隔符），根是当前目录。
+#[test]
+fn a_typed_name_goes_out_whole_against_the_current_directory() {
+    assert_eq!(
+        super::root_rel("/srv/data/sub/x", Some("sub/x")),
+        ("/srv/data".to_string(), "sub/x")
+    );
+    assert_eq!(super::root_rel("/x", Some("x")), ("/".to_string(), "x"));
+    assert_eq!(
+        super::root_rel("/srv/data/sub/x", None),
+        ("/srv/data/sub".to_string(), "x")
+    );
 }

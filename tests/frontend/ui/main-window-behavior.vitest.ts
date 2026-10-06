@@ -600,6 +600,27 @@ describe("一步一行：后端的 toolSteps / toolResults 排成一行", () => 
     ]);
   });
 
+  it("★ 退出码只读后端给的 `exitCode`：结果原文里写着「Exit code 1」而后端没给 ⇒ 不出 exit；给了 ⇒ 照写", () => {
+    const c = ctx();
+    const use = toolCalls([
+      { id: "e1", name: "Bash", input: {} },
+      { id: "e2", name: "Bash", input: {} },
+    ]) as unknown as JsonlRecord;
+    const r = renderMessage(use, c);
+    if (r.kind !== "tool-group") throw new Error(r.kind);
+    const res = {
+      ...(results([
+        { id: "e1", text: "Exit code 1", error: true },
+        { id: "e2", text: "Exit code 1", error: true },
+      ]) as object),
+      toolResults: { e1: { ok: false }, e2: { ok: false, exitCode: 2 } },
+    } as unknown as JsonlRecord;
+    renderMessage(res, c);
+    const said = (i: number) => r.units[i].querySelector(".block-tool-result-inline summary")?.textContent ?? "";
+    expect(said(0)).not.toMatch(/exit/);
+    expect(said(1)).toMatch(/exit 2/);
+  });
+
   it("认不出的工具 ⇒ 问号 ＋「未识别结果 · 原文」；人拒了 ⇒「未批准」；没有 toolSteps（老后端）⇒ 工具名 ＋ 入参一句兜底", () => {
     expect(stepRight({ tool: "mcp__x", known: false }, { ok: true }, stateOf({ tool: "mcp__x", known: false }, { ok: true }, false), 10)).toBe("未识别结果 · 原文");
     expect(stateOf(undefined, { ok: false, rejected: true }, true)).toBe("rejected");

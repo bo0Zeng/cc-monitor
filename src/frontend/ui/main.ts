@@ -279,6 +279,11 @@ window.addEventListener("DOMContentLoaded", async () => {
     openSettings: () => accountChipDeps.openSettings(),
     openDefaultMenu: (anchor, origin) => void accountChip.openDefaultMenu(anchor, origin),
     defaultOf: (origin) => accountChip.defaultOf(origin),
+    // 恢复菜单挂在状态栏上（抽屉的底边）：toast 的按钮点了就收起，没有自己的锚。
+    openResume: (sid) => {
+      const anchor = document.getElementById("status-bar");
+      if (anchor) tabs.openResumeFor(anchor, sid);
+    },
   };
   const openAcctPanel = (sid: string, origin: string): void => toggleAccountPanel(sid, origin, panelHost);
   tabs.onOpenAccountPanel = openAcctPanel;

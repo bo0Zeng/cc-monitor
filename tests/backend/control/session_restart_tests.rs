@@ -251,7 +251,11 @@ fn a_failed_start_says_which_terminal() {
     let (out, _) = go(rig, args(false, 0));
     let (code, _, data) = out.expect_err("起失败却回了成功");
     assert_eq!(code, "start_failed");
-    assert_eq!(data.unwrap()["terminal"], "proj-cc");
+    let data = data.unwrap();
+    assert_eq!(
+        (&data["terminal"], &data["stopped"]),
+        (&json!("proj-cc"), &json!(true))
+    );
 }
 
 /// 号选不了 ⇒ `account_unavailable`、什么都不动；不在终端里 ⇒ `not_in_terminal`；多个在跑 ⇒ `ambiguous`（`data.names`）。
@@ -385,7 +389,7 @@ fn after_the_stop_only_someone_else_still_writing_holds_the_start() {
     let (out, rig) = go(rig, args(false, 0));
     let (code, _, data) = out.unwrap_err();
     assert_eq!(code, "session_already_live");
-    assert_eq!(data, Some(json!({ "pids": [13] })));
+    assert_eq!(data, Some(json!({ "pids": [13], "stopped": true })));
     assert_eq!(rig.did("kill"), 1);
     assert_eq!(
         rig.did("ccm"),

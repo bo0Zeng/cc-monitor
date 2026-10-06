@@ -28,6 +28,41 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
+/// 一条会话的状态：`live` 在跑 · `ended` 已结束 · `unknown` 这条路上答不了（合成历史没有 pidfile）。
+/// 历史清单的行与全文搜索的命中同一个函数。
+pub(crate) fn status_of(is_live: Option<bool>) -> &'static str {
+    match is_live {
+        Some(true) => "live",
+        Some(false) => "ended",
+        None => "unknown",
+    }
+}
+
+/// **这条会话能做什么**（`can`）——界面按它画，不另判：
+/// - `resume`：`yes` 能恢复 · `switch` 在跑（切过去，不再起第二份）· `bg` 分身会话（要接着聊得恢复主会话）；
+/// - `accounts`：恢复时能不能选号（那一家有没有账号这一维）· `fork`：能不能从某一轮分叉；
+/// - `delete`：`yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑（确认框里多说一句）。
+pub(crate) fn can_of(kind: &str, status: &str, bg: bool) -> serde_json::Value {
+    let resume = if status == "live" {
+        "switch"
+    } else if bg {
+        "bg"
+    } else {
+        "yes"
+    };
+    let delete = match status {
+        "live" => "live",
+        "unknown" => "unsure",
+        _ => "yes",
+    };
+    serde_json::json!({
+        "resume": resume,
+        "accounts": crate::agents::account_env_of(kind).is_some(),
+        "fork": crate::agents::record_face(kind).is_some_and(|r| r.branch.is_some()) && !bg,
+        "delete": delete,
+    })
+}
+
 /// 查询模式入口。返回进程退出码。
 pub fn run(agent_home: &Path, args: &[String]) -> i32 {
     let result = match args.first().map(String::as_str) {

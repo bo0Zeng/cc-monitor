@@ -44,6 +44,8 @@ interface AcctWorld {
   default: Record<string, unknown> | null;
   /** 按 tab 序号（0 起）。 */
   sessions: Record<number, Sess>;
+  /** 重启那一形 `rotation-switch` 每个会话答什么（形状照 `rotation-switch-restart` 金样）；不给 ⇒ 成了、开 `proj-cc`。 */
+  restartReply?: Record<string, unknown>;
 }
 
 const now = (): number => Math.floor(Date.now() / 1000);
@@ -179,9 +181,14 @@ function acctOps(aw: AcctWorld, w: () => World): Record<string, OpHandler> {
         const sid = typeof it === "string" ? it : (it as { sid: string }).sid;
         const s = sessOf(sid);
         if (!s) continue;
+        if (req.mode === "restart") {
+          const reply = aw.restartReply ?? { state: "done", terminal: "proj-cc" };
+          out[sid] = reply;
+          if (reply.state === "failed") continue;
+        }
         s.history.push({ at: 0, from: s.current, to: req.target, why: req.mode === "hot" ? "manualHot" : "manualRestart" });
         s.current = String(req.target);
-        out[sid] = { state: "done" };
+        out[sid] ??= { state: "done" };
       }
       void sidAt;
       return { sessions: out };
@@ -220,6 +227,24 @@ async function openPanel(): Promise<void> {
   await click(".status-account");
   await waitFor('aside[role="dialog"]');
   await sleep(700);
+}
+
+/** 面板里选 重启切换 再点；问会打断什么的框出来就点确认；等那一条报错 toast 出来。 */
+async function restartThroughConfirm(): Promise<void> {
+  await openPanel();
+  await scrollPanelTo("切换");
+  const r = [...document.querySelectorAll<HTMLInputElement>('aside[role="dialog"] input[type="radio"][name^="acct-mode"]')][1];
+  r.checked = true;
+  r.dispatchEvent(new Event("change"));
+  await sleep(300);
+  await click(await byText('aside[role="dialog"] button', "重启切换"));
+  const confirm = await waitFor('[role="alertdialog"]', 3000).catch(() => null);
+  if (confirm) {
+    await sleep(300);
+    await click(await byText('[role="alertdialog"] button', "重启切换"));
+  }
+  await waitFor('#kit-toast-stack [role="alert"]');
+  await sleep(500);
 }
 
 const scrollPanelTo = async (text: string): Promise<void> => {
@@ -330,6 +355,16 @@ export const ACCT_SCENES: Scene[] = [
     await waitFor('[role="alertdialog"], dialog[open], [role="dialog"][aria-modal]');
     await sleep(500);
   }, world(() => {})),
+  scene("acct-restart-fail-kept", "面板 · 重启切换失败 · 原会话保留", "重启切换确认后那台答 failed · not_in_terminal · old=kept：toast 重启切换失败 · 原会话保留 · 原因，不自动消失、无按钮", async () => {
+    await restartThroughConfirm();
+  }, world((aw) => {
+    aw.restartReply = { state: "failed", code: "not_in_terminal", old: "kept" };
+  })),
+  scene("acct-restart-fail-ended", "面板 · 重启切换失败 · 原会话已结束", "重启切换确认后那台答 failed · start_failed · old=ended：toast 重启切换失败 · 原会话已结束 · 原因 ＋［恢复…］［日志］，不自动消失", async () => {
+    await restartThroughConfirm();
+  }, world((aw) => {
+    aw.restartReply = { state: "failed", code: "start_failed", old: "ended" };
+  })),
   scene("acct-switch-strip", "消息流 · 换号条", "面板里热切换到 team：toast · 当前与记录原地换 · 消息流末尾一行 ⇄ 时刻 personal → team · 手动 · 热切换 · 账号…", async (ctx) => {
     await openPanel();
     await scrollPanelTo("切换");

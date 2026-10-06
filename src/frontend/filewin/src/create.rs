@@ -40,9 +40,6 @@ use super::writeops::WRITE_BUDGET;
 /// 后端那条命令（`files-create`）。
 pub const CMD_CREATE: &str = "files-create";
 
-// 这里原来有「新建空文件叫什么」那个框（`NewFilePrompt`）与结果行那一句（`label`）：照稿改成就地新建（`writeops::WritePrompt::for_new`）、
-//   名字的规矩照旧问同一个 `clean_name`，那个框与那一句随样子一起删了。
-
 /// 真建一份 —— 经通道说 `files-create`，参数切成 `(root, rel)`，**不带 `content`**
 /// （契约逐字：不给 `content` ⇒ 新建一份空文件）。
 ///
@@ -57,16 +54,14 @@ pub async fn create_remote(line: &Line, origin: &Origin, path: &str) -> Result<(
     create_remote_at(line, origin, &super::source::RemotePath::plain(path)).await
 }
 
-/// 同 [`create_remote_at`]，失败时把对端的码一起交出来（就地新建据 `exists` 说「已存在」）。
-pub async fn create_remote_coded(
+/// 就地新建：名字是用户敲的 `typed`，原样交后端、带 `single: true`（合不合法由那台判，不合 ⇒ 码 `bad_name`）。
+pub async fn create_typed_coded(
     line: &Line,
     origin: &Origin,
-    at: &super::source::RemotePath,
+    dir: &super::source::RemotePath,
+    typed: &str,
 ) -> Result<(), super::source::Failed> {
-    let args = serde_json::json!({
-        "root": at.parent().wire(),
-        "rel": at.tail_wire(),
-    });
+    let args = serde_json::json!({ "root": dir.wire(), "rel": typed, "single": true });
     super::source::ask_coded(line, origin, CMD_CREATE, &args, WRITE_BUDGET)
         .await
         .map(|_| ())

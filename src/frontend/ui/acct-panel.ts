@@ -14,9 +14,9 @@ import { appStore, type SessionRotationEntry } from "./app-store";
 import { refreshQuota, refreshSessions } from "./acct-center";
 import { acctAvatar } from "./acct-dom";
 import { ledgerOf, localTzMin, machineLabel, reasonLabel, swappedFrom, usageOf, usageText, whyOf } from "./acct-view";
-import { COMPACT_WITHIN_MS } from "./account-restart";
 import { copyText } from "./copy-table";
 import { askSessionInterrupts } from "./interrupt-reads";
+import { commands } from "./ipc/commands";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { banner } from "./kit/banner";
 import { button, setDisabled } from "./kit/button";
@@ -54,6 +54,8 @@ export interface AcctPanelHost {
   openDefaultMenu(anchor: HTMLElement, origin: Origin): void;
   /** 新会话默认此刻是哪个号（底栏那颗按钮上的字）。 */
   defaultOf(origin: Origin): string | null;
+  /** 开这条会话的恢复菜单（与右键「恢复 ▸」同一份）。 */
+  openResume(sid: string): void;
 }
 
 type Present = Extract<SessionRotationState, { state: "present" }>;
@@ -755,7 +757,8 @@ async function doSwitch(o: Open, host: AcctPanelHost, target: string | null, cur
     await restartSwitch(o, host, target);
   } catch (e) {
     console.warn("[acct] rotation-switch 失败：", e);
-    o.switchError = hot ? copyText("acct.sw.failHot", { cur: accountLabel(cur ?? "_"), reason: copyText("acct.reason.unknown") }) : copyText("acct.sw.failRestart");
+    const reason = copyText("acct.reason.unknown");
+    o.switchError = hot ? copyText("acct.sw.failHot", { cur: accountLabel(cur ?? "_"), reason }) : copyText("acct.sw.failRestart", { reason });
   } finally {
     setDisabled(go, null);
     await refreshSessions(o.origin, [o.sid]);
@@ -763,14 +766,16 @@ async function doSwitch(o: Open, host: AcctPanelHost, target: string | null, cur
   }
 }
 
+/** 等那台定位 · 停旧 ＋ 起新那几步的底数（等报出之外）。 */
+const RESTART_BASE_MS = 60_000;
+
 /** 重启切换：先问那台会打断什么（有才问）、再交那台 `rotation-switch`（重启那一形，逐个交给 `session-restart`）、成了开终端接上。 */
 async function restartSwitch(o: Open, host: AcctPanelHost, target: string): Promise<void> {
   const standing = await standingOf(o.origin, o.sid);
   if (standing?.kind !== "running") {
-    o.switchError = copyText("acct.sw.failRestart");
+    o.switchError = copyText("acct.sw.failRestart", { reason: reasonLabel("not_in_terminal", { agent: ACTIVE_AGENT, target }) });
     return;
   }
-  const tmuxName = standing.names[0];
   const go = await confirmInterrupts({
     title: copyText("acct.sw.confirmTitle", { name: accountLabel(target) }),
     action: copyText("acct.sw.confirmGo"),
@@ -782,21 +787,31 @@ async function restartSwitch(o: Open, host: AcctPanelHost, target: string): Prom
     sid: o.sid,
     cwd: host.cwdOf(o.sid),
     compact_first: false,
-    compact_within_ms: COMPACT_WITHIN_MS,
+    compact_within_ms: 0,
     arrive_within_ms: ARRIVAL_BUDGET_MS,
     local: isLocalOrigin(o.origin),
     ...(await startSettings(o.origin)),
   };
-  const got = (await switchRestart(o.origin, [args], target, COMPACT_WITHIN_MS + ARRIVAL_BUDGET_MS + 60_000))[o.sid];
+  const got = (await switchRestart(o.origin, [args], target, ARRIVAL_BUDGET_MS + RESTART_BASE_MS))[o.sid];
+  o.switchError = null;
   if (!got || got.state !== "done") {
-    o.switchError = null;
-    toast(copyText("acct.sw.failRestart"), reasonLabel(got ? got.code : "", { agent: ACTIVE_AGENT, target }), { level: "error" });
+    const reason = reasonLabel(got ? got.code : "", { agent: ACTIVE_AGENT, target });
+    if (got?.old === "ended") {
+      toast(copyText("acct.sw.failRestartEnded", { ended: copyText("sessionState.ended.name"), reason }), "", {
+        level: "error",
+        action: [
+          { label: copyText("acct.sw.resume"), run: () => host.openResume(o.sid) },
+          { label: copyText("acct.sw.log"), run: () => void commands.open_log_file().catch((e) => console.warn("open_log_file failed:", e)) },
+        ],
+      });
+    } else {
+      toast(copyText("acct.sw.failRestart", { reason }), "", { level: "error" });
+    }
     return;
   }
-  o.switchError = null;
   o.pick = null;
   toast(copyText("acct.sw.doneRestart", { name: accountLabel(target), session: host.sessionTitle(o.sid) }), "", { level: "info" });
-  await runRemoteAttach(o.origin, ACTIVE_AGENT, tmuxName, { quiet: true });
+  await runRemoteAttach(o.origin, ACTIVE_AGENT, got.terminal, { quiet: true });
 }
 
 // ─────────────────────────────── 记录 · 底栏

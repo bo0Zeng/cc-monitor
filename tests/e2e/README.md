@@ -174,8 +174,8 @@ CI 的 e2e job 就是调门禁（`GATE_ONLY=e2e`），不另记一份名单。
 **这些套件刻意都不进本地 `npm test`**（`gate-integrity` 开放问题 1 的决定）：
 `npm test` 要保持「不需要 tmux / 不需要后端就能跑」，否则每个开发动作都变重。
 
-> **代价，如实写在这里**：**本地改了 `shared/ccm`（已删，见 `e8f9e08e`；今天是后端的 `ccm`）（或 `src/frontend/ui/account-restart.ts` /
-> `src/remote-launch.ts` 这类被上面套件驱动的真源）时，`npm test` 不会有任何反应。**
+> **代价，如实写在这里**：**本地改了 `shared/ccm`（已删，见 `e8f9e08e`；今天是后端的 `ccm`）（或 `src/remote-launch.ts` 这类
+> 被上面套件驱动的真源）时，`npm test` 不会有任何反应。**
 > 要拿到信号得手跑，例如 `npm run test:restart` / `npm run test:ccm-cli`；
 > 想连门禁那套判法一起验就 `bash tests/e2e/assert-pass-floor.sh restart`。
 > ~~不手跑的话，**第一次发现是在 CI 上**。~~

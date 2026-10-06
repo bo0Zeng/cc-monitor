@@ -5,7 +5,7 @@
 //! | [`clicking_the_toolbar_button_puts_up_the_inline_row`] | 命令栏「新建 ▾ → 空文件」**真点一下**（合成指针事件喂生产那个 `frame_body`）⇒ 列表里冒出一行「新建文件」、名字是个输入框 | 按钮位置从这一帧画出来的字里现找 |
 //! | [`a_new_file_speaks_files_create_with_root_and_rel_and_no_content`] | 线上发的是 `files-create`、`(root, rel)` 切对、**没有 `content`**（＝ 空文件），回来收掉那一格、重列一次目录 | 期望手写；实得是合成后端真收到的那几行（真回环口 ＋ 真钥匙） |
 //! | [`a_taken_name_says_exists_under_the_cell_and_keeps_it`] | 后端回 `exists` ⇒ 那一格留着、下面说「x 已存在」（不是系统那句长话，不是「成功」） | 码是合成后端给的 |
-//! | [`an_impossible_name_keeps_the_box_up_and_sends_nothing`] | 名字不合法 ⇒ 那一格留着、出声、**线上零条**（带正控：合法名字恰好一条） | 零命中读的是线上那本账 |
+//! | [`a_bad_name_is_judged_by_that_machine_and_said_under_the_cell`] | 名字合不合法由那台判：敲的原样交出去（`single`），回 `bad_name` ⇒ 那一格留着、照登那一句 | 线上那一行逐格比 |
 //! | [`no_line_says_so_instead_of_doing_nothing`] | 没连上后端 ⇒ 出声、那一格留着 | — |
 //!
 //! ⚠ 买不到：真远端上建成过一份文件（合成后端只记账不落盘）；窗口真画在屏幕上。
@@ -142,7 +142,7 @@ async fn a_new_file_speaks_files_create_with_root_and_rel_and_no_content() {
     assert_eq!(
         got.first(),
         Some(
-            &serde_json::json!({ "cmd": "files-create", "args": { "root": "/srv/data", "rel": "笔记.md" } })
+            &serde_json::json!({ "cmd": "files-create", "args": { "root": "/srv/data", "rel": "笔记.md", "single": true } })
         ),
         "线上那一行与期望不等（带了 `content` 就不是「空文件」了）"
     );
@@ -188,9 +188,9 @@ async fn a_taken_name_says_exists_under_the_cell_and_keeps_it() {
     );
 }
 
-/// 🔴 名字不合法 ⇒ 那一格留着、出声、**线上零条**；正控：换个合法名字恰好一条。
+/// 🔴 名字合不合法由那台判：框里敲的原样交出去（`single`），回 `bad_name` ⇒ 那一格留着、下面照登那台那一句。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn an_impossible_name_keeps_the_box_up_and_sends_nothing() {
+async fn a_bad_name_is_judged_by_that_machine_and_said_under_the_cell() {
     let wired = wire_up(
         "create-bad",
         FakeBackend::new(&["files-create", "files-ls"], Declared::default()),
@@ -198,30 +198,24 @@ async fn an_impossible_name_keeps_the_box_up_and_sends_nothing() {
     .await;
     let mut w = window_on(&wired, "/srv/data");
     w.begin_new_file();
-    for bad in ["", "   ", "sub/x.md", ".", ".."] {
-        *w.new_file_text_mut().unwrap() = bad.to_string();
-        assert!(!w.confirm_new_file(None), "「{bad}」竟然发得出去");
-        assert!(
-            w.new_file_prompt().is_some(),
-            "「{bad}」被拒了，那一格却收掉了"
-        );
-        assert!(
-            w.prompt_error().is_some() && w.listing.error.lock().unwrap().is_none(),
-            "「{bad}」被拒了，原因没说在那一格下面"
-        );
-    }
-    // 给它点时间：真有请求在飞的话，这时候已经落账了。
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    assert!(
-        wired.cmds().is_empty(),
-        "不合法的名字上了线：{:?}",
-        wired.cmds()
+    *w.new_file_text_mut().unwrap() = " sub/x.md ".to_string();
+    assert!(w.confirm_new_file(None), "名字交给那台判，窗口不拦");
+    settle_inline(&mut w, "名字不合法").await;
+    assert_eq!(
+        wired.log.lock().unwrap().first(),
+        Some(
+            &serde_json::json!({ "cmd": "files-create", "args": { "root": "/srv/data", "rel": "sub/x.md", "single": true } })
+        ),
+        "敲的名字没有原样作 `rel` 交出去"
     );
-    // 正控：同一格换一个合法名字 ⇒ 恰好一条。
-    *w.new_file_text_mut().unwrap() = "ok.txt".to_string();
-    assert!(w.confirm_new_file(None));
-    settle_inline(&mut w, "正控").await;
-    assert_eq!(wired.count("files-create"), 1);
+    assert!(w.new_file_prompt().is_some(), "名字被拒了，那一格却收掉了");
+    assert!(
+        w.prompt_error()
+            .is_some_and(|e| e.contains("名称不能是路径：sub/x.md")),
+        "那一格下面说的不是那台那一句：{:?}",
+        w.prompt_error()
+    );
+    assert_eq!(wired.cmds(), ["files-create"], "被拒了还重列了");
 }
 
 /// 没连上后端 ⇒ 出声、那一格留着（不静默、不退回 SFTP —— `D11`）。

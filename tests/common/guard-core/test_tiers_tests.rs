@@ -89,7 +89,6 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/events-stream-closed.vitest.ts", // 会话流 closed 格 ⇒ 恰好一条 toast
     "tests/frontend/ui/account-color.vitest.ts",
     "tests/frontend/ui/account-commands.vitest.ts",
-    "tests/frontend/ui/account-restart.vitest.ts",
     "tests/frontend/ui/accounts.vitest.ts",
     "tests/frontend/ui/settings/accounts-mcp-block.vitest.ts", // 账号页各账号共用的 MCP 那一块：只画名字与各版、只交意图（纯替身）
     "tests/frontend/ui/backend-policy.vitest.ts",
@@ -197,7 +196,6 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/invariants-frontend-guard.vitest.ts",
     "tests/frontend/ui/keybindings/actions.vitest.ts",
     "tests/frontend/ui/launch-arrival.vitest.ts", // 起会话的真成功正信号（纯函数 ＋ 假定时器，不碰真窗口）
-    "tests/frontend/ui/launch-menu.vitest.ts",
     "tests/frontend/ui/launcher-diagnostics.vitest.ts",
     "tests/frontend/ui/live-window.vitest.ts",
     "tests/frontend/ui/reconcile-shell.vitest.ts",
@@ -256,7 +254,6 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/views/context-limit.test.ts",
     "tests/frontend/ui/views/grid-monitor.vitest.ts",
     // 两份等本机索引的前端判据（`history-close-stops-retry` · `history-index-wait`）随那条 1 s 重跑链删了。
-    "tests/frontend/ui/views/history-search.vitest.ts",
     "tests/frontend/ui/views/pane-preview.vitest.ts",
     "tests/frontend/ui/views/session-find.vitest.ts",
     "tests/frontend/ui/views/session-viewer-scroll.vitest.ts",
@@ -326,6 +323,8 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/port-forward-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/forward-list.golden.json`）
     "tests/frontend/ui/session-stream-credit.vitest.ts", // 读跨语言金样（`tests/__fixtures__/session-stream-credit.golden.json`）
     "tests/frontend/ui/history-list-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/history-list.golden.json`）
+    "tests/frontend/ui/views/history-search.vitest.ts", // 读跨语言金样（`tests/__fixtures__/history-search-row.golden.json`）
+    "tests/frontend/ui/rotation-switch-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/rotation-switch-restart.golden.json`）
     "tests/frontend/ui/agent-profile-parity.vitest.ts",
     "tests/frontend/ui/app-grid-claims.vitest.ts",
     "tests/backend/agent_boundary_guard.rs",

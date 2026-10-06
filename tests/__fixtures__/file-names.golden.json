@@ -1,0 +1,53 @@
+{
+  "_note": "一段名字（不是路径）在两种平台上能不能当名字用（手写的期望，后端 platform::fs 的两套规则逐条对拍）。bad 的值：reserved 保留设备名 · badChar 含不许的字符 · trailing 以点或空格结尾。",
+  "windows": {
+    "ok": [
+      "a.txt",
+      "新建文件夹",
+      "COM0",
+      "LPT10",
+      "CONSOLE",
+      "a b",
+      ".hidden",
+      "CONx.txt",
+      "a.b.c"
+    ],
+    "bad": {
+      "CON": "reserved",
+      "nul.txt": "reserved",
+      "Aux": "reserved",
+      "com1": "reserved",
+      "LPT9.log": "reserved",
+      "PRN .txt": "reserved",
+      "a:b": "badChar",
+      "a\\b": "badChar",
+      "a/b": "badChar",
+      "what?": "badChar",
+      "x*": "badChar",
+      "<y>": "badChar",
+      "\"q\"": "badChar",
+      "p|q": "badChar",
+      "tab\t": "badChar",
+      "trail.": "trailing",
+      "trail ": "trailing",
+      "con.d": "reserved"
+    }
+  },
+  "unix": {
+    "ok": [
+      "a.txt",
+      "CON",
+      "nul.txt",
+      "a:b",
+      "a\\b",
+      "what?",
+      "trail.",
+      "trail ",
+      "新"
+    ],
+    "bad": {
+      "a/b": "badChar",
+      "a\u0000b": "badChar"
+    }
+  }
+}

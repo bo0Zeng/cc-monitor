@@ -18,10 +18,15 @@ export interface ToastOptions {
   level?: ToastLevel;
   /** 点这条（不是点按钮）做的事，例如打开日志。 */
   onClick?: () => void;
-  /** 一颗动作按钮：点了做它、收起这条，不再走 `onExpire`。 */
-  action?: { label: string; run: () => void };
+  /** 动作按钮（一颗或几颗）：点了做它、收起这条，不再走 `onExpire`。 */
+  action?: ToastAction | ToastAction[];
   /** 到点自己走（或被 × 掉）之后：撤销期过了，做那一步剩下的事。 */
   onExpire?: () => void;
+}
+
+export interface ToastAction {
+  label: string;
+  run: () => void;
 }
 
 export const TOAST_PLAIN_MS = 4000;
@@ -172,8 +177,7 @@ export function toast(title: string, detail: string, opts: ToastOptions = {}): (
 
   const acts = document.createElement("div");
   acts.className = s.toastActions;
-  if (opts.action) {
-    const act = opts.action;
+  for (const act of opts.action === undefined ? [] : Array.isArray(opts.action) ? opts.action : [opts.action]) {
     acts.appendChild(
       button({
         label: act.label,

@@ -23,7 +23,6 @@ import { sayCollectionRefusal } from "./tab-bar-prefs";
 import { defaultPick, resumeAccounts, resumeMenuItems, type ResumeAccounts, type ResumePick } from "./resume-menu";
 import { newSessionIn } from "./new-session-in";
 import { askOf } from "./launch-account";
-import { enumerateAccountModifiers, type NamedAccountModifier } from "./launch-menu";
 import { runRemoteAttach } from "./remote-launch-run";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
 import { ACTIVE_AGENT } from "./agent-profile";
@@ -32,7 +31,6 @@ import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/
 import { openPanePreview } from "./views/pane-preview";
 import { standingOf } from "./sessions-where";
 import {
-  appendMenuItem,
   menuGeneration,
   removeMenuItem,
   openMenu,
@@ -73,9 +71,9 @@ export interface TabMenuHost {
   togglePin(sid: string): void;
   /** 关掉这个标签（与批量菜单「关闭标签」、× 同一个动作）。 */
   close(sid: string): void;
-  /** 「账号…」：开这个会话的「账号」面板（与状态栏账号按钮同一个）；主窗口没接 ⇒ 不给这一项。 */
+  /** 「账号…」：开这个会话的「账号」面板（与状态栏账号按钮同一个）。 */
   openAccountPanel?: (sid: string) => void;
-  /** 主窗口接上了面板没有（独立窗口没有 ⇒ 不给「账号…」，活会话仍给旧的换号重启）。 */
+  /** 面板接上了没有（没接 ⇒ 不给「账号…」）。 */
   accountPanelWired?: () => boolean;
 }
 
@@ -176,8 +174,7 @@ export class TabMenu {
         { id: "resume-into", label: copyText("tabMenu.inPlace.probing"), enabled: false, onClick: () => {} },
       );
     }
-    // 「账号…」：替掉原先的「换号重启 ▸ 账号 ▸ 两种重启」三层子菜单（热切换 / 重启切换都在面板里）。
-    //   说不清（那台看不见）⇒ 灰着、悬停说是哪台。
+    // 「账号…」：热切换 / 重启切换都在面板里。说不清（那台看不见）⇒ 灰着、悬停说是哪台。
     const openPanel = this.host.accountPanelWired?.() ? this.host.openAccountPanel : undefined;
     if (t && openPanel) {
       const unseen = t.state.liveness === "unseen";
@@ -195,8 +192,7 @@ export class TabMenu {
     openMenu(e instanceof HTMLElement ? { el: e, align: "end" } : { x: e.clientX, y: e.clientY }, t ? items.map((i) => gateByOffer(t.origin, i)) : items);
     if (remote !== null && t?.projectDir) void this.resolveRemoteTmuxItems(remote, sid);
     if (local) void this.resolveLocalTmuxItems(sid);
-    // A4/A5：远端 tab → 异步追加账号项（归档=「把此会话切到账号 X（resume）」/ 活=「…（重启）」）。
-    // 本机 tab 也进来（`<local>`）—— 只拿「换号重启」那一项，见 appendAccountMenuItems。
+    // 已结束的会话：那台的号到了再把「恢复 ▸」的账号组换上。
     if (t) void this.appendAccountMenuItems(t.origin, sid, t.state);
   }
 
@@ -346,83 +342,16 @@ export class TabMenu {
     return isLocalOrigin(t.origin) ? this.actions.resumeLocalInTmux(sid, askOf(p.account, p.useBase)) : this.actions.resumeTabTmux(sid, p.account, p.useBase);
   }
 
-  /** F09：给「Restart」一级菜单项造 flyout——重启没有容器轴（对齐 §0 Plan agent 共识：restart
-   *  是 kill+resume 编排，作用于会话现有的后端，不经 `LaunchAction`/两个渲染器），只有账号轴，
-   *  每个账号再嵌一层「直接重启/先压缩再重启」（danger，§5）。入参已收窄成 `NamedAccountModifier[]`
-   *  （`kind === "account"` 那一支），基座在类型上就进不来——
-   *  重启从不提供基座逃生口（旧版行为，restart 面对的是已在某账号下运行的活会话，不是老会话）。 */
-  private buildRestartSubmenu(sid: string, accounts: NamedAccountModifier[]): MenuItem[] {
-    return accounts.map((a) => ({
-      label: a.label,
-      danger: true,
-      // F09 Phase D 审计（UX，建议）：这里没有「基座」选项——不是遗漏，是有意为之（restart 面对
-      // 的是已在某账号下运行的活会话，不是待迁移的老会话）；hover 到账号名这一层就能看到解释，
-      // 不用先读设计文档才知道这不是 bug。
-      title: copyText("tabMenu.restart.accountHint", { label: a.label }),
-      submenu: [
-        {
-          label: copyText("tabMenu.restart.direct"),
-          danger: true,
-          title: copyText("tabMenu.restart.directHint", { name: a.name }),
-          onClick: () => void this.actions.restartTabWithAccount(sid, a.name, false),
-        },
-        {
-          label: copyText("tabMenu.restart.compactFirst"),
-          danger: true,
-          title: copyText("tabMenu.restart.compactFirstHint"),
-          onClick: () => void this.actions.restartTabWithAccount(sid, a.name, true),
-        },
-      ],
-    }));
-  }
-
-  /** A4/A5：远端 tab 菜单开后**异步追加/更新**账号相关 flyout——归档 tab → 更新「Resume」项的
-   *  submenu（补基座+具名账号入口）；活 tab → 账号数 ≥2 时追加一个「Restart」一级项 + flyout
-   *  （旧版从不给活会话基座逃生口，见 buildRestartSubmenu）。复用 F51 代次守卫（gen !==
-   *  menuGeneration() 则菜单已换/已关，整体 no-op，防 R-1 跨 tab 串味）。账号库不可用（§7
-   *  旧/未启用）→ `enumerateAccountModifiers` 内部已容错返回空数组，本方法
-   *  据此自然不追加任何东西（默认 Resume 仍在）。异步 fetch 用新鲜值，无冷缓存分裂。 */
+  /** 已结束的会话：菜单开后那台的号到了，把「恢复 ▸」的账号组换上（菜单已换 / 已关 ⇒ 不动）。 */
   private async appendAccountMenuItems(
     origin: string,
     sid: string,
     state: SessionState,
   ): Promise<void> {
-    // 「给 Resume 还是给换号重启」按 `isResumeOnly` 分，与菜单主体那一格同一个谓词（原先是 `status === "archived"`）。
-    // 说不清的两样都不给（会话也许还在跑）。
-    if (state.liveness === "unseen") return;
-    const resumeOnly = isResumeOnly(state);
-    const gen = menuGeneration(); // 捕获这一代菜单
-    if (resumeOnly) {
-      // 恢复 ▸ 的账号组（本机远端同一个组件）：那台的号到了换上。
-      const accounts = await this.resumeAccountsOf(origin);
-      if (gen !== menuGeneration() || accounts.kind === "off") return;
-      updateMenuItem("resume", { id: "resume", label: copyText("tabMenu.item.resume"), submenu: this.buildResumeSubmenu(sid, accounts) });
-      return;
-    }
-    const accountOptions = await enumerateAccountModifiers(origin);
-    if (gen !== menuGeneration()) return; // 菜单已换/已关
-    // 活会话重启：旧版阈值——只在 ≥2 个可选具名账号（`kind === "account"`）时才提供，
-    // 从不给基座（restart 面对的是已在某账号下运行的活会话，不是待迁移的老会话）。
-    // R05：判别联合让"排除基座"变成类型收窄，`realAccounts` 因此是 `NamedAccountModifier[]`
-    // ——`a.name` 在类型上可见，不再需要把 `id` 当账号名用。
-    const realAccounts = accountOptions.filter(
-      (o): o is NamedAccountModifier => o.kind === "account",
-    );
-    // **这条实际不可达**（R05 Phase D 审计变异 M8 实测存活）：`realAccounts` 来自
-    // `enumerateAccountModifiers`，而具名账号只在 `selectable.length >= 2` 时被**整批** push
-    // （`launch-menu.ts`），故 `realAccounts.length ∈ {0} ∪ [2, ∞)`，永远不可能是 1。
-    // 保留作 belt-and-braces（阈值真正的执行方在 launch-menu 侧），但别以为这里在独立执行阈值。
-    if (realAccounts.length < 2 || this.host.accountPanelWired?.()) return;
-    // F09 Phase D 审计（UX，重要）：⇄ 按钮删除前，重启中的会话至少有"⇄ 立刻置灰"这个视觉信号；
-    // 现在这是唯一入口，若不禁用，点了会静默命中 restartTabWithAccount 的 in-flight 守卫、
-    // 什么反应都没有——菜单直接呈现"当前不可点"，而不是点了才知道（守卫本身仍在，这里只是让
-    // UI 提前说实话）。
-    appendMenuItem({
-      id: "restart",
-      label: copyText("tabMenu.restart.menu"),
-      danger: true,
-      enabled: !this.actions.restartingSids.has(sid),
-      submenu: this.buildRestartSubmenu(sid, realAccounts),
-    });
+    if (state.liveness === "unseen" || !isResumeOnly(state)) return;
+    const gen = menuGeneration();
+    const accounts = await this.resumeAccountsOf(origin);
+    if (gen !== menuGeneration() || accounts.kind === "off") return;
+    updateMenuItem("resume", { id: "resume", label: copyText("tabMenu.item.resume"), submenu: this.buildResumeSubmenu(sid, accounts) });
   }
 }

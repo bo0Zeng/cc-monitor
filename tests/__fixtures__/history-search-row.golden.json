@@ -1,0 +1,7 @@
+{
+  "lines": [
+    "{\"agent\":\"claude\",\"can\":{\"accounts\":true,\"delete\":\"live\",\"fork\":true,\"resume\":\"switch\"},\"hitCount\":1,\"hits\":[{\"after\":\"第 0 条\",\"before\":\"命中\",\"kind\":\"user\",\"matched\":\"docker\",\"tsMs\":1767225600000,\"uuid\":\"live1-0\"}],\"hitsTruncated\":false,\"isBg\":false,\"jsonlPath\":\"<HOME>/projects/p-live1/live1.jsonl\",\"projectName\":\"w\",\"projectPath\":\"/w\",\"sessionId\":\"live1\",\"status\":\"live\",\"title\":\"命中 docker 第 0 条\",\"updatedAt\":3000}",
+    "{\"agent\":\"claude\",\"can\":{\"accounts\":true,\"delete\":\"yes\",\"fork\":true,\"resume\":\"yes\"},\"hitCount\":1,\"hits\":[{\"after\":\"第 0 条\",\"before\":\"命中\",\"kind\":\"user\",\"matched\":\"docker\",\"tsMs\":1767225600000,\"uuid\":\"ended1-0\"}],\"hitsTruncated\":false,\"isBg\":false,\"jsonlPath\":\"<HOME>/projects/p-ended1/ended1.jsonl\",\"projectName\":\"w\",\"projectPath\":\"/w\",\"sessionId\":\"ended1\",\"status\":\"ended\",\"title\":\"命中 docker 第 0 条\",\"updatedAt\":2000}",
+    "{\"agent\":\"claude\",\"can\":{\"accounts\":true,\"delete\":\"yes\",\"fork\":false,\"resume\":\"bg\"},\"hitCount\":1,\"hits\":[{\"after\":\"第 0 条\",\"before\":\"命中\",\"kind\":\"user\",\"matched\":\"docker\",\"tsMs\":1767225600000,\"uuid\":\"bg1-0\"}],\"hitsTruncated\":false,\"isBg\":true,\"jsonlPath\":\"<HOME>/projects/p-bg1/bg1.jsonl\",\"projectName\":\"w\",\"projectPath\":\"/w\",\"sessionId\":\"bg1\",\"status\":\"ended\",\"title\":\"命中 docker 第 0 条\",\"updatedAt\":1000}"
+  ]
+}

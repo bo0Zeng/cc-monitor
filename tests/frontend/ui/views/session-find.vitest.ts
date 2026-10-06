@@ -61,9 +61,6 @@ vi.mock("../../../../src/frontend/ui/remote-launch-run", () => ({
   runRemoteResumeIntoExistingTmux: vi.fn().mockResolvedValue(true),
   runRemoteAttach: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("../../../../src/frontend/ui/account-restart", () => ({
-  restartWithAccount: vi.fn().mockResolvedValue(undefined),
-}));
 vi.mock("../../../../src/frontend/ui/fork-flow", () => ({ runForkFlow: vi.fn().mockResolvedValue(undefined) }));
 
 import { invoke } from "@tauri-apps/api/core";

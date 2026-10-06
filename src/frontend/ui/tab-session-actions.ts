@@ -20,11 +20,8 @@
  */
 import { confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
-import type { SessionAccount } from "./accounts";
 import { askOf, FOLLOW, type AccountAsk } from "./launch-account";
-import { restartLocateFailureMessage } from "./account-restart";
 import { resumeLocalSession } from "./local-resume";
-import { restartWithAccount } from "./account-restart";
 import { toast } from "./kit/toast";
 import { runRemoteResume } from "./remote-launch-run";
 // 本机 = `LOCAL_ORIGIN`（`"<local>"`，与 Rust `origin.rs::LOCAL` 跨语言对拍）；
@@ -41,7 +38,6 @@ import {
   findHostByOrigin,
   resolveResumeCommand,
 } from "./remote-config";
-import { standingOf } from "./sessions-where";
 import { callStop, sayReply, type Reply, type StartItem } from "./tab-batch-run";
 import { startInTmuxThenAttach } from "./tmux-resume";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
@@ -69,18 +65,12 @@ export interface TabSessionHost {
   tab(sid: string): Tab | undefined;
   /** E73：attach / 「杀死空 tmux」这几个动作对这个会话有没有意义。 */
   isAttachable(sid: string): boolean;
-  /** A3：远端 live 探测的会话账号行（换号重启定位失败时拿它选哪一句话）。 */
-  sessionAccount(sid: string): SessionAccount | undefined;
-  /** 单个 tab 的账号徽章就地重刷（换号重启 in-flight 状态变化时）。 */
-  refreshAccountBadgeFor(sid: string): void;
   /** resume 一跳问过那台后端之后，把「记录在不在」落进这条 tab 的状态（`TabManager.markRecord`）。 */
   markRecord(sid: string, present: boolean): void;
 }
 
 export class TabSessionActions {
-  /** account-ux U6：正在换号重启中的 sid（防同一会话并发重启：新起的进程被后一条编排杀掉）。 */
-  readonly restartingSids = new Set<string>();
-  /** F04：正在 resumeTabTmux 中的 sid（对称 `restartingSids`）——双击"Resume（tmux）"之间没有
+  /** F04：正在 resumeTabTmux 中的 sid——双击"Resume（tmux）"之间没有
    *  互斥时，两次并发调用各自查一次陈旧的 `list_remote_tmux` 快照、各自算出"该建哪个名字"，
    *  可能算出两个不同名字、真建出两个都声称同一 sid 的 tmux 容器（R10 的一个具体、可关闭的成因，
    *  见 F04 计划 §2 综合来源方案 A §7.4）。 */
@@ -253,7 +243,7 @@ export class TabSessionActions {
    * F52：tmux 版 resume（远端专用）——在远端 tmux 会话 `cc-<sid8>` 里幂等 resume Claude。
    * 与 resumeTab 的直连版并列;本地 tab（origin===null）无 tmux 用例,直接 return。
    *
-   * F04：`resumingSids` 互斥（对称 `restartingSids`）——双击之间没有互斥时，两次并发调用各自
+   * F04：`resumingSids` 互斥——双击之间没有互斥时，两次并发调用各自
    * 查一次陈旧快照、各自可能算出不同的 fresh tmux 名，真建出两个都声称同一 sid 的容器（R10 的
    * 一个具体、可关闭的成因）。
    *
@@ -304,88 +294,6 @@ export class TabSessionActions {
     if (!tab) return;
     const item: StartItem = { sid, cwd: tab.projectDir ?? "", account };
     await this.startInTmuxThenAttach(tab, item, (again) => this.resumeLocalInTmux(sid, again ?? account));
-  }
-
-  /** A5：活跃会话换号重启——先解析该会话当前所在的 tmux 名（send-keys/kill 目标），再走
-   *  `restartWithAccount` 编排（§5）。会话不在本工具 tmux（非本工具起/已漂移）→ 提示无法重启。
-   * 本机会话（`origin === null`）也走这一条，origin 取 `<local>`。 */
-  async restartTabWithAccount(
-    sid: string,
-    accountName: string,
-    compactFirst: boolean,
-    confirmFn?: ConfirmFn,
-  ): Promise<boolean> {
-    const tab = this.host.tab(sid);
-    if (!tab) return false;
-    // D 审计（重要）：同一 sid 的并发重启会互相打架——A 已 kill+resume 起了新 claude，B 再 kill
-    // → 把刚起来的新会话又杀了再 resume 一遍（还多弹一个终端窗口）。点击到弹确认之间有多个 await（getBehavior/list_remote_tmux/
-    // fetchAccounts/checkTrust）且无反馈，双击很自然 → 在唯一入口（右键菜单的 Restart flyout；
-    // ⇄ 按钮/批量对齐已随 F09 删除）上游拦住。
-    if (this.restartingSids.has(sid)) {
-      // F09 Phase D 审计（UX，重要）：⇄ 按钮删除前，命中这条守卫时 UI 上至少有"⇄ 立刻置灰"这个
-      // 间接信号；现在右键菜单是唯一入口，点了却什么反应都没有（含最长 5 分钟的 compact 等待），
-      // 用户大概率以为没点中、再点一次——给个明确提示，别让破坏性操作的
-      // in-flight 防抖对用户完全不可见。
-      toast(
-        copyText("tabSessionActions.restart.busyTitle"),
-        copyText("tabSessionActions.restart.busy"),
-        { level: "info" },
-      );
-      return false;
-    }
-    this.restartingSids.add(sid);
-    this.host.refreshAccountBadgeFor(sid);
-    try {
-      return await this.restartTabWithAccountInner(sid, tab, accountName, compactFirst, confirmFn);
-    } finally {
-      this.restartingSids.delete(sid);
-      this.host.refreshAccountBadgeFor(sid);
-    }
-  }
-
-  private async restartTabWithAccountInner(
-    sid: string,
-    tab: Tab,
-    accountName: string,
-    compactFirst: boolean,
-    confirmFn?: ConfirmFn,
-  ): Promise<boolean> {
-    const origin = tab.origin;
-    const cwd = tab.projectDir ?? "";
-    // 确认框要说清是哪个终端：先问那台（判定只在后端）。破坏性重启必须恰好命中一个在跑的（不按目录猜）；
-    // 命中多个 ⇒ 拒（选错了不可逆）。那台在 `session-restart` 里照 sid 再找一次，这里只为把话说清、不白弹确认框。
-    const standing = await standingOf(origin, sid);
-    if (standing?.kind === "ambiguous") {
-      toast(
-        copyText("tabSessionActions.restart.refusedTitle"),
-        copyText("tabSessionActions.restart.dupes", { n: standing.names.length }),
-        { level: "info" },
-      );
-      return false;
-    }
-    const live = standing?.kind === "running" ? { name: standing.names[0] } : undefined;
-    if (!live) {
-      // `K-P5g`：读回来的身份 token（`launchId`）说得出这条会话是不是从本工具这条路起来的 ⇒ 选哪一条成因、给哪一句补救
-      // （`account-restart.ts::restartLocateFailureMessage`）。
-      const msg = restartLocateFailureMessage(this.host.sessionAccount(sid), {
-        local: isLocalOrigin(origin),
-      });
-      toast(msg.title, msg.body, { level: "info" });
-      return false;
-    }
-    return await restartWithAccount({
-      origin,
-      sessionId: sid,
-      cwd,
-      tmuxName: live.name,
-      accountName,
-      compactFirst,
-      confirm: confirmFn,
-      sessionAccount: this.host.sessionAccount(sid),
-      // 旧的已停、新的没起来 ⇒ 点那句话：用点名的号在 tmux 里起这一个并接上（同单个「在 tmux 里 Resume」）。
-      startAgain: () =>
-        isLocalOrigin(origin) ? this.resumeLocalInTmux(sid, askOf(accountName, false)) : this.resumeTabTmux(sid, accountName),
-    });
   }
 
   /**

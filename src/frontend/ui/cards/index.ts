@@ -774,7 +774,7 @@ function injectOrBuildToolResult(
   if (text.length > resultTextLedger.maxUnits) {
     resultTextLedger.maxUnits = text.length;
   }
-  const exitCode = block.is_error ? extractExitCode(text) : null;
+  const exitCode = facts.results[block.tool_use_id]?.exitCode ?? null;
   const preview = firstLinePreview(text, 60);
   const seen = ctx.toolUseNames.get(block.tool_use_id);
   const toolName = seen?.name ?? "tool";
@@ -1309,12 +1309,6 @@ function firstLinePreview(text: string, max: number): string {
   const { line, more } = firstLineOf(text, max);
   if (!more) return line;
   return copyText("cards.truncate.ellipsis", { text: line.slice(0, max - 1) });
-}
-
-/** 从 Bash 失败 tool_result 文本里抠 exit code（Claude Code 会把它写成 "Exit code N" 一行） */
-function extractExitCode(text: string): number | null {
-  const m = text.match(/Exit code (\d+)/);
-  return m ? Number(m[1]) : null;
 }
 
 /**

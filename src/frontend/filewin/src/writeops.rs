@@ -325,9 +325,8 @@ where
 /// 真做一件 —— 经通道说后端写面那四条命令（`files-mkdir` / `-delete` / `-rename` / `-chmod`）。
 ///
 /// 🔴 **路径切成 `(root, rel)`**：后端写面按「一个根 ＋ 一段相对名」收参（路径解析逐段判 `rel`，
-/// 拒 `..` / 盘符 / 空段）。窗口上的写操作全都发生在**当前目录里**（改名只许同目录，
-/// 由 `clean_name` 那道闸先挡：名字里不许带 `/`），所以切法恒是「上一级 ＋ 尾段」，走
-/// [`parent_dir`] / [`remote_basename`] 那一对（不另写一份切法）。
+/// 拒 `..` / 盘符 / 空段）。窗口上的写操作全都发生在**当前目录里**（改名只许同目录），所以切法恒是「上一级 ＋ 尾段」，走
+/// [`parent_dir`] / [`remote_basename`] 那一对（不另写一份切法）。用户敲的名字走 [`apply_typed`]。
 /// ⚠ 改名两端**不在同一个目录** ⇒ 这里当场拒（后端那一格只有一个 `root`），不猜。
 ///
 /// ⚠ 回来的 `Err` **原样**带出去（后端路径解析那句拒绝经 [`super::source::said`] 翻成人话），
@@ -359,11 +358,51 @@ pub async fn apply_remote_coded(
     op: &WriteOp,
     root_raw: Option<&[u8]>,
 ) -> Result<serde_json::Value, super::source::Failed> {
-    let (cmd, mut args) = match op {
-        WriteOp::Mkdir { path } => (
-            "files-mkdir",
-            serde_json::json!({ "root": parent_dir(path), "rel": remote_basename(path) }),
+    apply_named(line, origin, op, root_raw, None).await
+}
+
+/// 就地新建目录 / 改名：名字是用户敲的 `typed`，原样交后端、带 `single: true`
+/// （合不合法、是不是一段由那台按它的平台判，不合 ⇒ 码 [`BAD_NAME`]、那一句照登）。
+pub async fn apply_typed(
+    line: &Line,
+    origin: &Origin,
+    op: &WriteOp,
+    root_raw: Option<&[u8]>,
+    typed: &str,
+) -> Result<serde_json::Value, super::source::Failed> {
+    apply_named(line, origin, op, root_raw, Some(typed)).await
+}
+
+/// `path` 切成 `(root, rel)`；`typed` 是框里敲的名字时按它切（`path` ＝ 目录 ＋ `/` ＋ 它），名字里的 `/` 不当分隔符。
+fn root_rel<'a>(path: &'a str, typed: Option<&'a str>) -> (String, &'a str) {
+    match typed.and_then(|n| path.strip_suffix(n)?.strip_suffix('/').map(|d| (d, n))) {
+        Some((dir, name)) => (
+            if dir.is_empty() {
+                "/".to_string()
+            } else {
+                dir.to_string()
+            },
+            name,
         ),
+        None => (parent_dir(path), remote_basename(path)),
+    }
+}
+
+async fn apply_named(
+    line: &Line,
+    origin: &Origin,
+    op: &WriteOp,
+    root_raw: Option<&[u8]>,
+    typed: Option<&str>,
+) -> Result<serde_json::Value, super::source::Failed> {
+    let (cmd, mut args) = match op {
+        WriteOp::Mkdir { path } => {
+            let (root, rel) = root_rel(path, typed);
+            (
+                "files-mkdir",
+                serde_json::json!({ "root": root, "rel": rel }),
+            )
+        }
         // 目录 ⇒ `recursive: true`（连同里面全部内容，后端逐条目过路径解析）；文件 ⇒ 不带（射程同此前）。
         WriteOp::Delete { path, is_dir, raw } => {
             let mut a = serde_json::json!({
@@ -379,7 +418,8 @@ pub async fn apply_remote_coded(
         }
         WriteOp::Rename { from, to, raw } => {
             let root = parent_dir(from);
-            if parent_dir(to) != root {
+            let (to_root, to_rel) = root_rel(to, typed);
+            if to_root != root {
                 return Err(super::source::Failed {
                     code: None,
                     said: copy_text(
@@ -393,7 +433,7 @@ pub async fn apply_remote_coded(
                 serde_json::json!({
                     "root": root,
                     "from": rel_json(remote_basename(from), raw.as_deref()),
-                    "to": remote_basename(to),
+                    "to": to_rel,
                 }),
             )
         }
@@ -408,6 +448,9 @@ pub async fn apply_remote_coded(
     };
     if let Some(r) = root_raw {
         args["root"] = super::source::wire_bytes(r);
+    }
+    if typed.is_some() {
+        args["single"] = serde_json::Value::Bool(true);
     }
     // 删一整棵树：一趟一段，`remaining` 不是 0 就接着发同一个请求，直到删完 / 出错
     // （此前一趟删到底，窗口 120 秒等不到就说失败，而后端照删）。别的写操作一趟就完。
@@ -459,6 +502,10 @@ pub const WRITE_BUDGET: std::time::Duration = std::time::Duration::from_secs(20)
 /// 后端写面「落点名被占了」那个码（后端 `control/files_write.rs::EXISTS`，判据读两侧源码钉相等）：
 /// 就地改名 / 新建据它在那一格下面说「x 已存在」，不把系统那句长话搬上来。
 pub const EXISTS: &str = "exists";
+
+/// 后端写面「这个名字在那台不能用」那个码（后端 `control/files_write.rs::BAD_NAME`，判据读两侧源码钉相等）：
+/// 那一格下面照登后端那一句（哪条规则、哪个字），界面不另写一份名字规则。
+pub const BAD_NAME: &str = "bad_name";
 
 /// 删除那一问最多列几项（其余写「另外 n 项」）。
 pub const DELETE_LIST_MAX: usize = 8;
@@ -632,13 +679,13 @@ impl WritePrompt {
             // 新建空文件不是写面那一件（`files-create`）：走 [`Self::to_inline`]。
             PromptKind::NewFile => Err(copy_text("rsFilewinWriteops.toOp.notOne", &[("n", "0")])),
             PromptKind::Mkdir => {
-                let name = clean_name(t)?;
+                let name = clean_name(t);
                 Ok(vec![WriteOp::Mkdir {
                     path: join_remote(&self.dir, &name),
                 }])
             }
             PromptKind::Rename { from, raw } => {
-                let name = clean_name(t)?;
+                let name = clean_name(t);
                 let to = join_remote(&self.dir, &name);
                 // ⚠ 有损名：显示串相等不等于名字没变（旧名的真字节不是这几个字）⇒ 只对无损名判「就是原名」。
                 if &to == from && raw.is_none() {
@@ -735,11 +782,11 @@ impl WritePrompt {
     pub fn to_inline(&self) -> Result<Option<InlineGo>, String> {
         match &self.kind {
             PromptKind::NewFile => {
-                let name = clean_name(self.text.trim())?;
+                let name = clean_name(&self.text);
                 Ok(Some(InlineGo::Create(join_remote(&self.dir, &name))))
             }
             PromptKind::Rename { from, raw } => {
-                let name = clean_name(self.text.trim())?;
+                let name = clean_name(&self.text);
                 if &join_remote(&self.dir, &name) == from && raw.is_none() {
                     return Ok(None);
                 }
@@ -815,29 +862,11 @@ pub fn grid_text(g: &[Option<bool>; 9]) -> Option<String> {
     (mask == 0o777).then(|| format!("{want:03o}"))
 }
 
-/// 一个能用的**名字**（不是路径）。
+/// 框里敲的名字：去掉两头空白。合不合法由那台判（[`apply_typed`] 带 `single`，不合 ⇒ [`BAD_NAME`]），这里不另写规则。
 ///
-/// 🔴 不许带 `/` —— 那是「放到别的目录去」。让人在一个「改个名」的框里
-/// 不小心写出一条别的路径，就是把文件放到他没在看的目录里（同
-/// [`super::copy::CopyJob::beside`] 那一条逐字的理由）。
-/// 🔴 不许是 `.` / `..` —— 它们不是名字，是**当前目录与上一级**。
-/// 拿 `..` 去 `sftp_delete` 就是让服务端对着父目录动手。
-///
-/// 「新建空文件」（[`super::create`]）问的也是这一个函数 —— 两颗并排的「新建」一套规矩。
-pub(super) fn clean_name(t: &str) -> Result<String, String> {
-    if t.is_empty() {
-        return Err(copy_text("rsFilewinWriteops.name.empty", &[]));
-    }
-    if t.contains('/') {
-        return Err(copy_text("rsFilewinWriteops.name.hasSlash", &[]));
-    }
-    if t == "." || t == ".." {
-        return Err(copy_text(
-            "rsFilewinWriteops.name.isDir",
-            &[("name", &t.to_string())],
-        ));
-    }
-    Ok(t.to_string())
+/// 「新建空文件」（[`super::create`]）问的也是这一个函数。
+pub(super) fn clean_name(t: &str) -> String {
+    t.trim().to_string()
 }
 
 /// 八进制权限位。

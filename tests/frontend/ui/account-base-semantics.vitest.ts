@@ -63,14 +63,13 @@ function uiStrings(src: string): string[] {
   return [...literal, ...copyTableTextsIn(prod).filter((zh) => zh.includes("不指定账号"))];
 }
 
-/** 「不指定账号」这句话的两份副本。加第三份时把它登记进来。 */
+/** 「不指定账号」这句话的副本。加一份时把它登记进来。 */
 const COPIES: ReadonlyArray<readonly [file: string, where: string]> = [
   ["src/frontend/ui/settings/machine-card.ts", "机器卡片的新会话账号下拉，空选项"],
-  ["src/frontend/ui/launch-menu.ts", "resume 浮层的账号修饰选项"],
 ] as const;
 
 describe("「不指定账号」的文案必须与 --base 的真实语义对上（audit-0805 F12，E3）", () => {
-  it("★ 抽取器自检：两份副本都真的抠到了文案", () => {
+  it("★ 抽取器自检：每份副本都真的抠到了文案", () => {
     for (const [file, where] of COPIES) {
       const found = uiStrings(read(file));
       expect(

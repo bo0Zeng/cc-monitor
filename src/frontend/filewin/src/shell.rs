@@ -2341,23 +2341,16 @@ impl FileWindow {
         let root_raw = self.cwd_raw.clone();
         let cwd = self.cwd_path();
         let slot = self.inline_done.clone();
-        let name = super::source::remote_basename(match &go {
-            super::writeops::InlineGo::Op(WriteOp::Mkdir { path }) => path,
-            super::writeops::InlineGo::Op(WriteOp::Rename { to, .. }) => to,
-            super::writeops::InlineGo::Create(path) => path,
-            super::writeops::InlineGo::Op(_) => "",
-        })
-        .to_string();
+        let name = super::writeops::clean_name(&p.text);
         h.spawn(async move {
             let got = match go {
                 super::writeops::InlineGo::Op(op) => {
-                    super::writeops::apply_remote_coded(&line, &origin, &op, root_raw.as_deref())
+                    super::writeops::apply_typed(&line, &origin, &op, root_raw.as_deref(), &name)
                         .await
                         .map(|_| ())
                 }
                 super::writeops::InlineGo::Create(_) => {
-                    let at = join_path(&cwd, name.as_bytes());
-                    super::create::create_remote_coded(&line, &origin, &at).await
+                    super::create::create_typed_coded(&line, &origin, &cwd, &name).await
                 }
             };
             *slot.lock().unwrap() = Some((gen, got.map(|()| name)));

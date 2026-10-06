@@ -2801,3 +2801,94 @@ fn a_recursive_delete_in_slices_stops_between_entries_and_says_how_many_are_left
     assert!(still_there(&root, &planted).is_empty(), "说删完了，树还在");
     std::fs::remove_dir_all(&base).ok();
 }
+
+/// 名字规则两套（Windows · unix）逐条 == 手写的期望 `tests/__fixtures__/file-names.golden.json`（ok 全过、bad 各落在登记的那一档）。
+#[test]
+fn the_two_name_rules_match_the_hand_written_expectations() {
+    use crate::platform::paths::{unix_name_problem, windows_name_problem, NameProblem};
+    let path = crate::guard_support::repo_root().join("tests/__fixtures__/file-names.golden.json");
+    let g: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).expect("金样")).expect("JSON");
+    let word = |p: Option<NameProblem>| match p {
+        None => "ok",
+        Some(NameProblem::Reserved) => "reserved",
+        Some(NameProblem::BadChar(_)) => "badChar",
+        Some(NameProblem::Trailing) => "trailing",
+    };
+    let mut n = 0;
+    for (os, rule) in [
+        (
+            "windows",
+            &(|s: &str| windows_name_problem(s)) as &dyn Fn(&str) -> Option<NameProblem>,
+        ),
+        ("unix", &|s: &str| unix_name_problem(s.as_bytes())),
+    ] {
+        for ok in g[os]["ok"].as_array().expect("ok") {
+            let s = ok.as_str().expect("串");
+            assert_eq!(word(rule(s)), "ok", "{os}：{s:?} 该能用");
+            n += 1;
+        }
+        for (s, want) in g[os]["bad"].as_object().expect("bad") {
+            assert_eq!(word(rule(s)), want.as_str().expect("串"), "{os}：{s:?}");
+            n += 1;
+        }
+    }
+    assert!(n > 20, "金样里没几条 —— 本条空转");
+}
+
+/// 写面三条对叶名过这台的规则，`single` ⇒ 只许一段；不合 ⇒ `bad_name`，盘上什么都不留。
+#[test]
+fn a_bad_name_is_refused_with_its_own_code_before_anything_lands() {
+    let root = temp_root("badname");
+    std::fs::create_dir_all(root.join("sub")).expect("建根");
+    let r = root.to_str().expect("utf8");
+    for (cmd, args) in [
+        (
+            "files-mkdir",
+            serde_json::json!({"root": r, "rel": "sub/x", "single": true}),
+        ),
+        (
+            "files-create",
+            serde_json::json!({"root": r, "rel": "", "single": true}),
+        ),
+        (
+            "files-create",
+            serde_json::json!({"root": r, "rel": "..", "single": true}),
+        ),
+        (
+            "files-create",
+            serde_json::json!({"root": r, "rel": "a\u{0}b"}),
+        ),
+        (
+            "files-rename",
+            serde_json::json!({"root": r, "from": "sub", "to": "a/b", "single": true}),
+        ),
+    ] {
+        let (code, msg) = answer_wire(cmd, &args).expect_err(&format!("{cmd} {args} 竟然过了"));
+        assert_eq!(code, BAD_NAME, "{cmd} {args}：{msg}");
+        assert!(!msg.is_empty());
+    }
+    assert!(
+        !root.join("sub/x").exists() && root.join("sub").is_dir(),
+        "拒了却动了盘"
+    );
+    let (code, _) = answer_wire(
+        "files-mkdir",
+        &serde_json::json!({"root": r, "rel": "y", "single": "yes"}),
+    )
+    .expect_err("`single` 不是布尔竟然过了");
+    assert_eq!(code, "bad_args");
+    // 正控：一段合法的名字照建；不带 `single` 的多段（资产那一侧）照旧走路径解析。
+    answer_wire(
+        "files-mkdir",
+        &serde_json::json!({"root": r, "rel": "ok", "single": true}),
+    )
+    .expect("合法名字");
+    answer_wire(
+        "files-mkdir",
+        &serde_json::json!({"root": r, "rel": "sub/deep"}),
+    )
+    .expect("多段相对路径");
+    assert!(root.join("ok").is_dir() && root.join("sub/deep").is_dir());
+    std::fs::remove_dir_all(&root).ok();
+}

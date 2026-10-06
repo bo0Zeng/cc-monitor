@@ -8,6 +8,7 @@ import type { Origin } from "./ipc/origin";
 import type { QuotaRead } from "./quota-lines";
 import type { Rotation } from "./generated/Rotation";
 import type { SessionRotationState } from "./generated/SessionRotationState";
+import type { RestartOutcome } from "./generated/RestartOutcome";
 import type { SwitchOutcome } from "./generated/SwitchOutcome";
 
 /** 读一份额度账 / 轮换（读盘 ＋ 回程）。 */
@@ -94,6 +95,21 @@ export function decodeOutcomes(v: unknown): Record<string, SwitchOutcome> {
   return ss as Record<string, SwitchOutcome>;
 }
 
+/** 重启换那一支的应答：每个 sid `{state:"done", terminal}` 或 `{state:"failed", code, old}`，多一格 / 缺一格 / 类型不对 ⇒ 抛。 */
+export function decodeRestartOutcomes(v: unknown): Record<string, RestartOutcome> {
+  const ss = obj(obj(v, "reply").sessions, "sessions");
+  for (const [sid, s] of Object.entries(ss)) {
+    const x = obj(s, `sessions.${sid}`);
+    const keys = Object.keys(x).sort().join(",");
+    const ok =
+      x.state === "done"
+        ? keys === "state,terminal" && typeof x.terminal === "string"
+        : x.state === "failed" && keys === "code,old,state" && typeof x.code === "string" && (x.old === "kept" || x.old === "ended");
+    if (!ok) bad(`sessions.${sid}`);
+  }
+  return ss as Record<string, RestartOutcome>;
+}
+
 // 每一问各写一处 `chan.call`，操作名是字面量（通信层判据按字面量认是哪条帧命令）。
 
 export async function readQuota(origin: Origin): Promise<QuotaRead> {
@@ -124,16 +140,16 @@ export async function writeSessionRotation(origin: Origin, sids: string[], rotat
 }
 
 /** 现在就换：热切换 `sessions` 是会话 id；重启切换每项是 `session-restart` 的入参（不带 `account`），`ms` 是这一趟的总期限（要等压缩 · 等报出）。 */
-async function switchNow(origin: Origin, sessions: unknown[], target: string, mode: "hot" | "restart", ms: number): Promise<Record<string, SwitchOutcome>> {
+async function switchNow(origin: Origin, sessions: unknown[], target: string, mode: "hot" | "restart", ms: number): Promise<unknown> {
   const body = jsonBody({ sessions, target, mode });
   const budget = budgetWithin(ms);
-  return decodeOutcomes(readJson(await chan.call(origin, "rotation-switch", body, budget)));
+  return readJson(await chan.call(origin, "rotation-switch", body, budget));
 }
 
-export function switchHot(origin: Origin, sids: string[], target: string): Promise<Record<string, SwitchOutcome>> {
-  return switchNow(origin, sids, target, "hot", READ_BUDGET_MS);
+export async function switchHot(origin: Origin, sids: string[], target: string): Promise<Record<string, SwitchOutcome>> {
+  return decodeOutcomes(await switchNow(origin, sids, target, "hot", READ_BUDGET_MS));
 }
 
-export function switchRestart(origin: Origin, sessions: Record<string, unknown>[], target: string, ms: number): Promise<Record<string, SwitchOutcome>> {
-  return switchNow(origin, sessions, target, "restart", ms);
+export async function switchRestart(origin: Origin, sessions: Record<string, unknown>[], target: string, ms: number): Promise<Record<string, RestartOutcome>> {
+  return decodeRestartOutcomes(await switchNow(origin, sessions, target, "restart", ms));
 }

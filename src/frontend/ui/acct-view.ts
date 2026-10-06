@@ -219,6 +219,22 @@ export function reasonLabel(code: string, ctx: { agent: string; target: string }
       return copyText("acct.reason.needsKey", { name: accountLabel(ctx.target) });
     case "ioFailed":
       return copyText("acct.reason.ioFailed");
+    case "account_unavailable":
+      return copyText("acct.reason.accountUnavailable", { name: accountLabel(ctx.target) });
+    case "ambiguous":
+      return copyText("acct.reason.ambiguous");
+    case "not_in_terminal":
+      return copyText("acct.reason.notInTerminal");
+    case "stop_failed":
+      return copyText("acct.reason.stopFailed");
+    case "session_already_live":
+      return copyText("acct.reason.alreadyLive");
+    case "start_failed":
+      return copyText("acct.reason.startFailed");
+    case "notArrived":
+      return copyText("acct.reason.notArrived");
+    case "shutting_down":
+      return copyText("acct.reason.shuttingDown");
     default:
       return copyText("acct.reason.unknown");
   }

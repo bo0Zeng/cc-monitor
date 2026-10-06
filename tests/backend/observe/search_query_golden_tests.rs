@@ -209,6 +209,17 @@ pub(super) fn cases() -> Vec<(&'static str, &'static str, Vec<String>)> {
     ]
 }
 
+/// 一行命中去掉那台判的三格（`status` · `isBg` · `can`）：现扫金样冻结的是搜到什么，不含它们；
+/// 三格每行都在（缺一格 ⇒ panic），值由 `search_query_tests` 那条与它的金样钉。
+fn without_can(line: &str) -> String {
+    let mut v: Value = serde_json::from_str(line).expect("命中行是 JSON");
+    let o = v.as_object_mut().expect("命中行是对象");
+    for k in ["status", "isBg", "can"] {
+        assert!(o.remove(k).is_some(), "命中行缺 `{k}`：{line}");
+    }
+    v.to_string()
+}
+
 /// 在 `home` 上把 [`cases`] 全跑一遍，渲染成金样那一形（每问一行 JSON；路径前缀归一成 `<HOME>`）。
 pub(super) fn render(home: &Path) -> String {
     let canon = home.canonicalize().expect("家目录规范化");
@@ -221,7 +232,7 @@ pub(super) fn render(home: &Path) -> String {
         let lines: Vec<String> = String::from_utf8(buf)
             .expect("输出是 UTF-8")
             .lines()
-            .map(|l| l.replace(&prefix, "<HOME>"))
+            .map(|l| without_can(&l.replace(&prefix, "<HOME>")))
             .collect();
         out.push_str(
             &json!({"case": name, "query": q, "args": rest, "unreadable": unreadable, "lines": lines})

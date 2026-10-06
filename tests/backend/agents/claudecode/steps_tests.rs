@@ -61,14 +61,21 @@ fn a_result_reads_counts_from_the_structured_result() {
     assert_eq!(r.lines, Some(3));
     let r = result_of(&ok("…"), Some(&json!({"numFiles": 4, "filenames": []})));
     assert_eq!(r.files, Some(4));
-    // 失败：只说失败；人拒了：`rejected`。
-    let err = json!({"type": "tool_result", "tool_use_id": "t", "content": "Exit code 1", "is_error": true});
+    // 失败：说失败与退出码（结果里写着才有）；人拒了：`rejected`。
+    let err = json!({"type": "tool_result", "tool_use_id": "t", "content": "Exit code 127\nbash: x: not found", "is_error": true});
     assert_eq!(
-        result_of(&err, Some(&json!("Error: Exit code 1"))),
+        result_of(&err, Some(&json!("Error: Exit code 127"))),
         StepResult {
             ok: false,
+            exit_code: Some(127),
             ..Default::default()
         }
+    );
+    let err = json!({"type": "tool_result", "tool_use_id": "t", "content": "File does not exist.", "is_error": true});
+    assert_eq!(
+        result_of(&err, None).exit_code,
+        None,
+        "没写退出码就不编一个"
     );
     let rej = json!({"type": "tool_result", "tool_use_id": "t", "is_error": true,
         "content": "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed."});

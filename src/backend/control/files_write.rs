@@ -267,6 +267,10 @@ pub enum WriteRefusal {
 /// 命令级码：**落点上已经有一项**（`files-create` · `files-mkdir` · `files-rename` 声明）。
 pub const EXISTS: &str = "exists";
 
+/// 命令级码：**这个名字在这台不能用**（保留名 · 不许的字符 · 结尾点或空格；`single` 时不止一段）。
+/// `files-create` · `files-mkdir` · `files-rename` 声明。
+pub const BAD_NAME: &str = "bad_name";
+
 /// 命令级码：**这个平台没有 unix 权限位**。只有 `files-chmod` 声明它。
 ///
 /// ⚠ 这是这个字面量在后端的**第二份**（另一份是 `lib.rs::NO_UNIX_MODE`，target 轴现推用），
@@ -2473,24 +2477,24 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     ManageCommand {
         name: "files-create",
         purpose: "在用户指定的文件管理目标根底下，新建一份**此前不存在**的文件（`O_EXCL`）",
-        args: &["content", "rel", "root"],
+        args: &["content", "rel", "root", "single"],
         fields: &["bytes", "path"],
-        codes: &["bad_args", "bad_path", EXISTS, "io_failed", "refused"],
+        codes: &["bad_args", BAD_NAME, "bad_path", EXISTS, "io_failed", "refused"],
     },
     // ── 〔波 5 ㈡ 09-23〕：**改动既有数据**的那五件 ──────────
     ManageCommand {
         name: "files-mkdir",
         purpose: "新建一个目录（只建最后那一段；父目录不在就失败，不顺手补）",
-        args: &["rel", "root"],
+        args: &["rel", "root", "single"],
         fields: &["path"],
-        codes: &["bad_args", "bad_path", EXISTS, "io_failed", "refused"],
+        codes: &["bad_args", BAD_NAME, "bad_path", EXISTS, "io_failed", "refused"],
     },
     ManageCommand {
         name: "files-rename",
         purpose: "改名 / 同根内移动；**两个参数各过一遍路径解析**，目标已存在就拒（不覆盖）",
-        args: &["from", "root", "to"],
+        args: &["from", "root", "single", "to"],
         fields: &["path"],
-        codes: &["bad_args", "bad_path", EXISTS, "io_failed", "refused"],
+        codes: &["bad_args", BAD_NAME, "bad_path", EXISTS, "io_failed", "refused"],
     },
     ManageCommand {
         name: "files-delete",
@@ -2595,6 +2599,7 @@ fn path_of(
 fn answer_create(args: &serde_json::Value) -> Answer {
     let root = path_of(args, "root")?;
     let rel = rel_of(args, "rel")?;
+    names_ok(args, &rel)?;
     // 不给 `content` ⇒ 新建一份**空文件**（那正是「新建空文件」这件事的形状）。
     let bytes = match args.get("content") {
         None => Vec::new(),
@@ -2637,6 +2642,53 @@ fn rel_of(args: &serde_json::Value, key: &str) -> Result<PathBuf, (&'static str,
     Ok(crate::files::raw::to_path_buf(&bytes))
 }
 
+/// 取 `single`（缺 ⇒ `false`）；给了 ⇒ 这一格只许是一段名字（界面「新建 / 改名」那一格敲的就是一个名字）。
+/// 每一段都过这台的名字规则（`platform::paths::name_problem`）。不合 ⇒ 码 [`BAD_NAME`]。
+fn names_ok(args: &serde_json::Value, rel: &Path) -> Result<(), (&'static str, String)> {
+    let single = match args.get("single") {
+        None | Some(serde_json::Value::Null) => false,
+        Some(serde_json::Value::Bool(b)) => *b,
+        Some(_) => {
+            return Err((
+                "bad_args",
+                crate::common::contract::malformed("`single` must be a boolean"),
+            ))
+        }
+    };
+    let shown = rel.to_string_lossy();
+    let parts: Vec<Component> = rel.components().collect();
+    if single && parts.is_empty() {
+        return Err((BAD_NAME, copy_text("beFilesWrite.name.empty", &[])));
+    }
+    if single && !matches!(parts.as_slice(), [Component::Normal(_)]) {
+        return Err((
+            BAD_NAME,
+            copy_text("beFilesWrite.name.notOne", &[("name", &shown)]),
+        ));
+    }
+    for part in parts {
+        let Component::Normal(seg) = part else {
+            continue;
+        };
+        let name = seg.to_string_lossy();
+        let said = match crate::platform::paths::name_problem(seg) {
+            None => continue,
+            Some(crate::platform::paths::NameProblem::Reserved) => {
+                copy_text("beFilesWrite.name.reserved", &[("name", &name)])
+            }
+            Some(crate::platform::paths::NameProblem::BadChar(c)) => copy_text(
+                "beFilesWrite.name.badChar",
+                &[("name", &name), ("char", &c.escape_debug().to_string())],
+            ),
+            Some(crate::platform::paths::NameProblem::Trailing) => {
+                copy_text("beFilesWrite.name.trailing", &[("name", &name)])
+            }
+        };
+        return Err((BAD_NAME, said));
+    }
+    Ok(())
+}
+
 /// 把一个落点交回去（原始字节形）。
 fn path_json(p: &Path) -> serde_json::Value {
     crate::files::raw::to_json(crate::files::raw::path_bytes(p))
@@ -2650,6 +2702,7 @@ fn refusal(e: WriteRefusal) -> (&'static str, String) {
 fn answer_mkdir(args: &serde_json::Value) -> Answer {
     let root = path_of(args, "root")?;
     let rel = rel_of(args, "rel")?;
+    names_ok(args, &rel)?;
     let done = make_dir(&root, &rel).map_err(refusal)?;
     Ok(serde_json::json!({ "path": path_json(&done) }))
 }
@@ -2658,6 +2711,7 @@ fn answer_rename(args: &serde_json::Value) -> Answer {
     let root = path_of(args, "root")?;
     let from = rel_of(args, "from")?;
     let to = rel_of(args, "to")?;
+    names_ok(args, &to)?;
     let done = rename_entry(&root, &from, &to).map_err(refusal)?;
     Ok(serde_json::json!({ "path": path_json(&done) }))
 }

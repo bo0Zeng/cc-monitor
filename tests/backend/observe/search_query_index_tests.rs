@@ -51,6 +51,7 @@ fn ask_all(
                     &fence,
                     &q.trim().to_lowercase(),
                     &parse_opts(&rest),
+                    &crate::observe::accounts_query::live_session_ids(home),
                     &mut buf,
                 )
                 .expect("search ok");
@@ -315,7 +316,13 @@ fn fix_after_the_warm_up_the_first_question_reads_nothing() {
     let fence = Fence::at(&projects_root(&home)).expect("围栏");
     let mut want = Vec::new();
     SearchIndex::default()
-        .search(&fence, "docker", &parse_opts(&[]), &mut want)
+        .search(
+            &fence,
+            "docker",
+            &parse_opts(&[]),
+            &crate::observe::accounts_query::live_session_ids(&home),
+            &mut want,
+        )
         .expect("search ok");
     assert_eq!(
         String::from_utf8_lossy(&got),

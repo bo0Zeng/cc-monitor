@@ -114,6 +114,7 @@ pub(crate) fn result_of(block: &Value, tur: Option<&Value>) -> StepResult {
         return r;
     }
     if is_error {
+        r.exit_code = exit_code_of(&text);
         return r;
     }
     let obj = tur.filter(|v| v.is_object());
@@ -184,6 +185,13 @@ pub(crate) fn result_of(block: &Value, tur: Option<&Value>) -> StepResult {
         }
     }
     r
+}
+
+/// 失败的命令结果里那一行 `Exit code N` ⇒ N（Claude Code 的写法；没有 ⇒ `None`）。
+fn exit_code_of(text: &str) -> Option<i32> {
+    let rest = &text[text.find("Exit code ")? + "Exit code ".len()..];
+    let n = rest.bytes().take_while(u8::is_ascii_digit).count();
+    rest[..n].parse().ok()
 }
 
 /// `"问"="答", "问"="答"` ⇒ 各个答（引号里不含引号；读不出 ⇒ 空）。

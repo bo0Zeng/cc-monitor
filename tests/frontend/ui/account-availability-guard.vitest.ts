@@ -31,7 +31,7 @@
  *
  * # 阴性对照（这条守卫真的有牙吗）
  *
- * K-A1 `KAM5` 实测：往 `src/frontend/ui/launch-menu.ts` 加一句 `const ok = a.loggedIn;`
+ * K-A1 `KAM5` 实测：往 `src/frontend/ui/account-reads.ts` 加一句 `const ok = a.loggedIn;`
  * ⇒ 本文件第 2 条当场红（实测输出贴在件计划 `§3`）。撤掉即绿。
  *
  * # ⚠ 第四轮（`R2`）：阳性对照**曾经是半空真**，两处收紧各治一把刀

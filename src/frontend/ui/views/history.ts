@@ -1142,7 +1142,7 @@ function groupKey(g: HistoryGroup): string {
   return `${g.origin ?? ""}\u0000${g.key}`;
 }
 
-/** 内容命中里那个会话不在清单里（被筛掉 / 那台的清单没答上）⇒ 用命中那一行拼一个只够画的行（不能做的都不给）。 */
+/** 内容命中里那个会话不在清单里（被筛掉 / 那台的清单没答上）⇒ 用命中那一行拼一个只够画的行；状态与能做什么照那台判的。 */
 function rowFromHits(sh: SessionHits): HistoryRow {
   return {
     agent: sh.agent,
@@ -1162,12 +1162,12 @@ function rowFromHits(sh: SessionHits): HistoryRow {
     at: sh.updatedAt,
     jsonlPath: sh.jsonlPath,
     messageCountApprox: 0,
-    isBg: false,
+    isBg: sh.isBg,
     starred: false,
     customTitle: null,
     hidden: false,
-    status: "unknown",
-    can: { resume: "yes", accounts: false, fork: false, delete: "unsure" },
+    status: sh.status,
+    can: sh.can,
     ...(sh.origin ? { origin: sh.origin } : {}),
   };
 }

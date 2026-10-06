@@ -664,13 +664,6 @@ export class TabBarView {
     }
   }
 
-  /** 单个 tab 的账号徽章就地重刷（in-flight 状态变化时用；tab 已没了就静默跳过）。 */
-  refreshAccountBadgeFor(sid: string): void {
-    const refs = this.tabButtons.get(sid);
-    const tab = this.store.tabs.get(sid);
-    if (refs && tab) this.updateAccountBadge(refs, sid, tab);
-  }
-
   /**
    * 账号头像：**只在这个会话用的号与那台的默认号不同时出**（全都出 ⇒ 每行一块、信息为零，规范 V2）；
    * 默认号不知道 ⇒ 不出（说不出「不同」）。悬停卡里永远写账号。头像悬停说「账号 {name}」。

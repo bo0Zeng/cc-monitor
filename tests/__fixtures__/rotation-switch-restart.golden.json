@@ -1,0 +1,43 @@
+{
+  "sessions": {
+    "account_unavailable": {
+      "code": "account_unavailable",
+      "old": "kept",
+      "state": "failed"
+    },
+    "arrived": {
+      "state": "done",
+      "terminal": "proj-cc"
+    },
+    "live_after": {
+      "code": "session_already_live",
+      "old": "ended",
+      "state": "failed"
+    },
+    "live_before": {
+      "code": "session_already_live",
+      "old": "kept",
+      "state": "failed"
+    },
+    "missed": {
+      "code": "notArrived",
+      "old": "ended",
+      "state": "failed"
+    },
+    "not_in_terminal": {
+      "code": "not_in_terminal",
+      "old": "kept",
+      "state": "failed"
+    },
+    "start_failed": {
+      "code": "start_failed",
+      "old": "ended",
+      "state": "failed"
+    },
+    "stop_failed": {
+      "code": "stop_failed",
+      "old": "kept",
+      "state": "failed"
+    }
+  }
+}

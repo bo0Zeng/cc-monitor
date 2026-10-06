@@ -1357,7 +1357,7 @@ TOCTOU 窗口没关干净；`K-R54` 表第 1 · 2 处据此判「留后端」。
 
 ⚠ **一条代价，写在这里免得下一个人以为是 bug**：后端通道不在时，送键与杀会话从
 「悄悄走另一条路做掉」变成**明确失败**。出口是界面 `src/frontend/ui/tmux-control.ts` 的通道那几句（文案表
-`tmuxControl.channel.*`：本机 / 远端两句不同的话，各自说得出下一步）；它会被 `src/frontend/ui/account-restart.ts` 原样弹成 toast。
+`tmuxControl.channel.*`：本机 / 远端两句不同的话，各自说得出下一步）；杀会话那一路（`src/frontend/ui/tab-session-actions.ts::killInTmux`）原样弹成 toast。
 
 **性能纪律**：Gate 2 本地命中（`cc-*` 前缀）时跳过的是**远端半支的判定**，
 **不是存在性探测**（`K-R56` 2026-09-11 订正：那两件事此前被压成了一件，于是
@@ -1568,18 +1568,9 @@ documented rationale"——三条轴两种机制的不对称依然存在，但�
 **给 UI 层"枚举可用修饰"的启示**：即便 `account`/`model` 已注册进 `LAUNCH_DIMENSIONS`，
 `LaunchDimension` 接口本身也从未回答过"这个维度当前有哪些可选值"——`ACCOUNT_DIMENSION`
 能在 UI 上显示成列表，靠的是 `src/frontend/ui/account-reads.ts::fetchAccounts`/`isSelectable` 现查，不是遍历
-`LAUNCH_DIMENSIONS`。F09 的 `src/frontend/ui/launch-menu.ts` 因此是一个独立于 `LaunchDimension`
-的新发现层，account 组手写调 `fetchAccounts`/`selectableAccounts`——这不是"该注册就注册"没做完，
-是这条轴本来就该用另一种方式回答"有哪些可选值"这个问题。
+`LAUNCH_DIMENSIONS`——这不是"该注册就注册"没做完，是这条轴本来就该用另一种方式回答"有哪些可选值"这个问题。
 
-**R05 更新（2026-07-28）**：本段原写「account 组手写调 `fetchAccounts`，**container 组手写两个
-硬编码值**——两者形式不同」。那个对比现在不成立了：`enumerateModifierGroups` 已改名
-`enumerateAccountModifiers`，**container 组已作为死代码删除**（全仓唯一生产调用点从不读它，
-第二参恒传 `"tmux"`，`"none"` 分支只被测试驱动过）。容器那两项的 UI 渲染现在住在
-`tabs.ts::containerLeaves`，是全仓唯一来源。
-**论证本身不受影响、反而更强**：container 轴的可选值本就固定为两个字面量、不需要"现查"，
-所以它根本不需要一个发现层——这恰恰印证了本节的结论（两条轴该用不同方式回答，
-而 container 那条的"方式"简单到不配拥有一个函数）。
+container 轴的可选值固定为两个字面量（UI 渲染住 `tabs.ts::containerLeaves`），不需要"现查"，也就不需要发现层。
 
 ## 39. `WrapSpec` 是纯数据 `{ id, order, prelude }`，不是闭包——且 rbind 走不走 wrap 这件事必须先定（R04④ / unify-launch）
 

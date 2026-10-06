@@ -3,7 +3,7 @@
 use super::*;
 use crate::accounts::quota::rotation::{SessionRotationState, SwitchWhy};
 use crate::accounts::upstream_select::rotate::{LibAccount, Library};
-use crate::faces::rotation_switch_face::{restart_args, switch_ask};
+use crate::faces::rotation_switch_face::{restart_args, restart_outcome, switch_ask};
 
 const UUID_B: &str = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
 const B_TOKEN: &str = "fake-access-of-b";
@@ -279,6 +279,95 @@ fn the_switch_arguments_are_shaped_per_mode() {
     assert_eq!(
         restart_args(&item, "b"),
         json!({"sid": "s-1", "cwd": "/p", "compact_first": false, "account": "b"})
+    );
+}
+
+/// 重启换那一格：`session-restart` 的几种结局 ⇒ 成（带终端）· 没成（码原样 ＋ 旧会话在不在，由 `data.stopped` 说）。
+fn restart_cases() -> Vec<(&'static str, Value)> {
+    let ok = |started: &str| {
+        Ok(json!({"compact": "skipped", "started": started, "terminal": "proj-cc", "account": "b"}))
+    };
+    let err = |code: &str, data: Option<Value>| Err((code.to_string(), "那一句".to_string(), data));
+    [
+        ("arrived", ok("arrived")),
+        ("missed", ok("missed")),
+        (
+            "account_unavailable",
+            err("account_unavailable", Some(json!({"requested": "b"}))),
+        ),
+        ("not_in_terminal", err("not_in_terminal", None)),
+        (
+            "stop_failed",
+            err("stop_failed", Some(json!({"why": "wrong_owner"}))),
+        ),
+        (
+            "live_before",
+            err("session_already_live", Some(json!({"pids": [11]}))),
+        ),
+        (
+            "live_after",
+            err(
+                "session_already_live",
+                Some(json!({"pids": [13], "stopped": true})),
+            ),
+        ),
+        (
+            "start_failed",
+            err(
+                "start_failed",
+                Some(json!({"terminal": "proj-cc", "why": "x", "stopped": true})),
+            ),
+        ),
+    ]
+    .into_iter()
+    .map(|(k, r)| (k, serde_json::to_value(restart_outcome(&r)).unwrap()))
+    .collect()
+}
+
+#[test]
+fn a_restart_says_whether_the_old_session_is_still_there() {
+    let got: std::collections::BTreeMap<_, _> = restart_cases().into_iter().collect();
+    let failed = |code: &str, old: &str| json!({"state": "failed", "code": code, "old": old});
+    assert_eq!(
+        got["arrived"],
+        json!({"state": "done", "terminal": "proj-cc"})
+    );
+    assert_eq!(got["missed"], failed("notArrived", "ended"));
+    assert_eq!(
+        got["account_unavailable"],
+        failed("account_unavailable", "kept")
+    );
+    assert_eq!(got["not_in_terminal"], failed("not_in_terminal", "kept"));
+    assert_eq!(got["stop_failed"], failed("stop_failed", "kept"));
+    assert_eq!(got["live_before"], failed("session_already_live", "kept"));
+    assert_eq!(got["live_after"], failed("session_already_live", "ended"));
+    assert_eq!(got["start_failed"], failed("start_failed", "ended"));
+}
+
+/// 跨语言金样：重启换那几格（TS `decodeRestartOutcomes` 读同一份）。`CCM_BLESS=1` 重写。
+#[test]
+fn restart_outcomes_match_the_cross_language_golden() {
+    let got = Value::Object(
+        restart_cases()
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
+    );
+    let got = json!({ "sessions": got });
+    let path = crate::guard_support::repo_root()
+        .join("tests/__fixtures__/rotation-switch-restart.golden.json");
+    if std::env::var_os("CCM_BLESS").is_some() {
+        std::fs::write(
+            &path,
+            format!("{}\n", serde_json::to_string_pretty(&got).unwrap()),
+        )
+        .unwrap();
+    }
+    let golden: Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).expect("金样")).unwrap();
+    assert_eq!(
+        got, golden,
+        "重启换那一格的形状变了：TS 解码器读同一份金样，两边一起改（CCM_BLESS=1 重写）"
     );
 }
 

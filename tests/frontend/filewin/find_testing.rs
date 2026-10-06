@@ -902,6 +902,16 @@ impl FakeBackend {
                         None,
                     );
                 }
+                // 带 `single` 而 `rel` 不是一段名字 ⇒ 后端 `bad_name` 那一档（这里只摆那一形的应答，规则住后端）。
+                let single = args.get("single").and_then(|v| v.as_bool()) == Some(true);
+                if single && (rel.is_empty() || rel.contains('/') || rel == "." || rel == "..") {
+                    return (
+                        false,
+                        Some("bad_name".into()),
+                        Some(format!("名称不能是路径：{rel}")),
+                        None,
+                    );
+                }
                 (
                     true,
                     None,

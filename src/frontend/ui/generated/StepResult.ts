@@ -29,4 +29,8 @@ files?: number,
 /**
  * 提问 / 计划的结果（B7）：批准了 · 选了哪几项。没批准走 `rejected`。
  */
-answer?: Answer, };
+answer?: Answer, 
+/**
+ * 命令失败时的退出码（结果里写着才有）。
+ */
+exitCode?: number, };

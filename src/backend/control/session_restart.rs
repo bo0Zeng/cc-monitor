@@ -4,6 +4,7 @@
 //! - 步与步之间是 await 点：撤单（或界面关了不再等）在那里生效。**停旧 ＋ 起新是不可分的一步**：拿退出排空的票、在阻塞线程上一口气做完，
 //!   开跑之后撤单也照样做完（只停不起会把会话丢在半路）。
 //! - 停失败 ⇒ `stop_failed`，**一定不起新的**（新旧两个进程会抢同一条会话）。起失败（旧的已停）⇒ `start_failed`，`data` 带终端名。
+//! - 停成了之后的失败，`data` 都带 `stopped: true`（旧会话已经不在了）。
 //! - 另有活进程在写这条会话 ⇒ `session_already_live`（`data` 带那几个 pid），不起新的：开动前写它的不止一个 ⇒ 什么都不动；
 //!   停完旧的再核一次，除了停掉的那个还有 ⇒ 旧的已停、新的不起。
 //! - 压缩：问适配层「请求压缩那一句」；不支持 ⇒ `unsupported` 照常往下；到期限没见摘要 ⇒ `timed_out` 照常往下。
@@ -193,7 +194,8 @@ fn swap(req: &Req, account: &Settled, name: &str, mine: &[u32], deps: &Deps) -> 
             "beSessionRestart.live.afterStop",
             &[("pids", &batch::pids_said(&others))],
         );
-        return Err(already_live(said, &others));
+        let (c, m, _) = already_live(said, &others);
+        return Err((c, m, Some(json!({ "pids": others, "stopped": true }))));
     }
     let a = batch::start_named(
         &req.item,
@@ -209,7 +211,7 @@ fn swap(req: &Req, account: &Settled, name: &str, mine: &[u32], deps: &Deps) -> 
     Err((
         "start_failed",
         a.detail,
-        Some(json!({ "terminal": name, "why": a.why })),
+        Some(json!({ "terminal": name, "why": a.why, "stopped": true })),
     ))
 }
 

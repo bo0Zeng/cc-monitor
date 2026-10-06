@@ -324,8 +324,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/frontend/ui/views/session-viewer.ts:917": "工具行 `toolsEl`（`sv.svTools`）—— 窗口那一形 Ctrl+F 才露；它写了 display:flex，CSS 里另有 `.svTools[hidden]` 收住",
   "src/frontend/ui/views/session-viewer.ts:1105": "同上 —— 窗口那一形建时收起",
   "src/frontend/ui/views/session-viewer.ts:1104": "头 `head`（`sv.svHead`）—— 窗口那一形不画（细顶栏担）；它写了 display:flex，CSS 里另有 `.svHead[hidden]` 收住",
-  "src/frontend/ui/kit/toast.ts:130": "合流计数 `same.countEl`（`s.count`）—— 合进第二条时出现",
-  "src/frontend/ui/kit/toast.ts:149": "同上 —— 建时收起",
+  "src/frontend/ui/kit/toast.ts:135": "合流计数 `same.countEl`（`s.count`）—— 合进第二条时出现",
+  "src/frontend/ui/kit/toast.ts:154": "同上 —— 建时收起",
   // ⚠ `606 → 614`：我在这份文件上方加了一段注释，**行号就漂了**。
   //    这条登记按**裸行号**做键 —— 那是它的固有脆弱：住址没变、内容没变，只因为
   //    上面多了几行就要来改一次。纪律 4 说的是同一件事

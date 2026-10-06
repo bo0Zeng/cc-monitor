@@ -3958,36 +3958,6 @@
       "zh": "暂无活跃会话<br><small>打开终端跑 <code>claude</code> 后将自动出现</small>",
       "args": []
     },
-    "tabMenu.restart.menu": {
-      "kind": "action",
-      "zh": "换号重启",
-      "args": []
-    },
-    "tabMenu.restart.compactFirstHint": {
-      "kind": "body",
-      "zh": "先在旧账号上压缩上下文再换号重启，更省",
-      "args": []
-    },
-    "tabMenu.restart.compactFirst": {
-      "kind": "action",
-      "zh": "先压缩上下文再重启",
-      "args": []
-    },
-    "tabMenu.restart.directHint": {
-      "kind": "body",
-      "zh": "杀掉旧进程，用账号「{name}」resume 同一会话（中断当前回合、丢进程内状态）",
-      "args": ["name"]
-    },
-    "tabMenu.restart.direct": {
-      "kind": "action",
-      "zh": "直接重启",
-      "args": []
-    },
-    "tabMenu.restart.accountHint": {
-      "kind": "body",
-      "zh": "用账号「{label}」重启这个会话",
-      "args": ["label"]
-    },
     "tabMenu.kill.idle": {
       "kind": "action",
       "zh": "杀死会话 · 空的 tmux 会话 {name}",
@@ -4463,26 +4433,6 @@
       "zh": "远端",
       "args": []
     },
-    "tabSessionActions.restart.dupes": {
-      "kind": "error",
-      "zh": "这个会话同时活在 {n} 个 tmux 会话里，分不清该重启哪一个。请到终端里看过再试。",
-      "args": ["n"]
-    },
-    "tabSessionActions.restart.refusedTitle": {
-      "kind": "error",
-      "zh": "不能换号重启",
-      "args": []
-    },
-    "tabSessionActions.restart.busy": {
-      "kind": "error",
-      "zh": "这个会话上一次换号重启还没完成，请稍候再试。",
-      "args": []
-    },
-    "tabSessionActions.restart.busyTitle": {
-      "kind": "error",
-      "zh": "正在重启中",
-      "args": []
-    },
     "tabSessionActions.dupes.body": {
       "kind": "error",
       "zh": "这个会话同时活在 {n} 个 tmux 会话里，这次接的是「{name}」。其余几个要不要清理，请到终端里看。",
@@ -4496,126 +4446,6 @@
     "tabSessionActions.openInWindow.failed": {
       "kind": "error",
       "zh": "打开新窗口失败",
-      "args": []
-    },
-    "accountRestart.aborted.body": {
-      "kind": "error",
-      "zh": "结束旧会话失败：{e}。没有继续 resume，免得新旧两个进程抢同一个会话。",
-      "args": ["e"]
-    },
-    "accountRestart.aborted.title": {
-      "kind": "error",
-      "zh": "重启已中止",
-      "args": []
-    },
-    "accountRestart.done.title": {
-      "kind": "body",
-      "zh": "重启切换 ✓",
-      "args": []
-    },
-    "accountRestart.done.body": {
-      "kind": "body",
-      "zh": "{name} · {terminal}{compact}",
-      "args": ["name", "terminal", "compact"]
-    },
-    "accountRestart.running.title": {
-      "kind": "body",
-      "zh": "重启切换中",
-      "args": []
-    },
-    "accountRestart.running.body": {
-      "kind": "body",
-      "zh": "{name} · {tmuxName}{compact}",
-      "args": ["name", "tmuxName", "compact"]
-    },
-    "accountRestart.running.compactTag": {
-      "kind": "body",
-      "zh": " · 先压缩",
-      "args": []
-    },
-    "accountRestart.compactTag.done": {
-      "kind": "body",
-      "zh": " · 压缩 ✓",
-      "args": []
-    },
-    "accountRestart.compactTag.timedOut": {
-      "kind": "body",
-      "zh": " · 压缩超时",
-      "args": []
-    },
-    "accountRestart.compactTag.unsupported": {
-      "kind": "body",
-      "zh": " · 不支持压缩",
-      "args": []
-    },
-    "accountRestart.compactTag.failed": {
-      "kind": "body",
-      "zh": " · 压缩未执行",
-      "args": []
-    },
-    "accountRestart.missed.title": {
-      "kind": "error",
-      "zh": "重启切换 · 未见会话报出",
-      "args": []
-    },
-    "accountRestart.missed.body": {
-      "kind": "error",
-      "zh": "{name} · {terminal} · {secs}s 内无报出{compact}",
-      "args": ["name", "terminal", "secs", "compact"]
-    },
-    "accountRestart.startFailed.title": {
-      "kind": "error",
-      "zh": "重启切换 ✗ · 旧会话已停",
-      "args": []
-    },
-    "accountRestart.startFailed.body": {
-      "kind": "error",
-      "zh": "{machine} · {terminal} · {detail}\n点此：用 {name} 再起",
-      "args": ["machine", "terminal", "detail", "name"]
-    },
-    "accountRestart.failed.title": {
-      "kind": "error",
-      "zh": "重启切换 ✗",
-      "args": []
-    },
-    "accountRestart.failed.unreadable": {
-      "kind": "error",
-      "zh": "应答无法解析",
-      "args": []
-    },
-    "accountRestart.confirm.compactNote": {
-      "kind": "body",
-      "zh": "\n会先在旧账号上 /compact，这样更省；可能要几分钟。",
-      "args": []
-    },
-    "accountRestart.confirm.trustWarn": {
-      "kind": "body",
-      "zh": "\n注意：这个账号还没信任这个目录，Claude Code 可能会在弹出的终端里问要不要信任。",
-      "args": []
-    },
-    "accountRestart.confirm.title": {
-      "kind": "title",
-      "zh": "重启切换 → {name}",
-      "args": ["name"]
-    },
-    "accountRestart.confirm.action": {
-      "kind": "action",
-      "zh": "重启切换",
-      "args": []
-    },
-    "accountRestart.confirm.keep": {
-      "kind": "body",
-      "zh": "会话记录 · 终端 {tmuxName}",
-      "args": ["tmuxName"]
-    },
-    "accountRestart.unselectable.body": {
-      "kind": "error",
-      "zh": "账号「{name}」现在选不了，可能没登录、不是隔离账号或目录缺失。没法用它重启。",
-      "args": ["name"]
-    },
-    "accountRestart.unselectable.title": {
-      "kind": "error",
-      "zh": "账号不可用",
       "args": []
     },
     "render.codeBlock.copy": {
@@ -4936,11 +4766,6 @@
     "format.formatTimestampSmart.empty": {
       "kind": "body",
       "zh": "—",
-      "args": []
-    },
-    "launchMenu.account.base": {
-      "kind": "action",
-      "zh": "不指定账号 · 用远端 ~/.claude 那套凭据",
       "args": []
     },
     "launcherDiagnostics.diagnoseRemoteLauncher.bypassesCcm": {
@@ -9435,21 +9260,6 @@
       "zh": "权限为空",
       "args": []
     },
-    "rsFilewinWriteops.name.isDir": {
-      "kind": "error",
-      "zh": "名称不能为 {name}",
-      "args": ["name"]
-    },
-    "rsFilewinWriteops.name.hasSlash": {
-      "kind": "error",
-      "zh": "名称不能含 /",
-      "args": []
-    },
-    "rsFilewinWriteops.name.empty": {
-      "kind": "error",
-      "zh": "名称为空",
-      "args": []
-    },
     "rsFilewinWriteops.toOps.nothingToChmod": {
       "kind": "error",
       "zh": "没有要改权限的项",
@@ -9754,6 +9564,31 @@
       "kind": "action",
       "zh": "覆盖",
       "args": []
+    },
+    "beFilesWrite.name.empty": {
+      "kind": "error",
+      "zh": "名称为空",
+      "args": []
+    },
+    "beFilesWrite.name.notOne": {
+      "kind": "error",
+      "zh": "名称不能是路径：{name}",
+      "args": ["name"]
+    },
+    "beFilesWrite.name.reserved": {
+      "kind": "error",
+      "zh": "{name} 是这台的保留名",
+      "args": ["name"]
+    },
+    "beFilesWrite.name.badChar": {
+      "kind": "error",
+      "zh": "名称不能含 {char}：{name}",
+      "args": ["name", "char"]
+    },
+    "beFilesWrite.name.trailing": {
+      "kind": "error",
+      "zh": "名称不能以点或空格结尾：{name}",
+      "args": ["name"]
     },
     "beFilesWrite.copy.modeFailed": {
       "kind": "error",
@@ -12619,36 +12454,6 @@
       "kind": "error",
       "zh": "模型名不合法，没有保存：{model}",
       "args": ["model"]
-    },
-    "accounts.restartLocate.body": {
-      "kind": "body",
-      "zh": "这个会话不在 cc-monitor 的 tmux 里，或无法精确定位（认不出是哪个会话）。{tail}",
-      "args": ["tail"]
-    },
-    "accounts.restartLocate.title": {
-      "kind": "title",
-      "zh": "无法换号重启",
-      "args": []
-    },
-    "accounts.restartLocate.markLost": {
-      "kind": "body",
-      "zh": "这个会话的进程里带着 cc-monitor 起会话时留下的身份标记。但它现在不在 cc-monitor 的 tmux 里，多半是 tmux 会话被重建过。找不到它所在的 tmux，就没法换号重启。{tail}",
-      "args": ["tail"]
-    },
-    "accounts.restartLocate.markLostTitle": {
-      "kind": "title",
-      "zh": "无法换号重启：找不到这个会话所在的终端",
-      "args": []
-    },
-    "accounts.restartLocate.tailRemote": {
-      "kind": "body",
-      "zh": "可以等它结束后，用右键「把此会话切到账号 X」。",
-      "args": []
-    },
-    "accounts.restartLocate.tailLocal": {
-      "kind": "body",
-      "zh": "本机会话结束后，Resume 沿用它上次的账号；换号只对本工具在 tmux 里起的会话做得到。",
-      "args": []
     },
     "accounts.sessionBadge.noneHint": {
       "kind": "body",
@@ -19177,6 +18982,46 @@
       "zh": "写入失败",
       "args": []
     },
+    "acct.reason.accountUnavailable": {
+      "kind": "body",
+      "zh": "{name} 不可用",
+      "args": ["name"]
+    },
+    "acct.reason.ambiguous": {
+      "kind": "body",
+      "zh": "在多个终端里",
+      "args": []
+    },
+    "acct.reason.notInTerminal": {
+      "kind": "body",
+      "zh": "不在 tmux 里",
+      "args": []
+    },
+    "acct.reason.stopFailed": {
+      "kind": "body",
+      "zh": "停不下旧进程",
+      "args": []
+    },
+    "acct.reason.alreadyLive": {
+      "kind": "body",
+      "zh": "另有进程在写",
+      "args": []
+    },
+    "acct.reason.startFailed": {
+      "kind": "body",
+      "zh": "新会话未起",
+      "args": []
+    },
+    "acct.reason.notArrived": {
+      "kind": "body",
+      "zh": "未报到",
+      "args": []
+    },
+    "acct.reason.shuttingDown": {
+      "kind": "body",
+      "zh": "后端正在退出",
+      "args": []
+    },
     "acct.reason.unknown": {
       "kind": "body",
       "zh": "原因不明",
@@ -19199,7 +19044,22 @@
     },
     "acct.sw.failRestart": {
       "kind": "error",
-      "zh": "重启切换失败 · 原会话保留",
+      "zh": "重启切换失败 · 原会话保留 · {reason}",
+      "args": ["reason"]
+    },
+    "acct.sw.failRestartEnded": {
+      "kind": "error",
+      "zh": "重启切换失败 · 原会话{ended} · {reason}",
+      "args": ["ended", "reason"]
+    },
+    "acct.sw.resume": {
+      "kind": "action",
+      "zh": "恢复…",
+      "args": []
+    },
+    "acct.sw.log": {
+      "kind": "action",
+      "zh": "日志",
       "args": []
     },
     "acct.sw.confirmTitle": {

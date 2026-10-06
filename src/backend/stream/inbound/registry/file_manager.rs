@@ -70,8 +70,15 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "files-create",
         doc_anchor: Some("#### `files-create`"),
-        codes: &["bad_args", "bad_path", "exists", "io_failed", "refused"],
-        fields: &["bytes", "content", "path", "rel", "root"],
+        codes: &[
+            "bad_args",
+            "bad_name",
+            "bad_path",
+            "exists",
+            "io_failed",
+            "refused",
+        ],
+        fields: &["bytes", "content", "path", "rel", "root", "single"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
@@ -90,8 +97,15 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "files-mkdir",
         doc_anchor: Some("#### `files-mkdir`"),
-        codes: &["bad_args", "bad_path", "exists", "io_failed", "refused"],
-        fields: &["path", "rel", "root"],
+        codes: &[
+            "bad_args",
+            "bad_name",
+            "bad_path",
+            "exists",
+            "io_failed",
+            "refused",
+        ],
+        fields: &["path", "rel", "root", "single"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
@@ -102,8 +116,15 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "files-rename",
         doc_anchor: Some("#### `files-rename`"),
-        codes: &["bad_args", "bad_path", "exists", "io_failed", "refused"],
-        fields: &["from", "path", "root", "to"],
+        codes: &[
+            "bad_args",
+            "bad_name",
+            "bad_path",
+            "exists",
+            "io_failed",
+            "refused",
+        ],
+        fields: &["from", "path", "root", "single", "to"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)

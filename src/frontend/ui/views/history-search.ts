@@ -26,6 +26,7 @@ import { chan } from "../../../comms/inward/chan";
 import { budgetWithin, jsonBody, linesOf, readJson } from "../ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN } from "../ipc/origin";
 import { copyText } from "../copy-table";
+import { canOk, type HistoryCan } from "../history-list-reads";
 
 /**
  * 一条命中（后端 `--search` 行里 `hits` 的一格；形状由 [`parseHit`] 严格收）。
@@ -59,6 +60,12 @@ export interface SessionHits {
   hits: Hit[];
   /** 本会话有命中被「全局 snippet 预算用完」挡下了（`K-R100`；老后端缺 ⇒ false）。 */
   hitsTruncated: boolean;
+  /** 后台分身会话。 */
+  isBg: boolean;
+  /** 那台判的：在跑 · 已结束（全文搜索只扫记录树，判得了活）。 */
+  status: "live" | "ended";
+  /** 那台判的：这个会话能做什么（与历史清单的行同一张规则）。 */
+  can: HistoryCan;
   /** 缺 ＝ 本机；否则那台远端的名字。 */
   origin?: string;
 }
@@ -223,7 +230,10 @@ function sessionHitsOf(v: unknown): SessionHits | null {
     o.hitCount < 0 ||
     hits === null ||
     hits.some((h) => h === null) ||
-    !(o.hitsTruncated === undefined || typeof o.hitsTruncated === "boolean")
+    !(o.hitsTruncated === undefined || typeof o.hitsTruncated === "boolean") ||
+    typeof o.isBg !== "boolean" ||
+    !(o.status === "live" || o.status === "ended") ||
+    !canOk(o.can)
   ) {
     return null;
   }
@@ -238,6 +248,9 @@ function sessionHitsOf(v: unknown): SessionHits | null {
     hitCount: o.hitCount,
     hits: hits as Hit[],
     hitsTruncated: o.hitsTruncated ?? false,
+    isBg: o.isBg,
+    status: o.status,
+    can: o.can,
   };
 }
 

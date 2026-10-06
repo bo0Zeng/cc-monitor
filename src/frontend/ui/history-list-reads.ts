@@ -134,7 +134,8 @@ const GROUP_KEYS = [
   "key", "agent", "projectName", "projectPath", "projectDir", "count", "hasLive", "starred", "lastActivity", "order", "failed",
 ] as const;
 
-function canOk(c: unknown): boolean {
+/** `can` 那一格严格收（历史清单的行与全文搜索的命中同一张规则）。 */
+export function canOk(c: unknown): c is HistoryCan {
   return (
     isObj(c) &&
     keysOk(c, ["resume", "accounts", "fork", "delete"], []) &&

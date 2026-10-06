@@ -119,8 +119,6 @@ describe("〔RESYNC〕手动对齐", () => {
     const actions = new TabSessionActions({
       tab: () => undefined,
       isAttachable: () => false,
-      sessionAccount: () => undefined,
-      refreshAccountBadgeFor: () => {},
       markRecord: (sid, present) => marked.push([sid, present]),
     });
     const tab = (sid: string) => ({ sessionId: sid, origin: "devbox", title: sid, pinned: true }) as unknown as Tab;

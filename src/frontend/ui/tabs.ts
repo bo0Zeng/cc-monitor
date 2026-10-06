@@ -227,8 +227,6 @@ export class TabManager {
   private readonly actions = new TabSessionActions({
     tab: (sid) => this.store.tabs.get(sid),
     isAttachable: (sid) => this.isAttachable(sid),
-    sessionAccount: (sid) => this.store.sessionAccountsByS.get(sid),
-    refreshAccountBadgeFor: (sid) => this.bar.refreshAccountBadgeFor(sid),
     markRecord: (sid, present) => this.markRecord(sid, present),
   });
 

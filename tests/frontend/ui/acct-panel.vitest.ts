@@ -6,14 +6,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const writeSessionRotation = vi.fn();
 const switchHot = vi.fn();
+const switchRestart = vi.fn();
+const runRemoteAttach = vi.fn();
+const openLog = vi.fn();
 vi.mock("../../../src/frontend/ui/quota-reads", () => ({
   writeSessionRotation: (...a: unknown[]) => writeSessionRotation(...a),
   switchHot: (...a: unknown[]) => switchHot(...a),
-  switchRestart: vi.fn(),
+  switchRestart: (...a: unknown[]) => switchRestart(...a),
   readQuota: vi.fn(() => new Promise(() => {})),
   readRotation: vi.fn(() => new Promise(() => {})),
   readSessionRotation: vi.fn(() => new Promise(() => {})),
 }));
+
+vi.mock("../../../src/frontend/ui/sessions-where", () => ({
+  standingOf: vi.fn(async () => ({ kind: "running", names: ["proj-cc"], terminals: ["t1"] })),
+}));
+vi.mock("../../../src/frontend/ui/interrupt-reads", () => ({ askSessionInterrupts: vi.fn(async () => ({ families: [] })) }));
+vi.mock("../../../src/frontend/ui/tab-batch-run", () => ({ startSettings: vi.fn(async () => ({})) }));
+vi.mock("../../../src/frontend/ui/remote-launch-run", () => ({ runRemoteAttach: (...a: unknown[]) => runRemoteAttach(...a) }));
+vi.mock("../../../src/frontend/ui/ipc/commands", () => ({ commands: { open_log_file: () => openLog() } }));
 
 import { openAccountPanel, toggleAccountPanel, type AcctPanelHost } from "../../../src/frontend/ui/acct-panel.ts";
 import { appStore } from "../../../src/frontend/ui/app-store.ts";
@@ -28,6 +39,7 @@ const host: AcctPanelHost = {
   openSettings: vi.fn(),
   openDefaultMenu: vi.fn(),
   defaultOf: () => "work",
+  openResume: vi.fn(),
 };
 
 const LEDGER: QuotaRead = {
@@ -87,6 +99,10 @@ const flush = async (): Promise<void> => {
 beforeEach(() => {
   writeSessionRotation.mockReset().mockResolvedValue({ s1: { state: "done" } });
   switchHot.mockReset().mockResolvedValue({ s1: { state: "done" } });
+  switchRestart.mockReset();
+  runRemoteAttach.mockReset().mockResolvedValue(undefined);
+  openLog.mockReset().mockResolvedValue(undefined);
+  vi.mocked(host.openResume).mockReset();
   if (document.querySelector('[role="dialog"]')) toggleAccountPanel("s1", "<local>", host);
   document.body.replaceChildren();
 });
@@ -140,5 +156,65 @@ describe("账号面板", () => {
     expect(panel().querySelectorAll('[aria-label^="拖动排序"]').length).toBe(0);
     expect([...panel().querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].every((b) => b.disabled)).toBe(true);
     expect(panel().textContent).toContain("跟随本机默认");
+  });
+});
+
+describe("账号面板 · 重启切换", () => {
+  /** 热切换不成立 ⇒ 主按钮是「重启切换」；点它，等那一趟回来。 */
+  async function restart(reply: unknown): Promise<void> {
+    switchRestart.mockResolvedValue({ s1: reply });
+    seed({ account: { start: "work", current: "work", since: NOW, history: [], inPlace: "noRelay" } }, undefined);
+    openAccountPanel("s1", "<local>", host);
+    [...panel().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "重启切换")!.click();
+    await flush();
+  }
+  const toasts = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('[role="alert"], [role="status"]')];
+  const toastButtons = (t: HTMLElement): string[] => [...t.querySelectorAll("button")].map((b) => b.textContent ?? "").filter((x) => x !== "");
+
+  it("成了 ⇒ 接回后端说的那个终端、说一句成了", async () => {
+    await restart({ state: "done", terminal: "proj-cc-2" });
+    expect(switchRestart).toHaveBeenCalledWith("<local>", [expect.objectContaining({ sid: "s1", compact_first: false })], "team", expect.any(Number));
+    expect(runRemoteAttach).toHaveBeenCalledWith("<local>", expect.any(String), "proj-cc-2", { quiet: true });
+    expect(toasts().map((t) => t.textContent)).toEqual([expect.stringContaining("team · 重启切换 · orders")]);
+  });
+
+  it("没成、旧会话还在 ⇒ 「原会话保留 · 原因」，只有关闭那一颗", async () => {
+    await restart({ state: "failed", code: "stop_failed", old: "kept" });
+    const [t] = toasts();
+    expect(t.dataset.level).toBe("error");
+    expect(t.textContent).toContain("重启切换失败 · 原会话保留 · 停不下旧进程");
+    expect(toastButtons(t)).toEqual([]);
+    expect(runRemoteAttach).not.toHaveBeenCalled();
+  });
+
+  it("没成、旧会话已停 ⇒ 「原会话已结束 · 原因」带［恢复…］［日志］，点了各做各的", async () => {
+    await restart({ state: "failed", code: "start_failed", old: "ended" });
+    const [t] = toasts();
+    expect(t.dataset.level).toBe("error");
+    expect(t.textContent).toContain("重启切换失败 · 原会话已结束 · 新会话未起");
+    expect(toastButtons(t)).toEqual(["恢复…", "日志"]);
+    [...t.querySelectorAll("button")].find((b) => b.textContent === "恢复…")!.click();
+    expect(host.openResume).toHaveBeenCalledWith("s1");
+    await restart({ state: "failed", code: "notArrived", old: "ended" });
+    const last = toasts().at(-1)!;
+    expect(last.textContent).toContain("原会话已结束 · 未报到");
+    [...last.querySelectorAll("button")].find((b) => b.textContent === "日志")!.click();
+    expect(openLog).toHaveBeenCalledTimes(1);
+  });
+
+  it("那台给的码逐个说成人话，不落「原因不明」", async () => {
+    const said: Record<string, string> = {
+      account_unavailable: "team 不可用",
+      ambiguous: "在多个终端里",
+      not_in_terminal: "不在 tmux 里",
+      session_already_live: "另有进程在写",
+      shutting_down: "后端正在退出",
+    };
+    for (const [code, words] of Object.entries(said)) {
+      document.body.replaceChildren();
+      if (document.querySelector('[role="dialog"]')) toggleAccountPanel("s1", "<local>", host);
+      await restart({ state: "failed", code, old: "kept" });
+      expect(toasts().at(-1)!.textContent, code).toContain(`原会话保留 · ${words}`);
+    }
   });
 });

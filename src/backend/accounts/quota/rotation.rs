@@ -393,6 +393,29 @@ pub enum SwitchOutcome {
     NotSwitched { code: String },
 }
 
+/// 重启换里一个会话的结果：成了 ⇒ 新进程起在哪个终端；没成 ⇒ 码 ＋ 旧会话还在不在（`kept` 还在跑 · `ended` 已停）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub enum RestartOutcome {
+    #[serde(rename = "done")]
+    Restarted { terminal: String },
+    /// `code`：`session-restart` 的失败码原样 · 起了但到期限没报出 ⇒ `notArrived` · 记账写不进 ⇒ `ioFailed`。
+    #[serde(rename = "failed")]
+    NotRestarted { code: String, old: OldSession },
+}
+
+/// 重启换没成时，旧会话还在不在。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub enum OldSession {
+    Kept,
+    Ended,
+}
+
 /// 一个会话在这台的轮换状态。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -125,9 +125,6 @@ vi.mock("../../../../src/frontend/ui/cards", () => ({
 vi.mock("../../../../src/frontend/ui/cards/subagent", () => ({ isAgentTool: () => false }));
 vi.mock("../../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
 vi.mock("../../../../src/frontend/ui/turn-notify", () => ({ turnEndNotifier: { observe: vi.fn() } }));
-vi.mock("../../../../src/frontend/ui/account-restart", () => ({
-  restartWithAccount: vi.fn().mockResolvedValue(undefined),
-}));
 vi.mock("../../../../src/frontend/ui/behavior", () => ({
   getBehavior: () => ({ resumeCommandLocal: "", resumeCommandRemote: "" }),
 }));
@@ -417,7 +414,7 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     expect(
       sites.length,
       `起本机会话的调用点从 2 变成了 ${sites.length}：\n${sites.map((s) => s.file).join("\n")}`,
-    ).toBe(2); // 5 → 2：四处 `resume_history_session`（tab 栏 · 历史页 · 分叉 · 换号重启）收成 `local-resume.ts` 一处；另一处是历史页起新会话的 `new_local_session` // 4 → 5：`account-restart-local.ts`（本机换号重启的 resume 那一跳；账号是用户点的那个，带着）
+    ).toBe(2); // 5 → 2：四处 `resume_history_session`（tab 栏 · 历史页 · 分叉 · 换号重启）收成 `local-resume.ts` 一处；另一处是历史页起新会话的 `new_local_session`
     const missing = sites.filter((s) => !/\baccount\s*:/.test(s.text)).map((s) => s.file);
     expect(
       missing,
@@ -453,7 +450,7 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
       resumeSites.length,
       `\`resume_history_session\` 的调用点从 1 变成了 ${resumeSites.length}：\n` +
         resumeSites.map((s) => s.file).join("\n"),
-    ).toBe(1); // 4 → 1：本机 resume 的编排只剩 `local-resume.ts` 一份（它的「只此一家」由 `tests/frontend/ui/launch-orchestration-single-home.vitest.ts` K2 两向钉） // 3 → 4：`account-restart-local.ts`（带 `tmuxName` —— 复用被 kill 让出来的旧名）
+    ).toBe(1); // 4 → 1：本机 resume 的编排只剩 `local-resume.ts` 一份（它的「只此一家」由 `tests/frontend/ui/launch-orchestration-single-home.vitest.ts` K2 两向钉）
     expect(
       sites.length - resumeSites.length,
       "`new_local_session` 的调用点数变了 —— 它今天没有 `tmux_name` 参数位（Rust 侧签名里就没有），" +

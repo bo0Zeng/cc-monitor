@@ -1456,12 +1456,17 @@ fn the_window_starts_a_batch_through_the_shared_three_step_function() {
         "`writeops::run_writes(` 在 `shell.rs` 生产段里不是恰好一处 —— \
          多了就是长出了第二条确认流，少了就是这一条被绕过了"
     );
-    // 落点换成 `apply_remote_coded`（根可以是当前目录的字节，有损名全寻址；交回应答与码）。恰好两处：
-    //   一处在 `run_writes` 的 `apply` 里（删除问一次 · 改权限直接做），一处是就地那一格（新建 · 改名：不问，填错 / 被占在那一格下面说）。
+    // 落点（根可以是当前目录的字节，有损名全寻址；交回应答与码）各恰好一处：`run_writes` 的 `apply` 里走
+    //   `apply_remote_coded`（删除问一次 · 改权限直接做）；就地那一格走 `apply_typed`（新建 · 改名：敲的名字原样交那台判）。
     assert_eq!(
         prod.matches("writeops::apply_remote_coded(").count(),
-        2,
-        "做一件的落点不是恰好两处"
+        1,
+        "批量那一条的落点不是恰好一处"
+    );
+    assert_eq!(
+        prod.matches("writeops::apply_typed(").count(),
+        1,
+        "就地那一格的落点不是恰好一处"
     );
     // 🔴 窗口自己**不许**直接调那四条池命令 —— 它们只许经 `apply_remote` 走。
     for banned in [
@@ -3495,5 +3500,19 @@ fn the_exists_code_is_the_backends_one() {
         )),
         "后端那一侧的码不是 `{}`",
         crate::writeops::EXISTS
+    );
+}
+
+/// 窗口认的「名字在那台不能用」那个码 == 后端写面登记的那一个（读两侧源码）。
+#[test]
+fn the_bad_name_code_is_the_backends_one() {
+    let be = include_str!("../../../src/backend/control/files_write.rs");
+    assert!(
+        be.contains(&format!(
+            "pub const BAD_NAME: &str = \"{}\";",
+            crate::writeops::BAD_NAME
+        )),
+        "后端那一侧的码不是 `{}`",
+        crate::writeops::BAD_NAME
     );
 }

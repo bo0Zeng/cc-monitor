@@ -232,3 +232,55 @@ pub(crate) fn data_home() -> Option<PathBuf> {
 pub(crate) fn home_dir_from(get: &dyn Fn(&str) -> Option<std::ffi::OsString>) -> Option<PathBuf> {
     creds_core::store::home_dir_from(get)
 }
+
+/// 一段名字（不是路径）为什么不能在这台当名字用。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NameProblem {
+    /// Windows 的保留设备名（`CON` · `NUL` · `COM1` …，不分大小写，带扩展名也算）。
+    Reserved,
+    /// 含这台不许的字符（Windows `< > : " / \ | ? *` 与控制字符；别处 `/` 与 NUL）。
+    BadChar(char),
+    /// 以点或空格结尾（Windows 会悄悄去掉）。
+    Trailing,
+}
+
+/// 这一段名字在**这台**的文件系统上能不能用；不能 ⇒ 为什么。两套规则都在这里，按这台选一套。
+pub(crate) fn name_problem(name: &std::ffi::OsStr) -> Option<NameProblem> {
+    if cfg!(windows) {
+        windows_name_problem(&name.to_string_lossy())
+    } else {
+        unix_name_problem(name.as_encoded_bytes())
+    }
+}
+
+/// Windows 那一套。
+pub(crate) fn windows_name_problem(name: &str) -> Option<NameProblem> {
+    if let Some(c) = name
+        .chars()
+        .find(|c| (*c as u32) < 0x20 || r#"<>:"/\|?*"#.contains(*c))
+    {
+        return Some(NameProblem::BadChar(c));
+    }
+    if name.ends_with('.') || name.ends_with(' ') {
+        return Some(NameProblem::Trailing);
+    }
+    let stem = name
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .trim_end()
+        .to_ascii_uppercase();
+    let numbered = |p: &str| {
+        stem.strip_prefix(p)
+            .is_some_and(|d| matches!(d.as_bytes(), [b'1'..=b'9']))
+    };
+    (matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL") || numbered("COM") || numbered("LPT"))
+        .then_some(NameProblem::Reserved)
+}
+
+/// unix 那一套：只有 `/` 与 NUL 不行。
+pub(crate) fn unix_name_problem(name: &[u8]) -> Option<NameProblem> {
+    name.iter()
+        .find(|b| **b == b'/' || **b == 0)
+        .map(|b| NameProblem::BadChar(char::from(*b)))
+}

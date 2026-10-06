@@ -16,6 +16,8 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { invoke } from "@tauri-apps/api/core";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   decodeMerged,
   parseSessionHitsLines,
@@ -41,6 +43,9 @@ function mk(sid: string, updatedAt: number, hitCount: number, origin?: string): 
     hitCount,
     hits: [],
     hitsTruncated: false,
+    isBg: false,
+    status: "ended",
+    can: { resume: "yes", accounts: true, fork: true, delete: "yes" },
     ...(origin === undefined ? {} : { origin }),
   };
 }
@@ -57,6 +62,9 @@ function row(sid: string, updatedAt: number, hitCount: number): string {
     updatedAt,
     hitCount,
     hits: [],
+    isBg: false,
+    status: "ended",
+    can: { resume: "yes", accounts: true, fork: true, delete: "yes" },
   });
 }
 
@@ -127,30 +135,47 @@ describe("合并问本机后端", () => {
 
 describe("后端 `--search` 的逐行", () => {
   it("后端那一行（camelCase，不带 origin）解得出来，并补上那台的 origin", () => {
-    const line = `{"agent":"claude","sessionId":"s9","projectPath":"/home/pi/p","projectName":"p","jsonlPath":"/home/pi/.claude/projects/p/s9.jsonl","title":"标题","updatedAt":123,"hitCount":2,"hits":[{"uuid":"u1","tsMs":5,"kind":"user","before":"b","matched":"m","after":"a"}]}`;
+    const line = `{"agent":"claude","sessionId":"s9","projectPath":"/home/pi/p","projectName":"p","jsonlPath":"/home/pi/.claude/projects/p/s9.jsonl","title":"标题","updatedAt":123,"hitCount":2,"hits":[{"uuid":"u1","tsMs":5,"kind":"user","before":"b","matched":"m","after":"a"}],"isBg":false,"status":"ended","can":{"resume":"yes","accounts":true,"fork":true,"delete":"yes"}}`;
     const [sh] = parseSessionHitsLines([line], "pi");
     expect(sh.sessionId).toBe("s9");
     expect(sh.hitCount).toBe(2);
     expect(sh.hits).toHaveLength(1);
     expect(sh.hitsTruncated, "老后端缺 hitsTruncated ⇒ false").toBe(false);
     expect(sh.origin).toBe("pi");
+    expect([sh.status, sh.can.resume, sh.isBg]).toEqual(["ended", "yes", false]);
     // 本机那一台：不补 origin（界面按「缺 ＝ 本机」画）。
     const [mine] = parseSessionHitsLines([line], undefined);
     expect("origin" in mine).toBe(false);
   });
 
   it("坏行跳过、不毁整次（不是 JSON / 缺字段 / 命中里有一格坏）", () => {
-    const good = `{"agent":"claude","sessionId":"a","projectPath":"/p","projectName":"p","jsonlPath":"/a.jsonl","title":"t","updatedAt":1,"hitCount":0,"hits":[]}`;
+    const good = `{"agent":"claude","sessionId":"a","projectPath":"/p","projectName":"p","jsonlPath":"/a.jsonl","title":"t","updatedAt":1,"hitCount":0,"hits":[],"isBg":false,"status":"ended","can":{"resume":"yes","accounts":true,"fork":true,"delete":"yes"}}`;
     const got = parseSessionHitsLines(
       [
         "not json",
         `{"sessionId":"b"}`,
         `{"agent":"claude","sessionId":"c","projectPath":"/p","projectName":"p","jsonlPath":"/c.jsonl","title":"t","updatedAt":1,"hitCount":1,"hits":[{"uuid":"u"}]}`,
+        // 能不能恢复由那台判：缺 `can` / `status`、或 `can` 里有一格不认 ⇒ 坏行。
+        good.replace(',"status":"ended"', ""),
+        good.replace(`"resume":"yes"`, `"resume":"maybe"`),
+        good.replace(',"isBg":false', ""),
         good,
       ],
       "pi",
     );
     expect(got.map((s) => s.sessionId)).toEqual(["a"]);
+  });
+});
+
+describe("跨语言金样：命中行（后端判据产出 `tests/__fixtures__/history-search-row.golden.json`）", () => {
+  it("每一行都收下，状态与能做什么照那台判的原样读", () => {
+    const golden = JSON.parse(readFileSync(join(__dirname, "../../../__fixtures__", "history-search-row.golden.json"), "utf8")) as { lines: string[] };
+    const got = parseSessionHitsLines(golden.lines, undefined);
+    expect(got.map((s) => [s.sessionId, s.status, s.isBg, s.can.resume, s.can.fork, s.can.delete])).toEqual([
+      ["live1", "live", false, "switch", true, "live"],
+      ["ended1", "ended", false, "yes", true, "yes"],
+      ["bg1", "ended", true, "bg", false, "yes"],
+    ]);
   });
 });
 

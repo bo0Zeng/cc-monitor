@@ -179,7 +179,8 @@ pub(crate) fn search_counting(
     let fence = Fence::at(&root)?;
     let mut resident = resident();
     let index = resident.entry(fence.root().to_path_buf()).or_default();
-    let unreadable = index.search(&fence, &q, opts, out)?;
+    let live = crate::observe::accounts_query::live_session_ids(agent_home);
+    let unreadable = index.search(&fence, &q, opts, &live, out)?;
     let r = index.last;
     tracing::debug!(
         "history-search index: full={} appended={} reused={} bytes={}",
@@ -351,6 +352,8 @@ enum BadAt {
 #[derive(Default)]
 struct Facts {
     cwd: Option<String>,
+    /// 有一条记录带 `sessionKind:"bg"`（后台分身会话；与历史清单同一个信号）。
+    bg: bool,
     title: Option<String>,
     excerpt: String,
     records: Vec<Rec>,
@@ -375,6 +378,9 @@ impl Facts {
                 Ok(v) => v,
                 Err(_) => continue,
             };
+            if v.get("sessionKind").and_then(Value::as_str) == Some("bg") {
+                self.bg = true;
+            }
             if self.cwd.is_none() {
                 if let Some(c) = v.get("cwd").and_then(Value::as_str) {
                     if !c.is_empty() {
@@ -618,6 +624,7 @@ impl SearchIndex {
         fence: &Fence,
         q: &str,
         opts: &SearchOpts,
+        live: &std::collections::BTreeSet<String>,
         out: &mut impl Write,
     ) -> Result<usize, String> {
         let files = session_files(fence);
@@ -648,6 +655,7 @@ impl SearchIndex {
                 (Some(e), None) => session_hits_in(&path, e, q, opts, &mut budget, updated_at),
                 _ => None,
             };
+            let bg = entry.as_ref().is_some_and(|e| e.done.bg || e.tail.bg);
             if let Some(e) = entry.filter(|e| kept + e.weight <= self.budget) {
                 kept += e.weight;
                 self.files.insert(path.clone(), e);
@@ -657,7 +665,14 @@ impl SearchIndex {
                 tracing::warn!("全文搜索：读不动 {}（{e}），这一份没搜", path.display());
                 continue;
             }
-            if let Some(session) = session {
+            if let Some(mut session) = session {
+                // 能不能恢复由这台判（活不活看这台的 pidfile），与历史清单的行同一个函数。
+                let sid = session["sessionId"].as_str().unwrap_or_default();
+                let status = crate::observe::history_query::status_of(Some(live.contains(sid)));
+                let kind = session["agent"].as_str().unwrap_or_default().to_string();
+                session["isBg"] = serde_json::json!(bg);
+                session["status"] = serde_json::json!(status);
+                session["can"] = crate::observe::history_query::can_of(&kind, status, bg);
                 writeln!(out, "{session}").map_err(|e| format!("stdout write failed: {e}"))?;
             }
         }

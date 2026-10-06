@@ -2,7 +2,7 @@
  * 过程里的一步一行：状态图标 · 工具名 · 主参数（等宽、一行、路径中间省略）· 说明 · 右侧小字。
  *
  * 判定都在后端：主参数与说明是 assistant 记录成品的 `toolSteps`，结果一句的数是 user 记录成品的 `toolResults`；
- * 这里只把它们排成一行、按 id 配对、把两条记录的时刻相减成耗时。界面不认入参与结果的结构。
+ * 这里只把它们排成一行、按 id 配对（同一步的两段拼回去）、把两条记录的时刻相减成耗时。界面不认入参与结果的结构。
  */
 import type { ToolStep } from "../generated/ToolStep";
 import type { StepResult } from "../generated/StepResult";

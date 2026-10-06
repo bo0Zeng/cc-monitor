@@ -74,7 +74,7 @@ const PER_FILE_FLOORS = [
   ["src/frontend/ui/accounts.ts", 83, 88.9, 83, 88.1],
   // `accounts.ts` 按域拆开（1670 → 663 行，语句 102）：上面那一格的地板**不动**（拆后实测 100 / 96.2，
   //   高于原地板）。它原先护着的代码大半搬走了 ⇒ 搬去的两份大的各自接一格（同一套纪律：当前值下方 ~5 点，实测一起写下）。
-  //   另三份小的（`account-prefs.ts` 39 句 · `local-launch-backfill.ts` 33 句 · `account-restart.ts` 收的那一段）不单列：语句数不够「核心」那一档。
+  //   另两份小的（`account-prefs.ts` 39 句 · `local-launch-backfill.ts` 33 句）不单列：语句数不够「核心」那一档。
   ["src/frontend/ui/account-reads.ts", 92, 97.3, 89, 94.3],
   ["src/frontend/ui/launch-account.ts", 91, 96.5, 81, 86.0],
   // F17 下半：批量调度状态机三条分支落地（53.33 → 84.44）。它决定整个重放期是 batch 还是 live。

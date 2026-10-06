@@ -2,7 +2,7 @@
 //! 重启换逐个交给 `session-restart`（成了再记一条）。单住一份：只有这一条够得着 tmux（经 `session-restart`）。
 
 use super::rotation_face::{hot_one, outcome, record, Ctx};
-use crate::accounts::quota::rotation::{SwitchOutcome, SwitchWhy};
+use crate::accounts::quota::rotation::{OldSession, RestartOutcome, SwitchOutcome, SwitchWhy};
 use crate::accounts::upstream_select::rotate::account_ok;
 use serde_json::{json, Map, Value};
 use std::sync::Arc;
@@ -69,7 +69,32 @@ pub(crate) fn restart_args(item: &Value, target: &str) -> Value {
     one
 }
 
-/// `rotation-switch`：现在就换（`{sessions, target, mode}`）→ 每个会话 `done` / `skipped{code}` / `failed{code}`。
+/// `session-restart` 的结局 ⇒ 重启换那一格：报出了 ⇒ 成；起了没报出 ⇒ `notArrived`（旧的已停）；
+/// 失败 ⇒ 码原样，`data.stopped` 说旧的停没停。
+pub(crate) fn restart_outcome(
+    r: &Result<Value, crate::control::session_restart::Fault>,
+) -> RestartOutcome {
+    match r {
+        Ok(v) if v["started"] == "arrived" => RestartOutcome::Restarted {
+            terminal: v["terminal"].as_str().unwrap_or_default().to_string(),
+        },
+        Ok(_) => RestartOutcome::NotRestarted {
+            code: "notArrived".into(),
+            old: OldSession::Ended,
+        },
+        Err((code, _, data)) => RestartOutcome::NotRestarted {
+            code: code.clone(),
+            old: if data.as_ref().and_then(|d| d["stopped"].as_bool()) == Some(true) {
+                OldSession::Ended
+            } else {
+                OldSession::Kept
+            },
+        },
+    }
+}
+
+/// `rotation-switch`：现在就换（`{sessions, target, mode}`）→ 每个会话 `done` / `skipped{code}` / `failed{code}`；
+/// 重启换那一格是 [`RestartOutcome`]。
 /// 不重启换在这里做完；重启换逐个交给 `session-restart`（成了再记一条；各步都收紧到这一发的截止时刻 `until`）。
 pub(crate) async fn answer_switch(
     args: Value,
@@ -98,35 +123,33 @@ pub(crate) async fn answer_switch(
     }
     for item in ask.items {
         let sid = item["sid"].as_str().unwrap_or_default().to_string();
-        let o = match crate::faces::session_restart_face::answer(
-            restart_args(&item, &ask.target),
-            until,
-        )
-        .await
-        {
-            Ok(_) => {
-                let (s, t) = (sid.clone(), ask.target.clone());
-                tokio::task::spawn_blocking(move || {
-                    let ctx = Ctx::here();
-                    let from = ctx
-                        .hop
-                        .store
-                        .now()
-                        .sessions
-                        .get(&s)
-                        .map_or_else(|| t.clone(), |e| e.current.clone());
-                    if ctx.hop.store.now().sessions.contains_key(&s) {
-                        record(&ctx, &s, &from, &t, SwitchWhy::ManualRestart, now)
-                    } else {
-                        SwitchOutcome::Switched
-                    }
-                })
-                .await
-                .map_err(|e| ("failed", e.to_string()))?
+        let r = crate::faces::session_restart_face::answer(restart_args(&item, &ask.target), until)
+            .await;
+        let mut o = restart_outcome(&r);
+        if r.is_ok() {
+            // 换过去了（报没报出都算）⇒ 记一条；写不进 ⇒ `ioFailed`（旧的已停）。
+            let (s, t) = (sid.clone(), ask.target.clone());
+            let kept = tokio::task::spawn_blocking(move || {
+                let ctx = Ctx::here();
+                let book = ctx.hop.store.now();
+                match book.sessions.get(&s).map(|e| e.current.clone()) {
+                    Some(from) => record(&ctx, &s, &from, &t, SwitchWhy::ManualRestart, now),
+                    None => SwitchOutcome::Switched,
+                }
+            })
+            .await
+            .map_err(|e| ("failed", e.to_string()))?;
+            if let SwitchOutcome::NotSwitched { code } | SwitchOutcome::Skipped { code } = kept {
+                o = RestartOutcome::NotRestarted {
+                    code,
+                    old: OldSession::Ended,
+                };
             }
-            Err((code, _, _)) => SwitchOutcome::NotSwitched { code },
-        };
-        out.insert(sid, outcome(o)?);
+        }
+        out.insert(
+            sid,
+            serde_json::to_value(o).map_err(|e| ("failed", e.to_string()))?,
+        );
     }
     Ok(json!({ "sessions": out }))
 }

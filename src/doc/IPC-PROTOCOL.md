@@ -919,8 +919,8 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
    见到 ⇒ `done`；`compact_within_ms` 到了没见到 ⇒ `timed_out`；盯不住 / 送不进 ⇒ `failed`。**不论哪种都照常往下**。没要求 ⇒ `skipped`。
 4. **停旧 ＋ 同名起新**（不可分的一步）：先盯住 pidfile 目录（此刻在跑的那个进程不算），停那个终端（同 `kill` 带 `sid`）——
    失败 ⇒ `stop_failed`（`data`：`{why}` ＝ 停那一步的码，如 `wrong_owner`），**不起新的**；停成了 ⇒ 用同一个名字建会话、用点名的号起（同 `sessions-start` 的 tmux 那一形、`none` 那一支，名字不铸、用让出来的这一个）——
-   失败 ⇒ `start_failed`（`data`：`{terminal, why}` ＝ 终端名 ＋ 起那一步的码；旧的已停，界面据它给「再起一次」，就是那一项的 `sessions-start`）。
-   停成了、起新的之前再核一次：除了开动前写它的那个（停掉的就是它），这台 pidfile 里还有别的活进程持着这个 sid ⇒ `session_already_live`（`data`：`{pids}` ＝ 那几个），**不起新的**（旧的已停）。
+   失败 ⇒ `start_failed`（`data`：`{terminal, why, stopped: true}` ＝ 终端名 ＋ 起那一步的码；旧的已停）。
+   停成了、起新的之前再核一次：除了开动前写它的那个（停掉的就是它），这台 pidfile 里还有别的活进程持着这个 sid ⇒ `session_already_live`（`data`：`{pids, stopped: true}` ＝ 那几个），**不起新的**（旧的已停）。
 5. **等报出**：`arrive_within_ms` 内这条会话由一个新进程报出（pidfile）⇒ `started:"arrived"`，否则 `missed`（会话名在，里面没见到它起来）。
 
 **撤单在停旧之前有效**：它是可撤档，步与步之间看撤单（撤在第 1–3 步 ⇒ 不停、不起，回 `cancelled`）；第 4 步拿退出排空的票、在阻塞线程上一口气做完 ——
@@ -1508,6 +1508,12 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 | `root` | → | **用户指定的那个文件管理目标根**。字符串或 `{"b16":…}`；空 ⇒ `bad_path`。它必须已经在盘上（本命令不建目录） |
 | `rel` | → | 相对 `root` 的那一段。字符串或 `{"b16":…}`（此前只收 UTF-8 字符串；围栏改成按 `Path` 逐段判之后，非 UTF-8 的名字照样逐段过围栏） |
 | `content` | → | 要写进去的字节。字符串或 `{"b16":…}`。**不给这个参数 ⇒ 新建一份空文件**（那就是「新建空文件」这件事的形状） |
+| `single` | → | 可选布尔：`true` ⇒ `rel` 只许是**一段名字**（界面就地新建 / 改名敲的那一格）；`files-mkdir` 的 `rel`、`files-rename` 的 `to` 同 |
+
+**名字规则（`files-create` · `files-mkdir` 的 `rel`、`files-rename` 的 `to`）**：每一段都过**这台**的规则（`platform::paths::name_problem`）——
+Windows：保留设备名（`CON` `PRN` `AUX` `NUL` `COM1`–`9` `LPT1`–`9`，不分大小写，带扩展名也算）· `< > : " / \ | ? *` 与控制字符 · 以点或空格结尾；
+别处：`/` 与 NUL。不合，或 `single` 时不是恰好一段 ⇒ `bad_name`（那一句说哪条规则、哪个字），盘上什么都不动。
+界面不另写一份名字规则，只把这一句照登在那一格下面。两套规则的期望住 `tests/__fixtures__/file-names.golden.json`。
 | `path` | ← | 真正落盘的那个绝对路径，**解完 symlink 的**（原始字节形） |
 | `bytes` | ← | 这一趟写进去了几个字节 |
 
@@ -1573,6 +1579,7 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `root` / `rel` | → | 目标根 ＋ 相对段。**只建最后那一段**：父目录不在 ⇒ `refused`（不顺手补中间几层）；那一段已经有一项 ⇒ `exists` |
+| `single` | → | 可选布尔：`true` ⇒ `rel` 只许一段名字；名字规则同 `files-create`，不合 ⇒ `bad_name` |
 | `path` | ← | 建出来的那个目录（父目录解完 symlink 的） |
 
 权限位是后端进程的缺省（受 umask）；建在这台机器 `~/.cc-monitor` 里的 ⇒ `0700`（unix）。
@@ -1588,6 +1595,7 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 |---|---|---|
 | `root` | → | 目标根 |
 | `from` / `to` | → | 两个相对段，**各过一遍路径解析**（只解 `from` 的话，`to` 半路一条链接就能把东西搬到根外） |
+| `single` | → | 可选布尔：`true` ⇒ `to` 只许一段名字；`to` 的名字规则同 `files-create`，不合 ⇒ `bad_name` |
 | `path` | ← | 新名字的落点 |
 
 🔴 **`to` 已经在了 ⇒ 拒（`exists`），不覆盖**：unix 上系统那一步会静默顶掉已有目标，
@@ -2311,8 +2319,11 @@ Claude 的窗口名：回包头里 `five_hour` · `seven_day` · `seven_day_over
 `{"state":"failed","code"}`（`targetNeedsLogin`：目标订阅号拿不到令牌（续期失败照实报）或账号身份 · `targetNeedsKey` · `ioFailed`）。
 
 - `hot`：`sessions` 是会话 id；把会话钉到 `target`、记一条 `manualHot`，下一发起就走它（进程仍用起它的号的配置目录）。
-- `restart`：`sessions` 每项是 `session-restart` 的入参（不带 `account`，用 `target`），逐个交给它；成了记一条 `manualRestart`，
-  败了 `failed` 带 `session-restart` 的失败码原样。「会中断什么」那一问在发起之前（同 `session-restart`）。
+- `restart`：`sessions` 每项是 `session-restart` 的入参（不带 `account`，用 `target`），逐个交给它；换过去了就记一条 `manualRestart`。
+  每格是 `{"state":"done","terminal"}`（新进程报出了，`terminal` ＝ 它所在的终端）或 `{"state":"failed","code","old"}`：
+  `code` ＝ `session-restart` 的失败码原样 · 起了但到期限没报出 ⇒ `notArrived` · 记账写不进 ⇒ `ioFailed`；
+  `old` ＝ 旧会话还在不在（`kept` 还在跑 · `ended` 已停：`session-restart` 失败的 `data.stopped` 为真、`notArrived`、`ioFailed`）。
+  金样 `tests/__fixtures__/rotation-switch-restart.golden.json`。「会中断什么」那一问在发起之前（同 `session-restart`）。
 - 入参不合法 ⇒ `bad_args`。
 
 CLI 面随之多 `--rotation-read`（不读 stdin）与 `--rotation-set` · `--rotation-session-read` · `--rotation-session-set` · `--rotation-switch`（stdin 一段 JSON ＝ `args`）。
@@ -2849,6 +2860,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 | `limit` | → | 可选，= `--limit` |
 | `titles` | → | 可选布尔：只比会话标题与第一句（不搜内容）；命中的会话照样一行，`hitCount` 为 `0`、`hits` 空。帧面才有（CLI 面 `--search` 没有这个选项） |
 | `lines` | ← | 每命中会话一行 `SessionHits`（带 `agent`：只扫记录树 ⇒ 记录树那一家），形状与行序同 `--search`。命中种类 `hits[].kind`：`user` · `assistant` · `report`（agent 回报，单列；会话内查找 `history-find` 不收这一种）· `tool` |
+| `lines[].status` · `isBg` · `can` | ← | 这台判的：`status` `live` / `ended`（这台的 pidfile）· `isBg` 后台分身会话 · `can` 能做什么，口径与 `history-list` 行的 `can` 同一个函数；界面只读。CLI 面 `--search` 同 |
 | `unreadable` | ← | 这一趟有几份会话记录读不动、没搜到（权限 / IO 错 / 不是合法 UTF-8）。不是 `0` ⇒ 结果不全，界面说出来 |
 | `skipped` | ← | 内容搜索不覆盖、这台上又有它的会话记录的那几家（对用户的叫法，如 `Codex`）：它们的会话不在结果里 |
 
@@ -2863,7 +2875,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 
 界面照旧逐台经通道问那台常驻后端的 `history-search`（各台内存索引保热），把解码过的会话行（远端的补了 `origin`）一次交给**本机**后端合：
 `updatedAt` 倒序、稳定（`search_rules::sort_by_recency`，与每台后端花 snippet 预算同一个函数）· `totalHits` = `hitCount` 之和 ·
-任一行 `hitsTruncated` ⇒ `truncated`。只读排序与计数要的那三格，其余原样透传。纯计算。错误码：`bad_args`（不是 `{sessions:[…]}` / 某一行那三格缺或类型不对）。
+任一行 `hitsTruncated` ⇒ `truncated`。只读排序与计数要的那三格，其余（含各台判的 `status` · `isBg` · `can`）原样透传。纯计算。错误码：`bad_args`（不是 `{sessions:[…]}` / 某一行那三格缺或类型不对）。
 只上帧面（`STREAM_ONLY`）。
 
 #### `history-run`：一个子运行的记录（按运行读，通用层不认任何一家的目录与字段）
@@ -4056,7 +4068,7 @@ CLI 面随之自动多一条 `--history-find`。
 |---|---|---|
 | assistant | `toolSteps` | `tool_use.id` ⇒ `{tool, arg?, path?, note?, known}`：一步的一行人话。`arg` 主参数一行（换行压空格、至多 400 字）：Bash `command` · Read / Edit / MultiEdit / Write `file_path` · NotebookEdit / NotebookRead `notebook_path` · Grep / Glob `pattern` · WebFetch `url` · WebSearch `query` · Agent / Task `description` · Skill `skill`；`path: true` ＝ 主参数是路径；`note` ＝ `description`（Bash 那一类；Agent / Task 的说明就是主参数，不重出）；`known: false` ＝ 这一家没登记的工具（MCP 等，界面画问号、给原文），不从入参里挑主参数 |
 | assistant | `apiReason` | 只在 `isApiErrorMessage` 那条：`overloaded` · `quota` · `network` · `auth` · `context` · `unknown`（见下） |
-| user | `toolResults` | `tool_result.tool_use_id` ⇒ `{ok, rejected?, lines?, added?, removed?, files?, answer?}`：结果一句的数。`ok` ＝ 没标出错；`rejected` ＝ 人没批准（结果正文以「The user doesn't want to proceed with this tool use」起头，或 `toolUseResult` 是「User rejected tool use」）；`lines` ＝ `toolUseResult.file.numLines` / `numLines` / 命令输出行数（stdout ＋ stderr）；`added` · `removed` ＝ `structuredPatch` 里 `+` / `-` 起头的行数（新建文件 ⇒ 整份行数 · 0）；`files` ＝ `numFiles`；`answer`（B7）＝ `{kind:"approved"}`（结果带 `plan`，或正文以「User has approved your plan」起头）· `{kind:"picked", options:[…]}`（`toolUseResult.answers` 的各个答，或正文「User has answered your questions: "问"="答", …」里的各个答，选项原文）。计划没批走 `rejected`，不出 `answer`。读不出的格缺 |
+| user | `toolResults` | `tool_result.tool_use_id` ⇒ `{ok, rejected?, lines?, added?, removed?, files?, answer?, exitCode?}`：结果一句的数。`ok` ＝ 没标出错；`rejected` ＝ 人没批准（结果正文以「The user doesn't want to proceed with this tool use」起头，或 `toolUseResult` 是「User rejected tool use」）；`lines` ＝ `toolUseResult.file.numLines` / `numLines` / 命令输出行数（stdout ＋ stderr）；`added` · `removed` ＝ `structuredPatch` 里 `+` / `-` 起头的行数（新建文件 ⇒ 整份行数 · 0）；`files` ＝ `numFiles`；`exitCode` ＝ 出错的结果正文里那一行 `Exit code N` 的 N（没写就缺；界面只读它，不抠原文）；`answer`（B7）＝ `{kind:"approved"}`（结果带 `plan`，或正文以「User has approved your plan」起头）· `{kind:"picked", options:[…]}`（`toolUseResult.answers` 的各个答，或正文「User has answered your questions: "问"="答", …」里的各个答，选项原文）。计划没批走 `rejected`，不出 `answer`。读不出的格缺 |
 | system（`subtype == "api_error"`，要重试的那一次） | `apiReason` | 同上。第几次 / 最多几次是记录原有的 `retryAttempt` / `maxRetries` |
 | user · 排队消息 | `userText.speaker.body` | `agentMessage` · `peerSession` · `coordinator` 三种来话的正文：记录级 `origin.body` 优先，没有就取框里那段（`<agent-message …>…</agent-message>` / `<cross-session-message …>…</cross-session-message>` / coordinator 前导句之后那段，CLI 附的收尾句「Address this before completing your current task.」不算）；trim 过，空 ⇒ 缺。Codex：信的 `Payload` 那段 |
 | user · 排队消息 | `userText.speaker.body`（`system`） | 系统注入的原文（`isMeta` 那一条整段 · 字全是注入的那一条整段 · 额度恢复续跑那一句 · `origin.kind == "auto-continuation"` 取 `origin.body`，没有就整段）；trim 过，空 ⇒ 缺。Codex 那一家不给（缺）。界面「显示系统注入」开着才画；会话内查找 / 大纲 / 轮的摘要都不算它；后端不把它写进日志与报错 |
@@ -4064,8 +4076,8 @@ CLI 面随之自动多一条 `--history-find`。
 
 **原因种类的唯一判定**（`steps.rs::api_reason`，状态码 ＋ `error` 那一格 ＋ 报错正文，次序即优先级）：429 / `rate_limit` / `usage limit` ⇒ `quota` · 401 / 403 / `authentication` / `oauth` / `invalid api key` ⇒ `auth` · `prompt is too long` / `context length` / `context window` ⇒ `context` · 5xx / `overloaded` ⇒ `overloaded` · 有 `error.connection` 或 `ECONNRESET` 一类连接原文 ⇒ `network` · 其余 ⇒ `unknown`（不猜）。原样 `toolUseResult` 只喂判定、不上线。
 
-- 连续几次重试合成一条、接没接上：界面把相邻的 `api_error` 记录排成一条（第几次取最后那条的 `retryAttempt`，起始取第一条的时刻），后面跟着 `isApiErrorMessage` 那条 ⇒ 没接上；跟着别的记录 ⇒ 接上了。这是排版（相邻合并），原因判定只在这里。
-- 一步的状态与耗时：`toolSteps` 与 `toolResults` 按 id 配对（结果到了 ⇒ 成功 / 失败 / 被拒；没到 ⇒ 在跑，或 `history-facts.needs` 说在等批准），耗时 ＝ 两条记录的 `timestamp` 相减。
+- 连续几次重试合成一条、接没接上：界面把相邻的 `api_error` 记录排成一条（第几次取最后那条的 `retryAttempt`，起始取第一条的时刻），后面跟着 `isApiErrorMessage` 那条 ⇒ 没接上；跟着别的记录 ⇒ 接上了。相邻合并是排版；「接没接上」今天是界面按紧挨着的下一条推断的（记录成品逐条出、不带前一条，后端还没有这一格），原因判定只在这里。
+- 一步的状态与耗时：`toolSteps` 与 `toolResults` 按 id 配对（同一步的两段拼回去；结果到了 ⇒ 成功 / 失败 / 被拒；没到 ⇒ 在跑，或 `history-facts.needs` 说在等批准 —— 会话已结束而结果没来的那一步今天也画成在跑，后端没有给它一个状态），耗时 ＝ 两条记录的 `timestamp` 相减。
 
 #### `resolve`：一次性 exec 与流命令**并存**（U6b-3）
 

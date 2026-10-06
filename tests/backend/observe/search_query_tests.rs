@@ -431,3 +431,60 @@ fn the_merge_frame_sorts_newest_first_stably_and_sums_what_each_machine_said() {
         assert_eq!(answer_merge(&bad).unwrap_err().0, "bad_args");
     }
 }
+
+/// 命中带这台判的 `status` · `isBg` · `can`（与历史清单的行同一张规则，`history_query::can_of`）：
+/// 在跑的（这台有它的 pidfile、进程活着）⇒ 切过去；后台分身 ⇒ 要恢复主会话、不能分叉；其余 ⇒ 能恢复。
+/// 跨语言金样 `tests/__fixtures__/history-search-row.golden.json`（TS 严格解码器读同一份）。
+#[test]
+fn a_hit_carries_this_machines_status_and_can() {
+    use serde_json::json;
+    let home = corpus(
+        "can",
+        &[("live1", 3000, 1), ("ended1", 2000, 1), ("bg1", 1000, 1)],
+    );
+    let bg = home.join("projects/p-bg1/bg1.jsonl");
+    let mut text = std::fs::read_to_string(&bg).unwrap();
+    text.push_str("\n{\"type\":\"system\",\"sessionKind\":\"bg\"}");
+    std::fs::write(&bg, text).unwrap();
+    set_mtime(&bg, filetime_from_ms(1000));
+    let sessions = crate::agents::claudecode::paths::sessions_root(&home);
+    std::fs::create_dir_all(&sessions).unwrap();
+    let pid = std::process::id();
+    std::fs::write(
+        sessions.join(format!("{pid}.json")),
+        format!("{{\"pid\":{pid},\"sessionId\":\"live1\"}}"),
+    )
+    .unwrap();
+    let rows = run_search(&home, "docker", 50);
+    let prefix = home.canonicalize().unwrap().to_string_lossy().into_owned();
+    std::fs::remove_dir_all(&home).ok();
+    let pick = |r: &Value| json!([r["sessionId"], r["status"], r["isBg"], r["can"]]);
+    assert_eq!(
+        rows.iter().map(pick).collect::<Vec<_>>(),
+        vec![
+            json!(["live1", "live", false, {"resume": "switch", "accounts": true, "fork": true, "delete": "live"}]),
+            json!(["ended1", "ended", false, {"resume": "yes", "accounts": true, "fork": true, "delete": "yes"}]),
+            json!(["bg1", "ended", true, {"resume": "bg", "accounts": true, "fork": false, "delete": "yes"}]),
+        ],
+        "命中的状态与能做什么不是这台按 pidfile 与记录判的"
+    );
+    let got = json!({ "lines": rows
+        .iter()
+        .map(|r| r.to_string().replace(&prefix, "<HOME>"))
+        .collect::<Vec<_>>() });
+    let path =
+        crate::guard_support::repo_root().join("tests/__fixtures__/history-search-row.golden.json");
+    if std::env::var_os("CCM_BLESS").is_some() {
+        std::fs::write(
+            &path,
+            format!("{}\n", serde_json::to_string_pretty(&got).unwrap()),
+        )
+        .unwrap();
+    }
+    let golden: Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).expect("金样")).unwrap();
+    assert_eq!(
+        got, golden,
+        "命中行形状变了：TS 解码器读的是同一份金样，两边一起改（CCM_BLESS=1 重写）"
+    );
+}

@@ -24,6 +24,7 @@ use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 
 use crate::history::history_annotations::{Loaded, Table};
+use crate::observe::history_query::{can_of, status_of};
 
 /// 默认最多回多少行（按时间看时超过它只列最近这些、底部「更早的用搜索找」）。
 const DEFAULT_LIMIT: usize = 2000;
@@ -289,59 +290,12 @@ pub(crate) fn parse_ask(args: &Value) -> Result<Ask, (&'static str, String)> {
     })
 }
 
-/// 这一家有没有账号这一维（Codex 没有 ⇒ 恢复菜单里那一组灰着）。
-fn agent_has_accounts(kind: &str) -> bool {
-    crate::agents::account_env_of(kind).is_some()
-}
-
-/// 这一家的会话能不能分叉（适配层有没有分叉的记录变换）。
-fn agent_can_branch(kind: &str) -> bool {
-    crate::agents::record_face(kind).is_some_and(|r| r.branch.is_some())
-}
-
 /// 行上那一家的小牌（对用户的叫法，如 `Codex`）：默认那一家（Claude）不画 ⇒ `None`。
 fn agent_tag(kind: &str) -> Option<&'static str> {
     if kind == crate::agents::default_kind() {
         return None;
     }
     crate::agents::launch_face_among(crate::agents::REGISTRY, kind).map(|l| l.display_name)
-}
-
-/// 状态：`live` 在跑 · `ended` 已结束 · `unknown` 这条路上答不了（合成历史没有 pidfile）。
-fn status_of(is_live: &Value) -> &'static str {
-    match is_live.as_bool() {
-        Some(true) => "live",
-        Some(false) => "ended",
-        None => "unknown",
-    }
-}
-
-/// **这一行能做什么**（`can`）——界面按它画，不另判：
-/// - `resume`：`yes` 能恢复 · `switch` 在跑（切过去，不再起第二份）· `bg` 分身会话（要接着聊得恢复主会话）；
-/// - `accounts`：恢复时能不能选号（那一家有没有账号这一维）· `fork`：能不能从某一轮分叉；
-/// - `delete`：`yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑（确认框里多说一句）。
-fn can_of(row: &Value) -> Value {
-    let kind = row["agent"].as_str().unwrap_or_default();
-    let status = status_of(&row["isLive"]);
-    let bg = row["isBg"].as_bool().unwrap_or(false);
-    let resume = if status == "live" {
-        "switch"
-    } else if bg {
-        "bg"
-    } else {
-        "yes"
-    };
-    let delete = match status {
-        "live" => "live",
-        "unknown" => "unsure",
-        _ => "yes",
-    };
-    json!({
-        "resume": resume,
-        "accounts": agent_has_accounts(kind),
-        "fork": agent_can_branch(kind) && !bg,
-        "delete": delete,
-    })
 }
 
 /// 并上这台的注解（那一台的行也并这台的：注解只住本机），补 `status` · `label` · `untitled` · `can`。
@@ -361,8 +315,13 @@ fn finish_row(mut v: Value, ann: Option<&Table>) -> Value {
         .unwrap_or_else(|| v["title"].as_str().unwrap_or_default().to_string());
     v["label"] = json!(label);
     v["untitled"] = json!(untitled);
-    v["status"] = json!(status_of(&v["isLive"]));
-    v["can"] = can_of(&v);
+    let status = status_of(v["isLive"].as_bool());
+    v["status"] = json!(status);
+    v["can"] = can_of(
+        v["agent"].as_str().unwrap_or_default(),
+        status,
+        v["isBg"].as_bool().unwrap_or(false),
+    );
     v["agentTag"] =
         agent_tag(v["agent"].as_str().unwrap_or_default()).map_or(Value::Null, |t| json!(t));
     // 活不活只出 `status` 一格（`isLive` 是它的来路；两格并存，读的人就得猜听哪一格）。

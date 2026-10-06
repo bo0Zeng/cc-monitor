@@ -9,7 +9,6 @@
 //   - 经通道读 ＋ 缓存（`accounts-list` · `accounts-sessions` · `accounts-trust`）→ `account-reads.ts`
 //   - config.json 里的账号偏好（每号模型）→ `account-prefs.ts`
 //   - 起会话那一格「要哪个号」与「选不了」那个选择框 → `launch-account.ts`
-//   - 换号重启定位不到时的那句话 → `account-restart.ts`
 // 本文件从此**不 import 任何有 IO 的模块**（不碰通道、不碰 config、不碰历史注解）。
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 // API key 那两问的成品（`apikey-routing`）住 `apikey-reads.ts`（经通道、后端出成品）；本文件只把那份读数落到账号上。
