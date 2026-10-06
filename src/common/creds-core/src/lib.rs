@@ -250,8 +250,8 @@ pub use sealed::SecretKey;
 pub const MASK_KEEP: usize = 4;
 
 /// 掩码遮掉的那一段：定长几个、用哪个字。
-pub const MASK_COVER: usize = 8;
-pub const MASK_CHAR: &str = "•";
+const MASK_COVER: usize = 8;
+const MASK_CHAR: &str = "•";
 
 /// **手写的** `Debug` —— 印出来恒为遮蔽形，且**不带长度**（长度也是信息）。
 ///

@@ -187,6 +187,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/kit/components.vitest.ts", // 通用组件各态（DOM 形状与行为）
     "tests/frontend/ui/kit/interrupts.vitest.ts",
     "tests/frontend/ui/kit/menu.vitest.ts",
+    "tests/frontend/ui/kit/path.vitest.ts", // 路径显示形（家目录缩成 ~，纯函数）
     "tests/frontend/ui/events-burst.vitest.ts",
     "tests/frontend/ui/events-yield.vitest.ts",
     "tests/frontend/ui/file-window.vitest.ts",
