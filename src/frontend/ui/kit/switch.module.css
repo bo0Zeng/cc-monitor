@@ -12,6 +12,13 @@
     min-width: 0;
   }
 
+  .swHelp {
+    display: block;
+    margin-top: var(--space-1);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
   .swSwitch {
     position: relative;
     flex: none;

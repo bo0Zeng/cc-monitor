@@ -583,12 +583,13 @@ pub fn health_face(h: &Health) -> HealthFace {
             ("misread", &h.misread.to_string()),
         ],
     ));
+    // 没异常退出过 ⇒ 一句就够，不挂［详情］（被拒 / 没起来 / 读坏的计数只在异常退出那一档展开）。
     if h.crashed == 0 {
         return HealthFace {
             state: HealthState::Clean,
             summary: copy_text("rsBackendPolicy.health.clean", &[]),
             why: None,
-            detail,
+            detail: None,
         };
     }
     let missing = copy_text("rsBackendPolicy.health.lastMissing", &[]);

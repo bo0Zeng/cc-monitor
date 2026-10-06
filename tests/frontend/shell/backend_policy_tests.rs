@@ -507,7 +507,7 @@ fn the_reading_defaults_to_unknown_not_to_clean() {
     let face = health_face(&health(origin));
     let said = face.summary.clone();
     assert!(
-        said.contains("崩过 2 次") && said.contains("signal 6"),
+        said.contains("×2") && said.contains("signal 6"),
         "读数没带出次数与最后那一行：{said}"
     );
     assert_eq!(
@@ -627,11 +627,15 @@ fn the_health_face_is_judged_by_the_whole_ledger_not_by_crashes_alone() {
     for (what, h, want) in &cells {
         let face = health_face(h);
         assert_eq!(face.state, *want, "「{what}」判成了 {:?}", face.state);
-        // 每一档给界面的东西也跟着档走：无记录 ⇒ 只有 ⓘ；其余 ⇒ 只有 `[详情]`。
+        // 每一档给界面的东西也跟着档走：无记录 ⇒ 只有 ⓘ；没异常退出 ⇒ 都没有；异常退出过 ⇒ 只有 `[详情]`。
         match want {
             HealthState::Unknown => assert!(
                 face.why.is_some() && face.detail.is_none(),
                 "「{what}」是无记录，却没有 ⓘ、或给了 [详情]：{face:?}"
+            ),
+            HealthState::Clean => assert!(
+                face.why.is_none() && face.detail.is_none(),
+                "「{what}」没异常退出过，却挂着 ⓘ 或 [详情]：{face:?}"
             ),
             _ => assert!(
                 face.why.is_none() && face.detail.is_some(),

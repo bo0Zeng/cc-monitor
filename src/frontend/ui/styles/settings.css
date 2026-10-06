@@ -364,11 +364,13 @@ body.settings-window-mode .settings-panel {
 
 
 
-/* 机器列表：一台一行（点 · 名字与第二行 · 右侧账号数 · ⋯），整张表一个框。 */
+/* 机器列表：一台一行（点 · 名字与第二行 · 右侧账号数 · ⋯），整张表一个框。
+   点与两行字块垂直居中；右侧那一句与 ⋯ 在名字那一行；问题行 / chip 在下面跨到右缘。 */
 .remote-machine-row {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-5);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-5);
   min-height: 56px;
   padding: var(--space-5) var(--space-6);
   border-bottom: 1px solid var(--border);
@@ -384,11 +386,10 @@ body.settings-window-mode .settings-panel {
 }
 
 .remote-machine-dot {
-  margin-top: 7px;
+  align-self: center;
 }
 
 .remote-machine-main {
-  flex: 1;
   min-width: 0;
 }
 
@@ -396,6 +397,7 @@ body.settings-window-mode .settings-panel {
   display: flex;
   align-items: baseline;
   gap: var(--space-4);
+  line-height: 22px;
 }
 
 .remote-machine-open {
@@ -430,9 +432,15 @@ body.settings-window-mode .settings-panel {
   white-space: nowrap;
 }
 
+.remote-machine-side {
+  display: flex;
+  align-items: center;
+  align-self: start;
+  gap: var(--space-3);
+  height: 22px;
+}
+
 .remote-machine-summary {
-  flex: none;
-  margin-top: 2px;
   color: var(--text-2);
   font-size: var(--font-size-small);
   white-space: nowrap;
@@ -440,6 +448,7 @@ body.settings-window-mode .settings-panel {
 
 /* 问题行：一句话 ＋ 至多两颗修法（列表那一行与机器页卡头同一个样子）。 */
 .machine-problem {
+  grid-column: 2 / -1;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -509,21 +518,120 @@ body.settings-window-mode .settings-panel {
   gap: var(--space-5) var(--space-6);
 }
 
-.machine-conn-grid > .settings-row {
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--space-2);
-  margin: 0;
+.machine-conn-wide {
+  grid-column: 1 / -1;
 }
 
-.machine-conn-grid > .settings-row > .settings-btn {
-  align-self: flex-start;
-  padding: 1px 8px;
+/* 连接设置的一格：标签 · 框（右侧可挂一颗按钮）· 下方一行说明（出错时换成错误句；没有说明不占行）。 */
+.machine-conn-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.machine-conn-field > .settings-label {
+  flex: none;
+  color: var(--text-2);
   font-size: var(--font-size-small);
 }
 
-.machine-conn-wide {
-  grid-column: 1 / -1;
+.machine-conn-box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.machine-conn-port .settings-input {
+  max-width: 120px;
+}
+
+.machine-conn-note {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+.machine-conn-note:empty {
+  display: none;
+}
+
+.machine-conn-note[data-error="true"] {
+  color: var(--text);
+}
+
+.machine-conn-note[data-error="true"] > svg {
+  color: var(--error);
+}
+
+.machine-conn-fp-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  color: var(--text-2);
+}
+
+.machine-conn-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+  font-size: var(--font-size-small);
+}
+
+.machine-conn-link:hover {
+  color: var(--text);
+}
+
+.machine-conn-more-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.machine-conn-switch {
+  margin-top: var(--space-4);
+}
+
+.machine-conn-actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+/* 测试连接下面那一行：✓ 解析 ✓ 连接 ✓ 认证 ✓ 就绪 38ms · 版本 · 功能完整。 */
+.machine-conn-segs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-5);
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+.machine-conn-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.machine-conn-seg[data-state="ok"] {
+  color: var(--success);
+}
+
+.machine-conn-seg[data-state="fail"] {
+  color: var(--error);
+}
+
+.machine-conn-seg[data-state="wait"] {
+  color: var(--text-faint);
+}
+
+.machine-conn-seg-tail {
+  color: var(--text-2);
 }
 
 .machine-conn-more,
@@ -536,26 +644,58 @@ body.settings-window-mode .settings-panel {
   font-size: var(--font-size-small);
 }
 
-/* 「这台上的 cc-monitor」：后端那几格一格一行（标签左、控件右）。 */
+/* 「这台上的 cc-monitor」：一行一项（标签与说明在左、控件在右），底行动作。 */
 .machine-monitor [data-backend-cells] {
   display: flex;
   flex-direction: column;
 }
 
-.machine-monitor [data-backend-cells] > [data-col] {
+.machine-cc-row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3) var(--space-4);
-  min-height: 44px;
+  gap: var(--space-5);
+  min-height: 52px;
   padding: var(--space-4) 0;
   border-bottom: 1px solid var(--border);
 }
 
-.machine-monitor [data-backend-cells] .settings-btn {
-  padding: 1px 8px;
+.machine-cc-row > label {
+  flex: 1;
+}
+
+.machine-cc-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.machine-cc-label {
+  color: var(--text);
+}
+
+.machine-cc-help {
+  margin-top: var(--space-1);
+  overflow-wrap: anywhere;
+  color: var(--text-2);
   font-size: var(--font-size-small);
-  white-space: nowrap;
+}
+
+.machine-cc-controls {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.machine-cc-input {
+  width: 220px;
+  font-family: var(--font-mono);
+}
+
+.machine-cc-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
 }
 
 .backend-row {
@@ -572,20 +712,17 @@ body.settings-window-mode .settings-panel {
 }
 
 .backend-row-kill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  flex: 1;
 }
 
 .backend-row-exit {
-  margin-top: 2px;
+  margin-top: var(--space-1);
   color: var(--text-2);
-  font-size: var(--font-size-xs);
-  line-height: 1.5;
+  font-size: var(--font-size-small);
 }
 
-.backend-row-state[data-on="true"] {
-  color: var(--success);
+.backend-row-state {
+  color: var(--text-2);
 }
 
 .backend-row-health[data-health="crashed"] {
@@ -597,6 +734,16 @@ body.settings-window-mode .settings-panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+}
+
+.add-machine-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.add-machine-pane[hidden] {
+  display: none;
 }
 
 .add-machine-note,
@@ -655,16 +802,13 @@ body.settings-window-mode .settings-panel {
 .add-machine-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: var(--space-5) var(--space-6);
+  gap: var(--space-4) var(--space-6);
 }
 
 .add-machine-wide {
   grid-column: 1 / -1;
 }
 
-.settings-btn.settings-btn-danger-text {
-  color: var(--error);
-}
 
 
 
@@ -1036,6 +1180,14 @@ body.settings-window-mode .settings-panel {
   gap: 6px;
 }
 
+/* 连接设置里那一行逐段结果不画框。 */
+.machine-conn .remote-test-result {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+
 .remote-test-line {
   display: flex;
   align-items: center;
@@ -1044,25 +1196,8 @@ body.settings-window-mode .settings-panel {
 }
 
 /* F46：连接过程分阶段泳道日志 */
-.remote-stage-log {
-  margin: 4px 0 8px;
-  padding: 6px 8px;
-  border-left: 2px solid var(--border);
-  font-size: var(--font-size-small);
-  line-height: 1.5;
-  opacity: 0.9;
-  max-height: 160px;
-  overflow-y: auto;
-}
 
-.remote-stage-line {
-  white-space: pre-wrap;
-  word-break: break-all;
-}
 
-.remote-test-mark {
-  font-weight: bold;
-}
 
 .remote-test-ok {
   color: var(--success);

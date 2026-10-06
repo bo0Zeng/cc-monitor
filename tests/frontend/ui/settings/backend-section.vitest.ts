@@ -130,6 +130,10 @@ import { readStatus } from "../../../../src/frontend/ui/settings/machine-status"
 //   这里只取表里的原文当桩里后端回的那一句，判界面原样摆、不再判。
 const tableZhOf = (key: string): string => (COPY_TABLE.entries as Record<string, { zh: string }>)[key]!.zh;
 const EXIT_KILLS = tableZhOf("backendPolicy.exit.kills");
+/** 「随 cc-monitor 退出停止」那个开关（kit 开关：`aria-checked` · `aria-disabled`）。 */
+const killOf = (el: ParentNode): HTMLButtonElement => el.querySelector<HTMLButtonElement>('.backend-row-kill [role="switch"]')!;
+const isOn = (b: HTMLButtonElement): boolean => b.getAttribute("aria-checked") === "true";
+const isOff = (b: HTMLButtonElement): boolean => b.getAttribute("aria-disabled") === "true";
 const EXIT_SELF_DIES = tableZhOf("backendPolicy.exit.selfDies");
 const EXIT_UNATTENDED = tableZhOf("backendPolicy.exit.unattended");
 const EXIT_UNREADABLE = tableZhOf("backendPolicy.exit.unreadable");
@@ -267,7 +271,7 @@ describe("P2s backend 开关区", () => {
       .filter((c) => c.name === "backend_status")
       .map((c) => (c.args as { origin: string }).origin);
     expect(asked.sort()).toEqual([LOCAL_ORIGIN, "甲机"].sort());
-    expect(s.element.querySelector(".backend-row-state")?.textContent).toContain("已连上");
+    expect(s.element.querySelector(".backend-row-state")?.textContent).toContain("运行中");
   });
 
   it("★ 〔MIG-2 · ㊴〕那一行原样摆后端的 `said`：常驻那台说「无人监护」，与 monitor 的 `detached` 无关", async () => {
@@ -289,7 +293,7 @@ describe("P2s backend 开关区", () => {
       const exit = s.element.querySelector<HTMLElement>(".backend-row-exit")!;
       expect(exit.textContent, `said=${String(said)} 时界面替后端说了一句`).toBe("");
       expect(exit.dataset.exit).toBe("unasked");
-      expect(s.element.querySelector<HTMLInputElement>(".backend-row-kill input")!.disabled).toBe(true);
+      expect(isOff(killOf(s.element))).toBe(true);
     }
   });
 
@@ -322,13 +326,12 @@ describe("P2s backend 开关区", () => {
       { channel: false, pid: null },
       { channel: true, pid: 7 },
     ];
-    const btns = [...s.element.querySelectorAll<HTMLButtonElement>(".backend-row button")];
-    btns[0].click();
+    s.element.querySelector<HTMLButtonElement>('.backend-row [data-op="start"]')!.click();
     await new Promise((r) => setTimeout(r, 400));
     expect(
       s.element.querySelector(".backend-row-state")?.textContent,
       "起完只画了一次就停手 —— 那张是操作前的快照（backend_start 只是 spawn 了监护线程就返回）",
-    ).toContain("已连上");
+    ).toContain("运行中");
   });
 
   it("★★ K-P3b：读数**另起一行**画出来，而退出那一行一个字节不变", async () => {
@@ -381,7 +384,7 @@ describe("P2s backend 开关区", () => {
       expect(
         s.element.querySelector(".backend-row-state")?.textContent,
         `「${what}」把状态那一格也带走了 —— 失败该落在健康那一格上`,
-      ).toBe("已连上（pid 42）");
+      ).toBe("运行中");
       expect(decodeHealthFace(health), `解码器收下了「${what}」`).toBeNull();
     }
   });
@@ -391,13 +394,12 @@ describe("P2s backend 开关区", () => {
     await flush();
     await flush();
     failNextSet = new Error("盘满了");
-    const box = s.element.querySelector<HTMLInputElement>(".backend-row-kill input")!;
-    expect(box.checked).toBe(false);
-    box.checked = true;
-    box.onchange?.(new Event("change"));
+    const box = killOf(s.element);
+    expect(isOn(box)).toBe(false);
+    box.click();
     await flush();
     await flush();
-    expect(box.checked, "存失败了勾还留在新位置 —— 界面在骗人").toBe(false);
+    expect(isOn(box), "存失败了开关还留在新位置 —— 界面在骗人").toBe(false);
   });
   it("★★ 〔B2〕勾的值**问后端要**：盘上选过 true ⇒ 勾上、说「会结束它」", async () => {
     exitAnswer = {
@@ -411,10 +413,10 @@ describe("P2s backend 开关区", () => {
     await flush();
     await flush();
     const row = s.element.querySelector<HTMLElement>(".backend-row")!;
-    const box = row.querySelector<HTMLInputElement>(".backend-row-kill input")!;
-    expect(box.disabled).toBe(false);
+    const box = killOf(row);
+    expect(isOff(box)).toBe(false);
     expect(
-      box.checked,
+      isOn(box),
       "后端说选过 true，勾却没勾上 —— 画的不是那台机器上的值",
     ).toBe(true);
     expect(
@@ -449,8 +451,8 @@ describe("P2s backend 开关区", () => {
     await flush();
     await flush();
     row = s.element.querySelector<HTMLElement>(".backend-row")!;
-    const box = row.querySelector<HTMLInputElement>(".backend-row-kill input")!;
-    expect(box.disabled, "问不到那台机器的值，勾却能点 —— 点了发到哪去？").toBe(
+    const box = killOf(row);
+    expect(isOff(box), "问不到那台机器的值，开关却能拨 —— 拨了发到哪去？").toBe(
       true,
     );
     const exit = row.querySelector<HTMLElement>(".backend-row-exit")!;
@@ -463,9 +465,8 @@ describe("P2s backend 开关区", () => {
     await flush();
     await flush();
     const row = s.element.querySelector<HTMLElement>(".backend-row")!;
-    const box = row.querySelector<HTMLInputElement>(".backend-row-kill input")!;
-    box.checked = true;
-    box.onchange?.(new Event("change"));
+    const box = killOf(row);
+    box.click();
     await flush();
     await flush();
     await flush();
@@ -477,15 +478,17 @@ describe("P2s backend 开关区", () => {
     expect(
       row.querySelector<HTMLElement>(".backend-row-exit")?.textContent,
     ).toBe(EXIT_KILLS);
-    expect(box.checked).toBe(true);
+    expect(isOn(box)).toBe(true);
   });
   it("★ 〔ST2〕那一行有 [起][停]〔GAP1〕[日志]〔RESYNC〕[重新对齐]、状态照实说「已连上」", async () => {
     const s = new BackendSection({ headless: true });
     await flush();
     await flush();
     const row = s.element.querySelector<HTMLElement>(".backend-row")!;
-    expect([...row.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["启动", "停止…", "最近输出", "刷新"]);
-    expect(row.querySelector(".backend-row-state")?.textContent).toBe("已连上（pid 42）");
+    expect([...row.querySelectorAll("button:not([role=switch])")].map((b) => b.textContent)).toEqual(["停止…", "重启", "启动", "最近输出", "刷新"]);
+    // 在跑 ⇒「启动」不露面；［停止…］［重启］在。
+    expect(row.querySelector<HTMLElement>('[data-op="start"]')!.style.display).toBe("none");
+    expect(row.querySelector(".backend-row-state")?.textContent).toBe("运行中");
   });
   // 〔「机器一行『重新对齐』（上面整套）」〕按一下 ⇒ 问**那一行那台**的后端 `resync`、整机（不带 sid）。
   it("★ 〔RESYNC〕[重新对齐] 问的是那一行那台的后端、整机", async () => {
@@ -529,20 +532,21 @@ describe("〔ST2 · 第二刀 步 6〕后端开关表格式四栏：长文案进
     await flush();
     await flush();
     const want = BACKEND_COLUMNS().map(([c]) => c);
-    expect(want).toEqual(["state", "ops", "exit", "health"]);
+    expect(want).toEqual(["state", "exit", "drift", "ops"]);
     const head = s.element.querySelector<HTMLElement>('[data-backend-columns="head"]')!;
     expect([...head.children].map((c) => (c as HTMLElement).dataset.col)).toEqual(want);
-    expect([...head.children].map((c) => c.textContent)).toEqual(["状态", "操作", "退出行为", "健康"]);
+    expect([...head.children].map((c) => c.textContent)).toEqual(["状态", "退出行为", "未识别内容", "操作"]);
     const rows = [...s.element.querySelectorAll<HTMLElement>(".backend-row")];
     expect(rows.length, "一行都没有 —— 下面的逐行比在空人群上恒绿").toBe(2);
     for (const r of rows) {
       const cells = r.querySelector<HTMLElement>("[data-backend-cells]")!;
       expect(cells.dataset.backendCells).toBe(r.dataset.origin);
-      expect([...cells.children].map((c) => (c as HTMLElement).dataset.col)).toEqual(want);
-      // 控件各归各格：按钮在「操作」、勾在「退出行为」、读数在「健康」。
-      expect(cells.querySelector('[data-col="ops"]')!.querySelectorAll("button").length).toBe(4); // 起 · 停 ·日志 ·重新对齐
+      expect([...cells.children].map((c) => (c as HTMLElement).dataset.col).filter(Boolean)).toEqual(want);
+      // 控件各归各行：起停在「状态」、开关在「退出行为」、读数挂在状态那一行、底行是输出与刷新。
+      expect(cells.querySelector('[data-col="state"]')!.querySelectorAll("[data-op]").length).toBe(3); // 停 · 重启 · 起
+      expect(cells.querySelector('[data-col="ops"]')!.querySelectorAll("button").length).toBe(2); // 最近输出 · 刷新
       expect(cells.querySelector('[data-col="exit"] .backend-row-kill')).not.toBeNull();
-      expect(cells.querySelector('[data-col="health"] .backend-row-health')).not.toBeNull();
+      expect(cells.querySelector('[data-col="state"] [data-col="health"] .backend-row-health')).not.toBeNull();
     }
   });
 
@@ -554,11 +558,11 @@ describe("〔ST2 · 第二刀 步 6〕后端开关表格式四栏：长文案进
     await flush();
     const col = s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!;
     expect(col.querySelector(".backend-row-health")?.textContent).toBe(face.summary);
-    expect(face.summary).toBe("— 无记录");
+    expect(face.summary).toBe("无退出记录");
     const why = col.querySelector<HTMLElement>('[data-health-extra="why"]');
     expect(why, "无记录那一格没有 ⓘ —— 「无记录 ≠ 没崩过」那条区分被一起扫掉了").not.toBeNull();
     expect(why!.getAttribute("aria-label")).toBe(face.why);
-    expect(face.why).toContain("不等于「没崩过」");
+    expect(face.why).toContain("关闭后清零");
     expect(col.querySelector('[data-health-extra="detail"]'), "无记录却给了 [详情]").toBeNull();
   });
 
@@ -570,13 +574,13 @@ describe("〔ST2 · 第二刀 步 6〕后端开关表格式四栏：长文案进
     await flush();
     const col = s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!;
     expect(col.querySelector(".backend-row-health")?.textContent).toBe(
-      "⚠ 崩过 4 次 · 最后一次：崩了，exit -1073741819",
+      "异常退出 ×4 · 崩了，exit -1073741819",
     );
     const more = col.querySelector<HTMLElement>('[data-health-extra="detail"]')!;
     expect(more.tagName).toBe("DETAILS");
     expect(more.querySelector("summary")?.textContent).toBe("详情");
     expect(more.querySelector(".settings-hint")?.textContent).toBe(face.detail);
-    for (const n of ["崩了 4 次", "被拒 1 次", "没起来 0 次", "读坏了 2 次"]) expect(face.detail).toContain(n);
+    for (const n of ["异常退出 4", "被拒 1", "未启动 0", "读取失败 2"]) expect(face.detail).toContain(n);
     expect(col.querySelector('[data-health-extra="why"]'), "有记录还挂着「无记录」的 ⓘ").toBeNull();
     // 那五种里后端曾经带进来的三种：markdown · 日志行格式 · 设计论证。
     expect(col.textContent).not.toMatch(/\*\*|\[死亡账\]|origin=|下一步：|放大器/);
@@ -588,7 +592,7 @@ describe("〔ST2 · 第二刀 步 6〕后端开关表格式四栏：长文案进
     await flush();
     await flush();
     statusQueue = [{ ...status, channel: false }, { ...status, channel: false }];
-    s.element.querySelector<HTMLButtonElement>('[data-col="ops"] button')!.click();
+    s.element.querySelector<HTMLButtonElement>('[data-op="start"]')!.click();
     await new Promise((r) => setTimeout(r, 400));
     const col = s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!;
     expect(col.querySelectorAll("[data-health-extra]").length).toBe(1);

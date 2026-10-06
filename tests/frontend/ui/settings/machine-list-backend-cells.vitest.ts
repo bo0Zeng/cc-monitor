@@ -143,9 +143,10 @@ describe("后端那几格住机器页", () => {
     const all = pageBox.querySelectorAll<HTMLElement>("[data-backend-cells]");
     expect(all.length).toBe(2);
     for (const cells of all) {
-      expect(cells.querySelector(".backend-row-state")?.textContent).toBe("已连上（pid 7）");
-      expect([...cells.querySelectorAll('[data-col="ops"] button')].map((b) => b.textContent)).toEqual(["启动", "停止…", "最近输出", "刷新"]);
-      expect(cells.querySelector<HTMLInputElement>(".backend-row-kill input")!.disabled).toBe(false);
+      expect(cells.querySelector(".backend-row-state")?.textContent).toBe("运行中");
+      expect([...cells.querySelectorAll('[data-col="state"] [data-op]')].map((b) => b.textContent)).toEqual(["停止…", "重启", "启动"]);
+      expect([...cells.querySelectorAll('[data-col="ops"] button')].map((b) => b.textContent)).toEqual(["最近输出", "刷新"]);
+      expect(cells.querySelector('.backend-row-kill [role="switch"]')!.getAttribute("aria-disabled")).toBeNull();
     }
     const asked = ipc.calls
       .filter((c) => c.name === "backend_status")
@@ -169,7 +170,7 @@ describe("后端那几格住机器页", () => {
     // 反向对照：登记了的本机照常画。
     expect(
       pageBox.querySelector<HTMLElement>(`[data-backend-cells="${LOCAL_ORIGIN}"] .backend-row-state`)?.textContent,
-    ).toBe("已连上（pid 7）");
+    ).toBe("运行中");
   });
 
   it("★★ 后端清单里有、列表里没有 ⇒ 不丢：列表尾巴里另起一行，且只有这一台", async () => {

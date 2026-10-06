@@ -115,15 +115,10 @@ async fn a_hello_that_answers_ping_is_all_green() {
     assert_eq!(r["backendOk"], true);
     assert_eq!(r["message"], copy_text("beProbe.test.ok", &[]));
     let hello = r["backendHello"].as_str().unwrap();
-    // 三格：版本 b1 · 能用 2 项（ping · files-chmod）、做不到 1 项（kill）· 往返 N 毫秒（N 是现量的，只核是数）。
+    // 往返 N 毫秒 · 版本 b1 · 做不到 1 项（kill）（N 是现量的，只核是数）。
     let want = copy_text(
-        "beProbe.hello.ok",
-        &[
-            ("build", "b1"),
-            ("usable", "2"),
-            ("gaps", "1"),
-            ("ms", "\u{0}"),
-        ],
+        "beProbe.hello.okGaps",
+        &[("build", "b1"), ("gaps", "1"), ("ms", "\u{0}")],
     );
     let (pre, post) = want.split_once('\u{0}').unwrap();
     let ms = hello

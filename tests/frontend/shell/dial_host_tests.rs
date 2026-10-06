@@ -601,7 +601,17 @@ fn vis2_pinning_writes_only_that_hosts_fingerprint_through_the_patch_door() {
     );
     let mut want = base.clone();
     want["remote"]["hosts"][0]["hostKeyFingerprint"] = "SHA256:new".into();
-    assert_eq!(read(), want, "只该改 devbox 那一台的指纹");
+    let got = read();
+    let day = got["remote"]["hosts"][0]["hostKeyPinnedAt"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    assert!(
+        day.len() == 10 && day.as_bytes()[4] == b'-' && day.as_bytes()[7] == b'-',
+        "记下指纹那一天没写成 YYYY-MM-DD：{day:?}"
+    );
+    want["remote"]["hosts"][0]["hostKeyPinnedAt"] = day.into();
+    assert_eq!(got, want, "只该改 devbox 那一台的指纹（＋ 记下的那一天）");
 
     for (origin, host, why) in [
         ("h2", "h2", PinWrite::AlreadySet),
@@ -742,4 +752,16 @@ fn a_jump_host_is_pinned_under_its_own_entry_and_a_direct_dial_judges_only_the_t
     };
     let (_, _, c, r) = pin_targets(&target, &direct, &strict).remove(0);
     assert_eq!(pin_verdict(false, c, r), PinVerdict::AlreadyStrict);
+}
+
+/// 天数换算的那几个界：纪元第一天 · 闰年 2 月 29 日 · 世纪年不闰 · 跨年。
+#[test]
+fn utc_day_is_the_civil_date() {
+    use std::time::{Duration, UNIX_EPOCH};
+    let at = |secs: u64| super::utc_day(UNIX_EPOCH + Duration::from_secs(secs));
+    assert_eq!(at(0), "1970-01-01");
+    assert_eq!(at(951_782_400), "2000-02-29");
+    assert_eq!(at(4_107_542_400), "2100-03-01");
+    assert_eq!(at(1_798_761_599), "2026-12-31");
+    assert_eq!(at(1_798_761_600), "2027-01-01");
 }

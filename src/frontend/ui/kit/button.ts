@@ -18,6 +18,8 @@ export interface ButtonSpec {
   kind?: ButtonKind;
   size?: ButtonSize;
   icon?: IconName;
+  /** 图标放在字后面（展开 / 收起那种「字 ＋ 折叠号」）。 */
+  iconAfter?: boolean;
   /** 悬停提示（图标按钮必给；键位由调用方按当前键位拼）。 */
   hint?: string;
   onClick?: (ev: MouseEvent) => void;
@@ -33,7 +35,8 @@ export function button(spec: ButtonSpec): HTMLButtonElement {
   const kind = spec.kind ?? "secondary";
   b.dataset.kind = kind;
   b.dataset.size = spec.size ?? "regular";
-  if (spec.icon) b.appendChild(icon(spec.icon, spec.size === "compact" ? "compact" : "regular"));
+  const ic = spec.icon ? icon(spec.icon, spec.size === "compact" ? "compact" : "regular") : null;
+  if (ic && !spec.iconAfter) b.appendChild(ic);
   const text = document.createElement("span");
   text.className = s.btnLabel;
   labels.set(b, text);
@@ -43,6 +46,7 @@ export function button(spec: ButtonSpec): HTMLButtonElement {
     text.textContent = spec.label;
     b.appendChild(text);
   }
+  if (ic && spec.iconAfter) b.appendChild(ic);
   if (spec.hint) b.title = spec.hint;
   const click = spec.onClick;
   b.addEventListener("click", (ev) => {

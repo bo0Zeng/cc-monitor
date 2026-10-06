@@ -8,6 +8,8 @@ import s from "./switch.module.css";
 
 export interface SwitchSpec {
   label: string;
+  /** 标签下一行的说明（小字）。 */
+  help?: string;
   on: boolean;
   /** 拨动：返回 Promise 的 ⇒ 等它；`false` / 抛 ⇒ 退回原位。 */
   onChange: (on: boolean) => void | boolean | Promise<boolean | void>;
@@ -19,6 +21,12 @@ export function toggleSwitch(spec: SwitchSpec): { root: HTMLLabelElement; input:
   const text = document.createElement("span");
   text.className = s.swText;
   text.textContent = spec.label;
+  if (spec.help) {
+    const help = document.createElement("span");
+    help.className = s.swHelp;
+    help.textContent = spec.help;
+    text.appendChild(help);
+  }
   const sw = document.createElement("button");
   sw.type = "button";
   sw.className = s.swSwitch;

@@ -3876,7 +3876,7 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 ← {"kind":"probe","ticket":"6f1c…","cell":{"reached":"ssh"}}
 ← {"kind":"probe","ticket":"6f1c…","cell":{"reached":"hello"}}
 ← {"kind":"probe","ticket":"6f1c…","cell":{"reached":"control"}}
-← {"kind":"probe","ticket":"6f1c…","cell":{"end":{"sshOk":true,"fingerprint":"SHA256:…","endpoint":"10.0.0.2:22","backendOk":true,"backendHello":"版本 p5o · 能用 40 项、这台做不到 3 项 · 往返 12 毫秒","backendGaps":[{"code":"no_tmux","count":3}],"message":"SSH 与后端均正常。"}}}
+← {"kind":"probe","ticket":"6f1c…","cell":{"end":{"sshOk":true,"fingerprint":"SHA256:…","endpoint":"10.0.0.2:22","backendOk":true,"backendHello":"12ms · p5o · 3 项不可用","backendGaps":[{"code":"no_tmux","count":3}],"message":"SSH 与后端均正常。"}}}
 ← {"kind":"reply","id":"p1","ok":true,"data":null}
 ```
 
@@ -3884,7 +3884,7 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 〔「进度不许倒退」〕**边拨边推**：每走一段往本连接的应答通道推一帧 `probe`（见出方向那张表），`cell` 恰好一个键 ——
 `stage`（拨号阶段行，与界面 `ConnectStage` 同形）· `reached`（`ssh` 握手过了 · `hello` 那台后端回了 hello · `control` ping 往返了）· `end`（结局，**最后一格**）；
 应答本身不带体。`ticket` 是界面交来的票（1..=64 个 `[A-Za-z0-9-]`，进度流 `probe-progress/<ticket>` 的名字），本后端只当不透明的串回填。
-结局里每步结论都在（部分成功照样回）：`sshOk: false` 时**不回指纹**（免得把失配的 key 固化）。`backendHello` 是那台后端的三格人话（版本 `build_id` · 能用几项 / hello 的 `unavailable` 说做不到几项 · `ping` 往返毫秒；按文案表 `beProbe.hello.*` 拼），`backendGaps` 是做不到的那几类（`[{code, count}]`，按 hello 的 `unavailable` 分；码的人话归 monitor，与置灰那一句同一个家 `control-said.ts::unavailableReason`，界面点开看）；`v=… build=… caps=[…]` 那一形只进后端日志（`wire::hello_summary`）。界面到点没等到 `end` ⇒ 最后收到的那一格说得出停在哪一段。
+结局里每步结论都在（部分成功照样回）：`sshOk: false` 时**不回指纹**（免得把失配的 key 固化）。`backendHello` 是那台后端的一句（`ping` 往返毫秒 · 版本 `build_id` · 功能完整 / hello 的 `unavailable` 说做不到几项；按文案表 `beProbe.hello.*` 拼，界面接在「✓ 就绪」后面），`backendGaps` 是做不到的那几类（`[{code, count}]`，按 hello 的 `unavailable` 分；码的人话归 monitor，与置灰那一句同一个家 `control-said.ts::unavailableReason`，界面点开看）；`v=… build=… caps=[…]` 那一形只进后端日志（`wire::hello_summary`）。界面到点没等到 `end` ⇒ 最后收到的那一格说得出停在哪一段。
 错误码：`invalid_args`（缺 `ticket` / `machine` / 缺 host · user / 端口不对）· `bad_jump` · `failed`（链路那一侧回话读不懂 · 发起它的那条连接关了）。**只在帧面**（硬臂：要拿本连接的应答通道）。
 
 #### `forward-stop`：停一条转发（MIG-1，09-28）

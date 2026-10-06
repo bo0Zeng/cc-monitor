@@ -6,7 +6,7 @@
  * 状态由宿主照后端的回答喂进来（`setConnected`），本模块不判。
  */
 import { button } from "../kit/button";
-import { fold } from "../kit/fold";
+import { fold, setFoldSummary } from "../kit/fold";
 import { icon } from "../kit/icon";
 import { openMenu, type MenuItem } from "../kit/menu";
 import { statusDot, setDot } from "../kit/status-dot";
@@ -16,10 +16,29 @@ import { hostOs, type HostOs } from "./host-os";
 
 const OS_NAME: Record<HostOs, string | null> = { linux: "Linux", windows: "Windows", macos: "macOS", unknown: null };
 
-/** 本机那一页 / 那一行的第二行：`这台电脑 · Linux`。 */
-export function localMeta(): string {
-  const os = OS_NAME[hostOs()];
-  return os ? copyText("machinePage.meta.local", { os }) : copyText("machinePage.meta.localBare");
+/** 后端报来的那台的两样事实（还没报 ⇒ `null`，那一段不写）。 */
+export interface MachineFacts {
+  os: string | null;
+  version: string | null;
+}
+
+export const NO_FACTS: MachineFacts = { os: null, version: null };
+
+/**
+ * 一台的第二行：列表那一行 `地址 · 系统`；卡头 `地址:端口 · 系统 · 版本 x`。
+ * `who` 为 `null` ＝ 本机（`这台电脑`，系统取这扇窗口所在的那台）。
+ */
+export function machineMeta(at: "list" | "head", who: string | null, facts: MachineFacts): string {
+  const os = who === null ? (OS_NAME[hostOs()] ?? facts.os) : facts.os;
+  const parts = [who ?? copyText("machinePage.meta.localBare")];
+  if (os) parts.push(os);
+  if (at === "head" && facts.version) parts.push(copyText("machinePage.meta.version", { ver: facts.version }));
+  return parts.filter((p) => p !== "").join(copyText("kit.text.sep"));
+}
+
+/** 本机那一行 / 卡头的第二行。 */
+export function localMeta(at: "list" | "head" = "head", facts: MachineFacts = NO_FACTS): string {
+  return machineMeta(at, null, facts);
 }
 
 export type MachineSection = "conn" | "cc";
@@ -45,6 +64,8 @@ export interface MachinePage {
   setConnected(connected: boolean | null): void;
   /** 停用了连接：空心点 ＋「已停用」，问题行「连接已停用」（开关在连接设置里）。 */
   setDisabled(on: boolean): void;
+  /** 「这台上的 cc-monitor」折叠头右侧那一句（`版本 x · 在跑`）。 */
+  setCcSummary(text: string): void;
   open(section: MachineSection): void;
 }
 
@@ -80,6 +101,7 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
     const toggleBtn = button({
       label: copyText("machinePage.conn.toggle"),
       icon: "caretDown",
+      iconAfter: true,
       onClick: () => setConn(body.hidden),
     });
     toggleBtn.classList.add("machine-conn-toggle");
@@ -179,6 +201,9 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
     setConnected(c) {
       connected = c;
       paint();
+    },
+    setCcSummary(text) {
+      setFoldSummary(ccFold, text);
     },
     setDisabled(on) {
       if (disabled === on) return;

@@ -50,12 +50,11 @@ fn outcome(
     })
 }
 
-/// 测试连接那一行给人看的三格要的事实：后端版本（BUILD_ID）· 能用几项 / 这台说做不到几项；
+/// 测试连接那一行给人看的几格要的事实：后端版本（BUILD_ID）· 这台说做不到几项；
 /// 做不到的按码分类、每类几项交出去（那句人话归 monitor：`control-said.ts::unavailableReason`，与置灰那一句同一个家 ——
 /// `wire::Unavailable` 头注「那句人话今天归 monitor」）。键值对那一形（`wire::hello_summary`）只进日志。
 struct HelloFacts {
     build: String,
-    usable: usize,
     gaps: usize,
     by_code: Vec<GapCount>,
 }
@@ -76,16 +75,6 @@ struct GapCount {
 
 fn hello_facts(hello: &Value) -> HelloFacts {
     use std::collections::{BTreeMap, BTreeSet};
-    let commands: BTreeSet<String> = hello
-        .get("commands")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(Value::as_str)
-                .map(str::to_string)
-                .collect()
-        })
-        .unwrap_or_default();
     // 逐项收，坏项丢掉、不连累整张。
     let mut by_code: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for e in hello
@@ -105,7 +94,6 @@ fn hello_facts(hello: &Value) -> HelloFacts {
             .and_then(Value::as_str)
             .map(str::to_string)
             .unwrap_or_else(|| copy_text("beProbe.hello.noBuild", &[])),
-        usable: commands.iter().filter(|c| !cant.contains(c)).count(),
         gaps: cant.len(),
         by_code: by_code
             .iter()
@@ -289,11 +277,7 @@ where
     // 键值对那一形只进日志（`wire::hello_summary`）；界面那一行由下面三格拼（文案表）。
     tracing::info!("测试连接：{}", crate::stream::wire::hello_summary(&hello));
     let facts = hello_facts(&hello);
-    let (build, usable, gaps) = (
-        facts.build,
-        facts.usable.to_string(),
-        facts.gaps.to_string(),
-    );
+    let (build, gaps) = (facts.build.clone(), facts.gaps.to_string());
     cells.push(json!({ "reached": "hello" })).await?;
 
     // ③ 控制通道往返。
@@ -347,31 +331,20 @@ where
             cells.push(json!({ "reached": "control" })).await?;
         }
         match answered {
-            Ok(()) => (
-                copy_text(
-                    "beProbe.hello.ok",
-                    &[
-                        ("build", &build),
-                        ("usable", &usable),
-                        ("gaps", &gaps),
-                        (
-                            "ms",
-                            &t0.elapsed().map(|d| d.as_millis()).unwrap_or(0).to_string(),
-                        ),
-                    ],
-                ),
-                copy_text("beProbe.test.ok", &[]),
-            ),
+            Ok(()) => {
+                let ms = t0.elapsed().map(|d| d.as_millis()).unwrap_or(0).to_string();
+                let line = if facts.gaps == 0 {
+                    copy_text("beProbe.hello.ok", &[("build", &build), ("ms", &ms)])
+                } else {
+                    copy_text(
+                        "beProbe.hello.okGaps",
+                        &[("build", &build), ("gaps", &gaps), ("ms", &ms)],
+                    )
+                };
+                (line, copy_text("beProbe.test.ok", &[]))
+            }
             Err(e) => (
-                copy_text(
-                    "beProbe.hello.noAnswer",
-                    &[
-                        ("build", &build),
-                        ("usable", &usable),
-                        ("gaps", &gaps),
-                        ("e", &e),
-                    ],
-                ),
+                copy_text("beProbe.hello.noAnswer", &[("build", &build), ("e", &e)]),
                 copy_text("beProbe.test.controlDown", &[]),
             ),
         }

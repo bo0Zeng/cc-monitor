@@ -90,4 +90,8 @@
   .field[data-error="true"] .fieldNote {
     color: var(--text);
   }
+
+  .field[data-note-on-demand="true"] .fieldNote:empty {
+    min-height: 0;
+  }
 }

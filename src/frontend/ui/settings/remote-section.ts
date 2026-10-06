@@ -26,7 +26,7 @@
 import { commands } from "../ipc/commands";
 import { openPortForwardPanel } from "../views/port-forward";
 // F12：配置数据层已抽到 src/frontend/ui/remote-config.ts（治分层倒挂）——UI 从数据模块 import，不再自持 CRUD。
-import { readStatus, recordFacet, LOCAL_MACHINE_KEY, forgetMachine, renameMachine } from "./machine-status";
+import { recordFacet, LOCAL_MACHINE_KEY, forgetMachine, renameMachine } from "./machine-status";
 import {
   readRemoteConfig,
   patchRemoteConfig,
@@ -46,7 +46,10 @@ import { openMenu, type MenuItem } from "../kit/menu";
 import { statusDot, setDot } from "../kit/status-dot";
 import { toast, undoToast } from "../kit/toast";
 import { openAddMachine } from "./add-machine";
-import { localMeta, type MachineSection } from "./machine-page";
+import { localMeta, machineMeta, NO_FACTS, type MachineFacts, type MachineSection } from "./machine-page";
+import { fetchAccounts, fetchLocalAccounts } from "../account-reads";
+import { isLocalOrigin } from "../ipc/origin";
+import type { AccountsState } from "../accounts";
 import { moveMachinePrefs } from "../account-prefs";
 // K-P1/P2s：本机后端那条把手的 origin。**与 `LOCAL_MACHINE_KEY` 不是同一个串** ——
 // 前者是后端注册表里的键（`inbound_client::LOCAL_ORIGIN`），后者是这本 UI 账本的键。
@@ -152,6 +155,20 @@ export const MACHINE_PAGE_PREFIX = "machine:";
 /** S4b-2：本机那一页的路由 id。与 `LOCAL_MACHINE_KEY` 同源，两处不各写一份。 */
 export const LOCAL_MACHINE_PAGE_ID = `${MACHINE_PAGE_PREFIX}${LOCAL_MACHINE_KEY}`;
 
+/**
+ * 列表那一行右侧那一句：照那台账号库的成品排（做不了多账号 · 没启用 · `N 个账号 · 默认 X`）；问不到 ⇒ 空。
+ * `os` 是那台的系统名（报了才有）。
+ */
+export function accountsSummary(state: AccountsState, os: string | null): string {
+  const meta = state.meta;
+  if (!state.available || meta === null) return "";
+  if (meta.unsupported) return os ? copyText("machineList.summary.single", { os }) : copyText("machineList.summary.singleBare");
+  if (!meta.enabled) return copyText("machineList.summary.notEnabled");
+  const n = state.accounts.length;
+  const def = state.accounts.find((a) => a.isDefault);
+  return def ? copyText("machineList.summary.accounts", { n, name: def.name }) : copyText("machineList.summary.count", { n });
+}
+
 // === 共享 DOM 小工具 ===
 
 
@@ -185,6 +202,8 @@ export class RemoteSection {
   private pageIdOf = new Map<MachineCard, string>();
   /** S5/E56：「还差什么」清单容器。 */
   private countLine!: HTMLElement;
+  /** 后端报来的各台事实（系统 · 版本），按后端那套名字。 */
+  private readonly facts = new Map<string, MachineFacts>();
   /** 各页最近一次喂进来的连接（数「几台离线」用）。 */
   private readonly connected = new Map<string, boolean | null>();
 
@@ -274,7 +293,7 @@ export class RemoteSection {
    * 由 `remote-section.vitest.ts` 里那条「加了本机行之后写出去的机器数不变」钉住。
    */
   private buildLocalRow(): HTMLElement {
-    const row = this.buildRow(LOCAL_MACHINE_PAGE_ID, copyText("remote.localRow.title"), localMeta(), LOCAL_MACHINE_KEY);
+    const row = this.buildRow(LOCAL_MACHINE_PAGE_ID, copyText("remote.localRow.title"), localMeta("list", this.factsOfOrigin(LOCAL_ORIGIN)), LOCAL_MACHINE_KEY, LOCAL_ORIGIN);
     row.classList.add("remote-machine-local");
     void this.noteLocalBackend();
     void this.noteLocalCcm();
@@ -285,11 +304,12 @@ export class RemoteSection {
    * 列表里的一行（本机远端同形）：点 · 名字（不健康时旁边一个词）· 地址与系统 · 右侧账号数 · ⋯；
    * 掉线时下面一行问题行 ＋ 修法。点整行进那台的页。
    */
-  private buildRow(pageId: string, name: string, meta: string, ledgerKey: string): HTMLElement {
+  private buildRow(pageId: string, name: string, meta: string, ledgerKey: string, origin: string): HTMLElement {
     const row = document.createElement("div");
     row.className = "remote-machine-row";
     row.dataset.pageId = pageId;
     row.dataset.ledgerKey = ledgerKey;
+    row.dataset.origin = origin;
     row.addEventListener("click", (ev) => {
       if ((ev.target as HTMLElement).closest("button") && !(ev.target as HTMLElement).closest(".remote-machine-open")) return;
       this.pages?.navigateToMachinePage(pageId);
@@ -310,28 +330,52 @@ export class RemoteSection {
     const metaEl = document.createElement("div");
     metaEl.className = "remote-machine-meta";
     metaEl.textContent = meta;
-    const problem = document.createElement("div");
-    problem.className = "machine-problem";
-    problem.hidden = true;
-    main.append(line, metaEl, problem);
+    main.append(line, metaEl);
+    const side = document.createElement("div");
+    side.className = "remote-machine-side";
     const summary = document.createElement("span");
     summary.className = "remote-machine-summary";
-    const more = button({ label: copyText("machinePage.head.more"), kind: "icon", icon: "more", hint: copyText("machinePage.head.more") });
+    const more = button({ label: copyText("machinePage.head.more"), kind: "icon", icon: "more", size: "compact", hint: copyText("machinePage.head.more") });
     more.addEventListener("click", (ev) => {
       ev.stopPropagation();
       openMenu({ el: more, align: "end" }, this.menuFor(pageId));
     });
-    row.append(dot, main, summary, more);
-    this.paintSummary(row);
+    side.append(summary, more);
+    const problem = document.createElement("div");
+    problem.className = "machine-problem";
+    problem.hidden = true;
+    row.append(dot, main, side, problem);
     return row;
   }
 
-  /** 右侧那一格：账号数（账本里上次读到的那一句）。 */
-  private paintSummary(row: HTMLElement): void {
+  /**
+   * 右侧那一句：那台账号库的概况（`N 个账号 · 默认 X` ／ 未启用多账号 ／ `Windows · 单账号`）。
+   * 连上了才问（问的是已连着的那条通道，不另拨）；问不到 ⇒ 空着。
+   */
+  private async loadSummary(row: HTMLElement): Promise<void> {
+    const origin = row.dataset.origin ?? "";
+    if (origin === "" || row.dataset.summaryAsked === "true") return;
+    row.dataset.summaryAsked = "true";
+    const state = isLocalOrigin(origin) ? await fetchLocalAccounts() : await fetchAccounts(origin);
     const box = row.querySelector<HTMLElement>(".remote-machine-summary");
-    if (!box) return;
-    const acct = readStatus(row.dataset.ledgerKey ?? "").accounts;
-    box.textContent = acct && acct.kind !== "fail" ? (acct.detail ?? "") : "";
+    if (box) box.textContent = accountsSummary(state, this.factsOfOrigin(origin).os);
+  }
+
+  /** 那台后端报来的事实（系统 · 版本）；还没报 ⇒ 两格都空。 */
+  private factsOfOrigin(origin: string): MachineFacts {
+    return this.facts.get(origin) ?? NO_FACTS;
+  }
+
+  /**
+   * 宿主把后端报来的那台的事实喂进来：列表那一行 · 卡头的第二行跟着换。
+   * `origin` 是后端那套名字（本机 `<local>`）。
+   */
+  setFacts(origin: string, facts: MachineFacts): void {
+    this.facts.set(origin, facts);
+    const pageId = isLocalOrigin(origin) ? LOCAL_MACHINE_PAGE_ID : this.pageIdOfMachine(origin);
+    if (!pageId) return;
+    const meta = this.findMachineRow(pageId)?.querySelector<HTMLElement>(".remote-machine-meta");
+    if (meta) meta.textContent = this.listMetaOfPage(pageId);
   }
 
   /** 宿主照后端的回答喂进来：那一行的点 · 词 · 问题行。 */
@@ -372,6 +416,8 @@ export class RemoteSection {
     }
     this.connected.set(pageId, connected);
     this.paintCount();
+    if (connected === true) void this.loadSummary(row);
+    [...this.pageIdOf.entries()].find(([, id]) => id === pageId)?.[0].showLive(connected === true);
   }
 
   private paintRowDisabled(row: HTMLElement, pageId: string): void {
@@ -454,14 +500,30 @@ export class RemoteSection {
     ];
   }
 
-  /** 机器页卡头第二行：`user@host:port`（没填主机 ⇒ 空）。 */
-  metaOfPage(pageId: string): string | null {
+  /** 那一页那台的 `user@host`（`withPort` ⇒ 带 `:端口`）；不是远端机器页 ⇒ `null`；没填主机 ⇒ 空串。 */
+  private whoOfPage(pageId: string, withPort: boolean): string | null {
     const card = [...this.pageIdOf.entries()].find(([, id]) => id === pageId)?.[0];
     if (!card) return null;
     const c = card.collect();
     if (!c.host) return "";
     const who = c.user ? `${c.user}@${c.host}` : c.host;
-    return c.port && c.port !== 22 ? `${who}:${c.port}` : who;
+    return withPort ? `${who}:${c.port || 22}` : who;
+  }
+
+  /** 列表那一行的第二行：`user@host · 系统`。 */
+  private listMetaOfPage(pageId: string): string {
+    if (pageId === LOCAL_MACHINE_PAGE_ID) return localMeta("list", this.factsOfOrigin(LOCAL_ORIGIN));
+    const who = this.whoOfPage(pageId, false);
+    if (!who) return "";
+    return machineMeta("list", who, this.factsOfOrigin(this.originOfPage(pageId) ?? ""));
+  }
+
+  /** 机器页卡头第二行：`user@host:端口 · 系统 · 版本 x`（没填主机 ⇒ 空；不是远端机器页 ⇒ `null`）。 */
+  metaOfPage(pageId: string): string | null {
+    if (pageId === LOCAL_MACHINE_PAGE_ID) return localMeta("head", this.factsOfOrigin(LOCAL_ORIGIN));
+    const who = this.whoOfPage(pageId, true);
+    if (who === null || who === "") return who;
+    return machineMeta("head", who, this.factsOfOrigin(this.originOfPage(pageId) ?? ""));
   }
 
   /**
@@ -495,7 +557,6 @@ export class RemoteSection {
       // 见头注：查不到就不写。**不许在这里补一个 `fail`** —— 那是替用户下一个没做过的结论。
       return;
     }
-    this.redrawLocalRow();
   }
 
   /**
@@ -510,14 +571,8 @@ export class RemoteSection {
     } catch {
       return;
     }
-    this.redrawLocalRow();
   }
 
-  /** 本机那一行的状态格与「还差什么」按账本重画一次。 */
-  private redrawLocalRow(): void {
-    const row = this.machinesContainer.querySelector<HTMLElement>(".remote-machine-local");
-    if (row) this.paintSummary(row);
-  }
 
   /** 用 config 里的机器列表重建卡片。 */
   private rebuildCards(hosts: RemoteHostConfig[]): void {
@@ -577,10 +632,12 @@ export class RemoteSection {
       card.setPageMode();
       this.pages.addMachinePage(id, card.displayName(), card.element, card.parts());
       this.machinePageIds.push(id);
-      this.machinesContainer.insertBefore(
-        this.buildRow(id, card.displayName(), this.metaOfPage(id) ?? "", card.persistedKey ?? hostKey(card.collect())),
+      const row = this.machinesContainer.insertBefore(
+        this.buildRow(id, card.displayName(), "", card.persistedKey ?? hostKey(card.collect()), card.persistedKey ?? hostKey(card.collect())),
         this.rowsTail,
       );
+      const meta = row.querySelector<HTMLElement>(".remote-machine-meta");
+      if (meta) meta.textContent = this.listMetaOfPage(id);
     } else {
       this.machinesContainer.appendChild(card.element);
     }
@@ -688,9 +745,13 @@ export class RemoteSection {
     const nameBtn = row.querySelector<HTMLElement>(".remote-machine-open");
     if (nameBtn) nameBtn.textContent = card.displayName();
     const meta = row.querySelector<HTMLElement>(".remote-machine-meta");
-    if (meta) meta.textContent = this.metaOfPage(pageId) ?? "";
+    if (meta) meta.textContent = this.listMetaOfPage(pageId);
     row.dataset.ledgerKey = card.persistedKey ?? hostKey(card.collect());
-    this.paintSummary(row);
+    const origin = card.persistedKey ?? hostKey(card.collect());
+    if (row.dataset.origin !== origin) {
+      row.dataset.origin = origin;
+      delete row.dataset.summaryAsked;
+    }
     this.pages.renameMachinePage?.(pageId, card.displayName());
   }
 

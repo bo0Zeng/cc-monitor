@@ -15,6 +15,8 @@ export interface FieldSpec {
   help?: string;
   multiline?: boolean;
   prefix?: string;
+  /** 没说明句时下方那一行不留空（错误句出现时才占一行）。默认留着，错误句出现不跳位。 */
+  noteOnDemand?: boolean;
 }
 
 export interface FieldHandle {
@@ -32,6 +34,7 @@ export function field(spec: FieldSpec): FieldHandle {
   const id = `kit-field-${++seq}`;
   const root = document.createElement("div");
   root.className = s.field;
+  if (spec.noteOnDemand) root.dataset.noteOnDemand = "true";
   const label = document.createElement("label");
   label.className = s.fieldLabel;
   label.htmlFor = id;

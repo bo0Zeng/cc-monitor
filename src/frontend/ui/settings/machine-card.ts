@@ -36,73 +36,56 @@ import type { ResolvedHost } from "../ssh-config-reads";
 import { confirmDialog } from "../kit/dialog";
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { copyText } from "../copy-table";
-import { fold } from "../kit/fold";
+import { fold, setFoldSummary } from "../kit/fold";
+import { button, setButtonLabel } from "../kit/button";
+import { icon } from "../kit/icon";
+import { ccRow } from "./cc-row";
 import { toggleSwitch } from "../kit/switch";
 import { unavailableReason } from "../control-said";
 
-/** 一行：label（上）+ 宽文本 input（下）。change 触发 onChange。 */
-function buildTextRow(
+/**
+ * 连接设置的一格：标签（上）· 框（中，右侧可挂一颗按钮）· 下面一行说明（出错时错误句换在同一行）。
+ * change 触发 onChange。
+ */
+function connField(
   parent: HTMLElement,
   labelText: string,
-  placeholder: string,
-  onChange: () => void,
+  opts: { placeholder?: string; hint?: string; type?: "text" | "number"; onChange: () => void },
 ): HTMLInputElement {
-  const row = document.createElement("div");
-  row.className = "settings-row settings-row-stack";
-  const label = document.createElement("span");
+  const wrap = document.createElement("div");
+  wrap.className = "machine-conn-field";
+  const label = document.createElement("label");
   label.className = "settings-label";
   label.textContent = labelText;
-  row.appendChild(label);
+  const box = document.createElement("div");
+  box.className = "machine-conn-box";
   const input = document.createElement("input");
-  input.type = "text";
+  input.type = opts.type ?? "text";
   input.className = "settings-input settings-input-wide";
-  input.placeholder = placeholder;
-  // spellcheck/autocomplete 关掉：这些是路径 / 主机名，不是自然语言
+  if (opts.type === "number") {
+    input.min = "1";
+    input.max = "65535";
+    input.step = "1";
+  }
+  if (opts.placeholder) input.placeholder = opts.placeholder;
+  // 路径 / 主机名，不是自然语言
   input.spellcheck = false;
   input.autocomplete = "off";
-  input.addEventListener("change", onChange);
-  row.appendChild(input);
-  parent.appendChild(row);
+  input.addEventListener("change", opts.onChange);
+  const id = `machine-conn-${++connFieldSeq}`;
+  input.id = id;
+  label.htmlFor = id;
+  box.appendChild(input);
+  const note = document.createElement("div");
+  note.className = "machine-conn-note";
+  note.dataset.hint = opts.hint ?? "";
+  note.textContent = opts.hint ?? "";
+  wrap.append(label, box, note);
+  parent.appendChild(wrap);
   return input;
 }
-/** 一行：label + 数字 input（端口）。change 触发 onChange。 */
-function buildNumberRow(
-  parent: HTMLElement,
-  labelText: string,
-  defaultValue: number,
-  onChange: () => void,
-): HTMLInputElement {
-  const row = document.createElement("div");
-  row.className = "settings-row";
-  const label = document.createElement("span");
-  label.className = "settings-label";
-  label.textContent = labelText;
-  row.appendChild(label);
-  const input = document.createElement("input");
-  input.type = "number";
-  input.className = "settings-input";
-  input.min = "1";
-  input.max = "65535";
-  input.step = "1";
-  input.placeholder = String(defaultValue);
-  input.addEventListener("change", onChange);
-  row.appendChild(input);
-  parent.appendChild(row);
-  return input;
-}
-/** 一行带 ✓/✗ 状态标的测试结果行。 */
-function makeStatusLine(ok: boolean, text: string): HTMLElement {
-  const line = document.createElement("div");
-  line.className = `remote-test-line ${ok ? "remote-test-ok" : "remote-test-err"}`;
-  const mark = document.createElement("span");
-  mark.className = "remote-test-mark";
-  mark.textContent = ok ? copyText("machineCard.statusLine.ok") : copyText("machineCard.statusLine.fail");
-  line.appendChild(mark);
-  const label = document.createElement("span");
-  label.textContent = text;
-  line.appendChild(label);
-  return line;
-}
+let connFieldSeq = 0;
+
 /** 解析端口字符串：空 ⇒ 22（占位就是它）；不是 1–65535 的整数 ⇒ `null`（不替用户兜底）。 */
 function parsePort(raw: string): number | null {
   const t = raw.trim();
@@ -112,25 +95,46 @@ function parsePort(raw: string): number | null {
   return port >= 1 && port <= 65535 ? port : null;
 }
 
-/** 一格输入下面那一行错误：有话说时挂在那一格所在行的后面，没话说时摘掉。 */
+/** 一格输入下面那一行：有错 ⇒ 错误句换在说明的位置；没错 ⇒ 还原说明。 */
 function showFieldError(input: HTMLInputElement, text: string | null): void {
-  const row = input.parentElement;
-  const next = row?.nextElementSibling;
-  let err = next instanceof HTMLElement && next.dataset.fieldError !== undefined ? next : null;
+  const note = input.closest(".machine-conn-field")?.querySelector<HTMLElement>(".machine-conn-note");
+  if (!note) return;
   if (text === null) {
-    err?.remove();
+    delete note.dataset.error;
+    note.textContent = note.dataset.hint ?? "";
     input.removeAttribute("aria-invalid");
     return;
   }
-  if (!err) {
-    err = document.createElement("div");
-    err.className = "remote-test-line remote-test-err";
-    err.dataset.fieldError = "";
-    row?.after(err);
-  }
-  err.textContent = text;
+  note.dataset.error = "true";
+  const t = document.createElement("span");
+  t.textContent = text;
+  note.replaceChildren(icon("error", "compact"), t);
   input.setAttribute("aria-invalid", "true");
 }
+
+/** `SHA256:Aa3x…Q0`：指纹太长时留头尾、中间省略（悬停给全串）。 */
+export function shortFingerprint(fp: string): string {
+  const m = /^(SHA256:)(.+)$/.exec(fp);
+  if (!m || m[2].length <= 10) return fp;
+  return `${m[1]}${m[2].slice(0, 4)}…${m[2].slice(-2)}`;
+}
+
+/** 今天（本地日期）`YYYY-MM-DD`：记下指纹那一天。 */
+function today(): string {
+  const d = new Date();
+  const p = (n: number): string => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** 连上那一刻的几段（测试连接那一行）：解析 · 连接 · 认证 · 就绪。 */
+type ConnSeg = "resolve" | "connect" | "auth" | "ready";
+const CONN_SEGS: readonly ConnSeg[] = ["resolve", "connect", "auth", "ready"];
+const SEG_LABEL: Record<ConnSeg, () => string> = {
+  resolve: () => copyText("machineCard.seg.resolve"),
+  connect: () => copyText("machineCard.seg.connect"),
+  auth: () => copyText("machineCard.seg.auth"),
+  ready: () => copyText("machineCard.seg.ready"),
+};
 
 /**
  * F46：阶段事件 → 泳道行的图标 + 文案。纯函数便于单测。
@@ -210,8 +214,11 @@ export function shouldShowResetFingerprint(current: string): boolean {
 /** 一张机器卡交给详情页的三块：连接 / 组件 / 终端（别名）。 */
 export interface MachineCardParts {
   connection: HTMLElement;
+  /** 「这台上的 cc-monitor」里归这台连接配置的那几行（恢复命令 · 卸载的结果）。 */
   components: HTMLElement;
   terminal: HTMLElement;
+  /** 「从 X 卸载…」那颗按钮（宿主摆在那一折底行右侧）。 */
+  uninstall?: HTMLElement;
 }
 
 /** 按钮结果写在哪一栏。 */
@@ -248,15 +255,20 @@ export class MachineCard {
   private jumpInput!: HTMLInputElement;
   /** S4b-3（§5-1）：这台机器的 resume 启动命令（空 = 用全局默认）。 */
   private resumeCmdInput!: HTMLInputElement;
+  /** 恢复命令那一行的说明（`仅 {machine} · 留空 = 通用设置`，跟着名字换）。 */
+  private resumeHelp!: HTMLElement;
+  /** 指纹记下的那一天（盘上 `hostKeyPinnedAt`；空 ＝ 不知道）。 */
+  private pinnedAt = "";
   /** 名字 / 地址 / 端口最后一次被接受的值：输入框里不合法的那一格不存，交出去的是这一份。 */
   private accepted = { label: "", host: "", port: 22 };
   /** 连接这台（开关那一格的当前值）。 */
   private connect = true;
   private connectSwitch!: { root: HTMLLabelElement; set(on: boolean): void };
+  /** 「更多：备用地址 · 跳板机」那一折（标题行右侧写现值）。 */
+  private moreFold: HTMLElement | null = null;
   /** 依当前指纹值显隐「重置为 TOFU」按钮（load / 重置后调用）。 */
   private syncResetFpVisibility!: () => void;
   private testButton!: HTMLButtonElement;
-  private backendInstallButton!: HTMLButtonElement;
   private backendUninstallButton!: HTMLButtonElement;
   private testResult!: HTMLElement;
   /** 「组件」栏那几个动作的结果区（「连接」栏的结果仍在 `testResult`）。 */
@@ -311,6 +323,7 @@ export class MachineCard {
       const disk = await resolveRemoteConfigByOrigin(n.origin);
       if (disk?.hostKeyFingerprint) {
         this.fingerprintInput.value = disk.hostKeyFingerprint;
+        this.pinnedAt = disk.hostKeyPinnedAt ?? "";
         this.syncResetFpVisibility();
       }
     }
@@ -330,6 +343,7 @@ export class MachineCard {
       user: this.userInput.value.trim(),
       keyPath: this.keyPathInput.value.trim(),
       hostKeyFingerprint: this.fingerprintInput.value.trim(),
+      hostKeyPinnedAt: this.fingerprintInput.value.trim() ? this.pinnedAt : "",
       addresses: parseAddressLines(this.addressesInput.value),
       jump: this.jumpInput.value.trim(),
       resumeCommand: this.resumeCmdInput.value.trim(),
@@ -451,18 +465,14 @@ export class MachineCard {
       this.accepted.host = host;
       onChange();
     };
-    this.labelInput = buildTextRow(
-      body,
-      copyText("machineCard.field.label"),
-      copyText("machineCard.field.labelHint"),
-      onNameChange,
-    );
-    this.hostInput = buildTextRow(
-      body,
-      copyText("machineCard.field.host"),
-      copyText("machineCard.field.hostHint"),
-      onNameChange,
-    );
+    this.labelInput = connField(body, copyText("machineCard.field.label"), {
+      placeholder: copyText("machineCard.field.labelHint"),
+      onChange: onNameChange,
+    });
+    this.hostInput = connField(body, copyText("machineCard.field.host"), {
+      hint: copyText("machineCard.field.hostHint"),
+      onChange: onNameChange,
+    });
     // 端口不是 1–65535 ⇒ 就地说、不存（不再悄悄存成 22）。
     const onPortChange = (): void => {
       const port = parsePort(this.portInput.value);
@@ -474,53 +484,62 @@ export class MachineCard {
       this.accepted.port = port;
       onChange();
     };
-    this.portInput = buildNumberRow(body, copyText("machineCard.field.port"), 22, onPortChange);
-    // 占位符举**多个**例子，别只写一个 —— 只写 "pi" 会让人以为这里非填树莓派默认用户不可。
-    this.userInput = buildTextRow(
-      body,
-      copyText("machineCard.field.user"),
-      copyText("machineCard.field.userHint"),
+    this.userInput = connField(body, copyText("machineCard.field.user"), {
+      placeholder: copyText("machineCard.field.userHint"),
       onChange,
-    );
-    this.keyPathInput = buildTextRow(
-      body,
-      copyText("machineCard.field.keyPath"),
-      "C:\\Users\\me\\.ssh\\id_ed25519",
+    });
+    this.portInput = connField(body, copyText("machineCard.field.port"), { type: "number", placeholder: "22", onChange: onPortChange });
+    this.portInput.closest(".machine-conn-field")?.classList.add("machine-conn-port");
+    this.keyPathInput = connField(body, copyText("machineCard.field.keyPath"), {
+      hint: copyText("addMachine.field.keyHelp"),
       onChange,
-    );
-    this.fingerprintInput = buildTextRow(
-      body,
-      copyText("machineCard.field.fingerprint"),
-      copyText("machineCard.field.fingerprintHint"),
-      onChange,
-    );
-    // F43：重置指纹入口——补 aterm 自曝的坑（服务器合法换 host key 后严格校验会永久
-    // 拒连，此前只能手动清空输入框、无风险告知）。仅在已固化指纹时显示。
-    this.fingerprintInput.readOnly = true;
-    this.fingerprintInput.classList.add("machine-fp");
+    });
+    // 私钥框右侧［选…］：系统选文件框，默认落在 ~/.ssh。
+    const pickKey = button({
+      label: copyText("machineCard.field.keyPick"),
+      onClick: () => void this.onPickKey(),
+    });
+    this.keyPathInput.parentElement?.appendChild(pickKey);
+
+    // 主机指纹：只读一行（`SHA256:… · 记于 {date}`）＋［忘记…］；值本身住在一格隐藏框里随整台存。
+    this.fingerprintInput = document.createElement("input");
+    this.fingerprintInput.type = "hidden";
+    const fpRow = document.createElement("div");
+    fpRow.className = "machine-conn-field machine-conn-fp";
+    const fpLabel = document.createElement("span");
+    fpLabel.className = "settings-label";
+    fpLabel.textContent = copyText("machineCard.field.fingerprint");
+    const fpLine = document.createElement("div");
+    fpLine.className = "machine-conn-fp-line";
+    const fpText = document.createElement("span");
+    fpText.className = "machine-fp";
     const resetFpBtn = document.createElement("button");
     resetFpBtn.type = "button";
-    resetFpBtn.className = "settings-btn";
+    resetFpBtn.className = "machine-conn-link";
     resetFpBtn.textContent = copyText("machineCard.field.resetFingerprint");
-    resetFpBtn.title =
-      copyText("machineCard.field.resetFingerprintHint");
+    resetFpBtn.title = copyText("machineCard.field.resetFingerprintHint");
     resetFpBtn.addEventListener("click", () => void this.onResetFingerprint());
-    this.fingerprintInput.parentElement?.appendChild(resetFpBtn);
+    fpLine.append(fpText, resetFpBtn);
+    fpRow.append(fpLabel, fpLine, this.fingerprintInput);
+    body.appendChild(fpRow);
     const syncResetVisibility = (): void => {
-      resetFpBtn.style.display = shouldShowResetFingerprint(
-        this.fingerprintInput.value,
-      )
-        ? "inline-block"
-        : "none";
+      const fp = this.fingerprintInput.value.trim();
+      const shown = shouldShowResetFingerprint(fp);
+      resetFpBtn.hidden = !shown;
+      fpText.title = fp;
+      fpText.textContent = !fp
+        ? copyText("machineCard.fp.none")
+        : this.pinnedAt
+          ? copyText("machineCard.fp.line", { fp: shortFingerprint(fp), date: this.pinnedAt.slice(5) })
+          : shortFingerprint(fp);
     };
-    this.fingerprintInput.addEventListener("input", syncResetVisibility);
     this.syncResetFpVisibility = syncResetVisibility;
     syncResetVisibility();
 
     // F45：备用地址（多行，每行一个 host / host:port / [IPv6]:port）。竞发时首选 host
     // 字段、其余并发拨号，首个握手成功者胜——内网 IP 死了公网顶上。
     const addrRow = document.createElement("div");
-    addrRow.className = "settings-row settings-row-stack";
+    addrRow.className = "machine-conn-field";
     const addrLabel = document.createElement("span");
     addrLabel.className = "settings-label";
     addrLabel.textContent = copyText("machineCard.field.addresses");
@@ -531,69 +550,38 @@ export class MachineCard {
     this.addressesInput.spellcheck = false;
     this.addressesInput.placeholder =
       copyText("machineCard.field.addressesHint");
-    this.addressesInput.addEventListener("change", onChange);
+    this.addressesInput.addEventListener("change", () => {
+      this.paintMoreSummary();
+      onChange();
+    });
     addrRow.appendChild(this.addressesInput);
     body.appendChild(addrRow);
 
     // F56：跳板 ProxyJump——填另一台已配置主机的 label（空=直连）。经该跳板机隧道连本机。
-    this.jumpInput = buildTextRow(
-      body,
-      copyText("machineCard.field.jump"),
-      copyText("machineCard.field.jumpHint"),
-      onChange,
-    );
+    this.jumpInput = connField(body, copyText("machineCard.field.jump"), {
+      placeholder: copyText("machineCard.field.jumpHint"),
+      onChange: () => {
+        this.paintMoreSummary();
+        onChange();
+      },
+    });
 
-    // 🔴 `K-R59`（09-11，定框 `K35`）：**这里原来是那个 `daemonless` 降级开关**
-    //    （checkbox 逐字「daemonless 降级读取（无需后端）」→ `RemoteHostConfig.daemonless`）。
-    //    `K35` 逐字：「不要有 daemonless。没有没有后端的情况。前端应该就是去调用远程后端的。」
-    //    ⇒ 整格删掉：字段 · 顶层二选一 · 轮询段 · 这一格界面 · 那条本机豁免，五处一起走。
-    //    用户盘上那份旧 `true` 由 `remote-config.ts` 的 `LEGACY_NO_BACKEND_KEY` 认出来，
-    //    在「还差什么」清单上指名告知（`NO_BACKEND_GAP_CODE`），不静默吞掉。
-
-    // **机器卡上只有三个动作** ——
-    //   ① 部署后端 · ② 别名 · ③ 后端代管的资产。从前这里是**一行 8 颗按钮**全挤在「组件」栏：
-    //   测试连接 · 文件 · 推送公钥 · 开新 Claude · 安装 backend · 卸载 backend · 装 ccm 启动器 · 卸载 ccm。
-    //   ⇒ 按「它动的是什么」分回去：
-    //   · 前四颗动的是**这条连接**（验它 · 免密 · 用它看文件 / 起会话）⇒ 回「连接」栏，挨着它们用的那几格；
-    //   · 后四颗是两件事的四个开关（装后端 · 「ccm 助手」），而「ccm 助手」自己又是两件事
-    //     （① 推入口 ② 写别名块）⇒ 推入口并进 ①（**一颗按钮**），写别名块归 ②；
-    //   · ③ 不是按钮：账号在这一页的「账号」栏，skill / MCP 在顶层「扩展」页。
-    //   「ccm 助手 / ccm 启动器」这个词整个删掉（用户 2026-09-17 逐字「装/卸 ccm 助手是假的」）。
-    const mkBtn = (
-      label: string,
-      variant: string,
-      title: string,
-      onClick: () => void,
-    ): HTMLButtonElement => {
-      const b = document.createElement("button");
-      b.type = "button";
-      // `variant` 空串 = 默认那一种（原先的 `settings-btn-secondary` 从没有过规则，已摘）。
-      b.className = variant ? `settings-btn ${variant}` : "settings-btn";
-      b.textContent = label;
-      b.title = title;
-      b.addEventListener("click", onClick);
-      return b;
-    };
-
-    // ── 连接栏的动作：测试 · 推公钥 · 文件 · 开新 Claude ──
+    // ── 连接设置的动作：测试连接 · 推送公钥（左对齐，在「连接这台」下面）──
     const connRow = document.createElement("div");
-    connRow.className = "settings-row settings-row-actions";
-    this.testButton = mkBtn(
-      copyText("machineCard.build.test"),
-      "",
-      copyText("machineCard.build.testHint"),
-      () => void this.onTestConnection(),
-    );
+    connRow.className = "machine-conn-actions";
+    this.testButton = button({
+      label: copyText("machineCard.build.test"),
+      hint: copyText("machineCard.build.testHint"),
+      onClick: () => void this.onTestConnection(),
+    });
     connRow.appendChild(this.testButton);
     // F50：一键把本地公钥推到远端 authorized_keys（onboarding 免密）。
-    const pushKeyBtn = mkBtn(
-      copyText("machineCard.build.pushKey"),
-      "",
-      copyText("machineCard.build.pushKeyHint"),
-      () => void this.onPushPubkey(pushKeyBtn),
-    );
+    const pushKeyBtn: HTMLButtonElement = button({
+      label: copyText("machineCard.build.pushKey"),
+      hint: copyText("machineCard.build.pushKeyHint"),
+      onClick: () => void this.onPushPubkey(pushKeyBtn),
+    });
     connRow.appendChild(pushKeyBtn);
-    // F48：在原生文件窗口里打开这一台（老 SFTP 面板退役，终点换成 `file-window.ts`）。
     body.appendChild(connRow);
     this.testResult = document.createElement("div");
     this.testResult.className = "remote-test-result";
@@ -604,36 +592,25 @@ export class MachineCard {
     // ↓↓ 从这里起归「组件」栏 ↓↓
     body = this.componentsPart;
 
-    // ★ S4b-3：**这台机器**的 resume 启动命令。
-    // 刻意挨着下面的动作：此前 resume 命令是全局单值、住在「外观 → 行为」里，而装东西是
-    // 每台机器一个按钮 —— 两处隔着两个顶层组，「装完却忘了改 resume 命令」是个结构性陷阱。
-    // 空 = 沿用全局默认，所以没填过的机器行为一字不变。
-    this.resumeCmdInput = buildTextRow(
-      body,
-      copyText("machineCard.field.resumeCmd"),
-      copyText("machineCard.field.resumeCmdHint"),
-      onChange,
-    );
+    // 这台的恢复命令（空 = 用通用设置里那一条）：「这台上的 cc-monitor」里一行，框在行右。
+    this.resumeCmdInput = document.createElement("input");
+    this.resumeCmdInput.type = "text";
+    this.resumeCmdInput.className = "settings-input machine-cc-input";
+    this.resumeCmdInput.placeholder = copyText("machineCard.field.resumeCmdHint");
+    this.resumeCmdInput.spellcheck = false;
+    this.resumeCmdInput.autocomplete = "off";
+    this.resumeCmdInput.addEventListener("change", onChange);
+    this.resumeHelp = document.createElement("span");
+    body.appendChild(ccRow(copyText("machineCard.field.resumeCmd"), this.resumeHelp, [this.resumeCmdInput]));
 
-    // ── ① 部署后端 ──
-    const deployRow = document.createElement("div");
-    deployRow.className = "settings-row settings-row-actions";
-    this.backendInstallButton = mkBtn(
-      copyText("machineCard.deploy.install"),
-      "",
-      // 跳过的条件是两条（版本已是最新、且落点那个文件在），两个事实各自说话。
-      copyText("machineCard.deploy.installHint"),
-      () => void this.onDeployBackend(),
-    );
-    deployRow.appendChild(this.backendInstallButton);
-    this.backendUninstallButton = mkBtn(
-      copyText("machineCard.deploy.uninstall"),
-      "settings-btn-danger-text",
-      copyText("machineCard.deploy.uninstallHint"),
-      () => void this.onUninstallBackend(),
-    );
-    deployRow.appendChild(this.backendUninstallButton);
-    body.appendChild(deployRow);
+    // 从这台卸载（红字，摆在那一折底行右侧）；结果落在这一折里。
+    this.backendUninstallButton = button({
+      label: copyText("machineCard.uninstall.open", { machine: this.displayName() }),
+      kind: "danger-text",
+      size: "compact",
+      hint: copyText("machineCard.deploy.uninstallHint"),
+      onClick: () => void this.onUninstallBackend(),
+    });
 
     this.actionResult = document.createElement("div");
     this.actionResult.className = "remote-test-result";
@@ -673,33 +650,56 @@ export class MachineCard {
 
   /**
    * 连接设置的排法：名称 · 地址 / 用户 · 端口 两列，私钥 · 主机指纹通栏，
-   * 备用地址 · 跳板机收进「更多」，下面测试连接 · 推送公钥与结果。
+   * 备用地址 · 跳板机收进「更多」（行右写现值），下面「连接这台」，再下面测试连接 · 推送公钥与结果。
    */
   private layoutConnection(body: HTMLElement): void {
-    const rowOf = (el: HTMLElement): HTMLElement => el.closest<HTMLElement>(".settings-row") ?? el;
+    const fieldOf = (el: HTMLElement): HTMLElement => el.closest<HTMLElement>(".machine-conn-field") ?? el;
     const grid = document.createElement("div");
     grid.className = "machine-conn-grid";
-    grid.append(rowOf(this.labelInput), rowOf(this.hostInput), rowOf(this.userInput), rowOf(this.portInput));
-    const wide = [rowOf(this.keyPathInput), rowOf(this.fingerprintInput)];
+    grid.append(fieldOf(this.labelInput), fieldOf(this.hostInput), fieldOf(this.userInput), fieldOf(this.portInput));
+    const wide = [fieldOf(this.keyPathInput), fieldOf(this.fingerprintInput)];
     for (const w of wide) w.classList.add("machine-conn-wide");
     grid.append(...wide);
     const moreBody = document.createElement("div");
-    moreBody.append(rowOf(this.addressesInput), rowOf(this.jumpInput));
-    const more = fold({ title: copyText("machineCard.conn.more"), open: false, body: moreBody });
-    more.classList.add("machine-conn-more");
+    moreBody.className = "machine-conn-more-body";
+    moreBody.append(fieldOf(this.addressesInput), fieldOf(this.jumpInput));
+    this.moreFold = fold({ title: copyText("machineCard.conn.more"), summary: "", open: false, body: moreBody });
+    this.moreFold.classList.add("machine-conn-more");
     this.connectSwitch = toggleSwitch({
       label: copyText("machineCard.conn.connect"),
+      help: copyText("machineCard.conn.connectHint"),
       on: this.connect,
       onChange: (on) => {
         this.connect = on;
         this.hooks.onChange();
       },
     });
-    const hint = document.createElement("div");
-    hint.className = "settings-hint";
-    hint.textContent = copyText("machineCard.conn.connectHint");
     this.connectSwitch.root.classList.add("machine-conn-switch");
-    body.prepend(grid, more, this.connectSwitch.root, hint);
+    body.prepend(grid, this.moreFold, this.connectSwitch.root);
+  }
+
+  /** 「更多」行右的现值：`跳板 X` ／ `跳板 —`，有备用地址再加 `备用地址 n`。 */
+  private paintMoreSummary(): void {
+    if (!this.moreFold) return;
+    const jump = this.jumpInput.value.trim();
+    const parts = [copyText("machineCard.conn.moreJump", { jump: jump || copyText("machineCard.conn.none") })];
+    const n = parseAddressLines(this.addressesInput.value).length;
+    if (n > 0) parts.push(copyText("machineCard.conn.moreAddrs", { n }));
+    setFoldSummary(this.moreFold, parts.join(copyText("kit.text.sep")));
+  }
+
+  /** 私钥［选…］：系统选文件框（默认在 ~/.ssh），选了就填进去并存。 */
+  private async onPickKey(): Promise<void> {
+    let defaultPath: string | undefined;
+    try {
+      defaultPath = await join(await homeDir(), ".ssh");
+    } catch {
+      /* 拿不到 home ⇒ 用系统默认起点 */
+    }
+    const picked = await open({ title: copyText("machineCard.field.keyPickTitle"), multiple: false, directory: false, defaultPath });
+    if (typeof picked !== "string") return;
+    this.keyPathInput.value = picked;
+    this.keyPathInput.dispatchEvent(new Event("change"));
   }
 
   /** 折叠/展开本卡片：折叠时只剩 legend（机器名行），隐藏全部字段 + 测试/安装。 */
@@ -717,6 +717,7 @@ export class MachineCard {
     this.userInput.value = cfg.user;
     this.keyPathInput.value = cfg.keyPath;
     this.fingerprintInput.value = cfg.hostKeyFingerprint;
+    this.pinnedAt = cfg.hostKeyPinnedAt ?? "";
     this.addressesInput.value = cfg.addresses.join("\n");
     this.jumpInput.value = cfg.jump ?? "";
     this.resumeCmdInput.value = cfg.resumeCommand;
@@ -724,6 +725,7 @@ export class MachineCard {
     this.connectSwitch.set(cfg.connect);
     this.acceptInputs();
     this.syncResetFpVisibility();
+    this.paintMoreSummary();
   }
 
   /**
@@ -739,12 +741,13 @@ export class MachineCard {
         title: copyText("machineCard.resetFingerprint.title", { host }),
         action: copyText("machineCard.resetFingerprint.action"),
         danger: true,
-        body: copyText("machineCard.resetFingerprint.confirm", { host }),
+        body: copyText("machineCard.resetFingerprint.confirm"),
       }))
     ) {
       return;
     }
     this.fingerprintInput.value = "";
+    this.pinnedAt = "";
     this.syncResetFpVisibility();
     this.hooks.onChange(); // 触发 section 保存（写回 config，指纹置空 = 严格校验解除）
     this.showResetFeedback();
@@ -763,7 +766,10 @@ export class MachineCard {
 
   /** legend 显示 label || host || 占位。 */
   private updateLegend(): void {
-    this.nameSpan.textContent = this.displayName();
+    const name = this.displayName();
+    this.nameSpan.textContent = name;
+    this.resumeHelp.textContent = copyText("machineCard.field.resumeCmdScope", { machine: name });
+    setButtonLabel(this.backendUninstallButton, copyText("machineCard.uninstall.open", { machine: name }));
     this.renderStatusStrip();
   }
 
@@ -778,7 +784,12 @@ export class MachineCard {
 
   /** S4b-3b-2：交出「连接 / 组件」两块，供宿主拆成两栏；外加「终端」栏那一块（别名）。 */
   parts(): MachineCardParts {
-    return { connection: this.connectionPart, components: this.componentsPart, terminal: this.terminalPart };
+    return {
+      connection: this.connectionPart,
+      components: this.componentsPart,
+      terminal: this.terminalPart,
+      uninstall: this.backendUninstallButton,
+    };
   }
 
   /** 结果区：哪一栏的按钮，结果就写在哪一栏里。 */
@@ -831,22 +842,19 @@ export class MachineCard {
       return;
     }
     this.testButton.disabled = true;
-    const prevLabel = this.testButton.textContent;
-    this.testButton.textContent = copyText("machineCard.test.running");
-    // F46：连接分阶段事件泳道——测试开始即清空日志区。本机后端边拨边推（进度流 `probe-progress/<票>`），收一行画一行。
-    this.testResult.innerHTML = "";
+    setButtonLabel(this.testButton, copyText("machineCard.test.running"));
+    // 本机后端边拨边推（进度流 `probe-progress/<票>`）：几段逐格亮起来。
+    this.testResult.replaceChildren();
     this.testResult.style.display = "block";
-    const stageLog = document.createElement("div");
-    stageLog.className = "remote-stage-log";
-    this.testResult.appendChild(stageLog);
+    this.testResult.dataset.tested = "true";
+    const segs = this.segLine();
+    this.testResult.appendChild(segs.el);
     try {
       // 表单里这一台（可能没保存）＋ 已保存的那几台（同名那一份的指纹 · 跳板）交给本机后端，它组请求、拨一次。
-      const res = await probeMachine(cfg, (await readRemoteConfig()).hosts, (st) => this.appendStageLine(stageLog, st));
-      this.renderTestResult(res, null, stageLog);
-      // S3：记进账本 —— 列表行上那个「✓ 3 分钟前」就是这一次的结论。
-      // 一次测试同时给出两格：`sshOk`（连得上吗）与 `backendOk`（backend 回 hello 了吗）。
-      // **只在 SSH 通了的时候才记 backend** —— SSH 都没通，backend 那格是「不知道」，
-      // 记成 `fail` 等于替用户断言「远端没装后端」，而事实可能只是网络不通。
+      const res = await probeMachine(cfg, (await readRemoteConfig()).hosts, (st) => segs.stage(st));
+      segs.end(res);
+      this.renderTestResult(res, null, segs.el);
+      // S3：记进账本。**只在 SSH 通了的时候才记 backend** —— SSH 都没通，backend 那格是「不知道」。
       this.recordFacet("connection", { kind: res.sshOk ? "ok" : "fail" });
       if (res.sshOk) {
         this.recordFacet("backend", {
@@ -861,22 +869,81 @@ export class MachineCard {
         e instanceof ProbeStalled
           ? copyText("machineCard.test.stalled", { said: e.message, where: describeStop(e.stop) })
           : copyText("machineCard.test.failed", { e: String(e) });
-      this.renderTestResult(null, said, stageLog);
+      segs.stop();
+      this.renderTestResult(null, said, segs.el);
       this.recordFacet("connection", { kind: "fail", detail: copyText("machineCard.test.unreachable") });
     } finally {
       this.testButton.disabled = false;
-      this.testButton.textContent = prevLabel;
+      setButtonLabel(this.testButton, copyText("machineCard.build.test"));
     }
   }
 
-  /** F46：把一条阶段事件渲染进「连接过程」泳道日志。 */
-  private appendStageLine(log: HTMLElement, st: ConnectStage): void {
-    const line = document.createElement("div");
-    line.className = "remote-stage-line";
-    const { icon, text } = describeStage(st);
-    line.textContent = `${icon} ${text}`;
-    log.appendChild(line);
-    log.scrollTop = log.scrollHeight; // F46 建议 D：新事件自动滚到底,最新阶段始终可见
+  /**
+   * 测试连接下面那一行：`✓ 解析 ✓ 连接 ✓ 认证 ✓ 就绪 38ms · 版本 · 功能完整`。
+   * 按收到的阶段逐格亮；结局到了再定没亮的那几格（第一处没过的打 ✗，后面的留灰）。
+   */
+  private segLine(): {
+    el: HTMLElement;
+    stage(st: ConnectStage): void;
+    end(res: ConnTestResult): void;
+    stop(): void;
+  } {
+    const el = document.createElement("div");
+    el.className = "machine-conn-segs";
+    const state = new Map<ConnSeg, "ok" | "fail" | "wait">(CONN_SEGS.map((k) => [k, "wait"]));
+    const cells = new Map<ConnSeg, HTMLElement>();
+    for (const k of CONN_SEGS) {
+      const c = document.createElement("span");
+      c.className = "machine-conn-seg";
+      cells.set(k, c);
+      el.appendChild(c);
+    }
+    const tail = document.createElement("span");
+    tail.className = "machine-conn-seg-tail";
+    el.appendChild(tail);
+    const paint = (): void => {
+      for (const k of CONN_SEGS) {
+        const c = cells.get(k)!;
+        const st = state.get(k)!;
+        c.dataset.state = st;
+        const label = document.createElement("span");
+        label.textContent = SEG_LABEL[k]();
+        c.replaceChildren(...(st === "wait" ? [] : [icon(st === "ok" ? "check" : "failed", "compact")]), label);
+      }
+    };
+    const ok = (...ks: ConnSeg[]): void => {
+      for (const k of ks) state.set(k, "ok");
+      paint();
+    };
+    /** 第一处还没过的那一格打 ✗。 */
+    const failFirst = (): void => {
+      const k = CONN_SEGS.find((x) => state.get(x) !== "ok");
+      if (k) state.set(k, "fail");
+      paint();
+    };
+    paint();
+    return {
+      el,
+      stage(st) {
+        if (st.kind === "hostKey" || st.kind === "won") ok("resolve", "connect");
+        else if (st.kind === "auth" && st.ok) ok("resolve", "connect", "auth");
+        else if (st.kind === "auth") {
+          ok("resolve", "connect");
+          state.set("auth", "fail");
+          paint();
+        }
+      },
+      end(res) {
+        if (res.sshOk) ok("resolve", "connect", "auth");
+        if (res.sshOk && res.backendOk) {
+          ok("ready");
+          tail.textContent = res.backendHello ?? "";
+        } else if (![...state.values()].includes("fail")) failFirst();
+      },
+      stop() {
+        if (![...state.values()].includes("fail")) failFirst();
+      },
+    };
   }
 
   /** F50：一键推送本地公钥到远端 authorized_keys。已填私钥 → 取同名 .pub；否则弹框选 .pub。 */
@@ -1142,23 +1209,6 @@ export class MachineCard {
     this.renderStatusStrip();
   }
 
-  /** ①「部署后端」—— 后端本体 ＋ `ccm` 入口，一颗按钮、一次调用（从前是两颗）。 */
-  private async onDeployBackend(): Promise<void> {
-    const cfg = this.collect();
-    if (!cfg.host || !cfg.user) {
-      this.showResultText(copyText("machineCard.deploy.needFields"), "comp");
-      return;
-    }
-    await this.runRemoteAction(
-      this.backendInstallButton,
-      copyText("machineCard.deploy.running"),
-      () => commands.deploy_remote_backend({ cfg }),
-      { facet: "backend", ok: copyText("machineCard.status.installed"), fail: copyText("machineCard.status.installFailed") },
-      "comp",
-    );
-    // 原先这里清界面的 ccm 探针缓存；渲染进了那台后端、能力问它自己，那份缓存删了。
-  }
-
   /** F08c：点「卸载后端」——删远端后端二进制（二次确认；旁挂的版本标记退役了，不再删它）。 */
   private async onUninstallBackend(): Promise<void> {
     const cfg = this.collect();
@@ -1189,16 +1239,17 @@ export class MachineCard {
     if (done) this.recordFacet("backend", { kind: "fail", detail: copyText("machineCard.status.uninstalled") });
   }
 
-  /** 渲染测试结果：SSH ✓/✗、指纹（+可固化）、backend ✓/✗（+hello）。
-   * F46：`keepLog` 传入时保留其上方的「连接过程」阶段泳道（清空其余旧结果）。 */
+  /**
+   * 测试结果下面那几行：结局一句（没成时）· 指纹没记下时那一枚 ＋［记录］· 做不到的那几类 ［查看］。
+   * `keep` 传入时保留那一行逐段（清空其余旧结果）。
+   */
   private renderTestResult(
     res: ConnTestResult | null,
     hardError: string | null,
-    keepLog?: HTMLElement,
+    keep?: HTMLElement,
   ): void {
-    // 清空旧结果但保留阶段泳道日志（若有）。
     for (const child of Array.from(this.testResult.children)) {
-      if (child !== keepLog) child.remove();
+      if (child !== keep) child.remove();
     }
     this.testResult.style.display = "block";
 
@@ -1211,60 +1262,32 @@ export class MachineCard {
     }
     if (res === null) return;
 
-    this.testResult.appendChild(
-      makeStatusLine(
-        res.sshOk,
-        res.sshOk
-          ? copyText("machineCard.test.sshOk", { via: res.endpoint ? copyText("machineCard.test.via", { endpoint: res.endpoint }) : "" })
-          : copyText("machineCard.test.sshFailed"),
-      ),
-    );
+    if (!res.sshOk || !res.backendOk) {
+      const msg = document.createElement("div");
+      msg.className = "remote-test-line remote-test-msg";
+      msg.textContent = res.message;
+      this.testResult.appendChild(msg);
+    }
 
-    if (res.fingerprint) {
+    const current = this.fingerprintInput.value.trim();
+    if (res.fingerprint && current !== res.fingerprint) {
       const fpLine = document.createElement("div");
       fpLine.className = "remote-test-line";
       const fpText = document.createElement("span");
       fpText.className = "remote-test-fp";
-      fpText.textContent = copyText("machineCard.test.fingerprint", { fingerprint: res.fingerprint });
-      fpLine.appendChild(fpText);
-
-      const current = this.fingerprintInput.value.trim();
-      if (current !== res.fingerprint) {
-        const saveBtn = document.createElement("button");
-        saveBtn.type = "button";
-        saveBtn.className = "settings-btn";
-        saveBtn.textContent = current
-          ? copyText("machineCard.test.pinUpdate")
-          : copyText("machineCard.test.pinSave");
-        const fp = res.fingerprint;
-        saveBtn.addEventListener(
-          "click",
-          () => void this.onSaveFingerprint(fp),
-        );
-        fpLine.appendChild(saveBtn);
-
-        // FIX 4：首次 / TOFU 捕获（之前没配过指纹）时该指纹**未经验证**，首连本身可能已被
-        // 中间人篡改。显眼提示用户先在远端用 ssh-keyscan 核对。
-        if (!current) {
-          const caution = document.createElement("div");
-          caution.className = "remote-test-line remote-test-caution";
-          caution.textContent =
-            copyText("machineCard.test.unverified");
-          fpLine.appendChild(caution);
-        }
-      } else {
-        const ok = document.createElement("span");
-        ok.className = "remote-test-ok";
-        ok.textContent = copyText("machineCard.test.pinned");
-        fpLine.appendChild(ok);
-      }
+      fpText.textContent = current
+        ? copyText("machineCard.test.fpChanged", { fingerprint: res.fingerprint })
+        : copyText("machineCard.test.fpUnpinned", { fingerprint: res.fingerprint });
+      const fp = res.fingerprint;
+      const saveBtn = button({
+        label: current ? copyText("machineCard.test.pinUpdate") : copyText("machineCard.test.pinSave"),
+        size: "compact",
+        onClick: () => void this.onSaveFingerprint(fp),
+      });
+      fpLine.append(fpText, saveBtn);
       this.testResult.appendChild(fpLine);
     }
 
-    const backendText = res.backendOk
-      ? copyText("machineCard.test.backendOk", { hello: res.backendHello ? `（${res.backendHello}）` : "" })
-      : copyText("machineCard.test.backendDown");
-    this.testResult.appendChild(makeStatusLine(res.backendOk, backendText));
     // 这台说做不到的那几类：点开看全表（一类一句；码的人话与置灰那一句同一个家）。
     if (res.backendGaps.length > 0) {
       const machine = this.labelInput.value.trim() || this.hostInput.value.trim();
@@ -1283,29 +1306,33 @@ export class MachineCard {
       }
       this.testResult.appendChild(gaps);
     }
+  }
 
-    if (res.message) {
-      const msg = document.createElement("div");
-      msg.className = "remote-test-line remote-test-msg";
-      msg.textContent = res.message;
-      this.testResult.appendChild(msg);
+  /** 已连着（会话在流）：那一行几段直接打 ✓，不要求先点「测试连接」。测过之后以测的为准。 */
+  showLive(on: boolean): void {
+    if (this.testResult.dataset.tested === "true") return;
+    if (!on) {
+      this.testResult.replaceChildren();
+      this.testResult.style.display = "none";
+      return;
     }
+    const segs = this.segLine();
+    segs.end({ sshOk: true, backendOk: true, backendHello: "", fingerprint: null, endpoint: null, backendGaps: [], message: "" });
+    this.testResult.replaceChildren(segs.el);
+    this.testResult.style.display = "block";
   }
 
   /** 把测出的指纹写进字段并保存（TOFU→strict 固化）。 */
   private async onSaveFingerprint(fingerprint: string): Promise<void> {
     this.fingerprintInput.value = fingerprint;
+    this.pinnedAt = today();
     this.syncResetFpVisibility(); // F43：程序化赋值不触发 input 事件，手动同步重置按钮显隐
     this.hooks.onChange(); // 触发 section 保存
-    // 就地把固化按钮换成「已固化」（不重连）。
+    // 就地把［记录］那一行换成「已记录」（不重连）。
     const fpLine = this.testResult.querySelector(".remote-test-fp");
     if (fpLine && fpLine.parentElement) {
-      const btn = fpLine.parentElement.querySelector("button");
-      if (btn) btn.remove();
-      const ok = document.createElement("span");
-      ok.className = "remote-test-ok";
-      ok.textContent = copyText("machineCard.test.pinned");
-      fpLine.parentElement.appendChild(ok);
+      fpLine.parentElement.querySelector("button")?.remove();
+      fpLine.textContent = copyText("machineCard.test.pinned");
     }
   }
 }

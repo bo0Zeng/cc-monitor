@@ -366,7 +366,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   function fakePages() {
     const added: { id: string; title: string; element: HTMLElement }[] = [];
     const addedParts: (
-      | { connection: HTMLElement; components: HTMLElement; terminal: HTMLElement }
+      | { connection: HTMLElement; components: HTMLElement; terminal: HTMLElement; uninstall?: HTMLElement }
       | undefined
     )[] = [];
     const removed: string[] = [];
@@ -383,7 +383,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
           id: string,
           title: string,
           element: HTMLElement,
-          parts?: { connection: HTMLElement; components: HTMLElement; terminal: HTMLElement },
+          parts?: { connection: HTMLElement; components: HTMLElement; terminal: HTMLElement; uninstall?: HTMLElement },
         ) => {
           added.push({ id, title, element });
           addedParts.push(parts);
@@ -770,15 +770,18 @@ describe("S1 RemoteSection：保存走局部合并", () => {
         .filter((b) => !b.closest("details") && b.getAttribute("role") !== "switch")
         .map((b) => b.textContent ?? "");
     // 别名放「终端」栏：远端那一块与本机「终端 → 别名」同一个位置。
-    expect(labels(got.components)).toEqual(["更新", "从这台卸载…"]);
+    // 「这台上的 cc-monitor」里归这台连接配置的：恢复命令那一行（没有按钮）＋ 底行右侧那颗「从 a 卸载…」。
+    expect(labels(got.components)).toEqual([]);
+    expect(got.uninstall?.textContent).toBe(copyText("machineCard.uninstall.open", { machine: "a" }));
     // ② 别名是与本机同一个组件（`buildAliasManager`，`data-origin` = 这台）；接入 / 卸载在组件里（卸那一颗叫「卸载 ccm」、
     //   接入之后才出现 —— 由 `machine-aliases.vitest.ts` 的远端卡那一条钉）。组件是 `<details>`，栏上裸露的按钮一颗都不剩。
     expect(labels(got.terminal)).toEqual([]);
     const mgr = got.terminal.querySelector<HTMLElement>(".machine-aliases");
     expect(mgr?.dataset.origin).toBe("a");
     expect(got.terminal.textContent).toContain("别名");
-    expect(labels(got.connection).filter((t) => t !== "忘记…")).toEqual([
-      "更多：备用地址 · 跳板机",
+    expect(labels(got.connection).filter((t) => t !== "忘记…").map((t) => (t.startsWith("更多") ? "更多" : t))).toEqual([
+      "选…",
+      "更多",
       "测试连接",
       "推送公钥…",
     ]);
@@ -945,7 +948,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       backendOk: true,
       fingerprint: null,
       endpoint: null,
-      backendHello: copyText("beProbe.hello.ok", { build: "p5o", usable: "40", gaps: "3", ms: "12" }),
+      backendHello: copyText("beProbe.hello.okGaps", { build: "p5o", gaps: "3", ms: "12" }),
       backendGaps: [{ code: "no_tmux", count: 3 }],
     });
     const sec = await mount([mkH("a", "1.1.1.1")]);
@@ -1211,7 +1214,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const p = fakePages();
     await mount([mkH("a", "1.1.1.1")], p.host);
     const pageA = pageOf(p, "machine:a");
-    [...pageA.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("machineCard.deploy.uninstall"))!.click();
+    void pageA;
+    (p.addedParts[1]!.uninstall as HTMLButtonElement).click();
     await tick();
     [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("machineCard.uninstall.action"))!.click();
     for (let i = 0; i < 4; i++) await tick();

@@ -17,8 +17,8 @@
       "lastBrief": null,
       "face": {
         "state": "unknown",
-        "summary": "— 无记录",
-        "why": "这里只记这次 monitor 开着以来的退出，关掉 monitor 就清零。所以「无记录」不等于「没崩过」。",
+        "summary": "无退出记录",
+        "why": "仅记本次 cc-monitor 运行期间的退出 · 关闭后清零",
         "detail": null
       }
     },
@@ -33,9 +33,9 @@
       "lastBrief": "被拒了，exit 2",
       "face": {
         "state": "clean",
-        "summary": "没崩过（这次 monitor 开着以来）",
+        "summary": "本次无异常退出",
         "why": null,
-        "detail": "这次 monitor 开着以来：崩了 0 次 · 被拒 1 次 · 没起来 0 次 · 读坏了 2 次。读坏是 monitor 这一侧的事，不算它崩。每一次的完整记录在日志文件里。"
+        "detail": null
       }
     },
     {
@@ -49,9 +49,9 @@
       "lastBrief": "崩了，exit -1073741819",
       "face": {
         "state": "crashed",
-        "summary": "⚠ 崩过 4 次 · 最后一次：崩了，exit -1073741819",
+        "summary": "异常退出 ×4 · 崩了，exit -1073741819",
         "why": null,
-        "detail": "这次 monitor 开着以来：崩了 4 次 · 被拒 1 次 · 没起来 0 次 · 读坏了 2 次。读坏是 monitor 这一侧的事，不算它崩。每一次的完整记录在日志文件里。"
+        "detail": "本次运行：异常退出 4 · 被拒 1 · 未启动 0 · 读取失败 2 · 完整记录见日志"
       }
     },
     {
@@ -65,9 +65,9 @@
       "lastBrief": null,
       "face": {
         "state": "crashed",
-        "summary": "⚠ 崩过 1 次 · 最后一次：没留下记录",
+        "summary": "异常退出 ×1 · 没留下记录",
         "why": null,
-        "detail": "这次 monitor 开着以来：崩了 1 次 · 被拒 0 次 · 没起来 0 次 · 读坏了 0 次。读坏是 monitor 这一侧的事，不算它崩。每一次的完整记录在日志文件里。"
+        "detail": "本次运行：异常退出 1 · 被拒 0 · 未启动 0 · 读取失败 0 · 完整记录见日志"
       }
     }
   ]

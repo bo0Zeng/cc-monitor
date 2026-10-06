@@ -8,7 +8,7 @@
 import { formDialog } from "../kit/dialog";
 import { field, type FieldHandle } from "../kit/field";
 import { fold } from "../kit/fold";
-import { segmented } from "../kit/tabs";
+import { tabs } from "../kit/tabs";
 import { checkbox } from "../kit/switch";
 import { copyText } from "../copy-table";
 import type { RemoteHostConfig } from "../remote-config";
@@ -30,6 +30,7 @@ const blank = (): RemoteHostConfig => ({
   user: "",
   keyPath: "",
   hostKeyFingerprint: "",
+  hostKeyPinnedAt: "",
   addresses: [],
   jump: "",
   resumeCommand: "",
@@ -68,7 +69,7 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
   const manualPane = document.createElement("div");
   manualPane.className = "add-machine-pane";
   manualPane.hidden = true;
-  const strip = segmented<"ssh" | "manual">({
+  const strip = tabs<"ssh" | "manual">({
     items: [
       { key: "ssh", label: copyText("addMachine.tab.ssh") },
       { key: "manual", label: copyText("addMachine.tab.manual") },
@@ -183,17 +184,20 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
   grid.className = "add-machine-grid";
   const fName = field({ label: copyText("addMachine.field.name"), help: copyText("addMachine.field.nameHelp") });
   const fHost = field({ label: copyText("addMachine.field.host"), help: copyText("machineCard.field.hostHint") });
-  const fUser = field({ label: copyText("addMachine.field.user") });
-  const fPort = field({ label: copyText("addMachine.field.port"), value: "22" });
+  const fUser = field({ label: copyText("addMachine.field.user"), noteOnDemand: true });
+  const fPort = field({ label: copyText("addMachine.field.port"), value: "22", noteOnDemand: true });
   const fKey = field({ label: copyText("addMachine.field.key"), help: copyText("addMachine.field.keyHelp") });
   fKey.root.classList.add("add-machine-wide");
   grid.append(fName.root, fHost.root, fUser.root, fPort.root, fKey.root);
   const moreBody = document.createElement("div");
   moreBody.className = "add-machine-grid";
   const fAddrs = field({ label: copyText("addMachine.field.addresses"), help: copyText("addMachine.field.addressesHelp"), multiline: true });
-  const fJump = field({ label: copyText("addMachine.field.jump") });
+  const fJump = field({ label: copyText("addMachine.field.jump"), noteOnDemand: true });
   moreBody.append(fAddrs.root, fJump.root);
-  manualPane.append(grid, fold({ title: copyText("machineCard.conn.more"), open: false, body: moreBody }));
+  const manualAfter = document.createElement("div");
+  manualAfter.className = "add-machine-note";
+  manualAfter.textContent = copyText("addMachine.ssh.after");
+  manualPane.append(grid, fold({ title: copyText("machineCard.conn.more"), open: false, body: moreBody }), manualAfter);
   for (const f of [fName, fHost, fUser, fPort, fKey, fAddrs, fJump]) f.input.addEventListener("input", update);
 
   const manualCfg = (): RemoteHostConfig => ({

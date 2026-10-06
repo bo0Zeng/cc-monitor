@@ -56,6 +56,10 @@ import { recordFacet } from "./machine-status";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import { machineName } from "../control-said";
 import { fetchSessionAccountsOrNull } from "../account-reads";
+import { button } from "../kit/button";
+import { toggleSwitch } from "../kit/switch";
+import { readRecordDrift } from "../record-reads";
+import { ccRow } from "./cc-row";
 import type { SessionAccount } from "../accounts";
 
 /**
@@ -233,15 +237,21 @@ export function decodeHealthFace(raw: unknown): HealthFace | null {
 export const BACKEND_COLUMNS = () =>
   [
     ["state", copyText("backend.column.status")],
-    ["ops", copyText("backend.column.actions")],
     ["exit", copyText("backend.column.exit")],
-    ["health", copyText("backend.column.health")],
+    ["drift", copyText("backend.cc.drift")],
+    ["ops", copyText("backend.column.actions")],
   ] as const;
 export type BackendColumn = ReturnType<typeof BACKEND_COLUMNS>[number][0];
 
 /** 列表里有、后端清单里没有的那一台 —— 「未登记」那一格的 ⓘ。 */
 export const BACKEND_UNREGISTERED_WHY = (): string =>
   copyText("backend.unregistered.why");
+
+/** 宿主往「这台上的 cc-monitor」里挂的东西：插在退出那一行后面的几行 · 底行右侧那一颗。 */
+export interface CellsExtra {
+  rows?: HTMLElement[];
+  trailing?: HTMLElement;
+}
 
 /** 一台机在这一区里的身份。`origin` 是唯一键，`title` 只给人看。 */
 interface Machine {
@@ -257,6 +267,10 @@ export class BackendSection {
    * 不认它挂在谁底下 ——这四格会挂进机器列表那一行上。
    */
   private cellHosts = new Map<string, HTMLElement>();
+  /** origin → 那一台「随 cc-monitor 退出停止」那个开关。 */
+  private killSwitches = new Map<string, ReturnType<typeof toggleSwitch>>();
+  /** origin → 那台后端报来的版本。 */
+  private versions = new Map<string, string | null>();
 
   /**
    * 寄居模式：四格挂在**机器列表那一行**上（`cellsFor`），本块自己的 `element`
@@ -326,10 +340,10 @@ export class BackendSection {
    * 每次调都建一份新的（列表每重建一次就来要一次），旧的那份随旧行一起被摘掉。
    * 后端清单里这台若正以「列表里没有」的身份挂在本块自己的列表里，那一行当场收掉 —— 一台机只许一份四格。
    */
-  cellsFor(origin: string): HTMLElement {
+  cellsFor(origin: string, extra: CellsExtra = {}): HTMLElement {
     this.rows.get(origin)?.remove();
     this.rows.delete(origin);
-    const cells = this.buildCells(origin);
+    const cells = this.buildCells(origin, extra);
     this.paintOne(origin);
     return cells;
   }
@@ -362,9 +376,10 @@ export class BackendSection {
       state.dataset.on = "unregistered";
       state.after(makeInfoIcon(BACKEND_UNREGISTERED_WHY()));
     }
-    for (const col of ["ops", "exit", "health"] as const) {
+    for (const col of ["ops", "exit", "drift"] as const) {
       cells.querySelector<HTMLElement>(`[data-col="${col}"]`)?.replaceChildren();
     }
+    cells.querySelector<HTMLElement>('[data-col="state"] .machine-cc-controls')?.replaceChildren();
   }
 
   /**
@@ -480,75 +495,84 @@ export class BackendSection {
     }
   }
 
-  private buildCells(origin: string): HTMLElement {
-    const cells = document.createElement("span");
+  /**
+   * 「这台上的 cc-monitor」一行一项：状态（版本 · 运行中 · 本次无异常退出 ＋［停止…］［重启］/［启动］）·
+   * 随 cc-monitor 退出停止（开关）·（宿主挂进来的几行，如恢复命令）· 未识别内容 · 底行［最近输出］［刷新］…［卸载…］。
+   * 每一行的那一格容器带 `data-col`，重画只认它。
+   */
+  private buildCells(origin: string, extra: CellsExtra = {}): HTMLElement {
+    const cells = document.createElement("div");
     cells.dataset.backendCells = origin;
-    const col = (name: BackendColumn): HTMLElement => {
-      const c = document.createElement("span");
-      c.dataset.col = name;
-      cells.appendChild(c);
-      return c;
+    const col = (name: BackendColumn, row: HTMLElement): HTMLElement => {
+      row.dataset.col = name;
+      cells.appendChild(row);
+      return row;
     };
 
-    const stateCol = col("state");
+    // ── 状态 ──
+    const help = document.createElement("div");
     const state = document.createElement("span");
     state.className = "backend-row-state";
     state.textContent = copyText("backend.buildCells.querying");
-    stateCol.appendChild(state);
-
-    const ops = col("ops");
-    const start = document.createElement("button");
-    start.className = "settings-btn";
-    start.textContent = copyText("backend.buildCells.start");
-    start.onclick = () => void this.act(origin, "start");
-    ops.appendChild(start);
-    const stop = document.createElement("button");
-    stop.className = "settings-btn";
-    stop.textContent = copyText("backend.buildCells.stop");
-    stop.onclick = () => void this.act(origin, "stop");
-    ops.appendChild(stop);
-    // 这台后端的诊断文件（本机远端同一问，经那台后端的只读面）。
-    const log = document.createElement("button");
-    log.className = "settings-btn";
-    log.textContent = copyText("backend.buildCells.log");
-    log.onclick = () => void this.toggleLog(origin, cells, log);
-    ops.appendChild(log);
-    // 事件驱动漏了一拍时的手动兜底：这台后端重跑起步那套对齐（会话 · 判死 · tmux · 身份标签 · 账号清单 · 监视）。
-    const realign = document.createElement("button");
-    realign.className = "settings-btn";
-    realign.textContent = copyText("backend.buildCells.resync");
-    realign.onclick = () => void this.realign(origin, realign);
-    ops.appendChild(realign);
-    // 上一次「停」的结局（`stopSaid`）；没停过就空着。
-    const said = document.createElement("span");
-    said.className = "settings-hint";
-    said.dataset.stopSaid = "";
-    ops.appendChild(said);
-
-    const exitCol = col("exit");
-    const label = document.createElement("label");
-    label.className = "backend-row-kill";
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    // 问到那台机器的值之前，勾**禁用**：它的值不在这里，在那台机器上。
-    box.checked = false;
-    box.disabled = true;
-    box.onchange = () => void this.toggleKill(origin, box);
-    label.appendChild(box);
-    label.appendChild(document.createTextNode(copyText("backend.buildCells.exitKills")));
-    exitCol.appendChild(label);
-    // ★★ `K-P1 KPY4`：**这台机退出时到底会发生什么**，按状态分档如实说。
-    // 文案本体不在本文件（见头注）；这里只放它的位置。
-    const exit = document.createElement("div");
-    exit.className = "backend-row-exit";
-    exitCol.appendChild(exit);
-
-    // ★★ `K-P3b KP3W4`：**读数**，另起一格（成品由后端出，见 `paintHealth`）。
-    // ⚠ **不许接在退出那一句后面**：退出那一句是后端的成品 `said`，`backend-section.vitest.ts` 用**等号**钉着 —— 那两句话说的是两件事。
-    const healthCol = col("health");
+    const sep = document.createElement("span");
+    sep.textContent = copyText("kit.text.sep");
+    const healthCol = document.createElement("span");
+    healthCol.dataset.col = "health";
     const health = document.createElement("span");
     health.className = "backend-row-health";
     healthCol.appendChild(health);
+    help.append(state, sep, healthCol);
+    const stop = button({ label: copyText("backend.buildCells.stop"), size: "compact", onClick: () => void this.act(origin, "stop") });
+    stop.dataset.op = "stop";
+    const restart = button({ label: copyText("backend.buildCells.restart"), size: "compact", onClick: () => void this.act(origin, "restart") });
+    restart.dataset.op = "restart";
+    const start = button({ label: copyText("backend.buildCells.start"), size: "compact", onClick: () => void this.act(origin, "start") });
+    start.dataset.op = "start";
+    start.style.display = "none";
+    col("state", ccRow(copyText("backend.cc.state"), help, [stop, restart, start]));
+
+    // ── 随 cc-monitor 退出停止 ──（值问那台的后端要；问到之前开关不可拨。下面那一行是后端的成品 `said`。）
+    const kill = toggleSwitch({
+      label: copyText("backend.buildCells.exitKills"),
+      on: false,
+      onChange: (on) => this.toggleKill(origin, on),
+    });
+    kill.root.classList.add("backend-row-kill");
+    kill.input.setAttribute("aria-disabled", "true");
+    const exit = document.createElement("div");
+    exit.className = "backend-row-exit";
+    kill.root.querySelector("span")?.appendChild(exit);
+    const exitRow = document.createElement("div");
+    exitRow.className = "machine-cc-row";
+    exitRow.appendChild(kill.root);
+    col("exit", exitRow);
+    this.killSwitches.set(origin, kill);
+
+    for (const r of extra.rows ?? []) cells.appendChild(r);
+
+    // ── 未识别内容（那台记下的认不出的会话流种类）──
+    const drift = document.createElement("div");
+    drift.className = "backend-row-drift";
+    col("drift", ccRow(copyText("backend.cc.drift"), drift, []));
+
+    // ── 底行：最近输出 · 刷新 ……… 从 X 卸载… ──
+    const ops = document.createElement("div");
+    ops.className = "machine-cc-foot";
+    const log = button({ label: copyText("backend.buildCells.log"), size: "compact" });
+    log.addEventListener("click", () => void this.toggleLog(origin, cells, log));
+    // 事件驱动漏了一拍时的手动兜底：这台后端重跑起步那套对齐（会话 · 判死 · tmux · 身份标签 · 账号清单 · 监视）。
+    const realign = button({ label: copyText("backend.buildCells.resync"), size: "compact" });
+    realign.addEventListener("click", () => void this.realign(origin, realign));
+    const sp = document.createElement("span");
+    sp.className = "machine-head-sp";
+    ops.append(log, realign, sp);
+    if (extra.trailing) ops.appendChild(extra.trailing);
+    // 上一次「停」的结局（`stopSaid`）；没停过就空着。
+    const said = document.createElement("div");
+    said.className = "settings-hint";
+    said.dataset.stopSaid = "";
+    col("ops", ops);
+    cells.appendChild(said);
 
     this.cellHosts.set(origin, cells);
     return cells;
@@ -567,18 +591,17 @@ export class BackendSection {
   private paintExit(origin: string, answer: ExitAnswer | null): void {
     const cells = this.cellHosts.get(origin);
     const el = cells?.querySelector<HTMLElement>(".backend-row-exit");
-    const label = cells?.querySelector<HTMLElement>(".backend-row-kill");
-    const box = label?.querySelector<HTMLInputElement>("input");
-    if (!el || !label || !box) return;
+    const kill = this.killSwitches.get(origin);
+    if (!el || !kill) return;
     if (answer === null) {
-      box.disabled = true;
+      kill.input.setAttribute("aria-disabled", "true");
       el.textContent = "";
       el.dataset.exit = "unasked";
       return;
     }
     el.dataset.exit = answer.policy;
-    box.disabled = false;
-    box.checked = answer.killOnExit;
+    kill.input.removeAttribute("aria-disabled");
+    kill.set(answer.killOnExit);
     el.textContent = answer.said;
   }
 
@@ -669,20 +692,23 @@ export class BackendSection {
     cells.after(box);
   }
 
-  private async act(origin: string, what: "start" | "stop"): Promise<void> {
+  private async act(origin: string, what: "start" | "stop" | "restart"): Promise<void> {
     const cells = this.cellHosts.get(origin);
-    const btns = cells ? [...cells.querySelectorAll("button")] : [];
+    const btns = cells ? [...cells.querySelectorAll<HTMLButtonElement>("[data-op]")] : [];
     for (const b of btns) b.disabled = true;
-    // 停后端之前：有走那台中转的活会话 ⇒ 先问一句、说几条会断。
+    // 停 / 重启之前：有走那台中转的活会话 ⇒ 先问一句、说几条会断。
     // 远端也问：远端中转住在那台的常驻后端里，停它就停了中转。
-    if (what === "stop") {
+    if (what !== "start") {
       const warn = stopWarning(await this.sessions(origin));
+      const restart = what === "restart";
       if (
         warn !== null &&
         !(await this.confirm({
-          title: copyText("backend.stop.title", { machine: machineName(origin) }),
-          action: copyText("backend.stop.action"),
-          danger: true,
+          title: restart
+            ? copyText("backend.restart.title", { machine: machineName(origin) })
+            : copyText("backend.stop.title", { machine: machineName(origin) }),
+          action: restart ? copyText("backend.restart.action") : copyText("backend.stop.action"),
+          danger: !restart,
           body: warn,
         }))
       ) {
@@ -693,17 +719,16 @@ export class BackendSection {
     const said = cells?.querySelector<HTMLElement>("[data-stop-said]") ?? null;
     if (said) said.textContent = "";
     try {
-      if (what === "start") {
-        console.info(`[P2s] ${origin} start: ${await commands.backend_start({ origin })}`);
-      } else {
+      if (what !== "start") {
         const end = await commands.backend_stop({ origin });
-        if (said) said.textContent = stopSaid(end);
+        if (said && what === "stop") said.textContent = stopSaid(end);
         console.info(`[P2s] ${origin} stop: ${end.stopped} ${end.pid ?? ""}`);
       }
+      if (what !== "stop") console.info(`[P2s] ${origin} start: ${await commands.backend_start({ origin })}`);
     } catch (e) {
-      toast(what === "start" ? copyText("backend.start.failed") : copyText("backend.stop.failed"), String(e));
+      toast(what === "stop" ? copyText("backend.stop.failed") : copyText("backend.start.failed"), String(e));
     }
-    await this.settleStatus(origin, what === "start");
+    await this.settleStatus(origin, what !== "stop");
     for (const b of btns) b.disabled = false;
   }
 
@@ -715,19 +740,17 @@ export class BackendSection {
     }
   }
 
-  private async toggleKill(origin: string, box: HTMLInputElement): Promise<void> {
-    const want = box.checked;
+  /** 拨开关：交那台的后端写，画的是它写完读回来的那一份；存不下 ⇒ 开关退回、说一句。 */
+  private async toggleKill(origin: string, want: boolean): Promise<boolean> {
     try {
-      // 交后端写（那个值住那台机器上），**画的是它写完读回来的那一份**。
       const back = readExitAnswer(await putExitPolicy(origin, want));
       if (back === null) throw new Error(copyText("backend.policy.badShape"));
-      // 勾变了 ⇒ 那句「退出时会发生什么」也变了。**同一拍重画**，
-      // 否则屏上那句话描述的是上一次的状态（与 A4 那条「画的是操作前的快照」同族）。
+      // 开关变了 ⇒ 那句「退出时会发生什么」也变了，同一拍重画。
       void this.paintStatus(origin);
+      return true;
     } catch (e) {
-      // 存不下就**把勾回退**——否则屏上写着 A 而实际是 B，比报错更坏。
-      box.checked = !want;
       toast(copyText("backend.policy.saveFailed"), e instanceof Error ? e.message : String(e));
+      return false;
     }
   }
 
@@ -743,6 +766,29 @@ export class BackendSection {
     this.onLinkSeen?.(origin);
   }
 
+  /** 那台记下的认不出的会话流：几种（两本账并起来数）；读不到 ⇒ 说读不到。 */
+  private async paintDrift(origin: string): Promise<void> {
+    const el = this.cellHosts.get(origin)?.querySelector<HTMLElement>(".backend-row-drift");
+    if (!el) return;
+    try {
+      const records = await readRecordDrift(origin);
+      const mine = await commands.drift_ledger_report({ origin });
+      const n = [...records, ...mine.faces].reduce((k, f) => k + f.entries.length, 0);
+      el.textContent = n > 0 ? copyText("backend.cc.driftSome", { n }) : copyText("backend.cc.driftNone");
+    } catch {
+      el.textContent = copyText("backend.cc.driftUnread");
+    }
+  }
+
+  /** 宿主喂进来的那台版本（后端报的；没报 ⇒ `null`）。 */
+  setVersion(origin: string, version: string | null): void {
+    this.versions.set(origin, version);
+  }
+
+  private versionOf(origin: string): string | null {
+    return this.versions.get(origin) ?? null;
+  }
+
   /** 画一次状态，并把「通道在不在」返回给 `settleStatus` 判落定。查不到回 `null`。 */
   private async paintStatus(origin: string): Promise<boolean | null> {
     const cells = this.cellHosts.get(origin);
@@ -752,9 +798,12 @@ export class BackendSection {
     try {
       const st = await commands.backend_status({ origin });
       const on = st.channel === true;
-      const pid = typeof st.pid === "number" ? `（pid ${st.pid}）` : "";
-      state.textContent = on ? copyText("backend.status.connected", { pid }) : copyText("backend.status.notConnected");
+      const word = on ? copyText("backend.status.connected") : copyText("backend.status.notConnected");
+      const ver = this.versionOf(origin);
+      state.textContent = ver ? `${ver}${copyText("kit.text.sep")}${word}` : word;
       state.dataset.on = String(on);
+      for (const b of cells.querySelectorAll<HTMLElement>("[data-op]")) b.style.display = (b.dataset.op === "start") === on ? "none" : "";
+      if (on) void this.paintDrift(origin);
       this.onChannel?.(origin, on);
       if (on && !isLocalOrigin(origin)) this.noteRemoteLink(origin);
       // 那个值问那台机器的后端要（**每次现问**，不用上一次的）；问不到就是 `null`。

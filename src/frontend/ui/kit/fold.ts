@@ -13,6 +13,14 @@ export interface FoldSpec {
   onToggle?: (open: boolean) => void;
 }
 
+const summaries = new WeakMap<HTMLElement, HTMLElement>();
+
+/** 换折叠块标题行右侧那一句（现值随数据变时）。 */
+export function setFoldSummary(root: HTMLElement, text: string): void {
+  const sum = summaries.get(root);
+  if (sum && sum.textContent !== text) sum.textContent = text;
+}
+
 export function fold(spec: FoldSpec): HTMLDivElement {
   const root = document.createElement("div");
   root.className = s.fold;
@@ -24,12 +32,11 @@ export function fold(spec: FoldSpec): HTMLDivElement {
   t.className = s.foldTitle;
   t.textContent = spec.title;
   head.appendChild(t);
-  if (spec.summary !== undefined) {
-    const sum = document.createElement("span");
-    sum.className = s.foldSummary;
-    sum.textContent = spec.summary;
-    head.appendChild(sum);
-  }
+  const sum = document.createElement("span");
+  sum.className = s.foldSummary;
+  sum.textContent = spec.summary ?? "";
+  summaries.set(root, sum);
+  head.appendChild(sum);
   const body = document.createElement("div");
   body.className = s.foldBody;
   body.appendChild(spec.body);

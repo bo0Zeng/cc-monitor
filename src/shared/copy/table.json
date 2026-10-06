@@ -6133,53 +6133,18 @@
     },
     "machineCard.test.pinned": {
       "kind": "body",
-      "zh": "已固化为严格校验",
-      "args": []
-    },
-    "machineCard.test.backendDown": {
-      "kind": "error",
-      "zh": "后端未响应或未安装",
-      "args": []
-    },
-    "machineCard.test.backendOk": {
-      "kind": "body",
-      "zh": "后端响应正常{hello}",
-      "args": ["hello"]
-    },
-    "machineCard.test.unverified": {
-      "kind": "body",
-      "zh": "⚠ 此指纹未经验证：首次连接可能被中间人篡改。建议在远端用 ssh-keyscan 核对后再固化。",
+      "zh": "已记录",
       "args": []
     },
     "machineCard.test.pinSave": {
       "kind": "action",
-      "zh": "保存为严格校验",
+      "zh": "记录",
       "args": []
     },
     "machineCard.test.pinUpdate": {
       "kind": "action",
-      "zh": "更新为这个指纹，严格校验",
+      "zh": "改记这一枚",
       "args": []
-    },
-    "machineCard.test.fingerprint": {
-      "kind": "body",
-      "zh": "主机指纹：{fingerprint}",
-      "args": ["fingerprint"]
-    },
-    "machineCard.test.sshFailed": {
-      "kind": "error",
-      "zh": "SSH 连接失败",
-      "args": []
-    },
-    "machineCard.test.sshOk": {
-      "kind": "body",
-      "zh": "SSH 连接成功{via}",
-      "args": ["via"]
-    },
-    "machineCard.test.via": {
-      "kind": "body",
-      "zh": " · 经 {endpoint}",
-      "args": ["endpoint"]
     },
     "machineCard.status.uninstalled": {
       "kind": "body",
@@ -6219,16 +6184,6 @@
     "machineCard.status.installed": {
       "kind": "body",
       "zh": "已装",
-      "args": []
-    },
-    "machineCard.deploy.running": {
-      "kind": "body",
-      "zh": "部署中",
-      "args": []
-    },
-    "machineCard.deploy.needFields": {
-      "kind": "error",
-      "zh": "请先填好主机和用户再部署后端。",
       "args": []
     },
     "machineCard.launch.start": {
@@ -6383,7 +6338,7 @@
     },
     "machineCard.test.running": {
       "kind": "action",
-      "zh": "测试中…",
+      "zh": "正在测…",
       "args": []
     },
     "machineCard.test.needFields": {
@@ -6398,13 +6353,13 @@
     },
     "machineCard.resetFingerprint.done": {
       "kind": "body",
-      "zh": "已重置主机指纹，下次连接会重新记下。测试连接之后记得再固化。",
+      "zh": "已忘记主机指纹 · 下次连接时重新记录",
       "args": []
     },
     "machineCard.resetFingerprint.confirm": {
       "kind": "body",
-      "zh": "确认重置 {host} 的主机指纹？\n\n清除后下次连接会重新记下主机密钥并接受它。\n⚠ 若此刻网络正被中间人攻击，重置会让 monitor 信任攻击者的密钥。\n仅在你确知服务器合法更换过 host key（重装系统 / 轮换密钥）时才重置。",
-      "args": ["host"]
+      "zh": "下次连接时重新记录",
+      "args": []
     },
     "machineCard.resetFingerprint.thisHost": {
       "kind": "body",
@@ -6413,12 +6368,12 @@
     },
     "machineCard.resetFingerprint.title": {
       "kind": "title",
-      "zh": "重置主机指纹 {host}",
+      "zh": "忘记主机指纹 · {host}",
       "args": ["host"]
     },
     "machineCard.resetFingerprint.action": {
       "kind": "action",
-      "zh": "重置",
+      "zh": "忘记",
       "args": []
     },
     "machineCard.build.expandedIcon": {
@@ -6444,21 +6399,6 @@
     "machineCard.deploy.uninstallHint": {
       "kind": "body",
       "zh": "删除远端后端（机器仍启用的话，下次连接会自动装回）",
-      "args": []
-    },
-    "machineCard.deploy.uninstall": {
-      "kind": "action",
-      "zh": "从这台卸载…",
-      "args": []
-    },
-    "machineCard.deploy.installHint": {
-      "kind": "body",
-      "zh": "按远端架构把后端装到后端路径，再放好 ccm 入口。后端随 cc-monitor 一起带着；版本已是最新、文件也在时跳过。",
-      "args": []
-    },
-    "machineCard.deploy.install": {
-      "kind": "action",
-      "zh": "更新",
       "args": []
     },
     "machineCard.field.resumeCmdHint": {
@@ -6534,11 +6474,6 @@
     "machineCard.field.resetFingerprint": {
       "kind": "action",
       "zh": "忘记…",
-      "args": []
-    },
-    "machineCard.field.fingerprintHint": {
-      "kind": "control",
-      "zh": "SHA256:…，留空则首次连接时记下",
       "args": []
     },
     "machineCard.field.fingerprint": {
@@ -6659,16 +6594,6 @@
     "machineCard.stage.dialIcon": {
       "kind": "body",
       "zh": "→",
-      "args": []
-    },
-    "machineCard.statusLine.fail": {
-      "kind": "body",
-      "zh": "✗",
-      "args": []
-    },
-    "machineCard.statusLine.ok": {
-      "kind": "body",
-      "zh": "✓",
       "args": []
     },
     "accountNewForm.aliasHintFor.aliasHint": {
@@ -8582,13 +8507,13 @@
     },
     "backend.status.notConnected": {
       "kind": "body",
-      "zh": "未连上",
+      "zh": "未连接",
       "args": []
     },
     "backend.status.connected": {
       "kind": "body",
-      "zh": "已连上{pid}",
-      "args": ["pid"]
+      "zh": "运行中",
+      "args": []
     },
     "backend.policy.saveFailed": {
       "kind": "error",
@@ -8758,11 +8683,6 @@
     "backend.unregistered.why": {
       "kind": "body",
       "zh": "monitor 这次启动时没有为这台机器登记后端。可能是远端模式没开，或者这台是启动之后才加的；重启 monitor 之后才能在这里起停。",
-      "args": []
-    },
-    "backend.column.health": {
-      "kind": "title",
-      "zh": "健康",
       "args": []
     },
     "backend.column.exit": {
@@ -11967,42 +11887,42 @@
     },
     "backendPolicy.exit.kills": {
       "kind": "body",
-      "zh": "monitor 退出时会结束它",
+      "zh": "开 = cc-monitor 退出时停止",
       "args": []
     },
     "backendPolicy.exit.unattended": {
       "kind": "body",
-      "zh": "monitor 退出后它继续跑，无人监护：崩了不会自动重起；下次开 monitor 会接上它，接不上才起一个新的",
+      "zh": "关 = 常驻 · 无人监护 · 下次直接接上",
       "args": []
     },
     "backendPolicy.exit.selfDies": {
       "kind": "body",
-      "zh": "monitor 不主动结束它；它仍会在 monitor 退出后很快自行退出",
+      "zh": "关 = 不主动停止 · 断开后自行退出",
       "args": []
     },
     "backendPolicy.exit.unreadable": {
       "kind": "body",
-      "zh": "那台机器上的退出策略读不出来，按默认（不结束）办。这不等于有人这么选过",
+      "zh": "退出策略读不出 · 按默认（不停止）",
       "args": []
     },
     "rsBackendPolicy.health.unknown": {
       "kind": "body",
-      "zh": "— 无记录",
+      "zh": "无退出记录",
       "args": []
     },
     "rsBackendPolicy.health.unknownWhy": {
       "kind": "body",
-      "zh": "这里只记这次 monitor 开着以来的退出，关掉 monitor 就清零。所以「无记录」不等于「没崩过」。",
+      "zh": "仅记本次 cc-monitor 运行期间的退出 · 关闭后清零",
       "args": []
     },
     "rsBackendPolicy.health.clean": {
       "kind": "body",
-      "zh": "没崩过（这次 monitor 开着以来）",
+      "zh": "本次无异常退出",
       "args": []
     },
     "rsBackendPolicy.health.crashed": {
       "kind": "body",
-      "zh": "⚠ 崩过 {crashed} 次 · 最后一次：{last}",
+      "zh": "异常退出 ×{crashed} · {last}",
       "args": ["crashed", "last"]
     },
     "rsBackendPolicy.health.lastMissing": {
@@ -12012,7 +11932,7 @@
     },
     "rsBackendPolicy.health.detail": {
       "kind": "body",
-      "zh": "这次 monitor 开着以来：崩了 {crashed} 次 · 被拒 {refused} 次 · 没起来 {neverStarted} 次 · 读坏了 {misread} 次。读坏是 monitor 这一侧的事，不算它崩。每一次的完整记录在日志文件里。",
+      "zh": "本次运行：异常退出 {crashed} · 被拒 {refused} · 未启动 {neverStarted} · 读取失败 {misread} · 完整记录见日志",
       "args": ["crashed", "refused", "neverStarted", "misread"]
     },
     "rsBackendPolicy.death.listSep": {
@@ -16604,17 +16524,17 @@
     },
     "beProbe.hello.ok": {
       "kind": "body",
-      "zh": "版本 {build} · 能用 {usable} 项、这台做不到 {gaps} 项 · 往返 {ms} 毫秒",
-      "args": ["build", "usable", "gaps", "ms"]
+      "zh": "{ms}ms · {build} · 功能完整",
+      "args": ["ms", "build"]
     },
     "beProbe.hello.noAnswer": {
       "kind": "body",
-      "zh": "版本 {build} · 能用 {usable} 项、这台做不到 {gaps} 项 · 问了一句没等到回话：{e}",
-      "args": ["build", "usable", "gaps", "e"]
+      "zh": "{build} · 无应答 · {e}",
+      "args": ["build", "e"]
     },
     "beProbe.hello.tooOld": {
       "kind": "body",
-      "zh": "版本 {build} · 后端太旧，不能在远端起会话",
+      "zh": "{build} · 版本过旧 · 无法新建会话",
       "args": ["build"]
     },
     "beProbe.hello.noBuild": {
@@ -16624,7 +16544,7 @@
     },
     "machineCard.test.gapsSummary": {
       "kind": "action",
-      "zh": "看这台做不到的是哪些",
+      "zh": "查看",
       "args": []
     },
     "machineCard.test.gapRow": {
@@ -20894,8 +20814,9 @@
     },
     "machinePage.conn.how": {
       "kind": "title",
-      "zh": "连接参数",
-      "args": []
+      "zh": "怎么连",
+      "args": [],
+      "waive": {"C-Y3": "设置窗文案单子定的小节名（连接设置里「怎么连」那一节）"}
     },
     "machinePage.conn.toggle": {
       "kind": "action",
@@ -20936,11 +20857,6 @@
       "kind": "error",
       "zh": "{machine} 离线",
       "args": ["machine"]
-    },
-    "machinePage.meta.local": {
-      "kind": "body",
-      "zh": "这台电脑 · {os}",
-      "args": ["os"]
     },
     "machinePage.meta.localBare": {
       "kind": "body",
@@ -21206,6 +21122,171 @@
       "kind": "body",
       "zh": "关 = 停用连接 · 即时生效",
       "args": []
+    },
+    "machineCard.seg.resolve": {
+      "kind": "body",
+      "zh": "解析",
+      "args": []
+    },
+    "machineCard.seg.connect": {
+      "kind": "body",
+      "zh": "连接",
+      "args": []
+    },
+    "machineCard.seg.auth": {
+      "kind": "body",
+      "zh": "认证",
+      "args": []
+    },
+    "machineCard.seg.ready": {
+      "kind": "body",
+      "zh": "就绪",
+      "args": []
+    },
+    "machineCard.field.keyPick": {
+      "kind": "action",
+      "zh": "选…",
+      "args": []
+    },
+    "machineCard.field.keyPickTitle": {
+      "kind": "title",
+      "zh": "选私钥",
+      "args": []
+    },
+    "machineCard.fp.none": {
+      "kind": "body",
+      "zh": "未记录 · 首次连接时记录",
+      "args": []
+    },
+    "machineCard.fp.line": {
+      "kind": "body",
+      "zh": "{fp} · 记于 {date}",
+      "args": ["fp", "date"]
+    },
+    "machineCard.uninstall.open": {
+      "kind": "action",
+      "zh": "从 {machine} 卸载…",
+      "args": ["machine"]
+    },
+    "machineCard.conn.moreJump": {
+      "kind": "body",
+      "zh": "跳板 {jump}",
+      "args": ["jump"]
+    },
+    "machineCard.conn.moreAddrs": {
+      "kind": "body",
+      "zh": "备用地址 {n}",
+      "args": ["n"]
+    },
+    "machineCard.conn.none": {
+      "kind": "body",
+      "zh": "—",
+      "args": []
+    },
+    "machineCard.field.resumeCmdScope": {
+      "kind": "body",
+      "zh": "仅 {machine} · 留空 = 通用设置",
+      "args": ["machine"]
+    },
+    "machineCard.test.fpChanged": {
+      "kind": "body",
+      "zh": "主机指纹与记录的不同：{fingerprint}",
+      "args": ["fingerprint"]
+    },
+    "machineCard.test.fpUnpinned": {
+      "kind": "body",
+      "zh": "主机指纹未记录：{fingerprint}",
+      "args": ["fingerprint"]
+    },
+    "machinePage.meta.version": {
+      "kind": "body",
+      "zh": "版本 {ver}",
+      "args": ["ver"]
+    },
+    "machineList.summary.single": {
+      "kind": "body",
+      "zh": "{os} · 单账号",
+      "args": ["os"]
+    },
+    "machineList.summary.singleBare": {
+      "kind": "body",
+      "zh": "单账号",
+      "args": []
+    },
+    "machineList.summary.notEnabled": {
+      "kind": "body",
+      "zh": "未启用多账号",
+      "args": []
+    },
+    "machineList.summary.accounts": {
+      "kind": "body",
+      "zh": "{n} 个账号 · 默认 {name}",
+      "args": ["n", "name"]
+    },
+    "machineList.summary.count": {
+      "kind": "body",
+      "zh": "{n} 个账号",
+      "args": ["n"]
+    },
+    "beProbe.hello.okGaps": {
+      "kind": "body",
+      "zh": "{ms}ms · {build} · {gaps} 项不可用",
+      "args": ["ms", "build", "gaps"]
+    },
+    "backend.cc.state": {
+      "kind": "control",
+      "zh": "状态",
+      "args": []
+    },
+    "backend.cc.drift": {
+      "kind": "control",
+      "zh": "未识别内容",
+      "args": []
+    },
+    "backend.cc.driftSome": {
+      "kind": "body",
+      "zh": "会话流 {n} 种 · 已记入诊断信息 · 不影响显示",
+      "args": ["n"]
+    },
+    "backend.cc.driftNone": {
+      "kind": "body",
+      "zh": "无",
+      "args": []
+    },
+    "backend.cc.driftUnread": {
+      "kind": "body",
+      "zh": "读不到",
+      "args": []
+    },
+    "backend.buildCells.restart": {
+      "kind": "action",
+      "zh": "重启",
+      "args": []
+    },
+    "backend.restart.title": {
+      "kind": "title",
+      "zh": "重启 cc-monitor · {machine}",
+      "args": ["machine"]
+    },
+    "backend.restart.action": {
+      "kind": "action",
+      "zh": "重启",
+      "args": []
+    },
+    "machinePage.cc.summaryUp": {
+      "kind": "body",
+      "zh": "在跑",
+      "args": []
+    },
+    "machinePage.cc.summaryDown": {
+      "kind": "body",
+      "zh": "未连接",
+      "args": []
+    },
+    "machinePage.cc.summaryVer": {
+      "kind": "body",
+      "zh": "版本 {ver} · {state}",
+      "args": ["ver", "state"]
     }
   }
 }

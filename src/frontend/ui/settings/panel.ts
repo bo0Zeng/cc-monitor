@@ -276,6 +276,8 @@ export class SettingsPanel {
   private remoteSection?: RemoteSection;
   /** P2s（C8）：backend 开关区。打开面板时 refresh 一次，重拉每台机的状态。 */
   private backendSection?: BackendSection;
+  /** 后端报来的各台版本（按后端那套名字）。 */
+  private readonly versionOf = new Map<string, string | null>();
   /** 「终端」栏「直接敲的 claude 也走中转」那一块：回到机器页时展开过就重问。 */
   private relayOptin?: RelayOptinSection;
 
@@ -622,6 +624,14 @@ export class SettingsPanel {
     this.applyPendingTarget();
   }
 
+  /** 「这台上的 cc-monitor」折叠头右侧：`版本 x · 在跑` ／ `未连接`（没问到 ⇒ 空）。 */
+  private ccSummary(origin: string, connected: boolean | null): string {
+    if (connected === null) return "";
+    const state = connected ? copyText("machinePage.cc.summaryUp") : copyText("machinePage.cc.summaryDown");
+    const ver = this.versionOf.get(origin) ?? null;
+    return ver ? copyText("machinePage.cc.summaryVer", { ver, state }) : state;
+  }
+
   /** 导航里那台机器前的点：连着 · 离线 · 没问到。 */
   private paintNavDot(origin: string, connected: boolean | null): void {
     this.channelOf.set(origin, connected);
@@ -637,6 +647,7 @@ export class SettingsPanel {
     }
     this.machinePages.get(pageId)?.setDisabled(false);
     this.machinePages.get(pageId)?.setConnected(connected);
+    this.machinePages.get(pageId)?.setCcSummary(this.ccSummary(origin, connected));
     if (connected === true) this.router.setNavDot(pageId, "up", copyText("settingsNav.dot.up", { machine }));
     else if (connected === false) this.router.setNavDot(pageId, "failed", copyText("settingsNav.dot.down", { machine }));
     else this.router.setNavDot(pageId, "unknown", copyText("settingsNav.dot.unknown", { machine }));
@@ -894,17 +905,19 @@ export class SettingsPanel {
     const cc: HTMLElement[] = [];
     if (origin && this.backendSection) {
       try {
-        cc.push(this.backendSection.cellsFor(origin));
+        cc.push(this.backendSection.cellsFor(origin, { rows: parts ? [parts.components] : [], trailing: parts?.uninstall }));
       } catch (e) {
         // 那几格没建起来不许把这一页带走（那台退到后端清单的尾巴里）。
         console.warn("[settings] 这台上的 cc-monitor 那几格没建起来：", e);
+        if (parts) cc.push(parts.components);
       }
+    } else if (parts) {
+      cc.push(parts.components);
     }
-    if (parts) cc.push(parts.components);
     const page = buildMachinePage({
       pageId,
       name: title,
-      meta: local ? localMeta() : (this.remoteSection?.metaOfPage(pageId) ?? ""),
+      meta: (local ? localMeta("head") : this.remoteSection?.metaOfPage(pageId)) ?? "",
       connection: parts?.connection,
       ccMonitor: cc,
       menu: () => this.remoteSection?.menuFor(pageId) ?? [],

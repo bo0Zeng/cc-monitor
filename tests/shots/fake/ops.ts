@@ -41,7 +41,7 @@ export const ACCOUNTS = [
 
 export function defaultOps(): Record<string, OpHandler> {
   return {
-    "accounts-list": () => ({
+    "accounts-list": (origin) => ({
       accounts: ACCOUNTS.map((a) => ({
         name: a.name,
         email: a.email,
@@ -61,7 +61,8 @@ export function defaultOps(): Record<string, OpHandler> {
         sharedStore: "/home/user/.cc-monitor/accounts/shared",
         count: ACCOUNTS.length,
         error: null,
-        unsupported: null,
+        // 那台 Windows：做不了多账号（后端那一句）。
+        unsupported: origin === "win-laptop" ? "Windows 不支持多账号" : null,
       },
       notice: null,
     }),

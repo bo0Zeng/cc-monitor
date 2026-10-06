@@ -50,7 +50,13 @@ export function machineOps(): Record<string, OpHandler> {
     "apikey-read": () => ({ configured: true, masked: "sk-ant-…a1b2", notice: null, path: `${HOME}/.cc-monitor/apikey-credentials.json`, problem: null }),
     "apikey-routing": () => ({ routed: [`${HOME}/.cc-monitor/accounts/api`], running: true }),
     "accounts-mcp-read": () => ({ enabled: true, servers: ["docs-search", "issue-tracker"], conflicts: [], changed: [], notes: [] }),
-    "drift-report": () => ({ faces: [] }),
+    // devbox 上记下了三种认不出的会话流（结构夹具：键名是造的）。
+    "drift-report": (origin) => ({
+      faces:
+        origin === "devbox"
+          ? [{ face: "record_type", consequence: "不显示", overflowed: false, entries: ["tool_progress", "ghost_note", "x_marker"].map((key) => ({ key, count: 2, first_sample: null })) }]
+          : [],
+    }),
     // 起新会话要的三格那台推：源会话在跑 ⇒ 号与终端都知道；已结束 ⇒ 号与终端说不出（码同真后端）。
     "session-fork": (_o, req, w) => {
       const s = w.sessions.find((x) => x.sid === req.sid);
@@ -171,7 +177,7 @@ export function machineCommands(): Record<string, CommandHandler> {
         state: "clean",
         summary: copyText("rsBackendPolicy.health.clean"),
         why: null,
-        detail: copyText("rsBackendPolicy.health.detail", { crashed: 0, refused: 0, neverStarted: 0, misread: 0 }),
+        detail: null,
       },
     }),
     local_ccm_entry_status: () => ({

@@ -2,6 +2,7 @@
 declare const classes: {
   readonly swBox: string;
   readonly swCheck: string;
+  readonly swHelp: string;
   readonly swRow: string;
   readonly swSwitch: string;
   readonly swText: string;

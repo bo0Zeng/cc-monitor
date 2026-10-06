@@ -16,6 +16,8 @@ export interface RemoteHostConfig {
   user: string;
   keyPath: string;
   hostKeyFingerprint: string;
+  /** 指纹记下的那一天（`YYYY-MM-DD`；没记过 / 不知道 ⇒ 空）。只给人看，拨号不读它。 */
+  hostKeyPinnedAt?: string;
   /**
    * Batch14-F45：备用地址（happy-eyeballs 竞发）。每项 `host` / `host:port` /
    * `[IPv6]:port` / 裸 IPv6。首选地址仍是 `host` 字段。空数组 = 仅用 host。
@@ -94,6 +96,7 @@ export const HOST_DEFAULTS: RemoteHostConfig = {
   user: "",
   keyPath: "",
   hostKeyFingerprint: "",
+  hostKeyPinnedAt: "",
   addresses: [],
   jump: "",
   resumeCommand: "",
@@ -126,6 +129,7 @@ function coerceHost(obj: Record<string, unknown>): RemoteHostConfig {
     user: str("user", HOST_DEFAULTS.user),
     keyPath: str("keyPath", HOST_DEFAULTS.keyPath),
     hostKeyFingerprint: str("hostKeyFingerprint", HOST_DEFAULTS.hostKeyFingerprint),
+    hostKeyPinnedAt: str("hostKeyPinnedAt", ""),
     addresses: coerceAddresses(obj.addresses),
     jump: str("jump", HOST_DEFAULTS.jump),
     resumeCommand: str("resumeCommand", HOST_DEFAULTS.resumeCommand),
@@ -208,6 +212,7 @@ const REMOTE_HOST_FIELDS = [
   "user",
   "keyPath",
   "hostKeyFingerprint",
+  "hostKeyPinnedAt",
   "addresses",
   "jump",
   "resumeCommand",
