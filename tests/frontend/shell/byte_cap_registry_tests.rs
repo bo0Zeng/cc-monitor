@@ -808,7 +808,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "src/backend/faces/read_face.rs",
         "LINES_CAP_BYTES",
         32 << 20,
-        "按行那六条帧查询（`history-projects` 等）整份输出",
+        "按行那几条帧查询（`history-search` 等）整份输出",
         "拒收+回错",
     ),
     // 插件市场枚举那两个上限随插件只读列表整块删了（界面上没有可做的事）。

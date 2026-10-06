@@ -39,7 +39,7 @@ pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻�
 pub mod footprint; // 〔RM1a → MIG-3b 续〕「足迹」：帧面 `footprint-report`（申报表 ＋ 判定 ＋ 这台的 stat，出整份成品；只读）
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
-pub mod history; // 历史跨机 join 与注解（history_join · history_annotations）
+pub mod history; // 历史清单与注解（history_list · history_annotations）
 #[cfg(test)]
 #[path = "../../tests/backend/layering_guard.rs"]
 mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔control 方向与条数）
@@ -1077,7 +1077,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--history-list",
     // `history-page`（按字节分页出记录行）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--history-page",
-    "--history-projects",
     "--history-read",
     // `history-record` 的 CLI 面（CLI 面从 `REGISTRY` 派生，`is_query_mode` 那道闸门读本表）。
     // **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
@@ -1085,7 +1084,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 按运行读一个子运行的记录（替掉按目录与描述挑的那一条）。**子命令换了** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--history-run",
     "--history-search",
-    "--history-sessions",
     "--history-tail",
     // `history-turns`（一轮的摘要，主窗口第 2 批）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--history-turns",

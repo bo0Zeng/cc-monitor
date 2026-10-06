@@ -337,14 +337,8 @@ fn a_machine_without_a_projects_dir_lists_nothing_and_an_unreadable_one_says_so_
     let mut out = Vec::new();
     assert_eq!(list_projects_into(&tmp, &mut out), Ok(false));
     assert!(out.is_empty(), "没有记录树却列出了东西");
-    // 帧面那一宿主当零个项目（不失败）；CLI 那一宿主照旧出声 rc=2（S6-Z3），话是人话。
-    let framed = crate::history::history_join::local_projects_with(
-        &tmp,
-        &[],
-        &crate::history::history_annotations::Loaded::NoPath,
-        &crate::history::history_join::NoLiveness,
-    );
-    assert_eq!(framed.map(|v| v["rows"].clone()), Ok(serde_json::json!([])));
+    // 平铺清单当零个项目（不失败）；CLI 照旧出声 rc=2（S6-Z3），话是人话。
+    assert_eq!(sessions_by_dir(&tmp), Ok(None));
     assert_eq!(run(&tmp, &["--list-projects".to_string()]), 2);
     // CLI 那一声带结构化的码（问它的那台后端认码画空态，不认话）。
     assert_eq!(

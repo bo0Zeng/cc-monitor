@@ -95,17 +95,16 @@ fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
 
 // 历史清单与注解搬进本机常驻后端（join 只一个家、注解读写者是本机后端）——
 //   这里原先驱动 monitor 那一份实现的几组判据随被测函数一起退役，它们钉的性质各自在新家有判据（逐条对应）：
-//   - `K-R97` 本机项目清单来自后端那一行 · 行里的「不知道」不被压平 · 本机判活答真值 · 一次列举只问一次
-//     （`the_local_project_list_is_whatever_the_backend_said` 那一组〔散文墓碑〕）⇒ 后端 `tests/backend/history/history_join_tests.rs`
-//     （`local_liveness_answers_true_and_false_and_unknown_is_its_own_bucket` · `a_local_listing_joins_the_record_tree_and_the_synthesized_history` ·
-//     `one_remote_is_asked_exactly_once_with_the_old_subcommands` · `remote_projects_carry_the_annotation_counts_and_say_unknown_honestly`）；
+//   - `K-R97` 本机清单来自后端那一行 · 本机判活答真值 · 远端只问一次（`the_local_project_list_is_whatever_the_backend_said` 那一组〔散文墓碑〕）
+//     ⇒ 后端 `tests/backend/history/history_list_tests.rs`（`the_machine_listing_carries_group_dir_failures_synth_and_last_accounts` ·
+//     `a_real_record_tree_becomes_the_machine_listing` · `a_remote_is_asked_raw_once_and_cached_until_fresh`）；
 //     「本机后端不在 ≠ 一个项目都没有」⇒ 通道的失败层级（`src/frontend/ui/history-reads.ts` 抛、界面说「加载失败」），判据 `tests/frontend/ui/history-reads.vitest.ts`；
-//   - `K-R92` 线上那几格分得开「不知道」与「真的是 0」· 「不知道」自成一档排序（`the_three_counts_can_say_i_do_not_know` 那两条〔散文墓碑〕）
-//     ⇒ 后端 `history_join_tests.rs`（`unreadable_annotations_are_unknown_not_zero` · `projects_sort_unknown_between_known_true_and_known_false`）；
-//   - 两个线上形状的驼峰契约（`history_project_camel_case_contract` 那两条〔散文墓碑〕）⇒ 跨语言金样 `tests/__fixtures__/history-products.golden.json`
+//   - `K-R92` 分得开「不知道」与「真的是 0」· 「不知道」自成一档排序（`the_three_counts_can_say_i_do_not_know` 那两条〔散文墓碑〕）
+//     ⇒ 后端 `history_list_tests.rs`（`unreadable_annotations_say_so_and_the_rows_still_come` · `groups_rank_live_then_starred_then_recent_and_keep_failed_dirs`）；
+//   - 线上形状的驼峰契约（`history_project_camel_case_contract` 那两条〔散文墓碑〕）⇒ 跨语言金样 `tests/__fixtures__/history-list.golden.json`
 //     （后端产 · TS 解码器逐键收）；
 //   - Codex 分组 · 首条真用户话去注入（`codex_projects_group_by_cwd` 那两条〔散文墓碑〕）⇒ 后端 `tests/backend/agents/codex/history_tests.rs`
-//     ＋ `history_join_tests.rs::synthesized_history_groups_by_cwd_under_the_kind_prefix`；
+//     ＋ `history_list_tests.rs::the_machine_listing_carries_group_dir_failures_synth_and_last_accounts`；
 //   - 上次账号的 serde 与 patch 三态 · 只含真有的那几条（`last_account_serde_and_patch_semantics` 那两条〔散文墓碑〕）⇒ 后端
 //     `tests/backend/history/history_annotations_tests.rs`（`patch_semantics_match_what_the_monitor_did`；上次账号那一格今天不归注解，住会话所在那台的起会话账号记录）；
 //   - 摘录按字符截断（`truncate_chars_unicode` 那三条〔散文墓碑〕）⇒ 通用搜索口径的 `truncate_excerpt`（后端会话行改用它；今天住 `observe/search_rules.rs`）；

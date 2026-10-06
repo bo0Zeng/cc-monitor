@@ -454,7 +454,6 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/polling_registry_tests.rs",
     "tests/frontend/shell/profile_installer_handshake_doc_guard.rs",
     "tests/frontend/shell/quote_singleton_guard_tests.rs",
-    // `tests/frontend/shell/remote_history_kr83_tests.rs` 删了（`K-R83` 那三条随 join 搬进后端 `history_join_tests.rs`）。
     "tests/frontend/shell/remote_write_registry_tests.rs",
     "tests/frontend/shell/rust_timer_registry_tests.rs",
     "tests/frontend/shell/search_kou_jing_guard.rs",
@@ -604,7 +603,6 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/assets/asset_sync_tests.rs",    //
     "tests/backend/agents/codex/history_tests.rs", // Codex 历史清单那一面（临时目录上的会话树）
     "tests/backend/history/history_annotations_tests.rs", // 注解读写（夹具拷进临时目录真写真读）
-    "tests/backend/history/history_join_tests.rs", // 历史跨机 join（临时目录上的记录树 ＋ 替身对面）
     "tests/backend/history/history_list_tests.rs", // 历史页平铺清单（夹具行 ＋ 替身对面）
     "tests/backend/stream/remote_ask_tests.rs",    // 问远端那一跳（真 sh 读回引号 ＋ 替身对面）
     "tests/backend/assets/skill_install_tests.rs", //

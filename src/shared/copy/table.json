@@ -13883,16 +13883,6 @@
       "zh": "没能列出会话记录：{machine} 回的内容读不出来。",
       "args": ["machine"]
     },
-    "beHistoryJoin.localSessionsWith.unknownProject": {
-      "kind": "error",
-      "zh": "这台后端没有 {kind} 的历史，认不出项目 {project}",
-      "args": ["kind", "project"]
-    },
-    "beHistoryJoin.capped.tooLarge": {
-      "kind": "error",
-      "zh": "清单太大（{n} 字节，上限 {cap}），没有返回。",
-      "args": ["n", "cap"]
-    },
     "beHistoryJoin.annotations.unparsable": {
       "kind": "error",
       "zh": "星标 / 改名 / 隐藏的记录读不懂，这一次没有并上：{why}",

@@ -515,3 +515,85 @@ fn the_product_matches_the_cross_language_golden() {
         "成品形状变了：TS 解码器读的是同一份金样，两边一起改（CCM_BLESS=1 重写）"
     );
 }
+
+/// 注解读不到 / 读不懂 ⇒ `notice` 说一句为什么，行一条不少（星标 · 隐藏按没有算）。
+#[test]
+fn unreadable_annotations_say_so_and_the_rows_still_come() {
+    use crate::history::history_annotations::Loaded;
+    let all = listing()["rows"].as_array().map(Vec::len);
+    for loaded in [Loaded::NoPath, Loaded::Unreadable("坏了".into())] {
+        let v = answer_from(
+            &listing(),
+            None,
+            annotations(&loaded),
+            &ask(json!({})),
+            1_000,
+        );
+        assert!(
+            v["notice"].as_str().is_some_and(|s| !s.is_empty()),
+            "注解读不到却没出声：{v}"
+        );
+        assert_eq!(
+            v["rows"].as_array().map(Vec::len),
+            all,
+            "注解读不到不许少行：{v}"
+        );
+    }
+    assert_eq!(
+        answer(json!({}))["notice"],
+        Value::Null,
+        "读得到注解时不出声"
+    );
+}
+
+/// 真记录树：临时家目录里两个记录目录 ⇒ 每行带对记录目录 · 真实目录 · 那一家；判活照给的那一份。
+#[test]
+fn a_real_record_tree_becomes_the_machine_listing() {
+    let home = std::env::temp_dir().join(format!("ccm-hlist-tree-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    for (proj, cwd, sids) in [
+        ("-w-alpha", "/w/alpha", vec![S1, S2]),
+        ("-w-beta", "/w/beta", vec![S4]),
+    ] {
+        let d = home.join("projects").join(proj);
+        std::fs::create_dir_all(&d).unwrap();
+        for s in sids {
+            std::fs::write(
+                d.join(format!("{s}.jsonl")),
+                format!("{{\"cwd\":\"{cwd}\"}}\n"),
+            )
+            .unwrap();
+        }
+    }
+    let tree = crate::observe::history_query::sessions_by_dir(&home)
+        .expect("读得了")
+        .expect("记录树在");
+    let live = LiveSet([S4.to_string()].into_iter().collect());
+    let v = listing_from(tree, &[], &live, &json!({}));
+    let _ = std::fs::remove_dir_all(&home);
+    let agent = crate::agents::record_tree_kind().unwrap_or_default();
+    let mut got: Vec<(String, String, String, bool)> = v["rows"]
+        .as_array()
+        .expect("rows")
+        .iter()
+        .map(|r| {
+            assert_eq!(r["agent"], agent, "记录树那一行是记录树那一家：{r}");
+            (
+                r["sessionId"].as_str().unwrap_or_default().to_string(),
+                r["projectDir"].as_str().unwrap_or_default().to_string(),
+                r["projectPath"].as_str().unwrap_or_default().to_string(),
+                r["isLive"].as_bool().unwrap_or_default(),
+            )
+        })
+        .collect();
+    got.sort();
+    let want = |s: &str, d: &str, p: &str, l| (s.to_string(), d.to_string(), p.to_string(), l);
+    assert_eq!(
+        got,
+        vec![
+            want(S1, "-w-alpha", "/w/alpha", false),
+            want(S2, "-w-alpha", "/w/alpha", false),
+            want(S4, "-w-beta", "/w/beta", true),
+        ]
+    );
+}

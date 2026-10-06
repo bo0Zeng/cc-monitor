@@ -130,12 +130,6 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "assets/asset_sync.rs",
         include_str!("../../src/backend/assets/asset_sync.rs"),
     ),
-    // 历史跨机 join：本机后端在远端跑 `--list-projects` / `--list-sessions`（那台的 CLI 老子命令）——
-    //   同 `asset_sync.rs`：它不分派，是**发**这两个子命令的一方；登记之后那两个字面量受对拍约束。
-    (
-        "history/history_join.rs",
-        include_str!("../../src/backend/history/history_join.rs"),
-    ),
     (
         "observe/history_query.rs",
         include_str!("../../src/backend/observe/history_query.rs"),

@@ -145,8 +145,7 @@ pub(crate) fn reach_rows(table: &Table) -> Vec<Value> {
         .collect()
 }
 
-/// `remote-reach`：只登记、不做别的（monitor 在每台远端流握手那一刻交；老远端也登记 ——
-/// 历史清单问它的是 `--list-projects` 这种老子命令）。回 `{origin, reach}`。
+/// `remote-reach`：只登记、不做别的（monitor 在每台远端流握手那一刻交；老远端也登记）。回 `{origin, reach}`。
 pub fn answer_reach(args: &Value) -> Result<Value, (&'static str, String)> {
     answer_reach_with(args, &REACH)
 }

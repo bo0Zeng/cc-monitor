@@ -40,12 +40,10 @@ use crate::origin::Origin;
 use serde_json::{json, Value};
 use std::time::Duration;
 
-/// 那八条 ＋两条：CLI 子命令 → 帧命令。**判据的一侧**（另一侧从后端源码数，见测试）。
+/// CLI 子命令 → 帧命令。**判据的一侧**（另一侧从后端源码数，见测试）。
 /// 生产段不读它 —— 它是判据的一侧（与 `inbound::CommandSpec` 那几栏同理），故精确 allow。
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const MOVED: &[(&str, &str)] = &[
-    ("--list-projects", "history-projects"),
-    ("--list-sessions", "history-sessions"),
     ("--read-session", "history-read"),
     ("--read-session-tail", "history-tail"),
     ("--search", "history-search"),

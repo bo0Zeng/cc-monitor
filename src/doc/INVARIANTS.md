@@ -330,7 +330,7 @@ jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是�
 具体包括：
 
 - **Win32 同步调用**：`EnumWindows` / `SetForegroundWindow` / `ShellExecuteW` / `OpenProcess` 等（窗口枚举 / 进程查询 / shell execute 可能数十 ms 到秒级）
-- **文件系统 IO**：`history.rs` 全部 IPC（`list_history_projects` / `stream_history_sessions_in_project` / `stream_read_session_jsonl`）也走 spawn_blocking —— 扫几十个项目 / 读几 MB jsonl 都属此类
+- **文件系统 IO**：扫几十个项目 / 读几 MB jsonl 这类也走 spawn_blocking
 - **`std::process::Command::spawn`**：spawn 外部进程（如 resume 的 wt.exe / powershell.exe 跑 `cc`/`claude --resume`，v2.8.1 起）
 - **async task 内禁止 `std::thread::sleep` / 同步阻塞**（issue #20 增补）：`tauri::async_runtime::spawn` 的 task 里节流用 `tokio::time::sleep(..).await`，真长阻塞走 spawn_blocking。一次同步 sleep 压住一个 tokio worker，worker 数有限，攒多了饿死全部 async 任务（F5 的重放为此 async 化 —— 今天是 `event_replay·rs::ready_point`；重放缓冲的入口 `on_line_batch_awaited` 大 batch 路径块间用 `tokio::time::sleep`、**发完才返回** —— 行 emit 因此严格先于随后的 SessionRemoved 归档。原先还有一份把块序列 spawn 出去、「返回≠emit 完成」的孪生入口，只供本机 watcher 用，随它一起删了）
 

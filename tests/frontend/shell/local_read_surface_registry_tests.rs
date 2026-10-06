@@ -17,7 +17,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     //    这正是那条登记自己写着的退役条件，逐字兑现。⚠ **分条这件事因此付了息**：
     //    它当初就是为了让「迁完了」这件事在账上看得见，而今天它确实少了一行。
     // `src/history.rs` 两行摘了：`fence` 2（展开一个项目的路径围栏）与 `no-counterpart` 1（Codex 合成项目）——
-    //   本机历史清单整段搬进本机常驻后端（`history-sessions` 出成品；Codex 枚举进后端 `agents/codex/history.rs`，
+    //   本机历史清单整段搬进本机常驻后端（Codex 枚举进后端 `agents/codex/history.rs`，
     //   `no-counterpart` 那一行自己写的退役条件「backend 侧补上 codex 的项目枚举」兑现了）。9 → 6。
     // `src/history.rs` 的 `fence` 一行（1 处：`stream_read_session_jsonl` 本机那一支解析 records 根
     //   只为验 `target.starts_with(&root)`）摘了 —— 那一支删了：本机冷读也经本机后端的 `history-read`，围栏归后端

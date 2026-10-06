@@ -5,9 +5,9 @@
 //!
 //! ## 清单与注解不在这里了
 //!
-//! 项目 / 会话清单与注解（星标 / 重命名 / 隐藏 / 上次账号）搬进了**本机常驻后端**（历史跨机 join 的唯一的家：
-//! 后端 `history_join.rs` · `history_annotations.rs`），界面经通道问（`src/frontend/ui/history-reads.ts`）。这里原先的「两级懒加载」
-//! （`list_history_projects`〔散文墓碑〕 · `stream_history_sessions_in_project`〔散文墓碑〕）与注解读写一起删了。
+//! 项目 / 会话清单与注解（星标 / 重命名 / 隐藏 / 上次账号）搬进了**本机常驻后端**（后端 `history_list.rs` ·
+//! `history_annotations.rs`），界面经通道问（`src/frontend/ui/history-reads.ts`）。这里原先的「两级懒加载」
+//! （`list_history_projects`〔散文墓碑〕）与注解读写一起删了。
 //! 注解那份文件住这台的家（`~/.cc-monitor/history-metadata.json`），那台后端按家自己推 —— star / 重命名 / 隐藏仍然**不改 jsonl**
 //! （Claude Code 的数据保持零侵入）。
 //!
@@ -24,8 +24,8 @@
 // 两个线上形状（`HistoryProject` / `HistorySessionEntry`）· 注解三件（`HistoryMetadata` / `EntryMetadata` / `MetadataPatch`）·
 // 本机项目清单（`list_history_projects` / `local_projects_via`〔散文墓碑〕· 判活绑定 `SessionMapLiveness`〔散文墓碑〕）·
 // Codex 合成（`enumerate_codex_sessions` / `codex_projects_from` / `codex_session_entry` / `codex_first_user_excerpt`〔散文墓碑〕）·
-// 展开一个项目（`stream_history_sessions_in_project` 与它的 `analyze_jsonl`〔散文墓碑〕一族）· 改注解 / 上次账号表那两条命令。
-// 判定逐格搬进后端（`history_join.rs` · `history_annotations.rs` · `agents/codex/history.rs`），判据跟着搬；
+// 展开一个项目（`analyze_jsonl`〔散文墓碑〕一族）· 改注解 / 上次账号表那两条命令。
+// 判定逐格搬进后端（`history_list.rs` · `history_annotations.rs` · `agents/codex/history.rs`），判据跟着搬；
 // 「迁移前后读出来的注解逐条相等」由结构占位夹具 `tests/__fixtures__/history-metadata.fixture.json` ＋ 旧读者产出的金样
 // `tests/__fixtures__/history-metadata.readout.golden.json` 钉着。
 

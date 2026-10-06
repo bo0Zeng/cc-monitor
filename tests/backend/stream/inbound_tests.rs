@@ -426,7 +426,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     // 纯计算的两条留在普通 spawn 上（它们能在 await 点被真取消）。
     // `assets-sync`：等拨号 / 等远端 capture —— 真异步，也在普通 spawn 上。
     // `remote-reach`：纯内存登记（一把锁、插一行），同 `ping` 在普通 spawn 上。
-    // 历史两条出成品：远端那一支等 `remote_ask`（真异步），本机扫盘那段自己挪到阻塞线程池。
+    // 历史清单（`history-list`）出成品：远端那一支等 `remote_ask`（真异步），本机扫盘那段自己挪到阻塞线程池。
     for c in [
         "ping",
         "resolve",
@@ -443,9 +443,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "resident-verdict", // 纯判定，普通 spawn
         "deploy-retired",   // 真异步（沿池里那条 SSH 开 SFTP），在 await 点可取消
         "remote-reach",
-        "history-projects",
         "history-list",
-        "history-sessions",
         // 端口转发：起 = 真异步（拨号 / 等 ack），停 / 列 = 纯内存一把锁 ⇒ 都在普通 spawn 上。
         "forward-start",
         "forward-stop",
@@ -535,7 +533,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 读族第十条：分块读回（同步 I/O）。
         "files-read-chunk",
         // 只读查询面八条：全做文件 I/O（`history-search` 扫全库）。
-        // `history-projects` / `history-sessions` 出列：它们出成品、远端那一支要等 ⇒ 真异步（见上面那一档）。
         "history-index",
         "history-user-inputs",
         "history-find",
@@ -721,7 +718,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-size",
         // 读族第十条：分块读回（同步 I/O）。
         "files-read-chunk",
-        "history-projects",
         "history-list",
         "history-index",
         "history-user-inputs",
@@ -733,7 +729,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "history-lines",  //
         "history-record", //
         "history-search",
-        "history-sessions",
         "history-run",
         "history-page", //
         "history-tail",

@@ -201,8 +201,7 @@ function walk(dir: string, ext: string, out: string[] = []): string[] {
  * - 属性写成带参形式 `#[tauri::command(rename_all = "snake_case")]`（Tauri 2 的正式功能）
  *   也要认——Phase D 审计变异 M4 实测：只认裸形式时守卫**假红**，且诊断说反了
  *   （报「注册了却找不到声明」，其实声明就在那儿）。
- * - 窗口从 400 收到 **120**：实测属性到 fn 名的最大真实距离是 **65**
- *   （`history.rs` 的 `stream_history_sessions_in_project`），400 是 6 倍余量，
+ * - 窗口从 400 收到 **120**：实测属性到 fn 名的最大真实距离是 **65**，
  *   给「孤儿属性抓到下一个 fn 名」留了空间。120 仍有近 2 倍余量。
  */
 function rustCommands(): Set<string> {

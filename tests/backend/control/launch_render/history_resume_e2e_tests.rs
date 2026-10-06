@@ -2,7 +2,7 @@
 //!
 //! 一个隔离的家目录里放一份合成的 Claude 记录与一份合成的 Codex 记录（只有结构，文字是编的），`PATH` 上只有两个假启动器
 //! （`claude` · `codex`：把自己叫什么、收到什么参数、账号变量在不在写进一个文件就退）。子进程里走生产那一整条：
-//! 历史成品（`history_join`，那一行带 `agent`）→ 界面那一问的入参（`launch-local`，`agent` 取那一行的）→ 本机那一行 `ccm …`
+//! 历史清单（`history_list::machine_listing`，那一行带 `agent`）→ 界面那一问的入参（`launch-local`，`agent` 取那一行的）→ 本机那一行 `ccm …`
 //! （`local::plan_argv`）→ `ccm` 自己（`control::ccm::run`，exec 掉子进程）→ 假启动器。
 //! Codex 那一行 ⇒ `codex --no-daemon resume <sid>`；Claude 那一行 ⇒ `claude --resume <sid>`。两行都不带账号变量。
 //! 买不到：界面里点那一下（GUI）· 真 codex / 真 claude · tmux 那一形（直路那一形就是 pane 里最终跑的那一趟）。
@@ -115,29 +115,17 @@ fn resuming_from_history_starts_the_agent_the_session_belongs_to() {
 #[test]
 #[ignore = "子进程入口：只在被父判据用 HRE_CHILD 拉起时才跑"]
 fn history_resume_child_entry_point() {
-    use crate::history::history_join::{local_projects_with, local_sessions_with, LiveSet};
     let Ok(sid) = std::env::var(CHILD_MARK) else {
         return;
     };
-    let home = crate::observe::history_query::agent_home();
-    let faces = crate::agents::history_faces();
-    let synth: Vec<_> = faces.iter().map(|(k, f)| (*k, (f.sessions)())).collect();
-    let ann = crate::history::history_annotations::load();
-    let none = LiveSet(Default::default());
-    let projects = local_projects_with(&home, &synth, &ann, &none).expect("项目清单");
-    let row = projects["rows"]
+    let listing = crate::history::history_list::machine_listing().expect("历史清单");
+    let row = listing["rows"]
         .as_array()
         .expect("rows")
         .iter()
-        .filter_map(|p| p["projectDir"].as_str())
-        .flat_map(|dir| {
-            local_sessions_with(&home, dir, &faces, &ann, &none).expect("会话清单")["rows"]
-                .as_array()
-                .cloned()
-                .unwrap_or_default()
-        })
         .find(|r| r["sessionId"] == sid.as_str())
-        .unwrap_or_else(|| panic!("历史里没有 {sid}：{projects}"));
+        .cloned()
+        .unwrap_or_else(|| panic!("历史里没有 {sid}：{listing}"));
     let agent = row["agent"].as_str().expect("历史那一行说不出是哪一家");
     let face = crate::agents::pick_kind(Some(agent)).expect("认得这一家").1;
     // 界面那一问（`launch-local`）：哪一家取那一行的，启动器缺省是那一家的；没有上次的号 ⇒ 账号缺席；没有 tmux ⇒ 直路。

@@ -15,14 +15,15 @@
 //!
 //! 判定全在这里：搜什么（显示标题 · 第一句 · 项目名）· 按什么排（`at`）· 每行能不能恢复 / 分叉 / 删、不能的为什么。
 //! 界面按 `at` 把各台的行并成一列（各台各自排好了），不另判。
+//! 「不知道」不装成已知：判不了活（合成历史没有 pidfile）⇒ `isLive: null`、那一组 `hasLive: null`；
+//! 注解读不到 / 读不懂 ⇒ 行照出（星标 · 隐藏按没有算），`notice` 说一句为什么。
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 
-use crate::history::history_annotations::Table;
-use crate::history::history_join::{annotations, session_from_row, synth_session, LiveSet};
+use crate::history::history_annotations::{Loaded, Table};
 
 /// 默认最多回多少行（按时间看时超过它只列最近这些、底部「更早的用搜索找」）。
 const DEFAULT_LIMIT: usize = 2000;
@@ -33,6 +34,113 @@ static REMOTE_CACHE: std::sync::Mutex<BTreeMap<String, Value>> =
     std::sync::Mutex::new(BTreeMap::new());
 
 // ───────────────────────── 这台自己的清单（`raw`）─────────────────────────
+
+/// 这台此刻活着的会话（pidfile 源头）。
+pub(crate) struct LiveSet(pub(crate) BTreeSet<String>);
+
+/// 注解这一维：读到了 ⇒ 那张表；读不到 ⇒ 为什么（给 `notice`）。
+pub(crate) fn annotations(loaded: &Loaded) -> Result<&Table, String> {
+    match loaded {
+        Loaded::Read(t) => Ok(t),
+        Loaded::NoPath => Err(copy_text("beHistoryJoin.annotations.unknown", &[]).into()),
+        Loaded::Unreadable(why) => Err(copy_text(
+            "beHistoryJoin.annotations.unparsable",
+            &[("why", &why.to_string())],
+        )),
+    }
+}
+
+/// 路径最后一段（`/` 与 `\` 都认）；空 ⇒ `None`。
+fn last_segment(p: &str) -> Option<&str> {
+    p.rsplit(['/', '\\']).next().filter(|s| !s.is_empty())
+}
+
+/// 记录树里的一行（`--list-sessions` 那一形）＋ 判活 ⇒ 清单的一行（注解格先按没有填，并注解在 [`answer_from`]）。
+/// 没有 `sessionId` ⇒ `None`。
+fn session_row(v: &Value, project_dir: &str, live: &LiveSet) -> Option<Value> {
+    let sid = v["sessionId"].as_str().filter(|s| !s.is_empty())?;
+    let cwd = v["cwd"].as_str().unwrap_or_default();
+    let excerpt = v["firstUserExcerpt"].as_str().unwrap_or_default();
+    let mut o = Map::new();
+    o.insert(
+        "agent".into(),
+        json!(crate::agents::record_tree_kind().unwrap_or_default()),
+    );
+    o.insert("sessionId".into(), json!(sid));
+    o.insert("projectPath".into(), json!(cwd));
+    o.insert(
+        "projectName".into(),
+        json!(last_segment(cwd).unwrap_or(project_dir)),
+    );
+    o.insert(
+        "aiTitle".into(),
+        v["aiTitle"].as_str().map_or(Value::Null, |s| json!(s)),
+    );
+    o.insert("firstUserExcerpt".into(), json!(excerpt));
+    // 显示标题（用户改过的另在 `customTitle`，界面先看它）：与全文搜索同一条规则。
+    o.insert(
+        "title".into(),
+        json!(crate::observe::search_rules::session_title(
+            v["aiTitle"].as_str(),
+            excerpt,
+            sid
+        )),
+    );
+    o.insert(
+        "startedAt".into(),
+        json!(v["startedAtMs"].as_i64().unwrap_or(0)),
+    );
+    o.insert(
+        "updatedAt".into(),
+        json!(v["updatedAtMs"].as_i64().unwrap_or(0)),
+    );
+    o.insert(
+        "jsonlPath".into(),
+        json!(v["jsonlPath"].as_str().unwrap_or_default()),
+    );
+    o.insert("isLive".into(), json!(live.0.contains(sid)));
+    o.insert(
+        "messageCountApprox".into(),
+        json!(v["messageCountApprox"].as_u64().unwrap_or(0) as u32),
+    );
+    o.insert("isBg".into(), json!(v["isBg"].as_bool().unwrap_or(false)));
+    o.insert("starred".into(), json!(false));
+    o.insert("customTitle".into(), Value::Null);
+    o.insert("hidden".into(), json!(false));
+    // 分叉关系：有才带。
+    if let (Some(s), Some(u)) = (
+        v["forkedFromSessionId"].as_str(),
+        v["forkedFromMessageUuid"].as_str(),
+    ) {
+        o.insert("forkedFromSessionId".into(), json!(s));
+        o.insert("forkedFromMessageUuid".into(), json!(u));
+    }
+    Some(Value::Object(o))
+}
+
+/// 合成历史的一条会话 ⇒ 清单的一行（判不了活 ⇒ `isLive: null`）。
+fn synth_row(kind: &str, s: &crate::agents::SynthSession, excerpt: String) -> Value {
+    let name = last_segment(&s.cwd).map_or_else(|| format!("({kind})"), str::to_string);
+    let title = crate::observe::search_rules::session_title(None, &excerpt, &s.sid);
+    json!({
+        "agent": kind,
+        "sessionId": s.sid,
+        "projectPath": s.cwd,
+        "projectName": name,
+        "aiTitle": null,
+        "firstUserExcerpt": excerpt,
+        "title": title,
+        "startedAt": s.mtime_ms,
+        "updatedAt": s.mtime_ms,
+        "jsonlPath": s.path.to_string_lossy(),
+        "isLive": null,
+        "messageCountApprox": 0,
+        "isBg": false,
+        "starred": false,
+        "customTitle": null,
+        "hidden": false,
+    })
+}
 
 /// 一行的分组键：哪一家 ＋ 真实目录（记录目录名会撞，`R5W-H09`）。
 fn group_key(agent: &str, project_path: &str) -> String {
@@ -77,7 +185,7 @@ pub(crate) fn listing_from(
         match got {
             Ok(list) => rows.extend(
                 list.iter()
-                    .filter_map(|v| session_from_row(v, &dir, None, None, live))
+                    .filter_map(|v| session_row(v, &dir, live))
                     .map(|v| with_group(v, &dir)),
             ),
             Err(why) => failed.push(json!({ "projectDir": dir, "error": why })),
@@ -86,10 +194,7 @@ pub(crate) fn listing_from(
     for (kind, sessions, excerpt) in synth {
         for s in sessions {
             let dir = format!("{kind}:{}", s.cwd);
-            rows.push(with_group(
-                synth_session(kind, s, excerpt(&s.path), None),
-                &dir,
-            ));
+            rows.push(with_group(synth_row(kind, s, excerpt(&s.path)), &dir));
         }
     }
     for r in &mut rows {

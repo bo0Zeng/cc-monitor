@@ -255,10 +255,10 @@ mod tests {
         ),
         (
             "history",
-            "从 crate 根归进来的两件（纯搬家），各自归 backend-core 的理由原样： \
-             `history_join` —— 历史跨机 join 的唯一的家：帧面 `history-projects` / `history-sessions` 出成品（记录树 ＋ 合成历史 ＋ \
-             pidfile 判活 ＋ 远端经 `remote_ask`，并上注解）。它归 backend-core 是因为「join 只一个家，在本机常驻后端」。\
-             **零写盘**：注解只读（`history_annotations::load`） · \
+            "各自归 backend-core 的理由： \
+             `history_list` —— 历史页的平铺会话清单：帧面 `history-list` 出成品（记录树 ＋ 合成历史 ＋ pidfile 判活 ＋ \
+             远端经 `remote_ask` 问那台 `raw`，并上注解）。它归 backend-core 是因为「清单只一个家，在本机常驻后端」。\
+             **零写盘**：注解只读（`history_annotations::load`），远端那份只记在本进程内存 · \
              `history_annotations` —— 历史注解（星标 / 改名 / 隐藏 / 上次账号）：帧面 `history-annotate` / `history-forget` / \
              `history-last-accounts`。它归 backend-core 是因为「读写者换成本机常驻后端」；写的只有那一份 \
              注解文件（monitor 从前那一份，路径由它交；后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
@@ -4475,7 +4475,7 @@ mod error_envelope_registry {
             "`--list-projects` 在「记录树根不在」时的带码信封（`no_record_tree`）",
             "同 `accounts_query` 那一行的理由：它落在 observe 层，`control/` 的 `emit_err` 按 `layering_guard` 的边引不到\
              （引了还会把 `cli_control` 可达的 tmux 带进三十来条帧命令的 `no_tmux` 判定）；只这一处、只这一个码，\
-             认码的是问它的那台后端（`remote_ask::settle_pulled` ⇒ `history_join` 远端那一支）。",
+             认码的是问它的那一方（`remote_ask::settle_pulled` 把码交回调用方）。",
         ),
     ];
 

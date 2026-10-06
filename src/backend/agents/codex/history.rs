@@ -5,7 +5,7 @@
 //! 本机历史浏览器里的 Codex 合成项目 / 会话，此前由 monitor 进程内自己枚举（`history·rs::enumerate_codex_sessions`〔散文墓碑〕
 //! 与 `codex_first_user_excerpt`〔散文墓碑〕）。「codex 合成的项目与会话一起进后端（join 只一个家）」⇒
 //! 枚举与摘录搬进这里（Codex 的格式知识只许住 `agents/codex/`，`agent_locality_guard` 判据①），
-//! 通用层（`history_join.rs`）经注册表 `Adapter.history` 那一格够到它（不增 `ADAPTER_CALL_SITES`）。
+//! 通用层（`history_list.rs`）经注册表 `Adapter.history` 那一格够到它（不增 `ADAPTER_CALL_SITES`）。
 //!
 //! # 口径
 //!

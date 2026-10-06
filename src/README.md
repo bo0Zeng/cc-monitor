@@ -105,13 +105,8 @@ index.html  ─> /src/frontend/ui/main.ts (defer)
 ```
 点击 📜 按钮 / Ctrl+H
   → HistoryView.open()
-  → invoke('list_history_projects') → HistoryProject[]  （轻量，不读内容）
-  → 渲染项目组 header（默认全折叠）
-
-点击某个项目组展开
-  → invoke('stream_history_sessions_in_project', { projectDir, onEntry: Channel })
-  → 每条 entry 通过 channel 增量到达；缓存到 sessionCache.set(projectDir, items)
-  → 渲染该组内的 session 行
+  → 每台一问 chan.call('<local>', 'history-list', { origin?, fresh, … })（history-list-reads.ts）
+    → { rows, groups, total, truncated, notice }；界面按 `at` 把各台的行并成一列
 
 点击某个 session 行
   → SessionViewer.load({ jsonlPath, ... })

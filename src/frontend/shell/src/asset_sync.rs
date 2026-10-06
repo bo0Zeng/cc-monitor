@@ -83,8 +83,8 @@ pub(crate) async fn sync_with(
 
 /// 本机后端**可达表登记**那条命令（与 `src/backend/stream/inbound/mod.rs::REGISTRY` 同名，判据现抠对拍）。
 ///
-/// 「本机后端问远端后端」那一跳（后端 `remote_ask.rs`）有两路在用：资产目录同步（本模块）· 历史跨机 join（后端 `history_join.rs`）。
-/// 前者只在那台认 `assets-catalog-merge` 时才交 `assets-sync`（它顺手登记）；后者问的是老子命令，**老远端也得够得着**
+/// 「本机后端问远端后端」那一跳（后端 `remote_ask.rs`）有两路在用：资产目录同步（本模块）· 历史清单（后端 `history_list.rs`）。
+/// 前者只在那台认 `assets-catalog-merge` 时才交 `assets-sync`（它顺手登记）；后者不论
 /// ⇒ 每台远端流握手那一刻**无条件**交一次「怎么够到那台」（与 `assets-sync` 同一份入参），只登记、不拨号。
 pub(crate) const REACH_CMD: &str = "remote-reach";
 

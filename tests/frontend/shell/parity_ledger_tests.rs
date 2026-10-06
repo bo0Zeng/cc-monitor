@@ -106,10 +106,8 @@ const LEDGER: &[(&str, &str, Side)] = &[
         Side::Remote,
     ),
     // 钩子诊断本机 / 远端那一对退役：本机远端合成一条帧命令 `hooks-diag`，界面经通道直问那台。
-    // `list_history_projects`（Local）/ `list_remote_history_projects`（Remote）那一对退役 ——
-    //   步 12·C 在这里判「不合」的那道设计题（「项目列表的 fan-out 住哪一层」）已定：join 进本机常驻后端
-    //   （`history-projects {origin?}`，一台一问），fan-out 搬到前端（`src/frontend/ui/history-reads.ts::fetchRemoteProjects`，
-    //   `failedHosts` / TTL 缓存的语义原样）。两条 Tauri 命令都没了 ⇒ 能力 `history.list-projects` 在本表里不再有行。
+    // 项目清单那一对 Tauri 命令（Local / Remote）退役：清单住本机常驻后端（`history-list {origin?}`，界面每台一问），
+    //   能力 `history.list-projects` 在本表里不再有行。
     // 🔴 **下面这五行是「一条命令自己办两侧」，不是「两条命令各办一侧」。**
     //
     // 「同义双份命令合成一条带 origin 参数的」。合并之后
@@ -117,7 +115,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // ⇒ 已对称），今天是 `{Both}`（一条命令办两侧 ⇒ 同样对称）。
     // ⚠ **这一点要读准**：合并**不改善平价**，平价本来就有；它改善的是
     // 「同一件事有几条路」。两者别混着读。
-    // `stream_history_sessions_in_project`（`history.list-sessions`）退役：本机常驻后端 `history-sessions` 出成品。
+    // 展开一个项目那条 Tauri 命令（`history.list-sessions`）退役：清单住本机常驻后端（`history-list`）。
     // `history.read-session` 那三条（整份读 · 按偏移 · 按行号）退役：那台后端出记录行，界面经通道直问
     //   （`history-page` / `history-lines`，`src/frontend/ui/record-reads.ts`）⇒ 能力 `history.read-session` 从此不再有 Tauri 命令
     //   （同 `plugins.marketplaces` 那一先例：今天是通道操作，本机与远端同一条路）。
@@ -1112,7 +1110,7 @@ const REMOTE_SIDE_SIGNOFF: &[(Derived, usize)] = &[
     //   `dial_host.rs` 起转发那一处（已随转发账进本机常驻后端删了）（端口转发进了通信层，读配置是宿主的事）⇒ 它的体里再没有 `REMOTE_ONLY_MARKS`，
     //   而派生器只跟同一份文件里的调用 ⇒ 落 `Unclassified`（「这把尺子够不着」，不是「安全」；它照旧只对远端）。
     //   跑出来的：`hist == want` 那一比现打 {RemoteOnly: 31, Unclassified: 11}。
-    (Derived::RemoteOnly, 3), // **4 → 3**：`deploy_remote_acct_iso` 退役（跑出来核过）// **主线 5 ＋ MIG-1 −1（测试连接）⇒ 4** // **6 → 5**：`deploy_remote_backend` 先问本机常驻后端要计划（`deploy-plan`）⇒ 派生器现打归 `Mixed` // **6 → 5**：`test_remote_connection` 出表（签名里带 `RemoteConfig`，原归 `RemoteOnly`）；跑出来核过 // **7 → 6**：远端项目 `.mcp.json` 那一条读退役（同上）；跑出来核过 // **8 → 7**：`probe_ccm_cli` 不再查远端配置（改经那台后端的门问 `ccm-probe`）⇒ 落 `Unclassified`；跑出来核过 // 10 − AL2 2 ⇒ 8（AL2：远端装 / 卸别名块两条删了） // **12 → 10**：远端 acct-iso 那两条（带 `RemoteConfig`）并进带 origin 的 `Both` // **13 → 12**：`push_public_key` 转 `Mixed`（见下一行）// **14 → 13**：`list_remote_tmux`（改问那台后端 `tmux-list`）// **15 → 14**：`read_remote_mcp_servers`（改问那台后端 `mcp-read`）// **16 → 15**（`diagnose_remote_cc_bus_hooks` 不再查远端配置、改经 `frame_query::call` 问那台后端 ⇒ 落 `Unclassified`；跑出来核过）// **17 → 16**（`list_remote_history_projects` 随远端项目清单改走本机后端删了：它体里读远端配置表（`load_remote_configs`），原归 `RemoteOnly`；跑出来核过） // **18 → 17**（`list_remote_accounts` 随账号清单改走通道删了：它体里查远端配置（`cfg_for`），原归 `RemoteOnly`；跑出来核过） // **19 → 18**（远端「某会话属哪个账号」那条退役、改走通道；原归 `RemoteOnly`；跑出来核过） // **20 → 19（`sftp_copy` 删了：它签名里带 `RemoteConfig`，原归 `RemoteOnly`；跑出来核过）** // **〔合并 F7c＋C2〕F7c 21 与 C2 −1 相加 ⇒ 20；Unclassified F7c 9 与 C2 ＋1 ⇒ 10（跑出来核过）** // **32 → 21，Unclassified 10 → 9**（池子那十二条删了：十一条带 `RemoteConfig` 的归 `RemoteOnly`，`sftp_cancel_transfer` 签名里没有它、归 `Unclassified`；跑出来核过）。 // **〔合并 A3＋BS1b〕33 → 32**（A3 的 check_account_trust Remote→Both 与 BS1b 的 cc_bus_spawn RemoteOnly→FramePlane 各 −1；跑出来核过）。 // **33 → 34**（`open_file_window`：签名里带 `RemoteConfig`、体里点名 `list_remote`，派生器现打归 `RemoteOnly`；另外三格一个都不动）。⚠ 这个数照旧是**跑出来的**，不是 33+1 算出来的：先让 `signed_total` 那一比印出现打的 `Side::Remote` 行数，再让 `hist == want` 印出现打的直方图，照它写。 // −1（`aggregate_remote_usage_all`）  〔散文墓碑〕 // **+1（`sftp_copy`：签名里带 `RemoteConfig`、体里点名 `copy_remote_path`，派生器现打归 `RemoteOnly`）**
+    (Derived::RemoteOnly, 3), // **4 → 3**：`deploy_remote_acct_iso` 退役（跑出来核过）// **主线 5 ＋ MIG-1 −1（测试连接）⇒ 4** // **6 → 5**：`deploy_remote_backend` 先问本机常驻后端要计划（`deploy-plan`）⇒ 派生器现打归 `Mixed` // **6 → 5**：`test_remote_connection` 出表（签名里带 `RemoteConfig`，原归 `RemoteOnly`）；跑出来核过 // **7 → 6**：远端项目 `.mcp.json` 那一条读退役（同上）；跑出来核过 // **8 → 7**：`probe_ccm_cli` 不再查远端配置（改经那台后端的门问 `ccm-probe`）⇒ 落 `Unclassified`；跑出来核过 // 10 − AL2 2 ⇒ 8（AL2：远端装 / 卸别名块两条删了） // **12 → 10**：远端 acct-iso 那两条（带 `RemoteConfig`）并进带 origin 的 `Both` // **13 → 12**：`push_public_key` 转 `Mixed`（见下一行）// **14 → 13**：`list_remote_tmux`（改问那台后端 `tmux-list`）// **15 → 14**：`read_remote_mcp_servers`（改问那台后端 `mcp-read`）// **16 → 15**（`diagnose_remote_cc_bus_hooks` 不再查远端配置、改经 `frame_query::call` 问那台后端 ⇒ 落 `Unclassified`；跑出来核过）// **17 → 16**（远端项目清单那条 Tauri 命令随清单改走本机后端删了：它体里读远端配置表（`load_remote_configs`），原归 `RemoteOnly`；跑出来核过） // **18 → 17**（`list_remote_accounts` 随账号清单改走通道删了：它体里查远端配置（`cfg_for`），原归 `RemoteOnly`；跑出来核过） // **19 → 18**（远端「某会话属哪个账号」那条退役、改走通道；原归 `RemoteOnly`；跑出来核过） // **20 → 19（`sftp_copy` 删了：它签名里带 `RemoteConfig`，原归 `RemoteOnly`；跑出来核过）** // **〔合并 F7c＋C2〕F7c 21 与 C2 −1 相加 ⇒ 20；Unclassified F7c 9 与 C2 ＋1 ⇒ 10（跑出来核过）** // **32 → 21，Unclassified 10 → 9**（池子那十二条删了：十一条带 `RemoteConfig` 的归 `RemoteOnly`，`sftp_cancel_transfer` 签名里没有它、归 `Unclassified`；跑出来核过）。 // **〔合并 A3＋BS1b〕33 → 32**（A3 的 check_account_trust Remote→Both 与 BS1b 的 cc_bus_spawn RemoteOnly→FramePlane 各 −1；跑出来核过）。 // **33 → 34**（`open_file_window`：签名里带 `RemoteConfig`、体里点名 `list_remote`，派生器现打归 `RemoteOnly`；另外三格一个都不动）。⚠ 这个数照旧是**跑出来的**，不是 33+1 算出来的：先让 `signed_total` 那一比印出现打的 `Side::Remote` 行数，再让 `hist == want` 印出现打的直方图，照它写。 // −1（`aggregate_remote_usage_all`）  〔散文墓碑〕 // **+1（`sftp_copy`：签名里带 `RemoteConfig`、体里点名 `copy_remote_path`，派生器现打归 `RemoteOnly`）**
     (Derived::FramePlane, 0), // 3 → 0（`cc_bus_spawn` / `cc_bus_broadcast` / `cc_bus_kill` 退役：体里走 `bus-*` 原语，原归 `FramePlane`；跑出来核过） · 5 → 3（`kill_remote_tmux` / `tmux_send_keys` 退役：体里走 `backend_route::`，原归 `FramePlane`；跑出来核过） · 6 → 5（远端抓屏那一条退役：它体里走 `client_for(`，原归 `FramePlane`；跑出来核过） // −1（`account_usage`）；BS1b +1（`cc_bus_spawn`）
     (Derived::Mixed, 1), // **2 → 1**：公钥推送那一条（原 `Mixed`）进了本机后端、出表〔散文墓碑〕 // **1 → 2**：`deploy_remote_backend`（判定问本机后端 · 放字节经远端 `files` 链路；两支都走、不是失败退回）// **0 → 1**：`push_public_key` —— 那台后端在 ⇒ 经它的文件管理面写（`client_for`），不在 ⇒ 仍是 Bootstrap 那一串拨号 shell；两支按**此刻状态**分，不是失败退回（`D11`）
     (Derived::Unclassified, 2), // **主线 9 ＋ MIG-1 −7 ⇒ 2**（现打核过） // **4 → 3**：`list_remote_tmux` 出表（原归 `Unclassified`：体里只转调 `frame_query::call`）；跑出来核过 // **主线 10 ＋ MIG-1 −6 ⇒ 4** // **13 → 10**：`probe_ccm_cli` · `render_ccm_launch` · `render_launch_payload` 退役（界面经通道直问那台后端）；跑出来核过 // **10 → 7**：端口转发三条删了（原归 `Unclassified`：C2 之后体里只转调宿主 / 读进程内的账）；跑出来核过 // **13 − MIG-1 3 ⇒ 10**：`~/.ssh/config` 导入那三条删了（原归 `Unclassified`） // **14 → 13**：远端 MCP user 段那一条读退役（界面经通道直问 `mcp-read`）；跑出来核过 // **13 → 14**：`probe_ccm_cli`（同上一行） // **12 → 13**：`list_remote_tmux`（同上）// **11 → 12**：`read_remote_mcp_servers`（同上）// **10 → 11**：`diagnose_remote_cc_bus_hooks`（同上一行）// **〔本机对称〕12 → 10**：`panorama_call` 与 `panorama_cancel` 翻 `Both`（本机也经它问本机后端），出了 `Side::Remote` 这一栏；跑出来核过 // **11 → 12**：`panorama_cancel`（Remote；只拉一张进程内的票，签名与体里都没有远端配置 ⇒ 落 `Unclassified`；跑出来核过） // **RL1 −1 与 RM1c ＋1 ⇒ 11（跑出来核过）** // **11 → 12**：`panorama_call`（Remote；体里只转调 `frame_query::call`，派生器只跟同一份文件 ⇒ 落 `Unclassified`；跑出来核过；本机那一侧另有进程内那几条命令） // **11 → 10**：`relay_ensure` 退役（它就是 RM1a 加进来的那一条） // **10 → 11**：`relay_ensure`（Remote；体里只转调 `remote_relay::ensure_on`，派生器只跟同一份文件 ⇒ 落 `Unclassified`；它照旧只对远端，本机那一臂在 `remote_relay` 里拒）。跑出来核过 // 主线 10 ＋ MIG-3b −1（远端钩子诊断那条退役）〔散文墓碑〕
@@ -1201,7 +1199,7 @@ fn the_remote_side_column_is_signed_off() {
     // 🔴 **地板 36 → 35。** 零流量复制那一条 `Side::Remote` 命令真的删了（人群真少了 1 个，现打 35）。
     // 🔴 **地板 35 → 34。** 远端那条「某会话属哪个账号」（`Side::Remote`）退役（本机与远端收成一条经通道的路），现打 34。
     // 🔴 **地板 34 → 33。** 只对远端的 `relay_ensure` 退役（接替它的那条是 `Both`），人群真少了 1 个，现打 33。
-    // 🔴 **地板 33 → 32。** 远端项目清单那条 `Side::Remote`（`list_remote_history_projects`）退役
+    // 🔴 **地板 33 → 32。** 远端项目清单那条 `Side::Remote` 退役
     //    （fan-out 搬到前端、每台经本机后端问），人群真少了 1 个，现打 32。
     // 🔴 **地板 32 → 31。** 抓屏那条 `Side::Remote`（远端抓屏）退役
     //    （界面经通道直接问），人群真少了 1 个，现打 31。

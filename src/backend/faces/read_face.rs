@@ -110,8 +110,6 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             let max = u64_arg(args, "maxBytes")?.map_or(LOG_TAIL_BYTES, |n| n.min(LOG_TAIL_BYTES));
             log_tail(BACKEND_LOG.get().map(|p| p.as_path()), max)
         }
-        // `history-projects` / `history-sessions` 两臂搬走了：它们从此出成品（并注解 ＋ 判活 ＋ 远端那一跳），
-        //   住 `history_join.rs`（历史跨机 join 的唯一的家）；这里只剩按行 / 按页的换壳。
         // 一个子运行的记录（按运行读，不认任何一家的目录 / 字段）：父记录 ＋（子运行 ‖ 派出它的那次工具调用）⇒ 那份记录从 `from` 起的一页成品。
         //   `end` ＝ 读到哪了（下次从这里续）；`more` ＝ 这一页没读完。
         "history-run" => {

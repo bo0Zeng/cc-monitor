@@ -5,8 +5,6 @@ use super::*;
 /// 那八条 —— 那一串逐字（`--accounts` 在盘上叫 `--list-accounts`）。
 /// **异源**：这张表手写，不从 [`MOVED`] 派生。
 const DESIGN_EIGHT: &[&str] = &[
-    "--list-projects",
-    "--list-sessions",
     "--read-session",
     "--read-session-tail",
     "--session-accounts",
@@ -46,15 +44,11 @@ fn backend_command_blocks() -> Vec<(String, String)> {
     blocks
 }
 
-/// 后端 `stream/inbound/` 生产段里把活交给 `read_face::answer`（或 `history_join::answer_*`）的帧命令名（**从后端源码数**）。
+/// 后端 `stream/inbound/` 生产段里把活交给 `read_face::answer` 的帧命令名（**从后端源码数**）。
 fn backend_read_face_commands() -> Vec<String> {
     let got: Vec<String> = backend_command_blocks()
         .into_iter()
-        // 出成品的那两条（`history-projects` / `history-sessions`）交给了 `history_join`（历史跨机 join 的唯一的家）——
-        //   同一族「搬上帧面的只读查询」，宿主从换壳那一层挪到了出成品那一层 ⇒ 两个宿主一起数。
-        .filter(|(_, blk)| {
-            blk.contains("read_face::answer") || blk.contains("history_join::answer_")
-        })
+        .filter(|(_, blk)| blk.contains("read_face::answer"))
         .map(|(name, _)| name)
         .collect();
     assert!(!got.is_empty(), "从后端源码一条都没数到 —— 抽取坏了");
@@ -687,28 +681,9 @@ fn backend_registered_commands() -> std::collections::BTreeSet<String> {
 /// 还留在 monitor 侧发送的那几条 —— `(帧命令, 为什么今天不迁)`。**不是豁免清单**：
 /// 下面那条判据要求它们**真的**还有 monitor 侧发送点（没了 ⇒ 这一行的理由已经馊了）。
 ///
-/// 逐行重裁过：判准照旧是「业务解释只有一个家」，
-/// 正路是「解释挪进后端、直接出成品」。九行里三行做到了（挪进了 [`CHANNELED`]）；下面六行**逐条写清卡在哪**。
-/// 六行的去向：`accounts-list` 做了（挪进 [`CHANNELED`]）；`history-projects` /
-/// `history-sessions` 的设计写在（「本机后端问远端后端」那一跳今天不存在，报备中）；
-/// `history-read` / `history-subagents` 等后端二次拆包；`history-tail` 归 CF2。⇒ 今天五行。
-/// `history-projects` / `history-sessions` 做了（「本机后端问远端后端」那一跳由 `remote_ask` 造出来）⇒ 今天三行。
-/// 上过帧面、**界面今天不再问**的那几条：`(帧命令, 为什么)`。后端那一条还在（CLI 面也还在），
-/// 界面那一侧零发送点 —— 下面那条两向判据的「前端那一侧」不算它们。这张表只许缩：后端那一条删了 ⇒ 这一行跟着删。
-const UNUSED_BY_UI: &[(&str, &str)] = &[
-    (
-        "history-projects",
-        "历史页照稿重做：清单改问平铺的 `history-list`（一台一次给全部会话），不再按项目逐个展开；后端这一条留给单独一刀删",
-    ),
-    (
-        "history-sessions",
-        "同 `history-projects`（按项目展开那一问随旧历史页一起不问了）",
-    ),
-];
-
+/// 判准是「业务解释只有一个家」，正路是「解释挪进后端、直接出成品」；下面每行写清卡在哪。
 const HELD_BACK: &[(&str, &str)] = &[
     // `accounts-list` 那一行挪进了 [`CHANNELED`]（账号域搬家做了：后端出成品、并它自己那份表）。
-    // `history-projects` / `history-sessions` 两行挪进了 [`CHANNELED`]（跨机 join 进了本机常驻后端）。
     // 下面三行：`history-read` / `history-subagents` **等后端二次拆包**，
     //   `history-tail` 归 CF2（`subscribe`）。三行都仍有 monitor 侧发送点（判据照旧要求它们真有）。
     // `history-subagents` 那一行摘了（命令换成出成品的 `history-subagent`，进了 [`CHANNELED`]）。
@@ -803,7 +778,6 @@ fn the_eight_are_partitioned_into_channeled_and_held_back() {
     let mut both: Vec<String> = CHANNELED
         .iter()
         .chain(HELD_BACK)
-        .chain(UNUSED_BY_UI)
         .map(|(c, _)| c.to_string())
         .collect();
     let n = both.len();
@@ -814,11 +788,8 @@ fn the_eight_are_partitioned_into_channeled_and_held_back() {
         n,
         "同一条帧命令同时在「已迁」与「未迁」两张表里"
     );
-    assert_eq!(
-        both, moved,
-        "已迁 ⊔ 未迁 ⊔ 界面不再问 != C1 的八条（`MOVED` 右列）"
-    );
-    for (c, why) in CHANNELED.iter().chain(HELD_BACK).chain(UNUSED_BY_UI) {
+    assert_eq!(both, moved, "已迁 ⊔ 未迁 != C1 的八条（`MOVED` 右列）");
+    for (c, why) in CHANNELED.iter().chain(HELD_BACK) {
         assert!(!why.trim().is_empty(), "`{c}` 没写理由");
     }
 }

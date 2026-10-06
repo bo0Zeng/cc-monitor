@@ -71,47 +71,12 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   （`inbound_never_reaches_into_the_observe_layer`），而查询本体住 `observe/`。
     //   `read_face` 只做换壳 —— 每条都调 CLI 那一臂同一个函数，`out` 从 stdout 换成内存。
     //
-    // ⚠ **名字刻意不与 CLI 那几条同名**（`history-projects` 而不是 `list-projects`）：
-    //   CLI 面是从本表**自动派生**的（`cli_control::cli_exposed`）—— 同名就会把
-    //   `--list-projects` 从 `history_query::run` 手里抢走、改印一行 JSON，
-    //   而本机 monitor 正在 exec 那条读它的逐行输出。⇒ 代价如实登记：这八条同拍多出
-    //   八个 CLI 面（`--history-projects` …），已进 `lib.rs::SUBCOMMANDS`（不进就静默进流模式）。
+    // ⚠ **名字刻意不与 CLI 那几条同名**（`history-read` 而不是 `read-session`）：CLI 面从本表自动派生
+    //   （`cli_control::cli_exposed`），同名就会把 `--read-session` 从 `history_query::run` 手里抢走、改印一行 JSON。
+    //   ⇒ 每条多出一个 CLI 面（`--history-read` …），已进 `lib.rs::SUBCOMMANDS`（不进就静默进流模式）。
     //
     // ⚠ 全在 `Run::Blocking`：它们都做文件 I/O（`history-search` 扫全库）。代价同 `files-*`：
     //   `cancel` 命中时回 `not_cancellable`（不撒谎）。
-    // 这两条**出成品**：历史跨机 join 的唯一的家（`history_join.rs`）—— 这台（记录树 ＋ 合成历史 ＋ pidfile 判活）
-    //   或可达表里的那一台（`remote_ask` 问它的 CLI 老子命令 `--list-projects` / `--list-sessions`），并上这台的注解。
-    //   真异步（远端那一跳要等）；本机扫盘那一段挪到阻塞线程池（`history_join::blocking`）。
-    CommandSpec {
-        name: "history-projects",
-        doc_anchor: Some("#### `history-projects`"),
-        codes: &["bad_args", "failed", "too_large", "unreachable"],
-        fields: &["notice", "origin", "rows"],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::history::history_join::answer_projects(r.args)
-                    .await
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
-    },
-    CommandSpec {
-        name: "history-sessions",
-        doc_anchor: Some("#### `history-sessions`"),
-        codes: &["bad_args", "failed", "too_large", "unreachable"],
-        fields: &["notice", "origin", "project_dir", "project_path", "rows"],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::history::history_join::answer_sessions(r.args)
-                    .await
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
-    },
     // **历史页的平铺清单**（`history_list.rs`）：跨项目一次出成品 —— 每行的状态与「能做什么」· 按项目的分组 · 搜标题 / 第一句 / 项目名。
     //   远端那一支问那台的 CLI 面 `--history-list`（`raw`：那台自己判活、读上次的号），本进程记着、`fresh` 再问；并注解、筛、排都在这台。
     CommandSpec {

@@ -1,5 +1,5 @@
 /**
- * 历史页的合成数据：几台机器上的项目与会话、全文搜索的命中。形状照 `history-products.golden.json` 与界面的解码器。
+ * 历史页的合成数据：几台机器上的项目与会话、全文搜索的命中。形状照 `history-list.golden.json` 与界面的解码器。
  */
 import type { OpHandler } from "./types";
 

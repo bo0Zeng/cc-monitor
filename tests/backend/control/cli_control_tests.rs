@@ -337,9 +337,7 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
     /// 而它恰恰是「这台机器上的索引新鲜不新鲜」那条**探活式**问话。
     /// ⚠ 同族另外三条（`files-ls` / `files-stat` / `files-find`）**要**输入，不在这张表里。
     ///
-    /// 只读查询面进来三条，**同一形**（无入参、有输出字段 `lines`）：
-    /// `history-projects`（列全部项目）· `accounts-list` · `accounts-sessions`
-    /// （账号库目录跟着家走，没有另指位置的入参）。同族另外五条要输入，不在表里。
+    /// 只读查询面今天只有 `accounts-sessions` 在表里（无入参、有输出字段 `lines`；账号库目录跟着家走）。
     ///
     /// 〔条 66〕`exit-policy-read` 进来，**同一形**（无入参、有输出字段 `state` / `killOnExit` …）：
     /// 它是「那台机器上的值是什么」那一问，挂住等 EOF 就是把一句问话变成一次卡死。
@@ -369,7 +367,6 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         // 同族 `apikey-key-set` 要输入（`account` / `key`，key 从 stdin 进），不在表里。
         "apikey-read",
         "files-index-status",
-        // `history-projects` 出列：它从此收 `origin`（缺席 = 这台），要读 stdin。
         "ping",
         // 问这台机器登记了哪些插件市场：无入参，输出 `lines`。
         // 这台现扫一次资产、记进目录、回整份：无入参。

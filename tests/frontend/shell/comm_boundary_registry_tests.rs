@@ -2033,8 +2033,7 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     //    8 → 9：`session-reads.ts::probeSessionRecord`（`history-record`，resume 之前问记录还在不在）。
     //    9 → 11：`settings/backend-section.ts::askExitPolicy` / `putExitPolicy`（「退出行为」问 / 交写）。
     // 11 → 12：`settings/assets-section.ts` 问那台的资产目录（`assets-catalog`，显式给期限）。
-    // 12 → 18：`history-reads.ts` 六处（`history-projects` 本机 · 逐台远端两处 · `history-sessions` ·
-    //    `history-annotate` · `history-forget` · `history-last-accounts`）—— 历史清单与注解从 monitor 的五条 Tauri 命令改走通道，
+    // 12 → 18：历史清单与注解从 monitor 的 Tauri 命令改走通道（`history-reads.ts`），
     //    一律问本机常驻后端（远端那台由它去问）；每处显式给期限。
     // 18 → 20：`settings/assets-section.ts` 问那台记着的「从别处装来的 skill」（`skill-installs`）·
     //    点「卸」之后问那台的卸判定（`skill-uninstall-plan`）；两处都显式给期限。

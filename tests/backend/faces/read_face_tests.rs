@@ -25,8 +25,6 @@ const FAMILY: &[&str] = &[
     // 会话事实出成品（异源是手抄的要求「三样由后端出成品」，不是 `stream/inbound/`）。
     "history-facts",
     "history-turns",
-    // `history-projects` / `history-sessions` 出列：它们出成品（并注解 ＋ 判活 ＋ 远端那一跳），
-    //   交给 `history_join`（历史跨机 join 的唯一的家；异源仍是手抄的要求）。
     "history-read",
     // 记录还在不在（resume 一跳先问；异源是手抄的要求，不是 `stream/inbound/`）。
     "history-record",
@@ -190,10 +188,6 @@ fn the_frame_read_keeps_the_projects_fence() {
     }
     let _ = std::fs::remove_dir_all(&home);
 }
-
-// 「按行那几条」那一条（`line_shaped_answers_carry_the_rows`〔散文墓碑〕）随 `history-projects` / `history-sessions`
-//   搬去 `history_join` 一起退役：同一件事（行与夹具结构对得上 · 缺参 bad_args）今天在 `history_join_tests.rs` 里按成品钉
-//   （`a_local_listing_joins_the_record_tree_and_the_synthesized_history` · `unreachable_or_malformed_requests_are_refused_without_asking`）。
 
 /// ★ 尾段那张图：按它的两段区间读回来 ＝ CLI `--read-session-tail` 印出的那两段（meta 之后的字节）。
 ///

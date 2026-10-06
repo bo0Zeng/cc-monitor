@@ -115,9 +115,9 @@ pub(crate) struct Adapter {
     /// 后者会让 `agent_locality_guard` 判据④的读数（只许降）凭空上涨。
     pub(crate) assets: Option<AssetFace>,
     /// 这一家的**合成历史**面：它的会话不在「按项目目录分」的记录树里（Codex 按日期分），
-    /// 历史清单要由通用层按 cwd 分组合成项目。`None` = 这一家的历史走记录树那一条（Claude）或没有历史。
+    /// 历史清单由通用层把它的会话并进来。`None` = 这一家的历史走记录树那一条（Claude）或没有历史。
     ///
-    /// ⚠ 收进注册表而不是让 `history_join.rs` 直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]。
+    /// ⚠ 收进注册表而不是让 `history_list.rs` 直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]。
     pub(crate) history: Option<HistoryFace>,
     /// 这一家的**默认上游**（中转 `/t/` 直通、表里没有那一行时发到哪）。`None` = 未登记 ⇒ 上游选择拒（404 ＋ 原因头，FIX3 之前是 502），不回落。
     ///

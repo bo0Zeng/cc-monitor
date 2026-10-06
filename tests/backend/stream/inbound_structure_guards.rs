@@ -260,8 +260,6 @@ fn every_registered_command_declares_its_run_kind() {
                 | "files-read-chunk"
                 // 只读查询面八条同为阻塞档：全做文件 I/O，
                 // `history-search` 扫全库、`history-tail` 扫整份会话 —— 不许占 tokio worker。
-                // `history-projects` / `history-sessions` 出列：出成品、远端那一支要等 ⇒ 真异步
-                //   （本机扫盘那段在 `history_join::blocking` 里自己挪到阻塞线程池）。
                 | "history-index"
                 | "history-user-inputs"
                 | "history-find"
@@ -490,7 +488,6 @@ fn every_registered_command_declares_its_run_kind() {
         "files-home",
         "files-size",
         "files-read-chunk",
-        "history-projects",
         "history-list",
         "history-index",
         "history-user-inputs",
@@ -502,7 +499,6 @@ fn every_registered_command_declares_its_run_kind() {
         "history-lines",  //
         "history-record", //
         "history-search",
-        "history-sessions",
         "history-run",
         "history-page", //
         "history-tail",

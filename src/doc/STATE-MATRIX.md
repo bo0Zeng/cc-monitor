@@ -27,7 +27,7 @@
 任何 `#[tauri::command]` 函数签名里出现 `State<...>` 就是这里的消费者。
 
 ### `Arc<SessionMap>`
-- 历史清单那两条（本机项目 · 展开一个项目）退役：清单与判活搬进本机常驻后端（`history-projects` / `history-sessions`），不再接 `State`。
+- 历史清单不接 `State`：清单与判活住本机常驻后端（`history-list`）。
 - 红绿灯启动快照与启动骨架清单那两条命令〔已删〕：本机骨架与初始灯是会话流里的 `live` / `activity` 成品（就绪点按 `session_book.rs::Book` 重放）。
 
 ### `Arc<EventReplay>`

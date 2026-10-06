@@ -2669,8 +2669,7 @@ $ printf '%s' '{"dest":"/home/u/.cc-monitor/bin/ccm","machine":"本机"}' | .ccm
 
 「本机后端问远端后端」那一跳（实现住后端 `remote_ask.rs`，全后端只此一处）要先知道「怎么够到那台」。
 monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交一次拨号请求（那台后端恒在固定落点 `"$HOME"/.cc-monitor/bin/ccm`，不再交路径）。本机后端记进**内存**可达表（后端重启就空，下次那台连上再填），**只登记、不拨号**。
-之后的两路都查这张表：资产目录同步（`assets-sync`）· 历史跨机 join（`history-projects` / `history-sessions` 带 `origin`）。
-老远端也登记：历史那一路问它的是 `--list-projects` / `--list-sessions` 这种老子命令。
+之后查这张表的：资产目录同步（`assets-sync`）· 历史清单（`history-list` 带 `origin`，问那台 `--history-list`）。
 
 ```text
 → {"id":"r1","cmd":"remote-reach","args":{"origin":"dev","dial":{"host":"10.0.0.2","port":22,"user":"u","key_path":"~/.ssh/id_ed25519"}}}
@@ -2758,14 +2757,12 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 **错误码**：`bad_args` · `not_found`（`drop` 的目录没记着）· `ledger_unreadable`（记录读不懂 / 另一个版本写的 —— **不覆盖**）· `too_large`（一趟超过 512 个）· `io_failed`。
 ⚠ **CLI 面也有它**（`--skill-install-record`），入参从 stdin 读。
 
-#### 只读查询面（`C1`，2026-09-24）—— **八条一次性查询搬上这条长连接**
+#### 只读查询面（`C1`，2026-09-24）—— **一次性查询搬上这条长连接**
 
-层 1 ＋。这八条此前**只有**一次性子命令那一面：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），账号那两条还被一个 10 秒的轮询按台数翻倍。现在它们也在帧面上 —— **跑的是 CLI 那一臂同一个函数**，只是输出从 stdout 换成应答里的 `data`。
+层 1 ＋。这几条此前**只有**一次性子命令那一面：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），账号那两条还被一个 10 秒的轮询按台数翻倍。现在它们也在帧面上 —— **跑的是 CLI 那一臂同一个函数**，只是输出从 stdout 换成应答里的 `data`。
 
 | 帧命令 | 同一个函数的 CLI 那一臂 | 应答形状 |
 |---|---|---|
-| `history-projects` | `--list-projects` | 按行 |
-| `history-sessions` | `--list-sessions` | 按行 |
 | `history-search` | `--search` | 按行 |
 | `history-run` | （无旧形）| 一个子运行的记录，按运行读（`{run, path, rows, end, more}`） |
 | `accounts-list` | `--list-accounts` | 成品（`{meta, accounts, notice}`） |
@@ -2774,46 +2771,9 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 | `history-tail` | `--read-session-tail` 的那张「尾段在哪」的图 | 四个数 |
 
 - **按行**：`data = {"lines": [...]}`，每个元素就是 CLI 那条 stdout 的一行（trim 过、剔空行）。整份输出超过 32 MiB ⇒ `too_large`，**不截断**（截断的清单会被当成完整的用）。
-- **名字刻意不与 CLI 同名**：CLI 面从 `REGISTRY` **自动派生**（`--<名>`），同名就会把 `--list-projects` 抢过去改印一行 JSON。⇒ 代价如实写：八条同拍多出八个 CLI 面 `--history-projects` · `--history-sessions` · `--history-search` · `--history-subagents`（今天是 `--history-run`）· `--history-read` · `--history-tail` · `--accounts-list` · `--accounts-sessions`（stdin 一段 JSON ＝ `args`，stdout 一行 JSON ＝ `data`）。它们与老的那八个子命令是**同一个函数的两个宿主**，不是第二份实现。
-- 八条全在阻塞档（做文件 I/O）⇒ `cancel` 命中回 `not_cancellable`。
+- **名字刻意不与 CLI 同名**：CLI 面从 `REGISTRY` **自动派生**（`--<名>`），同名就会把 `--read-session` 抢过去改印一行 JSON。⇒ 代价如实写：这几条各多出一个 CLI 面 `--history-search` · `--history-subagents`（今天是 `--history-run`）· `--history-read` · `--history-tail` · `--accounts-list` · `--accounts-sessions`（stdin 一段 JSON ＝ `args`，stdout 一行 JSON ＝ `data`）。它们与对应的老子命令是**同一个函数的两个宿主**，不是第二份实现。
+- 这几条全在阻塞档（做文件 I/O）⇒ `cancel` 命中回 `not_cancellable`。
 - 失败的 code 都是**命令级**的；读失败 `failed`，参数缺或类型不对 `bad_args`。
-
-#### `history-projects`：列全部项目（**出成品**：并上注解 ＋ 判活，远端经本机后端问）
-
-历史跨机 join 的唯一的家是**本机常驻后端**（实现 `history_join.rs`）。`origin` 缺席 = 这台机器：记录树里的项目（`--list-projects` 那一行）＋ 合成历史（Codex 按 cwd 分组，项目键 `codex:<cwd>`）＋ 这台后端自己判活（pidfile）；
-`origin` 给了 = 可达表里的那一台（`remote-reach` 登记的）：本机后端沿池里那条 SSH 在那台跑 `--list-projects`（CLI 老子命令，stdout 形状一个字节没变 ⇒ **那台的后端不必升级**），判活「不知道」。
-两支都并上**这台**的注解（`history-annotate` 那一份：星标数 / 隐藏数；读不到 ⇒ 两个数 `null`、`notice` 说为什么）。项目按「活的 → 有星标的 → 最近动过的」排。
-
-```text
-→ {"id":"q1","cmd":"history-projects","args":{"origin":"dev"}}
-← {"kind":"reply","id":"q1","ok":true,"data":{"rows":[{"agent":"claude","projectPath":"/home/u/proj","projectName":"proj","projectDir":"-home-u-proj","sessionCount":3,"starredCount":1,"hiddenCount":0,"lastActivity":1727250000000,"hasLive":null,"origin":"dev"}],"notice":null}}
-```
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `origin` | → | 可缺席：那台的名字（可达表的键）。缺席 = 这台 |
-| `rows` | ← | 每项目一行（一个记录目录里会话的真实目录不止一个 ⇒ 一个目录一行，`projectDir` 相同、`projectPath` 不同：记录目录名把非 ASCII 字符折成 `-`，不同目录会撞名；读不出目录的会话归最近修改的那一组）：`agent`（同 `history-sessions`）· `projectPath` · `projectName` · `projectDir`（懒加载的键，原样交回 `history-sessions`，连同 `projectPath`）· `sessionCount` · `starredCount` / `hiddenCount`（`null` = 不知道，**不是 0**）· `lastActivity`（毫秒）· `hasLive`（`null` = 这条路上答不了）· `origin`（远端那台才有） |
-| `notice` | ← | 注解没并上的那句话；`null` = 并上了 |
-
-**错误码**：`bad_args`（`origin` 空串 / 不是串）· `failed`（这台的记录树读不动）· `unreachable`（可达表里没有那一台 / 那台问不出来 —— 带那台的名字与原因）· `too_large`。
-⚠ **CLI 面也有它**（`--history-projects`，入参从 stdin 读）；一次性进程的可达表是空的 ⇒ 只答得了这台。
-
-#### `history-sessions`：列一个项目下的会话（**出成品**，同上）
-
-```text
-→ {"id":"q2","cmd":"history-sessions","args":{"project_dir":"-home-u-proj","origin":"dev"}}
-← {"kind":"reply","id":"q2","ok":true,"data":{"rows":[{"agent":"claude","sessionId":"0f…","projectPath":"/home/u/proj","projectName":"proj","aiTitle":null,"firstUserExcerpt":"…","startedAt":1727250000000,"updatedAt":1727250001000,"jsonlPath":"/home/u/.claude/projects/-home-u-proj/0f….jsonl","isLive":null,"messageCountApprox":12,"isBg":false,"starred":false,"customTitle":null,"hidden":false,"origin":"dev"}],"notice":null}}
-```
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `project_dir` | → | `history-projects` 给的那个项目键：记录树的项目目录名（不是路径；含分隔符 / `..` ⇒ `bad_args`），或合成历史的 `<kind>:<cwd>`（只在这台） |
-| `project_path` | → | 可缺席：`history-projects` 那一行的 `projectPath`。给了 ⇒ 只回归这一组的会话（同一个分组规则）；缺席 ⇒ 这个记录目录里的全部 |
-| `origin` | → | 同 `history-projects` |
-| `rows` | ← | 每会话一行：`agent`（哪一家：记录树那一支是记录树那一家，合成历史是那一家）· `sessionId` · `projectPath` · `projectName` · `aiTitle` · `firstUserExcerpt` · `title`（显示的标题：标题 ＞ 第一句 ＞ 会话 ID 前 8 位，与全文搜索同一条规则；用户改过的标题另在 `customTitle`，界面先看它）· `startedAt` / `updatedAt`（毫秒）· `jsonlPath` · `isLive`（`null` = 答不了）· `messageCountApprox` · `isBg` · `starred` / `customTitle` / `hidden`（这台的注解）· `forkedFromSessionId` / `forkedFromMessageUuid`（`/branch` 分叉来的才有）· `origin`（远端那台才有） |
-| `notice` | ← | 同 `history-projects` |
-
-**错误码**：`bad_args` · `failed` · `unreachable` · `too_large`。⚠ 远端那一支在那台跑 `--list-sessions <project_dir>`。
 
 #### `history-list`：历史页的平铺会话清单（**出成品**：并注解 ＋ 判活 ＋ 每行能做什么，远端经本机后端问）
 
@@ -2843,7 +2803,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 | `within_days` | → | 可缺席：只留那个键（同 `sort`）落在最近 N 天里的（1–3650） |
 | `hidden` | → | 可缺席：`true` ⇒ 隐藏的也出（默认不出） |
 | `limit` | → | 可缺席：最多回几行（默认 2000，1–20000）；多出的不回、`truncated` |
-| `rows` | ← | 每会话一行，按 `at` 倒序：`agent` · `agentTag`（行上那一家的小牌，对用户的叫法如 `Codex`；默认那一家 ⇒ `null`）· `sessionId` · `projectDir`（读它那一组的键）· `projectPath`（**真实目录**：同一个记录目录里不同的目录各是一组）· `projectName` · `group`（分组键 = `<agent>:<projectPath>`）· `aiTitle` · `firstUserExcerpt` · `title`（原标题，同 `history-sessions`）· `label`（**显示的标题**：改过的 ＞ 标题 ＞ 第一句 ＞ 会话 ID 前 8 位）· `untitled`（没改过、没标题、没第一句 ⇒ `true`，界面写「没有说过话的会话」）· `startedAt` / `updatedAt` / `at`（毫秒；`at` = 这一次排序用的那个）· `jsonlPath` · `messageCountApprox` · `isBg`（分身会话）· `starred` / `customTitle` / `hidden`（这台的注解）· `forkedFromSessionId` / `forkedFromMessageUuid`（分叉来的才有）· `lastAccount`（那台记着上次用哪个号起的，没有就缺）· `status`（`live` 在跑 · `ended` 已结束 · `unknown` 这条路上答不了）· `can`（见下）· `context`（`true` = 它自己被筛掉 / 隐藏了，只因为有在列的分叉从它分出来才带上，界面淡显；不算进 `total`）· `origin`（远端那台才有） |
+| `rows` | ← | 每会话一行，按 `at` 倒序：`agent` · `agentTag`（行上那一家的小牌，对用户的叫法如 `Codex`；默认那一家 ⇒ `null`）· `sessionId` · `projectDir`（读它那一组的键）· `projectPath`（**真实目录**：同一个记录目录里不同的目录各是一组）· `projectName` · `group`（分组键 = `<agent>:<projectPath>`）· `aiTitle` · `firstUserExcerpt` · `title`（原标题：标题 ＞ 第一句 ＞ 会话 ID 前 8 位，与全文搜索同一条规则）· `label`（**显示的标题**：改过的 ＞ 标题 ＞ 第一句 ＞ 会话 ID 前 8 位）· `untitled`（没改过、没标题、没第一句 ⇒ `true`，界面写「没有说过话的会话」）· `startedAt` / `updatedAt` / `at`（毫秒；`at` = 这一次排序用的那个）· `jsonlPath` · `messageCountApprox` · `isBg`（分身会话）· `starred` / `customTitle` / `hidden`（这台的注解）· `forkedFromSessionId` / `forkedFromMessageUuid`（分叉来的才有）· `lastAccount`（那台记着上次用哪个号起的，没有就缺）· `status`（`live` 在跑 · `ended` 已结束 · `unknown` 这条路上答不了）· `can`（见下）· `context`（`true` = 它自己被筛掉 / 隐藏了，只因为有在列的分叉从它分出来才带上，界面淡显；不算进 `total`）· `origin`（远端那台才有） |
 | `can` | ← | **这一行能做什么**：`resume`（`yes` · `switch` 在跑 ⇒ 切过去、不起第二份 · `bg` 分身会话 ⇒ 要恢复主会话）· `accounts`（恢复时能不能选号：那一家有没有账号这一维）· `fork`（能不能从某一轮分叉：那一家有没有分叉变换，分身会话不给）· `delete`（`yes` · `live` 在跑、先结束它 · `unsure` 说不清在不在跑、确认框里多说一句） |
 | `groups` | ← | 按项目看时的分组（只数 `rows` 里不是 `context` 的）：`key` · `agent` · `projectName` · `projectPath` · `projectDir` · `count` · `hasLive`（`null` = 有判不了活的、又没有确定在跑的）· `starred`（组里有星标的）· `lastActivity` · `order`（几台的组并成一列时的序，大的在前：档位 × 10¹⁴ ＋ 有星标 × 10¹³ ＋ 最后动过的毫秒；界面只按它并）· `failed`（读不了的那个记录目录 ⇒ 一组、`count` 0、带那一句；别的 ⇒ `null`）· `origin`。排序：有在跑的 → 说不清的 → 有星标的 → 最近动过的，读不了的殿后 |
 | `total` | ← | 筛完留下几个（截之前，不含 `context`） |
@@ -4031,7 +3991,7 @@ CLI 面随之自动多一条 `--history-find`。
 | `limits` | → | 可选：设置里的上下文上限表（模型名子串 → 上限 tokens，正整数；缺席 / `null` ⇒ 空表；别的形状 ⇒ `bad_args`）。上限每次按它重判 ⇒ 设置改了，带着上一份 `prior` 再问一次就是新的数（文件不重扫） |
 | `prior` | → | 可选：**上一次应答的 `data` 原样**（续传令牌）。缺席 / `null` ⇒ 从字节 0 扫；给了 ⇒ 从它的 `end` 接着扫、把新的一截累加在它上面（后端零状态）。形状必须恰好是本命令出的那一形（缺格 / 多格 / 类型不对 ⇒ `bad_args`）。它的 `end` 越过文件尾、或不在行边界上（文件第 `end-1` 字节不是换行）⇒ `failed`（文件被截断或重写过；调用方从 0 重要一份） |
 | `end` | ← | 最后一个完整行的末字节 |
-| `forkedFrom` | ← | 源会话 sid：首条带 `forkedFrom`（`sessionId` 与 `messageUuid` 都是串）的 user / assistant 记录；不是分叉来的 ⇒ `null`。判定与 `history-sessions` 行的 `forkedFromSessionId` 是同一个函数 |
+| `forkedFrom` | ← | 源会话 sid：首条带 `forkedFrom`（`sessionId` 与 `messageUuid` 都是串）的 user / assistant 记录；不是分叉来的 ⇒ `null`。判定与 `history-list` 行的 `forkedFromSessionId` 是同一个函数 |
 | `touchedFiles` | ← | 写类工具（Edit / Write / MultiEdit → `file_path`，NotebookEdit → `notebook_path`）碰过的文件，原样、去重、近因序（最近碰的在末尾），至多 1000 条（超 ⇒ 丢最久没碰的） |
 | `usage` | ← | 文件序最后一条 `input_tokens + cache_creation_input_tokens + cache_read_input_tokens > 0` 的 assistant 记录 ⇒ `{promptTokens, model, peakPromptTokens, limit, limitFrom}`（`model` 缺 ⇒ `null`）；一条都没有 ⇒ `null`。`peakPromptTokens` = 全会话最大的一轮。**上下文上限的唯一判定**（`facts_query::context_limit`）：本进程里的中转看见过这个会话（会话 id ＝ 记录文件名 ＝ 中转的流标签）的请求 ⇒ 带过 `anthropic-beta` 里 `context-1m…` 那一项是 1M、没带过是默认 200k，`relay`（中转只记那一项在不在，`observe/relay_marks.rs`，随进程）；中转没看见过 ⇒ `limits` 里最长匹配的子串 ⇒ `setting` · 模型名带 `[1m]` ⇒ 1M `model` · 见过超过 200k 的一轮 ⇒ 1M `observed` · 判不出 ⇒ `assumed`（`limit` 只是占位的 1M，界面不算百分比、只写用了多少）；任何一档小于 `peakPromptTokens` ⇒ 按 `observed`（至少 1M）⇒ `limit` 恒 ≥ `peakPromptTokens`，百分比不会超过 100。状态栏与监控板读同一个 `limit` |
 | `projectDir` | ← | 会话的项目目录：适配层读记录开头给（与 `session_added.project_dir` 同一个函数），读到即锁定；开头里还没有 ⇒ `null`（下一次再读） |
@@ -4359,7 +4319,7 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 （`capture.stdin`，见链路那一节的 `dial` 字段）。这样载荷不必拼进远端命令行 —— 那要求远端登录 shell 认 POSIX 单引号与管道，fish 一类不认。
 **argv 一族**（`--list-sessions` 这类老子命令）同一个修饰词：恰好 `--<子命令> --stdin-line` 两个词 ⇒ stdin 那一行是**其余 argv 的 JSON 字符串数组**
 （`control/cli_control.rs::expand_stdin_argv`），拼回去照常分派；读不动 / 不是字符串数组 ⇒ exit 2 ＋ `{code:"bad_request"}`。
-今天的发送方：资产目录推那一趟（`'<远端后端>' --assets-catalog-merge --stdin-line`）· 历史跨机那一问（`'<远端后端>' --list-sessions --stdin-line`，项目目录名走那一行；`remote_ask::ask_with`）。旧后端不认这个修饰词（它会照旧读到 EOF、一直等）⇒
+今天的发送方：资产目录推那一趟（`'<远端后端>' --assets-catalog-merge --stdin-line`）· 帧命令的 CLI 面（`remote_ask::ask_json`，如 `--history-list --stdin-line`）；argv 一族今天没有生产发送方。旧后端不认这个修饰词（它会照旧读到 EOF、一直等）⇒
 随 `BUILD_ID` 换代，远端按身份重部署之后才发。
 
 **给人看：`--text`**（只给 `--quota-read`）：`--quota-read --text` ⇒ 同一份回包排成字，每号一段（段间空一行）：

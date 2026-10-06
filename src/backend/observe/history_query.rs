@@ -127,7 +127,7 @@ pub(crate) fn list_projects_to(
     ))
 }
 
-/// `--list-projects` 在「记录树根不在」时信封里的码（生产方住这里，认码的是 `history_join` 远端那一支）。
+/// `--list-projects` 在「记录树根不在」时信封里的码（生产方住这里；问它的那一方认码，不认话）。
 pub(crate) const NO_RECORD_TREE: &str = "no_record_tree";
 
 /// 带码的那一行：CLI 错误信封（`{code, message}`，与 `cli_control::emit_err` 同一对键；那边读信封的是 `remote_ask::settle_pulled`）。
@@ -143,11 +143,10 @@ fn query_failed(e: &str) -> i32 {
     2
 }
 
-/// `--list-projects` 的本体，出口是参数 ——帧面那条（`history-projects`）
-/// 与 CLI 这条**跑的是同一个函数**，只是 `out` 一个是 stdout、一个是内存里那份应答。
+/// `--list-projects` 的本体，出口是参数：CLI 写 stdout，资产目录（`asset_catalog`）写内存。
 ///
 /// 回「记录树根在不在」：不在 ⇒ `Ok(false)`、一行不写（这台还没起过会话 —— 判定只在这一处）；
-/// 怎么说由两个宿主各自定：帧面当零个项目（界面照空态「还没有会话记录」画，别的机器照常）· CLI 照旧出声。
+/// 怎么说由调用方定：资产目录当零个项目 · CLI 照旧出声（带码）。
 pub(crate) fn list_projects_into(agent_home: &Path, out: &mut dyn Write) -> Result<bool, String> {
     let root = projects_root(agent_home);
     let entries = match std::fs::read_dir(&root) {
@@ -172,7 +171,7 @@ pub(crate) fn list_projects_into(agent_home: &Path, out: &mut dyn Write) -> Resu
 /// 一个记录目录里的会话按**真实目录**分组 —— 记录目录名把非 ASCII 字符、`.`、`/` 都折成 `-`，
 /// 不同的目录会撞成同一个名字。输入每个会话的 `(读出的目录, 修改时刻)`，回每个会话归哪一组（目录）。
 /// 读不出目录的归最近修改的那个读得出目录的会话那一组；一个都读不出 ⇒ 空串一组。
-/// 项目清单（[`project_rows`]）与会话清单按组过滤（`history_join`）用的是这同一个函数。
+/// 项目清单（[`project_rows`]）与平铺清单（[`sessions_by_dir`]）用的是这同一个函数。
 pub(crate) fn group_by_cwd(items: &[(Option<String>, i64)]) -> Vec<String> {
     let fallback = items
         .iter()
@@ -285,7 +284,7 @@ fn list_sessions(agent_home: &Path, project_dir: &str) -> Result<(), String> {
     list_sessions_into(agent_home, project_dir, &mut std::io::stdout().lock())
 }
 
-/// `--list-sessions` 的本体，出口是参数（同 [`list_projects_into`]：帧面与 CLI 同一个函数）。
+/// `--list-sessions` 的本体，出口是参数（CLI 与平铺清单 [`sessions_by_dir`] 同一个函数）。
 pub(crate) fn list_sessions_into(
     agent_home: &Path,
     project_dir: &str,
