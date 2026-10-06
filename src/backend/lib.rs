@@ -776,7 +776,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p7s-files-exists：files-create / mkdir / rename 撞名回 exists；files-chmod 应答多 before。
 ///
 /// p7t-needs：history-facts 多 needs（等你的种类 · 工具 · 那一句 · 从何时起）· pending（没结果的调用）· lastSay（最后一句）。
-pub const BUILD_ID: &str = "p7t-needs";
+///
+/// p7u-history-turns：新命令 history-turns（一轮的摘要）；会话事实多 toolSteps · toolResults · apiReason · speaker.body；文件窗口第 4 批。
+pub const BUILD_ID: &str = "p7u-history-turns";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
