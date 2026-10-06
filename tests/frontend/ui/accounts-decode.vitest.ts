@@ -24,7 +24,8 @@ vi.mock("../../../src/frontend/ui/config", () => ({ loadConfig: vi.fn().mockReso
 import { invoke } from "@tauri-apps/api/core";
 import { decodeAccountsList, decodeTrust } from "../../../src/frontend/ui/accounts-decode";
 import { deriveUi } from "../../../src/frontend/ui/accounts";
-import { __resetAccountsCacheForTest, checkTrust, fetchAccounts } from "../../../src/frontend/ui/account-reads";
+import { __resetAccountsCacheForTest, accountsAgentProfile, checkTrust, fetchAccounts, launchAgentId } from "../../../src/frontend/ui/account-reads";
+import { AGENT_PROFILE_TABLE } from "../../../src/frontend/ui/generated/agent-profile-table";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import {
@@ -80,6 +81,16 @@ describe("金样：后端出的成品，TS 这一侧读得懂", () => {
   });
   it("accounts-trust：两格照收", () => {
     expect(decodeTrust(golden["accounts-trust"])).toEqual({ trusted: true, known: true });
+  });
+});
+
+describe("账号页那一家的画像", () => {
+  it("与起会话交的适配器 id 同一个出处：叫法与认得的模型都读后端生成的画像表（不写死）", () => {
+    const p = accountsAgentProfile();
+    const row = AGENT_PROFILE_TABLE.find((r) => r.adapterId === launchAgentId());
+    expect(p, "查不到账号页那一家的画像").not.toBeNull();
+    expect(p).toBe(row);
+    expect(p!.models?.length, "那一家认得的模型一个都没有（下拉只剩「默认」）").toBeGreaterThan(0);
   });
 });
 
