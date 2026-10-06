@@ -809,7 +809,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p8h-find-turn：history-find 每条命中带 turn（第几轮）与 tsMs，新参数 skip 分页。
 ///
 /// p8i-acct-page：各号 .credentials.json 变了推 accounts_changed；accounts-list meta 带 nextDefault（删默认号之后谁接）。
-pub const BUILD_ID: &str = "p8i-acct-page";
+///
+/// p8j-agent-faces：通用层不再直呼 Claude 适配层（记录树 · 会话文件判定 · pidfile · 判活 · 本机 home · 账号环境键 · 信任判定 · 任务目录 · 删会话文件名 · 钩子设置 · 项目 MCP · 别名名字都问那一家的格）；对外形状不变。
+pub const BUILD_ID: &str = "p8j-agent-faces";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
