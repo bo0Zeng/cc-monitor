@@ -778,7 +778,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p7t-needs：history-facts 多 needs（等你的种类 · 工具 · 那一句 · 从何时起）· pending（没结果的调用）· lastSay（最后一句）。
 ///
 /// p7u-history-turns：新命令 history-turns（一轮的摘要）；会话事实多 toolSteps · toolResults · apiReason · speaker.body；文件窗口第 4 批。
-pub const BUILD_ID: &str = "p7u-history-turns";
+///
+/// p7v-history-list：新命令 history-list（每行事实 ＋ can ＋ 分组 ＋ 后端搜索筛选）；内容搜索多 report 命中；主窗口第 3a 批。
+pub const BUILD_ID: &str = "p7v-history-list";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
