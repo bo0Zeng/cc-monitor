@@ -780,7 +780,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p7u-history-turns：新命令 history-turns（一轮的摘要）；会话事实多 toolSteps · toolResults · apiReason · speaker.body；文件窗口第 4 批。
 ///
 /// p7v-history-list：新命令 history-list（每行事实 ＋ can ＋ 分组 ＋ 后端搜索筛选）；内容搜索多 report 命中；主窗口第 3a 批。
-pub const BUILD_ID: &str = "p7v-history-list";
+///
+/// p7w-turn-rail：history-turns 的回复头跳过代码块围栏行；主窗口轮次刻度。
+pub const BUILD_ID: &str = "p7w-turn-rail";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
