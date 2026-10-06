@@ -13,11 +13,11 @@ import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/to
 import { askText } from "../../../src/frontend/ui/kit/dialog";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { LIVE, ENDED, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
-import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { LOCAL_ORIGIN, originFromWire } from "../../../src/frontend/ui/ipc/origin";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 
 const tab = (sid: string, live: boolean, extra: Partial<Tab> = {}): Tab =>
-  ({ sessionId: sid, origin: LOCAL_ORIGIN, title: `T-${sid}`, state: live ? LIVE : ENDED, pinned: false, group: null, ...extra }) as Tab;
+  ({ sessionId: sid, origin: LOCAL_ORIGIN, title: `T-${sid}`, aiTitle: `T-${sid}`, projectDir: null, kind: null, bgName: null, forkedFromSessionId: null, state: live ? LIVE : ENDED, pinned: false, group: null, ...extra }) as Tab;
 
 let tabs: Tab[];
 let host: TabBatchHost;
@@ -110,6 +110,23 @@ describe("批量菜单", () => {
     open();
     await press(copyText("tabBatch.menu.stop", { n: 2 }));
     expect(run.stop, "确认框点了取消 ⇒ 一个都不杀").toHaveBeenCalledTimes(1);
+  });
+
+  it("远端那几行机器只出一次：标题不带 `[机器]` 前缀，机器写在括号里", async () => {
+    const devbox = originFromWire("devbox");
+    tabs = [
+      tab("r", true, { origin: devbox, title: "[devbox] [billing] 账单导出改成流式", projectDir: "/w/billing", aiTitle: "账单导出改成流式" }),
+      tab("l", true, { title: "[web] 首页", projectDir: "/w/web", aiTitle: "首页" }),
+    ];
+    run.stop.mockResolvedValue([
+      { sid: "r", outcome: "failed", why: "门拦下了" },
+      { sid: "l", outcome: "done", why: "" },
+    ]);
+    open();
+    await press(copyText("tabBatch.menu.stop", { n: 2 }));
+    const spec = run.confirm.mock.calls[0][0] as { list: string[] };
+    expect(spec.list).toEqual([copyText("tabBatch.stop.line", { title: "billing 账单导出改成流式", machine: "devbox" }), "web 首页"]);
+    expect(toastBody().split("\n")).toEqual([copyText("tabBatch.result.failedLine", { title: "billing 账单导出改成流式", why: "门拦下了" })]);
   });
 
   it("B3 · 固定 / 集合：一次交出能做的那几个；新建集合整批进同一个新组", async () => {

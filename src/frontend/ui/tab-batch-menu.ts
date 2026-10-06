@@ -16,6 +16,7 @@ import { sayCollectionRefusal } from "./tab-bar-prefs";
 import { confirmDialog, askText, type ConfirmFn } from "./kit/dialog";
 import { toast } from "./kit/toast";
 import { machineName } from "./control-said";
+import { fullTitle } from "./session-face";
 import { isRemoteOrigin } from "./ipc/origin";
 import { startMany, stopMany, type BatchOutcome } from "./tab-batch-run";
 
@@ -59,7 +60,10 @@ function unseenOr(why: string): (t: Tab) => string {
 
 /** 结果提示：标题说做的是什么，正文第一行三个数，下面逐个列跳过与失败的（各为什么）。 */
 export function sayBatch(action: string | ((done: number, failed: number) => string), tabs: readonly Tab[], outcomes: readonly BatchOutcome[]): void {
-  const title = (sid: string) => tabs.find((t) => t.sessionId === sid)?.title ?? sid;
+  const title = (sid: string): string => {
+    const t = tabs.find((x) => x.sessionId === sid);
+    return t ? fullTitle(t) : sid;
+  };
   const n = (k: BatchOutcome["outcome"]) => outcomes.filter((o) => o.outcome === k).length;
   // 一句结果（`已结束 11 · 失败 1`）；第二行起逐条写没做的为什么（出错的不自己走）。
   const head =
@@ -119,7 +123,8 @@ export function openBatchMenu(
           { label: copyText("kit.interrupts.cut"), items: [copyText("tabBatch.stop.cuts")] },
           { label: copyText("kit.interrupts.keep"), items: [copyText("tabSessionActions.kill.keeps")] },
         ],
-        list: stoppable.map((t) => (isRemoteOrigin(t.origin) ? copyText("tabBatch.stop.line", { title: t.title, machine: machineName(t.origin) }) : t.title)),
+        // 机器只出一次：标题用不带 `[机器]` 前缀的那一形，远端的机器写在括号里。
+        list: stoppable.map((t) => (isRemoteOrigin(t.origin) ? copyText("tabBatch.stop.line", { title: fullTitle(t), machine: machineName(t.origin) }) : fullTitle(t))),
         note: ended > 0 ? copyText("sessionState.batch.skipped", { n: ended }) : undefined,
       };
       if (!(await run.confirm(confirm))) return;
