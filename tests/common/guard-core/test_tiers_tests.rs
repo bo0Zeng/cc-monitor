@@ -716,6 +716,7 @@ const INTEGRATION: &[&str] = &[
     "tests/frontend/shell/doc_claim_registry_tests.rs",
     "tests/common/guard-core/no_outside_refs_tests.rs", // 起 `git ls-files` 取人群，同上一行
     "tests/common/guard-core/build_features_tests.rs", // 起 `cargo tree --frozen` 现取两种构建的特性集
+    "tests/backend/build_features_tests.rs", // 同上一行，后端那个 workspace
     "tests/frontend/filewin/bookmarks_tests.rs",
     "tests/frontend/filewin/proc_tests.rs", // 窗口进程那一侧（拨回 · 第一屏 · 就绪那一行）随躯体搬进窗口包
     "tests/frontend/shell/filewin/proc_tests.rs",

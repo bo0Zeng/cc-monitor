@@ -820,7 +820,10 @@ function originCorpus(): Decl[] {
   for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
     const rel = f.slice(REPO_ROOT.length + 1);
     if (rel.startsWith("src/frontend/shell/") || rel.startsWith("src/backend/")) continue;
-    all.push(...originDecls(rel, readFileSync(f, "utf8")));
+    // 名字不带 origin 的声明不进人群 ⇒ 正文里一个 `origin` 都没有的文件不必解析（负载下全树解析会超时）。
+    const src = readFileSync(f, "utf8");
+    if (!/origin/i.test(src)) continue;
+    all.push(...originDecls(rel, src));
   }
   originCorpusMemo = all;
   return all;
