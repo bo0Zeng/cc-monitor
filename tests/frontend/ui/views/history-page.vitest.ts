@@ -17,15 +17,35 @@ vi.mock("@tauri-apps/api/core", () => ({
     onmessage: ((v: unknown) => void) | null = null;
   },
 }));
+/** 查看器替身：只把宿主拼好的头摆出来（头里的按钮由历史页建，判据点的就是它们）、记下最后一次 `load` 与头下那一条。 */
+const viewerStub = vi.hoisted(() => ({ last: null as null | Record<string, unknown>, banner: null as HTMLElement | null }));
 vi.mock("../../../../src/frontend/ui/views/session-viewer", () => ({
+  viewerPath: (t: string) => Object.assign(document.createElement("span"), { textContent: t }),
   SessionViewer: class {
     element = document.createElement("div");
-    load(): Promise<void> {
+    load(o: Record<string, unknown>): Promise<void> {
+      viewerStub.last = o;
+      const h = o.head as { badges?: HTMLElement[]; actions?: HTMLElement; meta?: HTMLElement[] } | undefined;
+      const head = document.createElement("div");
+      head.dataset.role = "viewer-head";
+      head.append(...(h?.badges ?? []), ...(h?.actions ? [h.actions] : []), ...(h?.meta ?? []));
+      this.element.replaceChildren(head);
       return Promise.resolve();
+    }
+    showBanner(el: HTMLElement | null): void {
+      viewerStub.banner = el;
     }
     dispose(): void {}
     openFind(): void {}
   },
+}));
+vi.mock("../../../../src/frontend/ui/tmux-resume", () => ({ startInTmuxThenAttach: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("../../../../src/frontend/ui/launch-menu", () => ({
+  enumerateAccountModifiers: vi.fn().mockResolvedValue([
+    { kind: "base", label: "账号 0" },
+    { kind: "account", name: "work", label: "work" },
+    { kind: "account", name: "home", label: "home" },
+  ]),
 }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoToast: vi.fn() }));
 vi.mock("../../../../src/frontend/ui/local-resume", () => ({ resumeLocalSession: vi.fn().mockResolvedValue(true) }));
@@ -42,6 +62,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "../../../../src/frontend/ui/views/history";
 import { toast } from "../../../../src/frontend/ui/kit/toast";
 import { resumeLocalSession } from "../../../../src/frontend/ui/local-resume";
+import { startInTmuxThenAttach } from "../../../../src/frontend/ui/tmux-resume";
+import { enumerateAccountModifiers } from "../../../../src/frontend/ui/launch-menu";
 import { chanArgsJson, chanReply, refusedReply, type ChanCallArgs } from "../../../test-support/chan-fake";
 import { answerAskDialog, answerAskText, noAskDialog } from "../../../test-support/ask-dialog-driver.ts";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
@@ -113,6 +135,10 @@ beforeEach(() => {
   document.body.replaceChildren();
   vi.mocked(toast).mockClear();
   vi.mocked(resumeLocalSession).mockClear();
+  vi.mocked(startInTmuxThenAttach).mockClear();
+  vi.mocked(enumerateAccountModifiers).mockClear();
+  viewerStub.last = null;
+  viewerStub.banner = null;
   world = { local: [], dev: [], fail: new Set(), search: "ok" };
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
@@ -378,6 +404,107 @@ describe("键盘与菜单", () => {
     expect(calls("history-annotate").at(-1)).toEqual({ sid: "a", patch: { customTitle: "新名字" } });
     document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     v2.close();
+    v.close();
+  });
+});
+
+describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
+  const head = (): HTMLElement => document.querySelector<HTMLElement>('[data-role="viewer-head"]')!;
+  const inHead = (text: string): HTMLButtonElement | undefined =>
+    [...head().querySelectorAll<HTMLButtonElement>("button")].find((b) => (b.textContent ?? "").includes(text) || b.getAttribute("aria-label") === text);
+  const menuItems = (): string[] => [...document.querySelectorAll<HTMLElement>('[role^="menuitem"]')].map((e) => e.textContent ?? "");
+  const menuItem = (label: string): HTMLElement | undefined =>
+    [...document.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find((b) => b.textContent?.startsWith(label));
+  // 前面那几格的筛选（关掉 dev 那台）记在本机，别带进来。
+  beforeEach(() => localStorage.clear());
+  const showRow = async (sid: string): Promise<void> => {
+    rows().find((r) => r.dataset.key?.endsWith(sid))!.click();
+    await flush(250);
+  };
+
+  it("已结束的行：头上［恢复 ▾］＋ 新窗口 ＋ ⋯；第二行 项目 · 本机 · 路径 · 时间段；▾ ＝ tmux / 不用 tmux × 账号，再加「在此目录新建会话」", async () => {
+    world.local = [row({ sessionId: "a", lastAccount: "work" })];
+    const v = await opened();
+    await showRow("a");
+    expect(viewerStub.last).toMatchObject({ displayTitle: "标题 a", origin: "<local>", cwd: "/w/p" });
+    const main = inHead(copyText("history.row.resume"))!;
+    expect(main.title).toBe(copyText("history.resume.hintAccount", { account: "work" }));
+    expect(inHead(copyText("history.menu.openWindow"))).toBeTruthy();
+    expect(inHead(copyText("history.row.more"))).toBeTruthy();
+    expect(head().textContent).toContain("p");
+    expect(head().textContent).toContain(copyText("history.filter.local"));
+    expect(head().textContent).toContain("/w/p");
+    inHead(copyText("history.resume.more"))!.click();
+    await flush();
+    expect(enumerateAccountModifiers).toHaveBeenCalledWith("<local>");
+    const items = menuItems();
+    expect(items[0]).toContain("tmux");
+    expect(items).toContain(copyText("history.menu.newInDir"));
+    expect(items.some((t) => t.startsWith("work"))).toBe(true);
+    // 选「tmux」⇒ 不依赖标签页对象的那条起法，带这一行的那一家、目录、跟随的号
+    menuItem("tmux")!.click();
+    await flush();
+    expect(vi.mocked(startInTmuxThenAttach).mock.calls[0].slice(0, 2)).toEqual([
+      { origin: "<local>", agent: "claude", sid: "a", cwd: "/w/p" },
+      { kind: "follow" },
+    ]);
+    expect(resumeLocalSession).not.toHaveBeenCalled();
+    v.close();
+  });
+
+  it("主按钮 ＝ 默认那一种（跟随的号 · 不用 tmux）；没起来 ⇒ 头下一条错误条 ＋［重试］，不关历史页", async () => {
+    world.local = [row({ sessionId: "a" })];
+    const v = await opened();
+    await showRow("a");
+    vi.mocked(resumeLocalSession).mockRejectedValueOnce(new Error("开不了终端"));
+    inHead(copyText("history.row.resume"))!.click();
+    await flush();
+    expect(vi.mocked(resumeLocalSession).mock.calls[0][0]).toMatchObject({ sid: "a", account: { kind: "follow" } });
+    expect(viewerStub.banner?.textContent).toContain(copyText("history.resume.failed", { machine: copyText("history.filter.local"), why: "Error: 开不了终端" }));
+    expect(v.isVisible()).toBe(true);
+    [...viewerStub.banner!.querySelectorAll("button")].find((b) => b.textContent === copyText("history.group.retry"))!.click();
+    await flush();
+    expect(resumeLocalSession).toHaveBeenCalledTimes(2);
+    expect(v.isVisible(), "起了 ⇒ 关历史页").toBe(false);
+  });
+
+  it("点名一个号 ⇒ 带着它起（不用 tmux 那一支）", async () => {
+    world.dev = [row({ sessionId: "r" })];
+    const v = await opened();
+    await showRow("r");
+    inHead(copyText("history.resume.more"))!.click();
+    await flush();
+    expect(enumerateAccountModifiers).toHaveBeenCalledWith("dev");
+    const { runRemoteResume } = await import("../../../../src/frontend/ui/remote-launch-run");
+    const work = menuItem("work")!.parentElement!;
+    [...work.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((b) => b.textContent === copyText("tabMenu.containerLeaves.direct"))!.click();
+    await flush();
+    expect(vi.mocked(runRemoteResume).mock.calls.at(-1)!.slice(0, 4)).toEqual(["dev", "claude", "r", "/w/p"]);
+    expect(vi.mocked(runRemoteResume).mock.calls.at(-1)![5]).toEqual({ account: { kind: "named", name: "work" } });
+    v.close();
+  });
+
+  it("Codex 行：▾ 不问账号，灰一行「Codex · 无账号维」；在跑的 ⇒［切过去］；分身 ⇒ 恢复灰着说为什么", async () => {
+    world.local = [
+      row({ sessionId: "cx", agent: "codex", agentTag: "Codex", can: { resume: "yes", accounts: false, fork: false, delete: "yes" } }),
+      row({ sessionId: "l", status: "live", can: { resume: "switch", accounts: true, fork: true, delete: "live" } }),
+      row({ sessionId: "bg", isBg: true, can: { resume: "bg", accounts: true, fork: false, delete: "yes" } }),
+    ];
+    const v = await opened();
+    await showRow("cx");
+    expect(inHead(copyText("history.row.resume"))!.title).toBe(copyText("history.resume.hintAgent", { agent: "Codex" }));
+    inHead(copyText("history.resume.more"))!.click();
+    await flush();
+    expect(enumerateAccountModifiers).not.toHaveBeenCalled();
+    const na = menuItem(copyText("history.resume.noAccounts", { agent: "Codex" }))!;
+    expect((na as HTMLButtonElement).disabled).toBe(true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await showRow("l");
+    expect(inHead(copyText("history.row.switch"))).toBeTruthy();
+    expect(inHead(copyText("history.resume.more"))).toBeUndefined();
+    await showRow("bg");
+    expect(inHead(copyText("history.row.resume"))!.getAttribute("aria-disabled")).toBe("true");
+    expect(inHead(copyText("history.row.resume"))!.title).toBe(copyText("history.row.bgHint"));
     v.close();
   });
 });

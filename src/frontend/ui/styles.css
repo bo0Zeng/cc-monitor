@@ -2539,14 +2539,6 @@
   text-decoration: line-through;
 }
 
-.history-status {
-  padding: 8px 20px;
-  font-size: var(--font-size-small);
-  color: var(--text-2);
-  background: var(--bg-2);
-  border-bottom: 1px solid var(--border-strong);
-}
-
 /* 从搜索结果跳进 viewer 后命中卡片的临时高亮 */
 @keyframes search-hit-flash {
   0% {
@@ -2569,41 +2561,6 @@
   display: flex;
   flex-direction: column;
   background: var(--bg);
-}
-
-.session-viewer-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--border-strong);
-  background: var(--bg-2);
-  flex-shrink: 0;
-}
-
-.session-viewer-titles {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  flex: 1;
-}
-
-.session-viewer-title {
-  color: var(--text);
-  font-size: var(--font-size-base);
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.session-viewer-subtitle {
-  color: var(--text-2);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* === K-R45：「我说过的 N 句」清单面板 ===

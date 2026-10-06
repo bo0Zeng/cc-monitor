@@ -28,6 +28,17 @@ vi.mock("@tauri-apps/api/core", async () => {
   return rig.tauriCoreMock();
 });
 vi.mock("../../../../src/frontend/ui/fork-flow", () => ({ runForkFlow: vi.fn().mockResolvedValue(undefined) }));
+// 「这一条显示不了」那一格要一条渲染时真抛的记录：uuid 叫 `boom` 的那一条在真渲染器之前抛（别的照真渲染器走）。
+vi.mock("../../../../src/frontend/ui/render-stream-record", async (orig) => {
+  const real = await orig<typeof import("../../../../src/frontend/ui/render-stream-record")>();
+  return {
+    ...real,
+    renderStreamRecord: (p: { message: { uuid?: string } }, ...rest: unknown[]) => {
+      if (p.message.uuid === "boom") throw new Error("这一条坏了");
+      return (real.renderStreamRecord as (...a: unknown[]) => void)(p, ...rest);
+    },
+  };
+});
 
 import {
   installViewerRig,
@@ -44,7 +55,7 @@ import {
 import { REPO_ROOT } from "../../../test-support/repo-root";
 import { SessionViewer } from "../../../../src/frontend/ui/views/session-viewer";
 import { invoke } from "@tauri-apps/api/core";
-import { sessionReadCalls } from "../../../test-support/chan-fake";
+import { chanArgsJson, sessionReadCalls, type ChanCallArgs } from "../../../test-support/chan-fake";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 
 let rig: ViewerRigHandles;
@@ -77,10 +88,12 @@ async function mount(lines: RigPayload[], outline?: string[]): Promise<SessionVi
 const rowsOf = (v: SessionViewer): HTMLButtonElement[] => [
   ...v.element.querySelectorAll<HTMLButtonElement>(".user-input-row"),
 ];
+/** 工具行「你说过的话 · N ▾」那颗按钮（设计稿「文件与历史」乙4-④：大纲只这一处入口）。 */
 const toggleOf = (v: SessionViewer): HTMLButtonElement =>
-  v.element.querySelector<HTMLButtonElement>(".user-inputs-toggle")!;
-const panelOf = (v: SessionViewer): HTMLElement =>
-  v.element.querySelector<HTMLElement>(".user-inputs")!;
+  v.element.querySelector<HTMLButtonElement>('[data-role="said"]')!;
+/** 清单面板：收着时住查看器里，开着时搬进 kit 浮层（挂在 body 上）⇒ 按文档找。 */
+const panelOf = (_v: SessionViewer): HTMLElement =>
+  document.querySelector<HTMLElement>(".user-inputs")!;
 /**
  * 🔴 **找卡一律限定在消息流容器里**。`[data-uuid]` 在本仓只有一个意思（渲染出来的消息卡），
  * 而清单行是另一种东西 —— 早期一版把行也写成 `data-uuid`，这个判据当场把两者混在一起
@@ -114,7 +127,7 @@ describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不
     const rows = rowsOf(v);
     expect(rows.map((r) => r.dataset.inputUuid)).toEqual(["u1", "u7"]);
     expect(rows[0].textContent).toBe("1. 第一句");
-    expect(toggleOf(v).textContent).toBe("大纲 · 2");
+    expect(toggleOf(v).textContent).toBe("你说过的话 · 2");
   });
 
   it("🔴 查看器不自己判：后端没列的 user 行不出现（反向：旧的 TS 判定若还在，u3 会冒出来）", async () => {
@@ -144,20 +157,26 @@ describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不
     expect(toggleOf(w).title).toContain("本机后端不在");
   });
 
-  it("面板默认收着，点开关才展开（默认收着 ⇒ 对既有布局零影响）", async () => {
+  it("面板默认收着，点开关才展开（默认收着 ⇒ 对既有布局零影响）；再点一次收回查看器里", async () => {
     const v = await mount([userLine(1, "u1", "第一句")]);
     expect(panelOf(v).hidden).toBe(true);
+    expect(v.element.contains(panelOf(v))).toBe(true);
     expect(toggleOf(v).getAttribute("aria-expanded")).toBe("false");
     toggleOf(v).click();
     expect(panelOf(v).hidden).toBe(false);
+    expect(v.element.contains(panelOf(v)), "开着时在 kit 浮层里，不在查看器里").toBe(false);
     expect(toggleOf(v).getAttribute("aria-expanded")).toBe("true");
+    toggleOf(v).click();
+    expect(panelOf(v).hidden).toBe(true);
+    expect(v.element.contains(panelOf(v))).toBe(true);
+    expect(toggleOf(v).getAttribute("aria-expanded")).toBe("false");
   });
 
   it("一条用户输入都没有 ⇒ 开关禁用、清单为空（不给一个点了没反应的入口）", async () => {
     const v = await mount([assistantLine(1, "a1", "只有回复")]);
     expect(rowsOf(v).length).toBe(0);
     expect(toggleOf(v).disabled).toBe(true);
-    expect(toggleOf(v).textContent).toBe("大纲"); // 0 条不挂计数
+    expect(toggleOf(v).textContent).toBe("你说过的话"); // 0 条不挂计数
   });
 });
 
@@ -208,7 +227,7 @@ describe("KR45D1 点一下跳过去", () => {
     rowsOf(v)[1].click();
 
     expect(rowsOf(v)[1].dataset.unjumpable).toBe("1"); // 看得出来
-    expect(rowsOf(v)[1].title).toContain("跳不过去");
+    expect(rowsOf(v)[1].title).toContain("无法定位");
     expect(rig.scrollIntoView).not.toHaveBeenCalled();
   });
 
@@ -225,9 +244,8 @@ describe("KR45D1 点一下跳过去", () => {
       userLine(2, "u2", "[Request interrupted by user]", { userText: INTERRUPT }),
     ]);
     // 先证明「没有任何未渲染的段留着」——否则下面那句「永久」是空真
-    const status = v.element.querySelector(".history-status")!.textContent ?? "";
-    expect(status, "还有未渲染的段 ⇒ 这一格证不了「永久」").toContain("条记录");
-    expect(status).not.toContain("已显示");
+    const status = v.element.querySelector('[data-role="status"]')!.textContent ?? "";
+    expect(status, "还有未渲染的段 ⇒ 这一格证不了「永久」").toBe("2 条");
 
     rowsOf(v)[1].click();
     expect(rowsOf(v)[1].dataset.unjumpable).toBe("1");
@@ -247,7 +265,7 @@ describe("KR45D1 点一下跳过去", () => {
     expectLoaded(v.element);
 
     expect(rowsOf(v).map((r) => r.dataset.inputUuid)).toEqual(["n1"]);
-    expect(toggleOf(v).textContent).toBe("大纲 · 1");
+    expect(toggleOf(v).textContent).toBe("你说过的话 · 1");
   });
 });
 
@@ -286,7 +304,7 @@ describe("KR45 债二：清单的样式住 styles.css，不再内联", () => {
     // 抽取器自检：先确认这把尺子够得着那个文件（不然下面几条是空真）。
     expect(cssLines.length, "读到的 styles.css 只有几行 —— 尺子坏了").toBeGreaterThan(1000);
     expect(cssLines, "读到的不是 styles.css —— 连基准那条规则都没有").toContain(
-      ".session-viewer-bar {",
+      ".session-viewer {",
     );
 
     expect(cssLines, "面板没有 CSS 宿主 ⇒ 它退回一块没有高度上限、不滚动、无底边的裸 div").toContain(
@@ -316,35 +334,125 @@ describe("KR45 债二：清单的样式住 styles.css，不再内联", () => {
   });
 });
 
-// 历史查看器的 Ctrl+F 复用 SE2 那块面板（搜索 ／ 大纲），查的是后端 `history-find`。
-//   守的要求（住址逐字）：「③ 历史查看器 Ctrl+F 复用 SE2 面板 ＋ `history-find`」。
-describe("㊱③ 查看器的 Ctrl+F：SE2 那块面板 ＋ 问后端 `history-find`", () => {
-  it("打开到「搜索」· 问的是这一份会话 · 后端给什么命中就列什么 · 点命中跳到那张卡", async () => {
+// 历史查看器的 Ctrl+F：工具行的查找框 ＋ 框下就地展开的命中清单（`find-strip.ts`，主窗口的会话内查找复用同一个），查的是后端 `history-find`。
+describe("㊱③ 查看器的 Ctrl+F：工具行查找框 ＋ 问后端 `history-find`", () => {
+  it("焦点进框 · 回车才问 · 问的是这一份会话 · 后端给什么命中就列什么 · 点命中跳到那张卡 · ✕ 收起", async () => {
     const v = await mount([userLine(1, "u1", "第一句"), assistantLine(2, "a1", "回复里有 needle")]);
     viewerRig.find = {
       available: true,
       total: 1,
       hits: [{ uuid: "a1", kind: "assistant", before: "回复里有 ", matched: "needle", after: "" }],
     };
-    // 大纲那一半就是这块面板的另一半：入口按钮还在（上面几组照旧量它）。
-    const box = v.element.querySelector<HTMLElement>(".session-find-panel")!;
-    expect(box, "查看器里没有 SE2 那块面板").toBeTruthy();
-    expect(box.hidden).toBe(true);
+    const strip = v.element.querySelector<HTMLElement>('[data-role="find-strip"]')!;
+    expect(strip, "查看器里没有命中清单那一条").toBeTruthy();
+    expect(strip.hidden).toBe(true);
     v.openFind();
-    expect(box.hidden).toBe(false);
-    const input = v.element.querySelector<HTMLInputElement>(".session-find-input")!;
+    const input = v.element.querySelector<HTMLInputElement>("[data-role=\"find-input\"]")!;
     expect(document.activeElement).toBe(input);
+    expect(strip.hidden, "只给焦点不搜：回车才问那台").toBe(true);
     input.value = "needle";
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await settleOutline();
+    expect(strip.hidden).toBe(false);
     expect(sessionReadCalls(vi.mocked(invoke).mock.calls, "find_in_session")).toEqual([
       { origin: "<local>", jsonlPath: "/p/s1.jsonl", query: "needle", includeTools: false },
     ]);
-    const hits = [...v.element.querySelectorAll<HTMLButtonElement>(".session-find-hit")];
+    expect(strip.querySelector('[data-role="find-head"]')!.textContent).toBe("1 处");
+    const hits = [...strip.querySelectorAll<HTMLButtonElement>('[data-role="find-hit"]')];
     expect(hits.map((h) => h.dataset.hitUuid)).toEqual(["a1"]);
     hits[0].click();
     await settleOutline();
-    expect(hits[0].dataset.unjumpable, "命中那一条跳空了 —— 查看器的「跳」没接到这块面板上").toBeUndefined();
+    expect(hits[0].dataset.unjumpable, "命中那一条跳空了 —— 查看器的「跳」没接到查找上").toBeUndefined();
     expect(cardOf(v, "a1")).toBeTruthy();
+    strip.querySelector<HTMLButtonElement>('button[aria-label="收起查找结果"]')!.click();
+    expect(strip.hidden).toBe(true);
+  });
+
+  it("勾「含工具输出与思考」⇒ 带着它再问一次；没命中写「无匹配「词」」", async () => {
+    const v = await mount([userLine(1, "u1", "第一句")]);
+    viewerRig.find = { available: true, total: 0, hits: [] };
+    v.openFind();
+    const input = v.element.querySelector<HTMLInputElement>("[data-role=\"find-input\"]")!;
+    input.value = "nothing";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await settleOutline();
+    const strip = v.element.querySelector<HTMLElement>('[data-role="find-strip"]')!;
+    expect(strip.querySelector('[data-role="find-head"]')!.textContent).toBe("无匹配「nothing」");
+    const box = strip.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    box.click();
+    await settleOutline();
+    const calls = sessionReadCalls(vi.mocked(invoke).mock.calls, "find_in_session").map((c) => (c as { includeTools: boolean }).includeTools);
+    expect(calls.slice(-2)).toEqual([false, true]);
+  });
+});
+
+// 设计稿「文件与历史」乙4-④：头两行 · 底一行只说条数 · 显示不了的那一条在卡位上说 · 读不出 ⇒ 错误条 ＋［重试］· 按轮折叠与主窗口同一个。
+describe("乙4-④ 查看器的头 · 底一行 · 各态", () => {
+  const status = (v: SessionViewer): string => v.element.querySelector('[data-role="status"]')!.textContent ?? "";
+
+  it("底一行只说条数（没有「首屏 ms」「渲染失败」那类读数）；长会话没渲完 ⇒「{n} 条 · 上翻加载更早」", async () => {
+    const v = await mount([userLine(1, "u1", "第一句"), assistantLine(2, "a1", "回复")]);
+    expect(status(v)).toBe("2 条");
+    const many: RigPayload[] = [];
+    for (let i = 1; i <= 200; i++) many.push(userLine(i, `m${i}`, `第 ${i} 句`));
+    const w = await mount(many);
+    expect(status(w)).toBe("200 条 · 上翻加载更早");
+    expect(status(w)).not.toMatch(/ms|渲染/);
+  });
+
+  it("某一条显示不了 ⇒ 卡的位置上「这一条显示不了」［复制详情］（复制的是那一条原文 ＋ 原因），其余照画、状态行不报数", async () => {
+    const write = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText: write } });
+    const v = await mount([userLine(1, "u1", "第一句"), userLine(2, "boom", "坏的"), assistantLine(3, "a1", "回复")]);
+    const kids = [...streamOf(v).querySelectorAll<HTMLElement>("[data-uuid], [data-role=\"broken\"]")];
+    expect(kids.map((k) => k.dataset.uuid ?? `broken:${k.dataset.seq}`)).toEqual(["u1", "broken:2", "a1"]);
+    const broken = streamOf(v).querySelector<HTMLElement>('[data-role="broken"]')!;
+    expect(broken.textContent).toContain("这一条显示不了");
+    [...broken.querySelectorAll("button")].find((b) => b.textContent === "复制详情")!.click();
+    expect(write.mock.calls[0][0]).toContain("这一条坏了");
+    expect(write.mock.calls[0][0]).toContain('"uuid": "boom"');
+    expect(status(v)).toBe("3 条");
+  });
+
+  it("头：标题 ＋ 宿主给的徽标 · 按钮 · 第二行；读完在第二行后面接「· {n} 条」", async () => {
+    viewerRig.chunk = [userLine(1, "u1", "第一句")];
+    outlineBackend.entries = [];
+    const v = new SessionViewer();
+    document.body.appendChild(v.element);
+    const badge = Object.assign(document.createElement("span"), { textContent: "Codex" });
+    const act = Object.assign(document.createElement("button"), { textContent: "恢复" });
+    const proj = Object.assign(document.createElement("span"), { textContent: "orders" });
+    await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "支付回调验签", origin: LOCAL_ORIGIN, suppressBranch: true, head: { badges: [badge], actions: act, meta: [proj] } });
+    await settleOutline();
+    const title = v.element.querySelector('[data-role="title"]')!;
+    expect(title.textContent).toBe("支付回调验签");
+    expect(title.nextElementSibling?.textContent).toBe("Codex");
+    expect(v.element.contains(act)).toBe(true);
+    expect(v.element.querySelector('[data-role="meta"]')!.textContent).toBe("orders1 条");
+  });
+
+  it("读不出 ⇒ 头下一条错误条「读取会话失败 · …」［重试］，点了再读同一份", async () => {
+    viewerRig.chunk = [userLine(1, "u1", "第一句")];
+    viewerRig.failPage = true;
+    const v = new SessionViewer();
+    document.body.appendChild(v.element);
+    await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL_ORIGIN, suppressBranch: true });
+    await settleOutline();
+    const bar = v.element.querySelector<HTMLElement>('[role="alert"]')!;
+    expect(bar.textContent).toContain("读取会话失败");
+    expect(status(v)).toBe("");
+    viewerRig.failPage = false;
+    [...bar.querySelectorAll("button")].find((b) => b.textContent === "重试")!.click();
+    await settleOutline();
+    expect(v.element.querySelector('[role="alert"]')).toBeNull();
+    expect(status(v)).toBe("1 条");
+  });
+
+  it("按轮折叠与主窗口同一个：读完问那台这一份会话的 `history-turns`（从 0 起）", async () => {
+    await mount([userLine(1, "u1", "第一句")]);
+    const turns = vi.mocked(invoke).mock.calls
+      .filter((c) => c[0] === "chan_call" && (c[1] as unknown as { op?: string }).op === "history-turns")
+      .map((c) => chanArgsJson(c[1] as unknown as ChanCallArgs));
+    expect(turns.at(-1)).toEqual({ path: "/p/s1.jsonl", from: 0 });
   });
 });

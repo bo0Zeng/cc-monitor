@@ -33,10 +33,10 @@ export function popoverOpenOn(anchor: HTMLElement): boolean {
 }
 
 /**
- * 在 `anchor` 下方（右端对齐）开一个面板，装 `content`。已在它上面开着 ⇒ 关掉、回 `false`。
+ * 在 `anchor` 下方（默认右端对齐，`align: "start"` 左端对齐）开一个面板，装 `content`。已在它上面开着 ⇒ 关掉、回 `false`。
  * `label` = 读屏名（文案表）。
  */
-export function openPopover(anchor: HTMLElement, content: HTMLElement, opts: { label: string; onClose?: () => void }): boolean {
+export function openPopover(anchor: HTMLElement, content: HTMLElement, opts: { label: string; onClose?: () => void; align?: "start" | "end" }): boolean {
   if (popoverOpenOn(anchor)) {
     closePopover();
     return false;
@@ -58,7 +58,9 @@ export function openPopover(anchor: HTMLElement, content: HTMLElement, opts: { l
   document.body.appendChild(root);
   const r = anchor.getBoundingClientRect();
   const { width, height } = root.getBoundingClientRect();
-  const at = placeAt(r.right - width, r.bottom + 4, width, height, window.innerWidth, window.innerHeight);
+  // 默认右端与触发物对齐；`start` ＝ 左端对齐（触发物在一行的左头时）。
+  const x = opts.align === "start" ? r.left : r.right - width;
+  const at = placeAt(x, r.bottom + 4, width, height, window.innerWidth, window.innerHeight);
   root.style.left = `${at.left}px`;
   root.style.top = `${at.top}px`;
   dispatcher.pushOverlay(layer);

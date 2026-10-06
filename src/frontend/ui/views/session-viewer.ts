@@ -38,8 +38,17 @@ import { runForkFlow } from "../fork-flow"; // G6：分叉完把新会话起起�
 import type { BranchResult } from "../session-writes";
 // 大纲的清单问后端要（判定只住后端），实时 tab 用的是同一个类
 import { OutlineSource } from "./outline-source";
-// 查找面板与实时 tab 同一块（SE2：搜索 ／ 大纲两个模式；大纲那一半就是 K-R45 那份清单界面）
-import { SessionFindPanel } from "./session-find";
+// 「你说过的话」清单界面与实时 tab 同一个类（`UserInputPanel`），这里只换开法：工具行一颗按钮 ＋ kit 浮层。
+import { UserInputPanel } from "./user-input-panel";
+// 按轮折叠与主窗口同一个（`turn-fold.ts`）：消息流与主窗口同一套卡（设计稿「文件与历史」乙1 / 乙4-④）。
+import { TurnFold } from "../turn-fold";
+import { button } from "../kit/button";
+import { icon } from "../kit/icon";
+import { banner } from "../kit/banner";
+import { skeletonRows } from "../kit/skeleton";
+import { openPopover, closePopover, popoverOpenOn } from "../kit/popover";
+import { FindStrip } from "../find-strip";
+import sv from "./session-viewer.module.css";
 import { copyText } from "../copy-table";
 
 /**
@@ -118,12 +127,31 @@ interface JsonlLinePayload {
 // C04d 批 6a：手写的 `BranchResult` 镜像已删——**包装层的签名直接提供它**，
 // 本文件不再需要本地标注（生成物仍被 ipc/commands.ts 的 import 链消费）。
 
+
+/** 内容头（设计稿乙4-④）：内容由宿主按那一行的事实拼好，查看器只摆位置。 */
+export interface ViewerHead {
+  /** 标题右边的徽标（在跑 · Codex · 分身 …）。 */
+  badges?: HTMLElement[];
+  /** 第一行右端：［恢复 ▾］· 新窗口 ·［⋯］。 */
+  actions?: HTMLElement;
+  /** 第二行：项目 · 机器 · 路径 · 时间段（查看器在后面接「· {n} 条」）。 */
+  meta?: HTMLElement[];
+}
+
+/** 头第二行里的路径那一格（等宽、放不下省略）。 */
+export function viewerPath(text: string): HTMLElement {
+  const span = document.createElement("span");
+  span.className = sv.svPath;
+  span.textContent = text;
+  span.title = text;
+  return span;
+}
+
 export interface ViewerOptions {
   jsonlPath: string;
-  /** 顶栏标题：custom_title / ai_title / first_user_excerpt 之一 */
+  /** 顶栏标题（后端给的显示标题）。 */
   displayTitle: string;
-  /** 子标题：项目名 + cwd */
-  subtitle?: string;
+  head?: ViewerHead;
   /**
    * issue #6：从全文搜索结果跳进来时给定命中消息的 uuid。加载完成后定位到该卡片
    * （展开所在折叠段）滚动居中 + 临时高亮，而非默认贴底。
@@ -152,6 +180,27 @@ const TAIL_INITIAL = 150; // 首屏渲染的末尾条数(实测 37MB 全量 65s 
 const BATCH_SIZE = 200; // 上翻每批补渲染条数(实测 200 条 ≈ 1-2s,肉眼可等的一口)
 const TOP_TRIGGER_PX = 800; // 距顶触发补批阈值(约一屏余量,提前于撞顶)
 
+/**
+ * 某一条显示不了 ⇒ 卡的位置上画这一块：「这一条显示不了」［复制详情］（乙4-④ · R2-2-3）。
+ * 原因进日志，不在状态行报数；「复制详情」交那一条的原文（后端给的记录行）＋ 原因。
+ */
+function brokenCard(p: JsonlLinePayload, err: unknown): HTMLElement {
+  const card = document.createElement("div");
+  card.className = sv.svBroken;
+  card.dataset.role = "broken";
+  card.dataset.seq = String(p.seq);
+  const t = document.createElement("span");
+  t.textContent = copyText("sessionViewer.card.broken");
+  const detail = `seq=${p.seq}\n${String(err)}\n${JSON.stringify(p.message, null, 2)}`;
+  const copy = button({
+    label: copyText("sessionViewer.card.copyDetail"),
+    size: "compact",
+    onClick: () => void navigator.clipboard?.writeText(detail).catch(() => {}),
+  });
+  card.append(icon("warning", "compact"), t, copy);
+  return card;
+}
+
 export class SessionViewer {
   private root: HTMLElement;
   private streamEl!: HTMLElement;
@@ -170,25 +219,35 @@ export class SessionViewer {
   private renderCtx: RenderContext | null = null;
   private renderSink: StreamSink | null = null;
   private folder: BranchFolder | null = null;
+  /** 按轮折叠（与主窗口同一个）：一轮的边界与结论问后端 `history-turns`。 */
+  private turnFold: TurnFold | null = null;
   private branchRecords: BranchRecord[] = [];
   private renderingBatch = false;
-  private renderErrors = 0;
-  private firstError = "";
   /** D 审计 S1/R 竞态:load 世代号——异步间隙(rAF/Channel)后核对,跨会话残余操作直接丢弃 */
   private loadGeneration = 0;
-  private lastFirstScreenMs: number | null = null;
   private onScrollFill = (): void => {
     void this.maybeFillAbove();
   };
   private titleEl!: HTMLElement;
-  private subtitleEl!: HTMLElement;
+  private badgesEl!: HTMLElement;
+  private actionsEl!: HTMLElement;
+  private metaEl!: HTMLElement;
+  private countEl!: HTMLElement;
+  private bannerEl!: HTMLElement;
+  private loadingEl!: HTMLElement;
   private statusEl!: HTMLElement;
-  // 查找面板（SE2 那一块：Ctrl+F 搜索 ／ 大纲），与实时 tab **同一个类**；
-  // 大纲那一半（K-R45 甲的用户输入清单）就是它的 `outline`。
-  private find!: SessionFindPanel;
+  /** 「你说过的话」那份清单（实时 tab 同一个类）；开法换成工具行的按钮 ＋ 浮层。 */
+  private said!: UserInputPanel;
+  private saidBtn!: HTMLButtonElement;
+  private saidText!: HTMLElement;
+  /** 清单平时住这里（收着）；开浮层时搬进浮层里那一格（`saidPop`，给它一个宽度）。 */
+  private saidHold!: HTMLElement;
+  private saidPop!: HTMLElement;
   /** 大纲的数据源；`where` 在 `load` 时换成这一份会话。 */
   private outline!: OutlineSource;
   private outlineWhere: { origin: string; jsonlPath: string } | null = null;
+  /** 会话内查找：工具行的框 ＋ 框下就地展开的命中清单（主窗口的会话内查找复用同一个，`find-strip.ts`）。 */
+  private find!: FindStrip;
   // 「← 返回历史」那颗删了：历史页右边就地看（设计稿「文件与历史」乙4-④），列表一直在左边。
   constructor() {
     this.root = this.build();
@@ -196,6 +255,33 @@ export class SessionViewer {
 
   get element(): HTMLElement {
     return this.root;
+  }
+
+  /**
+   * 头下面那一条（恢复失败 · 读不出 …）；`null` ⇒ 收掉。宿主的错误条也挂这里（乙4-⑤「头下面一条错误条」）。
+   */
+  showBanner(el: HTMLElement | null): void {
+    this.bannerEl.replaceChildren(...(el ? [el] : []));
+    this.bannerEl.hidden = el === null;
+  }
+
+  /** 读取中（骨架）开 / 关。 */
+  private setLoading(on: boolean): void {
+    this.loadingEl.hidden = !on;
+  }
+
+  /** 「你说过的话」清单面板露 / 收（`.user-inputs` 不写 display，`hidden` 管得住）。 */
+  private showSaidPanel(on: boolean): void {
+    this.said.panel.hidden = !on;
+  }
+
+  /** 换头（同一份会话、事实变了：标星 · 改标题 · 在跑变已结束）。不重读记录。 */
+  setHead(title: string, head: ViewerHead | undefined): void {
+    this.titleEl.textContent = title;
+    this.titleEl.title = title;
+    this.badgesEl.replaceChildren(...(head?.badges ?? []));
+    this.actionsEl.replaceChildren(...(head?.actions ? [head.actions] : []));
+    this.metaEl.replaceChildren(...(head?.meta ?? []), this.countEl);
   }
 
   /**
@@ -210,16 +296,21 @@ export class SessionViewer {
    * 双守卫丢弃;翻页循环每页核一次世代号，换了会话就不再问下一页。
    */
   async load(opts: ViewerOptions): Promise<void> {
-    this.titleEl.textContent = opts.displayTitle;
-    this.subtitleEl.textContent = opts.subtitle ?? "";
+    this.setHead(opts.displayTitle, opts.head);
+    this.countEl.textContent = "";
+    this.showBanner(null);
 
     this.disposeStream();
     this.outlineWhere = { origin: opts.origin, jsonlPath: opts.jsonlPath };
     const gen = ++this.loadGeneration;
     this.streamEl.replaceChildren();
     this.stream = new MessageStream(this.streamEl);
+    this.turnFold = new TurnFold(this.stream.contentElement, this.streamEl, () => this.outlineWhere);
+    this.streamEl.addEventListener("scroll", this.turnFold.releaseOnScroll, { passive: true });
 
-    this.statusEl.textContent = copyText("sessionViewer.load.loading");
+    // 读取中：骨架（乙4-④ 各态）；状态行不说话。
+    this.setLoading(true);
+    this.statusEl.textContent = "";
 
     // Batch13-F39:lazy hljs(此前 viewer eager 全量高亮,是 65s 的组成部分)
     const ctx: RenderContext = {
@@ -252,16 +343,8 @@ export class SessionViewer {
     this.payloads = [];
     this.uuidToIdx.clear();
     this.branchRecords = [];
-    this.renderErrors = 0;
-    this.firstError = "";
     const queuedContents: string[] = [];
-    let totalRecords = 0;
-    const t0 = performance.now(); // Batch13-F39 实测仪表:首屏耗时常驻状态栏
 
-    // 渲染韧性 + 探针：renderStreamRecord 在翻页回调里跑，一旦某条记录渲染
-    // 抛错，异常**不会**被下面 load() 的 try/catch 接住（不同事件回合），会导致
-    // totalRecords 卡住 → while 循环空转 → 整个查看器空白（已观察到的 bug）。
-    // 这里逐条 try/catch：单条失败不影响其余，并记录首个错误供定位 / 显示。
     // F39:收集阶段只收集 payload + 预提取 branch/queue 数据,不渲染——
     // 全量渲染 37MB 实测 65s,渲染延后到「尾段首屏 + 上翻增量」
     // F40c(账本收敛,清偿 F39 parity 欠账):meta/branch 提取与渲染路径共用
@@ -286,8 +369,6 @@ export class SessionViewer {
         }
         this.payloads.push(p); // 占位必须 push:下标与总条数对齐(meta 也占位)
       }
-      totalRecords += chunk.length;
-      this.statusEl.textContent = copyText("sessionViewer.load.receiving", { totalRecords });
     };
 
     try {
@@ -297,6 +378,7 @@ export class SessionViewer {
       await readWholeSession(opts.origin, opts.jsonlPath, onChunk, () => !this.stream || this.loadGeneration !== gen);
       if (this.loadGeneration !== gen) return; // 已换会话
       if (!this.stream) return;
+      this.setLoading(false);
       // F39:排序防御(chunk 应有序,二分插入也容乱序,排序让区间账本与 payload 下标对齐)
       this.payloads.sort((a, b) => a.seq - b.seq);
       this.uuidToIdx.clear();
@@ -319,11 +401,12 @@ export class SessionViewer {
         this.renderRange(Math.max(0, targetIdx - 100), Math.min(total, targetIdx + 100));
       }
       this.rebuildFold();
-      this.lastFirstScreenMs = Math.round(performance.now() - t0);
+      this.countEl.textContent = copyText("sessionViewer.head.count", { n: total });
       this.updateStatus(total);
       // K-R45 甲：清单建在这里。面板默认收着 ⇒ 对下面的定位/贴底**零布局影响**
       // （建完就滚，滚之前插一块可见的东西会把落点顶歪）。
       this.rebuildUserInputs();
+      void this.turnFold?.refresh();
       // issue #6：从搜索结果跳进来 → 定位到命中消息；否则默认贴底。
       if (opts.scrollToUuid) {
         this.scrollToMessage(opts.scrollToUuid);
@@ -337,10 +420,13 @@ export class SessionViewer {
       // 索引到了就接骨架（首屏已经在了，不等它）
       void indexP.then((res) => this.attachSkeleton(gen, res));
     } catch (e) {
-      this.statusEl.textContent = copyText("sessionViewer.load.failed", { e: String(e) });
+      if (this.loadGeneration !== gen) return;
+      this.setLoading(false);
+      // 读不出 ⇒ 头下面一条错误条 ＋［重试］（乙4-④ 各态）；状态行不报。
+      const retry = button({ label: copyText("sessionViewer.load.retry"), size: "compact", onClick: () => void this.load(opts) });
+      this.showBanner(banner("error", copyText("sessionViewer.load.failed", { why: String(e) }), [retry]));
     }
   }
-
   /** 升序 payloads 里第一个 `seq >= x` 的下标 */
   private idxAtSeq(x: number): number {
     let l = 0;
@@ -415,12 +501,10 @@ export class SessionViewer {
         try {
           renderStreamRecord(p, this.renderCtx!, this.renderSink!);
         } catch (err) {
-          this.renderErrors += 1;
-          if (!this.firstError) {
-            const t = (p as { message?: { type?: string } })?.message?.type ?? "?";
-            this.firstError = `seq=${p?.seq} type=${t}: ${String(err)}`;
-            console.error("[session-viewer] renderStreamRecord 抛错", p, err);
-          }
+          // 显示不了 ⇒ 卡位上画「这一条显示不了」［复制详情］，原因进日志（不在状态行报数，R2-2-3）。
+          console.error("[session-viewer] renderStreamRecord 抛错", p, err);
+          const tl = this.renderSink!.timeline;
+          if (!tl.has(p.seq)) tl.insert({ seq: p.seq, element: brokenCard(p, err), kind: "card" });
         }
       }
     });
@@ -478,26 +562,22 @@ export class SessionViewer {
     try {
       this.folder.setRecordsAndRebuild(this.branchRecords);
     } catch (err) {
-      this.renderErrors += 1;
-      if (!this.firstError) this.firstError = `branch-fold: ${String(err)}`;
       console.error("[session-viewer] BranchFolder.setRecordsAndRebuild 抛错", err);
     }
   }
 
+  /**
+   * 底一行只说条数与时间（乙4-④ · R2-2-3）：`{n} 条` / `{n} 条 · 上翻加载更早`。
+   * 首屏耗时与渲染失败数那类开发读数不在这里（显示不了的那一条在卡位上说）。
+   */
   private updateStatus(total: number): void {
-    const left = this.unrendered?.remaining ?? 0;
-    const shown = total - left;
-    const err =
-      this.renderErrors > 0 ? copyText("sessionViewer.status.renderErrors", { renderErrors: this.renderErrors, firstError: this.firstError }) : "";
-    const ms = this.lastFirstScreenMs !== null ? copyText("sessionViewer.status.firstScreen", { ms: this.lastFirstScreenMs }) : "";
-    // 顶部还有洞 → "上翻加载";只剩深链岛-尾段之间的内部缝 → 如实说(上翻无洞可补)
+    // 顶部还有没渲染的（上翻能补）⇒ 说一句；只剩深链岛与尾段之间的内部缝 ⇒ 不说（上翻无洞可补）。
     const fillable = this.unrendered
       ? this.unrendered.gapAbove(this.unrendered.lowestRenderedIdx()) !== null
       : false;
-    this.statusEl.textContent =
-      left > 0
-        ? copyText("sessionViewer.status.partial", { shown, total, ms, hint: fillable ? copyText("sessionViewer.status.fillable") : copyText("sessionViewer.status.gap"), err })
-        : copyText("sessionViewer.status.full", { total, ms, err });
+    this.statusEl.textContent = fillable
+      ? copyText("sessionViewer.status.more", { n: total })
+      : copyText("sessionViewer.status.all", { n: total });
   }
 
   /** R1:触发判定——不足一屏(无滚动条,事件永远不来)或滚近顶部 */
@@ -529,7 +609,6 @@ export class SessionViewer {
     if (!gap) return;
     const gen = this.loadGeneration;
     this.renderingBatch = true;
-    this.statusEl.textContent = copyText("sessionViewer.maybeFillAbove.loadingEarlier");
     try {
       // 让状态文先绘一帧再做同步渲染批
       await new Promise((r) => requestAnimationFrame(() => r(null)));
@@ -595,24 +674,66 @@ export class SessionViewer {
     return el;
   }
 
-  // ==== K-R45 甲 · 用户输入清单（大纲） ====
+
+  // ==== 「你说过的话」（K-R45 甲 · 用户输入清单） ====
 
   /**
-   * 清单**问后端要**（`--list-user-inputs`），不再扫 `payloads`。
-   *
-   * 原先这里对全量 `payloads` 调前端那份 `collectUserInputs` —— 口径没错，但它是前端的判定，
-   * 后端出了这份清单之后留着它就是「各写一遍判定」（设计逐字禁掉的那一形）⇒ 判定只住后端，
-   * 两个宿主（本查看器 / 实时 tab）走同一个 `OutlineSource`。
-   *
+   * 清单**问后端要**（`history-user-inputs`），不扫 `payloads`：判定只住后端，两个宿主（本查看器 / 实时 tab）走同一个 `OutlineSource`。
    * 界面与「跳完回头核一次落点」那一段住 `user-input-panel.ts`（实时窗口同一份）。
    */
   private rebuildUserInputs(): void {
     void this.outline.refresh();
   }
 
-  /** Ctrl+F（动作 `session.find`）落在查看器上：查找面板打开到「搜索」、焦点进输入框。 */
+  /** 工具行那颗按钮跟着清单走：`你说过的话 · {n}`；0 条 / 要不到 ⇒ 灰着（原因挂在悬停上，同 `UserInputPanel` 的口径）。 */
+  private syncSaid(): void {
+    const n = this.said.panel.children.length;
+    this.saidText.textContent = n > 0 ? copyText("sessionViewer.tools.said", { n }) : copyText("sessionViewer.tools.saidNone");
+    this.saidBtn.disabled = n === 0;
+    this.saidBtn.title = this.said.toggle.title;
+    if (n === 0 && popoverOpenOn(this.saidBtn)) closePopover();
+  }
+
+  /** 开「你说过的话」浮层（再点一次 ⇒ 收）：当前读到的那一句高亮、滚到它。清单平时收在查看器里（`saidHold`），浮层关了就回去。 */
+  private openSaid(): void {
+    const cur = this.currentSaid();
+    for (const row of this.said.panel.querySelectorAll<HTMLElement>(".user-input-row")) {
+      if (row === cur) row.setAttribute("aria-current", "true");
+      else row.removeAttribute("aria-current");
+    }
+    this.showSaidPanel(true);
+    this.saidPop.appendChild(this.said.panel);
+    const opened = openPopover(this.saidBtn, this.saidPop, {
+      label: copyText("sessionViewer.tools.saidLabel"),
+      align: "start",
+      onClose: () => {
+        this.showSaidPanel(false);
+        this.saidHold.appendChild(this.said.panel);
+        this.saidBtn.setAttribute("aria-expanded", "false");
+      },
+    });
+    if (!opened) return;
+    this.saidBtn.setAttribute("aria-expanded", "true");
+    cur?.scrollIntoView({ block: "nearest" });
+  }
+
+  /** 视口顶上那一句之前最近的一句「你说的」（没有渲染出来的不算）。 */
+  private currentSaid(): HTMLElement | null {
+    const top = this.streamEl.getBoundingClientRect().top + 8;
+    let cur: HTMLElement | null = null;
+    for (const row of this.said.panel.querySelectorAll<HTMLElement>(".user-input-row")) {
+      const uuid = row.dataset.inputUuid;
+      const card = uuid ? this.streamEl.querySelector<HTMLElement>(`[data-uuid="${CSS.escape(uuid)}"]`) : null;
+      if (!card) continue;
+      if (card.getBoundingClientRect().top <= top || cur === null) cur = row;
+      else break;
+    }
+    return cur;
+  }
+
+  /** Ctrl+F（动作 `session.find`）落在查看器上：焦点进查找框、全选。 */
   openFind(): void {
-    this.find.open("search");
+    this.find.focus();
   }
 
   /** 主动释放（HistoryView 卸载本组件时调） */
@@ -622,6 +743,11 @@ export class SessionViewer {
 
   private disposeStream(): void {
     this.streamEl?.removeEventListener("scroll", this.onScrollFill);
+    if (this.turnFold) {
+      this.streamEl.removeEventListener("scroll", this.turnFold.releaseOnScroll);
+      this.turnFold.dispose(); // 断观察、在途那趟作废
+      this.turnFold = null;
+    }
     if (this.streamEl) releaseEnhanceRoot(this.streamEl); // 上一个会话的卡随 IO 一起放掉
     if (this.stream) {
       this.stream.dispose();
@@ -639,11 +765,11 @@ export class SessionViewer {
     this.folder = null;
     this.branchRecords = [];
     this.renderingBatch = false;
-    this.lastFirstScreenMs = null;
     // K-R45 甲：清单也要跟着释放 —— 留着就是上一个会话的句子挂在下一个会话上，
     // 点下去按 uuid 找不到卡，正好落进「静默跳到看不见的东西上」那一形。
     // `reset` 同时让在途那趟回来后不许回写（换会话之后迟到的清单不属于这一份）。
     this.outline?.reset();
+    if (this.said && popoverOpenOn(this.saidBtn)) closePopover();
     // 查找那一半同理：结果清空、在途那趟作废、收起。
     this.find?.reset();
   }
@@ -652,57 +778,103 @@ export class SessionViewer {
 
   // === DOM ===
 
+  /**
+   * 设计稿乙4-④：头两行（标题 ＋ 徽标 ｜ 恢复 ▾ · 新窗口 · ⋯；项目 · 机器 · 路径 · 时间段 · 条数）·
+   * 头下一条（错误条）· 工具行（「你说过的话 · N ▾」· 会话内查找）· 消息流 · 底一行。
+   */
   private build(): HTMLElement {
     const view = document.createElement("div");
     view.className = "session-viewer";
 
-    // 顶栏
-    const bar = document.createElement("div");
-    bar.className = "session-viewer-bar";
+    const head = document.createElement("div");
+    head.className = sv.svHead;
+    const top = document.createElement("div");
+    top.className = sv.svHeadTop;
+    this.titleEl = document.createElement("div");
+    this.titleEl.className = sv.svTitle;
+    this.titleEl.dataset.role = "title";
+    this.badgesEl = document.createElement("span");
+    this.badgesEl.className = sv.svBadges;
+    this.actionsEl = document.createElement("div");
+    this.actionsEl.className = sv.svActions;
+    top.append(this.titleEl, this.badgesEl, this.actionsEl);
+    this.metaEl = document.createElement("div");
+    this.metaEl.className = sv.svMeta;
+    this.metaEl.dataset.role = "meta";
+    this.countEl = document.createElement("span");
+    this.metaEl.appendChild(this.countEl);
+    head.append(top, this.metaEl);
+    view.appendChild(head);
 
+    this.bannerEl = document.createElement("div");
+    this.bannerEl.className = sv.svBanner;
+    view.appendChild(this.bannerEl);
+    this.showBanner(null);
 
-    // 查找面板（与实时 tab 共用一份实现，SE2）。宿主的三件事：
-    // ① 怎么查 —— 问那台后端 `history-find`（经通道，`session-reads.ts::findInSession`），问的是查看器此刻这一份会话；
-    // ② 怎么跳 —— `scrollToMessage`（大纲行与命中行同一个住址）；
-    // ③ 跳空了怎么解释 —— 查看器这一侧落空的成因是自陈的那条不等价：渲染会再剥一层 `stripInternalNoise`，
-    //    剥空了**不建卡**（后端 `observe/user_inputs.rs` 头注那条「已知不等价」）。`scrollToMessage` 会退到底部。
-    this.find = new SessionFindPanel({
+    // 工具行：「你说过的话 · N ▾」（浮层列出清单，点一句跳过去）· 会话内查找（Ctrl+F）。大纲只这一处（新-H10）。
+    const tools = document.createElement("div");
+    tools.className = sv.svTools;
+    this.said = new UserInputPanel({
+      jumpTo: (uuid) => {
+        closePopover();
+        return this.scrollToMessage(uuid);
+      },
+      unjumpableHint: copyText("sessionViewer.build.unjumpable"),
+      // 开合归本查看器（工具行那颗按钮 ＋ kit 浮层）；面板自带的开关不挂。
+      openOutline: () => this.openSaid(),
+    });
+    this.saidBtn = button({ label: copyText("sessionViewer.tools.saidLabel"), icon: "list", size: "compact", onClick: () => this.openSaid() });
+    this.saidText = document.createElement("span");
+    this.saidBtn.querySelector("span")?.replaceWith(this.saidText);
+    this.saidBtn.appendChild(icon("caretDown", "compact"));
+    this.saidBtn.setAttribute("aria-haspopup", "dialog");
+    this.saidBtn.setAttribute("aria-expanded", "false");
+    this.saidBtn.dataset.role = "said";
+    this.saidPop = document.createElement("div");
+    this.saidPop.className = sv.svSaidPop;
+    this.saidHold = document.createElement("div");
+    this.saidHold.hidden = true;
+    this.showSaidPanel(false);
+    this.saidHold.appendChild(this.said.panel);
+    view.appendChild(this.saidHold);
+    // 清单是 `OutlineSource` 往面板里写的（整表 / 增量 / 要不到）⇒ 面板一变，按钮跟着变。
+    new MutationObserver(() => this.syncSaid()).observe(this.said.panel, { childList: true });
+    new MutationObserver(() => this.syncSaid()).observe(this.said.toggle, { attributes: true, attributeFilter: ["title"] });
+    this.outline = new OutlineSource(this.said, () => this.outlineWhere);
+    this.syncSaid();
+
+    // 查找：问那台后端 `history-find`（经通道，`session-reads.ts::findInSession`），问的是查看器此刻这一份会话；
+    // 跳与「你说过的话」同一个住址（`scrollToMessage`）。
+    this.find = new FindStrip({
       search: async (query, includeTools) => {
         const where = this.outlineWhere;
-        if (!where) return { available: false, reason: copyText("sessionViewer.find.noSession"), hits: [], total: 0 };
+        if (!where) return { available: false, reason: "", hits: [], total: 0 };
         return findInSession(where.origin, where.jsonlPath, query, includeTools);
       },
       jumpTo: (uuid) => this.scrollToMessage(uuid),
       unjumpableHint: copyText("sessionViewer.build.unjumpable"),
     });
-    // 查看器一次只摆一份会话 ⇒ 面板恒 `.active`（实时 tab 那边跟着 tab 翻）。
-    this.find.el.classList.add("active");
-    this.outline = new OutlineSource(this.find.outline, () => this.outlineWhere);
-    // 开关塞在顶栏标题右边（标题那块 flex:1 会吃掉余量）。
+    tools.append(this.saidBtn, this.find.box);
+    view.appendChild(tools);
+    // 命中清单：工具行正下方就地展开。
+    view.appendChild(this.find.strip);
 
-    const titles = document.createElement("div");
-    titles.className = "session-viewer-titles";
-    this.titleEl = document.createElement("div");
-    this.titleEl.className = "session-viewer-title";
-    titles.appendChild(this.titleEl);
-    this.subtitleEl = document.createElement("div");
-    this.subtitleEl.className = "session-viewer-subtitle";
-    titles.appendChild(this.subtitleEl);
-    bar.appendChild(titles);
-
-    view.appendChild(bar);
-
-    this.statusEl = document.createElement("div");
-    this.statusEl.className = "history-status";
-    view.appendChild(this.statusEl);
+    // 读取中的骨架：外面包一层（kit 骨架自己写了 display，`hidden` 切在这一层上）。
+    this.loadingEl = document.createElement("div");
+    this.loadingEl.className = sv.svLoading;
+    this.loadingEl.appendChild(skeletonRows(5));
+    view.appendChild(this.loadingEl);
+    this.setLoading(false);
 
     // 消息流容器（与实时 Tab 用相同的 .stream 样式）
     this.streamEl = document.createElement("div");
     this.streamEl.className = "stream session-viewer-stream";
     view.appendChild(this.streamEl);
 
-    // 查找面板悬浮在流上（`.session-find` 的位置规则与实时 tab 同一条）：入口按钮「大纲 · N」＋ 收着的面板。
-    view.appendChild(this.find.el);
+    this.statusEl = document.createElement("div");
+    this.statusEl.className = sv.svFoot;
+    this.statusEl.dataset.role = "status";
+    view.appendChild(this.statusEl);
 
     return view;
   }

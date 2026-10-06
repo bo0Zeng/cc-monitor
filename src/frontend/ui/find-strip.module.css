@@ -1,0 +1,99 @@
+/* 会话内查找：工具行里的框 ＋ 框下就地展开的命中清单（不是弹层）。历史页查看器与主窗口会话内查找共用。 */
+@layer components {
+  .fsBox {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: 240px;
+    height: var(--control-h-compact);
+    margin-left: auto;
+    padding: 0 var(--space-4);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-m);
+    background: var(--field-bg);
+    color: var(--text-2);
+  }
+
+  .fsBox:focus-within {
+    border-color: var(--field-border-focus);
+  }
+
+  .fsInput {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: var(--font-size-small);
+  }
+
+  .fsInput::placeholder {
+    color: var(--field-placeholder);
+  }
+
+  .fsStrip {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    max-height: 240px;
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--bg-2);
+  }
+
+  .fsStrip[hidden] {
+    display: none;
+  }
+
+  .fsBar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-5);
+    padding: var(--space-2) var(--space-4) var(--space-2) var(--space-6);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .fsHead {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .fsList {
+    overflow: auto;
+    padding: 0 var(--space-4) var(--space-3);
+  }
+
+  .fsHit {
+    display: block;
+    overflow: hidden;
+    width: 100%;
+    padding: var(--space-2) var(--space-4);
+    border: 0;
+    border-radius: var(--radius-m);
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: var(--font-size-small);
+    text-align: left;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+
+  .fsHit:hover {
+    background: var(--state-hover);
+  }
+
+  .fsHit[data-unjumpable] {
+    color: var(--text-faint);
+  }
+
+  .fsMark {
+    border-radius: var(--radius-s);
+    background: color-mix(in srgb, var(--warn) 32%, transparent);
+    color: inherit;
+  }
+}

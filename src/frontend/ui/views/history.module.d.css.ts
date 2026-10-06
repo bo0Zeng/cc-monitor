@@ -19,6 +19,7 @@ declare const classes: {
   readonly hvGroupNew: string;
   readonly hvGroupPath: string;
   readonly hvHead: string;
+  readonly hvHeadActs: string;
   readonly hvHeadEnd: string;
   readonly hvHit: string;
   readonly hvHitText: string;

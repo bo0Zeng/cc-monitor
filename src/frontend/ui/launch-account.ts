@@ -27,6 +27,12 @@ export function chosenAccount(name: string | null): AccountAsk {
   return name === null ? { kind: "base" } : { kind: "named", name };
 }
 
+/** 菜单那几格 ⇒ 起会话那一格：点了号 ⇒ 点名；「用账号 0」⇒ 账号 0；都没有 ⇒ 跟随（那台判）。标签页「恢复 ▸」与历史页「恢复 ▾」共用。 */
+export function askOf(accountName: string | undefined, useBase: boolean): AccountAsk {
+  if (accountName) return chosenAccount(accountName);
+  return useBase ? chosenAccount(null) : FOLLOW;
+}
+
 /** 这次失败是不是那台说「要的号选不了」；是 ⇒ 那一形（`data`）。 */
 export function accountUnavailableOf(e: unknown): AccountUnavailable | null {
   const err = e instanceof ControlError ? e.error : e instanceof ChanError ? e.error : undefined;

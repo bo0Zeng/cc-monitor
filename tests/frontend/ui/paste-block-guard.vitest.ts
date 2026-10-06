@@ -20,6 +20,7 @@ const FAMILY_A = [
  * 会让族 A 的三个必填槽在族 B 全是空的。
  */
 const FAMILY_B = [
+  "src/frontend/ui/views/session-viewer.ts", // 显示不了的那一条［复制详情］：那一条原文 ＋ 原因，复制给人看（不贴进任何配置）
   "src/frontend/ui/settings/config-surface-section.ts", // T02 复制诊断文本
   "src/frontend/ui/settings/drift-ledger-section.ts", // U-CC1 复制漂移诊断文本（同族 B：复制完就完事，不贴进任何配置）
   // 〔三入口拆分 · 住址搬家〕代码块「复制」那处全局代理从 `main.ts` 搬到了主窗与 viewer 窗

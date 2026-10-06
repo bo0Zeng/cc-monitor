@@ -401,6 +401,12 @@
     min-width: 0;
   }
 
+  .hvHeadActs {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
   .hvContent[data-vacant="true"] {
     justify-content: center;
   }

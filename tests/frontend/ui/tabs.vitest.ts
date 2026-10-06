@@ -1240,7 +1240,8 @@ describe("单个「在 tmux 里 Resume」交那台（与批量同一条，只差
   it("基座（useBase）：交的是这一个（账号 0）；起好了 ⇒ 接进那台答的那个会话", async () => {
     vi.mocked(callStart).mockResolvedValue([reply("done", null, "proj-cc")] as never);
     await home(tm).actions.resumeTabTmux("r1", undefined, true);
-    expect(vi.mocked(callStart).mock.calls).toEqual([["devbox", "tmux", [{ sid: "r1", cwd: "/home/pi/proj", account: { kind: "base" } }]]]);
+    // 第 4 格是起哪一家（标签页里的会话 ＝ 流跟的那一家；起法住 `tmux-resume.ts`，历史页按那一行自己的一家交）。
+    expect(vi.mocked(callStart).mock.calls).toEqual([["devbox", "tmux", [{ sid: "r1", cwd: "/home/pi/proj", account: { kind: "base" } }], "claude"]]);
     expect(runRemoteAttach).toHaveBeenCalledWith("devbox", "claude", "proj-cc");
   });
 

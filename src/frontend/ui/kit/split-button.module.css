@@ -1,0 +1,22 @@
+/* 拆分按钮（暂定，待规范收）：主按钮 ＋ ▾ 同底，中间一道深色缝。 */
+@layer components {
+  .split {
+    display: inline-flex;
+    flex: none;
+    align-items: stretch;
+    gap: 1px;
+  }
+
+  .splitMain {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  .splitMore {
+    width: var(--control-h-compact);
+    padding: 0;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    box-shadow: inset 1px 0 0 color-mix(in srgb, var(--bg) 45%, transparent);
+  }
+}

@@ -155,3 +155,26 @@ describe("批量起：每项只交 sid 与目录，整批带用户设置的原�
     ]);
   });
 });
+
+// 「在 tmux 里恢复一个、起好了接进去」不依赖标签页对象（`tmux-resume.ts`）：历史页按那一行自己的一家交（E1），
+//   设置里配的 resume 命令只给默认那一家（别的那一家用它自己的默认启动器）。
+describe("单个在 tmux 里恢复（不依赖标签页对象）", () => {
+  it("交那台一个 sid 的一批、带那一行的那一家；配的 resume 命令不套到别的那一家上；起好了接进那台答的那个会话", async () => {
+    vi.mocked(resolveResumeCommand).mockResolvedValue("cct");
+    backend((_o, op, args) =>
+      op === "sessions-start" ? { results: (args.items as { sid: string }[]).map((i) => res(i.sid, "done", null, { session: "cx-1" })) } : undefined,
+    );
+    const { startInTmuxThenAttach } = await import("../../../src/frontend/ui/tmux-resume");
+    const remote = await import("../../../src/frontend/ui/remote-launch-run");
+    const attach = vi.spyOn(remote, "runRemoteAttach").mockResolvedValue(undefined);
+    const onRecord = vi.fn();
+    await startInTmuxThenAttach({ origin: "r1", agent: "codex", sid: "cx", cwd: "/w/cx" }, { kind: "follow" }, { again: vi.fn(), onRecord });
+    const [, op, body] = calls[0];
+    expect(op).toBe("sessions-start");
+    expect(body).toMatchObject({ mode: "tmux", local: false, agent: "codex", items: [{ sid: "cx", cwd: "/w/cx", account: { kind: "follow" } }] });
+    expect(body.launcher, "配的 cct 是给默认那一家的").not.toBe("cct");
+    expect(body.launcher).toBe(body.defaultLauncher);
+    expect(onRecord).toHaveBeenCalledWith(true);
+    expect(attach).toHaveBeenCalledWith("r1", "codex", "cx-1");
+  });
+});

@@ -252,6 +252,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/session-reads.ts", // resume 之前问记录还在不在（经通道问 `history-record`）
     "src/frontend/ui/tab-batch-run.ts", // 杀 / 在 tmux 里 Resume 交那台（`sessions-stop` / `sessions-start`，与批量同一条）
     "src/frontend/ui/tmux-control.ts", // 杀成之后 cc-bus 注销那一句（`decodeKilled` 那一份说法）
+    "src/frontend/ui/tmux-resume.ts", // 在 tmux 里 Resume 那一条起法（不依赖标签页对象，历史页「恢复 ▾」同一条）；这里只把「记录在不在」落进 tab
     "src/frontend/ui/sessions-where.ts", // 换号重启找旧会话：问那台它在哪个 tmux 会话里
   ],
 };

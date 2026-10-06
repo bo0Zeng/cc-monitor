@@ -21,12 +21,12 @@
 import { confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import type { SessionAccount } from "./accounts";
-import { chosenAccount, FOLLOW, refuseUnavailableAccount, type AccountAsk } from "./launch-account";
+import { askOf, FOLLOW, type AccountAsk } from "./launch-account";
 import { restartLocateFailureMessage } from "./account-restart";
 import { resumeLocalSession } from "./local-resume";
 import { restartWithAccount } from "./account-restart";
 import { toast } from "./kit/toast";
-import { runRemoteResume, runRemoteAttach } from "./remote-launch-run";
+import { runRemoteResume } from "./remote-launch-run";
 // 本机 = `LOCAL_ORIGIN`（`"<local>"`，与 Rust `origin.rs::LOCAL` 跨语言对拍）；
 // 「是不是本机」只经 `ipc/origin.ts` 判。`accounts.ts` 那个同名的 `"__local__"` 已退役 —— 全仓只剩一个本机表示。
 import { isLocalOrigin, isRemoteOrigin, type Origin } from "./ipc/origin";
@@ -42,7 +42,8 @@ import {
   resolveResumeCommand,
 } from "./remote-config";
 import { standingOf } from "./sessions-where";
-import { callStart, callStop, sayReply, type Reply, type StartItem } from "./tab-batch-run";
+import { callStop, sayReply, type Reply, type StartItem } from "./tab-batch-run";
+import { startInTmuxThenAttach } from "./tmux-resume";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
 import { ACTIVE_AGENT } from "./agent-profile";
 import type { Tab } from "./tab-model";
@@ -283,53 +284,18 @@ export class TabSessionActions {
 
   /**
    * 交那台在 tmux 里起这一个（`sessions-start`，与批量同一条），起好了（或本来就在跑）开一个终端接进去。
-   * 要的号选不了 ⇒ 不起、给显式选择（点了 ⇒ `again(那个号)`）。回 `false` = 没起。
+   * 起法本身不依赖标签页对象，住 `tmux-resume.ts`（历史页「恢复 ▾」同一条）；这里只把那台说的「记录在不在」落进这条 tab。
    */
   private async startInTmuxThenAttach(
     tab: Tab,
     item: StartItem,
     again: (account?: AccountAsk) => Promise<void>,
   ): Promise<void | false> {
-    const origin = tab.origin;
-    let r: Reply;
-    try {
-      [r] = await callStart(origin, "tmux", [item]);
-    } catch (e) {
-      toast(copyText("remoteLaunchRun.inPlace.notRun"), saidOfControl(e));
-      return false;
-    }
-    if (r.unavailable) {
-      refuseUnavailableAccount({ machine: origin, u: r.unavailable, choose: (account) => again(account) });
-      return false;
-    }
-    if (r.why === "record_gone") {
-      this.host.markRecord(tab.sessionId, false);
-      toast(
-        copyText("sessionState.recordGone.title"),
-        copyText("sessionState.recordGone.body", {
-          who: isLocalOrigin(origin) ? copyText("tabSessionActions.who.local") : copyText("tabSessionActions.who.remote", { machine: origin }),
-          root: r.detail,
-          sid: tab.sessionId,
-        }),
-      );
-      return false;
-    }
-    if (r.outcome === "failed" || r.session === null) {
-      const said = sayReply(origin, "start", r);
-      if (r.why === "wrong_owner") offerResyncRetry(origin, tab.sessionId, copyText("remoteLaunchRun.inPlace.notRun"), said, () => again());
-      else toast(copyText("remoteLaunchRun.inPlace.notRun"), said);
-      return false;
-    }
-    if (r.outcome === "done") this.host.markRecord(tab.sessionId, true);
-    // 在跑的不止一个 ⇒ 接第一个（接回可撤销），但说出来。
-    if (r.why === "ambiguous") {
-      toast(
-        copyText("tabSessionActions.dupes.title"),
-        copyText("tabSessionActions.dupes.body", { n: r.detail.split(", ").length, name: r.session }),
-        { level: "info" },
-      );
-    }
-    await runRemoteAttach(origin, ACTIVE_AGENT, r.session);
+    return startInTmuxThenAttach(
+      { origin: tab.origin, agent: ACTIVE_AGENT, sid: tab.sessionId, cwd: item.cwd },
+      item.account ?? FOLLOW,
+      { again, onRecord: (present) => this.host.markRecord(tab.sessionId, present) },
+    );
   }
 
   /** 本机：在那个空 tmux 里就地 resume，再开一个终端接进去（与批量同一条；账号跟随同本机 Resume）。 */
@@ -617,8 +583,3 @@ export function bringMonitorToFront(): void {
   });
 }
 
-/** 菜单那几格 ⇒ 起会话那一格：点了号 ⇒ 点名；「用账号 0」⇒ 账号 0；都没有 ⇒ 跟随（那台判）。 */
-function askOf(accountName: string | undefined, useBase: boolean): AccountAsk {
-  if (accountName) return chosenAccount(accountName);
-  return useBase ? chosenAccount(null) : FOLLOW;
-}

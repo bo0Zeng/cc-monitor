@@ -8,7 +8,9 @@
  * - 右边：点一行就地看（只读查看器），列表不动。
  * - 实时：鼠标在列表上或焦点在列表里时不重排，移开再排（`I6`）；选中的那一行按会话认，不因上面插行而移动。
  */
-import { button } from "../kit/button";
+import { button, setBusy, setDisabled } from "../kit/button";
+import { splitButton } from "../kit/split-button";
+import { banner } from "../kit/banner";
 import { icon } from "../kit/icon";
 import { countBadge } from "../kit/badge";
 import { tabs } from "../kit/tabs";
@@ -28,19 +30,22 @@ import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import { annotate, forgetAnnotation, historyReasonOf } from "../history-reads";
 import { fetchList, mergeByAt, mergeGroups, type HistoryGroup, type HistoryList, type HistoryRow } from "../history-list-reads";
 import { searchAllMachines, type SearchResult, type SessionHits } from "./history-search";
-import { SessionViewer } from "./session-viewer";
+import { SessionViewer, viewerPath, type ViewerHead } from "./session-viewer";
+import { resumeMenuItems } from "../resume-menu";
+import { enumerateAccountModifiers } from "../launch-menu";
+import { startInTmuxThenAttach } from "../tmux-resume";
 import { deleteSession } from "../session-writes";
 import { resumeLocalSession } from "../local-resume";
 import { runRemoteResume, runNewSessionRemote } from "../remote-launch-run";
 import { resolveResumeCommand } from "../remote-config";
 import { configuredLauncherFor } from "../launch-requests";
 import { getBehavior } from "../behavior";
-import { FOLLOW } from "../launch-account";
+import { askOf, FOLLOW, type AccountAsk } from "../launch-account";
 import { launchLocal } from "../launch-render";
 import { arrivedBody, expectArrival } from "../launch-arrival";
 import { revealInFolder } from "../reveal-in-folder";
-import { groupHead, hitsBlock, labelOf, rowKey, sectionHead, sessionRow, strip, type RowHooks } from "./history-rows";
-import { sectionKey, sectionLabel } from "./history-time";
+import { groupHead, hitsBlock, labelOf, machineTag, rowBadges, rowKey, sectionHead, sessionRow, strip, type RowHooks } from "./history-rows";
+import { sectionKey, sectionLabel, spanText } from "./history-time";
 import s from "./history.module.css";
 
 type ViewMode = "time" | "project";
@@ -805,12 +810,77 @@ export class HistoryView {
     void this.viewer.load({
       jsonlPath: r.jsonlPath,
       displayTitle: labelOf(r),
-      subtitle: `${r.projectName} · ${r.projectPath}`,
+      head: this.headOf(r),
       origin: r.origin ?? LOCAL_ORIGIN,
       cwd: r.projectPath,
       scrollToUuid: jumpTo,
       suppressBranch: !r.can.fork,
     });
+  }
+
+  /**
+   * 内容头（乙4-④）：徽标（在跑 · 需要你 · 那一家 · 分身 · 已隐藏）｜［恢复 ▾］或［切过去］· 在新窗口打开 ·［⋯］；
+   * 第二行项目 · 机器 · 路径 · 时间段（条数由查看器读完接上）。都按这一行的事实画，能做什么看 `can`。
+   */
+  private headOf(r: HistoryRow): ViewerHead {
+    const needs = r.origin ? null : this.needsOf(r.sessionId);
+    const acts = document.createElement("span");
+    acts.className = s.hvHeadActs;
+    acts.append(
+      this.resumeControl(r),
+      button({ label: copyText("history.menu.openWindow"), kind: "icon", icon: "front", hint: copyText("history.menu.openWindow"), onClick: () => this.openWindow(r) }),
+    );
+    const more = button({ label: copyText("history.row.more"), kind: "icon", icon: "more", hint: copyText("history.row.more"), onClick: () => this.menu(r, more) });
+    acts.appendChild(more);
+    const project = document.createElement("span");
+    project.textContent = r.projectName || copyText("history.row.noDir");
+    const machine = machineTag(r.origin) ?? Object.assign(document.createElement("span"), { textContent: copyText("history.filter.local") });
+    const span = document.createElement("span");
+    span.textContent = spanText(r.startedAt, r.updatedAt, Date.now());
+    return {
+      badges: rowBadges(r, needs),
+      actions: acts,
+      meta: [project, machine, ...(r.projectPath ? [viewerPath(r.projectPath)] : []), span],
+    };
+  }
+
+  /**
+   * 「恢复 ▾」（乙4-⑤）：主按钮 ＝ 默认那一种（上次的号 · 不用 tmux）；▾ ＝ 与标签页「恢复 ▸」同一套选项（`resume-menu.ts`）＋ 在此目录新建会话。
+   * 在跑的 ⇒［切过去］；分身会话 ⇒ 灰着说为什么。
+   */
+  private resumeControl(r: HistoryRow): HTMLElement {
+    if (r.can.resume === "switch") {
+      return button({ label: copyText("history.row.switch"), kind: "primary", hint: copyText("history.row.switchHint"), onClick: () => void this.resume(r) });
+    }
+    const hint = r.agentTag
+      ? copyText("history.resume.hintAgent", { agent: r.agentTag })
+      : r.lastAccount
+        ? copyText("history.resume.hintAccount", { account: r.lastAccount })
+        : copyText("history.resume.hintPlain");
+    const sb = splitButton({
+      label: copyText("history.row.resume"),
+      hint,
+      onClick: () => void this.resume(r),
+      moreLabel: copyText("history.resume.more"),
+      items: () => this.resumeItems(r),
+    });
+    sb.root.dataset.role = "resume";
+    if (r.can.resume === "bg") {
+      setDisabled(sb.main, copyText("history.row.bgHint"));
+      setDisabled(sb.more, copyText("history.row.bgHint"));
+    }
+    return sb.root;
+  }
+
+  /** ▾ 的项：账号（能选号的那一家才问那台）× 怎么开（tmux / 不用 tmux），再加「在此目录新建会话」。 */
+  private async resumeItems(r: HistoryRow): Promise<MenuItem[]> {
+    const accounts = r.can.accounts ? await enumerateAccountModifiers(r.origin ?? LOCAL_ORIGIN) : [];
+    const items = resumeMenuItems(accounts, (p) => void this.resumeWith(r, { tmux: p.tmux, account: askOf(p.account, p.useBase) }));
+    if (!r.can.accounts) {
+      items.push({ label: "", divider: true }, { label: copyText("history.resume.noAccounts", { agent: r.agentTag ?? r.agent }), enabled: false, onClick: () => {} });
+    }
+    items.push({ label: "", divider: true }, { label: copyText("history.menu.newInDir"), icon: "plus", onClick: () => void this.newSessionIn(r.origin, r.projectPath, r.agent) });
+    return items;
   }
 
   // ───────────────────────── 动作 ─────────────────────────
@@ -840,25 +910,50 @@ export class HistoryView {
     };
   }
 
-  /** 恢复（默认那一种：上次的号 · 设置里的方式）；在跑的 ⇒ 切过去。 */
-  private async resume(r: HistoryRow): Promise<void> {
+  /** 恢复（默认那一种：上次的号 · 不用 tmux —— 设置里还没有「默认在不在 tmux 里」那一格）；在跑的 ⇒ 切过去。 */
+  private resume(r: HistoryRow): Promise<void> {
+    return this.resumeWith(r, { tmux: false, account: FOLLOW });
+  }
+
+  /**
+   * 按选的那一种恢复。号由那台判（跟随 / 点名 / 账号 0；选不了 ⇒ 那台不起、给替代）；tmux 那一支与标签页同一条起法（`tmux-resume.ts`）。
+   * 起了 ⇒ 关历史页（主窗口等它出现再切过去）；没起 ⇒ 内容头下一条错误条 ＋［重试］（右边显示的不是它 ⇒ toast）。
+   */
+  private async resumeWith(r: HistoryRow, how: { tmux: boolean; account: AccountAsk }): Promise<void> {
     if (r.can.resume === "bg") return;
     if (r.can.resume === "switch") {
       this.switchTo(r.sessionId);
       this.close();
       return;
     }
+    const origin = r.origin ?? LOCAL_ORIGIN;
+    const main = this.shown === rowKey(r) ? this.viewer?.element.querySelector<HTMLButtonElement>(`[data-role="resume"] > button`) : null;
+    if (main) setBusy(main, copyText("history.resume.busy"));
+    this.viewer?.showBanner(null);
     try {
-      if (r.origin) {
+      if (how.tmux) {
+        const started = await startInTmuxThenAttach({ origin, agent: r.agent, sid: r.sessionId, cwd: r.projectPath }, how.account, {
+          again: (a) => this.resumeWith(r, { tmux: true, account: a ?? how.account }),
+        });
+        if (started === false) return;
+      } else if (r.origin) {
         const behavior = await getBehavior();
         const launcher = configuredLauncherFor(r.agent, await resolveResumeCommand(r.origin, behavior.resumeCommandRemote));
-        await runRemoteResume(r.origin, r.agent, r.sessionId, r.projectPath, launcher, { account: FOLLOW });
+        await runRemoteResume(r.origin, r.agent, r.sessionId, r.projectPath, launcher, { account: how.account });
       } else {
-        await resumeLocalSession({ agent: r.agent, sid: r.sessionId, cwd: r.projectPath, account: FOLLOW });
+        await resumeLocalSession({ agent: r.agent, sid: r.sessionId, cwd: r.projectPath, account: how.account });
       }
       this.close();
     } catch (e) {
-      toast(copyText("history.resume.failed", { machine: r.origin ?? copyText("history.filter.local"), why: String(e) }), "");
+      const said = copyText("history.resume.failed", { machine: r.origin ?? copyText("history.filter.local"), why: String(e) });
+      if (this.shown === rowKey(r) && this.viewer) {
+        const retry = button({ label: copyText("history.group.retry"), size: "compact", onClick: () => void this.resumeWith(r, how) });
+        this.viewer.showBanner(banner("error", said, [retry]));
+      } else {
+        toast(said, "");
+      }
+    } finally {
+      if (main) setBusy(main, null);
     }
   }
 

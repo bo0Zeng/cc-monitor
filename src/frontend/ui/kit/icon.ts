@@ -37,6 +37,8 @@ import funnel from "@phosphor-icons/core/assets/regular/funnel.svg?raw";
 import desktop from "@phosphor-icons/core/assets/regular/desktop.svg?raw";
 import starFill from "@phosphor-icons/core/assets/fill/star-fill.svg?raw";
 import chat from "@phosphor-icons/core/assets/regular/chat.svg?raw";
+import list from "@phosphor-icons/core/assets/regular/list.svg?raw";
+import plus from "@phosphor-icons/core/assets/regular/plus.svg?raw";
 import s from "./icon.module.css";
 
 const SVG = {
@@ -70,6 +72,8 @@ const SVG = {
   machine: desktop,
   starFill: starFill,
   chat: chat,
+  list: list,
+  plus: plus,
 } as const;
 
 export type IconName = keyof typeof SVG;

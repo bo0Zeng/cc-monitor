@@ -45,7 +45,8 @@ import { withSessionReads } from "./chan-fake";
 
 /** 灌给 `invoke` 的那一整块 chunk。每个用例在 `mount()` 里塞，`installViewerRig()` 清空。 */
 /** `find` = 后端 `history-find` 这一刻回什么（旧回包形状 `{available, total, hits}`；没塞 ⇒ 要不到）。 */
-export const viewerRig: { chunk: unknown[]; index?: unknown; find?: unknown } = { chunk: [] };
+/** `failPage` = 读记录那一问这一次答不上（查看器「读不出」那一态）。 */
+export const viewerRig: { chunk: unknown[]; index?: unknown; find?: unknown; failPage?: boolean } = { chunk: [] };
 
 /**
  * **后端那份「你说过的话」清单的替身**（`list_user_inputs`）。
@@ -116,6 +117,7 @@ export function tauriCoreMock(): Record<string, unknown> {
     invoke: vi.fn(withSessionReads(async (cmd: string, args: Record<string, unknown>) => {
       if (cmd === "list_user_inputs") return answerListUserInputs(args as { fromOffset: number });
       if (cmd === "stream_read_session_jsonl") {
+        if (viewerRig.failPage) throw new Error("devbox 连不上");
         const ch = args.onChunk as { onmessage?: ((v: unknown) => void) | null };
         ch.onmessage?.(viewerRig.chunk);
         return viewerRig.chunk.length;
@@ -213,6 +215,7 @@ export function installViewerRig(): ViewerRigHandles {
   viewerRig.chunk = [];
   viewerRig.index = undefined;
   viewerRig.find = undefined;
+  viewerRig.failPage = false;
   outlineBackend.entries = [];
   outlineBackend.available = true;
   outlineBackend.reason = "";
@@ -250,6 +253,6 @@ export function installViewerRig(): ViewerRigHandles {
  * 不核这一句，一切「调了 0 次」的读数都分不清是「没调」还是「炸了」。
  */
 export function expectLoaded(root: HTMLElement): void {
-  const status = root.querySelector(".history-status")?.textContent ?? "";
+  const status = root.querySelector('[data-role="status"]')?.textContent ?? "";
   expect(status).not.toContain("加载失败");
 }

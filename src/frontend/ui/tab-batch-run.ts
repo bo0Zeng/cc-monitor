@@ -20,6 +20,7 @@ import { getBehavior } from "./behavior";
 import { resolveResumeCommand } from "./remote-config";
 import { ACTIVE_AGENT, defaultLauncherOf } from "./agent-profile";
 import { openTerminal } from "./terminal-open";
+import { configuredLauncherFor } from "./launch-requests";
 import { commands } from "./ipc/commands";
 
 /** 一个 tab 的结局（`why` 是给人看的那一句；做成了 ⇒ 空串）。 */
@@ -146,11 +147,14 @@ export async function callStop(origin: Origin, sids: readonly string[]): Promise
   return decodeBatch(origin, "sessions-stop", sids, v);
 }
 
-/** 起：问那台一次（`items` 那几个），逐个答。问不到 / 形状不对 ⇒ 抛 `ControlError`。 */
-export async function callStart(origin: Origin, mode: "tmux" | "window", items: readonly StartItem[]): Promise<Reply[]> {
+/**
+ * 起：问那台一次（`items` 那几个），逐个答。问不到 / 形状不对 ⇒ 抛 `ControlError`。
+ * `agent` 缺 ＝ 流跟的那一家（标签页里的会话）；历史页里的会话按那一行自己的一家起。
+ */
+export async function callStart(origin: Origin, mode: "tmux" | "window", items: readonly StartItem[], agent: string = ACTIVE_AGENT): Promise<Reply[]> {
   const sids = items.map((i) => i.sid);
   const budget = budgetWithin(BATCH_BASE_MS + BATCH_EACH_MS * sids.length);
-  const body = jsonBody({ mode, local: isLocalOrigin(origin), ...(await startSettings(origin)), items });
+  const body = jsonBody({ mode, local: isLocalOrigin(origin), ...(await startSettings(origin, agent)), items });
   const v = await settle(origin, "sessions-start", chan.call(origin, "sessions-start", body, budget), batchRefusals(origin));
   return decodeBatch(origin, "sessions-start", sids, v);
 }
@@ -185,13 +189,12 @@ export interface StartItem {
 }
 
 /** 起会话带的那几样（用户设置的原值）：哪一家 · resume 命令 · 那台的模型偏好表。标签页里的会话都是流跟的那一家。批量起与换号重启共用。 */
-export async function startSettings(origin: Origin): Promise<Record<string, unknown>> {
+export async function startSettings(origin: Origin, agent: string = ACTIVE_AGENT): Promise<Record<string, unknown>> {
   const behavior = await getBehavior();
-  const agent = ACTIVE_AGENT;
   const defaultLauncher = defaultLauncherOf(agent);
-  const launcher = isLocalOrigin(origin)
-    ? behavior.resumeCommandLocal.trim() || defaultLauncher
-    : (await resolveResumeCommand(origin, behavior.resumeCommandRemote)).trim() || defaultLauncher;
+  // 设置里配的 resume 命令只给默认那一家（别的那一家用它自己的默认启动器）。
+  const configured = isLocalOrigin(origin) ? behavior.resumeCommandLocal : await resolveResumeCommand(origin, behavior.resumeCommandRemote);
+  const launcher = configuredLauncherFor(agent, configured).trim() || defaultLauncher;
   return { agent, launcher, defaultLauncher, models: await machineModels(origin) };
 }
 

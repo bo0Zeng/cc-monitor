@@ -85,6 +85,36 @@ export const HISTORY_SCENES: Scene[] = [
     await click(await byText(".history-view button", "2 个分叉"));
     await sleep(300);
   }),
+  hist("history-05-resume-menu", "历史 · 恢复菜单", "右边内容头的［恢复 ▾］点开 ▾：tmux / 不用 tmux × 账号，再加「在此目录新建会话」", async () => {
+    await openHistory();
+    await click(await byText('.history-view [role="option"]', "支付回调验签"));
+    await sleep(900);
+    await click(await waitFor('.history-view [data-role="resume"] button[aria-haspopup="menu"]'));
+    await sleep(500);
+  }),
+  hist("history-06-codex", "历史 · Codex 会话", "Codex 会话：恢复按它自己那一家起；▾ 里不问账号，灰一行「Codex · 无账号维」", async () => {
+    await openHistory();
+    await click(await byText('.history-view [role="option"]', "Codex"));
+    await sleep(900);
+    await click(await waitFor('.history-view [data-role="resume"] button[aria-haspopup="menu"]'));
+    await sleep(500);
+  }),
+  hist("history-09-said", "历史 · 你说过的话", "查看器工具行「你说过的话 · N ▾」：浮层列出你说过的每一句，当前读到的那句高亮", async () => {
+    await openHistory();
+    await click(await row(0));
+    await sleep(900);
+    await click(await waitFor('.history-view [data-role="said"]'));
+    await sleep(400);
+  }),
+  hist("history-17-find", "历史 · 会话内查找", "Ctrl+F 进查找框、回车：命中清单在工具行下就地展开（稿里没画，主会话 10-06 定）", async () => {
+    await openHistory();
+    await click(await row(0));
+    await sleep(900);
+    await type(".history-view [data-role=\"find-input\"]", "重试");
+    await key("Enter");
+    await waitFor('.history-view [data-role="find-hit"]');
+    await sleep(400);
+  }),
   {
     id: "viewer-window",
     page: "viewer",

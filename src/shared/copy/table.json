@@ -2872,65 +2872,15 @@
       "zh": "搜索",
       "args": []
     },
-    "sessionViewer.find.noSession": {
-      "kind": "error",
-      "zh": "还没打开会话，没有可查的内容。",
-      "args": []
-    },
     "sessionViewer.build.unjumpable": {
       "kind": "body",
-      "zh": "这一条显示出来是空的，跳不过去，已停在会话末尾。",
+      "zh": "无法定位 · 已停在最近处",
       "args": []
-    },
-    "sessionViewer.maybeFillAbove.loadingEarlier": {
-      "kind": "body",
-      "zh": "加载更早消息…",
-      "args": []
-    },
-    "sessionViewer.status.full": {
-      "kind": "body",
-      "zh": "{total} 条记录{ms} · 只读历史视图{err}",
-      "args": ["total", "ms", "err"]
-    },
-    "sessionViewer.status.partial": {
-      "kind": "body",
-      "zh": "已显示 {shown}/{total} 条{ms} · {hint}{err}",
-      "args": ["shown", "total", "ms", "hint", "err"]
-    },
-    "sessionViewer.status.gap": {
-      "kind": "body",
-      "zh": "中间还有一段没加载",
-      "args": []
-    },
-    "sessionViewer.status.fillable": {
-      "kind": "body",
-      "zh": "上翻加载更早",
-      "args": []
-    },
-    "sessionViewer.status.firstScreen": {
-      "kind": "body",
-      "zh": " · 首屏 {ms}ms",
-      "args": ["ms"]
-    },
-    "sessionViewer.status.renderErrors": {
-      "kind": "body",
-      "zh": " · {renderErrors} 条渲染失败，首个是 {firstError}",
-      "args": ["renderErrors", "firstError"]
     },
     "sessionViewer.load.failed": {
       "kind": "error",
-      "zh": "加载失败：{e}",
-      "args": ["e"]
-    },
-    "sessionViewer.load.receiving": {
-      "kind": "body",
-      "zh": "接收中 · 已 {totalRecords} 条…",
-      "args": ["totalRecords"]
-    },
-    "sessionViewer.load.loading": {
-      "kind": "body",
-      "zh": "加载中…",
-      "args": []
+      "zh": "读取会话失败 · {why}",
+      "args": ["why"]
     },
     "userInputPanel.setUnavailable.plain": {
       "kind": "body",
@@ -20751,6 +20701,121 @@
     "cssMarks.sep.dot": {
       "kind": "body",
       "zh": "·",
+      "args": []
+    },
+    "sessionViewer.load.retry": {
+      "kind": "action",
+      "zh": "重试",
+      "args": []
+    },
+    "sessionViewer.status.all": {
+      "kind": "body",
+      "zh": "{n} 条",
+      "args": ["n"]
+    },
+    "sessionViewer.status.more": {
+      "kind": "body",
+      "zh": "{n} 条 · 上翻加载更早",
+      "args": ["n"]
+    },
+    "sessionViewer.head.count": {
+      "kind": "body",
+      "zh": "{n} 条",
+      "args": ["n"]
+    },
+    "sessionViewer.card.broken": {
+      "kind": "body",
+      "zh": "这一条显示不了",
+      "args": []
+    },
+    "sessionViewer.card.copyDetail": {
+      "kind": "action",
+      "zh": "复制详情",
+      "args": []
+    },
+    "sessionViewer.tools.said": {
+      "kind": "action",
+      "zh": "你说过的话 · {n}",
+      "args": ["n"]
+    },
+    "sessionViewer.tools.saidNone": {
+      "kind": "action",
+      "zh": "你说过的话",
+      "args": []
+    },
+    "sessionViewer.tools.saidLabel": {
+      "kind": "action",
+      "zh": "你说过的话",
+      "args": []
+    },
+    "findStrip.box.placeholder": {
+      "kind": "control",
+      "zh": "会话内查找（Ctrl+F）",
+      "args": []
+    },
+    "findStrip.box.tools": {
+      "kind": "control",
+      "zh": "含工具输出与思考",
+      "args": []
+    },
+    "findStrip.box.close": {
+      "kind": "action",
+      "zh": "收起查找结果",
+      "args": []
+    },
+    "findStrip.status.busy": {
+      "kind": "body",
+      "zh": "查找中…",
+      "args": []
+    },
+    "findStrip.status.unavailable": {
+      "kind": "error",
+      "zh": "查找失败 · {reason}",
+      "args": ["reason"]
+    },
+    "findStrip.status.none": {
+      "kind": "body",
+      "zh": "无匹配「{q}」",
+      "args": ["q"]
+    },
+    "findStrip.status.count": {
+      "kind": "body",
+      "zh": "{n} 处",
+      "args": ["n"]
+    },
+    "findStrip.status.truncated": {
+      "kind": "body",
+      "zh": "前 {n} 处 · 共 {total} 处",
+      "args": ["n", "total"]
+    },
+    "history.resume.hintAccount": {
+      "kind": "body",
+      "zh": "恢复 · {account} · 不用 tmux",
+      "args": ["account"]
+    },
+    "history.resume.hintPlain": {
+      "kind": "body",
+      "zh": "恢复 · 不用 tmux",
+      "args": []
+    },
+    "history.resume.hintAgent": {
+      "kind": "body",
+      "zh": "恢复 · {agent} 会话",
+      "args": ["agent"]
+    },
+    "history.resume.more": {
+      "kind": "action",
+      "zh": "恢复方式",
+      "args": []
+    },
+    "history.resume.noAccounts": {
+      "kind": "body",
+      "zh": "{agent} · 无账号维",
+      "args": ["agent"]
+    },
+    "history.resume.busy": {
+      "kind": "action",
+      "zh": "恢复中…",
       "args": []
     }
   }

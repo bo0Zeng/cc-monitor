@@ -52,6 +52,20 @@ function dotOf(r: HistoryRow, needs: string | null): HTMLElement | null {
   return null;
 }
 
+/**
+ * 徽标（`C17` 文字徽标）：那一家（Codex …）· 分身 · 已隐藏 · 需要你（等批准 …）／ 在跑。
+ * `live` ＝ 在跑也画成徽标（按项目那一形与内容头；按时间那一形的在跑由状态点说）。
+ */
+export function rowBadges(r: HistoryRow, needs: string | null, live = true): HTMLElement[] {
+  const badges: HTMLElement[] = [];
+  if (r.agentTag) badges.push(badge(r.agentTag));
+  if (r.isBg) badges.push(badge(copyText("history.row.bg")));
+  if (r.hidden) badges.push(badge(copyText("history.row.hidden")));
+  if (needs) badges.push(badge(needs, "need"));
+  else if (live && r.status === "live") badges.push(badge(copyText("history.row.live"), "live"));
+  return badges;
+}
+
 /** 标题那一格：改过的 ＞ 标题 ＞ 第一句；都没有 ⇒「（没有说过话的会话）」。 */
 export function labelOf(r: HistoryRow): string {
   return r.untitled ? copyText("history.row.untitled") : r.label;
@@ -123,12 +137,7 @@ export function sessionRow(
   t.title = labelOf(r);
   if (r.untitled) t.dataset.untitled = "true";
   l1.appendChild(t);
-  const badges: HTMLElement[] = [];
-  if (r.agentTag) badges.push(badge(r.agentTag));
-  if (r.isBg) badges.push(badge(copyText("history.row.bg")));
-  if (r.hidden) badges.push(badge(copyText("history.row.hidden")));
-  if (needs) badges.push(badge(needs, "need"));
-  else if (o.compact && r.status === "live") badges.push(badge(copyText("history.row.live"), "live"));
+  const badges = rowBadges(r, needs, o.compact);
   if (o.compact) l1.append(...badges);
   const tm = document.createElement("span");
   tm.className = s.hvTime;
