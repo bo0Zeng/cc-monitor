@@ -768,7 +768,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p7o-files-sort：files-find 后端排（sort · desc · scope；命中带 location · size · mtime_secs · marks）；files-ls 多 link_to · total 与三个打不开码；files-grep 每条 rel · lines。
 ///
 /// p7p-quota-text：额度与账号界面（A7）＋ CLI 面修饰词 --text（只给 quota-read）；文件窗口删除那一问。
-pub const BUILD_ID: &str = "p7p-quota-text";
+///
+/// p7q-quota-probe：轮换积木（cap · stint · preempt · 按原名的窗口 · 基线与 blocked_above）＋ 新命令 quota-probe（官方 /usage）。
+pub const BUILD_ID: &str = "p7q-quota-probe";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
