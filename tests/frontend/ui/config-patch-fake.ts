@@ -167,3 +167,33 @@ export async function mockedConfigModule(
   };
   return { ...actual, loadConfig: fakeCfg.load, patchConfig, patchConfigFrom };
 }
+
+/**
+ * 机器表那一道的替身（壳 `config.rs::check_machine_table` 的合成版，给「界面按回来的码说那一句」那一族用）：
+ * 把补丁应用到 `fakeCfg.load()` 那一份上，按名字不重 · 端口 1–65535 · 地址 / 用户非空判第一处。
+ * 规则本身的判据在 Rust 那一侧（`tests/frontend/shell/config_tests.rs`）。
+ */
+export async function fakeMachineTableTry(edits: readonly Edit[]): Promise<{ code: string; name: string } | null> {
+  const base = ((await fakeCfg.load()) ?? {}) as Record<string, unknown>;
+  let doc: { remote?: { hosts?: Record<string, unknown>[] } };
+  try {
+    doc = JSON.parse(applyConfigEdits(JSON.stringify(base), edits)) as typeof doc;
+  } catch (e) {
+    // 往机器表里加一台、同名的已在 ⇒ 同名（同壳那一侧）；别的认不出留给写口去拒。
+    const ins = edits.find((x) => x.op === "insertin" && x.path[0] === "remote");
+    if (e instanceof ConfigRefused && e.kind === "element_exists" && ins && "where" in ins) return { code: "name_taken", name: ins.where[0]?.equals ?? "" };
+    return null;
+  }
+  const seen = new Set<string>();
+  for (const h of doc.remote?.hosts ?? []) {
+    const t = (k: string) => String(h[k] ?? "").trim();
+    const name = t("label") || t("host");
+    if (t("host") === "") return { code: "no_host", name };
+    if (t("user") === "") return { code: "no_user", name };
+    const port = h.port === undefined || h.port === null ? 22 : Number(h.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) return { code: "port", name };
+    if (seen.has(name)) return { code: "name_taken", name };
+    seen.add(name);
+  }
+  return null;
+}

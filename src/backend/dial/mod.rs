@@ -282,6 +282,8 @@ pub(crate) mod why {
     pub const HOST_KEY: &str = "host_key";
     /// 密钥被拒（公钥 · agent 都没过）。
     pub const AUTH: &str = "auth";
+    /// 那台只收密码（服务端剩下的方法里没有公钥）。
+    pub const PASSWORD: &str = "password";
     /// 私钥文件读不出来。
     pub const KEY_UNREADABLE: &str = "key_unreadable";
     /// 跳板那一台连不上（拨号 · 鉴权 · 经它开隧道任一步）。
@@ -289,12 +291,13 @@ pub(crate) mod why {
     /// 别的（看人话）。
     pub const OTHER: &str = "other";
     /// 全集（判据两向比）。
-    pub const ALL: [&str; 8] = [
+    pub const ALL: [&str; 9] = [
         RESOLVE,
         UNREACHABLE,
         TIMEOUT,
         HOST_KEY,
         AUTH,
+        PASSWORD,
         KEY_UNREADABLE,
         JUMP,
         OTHER,

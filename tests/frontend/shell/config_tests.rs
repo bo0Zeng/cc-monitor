@@ -566,10 +566,17 @@ fn the_machine_table_is_checked_on_every_identity_write() {
             "rsConfig.machine.port",
         ),
     ] {
+        // 试算口与写口同一份规则：试算说的那一处就是写口拒的那一处。
+        let tried = machine_table_try_at(&path, std::slice::from_ref(&edit)).expect(what);
         let got = patch_config_at(&path, &[edit]).expect_err(what);
         assert!(
             matches!(got, ConfigWriteError::BadMachine(_)),
             "{what}：{got:?}"
+        );
+        assert_eq!(
+            tried.map(|f| f.said()),
+            Some(got.to_string()),
+            "{what}：试算口与写口说的不一样"
         );
         let name = if what == "改名撞上另一台" {
             "a"
@@ -589,7 +596,24 @@ fn the_machine_table_is_checked_on_every_identity_write() {
             "{what}：拒了却写了盘"
         );
     }
-    // 正控：合法的一台照常加进去。
+    // 加一台与已有的同名：写口回「已存在」（整批拒），试算口把它说成同名（界面落在名字那一格下）。
+    let same = insert(host("a", "2.2.2.2", "u", 22), "a");
+    assert_eq!(
+        machine_table_try_at(&path, std::slice::from_ref(&same)).unwrap(),
+        Some(MachineFault {
+            code: MachineFaultCode::NameTaken,
+            name: "a".into()
+        })
+    );
+    assert!(matches!(
+        patch_config_at(&path, &[same]),
+        Err(ConfigWriteError::ElementExists)
+    ));
+    // 正控：合法的一台试算没话说、照常加进去。
+    assert_eq!(
+        machine_table_try_at(&path, &[insert(host("b", "2.2.2.2", "u", 22), "b")]).unwrap(),
+        None
+    );
     patch_config_at(&path, &[insert(host("b", "2.2.2.2", "u", 22), "b")])
         .expect("合法的一台被拒了");
     assert_eq!(read(&path)["remote"]["hosts"].as_array().unwrap().len(), 2);

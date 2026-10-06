@@ -379,6 +379,7 @@ fn stage_labels_map_to_the_closed_reason_set() {
             "jump",
             "key_unreadable",
             "other",
+            "password",
             "resolve",
             "timeout",
             "unreachable"
@@ -736,4 +737,25 @@ fn the_capture_arm_holds_its_channel_under_the_close_guard() {
         1,
         "正控失败：stream 臂里认不出 `exec(&channel`"
     );
+}
+
+/// 公钥没过时那台剩下的方法里没有公钥、只有密码 / 键盘交互 ⇒ `password`；还收公钥（换一把可能就过）⇒ `auth`。
+#[test]
+fn a_password_only_server_is_its_own_reason() {
+    use russh::client::AuthResult;
+    use russh::{MethodKind as M, MethodSet};
+    let fail = |m: &[M]| AuthResult::Failure {
+        remaining_methods: MethodSet::from(m),
+        partial_success: false,
+    };
+    assert_eq!(connect::rejected_why(&fail(&[M::Password])), why::PASSWORD);
+    assert_eq!(
+        connect::rejected_why(&fail(&[M::KeyboardInteractive])),
+        why::PASSWORD
+    );
+    assert_eq!(
+        connect::rejected_why(&fail(&[M::PublicKey, M::Password])),
+        why::AUTH
+    );
+    assert_eq!(connect::rejected_why(&fail(&[])), why::AUTH);
 }

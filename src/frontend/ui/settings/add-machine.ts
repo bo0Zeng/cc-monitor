@@ -3,7 +3,8 @@
  *
  * - 点「添加」之前一个字节都不写；写失败框不关、填的都在。
  * - 已在列表里的那台（地址 · 用户 · 端口相同）灰着、勾不了；多地址的那台可「按地址拆成 N 台」。
- * - 名字不许与已有机器、与这一框里勾的其它台重名；地址、用户必填；端口 1–65535。错在那一格下面说，有错时主按钮禁用。
+ * - 名字不许与已有机器、与这一框里勾的其它台重名；地址、用户必填；端口 1–65535 —— 这几条只在后端判（机器表试算口，
+ *   与写口同一份规则），这里按回来的码把那一句放在那一格下面；有错时主按钮禁用。
  */
 import { formDialog } from "../kit/dialog";
 import { field, type FieldHandle } from "../kit/field";
@@ -12,11 +13,12 @@ import { tabs } from "../kit/tabs";
 import { checkbox } from "../kit/switch";
 import { copyText } from "../copy-table";
 import type { RemoteHostConfig } from "../remote-config";
+import type { MachineFault } from "../generated/MachineFault";
 import type { ImportGroup } from "../ssh-config-reads";
 
 export interface AddMachineDeps {
-  /** 列表里已有的那几台。 */
-  existing: () => RemoteHostConfig[];
+  /** 这几台若现在加进去，机器表那一道过不过（后端试算；过 ⇒ `null`）。 */
+  tryAdd: (cfgs: RemoteHostConfig[]) => Promise<MachineFault | null>;
   /** 读 ~/.ssh/config（失败 ⇒ 抛）；每组带着后端判的「已在列表里」。 */
   groups: () => Promise<ImportGroup[]>;
   /** 写进去：成了 ⇒ `null`；没存上 ⇒ 一句原因。 */
@@ -37,7 +39,11 @@ const blank = (): RemoteHostConfig => ({
   connect: true,
 });
 
-const nameOf = (h: RemoteHostConfig): string => h.label.trim() || h.host.trim();
+/** 端口框里的字 → 数（不是整数 ⇒ 0：交给后端判「端口不在 1–65535」，不在这里另判一遍）。 */
+const portNumber = (text: string): number => {
+  const n = Number(text.trim());
+  return Number.isInteger(n) ? n : 0;
+};
 
 interface SshRow {
   g: ImportGroup;
@@ -120,9 +126,6 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
       box.setAttribute("aria-label", r.cfg.label);
       const main = document.createElement("div");
       main.className = "add-machine-main";
-      r.name = field({ label: copyText("addMachine.field.name"), value: r.cfg.label });
-      r.name.input.addEventListener("input", update);
-      if (r.inList || r.split) r.name.setDisabled(r.inList ? copyText("addMachine.ssh.inList") : null);
       const info = document.createElement("div");
       info.className = "add-machine-info";
       const parts = [r.g.host, r.g.user || copyText("remote.preview.noUser")];
@@ -131,25 +134,39 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
       info.textContent = r.split
         ? copyText("addMachine.ssh.splitInto", { names: r.g.members.map((m) => m.alias).join(copyText("kit.text.sep")) })
         : parts.join(copyText("kit.text.sep"));
-      main.append(r.name.root, info);
+      const head = document.createElement("div");
+      head.className = "add-machine-head";
       if (r.inList) {
+        // 已在列表的那台：名字是一行字（不可改），旁边灰标签。
+        r.name = null;
+        const name = document.createElement("span");
+        name.className = "add-machine-name-text";
+        name.textContent = r.cfg.label;
         const tag = document.createElement("span");
         tag.className = "add-machine-tag";
         tag.textContent = copyText("addMachine.ssh.inList");
-        main.appendChild(tag);
-      } else if (r.g.members.length > 1) {
-        const link = document.createElement("button");
-        link.type = "button";
-        link.className = "add-machine-link";
-        link.textContent = r.split
-          ? copyText("addMachine.ssh.unsplit")
-          : copyText("addMachine.ssh.split", { n: r.g.members.length });
-        link.addEventListener("click", () => {
-          r.split = !r.split;
-          renderSsh();
-          update();
-        });
-        main.appendChild(link);
+        head.append(name, tag);
+        main.append(head, info);
+      } else {
+        r.name = field({ label: copyText("addMachine.field.name"), value: r.cfg.label, noteOnDemand: true, aside: info });
+        r.name.root.classList.add("add-machine-name");
+        r.name.input.addEventListener("input", update);
+        head.appendChild(r.name.root);
+        if (r.g.members.length > 1) {
+          const link = document.createElement("button");
+          link.type = "button";
+          link.className = "add-machine-link";
+          link.textContent = r.split
+            ? copyText("addMachine.ssh.unsplit")
+            : copyText("addMachine.ssh.split", { n: r.g.members.length });
+          link.addEventListener("click", () => {
+            r.split = !r.split;
+            renderSsh();
+            update();
+          });
+          head.appendChild(link);
+        }
+        main.appendChild(head);
       }
       item.append(box, main);
       list.appendChild(item);
@@ -200,43 +217,65 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
     label: fName.input.value.trim(),
     host: fHost.input.value.trim(),
     user: fUser.input.value.trim(),
-    port: Number(fPort.input.value.trim()),
+    port: portNumber(fPort.input.value),
     keyPath: fKey.input.value.trim(),
     addresses: fAddrs.input.value.split("\n").map((x) => x.trim()).filter(Boolean),
     jump: fJump.input.value.trim(),
   });
 
-  /** 这一框里要加的那几台，以及第一处错（`null` ⇒ 可以加）。 */
+  /** 后端对「这一框此刻要加的那几台」的回答；`asked` 是问的那一份（框里改过了 ⇒ 那个回答作废、等新的）。 */
+  let verdict: { asked: string; fault: MachineFault | null } | null = null;
+  let seq = 0;
+
+  const faultSaid = (f: MachineFault): string =>
+    f.code === "name_taken" ? copyText("addMachine.err.taken", { name: f.name })
+    : f.code === "port" ? copyText("addMachine.err.port")
+    : f.code === "no_host" ? copyText("addMachine.err.host")
+    : copyText("addMachine.err.user");
+
+  /** 这一框里要加的那几台，以及第一处错（`null` ⇒ 可以加）。错由后端的回答定；还没答回来 ⇒ 先挡着。 */
   const check = (): { cfgs: RemoteHostConfig[]; why: string | null } => {
-    const taken = new Set(deps.existing().map(nameOf));
-    if (tab === "manual") {
-      const c = manualCfg();
-      const portOk = Number.isInteger(c.port) && c.port >= 1 && c.port <= 65535;
-      fPort.setError(fPort.input.value.trim() === "" || portOk ? null : copyText("addMachine.err.port"));
-      const dup = nameOf(c) !== "" && taken.has(nameOf(c));
-      fName.setError(dup ? copyText("addMachine.err.taken", { name: nameOf(c) }) : null);
-      const why =
-        c.host === "" ? copyText("addMachine.err.host")
-        : c.user === "" ? copyText("addMachine.err.user")
-        : !portOk ? copyText("addMachine.err.port")
-        : dup ? copyText("addMachine.err.taken", { name: nameOf(c) })
-        : null;
-      return { cfgs: [c], why };
-    }
-    const cfgs = pickedCfgs();
-    const seen = new Set<string>();
-    let why: string | null = cfgs.length === 0 ? copyText("addMachine.err.none") : null;
+    const cfgs = tab === "manual" ? [manualCfg()] : pickedCfgs();
+    if (cfgs.length === 0) return { cfgs, why: copyText("addMachine.err.none") };
+    const fault = verdict !== null && verdict.asked === JSON.stringify(cfgs) ? verdict.fault : undefined;
+    if (fault === undefined) return { cfgs, why: copyText("addMachine.err.checking") };
+    return { cfgs, why: fault === null ? null : faultSaid(fault) };
+  };
+
+  /** 把后端那一处落到那一格下面（名字撞了 · 端口越界才落格；地址 / 用户空着只挡按钮，不在没碰过的格下标红）。 */
+  const paintFault = (fault: MachineFault | null): void => {
     for (const r of rows) r.name?.setError(null);
-    for (const c of cfgs) {
-      const n = nameOf(c);
-      if (n === "") why ??= copyText("addMachine.err.name");
-      else if (taken.has(n) || seen.has(n)) {
-        why ??= copyText("addMachine.err.taken", { name: n });
-        rows.find((r) => !r.split && r.name?.input.value.trim() === n)?.name?.setError(copyText("addMachine.err.taken", { name: n }));
-      }
-      seen.add(n);
+    fName.setError(null);
+    fPort.setError(null);
+    if (fault === null) return;
+    if (tab === "manual") {
+      if (fault.code === "name_taken") fName.setError(faultSaid(fault));
+      if (fault.code === "port" && fPort.input.value.trim() !== "") fPort.setError(faultSaid(fault));
+      return;
     }
-    return { cfgs, why };
+    if (fault.code === "name_taken") rows.find((r) => !r.split && r.name?.input.value.trim() === fault.name)?.name?.setError(faultSaid(fault));
+  };
+
+  /** 问后端（每改一次问一次，晚到的旧回答丢掉）。 */
+  const ask = (): void => {
+    const cfgs = tab === "manual" ? [manualCfg()] : pickedCfgs();
+    const asked = JSON.stringify(cfgs);
+    if (cfgs.length === 0 || verdict?.asked === asked) return;
+    const mine = ++seq;
+    void deps.tryAdd(cfgs).then(
+      (fault) => {
+        if (mine !== seq) return;
+        verdict = { asked, fault };
+        paintFault(fault);
+        update();
+      },
+      () => {
+        // 问不到（不是规则说不行）⇒ 不挡：写口自己会判，没存上照常说原因。
+        if (mine !== seq) return;
+        verdict = { asked, fault: null };
+        update();
+      },
+    );
   };
 
   const handle = formDialog({
@@ -254,6 +293,7 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
   });
 
   function update(): void {
+    ask();
     const { cfgs } = check();
     handle.setAction(
       tab === "manual" ? copyText("addMachine.action.manual") : copyText("addMachine.action.ssh", { n: cfgs.length }),

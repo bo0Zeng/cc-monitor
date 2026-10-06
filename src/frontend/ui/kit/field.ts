@@ -17,6 +17,8 @@ export interface FieldSpec {
   prefix?: string;
   /** 没说明句时下方那一行不留空（错误句出现时才占一行）。默认留着，错误句出现不跳位。 */
   noteOnDemand?: boolean;
+  /** 框与说明 / 错误句之间的一行（如列表行里那台的地址）。 */
+  aside?: Node;
 }
 
 export interface FieldHandle {
@@ -60,7 +62,9 @@ export function field(spec: FieldSpec): FieldHandle {
   input.setAttribute("aria-describedby", note.id);
   const help = spec.help ?? "";
   note.textContent = help;
-  root.append(label, box, note);
+  root.append(label, box);
+  if (spec.aside) root.appendChild(spec.aside);
+  root.appendChild(note);
   let sp: HTMLElement | null = null;
   return {
     root,

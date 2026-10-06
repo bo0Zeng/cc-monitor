@@ -731,6 +731,10 @@ pub fn register(origin: &str, client: Arc<InboundClient>) {
     set_link(origin, Link::Up);
     // 断线时按过、还没用掉的「重新连接」许可作废（见 [`kick`]）。
     lock(link_book()).kicks.remove(origin);
+    // 本机那一台的状态成品看的就是这条通道在不在。
+    if origin == LOCAL_ORIGIN {
+        crate::machine_state::notify(origin);
+    }
 }
 
 /// 摘除 —— **只摘自己那条**。重连时新连接可能已经登记上来了，
@@ -745,6 +749,9 @@ pub fn unregister(origin: &str, mine: &Arc<InboundClient>) {
     mine.shutdown();
     if is_mine {
         set_link(origin, Link::Reconnecting);
+        if origin == LOCAL_ORIGIN {
+            crate::machine_state::notify(origin);
+        }
     }
 }
 

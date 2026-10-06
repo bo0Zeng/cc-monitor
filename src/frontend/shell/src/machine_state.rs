@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 /// 那台此刻是什么样（闭集）：`up` 连着（版本对得上或不可比）· `connecting` 正在连（`stage` 说到哪一步）·
+/// `installing` 正在把 cc-monitor 装上去（那台还没有）· `updating` 正在换成这一版（那台有旧的）·
 /// `down` 这一轮没连上（`reason` 说为什么）· `host_key_changed` 主机指纹与记下的不一样 · `needs_update` 连着但那台旧 ·
 /// `newer` 连着但那台比这一版新 · `disabled` 「连接这台」关着 · `unsupported` 那台做不了 · `unknown` 还没有任何一轮的结论。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -19,6 +20,8 @@ use std::sync::Mutex;
 pub enum MachineStateKind {
     Up,
     Connecting,
+    Installing,
+    Updating,
     Down,
     HostKeyChanged,
     NeedsUpdate,
@@ -75,6 +78,8 @@ pub struct MachineState {
     pub os: Option<String>,
     /// 那一行上给的修法（按 `state` 与 `reason` 定）。
     pub fixes: Vec<MachineFix>,
+    /// 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有；与记下的那枚比对用）。
+    pub seen_host_key: Option<String>,
 }
 
 /// 「做不了」的两个原因码。
@@ -91,13 +96,37 @@ struct Entry {
     os: Option<String>,
     /// 拨号那一层最近一次没拨成的原因码（这一轮收尾时用）。
     dial_why: Option<String>,
+    /// 指纹不对那一次那台出示的指纹（拨号那一层带回）。
+    seen_key: Option<String>,
 }
 
 static TABLE: Mutex<BTreeMap<String, Entry>> = Mutex::new(BTreeMap::new());
 
+/// 那台变了之后往外推一帧的出口（壳起来时装上：读那台的成品、发 `machine-state` 事件）。没装 ⇒ 不推。
+type Out = Box<dyn Fn(&str) + Send + Sync>;
+static OUT: std::sync::OnceLock<Out> = std::sync::OnceLock::new();
+
+/// 装推送出口（只装一次）。
+pub(crate) fn install_out(out: impl Fn(&str) + Send + Sync + 'static) {
+    if OUT.set(Box::new(out)).is_err() {
+        tracing::warn!("[machine] 推送出口装了第二次，沿用第一次那个");
+    }
+}
+
+/// 那台变了 ⇒ 推一帧（锁外调）。
+pub(crate) fn notify(origin: &str) {
+    if let Some(out) = OUT.get() {
+        out(origin);
+    }
+}
+
 fn with<R>(origin: &str, f: impl FnOnce(&mut Entry) -> R) -> R {
-    let mut g = TABLE.lock().unwrap_or_else(|e| e.into_inner());
-    f(g.entry(origin.to_string()).or_default())
+    let r = {
+        let mut g = TABLE.lock().unwrap_or_else(|e| e.into_inner());
+        f(g.entry(origin.to_string()).or_default())
+    };
+    notify(origin);
+    r
 }
 
 /// 这一轮开始拨 / 到了哪一步。
@@ -117,6 +146,29 @@ fn product_version(relation: VersionRelation) -> Option<String> {
     (relation == VersionRelation::Same).then(|| PRODUCT_VERSION.to_string())
 }
 
+/// 正在把这一版放上去：`first` ＝ 那台还没有（装）；否则是换掉旧的（更新）。
+pub(crate) fn deploying(origin: &str, first: bool) {
+    with(origin, |e| {
+        e.state = Some(if first {
+            MachineStateKind::Installing
+        } else {
+            MachineStateKind::Updating
+        });
+        e.reason = None;
+        e.stage = None;
+    });
+}
+
+/// 连上时自动放这一版：这次运行里那台握过手（报过版本关系）⇒ 是换旧的（更新）；没握过 ⇒ 当作第一次装。
+pub(crate) fn deploying_auto(origin: &str) {
+    let seen = TABLE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(origin)
+        .is_some_and(|e| e.relation.is_some());
+    deploying(origin, !seen);
+}
+
 /// 握手成了：那台报的构建标识（只进日志）＋ 与这一版的关系。
 pub(crate) fn up(origin: &str, build: &str, relation: VersionRelation) {
     tracing::info!("[machine] {origin} 连上：构建 {build} · 与这一版 {relation:?}");
@@ -131,13 +183,17 @@ pub(crate) fn up(origin: &str, build: &str, relation: VersionRelation) {
         e.version = product_version(relation);
         e.relation = Some(relation);
         e.dial_why = None;
+        e.seen_key = None;
     });
 }
 
-/// 拨号那一层没拨成（后端 ack 带回的原因码；老后端没给 ⇒ 不记）。
-pub(crate) fn dial_failed(origin: &str, why: Option<&str>) {
+/// 拨号那一层没拨成（后端 ack 带回的原因码与那台出示的指纹；老后端没给码 ⇒ 不记）。
+pub(crate) fn dial_failed(origin: &str, why: Option<&str>, fingerprint: Option<&str>) {
     if let Some(w) = why {
-        with(origin, |e| e.dial_why = Some(w.to_string()));
+        with(origin, |e| {
+            e.dial_why = Some(w.to_string());
+            e.seen_key = fingerprint.map(str::to_string);
+        });
     }
 }
 
@@ -148,6 +204,7 @@ pub(crate) fn down(origin: &str) {
         e.state = Some(if why == "host_key" {
             MachineStateKind::HostKeyChanged
         } else {
+            e.seen_key = None;
             MachineStateKind::Down
         });
         e.reason = Some(why);
@@ -169,20 +226,25 @@ pub(crate) fn note_os(origin: &str, name: &str) {
     with(origin, |e| e.os = Some(name.to_string()));
 }
 
-/// 机器从表里拿掉 ⇒ 那一格作废。
+/// 机器从表里拿掉 ⇒ 那一格作废（读点照机器表说停用 / 没问到）。
 pub(crate) fn forget(origin: &str) {
     TABLE
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .remove(origin);
+    notify(origin);
 }
 
 /// 每一态给哪几颗修法（只在这里定）。
 pub(crate) fn fixes_of(state: MachineStateKind, reason: Option<&str>) -> Vec<MachineFix> {
     use MachineFix as F;
+    if reason == Some(LOCAL_DOWN) {
+        return vec![F::Retry];
+    }
     match state {
         MachineStateKind::Down => match reason {
             Some("auth") | Some("key_unreadable") => vec![F::PushKey, F::ConnSettings],
+            Some("password") => vec![F::PushKey],
             Some("resolve") | Some("jump") => vec![F::ConnSettings],
             Some(LOCAL_DOWN) => vec![F::Retry],
             _ => vec![F::Retry, F::ConnSettings],
@@ -216,16 +278,52 @@ pub(crate) fn product(origin: &str, enabled: bool) -> MachineState {
         version: e.version,
         version_relation: e.relation,
         os: e.os,
+        seen_host_key: if state == MachineStateKind::HostKeyChanged {
+            e.seen_key
+        } else {
+            None
+        },
     }
 }
 
+/// 本机那个口上占着的、构建与这一版不同的后端（终端里先敲 `ccm` 起的旧 / 新那一份）：它的构建标识。
+/// 起本机后端那一趟探口时记（`local_backend_host::probe_listen_port`）；是我们这一版 / 没人 ⇒ 清掉。
+static LOCAL_FOREIGN: Mutex<Option<String>> = Mutex::new(None);
+
+/// 记下（或清掉）本机口上那一份别的构建。
+pub(crate) fn note_local_foreign(build: Option<&str>) {
+    *LOCAL_FOREIGN.lock().unwrap_or_else(|e| e.into_inner()) = build.map(str::to_string);
+    notify(crate::inbound_client::LOCAL_ORIGIN);
+}
+
 /// 本机那一台的成品：版本就是手上这一版（本机后端换装只认同一版，`local_backend_host::hello_verdict`；没带后端字节 ⇒ 开发构建、不可比）；
-/// 通道在 ⇒ 连着，不在 ⇒ 没连上（原因码 `local`，修法只给［重试］）。
+/// 通道在 ⇒ 连着；不在而口上占着别的构建（终端里先起的那一份）⇒ 按两边构建的序说「要更新」/「较新」（解不出序 ⇒ 不可比、照没连上说）；
+/// 别的不在 ⇒ 没连上。本机没连上一律原因码 `local`，修法只给［重试］。
 pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
-    let state = if channel {
-        MachineStateKind::Up
-    } else {
-        MachineStateKind::Down
+    let foreign = LOCAL_FOREIGN
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    let relation = match (channel, mine, foreign.as_deref()) {
+        (true, Some(_), _) => VersionRelation::Same,
+        (false, Some(m), Some(theirs)) => {
+            match (
+                deploy_contract::build_order(theirs),
+                deploy_contract::build_order(m),
+            ) {
+                (Some(t), Some(o)) if t < o => VersionRelation::Older,
+                (Some(t), Some(o)) if t > o => VersionRelation::Newer,
+                _ => VersionRelation::Incomparable,
+            }
+        }
+        (false, Some(_), None) => VersionRelation::Same,
+        (_, None, _) => VersionRelation::Incomparable,
+    };
+    let state = match (channel, relation) {
+        (true, _) => MachineStateKind::Up,
+        (false, VersionRelation::Older) => MachineStateKind::NeedsUpdate,
+        (false, VersionRelation::Newer) => MachineStateKind::Newer,
+        (false, _) => MachineStateKind::Down,
     };
     let reason = (!channel).then(|| LOCAL_DOWN.to_string());
     MachineState {
@@ -233,13 +331,10 @@ pub(crate) fn local_product(channel: bool, mine: Option<&str>) -> MachineState {
         fixes: fixes_of(state, reason.as_deref()),
         reason,
         stage: None,
-        version: mine.map(|_| PRODUCT_VERSION.to_string()),
-        version_relation: Some(if mine.is_some() {
-            VersionRelation::Same
-        } else {
-            VersionRelation::Incomparable
-        }),
+        version: (relation == VersionRelation::Same).then(|| PRODUCT_VERSION.to_string()),
+        version_relation: Some(relation),
         os: None,
+        seen_host_key: None,
     }
 }
 

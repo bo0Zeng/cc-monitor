@@ -69,6 +69,7 @@ import type { Origin } from "../generated/Origin";
 // `K-R69`：本机那条 `ccm` 入口这一格（我们那一份 · PATH 上那一份 · 判词 · 那句话）。
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { ConfigEdit } from "../generated/ConfigEdit";
+import type { MachineFault } from "../generated/MachineFault";
 import type { DriftLedgerReport } from "../generated/DriftLedgerReport";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
@@ -160,6 +161,7 @@ export const commands = {
    * 补丁的形状由生成物 `ConfigEdit` 钉（Rust `config.rs::ConfigEdit`）；值本身仍是不透明 JSON（见 `load_config`）。
    */
   patch_config: (args: { edits: ConfigEdit[] }) => invoke<void>("patch_config", args),
+  machine_table_try: (args: { edits: ConfigEdit[] }) => invoke<MachineFault | null>("machine_table_try", args),
 
   /**
    * 写诊断配置。返回 `RestartHint` —— **它是个只有 unit variant 的外部标记枚举**

@@ -30,6 +30,9 @@ pub mod events {
     /// 弹 toast。`kind` 区分类别（"overflow" / "version" / …），payload 见
     /// [`RemoteHealthPayload`]。#33 版本协商复用同通道、只换 kind/message，不另造。
     pub const REMOTE_HEALTH: &str = "remote-health";
+    /// **某台机器的状态成品变了**：`{origin, machine}`（`machine` 与 `backend_status` 那一格同形，
+    /// `machine_state.rs`）。正在连 / 装 / 更新、连上、没连上、指纹不对 …… 一变就推一帧，界面不轮询。
+    pub const MACHINE_STATE: &str = "machine-state";
     // 「某台远端的长连接握手完成、能问话了」那个事件（`remote-backend-ready`）退役：
     //   前端经通道 `subscribe(origin, "accounts-changed")` 收同一件事（`Seen` ＝ 能问了 · `Frame` ＝ 那台账号清单变了），
     //   句柄是 `event_replay`（头注那张 kind 表）。「前端只有两个动作」。

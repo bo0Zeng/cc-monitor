@@ -20893,14 +20893,14 @@
       "zh": "需填用户",
       "args": []
     },
-    "addMachine.err.name": {
-      "kind": "error",
-      "zh": "需填名称",
-      "args": []
-    },
     "addMachine.err.none": {
       "kind": "error",
       "zh": "未选机器",
+      "args": []
+    },
+    "addMachine.err.checking": {
+      "kind": "error",
+      "zh": "核对中",
       "args": []
     },
     "addMachine.err.save": {
@@ -21007,6 +21007,46 @@
       "kind": "body",
       "zh": "{fp} · 记于 {date}",
       "args": ["fp", "date"]
+    },
+    "machineCard.hostKey.compareTitle": {
+      "kind": "title",
+      "zh": "主机指纹变更 · {machine}",
+      "args": ["machine"]
+    },
+    "machineCard.hostKey.trust": {
+      "kind": "action",
+      "zh": "信任新的指纹",
+      "args": []
+    },
+    "machineCard.hostKey.dontConnect": {
+      "kind": "action",
+      "zh": "不连接",
+      "args": []
+    },
+    "machineCard.hostKey.caution": {
+      "kind": "body",
+      "zh": "未重装 / 未换地址时勿信任 · 先向管理员核实",
+      "args": []
+    },
+    "machineCard.hostKey.pinned": {
+      "kind": "body",
+      "zh": "记下的",
+      "args": []
+    },
+    "machineCard.hostKey.pinnedAt": {
+      "kind": "body",
+      "zh": "记于 {date}",
+      "args": ["date"]
+    },
+    "machineCard.hostKey.seen": {
+      "kind": "body",
+      "zh": "现在的",
+      "args": []
+    },
+    "machineCard.hostKey.none": {
+      "kind": "body",
+      "zh": "无",
+      "args": []
     },
     "machineCard.uninstall.open": {
       "kind": "action",
@@ -21153,6 +21193,11 @@
       "zh": "连接失败 · 密钥被拒",
       "args": []
     },
+    "machineState.down.password": {
+      "kind": "body",
+      "zh": "连接失败 · 仅密码登录 · cc-monitor 只用密钥",
+      "args": []
+    },
     "machineState.down.keyUnreadable": {
       "kind": "body",
       "zh": "连接失败 · 私钥读不出",
@@ -21171,6 +21216,41 @@
     "machineState.word.connecting": {
       "kind": "body",
       "zh": "连接中",
+      "args": []
+    },
+    "machineState.word.installing": {
+      "kind": "body",
+      "zh": "安装中",
+      "args": []
+    },
+    "machineState.word.updating": {
+      "kind": "body",
+      "zh": "更新中",
+      "args": []
+    },
+    "machineState.busy.connecting": {
+      "kind": "body",
+      "zh": "连接 {machine} · {stage}",
+      "args": ["machine", "stage"]
+    },
+    "machineState.busy.installing": {
+      "kind": "body",
+      "zh": "安装 cc-monitor → {machine}",
+      "args": ["machine"]
+    },
+    "machineState.busy.updating": {
+      "kind": "body",
+      "zh": "更新 {machine} · cc-monitor",
+      "args": ["machine"]
+    },
+    "machineState.stage.deploy": {
+      "kind": "body",
+      "zh": "核对版本",
+      "args": []
+    },
+    "machineState.stage.attach": {
+      "kind": "body",
+      "zh": "启动 cc-monitor",
       "args": []
     },
     "machineState.word.hostKey": {

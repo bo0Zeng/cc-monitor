@@ -2,6 +2,8 @@
 // UI 模块里、被 tabs/account-chip/cards/main/port-forward 等非 UI 模块依赖）。本模块**纯数据**：
 // config.json `remote` 段的类型 + 读写 CRUD + 反查/筛选纯函数，无 DOM、无 UI 依赖。行为与抽出前逐字节等价。
 import { loadConfig, patchConfig, type ConfigEdit } from "./config";
+import { commands } from "./ipc/commands";
+import type { MachineFault } from "./generated/MachineFault";
 import { copyText } from "./copy-table";
 
 /**
@@ -291,6 +293,15 @@ export async function patchRemoteConfig(
 ): Promise<void> {
   const edits = remoteHostsEdits(patch);
   if (edits.length > 0) await patchConfig(edits);
+}
+
+/**
+ * 这一次局部修改若现在落盘，机器表那一道过不过（试算，盘上不动；与写口同一份规则）。过 ⇒ `null`。
+ */
+export async function tryRemoteConfig(patch: RemoteHostsPatch): Promise<MachineFault | null> {
+  const edits = remoteHostsEdits(patch);
+  if (edits.length === 0) return null;
+  return (await commands.machine_table_try({ edits })) ?? null;
 }
 
 /**

@@ -65,6 +65,10 @@ export interface World {
   closedMachines: string[];
   /** 那台的 cc-monitor 比这一版旧（状态成品 `needs_update`）。 */
   staleMachines: string[];
+  /** 主机指纹与记下的不一样的那几台（状态成品 `host_key_changed`，带那台出示的那一枚）。 */
+  hostKeyChanged?: string[];
+  /** 正在把 cc-monitor 装上去的那几台（状态成品 `installing`）。 */
+  installingMachines?: string[];
   /** 订阅时看得见、交完会话之后断了的那几台（随后一格 `unseen`，断在读那一跳）。 */
   droppedMachines?: string[];
   config: Record<string, unknown>;

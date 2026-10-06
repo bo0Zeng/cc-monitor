@@ -83,6 +83,7 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ),
     ("load_config", Own::Config, "本机 monitor 配置"),
     ("patch_config", Own::Config, "本机 monitor 配置"),
+    ("machine_table_try", Own::Config, "本机 monitor 配置（机器表试算，不写盘）"),
     (
         "cc_get_auto_launch",
         Own::Config,

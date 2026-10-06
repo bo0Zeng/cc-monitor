@@ -371,6 +371,22 @@ describe("fetchAccounts TTL 缓存", () => {
     expect(invokeMock).toHaveBeenCalledTimes(1);
     __resetAccountsCacheForTest();
   });
+  it("没问到 ⇒ 带着这次运行里那台最近一次答成的那一份（画「上次的」），此刻的事实照旧是不可用", async () => {
+    __resetAccountsCacheForTest();
+    loadCfg.mockResolvedValue({});
+    const meta = { enabled: true, acctsDir: "/a", manifestPath: "/a/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null };
+    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => ({ available: true, error: null, meta, accounts: [acct({})] }))));
+    const first = await fetchAccounts("devbox");
+    expect(first.available).toBe(true);
+    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => Promise.reject("连不上"))));
+    const down = await fetchAccounts("devbox", true);
+    expect(down.available).toBe(false);
+    expect(down.accounts, "上次的混进了此刻的事实").toEqual([]);
+    expect(down.last?.accounts).toEqual(first.accounts);
+    expect(down.last?.meta).toEqual(first.meta);
+    expect((await fetchAccounts("nano", true)).last ?? null, "没答成过的那台也说有上次").toBeNull();
+    __resetAccountsCacheForTest();
+  });
   it("首次 fetch 命中 invoke，TTL 内不重发", async () => {
     loadCfg.mockResolvedValue({});
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => ({ available: true, error: null, meta: { enabled: true, acctsDir: "/a", manifestPath: "/a/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null }, accounts: [acct({})] }))));

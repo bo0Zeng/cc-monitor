@@ -16,7 +16,8 @@
         "version": "<ver>",
         "versionRelation": "same",
         "os": null,
-        "fixes": []
+        "fixes": [],
+        "seenHostKey": null
       }
     },
     {
@@ -28,7 +29,34 @@
         "version": null,
         "versionRelation": null,
         "os": null,
-        "fixes": []
+        "fixes": [],
+        "seenHostKey": null
+      }
+    },
+    {
+      "name": "正在装",
+      "machine": {
+        "state": "installing",
+        "reason": null,
+        "stage": null,
+        "version": null,
+        "versionRelation": null,
+        "os": null,
+        "fixes": [],
+        "seenHostKey": null
+      }
+    },
+    {
+      "name": "正在更新",
+      "machine": {
+        "state": "updating",
+        "reason": null,
+        "stage": null,
+        "version": null,
+        "versionRelation": null,
+        "os": null,
+        "fixes": [],
+        "seenHostKey": null
       }
     },
     {
@@ -43,7 +71,8 @@
         "fixes": [
           "push_key",
           "conn_settings"
-        ]
+        ],
+        "seenHostKey": null
       }
     },
     {
@@ -58,7 +87,23 @@
         "fixes": [
           "retry",
           "conn_settings"
-        ]
+        ],
+        "seenHostKey": null
+      }
+    },
+    {
+      "name": "要密码",
+      "machine": {
+        "state": "down",
+        "reason": "password",
+        "stage": null,
+        "version": null,
+        "versionRelation": null,
+        "os": null,
+        "fixes": [
+          "push_key"
+        ],
+        "seenHostKey": null
       }
     },
     {
@@ -72,7 +117,8 @@
         "os": null,
         "fixes": [
           "compare_fingerprint"
-        ]
+        ],
+        "seenHostKey": "SHA256:new"
       }
     },
     {
@@ -86,7 +132,8 @@
         "os": null,
         "fixes": [
           "update"
-        ]
+        ],
+        "seenHostKey": null
       }
     },
     {
@@ -98,7 +145,8 @@
         "version": null,
         "versionRelation": "newer",
         "os": null,
-        "fixes": []
+        "fixes": [],
+        "seenHostKey": null
       }
     },
     {
@@ -110,7 +158,8 @@
         "version": null,
         "versionRelation": "incomparable",
         "os": null,
-        "fixes": []
+        "fixes": [],
+        "seenHostKey": null
       }
     },
     {
@@ -122,7 +171,8 @@
         "version": null,
         "versionRelation": null,
         "os": null,
-        "fixes": []
+        "fixes": [],
+        "seenHostKey": null
       }
     },
     {
@@ -136,7 +186,8 @@
         "os": null,
         "fixes": [
           "connect"
-        ]
+        ],
+        "seenHostKey": null
       }
     },
     {
@@ -150,7 +201,8 @@
         "os": null,
         "fixes": [
           "retry"
-        ]
+        ],
+        "seenHostKey": null
       }
     }
   ]

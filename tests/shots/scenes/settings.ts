@@ -54,7 +54,59 @@ function oddConfigWorld(): World {
   return w;
 }
 
+function hostKeyWorld(): World {
+  const w = defaultWorld();
+  w.hostKeyChanged = ["gpu-01"];
+  return w;
+}
+
+function installingWorld(): World {
+  const w = defaultWorld();
+  w.installingMachines = ["gpu-01"];
+  return w;
+}
+
+/** 一帧状态成品（推送那一路的样子；形状同金样）。 */
+const pushed = (state: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({
+  state,
+  reason: null,
+  stage: null,
+  version: null,
+  versionRelation: null,
+  os: "Linux",
+  fixes: [],
+  seenHostKey: null,
+  ...extra,
+});
+
 export const SETTINGS_SCENES: Scene[] = [
+  settings("settings-ssh-import-taken", "设置 · 添加机器 · 撞名", "从 ~/.ssh/config 选：build-02 改名成 gpu-01（列表里已有），就地拦", async () => {
+    await go("machines");
+    await click(await byText("button", "添加机器"));
+    await sleep(1200);
+    const box = [...document.querySelectorAll<HTMLInputElement>(".add-machine-row input[type=text]")].find((i) => i.value === "build-02")!;
+    box.value = "gpu-01";
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+    await sleep(800);
+  }),
+  settings("settings-machines-hostkey", "设置 · 机器 · 主机指纹变了", "gpu-01 出示的指纹与记下的不一样：问题行［比对指纹…］", async () => {
+    await go("machines");
+  }, hostKeyWorld),
+  settings("settings-hostkey-compare", "设置 · 比对主机指纹", "点［比对指纹…］：记下的 · 现在的 · 记于何时，默认焦点「不连接」", async () => {
+    await go("machines");
+    await click(await byText(".machine-problem button", "比对指纹…"));
+    await sleep(800);
+  }, hostKeyWorld),
+  settings("settings-machines-installing", "设置 · 机器 · 正在装", "gpu-01 正在装 cc-monitor：虚线点 ＋「安装中」＋ 进度条", async () => {
+    await go("machines");
+  }, installingWorld),
+  settings("settings-machines-pushed", "设置 · 机器 · 状态推送", "页面开着时壳推来两帧：devbox 正在连（启动 cc-monitor）、gpu-01 正在更新 —— 那两行原位换", async () => {
+    await go("machines");
+    await emit("machine-state", { origin: "devbox", machine: pushed("connecting", { stage: "attach" }) });
+    await emit("machine-state", { origin: "gpu-01", machine: pushed("updating") });
+    await sleep(800);
+  }),
+
   settings("settings-landing", "设置 · 打开时", "设置窗打开时落在的那一页", async () => {
     await waitFor(".settings-nav");
     await sleep(1500);

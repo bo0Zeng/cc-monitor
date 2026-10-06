@@ -359,9 +359,23 @@ fn probe_listen_port(port: u16, want_env: &[(String, String)]) -> Probe {
             ))
         }
     };
-    match hello_verdict(&line, crate::byte_table::my_backend_id(), want_env) {
-        HelloVerdict::Ours => Probe::Ours(sock, line),
-        HelloVerdict::Stranger(why) => Probe::Stranger(why),
+    let mine = crate::byte_table::my_backend_id();
+    match hello_verdict(&line, mine, want_env) {
+        HelloVerdict::Ours => {
+            crate::machine_state::note_local_foreign(None);
+            Probe::Ours(sock, line)
+        }
+        HelloVerdict::Stranger(why) => {
+            // 占着口的是另一份构建（终端里先起的那一份）⇒ 本机那一台的状态成品按两边构建的序说。
+            if let Ok(crate::stream_source::InboundFrame::Hello { build_id, .. }) =
+                crate::stream_source::parse_frame(&line)
+            {
+                if mine.is_some_and(|m| m != build_id) {
+                    crate::machine_state::note_local_foreign(Some(&build_id));
+                }
+            }
+            Probe::Stranger(why)
+        }
     }
 }
 

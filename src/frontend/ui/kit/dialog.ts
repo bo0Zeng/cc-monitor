@@ -33,6 +33,8 @@ export interface ConfirmSpec {
   rows?: DialogRow[];
   /** 一批对象（限高可滚，超过 8 项只列前 8）。 */
   list?: string[];
+  /** 取消键的名字（不给 ⇒「取消」）：不做那件事本身就是一个动作时用（「不连接」）。 */
+  cancel?: string;
 }
 
 /** 「问一句要不要做」的注入缝（测试注入 `() => true`）；调用方一律 `await`。 */
@@ -185,6 +187,7 @@ function run<T>(
 /** 确认一件事。确认 ⇒ `true`；取消 · 点遮罩 · Esc · 被下一个对话框顶掉 ⇒ `false`。 */
 export function confirmDialog(spec: ConfirmSpec): Promise<boolean> {
   const b = build(spec.title, spec.action, spec.danger === true);
+  if (spec.cancel) setButtonLabel(b.cancel, spec.cancel);
   fillBody(b.body, spec);
   return run(b, false, () => true, spec.danger ? b.cancel : b.ok, () => false);
 }

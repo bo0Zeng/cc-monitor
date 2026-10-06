@@ -236,6 +236,8 @@ describe("C01 边界生成物", () => {
       // 额度显示态：一个号拿不拿得到登录（后端 `accounts/quota/show.rs`）。
       "LoginState.ts",
       // 设置窗机器列表 / 卡头那一格：一台的状态成品 · 闭集的态 · 修法（monitor `machine_state.rs`）。
+      "MachineFault.ts",
+      "MachineFaultCode.ts",
       "MachineFix.ts",
       "MachineState.ts",
       "MachineStateKind.ts",
@@ -710,10 +712,11 @@ describe("C02 事件名钉死", () => {
     //   `remote-session-added` · `origin-sessions-listed` · `snapshot-inflight`）并进会话流 `subscribe(origin, "session-lines")`（`ui_contract.rs::SessionStreamFrame`）；
     //   剩 `frontend-ready` · `remote-health` · `task-update`。
     // 主线 11 ＋ MIG-1 −9 ⇒ 2（剩 `frontend-ready` · `remote-health`）。
-    expect(pairs.length, `期望恰好 2 个事件名常量，实得 ${pairs.length}`).toBe(2);
+    // 2 → 3：`MACHINE_STATE`（"machine-state"，每台机器的状态成品一变就推一帧），由 `machine-feed.ts` 订阅。
+    expect(pairs.length, `期望恰好 3 个事件名常量，实得 ${pairs.length}`).toBe(3);
 
     // 每个字面量必须在 TS 侧真的被订阅/emit（剥注释后再找，防散文里提过就算）
-    const tsFiles = ["src/frontend/ui/events.ts", "src/frontend/ui/main.ts", "src/frontend/ui/remote-health.ts"];
+    const tsFiles = ["src/frontend/ui/events.ts", "src/frontend/ui/main.ts", "src/frontend/ui/remote-health.ts", "src/frontend/ui/machine-feed.ts"];
     const tsCode = tsFiles.map((f) => code(read(f))).join("\n");
     // `events.ts` 里那个 `sub<` 包装随最后几条 Tauri 监听退役没了，自检改认一个今天真在的调用形。
     expect(tsCode, "剥过头了").toContain("chan.subscribe(");

@@ -177,26 +177,17 @@ fn backend_status_now(origin: String) -> Result<serde_json::Value, String> {
     // ⚠ 三格一起算，是因为 `the_three_ports_are_one_command_each_and_all_take_origin`
     // 逐口只许有**一处** `is_local(&origin)` 分派 —— 那条判据钉的正是「本机那一支只有一个入口」。
     // 那台的状态成品（判定只在 `machine_state`）同一处分派：本机按通道与手上这一版；远端按那张表，「连接这台」关着 ⇒ 停用。
-    let (pid, attempts, detached, machine) = if is_local(&origin) {
+    let (pid, attempts, detached) = if is_local(&origin) {
         let (p, a) = crate::local_backend_host::local_pid_and_attempts()?;
         (
             p,
             a,
             serde_json::json!(crate::local_backend_host::is_detached()),
-            crate::machine_state::local_product(channel, crate::byte_table::my_backend_id()),
         )
     } else {
-        let enabled = crate::load_all_remote_configs()
-            .into_iter()
-            .find(|(c, _)| c.origin_label() == origin)
-            .is_none_or(|(_, connect)| connect);
-        (
-            None,
-            None,
-            serde_json::Value::Null,
-            crate::machine_state::product(&origin, enabled),
-        )
+        (None, None, serde_json::Value::Null)
     };
+    let machine = machine_product(&origin, channel);
     // ★★ `K-P3b KP3W4`：**死亡账的读数也从这一口出去。**
     //
     // ⚠ 它**不走 `is_local` 分派**，理由是硬的：那张账是按 origin 存的
@@ -222,6 +213,19 @@ fn backend_status_now(origin: String) -> Result<serde_json::Value, String> {
         //   原来这里交出去的四个计数与短摘要是原料，界面拿它再判一遍三档 —— 那一份判定随原料一起不上线了。
         "health": crate::backend_policy::health_face(&h),
     }))
+}
+
+/// 那台的状态成品（`backend_status` 的 `machine` 一格与 `machine-state` 推送同一处）：本机按通道与手上这一版；
+/// 远端按那张表，「连接这台」关着 ⇒ 停用。
+pub(crate) fn machine_product(origin: &str, channel: bool) -> crate::machine_state::MachineState {
+    if is_local(origin) {
+        return crate::machine_state::local_product(channel, crate::byte_table::my_backend_id());
+    }
+    let enabled = crate::load_all_remote_configs()
+        .into_iter()
+        .find(|(c, _)| c.origin_label() == origin)
+        .is_none_or(|(_, connect)| connect);
+    crate::machine_state::product(origin, enabled)
 }
 
 /// P2s（`C8`②）：**起这台机的 backend**。已经在跑就是 no-op（`C8`①：每台机只许一个）。

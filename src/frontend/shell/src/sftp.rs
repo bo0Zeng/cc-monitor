@@ -403,6 +403,7 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Deplo
                 "远端 [{}] 自动部署后端（{reason}）→ {LANDING_SHOWN}",
                 cfg.origin_label(),
             );
+            crate::machine_state::deploying_auto(&cfg.origin_label());
             fs.mkdirs(remote_parent(LANDING_REL)).await?;
             upload_verified(&fs, LANDING_REL, bin.bytes, 0o700).await?;
             tracing::info!(
@@ -481,6 +482,7 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
             ],
         ),
         DeployAction::Deploy(reason) => {
+            crate::machine_state::deploying(&cfg.origin_label(), false);
             fs.mkdirs(remote_parent(LANDING_REL)).await?;
             upload_verified(&fs, LANDING_REL, bin.bytes, 0o700).await?;
             tracing::info!(

@@ -38,6 +38,10 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
           const u = new TextEncoder().encode(JSON.stringify({ name: minted }));
           return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
         }
+        // 机器表试算口：照假盘那一份现算（规则的合成版在 `config-patch-fake.ts`）。
+        if (name === "machine_table_try") {
+          return fakeMachineTableTry((args[0] as { edits: never[] }).edits);
+        }
         const reply = ipcReplies.get(name);
         // 回一个 `Error` ⇒ 这条命令 reject（「没问到」那一形；线上是后端回 `Err`）。
         return reply instanceof Error ? Promise.reject(reply) : Promise.resolve(reply);
@@ -71,7 +75,7 @@ vi.mock("../../../../src/frontend/ui/ssh-config-reads", () => {
   };
 });
 import { loadConfig } from "../../../../src/frontend/ui/config";
-import { fakeCfg } from "../config-patch-fake";
+import { fakeCfg, fakeMachineTableTry } from "../config-patch-fake";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { dispatcher } from "../../../../src/frontend/ui/keybindings/registry";
 import { refusedReply } from "../../../test-support/chan-fake";
@@ -116,7 +120,7 @@ function menuItem(label: string): HTMLButtonElement {
 /** 开「添加机器」框（kit 对话框挂在 body 上）。 */
 async function openAdd(sec: RemoteSection): Promise<HTMLElement> {
   sec.headActions()[0]!.click();
-  for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0));
+  for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
   return document.querySelector<HTMLElement>('[role="dialog"]')!;
 }
 
@@ -996,8 +1000,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   const change = async (input: HTMLInputElement, v: string): Promise<void> => {
     input.value = v;
     input.dispatchEvent(new Event("change"));
-    await tick();
-    await tick();
+    for (let i = 0; i < 6; i++) await tick();
   };
 
   it("每台的续跑命令重开后照样回填；改别台时不被抹成空", async () => {
@@ -1094,6 +1097,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       const name = dlg.querySelector<HTMLInputElement>(".add-machine-row input:not([type=checkbox])")!;
       name.value = "gpu-2";
       name.dispatchEvent(new Event("input"));
+      for (let i = 0; i < 5; i++) await tick();
       expect(okBtn(dlg).hasAttribute("aria-disabled")).toBe(false);
       okBtn(dlg).click();
       for (let i = 0; i < 5; i++) await tick();
@@ -1115,6 +1119,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       host!.value = "7.7.7.7";
       user!.value = "root";
       for (const i of [name, host, user]) i!.dispatchEvent(new Event("input"));
+      for (let i = 0; i < 5; i++) await tick(); // 等机器表那一道答回来
       vi.mocked(fakeCfg.patches).mockImplementationOnce(() => {
         throw new Error("disk full");
       });

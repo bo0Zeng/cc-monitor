@@ -35,4 +35,8 @@ os: string | null,
 /**
  * 那一行上给的修法（按 `state` 与 `reason` 定）。
  */
-fixes: Array<MachineFix>, };
+fixes: Array<MachineFix>, 
+/**
+ * 指纹不对时那台这一次出示的主机指纹（`host_key_changed` 才有；与记下的那枚比对用）。
+ */
+seenHostKey: string | null, };

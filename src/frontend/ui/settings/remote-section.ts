@@ -29,6 +29,7 @@ import { openPortForwardPanel } from "../views/port-forward";
 import { recordFacet, LOCAL_MACHINE_KEY, forgetMachine, renameMachine } from "./machine-status";
 import {
   readRemoteConfig,
+  tryRemoteConfig,
   patchRemoteConfig,
   hostKey,
   findHostByOrigin,
@@ -48,7 +49,7 @@ import { toast, undoToast } from "../kit/toast";
 import { openAddMachine } from "./add-machine";
 import { localMeta, machineMeta, NO_FACTS, type MachineFacts, type MachineSection } from "./machine-page";
 import { fetchAccounts, fetchLocalAccounts } from "../account-reads";
-import { fixLabel, machineFace, type MachineFace, type MachineFix, type MachineState } from "./machine-state";
+import { machineFace, paintProblem, type MachineFace, type MachineFix, type MachineState } from "./machine-state";
 import { isLocalOrigin } from "../ipc/origin";
 import type { AccountsState } from "../accounts";
 import { moveMachinePrefs } from "../account-prefs";
@@ -163,12 +164,14 @@ export const LOCAL_MACHINE_PAGE_ID = `${MACHINE_PAGE_PREFIX}${LOCAL_MACHINE_KEY}
  * `os` 是那台的系统名（报了才有）。
  */
 export function accountsSummary(state: AccountsState, os: string | null): string {
-  const meta = state.meta;
-  if (!state.available || meta === null) return "";
+  // 这一次没问到 ⇒ 画这次运行里那台最近一次答成的那一份（离线 / 要更新那台照出上次的值）。
+  const got = state.available ? { meta: state.meta, accounts: state.accounts } : (state.last ?? { meta: null, accounts: [] });
+  const meta = got.meta;
+  if (meta === null) return "";
   if (meta.unsupported) return os ? copyText("machineList.summary.single", { os }) : copyText("machineList.summary.singleBare");
   if (!meta.enabled) return copyText("machineList.summary.notEnabled");
-  const n = state.accounts.length;
-  const def = state.accounts.find((a) => a.isDefault);
+  const n = got.accounts.length;
+  const def = got.accounts.find((a) => a.isDefault);
   return def ? copyText("machineList.summary.accounts", { n, name: def.name }) : copyText("machineList.summary.count", { n });
 }
 
@@ -209,6 +212,8 @@ export class RemoteSection {
   private readonly facts = new Map<string, MachineFacts>();
   /** 各页最近一次照成品画出的样子（数「几台离线 · 几台要更新」用）。 */
   private readonly faces = new Map<string, MachineFace>();
+  /** 每台最近一帧的状态成品（比对指纹要那台出示的那一枚）。 */
+  private readonly states = new Map<string, MachineState>();
   /** 各页最近一次喂进来的连接（数「几台离线」用）。 */
   private readonly connected = new Map<string, boolean | null>();
 
@@ -357,10 +362,10 @@ export class RemoteSection {
    * 右侧那一句：那台账号库的概况（`N 个账号 · 默认 X` ／ 未启用多账号 ／ `Windows · 单账号`）。
    * 连上了才问（问的是已连着的那条通道，不另拨）；问不到 ⇒ 空着。
    */
-  private async loadSummary(row: HTMLElement): Promise<void> {
+  private async loadSummary(row: HTMLElement, link: "up" | "down"): Promise<void> {
     const origin = row.dataset.origin ?? "";
-    if (origin === "" || row.dataset.summaryAsked === "true") return;
-    row.dataset.summaryAsked = "true";
+    if (origin === "" || row.dataset.summaryAsked === link) return;
+    row.dataset.summaryAsked = link;
     const state = isLocalOrigin(origin) ? await fetchLocalAccounts() : await fetchAccounts(origin);
     const box = row.querySelector<HTMLElement>(".remote-machine-summary");
     if (box) box.textContent = accountsSummary(state, this.factsOfOrigin(origin).os);
@@ -421,7 +426,7 @@ export class RemoteSection {
     }
     this.connected.set(pageId, connected);
     this.paintCount();
-    if (connected === true) void this.loadSummary(row);
+    if (connected === true) void this.loadSummary(row, "up");
     [...this.pageIdOf.entries()].find(([, id]) => id === pageId)?.[0].showLive(connected === true);
   }
 
@@ -436,47 +441,33 @@ export class RemoteSection {
     const word = row.querySelector<HTMLElement>(".remote-machine-word");
     if (word) word.textContent = face.word;
     const problem = row.querySelector<HTMLElement>(".machine-problem");
-    if (problem) {
-      problem.replaceChildren();
-      problem.hidden = face.problem === "";
-      if (face.problem !== "") {
-        const text = document.createElement("span");
-        text.textContent = face.problem;
-        problem.dataset.severity = face.dot === "needs-you" ? "warn" : "error";
-        problem.append(icon(face.dot === "needs-you" ? "warning" : "error", "compact"), text);
-        for (const fix of face.fixes) {
-          problem.appendChild(
-            button({
-              label: fixLabel(fix),
-              size: "compact",
-              kind: fix === "update" ? "primary" : "secondary",
-              onClick: (ev) => {
-                ev.stopPropagation();
-                this.runFix(pageId, fix);
-              },
-            }),
-          );
-        }
-      }
-    }
+    if (problem) paintProblem(problem, face, (fix) => this.runFix(pageId, fix));
     this.faces.set(pageId, face);
+    this.states.set(pageId, m);
     const up = m.state === "up" || m.state === "needs_update" || m.state === "newer";
     this.connected.set(pageId, up);
     this.paintCount();
-    if (up) void this.loadSummary(row);
+    // 连着 ⇒ 问那台；没连着 ⇒ 问一次拿「上次的」（壳记的最近一次）。连没连着一变就重问。
+    if (m.state !== "disabled" && m.state !== "unknown") void this.loadSummary(row, up ? "up" : "down");
     [...this.pageIdOf.entries()].find(([, id]) => id === pageId)?.[0].showLive(up);
   }
 
   /** 问题行的修法：连接这台 / 连接设置在这里就做得了，其余交宿主。 */
   private runFix(pageId: string, fix: MachineFix): void {
     if (fix === "connect") this.setConnect(pageId, true);
-    else if (fix === "conn_settings" || fix === "compare_fingerprint") this.pages?.openMachineSection?.(pageId, "conn");
+    else if (fix === "conn_settings") this.pages?.openMachineSection?.(pageId, "conn");
+    else if (fix === "compare_fingerprint") void this.compareFingerprint(pageId);
     else if (fix === "push_key") this.cardOfPage(pageId)?.pushKey();
     else this.pages?.runFix?.(pageId, fix);
   }
 
   private cardOfPage(pageId: string): MachineCard | undefined {
     return [...this.pageIdOf.entries()].find(([, id]) => id === pageId)?.[0];
+  }
+
+  /** 问题行［比对指纹…］：记下的那枚与那台这一次出示的那枚并排，信任与否在机器卡。 */
+  async compareFingerprint(pageId: string): Promise<void> {
+    await this.cardOfPage(pageId)?.compareFingerprint(this.states.get(pageId)?.seenHostKey ?? null);
   }
 
   /** 问题行［更新］：把这一版换到那台上（那一颗住机器卡）。 */
@@ -692,7 +683,7 @@ export class RemoteSection {
         onChange: () => void this.save(),
         onRemove: (c) => this.removeCard(c),
         onStatusChanged: (c) => this.refreshMachineRow(c),
-        nameTaken: (c, origin) => this.originTaken(origin, c),
+        tryCells: (c, next) => tryRemoteConfig({ upsert: [{ key: c.persistedKey, value: next, was: c.persistedKey === null ? undefined : findHostByOrigin(this.original.hosts, c.persistedKey) ?? undefined }] }),
       },
       collapsed,
       persistedKey,
@@ -772,11 +763,6 @@ export class RemoteSection {
     return id;
   }
 
-  /** 列表里（除 `except` 那张）已经有一台叫 `origin` 了。 */
-  private originTaken(origin: string, except?: MachineCard): boolean {
-    return this.cards.some((c) => c !== except && hostKey(c.collect()) === origin);
-  }
-
   /**
    * 某一页此刻讲的是哪台：按那张卡现在的名字（改过名的是新名）。还没名字的空白卡、不是机器页 ⇒ `null`。
    * 页 id 建卡时定死、不跟着改名走，所以「切到这一页 = 看哪台」要问这里，不能从页 id 里抠。
@@ -836,7 +822,7 @@ export class RemoteSection {
   /** 「添加机器」：框里点「添加」才建卡、写盘；没存上 ⇒ 卡收回去、框不关。 */
   private openAdd(): Promise<boolean> {
     return openAddMachine({
-      existing: () => this.cards.map((c) => c.collect()),
+      tryAdd: (cfgs) => tryRemoteConfig({ upsert: cfgs.map((value) => ({ key: null, value })) }),
       groups: () => importSshHosts(this.cards.map((c) => c.collect()).map((h) => ({ host: h.host, user: h.user, port: h.port || 22 }))),
       add: async (cfgs) => {
         const cards = cfgs.map((c) => this.appendCard(c));

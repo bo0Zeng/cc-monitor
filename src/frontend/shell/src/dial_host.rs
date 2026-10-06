@@ -367,10 +367,14 @@ async fn open(
             why,
             open_refused,
             reason,
-            ..
+            fingerprint,
         })) => {
-            // 后端带回的原因码进那台的状态成品（这一轮收尾时按它说那一句、给修法）。
-            crate::machine_state::dial_failed(&cfg.origin_label(), reason.as_deref());
+            // 后端带回的原因码与那台出示的指纹进那台的状态成品（这一轮收尾时按它说那一句、给修法）。
+            crate::machine_state::dial_failed(
+                &cfg.origin_label(),
+                reason.as_deref(),
+                fingerprint.as_deref(),
+            );
             return Err((why, open_refused));
         }
         Ok(Err(e)) => return Err((e.to_string(), None)),

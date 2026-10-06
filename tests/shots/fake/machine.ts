@@ -167,9 +167,12 @@ export function machineOps(): Record<string, OpHandler> {
   };
 }
 
-/** 那台的状态成品（形状同 `tests/__fixtures__/machine-state.golden.json`）：看不见的那台 ＝ 密钥被拒；Windows 那台没系统名可报。 */
+/** 那台的状态成品（形状同 `tests/__fixtures__/machine-state.golden.json`）：看不见的那台 ＝ 密钥被拒。 */
 function machineOf(origin: string, w: World): Record<string, unknown> {
-  const base = { stage: null, os: origin === "win-laptop" ? null : "Linux", version: "4.1.1" as string | null, versionRelation: "same" as string | null };
+  const base = { stage: null, os: origin === "win-laptop" ? "Windows" : "Linux", version: "4.1.1" as string | null, versionRelation: "same" as string | null, seenHostKey: null as string | null };
+  if (w.installingMachines?.includes(origin)) return { ...base, state: "installing", reason: null, version: null, versionRelation: null, fixes: [] };
+  if (w.hostKeyChanged?.includes(origin))
+    return { ...base, state: "host_key_changed", reason: "host_key", version: null, versionRelation: null, fixes: ["compare_fingerprint"], seenHostKey: "SHA256:Zq81nVb0cR2yT6wXe4uLm9kPp3sHd7fJg5aQiO1tYw8" };
   if (w.staleMachines.includes(origin)) return { ...base, state: "needs_update", reason: null, version: null, versionRelation: "older", fixes: ["update"] };
   if (!w.unseenMachines.includes(origin)) return { ...base, state: "up", reason: null, fixes: [] };
   return { ...base, state: "down", reason: "auth", version: null, versionRelation: null, fixes: ["push_key", "conn_settings"] };
@@ -177,6 +180,8 @@ function machineOf(origin: string, w: World): Record<string, unknown> {
 
 export function machineCommands(): Record<string, CommandHandler> {
   return {
+    // 机器表试算口：同名 · 端口 · 地址 / 用户空（与真写口同一张规则的合成版，按盘上那张表 ＋ 这一批新增的算）。
+    machine_table_try: (a, w) => tryMachineTable(a.edits as Record<string, unknown>[], w),
     list_remote_mcp_origins: (_a, w) => w.machines.slice(1).filter((m) => !w.unseenMachines.includes(m)),
     backend_status: (a, w) => ({
       channel: !w.unseenMachines.includes(String(a.origin)),
@@ -227,4 +232,30 @@ export function machineCommands(): Record<string, CommandHandler> {
     drift_ledger_report: (a) => ({ origin: String(a.origin ?? "<local>"), faces: [] }),
     footprint_client_facts: () => ({}),
   };
+}
+
+/** 合成的机器表试算：只认新增（`insertin`）与改名 / 改端口（`setin`），够场景用。 */
+function tryMachineTable(edits: Record<string, unknown>[], w: World): Record<string, unknown> | null {
+  const remote = (w.config.remote ?? {}) as { hosts?: Record<string, unknown>[] };
+  const hosts = (remote.hosts ?? []).map((h) => ({ ...h }));
+  const keyOf = (h: Record<string, unknown>): string => String(h.label ?? "").trim() || String(h.host ?? "").trim();
+  for (const e of edits) {
+    if (e.op === "insertin") hosts.push({ ...(e.value as Record<string, unknown>) });
+    if (e.op === "setin") {
+      const where = (e.where as { equals: string }[])[0]?.equals;
+      const h = hosts.find((x) => keyOf(x) === where);
+      if (h) h[String(e.field)] = e.value;
+    }
+  }
+  const seen = new Set<string>();
+  for (const h of hosts) {
+    const name = keyOf(h);
+    if (String(h.host ?? "").trim() === "") return { code: "no_host", name };
+    if (String(h.user ?? "").trim() === "") return { code: "no_user", name };
+    const port = h.port === undefined || h.port === null ? 22 : Number(h.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) return { code: "port", name };
+    if (seen.has(name)) return { code: "name_taken", name };
+    seen.add(name);
+  }
+  return null;
 }

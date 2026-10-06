@@ -76,20 +76,25 @@ monitor 自己的设置（主题 / 字体 / claudeDir override / 诊断）。
 
 **机器表（`remote.hosts`）那一口的校验**：补丁动了认人的那几格（`insertin` 加一台 · `setin` 改 `label` / `host` / `port` / `user` · `set` 整段写）⇒
 应用之后整张表要成立，否则整批拒、盘上一个字节不动（`config.rs::check_machine_table`）：名字（`label` 非空取它、否则 `host`，去首尾空白、大小写敏感）不重 ·
-`port` 1–65535（缺 ＝ 22）· `host` 与 `user` 非空。拒的那一句点名是哪台、哪一格（`rsConfig.machine.*`）。单台改、添加一台、批量添加都走这一口。
+`port` 1–65535（缺 ＝ 22）· `host` 与 `user` 非空；往表里加一台而同名的已在，同样说成同名。拒的那一句点名是哪台、哪一格（`rsConfig.machine.*`）。单台改、添加一台、批量添加都走这一口。
+**试算口** Tauri `machine_table_try(edits)`：同一串补丁若现在落盘，这一道过不过 —— 过 ⇒ `null`；不过 ⇒ `{code, name}`（`code` 闭集 `no_host` · `no_user` · `port` · `name_taken`），
+盘上不动；界面边打边问它、按码取那一句（与写口同一份规则，`config.rs::apply_and_check`）。
 固化指纹、改恢复命令这类不认人的格不查（别的格写不进去不该挡住它们）。
 每台另有一格 `hostKeyPinnedAt`（`YYYY-MM-DD`，指纹记下的那一天；自动记下与手动记录都写，只给人看，拨号不读）。
 
 **机器状态成品**（设置窗机器列表 / 卡头那一格；Tauri `backend_status` 的 `machine`，判定只在 `machine_state.rs`）：
 
 ```json
-{ "state": "down", "reason": "auth", "stage": null, "version": null, "versionRelation": null, "os": "Linux", "fixes": ["push_key", "conn_settings"] }
+{ "state": "down", "reason": "auth", "stage": null, "version": null, "versionRelation": null, "os": "Linux", "fixes": ["push_key", "conn_settings"], "seenHostKey": null }
 ```
 
-`state` 闭集：`up` · `connecting`（`stage`：`deploy` / `attach`）· `down`（`reason` 取拨号那一层 ack 的原因码：`resolve` · `unreachable` · `timeout` ·
-`auth` · `key_unreadable` · `jump` · `other`；本机没连上 `local`）· `host_key_changed` · `needs_update` · `newer` · `disabled`（「连接这台」关着）·
+`state` 闭集：`up` · `connecting`（`stage`：`deploy` / `attach`）· `installing`（那台还没有，正在装）· `updating`（正在换成这一版）· `down`（`reason` 取拨号那一层 ack 的原因码：`resolve` · `unreachable` · `timeout` ·
+`auth` · `password`（那台只收密码）· `key_unreadable` · `jump` · `other`；本机没连上 `local`）· `host_key_changed` · `needs_update` · `newer` · `disabled`（「连接这台」关着）·
 `unsupported`（`not_unix` · `no_forwarding`）· `unknown`。`versionRelation`：`same` · `older` · `newer` · `incomparable`（握手那一刻判一次，`stream_source/version.rs::version_relation`）。
-`fixes` 闭集：`retry` · `conn_settings` · `push_key` · `compare_fingerprint` · `update` · `connect`（按 `state` 与 `reason` 定，`machine_state::fixes_of`）。
+`fixes` 闭集：`retry` · `conn_settings` · `push_key` · `compare_fingerprint` · `update` · `connect`（按 `state` 与 `reason` 定，`machine_state::fixes_of`；本机那一台一律只给 `retry`）。
+`seenHostKey`：`host_key_changed` 时那台这一次出示的指纹（拨号那一层 ack 的 `fingerprint`，比对框用），别的态 `null`。
+本机那一台：通道在 ⇒ `up`；不在而本机那个口上占着另一份构建（终端里先起的那一份）⇒ 按两边构建的序 `needs_update` / `newer`（解不出序 ⇒ `down`）；别的 ⇒ `down`。
+**推送**：那台的成品一变，壳发 Tauri 事件 `machine-state`，载荷 `{origin, machine}`（`machine` 同上）；界面订它原位换，不轮询（`src/frontend/ui/machine-feed.ts`）。
 拨号那一层的原因码来自本机常驻后端的 ack（`dial/mod.rs::why`；`DialAck.reason`，additive）。跨语言金样 `tests/__fixtures__/machine-state.golden.json`，
 界面严格收（`src/frontend/ui/settings/machine-state.ts::decodeMachineState`：键集恰好那七格、每格取值在闭集里，收不下 ⇒ 那一行照「没问到」画）。
 

@@ -469,6 +469,42 @@ body.settings-window-mode .settings-panel {
   color: var(--warn);
 }
 
+/* 装 / 更新那一段：一条走动的进度条（字节一趟推过去，没有分段进度可报）。 */
+.machine-problem-bar {
+  position: relative;
+  width: 120px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: var(--radius-s);
+  background: var(--border);
+}
+
+.machine-problem-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  border-radius: var(--radius-s);
+  background: var(--accent);
+  animation: machine-bar 1.4s ease-in-out infinite;
+}
+
+@keyframes machine-bar {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .machine-problem-bar::after {
+    width: 60%;
+    animation: none;
+  }
+}
+
 /* 机器页卡头。 */
 .machine-head {
   margin-bottom: var(--space-6);
@@ -776,8 +812,38 @@ body.settings-window-mode .settings-panel {
 }
 
 .add-machine-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
   flex: 1;
   min-width: 0;
+}
+
+.add-machine-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  min-height: var(--control-h);
+}
+
+.add-machine-head:has(.add-machine-name-text) {
+  align-items: center;
+}
+
+/* 名字框窄（与 kit 输入框同层，提一档特异性才压得过它的 width: 100%）。 */
+.add-machine-head .add-machine-name {
+  width: 220px;
+  flex: none;
+}
+
+/* 地址那一行跟在名字框下面，不受框宽限制。 */
+.add-machine-name .add-machine-info {
+  width: max-content;
+  max-width: 460px;
+}
+
+.add-machine-name-text {
+  font-weight: 600;
 }
 
 /* 每行的名称框不重复画「名称」两字（读屏名照旧）。 */
@@ -790,8 +856,12 @@ body.settings-window-mode .settings-panel {
 }
 
 .add-machine-tag {
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
   color: var(--text-2);
   font-size: var(--font-size-xs);
+  line-height: 1.6;
 }
 
 .add-machine-link {
@@ -801,6 +871,10 @@ body.settings-window-mode .settings-panel {
   color: var(--color-link);
   cursor: pointer;
   font-size: var(--font-size-small);
+}
+
+.add-machine-head .add-machine-link {
+  min-height: var(--control-h);
 }
 
 /* 每格都留着下方那一行（有提示写提示、没有就空着，错误句换在同一行），行距因此处处一样。 */

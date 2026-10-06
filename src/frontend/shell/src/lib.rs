@@ -719,6 +719,18 @@ pub fn run() {
                     }
                 });
             }
+            // 每台机器的状态成品一变就推一帧（`machine-state`：`{origin, machine}`，与 `backend_status` 那一格同形）。
+            {
+                let handle = app.handle().clone();
+                crate::machine_state::install_out(move |origin| {
+                    let channel = crate::inbound_client::client_for(origin).is_some();
+                    let machine = backend_control::machine_product(origin, channel);
+                    let payload = serde_json::json!({ "origin": origin, "machine": machine });
+                    if let Err(e) = handle.emit(ui_contract::events::MACHINE_STATE, payload) {
+                        tracing::warn!("emit machine-state failed: {e}");
+                    }
+                });
+            }
             // 会话成品的**唯一**出口线程（本机远端同一个）：monitor 自己那几样副作用（拉前绑定）＋
             //   原样交会话流（`EventReplay::on_lifecycle`：`subscribe(origin, "session-lines")` 里的格，不吃 credit、不丢）。
             //   不裁决（可重连 / 已结束由那台后端裁）；原先这里是本机 / 远端两个 emitter，各自裁、发 9 个 Tauri 事件。
@@ -826,6 +838,7 @@ pub fn run() {
             backend_control::backend_stop,
             config::load_config,
             config::patch_config,
+            config::machine_table_try,
             // K-H2a：apikey 表那把 key 的写（`KS10`）。读状态与「表里有没有行」两问走通道（`apikey-read` / `apikey-routing`）。
             // 「起会话那一发注入哪个中转地址」与全量注入开关都归起 agent 那台的 `ccm` 自己定（`relay_all_sessions_switch`〔散文墓碑〕删了）。
             // 别名六条（`aliases_*`〔散文墓碑〕）进了那台机器的后端（`assets/aliases/`），界面经通道直问 `aliases-*`。

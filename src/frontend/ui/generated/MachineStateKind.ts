@@ -2,7 +2,8 @@
 
 /**
  * 那台此刻是什么样（闭集）：`up` 连着（版本对得上或不可比）· `connecting` 正在连（`stage` 说到哪一步）·
+ * `installing` 正在把 cc-monitor 装上去（那台还没有）· `updating` 正在换成这一版（那台有旧的）·
  * `down` 这一轮没连上（`reason` 说为什么）· `host_key_changed` 主机指纹与记下的不一样 · `needs_update` 连着但那台旧 ·
  * `newer` 连着但那台比这一版新 · `disabled` 「连接这台」关着 · `unsupported` 那台做不了 · `unknown` 还没有任何一轮的结论。
  */
-export type MachineStateKind = "up" | "connecting" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";
+export type MachineStateKind = "up" | "connecting" | "installing" | "updating" | "down" | "host_key_changed" | "needs_update" | "newer" | "disabled" | "unsupported" | "unknown";

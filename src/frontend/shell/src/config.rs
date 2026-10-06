@@ -41,7 +41,7 @@
 //! 逐条理由住 [`resolve_monitor_data_dir`]。
 
 use crate::copy_table::copy_text;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -173,7 +173,7 @@ pub(crate) enum ConfigWriteError {
     ElementExists,
     /// 改完的机器表不成立（同名 · 端口越界 · 地址 / 用户空）⇒ **整批拒**，盘上一个字节不动。
     /// 单台改、添加一台、批量添加都走这一口（同一份校验，[`check_machine_table`]）。
-    BadMachine(String),
+    BadMachine(MachineFault),
     Io(String),
 }
 
@@ -190,9 +190,8 @@ impl std::fmt::Display for ConfigWriteError {
             ConfigWriteError::ElementExists => {
                 f.write_str(&copy_text("rsConfig.write.elementExists", &[]))
             }
-            ConfigWriteError::BadEdit(m)
-            | ConfigWriteError::BadMachine(m)
-            | ConfigWriteError::Io(m) => f.write_str(m),
+            ConfigWriteError::BadMachine(m) => f.write_str(&m.said()),
+            ConfigWriteError::BadEdit(m) | ConfigWriteError::Io(m) => f.write_str(m),
         }
     }
 }
@@ -265,8 +264,35 @@ pub(crate) fn patch_config_at(
         Map::new()
     };
 
-    // ④ 逐条应用。
-    let applied: Vec<Applied> = edits.iter().map(|e| apply_edit(&mut root, e)).collect();
+    // ④ 逐条应用 ＋ 机器表那一道。
+    let applied = apply_and_check(&mut root, edits)?;
+    if !applied.contains(&Applied::Done) {
+        return Ok(applied);
+    }
+
+    // ⑤ 临时件带 pid：两个 monitor 进程不互删对方的临时件。
+    let pretty = serde_json::to_string_pretty(&Value::Object(root))
+        .map_err(|e| ConfigWriteError::Io(e.to_string()))?;
+    let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    crate::platform::fs::only_me_on_create(&mut opts);
+    opts.open(&tmp)
+        .and_then(|mut f| std::io::Write::write_all(&mut f, pretty.as_bytes()))
+        .map_err(|e| ConfigWriteError::Io(format!("write {}: {e}", tmp.display())))?;
+    crate::platform::fs::atomic_replace(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        ConfigWriteError::Io(format!("replace → {}: {e}", path.display()))
+    })?;
+    Ok(applied)
+}
+
+/// 把一串补丁逐条应用到 `root` 上，再过机器表那一道（动了认人的格才过）。写口与试算口同一份。
+fn apply_and_check(
+    root: &mut Map<String, Value>,
+    edits: &[ConfigEdit],
+) -> Result<Vec<Applied>, ConfigWriteError> {
+    let applied: Vec<Applied> = edits.iter().map(|e| apply_edit(root, e)).collect();
     if let Some(miss) = applied
         .iter()
         .find(|a| matches!(a, Applied::NoMatch | Applied::Ambiguous))
@@ -293,31 +319,106 @@ pub(crate) fn patch_config_at(
         ConfigEdit::Remove { .. } | ConfigEdit::RemoveIn { .. } => false,
     };
     if edits.iter().any(identity) {
-        if let Some(why) = check_machine_table(&root) {
-            return Err(ConfigWriteError::BadMachine(why));
+        if let Some(fault) = check_machine_table(root) {
+            return Err(ConfigWriteError::BadMachine(fault));
         }
     }
-
-    // ⑤ 临时件带 pid：两个 monitor 进程不互删对方的临时件。
-    let pretty = serde_json::to_string_pretty(&Value::Object(root))
-        .map_err(|e| ConfigWriteError::Io(e.to_string()))?;
-    let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
-    let mut opts = std::fs::OpenOptions::new();
-    opts.write(true).create(true).truncate(true);
-    crate::platform::fs::only_me_on_create(&mut opts);
-    opts.open(&tmp)
-        .and_then(|mut f| std::io::Write::write_all(&mut f, pretty.as_bytes()))
-        .map_err(|e| ConfigWriteError::Io(format!("write {}: {e}", tmp.display())))?;
-    crate::platform::fs::atomic_replace(&tmp, path).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp);
-        ConfigWriteError::Io(format!("replace → {}: {e}", path.display()))
-    })?;
     Ok(applied)
 }
 
+/// 机器表那一道没过的那一处（闭集码 ＋ 那台的名字）；界面按码取那一句、落在那一格下面。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct MachineFault {
+    /// `no_host` 地址空 · `no_user` 用户空 · `port` 端口不在 1–65535 · `name_taken` 与另一台同名。
+    pub code: MachineFaultCode,
+    /// 出问题的那台的名字（`label` 非空取它、否则 `host`）。
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+#[serde(rename_all = "snake_case")]
+pub enum MachineFaultCode {
+    NoHost,
+    NoUser,
+    Port,
+    NameTaken,
+}
+
+impl MachineFault {
+    /// 写口拒绝时的那一句。
+    pub fn said(&self) -> String {
+        match self.code {
+            MachineFaultCode::NoHost => {
+                copy_text("rsConfig.machine.noHost", &[("name", &self.name)])
+            }
+            MachineFaultCode::NoUser => {
+                copy_text("rsConfig.machine.noUser", &[("name", &self.name)])
+            }
+            MachineFaultCode::Port => copy_text("rsConfig.machine.port", &[("name", &self.name)]),
+            MachineFaultCode::NameTaken => {
+                copy_text("rsConfig.machine.nameTaken", &[("name", &self.name)])
+            }
+        }
+    }
+}
+
+/// **试算口**：这串补丁若现在落盘，机器表那一道过不过（盘上一个字节不动）。界面边打边问它，与写口同一份规则。
+/// 读盘那一下不落在 IPC 派发线程上（`spawn_blocking`）。
+#[tauri::command]
+pub async fn machine_table_try(edits: Vec<ConfigEdit>) -> Result<Option<MachineFault>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = resolve_config_path().ok_or_else(|| "no home dir".to_string())?;
+        machine_table_try_at(&path, &edits)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// [`machine_table_try`] 的本体（判据喂临时路径）。认不出元素 / 补丁不成形 ⇒ 当作「这一道没话说」，留给写口去拒。
+pub(crate) fn machine_table_try_at(
+    path: &Path,
+    edits: &[ConfigEdit],
+) -> Result<Option<MachineFault>, String> {
+    let mut root: Map<String, Value> = match std::fs::read_to_string(path) {
+        Ok(raw) => match serde_json::from_str::<Value>(&raw) {
+            Ok(Value::Object(m)) => m,
+            _ => return Ok(None),
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Map::new(),
+        Err(e) => return Err(format!("read {}: {e}", path.display())),
+    };
+    if edits.iter().any(|e| e.path().is_empty()) {
+        return Ok(None);
+    }
+    match apply_and_check(&mut root, edits) {
+        Err(ConfigWriteError::BadMachine(f)) => Ok(Some(f)),
+        // 往机器表里加一台、而同名的已经在了（写口回「已存在」）⇒ 这一道说成同名。
+        Err(ConfigWriteError::ElementExists) => Ok(edits.iter().find_map(|e| match e {
+            ConfigEdit::InsertIn { path, r#where, .. }
+                if path.first().map(String::as_str) == Some("remote") =>
+            {
+                Some(MachineFault {
+                    code: MachineFaultCode::NameTaken,
+                    name: r#where
+                        .first()
+                        .map(|k| k.equals.clone())
+                        .unwrap_or_default(),
+                })
+            }
+            _ => None,
+        })),
+        _ => Ok(None),
+    }
+}
+
 /// 机器表（`remote.hosts`）成不成立：名字（`label` 非空取它、否则 `host`，去首尾空白、大小写敏感）不重 ·
-/// 端口 1–65535（缺 ＝ 22）· 地址与用户非空。不成立 ⇒ 第一处的那一句（文案表）；成立 / 没有机器表 ⇒ `None`。**纯函数**。
-pub(crate) fn check_machine_table(root: &Map<String, Value>) -> Option<String> {
+/// 端口 1–65535（缺 ＝ 22）· 地址与用户非空。不成立 ⇒ 第一处（码 ＋ 名字）；成立 / 没有机器表 ⇒ `None`。**纯函数**。
+pub(crate) fn check_machine_table(root: &Map<String, Value>) -> Option<MachineFault> {
     let hosts = root.get("remote")?.get("hosts")?.as_array()?;
     let mut seen = std::collections::HashSet::new();
     for h in hosts.iter().filter_map(Value::as_object) {
@@ -332,21 +433,27 @@ pub(crate) fn check_machine_table(root: &Map<String, Value>) -> Option<String> {
         } else {
             text("label")
         };
+        let fault = |code| {
+            Some(MachineFault {
+                code,
+                name: name.to_string(),
+            })
+        };
         if text("host").is_empty() {
-            return Some(copy_text("rsConfig.machine.noHost", &[("name", name)]));
+            return fault(MachineFaultCode::NoHost);
         }
         if text("user").is_empty() {
-            return Some(copy_text("rsConfig.machine.noUser", &[("name", name)]));
+            return fault(MachineFaultCode::NoUser);
         }
         let port_ok = match h.get("port") {
             None | Some(Value::Null) => true,
             Some(p) => p.as_u64().is_some_and(|p| (1..=65535).contains(&p)),
         };
         if !port_ok {
-            return Some(copy_text("rsConfig.machine.port", &[("name", name)]));
+            return fault(MachineFaultCode::Port);
         }
         if !seen.insert(name.to_string()) {
-            return Some(copy_text("rsConfig.machine.nameTaken", &[("name", name)]));
+            return fault(MachineFaultCode::NameTaken);
         }
     }
     None

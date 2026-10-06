@@ -27,6 +27,9 @@ interface CacheEntry<T> {
 const accountsCache = new Map<string, CacheEntry<AccountsState>>();
 const sessionAccountsCache = new Map<string, CacheEntry<SessionAccount[]>>();
 
+/** 每台最近一次答成的那一份 ＋ 时刻（这次运行里、这个窗口里；那台没问到时画「上次的」）。 */
+const lastGood = new Map<string, { meta: NonNullable<AccountsState["meta"]>; accounts: AccountsState["accounts"]; atMs: number }>();
+
 /**
  * 取那台机器（**本机也一样**）的账号状态（带 TTL 缓存）。force=true 或缓存过期时重发。
  *
@@ -61,6 +64,7 @@ export async function fetchAccounts(origin: Origin, force = false): Promise<Acco
       // Z01：后端说的「能用但有缺」（manifest 里没有账号 0）。
       notice: got.notice,
     };
+    if (got.meta !== null) lastGood.set(origin, { meta: got.meta, accounts: got.accounts, atMs: now });
   } catch (e) {
     state = {
       origin,
@@ -70,6 +74,7 @@ export async function fetchAccounts(origin: Origin, force = false): Promise<Acco
       meta: null,
       accounts: [],
       notice: null,
+      last: lastGood.get(origin) ?? null,
     };
   }
   accountsCache.set(origin, { at: now, value: state });
@@ -283,5 +288,6 @@ export function invalidateAccountsCache(origin?: string): void {
 /** 测试专用：清空所有内存缓存。 */
 export function __resetAccountsCacheForTest(): void {
   accountsCache.clear();
+  lastGood.clear();
   sessionAccountsCache.clear();
 }

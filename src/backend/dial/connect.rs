@@ -447,7 +447,7 @@ async fn authenticate(
                 })?;
             if !authenticated.success() {
                 return Err((
-                    why::AUTH,
+                    rejected_why(&authenticated),
                     copy_text("beConnect.auth.keyRejected", &[("user", user)]),
                 ));
             }
@@ -468,8 +468,24 @@ async fn authenticate(
             tokio::task::block_in_place(|| {
                 handle.block_on(agent_auth(session, user, best_hash, agent_sock))
             })
-            .map_err(|e| (why::AUTH, e))
         }
+    }
+}
+
+/// 公钥没过的原因码：服务端剩下的方法里没有公钥、只有密码 / 键盘交互 ⇒ 那台只收密码；否则密钥被拒。
+pub(crate) fn rejected_why(res: &russh::client::AuthResult) -> &'static str {
+    use russh::MethodKind as M;
+    match res {
+        russh::client::AuthResult::Failure {
+            remaining_methods, ..
+        } if !remaining_methods.contains(&M::PublicKey)
+            && remaining_methods
+                .iter()
+                .any(|m| matches!(m, M::Password | M::KeyboardInteractive)) =>
+        {
+            super::why::PASSWORD
+        }
+        _ => super::why::AUTH,
     }
 }
 
@@ -479,18 +495,26 @@ async fn agent_auth(
     user: &str,
     best_hash: Option<HashAlg>,
     agent_sock: Option<&str>,
-) -> Result<(), String> {
+) -> Result<(), (&'static str, String)> {
+    use super::why;
     let mut agent = crate::platform::ssh_agent::connect(agent_sock)
         .await
-        .map_err(|e| copy_text("beConnect.agent.unreachable", &[("e", &e.to_string())]))?;
-    let identities = agent
-        .request_identities()
-        .await
-        .map_err(|e| copy_text("beConnect.agent.listFailed", &[("e", &e.to_string())]))?;
+        .map_err(|e| {
+            (
+                why::AUTH,
+                copy_text("beConnect.agent.unreachable", &[("e", &e.to_string())]),
+            )
+        })?;
+    let identities = agent.request_identities().await.map_err(|e| {
+        (
+            why::AUTH,
+            copy_text("beConnect.agent.listFailed", &[("e", &e.to_string())]),
+        )
+    })?;
     if identities.is_empty() {
-        return Err(copy_text("beConnect.agent.empty", &[]));
+        return Err((why::AUTH, copy_text("beConnect.agent.empty", &[])));
     }
-    let mut last_err: Option<String> = None;
+    let mut last_err: Option<(&'static str, String)> = None;
     for id in identities {
         let pubkey = id.public_key().into_owned();
         match session
@@ -498,16 +522,21 @@ async fn agent_auth(
             .await
         {
             Ok(res) if res.success() => return Ok(()),
-            Ok(_) => last_err = Some(copy_text("beConnect.agent.rejected", &[("user", user)])),
+            Ok(res) => {
+                last_err = Some((
+                    rejected_why(&res),
+                    copy_text("beConnect.agent.rejected", &[("user", user)]),
+                ))
+            }
             Err(e) => {
-                last_err = Some(copy_text(
-                    "beConnect.agent.signFailed",
-                    &[("e", &e.to_string())],
+                last_err = Some((
+                    why::AUTH,
+                    copy_text("beConnect.agent.signFailed", &[("e", &e.to_string())]),
                 ))
             }
         }
     }
-    Err(last_err.unwrap_or_else(|| copy_text("beConnect.agent.allFailed", &[])))
+    Err(last_err.unwrap_or_else(|| (why::AUTH, copy_text("beConnect.agent.allFailed", &[]))))
 }
 
 /// 连 ＋ 鉴权。`jump` 在就先连跳板、经它开 direct-tcpip 到目标主地址、在隧道上跑目标的握手

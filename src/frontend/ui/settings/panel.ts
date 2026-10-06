@@ -14,6 +14,7 @@
  *    theme+behavior+keybindings（跨 OS 窗口回调够不到）。此模式下会 `import` 并调用 tauri window/event。
  */
 
+import { onMachineState } from "../machine-feed";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   applyTheme,
@@ -320,6 +321,8 @@ export class SettingsPanel {
     this.el = this.build();
     document.body.appendChild(this.el);
     if (this.windowMode) this.installWindowLifecycle();
+    // 那台的状态一变，壳推一帧：点 · 词 · 问题行原位换（不轮询）。
+    onMachineState((origin, m) => this.paintMachine(origin, m));
     // 新建的窗：壳把目的地放在初始化脚本里。
     this.goTo(parseSettingsTarget((window as { __CCM_SETTINGS_TARGET__?: unknown }).__CCM_SETTINGS_TARGET__));
     // issue #5: Esc 由 KeybindingDispatcher 统一调度。本面板 open 时
@@ -661,6 +664,10 @@ export class SettingsPanel {
   private async runFix(pageId: string, fix: MachineFix): Promise<void> {
     const origin = pageId === LOCAL_MACHINE_PAGE_ID ? LOCAL_ORIGIN : this.remoteSection?.originOfPage(pageId);
     if (!origin) return;
+    if (fix === "compare_fingerprint") {
+      await this.remoteSection?.compareFingerprint(pageId);
+      return;
+    }
     try {
       if (fix === "update") await this.remoteSection?.updateMachine(pageId);
       await this.backendSection?.reconnect(origin);

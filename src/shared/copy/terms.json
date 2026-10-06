@@ -157,7 +157,7 @@
       "word": "SSH 主机指纹",
       "tier": "限用",
       "tally": { "re": "主机指纹", "flags": "i" },
-      "inTable": 12,
+      "inTable": 13,
       "meaning": "ssh 首次连接时让你确认的那串 SHA256。",
       "context": "讲主机密钥、首次连接确认时许说。别处（例如 vendored 组件的「指纹文件」）是内部的版本指纹，不许说。",
       "source": "CP1 台账新词「指纹」"

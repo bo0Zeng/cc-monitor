@@ -12,14 +12,24 @@ const cases = golden.cases as Case[];
 
 describe("机器状态成品", () => {
   it("★ 金样每一形都收得下、原样交出", () => {
-    expect(cases.length, "金样缩水了 —— 下面的逐形比在空人群上恒绿").toBe(11);
+    expect(cases.length, "金样缩水了 —— 下面的逐形比在空人群上恒绿").toBe(14);
     for (const c of cases) expect(decodeMachineState(c.machine), c.name).toEqual(c.machine);
   });
 
   it("★ 每一形画出来：连着不出问题行；没连上 / 指纹 / 要更新 / 停用 / 做不了各有一句，修法照成品摆", () => {
     const face = (name: string) => machineFace(decodeMachineState(cases.find((c) => c.name === name)!.machine)!, "gpu-01");
     expect(face("连着")).toMatchObject({ dot: "up", word: "", problem: "", offline: false, needsUpdate: false });
-    expect(face("正在连")).toMatchObject({ dot: "unknown", word: copyText("machineState.word.connecting"), problem: "" });
+    expect(face("正在连")).toMatchObject({
+      dot: "unknown",
+      word: copyText("machineState.word.connecting"),
+      problem: copyText("machineState.busy.connecting", { machine: "gpu-01", stage: copyText("machineState.stage.attach") }),
+      tone: "busy",
+      bar: false,
+    });
+    expect(face("正在装")).toMatchObject({ word: copyText("machineState.word.installing"), problem: copyText("machineState.busy.installing", { machine: "gpu-01" }), tone: "busy", bar: true });
+    expect(face("正在更新")).toMatchObject({ word: copyText("machineState.word.updating"), problem: copyText("machineState.busy.updating", { machine: "gpu-01" }), tone: "busy", bar: true });
+    expect(face("要密码")).toMatchObject({ dot: "failed", problem: copyText("machineState.down.password"), tone: "error" });
+    expect(face("要密码").fixes.map(fixLabel)).toEqual([copyText("machineCard.build.pushKey")]);
     expect(face("密钥被拒")).toMatchObject({ dot: "failed", problem: copyText("machineState.down.auth"), offline: true });
     expect(face("密钥被拒").fixes.map(fixLabel)).toEqual([copyText("machineCard.build.pushKey"), copyText("machinePage.conn.toggle")]);
     expect(face("无应答").problem).toBe(copyText("machineState.down.timeout"));
@@ -48,5 +58,28 @@ describe("机器状态成品", () => {
     ] as const) {
       expect(decodeMachineState(bad), what).toBeNull();
     }
+  });
+
+  it("★ 指纹变了那一形带着那台出示的那一枚（比对框用），别的形没有", () => {
+    for (const c of cases) {
+      const m = decodeMachineState(c.machine)!;
+      expect(m.seenHostKey !== null, c.name).toBe(c.name === "指纹变了");
+    }
+  });
+});
+
+describe("列表那一行右侧那一句：这一次没问到 ⇒ 画上次的", () => {
+  it("★ 没问到而有上次的 ⇒ 照上次的说；也没有上次的 ⇒ 空着", async () => {
+    const { accountsSummary } = await import("../../../../src/frontend/ui/settings/remote-section");
+    const meta = { enabled: true, unsupported: false } as never;
+    const acct = (name: string, isDefault: boolean) => ({ name, isDefault }) as never;
+    const down = { origin: "gpu-01", available: false, error: "x", oldBackend: false, meta: null, accounts: [], notice: null };
+    expect(accountsSummary({ ...down, last: { meta, accounts: [acct("work", true), acct("b", false)], atMs: 1 } }, "Linux")).toBe(
+      copyText("machineList.summary.accounts", { n: 2, name: "work" }),
+    );
+    expect(accountsSummary({ ...down, last: null }, "Linux")).toBe("");
+    expect(accountsSummary({ ...down, last: { meta: { enabled: false, unsupported: true } as never, accounts: [], atMs: 1 } }, "Windows")).toBe(
+      copyText("machineList.summary.single", { os: "Windows" }),
+    );
   });
 });

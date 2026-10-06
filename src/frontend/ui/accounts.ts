@@ -119,6 +119,11 @@ export interface AccountsState {
    * 从列表里凭空少一行，用户看不出区别。
    */
   notice: string | null;
+  /**
+   * 这一次没问到（`available:false`）时，这次运行里那台最近一次答成的那一份＋ 答成的时刻：
+   * 只给「画上次的 ＋ 采样 n 前」用，不当作此刻的事实（起会话、换默认一律不读它）。没有 ⇒ `null`。
+   */
+  last?: { meta: AccountsMeta; accounts: Account[]; atMs: number } | null;
 }
 
 /** chip / 设置组据此决定怎么显示。纯派生自 AccountsState。 */

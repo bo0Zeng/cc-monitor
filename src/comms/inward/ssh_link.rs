@@ -87,7 +87,7 @@ pub struct Ack {
     /// 开通道被远端回拒时 SSH 协议给的原因码（RFC 4254 §5.1，如 `administratively_prohibited` · `connect_failed`）；老后端 / 别的失败 ⇒ `None`。
     #[serde(default)]
     pub open_refused: Option<String>,
-    /// 没拨成时后端给的原因码（闭集：`resolve` · `unreachable` · `timeout` · `host_key` · `auth` · `key_unreadable` · `jump` · `other`）；老后端 / 拨成了 ⇒ `None`。
+    /// 没拨成时后端给的原因码（闭集：`resolve` · `unreachable` · `timeout` · `host_key` · `auth` · `password` · `key_unreadable` · `jump` · `other`）；老后端 / 拨成了 ⇒ `None`。
     #[serde(default)]
     pub reason: Option<String>,
     #[serde(default)]

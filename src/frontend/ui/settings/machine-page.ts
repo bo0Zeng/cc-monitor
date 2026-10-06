@@ -13,7 +13,7 @@ import { statusDot, setDot } from "../kit/status-dot";
 import { copyText } from "../copy-table";
 import { SettingsRouter } from "./router";
 import { hostOs, type HostOs } from "./host-os";
-import { fixLabel, type MachineFace, type MachineFix } from "./machine-state";
+import { paintProblem, type MachineFace, type MachineFix } from "./machine-state";
 
 const OS_NAME: Record<HostOs, string | null> = { linux: "Linux", windows: "Windows", macos: "macOS", unknown: null };
 
@@ -214,23 +214,7 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
     setMachine(f) {
       setDot(dot, f.dot, f.word || copyText("settingsNav.dot.up", { machine: name }));
       word.textContent = f.word;
-      problem.replaceChildren();
-      problem.hidden = f.problem === "";
-      if (f.problem === "") return;
-      const text = document.createElement("span");
-      text.textContent = f.problem;
-      problem.dataset.severity = f.dot === "needs-you" ? "warn" : "error";
-      problem.append(icon(f.dot === "needs-you" ? "warning" : "error", "compact"), text);
-      for (const fix of f.fixes) {
-        problem.appendChild(
-          button({
-            label: fixLabel(fix),
-            size: "compact",
-            kind: fix === "update" ? "primary" : "secondary",
-            onClick: () => (fix === "conn_settings" && connFold ? connFold.open() : spec.onFix?.(fix)),
-          }),
-        );
-      }
+      paintProblem(problem, f, (fix) => (fix === "conn_settings" && connFold ? connFold.open() : spec.onFix?.(fix)));
     },
     setCcSummary(text) {
       setFoldSummary(ccFold, text);

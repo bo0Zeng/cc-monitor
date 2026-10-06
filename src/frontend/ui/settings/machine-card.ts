@@ -21,6 +21,7 @@ import { buildAliasManager } from "./machine-aliases"; // ② 别名：远端卡
 import { recordFacet, type MachineFacet } from "./machine-status";
 import { hostKey, readRemoteConfig, resolveRemoteConfigByOrigin, type RemoteHostConfig } from "../remote-config";
 import { parseAddressLines } from "../remote-config";
+import type { MachineFault } from "../generated/MachineFault";
 // E80：`ConnectStage` 直连生成物，不再绕道 `remote-section`（那条绕道是 import 环的一半）。
 import type { ConnectStage } from "../generated/ConnectStage";
 import { DEFAULT_AGENT, defaultLauncherOf } from "../agent-profile";
@@ -87,12 +88,11 @@ function connField(
 let connFieldSeq = 0;
 
 /** 解析端口字符串：空 ⇒ 22（占位就是它）；不是 1–65535 的整数 ⇒ `null`（不替用户兜底）。 */
-function parsePort(raw: string): number | null {
+/** 端口框里的字 → 数（空 ⇒ 22；不是数字 ⇒ 0）。在不在 1–65535 只由后端判（机器表试算口）。 */
+function parsePort(raw: string): number {
   const t = raw.trim();
   if (t === "") return 22;
-  if (!/^\d+$/.test(t)) return null;
-  const port = Number(t);
-  return port >= 1 && port <= 65535 ? port : null;
+  return /^\d+$/.test(t) ? Number(t) : 0;
 }
 
 /** 一格输入下面那一行：有错 ⇒ 错误句换在说明的位置；没错 ⇒ 还原说明。 */
@@ -199,7 +199,7 @@ export interface MachineCardHooks {
   /** S4b：这张卡的状态/名字变了，宿主该刷新列表那一行。 */
   onStatusChanged?: (card: MachineCard) => void;
   /** 列表里别的机器已经叫这个名字了没有（名字是机器的键，重名就存不进、也改不了删不了）。 */
-  nameTaken?: (card: MachineCard, origin: string) => boolean;
+  tryCells?: (card: MachineCard, next: RemoteHostConfig) => Promise<MachineFault | null>;
 }
 // 「后端路径」那一格删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`（它就是后端本身），
 //   从前按用户名预填的 `defaultBackendPathFor`〔散文墓碑〕随之删。
@@ -376,7 +376,7 @@ export class MachineCard {
     this.accepted = {
       label: this.labelInput.value.trim(),
       host: this.hostInput.value.trim(),
-      port: parsePort(this.portInput.value) ?? 22,
+      port: parsePort(this.portInput.value),
     };
   }
 
@@ -450,13 +450,24 @@ export class MachineCard {
       this.hooks.onChange();
     };
 
+    // 认人的那几格（名字 · 地址 · 端口）改了先问后端那一道（与写口同一份规则）：不过 ⇒ 就地说、不存。
+    let asking = 0;
+    const tryCells = async (next: RemoteHostConfig): Promise<MachineFault | null> => {
+      try {
+        return (await this.hooks.tryCells?.(this, next)) ?? null;
+      } catch {
+        return null; // 问不到 ⇒ 不挡，写口自己会判
+      }
+    };
     // 名字（空着就用地址）是这台的键：与别台撞了 ⇒ 就地说、不存。
-    const onNameChange = (): void => {
+    const onNameChange = async (): Promise<void> => {
       const label = this.labelInput.value.trim();
       const host = this.hostInput.value.trim();
-      const origin = label || host;
-      if (origin && this.hooks.nameTaken?.(this, origin)) {
-        showFieldError(this.labelInput, copyText("machineCard.field.nameTaken", { name: origin }));
+      const mine = ++asking;
+      const fault = label || host ? await tryCells({ ...this.collect(), label, host }) : null;
+      if (mine !== asking) return;
+      if (fault?.code === "name_taken") {
+        showFieldError(this.labelInput, copyText("machineCard.field.nameTaken", { name: fault.name }));
         this.updateLegend();
         return;
       }
@@ -467,16 +478,19 @@ export class MachineCard {
     };
     this.labelInput = connField(body, copyText("machineCard.field.label"), {
       placeholder: copyText("machineCard.field.labelHint"),
-      onChange: onNameChange,
+      onChange: () => void onNameChange(),
     });
     this.hostInput = connField(body, copyText("machineCard.field.host"), {
       hint: copyText("machineCard.field.hostHint"),
-      onChange: onNameChange,
+      onChange: () => void onNameChange(),
     });
     // 端口不是 1–65535 ⇒ 就地说、不存（不再悄悄存成 22）。
-    const onPortChange = (): void => {
+    const onPortChange = async (): Promise<void> => {
       const port = parsePort(this.portInput.value);
-      if (port === null) {
+      const mine = ++asking;
+      const fault = await tryCells({ ...this.collect(), port });
+      if (mine !== asking) return;
+      if (fault?.code === "port") {
         showFieldError(this.portInput, copyText("machineCard.field.portRange"));
         return;
       }
@@ -488,7 +502,7 @@ export class MachineCard {
       placeholder: copyText("machineCard.field.userHint"),
       onChange,
     });
-    this.portInput = connField(body, copyText("machineCard.field.port"), { type: "number", placeholder: "22", onChange: onPortChange });
+    this.portInput = connField(body, copyText("machineCard.field.port"), { type: "number", placeholder: "22", onChange: () => void onPortChange() });
     this.portInput.closest(".machine-conn-field")?.classList.add("machine-conn-port");
     this.keyPathInput = connField(body, copyText("machineCard.field.keyPath"), {
       hint: copyText("addMachine.field.keyHelp"),
@@ -1330,6 +1344,30 @@ export class MachineCard {
     segs.end({ sshOk: true, backendOk: true, backendHello: "", fingerprint: null, endpoint: null, backendGaps: [], message: "" });
     this.testResult.replaceChildren(segs.el);
     this.testResult.style.display = "block";
+  }
+
+  /**
+   * 指纹变了：两枚并排（记下的 · 现在的 · 记于何时）。［信任新的指纹］⇒ 记下现在那一枚并存盘（重连跟着走）；
+   * ［不连接］⇒ 什么都不写。`seen` 是那台这一次出示的那一枚（状态成品带来；没带 ⇒ 不给信任）。
+   */
+  async compareFingerprint(seen: string | null): Promise<void> {
+    const pinned = this.fingerprintInput.value.trim();
+    const ok = await confirmDialog({
+      title: copyText("machineCard.hostKey.compareTitle", { machine: this.displayName() }),
+      action: copyText("machineCard.hostKey.trust"),
+      cancel: copyText("machineCard.hostKey.dontConnect"),
+      danger: true,
+      body: copyText("machineCard.hostKey.caution"),
+      rows: [
+        {
+          label: copyText("machineCard.hostKey.pinned"),
+          items: pinned ? [pinned, ...(this.pinnedAt ? [copyText("machineCard.hostKey.pinnedAt", { date: this.pinnedAt })] : [])] : [copyText("machineCard.hostKey.none")],
+        },
+        { label: copyText("machineCard.hostKey.seen"), items: [seen ?? copyText("machineCard.hostKey.none")] },
+      ],
+    });
+    if (!ok || seen === null) return;
+    await this.onSaveFingerprint(seen);
   }
 
   /** 把测出的指纹写进字段并保存（TOFU→strict 固化）。 */
