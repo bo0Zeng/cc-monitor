@@ -881,6 +881,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/backend/control/files_write_tests.rs", needle: "control::files_write::tests::own_home_child_entry_point" },
     ),
     (
+        "tests/backend/control/exit_policy_tests.rs",
+        "wire_child",
+        Trigger::Filter { by: "tests/backend/control/exit_policy_tests.rs", needle: "control::exit_policy::tests::wire_child" },
+    ),
+    (
         "tests/backend/stream/caps_tests.rs",
         "caps_child",
         Trigger::Filter { by: "tests/backend/stream/caps_tests.rs", needle: "stream::inbound::caps_tests::caps_child" },

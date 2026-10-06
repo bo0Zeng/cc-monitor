@@ -255,6 +255,11 @@ function segSum(s: RenderCostSample): number {
 }
 
 let samples: RenderCostSample[] = [];
+/**
+ * 每条记录在 `PASSES` 遍里 total 最小的那一遍（69 条，按语料顺序）。
+ * 负载只会给某一遍加时间、不会减 ⇒ 跨桶比墙钟（单调、倍率）用它，机器忙不忙比的都是同一件事。
+ */
+let steady: RenderCostSample[] = [];
 /** 膨胀语料那一趟的样本（一遍，69 条，与 `samples` 的头 69 条逐条对应） */
 let inflatedSamples: RenderCostSample[] = [];
 /** 语料每条记录的**原始 jsonl 行字节**，按喂入顺序 —— 用来跟探针自报的字节对拍 */
@@ -276,6 +281,14 @@ beforeAll(() => {
   for (let i = 0; i < PASSES; i++) drivePass(fixtureLines);
   samples = readRenderCostSamples();
   disableRenderCostProbe();
+  steady = Array.from({ length: EXPECTED_RECORDS }, (_, i) => {
+    const runs = Array.from({ length: PASSES }, (_, k) => samples[k * EXPECTED_RECORDS + i]);
+    const route = (s: RenderCostSample | undefined) => (s ? `${s.bytes}/${s.card}/${s.branch}` : "缺");
+    if (new Set(runs.map(route)).size !== 1) {
+      throw new Error(`第 ${i} 条记录各遍的 (字节, 卡型, 分支) 不一致：${runs.map(route).join(" · ")}`);
+    }
+    return runs.reduce((a, b) => (b.total < a.total ? b : a));
+  });
 
   // S2 那一趟：同一份语料**膨胀之后**再驱一遍（只看物化量与路由，不看时间 ⇒ 一遍就够）。
   enableRenderCostProbe();
@@ -675,7 +688,7 @@ describe("秤 1 · 它要验的那条声称：长尾桶被 O(len) 操作主导",
   it("★ 只看 `card` 分支：total p50 **确实**随记录字节单调上升", () => {
     const rows = BUCKETS.map(([name]) => ({
       name,
-      xs: samples.filter(
+      xs: steady.filter(
         (s) => bucketOf(s.bytes) === name && isBodyCard(s),
       ),
     })).filter((b) => b.xs.length > 0);
@@ -703,7 +716,7 @@ describe("秤 1 · 它要验的那条声称：长尾桶被 O(len) 操作主导",
   it("★ 建卡那条路上，长记录比短记录贵一个量级以上（倍率，跨机可比）", () => {
     const at = (name: string): number =>
       p(
-        samples
+        steady
           .filter((s) => bucketOf(s.bytes) === name && isBodyCard(s))
           .map((s) => s.total),
         0.5,
@@ -719,7 +732,7 @@ describe("秤 1 · 它要验的那条声称：长尾桶被 O(len) 操作主导",
   });
 
   it("🔴 反例也要钉住：按**字节**取的「长尾桶」里全是**便宜**的折叠 tool-group", () => {
-    const tail = samples.filter((s) => bucketOf(s.bytes) === "32-128K");
+    const tail = steady.filter((s) => bucketOf(s.bytes) === "32-128K");
     expect(tail.length, "长尾桶空着 —— 本格恒绿").toBeGreaterThan(0);
     // ① 成分：这一桶 100% 是合并进已有外壳的 tool_result
     const branches = [...new Set(tail.map((s) => s.branch))].sort();
@@ -737,7 +750,7 @@ describe("秤 1 · 它要验的那条声称：长尾桶被 O(len) 操作主导",
       0.5,
     );
     const cardMid = p(
-      samples
+      steady
         .filter((s) => bucketOf(s.bytes) === "2-8K" && isBodyCard(s))
         .map((s) => s.total),
       0.5,

@@ -719,24 +719,34 @@ fn sessions_replayed_is_known() {
     );
 }
 
+/// 帧里照搬的那几格（`ev` · `runs` · `ended`）按 JSON 值比，不按字节：解帧经 `serde_json::Value`，
+/// 键序随构建的特性集变（`preserve_order` 只在 workspace 判据构建里被别的包打开），按字节比单跑与门禁两个结果。
+fn json(text: &str) -> serde_json::Value {
+    serde_json::from_str(text).expect("合法 JSON")
+}
+
 /// `tap` 的几形（字面量与后端 `wire_tests::tap_frames_have_exactly_these_bytes` 同一串 —— 异源 = 各自对手写字面量）；
 /// `ev` 与 `end` 都缺 · `end` 不认识 · `ev` 不是对象 · 缺 `n` · `run` 不是串 ⇒ 整帧 `None`（坏帧，不猜）。
 #[test]
 fn tap_frames_parse_into_their_shapes_and_bad_ones_are_none() {
     use crate::session_tap::{Tap, TapBody, TapEnd};
-    let body =
-        |s: &str| TapBody::Ev(crate::ui_contract::RecordBody::from_json(s.to_string()).unwrap());
     let start = "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":0,\"ev\":{\"t\":\"start\",\"rid\":\"r-1\"}}";
-    assert_eq!(
-        parse_frame(start),
+    match parse_frame(start) {
         Ok(InboundFrame::Tap(Tap {
-            stream: "0b6c1f7e-sid".into(),
-            run: None,
-            resp: 12,
-            n: 0,
-            body: body(r#"{"t":"start","rid":"r-1"}"#),
-        }))
-    );
+            stream,
+            run,
+            resp,
+            n,
+            body: TapBody::Ev(ev),
+        })) => {
+            assert_eq!(
+                (stream.as_str(), run, resp, n),
+                ("0b6c1f7e-sid", None, 12, 0)
+            );
+            assert_eq!(json(ev.0.get()), json(r#"{"t":"start","rid":"r-1"}"#));
+        }
+        other => panic!("起头那一形没解出来：{other:?}"),
+    }
     let block = "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"run\":\"a1\",\"resp\":12,\"n\":1,\"ev\":{\"t\":\"block\",\"i\":0,\"kind\":\"tool\",\"tool\":\"Bash\"}}";
     match parse_frame(block) {
         Ok(InboundFrame::Tap(t)) => {
@@ -784,12 +794,12 @@ fn session_runs_frames_carry_the_runs_verbatim() {
         Ok(InboundFrame::SessionRuns { sid, runs, ended }) => {
             assert_eq!(sid, "s1");
             assert_eq!(
-                runs.0.get(),
-                r#"[{"run":"a2","state":"done","last":{"t":"say"}}]"#
+                json(runs.0.get()),
+                json(r#"[{"run":"a2","state":"done","last":{"t":"say"}}]"#)
             );
             assert_eq!(
-                ended.0.get(),
-                r#"[{"run":"a0","tool":"t0","state":"failed"}]"#
+                json(ended.0.get()),
+                json(r#"[{"run":"a0","tool":"t0","state":"failed"}]"#)
             );
         }
         other => panic!("运行表没解出来：{other:?}"),

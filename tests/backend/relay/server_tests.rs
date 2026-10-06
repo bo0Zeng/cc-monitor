@@ -1754,16 +1754,18 @@ fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
              下面那条「零出现」就是空真。stdout 现在是：{:?}",
         relay.out()
     );
+    // 非空对照 C：子进程**真的读了那份文件**（凭据那条路跑过了，不是被跳过）。
+    //   这一句在 `listening on` 之后才印、异步收进来 ⇒ 等它自己那一形再读。
+    assert!(
+        wait_until(|| relay.err().contains("credentials: configured")),
+        "非空对照：子进程没报告它读到了凭据 —— 那条路没跑过：{:?}",
+        relay.err()
+    );
     let err = relay.err();
     let out = relay.out();
     assert!(
         err.contains("listening on"),
         "非空对照：子进程 stderr 一个字都没收到 —— 采集面是死的：{err:?}"
-    );
-    // 非空对照 C：子进程**真的读了那份文件**（凭据那条路跑过了，不是被跳过）。
-    assert!(
-        err.contains("credentials: configured"),
-        "非空对照：子进程没报告它读到了凭据 —— 那条路没跑过：{err:?}"
     );
 
     // ── 正题：四个出口，一个字节都不许有 ────────────────────────────
@@ -2117,15 +2119,17 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
         "tap 上没有第二个响应 —— 两发没都抄到：{:?}",
         relay.out()
     );
+    // 凭据那句在 `listening on` 之后才印、异步收进来 ⇒ 同样等它自己那一形。
+    assert!(
+        wait_until(|| relay.err().contains("credentials: configured")),
+        "非空对照：子进程没报告它读到了凭据 —— 那条路没跑过：{:?}",
+        relay.err()
+    );
     let out = relay.out();
     let err = relay.err();
     assert!(
         err.contains("listening on"),
         "非空对照：子进程 stderr 一个字都没收到 —— 采集面是死的：{err:?}"
-    );
-    assert!(
-        err.contains("credentials: configured"),
-        "非空对照：子进程没报告它读到了凭据 —— 那条路没跑过：{err:?}"
     );
     // tee 只剩 `tap` 帧那一形：它**不带**账号那一格（「① 不问账号」）。
     //   非空对照是「两发都抄到了」（第二个响应的序号在，等法同上），账号 id 零出现。

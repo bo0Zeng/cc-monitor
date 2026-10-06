@@ -12,8 +12,17 @@ fn frame_time_stays_flat_from_ten_thousand_rows_to_six_hundred_thousand() {
     let small = corpus::synth_rows(10_000, 0xF1);
     let big = corpus::synth_rows(640_413, 0xF1);
 
-    let a = measure(&small, 60);
-    let b = measure(&big, 60);
+    // 两档交替量 3 趟、各取最快那一趟：负载只会给某一趟加时间，交替让两档摊到同样的负载。
+    let best = |x: F1, y: F1| F1 {
+        first_paint_ms: x.first_paint_ms.min(y.first_paint_ms),
+        frame_median_ms: x.frame_median_ms.min(y.frame_median_ms),
+        ..y
+    };
+    let (mut a, mut b) = (measure(&small, 60), measure(&big, 60));
+    for _ in 1..3 {
+        a = best(a, measure(&small, 60));
+        b = best(b, measure(&big, 60));
+    }
     println!("  F1 · 虚拟滚动");
     println!("    {a}");
     println!("    {b}");
@@ -57,22 +66,27 @@ fn the_flatness_meter_can_actually_see_a_slope() {
     use super::super::rows::testing::render_headless_nonvirtual;
     let screen = egui::vec2(SCREEN.0, SCREEN.1);
 
-    let t = |n: usize| -> f64 {
-        let rows = corpus::synth_rows(n, 0xF1);
-        let ctx = egui::Context::default();
-        let _ = render_headless_nonvirtual(&ctx, &rows[..64.min(rows.len())], screen);
-        let mut s: Vec<f64> = Vec::new();
-        for _ in 0..5 {
+    // 两档各热身一帧，再交替各量 7 帧、各取最快那一帧：负载只会给某一帧加时间，
+    // 交替让两档摊到同样的负载，取最快的比的是两档本身。
+    let sizes = [1_000usize, 20_000];
+    let rows: Vec<_> = sizes.iter().map(|&n| corpus::synth_rows(n, 0xF1)).collect();
+    let ctxs: Vec<_> = rows
+        .iter()
+        .map(|r| {
+            let ctx = egui::Context::default();
+            let _ = render_headless_nonvirtual(&ctx, r, screen);
+            ctx
+        })
+        .collect();
+    let mut best = [f64::INFINITY; 2];
+    for _ in 0..7 {
+        for i in 0..2 {
             let t0 = std::time::Instant::now();
-            let _ = render_headless_nonvirtual(&ctx, &rows, screen);
-            s.push(t0.elapsed().as_secs_f64() * 1000.0);
+            let _ = render_headless_nonvirtual(&ctxs[i], &rows[i], screen);
+            best[i] = best[i].min(t0.elapsed().as_secs_f64() * 1000.0);
         }
-        s.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        s[s.len() / 2]
-    };
-
-    let a = t(1_000);
-    let b = t(20_000);
+    }
+    let [a, b] = best;
     let ratio = b / a.max(1e-6);
     println!("  F1 · 对照组（不虚拟 ScrollArea::show）");
     println!("    1 000 行 {a:.3} ms → 20 000 行 {b:.3} ms，比值 {ratio:.2}");

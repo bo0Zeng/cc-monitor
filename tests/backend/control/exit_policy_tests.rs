@@ -229,17 +229,57 @@ fn the_said_line_is_exact_on_every_cell() {
     }
 }
 
-/// 生产那一格真读载体：一次性（测试进程没有监听口环境）⇒ 被监护那一句。
+const WIRE_CHILD_MARK: &str = "CCM_EXITPOL_WIRE_CHILD";
+
+/// 子进程入口：在父判据给的环境里答一次生产那一格的 `said`，印到 stdout。
+#[test]
+#[ignore = "子进程入口：只在被父判据用 CCM_EXITPOL_WIRE_CHILD 拉起时才跑"]
+fn wire_child() {
+    if std::env::var(WIRE_CHILD_MARK).is_err() {
+        return;
+    }
+    println!("SAID {}", wire(&Read::Absent, None)["said"]);
+}
+
+/// 生产那一格真读载体：环境由本格给（不继承跑测试那一方的），两档各起一个子进程答 ——
+/// 没有监听口环境 ⇒ 被监护那一句；监听口与钥匙文件都在 ⇒ 常驻那一句。
 #[test]
 fn the_production_wire_reads_the_carrier_from_the_listen_mode() {
-    assert!(
-        std::env::var(crate::stream::listen::ENV_PORT).is_err(),
-        "测试进程里有监听口环境 —— 本格的前提不成立"
-    );
+    use crate::stream::listen::{ENV_PORT, ENV_TOKEN_FILE};
+    let home = temp_dir("wire-child");
+    let said = |env: &[(&str, &str)]| -> serde_json::Value {
+        let out = std::process::Command::new(std::env::current_exe().expect("测试二进制"))
+            .args([
+                "control::exit_policy::tests::wire_child",
+                "--exact",
+                "--ignored",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env_clear()
+            .env(WIRE_CHILD_MARK, "1")
+            .env("HOME", &home)
+            .envs(env.iter().copied())
+            .output()
+            .expect("起子进程");
+        let text = String::from_utf8_lossy(&out.stdout);
+        let line = text
+            .lines()
+            .find_map(|l| l.split_once("SAID ").map(|(_, r)| r))
+            .unwrap_or_else(|| {
+                panic!(
+                    "子进程没答：{text}\n{}",
+                    String::from_utf8_lossy(&out.stderr)
+                )
+            });
+        serde_json::from_str(line).expect("SAID 后面是一个 JSON 串")
+    };
+    assert_eq!(said(&[]), copy_text("backendPolicy.exit.selfDies", &[]));
     assert_eq!(
-        wire(&Read::Absent, None)["said"],
-        copy_text("backendPolicy.exit.selfDies", &[])
+        said(&[(ENV_PORT, "47999"), (ENV_TOKEN_FILE, "/nonexistent/token")]),
+        copy_text("backendPolicy.exit.unattended", &[])
     );
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 // ═══════════════════════════ E1：写者全仓只有一处 ═══════════════════════════
