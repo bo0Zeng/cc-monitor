@@ -52,7 +52,7 @@ impl Open {
             .reply_text
             .lines()
             .map(str::trim)
-            .filter(|l| !l.is_empty())
+            .filter(|l| !l.is_empty() && !l.starts_with("```"))
             .take(REPLY_LINES)
             .collect();
         self.row.reply = clip(&head.join("\n"), REPLY_MAX);

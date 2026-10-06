@@ -4061,7 +4061,7 @@ CLI 面随之自动多一条 `--history-find`。
 | `turns[].said` | ← | 你那句的头一个非空行，至多 50 字（截了加 `…`） |
 | `turns[].tools` · `thinking` · `fails` | ← | `tool_use` 块数 · `thinking` / `redacted_thinking` 块数 · 结果标了出错、且不是人拒的（拒的认法同记录成品 `toolResults[].rejected`）`tool_result` 块数 |
 | `turns[].conclusion` | ← | 结论：这一轮最后一个 `tool_use` 之后、带正文（`text` 块非空）的 assistant 记录 uuid，文件序（报错合成的那条不算）；还没有 ⇒ `[]`。界面据此把这一轮其余的记录折进「过程」 |
-| `turns[].reply` | ← | 结论正文的头三个非空行（`\n` 连），至多 120 字 |
+| `turns[].reply` | ← | 结论正文的头三个非空行（`\n` 连；代码块的围栏行——三个反引号起头的那一行——不算），至多 120 字 |
 | `turns[].done` | ← | 这一轮收尾了：后面又有你的一句，或有一条 `stop_reason == "end_turn"` 的主线 assistant 记录 |
 
 - 本体 `observe/turns.rs`。整份超过 32 MiB ⇒ `too_large`（不截断；调用方分段取）。界面经通道直接问（`src/frontend/ui/session-reads.ts::readTurns`），本机与远端同一条路；老后端不认 ⇒ `unsupported`（过程行与刻度不出，正文照常）。

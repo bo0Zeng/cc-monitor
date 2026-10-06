@@ -86,6 +86,9 @@ export class TurnFold {
     this.mo.observe(content, { childList: true });
   }
 
+  /** 轮变了（刻度据此重排）。 */
+  onTurns: (() => void) | null = null;
+
   /** 已知的轮（刻度 · 大纲用同一份）。 */
   get all(): readonly TurnSummary[] {
     return this.turns;
@@ -121,6 +124,7 @@ export class TurnFold {
       this.turns = [...this.turns.filter((t) => t.at < res.from), ...res.turns];
       this.byUuid = new Map(this.turns.map((t) => [t.uuid, t]));
       this.apply();
+      this.onTurns?.();
     } finally {
       if (gen === this.gen) {
         this.inflight = false;

@@ -14,6 +14,7 @@ import type { SkeletonView } from "./skeleton-view";
 import type { UserInputPanel } from "./views/user-input-panel";
 import type { OutlineSource } from "./views/outline-source";
 import type { TurnFold } from "./turn-fold";
+import type { TurnRail } from "./turn-rail";
 import type { FactsSource } from "./views/facts-source";
 import type { ToolUseSeen } from "./cards/index";
 import type { Origin } from "./ipc/origin";
@@ -118,6 +119,8 @@ export interface Tab {
   facts: FactsSource;
   /** 按轮折叠（后端 `history-turns` 的成品 ⇒ 完成的轮过程折成一行，`turn-fold.ts`）。 */
   turnFold: TurnFold;
+  /** 轮次刻度（同一份轮，`turn-rail.ts`）。 */
+  turnRail: TurnRail;
   streamEl: HTMLElement;
   stream: MessageStream;
   /** 父 JSONL 路径（subagent 加载需要） */

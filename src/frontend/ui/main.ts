@@ -622,6 +622,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (!historyView.openFind()) tabs.openFind();
   });
   dispatcher.bind("session.toggle-process", () => tabs.toggleProcessDefault());
+  dispatcher.bind("session.prev-turn", () => tabs.stepTurn(-1));
+  dispatcher.bind("session.next-turn", () => tabs.stepTurn(1));
   dispatcher.bind("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
   dispatcher.bind("app.open-settings", () => void openSettingsWindow()); // F82a：开独立设置窗口
   dispatcher.bind("app.toggle-history", () => overlays.toggle("history"));

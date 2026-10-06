@@ -163,6 +163,22 @@ export const MAIN_SCENES: Scene[] = [
     more?.click();
     await sleep(400);
   }),
+  main("main-turn-rail", "主窗口 · 轮次刻度悬停", "160 轮的会话：右缘相邻并格（每格 3 轮）· 当前那一格加长、强调色；悬停一格左侧出小卡（第几–几轮 · 起始时刻 · 你那句）", async () => {
+    await mainReady(1);
+    await waitFor(".turn-rail.active .turn-tick");
+    await sleep(300);
+    const ticks = [...document.querySelectorAll<HTMLElement>(".turn-rail.active .turn-tick")];
+    const t = ticks[Math.floor(ticks.length / 2)];
+    t.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    await sleep(700);
+  }, longWorld),
+  main("main-turn-rail-one", "主窗口 · 轮次刻度（一轮一格）悬停", "默认会话：悬停那一格，左侧小卡给第几轮 · 时刻 · 工具数 · 你那句 · 回复头三行", async () => {
+    await mainReady(ALL_TABS);
+    const t = await waitFor(".turn-rail.active .turn-tick");
+    await sleep(300);
+    t.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    await sleep(700);
+  }),
   main("main-stream-retry", "主窗口 · 重试细条与提问 / 计划结果", "同一个会话靠后：两次重试并成一条（接上了变淡）· 提问答了「已选」· 计划「已批准」", async () => {
     await mainReady(ALL_TABS);
     await scrollStream(".card-api-retry");

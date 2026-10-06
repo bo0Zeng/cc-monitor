@@ -29,6 +29,7 @@ import type { UserInputPanel, JumpResult } from "./views/user-input-panel";
 import { OutlineSource, outlineSeedFromIndex } from "./views/outline-source";
 import { SessionFindPanel } from "./views/session-find";
 import { TurnFold, processExpandedDefault, setProcessExpandedDefault } from "./turn-fold";
+import { TurnRail } from "./turn-rail";
 import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import type { MenuItem } from "./kit/menu";
 // ⚠ **实时窗口 import 历史查看器，方向是别扭的 —— 这是写区逼出来的将就，不是惯例。**
@@ -82,6 +83,7 @@ export interface TabStreamDom {
   inputsPanel: UserInputPanel;
   outline: OutlineSource;
   turnFold: TurnFold;
+  turnRail: TurnRail;
 }
 
 /**
@@ -277,12 +279,20 @@ export class TabStreamView {
       const t = this.store.tabs.get(sessionId);
       return t?.parentPath ? { origin: t.origin, jsonlPath: t.parentPath } : null;
     });
+    // 轮次刻度：同一份轮；跳与查找 / 大纲同一个住址（`jumpInTab`）。挂在流外（不随流滚），随 tab 同进同出。
+    const turnRail = new TurnRail(streamEl, stream.contentElement, {
+      turns: () => turnFold.all,
+      waiting: () => this.store.tabs.get(sessionId)?.needs != null,
+      jump: (uuid) => void this.jumpInTab(sessionId, streamEl, uuid),
+    });
+    turnFold.onTurns = () => turnRail.render();
+    this.streamRootEl.appendChild(turnRail.el);
     // v2.2 issue #12: 重放期创建的新 Tab 也进 batch 模式，避免每条 record 都
     // 触发 O(N) computeMainBranch。批结束时 onBatchEnd 会统一 flush。
     if (this.store.inBatch) {
       branchFolder.setBatchMode(true);
     }
-    return { streamEl, stream, branchFolder, timeline, inputsEl, inputsPanel, outline, turnFold };
+    return { streamEl, stream, branchFolder, timeline, inputsEl, inputsPanel, outline, turnFold, turnRail };
   }
 
   /** 给刚建好的 tab 挂上翻补批的滚动监听与视口变大的补批（原是 `ensureTab` 里的一段，逐字）。 */
@@ -307,6 +317,7 @@ export class TabStreamView {
     streamEl.addEventListener("scroll", fillHandler, { passive: true });
     // 收尾时视口落在过程里、先没收的那一轮：滚出去了再收（同一个监听，摘的时候一起摘）。
     streamEl.addEventListener("scroll", tab.turnFold.releaseOnScroll, { passive: true });
+    streamEl.addEventListener("scroll", tab.turnRail.onScroll, { passive: true }); // 刻度上「当前」那一格
     tab.fillHandler = fillHandler;
     // ★ 步 3：**视口自己变大 ⇒ 重新补批。**
     //
@@ -319,6 +330,7 @@ export class TabStreamView {
       // 列宽可能变了：骨架账本按新列宽重估（后台 tab 同样有布局宽，一并跟上）
       const cur = this.store.tabs.get(sessionId);
       if (cur) this.relayoutOnColumnChange(cur);
+      cur?.turnRail.render(); // 列窄到 900 以下不出刻度
       if (this.store.activeId !== sessionId) return;
       const t = this.store.tabs.get(sessionId);
       if (!t || t.window.pendingCount === 0) return;
@@ -343,6 +355,8 @@ export class TabStreamView {
     tab.outline.reset();
     tab.facts.reset(); // 会话事实同理：在途那趟回来后不许回写
     tab.streamEl.removeEventListener("scroll", tab.turnFold.releaseOnScroll);
+    tab.streamEl.removeEventListener("scroll", tab.turnRail.onScroll);
+    tab.turnRail.el.remove(); // 刻度挂在流外，不随 `streamEl.remove()` 一起走
     tab.turnFold.dispose(); // 按轮折叠：断观察、在途那趟作废
     this.finds.get(tab.sessionId)?.reset(); // 在途的查找作废、出弹层栈
     this.finds.delete(tab.sessionId);
@@ -402,6 +416,7 @@ export class TabStreamView {
       // 切走的 tab 收起面板（出弹层栈）—— 不然 Esc 去关的是一块看不见的面板。
       if (sid !== sessionId) this.finds.get(sid)?.close();
       if (sid !== sessionId) t.turnFold.release(true); // 先没收的那一轮：切走了就收
+      t.turnRail.el.classList.toggle("active", sid === sessionId);
 
     }
   }
@@ -657,6 +672,12 @@ export class TabStreamView {
     const on = !processExpandedDefault();
     setProcessExpandedDefault(on);
     for (const t of this.store.tabs.values()) t.turnFold.setDefault(on);
+  }
+
+  /** `Alt+↑` / `Alt+↓`：当前 tab 上 / 下一轮。 */
+  stepTurn(dir: -1 | 1): void {
+    const t = this.store.activeId !== null ? this.store.tabs.get(this.store.activeId) : undefined;
+    t?.turnRail.step(dir);
   }
 
   /** 会话头「⋯」里流的开关（接在这个标签页的右键菜单后面）。右侧灰字是那个动作此刻绑的键。 */

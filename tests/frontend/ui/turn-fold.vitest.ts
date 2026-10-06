@@ -1,7 +1,10 @@
 // 按轮折叠（主窗口稿 §5.2.2）：完成的轮过程折成一行、结论常显；正在跑的那一轮展开；点过程行这一轮单独记住；
 // 默认开关（Ctrl+O）全部摊开 / 收回；骨架占位与 ESC 折叠段之后不再归轮（宁可不折）；续取从还没收尾的那一轮起、整轮替换。
+// 轮次刻度（§5.2.6）：一轮一格、超过 60 轮并格 · 当前那一轮 · 在等你的那一格琥珀 · 点了 / Alt+↑↓ 跳 · 悬停卡在左侧。
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { TurnFold, PROC_LINE_CLASS, PROC_HIDDEN_CLASS, setProcessExpandedDefault } from "../../../src/frontend/ui/turn-fold";
+import { TurnRail, railGroups, RAIL_MAX_TICKS } from "../../../src/frontend/ui/turn-rail";
+import { placeCardLeft } from "../../../src/frontend/ui/kit/tooltip";
 import type { TurnSummary, TurnsResult } from "../../../src/frontend/ui/session-reads";
 
 const turn = (uuid: string, at: number, over: Partial<TurnSummary> = {}): TurnSummary => ({
@@ -159,5 +162,74 @@ describe("按轮折叠", () => {
     a.getBoundingClientRect = () => box(-300, -200);
     fold.releaseOnScroll();
     expect(hidden(a)).toBe(true);
+  });
+});
+
+describe("轮次刻度", () => {
+  const box = (top: number, bottom: number) => ({ top, bottom, height: bottom - top }) as DOMRect;
+  function railRig(n: number, waiting = false) {
+    const turns = Array.from({ length: n }, (_, i) => turn(`u${i}`, i * 10, { said: `第 ${i} 句`, reply: `回 ${i}` }));
+    const content = document.createElement("div");
+    const heads = turns.map((t, i) => {
+      const el = card("card-user", t.uuid);
+      el.getBoundingClientRect = () => box(i * 100 - 250, i * 100 - 200);
+      return el;
+    });
+    content.append(...heads);
+    const scroller = document.createElement("div");
+    scroller.getBoundingClientRect = () => box(0, 400);
+    Object.defineProperty(scroller, "clientWidth", { value: 1200 });
+    const jump = vi.fn();
+    const rail = new TurnRail(scroller, content, { turns: () => turns, waiting: () => waiting, jump });
+    document.body.replaceChildren(content, rail.el);
+    rail.render();
+    return { rail, jump, ticks: () => [...rail.el.querySelectorAll<HTMLElement>(".turn-tick")] };
+  }
+
+  it("一轮一格；超过 60 轮相邻并格（悬停给范围）", () => {
+    expect(railGroups(3)).toEqual([[0, 0], [1, 1], [2, 2]]);
+    const g = railGroups(130);
+    expect(g.length).toBeLessThanOrEqual(RAIL_MAX_TICKS);
+    expect(g[0]).toEqual([0, 2]);
+    expect(g[g.length - 1]).toEqual([129, 129]);
+    expect(g.flatMap(([a, b]) => Array.from({ length: b - a + 1 }, (_, k) => a + k))).toEqual(Array.from({ length: 130 }, (_, i) => i));
+  });
+
+  it("当前那一轮：开头已过视口上沿的最后一轮；在等你 ⇒ 最后一格琥珀", () => {
+    const { ticks } = railRig(5, true);
+    // 开头在 -250 · -150 · -50 · 50 · 150 ⇒ 过上沿（8）的最后一个是第 3 轮（下标 2）
+    expect(ticks().map((t) => t.dataset.viewport)).toEqual(["false", "false", "true", "false", "false"]);
+    expect(ticks().map((t) => t.dataset.waiting)).toEqual(["false", "false", "false", "false", "true"]);
+  });
+
+  it("点一格 ⇒ 跳到那一轮开头；Alt+↑↓ 上 / 下一轮", () => {
+    const { rail, jump, ticks } = railRig(5);
+    ticks()[4].click();
+    expect(jump).toHaveBeenLastCalledWith("u4");
+    rail.step(1);
+    expect(jump).toHaveBeenLastCalledWith("u3");
+    rail.step(-1);
+    expect(jump).toHaveBeenLastCalledWith("u1");
+  });
+
+  it("正文列 ≤ 900px 不出；没有轮不出", () => {
+    const { rail } = railRig(0);
+    expect(rail.el.hidden).toBe(true);
+  });
+
+  it("正文列 ≤ 900px 也不出", () => {
+    const content = document.createElement("div");
+    const scroller = document.createElement("div");
+    Object.defineProperty(scroller, "clientWidth", { value: 900 });
+    const rail = new TurnRail(scroller, content, { turns: () => [turn("u0", 0)], waiting: () => false, jump: () => {} });
+    rail.render();
+    expect(rail.el.hidden).toBe(true);
+  });
+
+  it("悬停卡在格子左侧、竖直居中；左边放不下翻到右侧", () => {
+    const host = { left: 1240, right: 1248, top: 300, bottom: 303, width: 8, height: 3 } as DOMRect;
+    expect(placeCardLeft(host, { width: 300, height: 80 }, { width: 1280, height: 800 })).toEqual({ left: 934, top: 261.5 });
+    const edge = { left: 100, right: 108, top: 300, bottom: 303, width: 8, height: 3 } as DOMRect;
+    expect(placeCardLeft(edge, { width: 300, height: 80 }, { width: 1280, height: 800 }).left).toBe(114);
   });
 });

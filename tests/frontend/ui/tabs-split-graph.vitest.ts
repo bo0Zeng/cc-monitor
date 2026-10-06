@@ -160,6 +160,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/skeleton-view.ts",
     "src/frontend/ui/stream.ts",
     "src/frontend/ui/tab-session-state.ts", // 已结束的不进后台物化队列
+    "src/frontend/ui/turn-rail.ts", // 轮次刻度：每个 tab 一份（同一份轮），挂在流外、随 tab 同进同出
     "src/frontend/ui/turn-fold.ts", // 按轮折叠：每个 tab 一份（问后端 `history-turns`），开关「过程默认展开」
     "src/frontend/ui/keybindings/registry.ts", // 会话头「⋯」里那个开关右侧灰字：`Ctrl+O` 此刻绑的键
     "src/frontend/ui/views/outline-source.ts",

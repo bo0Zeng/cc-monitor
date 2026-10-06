@@ -1,4 +1,4 @@
-//! 一轮的摘要（`turns.rs`）：子运行的记录不算进主线的轮 · 从某一轮的 `at` 接着取只出那一轮起的 · 你那句与回复头的截法。
+//! 一轮的摘要（`turns.rs`）：子运行的记录不算进主线的轮 · 从某一轮的 `at` 接着取只出那一轮起的 · 你那句与回复头的截法（代码块围栏行不算一行）。
 //! 夹具只造结构（占位词），不采会话正文。成品的整形由跨语言金样管（`read_face_tests.rs`）。
 
 use super::*;
@@ -48,4 +48,14 @@ fn subrun_records_do_not_count_and_from_resumes_at_a_turn() {
     let again = scan(&body, all[1].at);
     assert_eq!(again.len(), 1);
     assert_eq!((again[0].uuid.as_str(), again[0].at), ("d", all[1].at));
+}
+
+#[test]
+fn reply_head_skips_code_fence_lines() {
+    let lines = [
+        r#"{"type":"user","uuid":"a","timestamp":"t1","message":{"content":"q"}}"#,
+        r#"{"type":"assistant","uuid":"b","timestamp":"t2","message":{"content":[{"type":"text","text":"一\n\n```py\n二\n```\n三\n四"}]}}"#,
+    ];
+    let body: String = lines.iter().map(|l| format!("{l}\n")).collect();
+    assert_eq!(scan(&body, 0)[0].reply, "一\n二\n三");
 }

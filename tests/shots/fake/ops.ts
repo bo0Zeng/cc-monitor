@@ -166,7 +166,7 @@ export function defaultOps(): Record<string, OpHandler> {
         t.conclusion = afterTool;
         const texts = recs.filter((r): r is Extract<JsonlRecord, { type: "assistant" }> => r.type === "assistant" && afterTool.includes(r.uuid));
         const body = texts.flatMap((r) => ((r.message.content as { type: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text ?? "")));
-        t.reply = body.join("\n").split("\n").filter((l) => l.trim()).slice(0, 3).join("\n").slice(0, 120);
+        t.reply = body.join("\n").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("```")).slice(0, 3).join("\n").slice(0, 120);
       };
       recs.forEach((r, i) => {
         if (r.type === "user" && r.userText.speaker.kind === "human" && r.userText.text !== "" && r.uuid) {

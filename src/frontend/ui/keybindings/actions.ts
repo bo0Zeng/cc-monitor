@@ -97,6 +97,9 @@ export const ACTIONS: ReadonlyArray<Action> = [
     default: "Ctrl+KeyO",
     available: true,
   },
+  // 上 / 下一轮（主窗口稿 §5.2.6，轮次刻度的键盘那一半）。
+  { id: "session.prev-turn", label: copyText("keybindingActions.session.prevTurn"), category: "Tab", default: "Alt+ArrowUp", available: true },
+  { id: "session.next-turn", label: copyText("keybindingActions.session.nextTurn"), category: "Tab", default: "Alt+ArrowDown", available: true },
 
   // ===== Terminal =====
   { id: "terminal.bring-front", label: copyText("keybindingActions.terminal.front"), category: "Term", default: "Backquote", available: true },

@@ -3125,6 +3125,26 @@
       "zh": " · 失败 {n}",
       "args": ["n"]
     },
+    "stream.rail.tip": {
+      "kind": "body",
+      "zh": "第 {n} 轮 · {time} · 工具 ×{tools}",
+      "args": ["n", "time", "tools"]
+    },
+    "stream.rail.tipRange": {
+      "kind": "body",
+      "zh": "第 {from}–{to} 轮 · {time} 起",
+      "args": ["from", "to", "time"]
+    },
+    "stream.rail.you": {
+      "kind": "body",
+      "zh": "你：{text}",
+      "args": ["text"]
+    },
+    "stream.rail.claude": {
+      "kind": "body",
+      "zh": "Claude：{text}",
+      "args": ["text"]
+    },
     "stream.proc.head": {
       "kind": "body",
       "zh": "过程",
@@ -3511,6 +3531,16 @@
     "keybindingActions.session.toggleProcess": {
       "kind": "action",
       "zh": "过程默认展开 / 收起",
+      "args": []
+    },
+    "keybindingActions.session.prevTurn": {
+      "kind": "action",
+      "zh": "上一轮",
+      "args": []
+    },
+    "keybindingActions.session.nextTurn": {
+      "kind": "action",
+      "zh": "下一轮",
       "args": []
     },
     "keybindingActions.session.find": {

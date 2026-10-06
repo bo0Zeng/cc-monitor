@@ -52,6 +52,17 @@ export function placeCardRight(host: DOMRect, tip: { width: number; height: numb
   return { left, top };
 }
 
+/**
+ * 卡锚在宿主左侧、竖直居中（消息流右缘的轮次刻度）：左边放不下翻到右侧；上下夹进视口（纯函数，判据直接调）。
+ */
+export function placeCardLeft(host: DOMRect, tip: { width: number; height: number }, view: { width: number; height: number }): { left: number; top: number } {
+  let left = host.left - GAP - tip.width;
+  if (left < EDGE) left = Math.min(host.right + GAP, view.width - EDGE - tip.width);
+  let top = host.top + host.height / 2 - tip.height / 2;
+  top = Math.max(EDGE, Math.min(top, view.height - EDGE - tip.height));
+  return { left, top };
+}
+
 /** 卡式（`hold`）离开宿主与卡之后多久关。 */
 export const CARD_CLOSE_MS = 120;
 
@@ -69,8 +80,8 @@ export function hideTooltips(): void {
 export interface TooltipOpts {
   /** 不等 500ms（信息图标那种点名要看的）。 */
   immediate?: boolean;
-  /** `right` ＝ 卡锚在宿主右侧、顶对齐（标签页栏的悬停卡）；缺省在上方居中。 */
-  placement?: "above" | "right";
+  /** `right` ＝ 卡锚在宿主右侧、顶对齐（标签页栏的悬停卡）；`left` ＝ 左侧、竖直居中（轮次刻度）；缺省在上方居中。 */
+  placement?: "above" | "right" | "left";
   /** 卡可以被指针移进去（离开宿主与卡 [`CARD_CLOSE_MS`] 后才关）；卡里仍不放能点的东西。 */
   hold?: boolean;
   /** 卡的宽（px）；缺省按内容。 */
@@ -141,7 +152,8 @@ function controller(content: (host: HTMLElement) => TipContent, opts: TooltipOpt
     tip.style.visibility = "hidden";
     const r = tip.getBoundingClientRect();
     const view = { width: window.innerWidth, height: window.innerHeight };
-    const at = opts.placement === "right" ? placeCardRight(host.getBoundingClientRect(), r, view) : placeTip(host.getBoundingClientRect(), r, view);
+    const box = host.getBoundingClientRect();
+    const at = opts.placement === "right" ? placeCardRight(box, r, view) : opts.placement === "left" ? placeCardLeft(box, r, view) : placeTip(box, r, view);
     tip.style.left = `${at.left}px`;
     tip.style.top = `${at.top}px`;
     tip.style.visibility = "";

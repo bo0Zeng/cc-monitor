@@ -663,7 +663,7 @@ export class TabManager {
       bgName,
     );
 
-    const { streamEl, stream, branchFolder, timeline, inputsEl, inputsPanel, outline, turnFold } =
+    const { streamEl, stream, branchFolder, timeline, inputsEl, inputsPanel, outline, turnFold, turnRail } =
       this.view.mountTabDom(sessionId);
 
     // v2.3.0 issue #11: 异步 fetch 初始 task 快照。`session-tasks` 流那一路（`refreshTasks`）并行更新
@@ -709,6 +709,7 @@ export class TabManager {
       fillHandler: null,
       outline,
       turnFold,
+      turnRail,
       inputsPanel,
       inputsEl,
       // issue #23：红绿灯信号若先于建 Tab 到达，从暂存取（否则 null=未知→绿）
@@ -1256,6 +1257,7 @@ export class TabManager {
       tab.title = this.computeTitle(tab);
       this.refreshTabBar();
     } else if (ch.writers || ch.needs || ch.peek) this.refreshTabBar();
+    if (ch.needs) tab.turnRail.render(); // 在等你的那一轮琥珀
     if ((ch.usage || ch.projectDir) && sid === this.store.activeId) this.publishActive();
   }
 
@@ -1500,6 +1502,11 @@ export class TabManager {
   /** 快捷键 Ctrl+F（`session.find`）：当前 tab 的查找面板打开到「搜索」。实现在流视图。 */
   openFind(): void {
     this.view.openFind();
+  }
+
+  /** `Alt+↑` / `Alt+↓`：上 / 下一轮（实现在流视图）。 */
+  stepTurn(dir: -1 | 1): void {
+    this.view.stepTurn(dir);
   }
 
   /** `Ctrl+O` · 会话头「⋯」：过程默认展开 / 收起（每扇窗一份，所有 tab 一起换）。 */
