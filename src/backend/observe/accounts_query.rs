@@ -443,10 +443,10 @@ pub(crate) fn list_product_at(
 
 /// pidfile 目录里每一份**读得出来**的 `(pid, 内容)` —— 上限、跳过要说清，逐字搬自 [`session_accounts`] 那一段循环头
 /// （抽出来是为了让「这台机器上哪几个会话活着」（[`live_session_ids`]）与账号归属读**同一批** pidfile，
-/// pidfile 目录问注册表里后端盯着的那一家，经 `watcher::pidfile_dir` 同一处）。
+/// pidfile 目录问注册表里后端盯着的那一家，与判活同一处 `agents::pidfile_dir`）。
 fn pidfiles(agent_home: &Path) -> Vec<(u32, serde_json::Value)> {
     let mut out = Vec::new();
-    let dir = crate::observe::watcher::pidfile_dir(agent_home);
+    let dir = crate::agents::pidfile_dir(agent_home);
     let Ok(rd) = std::fs::read_dir(&dir) else {
         return Vec::new(); // 没有 sessions/ → 零行（exit 0）
     };

@@ -1035,7 +1035,6 @@ fn no_production_code_writes_the_agent_settings_file() {
         "src/backend/agents/claudecode/accounts.rs",
         "src/backend/agents/claudecode/footprint.rs",
         "src/backend/agents/claudecode/paths.rs",
-        "src/backend/observe/cc_bus_hooks.rs",
     ];
     let code = |text: &str| guard_core::strip_comment_lines(text);
     let writes = |text: &str| WRITES.iter().any(|w| text.contains(w));

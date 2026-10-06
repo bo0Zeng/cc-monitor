@@ -1010,6 +1010,15 @@ pub fn home_at(config_dir: Option<&Path>, from_env: bool) -> PathBuf {
     }
 }
 
+/// 后端盯着的那一家（[`tree_local_face`]）家目录 `home` 下的 pidfile 目录（[`LocalFace::pidfile_dir`]）。
+/// 没有那一家 ⇒ 家目录下一个不会有 pidfile 的位置（读出零份）。判活与账号归属读同一处。
+pub(crate) fn pidfile_dir(home: &Path) -> PathBuf {
+    tree_local_face().map_or_else(|| home.join(NO_PIDFILES), |f| (f.pidfile_dir)(home))
+}
+
+/// 注册表里没有判活那一家时 [`pidfile_dir`] 指的那个名字（不建、不写，只读出零份）。
+const NO_PIDFILES: &str = ".no-pidfile-dir";
+
 /// `kind` 那一家在本机的布局（[`Adapter::local`]）。认不出 / 没有 ⇒ `None`。
 pub(crate) fn local_face_among(registry: &[Adapter], kind: &str) -> Option<LocalFace> {
     adapter_among(registry, kind).and_then(|a| a.local)

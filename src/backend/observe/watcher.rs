@@ -2589,17 +2589,10 @@ fn add_time_check(pid: u32, bytes: &[u8], path: &Path) -> Result<Option<u64>, &'
     }
 }
 
-/// pidfile 目录（一次性扫描问注册表里后端盯着的那一家，`LocalFace.pidfile_dir`）。
-/// 没有那一家 ⇒ 家目录下一个不会有 pidfile 的位置（读出零份）。
+/// pidfile 目录（一次性扫描问注册表里后端盯着的那一家，`agents::pidfile_dir`）。
 pub(crate) fn pidfile_dir(agent_home: &Path) -> PathBuf {
-    crate::agents::tree_local_face().map_or_else(
-        || agent_home.join(NO_PIDFILES),
-        |f| (f.pidfile_dir)(agent_home),
-    )
+    crate::agents::pidfile_dir(agent_home)
 }
-
-/// 注册表里没有判活那一家时 [`pidfile_dir`] 指的那个名字（不建、不写，只读出零份）。
-const NO_PIDFILES: &str = ".no-pidfile-dir";
 
 /// pidfile 里那一家写下的工作目录（`cwd`）。
 fn pidfile_cwd(bytes: &[u8]) -> Option<String> {
