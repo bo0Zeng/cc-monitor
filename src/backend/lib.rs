@@ -772,7 +772,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p7q-quota-probe：轮换积木（cap · stint · preempt · 按原名的窗口 · 基线与 blocked_above）＋ 新命令 quota-probe（官方 /usage）。
 ///
 /// p7r-filewin-progress：files-index-status / -rebuild 多 unreadable_paths；monitor 通道多 link 流与 link-retry（文件窗口断线过期）。
-pub const BUILD_ID: &str = "p7r-filewin-progress";
+///
+/// p7s-files-exists：files-create / mkdir / rename 撞名回 exists；files-chmod 应答多 before。
+pub const BUILD_ID: &str = "p7s-files-exists";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
