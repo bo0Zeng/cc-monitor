@@ -50,6 +50,8 @@ export const LS_KEYS = {
   tabBarWidth: "cc-monitor.tab-bar-w",
   /** 主窗口稿 §5.2.2：「过程默认展开」（会话头「⋯」· Ctrl+O）。每扇窗一份；`"1"` 展开，其余收起。 */
   processExpanded: "cc-monitor.stream.process-expanded",
+  /** 「谁说的」稿 A：「显示系统注入」（会话头「⋯」）。每扇窗一份；`"1"` 显示，其余不露。 */
+  showInjected: "cc-monitor.stream.show-injected",
 } as const;
 
 export function safeGet(key: string): string | null {

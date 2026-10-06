@@ -578,7 +578,13 @@ pub enum Speaker {
     /// （子 agent 那一侧）主会话派给它的活。
     AgentTask,
     /// 系统注入：提醒、技能展开、续跑样板、定时触发、额度恢复后的续跑等。
-    System,
+    /// 默认不露；会话头「⋯」里开了「显示系统注入」才画（一条一行、收着）。
+    System {
+        /// 注入的原文（剥过两头空白）；这一家给不出 ⇒ 缺。只随记录成品给界面，不进日志。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(test, ts(optional))]
+        body: Option<String>,
+    },
     /// 上下文压缩后续接用的摘要。
     CompactSummary,
     /// 中断标记（人按了 Esc）。
@@ -601,7 +607,7 @@ impl Speaker {
             Self::PeerSession { .. } => "peerSession",
             Self::Coordinator { .. } => "coordinator",
             Self::AgentTask => "agentTask",
-            Self::System => "system",
+            Self::System { .. } => "system",
             Self::CompactSummary => "compactSummary",
             Self::Interrupt => "interrupt",
             Self::ToolResult => "toolResult",
@@ -643,7 +649,7 @@ pub struct Pasted {
 
 impl Default for UserText {
     fn default() -> Self {
-        Self::of(Speaker::System)
+        Self::of(Speaker::System { body: None })
     }
 }
 

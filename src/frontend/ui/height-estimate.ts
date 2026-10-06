@@ -344,6 +344,8 @@ export function estimateStreamNodeHeight(el: HTMLElement): number | null {
   if (el.classList.contains("card-speaker")) return (el as HTMLDetailsElement).open ? 28 + 60 : 28;
   if (el.classList.contains("card-event-line") || el.classList.contains("card-notice")) return 19;
   if (el.classList.contains("card-slash")) return 19;
+  // 系统注入的细条：收着一行（开关关着 display:none，不占高）。
+  if (el.classList.contains("card-injected")) return 22;
   // 修法①:两行常数。card-api-retry 是"重试风暴"时成批出现的那一种。
   if (el.classList.contains("card-api-retry")) return 17;
   if (el.classList.contains("card-bash-input")) return 19;
@@ -457,6 +459,14 @@ const SKEL_USER_CHROME = 50;
 const SKEL_CARD_CHROME = 19;
 const SKEL_TOOL_GROUP_H = 49;
 const SKEL_SYSTEM_H = 28;
+/** 系统注入的细条（「显示系统注入」开着时）：一行 summary ＋ 上下外距。关着 ⇒ 0。 */
+const SKEL_INJECTED_H = 30;
+let injectedShown = false;
+
+/** 「显示系统注入」开没开（估高跟着它：关着注入行高 0，开着按一条细条算）。改了之后调用方让骨架账本重排。 */
+export function setInjectedShown(on: boolean): void {
+  injectedShown = on;
+}
 
 /** 第一级里「正文之外那一段」四格（秤对拍的就是它们；assistant 那一格含头与块距）。只给判据读。 */
 export const SKEL_OUTER = {
@@ -506,6 +516,8 @@ export function estimateFromFacts(
   colW: number = COL_W,
 ): number {
   const kind = skeletonKind(f);
+  // 注入行不是任何一类（不打断相邻工具并组），只按开关出高。
+  if (f.sp === "system") return injectedShown ? SKEL_INJECTED_H : 0;
   if (kind === "none") return 0;
   if (kind === "tool") return prevKind === "tool" ? 0 : SKEL_TOOL_GROUP_H;
   if (f.t === "system") return SKEL_SYSTEM_H;

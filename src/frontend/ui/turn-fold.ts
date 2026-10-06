@@ -34,13 +34,22 @@ export const PROC_LINE_CLASS = "proc-line";
 export const PROC_HIDDEN_CLASS = "proc-hidden";
 const FOLD_WRAP_CLASS = "branch-fold-wrap";
 /** 会被折进过程的卡型（白名单：认不出的卡一律常显）。 */
-const FOLDABLE = ["card-assistant", "card-tool-group", "card-api-retry"] as const;
+const FOLDABLE = ["card-assistant", "card-tool-group", "card-api-retry", "card-injected"] as const;
 /** 连续要不到几次就不再要（同大纲 / 事实的口径）。 */
 const MAX_FAILURES = 3;
 
 /** 这份会话在哪（路径要等首条行回填 ⇒ 每次现取；拿不到 ⇒ 这一趟不要）。 */
 export type TurnsWhere = () => { origin: Origin; jsonlPath: string } | null;
 type Read = (origin: Origin, path: string, from: number) => Promise<TurnsResult>;
+
+/** 「显示系统注入」这扇窗的开关（缺省不露）。 */
+export function injectedShownDefault(): boolean {
+  return safeGet(LS_KEYS.showInjected) === "1";
+}
+
+export function setInjectedShownDefault(on: boolean): void {
+  safeSet(LS_KEYS.showInjected, on ? "1" : "0");
+}
 
 /** 「过程默认展开」这扇窗的开关（缺省收起）。 */
 export function processExpandedDefault(): boolean {

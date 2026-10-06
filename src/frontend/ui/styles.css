@@ -1460,6 +1460,48 @@
   overflow: auto;
 }
 
+/* === 系统注入（「谁说的」稿 A ⑤）：默认不露；会话头「⋯」开「显示系统注入」后一条一行、默认收起、淡一档 === */
+.card-injected {
+  display: none;
+  margin: 2px 0;
+  color: var(--text-faint);
+  font-size: var(--font-size-small);
+  content-visibility: visible;
+}
+
+.show-injected .card-injected:not(.proc-hidden) {
+  display: block;
+}
+
+.injected-head {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.injected-head::-webkit-details-marker {
+  display: none;
+}
+
+.injected-head::before {
+  content: var(--mark-closed);
+  display: inline-block;
+  width: 14px;
+}
+
+.card-injected[open] > .injected-head::before {
+  content: var(--mark-open);
+}
+
+.injected-body {
+  max-height: 240px;
+  margin: 4px 0 0 14px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 /* === 人粘贴的块（「谁说的」稿 A）：超过 12 行折成一行，点开就地展开 === */
 .paste-fold {
   margin: 4px 0;

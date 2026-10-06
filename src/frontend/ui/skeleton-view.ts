@@ -147,10 +147,10 @@ export class SkeletonView {
    * 占位改高（视口钉法同 `applyRefined`），在新列宽下作废的那几行精算记进待重交（[`takeStale`]，不论离视口多远）。
    * 差不到 1px ⇒ 没变，什么都不动、回 `false`。
    */
-  relayout(colW: number): boolean {
+  relayout(colW: number, force = false): boolean {
     if (this.disposed) return false;
     const cur = this.ledger.columnWidth ?? initialColumnWidth();
-    if (Math.abs(colW - cur) < 1) return false;
+    if (!force && Math.abs(colW - cur) < 1) return false;
     for (const s of this.ledger.relayout(colW)) this.stale.add(s);
     this.reheightPinned();
     return true;

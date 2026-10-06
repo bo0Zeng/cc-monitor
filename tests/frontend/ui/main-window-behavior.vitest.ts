@@ -249,6 +249,38 @@ describe("tab 右键菜单躲窗口边：放不下就往上 / 往左翻，贴边
   });
 });
 
+describe("会话头「⋯」＝ 右键菜单 ＋ 流的两个开关（过程默认展开 · 显示系统注入），每扇窗一份", () => {
+  it("★ 两个开关在菜单末尾；点「显示系统注入」流根上的类跟着切、记住；点「过程默认展开」记住；Alt+↑↓ 没有轮时不出错", () => {
+    localStorage.clear();
+    const tm = makeTabs(["a", "b"]);
+    const root = document.body.lastElementChild as HTMLElement;
+    const anchor = document.createElement("button");
+    document.body.appendChild(anchor);
+    const item = (label: string): HTMLButtonElement | undefined =>
+      [...document.querySelectorAll<HTMLButtonElement>("[role^=menuitem]")].find((b) => b.textContent?.includes(label));
+    const injected = copyText("stream.injected.toggle");
+    const proc = copyText("stream.proc.toggle");
+    tm.openMenuFor(anchor, "a");
+    expect([!!item(injected), !!item(proc)]).toEqual([true, true]);
+    item(injected)!.click();
+    expect(root.classList.contains("show-injected")).toBe(true);
+    expect(localStorage.getItem("cc-monitor.stream.show-injected")).toBe("1");
+    tm.openMenuFor(anchor, "a");
+    expect(item(injected)!.getAttribute("aria-checked")).toBe("true");
+    item(injected)!.click();
+    expect(root.classList.contains("show-injected")).toBe(false);
+    tm.openMenuFor(anchor, "a");
+    item(proc)!.click();
+    expect(localStorage.getItem("cc-monitor.stream.process-expanded")).toBe("1");
+    tm.toggleProcessDefault();
+    expect(localStorage.getItem("cc-monitor.stream.process-expanded")).toBe("0");
+    expect(() => {
+      tm.stepTurn(1);
+      tm.stepTurn(-1);
+    }).not.toThrow();
+  });
+});
+
 describe("已结束的 tab 在右键菜单里关得掉（窄窗里那颗 × 看不见）", () => {
   it("已结束 ⇒ 菜单里有「关闭标签」，点了 tab 就没了；活着的没有这一项", () => {
     const tm = makeTabs(["a", "b"]);

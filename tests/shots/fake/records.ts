@@ -98,7 +98,7 @@ export class Convo {
       userText: opts.interrupt
         ? { speaker: { kind: "interrupt" }, text: "" }
         : opts.meta
-          ? { speaker: { kind: "system" }, text: "" }
+          ? { speaker: { kind: "system", body: text.trim() }, text: "" }
           : { speaker: { kind: "human" }, text, pasted: pastedOf(text) },
     });
     this.prev = uuid;

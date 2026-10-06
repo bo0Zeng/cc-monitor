@@ -376,7 +376,7 @@ fn said_as(says: KindSays, text: &str, human_text: String) -> UserText {
             text: text.trim().to_string(),
             pasted: Vec::new(),
         },
-        KindSays::System => UserText::of(Speaker::System),
+        KindSays::System => UserText::of(Speaker::System { body: None }),
     }
 }
 
@@ -405,7 +405,7 @@ fn by_kinds(kinds: &[&str], items: &[Value]) -> Option<UserText> {
         ));
     }
     if says.iter().all(|k| *k == KindSays::System) {
-        return Some(UserText::of(Speaker::System));
+        return Some(UserText::of(Speaker::System { body: None }));
     }
     let all = flatten_text(&Value::Array(items.to_vec()));
     Some(said_as(KindSays::Unknown, "", all.trim().to_string()))
@@ -427,7 +427,7 @@ pub(crate) fn message_said(payload: &Value) -> Option<UserText> {
             Some(UserText::of(if interrupt {
                 Speaker::Interrupt
             } else {
-                Speaker::System
+                Speaker::System { body: None }
             }))
         }
         Some("assistant") => {

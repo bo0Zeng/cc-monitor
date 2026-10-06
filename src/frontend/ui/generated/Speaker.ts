@@ -16,4 +16,8 @@ body?: string, } | { "kind": "coordinator",
 /**
  * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
  */
-body?: string, } | { "kind": "agentTask" } | { "kind": "system" } | { "kind": "compactSummary" } | { "kind": "interrupt" } | { "kind": "toolResult" };
+body?: string, } | { "kind": "agentTask" } | { "kind": "system", 
+/**
+ * 注入的原文（剥过两头空白）；这一家给不出 ⇒ 缺。只随记录成品给界面，不进日志。
+ */
+body?: string, } | { "kind": "compactSummary" } | { "kind": "interrupt" } | { "kind": "toolResult" };

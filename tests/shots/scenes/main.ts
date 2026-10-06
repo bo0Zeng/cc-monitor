@@ -68,6 +68,41 @@ function longWorld(): World {
   return w;
 }
 
+/** 一个会话：两轮，工具调用之间夹着几条系统注入（提醒 · 技能展开）。 */
+function injectWorld(): World {
+  const w = defaultWorld();
+  const sid = "5e55cccc-0000-4000-8000-00000000cccc";
+  const cwd = "/home/user/work/orders";
+  const c = new Convo(sid, cwd, "2026-10-01T09:00:00Z");
+  c.title("超时配置改读环境变量");
+  c.user("把超时配置改成读环境变量。");
+  c.tool("Read", { file_path: `${cwd}/src/orders/settings.py` }, "TIMEOUT_S = 30\n", { card: "md" });
+  c.user("<system-reminder>\nThe TodoWrite tool hasn't been used recently. Consider using it to track progress.\n</system-reminder>", { meta: true });
+  c.tool("Edit", { file_path: `${cwd}/src/orders/settings.py`, old_string: "TIMEOUT_S = 30", new_string: 'TIMEOUT_S = int(os.environ.get("INVENTORY_TIMEOUT_S", "5"))' }, "The file has been updated.", { card: "diff" });
+  c.say("改好了：`INVENTORY_TIMEOUT_S` 缺省 5 秒。", 30_000, "end_turn");
+  c.user("再跑一遍测试。");
+  c.user("<command-name>/skills</command-name>\nBase directory for this skill: /home/user/.claude/skills/run-tests\n跑全量测试并汇总失败。", { meta: true });
+  c.tool("Bash", { command: "pytest -q", description: "全量测试" }, "213 passed in 9.12s", { card: "command" });
+  c.say("全量 213 个通过。", 32_000, "end_turn");
+  w.sessions = [session(9, LOCAL, cwd, c, { status: "idle", sid })];
+  return w;
+}
+
+/** 会话头「⋯」里点「显示系统注入」，并核对视口里第一张卡没被挪走（挪了 > 2px 场景就失败）。 */
+async function toggleInjected(): Promise<void> {
+  const scroller = document.querySelector<HTMLElement>(".stream.active")!;
+  const pin = [...scroller.querySelectorAll<HTMLElement>(".stream-content > .card:not(.card-injected), .stream-content > .proc-line")].find((e) => e.getBoundingClientRect().bottom > scroller.getBoundingClientRect().top)!;
+  const before = pin.getBoundingClientRect().top;
+  const more = [...document.querySelectorAll<HTMLElement>("button")].find((b) => b.querySelector("[data-icon='more']") && !b.closest("#tab-bar"))!;
+  more.click();
+  await sleep(300);
+  const item = [...document.querySelectorAll<HTMLElement>("[role^='menuitem']")].find((e) => e.textContent?.includes("显示系统注入"))!;
+  item.click();
+  await sleep(300);
+  const moved = Math.abs(pin.getBoundingClientRect().top - before);
+  if (moved > 2) throw new Error(`切显隐后视口里第一张卡挪了 ${moved}px`);
+}
+
 /** 一个会话：你那句里粘了一大一小两块。 */
 function pasteWorld(): World {
   const w = defaultWorld();
@@ -198,6 +233,19 @@ export const MAIN_SCENES: Scene[] = [
     document.querySelector<HTMLElement>(".stream.active .card-user")!.scrollIntoView({ block: "start" });
     await sleep(300);
   }, pasteWorld),
+  main("main-injected-off", "主窗口 · 系统注入（默认不露）", "两轮会话、工具调用之间夹着系统注入：开关关着时流里没有它们（过程点开看）", async () => {
+    await mainReady(1);
+    (await waitFor(".stream.active .proc-line")).click();
+    await sleep(300);
+  }, injectWorld),
+  main("main-injected-on", "主窗口 · 显示系统注入", "会话头「⋯」开「显示系统注入」：每条一行「系统注入 · 时刻」、默认收起、淡一档；切的时候视口里第一张卡不挪（场景自己核对）", async () => {
+    await mainReady(1);
+    (await waitFor(".stream.active .proc-line")).click();
+    await sleep(300);
+    await toggleInjected();
+    document.querySelector<HTMLDetailsElement>(".stream.active .card-injected")!.open = true;
+    await sleep(200);
+  }, injectWorld),
   main("main-stream-retry", "主窗口 · 重试细条与提问 / 计划结果", "同一个会话靠后：两次重试并成一条（接上了变淡）· 提问答了「已选」· 计划「已批准」", async () => {
     await mainReady(ALL_TABS);
     await scrollStream(".card-api-retry");

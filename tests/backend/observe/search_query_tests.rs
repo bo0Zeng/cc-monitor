@@ -128,6 +128,37 @@ fn agent_reports_are_searchable_as_their_own_kind() {
     assert!(ask(Some("assistant")).is_none());
 }
 
+/// 系统注入（`isMeta` 的那一条 · 字全是注入的那一条）搜不到：界面「显示系统注入」关着时它不在任何读路径上，
+/// 开着也只是排版（会话内查找不分开关，一律不搜注入）。含工具内容也一样。正控：人说的那一条照旧命中。
+#[test]
+fn system_injections_are_never_searched() {
+    let lines = [
+        r#"{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"/p","message":{"role":"user","content":"查一下注入词甲"}}"#,
+        r#"{"type":"user","uuid":"m1","timestamp":"2026-01-01T00:00:01Z","isMeta":true,"message":{"role":"user","content":"注入词乙只在这里"}}"#,
+        r#"{"type":"user","uuid":"m2","timestamp":"2026-01-01T00:00:02Z","message":{"role":"user","content":"<system-reminder>注入词丙只在这里</system-reminder>"}}"#,
+    ]
+    .join("\n");
+    let mut entry = FileEntry::empty(None, true);
+    entry.take(None, lines.as_bytes());
+    let path = std::path::Path::new("/x/projects/p/s1.jsonl");
+    let ask = |q: &str, include_tools: bool| {
+        let opts = SearchOpts {
+            include_tools,
+            scope: None,
+            after_ms: 0,
+            limit: 300,
+            titles: false,
+        };
+        let mut b = SnippetBudget::new(opts.limit);
+        session_hits_in(path, &entry, q, &opts, &mut b, 1)
+    };
+    for tools in [false, true] {
+        assert!(ask("注入词乙", tools).is_none(), "isMeta 那一条不搜");
+        assert!(ask("注入词丙", tools).is_none(), "全是注入的那一条不搜");
+        assert_eq!(ask("注入词甲", tools).unwrap()["hitCount"], 1);
+    }
+}
+
 // ── `K-R100` 的三条行为判据 ──────────────────────────────────────────
 // 它们**不判源码文本**（那是判写法，且今天两侧本来就一样，会恒绿）。
 // 判的是「本侧真跑出来的东西跟不跟 `search_rules` 走」。

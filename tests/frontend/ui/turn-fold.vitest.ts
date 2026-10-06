@@ -6,6 +6,11 @@ import { TurnFold, PROC_LINE_CLASS, PROC_HIDDEN_CLASS, setProcessExpandedDefault
 import { TurnRail, railGroups, RAIL_MAX_TICKS } from "../../../src/frontend/ui/turn-rail";
 import { placeCardLeft } from "../../../src/frontend/ui/kit/tooltip";
 import type { TurnSummary, TurnsResult } from "../../../src/frontend/ui/session-reads";
+import { renderContentRecord, type StreamSink } from "../../../src/frontend/ui/render-stream-record";
+import { RecordTimeline } from "../../../src/frontend/ui/record-timeline";
+import { estimateFromFacts, setInjectedShown, skeletonKind } from "../../../src/frontend/ui/height-estimate";
+import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import type { JsonlLinePayload } from "../../../src/frontend/ui/events";
 
 const turn = (uuid: string, at: number, over: Partial<TurnSummary> = {}): TurnSummary => ({
   at,
@@ -231,5 +236,40 @@ describe("轮次刻度", () => {
     expect(placeCardLeft(host, { width: 300, height: 80 }, { width: 1280, height: 800 })).toEqual({ left: 934, top: 261.5 });
     const edge = { left: 100, right: 108, top: 300, bottom: 303, width: 8, height: 3 } as DOMRect;
     expect(placeCardLeft(edge, { width: 300, height: 80 }, { width: 1280, height: 800 }).left).toBe(114);
+  });
+});
+
+// 系统注入（「谁说的」稿 A ⑤）：旁注细条——开关关着不露、估高 0；不算任何人的邻居（不打散工具组的相邻合并）。
+describe("系统注入的旁注细条", () => {
+  const tool = (uuid: string, id: string) =>
+    ({ type: "assistant", uuid, timestamp: "2026-01-01T02:02:00.000Z", message: { role: "assistant", content: [{ type: "tool_use", id, name: "Read", input: {} }] } }) as never;
+  const injected = (uuid: string, body?: string) =>
+    ({ type: "user", uuid, timestamp: "2026-01-01T02:02:30.000Z", message: { role: "user", content: "x" }, userText: { speaker: { kind: "system", ...(body ? { body } : {}) }, text: "" } }) as never;
+
+  it("★ 有正文 ⇒ 一条隐藏的细条进流（带 uuid）；夹在两次工具调用之间也不打散工具组；没正文 ⇒ 什么都不放", () => {
+    const content = document.createElement("div");
+    const stream = { contentElement: content, insertNode: (el: HTMLElement, ref: HTMLElement | null) => content.insertBefore(el, ref) };
+    const timeline = new RecordTimeline(stream as never);
+    const sink: StreamSink = { timeline, onBranchRecord: () => {} };
+    const ctx = { parentPath: "/p/s.jsonl", origin: LOCAL_ORIGIN, toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map() };
+    const feed = (seq: number, message: never) => renderContentRecord({ session_id: "s", seq, message } as unknown as JsonlLinePayload, ctx, sink);
+    feed(1, tool("a1", "t1"));
+    feed(2, injected("m1", "注入词乙"));
+    feed(3, tool("a2", "t2"));
+    feed(4, injected("m2"));
+    const kids = [...content.children] as HTMLElement[];
+    expect(kids.map((k) => k.classList.contains("card-tool-group") ? "group" : k.classList.contains("card-injected") ? "aside" : "?")).toEqual(["group", "aside"]);
+    expect(kids[0].querySelectorAll(".card-tool-group-body > *").length).toBe(2);
+    expect([kids[1].getAttribute("data-uuid"), kids[1].querySelector(".injected-body")?.textContent]).toEqual(["m1", "注入词乙"]);
+  });
+
+  it("★ 估高跟着开关：关着 0、开着一条细条；它不是任何一类（前后的工具照样并成一组）", () => {
+    const f = { o: 0, n: 1, t: "user", sp: "system", ch: 200, pl: 9 } as never;
+    expect(skeletonKind(f)).toBe("none");
+    setInjectedShown(false);
+    expect(estimateFromFacts(f, "tool")).toBe(0);
+    setInjectedShown(true);
+    expect(estimateFromFacts(f, "tool")).toBeGreaterThan(0);
+    setInjectedShown(false);
   });
 });

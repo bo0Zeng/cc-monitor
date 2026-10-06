@@ -205,14 +205,16 @@ pub(crate) fn user_text(f: &Facts) -> UserText {
                 body: origin_body(f.origin).or_else(|| coordinator_body(&raw)),
             })
         }
-        Some("auto-continuation") => return UserText::of(Speaker::System),
+        Some("auto-continuation") => {
+            return UserText::of(system(origin_body(f.origin).as_deref().unwrap_or(&raw)))
+        }
         _ => {}
     }
     if let Some(t) = framed(&raw, f.is_sidechain) {
         return t;
     }
     if f.is_meta {
-        return UserText::of(Speaker::System);
+        return UserText::of(system(&raw));
     }
     if f.is_sidechain && !f.has_parent && f.origin.is_none() {
         return shown(Speaker::AgentTask, &raw);
@@ -321,7 +323,7 @@ fn framed(raw: &str, sidechain: bool) -> Option<UserText> {
         }));
     }
     if t.starts_with(LIMIT_RESET_LEAD) {
-        return Some(UserText::of(Speaker::System));
+        return Some(UserText::of(system(t)));
     }
     if t.starts_with(COMPACT_LEAD) {
         return Some(shown(Speaker::CompactSummary, t));
@@ -343,7 +345,7 @@ fn spoken(raw: &str) -> UserText {
         return if raw.trim().is_empty() {
             human(String::new())
         } else {
-            UserText::of(Speaker::System)
+            UserText::of(system(raw))
         };
     }
     if is_interrupt(&clean) {
@@ -437,6 +439,14 @@ fn after_lead(text: &str) -> &str {
         };
     }
     t
+}
+
+/// 系统注入带着它的原文（剥过两头空白；空 ⇒ 缺）。
+fn system(raw: &str) -> Speaker {
+    let t = raw.trim();
+    Speaker::System {
+        body: (!t.is_empty()).then(|| t.to_string()),
+    }
 }
 
 /// 记录级 `origin.body`（新版 CLI 把来话正文单放一格）；空 ⇒ `None`。

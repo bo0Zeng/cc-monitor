@@ -253,7 +253,7 @@ fn maps_message_to_user_assistant() {
         json!({"type": "message", "role": "developer", "content": [{"type": "input_text", "text": "sys"}]}),
     );
     assert!(
-        matches!(to_jsonl_record(&dev, "r"), JsonlRecord::User { user_text, uuid, .. } if uuid.is_empty() && user_text.speaker == Speaker::System)
+        matches!(to_jsonl_record(&dev, "r"), JsonlRecord::User { user_text, uuid, .. } if uuid.is_empty() && matches!(user_text.speaker, Speaker::System { .. }))
     );
 
     // user 空 content → User，content []（免空气泡）。
@@ -287,7 +287,7 @@ fn denoise_injected_context_user_messages() {
         assert!(
             matches!(
                 to_jsonl_record(&mk(inj), "r"),
-                JsonlRecord::User { user_text, .. } if user_text.speaker == Speaker::System
+                JsonlRecord::User { user_text, .. } if user_text.speaker == Speaker::System { body: None }
             ),
             "注入块应去噪当系统注入: {inj:?}"
         );

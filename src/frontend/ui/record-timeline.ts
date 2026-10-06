@@ -48,8 +48,10 @@ export interface TimelineEntry {
    * 渲染语义类别——给 tool-group 后处理判邻居用。
    * - `card`：普通卡（user / assistant 含 text / slash / compact / agent-tool 等）
    * - `tool-group`：tool-only assistant 渲染产出的工具组卡（可后处理合并）
+   * - `aside`：旁注（系统注入的细条，开关关着时不显示）——**不算任何人的邻居**：左右邻居查询跳过它，
+   *   相邻合并（工具组 · 重试 · 后台通知）照它不在时一样合
    */
-  kind: "card" | "tool-group";
+  kind: "card" | "tool-group" | "aside";
   /**
    * tool-group entry 持有 ToolGroup 实例，供后续 tool-only 邻居 addToToolGroup 用。
    * card entry 此字段为 null。
@@ -90,10 +92,13 @@ export class RecordTimeline {
 
   /** 查 idx 处 entry 的左右邻居（tool-group 后处理合并要用） */
   neighborsAt(idx: number): { prev: TimelineEntry | null; next: TimelineEntry | null } {
-    return {
-      prev: this.entries[idx - 1] ?? null,
-      next: this.entries[idx + 1] ?? null,
-    };
+    return { prev: this.near(idx - 1, -1), next: this.near(idx + 1, 1) };
+  }
+
+  /** 从 `i` 起朝 `dir` 找第一个不是旁注的条目。 */
+  private near(i: number, dir: -1 | 1): TimelineEntry | null {
+    while (i >= 0 && i < this.entries.length && this.entries[i].kind === "aside") i += dir;
+    return this.entries[i] ?? null;
   }
 
   /** 直接查某个 seq 是否已存在（dedup 用，理论上不该有同 seq 但防御） */
@@ -107,8 +112,7 @@ export class RecordTimeline {
    * tool-group 后处理用：判断新 tool-only 是否能合到左侧已有 ToolGroup。
    */
   peekPrev(seq: number): TimelineEntry | null {
-    const idx = this.binarySearchInsertIdx(seq);
-    return this.entries[idx - 1] ?? null;
+    return this.near(this.binarySearchInsertIdx(seq) - 1, -1);
   }
 
   /** 当前 entries 数量 */

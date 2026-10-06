@@ -36,7 +36,7 @@ import { observeForEnhance } from "./render";
 import { applyIntrinsicSize } from "./height-estimate";
 import { saidByHuman } from "./speaker";
 import { isRetryBar, mergeRetry, settleRetry } from "./cards/api-error";
-import { isNoticeLine, mergeNotice } from "./cards/speaker-bar";
+import { buildInjectedLine, isNoticeLine, mergeNotice } from "./cards/speaker-bar";
 import type { RecordTimeline } from "./record-timeline";
 import type { JsonlLinePayload } from "./events";
 
@@ -366,7 +366,15 @@ export function renderContentRecord(
   markMemberUuids(message, ctx, result); // 在秤 1 的 render 段之外（那一段只夹 renderMessage）
 
   switch (result.kind) {
-    case "skip":
+    case "skip": {
+      // 系统注入（「谁说的」稿 A）：不建卡，另放一条旁注细条——开关关着时 CSS 不露、估高 0；
+      // 时间线的邻居查询跳过它（`aside`），相邻合并照它不在时一样合。不进 `renderMessage`（秤 2 的 DOM 指纹不动）。
+      const injected = message.type === "user" && message.userText.speaker.kind === "system" ? message.userText.speaker.body : undefined;
+      if (message.type === "user" && typeof injected === "string" && injected !== "") {
+        const strip = buildInjectedLine(injected, message.timestamp);
+        markCardUuid(strip, message);
+        sink.timeline.insert({ seq: payload.seq, element: strip, kind: "aside", toolGroup: null });
+      }
       if (probe) {
         const total = performance.now() - t0;
         pushCostSample(probe, {
@@ -382,6 +390,7 @@ export function renderContentRecord(
         });
       }
       return;
+    }
 
     case "card": {
       // 后台任务通知（「谁说的」稿 A）：左邻居也是通知 ⇒ 并进它（时段取两头、逐条留在展开里）。

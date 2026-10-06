@@ -3125,6 +3125,16 @@
       "zh": " · 失败 {n}",
       "args": ["n"]
     },
+    "speaker.system.title": {
+      "kind": "body",
+      "zh": "系统注入 · {time}",
+      "args": ["time"]
+    },
+    "stream.injected.toggle": {
+      "kind": "control",
+      "zh": "显示系统注入",
+      "args": []
+    },
     "speaker.paste.fold": {
       "kind": "body",
       "zh": "粘贴的内容 · {n} 行",

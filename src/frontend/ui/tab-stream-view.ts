@@ -22,13 +22,13 @@ import { SeqSet, TailWindow, type SkeletonLedger, type TakeBudget } from "./live
 import { HeightRefiner, workerMeasure } from "./height-refiner";
 // 〔骨架〕骨架层（占位 ＋ 只物化可见区）。接入点全部带「骨架」字样，搜得到。
 import { SkeletonView, ledgerFromIndex } from "./skeleton-view";
-import { eagerBodyChars, skeletonKind } from "./height-estimate";
+import { eagerBodyChars, setInjectedShown, skeletonKind } from "./height-estimate";
 // K-R45 乙（`KR45D2`）：「大纲」。界面 / 跳 与历史查看器共用同一份；清单问后端要（`OutlineSource`）。
 // 大纲并进会话内查找面板（`SessionFindPanel`：搜索 / 大纲两个模式，跳只有一个住址）。
 import type { UserInputPanel, JumpResult } from "./views/user-input-panel";
 import { OutlineSource, outlineSeedFromIndex } from "./views/outline-source";
 import { SessionFindPanel } from "./views/session-find";
-import { TurnFold, processExpandedDefault, setProcessExpandedDefault } from "./turn-fold";
+import { TurnFold, injectedShownDefault, processExpandedDefault, setInjectedShownDefault, setProcessExpandedDefault } from "./turn-fold";
 import { TurnRail } from "./turn-rail";
 import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import type { MenuItem } from "./kit/menu";
@@ -159,7 +159,9 @@ export class TabStreamView {
     private readonly host: TabStreamHost,
     /** 第二级估高（Worker 精算）；环境里没有 Worker 时它自己不开。 */
     private readonly refiner: HeightRefiner = new HeightRefiner(workerMeasure()),
-  ) {}
+  ) {
+    this.applyInjected(injectedShownDefault()); // 「显示系统注入」这扇窗上次的样子
+  }
 
   /** 视口上下几屏之内的占位行交第二级（「窗口附近上下各 N 屏优先精算」）。 */
   private static readonly REFINE_SCREENS = 2;
@@ -680,10 +682,35 @@ export class TabStreamView {
     t?.turnRail.step(dir);
   }
 
+  /**
+   * 「显示系统注入」：流根上一个类切显隐（不重渲染）；估高跟着换（关着 0、开着一条细条），骨架账本按新口径重排。
+   * 切之前钉住视口里第一张看得见的卡，切完把它放回原来的屏幕位置（视口不跳）。
+   */
+  toggleInjected(): void {
+    const on = !injectedShownDefault();
+    setInjectedShownDefault(on);
+    const t = this.store.activeId !== null ? this.store.tabs.get(this.store.activeId) : undefined;
+    const pin = t ? firstVisibleCard(t.streamEl) : null;
+    const before = pin?.getBoundingClientRect().top ?? 0;
+    this.applyInjected(on);
+    for (const tab of this.store.tabs.values()) {
+      const w = tab.stream.contentElement.getBoundingClientRect().width;
+      if (tab.skeleton && w > 0) tab.skeleton.relayout(w, true);
+    }
+    if (t && pin?.isConnected) t.streamEl.scrollTop += pin.getBoundingClientRect().top - before;
+  }
+
+  /** 开关落到界面：流根的类 ＋ 估高口径。启动时也走一次。 */
+  applyInjected(on: boolean): void {
+    this.streamRootEl.classList.toggle("show-injected", on);
+    setInjectedShown(on);
+  }
+
   /** 会话头「⋯」里流的开关（接在这个标签页的右键菜单后面）。右侧灰字是那个动作此刻绑的键。 */
   streamToggles(): MenuItem[] {
     const chord = dispatcher.effectiveChord("session.toggle-process");
     return [
+      { label: copyText("stream.injected.toggle"), checked: injectedShownDefault(), onClick: () => this.toggleInjected() },
       {
         label: copyText("stream.proc.toggle"),
         checked: processExpandedDefault(),
@@ -1294,4 +1321,16 @@ export class TabStreamView {
     }
   }
 
+}
+
+/** 视口里第一张看得见的卡（流的顶层子节点里、底边在视口上沿之下的第一张；切显隐时钉它）。 */
+function firstVisibleCard(scroller: HTMLElement): HTMLElement | null {
+  const top = scroller.getBoundingClientRect().top;
+  const content = scroller.querySelector<HTMLElement>(".stream-content") ?? scroller;
+  for (const el of Array.from(content.children)) {
+    if (!(el instanceof HTMLElement) || el.classList.contains("card-injected")) continue;
+    const r = el.getBoundingClientRect();
+    if (r.height > 0 && r.bottom > top) return el;
+  }
+  return null;
 }

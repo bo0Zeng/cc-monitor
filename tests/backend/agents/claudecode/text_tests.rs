@@ -487,7 +487,9 @@ fn queued_messages_use_the_same_named_frames() {
     );
     assert_eq!(
         queued_text("Your claude.ai usage limit has reset. 甲").speaker,
-        Speaker::System
+        Speaker::System {
+            body: Some("Your claude.ai usage limit has reset. 甲".into())
+        }
     );
     assert_eq!(queued_text("  往后排，先做乙  "), human("往后排，先做乙"));
     let p = queued_text("<pasted_content id=\"h8\">甲</pasted_content id=\"h8\">");
@@ -518,7 +520,7 @@ fn speech_is_what_the_human_said() {
     for s in [
         Speaker::CompactSummary,
         Speaker::AgentTask,
-        Speaker::System,
+        Speaker::System { body: None },
         Speaker::Coordinator { body: None },
         Speaker::Interrupt,
         Speaker::ToolResult,
@@ -643,7 +645,7 @@ fn the_index_kind_is_the_wire_kind() {
         },
         Speaker::Coordinator { body: None },
         Speaker::AgentTask,
-        Speaker::System,
+        Speaker::System { body: None },
         Speaker::CompactSummary,
         Speaker::Interrupt,
         Speaker::ToolResult,
@@ -653,4 +655,21 @@ fn the_index_kind_is_the_wire_kind() {
         assert_eq!(serde_json::to_value(s).unwrap()["kind"], s.kind(), "{s:?}");
         assert!(seen.insert(s.kind()), "重名：{}", s.kind());
     }
+}
+
+/// 系统注入带着它的原文（`speaker.body`，剥过两头空白）：`isMeta` 的那一条 · 字全是注入的那一条。界面开关开着才画。
+#[test]
+fn system_injections_carry_their_text() {
+    let body = |r: &Value| match said(r).speaker {
+        Speaker::System { body } => body,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        body(&rec(" 注入甲 ", json!({"isMeta": true}))).as_deref(),
+        Some("注入甲")
+    );
+    assert_eq!(
+        body(&rec("<system-reminder>注入乙</system-reminder>", json!({}))).as_deref(),
+        Some("<system-reminder>注入乙</system-reminder>")
+    );
 }
