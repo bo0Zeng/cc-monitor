@@ -20,10 +20,6 @@
 //! 先前这里内联复刻了一份 history_query 的，点名的第二个家）；
 //! 只读铁律（cc-monitor 不写远端）成立——本模块只 read_dir / read。
 
-// U2/U3：这两个原来在本文件里各有一份逐字相同的副本。去向**不同**：
-// `projects_root` 跨 observe/control 两层 ⇒ `common/`；`mtime_ms` 两个调用点同属 observe
-// ⇒ U3 按 `common/` 自己的「≥2 层」门槛搬回 `observe/`。
-use crate::agents::claudecode::paths::projects_root;
 use crate::observe::fence::Fence;
 use crate::observe::fs::mtime_ms;
 use crate::observe::search_rules::{self, SnippetBudget, SnippetVerdict, MAIN_CAP, TOOL_CAP};
@@ -171,7 +167,9 @@ pub(crate) fn search_counting(
     out: &mut impl Write,
 ) -> Result<usize, String> {
     let q = query.trim().to_lowercase();
-    let root = projects_root(agent_home);
+    let Some(root) = crate::agents::records_root(agent_home) else {
+        return Ok(0);
+    };
     if q.is_empty() || !root.is_dir() {
         return Ok(0); // 空查询 / 无 projects → 无输出（exit 0）
     }
@@ -206,7 +204,7 @@ pub(crate) fn find_indexed(
     if q.is_empty() {
         return Some(Ok((0, 0)));
     }
-    let fence = Fence::at(&projects_root(agent_home)).ok()?;
+    let fence = Fence::at(&crate::agents::records_root(agent_home)?).ok()?;
     let path = fence.admit(target).ok()?;
     let mut resident = resident();
     let index = resident.entry(fence.root().to_path_buf()).or_default();
@@ -252,8 +250,7 @@ pub fn warm_in_background(agent_home: PathBuf) {
 /// [`warm_in_background`] 的本体（判据直接调它）：按最近优先把每份会话读进常驻表，留到上界为止就停（再读也留不下）。
 /// 每一份单独拿一次锁 ⇒ 半路来的一问不必等整棵建完。回 `(这一趟读进来的份数, 常驻字节)`。
 pub(crate) fn warm(agent_home: &Path) -> (usize, usize) {
-    let root = projects_root(agent_home);
-    let Ok(fence) = Fence::at(&root) else {
+    let Some(Ok(fence)) = crate::agents::records_root(agent_home).map(|r| Fence::at(&r)) else {
         return (0, 0);
     };
     let mut read = 0usize;
@@ -285,9 +282,7 @@ fn session_files(fence: &Fence) -> Vec<(PathBuf, i64)> {
         .max_depth(2)
         .into_iter()
         .filter_map(Result::ok)
-        .filter(|e| {
-            e.file_type().is_file() && crate::agents::claudecode::records::is_session_file(e.path())
-        })
+        .filter(|e| e.file_type().is_file() && crate::agents::is_tree_session_file(e.path()))
         .map(|e| {
             let p = e.into_path();
             let m = mtime_ms(&p);

@@ -1,84 +1,33 @@
-//! `S6`：**最小假 agent** —— 本区的验收件把 `G1` 成功标准②「加一个新 agent 只需新增
-//! `agents/<名>/`，通用层零改动」变成一个**跑得起来、会红**的东西。
+//! 最小假 agent（只在测试档）：一个与 Claude、Codex **每一格都不同形**的第三家，
+//! 通用判据拿它再跑一遍 —— 跑得通才算通用层没硬绑某一家。
 //!
-//! # ⚠ 先说本件裁掉了什么（`S6#§2` 的第 1 问，B 阶段必须裁）
+//! 它住 `agents/<名>/`、进 `agent_locality_guard::HOMES`，但**不进** `REGISTRY`，模块声明带 `#[cfg(test)]`
+//! （`the_fixture_agent_never_ships` 双向钉着）；`agent_locality_guard::FIXTURE_HOMES` 登记它并带天花板。
 //!
-//! 两条路二选一：
+//! # 它的每一种能力都与 Claude 不同形
 //!
-//! - **先立接口再造假 agent** ⇒ `ADAPTER_CALL_SITES` 当场降到个位数，`S6` 就"配叫零改动"；
-//! - **先造假 agent、让它反推接口** ⇒ 更合 `D4`，但第一版的"零改动"是**假的**。
+//! | 能力 | Claude | 本假 agent | 注册表那一格 |
+//! |---|---|---|---|
+//! | 会话记录根 | `<home>/projects` | `<home>/convos` | `RecordFace.tree.root` |
+//! | 会话文件判定 | `.jsonl` | `sess-*.ndjson` | `RecordFace.is_session_file` |
+//! | 会话文件命名 | `<sid>.jsonl` | `sess-<sid>.ndjson` | `RecordFace.tree.file_name` |
+//! | pidfile 目录 | `<home>/sessions` | `<home>/live` | `LocalFace.pidfile_dir` |
+//! | 账号环境变量名 | `CLAUDE_CONFIG_DIR` | `CCM_FAKE_ACCOUNT_DIR` | `AccountsFace.session_env` |
+//! | 账号信任判定 | `.claude.json` → `projects[cwd].hasTrustDialogAccepted` | `fake-config.json` → `trusted[cwd]` | `AccountsFace.trust_in` |
+//! | 判活 cmdline | 含 `claude` / `node` | 含 `fakeagent` | `LocalFace.cmdline_may_be_agent` |
+//! | 解析本机 home | `$CLAUDE_CONFIG_DIR` 否则 `$HOME/.claude`（**恒有值**） | `$CCM_FAKE_AGENT_HOME`，**没有默认** | `Adapter.home` · `LocalFace.home_at` |
+//! | resume 默认命令 | `claude` | `fakeagent` | `LaunchFace.default_launcher` |
+//! | resume 命令形 | `<base> --resume <sid>`（flag） | `<base> revive <sid>`（子命令） | `LaunchFace.resume_command` |
+//! | resume 会话名前缀 | `cc` | `fk` | `LaunchFace.session_name_prefix` |
 //!
-//! **裁定：走第二条 —— 本件一处调用点都不收进接口，`ADAPTER_CALL_SITES` 仍是 8 文件 / 27 处。**
+//! 不同形是要紧的：照抄 Claude 的布局的话，通用层拿 Claude 的知识去解释它的 home 恰好也能读出东西，
+//! 「走通」就证明不了通用层容得下第二种布局。
 //!
-//! 三条理由，第一条是决定性的：
+//! # 走全流程
 //!
-//! 1. **验收件不许移动自己的靶子。** `S6` 报的那个数是用来评价 `S1`–`S5` 的。
-//!    先立接口的话，`S6` 报的就是**它自己刚做的事**，而 `S1`–`S5` 到底把地基打成什么样
-//!    就再也没人量得出来了。`F+` 方向体检刚点过名的风险是「acceptor 全绿而主线为零」，
-//!    验收件自己动主线是它的**镜像** —— 主线动了，而没有人在验。
-//! 2. **`D2` 逐字排除了这种做法**：「先立判据，让它当场红出一份真实清单，**再逐处搬**」，
-//!    并且明写排除「先把文件挪到 `agents/` 目录再说」。那 27 处**就是**那份清单，
-//!    一件之内全收 = 一次性大挪动。
-//! 3. **`L2` 的钉法逐字**：「`S6` 的最小假 agent —— 它只实现这组接口，**若接口漏了什么，
-//!    `S6` 走不通就会红**」。先设计接口、再让假 agent 照着实现，假 agent 就**按构造**
-//!    满足接口，那条"会红"永远不可能红。反推的方向被弄反了。
-//!
-//! **它排除了什么（代价如实写）**：
-//!
-//! - 排除了「`S6` 交付一个降到个位数的读数」。**本件不会让那个数下降一处**；
-//! - 排除了「`S6` 宣布成功标准②成立」。本件的产出是一个**诚实的差距读数**加一副会红的夹具，
-//!   不是一张通过证书；
-//! - 也放弃了第一条路的真实好处：12 种能力一次收进接口之后，假 agent 会**全程走通**。
-//!   那个好处本件拿不到，留给后续（收接口那件）。而它落地的**验收手段**恰恰是本件造出来的。
-//!
-//! # ⚠ 第 2 问：假 agent 也算一家吗 —— **算半家：进文件树与 `HOMES`，不进 `REGISTRY`**
-//!
-//! `agents/mod.rs` 里它的模块声明带 `#[cfg(test)]` ⇒ **生产二进制里一个字节都没有它**。
-//! 与真加一个 agent 的差别**只有那一行 cfg**（外加它不在 `REGISTRY` 里）。
-//! 判据 `the_fixture_agent_never_ships` 双向钉住这两件事；
-//! `agent_locality_guard::FIXTURE_HOMES` 登记「谁是夹具家」并**带天花板**——
-//! 没有天花板的话，「夹具家」就成了往 `agents/` 里塞东西躲判据①的逃生舱。
-//!
-//! # 12 种能力（不是 9 —— 本件订正的读数之一）
-//!
-//! `S6#§0` 与 PM 交底都写「去重之后只是 **9 种能力**」。**实测那 9 种只覆盖 27 处里的 21 处**：
-//! 它们漏掉的正是 `control/resolve_query.rs` 的 6 处 —— 也就是 PM 那个 21/27 计数错误的**残留**
-//! （已经点名要求补，件文件的能力清单没跟着补）。resume 那 3 件事
-//! （默认命令 · 命令形 · 会话名前缀）**各是一种能力**，与 `会话文件命名` 同一个粒度。
-//! ⇒ 反推出来的接口面是 **12 种能力 / 27 处**，逐条对账住
-//! `agent_locality_guard::tests::NEW_AGENT_BLOCKERS`。
-//!
-//! # 这个假 agent 的每一种能力都**刻意与 Claude 不同形**
-//!
-//! | 能力 | Claude | 本假 agent |
-//! |---|---|---|
-//! | 会话记录根 | `<home>/projects` | `<home>/convos` |
-//! | 会话文件判定 | `.jsonl` | `.ndjson` |
-//! | 会话文件命名 | `<sid>.jsonl` | `sess-<sid>.ndjson` |
-//! | pidfile 目录 | `<home>/sessions` | `<home>/live` |
-//! | 账号环境变量名 | `CLAUDE_CONFIG_DIR` | `CCM_FAKE_ACCOUNT_DIR` |
-//! | 账号信任判定 | `.claude.json` → `projects[cwd].hasTrustDialogAccepted` | `fake-config.json` → `trusted[cwd]` |
-//! | 判活 cmdline | 含 `claude` / `node` | 含 `fakeagent` |
-//! | 解析本机 home | `$CLAUDE_CONFIG_DIR` 否则 `$HOME/.claude`（**恒有值**） | `$CCM_FAKE_AGENT_HOME`，**没有默认** |
-//! | resume 默认命令 | `claude` | `fakeagent` |
-//! | resume 命令形 | `<base> --resume <sid>`（flag） | `<base> revive <sid>`（子命令） |
-//! | resume 会话名前缀 | `cc` | `fk` |
-//!
-//! ⚠ **"刻意不同"是本件最要紧的一条设计决定**，不是趣味。假 agent 若照抄 Claude 的布局，
-//! 通用层拿 Claude 的知识去解释它的 home **恰好也能读出东西** —— 那时"走通全流程"证明的是
-//! 「Claude 的布局被施加到了另一个目录上」，不是「通用层能容纳第二种布局」。
-//! 那正是一个**粉饰的通过**。
-//!
-//! # 走全流程的两半，**边界写在明处**
-//!
-//! [`walk`] 把假 agent 推过 7 段。**前两段真的过通用层的机器**（`agents::visible_among`
-//! 的发现判准 · `wire::Frame::Hello` 的序列化），**后五段没有** ——
-//! 它们是假 agent 拿自己的知识**自问自答**，因为通用层今天**没有任何接口**收第二种布局。
-//! 这不是本件偷懒，这**就是本件要报的那个差距**：
-//!
-//! - 前两段 = 今天已经成立的那部分成功标准②；
-//! - 后五段 = 还差的 27 处；`walk` 走得通只证明「**这 12 种能力足以走完全流程**」
-//!   （`L2` 那组接口的形状够不够用），**不证明通用层能用它们**。
+//! [`walk`] 把假 agent 推过六段，每一段都经通用层：发现（`agents::visible_among`）· 宣告（`wire::Frame::Hello`）·
+//! 读会话 / 判活 / 账号（注册表里这一家那几格，经 `agents::*_among`）· resume（`resolve_query::resolve_json_among`）。
+//! 挖掉任一种能力（[`FakeCaps::without`]），那一格的面就拼不出来，流程停在点得出名字的那一段。
 
 use std::path::{Path, PathBuf};
 
@@ -148,13 +97,6 @@ pub(crate) fn cmdline_may_be_agent(lower: &str) -> bool {
     lower.trim().is_empty() || lower.contains("fakeagent")
 }
 
-// 〔删用量〕**原「能力 9：用量聚合」整条去掉了。**
-// 它模拟的是「通用层有没有地方收这个能力」，而通用层那一处（`observe/usage_query.rs`）
-// 随用量 ② 轴整轴退役 ⇒ **这一格没有对面了**：留着它会让 `agent_locality_guard` 的
-// 「能力数 == 卡点数」两个方向漂开（那条判据逐字：「少一种 = 要么那种能力真的收进接口了…」）。
-// ⚠ 编号**刻意不重排**（下面仍是「能力 10/11/12」）：编号是给人对照上面那张表用的住址，
-// 重排会让所有引用过它的散文一起变成假话。
-
 /// 能力 10：无 `launchCandidate` 时的默认命令基底。
 pub(crate) const DEFAULT_COMMAND: &str = "fakeagent";
 
@@ -192,7 +134,7 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
 // 能力表 + 走全流程的 driver
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// 12 种能力的**名字**，与 `agent_locality_guard::tests::NEW_AGENT_BLOCKERS` 逐条对账。
+/// 各种能力的**名字**，与 `agent_locality_guard::tests::CAPABILITY_FACES`（每一种住注册表哪一格）逐条对账。
 ///
 /// ⚠ 顺序即 [`FakeCaps`] 字段序，[`FakeCaps::without`] 按名字挖洞时靠它。
 pub(crate) const CAPABILITIES: &[&str] = &[
@@ -305,11 +247,7 @@ pub(crate) const STAGES: &[&str] = &[
     "resume",
 ];
 
-/// 流程停下来的原因 —— **两种都必须说得出话**。
-///
-/// ⚠ 这个枚举本身就是 `S6` 的正题：件里逐字要求「不许静默当成"这个 agent 没有会话"」。
-/// 而通用层今天对同一情形的反应恰恰是**静默**（用量聚合那条查询在一个布局不同的 home 上
-/// rc=0、零输出），实测读数见 `PR-S6.md`。两者的差别就是 `L2` 那组接口要补上的东西。
+/// 流程停下来的原因：点名是哪一段缺了哪一种能力（不许静默当成「这个 agent 没有会话」）。
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Stop {
     /// 假 agent 自己少了一种能力 —— 点名是**哪一段**缺了**哪一种**。
@@ -319,20 +257,6 @@ pub(crate) enum Stop {
     },
 }
 
-/// 把假 agent 推过全流程。成功 = 走完的段名。
-///
-/// # ⚠ 边界（本函数最容易被读错的一句，写在这里而不是只写在计划里）
-///
-/// 前两段（`发现` / `宣告`）**真的调用通用层的机器**：
-/// [`crate::agents::visible_among`] 的判准与 [`crate::stream::wire::Frame::Hello`] 的序列化；
-/// 末段 `resume` 也真的过通用层（`resolve_query::resolve_json_among` 按注册表里这一家的起会话事实拼）。
-/// 中间三段（`读会话`/`判活`/`账号`）**没有过通用层** ——
-/// 通用层今天在这五段上直呼 `crate::agents::claudecode::…`（27 处里的 22 处），
-/// 没有任何入口收第二种布局。⇒ 这五段是假 agent 拿自己的知识自问自答。
-///
-/// 因此本函数走得通，**只证明这 12 种能力凑得出一条完整的路**（`D4`：接口面够不够用），
-/// **不证明**通用层能用它们。后者今天不成立，差距逐条登记在
-/// `agent_locality_guard::tests::NEW_AGENT_BLOCKERS`（27 处）。
 /// 假 agent 的 MCP 读面（夹具家那一份布局）：只认 `<项目>/.fake-mcp.json` 的 `servers` 表，一律记成 project 段。
 /// 它要证的是「通用层经注册表那一格读 MCP、不认识任何一家的文件名」—— 判据 `fake_tests.rs::the_fake_agents_mcp_face_is_read_through_the_generic_layer`。
 pub(crate) const MCP: crate::agents::McpFace = crate::agents::McpFace { read: read_mcp };
@@ -367,6 +291,121 @@ fn read_mcp(project_dir: Option<&Path>) -> crate::agents::McpRead {
     out
 }
 
+/// 只带 home 的一行（其余各面都没有）；各段在它上面补那一段要的面。
+pub(crate) fn bare_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter {
+    crate::agents::Adapter {
+        kind: AGENT_KIND,
+        home,
+        account_env: None,
+        assets: None,
+        history: None,
+        upstream: None,
+        mcp: None,
+        footprint: None,
+        accounts: None,
+        records: None,
+        processes: None,
+        launch: None,
+        compact_request: None,
+        local: None,
+    }
+}
+
+/// 一整行：本假 agent 的全部面（判据「同一批通用判据对三家各跑一遍」用）。
+pub(crate) fn full_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter {
+    crate::agents::Adapter {
+        account_env: Some(ACCOUNT_DIR_ENV),
+        mcp: Some(MCP),
+        records: Some(records_face(
+            records_root,
+            is_session_file,
+            session_file_name,
+        )),
+        local: Some(local_face(pidfile_root, cmdline_may_be_agent)),
+        accounts: Some(accounts_face(ACCOUNT_DIR_ENV)),
+        launch: Some(LAUNCH),
+        ..bare_row(home)
+    }
+}
+
+/// 记录解释面：只带记录树与文件判定（本假 agent 的记录内容通用判据用不到 ⇒ 解析恒「这一行不出成品」）。
+fn records_face(
+    root: fn(&Path) -> PathBuf,
+    is_session_file: fn(&Path) -> bool,
+    file_name: fn(&str) -> String,
+) -> crate::agents::RecordFace {
+    crate::agents::RecordFace {
+        parse: |_| Ok(None),
+        sid: session_id_of,
+        is_session_file,
+        tree: Some(crate::agents::RecordTree { root, file_name }),
+        turn_end: None,
+        find_session: None,
+        branch: None,
+        drift: None,
+        text: None,
+        delete: None,
+        response_id: None,
+        run_of: None,
+        child_link: None,
+        children: None,
+        project_dir: None,
+    }
+}
+
+/// `sess-<sid>.ndjson` ⇒ sid。
+fn session_id_of(p: &Path) -> Option<String> {
+    let name = p.file_name()?.to_str()?;
+    Some(
+        name.strip_prefix("sess-")?
+            .strip_suffix(".ndjson")?
+            .to_string(),
+    )
+}
+
+/// 本机布局面。家目录：给了账号配置目录就是它，否则 [`home`]（没有默认 ⇒ 空路径）。
+fn local_face(
+    pidfile_dir: fn(&Path) -> PathBuf,
+    cmdline_may_be_agent: fn(&str) -> bool,
+) -> crate::agents::LocalFace {
+    crate::agents::LocalFace {
+        home_at: |config_dir, _| {
+            config_dir
+                .map(Path::to_path_buf)
+                .or_else(home)
+                .unwrap_or_default()
+        },
+        pidfile_dir,
+        cmdline_may_be_agent,
+        tasks_dir: Some(|h| h.join("todo")),
+    }
+}
+
+/// 账号库面：只带通用判据会问的那两格（会话进程环境的键 · 信任预检），其余空着。
+fn accounts_face(account_env: &'static str) -> crate::agents::AccountsFace {
+    crate::agents::AccountsFace {
+        identity: &[],
+        config_file: "fake-config.json",
+        user_mcp_key: "servers",
+        shared_root: |h| h.join("shared"),
+        email_in: |_| None,
+        watched: &[],
+        session_env: crate::agents::SessionEnvKeys {
+            config_dir: account_env,
+            base_url: "CCM_FAKE_UPSTREAM",
+            settings_may_set_base_url: |_, _, _| false,
+        },
+        trust_in: trust_line,
+    }
+}
+
+/// [`trust_of_config`] 说成账号库面那一形（`{trusted, known, error}` 一行；读不了 ⇒ `(码, 原话)`）。
+fn trust_line(root: &Path, cwd: &str) -> Result<String, (String, String)> {
+    let trusted = trust_of_config(root, cwd).map_err(|e| ("fake_config".to_string(), e))?;
+    Ok(serde_json::json!({ "trusted": trusted, "known": true, "error": null }).to_string())
+}
+
+/// 把假 agent 推过全流程，每一段都经通用层（见模块头注）。成功 = 走完的段名。
 pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static str>, Stop> {
     let mut done: Vec<&'static str> = Vec::new();
 
@@ -376,24 +415,10 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         capability: "解析本机 home",
     })?;
     // `Adapter.home` 是裸函数指针，所以"加一个 agent"在这一层真的只是多一条记录。
+    // MCP 读面同拍长一格：假 agent 的布局是 `<项目>/.fake-mcp.json` 的 `servers` 表（见 [`MCP`]）。
     let adapter = crate::agents::Adapter {
-        kind: AGENT_KIND,
-        // 最小假 agent 没有账号维度 —— 它要证的是「通用层零改动」，不是账号。
-        account_env: None,
-        // 最小假 agent 没有资产面（它要证的是「通用层零改动」，不是资产）。
-        assets: None,
-        history: None,
-        // 最小假 agent 没有默认上游（未登记 ⇒ 上游选择拒）。
-        upstream: None,
-        // MCP 读面同拍长一格：假 agent 的布局是 `<项目>/.fake-mcp.json` 的 `servers` 表（见 [`MCP`]）。
         mcp: Some(MCP),
-        home: home_fn,
-        footprint: None,
-        accounts: None,
-        records: None,
-        processes: None,
-        launch: None,
-        compact_request: None,
+        ..bare_row(home_fn)
     };
     let discovered = crate::agents::visible_among(std::slice::from_ref(&adapter));
     if discovered.len() != 1 {
@@ -432,8 +457,8 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     }
     done.push(STAGES[1]);
 
-    // ── ③ 读会话：⚠ 以下各段**没有过通用层**（见头注边界）。
-    let records_root = caps.records_root.ok_or(Stop::MissingCapability {
+    // ── ③ 读会话：经通用层（注册表里这一家的记录树根 · 会话文件判定 · 新会话文件命名）。
+    let root_fn = caps.records_root.ok_or(Stop::MissingCapability {
         stage: STAGES[2],
         capability: "会话记录根",
     })?;
@@ -445,15 +470,22 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         stage: STAGES[2],
         capability: "会话文件命名",
     })?;
+    let reg = [crate::agents::Adapter {
+        records: Some(records_face(root_fn, is_session, file_name)),
+        ..bare_row(home_fn)
+    }];
     let mut found: Vec<PathBuf> = Vec::new();
-    if let Ok(projects) = std::fs::read_dir(records_root(fixture_home)) {
+    let records_root = crate::agents::records_root_among(&reg, AGENT_KIND, fixture_home);
+    if let Some(Ok(projects)) = records_root.map(std::fs::read_dir) {
         let mut dirs: Vec<PathBuf> = projects.flatten().map(|e| e.path()).collect();
         dirs.sort();
         for d in dirs {
             if let Ok(files) = std::fs::read_dir(&d) {
                 let mut ps: Vec<PathBuf> = files.flatten().map(|e| e.path()).collect();
                 ps.sort();
-                found.extend(ps.into_iter().filter(|p| p.is_file() && is_session(p)));
+                found.extend(ps.into_iter().filter(|p| {
+                    p.is_file() && crate::agents::is_session_file_among(&reg, AGENT_KIND, p)
+                }));
             }
         }
     }
@@ -465,9 +497,10 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     }
     // 命名口径与判定口径必须互洽：拿 sid 算出来的名字得等于扫出来的那个文件名。
     let sid = FIXTURE_SESSION_ID;
+    let named = crate::agents::record_tree_among(&reg, AGENT_KIND).map(|t| (t.file_name)(sid));
     if !found
         .iter()
-        .any(|p| p.file_name().and_then(|n| n.to_str()) == Some(file_name(sid).as_str()))
+        .any(|p| p.file_name().and_then(|n| n.to_str()) == named.as_deref())
     {
         return Err(Stop::MissingCapability {
             stage: STAGES[2],
@@ -476,7 +509,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     }
     done.push(STAGES[2]);
 
-    // ── ④ 判活：pidfile 目录 + cmdline 判定。
+    // ── ④ 判活：经通用层（注册表里这一家的 pidfile 目录 + cmdline 认法）。
     let pid_root = caps.pidfile_root.ok_or(Stop::MissingCapability {
         stage: STAGES[3],
         capability: "pidfile 目录",
@@ -485,10 +518,27 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         stage: STAGES[3],
         capability: "判活 cmdline",
     })?;
-    let pidfiles = std::fs::read_dir(pid_root(fixture_home))
+    let reg = [crate::agents::Adapter {
+        local: Some(local_face(pid_root, cmdline)),
+        ..bare_row(home_fn)
+    }];
+    let local =
+        crate::agents::local_face_among(&reg, AGENT_KIND).ok_or(Stop::MissingCapability {
+            stage: STAGES[3],
+            capability: "pidfile 目录",
+        })?;
+    let pidfiles = std::fs::read_dir((local.pidfile_dir)(fixture_home))
         .map(|rd| rd.flatten().count())
         .unwrap_or(0);
-    if pidfiles == 0 || !cmdline("fakeagent revive x") || cmdline("/usr/bin/vim") {
+    if pidfiles == 0 {
+        return Err(Stop::MissingCapability {
+            stage: STAGES[3],
+            capability: "pidfile 目录",
+        });
+    }
+    if !(local.cmdline_may_be_agent)("fakeagent revive x")
+        || (local.cmdline_may_be_agent)("/usr/bin/vim")
+    {
         return Err(Stop::MissingCapability {
             stage: STAGES[3],
             capability: "判活 cmdline",
@@ -496,16 +546,35 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     }
     done.push(STAGES[3]);
 
-    // ── ⑤ 账号：环境变量名 + 信任判定。
+    // ── ⑤ 账号：经通用层（注册表里这一家账号库面的会话环境键 + 信任预检）。
     let env_name = caps.account_dir_env.ok_or(Stop::MissingCapability {
         stage: STAGES[4],
         capability: "账号环境变量名",
     })?;
-    let trust = caps.trust_of_config.ok_or(Stop::MissingCapability {
+    caps.trust_of_config.ok_or(Stop::MissingCapability {
         stage: STAGES[4],
         capability: "账号信任判定",
     })?;
-    if env_name.trim().is_empty() || trust(fixture_home, FIXTURE_CWD) != Ok(true) {
+    let reg = [crate::agents::Adapter {
+        accounts: Some(accounts_face(env_name)),
+        ..bare_row(home_fn)
+    }];
+    let face =
+        crate::agents::accounts_face_among(&reg, AGENT_KIND).ok_or(Stop::MissingCapability {
+            stage: STAGES[4],
+            capability: "账号环境变量名",
+        })?;
+    if face.session_env.config_dir.trim().is_empty() {
+        return Err(Stop::MissingCapability {
+            stage: STAGES[4],
+            capability: "账号环境变量名",
+        });
+    }
+    let trusted = (face.trust_in)(fixture_home, FIXTURE_CWD)
+        .ok()
+        .and_then(|line| serde_json::from_str::<serde_json::Value>(&line).ok())
+        .is_some_and(|v| v["trusted"] == true);
+    if !trusted {
         return Err(Stop::MissingCapability {
             stage: STAGES[4],
             capability: "账号信任判定",
@@ -533,24 +602,13 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         });
     }
     let registry = [crate::agents::Adapter {
-        kind: AGENT_KIND,
-        home: home_fn,
-        account_env: None,
-        assets: None,
-        history: None,
-        upstream: None,
-        mcp: None,
-        footprint: None,
-        accounts: None,
-        records: None,
-        processes: None,
         launch: Some(crate::agents::LaunchFace {
             default_launcher: base,
             resume_command: cmd,
             session_name_prefix: prefix,
             ..LAUNCH
         }),
-        compact_request: None,
+        ..bare_row(home_fn)
     }];
     let spec = format!("{{\"agentKind\":\"{AGENT_KIND}\",\"sessionId\":\"{sid}\"}}");
     let plan =

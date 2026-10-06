@@ -222,7 +222,6 @@ fn json_str(v: Option<&str>) -> serde_json::Value {
 // 与 `platform::proc::proc_starttime` 逐字同语义（都返回 boot 起的 jiffies，解析都是
 // `nth(22-3)`），只是这一份把解析内联了、那一份走 `parse_starttime_from_stat`。
 // 合并前**逐条核过单位**：单位不同的话它们就不是重复，合并就是引 bug。
-use crate::agents::claudecode::accounts as cc_accounts;
 use crate::common::fs::read_regular_capped;
 use crate::platform::proc::{proc_env_var, proc_starttime, EnvRead};
 
@@ -462,10 +461,10 @@ pub(crate) fn list_product_at(
 
 /// pidfile 目录里每一份**读得出来**的 `(pid, 内容)` —— 上限、跳过要说清，逐字搬自 [`session_accounts`] 那一段循环头
 /// （抽出来是为了让「这台机器上哪几个会话活着」（[`live_session_ids`]）与账号归属读**同一批** pidfile，
-/// 而 pidfile 目录这件 agent 知识的调用点仍然只有这一处 —— `agent_locality_guard` 的 `ADAPTER_CALL_SITES` 不涨）。
+/// pidfile 目录问注册表里后端盯着的那一家，与判活同一处 `agents::pidfile_dir`）。
 fn pidfiles(agent_home: &Path) -> Vec<(u32, serde_json::Value)> {
     let mut out = Vec::new();
-    let dir = crate::agents::claudecode::paths::sessions_root(agent_home);
+    let dir = crate::agents::pidfile_dir(agent_home);
     let Ok(rd) = std::fs::read_dir(&dir) else {
         return Vec::new(); // 没有 sessions/ → 零行（exit 0）
     };
@@ -579,8 +578,10 @@ pub(crate) fn session_wait(agent_home: &Path, sid: &str) -> Option<super::facts_
 
 /// `--session-accounts`：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。
 pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
-    // 向适配层要「会话进程环境里该读哪两个键」只问这一次（账号 · 上游地址）。
-    let env_keys = crate::agents::claudecode::paths::SESSION_ENV_KEYS;
+    // 向注册表要「会话进程环境里该读哪两个键」只问这一次（账号 · 上游地址；账号库那一家的 `AccountsFace.session_env`）。
+    let Some(env_keys) = crate::agents::account_library_face().map(|f| f.session_env) else {
+        return Vec::new();
+    };
     // Z01：`None` 这个 key 是账号 0（configDir 缺席）。裸起会话过去归属不到任何账号
     // （`account: null` + `bare: true`），现在它有名字了。
     let by_dir: Vec<(Option<String>, String)> = load_manifest(accts_dir)
@@ -728,7 +729,7 @@ fn account_trust(
             copy_text("beAccountsQuery.accountTrust.notListed", &[]).into(),
         ));
     }
-    cc_accounts::trust_of_config(&cc_accounts::config_path_in(Path::new(want)), cwd)
+    trust_in(Path::new(want), cwd)
 }
 
 /// `--account-trust-zero <cwd>`：**账号 0** 的信任预检。
@@ -744,7 +745,18 @@ fn account_trust_zero(cwd: &str) -> Result<String, (String, String)> {
             copy_text("beAccountsQuery.accountTrustZero.noHome", &[]),
         )
     })?;
-    cc_accounts::trust_of_config(&cc_accounts::config_path_in(&home), cwd)
+    trust_in(&home, cwd)
+}
+
+/// 账号库那一家（`AccountsFace.trust_in`）对某个配置根下某个 cwd 的信任状态。没有账号库那一家 ⇒ 照实拒。
+fn trust_in(root: &Path, cwd: &str) -> Result<String, (String, String)> {
+    let face = crate::agents::account_library_face().ok_or_else(|| {
+        (
+            "no_accounts_face".to_string(),
+            "no agent here keeps an account library".to_string(),
+        )
+    })?;
+    (face.trust_in)(root, cwd)
 }
 
 /// 帧面那两条（`accounts-list` / `accounts-sessions`）的入口。

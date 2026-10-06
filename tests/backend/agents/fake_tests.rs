@@ -215,6 +215,7 @@ fn a_brand_new_agent_is_discovered_and_announced_with_zero_general_layer_change(
         processes: None,
         launch: None,
         compact_request: None,
+        local: None,
     };
     let discovered = crate::agents::visible_among(std::slice::from_ref(&adapter));
     assert_eq!(
@@ -258,10 +259,7 @@ fn a_brand_new_agent_is_discovered_and_announced_with_zero_general_layer_change(
 /// `L2` 的钉法逐字：「`S6` 的最小假 agent —— 它只实现这组接口，
 /// **若接口漏了什么，`S6` 走不通就会红**」。本格就是那条钉法。
 ///
-/// ⚠ **边界写在明处**：后五段**没有过通用层**（见 [`walk`] 头注）。
-/// 本条证明的是接口面**够用**（`D4` 反推出来的 12 种能力不缺），
-/// **不是**通用层**能用**它们 —— 后者今天不成立，差距 27 处逐条登记在
-/// `agent_locality_guard::tests::NEW_AGENT_BLOCKERS`。
+/// 每一段都经通用层（见 [`walk`] 头注）：读会话 / 判活 / 账号三段问的是注册表里这一家的那几格。
 #[test]
 fn the_twelve_reverse_derived_capabilities_are_enough_to_finish_the_pipeline() {
     let root = build_fixture("walk");
@@ -354,7 +352,7 @@ fn removing_any_one_capability_stops_the_flow_somewhere_that_can_name_it() {
 ///
 /// ⚠ 本格**不是**在说这些入口有 bug —— 它们今天的契约就是「只服务一种 agent」。
 /// 它记的是：`G1` 成功标准②今天差的那 27 处，**每一处的失败长什么样**。
-/// 收接口那轮要补的错误出口，规格就在这里和 `NEW_AGENT_BLOCKERS` 那一列里。
+/// 生产注册表里没有这一家，通用层按记录树那一家（Claude）的格去读它的 home：读不到就是这几种反应。
 #[test]
 fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words() {
     let root = build_fixture("probe");
@@ -382,7 +380,7 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
     assert_eq!(
         rc, 0,
         "`--search` 的反应变了 —— 本格记的是「今天它 rc=0 零输出」这个事实，\
-             变了就该同轮改 `NEW_AGENT_BLOCKERS` 的失败形态那一列"
+             变了就该同轮改本格头注那张表"
     );
 
     // ③ 账号：**静默**（零行）。
@@ -425,6 +423,7 @@ fn registry_with_fake() -> Vec<crate::agents::Adapter> {
         processes: None,
         launch,
         compact_request: None,
+        local: None,
     };
     let mut reg: Vec<crate::agents::Adapter> = crate::agents::REGISTRY
         .iter()
@@ -641,6 +640,7 @@ fn the_fake_agents_mcp_face_is_read_through_the_generic_layer() {
         processes: None,
         launch: None,
         compact_request: None,
+        local: None,
     };
     let got = crate::agents::mcp_read_among(std::slice::from_ref(&adapter), AGENT_KIND, Some(&dir));
     let _ = std::fs::remove_dir_all(&dir);
@@ -661,4 +661,97 @@ fn the_fake_agents_mcp_face_is_read_through_the_generic_layer() {
         Some(std::path::Path::new("/"))
     )
     .is_none());
+}
+
+/// 同一批通用的派发判据对三家各跑一遍（Claude · Codex · 假 agent）：通用层问的那几格（记录树 · 会话文件判定 ·
+/// 本机布局 · 账号库面）每一家各答各的，答案是那一家自己的布局，不是谁的翻版。
+#[test]
+fn the_same_generic_dispatch_answers_for_claude_codex_and_the_fake() {
+    use crate::agents::{
+        accounts_face_among, is_session_file_among, local_face_among, record_tree_among,
+        records_root_among, REGISTRY,
+    };
+    use crate::agents::{claudecode as cc, codex as cx};
+    let mut reg: Vec<crate::agents::Adapter> = REGISTRY
+        .iter()
+        .map(|a| crate::agents::Adapter {
+            upstream: None,
+            ..*a
+        })
+        .collect();
+    reg.push(full_row(home_of_walk));
+    let (claude, codex) = (cc::AGENT_KIND, cx::AGENT_KIND);
+    let h = Path::new("/h");
+
+    // 记录树：Claude 与假 agent 各有一棵（根不同）；Codex 的会话不住记录树。
+    assert_eq!(
+        records_root_among(&reg, claude, h),
+        Some(cc::paths::projects_root(h))
+    );
+    assert_eq!(
+        records_root_among(&reg, AGENT_KIND, h),
+        Some(records_root(h))
+    );
+    assert_eq!(records_root_among(&reg, codex, h), None);
+    let name = |k| record_tree_among(&reg, k).map(|t| (t.file_name)(FIXTURE_SESSION_ID));
+    assert_eq!(
+        name(claude),
+        Some(cc::records::session_file_name(FIXTURE_SESSION_ID))
+    );
+    assert_eq!(
+        name(AGENT_KIND),
+        Some(session_file_name(FIXTURE_SESSION_ID))
+    );
+
+    // 会话文件判定：每一家认自己的、不认别人的。
+    let mine = h.join(session_file_name(FIXTURE_SESSION_ID));
+    let claudes = h.join(cc::records::session_file_name(FIXTURE_SESSION_ID));
+    let codexs = h.join(format!(
+        "rollout-2026-01-01T00-00-00-{FIXTURE_SESSION_ID}.jsonl"
+    ));
+    assert!(is_session_file_among(&reg, AGENT_KIND, &mine));
+    assert!(!is_session_file_among(&reg, AGENT_KIND, &claudes));
+    assert!(is_session_file_among(&reg, claude, &claudes));
+    assert!(!is_session_file_among(&reg, claude, &mine));
+    assert!(is_session_file_among(&reg, codex, &codexs));
+    assert!(!is_session_file_among(&reg, codex, &mine));
+    assert!(
+        !is_session_file_among(&reg, "nobody", &claudes),
+        "认不出的 kind 认了一份文件"
+    );
+
+    // 本机布局：Claude 与假 agent 的 pidfile 目录与 cmdline 认法各是各的；Codex 今天没有。
+    let local = |k| local_face_among(&reg, k);
+    assert_eq!(
+        local(claude).map(|f| (f.pidfile_dir)(h)),
+        Some(cc::paths::sessions_root(h))
+    );
+    assert_eq!(
+        local(AGENT_KIND).map(|f| (f.pidfile_dir)(h)),
+        Some(pidfile_root(h))
+    );
+    assert!(local(codex).is_none());
+    assert!(local(claude).is_some_and(|f| (f.cmdline_may_be_agent)("/usr/bin/node /x/claude")));
+    assert!(local(AGENT_KIND).is_some_and(|f| !(f.cmdline_may_be_agent)("/usr/bin/node /x/claude")));
+    let cfg = Path::new("/acct/3");
+    assert_eq!(
+        local(claude).map(|f| (f.home_at)(Some(cfg), true)),
+        Some(cfg.to_path_buf())
+    );
+    assert_eq!(
+        local(AGENT_KIND).map(|f| (f.home_at)(Some(cfg), true)),
+        Some(cfg.to_path_buf())
+    );
+
+    // 账号库面：会话进程环境里读的账号键 == 那一家的账号载体（`Adapter.account_env`）；Codex 今天没有账号库。
+    for a in &reg {
+        let face = accounts_face_among(&reg, a.kind);
+        assert_eq!(
+            face.map(|f| f.session_env.config_dir),
+            a.account_env,
+            "{}：账号归属读的键与切账号改的那个变量不是同一个",
+            a.kind
+        );
+    }
+    assert!(accounts_face_among(&reg, codex).is_none());
 }

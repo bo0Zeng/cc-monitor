@@ -1,4 +1,5 @@
 use super::*;
+use crate::agents::claudecode::paths::projects_root;
 use std::path::PathBuf;
 
 /// 帧面那一格 `launch` 的替身（推断本身由 `fork_launch_tests.rs` 钉）。

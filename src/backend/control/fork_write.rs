@@ -37,8 +37,6 @@
 //! 🔴 **写那一半刻意留在这里**（`K-R88` 的射程逐字：本件在收「找」，不搬「写」）——
 //! 它是本 crate 只读白名单上那一条，搬它要动的是白名单，那是另一件事。
 
-// U2：合并去重（原来这里各有一份逐字相同的副本）；`S3` 把它搬去了 agent 适配层。
-use crate::agents::claudecode::paths::projects_root;
 use std::path::Path;
 
 /// 成功时 stdout 输出的一行 JSON（camelCase，与 monitor 侧 `BranchResult` 同形）。
@@ -205,7 +203,9 @@ fn run_inner(agent_home: &Path, args: &[String]) -> Result<ForkResult, String> {
 
     // 🔴 「找文件」**这一句就是全部** —— 本模块只填「记录树的根在哪」这一格
     //（那是 agent 适配层的知识），找本身两侧同一份（`K-R88`）。
-    let source = crate::agents::find_session_file(&projects_root(agent_home), source_sid)?;
+    let root = crate::agents::records_root(agent_home)
+        .ok_or("refuse fork: no agent here keeps a record tree")?;
+    let source = crate::agents::find_session_file(&root, source_sid)?;
     let lines = read_jsonl(&source)?;
     let new_sid = new_session_id(source_sid);
     // 分叉变换问这份记录归的那一家。
@@ -217,9 +217,9 @@ fn run_inner(agent_home: &Path, args: &[String]) -> Result<ForkResult, String> {
     let dir = source
         .parent()
         .ok_or("refuse fork: source has no parent dir")?;
-    let out_path = dir.join(crate::agents::claudecode::records::session_file_name(
-        &new_sid,
-    ));
+    let file_name = crate::agents::session_file_name(kind, &new_sid)
+        .ok_or("refuse fork: this agent has no session file naming")?;
+    let out_path = dir.join(file_name);
     write_new_file(&out_path, &records)?;
 
     Ok(ForkResult {

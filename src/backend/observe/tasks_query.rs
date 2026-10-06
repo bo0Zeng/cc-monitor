@@ -34,17 +34,15 @@ use std::path::Path;
 /// 1 MiB 留了三个数量级的余量。超了走**跳过＋说清**（见模块头注）。
 pub(crate) const TASK_FILE_CAP_BYTES: u64 = 1 << 20;
 
-/// `<home>/tasks` —— 任务列表的根。
-///
-/// ⚠ **目录名 `tasks` 是 Claude 的布局知识，它住在这里而不在 `agents/claudecode/paths.rs`**，
-/// 理由如实写：`observe/` 这一层今天本来就是 Claude 专属的（`observe/mod.rs` 头注），
-/// 与 `watcher` / `history_query` 认得 `.jsonl` 同一处境；而把它搬进适配层、从这里调过去，
-/// 就是 `agent_locality_guard::ADAPTER_CALL_SITES` 里新长一处 —— 那张表要求同拍给
-/// `agents::fake::CAPABILITIES` 补一种能力（`S6` 的反向夹具），那一刀归 `L2`/`S6` 收接口那轮。
-/// ⇒ 欠账登记在 RM1b 的记录文件里，不在这里假装已经分层。
+/// 任务列表的根：后端盯着的那一家（注册表 `LocalFace.tasks_dir`）。那一家没有任务列表 ⇒ 家目录下一个不会有任务的位置（读出零条）。
 pub(crate) fn tasks_root(home: &Path) -> std::path::PathBuf {
-    home.join("tasks")
+    crate::agents::tree_local_face()
+        .and_then(|f| f.tasks_dir)
+        .map_or_else(|| home.join(NO_TASKS), |f| f(home))
 }
+
+/// 注册表里没有任务列表那一家时 [`tasks_root`] 指的那个名字（不建、不写，只读出零条）。
+const NO_TASKS: &str = ".no-task-dir";
 
 /// 本族的错误出口：`(code, message)`。
 pub(crate) type Refusal = (&'static str, String);

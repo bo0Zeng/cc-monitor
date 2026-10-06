@@ -497,7 +497,7 @@ pub(crate) fn mcp_file(
     at: &ExtLoc,
 ) -> Result<(String, String), (&'static str, String)> {
     match at {
-        ExtLoc::Project { dir } => Ok((dir.clone(), super::mcp_edit::MCP_JSON.to_string())),
+        ExtLoc::Project { dir } => Ok((dir.clone(), super::mcp_edit::mcp_json().to_string())),
         ExtLoc::User => {
             let store = shared_mcp_file(d)?;
             let p = Path::new(&store);
@@ -1308,7 +1308,7 @@ pub(crate) fn answer_uninstall_apply(
                 door::put(
                     d,
                     &home_s,
-                    &format!("{rel}/{}", super::mcp_edit::MCP_JSON),
+                    &format!("{rel}/{}", super::mcp_edit::mcp_json()),
                     &m.text,
                     None,
                     false,
@@ -1330,7 +1330,7 @@ pub(crate) fn answer_uninstall_apply(
                 match door::put(
                     d,
                     &m.root,
-                    super::mcp_edit::MCP_JSON,
+                    super::mcp_edit::mcp_json(),
                     &next,
                     Some(&m.text),
                     false,

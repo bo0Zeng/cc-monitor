@@ -10,7 +10,7 @@
 
 use super::door::{self, Door, Refused};
 use super::ext::ExtLoc;
-use super::mcp_edit::{plan_project_mcp, upsert_mcp_server_value, MCP_JSON};
+use super::mcp_edit::{mcp_json, plan_project_mcp, upsert_mcp_server_value};
 use super::skill_flow::Record;
 use crate::assets::asset_catalog::MCP_KEYS_ONLY_FIELDS;
 use crate::assets::mcp_sync::{candidates, judge, servers_of, Facts, There};
@@ -49,7 +49,7 @@ fn file_of(
     user_mcp: Option<&std::path::Path>,
 ) -> Result<(String, String), (&'static str, String)> {
     match at {
-        ExtLoc::Project { dir } => Ok((dir.clone(), MCP_JSON.to_string())),
+        ExtLoc::Project { dir } => Ok((dir.clone(), mcp_json().to_string())),
         ExtLoc::User => {
             let f = user_mcp.ok_or(("io_failed", copy_text("beExt.uninstall.noHome", &[])))?;
             let (Some(dir), Some(name)) = (f.parent(), f.file_name()) else {
@@ -212,7 +212,7 @@ pub(crate) fn answer_apply(d: &dyn Door, record: Record, args: &Value) -> Answer
     }
     let at_path = match at {
         ExtLoc::User => tgt.path.clone(),
-        ExtLoc::Project { .. } => door::join_under(&root, MCP_JSON),
+        ExtLoc::Project { .. } => door::join_under(&root, mcp_json()),
     };
     if existing == Some(&full) {
         return Ok(json!({ "path": at_path, "written": false, "recordFailed": null }));
@@ -229,7 +229,15 @@ pub(crate) fn answer_apply(d: &dyn Door, record: Record, args: &Value) -> Answer
     })
     .map_err(|m| ("refused", m))?
     .unwrap_or_default();
-    let landed = match door::put(d, &root, MCP_JSON, &next, tgt.text.as_deref(), false, false) {
+    let landed = match door::put(
+        d,
+        &root,
+        mcp_json(),
+        &next,
+        tgt.text.as_deref(),
+        false,
+        false,
+    ) {
         Ok(l) => l,
         Err(Refused::Stale(_)) => {
             return Err(("stale", copy_text("beMcpSyncFlow.apply.stale", &[])))

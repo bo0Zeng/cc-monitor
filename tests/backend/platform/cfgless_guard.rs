@@ -654,7 +654,7 @@ mod tests {
         ),
         (
             "agents/fake/mod.rs",
-            "cmdline(\"/usr/bin/vim\")",
+            "cmdline_may_be_agent)(\"/usr/bin/vim\")",
             "合法线外",
             "它是喂给判定器的**反例数据**（断言这条 cmdline **不**被判成 agent），\
              不是本机要去走的路 ⇒ 在任何平台上行为相同，不是平台代码。",

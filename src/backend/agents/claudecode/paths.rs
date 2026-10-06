@@ -11,17 +11,8 @@ pub(crate) const CONFIG_DIR_ENV: &str = "CLAUDE_CONFIG_DIR";
 /// `--session-accounts` 读它**只为答一个布尔**（这条会话走不走本机中转），值本身带钥匙、**绝不出参、绝不进日志**。
 pub(crate) const BASE_URL_ENV: &str = "ANTHROPIC_BASE_URL";
 
-/// `--session-accounts` 从会话进程环境里读的那两个**适配层的**键，收成一处交出去：账号（配置根）· 上游地址。
-/// 通用层只问适配层**一次**「该读哪两个键」（`agent_locality_guard` 那一格仍是一处：加第三家 agent 时这两个键一起换）。
-pub(crate) struct SessionEnvKeys {
-    pub(crate) config_dir: &'static str,
-    pub(crate) base_url: &'static str,
-    /// 这条会话自己的设置文件会不会压过进程环境里的上游地址（见 [`settings_may_set_base_url`]）。
-    pub(crate) settings_may_set_base_url: fn(Option<&Path>, &Path, Option<&Path>) -> bool,
-}
-
-/// 见 [`SessionEnvKeys`]。
-pub(crate) const SESSION_ENV_KEYS: SessionEnvKeys = SessionEnvKeys {
+/// 账号归属读会话进程环境时读的那两个键（注册表 `AccountsFace.session_env`）。
+pub(crate) const SESSION_ENV_KEYS: super::super::SessionEnvKeys = super::super::SessionEnvKeys {
     config_dir: CONFIG_DIR_ENV,
     base_url: BASE_URL_ENV,
     settings_may_set_base_url,
@@ -160,6 +151,11 @@ pub(crate) const SESSIONS_DIR: &str = "sessions";
 /// 而 `common/` 的三条门槛第③条逐字写着「无域知识」。它当初就不该在那儿。
 pub(crate) fn projects_root(home: &Path) -> PathBuf {
     home.join(PROJECTS_DIR)
+}
+
+/// `<home>/tasks` —— 任务列表的根（`<sid>/<n>.json`，任务面板读它）。
+pub(crate) fn tasks_root(home: &Path) -> PathBuf {
+    home.join("tasks")
 }
 
 /// `<home>/sessions` —— **pidfile 目录**（`<PID>.json`，判活用）。

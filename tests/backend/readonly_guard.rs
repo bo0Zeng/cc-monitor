@@ -2128,6 +2128,7 @@ mod tests {
         let port = crate::control::files_write::SessionPort {
             locate: crate::agents::locate_session_for_delete,
             is_record: crate::agents::is_session_record,
+            file_name: crate::agents::session_file_name_of,
         };
         match crate::control::files_write::answer_wire(
             "files-delete-session",

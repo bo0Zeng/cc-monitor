@@ -1,4 +1,5 @@
 use super::*;
+use crate::agents::claudecode::accounts as cc_accounts;
 use std::fs;
 
 fn tmpdir(tag: &str) -> PathBuf {
@@ -1034,10 +1035,8 @@ fn account_trust_zero_takes_no_path_argument() {
         "账号 0 的 trust 入口一旦收了路径参数，就重新开出了任意文件读的面"
     );
     assert!(
-        me.contains("config_path_in(&home)"),
-        "账号 0 的配置文件必须来自 $HOME（声明里它的原生根是 home）。\n\
-             ⚠ `S3` 前这条比的是字面量 `home.join(\".claude.json\")`——文件名随适配层搬走了，\n\
-             比对对象换成那个 helper 的名字，**性质一字未变**：路径的根仍必须是 $HOME。"
+        me.contains("trust_in(&home, cwd)"),
+        "账号 0 的配置文件必须来自 $HOME（声明里它的原生根是 home）：交给账号库面 `trust_in` 的根就是 `home`。"
     );
     assert!(me.len() > 1000, "include_str! 没读到源码，上面的断言是空转");
 }
@@ -1235,9 +1234,9 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
              以及为什么这条查询仍然不是「任意环境变量读」原语。\n\
              **少了** ⇒ 有一条读回路被摘掉了。"
     );
-    // 两个适配层的键（账号 · 上游地址）收成一处向适配层要（`SESSION_ENV_KEYS`），键名仍是常量、不是参数。
+    // 两个适配层的键（账号 · 上游地址）收成一处向注册表要（账号库面 `session_env`），键名仍是常量、不是参数。
     assert_eq!(
-        prod.matches("let env_keys = crate::agents::claudecode::paths::SESSION_ENV_KEYS;")
+        prod.matches("crate::agents::account_library_face().map(|f| f.session_env)")
             .count(),
         1,
         "向适配层要那两个键的那一处不见了 / 变形了"

@@ -53,6 +53,11 @@ pub(crate) fn records_root() -> Option<std::path::PathBuf> {
 }
 
 /// [`sessions`] 的本体，Codex home 是参数（判据喂临时目录）。
+/// 一份 Codex 会话记录的文件形态：后缀 `.jsonl`（sid 另由文件名判，见 `parse::codex_sid_from_path`）。
+pub(crate) fn is_session_file(p: &Path) -> bool {
+    p.extension().and_then(|e| e.to_str()) == Some("jsonl")
+}
+
 pub(crate) fn sessions_under(codex_home: &Path) -> Vec<crate::agents::SynthSession> {
     let root = parse::sessions_root(codex_home);
     if !root.is_dir() {
@@ -64,7 +69,7 @@ pub(crate) fn sessions_under(codex_home: &Path) -> Vec<crate::agents::SynthSessi
         .filter_map(Result::ok)
     {
         let p = ent.path();
-        if !p.is_file() || p.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+        if !p.is_file() || !is_session_file(&p) {
             continue;
         }
         let Some(sid) = parse::codex_sid_from_path(p) else {

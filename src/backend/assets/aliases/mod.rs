@@ -244,17 +244,21 @@ pub(crate) struct AliasInstallReport {
     pub wrote_alias_file: bool,
 }
 
-/// 别名文件第一次被建出来时带上的那几条（之后和别的别名一样可改可删、删了不回补）：
-/// `cc`（当前目录起）· `cct`（tmux 里起）· `cca`（接回 tmux 会话，会话名敲的时候跟上）。没有 tmux 的目标只带 `cc`。
+/// 别名文件第一次被建出来时带上的那几条（之后和别的别名一样可改可删、删了不回补），名字由默认那一家的 wrapper 名派生
+/// （`agents::wrapper_alias`，Claude：`cc`）：`<它>`（当前目录起）· `<它>t`（tmux 里起）· `<它>a`（接回 tmux 会话，会话名敲的时候跟上）。
+/// 没有 tmux 的目标只带第一条；默认那一家没有 wrapper ⇒ 一条都不带。
 pub(crate) fn first_aliases(shell: Shell) -> Vec<Alias> {
-    let mut v = vec![Alias::new("cc", Vec::new())];
+    let Some(wrapper) = crate::agents::wrapper_alias(crate::agents::default_kind()) else {
+        return Vec::new();
+    };
+    let mut v = vec![Alias::new(wrapper, Vec::new())];
     if Caps::of(shell).tmux {
         v.push(Alias::new(
-            "cct",
+            &format!("{wrapper}t"),
             vec![flag::END.to_string(), flag::TMUX.to_string()],
         ));
         v.push(Alias {
-            name: "cca".to_string(),
+            name: format!("{wrapper}a"),
             args: vec![flag::END.to_string(), flag::ATTACH.to_string()],
             rest_to: RestTo::Ccm,
         });

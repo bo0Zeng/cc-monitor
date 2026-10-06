@@ -19,6 +19,21 @@ pub(crate) fn asset_kind() -> Option<&'static str> {
     crate::agents::sole_kind(|a| a.assets.is_some())
 }
 
+/// 资产面那一家（[`asset_kind`]）的资产面。
+fn asset_face() -> Option<crate::agents::AssetFace> {
+    crate::agents::asset_face(asset_kind()?)
+}
+
+/// 资产面那一家项目级 MCP 配置的文件名（`AssetFace.project_mcp_file`）。没有资产面那一家 ⇒ 空串（落点拼不出、照实拒）。
+pub(crate) fn project_mcp_file() -> &'static str {
+    asset_face().map_or("", |f| f.project_mcp_file)
+}
+
+/// 资产面那一家 MCP 配置里装 server 表的顶层键（`AssetFace.servers_key`）。没有资产面那一家 ⇒ 空串。
+pub(crate) fn mcp_servers_key() -> &'static str {
+    asset_face().map_or("", |f| f.servers_key)
+}
+
 // 从 crate 根归进来（纯搬家，资产那一行）。
 pub mod asset_catalog; // 资产目录：帧面 `assets-catalog` / `assets-catalog-merge`（后端自有状态 `~/.cc-monitor/assets-catalog.json`，第四层；一个用户文件都不写）
 pub mod asset_sync; // 资产目录的自动同步：帧面 `assets-sync`（本机常驻后端沿池里那条 SSH 拉 / 并 / 推；写口由 inbound 递进来）

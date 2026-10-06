@@ -10,8 +10,9 @@ use crate::platform::shell::dialect::RestTo;
 /// 一条别名：`(名字, ccm 参数, 调用时的词交给谁)`。
 pub(crate) type Entry = (String, Vec<String>, RestTo);
 
-/// 一个号那一条别名叫什么：账号名去掉 shell 函数名里放不下的字符（今天只有 `-`）＋ `cc`（`tmux` ⇒ `cct`）；
-/// 以数字打头 ⇒ 前面补 `_`。去完什么都不剩 ⇒ `None`（不给它起别名）。
+/// 一个号那一条别名叫什么：账号名去掉 shell 函数名里放不下的字符（今天只有 `-`）＋ 账号库那一家的 wrapper 名
+/// （`agents::wrapper_alias`，Claude：`cc`；`tmux` ⇒ 再加 `t`）；以数字打头 ⇒ 前面补 `_`。
+/// 去完什么都不剩、或那一家没有 wrapper ⇒ `None`（不给它起别名）。
 pub(crate) fn alias_name(account: &str, tmux: bool) -> Option<String> {
     let cleaned: String = account
         .chars()
@@ -20,7 +21,9 @@ pub(crate) fn alias_name(account: &str, tmux: bool) -> Option<String> {
     if cleaned.is_empty() {
         return None;
     }
-    let name = format!("{cleaned}{}", if tmux { "cct" } else { "cc" });
+    let wrapper = crate::agents::sole_kind(|a| a.accounts.is_some())
+        .and_then(crate::agents::wrapper_alias)?;
+    let name = format!("{cleaned}{wrapper}{}", if tmux { "t" } else { "" });
     Some(if name.starts_with(|c: char| c.is_ascii_digit()) {
         format!("_{name}")
     } else {

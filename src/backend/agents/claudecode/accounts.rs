@@ -71,6 +71,8 @@ pub(crate) const FACE: AccountsFace = AccountsFace {
     shared_root: shared_root_in,
     email_in: |root| oauth_email_in(&config_path_in(root)),
     watched: &[super::paths::SESSIONS_DIR, super::paths::PROJECTS_DIR],
+    session_env: super::paths::SESSION_ENV_KEYS,
+    trust_in: |root, cwd| trust_of_config(&config_path_in(root), cwd),
 };
 
 /// 没设 `CLAUDE_CONFIG_DIR` 时的配置根（家目录下），也就是各号链回去的那个共享库。

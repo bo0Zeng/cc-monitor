@@ -39,6 +39,9 @@ pub(crate) const HISTORY: crate::agents::HistoryFace = crate::agents::HistoryFac
 pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace {
     parse: record::parsed_line,
     sid: parse::codex_sid_from_path,
+    is_session_file: history::is_session_file,
+    // 会话按日期分、不住按项目分的记录树（历史由合成历史面并进来）。
+    tree: None,
     turn_end: None,
     // Codex 的会话不在按项目分的记录树里、今天也不分叉 ⇒ 这两格没有。
     find_session: None,

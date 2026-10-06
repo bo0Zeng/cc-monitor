@@ -45,7 +45,7 @@ fn the_source_hands_over_the_entry_with_every_secret_value_blanked() {
     let d = fixture("redact");
     let def = json!({ "command": "srv", "args": ["--port", "1"], "env": { "API_KEY": "sk-AAA", "MODE": "mode-VAL" }, "headers": { "Authorization": "Bearer BBB" } });
     std::fs::write(
-        d.join("src").join(MCP_JSON),
+        d.join("src").join(mcp_json()),
         json!({ "mcpServers": { "s": def, "other": { "command": "o" } } }).to_string(),
     )
     .unwrap();
@@ -73,7 +73,7 @@ fn the_source_hands_over_the_entry_with_every_secret_value_blanked() {
     let mut changed = def.clone();
     changed["env"]["API_KEY"] = json!("sk-CCC");
     std::fs::write(
-        d.join("src").join(MCP_JSON),
+        d.join("src").join(mcp_json()),
         json!({ "mcpServers": { "s": changed } }).to_string(),
     )
     .unwrap();
@@ -94,7 +94,7 @@ fn the_target_fills_each_slot_from_the_card_or_its_own_value_and_never_from_the_
     let d = fixture("fill");
     let dst = d.join("dst");
     std::fs::write(
-        dst.join(MCP_JSON),
+        dst.join(mcp_json()),
         json!({ "mcpServers": { "s": { "command": "old", "env": { "API_KEY": "mine" } }, "keep": { "command": "k" } } }).to_string(),
     )
     .unwrap();
@@ -115,7 +115,7 @@ fn the_target_fills_each_slot_from_the_card_or_its_own_value_and_never_from_the_
         recorded.borrow_mut().push(a.clone());
         Ok(json!({}))
     };
-    let before = std::fs::read_to_string(dst.join(MCP_JSON)).unwrap();
+    let before = std::fs::read_to_string(dst.join(mcp_json())).unwrap();
     let (code, _) = answer_apply(
         &LocalFiles,
         &record,
@@ -123,7 +123,10 @@ fn the_target_fills_each_slot_from_the_card_or_its_own_value_and_never_from_the_
     )
     .expect_err("缺值还写了");
     assert_eq!(code, "needs_input");
-    assert_eq!(std::fs::read_to_string(dst.join(MCP_JSON)).unwrap(), before);
+    assert_eq!(
+        std::fs::read_to_string(dst.join(mcp_json())).unwrap(),
+        before
+    );
     let done = answer_apply(
         &LocalFiles,
         &record,
@@ -132,7 +135,7 @@ fn the_target_fills_each_slot_from_the_card_or_its_own_value_and_never_from_the_
     .expect("写不上");
     assert_eq!(done["written"], true);
     let after: Value =
-        serde_json::from_str(&std::fs::read_to_string(dst.join(MCP_JSON)).unwrap()).unwrap();
+        serde_json::from_str(&std::fs::read_to_string(dst.join(mcp_json())).unwrap()).unwrap();
     assert_eq!(
         after["mcpServers"],
         json!({ "s": { "command": "srv", "env": { "API_KEY": "mine", "TOKEN": "typed" } }, "keep": { "command": "k" } })
@@ -162,7 +165,7 @@ fn the_target_fills_each_slot_from_the_card_or_its_own_value_and_never_from_the_
 fn a_target_that_changed_after_the_preview_is_left_alone_and_user_level_is_read_only() {
     let d = fixture("stale");
     let dst = d.join("dst");
-    std::fs::write(dst.join(MCP_JSON), "{\"mcpServers\":{}}").unwrap();
+    std::fs::write(dst.join(mcp_json()), "{\"mcpServers\":{}}").unwrap();
     let def = json!({ "command": "a" });
     let pre = answer_preview(
         &LocalFiles,
@@ -170,7 +173,7 @@ fn a_target_that_changed_after_the_preview_is_left_alone_and_user_level_is_read_
         &json!({ "name": "a", "at": at(&dst), "def": def }),
     )
     .unwrap();
-    std::fs::write(dst.join(MCP_JSON), "{\"mcpServers\":{\"z\":{}}}").unwrap();
+    std::fs::write(dst.join(mcp_json()), "{\"mcpServers\":{\"z\":{}}}").unwrap();
     let record = |_: &Value| Ok(json!({}));
     let (code, _) = answer_apply(
         &LocalFiles,
@@ -180,7 +183,7 @@ fn a_target_that_changed_after_the_preview_is_left_alone_and_user_level_is_read_
     .expect_err("看过之后变了还写了");
     assert_eq!(code, "stale");
     assert_eq!(
-        std::fs::read_to_string(dst.join(MCP_JSON)).unwrap(),
+        std::fs::read_to_string(dst.join(mcp_json())).unwrap(),
         "{\"mcpServers\":{\"z\":{}}}"
     );
     // 这台没建账号库（家目录是临时目录）⇒ 用户级只读。
