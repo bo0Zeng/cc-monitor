@@ -55,13 +55,13 @@ export class Cdp {
 
 /** 一页：开一个新标签、挂上会话，给出截图要的几样动作。 */
 export class Page {
-  static async open(cdp, width, height) {
+  static async open(cdp, width, height, scale = 1) {
     const { targetId } = await cdp.send("Target.createTarget", { url: "about:blank" });
     const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
     const page = new Page(cdp, targetId, sessionId);
     await page.send("Page.enable");
     await page.send("Runtime.enable");
-    await page.size(width, height);
+    await page.size(width, height, scale);
     return page;
   }
 
@@ -86,8 +86,8 @@ export class Page {
     return this.cdp.send(method, params, this.sessionId);
   }
 
-  size(width, height) {
-    return this.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
+  size(width, height, scale = 1) {
+    return this.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: scale, mobile: false });
   }
 
   async goto(url) {

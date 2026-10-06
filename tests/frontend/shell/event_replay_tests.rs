@@ -1032,6 +1032,7 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
         }),
         F::Listed(b::OriginSessionsListedPayload {
             origin: crate::origin::Origin::local(),
+            all: false,
         }),
         F::SnapshotInflight(b::SnapshotInflightPayload { count: 1 }),
         F::Runs(b::SessionRunsPayload {
@@ -1068,6 +1069,7 @@ fn a_single_session_subscription_hears_the_machine_level_unseen_only() {
     });
     let listed = F::Listed(b::OriginSessionsListedPayload {
         origin: crate::origin::Origin::local(),
+        all: false,
     });
     let other = F::Ended(b::SessionEndedPayload {
         session_id: "other".into(),

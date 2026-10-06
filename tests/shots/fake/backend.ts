@@ -20,6 +20,8 @@ export class FakeBackend {
   readonly unhandled: string[] = [];
   private emit: Emit = () => undefined;
   private readonly subs = new Map<number, Sub>();
+  /** 报过「清单报完了」的那几台（壳那一侧「各台都报完」那一拍按机器表算，这里照样算）。 */
+  private readonly listedOrigins = new Set<string>();
 
   constructor(readonly world: World) {}
 
@@ -131,7 +133,8 @@ export class FakeBackend {
       if (s.ended) frames.push({ ended: { session_id: s.sid } });
       else if (s.idle) frames.push({ idle: { session_id: s.sid } });
     }
-    frames.push({ listed: { origin } });
+    this.listedOrigins.add(origin);
+    frames.push({ listed: { origin, all: this.world.machines.every((m) => this.listedOrigins.has(m)) } });
     frames.push({ batch: "end" });
     return frames;
   }

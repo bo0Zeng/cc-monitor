@@ -464,6 +464,15 @@ async function clickHeadFront(): Promise<void> {
   await click("[data-role=head-front]");
 }
 
+/** 高 DPI：1.5x / 2x 下 1px 线、图标、字形照常（同一屏，像素比不同）。 */
+export const DPI_SCENES: Scene[] = [1.5, 2].map((scale) => ({
+  ...panel(`main-dpi-${scale}x`, `主窗口 · ${scale}x`, `设备像素比 ${scale}：标签页栏、会话头、消息流、状态栏的 1px 线与图标都照常`, async () => {
+    await mainReady(ALL_TABS);
+    await sleep(400);
+  }),
+  scale,
+}));
+
 export const FRONT_SCENES: Scene[] = [
   frontScene("panel-front-several", "↗ · 分不清是哪个窗口", "本机会话：Windows Terminal 开着 3 个窗口、这个终端没登记 ⇒ 不挑一个切；浮层锚在会话头的 ↗ 下，给「任务栏闪烁这 3 个」（只闪不切）", async () => {
     await mainReady(ALL_TABS);

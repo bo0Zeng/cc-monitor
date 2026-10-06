@@ -170,15 +170,11 @@ pub enum Out {
         sid: String,
         fate: Fate,
     },
-    Listed {
-        origin: String,
-    },
+    /// `all` = 这一刻机器表里的每一台都报完了（「各台都报完」那一拍：前端据此收空组、说记住的那一格没出现）。
+    Listed { origin: String, all: bool },
     /// 那台看不见了（**机器级**：线上只一格 `unseen {origin}`，前端按机器落说不清）。
     /// `sids` = 这一刻落说不清的那几条（排好序），只给 monitor 自己的旁路账用（本机那两份缓存），不上线。
-    Unseen {
-        origin: String,
-        sids: Vec<String>,
-    },
+    Unseen { origin: String, sids: Vec<String> },
     /// 一个会话的运行表（原样转）。
     Runs {
         origin: String,
@@ -213,6 +209,8 @@ pub struct Replay {
 #[derive(Debug, Default)]
 pub struct Book {
     origins: HashMap<String, OriginBook>,
+    /// 订了会话流的那几台（机器表：本机 ＋ 注册着的远端）；`None` = 还不知道 ⇒ 不立「各台都报完」。
+    machines: Option<Vec<String>>,
 }
 
 impl Book {
@@ -274,7 +272,8 @@ impl Book {
             }
             In::Listed { origin } => {
                 self.origins.entry(origin.clone()).or_default().listed = true;
-                vec![Out::Listed { origin }]
+                let all = self.all_listed();
+                vec![Out::Listed { origin, all }]
             }
             In::LinkLost { origin } => {
                 let Some(b) = self.origins.remove(&origin) else {
@@ -292,6 +291,28 @@ impl Book {
                 vec![Out::Unseen { origin, sids }]
             }
         }
+    }
+
+    /// 机器表里的每一台都报完了活会话清单（表还不知道 / 空 ⇒ 否）。
+    fn all_listed(&self) -> bool {
+        self.machines.as_ref().is_some_and(|m| {
+            !m.is_empty()
+                && m.iter()
+                    .all(|o| self.origins.get(o).is_some_and(|b| b.listed))
+        })
+    }
+
+    /// 机器表换了（启动 · 热加载）：记下；此刻每一台都报完了 ⇒ 再说一次「报完了」带 `all`（那一拍不因为表变了而错过，
+    /// 例如摘掉的正是唯一没报完的那台）。
+    pub fn set_machines(&mut self, machines: Vec<String>) -> Vec<Out> {
+        self.machines = Some(machines);
+        if !self.all_listed() {
+            return Vec::new();
+        }
+        let first = self.machines.as_ref().and_then(|m| m.first()).cloned();
+        first
+            .map(|origin| vec![Out::Listed { origin, all: true }])
+            .unwrap_or_default()
     }
 
     /// 用户关掉一个已结束的 tab（`EventReplay::forget` 同一刻）⇒ 它的成品也忘掉（不再重放）。
@@ -366,9 +387,13 @@ impl Book {
         }
         r.after.splice(0..0, front);
         r.after.extend(settled);
+        let all = self.all_listed();
         for o in origins {
             if self.origins[o].listed {
-                r.after.push(Out::Listed { origin: o.clone() });
+                r.after.push(Out::Listed {
+                    origin: o.clone(),
+                    all,
+                });
             }
         }
         r
@@ -382,7 +407,7 @@ impl Out {
             Out::Live { origin, .. }
             | Out::Status { origin, .. }
             | Out::Left { origin, .. }
-            | Out::Listed { origin }
+            | Out::Listed { origin, .. }
             | Out::Unseen { origin, .. }
             | Out::Runs { origin, .. } => origin,
         }
@@ -435,8 +460,9 @@ impl Out {
                     session_id: sid.clone(),
                 }),
             }],
-            Out::Listed { origin } => vec![F::Listed(b::OriginSessionsListedPayload {
+            Out::Listed { origin, all } => vec![F::Listed(b::OriginSessionsListedPayload {
                 origin: crate::origin::Origin(origin.clone()),
+                all: *all,
             })],
             Out::Unseen { origin, .. } => vec![F::Unseen(b::SessionUnseenPayload {
                 origin: crate::origin::Origin(origin.clone()),
@@ -517,9 +543,19 @@ pub fn install_sink(tx: std::sync::mpsc::Sender<Out>) {
     }
 }
 
+/// 机器表换了（`backend_control::reconcile_remotes` 那一处调）：记账，有话就交出口。
+pub fn machines_changed(machines: Vec<String>) {
+    let outs = book().write().set_machines(machines);
+    send(outs);
+}
+
 /// 两条流交来一件事：记账，按序交出口。出口还没装 ⇒ 只记账（前端那时还没在听；F5 / 起步那一问会从账里重放）。
 pub fn feed(ev: In) {
     let outs = book().write().step(ev);
+    send(outs);
+}
+
+fn send(outs: Vec<Out>) {
     let Some(tx) = SINK.get() else {
         return;
     };

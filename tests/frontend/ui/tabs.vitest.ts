@@ -2224,6 +2224,19 @@ describe("：↗ 远端那一格按顺序问三方", () => {
  * 非 Windows 上 ↗ 的最后一跳（`EnumWindows` / `SetForegroundWindow`）在 Rust 侧是恒失败的桩
  * ⇒ 那颗按钮每点必败。门住 `terminal-front.ts`；`unknown` 照常显示（与 `hostOsAllows` 同一条理由）。
  */
+describe("新出现的一行淡入（起步那一批不算）", () => {
+  it("第一批画出去之前建的行不带淡入；之后再长出来的带；动画放完就摘", () => {
+    const tm = makeTM();
+    tm.ensureTab("l1", "/w", "p", LOCAL_ORIGIN);
+    const row = (sid: string): HTMLElement => home(tm).bar.tabButtons.get(sid)!.root;
+    expect(row("l1").classList.contains("tab-enter"), "起步那一行不淡入").toBe(false);
+    tm.ensureTab("l2", "/w2", "q", LOCAL_ORIGIN);
+    expect(row("l2").classList.contains("tab-enter"), "之后新出现的一行淡入").toBe(true);
+    row("l2").dispatchEvent(new Event("animationend"));
+    expect(row("l2").classList.contains("tab-enter")).toBe(false);
+  });
+});
+
 describe("LF1：↗ 只在 Windows 上出现", () => {
   const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
   beforeEach(() => {
@@ -4383,14 +4396,15 @@ describe("〔GP1〕记录那一问带上这次 resume 的账号根（那台判�
 // 两个新事件交给 TabManager）没有 DOM 判据够得着（整个 `main.ts` 是入口脚本）⇒ 读源码数调用点，两向恰好一处。
 describe("〔U4b〕main.ts 接线", () => {
   // 本机的「清单报完了」不再另走 `list_active_sessions`〔散文墓碑〕 那一格：与远端同一格（会话流里的 `listed`）⇒ 本机那条接线零处。
-  it("★ 容器 · 清单报完（本机远端同一格）各恰一处；本机不再另拉清单", () => {
+  it("★ 容器 · 清单报完（本机远端同一格）· 各台都报完那一拍各恰一处；本机不再另拉清单", () => {
     const main = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/main.ts"), "utf8");
     const n = (needle: string): number => main.split(needle).length - 1;
     expect([
       n("tabs.markOriginSeen(LOCAL_ORIGIN,"),
       n("onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container)"),
-      n("      tabs.markOriginSeen(origin);\n      startup?.onListed(origin);"), // 同一格顺手交「启动时记住的那一格」
-    ]).toEqual([0, 1, 1]);
+      n("      tabs.markOriginSeen(origin);\n      if (!all) return;"), // 同一格带壳那一拍「各台都报完」
+      n("      tabs.markAllListed();\n      startup?.onAllListed();"), // 那一拍：收空组 · 交「启动时记住的那一格」
+    ]).toEqual([0, 1, 1, 1]);
   });
   // 「那台机器看不见了」主窗接一处（入口脚本没有 DOM 判据够得着）；独立查看窗不建标签页，看不见走它那一条订阅（`followSession` 的 `sight`）。
   it("★〔GP1〕session-unseen 接线：main.ts 恰一处 · entry-viewer.ts 零处（不建标签页）", () => {

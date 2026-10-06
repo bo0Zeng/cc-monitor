@@ -473,6 +473,17 @@
   display: none;
 }
 
+/* 起步之后新出现的一行：淡入（减少动效时 --dur-float-in 为 0）。 */
+.tab.tab-enter {
+  animation: tab-enter var(--dur-float-in) ease-out;
+}
+
+@keyframes tab-enter {
+  from {
+    opacity: 0;
+  }
+}
+
 /* ↗ 在飞超过 300ms：图标换成转圈（不确定进度），完了收回。 */
 .tab-focus.in-flight {
   position: relative;

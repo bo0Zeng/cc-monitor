@@ -1068,7 +1068,6 @@ export class TabManager {
   markOriginSeen(origin: Origin, liveSids?: ReadonlySet<string>): void {
     this.store.seenOrigins.add(origin);
     this.bar.markOriginDown(origin, false);
-    this.settleUnarrivedOnce();
     let changed = false;
     for (const tab of this.store.tabs.values()) {
       if (tab.origin !== origin || tab.state.liveness !== "unseen") continue;
@@ -1104,20 +1103,24 @@ export class TabManager {
     }
   }
 
-  /** 订了会话流的那几台（起步时后端注册表说的；`null` = 还不知道，不判「各台都报完了」）。 */
-  private machines: readonly string[] | null = null;
+  /** 壳说过「各台都报完了」（`listed` 格带 `all`）。 */
+  private allListed = false;
   private unarrivedSettled = false;
 
-  /** 宿主告诉这一份：订了哪几台的会话流（「各台都报完了」按它判）。 */
-  expectMachines(machines: readonly string[]): void {
-    this.machines = machines;
+  /** 「各台都报完了」那一拍（壳给的，`listed` 格的 `all`）。 */
+  markAllListed(): void {
+    this.allListed = true;
     this.settleUnarrivedOnce();
+  }
+
+  /** 这一趟里壳说过「各台都报完了」没有。 */
+  get everAllListed(): boolean {
+    return this.allListed;
   }
 
   /** 各台都报完了活会话清单 ⇒ 盘上记着、却一个都没回来的组员不会再来了：收掉，空了的组随之消失（只做一次）。 */
   private settleUnarrivedOnce(): void {
-    if (this.unarrivedSettled || this.machines === null || !this.prefs.collectionsLoaded) return;
-    if (!this.machines.every((m) => this.store.seenOrigins.has(m))) return;
+    if (this.unarrivedSettled || !this.allListed || !this.prefs.collectionsLoaded) return;
     this.unarrivedSettled = true;
     void this.prefs.forgetUnarrived();
     this.refreshTabBar();

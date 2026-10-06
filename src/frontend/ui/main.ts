@@ -728,7 +728,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   } catch (e) {
     console.warn("[events] backend_machines 失败，只订本机的会话流：", e);
   }
-  tabs.expectMachines(machines); // 各台都报完了活会话清单 ⇒ 没回来的组员收掉、空组头不留
   // await：保证 listener 注册完成、会话流订阅在 monitor 那一侧登记好，再 emit frontend-ready
   // （它就是这些订阅的就绪点：后端先重发宣告、再按 credit 交留存、再对账 —— 顺序见 `event_replay·rs::ready_point`）。
   await bindEvents({
@@ -745,9 +744,12 @@ window.addEventListener("DOMContentLoaded", async () => {
     onSessionIdle: (sessionId) => tabs.markTmuxIdle(sessionId),
     // 活会话的容器（G3）· 某台机器的活会话清单报完了（说不清 → 已结束）。
     onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container),
-    onOriginSessionsListed: (origin) => {
+    onOriginSessionsListed: (origin, all) => {
       tabs.markOriginSeen(origin);
-      startup?.onListed(origin); // 每台都报完了、记住的那一格还没出现 ⇒ 明说
+      if (!all) return;
+      // 各台都报完了（壳那一拍）⇒ 没回来的组员收掉、空组头不留；记住的那一格还没出现 ⇒ 明说。
+      tabs.markAllListed();
+      startup?.onAllListed();
     },
     // 中转抄出来的 SSE 事件（会话流 `session-tap`）→ 活卡（jsonl 到了整轮覆盖）；那台看不见了 ⇒ 活卡全撤。
     onSessionTap: (e) => tabs.onSessionTap(e),
@@ -842,7 +844,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   //   〔从前本机骨架先经 `list_active_sessions`〔散文墓碑〕在这里建好、建时抑制写回（`persistLastActive = false … true`）；
   //    骨架挪到就绪点之后那一对抑制没有要罩住的东西了，删了。〕
   const lastActive = safeGet(LS_KEYS.lastActiveSid);
-  startup = new StartupActive(lastActive, !!lastActive && tabs.hasTab(lastActive), machines, {
+  startup = new StartupActive(lastActive, !!lastActive && tabs.hasTab(lastActive), {
     switchTo: (sid) => tabs.switchTo(sid, "auto"),
     holdMemory: (hold) => {
       tabs.persistLastActive = !hold;
@@ -856,6 +858,8 @@ window.addEventListener("DOMContentLoaded", async () => {
         level: "info",
       }),
   });
+  // 那一拍要是在它之前就到了（就绪点之前的重放）⇒ 当场补上。
+  if (tabs.everAllListed) startup.onAllListed();
 
   // 通知后端可以发了 —— 缓冲的 line 会被 flush 过来。payload 带上次所在 tab
   // （Batch5-F19）：后端 replay 按 session 分组、该 tab 的内容块先发。

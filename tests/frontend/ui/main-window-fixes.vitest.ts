@@ -329,10 +329,10 @@ describe("重启后各台都报完了、组员一个都没回来的组不留空�
       ["late", "h"],
     ]);
     (store.tabs.get("a") as Tab).group = "h";
-    tm.expectMachines([LOCAL_ORIGIN, "pi"]);
     tm.markOriginSeen(LOCAL_ORIGIN);
-    expect(prefs.collections.map((c) => c.id)).toEqual(["g", "h"]);
     tm.markOriginSeen("pi" as never);
+    expect(prefs.collections.map((c) => c.id), "各台各自报完不算：等壳那一拍").toEqual(["g", "h"]);
+    tm.markAllListed();
     expect(prefs.collections.map((c) => c.id)).toEqual(["h"]);
     expect([...prefs.savedGroupOf]).toEqual([]);
     expect(document.querySelectorAll(".tab-group")).toHaveLength(1);

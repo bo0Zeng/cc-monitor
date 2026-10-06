@@ -105,8 +105,9 @@ export interface EventHandlers {
   /**
    * 某台机器的活会话清单报完了（`listed` 格）。进 queue：排在那台的
    * `remote-added` 之后 ⇒ 处理它时，那台此刻全部的活会话都已宣告过。
+   * `all` = 壳说这一刻机器表里每一台都报完了（「各台都报完」那一拍，壳那一侧 `session_book` 按机器表算）。
    */
-  onOriginSessionsListed?: (origin: string) => void;
+  onOriginSessionsListed?: (origin: string, all: boolean) => void;
   /**
    * 中转抄出来的一个 SSE 事件：会话流 `session-tap`（通道 `subscribe`）里的一格。
    * **不进 queue**：活卡是临时态，与行 / 起停事件之间不需要顺序（jsonl 那一轮到了整轮覆盖、墓碑挡迟到的 tap）；
@@ -250,7 +251,7 @@ type QueueItem =
   // 容器事实 / 某台清单报完了 —— 同一 queue 保序（见 EventHandlers 里两条的注释）。
   | { kind: "container"; sessionId: string; container: SessionContainer }
   | { kind: "runs"; payload: SessionRunsPayload }
-  | { kind: "listed"; origin: string }
+  | { kind: "listed"; origin: string; all: boolean }
   // 那台机器看不见了 —— 同一 queue 保序（见 EventHandlers.onOriginUnseen）。
   | { kind: "unseen"; origin: string }
   // 记录文件不见了 / 被改过已从头重读 —— 流里的一格，与行同序（见 EventHandlers.onSessionFileNotice）。
@@ -561,7 +562,7 @@ export async function bindEvents(
       } else if (item.kind === "runs") {
         handlers.onSessionRuns?.(item.payload);
       } else if (item.kind === "listed") {
-        handlers.onOriginSessionsListed?.(item.origin);
+        handlers.onOriginSessionsListed?.(item.origin, item.all);
       } else if (item.kind === "unseen") {
         handlers.onOriginUnseen?.(item.origin);
       } else if (item.kind === "file-notice") {
@@ -727,7 +728,7 @@ export async function bindEvents(
         } else if (f !== null && typeof f === "object" && "unseen" in f) {
           queue.push({ kind: "unseen", origin: f.unseen.origin });
         } else if (f !== null && typeof f === "object" && "listed" in f) {
-          queue.push({ kind: "listed", origin: f.listed.origin });
+          queue.push({ kind: "listed", origin: f.listed.origin, all: f.listed.all === true });
         } else if (f !== null && typeof f === "object" && "snapshot_inflight" in f) {
           // Batch9-F30：快照在途电平 —— 纯 batch 调度信号，不进 queue。
           snapshotInflight = f.snapshot_inflight.count;

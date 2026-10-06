@@ -171,6 +171,23 @@ describe("〔GP1〕unseen 格进 queue、交给 onOriginUnseen", () => {
     await vi.runAllTimersAsync();
     expect(order).toEqual(["line-1", "unseen-pi"]);
   });
+
+  it("★ listed 格把壳给的「各台都报完」（`all`）原样交给处理器，界面不自己数", async () => {
+    const got: [string, boolean][] = [];
+    await bindEvents({
+      onLine: vi.fn(),
+      onSessionEnded: vi.fn(),
+      onOriginSessionsListed: (origin: string, all: boolean) => got.push([origin, all]),
+      onBatchStart: vi.fn(),
+      onBatchEnd: vi.fn(),
+    } as never, STREAMS);
+    streamFake.lifecycle([{ listed: { origin: "<local>", all: false } }, { listed: { origin: "pi", all: true } }]);
+    await vi.runAllTimersAsync();
+    expect(got).toEqual([
+      ["<local>", false],
+      ["pi", true],
+    ]);
+  });
 });
 
 // 会话宣告（会话流里的 `{"live": …}` 那一格）：项目目录（`project_dir`）与 pidfile 那一格（`cwd`）各自原样交给处理器，本机远端同一形。

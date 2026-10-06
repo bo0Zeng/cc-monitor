@@ -100,6 +100,13 @@ pub fn reconcile_remotes(wanted: Vec<WantedRemote>) -> Reconciled {
     out.started.sort();
     out.stopped.sort();
     out.restarted.sort();
+    // 机器表换了 ⇒ 会话成品账按新表重算「各台都报完」（同 `backend_machines` 那一份：本机恒第一，远端按名字排）。
+    let mut table = vec![LOCAL_ORIGIN.to_string()];
+    let mut names: Vec<String> = g.keys().cloned().collect();
+    drop(g);
+    names.sort();
+    table.extend(names);
+    crate::session_book::machines_changed(table);
     out
 }
 

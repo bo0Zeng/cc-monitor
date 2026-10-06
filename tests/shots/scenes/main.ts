@@ -267,6 +267,18 @@ export const MAIN_SCENES: Scene[] = [
     row.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     await sleep(800);
   }),
+  main("main-hover-running", "主窗口 · 悬停卡 · 在跑", "悬停一个在跑的标签页：状态句已是「调用 {工具} · 多久了」，peek 那一句给那一步在做什么（命令 · 路径，后端成品）", async () => {
+    await mainReady(ALL_TABS);
+    const row = document.querySelectorAll<HTMLElement>("#tab-bar .tab")[0];
+    row.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    await sleep(800);
+  }, () => {
+    const w = defaultWorld();
+    // 第一个会话此刻在跑一步 Bash（两分钟前开始、还没结果）。
+    const at = new Date(Date.now() - 125_000).toISOString();
+    w.sessions[0].records.push({ type: "assistant", timestamp: at, message: { role: "assistant", content: [{ type: "tool_use", id: "toolu_run", name: "Bash", input: { command: "pytest -q tests/test_inventory_client.py" } }] } } as never);
+    return w;
+  }),
   main("main-needs-list", "主窗口 · 「需要你」菜单", "悬停栏顶「需要你 2」500ms：菜单列出每个在等你的会话与它等的那一句（等得最久的在前；标题一行省略、那一句至多两行；点一行切过去）", async () => {
     await mainReady(ALL_TABS);
     await sleep(600);
