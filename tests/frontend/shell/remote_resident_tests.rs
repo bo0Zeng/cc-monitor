@@ -69,10 +69,13 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
             r#"{"code":"unsupported","message":"不是 unix"}"#,
             Some(2)
         )),
-        Err(AttachErr::Unsupported(copy_text(
-            "rsRemoteResident.ensure.unsupported",
-            &[("why", "不是 unix")]
-        )))
+        Err(AttachErr::Unsupported(
+            copy_text(
+                "rsRemoteResident.ensure.unsupported",
+                &[("why", "不是 unix")]
+            ),
+            crate::machine_state::NOT_UNIX
+        ))
     );
     assert_eq!(
         parse_answer(&exec(
@@ -216,7 +219,13 @@ async fn a_tunnel_refused_for_forwarding_stops_at_the_first_try() {
     .await;
     assert_eq!(tries.load(Ordering::SeqCst), 1, "被拒转发还在重开隧道");
     let said = copy_text("rsRemoteResident.tunnel.forwardingProhibited", &[]);
-    assert_eq!(got, Err(AttachErr::Unsupported(said.clone())));
+    assert_eq!(
+        got,
+        Err(AttachErr::Unsupported(
+            said.clone(),
+            crate::machine_state::NO_FORWARDING
+        ))
+    );
     assert_eq!(
         crate::stream_source::after_round(Some(said.clone()), std::time::Duration::from_secs(2)),
         crate::stream_source::AfterRound::Stop(said),

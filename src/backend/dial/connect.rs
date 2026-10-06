@@ -225,7 +225,9 @@ fn config(probe: bool, compress: bool) -> Arc<client::Config> {
 
 /// 拨 TCP，拨通后问内核这一跳的往返时间、过一遍判准。回 `(socket, 跨这一跳的字节压不压)` ——
 /// 判准的答案过了闸（[`RUSSH_ZLIB_SOUND`]）才算数。
-async fn tcp_hop(ep: &Endpoint) -> std::io::Result<(tokio::net::TcpStream, bool)> {
+async fn tcp_hop(
+    ep: &Endpoint,
+) -> Result<(tokio::net::TcpStream, bool), (&'static str, std::io::Error)> {
     // 测试档不许出网：目的地不是本机回环（回环判定只有 `upstream_is_loopback` 那一个家）⇒ 当场 panic，不连、不解析名字。
     #[cfg(test)]
     assert!(
@@ -233,9 +235,22 @@ async fn tcp_hop(ep: &Endpoint) -> std::io::Result<(tokio::net::TcpStream, bool)
         "测试档不许出网：{}",
         ep.host
     );
-    let tcp = tokio::net::TcpStream::connect((ep.host.as_str(), ep.port)).await?;
+    // 先解析（解析不出来与拨不通是两件事，原因码分开），再按解析出来的地址逐个拨。
+    let addrs: Vec<std::net::SocketAddr> = tokio::net::lookup_host((ep.host.as_str(), ep.port))
+        .await
+        .map_err(|e| ("resolve", e))?
+        .collect();
+    if addrs.is_empty() {
+        return Err((
+            "resolve",
+            std::io::Error::other(copy_text("beConnect.race.noAddress", &[])),
+        ));
+    }
+    let tcp = tokio::net::TcpStream::connect(&addrs[..])
+        .await
+        .map_err(|e| (stage_of_io(&e), e))?;
     let rtt = crate::platform::tcp_rtt::rtt_us(&tcp);
-    let judged = compression_for(tcp.peer_addr()?.ip(), rtt);
+    let judged = compression_for(tcp.peer_addr().map_err(|e| (stage_of_io(&e), e))?.ip(), rtt);
     let compress = judged && RUSSH_ZLIB_SOUND;
     tracing::info!(
         "dial: {} 往返 {} ⇒ 判准：{}{}",
@@ -281,7 +296,7 @@ async fn race(
     let seen: Arc<Mutex<Option<String>>> = Arc::default();
     let seen_for_race = Arc::clone(&seen);
     let race = async move {
-        let mut set: JoinSet<Result<_, String>> = JoinSet::new();
+        let mut set: JoinSet<Result<_, (&'static str, String)>> = JoinSet::new();
         for ep in order {
             let stages = stages.clone();
             let observed: Arc<Mutex<Option<String>>> = Arc::default();
@@ -311,7 +326,7 @@ async fn race(
                             .map(|h| (h, compress))
                             .map_err(|e| (stage_of_russh(&e), e.to_string()))
                     }
-                    Err(e) => Err((stage_of_io(&e), e.to_string())),
+                    Err((stage, e)) => Err((stage, e.to_string())),
                 };
                 if let Some(fp) = observed.lock().ok().and_then(|g| g.clone()) {
                     if let Ok(mut s) = seen.lock() {
@@ -325,12 +340,20 @@ async fn race(
                             endpoint: ep_label.clone(),
                             reason: format!("[{stage}] {e}"),
                         });
-                        Err(format!("{ep_label} {e}"))
+                        Err((stage, format!("{ep_label} {e}")))
                     }
                 }
             });
         }
         let mut errors: Vec<String> = Vec::new();
+        // 各地址没成的阶段：全输了按最说明问题的那一个记原因码（指纹不对 ＞ 解析不出 ＞ 拨不通 ＞ 超时 ＞ 别的）。
+        let mut worst: Option<&'static str> = None;
+        let rank = |s: &str| {
+            ["hostkey", "resolve", "tcp", "timeout"]
+                .iter()
+                .position(|x| *x == s)
+                .unwrap_or(9)
+        };
         while let Some(joined) = set.join_next().await {
             match joined {
                 Ok(Ok(winner)) => {
@@ -340,7 +363,12 @@ async fn race(
                     });
                     return Ok(winner);
                 }
-                Ok(Err(e)) => errors.push(e),
+                Ok(Err((stage, e))) => {
+                    if worst.is_none_or(|w| rank(stage) < rank(w)) {
+                        worst = Some(stage);
+                    }
+                    errors.push(e)
+                }
                 Err(je) if je.is_cancelled() => {}
                 Err(je) => errors.push(copy_text(
                     "beConnect.race.taskFailed",
@@ -348,6 +376,7 @@ async fn race(
                 )),
             }
         }
+        stages.note_why(super::why_of_stage(worst.unwrap_or("resolve")));
         Err(if errors.is_empty() {
             copy_text("beConnect.race.noAddress", &[])
         } else {
@@ -380,19 +409,28 @@ async fn authenticate(
     user: &str,
     key_path: Option<&str>,
     agent_sock: Option<&str>,
-) -> Result<(), String> {
+) -> Result<(), (&'static str, String)> {
+    use super::why;
     // RSA key 要协商出服务端支持的 hash；非 RSA 时 flatten 成 None。
     let best_hash = session
         .best_supported_rsa_hash()
         .await
-        .map_err(|e| copy_text("beConnect.auth.rsaHash", &[("e", &e.to_string())]))?
+        .map_err(|e| {
+            (
+                why::OTHER,
+                copy_text("beConnect.auth.rsaHash", &[("e", &e.to_string())]),
+            )
+        })?
         .flatten();
     match key_path.filter(|s| !s.trim().is_empty()) {
         Some(key_path) => {
             let key_pair = load_secret_key(key_path, None).map_err(|e| {
-                copy_text(
-                    "beConnect.auth.keyLoad",
-                    &[("path", key_path), ("e", &e.to_string())],
+                (
+                    why::KEY_UNREADABLE,
+                    copy_text(
+                        "beConnect.auth.keyLoad",
+                        &[("path", key_path), ("e", &e.to_string())],
+                    ),
                 )
             })?;
             let authenticated = session
@@ -401,9 +439,17 @@ async fn authenticate(
                     PrivateKeyWithHashAlg::new(Arc::new(key_pair), best_hash),
                 )
                 .await
-                .map_err(|e| copy_text("beConnect.auth.keyFailed", &[("e", &e.to_string())]))?;
+                .map_err(|e| {
+                    (
+                        why::AUTH,
+                        copy_text("beConnect.auth.keyFailed", &[("e", &e.to_string())]),
+                    )
+                })?;
             if !authenticated.success() {
-                return Err(copy_text("beConnect.auth.keyRejected", &[("user", user)]));
+                return Err((
+                    why::AUTH,
+                    copy_text("beConnect.auth.keyRejected", &[("user", user)]),
+                ));
             }
             Ok(())
         }
@@ -422,6 +468,7 @@ async fn authenticate(
             tokio::task::block_in_place(|| {
                 handle.block_on(agent_auth(session, user, best_hash, agent_sock))
             })
+            .map_err(|e| (why::AUTH, e))
         }
     }
 }
@@ -510,6 +557,7 @@ pub(crate) async fn establish(
             )
             .await
             .map_err(|(e, fp)| {
+                stages.note_why(super::why::JUMP);
                 (
                     copy_text(
                         "beConnect.jump.dialFailed",
@@ -525,7 +573,8 @@ pub(crate) async fn establish(
                 req.agent_sock.as_deref(),
             )
             .await
-            .map_err(|e| {
+            .map_err(|(_, e)| {
+                stages.note_why(super::why::JUMP);
                 (
                     copy_text(
                         "beConnect.jump.authFailed",
@@ -543,6 +592,7 @@ pub(crate) async fn establish(
                 )
                 .await
                 .map_err(|e| {
+                    stages.note_why(super::why::JUMP);
                     (
                         copy_text(
                             "beConnect.jump.tunnelFailed",
@@ -577,6 +627,7 @@ pub(crate) async fn establish(
             )
             .await
             .map_err(|e| {
+                stages.note_why(super::why_of_stage(stage_of_russh(&e)));
                 let fp = observed.lock().ok().and_then(|g| g.clone());
                 (
                     copy_text("beConnect.jump.targetFailed", &[("e", &e.to_string())]),
@@ -599,6 +650,8 @@ pub(crate) async fn establish(
     )
     .await
     {
+        let (code, e) = e;
+        stages.note_why(code);
         stages.emit(Stage::Auth {
             ok: false,
             detail: Some(e.clone()),

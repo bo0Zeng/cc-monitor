@@ -1058,8 +1058,9 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 
   describe("添加机器（两栏对话框）", () => {
     const sshGroups = [
-      { label: "a", host: "1.1.1.1", port: 22, user: "u", keyPath: null, addresses: [], jump: null, members: [{ alias: "a", host: "1.1.1.1", port: 22, proxyJump: null }] },
-      { label: "gpu", host: "9.9.9.9", port: 22, user: "u", keyPath: null, addresses: ["9.9.9.8"], jump: null, members: [{ alias: "gpu", host: "9.9.9.9", port: 22, proxyJump: null }, { alias: "gpu-b", host: "9.9.9.8", port: 22, proxyJump: null }] },
+      // 「已在列表里」是后端判的（按地址 ＋ 用户 ＋ 端口）；界面照它灰，不自己比。
+      { label: "a", host: "1.1.1.1", port: 22, user: "u", keyPath: null, addresses: [], jump: null, members: [{ alias: "a", host: "1.1.1.1", port: 22, proxyJump: null }], inList: true },
+      { label: "gpu", host: "9.9.9.9", port: 22, user: "u", keyPath: null, addresses: ["9.9.9.8"], jump: null, members: [{ alias: "gpu", host: "9.9.9.9", port: 22, proxyJump: null }, { alias: "gpu-b", host: "9.9.9.8", port: 22, proxyJump: null }], inList: false },
     ];
     const tick = () => new Promise((r) => setTimeout(r, 0));
     const okBtn = (dlg: HTMLElement) => [...dlg.querySelectorAll<HTMLButtonElement>("button")].at(-1)!;

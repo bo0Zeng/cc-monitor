@@ -138,8 +138,10 @@ pub async fn run(
     let mut hello_confirmed: Option<Vec<String>> = None;
     // 这台是不是「永久不支持」（非 unix）：`stream_loop` 接不上常驻时写，本循环读完即清。
     let mut unsupported: Option<String> = None;
+    let mut unsupported_code: Option<&'static str> = None;
     loop {
         connected.store(false, Ordering::Release);
+        crate::machine_state::connecting(&cfg.origin_label(), "deploy");
         // F05：本轮连接的起点。退避重置的判据是「活过多久」，不是「握没握上手」。
         let conn_started = std::time::Instant::now();
         let result = stream_loop(
@@ -149,6 +151,7 @@ pub async fn run(
             &connected,
             &mut hello_confirmed,
             &mut unsupported,
+            &mut unsupported_code,
         )
         .await;
         // 这条连接没了 ⇒ 订了这台会话流的那些订阅原位收一格 `Unseen`（不是终点）。
@@ -156,6 +159,10 @@ pub async fn run(
         // 这一轮一次都没握上手 ⇒ 那台记成「离线」（文件窗口那一条由「重新连接中…」换成「离线 · 采样 …」＋［重新连接］）。
         if !connected.load(Ordering::Acquire) {
             crate::inbound_client::note_round_failed(&cfg.origin_label());
+            match unsupported_code.take() {
+                Some(code) => crate::machine_state::unsupported(&cfg.origin_label(), code),
+                None => crate::machine_state::down(&cfg.origin_label()),
+            }
         }
         if hello_confirmed.is_some() && !connected.load(Ordering::Acquire) {
             tracing::warn!(
@@ -228,6 +235,7 @@ async fn stream_loop(
     connected: &Arc<AtomicBool>,
     hello_confirmed: &mut Option<Vec<String>>,
     unsupported: &mut Option<String>,
+    unsupported_code: &mut Option<&'static str>,
 ) -> Result<(), String> {
     // issue #15 / #30：远端行的 origin 标签 = 该机器的稳定身份（label，默认 host）。
     // 前端据此给该 Tab 标题加 `[label]` 前缀以区分本地/各远端机器。进 loop 前 clone。
@@ -238,7 +246,7 @@ async fn stream_loop(
         with_bg,
         tail_only,
         t_connect_start,
-    } = open_round(cfg, health, hello_confirmed, unsupported).await?;
+    } = open_round(cfg, health, hello_confirmed, unsupported, unsupported_code).await?;
 
     // U8a-2a：这条 channel 是**双工**的，此前只用了读半边。`split_and_park` 一步切开并
     // 把写半边停住 —— `ParkedWriter` 身上没有任何写方法，要等收到 hello 才换得出能发命令的
@@ -548,6 +556,7 @@ async fn open_round(
     health: &HealthOut,
     hello_confirmed: &Option<Vec<String>>,
     unsupported: &mut Option<String>,
+    unsupported_code: &mut Option<&'static str>,
 ) -> Result<Opened, String> {
     let host_label = cfg.origin_label();
 
@@ -629,14 +638,16 @@ async fn open_round(
     // 接那台的**常驻后端**（没有就起一个；与本机同形）。这是远端唯一的一形：
     //   起不了常驻（非 unix / 太旧）就是一次失败、说清为什么，不回落到随 SSH 生死的流模式。
     let flags = (with_bg, tail_only);
+    crate::machine_state::connecting(&host_label, "attach");
     let stream: crate::remote_resident::Replayed = match crate::remote_resident::attach(cfg, flags)
         .await
     {
         Ok(s) => s,
         Err(e) => {
             // 非 unix ⇒ 记进这台的连接状态（`run` 据此停下，不再按退避重连）。
-            if let crate::remote_resident::AttachErr::Unsupported(why) = &e {
+            if let crate::remote_resident::AttachErr::Unsupported(why, code) = &e {
                 *unsupported = Some(why.clone());
+                *unsupported_code = Some(code);
             }
             let e = e.said();
             if skip_preflight {
@@ -810,6 +821,11 @@ fn on_hello(
     // headlineFor 已含 version case，零前端改动）。不 hard-disconnect（向前兼容）。
     // 手上没带后端字节（「我这一版」是 `None`）⇒ 同一条通道说一句「版本不可比」，照常接。
     let mine = crate::byte_table::my_backend_id();
+    crate::machine_state::up(
+        &host_label,
+        &build_id,
+        version_relation(v, &build_id, remote_older, mine),
+    );
     if let Some(msg) = version_warning(v, &build_id, &host_label, remote_older, mine) {
         tracing::warn!("stream_source remote [{host_label}] version: {msg}");
         let payload = crate::ui_contract::RemoteHealthPayload {

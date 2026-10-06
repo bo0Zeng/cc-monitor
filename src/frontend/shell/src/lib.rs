@@ -106,9 +106,10 @@ mod launch;
 mod local_backend_host; // P2s（C8）：本机后端的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
 mod local_origin_registry;
 mod logging;
-// `stop_grace`〔散文墓碑〕删：「请它收尾 → 等 → 强杀」搬进那台机器上的一次性子命令 `--resident-stop`（后端 `control/resident.rs`）。
-// `mod messages;` · `mod parser;` · `mod codex_record;`〔散文墓碑〕（记录解析）整族搬进了后端
-//   `agents/claudecode/`（`schema` · `parse`）与 `agents/codex/record.rs`：monitor 只把后端给的成品原样转交。
+mod machine_state; // 每台机器的状态成品（连着 · 没连上与原因码 · 版本关系 · 修法），`backend_status` 的 `machine` 一格
+                   // `stop_grace`〔散文墓碑〕删：「请它收尾 → 等 → 强杀」搬进那台机器上的一次性子命令 `--resident-stop`（后端 `control/resident.rs`）。
+                   // `mod messages;` · `mod parser;` · `mod codex_record;`〔散文墓碑〕（记录解析）整族搬进了后端
+                   //   `agents/claudecode/`（`schema` · `parse`）与 `agents/codex/record.rs`：monitor 只把后端给的成品原样转交。
 mod platform; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
               // `plugins` 模块（P8a 的 marketplace 只读枚举，`list_plugin_marketplaces`〔散文墓碑〕）删了：
               //   后端 `plugins-marketplaces` 直接出成品，界面经通道问（`src/frontend/ui/settings/plugins-section.ts::fetchSurvey`）。
@@ -1055,7 +1056,12 @@ fn reconcile_remote_streams() -> backend_control::Reconciled {
             respawn: remote_respawn(cfg, replay.clone(), app.clone()),
         })
         .collect();
-    backend_control::reconcile_remotes(wanted)
+    let out = backend_control::reconcile_remotes(wanted);
+    // 停下的那几台（删了 / 停用了）状态成品作废；还在表里的由读点按「连接这台」说停用。
+    for origin in &out.stopped {
+        machine_state::forget(origin);
+    }
+    out
 }
 
 /// 机器表改了（增删改 · 某台的「连接这台」）：当场对齐，不要重启 cc-monitor。回这一趟起了 / 停了 / 重起了哪几台。

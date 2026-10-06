@@ -13,13 +13,17 @@ import { statusDot, setDot } from "../kit/status-dot";
 import { copyText } from "../copy-table";
 import { SettingsRouter } from "./router";
 import { hostOs, type HostOs } from "./host-os";
+import { fixLabel, type MachineFace, type MachineFix } from "./machine-state";
 
 const OS_NAME: Record<HostOs, string | null> = { linux: "Linux", windows: "Windows", macos: "macOS", unknown: null };
 
 /** 后端报来的那台的两样事实（还没报 ⇒ `null`，那一段不写）。 */
 export interface MachineFacts {
   os: string | null;
+  /** 产品版本号（与这一版同一份字节时才有）。 */
   version: string | null;
+  /** 开发构建（版本不可比）：版本那一段写「开发版」。 */
+  dev?: boolean;
 }
 
 export const NO_FACTS: MachineFacts = { os: null, version: null };
@@ -33,6 +37,7 @@ export function machineMeta(at: "list" | "head", who: string | null, facts: Mach
   const parts = [who ?? copyText("machinePage.meta.localBare")];
   if (os) parts.push(os);
   if (at === "head" && facts.version) parts.push(copyText("machinePage.meta.version", { ver: facts.version }));
+  else if (at === "head" && facts.dev) parts.push(copyText("machineState.word.incomparable"));
   return parts.filter((p) => p !== "").join(copyText("kit.text.sep"));
 }
 
@@ -52,6 +57,8 @@ export interface MachinePageSpec {
   /** 「这台上的 cc-monitor」里的几块。 */
   ccMonitor: HTMLElement[];
   menu: () => MenuItem[];
+  /** 问题行上的修法按钮点了。 */
+  onFix?: (fix: MachineFix) => void;
 }
 
 export interface MachinePage {
@@ -64,6 +71,8 @@ export interface MachinePage {
   setConnected(connected: boolean | null): void;
   /** 停用了连接：空心点 ＋「已停用」，问题行「连接已停用」（开关在连接设置里）。 */
   setDisabled(on: boolean): void;
+  /** 照后端的状态成品画卡头（点 · 词 · 问题行 ＋ 修法）。 */
+  setMachine(face: MachineFace): void;
   /** 「这台上的 cc-monitor」折叠头右侧那一句（`版本 x · 在跑`）。 */
   setCcSummary(text: string): void;
   open(section: MachineSection): void;
@@ -201,6 +210,27 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
     setConnected(c) {
       connected = c;
       paint();
+    },
+    setMachine(f) {
+      setDot(dot, f.dot, f.word || copyText("settingsNav.dot.up", { machine: name }));
+      word.textContent = f.word;
+      problem.replaceChildren();
+      problem.hidden = f.problem === "";
+      if (f.problem === "") return;
+      const text = document.createElement("span");
+      text.textContent = f.problem;
+      problem.dataset.severity = f.dot === "needs-you" ? "warn" : "error";
+      problem.append(icon(f.dot === "needs-you" ? "warning" : "error", "compact"), text);
+      for (const fix of f.fixes) {
+        problem.appendChild(
+          button({
+            label: fixLabel(fix),
+            size: "compact",
+            kind: fix === "update" ? "primary" : "secondary",
+            onClick: () => (fix === "conn_settings" && connFold ? connFold.open() : spec.onFix?.(fix)),
+          }),
+        );
+      }
     },
     setCcSummary(text) {
       setFoldSummary(ccFold, text);

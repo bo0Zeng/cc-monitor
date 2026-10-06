@@ -82,9 +82,9 @@ export function machineOps(): Record<string, OpHandler> {
     }),
     "ssh-config-import": () => ({
       groups: [
-        { label: "devbox", host: "10.0.0.11", port: 22, user: "user", keyPath: null, addresses: ["devbox.example.com:22"], jump: null, members: [{ alias: "devbox", host: "10.0.0.11", port: 22, proxyJump: null }, { alias: "devbox-wan", host: "devbox.example.com", port: 22, proxyJump: null }] },
-        { label: "build-02", host: "10.0.0.31", port: 2222, user: "ci", keyPath: null, addresses: [], jump: "bastion", members: [{ alias: "build-02", host: "10.0.0.31", port: 2222, proxyJump: "bastion" }] },
-        { label: "bastion", host: "bastion.example.com", port: 22, user: "user", keyPath: null, addresses: [], jump: null, members: [{ alias: "bastion", host: "bastion.example.com", port: 22, proxyJump: null }] },
+        { label: "devbox", host: "10.0.0.11", port: 22, user: "user", keyPath: null, addresses: ["devbox.example.com:22"], jump: null, members: [{ alias: "devbox", host: "10.0.0.11", port: 22, proxyJump: null }, { alias: "devbox-wan", host: "devbox.example.com", port: 22, proxyJump: null }], inList: true },
+        { label: "build-02", host: "10.0.0.31", port: 2222, user: "ci", keyPath: null, addresses: [], jump: "bastion", members: [{ alias: "build-02", host: "10.0.0.31", port: 2222, proxyJump: "bastion" }], inList: false },
+        { label: "bastion", host: "bastion.example.com", port: 22, user: "user", keyPath: null, addresses: [], jump: null, members: [{ alias: "bastion", host: "bastion.example.com", port: 22, proxyJump: null }], inList: false },
       ],
     }),
     "aliases-read": () => JSON.parse(JSON.stringify(ALIASES_GOLDEN.readReply).split("<HOME>").join(HOME)),
@@ -167,12 +167,21 @@ export function machineOps(): Record<string, OpHandler> {
   };
 }
 
+/** 那台的状态成品（形状同 `tests/__fixtures__/machine-state.golden.json`）：看不见的那台 ＝ 密钥被拒；Windows 那台没系统名可报。 */
+function machineOf(origin: string, w: World): Record<string, unknown> {
+  const base = { stage: null, os: origin === "win-laptop" ? null : "Linux", version: "4.1.1" as string | null, versionRelation: "same" as string | null };
+  if (w.staleMachines.includes(origin)) return { ...base, state: "needs_update", reason: null, version: null, versionRelation: "older", fixes: ["update"] };
+  if (!w.unseenMachines.includes(origin)) return { ...base, state: "up", reason: null, fixes: [] };
+  return { ...base, state: "down", reason: "auth", version: null, versionRelation: null, fixes: ["push_key", "conn_settings"] };
+}
+
 export function machineCommands(): Record<string, CommandHandler> {
   return {
     list_remote_mcp_origins: (_a, w) => w.machines.slice(1).filter((m) => !w.unseenMachines.includes(m)),
     backend_status: (a, w) => ({
       channel: !w.unseenMachines.includes(String(a.origin)),
       pid: pidOf(String(a.origin), w),
+      machine: machineOf(String(a.origin), w),
       health: {
         state: "clean",
         summary: copyText("rsBackendPolicy.health.clean"),

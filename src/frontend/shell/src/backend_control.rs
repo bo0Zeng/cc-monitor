@@ -176,15 +176,26 @@ fn backend_status_now(origin: String) -> Result<serde_json::Value, String> {
     //
     // ⚠ 三格一起算，是因为 `the_three_ports_are_one_command_each_and_all_take_origin`
     // 逐口只许有**一处** `is_local(&origin)` 分派 —— 那条判据钉的正是「本机那一支只有一个入口」。
-    let (pid, attempts, detached) = if is_local(&origin) {
+    // 那台的状态成品（判定只在 `machine_state`）同一处分派：本机按通道与手上这一版；远端按那张表，「连接这台」关着 ⇒ 停用。
+    let (pid, attempts, detached, machine) = if is_local(&origin) {
         let (p, a) = crate::local_backend_host::local_pid_and_attempts()?;
         (
             p,
             a,
             serde_json::json!(crate::local_backend_host::is_detached()),
+            crate::machine_state::local_product(channel, crate::byte_table::my_backend_id()),
         )
     } else {
-        (None, None, serde_json::Value::Null)
+        let enabled = crate::load_all_remote_configs()
+            .into_iter()
+            .find(|(c, _)| c.origin_label() == origin)
+            .is_none_or(|(_, connect)| connect);
+        (
+            None,
+            None,
+            serde_json::Value::Null,
+            crate::machine_state::product(&origin, enabled),
+        )
     };
     // ★★ `K-P3b KP3W4`：**死亡账的读数也从这一口出去。**
     //
@@ -199,6 +210,7 @@ fn backend_status_now(origin: String) -> Result<serde_json::Value, String> {
     // `the_three_ports_are_one_command_each_and_all_take_origin`（逐口恰好一处）。
     let h = crate::backend_policy::health(&origin);
     Ok(serde_json::json!({
+        "machine": machine,
         "origin": origin,
         "channel": channel,
         "pid": pid,

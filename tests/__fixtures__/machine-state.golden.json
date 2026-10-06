@@ -1,0 +1,157 @@
+{
+  "说明": [
+    "设置窗机器列表 / 卡头那一格的成品（backend_status 的 machine）的跨语言金样。",
+    "Rust：tests/frontend/shell/machine_state_tests.rs 按 name 走生产函数现产，序列化后与 machine 逐格相等。",
+    "TS：tests/frontend/ui/settings/machine-state.vitest.ts 读同一份，逐形严格解码、逐形画出那一句与修法。",
+    "版本号与原因码是结构夹具，不取自任何真机。",
+    "version 是产品版本号：同一份字节才报得出，写成占位 <ver>（Rust 那一侧把现产的号换成它再比；发版改号不动金样）。"
+  ],
+  "cases": [
+    {
+      "name": "连着",
+      "machine": {
+        "state": "up",
+        "reason": null,
+        "stage": null,
+        "version": "<ver>",
+        "versionRelation": "same",
+        "os": null,
+        "fixes": []
+      }
+    },
+    {
+      "name": "正在连",
+      "machine": {
+        "state": "connecting",
+        "reason": null,
+        "stage": "attach",
+        "version": null,
+        "versionRelation": null,
+        "os": null,
+        "fixes": []
+      }
+    },
+    {
+      "name": "密钥被拒",
+      "machine": {
+        "state": "down",
+        "reason": "auth",
+        "stage": null,
+        "version": null,
+        "versionRelation": null,
+        "os": null,
+        "fixes": [
+          "push_key",
+          "conn_settings"
+        ]
+      }
+    },
+    {
+      "name": "无应答",
+      "machine": {
+        "state": "down",
+        "reason": "timeout",
+        "stage": null,
+        "version": null,
+        "versionRelation": null,
+        "os": null,
+        "fixes": [
+          "retry",
+          "conn_settings"
+        ]
+      }
+    },
+    {
+      "name": "指纹变了",
+      "machine": {
+        "state": "host_key_changed",
+        "reason": "host_key",
+        "stage": null,
+        "version": null,
+        "versionRelation": null,
+        "os": null,
+        "fixes": [
+          "compare_fingerprint"
+        ]
+      }
+    },
+    {
+      "name": "要更新",
+      "machine": {
+        "state": "needs_update",
+        "reason": null,
+        "stage": null,
+        "version": null,
+        "versionRelation": "older",
+        "os": null,
+        "fixes": [
+          "update"
+        ]
+      }
+    },
+    {
+      "name": "较新",
+      "machine": {
+        "state": "newer",
+        "reason": null,
+        "stage": null,
+        "version": null,
+        "versionRelation": "newer",
+        "os": null,
+        "fixes": []
+      }
+    },
+    {
+      "name": "版本不可比",
+      "machine": {
+        "state": "up",
+        "reason": null,
+        "stage": null,
+        "version": null,
+        "versionRelation": "incomparable",
+        "os": null,
+        "fixes": []
+      }
+    },
+    {
+      "name": "不让转发",
+      "machine": {
+        "state": "unsupported",
+        "reason": "no_forwarding",
+        "stage": null,
+        "version": null,
+        "versionRelation": null,
+        "os": null,
+        "fixes": []
+      }
+    },
+    {
+      "name": "停用",
+      "machine": {
+        "state": "disabled",
+        "reason": null,
+        "stage": null,
+        "version": null,
+        "versionRelation": null,
+        "os": null,
+        "fixes": [
+          "connect"
+        ]
+      }
+    },
+    {
+      "name": "本机没连上",
+      "machine": {
+        "state": "down",
+        "reason": "local",
+        "stage": null,
+        "version": "<ver>",
+        "versionRelation": "same",
+        "os": null,
+        "fixes": [
+          "retry"
+        ]
+      }
+    }
+  ]
+}

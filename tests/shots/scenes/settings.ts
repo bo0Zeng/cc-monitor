@@ -28,6 +28,7 @@ const page = (id: string, title: string, desc: string, ...route: string[]): Scen
 function troubleWorld(): World {
   const w = defaultWorld();
   w.unseenMachines = ["gpu-01"];
+  w.staleMachines = ["win-laptop"];
   return w;
 }
 

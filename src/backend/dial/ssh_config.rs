@@ -55,6 +55,29 @@ pub(crate) struct ImportGroup {
     /// 组内首个非空 proxyjump（别名）。
     pub(crate) jump: Option<String>,
     pub(crate) members: Vec<ImportMember>,
+    /// 这一组已在机器列表里（组里任一地址 ＋ 用户 ＋ 端口与列表里某台相同；列表由界面交来）。
+    pub(crate) in_list: bool,
+}
+
+/// 机器列表里已有的一台（只认地址 ＋ 用户 ＋ 端口）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub(crate) struct Known {
+    pub(crate) host: String,
+    pub(crate) user: String,
+    pub(crate) port: u16,
+}
+
+/// 标出已在列表里的那几组（判定只在这里：地址与用户去首尾空白比、端口照数比）。
+pub(crate) fn mark_in_list(groups: &mut [ImportGroup], known: &[Known]) {
+    let same = |host: &str, port: u16, user: &str| {
+        known
+            .iter()
+            .any(|k| k.host.trim() == host.trim() && k.user.trim() == user.trim() && k.port == port)
+    };
+    for g in groups.iter_mut() {
+        g.in_list = same(&g.host, g.port, &g.user)
+            || g.members.iter().any(|m| same(&m.host, m.port, &g.user));
+    }
 }
 
 /// 从 `~/.ssh/config` 文本里抽出非通配的 host 别名（纯函数）。
@@ -198,6 +221,7 @@ pub(crate) fn aggregate_ssh_hosts(hosts: Vec<(String, ResolvedHost)>) -> Vec<Imp
                     addresses: Vec::new(),
                     jump: r.proxy_jump.clone(),
                     members: vec![member],
+                    in_list: false,
                 },
             ));
         }
@@ -293,9 +317,19 @@ pub(crate) fn answer_resolve(args: &serde_json::Value) -> Result<serde_json::Val
 /// `ssh-config-import` 整条命令总期限的上限（每个别名一发 `ssh -G`，整批共用；用完了剩下的别名各自超时、照「解析失败」跳过）。
 pub(crate) const SSH_IMPORT_CAP: Deadline = Deadline::secs(28);
 
-/// `ssh-config-import` 的成品。
-pub(crate) fn answer_import() -> serde_json::Value {
-    serde_json::json!({ "groups": to_value(&import()) })
+/// `ssh-config-import {known}` 的成品：每组带上「已在列表里」。
+pub(crate) fn answer_import(args: &serde_json::Value) -> Result<serde_json::Value, CmdErr> {
+    let known: Vec<Known> = args
+        .get("known")
+        .cloned()
+        .and_then(|v| serde_json::from_value(v).ok())
+        .ok_or((
+            "invalid_args",
+            crate::common::contract::malformed("missing `known` (an array of {host, user, port})"),
+        ))?;
+    let mut groups = import();
+    mark_in_list(&mut groups, &known);
+    Ok(serde_json::json!({ "groups": to_value(&groups) }))
 }
 
 #[cfg(test)]

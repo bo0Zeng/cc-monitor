@@ -74,6 +74,25 @@ monitor 自己的设置（主题 / 字体 / claudeDir override / 诊断）。
 
 **写入语义**：MoveFileExW 原子替换。失败回错给前端，不破坏旧文件。
 
+**机器表（`remote.hosts`）那一口的校验**：补丁动了认人的那几格（`insertin` 加一台 · `setin` 改 `label` / `host` / `port` / `user` · `set` 整段写）⇒
+应用之后整张表要成立，否则整批拒、盘上一个字节不动（`config.rs::check_machine_table`）：名字（`label` 非空取它、否则 `host`，去首尾空白、大小写敏感）不重 ·
+`port` 1–65535（缺 ＝ 22）· `host` 与 `user` 非空。拒的那一句点名是哪台、哪一格（`rsConfig.machine.*`）。单台改、添加一台、批量添加都走这一口。
+固化指纹、改恢复命令这类不认人的格不查（别的格写不进去不该挡住它们）。
+每台另有一格 `hostKeyPinnedAt`（`YYYY-MM-DD`，指纹记下的那一天；自动记下与手动记录都写，只给人看，拨号不读）。
+
+**机器状态成品**（设置窗机器列表 / 卡头那一格；Tauri `backend_status` 的 `machine`，判定只在 `machine_state.rs`）：
+
+```json
+{ "state": "down", "reason": "auth", "stage": null, "version": null, "versionRelation": null, "os": "Linux", "fixes": ["push_key", "conn_settings"] }
+```
+
+`state` 闭集：`up` · `connecting`（`stage`：`deploy` / `attach`）· `down`（`reason` 取拨号那一层 ack 的原因码：`resolve` · `unreachable` · `timeout` ·
+`auth` · `key_unreadable` · `jump` · `other`；本机没连上 `local`）· `host_key_changed` · `needs_update` · `newer` · `disabled`（「连接这台」关着）·
+`unsupported`（`not_unix` · `no_forwarding`）· `unknown`。`versionRelation`：`same` · `older` · `newer` · `incomparable`（握手那一刻判一次，`stream_source/version.rs::version_relation`）。
+`fixes` 闭集：`retry` · `conn_settings` · `push_key` · `compare_fingerprint` · `update` · `connect`（按 `state` 与 `reason` 定，`machine_state::fixes_of`）。
+拨号那一层的原因码来自本机常驻后端的 ack（`dial/mod.rs::why`；`DialAck.reason`，additive）。跨语言金样 `tests/__fixtures__/machine-state.golden.json`，
+界面严格收（`src/frontend/ui/settings/machine-state.ts::decodeMachineState`：键集恰好那七格、每格取值在闭集里，收不下 ⇒ 那一行照「没问到」画）。
+
 ---
 
 ## 2. `ps-await/<PID>.json`
@@ -3795,13 +3814,14 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 #### `ssh-config-import`：批量导入预览（MIG-1，09-27，**只读**）
 
 ```text
-→ {"id":"s3","cmd":"ssh-config-import","args":{}}
-← {"kind":"reply","id":"s3","ok":true,"data":{"groups":[{"label":"devbox","host":"10.0.0.2","port":2222,"user":"user","keyPath":null,"addresses":["devbox.example.com:22"],"jump":"bastion","members":[{"alias":"devbox-lan","host":"10.0.0.2","port":2222,"proxyJump":"bastion"},{"alias":"devbox-wan","host":"devbox.example.com","port":22,"proxyJump":null}]}]}}
+→ {"id":"s3","cmd":"ssh-config-import","args":{"known":[{"host":"devbox.example.com","user":"user","port":22}]}}
+← {"kind":"reply","id":"s3","ok":true,"data":{"groups":[{"label":"devbox","host":"10.0.0.2","port":2222,"user":"user","keyPath":null,"addresses":["devbox.example.com:22"],"jump":"bastion","members":[{"alias":"devbox-lan","host":"10.0.0.2","port":2222,"proxyJump":"bastion"},{"alias":"devbox-wan","host":"devbox.example.com","port":22,"proxyJump":null}],"inList":true}]}}
 ```
 
-**入参：无**。全部别名逐个 `ssh-config-resolve`（解析失败的跳过），同 `(keyPath, user, 基名前缀)` 的聚成一组 = 同一台机器的多个地址：
+**入参**：`known`（机器列表里已有的那几台，`[{host, user, port}]`；缺 / 形状不对 ⇒ `invalid_args`）。全部别名逐个 `ssh-config-resolve`（解析失败的跳过），同 `(keyPath, user, 基名前缀)` 的聚成一组 = 同一台机器的多个地址：
 `label`（单成员组 = 完整别名，多成员 = 基名）· `host` / `port` / `user` / `keyPath`（组首）· `addresses`（其余地址，端口不同则 `host:port`）·
-`jump`（组内首个非空 proxyjump）· `members`（`alias` / `host` / `port` / `proxyJump`，界面「拆分」时据此还原）。
+`jump`（组内首个非空 proxyjump）· `members`（`alias` / `host` / `port` / `proxyJump`，界面「拆分」时据此还原）·
+`inList`（组首或任一成员的地址 ＋ 组的用户 ＋ 端口与 `known` 里某台相同，去首尾空白比 ⇒ 已在列表里，界面照它灰、不自己比）。
 整条命令总期限上限 28 s（每个别名一发 `ssh -G`，共用；信封带了 `within_ms` 再收紧）：用完了剩下的别名照「解析失败」跳过。
 
 #### `forward-start`：起一条本地端口转发（MIG-1，09-28，F58 `-L`）

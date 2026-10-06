@@ -384,21 +384,27 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "ssh-config-import",
         doc_anchor: Some("#### `ssh-config-import`"),
-        codes: &[],
+        codes: &["invalid_args"],
         fields: &[
             "addresses",
             "alias",
             "groups",
             "host",
+            "inList",
             "jump",
             "keyPath",
+            "known",
             "label",
             "members",
             "port",
             "proxyJump",
             "user",
         ],
-        takes_input: false,
-        run: Run::Blocking(|_r| Ok(Some(crate::dial::ssh_config::answer_import()))),
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::dial::ssh_config::answer_import(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
     },
 ];

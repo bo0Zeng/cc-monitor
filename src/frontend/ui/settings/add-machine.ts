@@ -17,7 +17,7 @@ import type { ImportGroup } from "../ssh-config-reads";
 export interface AddMachineDeps {
   /** 列表里已有的那几台。 */
   existing: () => RemoteHostConfig[];
-  /** 读 ~/.ssh/config（失败 ⇒ 抛）。 */
+  /** 读 ~/.ssh/config（失败 ⇒ 抛）；每组带着后端判的「已在列表里」。 */
   groups: () => Promise<ImportGroup[]>;
   /** 写进去：成了 ⇒ `null`；没存上 ⇒ 一句原因。 */
   add: (cfgs: RemoteHostConfig[]) => Promise<string | null>;
@@ -38,8 +38,6 @@ const blank = (): RemoteHostConfig => ({
 });
 
 const nameOf = (h: RemoteHostConfig): string => h.label.trim() || h.host.trim();
-const sameEndpoint = (a: RemoteHostConfig, b: RemoteHostConfig): boolean =>
-  a.host.trim() === b.host.trim() && a.user.trim() === b.user.trim() && (a.port || 22) === (b.port || 22);
 
 interface SshRow {
   g: ImportGroup;
@@ -161,11 +159,8 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
   void deps
     .groups()
     .then((groups) => {
-      const have = deps.existing();
       for (const g of groups) {
-        const cfg = groupCfg(g);
-        const inList = have.some((h) => sameEndpoint(h, cfg));
-        rows.push({ g, cfg, inList, picked: !inList, split: false, name: null });
+        rows.push({ g, cfg: groupCfg(g), inList: g.inList, picked: !g.inList, split: false, name: null });
       }
       if (rows.length === 0) {
         sshNote.textContent = copyText("addMachine.ssh.none");
@@ -184,15 +179,15 @@ export function openAddMachine(deps: AddMachineDeps): Promise<boolean> {
   grid.className = "add-machine-grid";
   const fName = field({ label: copyText("addMachine.field.name"), help: copyText("addMachine.field.nameHelp") });
   const fHost = field({ label: copyText("addMachine.field.host"), help: copyText("machineCard.field.hostHint") });
-  const fUser = field({ label: copyText("addMachine.field.user"), noteOnDemand: true });
-  const fPort = field({ label: copyText("addMachine.field.port"), value: "22", noteOnDemand: true });
+  const fUser = field({ label: copyText("addMachine.field.user"), help: copyText("addMachine.field.userHelp") });
+  const fPort = field({ label: copyText("addMachine.field.port"), value: "22", help: copyText("addMachine.field.portHelp") });
   const fKey = field({ label: copyText("addMachine.field.key"), help: copyText("addMachine.field.keyHelp") });
   fKey.root.classList.add("add-machine-wide");
   grid.append(fName.root, fHost.root, fUser.root, fPort.root, fKey.root);
   const moreBody = document.createElement("div");
   moreBody.className = "add-machine-grid";
   const fAddrs = field({ label: copyText("addMachine.field.addresses"), help: copyText("addMachine.field.addressesHelp"), multiline: true });
-  const fJump = field({ label: copyText("addMachine.field.jump"), noteOnDemand: true });
+  const fJump = field({ label: copyText("addMachine.field.jump"), help: copyText("machineCard.field.jumpHint") });
   moreBody.append(fAddrs.root, fJump.root);
   const manualAfter = document.createElement("div");
   manualAfter.className = "add-machine-note";

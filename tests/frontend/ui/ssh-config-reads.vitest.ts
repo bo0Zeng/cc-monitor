@@ -68,11 +68,11 @@ describe("请求", () => {
     });
     await listSshHostAliases();
     await resolveSshHost("devbox-lan");
-    await importSshHosts();
+    await importSshHosts([{ host: "pi.local", user: "pi", port: 22 }]);
     expect(seen).toEqual([
       { op: "ssh-config-aliases", origin: LOCAL_ORIGIN, body: {} },
       { op: "ssh-config-resolve", origin: LOCAL_ORIGIN, body: { alias: "devbox-lan" } },
-      { op: "ssh-config-import", origin: LOCAL_ORIGIN, body: {} },
+      { op: "ssh-config-import", origin: LOCAL_ORIGIN, body: { known: [{ host: "pi.local", user: "pi", port: 22 }] } },
     ]);
   });
   it("本机后端不在 ⇒ 抛（不是空清单）", async () => {

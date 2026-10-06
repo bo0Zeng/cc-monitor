@@ -226,6 +226,8 @@ pub struct DialAck {
     /// `connect_failed` · `unknown_channel_type` · `resource_shortage` · `unknown`）。只有 `tunnel` 那一形填；其余 ⇒ `None`。additive。
     /// 界面据它分「那台 sshd 不许端口转发」（停、不重试）与「那个口上还没人」（等一会儿再开）。
     pub open_refused: Option<&'static str>,
+    /// 没拨成时的原因码（闭集，[`why`]）：界面按码说那一句、给那颗修法。拨成了 / 说不清 ⇒ `None`。additive。
+    pub reason: Option<&'static str>,
     /// 协议版本（[`ACK_V`]）。
     pub v: u32,
     /// 本代理认得的用法（[`USES`]）。
@@ -245,8 +247,17 @@ impl DialAck {
             strict: false,
             jump_strict: false,
             open_refused: None,
+            reason: None,
             v: ACK_V,
             uses: USES,
+        }
+    }
+
+    /// 带上这一趟记下的原因码（[`StageSink::why`]）。
+    pub(crate) fn because(self, why: Option<&'static str>) -> Self {
+        DialAck {
+            reason: why,
+            ..self
         }
     }
 
@@ -256,6 +267,48 @@ impl DialAck {
             open_refused: Some(why),
             ..DialAck::failed(error, fingerprint)
         }
+    }
+}
+
+/// 拨号没成的原因码（ack 的 `reason`，闭集；线上形状见协议文档 `link-open` 一节）。
+pub(crate) mod why {
+    /// 地址解析不出来（DNS）。
+    pub const RESOLVE: &str = "resolve";
+    /// 那个口拨不通（拒绝 / 主机或网络不可达）。
+    pub const UNREACHABLE: &str = "unreachable";
+    /// 拨号 / 握手超时。
+    pub const TIMEOUT: &str = "timeout";
+    /// 主机指纹与记下的不一样。
+    pub const HOST_KEY: &str = "host_key";
+    /// 密钥被拒（公钥 · agent 都没过）。
+    pub const AUTH: &str = "auth";
+    /// 私钥文件读不出来。
+    pub const KEY_UNREADABLE: &str = "key_unreadable";
+    /// 跳板那一台连不上（拨号 · 鉴权 · 经它开隧道任一步）。
+    pub const JUMP: &str = "jump";
+    /// 别的（看人话）。
+    pub const OTHER: &str = "other";
+    /// 全集（判据两向比）。
+    pub const ALL: [&str; 8] = [
+        RESOLVE,
+        UNREACHABLE,
+        TIMEOUT,
+        HOST_KEY,
+        AUTH,
+        KEY_UNREADABLE,
+        JUMP,
+        OTHER,
+    ];
+}
+
+/// 竞速那一格的阶段标签（[`connect::stage_of_io`] 那几个，外加 `resolve`）→ 原因码。
+pub(crate) fn why_of_stage(stage: &str) -> &'static str {
+    match stage {
+        "resolve" => why::RESOLVE,
+        "tcp" => why::UNREACHABLE,
+        "timeout" => why::TIMEOUT,
+        "hostkey" => why::HOST_KEY,
+        _ => why::OTHER,
     }
 }
 
@@ -317,6 +370,8 @@ pub struct Captured {
 pub(crate) struct StageSink {
     on: bool,
     buf: Arc<Mutex<Vec<Stage>>>,
+    /// 这一趟没拨成的原因码（[`why`] 里那几个；不论要不要阶段行都记）。
+    why: Arc<Mutex<Option<&'static str>>>,
 }
 
 impl StageSink {
@@ -324,7 +379,17 @@ impl StageSink {
         StageSink {
             on,
             buf: Arc::default(),
+            why: Arc::default(),
         }
+    }
+
+    /// 记下没拨成的原因码（后记的盖前记的：跳板那一层比它里面那次竞速更说明问题）。
+    pub(crate) fn note_why(&self, w: &'static str) {
+        *self.why.lock().unwrap_or_else(|e| e.into_inner()) = Some(w);
+    }
+
+    pub(crate) fn why(&self) -> Option<&'static str> {
+        *self.why.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     pub(crate) fn emit(&self, s: Stage) {

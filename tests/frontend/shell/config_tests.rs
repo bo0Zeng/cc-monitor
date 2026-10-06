@@ -254,6 +254,7 @@ fn the_golden_cases_hold() {
                     ConfigWriteError::BadEdit(_) => "bad_edit",
                     ConfigWriteError::NoSuchElement { .. } => "element_gone",
                     ConfigWriteError::ElementExists => "element_exists",
+                    ConfigWriteError::BadMachine(_) => "bad_machine",
                     ConfigWriteError::Unreadable { .. } => "unreadable",
                     ConfigWriteError::Io(_) => "io",
                 };
@@ -500,4 +501,111 @@ fn set_in_changes_one_field_of_exactly_one_element_and_nothing_else() {
     .expect("setin 解不出来");
     assert!(matches!(wire, ConfigEdit::SetIn { if_empty: true, .. }));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 机器表那一口的校验：同名 · 端口越界 · 地址 / 用户空 ⇒ 整批拒、盘上一个字节不动；
+/// 固化指纹这类不认人的格不受别的格挡（盘上那一台缺用户照样写得进指纹）。
+#[test]
+fn the_machine_table_is_checked_on_every_identity_write() {
+    let dir = tmpdir("machine-table");
+    let path = dir.join("config.json");
+    let host = |label: &str, h: &str, user: &str, port: u64| json!({ "label": label, "host": h, "user": user, "port": port });
+    let hosts = vec!["remote".to_string(), "hosts".to_string()];
+    let key = |name: &str| {
+        vec![ElemKey {
+            fields: vec!["label".into(), "host".into()],
+            equals: name.into(),
+        }]
+    };
+    std::fs::write(
+        &path,
+        json!({ "remote": { "hosts": [host("a", "1.1.1.1", "u", 22)] } }).to_string(),
+    )
+    .unwrap();
+    let before = std::fs::read(&path).unwrap();
+    let insert = |v: Value, name: &str| ConfigEdit::InsertIn {
+        path: hosts.clone(),
+        r#where: key(name),
+        value: v,
+    };
+    for (what, edit, want) in [
+        (
+            "改名撞上另一台",
+            insert(host(" a ", "2.2.2.2", "u", 22), " a "),
+            "rsConfig.machine.nameTaken",
+        ),
+        (
+            "端口越界",
+            insert(host("b", "2.2.2.2", "u", 70000), "b"),
+            "rsConfig.machine.port",
+        ),
+        (
+            "端口为 0",
+            insert(host("b", "2.2.2.2", "u", 0), "b"),
+            "rsConfig.machine.port",
+        ),
+        (
+            "没有地址",
+            insert(host("b", " ", "u", 22), "b"),
+            "rsConfig.machine.noHost",
+        ),
+        (
+            "没有用户",
+            insert(host("b", "2.2.2.2", "", 22), "b"),
+            "rsConfig.machine.noUser",
+        ),
+        (
+            "改端口改出界",
+            ConfigEdit::SetIn {
+                path: hosts.clone(),
+                r#where: key("a"),
+                field: "port".into(),
+                value: json!(0),
+                if_empty: false,
+            },
+            "rsConfig.machine.port",
+        ),
+    ] {
+        let got = patch_config_at(&path, &[edit]).expect_err(what);
+        assert!(
+            matches!(got, ConfigWriteError::BadMachine(_)),
+            "{what}：{got:?}"
+        );
+        let name = if what == "改名撞上另一台" {
+            "a"
+        } else if what.starts_with("改端口") {
+            "a"
+        } else {
+            "b"
+        };
+        assert_eq!(
+            got.to_string(),
+            crate::copy_table::copy_text(want, &[("name", name)]),
+            "{what}"
+        );
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            before,
+            "{what}：拒了却写了盘"
+        );
+    }
+    // 正控：合法的一台照常加进去。
+    patch_config_at(&path, &[insert(host("b", "2.2.2.2", "u", 22), "b")])
+        .expect("合法的一台被拒了");
+    assert_eq!(read(&path)["remote"]["hosts"].as_array().unwrap().len(), 2);
+    // 盘上那一台缺用户（手改坏的）：固化指纹不受挡；认人的那几格照样拒。
+    std::fs::write(
+        &path,
+        json!({ "remote": { "hosts": [host("c", "3.3.3.3", "", 22)] } }).to_string(),
+    )
+    .unwrap();
+    let pin = ConfigEdit::SetIn {
+        path: hosts.clone(),
+        r#where: key("c"),
+        field: "hostKeyFingerprint".into(),
+        value: json!("SHA256:x"),
+        if_empty: true,
+    };
+    patch_config_at(&path, &[pin]).expect("固化指纹被别的格挡住了");
+    std::fs::remove_dir_all(&dir).ok();
 }

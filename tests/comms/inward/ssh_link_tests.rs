@@ -94,6 +94,7 @@ async fn a_refusal_comes_back_with_the_fingerprint_it_saw() {
                 .into(),
             fingerprint: Some("SHA256:t3uliopxPzh9UPGAywEklG+BprfkJP07toWVhzBCwB4".into()),
             open_refused: None,
+            reason: None,
         }
     );
     // 开通道被回拒的原因码原样带出来（界面据它分「不许端口转发」与「口上还没人」）。
@@ -107,6 +108,19 @@ async fn a_refusal_comes_back_with_the_fingerprint_it_saw() {
         .expect_err("拨不通被读成了通");
     assert!(
         matches!(&e, LinkError::Refused { open_refused: Some(w), .. } if w == "administratively_prohibited"),
+        "{e:?}"
+    );
+    // 没拨成的原因码原样带出来（机器状态按它说那一句、给修法）。
+    let out = concat!(
+        r#"{"ok":false,"error":"密钥被拒","fingerprint":null,"reason":"auth","v":2,"uses":["stream"]}"#,
+        "\n"
+    );
+    let mut r = tokio::io::BufReader::new(out.as_bytes());
+    let e = handshake(&mut r, "stream", CAP, &mut |_| {})
+        .await
+        .expect_err("拨不通被读成了通");
+    assert!(
+        matches!(&e, LinkError::Refused { reason: Some(w), .. } if w == "auth"),
         "{e:?}"
     );
 }

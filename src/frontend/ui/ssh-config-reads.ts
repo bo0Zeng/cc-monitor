@@ -46,6 +46,8 @@ export interface ImportGroup {
   /** 组内首个非空 proxyjump（别名）。 */
   jump: string | null;
   members: ImportMember[];
+  /** 已在机器列表里（后端按地址 ＋ 用户 ＋ 端口认，列表由这一问交过去）。 */
+  inList: boolean;
 }
 
 type Obj = Record<string, unknown>;
@@ -102,7 +104,8 @@ function decodeMember(v: unknown): ImportMember {
 function decodeGroup(v: unknown): ImportGroup {
   if (
     !isObj(v) ||
-    !sameKeys(v, ["label", "host", "port", "user", "keyPath", "addresses", "jump", "members"]) ||
+    !sameKeys(v, ["label", "host", "port", "user", "keyPath", "addresses", "jump", "members", "inList"]) ||
+    typeof v.inList !== "boolean" ||
     typeof v.label !== "string" ||
     typeof v.host !== "string" ||
     !isPort(v.port) ||
@@ -123,6 +126,7 @@ function decodeGroup(v: unknown): ImportGroup {
     addresses: v.addresses,
     jump: v.jump,
     members: v.members.map(decodeMember),
+    inList: v.inList as boolean,
   };
 }
 
@@ -173,11 +177,11 @@ export async function resolveSshHost(alias: string): Promise<ResolvedHost> {
   return decodeResolved(readJson(reply));
 }
 
-/** 批量导入预览。 */
-export async function importSshHosts(): Promise<ImportGroup[]> {
+/** 批量导入预览。`known` ＝ 机器列表里已有的那几台（后端据它标「已在列表里」）。 */
+export async function importSshHosts(known: { host: string; user: string; port: number }[]): Promise<ImportGroup[]> {
   let reply: Uint8Array;
   try {
-    const body = jsonBody({});
+    const body = jsonBody({ known });
     const budget = budgetWithin(SSH_IMPORT_BUDGET_MS);
     reply = await chan.call(LOCAL_ORIGIN, "ssh-config-import", body, budget);
   } catch (e) {

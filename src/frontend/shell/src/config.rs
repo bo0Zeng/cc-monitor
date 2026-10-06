@@ -171,6 +171,9 @@ pub(crate) enum ConfigWriteError {
     },
     /// `insertin` 要插的那个键盘上已经有了 ⇒ **整批拒**，盘上一个字节不动（不静默变成改那一台）。
     ElementExists,
+    /// 改完的机器表不成立（同名 · 端口越界 · 地址 / 用户空）⇒ **整批拒**，盘上一个字节不动。
+    /// 单台改、添加一台、批量添加都走这一口（同一份校验，[`check_machine_table`]）。
+    BadMachine(String),
     Io(String),
 }
 
@@ -187,7 +190,9 @@ impl std::fmt::Display for ConfigWriteError {
             ConfigWriteError::ElementExists => {
                 f.write_str(&copy_text("rsConfig.write.elementExists", &[]))
             }
-            ConfigWriteError::BadEdit(m) | ConfigWriteError::Io(m) => f.write_str(m),
+            ConfigWriteError::BadEdit(m)
+            | ConfigWriteError::BadMachine(m)
+            | ConfigWriteError::Io(m) => f.write_str(m),
         }
     }
 }
@@ -276,6 +281,22 @@ pub(crate) fn patch_config_at(
     if !applied.contains(&Applied::Done) {
         return Ok(applied);
     }
+    // ④b 动了机器表里认人的那几格（增一台 · 改名称 / 地址 / 端口 / 用户 · 整段写）⇒ 改完的整张表要成立。
+    //   固化指纹、改恢复命令这类格不查：别的格写不进去不该挡住它们。
+    let identity = |e: &ConfigEdit| match e {
+        ConfigEdit::InsertIn { path, .. } => path.first().map(String::as_str) == Some("remote"),
+        ConfigEdit::SetIn { path, field, .. } => {
+            path.first().map(String::as_str) == Some("remote")
+                && ["label", "host", "port", "user"].contains(&field.as_str())
+        }
+        ConfigEdit::Set { path, .. } => path.first().map(String::as_str) == Some("remote"),
+        ConfigEdit::Remove { .. } | ConfigEdit::RemoveIn { .. } => false,
+    };
+    if edits.iter().any(identity) {
+        if let Some(why) = check_machine_table(&root) {
+            return Err(ConfigWriteError::BadMachine(why));
+        }
+    }
 
     // ⑤ 临时件带 pid：两个 monitor 进程不互删对方的临时件。
     let pretty = serde_json::to_string_pretty(&Value::Object(root))
@@ -292,6 +313,43 @@ pub(crate) fn patch_config_at(
         ConfigWriteError::Io(format!("replace → {}: {e}", path.display()))
     })?;
     Ok(applied)
+}
+
+/// 机器表（`remote.hosts`）成不成立：名字（`label` 非空取它、否则 `host`，去首尾空白、大小写敏感）不重 ·
+/// 端口 1–65535（缺 ＝ 22）· 地址与用户非空。不成立 ⇒ 第一处的那一句（文案表）；成立 / 没有机器表 ⇒ `None`。**纯函数**。
+pub(crate) fn check_machine_table(root: &Map<String, Value>) -> Option<String> {
+    let hosts = root.get("remote")?.get("hosts")?.as_array()?;
+    let mut seen = std::collections::HashSet::new();
+    for h in hosts.iter().filter_map(Value::as_object) {
+        let text = |k: &str| {
+            h.get(k)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .unwrap_or("")
+        };
+        let name = if text("label").is_empty() {
+            text("host")
+        } else {
+            text("label")
+        };
+        if text("host").is_empty() {
+            return Some(copy_text("rsConfig.machine.noHost", &[("name", name)]));
+        }
+        if text("user").is_empty() {
+            return Some(copy_text("rsConfig.machine.noUser", &[("name", name)]));
+        }
+        let port_ok = match h.get("port") {
+            None | Some(Value::Null) => true,
+            Some(p) => p.as_u64().is_some_and(|p| (1..=65535).contains(&p)),
+        };
+        if !port_ok {
+            return Some(copy_text("rsConfig.machine.port", &[("name", name)]));
+        }
+        if !seen.insert(name.to_string()) {
+            return Some(copy_text("rsConfig.machine.nameTaken", &[("name", name)]));
+        }
+    }
+    None
 }
 
 /// 元素里 `fields` 按序第一个非空字符串（[`ElemKey`]）。

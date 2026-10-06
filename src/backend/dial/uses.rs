@@ -40,6 +40,7 @@ fn ok_ack(l: &Linked, req: &DialRequest) -> DialAck {
         strict,
         jump_strict,
         open_refused: None,
+        reason: None,
         v: ACK_V,
         uses: USES,
     }
@@ -295,7 +296,12 @@ where
             Ok(l) => l,
             Err((e, fp)) => {
                 tracing::error!("dial: 拨号失败: {e}");
-                let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
+                let _ = write_stages_then_ack(
+                    out,
+                    stages,
+                    &DialAck::failed(e, fp).because(stages.why()),
+                )
+                .await;
                 return;
             }
         };

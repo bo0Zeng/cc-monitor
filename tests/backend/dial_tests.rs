@@ -320,6 +320,7 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
             strict: true,
             jump_strict: false,
             open_refused: Some("administratively_prohibited"),
+            reason: Some(super::why::AUTH),
             v: ACK_V,
             uses: USES,
         },
@@ -349,6 +350,43 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
     );
     // 开通道被回拒的原因码（additive；界面据它分「不许端口转发」与「口上还没人」）。
     assert_eq!(v["open_refused"], "administratively_prohibited");
+    // 没拨成的原因码（additive；界面按码说那一句、给修法）。
+    assert_eq!(v["reason"], "auth");
+}
+
+/// 竞速那一格的阶段标签 → 原因码：每个标签各落一格，认不出的落「别的」；全集与线上那张表两向相等。
+#[test]
+fn stage_labels_map_to_the_closed_reason_set() {
+    use super::{why, why_of_stage};
+    let rows = [
+        ("resolve", why::RESOLVE),
+        ("tcp", why::UNREACHABLE),
+        ("timeout", why::TIMEOUT),
+        ("hostkey", why::HOST_KEY),
+        ("other", why::OTHER),
+        ("认不出的标签", why::OTHER),
+    ];
+    for (stage, want) in rows {
+        assert_eq!(why_of_stage(stage), want, "{stage}");
+    }
+    let wire: std::collections::BTreeSet<&str> = why::ALL.into_iter().collect();
+    assert_eq!(wire.len(), why::ALL.len(), "原因码有重名");
+    assert_eq!(
+        wire,
+        [
+            "auth",
+            "host_key",
+            "jump",
+            "key_unreadable",
+            "other",
+            "resolve",
+            "timeout",
+            "unreachable"
+        ]
+        .into_iter()
+        .collect(),
+        "原因码那张表变了 —— 协议文档与界面那一侧（machine-state 解码）要一起改"
+    );
 }
 
 /// （`AllowTcpForwarding no` ⇒ 控制隧道被拒、界面每分钟新拨 33 条）。

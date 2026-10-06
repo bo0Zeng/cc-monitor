@@ -48,6 +48,7 @@ import { toast, undoToast } from "../kit/toast";
 import { openAddMachine } from "./add-machine";
 import { localMeta, machineMeta, NO_FACTS, type MachineFacts, type MachineSection } from "./machine-page";
 import { fetchAccounts, fetchLocalAccounts } from "../account-reads";
+import { fixLabel, machineFace, type MachineFace, type MachineFix, type MachineState } from "./machine-state";
 import { isLocalOrigin } from "../ipc/origin";
 import type { AccountsState } from "../accounts";
 import { moveMachinePrefs } from "../account-prefs";
@@ -124,6 +125,8 @@ export interface MachinePagesHost {
   refreshMachine?(origin: string): void;
   /** 机器表刚对齐过（有台起了 / 断了）：宿主重问后端那几台、重画各台的点。 */
   machinesReconciled?(): void;
+  /** 问题行上的修法按钮点了（那一页 · 哪一颗）。 */
+  runFix?(pageId: string, fix: MachineFix): void;
 }
 
 /**
@@ -204,6 +207,8 @@ export class RemoteSection {
   private countLine!: HTMLElement;
   /** 后端报来的各台事实（系统 · 版本），按后端那套名字。 */
   private readonly facts = new Map<string, MachineFacts>();
+  /** 各页最近一次照成品画出的样子（数「几台离线 · 几台要更新」用）。 */
+  private readonly faces = new Map<string, MachineFace>();
   /** 各页最近一次喂进来的连接（数「几台离线」用）。 */
   private readonly connected = new Map<string, boolean | null>();
 
@@ -420,6 +425,65 @@ export class RemoteSection {
     [...this.pageIdOf.entries()].find(([, id]) => id === pageId)?.[0].showLive(connected === true);
   }
 
+  /** 宿主照后端的状态成品喂进来：那一行的点 · 词 · 问题行 ＋ 修法；页头那一句按它数。 */
+  setMachine(pageId: string, m: MachineState): void {
+    const row = this.findMachineRow(pageId);
+    if (!row) return;
+    const name = row.querySelector<HTMLElement>(".remote-machine-open")?.textContent ?? "";
+    const face = machineFace(m, name);
+    const dot = row.querySelector<HTMLElement>(".remote-machine-dot");
+    if (dot) setDot(dot, face.dot, face.word ? `${name} · ${face.word}` : copyText("settingsNav.dot.up", { machine: name }));
+    const word = row.querySelector<HTMLElement>(".remote-machine-word");
+    if (word) word.textContent = face.word;
+    const problem = row.querySelector<HTMLElement>(".machine-problem");
+    if (problem) {
+      problem.replaceChildren();
+      problem.hidden = face.problem === "";
+      if (face.problem !== "") {
+        const text = document.createElement("span");
+        text.textContent = face.problem;
+        problem.dataset.severity = face.dot === "needs-you" ? "warn" : "error";
+        problem.append(icon(face.dot === "needs-you" ? "warning" : "error", "compact"), text);
+        for (const fix of face.fixes) {
+          problem.appendChild(
+            button({
+              label: fixLabel(fix),
+              size: "compact",
+              kind: fix === "update" ? "primary" : "secondary",
+              onClick: (ev) => {
+                ev.stopPropagation();
+                this.runFix(pageId, fix);
+              },
+            }),
+          );
+        }
+      }
+    }
+    this.faces.set(pageId, face);
+    const up = m.state === "up" || m.state === "needs_update" || m.state === "newer";
+    this.connected.set(pageId, up);
+    this.paintCount();
+    if (up) void this.loadSummary(row);
+    [...this.pageIdOf.entries()].find(([, id]) => id === pageId)?.[0].showLive(up);
+  }
+
+  /** 问题行的修法：连接这台 / 连接设置在这里就做得了，其余交宿主。 */
+  private runFix(pageId: string, fix: MachineFix): void {
+    if (fix === "connect") this.setConnect(pageId, true);
+    else if (fix === "conn_settings" || fix === "compare_fingerprint") this.pages?.openMachineSection?.(pageId, "conn");
+    else if (fix === "push_key") this.cardOfPage(pageId)?.pushKey();
+    else this.pages?.runFix?.(pageId, fix);
+  }
+
+  private cardOfPage(pageId: string): MachineCard | undefined {
+    return [...this.pageIdOf.entries()].find(([, id]) => id === pageId)?.[0];
+  }
+
+  /** 问题行［更新］：把这一版换到那台上（那一颗住机器卡）。 */
+  async updateMachine(pageId: string): Promise<void> {
+    await this.cardOfPage(pageId)?.update();
+  }
+
   private paintRowDisabled(row: HTMLElement, pageId: string): void {
     const name = row.querySelector<HTMLElement>(".remote-machine-open")?.textContent ?? "";
     const dot = row.querySelector<HTMLElement>(".remote-machine-dot");
@@ -450,11 +514,19 @@ export class RemoteSection {
     card?.setConnect(on);
   }
 
-  /** 页头下那一句：`4 台` ／ `4 台 · 1 台离线`。 */
+  /** 页头下那一句：`4 台` ／ `4 台 · 1 台离线` ／ `4 台 · 1 台离线 · 1 台要更新`。 */
   private paintCount(): void {
     const n = this.cards.length + 1;
-    const off = [...this.connected.entries()].filter(([id, c]) => c === false && this.findMachineRow(id) && !this.isDisabledPage(id)).length;
-    this.countLine.textContent = off > 0 ? copyText("machineList.count.offline", { n, a: off }) : copyText("machineList.count.all", { n });
+    const live = (id: string): boolean => this.findMachineRow(id) !== null && !this.isDisabledPage(id);
+    const off = [...this.connected.entries()].filter(([id, c]) => {
+      const f = this.faces.get(id);
+      return live(id) && (f ? f.offline : c === false);
+    }).length;
+    const upd = [...this.faces.entries()].filter(([id, f]) => live(id) && f.needsUpdate).length;
+    const parts = [copyText("machineList.count.all", { n })];
+    if (off > 0) parts.push(copyText("machineList.count.off", { a: off }));
+    if (upd > 0) parts.push(copyText("machineList.count.update", { b: upd }));
+    this.countLine.textContent = parts.join(copyText("kit.text.sep"));
   }
 
   /** 页头右侧：添加机器 ＋ ⋯（端口转发 · 全部刷新）。 */
@@ -765,7 +837,7 @@ export class RemoteSection {
   private openAdd(): Promise<boolean> {
     return openAddMachine({
       existing: () => this.cards.map((c) => c.collect()),
-      groups: () => importSshHosts(),
+      groups: () => importSshHosts(this.cards.map((c) => c.collect()).map((h) => ({ host: h.host, user: h.user, port: h.port || 22 }))),
       add: async (cfgs) => {
         const cards = cfgs.map((c) => this.appendCard(c));
         if (await this.save()) {

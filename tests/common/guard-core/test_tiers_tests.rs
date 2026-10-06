@@ -221,6 +221,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/settings/machine-aliases.vitest.ts",
     "tests/frontend/ui/settings/machine-context.vitest.ts",
     "tests/frontend/ui/settings/machine-list-backend-cells.vitest.ts",
+    "tests/frontend/ui/settings/machine-state.vitest.ts",
     "tests/frontend/ui/settings/machine-status.vitest.ts",
     "tests/frontend/ui/settings/machine-sync.vitest.ts",
     "tests/frontend/ui/settings/panel-block-isolation.vitest.ts",
@@ -285,6 +286,7 @@ const UNIT: &[&str] = &[
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
 const SCAN: &[&str] = &[
+    "tests/frontend/shell/machine_state_tests.rs", // 机器状态成品：每一态 · 修法 · 与跨语言金样逐格比
     // 官方客户端报用量的读法：读一份只采结构的夹具（`tests/__fixtures__/claude-usage.fixture.txt`）。
     "tests/backend/agents/claudecode/usage_tests.rs",
     "tests/backend/control/kill_tests.rs", // INTEGRATION → SCAN：总期限那条挪进 `stream/caps_tests.rs`（走真分派），剩下的读跨语言金样

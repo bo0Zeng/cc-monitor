@@ -220,11 +220,20 @@ fn the_three_products_match_the_cross_language_golden() {
         "hostname 10.0.0.2\nport 2222\nuser user\nproxyjump bastion\nidentityfile /nonexistent/mig1-key\n",
         "devbox-lan",
     );
-    let groups = aggregate_ssh_hosts(vec![
+    let mut groups = aggregate_ssh_hosts(vec![
         ("devbox-lan".into(), resolved.clone()),
         ("devbox-wan".into(), rh("devbox.example.com", None, "user", None)),
         ("pi".into(), rh("pi.local", None, "pi", None)),
     ]);
+    // 列表里已有 devbox 的第二个地址那一台 ⇒ devbox 那一组「已在列表里」；pi 不在。
+    mark_in_list(
+        &mut groups,
+        &[Known {
+            host: "devbox.example.com".into(),
+            user: "user".into(),
+            port: 22,
+        }],
+    );
     let got = serde_json::json!({
         "ssh-config-aliases": { "aliases": parse_host_aliases("Host devbox-lan devbox-wan\nHost pi *\n") },
         "ssh-config-resolve": to_value(&resolved),
@@ -233,5 +242,65 @@ fn the_three_products_match_the_cross_language_golden() {
     assert_eq!(
         got, golden,
         "三条成品的线上形状变了 ⇒ 金样与 TS 解码器同拍改"
+    );
+}
+
+/// 「已在列表里」按地址 ＋ 用户 ＋ 端口认（不只按名字）：同地址换了用户 / 端口的不算；去首尾空白比。
+#[test]
+fn in_list_is_judged_by_host_user_and_port() {
+    let mk = || aggregate_ssh_hosts(vec![("pi".into(), rh("pi.local", None, "pi", None))]);
+    for (known, want) in [
+        (
+            Known {
+                host: "pi.local".into(),
+                user: "pi".into(),
+                port: 22,
+            },
+            true,
+        ),
+        (
+            Known {
+                host: " pi.local ".into(),
+                user: "pi ".into(),
+                port: 22,
+            },
+            true,
+        ),
+        (
+            Known {
+                host: "pi.local".into(),
+                user: "root".into(),
+                port: 22,
+            },
+            false,
+        ),
+        (
+            Known {
+                host: "pi.local".into(),
+                user: "pi".into(),
+                port: 2222,
+            },
+            false,
+        ),
+        (
+            Known {
+                host: "other".into(),
+                user: "pi".into(),
+                port: 22,
+            },
+            false,
+        ),
+    ] {
+        let mut g = mk();
+        mark_in_list(&mut g, std::slice::from_ref(&known));
+        assert_eq!(g[0].in_list, want, "{known:?}");
+    }
+    // 不交列表 ⇒ 拒（界面那一侧恒交，缺了是两侧对不上）。
+    assert_eq!(
+        answer_import(&serde_json::json!({}))
+            .map(|_| ())
+            .unwrap_err()
+            .0,
+        "invalid_args"
     );
 }

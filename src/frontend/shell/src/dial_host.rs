@@ -364,8 +364,13 @@ async fn open(
     let ack = match tokio::time::timeout(ACK_DEADLINE, shake).await {
         Ok(Ok(ack)) => ack,
         Ok(Err(LinkError::Refused {
-            why, open_refused, ..
+            why,
+            open_refused,
+            reason,
+            ..
         })) => {
+            // 后端带回的原因码进那台的状态成品（这一轮收尾时按它说那一句、给修法）。
+            crate::machine_state::dial_failed(&cfg.origin_label(), reason.as_deref());
             return Err((why, open_refused));
         }
         Ok(Err(e)) => return Err((e.to_string(), None)),

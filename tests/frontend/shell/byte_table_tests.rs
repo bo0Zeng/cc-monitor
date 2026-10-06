@@ -633,6 +633,8 @@ fn my_version_is_read_only_through_my_backend_id() {
         "local_backend_host.rs",
         // Windows 预检
         "cc_bus_deploy.rs",
+        // 本机那一台的状态成品（版本 · 不可比）
+        "backend_control.rs",
     ]
     .into_iter()
     .map(String::from)

@@ -213,6 +213,23 @@ pub(super) fn negotiate_version(
     }
 }
 
+/// 版本关系判一处（机器状态成品那一格）：同 · 那台旧（含协议大版本不符）· 那台新 · 不可比。
+pub(super) fn version_relation(
+    reported_v: u64,
+    reported_build_id: &str,
+    remote_older: bool,
+    mine: Option<&str>,
+) -> crate::machine_state::VersionRelation {
+    use crate::machine_state::VersionRelation as R;
+    match negotiate_version(reported_v, reported_build_id, mine) {
+        VersionVerdict::Ok => R::Same,
+        VersionVerdict::Incomparable { .. } => R::Incomparable,
+        VersionVerdict::StaleBuild { .. } if remote_older => R::Older,
+        VersionVerdict::StaleBuild { .. } => R::Newer,
+        VersionVerdict::Incompatible { .. } => R::Older,
+    }
+}
+
 /// 把协商结论变成给用户看的提示文案（`None` = 兼容、无需提示）。`label` 是出问题的远端机器。
 /// `remote_older` = 接上那一刻本机常驻后端答的「那台比手上这一版旧」（`remote_resident::Replayed::remote_is_older`）。
 pub(super) fn version_warning(

@@ -60,6 +60,7 @@ import { button } from "../kit/button";
 import { toggleSwitch } from "../kit/switch";
 import { readRecordDrift } from "../record-reads";
 import { ccRow } from "./cc-row";
+import { decodeMachineState, type MachineState } from "./machine-state";
 import type { SessionAccount } from "../accounts";
 
 /**
@@ -269,8 +270,7 @@ export class BackendSection {
   private cellHosts = new Map<string, HTMLElement>();
   /** origin → 那一台「随 cc-monitor 退出停止」那个开关。 */
   private killSwitches = new Map<string, ReturnType<typeof toggleSwitch>>();
-  /** origin → 那台后端报来的版本。 */
-  private versions = new Map<string, string | null>();
+
 
   /**
    * 寄居模式：四格挂在**机器列表那一行**上（`cellsFor`），本块自己的 `element`
@@ -279,6 +279,7 @@ export class BackendSection {
   private readonly hosted: boolean;
   private readonly onLinkSeen: ((origin: string) => void) | undefined;
   private readonly onChannel: ((origin: string, connected: boolean | null) => void) | undefined;
+  private readonly onMachine: ((origin: string, machine: MachineState | null) => void) | undefined;
   /** 后端清单（`backend_machines`）。`null` = 还没问到 —— 那时寄居的四格先不画。 */
   private registered: Set<string> | null = null;
 
@@ -296,10 +297,13 @@ export class BackendSection {
       onLinkSeen?: (origin: string) => void;
       /** 每次问完那台的连接（`null` ＝ 没问到）。 */
       onChannel?: (origin: string, connected: boolean | null) => void;
+      /** 每次问完那台的状态成品（收不下 / 没问到 ⇒ `null`）。 */
+      onMachine?: (origin: string, machine: MachineState | null) => void;
     } = {},
   ) {
     this.onLinkSeen = opts.onLinkSeen;
     this.onChannel = opts.onChannel;
+    this.onMachine = opts.onMachine;
     this.hosted = opts.hosted ?? false;
     this.confirm = opts.confirm ?? confirmDialog;
     this.sessions = opts.sessions ?? fetchSessionAccountsOrNull;
@@ -346,6 +350,12 @@ export class BackendSection {
     const cells = this.buildCells(origin, extra);
     this.paintOne(origin);
     return cells;
+  }
+
+  /** 问题行［重试］/［更新］之后：叫那条流当场重拨（断着就不等退避），再问一次状态。失败就抛。 */
+  async reconnect(origin: string): Promise<void> {
+    await commands.backend_start({ origin });
+    await this.paintStatus(origin);
   }
 
   /** 画一台：后端清单还没到 ⇒ 等 `refresh`；清单里没有 ⇒ 说没登记；有 ⇒ 问状态。 */
@@ -780,15 +790,6 @@ export class BackendSection {
     }
   }
 
-  /** 宿主喂进来的那台版本（后端报的；没报 ⇒ `null`）。 */
-  setVersion(origin: string, version: string | null): void {
-    this.versions.set(origin, version);
-  }
-
-  private versionOf(origin: string): string | null {
-    return this.versions.get(origin) ?? null;
-  }
-
   /** 画一次状态，并把「通道在不在」返回给 `settleStatus` 判落定。查不到回 `null`。 */
   private async paintStatus(origin: string): Promise<boolean | null> {
     const cells = this.cellHosts.get(origin);
@@ -799,12 +800,14 @@ export class BackendSection {
       const st = await commands.backend_status({ origin });
       const on = st.channel === true;
       const word = on ? copyText("backend.status.connected") : copyText("backend.status.notConnected");
-      const ver = this.versionOf(origin);
+      const machine = decodeMachineState(st.machine);
+      const ver = machine?.version ?? null;
       state.textContent = ver ? `${ver}${copyText("kit.text.sep")}${word}` : word;
       state.dataset.on = String(on);
       for (const b of cells.querySelectorAll<HTMLElement>("[data-op]")) b.style.display = (b.dataset.op === "start") === on ? "none" : "";
       if (on) void this.paintDrift(origin);
       this.onChannel?.(origin, on);
+      this.onMachine?.(origin, machine);
       if (on && !isLocalOrigin(origin)) this.noteRemoteLink(origin);
       // 那个值问那台机器的后端要（**每次现问**，不用上一次的）；问不到就是 `null`。
       let answer: ExitAnswer | null;

@@ -20908,11 +20908,6 @@
       "zh": "{n} 台",
       "args": ["n"]
     },
-    "machineList.count.offline": {
-      "kind": "body",
-      "zh": "{n} 台 · {a} 台离线",
-      "args": ["n",  "a"]
-    },
     "machineCard.conn.more": {
       "kind": "title",
       "zh": "更多：备用地址 · 跳板机",
@@ -21277,6 +21272,156 @@
       "kind": "body",
       "zh": "版本 {ver} · {state}",
       "args": ["ver", "state"]
+    },
+    "machineState.down.resolve": {
+      "kind": "body",
+      "zh": "连接失败 · 地址无法解析",
+      "args": []
+    },
+    "machineState.down.unreachable": {
+      "kind": "body",
+      "zh": "连接失败 · 端口不通",
+      "args": []
+    },
+    "machineState.down.timeout": {
+      "kind": "body",
+      "zh": "连接失败 · 无应答",
+      "args": []
+    },
+    "machineState.down.auth": {
+      "kind": "body",
+      "zh": "连接失败 · 密钥被拒",
+      "args": []
+    },
+    "machineState.down.keyUnreadable": {
+      "kind": "body",
+      "zh": "连接失败 · 私钥读不出",
+      "args": []
+    },
+    "machineState.down.jump": {
+      "kind": "body",
+      "zh": "连接失败 · 跳板离线",
+      "args": []
+    },
+    "machineState.down.local": {
+      "kind": "body",
+      "zh": "本机连接失败",
+      "args": []
+    },
+    "machineState.word.connecting": {
+      "kind": "body",
+      "zh": "连接中",
+      "args": []
+    },
+    "machineState.word.hostKey": {
+      "kind": "body",
+      "zh": "指纹变更",
+      "args": []
+    },
+    "machineState.word.needsUpdate": {
+      "kind": "body",
+      "zh": "要更新",
+      "args": []
+    },
+    "machineState.word.newer": {
+      "kind": "body",
+      "zh": "版本较新",
+      "args": []
+    },
+    "machineState.word.unsupported": {
+      "kind": "body",
+      "zh": "不支持",
+      "args": []
+    },
+    "machineState.word.incomparable": {
+      "kind": "body",
+      "zh": "开发版",
+      "args": []
+    },
+    "machineState.problem.hostKey": {
+      "kind": "body",
+      "zh": "主机指纹变更 · 未连接",
+      "args": []
+    },
+    "machineState.problem.needsUpdate": {
+      "kind": "body",
+      "zh": "{machine} 要更新",
+      "args": ["machine"]
+    },
+    "machineState.problem.newer": {
+      "kind": "body",
+      "zh": "{machine} 版本较新 · 部分功能不可用",
+      "args": ["machine"]
+    },
+    "machineState.problem.noForwarding": {
+      "kind": "body",
+      "zh": "禁止端口转发 · 实时显示不可用",
+      "args": []
+    },
+    "machineState.problem.notUnix": {
+      "kind": "body",
+      "zh": "{machine} · 仅支持 Unix",
+      "args": ["machine"]
+    },
+    "machineState.fix.retry": {
+      "kind": "action",
+      "zh": "重试",
+      "args": []
+    },
+    "machineState.fix.compareFingerprint": {
+      "kind": "action",
+      "zh": "比对指纹…",
+      "args": []
+    },
+    "machineState.fix.update": {
+      "kind": "action",
+      "zh": "更新",
+      "args": []
+    },
+    "machineState.fix.failed": {
+      "kind": "title",
+      "zh": "操作失败",
+      "args": []
+    },
+    "machineList.count.off": {
+      "kind": "body",
+      "zh": "{a} 台离线",
+      "args": ["a"]
+    },
+    "machineList.count.update": {
+      "kind": "body",
+      "zh": "{b} 台要更新",
+      "args": ["b"]
+    },
+    "rsConfig.machine.noHost": {
+      "kind": "error",
+      "zh": "{name} · 需填地址 · 未保存",
+      "args": ["name"]
+    },
+    "rsConfig.machine.noUser": {
+      "kind": "error",
+      "zh": "{name} · 需填用户 · 未保存",
+      "args": ["name"]
+    },
+    "rsConfig.machine.port": {
+      "kind": "error",
+      "zh": "{name} · 端口 1–65535 · 未保存",
+      "args": ["name"]
+    },
+    "rsConfig.machine.nameTaken": {
+      "kind": "error",
+      "zh": "{name} 已存在 · 未保存",
+      "args": ["name"]
+    },
+    "addMachine.field.userHelp": {
+      "kind": "body",
+      "zh": "ssh 登录用户",
+      "args": []
+    },
+    "addMachine.field.portHelp": {
+      "kind": "body",
+      "zh": "1–65535 · 默认 22",
+      "args": []
     }
   }
 }

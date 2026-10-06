@@ -819,6 +819,16 @@ export class MachineCard {
       ?.remove();
   }
 
+  /** 问题行［更新］：把这一版换到这台上（失败就抛，宿主说一句）。 */
+  async update(): Promise<void> {
+    await commands.deploy_remote_backend({ cfg: this.collect() });
+  }
+
+  /** 问题行［推送公钥…］。 */
+  pushKey(): void {
+    void this.onPushPubkey(this.testButton);
+  }
+
   /** ⋯ →「新建会话…」。 */
   openLauncher(): void {
     this.openLauncherDialog();

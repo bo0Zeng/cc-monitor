@@ -465,6 +465,10 @@ body.settings-window-mode .settings-panel {
   color: var(--error);
 }
 
+.machine-problem[data-severity="warn"] > svg {
+  color: var(--warn);
+}
+
 /* 机器页卡头。 */
 .machine-head {
   margin-bottom: var(--space-6);
@@ -799,6 +803,7 @@ body.settings-window-mode .settings-panel {
   font-size: var(--font-size-small);
 }
 
+/* 每格都留着下方那一行（有提示写提示、没有就空着，错误句换在同一行），行距因此处处一样。 */
 .add-machine-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

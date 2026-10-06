@@ -206,6 +206,7 @@ export function defaultWorld(): World {
     machines: [LOCAL, ...REMOTES],
     unseenMachines: [],
     closedMachines: [],
+    staleMachines: [],
     config: defaultConfig(),
     sessions,
     ops: { ...defaultOps(), ...historyOps(), ...machineOps() },

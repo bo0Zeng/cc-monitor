@@ -46,7 +46,8 @@ pub(crate) enum AttachErr {
     /// 那台不是 Unix（后端脱离不了）⇒ **永久不支持**：记在那台的连接状态里，
     /// 不再自动按退避重连；界面出声，用户点「起」（`backend_start`）才再试一次。
     /// 那台 sshd 不许端口转发（控制隧道被回拒 `administratively_prohibited`）同属这一形：重试不会变，要那台改配置。
-    Unsupported(String),
+    /// 第二格是那台状态成品里的原因码（`machine_state::NOT_UNIX` · `NO_FORWARDING`）。
+    Unsupported(String, &'static str),
     /// 别的失败 ⇒ 照常按退避重连。
     Failed(String),
 }
@@ -61,7 +62,7 @@ impl AttachErr {
     /// 给人看的那句。
     pub(crate) fn said(self) -> String {
         match self {
-            AttachErr::Unsupported(s) | AttachErr::Failed(s) => s,
+            AttachErr::Unsupported(s, _) | AttachErr::Failed(s) => s,
         }
     }
 }
@@ -97,10 +98,10 @@ pub(crate) fn parse_answer(
                     copy_text("rsRemoteResident.ensure.noReason", &[])
                 });
             if err["code"] == "unsupported" {
-                Err(AttachErr::Unsupported(copy_text(
-                    "rsRemoteResident.ensure.unsupported",
-                    &[("why", &msg)],
-                )))
+                Err(AttachErr::Unsupported(
+                    copy_text("rsRemoteResident.ensure.unsupported", &[("why", &msg)]),
+                    crate::machine_state::NOT_UNIX,
+                ))
             } else {
                 Err(AttachErr::Failed(msg))
             }
@@ -339,10 +340,10 @@ where
         match open().await {
             Ok(s) => return Ok(s),
             Err((_, Some(code))) if code == FORWARDING_PROHIBITED => {
-                return Err(AttachErr::Unsupported(copy_text(
-                    "rsRemoteResident.tunnel.forwardingProhibited",
-                    &[],
-                )));
+                return Err(AttachErr::Unsupported(
+                    copy_text("rsRemoteResident.tunnel.forwardingProhibited", &[]),
+                    crate::machine_state::NO_FORWARDING,
+                ));
             }
             Err((e, _)) => last = e,
         }

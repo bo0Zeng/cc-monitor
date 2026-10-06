@@ -266,6 +266,7 @@ async fn ask_plan_for(
                 },
             )?;
     let plan = decode_plan(&data.ok_or_else(|| copy_text("rsSftp.plan.internal", &[]))?)?;
+    crate::machine_state::note_os(&cfg.origin_label(), plan.key.os.label());
     // 第一次连一台没钉过指纹的机器就在这一跳 ⇒ 照 monitor 自己开链路那几条同一个判定固化。
     crate::dial_host::settle_host_key(cfg, &dial, &plan.ack);
     Ok(plan)

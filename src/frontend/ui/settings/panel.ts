@@ -41,6 +41,7 @@ import { createUnknownKeysBar, rerenderUnknownKeys } from "./unknown-keys-notice
 import { getCurrentMachine, setCurrentMachine } from "./machine-context";
 import { LOCAL_ORIGIN, isLocalOrigin } from "../ipc/origin";
 import { toast } from "../kit/toast"; // 行为设置落盘失败出声
+import { machineFace, type MachineFix, type MachineState } from "./machine-state";
 import {
   LOCAL_MACHINE_PAGE_ID,
   MACHINE_PAGE_PREFIX,
@@ -276,8 +277,8 @@ export class SettingsPanel {
   private remoteSection?: RemoteSection;
   /** P2s（C8）：backend 开关区。打开面板时 refresh 一次，重拉每台机的状态。 */
   private backendSection?: BackendSection;
-  /** 后端报来的各台版本（按后端那套名字）。 */
-  private readonly versionOf = new Map<string, string | null>();
+  /** 后端报来的各台状态成品（按后端那套名字）。 */
+  private readonly machineOf = new Map<string, MachineState>();
   /** 「终端」栏「直接敲的 claude 也走中转」那一块：回到机器页时展开过就重问。 */
   private relayOptin?: RelayOptinSection;
 
@@ -628,8 +629,44 @@ export class SettingsPanel {
   private ccSummary(origin: string, connected: boolean | null): string {
     if (connected === null) return "";
     const state = connected ? copyText("machinePage.cc.summaryUp") : copyText("machinePage.cc.summaryDown");
-    const ver = this.versionOf.get(origin) ?? null;
+    const ver = this.machineOf.get(origin)?.version ?? null;
     return ver ? copyText("machinePage.cc.summaryVer", { ver, state }) : state;
+  }
+
+  /**
+   * 照后端的状态成品画那台（导航点 · 列表那一行 · 卡头 · 第二行的系统与版本）。
+   * 收不下 / 没问到 ⇒ 不动（「连上没有」那一路照旧画）。
+   */
+  private paintMachine(origin: string, m: MachineState | null): void {
+    if (m === null) return;
+    this.machineOf.set(origin, m);
+    const local = isLocalOrigin(origin);
+    const pageId = local ? LOCAL_MACHINE_PAGE_ID : this.remoteSection?.pageIdOfMachine(origin);
+    if (!pageId) return;
+    const machine = local ? copyText("remote.cards.local") : origin;
+    const face = machineFace(m, machine);
+    this.remoteSection?.setFacts(origin, { os: m.os, version: m.version, dev: m.versionRelation === "incomparable" });
+    this.remoteSection?.setMachine(pageId, m);
+    this.router.setNavDot(pageId, face.dot, face.word ? `${machine} · ${face.word}` : copyText("settingsNav.dot.up", { machine }));
+    const page = this.machinePages.get(pageId);
+    if (!page) return;
+    page.setDisabled(m.state === "disabled");
+    if (m.state !== "disabled") page.setMachine(face);
+    page.setCcSummary(this.ccSummary(origin, this.channelOf.get(origin) ?? null));
+    const meta = this.remoteSection?.metaOfPage(pageId);
+    if (meta !== undefined && meta !== null) page.setMeta(meta);
+  }
+
+  /** 问题行上交到宿主的修法：重试（叫那条流当场重拨）· 更新（换上这一版，再重拨）。 */
+  private async runFix(pageId: string, fix: MachineFix): Promise<void> {
+    const origin = pageId === LOCAL_MACHINE_PAGE_ID ? LOCAL_ORIGIN : this.remoteSection?.originOfPage(pageId);
+    if (!origin) return;
+    try {
+      if (fix === "update") await this.remoteSection?.updateMachine(pageId);
+      await this.backendSection?.reconnect(origin);
+    } catch (e) {
+      toast(copyText("machineState.fix.failed"), e instanceof Error ? e.message : String(e));
+    }
   }
 
   /** 导航里那台机器前的点：连着 · 离线 · 没问到。 */
@@ -1006,6 +1043,7 @@ export class SettingsPanel {
         hosted: true,
         onLinkSeen: (origin) => this.remoteSection?.noteLedgerChanged(origin),
         onChannel: (origin, connected) => this.paintNavDot(origin, connected),
+        onMachine: (origin, machine) => this.paintMachine(origin, machine),
       });
       this.backendSection = backend;
     } catch (e) {
@@ -1083,6 +1121,7 @@ export class SettingsPanel {
               this.machinePages.get(id)?.open(section);
             },
             refreshMachine: (origin) => void this.backendSection?.refreshOrigin(origin),
+            runFix: (id, fix) => void this.runFix(id, fix),
             machinesReconciled: () => {
               for (const [origin, c] of this.channelOf) this.paintNavDot(origin, c);
               void this.backendSection?.refresh();
