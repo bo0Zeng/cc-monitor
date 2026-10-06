@@ -1,1261 +1,884 @@
-// A3：设置面板「账号」组（多账号；账号库由那台机器的后端建立和维护）。占用原「远端」空占位组。
-//
-// 展示某台远端的账号列表（名/邮箱/mode/登录态/configDir/默认）+ 设为默认 / 复制 configDir /
-// 刷新。**只读 + 改本机默认账号**（写 config.json，不碰远端 manifest、不注入、不重启——A4/A5）。
-// 部署引导（未启用时）留 A6 填；本组先给出"如何启用"的说明与 manifest 路径。
-//
-// 设置窗独立于主窗、拿不到活跃会话，故用远端选择器（多台时下拉）。改默认账号后
-// emit(SETTINGS_APPLIED_EVENT) 让主窗状态栏 chip 同步。
-import { getCurrentMachine, subscribeMachine } from "./machine-context";
+/**
+ * 机器页「账号」栏：`{machine} 上的账号 · 新会话默认 X` ＋ 一张表（一号一行，44 高：头像 · 名 ＋ 默认 · 种类 · `5h` · `7d` · 动作 · ⋯），
+ * 点行展开详情（命令 · API key · 默认模型 · 账号目录 · 删除）。本机远端同一张表，差别只在「打开账号目录」是文件夹还是文件窗口。
+ *
+ * 判定全在那台后端：清单与登录态（`accounts-list`）· 删了默认号之后谁接（`meta.nextDefault`）· 用量（`quota-read`）·
+ * 对不上的几处（`accounts-verify`，打开时顺手核一次）· 命令名（别名清单里认作这个号的那几条，`aliases-read` 的 `groups`）·
+ * 能不能开终端窗口（壳那一处）。这里只排版、只认最后一趟回答（切机器快过读时，晚到的整份作废）。
+ * 那台账号清单 / 凭据 / 用量一变，后端推一帧（`accounts-changed` · `quota-changed`），这一页自己重读。
+ */
 import { emit } from "@tauri-apps/api/event";
-import { openTerminal } from "../terminal-open";
-import { readApikeyStatus, writeApikeyKey, type ApikeyCredentialsStatus, type ApikeyRoutingView } from "../apikey-reads";
-import { LOCAL_ACCOUNTS_COPY, deriveUi, currentWorkingAccount, isSelectable, accountStatusBadge, accountLoginActionLabel, apikeyEndpointStateFor, type ApikeyEndpointState, type AccountsState, type Account } from "../accounts";
-import { fetchAccounts, fetchLocalAccounts, fetchLocalApikeyRouting, fetchMachineApikeyRouting, invalidateAccountsCache } from "../account-reads";
-import { getModelForAccount, setModelForAccount } from "../account-prefs";
-import { accountAvatarEl } from "../account-color";
-import { hostKey, readRemoteConfig, type RemoteHostConfig } from "../remote-config";
-import { toast } from "../kit/toast";
-// 本机那一支新长的字全走文案表：一处取文，判据按表逐条量。
-import { copyText } from "../copy-table";
-// 本机那个串（后端那个本机表示），以及「本机刻意不开终端窗口」那句话的跨语言标记（唯一住址在 `remote-launch-run.ts`）。
-import { LOCAL_ORIGIN as BACKEND_LOCAL_ORIGIN } from "../backend-policy";
-import { isLocalOrigin, type Origin } from "../ipc/origin";
-import { POSIX_NO_WINDOW_MARKER } from "../remote-launch-run";
-// 别名那一块与用户级 PATH 那一格都搬去了机器页「本机 → 工具 → 别名」
-//—— 两者是同一个问题（「这台机器的终端怎么找到 ccm」）的两条路。
-// A2：新建账号那张表单。
-import { renderNewAccountForm, type NewAccountRequest } from "./account-new-form";
-import { renderSharedMcp } from "./accounts-mcp-block";
-import { SETTINGS_APPLIED_EVENT } from "./events";
+import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { recordFacet, LOCAL_MACHINE_KEY } from "./machine-status";
-import { rereadAliases } from "./machine-aliases";
-// 改账号库的那几件都问这一页那台机器的后端（本机远端同一条路）。
-import {
-  accountsAdd,
-  accountsInit,
-  accountsLoginCmd,
-  accountsRemove,
-  accountsRepair,
-  accountsSetDefault,
-  accountsRollback,
-  accountsVerify,
-  validateAcctName,
-  type AccountChange,
-} from "../account-ops";
-import { confirmDialog } from "../kit/dialog";
+import { SETTINGS_APPLIED_EVENT, OPEN_ACCOUNT_PANEL_EVENT } from "./events";
+import { renderNewAccountForm, checkBaseUrl, type NewAccountForm, type NewAccountRequest } from "./account-new-form";
+import { openLoginWindow, loginInTmux } from "./account-login";
+import { localShell } from "./machine-aliases";
+import { accountRowKind, deriveUi, effectiveDefault, type Account, type AccountsState } from "../accounts";
+import { fetchAccounts, invalidateAccountsCache, launchAgentId } from "../account-reads";
+import { setModelForAccount, getModelForAccount } from "../account-prefs";
+import { accountAvatarEl } from "../account-color";
+import { readQuota } from "../quota-reads";
+import { fmtAt, slotLabel, type QuotaRead } from "../quota-lines";
+import type { QuotaShow } from "../generated/QuotaShow";
+import { localTzMin } from "../acct-view";
+import { readAliases } from "../alias-reads";
+import { writeApikeyKey } from "../apikey-reads";
+import { revealInFolder } from "../reveal-in-folder";
+import { openFileWindow } from "../file-window";
+import { findHostByOrigin, readRemoteConfig, type RemoteHostConfig } from "../remote-config";
+import { bindEvents } from "../events";
+import { accountsAdd, accountsInit, accountsRemove, accountsRepair, accountsRollback, accountsSetDefault, accountsVerify, validateAcctName, type VerifyReport } from "../account-ops";
+import { confirmDialog, type ConfirmFn } from "../kit/dialog";
+import { button, buttonRow, setBusy, setDisabled } from "../kit/button";
+import { banner } from "../kit/banner";
+import { emptyState } from "../kit/empty";
+import { skeletonRows } from "../kit/skeleton";
+import { field } from "../kit/field";
+import { openMenu, type MenuItem } from "../kit/menu";
+import { spinner } from "../kit/progress";
+import { tag } from "../kit/badge";
+import { toast } from "../kit/toast";
+import { copyText } from "../copy-table";
 import { machineName, saidOfControl } from "../control-said";
+import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 
-/**
- * apikey 那一格要显的**一个账号**。只带界面真正用得到的三样。
- *
- * ⚠⚠ `K-H2c` `KH2C1`：`configDir` 在前端是一个**不透明串** —— 前端一个字都不解析它，
- * 原样递给那条命令，由 Rust 用**全仓唯一那份规则**（`history::apikey_account_id_of_dir`）
- * 推出账号 id。前端自己从那个路径里取末段名，就是在长**第二份**规则，
- * ⚠ 这句话**刻意不写成代码形状** —— `accounts-section.vitest.ts` 里那条机检
- * （标题以「KH2C1 机检：前端一个字都不推账号 id」打头的那个 `it`）
- * 扫的是整份文件（含注释），写成代码形状会让它红在一句注释上。
- * 漂开的那天症状是「设置里说这个号用 apikey 表里那一行、起会话时没用上」，而两边看起来都没错。
- * 由那条机检钉着。
- *
- * ⚠ 上面两处原先都点着
- * `the_ui_never_derives_the_account_id_itself`〔散文墓碑〕—— **那个名字全仓零定义**。
- * 真正钉这件事的是一条**中文标题**的 `it`，它本来就没有 snake_case 名字，
- * 而这两处一直**当现状在说**。
- */
-export interface ApikeyEditorAccount {
-  /** 显示用的名字（**只用来显示**，绝不当成 id 递给后端）。 */
-  name: string;
-  /** 递给后端那条命令的不透明串。 */
-  configDir: string;
-  /** apikey 表里今天有没有它那一行 —— `KH2B7` 的答案，**后端算的**。 */
-  routed: boolean;
+/** 一趟读回来的那一台（都是那台后端的成品；读不到的那一格是 `null`）。 */
+interface Facts {
+  origin: Origin;
+  state: AccountsState;
+  quota: QuotaRead | null;
+  verify: VerifyReport | null;
+  /** 号名 ⇒ 别名清单里认作它的那几条命令名。 */
+  commands: Map<string, string[]>;
+  /** 机器表里没有这台 ⇒ 没连上过（不去问）。 */
+  unknown: boolean;
 }
 
-/**
- * `K-H2a` `KS6` 前端那一半：**第三方 API key 那份文件**的一块（apikey 表，不是中转的东西 ——
- * 用户 09 月裁「中转层不要有账号，账号就账号、中转就中转」）。
- *
- * 🔴 关键二：**这一块里不再有账号下拉。**
- * 它原先自带一个 `<select>` 选「配给哪个账号」—— 于是「哪个账号」在界面上被问两次
- * （账号表一次、这里一次），那正是「apikey 端点表与账号 manifest 在后端是两份，界面照着抄成
- * 两个控件」。⇒ 配 key 变成**账号那一行自己的一格**（[`renderApikeyEditor`]），
- * 这一块只剩**文件本身**的事：
- *
- * - `KS9`：**把那份文件的路径显出来** —— 一个「能手编但没人知道在哪」的文件等于不能手编。
- * - `KS11`：权限过宽 / 查不出来时**在界面上出声**（件计划定的是「出声」不是「拒绝」）。
- * - 文件读坏了**不许静默当成「没配」**。
- * - `KH2C3`：**顶层那一把**（历史格式那一行）单独一行显 —— 它说的不是任何一个账号。
- */
-export function renderApikeyFileBlock(status: ApikeyCredentialsStatus): HTMLElement {
-  const box = document.createElement("div");
-  box.className = "apikey-file-block";
-
-  const title = document.createElement("div");
-  title.className = "apikey-file-title";
-  title.textContent = copyText("accounts.apikeyFile.title");
-  box.appendChild(title);
-
-  // `KS9`：路径要能被找到，人才改得动它。
-  const where = document.createElement("div");
-  where.className = "apikey-file-path";
-  where.textContent = copyText("accounts.apikeyFile.path", { path: status.path });
-  where.title = copyText("accounts.apikeyFile.editHint");
-  box.appendChild(where);
-
-  // `KS11`：过宽 / 查不出来要**在界面上显出来**。
-  if (status.notice) {
-    const warn = document.createElement("div");
-    warn.className = "apikey-file-notice";
-    warn.textContent = status.notice;
-    box.appendChild(warn);
-  }
-  // 文件读坏了（人手编打错一个逗号）——**不许静默当成「没配」**。
-  if (status.problem) {
-    const bad = document.createElement("div");
-    bad.className = "apikey-file-problem";
-    bad.textContent = status.problem;
-    box.appendChild(bad);
-  }
-  // ★ `KH2C3`：**顶层那一把**（历史格式那一行）单独一行显。它读得出来，
-  //   但界面不再往那儿写 —— 与每一行上「这个号配没配」是**两件事**，不许合成一行。
-  if (status.configured) {
-    const legacy = document.createElement("div");
-    legacy.className = "apikey-file-legacy";
-    legacy.textContent = copyText("accounts.apikeyFile.legacyTop", { masked: status.masked });
-    box.appendChild(legacy);
-  }
-  return box;
+/** 注入缝（判据换掉确认框）。 */
+export interface AccountsSectionOptions {
+  confirm?: ConfirmFn;
 }
 
-/**
- * 关键二：**某一个账号**的第三方 API key —— 账号那一行展开出来的一格。
- *
- * 「哪个账号」由它挂在哪一行回答，**不再有下拉**。
- *
- * # ★★ **永不回显**（`KS6`）
- *
- * 「配好之后，后端**永远**不把明文回给前端；界面只显示掩码或『已配置』。**要改就重新输。**」
- * ⇒ 结构上做不到回显，两道：
- *   ① 入参里**没有明文那个字段**（[`ApikeyEditorAccount`] 只有 name / configDir / routed）；
- *   ② 输入框**从不预填**（`value` 一次都不被赋非空值），存之前先清空。
- * 由 `accounts-section.vitest.ts` 里 `KS6` 那一族钉住，含一条**源码扫描**。
- */
-export function renderApikeyEditor(
-  a: ApikeyEditorAccount,
-  onSave: (key: string, configDir: string) => void | Promise<void>,
-): { editor: HTMLElement; toggle: HTMLButtonElement } {
-  const box = document.createElement("div");
-  box.className = "accounts-row-apikey";
-  // 默认收着；由同一个函数里造的那颗按钮开合（`hidden` 与类名写在同一处，
-  // `css-conventions` 的 S30 ⑦ 那把尺子才推得出它切的是哪个类）。
-  box.hidden = true;
-  const toggle = document.createElement("button");
-  toggle.type = "button";
-  toggle.className = "accounts-row-apikey-toggle";
-  toggle.textContent = a.routed ? copyText("accounts.apikeyEditor.replace") : copyText("accounts.apikeyEditor.add");
-  toggle.setAttribute("aria-expanded", "false");
-  toggle.addEventListener("click", () => {
-    box.hidden = !box.hidden;
-    toggle.setAttribute("aria-expanded", String(!box.hidden));
-  });
-
-  const state = document.createElement("div");
-  state.className = "accounts-row-apikey-state";
-  state.textContent = a.routed
-    ? copyText("accounts.apikeyEditor.hasRow", { name: a.name })
-    : copyText("accounts.apikeyEditor.noRow", { name: a.name });
-  box.appendChild(state);
-
-  const input = document.createElement("input");
-  input.type = "password";
-  input.className = "accounts-row-apikey-input";
-  input.autocomplete = "off";
-  // ★★ **这里刻意什么都不做** —— 不预填、不 placeholder 回显掩码。
-  input.placeholder = a.routed ? copyText("accounts.apikeyEditor.replaceHint") : copyText("accounts.apikeyEditor.pasteHint");
-  box.appendChild(input);
-
-  const save = mkBtn(copyText("accounts.apikeyEditor.save"));
-  save.className = "accounts-row-apikey-save";
-  save.addEventListener("click", () => {
-    const v = input.value.trim();
-    if (!v) return;
-    // 先清空再交出去：**明文在 DOM 里停留的时间越短越好**（截图 / 录屏那两个出口）。
-    input.value = "";
-    void onSave(v, a.configDir);
-  });
-  box.appendChild(save);
-  return { editor: box, toggle };
-}
+/** 推来的帧合并成一次重读的间隔。 */
+const PUSH_COALESCE_MS = 300;
 
 export class AccountsSection {
   readonly element: HTMLElement;
-  private body: HTMLElement;
-  private hosts: RemoteHostConfig[] = [];
-  /** 每趟重读一个号；切机器快过读时，晚到的那一趟作废。 */
+  private readonly titleEl: HTMLElement;
+  private readonly subEl: HTMLElement;
+  private readonly newBtn: HTMLButtonElement;
+  private readonly formSlot: HTMLElement;
+  private readonly body: HTMLElement;
+  private readonly confirm: ConfirmFn;
+  private origin: Origin = LOCAL_ORIGIN;
+  /** 每趟重读一个号；晚到的那一趟作废。 */
   private seq = 0;
-  /** 在看哪台机器（本机 = `LOCAL_ORIGIN`；初值由 `init` 从共用 store 取）。 */
-  private origin: Origin = BACKEND_LOCAL_ORIGIN;
-  /** U7：维护区展开态。null=用户还没表态（默认折叠）；true/false=用户手动开合过，reload 后保持。 */
-  private maintOpen: boolean | null = null;
+  /** 展开着的行（按「机器 ＋ 号」记，重读后不收起）。 */
+  private readonly open = new Set<string>();
+  /** 这次开着窗口时为它开过登录窗口的号（那一行「等待终端登录…」＋［重新打开登录窗口］）。 */
+  private readonly waiting = new Set<string>();
+  /** 开不了终端窗口的号（那一行改说「本机无法开终端窗口」＋［在 tmux 里登录］）。 */
+  private readonly noWindow = new Set<string>();
+  /** 这次窗口里修复过的机器（警告条 ⋯ 里才有「恢复到修复之前」）。 */
+  private readonly repaired = new Set<Origin>();
+  private form: NewAccountForm | null = null;
+  private facts: Facts | null = null;
+  private pushTimer: ReturnType<typeof setTimeout> | null = null;
+  private subscribed = false;
+  /** 宿主调过 `loadNow` 没有（之前切机器只记下，不发 I/O）。 */
+  private loaded = false;
+  /** 机器表（这一次打开里读一次；问到表里没有的那台再重读一次）。 */
+  private hosts: Promise<RemoteHostConfig[] | null> | null = null;
 
-  constructor() {
+  constructor(opts: AccountsSectionOptions = {}) {
+    this.confirm = opts.confirm ?? confirmDialog;
     const root = document.createElement("div");
-    root.className = "settings-group settings-accounts";
-
-    // 顶部：远端选择 + 刷新
-    const bar = document.createElement("div");
-    bar.className = "accounts-bar";
-    // E59：**这里原来有一个 origin 下拉，已删。**
-    //
-    // 本分节只作为「机器详情页」上的一块存在（`panel.ts` 的 `perMachineBlocks`，
-    // 唯一的构造点）。页头已经说了「你在看哪台机器」，分节里再放一个选择器就是**两层上下文**——
-    // 而且它能指向与页头**不同**的那台，写动作又按分节自己的 `this.origin` 定目标
-    // ⇒ **在标着 A 的页面上把东西写进 B**，`router.activeId` 仍是 A、界面上看不出来。
-    //
-    // 选「删」而不是「藏」：这次重做的整条论证就是
-    // 「机器是中心对象、上下文由页面给」，留一个能绕过页面上下文的入口，
-    // 等于把地基判据降级成约定。⇒ `origin` **只能**来自共用 store。
-    const refresh = document.createElement("button");
-    refresh.type = "button";
-    refresh.className = "accounts-refresh";
-    refresh.textContent = copyText("accounts.ctor.refresh");
-    refresh.addEventListener("click", () => {
-      // 本机远端都清（与账号 chip 同一条：缓存的键就是 origin，本机也一样）。
-      invalidateAccountsCache(this.origin);
+    root.className = "acct-page";
+    const head = document.createElement("div");
+    head.className = "acct-head";
+    this.titleEl = document.createElement("h3");
+    this.titleEl.className = "acct-head-title";
+    this.subEl = document.createElement("span");
+    this.subEl.className = "acct-head-sub";
+    const right = document.createElement("div");
+    right.className = "acct-head-actions";
+    this.newBtn = button({ label: copyText("acctPage.head.new"), icon: "plus", size: "compact", onClick: () => this.toggleForm() });
+    const refresh = button({
+      label: copyText("acctPage.head.refresh"),
+      kind: "icon",
+      icon: "refresh",
+      size: "compact",
+      hint: copyText("acctPage.head.refresh"),
+      onClick: () => void this.reload(true),
+    });
+    right.append(this.newBtn, refresh);
+    head.append(this.titleEl, this.subEl, right);
+    this.formSlot = document.createElement("div");
+    this.formSlot.className = "acct-form-slot";
+    this.body = document.createElement("div");
+    this.body.className = "acct-body";
+    root.append(head, this.formSlot, this.body);
+    root.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && this.form && this.formSlot.contains(ev.target as Node)) {
+        ev.stopPropagation();
+        void this.form.dismiss();
+      }
+    });
+    this.element = root;
+    subscribeMachine((origin) => {
+      if (!this.loaded || origin === this.origin) return;
+      this.origin = origin;
+      this.closeForm();
       void this.reload(true);
     });
-    bar.appendChild(refresh);
-    root.appendChild(bar);
-
-    this.body = document.createElement("div");
-    this.body.className = "accounts-body";
-    root.appendChild(this.body);
-
-    this.element = root;
-
-    /**
-     * S4a：把本分节的 origin 选择接到**共用**的「当前在看哪台机器」store 上。
-     *
-     * 病因见 `machine-context.ts` 头注：这四块此前各维护一份 `this.origin`，
-     * 用户在一处切了机器，另外三处还停在上一台 —— 而它们讲的是同一台机器。
-     *
-     * **收到 `null`（本机）**：原先这里写的是「本分节的下拉只列远端，收到 `null` 就原地不动」。
-     * 下拉早删了（E59），本机那一支也早有了（`N-F1b`）⇒ `null` 就切到本机那一支
-     * （见 [`followMachine`]）。
-     */
-    subscribeMachine((origin) => this.followMachine(origin));
-    // ST1「延后加载」：构造期不再 `void this.init()` —— 见 `loadNow()`。
   }
 
-  /**
-   * ST1「延后加载」（**子页内容只在该子页可见时才发 I/O**）：
-   * 构造期不再发 I/O；宿主（`panel.ts`）在**某台机器的子页第一次可见**时调它。
-   * 重开设置后宿主会再调一次（重开要看新读数）。
-   */
+  /** 宿主在这一栏第一次可见时调（重开设置再调一次）。 */
   loadNow(): void {
-    void this.init();
-  }
-
-  private async init(): Promise<void> {
-    await this.readHosts();
-    // 🔴 **初值只认共用 store**：`null` 就是本机（`machine-context.ts` 头注）。
-    //    这里原先是 `getCurrentMachine() ?? pickPrimaryOrigin(...) ?? hosts[0]` —— E59 留的
-    //    「兜底落点」。而 store 的初值恰好是 `null`（本机页一出现 per-machine 那几块就落在它上面，
-    //    `panel.ts` 的 S4b-2 那句注释逐字说两者对齐）⇒ 配了远端的机器上，**本机页这一节显的是
-    //    主远端的账号**，本机那一支（与 A3 的两条本机命令）在那种机器上一次都走不到。
-    //    「认不认得这台」在画之前核（[`reloadInner`]）；机器表读失败就不核。
+    this.loaded = true;
+    this.hosts = null;
     this.origin = getCurrentMachine();
-    await this.reload(false);
-  }
-
-  /** 读机器表（不管「启用远端模式」开没开：关着时远端页照样讲的是那台）。 */
-  private async readHosts(): Promise<void> {
-    this.hosts = (await readRemoteConfig()).hosts;
-  }
-
-  /** 机器表里没有这台。表是空的（没配远端，或读不到）就不核：读不到不等于这台不在。 */
-  private unknown(origin: string): boolean {
-    return this.hosts.length > 0 && !this.hosts.some((h) => hostKey(h) === origin);
-  }
-
-  /**
-   * S4a：跟随共用 store 切机器。见构造里那段注释。
-   *
-   * `null`（本机）原先在这里**原地不动**（「本分节表示不了」）—— 那句话自 `N-F1b`
-   * 起就不成立了（`origin` 为空时走本机那一支），留着它的后果是：从 devbox 那一页切回本机页，
-   * 这一节还停在 devbox 的账号上。⇒ 本机也跟。
-   */
-  private followMachine(origin: Origin): void {
-    // 认不认得这台在 [`reloadInner`] 里核：原地不动的话，新加的机器页上显的是上一台的表、删号删到上一台。
-    if (this.origin === origin) return;
-    this.origin = origin;
+    // 每次（重）开都看新读数：不吃账号缓存。
     void this.reload(true);
+    void this.subscribe();
   }
 
-  /**
-   * 给状态账本记 `accounts` 那一格（远端按那台的名字，本机按 `LOCAL_MACHINE_KEY`）。
-   * 读不出来 / 后端不在 / 没启用 / 读到了几个号 —— 每一档写法各不相同，「还差什么」那张清单才说得清缺的是哪一件。
-   */
-  private note(origin: Origin, facet: "accounts", state: { kind: "ok" | "fail" | "na"; detail?: string }): void {
+  private readHosts(fresh = false): Promise<RemoteHostConfig[] | null> {
+    if (fresh || this.hosts === null) {
+      this.hosts = readRemoteConfig().then(
+        (c) => c.hosts,
+        () => null,
+      );
+    }
+    return this.hosts;
+  }
+
+  /** 每台订 `accounts-changed` ＋ `quota-changed`：一来就合并成一次重读（只重读此刻在看的那台）。 */
+  private async subscribe(): Promise<void> {
+    if (this.subscribed) return;
+    this.subscribed = true;
+    // 机器表读不到：只订本机。
+    const origins: Origin[] = [LOCAL_ORIGIN, ...((await this.readHosts()) ?? []).map((h) => h.label)];
+    const pushed = (): void => {
+      if (this.pushTimer !== null) clearTimeout(this.pushTimer);
+      this.pushTimer = setTimeout(() => {
+        this.pushTimer = null;
+        void this.reload(true, true);
+      }, PUSH_COALESCE_MS);
+    };
+    try {
+      await bindEvents({ onLine: () => {}, onSessionEnded: () => {}, onAccountsChanged: pushed, onQuotaChanged: pushed }, { accounts: origins, quota: origins });
+    } catch (e) {
+      console.warn("[accounts] 订不上账号推送：", e);
+    }
+  }
+
+  private key(name: string, origin: Origin = this.origin): string {
+    return `${origin}\u0000${name}`;
+  }
+
+  // ───────────────────────────── 读 ─────────────────────────────
+
+  /** `quiet`：推来的 / 动作之后的那一趟不画骨架（原位换）。 */
+  private async reload(force: boolean, quiet = false): Promise<void> {
+    const my = ++this.seq;
+    const origin = this.origin;
+    this.titleEl.textContent = copyText("acctPage.head.title", { machine: machineName(origin) });
+    if (!quiet || this.facts?.origin !== origin) {
+      this.facts = null;
+      this.subEl.textContent = "";
+      this.body.replaceChildren(skeletonRows(3));
+      this.body.setAttribute("aria-busy", "true");
+    }
+    if (force) invalidateAccountsCache(origin);
+    const facts = await this.read(origin, force);
+    if (my !== this.seq) return;
+    this.body.removeAttribute("aria-busy");
+    this.facts = facts;
+    this.paint(facts);
+  }
+
+  private async read(origin: Origin, force: boolean): Promise<Facts> {
+    const empty = new Map<string, string[]>();
+    if (!isLocalOrigin(origin)) {
+      let hosts = await this.readHosts();
+      // 表是空的（没配远端，或读不到）就不核：读不到不等于这台不在。同一次打开里刚加进机器表的那台：再读一次。
+      if (hosts !== null && hosts.length > 0 && findHostByOrigin(hosts, origin) === null) hosts = await this.readHosts(true);
+      if (hosts !== null && hosts.length > 0 && findHostByOrigin(hosts, origin) === null) {
+        const state: AccountsState = { origin, available: false, error: null, oldBackend: false, meta: null, accounts: [], notice: null };
+        return { origin, state, quota: null, verify: null, commands: empty, unknown: true };
+      }
+    }
+    const state = await fetchAccounts(origin, force);
+    if (!state.available || deriveUi(state).kind !== "ready") {
+      return { origin, state, quota: null, verify: null, commands: empty, unknown: false };
+    }
+    const shell = isLocalOrigin(origin) ? (localShell() ?? "posix") : "posix";
+    const [quota, verify, aliases] = await Promise.all([
+      readQuota(origin).catch(() => null),
+      accountsVerify(origin).catch(() => null),
+      readAliases(origin, shell, null).catch(() => null),
+    ]);
+    const commands = new Map<string, string[]>();
+    aliases?.aliases.forEach((a, i) => {
+      const g = aliases.groups[i];
+      if (g) commands.set(g.account, [...(commands.get(g.account) ?? []), a.name]);
+    });
+    return { origin, state, quota, verify, commands, unknown: false };
+  }
+
+  /** 给状态账本记那台的 `accounts` 那一格（远端按名字，本机按 `LOCAL_MACHINE_KEY`）。 */
+  private note(facet: "accounts", origin: Origin, state: { kind: "ok" | "fail" | "na"; detail?: string }): void {
     recordFacet(isLocalOrigin(origin) ? LOCAL_MACHINE_KEY : origin, facet, state);
   }
 
-  /** 〔缺口二〕空态里 `accounts` 那一格：没启用 ⇒ 缺；启用着（零个号）⇒ 读到了。 */
-  private enabledFacet(enabled: boolean): { kind: "ok" | "fail"; detail: string } {
-    return enabled
-      ? { kind: "ok", detail: copyText("accounts.status.read") }
-      : { kind: "fail", detail: copyText("accounts.status.multiOff") };
-  }
+  // ───────────────────────────── 画 ─────────────────────────────
 
-  private async reload(force: boolean): Promise<void> {
-    const my = ++this.seq;
-    const origin = this.origin;
-    this.body.innerHTML = "";
-    // 🔴 ST1「切机器 pending」：一次切机器 = 这一块重读一趟（远端是一次 SSH 往返）。
-    //    原先这段时间这一块是**空的** —— 与「这台机器没有账号」在屏幕上分不开。
-    //    ⇒ 先挂一行「正在读」，读回来（成或败）那一刻撤掉。
-    const pending = document.createElement("div");
-    pending.className = "accounts-info";
-    pending.dataset.pending = "accounts";
-    pending.setAttribute("aria-busy", "true");
-    pending.textContent = copyText("accounts.reload.reading", { machine: isLocalOrigin(origin) ? copyText("accounts.who.local") : origin });
-    this.body.appendChild(pending);
-    // 画进一块还没挂上的容器；读完时还是最新这一趟才换上去（晚到的整份作废）。
-    const out = document.createElement("div");
-    try {
-      await this.reloadInner(force, origin, out);
-    } finally {
-      if (my === this.seq) {
-        pending.remove();
-        this.body.append(...out.childNodes);
-      }
-    }
-  }
-
-  private async reloadInner(force: boolean, origin: Origin, out: HTMLElement): Promise<void> {
-    if (isLocalOrigin(origin)) {
-      // `N-F1b`：这里原先逐字印
-      // 「没有已配置的远端。账号功能在远端 Linux 上——先在「连接」组配一台远端。」
-      // 然后早返回。那句话在一台**本来就有账号**的机器上是一句坏话：它把「这一节
-      // 没接上本机那条路」说成了「你缺一台远端 Linux」，而账号今天就读得出来
-      //（定框 `N1` 09-05 订正段 / `N-F1` 摸底）。⇒ 换成走本机那条路。
-      await this.reloadLocal(force, out);
+  private paint(f: Facts): void {
+    const machine = machineName(f.origin);
+    const out: HTMLElement[] = [];
+    setDisabled(this.newBtn, null);
+    if (f.unknown) {
+      setDisabled(this.newBtn, copyText("acctPage.never.newHint"));
+      out.push(this.emptyCard(copyText("acctPage.never.title", { machine }), copyText("acctPage.never.hint")));
+      this.body.replaceChildren(...out);
       return;
     }
-    if (this.unknown(origin)) {
-      // 同一次打开里刚存进机器表的那台：再读一次机器表。还不在（空白机器）⇒ 不去问、照实说。
-      await this.readHosts();
-      if (this.unknown(origin)) {
-        AccountsSection.info(out, copyText("accounts.machine.notConnected", { machine: origin }));
-        return;
+    const s = f.state;
+    // 这一次没问到：有上次的 ⇒ 画上次的（只读）＋ 警告条；没有 ⇒ 照实说。
+    if (!s.available) {
+      setDisabled(this.newBtn, copyText("acctPage.offline.hover"));
+      this.note("accounts", f.origin, { kind: "fail", detail: s.oldBackend ? copyText("accounts.status.backendOld") : copyText("accounts.status.pullFailed") });
+      const last = s.last ?? null;
+      const retry = button({ label: copyText("acctPage.offline.retry"), size: "compact", onClick: () => void this.reload(true) });
+      const text = last
+        ? copyText("acctPage.offline.bar", { machine, ago: agoText(Date.now() - last.atMs) })
+        : copyText("acctPage.offline.noLast", { machine, why: s.error ?? "" });
+      out.push(banner("warn", text, [retry]));
+      if (last && last.accounts.length > 0) {
+        const def = last.accounts.find((a) => a.isDefault) ?? last.accounts[0];
+        this.subEl.textContent = copyText("acctPage.head.default", { name: def.name });
+        out.push(this.table({ ...f, state: { ...s, meta: last.meta, accounts: last.accounts } }, true));
       }
-    }
-    let state: AccountsState;
-    try {
-      state = await fetchAccounts(origin, force);
-    } catch (e) {
-      this.note(origin, "accounts", { kind: "fail", detail: copyText("accounts.status.pullFailed") });
-      AccountsSection.info(out, copyText("accounts.status.pullFailedBody", { e: String(e) }));
+      this.body.replaceChildren(...out);
       return;
     }
-    const ui = deriveUi(state);
-    switch (ui.kind) {
-      // 🔴 `K-R59`：这里原来还有一支 `case "hidden"`，把账号那一格记成 `na`、理由「用户显式选的降级」。
-      //    那一档（`daemonless`）整格没了 ⇒ 支也没了。
-      case "needs-update":
-        this.note(origin, "accounts", { kind: "fail", detail: copyText("accounts.status.backendOld") });
-        AccountsSection.info(out, copyText("accounts.status.backendOldBody", { reason: ui.reason }));
-        return;
-      // 没问出来 ≠ 要更新：照实说查询失败与原因。
-      case "query-failed":
-        this.note(origin, "accounts", { kind: "fail", detail: copyText("accounts.status.queryFailed") });
-        AccountsSection.info(out, copyText("accounts.status.queryFailedBody", { reason: ui.reason }));
-        return;
-      case "not-enabled":
-        // 这台做不了多账号（后端判、说那一句）⇒ 一开始就说，不摆启用那一套；这一格是「不适用」，不是「缺」。
-        if (state.meta?.unsupported) {
-          this.note(origin, "accounts", { kind: "na", detail: state.meta.unsupported });
-          AccountsSection.info(out, state.meta.unsupported);
-          return;
-        }
-        // 〔缺口二〕启用没启用记在 accounts（启用着只是零个号 ⇒ 读到了）。
-        this.note(origin, "accounts", this.enabledFacet(state.meta?.enabled === true));
-        this.renderInitWizard(out, origin, ui.manifestPath, ui.reason, "remote");
-        return;
-      case "ready":
-        this.note(origin, "accounts", { kind: "ok", detail: copyText("accounts.status.count", { n: ui.accounts.length }) });
-        await this.renderTable(out, origin, state, ui.accounts, ui.notice);
-        return;
+    // 这台做不了多账号（后端答的）⇒ 一张卡，不摆启用表单。
+    if (s.meta?.unsupported) {
+      setDisabled(this.newBtn, s.meta.unsupported);
+      this.note("accounts", f.origin, { kind: "na", detail: s.meta.unsupported });
+      out.push(this.emptyCard(copyText("acctPage.unsupported.title"), copyText("acctPage.unsupported.hint")));
+      this.body.replaceChildren(...out);
+      return;
     }
+    const ui = deriveUi(s);
+    if (ui.kind !== "ready") {
+      setDisabled(this.newBtn, copyText("acctPage.notEnabled.newHint"));
+      this.note("accounts", f.origin, s.meta?.enabled ? { kind: "ok", detail: copyText("accounts.status.read") } : { kind: "fail", detail: copyText("accounts.status.multiOff") });
+      out.push(this.enableCard(f.origin));
+      this.body.replaceChildren(...out);
+      return;
+    }
+    this.note("accounts", f.origin, { kind: "ok", detail: copyText("accounts.status.count", { n: ui.accounts.length }) });
+    const def = effectiveDefault(s);
+    this.subEl.textContent = def ? copyText("acctPage.head.default", { name: def.name }) : "";
+    const v = this.verifyBar(f);
+    if (v) out.push(v);
+    if (ui.notice) out.push(banner("warn", ui.notice));
+    out.push(this.table(f, false), this.pointer(f.origin));
+    this.body.replaceChildren(...out);
   }
 
-  /**
-   * `N-F1b`：**本机页讲的是这台机器。** 本机那一支自己一条渲染路（本机那一页的字一句「远端」都不许出现），
-   * 而改账号库那几件与远端同一条路：问本机后端（`account-ops.ts`，`origin` = 本机）。
-   *
-   * # 三个结局，一个都不许合并
-   *
-   * 读不出来 / 一个号都没有 / 有号 —— 前两个长得像但完全不是一回事：
-   * 把「读不出来」渲染成「你没有账号」，用户会去启用一个他已经启用了的东西。
-   * 由 `NF1bD1` 那一族的两条「诚实降级」判据钉着。每一档往账本里记的 `accounts` 那一格也各不相同。
-   *
-   * ⚠ **诚实边界**：前端分不出后端那三档里的 `NoBackend` 与 `Unreadable`（两者一起是 `available:false` ＋ 一句 `error`），
-   * 所以这里的档名说的是**面板看得见的那三档**。
-   */
-  private async reloadLocal(force: boolean, out: HTMLElement): Promise<void> {
-    const local = BACKEND_LOCAL_ORIGIN;
+  private emptyCard(text: string, hint: string): HTMLElement {
     const box = document.createElement("div");
-    box.className = "accounts-local";
-    out.appendChild(box);
-    AccountsSection.line(box, "accounts-meta accounts-local-head", LOCAL_ACCOUNTS_COPY.heading);
-
-    let state: AccountsState;
-    try {
-      state = await fetchLocalAccounts(force);
-    } catch (e) {
-      // 档三：**读不动** —— 那条 Promise 直接 rejected，命令根本没跑通。
-      this.note(local, "accounts", { kind: "fail", detail: copyText("accounts.local.unreadable") });
-      this.localFail(box, String(e));
-      return;
-    }
-    if (!state.available) {
-      // 档二：**后端不在** —— 后端答了「不可用」，那句原因在 `state.error` 里。
-      this.note(local, "accounts", { kind: "fail", detail: copyText("accounts.local.noBackend") });
-      this.localFail(box, state.error ?? LOCAL_ACCOUNTS_COPY.unknownReason);
-      return;
-    }
-    if (!state.meta?.enabled && state.meta?.unsupported) {
-      // 这台做不了多账号（后端判、说那一句）⇒ 一开始就说，不摆启用那一套；这一格是「不适用」，不是「缺」。
-      this.note(local, "accounts", { kind: "na", detail: state.meta.unsupported });
-      AccountsSection.line(box, "accounts-info accounts-local-unsupported", state.meta.unsupported);
-      return;
-    }
-    if (!state.meta?.enabled || state.accounts.length === 0) {
-      // 档一的空态：没启用 ⇒ accounts 缺（启用没启用住这一格）；启用着只是零个号 ⇒ 读到了。
-      this.note(local, "accounts", this.enabledFacet(state.meta?.enabled === true));
-      AccountsSection.line(box, "accounts-info accounts-local-empty-title", LOCAL_ACCOUNTS_COPY.emptyTitle);
-      if (!state.meta?.enabled) {
-        this.renderInitWizard(box, local, state.meta?.manifestPath ?? null, state.meta?.error ?? "", "local");
-      } else {
-        AccountsSection.line(box, "accounts-hint accounts-local-empty-next", LOCAL_ACCOUNTS_COPY.emptyNext);
-        box.appendChild(this.localNewForm());
-      }
-      return;
-    }
-
-    // 档一：**读出来了**，而且这台机真的启用着隔离账号。
-    this.note(local, "accounts", { kind: "ok", detail: copyText("accounts.status.count", { n: state.accounts.length }) });
-    AccountsSection.line(
-      box,
-      "accounts-meta accounts-local-count",
-      `${state.accounts.length} ${LOCAL_ACCOUNTS_COPY.countSuffix} · ` +
-        `${LOCAL_ACCOUNTS_COPY.manifestPrefix} ${state.meta.manifestPath}`,
-    );
-    // 「当前账号」在本机与远端是**同一格**（那台账号库清单里的默认号），
-    // 所以这里就用那个既有的纯函数，不长第二套判定。
-    const cur = currentWorkingAccount(state);
-    const table = document.createElement("div");
-    table.className = "accounts-local-table";
-    // 本机这一半的两格事实（apikey 表里有没有它那一行 · 本机中转在不在跑）问后端要。
-    const routing = await this.readLocalRouting(state.accounts);
-    for (const a of state.accounts) {
-      table.appendChild(
-        this.localRow(a, cur?.name === a.name, routing ? apikeyEndpointStateFor(a, routing) : undefined),
-      );
-    }
-    box.appendChild(table);
-    AccountsSection.line(box, "accounts-hint accounts-local-hint", copyText("accountsLocal.list.scope"));
-    // 本机也能新建账号：与远端同一张表单、同一条 `accounts-add`，只是问的是本机后端。
-    box.appendChild(this.localNewForm());
-    box.appendChild(renderSharedMcp(BACKEND_LOCAL_ORIGIN));
-    box.appendChild(this.renderMaintenance(local));
-  }
-
-  /** 本机那一页的新建表单：两句提示换成本机的话（本机 Linux 不开终端窗口）。 */
-  private localNewForm(): HTMLElement {
-    return renderNewAccountForm(BACKEND_LOCAL_ORIGIN, (req) => this.createAccount(BACKEND_LOCAL_ORIGIN, req), {
-      subscription: copyText("accountsLocal.new.subscriptionHint"),
-      apikey: copyText("accountsLocal.new.apikeyHint"),
-    });
-  }
-
-  /**
-   * 读不出来时那一格。
-   *
-   * ⚠ **原因一定要带出来**：一个不说原因的失败，用户修不了；
-   * 而 `fetchLocalAccounts` 的两条失败路（invoke 抛错 / `available:false`）
-   * 都带着后端给的那句话。
-   */
-  private localFail(box: HTMLElement, why: string): void {
-    AccountsSection.line(
-      box,
-      "accounts-info accounts-local-fail",
-      `${LOCAL_ACCOUNTS_COPY.loadFailed}：${why}`,
-    );
-  }
-
-  /** 一行文本。`cls` 里第一个类名一律取既有的那几个（`accounts-info` / `accounts-hint` / `accounts-meta`），第二个是本机那一支自己的钩子。 */
-  private static line(parent: HTMLElement, cls: string, text: string): HTMLElement {
-    const el = document.createElement("div");
-    el.className = cls;
-    el.textContent = text;
-    parent.appendChild(el);
-    return el;
-  }
-
-  /**
-   * 本机那两格事实：问本机后端（经通道 `apikey-routing`）。
-   *
-   * ⚠ **问不到就是 `null`，不是「表里没有」**：`null` 让徽章走「没被告知 ⇒ 不替它下判断」那一支；
-   * 当成空表的话，一个其实配好了的号会被说成「apikey 凭据文件里没有这个账号的一行」。
-   * 回来的形状不对（桥接层异常）同样按「没问到」算。
-   */
-  private async readLocalRouting(accounts: Account[]): Promise<ApikeyRoutingView | null> {
-    const dirs = accounts.map((a) => a.configDir).filter((d): d is string => !!d);
-    if (dirs.length === 0) return null;
-    try {
-      const r = await fetchLocalApikeyRouting(dirs);
-      return Array.isArray(r?.routed) && typeof r?.running === "boolean" ? r : null;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * 本机清单里的一行。**只读** —— 这一件不做切号，也不做加号。
-   *
-   * 徽章的 `endpoint` 是本机后端答的两格事实（`apikey-routing`，由 `apikeyEndpointStateFor` 摊到这个号上）。
-   * 问不到 / 账号 0（没有 configDir）⇒ 不传，徽章「不替它下判断」。
-   */
-  private localRow(a: Account, isCurrent: boolean, relay?: ApikeyEndpointState): HTMLElement {
-    const row = document.createElement("div");
-    row.className = isCurrent ? "accounts-local-row current" : "accounts-local-row";
-    row.appendChild(accountAvatarEl(a.name, { size: 16, ghost: !isSelectable(a) }));
-    AccountsSection.line(row, "accounts-local-row-name", a.name);
-    AccountsSection.line(row, "accounts-local-row-email", a.email);
-
-    const badge = accountStatusBadge(a, relay);
-    const badgeEl = AccountsSection.line(
-      row,
-      badge.warn ? "accounts-local-row-badge warn" : "accounts-local-row-badge",
-      badge.text,
-    );
-    if (badge.title) badgeEl.title = badge.title;
-
-    // 账号 0（`mode: "bare"`）没有 configDir —— 那一格空着，不许编一个出来。
-    AccountsSection.line(row, "accounts-local-row-dir", a.configDir ?? "");
-    // 「当前」与操作两格每行都有（空着也占位）：行是 subgrid，格数要等于表的轨道数，不然多出来的那格折到下一行。
-    AccountsSection.line(row, "accounts-local-row-mark", isCurrent ? LOCAL_ACCOUNTS_COPY.currentMark : "");
-    const acts = document.createElement("span");
-    acts.className = "accounts-local-row-actions";
-    row.appendChild(acts);
-    // 有自己目录的号才有「去登录」「删除」（账号 0 没有目录；in-place 那种旧号的目录就是共享库，删不得）。
-    if (a.configDir && a.mode !== "in-place") {
-      const login = mkBtn(accountLoginActionLabel(a).label);
-      login.addEventListener("click", () => void this.loginAccount(BACKEND_LOCAL_ORIGIN, a));
-      acts.appendChild(login);
-      const del = mkBtn(copyText("accounts.row.remove"));
-      del.classList.add("danger");
-      del.addEventListener("click", () => void this.removeAccount(BACKEND_LOCAL_ORIGIN, a));
-      acts.appendChild(del);
-    }
-    return row;
-  }
-
-  /**
-   * 在终端里起 claude 登录一个号（那一行是那台后端答的，claude 自己的登录界面）。
-   * 远端：弹一个终端连过去跑；本机 Linux 刻意不开窗口（按后端自己的声明判，不按 OS 猜）⇒ 那一行复制给人自己跑。
-   */
-  private async openLogin(origin: Origin, cmd: string): Promise<void> {
-    try {
-      await openTerminal(origin, cmd);
-      toast(copyText("accounts.login.launched"), copyText("accounts.login.launchedNext"), {
-        level: "info",
-      });
-    } catch (err) {
-      let copied = true;
-      try {
-        await navigator.clipboard.writeText(cmd);
-      } catch {
-        copied = false; // 那一行在提示里照样看得见，可以手动复制
-      }
-      const byDesign = String(err).includes(POSIX_NO_WINDOW_MARKER);
-      const headline = byDesign
-        ? copied
-          ? copyText("accountsLocal.new.noWindowCopied")
-          : copyText("accountsLocal.new.noWindowNotCopied")
-        : copied
-          ? copyText("accountsLocal.new.failedCopied")
-          : copyText("accountsLocal.new.failedNotCopied");
-      toast(headline, copyText("accountsLocal.new.pasteBody", { reason: String(err), cmd }), {
-        level: byDesign ? "info" : "error",
-      });
-    }
-  }
-
-  /** 行上的「去登录」：问那台后端要登录那一行，交给开终端那一步。 */
-  private async loginAccount(origin: Origin, a: Account): Promise<void> {
-    let cmd: string;
-    try {
-      cmd = await accountsLoginCmd(origin, a.name);
-    } catch (e) {
-      toast(copyText("accounts.login.failed"), saidOfControl(e), { level: "error" });
-      return;
-    }
-    await this.openLogin(origin, cmd);
-  }
-
-  /** 行上的「删除」：确认（默认号多说一句）→ 那台后端删（只删它自己的目录，先备份）。 */
-  private async removeAccount(origin: Origin, a: Account): Promise<void> {
-    const machine = machineName(origin);
-    const msg = a.isDefault
-      ? copyText("accounts.remove.confirmDefault", { machine, name: a.name })
-      : copyText("accounts.remove.confirm", { machine, name: a.name });
-    const confirm = { title: copyText("accounts.remove.title", { name: a.name }), action: copyText("accounts.remove.action"), danger: true, body: msg };
-    if (!(await confirmDialog(confirm))) return;
-    try {
-      const done = await accountsRemove(origin, a.isDefault ? { name: a.name, force: true } : { name: a.name });
-      this.changed(origin, copyText("accounts.remove.done", { name: a.name }), done);
-    } catch (e) {
-      toast(copyText("accounts.remove.failed"), saidOfControl(e), { level: "error" });
-    }
-  }
-
-
-  /**
-   * A6：未启用 → 内联「启用多账号」：给现在这个登录起个名字 → 那台后端预演（将要做的那几步上屏）→ 确认 → 它建库。
-   * 本机远端同一张（`where` 只换引言那一句：本机那一页不说「远端」）。
-   */
-  private renderInitWizard(parent: HTMLElement, origin: Origin, manifestPath: string | null, reason: string, where: "local" | "remote"): void {
-    const box = document.createElement("div");
-    box.className = "accounts-not-enabled";
-
-    const h = document.createElement("div");
-    h.className = "accounts-ne-title";
-    h.textContent = where === "local" ? copyText("accountsLocal.init.title") : copyText("accounts.notEnabled.title");
-    box.appendChild(h);
-
-    const p = document.createElement("div");
-    p.className = "accounts-ne-body";
-    p.textContent =
-      where === "local"
-        ? copyText("accountsLocal.init.intro", { path: manifestPath ?? copyText("accounts.notEnabled.noPath") })
-        : copyText("accounts.notEnabled.intro", { reason, path: manifestPath ?? copyText("accounts.notEnabled.noPath") });
-    box.appendChild(p);
-
-    const wiz = document.createElement("div");
-    wiz.className = "accounts-wizard";
-    const field = document.createElement("div");
-    field.className = "accounts-wiz-field";
-    const label = document.createElement("label");
-    label.textContent = copyText("accounts.notEnabled.defaultName");
-    const input = document.createElement("input");
-    input.type = "text";
-    input.className = "accounts-wiz-name";
-    input.placeholder = copyText("accounts.notEnabled.defaultNameHint");
-    field.append(label, input);
-    const err = document.createElement("div");
-    err.className = "accounts-wiz-err";
-    field.appendChild(err);
-    wiz.appendChild(field);
-
-    // 将要做的那几步（那台后端预演的原话，只读）。
-    const preview = document.createElement("pre");
-    preview.className = "accounts-wiz-preview";
-    wiz.appendChild(preview);
-
-    const btns = document.createElement("div");
-    btns.className = "accounts-wiz-btns";
-    const bApply = mkBtn(copyText("accounts.notEnabled.enable"));
-    bApply.classList.add("danger");
-    btns.append(bApply);
-    wiz.appendChild(btns);
-
-    // 输入一变就问一次预演，只认最后一次的答案（序号，零定时器）。
-    let asked = 0;
-    let planned: AccountChange | null = null;
-    const sync = (): void => {
-      const name = input.value.trim();
-      const v = validateAcctName(name);
-      err.textContent = name && !v.ok ? v.reason : "";
-      bApply.disabled = true;
-      planned = null;
-      const my = ++asked;
-      if (!v.ok) {
-        preview.textContent = copyText("accounts.init.previewEmpty");
-        return;
-      }
-      void accountsInit(origin, { name, dryRun: true }).then(
-        (plan) => {
-          if (my !== asked) return;
-          planned = plan;
-          preview.textContent = [copyText("accountNewForm.form.willRun"), ...plan.steps, ...plan.notes].join("\n");
-          bApply.disabled = false;
-        },
-        (e: unknown) => {
-          if (my !== asked) return;
-          preview.textContent = copyText("accounts.init.previewEmpty");
-          err.textContent = saidOfControl(e);
-        },
-      );
-    };
-    input.addEventListener("input", sync);
-    bApply.addEventListener("click", () => {
-      const name = input.value.trim();
-      const plan = planned;
-      if (!plan || !validateAcctName(name).ok) return;
-      void (async () => {
-        const msg = copyText("accounts.init.confirm", { machine: machineName(origin), name, steps: stepList(plan) });
-        if (!(await confirmDialog({ title: copyText("accounts.init.title", { machine: machineName(origin) }), action: copyText("accounts.init.action"), body: msg }))) return;
-        bApply.disabled = true;
-        try {
-          const done = await accountsInit(origin, { name });
-          this.changed(origin, copyText("accounts.init.done", { name }), done);
-        } catch (e) {
-          toast(copyText("accounts.init.failed"), saidOfControl(e), { level: "error" });
-          bApply.disabled = false;
-        }
-      })();
-    });
-    sync();
-
-    box.appendChild(wiz);
-    parent.appendChild(box);
-  }
-
-
-  /**
-   * account-ux U7：顶部「当前账号」横幅——把 chip / tab 徽章上那个概念在设置里讲清楚:
-   * 它管什么(新会话 + 没指定过账号的 resume)、不管什么(正在跑的会话)。
-   * 当前账号**不可选**(未登录 / in-place / 目录缺失)时不装作有——那种状态下账号徽章的
-   * "不一致"判定本来就不生效(见 accounts.ts currentAccountForBadge),横幅得如实说,否则用户
-   * 会以为它在生效。
-   */
-  private renderCurrentBanner(def: Account | null): HTMLElement {
-    const box = document.createElement("div");
-    box.className = "accounts-current-banner";
-    // def 为 null 在 ready 分支下**不可达**（deriveUi 保证 accounts.length ≥ 1，effectiveDefault
-    // 则 find(isDefault) ?? accounts[0]）——这里只是防御，不给它编一套"未设置"的假文案。
-    const usable = def !== null && isSelectable(def);
-    if (!usable) box.classList.add("unusable"); // 语义=当前账号存在但不可用（非"没有当前账号"）
-
-    // 不可用时用 U5 已有的 ghost 态（"软/不作数"的既有视觉词汇），别再造新概念。
-    if (def) box.appendChild(accountAvatarEl(def.name, { size: 18, ghost: !usable }));
-
-    const main = document.createElement("div");
-    main.className = "accounts-current-main";
-    const name = document.createElement("span");
-    name.className = "accounts-current-name";
-    name.textContent = def ? def.name : copyText("accounts.banner.none");
-    main.appendChild(name);
-    if (def?.email) {
-      const email = document.createElement("span");
-      email.className = "accounts-current-email";
-      email.textContent = def.email;
-      main.appendChild(email);
-    }
-    box.appendChild(main);
-
-    const scope = document.createElement("span");
-    scope.className = "accounts-current-scope";
-    scope.textContent = usable
-      ? copyText("accounts.banner.scope")
-      : def
-        ? copyText("accounts.banner.unavailable")
-        : copyText("accounts.banner.pick");
-    box.appendChild(scope);
+    box.className = "acct-box";
+    box.appendChild(emptyState({ text, hint, icon: "empty" }));
     return box;
   }
 
-  private async renderTable(
-    out: HTMLElement,
-    origin: Origin,
-    state: AccountsState,
-    accounts: Account[],
-    notice: string | null = null,
-  ): Promise<void> {
-    const def = currentWorkingAccount(state);
-    out.appendChild(this.renderCurrentBanner(def));
-    // Z01：**能用但有缺**（那台后端旧到看不见账号 0）。列表本身是好的，
-    // 所以不走 needs-update 那条整体降级——但也**绝不静默**：少一行账号用户看不出来。
-    if (notice) {
-      const n = document.createElement("div");
-      n.className = "accounts-hint accounts-hint-warn";
-      n.textContent = notice;
-      out.appendChild(n);
-    }
-    const meta = state.meta;
-    if (meta) {
-      const info = document.createElement("div");
-      info.className = "accounts-meta";
-      info.textContent = copyText("accounts.table.summary", { n: accounts.length, path: meta.manifestPath, updated: meta.updatedAt ? copyText("accounts.table.updatedAt", { updatedAt: meta.updatedAt }) : "" });
-      out.appendChild(info);
-    }
-    // 🔴 关键二：apikey 是**账号那一行自己的一格** ⇒ 画表之前先问清
-    //    「哪几个号在 apikey 表里有一行」（`K-H2c` 口径①：问后端要，前端不推 id）。
-    const apikey = await this.readApikeyState(origin, accounts);
-    const table = document.createElement("div");
-    table.className = "accounts-table";
-    for (const a of accounts) {
-      const { row, editor } = await this.accountRow(
-        origin,
-        a,
-        def?.name === a.name,
-        apikey.entries.find((e) => e.configDir === a.configDir) ?? null,
-        apikey.routing ? apikeyEndpointStateFor(a, apikey.routing) : undefined,
-      );
-      table.appendChild(row);
-      if (editor) table.appendChild(editor);
-    }
-    out.appendChild(table);
-
-    const hint = document.createElement("div");
-    hint.className = "accounts-hint";
-    // 管辖范围那句已由上方横幅说了（U7 前这里是唯一出处）——这里只留横幅**没说**的部分，
-    // 别在同一屏里把同一句话逐字重复两遍。
-    hint.textContent =
-      copyText("accounts.table.switchScope");
-    out.appendChild(hint);
-
-    // F09 Phase D 审计（UX，建议）：批量对齐这个能力随 F09 整体删除后，没有任何地方告诉
-    // 老用户它去哪了——用户在 Ctrl+K 里搜不到会以为是 bug。加一行最低成本的静态提示，
-    // 别为这一件事新建一整套提示基础设施。
-    //
-    // 🔴 `N-F3`（09-05）订正：这条原来的头一句逐字写着「**本仓库没有任何 changelog/首次运行
-    // 提示机制**」——**今天那是假话**，而且写下它的时候就已经不全对了。
-    //
-    // ⚠ 「有几处」也是在报一个数 ⇒ **分母与量法都写出来**（量于 `2afe176`）：
-    //   分母 = `src` 下 205 个生产 `.ts`（去 `*.vitest.ts` / `*.test.ts`）；
-    //   词表 `首次运行|first-run|onboarding|向导|wizard` ⇒ **原始命中 16 处 / 8 个文件**。
-    //   16 处里**逐条看过**，属于「首次运行提示机制」的只有 1 处：
-    //     · `main.ts:606/612`（`2afe176` 上）—— 命令 chip 的首运行微高亮，
-    //       `LS_KEYS.cmdkHintSeen` ＋ `safeGet/safeSet`，非模态、见过即不再。
-    //   其余 15 处是别的意思的「向导 / wizard / onboarding」（A6 启用多账号的内联向导 ·
-    //   F08 安装向导 · 推公钥免密 · 部署向导措辞…）—— 它们是**配置向导**，
-    //   不是「第一次打开时说点什么」。⚠ 这一分归类是**判断**不是读数，别当机检结果读。
-    //   `N-F3` 本件之后再加 1 处：`first-run-hint.ts`（主窗口那条「还差什么」指路）。
-    //
-    // ⚠ 但**这一行的结论不变**：那两处都不是 changelog，「某个能力去哪了」今天仍然没有住址，
-    //    所以下面这行静态提示照留。订正的是那句全称，不是这段的做法。
-    const removedHint = document.createElement("div");
-    removedHint.className = "accounts-hint";
-    removedHint.textContent =
-      copyText("accounts.table.bulkGone");
-    out.appendChild(removedHint);
-
-    // K-H2a：第三方 API key 那份**文件**（路径 / 权限 / 读坏了 / 顶层那一把）。
-    // 挂在账号这一组里 —— 它是「用哪个身份打上游」这件事的一部分。配 key 本身在每一行上。
-    out.appendChild(apikey.fileBlock);
-
-    // 🔴 （A2）：**新建账号是一张常驻的表单**，不再藏在「维护」折叠组里、
-    //    也不再是红色按钮。岔口（订阅 / 第三方 apikey）在表单里问。
-    out.appendChild(renderNewAccountForm(origin, (req) => this.createAccount(origin, req)));
-
-    // 各账号共用的用户级 MCP（那台后端同步、这里只列名字与冲突）。
-    out.appendChild(renderSharedMcp(origin));
-
-    out.appendChild(this.renderMaintenance(origin));
-  }
-
-  /**
-   * A2：表单交上来一个新账号 ⇒ 那台后端一趟做完（建目录 · 链接 · 清单 · 凭据或 key · 别名）。
-   * 订阅号没导入凭据 ⇒ 接着在终端里起 claude 登录（那一行也是后端答的）；API 号的 key 没写进去 ⇒ 说出来，在那一行重填。
-   */
-  private async createAccount(origin: Origin, req: NewAccountRequest): Promise<void> {
-    let got: AccountChange;
-    try {
-      got = await accountsAdd(origin, req);
-    } catch (e) {
-      toast(copyText("accounts.add.failed"), saidOfControl(e), { level: "error" });
-      return;
-    }
-    this.changed(origin, copyText("accounts.add.done", { name: req.name }), got);
-    if (got.keyProblem) toast(copyText("accounts.add.keyFailed"), got.keyProblem, { level: "error" });
-    if (got.loginCmd) await this.openLogin(origin, got.loginCmd);
-  }
-
-  /** 唯一那一处把 key 交给后端的地方（行上的「保存」与表单的「建好后写」都走它）。`origin` 是画那一行时的那台。 */
-  private async writeApikey(
-    origin: Origin,
-    key: string,
-    configDir: string,
-    name: string,
-    // 只有表单「建好后写」那一路带它；行上的「保存」只配 key（后端那一格不碰）。
-    baseUrl?: string,
-  ): Promise<void> {
-    try {
-      // 经通道交那台机器的后端（`apikey-key-set`，账号 id 由后端推）；先前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕。
-      await writeApikeyKey(origin, configDir, key, baseUrl);
-      toast(copyText("accounts.writeApikey.done"), copyText("accounts.writeApikey.doneBody", { name }), {
-        level: "info",
-      });
-      void this.reload(true);
-    } catch (e) {
-      toast(copyText("accounts.writeApikey.failed"), String(e));
-    }
-  }
-
-  /**
-   * 读一次 apikey 那份文件的状态，并问后端「这几个号在不在 apikey 表里」。
-   *
-   * ⚠ **读失败不许静默**：凭据读不到时用户可能正打算配它 ⇒ 失败就把失败显出来
-   * （文件那一块换成一句读不到的原因；每一行上配 key 那一格照常能用 —— 写不依赖读）。
-   *
-   * # ⚠ `K-H2c` 三条口径，一条都别省
-   *
-   * ① **「这个号在不在 apikey 表里」是问后端要的**（`KH2B7` 那条既有命令），
-   *    前端不推账号 id、也不读那份凭据文件。它失败**不挡配 key** ——
-   *    那只影响状态那一行的措辞，而配 key 本身是这一格存在的理由。
-   * ② **没有 `configDir` 的账号（账号 0）不给这一格**：起会话那一侧对它逐字回 `None`
-   *    （`apikey_account_id` 头注：「说不出 id 就不注入」）⇒ 给它配一把 key 是配了也不生效。 〔散文墓碑〕
-   * ③ 这一页显的是 `this.origin` 那台机器的账号，读写那份文件的两条命令
-   *    （读：经通道 `apikey-read`；写：经通道 `apikey-key-set`）**按同一台机器**去
-   *    （画这张表时的那台）—— 远端页读写的是那台机器上那一份，不再是本机的。
-   *    「有没有行」（经通道 `apikey-routing`）同样问这一页那台机器。
-   */
-  private async readApikeyState(
-    origin: Origin,
-    accounts: Account[],
-  ): Promise<{ entries: ApikeyEditorAccount[]; fileBlock: HTMLElement; routing: ApikeyRoutingView | null }> {
-    const dirs = accounts.map((a) => a.configDir).filter((d): d is string => !!d);
-    let routing: ApikeyRoutingView | null = null;
-    try {
-      // 问**这一页那台机器**（远端由那台的后端答），不再问本机。
-      const r = dirs.length ? await fetchMachineApikeyRouting(origin, dirs) : null;
-      routing = r && Array.isArray(r.routed) && typeof r.running === "boolean" ? r : null;
-    } catch {
-      // 口径①：这一格失败只让状态那一行说「还没有它那一行」、徽章不替它下判断，不挡配 key。
-    }
-    const routed = routing?.routed ?? [];
-    const entries: ApikeyEditorAccount[] = accounts
-      .filter((a): a is Account & { configDir: string } => !!a.configDir)
-      .map((a) => ({ name: a.name, configDir: a.configDir, routed: routed.includes(a.configDir) }));
-    let fileBlock: HTMLElement;
-    try {
-      fileBlock = renderApikeyFileBlock(await readApikeyStatus(origin));
-    } catch (e) {
-      fileBlock = document.createElement("div");
-      fileBlock.className = "apikey-file-problem";
-      fileBlock.textContent = copyText("accounts.readApikey.failed", { e: String(e) });
-    }
-    return { entries, fileBlock, routing };
-  }
-
-  /**
-   * 维护区（默认折叠）：核对 · 修复 · 回滚 —— 都问这一页那台机器的后端。核对只读，结果就地列出来；
-   * 修复与回滚先预演、把将要做的那几步给人看一眼，确认了才让那台后端做（它先备份再改）。
-   */
-  private renderMaintenance(origin: Origin): HTMLElement {
-    const wrap = document.createElement("details");
-    wrap.className = "accounts-maint-wrap";
-    // 用户手动开合过就以用户的选择为准（reload 会重建 DOM，不记住的话展开态会被吞掉）。
-    wrap.open = this.maintOpen ?? false;
-    wrap.addEventListener("toggle", () => {
-      this.maintOpen = wrap.open;
-    });
-    const summary = document.createElement("summary");
-    summary.textContent = copyText("accounts.maintenance.title");
-    wrap.appendChild(summary);
-
+  /** 没启用多账号：名字框 ＋［启用］；点了先列要做的几步（那台预演）再确认。 */
+  private enableCard(origin: Origin): HTMLElement {
     const box = document.createElement("div");
-    box.className = "accounts-maint";
-    const ops = document.createElement("div");
-    ops.className = "accounts-maint-ops";
-    const out = document.createElement("div");
-    out.className = "accounts-maint-report";
-    const verifyBtn = mkBtn(copyText("accounts.maintenance.verify"));
-    verifyBtn.addEventListener("click", () => void this.runVerify(origin, verifyBtn, out));
-    const repairBtn = mkBtn(copyText("accounts.maintenance.sync"));
-    repairBtn.title = copyText("accounts.maintenance.syncHint");
-    repairBtn.addEventListener("click", () => void this.runRepair(origin, repairBtn));
-    const rollbackBtn = mkBtn(copyText("accounts.maintenance.rollback"));
-    rollbackBtn.title = copyText("accounts.maintenance.rollbackHint");
-    rollbackBtn.addEventListener("click", () => void this.runRollback(origin, rollbackBtn));
-    ops.append(verifyBtn, repairBtn, rollbackBtn);
-    box.append(ops, out);
-    wrap.appendChild(box);
-    return wrap;
-  }
-
-  /** 核对一遍，逐条列出来（+ 通过 · ! 提示 · x 要修 · - 跳过）。 */
-  private async runVerify(origin: Origin, btn: HTMLButtonElement, out: HTMLElement): Promise<void> {
-    btn.disabled = true;
-    out.innerHTML = "";
-    try {
-      const r = await accountsVerify(origin);
-      const head = document.createElement("div");
-      head.className = r.pass ? "accounts-verify-head" : "accounts-verify-head warn";
-      head.textContent = r.pass
-        ? copyText("accounts.verify.pass", { warns: String(r.warns) })
-        : copyText("accounts.verify.fail", { fails: String(r.fails), warns: String(r.warns) });
-      out.appendChild(head);
-      const mark = { ok: "+", warn: "!", fail: "x", skip: "-" } as const;
-      for (const c of r.checks) {
-        const line = document.createElement("div");
-        line.className = `accounts-verify-check ${c.level}`;
-        line.textContent = c.account ? `${mark[c.level]} ${c.account}：${c.text}` : `${mark[c.level]} ${c.text}`;
-        out.appendChild(line);
+    box.className = "acct-box acct-enable";
+    const t = document.createElement("div");
+    t.className = "acct-enable-title";
+    t.textContent = copyText("acctPage.notEnabled.title");
+    const hint = document.createElement("div");
+    hint.className = "acct-enable-hint";
+    hint.textContent = copyText("acctPage.notEnabled.hint");
+    const name = field({ label: copyText("acctPage.notEnabled.name"), placeholder: copyText("acctNew.name.example"), noteOnDemand: true });
+    const go = button({ label: copyText("acctPage.notEnabled.enable"), kind: "primary" });
+    go.addEventListener("click", () => {
+      const n = name.input.value.trim();
+      const ok = validateAcctName(n);
+      if (!ok.ok) {
+        name.setError(ok.reason);
+        return;
       }
-    } catch (e) {
-      toast(copyText("accounts.verify.failed"), saidOfControl(e), { level: "error" });
-    } finally {
-      btn.disabled = false;
-    }
+      name.setError(null);
+      void (async () => {
+        setBusy(go, copyText("acctPage.notEnabled.enabling"));
+        try {
+          const plan = await accountsInit(origin, { name: n, dryRun: true });
+          const yes = await this.confirm({
+            title: copyText("acctPage.notEnabled.confirmTitle", { machine: machineName(origin) }),
+            action: copyText("acctPage.notEnabled.enable"),
+            list: plan.steps,
+          });
+          if (!yes) return;
+          await accountsInit(origin, { name: n });
+          await this.reload(true);
+        } catch (e) {
+          name.setError(saidOfControl(e));
+        } finally {
+          setBusy(go, null);
+        }
+      })();
+    });
+    const row = document.createElement("div");
+    row.className = "acct-enable-row";
+    row.append(name.root, go);
+    box.append(t, hint, row);
+    return box;
   }
 
-  /** 修复：预演 → 没事可做就说一声；有事可做 ⇒ 列出那几步、确认了才做。 */
-  private async runRepair(origin: Origin, btn: HTMLButtonElement): Promise<void> {
-    btn.disabled = true;
+  /** 打开时顺手核过一次：有对不上的才出一条警告条 ＋［修复…］；这次窗口里修复过 ⇒ ⋯ 里有「恢复到修复之前」。 */
+  private verifyBar(f: Facts): HTMLElement | null {
+    const machine = machineName(f.origin);
+    const fails = f.verify?.checks.filter((c) => c.level === "fail") ?? [];
+    if (fails.length === 0) return null;
+    const first = fails[0];
+    const text = first.account ? copyText("acctPage.verify.bar", { name: first.account, what: first.text }) : copyText("acctPage.verify.barGlobal", { what: first.text });
+    const more = fails.length > 1 ? copyText("acctPage.verify.andMore", { n: fails.length - 1 }) : "";
+    const actions: HTMLElement[] = [button({ label: copyText("acctPage.verify.fix"), size: "compact", onClick: () => void this.repair(f.origin, machine) })];
+    if (this.repaired.has(f.origin)) {
+      actions.push(
+        button({
+          label: copyText("acctPage.verify.more"),
+          kind: "icon",
+          icon: "more",
+          size: "compact",
+              onClick: (ev) => {
+            openMenu({ el: ev.currentTarget as HTMLElement, align: "end" }, [{ label: copyText("acctPage.verify.rollback"), onClick: () => void this.rollback(f.origin) }]);
+          },
+        }),
+      );
+    }
+    return banner("warn", more ? `${text}${copyText("kit.text.sep")}${more}` : text, actions);
+  }
+
+  private async repair(origin: Origin, machine: string): Promise<void> {
     try {
       const plan = await accountsRepair(origin, { dryRun: true });
       if (plan.steps.length === 0) {
-        toast(copyText("accounts.repair.nothing"), plan.notes.join("\n") || copyText("accounts.repair.nothingBody"), {
-          level: "info",
-        });
+        toast(copyText("acctPage.verify.nothing", { machine }), "");
         return;
       }
-      const msg = copyText("accounts.repair.confirm", { machine: machineName(origin), steps: stepList(plan) });
-      if (!(await confirmDialog({ title: copyText("accounts.repair.title", { machine: machineName(origin) }), action: copyText("accounts.repair.action"), body: msg }))) return;
-      const done = await accountsRepair(origin, {});
-      this.changed(origin, copyText("accounts.repair.done"), done);
+      const yes = await this.confirm({
+        title: copyText("acctPage.verify.repairTitle", { machine }),
+        action: copyText("acctPage.verify.repair"),
+        body: copyText("acctPage.verify.repairBody"),
+        list: plan.steps,
+      });
+      if (!yes) return;
+      await accountsRepair(origin, {});
+      this.repaired.add(origin);
+      toast(copyText("acctPage.verify.repaired", { machine }), "");
     } catch (e) {
-      toast(copyText("accounts.repair.failed"), saidOfControl(e), { level: "error" });
-    } finally {
-      btn.disabled = false;
+      toast(copyText("acctPage.verify.failed", { machine }), saidOfControl(e), { level: "error" });
     }
+    await this.reload(true, true);
   }
 
-  /** 回滚最近一次改动（预演 → 确认 → 做）。 */
-  private async runRollback(origin: Origin, btn: HTMLButtonElement): Promise<void> {
-    btn.disabled = true;
+  private async rollback(origin: Origin): Promise<void> {
+    const machine = machineName(origin);
     try {
       const plan = await accountsRollback(origin, { dryRun: true });
-      const msg = copyText("accounts.rollback.confirm", {
-        machine: machineName(origin),
-        backup: plan.backup ?? "",
-        steps: stepList(plan),
-      });
-      if (!(await confirmDialog({ title: copyText("accounts.rollback.title", { machine: machineName(origin) }), action: copyText("accounts.rollback.action"), danger: true, body: msg }))) return;
-      const done = await accountsRollback(origin, plan.backup ? { backup: plan.backup } : {});
-      this.changed(origin, copyText("accounts.rollback.done"), done);
+      const yes = await this.confirm({ title: copyText("acctPage.verify.rollbackTitle", { machine }), action: copyText("acctPage.verify.rollback"), list: plan.steps });
+      if (!yes) return;
+      await accountsRollback(origin, plan.backup ? { backup: plan.backup } : {});
+      this.repaired.delete(origin);
     } catch (e) {
-      toast(copyText("accounts.rollback.failed"), saidOfControl(e), { level: "error" });
-    } finally {
-      btn.disabled = false;
+      toast(copyText("acctPage.verify.failed", { machine }), saidOfControl(e), { level: "error" });
     }
+    await this.reload(true, true);
   }
 
-  /** 一趟改动做完：说一句（改了几步 · 备份叫什么 · 别名加了 / 删了 / 跳过哪几条）、清缓存、重读。 */
-  private changed(origin: Origin, title: string, c: AccountChange): void {
-    const lines = [
-      c.backup ? copyText("accounts.change.backup", { n: String(c.steps.length), backup: c.backup }) : copyText("accounts.change.nothing"),
-      ...c.notes,
-    ];
-    // 别名文件那一步：后端说加了 / 删了 / 跳过哪几条，这里只套一句话。
-    const sep = copyText("accounts.change.nameSep");
-    for (const a of c.aliases) {
-      if (a.added.length) lines.push(copyText("accounts.change.aliasesAdded", { names: a.added.join(sep), path: a.path }));
-      if (a.removed.length) lines.push(copyText("accounts.change.aliasesRemoved", { names: a.removed.join(sep), path: a.path }));
-      if (a.skipped.length) lines.push(copyText("accounts.change.aliasesSkipped", { names: a.skipped.join(sep), path: a.path }));
-      if (a.note) lines.push(a.note);
+  /** 表下指路框：时间轴 · 默认轮换在主窗口的账号面板里（点了发一条事件，主窗口打开那台的账号面板并滚到那一节）。 */
+  private pointer(origin: Origin): HTMLElement {
+    const box = document.createElement("div");
+    box.className = "acct-pointer";
+    for (const [anchor, label] of [
+      ["timeline", copyText("acctPage.pointer.timeline")],
+      ["default-rotation", copyText("acctPage.pointer.rotation")],
+    ] as const) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "acct-pointer-link";
+      b.dataset.anchor = anchor;
+      b.textContent = label;
+      b.addEventListener("click", () => void emit(OPEN_ACCOUNT_PANEL_EVENT, { machine: origin, anchor }));
+      box.appendChild(b);
     }
-    toast(title, lines.join("\n"), { level: "info" });
-    invalidateAccountsCache(origin);
-    void this.reload(true);
-    // 增删号会改那台的别名清单：已经展开的别名块跟着重读。
-    rereadAliases(origin);
+    const t = document.createElement("span");
+    t.className = "acct-pointer-text";
+    t.textContent = copyText("acctPage.pointer.where");
+    box.appendChild(t);
+    return box;
   }
 
+  // ───────────────────────────── 表 ─────────────────────────────
 
-  /**
-   * 表里的一行。`apikey` 非空 ⇒ 这个号能配第三方 API key：操作列多一颗按钮，
-   * 点开的那一格（[`renderApikeyEditor`]）作为**这一行紧后面的兄弟**挂进表里，
-   * 不算这一行的列（`.accounts-row` 的子元素数 == grid 列数那条契约不动）。
-   */
-  private async accountRow(
-    origin: Origin,
-    a: Account,
-    isCurrent: boolean,
-    apikey: ApikeyEditorAccount | null = null,
-    endpoint?: ApikeyEndpointState,
-  ): Promise<{ row: HTMLElement; editor: HTMLElement | null }> {
-    const model = await getModelForAccount(origin, a.name); // F07：这台上这个号的默认模型偏好
+  private table(f: Facts, readonly: boolean): HTMLElement {
+    const list = document.createElement("div");
+    list.className = "acct-table";
+    list.setAttribute("role", "list");
+    if (readonly) list.dataset.readonly = "true";
+    const now = f.quota?.now ?? Math.floor(Date.now() / 1000);
+    const tz = localTzMin(now);
+    const agent = safeAgent();
+    for (const a of f.state.accounts) list.appendChild(this.row(f, a, f.quota ? quotaOf(f.quota, agent, a.name) : null, readonly, now, tz));
+    return list;
+  }
+
+  private row(f: Facts, a: Account, q: QuotaShow | null, readonly: boolean, now: number, tz: number): HTMLElement {
+    const origin = f.origin;
+    const key = this.key(a.name, origin);
+    const wrap = document.createElement("div");
+    wrap.className = "acct-row-wrap";
+    wrap.setAttribute("role", "listitem");
+    wrap.dataset.account = a.name;
     const row = document.createElement("div");
-    row.className = "accounts-row";
-    if (isCurrent) row.classList.add("current");
+    row.className = "acct-row";
+    row.tabIndex = 0;
+    row.setAttribute("aria-expanded", String(this.open.has(key)));
+    if (readonly) row.title = copyText("acctPage.offline.hover");
 
-    const mark = document.createElement("span");
-    mark.className = "accounts-row-mark";
-    mark.textContent = isCurrent ? copyText("accounts.row.currentIcon") : "";
-    mark.title = isCurrent ? copyText("accounts.row.current") : "";
-    row.appendChild(mark);
+    const who = document.createElement("div");
+    who.className = "acct-row-who";
+    const line1 = document.createElement("div");
+    line1.className = "acct-row-name";
+    const nm = document.createElement("span");
+    nm.textContent = a.name;
+    line1.appendChild(nm);
+    if (a.isDefault) line1.appendChild(tag(copyText("acctPage.row.default")));
+    const waiting = this.waiting.has(key) && accountRowKind(a) === "notLoggedIn";
+    if (waiting) line1.appendChild(spinner());
+    if (q?.login === "needsKey") {
+      const t = tag(copyText("acctPage.row.keyNotSaved"));
+      t.dataset.shade = "error";
+      line1.appendChild(t);
+    }
+    const line2 = document.createElement("div");
+    line2.className = "acct-row-kind";
+    line2.textContent = kindLine(a, waiting);
+    who.append(line1, line2);
 
-    // account-ux U7：复用 U4 的账号头像——与状态栏 chip、tab 徽章同一套 hash 色，三处肉眼可对应。
-    row.appendChild(accountAvatarEl(a.name, { size: 16 }));
+    const u5 = document.createElement("div");
+    u5.className = "acct-row-slot";
+    const u7 = document.createElement("div");
+    u7.className = "acct-row-slot";
+    fillUsage(u5, u7, q, now, tz);
 
-    const name = document.createElement("span");
-    name.className = "accounts-row-name";
-    name.textContent = a.name;
-    row.appendChild(name);
-
-    const email = document.createElement("span");
-    email.className = "accounts-row-email";
-    email.textContent = a.email || copyText("accounts.row.none");
-    row.appendChild(email);
-
-    // K-A1：三态（逃生口 / api-key（未配置端点）/ 未登录 / 已登录）的取值住
-    // `accounts.ts::accountStatusBadge` —— **这里不再自己判**。
-    // 原因不是「抽一层好看」：状态栏 chip 的账号菜单（`account-chip.ts`）渲染的是同一个
-    // 概念，两处各写一遍的结果是 `KA6a` 那段文案只改得动一处，而用户从另一处看到的
-    // 还是「已登录」。
-    const badge = document.createElement("span");
-    badge.className = "accounts-row-badge";
-    // 这张表是远端那一页的：徽章的两格事实由那台的后端答（那台的 `ccm` 定往哪发、那台的中转换 key —— 与本机同一条路）。
-    const status = accountStatusBadge(a, endpoint);
-    badge.textContent = status.text;
-    if (status.warn) badge.classList.add("warn");
-    if (status.title) badge.title = status.title;
-    row.appendChild(badge);
-
-    const dir = document.createElement("span");
-    dir.className = "accounts-row-dir";
-    // Z01：账号 0 没有 config dir——它**就是**「不设 CLAUDE_CONFIG_DIR」这个状态。
-    // 显示它的真实含义，别显示空白，更别显示一个空串路径。
-    dir.textContent = a.configDir ?? copyText("accounts.row.baseDir");
-    dir.title =
-      a.configDir ??
-      copyText("accounts.row.baseHint");
-    row.appendChild(dir);
-
-    const actions = document.createElement("span");
-    actions.className = "accounts-row-actions";
-    // F07：每账号默认模型偏好——自由文本（模型 ID 会随时间变化，不硬编码枚举）；空 = 跟随该
-    // 账号自身默认，不下发 override。保存写本机 config.json（按这台机器分），不碰远端/manifest。
-    // Phase D 审计（UX）：此前保存无任何反馈（同文件其余动作都有 toast，这里是唯一的例外）+
-    // 保存失败会真正无声消失（设置窗口没有主窗那个全局 unhandledrejection 兜底，见 main.ts）。
-    // 已按 selectDefault 的既有模式补齐 try/catch + toast，且失败时保留原值只提示不落盘（配合
-    // `setModelForAccount` 的写入点校验，防止非法值落盘后拖垮该账号往后**所有**会话拉起）。
-    const modelInput = document.createElement("input");
-    modelInput.type = "text";
-    modelInput.className = "accounts-row-model";
-    modelInput.placeholder = copyText("accounts.row.model");
-    modelInput.title =
-      copyText("accounts.row.modelHint");
-    modelInput.value = model ?? "";
-    let lastSaved = model ?? "";
-    const saveModel = async (): Promise<void> => {
-      const next = modelInput.value.trim();
-      if (next === lastSaved) return; // 值未变，别在每次失焦都弹一次噪音 toast
-      try {
-        await setModelForAccount(origin, a.name, next || null);
-        lastSaved = next;
-        toast(
-          next ? copyText("accounts.model.saved") : copyText("accounts.model.cleared"),
-          next ? copyText("accounts.model.savedBody", { name: a.name, next }) : copyText("accounts.model.clearedBody", { name: a.name }),
-          { level: "info" },
-        );
-      } catch (e) {
-        // 校验失败（非法字符集）等——不落盘，保留用户已输入的文本以便就地修正。
-        toast(copyText("accounts.model.failed"), String(e), { level: "error" });
-      }
+    const act = document.createElement("div");
+    act.className = "acct-row-act";
+    const stop = (fn: () => void) => (ev: MouseEvent): void => {
+      ev.stopPropagation();
+      fn();
     };
-    modelInput.addEventListener("blur", () => void saveModel());
-    modelInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        modelInput.blur(); // 触发上面的 blur 保存，行为统一（不重复实现一遍保存逻辑）
+    if (!readonly) {
+      if (this.noWindow.has(key)) {
+        const why = document.createElement("span");
+        why.className = "acct-row-why";
+        why.textContent = copyText("acctPage.login.noWindow");
+        act.append(why, button({ label: copyText("acctPage.login.inTmux"), size: "compact", onClick: stop(() => void this.tmuxLogin(origin, a)) }));
+      } else if (waiting) {
+        act.appendChild(button({ label: copyText("acctPage.login.reopen"), size: "compact", onClick: stop(() => void this.login(origin, a)) }));
+      } else if (!a.isDefault) {
+        const setDef = button({ label: copyText("acctPage.row.setDefault"), size: "compact", onClick: stop(() => void this.setDefault(origin, a)) });
+        setDef.classList.add("acct-row-hoverbtn");
+        act.appendChild(setDef);
+      }
+    }
+    const more = button({
+      label: copyText("acctPage.row.more", { name: a.name }),
+      kind: "icon",
+      icon: "more",
+      size: "compact",
+      onClick: (ev) => {
+        ev.stopPropagation();
+        openMenu({ el: ev.currentTarget as HTMLElement, align: "end" }, this.menu(f, a, readonly));
+      },
+    });
+
+    row.append(accountAvatarEl(a.name, { size: 24 }), who, u5, u7, act, more);
+    wrap.appendChild(row);
+    const toggle = (): void => {
+      if (this.open.has(key)) this.open.delete(key);
+      else this.open.add(key);
+      if (this.facts) this.paint(this.facts);
+    };
+    row.addEventListener("click", toggle);
+    row.addEventListener("keydown", (ev) => {
+      if ((ev.key === "Enter" || ev.key === " ") && ev.target === row) {
+        ev.preventDefault();
+        toggle();
       }
     });
-    actions.appendChild(modelInput);
-    if (isSelectable(a) && !isCurrent) {
-      const setDef = document.createElement("button");
-      setDef.type = "button";
-      setDef.textContent = copyText("accounts.row.setDefault");
-      setDef.addEventListener("click", () => void this.selectDefault(origin, a));
-      actions.appendChild(setDef);
+    if (this.open.has(key)) wrap.appendChild(this.detail(f, a, readonly));
+    return wrap;
+  }
+
+  private menu(f: Facts, a: Account, readonly: boolean): MenuItem[] {
+    const origin = f.origin;
+    const off = readonly ? { enabled: false, title: copyText("acctPage.offline.hover") } : {};
+    const items: MenuItem[] = [];
+    if (!a.isDefault) items.push({ label: copyText("acctPage.row.setDefault"), onClick: () => void this.setDefault(origin, a), ...off });
+    if (accountRowKind(a) === "apikey") items.push({ label: copyText("acctPage.menu.changeKey"), onClick: () => this.openDetail(a.name), ...off });
+    else if (a.configDir !== null) items.push({ label: copyText("acctPage.menu.relogin"), onClick: () => void this.login(origin, a), ...off });
+    const cmds = f.commands.get(a.name) ?? [];
+    if (cmds.length > 0) items.push({ label: copyText("acctPage.menu.copyCommands"), onClick: () => void navigator.clipboard?.writeText(cmds.join(" ")) });
+    if (a.configDir !== null) {
+      const dir = a.configDir;
+      items.push({ label: revealLabel(origin), onClick: () => void this.reveal(origin, dir) });
+      items.push({ divider: true, label: "" });
+      items.push({ label: copyText("acctPage.menu.remove", { name: a.name }), danger: true, onClick: () => void this.remove(f, a), ...off });
     }
-    const copy = document.createElement("button");
-    copy.type = "button";
-    copy.textContent = copyText("accounts.row.copyPath");
-    copy.addEventListener("click", () => {
-      const text = a.configDir ?? "";
-      if (!text) {
-        toast(copyText("accounts.row.baseNoDir"), copyText("accounts.row.baseNoDirBody"), {
-          level: "info",
-        });
+    return items;
+  }
+
+  private openDetail(name: string): void {
+    this.open.add(this.key(name));
+    if (this.facts) this.paint(this.facts);
+  }
+
+  /** 点开那一行：命令 · API key · 默认模型 · 账号目录 ·［删除 x…］。 */
+  private detail(f: Facts, a: Account, readonly: boolean): HTMLElement {
+    const origin = f.origin;
+    const box = document.createElement("div");
+    box.className = "acct-detail";
+    const line = (label: string, ...value: Node[]): void => {
+      const k = document.createElement("div");
+      k.className = "acct-detail-key";
+      k.textContent = label;
+      const v = document.createElement("div");
+      v.className = "acct-detail-val";
+      v.append(...value);
+      box.append(k, v);
+    };
+    const cmds = f.commands.get(a.name) ?? [];
+    if (cmds.length > 0) {
+      const copy = button({ label: copyText("acctPage.detail.copy"), kind: "ghost", size: "compact", onClick: () => void navigator.clipboard?.writeText(cmds.join(" ")) });
+      line(copyText("acctPage.detail.commands"), mono(cmds.join(copyText("kit.text.sep"))), copy);
+    }
+    if (accountRowKind(a) === "apikey") line(copyText("acctPage.detail.apikey"), this.keyEditor(origin, a, readonly));
+    // 默认模型：键 ＝ 这台 ＋ 这个号（改完即存，空 ＝ 跟着 Claude 的默认）。
+    const model = document.createElement("input");
+    model.type = "text";
+    model.className = "acct-detail-model";
+    model.placeholder = copyText("acctPage.detail.modelDefault");
+    model.setAttribute("aria-label", copyText("acctPage.detail.model"));
+    model.disabled = readonly;
+    void getModelForAccount(origin, a.name).then((m) => {
+      if (m && document.activeElement !== model) model.value = m;
+    });
+    const modelErr = document.createElement("span");
+    modelErr.className = "acct-detail-err";
+    model.addEventListener("change", () => {
+      void setModelForAccount(origin, a.name, model.value.trim() || null).then(
+        () => (modelErr.textContent = ""),
+        (e: unknown) => (modelErr.textContent = saidOfControl(e)),
+      );
+    });
+    const scope = document.createElement("span");
+    scope.className = "acct-detail-scope";
+    scope.textContent = copyText("acctPage.detail.modelScope", { machine: machineName(origin), name: a.name });
+    line(copyText("acctPage.detail.model"), model, scope, modelErr);
+    if (a.configDir !== null) {
+      const dir = a.configDir;
+      line(copyText("acctPage.detail.dir"), mono(dir), button({ label: revealLabel(origin), kind: "ghost", size: "compact", onClick: () => void this.reveal(origin, dir) }));
+      const del = button({ label: copyText("acctPage.menu.remove", { name: a.name }), kind: "danger-text", size: "compact", onClick: () => void this.remove(f, a) });
+      if (readonly) setDisabled(del, copyText("acctPage.offline.hover"));
+      const foot = document.createElement("div");
+      foot.className = "acct-detail-foot";
+      foot.appendChild(del);
+      box.appendChild(foot);
+    }
+    return box;
+  }
+
+  /** API key 那一格：［更换…］就地展开 地址 ＋ key；保存失败错误句落在框下、填的不丢。key 只显示那台写完回的掩码（末四位）。 */
+  private keyEditor(origin: Origin, a: Account, readonly: boolean): HTMLElement {
+    const box = document.createElement("div");
+    box.className = "acct-key";
+    const shown = mono(copyText("acctPage.detail.keyHidden"));
+    const change = button({ label: copyText("acctPage.detail.keyChange"), size: "compact" });
+    if (readonly) setDisabled(change, copyText("acctPage.offline.hover"));
+    const form = document.createElement("div");
+    form.className = "acct-key-form";
+    form.hidden = true;
+    const base = field({ label: copyText("acctNew.base.label"), placeholder: copyText("acctNew.base.example"), noteOnDemand: true });
+    const keyF = field({ label: copyText("acctNew.key.label"), noteOnDemand: true });
+    const keyIn = keyF.input as HTMLInputElement;
+    keyIn.type = "password";
+    keyIn.autocomplete = "off";
+    const save = button({ label: copyText("acctPage.detail.keySave"), kind: "primary", size: "compact" });
+    const cancel = button({ label: copyText("acctNew.form.cancel"), size: "compact" });
+    form.append(base.root, keyF.root, buttonRow(cancel, save));
+    change.addEventListener("click", () => {
+      form.hidden = false;
+      keyIn.focus();
+    });
+    cancel.addEventListener("click", () => {
+      keyIn.value = "";
+      form.hidden = true;
+    });
+    save.addEventListener("click", () => {
+      const k = keyIn.value.trim();
+      if (!k || a.configDir === null) return;
+      const b = checkBaseUrl(base.input.value);
+      if (!b.ok) {
+        base.setError(b.reason);
         return;
       }
-      void navigator.clipboard?.writeText(text).then(
-        () => toast(copyText("accounts.copy.done"), text, { level: "info" }),
-        () => toast(copyText("accounts.copy.failed"), copyText("accounts.copy.noClipboard"), { level: "error" }),
-      );
+      base.setError(null);
+      const dir = a.configDir;
+      void (async () => {
+        setBusy(save, copyText("acctPage.detail.keySaving"));
+        try {
+          const w = await writeApikeyKey(origin, dir, k, b.value);
+          keyIn.value = "";
+          form.hidden = true;
+          shown.textContent = w.baseUrl ? `${w.masked} ${hostOf(w.baseUrl)}` : w.masked;
+          keyF.setError(null);
+        } catch (e) {
+          keyF.setError(saidOfControl(e));
+        } finally {
+          setBusy(save, null);
+        }
+      })();
     });
-    actions.appendChild(copy);
-    // A6：在终端里起 claude 登录这个号（那一行由那台后端出）——对 in-place 逃生口与账号 0 不给（没有自己的目录）。
-    if (a.mode !== "in-place" && a.configDir) {
-      const login = document.createElement("button");
-      login.type = "button";
-      // K-A1：对 api-key 号说「去登录」是假话（它不需要 /login，/login 也修不了缺端点）。
-      const action = accountLoginActionLabel(a);
-      login.textContent = action.label;
-      login.title = action.title;
-      login.addEventListener("click", () => void this.loginAccount(origin, a));
-      actions.appendChild(login);
-      // 删号：红色（`§4.3` ②：红色留给删账号），确认框里说清删的是哪台机器上的哪个号。
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "danger";
-      del.textContent = copyText("accounts.row.remove");
-      del.addEventListener("click", () => void this.removeAccount(origin, a));
-      actions.appendChild(del);
-    }
-    // 🔴 关键二：**「哪个账号」只问一次** —— 配 apikey 是这一行自己的一格。
-    let editor: HTMLElement | null = null;
-    if (apikey) {
-      const ed = renderApikeyEditor(apikey, (key, configDir) =>
-        this.writeApikey(origin, key, configDir, a.name),
-      );
-      editor = ed.editor;
-      actions.appendChild(ed.toggle);
-    }
-    row.appendChild(actions);
-    return { row, editor };
+    box.append(shown, change, form);
+    return box;
   }
 
-  private async selectDefault(origin: Origin, a: Account): Promise<void> {
+  // ───────────────────────────── 动作 ─────────────────────────────
+
+  private async setDefault(origin: Origin, a: Account): Promise<void> {
     try {
       await accountsSetDefault(origin, a.name);
-      // 默认账号住那台的账号库清单：只清这一台的缓存。
-      invalidateAccountsCache(origin);
-      await this.reload(true);
-      void emit(SETTINGS_APPLIED_EVENT); // 让主窗状态栏 chip 同步
-      toast(
-        copyText("accounts.setDefault.done"),
-        copyText("accounts.setDefault.doneBody", { name: a.name }),
-        { level: "info" },
-      );
+      toast(copyText("acctPage.default.done", { name: a.name }), "");
+      void emit(SETTINGS_APPLIED_EVENT);
     } catch (e) {
-      toast(copyText("accounts.setDefault.failed"), String(e), { level: "error" });
+      toast(copyText("acctPage.default.failed", { name: a.name }), saidOfControl(e), { level: "error" });
+    }
+    await this.reload(true, true);
+  }
+
+  /** 删号（撤不回 ⇒ 确认框，默认焦点「取消」）：删的是默认号时多一句「之后新会话默认 X」（那台答的）。默认模型那一格一起删。 */
+  private async remove(f: Facts, a: Account): Promise<void> {
+    const origin = f.origin;
+    const machine = machineName(origin);
+    const cmds = f.commands.get(a.name) ?? [];
+    const next = a.isDefault ? (f.state.meta?.nextDefault ?? null) : null;
+    const yes = await this.confirm({
+      title: copyText("acctPage.remove.title", { name: a.name, machine }),
+      action: copyText("acctPage.remove.action", { name: a.name }),
+      danger: true,
+      body: next ? copyText("acctPage.remove.next", { name: next }) : undefined,
+      rows: [
+        {
+          label: copyText("acctPage.remove.cut"),
+          items: [copyText("acctPage.remove.login"), copyText("acctPage.remove.settings"), ...(cmds.length ? [copyText("acctPage.remove.commands", { names: cmds.join(" ") })] : [])],
+        },
+        { label: copyText("acctPage.remove.keep"), items: [copyText("acctPage.remove.sessions")] },
+      ],
+    });
+    if (!yes) return;
+    try {
+      await accountsRemove(origin, { name: a.name, force: a.isDefault });
+      await setModelForAccount(origin, a.name, null).catch(() => {});
+      this.open.delete(this.key(a.name, origin));
+      toast(copyText("acctPage.remove.done", { name: a.name, machine }), "");
+      if (a.isDefault) void emit(SETTINGS_APPLIED_EVENT);
+    } catch (e) {
+      toast(copyText("acctPage.remove.failed", { name: a.name }), saidOfControl(e), { level: "error" });
+    }
+    await this.reload(true, true);
+  }
+
+  private async login(origin: Origin, a: Account, cmd?: string): Promise<void> {
+    const key = this.key(a.name, origin);
+    try {
+      if ((await openLoginWindow(origin, a.name, cmd)) === "opened") {
+        this.noWindow.delete(key);
+        this.waiting.add(key);
+      } else {
+        this.noWindow.add(key);
+      }
+    } catch (e) {
+      toast(copyText("acctPage.login.failed", { name: a.name }), saidOfControl(e), { level: "error" });
+    }
+    if (this.facts) this.paint(this.facts);
+  }
+
+  private async tmuxLogin(origin: Origin, a: Account): Promise<void> {
+    if (a.configDir === null) return;
+    const key = this.key(a.name, origin);
+    try {
+      await loginInTmux(origin, a.name, a.configDir);
+      this.noWindow.delete(key);
+      this.waiting.add(key);
+    } catch (e) {
+      toast(copyText("acctPage.login.failed", { name: a.name }), saidOfControl(e), { level: "error" });
+    }
+    if (this.facts) this.paint(this.facts);
+  }
+
+  private async reveal(origin: Origin, dir: string): Promise<void> {
+    try {
+      if (isLocalOrigin(origin)) {
+        await revealInFolder(dir);
+        return;
+      }
+      const host = findHostByOrigin((await readRemoteConfig()).hosts, origin);
+      if (host) await openFileWindow(host, { dir });
+    } catch (e) {
+      toast(copyText("acctPage.reveal.failed"), saidOfControl(e), { level: "error" });
     }
   }
 
-  private static info(parent: HTMLElement, text: string): void {
-    const p = document.createElement("div");
-    p.className = "accounts-info";
-    p.textContent = text;
-    parent.appendChild(p);
+  // ───────────────────────────── 新建 ─────────────────────────────
+
+  private toggleForm(): void {
+    if (this.form) {
+      void this.form.dismiss();
+      return;
+    }
+    const origin = this.origin;
+    const form = renderNewAccountForm(origin, machineName(origin), {
+      onCreate: (req) => this.create(origin, req),
+      onCancel: () => this.closeForm(),
+      confirm: this.confirm,
+    });
+    this.form = form;
+    this.formSlot.replaceChildren(form.root);
+    this.newBtn.setAttribute("aria-expanded", "true");
+    form.focus();
+  }
+
+  private closeForm(): void {
+    this.form = null;
+    this.formSlot.replaceChildren();
+    this.newBtn.setAttribute("aria-expanded", "false");
+  }
+
+  /** 建好：订阅号开登录窗口（那一行「等待终端登录…」，登录完后端推一帧、行自己变「已登录」）；API 号 key 没存上 ⇒ 那一行展开。 */
+  private async create(origin: Origin, req: NewAccountRequest): Promise<void> {
+    const machine = machineName(origin);
+    let change;
+    try {
+      change = await accountsAdd(origin, req);
+    } catch (e) {
+      toast(copyText("acctPage.new.failed", { name: req.name }), saidOfControl(e), { level: "error" });
+      return;
+    }
+    this.closeForm();
+    const key = this.key(req.name, origin);
+    if (req.kind !== "api-key" && !req.credFile) {
+      const got = await openLoginWindow(origin, req.name, change.loginCmd ?? undefined).catch(() => "noWindow" as const);
+      if (got === "opened") this.waiting.add(key);
+      else this.noWindow.add(key);
+      toast(got === "opened" ? copyText("acctPage.new.doneLogin", { name: req.name, machine }) : copyText("acctPage.new.done", { name: req.name, machine }), "");
+    } else {
+      toast(copyText("acctPage.new.done", { name: req.name, machine }), change.keyProblem ?? "", change.keyProblem ? { level: "error" } : {});
+      if (change.keyProblem) this.open.add(key);
+    }
+    if (req.isDefault) void emit(SETTINGS_APPLIED_EVENT);
+    await this.reload(true, true);
   }
 }
 
-/** A6 向导用的按钮工厂（type=button，避免 form 默认提交）。 */
-function mkBtn(text: string): HTMLButtonElement {
-  const b = document.createElement("button");
-  b.type = "button";
-  b.textContent = text;
-  return b;
+// ───────────────────────────── 纯排版 ─────────────────────────────
+
+function safeAgent(): string {
+  try {
+    return launchAgentId();
+  } catch {
+    return "";
+  }
 }
 
-/** 预演那几步 ⇒ 确认框里的一段（一行一步）。 */
-function stepList(c: AccountChange): string {
-  return [...c.steps, ...c.notes].map((l) => `· ${l}`).join("\n");
+function mono(t: string): HTMLElement {
+  const e = document.createElement("code");
+  e.className = "acct-detail-mono";
+  e.textContent = t;
+  return e;
+}
+
+function revealLabel(origin: Origin): string {
+  return isLocalOrigin(origin) ? copyText("acctPage.menu.revealLocal") : copyText("acctPage.menu.revealRemote");
+}
+
+/** 一个号在那台额度账上的显示态（出过数的那一格；账号库有、没出过数 ⇒ 无采样那一形）。 */
+function quotaOf(quota: QuotaRead, agent: string, account: string): QuotaShow | null {
+  const led = quota.accounts.find((x) => x.agent === agent && x.account === account);
+  if (led) return led;
+  const u = quota.unseen.find((x) => x.agent === agent && x.account === account);
+  return u ? { kind: u.kind, state: "unseen", stale: false, slots: [], login: u.login } : null;
+}
+
+/** 第二行：`订阅 · {email}` ／ `API key` ／ `订阅 · 等待终端登录…` ／ `订阅 · 未登录`。 */
+function kindLine(a: Account, waiting: boolean): string {
+  const kind = accountRowKind(a);
+  if (kind === "apikey") return copyText("acctPage.row.apikey");
+  if (waiting) return copyText("acctPage.row.waiting");
+  if (kind === "notLoggedIn") return copyText("acctPage.row.notLoggedIn");
+  return a.email ? copyText("acctPage.row.sub", { email: a.email }) : copyText("acctPage.row.subNoEmail");
+}
+
+/** `5h 63% ↻18:30` · `7d 41%`；被拒 `5h ✕ ↻19:00`（红）；按量号 `按量`；没采样 `—`。 */
+function fillUsage(u5: HTMLElement, u7: HTMLElement, q: QuotaShow | null, now: number, tz: number): void {
+  if (!q) return;
+  if (q.kind === "api") {
+    u5.textContent = copyText("acct.kind.api");
+    if (q.state === "refused") u5.dataset.shade = "refused";
+    return;
+  }
+  for (const [slot, cell] of [
+    ["5h", u5],
+    ["7d", u7],
+  ] as const) {
+    const x = q.slots.find((v) => v.slot === slot);
+    const here = (q.limiting ?? "5h") === slot;
+    let v: string;
+    if (here && q.state === "refused") v = copyText("acct.val.refused");
+    else if (!x || x.pct === undefined || (here && (q.state === "resetSinceSeen" || q.state === "unseen"))) v = copyText("acct.val.none");
+    else if (here && q.state === "overageInUse") v = copyText("acct.val.over");
+    else v = copyText("acct.val.pct", { pct: x.pct });
+    const parts = [slotLabel(slot), v];
+    if (x?.resetsAt !== undefined && x.resetsAt > now && (slot === "5h" || (here && q.state === "refused"))) parts.push(copyText("acct.reset.at", { at: fmtAt(x.resetsAt, now, tz) }));
+    cell.textContent = parts.join(" ");
+    if (here && q.state === "refused") cell.dataset.shade = "refused";
+    else if (here && (q.state === "near" || q.state === "overageInUse")) cell.dataset.shade = "warn";
+    if (q.stale) cell.dataset.stale = "true";
+  }
+}
+
+/** 采样多久前：`3m` · `2h` · `1d`。 */
+function agoText(ms: number): string {
+  const m = Math.max(0, Math.round(ms / 60_000));
+  if (m < 60) return copyText("acctPage.ago.minutes", { n: m });
+  const h = Math.round(m / 60);
+  if (h < 48) return copyText("acctPage.ago.hours", { n: h });
+  return copyText("acctPage.ago.days", { n: Math.round(h / 24) });
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
 }

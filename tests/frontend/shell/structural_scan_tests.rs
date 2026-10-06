@@ -3742,11 +3742,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_ui_never_derives_the_account_id_itself",
             1,
         ),
-        (
-            "src/frontend/ui/settings/accounts-section.ts",
-            "the_ui_never_derives_the_account_id_itself",
-            1,
-        ),
         // 🔴 下面这一批是同一件事的账：**送键与杀会话那两条桌面侧
         //    SSH 回落删净了**（`K-R54` 逐处裁定表第 1 · 2 · 5 处），随之走掉的三个
         //    生产符号（`build_kill_session_cmd` / `build_send_keys_remote_cmd` /
@@ -4333,11 +4328,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         ("src/doc/INVARIANTS.md", "render_local_ccm_with", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         (
-            "src/frontend/ui/settings/accounts-section.ts",
-            "apikey_account_id",
-            1,
-        ), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
-        (
             "tests/frontend/shell/local_backend_host_tests.rs",
             "the_launch_side_really_asks_the_backend_and_uses_its_answer",
             1,
@@ -4729,7 +4719,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/ui/settings/remote-section.ts", 2),
         ("tests/frontend/ui/config-lost-update.vitest.ts", 1),
         ("tests/frontend/ui/remote-config.vitest.ts", 1),
-        ("tests/frontend/ui/settings/accounts-section.vitest.ts", 2), // +1：写 key 改走通道那一段点旧命令名
         ("tests/frontend/ui/settings/remote-section.vitest.ts", 1),
         // 重放缓冲分档取消：头注里旧的登记方法名 ＋ 读数那个旧字段名各一块；
         //   会话流收口成 `subscribe`：头注表里 ＋ `ready_point` 文档里点原来那个重放方法名各一块。
@@ -4866,7 +4855,6 @@ fn every_prose_tombstone_mark_is_registered() {
         //   ⇒ 6（基）＋1（LOC1b）＋3（LR2）= 10
         ("src/doc/IPC-PROTOCOL.md", 10), // 11 → 10：载荷渲染那一节随载荷那一层删了，讲它来历的那一处墓碑跟着走（`launch-render-cli` / `launch-local` 两节重写、来历那两处留着）// 账号库收进后端：12 → 11（`acct-iso-install` 那一节随命令删了，它那一处墓碑跟着走）// 11 → 12：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 主线 8 ＋ MIG-1 本路增量 ⇒ 11（盘上现打） // +1：整份写口 `save_config` 删了，讲来历那一句挂墓碑 // 5 → 8
         // +1：别名那一块搬走时留的墓碑（`buildAccountAliasBlock`）。
-        ("src/frontend/ui/settings/accounts-section.ts", 3), // 账号库收进后端：5 → 3（部署那一段 · rc 片段那一段随功能删了）// 4 → 5：部署那一段头注点旧命令名 // // 3 → 4
         ("src/frontend/ui/apikey-reads.ts", 2), // +1：`apikey_remote`整删，点它的那一处挂墓碑 // 写 key 改走通道：头注点旧命令名
         ("tests/backend/control/gate_tests.rs", 1),
         ("tests/backend/no_timer_guard.rs", 1),

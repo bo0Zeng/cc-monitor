@@ -33,6 +33,9 @@ pub mod events {
     /// **某台机器的状态成品变了**：`{origin, machine}`（`machine` 与 `backend_status` 那一格同形，
     /// `machine_state.rs`）。正在连 / 装 / 更新、连上、没连上、指纹不对 …… 一变就推一帧，界面不轮询。
     pub const MACHINE_STATE: &str = "machine-state";
+    // 窗到窗的那一个（设置窗 emit、主窗口 listen；壳不经手、不另立常量）：`open-account-panel`，载荷 `{machine, anchor}`
+    //   （`machine` = 哪台，本机 = `<local>`；`anchor` ∈ `"timeline"` · `"default-rotation"`）—— 设置窗账号页指路框点了「时间轴」/「默认轮换」，
+    //   主窗口打开当前标签页的账号面板并滚到那一节。前端常量 `settings/events.ts::OPEN_ACCOUNT_PANEL_EVENT`。
     // 「某台远端的长连接握手完成、能问话了」那个事件（`remote-backend-ready`）退役：
     //   前端经通道 `subscribe(origin, "accounts-changed")` 收同一件事（`Seen` ＝ 能问了 · `Frame` ＝ 那台账号清单变了），
     //   句柄是 `event_replay`（头注那张 kind 表）。「前端只有两个动作」。

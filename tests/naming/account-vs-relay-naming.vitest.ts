@@ -199,33 +199,6 @@ export const ACCOUNT_NAMES: AccountName[] = [
     why: "账号 chip 缓存的那份 `ApikeyRoutingView`",
     state: "done",
   },
-  {
-    old: "RelayKeyAccount",
-    re: ident("RelayKeyAccount"),
-    fresh: "ApikeyEditorAccount",
-    freshRe: ident("ApikeyEditorAccount"),
-    kind: "类型",
-    why: "账号那一行「配 apikey」编辑格的入参",
-    state: "done",
-  },
-  {
-    old: "mountRelayKeyBlock",
-    re: ident("mountRelayKeyBlock"),
-    fresh: "renderApikeyFileBlock（今天的住址）",
-    freshRe: ident("renderApikeyFileBlock"),
-    kind: "函数",
-    why: "散文里点着的旧住址（那个函数早已拆成 `renderApikeyFileBlock` ＋ `renderApikeyEditor`）",
-    state: "done",
-  },
-  {
-    old: "relay-key-*",
-    re: /(?<![A-Za-z0-9_-])relay-key-[a-z]/,
-    fresh: "apikey-file-* / accounts-row-apikey-*",
-    freshRe: lit("apikey-file-block"),
-    kind: "CSS 类",
-    why: "设置页 apikey 凭据文件那一块 ＋ 账号行里配 key 那一格的类名",
-    state: "done",
-  },
   // ── 后端里过期的住址（上游选择早已搬出 `relay/`）──────────────────────────────────
   {
     old: "relay::table",

@@ -1114,7 +1114,8 @@ fn the_rewatch_path_still_exists_with_its_rescan() {
 ///「看不见新 tmux server」「会话还在但内容不动了」——**每一个都不报错**。
 ///
 /// # 今天的 8 处（7 → 8：账号 manifest 所在目录；8 → 9：`agent_home` 那一处挪进可重入挂法、多一道它的上一层；
-/// 9 → 8：账号目录那一处删了，改走 `rewatch_agent_home`（`AccountsEar`）—— 少的就是它）
+/// 9 → 8：账号目录那一处删了，改走 `rewatch_agent_home`（`AccountsEar`）—— 少的就是它；
+/// 8 → 9：`AccountsEar::arm_subs` 挂各号目录（盯凭据文件））
 ///
 /// | 处 | 归属 | 换 inode 怎么办 |
 /// |---|---|---|
@@ -1126,6 +1127,7 @@ fn the_rewatch_path_still_exists_with_its_rescan() {
 /// | `arm_ears` 里 socket 目录的**父**（从 `watch_loop` 挪进去，起步与「重新对齐」共用） | 等 socket 目录出现 | 同上 |
 /// | `HomeEars::arm` 里 `sessions` 起步那次 | 起步挂一次，之后归 `rewatch_sessions` | 已有 |
 /// | `watch_loop` 里 tmux socket **所在目录**（P3 复活探测） | 一次性触发器，socket 换 inode 由上面那条目录耳朵覆盖 | 已有 |
+/// | `AccountsEar::arm_subs` 里各号目录 | 盯号目录里的凭据文件（登录完成那一刻推一帧） | 号目录被删重建 ⇒ 账号目录里那一格事件到 `on_path` ⇒ `arm_subs` 按盘上此刻重挂（不在了的先摘） |
 #[test]
 fn every_watch_site_answers_the_inode_swap_question() {
     let src = include_str!("../../../src/backend/observe/watcher.rs");
@@ -1139,8 +1141,8 @@ fn every_watch_site_answers_the_inode_swap_question() {
     };
     let sites = prod.matches(".watch(").count();
     assert_eq!(
-        sites, 8,
-        "生产段 `.watch(` 有 {sites} 处（登记表记着 8 处）。\n             \
+        sites, 9,
+        "生产段 `.watch(` 有 {sites} 处（登记表记着 9 处）。\n             \
              ⇒ **加了一处就来回答这个问题**：那个目录被删掉重建（换 inode）之后，\n             \
              它还收得到事件吗？收不到就走 `rewatch_dir`；确实不需要就把理由写进本条头注的表里。\n             \
              ⚠ 08-13 同一个形状踩了三次，三次的症状都是**不报任何错**：\n             \
@@ -3198,6 +3200,56 @@ fn gap1_an_accounts_dir_created_or_rebuilt_after_start_is_still_heard() {
         (true, true),
         "账号目录删掉重建之后失聪（目录那一格 / manifest 那一格）"
     );
+}
+
+/// ★★ 〔登录完成那一刻界面自己变「已登录」〕真 debouncer ＋ `AccountsEar`：起步就有的号目录 · 起步之后才建的号目录，
+/// 各自写进凭据文件 ⇒ `on_path` 回 true；号目录里别的文件 ⇒ 不回 true。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_credentials_file_appearing_in_an_account_dir_is_heard() {
+    let root = std::env::temp_dir().join(format!("ccm-cred-ear-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let dir = root.join("accts");
+    let old = dir.join("acct-a");
+    std::fs::create_dir_all(&old).unwrap();
+    let (etx, erx) = std::sync::mpsc::channel::<WatchEvent>();
+    let mut debouncer = new_debouncer(Duration::from_millis(DEBOUNCE_MS), DebouncerSink(etx))
+        .expect("debouncer 起不来");
+    let mut ear = AccountsEar::new(&dir);
+    ear.arm(&mut debouncer);
+    // 写一份文件，等到一批事件里 `on_path` 回过 true（或期限到）。回到没到。
+    let heard = |ear: &mut AccountsEar, debouncer: &mut _, path: &Path| -> bool {
+        std::fs::write(path, b"{}").unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let mut got = false;
+        while !got && std::time::Instant::now() < deadline {
+            if let Ok(WatchEvent::Notify(Ok(evs))) = erx.recv_timeout(Duration::from_millis(200)) {
+                for ev in &evs {
+                    got |= ear.on_path(debouncer, &ev.path);
+                }
+            }
+        }
+        got
+    };
+    let other = heard(&mut ear, &mut debouncer, &old.join("settings.json"));
+    let at_start = heard(&mut ear, &mut debouncer, &old.join(".credentials.json"));
+    let fresh = dir.join("acct-b");
+    std::fs::create_dir_all(&fresh).unwrap();
+    // 号目录出现那一格先到（重挂各号目录），之后那份凭据才听得见。
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while !ear.subs.contains(&fresh) && std::time::Instant::now() < deadline {
+        if let Ok(WatchEvent::Notify(Ok(evs))) = erx.recv_timeout(Duration::from_millis(200)) {
+            for ev in &evs {
+                ear.on_path(&mut debouncer, &ev.path);
+            }
+        }
+    }
+    let later = heard(&mut ear, &mut debouncer, &fresh.join(".credentials.json"));
+    drop(debouncer);
+    std::fs::remove_dir_all(&root).ok();
+    assert!(!other, "号目录里别的文件不该当成「清单可能变了」");
+    assert!(at_start, "起步就有的号目录里出现凭据文件，没听见");
+    assert!(later, "起步之后才建的号目录里出现凭据文件，没听见");
 }
 
 // ═══ 身份标签对账 ═══════════════════════════════════════════════

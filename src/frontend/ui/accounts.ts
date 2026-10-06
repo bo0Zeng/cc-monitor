@@ -72,6 +72,8 @@ export interface AccountsMeta {
   error: string | null;
   /** 这台做不了多账号时后端说的那一句（做得了 ⇒ `null`；线上恒有这一格，本地造的夹具可以不写）。 */
   unsupported?: string | null;
+  /** 删掉默认号之后新会话默认谁（那台后端按删号同一条规则答；没有 ⇒ `null`）。线上恒有这一格，本地造的夹具可以不写。 */
+  nextDefault?: string | null;
 }
 
 export interface SessionAccount {
@@ -195,6 +197,17 @@ export interface AccountStatusBadge {
  * ⚠ **不许从「不会配」直接跳成「已登录」** —— 中间隔着这两格。
  */
 export type ApikeyEndpointState = { hasRow: boolean; running: boolean };
+
+/**
+ * 账号表那一行第二行要的那一档（设置窗账号页）：API key 号 · 订阅号已登录 · 订阅号还没登录。
+ * 「已登录」仍只代表凭据文件在（`KA6b`）。
+ */
+export type AccountRowKind = "apikey" | "subscription" | "notLoggedIn";
+
+export function accountRowKind(a: Account): AccountRowKind {
+  if (a.authKind === "api-key") return "apikey";
+  return a.loggedIn ? "subscription" : "notLoggedIn";
+}
 
 /**
  * 把那台机器的读数落到**一个账号**上。

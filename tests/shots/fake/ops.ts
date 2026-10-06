@@ -63,6 +63,7 @@ export function defaultOps(): Record<string, OpHandler> {
         error: null,
         // 那台 Windows：做不了多账号（后端那一句）。
         unsupported: origin === "win-laptop" ? "Windows 不支持多账号" : null,
+        nextDefault: ACCOUNTS.find((a) => !a.isDefault)?.name ?? null,
       },
       notice: null,
     }),
@@ -83,6 +84,29 @@ export function defaultOps(): Record<string, OpHandler> {
         ),
     }),
     "accounts-trust": () => ({ known: true, trusted: true }),
+    // 账号页打开时顺手核一次：缺省世界里都对得上。
+    "accounts-verify": () => ({ pass: true, fails: 0, warns: 0, checks: [] }),
+    // 账号库的改动类（新建 · 设默认 · 删 · 修复 · 回滚）：预演回一步、真做回已做（形状照 `AccountChange`）。
+    ...Object.fromEntries(
+      ["accounts-add", "accounts-set-default", "accounts-remove", "accounts-repair", "accounts-rollback", "accounts-init"].map((op) => [
+        op,
+        (_o: unknown, req: Record<string, unknown>) => {
+          const name = typeof req.name === "string" ? req.name : "";
+          return {
+            applied: req.dryRun !== true,
+            steps: [`${op} ${name}`.trim()],
+            notes: [],
+            backup: null,
+            account: null,
+            loginCmd: null,
+            aliasNames: name ? [`${name}cc`, `${name}cct`] : [],
+            keyMasked: null,
+            keyProblem: null,
+            aliases: [],
+          };
+        },
+      ]),
+    ),
     // 额度与轮换：缺省世界里中转还没见过任何回包、任何会话（额度场景在 `scenes/acct.ts` 整条覆盖）。
     "quota-read": () => ({ state: "absent", reason: null, path: "/home/user/.cc-monitor/quota.json", now: Math.floor(Date.now() / 1000), accounts: [], unseen: [], usableNow: [], earliestReturn: null }),
     "rotation-read": () => ({ state: "absent", reason: null, path: "/home/user/.cc-monitor/rotation.json", rotation: { order: [{ start: true }], enabled: [], when: "full", atLimit: "continue" }, followers: 0 }),

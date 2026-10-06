@@ -397,6 +397,7 @@ export async function accountReadReply(which: AccountRead, res: unknown): Promis
     count: m?.count ?? accounts.length,
     error: m?.error ?? null,
     unsupported: m?.unsupported ?? null,
+    nextDefault: m?.nextDefault ?? null,
   };
   return chanReply({ meta, accounts, notice: r.notice ?? null });
 }

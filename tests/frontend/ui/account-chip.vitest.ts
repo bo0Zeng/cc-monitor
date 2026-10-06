@@ -466,8 +466,8 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
       '.menuDetail[data-intent="warn"] {',
     );
     // 同职第二处也一起钉住（设置那张表），免得「治了这一处、没治所有同职的地方」。
-    expect(settingsCssLines, "设置那张账号表的 `.accounts-row-badge.warn` 宿主没了 —— 同一套约定的另一半").toContain(
-      ".accounts-row-badge.warn {",
+    expect(settingsCssLines, "设置那张账号表用量格的警示态（`data-shade=\"warn\"`）宿主没了 —— 同一套约定的另一半").toContain(
+      '.acct-row-slot[data-shade="warn"],',
     );
   });
 });

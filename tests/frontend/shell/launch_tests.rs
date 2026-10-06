@@ -1234,3 +1234,26 @@ fn the_thin_wrapper_hands_the_command_straight_through_to_the_via_form() {
 // 这里原来六条钉 `build_remote_ssh_ps_command`〔散文墓碑〕与 `build_jump_arg`〔散文墓碑〕（基本形态 · 钥匙与口 ·
 // IPv6 · 跳板参数 · 坏输入 · 单引号过两层）：ssh 外壳搬进本机后端（帧命令 `terminal-ssh`），期望原样搬进
 // `tests/backend/dial_terminal_tests.rs`（被测对象搬了家，一个期望没改；跳板那一格改经 `machine::resolve`）。
+
+/// 开终端窗口那一问只答一处（`open_window`）：POSIX 没有终端出口 ⇒ 回那句跨语言标记（前端据此说「本机无法开终端窗口」、
+/// 给「在 tmux 里登录」），**不**回落到无窗口直起（要人登录的那一行跑在看不见的地方 = 没跑）。
+/// 有出口那一支交 `launch_local_posix_via`（它的 spawn 由假终端那条判据买到）。
+#[cfg(not(windows))]
+#[test]
+fn without_a_terminal_exit_the_window_open_says_so_instead_of_running_headless() {
+    let dir = std::env::temp_dir().join(format!("ccm-open-window-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let ran = dir.join("ran");
+    let cmd = format!("touch '{}'", ran.display());
+    let got = open_window_via(&cmd, None);
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let ran_headless = ran.exists();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(
+        got,
+        Err(POSIX_NO_TERMINAL_WINDOW.to_string()),
+        "没有终端出口时该回那句标记"
+    );
+    assert!(!ran_headless, "没有终端出口时那一行被无窗口直起了");
+}

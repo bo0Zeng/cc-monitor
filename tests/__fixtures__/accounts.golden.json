@@ -41,6 +41,7 @@
       "enabled": true,
       "error": null,
       "manifestPath": "<root>/accts/accounts.json",
+      "nextDefault": "b",
       "sharedStore": "<root>/shared",
       "unsupported": null,
       "updatedAt": "t0"

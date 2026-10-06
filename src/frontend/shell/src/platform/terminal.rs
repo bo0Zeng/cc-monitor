@@ -435,34 +435,6 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     Ok(())
 }
 
-/// POSIX 宿主上**刻意没有**这条路 —— 不是还没做，是 L1 裁决过的**反方向**。
-///
-/// # 为什么（与 [`launch_local_posix`] 头注同一条裁决）
-///
-/// POSIX 上没有「唯一的终端」这种东西。要开窗就得先猜用户用哪个终端模拟器
-/// （gnome-terminal / konsole / alacritty / kitty / wezterm / …），**那是一个平白引入的、
-/// 会在别人机器上错的决定**。
-///
-/// ⚠⚠ **本段原先还接着「而容器一定是 tmux —— 命令跑完，会话留在那儿等 attach」，那是假的**。
-/// 本函数服务的正是**远端**那条路，而它走
-/// `runRemoteResume` → `planResumeDirect`，那里逐字是 `container: { kind: "none" }`
-/// （`launch-requests.ts:45`，全文件唯一一个 `none`；其余四个 plan 才是 tmux）。
-/// ⇒ 「不开终端窗口」这个决定**站得住**（POSIX 没有唯一的终端，这条理由本身没问题），
-/// 但**不能拿「反正在 tmux 里」当理由** —— 那个前提不成立。
-/// 要 tmux 得走 `planResumeTmux`（F52）那条**另一条路**。
-///
-/// ⚠ **原文案是「拉起终端窗口仅支持 Windows（v1）」，那个 `(v1)` 在撒谎**：
-/// 它暗示「v2 会支持」，而实际上这件事**没排期、而且方向是反的**（U8b 订正）。
-///
-/// ⚠ **这不代表 POSIX 上「远端拉起」这件事就该只复制命令** —— 那是另一个缺口：
-/// 本机 resume 有 OS 分派（今天在本机后端 `local.rs::plan`），远端**没有**（开窗 `open_terminal_window`
-/// 一律走本函数）。补它要等前端改成发结构化请求（U8c）之后走后端的 `launch`，
-/// 登记在 **U8a-2c**。今天硬补只能 fire-and-forget，而那会**静默失败**（见 U8b 计划）。
-#[cfg(not(windows))]
-pub fn launch_powershell_window(_ps_command: &str, _local_cwd: Option<&str>) -> Result<(), String> {
-    Err(POSIX_NO_TERMINAL_WINDOW.to_string())
-}
-
 /// 非 Windows 上「不开终端窗口」的**唯一**说法。前后端共用同一句话的口径
 /// （前端据 `hostOs` 决定标题，正文原样带上这句）。
 ///
@@ -502,7 +474,7 @@ pub(crate) fn ssh_client_available() -> bool {
 }
 
 /// 开终端那一问要不要先说「本机缺 OpenSSH 客户端」：只有 Windows 这一问有意义（它的窗口里跑的是 `ssh.exe`）；别处恒 `false`
-/// （POSIX 上 [`launch_powershell_window`] 本来就回 [`POSIX_NO_TERMINAL_WINDOW`]，命令交给用户自己的 bash）。
+/// （POSIX 上开窗只走 [`open_window`]，没有终端出口时回 [`POSIX_NO_TERMINAL_WINDOW`]）。
 pub fn ssh_client_missing() -> bool {
     #[cfg(windows)]
     {
@@ -511,6 +483,29 @@ pub fn ssh_client_missing() -> bool {
     #[cfg(not(windows))]
     {
         false
+    }
+}
+
+/// 开一个终端窗口跑 `command`（「这台电脑能不能开终端窗口、用哪个」只在这一处答）：Windows 开 PowerShell 窗口；
+/// POSIX 有规范化终端出口（[`pick_terminal_exit`]）就交它开窗，没有 ⇒ [`POSIX_NO_TERMINAL_WINDOW`]
+/// （不回落到无窗口直起：要人交互的那一行跑在看不见的地方等于没跑）。
+pub fn open_window(command: &str) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        launch_powershell_window(command, None)
+    }
+    #[cfg(not(windows))]
+    {
+        open_window_via(command, pick_terminal_exit())
+    }
+}
+
+/// [`open_window`] 的 POSIX 本体，终端出口是入参（判据传 `None` / 假终端，不在开发者桌面上开真窗口）。
+#[cfg(not(windows))]
+pub(crate) fn open_window_via(command: &str, term: Option<&str>) -> Result<(), String> {
+    match term {
+        Some(t) => launch_local_posix_via(command, None, Some(t)),
+        None => Err(POSIX_NO_TERMINAL_WINDOW.to_string()),
     }
 }
 

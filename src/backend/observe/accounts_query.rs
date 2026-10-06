@@ -325,6 +325,10 @@ fn scan_accounts(
             "unsupported".into(),
             crate::platform::acct_view::unsupported_said().into(),
         );
+        m.insert(
+            "nextDefault".into(),
+            json_str(next_default(accts_dir).as_deref()),
+        );
         m
     };
     match load_manifest(accts_dir) {
@@ -410,6 +414,20 @@ fn scan_accounts(
             )
         }
     }
+}
+
+/// 号目录里那份凭据文件的名字（「已登录」只 stat 它在不在；watcher 盯它出现 / 变了）。
+pub(crate) const CREDENTIALS_FILE: &str = CREDENTIALS_NAME;
+
+/// 删掉默认号之后新会话默认谁（默认号只有清单里那一份）：问写侧那一条规则（`Manifest::without`），这里不另判。
+/// 清单读不出 / 没有默认号 / 删了之后没有别的号 ⇒ `None`。
+fn next_default(accts_dir: &Path) -> Option<String> {
+    let bytes = read_regular_capped(&manifest_path(accts_dir), MAX_MANIFEST_BYTES).ok()?;
+    let text = String::from_utf8(bytes).ok()?;
+    let m = crate::accounts::manage::model::Manifest::parse(text.trim_start_matches('\u{feff}'))
+        .ok()?;
+    let current = m.managed().find(|a| a.is_default)?.name.clone();
+    m.without(&current).1
 }
 
 /// 帧面 `accounts-list` 的**成品**（账号域读自己那台的 apikey 表，agent 随请求带）。

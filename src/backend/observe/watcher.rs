@@ -409,10 +409,13 @@ fn rewatch_agent_home(
 
 /// 账号 manifest 所在目录那道耳朵：起步不在 ⇒ 挂它的上一层；
 /// 它出现 / 被删重建（它自己路径上的事件）⇒ 按盘上此刻重挂（与 `agent_home` 同一个函数，VIS2 S3 同法）。
+/// 另挂它下面每个号的目录（不递归）：号的凭据文件出现 / 变了 ⇒ 也算「清单可能变了」（登录完成那一刻界面自己变「已登录」）。
 struct AccountsEar {
     dir: PathBuf,
     watched: bool,
     parent_watched: bool,
+    /// 此刻挂着的各号目录。
+    subs: std::collections::BTreeSet<PathBuf>,
 }
 
 impl AccountsEar {
@@ -421,6 +424,7 @@ impl AccountsEar {
             dir: dir.to_path_buf(),
             watched: false,
             parent_watched: false,
+            subs: std::collections::BTreeSet::new(),
         }
     }
 
@@ -432,26 +436,65 @@ impl AccountsEar {
             &mut self.watched,
             &mut self.parent_watched,
         );
+        self.arm_subs(debouncer);
     }
 
-    /// 事件落在账号目录自己身上（出现 / 消失）⇒ 重挂，回 `true`（清单可能跟着变了 ⇒ 调用方发一帧）。
+    /// 按盘上此刻挂各号目录：新出现的挂上，不在了的摘掉（符号链接不跟）。
+    fn arm_subs(&mut self, debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>) {
+        let now: std::collections::BTreeSet<PathBuf> = std::fs::read_dir(&self.dir)
+            .map(|rd| {
+                rd.flatten()
+                    .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+                    .map(|e| e.path())
+                    .collect()
+            })
+            .unwrap_or_default();
+        for gone in self.subs.difference(&now) {
+            let _ = debouncer.watcher().unwatch(gone);
+        }
+        let fresh: Vec<PathBuf> = now.difference(&self.subs).cloned().collect();
+        self.subs.retain(|p| now.contains(p));
+        for d in fresh {
+            match debouncer.watcher().watch(&d, RecursiveMode::NonRecursive) {
+                Ok(()) => {
+                    self.subs.insert(d);
+                }
+                Err(e) => tracing::warn!("监视账号目录 {} 失败: {e}", d.display()),
+            }
+        }
+    }
+
+    /// 一个事件路径 ⇒ 要不要发「清单可能变了」：账号目录自己出现 / 消失（重挂）· 某个号的凭据文件动了 ⇒ `true`；
+    /// 账号目录里多了 / 少了一项 ⇒ 重挂各号目录（清单本身动没动由调用方看 manifest）。
     fn on_path(
         &mut self,
         debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
         p: &Path,
     ) -> bool {
-        if p != self.dir.as_path() {
+        if p == self.dir.as_path() {
+            rewatch_agent_home(
+                debouncer,
+                &self.dir,
+                "accounts dir",
+                &mut self.watched,
+                &mut self.parent_watched,
+            );
+            self.arm_subs(debouncer);
+            return true;
+        }
+        if p.parent() == Some(self.dir.as_path()) {
+            self.arm_subs(debouncer);
             return false;
         }
-        rewatch_agent_home(
-            debouncer,
-            &self.dir,
-            "accounts dir",
-            &mut self.watched,
-            &mut self.parent_watched,
-        );
-        true
+        credentials_touched(p, &self.dir)
     }
+}
+
+/// `p` 是 `<账号目录>/<某号>/` 下那份凭据文件（文件名与账号清单判「已登录」用的同一个常量）。
+fn credentials_touched(p: &Path, accts_dir: &Path) -> bool {
+    p.file_name()
+        .is_some_and(|n| n == crate::observe::accounts_query::CREDENTIALS_FILE)
+        && p.parent().and_then(Path::parent) == Some(accts_dir)
 }
 
 /// `agent_home` · `projects/` · `sessions/` 三道耳朵：起步 [`Self::arm`]，之后每个事件路径交 [`Self::on_path`]。

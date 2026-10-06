@@ -25,6 +25,36 @@ async function go(...ids: string[]): Promise<void> {
 const page = (id: string, title: string, desc: string, ...route: string[]): Scene =>
   settings(id, title, desc, async () => go(...route));
 
+/** 账号页：那台的额度账有数（work 被拒 · personal 63% / 41% · api 按量）。`verifyFail` ⇒ 打开时核出一处对不上。 */
+function acctWorld(verifyFail = false): () => World {
+  return () => {
+    const w = defaultWorld();
+    const now = Math.floor(Date.now() / 1000);
+    const slots = (p5: number, p7: number) => [
+      { slot: "5h", pct: p5, resetsAt: now + 5400 },
+      { slot: "7d", pct: p7, resetsAt: now + 4 * 86400 },
+    ];
+    w.ops["quota-read"] = () => ({
+      state: "present",
+      reason: null,
+      path: "/home/user/.cc-monitor/quota.json",
+      now,
+      accounts: [
+        { agent: "claude-code", account: "work", seenAt: now - 120, kind: "sub", state: "refused", stale: false, limiting: "5h", slots: slots(100, 78), login: "ok" },
+        { agent: "claude-code", account: "personal", seenAt: now - 120, kind: "sub", state: "ok", stale: false, limiting: "5h", slots: slots(63, 41), login: "ok" },
+        { agent: "claude-code", account: "api", seenAt: now - 120, kind: "api", state: "ok", stale: false, slots: [], login: "ok" },
+      ],
+      unseen: [],
+      usableNow: ["personal", "api"],
+      earliestReturn: null,
+    });
+    if (verifyFail) {
+      w.ops["accounts-verify"] = () => ({ pass: false, fails: 1, warns: 0, checks: [{ level: "fail", account: "personal", text: "登录信息缺失" }] });
+    }
+    return w;
+  };
+}
+
 function troubleWorld(): World {
   const w = defaultWorld();
   w.unseenMachines = ["gpu-01"];
@@ -144,7 +174,30 @@ export const SETTINGS_SCENES: Scene[] = [
     await click(await byText(".settings-page:not([hidden]) button", "这台上的 cc-monitor"));
     await sleep(800);
   }),
-  page("settings-machine-acct", "设置 · 远端 · 账号", "devbox 的「账号」栏", "machine:devbox", "machine:devbox#acct"),
+  settings("settings-machine-acct", "设置 · 远端 · 账号", "devbox 的「账号」栏：表头 · 一号一行（默认 · 5h · 7d · 按量）· 表下指路框", async () => go("machine:devbox", "machine:devbox#acct"), acctWorld()),
+  settings("settings-acct-detail", "设置 · 账号 · 一行展开", "点 api 那一行：命令 · API key · 默认模型（仅 devbox · api）· 账号目录 · 删除", async () => {
+    await go("machine:devbox", "machine:devbox#acct");
+    await click('[data-account="api"] .acct-row');
+    await sleep(600);
+  }, acctWorld()),
+  settings("settings-acct-new", "设置 · 账号 · 新建（API key）", "［新建账号］就地展开：名字 b · 选 API key", async () => {
+    await go("machine:devbox", "machine:devbox#acct");
+    await click(await byText(".settings-page:not([hidden]) button", "新建账号"));
+    await sleep(300);
+    const name = document.querySelector<HTMLInputElement>(".acct-new input")!;
+    name.value = "b";
+    name.dispatchEvent(new Event("input"));
+    await click(await byText(".acct-new label", "API key"));
+    await sleep(600);
+  }, acctWorld()),
+  settings("settings-acct-remove", "设置 · 账号 · 删默认号", "work ⋯ → 删除 work…：删 / 留两行 · 之后新会话默认 personal · 焦点在取消", async () => {
+    await go("machine:devbox", "machine:devbox#acct");
+    await click('[data-account="work"] .acct-row');
+    await sleep(400);
+    await click(await byText('[data-account="work"] button', "删除 work…"));
+    await sleep(600);
+  }, acctWorld()),
+  settings("settings-acct-verify", "设置 · 账号 · 打开时核出对不上", "personal 的登录信息缺失：表上方一条警告条 ＋［修复…］", async () => go("machine:devbox", "machine:devbox#acct"), acctWorld(true)),
   page("settings-machine-config", "设置 · 远端 · 别名与配置文件", "devbox 的「别名与配置文件」栏", "machine:devbox", "machine:devbox#config"),
   settings("settings-machine-menu", "设置 · 机器 ⋯ 菜单", "机器列表里 devbox 那一行的 ⋯", async () => {
     await go("machines");

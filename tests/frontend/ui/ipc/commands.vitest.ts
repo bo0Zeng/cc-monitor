@@ -413,8 +413,8 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     //   多一条新主路 ⇒ 这个数变 ⇒ 红一次，逼人回来看要不要传账号。
     expect(
       sites.length,
-      `起本机会话的调用点从 2 变成了 ${sites.length}：\n${sites.map((s) => s.file).join("\n")}`,
-    ).toBe(2); // 5 → 2：四处 `resume_history_session`（tab 栏 · 历史页 · 分叉 · 换号重启）收成 `local-resume.ts` 一处；另一处是历史页起新会话的 `new_local_session`
+      `起本机会话的调用点从 3 变成了 ${sites.length}：\n${sites.map((s) => s.file).join("\n")}`,
+    ).toBe(3); // 2 → 3：账号页开不了终端窗口时「在 tmux 里登录」（`settings/account-login.ts`，点名那个号、带铸好的 tmux 名）// 5 → 2：四处 `resume_history_session`（tab 栏 · 历史页 · 分叉 · 换号重启）收成 `local-resume.ts` 一处；另一处是历史页起新会话的 `new_local_session`
     const missing = sites.filter((s) => !/\baccount\s*:/.test(s.text)).map((s) => s.file);
     expect(
       missing,
@@ -455,7 +455,7 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
       sites.length - resumeSites.length,
       "`new_local_session` 的调用点数变了 —— 它今天没有 `tmux_name` 参数位（Rust 侧签名里就没有），" +
         "变了要回来看是不是后端也开了那一格",
-    ).toBe(1);
+    ).toBe(2); // 1 → 2：`settings/account-login.ts` 在 tmux 里登录（它带 tmuxName）
     const missing = resumeSites.filter((s) => !/\btmuxName\b/.test(s.text)).map((s) => s.file);
     expect(
       missing,

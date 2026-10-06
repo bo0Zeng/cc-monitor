@@ -63,6 +63,7 @@ describe("金样：后端出的成品，TS 这一侧读得懂", () => {
     const got = decodeAccountsList(golden["accounts-list"]);
     expect(got.meta.enabled).toBe(true);
     expect(got.meta.count).toBe(3);
+    expect(got.meta.nextDefault, "删了默认号之后接班的那个号（后端答的）没收进来").toBe("b");
     expect(got.meta.manifestPath).toBe("<root>/accts/accounts.json");
     expect(got.notice).toBeNull();
     expect(got.accounts.map((a) => [a.name, a.configDir, a.authKind, a.authReady])).toEqual([

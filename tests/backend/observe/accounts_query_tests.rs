@@ -1933,3 +1933,20 @@ fn the_machine_product_matches_the_cross_language_golden() {
         );
     }
 }
+
+/// 删掉默认号之后新会话默认谁（`meta.nextDefault`）：与删号那一条同一个答案（写侧 `Manifest::without`）——
+/// 夹具里默认号是 `a`，删它之后接班的是清单里下一个具名号；没有清单 ⇒ `null`。
+#[test]
+fn the_list_meta_says_who_becomes_default_once_the_default_is_removed() {
+    let (root, accts) = c4c_fixture("next-default", false);
+    let product = list_product_at(&accts, &[], "claude-code", "claude-code");
+    assert_eq!(product["meta"]["nextDefault"], serde_json::json!("b"));
+    let empty = tmpdir("next-default-none");
+    let none = list_product_at(&empty, &[], "claude-code", "claude-code");
+    assert!(
+        none["meta"]["nextDefault"].is_null(),
+        "没有清单却答出了接班的号"
+    );
+    let _ = fs::remove_dir_all(&root);
+    let _ = fs::remove_dir_all(&empty);
+}

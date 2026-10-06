@@ -99,7 +99,7 @@ const accountsOldBackend = (): string => copyText("accounts.oldBackend.accounts"
  * 与那一行的 `adapterId`（后端 `src/backend/agents/<名>/` 注册表 `Adapter.launch` 那张表，从前是 monitor `adapter.rs`），与 monitor 侧 `history::launch_agent_id` 〔散文墓碑〕
  * 同一个事实（起会话那一侧写进中转路由键第 1 段的就是它）。表里没有 ⇒ 抛（不回落到任何一家）。
  */
-function launchAgentId(): string {
+export function launchAgentId(): string {
   const got = lookupAgentProfile(ACTIVE_AGENT);
   if (!got.known) throw new Error(got.message);
   return got.facts.adapterId;

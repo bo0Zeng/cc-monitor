@@ -1162,7 +1162,7 @@ body.settings-window-mode .settings-panel {
 }
 
 /* F08：越层启动器诊断——只读提示，不是错误（用户的自定义命令本身没有"错"，只是没享受到
-   账号/模型偏好的好处），用 warn 色但不用 error 色，同 accounts-row-badge.warn 的既有克制。 */
+   账号/模型偏好的好处），用 warn 色但不用 error 色。 */
 .settings-launcher-warning {
   margin-top: 4px;
   font-size: var(--font-size-small);
@@ -1750,239 +1750,12 @@ body.settings-window-mode .settings-panel {
 
 
 
-/* ============================================================
-   account-ux U7：设置「账号」组的 IA + 表格样式。
-   在此之前**账号表这一片**（bar / meta / table / row / hint / info / not-enabled）一条 CSS 都没有,
-   是裸 div 竖排:无列、无对齐、长 configDir 撑爆宽度。（A6 的 .accounts-wizard/.accounts-maint*
-   本来就有样式,见下方;本轮只把维护区整块收进 <details>,不重写其内部。）
-   颜色一律走 token、零硬编码。**但注意**:theme.ts 的 TOKENS 只覆盖 bg/bg-2/card/text/text-2/
-   success/warn/error/live 等;这里还用到 --overlay-hover / --border-* / --text-faint / --accent,
-   它们是 :root 里的固定值、不在换肤范围。本仓也**没有浅色主题**(color-scheme: dark,全文件无
-   prefers-color-scheme)——所以别声称"明暗两套都覆盖了"。若用户把 bg 调成浅色,--overlay-hover
-   (#ffffff06) 与 --border-faint 会近乎消失,行分隔线会变淡:这是全仓既有约定,非本块独有。
-   注意：本文件的注释里别写 "-*" 紧跟斜杠的写法，那会提前闭合 CSS 注释（构建会报
-   css-syntax-error，后半段注释文字会漏进样式表）。
-   ============================================================ */
-
-/* 顶部条：远端选择 + 刷新。单远端时 JS 会把 select 隐掉，只剩「远端：」+ 刷新。 */
-.accounts-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-/* E59：`.accounts-origin-select` 已删 —— 账号分节不再自己挑机器（origin 只来自共用 store）。 */
-.accounts-refresh {
-  flex: none;
-  padding: 3px 10px;
-  font-size: var(--font-size-small);
-  color: var(--text-2);
-  background: transparent;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-m);
-  cursor: pointer;
-}
-
-.accounts-refresh:hover {
-  color: var(--text);
-  background: var(--overlay-hover);
-}
-
-/* U7：「当前账号」横幅——把 chip / tab 徽章上那个概念在设置里说清楚（管辖范围）。 */
-.accounts-current-banner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  margin-bottom: 10px;
-  border: 1px solid var(--border-strong);
-  border-left: 3px solid var(--accent);
-  border-radius: var(--radius-m);
-  background: var(--bg-2);
-}
-
-.accounts-current-main {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-}
-
-.accounts-current-name {
-  font-size: var(--font-size-mono);
-  color: var(--text);
-}
-
-.accounts-current-email {
-  font-size: var(--font-size-small);
-  color: var(--text-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.accounts-current-scope {
-  font-size: var(--font-size-small);
-  color: var(--text-faint);
-  margin-left: auto;
-  text-align: right;
-}
-
-/* 当前账号存在但**不可用**（未登录 / 逃生口 / 目录缺失）→ 用 warn 色示警：此时 U6 的徽章与
-   对齐面整体休眠，横幅必须如实说，否则用户会以为它在生效。 */
-.accounts-current-banner.unusable {
-  border-left-color: var(--warn);
-}
-
+/* 各账号共用的 MCP 那一块（别名与配置文件页）的说明行。 */
 .accounts-meta {
   font-size: var(--font-size-small);
   color: var(--text-faint);
   margin-bottom: 6px;
   overflow-wrap: anywhere;
-}
-
-/* 账号表：CSS Grid 定列 —— ★ / 头像 / 名 / 邮箱 / 状态 / 路径 / 操作。
-   路径列吃掉剩余宽度并单行省略（全文在 title 里），操作列右对齐。 */
-/* 列定义放在**表**上、行用 subgrid 继承它 —— 否则每行各自是一个独立 grid，`auto`/`fr` 轨道
-   按各自那一行的内容算宽，列**跨行对不齐**（当前账号那行没有「设为当前账号」按钮、in-place 账号
-   没有「登录终端」，行宽本来就不同 ⇒ 只要有 ≥2 个账号必然错位）。这正是本功能要解决的问题。
-   `overflow-x:auto`：设置窗没有 min_inner_size，用户可以拖到很窄，宁可横向滚也别把最右的按钮裁掉。 */
-.accounts-table {
-  display: grid;
-  /* 邮箱权重 > 路径：isolated 账号的 configDir 就是 <acctsDir>/<name>，行与行之间往往只差最后
-     一个字符，前几十字符逐行重复；而邮箱才是分辨"学校号/私人号"的字段。路径要全文有 title，
-     也有「复制路径」按钮兜着。
-     🔴 **8 轨道 → 7**：F10 那条用量列（原第 6 条 `minmax(0, 1fr)`）随用量
-     ③ 轴整轴退役 —— 行里的用量单元格已经不渲染了，留着它就是最后一条轨道空着、整表右偏。
-     条数契约由 `tests/frontend/ui/settings/accounts-section.vitest.ts`「每行子元素数 == grid 列数(7)」守。 */
-  grid-template-columns:
-    auto 16px minmax(0, auto) minmax(0, 1.2fr) auto
-    minmax(0, 0.8fr) auto;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-m);
-  overflow-x: auto;
-}
-
-.accounts-row {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: subgrid;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
-  border-left: 2px solid transparent;
-}
-
-/* subgrid 不支持时（Chromium <117 / WebKitGTK <2.42）：`grid-template-columns: subgrid` 会被丢弃，
-   行会退化成单列竖排堆叠 —— 那比不对齐还糟。显式退回 flex 行（= U7 之前的观感，仍可读）。 */
-@supports not (grid-template-columns: subgrid) {
-  .accounts-table {
-    display: flex;
-    flex-direction: column;
-  }
-  .accounts-row {
-    display: flex;
-    flex-wrap: wrap;
-  }
-}
-
-.accounts-row + .accounts-row,
-.accounts-row-apikey + .accounts-row {
-  border-top: 1px solid var(--border-faint);
-}
-
-.accounts-row:hover {
-  background: var(--overlay-hover);
-}
-
-/* 比 hover 更实一档：否则鼠标划过任意一行时，那行和当前行背景一模一样，只剩 ★ 可辨。 */
-.accounts-row.current {
-  border-left-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 9%, transparent);
-}
-
-.accounts-row-mark {
-  color: var(--accent);
-  font-size: var(--font-size-small);
-  line-height: 1;
-  text-align: center;
-}
-
-/* 账号名最长可到 64 字符（validateAcctName）——不省略会把 auto 列撑爆、把邮箱/路径两列压没。 */
-.accounts-row-name {
-  font-size: var(--font-size-mono);
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-
-.accounts-row-email,
-.accounts-row-dir {
-  font-size: var(--font-size-small);
-  color: var(--text-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.accounts-row-dir {
-  color: var(--text-faint);
-  font-family: var(--font-mono);
-}
-
-/* 「信息才显」(用户决策③) 同源：健康态每行都一样，恒真的信息不携带信息，涂绿只会稀释真正
-   要跳出来的「未登录 / 逃生口」。故健康态走 faint，异常态才上 warn。 */
-.accounts-row-badge {
-  font-size: var(--font-size-small);
-  color: var(--text-faint);
-  white-space: nowrap;
-}
-
-.accounts-row-badge.warn {
-  color: var(--warn);
-}
-
-.accounts-row-actions {
-  display: flex;
-  gap: 4px;
-  justify-content: flex-end;
-  white-space: nowrap;
-}
-
-.accounts-row-actions button {
-  padding: 2px 8px;
-  font-size: var(--font-size-small);
-  color: var(--text-2);
-  background: transparent;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-m);
-  cursor: pointer;
-}
-
-.accounts-row-actions button:hover {
-  color: var(--text);
-  background: var(--overlay-hover);
-  border-color: var(--border-medium);
-}
-
-/* F07：每账号默认模型输入——尺寸/边框对齐同一行的按钮，别让它看起来像另一套控件。 */
-.accounts-row-model {
-  width: 84px;
-  padding: 2px 6px;
-  font-size: var(--font-size-small);
-  color: var(--text);
-  background: transparent;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-m);
-}
-
-.accounts-row-model:focus {
-  border-color: var(--border-medium);
-  outline: none;
 }
 
 .accounts-hint,
@@ -1993,146 +1766,12 @@ body.settings-window-mode .settings-panel {
   margin-top: 8px;
 }
 
-/* Z01：账号列表「能用但有缺」的说明（旧 backend / 旧的写清单那一侧 ⇒ 看不见账号 0）。
-   不是错误态，所以不用 --danger；但必须比普通 hint 显眼，否则等于静默。 */
-.accounts-hint-warn {
-  color: var(--warn);
-  padding: 8px 10px;
-  background: var(--bg-2);
-  border: 1px solid var(--warn);
-  border-radius: var(--radius-m);
-}
-
 .accounts-info {
   padding: 8px 10px;
   background: var(--bg-2);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-m);
   margin-top: 0;
-}
-
-/* 未启用态（部署向导）的标题/正文。**不给外框**——里面的 .accounts-wizard 自带边框+底色，
-   再套一层就是"框里套框"。 */
-.accounts-not-enabled {
-  padding: 0;
-}
-
-.accounts-ne-title {
-  font-size: var(--font-size-mono);
-  color: var(--text);
-  margin-bottom: 4px;
-}
-
-.accounts-ne-body {
-  font-size: var(--font-size-small);
-  color: var(--text-2);
-  line-height: 1.5;
-}
-
-/* ─── N-F1b：本机那一支（没有配任何远端时，这一节讲的是这台机器） ────────────────
-   刻意**不复用** .accounts-table / .accounts-row：本机这几行是 7 格（头像/名/邮箱/状态/路径/当前/操作），
-   与远端那张表的列不一样，套上去列会错位。
-   列宽的权重照 .accounts-table 那段头注的同一条理由：邮箱 > 路径（isolated 账号的
-   configDir 逐行只差最后一个字符，而邮箱才分辨得出是哪个号）。 */
-.accounts-local-head {
-  color: var(--text-2);
-}
-
-.accounts-local-table {
-  display: grid;
-  /* 头像 / 名 / 邮箱 / 状态 / 路径 / 当前标记 / 操作。
-     贴边两条用 auto：行是 subgrid，行的内边距与左边框算进贴边那两格里，死宽撑不开就压到下一格上。 */
-  grid-template-columns:
-    auto minmax(0, auto) minmax(0, 1.2fr) auto minmax(0, 1fr) auto auto;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-m);
-  /* 设置窗没有 min_inner_size，用户可以拖到很窄 —— 宁可横向滚也别把最右一格裁掉。 */
-  overflow-x: auto;
-}
-
-.accounts-local-row {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: subgrid;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
-  border-left: 2px solid transparent;
-}
-
-/* subgrid 不支持时（Chromium <117 / WebKitGTK <2.42）：那条声明会被整条丢弃，行退化成
-   单列竖排堆叠 —— 比不对齐更糟。显式退回 flex 行。理由与 .accounts-table 那段逐字同源。 */
-@supports not (grid-template-columns: subgrid) {
-  .accounts-local-table {
-    display: flex;
-    flex-direction: column;
-  }
-  .accounts-local-row {
-    display: flex;
-    flex-wrap: wrap;
-  }
-}
-
-.accounts-local-row + .accounts-local-row {
-  border-top: 1px solid var(--border-faint);
-}
-
-.accounts-local-row:hover {
-  background: var(--overlay-hover);
-}
-
-/* 比 hover 更实一档：否则鼠标划过任意一行时，那行与当前行背景一模一样。 */
-.accounts-local-row.current {
-  border-left-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 9%, transparent);
-}
-
-/* 账号名最长可到 64 字符（validateAcctName）——不省略会把 auto 列撑爆。 */
-.accounts-local-row-name {
-  font-size: var(--font-size-mono);
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-
-.accounts-local-row-email,
-.accounts-local-row-dir {
-  font-size: var(--font-size-small);
-  color: var(--text-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.accounts-local-row-dir {
-  color: var(--text-faint);
-  font-family: var(--font-mono);
-}
-
-/* 健康态 faint、异常态才上 warn —— 恒真的信息不携带信息，涂色只会稀释真正要跳出来的那几个。
-   （与 .accounts-row-badge 同一条理由，那里的头注写着全文。） */
-.accounts-local-row-badge {
-  font-size: var(--font-size-small);
-  color: var(--text-faint);
-  white-space: nowrap;
-}
-
-.accounts-local-row-badge.warn {
-  color: var(--warn);
-}
-
-.accounts-local-row-mark {
-  font-size: var(--font-size-small);
-  color: var(--accent);
-  white-space: nowrap;
-}
-
-/* 空态：正题一行 + 下一步一行。下一步走普通 hint 的弱色，别和正题抢。 */
-.accounts-local-empty-next {
-  margin-top: 4px;
 }
 
 /* 各账号共用的 MCP：一块说明 ＋ 名字一行一个（右侧「删除」）＋ 两边都改了的那几条（各版一个按钮）。 */
@@ -2175,136 +1814,7 @@ body.settings-window-mode .settings-panel {
   margin-top: 0;
 }
 
-/* U7：维护区收进 <details> 默认折叠——加账号 / 自检 / 补链都低频且带 danger，不该常驻占版面。 */
-.accounts-maint-wrap {
-  margin-top: 10px;
-}
-
-
-.accounts-maint-wrap > summary::-webkit-details-marker {
-  display: none;
-}
-
-.accounts-maint-wrap > summary::before {
-  content: var(--mark-closed);
-  color: var(--text-faint);
-}
-
-.accounts-maint-wrap[open] > summary::before {
-  content: var(--mark-open);
-}
-
-.accounts-maint-wrap > summary:hover {
-  color: var(--text);
-}
-
-/* 折叠容器已给了标题，里面那块就不必再顶一个 margin */
-.accounts-maint-wrap .accounts-maint {
-  margin-top: 6px;
-}
-
-/* A2：新建账号 —— 一张常驻表单，岔口（订阅 / 第三方 apikey）在表单里。
-   外框与向导同一套（边框 + 淡底），不另造一种框。按钮走 settings-btn，「创建」是 primary 不是红色。 */
-.accounts-new {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 12px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-m);
-  background: color-mix(in srgb, var(--accent) 5%, transparent);
-}
-
-.accounts-new-hint {
-  font-size: var(--font-size-small);
-  color: var(--text-faint);
-  line-height: 1.5;
-}
-
-.accounts-new-access {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-}
-
-.accounts-new-key {
-  display: flex;
-  flex-direction: column;
-}
-
-.accounts-new-key[hidden] {
-  display: none;
-}
-
-/* 高级（凭据快照）：折叠标记同 .accounts-maint-wrap 的既有范式（去掉原生三角 + 自绘 ▸/▾）。 */
-.accounts-new-adv > summary {
-  font-size: var(--font-size-small);
-  color: var(--text-2);
-  cursor: pointer;
-  padding: 2px 0;
-  user-select: none;
-  list-style: none;
-}
-
-.accounts-new-adv > summary::-webkit-details-marker {
-  display: none;
-}
-
-.accounts-new-adv > summary::before {
-  content: var(--mark-closed);
-  color: var(--text-faint);
-}
-
-.accounts-new-adv[open] > summary::before {
-  content: var(--mark-open);
-}
-
-.accounts-new-btns {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-/* 账号那一行展开出来的「配 apikey」一格：跨满整行，挂在那一行紧后面（不算那一行的列）。 */
-.accounts-row-apikey {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px 8px 40px;
-  font-size: var(--font-size-small);
-  color: var(--text-2);
-}
-
-.accounts-row-apikey[hidden] {
-  display: none;
-}
-
-/* 操作列那颗开合按钮：长相交给 .accounts-row-actions button，这里只管「展开着」的那一态。 */
-.accounts-row-apikey-toggle[aria-expanded="true"] {
-  border-color: var(--border-medium);
-  color: var(--text);
-}
-
-/* A6:设置「账号」组的部署/维护向导 */
-.accounts-wizard,
-.accounts-maint {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 12px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-m);
-  background: color-mix(in srgb, var(--accent) 5%, transparent);
-}
-
-/* （U7 删掉了 .accounts-maint-title 的规则：产生它的那个 div 已被 <details> 的 <summary> 取代，
-   全仓无使用者。） */
-
-/* F08：别名生成器——折叠标记同 .accounts-maint-wrap 的既有范式（自绘 ▸/▾，不用原生三角）。 */
+/* F08：别名生成器——折叠标记自绘 ▸/▾，不用原生三角。 */
 .ccm-alias-gen {
   margin-top: 10px;
 }
@@ -2360,80 +1870,6 @@ body.settings-window-mode .settings-panel {
    （那三个 div 没自设字体）。所以只给输出面本身设等宽。 */
 .ccm-alias-gen-out > .paste-block-out {
   color: var(--text-2);
-}
-
-.accounts-wiz-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: var(--font-size-small);
-}
-
-.accounts-wiz-name,
-.accounts-maint-name,
-.accounts-maint-cred {
-  padding: 6px 8px;
-  background: var(--field-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-s);
-  color: inherit;
-  font-family: ui-monospace, monospace;
-  font-size: var(--font-size-mono);
-}
-
-.accounts-wiz-err,
-.accounts-maint-err {
-  min-height: 1em;
-  font-size: var(--font-size-small);
-  color: var(--error);
-}
-
-.accounts-wiz-preview {
-  margin: 0;
-  padding: 8px 10px;
-  background: var(--field-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-s);
-  font-family: ui-monospace, monospace;
-  font-size: var(--font-size-small);
-  white-space: pre-wrap;
-  word-break: break-all;
-  user-select: text;
-  opacity: 0.9;
-}
-
-.accounts-wiz-btns,
-.accounts-maint-ops {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.accounts-wiz-btns button,
-.accounts-maint button {
-  padding: 5px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-s);
-  background: var(--field-bg);
-  color: inherit;
-  font-size: var(--font-size-small);
-  cursor: pointer;
-}
-
-.accounts-wiz-btns button:hover:not(:disabled),
-.accounts-maint button:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-
-.accounts-wiz-btns button:disabled,
-.accounts-maint button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.accounts-wiz-btns button.danger {
-  border-color: var(--error);
-  color: var(--error);
 }
 
 /* === T02 配置面审计视图 ===
@@ -2903,4 +2339,311 @@ body.settings-window-mode .settings-panel {
   .machine-conn-grid .settings-input-wide {
     width: 100%;
   }
+
+/* 账号栏自带表头（「X 上的账号 · 新会话默认 Y」）：块标题只留给读屏。 */
+.settings-group:has(> .acct-page) > .settings-group-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+/* 机器页「账号」栏：表头一行 · 就地展开的新建表单 · 一号一行（44 高）· 点开的详情 · 表下指路框。 */
+.acct-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.acct-head-title {
+  margin: 0;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+}
+
+.acct-head-sub {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+.acct-head-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
+}
+
+.acct-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.acct-box,
+.acct-table,
+.acct-new {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--bg-2);
+}
+
+.acct-box {
+  padding: var(--space-6);
+}
+
+.acct-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 140px 90px 150px 28px;
+  align-items: center;
+  column-gap: var(--space-4);
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  cursor: pointer;
+}
+
+.acct-row-wrap + .acct-row-wrap {
+  border-top: 1px solid var(--border);
+}
+
+.acct-row:hover,
+.acct-row:focus-visible {
+  background: var(--overlay-hover);
+}
+
+.acct-table[data-readonly="true"] .acct-row {
+  opacity: 0.55;
+}
+
+.acct-row-who {
+  min-width: 0;
+}
+
+.acct-row-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-weight: 600;
+}
+
+.acct-row-kind {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acct-row-slot {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.acct-row-slot[data-shade="refused"],
+.acct-row-name [data-shade="error"] {
+  color: var(--error);
+}
+
+.acct-row-slot[data-shade="warn"],
+.acct-row-slot[data-stale="true"] {
+  color: var(--warn);
+}
+
+.acct-row-act {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.acct-row-why {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+/* 「设为默认」悬停 / 焦点才出现。 */
+.acct-row-hoverbtn {
+  visibility: hidden;
+}
+
+.acct-row:hover .acct-row-hoverbtn,
+.acct-row:focus-within .acct-row-hoverbtn {
+  visibility: visible;
+}
+
+.acct-detail {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3) var(--space-5);
+  padding: var(--space-4) var(--space-5) var(--space-5) 52px;
+  border-top: 1px solid var(--border);
+}
+
+.acct-detail-key {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+.acct-detail-val {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.acct-detail-mono {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-mono);
+}
+
+.acct-detail-model {
+  width: 200px;
+  height: var(--control-h);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-s);
+  background: var(--field-bg);
+  color: var(--text);
+}
+
+.acct-detail-scope,
+.acct-detail-err {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+.acct-detail-err {
+  color: var(--error);
+}
+
+.acct-detail-foot {
+  display: flex;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+
+.acct-key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.acct-key-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  width: 100%;
+}
+
+.acct-key-form[hidden] {
+  display: none;
+}
+
+.acct-key-form > :last-child {
+  grid-column: 1 / -1;
+}
+
+.acct-new {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  margin-bottom: var(--space-4);
+  padding: var(--space-6);
+}
+
+.acct-new-title {
+  font-weight: 600;
+}
+
+.acct-new-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5) var(--space-6);
+}
+
+.acct-new-access {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.acct-new-label {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+.acct-new-radios {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  min-height: var(--control-h);
+}
+
+.acct-new-extras {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+.acct-new-import {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--font-size-small);
+  cursor: pointer;
+}
+
+.acct-enable-title {
+  font-weight: 600;
+}
+
+.acct-enable-hint {
+  margin: var(--space-2) 0 var(--space-5);
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+.acct-enable-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-4);
+}
+
+.acct-enable-row > :first-child {
+  width: 240px;
+}
+
+.acct-pointer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-m);
+}
+
+.acct-pointer-link {
+  padding: 2px var(--space-3);
+  border: 0;
+  border-radius: var(--radius-s);
+  background: var(--overlay-hover);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-small);
+  cursor: pointer;
+}
+
+.acct-pointer-text {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
 }

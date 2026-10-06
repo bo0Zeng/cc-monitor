@@ -99,7 +99,8 @@ const ALLOWED: Record<string, Record<string, number>> = {
   //   改回手写在本文件（`interface Account` 的三个字段**声明**）—— 声明不是读，但本条按名字数，如实登记。
   // 那个带回落的包装删了（`a.authReady ?? a.loggedIn`）：`loggedIn` 2 → 1（只剩声明，前端零处读它）·
   //   `authReady` 6 → 4（少了函数名与回落里那一处；三个消费点改成直接读 `a.authReady`，次数不变）· `authKind` 不变。
-  "src/frontend/ui/accounts.ts": { loggedIn: 1, authReady: 4, authKind: 3 },
+  // `accountRowKind`（设置窗账号表那一行的第二行要哪一档）：`loggedIn` 1 → 2 · `authKind` 3 → 4（各读一次）。
+  "src/frontend/ui/accounts.ts": { loggedIn: 2, authReady: 4, authKind: 4 },
   // 后端 `accounts-list` 成品的**收**口（`decodeAccountsList`）：每个字段各 4 处 ——
   //   键集合清单里的名字 1 · 类型核验 1 · 装回对象时键名 1 · 取值 1。它是**收**（逐格核类型，核不了不许读），
   //   不是**判**：可用性仍只由 `accounts.ts::isSelectable` 答，按 kind 分流的规则仍住 `acct_core::auth_ready`。
