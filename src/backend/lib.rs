@@ -790,7 +790,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p7z-history-sid：history-list 加 sid 一格（只要这一个会话那一行，隐藏 / 出窗也照回、不补父会话；形状不对回 bad_args）。
 ///
 /// p8a-probe-cells：测试连接的结局只报版本与做不到几项（不再报能用几项），界面逐段出 ✓。
-pub const BUILD_ID: &str = "p8a-probe-cells";
+///
+/// p8b-history-old-gone：删 history-projects / history-sessions（界面已全问 history-list）。
+pub const BUILD_ID: &str = "p8b-history-old-gone";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
