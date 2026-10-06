@@ -784,7 +784,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p7w-turn-rail：history-turns 的回复头跳过代码块围栏行；主窗口轮次刻度。
 ///
 /// p7x-paste-fold：userText.pasted 多 bodyStart · bodyEnd · lines；history-turns 的回复头只取正文行。
-pub const BUILD_ID: &str = "p7x-paste-fold";
+///
+/// p7y-system-body：Speaker::System 带 body（只在记录有时给，Codex 为 None）；会话内查找不搜注入；历史页只读查看器。
+pub const BUILD_ID: &str = "p7y-system-body";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
