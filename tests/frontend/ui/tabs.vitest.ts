@@ -2078,7 +2078,6 @@ describe("：↗ 远端那一格按顺序问三方", () => {
       if (isChanCall(cmd, args, "session-terminals")) return Promise.resolve(chanReply(shown));
       if (isChanCall(cmd, args, "terminal-processes")) return Promise.resolve(chanReply(found));
       if (cmd === "bring_remote_terminal_to_front") return front();
-      if (cmd === "flash_terminal_windows") return Promise.resolve(2);
       return Promise.resolve([]);
     });
   }
@@ -2102,8 +2101,8 @@ describe("：↗ 远端那一格按顺序问三方", () => {
   const popText = (): string => pop()?.textContent ?? "";
   const popButtons = (): string[] => [...(pop()?.querySelectorAll("button") ?? [])].map((b) => b.textContent ?? "").filter((t) => t !== "");
 
-  it("★★ 两跳都是原样交：那台的 `terminals` ⇒ 本机后端，本机后端的 `chain` ⇒ 壳；分不清 ⇒ 浮层给「任务栏闪烁这 N 个」、只闪不切，一次 tmux 都不问", async () => {
-    answer({ terminals: TERMINALS }, { chain: CHAIN }, () => Promise.resolve({ kind: "several", program: "WindowsTerminal.exe", windows: [34, 51] }));
+  it("★★ 两跳都是原样交：那台的 `terminals` ⇒ 本机后端，本机后端的 `chain` ⇒ 壳；分不清 ⇒ 浮层照实说拉不了、带候选个数（不切不闪），一次 tmux 都不问", async () => {
+    answer({ terminals: TERMINALS }, { chain: CHAIN }, () => Promise.resolve({ kind: "several", program: "WindowsTerminal.exe", count: 2 }));
     const tm = makeTM();
     tm.createSkeletonTab("r1", "/p", "devbox", "interactive", null);
     await clickFront(tm, "r1");
@@ -2125,11 +2124,7 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     expect(popText()).toContain("WindowsTerminal.exe 2 个窗口 · 本会话终端未登记");
     expect(popText()).toContain("在目标窗口新开 PowerShell 标签页并重连后可识别");
     expect(pop()!.closest("[role=dialog]")?.getAttribute("aria-label")).toBe("切到终端的结果");
-    [...pop()!.querySelectorAll("button")].find((b) => b.textContent === "任务栏闪烁这 2 个")!.click();
-    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
-    expect(calls.filter(([c]) => c === "flash_terminal_windows").map(([, a]) => a), "只闪那几个候选，不切").toEqual([{ windows: [34, 51] }]);
-    expect(calls.filter(([c]) => c === "bring_remote_terminal_to_front").length, "闪的时候没有再去切").toBe(1);
-    expect(pop(), "按钮做完浮层就关").toBeNull();
+    expect(popButtons(), "分不清：不给闪窗口那一颗").toEqual([]);
   });
 
   it("★ 每一方的原因各落成一族（标题 · 正文 · 按钮 · 色）；本机后端说了原因就不去找窗口；同一个会话再来一次原地换内容", async () => {

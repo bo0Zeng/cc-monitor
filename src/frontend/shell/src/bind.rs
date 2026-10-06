@@ -335,7 +335,7 @@ fn find_window_for_marker(req: &AwaitRequest) -> Option<HwndEntry> {
     Some(entry_from_marker_hit(req, m, owner_proc_start))
 }
 
-/// ↗ 一次的结局（闭集；界面按 `kind` 排版，句子在文案表）。分不清是哪个窗口时**不挑一个切**：给出候选，界面可让它们只闪不切。
+/// ↗ 一次的结局（闭集；界面按 `kind` 排版，句子在文案表）。分不清是哪个窗口时**不挑一个切**：照实说拉不了、带候选个数。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
@@ -343,12 +343,8 @@ fn find_window_for_marker(req: &AwaitRequest) -> Option<HwndEntry> {
 pub enum FrontOutcome {
     /// 窗口到前面了。
     Switched,
-    /// 同一个终端程序开着几个窗口、这个终端没登记 ⇒ 分不清；`windows` 是那几个候选窗口。
-    Several {
-        program: String,
-        #[cfg_attr(test, ts(type = "number[]"))]
-        windows: Vec<isize>,
-    },
+    /// 同一个终端程序开着几个窗口、这个终端没登记 ⇒ 分不清；`count` 是候选窗口个数。
+    Several { program: String, count: usize },
     /// 本机会话的终端没登记（在接上终端之前开的）。
     Unbound,
     /// 认得的那个窗口已经不在了。
@@ -433,14 +429,6 @@ pub fn activate(hwnd: isize) -> FrontOutcome {
     } else {
         FrontOutcome::Refused
     }
-}
-
-/// 让这几个窗口在任务栏闪一下（只闪不切，用户自己点哪个）。只闪此刻还是窗口的那几个；回闪了几个。
-pub fn flash_windows(windows: &[isize]) -> usize {
-    windows
-        .iter()
-        .filter(|h| crate::platform::hwnd::exists(**h) && crate::platform::hwnd::flash(**h))
-        .count()
 }
 
 /// 持久化的 sid → 拉前信息缓存。SessionMap 在新 session 时 record；
@@ -641,7 +629,7 @@ pub(crate) fn pick_chain_window(
             }),
             _ => Err(FrontOutcome::Several {
                 program: l.name.clone(),
-                windows: wins,
+                count: wins.len(),
             }),
         },
         // 链上有一个控制台 shell 却没有窗口 ⇒ 它的终端窗口归了链外的程序（Windows 默认终端把它交给了 Windows Terminal），

@@ -1,6 +1,8 @@
 /**
  * ↗ 切到终端的结局：后端 / 壳交来的结局族 ⇒ 浮层上的标题 · 正文 · 灰字办法 · 按钮 · 色（规则：认得准才切，认不准照实说、给办法，永远不挑一个窗口切）。
  *
+ * 分不清是哪个窗口：照实说拉不了、带候选个数（不切、不闪任何一个）。
+ *
  * 结局族的来处（这里不判，只排版）：
  * - 壳 `bring_terminal_to_front` / `bring_remote_terminal_to_front`（`FrontOutcome`）：切过去了 · 分不清（带候选窗口）· 没登记 · 窗口已关 ·
  *   认不准 · 系统不许抢前台 · 窗口归 Windows Terminal 托管 · 真在后台；
@@ -28,7 +30,6 @@ export type FrontResult =
 
 /** 浮层上的一颗按钮（做什么由调用方接；名字在文案表）。 */
 export type FrontAct =
-  | { kind: "flash"; windows: number[] }
   | { kind: "connect" }
   | { kind: "open-in-terminal" }
   | { kind: "copy"; detail: string }
@@ -56,7 +57,7 @@ export function frontView(r: FrontResult, machine: string, inTmux: boolean): Fro
     case "switched":
       return null;
     case "several":
-      return v(unsure, copyText("front.body.several", { program: r.program, n: r.windows.length }), "amber", [{ kind: "flash", windows: r.windows }], copyText("front.hint.several"));
+      return v(unsure, copyText("front.body.several", { program: r.program, n: r.count }), "amber", [], copyText("front.hint.several"));
     case "unbound":
       return v(copyText("front.title.unbound"), copyText("front.body.unbound"), "amber", [{ kind: "connect" }], copyText("front.hint.unbound"));
     case "detached":
@@ -100,8 +101,6 @@ export function frontView(r: FrontResult, machine: string, inTmux: boolean): Fro
 /** 一颗按钮上的字。 */
 export function frontActLabel(a: FrontAct): string {
   switch (a.kind) {
-    case "flash":
-      return copyText("front.act.flash", { n: a.windows.length });
     case "connect":
       return copyText("front.act.connect");
     case "open-in-terminal":

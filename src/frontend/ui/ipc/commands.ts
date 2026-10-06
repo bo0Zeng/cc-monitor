@@ -407,9 +407,6 @@ export const commands = {
   bring_remote_terminal_to_front: (args: { chain: unknown[] }) =>
     invoke<FrontOutcome>("bring_remote_terminal_to_front", args),
 
-  /** 分不清是哪个窗口时：让候选窗口在任务栏闪（只闪不切）；回闪了几个。**桶①**。 */
-  flash_terminal_windows: (args: { windows: number[] }) => invoke<number>("flash_terminal_windows", args),
-
   /** 关 tab 时让事件重放忘掉这个会话。**桶①**。 */
   forget_session: (args: { sessionId: string }) => invoke<void>("forget_session", args),
 

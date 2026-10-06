@@ -37,7 +37,6 @@ import { bringRemoteTerminalToFront, bringTerminalToFront } from "./tab-session-
 import { frontView } from "./front-result";
 import { copyFrontDetail, flashFrontDone, showFrontResult } from "./front-pop";
 import { machineName } from "./control-said";
-import { commands } from "./ipc/commands";
 import { openSettingsWindow } from "./settings/open-settings";
 import { connectTerminalOf } from "./settings-dest";
 import { startInTmuxThenAttach } from "./tmux-resume";
@@ -176,8 +175,7 @@ async function viewerFront(b: HTMLElement, r: HistoryRow, origin: Origin): Promi
   }
   const acts = view.acts.filter((a) => a.kind !== "update" && a.kind !== "reconnect");
   showFrontResult(b, r.sessionId, { ...view, acts }, async (a) => {
-    if (a.kind === "flash") await commands.flash_terminal_windows({ windows: a.windows }).catch(() => {});
-    else if (a.kind === "copy") await copyFrontDetail(a.detail);
+    if (a.kind === "copy") await copyFrontDetail(a.detail);
     else if (a.kind === "retry") await viewerFront(b, r, origin);
     else if (a.kind === "connect") await openSettingsWindow(undefined, connectTerminalOf(LOCAL_ORIGIN));
     else if (a.kind === "open-in-terminal") await startInTmuxThenAttach({ origin, agent: r.agent, sid: r.sessionId, cwd: r.projectPath }, FOLLOW, { again: async () => {} });

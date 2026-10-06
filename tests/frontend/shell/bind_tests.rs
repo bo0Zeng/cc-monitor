@@ -249,13 +249,13 @@ fn without_a_registration_the_window_is_the_first_one_up_the_chain_and_only_if_i
         pick_chain_window(&chain, none, wins(&[(500, &[0x22])]), start),
         Ok(found(0x22, 500, 5000))
     );
-    // 开着两个窗口 ⇒ 分不清：交出是哪个程序与那几个候选窗口（不挑）。
+    // 开着两个窗口 ⇒ 分不清：说出是哪个程序与候选个数（不挑）。
     let two = pick_chain_window(&chain, none, wins(&[(500, &[0x22, 0x33])]), start).unwrap_err();
     assert_eq!(
         two,
         FrontOutcome::Several {
             program: "WindowsTerminal.exe".into(),
-            windows: vec![0x22, 0x33]
+            count: 2
         }
     );
     // 链上有 PowerShell 却一个窗口都没有（Windows 默认终端把它交给了 Windows Terminal，窗口属主不在链上）
@@ -351,9 +351,9 @@ fn a_registration_that_fails_its_check_is_not_used_and_several_windows_are_never
         said,
         FrontOutcome::Several {
             program: "WindowsTerminal.exe".into(),
-            windows: vec![0x22, 0x33]
+            count: 2
         },
-        "分不清时交出候选（界面让它们只闪不切），不挑其中任何一个"
+        "分不清时照实说拉不了、带候选个数，不挑其中任何一个"
     );
 }
 

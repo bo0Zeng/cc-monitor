@@ -4867,11 +4867,10 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
    登记过、登记的就是此刻这个进程（起始时刻对得上）且窗口校验通过 ⇒ 用它登记的窗口，精确到窗口；校验不过的不用。
    再看这一级名下有没有可见顶层窗口：有就停在这一级（终端窗口的属主；它以上的进程不在这个窗口里，它们的登记不拿来用）——
    恰好一个窗口 ⇒ 它；好几个 ⇒ 分不清，不挑。整条链都没有 ⇒ 没有窗口。拉前三重指纹校验（窗口还在 · 属主 pid · 属主起始时刻，`bind::bring_found_window`）。
-4. **回的是结局族**（`bind::FrontOutcome`，生成物 `FrontOutcome.ts`，按 `kind` 分）：`switched` 切过去了 · `several {program, windows}` 分不清（`windows` 是那几个候选窗口）·
+4. **回的是结局族**（`bind::FrontOutcome`，生成物 `FrontOutcome.ts`，按 `kind` 分）：`switched` 切过去了 · `several {program, count}` 分不清（`count` 是候选窗口个数；照实说拉不了，不切、不闪）·
    `unbound` 本机会话的终端没登记 · `window-gone` 认得的窗口已关 · `unclear` 句柄 / 进程号被复用（细节进日志）· `refused` 系统不许抢前台（任务栏闪）·
    `hosted-by-wt {program}` 链上有控制台 shell 却没有窗口（默认终端交接给 Windows Terminal）· `no-window {program}` 真在后台 · `unsupported` 不是 Windows。
    本机会话那一条 `bring_terminal_to_front {sessionId}` 回同一族。句子在界面的文案表，不在这里拼。
-5. **只闪不切**：`flash_terminal_windows {windows}` —— 让 `several` 交出的那几个候选窗口在任务栏闪（`FlashWindowEx`），不切、不抢焦点；回闪了几个（此刻已不是窗口的跳过）。
 
 ### 已知边界
 

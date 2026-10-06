@@ -16,12 +16,12 @@ describe("↗ 结局族", () => {
   });
 
   it("壳那一跳的各族", () => {
-    expect(shape({ kind: "several", program: "WindowsTerminal.exe", windows: [1, 2, 3] })).toEqual({
+    expect(shape({ kind: "several", program: "WindowsTerminal.exe", count: 3 }), "分不清：照实说拉不了、带候选个数，不切不闪").toEqual({
       title: "未切换 · 窗口无法确定",
       body: "WindowsTerminal.exe 3 个窗口 · 本会话终端未登记",
       hint: "在目标窗口新开 PowerShell 标签页并重连后可识别",
       tone: "amber",
-      acts: ["任务栏闪烁这 3 个"],
+      acts: [],
     });
     expect(shape({ kind: "unbound" })).toEqual({ title: "终端窗口无法识别", body: "启动于接上终端之前的 PowerShell", hint: "接上终端后新开的 PowerShell 可识别", tone: "amber", acts: ["接上终端"] });
     expect(shape({ kind: "refused" })).toEqual({ title: "任务栏闪烁中", body: "系统阻止抢前台 · 点任务栏闪烁的窗口", hint: null, tone: "grey", acts: [] });

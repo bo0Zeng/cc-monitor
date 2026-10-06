@@ -183,7 +183,6 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = EnumWindows(Some(cb), LPARAM(0));", 1, Why::NotAnError, "回调里自己收结果；回调提前停时它回 Err 是约定"),
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = GetWindowThreadProcessId(hwnd, Some(&mut cur_owner));", 1, Why::NotAnError, "要的是出参里的属主 pid，返回值（线程 id）用不上"),
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = ShowWindow(h, SW_RESTORE);", 1, Why::WindowBestEffort, ""),
-    ("src/frontend/shell/src/platform/hwnd.rs", "let _ = FlashWindowEx(&info);", 1, Why::NotAnError, "返回值是闪之前那一刻窗口亮不亮，不是成没成"),
     ("src/frontend/shell/src/bind.rs", "let _ = std::fs::remove_file(&p);", 1, Why::CleanupAfterFailure, "撤死进程留下的登记文件；删不掉下次重扫再撤"),
     ("src/frontend/shell/src/bind.rs", "let _ = std::fs::remove_file(await_file);", 3, Why::CleanupAfterFailure, "等待文件用完就删；删不掉只剩一份无主的等待文件，下次按身份再核"),
     ("src/frontend/shell/src/platform/hwnd.rs", "let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner_pid)) };", 1, Why::NotAnError, "要的是出参里的属主 pid，返回值（线程 id）用不上"),

@@ -474,13 +474,13 @@ export const DPI_SCENES: Scene[] = [1.5, 2].map((scale) => ({
 }));
 
 export const FRONT_SCENES: Scene[] = [
-  frontScene("panel-front-several", "↗ · 分不清是哪个窗口", "本机会话：Windows Terminal 开着 3 个窗口、这个终端没登记 ⇒ 不挑一个切；浮层锚在会话头的 ↗ 下，给「任务栏闪烁这 3 个」（只闪不切）", async () => {
+  frontScene("panel-front-several", "↗ · 分不清是哪个窗口", "本机会话：Windows Terminal 开着 3 个窗口、这个终端没登记 ⇒ 不挑一个切、不闪；浮层锚在会话头的 ↗ 下，照实说拉不了、带候选个数", async () => {
     await mainReady(ALL_TABS);
     await clickHeadFront();
     await waitFor("[data-role=front-result]");
     await sleep(400);
   }, (w) => {
-    w.commands.bring_terminal_to_front = () => ({ kind: "several", program: "WindowsTerminal.exe", windows: [101, 102, 103] });
+    w.commands.bring_terminal_to_front = () => ({ kind: "several", program: "WindowsTerminal.exe", count: 3 });
   }),
   frontScene("panel-front-unbound", "↗ · 本机终端没登记", "在接上终端之前开的 PowerShell：浮层给［接上终端］（直达设置那一节）", async () => {
     await mainReady(ALL_TABS);

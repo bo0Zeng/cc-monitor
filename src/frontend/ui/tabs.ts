@@ -83,7 +83,6 @@ import {
 import { frontView, type FrontAct, type FrontResult } from "./front-result";
 import { awaitedFor, clearAwaiting, markAwaiting } from "./cards/step-line";
 import { machineName } from "./control-said";
-import { commands } from "./ipc/commands";
 import { closeFrontResult, copyFrontDetail, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
 
 
@@ -1603,9 +1602,6 @@ export class TabManager {
   /** ↗ 浮层上的按钮。 */
   private async frontAct(sid: string, from: "row" | "head", origin: Origin, a: FrontAct): Promise<void> {
     switch (a.kind) {
-      case "flash":
-        await commands.flash_terminal_windows({ windows: a.windows }).catch((e: unknown) => console.warn("flash failed:", e));
-        return;
       case "connect":
         this.onConnectTerminal?.();
         return;

@@ -865,8 +865,6 @@ pub fn run() {
             bring_terminal_to_front,
             // 远端 Tab ↗ 拉前对应本地终端窗口（界面问过那台与本机后端，交来对上的窗口）
             bring_remote_terminal_to_front,
-            // ↗ 分不清时：候选窗口只闪不切
-            flash_terminal_windows,
             // issue #23: 红绿灯快照（启动/F5 初始收敛；增量走 activity 格 事件）
             // v2.4 issue #2: 用户在终端输入时可选拉前 monitor 自身
             bring_monitor_to_front,
@@ -1500,14 +1498,6 @@ async fn bring_remote_terminal_to_front(
 ) -> Result<bind::FrontOutcome, String> {
     let bind = bind_state.inner().clone();
     tokio::task::spawn_blocking(move || bind::bring_chain_window(&chain, &bind))
-        .await
-        .map_err(|e| format!("spawn_blocking join error: {e}"))
-}
-
-/// ↗ 分不清是哪个窗口时：让那几个候选窗口在任务栏闪（只闪不切）。`windows` 是上一趟结局里交出的候选；回闪了几个。
-#[tauri::command]
-async fn flash_terminal_windows(windows: Vec<isize>) -> Result<usize, String> {
-    tokio::task::spawn_blocking(move || bind::flash_windows(&windows))
         .await
         .map_err(|e| format!("spawn_blocking join error: {e}"))
 }

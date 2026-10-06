@@ -4270,11 +4270,6 @@
       "zh": "原因不明",
       "args": []
     },
-    "front.act.flash": {
-      "kind": "action",
-      "zh": "任务栏闪烁这 {n} 个",
-      "args": ["n"]
-    },
     "front.act.connect": {
       "kind": "action",
       "zh": "接上终端",
