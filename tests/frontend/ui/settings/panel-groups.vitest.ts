@@ -154,6 +154,8 @@ vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.
 
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
 import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
+import { SETTINGS_GO_EVENT } from "../../../../src/frontend/ui/settings/events";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { beforeEach, afterEach } from "vitest";
 
 // S9：jsdom 的 UA 含 `linux` ⇒ 不置覆盖值，本文件整套跑的就是「非 Windows」那条分支，
@@ -624,5 +626,28 @@ describe("带目的地打开（页 · 机器 · 栏 · 锚点）", () => {
     expect(spot.classList.contains("settings-highlight")).toBe(true);
     p.goTo({ page: "nope", tab: "zzz" });
     expect(visiblePages(panelRoot), "认不出的页不该把人带走").toEqual(["general"]);
+  });
+
+  it("外观页快捷键那一节挂着锚点 keybindings：{page: appearance, anchor: keybindings} 落到它、高亮它", async () => {
+    document.body.replaceChildren();
+    const p = new SettingsPanel({ windowMode: true });
+    await tick();
+    const panelRoot = document.querySelector(".settings-body")!;
+    p.goTo({ page: "appearance", anchor: "keybindings" });
+    expect(visiblePages(panelRoot)).toEqual(["appearance"]);
+    const spot = document.querySelector<HTMLElement>('.settings-page[data-route-id="appearance"] [data-anchor="keybindings"]');
+    expect(spot, "快捷键那一节没挂锚点").not.toBeNull();
+    expect(spot!.textContent).toContain(copyText("settingsPanel.keybindings.open"));
+    expect(spot!.classList.contains("settings-highlight")).toBe(true);
+  });
+
+  it("窗里一节冒泡上来的目的地（settings-go）照样落：外框收到就带过去", async () => {
+    document.body.replaceChildren();
+    new SettingsPanel({ windowMode: true });
+    await tick();
+    const panelRoot = document.querySelector(".settings-body")!;
+    const from = document.querySelector<HTMLElement>('.settings-page[data-route-id="machines"]')!;
+    from.dispatchEvent(new CustomEvent(SETTINGS_GO_EVENT, { bubbles: true, detail: { page: "logs" } }));
+    expect(visiblePages(panelRoot)).toEqual(["logs"]);
   });
 });

@@ -20,6 +20,10 @@ export type AgentProfileRow = {
   nestedEnvVars: string[];
   /** 这一家有没有账号这一维（选号 · 跟随上次的号只对有的那一家）。 */
   hasAccounts: boolean;
+  /** 这一家对用户的叫法（「{名} 默认」）。 */
+  displayName: string;
+  /** 这一家认得的模型名（账号页「默认模型」下拉的选项）；`null` ＝ 没考据过。 */
+  models: string[] | null;
 };
 
 export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
@@ -32,6 +36,8 @@ export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
     resumeToken: "--resume",
     nestedEnvVars: ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION"],
     hasAccounts: true,
+    displayName: "Claude Code",
+    models: ["sonnet", "opus", "haiku", "sonnet[1m]", "opusplan"],
   },
   {
     agent: "codex",
@@ -42,6 +48,8 @@ export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
     resumeToken: "resume",
     nestedEnvVars: [],
     hasAccounts: false,
+    displayName: "Codex",
+    models: null,
   },
 ];
 

@@ -33,6 +33,7 @@ vi.mock("../../../../src/frontend/ui/account-reads", () => ({
   fetchAccounts: (...a: unknown[]) => fetchAccounts(...a),
   invalidateAccountsCache: () => {},
   launchAgentId: () => "claude-code",
+  accountsAgentProfile: () => ({ displayName: "Claude Code", models: ["sonnet", "opus"] }),
 }));
 vi.mock("../../../../src/frontend/ui/quota-reads", () => ({ readQuota: (...a: unknown[]) => readQuota(...a) }));
 vi.mock("../../../../src/frontend/ui/alias-reads", () => ({ readAliases: (...a: unknown[]) => readAliases(...a) }));
@@ -45,8 +46,9 @@ vi.mock("../../../../src/frontend/ui/settings/account-login", () => ({
   openLoginWindow: (...a: unknown[]) => openLoginWindow(...a),
   loginInTmux: (...a: unknown[]) => loginInTmux(...a),
 }));
+const getModelForAccount = vi.fn();
 vi.mock("../../../../src/frontend/ui/account-prefs", () => ({
-  getModelForAccount: () => Promise.resolve(undefined),
+  getModelForAccount: (...a: unknown[]) => getModelForAccount(...a),
   setModelForAccount: (...a: unknown[]) => setModelForAccount(...a),
 }));
 vi.mock("../../../../src/frontend/ui/account-ops", async (orig) => ({
@@ -61,7 +63,7 @@ vi.mock("../../../../src/frontend/ui/account-ops", async (orig) => ({
 vi.mock("../../../../src/frontend/ui/apikey-reads", () => ({ writeApikeyKey: (...a: unknown[]) => writeApikeyKey(...a) }));
 
 import { AccountsSection } from "../../../../src/frontend/ui/settings/accounts-section";
-import { OPEN_ACCOUNT_PANEL_EVENT } from "../../../../src/frontend/ui/settings/events";
+import { OPEN_ACCOUNT_PANEL_EVENT, SETTINGS_GO_EVENT } from "../../../../src/frontend/ui/settings/events";
 import { __resetMachineContextForTests, setCurrentMachine } from "../../../../src/frontend/ui/settings/machine-context";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import type { ConfirmSpec } from "../../../../src/frontend/ui/kit/dialog";
@@ -69,7 +71,7 @@ import type { ConfirmSpec } from "../../../../src/frontend/ui/kit/dialog";
 function acct(p: Partial<Account>): Account {
   return { name: "z", email: "z@x", configDir: "/h/.cc-monitor/accounts/z", isDefault: false, mode: "isolated", exists: true, loggedIn: true, authKind: "subscription", authReady: true, ...p };
 }
-const META = { enabled: true, acctsDir: "/a", manifestPath: "/a/accounts.json", updatedAt: null, sharedStore: null, count: 3, error: null, unsupported: null, nextDefault: "personal" };
+const META = { enabled: true, acctsDir: "/a", manifestPath: "/a/accounts.json", updatedAt: null, sharedStore: null, count: 3, error: null, unsupported: null, nextDefault: "personal", home: "/h" };
 function state(p: Partial<AccountsState> = {}): AccountsState {
   return {
     origin: "devbox",
@@ -78,7 +80,7 @@ function state(p: Partial<AccountsState> = {}): AccountsState {
     error: null,
     notice: null,
     meta: META,
-    accounts: [acct({ name: "work", email: "work@example.com", isDefault: true }), acct({ name: "personal", email: "me@example.com" }), acct({ name: "api", authKind: "api-key", email: "" })],
+    accounts: [acct({ name: "work", email: "work@example.com", isDefault: true }), acct({ name: "personal", email: "me@example.com" }), acct({ name: "api", authKind: "api-key", email: "", keyMasked: "••••••••a1b2", baseUrl: "https://api.example.com/v1" })],
     ...p,
   };
 }
@@ -148,6 +150,8 @@ beforeEach(() => {
   accountsRemove.mockResolvedValue({ applied: true, steps: [], notes: [] });
   accountsSetDefault.mockResolvedValue({ applied: true, steps: [], notes: [] });
   setModelForAccount.mockResolvedValue(undefined);
+  getModelForAccount.mockReset();
+  getModelForAccount.mockResolvedValue(undefined);
 });
 
 describe("账号表", () => {
@@ -184,6 +188,69 @@ describe("账号表", () => {
     const detail = rowOf(el, "api").querySelector(".acct-detail")!;
     expect(detail.querySelector(".acct-detail-mono")!.textContent).toBe("apicc · apicct");
     expect(detail.textContent).toContain("仅 devbox · api");
+  });
+
+  it("API key 号：第二行「API key · 地址」，详情「掩码 地址［更换…］」（掩码是那台遮好的）；没存上 ⇒ 那一句", async () => {
+    const el = await mount();
+    expect(rowOf(el, "api").querySelector(".acct-row-kind")!.textContent).toBe("API key · api.example.com");
+    (rowOf(el, "api").querySelector(".acct-row") as HTMLElement).click();
+    await settle();
+    const key = rowOf(el, "api").querySelector(".acct-key")!;
+    expect(key.querySelector(".acct-detail-mono")!.textContent).toBe("••••••••a1b2");
+    expect(key.querySelector(".acct-key-host")!.textContent).toBe("api.example.com");
+    expect(buttonNamed(rowOf(el, "api"), "更换…")).toBeDefined();
+    fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "api", authKind: "api-key", email: "", keyMasked: null, baseUrl: null })] }));
+    const el2 = await mount();
+    expect(rowOf(el2, "api").querySelector(".acct-row-kind")!.textContent).toBe("API key");
+    (rowOf(el2, "api").querySelector(".acct-row") as HTMLElement).click();
+    await settle();
+    expect(rowOf(el2, "api").querySelector(".acct-key .acct-detail-mono")!.textContent).toBe("API key 没存上");
+  });
+
+  it("账号目录写成 ~/… 短形（家目录是那台答的；不在家目录下 / 没答 ⇒ 原样）", async () => {
+    const el = await mount();
+    (rowOf(el, "work").querySelector(".acct-row") as HTMLElement).click();
+    await settle();
+    const monos = () => [...rowOf(el, "work").querySelectorAll(".acct-detail-mono")].map((e) => e.textContent);
+    expect(monos()).toContain("~/.cc-monitor/accounts/z");
+    fetchAccounts.mockResolvedValue(state({ meta: { ...META, home: null } }));
+    const el2 = await mount();
+    (rowOf(el2, "work").querySelector(".acct-row") as HTMLElement).click();
+    await settle();
+    expect([...rowOf(el2, "work").querySelectorAll(".acct-detail-mono")].map((e) => e.textContent)).toContain("/h/.cc-monitor/accounts/z");
+  });
+
+  it("默认模型是下拉：第一项「{家} 默认」＋ 那一家认得的模型；盘上存的不在里面 ⇒ 多列它一项；选中即存（键是这台 ＋ 这个号）", async () => {
+    getModelForAccount.mockResolvedValue("claude-opus-4-1");
+    const el = await mount();
+    (rowOf(el, "api").querySelector(".acct-row") as HTMLElement).click();
+    await settle();
+    const sel = rowOf(el, "api").querySelector<HTMLSelectElement>("select.acct-detail-model")!;
+    expect([...sel.options].map((o) => [o.value, o.textContent])).toEqual([
+      ["", "Claude Code 默认"],
+      ["sonnet", "sonnet"],
+      ["opus", "opus"],
+      ["claude-opus-4-1", "claude-opus-4-1"],
+    ]);
+    expect(sel.value).toBe("claude-opus-4-1");
+    sel.value = "sonnet";
+    sel.dispatchEvent(new Event("change"));
+    await settle();
+    expect(setModelForAccount).toHaveBeenLastCalledWith("devbox", "api", "sonnet");
+    sel.value = "";
+    sel.dispatchEvent(new Event("change"));
+    await settle();
+    expect(setModelForAccount, "选回「默认」⇒ 清掉那一格").toHaveBeenLastCalledWith("devbox", "api", null);
+  });
+
+  it("表下一行「共用 MCP：别名与配置文件」：点了冒泡一个目的地（同一台 · 别名与配置文件栏）", async () => {
+    const el = await mount();
+    const line = el.querySelector<HTMLElement>(".acct-mcp-line")!;
+    expect(line.textContent).toBe("共用 MCP：别名与配置文件");
+    const got: unknown[] = [];
+    document.body.addEventListener(SETTINGS_GO_EVENT, (ev) => got.push((ev as CustomEvent).detail));
+    line.querySelector<HTMLButtonElement>("button")!.click();
+    expect(got).toEqual([{ machine: "devbox", tab: "config", anchor: "shared-mcp" }]);
   });
 
   it("切机器：标题当场换；上一台晚到的回答作废", async () => {
@@ -310,7 +377,7 @@ describe("登录与指路", () => {
 
   it("指路框只有「时间轴 · 默认轮换」两项（没有自动起算），点了发 open-account-panel {machine, anchor}", async () => {
     const el = await mount();
-    const links = [...el.querySelectorAll<HTMLButtonElement>(".acct-pointer-link")];
+    const links = [...el.querySelectorAll<HTMLButtonElement>(".acct-pointer .acct-pointer-link")];
     expect(links.map((b) => b.textContent)).toEqual(["时间轴", "默认轮换"]);
     expect(el.querySelector(".acct-pointer")!.textContent).not.toContain("自动起算");
     links[1].click();
@@ -376,7 +443,7 @@ describe("动作", () => {
   });
 
   it("API key 号详情［更换…］：地址 ＋ key 交给写 key 那一条（带这个号的目录），写完只显示掩码、框清空", async () => {
-    writeApikeyKey.mockResolvedValue({ account: "api", path: "/p", masked: "sk-…a1b2", baseUrl: "https://api.example.com" });
+    writeApikeyKey.mockResolvedValue({ account: "api", path: "/p", masked: "••••••••c3d4", baseUrl: "https://gw.example.com" });
     const el = await mount();
     (rowOf(el, "api").querySelector(".acct-row") as HTMLElement).click();
     await settle();
@@ -387,7 +454,7 @@ describe("动作", () => {
     buttonNamed(row, "保存").click();
     await settle();
     expect(writeApikeyKey).toHaveBeenCalledWith("devbox", "/h/.cc-monitor/accounts/z", "sk-ant-NEW", undefined);
-    expect(row.querySelector(".acct-key")!.textContent).toContain("sk-…a1b2 api.example.com");
+    expect(row.querySelector(".acct-key")!.textContent).toContain("••••••••c3d4gw.example.com");
     expect(key.value).toBe("");
   });
 });

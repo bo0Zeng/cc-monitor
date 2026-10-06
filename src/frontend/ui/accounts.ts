@@ -56,6 +56,10 @@ export interface Account {
    * 缺了就抛 ⇒ 回落今天不可达，删了。
    */
   authReady: boolean;
+  /** API 号在那台 apikey 表里那一行的 key 掩码（只留末四位，那台后端遮好的）；订阅号 / 没配 ⇒ `null`。线上恒有这一格，本地造的夹具可以不写。 */
+  keyMasked?: string | null;
+  /** API 号那一行的端点（没写 ⇒ `null` ＝ 官方地址）。线上恒有这一格，本地造的夹具可以不写。 */
+  baseUrl?: string | null;
 }
 
 /**
@@ -74,6 +78,8 @@ export interface AccountsMeta {
   unsupported?: string | null;
   /** 删掉默认号之后新会话默认谁（那台后端按删号同一条规则答；没有 ⇒ `null`）。线上恒有这一格，本地造的夹具可以不写。 */
   nextDefault?: string | null;
+  /** 那台的家目录（界面把路径里的它缩成 `~`；推不出 ⇒ `null`）。线上恒有这一格，本地造的夹具可以不写。 */
+  home?: string | null;
 }
 
 export interface SessionAccount {

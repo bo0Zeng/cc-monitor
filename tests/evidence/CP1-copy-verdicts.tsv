@@ -40,6 +40,7 @@ src/backend/plugin/invoke.rs:104	字符编码那一档，三个键一起进（�
 src/backend/plugin/invoke.rs:105	字符编码那一档，三个键一起进	保留	[不对外] INHERITED_ENV_KEYS 的理由列，invoke.rs:203 以 `_why` 丢弃，只读第 0 列（环境变量名）
 src/backend/plugin/invoke.rs:106	字符编码那一档，三个键一起进（这个优先级最低）	保留	[不对外] INHERITED_ENV_KEYS 的理由列，invoke.rs:203 以 `_why` 丢弃，只读第 0 列（环境变量名）
 src/common/creds-core/src/lib.rs:238	SecretKey(<已遮蔽>)	保留	[不对外] SecretKey 手写 Debug 的遮蔽形，只在 {:?} 路径里代替密钥出现，防泄漏用，不是文案
+src/common/creds-core/src/lib.rs:254	•	保留	[不对外] API key 掩码的遮蔽字（遮掉的那一段由它重复而成），不是一句话
 src/frontend/shell/src/backend_control.rs:163	已起：{}	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）
 src/frontend/shell/src/backend_control.rs:164	本机后端已经在跑（C8①：每台机只许一个）	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；措辞里带设计条目号 C8①，将来若上界面要删 新词:C8①（设计条目号）
 src/frontend/shell/src/backend_control.rs:184	{origin} 的流已经在跑（C8①：每台机只许一个）	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；措辞里带设计条目号 C8① 新词:C8①（设计条目号）

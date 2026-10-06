@@ -66,7 +66,7 @@ import { KeybindingsEditor } from "../keybindings/editor";
 // （跨 OS 窗口无法直接回调）；close/cancel 关闭本窗口。事件名在中立模块 events.ts。
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { BEHAVIOR_TOGGLED_EVENT, SETTINGS_APPLIED_EVENT, type BehaviorToggled } from "./events";
+import { BEHAVIOR_TOGGLED_EVENT, SETTINGS_APPLIED_EVENT, SETTINGS_GO_EVENT, type BehaviorToggled } from "./events";
 import { confirmDialog } from "../kit/dialog";
 import { copyText } from "../copy-table";
 import { parseSettingsTarget, type SettingsTarget } from "./open-settings";
@@ -319,6 +319,8 @@ export class SettingsPanel {
     this.onBehaviorChange = opts.onBehaviorChange;
     this.windowMode = opts.windowMode ?? false;
     this.el = this.build();
+    // 窗里一节要跳到别处（如账号页表下「共用 MCP」⇒ 同一台的「别名与配置文件」）：冒泡上来的目的地照样落。
+    this.el.addEventListener(SETTINGS_GO_EVENT, (ev) => this.goTo(parseSettingsTarget((ev as CustomEvent<unknown>).detail)));
     document.body.appendChild(this.el);
     if (this.windowMode) this.installWindowLifecycle();
     // 那台的状态一变，壳推一帧：点 · 词 · 问题行原位换（不轮询）。
@@ -988,9 +990,10 @@ export class SettingsPanel {
     const appearancePage = document.createElement("div");
     appearancePage.appendChild(this.buildGroup(copyText("settingsPanel.group.fonts"), FIELDS().filter((f) => f.group === "font")));
     appearancePage.appendChild(this.buildGroup(copyText("settingsPanel.group.colors"), FIELDS().filter((f) => f.group === "color")));
-    appearancePage.appendChild(
-      this.safeBlock(copyText("settingsPanel.group.keybindings"), () => this.buildKeybindingsGroup()),
-    );
+    const kbBlock = this.safeBlock(copyText("settingsPanel.group.keybindings"), () => this.buildKeybindingsGroup());
+    // 主窗口快捷键一览的「改快捷键…」开 `{page: "appearance", anchor: "keybindings"}`：落到这一节。
+    kbBlock.dataset.anchor = "keybindings";
+    appearancePage.appendChild(kbBlock);
     const resetRow = document.createElement("div");
     resetRow.className = "settings-row settings-row-end";
     resetRow.appendChild(

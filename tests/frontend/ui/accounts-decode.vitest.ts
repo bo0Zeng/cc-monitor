@@ -71,6 +71,12 @@ describe("金样：后端出的成品，TS 这一侧读得懂", () => {
       ["a", "<root>/accts/acct-a", "subscription", true],
       ["b", "<root>/accts/acct-b", "api-key", true],
     ]);
+    expect(got.meta.home, "那台的家目录（缩 ~ 用）没收进来").toBe("<root>/home");
+    expect(got.accounts.map((a) => [a.name, a.keyMasked, a.baseUrl]), "API 号的掩码与端点没收进来").toEqual([
+      ["zero", null, null],
+      ["a", null, null],
+      ["b", "••••••••a1b2", "https://api.example.com"],
+    ]);
   });
   it("accounts-trust：两格照收", () => {
     expect(decodeTrust(golden["accounts-trust"])).toEqual({ trusted: true, known: true });
@@ -88,6 +94,9 @@ describe("严格收：形状不对就抛，不补值", () => {
     ["账号缺 authReady", { ...good, accounts: [{ ...acct0, authReady: undefined }] }],
     ["账号 authKind 认不出", { ...good, accounts: [{ ...acct0, authKind: "bedrock" }] }],
     ["账号多一格", { ...good, accounts: [{ ...acct0, token: "x" }] }],
+    ["账号缺 keyMasked", { ...good, accounts: [{ ...acct0, keyMasked: undefined }] }],
+    ["账号 baseUrl 类型不对", { ...good, accounts: [{ ...acct0, baseUrl: 3 }] }],
+    ["meta 缺 home", { ...good, meta: { ...(good.meta as object), home: undefined } }],
     ["notice 类型不对", { ...good, notice: 3 }],
   ];
   for (const [why, v] of cases) {

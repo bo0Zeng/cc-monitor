@@ -156,10 +156,10 @@ mod sealed {
             self.0 == other.0
         }
 
-        /// **`KS6` 的后端那一半**：给前端看的东西**只有这一个形状**。
+        /// **`KS6` 的后端那一半**：给前端看的东西**只有这一个形状**：`••••••••` ＋ 末四位（遮掉的那一段定长，长度不漏）。
         ///
-        /// 短到看不出前后缀的（`<= MASK_KEEP * 2`）**整条遮掉**——
-        /// 「前后各留几位」在一把 8 字符的 key 上等于把它交出去。
+        /// 短到末四位就占了一半的（`<= MASK_KEEP * 2`）**整条遮掉**——
+        /// 「留末四位」在一把 8 字符的 key 上等于交出去一半。
         ///
         /// ⚠ 它**不是** `KS6` 的全部：本函数只保证「这条路上出去的是掩码」，
         /// 不保证「没有别的路把明文送出去」。那一格归 `KS2`（出口恰好一处）。
@@ -169,12 +169,12 @@ mod sealed {
                 return String::new();
             }
             let n = s.chars().count();
+            let cover = super::MASK_CHAR.repeat(super::MASK_COVER);
             if n <= super::MASK_KEEP * 2 {
-                return "*".repeat(n.max(super::MASK_KEEP));
+                return cover;
             }
-            let head: String = s.chars().take(super::MASK_KEEP).collect();
             let tail: String = s.chars().skip(n - super::MASK_KEEP).collect();
-            format!("{head}{}{tail}", "*".repeat(n - super::MASK_KEEP * 2))
+            format!("{cover}{tail}")
         }
 
         /// ★★ **`KS2`：取明文的唯一出口。**
@@ -246,8 +246,12 @@ mod sealed {
 /// 类型本身是公开的；**只有它的字段被关在 `sealed` 里**。
 pub use sealed::SecretKey;
 
-/// 掩码前后各留几位。
+/// 掩码留末几位。
 pub const MASK_KEEP: usize = 4;
+
+/// 掩码遮掉的那一段：定长几个、用哪个字。
+pub const MASK_COVER: usize = 8;
+pub const MASK_CHAR: &str = "•";
 
 /// **手写的** `Debug` —— 印出来恒为遮蔽形，且**不带长度**（长度也是信息）。
 ///

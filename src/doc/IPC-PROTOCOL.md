@@ -2912,8 +2912,8 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `agent` | → | 必填：这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）。只有它是这台机器 apikey 表的那一家时，表里的行才算数（条 49） |
-| `meta` | ← | `{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault}`（同 `--list-accounts` 首行去掉分帧用的 `kind` / `accountZeroAware`；`unsupported` = 这台做不了多账号时那一句，做得了 ⇒ `null`；`nextDefault` = 删掉此刻的默认号之后新会话默认谁（与 `accounts-remove` 同一条规则），没有 ⇒ `null`）。账号库目录跟着家走（`~/.cc-monitor/accounts`），没有另指位置的入参 |
-| `accounts` | ← | 每账号一个对象，字段同 `--list-accounts` 的账号行；**并上了这台机器自己那份 apikey 表**：表里有行的号 `authKind` 是 `api-key`、`authReady` 按 `acct_core::auth_ready`（规则住 `acct-core`，CLI 那一臂不并表） |
+| `meta` | ← | `{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault, home}`（除 `home` 外同 `--list-accounts` 首行去掉分帧用的 `kind` / `accountZeroAware`；`home` = 这台的家目录（界面把路径里的它缩成 `~`），推不出 ⇒ `null`；`unsupported` = 这台做不了多账号时那一句，做得了 ⇒ `null`；`nextDefault` = 删掉此刻的默认号之后新会话默认谁（与 `accounts-remove` 同一条规则），没有 ⇒ `null`）。账号库目录跟着家走（`~/.cc-monitor/accounts`），没有另指位置的入参 |
+| `accounts` | ← | 每账号一个对象，字段同 `--list-accounts` 的账号行；**并上了这台机器自己那份 apikey 表**：表里有行的号 `authKind` 是 `api-key`、`authReady` 按 `acct_core::auth_ready`（规则住 `acct-core`，CLI 那一臂不并表）。比 CLI 行多两格：`keyMasked` = API 号在表里那一行的 key 掩码（`••••••••` ＋ 末四位，短 key 整条遮掉；key 本体从不出后端）、`baseUrl` = 那一行的端点；订阅号 / 表里没它 / 没配 key ⇒ `null` |
 | `notice` | ← | 「能用但有缺」：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）时的一句话；否则 `null` |
 
 **错误码**：`bad_args`（缺 `agent`）· `too_large`。

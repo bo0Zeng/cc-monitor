@@ -440,20 +440,59 @@ fn next_default(accts_dir: &Path) -> Option<String> {
 /// 措辞不说「远端」：本机远端同一条路（此前那句写着「远端」，本机那条路因此刻意不出它）。
 /// 〔旧那一句「后端太旧、不认账号 0」删了：出成品的后端按构造认得账号 0；老后端回的是旧形状，界面当场认出。〕
 pub(crate) fn list_product(rows: &[String], agent: &str, table_agent: &str) -> serde_json::Value {
-    list_product_at(&resolve_accts_dir(), rows, agent, table_agent)
+    list_product_with(
+        &resolve_accts_dir(),
+        home_dir().as_deref(),
+        rows,
+        &crate::accounts::upstream_select::file_face::machine_key_facts(),
+        agent,
+        table_agent,
+    )
 }
 
-/// [`list_product`] 的本体，账号库目录是参数（判据拿夹具喂它，不碰真家目录）。
+/// [`list_product`] 的本体，账号库目录是参数（判据拿夹具喂它，不碰真家目录）；家目录与 key 那两格空着。
 pub(crate) fn list_product_at(
     accts_dir: &Path,
     rows: &[String],
     agent: &str,
     table_agent: &str,
 ) -> serde_json::Value {
+    list_product_with(accts_dir, None, rows, &[], agent, table_agent)
+}
+
+/// [`list_product`] 的全参本体。
+///
+/// - `meta.home`：这台的家目录（界面把路径里的它缩成 `~`；推不出 ⇒ `null`）。
+/// - 每个号 `keyMasked` · `baseUrl`：API 号在这台 apikey 表里那一行的掩码（只留末四位）与端点；
+///   订阅号 / 表里没有它那一行 / 没配 key ⇒ `null`。key 本体从不出后端。
+pub(crate) fn list_product_with(
+    accts_dir: &Path,
+    home: Option<&Path>,
+    rows: &[String],
+    keys: &[crate::accounts::upstream_select::file_face::KeyFact],
+    agent: &str,
+    table_agent: &str,
+) -> serde_json::Value {
     let routed = |dir: &str| {
         !acct_core::apikey_routed_subset(&[dir.to_string()], rows, agent, table_agent).is_empty()
     };
-    let (meta, accounts) = scan_accounts(accts_dir, &routed);
+    let (mut meta, mut accounts) = scan_accounts(accts_dir, &routed);
+    meta.insert(
+        "home".into(),
+        json_str(home.map(|h| h.to_string_lossy()).as_deref()),
+    );
+    for a in &mut accounts {
+        let fact = (a["authKind"] == acct_core::AUTH_KIND_API_KEY)
+            .then(|| {
+                a["configDir"]
+                    .as_str()
+                    .and_then(acct_core::apikey_account_id_of_dir)
+            })
+            .flatten()
+            .and_then(|id| keys.iter().find(|k| k.id == id));
+        a["keyMasked"] = json_str(fact.and_then(|k| k.masked.as_deref()));
+        a["baseUrl"] = json_str(fact.and_then(|k| k.base_url.as_deref()));
+    }
     let enabled = meta.get("enabled") == Some(&serde_json::Value::Bool(true));
     let notice = (enabled && !accounts.iter().any(|a| a["configDir"].is_null()))
         .then(|| copy_text("beAccountsQuery.listProductAt.noDefault", &[]));

@@ -33,6 +33,9 @@ pub(crate) const NESTED_ENV: &[&str] = &[
 /// resume 会话名前缀（Codex 是 `cx`）。
 pub(crate) const SESSION_NAME_PREFIX: &str = "cc";
 
+/// `claude --model` 认得的别名（不写 ＝ 它自己的默认）。全名（`claude-sonnet-…`）也收，这里只列别名。
+pub(crate) const MODEL_ALIASES: &[&str] = &["sonnet", "opus", "haiku", "sonnet[1m]", "opusplan"];
+
 /// resume 命令：**flag 形**，与 Codex 的子命令形不同。
 pub(crate) fn resume_command(base: &str, session_id: &str) -> String {
     format!("{base} {RESUME_TOKEN} {session_id}")

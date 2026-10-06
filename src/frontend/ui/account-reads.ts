@@ -11,7 +11,8 @@ import { putAccounts } from "./app-store";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, isOldBackend, jsonBody, linesOf, readJson, saidOf } from "./ipc/chan-caller";
-import { ACTIVE_AGENT, lookupAgentProfile } from "./agent-profile";
+import { ACTIVE_AGENT, lookupAgentProfile, type AgentProfileRow } from "./agent-profile";
+import { AGENT_PROFILE_TABLE } from "./generated/agent-profile-table";
 import { decodeAccountsList, decodeTrust } from "./accounts-decode";
 import type { AccountsState, SessionAccount } from "./accounts";
 // API key 那两问的成品（`apikey-routing`）住 `apikey-reads.ts`；本文件只给账号面包一层（`agent` 与账号清单同一个出处）。
@@ -103,6 +104,17 @@ export function launchAgentId(): string {
   const got = lookupAgentProfile(ACTIVE_AGENT);
   if (!got.known) throw new Error(got.message);
   return got.facts.adapterId;
+}
+
+/** 账号页那一家的画像（与 [`launchAgentId`] 同一个出处）：叫法 · 认得的模型。查不到 ⇒ `null`。 */
+export function accountsAgentProfile(): AgentProfileRow | null {
+  let id: string;
+  try {
+    id = launchAgentId();
+  } catch {
+    return null;
+  }
+  return AGENT_PROFILE_TABLE.find((r) => r.adapterId === id) ?? null;
 }
 
 

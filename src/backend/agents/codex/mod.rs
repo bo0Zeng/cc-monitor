@@ -91,6 +91,7 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     needs_bus_id: true,
     has_identity: false,
     has_pidfiles: false,
+    models: None,
 };
 
 /// 本 agent 在这台机器上的 home 目录 —— **只答"它该在哪"，不答"在不在"**。

@@ -8,6 +8,7 @@ import EXT_GOLDEN from "../../__fixtures__/ext-flow.golden.json";
 import ALIASES_GOLDEN from "../../__fixtures__/aliases.golden.json";
 import type { CommandHandler } from "./commands";
 import type { OpHandler, World } from "./types";
+import { ACCOUNTS } from "./ops";
 
 const HOME = "/home/user";
 
@@ -95,7 +96,12 @@ export function machineOps(): Record<string, OpHandler> {
         { label: "bastion", host: "bastion.example.com", port: 22, user: "user", keyPath: null, addresses: [], jump: null, members: [{ alias: "bastion", host: "bastion.example.com", port: 22, proxyJump: null }], inList: false },
       ],
     }),
-    "aliases-read": () => JSON.parse(JSON.stringify(ALIASES_GOLDEN.readReply).split("<HOME>").join(HOME)),
+    // 别名清单：每个号两条（`{名}cc` · `{名}cct`），分组认作那个号（账号页「命令」那一行读它）。
+    "aliases-read": () => {
+      const r = JSON.parse(JSON.stringify(ALIASES_GOLDEN.readReply).split("<HOME>").join(HOME)) as Record<string, unknown>;
+      const rows = ACCOUNTS.flatMap((a) => [false, true].map((tmux) => ({ name: `${a.name}cc${tmux ? "t" : ""}`, args: ["--", "--account", a.name, ...(tmux ? ["--ccm-tmux"] : [])], restTo: "agent", group: { account: a.name, tmux } })));
+      return { ...r, aliases: rows.map(({ group: _g, ...x }) => x), groups: rows.map((x) => x.group) };
+    },
     "assets-sync": (_o, _r, w) => ({
       self: null,
       synced: w.machines.slice(1).map((origin) => ({ origin, peer: null, changed: false, pushed: 0, error: null })),
