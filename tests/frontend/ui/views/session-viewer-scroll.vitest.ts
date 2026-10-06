@@ -62,7 +62,7 @@ let toBottom: ReturnType<typeof vi.spyOn>;
 
 async function mount(lines: RigPayload[], scrollToUuid?: string): Promise<SessionViewer> {
   viewerRig.chunk = lines;
-  const v = new SessionViewer(() => {});
+  const v = new SessionViewer();
   document.body.appendChild(v.element);
   await v.load({
     jsonlPath: "/p/s1.jsonl",

@@ -2815,6 +2815,44 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 
 **错误码**：`bad_args` · `failed` · `unreachable` · `too_large`。⚠ 远端那一支在那台跑 `--list-sessions <project_dir>`。
 
+#### `history-list`：历史页的平铺会话清单（**出成品**：并注解 ＋ 判活 ＋ 每行能做什么，远端经本机后端问）
+
+一次给一台的**全部**会话（跨项目），历史页「按时间」「按项目」两种看法都从它画；实现 `history/history_list.rs`。
+`origin` 缺席 = 这台（记录树每个目录 ＋ 合成历史各家 ＋ pidfile 判活 ＋ 这台的起会话账号记录）；
+给了 = 可达表里那一台：本机后端问那台 CLI 面 `--history-list`（`{"raw":true}` 一行进 stdin，**那台自己**判活、读上次的号），那份回答在本进程记着（搜索框每敲一下都会问；不按时间过期 —— 界面开页与「刷新」带 `fresh`，那时才再问那台）。
+两支都并上**这台**的注解，再筛、补分叉父会话、排、截。界面按 `at` 把各台的行并成一列（各台各自排好了），不另判。
+
+```text
+→ {"id":"L1","cmd":"history-list","args":{"origin":"dev","query":"回调","sort":"activity","within_days":7,"hidden":false,"limit":2000,"fresh":false}}
+← {"kind":"reply","id":"L1","ok":true,"data":{"rows":[{"agent":"claude","agentTag":null,"sessionId":"0f…","projectDir":"-w-orders","projectPath":"/w/orders","projectName":"orders","group":"claude:/w/orders",
+     "aiTitle":"支付回调验签","firstUserExcerpt":"…","title":"支付回调验签","label":"支付回调验签","untitled":false,"startedAt":1727250000000,"updatedAt":1727250001000,"at":1727250001000,
+     "jsonlPath":"/h/.claude/projects/-w-orders/0f….jsonl","messageCountApprox":88,"isBg":false,"starred":true,"customTitle":null,"hidden":false,"lastAccount":"work",
+     "status":"ended","can":{"resume":"yes","accounts":true,"fork":true,"delete":"yes"},"origin":"dev"}],
+   "groups":[{"key":"claude:/w/orders","agent":"claude","projectName":"orders","projectPath":"/w/orders","projectDir":"-w-orders","count":4,"hasLive":false,"starred":true,"lastActivity":1727250001000,"order":11727250001000,"failed":null,"origin":"dev"}],
+   "total":1,"truncated":false,"notice":null}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `origin` | → | 可缺席：那台的名字（可达表的键）。缺席 = 这台。空串 / 不是串 ⇒ `bad_args` |
+| `raw` | → | 可缺席：`true` ⇒ 只回**这台自己**的清单 `{rows, failed}`（不并注解、不筛不排、不认别的入参）—— 远端那一支问的就是它 |
+| `fresh` | → | 可缺席：`true` ⇒ 远端那一台不用记着的、再问一次（开页 · 「刷新」） |
+| `query` | → | 可缺席：只留显示标题（`label`）· 第一句 · 项目名里含这几个字的（不分大小写，子串；不比路径、不搜内容 —— 内容走 `history-search`） |
+| `sort` | → | 可缺席：`activity`（默认，按最后活动）· `created`（按开始） |
+| `within_days` | → | 可缺席：只留那个键（同 `sort`）落在最近 N 天里的（1–3650） |
+| `hidden` | → | 可缺席：`true` ⇒ 隐藏的也出（默认不出） |
+| `limit` | → | 可缺席：最多回几行（默认 2000，1–20000）；多出的不回、`truncated` |
+| `rows` | ← | 每会话一行，按 `at` 倒序：`agent` · `agentTag`（行上那一家的小牌，对用户的叫法如 `Codex`；默认那一家 ⇒ `null`）· `sessionId` · `projectDir`（读它那一组的键）· `projectPath`（**真实目录**：同一个记录目录里不同的目录各是一组）· `projectName` · `group`（分组键 = `<agent>:<projectPath>`）· `aiTitle` · `firstUserExcerpt` · `title`（原标题，同 `history-sessions`）· `label`（**显示的标题**：改过的 ＞ 标题 ＞ 第一句 ＞ 会话 ID 前 8 位）· `untitled`（没改过、没标题、没第一句 ⇒ `true`，界面写「没有说过话的会话」）· `startedAt` / `updatedAt` / `at`（毫秒；`at` = 这一次排序用的那个）· `jsonlPath` · `messageCountApprox` · `isBg`（分身会话）· `starred` / `customTitle` / `hidden`（这台的注解）· `forkedFromSessionId` / `forkedFromMessageUuid`（分叉来的才有）· `lastAccount`（那台记着上次用哪个号起的，没有就缺）· `status`（`live` 在跑 · `ended` 已结束 · `unknown` 这条路上答不了）· `can`（见下）· `context`（`true` = 它自己被筛掉 / 隐藏了，只因为有在列的分叉从它分出来才带上，界面淡显；不算进 `total`）· `origin`（远端那台才有） |
+| `can` | ← | **这一行能做什么**：`resume`（`yes` · `switch` 在跑 ⇒ 切过去、不起第二份 · `bg` 分身会话 ⇒ 要恢复主会话）· `accounts`（恢复时能不能选号：那一家有没有账号这一维）· `fork`（能不能从某一轮分叉：那一家有没有分叉变换，分身会话不给）· `delete`（`yes` · `live` 在跑、先结束它 · `unsure` 说不清在不在跑、确认框里多说一句） |
+| `groups` | ← | 按项目看时的分组（只数 `rows` 里不是 `context` 的）：`key` · `agent` · `projectName` · `projectPath` · `projectDir` · `count` · `hasLive`（`null` = 有判不了活的、又没有确定在跑的）· `starred`（组里有星标的）· `lastActivity` · `order`（几台的组并成一列时的序，大的在前：档位 × 10¹⁴ ＋ 有星标 × 10¹³ ＋ 最后动过的毫秒；界面只按它并）· `failed`（读不了的那个记录目录 ⇒ 一组、`count` 0、带那一句；别的 ⇒ `null`）· `origin`。排序：有在跑的 → 说不清的 → 有星标的 → 最近动过的，读不了的殿后 |
+| `total` | ← | 筛完留下几个（截之前，不含 `context`） |
+| `truncated` | ← | `rows` 被 `limit` 截过 |
+| `notice` | ← | 注解没并上的那句话；`null` = 并上了 |
+
+**错误码**：`bad_args`（入参形状不对）· `failed`（这台的记录树根读不动）· `unreachable`（可达表里没有那一台 / 那台问不出来 / 回的读不懂 —— 带那台的名字与原因）。
+⚠ **CLI 面也有它**（`--history-list`，入参从 stdin 读）：远端那一支用的就是它；一次性进程的可达表是空的 ⇒ 只答得了这台。
+跨语言金样 `tests/__fixtures__/history-list.golden.json`（后端判据产、界面严格解码器读同一份）。
+
 #### `history-search`：全文搜索
 
 ```text
@@ -2826,11 +2864,11 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 |---|---|---|
 | `query` | → | 搜索词（必填） |
 | `include_tools` | → | 可选布尔，= `--include-tools` |
-| `scope` | → | 可选，`user` / `assistant`，= `--scope` |
+| `scope` | → | 可选，`user`（人说的）/ `assistant`（那一家说的）/ `report`（agent 回报：子 agent 交回 / 发来的话 · 另一个会话发来的话），= `--scope` |
 | `after_ms` | → | 可选，= `--after-ms` |
 | `limit` | → | 可选，= `--limit` |
 | `titles` | → | 可选布尔：只比会话标题与第一句（不搜内容）；命中的会话照样一行，`hitCount` 为 `0`、`hits` 空。帧面才有（CLI 面 `--search` 没有这个选项） |
-| `lines` | ← | 每命中会话一行 `SessionHits`（带 `agent`：只扫记录树 ⇒ 记录树那一家），形状与行序同 `--search` |
+| `lines` | ← | 每命中会话一行 `SessionHits`（带 `agent`：只扫记录树 ⇒ 记录树那一家），形状与行序同 `--search`。命中种类 `hits[].kind`：`user` · `assistant` · `report`（agent 回报，单列；会话内查找 `history-find` 不收这一种）· `tool` |
 | `unreadable` | ← | 这一趟有几份会话记录读不动、没搜到（权限 / IO 错 / 不是合法 UTF-8）。不是 `0` ⇒ 结果不全，界面说出来 |
 | `skipped` | ← | 内容搜索不覆盖、这台上又有它的会话记录的那几家（对用户的叫法，如 `Codex`）：它们的会话不在结果里 |
 

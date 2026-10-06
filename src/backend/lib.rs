@@ -1061,6 +1061,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `history-lines`（按行号取回）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的，
     //   BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--history-lines",
+    // `history-list`（历史页的平铺清单）的 CLI 面：远端那一支问的就是它（`raw`）。**是新子命令** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    "--history-list",
     // `history-page`（按字节分页出记录行）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--history-page",
     "--history-projects",

@@ -1,0 +1,436 @@
+/* 历史页（设计稿「文件与历史」乙4）：顶栏 48 · 列表 420 ｜ 内容；行两层 52（按项目一层 30）。 */
+@layer components {
+  .hv {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-view);
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  .hvTop {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-4);
+    height: 48px;
+    padding: 0 var(--space-5);
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--bg-2);
+  }
+
+  .hvViews {
+    align-self: stretch;
+  }
+
+  .hvSearch {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--space-4);
+    min-width: 160px;
+    height: 32px;
+    padding: 0 var(--space-4);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-m);
+    background: var(--field-bg);
+    color: var(--text-2);
+  }
+
+  .hvSearch:focus-within {
+    border-color: var(--field-border-focus);
+  }
+
+  .hvSearch input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+  }
+
+  .hvSearch input::placeholder {
+    color: var(--field-placeholder);
+  }
+
+  .hvCount {
+    margin-left: var(--space-2);
+  }
+
+  .hvSplit {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .hvCol {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    width: 420px;
+    min-height: 0;
+    border-right: 1px solid var(--border-strong);
+  }
+
+  .hvHead {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-4);
+    min-height: 32px;
+    padding: 0 var(--space-5);
+    border-bottom: 1px solid var(--border-soft);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .hvHeadEnd {
+    display: flex;
+    gap: var(--space-2);
+    margin-left: auto;
+  }
+
+  .hvList {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 var(--space-3) var(--space-4);
+    outline: none;
+  }
+
+  .hvFoot {
+    padding: var(--space-5);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    text-align: center;
+  }
+
+  .hvSec {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
+    padding: 10px var(--space-4) var(--space-2);
+    background: var(--bg);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .hvRow {
+    position: relative;
+    height: 52px;
+    padding: 7px 10px 0 22px;
+    border-radius: var(--radius-m);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 52px;
+    cursor: default;
+    outline: none;
+  }
+
+  .hvRow[data-compact="true"] {
+    display: flex;
+    align-items: center;
+    height: 30px;
+    padding: 0 10px 0 30px;
+    contain-intrinsic-size: auto 30px;
+  }
+
+  .hvRow[data-child="true"] {
+    padding-left: 40px;
+  }
+
+  .hvRow:hover {
+    background: var(--state-hover);
+  }
+
+  .hvRow[aria-selected="true"] {
+    background: var(--selected-bg);
+  }
+
+  .hvRow[aria-current="true"]::before {
+    content: "";
+    position: absolute;
+    top: 8px;
+    bottom: 8px;
+    left: 0;
+    width: 2px;
+    border-radius: var(--radius-s);
+    background: var(--accent);
+  }
+
+  .hvRow:focus-visible {
+    box-shadow: inset 0 0 0 var(--focus-ring) var(--accent);
+  }
+
+  .hvDot {
+    position: absolute;
+    top: 13px;
+    left: var(--space-4);
+  }
+
+  .hvRow[data-compact="true"] .hvDot {
+    top: 11px;
+    left: 14px;
+  }
+
+  .hvL1,
+  .hvL2 {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    height: 20px;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .hvL2 {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .hvStar {
+    flex: none;
+    color: var(--warn);
+  }
+
+  .hvTitle {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .hvTitle[data-untitled="true"] {
+    color: var(--text-2);
+  }
+
+  .hvRow[data-compact="true"] .hvL1 {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .hvRow[data-context="true"] .hvTitle,
+  .hvRow[data-context="true"] .hvL2 {
+    color: var(--text-faint);
+  }
+
+  .hvTime {
+    flex: none;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .hvActs {
+    display: none;
+    flex: none;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .hvRow:hover .hvActs,
+  .hvRow[aria-selected="true"] .hvActs,
+  .hvRow:focus-within .hvActs {
+    display: flex;
+  }
+
+  .hvRow:hover .hvTime,
+  .hvRow[aria-selected="true"] .hvTime,
+  .hvRow:focus-within .hvTime {
+    display: none;
+  }
+
+  .hvL1 [data-emph="live"],
+  .hvL2 [data-emph="live"] {
+    border-color: var(--success);
+    color: var(--success);
+  }
+
+  .hvL1 [data-emph="need"],
+  .hvL2 [data-emph="need"] {
+    border-color: var(--warn);
+    color: var(--warn);
+  }
+
+  .hvMachine {
+    display: inline-flex;
+    gap: var(--space-1);
+    align-items: center;
+    font-weight: normal;
+  }
+
+  .hvForks {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .hvForks:hover {
+    color: var(--text);
+  }
+
+  .hvGroup {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    height: 30px;
+    padding: 0 10px;
+    border-radius: var(--radius-m);
+    font-weight: var(--font-weight-strong);
+    white-space: nowrap;
+    outline: none;
+  }
+
+  .hvGroup:hover {
+    background: var(--state-hover);
+  }
+
+  .hvGroup:focus-visible {
+    box-shadow: inset 0 0 0 var(--focus-ring) var(--accent);
+  }
+
+  .hvGroupName {
+    flex: none;
+  }
+
+  .hvGroupPath {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-2);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-small);
+    font-weight: normal;
+    text-overflow: ellipsis;
+  }
+
+  .hvGroupCount,
+  .hvGroupFailed {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    font-weight: normal;
+  }
+
+  .hvGroupFailed {
+    color: var(--warn);
+  }
+
+  .hvGroupNew {
+    display: none;
+  }
+
+  .hvGroup:hover .hvGroupNew {
+    display: inline-flex;
+  }
+
+  .hvGroup:hover .hvGroupCount {
+    display: none;
+  }
+
+  .hvHits {
+    padding-bottom: var(--space-3);
+  }
+
+  .hvHit {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-4);
+    padding: 3px 10px 3px 22px;
+    overflow: hidden;
+    border-radius: var(--radius-m);
+    font-size: var(--font-size-mono);
+    white-space: nowrap;
+    cursor: default;
+  }
+
+  .hvHit:hover {
+    background: var(--state-hover);
+  }
+
+  .hvHitText {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .hvMark {
+    border-radius: var(--radius-s);
+    background: var(--hit-bg);
+    color: inherit;
+  }
+
+  .hvMore {
+    padding: var(--space-1) 10px var(--space-3) 22px;
+    border: 0;
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--font-size-small);
+    cursor: pointer;
+  }
+
+  .hvStrip {
+    border-radius: 0;
+  }
+
+  .hvInfo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    min-height: 32px;
+    padding: var(--space-2) 10px var(--space-2) var(--space-5);
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--bg-2);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .hvContent {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .hvContent[data-vacant="true"] {
+    justify-content: center;
+  }
+
+  .hvFilter {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    min-width: 260px;
+  }
+
+  .hvFilterGroup {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .hvFilterHead {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .hvFilterHead:empty {
+    display: none;
+  }
+
+  .hvFilterWarn {
+    margin-left: auto;
+    color: var(--warn);
+    font-size: var(--font-size-small);
+  }
+}

@@ -59,6 +59,8 @@ export interface World {
   machines: string[];
   /** 订阅时看不见的那几台（流里第一格 `unseen`）。 */
   unseenMachines: string[];
+  /** 历史清单问不到的那几台（`history-list` 带它 ⇒ 答 `unreachable`）。 */
+  historyDown?: string[];
   /** 会话流被那台后端关掉的那几台（流里第一格 `closed`）。 */
   closedMachines: string[];
   /** 订阅时看得见、交完会话之后断了的那几台（随后一格 `unseen`，断在读那一跳）。 */

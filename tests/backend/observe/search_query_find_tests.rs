@@ -179,12 +179,13 @@ fn find_and_global_search_agree_on_the_same_file() {
         let mut entry = FileEntry::empty(None, true);
         entry.take(None, &std::fs::read(&p).expect("读夹具"));
         let s = session_hits_in(&p, &entry, &q, &opts, &mut budget, 0).expect("有命中");
-        // `--search` 也列没有 uuid 的记录（uuid 记成空串）；本命令不列 —— 这是两者**唯一**刻意的差别
+        // 两者刻意的差别只有两处：`--search` 也列没有 uuid 的记录（uuid 记成空串）、本命令不列；
+        //   `--search` 收 agent 回报（种类 `report`，历史页「搜内容时」单列那一种）、会话内查找不收。
         let searched: Vec<(String, String, String, String)> = s["hits"]
             .as_array()
             .unwrap()
             .iter()
-            .filter(|h| !h["uuid"].as_str().unwrap().is_empty())
+            .filter(|h| !h["uuid"].as_str().unwrap().is_empty() && h["kind"] != "report")
             .map(|h| {
                 let g = |k: &str| h[k].as_str().unwrap().to_string();
                 (g("uuid"), g("before"), g("matched"), g("after"))

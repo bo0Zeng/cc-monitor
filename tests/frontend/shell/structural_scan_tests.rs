@@ -2979,11 +2979,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             2,
         ),
         (
-            "tests/frontend/ui/views/history-actions.vitest.ts",
-            "delete_remote_history_session",
-            1,
-        ),
-        (
             "tests/frontend/shell/write_site_registry_tests.rs",
             "this_module_never_writes",
             2,
@@ -4802,7 +4797,6 @@ fn every_prose_tombstone_mark_is_registered() {
         // 本机搜索改问本机后端（monitor 内存索引删了）⇒ 界面那两份点旧命令 / 旧函数名的散文各挂墓碑；
         //   冷读本机远端合成一条 ⇒ 漂移账登记表那一行旁注挂一块。
         ("src/frontend/ui/views/history-search.ts", 2), // +1：前端合并那一份（`mergeSearchResults`）删了，头注挂墓碑
-        ("src/frontend/ui/views/history.ts", 2), // 3 → 2：新开那一支那段注释随起会话改由本机后端判号重写成现状
         ("tests/frontend/shell/drift_ledger_tests.rs", 2), // 1 → 2：`parse_for_kind` 那一句挂一块（它最后的活提名随 monitor 适配表的判据删了）
         // `src/frontend/shell/src/remote_history.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
         (
@@ -5118,7 +5112,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/README.md", 1), // 新贴：点分叉那条旧命令名的散文挂墓碑
         ("src/backend/agents/claudecode/branch.rs", 2), // 住址随 branch-core 收进后端适配层；1 → 2：`is_plain_sid` 那个再导出删了，原处一块 // 新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
         ("tests/frontend/ui/branch-button.vitest.ts", 1), // 新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
-        ("tests/frontend/ui/views/history-actions.vitest.ts", 1), // 新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
         ("src/frontend/ui/account-reads.ts", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         // `agent-profile.ts` 那一行摘了：适配器 id 那个导出零消费者、随起会话只交一行 `ccm …` 删了，它头注那块墓碑跟着走。
         ("src/frontend/ui/backend-policy.ts", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑

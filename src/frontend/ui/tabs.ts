@@ -28,6 +28,7 @@ import { detectAccountMismatch, type SessionAccount } from "./accounts";
 import type { BehaviorConfig } from "./behavior";
 import { toast, undoToast } from "./kit/toast";
 import { copyText } from "./copy-table";
+import { needsOf, needsWord } from "./session-face";
 import { SeqSet, TailWindow } from "./live-window";
 import type { AgentsPanel } from "./agents-panel";
 import { turnEndNotifier } from "./turn-notify";
@@ -964,6 +965,13 @@ export class TabManager {
   isSessionLive(sessionId: string): boolean {
     const tab = this.store.tabs.get(sessionId);
     return tab !== undefined && isLive(tab.state);
+  }
+
+  /** 这个会话此刻「需要你」的那个词（等批准 …）；没有这个 tab / 不需要 ⇒ `null`（历史页那一行的徽标与状态点）。 */
+  needsWordOf(sessionId: string): string | null {
+    const tab = this.store.tabs.get(sessionId);
+    const n = tab ? needsOf(tab) : null;
+    return n ? needsWord(n.kind) : null;
   }
 
   /**

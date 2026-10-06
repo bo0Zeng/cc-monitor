@@ -112,6 +112,37 @@ pub(super) const SPECS: &[CommandSpec] = &[
             })
         }),
     },
+    // **历史页的平铺清单**（`history_list.rs`）：跨项目一次出成品 —— 每行的状态与「能做什么」· 按项目的分组 · 搜标题 / 第一句 / 项目名。
+    //   远端那一支问那台的 CLI 面 `--history-list`（`raw`：那台自己判活、读上次的号），本进程记着、`fresh` 再问；并注解、筛、排都在这台。
+    CommandSpec {
+        name: "history-list",
+        doc_anchor: Some("#### `history-list`"),
+        codes: &["bad_args", "failed", "unreachable"],
+        fields: &[
+            "fresh",
+            "groups",
+            "hidden",
+            "limit",
+            "notice",
+            "origin",
+            "query",
+            "raw",
+            "rows",
+            "sort",
+            "total",
+            "truncated",
+            "within_days",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::history::history_list::answer(r.args)
+                    .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
     CommandSpec {
         name: "history-search",
         doc_anchor: Some("#### `history-search`"),

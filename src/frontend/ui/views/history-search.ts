@@ -127,7 +127,7 @@ export function searchArgs(q: FullTextQuery): Record<string, unknown> {
   const args: Record<string, unknown> = { query: q.query };
   if (q.limit !== null) args.limit = q.limit;
   if (q.includeTools) args.include_tools = true;
-  if (q.scope === "user" || q.scope === "assistant") args.scope = q.scope;
+  if (q.scope === "user" || q.scope === "assistant" || q.scope === "report") args.scope = q.scope;
   if (q.afterMs !== null && q.afterMs > 0) args.after_ms = q.afterMs;
   if (q.titles) args.titles = true;
   return args;

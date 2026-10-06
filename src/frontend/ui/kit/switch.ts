@@ -69,3 +69,21 @@ export function checkbox(label: string, checked: boolean, onChange: (checked: bo
   root.append(box, t);
   return root;
 }
+
+/** 单选一项（同一组同一个 `name`；选中这一项 ⇒ `onPick`）。 */
+export function radio(name: string, label: string, checked: boolean, onPick: () => void): HTMLLabelElement {
+  const root = document.createElement("label");
+  root.className = s.swCheck;
+  const box = document.createElement("input");
+  box.type = "radio";
+  box.name = name;
+  box.className = s.swBox;
+  box.checked = checked;
+  box.addEventListener("change", () => {
+    if (box.checked) onPick();
+  });
+  const t = document.createElement("span");
+  t.textContent = label;
+  root.append(box, t);
+  return root;
+}

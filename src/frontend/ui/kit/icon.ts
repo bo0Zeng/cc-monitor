@@ -1,6 +1,7 @@
 /**
  * 图标：全产品一套 Phosphor 线形（MIT，npm 包 `@phosphor-icons/core`；文件窗口用的 `egui-phosphor` 是同一套）。
  *
+ * - 线形之外只有一个：标过星的那颗星用实心（`fill` 那一套的 `star-fill`；设计稿「文件与历史」乙4-③ 的样子），别的都是线形。
  * - 只打包下面登记的这些（逐个 `?raw` 导入；判据钉「产物里的图标 == 这张表 == 代码里叫到的名字」）。
  * - `currentColor` 上色：默认 `--text-2`，悬停 / 当前由所在控件改 `color`。
  * - 纯装饰的图标读屏器不念（`aria-hidden`）；单独成钮的图标由按钮带读屏名（文案表 `aria` 档），图标自己不带字。
@@ -31,6 +32,11 @@ import files from "@phosphor-icons/core/assets/regular/files.svg?raw";
 import question from "@phosphor-icons/core/assets/regular/question.svg?raw";
 import brain from "@phosphor-icons/core/assets/regular/brain.svg?raw";
 import xCircle from "@phosphor-icons/core/assets/regular/x-circle.svg?raw";
+import arrowLeft from "@phosphor-icons/core/assets/regular/arrow-left.svg?raw";
+import funnel from "@phosphor-icons/core/assets/regular/funnel.svg?raw";
+import desktop from "@phosphor-icons/core/assets/regular/desktop.svg?raw";
+import starFill from "@phosphor-icons/core/assets/fill/star-fill.svg?raw";
+import chat from "@phosphor-icons/core/assets/regular/chat.svg?raw";
 import s from "./icon.module.css";
 
 const SVG = {
@@ -59,6 +65,11 @@ const SVG = {
   question: question,
   brain: brain,
   failed: xCircle,
+  back: arrowLeft,
+  filter: funnel,
+  machine: desktop,
+  starFill: starFill,
+  chat: chat,
 } as const;
 
 export type IconName = keyof typeof SVG;

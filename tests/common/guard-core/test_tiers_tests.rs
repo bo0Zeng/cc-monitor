@@ -253,23 +253,16 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/main-window-needs.vitest.ts", // 主窗口照稿第一批：一个会话读成什么 · 「需要你」条 / 钉条 / 标题 / 通知 · 机器离线条 · 会话头（jsdom）
     "tests/frontend/ui/views/cc-bus-view.vitest.ts",
     "tests/frontend/ui/views/context-limit.test.ts",
-    "tests/frontend/ui/views/counted.vitest.ts",
     "tests/frontend/ui/views/grid-monitor.vitest.ts",
-    "tests/frontend/ui/views/history-actions.test.ts",
-    "tests/frontend/ui/views/history-actions.vitest.ts",
-    "tests/frontend/ui/views/history-cache.test.ts",
     // 两份等本机索引的前端判据（`history-close-stops-retry` · `history-index-wait`）随那条 1 s 重跑链删了。
-    "tests/frontend/ui/views/history-counted.vitest.ts",
-    "tests/frontend/ui/views/history-state-chip.vitest.ts", // 历史状态词只住 sessionState.*
-    "tests/frontend/ui/views/history-filter-collapse.vitest.ts",
-    "tests/frontend/ui/views/history-prefs.test.ts",
-    "tests/frontend/ui/views/history-search-resume.vitest.ts",
-    "tests/frontend/ui/views/history-search-truncation.vitest.ts",
     "tests/frontend/ui/views/history-search.vitest.ts",
-    "tests/frontend/ui/views/history-source-cache.vitest.ts",
     "tests/frontend/ui/views/pane-preview.vitest.ts",
     "tests/frontend/ui/views/session-find.vitest.ts",
     "tests/frontend/ui/views/session-viewer-scroll.vitest.ts",
+    "tests/frontend/ui/views/history-page.vitest.ts",
+    "tests/frontend/ui/history-reads.vitest.ts",
+    "tests/frontend/ui/views/history-time.vitest.ts",
+    "tests/frontend/ui/resume-menu.vitest.ts",
     "tests/frontend/ui/views/session-viewer-skeleton.vitest.ts",
     "tests/frontend/ui/views/user-input-panel.vitest.ts",
     "tests/common/upstream-url-core/lib_tests.rs", // 新共享 crate `upstream-url-core` 的判定（纯函数）
@@ -327,7 +320,7 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/terminal-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/terminals.golden.json`）
     "tests/frontend/ui/port-forward-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/forward-list.golden.json`）
     "tests/frontend/ui/session-stream-credit.vitest.ts", // 读跨语言金样（`tests/__fixtures__/session-stream-credit.golden.json`）
-    "tests/frontend/ui/history-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/history-products.golden.json`）
+    "tests/frontend/ui/history-list-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/history-list.golden.json`）
     "tests/frontend/ui/agent-profile-parity.vitest.ts",
     "tests/frontend/ui/app-grid-claims.vitest.ts",
     "tests/backend/agent_boundary_guard.rs",
@@ -558,7 +551,6 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/topbar-list-parity.vitest.ts",
     "tests/frontend/ui/turn-notify.vitest.ts",
     "tests/frontend/ui/views/command-bar.vitest.ts",
-    "tests/frontend/ui/views/history-fanout.vitest.ts",
     "tests/frontend/ui/views/live-user-inputs.vitest.ts",
     "tests/frontend/ui/views/session-viewer-user-inputs.vitest.ts",
     "tests/frontend/ui/upstream-url-parity.vitest.ts", // 读共用金样（仓内文本）⇒ 扫描层
@@ -610,6 +602,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/agents/codex/history_tests.rs", // Codex 历史清单那一面（临时目录上的会话树）
     "tests/backend/history/history_annotations_tests.rs", // 注解读写（夹具拷进临时目录真写真读）
     "tests/backend/history/history_join_tests.rs", // 历史跨机 join（临时目录上的记录树 ＋ 替身对面）
+    "tests/backend/history/history_list_tests.rs", // 历史页平铺清单（夹具行 ＋ 替身对面）
     "tests/backend/stream/remote_ask_tests.rs",    // 问远端那一跳（真 sh 读回引号 ＋ 替身对面）
     "tests/backend/assets/skill_install_tests.rs", //
     "tests/backend/common/fs_tests.rs",

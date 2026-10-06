@@ -491,6 +491,7 @@ fn every_registered_command_declares_its_run_kind() {
         "files-size",
         "files-read-chunk",
         "history-projects",
+        "history-list",
         "history-index",
         "history-user-inputs",
         "history-find",

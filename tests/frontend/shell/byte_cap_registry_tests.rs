@@ -447,6 +447,22 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "宿主读常驻口那一行（hello / attach 应答）—— hello 帧本机实测 ~1.1 KB",
         "拒收+回错",
     ),
+    // 历史页的平铺清单（`history_list.rs`）：一台一次最多回多少行；多出的不回、`truncated` ⇒ 列表底「更早的用搜索找」。
+    (
+        "src/backend/history/history_list.rs",
+        "DEFAULT_LIMIT",
+        2000,
+        "一台的平铺会话清单一次回的行数（调用方给 `limit` 可改，1–20000）",
+        "截断+说清",
+    ),
+    // 常驻进程里那张「一份记录扫出的那一行」的记账表（`history_query.rs`）：超了整张清掉重来，下一问照常整份扫 —— 只丢记账，不丢数据。
+    (
+        "src/backend/observe/history_query.rs",
+        "SESSION_META_CAP",
+        50_000,
+        "常驻进程记着的会话记录摘要条数（按长度 · 修改时刻认没变，没变不再整份扫）",
+        "索引截断（不丢数据）",
+    ),
     (
         "src/backend/stream/listen.rs",
         "ATTACH_LINE_CAP",

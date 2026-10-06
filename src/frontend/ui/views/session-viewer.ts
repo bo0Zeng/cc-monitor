@@ -189,11 +189,8 @@ export class SessionViewer {
   /** 大纲的数据源；`where` 在 `load` 时换成这一份会话。 */
   private outline!: OutlineSource;
   private outlineWhere: { origin: string; jsonlPath: string } | null = null;
-  /** 用户点"返回历史"时调用 */
-  private onBack: () => void;
-
-  constructor(onBack: () => void) {
-    this.onBack = onBack;
+  // 「← 返回历史」那颗删了：历史页右边就地看（设计稿「文件与历史」乙4-④），列表一直在左边。
+  constructor() {
     this.root = this.build();
   }
 
@@ -663,12 +660,6 @@ export class SessionViewer {
     const bar = document.createElement("div");
     bar.className = "session-viewer-bar";
 
-    const backBtn = document.createElement("button");
-    backBtn.type = "button";
-    backBtn.className = "history-back";
-    backBtn.textContent = copyText("sessionViewer.build.back");
-    backBtn.addEventListener("click", () => this.onBack());
-    bar.appendChild(backBtn);
 
     // 查找面板（与实时 tab 共用一份实现，SE2）。宿主的三件事：
     // ① 怎么查 —— 问那台后端 `history-find`（经通道，`session-reads.ts::findInSession`），问的是查看器此刻这一份会话；

@@ -437,6 +437,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   overlays.register("history", historyView);
   // 删会话前看活不活：条目自己那一格可能是列表拉下来那一刻的，tab 栏是此刻的。
   historyView.liveInTabs = (sid) => tabs.isSessionLive(sid);
+  // 行上的「等批准」徽标看主窗口此刻的状态；「切过去」切到主窗口那个标签页。
+  historyView.needsOf = (sid) => tabs.needsWordOf(sid);
+  historyView.switchTo = (sid) => tabs.switchTo(sid);
   const historyTrigger = headButton("history-trigger", "history", copyText("main.cmd.openHistory"), hintWithKey(copyText("main.topbar.historyHint"), "app.toggle-history"), () => overlays.toggle("history"));
 
   // F91（#27）：多 agent 并排监控入口 —— 顶栏右侧一排（SFTP 入口左边，right:104px）。跨机器只读

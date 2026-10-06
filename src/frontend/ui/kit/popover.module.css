@@ -1,0 +1,16 @@
+/* 浮层面板（筛选那种：勾几个、选几个，面板不关）：与菜单同一层、同一副样子。 */
+@layer components {
+  .popover {
+    position: fixed;
+    z-index: var(--z-menu);
+    max-width: min(420px, calc(100vw - 16px));
+    max-height: calc(100vh - 16px);
+    overflow-y: auto;
+    padding: var(--space-5);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-l);
+    background: var(--card);
+    box-shadow: var(--shadow-float);
+    font-size: var(--font-size-mono);
+  }
+}

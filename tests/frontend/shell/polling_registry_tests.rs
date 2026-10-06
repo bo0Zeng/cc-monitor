@@ -457,8 +457,8 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     // 2 → 4：↗ 的「进行中」两处（`frontOnce`：超过 300ms 才进 · 进了至少停 400ms），都是一次性。
     ("src/frontend/ui/tab-session-actions.ts", "setTimeout", 4, "⑧ ⑨ 两处 `bring_*_terminal_to_front` 的 invoke 超时拒绝。都是一次性，不是周期取数。编号沿用 `tabs.ts` 那一行拆开之前的原号。⑩ ⑪ `frontOnce`：↗ 在飞超过 300ms 才把按钮换成「进行中」· 进了之后至少停 400ms 再收（防闪），一次性。"),
     ("src/frontend/ui/views/grid-monitor.ts", "setInterval", 1, "1s 重绘 —— 按格差量（没变的一拍零 DOM 写），不再整表重建。**ui-clock，不取数**，见 `REGISTERED` 那条。"),
-    ("src/frontend/ui/views/history.ts", "requestAnimationFrame", 1, "展开/收起项目后合并重画一次列表，`rafPending` 标志防重入。一次性。"),
-    ("src/frontend/ui/views/history.ts", "setTimeout", 1, "3 → 2：原先的 ① `waitForIndexThenSearch`（等本机索引就绪的 1 秒等待，F14 第四刀）随本机内存索引删了 —— 本机搜索改问本机后端，没有「索引中」。2 → 1：② 下一拍挂条目右键菜单关闭监听那一处随菜单换成 `kit/menu.ts` 走了。③ ★ **F07 下半新增**：搜索框输入去抖（250ms，每次输入前 `clearTimeout`）—— **一次性延时不是周期唤醒**，加它正是为了**减少**下游那三个放大器被触发的次数。"),
+    // 历史页照稿重做：旧页那一处 rAF（展开 / 收起后合并重画）随旧页删了。
+    ("src/frontend/ui/views/history.ts", "setTimeout", 3, "① 敲字之后停 150 ms 才问清单（`queryTimer`，再敲就重来）② 方向键走行时停 200 ms 才读右边（`previewTimer`，快速划过不读）③ 焦点离开列表那一下推到下一拍再看焦点去了哪（`focusout` 时 `activeElement` 还没换）。都是一次性，不取数、不是节拍器。"),
     ("src/frontend/ui/views/session-viewer.ts", "requestAnimationFrame", 5, "① ② 两处 `maybeFillAbove` —— **向上补料的 rAF 链**，五道守卫在 `:418-426`（世代 / 已到顶 / 在途 等）③ 渲染批前先让状态文绘一帧 ④ ⑤ 双 rAF 后重发 `scrollIntoView`（等 content-visibility 材料化）。"),
     ("src/frontend/ui/views/session-viewer.ts", "setTimeout", 1, "2.2s 后移除搜索命中的闪烁 class。一次性。原 ①（`setTimeout(r, 0)` 让出主线程、等晚到的 Channel 块）随那条命令改走通道删了：页在同一个 Promise 链里交完。"),
     ("src/frontend/ui/yield-to-main.ts", "setTimeout", 1, "`makeYieldToMain` 探不到 `MessageChannel` 时的兜底 `setTimeout(run, 0)` —— 让出一跳，由调用方自链（重放 drain · 长回复分片渲染），退出条件在调用方：队列空 / 片渲完。不是节拍器。"),

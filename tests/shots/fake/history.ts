@@ -3,13 +3,16 @@
  */
 import type { OpHandler } from "./types";
 
-const NOW = Date.parse("2026-10-01T12:00:00Z");
+// 历史页按看的人这台的日历分段（今天 · 昨天 · 本周 …）⇒ 合成时间跟着截图那一刻走。
+const NOW = Date.now();
 const ago = (min: number): number => NOW - min * 60_000;
 
 interface Proj {
   origin: string;
   path: string;
-  sessions: { sid: string; title: string; excerpt: string; agoMin: number; messages: number; live?: boolean; starred?: boolean; bg?: boolean; hits?: { kind: string; before: string; after: string }[] }[];
+  /** 缺 = claude。 */
+  agent?: string;
+  sessions: { sid: string; title: string; excerpt: string; agoMin: number; messages: number; live?: boolean; starred?: boolean; bg?: boolean; fork?: string; hits?: { kind: string; before: string; after: string }[] }[];
 }
 
 const sid = (n: number): string => `0000${n.toString(16).padStart(4, "0")}-0000-4000-8000-0000000000${(n % 100).toString().padStart(2, "0")}`;
@@ -45,6 +48,8 @@ export const HISTORY: Proj[] = [
     path: "/srv/app/billing",
     sessions: [
       { sid: "5e550004-0000-4000-8000-000000000004", title: "账单导出改成流式", excerpt: "导出大账单时内存会涨到 4G", agoMin: 15, messages: 20, live: true, hits: [{ kind: "assistant", before: "写入失败时", after: "三次后放弃" }] },
+      { sid: sid(42), title: "流式导出加断点续传", excerpt: "从上面那一轮分出来试断点续传", agoMin: 200, messages: 9, fork: "5e550004-0000-4000-8000-000000000004" },
+      { sid: sid(43), title: "流式导出改用游标", excerpt: "换一种做法：数据库游标", agoMin: 260, messages: 14, fork: "5e550004-0000-4000-8000-000000000004" },
       { sid: sid(41), title: "发票号生成冲突", excerpt: "并发开票时发票号重复", agoMin: 60 * 30, messages: 67 },
     ],
   },
@@ -53,56 +58,86 @@ export const HISTORY: Proj[] = [
     path: "/data/train/ranker",
     sessions: [{ sid: "5e550006-0000-4000-8000-000000000006", title: "排序模型训练脚本", excerpt: "训练脚本加断点续训", agoMin: 40, messages: 18 }],
   },
+  {
+    origin: "<local>",
+    path: "/home/user/work/ranker",
+    agent: "codex",
+    sessions: [{ sid: "019a0000-0000-7000-8000-00000000c0de", title: "", excerpt: "排序模型评测脚本", agoMin: 180, messages: 0 }],
+  },
 ];
 
 const projectDir = (path: string): string => path.replace(/[/\\:]/g, "-");
 const baseName = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
 const historyPath = (p: Proj, s: string): string => `/home/user/.claude/projects/${projectDir(p.path)}/${s}.jsonl`;
 const withOrigin = (origin: string): Record<string, unknown> => (origin === "<local>" ? {} : { origin });
-const projectsOn = (origin: unknown): Proj[] => HISTORY.filter((p) => p.origin === ((origin as string | undefined) ?? "<local>"));
 
 export function historyOps(): Record<string, OpHandler> {
   return {
-    "history-projects": (_o, req) => ({
-      rows: projectsOn(req.origin).map((p) => ({
-        agent: "claude",
-        projectPath: p.path,
-        projectName: baseName(p.path),
-        projectDir: projectDir(p.path),
-        sessionCount: p.sessions.length,
-        starredCount: p.sessions.filter((s) => s.starred).length,
-        hiddenCount: 0,
-        lastActivity: Math.max(...p.sessions.map((s) => ago(s.agoMin))),
-        hasLive: p.sessions.some((s) => s.live === true),
-        ...withOrigin(p.origin),
-      })),
-      notice: null,
-    }),
-    "history-sessions": (_o, req) => {
-      const p = projectsOn(req.origin).find((x) => projectDir(x.path) === req.project_dir);
-      if (!p) return { rows: [], notice: null };
-      return {
-        rows: p.sessions.map((s) => ({
-          agent: "claude",
-          sessionId: s.sid,
-          projectPath: p.path,
+    // 平铺清单（`history-list`，形状照 `history-list.golden.json`）：本机后端答各台（`origin` 在请求里）。
+    "history-list": (_o, req, w) => {
+      const origin = (req.origin as string | undefined) ?? "<local>";
+      if (w.historyDown?.includes(origin)) throw new Error(`连不上 ${origin}`);
+      const q = typeof req.query === "string" ? req.query.toLowerCase() : "";
+      const rows = HISTORY.filter((p) => p.origin === origin).flatMap((p) =>
+        p.sessions
+          .filter((s) => !q || `${s.title}\n${s.excerpt}\n${baseName(p.path)}`.toLowerCase().includes(q))
+          .map((s) => {
+            const status = s.live === true ? "live" : p.agent === "codex" ? "unknown" : "ended";
+            return {
+              agent: p.agent ?? "claude",
+              agentTag: p.agent === "codex" ? "Codex" : null,
+              sessionId: s.sid,
+              projectDir: projectDir(p.path),
+              projectPath: p.path,
+              projectName: baseName(p.path),
+              group: `${p.agent ?? "claude"}:${p.path}`,
+              aiTitle: s.title || null,
+              firstUserExcerpt: s.excerpt,
+              title: s.title || s.excerpt || s.sid.slice(0, 8),
+              label: s.title || s.excerpt || s.sid.slice(0, 8),
+              untitled: !s.title && !s.excerpt,
+              startedAt: ago(s.agoMin + 40),
+              updatedAt: ago(s.agoMin),
+              at: ago(s.agoMin),
+              jsonlPath: historyPath(p, s.sid),
+              messageCountApprox: s.messages,
+              isBg: s.bg === true,
+              starred: s.starred === true,
+              customTitle: null,
+              hidden: false,
+              ...(s.fork ? { forkedFromSessionId: s.fork, forkedFromMessageUuid: "m-1" } : {}),
+              status,
+              can: {
+                resume: status === "live" ? "switch" : s.bg === true ? "bg" : "yes",
+                accounts: p.agent !== "codex",
+                fork: p.agent !== "codex" && s.bg !== true,
+                delete: status === "live" ? "live" : status === "unknown" ? "unsure" : "yes",
+              },
+              ...withOrigin(p.origin),
+            };
+          }),
+      );
+      rows.sort((a, b) => b.at - a.at);
+      const groups = HISTORY.filter((p) => p.origin === origin).map((p) => {
+        const mine = rows.filter((r) => r.projectPath === p.path);
+        const live = mine.some((r) => r.status === "live");
+        const last = Math.max(0, ...mine.map((r) => r.updatedAt));
+        return {
+          key: `${p.agent ?? "claude"}:${p.path}`,
+          agent: p.agent ?? "claude",
           projectName: baseName(p.path),
-          aiTitle: s.title,
-          firstUserExcerpt: s.excerpt,
-          title: s.title || s.excerpt || s.sid.slice(0, 8),
-          startedAt: ago(s.agoMin + 40),
-          updatedAt: ago(s.agoMin),
-          jsonlPath: historyPath(p, s.sid),
-          isLive: s.live === true,
-          messageCountApprox: s.messages,
-          isBg: s.bg === true,
-          starred: s.starred === true,
-          customTitle: null,
-          hidden: false,
+          projectPath: p.path,
+          projectDir: projectDir(p.path),
+          count: mine.length,
+          hasLive: live,
+          starred: mine.some((r) => r.starred),
+          lastActivity: last,
+          order: (live ? 2 : 0) * 1e14 + (mine.some((r) => r.starred) ? 1e13 : 0) + last,
+          failed: null,
           ...withOrigin(p.origin),
-        })),
-        notice: null,
-      };
+        };
+      }).filter((g) => g.count > 0).sort((a, b) => b.order - a.order);
+      return { rows, groups, total: rows.length, truncated: false, notice: null };
     },
     // `titles: true` ⇒ 只比标题与第一句（「按项目」那一路）；否则按内容命中。本机还有 Codex 的会话（不在内容搜索里）。
     "history-search": (origin, req) => ({

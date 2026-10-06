@@ -20,6 +20,7 @@ import {
   type TabCollection,
 } from "./tab-collections";
 import { sayCollectionRefusal } from "./tab-bar-prefs";
+import { resumeMenuItems } from "./resume-menu";
 import {
   enumerateAccountModifiers,
   type AccountModifierOption,
@@ -330,26 +331,10 @@ export class TabMenu {
    * F09-ui-convergence.md「实现期修正」）。
    */
   private buildResumeSubmenu(sid: string, accountOptions: AccountModifierOption[]): MenuItem[] {
-    const containerLeaves = (accountName: string | undefined, useBase: boolean): MenuItem[] => [
-      { label: "tmux", onClick: () => void this.actions.resumeTabTmux(sid, accountName, useBase) },
-      { label: copyText("tabMenu.containerLeaves.direct"), onClick: () => void this.actions.resumeTab(sid, accountName, useBase) },
-    ];
-    const items: MenuItem[] = [...containerLeaves(undefined, false)];
-    if (accountOptions.length > 0) {
-      // F09 Phase D 审计（UX，建议）：纯展示性分隔线——把上面"跟随默认账号"两项和下面"换账号"
-      // 一组视觉分开，降低扫描成本（不增加点击次数，审计原话："综合任务时间…新版很可能相当
-      // 甚至更快，不建议再加独立一级项，折中是加视觉分组"）。
-      items.push({ label: "", divider: true });
-      // R05：判别联合取代了 `opt.id === "__base__"` 这个跨文件字符串比较。
-      for (const opt of accountOptions) {
-        items.push({
-          label: opt.label,
-          submenu:
-            opt.kind === "base" ? containerLeaves(undefined, true) : containerLeaves(opt.name, false),
-        });
-      }
-    }
-    return items;
+    // 选项怎么摆住 `resume-menu.ts`（历史页「恢复 ▾」同一个组件）；选了之后起会话还是标签页这边的那两条路。
+    return resumeMenuItems(accountOptions, (p) =>
+      void (p.tmux ? this.actions.resumeTabTmux(sid, p.account, p.useBase) : this.actions.resumeTab(sid, p.account, p.useBase)),
+    );
   }
 
   /** F09：给「Restart」一级菜单项造 flyout——重启没有容器轴（对齐 §0 Plan agent 共识：restart

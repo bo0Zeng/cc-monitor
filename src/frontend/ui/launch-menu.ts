@@ -12,7 +12,7 @@
  * 全仓**唯一**生产调用点 `tabs.ts` 只做 `groups.find(g => g.id === "account")`，
  * container 组造出来从未被读；且它把第二参 `currentContainerKind` 恒传 `"tmux"`，
  * 于是那两项的 `selected` 标志也恒定退化；`"none"` 那条分支**只被测试驱动过、生产从未走到**。
- * 真正在渲染容器两项的是 `tabs.ts::buildResumeSubmenu` 里的 `containerLeaves`
+ * 真正在渲染容器两项的是 `resume-menu.ts::resumeMenuItems` 里的 `containerLeaves`
  * （label 与这里原来那份**逐字相同**，两处各写一遍）。删掉本文件那份后它成为唯一来源
  * ——刻意**不**为它另抽公共常量：只有一个消费者的常量是无收益的间接层。
  *
@@ -21,7 +21,7 @@
  * 审计另核实 `ModifierOption.title` 从未被写也从未被读、`selected` 只有 container 组写过无人读，
  * 即这次连带删掉了三个零消费者的字段）。
  *
- * **本文件现在只负责账号轴**；容器那两项（tmux / 直连）住在 `tabs.ts::containerLeaves`，
+ * **本文件现在只负责账号轴**；容器那两项（tmux / 直连）住在 `resume-menu.ts::resumeMenuItems`，
  * 是全仓唯一来源。找它们别再来这里。
  */
 import { selectableAccounts } from "./accounts.ts";
@@ -58,7 +58,7 @@ export type NamedAccountModifier = Extract<AccountModifierOption, { kind: "accou
  * continue`——这是有意的行为变化，不是遗漏：旧版对 `configDir` 落空的账号是**静默隐藏**菜单项
  * （用户看不到这个账号、不知道为什么），新版是**显示、点击后由那台后端判、选不了说清**
  * （今天是 `launch-account.ts::refuseUnavailableAccount`：不起、说是哪个号选不了、给「改用当前账号」的
- * 可点选择；`tab-menu.ts::buildResumeSubmenu` 走的正是这条路径）。显式反馈优于静默隐藏，故意不搬那条 continue。
+ * 可点选择；`resume-menu.ts::resumeMenuItems` 走的正是这条路径）。显式反馈优于静默隐藏，故意不搬那条 continue。
  */
 export async function enumerateAccountModifiers(origin: string): Promise<AccountModifierOption[]> {
   let accountsAvailable = false;

@@ -101,6 +101,18 @@ export function defaultOps(): Record<string, OpHandler> {
       const tasks = (w.sessions.find((s) => s.sid === req.sid)?.tasks ?? []).filter((t) => t.status === "in_progress").map((t) => t.subject);
       return { families: [{ family: "turn", names: [] }, ...(tasks.length ? [{ family: "task", names: tasks }] : [])] };
     },
+    // 查看器整份读（按字节分页，这里一页交完）：历史页右边、只读查看器用它。
+    "history-page": (_o, req, w) => {
+      const s = sessionByPath(w, req.path);
+      const recs = s?.records ?? [];
+      const path = String(req.path);
+      return {
+        lines: recs.map((message, i) => ({ session_id: s?.sid ?? "", path, seq: i, cwd: s?.cwd ?? null, message })),
+        next: Number(req.offset ?? 0) + 1,
+        nextSeq: recs.length,
+        eof: true,
+      };
+    },
     "history-lines": (_o, req, w) => {
       const s = sessionByPath(w, req.path);
       const from = Number(req.from ?? 0);

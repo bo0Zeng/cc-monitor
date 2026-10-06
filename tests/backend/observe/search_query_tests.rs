@@ -91,6 +91,43 @@ fn search_end_to_end_and_rejects_traversal() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
+/// 设计稿「文件与历史」乙6（PARSE 10-02 定）：agent 回报（子 agent 交回 / 发来的话 · 另一个会话发来的话）搜得到，
+/// 命中种类单列 `report`；`scope` 认 `report`（只要它）、`user` 不含它（只要人说的）。正控：人说的那一条照旧是 `user`。
+#[test]
+fn agent_reports_are_searchable_as_their_own_kind() {
+    let lines = [
+        r#"{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"/p","message":{"role":"user","content":"部署脚本要加回滚"}}"#,
+        r#"{"type":"user","uuid":"r1","timestamp":"2026-01-01T00:00:01Z","message":{"role":"user","content":"<agent-message from=\"a1\">回滚已加好，部署脚本测过了</agent-message>"}}"#,
+        r#"{"type":"user","uuid":"p1","timestamp":"2026-01-01T00:00:02Z","message":{"role":"user","content":"<cross-session-message from=\"s9\">那边的部署脚本也要改</cross-session-message>"}}"#,
+    ]
+    .join("\n");
+    let mut entry = FileEntry::empty(None, true);
+    entry.take(None, lines.as_bytes());
+    let path = std::path::Path::new("/x/projects/p/s1.jsonl");
+    let ask = |scope: Option<&str>| {
+        let opts = SearchOpts {
+            include_tools: false,
+            scope: scope.map(str::to_string),
+            after_ms: 0,
+            limit: 300,
+            titles: false,
+        };
+        let mut b = SnippetBudget::new(opts.limit);
+        session_hits_in(path, &entry, "部署脚本", &opts, &mut b, 1)
+    };
+    let all = ask(None).expect("三条都命中");
+    let kinds: Vec<&str> = all["hits"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|h| h["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(kinds, vec!["user", "report", "report"]);
+    assert_eq!(ask(Some("report")).unwrap()["hitCount"], 2);
+    assert_eq!(ask(Some("user")).unwrap()["hitCount"], 1, "user 只要人说的");
+    assert!(ask(Some("assistant")).is_none());
+}
+
 // ── `K-R100` 的三条行为判据 ──────────────────────────────────────────
 // 它们**不判源码文本**（那是判写法，且今天两侧本来就一样，会恒绿）。
 // 判的是「本侧真跑出来的东西跟不跟 `search_rules` 走」。

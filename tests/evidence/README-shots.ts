@@ -90,10 +90,9 @@ const SCENES: Record<string, Scene> = {
     async drive(page) {
       await sessionShown(page);
       await page.click(".history-trigger");
-      await page.locator(".history-mode-btn", { hasText: exact(copyText("history.build.modeFulltext")) }).first().click();
       await page.fill(".history-search", SEARCH_WORD);
       await page.press(".history-search", "Enter");
-      await page.waitForSelector(".search-hit mark");
+      await page.waitForSelector(".history-view mark");
     },
   },
   /** 设置 → 机器：本机与 devbox 都连上、五项都测过通过。 */

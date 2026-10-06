@@ -105,12 +105,13 @@ describe("P21 ⓪ 量具自检（这几条不过，下面六格全是空转）",
     //    22 → 21：少的是 `.panorama-view`（代码全景页随它的 CSS 一起删了；同样挂在 `document.body` 上、不在 ② 的表里）。
     //    21 → 20：少的是 `.settings-cc-modal-backdrop`（别名块的预览浮层删了 —— 「我自己贴」就地给接入那几行；它挂在 `document.body` 上）。
     //    20 → 14：右键菜单 · 历史右键 · 选主机 · 账号选单 · 说明提示 · toast 栈六个浮层并进通用组件（`kit/` 的 CSS Modules，都挂 `document.body`）。
+    //    14 → 13：少的是 `.history-view`（历史页照稿重做，样子进了 `views/history.module.css`；挂在 `document.body` 上、不在 ② 的表里）。
     expect(
       fixedSelectors().length,
-      `CSS 里声明 \`position: fixed\` 的选择器有 ${fixedSelectors().length} 个（10-05 实测 14）。\n` +
+      `CSS 里声明 \`position: fixed\` 的选择器有 ${fixedSelectors().length} 个（10-06 实测 13）。\n` +
         "★ 变多 = 新加了一个浮层 ⇒ 去 ② 的登记表里交代它挂在哪；\n" +
         "★ 变少 = 要么真删了一个，要么**切规则那一刀又漏了**（第一版漏了 9 条，报 16）。",
-    ).toBe(14);
+    ).toBe(13);
   });
 
   it("🔴 正控：`alert(` 的量具对合成样本判得出「有」与「没有」两种", () => {
@@ -246,7 +247,8 @@ describe("P21 ③ 条 14：localStorage / IndexedDB key 必须前缀 `cc-monitor
   const KEYS = storageKeys(SOURCES);
 
   it("分母：真的抽到了 key（09-22 实测 19 处）", () => {
-    expect(KEYS.length, `只抽到 ${KEYS.length} 个存储 key（09-22 实测 19）—— 抽取器坏了`).toBeGreaterThan(12);
+    // 地板 12 → 9：历史页照稿重做，旧历史页那三个 key（来源筛选 · 来源折叠 · 来源快照）删了、新加一个（历史页偏好）。
+    expect(KEYS.length, `只抽到 ${KEYS.length} 个存储 key（10-06 实测 11）—— 抽取器坏了`).toBeGreaterThan(9);
     expect(KEYS.some((k) => k.registered), "`LS_KEYS` 那一族一个都没抽到 —— 接入层的块切错了").toBe(true);
   });
 

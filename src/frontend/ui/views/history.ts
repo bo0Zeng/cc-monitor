@@ -1,2224 +1,1011 @@
 /**
- * 历史会话浏览视图。
+ * **历史页**（设计稿「文件与历史」乙4）：主窗口上的全屏视图，列表在左、内容在右。
  *
- * 设计：全屏接管 `#message-stream` 区域（不破坏 tab-bar / status-bar）。
- *  - 显示时把原 message-stream 的 children 临时挪走 → 视图 mount 进去
- *  - 关闭时反向还原
- *
- * 两级懒加载（性能优化）：
- *   1. open / refresh：问本机后端 `history-projects` 只拿项目级元数据（不读 jsonl 内容）。
- *      所有组**默认折叠**。本机与远端都问本机常驻后端（远端那台由它沿 SSH 去问）。
- *   2. 用户展开某个项目组：问本机后端 `history-sessions`（带 projectDir 与 origin）拿该项目
- *      下所有会话详情，缓存到 `sessionCache`。下次展开同项目直接读缓存。
- *
- * 搜索两种模式（issue #6）：
- *   - "项目"（默认）：本地即时过滤项目级字段（name / path）+ 已展开项目内的会话标题。
- *   - "全文"：回车逐台（本机也是）经通道问那台后端的 `history-search`，全文搜索所有会话**内容**（user 输入 +
- *     Claude 回复；可勾选"含工具内容"附加 tool_use/result/thinking）。结果按 session
- *     分组 + snippet <mark> 高亮，点击进 viewer 滚动定位到命中消息。
- *
- * 操作：star / 重命名 / 删除 / 恢复 全部走单条 IPC，本地状态在响应回来后同步。
- *  - star/hide 改变会更新缓存中那条 entry，并同步对应 project 的 starred/hidden_count
- *  - delete 从缓存移除条目，并 -1 project.sessionCount
+ * - 列表：默认「按时间」平铺（今天 · 昨天 · 本周 · 按月分段），「按项目」是第二种看法；数据是每台一份平铺清单
+ *   （后端 `history-list`：判活 · 标题 · 每行能做什么 · 分组都在那里定），哪台先答先画、一台没答不挡别的台。
+ * - 一个搜索框：敲字 ⇒ 后端按标题 / 第一句 / 项目名过滤全部会话；回车 ⇒ 内容搜索（各台 `history-search`），结果按会话分块。
+ * - 「筛选」浮层：机器 · 时间 · 排序 · 显示已隐藏 · 搜内容时谁说的 · 含工具输出与思考。选项记在本机（界面偏好）。
+ * - 右边：点一行就地看（只读查看器），列表不动。
+ * - 实时：鼠标在列表上或焦点在列表里时不重排，移开再排（`I6`）；选中的那一行按会话认，不因上面插行而移动。
  */
-
-import { deleteSession } from "../session-writes";
-import { resolveResumeCommand } from "../remote-config";
-// 本机那个 origin 的**唯一住址**（Rust 侧是 `inbound_client::LOCAL_ORIGIN`，
-// 两侧由 `origin_tests::the_sentinel_agrees_with_the_two_existing_homes` 两向钉着）。
-import { LOCAL_ORIGIN } from "../backend-policy";
-import { originFromWire } from "../ipc/origin";
-import { searchAllMachines } from "./history-search";
-// 本机 resume 的编排只有一份（铸名 · 账号 · 记 pin 都在里面）。
-import { resumeLocalSession } from "../local-resume";
-import { SessionViewer, type ViewerOptions } from "./session-viewer";
-// `K-R92`：那三格是三态（`null` = 不知道，不是 0）。排序档与加减都只许从这里走 ——
-// JS 会安静地把 `null` 当 0（`Number(null)` / `null > 0` / `null + 1`），那正是本件在治的病。
-import { liveRank, starRank, bumpCounted, isKnown } from "./counted";
+import { button } from "../kit/button";
+import { icon } from "../kit/icon";
+import { countBadge } from "../kit/badge";
+import { tabs } from "../kit/tabs";
+import { checkbox, radio } from "../kit/switch";
+import { emptyState } from "../kit/empty";
+import { skeletonRows } from "../kit/skeleton";
+import { spinner } from "../kit/progress";
+import { openPopover, closePopover } from "../kit/popover";
+import { openMenu, type MenuItem } from "../kit/menu";
+import { toast, undoToast } from "../kit/toast";
+import { askText, confirmDialog } from "../kit/dialog";
 import { dispatcher } from "../keybindings/registry";
-import { toast } from "../kit/toast";
-import { runRemoteResume, runNewSessionRemote } from "../remote-launch-run";
-import { DEFAULT_AGENT } from "../agent-profile";
-import { configuredLauncherFor } from "../launch-requests";
-import { isSelectable } from "../accounts";
-import { fetchAccounts } from "../account-reads";
-import { chosenAccount, FOLLOW } from "../launch-account";
-import { arrivedBody, expectArrival } from "../launch-arrival";
-import { launchLocal } from "../launch-render";
-import {
-  actionsFor,
-  type HistoryActionCtx,
-  type HistoryActionId,
-} from "./history-actions";
-import { getBehavior } from "../behavior";
-import { LS_KEYS, safeGetJson, safeSetJson, safeRemove } from "../local-storage";
-import { formatTimestampSmart } from "../format";
 import { copyText } from "../copy-table";
-import {
-  shouldRefetchRemote,
-  HISTORY_REMOTE_TTL_MS,
-  type RemoteSourceCache,
-} from "./history-cache";
-import {
-  resolveOriginOpen,
-  nextOverrides,
-  sameOverrides,
-  normalizeOverrides,
-  normalizeOriginKeys,
-  type OriginOpenOverrides,
-} from "./history-prefs";
+import { commands } from "../ipc/commands";
+import { LOCAL_ORIGIN } from "../ipc/origin";
+import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
+import { annotate, forgetAnnotation, historyReasonOf } from "../history-reads";
+import { fetchList, mergeByAt, mergeGroups, type HistoryGroup, type HistoryList, type HistoryRow } from "../history-list-reads";
+import { searchAllMachines, type SearchResult, type SessionHits } from "./history-search";
+import { SessionViewer } from "./session-viewer";
+import { deleteSession } from "../session-writes";
+import { resumeLocalSession } from "../local-resume";
+import { runRemoteResume, runNewSessionRemote } from "../remote-launch-run";
+import { resolveResumeCommand } from "../remote-config";
+import { configuredLauncherFor } from "../launch-requests";
+import { getBehavior } from "../behavior";
+import { FOLLOW } from "../launch-account";
+import { launchLocal } from "../launch-render";
+import { arrivedBody, expectArrival } from "../launch-arrival";
+import { revealInFolder } from "../reveal-in-folder";
+import { groupHead, hitsBlock, labelOf, rowKey, sectionHead, sessionRow, strip, type RowHooks } from "./history-rows";
+import { sectionKey, sectionLabel } from "./history-time";
+import s from "./history.module.css";
 
-/** 项目级元数据，从本机后端 `history-projects` 拿（`../history-reads::fetchLocalProjects`）。不含 session 内容。 */
+type ViewMode = "time" | "project";
+type Scope = "all" | "user" | "assistant" | "report";
 
-/** issue #16：项目缓存/展开态的 key。本地 = projectDir；远端用 origin 命名空间隔离
- *  （本地与远端可能有相同的编码目录名，裸 projectDir 会撞 key）。 */
-function projectKey(p: { origin?: string; projectDir: string; projectPath?: string }): string {
-  // 同一个记录目录名下可能是两个真实目录（后端按目录分成了两行）⇒ 键里带上目录。
-  const dir = dirKey(p);
-  return p.projectPath ? `${dir}\u0000${p.projectPath}` : dir;
+/** 记在本机的界面偏好（不是数据）。 */
+interface Prefs {
+  view: ViewMode;
+  /** 筛掉的机器（`""` = 本机）。 */
+  off: string[];
+  withinDays: 0 | 7 | 30;
+  sort: "activity" | "created";
+  hidden: boolean;
+  scope: Scope;
+  tools: boolean;
 }
 
-/** 记录目录那一级的键（机器 ＋ 目录名）：按标题搜回来的会话只认得到这一级。 */
-function dirKey(p: { origin?: string; projectDir: string }): string {
-  return p.origin ? `${p.origin}\u0000${p.projectDir}` : p.projectDir;
+const DEFAULT_PREFS: Prefs = { view: "time", off: [], withinDays: 0, sort: "activity", hidden: false, scope: "all", tools: false };
+
+function loadPrefs(): Prefs {
+  const v = safeGetJson<Partial<Prefs>>(LS_KEYS.historyPrefs) ?? {};
+  return { ...DEFAULT_PREFS, ...v, off: Array.isArray(v.off) ? v.off.filter((x) => typeof x === "string") : [] };
 }
 
-/** 一份会话记录所在的记录目录名（路径的上一级那一段）。 */
-function recordDirOf(jsonlPath: string): string {
-  const parts = jsonlPath.split(/[\\/]/);
-  return parts.length >= 2 ? parts[parts.length - 2] : "";
-}
+/** 一台此刻的样子。 */
+type Machine =
+  | { state: "loading"; prev: HistoryList | null }
+  | { state: "ok"; list: HistoryList }
+  | { state: "failed"; why: string };
 
-/** 显示的标题：用户改过的 ＞ 后端给的（标题 ＞ 第一句 ＞ 会话 ID 前 8 位，规则在后端一处）。 */
-function titleOf(e: HistorySessionEntry): string {
-  return e.customTitle || e.title;
-}
+/** 一台的键：本机 `""`、远端那台的名字。 */
+const keyOf = (origin: string | undefined): string => origin ?? "";
 
-/** 会话级详情，从本机后端 `history-sessions` 拿（`../history-reads::fetchSessions`，一次交全）。 */
-
-/**
- * issue #12: session tree node。child 关系由 forkedFromSessionId 建。
- * 项目内独立树（跨项目 fork 不连接）。parent 不在本项目时 child 当 root + marker。
- */
-// C04d 批 6c：六个线上类型全部换成生成物（源 `history.rs` / `remote_history.rs` / `search.rs`）。
-// 手写版与生成物**逐字等价** ⇒ 零漂移，价值是防将来漂。
-// TS 侧原来的 `SearchHit` / `SearchSessionHits` 只是名字不同，用别名对上 `Hit` / `SessionHits`。
-//
-// `SessionTreeNode` **留手写**：它是前端自己的树形模型（Rust 不认识它），
-// 同账本第 4 行「IR 是前端的意图模型，别拖过边界」。
-// 项目 / 会话两行的类型从 ts-rs 生成物改成手写（Rust 那份随 monitor 的 join 一起删了；形状由本机后端的成品 ＋
-//   跨语言金样 `tests/__fixtures__/history-products.golden.json` 定），与问法一起住 `../history-reads`。
-import {
-  annotate,
-  fetchLocalProjects,
-  fetchRemoteProjects,
-  fetchSessions,
-  forgetAnnotation,
-  historyReasonOf,
-  type HistoryProject,
-  type HistorySessionEntry,
-} from "../history-reads";
-// 搜索那三个线上类型的家从 Rust `search.rs` 的生成物换到 `history-search.ts`（本机也改问本机后端，那份 Rust 删了）。
-import type { Hit as SearchHit, SearchResult, SessionHits as SearchSessionHits } from "./history-search";
-import { confirmDialog, askText } from "../kit/dialog";
-import { appendMenuItem, closeMenu, menuGeneration, openMenu, type MenuItem } from "../kit/menu";
-
-interface SessionTreeNode {
-  entry: HistorySessionEntry;
-  children: SessionTreeNode[];
-  /** 1 = 本项目里找不到 parent（跨项目 fork / parent 已物理删除）→ root 上加 marker */
-  orphan: boolean;
-}
-
-/** 改注解回的那一条（`EntryMetadata`）住 `../history-reads`（本机后端 `history-annotate`）。 */
-
-/** 组内会话排序模式（顶层布局固定按工作目录分组，不是 sort 选项）。 */
-type SortMode = "updated_desc" | "started_desc";
-
-
-/** issue #6: 历史浏览器的两种模式 —— 项目树过滤 vs 内容全文搜索。 */
-type SearchMode = "tree" | "fulltext";
-
-/**
- * F96：动作 run 的运行时上下文 = 纯判定 ctx（`HistoryActionCtx`）+ **活的 entry/project 引用**。
- * star/hide/delete 要 mutate 渲染用的同一 `e`/`proj` 对象并同步缓存，故必须是活引用（非拷贝）；
- * 搜索卡片（F85）无 entry/project → 只 resume/new-session（enabled 由 `hasEntry` 判定）。
- */
-type RowActionCtx = HistoryActionCtx & {
-  entry?: HistorySessionEntry;
-  project?: HistoryProject;
-  /** A4：非空 = 用指定账号 resume/起会话（远端注入其 CLAUDE_CONFIG_DIR + 记 lastAccount）。 */
-  account?: string;
-};
+/** 敲字之后停多久才问（乙5：150 ms）。 */
+const QUERY_DEBOUNCE_MS = 150;
+/** 方向键走行时停多久才读右边（快速划过不读）。 */
+const PREVIEW_DEBOUNCE_MS = 200;
 
 export class HistoryView {
-  /**
-   * 「这个会话此刻在 tab 栏里活着吗」—— `main.ts` 装成 `TabManager.isSessionLive`。
-   * 缺省答「不活」：没装的时候只看条目自己那一格（判据与独立用法都不必带一个 TabManager）。
-   */
+  /** 删会话前问一句：主窗口里它此刻活着吗（列表拉下来那一刻的状态可能已旧）。 */
   liveInTabs: (sid: string) => boolean = () => false;
-  /** fixed overlay 根；open 时挂 document.body，close 时 remove。 */
-  private root: HTMLElement;
+  /** 主窗口里这个会话此刻「需要你」的那个词；不在 / 不需要 ⇒ `null`。 */
+  needsOf: (sid: string) => string | null = () => null;
+  /** 切到主窗口里的这个会话。 */
+  switchTo: (sid: string) => void = () => {};
 
-  /** 项目级数据，初次 open 拉一次（= 本地批 + 远端批缓存合并的派生视图） */
-  private projects: HistoryProject[] = [];
-  /**
-   * F76（#46）：远端「来源列表」缓存，跨 close/open 常驻单例。远端 fan-out 贵
-   * （`remote_history.rs` 每台独立 SSH 连接、30s 超时），TTL 内 reopen 复用不重连；
-   * 本地批便宜（<100ms）不缓存、每次 `refresh` 重扫。`null` = 从未成功抓过远端。
-   * 刷新按钮 = 强制失效（`refresh(true)` 清此缓存重 fan-out）。
-   */
-  private remoteCache: RemoteSourceCache<HistoryProject> | null = null;
-  /** F76：`refresh()` 的代际号，防并发/交叠 refresh 的旧结果覆盖新结果（对齐 ftSeq）。 */
-  private refreshSeq = 0;
-  /**
-   * 答了、但一个项目都没有的那几台（`undefined` = 本机）。按机器分组时各画一行「这台还没有会话记录」，
-   * 不是整页空态。只存内存：远端那一半随每次成功的 fan-out 换；持久化的暖绘缓存不带它（首开必刷，刷完就有）。
-   */
-  private emptyOrigins = new Set<string | undefined>();
-  private emptyRemotes: string[] = [];
-  /** project_dir → 已加载的会话详情 */
-  private sessionCache = new Map<string, HistorySessionEntry[]>();
-  /** project_dir → 当前正在加载中的 Promise，防重复触发 */
-  private loadingProjects = new Map<string, Promise<void>>();
-  /** 会话没加载上的那几个项目（展开处说「没加载上」；再展开 / 刷新才重试，搜索不自动重试）。 */
-  private failedProjects = new Set<string>();
-  /** 「按项目」搜索时，标题 / 第一句里有这几个字的会话所在的记录目录（后端搜全部会话，不用先展开）。 */
-  private titleHitDirs = new Set<string>();
-  /** 按标题搜的代际号（旧的答案晚到就丢）。 */
-  private titleSeq = 0;
-
-  private filter = "";
-  private sort: SortMode = "updated_desc";
-  private showHidden = false;
+  private readonly root: HTMLElement;
   private isOpen = false;
-  /** "全量加载" 按钮按过后置 true；之后搜索可命中 session 内容（ai-title/excerpt 等） */
-  private loadedAll = false;
-  /** 全量加载并发上限（控制对后端 IPC 的瞬时压力） */
-  private static readonly LOAD_ALL_CONCURRENCY = 4;
+  private prefs: Prefs = loadPrefs();
+  private machines: string[] = [""];
+  private per = new Map<string, Machine>();
+  private seq = 0;
+  private query = "";
+  private queryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 内容搜索：`null` = 没在搜内容（列表是清单）。 */
+  private content: { q: string; state: "searching" } | { q: string; state: "done"; r: SearchResult } | { q: string; state: "failed"; why: string } | null = null;
+  private contentSeq = 0;
+  private selected: string | null = null;
+  private shown: string | null = null;
+  private previewTimer: ReturnType<typeof setTimeout> | null = null;
+  private openForks = new Set<string>(safeGetJson<string[]>(LS_KEYS.historyExpandedForks) ?? []);
+  private openGroups = new Set<string>();
+  /** 鼠标点一行时焦点进列表那一下：不让列表自己的「焦点落到选中行」接手。 */
+  private quietFocus = false;
+  /** 列表上有鼠标 / 焦点 ⇒ 新数据先不重排。 */
+  private holding = false;
+  private dirty = false;
+  private rowsByKey = new Map<string, HistoryRow>();
+  private order: string[] = [];
 
-  // ===== audit-0805 F07 下半（报告 B-6 前四环）：三个放大器 =====
-  //
-  // 这三件互相叠乘，所以放在一起改：
-  //   ① 搜索框 `input` **无防抖** ⇒ 每敲一个字符走一遍下面两条；
-  //   ② `renderList` **自我扇出** —— `appendProjectGroup` 里 `.then(() => this.renderList())`
-  //      写在 per-project 循环里，搜索激活时 `expanded` 恒 true ⇒ **P 个未缓存项目各触发一次
-  //      完整 renderList**，而每次 renderList 又会再走一遍这个循环；
-  //   ③ 那 P 个 `loadProjectSessions` **无并发上限** ⇒ 一次按键 P 条 IPC 齐发（远端项目还含 SSH）。
-  //
-  // ⇒ 一次按键的代价是 ①×②×③ 相乘，而不是相加。三条各自的判据见
-  // `history-fanout.vitest.ts`。
-  /** ① 搜索输入去抖句柄。 */
-  private searchDebounce: ReturnType<typeof setTimeout> | null = null;
-  /** ① 去抖窗口 250ms。 */
-  private static readonly SEARCH_DEBOUNCE_MS = 250;
-  /** ② 「已排程重画」去重位。范式取自 `tabs.ts:713-737`（schedule-once），不是 `:2714` 那个裸 rAF。 */
-  private renderScheduled = false;
-  /** ③ 懒加载队列 + 在飞计数 + 去重集（同一项目不重复入队）。 */
-  private lazyQueue: HistoryProject[] = [];
-  private lazyActive = 0;
-  private lazyQueued = new Set<string>();
-  /** 入队时登记的「这一项加载完之后要做的事」（`details` 展开要重画自己的 body）。 */
-  private lazyDone = new Map<string, () => void>();
-  /** 等「队列抽干」的人。`loadAll` / 全展开都靠它拿完成信号。 */
-  private lazyIdle: (() => void)[] = [];
-  /** 判据用：合并之后**真正**跑了几次 renderList / 起了几条 load。 */
-  private fanoutStats = { renders: 0, loads: 0, peakConcurrent: 0 };
-
-  // issue #6: 全文搜索状态
-  /** 当前模式：项目树过滤 / 内容全文搜索。默认树。 */
-  private searchMode: SearchMode = "tree";
-  /** 全文搜索是否附带搜 tool 内容（默认否，只搜 user/assistant 文本）。 */
-  private includeTools = false;
-  /** 全文搜索范围：全部 / 只我的输入(user) / 只 Claude(assistant)。 */
-  private searchScope: "all" | "user" | "assistant" = "all";
-  /** 全文搜索时间范围下界（epoch ms）；null = 不限。 */
-  private searchAfterMs: number | null = null;
-  /** 当前全文搜索请求的代际号，防止旧请求的结果覆盖新请求（竞态）。 */
-  private ftSeq = 0;
-
-  // 子元素
-  private listEl!: HTMLElement;
   private searchInput!: HTMLInputElement;
-  private statusEl!: HTMLElement;
-  /** 列表模式的工具条+列表整体（切到查看器时整块隐藏） */
-  private listShell!: HTMLElement;
-  /** issue #6: 全文搜索结果容器（fulltext 模式显示，替代项目树） */
-  private resultsEl!: HTMLElement;
-  /** 仅树模式显示的工具条控件（sort / 展开 / 全量 / 隐藏 / 刷新） */
-  private treeOnlyEls: HTMLElement[] = [];
-  /** 仅全文模式显示的工具条控件（含工具内容 / 重新索引） */
-  private fulltextOnlyEls: HTMLElement[] = [];
-  /** 模式切换按钮 ref（更新 is-active） */
-  private modeBtns: Partial<Record<SearchMode, HTMLButtonElement>> = {};
-  /** "全量加载" 按钮 ref；加载中要 disable */
-  private loadAllBtn!: HTMLButtonElement;
-  /** 当前打开的会话查看器（点击条目进入只读视图）；null = 列表模式 */
+  private filterBtn!: HTMLButtonElement;
+  private refreshBtn!: HTMLButtonElement;
+  private listEl!: HTMLElement;
+  private listHead!: HTMLElement;
+  private stripsEl!: HTMLElement;
+  private contentEl!: HTMLElement;
   private viewer: SessionViewer | null = null;
-  /** project_dir → 用户展开状态。默认折叠；用户主动展开的记下来 */
-  private expandedProjects = new Set<string>();
-  /**
-   * F02 多机 #30 → F86(#45)：来源大区折叠**偏好覆盖表**（key=origin ?? ""）。**跨重启持久**。
-   * 三态：键缺失 = 无偏好 → 走默认（本地展开 / 远端折叠，见 `defaultOriginOpen`）；键存在 =
-   * 用户显式设过的 open 态。取代原「二态 collapsedOrigins Set」——Set 表达不了「远端默认折叠、但
-   * 这台用户显式展开过」（显式展开与从没表态都=不在集合里）。仅在 >1 origin 时有分组大区。
-   */
-  private originOpenOverrides: OriginOpenOverrides = loadOriginOpenOverrides();
-  /**
-   * F03 多机 #30 → F86(#45)：被**隐藏**的来源 key（origin ?? ""）。**跨重启持久**（照 expandedForks
-   * 先例）。chip 点掉某来源 → 加入此集并存盘 → 该来源项目不渲染。仅在 >1 origin 时显示筛选条。
-   */
-  private hiddenOrigins: Set<string> = loadHiddenOrigins();
-  /** F03：来源筛选 chip 行（插在 statusEl 与 listEl 间；≤1 来源时 display:none）。 */
-  private originFilterBar!: HTMLElement;
-  /**
-   * issue #12: fork 树展开状态。session_id ∈ 集合 = 该 session 的 children 展开。
-   * **默认折叠** —— 第一次见到 fork 父节点时它的 children 不显示。从 localStorage 恢复。
-   */
-  private expandedForks: Set<string> = loadExpandedForks();
-  /** F96：当前打开的条目右键菜单（单例；开新菜单/点空白/Esc 前先关它）。 */
-  /** 开着的条目菜单是哪一代（`kit/menu` 的代次；关了 ⇒ `null`）。 */
-  private entryMenuGen: number | null = null;
+  private readonly layer = { handleEsc: () => this.handleEsc() };
 
   constructor() {
     this.root = this.build();
-    // F76b(#46):从 localStorage hydrate 远端来源快照——让每次启动**首开**也暖(不再只本地)。
-    // 逐元素防脏 + loadedAt 归 0(首帧暖绘、首开必刷)见 loadPersistedRemoteCache;会话内 30s 内存 TTL 照旧管 reopen。
-    this.remoteCache = loadPersistedRemoteCache();
-  }
-
-  async open(): Promise<void> {
-    if (this.isOpen) return;
-    // v2.5+: 挂 document.body 作为 fixed overlay（详 .history-view CSS 注释）。
-    // 不再接管 streamRoot —— history 打开期间 TabManager 仍可正常 ensureTab。
-    document.body.appendChild(this.root);
-    this.isOpen = true;
-    this.searchInput.value = "";
-    this.filter = "";
-    // issue #6: 每次打开复位到项目树模式（清掉上次的全文结果）
-    this.searchMode = "tree";
-    this.resultsEl.replaceChildren();
-    this.updateModeUI();
-    this.closeViewer();
-    // 重新打开时清掉会话详情缓存（避免文件已被外部改动后展示陈旧数据）。
-    // F76（#46）：**远端「来源列表」缓存 `remoteCache` 刻意不清**——它跨 open 常驻、由
-    // `refresh(false)` 的 TTL 门控复用，正是「不再每次重连所有远端」的关键；刷新按钮走
-    // `refresh(true)` 才强制失效。session 详情层仍每次清（#46 只讲来源列表，非会话详情）。
-    this.sessionCache.clear();
-    this.loadingProjects.clear();
-    this.failedProjects.clear();
-    this.titleHitDirs = new Set();
-    this.loadedAll = false;
-    this.updateSearchPlaceholder();
-    // issue #5: 注册到 dispatcher 弹层栈，Esc 由 dispatcher 派给我
-    dispatcher.pushOverlay(this);
-    // 开页就给焦点（不等远端答完；远端陆续补进来时不动焦点 —— 那时用户可能已经点进了别处）。
-    this.searchInput.focus();
-    await this.refresh(); // F76：默认 force=false → TTL 内复用远端缓存
-  }
-
-  /** 根据当前模式 / 是否已全量加载更新搜索框 placeholder，告知用户搜索覆盖范围 */
-  private updateSearchPlaceholder(): void {
-    if (this.searchMode === "fulltext") {
-      this.searchInput.placeholder =
-        copyText("history.search.placeholderFulltext");
-      return;
-    }
-    if (this.loadedAll) {
-      this.searchInput.placeholder = copyText("history.search.placeholderLoaded");
-    } else {
-      this.searchInput.placeholder =
-        copyText("history.search.placeholderTree");
-    }
-  }
-
-  close(): void {
-    if (!this.isOpen) return;
-    // ★ audit-0805 F14：关掉视图时递增代际号 —— 还在路上的那一次全文搜索回来时 `seq !== this.ftSeq`，
-    //   不把结果写进已 detach 的 DOM。F14 当年要掐的那条 1 秒重试链（等本机索引建好）随本机内存索引删了，
-    //   这一行留下来管的是「在飞的那一问」。
-    this.ftSeq++;
-    this.closeViewer();
-    this.closeEntryMenu(); // F96：菜单挂 document.body（不在 root 内），销毁视图须显式清，防 DOM+监听器泄漏
-    this.root.remove();
-    this.isOpen = false;
-    dispatcher.popOverlay(this);
-  }
-
-  /** 打开只读查看器，列表 UI 临时隐藏 */
-  private openViewer(entry: HistorySessionEntry): void {
-    const displayTitle = titleOf(entry);
-    const proj = entry.projectName || entry.projectPath || copyText("history.project.unknown");
-    const subtitle =
-      entry.projectPath && entry.projectPath !== proj
-        ? `${proj}  ·  ${entry.projectPath}`
-        : proj;
-    this.openViewerWith({
-      jsonlPath: entry.jsonlPath,
-      displayTitle,
-      subtitle,
-      origin: originFromWire(entry.origin),
-      cwd: entry.projectPath, // F62：建分支后 resume 用作新终端起始目录
-    });
-  }
-
-  /** issue #6: 通用打开查看器（树条目 / 搜索命中共用）。可带 scrollToUuid 定位。 */
-  private openViewerWith(opts: ViewerOptions): void {
-    if (this.viewer) this.viewer.dispose();
-    this.viewer = new SessionViewer(() => this.closeViewer());
-    this.root.appendChild(this.viewer.element);
-    this.listShell.style.display = "none";
-    void this.viewer.load(opts);
-  }
-
-  private closeViewer(): void {
-    if (!this.viewer) return;
-    this.viewer.dispose();
-    this.viewer.element.remove();
-    this.viewer = null;
-    this.listShell.style.display = "";
   }
 
   isVisible(): boolean {
     return this.isOpen;
   }
 
-  /** Ctrl+F：历史页开着、且正在看一份会话 ⇒ 查看器的查找面板打开到「搜索」、回 `true`；
-   *  否则回 `false`（交给实时 tab 那一块 —— 历史页盖在上面时打开底下那块，用户看不见）。 */
+  async open(): Promise<void> {
+    if (this.isOpen) return;
+    document.body.appendChild(this.root);
+    this.isOpen = true;
+    this.query = "";
+    this.searchInput.value = "";
+    this.content = null;
+    dispatcher.pushOverlay(this.layer);
+    // 开页即给焦点（不等远端，R5W-H08）。
+    this.searchInput.focus();
+    this.machines = ["", ...(await commands.list_remote_mcp_origins().catch(() => [] as string[]))];
+    // 开页那一问带 `fresh`：远端那台的清单后端记着、不按时间过期，开页与「刷新」才再问那台。
+    this.refresh(true);
+  }
+
+  close(): void {
+    if (!this.isOpen) return;
+    this.seq++;
+    this.contentSeq++;
+    closePopover();
+    this.disposeViewer();
+    this.root.remove();
+    this.isOpen = false;
+    dispatcher.popOverlay(this.layer);
+  }
+
+  /** Ctrl+F 落在历史页：右边有会话 ⇒ 会话内查找；否则不接（交给主窗口）。 */
   openFind(): boolean {
     if (!this.isOpen || !this.viewer) return false;
     this.viewer.openFind();
     return true;
   }
 
-  /** Esc：查看器 > 整个历史视图（右键菜单自己压在弹层栈最上面，Esc 先到它）。 */
-  handleEscape(): void {
-    if (this.viewer) {
-      this.closeViewer();
-    } else {
-      this.close();
+  /** Esc 一次一层（乙5）：焦点在内容里 ⇒ 回列表 ＞ 搜索框有字 ⇒ 清空 ＞ 关历史页。菜单 / 浮层 / 对话框各自在栈上先接。 */
+  private handleEsc(): boolean {
+    if (this.contentEl.contains(document.activeElement)) {
+      this.focusSelected();
+      return true;
     }
+    if (this.searchInput.value) {
+      this.setQuery("");
+      this.searchInput.focus();
+      return true;
+    }
+    this.close();
+    return true;
   }
 
-  /** 全屏视图：单键不落到底下的 tab 上，只放行它自己的开关键（H 再按一次关）。 */
-  readonly passes = ["app.toggle-history"] as const;
+  // ───────────────────────── 数据 ─────────────────────────
 
-  /** issue #5 OverlayHandle 接口：跟 handleEscape 同一行为 */
-  handleEsc(): void {
-    this.handleEscape();
+  private savePrefs(): void {
+    safeSetJson(LS_KEYS.historyPrefs, this.prefs);
   }
 
-  /**
-   * F76（#46）：本地「来源」始终重扫（便宜、防陈旧），远端 fan-out 走 TTL 缓存
-   * （`remote_history.rs` 每台独立 SSH、30s 超时，是「每次重新加载」的痛点单点）。
-   * @param force `true`（刷新按钮）= 无视 TTL 必重 fan-out；`false`（open）= TTL 内复用远端快照。
-   *
-   * ★ 承重不变式：`this.projects` 的远端段元素与 `this.remoteCache.projects` 是**同一批对象引用**
-   *   （浅 spread）。好处：对远端 proj 的**字段** mutation（star/hide/`sessionCount--`）天然同步进缓存、
-   *   与后端持久化一致。代价：**数组结构性移除**（删空项目的 filter）必须两边都做，否则缓存留幽灵——
-   *   见 delete handler。若将来把缓存写成 `remote.map(clone)`/深拷贝，这条隐式同步会静默失效。
-   */
-  private async refresh(force = false): Promise<void> {
-    // 代际守卫：并发/交叠的 refresh（如 open 的 fan-out 在飞、用户又点刷新）只让最新一次落地，
-    // 避免先发后回的旧结果用更旧数据 + 更小 loadedAt 覆盖新结果（对齐同文件 ftSeq 模式）。
-    const seq = ++this.refreshSeq;
-    this.statusEl.textContent = copyText("history.refresh.loadingProjects");
-    this.listEl.replaceChildren();
-    this.sessionCache.clear();
-    this.loadingProjects.clear();
-    this.failedProjects.clear();
-    // 会话缓存清了 ⇒「已全量加载」不再成立（搜索范围跟着回到「项目名 ＋ 已展开的」，提示与按钮跟着变）。
-    this.loadedAll = false;
-    this.updateSearchPlaceholder();
-    // 本地批：每次重扫。本机读不了 ≠ 整页失败：说一声，本机那一段空着，远端照常加载。
-    let local: HistoryProject[] = [];
-    let localFailed: string | null = null;
-    let localEmpty = false;
+  private wanted(): string[] {
+    return this.machines.filter((m) => !this.prefs.off.includes(m));
+  }
+
+  /** 逐台问清单（`fresh` ＝ 远端不用后端记着的那份）。哪台先答先画。 */
+  private refresh(fresh: boolean, only?: string): void {
+    const seq = ++this.seq;
+    const ask = {
+      query: this.query || undefined,
+      sort: this.prefs.sort,
+      withinDays: this.prefs.withinDays || undefined,
+      hidden: this.prefs.hidden,
+      fresh,
+    };
+    const targets = only !== undefined ? [only] : this.wanted();
+    for (const m of targets) {
+      const was = this.per.get(m);
+      this.per.set(m, { state: "loading", prev: was?.state === "ok" ? was.list : was?.state === "loading" ? was.prev : null });
+      fetchList(m || undefined, ask).then(
+        (list) => {
+          if (seq !== this.seq && only === undefined) return;
+          this.per.set(m, { state: "ok", list });
+          this.scheduleRender();
+        },
+        (e: unknown) => {
+          if (seq !== this.seq && only === undefined) return;
+          this.per.set(m, { state: "failed", why: historyReasonOf(e) });
+          this.scheduleRender();
+        },
+      );
+    }
+    this.refreshBtn.dataset.busy = "true";
+    this.scheduleRender();
+  }
+
+  private setQuery(q: string): void {
+    this.searchInput.value = q;
+    this.onQueryInput();
+  }
+
+  private onQueryInput(): void {
+    this.content = null;
+    this.contentSeq++;
+    if (this.queryTimer) clearTimeout(this.queryTimer);
+    this.queryTimer = setTimeout(() => {
+      this.queryTimer = null;
+      const q = this.searchInput.value.trim();
+      if (q === this.query) return this.renderNow();
+      this.query = q;
+      this.refresh(false);
+    }, QUERY_DEBOUNCE_MS);
+    this.renderNow();
+  }
+
+  /** 回车 ⇒ 在全部会话内容里搜。失败 ⇒ 清掉旧结果、换成错误条（R5W-H06）。 */
+  private async runContentSearch(): Promise<void> {
+    const q = this.searchInput.value.trim();
+    if (!q) return;
+    const seq = ++this.contentSeq;
+    this.content = { q, state: "searching" };
+    this.renderNow();
     try {
-      // 问本机常驻后端（它并注解、判活、合成 Codex 项目）；注解没并上 ⇒ 说一声（星标 / 隐藏数显示成「不知道」）。
-      const got = await fetchLocalProjects();
-      local = got.projects;
-      localEmpty = local.length === 0;
-      if (got.notice) toast(copyText("history.refresh.noticeTitle"), got.notice);
+      const r = await searchAllMachines({
+        query: q,
+        includeTools: this.prefs.tools,
+        scope: this.prefs.scope === "all" ? null : this.prefs.scope,
+        afterMs: this.prefs.withinDays ? Date.now() - this.prefs.withinDays * 86_400_000 : null,
+        limit: null,
+      });
+      if (seq !== this.contentSeq) return;
+      this.content = { q, state: "done", r };
     } catch (e) {
-      localFailed = historyReasonOf(e);
+      if (seq !== this.contentSeq) return;
+      this.content = { q, state: "failed", why: historyReasonOf(e) };
     }
-    if (seq !== this.refreshSeq) return; // 被更新的 refresh 抢占
-    if (localFailed !== null) toast(copyText("history.refresh.localFailed"), localFailed);
-    this.emptyOrigins = new Set<string | undefined>(this.emptyRemotes);
-    if (localEmpty) this.emptyOrigins.add(undefined);
-    // 先用「本地 + 已有远端缓存」渲染一帧（远端缓存命中时这就是最终态）。
-    this.projects = [...local, ...(this.remoteCache?.projects ?? [])];
-    this.renderList();
-
-    // 远端批：TTL 门控。缓存新鲜且非强刷 → 上面那帧已含缓存，直接返回不发 IPC。
-    if (!force && !shouldRefetchRemote(this.remoteCache, Date.now(), HISTORY_REMOTE_TTL_MS)) {
-      return;
-    }
-    // 需 fan-out：独立 try——远端连不上/无配置不影响本地浏览。
-    try {
-      // 逐台问本机后端（它沿池里那条 SSH 去问那台、并上本机的注解）；fan-out 住 `../history-reads`。
-      const res = await fetchRemoteProjects();
-      if (seq !== this.refreshSeq) return; // 抢占：丢弃过期结果
-      const remote = res.projects;
-      this.emptyRemotes = res.emptyHosts;
-      this.emptyOrigins = new Set<string | undefined>(res.emptyHosts);
-      if (localEmpty) this.emptyOrigins.add(undefined);
-      if (res.failedHosts.length === 0) {
-        // 全部台成功 → 缓存这份完整快照，TTL 内复用（空结果也缓存，无远端配置时省掉每次 IPC）。
-        this.remoteCache = { projects: remote, loadedAt: Date.now() };
-        safeSetJson(LS_KEYS.historyRemoteSources, this.remoteCache); // F76b(#46):持久化 → 下次启动首开暖绘
-      } else {
-        // 部分台失败（后端语义：任一台成功即 Ok，失败台跳过）→ 这份快照**不完整**，不冻结缓存，
-        // 下次 open 重试失败台（对齐 F76 前「每次 open 重扫、瞬断下次自愈」），仍渲染已拿到的台。
-        this.remoteCache = null;
-        safeRemove(LS_KEYS.historyRemoteSources); // F76b(#46):不完整快照不持久(免下次启动暖绘残缺列表)
-        toast(
-          copyText("history.refresh.partialTitle"),
-          copyText("history.refresh.partialHosts", { hosts: res.failedHosts.join(copyText("history.refresh.hostSep")) }),
-        );
-      }
-      this.projects = [...local, ...remote];
-      if (this.isOpen) this.renderList(); // await 期间可能已关闭，别渲染进游离 DOM
-    } catch (e) {
-      if (seq !== this.refreshSeq) return;
-      // 全部台失败（Err）→ 保住旧缓存不覆盖（force 也不预清，失败时降级复用更稳）；本地已渲染，仅 toast。
-      toast(copyText("history.refresh.remoteFailed"), String(e));
-    }
+    this.renderNow();
   }
 
-  /**
-   * 懒加载某个项目下的会话详情。重复调返回同一个 Promise。
-   *
-   * 问本机常驻后端 `history-sessions`，一次交全（从前 issue #12 那条逐条流式的 Tauri Channel 退役：
-   * 本机那一支原是 monitor 进程内自己边扫边发；join 进了本机后端之后本机与远端同一条路、同一份口径）。
-   */
-  private loadProjectSessions(proj: HistoryProject): Promise<void> {
-    const key = projectKey(proj);
-    const inFlight = this.loadingProjects.get(key);
-    if (inFlight) return inFlight;
-    if (this.sessionCache.has(key)) return Promise.resolve();
-
-    const entries: HistorySessionEntry[] = [];
-    this.sessionCache.set(key, entries);
-    this.failedProjects.delete(key);
-
-    // 本机与远端同一条路：问本机常驻后端 `history-sessions`（远端那台由它沿 SSH 去问、并上本机的注解）。
-    //   从前本机那条是 Tauri Channel **逐条流式**（monitor 自己边扫边发）—— 今天一次交全（后端扫完整个项目才回），
-    //   大项目「首条 < 100ms 出现」那一格没了（如实登记在 `C4d.md`），换来本机与远端同一份口径（fork 树 · 标题 · 摘录）。
-    const p = (async () => {
-      try {
-        const { sessions, notice } = await fetchSessions(proj);
-        entries.push(...sessions);
-        if (notice) console.warn(`[history] ${key}：${notice}`);
-        if (this.isOpen) this.renderList();
-      } catch (e) {
-        console.warn(`sessions in ${key} failed:`, e);
-        // 没加载上 ≠ 没有会话：不留那份空缓存（不然展开永远写「没有会话」、也不再问），记一笔「没加载上」。
-        this.sessionCache.delete(key);
-        this.failedProjects.add(key);
-        toast(proj.origin ? copyText("history.sessions.remoteFailed") : copyText("history.sessions.failed"), historyReasonOf(e));
-      } finally {
-        this.loadingProjects.delete(key);
-      }
-    })();
-    this.loadingProjects.set(key, p);
-    return p;
-  }
-
-  // === DOM 构建 ===
+  // ───────────────────────── 外壳 ─────────────────────────
 
   private build(): HTMLElement {
-    const view = document.createElement("div");
-    view.className = "history-view";
-
-    this.listShell = document.createElement("div");
-    this.listShell.className = "history-list-shell";
-    view.appendChild(this.listShell);
-
-    const bar = document.createElement("div");
-    bar.className = "history-bar";
-
-    const backBtn = document.createElement("button");
-    backBtn.type = "button";
-    backBtn.className = "history-back";
-    backBtn.textContent = copyText("history.build.back");
-    backBtn.addEventListener("click", () => this.close());
-    bar.appendChild(backBtn);
-
-    // issue #6: 模式切换（项目 / 全文）
-    const modeToggle = document.createElement("div");
-    modeToggle.className = "history-mode-toggle";
-    const mkModeBtn = (mode: SearchMode, label: string, title: string) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "history-mode-btn";
-      b.textContent = label;
-      b.title = title;
-      b.addEventListener("click", () => this.setMode(mode));
-      this.modeBtns[mode] = b;
-      modeToggle.appendChild(b);
-    };
-    mkModeBtn("tree", copyText("history.build.modeTree"), copyText("history.build.modeTreeHint"));
-    mkModeBtn("fulltext", copyText("history.build.modeFulltext"), copyText("history.build.modeFulltextHint"));
-    bar.appendChild(modeToggle);
-
+    const root = document.createElement("div");
+    root.className = `${s.hv} history-view`;
+    const top = document.createElement("div");
+    top.className = s.hvTop;
+    const back = button({ label: copyText("history.page.back"), kind: "ghost", icon: "back", onClick: () => this.close() });
+    const views = tabs<ViewMode>({
+      items: [
+        { key: "time", label: copyText("history.page.byTime") },
+        { key: "project", label: copyText("history.page.byProject") },
+      ],
+      current: this.prefs.view,
+      label: copyText("history.page.views"),
+      onChange: (k) => {
+        this.prefs.view = k;
+        this.savePrefs();
+        this.renderNow();
+      },
+    });
+    views.classList.add(s.hvViews);
+    const search = document.createElement("label");
+    search.className = s.hvSearch;
+    search.appendChild(icon("search", "compact"));
     this.searchInput = document.createElement("input");
     this.searchInput.type = "search";
     this.searchInput.className = "history-search";
-    // placeholder 在 updateSearchPlaceholder 里根据模式 / loadedAll 动态设
-    this.searchInput.addEventListener("input", () => {
-      // F07：**去抖**。此前每敲一个字符都同步走一遍 `renderList()`，而 `renderList` 自己
-      // 还会扇出 P 条懒加载、每条回来再触发一次 renderList —— 三个放大器叠乘。
-      if (this.searchDebounce !== null) clearTimeout(this.searchDebounce);
-      this.searchDebounce = setTimeout(() => {
-        this.searchDebounce = null;
-        if (this.searchMode === "tree") {
-          this.filter = this.searchInput.value.trim().toLowerCase();
-          this.renderList();
-          void this.runTitleSearch();
-        } else if (this.searchInput.value.trim() === "") {
-          // 全文模式清空 → 清结果
-          this.runFullTextSearch();
-        }
-      }, HistoryView.SEARCH_DEBOUNCE_MS);
-    });
-    this.searchInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && this.searchMode === "fulltext") {
-        e.preventDefault();
-        this.runFullTextSearch();
-      }
-    });
-    bar.appendChild(this.searchInput);
-
-    const sortSel = document.createElement("select");
-    sortSel.className = "history-sort";
-    sortSel.title = copyText("history.build.sortHint");
-    const options: { value: SortMode; label: string }[] = [
-      { value: "updated_desc", label: copyText("history.build.sortUpdated") },
-      { value: "started_desc", label: copyText("history.build.sortCreated") },
-    ];
-    for (const o of options) {
-      const opt = document.createElement("option");
-      opt.value = o.value;
-      opt.textContent = o.label;
-      sortSel.appendChild(opt);
-    }
-    sortSel.addEventListener("change", () => {
-      this.sort = sortSel.value as SortMode;
-      this.renderList();
-    });
-    bar.appendChild(sortSel);
-    this.treeOnlyEls.push(sortSel);
-
-    const expandAllBtn = document.createElement("button");
-    expandAllBtn.type = "button";
-    expandAllBtn.className = "history-refresh";
-    expandAllBtn.textContent = copyText("history.build.expandAll");
-    expandAllBtn.title = copyText("history.build.expandAllHint");
-    expandAllBtn.addEventListener("click", () => void this.toggleAll());
-    bar.appendChild(expandAllBtn);
-    this.treeOnlyEls.push(expandAllBtn);
-
-    // 全量加载：把每个项目的 session 详情都拉到缓存，让搜索可命中 session 内容
-    this.loadAllBtn = document.createElement("button");
-    this.loadAllBtn.type = "button";
-    this.loadAllBtn.className = "history-refresh";
-    this.loadAllBtn.textContent = copyText("history.loadAll.action");
-    this.loadAllBtn.title =
-      copyText("history.build.loadAllHint");
-    this.loadAllBtn.addEventListener("click", () => void this.loadAllSessions());
-    bar.appendChild(this.loadAllBtn);
-    this.treeOnlyEls.push(this.loadAllBtn);
-
-    const hiddenLabel = document.createElement("label");
-    hiddenLabel.className = "history-toggle";
-    const hiddenCheck = document.createElement("input");
-    hiddenCheck.type = "checkbox";
-    hiddenCheck.addEventListener("change", () => {
-      this.showHidden = hiddenCheck.checked;
-      this.renderList();
-    });
-    hiddenLabel.appendChild(hiddenCheck);
-    const hiddenText = document.createElement("span");
-    hiddenText.textContent = copyText("history.build.showHidden");
-    hiddenLabel.appendChild(hiddenText);
-    bar.appendChild(hiddenLabel);
-    this.treeOnlyEls.push(hiddenLabel);
-
-    const refreshBtn = document.createElement("button");
-    refreshBtn.type = "button";
-    refreshBtn.className = "history-refresh";
-    refreshBtn.textContent = copyText("history.build.refresh");
-    // F76（#46）：刷新按钮 = 强制失效，无视 TTL 重新 fan-out 所有远端（保留用户主动强刷语义）。
-    refreshBtn.addEventListener("click", () => void this.refresh(true));
-    bar.appendChild(refreshBtn);
-    this.treeOnlyEls.push(refreshBtn);
-
-    // issue #6: 全文模式专属控件 —— "含工具内容" 复选框 + "重新索引"
-    const toolsLabel = document.createElement("label");
-    toolsLabel.className = "history-toggle";
-    toolsLabel.title =
-      copyText("history.build.includeToolsHint");
-    const toolsCheck = document.createElement("input");
-    toolsCheck.type = "checkbox";
-    toolsCheck.addEventListener("change", () => {
-      this.includeTools = toolsCheck.checked;
-      if (this.searchInput.value.trim() !== "") this.runFullTextSearch();
-    });
-    toolsLabel.appendChild(toolsCheck);
-    const toolsText = document.createElement("span");
-    toolsText.textContent = copyText("history.build.includeTools");
-    toolsLabel.appendChild(toolsText);
-    bar.appendChild(toolsLabel);
-    this.fulltextOnlyEls.push(toolsLabel);
-
-    // 搜索范围：全部 / 只我的输入 / 只 Claude
-    const scopeSel = document.createElement("select");
-    scopeSel.className = "history-sort";
-    scopeSel.title = copyText("history.build.scopeHint");
-    for (const o of [
-      { value: "all", label: copyText("history.build.scopeAll") },
-      { value: "user", label: copyText("history.build.scopeUser") },
-      { value: "assistant", label: copyText("history.build.scopeClaude") },
-    ]) {
-      const opt = document.createElement("option");
-      opt.value = o.value;
-      opt.textContent = o.label;
-      scopeSel.appendChild(opt);
-    }
-    scopeSel.addEventListener("change", () => {
-      this.searchScope = scopeSel.value as "all" | "user" | "assistant";
-      if (this.searchInput.value.trim() !== "") this.runFullTextSearch();
-    });
-    bar.appendChild(scopeSel);
-    this.fulltextOnlyEls.push(scopeSel);
-
-    // 时间范围：全部 / 近 7 天 / 近 30 天
-    const timeSel = document.createElement("select");
-    timeSel.className = "history-sort";
-    timeSel.title = copyText("history.build.timeHint");
-    for (const o of [
-      { value: "0", label: copyText("history.build.timeAll") },
-      { value: "7", label: copyText("history.build.time7d") },
-      { value: "30", label: copyText("history.build.time30d") },
-    ]) {
-      const opt = document.createElement("option");
-      opt.value = o.value;
-      opt.textContent = o.label;
-      timeSel.appendChild(opt);
-    }
-    timeSel.addEventListener("change", () => {
-      const days = Number(timeSel.value);
-      this.searchAfterMs = days > 0 ? Date.now() - days * 86_400_000 : null;
-      if (this.searchInput.value.trim() !== "") this.runFullTextSearch();
-    });
-    bar.appendChild(timeSel);
-    this.fulltextOnlyEls.push(timeSel);
-
-    // 「重新索引」按钮随本机内存索引一起删了：本机也问本机后端，每次现扫、没有可重建的东西。
-
-    this.listShell.appendChild(bar);
-
-    this.statusEl = document.createElement("div");
-    this.statusEl.className = "history-status";
-    this.listShell.appendChild(this.statusEl);
-
-    // F03 多机 #30：来源筛选条（仅 >1 来源时显示，由 renderOriginFilter 控制）
-    this.originFilterBar = document.createElement("div");
-    this.originFilterBar.className = "history-origin-filter";
-    this.originFilterBar.style.display = "none";
-    this.listShell.appendChild(this.originFilterBar);
-
-    this.listEl = document.createElement("div");
-    this.listEl.className = "history-list";
-    this.listShell.appendChild(this.listEl);
-
-    // issue #6: 全文搜索结果容器（默认隐藏，fulltext 模式显示）
-    this.resultsEl = document.createElement("div");
-    this.resultsEl.className = "history-search-results";
-    this.resultsEl.style.display = "none";
-    this.listShell.appendChild(this.resultsEl);
-
-    // 首次构造时给一份合理 placeholder（open() 里会再刷新一次以反映 loadedAll）
-    this.updateSearchPlaceholder();
-    this.updateModeUI();
-
-    return view;
-  }
-
-  // === issue #6: 全文搜索 ===
-
-  /** 切换 项目树 / 全文 模式。 */
-  private setMode(mode: SearchMode): void {
-    if (this.searchMode === mode) return;
-    this.searchMode = mode;
-    this.updateModeUI();
-    if (mode === "tree") {
-      // 回树模式：用当前输入作过滤词重画
-      this.filter = this.searchInput.value.trim().toLowerCase();
-      this.renderList();
-      void this.runTitleSearch();
-    } else {
-      // 进全文模式：有词就立刻搜，否则显示索引状态提示
-      if (this.searchInput.value.trim() !== "") {
-        this.runFullTextSearch();
-      } else {
-        this.showIndexIdleHint();
-      }
-    }
-    this.searchInput.focus();
-  }
-
-  /** 按当前模式更新工具条控件可见性 + 列表/结果容器显隐 + placeholder。 */
-  private updateModeUI(): void {
-    const isTree = this.searchMode === "tree";
-    for (const [m, b] of Object.entries(this.modeBtns)) {
-      b?.classList.toggle("is-active", m === this.searchMode);
-    }
-    for (const el of this.treeOnlyEls) el.style.display = isTree ? "" : "none";
-    for (const el of this.fulltextOnlyEls) el.style.display = isTree ? "none" : "";
-    this.listEl.style.display = isTree ? "" : "none";
-    this.resultsEl.style.display = isTree ? "none" : "";
-    this.updateSearchPlaceholder();
-  }
-
-  /** 全文模式但无关键词时给个提示。本机没有索引了 ⇒ 不再有「已索引 N 个 / 构建中」那两态。 */
-  private showIndexIdleHint(): void {
-    this.resultsEl.replaceChildren();
-    this.statusEl.textContent = copyText("history.indexHint.idle");
-  }
-
-  /**
-   * 执行全文搜索。竞态防护：每次调用递增 ftSeq，异步结果回来时若 seq 已过期则丢弃。
-   * 「索引未就绪 ⇒ 显示进度并每秒重试」那一支随本机内存索引删了（本机也问本机后端，没有「索引中」）。
-   */
-  private async runFullTextSearch(): Promise<void> {
-    const query = this.searchInput.value.trim();
-    const seq = ++this.ftSeq;
-    if (query === "") {
-      this.resultsEl.replaceChildren();
-      this.showIndexIdleHint();
-      return;
-    }
-    this.statusEl.textContent = copyText("history.search.searching");
-    try {
-      // 本机 ＋ 各台远端，逐台经通道说 `history-search`（本机也是），合并排序问本机后端（`history-search.ts`）。
-      //   条数上限不在这里写：不交 `limit` ⇒ 每台后端用 `search_rules::DEFAULT_LIMIT`（前端那份 300 的副本删了）。
-      const resp = await searchAllMachines({
-        query,
-        includeTools: this.includeTools,
-        scope: this.searchScope,
-        afterMs: this.searchAfterMs,
-        limit: null,
-      });
-      if (seq !== this.ftSeq || this.searchMode !== "fulltext") return; // 过期 / 已切模式
-      this.renderSearchResults(resp, query);
-    } catch (e) {
-      if (seq !== this.ftSeq) return;
-      // 上一个词的结果不留着（留着像是这一次的结果）。
-      this.resultsEl.replaceChildren();
-      this.statusEl.textContent = copyText("history.search.failed", { e: String(e) });
-    }
-  }
-
-  /**
-   * 「按项目」那一路：标题 / 第一句里有这几个字的会话在哪几个记录目录（本机 ＋ 各台远端的后端搜全部会话）。
-   * 回来之后那几个项目算命中、照搜索时的老规矩展开并加载，会话按标题过滤 —— 不用先展开、不用先「全量加载」。
-   */
-  private async runTitleSearch(): Promise<void> {
-    const query = this.filter;
-    const seq = ++this.titleSeq;
-    this.titleHitDirs = new Set();
-    if (query === "") return;
-    try {
-      const resp = await searchAllMachines({
-        query,
-        includeTools: false,
-        scope: null,
-        afterMs: null,
-        limit: null,
-        titles: true,
-      });
-      if (seq !== this.titleSeq || !this.isOpen) return;
-      this.titleHitDirs = new Set(
-        resp.sessions.map((s) => dirKey({ origin: s.origin, projectDir: recordDirOf(s.jsonlPath) })),
-      );
-      if (this.titleHitDirs.size > 0) this.renderList();
-    } catch (e) {
-      // 没搜到标题只少了「按标题命中」那一半，项目名照旧过滤 ⇒ 只进日志。
-      console.warn("按标题搜没成（只按项目名过滤）:", e);
-    }
-  }
-
-  // `INDEX_WAIT_MAX_TICKS` 与 `waitForIndexThenSearch`〔散文墓碑〕删了：它们等的是本机内存索引建好
-  //   （audit-0805 F14 那条「只问本地索引状态、不再每秒重跑整条搜索」的 1 秒链），本机也改问本机后端之后没有「索引中」这一态。
-
-  private renderSearchResults(resp: SearchResult, query: string): void {
-    this.resultsEl.replaceChildren();
-    // K-R100：`truncated` 现在**本地与每一台远端都算**（收口前它只装本地那一半，
-    // 于是远端截断在这一行上一个字不说）。措辞也改准：被砍掉的是 **snippet**，
-    // 不是命中 —— `totalHits` 一直报的是全量。
-    const starved = resp.sessions.filter((x) => x.hitsTruncated).length;
-    const { totalHits, sessionCount } = resp;
-    const summary = !resp.truncated
-      ? copyText("history.search.summary", { query, totalHits, sessionCount })
-      : starved > 0
-        ? copyText("history.search.summaryStarved", { query, totalHits, sessionCount, starved })
-        : copyText("history.search.summaryTruncated", { query, totalHits, sessionCount });
-    // 搜得不全要说出来：没答上的台 · 读不动的会话记录 · 内容搜索不覆盖的那几家。
-    const sep = copyText("history.refresh.hostSep");
-    const notes: string[] = [];
-    if (resp.failedHosts.length > 0)
-      notes.push(copyText("history.search.partialHosts", { hosts: resp.failedHosts.join(sep) }));
-    if (resp.unreadable > 0) notes.push(copyText("history.search.unreadable", { n: resp.unreadable }));
-    if (resp.skipped.length > 0) notes.push(copyText("history.search.skipped", { agents: resp.skipped.join(sep) }));
-    this.statusEl.textContent = [summary, ...notes].join(" ");
-    if (resp.sessions.length === 0) {
-      this.resultsEl.appendChild(makeStatusRow(copyText("history.search.noMatch")));
-      return;
-    }
-    for (const s of resp.sessions) {
-      this.resultsEl.appendChild(this.buildSearchSession(s));
-    }
-  }
-
-  private buildSearchSession(s: SearchSessionHits): HTMLElement {
-    const group = document.createElement("div");
-    group.className = "search-session";
-
-    const header = document.createElement("div");
-    header.className = "search-session-header";
-    // issue #28：远端命中带 `[host]` 来源标识（本地无前缀）。
-    if (s.origin) {
-      const host = document.createElement("span");
-      host.className = "search-session-host";
-      host.textContent = `[${s.origin}]`;
-      host.title = copyText("history.searchSession.remoteHost", { origin: s.origin });
-      header.appendChild(host);
-    }
-    const title = document.createElement("span");
-    title.className = "search-session-title";
-    title.textContent = s.title || s.sessionId.slice(0, 8);
-    header.appendChild(title);
-    const proj = document.createElement("span");
-    proj.className = "search-session-project";
-    proj.textContent = s.projectName || s.projectPath || "";
-    proj.title = s.projectPath;
-    header.appendChild(proj);
-    const count = document.createElement("span");
-    count.className = "search-session-count";
-    count.textContent = copyText("history.searchSession.count", { hitCount: s.hitCount, time: formatTimestampSmart(s.updatedAt) });
-    header.appendChild(count);
-    // F85（#44）：搜索卡片直接 resume——复用 F96 的 `runResume`（hasEntry:false 的 ctx，
-    // 只用 identity 段）。本地走 resume_history_session、远端走 runRemoteResume，尊重 F34 命令。
-    const resume = document.createElement("button");
-    resume.type = "button";
-    resume.className = "search-session-resume";
-    resume.textContent = copyText("history.resume.icon");
-    resume.title = s.origin
-      ? copyText("history.resume.remoteHint", { origin: s.origin })
-      : copyText("history.resume.hint");
-    // F85 + A4：搜索卡片 ctx（hasEntry:false，只用 identity 段）——resume 按钮与右键菜单共用。
-    const cardCtx: RowActionCtx = {
-      agent: s.agent,
-      sessionId: s.sessionId,
-      jsonlPath: s.jsonlPath,
-      cwd: s.projectPath,
-      origin: s.origin,
-      hasEntry: false,
-    };
-    resume.addEventListener("click", (ev) => {
-      ev.stopPropagation(); // 不冒泡触发卡片/命中的「点开 viewer」
-      void this.runResume(cardCtx);
-    });
-    header.appendChild(resume);
-    // A4：右键搜索卡片 → 同一套动作菜单（含「用账号 X resume」，远端 + 账号库可用时）。
-    header.addEventListener("contextmenu", (ev) => {
-      ev.preventDefault();
-      this.showEntryMenu(ev.clientX, ev.clientY, cardCtx);
-    });
-    group.appendChild(header);
-
-    for (const hit of s.hits) {
-      group.appendChild(this.buildSearchHit(s, hit));
-    }
-    // K-R100：`hitCount > hits.length` **不是一件事，是两件** ——
-    //   · `hitsTruncated`  = 整份结果的 snippet 预算用完了（该说「缩小范围」）
-    //   · 否则             = 这个会话话太多，只列前 30 条（点进去看就行）
-    // 收口前两种同文案，而 `hits: []` 那一档更糟：卡片里**一条可点的行都没有**，
-    // 文案却写着「点任意条打开会话查看全部」—— 指向一个不存在的东西。
-    if (s.hitCount > s.hits.length) {
-      const more = document.createElement("div");
-      more.className = "search-hit-more";
-      const rest = s.hitCount - s.hits.length;
-      if (s.hitsTruncated) {
-        more.classList.add("search-hit-more-truncated");
-        more.textContent =
-          s.hits.length === 0
-            ? copyText("history.searchSession.allStarved", { hitCount: s.hitCount })
-            : copyText("history.searchSession.moreStarved", { rest });
-      } else {
-        more.textContent = copyText("history.searchSession.moreCapped", { rest, shown: s.hits.length });
-      }
-      // 🔴 无论哪一种，这一行自己就能打开会话：`hits: []` 时它是**唯一**的入口。
-      const openMore = () => {
-        this.openViewerWith({
-          jsonlPath: s.jsonlPath,
-          displayTitle: s.title || s.sessionId.slice(0, 8),
-          subtitle: s.projectName
-            ? `${s.projectName}  ·  ${s.projectPath}`
-            : s.projectPath,
-          origin: originFromWire(s.origin),
-          cwd: s.projectPath,
-        });
-      };
-      more.addEventListener("click", openMore);
-      rowKeys(more, SEARCH_ROWS, { open: openMore });
-      group.appendChild(more);
-    }
-    return group;
-  }
-
-  private buildSearchHit(s: SearchSessionHits, hit: SearchHit): HTMLElement {
-    const row = document.createElement("div");
-    row.className = "search-hit";
-
-    const kind = document.createElement("span");
-    // 命中的种类是有限枚举 ⇒ 走 `data-kind`（全仓 `kind` 这个状态名只用这一种载体），不再拼 `kind-<值>` 类名。
-    kind.className = "search-hit-kind";
-    kind.dataset.kind = hit.kind;
-    kind.textContent =
-      hit.kind === "user" ? copyText("history.searchHit.you") : hit.kind === "assistant" ? "Claude" : copyText("history.searchHit.tool");
-    row.appendChild(kind);
-
-    // snippet：before + <mark>matched</mark> + after。全部用 textContent 防 XSS
-    // （matched 是用户 / Claude 的原始内容，绝不能 innerHTML）。
-    const snip = document.createElement("span");
-    snip.className = "search-hit-snippet";
-    snip.append(document.createTextNode(hit.before));
-    const mark = document.createElement("mark");
-    mark.textContent = hit.matched;
-    snip.appendChild(mark);
-    snip.append(document.createTextNode(hit.after));
-    row.appendChild(snip);
-
-    const open = () => {
-      this.openViewerWith({
-        jsonlPath: s.jsonlPath,
-        displayTitle: s.title || s.sessionId.slice(0, 8),
-        subtitle: s.projectName
-          ? `${s.projectName}  ·  ${s.projectPath}`
-          : s.projectPath,
-        scrollToUuid: hit.uuid,
-        // issue #28：远端命中点击走那台的只读视图（origin → `stream_read_session_jsonl` 带 origin 那一条）。
-        origin: originFromWire(s.origin),
-        cwd: s.projectPath, // F62：本地命中建分支后 resume 用
-      });
-    };
-    row.addEventListener("click", open);
-    rowKeys(row, SEARCH_ROWS, { open });
-    return row;
-  }
-
-  // `rebuildIndex`〔散文墓碑〕（「重新索引」按钮的动作）随本机内存索引删了。
-
-  // === 列表渲染 ===
-
-  private renderList(): void {
-    this.fanoutStats.renders += 1;
-    this.listEl.replaceChildren();
-    this.renderOriginFilter(); // F03：同步来源筛选 chip 行
-    // 有几台：有项目的 ∪ 答了但零项目的（后者按机器分组时各画一行空态）。
-    const allOrigins = this.knownOrigins();
-    if (this.projects.length === 0 && allOrigins.length <= 1) {
-      this.statusEl.textContent =
-        copyText("history.list.empty");
-      return;
-    }
-
-    // 项目过滤：搜索匹配（matchProject）+ F03 来源筛选（hiddenOrigins）正交叠加。
-    // F86：隐藏筛选只在 >1 来源时生效——筛选 chip 行本身也只在 >1 来源时可见（renderOriginFilter）。
-    // 持久化后，若不门控，「隐藏了唯一来源」会从「重启自愈的暂态」变成「无 chip 可复原的永久死锁」。
-    const applyHidden = allOrigins.length > 1;
-    const filteredProjects = this.projects.filter(
-      (p) =>
-        this.matchProject(p) &&
-        (!applyHidden || !this.hiddenOrigins.has(p.origin ?? "")),
-    );
-
-    // 项目排序：live > starred > last_activity desc（与后端默认一致，前端不改）
-    // `K-R92`：`Number(b.hasLive)` 在 `hasLive` 是 `null`（不知道）时得 0 —— 与
-    // 「查过了，没有活会话」一模一样。改走三态档位：确定有 > 不知道 > 确定没有。
-    const sorted = filteredProjects.slice().sort((a, b) => {
-      const live = liveRank(b.hasLive) - liveRank(a.hasLive);
-      if (live !== 0) return live;
-      const star = starRank(b.starredCount) - starRank(a.starredCount);
-      if (star !== 0) return star;
-      return b.lastActivity - a.lastActivity;
-    });
-
-    const searchActive = this.filter.length > 0;
-    const total = this.projects.reduce((n, p) => n + p.sessionCount, 0);
-    const filteredTotal = sorted.reduce((n, p) => n + p.sessionCount, 0);
-    this.statusEl.textContent =
-      filteredTotal !== total
-        ? copyText("history.list.summaryFiltered", { projects: sorted.length, sessions: filteredTotal, total })
-        : copyText("history.list.summary", { projects: sorted.length, sessions: filteredTotal });
-
-    // F02 多机 #30：是否分组取决于**存在**几个来源（this.projects），不随 F03 隐藏 / 搜索
-    // 过滤而塌缩——否则隐藏到只剩 1 来源时分组结构会突然变扁平。被隐藏 / 过滤光的来源其
-    // section 为空、跳过不渲染。distinct ≤1（通常纯本地）→ 扁平（零回归）。
-    if (allOrigins.length <= 1) {
-      for (const proj of sorted) {
-        this.appendProjectGroup(this.listEl, proj, searchActive);
-      }
-    } else {
-      for (const origin of this.orderOrigins(allOrigins)) {
-        const group = sorted.filter((p) => p.origin === origin);
-        // 那台答了、一个项目都没有 ⇒ 画它的大区 ＋ 一行「这台还没有会话记录」（被 F03 隐藏的照旧不画）。
-        if (this.emptyOrigins.has(origin) && !this.hiddenOrigins.has(origin ?? "")) {
-          this.listEl.appendChild(this.buildOriginGroup(origin, [], searchActive));
-          continue;
-        }
-        if (group.length === 0) continue; // 被 F03 隐藏 / 被搜索过滤光 → 不渲染空区
-        this.listEl.appendChild(this.buildOriginGroup(origin, group, searchActive));
-      }
-    }
-    // 全部被过滤 / 隐藏 → 列表空白，给一行提示（this.projects 非空但 sorted 空）。
-    if (sorted.length === 0 && this.projects.length > 0) {
-      const hint = document.createElement("div");
-      hint.className = "history-empty-hint";
-      hint.textContent = copyText("history.list.noMatch");
-      this.listEl.appendChild(hint);
-    }
-  }
-
-  /** F02：把一个项目组（buildProjectGroup）挂到 parent，并在搜索激活时触发懒加载。 */
-  private appendProjectGroup(
-    parent: HTMLElement,
-    proj: HistoryProject,
-    searchActive: boolean,
-  ): void {
-    const expanded = searchActive || this.expandedProjects.has(projectKey(proj));
-    parent.appendChild(this.buildProjectGroup(proj, expanded));
-    // 没加载上的那几个不在搜索里自动重试（不然每画一次就失败一次、再画一次）—— 再展开 / 刷新才重试。
-    if (
-      searchActive &&
-      expanded &&
-      !this.sessionCache.has(projectKey(proj)) &&
-      !this.failedProjects.has(projectKey(proj))
-    ) {
-      // F07：原来是 `.then(() => this.renderList())` —— **P 个项目各触发一次全树重建**，
-      // 而每次重建又会再走一遍本循环。改成入队：去重 + 有上限 + 批末合并重画一次。
-      this.enqueueLazyLoad(proj);
-    }
-  }
-
-  /**
-   * F07：搜索触发的懒加载 —— **去重 + 有上限**。
-   *
-   * 同一个项目重复入队会被挡掉（`renderList` 会被反复调用，每次都想加载同一批未缓存项目）。
-   */
-  private enqueueLazyLoad(proj: HistoryProject, onDone?: () => void): void {
-    const k = projectKey(proj);
-    if (this.lazyQueued.has(k) || this.sessionCache.has(k)) return;
-    this.lazyQueued.add(k);
-    this.lazyQueue.push(proj);
-    if (onDone) this.lazyDone.set(k, onDone);
-    this.pumpLazy();
-  }
-
-  /** F07：把队列抽干，同时在飞不超过 `LOAD_ALL_CONCURRENCY`。 */
-  private pumpLazy(): void {
-    while (
-      this.lazyActive < HistoryView.LOAD_ALL_CONCURRENCY &&
-      this.lazyQueue.length > 0
-    ) {
-      const proj = this.lazyQueue.shift();
-      if (!proj) break;
-      this.lazyActive += 1;
-      this.fanoutStats.loads += 1;
-      this.fanoutStats.peakConcurrent = Math.max(
-        this.fanoutStats.peakConcurrent,
-        this.lazyActive,
-      );
-      void this.loadProjectSessions(proj).finally(() => {
-        this.lazyActive -= 1;
-        const k = projectKey(proj);
-        this.lazyQueued.delete(k);
-        const done = this.lazyDone.get(k);
-        this.lazyDone.delete(k);
-        done?.();
-        this.scheduleRender();
-        this.pumpLazy();
-        if (this.lazyActive === 0 && this.lazyQueue.length === 0) {
-          const waiters = this.lazyIdle;
-          this.lazyIdle = [];
-          for (const w of waiters) w();
-        }
-      });
-    }
-  }
-
-  /** F07：等队列抽干。队列本来就空 ⇒ 立即 resolve。 */
-  private lazyDrained(): Promise<void> {
-    if (this.lazyActive === 0 && this.lazyQueue.length === 0) return Promise.resolve();
-    return new Promise<void>((r) => this.lazyIdle.push(r));
-  }
-
-  /**
-   * F07：**批末合并重画** —— 已排程就不重排（schedule-once）。
-   *
-   * ⚠ 范式取自 `tabs.ts:713-737`（`materializeScheduled` 布尔 + rIC），**不是** `:2714` 那个
-   * 裸 rAF —— 后者没有去重位，连排多个 rAF（核实台账 I6′ 逐字记过这一格）。
-   */
-  private scheduleRender(): void {
-    if (this.renderScheduled) return;
-    this.renderScheduled = true;
-    requestAnimationFrame(() => {
-      this.renderScheduled = false;
-      if (this.isOpen) this.renderList();
-    });
-  }
-
-  /** F02：来源排序——本地（undefined）优先，远端按 label 字母序。 */
-  private orderOrigins(origins: (string | undefined)[]): (string | undefined)[] {
-    const remotes = origins
-      .filter((o): o is string => o !== undefined)
-      .sort((a, b) => a.localeCompare(b));
-    return origins.some((o) => o === undefined) ? [undefined, ...remotes] : remotes;
-  }
-
-  /** F02 多机 #30：一个来源（本地 / 某远端 host）的可折叠大区，内含其项目组。 */
-  private buildOriginGroup(
-    origin: string | undefined,
-    projects: HistoryProject[],
-    searchActive: boolean,
-  ): HTMLElement {
-    const key = origin ?? "";
-    const details = document.createElement("details");
-    details.className = "history-origin-group";
-    // F86：搜索激活强制展开 > 用户显式偏好 > 首见默认（本地展开 / 远端折叠）。
-    details.open = resolveOriginOpen(this.originOpenOverrides[key], origin, searchActive);
-
-    const header = document.createElement("summary");
-    header.className = "history-origin-header";
-    const indicator = document.createElement("span");
-    indicator.className = "history-group-indicator";
-    indicator.textContent = copyText("history.group.collapsedMark");
-    header.appendChild(indicator);
-    const name = document.createElement("span");
-    name.className = "history-origin-name";
-    name.textContent = origin ? `[${origin}]` : copyText("history.originGroup.local");
-    header.appendChild(name);
-    const stats = document.createElement("span");
-    stats.className = "history-group-stats";
-    const sessionTotal = projects.reduce((n, p) => n + p.sessionCount, 0);
-    stats.textContent = copyText("history.originGroup.stats", { projects: projects.length, sessions: sessionTotal });
-    header.appendChild(stats);
-    details.appendChild(header);
-
-    const body = document.createElement("div");
-    body.className = "history-origin-body";
-    for (const proj of projects) {
-      this.appendProjectGroup(body, proj, searchActive);
-    }
-    if (projects.length === 0) {
-      const none = document.createElement("div");
-      none.className = "history-empty-hint";
-      none.textContent = copyText("history.originGroup.noRecords");
-      body.appendChild(none);
-    }
-    details.appendChild(body);
-
-    // F86：折叠偏好持久化（搜索激活时不写，避免污染用户偏好）。nextOverrides 只存偏离默认的项、
-    // 回到默认就删键——故首见默认折叠若触发了这次程序化 toggle（宿主行为不定）也不会污染成偏好。
-    details.addEventListener("toggle", () => {
-      if (searchActive) return;
-      const next = nextOverrides(this.originOpenOverrides, key, origin, details.open);
-      // 仅当内容变化才存盘——挡掉宿主对默认展开大区程序化 open 变更的冗余 toggle 写放大。
-      if (sameOverrides(next, this.originOpenOverrides)) return;
-      this.originOpenOverrides = next;
-      saveOriginOpenOverrides(next);
-    });
-    return details;
-  }
-
-  /** F03 多机 #30：来源筛选 chip 行。distinct origin ≤1 → 隐藏；否则每来源一个 chip。 */
-  /** 这一拍认得的几台：有项目的 ∪ 答了但零项目的。 */
-  private knownOrigins(): (string | undefined)[] {
-    return [...new Set<string | undefined>([...this.projects.map((p) => p.origin), ...this.emptyOrigins])];
-  }
-
-  private renderOriginFilter(): void {
-    const origins = this.knownOrigins();
-    if (origins.length <= 1) {
-      this.originFilterBar.style.display = "none";
-      this.originFilterBar.replaceChildren();
-      return;
-    }
-    this.originFilterBar.style.display = "flex";
-    this.originFilterBar.replaceChildren();
-    const label = document.createElement("span");
-    label.className = "history-origin-filter-label";
-    label.textContent = copyText("history.originFilter.label");
-    this.originFilterBar.appendChild(label);
-    for (const origin of this.orderOrigins(origins)) {
-      const key = origin ?? "";
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "history-origin-chip";
-      chip.classList.toggle("active", !this.hiddenOrigins.has(key));
-      chip.textContent = origin ? `[${origin}]` : copyText("history.originFilter.local");
-      chip.title = origin ? copyText("history.originFilter.remoteHint", { origin }) : copyText("history.originFilter.localHint");
-      chip.addEventListener("click", () => {
-        if (this.hiddenOrigins.has(key)) this.hiddenOrigins.delete(key);
-        else this.hiddenOrigins.add(key);
-        saveHiddenOrigins(this.hiddenOrigins); // F86：来源筛选跨重启保持
-        this.renderList();
-      });
-      this.originFilterBar.appendChild(chip);
-    }
-  }
-
-  /** 单个项目组：collapsible header + 内嵌 session 列表（lazy 加载） */
-  private buildProjectGroup(
-    proj: HistoryProject,
-    expanded: boolean,
-  ): HTMLElement {
-    const details = document.createElement("details");
-    details.className = "history-group";
-    details.open = expanded;
-
-    const header = document.createElement("summary");
-    header.className = "history-group-header";
-
-    const indicator = document.createElement("span");
-    indicator.className = "history-group-indicator";
-    indicator.textContent = copyText("history.group.collapsedMark"); // ▸ 折叠指示符（[open] 时 CSS 旋转 90deg）
-    header.appendChild(indicator);
-
-    // 项目名前不再加 📁 emoji —— 折叠指示器 + 项目名已经够清，多余的图标视觉噪声
-
-    const name = document.createElement("span");
-    name.className = "history-group-name";
-    name.textContent = proj.projectName || copyText("history.project.unknown");
-    header.appendChild(name);
-
-    // issue #16：远端项目组头加 [host] 徽标区分来源
-    if (proj.origin) {
-      const originBadge = document.createElement("span");
-      originBadge.className = "history-origin-badge";
-      originBadge.textContent = `[${proj.origin}]`;
-      originBadge.title = copyText("history.projectGroup.remoteHint", { origin: proj.origin });
-      header.appendChild(originBadge);
-    }
-
-    const pathLbl = document.createElement("span");
-    pathLbl.className = "history-group-path";
-    pathLbl.textContent = proj.projectPath;
-    pathLbl.title = proj.projectPath;
-    header.appendChild(pathLbl);
-
-    const stats = document.createElement("span");
-    stats.className = "history-group-stats";
-    const chips: string[] = [copyText("history.projectGroup.sessions", { sessionCount: proj.sessionCount })];
-    // `K-R92`：只在**算过了**的时候才说话。「不知道」这一档不出 chip ——
-    // ⚠ 界面怎么把「不知道」显示出来（例如一个 `?` 徽标）是 `K-R66` 的面，本件不做；
-    // 本件只保证这里不会拿一个没人查过的值去说「没有星标」「没有活会话」。
-    if (isKnown(proj.hasLive) && proj.hasLive) chips.push(`● ${copyText("sessionState.live.name")}`);
-    if (isKnown(proj.starredCount) && proj.starredCount > 0)
-      chips.push(`★ ${proj.starredCount}`);
-    if (this.showHidden && isKnown(proj.hiddenCount) && proj.hiddenCount > 0)
-      chips.push(copyText("history.projectGroup.hidden", { hiddenCount: proj.hiddenCount }));
-    chips.push(formatTimestampSmart(proj.lastActivity));
-    stats.textContent = chips.join(copyText("history.projectGroup.chipSep"));
-    header.appendChild(stats);
-
-    details.appendChild(header);
-
-    const body = document.createElement("div");
-    body.className = "history-group-body";
-    details.appendChild(body);
-
-    // 渲染 body：根据缓存命中情况
-    const renderBody = () => {
-      body.replaceChildren();
-      const cached = this.sessionCache.get(projectKey(proj));
-      const isLoading = this.loadingProjects.has(projectKey(proj));
-      if (cached === undefined) {
-        // 还没开始加载（用户没展开过）/ 上一趟没加载上（不说成「没有会话」）
-        body.appendChild(
-          makeStatusRow(
-            isLoading
-              ? copyText("history.body.loading")
-              : this.failedProjects.has(projectKey(proj))
-                ? copyText("history.body.loadFailed")
-                : copyText("history.body.clickToLoad"),
-          ),
-        );
-        return;
-      }
-      const shows = (e: HistorySessionEntry): boolean =>
-        (this.showHidden || !e.hidden) && this.matchSession(e);
-      const visible = cached.filter(shows);
-      if (visible.length === 0) {
-        // 流式加载初期 cache 可能是 [] —— 此时显示 "加载中" 而非 "无会话"
-        if (isLoading) {
-          body.appendChild(makeStatusRow(copyText("history.body.loading")));
-        } else {
-          body.appendChild(
-            makeStatusRow(
-              cached.length === 0
-                ? copyText("history.body.empty")
-                : copyText("history.body.noMatch"),
-            ),
-          );
-        }
-        return;
-      }
-      // issue #12: 项目内建 fork 树（child 缩进显示在 parent 下，可折叠）。
-      // 树建在**整份**缓存上：父会话被隐藏 / 被搜索筛掉时，子会话照样挂在它名下（父会话作为上下文画出来、展开着），
-      // 不再当成「原会话已不在本项目」；只有缓存里真没有那个父会话才算孤儿。
-      const roots = buildSessionTree(cached);
-      this.sortTree(roots);
-      const kept = keptNodes(roots, (n) => shows(n.entry));
-      // 迭代 DFS pre-order 输出（INVARIANT § 17: 不递归遍历用户数据）
-      const stack: Array<{ node: SessionTreeNode; depth: number }> = [];
-      for (let i = roots.length - 1; i >= 0; i--) {
-        if (kept.has(roots[i])) stack.push({ node: roots[i], depth: 0 });
-      }
-      while (stack.length > 0) {
-        const { node, depth } = stack.pop()!;
-        const children = node.children.filter((c) => kept.has(c));
-        const context = !shows(node.entry);
-        const row = this.buildEntryRow(node.entry, proj, depth, children.length, node.orphan);
-        if (context) row.classList.add("is-context-entry");
-        body.appendChild(row);
-        if (children.length > 0 && (context || this.expandedForks.has(node.entry.sessionId))) {
-          for (let i = children.length - 1; i >= 0; i--) {
-            stack.push({ node: children[i], depth: depth + 1 });
-          }
-        }
-      }
-      // 流式加载未完成时，在已渲染条目下方加 "继续加载中…" 提示
-      if (isLoading) {
-        body.appendChild(makeStatusRow(copyText("history.body.loadingMore")));
-      }
-    };
-
-    // 没加载上的那一组：用户自己收起再展开才重试（画出来时就是展开着的那一下不算 —— 不然每画一次就重试一次、失败一次）。
-    let userExpand = !expanded;
-    // 跟踪展开状态 + 触发懒加载
-    details.addEventListener("toggle", () => {
-      if (details.open) {
-        this.expandedProjects.add(projectKey(proj));
-        const retry = userExpand;
-        userExpand = true;
-        if (this.failedProjects.has(projectKey(proj)) && !retry) {
-          renderBody();
-        } else if (!this.sessionCache.has(projectKey(proj))) {
-          renderBody(); // 显示 "加载中…"
-          // F07（★ 判据实测抓到的第五个放大器，核实台账没点到）：这里原来是裸
-          // `loadProjectSessions(...)`。平时用户一次只展开一个，看不出问题；**「全展开」会把
-          // P 个 `details` 一起置 open ⇒ P 个 toggle 事件齐发 ⇒ P 条 IPC 同时出去**，
-          // 把「加载全部」那条路的上限整个绕过去。现在三条路共用同一条有上限的队列。
-          this.enqueueLazyLoad(proj, () => {
-            if (details.isConnected) renderBody();
-          });
-        } else {
-          renderBody();
-        }
-      } else {
-        this.expandedProjects.delete(projectKey(proj));
-        body.replaceChildren(); // 折叠时清空，下次展开重画
-      }
-    });
-
-    // 初次构造时如果已经标记为展开，提前 render body
-    if (expanded) renderBody();
-
-    return details;
-  }
-
-  /**
-   * 全量加载：把所有项目的 session 详情拉到缓存。
-   *
-   * 完成后：
-   *   - 搜索的 matchProject 路径会命中已缓存的 session 字段（ai-title / customTitle /
-   *     first_user_excerpt / session_id）
-   *   - searchInput placeholder 更新提示
-   *   - loadedAll = true，再次打开历史视图前不会重复跑
-   *
-   * 节流：并发上限 LOAD_ALL_CONCURRENCY（默认 4），避免一次性向后端 fire 500 个 IPC。
-   */
-  private async loadAllSessions(): Promise<void> {
-    if (this.loadedAll) return;
-    const pending = this.projects.filter(
-      (p) => !this.sessionCache.has(projectKey(p)),
-    );
-    if (pending.length === 0) {
-      this.loadedAll = true;
-      this.updateSearchPlaceholder();
-      this.statusEl.textContent = copyText("history.loadAll.done", { projects: this.projects.length });
-      return;
-    }
-
-    this.loadAllBtn.disabled = true;
-    const baseLabel = this.loadAllBtn.textContent;
-    const total = pending.length;
-    let done = 0;
-    try {
-      // F07：与搜索懒加载、全展开**共用同一条队列、同一个上限**。
-      // 此前这里有自己的工作池、全展开是裸 `Promise.all(map)`、`details.toggle` 又是第三条路
-      // ⇒ 三条路各自为政，其中两条无上限，而「全展开」会同时踩到两条 ⇒ 上限被绕过去。
-      for (const proj of pending) {
-        this.enqueueLazyLoad(proj, () => {
-          done += 1;
-          this.statusEl.textContent = copyText("history.loadAll.progress", { done, total });
-          this.loadAllBtn.textContent = copyText("history.loadAll.progressButton", { done, total });
-        });
-      }
-      await this.lazyDrained();
-      // 有没加载上的就不算「已全量加载」（搜索范围照实说；再点一次会重试那几个）。
-      this.loadedAll = this.projects.every((p) => this.sessionCache.has(projectKey(p)));
-      this.updateSearchPlaceholder();
-      // 重画一次以应用搜索匹配（如果用户已经在搜索框输入）
-      this.renderList();
-    } finally {
-      this.loadAllBtn.disabled = false;
-      this.loadAllBtn.textContent = baseLabel ?? copyText("history.loadAll.action");
-    }
-  }
-
-  /** "展开/收起全部" 按钮：当前若全收起 → 全展开；否则 → 全收起 */
-  private async toggleAll(): Promise<void> {
-    if (this.projects.length === 0) return;
-    const keys = this.projects.map(projectKey);
-    const allExpanded = keys.every((k) => this.expandedProjects.has(k));
-    if (allExpanded) {
-      this.expandedProjects.clear();
-      this.renderList();
-      return;
-    }
-    // 全展开：触发未缓存项目的并发加载
-    for (const k of keys) this.expandedProjects.add(k);
-    this.renderList();
-    const toLoad = this.projects.filter(
-      (p) => !this.sessionCache.has(projectKey(p)),
-    );
-    if (toLoad.length > 0) {
-      this.statusEl.textContent = copyText("history.toggleAll.loading", { count: toLoad.length });
-      // F07：原来是 `Promise.all(toLoad.map(…))` —— **无上限**。改走同一条队列。
-      for (const proj of toLoad) this.enqueueLazyLoad(proj);
-      await this.lazyDrained();
-      this.renderList();
-    }
-  }
-
-  // === 过滤 / 排序 ===
-
-  /** 项目级匹配：name / path / project_dir。命中后可能再叠 session 级匹配 */
-  private matchProject(p: HistoryProject): boolean {
-    if (!this.filter) return true;
-    const hay = `${p.projectName}\n${p.projectPath}\n${p.projectDir}`.toLowerCase();
-    if (hay.includes(this.filter)) return true;
-    // 后端按标题 / 第一句搜全部会话命中的记录目录（没展开、没加载的项目也算）。
-    if (this.titleHitDirs.has(dirKey(p))) return true;
-    // project 元数据不命中时，看看缓存里的 sessions 是否有命中（仅对已加载项目）
-    const cached = this.sessionCache.get(projectKey(p));
-    if (!cached) return false;
-    return cached.some((e) => this.matchSession(e));
-  }
-
-  /** 会话级匹配：ai_title / customTitle / first_user / sessionId */
-  private matchSession(e: HistorySessionEntry): boolean {
-    if (!this.filter) return true;
-    const hay = [
-      e.aiTitle ?? "",
-      e.customTitle ?? "",
-      e.title,
-      e.firstUserExcerpt,
-      e.sessionId,
-    ]
-      .join("\n")
-      .toLowerCase();
-    return hay.includes(this.filter);
-  }
-
-  /**
-   * issue #12: 按当前 sort 模式排序整棵 fork 树。先排 roots，再迭代排每个 node 的 children。
-   */
-  private sortTree(roots: SessionTreeNode[]): void {
-    const cmp = this.entryComparator();
-    roots.sort(cmp);
-    // 迭代遍历所有节点排序它们的 children（INVARIANT § 17: 不递归）
-    const stack: SessionTreeNode[] = roots.slice();
-    while (stack.length > 0) {
-      const n = stack.pop()!;
-      if (n.children.length > 0) {
-        n.children.sort(cmp);
-        for (const c of n.children) stack.push(c);
-      }
-    }
-  }
-
-  private entryComparator(): (a: SessionTreeNode, b: SessionTreeNode) => number {
-    switch (this.sort) {
-      case "started_desc":
-        return (a, b) =>
-          Number(b.entry.starred) - Number(a.entry.starred) ||
-          b.entry.startedAt - a.entry.startedAt;
-      case "updated_desc":
-      default:
-        return (a, b) =>
-          Number(b.entry.starred) - Number(a.entry.starred) ||
-          b.entry.updatedAt - a.entry.updatedAt;
-    }
-  }
-
-  // === 会话行 ===
-
-  // === F96 SS-4 ③块：共享动作表的 run 副作用体（判定在 history-actions.ts） ===
-  // inline 行尾按钮与右键菜单走同一 run 分发 → 天然不漂移。star/rename/hide/delete 需活的
-  // entry+project 引用（缓存/计数同步）；resume/new-session 只用 identity 段（搜索卡片 F85 也能用）。
-
-  /** id → run 方法分发（对齐 actionsFor）。 */
-  private runOf(id: HistoryActionId): (ctx: RowActionCtx) => void | Promise<void> {
-    switch (id) {
-      case "resume":
-        return (c) => this.runResume(c);
-      case "new-session":
-        return (c) => this.runNewSession(c);
-      case "star":
-        return (c) => this.runStar(c);
-      case "rename":
-        return (c) => this.runRename(c);
-      case "hide":
-        return (c) => this.runHide(c);
-      case "delete":
-        return (c) => this.runDelete(c);
-    }
-  }
-
-  private async runStar(ctx: RowActionCtx): Promise<void> {
-    const e = ctx.entry,
-      proj = ctx.project;
-    if (!e || !proj) return;
-    try {
-      const next = await annotate(e.sessionId, { starred: !e.starred });
-      const wasStarred = e.starred;
-      e.starred = next.starred;
-      // 同步 project 的 starred_count
-      // `K-R92`：`null + 1 === 1` —— 一次 star 操作能把「不知道」变成一个看起来是真值的数，
-      // 而且从此回不去。`bumpCounted` 让「不知道」加减之后**还是不知道**。
-      if (!wasStarred && next.starred)
-        proj.starredCount = bumpCounted(proj.starredCount, +1);
-      else if (wasStarred && !next.starred)
-        proj.starredCount = bumpCounted(proj.starredCount, -1);
-      this.renderList();
-    } catch (err) {
-      console.warn("star update failed:", err);
-      // 从前只记日志：点了星标、什么都没变、也不说（E §3.3）。改名 / 隐藏同。
-      toast(copyText("history.star.failed"), String(err));
-    }
-  }
-
-  private async runRename(ctx: RowActionCtx): Promise<void> {
-    const e = ctx.entry;
-    if (!e) return;
-    const cur = e.customTitle ?? e.aiTitle ?? "";
-    const next = await askText({ title: copyText("history.rename.title"), label: copyText("history.rename.prompt"), action: copyText("history.rename.action"), initial: cur });
-    if (next === null) return;
-    try {
-      // 清空传**空串**（缺格 / `null` = 不改 —— 从前这里传 `null`，而 monitor 那份 patch 同样把 `null` 读成「不改」，
-      //   「留空恢复默认」其实一直没生效；本机后端照搬了那条语义，这里改传空串，清空才真的清空）。
-      const updated = await annotate(e.sessionId, { customTitle: next.trim() });
-      e.customTitle = updated.customTitle;
-      this.renderList();
-    } catch (err) {
-      console.warn("rename failed:", err);
-      toast(copyText("history.rename.failed"), String(err));
-    }
-  }
-
-  private async runHide(ctx: RowActionCtx): Promise<void> {
-    const e = ctx.entry,
-      proj = ctx.project;
-    if (!e || !proj) return;
-    try {
-      const updated = await annotate(e.sessionId, { hidden: !e.hidden });
-      const wasHidden = e.hidden;
-      e.hidden = updated.hidden;
-      if (!wasHidden && updated.hidden)
-        proj.hiddenCount = bumpCounted(proj.hiddenCount, +1);
-      else if (wasHidden && !updated.hidden)
-        proj.hiddenCount = bumpCounted(proj.hiddenCount, -1);
-      this.renderList();
-    } catch (err) {
-      console.warn("hide toggle failed:", err);
-      toast(copyText("history.hide.failed"), String(err));
-    }
-  }
-
-  private async runResume(ctx: RowActionCtx): Promise<void> {
-    // 按这个会话的那一家起（`ctx.agent`）。用哪个号那台判：点了号 ⇒ 点名；没点 ⇒ 跟随这条会话上次的号
-    //   （没有账号这一维的那一家跟随什么都不选；点了号照交，由那台明说不行）。
-    const account = ctx.account ? chosenAccount(ctx.account) : FOLLOW;
-    if (ctx.origin) {
-      // 远端 resume 一键拉起（开终端跑 `ssh -t …`），失败回退复制命令。
-      // 用户自定义远端 resume 命令（如 cct）—— 只用在默认那一家的会话上；空 = 后端默认。
-      const origin = ctx.origin;
-      const behavior = await getBehavior();
-      const launcher = configuredLauncherFor(ctx.agent, await resolveResumeCommand(origin, behavior.resumeCommandRemote));
-      await runRemoteResume(origin, ctx.agent, ctx.sessionId, ctx.cwd, launcher, { account });
-    } else {
-      // 本机 resume 的编排只有一份（`local-resume.ts`）：铸名 → 起（本机后端判号）。
-      await resumeLocalSession({ agent: ctx.agent, sid: ctx.sessionId, cwd: ctx.cwd, account });
-    }
-  }
-
-  private async runNewSession(ctx: RowActionCtx): Promise<void> {
-    const behavior = await getBehavior();
-    if (ctx.origin) {
-      // 远端：薄封装「在这台机开新会话」（tmux 名派生 + 默认拉起命令兜底都在 runNewSessionRemote 里）。
-      // 新会话没有上次的号 ⇒ 跟随落到那台的默认号（那台判）。
-      const origin = ctx.origin;
-      await runNewSessionRemote(origin, DEFAULT_AGENT, ctx.cwd, await resolveResumeCommand(origin, behavior.resumeCommandRemote), {
-        account: FOLLOW,
-      });
-    } else {
-      try {
-        // 本地：本机后端 `launch-local`（cc 优先 + 自定义启动命令，无 sid/resume flag）；号跟随 ⇒ 本机的默认号（本机后端判）。
-        // 计划与渲染问本机后端（`launch-local`），monitor 只在 cwd 开一个终端窗口跑那一串。
-        await launchLocal(
-          {
-            action: { kind: "new" },
-            // 程序还不能选 ⇒ 起默认那一家。
-            agent: DEFAULT_AGENT,
-            cwd: ctx.cwd,
-            launcher: behavior.resumeCommandLocal || null,
-            account: FOLLOW,
-            tmuxName: null,
-          },
-          ctx.cwd,
-        );
-        // 窗口开了不等于起来了：等本机后端报出一条在这个目录里新起的会话再说
-        //   （身份 token 在 Windows 上读不回来，认它靠「之后第一次出现、同目录的新 sid」）。
-        expectArrival({
-          origin: LOCAL_ORIGIN,
-          match: { cwd: ctx.cwd },
-          tmuxName: null,
-          arrived: { title: copyText("history.newSession.started"), body: arrivedBody(LOCAL_ORIGIN) },
-        });
-      } catch (err) {
-        toast(copyText("history.newSession.failed"), String(err));
-      }
-    }
-  }
-
-  private async runDelete(ctx: RowActionCtx): Promise<void> {
-    const e = ctx.entry,
-      proj = ctx.project;
-    if (!e || !proj) return;
-    const label = e.customTitle ?? e.aiTitle ?? e.sessionId.slice(0, 8);
-    // 删之前看活不活：活着 ⇒ 多问一句（Claude 还往旧文件里写，之后 resume 不到）；
-    //   说不清（这条路答不出，`isLive === null`）⇒ 也多问一句（09-25 裁）。确定不活 ⇒ 照原来那一问 / 两问。
-    const liveness = deleteLiveness(e.isLive, this.liveInTabs(e.sessionId));
-    // 一件事一个框（活不活、远端还是本机，都并进这一问的正文）。
-    const lines = [
-      liveness === "live" ? copyText("sessionState.deleteLive.confirm", { label }) : null,
-      liveness === "unknown" ? copyText("sessionState.deleteUnknown.confirm", { label }) : null,
-      e.origin ? copyText("history.delete.confirmRemote", { label, origin: e.origin }) : copyText("history.delete.confirmLocal", { label }),
-    ].filter((l): l is string => l !== null);
-    const ok = await confirmDialog({
-      title: e.origin ? copyText("history.delete.titleRemote", { label, origin: e.origin }) : copyText("history.delete.title", { label }),
-      action: copyText("history.delete.action"),
-      danger: true,
-      body: lines.join("\n\n"),
-    });
-    if (!ok) return;
-    if (e.origin) {
-      try {
-        // 与本机那条是**同一条命令**了，只是 origin 不同。界面经通道直说那台后端（`session-writes.ts::deleteSession`）。
-        await deleteSession(e.origin, e.sessionId);
-      } catch (err) {
-        toast(copyText("history.delete.remoteFailed"), String(err));
-        return;
-      }
-    } else {
-      try {
-        await deleteSession(LOCAL_ORIGIN, e.sessionId);
-      } catch (err) {
-        toast(copyText("history.delete.failed"), String(err));
-        return;
-      }
-    }
-    // 会话删了 ⇒ 连带删本机那条注解（从前 monitor 删完顺手清；今天注解归本机后端，由这里交 `history-forget`）。
-    void forgetAnnotation(e.sessionId);
-    // 成功后：从缓存移除 + 同步 project counts（本地 / 远端一致）。
-    const arr = this.sessionCache.get(projectKey(proj));
-    if (arr) {
-      const idx = arr.findIndex((x) => x.sessionId === e.sessionId);
-      if (idx >= 0) arr.splice(idx, 1);
-    }
-    proj.sessionCount = Math.max(0, proj.sessionCount - 1);
-    if (e.starred) proj.starredCount = bumpCounted(proj.starredCount, -1);
-    if (e.hidden) proj.hiddenCount = bumpCounted(proj.hiddenCount, -1);
-    // 项目内全部删完了 → 也从 projects 列表移除
-    if (proj.sessionCount === 0) {
-      this.projects = this.projects.filter(
-        (p) => projectKey(p) !== projectKey(proj),
-      );
-      // F76：远端项目还要从 remoteCache 同步移除，否则 TTL 内重开会把这个 0 会话的幽灵
-      // 项目从陈旧缓存拼回来（`this.projects` 与 `remoteCache.projects` 共享对象引用，
-      // 结构性移除不会自动传导——见 refresh() 顶部承重不变式）。本地项目不在缓存里，no-op。
-      if (this.remoteCache) {
-        this.remoteCache.projects = this.remoteCache.projects.filter(
-          (p) => projectKey(p) !== projectKey(proj),
-        );
-      }
-      this.sessionCache.delete(projectKey(proj));
-      this.expandedProjects.delete(projectKey(proj));
-    }
-    this.renderList();
-  }
-
-  /** 条目 / 搜索卡片右键 → 弹出菜单（全产品那一份）。远端会话的「用账号 X resume」异步追加。 */
-  private showEntryMenu(x: number, y: number, ctx: RowActionCtx): void {
-    const items: MenuItem[] = actionsFor(ctx).map((def) => ({
-      label: def.label(ctx),
-      danger: def.danger,
-      onClick: () => void this.runOf(def.id)(ctx),
-    }));
-    openMenu({ x, y }, items, { onClose: () => (this.entryMenuGen = null) });
-    this.entryMenuGen = menuGeneration();
-    if (ctx.origin) void this.appendAccountResumeItems(this.entryMenuGen, ctx);
-  }
-
-  /**
-   * 远端会话菜单追加「用账号 X resume」（每个可选账号一条）。异步，不挡菜单弹出；
-   * 只在 ≥2 个可选账号时出；账号库不可用安静不加；追加前核对菜单还是这一代。
-   */
-  private async appendAccountResumeItems(gen: number, ctx: RowActionCtx): Promise<void> {
-    if (!ctx.origin) return;
-    let state;
-    try {
-      state = await fetchAccounts(ctx.origin);
-    } catch {
-      return;
-    }
-    if (!state.available) return;
-    const selectable = state.accounts.filter(isSelectable);
-    if (selectable.length < 2) return;
-    if (menuGeneration() !== gen) return;
-    appendMenuItem({ label: "", divider: true });
-    for (const a of selectable) {
-      appendMenuItem({
-        label: copyText("history.accountResume.item", { name: a.name }),
-        title: copyText("history.accountResume.hint", { name: a.name, email: a.email ? ` · ${a.email}` : "" }),
-        onClick: () => void this.runResume({ ...ctx, account: a.name }),
-      });
-    }
-  }
-
-  private closeEntryMenu(): void {
-    if (this.entryMenuGen !== null && menuGeneration() === this.entryMenuGen) closeMenu();
-    this.entryMenuGen = null;
-  }
-
-
-  private buildEntryRow(
-    e: HistorySessionEntry,
-    proj: HistoryProject,
-    depth: number = 0,
-    childCount: number = 0,
-    orphan: boolean = false,
-  ): HTMLElement {
-    const row = document.createElement("div");
-    row.className = "history-entry";
-    if (e.hidden) row.classList.add("is-hidden-entry");
-    if (e.isLive) row.classList.add("is-live-entry");
-    if (depth > 0) {
-      row.classList.add("is-fork-child");
-      row.style.setProperty("--fork-depth", String(depth));
-    }
-
-    row.addEventListener("click", (ev) => {
-      const target = ev.target as HTMLElement | null;
-      if (target?.closest(".history-star, .history-action, .history-fork-toggle"))
-        return;
-      this.openViewer(e);
-    });
-
-    // F96：条目行动作上下文（inline 按钮与右键菜单共用）。带活的 entry/project 引用，
-    // star/hide/delete 的 run 直接 mutate 它们并同步缓存（与旧 inline 闭包同一对象）。
-    const rowCtx: RowActionCtx = {
-      agent: e.agent,
-      sessionId: e.sessionId,
-      jsonlPath: e.jsonlPath,
-      cwd: e.projectPath,
-      origin: e.origin,
-      isLive: e.isLive,
-      starred: e.starred,
-      hidden: e.hidden,
-      hasEntry: true,
-      entry: e,
-      project: proj,
-    };
-    row.addEventListener("contextmenu", (ev) => {
-      ev.preventDefault();
-      this.showEntryMenu(ev.clientX, ev.clientY, rowCtx);
-    });
-    // 键盘也到得了：行可聚焦；回车打开 · 菜单键 / Shift+F10 开菜单 · ↑↓ 在行间走。
-    rowKeys(row, ".history-entry", {
-      open: () => this.openViewer(e),
-      menu: (x, y) => this.showEntryMenu(x, y, rowCtx),
-    });
-
-    // issue #12: fork 树展开 / 折叠按钮（只在有 children 时出现）
-    if (childCount > 0) {
-      const toggle = document.createElement("button");
-      toggle.type = "button";
-      toggle.className = "history-fork-toggle";
-      const expanded = this.expandedForks.has(e.sessionId);
-      toggle.textContent = expanded ? copyText("history.fork.expandedMark") : copyText("history.fork.collapsedMark");
-      toggle.title = expanded
-        ? copyText("history.fork.collapseHint", { childCount })
-        : copyText("history.fork.expandHint", { childCount });
-      toggle.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        if (this.expandedForks.has(e.sessionId)) {
-          this.expandedForks.delete(e.sessionId);
-        } else {
-          this.expandedForks.add(e.sessionId);
-        }
-        saveExpandedForks(this.expandedForks);
-        this.renderList();
-      });
-      row.appendChild(toggle);
-    } else if (depth > 0) {
-      // child 行没有 toggle 但需要占位保持对齐
-      const spacer = document.createElement("span");
-      spacer.className = "history-fork-toggle history-fork-spacer";
-      row.appendChild(spacer);
-    }
-
-    // issue #12: orphan 标记（fork 自不存在的 parent → "↳ 原 session 不见了"）
-    if (orphan && e.forkedFromSessionId) {
-      const orphanMark = document.createElement("span");
-      orphanMark.className = "history-fork-orphan";
-      orphanMark.textContent = copyText("history.fork.orphanMark");
-      orphanMark.title = copyText("history.fork.orphanHint", { parent: e.forkedFromSessionId.slice(0, 8) });
-      row.appendChild(orphanMark);
-    }
-
-    // Batch11-F32：CC 后台分身会话徽标——resume 请选主会话（克隆与主会话同标题，
-    // 不标必踩；CC 官方 resume 选择器也标 "bg"）
-    if (e.isBg) {
-      const bgMark = document.createElement("span");
-      bgMark.className = "history-bg-badge";
-      bgMark.textContent = copyText("history.entry.backgroundMark");
-      bgMark.title =
-        copyText("history.entry.backgroundHint");
-      row.appendChild(bgMark);
-    }
-    const starBtn = document.createElement("button");
-    starBtn.type = "button";
-    starBtn.className = "history-star";
-    starBtn.textContent = e.starred ? copyText("history.entry.starred") : copyText("history.entry.unstarred");
-    starBtn.title = e.starred ? copyText("history.entry.unstarHint") : copyText("history.entry.starHint");
-    if (e.starred) starBtn.classList.add("is-starred");
-    starBtn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      void this.runOf("star")(rowCtx);
-    });
-    row.appendChild(starBtn);
-
-    const main = document.createElement("div");
-    main.className = "history-main";
-
-    const title = document.createElement("div");
-    title.className = "history-title";
-    const displayTitle = titleOf(e);
-    title.textContent = displayTitle;
-    main.appendChild(title);
-
-    if (e.customTitle && e.aiTitle && e.customTitle !== e.aiTitle) {
-      const subtitle = document.createElement("div");
-      subtitle.className = "history-subtitle";
-      subtitle.textContent = e.aiTitle;
-      main.appendChild(subtitle);
-    }
-
-    if (e.firstUserExcerpt && e.firstUserExcerpt !== displayTitle) {
-      const excerpt = document.createElement("div");
-      excerpt.className = "history-excerpt";
-      excerpt.textContent = e.firstUserExcerpt;
-      main.appendChild(excerpt);
-    }
-
-    const meta = document.createElement("div");
-    meta.className = "history-meta";
-    meta.append(
-      // `isLive` 是三态（`null` = 这条路答不出，`K-R92`）。三态各一个词，全从 `sessionState.*` 取
-      // （说到会话状态的字只住那里；`§3.5.7a`：说不清不许说成已结束）。
-      // 此前这一格显示英文 `live` / `archived`，而且把「不知道」也显示成 `archived`。
-      makeChip(livenessWord(e.isLive), e.isLive === true ? "history-live" : ""),
-      makeChip(copyText("history.entry.messages", { count: e.messageCountApprox })),
-      makeChip(formatTimestampSmart(e.updatedAt)),
-    );
-    main.appendChild(meta);
-
-    row.appendChild(main);
-
-    const actions = document.createElement("div");
-    actions.className = "history-actions";
-
-    const renameBtn = document.createElement("button");
-    renameBtn.type = "button";
-    renameBtn.className = "history-action";
-    renameBtn.textContent = copyText("history.entry.renameIcon"); // ✎ pencil（BMP，非 emoji）
-    renameBtn.title = copyText("history.entry.renameHint");
-    renameBtn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      void this.runOf("rename")(rowCtx);
-    });
-    actions.appendChild(renameBtn);
-
-    const hideBtn = document.createElement("button");
-    hideBtn.type = "button";
-    hideBtn.className = "history-action";
-    // hidden 时按钮指示"恢复显示"用 +；显示时按钮指示"隐藏"用 –（en-dash U+2013）
-    hideBtn.textContent = e.hidden ? "+" : copyText("history.entry.hideIcon");
-    hideBtn.title = e.hidden ? copyText("history.entry.unhideHint") : copyText("history.entry.hideHint");
-    hideBtn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      void this.runOf("hide")(rowCtx);
-    });
-    actions.appendChild(hideBtn);
-
-    const resumeBtn = document.createElement("button");
-    resumeBtn.type = "button";
-    resumeBtn.className = "history-action";
-    resumeBtn.textContent = copyText("history.resume.icon"); // ↺ anticlockwise circle arrow ("replay")
-    // F41：远端一键拉起（wt.exe → `ssh -t …`），失败回退 F09 复制命令；本地 wt.exe/PowerShell。
-    resumeBtn.title = e.origin
-      ? copyText("history.resume.remoteHint", { origin: e.origin })
-      : copyText("history.resume.hint"); // F96：去硬编码启动命令（守「不许知道是哪个 agent」）
-    resumeBtn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      void this.runOf("resume")(rowCtx);
-    });
-    actions.appendChild(resumeBtn);
-
-    const deleteBtn = document.createElement("button");
-    deleteBtn.type = "button";
-    deleteBtn.className = "history-action history-action-danger";
-    deleteBtn.textContent = copyText("history.entry.deleteIcon"); // ✕ multiplication X
-    // F11：远端会话删除经 SFTP（SS-G 用户数据写豁免，二次确认）；本地走既有物理删除。
-    deleteBtn.title = e.origin
-      ? copyText("history.entry.deleteRemoteHint", { origin: e.origin })
-      : copyText("history.entry.deleteHint");
-    deleteBtn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      void this.runOf("delete")(rowCtx);
-    });
-    actions.appendChild(deleteBtn);
-
-    row.appendChild(actions);
-
-    return row;
-  }
-}
-
-/** 搜索结果里能用键盘走到、打开的那几种行。 */
-const SEARCH_ROWS = ".search-hit, .search-hit-more";
-
-/**
- * 一行接键盘：可聚焦；回车（输入法组字时不算）打开 · 菜单键 / Shift+F10 开菜单（摆在行的左上）·
- * ↑ / ↓ 焦点挪到同一张表里（`selector` 认的那几行）上一行 / 下一行。只认焦点在行自己身上的按键（行尾按钮各有各的）。
- */
-function rowKeys(
-  row: HTMLElement,
-  selector: string,
-  act: { open: () => void; menu?: (x: number, y: number) => void },
-): void {
-  row.tabIndex = 0;
-  row.addEventListener("keydown", (ev) => {
-    if (ev.target !== row || ev.isComposing) return;
-    if (ev.key === "Enter") {
-      ev.preventDefault();
-      act.open();
-    } else if (act.menu && (ev.key === "ContextMenu" || (ev.key === "F10" && ev.shiftKey))) {
-      ev.preventDefault();
-      const r = row.getBoundingClientRect();
-      act.menu(r.left, r.top);
-    } else if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
-      const scope = row.closest(".history-list, .history-search-results") ?? row.parentElement;
-      const rows = Array.from(scope?.querySelectorAll<HTMLElement>(selector) ?? []);
-      const next = rows[rows.indexOf(row) + (ev.key === "ArrowDown" ? 1 : -1)];
-      if (next) {
+    this.searchInput.placeholder = copyText("history.page.placeholder");
+    this.searchInput.setAttribute("aria-label", copyText("history.page.placeholder"));
+    this.searchInput.addEventListener("input", () => this.onQueryInput());
+    this.searchInput.addEventListener("keydown", (ev) => {
+      if (ev.isComposing) return;
+      if (ev.key === "Enter") {
         ev.preventDefault();
-        next.focus();
+        void this.runContentSearch();
+      } else if (ev.key === "ArrowDown") {
+        ev.preventDefault();
+        this.moveSelection(this.order[0] ?? null, true);
       }
-    } else {
+    });
+    search.appendChild(this.searchInput);
+    this.filterBtn = button({ label: copyText("history.page.filter"), icon: "filter", onClick: () => this.openFilter() });
+    this.filterBtn.setAttribute("aria-haspopup", "dialog");
+    this.refreshBtn = button({
+      label: copyText("history.page.refresh"),
+      kind: "icon",
+      icon: "refresh",
+      hint: copyText("history.page.refresh"),
+      onClick: () => this.refresh(true),
+    });
+    top.append(back, views, search, this.filterBtn, this.refreshBtn);
+    root.appendChild(top);
+
+    const split = document.createElement("div");
+    split.className = s.hvSplit;
+    const col = document.createElement("div");
+    col.className = s.hvCol;
+    this.stripsEl = document.createElement("div");
+    this.listHead = document.createElement("div");
+    this.listHead.className = s.hvHead;
+    this.listEl = document.createElement("div");
+    this.listEl.className = s.hvList;
+    this.listEl.setAttribute("role", "listbox");
+    this.listEl.setAttribute("aria-label", copyText("history.page.list"));
+    this.listEl.tabIndex = 0;
+    this.listEl.addEventListener("keydown", (ev) => this.onListKey(ev));
+    // Tab 进列表 ⇒ 焦点落到选中的那一行（没有就第一行）；鼠标点进来的不在这里管（点的那一行自己选，见 `hooks().select`）。
+    this.listEl.addEventListener("focus", (ev) => {
+      if (ev.target === this.listEl && !this.quietFocus) this.moveSelection(this.selected ?? this.order[0] ?? null, true);
+    });
+    // 实时更新不拽人：鼠标在列表上 / 焦点在列表里 ⇒ 先不重排，移开再排（`I6`）。
+    const hold = (on: boolean): void => {
+      this.holding = on || this.listEl.matches(":hover") || this.listEl.contains(document.activeElement);
+      if (!this.holding && this.dirty) this.renderNow();
+    };
+    this.listEl.addEventListener("pointerenter", () => hold(true));
+    this.listEl.addEventListener("pointerleave", () => hold(false));
+    this.listEl.addEventListener("focusin", () => hold(true));
+    this.listEl.addEventListener("focusout", () => setTimeout(() => hold(false), 0));
+    col.append(this.stripsEl, this.listHead, this.listEl);
+    this.contentEl = document.createElement("div");
+    this.contentEl.className = s.hvContent;
+    split.append(col, this.contentEl);
+    root.appendChild(split);
+    this.showPlaceholder();
+    return root;
+  }
+
+  private showPlaceholder(): void {
+    this.contentEl.dataset.vacant = "true";
+    this.contentEl.replaceChildren(emptyState({ icon: "chat", text: copyText("history.content.none") }));
+  }
+
+  // ───────────────────────── 筛选 ─────────────────────────
+
+  private activeFilters(): number {
+    const p = this.prefs;
+    return (p.off.length > 0 ? 1 : 0) + (p.withinDays ? 1 : 0) + (p.sort !== "activity" ? 1 : 0) + (p.hidden ? 1 : 0) + (p.scope !== "all" ? 1 : 0) + (p.tools ? 1 : 0);
+  }
+
+  private markFilterBtn(): void {
+    this.filterBtn.querySelector(`.${s.hvCount}`)?.remove();
+    const b = countBadge(this.activeFilters());
+    if (b) {
+      b.classList.add(s.hvCount);
+      this.filterBtn.appendChild(b);
+    }
+  }
+
+  private openFilter(): void {
+    const panel = document.createElement("div");
+    panel.className = s.hvFilter;
+    const group = (title: string, ...items: HTMLElement[]): HTMLElement => {
+      const g = document.createElement("div");
+      g.className = s.hvFilterGroup;
+      const h = document.createElement("div");
+      h.className = s.hvFilterHead;
+      h.textContent = title;
+      g.append(h, ...items);
+      return g;
+    };
+    const changed = (refetch: boolean): void => {
+      this.savePrefs();
+      this.markFilterBtn();
+      if (refetch) this.refresh(false);
+      else this.renderNow();
+    };
+    const machines = this.machines.map((m) => {
+      const c = checkbox(m ? m : copyText("history.filter.local"), !this.prefs.off.includes(m), (on) => {
+        this.prefs.off = on ? this.prefs.off.filter((x) => x !== m) : [...this.prefs.off, m];
+        if (on) this.refresh(false, m);
+        changed(false);
+      });
+      if (this.per.get(m)?.state === "failed") {
+        const w = document.createElement("span");
+        w.className = s.hvFilterWarn;
+        w.textContent = copyText("history.filter.offline");
+        c.appendChild(w);
+      }
+      return c;
+    });
+    const radios = <T extends string | number>(name: string, cur: T, opts: [T, string][], set: (v: T) => void): HTMLElement[] =>
+      opts.map(([v, label]) => radio(name, label, v === cur, () => set(v)));
+    panel.append(
+      group(copyText("history.filter.machines"), ...machines),
+      group(
+        copyText("history.filter.time"),
+        ...radios<0 | 7 | 30>("hv-time", this.prefs.withinDays, [
+          [0, copyText("history.filter.timeAll")],
+          [7, copyText("history.filter.time7d")],
+          [30, copyText("history.filter.time30d")],
+        ], (v) => {
+          this.prefs.withinDays = v;
+          changed(true);
+        }),
+      ),
+      group(
+        copyText("history.filter.sort"),
+        ...radios<Prefs["sort"]>("hv-sort", this.prefs.sort, [
+          ["activity", copyText("history.filter.sortActivity")],
+          ["created", copyText("history.filter.sortCreated")],
+        ], (v) => {
+          this.prefs.sort = v;
+          changed(true);
+        }),
+      ),
+      group(
+        "",
+        checkbox(copyText("history.filter.showHidden"), this.prefs.hidden, (on) => {
+          this.prefs = { ...this.prefs, hidden: on };
+          changed(true);
+        }),
+      ),
+      group(
+        copyText("history.filter.scope"),
+        ...radios<Scope>("hv-scope", this.prefs.scope, [
+          ["all", copyText("history.filter.scopeAll")],
+          ["user", copyText("history.filter.scopeYou")],
+          ["assistant", copyText("history.filter.scopeAgent")],
+          ["report", copyText("history.filter.scopeReport")],
+        ], (v) => {
+          this.prefs.scope = v;
+          changed(false);
+          if (this.content) void this.runContentSearch();
+        }),
+        checkbox(copyText("history.filter.tools"), this.prefs.tools, (on) => {
+          this.prefs.tools = on;
+          changed(false);
+          if (this.content) void this.runContentSearch();
+        }),
+      ),
+    );
+    openPopover(this.filterBtn, panel, { label: copyText("history.page.filter") });
+  }
+
+  private clearFilters(): void {
+    this.prefs = { ...DEFAULT_PREFS, view: this.prefs.view };
+    this.savePrefs();
+    this.markFilterBtn();
+    this.setQuery("");
+    this.refresh(false);
+  }
+
+  // ───────────────────────── 画 ─────────────────────────
+
+  private scheduleRender(): void {
+    if (this.holding) {
+      this.dirty = true;
+      this.renderChrome();
       return;
     }
-    ev.stopPropagation();
-  });
-}
-
-/**
- * 树里哪几个节点要画：它自己可见，或它底下有可见的（那样它作为上下文画出来）。
- * 迭代（INVARIANT § 17）：先序收一遍，倒着走就是孩子先于父亲。
- */
-function keptNodes(
-  roots: SessionTreeNode[],
-  visible: (n: SessionTreeNode) => boolean,
-): Set<SessionTreeNode> {
-  const order: SessionTreeNode[] = [];
-  const stack = roots.slice();
-  while (stack.length > 0) {
-    const n = stack.pop()!;
-    order.push(n);
-    for (const c of n.children) stack.push(c);
+    this.renderNow();
   }
-  const kept = new Set<SessionTreeNode>();
-  for (let i = order.length - 1; i >= 0; i--) {
-    const n = order[i];
-    if (visible(n) || n.children.some((c) => kept.has(c))) kept.add(n);
-  }
-  return kept;
-}
 
-function makeChip(text: string, extraClass = ""): HTMLElement {
-  const el = document.createElement("span");
-  el.className = `history-chip ${extraClass}`.trim();
-  el.textContent = text;
-  return el;
-}
-
-function makeStatusRow(text: string): HTMLElement {
-  const el = document.createElement("div");
-  el.className = "history-group-status";
-  el.textContent = text;
-  return el;
-}
-
-// === issue #12: fork 树构建 + 持久化 ===
-
-/**
- * 按 forkedFromSessionId 在项目内建 tree。
- *
- * # 为什么**不加 memo**〔audit-0805 §5 1u，08-06 结案〕
- *
- * 实测：「合并重画把**次数**降了一个量级，**单次代价没动**」，
- * 并把它挂成一条待办。08-06 按第四问（**这个数你量过吗**）去量，结论是**不该做**：
- *
- * | 单个项目的会话数 | 一次 `buildSessionTree` + `sortTree` |
- * |---|---|
- * | 200 | 0.18 ms |
- * | 1 000 | 0.35 ms |
- * | 5 000 | 1.39 ms |
- * | 20 000 | 5.85 ms |
- *
- * ⚠ N 是**单个项目**的可见会话数（本函数按项目调），现实量级是几十到几百 ⇒ **亚毫秒**。
- * 而 F15 之后每帧只重画一次。加 memo 要引入失效键（过滤结果 / 星标 / 排序 / 折叠），
- * **换来的是亚毫秒，代价是一块新的状态与它的失效 bug**。
- *
- * ★ 这个结论**依赖「按项目调」**：若将来改成对全部项目建一棵大树，N 就变成总会话数，
- * 上表要重量。`history-fanout.vitest.ts` 里有一条判据钉住**调用点恰好一处**，
- * 挪动它的人会被迫回来看这段。
- *
- * 算法（O(N) 迭代，遵 INVARIANT § 17）：
- *  1. 一遍 byId 索引
- *  2. 二遍把每个 entry 挂到 parent.children（parent 存在）或 roots（parent 不存在）
- *  3. parent 存在但不在本项目集（跨项目 fork / parent 已物理删除）→ 当 root + orphan=true
- */
-function buildSessionTree(entries: HistorySessionEntry[]): SessionTreeNode[] {
-  const byId = new Map<string, SessionTreeNode>();
-  for (const e of entries) {
-    byId.set(e.sessionId, { entry: e, children: [], orphan: false });
-  }
-  const roots: SessionTreeNode[] = [];
-  for (const node of byId.values()) {
-    const parentId = node.entry.forkedFromSessionId;
-    if (parentId) {
-      const parent = byId.get(parentId);
-      if (parent) {
-        parent.children.push(node);
-        continue;
+  /** 不动列表的那几块（刷新转圈 · 提示条 · 筛选数）。 */
+  private renderChrome(): void {
+    const loading = this.wanted().some((m) => this.per.get(m)?.state === "loading");
+    this.refreshBtn.dataset.busy = String(loading);
+    this.markFilterBtn();
+    const strips: HTMLElement[] = [];
+    for (const m of this.wanted()) {
+      const st = this.per.get(m);
+      if (st?.state === "failed") {
+        strips.push(
+          m
+            ? strip("warn", copyText("history.list.machineDown", { machine: m }), { label: copyText("history.list.reconnect"), run: () => this.refresh(true, m) })
+            : strip("error", copyText("history.list.localFailed"), { label: copyText("history.list.retry"), run: () => this.refresh(true, "") }),
+        );
+      } else if (st?.state === "ok" && st.list.notice) {
+        strips.push(strip("warn", copyText("history.list.notice"), { label: copyText("history.list.retry"), run: () => this.refresh(true, m) }));
       }
-      // parent 不在本项目集 → 孤儿，挂顶层加 marker
-      node.orphan = true;
     }
-    roots.push(node);
+    const c = this.content;
+    if (c?.state === "done") {
+      for (const h of c.r.failedHosts) strips.push(strip("warn", copyText("history.search.machineDown", { machine: h }), { label: copyText("history.list.reconnect"), run: () => void this.runContentSearch() }));
+      for (const a of c.r.skipped) strips.push(strip("info", copyText("history.search.skipped", { agent: a })));
+      if (c.r.unreadable > 0) strips.push(strip("info", copyText("history.search.unreadable", { n: c.r.unreadable })));
+    } else if (c?.state === "failed") {
+      strips.push(strip("error", copyText("history.search.failed", { why: c.why }), { label: copyText("history.list.retry"), run: () => void this.runContentSearch() }));
+    }
+    this.stripsEl.replaceChildren(...strips);
   }
-  return roots;
+
+  private lists(): HistoryList[] {
+    const out: HistoryList[] = [];
+    for (const m of this.wanted()) {
+      const st = this.per.get(m);
+      if (st?.state === "ok") out.push(st.list);
+      else if (st?.state === "loading" && st.prev) out.push(st.prev);
+    }
+    return out;
+  }
+
+  private renderNow(): void {
+    this.dirty = false;
+    this.renderChrome();
+    const now = Date.now();
+    const lists = this.lists();
+    const rows = mergeByAt(lists.map((l) => l.rows));
+    this.rowsByKey = new Map(rows.map((r) => [rowKey(r), r]));
+    const anyLoading = this.wanted().some((m) => this.per.get(m)?.state === "loading");
+    const body: HTMLElement[] = [];
+    this.order = [];
+    const hooks = this.hooks();
+    if (this.content) {
+      this.renderContent(body, hooks, now);
+    } else if (rows.length === 0 && anyLoading) {
+      this.listHead.replaceChildren(copyText("history.list.reading", { machines: this.wanted().map((m) => m || copyText("history.filter.local")).join(` ${copyText("cssMarks.sep.dot")} `) }));
+      body.push(skeletonRows(6));
+    } else if (rows.length === 0) {
+      this.listHead.replaceChildren();
+      const filtered = this.query !== "" || this.activeFilters() > 0;
+      body.push(
+        filtered
+          ? emptyState({ icon: "search", text: copyText("history.list.noMatch"), action: button({ label: copyText("history.list.clearFilter"), onClick: () => this.clearFilters() }) })
+          : emptyState({ text: copyText("history.list.empty"), hint: copyText("history.list.emptyHint") }),
+      );
+    } else if (this.prefs.view === "time") {
+      this.renderByTime(body, rows, hooks, now, lists);
+    } else {
+      this.renderByProject(body, rows, hooks, now, lists);
+    }
+    if (lists.some((l) => l.truncated) && !this.content) {
+      const more = document.createElement("div");
+      more.className = s.hvFoot;
+      more.textContent = copyText("history.list.truncated");
+      body.push(more);
+    }
+    const top = this.listEl.scrollTop;
+    this.listEl.replaceChildren(...body);
+    this.listEl.scrollTop = top;
+    this.markRows();
+  }
+
+  /** 每个父会话下挂着的分叉（同一台；只认清单里的父会话）。 */
+  private forksOf(rows: HistoryRow[]): Map<string, HistoryRow[]> {
+    const have = new Set(rows.map(rowKey));
+    const kids = new Map<string, HistoryRow[]>();
+    for (const r of rows) {
+      if (!r.forkedFromSessionId) continue;
+      const p = rowKey({ origin: r.origin, sessionId: r.forkedFromSessionId });
+      if (!have.has(p)) continue;
+      const a = kids.get(p) ?? [];
+      a.push(r);
+      kids.set(p, a);
+    }
+    return kids;
+  }
+
+  private pushRow(body: HTMLElement[], r: HistoryRow, hooks: RowHooks, kids: Map<string, HistoryRow[]>, compact: boolean, now: number, child: boolean): void {
+    const k = rowKey(r);
+    const mine = kids.get(k) ?? [];
+    const open = this.openForks.has(k);
+    const orphan = !child && r.forkedFromSessionId !== undefined && !this.rowsByKey.has(rowKey({ origin: r.origin, sessionId: r.forkedFromSessionId }));
+    body.push(sessionRow(r, hooks, { compact, forks: mine.length, forksOpen: open, child, orphan, now }));
+    this.order.push(k);
+    if (open) for (const c of mine) this.pushRow(body, c, hooks, kids, compact, now, true);
+  }
+
+  private renderByTime(body: HTMLElement[], rows: HistoryRow[], hooks: RowHooks, now: number, lists: HistoryList[]): void {
+    const total = lists.reduce((n, l) => n + l.total, 0);
+    this.listHead.replaceChildren(copyText("history.list.count", { n: total }));
+    const kids = this.forksOf(rows);
+    let sec = "";
+    for (const r of rows) {
+      // 挂在父会话下的分叉不在顶层出。
+      if (r.forkedFromSessionId && this.rowsByKey.has(rowKey({ origin: r.origin, sessionId: r.forkedFromSessionId }))) continue;
+      const k = sectionKey(r.at, now);
+      if (k !== sec) {
+        sec = k;
+        body.push(sectionHead(sectionLabel(k, now)));
+      }
+      this.pushRow(body, r, hooks, kids, false, now, false);
+    }
+  }
+
+  private renderByProject(body: HTMLElement[], rows: HistoryRow[], hooks: RowHooks, now: number, lists: HistoryList[]): void {
+    const groups = mergeGroups(lists.map((l) => l.groups));
+    const sessions = groups.reduce((n, g) => n + g.count, 0);
+    const head = document.createElement("span");
+    head.textContent = copyText("history.list.countProjects", { p: groups.length, n: sessions });
+    const end = document.createElement("span");
+    end.className = s.hvHeadEnd;
+    const all = (open: boolean): void => {
+      this.openGroups = open ? new Set(groups.map(groupKey)) : new Set();
+      this.renderNow();
+    };
+    end.append(
+      button({ label: copyText("history.list.expandAll"), kind: "ghost", size: "compact", onClick: () => all(true) }),
+      button({ label: copyText("history.list.collapseAll"), kind: "ghost", size: "compact", onClick: () => all(false) }),
+    );
+    this.listHead.replaceChildren(head, end);
+    const byGroup = new Map<string, HistoryRow[]>();
+    for (const r of rows) {
+      const k = `${r.origin ?? ""}\u0000${r.group}`;
+      const a = byGroup.get(k) ?? [];
+      a.push(r);
+      byGroup.set(k, a);
+    }
+    const kids = this.forksOf(rows);
+    for (const g of groups) {
+      const gk = groupKey(g);
+      // 搜着字的时候组都展开（命中的就在眼前）。
+      const open = this.query !== "" || this.openGroups.has(gk);
+      body.push(
+        groupHead(g, {
+          open,
+          onToggle: () => {
+            if (this.openGroups.has(gk)) this.openGroups.delete(gk);
+            else this.openGroups.add(gk);
+            this.renderNow();
+          },
+          onNew: () => void this.newSessionIn(g.origin, g.projectPath, g.agent),
+          onRetry: () => this.refresh(true, keyOf(g.origin)),
+        }),
+      );
+      if (!open) continue;
+      for (const r of byGroup.get(gk) ?? []) {
+        if (r.forkedFromSessionId && this.rowsByKey.has(rowKey({ origin: r.origin, sessionId: r.forkedFromSessionId }))) continue;
+        this.pushRow(body, r, hooks, kids, true, now, false);
+      }
+    }
+  }
+
+  /** 内容搜索的结果：每个会话一块（会话行 ＋ 前几处命中）。 */
+  private renderContent(body: HTMLElement[], hooks: RowHooks, now: number): void {
+    const c = this.content;
+    if (!c) return;
+    if (c.state === "searching") {
+      const stop = button({ label: copyText("history.search.stop"), kind: "ghost", size: "compact", onClick: () => {
+        this.contentSeq++;
+        this.content = null;
+        this.renderNow();
+      } });
+      this.listHead.replaceChildren(spinner(), copyText("history.search.searching"), stop);
+      body.push(skeletonRows(4));
+      return;
+    }
+    if (c.state === "failed") {
+      this.listHead.replaceChildren();
+      return;
+    }
+    const r = c.r;
+    this.listHead.replaceChildren(
+      r.truncated
+        ? copyText("history.search.summaryTruncated", { q: c.q, n: r.totalHits, m: r.sessionCount })
+        : copyText("history.search.summary", { q: c.q, n: r.totalHits, m: r.sessionCount }),
+    );
+    if (r.sessions.length === 0) {
+      body.push(
+        emptyState({
+          icon: "search",
+          text: copyText("history.search.noMatch", { q: c.q }),
+          action: this.prefs.tools
+            ? undefined
+            : button({
+                label: copyText("history.filter.tools"),
+                onClick: () => {
+                  this.prefs.tools = true;
+                  this.savePrefs();
+                  void this.runContentSearch();
+                },
+              }),
+        }),
+      );
+      return;
+    }
+    for (const sh of r.sessions) {
+      const row = this.rowsByKey.get(rowKey(sh)) ?? rowFromHits(sh);
+      const el = sessionRow(row, hooks, { compact: false, forks: 0, forksOpen: false, child: false, orphan: false, now });
+      this.order.push(rowKey(row));
+      body.push(hitsBlock(el, sh, (uuid) => this.show(row, uuid ?? undefined)));
+    }
+  }
+
+  /** 选中 / 正在显示的那一行（`aria-selected` 淡底 · `aria-current` 左边一道）。 */
+  private markRows(): void {
+    for (const el of this.listEl.querySelectorAll<HTMLElement>(`.${s.hvRow}`)) {
+      const k = el.dataset.key ?? "";
+      el.setAttribute("aria-selected", String(k === this.selected));
+      if (k === this.shown) el.setAttribute("aria-current", "true");
+      else el.removeAttribute("aria-current");
+    }
+  }
+
+  private rowEl(k: string): HTMLElement | null {
+    for (const el of this.listEl.querySelectorAll<HTMLElement>(`.${s.hvRow}`)) if (el.dataset.key === k) return el;
+    return null;
+  }
+
+  private focusSelected(): void {
+    const el = this.selected ? this.rowEl(this.selected) : null;
+    (el ?? this.listEl).focus();
+  }
+
+  // ───────────────────────── 键盘 · 选中 ─────────────────────────
+
+  private moveSelection(k: string | null, focus: boolean): void {
+    if (k === null) return;
+    this.selected = k;
+    this.markRows();
+    const el = this.rowEl(k);
+    if (focus && el) {
+      el.focus();
+      el.scrollIntoView({ block: "nearest" });
+    }
+    if (this.previewTimer) clearTimeout(this.previewTimer);
+    this.previewTimer = setTimeout(() => {
+      this.previewTimer = null;
+      const r = this.rowsByKey.get(k);
+      if (r && this.shown !== k) this.show(r);
+    }, PREVIEW_DEBOUNCE_MS);
+  }
+
+  private onListKey(ev: KeyboardEvent): void {
+    if (ev.isComposing) return;
+    const i = this.selected ? this.order.indexOf(this.selected) : -1;
+    const at = (j: number): string | null => this.order[Math.max(0, Math.min(this.order.length - 1, j))] ?? null;
+    const page = Math.max(1, Math.floor(this.listEl.clientHeight / 52));
+    const r = this.selected ? this.rowsByKey.get(this.selected) : undefined;
+    switch (ev.key) {
+      case "ArrowDown":
+        return this.consume(ev, () => this.moveSelection(at(i + 1), true));
+      case "ArrowUp":
+        if (i <= 0) return this.consume(ev, () => this.searchInput.focus());
+        return this.consume(ev, () => this.moveSelection(at(i - 1), true));
+      case "Home":
+        return this.consume(ev, () => this.moveSelection(at(0), true));
+      case "End":
+        return this.consume(ev, () => this.moveSelection(at(this.order.length - 1), true));
+      case "PageDown":
+        return this.consume(ev, () => this.moveSelection(at(i + page), true));
+      case "PageUp":
+        return this.consume(ev, () => this.moveSelection(at(i - page), true));
+      case "Enter":
+        if (!r) return;
+        if (ev.ctrlKey || ev.metaKey) return this.consume(ev, () => void this.resume(r));
+        if (ev.shiftKey) return this.consume(ev, () => this.openWindow(r));
+        return this.consume(ev, () => {
+          this.show(r);
+          this.viewer?.element.querySelector<HTMLElement>(".session-viewer-stream")?.focus();
+        });
+      case "F2":
+        if (r) this.consume(ev, () => void this.rename(r));
+        return;
+      case "Delete":
+        if (r) this.consume(ev, () => void this.remove(r));
+        return;
+      case "ContextMenu":
+        if (r) this.consume(ev, () => this.menu(r, this.rowEl(rowKey(r)) ?? this.listEl));
+        return;
+      case "F10":
+        if (r && ev.shiftKey) this.consume(ev, () => this.menu(r, this.rowEl(rowKey(r)) ?? this.listEl));
+        return;
+    }
+  }
+
+  private consume(ev: KeyboardEvent, f: () => void): void {
+    ev.preventDefault();
+    ev.stopPropagation();
+    f();
+  }
+
+  // ───────────────────────── 右边 ─────────────────────────
+
+  private disposeViewer(): void {
+    this.viewer?.dispose();
+    this.viewer = null;
+    this.shown = null;
+  }
+
+  /** 右边就地看这一行（列表不动）。`jumpTo` = 内容命中那一句的 uuid。 */
+  private show(r: HistoryRow, jumpTo?: string): void {
+    const k = rowKey(r);
+    this.selected = k;
+    this.shown = k;
+    this.markRows();
+    if (!this.viewer) this.viewer = new SessionViewer();
+    this.contentEl.dataset.vacant = "false";
+    this.contentEl.replaceChildren(this.viewer.element);
+    void this.viewer.load({
+      jsonlPath: r.jsonlPath,
+      displayTitle: labelOf(r),
+      subtitle: `${r.projectName} · ${r.projectPath}`,
+      origin: r.origin ?? LOCAL_ORIGIN,
+      cwd: r.projectPath,
+      scrollToUuid: jumpTo,
+      suppressBranch: !r.can.fork,
+    });
+  }
+
+  // ───────────────────────── 动作 ─────────────────────────
+
+  private hooks(): RowHooks {
+    return {
+      // 鼠标点的：焦点进列表（方向键接着走），不画焦点环。
+      select: (r) => {
+        if (!this.listEl.contains(document.activeElement)) {
+          this.quietFocus = true;
+          this.listEl.focus({ preventScroll: true });
+          this.quietFocus = false;
+        }
+        this.moveSelection(rowKey(r), false);
+      },
+      resume: (r) => void this.resume(r),
+      menu: (r, at) => this.menu(r, at),
+      openWindow: (r) => this.openWindow(r),
+      toggleForks: (r) => {
+        const k = rowKey(r);
+        if (this.openForks.has(k)) this.openForks.delete(k);
+        else this.openForks.add(k);
+        safeSetJson(LS_KEYS.historyExpandedForks, [...this.openForks]);
+        this.renderNow();
+      },
+      needs: (r) => (r.origin ? null : this.needsOf(r.sessionId)),
+    };
+  }
+
+  /** 恢复（默认那一种：上次的号 · 设置里的方式）；在跑的 ⇒ 切过去。 */
+  private async resume(r: HistoryRow): Promise<void> {
+    if (r.can.resume === "bg") return;
+    if (r.can.resume === "switch") {
+      this.switchTo(r.sessionId);
+      this.close();
+      return;
+    }
+    try {
+      if (r.origin) {
+        const behavior = await getBehavior();
+        const launcher = configuredLauncherFor(r.agent, await resolveResumeCommand(r.origin, behavior.resumeCommandRemote));
+        await runRemoteResume(r.origin, r.agent, r.sessionId, r.projectPath, launcher, { account: FOLLOW });
+      } else {
+        await resumeLocalSession({ agent: r.agent, sid: r.sessionId, cwd: r.projectPath, account: FOLLOW });
+      }
+      this.close();
+    } catch (e) {
+      toast(copyText("history.resume.failed", { machine: r.origin ?? copyText("history.filter.local"), why: String(e) }), "");
+    }
+  }
+
+  private openWindow(r: HistoryRow): void {
+    void commands
+      .open_session_in_new_window({ sessionId: r.sessionId, origin: r.origin ?? LOCAL_ORIGIN, title: labelOf(r) })
+      .catch((e: unknown) => toast(copyText("tabSessionActions.openInWindow.failed"), String(e)));
+  }
+
+  private menu(r: HistoryRow, at: HTMLElement | { x: number; y: number }): void {
+    const live = r.can.resume === "switch";
+    const items: MenuItem[] = [
+      { label: live ? copyText("history.row.switch") : copyText("history.row.resume"), enabled: r.can.resume !== "bg", title: r.can.resume === "bg" ? copyText("history.row.bgHint") : undefined, onClick: () => void this.resume(r) },
+      { label: copyText("history.menu.openWindow"), icon: "front", onClick: () => this.openWindow(r) },
+      { label: "", divider: true },
+      { label: r.starred ? copyText("history.menu.unstar") : copyText("history.menu.star"), onClick: () => void this.star(r) },
+      { label: copyText("history.menu.rename"), detail: "F2", onClick: () => void this.rename(r) },
+      { label: r.hidden ? copyText("history.menu.unhide") : copyText("history.menu.hide"), onClick: () => void this.hide(r) },
+      { label: "", divider: true },
+      ...(r.origin ? [] : [{ label: copyText("history.menu.openDir"), icon: "folder" as const, onClick: () => void revealInFolder(r.projectPath) }]),
+      { label: copyText("history.menu.newInDir"), onClick: () => void this.newSessionIn(r.origin, r.projectPath, r.agent) },
+      { label: "", divider: true },
+      {
+        label: copyText("history.menu.delete"),
+        danger: true,
+        detail: "Delete",
+        enabled: r.can.delete !== "live",
+        title: r.can.delete === "live" ? copyText("history.delete.liveHint") : undefined,
+        onClick: () => void this.remove(r),
+      },
+    ];
+    openMenu("x" in at ? at : { el: at, align: "end" }, items, { label: copyText("history.row.more") });
+  }
+
+  private async star(r: HistoryRow): Promise<void> {
+    try {
+      await annotate(r.sessionId, { starred: !r.starred });
+      this.refresh(false, keyOf(r.origin));
+    } catch (e) {
+      toast(copyText("history.star.failed", { why: String(e) }), "");
+    }
+  }
+
+  private async hide(r: HistoryRow): Promise<void> {
+    const to = !r.hidden;
+    try {
+      await annotate(r.sessionId, { hidden: to });
+      this.refresh(false, keyOf(r.origin));
+      if (to)
+        undoToast(copyText("history.hide.done", { label: labelOf(r) }), () => void annotate(r.sessionId, { hidden: false }).then(() => this.refresh(false, keyOf(r.origin))), () => {});
+    } catch (e) {
+      toast(copyText("history.hide.failed", { why: String(e) }), "");
+    }
+  }
+
+  private async rename(r: HistoryRow): Promise<void> {
+    const next = await askText({
+      title: copyText("history.rename.title"),
+      label: copyText("history.rename.prompt"),
+      action: copyText("history.rename.action"),
+      initial: r.customTitle ?? r.label,
+    });
+    if (next === null) return;
+    const before = r.customTitle;
+    try {
+      await annotate(r.sessionId, { customTitle: next.trim() });
+      this.refresh(false, keyOf(r.origin));
+      undoToast(copyText("history.rename.done"), () => void annotate(r.sessionId, { customTitle: before ?? "" }).then(() => this.refresh(false, keyOf(r.origin))), () => {});
+    } catch (e) {
+      toast(copyText("history.rename.failed", { why: String(e) }), "");
+    }
+  }
+
+  /** 删除只问一次（R2-2-2）；在跑的不让删（后端判的 `can.delete`，主窗口此刻的状态再核一次）。 */
+  private async remove(r: HistoryRow): Promise<void> {
+    if (r.can.delete === "live" || (!r.origin && this.liveInTabs(r.sessionId))) {
+      toast(copyText("history.delete.liveHint"), "");
+      return;
+    }
+    const label = labelOf(r);
+    const body = [
+      r.origin ? copyText("history.delete.bodyRemote", { machine: r.origin }) : copyText("history.delete.body"),
+      r.can.delete === "unsure" ? copyText("history.delete.unsure") : null,
+    ].filter((l): l is string => l !== null);
+    const ok = await confirmDialog({ title: copyText("history.delete.title", { label }), action: copyText("history.delete.action"), danger: true, body: body.join("\n") });
+    if (!ok) return;
+    try {
+      await deleteSession(r.origin ?? LOCAL_ORIGIN, r.sessionId);
+    } catch (e) {
+      toast(copyText("history.delete.failed", { label, why: String(e) }), "");
+      return;
+    }
+    void forgetAnnotation(r.sessionId);
+    if (this.shown === rowKey(r)) {
+      this.disposeViewer();
+      this.showPlaceholder();
+    }
+    toast(copyText("history.delete.done", { label }), "", { level: "success" });
+    this.refresh(false, keyOf(r.origin));
+  }
+
+  /** 在这个目录开一个新会话（主窗口稿那一个起会话的路；号跟随那台的默认号）。 */
+  private async newSessionIn(origin: string | undefined, dir: string, agent: string): Promise<void> {
+    const behavior = await getBehavior();
+    try {
+      if (origin) {
+        await runNewSessionRemote(origin, agent, dir, await resolveResumeCommand(origin, behavior.resumeCommandRemote), { account: FOLLOW });
+      } else {
+        await launchLocal({ action: { kind: "new" }, agent, cwd: dir, launcher: behavior.resumeCommandLocal || null, account: FOLLOW, tmuxName: null }, dir);
+        expectArrival({ origin: LOCAL_ORIGIN, match: { cwd: dir }, tmuxName: null, arrived: { title: copyText("history.newSession.started", { dir }), body: arrivedBody(LOCAL_ORIGIN) } });
+      }
+    } catch (e) {
+      toast(copyText("history.newSession.failed", { why: String(e) }), "");
+    }
+  }
 }
 
-function loadExpandedForks(): Set<string> {
-  const arr = safeGetJson<string[]>(LS_KEYS.historyExpandedForks);
-  if (Array.isArray(arr)) return new Set(arr.filter((x) => typeof x === "string"));
-  return new Set();
+function groupKey(g: HistoryGroup): string {
+  return `${g.origin ?? ""}\u0000${g.key}`;
 }
 
-function saveExpandedForks(s: Set<string>): void {
-  safeSetJson(LS_KEYS.historyExpandedForks, Array.from(s));
-}
-
-// F86(#45)：来源筛选/折叠偏好的 localStorage 持久化（照 expandedForks 先例；判定逻辑在 history-prefs.ts）。
-function loadHiddenOrigins(): Set<string> {
-  return new Set(normalizeOriginKeys(safeGetJson(LS_KEYS.historyHiddenOrigins)));
-}
-
-function saveHiddenOrigins(s: Set<string>): void {
-  safeSetJson(LS_KEYS.historyHiddenOrigins, Array.from(s));
-}
-
-function loadOriginOpenOverrides(): OriginOpenOverrides {
-  return normalizeOverrides(safeGetJson(LS_KEYS.historyOriginOpen));
-}
-
-function saveOriginOpenOverrides(o: OriginOpenOverrides): void {
-  safeSetJson(LS_KEYS.historyOriginOpen, o);
-}
-
-/**
- * F76b(#46)：从 localStorage 读远端来源快照，**逐元素防脏**(对齐 loadExpandedForks/normalize* 惯例)。
- * ★审计:仅校验数组**形状**不够——被篡改/旧 schema 若混入 `null`/基元元素,后续 `renderList` 对它 deref
- * `p.origin`(`:968`/`renderOriginFilter`)会抛 TypeError,而 `renderList` 在 `refresh`(`:410`)里**未 try 包**
- * → 冒泡出 `open()`、历史视图打不开直到清 localStorage。故过滤到「非空对象 + 关键 `projectPath` 为 string」。
- * `loadedAt` 恒归 **0**:持久快照只作首帧暖绘,首开必刷一次(见构造注释),不冒充新鲜、不吃跨启动陈旧。
- */
-function loadPersistedRemoteCache(): RemoteSourceCache<HistoryProject> | null {
-  const raw = safeGetJson<{ projects?: unknown }>(LS_KEYS.historyRemoteSources);
-  if (!raw || !Array.isArray(raw.projects)) return null;
-  const projects = raw.projects.filter(
-    (p): p is HistoryProject =>
-      p !== null &&
-      typeof p === "object" &&
-      typeof (p as { projectPath?: unknown }).projectPath === "string",
-  );
-  return { projects, loadedAt: 0 };
-}
-
-/**
- * 历史条目的活性三态 → 说给用户的那个词。
- * `null` = 这条路答不出 ⇒「说不清」，不许落成「已结束」。
- */
-/**
- * 删会话前的活性判定（纯函数）：tab 栏里活着 ∨ 条目说活着 ⇒ `live`；
- * 否则条目答不出（`null`）⇒ `unknown`；否则 `dead`。tab 栏那一格是此刻的事实，所以它说活就算活。
- */
-export function deleteLiveness(entryIsLive: boolean | null, liveInTabs: boolean): "live" | "unknown" | "dead" {
-  if (liveInTabs || entryIsLive === true) return "live";
-  return entryIsLive === null ? "unknown" : "dead";
-}
-
-function livenessWord(isLive: boolean | null): string {
-  if (isLive === null) return copyText("sessionState.unseen.name");
-  return isLive ? copyText("sessionState.live.name") : copyText("sessionState.ended.name");
+/** 内容命中里那个会话不在清单里（被筛掉 / 那台的清单没答上）⇒ 用命中那一行拼一个只够画的行（不能做的都不给）。 */
+function rowFromHits(sh: SessionHits): HistoryRow {
+  return {
+    agent: sh.agent,
+    agentTag: null,
+    sessionId: sh.sessionId,
+    projectDir: "",
+    projectPath: sh.projectPath,
+    projectName: sh.projectName,
+    group: "",
+    aiTitle: null,
+    firstUserExcerpt: "",
+    title: sh.title,
+    label: sh.title,
+    untitled: false,
+    startedAt: sh.updatedAt,
+    updatedAt: sh.updatedAt,
+    at: sh.updatedAt,
+    jsonlPath: sh.jsonlPath,
+    messageCountApprox: 0,
+    isBg: false,
+    starred: false,
+    customTitle: null,
+    hidden: false,
+    status: "unknown",
+    can: { resume: "yes", accounts: false, fork: false, delete: "unsure" },
+    ...(sh.origin ? { origin: sh.origin } : {}),
+  };
 }

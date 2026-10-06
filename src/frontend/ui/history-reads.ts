@@ -1,80 +1,19 @@
 /**
- * **历史浏览器的清单与注解，经通道问本机常驻后端**（历史跨机 join 的唯一的家）。
+ * **历史注解与上次账号表，经通道问常驻后端**（注解的读写者是本机常驻后端，文件原地不动）。
  *
- * # 它顶掉了什么
- *
- * 此前这一族是 monitor 的五条 Tauri 命令：本机项目清单（exec 一次性本机后端 `--list-projects`、monitor 并注解 ＋ `SessionMap` 判活）·
- * 远端项目清单（monitor 逐台 fan-out、按行拿回再并注解）· 展开一个项目（本机 monitor 自己扫目录、远端按行拿回 —— 两套口径）·
- * 改注解（monitor 读改写 `history-metadata.json`）· 上次账号表。
- * 注解的**读写者**换成本机常驻后端（文件原地不动），它经 `remote_ask` 问远端那台、并上注解、**出成品**；前端经 `chan.call`。
- * ⇒ 五条命令与 monitor 那一份 join / 注解读写一起删了；这里经通道问 `<local>` 那一台，按形状收。
- *
- * # 本文件做的只有三件（调用方那一侧的事，不是通信层成员）
- *
- * 1. **问谁**：一律问本机常驻后端（`<local>`）；要远端那台的清单就在请求里带 `origin`（本机后端沿它持有的那条 SSH 去问）。
- * 2. **按形状收**：成品逐格 == 从前 monitor 线上的 `HistoryProject` / `HistorySessionEntry`；多一格 / 缺一格 / 类型不对 ⇒ 抛
- *    （跨语言金样 `tests/__fixtures__/history-products.golden.json`）。
- * 3. **fan-out 远端**：「哪几台」问的是 `list_remote_mcp_origins`（同 `views/history-search.ts` 那一处）；逐台失败不拖垮其余台、
- *    记进 `failedHosts`（`F76`：部分失败不冻结缓存）；全部失败 ⇒ 抛（与「没配远端」的空表分开）。
+ * 清单那一族（平铺会话清单）住 `history-list-reads.ts`。这里只剩：改注解（星标 / 改标题 / 隐藏）· 删会话后连带删注解 ·
+ * 「这台上每条会话上次用哪个号起」；外加两处共用的东西：形状不对的那一种错（[`HistoryShapeError`]）与给人看的那句话（[`historyReasonOf`]）。
  *
  * # 期限（`X6`：调用点显式给）
  *
- * 项目清单 30 秒（与上一个住址 monitor `frame_query::LINES_BUDGET` 同值）· 会话清单 120 秒（本机那一支从前是流式无期限，
- * 一次交全之后给足余量）· 注解两问 10 秒（读写一份小文件）。
+ * 注解几问 10 秒（读写一份小文件）。
  */
-import { commands } from "./ipc/commands";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 
-// ─── 成品的形状（后端 `history_join.rs`；逐格 == 从前 monitor 那两个 ts-rs 生成物）───
-
-/** 项目级那一行（不含会话内容）。 */
-export interface HistoryProject {
-  /** 这个项目的会话是哪一家（线上的 kind）。 */
-  agent: string;
-  projectPath: string;
-  projectName: string;
-  /** 懒加载的键（记录树的项目目录名，或合成历史的 `<kind>:<cwd>`），原样交回 [`fetchSessions`]。 */
-  projectDir: string;
-  sessionCount: number;
-  /** `K-R92`：`null` = 不知道（**不是 0**）。 */
-  starredCount: number | null;
-  hiddenCount: number | null;
-  /** 毫秒。 */
-  lastActivity: number;
-  /** `null` = 这条路上答不了（远端 · Codex），**不是**「没有活会话」。 */
-  hasLive: boolean | null;
-  /** 远端那台的名字；本机那一行没有这一格。 */
-  origin?: string;
-}
-
-/** 会话级那一行。 */
-export interface HistorySessionEntry {
-  /** 这个会话是哪一家（线上的 kind）：恢复按它起。 */
-  agent: string;
-  sessionId: string;
-  projectPath: string;
-  projectName: string;
-  aiTitle: string | null;
-  firstUserExcerpt: string;
-  /** 显示的标题（标题 ＞ 第一句 ＞ 会话 ID 前 8 位，后端一处定；用户改过的标题另在 `customTitle`）。 */
-  title: string;
-  startedAt: number;
-  updatedAt: number;
-  jsonlPath: string;
-  /** `null` = 这条路上答不了活状态。 */
-  isLive: boolean | null;
-  messageCountApprox: number;
-  isBg: boolean;
-  starred: boolean;
-  customTitle: string | null;
-  hidden: boolean;
-  forkedFromSessionId?: string;
-  forkedFromMessageUuid?: string;
-  origin?: string;
-}
+// ─── 成品的形状 ───
 
 /** 一条注解（`history-annotate` 回的那一条）。 */
 export interface EntryMetadata {
@@ -84,15 +23,6 @@ export interface EntryMetadata {
   updatedAt: number;
 }
 
-/** 远端那一批：项目 ＋ 失败的那几台 ＋答了、但一个项目都没有的那几台（界面给它们画「这台还没有会话记录」）。 */
-export interface RemoteProjectsResult {
-  projects: HistoryProject[];
-  failedHosts: string[];
-  emptyHosts: string[];
-}
-
-const PROJECTS_BUDGET_MS = 30_000;
-const SESSIONS_BUDGET_MS = 120_000;
 const ANNOTATION_BUDGET_MS = 10_000;
 
 // ─── 收货验形 ───
@@ -133,131 +63,12 @@ function keysOk(
   );
 }
 
-const PROJECT_KEYS = [
-  "agent",
-  "projectPath",
-  "projectName",
-  "projectDir",
-  "sessionCount",
-  "starredCount",
-  "hiddenCount",
-  "lastActivity",
-  "hasLive",
-] as const;
-const SESSION_KEYS = [
-  "agent",
-  "sessionId",
-  "projectPath",
-  "projectName",
-  "aiTitle",
-  "firstUserExcerpt",
-  "title",
-  "startedAt",
-  "updatedAt",
-  "jsonlPath",
-  "isLive",
-  "messageCountApprox",
-  "isBg",
-  "starred",
-  "customTitle",
-  "hidden",
-] as const;
 const ENTRY_KEYS = [
   "starred",
   "customTitle",
   "hidden",
   "updatedAt",
 ] as const;
-
-/** 成品外壳 `{rows, notice}`。 */
-function decodeShell(
-  v: unknown,
-  op: string,
-): { rows: unknown[]; notice: string | null } {
-  if (
-    !isObj(v) ||
-    !keysOk(v, ["rows", "notice"], []) ||
-    !Array.isArray(v.rows) ||
-    !orNull(isStr)(v.notice)
-  ) {
-    throw new HistoryShapeError(`${op} reply is not exactly {rows, notice}`);
-  }
-  return { rows: v.rows, notice: v.notice };
-}
-
-/** `history-projects` 的成品 ⇒ 项目行。 */
-export function decodeProjects(v: unknown): {
-  projects: HistoryProject[];
-  notice: string | null;
-} {
-  const { rows, notice } = decodeShell(v, "history-projects");
-  const projects = rows.map((r): HistoryProject => {
-    const ok =
-      isObj(r) &&
-      keysOk(r, PROJECT_KEYS, ["origin"]) &&
-      isStr(r.agent) &&
-      isStr(r.projectPath) &&
-      isStr(r.projectName) &&
-      isStr(r.projectDir) &&
-      isNum(r.sessionCount) &&
-      orNull(isNum)(r.starredCount) &&
-      orNull(isNum)(r.hiddenCount) &&
-      isNum(r.lastActivity) &&
-      orNull(isBool)(r.hasLive) &&
-      (r.origin === undefined || isStr(r.origin));
-    if (!ok)
-      throw new HistoryShapeError(
-        `history-projects row has the wrong shape: ${JSON.stringify(r)}`,
-      );
-    return r as unknown as HistoryProject;
-  });
-  return { projects, notice };
-}
-
-/** `history-sessions` 的成品 ⇒ 会话行。 */
-export function decodeSessions(v: unknown): {
-  sessions: HistorySessionEntry[];
-  notice: string | null;
-} {
-  const { rows, notice } = decodeShell(v, "history-sessions");
-  const sessions = rows.map((r): HistorySessionEntry => {
-    const ok =
-      isObj(r) &&
-      keysOk(r, SESSION_KEYS, [
-        "forkedFromSessionId",
-        "forkedFromMessageUuid",
-        "origin",
-      ]) &&
-      isStr(r.agent) &&
-      isStr(r.sessionId) &&
-      isStr(r.projectPath) &&
-      isStr(r.projectName) &&
-      orNull(isStr)(r.aiTitle) &&
-      isStr(r.firstUserExcerpt) &&
-      isStr(r.title) &&
-      isNum(r.startedAt) &&
-      isNum(r.updatedAt) &&
-      isStr(r.jsonlPath) &&
-      orNull(isBool)(r.isLive) &&
-      isNum(r.messageCountApprox) &&
-      isBool(r.isBg) &&
-      isBool(r.starred) &&
-      orNull(isStr)(r.customTitle) &&
-      isBool(r.hidden) &&
-      (r.forkedFromSessionId === undefined) ===
-        (r.forkedFromMessageUuid === undefined) &&
-      (r.forkedFromSessionId === undefined || isStr(r.forkedFromSessionId)) &&
-      (r.forkedFromMessageUuid === undefined ||
-        isStr(r.forkedFromMessageUuid)) &&
-      (r.origin === undefined || isStr(r.origin));
-    if (!ok)
-      throw new HistoryShapeError(
-        `history-sessions row has the wrong shape: ${JSON.stringify(r)}`,
-      );
-    return r as unknown as HistorySessionEntry;
-  });
-  return { sessions, notice };
-}
 
 /** `history-annotate` 的成品 ⇒ 那一条注解。 */
 export function decodeEntry(v: unknown): EntryMetadata {
@@ -295,78 +106,6 @@ export function historyReasonOf(e: unknown): string {
 }
 
 // ─── 问 ───
-
-/** 本机的项目清单（记录树 ＋ Codex 合成）。失败 ⇒ 抛（给人看的那句见 [`historyReasonOf`]）。 */
-export async function fetchLocalProjects(): Promise<{
-  projects: HistoryProject[];
-  notice: string | null;
-}> {
-  const body = jsonBody({});
-  const budget = budgetWithin(PROJECTS_BUDGET_MS);
-  const reply = await chan.call(LOCAL_ORIGIN, "history-projects", body, budget);
-  return decodeProjects(readJson(reply));
-}
-
-/**
- * 远端各台的项目清单（本机后端逐台去问）。没配远端 ⇒ 空；逐台失败 ⇒ 进 `failedHosts`、其余照收；
- * **全部**失败 ⇒ 抛（与「没配远端」区分开）。
- */
-export async function fetchRemoteProjects(): Promise<RemoteProjectsResult> {
-  const origins = await commands.list_remote_mcp_origins();
-  if (origins.length === 0) return { projects: [], failedHosts: [], emptyHosts: [] };
-  const per = await Promise.all(
-    origins.map(async (origin) => {
-      try {
-        const body = jsonBody({ origin });
-        const budget = budgetWithin(PROJECTS_BUDGET_MS);
-        const reply = await chan.call(
-          LOCAL_ORIGIN,
-          "history-projects",
-          body,
-          budget,
-        );
-        const { projects } = decodeProjects(readJson(reply));
-        return { origin, projects, error: null as string | null };
-      } catch (e) {
-        console.warn(`远端 [${origin}] 历史项目清单没拿到（跳过这台）:`, e);
-        return {
-          origin,
-          projects: [] as HistoryProject[],
-          error: historyReasonOf(e),
-        };
-      }
-    }),
-  );
-  const failed = per.filter((p) => p.error !== null);
-  if (failed.length === per.length) {
-    throw new Error(
-      copyText("historyReads.remote.allFailed", { count: per.length, error: String(failed[failed.length - 1].error) }),
-    );
-  }
-  return {
-    projects: per.flatMap((p) => p.projects),
-    failedHosts: failed.map((p) => p.origin),
-    emptyHosts: per.filter((p) => p.error === null && p.projects.length === 0).map((p) => p.origin),
-  };
-}
-
-/**
- * 一个项目下的会话（`origin` 缺席 = 本机那一行）。一个记录目录里会话的真实目录不止一个时，后端把它分成了几个项目
- * （`projectDir` 相同、`projectPath` 不同）⇒ 带上 `projectPath`，只要这一组的。
- */
-export async function fetchSessions(proj: {
-  projectDir: string;
-  projectPath?: string;
-  origin?: string;
-}): Promise<{ sessions: HistorySessionEntry[]; notice: string | null }> {
-  const args: Record<string, unknown> = { project_dir: proj.projectDir };
-  if (proj.projectPath !== undefined) args.project_path = proj.projectPath;
-  if (proj.origin) args.origin = proj.origin;
-  const body = jsonBody(args);
-  const budget = budgetWithin(SESSIONS_BUDGET_MS);
-  const reply = await chan.call(LOCAL_ORIGIN, "history-sessions", body, budget);
-  return decodeSessions(readJson(reply));
-}
 
 /** 改一条注解（星标 / 改名 / 隐藏）。缺格或 `null` = 不改；标题给空白串 = 清空。 */
 export async function annotate(

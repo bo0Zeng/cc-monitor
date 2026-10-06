@@ -109,7 +109,7 @@ fn parse_opts(rest: &[String]) -> SearchOpts {
             "--include-tools" => opts.include_tools = true,
             "--scope" => {
                 if let Some(v) = rest.get(i + 1) {
-                    if v == "user" || v == "assistant" {
+                    if v == "user" || v == "assistant" || v == "report" {
                         opts.scope = Some(v.clone());
                     }
                     i += 1;
@@ -397,7 +397,11 @@ impl Facts {
                     let Some(rt) = record_text(&v, tools) else {
                         continue;
                     };
-                    if !rt.is_assistant && self.excerpt.is_empty() && !rt.main.is_empty() {
+                    if !rt.is_assistant
+                        && !rt.report
+                        && self.excerpt.is_empty()
+                        && !rt.main.is_empty()
+                    {
                         self.excerpt = search_rules::truncate_excerpt(&rt.main, 120);
                     }
                     let ts_ms = v
@@ -581,7 +585,13 @@ impl SearchIndex {
         }
         let (mut count, mut total) = (0u64, 0u64);
         let mut result = Ok(());
-        for rec in entry.done.records.iter().filter(|r| !r.uuid.is_empty()) {
+        // 会话内查找（主窗口与查看器的查找面板）不收 agent 回报：那一种只在全局搜索里单列（历史页「搜内容时」）。
+        for rec in entry
+            .done
+            .records
+            .iter()
+            .filter(|r| !r.uuid.is_empty() && !r.rt.report)
+        {
             let Some((kind, hit)) = record_hit(&rec.rt, q, include_tools) else {
                 continue;
             };
@@ -678,8 +688,7 @@ fn session_hits_in(
     for rec in entry.done.records.iter().chain(entry.tail.records.iter()) {
         // scope 过滤：想要 user 却是 assistant（或反之）→ 跳过。
         if let Some(s) = opts.scope.as_deref() {
-            let want_user = s == "user";
-            if want_user == rec.rt.is_assistant {
+            if !in_scope(s, &rec.rt) {
                 continue;
             }
         }
@@ -789,6 +798,8 @@ fn session_row(
 /// 一条 user / assistant 记录拿去搜的两段文本（从 `session_hits_in` 里拆出来）。
 pub(crate) struct RecordText {
     pub(crate) is_assistant: bool,
+    /// user 那侧的这一条是 agent 回报（同一会话里子 agent 交回 / 发来的话 · 另一个会话发来的话），不是人说的。
+    pub(crate) report: bool,
     /// 正文：assistant 是文本块；user 那侧只有人说的话（`agents::human_speech`）。按 `MAIN_CAP` 截断。
     pub(crate) main: String,
     /// 工具内容（tool_use 入参 / tool_result 输出 / thinking），按 `TOOL_CAP` 截断；不搜工具时空串。
@@ -808,13 +819,23 @@ pub(crate) fn record_text(v: &Value, include_tools: bool) -> Option<RecordText> 
     let content_v = v.get("message").and_then(|m| m.get("content"));
     // 搜的是记录树那一家的记录。
     let kind = crate::agents::record_tree_kind().unwrap_or_default();
-    // user 那侧只搜人说的话（agent 发来的 · 后台通知 · 系统注入都不算 user 命中）。
-    let raw_main = if is_assistant {
-        content_v
-            .map(|c| crate::agents::main_text(kind, c))
-            .unwrap_or_default()
+    // user 那侧：人说的话是 user 命中；agent 回报（子 agent 交回 / 发来的话 · 另一个会话发来的话）单列一种（`report`）；
+    //   后台通知 · 系统注入都不搜。谁说的由适配层判（`agents::user_text_of` 的 `speaker`）。
+    let (raw_main, report) = if is_assistant {
+        (
+            content_v
+                .map(|c| crate::agents::main_text(kind, c))
+                .unwrap_or_default(),
+            false,
+        )
     } else {
-        crate::agents::human_speech(kind, v).unwrap_or_default()
+        match crate::agents::human_speech(kind, v) {
+            Some(said) => (said, false),
+            None => match crate::agents::user_text_of(kind, v).and_then(report_text) {
+                Some(said) => (said, true),
+                None => (String::new(), false),
+            },
+        }
     };
     let main = search_rules::truncate_plain(&raw_main, MAIN_CAP);
     let tool = if include_tools {
@@ -831,13 +852,33 @@ pub(crate) fn record_text(v: &Value, include_tools: bool) -> Option<RecordText> 
     };
     Some(RecordText {
         is_assistant,
+        report,
         main,
         tool,
     })
 }
 
+/// 这一条来话是 agent 回报（搜索里单列的那一种）⇒ 搜它的正文（框里那一段，适配层给的 `body`；没有就原文）。
+fn report_text(u: crate::agents::UserText) -> Option<String> {
+    match u.speaker {
+        crate::agents::Speaker::AgentMessage { body, .. }
+        | crate::agents::Speaker::PeerSession { body, .. } => Some(body.unwrap_or(u.text)),
+        _ => None,
+    }
+}
+
+/// `scope` 留不留这一条：`user` 人说的 · `assistant` 那一家说的 · `report` agent 回报。
+pub(crate) fn in_scope(scope: &str, rt: &RecordText) -> bool {
+    match scope {
+        "user" => !rt.is_assistant && !rt.report,
+        "assistant" => rt.is_assistant,
+        "report" => rt.report,
+        _ => true,
+    }
+}
+
 /// 命中判定：先看正文、再看工具内容（大小写不敏感子串）。命中 ⇒ `(种类, 命中的那段文本)`，
-/// 种类是 `"user"` / `"assistant"` / `"tool"`（与 `Hit.kind` 同一套词）。`q_lc` 已小写、已 trim。
+/// 种类是 `"user"` / `"assistant"` / `"report"` / `"tool"`（与 `Hit.kind` 同一套词）。`q_lc` 已小写、已 trim。
 /// 工具内容只在 `include_tools` 时看（索引里的那一格可能抽过工具文本，不看时当它是空串）。
 pub(crate) fn record_hit<'a>(
     rt: &'a RecordText,
@@ -845,7 +886,14 @@ pub(crate) fn record_hit<'a>(
     include_tools: bool,
 ) -> Option<(&'static str, &'a str)> {
     if rt.main.to_lowercase().contains(q_lc) {
-        return Some((if rt.is_assistant { "assistant" } else { "user" }, &rt.main));
+        let kind = if rt.is_assistant {
+            "assistant"
+        } else if rt.report {
+            "report"
+        } else {
+            "user"
+        };
+        return Some((kind, &rt.main));
     }
     if include_tools && !rt.tool.is_empty() && rt.tool.to_lowercase().contains(q_lc) {
         return Some(("tool", &rt.tool));
@@ -919,7 +967,7 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
         else {
             continue;
         };
-        let Some(rt) = record_text(&v, include_tools) else {
+        let Some(rt) = record_text(&v, include_tools).filter(|rt| !rt.report) else {
             continue;
         };
         let Some((kind, hit)) = record_hit(&rt, &q, include_tools) else {

@@ -66,7 +66,7 @@ async function mount(lines: RigPayload[], outline?: string[]): Promise<SessionVi
     .filter((p) => (p.message as { type?: string }).type === "user")
     .map((p) => (p.message as { uuid: string }).uuid))
     .map((u) => outlineEntry(u, text(lines.find((p) => (p.message as { uuid?: string }).uuid === u)!)));
-  const v = new SessionViewer(() => {});
+  const v = new SessionViewer();
   document.body.appendChild(v.element);
   await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL_ORIGIN, suppressBranch: true });
   await settleOutline();
@@ -124,7 +124,7 @@ describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不
 
   it("后端要不到（老后端 / 本机后端不在）⇒ 灰掉、原因挂在开关提示上", async () => {
     viewerRig.chunk = [userLine(1, "u1", "第一句")];
-    const v = new SessionViewer(() => {});
+    const v = new SessionViewer();
     document.body.appendChild(v.element);
     outlineBackend.available = false;
     outlineBackend.reason = "本机后端不在";
@@ -136,7 +136,7 @@ describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不
     //   那句话由 `session-reads.ts` 说（原因文字只在 `refused` 那一档原样带过来，下一格量它）。
     expect(toggleOf(v).title).toContain("后端版本旧");
     // 瞬时那一档（对端说「不行」）：原因原样带上。
-    const w = new SessionViewer(() => {});
+    const w = new SessionViewer();
     document.body.appendChild(w.element);
     outlineBackend.failure = "transport";
     await w.load({ jsonlPath: "/p/s2.jsonl", displayTitle: "T", origin: LOCAL_ORIGIN, suppressBranch: true });

@@ -57,7 +57,7 @@ const gaps = (root: HTMLElement) =>
 
 async function mount(scrollToUuid?: string): Promise<SessionViewer> {
   viewerRig.chunk = payloads();
-  const v = new SessionViewer(() => {});
+  const v = new SessionViewer();
   document.body.appendChild(v.element);
   await v.load({
     jsonlPath: "/p/s1.jsonl",

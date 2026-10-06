@@ -167,24 +167,15 @@ const CHANNELED: &[(&str, &str)] = &[
         "后端出成品 `{trusted, known}`（CLI 那一臂同一个函数）；替掉最后两条逐次拨号的 `--account-trust*`，\
          界面经 `src/frontend/ui/account-reads.ts::checkTrust` 问",
     ),
-    // 历史跨机 join 那两条（注解读写者换成本机常驻后端，它经 `remote_ask` 问远端那台、
-    //   并上注解、出成品）—— 从 [`HELD_BACK`] 挪过来：「远端那台的后端出不了成品」那条理由由「问**本机**后端、带 `origin`」解开了。
-    (
-        "history-projects",
-        "本机常驻后端出成品 `{rows, notice}`（`history_join.rs`：记录树 ＋ Codex 合成 ＋ pidfile 判活 ＋ 远端经 `remote_ask`，\
-         并上本机注解）；monitor 那份 join（`history_project_from_row` 一族）与两条 Tauri 命令删了，界面经 `src/frontend/ui/history-reads.ts` 问 `<local>`",
-    ),
-    (
-        "history-sessions",
-        "同 `history-projects`：会话行口径收成后端一份（`analyze_session`，本机与远端同一个函数），monitor 那份 `analyze_jsonl` /\
-         `remote_session_entry` 删了",
-    ),];
+];
 
 /// **帧面只读查询那一族之外**、同样改成「前端经通道直接问、后端出成品」的帧命令 ——
 /// `(帧命令, 为什么迁、迁了之后解释住哪)`。它们不在 [`MOVED`] 里（不是 `C1` 那一族），但前端 `chan.call` 的
 /// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
 /// 每一条还要**真的**是后端登记的帧命令（从后端 `stream/inbound/` 生产段数，异源）、monitor 生产段里**零**字面量。
 const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
+    // 历史页的平铺清单（`src/frontend/ui/history-list-reads.ts`）：本机后端出成品（判活 · 每行能做什么 · 分组 · 搜标题），远端经它问那台。
+    ("history-list", "新帧命令：一台的全部会话一次给（`history_list.rs`），界面问 `<local>`、远端带 `origin`；取代按项目逐个展开的那两问"),
     // 额度与轮换（`src/frontend/ui/quota-reads.ts`）：额度账 · 轮换都是那台后端账号域自己的状态，monitor 从没有过这几条命令。
     ("quota-read", "新帧命令：那台的额度账 ＋ 显示态（判在后端）；界面状态栏按钮 · 悬停卡 · 账号面板只排版"),
     ("rotation-read", "新帧命令：那台的默认轮换（面板「默认」那一份只读显示）"),
@@ -696,6 +687,19 @@ fn backend_registered_commands() -> std::collections::BTreeSet<String> {
 /// `history-sessions` 的设计写在（「本机后端问远端后端」那一跳今天不存在，报备中）；
 /// `history-read` / `history-subagents` 等后端二次拆包；`history-tail` 归 CF2。⇒ 今天五行。
 /// `history-projects` / `history-sessions` 做了（「本机后端问远端后端」那一跳由 `remote_ask` 造出来）⇒ 今天三行。
+/// 上过帧面、**界面今天不再问**的那几条：`(帧命令, 为什么)`。后端那一条还在（CLI 面也还在），
+/// 界面那一侧零发送点 —— 下面那条两向判据的「前端那一侧」不算它们。这张表只许缩：后端那一条删了 ⇒ 这一行跟着删。
+const UNUSED_BY_UI: &[(&str, &str)] = &[
+    (
+        "history-projects",
+        "历史页照稿重做：清单改问平铺的 `history-list`（一台一次给全部会话），不再按项目逐个展开；后端这一条留给单独一刀删",
+    ),
+    (
+        "history-sessions",
+        "同 `history-projects`（按项目展开那一问随旧历史页一起不问了）",
+    ),
+];
+
 const HELD_BACK: &[(&str, &str)] = &[
     // `accounts-list` 那一行挪进了 [`CHANNELED`]（账号域搬家做了：后端出成品、并它自己那份表）。
     // `history-projects` / `history-sessions` 两行挪进了 [`CHANNELED`]（跨机 join 进了本机常驻后端）。
@@ -793,6 +797,7 @@ fn the_eight_are_partitioned_into_channeled_and_held_back() {
     let mut both: Vec<String> = CHANNELED
         .iter()
         .chain(HELD_BACK)
+        .chain(UNUSED_BY_UI)
         .map(|(c, _)| c.to_string())
         .collect();
     let n = both.len();
@@ -803,8 +808,11 @@ fn the_eight_are_partitioned_into_channeled_and_held_back() {
         n,
         "同一条帧命令同时在「已迁」与「未迁」两张表里"
     );
-    assert_eq!(both, moved, "已迁 ⊔ 未迁 != C1 的八条（`MOVED` 右列）");
-    for (c, why) in CHANNELED.iter().chain(HELD_BACK) {
+    assert_eq!(
+        both, moved,
+        "已迁 ⊔ 未迁 ⊔ 界面不再问 != C1 的八条（`MOVED` 右列）"
+    );
+    for (c, why) in CHANNELED.iter().chain(HELD_BACK).chain(UNUSED_BY_UI) {
         assert!(!why.trim().is_empty(), "`{c}` 没写理由");
     }
 }

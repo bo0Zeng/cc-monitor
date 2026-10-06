@@ -113,6 +113,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-selection.ts", // 多选的选中集合 ＋ 锚点
     "src/frontend/ui/tab-session-actions.ts",
     "src/frontend/ui/tab-session-facts.ts",
+    "src/frontend/ui/session-face.ts", // 历史页那一行的「需要你」徽标问它（`needsWordOf`：与标签页行同一份 `needsOf` · `needsWord`）
     "src/frontend/ui/tab-session-state.ts", // 会话状态只经 `nextState` 改（转移表）＋ 关 / 拉前两道谓词
     "src/frontend/ui/tab-store.ts",
     "src/frontend/ui/tab-stream-view.ts",
@@ -217,6 +218,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端各给哪几项（原先是 backend-policy 的 LOCAL_ORIGIN ＋ 各处 `=== null`）
     "src/frontend/ui/launch-menu.ts",
     "src/frontend/ui/remote-launch-run.ts",
+    "src/frontend/ui/resume-menu.ts", // 「恢复 ▸」那一组选项怎么摆（历史页「恢复 ▾」同一个组件）
     "src/frontend/ui/tab-bar-prefs.ts", // 「加入集合 / 新建集合」到上界 ⇒ `sayCollectionRefusal`
     "src/frontend/ui/tab-collections.ts",
     "src/frontend/ui/kit/menu.ts",

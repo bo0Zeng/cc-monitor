@@ -444,6 +444,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "deploy-retired",   // 真异步（沿池里那条 SSH 开 SFTP），在 await 点可取消
         "remote-reach",
         "history-projects",
+        "history-list",
         "history-sessions",
         // 端口转发：起 = 真异步（拨号 / 等 ack），停 / 列 = 纯内存一把锁 ⇒ 都在普通 spawn 上。
         "forward-start",
@@ -721,6 +722,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 读族第十条：分块读回（同步 I/O）。
         "files-read-chunk",
         "history-projects",
+        "history-list",
         "history-index",
         "history-user-inputs",
         "history-find",

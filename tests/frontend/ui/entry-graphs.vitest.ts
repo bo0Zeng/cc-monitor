@@ -499,7 +499,7 @@ function builtClasses(win: Win): Set<string> {
 /** 设置窗的 CSS 里不许出现的类族（前缀；`^tab$` 这种精确名也按前缀写，靠 `-` 边界区分）。 */
 const CSS_FORBIDDEN_IN_SETTINGS = ["hljs", "katex", "tab", "card", "code-block", "code-copy", "stream", "block-", "branch-fold", "live-dot"];
 /** viewer 的 CSS 里不许出现的类族。 */
-const CSS_FORBIDDEN_IN_VIEWER = ["settings-panel", "settings-body", "kb-editor", "history-view", "history-entry", "grid-monitor-cell", "command-bar", "ext-", "accounts-row"];
+const CSS_FORBIDDEN_IN_VIEWER = ["settings-panel", "settings-body", "kb-editor", "grid-monitor-cell", "command-bar", "ext-", "accounts-row"];
 function familyHits(classes: Set<string>, fam: string): string[] {
   return [...classes].filter((c) => (fam.endsWith("-") ? c.startsWith(fam) : c === fam || c.startsWith(`${fam}-`)));
 }
@@ -716,6 +716,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/acct.module.css": { stacked: true, why: "状态栏账号按钮 `.acctChip` 叠在全局 `.status-account` 上（account-chip.ts 里 btn.className 同时挂两样）；面板里经小工具函数挂的类量具认不出挂到哪，按「叠」算" },
   "src/frontend/ui/acct-session.module.css": { stacked: true, why: "换号条 · 提示条：类经小工具函数挂，量具认不出挂到哪，按「叠」算（实际只挂自己的哈希类）" },
   "src/frontend/ui/tab-quota.module.css": { stacked: false, why: "tab 标题后 `✕ 5h` 那一格：只挂自己的哈希类（不叠全局类）" },
+  "src/frontend/ui/views/history.module.css": { stacked: true, why: "历史页根上同时挂全局 `history-view`、搜索框挂 `history-search`（只当截图 / 端到端找它的钩子，全局 CSS 里没有这两条）" },
   "src/frontend/ui/live-card.module.css": { stacked: false, why: "活卡（`live-card-view.ts` 画）：卡 / 顶上那行 / 正文只挂自己的哈希类（不叠全局类）" },
   "src/frontend/ui/needs-bar.module.css": { stacked: false, why: "「需要你」钉条（`needs-bar.ts`）：只挂自己的哈希类" },
   "src/frontend/ui/session-head.module.css": { stacked: false, why: "会话头（`session-head.ts`）：只挂自己的哈希类" },
@@ -736,6 +737,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/kit/list-row.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/menu.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/meter.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/popover.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/progress.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/skeleton.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/status-dot.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
@@ -750,19 +752,20 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
  * 没登记又不在任何窗口里 ⇒ 照旧红。只许缩。
  */
 const KIT_AWAITING_FACES: ReadonlySet<string> = new Set(
-  // banner · drawer · fold · meter · tabs 已由主窗口的「账号」面板用上；badge · status-dot 由标签页栏（状态点 · 机器徽标 · 「需要你」计数）用上。
-  // progress 由消息流过程里那一步的「在跑」转圈用上（主窗口第 2 批）。
-  ["block", "card", "chip", "empty", "field", "list-row", "skeleton", "switch"].map(
+  // banner · drawer · fold · meter · tabs 已由主窗口的「账号」面板用上；badge · status-dot 由标签页栏（状态点 · 机器徽标 · 「需要你」计数）用上；
+  // progress 由消息流过程里那一步的「在跑」转圈用上（主窗口第 2 批）；empty · skeleton · switch 由历史页（空态 · 骨架 · 筛选里的勾与单选）用上。
+  ["block", "card", "chip", "field", "list-row"].map(
     (k) => `src/frontend/ui/kit/${k}.module.css`,
   ),
 );
 
 /** 已有面用上、但其中一形还没有面的 kit 件：那一形的类今天产物 JS 里没有（两向：用上了就从这里摘）。 */
 const KIT_PARTIAL: Readonly<Record<string, readonly string[]>> = {
-  // 分段按钮（C23）账号面板用上了；分栏（C5）那一形还没有面。
-  "src/frontend/ui/kit/tabs.module.css": ["tabs"],
-  // 转圈（在跑的那一步）消息流用上了；进度条（C17）那一形还没有面。
+  // （分段按钮 C23 账号面板用上了，分栏 C5 那一形由历史页「按时间 | 按项目」用上了 ⇒ tabs 那一条摘了。）
+  // 转圈（`spinner`）消息流与历史页都用上了；进度条（C17）那一形还没有面。
   "src/frontend/ui/kit/progress.module.css": ["progressFill", "progressReadout", "progressRow", "progressTrack"],
+  // 勾与单选（`checkbox` · `radio`）历史页的筛选用上了；开关那一形还没有面。
+  "src/frontend/ui/kit/switch.module.css": ["swRow", "swSwitch", "swText"],
 };
 
 describe("〔UC2〕CSS Modules 在构建产物里（件 10）", () => {
@@ -942,7 +945,7 @@ describe("子步 3 · 层真包进去（对构建产物）", () => {
 describe("图标：打进产物的只有用到的那几个", () => {
   const ICON_TS = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/kit/icon.ts"), "utf8");
   /** 登记表里导入的 svg 文件名。 */
-  const registered = [...ICON_TS.matchAll(/@phosphor-icons\/core\/assets\/regular\/([a-z0-9-]+)\.svg\?raw/g)].map((m) => m[1]);
+  const registered = [...ICON_TS.matchAll(/@phosphor-icons\/core\/assets\/(?:regular|fill)\/([a-z0-9-]+)\.svg\?raw/g)].map((m) => m[1]);
   /** 登记表的名字（`SVG` 那张表的键）。 */
   const names = [...(/const SVG = \{([^}]*)\}/.exec(ICON_TS)?.[1] ?? "").matchAll(/^\s*(\w+):/gm)].map((m) => m[1]);
 
@@ -950,7 +953,7 @@ describe("图标：打进产物的只有用到的那几个", () => {
     const built = new Set<string>();
     for (const win of Object.keys(WINDOWS) as Win[])
       for (const id of CLOSURES[win].modules) {
-        const m = /@phosphor-icons\/core\/assets\/regular\/([a-z0-9-]+)\.svg/.exec(id);
+        const m = /@phosphor-icons\/core\/assets\/(?:regular|fill)\/([a-z0-9-]+)\.svg/.exec(id);
         if (m) built.add(m[1]);
         expect(id.includes("@phosphor-icons/core/dist"), `整包进了产物：${id}`).toBe(false);
       }

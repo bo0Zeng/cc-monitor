@@ -307,10 +307,90 @@ pub(crate) fn list_sessions_into(
         if !p.is_file() || !crate::agents::claudecode::records::is_session_file(&p) {
             continue;
         }
-        let meta = analyze_session(&p);
+        let meta = analyze_session_cached(&p);
         writeln!(out, "{meta}").map_err(|e| format!("stdout write failed: {e}"))?;
     }
     Ok(())
+}
+
+/// 平铺清单（`history-list`）那一份：这台**每个**记录目录 ⇒ `(目录名, 那一目录的会话行 | 读不了的那一句)`。
+/// 会话行同 `--list-sessions`（同一个 [`list_sessions_into`]），`cwd` 换成按 [`group_by_cwd`] 归的那一组 ——
+/// 与项目清单同一个分组（记录目录名会撞，按真实目录分）；归到藏起来的那个目录（[`hidden_cwd`]）的不出。
+/// 记录树根不在 ⇒ `Ok(None)`（这台还没起过会话，同 [`list_projects_into`]）。
+pub(crate) fn sessions_by_dir(
+    agent_home: &Path,
+) -> Result<Option<Vec<(String, Result<Vec<serde_json::Value>, String>)>>, String> {
+    let root = projects_root(agent_home);
+    let entries = match std::fs::read_dir(&root) {
+        Ok(it) => it,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(unreadable_dir(&root, &e)),
+    };
+    let mut out = Vec::new();
+    for entry in entries.flatten() {
+        if !entry.path().is_dir() {
+            continue;
+        }
+        let dir_name = entry.file_name().to_string_lossy().into_owned();
+        let mut buf = Vec::new();
+        let rows = list_sessions_into(agent_home, &dir_name, &mut buf).map(|()| {
+            let mut rows: Vec<serde_json::Value> = String::from_utf8_lossy(&buf)
+                .lines()
+                .filter_map(|l| serde_json::from_str(l).ok())
+                .collect();
+            let keys: Vec<(Option<String>, i64)> = rows
+                .iter()
+                .map(|v| {
+                    (
+                        v["cwd"].as_str().map(str::to_string),
+                        v["updatedAtMs"].as_i64().unwrap_or(0),
+                    )
+                })
+                .collect();
+            for (v, cwd) in rows.iter_mut().zip(group_by_cwd(&keys)) {
+                v["cwd"] = serde_json::json!(cwd);
+            }
+            rows.retain(|v| !hidden_cwd(v["cwd"].as_str().unwrap_or_default()));
+            rows
+        });
+        if matches!(&rows, Ok(r) if r.is_empty()) {
+            continue;
+        }
+        out.push((dir_name, rows));
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(Some(out))
+}
+
+/// 一份记录扫一遍出的那一行，按（长度 · 修改时刻）记着：没变就不再整份扫。
+/// 常驻进程里平铺清单（`history-list`）每次都要过这台**全部**会话，[`analyze_session`] 是整份流式扫；
+/// 一次性进程里这张表只活一趟（等于没有）。`updatedAtMs` 就是修改时刻 ⇒ 键没变、那一行就没变。
+static SESSION_META: std::sync::Mutex<
+    std::collections::BTreeMap<PathBuf, (u64, Option<std::time::SystemTime>, serde_json::Value)>,
+> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+/// [`SESSION_META`] 的上限（条）：超了整张清掉重来（不做淘汰次序 —— 一台上会话数到这个量级之前它都不会触发）。
+const SESSION_META_CAP: usize = 50_000;
+
+/// [`analyze_session`] 过一层 [`SESSION_META`]。
+fn analyze_session_cached(p: &Path) -> serde_json::Value {
+    let Ok(md) = std::fs::metadata(p) else {
+        return analyze_session(p);
+    };
+    let key = (md.len(), md.modified().ok());
+    let lock = || SESSION_META.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((len, at, v)) = lock().get(p) {
+        if (*len, *at) == key && key.1.is_some() {
+            return v.clone();
+        }
+    }
+    let v = analyze_session(p);
+    let mut t = lock();
+    if t.len() >= SESSION_META_CAP {
+        t.clear();
+    }
+    t.insert(p.to_path_buf(), (key.0, key.1, v.clone()));
+    v
 }
 
 // **围栏住 `observe/fence.rs`**〔审计 F 🔴-6〕：这里原来是具名围栏

@@ -37,13 +37,8 @@ export const LS_KEYS = {
   //    零读写（`AL1d.md §5` 第 6 条）。盘上遗留的值无人再读（条 80：不为盘上已有状态留兼容 ⇒ 不写清理，让它自然作废）。
   /** Batch5-F19：上次所在 tab 的 sid——启动 active 选择 + replay 优先级。 */
   lastActiveSid: "cc-monitor.last-active-sid",
-  /** F86(#45)：历史来源筛选——被隐藏的来源 key 列表（origin ?? ""），跨重启保持。 */
-  historyHiddenOrigins: "cc-monitor.history.hidden-origins",
-  /** F86(#45)：历史来源大区折叠偏好覆盖表（key=origin ?? ""，缺键=走默认：本地展开/远端折叠）。 */
-  historyOriginOpen: "cc-monitor.history.origin-open",
-  /** F76b(#46)：历史远端「来源列表」快照持久化（`{projects,loadedAt}`）——跨启动**首开**也暖、不再
-   *  只本地。hydrate 时把 loadedAt 归 0 → 持久快照只作首帧暖绘、首开必刷新一次(不影响新鲜度)。 */
-  historyRemoteSources: "cc-monitor.history.remote-sources",
+  /** 历史页的界面偏好（看法 · 筛选：机器 · 时间 · 排序 · 显示已隐藏 · 搜内容时）。纯界面偏好，丢了回到默认。 */
+  historyPrefs: "cc-monitor.history.prefs",
   /** F84b-fix(batch18)：命令栏可发现 chip 是否已被用户见过——首运行给一次性微高亮，之后不再。 */
   cmdkHintSeen: "cc-monitor.cmdk-hint.seen",
   /** S3(settings-ia)：机器列表行上那几个状态格子的账本（origin → facet → 结论+时刻）。

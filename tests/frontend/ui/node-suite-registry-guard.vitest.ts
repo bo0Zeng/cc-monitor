@@ -86,9 +86,6 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   // **38 → 37**：`isValidSessionId` 那条随函数删；三条「非法 sid ⇒ throw」改测「前端不判、resumeSid 单报」（条数不变）。
   ["test:remote-launch", "tests/frontend/ui/remote-launch.test.ts", 8], // −1：「只有目录没有名字 ⇒ 只交目录」那条随按目录交号那一形删 // −1：读 e2e 换号重启替身源码的那条漂移守卫随替身删（换号重启下沉后端，e2e 直接驱动后端） // 28 → 10：起会话只剩那一行 `ccm …`，请求形状收成每条路径一条（载荷 / 外层 / 嵌套 env 那几格随载荷渲染删了） // −6：TS 铸名口（`mintTmuxName` · `mintSessionTmuxName` · `deriveTmuxName`）随派生 ＋ 避让搬进后端，七条删、一条「请求逐字用传进来的名」留下（逐格归 `plan_tests.rs`） // −3：TS 两个 tmux 名谓词的三条逐格搬进 gate-core
   ["test:format", "tests/frontend/ui/format.test.ts", 11], // +1：basename 随老 SFTP 面板退役从 sftp/paths 搬进 format.ts，判据一起搬来
-  ["test:history-cache", "tests/frontend/ui/views/history-cache.test.ts", 8],
-  ["test:history-prefs", "tests/frontend/ui/views/history-prefs.test.ts", 18],
-  ["test:history-actions", "tests/frontend/ui/views/history-actions.test.ts", 10],
   // 🔴 〔删用量 09-18〕原先这里有 `["test:usage-pivot", "tests/frontend/ui/views/usage-pivot.test.ts", 14]`。
   // 用量 ② 轴整轴退役 ⇒ 套件文件整删（**被测对象没了**，不是把测试删光了）。
   // ⚠ **`package.json` 那一半不在本轮写区里**：`test:usage-pivot` 与 `test:usage-probe`
@@ -156,9 +153,13 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
 // **110 → 111**：`context-limit.test.ts` +1（`contextTokensText`）。往上棘到现打值。
 // **111 → 110**（被测对象没了）：`remote-launch.test.ts` −1，e2e 换号重启替身连同读它的那条漂移守卫一起删了。
 // **110 → 109**（被测对象没了）：`remote-launch.test.ts` −1，按目录交号那一形删了。
-// **109 → 106**（**被测对象没了**）：`cards/api-error.test.ts` 5 → 2（报错对象两种形状的解析 `describeRetryError` 删了：原因种类进后端
-// `agents/claudecode/steps.rs::api_reason`，判据在 `steps_tests.rs`；并条与结局的 DOM 那两条挪进 `main-window-behavior.vitest.ts`）。删后现打 106 ⇒ 棘到现打值。
-const TOTAL_FLOOR = 106;
+// **109 → 70**（**被测对象没了**，两路合在一起）：
+// · `cards/api-error.test.ts` 5 → 2（报错对象两种形状的解析 `describeRetryError` 删了：原因种类进后端
+//   `agents/claudecode/steps.rs::api_reason`，判据在 `steps_tests.rs`；并条与结局的 DOM 那两条挪进 `main-window-behavior.vitest.ts`）；
+// · 历史页照稿重做，旧历史页的三个纯模块（`history-cache` 8 · `history-prefs` 18 · `history-actions` 10）连同三份 `.test.ts` 整删
+//   （清单与「能做什么」由后端 `history-list` 出，界面那一侧的判据在 `tests/frontend/ui/views/history-page.vitest.ts`）。
+// 删后现打 70 ⇒ 棘到现打值。
+const TOTAL_FLOOR = 70;
 
 /** 判定一条 npm 命令是不是「用 tsx 跑某个 `.test.ts`」。`tsx …` 与 `npx tsx …` 都算。 */
 const TSX_SUITE_CMD = /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*(\S+\.test\.ts)\s*$/;

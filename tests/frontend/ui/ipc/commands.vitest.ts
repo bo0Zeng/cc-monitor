@@ -486,23 +486,25 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
 describe("本机起会话的主路：交「跟随」给本机后端、界面一条 pin 都不写（驱动真的 HistoryView / TabManager）", () => {
   const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
-  function proj(): Record<string, unknown> {
-    return { projectPath: "/p", projectName: "P", projectDir: "pd", sessionCount: 2, starredCount: 0, hiddenCount: 0, lastActivity: 1, hasLive: false };
-  }
-  function entry(): Record<string, unknown> {
-    return { agent: "claude", sessionId: "s1", projectPath: "/p", projectName: "P", aiTitle: "T", firstUserExcerpt: "x", startedAt: 1, updatedAt: 1, jsonlPath: "/p/s1.jsonl", isLive: false, messageCountApprox: 1, starred: false, hidden: false };
+  /** 历史页的一行（`history-list` 成品那一形，本机、已结束、能恢复）。 */
+  function row(): Record<string, unknown> {
+    return {
+      agent: "claude", agentTag: null, sessionId: "s1", projectDir: "pd", projectPath: "/p", projectName: "P", group: "claude:/p",
+      aiTitle: "T", firstUserExcerpt: "x", title: "T", label: "T", untitled: false, startedAt: 1, updatedAt: 1, at: 1,
+      jsonlPath: "/p/s1.jsonl", messageCountApprox: 1, isBg: false, starred: false, customTitle: null, hidden: false,
+      status: "ended", can: { resume: "yes", accounts: true, fork: true, delete: "yes" },
+    };
   }
 
-  /** 造一行、开右键菜单、点 `label` 那一条，然后把异步链排空。 */
+  /** 开一行的 ⋯ 菜单、点 `label` 那一条，然后把异步链排空。 */
   async function clickRowAction(label: string): Promise<void> {
     const view = new HistoryView();
-    const row = (view as unknown as { buildEntryRow(e: unknown, p: unknown): HTMLElement }).buildEntryRow(entry(), proj());
-    document.body.appendChild(row);
-    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+    (view as unknown as { menu(r: unknown, at: { x: number; y: number }): void }).menu(row(), { x: 5, y: 5 });
     const items = [...document.querySelectorAll<HTMLButtonElement>("[role^=menuitem]")];
     const btn = items.find((b) => b.textContent === label);
-    expect(btn, `右键菜单里没有「${label}」—— 实得 ${JSON.stringify(items.map((b) => b.textContent))}`).toBeTruthy();
+    expect(btn, `菜单里没有「${label}」—— 实得 ${JSON.stringify(items.map((b) => b.textContent))}`).toBeTruthy();
     btn!.click();
+    await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
   }
 
@@ -541,9 +543,9 @@ describe("本机起会话的主路：交「跟随」给本机后端、界面一�
   });
 
   it("★ 历史页 resume / 起新会话 · tab 栏 resume：交的都是「跟随」，界面一条 pin 都不写", async () => {
-    await clickRowAction("在新终端 resume");
+    await clickRowAction("恢复");
     expect(payloadOf("resume_history_session").account).toEqual({ kind: "follow" });
-    await clickRowAction("在该目录起新会话");
+    await clickRowAction("在此目录新建会话");
     expect(payloadOf("new_local_session").account).toEqual({ kind: "follow" });
     await resumeLocalTab("t1");
     expect(localLaunchCalls(invokeMock.mock.calls, "resume_history_session").map((c) => c.account)).toEqual([

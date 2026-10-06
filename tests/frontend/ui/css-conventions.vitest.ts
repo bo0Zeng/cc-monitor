@@ -195,7 +195,8 @@ describe("S30 ⑤ 自定义属性对账，两个方向", () => {
         "左边多 ⇒ 写错了变量名（那条声明会被浏览器整条丢弃）；右边多 ⇒ setProperty 设了个没人读的名字。",
     ).toEqual(fromTs);
     // 2 → 11：多了 `css-marks.ts` 那九个 `--mark-*`（CSS 伪元素里的符号从文案表来）；11 → 10：子菜单箭头改由图标件画（`--mark-submenu` 删）；10 → 10：已结束标题后那个记号随标签页栏重做删了（`--mark-ended`），会话头里「机器 · 目录 · 状态」之间的分隔点进来（`--mark-sep`）。
-    expect(fromTs.length, "TS 侧一个 setProperty 都没扫到 ⇒ 上面那条会变成「两边都空」的假绿").toBe(10);
+    // 10 → 9：历史页照稿重做，旧历史页给分叉缩进设的 `--fork-depth` 随旧页删了。
+    expect(fromTs.length, "TS 侧一个 setProperty 都没扫到 ⇒ 上面那条会变成「两边都空」的假绿").toBe(9);
   });
 
   it("② theme.ts 那 14 个旋钮，CSS 里必须都有默认值", () => {
@@ -368,16 +369,6 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "那一整套的显隐包装（本机与远端都用），刻意不挂类名（没有类就不会有裸 display 压过 [hidden]）",
   "src/frontend/ui/settings/config-surface-section.ts:457":
     "同一个包装，远端那台答不了时收起来（`showUnanswered`）",
-  // 行号随上方历史清单那几段改走通道挪了（1635 → 1617），那一处本身没动。
-  // `1612 → 1613`：`history.ts` 多一行 import（应用内对话框）；再 +5：`liveInTabs` 那一格；
-  // 上方「重新索引」按钮与等索引那一族删掉 ⇒ 行号挪了（合并主线后现打 1505）。那一处本身没动。
-  // 主线 1504 → 1506：上游搜索命中那一格改走 `data-kind`（多一行注释、一句拆两句），这一处本身没动。
-  // 1515 → 1516：`history.ts` 多一行 import（`launch-arrival`），这一处本身没动。
-  // 1516 → 1517：全文搜索那一处多一行注释（条数上限不在前端写），这一处本身没动。
-  // 1548 → 1554：删历史会话的三处确认带上「撤不回」（默认焦点在取消）＋ 多两行 import（按会话的那一家恢复）＋ 搜索卡片多一格 `agent`，这一处本身没动。
-  // 1554 → 1659：历史页上面那几段多了「没加载上」「按标题搜」「搜得不全说出来」的几十行，这一处本身没动。
-  "src/frontend/ui/views/history.ts:1653": // −4：右键菜单换成全产品那一份 ·
-    "`e.hidden = updated.hidden` —— 这一处根本不是「切某个组件的显隐」，是在把一条会话记录的 `hidden` 字段往回写",
 } as const;
 
 /**
@@ -524,6 +515,14 @@ const STATE_CLASS_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/frontend/ui/usage-hud.ts · classList.remove(s.high)":
     "CSS Modules（`usage-hud.module.css`）：`s.high` 是构建时哈希过的类名，不进全局命名空间，与 `data-*` 撞不了名",
   "src/frontend/ui/usage-hud.ts · classList.toggle(s.high, rounded >= 80)": "同上（逼近自动 compact 时的预警态）",
+  "src/frontend/ui/views/history-rows.ts · classList.add(s.hvDot)":
+    "CSS Modules（`history.module.css`）：给 kit 建的元素（状态点 · 徽标 · 按钮 · 提示条）挂本页的版位类；哈希过的类名，不是状态名",
+  "src/frontend/ui/views/history-rows.ts · classList.add(s.hvGroupNew)": "同上（项目头上的［＋ 新会话］）",
+  "src/frontend/ui/views/history-rows.ts · classList.add(s.hvMachine)": "同上（机器标签）",
+  "src/frontend/ui/views/history-rows.ts · classList.add(s.hvStar)": "同上（星标图标）",
+  "src/frontend/ui/views/history-rows.ts · classList.add(s.hvStrip)": "同上（列表顶的警示条）",
+  "src/frontend/ui/views/history.ts · classList.add(s.hvCount)": "同上（「筛选」上的数字徽标）",
+  "src/frontend/ui/views/history.ts · classList.add(s.hvViews)": "同上（「按时间 | 按项目」那一条分栏）",
 } as const;
 
 /** 名字形的已知违例（今天空：立格那一拍逮到的两处已改）。 */
