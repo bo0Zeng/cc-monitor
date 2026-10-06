@@ -19109,6 +19109,31 @@
       "zh": "找不到这台机器的数据目录，轮换配置无处可存。",
       "args": []
     },
+    "beQuotaProbe.agent.unsupported": {
+      "kind": "error",
+      "zh": "{agent}：无用量查询",
+      "args": ["agent"]
+    },
+    "beQuotaProbe.account.notFound": {
+      "kind": "error",
+      "zh": "{account}：不在账号库",
+      "args": ["account"]
+    },
+    "beQuotaProbe.account.apiKey": {
+      "kind": "error",
+      "zh": "{account}：按量号，无订阅用量",
+      "args": ["account"]
+    },
+    "beQuotaProbe.run.failed": {
+      "kind": "error",
+      "zh": "起 {program} 失败：{e}",
+      "args": ["program", "e"]
+    },
+    "beQuotaProbe.run.exit": {
+      "kind": "error",
+      "zh": "{program} 退出码 {exit}：{said}",
+      "args": ["program", "exit", "said"]
+    },
     "rsDataPaths.backend.quota": {
       "kind": "body",
       "zh": "额度账：各账号最近一次看到的用量与重置时刻",
@@ -20053,6 +20078,16 @@
       "kind": "body",
       "zh": "订阅号均满 → 超额",
       "args": []
+    },
+    "acct.hist.stint": {
+      "kind": "body",
+      "zh": "{w} 段预算 +{n}",
+      "args": ["w", "n"]
+    },
+    "acct.hist.preempt": {
+      "kind": "body",
+      "zh": "{name} 已恢复",
+      "args": ["name"]
     },
     "acct.hist.more": {
       "kind": "body",

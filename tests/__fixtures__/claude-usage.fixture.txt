@@ -1,0 +1,9 @@
+Current session: 3% used · resets Mar 7, 4pm (UTC)
+Current week (all models): 21% used · resets Mar 9, 7:30am (UTC)
+Current week (Fable): 0% used
+
+What's contributing to your limits usage?
+Approximate, based on local sessions on this machine — does not include other devices or claude.ai. Behaviors are independent characteristics, not a breakdown.
+
+Last 24h: 40% of your usage came from subagents
+Last 7d: 12% of your usage came from long sessions

@@ -283,6 +283,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "exit-policy-set"
                 // 额度账：读一份小文件（同步文件 I/O）。
                 | "quota-read"
+                // 用某个号查一次额度：起官方客户端并等它退出（期限 30 秒）＋ 锁里写额度账。
+                | "quota-probe"
                 // 轮换：读 / 锁里原子写 `rotation.json`（同步文件 I/O）。
                 | "rotation-read"
                 | "rotation-set"
@@ -507,6 +509,7 @@ fn every_registered_command_declares_its_run_kind() {
         "exit-policy-read",
         "exit-policy-set",
         "quota-read",
+        "quota-probe",
         "rotation-read",
         "rotation-set",
         "rotation-session-read",

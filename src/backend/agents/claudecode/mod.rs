@@ -49,7 +49,9 @@ pub mod paths;
 // 回包头里的额度那一族 → 通用的额度快照。
 pub(crate) mod quota;
 pub(crate) mod records;
+// 官方客户端报一个号的用量（`claude -p /usage`）→ 通用的额度窗口：命令行与读法。
 pub(crate) mod resume;
+pub(crate) mod usage;
 // 子运行（子 agent）的形状：对账键 · 归属 · 派出链接 · 记录住址 · 请求自报身份的头。
 pub(crate) mod runs;
 pub(crate) mod schema;
@@ -88,6 +90,8 @@ pub(crate) const UPSTREAM: super::DefaultUpstream = super::DefaultUpstream {
     context_mark: Some(("anthropic-beta", "context-1m")),
     quota: Some(quota::read),
     window_slot: Some(quota::slot_of),
+    window_key: Some(quota::key_of),
+    usage: Some(usage::FACE),
     login: Some(LOGIN),
     limit_reply: Some(quota::limit_reply),
 };

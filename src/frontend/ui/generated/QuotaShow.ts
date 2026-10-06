@@ -3,6 +3,7 @@ import type { LoginState } from "./LoginState";
 import type { QuotaKind } from "./QuotaKind";
 import type { QuotaState } from "./QuotaState";
 import type { SlotShow } from "./SlotShow";
+import type { WindowShow } from "./WindowShow";
 
 /**
  * 一个号的显示态。
@@ -23,4 +24,8 @@ slots: Array<SlotShow>, login: LoginState,
 /**
  * 同一订阅的稳定标识（账号身份的散列，不含原值）：两台看到的同一订阅它相同。订阅号读得出身份才有。
  */
-subId?: string, };
+subId?: string, 
+/**
+ * 各窗口照原名一格（`slots` 那两格照留：同一语义位几个窗口并成一格；这里一个窗口一格）；没有 ⇒ 缺。
+ */
+windows?: Array<WindowShow>, };

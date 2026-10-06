@@ -9,7 +9,8 @@
 //! # 它在 `readonly_guard` 第四层上（后端**自己的**状态，不是用户数据）
 //!
 //! 写口 [`ensure_private_dir`]：第四层别的模块调它不算越门（它们自己就是第四层）；第四层之外只有一扇门 ——
-//! `control/files_commit.rs` 建暂存区那两层。动词只有「建目录」这一件（带着权限位一次建成，`DirBuilder`，只许住本模块）。
+//! `control/files_commit.rs` 建暂存区那两层。写口 [`ensure_hidden_work_dir`]：门是 `faces/quota_probe_face.rs`（起官方客户端之前）。
+//! 动词只有「建目录」这一件（带着权限位一次建成，`DirBuilder`，只许住本模块）。
 
 use std::path::Path;
 
@@ -34,6 +35,18 @@ pub fn ensure_private_dir(dir: &Path) -> std::io::Result<()> {
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
         Err(e) => Err(e),
     }
+}
+
+/// 家（[`DIR_NAME`]）里那个**不出会话**的工作目录名：在那里跑的官方客户端（替号开额度窗口的那一句 · `quota-probe` 报用量的那一次）
+/// 历史页与会话列表都不出（观测侧按它藏）。
+pub const HIDDEN_WORK_DIR: &str = "autostart";
+
+/// 建好家里那个不出会话的工作目录（[`HIDDEN_WORK_DIR`]，一层、0700、已在不动），交回它的路径。
+/// 门只有一扇：帧命令 `quota-probe` 起官方客户端之前（`faces/quota_probe_face.rs`）。
+pub fn ensure_hidden_work_dir(data_home: &Path) -> std::io::Result<std::path::PathBuf> {
+    let dir = data_home.join(HIDDEN_WORK_DIR);
+    ensure_private_dir(&dir)?;
+    Ok(dir)
 }
 
 #[cfg(test)]

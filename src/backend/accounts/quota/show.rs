@@ -9,7 +9,7 @@
 //! | `near` | 有语义位的窗口用到 N%、未重置（同轮换的「到阈值」一个判法），或回包说越过了预警线 |
 //! | `ok` | 其余 |
 //!
-//! 另叠一格 `stale`：最后一次看到距今超过 [`STALE_AFTER`]。N 由调用方给：这台的账用默认轮换的 N，会话那一份用会话的 N；
+//! 另叠一格 `stale`：最后一次看到距今超过 [`STALE_AFTER`]。各窗口照原名的那几格（[`windows_of`]）由调用方按额度账那一条补上。N 由调用方给：这台的账用默认轮换的 N，会话那一份用会话的 N；
 //! 没设（满了才换）⇒ [`NEAR_DEFAULT`]。
 
 use super::decide::{self, Kind};
@@ -88,6 +88,66 @@ pub struct QuotaShow {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(test, ts(optional))]
     pub sub_id: Option<String>,
+    /// 各窗口照原名一格（`slots` 那两格照留：同一语义位几个窗口并成一格；这里一个窗口一格）；没有 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(test, ts(optional, as = "Option<Vec<WindowShow>>"))]
+    pub windows: Vec<WindowShow>,
+}
+
+/// 一个窗口（照原名）：窗口键 · 取整的百分比 · 几点重置 · 几点、从哪看到的 · 已重置未计时。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct WindowShow {
+    /// 那一家的窗口名（`five_hour` · `seven_day` · `seven_day_<模型>` · …）。
+    pub name: String,
+    /// 窗口键（`5h` · `7d` · `7d:<模型>`；轮换的上限 · 单段预算按它配）；不算用量窗口的（超额）⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
+    pub key: Option<String>,
+    /// 取整的百分比（已重置未计时 ⇒ 0）。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional))]
+    pub pct: Option<u32>,
+    /// 几点重置；有 ＝ 这个窗口在计时。
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    #[cfg_attr(test, ts(optional, type = "number"))]
+    pub resets_at: Option<u64>,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub seen_at: u64,
+    pub from: super::ledger::Source,
+    /// 重置时刻已过、之后没再看到：上次的数不再作数（用量当 0、窗口没开）。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
+    pub reset_since_seen: bool,
+}
+
+/// 额度账上一条的各窗口（照原名、照出现的次序）。
+pub(crate) fn windows_of(
+    o: &super::ledger::Observed,
+    key: &dyn Fn(&str) -> Option<String>,
+    now: u64,
+) -> Vec<WindowShow> {
+    o.reading
+        .windows
+        .iter()
+        .map(|w| {
+            let seen = o.window_seen(&w.name);
+            let reset = super::reset_since_seen(w.resets_at, now);
+            WindowShow {
+                name: w.name.clone(),
+                key: key(&w.name),
+                pct: w
+                    .used
+                    .map(|_| (decide::used_now(w, now) * 100.0).round().max(0.0) as u32),
+                resets_at: w.resets_at,
+                seen_at: seen.at,
+                from: seen.from,
+                reset_since_seen: reset,
+            }
+        })
+        .collect()
 }
 
 /// 「快满」的门槛：轮换是「到 N% 换」⇒ N；否则 [`NEAR_DEFAULT`]。
@@ -146,6 +206,7 @@ pub(crate) fn show(
             slots: Vec::new(),
             login: facts.login,
             sub_id: facts.sub_id,
+            windows: Vec::new(),
         };
     };
     let slots = slots_of(r, slot);
@@ -161,7 +222,7 @@ pub(crate) fn show(
                 .max_by_key(|x| x.pct.unwrap_or(0))
                 .map(|x| x.slot.clone())
         });
-    let passed = |t: Option<u64>| t.is_some_and(|t| t <= now);
+    let passed = |t: Option<u64>| super::reset_since_seen(t, now);
     let shown_reset = limiting
         .as_deref()
         .and_then(|l| slots.iter().find(|x| x.slot == l))
@@ -191,6 +252,7 @@ pub(crate) fn show(
         slots,
         login: facts.login,
         sub_id: facts.sub_id,
+        windows: Vec::new(),
     }
 }
 

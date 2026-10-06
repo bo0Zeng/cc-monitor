@@ -282,6 +282,8 @@ const UNIT: &[&str] = &[
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
 const SCAN: &[&str] = &[
+    // 官方客户端报用量的读法：读一份只采结构的夹具（`tests/__fixtures__/claude-usage.fixture.txt`）。
+    "tests/backend/agents/claudecode/usage_tests.rs",
     "tests/backend/control/kill_tests.rs", // INTEGRATION → SCAN：总期限那条挪进 `stream/caps_tests.rs`（走真分派），剩下的读跨语言金样
     "tests/backend/control/fork_launch_tests.rs", // 分叉之后起的推断（纯函数）＋ 读跨语言金样那一条
     "tests/frontend/ui/ext-reads.vitest.ts", // 扩展页几问走通道：严格收 ＋ 问对那台（假通道 ＋ 金样）
@@ -675,6 +677,8 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/accounts/quota/ledger_tests.rs",
     // 换号那一族的帧命令：默认轮换 · 一批会话的那一份 · 改会话轮换 · 不重启换（临时家目录、假凭据）。
     "tests/backend/faces/rotation_face_tests.rs",
+    // 用某个号查一次额度：PATH 上放一个假的官方客户端（临时家目录里真起它、真写 `quota.json`）。
+    "tests/backend/faces/quota_probe_face_tests.rs",
     // 轮换配置：整份收 · 钉号与记录 · 落盘与重读（临时目录里真写 `rotation.json`）。
     "tests/backend/accounts/quota/rotation_tests.rs",
     // 换号时请求体里的账号身份：读哪个号的 `.claude.json`（临时目录里真写）· 只换那几个字节。

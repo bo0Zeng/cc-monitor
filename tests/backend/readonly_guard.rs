@@ -1005,6 +1005,11 @@ mod tests {
              现在就换，只有这一族命令（帧面与派生的 CLI 面共用）",
         ),
         (
+            "faces/quota_probe_face.rs",
+            "用某个号查一次额度的帧面宿主（`quota-probe`，帧面与派生的 CLI 面共用）：官方客户端报的用量记进额度账（来源 `usage`，按窗口合并）· \
+             起它之前建好家里那个不出会话的工作目录 —— 用户 / AI / skill 按需调，不定时",
+        ),
+        (
             "relay/listen.rs",
             "中转起监听那一处（`prepare`，常驻后端进程内起中转；`--relay` 那一形删了）：**绑上口之后、说「在听」之前** \
              拿钥匙。它不是帧面命令 —— 钥匙是中转进门的前提，不是前端要改的值；只有绑上了口的那一个会写 ⇒ 不会两个中转抢着铸",
@@ -1071,11 +1076,16 @@ mod tests {
             "store::with_refresh_lock",
             "accounts/oauth/mod.rs",
         ),
-        // 额度账：写口是记一条观测的那一个函数，门是上游选择对中转的那个口。
+        // 额度账：写口是记一条观测的那一个函数，门是上游选择对中转的那个口；第二个来源（官方客户端报的用量）一个写口、一扇门。
         (
             "accounts/quota/ledger.rs",
             "ledger::record_seen",
             "accounts/upstream_select/mod.rs",
+        ),
+        (
+            "accounts/quota/ledger.rs",
+            "ledger::record_probe",
+            "faces/quota_probe_face.rs",
         ),
         // 账号轮换：中转换号那一路只从上游选择换号那一份进，帧面那一路只从换号的帧面宿主进。
         (
@@ -1126,6 +1136,12 @@ mod tests {
             "common/own_dir.rs",
             "common::own_dir::ensure_private_dir",
             "control/files_commit.rs",
+        ),
+        // 家里那个不出会话的工作目录：只在 `quota-probe` 起官方客户端之前建。
+        (
+            "common/own_dir.rs",
+            "common::own_dir::ensure_hidden_work_dir",
+            "faces/quota_probe_face.rs",
         ),
     ];
 
@@ -3157,6 +3173,16 @@ mod spawn_registry {
              **不是**后端进程自身写用户既有数据。只从帧命令 `sessions-start`（tmux 那一形、那台没有带着这个 sid 的会话）进来。",
             "缩性质",
             "起会话改由别的入口在后端起的那天摘掉。⚠ 不许往这一处底下加第二种用途 —— 它起的永远是本二进制的 ccm 那一趟。",
+        ),
+        (
+            "faces/quota_probe_face.rs",
+            "<非字面量>",
+            "`quota-probe`：起那一家的官方客户端报一次某个号的用量（Claude：`claude -p /usage`），程序名与参数来自适配层登记的那一形\
+             （`agents::usage_of`）、argv 直传不过 shell、stdin 空、期限 30 秒。它只读那个号的登录、问一次上游的用量，不发模型请求；\
+             工作目录是家里不出会话的那一个。**不是**后端进程自身写用户既有数据（官方客户端照它自己的样子用它自己的配置目录）。",
+            "缩性质",
+            "用量改由别的来源（如回包头里已经带着按模型的那几档）读得全、不再需要问官方客户端的那天摘掉。\
+             ⚠ 不许往这一处底下加第二种用途 —— 它起的永远是适配层登记的那一条报用量的命令。",
         ),
         (
             "control/resident.rs",

@@ -343,7 +343,7 @@ fn quota_read_adds_the_display_state_and_the_machine_summary() {
         keys,
         [
             "agent", "account", "seenAt", "reading", "kind", "state", "stale", "limiting", "slots",
-            "login", "subId"
+            "login", "subId", "windows"
         ]
         .into_iter()
         .collect()
@@ -506,4 +506,48 @@ fn an_api_account_without_a_key_needs_a_key_not_a_login() {
         .cloned()
         .expect("c 那一行");
     assert_eq!(c["login"], "needsLogin", "订阅号照旧");
+}
+
+/// ★ 会话事实补一格：换进来那一刻这个号各窗口的用量（基线）随会话持久；`rotation-session-read` 回这一段用了几个点
+/// （与单段预算并排）。新三格经 `rotation-set` 整份收、读回同形。
+#[test]
+fn a_switch_records_the_baseline_and_the_session_read_says_how_much_this_stretch_used() {
+    let home = Home::new("segment");
+    let ctx = home.ctx();
+    let set = answer_set_with(
+        &ctx,
+        &json!({"rotation": {"order": [{"start": true}, "b"], "enabled": ["b"], "when": "full",
+                             "stint": {"b": {"5h": 5}}, "preempt": true}}),
+    )
+    .expect("ok");
+    assert_eq!(set["rotation"]["stint"], json!({"b": {"5h": 5}}));
+    assert_eq!(set["rotation"]["preempt"], true);
+    home.saw(&ctx, "s-1");
+    seen(&ctx, "b", 0.30, None);
+    seen(&ctx, "a", 1.0, Some(now() + 600));
+    assert_eq!(hot_one(&ctx, "s-1", "b", now()), SwitchOutcome::Switched);
+    let s = ctx.hop.store.now().sessions["s-1"].clone();
+    assert_eq!(s.baseline["5h"].used, 0.30, "换进来那一刻 b 的 5h");
+    assert_eq!(
+        s.blocked_above,
+        ["a"],
+        "换进 b 那一刻挡在前面的：被拒着的 a"
+    );
+    seen(&ctx, "b", 0.33, None);
+    let got = answer_session_read_with(&ctx, &json!({"sids": ["s-1"]}), now()).expect("ok");
+    assert_eq!(
+        got["sessions"]["s-1"]["account"]["segment"],
+        json!([{"w": "5h", "base": 30, "spent": 3, "stint": 5}])
+    );
+    assert_eq!(
+        got["sessions"]["s-1"]["account"]["blockedAbove"],
+        json!(["a"])
+    );
+    assert_eq!(
+        got["sessions"]["s-1"]["quota"]["windows"][0]["key"], "5h",
+        "会话那一份的显示态也照原名出窗口"
+    );
+    // 盘上那份重读（后端重启）：基线还在。
+    let again = RotationStore::at(Some(home.root.join(rotation::FILE_NAME)));
+    assert_eq!(again.now().sessions["s-1"].baseline["5h"].used, 0.30);
 }

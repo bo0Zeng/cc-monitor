@@ -2086,10 +2086,15 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 
 #### 额度账与账号轮换（10-03）—— **账号域自己的状态，不是用户文件**
 
-用量只有一个来源：这台常驻后端里的中转经手的回包头。中转把每个回包的状态码与头交给上游选择（只读），
-上游选择按那一家的读法（Claude：`anthropic-ratelimit-unified-*` 一族，读法住适配层 `agents/claudecode/quota.rs`）
-翻成通用的额度快照，按「哪一家 · 哪个号」记进额度账 `~/.cc-monitor/quota.json`（家同 API key 凭据那一份）。
-写者只有中转那一路；没走中转的会话（用户自己设了上游地址、或关了注入）看不到。API key 号的回包不带这一族头 ⇒ 只在被拒时记一条「几点能再用」。
+用量只记在额度账 `~/.cc-monitor/quota.json`（家同 API key 凭据那一份）这一处，同一种事实两个来源：
+- **回包头**（来源 `headers`）：这台常驻后端里的中转经手的回包头。中转把每个回包的状态码与头交给上游选择（只读），
+  上游选择按那一家的读法（Claude：`anthropic-ratelimit-unified-*` 一族，读法住适配层 `agents/claudecode/quota.rs`）
+  翻成通用的额度快照，按「哪一家 · 哪个号」记下。没走中转的会话（用户自己设了上游地址、或关了注入）看不到。API key 号的回包不带这一族头 ⇒ 只在被拒时记一条「几点能再用」。
+- **官方客户端报的用量**（来源 `usage`）：`quota-probe` 起那一家的官方客户端问一次（不发模型请求、不花额度），读成同一种窗口记进来（见下）。
+
+两个来源记进同一条账，**按窗口合并**：同名窗口看到得晚的那份留下，别的窗口留着；每个窗口记自己几点、从哪看到的；
+状态 · 被拒 · 卡在哪 · 超额那几格只有回包头说得出、只随它变。两个写者（常驻里的中转 · 一次性的 CLI）的「读盘 → 合并 → 原子替换」在同一处、
+跨进程锁里做，谁也冲不掉谁的窗口；常驻那份内存账在用的那一刻比一次盘上的戳（不定时），别人写过就并进来。
 
 #### `quota-read`：这台的额度账（**只读**，**不读 stdin**）
 
@@ -2119,8 +2124,10 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 
 `reading` 的形状（通用，各家读法翻成它）：`status`（`allowed` · `warning` · `rejected`；回包没说 ⇒ 缺）· `refused`（这一发被上游拒了，状态码 429）·
 `limiting`（此刻卡着的窗口名）· `resetsAt`（卡着的那个窗口几点重置；被拒且没有这一族头时 = 现在 ＋ `retry-after`）·
-`windows`（`[{name, used?, resetsAt?, warnedAt?}]`，`used` 是比例、通常 0–1、可以超过 1；Claude 的窗口名 `five_hour` · `seven_day` · `seven_day_overage_included` · `overage`）·
+`windows`（`[{name, used?, resetsAt?, warnedAt?}]`，`used` 是比例、通常 0–1、可以超过 1；窗口**按原名分开记**，按模型的周额度不并进 7 天那一个。
+Claude 的窗口名：回包头里 `five_hour` · `seven_day` · `seven_day_overage_included` · `overage`；`/usage` 里另有 `seven_day_sonnet` · `seven_day_<模型名小写>`（如 `seven_day_fable`））·
 `overage?`（`{status?, resetsAt?, disabled?, inUse}`：付费超额那一档）。
+`windowsSeen?`（与 `reading` 并排）：`{窗口名: {at, from}}` —— 那个窗口几点、从哪（`headers` · `usage`）看到的；没列的窗口 ＝ 与 `seenAt` 同一刻、来自回包头（只经中转见过的号这一格缺）。
 
 **显示态**（每条 `accounts` 只加，判定全在后端、界面只按词拼；会话那一份见 `rotation-session-read` 的 `quota`，同一形）：
 
@@ -2133,6 +2140,7 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 | `slots` | `[{slot, pct?, resetsAt?}]`：`5h` · `7d` 各一格（有数的才出；同一语义位几个窗口取用得最多的）；`pct` 取整、可超过 100 |
 | `login` | `ok` · `needsLogin`（只对订阅号：凭据文件不在或读不出账号身份）· `needsKey`（只对按量号：这台 key 表里没有它）|
 | `subId?` | 同一订阅的稳定标识：账号身份加固定前缀做 SHA-256、取前 12 字节十六进制。两台看到的同一订阅相同（界面据此并成一行、取 `seenAt` 新的），由它反推不出原值；订阅号读得出身份才有 |
+| `windows?` | 各窗口照原名一格（`slots` 那两格照留，这里一个窗口一格），按 `reading.windows` 的次序：`{name, key?, pct?, resetsAt?, seenAt, from, resetSinceSeen?}`。`key` 窗口键（`5h` · `7d` · `7d:<模型>`，由那一家的适配层给；轮换的上限 · 单段预算按它配；超额那一档没有）· `pct` 取整（已重置未计时 ⇒ 0）· `resetsAt` 有 ＝ 这个窗口在计时 · `seenAt` / `from` 那个窗口几点、从哪看到的 · `resetSinceSeen: true` ＝ 重置时刻已过、之后没再看到（上次的数不再作数：用量当 0、窗口没开）。没有分窗口的数 ⇒ 缺 |
 
 `near` 的 N：这台默认轮换是「到 N% 换」⇒ N，否则 80（`accounts/quota/show.rs::NEAR_DEFAULT`）；30 分钟是 `show.rs::STALE_AFTER`。界面不判这两样。
 
@@ -2140,30 +2148,81 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 - 每一次都现读盘（一次性 CLI 那一形里没有内存）。中转那一路：显示得出来的几格变了才立刻落盘并推 `quota_changed`；没变的观测盘上的 `seenAt` 至多落后 60 秒。
 - CLI 面随之多一条 `--quota-read`（不读 stdin）；`--quota-read --text` 是给人看的那一形（见「控制面的 CLI 那一半」）。
 
+#### `quota-probe`：用某个号查一次额度
+
+`→ {"cmd":"quota-probe","args":{"agent":"claude-code","account":"b"}}`：起那一家的官方客户端报一次那个号的用量（**不发模型请求、不花额度**），
+读成窗口、记进额度账（同一本，来源 `usage`，按窗口合并），推 `quota_changed`。动作、不定时（界面「刷新」· skill · AI 按需调）。
+
+```text
+→ {"id":"p1","cmd":"quota-probe","args":{"agent":"claude-code","account":"b"}}
+← {"kind":"reply","id":"p1","ok":true,"data":{"agent":"claude-code","account":"b","from":"usage","now":1772712000,
+   "state":"read","reason":null,"path":"/home/u/.cc-monitor/quota.json",
+   "windows":[{"name":"five_hour","used":0.03,"resetsAt":1772899200},{"name":"seven_day","used":0.21,"resetsAt":1773041400},
+              {"name":"seven_day_fable","used":0.0}]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `agent` | ↔ | 路由第 1 段（哪一家，如 `claude-code`）|
+| `account` | ↔ | 账号库里的号（配置目录末段；账号 0 是 `0`）|
+| `from` | ← | 恒 `"usage"` |
+| `now` | ← | 这台此刻的 unix 秒 |
+| `state` | ← | `"read"`（读得懂、已记进额度账）· `"unreadable"`（输出对不上：**不猜、不写账**）|
+| `reason` | ← | 只在 `unreadable` 时有：哪一处读不懂（英文诊断）|
+| `windows` | ← | 读到的窗口（形状同 `reading.windows`）；`unreadable` ⇒ `[]`。有 `resetsAt` ＝ 那个窗口在计时；没有 ＝ 没在计时 |
+| `path` | ← | 额度账那份文件的绝对路径 |
+
+- Claude 那一家（`agents/claudecode/usage.rs`）：起 `claude -p /usage`，那个号的配置目录交 `CLAUDE_CONFIG_DIR`（账号 0 ⇒ 摘掉）、`TZ=UTC`、
+  摘掉 `ANTHROPIC_API_KEY` · `ANTHROPIC_AUTH_TOKEN` · `CLAUDE_CODE_OAUTH_TOKEN`；工作目录是家里不出会话的 `~/.cc-monitor/autostart/`（没有就建）；期限 30 秒。
+  读三种行：`Current session: N% used[ · resets <时刻> (<时区>)]` ⇒ `five_hour` · `Current week (all models): …` ⇒ `seven_day` ·
+  `Current week (<名>): …` ⇒ `seven_day_<名>`（`Sonnet only` ⇒ `seven_day_sonnet`）；时刻 `Mon D[, YYYY], h[:mm]am|pm`，没写年份 ⇒ 离此刻最近的将来；
+  时区那一格不是 UTC · 行对不上 · 一行都没有 ⇒ `unreadable`。别的行（本机会话的用量构成，不是按号的）不读。
+- 失败（`ok:false`）：`bad_args`（入参不对 / 多了格）· `unsupported`（这一家适配层没有这一形；或那是按量号，没有订阅用量）· `not_found`（账号库里没有这个号）·
+  `failed`（起不来；或官方客户端退出码非零 —— 如没登录，`message` 带它自己那一行）· `child_timed_out` · `io_failed`（额度账写不进 / 家推不出）。
+- CLI 面随之多一条 `--quota-probe`（stdin 一段 JSON ＝ `args`）。
+
 #### 账号轮换：满了不重启换号（`rotation.json`）
 
 轮换住 `~/.cc-monitor/rotation.json`（账号域自己的状态）：这台的默认轮换 · 每个会话跟随默认还是用自己那一份（切回跟随时自己那一份留着）·
-此刻钉在哪个号 · 换号记录。一份轮换 = `{order, enabled, when, atLimit}`：`order` 顺序，每格是一个号（路由第 2 段，即配置目录末段；账号 0 是 `0`）
-或起始账号占位 `{"start": true}`；`enabled` 勾上的号（占位恒算勾上）；`when` = `"full"`（被拒才换，缺省）或 `{"threshold": {"n": 50..=99}}`（用到 N% 就换）；
-`atLimit` = `"continue"`（缺省，软阈值）或 `"stop"`（硬上限）：阈值模式下此刻的号到了 N%、池里没有 N% 以下能接的号时怎么办（见下）。写入时可缺（⇒ `continue`），读回恒带。
+此刻钉在哪个号 · 换号记录 · 这一段的基线。一份轮换 = `{order, enabled, when, atLimit, cap?, stint?, preempt?}`：`order` 顺序（优先级），每格是一个号（路由第 2 段，即配置目录末段；账号 0 是 `0`）
+或起始账号占位 `{"start": true}`；`enabled` 勾上的号（占位恒算勾上）；`when` = `"full"`（被拒才换，缺省）或 `{"threshold": {"n": 1..=99}}`（用到 N% 就换 ＝ 这份轮换的**缺省上限**）；
+`atLimit` = `"continue"`（缺省，软阈值）或 `"stop"`（硬上限）：此刻的号过了上限、池里没有能接的号时怎么办（见下）。写入时可缺（⇒ `continue`），读回恒带。
+后三格写入时可缺、缺省时读回也不带（今天的配置读进来、写回去一个字节不变）：
+- `cap`：每号覆盖的上限，`{号: {窗口键|"*": n | [{"at": "HH:MM-HH:MM", "n": n}, …]}}`（`n` ∈ 1..=99；`"*"` ＝ 这个号的所有窗口）。值是一个数，或按时段的几段：
+  时段按这台后端的本地钟、含起不含止、跨午夜可写（`22:00-06:00`）、止可写 `24:00`；此刻落不进任何一段 ⇒ 这一层没有值。取法：这个号这个窗口的 → 这个号 `"*"` 的 → `when` 的 N（`"full"` 没有缺省上限）。
+  「满了才换」模式下给号设的上限照样算。例：`{"q": {"*": [{"at": "01:00-20:00", "n": 99}]}}` ＝ q 在 1 点到 20 点能用到 99%，其余时段照 `when`。
+- `stint`：每号的单段预算（软的），`{号: {窗口键|"*": n}}`（`n` ∈ 1..=99）＝ 换进这个号之后再用 n 个点就想走（按换进来那一刻的基线算）：有别的能用的号就换，没有就留着。
+- `preempt`：`true` ⇒ 换进此刻的号那一刻挡在它前面的号（`blockedAbove`，见下）有一个又能用了（重置了，或时段换了上限）⇒ 下一发就切回去（按池序取首个）。
+  换进来时本就能用的号不在那份名单里 ⇒ 手动换走的不会被切回。缺 ⇒ `false`。「备胎」不是一格：排在最后 ＋ `preempt`，就是它。
+
+窗口键由那一家的适配层给（Claude：`five_hour` ⇒ `5h` · `seven_day` ⇒ `7d` · `seven_day_<档>` ⇒ `7d:<档>`），通用层当不透明的键；写入时只查形状（字母数字与 `:_-.`，至多 64 字）。
 缺省只有占位 ⇒ 不轮换。会话的实际池 = 按 `order`、占位换成起这个会话的号、只取勾上的、去重。
+
+**判**（每一发之前，一个纯函数 `accounts/quota/decide.rs`）：一个号**能用** ＝ 没被拒 · 没在付费超额上（订阅号）· 没有窗口过了它的上限（都按额度账、此刻）；
+此刻的号能用、这一段没用完 `stint`、且（`preempt` 关或 `blockedAbove` 里没有又能用了的号）⇒ 不换；否则按 `order` 从头取首个能用、接得上的号；一个都没有 ⇒ 照 `atLimit`。
+`stint` 用完而没有别的能用的号 ⇒ 留着（软）；过了上限而没有 ⇒ 照 `atLimit`（硬）。
 
 **换号**（中转那一路，对 agent 透明）：上游回包被拒（429；读法同额度账）⇒ 按池**从头**取首个能接的号，用同一份请求体重发（下游一个字节都没收到过）；
 发之前额度账上此刻的号被拒未到重置 / 订阅号超额在用 / 到阈值 ⇒ 先换好再发。跳过：此刻的号 · 这一发试过的 · 满着的 · 接不上的（订阅号拿不到令牌或账号身份 ⇒
 `needsLogin`；按量号这台 key 表里没有 ⇒ `needsKey`；请求体里身份格认不准 ⇒ `unsureBody`，各记一条「跳过」）。超额在兜只找订阅号接，都满才留在超额（记 `toOverage`）。
 一发至多试池子大小个号（中转另有硬上限 8）；都不行 ⇒ 原样交回上游的拒绝。
 
-**到上限没号可换**（阈值模式、池里没有 N% 以下能接的号）：
+**到上限没号可换**（此刻的号过了上限或被拒、池里没有能用又接得上的号）：
 - `continue`：此刻的号只是到了 N% ⇒ 留在它上面照发；它**真被拒**（回包被拒，或额度账上被拒未到重置）⇒ 退一步按池序取首个**没被拒**、也没在付费超额上的号（不管 N%）；都不行 ⇒ 原样交回上游的拒绝。
 - `stop`：这一发**不发上游**，中转回一份那一家自己认得的「用满」回包（形状住适配层，claude 那一家：`429 Too Many Requests` ＋ `anthropic-ratelimit-unified-status: rejected` · `-reset` · `-representative-claim`（永远带：说不出卡在哪个窗口 ⇒ 重置时刻在 5 小时以内标 `five_hour`、更远标 `seven_day`）· `-<窗口>-reset` ＋ `retry-after`（离重置还有几秒，至少 1），体 `{"type":"error","error":{"type":"rate_limit_error",…}}`；中转另带原因头 `X-Cc-Monitor-Reason: at-limit`），
   重置时刻 ＝ 池里最早回到 N% 以下的那一刻（一个号几个窗口过了 N% ⇒ 都重置才算；被拒的号按它的重置时刻）。换过去的号当场被拒（重发那一路）也回这一份。会话记一条 `{"held": {"n"}}`（`fromResetsAt` ＝ 那一刻）、推 `rotation_changed`；
   池里有号回到 N% 以下 ⇒ 下一发照常走。这份回包不进额度账（上游没答过）。说不出几点有号回来 ⇒ 照 `continue` 办。不送字、不起醒点：claude 开着 `autoContinueAtUsageLimit` 时照回包里的重置时刻自己续。
-  那一家适配层给不出这一形 ⇒ 对它 `stop` 不成立、照 `continue` 办（`rotation-session-read` 的 `atLimit` 照实标）。「被拒才换」模式下没有 N%，`stop` 与 `continue` 同。换过去的会话钉在新号上（随会话持久，后端重启后第一发就走它）；
+  那一家适配层给不出这一形 ⇒ 对它 `stop` 不成立、照 `continue` 办（`rotation-session-read` 的 `atLimit` 照实标）。「被拒才换」模式下又没给池里的号设 `cap` ⇒ 没有上限，`stop` 与 `continue` 同。
+  卡在按模型的周额度上（窗口键 `7d:<档>`）⇒ 回包照原名标（Claude：`representative-claim: seven_day_opus` 等，claude 说「Opus limit」）。换过去的会话钉在新号上（随会话持久，后端重启后第一发就走它）；
 会话换了起它的号（重启换号 / 用别的号恢复）⇒ 钉号清掉。换到订阅号：鉴权头换成那个号的访问令牌（快过期就续），请求体 `metadata.user_id` 里的
 `account_uuid` 换成那个号的；换到按量号：照它在 key 表里那一行，那一格换成空串。令牌、刷新令牌、key 不进日志、帧、报错原文。
 
 换号记录每条 `{at, from, to, why, fromResetsAt?}`（`fromResetsAt` 那一刻原号几点重置，记下就不变）；`why`：`{"full": {"w"?: "5h"|"7d"}}` ·
-`{"threshold": {"n"}}` · `"manualHot"` · `"manualRestart"` · `{"skipped": {"account", "reason"}}` · `"toOverage"` · `{"held": {"n"}}`（硬上限卡住、这一发没发上游）。`from == to` 的是没换成的那几种。每会话至多留 32 条。
+`{"threshold": {"n"}}`（过了上限 n）· `"manualHot"` · `"manualRestart"` · `{"skipped": {"account", "reason"}}` · `"toOverage"` · `{"held": {"n"}}`（硬上限卡住、这一发没发上游）·
+`"stint"`（这一段用完了单段预算）· `"preempt"`（前面的号又能用了，切回去）。`from == to` 的是没换成的那几种。每会话至多留 32 条。
+每次钉到一个号（换号 · 现在就换 · 中转第一次见到这个会话）都把那个号此刻各窗口的用量记成这一段的**基线**（随会话持久，住 `rotation.json` 那条会话记录；
+那一刻说不出的窗口，之后额度账上第一次有数时补），连同 **`blockedAbove`**：池里排在那个号前面（它不在池里 ⇒ 整个池）、那一刻不能用的号，按池序；
+会话换了起它的号 ⇒ 两样都清掉重记。
 
 #### `rotation-read`：这台的默认轮换（**不读 stdin**）
 
@@ -2183,8 +2242,9 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 
 #### `rotation-set`：写这台的默认轮换
 
-`→ {"cmd":"rotation-set","args":{"rotation":{order, enabled, when, atLimit?}}}`，整份写回，应答同 `rotation-read`（`state` · `reason` · `path` · `rotation` · `followers`）。`order` 里占位恰好 1 个；
-号不许重复、不许是 `_`；`enabled` 只许是 `order` 里的号；`atLimit` 只许 `"continue"` · `"stop"`（缺 ⇒ `continue`）；不合法 ⇒ `bad_args`，`message` 点名哪一格（如 `` `enabled[0]` ``），一个字节不写。
+`→ {"cmd":"rotation-set","args":{"rotation":{order, enabled, when, atLimit?, cap?, stint?, preempt?}}}`，整份写回，应答同 `rotation-read`（`state` · `reason` · `path` · `rotation` · `followers`）。`order` 里占位恰好 1 个；
+号不许重复、不许是 `_`；`enabled` 只许是 `order` 里的号；`atLimit` 只许 `"continue"` · `"stop"`（缺 ⇒ `continue`）；`cap` · `stint` · `preempt` 只收上面那一种形状；
+不合法 ⇒ `bad_args`，`message` 点名哪一格（如 `` `enabled[0]` `` · `` `cap.q.*[0].at` `` · `` `stint.b.5h` ``），一个字节不写。
 **新勾上的按量号由后端挪到 `order` 末尾**（订阅号用完才轮到它；前端不自己挪）。写不进 ⇒ `io_failed`。跟随默认的会话随之改（各推一帧 `rotation_changed`）。
 
 #### `rotation-session-read`：一批会话的轮换与「账号」格
@@ -2206,7 +2266,7 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 | `state` · `reason` · `now` | ← | 那份文件的三态（同 `rotation-read`）· 这台此刻的 unix 秒 |
 | `sessions` | ← | 每个 sid 一份。这台中转没见过的 ⇒ `{"state":"absent","inPlace":"noRelay"}`（照实标，不整批失败）；见过的 ⇒ `"state":"present"` ＋ 下面几格 |
 | `agent` · `follow` · `custom?` | ← | 哪一家 · 跟随默认 · 自己那一份（跟随时也留着）|
-| `account` | ← | `start`（起这个会话进程的号，`_` 原样）· `current`（此刻走的号）· `since` · `history[]`（先的在前）· `inPlace`：能不能不重启换 —— `ok` · `noRelay` · `ended`（会话进程已不在，判活同 `rotation-read` 的 `followers`）· `machineNotMulti`（没建账号库）· `agentHasNoAccounts`。那台连不上时根本答不了这一问，界面用连接层的「连不上」 |
+| `account` | ← | `start`（起这个会话进程的号，`_` 原样）· `current`（此刻走的号）· `since` · `history[]`（先的在前）· `inPlace`：能不能不重启换 —— `ok` · `noRelay` · `ended`（会话进程已不在，判活同 `rotation-read` 的 `followers`）· `machineNotMulti`（没建账号库）· `agentHasNoAccounts`。那台连不上时根本答不了这一问，界面用连接层的「连不上」。`segment?`：这一段（换进 `current` 以来）各窗口 `[{w, base, spent, stint?}]` —— `w` 窗口键 · `base` 换进来那一刻的用量（%，取整）· `spent` 之后又用了几个点（取整；窗口这期间重置过 ⇒ 只算重置之后的，是下界）· `stint` 这个窗口的单段预算；说不出基线的窗口不出、一个都没有 ⇒ 缺。`blockedAbove?`：换进 `current` 那一刻池里排在它前面、当时不能用的号（`preempt` 开着时其中一个又能用了 ⇒ 切回去）；没有 ⇒ 缺 |
 | `next?` | ← | 此刻的号触发了会换到谁（只看盘上的登录，不续令牌）；没有 ⇒ 缺 |
 | `blocked?` | ← | 发不出去了（此刻的号被拒、轮换里没有能接的；或硬上限卡住）⇒ `{earliest?: {account, at}}`（池里最早回来的那个；硬上限卡住时 ＝ 最早回到 N% 以下的那个、那一刻）；能发 ⇒ 缺。超额在兜不算 |
 | `atLimit` | ← | 到上限此刻**实际**照哪一档办：`"continue"` · `"stop"`。这个会话的轮换说 `stop`、这一家适配层给不出「用满」回包 ⇒ `"continue"` |
@@ -2215,7 +2275,7 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 
 #### `rotation-session-set`：改一批会话的轮换
 
-`→ {"cmd":"rotation-session-set","args":{"sids":[…],"rotation":"follow" | "custom" | {"custom":{order, enabled, when, atLimit?}},"agent"?,"start"?}}`
+`→ {"cmd":"rotation-session-set","args":{"sids":[…],"rotation":"follow" | "custom" | {"custom":{order, enabled, when, atLimit?, cap?, stint?, preempt?}},"agent"?,"start"?}}`
 ⇒ `{"sessions":{sid: {"state":"done"} | {"state":"skipped","code":"noRelay"}}}`。`"custom"` 恢复这个会话上一份自己的，没有就从默认起；
 `{"custom": …}` 整份写（占位 0 或 1 个，规矩同 `rotation-set`，新勾的按量号挪末尾）。这台没见过的会话要另给 `agent` 与 `start`（起它的号）才记得下，
 否则那一个 `skipped`。任何一份不合法 ⇒ 整批 `bad_args`、一个字节不写。

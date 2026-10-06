@@ -253,3 +253,37 @@ fn the_limit_reply_always_names_a_window_and_says_when_to_retry() {
         );
     }
 }
+
+/// ★ 窗口键：`five_hour` ⇒ `5h` · `seven_day` ⇒ `7d` · 按模型（或别的分档）的周额度 ⇒ `7d:<档>`（不再并进 `7d`）；超额那一档没有键。
+#[test]
+fn window_keys_keep_the_per_model_week_apart() {
+    assert_eq!(key_of("five_hour").as_deref(), Some("5h"));
+    assert_eq!(key_of("seven_day").as_deref(), Some("7d"));
+    assert_eq!(key_of("seven_day_opus").as_deref(), Some("7d:opus"));
+    assert_eq!(
+        key_of("seven_day_overage_included").as_deref(),
+        Some("7d:overage_included")
+    );
+    assert_eq!(key_of("overage"), None);
+    assert_eq!(key_of("seven_day_"), None);
+    // 语义位照旧：7 天那几个都是 `7d`（界面两格与换号记录照留）。
+    assert_eq!(slot_of("seven_day_opus"), Some("7d"));
+}
+
+/// ★ 收掉 Opus 那条欠账：卡在 `7d:opus` 上的「用满」回包照实标 `seven_day_opus`（claude 说 Opus limit 而非 weekly limit）；
+/// 有分窗口头的那一档一并给它的重置时刻；认不得的键 ⇒ 按远近标。
+#[test]
+fn the_limit_reply_names_a_per_model_week_by_its_own_name() {
+    let r = limit_reply(NOW + 60, NOW, Some("7d:opus"));
+    assert_eq!(claim_and_retry_after(&r).0, Some("seven_day_opus"));
+    let r = limit_reply(NOW + 60, NOW, Some("7d:overage_included"));
+    assert_eq!(
+        claim_and_retry_after(&r).0,
+        Some("seven_day_overage_included")
+    );
+    assert!(r.headers.iter().any(
+        |(k, v)| k == "anthropic-ratelimit-unified-7d_oi-reset" && *v == (NOW + 60).to_string()
+    ));
+    let r = limit_reply(NOW + 60, NOW, Some("weird"));
+    assert_eq!(claim_and_retry_after(&r).0, Some("five_hour"));
+}

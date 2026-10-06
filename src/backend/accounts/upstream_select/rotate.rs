@@ -12,8 +12,9 @@ use crate::accounts::oauth::{self, TokenEndpoint};
 use crate::accounts::quota::decide::{self, Facts, Kind, Verdict};
 use crate::accounts::quota::ledger::Ledger;
 use crate::accounts::quota::rotation::{
-    self, AccountAt, AccountCell, AtLimit, Blocked, Book, InPlace, RotationStore, SessionEntry,
-    SessionRotation, SessionRotationState, SwitchRecord, SwitchWhy, Unready,
+    self, AccountAt, AccountCell, AtLimit, Base, Baseline, Blocked, Book, InPlace, Rotation,
+    RotationStore, SegmentShow, SessionEntry, SessionRotation, SessionRotationState, SwitchRecord,
+    SwitchWhy, Unready,
 };
 use crate::accounts::quota::show::{self, LoginState};
 use crate::agents::{IdentityCell, LoginFace, QuotaReading};
@@ -77,7 +78,24 @@ pub(crate) enum Go {
     Hold { reply: crate::agents::LimitReply },
 }
 
-/// 这一份轮换的「到上限」此刻实际照哪一档办：说 `stop`、这一家却给不出「用满」回包 ⇒ `continue`。
+/// 这台后端此刻的本地钟比 UTC 快几秒（按时段写的上限按它取）；读不出 ⇒ 按 UTC，不猜（同 `--text` 排时刻那一处）。
+pub(crate) fn local_offset(now: u64) -> i64 {
+    crate::platform::local_tz::offset_secs(now).unwrap_or(0)
+}
+
+/// 一家的窗口名 → 窗口键（这一家没给 ⇒ 一个都没有）。
+fn key_fn(agent: &str) -> impl Fn(&str) -> Option<String> {
+    let f = crate::agents::window_key_of(agent);
+    move |w: &str| f.and_then(|f| f(w))
+}
+
+/// 一家的窗口名 → 语义位。
+fn slot_fn(agent: &str) -> impl Fn(&str) -> Option<&'static str> {
+    let f = crate::agents::window_slot_of(agent);
+    move |w: &str| f.and_then(|f| f(w))
+}
+
+/// 这份轮换的「到上限」此刻实际照哪一档办：说 `stop`、这一家却给不出「用满」回包 ⇒ `continue`。
 pub(crate) fn at_limit_in_effect(agent: &str, said: AtLimit) -> AtLimit {
     match said {
         AtLimit::Stop if crate::agents::limit_reply_of(agent).is_some() => AtLimit::Stop,
@@ -135,6 +153,105 @@ impl Hop {
             .as_deref()
             .map(|h| (self.library)(h))
             .unwrap_or_default()
+    }
+
+    /// 额度账上这个号此刻各窗口的用量（换进它那一刻记成这一段的基线）；没见过 ⇒ 空（之后第一次说得出时补）。
+    pub(crate) fn baseline_of(&self, agent: &str, account: &str, now: u64) -> Baseline {
+        let key = key_fn(agent);
+        self.quota
+            .entry(agent, account)
+            .map(|o| {
+                o.reading
+                    .windows
+                    .iter()
+                    .filter_map(|w| {
+                        Some((
+                            key(&w.name)?,
+                            Base {
+                                used: decide::used_now(w, now),
+                                resets_at: w.resets_at,
+                            },
+                        ))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// 换进 `target` 那一刻挡在它前面的号（池里排在它前面、此刻不能用的），随这一段记下（`preempt` 只等它们回来）。
+    pub(crate) fn above_at(
+        &self,
+        book: &Book,
+        s: &SessionEntry,
+        target: &str,
+        row: &dyn Fn(&str) -> Option<bool>,
+        now: u64,
+    ) -> Vec<String> {
+        let lib = self.library();
+        let a = Turn {
+            agent: &s.agent,
+            start: &s.start,
+            sid: "",
+            body: b"",
+            row,
+            now,
+        };
+        let rot = book.rotation_of(s);
+        let pool = rot.pool(&s.start);
+        let seen = |x: &str| self.quota.entry(&s.agent, x).map(|o| o.reading);
+        let kind = |x: &str| kind_of(&a, &lib, x);
+        let (slot, key) = (slot_fn(&s.agent), key_fn(&s.agent));
+        let f = self.facts(
+            &rot,
+            &pool,
+            s,
+            target,
+            now,
+            None,
+            &[],
+            &seen,
+            &kind,
+            &slot,
+            &key,
+        );
+        decide::blocked_above(&f, target)
+    }
+
+    /// 这个会话判一次要的事实（`current` · `heard` · `tried` 由调用方给）。
+    #[allow(clippy::too_many_arguments)]
+    fn facts<'f>(
+        &self,
+        rot: &'f Rotation,
+        pool: &'f [String],
+        s: &'f SessionEntry,
+        current: &'f str,
+        now: u64,
+        heard: Option<&'f QuotaReading>,
+        tried: &'f [String],
+        seen: &'f dyn Fn(&str) -> Option<QuotaReading>,
+        kind: &'f dyn Fn(&str) -> Kind,
+        slot: &'f dyn Fn(&str) -> Option<&'static str>,
+        key: &'f dyn Fn(&str) -> Option<String>,
+    ) -> Facts<'f> {
+        Facts {
+            pool,
+            when: rot.when,
+            cap: &rot.cap,
+            stint: &rot.stint,
+            preempt: rot.preempt,
+            at_limit: at_limit_in_effect(&s.agent, rot.at_limit),
+            current,
+            base: &s.baseline,
+            above: &s.blocked_above,
+            now,
+            offset: local_offset(now),
+            heard,
+            seen,
+            kind,
+            slot,
+            key,
+            tried,
+        }
     }
 
     fn endpoint(&self, face: &LoginFace) -> Option<TokenEndpoint> {
@@ -247,8 +364,18 @@ impl Hop {
             .get(a.sid)
             .is_some_and(|s| s.start == a.start && s.agent == a.agent);
         if !known {
+            let base = self.baseline_of(a.agent, a.start, a.now);
+            let mut next = book.clone();
+            next.saw(a.sid, a.agent, a.start, a.now);
+            let above = next
+                .sessions
+                .get(a.sid)
+                .map(|s| self.above_at(&next, s, a.start, a.row, a.now))
+                .unwrap_or_default();
             match rotation::relay_change(&self.store, |b| {
                 b.saw(a.sid, a.agent, a.start, a.now);
+                b.rebase(a.sid, &base);
+                b.block_above(a.sid, &above);
                 b.clone()
             }) {
                 Ok(b) => book = b,
@@ -262,7 +389,7 @@ impl Hop {
         Some((book, s))
     }
 
-    /// 判一次 ⇒ 结论 ＋ 判的时候备好的那一发（换成了才有）。
+    /// 判一次 ⇒ 结论 ＋ 判的时候备好的那一发（换成了才有）＋ 换成了的话挡在新号前面的那几个。
     #[allow(clippy::too_many_arguments)]
     fn judge(
         &self,
@@ -273,36 +400,43 @@ impl Hop {
         current: &str,
         heard: Option<&QuotaReading>,
         tried: &[String],
-    ) -> (Verdict, Option<Go>) {
+    ) -> (Verdict, Option<Go>, Vec<String>) {
         let rot = book.rotation_of(s);
         let pool = rot.pool(&s.start);
-        let slot = crate::agents::window_slot_of(a.agent);
         let seen = |x: &str| self.quota.entry(a.agent, x).map(|o| o.reading);
         let kind = |x: &str| kind_of(a, lib, x);
-        let slot_of = |w: &str| slot.and_then(|f| f(w));
-        let f = Facts {
-            pool: &pool,
-            when: rot.when,
-            at_limit: at_limit_in_effect(a.agent, rot.at_limit),
-            current,
-            now: a.now,
-            heard,
-            seen: &seen,
-            kind: &kind,
-            slot: &slot_of,
-            tried,
-        };
+        let (slot, key) = (slot_fn(a.agent), key_fn(a.agent));
+        let f = self.facts(
+            &rot, &pool, s, current, a.now, heard, tried, &seen, &kind, &slot, &key,
+        );
         let mut ready: Option<Go> = None;
         let v = decide::decide(&f, &mut |x| {
             self.prepare(a, lib, x).map(|g| {
                 ready = Some(g);
             })
         });
-        (v, ready)
+        let above = match &v {
+            Verdict::Switch { to, .. } => self.above_at(book, s, to, a.row, a.now),
+            _ => Vec::new(),
+        };
+        (v, ready, above)
     }
 
-    fn pin(&self, sid: &str, rec: SwitchRecord, skipped: &[(String, Unready)]) {
-        if let Err(e) = rotation::relay_change(&self.store, |b| b.pin(sid, rec, skipped)) {
+    /// 钉到 `rec.to`、记一条；这一段的基线从额度账上那个号此刻的用量记起，挡在它前面的号（`above`）一并记下。
+    fn pin(
+        &self,
+        agent: &str,
+        sid: &str,
+        rec: SwitchRecord,
+        skipped: &[(String, Unready)],
+        above: &[String],
+    ) {
+        let base = self.baseline_of(agent, &rec.to, rec.at);
+        if let Err(e) = rotation::relay_change(&self.store, |b| {
+            b.pin(sid, rec, skipped);
+            b.rebase(sid, &base);
+            b.block_above(sid, above);
+        }) {
             tracing::warn!("[rotate] {e}");
         }
     }
@@ -314,7 +448,12 @@ impl Hop {
     }
 
     /// 结论落账：换成了 ⇒ 钉住、记一条，交出备好的那一发；没换成 ⇒ 记该记的，`None`。
-    fn settle(&self, a: &Turn<'_>, current: &str, v: Verdict, ready: Option<Go>) -> Option<Go> {
+    fn settle(
+        &self,
+        a: &Turn<'_>,
+        current: &str,
+        (v, ready, above): (Verdict, Option<Go>, Vec<String>),
+    ) -> Option<Go> {
         match v {
             Verdict::Stay => None,
             Verdict::Switch {
@@ -330,7 +469,7 @@ impl Hop {
                     why,
                     from_resets_at,
                 };
-                self.pin(a.sid, rec, &skipped);
+                self.pin(a.agent, a.sid, rec, &skipped, &above);
                 ready
             }
             Verdict::Stuck {
@@ -372,9 +511,16 @@ impl Hop {
             return Go::Start;
         };
         let lib = self.library();
-        let (v, ready) = self.judge(a, &lib, &book, &s, &s.current, None, &[]);
-        if let Some(go) = self.settle(a, &s.current, v, ready) {
+        let judged = self.judge(a, &lib, &book, &s, &s.current, None, &[]);
+        if let Some(go) = self.settle(a, &s.current, judged) {
             return go;
+        }
+        // 换进来时说不出的窗口，这会儿额度账上有了 ⇒ 补进这一段的基线。
+        let base = self.baseline_of(a.agent, &s.current, a.now);
+        if base.keys().any(|k| !s.baseline.contains_key(k)) {
+            if let Err(e) = rotation::relay_change(&self.store, |b| b.rebase(a.sid, &base)) {
+                tracing::warn!("[rotate] {e}");
+            }
         }
         if s.current == s.start {
             return Go::Start;
@@ -392,7 +538,8 @@ impl Hop {
                     },
                     from_resets_at: None,
                 };
-                self.pin(a.sid, rec, &[]);
+                let above = self.above_at(&book, &s, &s.start, a.row, a.now);
+                self.pin(a.agent, a.sid, rec, &[], &above);
                 Go::Start
             }
         }
@@ -414,8 +561,8 @@ impl Hop {
                 return Some(go);
             }
         }
-        let (v, ready) = self.judge(a, &lib, &book, &s, heard_from, Some(heard), tried);
-        self.settle(a, heard_from, v, ready)
+        let judged = self.judge(a, &lib, &book, &s, heard_from, Some(heard), tried);
+        self.settle(a, heard_from, judged)
     }
 
     /// 订阅号「拿得到登录」的只读那一版（不续令牌）：配置目录在 · 有凭据文件 · 读得出身份（交回身份）。
@@ -519,22 +666,22 @@ impl Hop {
         };
         let rot = book.rotation_of(s);
         let pool = rot.pool(&s.start);
-        let slot = crate::agents::window_slot_of(&s.agent);
         let seen = |x: &str| self.quota.entry(&s.agent, x).map(|o| o.reading);
         let kind = |x: &str| kind_of(&a, &lib, x);
-        let slot_of = |w: &str| slot.and_then(|f| f(w));
-        let f = Facts {
-            pool: &pool,
-            when: rot.when,
-            at_limit: at_limit_in_effect(&s.agent, rot.at_limit),
-            current: &s.current,
+        let (slot_of, key) = (slot_fn(&s.agent), key_fn(&s.agent));
+        let f = self.facts(
+            &rot,
+            &pool,
+            s,
+            &s.current,
             now,
-            heard: None,
-            seen: &seen,
-            kind: &kind,
-            slot: &slot_of,
-            tried: &[],
-        };
+            None,
+            &[],
+            &seen,
+            &kind,
+            &slot_of,
+            &key,
+        );
         let mut ready = |x: &str| -> Result<(), Unready> {
             match kind_of(&a, &lib, x) {
                 _ if x == s.start => Ok(()),
@@ -580,16 +727,27 @@ impl Hop {
             })
             .map(str::to_string)
             .next();
-        let quota = show::show(
-            self.quota
-                .entry(&s.agent, &s.current)
-                .as_ref()
-                .map(|o| (&o.reading, o.seen_at)),
+        let held = self.quota.entry(&s.agent, &s.current);
+        let mut quota = show::show(
+            held.as_ref().map(|o| (&o.reading, o.seen_at)),
             self.show_facts(&s.agent, &lib, &s.current, row),
             show::near_of(rot.when),
             now,
             &slot_of,
         );
+        if let Some(o) = &held {
+            quota.windows = show::windows_of(o, &key, now);
+        }
+        let pct = |x: f64| (x * 100.0).round().max(0.0) as u32;
+        let segment = decide::segment(&f)
+            .into_iter()
+            .map(|(w, base, spent, stint)| SegmentShow {
+                w,
+                base: pct(base),
+                spent: pct(spent),
+                stint,
+            })
+            .collect();
         SessionRotationState::Present(Box::new(SessionRotation {
             agent: s.agent.clone(),
             follow: s.follow,
@@ -600,6 +758,8 @@ impl Hop {
                 since: s.since,
                 history: s.history.clone(),
                 in_place,
+                segment,
+                blocked_above: s.blocked_above.clone(),
             },
             next,
             blocked,

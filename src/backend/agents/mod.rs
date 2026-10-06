@@ -1021,6 +1021,11 @@ pub(crate) struct DefaultUpstream {
     pub(crate) quota: Option<QuotaRead>,
     /// 额度窗口名 → 语义位（`5h` / `7d`；别的窗口 ⇒ `None`）。界面与换号记录只认语义位，不认各家的窗口名。
     pub(crate) window_slot: Option<fn(&str) -> Option<&'static str>>,
+    /// 额度窗口名 → 窗口键（轮换的上限 · 单段预算按它配；通用层当不透明的键，只认 `5h` · `7d` 两个缺省键）。
+    /// 不算用量窗口的那几档（超额）⇒ `None`。
+    pub(crate) window_key: Option<fn(&str) -> Option<String>>,
+    /// 让这一家的官方客户端报一次某个号的用量（不花模型额度）：怎么起 · 怎么把输出读成窗口。`None` ＝ 这一家没有这一形。
+    pub(crate) usage: Option<UsageFace>,
     /// 订阅号登录那一格：令牌住哪、什么格式、怎么续、锁叫什么。`None` ＝ 这一家没有可换的订阅号登录。
     pub(crate) login: Option<LoginFace>,
     /// 这一家自己认得的「用满」回包（轮换的硬上限用它：这一发不发上游、回这一份）。`None` ＝ 给不出 ⇒ 对它硬上限不成立、按软阈值办。
@@ -1035,8 +1040,33 @@ pub(crate) struct LimitReply {
     pub(crate) body: Vec<u8>,
 }
 
-/// （几点重置 unix 秒, 此刻 unix 秒, 卡着的那个窗口的语义位 `5h` / `7d`，说不出 ⇒ `None`）→ 这一家的「用满」回包。
+/// （几点重置 unix 秒, 此刻 unix 秒, 卡着的那个窗口的窗口键 `5h` · `7d` · `7d:<模型>`，说不出 ⇒ `None`）→ 这一家的「用满」回包。
 pub(crate) type LimitReplyOf = fn(u64, u64, Option<&str>) -> LimitReply;
+
+/// 一家「让官方客户端报用量」那一形：起哪个程序 · 带什么参数 · 号的配置目录交给哪一格环境 · 起它时摘 / 设哪几格 · 输出怎么读。
+/// 通用层（帧命令 `quota-probe`）只照它起、照它读，读成的窗口记进额度账、标来源 `usage`。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct UsageFace {
+    pub(crate) program: &'static str,
+    pub(crate) args: &'static [&'static str],
+    /// 号的配置目录交给这一格；账号 0（默认配置目录）⇒ 摘掉它。
+    pub(crate) dir_env: &'static str,
+    /// 起它时摘掉的（会盖掉那个号自己的登录的那几格）。
+    pub(crate) env_remove: &'static [&'static str],
+    /// 起它时设上的（如让输出里的时刻按 UTC 写）。
+    pub(crate) env_set: &'static [(&'static str, &'static str)],
+    /// （标准输出, 此刻 unix 秒）→ 窗口；读不懂 ⇒ `Err(哪一处读不懂)`（不猜）。
+    pub(crate) read: fn(&str, u64) -> Result<Vec<QuotaWindow>, String>,
+}
+
+/// 路由第 1 段 → 那一家的「报用量」那一形。
+pub(crate) fn usage_of(route_id: &str) -> Option<UsageFace> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| a.upstream.as_ref())
+        .find(|u| u.route_id == route_id)
+        .and_then(|u| u.usage)
+}
 
 /// 路由第 1 段 → 那一家的「用满」回包（见 [`DefaultUpstream::limit_reply`]）。
 pub(crate) fn limit_reply_of(route_id: &str) -> Option<LimitReplyOf> {
@@ -1097,6 +1127,15 @@ pub(crate) fn window_slot_of(route_id: &str) -> Option<fn(&str) -> Option<&'stat
         .filter_map(|a| a.upstream.as_ref())
         .find(|u| u.route_id == route_id)
         .and_then(|u| u.window_slot)
+}
+
+/// 路由第 1 段 → 那一家的额度窗口键读法。
+pub(crate) fn window_key_of(route_id: &str) -> Option<fn(&str) -> Option<String>> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| a.upstream.as_ref())
+        .find(|u| u.route_id == route_id)
+        .and_then(|u| u.window_key)
 }
 
 /// 路由第 1 段 → 那一家的订阅号登录格式。

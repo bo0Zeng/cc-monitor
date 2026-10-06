@@ -170,13 +170,30 @@ export function whyOf(h: SwitchRecord, now: number, tz: number): { why: string; 
   const reset = h.fromResetsAt === undefined ? null : copyText("acct.reset.at", { at: fmtAt(h.fromResetsAt, now, tz) });
   const from = accountLabel(h.from);
   const w = h.why;
-  if (w === "manualHot") return { why: copyText("acct.hist.manualHot"), reset: null };
-  if (w === "manualRestart") return { why: copyText("acct.hist.manualRestart"), reset: null };
-  if (w === "toOverage") return { why: copyText("acct.hist.toOverage"), reset };
+  // 光字符串的那几种先判完（`in` 不许碰到字符串）；两段末尾各一处 `never`：`SwitchWhy` 多了一种而这里没接 ⇒ 编不过。
+  if (typeof w === "string") {
+    switch (w) {
+      case "manualHot":
+        return { why: copyText("acct.hist.manualHot"), reset: null };
+      case "manualRestart":
+        return { why: copyText("acct.hist.manualRestart"), reset: null };
+      case "toOverage":
+        return { why: copyText("acct.hist.toOverage"), reset };
+      case "preempt":
+        return { why: copyText("acct.hist.preempt", { name: accountLabel(h.to) }), reset: null };
+      default: {
+        const left: never = w;
+        return left;
+      }
+    }
+  }
   if ("full" in w) return { why: w.full.w ? copyText("acct.hist.full", { name: from, w: slotLabel(w.full.w) }) : copyText("acct.hist.fullAny", { name: from }), reset };
   if ("threshold" in w) return { why: copyText("acct.hist.pct", { name: from, n: w.threshold.n }), reset };
   if ("held" in w) return { why: copyText("acct.hist.held", { name: from, n: w.held.n }), reset };
-  return { why: copyText("acct.hist.skipped", { name: accountLabel(w.skipped.account), reason: unreadyLabel(w.skipped.reason, w.skipped.account) }), reset: null };
+  if ("stint" in w) return { why: copyText("acct.hist.stint", { w: slotLabel(w.stint.w), n: w.stint.n }), reset: null };
+  if ("skipped" in w) return { why: copyText("acct.hist.skipped", { name: accountLabel(w.skipped.account), reason: unreadyLabel(w.skipped.reason, w.skipped.account) }), reset: null };
+  const left: never = w;
+  return left;
 }
 
 function unreadyLabel(reason: string, account: string): string {

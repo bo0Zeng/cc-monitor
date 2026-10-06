@@ -209,9 +209,9 @@ fn project_rows(dir: &Path, dir_name: &str) -> Vec<serde_json::Value> {
     project_rows_hiding(dir, dir_name, &hidden_cwd)
 }
 
-/// 这台家里那个不出会话的工作目录（`~/.cc-monitor/autostart/`）：在那里跑的 `claude`（例如替号开额度窗口的那一句）
-/// 历史页与会话列表都不出。后端不建它、不往里写，只按它藏。
-const HIDDEN_DIR: &str = "autostart";
+/// 这台家里那个不出会话的工作目录（`~/.cc-monitor/autostart/`，名字住 [`crate::common::own_dir::HIDDEN_WORK_DIR`]）：
+/// 在那里跑的 `claude`（例如替号开额度窗口的那一句、`quota-probe` 报用量的那一次）历史页与会话列表都不出。观测侧只按它藏。
+const HIDDEN_DIR: &str = crate::common::own_dir::HIDDEN_WORK_DIR;
 
 /// 工作目录是 [`HIDDEN_DIR`] 的会话不出。**判据只在这一处**（项目清单按它摘组、观测侧按 pidfile 的目录不宣告）。
 pub(crate) fn hidden_cwd(cwd: &str) -> bool {

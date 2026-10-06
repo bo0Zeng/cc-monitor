@@ -208,6 +208,8 @@ pub(crate) struct Child {
     /// 显式交的：`Some` 设、`None` 摘。排在继承之后（显式压过继承）。
     envs: Vec<(OsString, Option<OsString>)>,
     no_console_window: bool,
+    /// 工作目录；`None` ＝ 照宿主的。
+    cwd: Option<std::path::PathBuf>,
 }
 
 impl Child {
@@ -218,7 +220,14 @@ impl Child {
             inherit_only: None,
             envs: Vec::new(),
             no_console_window: false,
+            cwd: None,
         }
+    }
+
+    /// 在这个目录里起它。
+    pub(crate) fn current_dir(mut self, dir: impl AsRef<std::path::Path>) -> Child {
+        self.cwd = Some(dir.as_ref().to_path_buf());
+        self
     }
 
     pub(crate) fn arg(mut self, a: impl AsRef<OsStr>) -> Child {
@@ -311,6 +320,9 @@ impl Child {
                 Some(v) => c.env(k, v),
                 None => c.env_remove(k),
             };
+        }
+        if let Some(d) = &self.cwd {
+            c.current_dir(d);
         }
         if self.no_console_window {
             os::no_console_window(&mut c);

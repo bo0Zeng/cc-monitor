@@ -899,6 +899,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--exit-policy-read",
     "--quota-read",
+    // 用某个号查一次额度（`inbound::REGISTRY` 的 `quota-probe`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--quota-probe",
     // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`）自动派生的 CLI 面；除 `--rotation-read` 外入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--rotation-read",
     "--rotation-set",

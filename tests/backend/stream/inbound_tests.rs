@@ -555,6 +555,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "exit-policy-read",
         "exit-policy-set",
         "quota-read",
+        "quota-probe",
         // 轮换：读 / 锁里原子写 `rotation.json`（同步文件 I/O）。
         "rotation-read",
         "rotation-set",
@@ -738,6 +739,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "exit-policy-read",
         "exit-policy-set",
         "quota-read",
+        "quota-probe",
         "rotation-read",
         "rotation-set",
         "rotation-session-read",

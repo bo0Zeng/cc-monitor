@@ -166,14 +166,19 @@ pub(crate) fn quota_read_with(ctx: &Ctx, now: u64) -> Value {
     let n = show::near_of(ctx.hop.store.now().default_rotation().when);
     let shown = |agent: &str, account: &str, o: Option<&ledger::Observed>| {
         let slot = crate::agents::window_slot_of(agent);
-        show::show(
+        let key = crate::agents::window_key_of(agent);
+        let mut sh = show::show(
             o.map(|o| (&o.reading, o.seen_at)),
             ctx.hop
                 .show_facts(agent, &lib, account, &|a| (ctx.rows)(agent, a)),
             n,
             now,
             &|w| slot.and_then(|f| f(w)),
-        )
+        );
+        if let Some(o) = o {
+            sh.windows = show::windows_of(o, &|w| key.and_then(|f| f(w)), now);
+        }
+        sh
     };
     let mut usable: Vec<String> = Vec::new();
     let mut earliest: Option<(u64, String)> = None;
@@ -432,19 +437,18 @@ pub(crate) fn record(
     why: SwitchWhy,
     now: u64,
 ) -> SwitchOutcome {
+    let agent = ctx
+        .hop
+        .store
+        .now()
+        .sessions
+        .get(sid)
+        .map(|s| s.agent.clone())
+        .unwrap_or_default();
     let resets = ctx
         .hop
         .quota
-        .entry(
-            &ctx.hop
-                .store
-                .now()
-                .sessions
-                .get(sid)
-                .map(|s| s.agent.clone())
-                .unwrap_or_default(),
-            from,
-        )
+        .entry(&agent, from)
         .and_then(|o| o.reading.resets_at);
     let rec = SwitchRecord {
         at: now,
@@ -453,7 +457,21 @@ pub(crate) fn record(
         why,
         from_resets_at: resets,
     };
-    match rotation::face_change(&ctx.hop.store, |b| b.pin(sid, rec, &[])) {
+    let base = ctx.hop.baseline_of(&agent, to, now);
+    let book = ctx.hop.store.now();
+    let above = book
+        .sessions
+        .get(sid)
+        .map(|s| {
+            ctx.hop
+                .above_at(&book, s, to, &|a| (ctx.rows)(&agent, a), now)
+        })
+        .unwrap_or_default();
+    match rotation::face_change(&ctx.hop.store, |b| {
+        b.pin(sid, rec, &[]);
+        b.rebase(sid, &base);
+        b.block_above(sid, &above);
+    }) {
         Ok(()) => SwitchOutcome::Switched,
         Err(e) => {
             tracing::warn!("[rotate] {e}");

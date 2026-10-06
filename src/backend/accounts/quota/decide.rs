@@ -1,21 +1,34 @@
-//! ★ 换号的**唯一判定**（纯函数）：此刻这个会话的号该不该换、换到谁、为什么。
+//! ★ 换号的**唯一判定**（纯函数）：此刻这个会话的号该不该换、换到谁、为什么。只有一个谓词 ＋ 一个挑法。
 //!
-//! | 情况 | 判 |
+//! **谓词** [`standing`]：一个号此刻能不能用、为什么、几点回来 —— 唯一说这件事的地方：
+//!
+//! | 结论 | 判（先到先得） |
 //! |---|---|
-//! | 刚回来的回包被拒（429） | 触发 `full{w}` |
-//! | 发之前：额度账上此刻的号被拒、还没到重置时刻 | 触发 `full{w}` |
-//! | 发之前：此刻的号正在用付费超额 | 触发；只找**订阅号**接，都满 ⇒ 留在超额（`toOverage`） |
-//! | 发之前：「到 N% 换」且 5h / 7d 有一个窗口用到 N%、还没重置 | 触发 `threshold{n}` |
-//! | 其余 | 不换 |
+//! | 被拒 | 刚回来的回包被拒（429）；或额度账上被拒、还没到重置时刻 |
+//! | 超额在兜 | 订阅号正在用付费超额、卡着的窗口还没重置 |
+//! | 过上限 | 有窗口用到它的上限、还没重置。上限按窗口键取：这个号这个窗口的 → 这个号 `*` 的 → 这份轮换的 `when`（「满了才换」没有缺省上限）；按时段写的取此刻（本地钟）落在的那一段，落不进 ⇒ 往下一层 |
+//! | 能用 | 其余 |
 //!
-//! 触发之后按轮换的顺序**从头**取首个能接的号（列表顺序 ＝ 偏好；起始账号恢复了就回到它），跳过：此刻的号 · 这一发已经试过的 ·
-//! 额度账上满着的（被拒未到重置 · 订阅号超额在用 · 阈值模式过了阈值）· 接不上的（`ready` 说为什么，记成「跳过」）。
-//! 一个都没有、到上限那一格是 `stop`（阈值模式）⇒ 这一发不发上游（[`Verdict::Hold`]，回那一家的「用满」回包，重置时刻 ＝ 池里最早回到阈值以下的那一刻）。
-//! 一个都没有、而触发的是被拒（不是阈值）、到上限那一格是 `continue` ⇒ 退一步：按序取首个**没被拒**的号（不管阈值；超额在兜的也不取）；
-//! 还是没有 ⇒ 不换（被拒就原样交回上游的拒绝）。阈值触发而没有 ⇒ 留在此刻的号上照发。
-//! 候选只从池里、且不含试过的 ⇒ 一发请求至多换「池子大小」次，不打转。
+//! 「几点回来」＝ 卡着它的每一处（被拒 / 超额那个窗口 · 过了上限的每个窗口）都重置的那一刻；有一处说不出 ⇒ 说不出。
+//!
+//! **挑法** [`decide`]：
+//! 1. 此刻的号能用：这一段用完了单段预算（`stint`，软的）⇒ 想走；或 `preempt` 开着、换进它那一刻挡在它前面的号
+//!    （[`blocked_above`]，随会话记下）有一个又能用了 ⇒ 切回去（按池序取首个）；
+//!    都不是 ⇒ 不换。想走而没有能接的 ⇒ 留着。刚回来的那一发照过了 ⇒ 这一问不换。
+//! 2. 此刻的号不能用 ⇒ 按池序**从头**取首个能用、接得上的号（列表顺序 ＝ 偏好；超额在兜 ⇒ 只找订阅号接，没有就留在超额 `toOverage`）。
+//! 3. 一个都没有 ⇒ 照到上限那一格：`continue` 且此刻的号被拒 ⇒ 退一步取首个没被拒、也不在超额上的（不管上限）；
+//!    `stop` 且这份轮换有上限（`when` 是到 N%，或给池里的号设了上限）、说得出几点有号回来 ⇒ 这一发不发上游（[`Verdict::Hold`]）；
+//!    其余 ⇒ 不换（被拒就原样交回上游的拒绝，过上限就留在此刻的号上照发）。
+//!
+//! 今天的几种情况都是它的特例：429 ＝ 此刻的号被拒 · 到 N% ＝ 缺省上限 · 超额在兜 ＝ 只换到能用的订阅号 · `atLimit` 照旧。
+//! 候选只从池里、且不含此刻的与这一发试过的 ⇒ 一发请求至多换「池子大小」次，不打转。
+//! 不会来回抖：一个窗口里用量只增不减 ⇒「能用 → 不能用」只因用量涨、「不能用 → 能用」只因重置（或时段换了上限）；
+//! `preempt` 只在挡在前面的号回来那一刻改结论（手动换过来时本就能用的号不在那份名单里 ⇒ 手动换号不会被切回）；`stint` 按换进来那一刻的基线算，每换进来一次只用一次。
 
-use super::rotation::{AtLimit, RotationWhen, SwitchWhy, Unready};
+use super::reset_since_seen;
+use super::rotation::{
+    AtLimit, Base, Baseline, CapValue, Caps, RotationWhen, Stints, SwitchWhy, Unready, ALL_WINDOWS,
+};
 use crate::agents::{QuotaReading, QuotaWindow};
 
 /// 号的种类（接超额只找订阅号）：线上 `sub` · `api`。
@@ -39,19 +52,34 @@ pub enum Kind {
 pub(crate) struct Facts<'a> {
     /// 这个会话的轮换池（按序）。
     pub(crate) pool: &'a [String],
+    /// 缺省上限（「到 N% 换」的 N；「满了才换」没有）。
     pub(crate) when: RotationWhen,
+    /// 每号覆盖的上限。
+    pub(crate) cap: &'a Caps,
+    /// 每号的单段预算。
+    pub(crate) stint: &'a Stints,
+    /// 前面的号能用了就切回去。
+    pub(crate) preempt: bool,
     /// 到上限没号可换时怎么办（这一家给不出「用满」回包 ⇒ 调用方交 `continue`）。
     pub(crate) at_limit: AtLimit,
     /// 此刻走的号（刚回来的那个回包就是它答的）。
     pub(crate) current: &'a str,
+    /// 此刻的号这一段的基线（换进来那一刻各窗口的用量）。
+    pub(crate) base: &'a Baseline,
+    /// 换进此刻的号那一刻，池里排在它前面、当时不能用的号（`preempt` 只等它们回来）。
+    pub(crate) above: &'a [String],
     pub(crate) now: u64,
+    /// 这台后端此刻的本地钟比 UTC 快几秒（按时段写的上限按本地钟取）。
+    pub(crate) offset: i64,
     /// 刚回来的回包读成的额度快照；问「发之前」时为 `None`。
     pub(crate) heard: Option<&'a QuotaReading>,
     /// 额度账上各号最近的快照。
     pub(crate) seen: &'a dyn Fn(&str) -> Option<QuotaReading>,
     pub(crate) kind: &'a dyn Fn(&str) -> Kind,
-    /// 窗口名 → 语义位（`5h` / `7d`）。
+    /// 窗口名 → 语义位（`5h` / `7d`；换号记录里说卡在哪用）。
     pub(crate) slot: &'a dyn Fn(&str) -> Option<&'static str>,
+    /// 窗口名 → 窗口键（适配层给，不透明；上限 · 单段预算按它配）。
+    pub(crate) key: &'a dyn Fn(&str) -> Option<String>,
     /// 这一发已经试过的号（含此刻的）。
     pub(crate) tried: &'a [String],
 }
@@ -74,7 +102,7 @@ pub(crate) enum Verdict {
         from_resets_at: Option<u64>,
         skipped: Vec<(String, Unready)>,
     },
-    /// 硬上限：阈值以下没有能接的号 ⇒ 这一发不发上游，回那一家的「用满」回包；`back` ＝ 池里最早回到阈值以下的那一刻。
+    /// 硬上限：池里没有能接的号 ⇒ 这一发不发上游，回那一家的「用满」回包；`back` ＝ 池里最早回来的那一刻。
     Hold {
         n: u8,
         back: Back,
@@ -82,7 +110,7 @@ pub(crate) enum Verdict {
     },
 }
 
-/// 池里最早回到阈值以下的那个号：几点 · 卡着它的那个窗口的语义位（`5h` / `7d`，说不出 ⇒ `None`）。
+/// 池里最早回来的那个号：几点 · 卡着它到最后的那个窗口的窗口键（`5h` · `7d` · `7d:<模型>`；说不出 ⇒ `None`）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Back {
     pub(crate) account: String,
@@ -90,28 +118,57 @@ pub(crate) struct Back {
     pub(crate) slot: Option<String>,
 }
 
-/// 触发的那一种。
-struct Trigger {
-    why: SwitchWhy,
-    resets_at: Option<u64>,
-    /// 超额在兜：只找订阅号接。
-    overage: bool,
+/// ★ 一个号此刻能不能用。`until` ＝ 几点回来（说不出 ⇒ `None`）；`key` ＝ 卡着它到最后的那个窗口的窗口键。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Standing {
+    Usable,
+    Refused {
+        until: Option<u64>,
+        key: Option<String>,
+    },
+    Overage {
+        until: Option<u64>,
+        key: Option<String>,
+    },
+    /// 过上限：`n` ＝ 第一个过了上限的窗口的上限。
+    OverCap {
+        n: u8,
+        until: Option<u64>,
+        key: Option<String>,
+    },
 }
 
-fn live(t: Option<u64>, now: u64) -> bool {
-    t.is_none_or(|t| t > now)
-}
+impl Standing {
+    pub(crate) fn usable(&self) -> bool {
+        matches!(self, Standing::Usable)
+    }
 
-fn full_why(r: &QuotaReading, f: &Facts<'_>) -> SwitchWhy {
-    SwitchWhy::Full {
-        w: r.limiting
-            .as_deref()
-            .and_then(|l| (f.slot)(l))
-            .map(str::to_string),
+    /// 被拒或超额在兜（不管上限）。
+    fn shut(&self) -> bool {
+        matches!(self, Standing::Refused { .. } | Standing::Overage { .. })
+    }
+
+    /// 几点回来 ＋ 卡到最后的那个窗口（能用 ⇒ `None`）。
+    fn back(&self) -> Option<(Option<u64>, Option<String>)> {
+        match self {
+            Standing::Usable => None,
+            Standing::Refused { until, key }
+            | Standing::Overage { until, key }
+            | Standing::OverCap { until, key, .. } => Some((*until, key.clone())),
+        }
     }
 }
 
-/// ★ 「用到 N%」的唯一判法：有语义位（`5h` / `7d`）的窗口里，第一个用到 `n`%、还没重置的。轮换的「到阈值」与显示态的「快满」都问它。
+fn live(t: Option<u64>, now: u64) -> bool {
+    !reset_since_seen(t, now)
+}
+
+/// 「用到 N%」的唯一判法：这个窗口用到 `n`%、还没重置。
+fn over(w: &QuotaWindow, n: u8, now: u64) -> bool {
+    w.used.is_some_and(|u| u * 100.0 >= f64::from(n)) && live(w.resets_at, now)
+}
+
+/// 「快满」那一问（显示态用）：有语义位（`5h` / `7d`）的窗口里，第一个用到 `n`%、还没重置的。与 [`standing`] 的「过上限」同一个判法。
 pub(crate) fn window_over<'r>(
     r: &'r QuotaReading,
     n: u8,
@@ -121,56 +178,7 @@ pub(crate) fn window_over<'r>(
     r.windows
         .iter()
         .filter(|w| slot(&w.name).is_some())
-        .find(|w| w.used.is_some_and(|u| u * 100.0 >= f64::from(n)) && live(w.resets_at, now))
-}
-
-/// 阈值模式下过了阈值、还没重置的那个窗口的重置时刻（`Some(None)` ＝ 过了、说不出几点重置）。
-fn over_threshold(r: &QuotaReading, f: &Facts<'_>) -> Option<(u8, Option<u64>)> {
-    let RotationWhen::Threshold { n } = f.when else {
-        return None;
-    };
-    window_over(r, n, f.now, f.slot).map(|w| (n, w.resets_at))
-}
-
-/// 这个号几点回到阈值以下（被拒的那个窗口 ＋ 过了阈值的每个窗口都重置了才算）：（时刻, 最晚重置那个窗口的语义位）。
-/// 此刻没卡着 · 有一个窗口说不出几点重置 ⇒ `None`。
-fn back_under(account: &str, n: u8, f: &Facts<'_>) -> Option<(u64, Option<String>)> {
-    let r = (f.seen)(account)?;
-    let mut last: Option<(u64, Option<String>)> = None;
-    let mut later = |t: u64, slot: Option<String>| {
-        if last.as_ref().is_none_or(|(at, _)| t > *at) {
-            last = Some((t, slot));
-        }
-    };
-    if r.refused && r.resets_at.is_none_or(|t| t > f.now) {
-        let slot = r
-            .limiting
-            .as_deref()
-            .and_then(|l| (f.slot)(l))
-            .map(str::to_string);
-        later(r.resets_at?, slot);
-    }
-    for w in r.windows.iter().filter(|w| {
-        (f.slot)(&w.name).is_some()
-            && w.used.is_some_and(|u| u * 100.0 >= f64::from(n))
-            && live(w.resets_at, f.now)
-    }) {
-        later(w.resets_at?, (f.slot)(&w.name).map(str::to_string));
-    }
-    last
-}
-
-/// 池里最早回到阈值以下的那个号（都说不出 ⇒ `None`）。
-fn earliest_back(n: u8, f: &Facts<'_>) -> Option<Back> {
-    f.pool
-        .iter()
-        .filter_map(|a| back_under(a, n, f).map(|(at, slot)| (at, a, slot)))
-        .min_by_key(|(at, _, _)| *at)
-        .map(|(at, a, slot)| Back {
-            account: a.clone(),
-            at,
-            slot,
-        })
+        .find(|w| over(w, n, now))
 }
 
 /// 订阅号正在用付费超额、卡着的窗口还没重置。
@@ -178,55 +186,162 @@ pub(crate) fn overage_in_use(r: &QuotaReading, kind: Kind, now: u64) -> bool {
     kind == Kind::Sub && r.overage.as_ref().is_some_and(|o| o.in_use) && live(r.resets_at, now)
 }
 
-fn trigger(f: &Facts<'_>) -> Option<Trigger> {
-    if let Some(r) = f.heard {
-        return r.refused.then(|| Trigger {
-            why: full_why(r, f),
-            resets_at: r.resets_at,
-            overage: false,
-        });
+/// 此刻是本地钟一天里的第几分钟。
+fn minute_of(f: &Facts<'_>) -> u16 {
+    let local = i128::from(f.now) + i128::from(f.offset);
+    u16::try_from(local.rem_euclid(86_400) / 60).unwrap_or(0)
+}
+
+/// 这个号这个窗口此刻的上限（没有 ⇒ `None`：「满了才换」又没给它设）。
+pub(crate) fn cap_of(f: &Facts<'_>, account: &str, key: &str) -> Option<u8> {
+    let minute = minute_of(f);
+    let pick = |v: &CapValue| match v {
+        CapValue::N(n) => Some(*n),
+        CapValue::Slots(s) => s.iter().find(|x| x.holds(minute)).map(|x| x.n),
+    };
+    f.cap
+        .get(account)
+        .and_then(|m| {
+            m.get(key)
+                .and_then(pick)
+                .or_else(|| m.get(ALL_WINDOWS).and_then(pick))
+        })
+        .or(match f.when {
+            RotationWhen::Threshold { n } => Some(n),
+            RotationWhen::Full => None,
+        })
+}
+
+/// 这份轮换有没有上限（缺省的，或给池里哪个号设的）：硬上限只在有上限时成立。
+fn has_caps(f: &Facts<'_>) -> bool {
+    matches!(f.when, RotationWhen::Threshold { .. }) || f.pool.iter().any(|a| f.cap.contains_key(a))
+}
+
+/// ★ 谓词：读成 `r` 的这个号此刻能不能用。`heard` ⇒ `r` 是刚回来的那个回包（被拒就是被拒，不看时刻）。
+fn standing_in(f: &Facts<'_>, account: &str, r: &QuotaReading, heard: bool) -> Standing {
+    // 卡着它的每一处：（重置时刻, 窗口键）。
+    let mut parts: Vec<(Option<u64>, Option<String>)> = Vec::new();
+    let refused = r.refused && (heard || r.resets_at.is_some_and(|t| t > f.now));
+    let overage = !refused && overage_in_use(r, (f.kind)(account), f.now);
+    if refused || overage {
+        parts.push((r.resets_at, r.limiting.as_deref().and_then(|l| (f.key)(l))));
     }
-    let r = (f.seen)(f.current)?;
-    if r.refused && r.resets_at.is_some_and(|t| t > f.now) {
-        return Some(Trigger {
-            why: full_why(&r, f),
-            resets_at: r.resets_at,
-            overage: false,
-        });
+    let mut first_n: Option<u8> = None;
+    for w in &r.windows {
+        let Some(k) = (f.key)(&w.name) else { continue };
+        let Some(n) = cap_of(f, account, &k) else {
+            continue;
+        };
+        if over(w, n, f.now) {
+            first_n.get_or_insert(n);
+            parts.push((w.resets_at, Some(k)));
+        }
     }
-    if overage_in_use(&r, (f.kind)(f.current), f.now) {
-        return Some(Trigger {
-            why: full_why(&r, f),
-            resets_at: r.resets_at,
-            overage: true,
-        });
+    if parts.is_empty() {
+        return Standing::Usable;
     }
-    over_threshold(&r, f).map(|(n, resets_at)| Trigger {
-        why: SwitchWhy::Threshold { n },
-        resets_at,
-        overage: false,
+    // 回来的时刻 ＝ 最晚那一处（一样晚取先列的）；有一处说不出 ⇒ 说不出。
+    let mut last: Option<(u64, Option<String>)> = None;
+    let mut unknown = false;
+    for (t, k) in parts {
+        match t {
+            None => unknown = true,
+            Some(t) if last.as_ref().is_none_or(|(at, _)| t > *at) => last = Some((t, k)),
+            Some(_) => {}
+        }
+    }
+    let until = last.as_ref().map(|(t, _)| *t).filter(|_| !unknown);
+    let key = last.and_then(|(_, k)| k);
+    if refused {
+        Standing::Refused { until, key }
+    } else if overage {
+        Standing::Overage { until, key }
+    } else {
+        Standing::OverCap {
+            n: first_n.unwrap_or(100),
+            until,
+            key,
+        }
+    }
+}
+
+/// ★ 谓词：这个号此刻能不能用（按额度账；没见过 ⇒ 能用）。
+pub(crate) fn standing(account: &str, f: &Facts<'_>) -> Standing {
+    (f.seen)(account).map_or(Standing::Usable, |r| standing_in(f, account, &r, false))
+}
+
+/// 此刻的号：刚回来的回包被拒 ⇒ 按它判；没被拒（那一发照过了）⇒ 能用；问「发之前」⇒ 按额度账。
+fn current_standing(f: &Facts<'_>) -> Standing {
+    match f.heard {
+        Some(r) if r.refused => standing_in(f, f.current, r, true),
+        Some(_) => Standing::Usable,
+        None => standing(f.current, f),
+    }
+}
+
+/// 此刻那个号的快照（刚回来的那个优先）。
+fn current_reading(f: &Facts<'_>) -> Option<QuotaReading> {
+    f.heard.cloned().or_else(|| (f.seen)(f.current))
+}
+
+/// 一个窗口此刻的用量（已重置、未计时 ⇒ 0）。
+pub(crate) fn used_now(w: &QuotaWindow, now: u64) -> f64 {
+    if reset_since_seen(w.resets_at, now) {
+        0.0
+    } else {
+        w.used.unwrap_or(0.0)
+    }
+}
+
+/// 换进来之后这个窗口又用了多少（比例）：基线那一期已过（窗口重置过）⇒ 只算重置之后的（下界）。
+fn spent_since(w: &QuotaWindow, b: &Base, now: u64) -> f64 {
+    let since = if reset_since_seen(b.resets_at, now) {
+        0.0
+    } else {
+        b.used
+    };
+    (used_now(w, now) - since).max(0.0)
+}
+
+/// 这一段在此刻的号上各窗口：（窗口键, 基线, 又用了多少, 单段预算）；说不出基线的窗口不出。
+pub(crate) fn segment(f: &Facts<'_>) -> Vec<(String, f64, f64, Option<u8>)> {
+    let Some(r) = current_reading(f) else {
+        return Vec::new();
+    };
+    let per = f.stint.get(f.current);
+    r.windows
+        .iter()
+        .filter_map(|w| {
+            let k = (f.key)(&w.name)?;
+            let b = f.base.get(&k)?;
+            let budget = per.and_then(|p| p.get(&k).or_else(|| p.get(ALL_WINDOWS)).copied());
+            Some((k, b.used, spent_since(w, b, f.now), budget))
+        })
+        .collect()
+}
+
+/// 这一段在此刻的号上用完了单段预算（有一个窗口用到就算）：（那个窗口的窗口键, 它的预算）。
+fn stint_spent(f: &Facts<'_>) -> Option<(String, u8)> {
+    segment(f).into_iter().find_map(|(k, _, spent, n)| {
+        n.filter(|n| spent * 100.0 + 1e-9 >= f64::from(*n))
+            .map(|n| (k, n))
     })
 }
 
-/// 额度账上这个号此刻被拒（未到重置）或超额在兜 —— 不管阈值。
-fn shut(account: &str, f: &Facts<'_>) -> bool {
-    (f.seen)(account).is_some_and(|r| {
-        (r.refused && r.resets_at.is_some_and(|t| t > f.now))
-            || overage_in_use(&r, (f.kind)(account), f.now)
-    })
+/// 原号被拒 / 超额时记的「为什么」：卡着的那个窗口的语义位。
+fn full_why(f: &Facts<'_>) -> SwitchWhy {
+    SwitchWhy::Full {
+        w: current_reading(f)
+            .and_then(|r| r.limiting)
+            .and_then(|l| (f.slot)(&l))
+            .map(str::to_string),
+    }
 }
 
-/// 额度账上这个号此刻满着（换过去也接不住）。
-pub(crate) fn spent(account: &str, f: &Facts<'_>) -> bool {
-    shut(account, f) || (f.seen)(account).is_some_and(|r| over_threshold(&r, f).is_some())
-}
-
-/// 按序取首个能接的号（不含此刻的 · 试过的 · `full(号)` 说满着的 · `skipped` 里已经问过接不上的；`subs_only` ⇒ 只要订阅号）；
-/// 跳过的追加进 `skipped`。
+/// 按序取首个 `take(号)` 的、接得上的号（不含此刻的 · 试过的 · `skipped` 里已经问过接不上的）；跳过的追加进 `skipped`。
 fn pick_by(
     f: &Facts<'_>,
-    subs_only: bool,
-    full: &dyn Fn(&str, &Facts<'_>) -> bool,
+    take: &dyn Fn(&str) -> bool,
     ready: &mut dyn FnMut(&str) -> Result<(), Unready>,
     skipped: &mut Vec<(String, Unready)>,
 ) -> Option<String> {
@@ -235,8 +350,7 @@ fn pick_by(
         a.as_str() != f.current
             && !f.tried.iter().any(|t| t == *a)
             && !asked.iter().any(|x| x == *a)
-            && (!subs_only || (f.kind)(a) == Kind::Sub)
-            && !full(a, f)
+            && take(a)
     });
     for a in candidates {
         match ready(a) {
@@ -247,78 +361,151 @@ fn pick_by(
     None
 }
 
-/// 按序取首个能接的号（不含此刻的 · 试过的 · 满着的）；跳过的交回。
-fn pick(
-    f: &Facts<'_>,
-    subs_only: bool,
-    ready: &mut dyn FnMut(&str) -> Result<(), Unready>,
-) -> (Option<String>, Vec<(String, Unready)>) {
-    let mut skipped = Vec::new();
-    let to = pick_by(f, subs_only, &spent, ready, &mut skipped);
-    (to, skipped)
+/// 能用的号（`subs_only` ⇒ 只要订阅号）。
+fn usable_one<'f>(f: &'f Facts<'f>, subs_only: bool) -> impl Fn(&str) -> bool + 'f {
+    move |a: &str| (!subs_only || (f.kind)(a) == Kind::Sub) && standing(a, f).usable()
 }
 
-/// ★ 判一次。`ready(号)` 问这个号此刻接不接得上（要登录 / key / 账号身份）—— 只对真轮到的号问。
-pub(crate) fn decide(f: &Facts<'_>, ready: &mut dyn FnMut(&str) -> Result<(), Unready>) -> Verdict {
-    let Some(t) = trigger(f) else {
-        return Verdict::Stay;
-    };
-    let (mut to, mut skipped) = pick(f, t.overage, ready);
-    // 软阈值：被拒触发、阈值以下没有能接的 ⇒ 退一步取首个没被拒的（阈值模式下那几个过了阈值的号仍能用）。
-    if to.is_none()
-        && f.at_limit == AtLimit::Continue
-        && !t.overage
-        && matches!(t.why, SwitchWhy::Full { .. })
-    {
-        to = pick_by(f, false, &shut, ready, &mut skipped);
+/// 池里最早回来的那个号（都说不出 ⇒ `None`）。
+fn earliest_back(f: &Facts<'_>) -> Option<Back> {
+    f.pool
+        .iter()
+        .filter_map(|a| match standing(a, f).back() {
+            Some((Some(at), slot)) => Some((at, a, slot)),
+            _ => None,
+        })
+        .min_by_key(|(at, _, _)| *at)
+        .map(|(at, a, slot)| Back {
+            account: a.clone(),
+            at,
+            slot,
+        })
+}
+
+/// 能用而想走（单段预算用完 · 前面的号回来了）：换到首个 `take` 的；没有 ⇒ 留着（有跳过的才记一句为什么没换成）。
+fn leave(
+    f: &Facts<'_>,
+    why: SwitchWhy,
+    take: &dyn Fn(&str) -> bool,
+    ready: &mut dyn FnMut(&str) -> Result<(), Unready>,
+) -> Verdict {
+    let mut skipped = Vec::new();
+    match pick_by(f, take, ready, &mut skipped) {
+        Some(to) => Verdict::Switch {
+            to,
+            why,
+            from_resets_at: None,
+            skipped,
+        },
+        None if skipped.is_empty() => Verdict::Stay,
+        None => Verdict::Stuck {
+            why,
+            from_resets_at: None,
+            skipped,
+        },
     }
-    // 硬上限：阈值以下没有能接的 ⇒ 不发上游（说得出几点有号回到阈值以下才成立，说不出照软阈值办）。
-    if let (None, AtLimit::Stop, RotationWhen::Threshold { n }) = (&to, f.at_limit, f.when) {
-        if !t.overage {
-            if let Some(back) = earliest_back(n, f) {
-                return Verdict::Hold { n, back, skipped };
-            }
+}
+
+/// ★ 挑法：判一次。`ready(号)` 问这个号此刻接不接得上（要登录 / key / 账号身份）—— 只对真轮到的号问。
+pub(crate) fn decide(f: &Facts<'_>, ready: &mut dyn FnMut(&str) -> Result<(), Unready>) -> Verdict {
+    let cur = current_standing(f);
+    if cur.usable() {
+        // 1. 能用：刚回来的那一发照过了 ⇒ 不换；单段预算用完（软的）⇒ 换到首个能用的；前面的号回来了 ⇒ 切回去。
+        if f.heard.is_some() {
+            return Verdict::Stay;
+        }
+        if let Some((w, n)) = stint_spent(f) {
+            return leave(f, SwitchWhy::Stint { w, n }, &usable_one(f, false), ready);
+        }
+        if !f.preempt {
+            return Verdict::Stay;
+        }
+        // 切回只等「换进来那一刻挡在前面的」回来（重置 · 时段换了上限都算）；换进来时本就能用的（手动换走的）不算。
+        let usable = usable_one(f, false);
+        let back = |a: &str| f.above.iter().any(|x| x == a) && usable(a);
+        return leave(f, SwitchWhy::Preempt, &back, ready);
+    }
+    let (why, from_resets_at, subs_only) = match &cur {
+        Standing::Usable => return Verdict::Stay,
+        Standing::Refused { .. } => (
+            full_why(f),
+            current_reading(f).and_then(|r| r.resets_at),
+            false,
+        ),
+        Standing::Overage { .. } => (
+            full_why(f),
+            current_reading(f).and_then(|r| r.resets_at),
+            true,
+        ),
+        Standing::OverCap { n, until, .. } => (SwitchWhy::Threshold { n: *n }, *until, false),
+    };
+    // 2. 不能用 ⇒ 从头取首个能用的。
+    let mut skipped = Vec::new();
+    let mut to = pick_by(f, &usable_one(f, subs_only), ready, &mut skipped);
+    // 3. 没有：软上限、此刻的号真被拒 ⇒ 退一步取首个没被拒的（过了上限的号仍能用）。
+    if to.is_none() && f.at_limit == AtLimit::Continue && matches!(cur, Standing::Refused { .. }) {
+        to = pick_by(f, &|a| !standing(a, f).shut(), ready, &mut skipped);
+    }
+    // 硬上限：有上限、说得出几点有号回来 ⇒ 不发上游（说不出照软上限办）。超额在兜不算。
+    if to.is_none() && f.at_limit == AtLimit::Stop && !subs_only && has_caps(f) {
+        if let Some(back) = earliest_back(f) {
+            let n = match (&cur, f.when) {
+                (Standing::OverCap { n, .. }, _) => *n,
+                (_, RotationWhen::Threshold { n }) => n,
+                _ => match standing(&back.account, f) {
+                    Standing::OverCap { n, .. } => n,
+                    _ => 100,
+                },
+            };
+            return Verdict::Hold { n, back, skipped };
         }
     }
-    match (to, skipped) {
-        (Some(to), skipped) => Verdict::Switch {
+    match to {
+        Some(to) => Verdict::Switch {
             to,
-            why: t.why,
-            from_resets_at: t.resets_at,
+            why,
+            from_resets_at,
             skipped,
         },
-        (None, skipped) => Verdict::Stuck {
-            why: if t.overage {
-                SwitchWhy::ToOverage
-            } else {
-                t.why
-            },
-            from_resets_at: t.resets_at,
+        None => Verdict::Stuck {
+            why: if subs_only { SwitchWhy::ToOverage } else { why },
+            from_resets_at,
             skipped,
         },
     }
 }
 
-/// 此刻的号要是触发了会换到谁（不管此刻触没触发；同一套候选与次序）。
+/// 换进 `target` 那一刻要记下的：池里排在它前面（它不在池里 ⇒ 整个池）、此刻不能用的号，按池序。
+pub(crate) fn blocked_above(f: &Facts<'_>, target: &str) -> Vec<String> {
+    f.pool
+        .iter()
+        .take_while(|a| a.as_str() != target)
+        .filter(|a| !standing(a, f).usable())
+        .cloned()
+        .collect()
+}
+
+/// 此刻的号要是不能用了会换到谁（不管此刻能不能用；同一套候选与次序）。
 pub(crate) fn next_of(
     f: &Facts<'_>,
     ready: &mut dyn FnMut(&str) -> Result<(), Unready>,
 ) -> Option<String> {
-    pick(f, false, ready).0
+    pick_by(f, &usable_one(f, false), ready, &mut Vec::new())
 }
 
 /// 此刻的号发不出去（被拒未到重置；超额在兜不算 —— 那一发照过）。
 pub(crate) fn refused_now(f: &Facts<'_>) -> bool {
-    trigger(f).is_some_and(|t| !t.overage && matches!(t.why, SwitchWhy::Full { .. }))
+    matches!(current_standing(f), Standing::Refused { .. })
 }
 
-/// 这个号满着的话几点回来：被拒 / 超额 ⇒ 卡着的那个窗口的重置时刻；阈值 ⇒ 过了阈值那个窗口的重置时刻。说不出 ⇒ `None`。
+/// 这个号额度账上此刻不能用（被拒 · 超额在兜 · 过上限）。
+pub(crate) fn spent(account: &str, f: &Facts<'_>) -> bool {
+    !standing(account, f).usable()
+}
+
+/// 这个号不能用的话几点回来；说不出 ⇒ `None`。
 pub(crate) fn back_at(account: &str, f: &Facts<'_>) -> Option<u64> {
-    let r = (f.seen)(account)?;
-    if r.refused || overage_in_use(&r, (f.kind)(account), f.now) {
-        return r.resets_at.filter(|t| *t > f.now);
-    }
-    over_threshold(&r, f).and_then(|(_, t)| t)
+    standing(account, f).back().and_then(|(t, _)| t)
 }
 
 #[cfg(test)]

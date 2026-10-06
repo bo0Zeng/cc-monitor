@@ -1,4 +1,4 @@
-//! 命令表 · 账号：`accounts-*` · `apikey-*` · `quota-read` · `rotation-*`。
+//! 命令表 · 账号：`accounts-*` · `apikey-*` · `quota-read` · `quota-probe` · `rotation-*`。
 
 use crate::stream::inbound::spec::{CommandSpec, Run};
 use crate::stream::inbound::LocalFiles;
@@ -30,6 +30,28 @@ pub(super) const SPECS: &[CommandSpec] = &[
         ],
         takes_input: false,
         run: Run::Blocking(|_r| Ok(Some(crate::faces::rotation_face::answer_quota_read()))),
+    },
+    // 用某个号查一次额度（帧面宿主 `faces/quota_probe_face.rs`）：起官方客户端、等它 ⇒ 阻塞档，总期限登记在 `caps.rs`。
+    CommandSpec {
+        name: "quota-probe",
+        doc_anchor: Some("#### `quota-probe`"),
+        codes: &[
+            "bad_args",
+            "child_timed_out",
+            "failed",
+            "io_failed",
+            "not_found",
+            "unsupported",
+        ],
+        fields: &[
+            "account", "agent", "from", "now", "path", "reason", "state", "windows",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::quota_probe_face::answer_probe(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
     },
     // 换号那一族（帧面宿主 `faces/rotation_face.rs`）：默认轮换读 / 写 · 一批会话的轮换与「账号」格读 / 写 · 现在就换。
     //   同步文件 I/O ⇒ 阻塞档；「现在就换」里重启换那一半要等 `session-restart` ⇒ 异步、失败可带码。

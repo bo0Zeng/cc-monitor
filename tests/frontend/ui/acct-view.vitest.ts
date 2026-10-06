@@ -105,6 +105,10 @@ describe("记录 · 提示条 · 标签页", () => {
     expect(whyOf({ at: NOW, from: "a", to: "a", why: { skipped: { account: "team", reason: "needsLogin" } } }, NOW, 0).why).toBe("跳过 team（team 需登录）");
     expect(whyOf({ at: NOW, from: "a", to: "a", why: { held: { n: 90 } } }, NOW, 0).why).toBe("a ≥90% · 停发");
   });
+  it("原因：段预算用完 `5h 段预算 +5`；前面的号回来 `z 已恢复`（名是换去的那个号）", () => {
+    expect(whyOf({ at: NOW, from: "b", to: "c", why: { stint: { w: "5h", n: 5 } } }, NOW, 0)).toEqual({ why: "5h 段预算 +5", reset: null });
+    expect(whyOf({ at: NOW, from: "b", to: "z", why: "preempt" }, NOW, 0)).toEqual({ why: "z 已恢复", reset: null });
+  });
   it("卡住：单号 · 全满 · 硬上限 · 时刻已过；能发 ⇒ 不出", () => {
     expect(bannerOf(entry(), NOW)).toBeNull();
     const single = entry({ blocked: { earliest: { account: "personal", at: NOW + 5400 } } }, { state: "refused" });
