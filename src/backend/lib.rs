@@ -794,7 +794,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p8b-history-old-gone：删 history-projects / history-sessions（界面已全问 history-list）。
 ///
 /// p8c-machine-state：拨号 ack 带 reason 闭集码；ssh-config-import 收 known、每组带 inList。
-pub const BUILD_ID: &str = "p8c-machine-state";
+///
+/// p8d-restart-outcome：rotation-switch 重启支带结局（done / failed ＋ old）；session-restart 停后失败带 stopped；history-search 行带 status · isBg · can；files-create / mkdir / rename 按平台判叶名回 bad_name；StepResult 带 exitCode。
+pub const BUILD_ID: &str = "p8d-restart-outcome";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
