@@ -7,6 +7,7 @@
 //! 夹具是**合成的结构**，不含任何真会话正文。
 
 use super::*;
+use crate::agents::claudecode::paths::projects_root;
 
 const Q: &str = "NeEdLe";
 

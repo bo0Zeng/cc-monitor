@@ -165,7 +165,7 @@ const NOT_A_PRODUCTION_FACE: &[&str] = &[
     // `agents/fake/` 整族是 `S6` 的**反向夹具**：一个假 agent，存在的唯一理由是让
     // 「把某一种能力删掉之后流程会不会在说得出话的地方停下来」变成常驻判据
     //（那份头注逐字）。它的 `CAPABILITIES` 是 12 条**中文的**知识名
-    //（「会话记录根」「判活 cmdline」…），人群是 `agent_locality_guard::NEW_AGENT_BLOCKERS`。
+    //（「会话记录根」「判活 cmdline」…），各住注册表哪一格登记在 `agent_locality_guard::CAPABILITY_FACES`。
     // ⇒ 它不是本后端对外声明的任何东西，汇进 `capability_ledger` 会让线上清单里
     //   凭空多出 12 条**没有任何线上面**的条目。
     "src/backend/agents/fake/mod.rs",

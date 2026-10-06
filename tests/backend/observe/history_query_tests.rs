@@ -1,4 +1,5 @@
 use super::*;
+use crate::agents::claudecode::paths::projects_root;
 
 fn fixture_project(root: &Path, dir_name: &str) -> PathBuf {
     let dir = root.join("projects").join(dir_name);

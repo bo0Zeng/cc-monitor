@@ -17,10 +17,6 @@
 //! 前缀校验，防 `../` 穿越）；project_dir 参数不允许含路径分隔符。
 //! 只读铁律（cc-monitor 不写远端）在此同样成立：本模块只 read_dir / read。
 
-// U2/U3：这两个原来在本文件里各有一份逐字相同的副本。去向**不同**：
-// `projects_root` 跨 observe/control 两层 ⇒ `common/`；`mtime_ms` 两个调用点同属 observe
-// ⇒ U3 按 `common/` 自己的「≥2 层」门槛搬回 `observe/`。
-use crate::agents::claudecode::paths::projects_root;
 use crate::observe::fence::Fence;
 use crate::observe::fs::mtime_ms;
 use copy_core::copy_text;
@@ -142,7 +138,13 @@ pub(crate) fn list_projects_to(
         Some(NO_RECORD_TREE),
         copy_text(
             "beHistory.records.none",
-            &[("path", &projects_root(agent_home).display().to_string())],
+            &[(
+                "path",
+                &records_root(agent_home)
+                    .unwrap_or_else(|| agent_home.to_path_buf())
+                    .display()
+                    .to_string(),
+            )],
         ),
     ))
 }
@@ -168,7 +170,9 @@ fn query_failed(e: &str) -> i32 {
 /// 回「记录树根在不在」：不在 ⇒ `Ok(false)`、一行不写（这台还没起过会话 —— 判定只在这一处）；
 /// 怎么说由调用方定：资产目录当零个项目 · CLI 照旧出声（带码）。
 pub(crate) fn list_projects_into(agent_home: &Path, out: &mut dyn Write) -> Result<bool, String> {
-    let root = projects_root(agent_home);
+    let Some(root) = records_root(agent_home) else {
+        return Ok(false);
+    };
     let entries = match std::fs::read_dir(&root) {
         Ok(it) => it,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
@@ -255,7 +259,7 @@ fn project_rows_hiding(
     if let Ok(files) = std::fs::read_dir(dir) {
         for f in files.flatten() {
             let p = f.path();
-            if p.is_file() && crate::agents::claudecode::records::is_session_file(&p) {
+            if p.is_file() && crate::agents::is_tree_session_file(&p) {
                 sessions.push((crate::agents::project_dir_of(&p), mtime_ms(&p)));
             }
         }
@@ -307,7 +311,7 @@ pub(crate) fn list_sessions_into(
     let entries = std::fs::read_dir(&dir).map_err(|e| unreadable_dir(&dir, &e))?;
     for entry in entries.flatten() {
         let p = entry.path();
-        if !p.is_file() || !crate::agents::claudecode::records::is_session_file(&p) {
+        if !p.is_file() || !crate::agents::is_tree_session_file(&p) {
             continue;
         }
         let meta = analyze_session_cached(&p);
@@ -323,7 +327,9 @@ pub(crate) fn list_sessions_into(
 pub(crate) fn sessions_by_dir(
     agent_home: &Path,
 ) -> Result<Option<Vec<(String, Result<Vec<serde_json::Value>, String>)>>, String> {
-    let root = projects_root(agent_home);
+    let Some(root) = records_root(agent_home) else {
+        return Ok(None);
+    };
     let entries = match std::fs::read_dir(&root) {
         Ok(it) => it,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -406,8 +412,16 @@ fn analyze_session_cached(p: &Path) -> serde_json::Value {
 
 /// `<agent_home>/projects/` 这道围栏放行一个候选路径（本体在 [`Fence`]；`candidate` 相对按根拼、绝对直用）。
 fn fence_under_projects(agent_home: &Path, candidate: &Path) -> Result<std::path::PathBuf, String> {
-    Fence::at(&projects_root(agent_home))?.admit(candidate)
+    Fence::at(&records_root(agent_home).ok_or(NO_TREE)?)?.admit(candidate)
 }
+
+/// 这台记录树的根（记录树那一家的布局，注册表 `RecordFace.tree`）。没有记录树那一家 ⇒ `None`。
+fn records_root(agent_home: &Path) -> Option<PathBuf> {
+    crate::agents::records_root(agent_home)
+}
+
+/// 注册表里没有记录树那一家时，按路径读的那几条拒的那一句。
+const NO_TREE: &str = "no agent here keeps a record tree";
 
 /// 一个子运行的记录住哪：父记录 ＋（子运行是哪个 ‖ 派出它的那次工具调用）⇒（那份记录, 子运行）。只问适配层给的那几格：
 /// 子运行的记录在哪几份（`ChildFace::sources`）· 一条记录属于哪个子运行（`run_of`）· 派出链接（`child_link`）。
@@ -511,7 +525,7 @@ fn validate_session_path_among(
             .ok_or(refused)?,
         Err(refused) => return Err(refused),
     };
-    if !crate::agents::claudecode::records::is_session_file(&target) {
+    if !crate::agents::is_own_session_file(&target) {
         return Err("refusing to read non-jsonl file".into());
     }
     Ok(target)
@@ -1507,7 +1521,9 @@ pub(crate) fn record_in(agent_home: &Path, sid: &str) -> Result<RecordProbe, Str
             "bad session id shape (letters, digits, hyphen; 1..=64): {sid:?}"
         )));
     }
-    let root = projects_root(agent_home);
+    let Some(root) = records_root(agent_home) else {
+        return Err(NO_TREE.to_string());
+    };
     let present = crate::agents::find_session_file(&root, sid).is_ok();
     Ok(RecordProbe {
         present,
@@ -1517,7 +1533,7 @@ pub(crate) fn record_in(agent_home: &Path, sid: &str) -> Result<RecordProbe, Str
 
 /// 这台记录树里那条会话的记录文件（同 [`record_in`] 那一找）。
 pub(crate) fn session_record(agent_home: &Path, sid: &str) -> Result<std::path::PathBuf, String> {
-    crate::agents::find_session_file(&projects_root(agent_home), sid)
+    crate::agents::find_session_file(&records_root(agent_home).ok_or(NO_TREE)?, sid)
 }
 
 /// [`record_in`] 按**这次 resume 要用的那个账号配置目录**查（`history-record` 的 `configDir`）。
@@ -1558,10 +1574,9 @@ pub(crate) struct RecordProbe {
 
 /// 帧面那几条要的「这台的 agent 家目录」—— 与 `main.rs` 那一句**同一个出处**。
 ///
-/// 住这里而不是帧面宿主那边：通用层不许点 agent 的名字（`agent_boundary_guard`），
-/// 而本层今天本来就是 Claude 专属的（`observe/mod.rs` 头注）。
+/// 问注册表里后端盯着的那一家（`agents::home_at`），照进程环境解。
 pub(crate) fn agent_home() -> std::path::PathBuf {
-    crate::agents::claudecode::paths::resolve_home()
+    crate::agents::home_at(None, true)
 }
 
 /// 这一行**算不算一行**（＝ 口径 `watcher::read_new_lines`：BOM 与全空白跳过）。

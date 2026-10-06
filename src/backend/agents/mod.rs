@@ -37,10 +37,8 @@
 //! ⚠ 另一半如实说：那个 `claude_dir` **参数名已经清了**
 //!（8 个文件；生产段 `claude_dir` 64 行 → 3 行，剩下的 3 处全是冻结的 wire 字段名；
 //! `agent_locality_guard` 判据③钉住不许长回来）。
-//! **但通用层仍然叫得出 agent 的名字** —— 换了个形状：8 个文件 / 27 处
-//! `agents::<名>::…` 的**调用点**（`agent_locality_guard::ADAPTER_CALL_SITES` 逐条登记）。
-//! 「知识收进适配层」与「通用层不再叫得出 agent 名字」是两件事，本层只做到了第一件；
-//! 第二件卡在**还没有接口**（`L2`），归 `S6`。
+//! 通用层也不直呼任何一家（`agents::<名>::…` 零处，`agent_locality_guard` 判据④）：
+//! 每一件 agent 知识都在注册表那一行的某一格里，通用层按 kind 问那一格。
 //!
 //! # **注册表**：本文件从"目录索引"变成了"这台机器认得哪几个 agent"
 //!
@@ -57,14 +55,10 @@
 //! 「加一个 agent 要改哪几处」这份清单本来就**必然**包含本文件 ——
 //! 下面那两行 `pub(crate) mod …` 不加，新的适配层根本编不进来。
 //! 把注册表放在别处只会让必改的文件从 1 个变成 2 个。
-//! ⚠ 代价如实写，以及它**为什么不能**记进 `ADAPTER_CALL_SITES`：
-//! 那张表里每一条的含义是「该被压到零的耦合」，而注册表这几行**方向相反** ——
-//! 它该随 agent 数增长。混进去，`S6` 就没法拿那个数当成绩。
-//! ⇒ 拆成 `agent_locality_guard::AGENT_REGISTRY_SITES` 单独一张；
+//! 判据④要通用层直呼适配层零处，而注册表这几行**方向相反** —— 它该随 agent 数增长。
+//! ⇒ 登记在 `agent_locality_guard::AGENT_REGISTRY_SITES`、从④的人群里扣掉；
 //! 扣出人群的**对价**是判据⑦把本文件的处数钉死成 `REGISTRY.len()`（**一家一行**），
-//! 谁想把别处的直呼挪进来刷数，当场红。
-//! （同轮还补了判据④的针：此前只认全路径 `agents::<名>::`，本文件写的相对路径 `codex::`
-//! 一处都数不到 —— 那是本区第二次「量具的作用域比事实**小**」。）
+//! 谁想把别处的直呼挪进来，当场红。
 
 use crate::stream::wire::AgentHome;
 use std::path::{Path, PathBuf};
@@ -144,6 +138,8 @@ pub(crate) struct Adapter {
     pub(crate) launch: Option<LaunchFace>,
     /// 请求压缩上下文用的那一句（送进会话所在的终端，换号重启「先压缩」那一步）；`None` ＝ 这一家不支持。
     pub(crate) compact_request: Option<&'static str>,
+    /// 这一家在本机的布局（家目录解析 · pidfile · 进程认法）；`None` ＝ 这一家今天不由后端盯着判活。
+    pub(crate) local: Option<LocalFace>,
 }
 
 /// 〔加一个 agent 只改 `agents/`〕一家的起会话事实 —— **唯一的家**。
@@ -349,6 +345,10 @@ pub(crate) struct RecordFace {
     pub(crate) parse: fn(&str) -> Result<Option<ParsedLine>, String>,
     /// 会话文件 ⇒ 它的 sid（这一家的文件命名）。
     pub(crate) sid: fn(&Path) -> Option<String>,
+    /// 这个路径是不是这一家的一份会话记录（按文件形态判：后缀 / 命名）。
+    pub(crate) is_session_file: fn(&Path) -> bool,
+    /// 这一家的记录树（会话按项目目录分、住在家目录下）：根在哪 · 新会话文件怎么命名。`None` ＝ 这一家的会话不住记录树。
+    pub(crate) tree: Option<RecordTree>,
     /// 这一行是不是一轮的结束 ⇒ 那条记录的 uuid（`turn_end` 帧）。`None` ＝ 这一家今天不报轮次边沿。
     pub(crate) turn_end: Option<fn(&str) -> Option<String>>,
     /// 在这一家的记录树（`records_root`）下按 sid 找那份会话文件（原共享 crate `branch-core`）。`None` ＝ 这一家不按 sid 找。
@@ -371,6 +371,26 @@ pub(crate) struct RecordFace {
     pub(crate) children: Option<ChildFace>,
     /// 会话的项目目录（会话起在哪个目录）：只读记录开头（[`first_in_head`]，有上界）。`None` 这一格 ＝ 这一家的记录里没有这件事。
     pub(crate) project_dir: Option<fn(&Path) -> Option<String>>,
+}
+
+/// 一家的记录树：会话按项目目录分，住在家目录下的一棵树里。
+#[derive(Clone, Copy)]
+pub(crate) struct RecordTree {
+    /// 家目录 ⇒ 记录树的根（其下每个项目一个目录）。
+    pub(crate) root: fn(&Path) -> PathBuf,
+    /// sid ⇒ 新会话文件的文件名（分叉落盘用）。
+    pub(crate) file_name: fn(&str) -> String,
+}
+
+/// 一家在本机的布局：家目录怎么解析 · 会话进程留的 pidfile 住哪 · 进程 cmdline 怎么认是它。
+#[derive(Clone, Copy)]
+pub(crate) struct LocalFace {
+    /// 家目录：给了账号配置目录就是它；没给 ⇒ `from_env` 时照进程环境，否则默认家目录。
+    pub(crate) home_at: fn(config_dir: Option<&Path>, from_env: bool) -> PathBuf,
+    /// 家目录 ⇒ pidfile 目录（判活 · 账号归属读它）。
+    pub(crate) pidfile_dir: fn(&Path) -> PathBuf,
+    /// 小写后的 cmdline 可不可能是这一家的进程（判活的冒名兜底）。
+    pub(crate) cmdline_may_be_agent: fn(&str) -> bool,
 }
 
 /// 一条子运行记录说了什么：属于哪个运行 · 是不是它的终局 · 它做的那件事（行上「最近：…」）。
@@ -928,6 +948,65 @@ pub(crate) fn record_face(kind: &str) -> Option<RecordFace> {
     adapter_among(REGISTRY, kind).and_then(|a| a.records)
 }
 
+/// `kind` 那一家的记录树（[`RecordFace::tree`]）。认不出 / 那一家的会话不住记录树 ⇒ `None`。
+pub(crate) fn record_tree_among(registry: &[Adapter], kind: &str) -> Option<RecordTree> {
+    adapter_among(registry, kind).and_then(|a| a.records?.tree)
+}
+
+/// `kind` 那一家家目录 `home` 下记录树的根。那一家没有记录树 ⇒ `None`。
+pub(crate) fn records_root_among(registry: &[Adapter], kind: &str, home: &Path) -> Option<PathBuf> {
+    record_tree_among(registry, kind).map(|t| (t.root)(home))
+}
+
+/// [`records_root_among`] 在生产注册表上、记录树那一家（[`record_tree_kind`]）。
+pub(crate) fn records_root(home: &Path) -> Option<PathBuf> {
+    records_root_among(REGISTRY, record_tree_kind()?, home)
+}
+
+/// [`RecordTree::file_name`]：`kind` 那一家新会话文件的文件名。那一家没有记录树 ⇒ `None`。
+pub(crate) fn session_file_name(kind: &str, sid: &str) -> Option<String> {
+    record_tree_among(REGISTRY, kind).map(|t| (t.file_name)(sid))
+}
+
+/// `kind` 那一家认不认这份文件是它的会话记录（[`RecordFace::is_session_file`]）。认不出这一家 ⇒ `false`。
+pub(crate) fn is_session_file_among(registry: &[Adapter], kind: &str, p: &Path) -> bool {
+    adapter_among(registry, kind)
+        .and_then(|a| a.records)
+        .is_some_and(|r| (r.is_session_file)(p))
+}
+
+/// [`is_session_file_among`] 在生产注册表上、记录树那一家。
+pub(crate) fn is_tree_session_file(p: &Path) -> bool {
+    record_tree_kind().is_some_and(|k| is_session_file_among(REGISTRY, k, p))
+}
+
+/// 这份文件归的那一家（[`record_face_of`]）认不认它是一份会话记录。
+pub(crate) fn is_own_session_file(p: &Path) -> bool {
+    record_face_of(p).is_some_and(|r| (r.is_session_file)(p))
+}
+
+/// 后端盯着的那一家（[`tree_local_face`]）的家目录（[`LocalFace::home_at`]）。
+/// 注册表里没有那一家 ⇒ 给了配置目录就是它，否则空路径，并记一句警告（生产注册表里恒有那一家）。
+pub fn home_at(config_dir: Option<&Path>, from_env: bool) -> PathBuf {
+    match tree_local_face() {
+        Some(f) => (f.home_at)(config_dir, from_env),
+        None => {
+            tracing::warn!("no agent in the registry keeps a record tree with a local layout");
+            config_dir.map(Path::to_path_buf).unwrap_or_default()
+        }
+    }
+}
+
+/// `kind` 那一家在本机的布局（[`Adapter::local`]）。认不出 / 没有 ⇒ `None`。
+pub(crate) fn local_face_among(registry: &[Adapter], kind: &str) -> Option<LocalFace> {
+    adapter_among(registry, kind).and_then(|a| a.local)
+}
+
+/// 后端盯着的那一家（记录树那一家，[`record_tree_kind`]）在本机的布局。
+pub(crate) fn tree_local_face() -> Option<LocalFace> {
+    local_face_among(REGISTRY, record_tree_kind()?)
+}
+
 /// 一份已过围栏的会话记录是哪一家的：落在某一家合成历史的根下 ⇒ 那一家；否则 ⇒ 家目录记录树那一家（[`record_tree_kind`]）。
 pub(crate) fn record_kind_of(path: &Path) -> Option<&'static str> {
     record_kind_among(REGISTRY, path)
@@ -1063,11 +1142,30 @@ pub(crate) struct AccountsFace {
     pub(crate) email_in: fn(&Path) -> Option<String>,
     /// 后端看会话用的那几项（会话起停 · 会话记录）：常驻后端只看共享库里的这一份 ⇒ 各号必须链回去，不许隔离。
     pub(crate) watched: &'static [&'static str],
+    /// 账号归属读会话进程环境时读哪几个键（账号 · 上游地址）。
+    pub(crate) session_env: SessionEnvKeys,
+    /// 一个配置根下、对某个 cwd 的信任状态 ⇒ 一行 JSON（`{trusted, known, error}`）；读不了 ⇒ `(码, 原话)`。
+    pub(crate) trust_in: fn(root: &Path, cwd: &str) -> Result<String, (String, String)>,
+}
+
+/// 账号归属从会话进程环境里读的那两个键，收成一处：账号（配置根）· 上游地址。
+#[derive(Clone, Copy)]
+pub(crate) struct SessionEnvKeys {
+    pub(crate) config_dir: &'static str,
+    pub(crate) base_url: &'static str,
+    /// 这条会话自己的设置文件会不会压过进程环境里的上游地址：`(配置根, cwd, 家目录)` ⇒ 说不清就是 `true`。
+    pub(crate) settings_may_set_base_url: fn(Option<&Path>, &Path, Option<&Path>) -> bool,
 }
 
 /// `kind` 那一家的账号库布局。认不出 / 那一家没有 ⇒ `None`。
 pub(crate) fn accounts_face(kind: &str) -> Option<AccountsFace> {
     accounts_face_among(REGISTRY, kind)
+}
+
+/// 这台机器上账号库的布局：唯一声明了账号库的那一家（[`sole_kind`]；两家都声明 ⇒ `None`、照实拒）。
+/// 账号库布局 · 账号归属读会话进程环境 · 信任预检都问它。
+pub(crate) fn account_library_face() -> Option<AccountsFace> {
+    sole_kind(|a| a.accounts.is_some()).and_then(accounts_face)
 }
 
 /// [`accounts_face`] 的可喂夹具那一半。
@@ -1625,15 +1723,13 @@ pub(crate) fn user_mcp_file(kind: &str) -> Option<PathBuf> {
 /// ⚠ 它与 `agent_locality_guard::tests::HOMES`（判据用的"agent 家"清单）**必须一样长**，
 /// 由 `every_agent_adapter_has_exactly_one_registry_entry` 双向钉住：
 /// 建了 `agents/<名>/` 却不登记 ⇒ 那家永远"看不见"，而没有任何东西会说。
-/// ⚠ **一家一行**（不是每字段一行）：`ADAPTER_CALL_SITES` 数的是**行**，
-/// 而这张表要回答的是「加一个 agent 要回来改**几处**」——
-/// 一家拆成四行会让那个读数变成排版的函数。
+/// ⚠ **一家一行**（不是每字段一行）：判据⑦把本文件直呼适配层的**行数**钉成 `REGISTRY.len()`。
 #[rustfmt::skip]
 pub(crate) const REGISTRY: &[Adapter] = &[
-    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), accounts: Some(claudecode::accounts::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH), compact_request: Some(claudecode::COMPACT_REQUEST) },
+    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), accounts: Some(claudecode::accounts::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH), compact_request: Some(claudecode::COMPACT_REQUEST), local: Some(claudecode::LOCAL) },
     // codex 今天没有账号维度（`account_env: None`）：选号对它说不出，起法与 `ccm` 都明说不行。
     // codex **刻意不登记**默认上游：它的默认上游是哪一个、认不认 base URL 覆盖，本仓零证据（`C7`）⇒ 未登记即拒（fail-closed）。
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, assets: None, history: Some(codex::HISTORY), upstream: None, mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH), compact_request: None },
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, assets: None, history: Some(codex::HISTORY), upstream: None, mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH), compact_request: None, local: None },
 ];
 
 /// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。

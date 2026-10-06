@@ -45,44 +45,30 @@
 //! 例外只有**冻结的 wire 字段名**（Rust 侧标识符必须与线上字段名同名，改名 = 破坏契约），
 //! 逐条登记进 [`tests::AGENT_NAMED_WIRE_FIELDS`]，**每条带解锁条件、条数有天花板**。
 //!
-//! ## ④通用层**直呼某个适配层**的地方逐条登记
+//! ## ④通用层**零处**直呼某个适配层
 //!
 //! `G1` 成功标准②逐字：「加一个新 agent 只需新增 `agents/<名>/`，**通用层零改动**」。
-//! 今天那句话**还不成立**，而没人数得出差多少。⇒ [`tests::ADAPTER_CALL_SITES`] 把它数出来：
-//! 通用层里每一处 `agents::<名>::…` 都是「接第三个 agent 时要回来看一眼」的地方。
-//!
-//! ★ 这张表同时是**为什么 `watcher`/`accounts_query`/`history_query` 进不了
-//! `agent_boundary_guard::CORE_FILES`** 的答案（`S4b` 实测）：把 `claude_dir` 改名之后，
-//! 这三个文件在 `S1` 六根针下的残留**全是**这些适配层地址（外加两处日志散文）。
-//! ⇒ 卡点不是参数名（`S4b` 已清），是**还没有接口**（`L2`），归 `S6`。
+//! 通用层里一处 `agents::<名>::…` 都没有：每一种 agent 知识都收进注册表那一格（[`tests::CAPABILITY_FACES`]），
+//! 通用层按「这一家的那一格是什么」问。判据是**零命中**，命中一处就红。
 //!
 //! ## ⑤**注册表**那类被拆了出去 —— 它与④性质相反
 //!
 //! `S5` 往 `agents/mod.rs` 放了适配层注册表（`REGISTRY`：这个后端认得哪几个 agent）。
-//! 它也是「直呼适配层」，但**方向反了**：④ 里的每一条都该被压到零（收进接口），
-//! 而注册表那几行是「加一个 agent **本来就该**动的一行」，应该**随 agent 数增长**。
-//!
-//! 两类混进同一个计数，`S6` 就没法拿那个数当成绩 —— 降了不知道是真收进接口了，
-//! 还是有人把调用点挪进注册表文件去刷数。⇒ 拆成 [`tests::AGENT_REGISTRY_SITES`]，
-//! ④ 的人群里扣掉它。**扣除的对价**是判据⑦：注册表文件的处数被钉死成 `REGISTRY.len()`
-//! （一家一行），藏不进第二样东西。
-//!
-//! ⚠ 同轮还补了一件事：④ 的针此前**只有全路径** `agents::<名>::`，
-//! 而 `agents/mod.rs` 引用两家写的是相对路径 `codex::` —— 新增的注册表**一处都没被数到**。
-//! 那是本区第二次「量具的作用域比事实**小**」（第一次是 `S4b §0b-2`）。针已扩到两种写法，
-//! 实测扩针**不改动任何既有文件的读数**（8 文件 / 27 处一字未变）。
+//! 它也是「直呼适配层」，但**方向反了**：④ 要零处，而注册表那几行是「加一个 agent **本来就该**动的一行」，
+//! 随 agent 数增长。⇒ 拆成 [`tests::AGENT_REGISTRY_SITES`]，④ 的人群里扣掉它。
+//! **扣除的对价**是判据⑦：注册表文件的处数被钉死成 `REGISTRY.len()`（一家一行），藏不进第二样东西。
+//! ④ 的针有全路径 `agents::<名>::` 与相对路径 `<名>::` 两种写法（`agents/mod.rs` 里写的是后一种）。
 //!
 //! # ⚠ 诚实边界（四条，都写在这里而不是只写在计划里）
 //!
 //! 1. 判据认的是**字面量**，不是语义。派发点里的人直接写
 //!    `format!("{base} resume {sid}")` 仍然不会红 —— 堵死它要等 `S3` 凑齐两个实现后立接口（`D4`）。
-//! 2. 只覆盖 **codex**。Claude 那半（`watcher`/`accounts_query`/`history_query` 里的
-//!    `projects/`、`.jsonl`、账号布局）今天**一处都没被这条判据管**，归 `S3`。
+//! 2. 判据①的针是一张固定的格式词表：词表外的 agent 知识（新造的目录名、新的环境变量名）它认不出。
 //! 3. `production_code` 剥掉注释与 `#[cfg(test)] mod` ⇒ **文档与测试里怎么写都不红**。
 //!    这是刻意的（判据自己的散文里就有这些词），代价是"只在测试里泄漏格式知识"逮不到。
 //! 4. 判据③的针是 `<agent 名>_dir` 这一形，**只认得已知的两个名字**（同 `S1` 的 `4a`）。
 //!    有人在通用层写 `claude_home` / `gemini_root`，它一条都不会红。
-//!    今天的兜底是判据④：那种代码迟早要去调某个 `agents::<名>::`，那一步会被数出来。
+//!    今天的兜底是判据④：那种代码迟早要去调某个 `agents::<名>::`，那一步当场红。
 //!
 //! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空。
 
@@ -271,70 +257,10 @@ mod tests {
         ),
     ];
 
-    /// 通用层里**直呼某个适配层**的地方（`文件`, 处数, 它在向适配层要什么）。
-    ///
-    /// # 它数的是什么 —— `G1` 成功标准②今天差多少
-    ///
-    /// 成功标准②逐字：「加一个新 agent 只需新增 `agents/<名>/`，**通用层零改动**」。
-    /// 今天不成立：下面这 8 个文件里的每一处都写死了**某一个** agent 的名字。
-    /// `S3` 的形状（「机器留在原地，通过适配层的一次函数调用拿知识」）是对的中间态，
-    /// 但它把「加一个 agent 要改哪几处」从**格式知识**挪成了**调用点** —— 数量没有归零。
-    ///
-    /// ⇒ 本表**就是那份清单**。它长了是设计在退化；`S6` 立起接口之后它应该整体缩短。
-    ///
-    /// ⚠ 与判据②分工：那条管「拿 agent 的**名字**做判别」（通用层零处）；本张数的是「**不判别、直接写死一个 agent**」
-    /// （名字不出现，调用路径里出现）。两者加起来才是「接第三个 agent 的改动面」。
-    /// ⚠**注册表那类不在本表里** —— 见 [`AGENT_REGISTRY_SITES`]。
-    /// 本表只装「**该被压到零**」的那一类，`S6` 的靶子就是它的总数。
-    const ADAPTER_CALL_SITES: &[(&str, usize, &str)] = &[
-        // `control/files_write.rs` 那一处摘了：删会话那两问改由门经 `SessionPort` 递进来（落点 · 形状住适配层注册表 `RecordFace.delete`）。
-        (
-            "control/fork_write.rs",
-            2,
-            "会话记录根 + 会话文件命名。**3 → 2**：\
-             「按 sid 找那份文件」整段进了共享 crate（两侧同一份），\
-             找那一步的命名不再由本 crate 问适配层，只剩落盘那一处",
-        ),
-        (
-            "main.rs",
-            1,
-            "解析本机 home（`agent_home` 里唯一那句；`ccm` resume 注入的扫描也经它）",
-        ),
-        (
-            "observe/accounts_query.rs",
-            3,
-            "pidfile 目录 + 账号环境变量名（与上游地址那个键同一处要，`SESSION_ENV_KEYS`）+ `.claude.json` 信任判定",
-        ),
-        (
-            "observe/history_query.rs",
-            5,
-            "会话记录根 + 「这个文件是不是会话记录」×3 ＋解析本机 home ×1 \
-             （6 → 5：子 agent 那份按目录列、按 `<stem>.jsonl` 找旁文件的那一处随「按运行读」删了，子运行住哪改问注册表 `RecordFace.children`）\
-             （帧面那八条要一个根；与 `main.rs` 那一句**同一个出处**，但 `main.rs` 在 bin 里、\
-             lib 够不着 ⇒ 多一处。**长了是坏事，如实登记**：它与 `main.rs` 那处是同一个欠账的两个住址，\
-             `L2`/`S6` 收接口那轮一起收）",
-        ),
-        ("observe/search_query.rs", 2, "会话记录根 + 会话文件判定"),
-        (
-            "observe/watcher.rs",
-            4,
-            "会话记录根 + pidfile 目录（流模式耳朵与一次性扫描同经 `pidfile_dir`）+ 判活 cmdline + 会话文件判定",
-        ),
-    ];
-
     /// **适配层注册表**住哪几个文件（`文件`, 为什么它不该被压到零）。
     ///
-    /// # 它为什么是**另一张表**，而不是 [`ADAPTER_CALL_SITES`] 里的一条
-    ///
-    /// 那张表里每一条的含义是**统一的**：「通用层直呼适配层 = 加一个 agent 要回来改的地方」，
-    /// 而 `S6` 的成绩就是**把那个数压下去**。
-    ///
-    /// 注册表是**性质相反**的东西：`agents/mod.rs` 里那几行是「加一个 agent **本来就该**
-    /// 动的一行」—— 它不该被压下去，反而应该**随 agent 数增长**。
-    /// 两类塞进同一个计数里，`S6` 就没法拿那个数当成绩了：降了不知道是真收进接口了，
-    /// 还是有人把调用点挪进注册表文件里去刷数。
-    ///
-    /// ⇒ 分两张表。⚠ **排除是有对价的**：
+    /// 通用层直呼适配层要零处（判据④），注册表那几行却是「加一个 agent **本来就该**动的一行」，随 agent 数增长
+    /// ⇒ 从④的人群里扣掉。⚠ **排除是有对价的**：
     /// [`the_adapter_registry_is_one_line_per_agent`] 把注册表文件的处数钉死成
     /// **恰好 `REGISTRY.len()`** —— 想往这个文件里藏一处别的直呼，当场超出、当场红。
     /// 没有那条对价，本表就成了「把东西挪进来就不算数」的逃生舱。
@@ -345,73 +271,21 @@ mod tests {
          home 解析入口）放在这里，是为了不让必改的文件从 1 个变成 2 个。**一家一行**。",
     )];
 
-    /// **一个新 agent 今天走不通的每一种能力**（`能力`, `文件`, 处数, 今天的失败形态）。
-    ///
-    /// # 它与 [`ADAPTER_CALL_SITES`] 是同一件事的两种切法，**必须对得上**
-    ///
-    /// 那张表按**文件**切（「哪几个文件要回来改」），本表按**能力**切
-    /// （「第三个 agent 的哪一种知识没人收」）。两张表的总数与逐文件小计由
-    /// [`the_new_agent_gap_is_the_same_number_from_both_directions`] **双向**钉住 ——
-    /// 一处调用点被收进接口，两张表必须同轮变短，否则当场红。
-    ///
-    /// ⇒ 这就是 `S6` 作为**验收件**的机制：它不改那个数，它让那个数**跑得起来、会红**。
-    ///
-    /// # ⚠ 12 种能力，不是 9 —— 本件订正的读数
-    ///
-    /// `S6#§0` 与 PM 交底都写「去重之后只是 **9 种能力**」。实测：那 9 种只覆盖 27 处里的
-    /// **21** 处，漏的正是 `control/resolve_query.rs` 的 6 处 —— 也就是 21/27 那次计数错误的
-    /// **残留**（已经要求补，件文件的能力清单没跟着补）。
-    /// resume 那三件事（默认命令 · 命令形 · 会话名前缀）**各是一种能力**，
-    /// 与「会话文件命名」同一个粒度。
-    ///
-    /// # 「今天的失败形态」这一列为什么必须写满
-    ///
-    /// `S6` 的反向夹具逐字要求「**不许静默当成"这个 agent 没有会话"**」。
-    /// 而实测发现通用层今天恰恰有三种反应，只有一种算说得出话：
-    /// **静默零输出** · **报错但用的是 Claude 的措辞** · **静默按 Claude 跑**（最坏的一种）。
-    /// 把它写进表里，是为了让「收接口」那轮的人知道**每一处该补的错误出口长什么样**。
-    const NEW_AGENT_BLOCKERS: &[(&str, &str, usize, &str)] = &[
-        // `control/files_write.rs` 那一行摘了（同上：删会话那两问改走注册表 `RecordFace.delete`；换一家 agent 时它的 `delete` 那一格填上即可，不再改写面）。
-        ("会话记录根", "control/fork_write.rs", 1, "fork 落盘时用 Claude 的 `projects/` 拼路径 ⇒ 写到一个这家根本不用的目录下"),
-        ("会话记录根", "observe/history_query.rs", 1, "报错，但措辞是 Claude 的布局（`read_dir <home>/projects failed`）—— 说得出话，说的是别人的话"),
-        ("会话记录根", "observe/search_query.rs", 1, "**静默**：rc=0、零输出"),
-        ("会话记录根", "observe/watcher.rs", 1, "流式 watcher 只 inotify Claude 的两个根 ⇒ 这家的会话永远不出现（DG1 那半本来就没接线）"),
-        ("会话文件判定", "observe/history_query.rs", 3, "`.jsonl` 判定把 `.ndjson` 全过滤掉 ⇒ **静默**当成空项目目录"),
-        ("会话文件判定", "observe/search_query.rs", 1, "同上，**静默**"),
-        ("会话文件判定", "observe/watcher.rs", 1, "同上，**静默**（连 inotify 事件都会被过滤掉）"),
-        ("会话文件命名", "control/fork_write.rs", 1, "按 `<sid>.jsonl` 造**新**文件 ⇒ 造出来的文件这家自己认不出来。2 → 1：**找**那一步的命名随「找文件」进了共享 crate，只剩落盘这一处"),
-        ("pidfile 目录", "observe/accounts_query.rs", 1, "`--session-accounts` 读 `<home>/sessions` ⇒ 读不到就 **静默**返回零行"),
-        ("pidfile 目录", "observe/watcher.rs", 1, "判活只看 Claude 的 pidfile 目录 ⇒ 这家的会话恒判死"),
-        ("账号环境变量名", "observe/accounts_query.rs", 1, "按 `CLAUDE_CONFIG_DIR` 去读别人进程的环境 ⇒ 这家的账号维度**无法表达**；同一处还要上游地址那个键（`ANTHROPIC_BASE_URL`）⇒ 这家的会话 `viaRelay` 恒 `false`（停后端前那句「几条会断」会少数它）"),
-        ("账号信任判定", "observe/accounts_query.rs", 1, "按 `.claude.json` 的 `projects[cwd].hasTrustDialogAccepted` 判 ⇒ 对这家恒判「不信任」"),
-        ("判活 cmdline", "observe/watcher.rs", 1, "cmdline 兜底词表是 `claude`/`node` ⇒ 这家的进程被判成冒名"),
-        ("解析本机 home", "observe/history_query.rs", 1, "帧面那八条（`read_face`）的根从这里问 ⇒ 与 `main.rs` 那一句同形：**只有一个根**，第三家连被问到的机会都没有"),
-        ("解析本机 home", "main.rs", 1, "`resolve_agent_home()` 写死问 claudecode ⇒ 所有一次性子命令与流模式**只有一个根**，第三家连被问到的机会都没有"),
+    /// 假 agent 的每一种能力住注册表哪一格（`能力`, `那一格`）—— 通用层只问那一格，不直呼某一家（判据④零命中）。
+    /// 与 `agents::fake::CAPABILITIES` 双向对账：多一种 / 少一种都红。
+    const CAPABILITY_FACES: &[(&str, &str)] = &[
+        ("会话记录根", "RecordFace.tree.root"),
+        ("会话文件判定", "RecordFace.is_session_file"),
+        ("会话文件命名", "RecordFace.tree.file_name"),
+        ("pidfile 目录", "LocalFace.pidfile_dir"),
+        ("账号环境变量名", "AccountsFace.session_env"),
+        ("账号信任判定", "AccountsFace.trust_in"),
+        ("判活 cmdline", "LocalFace.cmdline_may_be_agent"),
+        ("解析本机 home", "Adapter.home · LocalFace.home_at"),
+        ("resume 默认命令", "LaunchFace.default_launcher"),
+        ("resume 命令形", "LaunchFace.resume_command"),
+        ("resume 会话名前缀", "LaunchFace.session_name_prefix"),
     ];
-
-    /// `S6` 立表那天的读数。**只许降** —— 它就是 `G1` 成功标准②「还差多少」的头条数字。
-    ///
-    /// ⚠ `S6` 自己**一处都没降**（它是验收件，不许移动自己的靶子，理由住
-    /// `crate::agents::fake` 的头注）。降它是「收接口」那轮的活。
-    ///
-    /// 🔴 **27 → 26**：`control/fork_write.rs` 的「会话文件命名」2 → 1 ——
-    /// 「按 sid 找那份文件」整段进了共享 crate（两侧同一份），**找**那一步的命名
-    /// 从此不由本 crate 问适配层。⚠ 这不是「收进接口了」，是**搬去了两侧共用的那一份**。
-    ///
-    /// **26 → 25**：插件市场只读列表整块拿掉（界面上没有可做的事），清单住址那一处随之没了。
-    ///
-    /// **25 → 24**：`observe/history_query.rs` 那一处「会话文件命名」（按目录列子 agent、按 `<stem>.jsonl` 找旁文件）随按运行读删了 ——
-    /// 子运行的记录住哪、哪条记录属于谁，改问注册表（`RecordFace.children` · `run_of`）。
-    ///
-    /// **24 → 18**：`control/resolve_query.rs` 那 6 处（resume 的默认命令 · 命令形 · 会话名前缀，两家各三处）收进了
-    /// 起会话事实那一格（[`THROUGH_THE_GENERIC_LAYER`]），resume 规格按注册表里那一家拼。
-    const NEW_AGENT_GAP_BASELINE: usize = 18;
-
-    /// 假 agent 的能力里**已经经通用层走通**的那几种：通用层按注册表里那一家的那一格做，不再直呼某一家。
-    /// 与 [`NEW_AGENT_BLOCKERS`] 里登记的卡点**不相交、合起来正好是**假 agent 的全部能力（判据⑧ ⑤ 钉着）。
-    /// 证据：假 agent 走全流程的 `resume` 那一段真的过 `resolve_query::resolve_json_among`（`fake_tests.rs` 正题）。
-    const THROUGH_THE_GENERIC_LAYER: &[&str] =
-        &["resume 默认命令", "resume 命令形", "resume 会话名前缀"];
 
     /// 判据③的针：`<agent 名>_dir` 这一形的**标识符**。**运行时拼**（本文件散文里就有这些词）。
     ///
@@ -760,43 +634,20 @@ mod tests {
     /// 那类是「加一个 agent 本来就该改的一行」，性质与本表相反，混进来 `S6` 就没法拿
     /// 这个数当成绩（降了不知道是真收进接口，还是有人把调用点挪进注册表文件刷了数）。
     /// **扣掉的对价**是判据⑦：注册表文件的处数被钉死成 `REGISTRY.len()`，藏不进第二样东西。
+    /// ④ 通用层（扣掉各家与注册表文件）里直呼适配层的行：**零**。
     #[test]
-    fn general_layer_adapter_call_sites_are_enumerated_one_by_one() {
+    fn the_general_layer_calls_no_adapter_directly() {
         let got: Vec<(String, usize)> = adapter_call_sites_measured()
             .into_iter()
             .filter(|(rel, _)| !AGENT_REGISTRY_SITES.iter().any(|(f, _)| rel == f))
             .collect();
-        let mut want: Vec<(String, usize)> = ADAPTER_CALL_SITES
-            .iter()
-            .map(|(f, n, _)| ((*f).to_string(), *n))
-            .collect();
-        want.sort();
-        assert_eq!(
-            got, want,
-            "\n通用层直呼适配层的地方与登记表对不上。\n实得：{got:?}\n登记：{want:?}\n\
-             ⚠ **多出来的那处 = 又一个「加 agent 时要回来改」的地方** —— 先登记 + 写清它在向\n\
-             适配层要什么，然后问一句：这一处能不能改成走接口（`L2`/`S6`）？\n\
-             少掉的那处 = 真收进接口了，恭喜，摘登记（这张表短了是好事）。"
+        assert!(
+            got.is_empty(),
+            "\n通用层直呼了适配层（`agents::<名>::…`）：{got:?}\n\
+             ⇒ 那一家的这一件知识收进注册表对应那一格（`CAPABILITY_FACES` 列着已有的几格），通用层按 kind 问那一格。"
         );
-        for (f, n, what) in ADAPTER_CALL_SITES {
-            assert!(*n > 0, "{f} 登记了 0 处 —— 那它不该在表里");
-            assert!(!what.trim().is_empty(), "{f} 没写「它在向适配层要什么」");
-        }
     }
 
-    /// ⑦**注册表文件里一家恰好一行** —— 判据④把它扣出人群之后的**对价**。
-    ///
-    /// # 没有这一条，[`AGENT_REGISTRY_SITES`] 就是逃生舱
-    ///
-    /// 判据④为了不稀释 `S6` 的靶子，把注册表文件整个扣出了人群。
-    /// 那立刻开出一条捷径：**把通用层的直呼挪进 `agents/mod.rs`**，④ 的数就掉下去了，
-    /// 而「加一个 agent 要改几处」一点没少 —— 只是换了个地方藏。
-    ///
-    /// ⇒ 本条把注册表文件的处数钉死成 **恰好 `REGISTRY.len()`**：
-    /// 一家一行，多一行就是藏了别的东西，当场红。
-    ///
-    /// ★ 与 ④ 的**方向也相反**：④ 的数应该**降到零**；本条的数应该**随 agent 数一起涨**。
-    /// 这正是拆成两张表的全部理由。
     #[test]
     fn the_adapter_registry_is_one_line_per_agent() {
         let measured = adapter_call_sites_measured();
@@ -906,106 +757,27 @@ mod tests {
         );
     }
 
-    /// ⑧**同一个差距，从两个方向数出来必须一样大** ——
-    /// [`ADAPTER_CALL_SITES`]（按文件切）↔ [`NEW_AGENT_BLOCKERS`]（按能力切）。
-    ///
-    /// # 这一条是 `S6` 作为**验收件**的全部机制
-    ///
-    /// `S6` 不改那 27 处（验收件不许移动自己的靶子）。它做的是把那个数变成
-    /// **一个跑得起来、会红的东西**：
-    ///
-    /// - 谁把一处调用点收进接口 ⇒ ④ 的实得掉一处 ⇒ 他必须同轮改 [`ADAPTER_CALL_SITES`]
-    ///   **与** [`NEW_AGENT_BLOCKERS`]，否则本条当场红；
-    /// - 谁想只改一张表刷数（比如把能力表里的处数改小、假装接口做完了）⇒ 本条也红。
-    ///
-    /// # ⚠ 双向 + 逐文件，不是只比总数
-    ///
-    /// 只比总数的话，「从 `watcher` 挪一处到 `history_query`」会全绿 ——
-    /// 而那是把改动面藏起来，不是消掉。⇒ 逐文件小计也要对。
-    ///
-    /// # ⚠ 能力名必须是假 agent **真的实现了**的那一种
-    ///
-    /// 表里出现一种假 agent 答不出的能力，说明清单是**想**出来的而不是**反推**出来的
-    /// （`D4` 逐字禁的正是这个）。⇒ 与 [`crate::agents::fake::CAPABILITIES`] 对账。
+    /// 假 agent 的每一种能力都在注册表里有一格（[`CAPABILITY_FACES`]），两边的名字集合一样。
     #[test]
-    fn the_new_agent_gap_is_the_same_number_from_both_directions() {
-        // ── ① 能力名的人群：必须落在假 agent 真的实现了的那 12 种里 ──────────
-        let known = crate::agents::fake::CAPABILITIES;
-        for (cap, file, _, _) in NEW_AGENT_BLOCKERS {
-            assert!(
-                known.contains(cap),
-                "`NEW_AGENT_BLOCKERS` 里的能力名 `{cap}`（{file}）不在 \
-                 `agents::fake::CAPABILITIES` 里 —— \n\
-                 ⚠ 那说明这份接口面是**想**出来的，不是从现有能力**反推**的（`D4` 逐字禁的那条）。\n\
-                 已登记的 12 种：{known:?}"
-            );
-        }
-
-        // ── ② 逐文件小计对账（双向：文件集与每个文件的处数都要一样）──────────
-        use std::collections::BTreeMap;
-        let mut by_cap: BTreeMap<&str, usize> = BTreeMap::new();
-        for (cap, _, n, _) in NEW_AGENT_BLOCKERS {
-            *by_cap.entry(cap).or_default() += n;
-        }
-        let mut by_file: BTreeMap<&str, usize> = BTreeMap::new();
-        for (_, file, n, _) in NEW_AGENT_BLOCKERS {
-            *by_file.entry(file).or_default() += n;
-        }
-        let want: BTreeMap<&str, usize> = ADAPTER_CALL_SITES
-            .iter()
-            .map(|(f, n, _)| (*f, *n))
-            .collect();
+    fn every_fake_capability_lives_in_a_registry_face() {
+        use std::collections::BTreeSet;
+        let known: BTreeSet<&str> = crate::agents::fake::CAPABILITIES.iter().copied().collect();
+        let faced: BTreeSet<&str> = CAPABILITY_FACES.iter().map(|(c, _)| *c).collect();
         assert_eq!(
-            by_file, want,
-            "\n两个方向数出来的差距对不上。\n\
-             按**能力**切（`NEW_AGENT_BLOCKERS`）：{by_file:?}\n\
-             按**文件**切（`ADAPTER_CALL_SITES`）：{want:?}\n\
-             ⚠ 收进接口一处就要**同轮**改两张表；只改一张 = 有人在刷数，或者忘了另一张。\n\
-             ⚠ 逐文件对（不是只对总数）：只对总数的话，把一处从 `watcher` 挪到 \
-             `history_query` 会全绿 —— 那是把改动面藏起来，不是消掉。"
+            faced.len(),
+            CAPABILITY_FACES.len(),
+            "`CAPABILITY_FACES` 里有重名的能力"
         );
-
-        // ── ③ 头条数字：只许降 ────────────────────────────────────────────
-        let total: usize = by_file.values().sum();
-        assert!(
-            total <= NEW_AGENT_GAP_BASELINE,
-            "「加一个 agent 通用层要改几处」从 {NEW_AGENT_GAP_BASELINE} **涨到了** {total}。\n\
-             ⚠ `G1` 成功标准②说的是「通用层零改动」—— 这个数只该往下走。"
-        );
-
-        // ── ④ 每条都得说清楚「今天怎么失败的」──────────────────────────────
-        //
-        // 件里逐字：反向夹具「不许静默当成"这个 agent 没有会话"」。
-        // 这一列记的就是通用层今天在这一处的**实际**反应，给收接口那轮的人当规格用。
-        for (cap, file, n, how) in NEW_AGENT_BLOCKERS {
-            assert!(*n > 0, "{cap} @ {file} 登记了 0 处 —— 那它不该在表里");
-            assert!(
-                how.trim().len() >= 10,
-                "{cap} @ {file} 没写「今天怎么失败的」—— 而那正是要补的错误出口的规格"
-            );
-        }
-
-        // ── ⑤ 每一种能力要么还卡着、要么已经走通，两张表不相交、合起来正好是全部 ────
-        let through: std::collections::BTreeSet<&str> =
-            THROUGH_THE_GENERIC_LAYER.iter().copied().collect();
-        let blocked: std::collections::BTreeSet<&str> = by_cap.keys().copied().collect();
-        assert!(
-            blocked.is_disjoint(&through),
-            "既登记成卡点又登记成走通了：{:?}",
-            blocked.intersection(&through).collect::<Vec<_>>()
-        );
-        let all: std::collections::BTreeSet<&str> = blocked.union(&through).copied().collect();
         assert_eq!(
-            all,
-            known.iter().copied().collect::<std::collections::BTreeSet<&str>>(),
-            "\n卡点（`NEW_AGENT_BLOCKERS`）∪ 走通（`THROUGH_THE_GENERIC_LAYER`）≠ 假 agent 的全部能力。\n\
-             ⚠ 少一种 = 那种能力真的收进接口了（同轮把它挪进走通那张表）或者漏登记了；多一种 = 能力清单与卡点表漂开了。"
+            faced, known,
+            "\n`CAPABILITY_FACES` 与 `agents::fake::CAPABILITIES` 对不上。\n\
+             ⚠ 多一种 = 登记了假 agent 没有的能力；少一种 = 有一种能力没说住注册表哪一格。"
         );
+        for (cap, face) in CAPABILITY_FACES {
+            assert!(!face.trim().is_empty(), "{cap} 没写住注册表哪一格");
+        }
     }
 
-    /// ⑤反向夹具：③④两条的判定**真的会红**。
-    ///
-    /// 两条都是「找不到东西就绿」的形状 —— 针拼坏了（比如 `format!` 拼出空串）会**安静地全绿**。
     #[test]
     fn the_s4b_detectors_catch_synthetic_violations() {
         // ③ 正向：合成的违规签名必须被逮到。

@@ -4,6 +4,7 @@
 
 use super::golden_tests::{build_corpus, cases};
 use super::*;
+use crate::agents::claudecode::paths::projects_root;
 use serde_json::json;
 
 fn p(home: &Path, rel: &str) -> PathBuf {

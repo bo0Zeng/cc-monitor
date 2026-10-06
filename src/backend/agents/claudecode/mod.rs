@@ -26,12 +26,7 @@
 //!
 //! `claude_dir` 那个**参数名已经清了**（生产段 64 行 → 3 行，
 //! 剩下的 3 处全是冻结的 wire 字段名）。
-//! 而 `watcher`/`accounts_query`/`history_query` **仍然进不了** `S1` 的 `CORE_FILES` ——
-//! `S4b` 实测：改完名之后这三个文件在 `S1` 六根针下还剩 **6 / 5 / 5** 处（共 16），其中
-//! **12 处是 `crate::agents::claudecode::…` 这个适配层地址本身**（`history_query` 那 5 处**全是**），
-//! 另 4 处是散文（`watcher` 两句 warn 里的 `claude` 一词、`accounts_query` 两处
-//! `sessions/` 文案）。⇒ 卡点不再是参数名，是**通用层直接写死了一个 agent 的名字** ——
-//! 那是 `L2`（接口）的题，归 `S6`。清单在 `agent_locality_guard::ADAPTER_CALL_SITES`。
+//! 通用层经注册表那一行（`agents::REGISTRY`）够到本层的各格，一处都不直呼本层（`agent_locality_guard` 判据④零命中）。
 
 pub(crate) mod accounts;
 pub(crate) mod assets;
@@ -153,12 +148,24 @@ pub(crate) fn home() -> Option<std::path::PathBuf> {
 
 /// 本家的资产面（注册表 `Adapter.assets` 那一格）：skill 与项目级 MCP 的布局知识住 [`assets`]。
 /// 注册表 `mcp` 那一格。
+/// 本机布局：家目录（`CLAUDE_CONFIG_DIR` / `~/.claude`）· pidfile 目录 `<家>/sessions` · 进程名单兜底认 cmdline。
+pub(crate) const LOCAL: super::LocalFace = super::LocalFace {
+    home_at: paths::home_of,
+    pidfile_dir: paths::sessions_root,
+    cmdline_may_be_agent: liveness::cmdline_may_be_agent,
+};
+
 pub(crate) const MCP: super::McpFace = super::McpFace { read: mcp::read };
 
 /// 记录解释面（注册表 `Adapter.records` 那一格）。
 pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     parse: parse::parsed_line,
     sid: records::session_id_of,
+    is_session_file: records::is_session_file,
+    tree: Some(super::RecordTree {
+        root: paths::projects_root,
+        file_name: records::session_file_name,
+    }),
     turn_end: Some(turn::turn_end_uuid_of),
     find_session: Some(branch::find_session_file),
     branch: Some(branch::build_branch_records),

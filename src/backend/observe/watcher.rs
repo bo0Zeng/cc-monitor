@@ -826,11 +826,15 @@ fn watch_loop(
     events_tx: std::sync::mpsc::Sender<WatchEvent>,
     events_rx: std::sync::mpsc::Receiver<WatchEvent>,
 ) {
-    // U2 Phase D 审计 重要-2：`projects` 这个目录名原本有**五**处，不是 `agents/claudecode/paths.rs`
-    // 注释里写的四处 —— 这是第五处（内联的，grep `fn projects_root` 找不到它）。
-    // 不收的话「合并去重」承诺的性质（改布局只改一处）根本没拿到。
-    let projects = crate::agents::claudecode::paths::projects_root(&agent_home);
-    let sessions = pidfile_dir(&agent_home);
+    // 记录树的根与 pidfile 目录问注册表里后端盯着的那一家（`RecordFace.tree` · `LocalFace`）；没有那一家 ⇒ 不盯。
+    let (Some(projects), Some(local)) = (
+        crate::agents::records_root(&agent_home),
+        crate::agents::tree_local_face(),
+    ) else {
+        tracing::error!("no agent here keeps a record tree with a local layout; nothing to watch");
+        return;
+    };
+    let sessions = (local.pidfile_dir)(&agent_home);
     // 账号 manifest（「账号清单变了」一帧）。
     let accounts_manifest = crate::observe::accounts_query::default_manifest_path();
 
@@ -2560,7 +2564,9 @@ fn add_time_verdict(
     }
     if let Some(cmd) = cmdline {
         let lower = cmd.to_lowercase();
-        if !crate::agents::claudecode::liveness::cmdline_may_be_agent(&lower) {
+        let may_be =
+            crate::agents::tree_local_face().is_some_and(|f| (f.cmdline_may_be_agent)(&lower));
+        if !may_be {
             return AddTimeVerdict::Imposter("cmdline");
         }
     }
@@ -2583,10 +2589,17 @@ fn add_time_check(pid: u32, bytes: &[u8], path: &Path) -> Result<Option<u64>, &'
     }
 }
 
-/// pidfile 目录（流模式的耳朵与一次性扫描同一处问适配层）。
+/// pidfile 目录（一次性扫描问注册表里后端盯着的那一家，`LocalFace.pidfile_dir`）。
+/// 没有那一家 ⇒ 家目录下一个不会有 pidfile 的位置（读出零份）。
 pub(crate) fn pidfile_dir(agent_home: &Path) -> PathBuf {
-    crate::agents::claudecode::paths::sessions_root(agent_home)
+    crate::agents::tree_local_face().map_or_else(
+        || agent_home.join(NO_PIDFILES),
+        |f| (f.pidfile_dir)(agent_home),
+    )
 }
+
+/// 注册表里没有判活那一家时 [`pidfile_dir`] 指的那个名字（不建、不写，只读出零份）。
+const NO_PIDFILES: &str = ".no-pidfile-dir";
 
 /// pidfile 里那一家写下的工作目录（`cwd`）。
 fn pidfile_cwd(bytes: &[u8]) -> Option<String> {
@@ -2851,7 +2864,7 @@ impl FrameSink {
 
 /// `true` for a regular `*.jsonl` file.
 fn is_jsonl(p: &Path) -> bool {
-    crate::agents::claudecode::records::is_session_file(p)
+    crate::agents::is_tree_session_file(p)
 }
 
 /// `true` for a `sessions/<PID>.json` file. We only ever feed this paths under

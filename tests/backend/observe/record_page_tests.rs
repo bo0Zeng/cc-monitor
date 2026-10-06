@@ -78,6 +78,7 @@ fn the_record_face_follows_the_root_the_file_lives_under() {
             processes: None,
             launch: None,
             compact_request: None,
+            local: None,
         }
     }
     let reg = [

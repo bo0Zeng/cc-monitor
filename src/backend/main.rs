@@ -855,26 +855,18 @@ async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
     out.write_all(line.as_bytes()).await
 }
 
-/// 解析会话数据根。
+/// 解析会话数据根：后端盯着的那一家的家目录（注册表 `LocalFace::home_at`）。
 ///
-/// ⚠ `S3` 把**怎么解析**搬进了 `agents/claudecode/paths.rs`（环境变量名与目录名是
-/// Claude 的知识）。这里只剩"去问适配层" —— 今天后端只服务一种 agent，所以是写死的一句。
-///
-/// ⚠原注这里写着「`S5` 落地时它会变成按 kind 取」——**`S5` 没有那么做，
-/// 而且这条订正比原话更要紧**：本函数要的是**恒定**答得出的那个 home（流式 watcher 与
-/// 所有一次性子命令都拿它当根），而 `agents::visible_homes()` 只报**看得见**的那些
-///（home 目录不存在就一条都不报）。两者语义不同 ——
-/// 把这里换成"按 kind 取"会让 `~/.claude` 还没建出来的新机器上后端直接失根，
-/// 而它原本是能正常起来、等 inotify 等到第一个会话的。
-/// ⇒ 真正会变的是**别处**：`main` 里 `homes:` 那一行（见上）。归 `S6`/`L2` 的接口那轮再看。
+/// 要的是**恒定**答得出的那个 home（流式 watcher 与所有一次性子命令都拿它当根），
+/// 不是 `agents::visible_homes()`（那只报目录已存在的几家；新机器上 home 还没建出来时后端照样起、等第一个会话）。
 fn resolve_agent_home() -> PathBuf {
     agent_home(None, true)
 }
 
 /// 本机 agent 家目录：给了账号配置目录就是它；没给 ⇒ `from_env` 时照进程环境，否则默认家目录
-/// （`ccm --base` resume 时问的那一处）。问适配层只此一处。
+/// （`ccm --base` resume 时问的那一处）。问注册表只此一处。
 fn agent_home(config_dir: Option<&std::path::Path>, from_env: bool) -> PathBuf {
-    agents::claudecode::paths::home_of(config_dir, from_env)
+    agents::home_at(config_dir, from_env)
 }
 
 // 🪦这里原有 `shutdown_signal`（等一次 SIGTERM / SIGINT，别处 Ctrl-C）—— 下沉到 `platform/signal.rs::shutdown_listener`〔散文墓碑〕：
