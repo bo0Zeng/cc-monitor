@@ -57,9 +57,8 @@ use std::time::SystemTime;
 /// ⇒ 下面那一整节（下界现打 · 上界取舍 · 为什么不靠全挂 watch）**就是那个「现值」的依据**，
 /// 它从「本件自己定的一个数」升格成**已裁的产品参数**。逐字没改一个字，因为它一条都没过期。
 ///
-/// ⚠ 裁决的另一半（「界面上把它显示出来」）落在**客户端**：
-/// `src/frontend/filewin/src/find.rs::freshness_line`，由那一侧一条从 egui 的 galley 里
-/// 把数读回来、而且**喂两组不同的数**的判据钉着。
+/// ⚠ 界面上今天不再摆这个周期（10-05 已认的文件窗口稿：搜索状态行只写「文件清单 · 多久前」）；
+/// 「多久前」那个数是 `files-find` 回的 `index_age_secs`，客户端照它画（`find.rs::age_line`）。
 /// ⚠ 而「只有一个住址」是**这一行**：客户端树里那个数零命中、后端树里这个声明恰好一处，
 /// 两向由 `filewin/find.rs` 那条 `no_rewalk_period_literal_lives_on_this_side` 钉着
 /// （不许前后端各写一份）。
@@ -415,10 +414,93 @@ pub struct FindArgs<'a> {
     pub limit: usize,
     /// 带号的那一趟：同一个搜索框来了更新的号 ⇒ 收手（[`ticket`]）。
     pub ticket: Option<&'a Ticket>,
+    /// 按什么排（翻页同一个序）。
+    pub sort: Sort,
 }
 
-/// 一条命中：全路径原始字节 ＋ 类型字节。
-pub type Hit = (Vec<u8>, u8);
+/// 命中按哪一列排。线上词见 [`SortKey::wire`]。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SortKey {
+    /// 相关度档 → 路径浅的在前（[`super::query::Matcher::rank`]）。
+    #[default]
+    Relevance,
+    /// 名字（ASCII 不分大小写）。
+    Name,
+    /// 所在目录（相对搜索起点），再按名字。
+    Location,
+    /// 修改时间（读不到的算最早）。
+    Mtime,
+    /// 大小（目录与读不到的算最小）。
+    Size,
+}
+
+impl SortKey {
+    /// 线上那个词的闭集（判据按它对拍协议文档）。
+    pub const WIRE: &'static [&'static str] = &["relevance", "name", "location", "mtime", "size"];
+
+    pub fn wire(self) -> &'static str {
+        match self {
+            Self::Relevance => "relevance",
+            Self::Name => "name",
+            Self::Location => "location",
+            Self::Mtime => "mtime",
+            Self::Size => "size",
+        }
+    }
+
+    pub fn from_wire(s: &str) -> Option<Self> {
+        Some(match s {
+            "relevance" => Self::Relevance,
+            "name" => Self::Name,
+            "location" => Self::Location,
+            "mtime" => Self::Mtime,
+            "size" => Self::Size,
+            _ => return None,
+        })
+    }
+
+    /// 这一列要逐条读盘（索引里只有路径与类型）。
+    fn needs_meta(self) -> bool {
+        matches!(self, Self::Mtime | Self::Size)
+    }
+}
+
+/// 一趟的排序：哪一列 ＋ 正反。同一列里打平的按全路径字节序（正反都正着），翻页才稳。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Sort {
+    pub key: SortKey,
+    pub desc: bool,
+}
+
+/// 一条命中在盘上的那两格（跟链接读；读不到 ⇒ 两格都 `None`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Meta {
+    /// 文件的字节数；目录 ⇒ `None`。
+    pub size: Option<u64>,
+    pub mtime_secs: Option<u64>,
+}
+
+fn read_meta(path: &[u8]) -> Meta {
+    match std::fs::metadata(super::raw::to_path_buf(path)) {
+        Ok(md) => Meta {
+            size: (!md.is_dir()).then(|| md.len()),
+            mtime_secs: md
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs()),
+        },
+        Err(_) => Meta::default(),
+    }
+}
+
+/// 一条命中：全路径原始字节 ＋ 类型字节 ＋ 盘上那两格。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hit {
+    pub path: Vec<u8>,
+    pub kind: u8,
+    pub meta: Meta,
+}
 
 /// 一次查询的答案。
 ///
@@ -450,24 +532,104 @@ pub struct FindResult {
     pub cover_root: Option<Vec<u8>>,
 }
 
-/// 一条命中排在哪：相关度档（[`super::query::Matcher::rank`]）→ 路径浅的在前 → 路径字节序。
+/// 一条命中在这一趟的序里的位置：主键（看 [`Sort::key`]）→ 全路径字节序。
 /// 翻到哪一屏都是这一个序（每一屏都按它从头排、再切那一段）。
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Primary {
+    Relevance(u8, usize),
+    Name(Vec<u8>),
+    Location(Vec<u8>, Vec<u8>),
+    Mtime(Option<u64>),
+    Size(Option<u64>),
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct Ranked {
-    rank: u8,
-    depth: usize,
+    primary: Primary,
+    desc: bool,
     path: Vec<u8>,
     kind: u8,
+    meta: Option<Meta>,
+}
+
+impl Ord for Ranked {
+    fn cmp(&self, o: &Self) -> std::cmp::Ordering {
+        let p = self.primary.cmp(&o.primary);
+        let p = if self.desc { p.reverse() } else { p };
+        p.then_with(|| self.path.cmp(&o.path))
+    }
+}
+
+impl PartialOrd for Ranked {
+    fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(o))
+    }
+}
+
+fn fold(b: &[u8]) -> Vec<u8> {
+    b.to_ascii_lowercase()
+}
+
+/// `path` 的父目录相对 `start` 的那一段（不在 `start` 底下 ⇒ 父目录全路径；直接在 `start` 里 ⇒ 空）。
+pub fn location_of<'p>(path: &'p [u8], start: Option<&[u8]>) -> &'p [u8] {
+    let path = trim_sep(path);
+    let parent = match path.iter().rposition(|&b| is_sep(b)) {
+        Some(0) => &path[..1],
+        Some(i) => &path[..i],
+        None => &path[..0],
+    };
+    let Some(start) = start.map(trim_sep) else {
+        return parent;
+    };
+    if trim_sep(parent) == start {
+        return &parent[..0];
+    }
+    if strictly_under(parent, start) {
+        let mut rest = &parent[start.len()..];
+        while rest.first().is_some_and(|&b| is_sep(b)) {
+            rest = &rest[1..];
+        }
+        return rest;
+    }
+    parent
 }
 
 impl Ranked {
-    fn new(rank: u8, depth: usize, path: &[u8], kind: u8) -> Self {
+    fn new(args: &FindArgs<'_>, start: Option<&[u8]>, path: &[u8], kind: u8, depth: usize) -> Self {
+        let mut meta = None;
+        let primary = match args.sort.key {
+            SortKey::Relevance => Primary::Relevance(args.query.rank(path), depth),
+            SortKey::Name => Primary::Name(fold(name_bytes(path))),
+            SortKey::Location => {
+                Primary::Location(fold(location_of(path, start)), fold(name_bytes(path)))
+            }
+            SortKey::Mtime => {
+                let m = read_meta(path);
+                meta = Some(m);
+                Primary::Mtime(m.mtime_secs)
+            }
+            SortKey::Size => {
+                let m = read_meta(path);
+                meta = Some(m);
+                Primary::Size(m.size)
+            }
+        };
+        debug_assert_eq!(meta.is_some(), args.sort.key.needs_meta());
         Self {
-            rank,
-            depth,
+            primary,
+            desc: args.sort.desc,
             path: path.to_vec(),
             kind,
+            meta,
         }
+    }
+}
+
+fn name_bytes(path: &[u8]) -> &[u8] {
+    let path = trim_sep(path);
+    match path.iter().rposition(|&b| is_sep(b)) {
+        Some(i) if i + 1 < path.len() => &path[i + 1..],
+        _ => path,
     }
 }
 
@@ -596,6 +758,7 @@ pub fn find(args: &FindArgs<'_>) -> Result<FindResult, Superseded> {
         let mut best: std::collections::BinaryHeap<Ranked> = std::collections::BinaryHeap::new();
         let mut total = 0usize;
         let mut scanned = 0usize;
+        let start = domain.map(trim_sep);
         let mut take = |bytes: &[u8], kind: u8| {
             if scope.is_some_and(|d| !strictly_under(bytes, d)) {
                 return;
@@ -605,14 +768,14 @@ pub fn find(args: &FindArgs<'_>) -> Result<FindResult, Superseded> {
                 if keep == 0 {
                     return;
                 }
-                let rank = args.query.rank(bytes);
                 let depth = bytes.iter().filter(|&&b| is_sep(b)).count();
+                let r = Ranked::new(args, start, bytes, kind, depth);
                 if best.len() < keep {
-                    best.push(Ranked::new(rank, depth, bytes, kind));
+                    best.push(r);
                 } else if let Some(mut worst) = best.peek_mut() {
                     // 比留下的最靠后那条靠前 ⇒ 顶替它（放手时堆自己重排）。
-                    if (rank, depth, bytes) < (worst.rank, worst.depth, worst.path.as_slice()) {
-                        *worst = Ranked::new(rank, depth, bytes, kind);
+                    if r < *worst {
+                        *worst = r;
                     }
                 }
             }
@@ -640,7 +803,11 @@ pub fn find(args: &FindArgs<'_>) -> Result<FindResult, Superseded> {
             .into_sorted_vec()
             .into_iter()
             .skip(args.offset)
-            .map(|r| (r.path, r.kind))
+            .map(|r| Hit {
+                meta: r.meta.unwrap_or_else(|| read_meta(&r.path)),
+                path: r.path,
+                kind: r.kind,
+            })
             .collect();
         let age = snap.age_secs(now);
         Ok(FindResult {

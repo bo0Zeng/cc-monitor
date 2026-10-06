@@ -103,7 +103,7 @@
 //! |---|---|---|
 //! | **命令面** | [`find`] | 四条线上命令（`files-find` / `files-index-status` / `files-index-rebuild` / `files-browse`）在客户端侧的第一个发送端。照 `backend_route` 那个共用分流器办，**没另造一套**。⚠ 判据喂的是一台合成后端，**真后端上一趟读数都没有** |
 //! | **节奏** | [`find::run_search_at`] | 后端回的 `index_missing` / `stale` / `out_of_index` 任一为真 ⇒ 照它给的 `cover_root` 真的发那条重走命令（同一时刻只发一趟）＋ 阴性对照。**周期那个数不在这一侧**（唯一住址在后端，零命中判据扫 `filewin/` 整棵树） |
-//! | **新鲜度** | [`find::freshness_line`] ＋ [`find::SearchBoard::ui`] | `§3.5.3` 那条 ⬜（「还欠写在界面上那一半」）。判据从 egui 这一帧的 galley 里把那几个数读回来，而且喂两组不同的数 ⇒ 写死一个 `300` 会当场红 |
+//! | **新鲜度** | [`find::age_line`] ＋ [`find::SearchBoard::status_ui`] | 搜索状态行「文件清单 · 多久前」与清单不全那几句。判据从 egui 这一帧的 galley 里把那几个数读回来，而且喂两组不同的数 |
 //! | **保鲜的另一半** | [`find::CMD_BROWSE`]，发在 [`find::run_search_at`] 里 | 「用户现在在看这个目录」在目录换了时告诉后端一次（不绑在重走那一刻上）。后端收到它会让进程里那一个监听器跟上名单 ⇒ 那几个目录此后一有动静就重列 |
 //! | **命中** | [`rows::show_hit_rows`] | 虚拟滚动、**只读**（一个可点控件都没有）。⚠ 点不开、没有「复制」，理由住那个函数 |
 //!
@@ -272,6 +272,7 @@ pub mod fonts;
 pub mod grep;
 // 文件种类：图标与「类型」那一列的字、按类型怎么排（怎么画的事，只在这里判）。
 pub mod kind;
+pub mod kit;
 // **有损名下载**：远端按字节就地拷进暂存区再走传输，本机按原始字节 / 有损形落名。
 pub mod lossy_pull;
 // **预览**：右侧一块只读面板（已有的 `files-read-text`，自己的上限，最多一趟在飞）。

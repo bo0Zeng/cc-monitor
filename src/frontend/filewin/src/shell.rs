@@ -113,7 +113,7 @@ use super::copy::{CopyBoard, CopyJob, CopyPrompt};
 use super::find::{self, SearchBoard};
 use super::fonts::{self, FontState};
 use super::grep::{self, GrepBoard, GrepTally};
-use super::rows::{show_file_rows, show_hit_rows, HitTally, RenderTally};
+use super::rows::{show_hit_rows, HitTally, RenderTally};
 use super::select::{self, Action, Intent, Selection, TypeAhead};
 use super::source::{Line, Listed, Sort, Source};
 use super::transfer::{DropBoard, Pending};
@@ -222,6 +222,10 @@ pub struct Listing {
     pub sort: Arc<Mutex<Sort>>,
     /// 上一趟有几项读不出来（后端照数，没列出）。
     pub unreadable: Arc<AtomicU64>,
+    /// 上一趟目录里一共读到几项（截断时那一句要它）。
+    pub total: Arc<AtomicU64>,
+    /// 上一趟目录打不开：哪一种（后端的码）＋ 系统原话（进「复制详情」）。
+    pub open_fail: Arc<Mutex<Option<(super::source::OpenFail, String)>>>,
 }
 
 impl Default for Listing {
@@ -236,6 +240,8 @@ impl Default for Listing {
             show_hidden: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             sort: Arc::new(Mutex::new(Sort::default())),
             unreadable: Arc::new(AtomicU64::new(0)),
+            total: Arc::new(AtomicU64::new(0)),
+            open_fail: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -259,6 +265,8 @@ pub fn store_listed_if_current(
             if kept {
                 l.truncated.store(cut.truncated, Ordering::SeqCst);
                 l.unreadable.store(cut.unreadable, Ordering::SeqCst);
+                l.total.store(cut.total, Ordering::SeqCst);
+                *l.open_fail.lock().unwrap() = None;
                 // 落地之后才读那一档：在这之前换的档由这里补排，在这之后换的由 `set_sort` 就地排。
                 let now = *l.sort.lock().unwrap();
                 if now != by {
@@ -426,8 +434,12 @@ pub struct FileWindow {
     /// 搜索框里那几个字。**UI 线程自己的**（同 [`Self::copy_prompt`] 的理由：
     /// 它是一个正在被编辑的草稿，不该出现在两条线程共享的那份状态里）。
     query: String,
-    /// 「只搜当前目录」那个开关（UI 线程自己的；关 ⇒ 搜这台机器的家目录）。
-    search_here: bool,
+    /// 搜索范围「整台机器」（UI 线程自己的；关 ⇒ 当前目录以下）。
+    search_whole: bool,
+    /// 结果表按哪一列排（排是后端排的，这里只记用户点了哪一列）。
+    hit_sort: find::FindSort,
+    /// 结果表上选中的那一条（下标只指命中这一摞）。
+    hit_pick: Option<usize>,
     /// 按内容搜那一趟的共享落点（UI 线程读，tokio 那条写；`super::grep`）。
     pub grep: GrepBoard,
     /// 按内容搜那个框里的字（UI 线程自己的草稿，同 [`Self::query`]）。
@@ -467,8 +479,12 @@ pub struct FileWindow {
     pub(super) ahead: Vec<super::source::RemotePath>,
     /// 地址栏正在手输吗（`Some` ＝ 输入框里那一串）。
     pub(super) addr_edit: Option<String>,
-    /// 「按内容搜」那一行摆出来了吗（命令栏上那颗切）。
-    pub(super) grep_open: bool,
+    /// 搜索框在「内容」那一段（UI 线程自己的）。
+    pub(super) search_content: bool,
+    /// 打不开那一条上点了「回主目录」（主目录住窗口那一级：由 `Workspace` 接过去）。
+    pub(super) want_home: bool,
+    /// 这一趟列目录从哪一刻起在等（骨架行 300 ms 后才画）。
+    loading_since: Option<f64>,
     /// 传输那一摞摊开着吗（状态栏上那一格切；有一问摆着时照样画）。
     pub(super) transfers_open: bool,
     /// 用户按过「重建索引」（换目录就清）：新鲜度那一行这时也摆出来，答他刚问的那一下。
@@ -534,7 +550,7 @@ pub struct FileWindow {
     /// 上传 · 下载 · 跨机三块看板，上一次看过的是第几趟结局（收起时有新结局 ⇒ 状态栏那颗开关留着）。
     transfers_seen: [u64; 3],
     /// 搜索命中那一摞画好的行（按那一问的号与落地趟数缓存：没变就不重建）。
-    hit_rows: (u64, u64, Arc<Vec<String>>),
+    hit_rows: (u64, u64, Arc<Vec<super::rows::HitRow>>),
     /// 别的栏 / 标签页开着编辑面（或正在读一份来开）：这一栏不再开第二个（同一时刻只有一个编辑面）。
     pub(super) editor_elsewhere: bool,
 }
@@ -646,7 +662,9 @@ impl FileWindow {
             font: FontState::NotInstalled,
             search: SearchBoard::default(),
             query: String::new(),
-            search_here: false,
+            search_whole: false,
+            hit_sort: find::FindSort::default(),
+            hit_pick: None,
             grep: GrepBoard::default(),
             grep_query: String::new(),
             grep_tally: GrepTally::default(),
@@ -666,7 +684,9 @@ impl FileWindow {
             back: Vec::new(),
             ahead: Vec::new(),
             addr_edit: None,
-            grep_open: false,
+            search_content: false,
+            want_home: false,
+            loading_since: None,
             transfers_open: true,
             props: None,
             status_wanted: false,
@@ -721,7 +741,14 @@ impl FileWindow {
                         by,
                     )
                     .await;
-                    store_listed_if_current(&l, mine, r, by);
+                    // 打不开（后端说是哪一种）⇒ 记下那一种，列表顶上画那一条 ＋ 出路。
+                    let fail = r.as_ref().err().and_then(|f| {
+                        super::source::OpenFail::of_code(f.code.as_deref())
+                            .map(|k| (k, f.said.clone()))
+                    });
+                    if store_listed_if_current(&l, mine, r.map_err(|f| f.said), by) {
+                        *l.open_fail.lock().unwrap() = fail;
+                    }
                 });
             }
             // ── 没有运行时 ⇒ 问不了后端，也走不了 SFTP 那条退路 ⇒ **出声**。
@@ -1053,8 +1080,11 @@ impl FileWindow {
         }
         let asked = find::Asked {
             query: self.query.clone(),
-            under: self.search_here.then(|| self.cwd_path()),
+            under: (!self.search_whole).then(|| self.cwd_path()),
+            machine: self.search_whole,
+            sort: self.hit_sort,
         };
+        self.hit_pick = None;
         self.search.attach(ctx);
         self.search.invalidate(&asked);
         if asked.query.trim().is_empty() && !force_rebuild {
@@ -1098,32 +1128,47 @@ impl FileWindow {
     }
 
     /// 命中那一摞画成的行：那一问的号与落地趟数都没变 ⇒ 用上一帧那一份（几千条命中不每帧整份克隆、重拼）。
-    pub fn hit_rows(&mut self) -> Arc<Vec<String>> {
+    pub fn hit_rows(&mut self) -> Arc<Vec<super::rows::HitRow>> {
         let key = (self.search.current(), self.search.rounds());
         if (self.hit_rows.0, self.hit_rows.1) != key {
-            let rows = self.search.hit_texts();
+            let rows = self.search.hit_rows();
             self.hit_rows = (key.0, key.1, Arc::new(rows));
         }
         self.hit_rows.2.clone()
     }
 
-    /// 「只搜当前目录」开关（判据用；界面上是搜索框旁那个勾）。
-    pub fn set_search_here(&mut self, on: bool) {
-        self.search_here = on;
+    /// 搜索范围：`true` ＝ 整台机器，`false` ＝ 当前目录以下（判据用；界面上是状态行那个下拉）。
+    pub fn set_search_whole(&mut self, on: bool) {
+        self.search_whole = on;
     }
 
-    /// 点了第 `i` 条文件名命中 ⇒ 进它所在的目录、高亮它；清掉搜索框（屏幕换回目录列表，那一行亮着）。
+    /// 点了结果表的一列表头 ⇒ 换排序、按新序从头再问（排是后端排的）。
+    pub fn click_hit_header(&mut self, col: find::SortCol, ctx: Option<egui::Context>) -> bool {
+        self.hit_sort = self.hit_sort.clicked(col);
+        self.fire_search(ctx, false)
+    }
+
+    /// 结果表眼下按哪一列排。
+    pub fn hit_sort(&self) -> find::FindSort {
+        self.hit_sort
+    }
+
+    /// 打开第 `i` 条文件名命中：文件 ⇒ 进它所在的目录、高亮它；目录 ⇒ 进去。清掉搜索框（屏幕换回目录列表）。
     /// 回值 = 真的跳了（下标对得上这一摞）。
     pub fn jump_to_find_hit(&mut self, i: usize) -> bool {
         let Some(hit) = self.search.hit(i) else {
             return false;
         };
         let at = super::source::RemotePath::from_bytes(&hit.path);
-        let name = hit.path.rsplit(|b| *b == b'/').next().unwrap_or(&hit.path);
-        let name = String::from_utf8_lossy(name).to_string();
-        self.navigate_to_at(at.parent());
-        self.set_reveal(&name);
+        if hit.dir {
+            self.navigate_to_at(at);
+        } else {
+            let name = String::from_utf8_lossy(hit.name_bytes()).to_string();
+            self.navigate_to_at(at.parent());
+            self.set_reveal(&name);
+        }
         self.query.clear();
+        self.hit_pick = None;
         true
     }
 
@@ -1156,12 +1201,15 @@ impl FileWindow {
 
     /// 按内容搜那个框里的字（判据用；生产那一侧直接改字段）。
     pub fn set_grep_query(&mut self, q: &str) {
+        self.search_content = true;
         self.grep_query = q.to_string();
     }
 
     /// 这一帧该画「按内容搜」的命中：文件名那个框是空的、按内容那个框里有字。
     pub fn showing_grep(&self) -> bool {
-        self.query.trim().is_empty() && !self.grep_query.trim().is_empty()
+        self.search_content
+            && !self.grep_query.trim().is_empty()
+            && self.grep.shown().needle == self.grep_query.trim()
     }
 
     /// 点了第 `i` 条按内容搜的命中 ⇒ 进它所在的目录、高亮它；清掉那个框（屏幕换回目录列表，那一行亮着）。
@@ -3604,10 +3652,10 @@ impl FileWindow {
         // 它是一个「到你改掉为止都成立的状态」，不是一次性事件
         // （同 `INVARIANTS §12` 对「设置没生效」那条的判法）。
         if let Some(note) = self.font.notice() {
-            ui.colored_label(ui.visuals().warn_fg_color, note);
+            super::kit::banner(ui, super::kit::Tone::Warn, &note, &[]);
         }
-        // 工具条（后退 · 前进 · 上一级 · 刷新 · 地址栏 · 搜索格）与命令栏（新建 · 上传 · 终端 · 开关）不在这里画：
-        //   它们作用于焦点那一栏，由最外一层画在窗口顶上（[`Self::toolbar_ui`] · [`Self::command_ui`]，住 `chrome.rs`）。
+        // 工具条（后退 · 前进 · 上一级 · 地址栏 · 搜索格）与命令栏不在这里画：
+        //   它们作用于焦点那一栏，由最外一层画在窗口顶上（[`Self::toolbar_ui`] · [`Self::command_bar_ui`]，住 `chrome.rs`）。
         // 🔴**键盘** —— 在画列表之前接：这一帧按的键，这一帧的列表就要画出结果
         //    （光标那一圈、滚进视野）。能不能接由 `keys_blocked` 那四道闸说了算。
         //    ⚠ 滚进视野要**上一帧**真物化的那一段 ⇒ 在 `tally` 被清零之前取。
@@ -3616,55 +3664,107 @@ impl FileWindow {
             let ctx = ui.ctx().clone();
             self.apply_keys(&ctx);
         }
-        if let Some(said) = self.key_notice.clone() {
-            ui.colored_label(ui.visuals().warn_fg_color, said);
-        }
-        // 🔴〔补齐五项〕开终端那一下说的话 —— **摆着不走**（同字体那条：
-        //    它是一个「到你换台机器 / 换个系统为止都成立的状态」，不是一次性事件）。
+        // 一次性的那几句（键位做不成的原因 · 跳到隐藏文件 · …）不画在这里：由窗口那一级收成右下角的回执（`Workspace::frame`）。
+        // 开终端那一下说的话 —— 摆着不走（到你换台机器 / 换个系统为止都成立的状态）⇒ 一条警告条。
         if let Some(said) = self.term_notice() {
-            ui.colored_label(ui.visuals().warn_fg_color, said);
+            super::kit::banner(ui, super::kit::Tone::Warn, &said, &[]);
         }
-        if let Some(e) = self.listing.error.lock().unwrap().clone() {
-            ui.colored_label(ui.visuals().error_fg_color, e);
+        // 目录打不开：哪一种（后端的码）说一句 ＋ 出路「回上一级」「回主目录」；系统原话进「复制详情」。
+        let open_fail = self.listing.open_fail.lock().unwrap().clone();
+        if let Some((kind, raw)) = open_fail {
+            let name = super::source::remote_basename(&self.cwd).to_string();
+            let key_text = match kind {
+                super::source::OpenFail::NotFound => {
+                    copy_text("rsFilewinShell.open.notFound", &[("name", &name)])
+                }
+                super::source::OpenFail::Denied => {
+                    copy_text("rsFilewinShell.open.denied", &[("name", &name)])
+                }
+                super::source::OpenFail::NotDir => {
+                    copy_text("rsFilewinShell.open.notDir", &[("name", &name)])
+                }
+                super::source::OpenFail::Other => {
+                    copy_text("rsFilewinShell.open.other", &[("name", &name)])
+                }
+            };
+            match super::kit::banner(
+                ui,
+                super::kit::Tone::Error,
+                &key_text,
+                &[
+                    copy_text("rsFilewinShell.open.up", &[]),
+                    copy_text("rsFilewinShell.open.home", &[]),
+                    copy_text("rsFilewinShell.open.copyDetail", &[]),
+                ],
+            ) {
+                Some(0) => self.navigate_up(),
+                Some(1) => self.want_home = true,
+                Some(2) => ui.ctx().copy_text(raw),
+                _ => {}
+            }
+        } else if let Some(e) = self.listing.error.lock().unwrap().clone() {
+            super::kit::banner(ui, super::kit::Tone::Error, &e, &[]);
         }
-        // 这里原先画「这一屏没走后端：…」（退路那一句）。退路没了，那一句也没了。
-        // 🔴 截断也要出声 —— 「这个目录里就这么多」与「后端只给了前 N 条」
-        //    在屏幕上长得一样，而用户会据此以为某个文件不存在。
-        if self.listing.truncated.load(Ordering::SeqCst) {
-            ui.colored_label(
-                ui.visuals().warn_fg_color,
-                copy_text(
-                    "rsFilewinShell.frame.truncated",
-                    &[("n", &(super::source::LS_LIMIT).to_string())],
-                ),
+        // 🔴 截断也要出声 —— 「这个目录里就这么多」与「后端只给了前 N 条」在屏幕上长得一样。
+        if self.listing.truncated.load(Ordering::SeqCst) && !self.showing_hits() {
+            let total = self.listing.total.load(Ordering::SeqCst);
+            let said = copy_text(
+                "rsFilewinShell.frame.truncated",
+                &[
+                    ("n", &(super::source::LS_LIMIT).to_string()),
+                    ("total", &total.to_string()),
+                ],
             );
+            if super::kit::banner(
+                ui,
+                super::kit::Tone::Warn,
+                &said,
+                &[copy_text("rsFilewinShell.frame.searchByName", &[])],
+            )
+            .is_some()
+            {
+                self.search_content = false;
+                ui.ctx()
+                    .memory_mut(|m| m.request_focus(egui::Id::new(SEARCH_BOX_ID)));
+            }
         }
-        // 有几项读不出来、没列出：同截断那一句，不让「没看见」与「不在」长成一样。
-        let unreadable = self.listing.unreadable.load(Ordering::SeqCst);
-        if unreadable > 0 {
-            ui.colored_label(
-                ui.visuals().warn_fg_color,
-                copy_text(
-                    "rsFilewinShell.frame.unreadable",
-                    &[("n", &unreadable.to_string())],
-                ),
-            );
-        }
-        // 「只搜当前目录」开着、框里有字、而目录换了 ⇒ 范围变了，按新目录再搜一趟。
-        if self.search_here
+        // 范围是「当前目录以下」、框里有字、而目录换了 ⇒ 范围变了，按新目录再搜一趟。
+        if !self.search_whole
             && !self.query.trim().is_empty()
             && self.search.asked_under().as_ref() != Some(&self.cwd_path())
         {
             let ctx = ui.ctx().clone();
             self.fire_search(Some(ctx), false);
         }
-        // 搜索的新鲜度那一行：只在搜索时摆（贴着命中那一摞的上方；搜索框本身在工具条上那一格），平时不占列表上方。
+        // 搜索结果顶上那一条状态行（范围 · 个数 · 文件清单多久前 · 刷新）：只在搜索时摆。
         if self.showing_hits() || self.search.is_running() || self.status_wanted {
-            self.search.ui(ui);
+            let machine = self.source.label();
+            if let Some(a) = self.search.status_ui(ui, &machine, self.search_whole) {
+                let ctx = ui.ctx().clone();
+                match a {
+                    find::SearchAction::Refresh => {
+                        self.fire_search(Some(ctx), true);
+                    }
+                    find::SearchAction::Scope(whole) => {
+                        self.search_whole = whole;
+                        self.fire_search(Some(ctx), false);
+                    }
+                    find::SearchAction::Retry => {
+                        self.fire_search(Some(ctx), false);
+                    }
+                    find::SearchAction::RetryMore => {
+                        self.search.retry_more();
+                        self.fire_more(Some(ctx));
+                    }
+                }
+            }
         }
-        // 按内容搜那一行（命令栏上那颗摆出来；回车 / 按钮才发，「停」撤掉在飞那一趟）。
-        if self.grep_open || self.grep.is_running() || self.showing_grep() {
-            self.grep_row(ui);
+        // 按内容搜的状态行（在搜 ＋「停」· 几处几个文件 · 跳过几个［详情］）。
+        if self.grep.is_running() || self.showing_grep() {
+            if self.grep.status_ui(ui) {
+                let ctx = ui.ctx().clone();
+                self.fire_grep(Some(ctx));
+            }
         }
         // 「属性」那一问。
         self.props_ui(ui);
@@ -3720,7 +3820,6 @@ impl FileWindow {
         self.settle_finished_copies();
         self.settle_finished_extracts();
         self.settle_finished_writes();
-        ui.separator();
         // 每帧从零数起 —— 这两个数是「这一帧物化了多少行」，不是累计。
         self.tally = RenderTally::default();
         self.hits_tally = HitTally::default();
@@ -3729,23 +3828,70 @@ impl FileWindow {
         //    并排会让「你现在看的是哪一摞」变成一个要靠标题猜的问题。
         if self.showing_hits() {
             let hits = self.hit_rows();
-            // 🔴收数口是 [`HitTally`]，**不是** `self.tally` —— 它交出的下标只指命中这一摞，
-            //    而下面那几条胶水索引的是 `listing.rows`（另一摞东西）。
-            show_hit_rows(ui, &hits, &mut self.hits_tally);
-            // 滚到底（最后一行露出来了）⇒ 往下再要一屏（后端说还有才发）。
-            if !hits.is_empty() && self.hits_tally.last_row >= hits.len() {
+            if hits.is_empty() && self.search.has_outcome() && !self.search.index_missing() {
+                // 没结果：中央一句 ＋（范围是当前目录以下时）「搜整台机器」。
+                let q = self.query.clone();
+                let whole = self.search_whole;
+                let mut go_whole = false;
+                ui.vertical_centered(|ui| {
+                    ui.add_space(ui.available_height() * 0.3);
+                    ui.label(find::no_match_line(&q));
+                    if !whole
+                        && ui
+                            .button(copy_text("rsFilewinFind.action.searchMachine", &[]))
+                            .clicked()
+                    {
+                        go_whole = true;
+                    }
+                });
+                if go_whole {
+                    self.search_whole = true;
+                    let ctx = ui.ctx().clone();
+                    self.fire_search(Some(ctx), false);
+                }
+            } else if self.search.has_outcome() {
+                let tail = if self.search.page_failed() {
+                    super::rows::HitTail::Failed
+                } else if self.search.more_to_come() {
+                    super::rows::HitTail::More
+                } else {
+                    super::rows::HitTail::End
+                };
+                // 🔴收数口是 [`HitTally`]，**不是** `self.tally` —— 它交出的下标只指命中这一摞，
+                //    而下面那几条胶水索引的是 `listing.rows`（另一摞东西）。
+                show_hit_rows(
+                    ui,
+                    &hits,
+                    self.hit_sort,
+                    self.hit_pick,
+                    tail,
+                    &mut self.hits_tally,
+                );
                 let ctx = ui.ctx().clone();
-                self.fire_more(Some(ctx));
+                if let Some(col) = self.hits_tally.sort_click.take() {
+                    self.click_hit_header(col, Some(ctx.clone()));
+                }
+                if let Some(i) = self.hits_tally.picked.take() {
+                    self.hit_pick = Some(i);
+                }
+                if std::mem::take(&mut self.hits_tally.retry_more) {
+                    self.search.retry_more();
+                    self.fire_more(Some(ctx.clone()));
+                }
+                // 滚到底（最后一行露出来了）⇒ 往下再要一屏（后端说还有才发；失败过就等「重试」）。
+                if !hits.is_empty() && self.hits_tally.last_row >= hits.len() {
+                    self.fire_more(Some(ctx));
+                }
             }
         } else if self.showing_grep() {
             // 按内容搜的命中：每行点得开（跳到那份文件），收数口是 [`GrepTally`]（它的下标只指这一摞）。
-            let hits: Vec<String> = self
+            let rows: Vec<grep::GrepRow> = self
                 .grep
                 .shown()
                 .outcome
-                .map(|o| o.hits.iter().map(|h| h.display()).collect())
+                .map(|o| grep::grep_rows(&o))
                 .unwrap_or_default();
-            grep::show_grep_rows(ui, &hits, &mut self.grep_tally);
+            grep::show_grep_rows(ui, &rows, &mut self.grep_tally);
         } else {
             // 🔴reveal 的两半在这里落地：**算**出偏移（只算一次）＋ 高亮那个名字。
             //    ⚠ 偏移是算的不是找的 —— 那条纪律（`show_rows` 才是主语）。
@@ -3771,15 +3917,68 @@ impl FileWindow {
                 self.click_header(by);
             }
             let rows = self.listing.rows.lock().unwrap();
-            show_file_rows(
-                ui,
-                &rows,
-                &mut self.tally,
-                jump,
-                want.as_deref(),
-                Some(&self.selection),
-                &self.cols,
-            );
+            let loading = self.listing.is_loading();
+            let failed = self.listing.error.lock().unwrap().is_some();
+            if rows.is_empty() && loading {
+                // 加载：300 ms 内什么都不画，之后骨架行。
+                let since = *self
+                    .loading_since
+                    .get_or_insert_with(|| ui.input(|i| i.time));
+                if ui.input(|i| i.time) - since > 0.3 {
+                    super::kit::skeleton_rows(ui, 5);
+                } else {
+                    ui.ctx()
+                        .request_repaint_after(std::time::Duration::from_millis(100));
+                }
+            } else if rows.is_empty() && !failed && self.listing.hidden.lock().unwrap().is_empty() {
+                drop(rows);
+                self.loading_since = None;
+                match super::kit::empty_state(
+                    ui,
+                    egui_phosphor::regular::FOLDER_SIMPLE,
+                    &copy_text("rsFilewinShell.frame.empty", &[]),
+                    &[
+                        format!(
+                            "{} {}",
+                            egui_phosphor::regular::UPLOAD_SIMPLE,
+                            copy_text("rsFilewinShell.frame.emptyUpload", &[])
+                        ),
+                        format!(
+                            "{} {}",
+                            egui_phosphor::regular::PLUS,
+                            copy_text("rsFilewinChrome.command.new", &[])
+                        ),
+                    ],
+                ) {
+                    Some(0) => {
+                        let ctx = ui.ctx().clone();
+                        self.run_command(super::chrome::Cmd::Upload, Some(ctx));
+                    }
+                    Some(1) => {
+                        self.begin_mkdir();
+                    }
+                    _ => {}
+                }
+            } else {
+                self.loading_since = None;
+                let unreadable = self.listing.unreadable.load(Ordering::SeqCst);
+                let tail = (unreadable > 0).then(|| {
+                    copy_text(
+                        "rsFilewinShell.frame.unreadable",
+                        &[("n", &unreadable.to_string())],
+                    )
+                });
+                super::rows::show_file_rows_with_tail(
+                    ui,
+                    &rows,
+                    &mut self.tally,
+                    jump,
+                    want.as_deref(),
+                    Some(&self.selection),
+                    &self.cols,
+                    tail.as_deref(),
+                );
+            }
         }
         // ⚠ 这三条只对**目录列表**那一摞有意义（下标索引的是 `listing.rows`）。
         //   命中那一摞交不出下标 —— 第四刀靠的是「那个函数不画可点控件」这条纪律，
@@ -3802,107 +4001,112 @@ impl FileWindow {
         self.menu_ui(ui);
     }
 
-    /// 工具条上搜索那一格：输入框（Ctrl+F 把焦点给它）＋「只搜当前目录」＋「重建索引」＋ 在飞指示。
-    /// 新鲜度那一行只在搜索时画在命中那一摞上方（`frame_body`）。
-    ///
-    /// 这一格的位置归工具条，里面的控件与行为归搜索那一族：🔴 **`changed()` 就发** —— 一敲就出。
-    /// 没有去抖（去抖要定时器）⇒ 每敲一个字一趟往返；在飞的旧那几趟后端按号收手、这一侧按号丢掉，**结果不会错**。
-    /// 开关开着时换了目录 ⇒ 范围变了，自动再搜一趟（那一判在 `frame_body`：画不画工具条都成立）。
+    /// 工具条上搜索那一格：框内左侧两段「名字 | 内容」· 输入框 · 右侧 ×（有字时）· 在飞指示。
+    /// 「名字」🔴 **`changed()` 就发** —— 一敲就出（没有去抖：在飞的旧那几趟后端按号收手、这一侧按号丢掉，结果不会错）；
+    /// 「内容」回车才发（按内容搜要把整棵树读一遍）。范围与「刷新」在结果顶上那一条状态行里（`frame_body`）。
     pub(super) fn search_box(&mut self, ui: &mut egui::Ui, compact: Option<f32>) {
+        let p = super::theme::palette(ui.ctx());
         let mut fire = false;
-        let mut rebuild = false;
-        let r = ui.add(
-            egui::TextEdit::singleline(&mut self.query)
-                .id(egui::Id::new(SEARCH_BOX_ID))
-                .desired_width(compact.unwrap_or(SEARCH_BOX_WIDTH))
-                .hint_text(format!(
-                    "{}  {}",
-                    egui_phosphor::regular::MAGNIFYING_GLASS,
-                    copy_text("rsFilewinShell.search.hint", &[])
-                )),
-        );
-        if r.changed() {
-            fire = true;
-        }
-        let rebuild_icon = egui_phosphor::regular::ARROWS_CLOCKWISE;
-        let rebuild_text = copy_text("rsFilewinShell.search.rebuild", &[]);
-        if compact.is_some() {
-            // 窄窗口：那两件收进「⋯」（画法不变，只是挪进菜单）。
-            ui.menu_button(egui_phosphor::regular::DOTS_THREE, |ui| {
-                let here = copy_text("rsFilewinShell.search.here", &[]);
-                fire |= ui.checkbox(&mut self.search_here, here).changed();
-                rebuild |= ui.button((rebuild_icon, rebuild_text.as_str())).clicked();
-            })
-            .response
-            .on_hover_text(super::chrome::MORE_LABEL.as_str());
-        } else {
-            if ui
-                .checkbox(
-                    &mut self.search_here,
-                    copy_text("rsFilewinShell.search.here", &[]),
-                )
-                .changed()
-            {
-                fire = true;
-            }
-            if ui
-                .button(rebuild_icon)
-                .on_hover_text(rebuild_text)
-                .clicked()
-            {
-                rebuild = true;
-            }
-        }
-        if self.search.is_running() {
-            ui.spinner();
-        }
-        if fire || rebuild {
-            let ctx = ui.ctx().clone();
-            self.fire_search(Some(ctx), rebuild);
-        }
-    }
-}
-
-impl FileWindow {
-    /// 按内容搜那一行：输入框 ＋「搜内容」＋ 在飞时「停」，接着是总述那一行。
-    ///
-    /// 🔴 **回车或按钮才发**（不是 `changed()` 就发）：按内容搜要把整棵树读一遍，打一个字发一趟就是一个字一次全树读。
-    fn grep_row(&mut self, ui: &mut egui::Ui) {
-        let mut fire = false;
-        let mut stop = false;
-        ui.horizontal_wrapped(|ui| {
-            ui.label(&copy_text("rsFilewinShell.grep.label", &[]));
-            let r = ui.add(
-                egui::TextEdit::singleline(&mut self.grep_query)
-                    .desired_width(220.0)
-                    .hint_text(&copy_text("rsFilewinShell.grep.hint", &[])),
-            );
-            if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                fire = true;
-            }
-            if ui
-                .button(&copy_text("rsFilewinShell.grep.start", &[]))
-                .clicked()
-            {
-                fire = true;
-            }
-            if self.grep.is_running() {
-                ui.spinner();
-                if ui
-                    .button(&copy_text("rsFilewinShell.grep.stop", &[]))
-                    .clicked()
-                {
-                    stop = true;
+        let mut fire_grep = false;
+        let mut switch: Option<bool> = None;
+        let mut clear = false;
+        let w = compact.unwrap_or(SEARCH_BOX_WIDTH);
+        let focused = ui.memory(|m| m.has_focus(egui::Id::new(SEARCH_BOX_ID)));
+        egui::Frame::new()
+            .fill(ui.visuals().extreme_bg_color)
+            .stroke(egui::Stroke::new(
+                1.0,
+                if focused { p.accent } else { p.border_soft },
+            ))
+            .corner_radius(6.0)
+            .inner_margin(egui::Margin::symmetric(4, 2))
+            .show(ui, |ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
+                for (content, label) in [
+                    (false, copy_text("rsFilewinShell.search.byName", &[])),
+                    (true, copy_text("rsFilewinShell.search.byContent", &[])),
+                ] {
+                    let on = self.search_content == content;
+                    if super::kit::toggle(ui, "", &label, on).clicked() && !on {
+                        switch = Some(content);
+                    }
                 }
+                let (buf, hint) = if self.search_content {
+                    (
+                        &mut self.grep_query,
+                        copy_text("rsFilewinShell.search.hintContent", &[]),
+                    )
+                } else {
+                    (
+                        &mut self.query,
+                        copy_text("rsFilewinShell.search.hint", &[]),
+                    )
+                };
+                let has_text = !buf.is_empty();
+                let r = ui.add(
+                    egui::TextEdit::singleline(buf)
+                        .id(egui::Id::new(SEARCH_BOX_ID))
+                        .frame(egui::Frame::NONE)
+                        .desired_width((w - 110.0).max(60.0))
+                        .hint_text(hint),
+                );
+                if self.search_content {
+                    if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        fire_grep = true;
+                    }
+                } else if r.changed() {
+                    fire = true;
+                }
+                if self.search.is_running() || self.grep.is_running() {
+                    ui.spinner();
+                }
+                if has_text
+                    && ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new(egui_phosphor::regular::X).color(p.text2),
+                            )
+                            .frame(false),
+                        )
+                        .clicked()
+                {
+                    clear = true;
+                }
+            });
+        if let Some(content) = switch {
+            // 换一种搜法：框里的字跟着过去（名字 → 内容不立刻读整棵树，等回车）。
+            if content {
+                self.grep_query = std::mem::take(&mut self.query);
+            } else {
+                self.query = std::mem::take(&mut self.grep_query);
+                fire = true;
             }
-        });
-        self.grep.ui(ui);
-        if stop {
+            self.search_content = content;
+            ui.memory_mut(|m| m.request_focus(egui::Id::new(SEARCH_BOX_ID)));
+        }
+        if clear {
+            self.query.clear();
+            self.grep_query.clear();
             self.grep.stop();
         }
+        let ctx = ui.ctx().clone();
         if fire {
-            let ctx = ui.ctx().clone();
+            self.fire_search(Some(ctx.clone()), false);
+        }
+        if fire_grep {
             self.fire_grep(Some(ctx));
+        }
+    }
+
+    /// 搜索框在哪一种：`true` ＝ 按内容（判据 · Ctrl+Shift+F 用）。
+    pub fn set_search_content(&mut self, on: bool) {
+        if on != self.search_content {
+            if on {
+                self.grep_query = std::mem::take(&mut self.query);
+            } else {
+                self.query = std::mem::take(&mut self.grep_query);
+            }
+            self.search_content = on;
         }
     }
 }
@@ -3912,9 +4116,18 @@ impl FileWindow {
 /// 工具条上那个搜索框的 egui id（Ctrl+F 把焦点给它）。
 pub const SEARCH_BOX_ID: &str = "filewin-search-box";
 /// 窗口最小多大（逻辑像素）：再小，工具条收进「⋯」之后地址栏也摆不下了。
-pub const MIN_WINDOW: [f32; 2] = [480.0, 360.0];
+pub const MIN_WINDOW: [f32; 2] = [640.0, 400.0];
+
+/// 窗口标题：「{当前标签名} · {机器} · 文件」（任务栏里几扇窗分得出在哪个目录）。
+pub fn window_title(tab: &str, machine: &str) -> String {
+    let tab = if tab.is_empty() { "/" } else { tab };
+    copy_text(
+        "rsFilewinShell.window.title",
+        &[("tab", &tab.to_string()), ("machine", &machine.to_string())],
+    )
+}
 /// 搜索框平时多宽（窗口窄时收窄，见 `chrome.rs` 工具条）。
-pub const SEARCH_BOX_WIDTH: f32 = 200.0;
+pub const SEARCH_BOX_WIDTH: f32 = 260.0;
 
 /// 同一栏里各自只有一块看板的那几类后台活（[`FileWindow::one_at_a_time`]）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -3998,13 +4211,12 @@ pub fn open_detached_seeded(
 ) -> std::thread::JoinHandle<Result<(), String>> {
     OPEN_REQUESTED.fetch_add(1, Ordering::SeqCst);
     std::thread::spawn(move || {
-        let title = copy_text(
-            "rsFilewinShell.window.title",
-            &[("source", &(source.label()).to_string())],
-        );
+        let title = window_title(super::source::remote_basename(&cwd), &source.label());
         let opts = eframe::NativeOptions {
             event_loop_builder: Some(Box::new(crate::platform::any_thread_hook)),
-            viewport: egui::ViewportBuilder::default().with_min_inner_size(MIN_WINDOW),
+            viewport: egui::ViewportBuilder::default()
+                .with_inner_size([1280.0, 800.0])
+                .with_min_inner_size(MIN_WINDOW),
             ..Default::default()
         };
         WINDOWS_OPENED.fetch_add(1, Ordering::SeqCst);

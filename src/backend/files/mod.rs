@@ -226,13 +226,15 @@ pub const CAPABILITIES: &[Capability] = &[
             "entries",
             "kind",
             "link_dir",
+            "link_to",
             "mtime_secs",
             "path",
             "size",
+            "total",
             "truncated",
             "unreadable",
         ],
-        codes: &["bad_path", "unreadable"],
+        codes: &["bad_path", "denied", "not_dir", "not_found", "unreadable"],
     },
     Capability {
         name: "files.stat",
@@ -252,9 +254,10 @@ pub const CAPABILITIES: &[Capability] = &[
         effect: Effect::ReadsOnly,
         impl_files: &["browse_watch.rs", "index.rs", "mod.rs", "query.rs", "raw.rs"],
         targets: TARGETS,
-        args: &["limit", "offset", "query", "seq", "stream", "under"],
+        args: &["desc", "limit", "offset", "query", "scope", "seq", "sort", "stream", "under"],
         fields: &[
             "cover_root",
+            "desc",
             "hits",
             "index_age_secs",
             "index_missing",
@@ -263,7 +266,9 @@ pub const CAPABILITIES: &[Capability] = &[
             "out_of_index",
             "scanned",
             "seq",
+            "sort",
             "stale",
+            "start",
             "total_hits",
             "truncated",
         ],
@@ -634,9 +639,16 @@ const KINDS_BY_CODE: [&str; 4] = ["file", "dir", "symlink", "other"];
 fn answer_ls(args: &serde_json::Value) -> Answer {
     let dir = path_arg(args)?;
     let limit = limit_of(args);
+    // 打不开的原因分几种码（界面按码说「路径不存在 / 无权限 / 不是目录」，系统原话进详情）。
     let rd = std::fs::read_dir(&dir).map_err(|e| {
+        let code = match e.kind() {
+            std::io::ErrorKind::NotFound => "not_found",
+            std::io::ErrorKind::PermissionDenied => "denied",
+            std::io::ErrorKind::NotADirectory => "not_dir",
+            _ => "unreadable",
+        };
         (
-            "unreadable",
+            code,
             copy_core::copy_text("beFilesRead.ls.unreadable", &[("kind", &io_kind_said(&e))]),
         )
     })?;
@@ -669,13 +681,21 @@ fn answer_ls(args: &serde_json::Value) -> Answer {
             // 链接指向的是不是目录（跟链接那一次 `metadata` 顺带的）：窗口据此给「打开」。断链不出这一格。
             if kind == "symlink" {
                 row.insert("link_dir".to_string(), serde_json::json!(md.is_dir()));
+                row.insert(
+                    "link_to".to_string(),
+                    serde_json::json!(if md.is_dir() { "dir" } else { "file" }),
+                );
             }
+        } else if kind == "symlink" {
+            // 跟不过去 ⇒ 断了的链接（指向的东西不在 / 读不到）。
+            row.insert("link_to".to_string(), serde_json::json!("missing"));
         }
         entries.push(serde_json::Value::Object(row));
     }
     Ok(serde_json::json!({
         "entries": entries,
         "truncated": seen > entries.len(),
+        "total": seen,
         "unreadable": unreadable,
     }))
 }
@@ -802,7 +822,42 @@ fn answer_find(args: &serde_json::Value) -> Answer {
         Some(n) => Some(index::ticket(stream, n).map_err(|_| superseded())?),
         None => None,
     };
+    let sort = index::Sort {
+        key: match args.get("sort") {
+            None | Some(serde_json::Value::Null) => index::SortKey::default(),
+            Some(v) => v.as_str().and_then(index::SortKey::from_wire).ok_or((
+                "bad_args",
+                crate::common::contract::malformed(&format!(
+                    "`sort` must be one of {}",
+                    index::SortKey::WIRE.join(" / ")
+                )),
+            ))?,
+        },
+        desc: match args.get("desc") {
+            None | Some(serde_json::Value::Null) => false,
+            Some(v) => v.as_bool().ok_or((
+                "bad_args",
+                crate::common::contract::malformed("`desc` must be a boolean"),
+            ))?,
+        },
+    };
+    // 「整台机器」：范围由这台自己定（文件系统的根），界面不猜平台。
+    let machine = match args.get("scope") {
+        None | Some(serde_json::Value::Null) => false,
+        Some(v) => match v.as_str() {
+            Some("under") => false,
+            Some("machine") => true,
+            _ => {
+                return Err((
+                    "bad_args",
+                    crate::common::contract::malformed("`scope` must be \"under\" or \"machine\""),
+                ));
+            }
+        },
+    };
     let home = home_var().map(std::path::PathBuf::from);
+    let root = machine.then(|| machine_root(home.as_deref()));
+    let under = root.or(under);
     let r = index::find(&index::FindArgs {
         query: &matcher,
         under: under.as_deref(),
@@ -810,17 +865,28 @@ fn answer_find(args: &serde_json::Value) -> Answer {
         offset,
         limit: limit_of(args),
         ticket: ticket.as_ref(),
+        sort,
     })
     .map_err(|_| superseded())?;
     let path_or_null = |p: &Option<Vec<u8>>| match p {
         Some(b) => raw::to_json(b),
         None => serde_json::Value::Null,
     };
+    let start = under
+        .clone()
+        .or_else(|| home.as_deref().map(|h| raw::path_bytes(h).to_vec()));
     Ok(serde_json::json!({
-        "hits": r.hits.iter().map(|(p, k)| serde_json::json!({
-            "path": raw::to_json(p),
-            "kind": KINDS_BY_CODE.get(*k as usize).copied().unwrap_or("other"),
+        "hits": r.hits.iter().map(|h| serde_json::json!({
+            "path": raw::to_json(&h.path),
+            "kind": KINDS_BY_CODE.get(h.kind as usize).copied().unwrap_or("other"),
+            "location": raw::to_json(index::location_of(&h.path, start.as_deref())),
+            "size": h.meta.size,
+            "mtime_secs": h.meta.mtime_secs,
+            "marks": matcher.marks(&h.path).iter().map(|(a, b)| [a, b]).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
+        "start": path_or_null(&start),
+        "sort": sort.key.wire(),
+        "desc": sort.desc,
         "total_hits": r.total_hits,
         "truncated": r.truncated,
         "scanned": r.scanned,
@@ -833,6 +899,46 @@ fn answer_find(args: &serde_json::Value) -> Answer {
         "seq": seq,
         "offset": offset,
     }))
+}
+
+/// `path` 相对 `root` 那一段（不在它底下 ⇒ 原样；就是它 ⇒ 最后一段名字）。
+fn rel_to<'p>(path: &'p [u8], root: &[u8]) -> &'p [u8] {
+    let sep = |b: u8| b == b'/' || (cfg!(windows) && b == b'\\');
+    let mut r = root;
+    while r.len() > 1 && r.last().is_some_and(|&b| sep(b)) {
+        r = &r[..r.len() - 1];
+    }
+    if path.len() > r.len()
+        && path.starts_with(r)
+        && (sep(path[r.len()]) || r.last().is_some_and(|&b| sep(b)))
+    {
+        let mut rest = &path[r.len()..];
+        while rest.first().is_some_and(|&b| sep(b)) {
+            rest = &rest[1..];
+        }
+        return rest;
+    }
+    if path == r {
+        return path
+            .iter()
+            .rposition(|&b| sep(b))
+            .map_or(path, |i| &path[i + 1..]);
+    }
+    path
+}
+
+/// 「整台机器」那一档的范围：unix 是 `/`；Windows 是家目录所在那块盘的根（说不出 ⇒ `C:\\`）。
+fn machine_root(home: Option<&std::path::Path>) -> Vec<u8> {
+    if cfg!(windows) {
+        let drive = home
+            .map(raw::path_bytes)
+            .filter(|h| h.len() >= 2 && h[1] == b':' && h[0].is_ascii_alphabetic())
+            .map(|h| h[..2].to_vec())
+            .unwrap_or_else(|| b"C:".to_vec());
+        [drive, b"\\".to_vec()].concat()
+    } else {
+        b"/".to_vec()
+    }
 }
 
 /// `files.index.status` —— 新鲜度 ／ 条目数 ／ 常驻字节 ／ **声明的重走周期**。
@@ -1280,9 +1386,15 @@ fn grep_reply(top: &std::path::Path, limit: usize, g: &grep::Grepped) -> serde_j
         "path": raw::to_json(raw::path_bytes(top)),
         "hits": g.hits.iter().map(|h| serde_json::json!({
             "path": raw::to_json(&h.path),
+            "rel": raw::to_json(rel_to(&h.path, raw::path_bytes(top))),
             "line": h.line,
             "text": raw::to_json(&h.text),
             "matches": h.matches,
+            "lines": h.lines.iter().map(|l| serde_json::json!({
+                "line": l.line,
+                "text": raw::to_json(&l.text),
+                "marks": l.mark.iter().map(|(a, b)| [a, b]).collect::<Vec<_>>(),
+            })).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
         "files": g.files,
         "bytes": g.bytes,

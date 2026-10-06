@@ -14,7 +14,7 @@
 //!    [`the_window_sends_a_rebuild_when_the_backend_says_the_index_is_missing`] 的阴性对照：
 //!    没有它，「会发那条重走命令」可以靠**每次都发**全绿，而那是一条真缺陷
 //!    （每敲一个字走一整棵树）。
-//! 3. [`the_freshness_numbers_the_backend_reports_really_reach_the_frame`] 喂**两组
+//! 3. [`the_status_line_shows_the_numbers_the_backend_reports`] 喂**两组
 //!    不同的数**并断言画出来的跟着变 —— 一个写死的 `300` 只在一组上碰巧对。
 //!
 //! # ⚠ 这一摞买不到什么
@@ -163,12 +163,11 @@ async fn typing_into_the_box_puts_exactly_the_expected_hits_on_the_frame() {
     testing::settle(&w.search, before, "端到端那一趟").await;
 
     let painted = testing::frame_text(&ctx, &mut w, Vec::new());
-    // 目录那几行后面带 `/`（命中那一摞的画法）⇒ 比之前摘掉。
-    let got: std::collections::BTreeSet<String> = painted
-        .iter()
-        .filter(|t| t.starts_with(&root))
-        .map(|t| t.trim_end_matches('/').to_string())
-        .collect();
+    // 结果表上一行 ＝ 名字一格 ＋ 位置一格（相对搜索起点）⇒ 两格拼回全路径再比。
+    let got: std::collections::BTreeSet<String> =
+        painted_hits(&painted, &w.search.hit_rows(), &root)
+            .into_iter()
+            .collect();
     let want = tree.expected(NEEDLE);
     assert!(
         !want.is_empty(),
@@ -224,13 +223,8 @@ async fn a_find_against_a_backend_that_never_built_an_index_comes_back_empty_and
         got.is_empty(),
         "没建过索引却在帧面上画出了命中：{got:?} —— 那些是哪来的？"
     );
-    // 🔴 **〔死值验第 2 刀的订正，2026-09-21〕这一段原来是一条
-    //    `painted.any(|t| t.contains("索引还没建过"))`，而那把「没建过」这件事
-    //    在界面上说出来的**两个地方**合成了一个断言 —— 把
-    //    `freshness_line` 那句话整句换掉，本条**照样绿**（`hits_line` 里也有那几个字）。
-    //    ⇒ 刀没红逮到的是真东西：断言的单位（「帧上某处有这几个字」）
-    //    比事实的单位（「那两行**各自**说了这件事」）**粗一级**。
-    //    ⇒ 拆成两条**相等**断言 ＋ 两条措辞断言，四条各挡一把刀。
+    // 「没建过」要在状态行上说出来（它与「这台机器上没有这个文件」是两件事，混了用户会删错东西），
+    // 而且这一形**不许**画「无匹配」那一句。
     let st = w.search.shown().status.expect("这一趟该拿到状态");
     assert!(
         st.index_missing,
@@ -238,25 +232,13 @@ async fn a_find_against_a_backend_that_never_built_an_index_comes_back_empty_and
     );
     let o = w.search.shown().outcome.expect("这一趟该有一份答案");
     assert!(o.index_missing, "`{CMD_FIND}` 该回 `index_missing: true`");
-    let fresh = freshness_line(&st);
-    let hl = hits_line(&o);
     assert!(
-        painted.contains(&fresh),
-        "**新鲜度那一行**没画到帧上（该是 {fresh:?}）。\n这一帧画的是：{painted:?}"
+        painted.contains(&not_built_line()),
+        "状态行没说「文件清单未建」。\n这一帧画的是：{painted:?}"
     );
     assert!(
-        painted.contains(&hl),
-        "**命中那一行**没画到帧上（该是 {hl:?}）。\n这一帧画的是：{painted:?}"
-    );
-    assert!(
-        fresh.contains("索引还没建过"),
-        "新鲜度那一行没把「索引还没建过」说出来：{fresh:?}\n\
-         ⚠ 它与「这台机器上没有这个文件」是两件事，混了用户会删错东西"
-    );
-    assert!(
-        hl.contains("索引还没建过"),
-        "命中那一行没把「索引还没建过」说出来：{hl:?}\n\
-         ⚠ 同上 —— 两行**各自**都要说得出，不许只靠另一行兜着"
+        !painted.contains(&no_match_line(NEEDLE)),
+        "清单没建过却说「无匹配」：{painted:?}"
     );
     // 而预期集是**非空**的 ⇒ 上面那个空集是「索引没建」造成的，不是「树里没有」。
     assert!(
@@ -469,7 +451,7 @@ async fn many_keystrokes_in_flight_still_only_trigger_one_rebuild() {
         let line = wired.line.clone();
         let asked = Asked {
             query: NEEDLE.to_string(),
-            under: None,
+            ..Asked::default()
         };
         tokio::spawn(async move {
             let cwd = crate::source::RemotePath::plain(&r);
@@ -499,13 +481,29 @@ async fn many_keystrokes_in_flight_still_only_trigger_one_rebuild() {
 // 只要一屏 · 滚到底再要 · 只搜当前目录 · 点一条跳过去
 // ═══════════════════════════════════════════════════════════════════
 
-/// 这一帧上命中那一摞的每一行（摘掉目录后面那个 `/`）。
-fn painted_hits(painted: &[String], root: &str) -> Vec<String> {
-    painted
-        .iter()
-        .filter(|t| t.starts_with(root))
-        .map(|t| t.trim_end_matches('/').to_string())
-        .collect()
+/// 这一帧上结果表的每一行，拼回全路径：表上一行先画名字、紧跟着画位置（相对搜索起点 `root`，直接在起点里的不画位置）。
+/// 只认帧上**真画出来**的那几对（名字 · 位置）—— 后端那一份只用来认「哪一对是一行」。
+fn painted_hits(painted: &[String], rows: &[crate::rows::HitRow], root: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < painted.len() {
+        let hit = rows.iter().find(|r| {
+            painted[i] == r.name
+                && (r.location.is_empty() || painted.get(i + 1) == Some(&r.location))
+        });
+        match hit {
+            Some(r) if r.location.is_empty() => {
+                out.push(format!("{root}/{}", r.name));
+                i += 1;
+            }
+            Some(r) => {
+                out.push(format!("{root}/{}/{}", r.location, r.name));
+                i += 2;
+            }
+            None => i += 1,
+        }
+    }
+    out
 }
 
 /// 线上每一趟 `files-find` 的入参。
@@ -546,7 +544,11 @@ async fn the_last_row_on_screen_pulls_the_next_page_with_the_same_seq() {
     assert_eq!(w.search.shown().outcome.unwrap().hits.len(), 8);
 
     let before = w.search.rounds();
-    let first = painted_hits(&testing::frame_text(&ctx, &mut w, Vec::new()), &root);
+    let first = painted_hits(
+        &testing::frame_text(&ctx, &mut w, Vec::new()),
+        &w.search.hit_rows(),
+        &root,
+    );
     assert_eq!(first.len(), 8, "第一屏该整屏画出来");
     testing::settle(&w.search, before, "第二屏").await;
     let o = w.search.shown().outcome.unwrap();
@@ -583,9 +585,10 @@ async fn the_last_row_on_screen_pulls_the_next_page_with_the_same_seq() {
     assert_eq!(find_calls(&wired2).len(), 1, "后面没有了还在要下一屏");
 }
 
-/// 「只搜当前目录」开着 ⇒ 带上当前目录；换了目录 ⇒ 自动按新目录再搜；点一条命中 ⇒ 进它所在的目录。
+/// 范围默认「当前目录以下」⇒ 带上当前目录；换了目录 ⇒ 自动按新目录再搜；「整台机器」⇒ 只发 `scope`、不带目录；
+/// 打开一条文件命中 ⇒ 进它所在的目录，打开一条目录命中 ⇒ 进它自己。
 #[tokio::test]
-async fn search_here_follows_the_directory_and_a_hit_takes_you_there() {
+async fn the_scope_follows_the_directory_and_a_hit_takes_you_there() {
     let tree = testing::plant("here", TREE_N, TREE_SEED).expect("造不出那棵树");
     let root = tree.remote_root();
     let wired = testing::wire_up(
@@ -599,23 +602,33 @@ async fn search_here_follows_the_directory_and_a_hit_takes_you_there() {
     let mut w = testing::window_on(&wired, &root);
     let before = w.search.rounds();
     testing::type_into_search(&ctx, &mut w, NEEDLE);
-    testing::settle(&w.search, before, "家目录那一趟").await;
-    assert!(
-        find_calls(&wired)[0].get("under").is_none(),
-        "开关关着却带了范围"
+    testing::settle(&w.search, before, "当前目录那一趟").await;
+    assert_eq!(
+        find_calls(&wired)[0]["under"],
+        root.as_str(),
+        "默认范围不是当前目录"
     );
+    assert!(find_calls(&wired)[0].get("scope").is_none());
 
-    w.set_search_here(true);
+    w.set_search_whole(true);
     let before = w.search.rounds();
-    testing::frame_text(&ctx, &mut w, Vec::new());
-    testing::settle(&w.search, before, "开了开关那一趟").await;
-    assert_eq!(find_calls(&wired).last().unwrap()["under"], root.as_str());
+    w.fire_search(None, false);
+    testing::settle(&w.search, before, "整台机器那一趟").await;
+    let last = find_calls(&wired).last().unwrap().clone();
+    assert_eq!(last["scope"], "machine");
+    assert!(last.get("under").is_none(), "整台机器还带了目录：{last}");
+    w.set_search_whole(false);
 
-    // 点第 0 条命中 ⇒ 进它所在的目录、高亮它、框清空。
-    let hit = w.search.shown().outcome.unwrap().hits[0].display();
+    // 打开第一条文件命中 ⇒ 进它所在的目录、高亮它、框清空。
+    let before = w.search.rounds();
+    w.fire_search(None, false);
+    testing::settle(&w.search, before, "回到当前目录以下").await;
+    let o = w.search.shown().outcome.unwrap();
+    let i = o.hits.iter().position(|h| !h.dir).expect("命中里该有文件");
+    let hit = o.hits[i].display();
     let (dir, name) = hit.rsplit_once('/').unwrap();
-    assert!(w.jump_to_find_hit(0));
-    assert_eq!(w.cwd, dir, "点了命中没进它所在的目录");
+    assert!(w.jump_to_find_hit(i));
+    assert_eq!(w.cwd, dir, "打开文件命中没进它所在的目录");
     assert_eq!(w.query(), "", "跳过去之后框该清空（屏幕换回目录列表）");
     assert!(!name.is_empty());
 
@@ -633,38 +646,115 @@ async fn search_here_follows_the_directory_and_a_hit_takes_you_there() {
     testing::frame_text(&ctx, &mut w, Vec::new());
     testing::settle(&w.search, before, "上一级那一趟").await;
     assert_eq!(find_calls(&wired).last().unwrap()["under"], up.as_str());
+
+    // 目录命中 ⇒ 进它自己。
+    let o = w.search.shown().outcome.unwrap();
+    if let Some(j) = o.hits.iter().position(|h| h.dir) {
+        let d = o.hits[j].display();
+        assert!(w.jump_to_find_hit(j));
+        assert_eq!(w.cwd, d, "打开目录命中没进它自己");
+    }
+}
+
+/// 点表头 ⇒ 按那一列从头再问一遍（排是后端排的，这一侧只发列名与正反）；翻页带着同一个序。
+#[tokio::test]
+async fn a_header_click_asks_the_backend_for_that_order_and_pages_keep_it() {
+    let tree = testing::plant("sort", TREE_N, TREE_SEED).expect("造不出那棵树");
+    let root = tree.remote_root();
+    let wired = testing::wire_up(
+        "b1-find-sort",
+        FakeBackend::new(COMMANDS, Declared::default())
+            .homed(&tree.root)
+            .preindexed(&tree.root)
+            .paging_by(8),
+    )
+    .await;
+    let ctx = ctx_ready();
+    let mut w = testing::window_on(&wired, &root);
+    let q = root.rsplit('/').next().unwrap().to_string();
+    let before = w.search.rounds();
+    testing::type_into_search(&ctx, &mut w, &q);
+    testing::settle(&w.search, before, "相关度那一趟").await;
+    assert_eq!(find_calls(&wired)[0]["sort"], "relevance");
+    for (col, sort, desc) in [
+        (SortCol::Name, "name", false),
+        (SortCol::Name, "name", true),
+        (SortCol::Name, "relevance", false),
+        (SortCol::Location, "location", false),
+        (SortCol::Location, "location", true),
+        (SortCol::Mtime, "mtime", true),
+        (SortCol::Size, "size", true),
+        (SortCol::Size, "size", false),
+    ] {
+        let before = w.search.rounds();
+        assert!(w.click_hit_header(col, None));
+        testing::settle(&w.search, before, sort).await;
+        let last = find_calls(&wired).last().unwrap().clone();
+        assert_eq!(
+            (last["sort"].as_str(), last["desc"].as_bool()),
+            (Some(sort), Some(desc)),
+            "点了 {col:?}"
+        );
+        assert_eq!(last["offset"], 0, "换了序该从头问");
+    }
+    // 按位置倒序：帧上画的那几行就是后端回的那个序；滚到底要的下一屏带着同一个序。
+    w.click_hit_header(SortCol::Location, None);
+    let before = w.search.rounds();
+    w.click_hit_header(SortCol::Location, None);
+    testing::settle(&w.search, before, "位置倒序").await;
+    let rows = w.search.hit_rows();
+    let painted = testing::frame_text(&ctx, &mut w, Vec::new());
+    let shown = painted_hits(&painted, &rows, &root);
+    let from_backend: Vec<String> = w
+        .search
+        .shown()
+        .outcome
+        .unwrap()
+        .hits
+        .iter()
+        .map(|h| h.display())
+        .collect();
+    assert_eq!(
+        shown,
+        from_backend[..shown.len()].to_vec(),
+        "帧上的顺序不是后端回的顺序"
+    );
+    let mut more = serde_json::Value::Null;
+    for _ in 0..600 {
+        more = find_calls(&wired).last().unwrap().clone();
+        if more["offset"] != 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert_eq!(
+        (
+            more["sort"].as_str(),
+            more["desc"].as_bool(),
+            more["offset"].as_u64()
+        ),
+        (Some("location"), Some(true), Some(8)),
+        "下一屏没带着同一个序"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════
 // 🔴 新鲜度那几个数真的走到了界面上
 // ═══════════════════════════════════════════════════════════════════
 
-/// 🔴🔴 ** 那条 ⬜ 的兑现判据。**
-///
-/// 它要的逐字是「那个数**显示在界面上**」。而记着同族的教训：
-/// **源码扫描买不到「显示出来了」**（「调了那个看起来对的 API 只证明盘上有」）。
-/// ⇒ 这一条真跑一帧生产那个 `frame_body`，从 galley 里把数字读回来。
-///
-/// 🔴 **而且它喂两组不同的数。** 只喂一组的话，界面上写死一个 `300`
-/// （后端今天声明的值）也会绿 —— 那正是「显示的是你编的数」那一形。
+/// 状态行上的数都是后端报的：文件清单多久前（`index_age_secs`）· 几个目录无权限 · 其他盘几个目录没扫。
+/// 喂两组不同的数、跨组缺席 —— 写死一个数只会在一组上碰巧对。按「措辞 ＋ 数」找，不按裸数字找。
 #[tokio::test]
-async fn the_freshness_numbers_the_backend_reports_really_reach_the_frame() {
-    // 🔴 **每一条断言都按「措辞 ＋ 那个数」一起找，不按裸数字找。**
-    //    现打逼出来的（本条自己第一版就栽在这）：拿裸数字做包含判断时，
-    //    同一行里的 `entries` / `resident_bytes` 随便哪个数字都可能把它**碰巧**命中
-    //    —— 第一版的跨组缺席断言就是这么假红的（`13247 字节` 里有 `13`）。
-    //    ⇒ 裸数字不是一把尺子；带着它所在那一格的措辞才是。
-    let mut lines: Vec<(Vec<String>, String)> = Vec::new();
-    // 多一个数：后端没走进去的挂载点（两组各不相同，跨组缺席断言照样罩着它）。
-    for (tag, interval, age, unreadable, mounts, entries_hint) in [
-        ("b1-fresh-a", 4242u64, 1234u64, 41u64, 3u64, 'a'),
-        ("b1-fresh-b", 8765u64, 5678u64, 13u64, 29u64, 'b'),
+async fn the_status_line_shows_the_numbers_the_backend_reports() {
+    let mut lines: Vec<(Vec<String>, Vec<String>)> = Vec::new();
+    for (tag, age, said, unreadable, mounts, hint) in [
+        ("b1-fresh-a", 1234u64, "20m", 41u64, 3u64, 'a'),
+        ("b1-fresh-b", 7300u64, "2h", 13u64, 29u64, 'b'),
     ] {
-        let tree =
-            testing::plant(&format!("fresh-{entries_hint}"), 30, TREE_SEED).expect("造不出那棵树");
+        let tree = testing::plant(&format!("fresh-{hint}"), 30, TREE_SEED).expect("造不出那棵树");
         let root = tree.remote_root();
         let declared = Declared {
-            rewalk_interval_secs: interval,
+            rewalk_interval_secs: 99_999,
             age_secs: age,
             stale: Some(false),
             unreadable_dirs: unreadable,
@@ -682,67 +772,31 @@ async fn the_freshness_numbers_the_backend_reports_really_reach_the_frame() {
         let ctx = ctx_ready();
         let mut w = testing::window_on(&wired, &root);
         let before = w.search.rounds();
-        // 按那颗「重建索引」以外的路：直接发一趟（子串留空 ⇒ 只问状态）。
-        w.fire_search(None, true);
+        testing::type_into_search(&ctx, &mut w, NEEDLE);
         testing::settle(&w.search, before, tag).await;
         let painted = testing::frame_text(&ctx, &mut w, Vec::new());
-        let line = painted
-            .iter()
-            // 禁档词换掉（重走周期 → 扫描间隔，terms.json「重走」那一条）⇒ 按「扫描间隔」认那一行。
-            .find(|t| t.starts_with("索引 ") && t.contains("扫描间隔"))
-            .unwrap_or_else(|| {
-                panic!("这一帧上没有新鲜度那一行 —— `§3.5.3` 那条 ⬜ 还是 ⬜。\n这一帧画的是：{painted:?}")
-            })
-            .clone();
-        // 🔴 相等断言：那一行**恰好**等于纯函数拿后端那份状态渲染出来的样子。
-        let st = w.search.shown().status.expect("这一趟该拿到状态");
-        assert_eq!(
-            line,
-            freshness_line(&st),
-            "帧面上那一行与 `freshness_line` 对不上 —— 界面上那句话另有一份实现"
-        );
-        // 🔴 而后端报的那几个数**逐个**在那一行上，而且是**带着措辞**找的
-        //    （光找一个数字容易撞上同一行里别的数）。
+        let o = w.search.shown().outcome.expect("该有答案");
+        assert_eq!(o.index_age_secs, age, "解出来的年龄不是后端报的那个数");
         let frags = vec![
-            // 禁档词换掉（重走周期 → 扫描间隔 · 走完 → 扫完），数一个不少。
-            format!("扫描间隔 {interval} 秒"),
-            format!("{age} 秒前扫完"),
-            format!("有 {unreadable} 个目录读不进去"),
-            format!("有 {mounts} 个目录在另一个盘上"),
+            age_line(&o),
+            format!("{unreadable} 个目录无权限"),
+            format!("其他盘 {mounts} 个目录未扫"),
+            scope_line(&o),
         ];
-        for frag in &frags {
-            assert!(
-                line.contains(frag.as_str()),
-                "新鲜度那一行里找不到 {frag:?}：{line:?}\n\
-                 ⚠ 后端报什么就画什么 —— 这一侧不许换算、不许补默认值。"
-            );
+        for f in &frags {
+            assert!(painted.contains(f), "状态行上没有 {f:?}：{painted:?}");
         }
-        assert_eq!(
-            st.rewalk_interval_secs, interval,
-            "解析出来的周期不是后端报的那个数"
-        );
-        lines.push((frags, line));
+        // 异源那一侧：本文件自己拼的措辞 ＋ 后端那个数。
+        let mine = format!("文件清单 · {said} 前");
+        assert!(painted.contains(&mine), "帧上没有 {mine:?}：{painted:?}");
+        lines.push((frags, painted));
     }
-    // 🔴 **跨组缺席断言 —— 这一条才是「不是你编的」那句话的真锚。**
-    //    两组各自的 `contains` 只证明「那个数在那一行上」；一个**写死**的
-    //    `4242`（或写死任何一个值）会在它自己那一组上碰巧全绿。
-    //    ⇒ 再断言：第二组那一行里**一段**第一组的读数都没有，反之亦然。
-    assert_eq!(lines.len(), 2, "两组都得跑到");
     let (a, b) = (&lines[0], &lines[1]);
-    for frag in &a.0 {
-        assert!(
-            !b.1.contains(frag.as_str()),
-            "第二组那一行里出现了第一组的读数 {frag:?}：{:?}\n\
-             ⇒ 那一格画的不是后端报的数，是这一侧写死的。",
-            b.1
-        );
+    for f in &a.0[..3] {
+        assert!(!b.1.contains(f), "第二组帧上出现了第一组的读数 {f:?}");
     }
-    for frag in &b.0 {
-        assert!(
-            !a.1.contains(frag.as_str()),
-            "第一组那一行里出现了第二组的读数 {frag:?}：{:?}",
-            a.1
-        );
+    for f in &b.0[..3] {
+        assert!(!a.1.contains(f), "第一组帧上出现了第二组的读数 {f:?}");
     }
 }
 
@@ -757,14 +811,14 @@ async fn until_first_build_shows(board: &SearchBoard, who: &str) -> u64 {
     panic!("{who}：等了 3 秒板子上还没挂「首建正在走」—— 首建那一趟没挂上它");
 }
 
-/// **冷启动首建那一趟正在走时，帧上恰有「正在建索引（首次约 N 秒）」，
+/// **冷启动首建那一趟正在走时，帧上恰有「首建文件清单 · 机器 · 约 Ns」，
 /// 走完就没了；N 是后端报的那个数。**
 ///
 /// 要求「单列一个数并在搜索界面显示」。三向钉：
 /// - **在**：合成后端把重走的应答扣住，这时跑一帧，帧上恰好一段 == [`first_build_line`]`(N)`；
-/// - **走**：放行、等答案落地，再跑一帧 —— 「正在建索引」零命中（挂上不摘 = 永远在「建」）；
+/// - **走**：放行、等答案落地，再跑一帧 —— 「首建文件清单」零命中（挂上不摘 = 永远在「建」）；
 /// - **跟着后端变**：两组喂不同的 N（都**不是**后端今天声明的 10），跨组缺席 ——
-///   写死一个数只会在一组上碰巧对（同 [`the_freshness_numbers_the_backend_reports_really_reach_the_frame`]）。
+///   写死一个数只会在一组上碰巧对（同 [`the_status_line_shows_the_numbers_the_backend_reports`]）。
 ///
 /// ⚠ 按「措辞 ＋ 数」找，不按裸数字找（那一条的教训：`13247 字节` 里有 `13`）。
 #[tokio::test]
@@ -795,7 +849,8 @@ async fn the_cold_first_build_line_is_on_the_frame_while_it_runs_and_gone_after(
 
         // ── 在：重走还扣着 ──
         let painted = testing::frame_text(&ctx, &mut w, Vec::new());
-        let want = first_build_line(*secs);
+        let machine = w.source.label();
+        let want = first_build_line(&machine, *secs);
         let hits: Vec<&String> = painted.iter().filter(|t| **t == want).collect();
         assert_eq!(
             hits.len(),
@@ -804,19 +859,19 @@ async fn the_cold_first_build_line_is_on_the_frame_while_it_runs_and_gone_after(
         );
         // 🔴 **异源那一侧**：上面那条相等的两侧都过 `first_build_line` —— 它写死一个数，两侧一起写死
         //    （死值验刀 K4 现打：把函数体写死成 10，上面那条照绿）。⇒ 再用**本文件自己拼**的措辞 ＋ 后端那个数找一遍。
-        let mine = format!("正在建索引（首次约 {secs} 秒）");
+        let mine = format!("首建文件清单 · {machine} · 约 {secs}s");
         assert!(
             painted.iter().any(|t| *t == mine),
             "帧上没有 {mine:?} —— 画出来的不是后端报的那个数：{painted:?}"
         );
-        let foreign = format!("首次约 {other} 秒");
+        let foreign = format!("约 {other}s");
         assert!(
             !painted.iter().any(|t| t.contains(foreign.as_str())),
             "这一组帧上出现了另一组的数 {foreign:?} —— 那一行画的不是后端报的数：{painted:?}"
         );
         assert!(
-            !painted.iter().any(|t| t.contains("索引还没建过")),
-            "首建那一行该**顶替**新鲜度那一行，两句同时在：{painted:?}"
+            !painted.contains(&not_built_line()),
+            "首建那一行该**顶替**「文件清单未建」，两句同时在：{painted:?}"
         );
 
         // ── 走：放行，等答案落地 ──
@@ -829,14 +884,12 @@ async fn the_cold_first_build_line_is_on_the_frame_while_it_runs_and_gone_after(
         );
         let after = testing::frame_text(&ctx, &mut w, Vec::new());
         assert!(
-            !after.iter().any(|t| t.contains("正在建索引")),
-            "首建走完了，帧上还说「正在建索引」：{after:?}"
+            !after.iter().any(|t| t.contains("首建文件清单")),
+            "首建走完了，帧上还说「首建文件清单」：{after:?}"
         );
         assert!(
-            after
-                .iter()
-                .any(|t| t.starts_with("索引 ") && t.contains("扫描间隔")),
-            "首建走完之后新鲜度那一行该回来：{after:?}"
+            after.iter().any(|t| t.starts_with("文件清单 · ")),
+            "首建走完之后「文件清单 · 多久前」该回来：{after:?}"
         );
         assert_eq!(
             wired.count(CMD_INDEX_REBUILD),
@@ -889,8 +942,8 @@ async fn a_warm_rewalk_never_claims_to_be_the_cold_first_build() {
     let painted = testing::frame_text(&ctx, &mut w, Vec::new());
     assert_eq!(w.search.first_build(), None, "热的重走挂上了「首建正在走」");
     assert!(
-        !painted.iter().any(|t| t.contains("正在建索引")),
-        "热的重走在帧上说「正在建索引（首次…）」：{painted:?}"
+        !painted.iter().any(|t| t.contains("首建文件清单")),
+        "热的重走在帧上说「首建文件清单」：{painted:?}"
     );
     gate.notify_one();
     testing::settle(&w.search, before, "warm").await;
@@ -924,7 +977,7 @@ async fn a_warm_rewalk_never_claims_to_be_the_cold_first_build() {
 /// # ⚠ 它买不到什么
 ///
 /// - **买不到「界面上显示的就是后端报的那个数」** —— 那由
-///   [`the_freshness_numbers_the_backend_reports_really_reach_the_frame`] 买
+///   [`the_status_line_shows_the_numbers_the_backend_reports`] 买
 ///   （真跑一帧、从 galley 里读回来、而且喂两组不同的数）。
 /// - **买不到那个值是多少对不对**（那是产品判断，用户已裁）。本条刻意**不**断言
 ///   后端那个常量等于 300 —— 断言它就等于**在这一侧又造了一个知道那个值的地方**，
@@ -1228,26 +1281,9 @@ fn a_non_utf8_hit_keeps_its_bytes_and_says_it_is_lossy() {
     let p = decode_find(&plain).expect("该解析得动");
     assert!(!p.hits[0].lossy(), "普通路径被误判成有损");
     assert_eq!(p.hits[0].display(), "/tmp/a");
-    assert_eq!(p.hits[0].row_text(), "/tmp/a/", "目录那一行后面该带 `/`");
+    assert_eq!(p.hits[0].table_row().name, "a");
+    assert!(p.hits[0].dir);
     assert!(!o.hits[0].dir);
-}
-
-/// 命中那一行**一定**带着 `scanned`：「没命中」与「索引是空的」在屏幕上本来一样。
-#[test]
-fn the_hits_line_always_carries_the_scanned_count() {
-    let empty_index = FindOutcome::default();
-    let big_index = FindOutcome {
-        scanned: 640_413,
-        ..empty_index.clone()
-    };
-    let a = hits_line(&empty_index);
-    let b = hits_line(&big_index);
-    assert_ne!(
-        a, b,
-        "「扫了 0 条一条没中」与「扫了 64 万条一条没中」画出来是同一句话 ——\n\
-         那正是 `src/doc/IPC-PROTOCOL.md §10` 说 `scanned` 是反空真用的那个理由"
-    );
-    assert!(b.contains("640413"), "那一行里没有 `scanned` 那个数：{b:?}");
 }
 
 /// 入参形状与那份契约一致：搜索词原样发（这一侧不读语法）、号与搜索框名跟着走、范围只在开关开着时带。
@@ -1255,7 +1291,7 @@ fn the_hits_line_always_carries_the_scanned_count() {
 fn the_arg_builders_use_the_documented_keys() {
     let asked = Asked {
         query: "  report ext:pdf|txt !old ".to_string(),
-        under: None,
+        ..Asked::default()
     };
     assert_eq!(
         find_args(&asked, 7, "s-1", 0),
@@ -1265,14 +1301,32 @@ fn the_arg_builders_use_the_documented_keys() {
             "stream": "s-1",
             "offset": 0,
             "limit": PAGE,
+            "sort": "relevance",
+            "desc": false,
         }),
         "搜索词该原样发（一个字都不动），不带范围 ⇒ 后端搜家目录"
     );
     let here = Asked {
         query: "x".into(),
         under: Some(crate::source::RemotePath::plain("/home/u/p")),
+        sort: FindSort {
+            col: SortCol::Mtime,
+            desc: true,
+        },
+        ..Asked::default()
     };
-    assert_eq!(find_args(&here, 8, "s-1", 100)["under"], "/home/u/p");
+    let a = find_args(&here, 8, "s-1", 100);
+    assert_eq!(
+        (a["under"].as_str(), a["sort"].as_str(), a["desc"].as_bool()),
+        (Some("/home/u/p"), Some("mtime"), Some(true))
+    );
+    let whole = Asked {
+        machine: true,
+        ..here
+    };
+    let a = find_args(&whole, 8, "s-1", 0);
+    assert_eq!(a["scope"], "machine");
+    assert!(a.get("under").is_none(), "整台机器不该带目录");
     assert_eq!(
         rebuild_args_at(Some(b"/home/u")),
         serde_json::json!({ "path": "/home/u" })
@@ -1328,7 +1382,7 @@ fn a_failed_next_page_is_not_retried_every_frame() {
     let b = SearchBoard::default();
     let asked = Asked {
         query: "x".into(),
-        under: None,
+        ..Asked::default()
     };
     b.invalidate(&asked);
     let mine = b.start();
@@ -1340,7 +1394,7 @@ fn a_failed_next_page_is_not_retried_every_frame() {
             outcome: Some(FindOutcome {
                 hits: vec![Hit {
                     path: b"/h/x".to_vec(),
-                    dir: false,
+                    ..Hit::default()
                 }],
                 total_hits: 5,
                 truncated: true,

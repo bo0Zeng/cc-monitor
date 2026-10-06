@@ -540,7 +540,7 @@ fn finishing_a_copy_round_triggers_exactly_one_reload() {
 /// ⚠ 刻意**不**跟生产那句标题逐字对：那是把一段文案抄成第二份。
 /// 判「是不是我们这个窗口」靠 `Source::label()`（生产那个函数）在标题里出现。
 #[cfg(not(windows))]
-const WINDOW_NEEDLE: &str = "cc-monitor";
+const WINDOW_NEEDLE: &str = XVFB_ORIGIN;
 
 /// 等一条线程上的 `run_native` 收场，回 `(裁决, 原因)`。
 ///
@@ -1376,7 +1376,13 @@ fn the_hit_list_can_never_hand_the_window_a_row_index() {
     assert!(w.showing_hits(), "搜索框里没字，下面判的就是目录列表那一支");
     let _ = crate::find::testing::frame_text(&ctx, &mut w, Vec::new());
     // 命中那一摞这一帧画了几行（喂一份合成命中）。
-    let hits: Vec<String> = (0..5).map(|i| format!("/deep/dir/h{i}.bin")).collect();
+    let hits: Vec<crate::rows::HitRow> = (0..5)
+        .map(|i| crate::rows::HitRow {
+            name: format!("h{i}.bin"),
+            location: "deep/dir".into(),
+            ..Default::default()
+        })
+        .collect();
     let mut t = crate::rows::HitTally::default();
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
@@ -1385,7 +1391,16 @@ fn the_hit_list_can_never_hand_the_window_a_row_index() {
         )),
         ..Default::default()
     };
-    let out = ctx.run_ui(input, |ui| crate::rows::show_hit_rows(ui, &hits, &mut t));
+    let out = ctx.run_ui(input, |ui| {
+        crate::rows::show_hit_rows(
+            ui,
+            &hits,
+            Default::default(),
+            None,
+            crate::rows::HitTail::End,
+            &mut t,
+        )
+    });
     out.drop_without_applying_deltas();
     assert_eq!(t.rows_materialized, 5, "命中一行都没画 —— 下面那一比在空转");
     // ⇒ 而这一趟**一个下标都没交出来**：`HitTally` 里压根没有那种字段。
@@ -2513,7 +2528,7 @@ fn picking_a_sort_reorders_the_rows_already_on_screen() {
     assert_eq!(names(&w), ["a", "b", "c"]);
 }
 
-/// 窗口的框上真画出了那几样：「在此打开终端」· 面包屑每一段 · 表头带当前那一列的箭头。
+/// 窗口的框上真画出了那几样：「终端」· 面包屑每一段 · 表头带当前那一列的箭头。
 ///
 /// ⚠ 判的是**这一帧画出来的文字**（生产那个工具条 ＋ 正文），不是源码里有没有那几个字面量。
 #[test]
@@ -2527,7 +2542,7 @@ fn the_chrome_really_paints_breadcrumbs_the_terminal_button_and_the_sorted_heade
         .collect();
     let name = crate::source::SortBy::Name.label();
     let up = format!("{name} {}", egui_phosphor::regular::CARET_UP);
-    for want in ["在此打开终端", "srv", "data", "子目录", up.as_str()] {
+    for want in ["终端", "srv", "data", "子目录", up.as_str()] {
         assert!(
             painted.iter().any(|t| t == want),
             "这一帧上没有「{want}」。画出来的是：{painted:?}"
@@ -2911,8 +2926,8 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
         serde_json::json!({ "root": b16(b"/srv/d\xff"), "rel": b16(b"f\xfe") })
     );
     // 有损目录里上传 / 搜索 / 开终端都按字节做（此前 W5-FILES 出声拒）。
-    // 搜索（只搜当前目录）：范围、浏览名单与重走的根按字节上线。
-    w.set_search_here(true);
+    // 搜索（当前目录以下）：范围、浏览名单与重走的根按字节上线。
+    w.set_search_whole(false);
     assert!(w.fire_search(None, true), "有损目录里搜索没起来");
     wait_for(&wired, "files-index-rebuild", 1).await;
     assert_eq!(last_args(&wired, "files-find")["under"], b16(b"/srv/d\xff"));
@@ -3248,12 +3263,12 @@ fn thousands_of_hits_are_not_cloned_every_frame() {
     let ctx = egui::Context::default();
     let mut w = remote_window_with_rows("/srv/data", Vec::new());
     w.query = "x".into();
-    // 「只搜当前目录」开着：每帧都要比一次范围（那一比也不许克隆整份）。
-    w.search_here = true;
+    // 范围是当前目录以下：每帧都要比一次范围（那一比也不许克隆整份）。
+    w.search_whole = false;
     let hits: Vec<crate::find::Hit> = (0..3000)
         .map(|i| crate::find::Hit {
             path: format!("/srv/data/x{i}").into_bytes(),
-            dir: false,
+            ..Default::default()
         })
         .collect();
     let mine = w.search.start();
@@ -3263,6 +3278,7 @@ fn thousands_of_hits_are_not_cloned_every_frame() {
         &crate::find::Asked {
             query: "x".into(),
             under: Some(w.cwd_path()),
+            ..Default::default()
         },
         crate::find::Round {
             outcome: Some(crate::find::FindOutcome {
@@ -3308,6 +3324,7 @@ fn entries_that_could_not_be_read_are_said() {
             crate::source::Cut {
                 truncated: false,
                 unreadable: 3,
+                total: 4,
             },
         )),
         Sort::default(),

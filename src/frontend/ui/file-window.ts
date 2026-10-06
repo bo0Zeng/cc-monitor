@@ -39,6 +39,7 @@ export const FILE_WINDOW_THEME_TOKENS = [
   "--accent",
   "--accent-strong",
   "--selected-bg",
+  "--hit-bg",
   "--border-strong",
   "--border-medium",
   "--border-soft",

@@ -277,13 +277,22 @@ fn tabs_open_switch_and_close() {
     assert_eq!(ws.active_on(0), 0);
     // 真点「＋」：从这一帧画出来的字里找那颗按钮。
     let mut d = Drive::new();
-    let plus = d.find(&mut ws, NEW_TAB_LABEL.as_str());
-    assert_eq!(plus.len(), 1, "一栏时「＋」该恰好一颗");
+    let plus = d.find(&mut ws, egui_phosphor::regular::PLUS);
+    let plus: Vec<_> = plus
+        .into_iter()
+        .filter(|r| r.top() < 140.0 && r.left() > 220.0)
+        .collect();
+    assert_eq!(plus.len(), 1, "一栏时标签栏末尾的「＋」该恰好一颗");
     d.click(&mut ws, plus[0].center(), egui::PointerButton::Primary);
     assert_eq!(ws.tabs_on(0), 2, "点了「＋」没开出标签页");
-    let close = d.find(&mut ws, CLOSE_TAB_LABEL.as_str());
-    assert_eq!(close.len(), 2, "两个标签各有一颗「×」");
-    d.click(&mut ws, close[1].center(), egui::PointerButton::Primary);
+    // × 只在当前那个标签（与悬停的那个）上出 ⇒ 两个标签时恰好一颗，点它关掉当前那个。
+    let close: Vec<_> = d
+        .find(&mut ws, egui_phosphor::regular::X)
+        .into_iter()
+        .filter(|r| r.top() < 140.0 && r.left() > 220.0)
+        .collect();
+    assert_eq!(close.len(), 1, "当前那个标签该有一颗「×」");
+    d.click(&mut ws, close[0].center(), egui::PointerButton::Primary);
     assert_eq!(ws.tabs_on(0), 1, "点了「×」没关掉");
 }
 
@@ -300,17 +309,14 @@ fn a_busy_tab_refuses_to_close_and_says_why() {
     assert_eq!(ws.tabs_on(0), 2);
     let said = ws.notice().expect("关不掉却没说为什么").to_string();
     let mut d = Drive::new();
+    // 那句话收成右下角的回执（浮层第一帧只量大小、第二帧才画）。
+    let _ = d.frame(&mut ws, Vec::new());
     let painted = d.frame(&mut ws, Vec::new());
     assert!(
         painted.iter().any(|(t, _)| *t == said),
         "那句话没画出来：{said}"
     );
-    assert!(
-        painted
-            .iter()
-            .any(|(t, _)| t.starts_with(BUSY_MARK.as_str())),
-        "后台那个有事的标签，名字前没有「●」"
-    );
+
     // 收掉那一问 ⇒ 关得掉（阴性对照）。
     assert!(ws.select_tab(0, 0));
     ws.pane_on_mut(0).cancel_new_file();

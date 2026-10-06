@@ -805,25 +805,36 @@ fn breadcrumbs_are_every_prefix_with_the_root_first() {
 
 // 「逆向日历算法与正向那一份互为逆」要 monitor `utils::days_from_civil` 当异源正向 ⇒ 挪到 `tests/frontend/shell/filewin/cross_half_tests.rs`。
 
-/// 修改时间按本机时区画：今年的省年份、往年的带年份、不带 `Z`；完整时间到秒；时区差跨日也对（期望手写）。
+/// 修改时间按本机时区画：当天只写时分、今年写月日、往年写年月日；完整时间到秒；时区差跨日也对（期望手写）。
 #[test]
 fn a_modification_time_is_printed_in_local_time_short_this_year() {
     // 2023-11-14T22:13:20Z（`date -u -d @1700000000` 现打）。
-    let t = mtime_text_at(1_700_000_000, 0, 2026);
+    let t = mtime_text_at(1_700_000_000, 0, (2026, 10, 5));
     assert_eq!(
         (t.short.as_str(), t.full.as_str()),
-        ("2023-11-14 22:13", "2023-11-14 22:13:20")
+        ("2023-11-14", "2023-11-14 22:13:20")
     );
-    // 东八区：跨过午夜进了第二天；同一年 ⇒ 省年份。
-    let t = mtime_text_at(1_700_000_000, 8 * 3600, 2023);
+    // 东八区：跨过午夜进了第二天；同一年 ⇒ 月日；就是今天 ⇒ 时分。
+    let t = mtime_text_at(1_700_000_000, 8 * 3600, (2023, 1, 1));
     assert_eq!(
         (t.short.as_str(), t.full.as_str()),
-        ("11-15 06:13", "2023-11-15 06:13:20")
+        ("11-15", "2023-11-15 06:13:20")
+    );
+    assert_eq!(
+        mtime_text_at(1_700_000_000, 8 * 3600, (2023, 11, 15)).short,
+        "06:13"
+    );
+    assert_eq!(
+        mtime_text_at(1_700_000_000, 0, (2023, 11, 15)).short,
+        "11-14"
     );
     // 西五区：纪元零点往回退进 1969 年。
-    assert_eq!(mtime_text_at(0, -5 * 3600, 2026).short, "1969-12-31 19:00");
+    assert_eq!(
+        mtime_text_at(0, -5 * 3600, (2026, 1, 1)).short,
+        "1969-12-31"
+    );
     // 闰日。
-    assert_eq!(mtime_text_at(951_782_400, 0, 2000).short, "02-29 00:00");
+    assert_eq!(mtime_text_at(951_782_400, 0, (2000, 3, 1)).short, "02-29");
 }
 
 /// `files-ls` 那份声明里的字段名 —— **现读后端源码**（`files.ls` 那条 `Capability` 的 `fields`）。
@@ -869,6 +880,8 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
         ("entries", "那一屏有几行"),
         ("kind", "is_dir ＋ link"),
         ("link_dir", "link_dir（缺 ＝ 否）"),
+        ("link_to", "link_broken（`missing` ⇒ 断了；缺 ＝ 否）"),
+        ("total", "Cut::total（缺 ＝ 0）"),
         ("mtime_secs", "mtime_secs（缺 ＝ None）"),
         ("path", "path · name · lossy_name"),
         ("size", "size（缺 ＝ 0）"),
@@ -896,6 +909,10 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
     let to_dir = one(serde_json::json!({ "path": "/a/ld", "kind": "symlink", "link_dir": true }));
     assert!(to_dir.link && to_dir.link_dir && !to_dir.is_dir && to_dir.opens_as_dir());
     assert!(!link.link_dir && !link.opens_as_dir());
+    // link_to：`missing` ⇒ 断了的链接；指向得到的 ⇒ 不是。
+    let broken =
+        one(serde_json::json!({ "path": "/a/bl", "kind": "symlink", "link_to": "missing" }));
+    assert!(broken.link_broken && !to_dir.link_broken && !link.link_broken);
     // mtime_secs：原样；缺了是 None，不是 0（1970）。
     let t =
         one(serde_json::json!({ "path": "/a/t", "kind": "file", "mtime_secs": 1_700_000_000u64 }));
@@ -921,7 +938,7 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
     assert_eq!(file.name, "f");
     // entries / truncated：由 `rows_from_ls_data` 摊开。
     let (rows, cut) = rows_from_ls_data(
-        &serde_json::json!({ "entries": [ { "path": "/a/x", "kind": "file" } ], "truncated": true, "unreadable": 3 }),
+        &serde_json::json!({ "entries": [ { "path": "/a/x", "kind": "file" } ], "truncated": true, "unreadable": 3, "total": 9 }),
         SortBy::default(),
     )
     .unwrap();
@@ -931,7 +948,8 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
             1,
             crate::source::Cut {
                 truncated: true,
-                unreadable: 3
+                unreadable: 3,
+                total: 9,
             }
         )
     );

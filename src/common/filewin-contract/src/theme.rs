@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 pub type Rgba = [u8; 4];
 
 /// 主界面那一侧要读、要交过来的令牌，**恰好**这些（多一个少一个都是错，[`Theme::from_tokens`] 两向都拒）。
-pub const THEME_TOKENS: [&str; 46] = [
+pub const THEME_TOKENS: [&str; 47] = [
     "--bg",
     "--bg-2",
     "--card",
@@ -20,6 +20,7 @@ pub const THEME_TOKENS: [&str; 46] = [
     "--accent",
     "--accent-strong",
     "--selected-bg",
+    "--hit-bg",
     "--border-strong",
     "--border-medium",
     "--border-soft",
@@ -78,6 +79,8 @@ pub struct Theme {
     pub accent_strong: Rgba,
     /// 选中行的淡底。
     pub selected: Rgba,
+    /// 搜索命中那几个字的底。
+    pub hit: Rgba,
     /// 边线四级（强 → 极淡）。
     pub border_strong: Rgba,
     pub border_medium: Rgba,
@@ -257,6 +260,7 @@ impl Theme {
             accent: color("--accent")?,
             accent_strong: color("--accent-strong")?,
             selected: color("--selected-bg")?,
+            hit: color("--hit-bg")?,
             border_strong: color("--border-strong")?,
             border_medium: color("--border-medium")?,
             border_soft: color("--border-soft")?,

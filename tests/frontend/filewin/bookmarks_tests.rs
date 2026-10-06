@@ -325,8 +325,22 @@ async fn the_bar_is_really_clickable_and_the_disk_follows() {
     let _ = click_label(&ctx, &mut ws, crate::source::remote_basename(&a));
     assert_eq!(ws.pane_on(0).cwd, a, "点了书签却没跳过去");
 
-    // ③ × 删掉 ⇒ 盘上那台机器那一格整个没了。
-    let _ = click_label(&ctx, &mut ws, REMOVE_LABEL.as_str());
+    // ③ × 删掉 ⇒ 盘上那台机器那一格整个没了（× 只在悬停那一行时出：先把指针挪上去，再点左栏里那颗 ×）。
+    let tail = crate::source::remote_basename(&a).to_string();
+    let painted = frame(&ctx, &mut ws, Vec::new());
+    // 同名的那一段在地址栏 · 标签栏上也有：取左栏里那一条。
+    let row = rects_of(&painted, &tail)
+        .into_iter()
+        .find(|r| r.left() < 220.0 && r.top() > 60.0)
+        .expect("左栏里没有那条书签");
+    let hover = vec![egui::Event::PointerMoved(row.center())];
+    let _ = frame(&ctx, &mut ws, hover.clone());
+    let painted = frame(&ctx, &mut ws, hover);
+    let x = rects_of(&painted, egui_phosphor::regular::X)
+        .into_iter()
+        .find(|r| r.center().x < row.right() + 40.0 && (r.center().y - row.center().y).abs() < 14.0)
+        .expect("悬停那一行没出 ×");
+    let _ = frame(&ctx, &mut ws, crate::rows::testing::click_at(x.center()));
     assert_eq!(read_book(&file).unwrap(), Book::new(), "点了 × 盘上还在");
     let _ = std::fs::remove_dir_all(&base);
 }

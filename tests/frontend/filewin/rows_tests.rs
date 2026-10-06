@@ -65,18 +65,28 @@ fn the_row_count_we_materialize_does_not_depend_on_how_many_rows_there_are() {
 #[test]
 fn the_hit_list_materializes_the_same_few_rows_no_matter_how_many_hits() {
     let ctx = egui::Context::default();
-    let hits = |n: usize| -> Vec<String> { corpus::synth_paths(n, 0x24F4).into_iter().collect() };
+    let hits = |n: usize| -> Vec<HitRow> {
+        corpus::synth_paths(n, 0x24F4)
+            .into_iter()
+            .map(|p| HitRow {
+                name: p,
+                ..HitRow::default()
+            })
+            .collect()
+    };
     // 🔴收数口是 `HitTally`，**不是** `RenderTally` —— 那个类型里
     //    连一个「谁被点了」的字段都没有，理由逐条住它的头注（命中行上那个
     //    下标索引的是另一摞东西，而第五刀把代价从「复制错地方」升级成「删错东西」）。
-    let run = |hs: &[String]| -> HitTally {
+    let run = |hs: &[HitRow]| -> HitTally {
         let mut t = HitTally::default();
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, screen())),
             ..Default::default()
         };
         // 🔴 调的是**生产那个函数**，不是它的副本（同 `show_file_rows` 那条理由）。
-        let out = ctx.run_ui(input, |ui| show_hit_rows(ui, hs, &mut t));
+        let out = ctx.run_ui(input, |ui| {
+            show_hit_rows(ui, hs, Default::default(), None, HitTail::End, &mut t)
+        });
         out.drop_without_applying_deltas();
         t
     };
@@ -1002,6 +1012,7 @@ fn linked_rows() -> Vec<Listed> {
         },
         link,
         link_dir: false,
+        link_broken: false,
         mtime_secs: t,
         raw_name: None,
     };
@@ -1024,10 +1035,16 @@ fn only_the_link_rows_get_the_link_mark_painted() {
     assert_eq!(tally.rows_materialized, 3);
     let want = rows.iter().filter(|r| r.link).count();
     assert_eq!(want, 1, "语料自己变了");
+    // 链接画它指向的那一种的图标，右下角叠一个小箭头 ⇒ 小箭头的个数 == 链接行数。
+    assert_eq!(
+        rects_of(&painted, egui_phosphor::regular::ARROW_UP_RIGHT).len(),
+        want,
+        "链接记号的个数与链接行数不等"
+    );
     assert_eq!(
         rects_of(&painted, icon(Kind::Link)).len(),
-        want,
-        "链接图标的个数与链接行数不等"
+        0,
+        "链接不再画成单独的链接图标"
     );
     assert_eq!(rects_of(&painted, icon(Kind::Folder)).len(), 1);
     assert_eq!(

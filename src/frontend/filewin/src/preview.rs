@@ -121,6 +121,25 @@ pub struct Preview {
     /// 发出去过几趟（判据数它，也与线上那本账对拍）。
     fired: u64,
     slot: Arc<Mutex<Option<Arrival>>>,
+    /// 头上那一行：选中的那一份（名字 · 大小 · 修改时间 · 能不能编辑 · 能不能下载）。没选中 / 多选 ⇒ `None`。
+    head: Option<Head>,
+}
+
+/// 预览头上那一行要的几格（都是那一行列表项上已有的）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Head {
+    pub name: String,
+    pub size: u64,
+    pub mtime_secs: Option<u64>,
+    pub edit: bool,
+    pub download: bool,
+}
+
+/// 预览头上点了哪一颗（做事落回焦点那一栏）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PreviewAct {
+    Edit,
+    Download,
 }
 
 impl Default for Preview {
@@ -136,6 +155,7 @@ impl Default for Preview {
             inflight: false,
             fired: 0,
             slot: Arc::new(Mutex::new(None)),
+            head: None,
         }
     }
 }
@@ -221,6 +241,7 @@ impl Preview {
     /// 选中的那一项 → 要不要读、不读的话说什么。
     fn decide(&mut self, pane: &FileWindow, picked: Result<String, usize>) {
         self.want = None;
+        self.head = None;
         let name = match picked {
             Ok(n) => n,
             Err(0) => {
@@ -242,6 +263,16 @@ impl Preview {
             ));
             return;
         };
+        if !r.opens_as_dir() {
+            let can = super::select::actions_for(&[&r]);
+            self.head = Some(Head {
+                name: r.name.clone(),
+                size: r.size,
+                mtime_secs: r.mtime_secs,
+                edit: can.contains(&super::select::Action::Edit),
+                download: can.contains(&super::select::Action::Download),
+            });
+        }
         if r.opens_as_dir() {
             self.view = View::Idle(copy_text(
                 "rsFilewinPreview.decide.isDir",
@@ -354,8 +385,72 @@ impl Preview {
     }
 
     /// 画这块面板。
-    pub fn ui(&self, ui: &mut egui::Ui) {
-        ui.strong(&copy_text("rsFilewinPreview.ui.title", &[]));
+    pub fn ui(&self, ui: &mut egui::Ui) -> Option<PreviewAct> {
+        let p = super::theme::palette(ui.ctx());
+        let mut act = None;
+        // 头：文件名（14 / 600）＋「571 B · 13:36」＋「编辑」「下载」；没选中一份 ⇒ 只写「预览」。
+        match &self.head {
+            Some(h) => {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new(super::kind::icon(super::kind::kind_of_name(
+                            &h.name, false, false,
+                        )))
+                        .color(p.text2),
+                    );
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(&h.name)
+                                .size(14.0)
+                                .strong()
+                                .color(p.text),
+                        )
+                        .truncate(),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if h.download
+                            && super::kit::ghost(
+                                ui,
+                                egui_phosphor::regular::DOWNLOAD_SIMPLE,
+                                &super::download::DOWNLOAD_LABEL,
+                                true,
+                                "",
+                            )
+                            .clicked()
+                        {
+                            act = Some(PreviewAct::Download);
+                        }
+                        if h.edit
+                            && super::kit::ghost(
+                                ui,
+                                egui_phosphor::regular::PENCIL_SIMPLE,
+                                &super::editor::EDIT_LABEL,
+                                true,
+                                "",
+                            )
+                            .clicked()
+                        {
+                            act = Some(PreviewAct::Edit);
+                        }
+                    });
+                });
+                let mut meta = super::rows::human_size(h.size);
+                if let Some(t) = h.mtime_secs {
+                    meta = copy_text(
+                        "rsFilewinPreview.ui.meta",
+                        &[
+                            ("size", &meta),
+                            ("time", &super::source::mtime_text(t).short),
+                        ],
+                    );
+                }
+                ui.label(egui::RichText::new(meta).color(p.text2).small());
+                ui.add_space(6.0);
+            }
+            None => {
+                ui.strong(&copy_text("rsFilewinPreview.ui.title", &[]));
+            }
+        }
         match &self.view {
             View::Idle(s) | View::Said(s) => {
                 ui.label(s);
@@ -376,7 +471,6 @@ impl Preview {
             View::Text {
                 path, text, starts, ..
             } => {
-                ui.label(egui::RichText::new(path).color(super::theme::palette(ui.ctx()).text2));
                 egui::Frame::new()
                     .fill(ui.visuals().code_bg_color)
                     .corner_radius(6)
@@ -388,8 +482,7 @@ impl Preview {
                             .show_viewport(ui, |ui, vp| self.text_ui(ui, vp, path, text, starts));
                     });
             }
-            View::Image { path, size, tex } => {
-                ui.label(egui::RichText::new(path).color(super::theme::palette(ui.ctx()).text2));
+            View::Image { size, tex, .. } => {
                 ui.label(
                     egui::RichText::new(copy_text(
                         "rsFilewinPreview.ui.imageSize",
@@ -401,9 +494,12 @@ impl Preview {
                 let avail = ui.available_size();
                 let (w, h) = (size[0] as f32, size[1] as f32);
                 let k = (avail.x / w).min(avail.y / h).min(1.0);
-                ui.add(egui::Image::new((tex.id(), egui::vec2(w * k, h * k))));
+                ui.vertical_centered(|ui| {
+                    ui.add(egui::Image::new((tex.id(), egui::vec2(w * k, h * k))));
+                });
             }
         }
+        act
     }
 }
 

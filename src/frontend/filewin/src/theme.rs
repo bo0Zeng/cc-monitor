@@ -24,6 +24,8 @@ pub struct Palette {
     pub accent: Color32,
     /// 选中那一层：强调色的淡底。
     pub picked: Color32,
+    /// 搜索命中那几个字的底。
+    pub hit: Color32,
     /// 主按钮底 · 危险按钮底 · 红字。
     pub accent_strong: Color32,
     pub error_strong: Color32,
@@ -53,6 +55,7 @@ impl Palette {
             faint: c(t.text_faint),
             accent: c(t.accent),
             picked: c(t.selected),
+            hit: c(t.hit),
             accent_strong: c(t.accent_strong),
             error_strong: c(t.error_strong),
             error_text: c(t.error_text),
@@ -76,6 +79,7 @@ impl Palette {
             faint: v.weak_text_color(),
             accent: v.selection.stroke.color,
             picked: v.selection.bg_fill,
+            hit: v.warn_fg_color.gamma_multiply(0.32),
             accent_strong: v.selection.stroke.color,
             error_strong: v.error_fg_color,
             error_text: v.error_fg_color,

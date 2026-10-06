@@ -297,7 +297,9 @@ fn paint_narrow(ctx: &egui::Context, p: &Preview) -> Vec<(String, egui::Rect)> {
         )),
         ..Default::default()
     };
-    let out = ctx.run_ui(input, |ui| p.ui(ui));
+    let out = ctx.run_ui(input, |ui| {
+        p.ui(ui);
+    });
     let painted = text_in_frame(&out);
     out.drop_without_applying_deltas();
     painted

@@ -82,17 +82,310 @@ pub struct Mark {
 /// # 🔴 它**刻意不是** [`RenderTally`]，而这一条是承重的
 ///
 /// 命中行的下标指的是**命中这一摞**，不是 `listing.rows`。两条路共用 [`RenderTally`] 的话，
-/// 点第 3 条命中会被当成当前目录第 3 行（行上还有删除 / 改名那几颗写按钮 ⇒ 删错东西）。
-/// ⇒ 命中行只交一个「点了第几条」（[`HitTally::jump`]），由窗口解成 `(目录, 名字)` 再跳过去；
-/// 它在类型上够不着那几条写动作的胶水。
+/// 点第 3 条命中会被当成当前目录第 3 行（删错东西）。⇒ 命中行只交「点了 / 打开了第几条」，
+/// 由窗口解成 `(目录, 名字)` 再跳过去；它在类型上够不着那几条写动作的胶水。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct HitTally {
     pub rows_materialized: usize,
     pub first_row: usize,
     pub last_row: usize,
     pub total_rows: usize,
-    /// 这一帧被点的那一条命中（下标只指命中这一摞）。
+    /// 这一帧被打开（双击）的那一条命中（下标只指命中这一摞）。
     pub jump: Option<usize>,
+    /// 这一帧被单击选中的那一条。
+    pub picked: Option<usize>,
+    /// 这一帧点了哪一列表头。
+    pub sort_click: Option<super::find::SortCol>,
+    /// 表尾「加载更多失败」那一行的「重试」被点了。
+    pub retry_more: bool,
+}
+
+/// 结果表上的一行（名字 · 命中那几段 · 位置 · 修改时间 · 大小 —— 都是后端给的）。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct HitRow {
+    pub name: String,
+    pub marks: Vec<(usize, usize)>,
+    pub location: String,
+    pub mtime_secs: Option<u64>,
+    pub size: Option<u64>,
+    pub dir: bool,
+    pub link: bool,
+}
+
+/// 结果表的尾巴。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HitTail {
+    /// 后面还有（滚到底接着取），不画尾行。
+    More,
+    /// 到底了：「已到底」。
+    End,
+    /// 往下取失败：「加载更多失败 ［重试］」。
+    Failed,
+}
+
+/// 结果表四列的矩形：名称（吃剩下的）· 位置 · 修改时间 · 大小；窄了先收修改时间、再收位置。
+fn hit_rects(row: egui::Rect) -> [egui::Rect; 4] {
+    let w = row.width();
+    let size = 90.0f32.min((w - MIN_NAME).max(0.0));
+    let mtime = if w >= 560.0 { 110.0 } else { 0.0 };
+    let loc = if w >= 420.0 {
+        (w * 0.3).clamp(120.0, 320.0)
+    } else {
+        0.0
+    };
+    let name = (w - size - mtime - loc).max(0.0);
+    let mut x = row.left();
+    let mut out = [row; 4];
+    for (k, cw) in [name, loc, mtime, size].into_iter().enumerate() {
+        out[k] =
+            egui::Rect::from_min_max(egui::pos2(x, row.top()), egui::pos2(x + cw, row.bottom()));
+        x += cw;
+    }
+    out
+}
+
+/// 结果表的表头：名称（相关度时写「名称 · 按相关度」）· 位置 · 修改时间 · 大小；点了交出那一列（排是后端排的）。
+fn show_hit_header(ui: &mut Ui, sort: super::find::FindSort) -> Option<super::find::SortCol> {
+    use super::find::SortCol;
+    let p = palette(ui.ctx());
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), HEADER_HEIGHT),
+        egui::Sense::hover(),
+    );
+    ui.painter().line_segment(
+        [rect.left_bottom(), rect.right_bottom()],
+        egui::Stroke::new(1.0, p.border),
+    );
+    let mut picked = None;
+    let cols = [
+        SortCol::Name,
+        SortCol::Location,
+        SortCol::Mtime,
+        SortCol::Size,
+    ];
+    for (k, (col, r)) in cols.into_iter().zip(hit_rects(rect)).enumerate() {
+        if r.width() <= 0.0 {
+            continue;
+        }
+        let resp = ui.interact(r, ui.id().with(("filewin-hit-col", k)), egui::Sense::CLICK);
+        if resp.hovered() {
+            ui.painter().rect_filled(r, 0.0, p.hover);
+        }
+        if resp.clicked() {
+            picked = Some(col);
+        }
+        let mine = sort.col == col || (col == SortCol::Name && sort.col == SortCol::Relevance);
+        let mut text = match col {
+            SortCol::Name if sort.col == SortCol::Relevance => {
+                copy_text("rsFilewinRows.hitCol.relevance", &[])
+            }
+            SortCol::Name => column_label(SortBy::Name),
+            SortCol::Location => copy_text("rsFilewinRows.hitCol.location", &[]),
+            SortCol::Mtime => column_label(SortBy::Mtime),
+            SortCol::Size | SortCol::Relevance => column_label(SortBy::Size),
+        };
+        if mine && sort.col != SortCol::Relevance {
+            let caret = if sort.desc {
+                egui_phosphor::regular::CARET_DOWN
+            } else {
+                egui_phosphor::regular::CARET_UP
+            };
+            text = format!("{text} {caret}");
+        }
+        let color = if mine { p.text } else { p.text2 };
+        let g = one_line(ui, text, r.width() - 2.0 * PAD, color);
+        let x = if col == SortCol::Size {
+            r.right() - PAD - g.size().x
+        } else {
+            r.left() + PAD
+        };
+        ui.painter().with_clip_rect(r).galley(
+            egui::pos2(x, r.center().y - g.size().y / 2.0),
+            g,
+            color,
+        );
+    }
+    picked
+}
+
+/// 画结果表（列表同一张表的样子）：表头 ＋ 虚拟滚动的命中行 ＋ 表尾。单击选中、双击打开。
+///
+/// 命中是一条**任意深度的路径**，不是当前目录里的一项 ⇒ 行上不接写动作，只交下标（[`HitTally`]）。
+/// 同一个 `show_rows`（**虚拟滚动**）、同一个行高（`tests::the_hit_list_materializes_the_same_few_rows_no_matter_how_many_hits` 钉）。
+pub fn show_hit_rows(
+    ui: &mut Ui,
+    hits: &[HitRow],
+    sort: super::find::FindSort,
+    picked: Option<usize>,
+    tail: HitTail,
+    tally: &mut HitTally,
+) {
+    tally.total_rows = hits.len();
+    tally.sort_click = show_hit_header(ui, sort);
+    let p = palette(ui.ctx());
+    let m = metrics(ui.ctx());
+    let rows = hits.len() + usize::from(tail != HitTail::More);
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing.y = 0.0;
+        ScrollArea::vertical()
+            .auto_shrink([false; 2])
+            // 同一帧里可能还有那条目录列表的 `ScrollArea`（切换时两者不同时在），给它一撮自己的盐。
+            .id_salt("filewin-hits")
+            .show_rows(ui, m.row_h, rows, |ui, range| {
+                tally.first_row = range.start;
+                tally.last_row = range.end.min(hits.len());
+                for i in range {
+                    let Some(h) = hits.get(i) else {
+                        tail_row(ui, tail, tally);
+                        continue;
+                    };
+                    tally.rows_materialized += 1;
+                    let (rect, _) = ui.allocate_exact_size(
+                        egui::vec2(ui.available_width(), m.row_h),
+                        egui::Sense::hover(),
+                    );
+                    let row =
+                        ui.interact(rect, ui.id().with(("filewin-hit", i)), egui::Sense::CLICK);
+                    let band = rect.shrink2(egui::vec2(2.0, 1.0));
+                    if picked == Some(i) {
+                        ui.painter().rect_filled(band, m.radius_m, p.picked);
+                    } else if row.hovered() {
+                        ui.painter().rect_filled(band, m.radius_m, p.hover);
+                    }
+                    if row.clicked() {
+                        tally.picked = Some(i);
+                    }
+                    if row.double_clicked() {
+                        tally.jump = Some(i);
+                    }
+                    paint_hit(ui, rect, h);
+                }
+            });
+    });
+}
+
+fn tail_row(ui: &mut Ui, tail: HitTail, tally: &mut HitTally) {
+    let p = palette(ui.ctx());
+    let m = metrics(ui.ctx());
+    ui.allocate_ui_with_layout(
+        egui::vec2(ui.available_width(), m.row_h),
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| {
+            ui.add_space(PAD);
+            match tail {
+                HitTail::End => {
+                    ui.label(
+                        egui::RichText::new(copy_text("rsFilewinRows.hitTail.end", &[]))
+                            .color(p.text2),
+                    );
+                }
+                HitTail::Failed => {
+                    ui.label(
+                        egui::RichText::new(copy_text("rsFilewinRows.hitTail.failed", &[]))
+                            .color(p.error_text),
+                    );
+                    if ui
+                        .button(copy_text("rsFilewinFind.action.retry", &[]))
+                        .clicked()
+                    {
+                        tally.retry_more = true;
+                    }
+                }
+                HitTail::More => {}
+            }
+        },
+    );
+}
+
+/// 一行命中：图标 ＋ 名字（命中那几段加底色）· 位置（等宽、次级色）· 修改时间 · 大小（右齐）。
+fn paint_hit(ui: &Ui, rect: egui::Rect, h: &HitRow) {
+    let p = palette(ui.ctx());
+    let m = metrics(ui.ctx());
+    let [name_c, loc_c, mtime_c, size_c] = hit_rects(rect);
+    let painter = ui.painter().clone();
+    let k = kind::kind_of_name(&h.name, h.dir, h.link);
+    let icon_color = if k == kind::Kind::Folder {
+        p.accent
+    } else {
+        p.text2
+    };
+    let icon = painter.layout_no_wrap(
+        kind::icon(k).to_string(),
+        egui::FontId::proportional(m.icon),
+        icon_color,
+    );
+    let ix = name_c.left() + PAD;
+    painter.with_clip_rect(name_c).galley(
+        egui::pos2(ix, rect.center().y - icon.size().y / 2.0),
+        icon,
+        icon_color,
+    );
+    let nx = ix + m.icon + m.space[3];
+    let mut job = super::kit::marked(ui, &h.name, &h.marks, p.text);
+    job.wrap = egui::text::TextWrapping {
+        max_width: (name_c.right() - nx - PAD).max(0.0),
+        max_rows: 1,
+        break_anywhere: true,
+        overflow_character: Some('…'),
+    };
+    let g = painter.layout_job(job);
+    painter.with_clip_rect(name_c).galley(
+        egui::pos2(nx, rect.center().y - g.size().y / 2.0),
+        g,
+        p.text,
+    );
+    let mono = egui::TextStyle::Monospace.resolve(ui.style());
+    let cell = |c: egui::Rect, text: String, font: Option<egui::FontId>, right: bool| {
+        if text.is_empty() || c.width() <= 0.0 {
+            return;
+        }
+        let mut job = egui::text::LayoutJob::simple_singleline(
+            text,
+            font.unwrap_or_else(|| egui::TextStyle::Body.resolve(ui.style())),
+            p.text2,
+        );
+        job.wrap = egui::text::TextWrapping {
+            max_width: (c.width() - 2.0 * PAD).max(0.0),
+            max_rows: 1,
+            break_anywhere: true,
+            overflow_character: Some('…'),
+        };
+        let g = painter.layout_job(job);
+        let x = if right {
+            c.right() - PAD - g.size().x
+        } else {
+            c.left() + PAD
+        };
+        painter.with_clip_rect(c).galley(
+            egui::pos2(x, rect.center().y - g.size().y / 2.0),
+            g,
+            p.text2,
+        );
+    };
+    cell(
+        loc_c,
+        h.location.clone(),
+        Some(egui::FontId::new(mono.size.min(12.0), mono.family.clone())),
+        false,
+    );
+    cell(
+        mtime_c,
+        h.mtime_secs
+            .map(|t| mtime_text(t).short)
+            .unwrap_or_default(),
+        None,
+        false,
+    );
+    cell(
+        size_c,
+        if h.dir {
+            String::new()
+        } else {
+            h.size.map(human_size).unwrap_or_default()
+        },
+        None,
+        true,
+    );
 }
 
 /// 一行上的手势（整行一块命中矩形；行上没有按钮 —— 动作走右键菜单与键盘）。
@@ -290,6 +583,21 @@ pub fn show_file_rows(
     picked: Option<&super::select::Selection>,
     cols: &Columns,
 ) {
+    show_file_rows_with_tail(ui, rows, tally, scroll_offset_y, reveal, picked, cols, None);
+}
+
+/// 同 [`show_file_rows`]，最后一行之后再画一行次级色的字（「有 3 项读不出来」那一句）。
+#[allow(clippy::too_many_arguments)]
+pub fn show_file_rows_with_tail(
+    ui: &mut Ui,
+    rows: &[Listed],
+    tally: &mut RenderTally,
+    scroll_offset_y: Option<f32>,
+    reveal: Option<&str>,
+    picked: Option<&super::select::Selection>,
+    cols: &Columns,
+    tail: Option<&str>,
+) {
     tally.total_rows = rows.len();
     ui.scope(|ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
@@ -298,11 +606,25 @@ pub fn show_file_rows(
             area = area.vertical_scroll_offset(y);
         }
         let row_h = metrics(ui.ctx()).row_h;
-        area.show_rows(ui, row_h, rows.len(), |ui, range| {
+        let n = rows.len() + usize::from(tail.is_some());
+        area.show_rows(ui, row_h, n, |ui, range| {
             tally.first_row = range.start;
-            tally.last_row = range.end;
+            tally.last_row = range.end.min(rows.len());
             for i in range {
-                let r = &rows[i];
+                let Some(r) = rows.get(i) else {
+                    if let Some(t) = tail {
+                        let p = palette(ui.ctx());
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(ui.available_width(), row_h),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| {
+                                ui.add_space(PAD);
+                                ui.label(egui::RichText::new(t).color(p.text2));
+                            },
+                        );
+                    }
+                    continue;
+                };
                 tally.rows_materialized += 1;
                 let revealed = reveal.is_some_and(|want| want == r.name);
                 if revealed {
@@ -337,41 +659,6 @@ pub fn show_file_rows(
             }
         });
     });
-}
-
-/// 画一屏**命中**。`files-find` 回来的那一摞路径（目录后面带 `/`）。
-///
-/// # 为什么它不是 [`show_file_rows`]
-///
-/// 命中是一条**任意深度的路径**，不是当前目录里的一项：双击进目录、行上的复制 / 改名 / 删除
-/// 都以当前目录为准，套在命中上就是对错的东西动手。⇒ 命中行只画一个链接，点了交出下标
-/// （[`HitTally::jump`]），窗口跳到它所在的目录并高亮它（同按内容搜那一摞）。
-///
-/// # 它与 [`show_file_rows`] 共享的那一条性质
-///
-/// 同一个 `show_rows`（**虚拟滚动**）、同一个行高。
-/// `limit` 默认 1000（`src/doc/IPC-PROTOCOL.md §10`）给了条数一个上界，
-/// 但**那个上界不是这一侧给的** ⇒ 不许靠它偷懒用 `show`。
-/// 由 `tests::the_hit_list_materializes_the_same_few_rows_no_matter_how_many_hits`
-/// 钉成一条**相等**断言（同本模块那条虚拟滚动判据的形状）。
-pub fn show_hit_rows(ui: &mut Ui, hits: &[String], tally: &mut HitTally) {
-    tally.total_rows = hits.len();
-    let row_h = metrics(ui.ctx()).row_h;
-    ScrollArea::vertical()
-        .auto_shrink([false; 2])
-        // 同一帧里可能还有那条目录列表的 `ScrollArea`（切换时两者不同时在），
-        // 给它一撮自己的盐，免得两块区域抢同一个 id。
-        .id_salt("filewin-hits")
-        .show_rows(ui, row_h, hits.len(), |ui, range| {
-            tally.first_row = range.start;
-            tally.last_row = range.end;
-            for i in range {
-                tally.rows_materialized += 1;
-                if ui.link(&hits[i]).clicked() {
-                    tally.jump = Some(i);
-                }
-            }
-        });
 }
 
 /// 一段字排成一行、超出 `width` 就截成「…」。
@@ -439,11 +726,11 @@ fn paint_one_row(
         (p.text, p.text2)
     };
     let [name_c, mtime_c, kind_c, size_c] = cols.rects(rect);
-    let k = kind::kind_of(r);
-    // 名称列：图标 ＋ 名字（＋ 名字读不出来时那个记号）。
+    let k = kind::icon_kind(r);
+    // 名称列：图标 ＋ 名字（＋ 名字读不出来时那个记号）。断了的链接图标淡一级。
     let icon_color = match k {
+        _ if faded || r.link_broken => p.faint,
         kind::Kind::Folder => p.accent,
-        _ if faded => p.faint,
         _ => p.text2,
     };
     let painter = ui.painter().clone();
@@ -458,11 +745,21 @@ fn paint_one_row(
         icon,
         icon_color,
     );
+    // 链接：图标右下角叠一个小箭头。
+    if r.link {
+        painter.with_clip_rect(name_c).text(
+            egui::pos2(ix + m.icon * 0.75, rect.center().y + m.icon * 0.3),
+            egui::Align2::CENTER_CENTER,
+            egui_phosphor::regular::ARROW_UP_RIGHT,
+            egui::FontId::proportional(m.icon * 0.55),
+            p.text,
+        );
+    }
     let nx = ix + m.icon + m.space[3];
     // 名字读不出来（不是 UTF-8）⇒ 名字后面跟一个提醒记号（单独一段，警示色）。
     let warn = r.lossy_name.then(|| {
         painter.layout_no_wrap(
-            copy_text("rsFilewinRows.icon.warn", &[]),
+            egui_phosphor::regular::WARNING.to_string(),
             egui::TextStyle::Body.resolve(ui.style()),
             p.warn,
         )

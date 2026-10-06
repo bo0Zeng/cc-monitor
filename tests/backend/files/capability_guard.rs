@@ -831,6 +831,24 @@ fn every_declared_arg_is_really_read_by_the_parser() {
         ),
         (
             "files.find",
+            "sort",
+            serde_json::json!({ "under": p(&fx.root), "query": "", "sort": "relevance" }),
+            serde_json::json!({ "under": p(&fx.root), "query": "", "sort": "name" }),
+        ),
+        (
+            "files.find",
+            "desc",
+            serde_json::json!({ "under": p(&fx.root), "query": "f0000", "desc": false }),
+            serde_json::json!({ "under": p(&fx.root), "query": "f0000", "desc": true }),
+        ),
+        (
+            "files.find",
+            "scope",
+            serde_json::json!({ "under": p(&fx.root), "query": "f0000", "scope": "under" }),
+            serde_json::json!({ "under": p(&fx.root), "query": "f0000", "scope": "machine" }),
+        ),
+        (
+            "files.find",
             "offset",
             serde_json::json!({ "under": p(&fx.root), "query": "f0000", "offset": 0 }),
             serde_json::json!({ "under": p(&fx.root), "query": "f0000", "offset": 1 }),
@@ -972,8 +990,9 @@ fn every_declared_arg_is_really_read_by_the_parser() {
     // 11 → 14（`files.read.chunk` 的 `path` · `offset` · `len` 三对）。
     // 14 → 18（`files.grep` 的 `path` · `needle` · `ignore_ascii_case` · `limit` 四对）。
     // 18 → 21（`files.find`：`needle` · `ignore_ascii_case` 两对走了；`query` · `under` · `offset` · `seq` · `stream` 五对来了）。
+    // 21 → 24（`files.find` 的 `sort` · `desc` · `scope` 三对）。
     assert_eq!(
-        checked, 21,
+        checked, 24,
         "行使的探针对数变了 —— 本条的射程跟着变了，先查探针表"
     );
     std::fs::remove_dir_all(&text_dir).ok();
@@ -1588,11 +1607,11 @@ fn the_declared_error_codes_are_not_ghosts() {
     let nowhere = std::env::temp_dir().join(format!("ccm-24f-ghost-{}", std::process::id()));
     std::fs::remove_dir_all(&nowhere).ok();
     let arg = serde_json::json!({"path": nowhere.to_str().expect("ASCII")});
-    for cap in ["files.ls", "files.stat"] {
+    for (cap, want) in [("files.ls", "not_found"), ("files.stat", "unreadable")] {
         let got = answer(cap, &arg);
         assert!(
-            matches!(got, Err(("unreadable", _))),
-            "`{cap}` 对一个不存在的路径没有回 `unreadable`，回的是 {got:?}"
+            matches!(got, Err((c, _)) if c == want),
+            "`{cap}` 对一个不存在的路径没有回 `{want}`，回的是 {got:?}"
         );
         let declared = CAPABILITIES
             .iter()
@@ -1604,6 +1623,35 @@ fn the_declared_error_codes_are_not_ghosts() {
             "`{cap}` 的错误码表漏了它真的会回的那几个"
         );
     }
+    // `files.ls` 打不开的另两种：给的是一份文件 ⇒ `not_dir`；没有读权限 ⇒ `denied`（unix）。
+    let base = std::env::temp_dir().join(format!("ccm-24f-ghost2-{}", std::process::id()));
+    std::fs::remove_dir_all(&base).ok();
+    std::fs::create_dir_all(base.join("locked")).unwrap();
+    std::fs::write(base.join("f.txt"), b"x").unwrap();
+    let ls = |p: &std::path::Path| {
+        answer(
+            "files.ls",
+            &serde_json::json!({"path": p.to_str().unwrap()}),
+        )
+    };
+    assert!(
+        matches!(ls(&base.join("f.txt")), Err(("not_dir", _))),
+        "给一份文件没回 `not_dir`"
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(base.join("locked"), std::fs::Permissions::from_mode(0o000))
+            .unwrap();
+        // root 读得动一切 ⇒ 这一格在 root 下判不了（那时列得出来，读数照实）。
+        match ls(&base.join("locked")) {
+            Err(("denied", _)) | Ok(_) => {}
+            other => panic!("没权限没回 `denied`：{other:?}"),
+        }
+        std::fs::set_permissions(base.join("locked"), std::fs::Permissions::from_mode(0o755))
+            .unwrap();
+    }
+    std::fs::remove_dir_all(&base).ok();
 }
 
 // ══════════════════════ 第七、第八条 ══════════════════════

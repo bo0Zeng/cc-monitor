@@ -461,7 +461,13 @@ impl FakeBackend {
                         None,
                     );
                 };
-                let under = args.get("under").cloned().filter(|v| !v.is_null());
+                // 「整台机器」⇒ 范围是根（`/`）；否则照 `under`。
+                let machine = args.get("scope").and_then(|v| v.as_str()) == Some("machine");
+                let under = if machine {
+                    Some(serde_json::Value::String("/".into()))
+                } else {
+                    args.get("under").cloned().filter(|v| !v.is_null())
+                };
                 let offset = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
                 let limit = args
                     .get("limit")
@@ -506,15 +512,77 @@ impl FakeBackend {
                     Some(None) => false,
                     None => true,
                 };
-                let all: Vec<&(Vec<u8>, bool)> = idx
+                // 起点：`under` 或家目录；位置 ＝ 父目录相对它那一段。
+                let start: Option<String> = under
+                    .as_ref()
+                    .and_then(|v| v.as_str().map(str::to_string))
+                    .or_else(|| self.home.clone());
+                let location = |p: &[u8]| -> Vec<u8> {
+                    let parent = &p[..p.iter().rposition(|&b| b == b'/').unwrap_or(0)];
+                    match &start {
+                        Some(st) => {
+                            let st = st.trim_end_matches('/').as_bytes();
+                            if parent == st {
+                                Vec::new()
+                            } else if parent.starts_with(st) && parent.get(st.len()) == Some(&b'/')
+                            {
+                                parent[st.len() + 1..].to_vec()
+                            } else {
+                                parent.to_vec()
+                            }
+                        }
+                        None => parent.to_vec(),
+                    }
+                };
+                let name = |p: &[u8]| {
+                    p[p.iter().rposition(|&b| b == b'/').map_or(0, |i| i + 1)..].to_vec()
+                };
+                let mut all: Vec<&(Vec<u8>, bool)> = idx
                     .iter()
                     .filter(|(p, _)| inside(p) && contains(p, q.as_bytes()))
                     .collect();
+                // 排序：合成后端只认「名称」「位置」两列（其余照索引序），倒序就倒过来。
+                match args.get("sort").and_then(|v| v.as_str()) {
+                    Some("name") => {
+                        all.sort_by(|a, b| name(&a.0).cmp(&name(&b.0)).then(a.0.cmp(&b.0)))
+                    }
+                    Some("location") => all.sort_by(|a, b| {
+                        (location(&a.0), name(&a.0))
+                            .cmp(&(location(&b.0), name(&b.0)))
+                            .then(a.0.cmp(&b.0))
+                    }),
+                    _ => {}
+                }
+                if args.get("desc").and_then(|v| v.as_bool()) == Some(true) {
+                    all.reverse();
+                }
                 let page: Vec<serde_json::Value> = all
                     .iter()
                     .skip(offset)
                     .take(limit)
-                    .map(|(p, d)| serde_json::json!({ "path": to_json(p), "kind": if *d { "dir" } else { "file" } }))
+                    .map(|(p, d)| {
+                        // 盘上那两格照夹具读（合成树是现造的临时目录）；名字里对上搜索词的那几段。
+                        let md = std::fs::metadata(String::from_utf8_lossy(p).as_ref()).ok();
+                        let n = name(p);
+                        let marks: Vec<[usize; 2]> = (!q.is_empty())
+                            .then(|| {
+                                n.windows(q.len())
+                                    .enumerate()
+                                    .filter(|(_, w)| w.eq_ignore_ascii_case(q.as_bytes()))
+                                    .map(|(i, _)| [i, i + q.len()])
+                                    .take(1)
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        serde_json::json!({
+                            "path": to_json(p),
+                            "kind": if *d { "dir" } else { "file" },
+                            "location": to_json(&location(p)),
+                            "size": md.as_ref().filter(|m| !m.is_dir()).map(|m| m.len()),
+                            "mtime_secs": md.as_ref().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|t| t.as_secs()),
+                            "marks": marks,
+                        })
+                    })
                     .collect();
                 let d = &self.declared;
                 (
@@ -534,6 +602,9 @@ impl FakeBackend {
                         "cover_root": if covered { serde_json::Value::String(root.clone()) } else { fresh_root },
                         "seq": seq,
                         "offset": offset,
+                        "start": start,
+                        "sort": args.get("sort").cloned().unwrap_or("relevance".into()),
+                        "desc": args.get("desc").cloned().unwrap_or(false.into()),
                     })),
                 )
             }
@@ -566,6 +637,10 @@ impl FakeBackend {
                             None,
                             Some(serde_json::json!({ "entries": entries, "truncated": false })),
                         )
+                    }
+                    // 不在了 ⇒ `not_found`（同真后端按 `io::ErrorKind` 分的那几个码）。
+                    Err(e) if !std::path::Path::new(dir).exists() => {
+                        (false, Some("not_found".into()), Some(e), None)
                     }
                     Err(e) => (false, Some("unreadable".into()), Some(e), None),
                 }

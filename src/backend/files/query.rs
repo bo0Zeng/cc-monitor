@@ -150,6 +150,46 @@ impl Matcher {
         }
         best
     }
+
+    /// 名字里被那几个排相关度的词对上的字节区间（起 · 止，不重叠、升序）—— 界面给这几段加底色。
+    /// 按 Unicode 小写比的词只在小写后长度不变时给（区间才对得回原名字）。
+    pub fn marks(&self, path: &[u8]) -> Vec<(usize, usize)> {
+        let name = name_of(path);
+        let low = lower(name);
+        let mut out: Vec<(usize, usize)> = Vec::new();
+        for t in &self.terms {
+            let pat = t.pat.as_slice();
+            if pat.is_empty() {
+                continue;
+            }
+            let hay: &[u8] = if t.unicode {
+                if low.len() != name.len() {
+                    continue;
+                }
+                &low
+            } else {
+                name
+            };
+            let mut i = 0;
+            while i + pat.len() <= hay.len() {
+                if hay[i..i + pat.len()].eq_ignore_ascii_case(pat) {
+                    out.push((i, i + pat.len()));
+                    i += pat.len();
+                } else {
+                    i += 1;
+                }
+            }
+        }
+        out.sort_unstable();
+        let mut merged: Vec<(usize, usize)> = Vec::new();
+        for (a, b) in out {
+            match merged.last_mut() {
+                Some(last) if a <= last.1 => last.1 = last.1.max(b),
+                _ => merged.push((a, b)),
+            }
+        }
+        merged
+    }
 }
 
 // ══════════════════════ 解析（改自 cardinal-syntax） ══════════════════════

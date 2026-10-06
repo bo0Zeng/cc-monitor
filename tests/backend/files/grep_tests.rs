@@ -211,7 +211,9 @@ fn the_command_face_answers_exactly_the_declared_fields() {
         .collect();
     assert_eq!(
         hit,
-        ["line", "matches", "path", "text"].into_iter().collect()
+        ["line", "lines", "matches", "path", "rel", "text"]
+            .into_iter()
+            .collect()
     );
     assert_eq!(
         (v["truncated"].clone(), v["stopped"].clone()),

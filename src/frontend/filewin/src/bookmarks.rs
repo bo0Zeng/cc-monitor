@@ -183,8 +183,6 @@ pub static STAR_OFF: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinBookmarks.star.off", &[]));
 pub static STAR_ON: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinBookmarks.star.on", &[]));
-pub static REMOVE_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinBookmarks.label.remove", &[]));
 
 impl Shelf {
     /// 开窗时建：读一次那台机器的书签。

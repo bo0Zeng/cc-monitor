@@ -78,12 +78,19 @@ pub struct Workspace {
     closing: bool,
     /// 整窗缩放（记在视图文件里，下次开窗照它）。
     pub zoom: Zoom,
+    /// 右下角那一摞回执（一次性的那几句：键位做不成的原因 · 跳到隐藏文件 · 开另一台 …）。
+    pub toasts: super::kit::Toasts,
+    /// 上一句收成回执的话（同一句摆着不再收第二次）。
+    toasted: Option<String>,
+    /// 上一帧发出去的窗口标题（变了才再发）。
+    title: Option<String>,
 }
 
 /// 缩放的上下限与一步多少（Ctrl + = / -）。
-pub const ZOOM_MIN: f32 = 0.5;
-pub const ZOOM_MAX: f32 = 3.0;
-pub const ZOOM_STEP: f32 = 0.1;
+pub const ZOOM_MIN: f32 = 0.8;
+pub const ZOOM_MAX: f32 = 2.0;
+/// 缩放的档位（规范 `I8` 与稿 ⑫）。
+pub const ZOOM_STOPS: [f32; 8] = [0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];
 
 /// 整窗缩放（egui 的 `zoom_factor`）：Ctrl + = / Ctrl + - / Ctrl + 0、Ctrl + 滚轮改它；
 /// 记在 monitor 交来的那份视图文件里（`{"zoom": 1.2}`），下次开窗照它。没有那份文件 ⇒ 照样能缩放，只是不记。
@@ -134,13 +141,6 @@ pub static PREVIEW_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinWorkspace.label.preview", &[]));
 pub static COPY_ACROSS_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinWorkspace.label.copyAcross", &[]));
-pub static NEW_TAB_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinWorkspace.label.newTab", &[]));
-pub static CLOSE_TAB_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinWorkspace.label.closeTab", &[]));
-/// 后台标签手上有事等你（有一问摆着 / 有活在跑）时，标签名前那个记号。
-pub static BUSY_MARK: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinWorkspace.label.busyMark", &[]));
 
 /// 标签页快捷键想干什么。**只是意图**，做不做由 [`Workspace::apply_tab_keys`] 过闸。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -194,6 +194,9 @@ impl Workspace {
             other: Default::default(),
             closing: false,
             zoom: Zoom::default(),
+            toasts: Default::default(),
+            toasted: None,
+            title: None,
         };
         w.sync_focus();
         w
@@ -488,12 +491,7 @@ impl Workspace {
     pub fn tab_title(pane: &FileWindow) -> String {
         let tail = super::source::remote_basename(&pane.cwd);
         let tail = if tail.is_empty() { "/" } else { tail };
-        let mark = if pane.busy_reason().is_some() {
-            BUSY_MARK.as_str()
-        } else {
-            ""
-        };
-        format!("{mark}{tail}")
+        tail.to_string()
     }
 
     /// 🔴 **点了关窗**（这一帧的输入里有关窗请求）：有东西会丢就拦下（`CancelClose`）并说出来 ——
@@ -543,12 +541,33 @@ impl Workspace {
         false
     }
 
+    /// 状态栏那颗「125%」点了：回 100% 并记下来。
+    pub fn zoom_reset(&mut self) {
+        self.zoom.remember(1.0);
+    }
+
     /// 这一帧的缩放手势：Ctrl + = / + 放大一步 · Ctrl + - 缩小一步 · Ctrl + 0 回 100% · Ctrl + 滚轮按滚的量；
     /// 改了就记下来。回值 ＝ 这一帧之后的缩放。
     pub fn apply_zoom(&mut self, ctx: &egui::Context) -> f32 {
         use egui::{Key, KeyboardShortcut as K, Modifiers as M};
         let mut z = ctx.zoom_factor();
-        let step = |z: f32, d: f32| ((z + d) * 10.0).round() / 10.0;
+        // 档位照稿：80 · 90 · 100 · 110 · 125 · 150 · 175 · 200%（键盘一档一档走；滚轮照滚的量，落在两档之间也行）。
+        let step = |z: f32, d: f32| {
+            if d > 0.0 {
+                ZOOM_STOPS
+                    .iter()
+                    .copied()
+                    .find(|&s| s > z + 0.001)
+                    .unwrap_or(ZOOM_MAX)
+            } else {
+                ZOOM_STOPS
+                    .iter()
+                    .rev()
+                    .copied()
+                    .find(|&s| s < z - 0.001)
+                    .unwrap_or(ZOOM_MIN)
+            }
+        };
         ctx.input_mut(|i| {
             if i.consume_shortcut(&K::new(M::COMMAND, Key::Num0)) {
                 z = 1.0;
@@ -556,10 +575,10 @@ impl Workspace {
             while i.consume_shortcut(&K::new(M::COMMAND, Key::Equals))
                 || i.consume_shortcut(&K::new(M::COMMAND, Key::Plus))
             {
-                z = step(z, ZOOM_STEP);
+                z = step(z, 1.0);
             }
             while i.consume_shortcut(&K::new(M::COMMAND, Key::Minus)) {
-                z = step(z, -ZOOM_STEP);
+                z = step(z, -1.0);
             }
             z *= i.zoom_delta();
         });
@@ -610,6 +629,7 @@ impl Workspace {
         // ── 窗口的框：工具条 · 命令栏 · 状态栏 · 左栏（`chrome.rs`）──
         self.chrome_ui(ui);
         // ── 预览（右侧一块，跟焦点那一栏）──
+        let mut preview_act = None;
         if self.preview.is_some() {
             let ctx = ui.ctx().clone();
             let side = &self.sides[self.focus];
@@ -627,19 +647,56 @@ impl Workspace {
                     // 内容先铺满：不然面板会把「这一帧用了多宽」记成自己的宽，开出来就只剩一条窄缝。
                     .show(ui, |ui| {
                         ui.set_min_width(ui.available_width());
-                        p.ui(ui)
+                        let act = p.ui(ui);
+                        if act.is_some() {
+                            preview_act = act;
+                        }
                     });
             }
+        }
+        // 预览头上点了「编辑」「下载」⇒ 照焦点那一栏选中的那一项做（同右键菜单那一件）。
+        if let Some(a) = preview_act {
+            let f = self.focus;
+            let action = match a {
+                super::preview::PreviewAct::Edit => super::select::Action::Edit,
+                super::preview::PreviewAct::Download => super::select::Action::Download,
+            };
+            self.pane_on_mut(f).perform(action, Some(ctx.clone()));
         }
         // ── 一栏 / 两栏：主底那一块（没有它，框之间露出来的是 egui 自带的灰黑底）──
         let bg = super::theme::palette(ui.ctx()).bg;
         egui::CentralPanel::default()
-            .frame(
-                egui::Frame::new()
-                    .fill(bg)
-                    .inner_margin(egui::Margin::symmetric(6, 4)),
-            )
+            .frame(egui::Frame::new().fill(bg))
             .show(ui, |ui| self.sides_ui(ui));
+        // ── 「回主目录」（打不开那一条上点的；主目录住这一级）──
+        let f = self.focus;
+        if std::mem::take(&mut self.pane_on_mut(f).want_home) {
+            match self.home_known() {
+                Some(Ok(h)) => self.pane_on_mut(f).navigate_to(h),
+                _ => {
+                    self.home_go = true;
+                    self.ask_home(Some(ctx.clone()));
+                }
+            }
+        }
+        // ── 窗口标题跟着焦点那一栏当前的标签页 ──
+        let title = super::shell::window_title(
+            &Self::tab_title(self.pane_on(f)),
+            &self.pane_on(f).source.label(),
+        );
+        if self.title.as_deref() != Some(title.as_str()) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.title = Some(title);
+        }
+        // ── 窗口那一级一次性的那几句（开另一台 · 关不了的原因 …）⇒ 右下角回执；键位做不成的那一下浮在状态栏左端 ──
+        let said = self.notice.clone();
+        if said != self.toasted {
+            if let Some(t) = &said {
+                self.toasts.push(t.clone(), None);
+            }
+            self.toasted = said;
+        }
+        self.toasts.show(&ctx, 36.0);
     }
 
     /// 一栏 / 两栏并排摆（在主底那一块里）。
@@ -670,6 +727,14 @@ impl Workspace {
                     .max_rect(rect)
                     .layout(egui::Layout::top_down(egui::Align::LEFT)),
                 |ui| self.side_ui(ui, k),
+            );
+        }
+        // 两栏之间一道淡边线。
+        if n == 2 {
+            let x = rects[0].right() + gap / 2.0;
+            ui.painter().line_segment(
+                [egui::pos2(x, whole.top()), egui::pos2(x, whole.bottom())],
+                egui::Stroke::new(1.0, super::theme::palette(ui.ctx()).border_soft),
             );
         }
         ui.allocate_rect(whole, egui::Sense::hover());
@@ -725,41 +790,95 @@ impl Workspace {
         }
     }
 
-    /// 一栏：标签栏 ＋ 当前那个标签页的正文。
+    /// 一栏：标签栏（规范 `C5` 下划线式；图标 ＋ 名字 ＋ ×（悬停与当前才显）＋ 忙点；末尾「＋」；放不下右端「▾」列出全部）
+    /// ＋ 当前那个标签页的正文。
     fn side_ui(&mut self, ui: &mut egui::Ui, k: usize) {
         let mut pick: Option<usize> = None;
         let mut close: Option<usize> = None;
         let mut new_tab = false;
-        ui.horizontal_wrapped(|ui| {
-            let s = &self.sides[k];
-            let many = s.tabs.len() > 1;
-            for (i, t) in s.tabs.iter().enumerate() {
-                let tab = egui::Button::selectable(i == s.active, Self::tab_title(&t.pane))
-                    .wrap_mode(egui::TextWrapMode::Truncate);
-                if ui.add(tab).on_hover_text(&t.pane.cwd).clicked() {
-                    pick = Some(i);
+        let p = super::theme::palette(ui.ctx());
+        let bar = ui.allocate_ui_with_layout(
+            egui::vec2(ui.available_width(), super::kit::TAB_H),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                let s = &self.sides[k];
+                let room = ui.available_width() - 64.0;
+                let mut used = 0.0;
+                let mut hidden: Vec<usize> = Vec::new();
+                for (i, t) in s.tabs.iter().enumerate() {
+                    let est = super::kit::TAB_MAX
+                        .min(80.0 + Self::tab_title(&t.pane).chars().count() as f32 * 8.0);
+                    if used + est > room && i != s.active {
+                        hidden.push(i);
+                        continue;
+                    }
+                    used += est;
+                    let busy = if t.pane.editing().is_some_and(|e| e.dirty()) {
+                        Some(p.text2)
+                    } else if t.pane.busy_reason().is_some() {
+                        Some(p.success)
+                    } else {
+                        None
+                    };
+                    let icon = if t.pane.listing.is_loading() {
+                        egui_phosphor::regular::CIRCLE_NOTCH
+                    } else {
+                        egui_phosphor::regular::FOLDER_SIMPLE
+                    };
+                    let (r, x) =
+                        super::kit::tab(ui, icon, &Self::tab_title(&t.pane), i == s.active, busy);
+                    if x {
+                        close = Some(i);
+                    } else if r.on_hover_text(&t.pane.cwd).clicked() {
+                        pick = Some(i);
+                    }
                 }
-                if many
-                    && ui
-                        .small_button(CLOSE_TAB_LABEL.as_str())
-                        .on_hover_text(&copy_text("rsFilewinWorkspace.sideUi.closeHint", &[]))
-                        .clicked()
+                if ui
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new(egui_phosphor::regular::PLUS).color(p.text2),
+                        )
+                        .frame_when_inactive(false),
+                    )
+                    .on_hover_text(copy_text("rsFilewinWorkspace.sideUi.newTabHint", &[]))
+                    .clicked()
                 {
-                    close = Some(i);
+                    new_tab = true;
                 }
-            }
-            if ui
-                .small_button(NEW_TAB_LABEL.as_str())
-                .on_hover_text(&copy_text("rsFilewinWorkspace.sideUi.newTabHint", &[]))
-                .clicked()
-            {
-                new_tab = true;
-            }
-        });
+                if !hidden.is_empty() {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        super::kit::menu(
+                            ui,
+                            egui::RichText::new(egui_phosphor::regular::CARET_DOWN).color(p.text2),
+                            |ui| {
+                                for (i, t) in s.tabs.iter().enumerate() {
+                                    if ui
+                                        .selectable_label(i == s.active, Self::tab_title(&t.pane))
+                                        .clicked()
+                                    {
+                                        pick = Some(i);
+                                        ui.close();
+                                    }
+                                }
+                            },
+                        );
+                    });
+                }
+            },
+        );
+        ui.painter().line_segment(
+            [
+                bar.response.rect.left_bottom(),
+                bar.response.rect.right_bottom(),
+            ],
+            egui::Stroke::new(1.0, p.border_soft),
+        );
         if let Some(i) = pick {
             self.select_tab(k, i);
         }
         if let Some(i) = close {
+            // 一栏只剩一个标签页：× 照样在，点了浮一句（`close_tab` 说）。
             self.close_tab(k, i);
         }
         if new_tab {

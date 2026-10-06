@@ -1138,10 +1138,12 @@ pane 处于 **copy-mode**（用户滚了一下轮子）时 `send-keys` **照样�
 | `link_dir` | ← | 只在 `kind` 是 `symlink` 时出：它指向的是不是目录（跟链接问一次）。断链 ⇒ 不出这个键。文件窗口据此让指向目录的链接点得进去 |
 | `size` | ← | 字节数 |
 | `mtime_secs` | ← | Unix 纪元秒 |
+| `link_to` | ← | 只在 `kind` 是 `symlink` 时出：它指向什么 —— `dir` · `file` · `missing`（断了：指向的东西不在 / 读不到）。界面据此写「链接 → 文件夹」「链接 · 目标不存在」 |
 | `truncated` | ← | 目录里的项数多于回送的条数（被 `limit` 截了） |
+| `total` | ← | 目录里一共读到几项（含没回送的；截断时界面写「前 n / total 项」） |
 | `unreadable` | ← | 目录打开了、其中几项读不出来（没有回送、不算进 `truncated`）。不静默少一项：窗口照这个数说一句 |
 
-**错误码**：`bad_path`（`path` 缺了 / 形状不对 / 空）· `unreadable`（这个目录打不开）。
+**错误码**：`bad_path`（`path` 缺了 / 形状不对 / 空）· 这个目录打不开分四种：`not_found`（不在了）· `denied`（没有权限）· `not_dir`（不是目录）· `unreadable`（其他；附系统原话）。
 
 #### `files-stat`：一个路径的元数据（步 `24f`，**只读**）
 
@@ -1170,9 +1172,10 @@ pane 处于 **copy-mode**（用户滚了一下轮子）时 `send-keys` **照样�
 #### `files-find`：在常驻索引里查（步 `24f`，**整族的存在理由**；Everything 式搜索词 · 分页 · 丢旧号 2026-10-01）
 
 ```text
-→ {"id":"f3","cmd":"files-find","args":{"query":"report ext:pdf;txt","seq":7,"stream":"w1-3","offset":0,"limit":100}}
+→ {"id":"f3","cmd":"files-find","args":{"query":"report ext:pdf;txt","seq":7,"stream":"w1-3","offset":0,"limit":100,"sort":"mtime","desc":true}}
 ← {"kind":"reply","id":"f3","ok":true,"data":{
-     "hits":[{"path":"/home/u/docs/report.pdf","kind":"file"}],"total_hits":1,"truncated":false,
+     "hits":[{"path":"/home/u/docs/report.pdf","kind":"file","location":"docs","size":18204,"mtime_secs":1790000000,"marks":[[0,6]]}],
+     "total_hits":1,"truncated":false,"start":"/home/u","sort":"mtime","desc":true,
      "scanned":20220,"index_age_secs":12,"index_missing":false,"stale":false,
      "index_root":"/home/u","out_of_index":false,"cover_root":"/home/u","seq":7,"offset":0}}
 ```
@@ -1185,11 +1188,15 @@ pane 处于 **copy-mode**（用户滚了一下轮子）时 `send-keys` **照样�
 |---|---|---|
 | `query` | → | 原样的搜索词（字符串）。空白 ⇒ 匹配一切。语法见下 |
 | `under` | → | 只搜这个目录**底下**（不含它自己；字符串或 `{"b16":…}`）。不给 ⇒ 这台机器的家目录（家目录说不出 ⇒ 整份索引） |
+| `scope` | → | `"under"`（默认，照 `under`）/ `"machine"`（整台机器：范围由这台自己定 —— unix `/`，Windows 家目录那块盘的根；`under` 不看） |
+| `sort` | → ← | 按哪一列排：`relevance`（默认）· `name` · `location` · `mtime` · `size`。出方向原样回送 |
+| `desc` | → ← | `true` ⇒ 倒过来（默认 `false`）。出方向原样回送 |
+| `start` | ← | 这一趟的搜索起点（`location` 相对它算；说不出 ⇒ `null`） |
 | `seq` | → ← | 这一趟的号（非负整数，可不给）。同一个 `stream` 里来了**更大**的号 ⇒ 在飞的旧那一趟收手、回 `superseded`；晚到的旧号当场回 `superseded`；同号再来（往下翻页）照常。出方向原样回送（没给 ⇒ `null`） |
 | `stream` | → | 这个号属于哪一个搜索框（字符串，不给 ⇒ 空串）。两个搜索框各用各的名字，互不撤。后端最多记 64 个，满了丢最久没来的那个 |
 | `offset` | → ← | 从第几条命中起回（前面的只数不回）。不给 ⇒ `0`；出方向原样回送 |
 | `limit` | → | 这一屏最多回几条。不给 / 给 0 ⇒ **1000** |
-| `hits` | ← | 这一屏的命中，每条一个对象：`path`（原始字节形）· `kind`（同 `files-ls` 那个闭集四个词，不跟链接）。🔴 **只回送命中** —— 未命中的那几十万条路径一个字节都没离开那台机器 |
+| `hits` | ← | 这一屏的命中，每条一个对象：`path`（原始字节形）· `kind`（同 `files-ls` 那个闭集四个词，不跟链接）· `location`（父目录相对 `start` 那一段，直接在起点里 ⇒ 空串，不在起点底下 ⇒ 父目录全路径）· `size`（字节数；目录与读不到 ⇒ `null`）· `mtime_secs`（读不到 ⇒ `null`）· `marks`（名字里被搜索词对上的字节区间 `[起, 止)`，升序不重叠；界面给这几段加底色）。🔴 **只回送命中** —— 未命中的那几十万条路径一个字节都没离开那台机器 |
 | `total_hits` | ← | 一共命中几条，**不受分页影响** |
 | `truncated` | ← | 这一屏之后还有（往下翻：同号、`offset` 加上这一屏的条数） |
 | `scanned` | ← | 这一趟扫了几条（= 索引条目数）。**反空真用**：扫到 0 条的「没命中」与「索引是空的」在界面上一模一样 |
@@ -1209,14 +1216,15 @@ pane 处于 **copy-mode**（用户滚了一下轮子）时 `send-keys` **照样�
 - `file:` / `folder:`：只要文件（不是目录的都算）/ 只要目录；后面可以跟一个词（`folder:src`）。
 - 打到一半的引号 / 分组在末尾自动收口；`ext:` / `path:` 后面还没写东西 ⇒ 先不缩。
 - 认不出的 `xx:`（如 `12:30`）当普通字；Everything 认得、这里不支持的（`size:` `dm:` `regex:` `case:` `type:` `parent:` …）⇒ `bad_query`。
-- 命中按**相关度**排：名字与某个词一样 ＞ 名字以它开头 ＞ 名字里有它 ＞ 别的（带通配的词、`ext:`、`path:` 不分档）；同一档里路径浅的在前，再按路径字节序。
-  每一屏都按这一个全序切那一段 ⇒ 翻到哪都是同一个顺序；翻页之间索引若换了一份，后面几页会错位。
+- 默认按**相关度**排：名字与某个词一样 ＞ 名字以它开头 ＞ 名字里有它 ＞ 别的（带通配的词、`ext:`、`path:` 不分档）；同一档里路径浅的在前，再按路径字节序。
+  `name` 按名字（ASCII 不分大小写）· `location` 按所在目录再按名字 · `mtime` 读不到的算最早 · `size` 目录与读不到的算最小；同一列打平的按全路径字节序（倒序时也正着）。
+  每一屏都按这一个全序切那一段 ⇒ 翻到哪都是同一个顺序；翻页之间索引若换了一份，后面几页会错位。按 `mtime` / `size` 排要逐条读盘，命中多时慢。
 
 ⚠ **它不重走、不阻塞**：拿的是手上那一份，并把年龄与「该不该重走、走哪个根」一起交回去。
-⚠ 按内容搜是另一条 `files-grep`（见下）。模糊匹配 · 按名称 / 时间 / 大小排 —— 没做。
+⚠ 按内容搜是另一条 `files-grep`（见下）。模糊匹配 —— 没做。
 ⚠ 丢旧号靠号不靠计时：旧那一趟每扫 8192 条看一次号，扫完再看一次。
 
-**错误码**：`bad_args`（`query` 缺了 / 不是字符串 · `seq` 不是非负整数）· `bad_path`（`under` 形状不对 / 空）·
+**错误码**：`bad_args`（`query` 缺了 / 不是字符串 · `seq` 不是非负整数 · `sort` / `desc` / `scope` 不在闭集里）· `bad_path`（`under` 形状不对 / 空）·
 `bad_query`（搜索词里有多出来的右括号，或用了不支持的过滤器；附一句说是哪一处）· `superseded`（同一个搜索框已经来了更新的号）。
 
 #### `files-grep`：在一个目录底下按内容搜（09-28；，**可撤**）
@@ -1238,7 +1246,7 @@ pane 处于 **copy-mode**（用户滚了一下轮子）时 `send-keys` **照样�
 | `needle` | → | 要找的**字节**子串（字符串或 `{"b16":…}`），1 至 256 字节 |
 | `ignore_ascii_case` | → | 只对 ASCII 段大小写不敏感。不给 ⇒ `false` |
 | `limit` | ↔ | 最多回几份命中的文件。不给 / 给 0 ⇒ **200**，至多 **1000** |
-| `hits` | ← | 每份命中的文件一项：`path`（字符串或 `{"b16":…}`）· `line`（第一处命中所在行号，从 1 起）· `text`（那一行里命中前后至多 200 字节，首尾剥空白；非 UTF-8 走 `{"b16":…}`）· `matches`（这份里命中了几行）。同一层按名字字节序、先文件后子目录 |
+| `hits` | ← | 每份命中的文件一项：`path`（字符串或 `{"b16":…}`）· `rel`（相对 `path` 那个起点的一段）· `line`（第一处命中所在行号，从 1 起）· `text`（那一行里命中前后至多 200 字节，首尾剥空白；非 UTF-8 走 `{"b16":…}`）· `matches`（这份里命中了几行）· `lines`（前 20 处命中，每处 `line` · `text`（同上）· `marks`（`text` 里命中的字节区间 `[起, 止)`，剥空白后找不回 ⇒ 空））。同一层按名字字节序、先文件后子目录 |
 | `files` · `bytes` | ← | 这一趟读了几份、多少字节 |
 | `links` | ← | 碰到几条链接 —— **不跟**（它不一定在这棵树里，跟进去就是出界）；根本身是链接 ⇒ 不进去 |
 | `skipped_binary` · `skipped_large` · `skipped_mounts` · `unreadable` | ← | 看着像二进制（前 8 KiB 有 NUL）· 超过 8 MiB · 挂在底下的别的文件系统 · 读不了的，各跳过几项 |

@@ -1,8 +1,17 @@
 {
   "path": "<root>",
   "hits": [
-    { "path": "<root>/a.txt", "line": 2, "text": "the Needle here", "matches": 2 },
-    { "path": "<root>/sub/c.txt", "line": 3, "text": "find the needle", "matches": 1 }
+    {
+      "path": "<root>/a.txt", "rel": "a.txt", "line": 2, "text": "the Needle here", "matches": 2,
+      "lines": [
+        { "line": 2, "text": "the Needle here", "marks": [[4, 10]] },
+        { "line": 3, "text": "needle again", "marks": [[0, 6]] }
+      ]
+    },
+    {
+      "path": "<root>/sub/c.txt", "rel": "sub/c.txt", "line": 3, "text": "find the needle", "matches": 1,
+      "lines": [{ "line": 3, "text": "find the needle", "marks": [[9, 15]] }]
+    }
   ],
   "files": 4,
   "bytes": 92,

@@ -158,3 +158,15 @@ fn an_unsupported_filter_and_a_stray_closer_are_refused_by_name() {
     assert!(parse("size:1").unwrap_err().said().contains("size"));
     assert!(parse("ab>").unwrap_err().said().contains('>'));
 }
+
+/// 加底色的那几段：名字里被排相关度的词对上的字节区间（不分大小写、重叠的并起来；对全路径的、「非」底下的不算）。
+#[test]
+fn marks_are_the_name_spans_the_ranking_terms_hit() {
+    let m = |q: &str, p: &str| parse(q).unwrap().marks(p.as_bytes());
+    assert_eq!(m("retry", "/w/src/with_retry.rs"), vec![(5, 10)]);
+    assert_eq!(m("RE", "/w/rere.txt"), vec![(0, 4)]);
+    assert_eq!(m("ret try", "/w/retry.rs"), vec![(0, 5)]);
+    assert_eq!(m("!retry foo", "/w/foo.rs"), vec![(0, 3)]);
+    assert_eq!(m("src/", "/w/src/a.rs"), Vec::<(usize, usize)>::new());
+    assert_eq!(m("ext:rs", "/w/a.rs"), Vec::<(usize, usize)>::new());
+}

@@ -54,7 +54,21 @@ pub struct GrepHit {
     pub text: Vec<u8>,
     /// 这份里命中了几行。
     pub matches: u64,
+    /// 前 [`LINES_PER_FILE`] 处命中：行号 · 那一行的一截 · 那一截里命中的字节区间。
+    pub lines: Vec<GrepLine>,
 }
+
+/// 一处命中。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GrepLine {
+    pub line: u64,
+    pub text: Vec<u8>,
+    /// `text` 里对上 `needle` 的那一段 `[起, 止)`（剥空白后找不回 ⇒ `None`）。
+    pub mark: Option<(usize, usize)>,
+}
+
+/// 每份文件最多回几处命中（其余只数进 `matches`）。
+pub const LINES_PER_FILE: usize = 20;
 
 /// 为什么停在这里。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -209,22 +223,30 @@ fn look_at(path: &Path, len: u64, args: &GrepArgs, caps: Caps, g: &mut Grepped) 
         g.skipped_binary += 1;
         return;
     }
-    let mut first: Option<(u64, Vec<u8>)> = None;
+    let mut lines: Vec<GrepLine> = Vec::new();
     let mut matches = 0u64;
     for (i, line) in body.split(|b| *b == b'\n').enumerate() {
         if let Some(at) = find_at(line, &args.needle, args.ignore_ascii_case) {
             matches += 1;
-            if first.is_none() {
-                first = Some((i as u64 + 1, snippet(line, at, args.needle.len())));
+            if lines.len() < LINES_PER_FILE {
+                let text = snippet(line, at, args.needle.len());
+                let mark = find_at(&text, &args.needle, args.ignore_ascii_case)
+                    .map(|a| (a, a + args.needle.len()));
+                lines.push(GrepLine {
+                    line: i as u64 + 1,
+                    text,
+                    mark,
+                });
             }
         }
     }
-    if let Some((line, text)) = first {
+    if let Some(first) = lines.first() {
         g.hits.push(GrepHit {
             path: super::raw::path_bytes(path).to_vec(),
-            line,
-            text,
+            line: first.line,
+            text: first.text.clone(),
             matches,
+            lines,
         });
         if g.hits.len() >= args.limit {
             g.stopped = Stopped::Hits;

@@ -19,7 +19,7 @@
 //!
 //! # 新鲜度与首建
 //!
-//! [`freshness_line`] 原样画后端报的数（秒数不换算，`stale` / 没建过变橙）。
+//! 状态行（[`SearchBoard::status_ui`]）画后端报的数：「文件清单 · 多久前」（[`age_line`]）· 清单不全那几句（[`holes_line`]）。
 //! 后端说 `index_missing`（后端起来之后还没建过 ＝ 冷启动首建）且本窗口发了重走 ⇒
 //! 那一行换成 [`first_build_line`]（「正在建索引（首次约 N 秒）」），重走回来就摘。
 //!
@@ -102,6 +102,9 @@ pub const FIND_FIELDS: &[&str] = &[
     "cover_root",
     "seq",
     "offset",
+    "start",
+    "sort",
+    "desc",
 ];
 
 /// `files-index-status` 出方向的字段名。同上。
@@ -123,11 +126,19 @@ pub const STATUS_FIELDS: &[&str] = &[
 
 /// 一条命中。**持有原始字节，不持有字符串** —— 有损解码之后拿着替换字符回去找，找的是一个不存在的名字；
 /// 只在画到屏幕上那一刻才有损地转成人话（[`Self::display`]），有损与否分得开（[`Self::lossy`]）。
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Hit {
     pub path: Vec<u8>,
     /// 后端说它是目录（`kind == "dir"`，不跟链接）。
     pub dir: bool,
+    /// 后端说它是链接（`kind == "symlink"`）。
+    pub link: bool,
+    /// 所在目录相对搜索起点那一段（后端算的；直接在起点里 ⇒ 空）。
+    pub location: Vec<u8>,
+    pub size: Option<u64>,
+    pub mtime_secs: Option<u64>,
+    /// 名字里被搜索词对上的字节区间（后端判的；加底色用）。
+    pub marks: Vec<(usize, usize)>,
 }
 
 impl Hit {
@@ -136,13 +147,34 @@ impl Hit {
         String::from_utf8_lossy(&self.path).to_string()
     }
 
-    /// 命中那一摞上的一行：目录后面带一个 `/`。
-    pub fn row_text(&self) -> String {
-        let mut t = self.display();
-        if self.dir {
-            t.push('/');
+    /// 名字那一段（最后一级）的原始字节。
+    pub fn name_bytes(&self) -> &[u8] {
+        let p = &self.path;
+        let end = p.iter().rposition(|&b| b != b'/').map_or(0, |e| e + 1);
+        let p = &p[..end];
+        p.iter()
+            .rposition(|&b| b == b'/')
+            .map_or(p, |i| &p[i + 1..])
+    }
+
+    /// 结果表上的一行（名字 · 加底色的那几段 · 位置 · 修改时间 · 大小）。
+    pub fn table_row(&self) -> super::rows::HitRow {
+        let raw = self.name_bytes();
+        let name = String::from_utf8_lossy(raw).to_string();
+        super::rows::HitRow {
+            // 有损名的区间对不回显示串 ⇒ 不加底色。
+            marks: if std::str::from_utf8(raw).is_ok() {
+                self.marks.clone()
+            } else {
+                Vec::new()
+            },
+            name,
+            location: String::from_utf8_lossy(&self.location).to_string(),
+            mtime_secs: self.mtime_secs,
+            size: self.size,
+            dir: self.dir,
+            link: self.link,
         }
-        t
     }
 
     /// 这条命中的字节不是有效 UTF-8 ⇒ 上面那一份是有损的。
@@ -174,6 +206,8 @@ pub struct FindOutcome {
     pub cover_root: Option<Vec<u8>>,
     /// 这一屏是从第几条起的。
     pub offset: usize,
+    /// 这一趟的搜索起点（后端定的；状态行写「{它} 以下」）。
+    pub start: Option<Vec<u8>>,
 }
 
 impl FindOutcome {
@@ -286,9 +320,30 @@ pub fn decode_find(d: &Value) -> Result<FindOutcome, String> {
         let bad = || copy_text("rsFilewinFind.decodeFind.badHit", &[("i", &i.to_string())]);
         let path = one.get("path").and_then(decode_path).ok_or_else(bad)?;
         let kind = one.get("kind").and_then(Value::as_str).ok_or_else(bad)?;
+        let location = match one.get("location") {
+            None | Some(Value::Null) => Vec::new(),
+            Some(v) => decode_path(v).ok_or_else(bad)?,
+        };
+        let marks = one
+            .get("marks")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|m| {
+                        let m = m.as_array()?;
+                        Some((m.first()?.as_u64()? as usize, m.get(1)?.as_u64()? as usize))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         hits.push(Hit {
             path,
             dir: kind == "dir",
+            link: kind == "symlink",
+            location,
+            size: one.get("size").and_then(Value::as_u64),
+            mtime_secs: one.get("mtime_secs").and_then(Value::as_u64),
+            marks,
         });
     }
     Ok(FindOutcome {
@@ -303,6 +358,10 @@ pub fn decode_find(d: &Value) -> Result<FindOutcome, String> {
         out_of_index: need_bool(d, "out_of_index")?,
         cover_root: opt_path(d, "cover_root")?,
         offset: need_u64(d, "offset")? as usize,
+        start: match d.get("start") {
+            None => None,
+            Some(_) => opt_path(d, "start")?,
+        },
     })
 }
 
@@ -328,16 +387,81 @@ pub fn decode_status(d: &Value) -> Result<IndexStatus, String> {
 // 入方向那几个 `args`
 // ═══════════════════════════════════════════════════════════════════
 
+/// 命中按哪一列排（排是后端排的；这一侧只发这个词）。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum SortCol {
+    #[default]
+    Relevance,
+    Name,
+    Location,
+    Mtime,
+    Size,
+}
+
+impl SortCol {
+    pub fn wire(self) -> &'static str {
+        match self {
+            Self::Relevance => "relevance",
+            Self::Name => "name",
+            Self::Location => "location",
+            Self::Mtime => "mtime",
+            Self::Size => "size",
+        }
+    }
+}
+
+/// 一趟的排序：哪一列 ＋ 正反。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct FindSort {
+    pub col: SortCol,
+    pub desc: bool,
+}
+
+impl FindSort {
+    /// 点了表头那一列之后的排序：「名称」在 相关度 → 名称正 → 名称倒 → 相关度 之间转；
+    /// 别的列：换到它时修改时间 / 大小先倒序（新的、大的在前）、位置先正序，再点反过来。
+    pub fn clicked(self, col: SortCol) -> Self {
+        match col {
+            SortCol::Relevance | SortCol::Name => match (self.col, self.desc) {
+                (SortCol::Relevance, _) => Self {
+                    col: SortCol::Name,
+                    desc: false,
+                },
+                (SortCol::Name, false) => Self {
+                    col: SortCol::Name,
+                    desc: true,
+                },
+                (SortCol::Name, true) => Self::default(),
+                _ => Self {
+                    col: SortCol::Name,
+                    desc: false,
+                },
+            },
+            c if c == self.col => Self {
+                col: c,
+                desc: !self.desc,
+            },
+            c => Self {
+                col: c,
+                desc: matches!(c, SortCol::Mtime | SortCol::Size),
+            },
+        }
+    }
+}
+
 /// 一趟 `files-find` 问的是什么（翻页时原样再问一遍，只换 `offset`）。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Asked {
     /// 原样的搜索词。
     pub query: String,
-    /// 「只搜当前目录」开着时的那个目录；`None` ⇒ 后端的默认范围（家目录）。
+    /// 范围「当前目录以下」时的那个目录；`None` ⇒ 后端的默认范围（家目录）。
     pub under: Option<super::source::RemotePath>,
+    /// 范围「整台机器」（根由那台自己定，`under` 不发）。
+    pub machine: bool,
+    pub sort: FindSort,
 }
 
-/// `files-find` 的 `args`：原样的搜索词 ＋ 号 ＋ 搜索框名 ＋ 范围 ＋ 这一屏从哪起。
+/// `files-find` 的 `args`：原样的搜索词 ＋ 号 ＋ 搜索框名 ＋ 范围 ＋ 排序 ＋ 这一屏从哪起。
 pub fn find_args(asked: &Asked, seq: u64, stream: &str, offset: usize) -> Value {
     let mut v = serde_json::json!({
         "query": asked.query,
@@ -345,8 +469,12 @@ pub fn find_args(asked: &Asked, seq: u64, stream: &str, offset: usize) -> Value 
         "stream": stream,
         "offset": offset,
         "limit": PAGE,
+        "sort": asked.sort.col.wire(),
+        "desc": asked.sort.desc,
     });
-    if let Some(u) = &asked.under {
+    if asked.machine {
+        v["scope"] = Value::String("machine".into());
+    } else if let Some(u) = &asked.under {
         v["under"] = u.wire();
     }
     v
@@ -367,90 +495,121 @@ pub fn browse_args_at(dirs: &[super::source::RemotePath]) -> Value {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// 新鲜度那一行
+// 状态行的字（纯函数；数都是后端报的，这里只摆字）
 // ═══════════════════════════════════════════════════════════════════
 
-/// 还没问过后端时那一行。
-pub static FRESHNESS_UNKNOWN: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinFind.freshness.unknown", &[]));
-
-/// 🔴 **把后端报的那几个数摆成一行字。纯函数。**
-///
-/// 逐字要求住：那个延迟**必须显示在界面上**，不许让用户猜
-/// 为什么刚建的文件搜不到。
-///
-/// ⚠ **秒数原样画出去，不换算成「几分钟前」**：换算是这一侧编的，而这一格
-/// 要的恰好是「后端报的那个数」。人话好看那一档是文案的事，不是本函数的事。
-pub fn freshness_line(s: &IndexStatus) -> String {
-    if s.index_missing {
-        return copy_text("rsFilewinFind.freshness.notBuilt", &[]);
+/// 秒数 → 「3m」这一形（文件清单多久前的）。
+pub fn age_text(secs: u64) -> String {
+    match secs {
+        0..60 => copy_text("rsFilewinFind.age.secs", &[("n", &secs.to_string())]),
+        60..3600 => copy_text("rsFilewinFind.age.mins", &[("n", &(secs / 60).to_string())]),
+        3600..86_400 => copy_text(
+            "rsFilewinFind.age.hours",
+            &[("n", &(secs / 3600).to_string())],
+        ),
+        _ => copy_text(
+            "rsFilewinFind.age.days",
+            &[("n", &(secs / 86_400).to_string())],
+        ),
     }
-    let mut t = copy_text(
-        "rsFilewinFind.freshness.line",
-        &[
-            ("entries", &s.entries.to_string()),
-            ("residentBytes", &s.resident_bytes.to_string()),
-            ("ageSecs", &s.age_secs.to_string()),
-            ("interval", &s.rewalk_interval_secs.to_string()),
-        ],
-    );
-    if s.stale {
-        t.push_str(&copy_text("rsFilewinFind.freshness.stale", &[]));
-    }
-    if s.unreadable_dirs > 0 {
-        t.push_str(&copy_text(
-            "rsFilewinFind.freshness.holes",
-            &[("unreadableDirs", &s.unreadable_dirs.to_string())],
-        ));
-    }
-    if s.truncated {
-        t.push_str(&copy_text("rsFilewinFind.freshness.truncated", &[]));
-    }
-    // 没走进去的挂载点：那几个目录底下的东西搜不到 ⇒ 说出来（不静默少走）。
-    if s.skipped_mounts > 0 {
-        t.push_str(&copy_text(
-            "rsFilewinFind.freshness.skippedMounts",
-            &[("n", &s.skipped_mounts.to_string())],
-        ));
-    }
-    // 〔CP1 裁「改·§2.1」〕原先这里还接一段「浏览中的目录挂着 N 个监听（上限 M）」—— 监听数 / 上限是
-    //   内部资源读数，用户用不上 ⇒ 删去（裁词原话「删去这段」）。
-    t
 }
 
-/// **冷启动首建那一趟正在走**时画的那一行。
-///
-/// 数是后端报的（[`IndexStatus::cold_first_build_secs`]），这一侧只摆字。
-/// 「首次」二字是承重的：只有后端说「还没建过」（`index_missing`）的那一趟才画它 ——
-/// 周期性重走是热的，那个数不适用（[`one_round`] 那一段）。
-pub fn first_build_line(cold_first_build_secs: u64) -> String {
+/// 起点那一段的名字（最后一级；根 ⇒ 原样）。
+fn start_name(start: &[u8]) -> String {
+    let t = start
+        .iter()
+        .rposition(|&b| b != b'/' && b != b'\\')
+        .map_or(start, |e| &start[..=e]);
+    let name = t
+        .iter()
+        .rposition(|&b| b == b'/' || b == b'\\')
+        .map_or(t, |i| &t[i + 1..]);
+    if name.is_empty() {
+        String::from_utf8_lossy(start).to_string()
+    } else {
+        String::from_utf8_lossy(name).to_string()
+    }
+}
+
+/// 状态行左段：「orders-service 以下 · 23 个」（起点是后端回的）。
+pub fn scope_line(o: &FindOutcome) -> String {
+    let n = o.total_hits.to_string();
+    match &o.start {
+        Some(st) => copy_text(
+            "rsFilewinFind.status.scope",
+            &[("scope", &start_name(st)), ("n", &n)],
+        ),
+        None => copy_text("rsFilewinFind.status.count", &[("n", &n)]),
+    }
+}
+
+/// 状态行右段：「文件清单 · 3m 前」。
+pub fn age_line(o: &FindOutcome) -> String {
     copy_text(
-        "rsFilewinFind.firstBuild.line",
-        &[("coldFirstBuildSecs", &cold_first_build_secs.to_string())],
+        "rsFilewinFind.status.age",
+        &[("age", &age_text(o.index_age_secs))],
     )
 }
 
-/// 命中那一摞上面那一行。**`scanned` 一定画出来** ——
-/// 「没命中」与「索引是空的」在屏幕上本来一模一样。
-pub fn hits_line(o: &FindOutcome) -> String {
-    if o.index_missing {
-        return copy_text("rsFilewinFind.hits.noIndex", &[]);
-    }
-    let mut t = copy_text(
-        "rsFilewinFind.hits.line",
-        &[
-            ("totalHits", &o.total_hits.to_string()),
-            ("scanned", &o.scanned.to_string()),
-            ("indexAgeSecs", &o.index_age_secs.to_string()),
-        ],
-    );
-    if o.truncated {
-        t.push_str(&copy_text(
-            "rsFilewinFind.hits.more",
-            &[("hitsCount", &(o.hits.len()).to_string())],
+/// 文件清单还没建过（且这一趟没在建）—— 那不是「没搜到」。
+pub fn not_built_line() -> String {
+    copy_text("rsFilewinFind.status.notBuilt", &[])
+}
+
+/// 清单不全那几句（照后端报的数；都没有 ⇒ 空）。
+pub fn holes_line(s: &IndexStatus) -> Vec<String> {
+    let mut out = Vec::new();
+    if s.truncated {
+        out.push(copy_text(
+            "rsFilewinFind.status.truncated",
+            &[("n", &s.entries.to_string())],
         ));
     }
-    t
+    if s.unreadable_dirs > 0 {
+        out.push(copy_text(
+            "rsFilewinFind.status.holes",
+            &[("n", &s.unreadable_dirs.to_string())],
+        ));
+    }
+    if s.skipped_mounts > 0 {
+        out.push(copy_text(
+            "rsFilewinFind.status.skippedMounts",
+            &[("n", &s.skipped_mounts.to_string())],
+        ));
+    }
+    out
+}
+
+/// **冷启动首建那一趟正在走**时状态行那一句（秒数是后端声明的）。
+pub fn first_build_line(machine: &str, cold_first_build_secs: u64) -> String {
+    copy_text(
+        "rsFilewinFind.firstBuild.line",
+        &[
+            ("machine", &machine.to_string()),
+            ("secs", &cold_first_build_secs.to_string()),
+        ],
+    )
+}
+
+/// 没结果那一句。
+pub fn no_match_line(q: &str) -> String {
+    copy_text(
+        "rsFilewinFind.empty.noMatch",
+        &[("q", &q.trim().to_string())],
+    )
+}
+
+/// 状态行与结果表尾上点出来的事。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SearchAction {
+    /// 「刷新」：重走文件清单。
+    Refresh,
+    /// 换范围：`true` ＝ 整台机器。
+    Scope(bool),
+    /// 出错条上的「重试」。
+    Retry,
+    /// 翻页失败那一行的「重试」。
+    RetryMore,
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -619,15 +778,21 @@ impl SearchBoard {
             .and_then(|o| o.hits.get(i).cloned())
     }
 
-    /// 命中那一摞上每一行的字（目录后面带 `/`）。
-    pub fn hit_texts(&self) -> Vec<String> {
+    /// 命中那一摞画成的表行。
+    pub fn hit_rows(&self) -> Vec<super::rows::HitRow> {
         self.inner
             .lock()
             .unwrap()
             .outcome
             .as_ref()
-            .map(|o| o.hits.iter().map(Hit::row_text).collect())
+            .map(|o| o.hits.iter().map(Hit::table_row).collect())
             .unwrap_or_default()
+    }
+
+    /// 翻页失败那一行点了「重试」：放开闩，下一趟翻页照常发。
+    pub fn retry_more(&self) {
+        self.page_failed.store(false, Ordering::SeqCst);
+        self.inner.lock().unwrap().notice = None;
     }
 
     /// 往下翻失败过（这一问不再自动往下翻）。
@@ -971,48 +1136,148 @@ pub async fn fetch_more(
 // ═══════════════════════════════════════════════════════════════════
 
 impl SearchBoard {
-    /// 新鲜度那一行 ＋ 搜的是哪个根 ＋ 出了事那句话 ＋ 命中那一行。
-    pub fn ui(&self, ui: &mut egui::Ui) {
-        // 只取这一行要的那几格（命中那一摞可能有几千条，不整份克隆）。
-        let s = {
+    /// 搜索结果顶上那一条状态行（`--bg-2`，28）：左「{起点} 以下 · n 个」＋ 范围下拉；右「文件清单 · 3m 前」＋「刷新」。
+    /// 首建那一趟：左段换成首建那一句 ＋ 转圈。出了错（这一问没答案）：换成出错条 ＋「重试」。
+    pub fn status_ui(&self, ui: &mut egui::Ui, machine: &str, whole: bool) -> Option<SearchAction> {
+        let (outcome_head, status, notice) = {
             let g = self.inner.lock().unwrap();
-            Shown {
-                asked: Asked::default(),
-                outcome: None,
-                status: g.status.clone(),
-                indexed_root: g.indexed_root.clone(),
-                notice: g.notice.clone(),
-            }
+            (
+                g.outcome.as_ref().map(FindOutcome::clone_head),
+                g.status.clone(),
+                g.notice.clone().filter(|n| !n.is_empty()),
+            )
         };
-        let hits = self.inner.lock().unwrap().outcome.as_ref().map(hits_line);
-        // 冷启动首建正在走 ⇒ 这一行顶替新鲜度那一行（那一行此刻只会说「还没建过」）。
-        if let Some(secs) = self.first_build() {
-            ui.colored_label(ui.visuals().warn_fg_color, first_build_line(secs));
-        } else {
-            match &s.status {
-                Some(st) => {
-                    if st.index_missing || st.stale {
-                        ui.colored_label(ui.visuals().warn_fg_color, freshness_line(st));
-                    } else {
-                        ui.label(freshness_line(st));
+        let mut act = None;
+        if outcome_head.is_none() && self.first_build().is_none() {
+            if let Some(n) = notice {
+                if super::kit::banner(
+                    ui,
+                    super::kit::Tone::Error,
+                    &n,
+                    &[copy_text("rsFilewinFind.action.retry", &[])],
+                )
+                .is_some()
+                {
+                    act = Some(SearchAction::Retry);
+                }
+                return act;
+            }
+        }
+        let p = super::theme::palette(ui.ctx());
+        super::kit::strip(ui, |ui| {
+            if let Some(secs) = self.first_build() {
+                ui.spinner();
+                ui.label(egui::RichText::new(first_build_line(machine, secs)).color(p.text2));
+            } else if let Some(o) = outcome_head.as_ref().filter(|o| !o.index_missing) {
+                ui.label(egui::RichText::new(scope_line(o)).color(p.text2));
+                let label = if whole {
+                    copy_text("rsFilewinFind.scope.machine", &[])
+                } else {
+                    copy_text("rsFilewinFind.scope.under", &[])
+                };
+                super::kit::menu(
+                    ui,
+                    format!("{label} {}", egui_phosphor::regular::CARET_DOWN),
+                    |ui| {
+                        if ui
+                            .selectable_label(!whole, copy_text("rsFilewinFind.scope.under", &[]))
+                            .clicked()
+                        {
+                            act = Some(SearchAction::Scope(false));
+                            ui.close();
+                        }
+                        if ui
+                            .selectable_label(whole, copy_text("rsFilewinFind.scope.machine", &[]))
+                            .clicked()
+                        {
+                            act = Some(SearchAction::Scope(true));
+                            ui.close();
+                        }
+                    },
+                );
+            } else if self.is_running() {
+                ui.spinner();
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui
+                    .button(copy_text("rsFilewinFind.action.refresh", &[]))
+                    .clicked()
+                {
+                    act = Some(SearchAction::Refresh);
+                }
+                match outcome_head.as_ref() {
+                    Some(o) if o.index_missing => {
+                        if self.first_build().is_none() {
+                            ui.label(egui::RichText::new(not_built_line()).color(p.warn));
+                        }
+                    }
+                    Some(o) => {
+                        ui.label(egui::RichText::new(age_line(o)).color(p.text2));
+                    }
+                    None => {}
+                }
+                if let Some(st) = &status {
+                    for h in holes_line(st).into_iter().rev() {
+                        ui.label(egui::RichText::new(h).color(p.warn));
                     }
                 }
-                None => {
-                    ui.label(FRESHNESS_UNKNOWN.as_str());
-                }
-            }
-        }
-        if let Some(root) = &s.indexed_root {
-            ui.label(copy_text(
-                "rsFilewinFind.ui.root",
-                &[("root", &root.to_string())],
-            ));
-        }
-        if let Some(n) = s.notice.as_ref().filter(|n| !n.is_empty()) {
-            ui.colored_label(ui.visuals().error_fg_color, n);
-        }
-        if let Some(line) = hits {
-            ui.label(line);
+            });
+        });
+        act
+    }
+
+    /// 这一问已有的答案里「后面还有」（表尾画「已到底」还是不画）。
+    pub fn more_to_come(&self) -> bool {
+        self.inner
+            .lock()
+            .unwrap()
+            .outcome
+            .as_ref()
+            .is_some_and(|o| o.truncated)
+    }
+
+    /// 这一问落地了答案（没落地 ⇒ 表上什么都不画，状态行转圈）。
+    pub fn has_outcome(&self) -> bool {
+        self.inner.lock().unwrap().outcome.is_some()
+    }
+
+    /// 这一问的命中数（落地了才有）。
+    pub fn total(&self) -> Option<usize> {
+        self.inner
+            .lock()
+            .unwrap()
+            .outcome
+            .as_ref()
+            .map(|o| o.total_hits)
+    }
+
+    /// 首建那一趟正在走、还没有答案（表上画首建那一形，不画「无匹配」）。
+    pub fn index_missing(&self) -> bool {
+        self.inner
+            .lock()
+            .unwrap()
+            .outcome
+            .as_ref()
+            .is_some_and(|o| o.index_missing)
+    }
+}
+
+impl FindOutcome {
+    /// 除了命中那一摞以外的几格（状态行要的，不克隆几千条命中）。
+    fn clone_head(&self) -> Self {
+        Self {
+            hits: Vec::new(),
+            total_hits: self.total_hits,
+            truncated: self.truncated,
+            scanned: self.scanned,
+            index_age_secs: self.index_age_secs,
+            index_missing: self.index_missing,
+            stale: self.stale,
+            index_root: self.index_root.clone(),
+            out_of_index: self.out_of_index,
+            cover_root: self.cover_root.clone(),
+            offset: self.offset,
+            start: self.start.clone(),
         }
     }
 }

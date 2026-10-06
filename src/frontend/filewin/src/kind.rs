@@ -69,16 +69,21 @@ pub fn is_hidden(name: &str) -> bool {
 
 /// 一行是哪一种。链接先于目录判（指向目录的链接也画成链接）。
 pub fn kind_of(r: &Listed) -> Kind {
-    if r.link {
+    kind_of_name(&r.name, r.is_dir, r.link)
+}
+
+/// 同 [`kind_of`]，只凭名字与两格（搜索命中那一摞没有 [`Listed`]）。
+pub fn kind_of_name(name: &str, is_dir: bool, link: bool) -> Kind {
+    if link {
         return Kind::Link;
     }
-    if r.is_dir {
+    if is_dir {
         return Kind::Folder;
     }
-    if CODE_NAMES.contains(&r.name.to_lowercase().as_str()) {
+    if CODE_NAMES.contains(&name.to_lowercase().as_str()) {
         return Kind::Code;
     }
-    let Some(ext) = ext_of(&r.name) else {
+    let Some(ext) = ext_of(name) else {
         return Kind::Other;
     };
     let e = ext.as_str();
@@ -125,8 +130,26 @@ pub fn label(k: Kind) -> String {
     }
 }
 
-/// 「类型」列写什么：种类那个词，文件再跟上扩展名（`代码 · RS`）。
+/// 链接画哪个图标：指向的那一种（指向目录 ⇒ 文件夹；其余按名字）；图标上另叠一个小箭头（`rows.rs`）。
+pub fn icon_kind(r: &Listed) -> Kind {
+    if r.link {
+        kind_of_name(&r.name, r.link_dir, false)
+    } else {
+        kind_of(r)
+    }
+}
+
+/// 「类型」列写什么：种类那个词，文件再跟上扩展名（`代码 · RS`）；链接写「链接 → 文件夹」，断的写「链接 · 目标不存在」。
 pub fn type_text(r: &Listed) -> String {
+    if r.link {
+        if r.link_broken {
+            return copy_text("rsFilewinKind.type.linkBroken", &[]);
+        }
+        return copy_text(
+            "rsFilewinKind.type.linkTo",
+            &[("kind", &label(kind_of_name(&r.name, r.link_dir, false)))],
+        );
+    }
     let k = kind_of(r);
     match (k, ext_of(&r.name)) {
         (Kind::Folder | Kind::Link | Kind::Pdf, _) | (_, None) => label(k),

@@ -44,123 +44,74 @@ fn icon_button(ui: &mut egui::Ui, icon: &str, tip: String, enabled: bool) -> boo
 /// 命令栏上的一颗是哪一件。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Cmd {
+    Sidebar,
     Mkdir,
     NewFile,
     Upload,
     Term,
-    Grep,
+    /// 「选中的」那一组：照右键菜单那一张表（[`super::select::actions_for`]）做。
+    Act(super::select::Action),
+    Across,
     Hidden,
     Split,
     Preview,
-    Across,
 }
 
-/// 命令栏上的一颗：图标 · 字 · 开关态（`None` ＝ 不是开关）· 悬停说明 · 第几组（组与组之间画一道竖线）。
-pub(crate) struct CmdItem {
-    pub cmd: Cmd,
-    icon: &'static str,
-    pub label: String,
-    on: Option<bool>,
-    hint: Option<String>,
-    group: u8,
-}
-
-impl CmdItem {
-    pub(crate) fn new(cmd: Cmd, icon: &'static str, label: &str, group: u8) -> Self {
-        Self {
-            cmd,
-            icon,
-            label: label.to_string(),
-            on: None,
-            hint: None,
-            group,
-        }
-    }
-    pub(crate) fn toggle(mut self, on: bool) -> Self {
-        self.on = Some(on);
-        self
-    }
-    fn hint(mut self, h: String) -> Self {
-        self.hint = Some(h);
-        self
-    }
-    fn button(&self) -> egui::Button<'_> {
-        let on = self.on.unwrap_or(false);
-        flat((self.icon, self.label.as_str()))
-            .selected(on)
-            .frame_when_inactive(on)
-    }
-}
-
-/// 「更多」那一颗的悬停说明（命令栏放不下的那几颗收在它里面）。
+/// 「更多」那一颗的悬停说明。
 pub static MORE_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinChrome.command.more", &[]));
 
-/// 画命令栏上那一排：放得下的摆在栏上，放不下的从右往左收进「更多」（⋯）。回这一帧按了哪一件。
-/// 每一颗的宽按上一帧画出来的量（头一帧没量过就按字估）。
-pub(crate) fn command_row(ui: &mut egui::Ui, items: &[CmdItem]) -> Option<Cmd> {
-    let id = egui::Id::new("filewin-cmd-width");
-    let pad = ui.spacing().button_padding.x * 2.0 + ui.spacing().icon_spacing;
-    let font = egui::TextStyle::Button.resolve(ui.style());
-    let width = |ui: &egui::Ui, it: &CmdItem| -> f32 {
-        ui.data(|d| d.get_temp::<f32>(id.with(it.cmd)))
-            .unwrap_or_else(|| {
-                let text = format!("{}{}", it.icon, it.label);
-                pad + ui.fonts_mut(|f| {
-                    f.layout_no_wrap(text, font.clone(), ui.visuals().text_color())
-                        .size()
-                        .x
-                })
-            })
-    };
-    let gap = ui.spacing().item_spacing.x;
-    let sep = gap * 2.0 + 1.0;
-    let more = ui.spacing().interact_size.y + pad + gap;
-    let avail = ui.available_width();
-    let mut need = Vec::with_capacity(items.len());
-    let mut x = 0.0;
-    for (k, it) in items.iter().enumerate() {
-        if k > 0 && items[k - 1].group != it.group {
-            x += sep;
-        }
-        x += width(ui, it) + gap;
-        need.push(x);
-    }
-    let shown = if need.last().is_none_or(|&w| w <= avail) {
-        items.len()
-    } else {
-        need.iter().take_while(|&&w| w + more <= avail).count()
-    };
-    let mut hit = None;
-    for (k, it) in items.iter().take(shown).enumerate() {
-        if k > 0 && items[k - 1].group != it.group {
-            ui.separator();
-        }
-        let mut r = ui.add(it.button());
-        ui.data_mut(|d| d.insert_temp(id.with(it.cmd), r.rect.width()));
-        if let Some(h) = &it.hint {
-            r = r.on_hover_text(h);
-        }
-        if r.clicked() {
-            hit = Some(it.cmd);
+/// 窗口宽度档（规范 `I8` 与稿 ⑫；按缩放之后的逻辑宽度算）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tier {
+    Wide,
+    Mid,
+    Narrow,
+}
+
+impl Tier {
+    pub fn of(width: f32) -> Self {
+        if width >= 1200.0 {
+            Self::Wide
+        } else if width >= 800.0 {
+            Self::Mid
+        } else {
+            Self::Narrow
         }
     }
-    if shown < items.len() {
-        ui.menu_button(egui::RichText::new(ph::DOTS_THREE).size(18.0), |ui| {
-            for it in &items[shown..] {
-                let mut r = ui.add(it.button());
-                if let Some(h) = &it.hint {
-                    r = r.on_hover_text(h);
-                }
-                if r.clicked() {
-                    hit = Some(it.cmd);
-                }
-            }
-        })
-        .response
-        .on_hover_text(MORE_LABEL.as_str());
+}
+
+/// 命令栏「选中的」那一组常驻的几件，其余收在它后面的「⋯」里。
+const PICK_SHOWN: [super::select::Action; 4] = [
+    super::select::Action::Download,
+    super::select::Action::CrossCopy,
+    super::select::Action::Rename,
+    super::select::Action::Delete,
+];
+const PICK_MORE: [super::select::Action; 6] = [
+    super::select::Action::Edit,
+    super::select::Action::Copy,
+    super::select::Action::Chmod,
+    super::select::Action::Properties,
+    super::select::Action::Size,
+    super::select::Action::Extract,
+];
+
+fn pick_icon(a: super::select::Action) -> &'static str {
+    use super::select::Action as A;
+    match a {
+        A::Download => ph::DOWNLOAD_SIMPLE,
+        A::CrossCopy => ph::SWAP,
+        A::Rename => ph::PENCIL_SIMPLE,
+        A::Delete => ph::TRASH,
+        A::Edit => ph::NOTE_PENCIL,
+        A::Copy => ph::COPY_SIMPLE,
+        A::Chmod => ph::LOCK_KEY,
+        A::Properties => ph::INFO,
+        A::Size => ph::RULER,
+        A::Extract => ph::FILE_ZIP,
+        A::Open => ph::FOLDER_OPEN,
     }
-    hit
 }
 
 /// 地址栏里开头收起几段：从当前那一级往前数，放得下几段摆几段（当前那一级总摆着，太长自己截成「…」）。
@@ -237,14 +188,6 @@ impl FileWindow {
                 !at_top,
             ) {
                 nav = Some(Nav::Up);
-            }
-            if icon_button(
-                ui,
-                ph::ARROW_CLOCKWISE,
-                copy_text("rsFilewinChrome.nav.refresh", &[]),
-                true,
-            ) {
-                nav = Some(Nav::Refresh);
             }
             let avail = ui.available_width();
             let compact = avail - SEARCH_SLOT < ADDR_MIN;
@@ -327,12 +270,21 @@ impl FileWindow {
                             nav = Some(Nav::Star);
                         }
                     }
+                    if ui
+                        .add(flat(
+                            egui::RichText::new(ph::ARROW_CLOCKWISE)
+                                .size(16.0)
+                                .color(p.text2),
+                        ))
+                        .on_hover_text(copy_text("rsFilewinChrome.nav.refresh", &[]))
+                        .clicked()
+                    {
+                        nav = Some(Nav::Refresh);
+                    }
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                         // 路径再长也只占星左边那一块：画和点都裁在这里，长名字盖不到星、抢不走它的点击。
                         ui.set_clip_rect(ui.max_rect().intersect(ui.clip_rect()));
                         ui.spacing_mut().item_spacing.x = 2.0;
-                        ui.label(egui::RichText::new(ph::HARD_DRIVES).color(p.text2))
-                            .on_hover_text(self.source.label());
                         let crumbs = breadcrumbs(&self.cwd);
                         // 机器名与当前那一级放不下同时摆 ⇒ 先让机器名（悬停盘符看它，窗口标题上也有）。
                         let font = egui::TextStyle::Body.resolve(ui.style());
@@ -345,14 +297,40 @@ impl FileWindow {
                         };
                         let last = crumbs.last().map_or(0.0, |(seg, _)| width(ui, seg));
                         let host = self.source.label();
-                        if width(ui, &host) + last + 40.0 <= ui.available_width() {
-                            ui.label(egui::RichText::new(host).color(p.text2));
+                        // 机器标签：一颗带框的小牌（与主窗口 tab 上的同一种）；放不下当前那一级时先让它。
+                        if width(ui, &host) + last + 60.0 <= ui.available_width() {
+                            egui::Frame::new()
+                                .stroke(egui::Stroke::new(1.0, p.border))
+                                .corner_radius(4.0)
+                                .inner_margin(egui::Margin::symmetric(6, 1))
+                                .show(ui, |ui| {
+                                    ui.label(
+                                        egui::RichText::new(format!("{} {host}", ph::MONITOR))
+                                            .color(p.text2)
+                                            .small(),
+                                    );
+                                });
+                            ui.add_space(4.0);
                         }
                         let (fit, dots) = crumbs_skip(ui, &crumbs);
                         let skip = fit.max(crumbs.len().saturating_sub(CRUMBS_SHOWN));
                         if skip > 0 && (dots || fit < skip) {
                             ui.label(egui::RichText::new(ph::CARET_RIGHT).color(p.faint));
-                            ui.label(egui::RichText::new(ph::DOTS_THREE).color(p.faint));
+                            // 收起的那几级：「…」是一个下拉，点开看得到、点得进（有损目录里只看不点）。
+                            let hidden: Vec<(String, String)> = crumbs[..skip].to_vec();
+                            super::kit::menu(
+                                ui,
+                                egui::RichText::new(ph::DOTS_THREE).color(p.text2),
+                                |ui| {
+                                    for (seg, full) in hidden {
+                                        if ui.add_enabled(!lossy, egui::Button::new(seg)).clicked()
+                                        {
+                                            nav = Some(Nav::Go(full));
+                                            ui.close();
+                                        }
+                                    }
+                                },
+                            );
                         }
                         for (seg, full) in crumbs.into_iter().skip(skip) {
                             ui.label(egui::RichText::new(ph::CARET_RIGHT).color(p.faint));
@@ -426,40 +404,196 @@ impl FileWindow {
         self.addr_edit.as_deref()
     }
 
-    /// 🔴 **命令栏左半**（不依赖选中就能做的那几件）：新建目录 · 新建文件 · 上传 · 在此打开终端 · 按内容搜 · 隐藏文件开关。
-    pub(crate) fn command_items(&self) -> Vec<CmdItem> {
-        let hidden = self.shows_hidden();
-        vec![
-            CmdItem::new(
-                Cmd::Mkdir,
-                ph::FOLDER_PLUS,
-                &super::writeops::MKDIR_LABEL,
-                0,
-            ),
-            CmdItem::new(
-                Cmd::NewFile,
-                ph::FILE_PLUS,
-                &super::create::NEW_FILE_LABEL,
-                0,
-            ),
-            CmdItem::new(
-                Cmd::Upload,
-                ph::UPLOAD_SIMPLE,
-                &super::upload::UPLOAD_LABEL,
-                0,
-            ),
-            CmdItem::new(Cmd::Term, ph::TERMINAL_WINDOW, &TERMINAL_LABEL, 0),
-            CmdItem::new(Cmd::Grep, ph::FILE_MAGNIFYING_GLASS, &GREP_LABEL, 0)
-                .toggle(self.grep_open),
-            CmdItem::new(
-                Cmd::Hidden,
-                if hidden { ph::EYE } else { ph::EYE_SLASH },
-                &HIDDEN_LABEL,
-                1,
-            )
-            .toggle(hidden)
-            .hint(copy_text("rsFilewinChrome.hidden.hint", &[])),
-        ]
+    /// 「选中的」那一件此刻能不能做：能 ⇒ `None`；不能 ⇒ 悬停说的那一句（没选中 · 这几项做不了 · 这台做不到）。
+    pub fn command_blocked(&self, a: super::select::Action) -> Option<String> {
+        let rows = self.listing.rows.lock().unwrap();
+        let idx = self.selection().picked_indices(&rows);
+        if idx.is_empty() {
+            return Some(copy_text("rsFilewinChrome.command.pickFirst", &[]));
+        }
+        let picked: Vec<&super::source::Listed> = idx.iter().map(|&i| &rows[i]).collect();
+        if !super::select::actions_for(&picked).contains(&a) {
+            return Some(super::select::refusal(a, idx.len()));
+        }
+        drop(rows);
+        self.unavailable_here(a)
+    }
+
+    /// 🔴 **命令栏**：左 侧栏开关 ｜ 这个目录（新建 ▾ · 上传 · 终端）｜ 选中的（下载 · 复制到另一台 · 改名 · 删除 · ⋯）｜ 右 看法（显示隐藏文件 · 双栏 · 预览）。
+    /// 没选中时「选中的」那几颗灰着、悬停说原因，位置不跳。宽度档：中档「选中的」与「看法」只剩图标；窄档只留「新建 ▾」「上传」＋「⋯」。
+    pub fn command_bar_ui(&mut self, ui: &mut egui::Ui, view: ViewState) -> Option<Cmd> {
+        use super::kit;
+        let tier = Tier::of(ui.ctx().content_rect().width());
+        let mut hit = None;
+        let n = self.selection().len();
+        let sel_label = |a: super::select::Action| a.label(n.max(1));
+        ui.horizontal_centered(|ui| {
+            if kit::toggle(ui, ph::SIDEBAR_SIMPLE, "", view.sidebar)
+                .on_hover_text(SIDEBAR_LABEL.as_str())
+                .clicked()
+            {
+                hit = Some(Cmd::Sidebar);
+            }
+            ui.separator();
+            // ── 这个目录 ──
+            let new_label = NEW_LABEL.clone();
+            super::kit::menu(ui, (ph::PLUS, new_label.as_str(), ph::CARET_DOWN), |ui| {
+                if ui
+                    .button((ph::FOLDER_PLUS, NEW_FOLDER_ITEM.as_str()))
+                    .clicked()
+                {
+                    hit = Some(Cmd::Mkdir);
+                    ui.close();
+                }
+                if ui.button((ph::FILE_PLUS, NEW_FILE_ITEM.as_str())).clicked() {
+                    hit = Some(Cmd::NewFile);
+                    ui.close();
+                }
+            });
+            let up = super::upload::UPLOAD_LABEL.as_str();
+            if kit::ghost(ui, ph::UPLOAD_SIMPLE, up, true, "").clicked() {
+                hit = Some(Cmd::Upload);
+            }
+            if tier == Tier::Narrow {
+                super::kit::menu(ui, egui::RichText::new(ph::DOTS_THREE).size(16.0), |ui| {
+                    if ui.button(TERMINAL_LABEL.as_str()).clicked() {
+                        hit = Some(Cmd::Term);
+                    }
+                    ui.separator();
+                    for a in PICK_SHOWN.into_iter().chain(PICK_MORE) {
+                        let why = self.command_blocked(a);
+                        let r = ui.add_enabled(why.is_none(), egui::Button::new(sel_label(a)));
+                        let r = match &why {
+                            Some(w) => r.on_disabled_hover_text(w),
+                            None => r,
+                        };
+                        if r.clicked() {
+                            hit = Some(Cmd::Act(a));
+                        }
+                    }
+                    ui.separator();
+                    for (c, label, on) in [
+                        (Cmd::Hidden, HIDDEN_LABEL.as_str(), self.shows_hidden()),
+                        (Cmd::Split, super::workspace::SPLIT_LABEL.as_str(), view.two),
+                        (
+                            Cmd::Preview,
+                            super::workspace::PREVIEW_LABEL.as_str(),
+                            view.preview,
+                        ),
+                    ] {
+                        if ui.add(egui::Button::selectable(on, label)).clicked() {
+                            hit = Some(c);
+                        }
+                    }
+                })
+                .on_hover_text(MORE_LABEL.as_str());
+                return;
+            }
+            if kit::ghost(ui, ph::TERMINAL_WINDOW, TERMINAL_LABEL.as_str(), true, "")
+                .on_hover_text(copy_text("rsFilewinChrome.command.termHint", &[]))
+                .clicked()
+            {
+                hit = Some(Cmd::Term);
+            }
+            ui.separator();
+            // ── 选中的 ──
+            let icons_only = tier != Tier::Wide;
+            for a in PICK_SHOWN {
+                let why = self.command_blocked(a);
+                let label = sel_label(a);
+                let r = kit::ghost(
+                    ui,
+                    pick_icon(a),
+                    if icons_only { "" } else { &label },
+                    why.is_none(),
+                    why.as_deref().unwrap_or(""),
+                );
+                let r = if icons_only && why.is_none() {
+                    r.on_hover_text(&label)
+                } else {
+                    r
+                };
+                if r.clicked() {
+                    hit = Some(Cmd::Act(a));
+                }
+            }
+            if view.two {
+                let r = kit::ghost(
+                    ui,
+                    ph::COPY,
+                    if icons_only {
+                        ""
+                    } else {
+                        super::workspace::COPY_ACROSS_LABEL.as_str()
+                    },
+                    true,
+                    "",
+                );
+                let r = if icons_only {
+                    r.on_hover_text(super::workspace::COPY_ACROSS_LABEL.as_str())
+                } else {
+                    r
+                };
+                if r.clicked() {
+                    hit = Some(Cmd::Across);
+                }
+            }
+            super::kit::menu(ui, egui::RichText::new(ph::DOTS_THREE).size(16.0), |ui| {
+                for a in PICK_MORE {
+                    let why = self.command_blocked(a);
+                    let r = ui.add_enabled(
+                        why.is_none(),
+                        egui::Button::new(format!("{} {}", pick_icon(a), sel_label(a))),
+                    );
+                    let r = match &why {
+                        Some(w) => r.on_disabled_hover_text(w),
+                        None => r,
+                    };
+                    if r.clicked() {
+                        hit = Some(Cmd::Act(a));
+                        ui.close();
+                    }
+                }
+            })
+            .on_hover_text(MORE_LABEL.as_str());
+            // ── 看法（右端）──
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let short = tier != Tier::Wide;
+                for (c, icon, label, on) in [
+                    (
+                        Cmd::Preview,
+                        ph::SIDEBAR,
+                        super::workspace::PREVIEW_LABEL.as_str(),
+                        view.preview,
+                    ),
+                    (
+                        Cmd::Split,
+                        ph::COLUMNS,
+                        super::workspace::SPLIT_LABEL.as_str(),
+                        view.two,
+                    ),
+                    (
+                        Cmd::Hidden,
+                        ph::EYE,
+                        HIDDEN_LABEL.as_str(),
+                        self.shows_hidden(),
+                    ),
+                ] {
+                    let mut r = kit::toggle(ui, icon, if short { "" } else { label }, on);
+                    r = if c == Cmd::Hidden {
+                        r.on_hover_text(copy_text("rsFilewinChrome.hidden.hint", &[]))
+                    } else if short {
+                        r.on_hover_text(label)
+                    } else {
+                        r
+                    };
+                    if r.clicked() {
+                        hit = Some(c);
+                    }
+                }
+            });
+        });
+        hit
     }
 
     /// 命令栏上那几颗里归目录视图的那几件。
@@ -478,12 +612,14 @@ impl FileWindow {
             Cmd::Term => {
                 self.open_terminal_here(ctx);
             }
-            Cmd::Grep => self.grep_open = !self.grep_open,
+            Cmd::Act(a) => {
+                self.perform(a, ctx);
+            }
             Cmd::Hidden => {
                 let on = self.shows_hidden();
                 self.set_show_hidden(!on);
             }
-            Cmd::Split | Cmd::Preview | Cmd::Across => {}
+            Cmd::Sidebar | Cmd::Split | Cmd::Preview | Cmd::Across => {}
         }
     }
 
@@ -494,20 +630,25 @@ impl FileWindow {
             + usize::from(self.cross_board.running().is_some())
     }
 
-    /// 状态栏那一行写什么（左半）：项数（另有几项隐藏）· 选中几项（合计大小）。判据与界面看同一个值。
+    /// 状态栏那一行写什么（左半）：项数 · 隐藏几项 · 选中几项（合计大小）；搜索结果摆着时写结果数。判据与界面看同一个值。
     pub fn status_line(&self) -> String {
-        let n = self.listing.rows.lock().unwrap().len();
-        let hidden = self.listing.hidden.lock().unwrap().len();
-        let mut s = if hidden > 0 {
-            copy_text(
-                "rsFilewinChrome.status.countHidden",
-                &[("n", &n.to_string()), ("hidden", &hidden.to_string())],
-            )
-        } else {
-            copy_text("rsFilewinChrome.status.count", &[("n", &n.to_string())])
+        let mut s = match self.search.total().filter(|_| self.showing_hits()) {
+            Some(n) => copy_text("rsFilewinChrome.status.hits", &[("n", &n.to_string())]),
+            None => {
+                let n = self.listing.rows.lock().unwrap().len();
+                let hidden = self.listing.hidden.lock().unwrap().len();
+                if hidden > 0 {
+                    copy_text(
+                        "rsFilewinChrome.status.countHidden",
+                        &[("n", &n.to_string()), ("hidden", &hidden.to_string())],
+                    )
+                } else {
+                    copy_text("rsFilewinChrome.status.count", &[("n", &n.to_string())])
+                }
+            }
         };
         let picked = self.picked_rows();
-        if !picked.is_empty() {
+        if !picked.is_empty() && !self.showing_hits() {
             let bytes: u64 = picked.iter().filter(|r| !r.is_dir).map(|r| r.size).sum();
             s.push_str(&copy_text(
                 "rsFilewinChrome.status.picked",
@@ -520,50 +661,77 @@ impl FileWindow {
         s
     }
 
-    /// 🔴 **状态栏**：左边项数 · 选中；在列目录时一个转圈；右边「传输：N 个在跑」（点它收起 / 摊开那一摞进度）。
+    /// 🔴 **状态栏**：左边项数 · 选中；右边「进度」按钮（有在跑的写个数 ＋ 小进度条；有没看过的失败带红点）。
+    /// 缩放那一颗由窗口那一级画在它左边（[`Workspace::chrome_ui`]）。
     pub fn status_ui(&mut self, ui: &mut egui::Ui) {
         let p = palette(ui.ctx());
         let mut toggle = false;
-        ui.horizontal_centered(|ui| {
-            let line = self.status_line();
-            ui.add(egui::Label::new(egui::RichText::new(&line).color(p.text2)).truncate())
-                .on_hover_text(line);
-            if self.listing.is_loading() {
-                ui.spinner();
-                ui.label(
-                    egui::RichText::new(copy_text("rsFilewinShell.frame.listing", &[]))
-                        .color(p.text2),
+        // 键位做不成的那一下（「没有以 q 开头的」「一次只能改一个名字」…）浮在左端，顶替项数那一句。
+        match self.key_notice() {
+            Some(n) => {
+                ui.add(egui::Label::new(egui::RichText::new(n).color(p.warn)).truncate());
+            }
+            None => {
+                let line = self.status_line();
+                ui.add(egui::Label::new(egui::RichText::new(&line).color(p.text2)).truncate())
+                    .on_hover_text(line);
+            }
+        }
+        let n = self.transfers_running();
+        let unseen_fail = self.transfers_unseen() && !self.transfers_open;
+        if n > 0 || self.transfers_unseen() {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let caret = if self.transfers_open {
+                    ph::CARET_DOWN
+                } else {
+                    ph::CARET_UP
+                };
+                let text = if n > 0 {
+                    copy_text("rsFilewinChrome.status.transfers", &[("n", &n.to_string())])
+                } else {
+                    copy_text("rsFilewinChrome.status.progress", &[])
+                };
+                let r = ui.add(
+                    egui::Button::new(egui::RichText::new(format!("{text} {caret}")).small())
+                        .frame_when_inactive(false),
                 );
-            }
-            let n = self.transfers_running();
-            if n > 0 || self.transfers_unseen() {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let caret = if self.transfers_open {
-                        ph::CARET_DOWN
-                    } else {
-                        ph::CARET_RIGHT
-                    };
-                    let text =
-                        copy_text("rsFilewinChrome.status.transfers", &[("n", &n.to_string())]);
-                    if ui.add(flat((text, caret))).clicked() {
-                        toggle = true;
-                    }
-                });
-            }
-        });
+                if unseen_fail {
+                    ui.painter().circle_filled(
+                        r.rect.left_center() + egui::vec2(8.0, 0.0),
+                        3.5,
+                        p.error,
+                    );
+                }
+                if r.clicked() {
+                    toggle = true;
+                }
+            });
+        }
         if toggle {
             self.transfers_open = !self.transfers_open;
         }
     }
 }
 
+/// 命令栏上那几个开关此刻的样子（窗口那一级的状态）。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ViewState {
+    pub sidebar: bool,
+    pub two: bool,
+    pub preview: bool,
+}
+
 /// 命令栏上那几颗的字 —— **唯一住址**（判据按同一个常量去找它画出来的字）。
 pub static TERMINAL_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinShell.frame.terminal", &[]));
-pub static GREP_LABEL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsFilewinChrome.command.grep", &[]));
 pub static HIDDEN_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinChrome.command.hidden", &[]));
+pub static NEW_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinChrome.command.new", &[]));
+pub static NEW_FOLDER_ITEM: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinChrome.command.newFolder", &[]));
+pub static NEW_FILE_ITEM: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinChrome.command.newFile", &[]));
 pub static SIDEBAR_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinChrome.command.sidebar", &[]));
 
@@ -664,56 +832,20 @@ impl Workspace {
             .exact_size(bar_h)
             .show_separator_line(false)
             .show(ui, |ui| self.pane_on_mut(f).toolbar_ui(ui));
-        let (mut cmd, mut sidebar) = (None, false);
+        let mut cmd = None;
+        let view = ViewState {
+            sidebar: self.sidebar_open,
+            two: self.sides() == 2,
+            preview: self.preview.is_some(),
+        };
         egui::Panel::top("filewin-commands")
             .frame(bar_frame(&ctx))
             .exact_size(bar_h - 4.0)
             .show_separator_line(false)
             .show(ui, |ui| {
-                ui.horizontal_centered(|ui| {
-                    if ui
-                        .add(
-                            flat(egui::RichText::new(ph::SIDEBAR_SIMPLE).size(18.0))
-                                .selected(self.sidebar_open)
-                                .frame_when_inactive(self.sidebar_open),
-                        )
-                        .on_hover_text(SIDEBAR_LABEL.as_str())
-                        .clicked()
-                    {
-                        sidebar = true;
-                    }
-                    ui.separator();
-                    let two = self.sides() == 2;
-                    let mut items = self.pane_on(f).command_items();
-                    items.push(
-                        CmdItem::new(Cmd::Split, ph::COLUMNS, &super::workspace::SPLIT_LABEL, 2)
-                            .toggle(two),
-                    );
-                    items.push(
-                        CmdItem::new(
-                            Cmd::Preview,
-                            ph::SIDEBAR,
-                            &super::workspace::PREVIEW_LABEL,
-                            2,
-                        )
-                        .toggle(self.preview.is_some()),
-                    );
-                    if two {
-                        items.push(CmdItem::new(
-                            Cmd::Across,
-                            ph::COPY,
-                            &super::workspace::COPY_ACROSS_LABEL,
-                            2,
-                        ));
-                    }
-                    cmd = command_row(ui, &items);
-                    if let Some(n) = self.notice() {
-                        // 放不下就截成「…」，悬停看全句。
-                        let t = egui::RichText::new(n).color(ui.visuals().warn_fg_color);
-                        ui.add(egui::Label::new(t).truncate()).on_hover_text(n);
-                    }
-                });
+                cmd = self.pane_on_mut(f).command_bar_ui(ui, view);
             });
+        let sidebar = cmd == Some(Cmd::Sidebar);
         if sidebar {
             self.sidebar_open = !self.sidebar_open;
         }
@@ -732,11 +864,48 @@ impl Workspace {
             Some(c) => self.pane_on_mut(f).run_command(c, Some(ctx.clone())),
             None => {}
         }
+        let zoom = ctx.zoom_factor();
+        let mut reset_zoom = false;
+        let k = metrics(&ctx).space;
         egui::Panel::bottom("filewin-status")
-            .frame(bar_frame(&ctx))
+            .frame(bar_frame(&ctx).inner_margin(egui::Margin::symmetric(k[4] as i8, 0)))
             .exact_size(28.0)
             .show_separator_line(false)
-            .show(ui, |ui| self.pane_on_mut(f).status_ui(ui));
+            .show(ui, |ui| {
+                ui.horizontal_centered(|ui| {
+                    // 缩放不是 100% ⇒ 状态栏常驻一颗「125%」，点了回 100%。
+                    if (zoom - 1.0).abs() > 0.001 {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui
+                                .add(
+                                    egui::Button::new(
+                                        egui::RichText::new(copy_text(
+                                            "rsFilewinChrome.status.zoom",
+                                            &[("pct", &format!("{:.0}", zoom * 100.0))],
+                                        ))
+                                        .small(),
+                                    )
+                                    .frame_when_inactive(false),
+                                )
+                                .on_hover_text(copy_text("rsFilewinChrome.status.zoomReset", &[]))
+                                .clicked()
+                            {
+                                reset_zoom = true;
+                            }
+                            ui.with_layout(
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| self.pane_on_mut(f).status_ui(ui),
+                            );
+                        });
+                    } else {
+                        self.pane_on_mut(f).status_ui(ui);
+                    }
+                });
+            });
+        if reset_zoom {
+            ctx.set_zoom_factor(1.0);
+            self.zoom_reset();
+        }
         if self.sidebar_open {
             // 窗口窄了左栏跟着让（至多占三成），里面的字截成「…」。
             let w = SIDEBAR_WIDTH.min(ctx.content_rect().width() * 0.3);
@@ -747,114 +916,88 @@ impl Workspace {
         }
     }
 
-    /// 🔴 **左栏**：书签（加 / 去当前目录 · 点了跳过去 · × 删掉）· 这台机器（家目录 · 根目录）· 其他机器（点了开那台的窗口）。
+    /// 🔴 **左栏**：书签（点了跳过去 · 悬停出 × 删掉）· 这台机器（小标题写机器名；主目录 · 根目录）· 其他机器（点了开那台的窗口）。
+    /// 当前所在的那一项左边一道 2px 强调色条（不铺底，与列表的选中分开）。
     fn sidebar_ui(&mut self, ui: &mut egui::Ui) {
+        use super::kit::{side_item, SideMark};
         let p = palette(ui.ctx());
         let f = self.focus();
         let mut go: Option<String> = None;
         let mut open_other: Option<String> = None;
         let mut want_home = false;
         let section = |ui: &mut egui::Ui, title: String| {
-            ui.add_space(4.0);
-            ui.label(egui::RichText::new(title).color(p.text2).small());
+            ui.add_space(6.0);
+            ui.label(egui::RichText::new(title).color(p.text2).small().strong());
+            ui.add_space(2.0);
         };
-        // 就是当前所在的那一格：画成选中（强调色的淡底，与列表选中同一种）。
         let here_dir = super::bookmarks::normalize_dir(&self.pane_on(f).cwd);
-        let item = |ui: &mut egui::Ui,
-                    icon: &str,
-                    text: &str,
-                    tip: &str,
-                    enabled: bool,
-                    here: bool|
-         -> bool {
-            ui.add_enabled(
-                enabled,
-                flat((icon, text, egui::Atom::grow()))
-                    .selected(here)
-                    .frame_when_inactive(here)
-                    .min_size(egui::vec2(ui.available_width(), 26.0))
-                    .wrap_mode(egui::TextWrapMode::Truncate),
-            )
-            .on_hover_text(tip)
-            .on_disabled_hover_text(tip)
-            .clicked()
-        };
         egui::ScrollArea::vertical()
             .auto_shrink([false; 2])
             .show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
                 // ── 书签 ──
-                ui.horizontal(|ui| {
-                    section(ui, copy_text("rsFilewinChrome.side.bookmarks", &[]));
-                });
+                section(ui, copy_text("rsFilewinChrome.side.bookmarks", &[]));
                 let pane = self.pane_on(f);
                 if let Some(shelf) = pane.shelf.clone() {
-                    let cwd = super::bookmarks::normalize_dir(&pane.cwd);
                     let list = shelf.list();
                     if list.is_empty() {
-                        ui.label(
-                            egui::RichText::new(copy_text("rsFilewinChrome.side.noBookmarks", &[]))
-                                .color(p.faint)
-                                .small(),
-                        );
+                        ui.label(egui::RichText::new(copy_text("rsFilewinChrome.side.noBookmarks", &[])).color(p.text2).small());
+                        ui.label(egui::RichText::new(copy_text("rsFilewinChrome.side.noBookmarksHint", &[])).color(p.faint).small());
                     }
                     let mut drop: Option<String> = None;
                     for d in list {
                         let tail = super::source::remote_basename(&d);
                         let tail = if tail.is_empty() { "/" } else { tail };
-                        let here = super::bookmarks::normalize_dir(&d) == cwd;
-                        // × 先贴右边，名字占剩下的宽度、太长就截断（缺省会截第一段字 —— 那是星的图标，名字就整串溢出去、点不到）。
-                        let row = egui::vec2(ui.available_width(), 26.0);
-                        ui.allocate_ui_with_layout(row, egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui
-                                .add(flat(super::bookmarks::REMOVE_LABEL.as_str()).small())
-                                .on_hover_text(copy_text("rsFilewinBookmarks.bar.removeHint", &[]))
-                                .clicked()
-                            {
+                        let here = super::bookmarks::normalize_dir(&d) == here_dir;
+                        let r = side_item(ui, ph::STAR, tail, here, SideMark::None).on_hover_text(&d);
+                        if r.clicked() {
+                            go = Some(d.clone());
+                        }
+                        // × 只在悬停这一行时出（贴右端）。
+                        if r.hovered() || r.contains_pointer() {
+                            let xr = egui::Rect::from_center_size(
+                                egui::pos2(r.rect.right() - 14.0, r.rect.center().y),
+                                egui::vec2(18.0, 18.0),
+                            );
+                            let xresp = ui
+                                .interact(xr, r.id.with("drop"), egui::Sense::click())
+                                .on_hover_text(copy_text("rsFilewinBookmarks.bar.removeHint", &[]));
+                            ui.painter().text(
+                                xr.center(),
+                                egui::Align2::CENTER_CENTER,
+                                ph::X,
+                                egui::FontId::proportional(12.0),
+                                if xresp.hovered() { p.text } else { p.text2 },
+                            );
+                            if xresp.clicked() {
                                 drop = Some(d.clone());
+                                go = None;
                             }
-                            let w = ui.available_width();
-                            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                                if ui
-                                    .add(
-                                        flat((ph::STAR, egui::AtomExt::atom_shrink(tail, true), egui::Atom::grow()))
-                                            .selected(here)
-                                            .frame_when_inactive(here)
-                                            .min_size(egui::vec2(w, 26.0))
-                                            .wrap_mode(egui::TextWrapMode::Truncate),
-                                    )
-                                    .on_hover_text(&d)
-                                    .clicked()
-                                {
-                                    go = Some(d.clone());
-                                }
-                            });
-                        });
+                        }
                     }
                     if let Some(n) = shelf.notice() {
-                        ui.colored_label(ui.visuals().warn_fg_color, n);
+                        ui.colored_label(p.warn, n);
                     }
                     if let Some(d) = drop {
                         shelf.remove(&d);
                     }
                 }
-                // ── 这台机器 ──
+                // ── 这台机器（小标题就写机器名）──
                 ui.add_space(8.0);
-                section(ui, copy_text("rsFilewinChrome.side.thisMachine", &[]));
+                section(ui, self.pane_on(f).source.label());
                 let home = self.home.0.lock().unwrap().clone();
-                // 问不到：悬停看得见原因，点一下再问；还在问：点了就记着，问到了就去。
-                let home_tip = match &home {
-                    HomeState::Known(h) => h.clone(),
-                    HomeState::Failed(why) => why.clone(),
-                    _ => copy_text("rsFilewinChrome.side.homeAsking", &[]),
+                let (mark, tip) = match &home {
+                    HomeState::Known(h) => (SideMark::None, h.clone()),
+                    HomeState::Failed(why) => {
+                        tracing::warn!("filewin: home not known: {why}");
+                        (SideMark::Warn, copy_text("rsFilewinChrome.side.homeFailed", &[]))
+                    }
+                    _ => (SideMark::Busy, String::new()),
                 };
-                if item(
-                    ui,
-                    ph::HOUSE,
-                    &copy_text("rsFilewinChrome.side.home", &[]),
-                    &home_tip,
-                    true,
-                    matches!(&home, HomeState::Known(h) if super::bookmarks::normalize_dir(h) == here_dir),
-                ) {
+                let here_home = matches!(&home, HomeState::Known(h) if super::bookmarks::normalize_dir(h) == here_dir);
+                let r = side_item(ui, ph::HOUSE, &copy_text("rsFilewinChrome.side.home", &[]), here_home, mark);
+                let r = if tip.is_empty() { r } else { r.on_hover_text(&tip) };
+                if r.clicked() {
                     match &home {
                         HomeState::Known(h) => go = Some(h.clone()),
                         HomeState::Failed(_) => {
@@ -871,14 +1014,10 @@ impl Workspace {
                     self.home_go = false;
                     go = Some(h.clone());
                 }
-                if item(
-                    ui,
-                    ph::HARD_DRIVE,
-                    &copy_text("rsFilewinChrome.side.root", &[]),
-                    "/",
-                    true,
-                    here_dir == "/",
-                ) {
+                if side_item(ui, ph::HARD_DRIVE, &copy_text("rsFilewinChrome.side.root", &[]), here_dir == "/", SideMark::None)
+                    .on_hover_text("/")
+                    .clicked()
+                {
                     go = Some("/".to_string());
                 }
                 // ── 其他机器 ──
@@ -888,7 +1027,7 @@ impl Workspace {
                     section(ui, copy_text("rsFilewinChrome.side.otherMachines", &[]));
                     for m in others {
                         let tip = copy_text("rsFilewinChrome.side.openOther", &[("machine", &m)]);
-                        if item(ui, ph::DESKTOP_TOWER, &m, &tip, true, false) {
+                        if side_item(ui, ph::MONITOR, &m, false, SideMark::None).on_hover_text(tip).clicked() {
                             open_other = Some(m);
                         }
                     }

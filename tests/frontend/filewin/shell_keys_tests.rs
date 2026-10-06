@@ -390,11 +390,21 @@ fn typing_jumps_to_the_first_name_with_that_prefix() {
     // 停两秒 ⇒ 重来；「q」谁都不是 ⇒ 出声，选中不动。
     d.t += 2.0;
     let _ = d.frame(&mut w, vec![egui::Event::Text("q".into())]);
-    let painted = d.frame(&mut w, Vec::new());
+    let _ = d.frame(&mut w, Vec::new());
     assert_eq!(picked(&w), set(&["zulu"]));
+    // 那一句浮在状态栏左端（不弹框；`status_ui` 画它）。
+    assert_eq!(
+        w.key_notice(),
+        Some("没有以「q」开头的项"),
+        "没找到却一句话都没说"
+    );
+    let ctx = egui::Context::default();
+    let out = ctx.run_ui(egui::RawInput::default(), |ui| w.status_ui(ui));
+    let painted = crate::copy::testing::text_in_frame(&out);
+    out.drop_without_applying_deltas();
     assert!(
         painted.iter().any(|(t, _)| t == "没有以「q」开头的项"),
-        "没找到却一句话都没画"
+        "状态栏上没画那一句：{painted:?}"
     );
 }
 

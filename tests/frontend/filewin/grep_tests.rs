@@ -40,15 +40,34 @@ fn the_window_decodes_the_backend_golden() {
         vec![
             GrepHit {
                 path: b"<root>/a.txt".to_vec(),
+                rel: b"a.txt".to_vec(),
                 line: 2,
                 text: b"the Needle here".to_vec(),
-                matches: 2
+                matches: 2,
+                lines: vec![
+                    GrepLine {
+                        line: 2,
+                        text: b"the Needle here".to_vec(),
+                        marks: vec![(4, 10)]
+                    },
+                    GrepLine {
+                        line: 3,
+                        text: b"needle again".to_vec(),
+                        marks: vec![(0, 6)]
+                    },
+                ],
             },
             GrepHit {
                 path: b"<root>/sub/c.txt".to_vec(),
+                rel: b"sub/c.txt".to_vec(),
                 line: 3,
                 text: b"find the needle".to_vec(),
-                matches: 1
+                matches: 1,
+                lines: vec![GrepLine {
+                    line: 3,
+                    text: b"find the needle".to_vec(),
+                    marks: vec![(9, 15)]
+                }],
             },
         ]
     );
@@ -85,8 +104,18 @@ fn the_window_decodes_the_backend_golden() {
     let mut cut = o.clone();
     cut.truncated = true;
     cut.stopped = Some("bytes".into());
-    assert!(summary_line(&cut).contains(&copy_text("rsFilewinGrep.summary.stoppedBytes", &[])));
-    assert!(!summary_line(&o).contains(&copy_text("rsFilewinGrep.summary.stoppedBytes", &[])));
+    assert_eq!(
+        stopped_line(&cut),
+        Some(copy_text("rsFilewinGrep.summary.stoppedBytes", &[]))
+    );
+    assert_eq!(stopped_line(&o), None);
+    // 总述：几处 · 几个文件（处数是每份命中行数之和）；跳过的另起一段，详情分行。
+    assert_eq!(summary_line(&o), "3 处 · 2 个文件");
+    assert_eq!(
+        skipped_line(&o),
+        Some("跳过 1（过大 / 非文本）".to_string())
+    );
+    assert_eq!(skipped_detail(&o), vec!["非文本 1".to_string()]);
 }
 
 #[tokio::test]

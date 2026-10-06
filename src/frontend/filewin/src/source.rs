@@ -135,6 +135,9 @@ pub struct Listed {
     /// ⇒ 那一行退回「有损名不许写」，不会拿显示串去寻址。
     #[serde(default)]
     pub raw_name: Option<Vec<u8>>,
+    /// 断了的链接（后端 `files-ls` 的 `link_to: "missing"`：指向的东西不在 / 读不到）。
+    #[serde(default)]
+    pub link_broken: bool,
 }
 
 impl Listed {
@@ -149,6 +152,7 @@ impl Listed {
             link_dir: false,
             mtime_secs: None,
             raw_name: None,
+            link_broken: false,
         }
     }
 
@@ -504,22 +508,24 @@ pub fn civil_from_days(z: i64) -> (i64, i64, i64) {
 /// 一格 `mtime_secs` 画出来是什么：列里那一格（短）与悬停 / 属性里的完整时间。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MtimeText {
-    /// 今年的省年份（`10-02 15:01`），往年的带年份（`2025-12-31 23:59`）。
+    /// 当天写 `15:01`，今年写 `10-02`，往年写 `2025-12-31`。
     pub short: String,
     /// 完整时间（`2026-10-02 15:01:23`）。
     pub full: String,
 }
 
-/// 纯函数：`offset` 是那一刻本机时区与 UTC 的差（秒，含夏令时），`this_year` 是本机此刻的年份。
-pub fn mtime_text_at(secs: u64, offset: i64, this_year: i64) -> MtimeText {
+/// 纯函数：`offset` 是那一刻本机时区与 UTC 的差（秒，含夏令时），`today` 是本机此刻的年月日。
+pub fn mtime_text_at(secs: u64, offset: i64, today: (i64, i64, i64)) -> MtimeText {
     let t = secs as i64 + offset;
     let (y, m, d) = civil_from_days(t.div_euclid(86_400));
     let rem = t.rem_euclid(86_400);
     let (hh, mm, ss) = (rem / 3600, (rem % 3600) / 60, rem % 60);
-    let short = if y == this_year {
-        format!("{m:02}-{d:02} {hh:02}:{mm:02}")
+    let short = if (y, m, d) == today {
+        format!("{hh:02}:{mm:02}")
+    } else if y == today.0 {
+        format!("{m:02}-{d:02}")
     } else {
-        format!("{y:04}-{m:02}-{d:02} {hh:02}:{mm:02}")
+        format!("{y:04}-{m:02}-{d:02}")
     };
     MtimeText {
         short,
@@ -543,8 +549,8 @@ pub fn mtime_text(secs: u64) -> MtimeText {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64);
-    let this_year = civil_from_days((now + local_offset_at(now)).div_euclid(86_400)).0;
-    mtime_text_at(secs, local_offset_at(secs as i64), this_year)
+    let today = civil_from_days((now + local_offset_at(now)).div_euclid(86_400));
+    mtime_text_at(secs, local_offset_at(secs as i64), today)
 }
 
 /// 列一个**本机**目录。
@@ -780,6 +786,8 @@ pub fn row_from_ls_entry(v: &serde_json::Value) -> Result<Listed, String> {
         //    那是 1970-01-01，一个看起来很像真读数的假时间。
         mtime_secs: v.get("mtime_secs").and_then(serde_json::Value::as_u64),
         raw_name,
+        link_broken: link
+            && v.get("link_to").and_then(serde_json::Value::as_str) == Some("missing"),
     })
 }
 
@@ -788,6 +796,8 @@ pub fn row_from_ls_entry(v: &serde_json::Value) -> Result<Listed, String> {
 pub struct Cut {
     pub truncated: bool,
     pub unreadable: u64,
+    /// 目录里一共读到几项（含没回送的；后端没给 ⇒ 0）。
+    pub total: u64,
 }
 
 /// 问**那台机器上的后端**要一个目录。
@@ -811,6 +821,7 @@ pub async fn list_via_backend(
         by,
     )
     .await
+    .map_err(|f| f.said)
 }
 
 /// 〔有损名全寻址〕同 [`list_via_backend`]，目录由调用方给线上那一形（字符串或 `{"b16": …}`，[`RemotePath::wire`]）。
@@ -820,9 +831,9 @@ pub async fn list_via_backend_at(
     dir: serde_json::Value,
     limit: usize,
     by: impl Into<Sort>,
-) -> Result<(Vec<Listed>, Cut), String> {
+) -> Result<(Vec<Listed>, Cut), Failed> {
     let args = serde_json::json!({ "path": dir, "limit": limit });
-    let d = ask(
+    let d = ask_coded(
         line,
         origin,
         CMD_LS,
@@ -830,7 +841,29 @@ pub async fn list_via_backend_at(
         std::time::Duration::from_secs(20),
     )
     .await?;
-    rows_from_ls_data(&d, by)
+    rows_from_ls_data(&d, by).map_err(Failed::local)
+}
+
+/// 目录打不开的那几种（后端的码；界面按它说一句、给出路）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OpenFail {
+    NotFound,
+    Denied,
+    NotDir,
+    Other,
+}
+
+impl OpenFail {
+    /// 后端拒绝时给的码 → 哪一种（不是这几个码 ⇒ `None`：那不是「打不开」，是别的失败）。
+    pub fn of_code(code: Option<&str>) -> Option<Self> {
+        Some(match code? {
+            "not_found" => Self::NotFound,
+            "denied" => Self::Denied,
+            "not_dir" => Self::NotDir,
+            "unreadable" => Self::Other,
+            _ => return None,
+        })
+    }
 }
 
 /// 一趟 `files-ls` 的整份 `data` → **一屏**。
@@ -872,11 +905,16 @@ pub fn rows_from_ls_data(
         .get("unreadable")
         .and_then(serde_json::Value::as_u64)
         .unwrap_or(0);
+    let total = d
+        .get("total")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
     Ok((
         out,
         Cut {
             truncated,
             unreadable,
+            total,
         },
     ))
 }

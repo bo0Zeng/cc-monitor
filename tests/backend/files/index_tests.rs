@@ -51,6 +51,7 @@ pub(crate) fn query(q: &str, limit: usize) -> FindResult {
         offset: 0,
         limit,
         ticket: None,
+        sort: Sort::default(),
     })
     .expect("没带号的一趟不会被顶掉")
 }
@@ -264,7 +265,7 @@ fn a_query_hands_back_the_hits_and_nothing_else() {
     assert_eq!(r.total_hits, 1, "命中数不对");
     assert_eq!(r.hits.len(), 1, "回送的条数不对");
     assert_eq!(
-        r.hits[0].0,
+        r.hits[0].path,
         super::super::raw::path_bytes(&one),
         "回送的那一条不是逐字节相等的原路径"
     );
@@ -349,11 +350,11 @@ fn a_non_utf8_filename_is_indexed_searchable_and_returned_byte_for_byte() {
             "非 UTF-8 的名字搜不到 —— 那正是 `档②` 说的「寻址不到」"
         );
         assert_eq!(
-            r.hits[0].0, full,
+            r.hits[0].path, full,
             "回送的字节与盘上那个名字不是逐字节相等 —— 有损解码溜进来了"
         );
         assert!(
-            std::str::from_utf8(&r.hits[0].0).is_err(),
+            std::str::from_utf8(&r.hits[0].path).is_err(),
             "这份夹具本该**不是**有效 UTF-8 —— 夹具坏了，本条在测别的东西"
         );
     }
@@ -456,6 +457,7 @@ fn a_page_is_exactly_that_slice_of_the_full_answer_and_the_count_stays_whole() {
             offset,
             limit,
             ticket: None,
+            sort: Sort::default(),
         })
         .unwrap()
     };
@@ -492,6 +494,7 @@ fn under_keeps_only_that_subtree_and_says_which_root_would_cover_it() {
             offset: 0,
             limit: 1000,
             ticket: None,
+            sort: Sort::default(),
         })
         .unwrap()
     };
@@ -502,7 +505,7 @@ fn under_keeps_only_that_subtree_and_says_which_root_would_cover_it() {
         })
         .collect();
     let got: std::collections::BTreeSet<Vec<u8>> =
-        inside.hits.iter().map(|h| h.0.clone()).collect();
+        inside.hits.iter().map(|h| h.path.clone()).collect();
     assert_eq!(
         got, want,
         "只搜那个目录：挑出来的不是它底下那几条（它自己也不该在）"
@@ -547,6 +550,7 @@ fn a_newer_seq_supersedes_only_its_own_stream() {
             offset: 0,
             limit: 10,
             ticket: Some(t),
+            sort: Sort::default(),
         })
     };
     let t5 = ticket("idx-seq-a", 5).expect("第一个号");
@@ -576,7 +580,7 @@ fn the_index_keeps_each_entry_kind() {
     assert!(dirs
         .hits
         .iter()
-        .all(|h| h.1 == super::super::query::KIND_DIR));
+        .all(|h| h.kind == super::super::query::KIND_DIR));
     assert_eq!(query("file:", 1000).total_hits, 4 * 5);
 }
 
@@ -612,13 +616,14 @@ fn name_hits_come_back_most_relevant_first_and_pages_keep_that_order() {
             offset,
             limit,
             ticket: None,
+            sort: Sort::default(),
         })
         .unwrap()
     };
     let rel = |hits: &[Hit]| -> Vec<String> {
         hits.iter()
-            .map(|(p, _)| {
-                let s = String::from_utf8_lossy(p).to_string();
+            .map(|h| {
+                let s = String::from_utf8_lossy(&h.path).to_string();
                 s[root.to_string_lossy().len() + 1..].to_string()
             })
             .collect()
@@ -647,4 +652,162 @@ fn name_hits_come_back_most_relevant_first_and_pages_keep_that_order() {
         );
     }
     std::fs::remove_dir_all(&root).ok();
+}
+
+/// 按名称 / 位置 / 修改时间 / 大小排、正反都行，每一屏都是那个全序里的那一段；每条带盘上的大小与修改时间（目录没有大小）。
+#[test]
+fn hits_sort_by_each_column_both_ways_and_pages_keep_that_order() {
+    let _lock = resident_lock();
+    let root = std::env::temp_dir().join(format!("ccm-24f-sort-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    // (相对路径, 字节数, 修改时间)：名字、位置、大小、时间四个序互不相同。
+    let made: [(&str, usize, u64); 5] = [
+        ("b/Delta.log", 30, 4_000),
+        ("a/x/beta.log", 10, 1_000),
+        ("c/alpha.log", 50, 3_000),
+        ("a/gamma.log", 20, 5_000),
+        ("b/a/Echo.log", 40, 2_000),
+    ];
+    for (p, n, t) in made {
+        let at = root.join(p);
+        std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+        std::fs::write(&at, vec![b'x'; n]).unwrap();
+        let f = std::fs::File::options().write(true).open(&at).unwrap();
+        f.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(t))
+            .unwrap();
+    }
+    let _serial = crate::files::index::testing::serial();
+    rebuild_once(&root).expect("本格独占跑");
+    let m = super::super::query::parse("ext:log").unwrap();
+    let rootb = super::super::raw::path_bytes(&root).to_vec();
+    let page = |key: SortKey, desc: bool, offset: usize, limit: usize| {
+        find(&FindArgs {
+            query: &m,
+            under: Some(&rootb),
+            home: None,
+            offset,
+            limit,
+            ticket: None,
+            sort: Sort { key, desc },
+        })
+        .unwrap()
+    };
+    let names = |hits: &[Hit]| -> Vec<String> {
+        hits.iter()
+            .map(|h| String::from_utf8_lossy(name_bytes(&h.path)).to_string())
+            .collect()
+    };
+    let cases: [(SortKey, [&str; 5]); 4] = [
+        (
+            SortKey::Name,
+            [
+                "alpha.log",
+                "beta.log",
+                "Delta.log",
+                "Echo.log",
+                "gamma.log",
+            ],
+        ),
+        // 位置：a · a/x · b · b/a · c
+        (
+            SortKey::Location,
+            [
+                "gamma.log",
+                "beta.log",
+                "Delta.log",
+                "Echo.log",
+                "alpha.log",
+            ],
+        ),
+        (
+            SortKey::Mtime,
+            [
+                "beta.log",
+                "Echo.log",
+                "alpha.log",
+                "Delta.log",
+                "gamma.log",
+            ],
+        ),
+        (
+            SortKey::Size,
+            [
+                "beta.log",
+                "gamma.log",
+                "Delta.log",
+                "Echo.log",
+                "alpha.log",
+            ],
+        ),
+    ];
+    for (key, want) in cases {
+        let up = page(key, false, 0, 100);
+        assert_eq!(names(&up.hits), want, "{key:?} 正序不对");
+        let down = page(key, true, 0, 100);
+        let mut rev = want.to_vec();
+        rev.reverse();
+        assert_eq!(names(&down.hits), rev, "{key:?} 倒序不对");
+        for (offset, limit) in [(0, 2), (2, 2), (4, 3)] {
+            let p = page(key, true, offset, limit);
+            let end = (offset + limit).min(5);
+            assert_eq!(
+                p.hits,
+                down.hits[offset..end].to_vec(),
+                "{key:?} 第 {offset} 条起那一屏不是全序里那一段"
+            );
+        }
+    }
+    // 每条带盘上的两格（与造的一致），不论按哪一列排。
+    for key in [SortKey::Relevance, SortKey::Name, SortKey::Size] {
+        for h in page(key, false, 0, 100).hits {
+            let name = String::from_utf8_lossy(name_bytes(&h.path)).to_string();
+            let (_, n, t) = made.iter().find(|(p, _, _)| p.ends_with(&name)).unwrap();
+            assert_eq!(
+                h.meta,
+                Meta {
+                    size: Some(*n as u64),
+                    mtime_secs: Some(*t)
+                },
+                "{name} 的大小 / 修改时间不对"
+            );
+        }
+    }
+    let dirs = super::super::query::parse("folder:").unwrap();
+    let d = find(&FindArgs {
+        query: &dirs,
+        under: Some(&rootb),
+        home: None,
+        offset: 0,
+        limit: 100,
+        ticket: None,
+        sort: Sort {
+            key: SortKey::Size,
+            desc: false,
+        },
+    })
+    .unwrap();
+    assert!(d.total_hits > 0);
+    assert!(
+        d.hits.iter().all(|h| h.meta.size.is_none()),
+        "目录不该有大小"
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// 位置 = 父目录相对搜索起点那一段：直接在起点里 ⇒ 空；不在起点底下 ⇒ 父目录全路径。
+#[test]
+fn location_is_the_parent_relative_to_the_search_start() {
+    assert_eq!(location_of(b"/h/u/p/src/a.rs", Some(b"/h/u/p")), b"src");
+    assert_eq!(
+        location_of(b"/h/u/p/src/x/a.rs", Some(b"/h/u/p/")),
+        b"src/x"
+    );
+    assert_eq!(location_of(b"/h/u/p/a.rs", Some(b"/h/u/p")), b"");
+    assert_eq!(
+        location_of(b"/elsewhere/a.rs", Some(b"/h/u/p")),
+        b"/elsewhere"
+    );
+    assert_eq!(location_of(b"/a.rs", Some(b"/")), b"");
+    assert_eq!(location_of(b"/etc/a.rs", Some(b"/")), b"etc");
+    assert_eq!(location_of(b"/h/u/p/a.rs", None), b"/h/u/p");
 }

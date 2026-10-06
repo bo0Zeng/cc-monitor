@@ -55,14 +55,22 @@ async fn clicking_the_toolbar_button_puts_up_the_box() {
     let ctx = egui::Context::default();
     let _ = frame_with_rects(&ctx, &mut w, Vec::new());
     let painted = frame_with_rects(&ctx, &mut w, Vec::new());
-    let at = crate::copy::testing::rects_of(&painted, NEW_FILE_LABEL.as_str());
+    // 命令栏「新建 ▾」⇒ 菜单里「空文件」。
+    let menu = crate::copy::testing::rects_of(&painted, crate::chrome::NEW_LABEL.as_str());
+    assert_eq!(menu.len(), 1, "命令栏上「新建」该恰好一颗：{painted:?}");
+    assert!(w.new_file_prompt().is_none(), "还没点，框就摆出来了");
+    let _ = frame_with_rects(
+        &ctx,
+        &mut w,
+        crate::rows::testing::click_at(menu[0].center()),
+    );
+    let painted = frame_with_rects(&ctx, &mut w, Vec::new());
+    let at = crate::copy::testing::rects_of(&painted, crate::chrome::NEW_FILE_ITEM.as_str());
     assert_eq!(
         at.len(),
         1,
-        "工具栏上「{NEW_FILE_LABEL}」该恰好一颗：{painted:?}",
-        NEW_FILE_LABEL = NEW_FILE_LABEL.as_str()
+        "「新建 ▾」菜单里「空文件」该恰好一项：{painted:?}"
     );
-    assert!(w.new_file_prompt().is_none(), "还没点，框就摆出来了");
     let _ = frame_with_rects(&ctx, &mut w, crate::rows::testing::click_at(at[0].center()));
     let p = w
         .new_file_prompt()
@@ -78,7 +86,14 @@ async fn clicking_the_toolbar_button_puts_up_the_box() {
     // 阴性对照：点「新建目录」摆的是另一个框，不是这一个（两颗按钮没接反）。
     w.cancel_new_file();
     let painted = frame_with_rects(&ctx, &mut w, Vec::new());
-    let mk = crate::copy::testing::rects_of(&painted, &crate::writeops::MKDIR_LABEL);
+    let menu = crate::copy::testing::rects_of(&painted, crate::chrome::NEW_LABEL.as_str());
+    let _ = frame_with_rects(
+        &ctx,
+        &mut w,
+        crate::rows::testing::click_at(menu[0].center()),
+    );
+    let painted = frame_with_rects(&ctx, &mut w, Vec::new());
+    let mk = crate::copy::testing::rects_of(&painted, crate::chrome::NEW_FOLDER_ITEM.as_str());
     let _ = frame_with_rects(&ctx, &mut w, crate::rows::testing::click_at(mk[0].center()));
     assert!(
         w.new_file_prompt().is_none(),

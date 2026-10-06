@@ -190,6 +190,7 @@ pub fn synth_rows(n: usize, seed: u64) -> Vec<super::source::Listed> {
                 link_dir: false,
                 mtime_secs: Some(1_000_000_000 + h % 900_000_000),
                 raw_name: None,
+                link_broken: false,
                 row: Row {
                     name,
                     path: p,

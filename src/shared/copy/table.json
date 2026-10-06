@@ -9406,37 +9406,22 @@
     },
     "rsFilewinShell.window.title": {
       "kind": "title",
-      "zh": "cc-monitor 文件 · {source}",
-      "args": ["source"]
-    },
-    "rsFilewinShell.search.rebuild": {
-      "kind": "action",
-      "zh": "重建索引",
-      "args": []
-    },
-    "rsFilewinShell.search.here": {
-      "kind": "control",
-      "zh": "只搜当前目录",
-      "args": []
+      "zh": "{tab} · {machine} · 文件",
+      "args": ["tab", "machine"]
     },
     "rsFilewinShell.search.hint": {
       "kind": "control",
-      "zh": "文件名，可用 ext: | ! *",
+      "zh": "搜文件名",
       "args": []
     },
     "rsFilewinShell.frame.truncated": {
       "kind": "body",
-      "zh": "这个目录条目太多，只拿到了前 {n} 条。没看见的文件不代表它不在。",
-      "args": ["n"]
-    },
-    "rsFilewinShell.frame.listing": {
-      "kind": "body",
-      "zh": "正在列…",
-      "args": []
+      "zh": "前 {n} / {total}+ 项 · 按名字搜可找全部",
+      "args": ["n", "total"]
     },
     "rsFilewinShell.frame.terminal": {
       "kind": "action",
-      "zh": "在此打开终端",
+      "zh": "终端",
       "args": []
     },
     "rsFilewinShell.intent.noPrefix": {
@@ -9699,16 +9684,6 @@
       "zh": "当前目录 {cwd} 开不了终端。要绝对路径，不含 .. 段、换行或 NUL",
       "args": ["cwd"]
     },
-    "rsFilewinGrep.hit.line": {
-      "kind": "body",
-      "zh": "{path}:{line}  {text}",
-      "args": ["path", "line", "text"]
-    },
-    "rsFilewinGrep.hit.lineMany": {
-      "kind": "body",
-      "zh": "{path}:{line}  {text}（这份里共 {matches} 行）",
-      "args": ["path", "line", "text", "matches"]
-    },
     "rsFilewinGrep.reply.badShape": {
       "kind": "error",
       "zh": "那台后端回的搜索结果读不懂。多半是它的版本不对，需要更新。",
@@ -9716,42 +9691,22 @@
     },
     "rsFilewinGrep.summary.line": {
       "kind": "body",
-      "zh": "{hits} 个文件里有（读了 {files} 个文件、{bytes} 字节）",
-      "args": ["hits", "files", "bytes"]
+      "zh": "{m} 处 · {n} 个文件",
+      "args": ["m", "n"]
     },
     "rsFilewinGrep.summary.skipped": {
       "kind": "body",
-      "zh": "；没读的：含 NUL 的 {binary} 个、太大的 {large} 个、别的盘上的 {mounts} 处、读不了的 {unreadable} 个；链接 {links} 条没进去",
-      "args": ["binary", "large", "mounts", "unreadable", "links"]
+      "zh": "跳过 {k}（过大 / 非文本）",
+      "args": ["k"]
     },
     "rsFilewinGrep.summary.stoppedHits": {
       "kind": "body",
-      "zh": "。列到上限就不往下走了，后面还有，换个小一点的目录再搜",
-      "args": []
+      "zh": "前 {n} 处 · 缩小目录可列全",
+      "args": ["n"]
     },
     "rsFilewinGrep.summary.stoppedBytes": {
       "kind": "body",
-      "zh": "。读到字节上限就不往下走了，后面的没看，换个小一点的目录再搜",
-      "args": []
-    },
-    "rsFilewinShell.grep.label": {
-      "kind": "control",
-      "zh": "按内容",
-      "args": []
-    },
-    "rsFilewinShell.grep.hint": {
-      "kind": "control",
-      "zh": "文件里的一段，按 Enter 就搜",
-      "args": []
-    },
-    "rsFilewinShell.grep.start": {
-      "kind": "control",
-      "zh": "搜内容",
-      "args": []
-    },
-    "rsFilewinShell.grep.stop": {
-      "kind": "control",
-      "zh": "取消",
+      "zh": "已达读取上限 · 缩小目录可搜全",
       "args": []
     },
     "rsChanHost.terminal.badReply": {
@@ -10084,11 +10039,6 @@
       "zh": "新建目录",
       "args": []
     },
-    "rsFilewinFind.ui.root": {
-      "kind": "body",
-      "zh": "索引的根目录：{root}",
-      "args": ["root"]
-    },
     "rsFilewinFind.round.findFailed": {
       "kind": "error",
       "zh": "搜索失败：{e}",
@@ -10124,55 +10074,10 @@
       "zh": "请求格式不对（内部错误）",
       "args": []
     },
-    "rsFilewinFind.hits.more": {
-      "kind": "body",
-      "zh": " · 已列出 {hitsCount} 条，往下滚动看更多",
-      "args": ["hitsCount"]
-    },
-    "rsFilewinFind.hits.line": {
-      "kind": "body",
-      "zh": "命中 {totalHits} 条（这一趟扫了 {scanned} 条，索引 {indexAgeSecs} 秒前建的）",
-      "args": ["totalHits", "scanned", "indexAgeSecs"]
-    },
-    "rsFilewinFind.hits.noIndex": {
-      "kind": "body",
-      "zh": "这台机器上的索引还没建过 —— 那不是「没搜到」",
-      "args": []
-    },
     "rsFilewinFind.firstBuild.line": {
       "kind": "body",
-      "zh": "正在建索引（首次约 {coldFirstBuildSecs} 秒）",
-      "args": ["coldFirstBuildSecs"]
-    },
-    "rsFilewinFind.freshness.truncated": {
-      "kind": "body",
-      "zh": " · 上一次扫到条目上限没扫完，这份索引不完整",
-      "args": []
-    },
-    "rsFilewinFind.freshness.holes": {
-      "kind": "body",
-      "zh": " · 有 {unreadableDirs} 个目录读不进去，这份索引有洞",
-      "args": ["unreadableDirs"]
-    },
-    "rsFilewinFind.freshness.stale": {
-      "kind": "body",
-      "zh": " · 需要更新",
-      "args": []
-    },
-    "rsFilewinFind.freshness.line": {
-      "kind": "body",
-      "zh": "索引 {entries} 条 · {residentBytes} 字节 · {ageSecs} 秒前扫完 · 扫描间隔 {interval} 秒",
-      "args": ["entries", "residentBytes", "ageSecs", "interval"]
-    },
-    "rsFilewinFind.freshness.notBuilt": {
-      "kind": "body",
-      "zh": "索引还没建过",
-      "args": []
-    },
-    "rsFilewinFind.freshness.unknown": {
-      "kind": "body",
-      "zh": "索引：还没问过这台机器",
-      "args": []
+      "zh": "首建文件清单 · {machine} · 约 {secs}s",
+      "args": ["machine", "secs"]
     },
     "rsFilewinFind.reply.badPath": {
       "kind": "error",
@@ -10214,11 +10119,6 @@
       "zh": "新标签页",
       "args": []
     },
-    "rsFilewinWorkspace.sideUi.closeHint": {
-      "kind": "body",
-      "zh": "关掉这个标签页",
-      "args": []
-    },
     "rsFilewinWorkspace.copyToOther.sameDir": {
       "kind": "error",
       "zh": "两栏是同一个目录，复制过去就是它自己",
@@ -10244,21 +10144,6 @@
       "zh": "这是这一栏最后一个标签页",
       "args": []
     },
-    "rsFilewinWorkspace.label.busyMark": {
-      "kind": "body",
-      "zh": "● ",
-      "args": []
-    },
-    "rsFilewinWorkspace.label.closeTab": {
-      "kind": "action",
-      "zh": "×",
-      "args": []
-    },
-    "rsFilewinWorkspace.label.newTab": {
-      "kind": "action",
-      "zh": "＋",
-      "args": []
-    },
     "rsFilewinWorkspace.label.copyAcross": {
       "kind": "action",
       "zh": "复制到另一栏",
@@ -10277,11 +10162,6 @@
     "rsFilewinBookmarks.bar.removeHint": {
       "kind": "body",
       "zh": "移出书签",
-      "args": []
-    },
-    "rsFilewinBookmarks.label.remove": {
-      "kind": "action",
-      "zh": "×",
       "args": []
     },
     "rsFilewinBookmarks.label.drop": {
@@ -10533,11 +10413,6 @@
       "kind": "body",
       "zh": "不存在",
       "args": []
-    },
-    "rsFilewinFind.freshness.skippedMounts": {
-      "kind": "body",
-      "zh": " · 有 {n} 个目录在另一个盘上，没进去，那底下的搜不到",
-      "args": ["n"]
     },
     "rsFilewinWorkspace.drag.hint": {
       "kind": "body",
@@ -11047,11 +10922,6 @@
     "rsFilewinRows.tip.sep": {
       "kind": "body",
       "zh": " · ",
-      "args": []
-    },
-    "rsFilewinRows.icon.warn": {
-      "kind": "body",
-      "zh": "⚠",
       "args": []
     },
     "rsFilewinFind.decodeFind.badHit": {
@@ -18936,17 +18806,17 @@
     },
     "rsFilewinChrome.nav.back": {
       "kind": "body",
-      "zh": "后退（Alt+←）",
+      "zh": "后退",
       "args": []
     },
     "rsFilewinChrome.nav.forward": {
       "kind": "body",
-      "zh": "前进（Alt+→）",
+      "zh": "前进",
       "args": []
     },
     "rsFilewinChrome.nav.up": {
       "kind": "body",
-      "zh": "上一级（Alt+↑）",
+      "zh": "上一级",
       "args": []
     },
     "rsFilewinChrome.nav.refresh": {
@@ -18961,7 +18831,7 @@
     },
     "rsFilewinChrome.hidden.hint": {
       "kind": "body",
-      "zh": "名字以点开头的文件。显示时字色淡一级，也可以切成不显示",
+      "zh": "显示名字以点开头的文件",
       "args": []
     },
     "rsFilewinChrome.status.count": {
@@ -18971,7 +18841,7 @@
     },
     "rsFilewinChrome.status.countHidden": {
       "kind": "body",
-      "zh": "{n} 项（另有 {hidden} 项隐藏文件没显示）",
+      "zh": "{n} 项 · 隐藏 {hidden}",
       "args": ["n", "hidden"]
     },
     "rsFilewinChrome.status.picked": {
@@ -18981,13 +18851,8 @@
     },
     "rsFilewinChrome.status.transfers": {
       "kind": "action",
-      "zh": "传输：{n} 个在跑",
+      "zh": "进度 {n}",
       "args": ["n"]
-    },
-    "rsFilewinChrome.command.grep": {
-      "kind": "action",
-      "zh": "按内容搜",
-      "args": []
     },
     "rsFilewinChrome.command.more": {
       "kind": "action",
@@ -18996,7 +18861,7 @@
     },
     "rsFilewinChrome.command.hidden": {
       "kind": "action",
-      "zh": "隐藏文件",
+      "zh": "显示隐藏文件",
       "args": []
     },
     "rsFilewinChrome.command.sidebar": {
@@ -19011,22 +18876,12 @@
     },
     "rsFilewinChrome.side.noBookmarks": {
       "kind": "body",
-      "zh": "还没有书签。点地址栏右端的 ☆ 把当前目录加进来",
-      "args": []
-    },
-    "rsFilewinChrome.side.thisMachine": {
-      "kind": "title",
-      "zh": "这台机器",
+      "zh": "无书签",
       "args": []
     },
     "rsFilewinChrome.side.home": {
       "kind": "action",
-      "zh": "家目录",
-      "args": []
-    },
-    "rsFilewinChrome.side.homeAsking": {
-      "kind": "body",
-      "zh": "正在问这台机器的家目录…",
+      "zh": "主目录",
       "args": []
     },
     "rsFilewinChrome.side.root": {
@@ -19166,7 +19021,7 @@
     },
     "rsFilewinShell.frame.unreadable": {
       "kind": "body",
-      "zh": "这个目录里有 {n} 项读不出来，没有列出。",
+      "zh": "{n} 项不可读 · 未列出",
       "args": ["n"]
     },
     "rsFilewinShell.reveal.hiddenShown": {
@@ -19398,6 +19253,291 @@
       "kind": "error",
       "zh": "账号 {name} 不可用，未启动",
       "args": ["name"]
+    },
+    "rsFilewinFind.age.secs": {
+      "kind": "body",
+      "zh": "{n}s",
+      "args": ["n"]
+    },
+    "rsFilewinFind.age.mins": {
+      "kind": "body",
+      "zh": "{n}m",
+      "args": ["n"]
+    },
+    "rsFilewinFind.age.hours": {
+      "kind": "body",
+      "zh": "{n}h",
+      "args": ["n"]
+    },
+    "rsFilewinFind.age.days": {
+      "kind": "body",
+      "zh": "{n}d",
+      "args": ["n"]
+    },
+    "rsFilewinFind.status.scope": {
+      "kind": "body",
+      "zh": "{scope} 以下 · {n} 个",
+      "args": ["scope", "n"]
+    },
+    "rsFilewinFind.status.count": {
+      "kind": "body",
+      "zh": "{n} 个",
+      "args": ["n"]
+    },
+    "rsFilewinFind.status.age": {
+      "kind": "body",
+      "zh": "文件清单 · {age} 前",
+      "args": ["age"]
+    },
+    "rsFilewinFind.status.truncated": {
+      "kind": "body",
+      "zh": "清单仅前 {n} 项",
+      "args": ["n"]
+    },
+    "rsFilewinFind.status.holes": {
+      "kind": "body",
+      "zh": "{n} 个目录无权限",
+      "args": ["n"]
+    },
+    "rsFilewinFind.status.skippedMounts": {
+      "kind": "body",
+      "zh": "其他盘 {n} 个目录未扫",
+      "args": ["n"]
+    },
+    "rsFilewinFind.empty.noMatch": {
+      "kind": "body",
+      "zh": "无匹配「{q}」",
+      "args": ["q"]
+    },
+    "rsFilewinFind.action.retry": {
+      "kind": "action",
+      "zh": "重试",
+      "args": []
+    },
+    "rsFilewinFind.action.refresh": {
+      "kind": "action",
+      "zh": "刷新",
+      "args": []
+    },
+    "rsFilewinFind.action.searchMachine": {
+      "kind": "action",
+      "zh": "搜整台机器",
+      "args": []
+    },
+    "rsFilewinFind.scope.under": {
+      "kind": "control",
+      "zh": "当前目录以下",
+      "args": []
+    },
+    "rsFilewinFind.scope.machine": {
+      "kind": "control",
+      "zh": "整台机器",
+      "args": []
+    },
+    "rsFilewinRows.hitCol.relevance": {
+      "kind": "title",
+      "zh": "名称 · 按相关度",
+      "args": []
+    },
+    "rsFilewinRows.hitCol.location": {
+      "kind": "title",
+      "zh": "位置",
+      "args": []
+    },
+    "rsFilewinRows.hitTail.end": {
+      "kind": "body",
+      "zh": "已到底",
+      "args": []
+    },
+    "rsFilewinRows.hitTail.failed": {
+      "kind": "error",
+      "zh": "加载更多失败",
+      "args": []
+    },
+    "rsFilewinFind.status.notBuilt": {
+      "kind": "body",
+      "zh": "文件清单未建 · 结果不全",
+      "args": []
+    },
+    "rsFilewinShell.search.byName": {
+      "kind": "control",
+      "zh": "名字",
+      "args": []
+    },
+    "rsFilewinShell.search.byContent": {
+      "kind": "control",
+      "zh": "内容",
+      "args": []
+    },
+    "rsFilewinShell.search.hintContent": {
+      "kind": "control",
+      "zh": "搜文件内容，回车",
+      "args": []
+    },
+    "rsFilewinGrep.summary.running": {
+      "kind": "body",
+      "zh": "搜索中…",
+      "args": []
+    },
+    "rsFilewinGrep.detail.binary": {
+      "kind": "body",
+      "zh": "非文本 {n}",
+      "args": ["n"]
+    },
+    "rsFilewinGrep.detail.large": {
+      "kind": "body",
+      "zh": "过大 {n}",
+      "args": ["n"]
+    },
+    "rsFilewinGrep.detail.mounts": {
+      "kind": "body",
+      "zh": "其他盘 {n}",
+      "args": ["n"]
+    },
+    "rsFilewinGrep.detail.unreadable": {
+      "kind": "body",
+      "zh": "不可读 {n}",
+      "args": ["n"]
+    },
+    "rsFilewinGrep.detail.links": {
+      "kind": "body",
+      "zh": "链接 {n}",
+      "args": ["n"]
+    },
+    "rsFilewinGrep.action.stop": {
+      "kind": "action",
+      "zh": "停",
+      "args": []
+    },
+    "rsFilewinGrep.action.detail": {
+      "kind": "action",
+      "zh": "详情",
+      "args": []
+    },
+    "rsFilewinGrep.hit.count": {
+      "kind": "body",
+      "zh": "{n} 处",
+      "args": ["n"]
+    },
+    "rsFilewinChrome.command.new": {
+      "kind": "action",
+      "zh": "新建",
+      "args": []
+    },
+    "rsFilewinChrome.command.newFolder": {
+      "kind": "action",
+      "zh": "文件夹",
+      "args": []
+    },
+    "rsFilewinChrome.command.newFile": {
+      "kind": "action",
+      "zh": "空文件",
+      "args": []
+    },
+    "rsFilewinChrome.command.pickFirst": {
+      "kind": "body",
+      "zh": "先选中一项",
+      "args": []
+    },
+    "rsFilewinChrome.command.termHint": {
+      "kind": "body",
+      "zh": "在此目录开终端",
+      "args": []
+    },
+    "rsFilewinChrome.side.noBookmarksHint": {
+      "kind": "body",
+      "zh": "地址栏 ☆ 收藏当前目录",
+      "args": []
+    },
+    "rsFilewinChrome.side.homeFailed": {
+      "kind": "error",
+      "zh": "主目录读取失败 · 点击重试",
+      "args": []
+    },
+    "rsFilewinChrome.status.hits": {
+      "kind": "body",
+      "zh": "{n} 个结果",
+      "args": ["n"]
+    },
+    "rsFilewinChrome.status.progress": {
+      "kind": "action",
+      "zh": "进度",
+      "args": []
+    },
+    "rsFilewinChrome.status.zoom": {
+      "kind": "action",
+      "zh": "{pct}%",
+      "args": ["pct"]
+    },
+    "rsFilewinChrome.status.zoomReset": {
+      "kind": "body",
+      "zh": "回 100%",
+      "args": []
+    },
+    "rsFilewinShell.open.notFound": {
+      "kind": "error",
+      "zh": "打开失败 · {name} · 路径不存在",
+      "args": ["name"]
+    },
+    "rsFilewinShell.open.denied": {
+      "kind": "error",
+      "zh": "打开失败 · {name} · 无权限",
+      "args": ["name"]
+    },
+    "rsFilewinShell.open.notDir": {
+      "kind": "error",
+      "zh": "打开失败 · {name} · 不是目录",
+      "args": ["name"]
+    },
+    "rsFilewinShell.open.other": {
+      "kind": "error",
+      "zh": "打开失败 · {name}",
+      "args": ["name"]
+    },
+    "rsFilewinShell.open.up": {
+      "kind": "action",
+      "zh": "回上一级",
+      "args": []
+    },
+    "rsFilewinShell.open.home": {
+      "kind": "action",
+      "zh": "回主目录",
+      "args": []
+    },
+    "rsFilewinShell.open.copyDetail": {
+      "kind": "action",
+      "zh": "复制详情",
+      "args": []
+    },
+    "rsFilewinShell.frame.searchByName": {
+      "kind": "action",
+      "zh": "按名字搜",
+      "args": []
+    },
+    "rsFilewinShell.frame.empty": {
+      "kind": "body",
+      "zh": "空目录",
+      "args": []
+    },
+    "rsFilewinShell.frame.emptyUpload": {
+      "kind": "action",
+      "zh": "上传文件",
+      "args": []
+    },
+    "rsFilewinKind.type.linkTo": {
+      "kind": "body",
+      "zh": "链接 → {kind}",
+      "args": ["kind"]
+    },
+    "rsFilewinKind.type.linkBroken": {
+      "kind": "body",
+      "zh": "链接 · 目标不存在",
+      "args": []
+    },
+    "rsFilewinPreview.ui.meta": {
+      "kind": "body",
+      "zh": "{size} · {time}",
+      "args": ["size", "time"]
     }
   }
 }
