@@ -74,7 +74,7 @@ fn the_cli_product_is_one_cmd_and_a_refusal_is_the_refused_code() {
     );
 }
 
-/// `launch-local` 的入参按形状收（缺必填 / 多一格 / 旧形状 ⇒ `bad_args`），成品 `{cmd, launchId, account}`。
+/// `launch-local` 的入参按形状收（缺必填 / 多一格 / 旧形状 ⇒ `bad_args`），成品 `{cmd, account}`。
 #[test]
 fn the_local_request_and_product_have_their_registered_shapes() {
     for bad in [
@@ -92,7 +92,7 @@ fn the_local_request_and_product_have_their_registered_shapes() {
     .unwrap();
     let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
     keys.sort_unstable();
-    assert_eq!(keys, ["account", "cmd", "launchId"]);
+    assert_eq!(keys, ["account", "cmd"]);
     let entry = crate::platform::paths::installed_ccm_entry().unwrap();
     let head = if crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL {
         format!("& {} ", crate::platform::shell::dialect::ps_literal(&entry))

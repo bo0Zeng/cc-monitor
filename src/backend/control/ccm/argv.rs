@@ -47,8 +47,6 @@ pub(crate) mod flag {
     pub(crate) const CCM_VERSION: &str = "--ccm-version";
     pub(crate) const CCM_PROBE: &str = "--ccm-probe";
     pub(crate) const CCM_SID: &str = "--ccm-sid";
-    /// 身份 token（`CCM_LAUNCH_ID`）：本机起新会话那一方据它回填 sid。
-    pub(crate) const LAUNCH_ID: &str = "--ccm-launch-id";
     /// 直接给账号配置目录（说不出账号名的那一形：分叉继承源会话的目录）。
     pub(crate) const ACCOUNT_DIR: &str = "--account-dir";
     /// 分隔符：最后一个 `--` 左边交 agent、右边归 ccm。
@@ -134,8 +132,6 @@ pub(crate) struct Opts {
     pub(crate) agent: String,
     pub(crate) launcher: String,
     pub(crate) ccm_sid: String,
-    /// `--ccm-launch-id`；空 = 没给。
-    pub(crate) launch_id: String,
     /// `--account-dir`；空 = 没给。
     pub(crate) account_dir: String,
     pub(crate) print: bool,
@@ -210,7 +206,6 @@ pub(crate) fn blank_opts(left: &[String]) -> Opts {
         agent: Defaults::agent().to_string(),
         launcher: String::new(),
         ccm_sid: String::new(),
-        launch_id: String::new(),
         account_dir: String::new(),
         print: Defaults::PRINT,
         detach: Defaults::DETACH,
@@ -241,7 +236,6 @@ const RIGHT_WORDS: &[&str] = &[
     flag::CCM_VERSION,
     flag::CCM_PROBE,
     flag::CCM_SID,
-    flag::LAUNCH_ID,
     flag::ACCOUNT_DIR,
 ];
 
@@ -302,7 +296,6 @@ pub(crate) fn word_at(args: &[String], i: usize) -> Result<Word, Die> {
         | flag::LAUNCHER
         | flag::ATTACH
         | flag::CCM_SID
-        | flag::LAUNCH_ID
         | flag::ACCOUNT_DIR
         | flag::TMUX_SIZE => {
             let (v, n) = one()?;
@@ -345,7 +338,6 @@ pub(crate) fn apply_word(o: &mut Opts, w: &Word, at: usize) -> Result<Option<Ear
         flag::LAUNCHER => o.launcher = v(0),
         flag::ATTACH => o.attach_name = v(0),
         flag::CCM_SID => o.ccm_sid = v(0),
-        flag::LAUNCH_ID => o.launch_id = v(0),
         flag::ACCOUNT_DIR => o.account_dir = v(0),
         flag::DETACH => o.detach = true,
         flag::TMUX_SIZE => o.tmux_size = v(0),
@@ -481,12 +473,6 @@ fn validate(o: &Opts) -> Result<(), Die> {
         return die(copy_text(
             "beArgv.validate.badCcmSid",
             &[("sid", &format!("{:?}", o.ccm_sid))],
-        ));
-    }
-    if !o.launch_id.is_empty() && !relay_route_core::segment_is_safe(&o.launch_id) {
-        return die(copy_text(
-            "beArgv.validate.badLaunchId",
-            &[("id", &format!("{:?}", o.launch_id))],
         ));
     }
     if !o.account_dir.is_empty() && !acct_core::config_dir_ok(&o.account_dir) {

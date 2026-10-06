@@ -263,6 +263,8 @@ enum EnvKeyClaim {
     Quotes,
     /// 同一句式，但**主语不是进程环境**（说的是别的抽取器抠出几样东西）。不判计数词。
     OtherSubject,
+    /// **发版记录**：说的是那一版发出去时读几个、读哪几个，是历史，不追今天的数；数正好对上也不算断言当下。
+    Released,
 }
 
 /// 「从 `/proc/<pid>/environ` 读几个」这句话在盘上的**每一份副本** → 它是哪一类。
@@ -287,7 +289,7 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
     ),
     (
         "src/doc/IPC-PROTOCOL.md",
-        "`--session-accounts`（A2；",
+        "`--session-accounts`（A2）",
         EnvKeyClaim::Asserts,
     ),
     (
@@ -323,9 +325,8 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
     //
     // 挑锚点的硬约束（09-09 撞过，两条门禁同拍红，下一个来加锚点的人照此办）：
     // **锚点是拿来被匹配的串，不是拿来复述内容的** ⇒ 里面不许出现别的判据正在数的字面量。
-    // 第一版锚点把原句里那两个环境变量名照抄了进来，于是
-    // `launcher_identity_registry`（数「身份那个变量名在 `src/frontend/shell/src` 生产段里几处」，期望 1）
-    // 与 `local_read_surface_registry`（数「本机读面每份文件几行」）**双双多算一处**。
+    // 第一版锚点把原句里的环境变量名照抄了进来，于是
+    // `local_read_surface_registry`（数「本机读面每份文件几行」）**多算一处**。
     //
     // 病灶**不在注释**（现打核过）：`production_code` 先剥块注释、再整行滤掉 `//` 开头的行，
     // 所以上面这几段解释一个字都进不了那两条判据的语料。真正的成因是本表**住在顶层、
@@ -334,12 +335,11 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
     // （本文件那个测试模块**里面**的字面量剥得掉 —— 同文件别处几处带本机数据目录名的串就在
     //  里面、从来没被数进去过；剥不掉的恰恰是模块**外面**的这三张表。这个不对称是全部成因。）
     // ⇒ 这张表里的每一个锚点，都要按「它会被全仓的字面量计数判据看见」来挑。
-    // `Asserts` → `Quotes`：那一条是**发版记录**（说的是它那一版发出去时读几个键 —— 那时确实两个），
-    //   `ANTHROPIC_BASE_URL` 那个第三键进来之后它照旧是真的历史；改写发版记录去追今天的计数不对。当下的断言住 INVARIANTS / IPC-PROTOCOL。
+    // 发版记录：说的是它那一版发出去时读哪几个键，是历史；改写发版记录去追今天的计数不对。当下的断言住 INVARIANTS / IPC-PROTOCOL。
     (
         "CHANGELOG.md",
         "绝不回传整个环境快照 —— 那里面有用户全部的密钥类环境变量",
-        EnvKeyClaim::Quotes,
+        EnvKeyClaim::Released,
     ),
     // ── 在引述那句话本身的那几份（逐字带着旧说法是故意的）────────────────
     (

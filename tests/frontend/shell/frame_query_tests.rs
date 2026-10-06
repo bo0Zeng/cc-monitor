@@ -309,7 +309,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ),
     (
         "launch-local",
-        "本机起会话整条：本机后端出成品 `{cmd, launchId}`（`control/launch_render/local.rs`）；前端 `src/frontend/ui/launch-render.ts::planLocalLaunch`，\
+        "本机起会话整条：本机后端出成品 `{cmd, account}`（`control/launch_render/local.rs`）；前端 `src/frontend/ui/launch-render.ts::planLocalLaunch`，\
          monitor 只剩开终端窗口（`open_local_terminal`）",
     ),
     // 删会话 · 分叉：两件改世界的事本来就在那台后端，monitor 只剩转交 ⇒ 转交删了，界面直接说。

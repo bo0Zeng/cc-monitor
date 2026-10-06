@@ -32,7 +32,7 @@ fn settled(r: &LocalLaunchRequest) -> Settled {
     })
 }
 
-fn go(r: &LocalLaunchRequest, f: &Facts) -> Result<Planned, String> {
+fn go(r: &LocalLaunchRequest, f: &Facts) -> Result<String, String> {
     plan(r, &settled(r), f)
 }
 
@@ -50,92 +50,52 @@ const WINDOWS: Facts = Facts {
     entry: || Some(r"C:\Users\u\.cc-monitor\bin\ccm.exe".into()),
 };
 
-/// 每一形的成品（期望手写）：都以 `ccm ` 打头，起 agent 的那几格带上交回调用方的那个身份 token。
+/// 每一形的成品（期望手写）：都以 `ccm ` 打头。
 #[test]
 fn every_local_launch_shape_is_one_ccm_line() {
-    // resume：身份 token 就是那个 sid。
     let mut r = req(resume());
     r.tmux_name = Some("p-cc".into());
     r.account = named("work");
     let out = go(&r, &POSIX).unwrap();
     assert_eq!(
-        out.cmd,
-        format!("ccm --resume {SID} -- --ccm-tmux=p-cc --ccm-sid={SID} --ccm-agent claude --account work --ccm-launch-id {SID}")
+        out,
+        format!("ccm --resume {SID} -- --ccm-tmux=p-cc --ccm-sid={SID} --ccm-agent claude --account work")
     );
-    assert_eq!(out.launch_id.as_deref(), Some(SID));
 
     // 账号 0 ⇒ `--base`；缺席 ⇒ 继承（一个账号旗标都不吐）。
     r.account = Some(AccountAsk::Base);
-    assert!(go(&r, &POSIX).unwrap().cmd.contains(" --base "));
+    assert!(go(&r, &POSIX).unwrap().ends_with(" --base"));
     r.account = None;
-    let inherit = go(&r, &POSIX).unwrap().cmd;
+    let inherit = go(&r, &POSIX).unwrap();
     assert!(
         !inherit.contains("--base") && !inherit.contains("--account"),
         "{inherit}"
     );
 
-    // 新起：身份 token 是现铸的 nonce，命令里带的就是交回去的那一个。
+    // 新起。
     let mut n = req(LocalAction::New);
     n.tmux_name = Some("w-cc".into());
-    let out = go(&n, &POSIX).unwrap();
-    let tok = out.launch_id.clone().unwrap();
-    assert_eq!(tok.len(), 36);
     assert_eq!(
-        out.cmd,
-        format!("ccm -- new --ccm-tmux=w-cc --ccm-agent claude --ccm-launch-id {tok}")
+        go(&n, &POSIX).unwrap(),
+        "ccm -- new --ccm-tmux=w-cc --ccm-agent claude"
     );
 
     // 自定义启动命令 ⇒ `--launcher`。
     n.launcher = Some("ccr code".into());
-    assert!(go(&n, &POSIX)
-        .unwrap()
-        .cmd
-        .contains(" --launcher 'ccr code'"));
+    assert!(go(&n, &POSIX).unwrap().contains(" --launcher 'ccr code'"));
 
     // 没有会话名 ⇒ 直路（命令照样是那一行 `ccm …`，只是不建 tmux）。
     let mut d = req(resume());
     d.account = Some(AccountAsk::Base);
     assert_eq!(
-        go(&d, &POSIX).unwrap().cmd,
-        format!("ccm --resume {SID} -- --ccm-agent claude --base --ccm-launch-id {SID}")
+        go(&d, &POSIX).unwrap(),
+        format!("ccm --resume {SID} -- --ccm-agent claude --base")
     );
 
-    // 接回：不起 agent ⇒ 不带身份 token。
+    // 接回：不起 agent。
     let mut a = req(LocalAction::Attach);
     a.tmux_name = Some("p-cc".into());
-    let out = go(&a, &POSIX).unwrap();
-    assert_eq!(out.cmd, "ccm -- --attach p-cc");
-    assert_eq!(out.launch_id, None);
-}
-
-/// 身份 token 落进 agent 进程环境、并交回调用方：交回去的那一个 == 那一行 `ccm` 自己解析出来的 `--ccm-launch-id`
-/// （`ccm` 在最终 exec 那一处把它放进 `CCM_LAUNCH_ID`，那一半由 `ccm/plan_tests.rs` 钉）。resume 用 sid，新起用现铸的 nonce。
-#[test]
-fn the_identity_token_is_planted_and_handed_back() {
-    let parsed_id = |cmd: &str| -> String {
-        let words: Vec<String> = cmd.split_whitespace().map(str::to_string).collect();
-        // Windows 那一行是 `& '<入口>' …`。
-        let skip = if words[0] == "&" { 2 } else { 1 };
-        assert!(words[0] == "ccm" || words[1] == WIN_ENTRY_LITERAL, "{cmd}");
-        match crate::control::ccm::argv::parse(&words[skip..]) {
-            Ok(crate::control::ccm::argv::Parsed::Opts(o)) => o.launch_id,
-            other => panic!("`ccm` 不认这一行：{cmd}（{:?}）", other.err()),
-        }
-    };
-    let mut r = req(resume());
-    r.tmux_name = Some("p-cc".into());
-    let out = go(&r, &POSIX).unwrap();
-    assert_eq!(out.launch_id.as_deref(), Some(SID));
-    assert_eq!(parsed_id(&out.cmd), SID);
-    let a = go(&req(LocalAction::New), &POSIX).unwrap();
-    let b = go(&req(LocalAction::New), &POSIX).unwrap();
-    let (ta, tb) = (a.launch_id.clone().unwrap(), b.launch_id.clone().unwrap());
-    assert_ne!(ta, tb, "两次新起铸出了同一个 token");
-    assert_eq!(parsed_id(&a.cmd), ta);
-    assert_eq!(
-        parsed_id(&go(&req(LocalAction::New), &WINDOWS).unwrap().cmd).len(),
-        36
-    );
+    assert_eq!(go(&a, &POSIX).unwrap(), "ccm -- --attach p-cc");
 }
 
 /// Windows 本机：没有 tmux ⇒ 一律直路（`ccm` 在那个 PowerShell 窗口里起 agent）；接回说不出 ⇒ 拒。
@@ -145,8 +105,8 @@ fn windows_launches_go_the_direct_way_and_attach_is_refused() {
     r.tmux_name = Some("p-cc".into());
     r.account = named("work");
     assert_eq!(
-        go(&r, &WINDOWS).unwrap().cmd,
-        format!("& {WIN_ENTRY_LITERAL} --resume {SID} -- --ccm-agent claude --account work --ccm-launch-id {SID}")
+        go(&r, &WINDOWS).unwrap(),
+        format!("& {WIN_ENTRY_LITERAL} --resume {SID} -- --ccm-agent claude --account work")
     );
     let mut a = req(LocalAction::Attach);
     a.tmux_name = Some("p-cc".into());
@@ -188,6 +148,6 @@ fn emit_local_launch_command_for_e2e() {
     r.launcher = std::env::var("P3T_E2E_LAUNCHER").ok();
     r.account = Some(AccountAsk::Base);
     r.tmux_name = Some(name);
-    let cmd = go(&r, &POSIX).expect("渲染不出来 —— e2e 无对象可跑").cmd;
+    let cmd = go(&r, &POSIX).expect("渲染不出来 —— e2e 无对象可跑");
     println!("P3T_CMD<<<{cmd}>>>");
 }

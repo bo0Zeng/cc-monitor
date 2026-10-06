@@ -706,7 +706,7 @@ export function ccBusControlShim(
 // 判据按旧命令名答话（`render_ccm_launch` · `resume_history_session` / `new_local_session` / `render_local_attach`〔散文墓碑〕）。
 // 今天是一发 `chan_call`（op = `launch-render-cli` · `launch-local`）⇒ 本节把那一发译回旧名字交给判据手里的 `invoke` 替身：
 // - 那一行：替身回串 ⇒ `{cmd}`；没答 ⇒ 一个认得出的中性替身 `ccm <rendered:请求>`；抛 ⇒ 对端拒（码 `refused`，原话）。
-// - 本机起会话：按 `action.kind` 译回三条旧命令之一（旧形参），回 `{cmd, launchId}`（新起那一格的 token = 替身回的串）；
+// - 本机起会话：按 `action.kind` 译回三条旧命令之一（旧形参），回 `{cmd, account}`；
 //   抛 ⇒ 对端拒（码 `refused`）。开窗那一跳（`open_local_terminal`）原样交给替身。
 /**
  * 一发 `launch-local` 的请求体 ⇒ 它从前那三条 Tauri 命令（见本节头注）里的哪一条 ＋ 旧形参。
@@ -769,14 +769,8 @@ export function launchRenderShim(
         const o = launchOutcome(raw);
         if (o.unavailable !== undefined) throw refusedReply("account_unavailable", "unavailable", o.unavailable);
         const out = o.cmd;
-        if (name === "render_local_attach") return chanReply({ cmd: out ?? "ccm <backend-rendered-attach>", launchId: null, account: null });
-        if (name === "new_local_session")
-          return chanReply({
-            cmd: "ccm <backend-rendered-local-line>",
-            launchId: typeof out === "string" && out !== "" ? out : null,
-            account: o.account,
-          });
-        return chanReply({ cmd: "ccm <backend-rendered-local-line>", launchId: null, account: o.account });
+        if (name === "render_local_attach") return chanReply({ cmd: out ?? "ccm <backend-rendered-attach>", account: null });
+        return chanReply({ cmd: "ccm <backend-rendered-local-line>", account: o.account });
       }
       default:
         return inner(cmd, args);

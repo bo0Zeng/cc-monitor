@@ -729,9 +729,6 @@ fn exec_direct(d: &plan::Direct) -> i32 {
     if d.unset_config_dir && !cfg_env.is_empty() {
         std::env::remove_var(cfg_env);
     }
-    if !d.launch_id.is_empty() {
-        std::env::set_var(plan::LAUNCH_ID_ENV, &d.launch_id);
-    }
     if let Some(url) = &d.relay {
         // 钥匙从这台的钥匙文件读进 agent 进程环境（不进 argv、不进打印出来的命令）。读不到 ⇒ 不起（注进去每一发都被中转拒）。
         match crate::accounts::upstream_select::endpoint::keyed_for_exec(url, &|k| {

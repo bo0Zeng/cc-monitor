@@ -2085,11 +2085,10 @@ CLI 面（`--launch-render-cli`）从 `inbound::REGISTRY` 派生，入参从 std
 （原 monitor `history.rs` 的 `new_local_session` / `resume_history_session` / `render_local_attach`〔散文墓碑〕搬进本机后端。）
 POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux ⇒ 直路（`ccm` 在那个 PowerShell 窗口里起 agent），接回说不出 ⇒ 拒。
 同 `launch-render-cli`，叫的是这台入口的绝对路径（Windows 上写成 `& '<家>\.cc-monitor\bin\ccm.exe' …`）。
-起 agent 的那几形带 `--ccm-launch-id <token>`（resume 用 sid，新起现铸一个 nonce）：`ccm` 把它放进 agent 进程环境（`CCM_LAUNCH_ID`），调用方拿它回填新会话的 sid。
 
 ```text
 → {"id":"l1","cmd":"launch-local","args":{"agent":"claude","action":{"kind":"new"},"cwd":"/w","launcher":null,"account":{"kind":"follow"},"tmuxName":"w-cc","defaultLauncher":"claude"}}
-← {"kind":"reply","id":"l1","ok":true,"data":{"cmd":"/home/u/.cc-monitor/bin/ccm -- new --ccm-tmux=w-cc --ccm-agent claude --account z --ccm-launch-id …","launchId":"…",
+← {"kind":"reply","id":"l1","ok":true,"data":{"cmd":"/home/u/.cc-monitor/bin/ccm -- new --ccm-tmux=w-cc --ccm-agent claude --account z",
      "account":{"name":"z","configDir":"/home/u/.cc-monitor/accounts/z","model":null}}}
 ```
 
@@ -2103,10 +2102,9 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 | `tmuxName` | → | 建进 tmux 时的会话名（界面铸名口铸的，这里不铸）；缺 ⇒ 直路 |
 | `defaultLauncher` | → | 这一家 agent 的默认启动器（等于它就不吐 `--launcher`）|
 | `cmd` | ← | 那一行 `ccm …` |
-| `launchId` | ← | 交给 `ccm` 放进 agent 进程环境的身份 token；接回那一格 `null` |
 | `account` | ← | 同 `launch-render-cli`（本机那一行不带模型 ⇒ `model` 恒 `null`）|
 
-**错误码**：`bad_args` · `refused`（坏输入 · 目录不在 · Windows 上接回）· `account_unavailable`（同 `launch-render-cli`，带同一形 `data`）。只上流面（`cli_control::STREAM_ONLY`：回的 token 要交回界面）。
+**错误码**：`bad_args` · `refused`（坏输入 · 目录不在 · Windows 上接回）· `account_unavailable`（同 `launch-render-cli`，带同一形 `data`）。只上流面（`cli_control::STREAM_ONLY`）。
 
 #### 起会话那一行在最终 exec 那一处定的几样（`ccm`）
 
@@ -2117,7 +2115,7 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
   钥匙在 `ccm` 进程里拼进 agent 的环境，不进 argv、不进 shell；用户自己设了 `ANTHROPIC_BASE_URL` ⇒ 不注入、说一句。
   环境里继承来的是**我们的中转那一形**（外层 shell / 上一趟留下的，属于别的号）⇒ 不认：按**这一发的目标账号**重问；
   这一发不注入 ⇒ 清掉它。容器路（`--ccm-tmux`）不把它带进 pane —— pane 里那一趟走到这里自己问（只带用户自己的端点）。
-- **身份**：`--ccm-launch-id` ⇒ `CCM_LAUNCH_ID`；`--ccm-sid=` ⇒ tmux 会话上的 `@ccm_sid`。
+- **身份**：`--ccm-sid=` ⇒ tmux 会话上的 `@ccm_sid`。
 - **账号**：`--account <名>` · `--account-dir <目录>`（命令行上直接给目录）· `--base`。
 - 同号会话**有活着的 agent 进程**才回接那个窗口；只剩窗口上的标记（进程已退）⇒ 原地续上。
 
@@ -4302,7 +4300,7 @@ rc=2
 
 带参数 exec = 一次性查询模式，干完即退、**不进流式协议**：
 
-- `--list-projects` → 每行 `{dirName, projectPath, sessionCount, lastActivityMs, sessionIds}`。`sessionIds`（`K-R83`，09-12）= 该项目下**全部会话 sid**（升序，`<sid>.jsonl` 的 stem，与 `--list-sessions` 的 `sessionId` 同一个字符串），**与 `sessionCount` 恒等长**。★ 它在的理由：客户端侧的「星标数 / 隐藏数 / 有没有活会话」三个数**全部按 sid 索引**，缺的一直是「这个项目下有哪几个 sid」——带上它，客户端**一次调用**就算得出，不必每个项目再发一次 `--list-sessions`（那是 N 次进程 spawn，而项目列表是常开界面）。⚠ **它不在 `sessionCount` 之外多读一个字节**（同一趟 `read_dir`）。⚠ **客户端读法**：字段**不在**（旧后端）⇒ 那三个数是「**不知道**」，**不是 0**；字段在但与 `sessionCount` 长度对不上 ⇒ 这一行坏了，同样按「不知道」处理，**不许**拿手上那几个算出一个看起来像真值的少数
+- `--list-projects` → 每行 `{dirName, projectPath, sessionCount, lastActivityMs}`。
 - `--list-sessions <project_dir>` → 每行 `{sessionId, jsonlPath, startedAtMs, updatedAtMs, messageCountApprox, firstUserExcerpt, aiTitle, cwd}`
 - 工作目录是这台家里 `~/.cc-monitor/autostart/` 的会话（不该出现在历史里的那几趟 `claude`，例如替号开额度窗口的一句）：`--list-projects` 不出那一组，流上也不为它的 pidfile 发 `session_added`。认原样路径与解析过链接的那一形；判据一处 `history_query::hidden_cwd`。后端不建、不写这个目录。
 - `--read-session <jsonl_path>` → 原样透传该 jsonl 字节（monitor 侧走既有 `parse_line` 管线）
@@ -4318,7 +4316,7 @@ rc=2
 > monitor 侧的 fan-out 消费者同拍删除。`SUBCOMMANDS` 27 → 25（另一条是 `--oneshot-session`）。〕
 
 - `--list-accounts`（A2 多账号，`src/backend/observe/accounts_query.rs`）→ 读账号库清单（`~/.cc-monitor/accounts/accounts.json`，契约 v1）。**首行** `{"kind":"accounts-meta","enabled":bool,"acctsDir","manifestPath","updatedAt","sharedStore","count","error","unsupported"}`，其后每账号一行 `{name,email,configDir,isDefault,mode,exists,loggedIn}`。**"未启用多账号"是正常状态**：manifest 缺失/坏/版本不支持 → `enabled:false` + `error` 人话原因 + **exit 0**（不是错误）。`loggedIn` 仅 stat `.credentials.json` 存在性。账号库目录只跟着家走：`$HOME/.cc-monitor/accounts`（没有另指位置的参数或环境变量）
-- `--session-accounts`（A2；`launchId` 是 `K-P5f`）→ 扫 `<claude_dir>/sessions/<PID>.json` 拿 pid，读 `/proc/<pid>/environ` **只抠三个写死的键**（`CLAUDE_CONFIG_DIR` · `CCM_LAUNCH_ID` ·`ANTHROPIC_BASE_URL`——最后那个的值带中转钥匙，只折成 `viaRelay` 一个布尔、值本身不出参；**键名不是参数**，所以这条查询不是「任意环境变量读」原语，也**绝不回传整个环境快照**），`CLAUDE_CONFIG_DIR` 反查 manifest 得账号名。每条一行 `{pid,sessionId,cwd,configDir,account,bare,alive,launchId,viaRelay}`（`viaRelay` = 这条会话的上游地址是不是本机中转那一形：`true` / `false` / `null` = 不知道（进程已死 / 环境这一刻取不到）；机器页「停」本机后端之前据它数几条会断；老后端不出这个键 ⇒ 读成 `null`）。`account:null` = 查不到（**不猜**）；**`bare:true` = 进程活着、`/proc/<pid>/environ` 这一刻读得到、而没设 `CLAUDE_CONFIG_DIR`（裸起）——这个布尔的语义钉死在那一个变量上，加了第二个键也没有拓宽它**（没设 `CCM_LAUNCH_ID` 由 `launchId:null` 自己表达）。⚠ 「读得到」这个合取项是 `K-R21`（09-03）补的，**语义是收窄不是拓宽**：environ 在 exec 窗口里（60–140 µs）与进程成僵尸之后**读得到却回 0 字节 / 读不到**，从前那一刻会被报成斩钉截铁的 `account:"<账号0>"` + `bare:true`，而 `alive` 仍是 `true`（判活读的是 `/proc/<pid>/stat`，与 `environ` 不是同一次读）⇒ **一条真跑在别的账号下的会话会被报成账号 0 的，且无声无息**。现在那一刻报 `configDir:null` + `account:null` + `bare:false`（=「不知道」，**出参形状没变、没有新字段**）。`launchId` = 起会话方铸进这条会话进程环境的**身份 token**（写侧是 `ccm` 自己：`control/ccm/plan.rs::LAUNCH_ID_ENV`），`null` = **不作数**，五种原因合并且**刻意不区分**：没设 / 形状过不了白名单（`[A-Za-z0-9_-]`，1..=128）/ **同一个 token 落在一条以上活会话上** / 进程已死 / **读那一刻环境取不到**。⚠ 第五种是 `K-R21` 现打出来的，**它一直都在、只是从前混在「没设」里数不出来**（读侧那个 `Option` 装着四件事）——这不是新增了一种行为，是把「四种」这句旧话订正成实话；`configDir` 那一半已经把它拆出来了，身份这一半仍按「要区分就得给出参加状态位 = 改上线契约」那条裁定合并着。⚠ **`launchId` 不是硬真相**：它是**继承型**环境变量（claude spawn 的子进程原样继承），后端只能判「同一批里唯一」，判不出「确实是它的」——父会话已退出时那个继承值仍会被报出来。**additive**：老后端不出这个键，下游读成 `null`。⇒ 账号那一半（`configDir`/`account`/`bare`）仍是"某条**正在跑**的会话属于哪个账号"的唯一硬真相（会话 jsonl 里没有任何账号字段）；身份那一半（`launchId`）**不是**，别把上一句读到它头上
+- `--session-accounts`（A2）→ 扫 `<claude_dir>/sessions/<PID>.json` 拿 pid，读 `/proc/<pid>/environ` **只抠两个写死的键**（`CLAUDE_CONFIG_DIR` · `ANTHROPIC_BASE_URL`——后者的值带中转钥匙，只折成 `viaRelay` 一个布尔、值本身不出参；**键名不是参数**，所以这条查询不是「任意环境变量读」原语，也**绝不回传整个环境快照**），`CLAUDE_CONFIG_DIR` 反查 manifest 得账号名。每条一行 `{pid,sessionId,cwd,configDir,account,bare,alive,viaRelay}`（`viaRelay` = 这条会话的上游地址是不是本机中转那一形：`true` / `false` / `null` = 不知道（进程已死 / 环境这一刻取不到）；机器页「停」本机后端之前据它数几条会断）。`account:null` = 查不到（**不猜**）；**`bare:true` = 进程活着、`/proc/<pid>/environ` 这一刻读得到、而没设 `CLAUDE_CONFIG_DIR`（裸起）**。environ 在 exec 窗口里（60–140 µs）与进程成僵尸之后会读回 0 字节 / 读不到，那一刻报 `configDir:null` + `account:null` + `bare:false`（=「不知道」），不报成账号 0。账号那一半（`configDir`/`account`/`bare`）是「某条**正在跑**的会话属于哪个账号」的唯一硬真相（会话 jsonl 里没有任何账号字段）
 - `--account-trust <configDir> <cwd>`（A2）→ 换号 resume 前的信任预检（首次用某账号进某目录，CC 会弹信任确认、会卡住自动化）。单行 `{"trusted":bool,"known":bool,"error":null}`。**安全**：`configDir` 必须逐字 ∈ manifest 的账号列表，否则 exit 2 + stderr `{"code":"unknown_config_dir",...}`——避免退化成任意文件读原语；**只回三个布尔/字符串字段，绝不回传 `.claude.json` 内容**（内含 `mcpServers` 的环境变量，可能有 API key）
 - `--account-trust-zero <cwd>`（A2）→ **账号 0**（未启用多账号时那个原生身份）的信任预检，返回形状同 `--account-trust`。**为什么单开一个动词而不是给 `--account-trust` 传空 `configDir`**：账号 0 没有 config dir，而空串是被明令禁止的拼法（空值 ≠ 未设）；且它的 `.claude.json` 原生根是 `$HOME`、不在共享账号库里 ⇒ 路径来源本就不同，合并只能靠哨兵值区分，比多一个动词更易错。**不收任何文件/配置目录路径参数**：它收 `cwd`，但那只当 `projects` 里的**查表键**，`.claude.json` 的根写死 `$HOME` ⇒ 连"任意文件读"的面都没有（`account_trust_zero_takes_no_path_argument` 钉住）
 - `--fork-session <args>`（G2 branch-anywhere，`src/backend/control/fork_write.rs`）→ 从指定消息处分叉出一个新会话文件。**后端唯一的写盘入口**——其余一切子命令只读；`readonly_guard` 的写白名单按路径单独盯着 `control/fork_write.rs` 这一个文件（`src/doc/INVARIANTS.md` §41.6）
@@ -4354,9 +4352,7 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒法同默认那一形：1 MiB，`args_too_large`，不截断）。
 给「stdin 关不掉」的调用方：本机常驻后端经 SSH capture 问远端后端时，capture 不关远端 stdin，载荷由它写进去一行
 （`capture.stdin`，见链路那一节的 `dial` 字段）。这样载荷不必拼进远端命令行 —— 那要求远端登录 shell 认 POSIX 单引号与管道，fish 一类不认。
-**argv 一族**（`--list-sessions` 这类老子命令）同一个修饰词：恰好 `--<子命令> --stdin-line` 两个词 ⇒ stdin 那一行是**其余 argv 的 JSON 字符串数组**
-（`control/cli_control.rs::expand_stdin_argv`），拼回去照常分派；读不动 / 不是字符串数组 ⇒ exit 2 ＋ `{code:"bad_request"}`。
-今天的发送方：资产目录推那一趟（`'<远端后端>' --assets-catalog-merge --stdin-line`）· 帧命令的 CLI 面（`remote_ask::ask_json`，如 `--history-list --stdin-line`）；argv 一族今天没有生产发送方。旧后端不认这个修饰词（它会照旧读到 EOF、一直等）⇒
+今天的发送方：资产目录推那一趟（`'<远端后端>' --assets-catalog-merge --stdin-line`）· 帧命令的 CLI 面（`remote_ask::ask_json`，如 `--history-list --stdin-line`）。旧后端不认这个修饰词（它会照旧读到 EOF、一直等）⇒
 随 `BUILD_ID` 换代，远端按身份重部署之后才发。
 
 **给人看：`--text`**（只给 `--quota-read`）：`--quota-read --text` ⇒ 同一份回包排成字，每号一段（段间空一行）：

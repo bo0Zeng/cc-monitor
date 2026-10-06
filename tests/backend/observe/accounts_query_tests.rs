@@ -684,8 +684,6 @@ fn bare_session_is_attributed_to_account_zero() {
 /// 只保证 fork 完了、**不保证 exec 完了**；`/proc/<pid>/environ` 在 `execve` 进行
 /// **当中**读回 **0 字节**（`platform/proc.rs` 那一支逐字记着它）。
 /// 也就是说：**窗口没关就读 ⇒ `c_ok` 为假 ⇒ 本条红在夹具上，不是红在产品上。**
-/// 同族的前例住 [`an_inherited_launch_id_is_never_reported_as_the_childs_own_identity`]
-/// （它的整段论证在它自己的头注里，这里不复述）。
 ///
 /// 发生率**现打**〔09-11，沙箱 `ccmon-devbox:latest`；量具
 /// `tests/evidence/K-R55-fixture-shape-probe.py` —— 照本条的夹具形状复刻一遍、
@@ -1171,7 +1169,7 @@ fn the_auth_dimension_has_exactly_one_computation_path() {
 }
 
 // ============================================================================
-// `K-P5f` 第二拍：身份 token 读回来那一侧
+// 读环境那一侧：射程与文档对拍
 // ============================================================================
 
 /// 本文件生产段的**去注释**文本。
@@ -1181,8 +1179,7 @@ fn the_auth_dimension_has_exactly_one_computation_path() {
 /// 当场逮住它，逐字问：「先问共享原语为什么不够 —— 答得出来就登记，答不出来就改成调它」。
 /// **答不出来**（`production_code` 做的就是这两件事）⇒ 改成调它。
 /// ⚠ 那张登记表住 `src/frontend/shell/src/structural_scan.rs`，**不在本拍写区** ——
-/// 而它给的第一条出路本来就不需要动登记表。〔与 `launcher_identity_registry` 头注
-/// 记的那一次是同一条：那一次也是这条判据逮的，处置也一样。〕
+/// 而它给的第一条出路本来就不需要动登记表。
 fn production_text() -> String {
     let me = include_str!("../../../src/backend/observe/accounts_query.rs");
     assert!(
@@ -1194,26 +1191,12 @@ fn production_text() -> String {
     crate::guard_support::assert_no_test_code("accounts_query.rs", &prod);
     assert!(
         prod.contains("fn session_accounts(agent_home: &Path")
-            && prod.contains("fn suppress_inherited_launch_ids(")
+            && prod.contains("struct SessionRow {")
             && prod.len() > 8_000,
         "剥过头 / 锚点挪了（实得 {} 字节）—— 用它的那几条会零命中地绿",
         prod.len()
     );
     prod
-}
-
-// 🪦这里原有 `the_launch_id_env_var_matches_the_monitor_side_home`（读 monitor `history.rs` 的写侧常量）：写侧随本机起会话 〔散文墓碑〕
-//   搬进本 crate；今天写侧是 `ccm` 自己（最终 exec 那一处），两侧对拍就是下面这一条。
-
-/// 身份 token 那个变量名两侧同一个：读侧本文件的常量 == 写侧 `control/ccm/plan.rs::LAUNCH_ID_ENV`。
-/// 外加一个手写锚：两侧同时改名也逃不过。
-#[test]
-fn the_launch_id_var_is_one_name_on_both_halves() {
-    assert_eq!(LAUNCH_ID_ENV, crate::control::ccm::plan::LAUNCH_ID_ENV);
-    assert_eq!(
-        LAUNCH_ID_ENV, "CCM_LAUNCH_ID",
-        "手写锚：两侧同时改名也逃不过"
-    );
 }
 
 /// ★★ **本文件读环境这件事的射程不许悄悄变大**〔本文件头注那条「两个写死的键」的判据〕。
@@ -1238,18 +1221,17 @@ fn the_launch_id_var_is_one_name_on_both_halves() {
 /// `control::identity_tag::tests::the_env_keys_this_file_reads_are_exactly_two_named_constants`。
 /// **本条的分母一格没动**：两把尺子各量一个文件，不是同一条铁律的两个住址。
 ///
-/// 守的性质：`/proc/<pid>/environ` 只抠**三个常量键**（第三个 `ANTHROPIC_BASE_URL` 只折成 `viaRelay` 一个布尔），键名**不许成为一维参数**。
+/// 守的性质：`/proc/<pid>/environ` 只抠**两个常量键**（`ANTHROPIC_BASE_URL` 只折成 `viaRelay` 一个布尔），键名**不许成为一维参数**。
 /// 多一处 `proc_env_var(pid, …)` ⇒ 红，来这里回答「新那个键是什么、为什么它不
 /// 把本查询变成任意环境变量读原语」。
 #[test]
 fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
     let prod = production_text();
     let total = prod.matches("proc_env_var(pid, ").count();
-    // 2 → 3：`ANTHROPIC_BASE_URL`（只折成 `viaRelay` 一个布尔，值带钥匙、不出参）。
     assert_eq!(
-        total, 3,
-        "\n本文件生产段里 `proc_env_var(pid, …)` 有 {total} 处（登记 3 处）。\n\
-             **多了** ⇒ 又读了第三个环境变量：来模块头注那一格写清它是什么、\n\
+        total, 2,
+        "\n本文件生产段里 `proc_env_var(pid, …)` 有 {total} 处（登记 2 处）。\n\
+             **多了** ⇒ 又读了一个环境变量：来模块头注那一格写清它是什么、\n\
              以及为什么这条查询仍然不是「任意环境变量读」原语。\n\
              **少了** ⇒ 有一条读回路被摘掉了。"
     );
@@ -1265,11 +1247,6 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
             .count(),
         1,
         "抠 `CLAUDE_CONFIG_DIR` 那一处不见了 / 变形了"
-    );
-    assert_eq!(
-        prod.matches("proc_env_var(pid, LAUNCH_ID_ENV)").count(),
-        1,
-        "抠身份 token 那一处不见了 / 变形了（`K-P5f` 读侧的正主）"
     );
     assert_eq!(
         prod.matches("proc_env_var(pid, env_keys.base_url)").count(),
@@ -1299,7 +1276,7 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
 ///
 /// # ⚠ 它买不到什么
 ///
-/// 只买「**那几个名字都在场**」。文档那一行**说得对不对**（比如 `launchId` 的语义
+/// 只买「**那几个名字都在场**」。文档那一行**说得对不对**（比如 `bare` 的语义
 /// 解释）它一个字都判不了 —— 那是评审的活。
 #[test]
 fn the_protocol_doc_row_for_session_accounts_matches_what_we_emit() {
@@ -1337,8 +1314,8 @@ fn the_protocol_doc_row_for_session_accounts_matches_what_we_emit() {
     }
     assert_eq!(
         keys.len(),
-        9,
-        "从出参 `json!` 只抠到 {} 个键（09-02 现打 8；+`viaRelay` ⇒ 9）—— 抽取器坏了，下面那格会零命中地绿：{keys:?}",
+        8,
+        "从出参 `json!` 只抠到 {} 个键（应为 8）—— 抽取器坏了，下面那格会零命中地绿：{keys:?}",
         keys.len()
     );
     let table = format!("{{{}}}", keys.join(","));
@@ -1365,7 +1342,7 @@ fn the_protocol_doc_row_for_session_accounts_matches_what_we_emit() {
         ("src/doc/IPC-PROTOCOL.md 那一行", row),
         ("本文件头注", header.as_str()),
     ] {
-        for key in ["CLAUDE_CONFIG_DIR", LAUNCH_ID_ENV, "ANTHROPIC_BASE_URL"] {
+        for key in ["CLAUDE_CONFIG_DIR", "ANTHROPIC_BASE_URL"] {
             assert!(
                 hay.contains(key),
                 "\n★ {what} 里没点名 `{key}` —— 「`/proc/<pid>/environ` 只抠哪几个键」\n\
@@ -1373,283 +1350,6 @@ fn the_protocol_doc_row_for_session_accounts_matches_what_we_emit() {
             );
         }
     }
-}
-
-/// fail closed：形状不对的 token 一律不往下游递。
-#[test]
-fn the_launch_id_shape_gate_is_fail_closed() {
-    // 两种真形态都得过：UUID v4（新开那一支的 nonce）与 sid（resume 那一支）。
-    assert!(launch_id_is_safe("0198f0d2-1111-4222-8333-444455556666"));
-    assert!(launch_id_is_safe("a_b-1"));
-    // 空 / 超长 / 能破坏下游的字符，全挡。
-    assert!(!launch_id_is_safe(""));
-    assert!(!launch_id_is_safe(&"a".repeat(129)));
-    for bad in [
-        "a b",
-        "a;rm -rf /",
-        "$(id)",
-        "a'b",
-        "a\"b",
-        "a\nb",
-        "a\u{0}b",
-        "中文",
-    ] {
-        assert!(!launch_id_is_safe(bad), "{bad:?} 不该被放行");
-    }
-}
-
-fn row(pid: u32, sid: &str, launch: Option<&str>) -> SessionRow {
-    SessionRow {
-        pid,
-        sid: Some(sid.to_string()),
-        cwd: None,
-        config_dir: None,
-        account: None,
-        alive: true,
-        // 这几条纯函数用例喂的是**已经读完之后**的 rows ⇒ 那一次读是成功的。
-        cfg_env_unreadable: false,
-        launch_id: launch.map(str::to_string),
-        via_relay: Some(false),
-    }
-}
-
-/// 防冒名那一格的**纯函数**半：唯一的留下，撞了的一律不作数。
-#[test]
-fn a_launch_id_that_lands_on_more_than_one_session_counts_for_nobody() {
-    let mut rows = vec![
-        row(1, "sid-a", Some("tok-shared")),
-        row(2, "sid-b", Some("tok-shared")),
-        row(3, "sid-c", Some("tok-alone")),
-        row(4, "sid-d", None),
-    ];
-    suppress_inherited_launch_ids(&mut rows);
-    assert_eq!(rows[0].launch_id, None, "撞了的那一条必须不作数");
-    assert_eq!(rows[1].launch_id, None, "撞了的另一条也必须不作数");
-    assert_eq!(
-        rows[2].launch_id.as_deref(),
-        Some("tok-alone"),
-        "只落在一条会话上的 token 必须留下 —— 否则本函数是「全部抹掉」，那不是判据是空转"
-    );
-    assert_eq!(rows[3].launch_id, None);
-}
-
-/// 🔴🔴 **活体夹具**：造一个**真的**「父的值漏进子进程」的活体，
-/// 让**判据本体**（`session_accounts` 自己，不是它的复刻）跑在上面。
-///
-/// # 为什么非活体不可（实测）
-///
-/// 那一拍现打过：掏空共用原语时**方向判据全留绿，只有活体夹具红**。
-/// 这里的等价失效是：把 [`suppress_inherited_launch_ids`] 的函数体清空，
-/// 上面那条纯函数判据当然会红 —— 但那条判据**是我自己喂的 rows**，
-/// 它证明不了「真从 `/proc` 读回来的两条会话真的会撞」。本条证明它。
-///
-/// # 这个活体是真的（逐条说清哪一格是真的）
-///
-/// - **真进程**：`sh` 起来之后 `exec sleep`，环境里带着 token；
-/// - **真继承**：它 fork 出的后台 `sleep` 的 `CCM_LAUNCH_ID` **一个字都不是自己的**，
-///   是从父进程继承的 —— 这正是 `/branch` / SDK 起的子进程 / claude 自己 spawn 的
-///   那一族在生产上的形状；
-/// - **真 `/proc`**：两条都过 `session_process_identity_ok`（pidfile 的 `procStart`
-///   是现读的），也就是说**它们过得了本文件里另一道身份检查** ——
-///   那道防的是 PID 复用，一个字都不防继承；
-/// - **判据本体**：断言跑的是 `session_accounts(...)` 的出参 JSON，不是任何复刻。
-///
-/// # 非空对照（第二段）
-///
-/// 把子进程那份 pidfile 删掉再跑一次，父那条**必须**带着 token 回来。
-/// 没有这一段，「全都 `null`」也会绿 —— 而那是本条最容易退化成的样子。
-///
-/// # 🔴 前提：三个活体都得先 exec 完（本条从前那条「负载 flaky」就是这一格）
-///
-/// 〔来历：`K-R24` 09-04 把**本函数**登记成「负载 flaky **无主**」（当时那条登记
-/// 指的是一个行号，而它已经漂过两次 —— 本处刻意只点函数名，不复述那个数）
-///  （那个行号当年指的就是本函数里 `sid-child` 那一格断言），`K-R27` 09-05 订正过一次
-///  行号；09-10 云端 `34441405591` 又红一次（596 过 1 红），panic 落在**对称的另一半**
-///  `sid-parent` 那一格上。**同一条判据、同一个成因**，只是哪一条落窗口不一样。〕
-///
-/// 成因不在产品，在**这个夹具自己的前提没人建立**：`/proc/<pid>/environ` 在 `execve`
-/// 进行**当中**会读回 0 字节（`platform/proc.rs` 那一支逐字：「exec 窗口，或进程已成
-/// 僵尸」）⇒ `proc_env_var` 回 `EnvRead::Unreadable` ⇒ 生产段那一处 `.value()`
-/// 把它压成 `None`（fail-closed，刻意的）⇒ **那一条的 token 当场不见**
-/// ⇒ 两条撞不起来 ⇒ 另一条原样留着 token。谁落进那个窗口就红另一半：
-/// 子落窗 ⇒ 父那条留着（09-10 云端那趟）；父落窗 ⇒ 子那条留着（09-04 那趟）。
-/// CI 负载高把那个窗口拉宽 ⇒ 只在云端红、本地沙箱不红。
-///
-/// ⇒ 本条**显式建立并断言**这个前提（下面 `probe` 那一段）。⚠ 判「exec 完了」
-/// **不能只看 environ 读得出来** —— exec **之前**它也读得出来（fork 来的那份副本，
-/// 里面同样有 TOKEN）。所以判据是 `/proc/<pid>/comm`：exec 前是 `sh`、exec 后是
-/// `sleep`，而 `sleep` 不会再 exec ⇒ 一旦看见 `sleep` **且** environ 里有那个键值，
-/// 这个窗口就**关死了、开不回来** ⇒ 它在下面那次 `session_accounts` 时仍然成立。
-///
-/// ⚠ **这不是重试、不是放宽、不是靠睡过去**：`session_accounts` 仍然只跑一次，
-/// 下面每一格断言一个字都没改；等不到就由 `settled` 那三格自检把本条**打红**
-/// （「夹具没装上」）—— **永远不会因为等而变绿**。形状照本文件
-/// `an_unreadable_environ_is_never_reported_as_the_zero_account` 的
-/// 「等僵尸 + 反空真自检」，那一条同样在夹具前提上等、在断言上不等。
-///
-/// ⚠ 顺带治掉一格**假绿**：从前子那条落窗时，`sid-child` 的 `launchId` 也是 `null`
-/// （因为**读不到**，不是因为撞上了）⇒ 那一格会绿得毫无意义。现在它先过前提自检。
-///
-/// ⚠ 如实登记一格边界：`sleep` 若不是外部可执行文件（某些 busybox 形态的 `sh` 把它
-/// 做成内建），`comm` 就永远等不到 `sleep` ⇒ 本条**红**而不是假绿。方向是 fail-closed
-/// 的，但那台机器上它量不到本件的东西。
-#[cfg(target_os = "linux")]
-#[test]
-fn an_inherited_launch_id_is_never_reported_as_the_childs_own_identity() {
-    use std::io::{BufRead, BufReader};
-
-    const TOKEN: &str = "kp5f-live-0198f0d2-1111-4222-8333";
-    // 形状那一格的值：空格 + `;` ⇒ 过不了 `launch_id_is_safe`。
-    // 提成常量是为了让下面那段前提自检也能逐字点名它（不然自检只能核「非空」，
-    // 那就核不出「起进程时到底把哪个值塞进去了」）。
-    const EVIL: &str = "not a token; rm -rf /";
-    let root = tmpdir("inherit");
-    let claude = root.join("claude");
-    let sessions = claude.join("sessions");
-    fs::create_dir_all(&sessions).unwrap();
-
-    // 父：`sh` 先 fork 一个后台 `sleep`（**继承者**），印出它的 pid，再把自己 exec 成 `sleep`。
-    // `exec` 不改 pid、不改 starttime、**不改环境** ⇒ 两个进程的 environ 里都有 TOKEN。
-    let mut parent = std::process::Command::new("sh")
-        .arg("-c")
-        .arg("sleep 60 & printf '%s\\n' \"$!\"; exec sleep 60")
-        .env(LAUNCH_ID_ENV, TOKEN)
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .expect("起不来 sh —— 活体夹具起不来就**不许当绿**");
-    let ppid = parent.id();
-    let mut line = String::new();
-    BufReader::new(parent.stdout.take().expect("拿不到 stdout"))
-        .read_line(&mut line)
-        .expect("读不到子进程 pid");
-    let cpid: u32 = line.trim().parse().expect("子进程 pid 不是数字");
-
-    // 第三个活体：token 的**形状**过不了白名单（空格 + `;`）。它与上面两条不撞 ⇒
-    // 它那一格的 `null` **只能**来自形状核 ⇒ 拆掉 `launch_id_is_safe` 那一格它就红。
-    // （没有这一段，形状核在活体上一颗牙都没有：`launch_id_is_safe` 的单测是纯函数，
-    //  拆掉调用点它照样全绿 —— 那正是记的那一形。）
-    let mut evil = std::process::Command::new("sh")
-        .arg("-c")
-        .arg("exec sleep 60")
-        .env(LAUNCH_ID_ENV, EVIL)
-        .spawn()
-        .expect("起不来 sh（形状那一格的活体）");
-    let epid = evil.id();
-
-    // ── 🔴 前提：三个活体都已经 exec 完、environ 定型（为什么非有不可见函数头注）──
-    //
-    // `probe` 一次读回两格事实：`comm`（exec 走到哪了）与「environ 里有没有那个键值」。
-    // 红时这两格原样印出来 ⇒ 一眼看得出是落在 exec 窗口里、还是压根没塞进去。
-    fn probe(pid: u32, want: &str) -> (String, bool) {
-        let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
-        let bytes = std::fs::read(format!("/proc/{pid}/environ")).unwrap_or_default();
-        let needle = format!("{LAUNCH_ID_ENV}={want}");
-        let hit = bytes.split(|b| *b == 0).any(|e| e == needle.as_bytes());
-        (comm.trim_end().to_string(), hit)
-    }
-    // exec 后是 `sleep` 且 environ 里有那个键值 ⇒ 窗口关死了、开不回来。
-    fn settled(p: &(String, bool)) -> bool {
-        p.0 == "sleep" && p.1
-    }
-    // ⚠ 这个循环等的是**夹具的前提**，不是把判据重试：等不到就往下走、由自检打红。
-    for _ in 0..2_000 {
-        let ok = settled(&probe(ppid, TOKEN))
-            && settled(&probe(cpid, TOKEN))
-            && settled(&probe(epid, EVIL));
-        if ok {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(1));
-    }
-    let probe_parent = probe(ppid, TOKEN);
-    let probe_child = probe(cpid, TOKEN);
-    let probe_evil = probe(epid, EVIL);
-
-    let write_pidfile = |pid: u32, sid: &str| {
-        let ticks = proc_starttime(pid)
-            .unwrap_or_else(|| panic!("读不到 pid={pid} 的 starttime —— 活体没活着"));
-        fs::write(
-            sessions.join(format!("{pid}.json")),
-            format!(r#"{{"sessionId":"{sid}","cwd":"/w","procStart":"{ticks}"}}"#),
-        )
-        .unwrap();
-    };
-    write_pidfile(ppid, "sid-parent");
-    write_pidfile(cpid, "sid-child");
-    write_pidfile(epid, "sid-badshape");
-
-    // ① 两条都在 ⇒ 撞 ⇒ 两条都不作数。
-    let both = sid_map(&session_accounts(&claude, &root.join("no-accts")));
-    // ② 非空对照：只留父那一条 ⇒ token 必须回得来。
-    fs::remove_file(sessions.join(format!("{cpid}.json"))).unwrap();
-    let alone = sid_map(&session_accounts(&claude, &root.join("no-accts")));
-
-    // 先收拾活体，再断言（断言失败也不留孤儿 `sleep`）。
-    let _ = parent.kill();
-    let _ = parent.wait();
-    let _ = evil.kill();
-    let _ = evil.wait();
-    let _ = std::process::Command::new("kill")
-        .arg(cpid.to_string())
-        .status();
-    let _ = fs::remove_dir_all(&root);
-
-    // ── 前提自检先断（夹具没装上时，下面几格量的不是本件的东西）──────────
-    assert!(
-        settled(&probe_parent),
-        "父那条这一刻不是「exec 完的 `sleep` + environ 里带着 token」（实得 {probe_parent:?}）\
-             —— 夹具没装上，下面几格量的不是本件的东西"
-    );
-    assert!(
-        settled(&probe_child),
-        "子那条这一刻不是「exec 完的 `sleep` + environ 里带着继承来的 token」\
-             （实得 {probe_child:?}）—— 它八成还落在 `execve` 窗口里：\
-             那时 `/proc/<pid>/environ` 读回 0 字节 ⇒ 它的 token 当场不见 ⇒ **撞不起来**\n\
-             ⇒ 下面「子那条不许报成自己的」会绿得毫无意义、「父那条也不许留」会红在夹具身上。\n\
-             〔`K-R24` 09-04 登记的那条负载 flaky、09-10 云端 `34441405591` 那趟红，都是这一格。〕"
-    );
-    assert!(
-        settled(&probe_evil),
-        "形状那一格的活体这一刻不是「exec 完的 `sleep` + environ 里带着那个坏形状的值」\
-             （实得 {probe_evil:?}）—— 它那一格的 `null` 就说明不了是形状核干的"
-    );
-    assert_eq!(
-        both["sid-parent"]["alive"], true,
-        "父那条没判活 —— 夹具没装上，下面几格量的不是本件的东西"
-    );
-    assert_eq!(
-        both["sid-child"]["alive"], true,
-        "子那条没判活 —— 而它**正是**过得了 procStart 对拍、却拿着别人 token 的那一格"
-    );
-    assert_eq!(
-        both["sid-child"]["launchId"],
-        serde_json::Value::Null,
-        "\n🔴 子会话把**继承来的** token 报成了自己的身份。\n\
-             这就是 `CC_BUS_ID` 那条头注记着的、**有可复现反例**的事故换个方向重演：\n\
-             父 agent 的身份漏进子 agent ⇒ 冒名。"
-    );
-    assert_eq!(
-        both["sid-parent"]["launchId"],
-        serde_json::Value::Null,
-        "\n🔴 撞了之后**父那条也不许留** —— 判不出谁是原主时挑一个留下就是猜，\n\
-             而本查询的纪律逐字是「查不到就是查不到，不猜」。"
-    );
-    assert_eq!(
-        both["sid-badshape"]["alive"], true,
-        "形状那一格的活体没判活 —— 它那一格的 null 就说明不了是形状核干的"
-    );
-    assert_eq!(
-        both["sid-badshape"]["launchId"],
-        serde_json::Value::Null,
-        "\n🔴 形状过不了白名单的 token 被原样递给了下游。\n\
-             它与另外两条**不撞** ⇒ 这一格的 null 只能由 `launch_id_is_safe` 买；\n\
-             红了就是那道 fail-closed 被摘掉了（而这个值是任意用户可控的）。"
-    );
-    assert_eq!(
-        alone["sid-parent"]["launchId"], TOKEN,
-        "\n🔴 非空对照红了：只有一条会话时 token 都回不来 —— \n\
-             那么上面两格的 `null` 证明不了防冒名在起作用（全抹掉也是这个读数）。"
-    );
 }
 
 // ============================================================================

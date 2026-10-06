@@ -78,7 +78,6 @@ export function defaultOps(): Record<string, OpHandler> {
             account: ACCOUNTS[i % 2].name,
             bare: false,
             alive: true,
-            launchId: null,
             viaRelay: null,
           }),
         ),

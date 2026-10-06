@@ -592,108 +592,62 @@ pub fn merge_secret(
     out
 }
 
-/// 键的落盘顺序。**抽成一个纯函数，理由是一次实测证伪。**
-///
-/// # ⚠ 它为什么不能留在 `to_pretty_json` 里（`MU9`，08-27 实测）
-///
-/// 排序那一步原来内联在 `to_pretty_json` 里，判据是
-/// `the_field_order_does_not_depend_on_the_map_implementation`：
-/// 造两份**内容相同、插入顺序相反**的文档，断言落盘文本相同。
-/// **变异实测：把 `keys.sort()` 整条删掉，19 条判据全绿。**
-///
-/// 根子是**判据的人群与它守的性质对不上**：`serde_json::Map` 在**这台机器今天这份构建**里
-/// 是 `BTreeMap`（默认 feature），插进去就已经有序 ⇒ 「两份插入顺序相反的文档」这个夹具
-/// **根本造不出来**，两边喂进去的本来就是同一个有序结构。
-/// 而这条判据要守的恰恰是「**哪天 `preserve_order` 被依赖图里任何一个 crate 打开、
-/// `Map` 变成 `IndexMap`（插入序）**，输出仍然稳定」——那一天今天造不出来。
-///
-/// ⇒ 把排序抽成一个**收迭代器**的纯函数：判据可以直接喂它一个乱序的序列，
-/// 与 `Map` 今天是哪种实现**无关**。`MU9` 重打后被 `ordering_is_by_name_not_by_arrival` 逮住。
-///
-/// # ⚠⚠ 订正〔`K-H2` `D1` 阻-3 回修，08-28〕：上面那句「那一天今天造不出来」**已被证伪**
-///
-/// 上一段推理**前半对、后半错**。对的是「人群与性质对不上」；
-/// 错的是把「**这台机器今天这份构建**是 `BTreeMap`」滑成「**那个夹具造不出来**」——
-/// 后者是一个**关于分母的全称句**，而它**没有被打过**。
-/// 打它只要一行：给本 crate 的 `[dev-dependencies]` 加 `serde_json`
-/// 并开 `preserve_order` ⇒ **判据构建里 `Map` 就是 `IndexMap`**，夹具当场造得出来。
-/// 实测：删掉 [`ordered_value`] 的递归 ⇒ **30 passed / 2 failed**（两份 `Cargo.lock` 零变化）。
-/// ⇒ 抽出纯函数那一步**仍然是对的**（它不依赖任何 feature），
-/// 但「端到端那条只能是安慰剂」这个结论**当年就下早了**。
-/// ★ 这条经过值一句纪律：**「造不出来」要先被打一次才算数。**
+/// 键的落盘顺序：按名字，不按到达先后（收迭代器，与 `serde_json::Map` 是哪种实现无关）。
 pub fn ordered_keys<'a>(keys: impl Iterator<Item = &'a String>) -> Vec<&'a String> {
     let mut v: Vec<&'a String> = keys.collect();
     v.sort();
     v
 }
 
-/// 递归地把每一层对象的键按名字排好。
-///
-/// # 它补的是一个**今天就已经漏着**的洞（`K-H2` `Bx` 摸底发现）
-///
-/// `to_pretty_json` 先前只排**顶层**（`ordered_keys(doc.keys())`），嵌套值是
-/// `doc[k].clone()` 原样塞回去、由 `serde_json::to_string_pretty` 按那个**内层 `Map`
-/// 自己的顺序**输出。而 [`ordered_keys`] 存在的**全部理由**（见它的头注）就是
-/// 「哪天 `preserve_order` 被依赖图里任何一个 crate 打开、`Map` 变成 `IndexMap`」——
-/// **那条理由在深度 ≥2 上原样复现，而先前的实现够不到。**
-/// 多账号把每条账号做成一个嵌套对象 ⇒ 不补这一格，`KS10②` 在多条形状下**静默失效**。
-///
-/// # ⚠⚠ 数组**不排**，但要**递归进去**
-///
-/// 数组的顺序是**数据**（换了就是改内容），对象的键序不是。这两件事不许混。
-///
-/// # ★★★ 它**有牙** —— 而买到这颗牙的过程本身是一课，逐字记下来
-///
-/// `K-H2` `C` 阶段我在这里写下过一句**错话**，逐字是：
-/// 「`serde_json::Map` 在今天这份构建里是 `BTreeMap`（插进去就有序）⇒
-/// **造不出一个「嵌套层乱序」的夹具**」，并据此把本函数登记成
-/// 「今天没有牙、是给明天用的绊线」。**`D1` 审计实测证伪了它。**
-///
-/// 证伪的办法只有一行：给本 crate 的 `[dev-dependencies]` 加
-/// `serde_json = { features = ["preserve_order"] }` —— **判据构建里 `Map` 就成了 `IndexMap`**，
-/// 那个「造不出来」的夹具当场造得出来。读数（我自己复打，与 `D1` 逐字相同）：
-/// **原码 32 passed / 0 failed；把下面 `Value::Object` 那一支删成 `other.clone()`
-/// ⇒ 30 passed / 2 failed**（本函数那条 + 隔壁 `the_field_order_does_not_depend_on_the_map_implementation`）。
-/// 两份 `Cargo.lock` **零变化**，全量门禁三个数**逐个不变**。
-///
-/// ⚠⚠ **这一课是 `MU9` 那一课的第二次，而且更贵**：`MU9` 的结论是
-/// 「这台机器上造不出反例」，本轮**证明了造得出**。
-/// ⇒ **「造不出来」这个判断本身要先被打一次才算数** —— 它是一个**关于分母的全称句**，
-/// 而全称句不许当前提直接写进头注。写下它的那一刻我没有去打它，这就是那次的病灶。
-///
-/// ⚠ 它仍然**不**保什么：本函数只管**对象的键序**。数组那一格由
-/// `arrays_keep_their_order_because_that_order_is_data` 钉，不由本条钉。
-pub fn ordered_value(v: &Value) -> Value {
-    match v {
-        Value::Object(m) => {
-            let mut out = Map::new();
-            for k in ordered_keys(m.keys()) {
-                out.insert(k.clone(), ordered_value(&m[k]));
-            }
-            Value::Object(out)
-        }
-        Value::Array(a) => Value::Array(a.iter().map(ordered_value).collect()),
-        other => other.clone(),
-    }
+/// 序列化成盘上那份文本：每一层对象（含数组里的对象）的键按名字排，数组照原序（顺序是数据）。
+/// 排序在渲染时做，不靠 `serde_json::Map` 是哪种实现；格式与 `serde_json::to_string_pretty` 逐字节相同。
+pub fn to_pretty_json(doc: &Map<String, Value>) -> String {
+    render(&Value::Object(doc.clone()), |k| k.sort())
 }
 
-/// 序列化成盘上那份文本。
-///
-/// # `KS10②` 字段顺序稳定 —— 而且**不靠 `serde_json` 的默认行为**
-///
-/// `serde_json::Map` 默认是 `BTreeMap`（有序），但开了 `preserve_order` feature 之后
-/// 它变成 `IndexMap`（插入序）。**那个 feature 由依赖图里任何一个 crate 打开都算数**，
-/// 而 monitor 那棵树很大 ⇒ 「今天是有序的」不是一条能靠的性质。
-/// ⇒ 这里**自己排一次序**，两种情况下输出都一样。
-/// 由 `the_field_order_does_not_depend_on_the_map_implementation` 钉住。
-/// ⚠ **订正〔`K-H2` `KH5c`，08-28〕**：这里先前只排**顶层**一层。
-/// 多账号把每条账号做成嵌套对象之后，那条「不靠 `Map` 的默认行为」的承诺在深度 ≥2 上就断了。
-/// ⇒ 今天整份走 [`ordered_value`]（**递归**），它的诚实边界写在那个函数的头注里。
-pub fn to_pretty_json(doc: &Map<String, Value>) -> String {
-    let ordered = ordered_value(&Value::Object(doc.clone()));
-    let mut s = serde_json::to_string_pretty(&ordered).unwrap_or_else(|_| "{}".to_string());
-    s.push('\n');
-    s
+/// 按 `order` 排每一层对象的键，写成两格缩进的 JSON（末尾换行）。
+fn render(v: &Value, order: fn(&mut Vec<&String>)) -> String {
+    let mut out = String::new();
+    write_value(v, order, 0, &mut out);
+    out.push('\n');
+    out
+}
+
+fn write_value(v: &Value, order: fn(&mut Vec<&String>), depth: usize, out: &mut String) {
+    let pad = |d: usize, out: &mut String| out.push_str(&"  ".repeat(d));
+    match v {
+        Value::Object(m) if !m.is_empty() => {
+            let mut keys: Vec<&String> = m.keys().collect();
+            order(&mut keys);
+            out.push_str("{\n");
+            for (i, k) in keys.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(",\n");
+                }
+                pad(depth + 1, out);
+                out.push_str(&Value::String((*k).clone()).to_string());
+                out.push_str(": ");
+                write_value(&m[*k], order, depth + 1, out);
+            }
+            out.push('\n');
+            pad(depth, out);
+            out.push('}');
+        }
+        Value::Array(a) if !a.is_empty() => {
+            out.push_str("[\n");
+            for (i, x) in a.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(",\n");
+                }
+                pad(depth + 1, out);
+                write_value(x, order, depth + 1, out);
+            }
+            out.push('\n');
+            pad(depth, out);
+            out.push(']');
+        }
+        other => out.push_str(&other.to_string()),
+    }
 }
 
 #[cfg(test)]

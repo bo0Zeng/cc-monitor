@@ -23,7 +23,6 @@ use shell_quote_core::posix_quote as sq;
 /// 中转地址那个环境变量。
 pub(crate) const BASE_URL_ENV: &str = "ANTHROPIC_BASE_URL";
 /// 本机起新会话回填 sid 用的身份 token 那个环境变量（读侧 `observe/accounts_query.rs` 的同名常量）。
-pub(crate) const LAUNCH_ID_ENV: &str = "CCM_LAUNCH_ID";
 
 /// 直路注入中转地址那一句（`--ccm-print` 与非得经 shell 那一趟同一份）。
 pub(crate) fn relay_export(url: &str) -> String {
@@ -66,7 +65,6 @@ pub(crate) struct Env {
     ///   而这个字段装的是「调用方选了哪个号」，不是 Claude 的目录布局。
     pub(crate) inherited_config_dir: Option<String>,
     pub(crate) anthropic_base_url: Option<String>,
-    pub(crate) ccm_launch_id: Option<String>,
     /// 起 agent 前要 eval 的机器级 env 串。
     pub(crate) ccm_env: String,
     // 🔴 `K-R58`：这里原来有一个 `workspace: String`（`$CCM_WORKSPACE`，`$HOME` 下裸敲时
@@ -117,7 +115,6 @@ impl Env {
                 .unwrap_or_default(),
             tmux: get("TMUX"),
             anthropic_base_url: get("ANTHROPIC_BASE_URL"),
-            ccm_launch_id: get(LAUNCH_ID_ENV),
             ccm_env: pick("CCM_ENV", Defaults::ENV.to_string()),
             accts_manifest: accts_manifest_under(&home),
             // 继承值与载体名一样，要等**解析完 argv 知道是哪一家**才填得了 ⇒ 由 `mod.rs` 补。
@@ -159,7 +156,6 @@ impl Env {
             pwd: home.clone(),
             tmux: None,
             anthropic_base_url: None,
-            ccm_launch_id: None,
             ccm_env: pick("CCM_ENV", Defaults::ENV.to_string()),
             accts_manifest: accts_manifest_under(&home),
             inherited_config_dir: None,
@@ -499,8 +495,6 @@ pub(crate) struct Direct {
     pub(crate) argv: Vec<String>,
     /// 这一趟有没有身份面（claude 有、codex 没有）。
     pub(crate) has_identity: bool,
-    /// `--ccm-launch-id` 交来的值（空 = 没给）：exec 之前放进 agent 进程环境。
-    pub(crate) launch_id: String,
     /// 要注入的中转地址（不带钥匙；钥匙在 exec 那一刻从那台的钥匙文件读）。`None` = 不注入。
     pub(crate) relay: Option<String>,
     /// 环境里本来就有一个不是我们注入的 `ANTHROPIC_BASE_URL`（用户自己的端点）⇒ 不动它，说一句。
@@ -807,7 +801,7 @@ pub(crate) fn resolve_account(
 /// |---|---|---|
 /// | 工作目录（`--cwd` / 当前目录） | 绝对路径（`Path::is_absolute`，Windows 上认 `C:\` 那一形）· 没有 `..` 段 | NUL / CR / LF |
 /// | 透传给 agent 的参数 · 登记备注（可以跨行：多行初始任务） | — | NUL / CR（`shell_quote_core::arg_text_ok`） |
-/// | 继承来的 `CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` / `CCM_LAUNCH_ID` | — | NUL / CR / LF |
+/// | 继承来的 `CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` | — | NUL / CR / LF |
 ///
 /// 〔`INVARIANTS §47` ③〕**启动器不在上表**：它是命令片段（带参数 · alias · 路径），不是自由文本 ——
 /// 过全仓那一张白名单 `shell_quote_core::launcher_refused_char`（与 monitor 本机 `history.rs` · 远端载荷 `payload.rs` 同一条；
@@ -815,7 +809,7 @@ pub(crate) fn resolve_account(
 ///
 /// **不拒 shell 元字符**（`Bob's` · `(2019)` 照放，交给唯一的 quote）。拒绝集住 `shell_quote_core::free_text_ok` / `arg_text_ok`。
 /// ⚠ 模型名与 `--ccm-sid` **不在这里**：它们的规则在判定的唯一住址里统一定。
-/// ⚠ 继承来的那三个只在它们真会被拼进去的时候才判（容器路把它们显式化进载荷，[`inherited_gate`]）：
+/// ⚠ 继承来的那两个只在它们真会被拼进去的时候才判（容器路把它们显式化进载荷，[`inherited_gate`]）：
 ///   环境里一个用不上的怪值不该挡住起会话（拒过头）。
 fn free_text_gate(cwd: &str, o: &Opts) -> Result<(), Die> {
     let p = std::path::Path::new(cwd);
@@ -848,7 +842,7 @@ fn free_text_gate(cwd: &str, o: &Opts) -> Result<(), Die> {
     Ok(())
 }
 
-/// 容器路要把继承来的那三个显式化进载荷（tmux 边界会吃掉它们）⇒ 那一刻才判（见 [`free_text_gate`]）。
+/// 容器路要把继承来的那两个显式化进载荷（tmux 边界会吃掉它们）⇒ 那一刻才判（见 [`free_text_gate`]）。
 fn inherited_gate(env: &Env) -> Result<(), Die> {
     for (what, v) in [
         (
@@ -856,7 +850,6 @@ fn inherited_gate(env: &Env) -> Result<(), Die> {
             env.inherited_config_dir.as_deref(),
         ),
         ("ANTHROPIC_BASE_URL", user_base_url(env)),
-        (LAUNCH_ID_ENV, env.ccm_launch_id.as_deref()),
     ] {
         if let Some(v) = v.filter(|v| !shell_quote_core::free_text_ok(v)) {
             return Err(refuse(what, v));
@@ -1041,11 +1034,6 @@ pub(crate) fn build_among(
             opts.push(flag::CCM_SID.into());
             opts.push(o.ccm_sid.clone());
         }
-        // 身份 token 原样交给 pane 里那一趟（它在最终 exec 那一处放进 agent 进程环境；tmux 边界吃掉的环境不靠它）。
-        if !o.launch_id.is_empty() {
-            opts.push(flag::LAUNCH_ID.into());
-            opts.push(o.launch_id.clone());
-        }
         let mut inner: Vec<String> = env.self_argv.clone();
         inner.extend(o.passthru.iter().cloned());
         inner.push(flag::END.into());
@@ -1070,9 +1058,6 @@ pub(crate) fn build_among(
         }
         if let Some(v) = user_base_url(env) {
             payload = format!("{}{payload}", posix::export(BASE_URL_ENV, &sq(v)));
-        }
-        if let Some(v) = env.ccm_launch_id.as_deref().filter(|v| !v.is_empty()) {
-            payload = format!("{}{payload}", posix::export(LAUNCH_ID_ENV, &sq(v)));
         }
         // 自检**共用载荷那一段 export 前缀**（它要在 pane 那份环境里跑）：上面只往前面加，
         // ⇒ 前缀 = 载荷去掉末尾那段裸命令。
@@ -1197,7 +1182,6 @@ pub(crate) fn build_among(
         cwd,
         argv,
         has_identity: face.is_some_and(|f| f.has_identity),
-        launch_id: o.launch_id.clone(),
         relay,
         keeps_user_base_url,
         clears_inherited_relay,
@@ -1365,9 +1349,6 @@ fn render_direct(d: &Direct) -> String {
     if !d.nested.is_empty() {
         line.push_str(&posix::unset(&d.nested));
     }
-    if !d.launch_id.is_empty() {
-        line.push_str(&posix::export(LAUNCH_ID_ENV, &sq(&d.launch_id)));
-    }
     if let Some(url) = &d.relay {
         line.push_str(&relay_export(url));
     } else if d.clears_inherited_relay {
@@ -1399,9 +1380,6 @@ fn render_direct_ps(d: &Direct) -> String {
     }
     if !d.nested.is_empty() {
         line.push_str(&ps::remove_env(&d.nested));
-    }
-    if !d.launch_id.is_empty() {
-        line.push_str(&ps::set_env(LAUNCH_ID_ENV, &pq(&d.launch_id)));
     }
     if let Some(url) = &d.relay {
         let word = match crate::accounts::upstream_select::endpoint::base_url_halves(url) {

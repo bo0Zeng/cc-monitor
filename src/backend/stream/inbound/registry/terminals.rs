@@ -26,7 +26,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "cwd",
             "defaultLauncher",
             "kind",
-            "launchId",
             "launcher",
             "model",
             "name",

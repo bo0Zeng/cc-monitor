@@ -273,7 +273,7 @@ fn several_running_carriers_take_the_first() {
 fn a_process_list_line_reads_into_a_row() {
     let r = process_row_of(&json!({
         "pid": 1, "sessionId": "s1", "cwd": "/p", "configDir": "/acct/z", "account": "z",
-        "bare": false, "alive": true, "launchId": null, "viaRelay": null,
+        "bare": false, "alive": true, "viaRelay": null,
     }))
     .unwrap();
     assert_eq!(r, proc("s1", Some("/acct/z"), Some("z"), true));

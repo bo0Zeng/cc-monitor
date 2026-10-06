@@ -76,10 +76,9 @@ export interface LocalLaunchRequest {
   tmuxName: string | null;
 }
 
-/** 本机后端出的成品：要在新终端里跑的那一行 ＋ 交给 `ccm` 放进进程环境的身份 token（接回那一格 `null`）＋ 实际用的号。 */
+/** 本机后端出的成品：要在新终端里跑的那一行 ＋ 实际用的号。 */
 export interface LocalLaunchPlan {
   cmd: string;
-  launchId: string | null;
   account: LaunchedAccount | null;
 }
 
@@ -100,15 +99,14 @@ export async function planLocalLaunch(req: LocalLaunchRequest): Promise<LocalLau
   const account = isObj(v) ? launchedOf(v.account) : undefined;
   if (
     !isObj(v) ||
-    !exactKeys(v, ["cmd", "launchId", "account"]) ||
+    !exactKeys(v, ["cmd", "account"]) ||
     typeof v.cmd !== "string" ||
     v.cmd === "" ||
-    !(v.launchId === null || (typeof v.launchId === "string" && v.launchId !== "")) ||
     account === undefined
   ) {
-    throw unreadable(LOCAL_ORIGIN, "launch-local", "cmd/launchId/account");
+    throw unreadable(LOCAL_ORIGIN, "launch-local", "cmd/account");
   }
-  return { cmd: v.cmd, launchId: v.launchId, account };
+  return { cmd: v.cmd, account };
 }
 
 /** 本机起一个会话：问本机后端要那一行，交 monitor 在 `cwd` 开一个终端窗口跑它。回那份成品（`preflight` 说不起 ⇒ `null`，没开窗）。

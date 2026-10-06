@@ -719,8 +719,7 @@ fn sessions_replayed_is_known() {
     );
 }
 
-/// 帧里照搬的那几格（`ev` · `runs` · `ended`）按 JSON 值比，不按字节：解帧经 `serde_json::Value`，
-/// 键序随构建的特性集变（`preserve_order` 只在 workspace 判据构建里被别的包打开），按字节比单跑与门禁两个结果。
+/// 帧里照搬的那几格（`ev` · `runs` · `ended`）按 JSON 值比，不按字节：解帧经 `serde_json::Value` 重编，键序不保原文。
 fn json(text: &str) -> serde_json::Value {
     serde_json::from_str(text).expect("合法 JSON")
 }

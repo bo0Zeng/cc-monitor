@@ -386,9 +386,10 @@ const QUOTE_SITES: &[QuoteRow] = &[
     // 35 → 34：信任框那段轮询删了（收尾不再替用户按键）⇒ 它认的那句话那一处 quote 跟着没了。
     // 34 → 32：容器路不再把外层的中转地址渲回读钥匙文件那一形（那三处 quote 随那个函数删了），只原样转用户自己的端点（一处）。
     // 32 → 31：接进一个会话的那一行（在 tmux 里 switch-client、不在 attach）三处共用一个函数，`--attach` 那一形自己那一处 quote 并进去了。
+    // 31 → 29：身份 token 那两句 `export`（容器路转发 · 直路）随身份那一格整条删了。
     (
         "src/backend/control/ccm/plan.rs",
-        31,
+        29,
         &[
             ("src/backend/control/ccm/plan.rs", "validate_tmux_name"),
             ("src/backend/control/ccm/plan.rs", "free_text_gate"),
@@ -408,10 +409,6 @@ const QUOTE_SITES: &[QuoteRow] = &[
             ), // `--account`
             // 〔§47 ②〕账号配置目录走全表：全表整份搬进共享 crate（`control → observe` 那条禁止边不用破）。
             ("src/common/acct-core/src/lib.rs", "config_dir_ok"),
-            (
-                "src/common/relay-route-core/src/lib.rs",
-                "segment_is_safe",
-            ), // `--ccm-launch-id`
         ],
         "",
         "tmux 目标 `=名:` 的形 · 两个提示格式串常量 · cc-bus 脚本路径 · 本侧拼好的载荷 · 本侧上游选择出的中转地址（口是常量，路由段过段闸）",
@@ -423,17 +420,13 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "本进程自己的可执行文件路径 · 本侧拼的 hook 命令",
     ),
-    // 〔§47〕路径那一格在 `register` 进门判；argv（自由文本）在 `ask_with` 拼之前过拒绝集（只收 NUL / CR / LF）。
-    // 2 → 1：那台后端的路径不再登记（固定落点常量打头，不 quote）⇒ 只剩 argv 那一格。
+    // 〔§47〕路径那一格在 `register` 进门判；落点常量之后只跟本侧旗标。
     (
         "src/backend/stream/remote_ask.rs",
         1,
-        &[(
-            "src/common/shell-quote-core/src/lib.rs",
-            "free_text_ok",
-        )],
+        &[],
         "",
-        "",
+        "落点常量后只跟本侧旗标（`--<帧命令>` · `--stdin-line` · 资产目录两旗）",
     ),
     // 〔09-28 裁 2〕`acct_iso_deploy.rs` 那一行删了：它唯一一处拼 shell（跑安装脚本）随「落进用户目录进那台后端」退役。
     // 〔§47〕cwd（`shell_quote_core::posix_free_path_ok`）· 透传参数（`free_text_ok`）进门判；剩下的见第四列。
@@ -466,10 +459,6 @@ const QUOTE_SITES: &[QuoteRow] = &[
             ),
             ("src/common/acct-core/src/lib.rs", "config_dir_ok"), // `--account-dir`
             ("src/backend/control/gate_rules.rs", "existing_tmux_name_issue"), // 就地 resume 的目标
-            (
-                "src/common/relay-route-core/src/lib.rs",
-                "segment_is_safe",
-            ), // `--ccm-launch-id`
         ],
         "",
         "本侧渲染好的那一行直路 `ccm …`（就地 resume 回落那一形键进 pane 的整串）",
@@ -479,7 +468,6 @@ const QUOTE_SITES: &[QuoteRow] = &[
     // monitor `tmux.rs` 那一行（Gate 1 前检 ＋ `exact_target` 的 quote，只剩跨轨锚点在用）随整份文件删了：门只在后端。
     // `src/frontend/filewin/src/shell.rs` 那一行出表：文件窗口只交意图（当前目录），`cd` 那一串随拼法搬进本机后端
     //   `dial/terminal.rs::command_for_cwd`（下面那一行 1 → 3，两道放行判定跟着过去）。
-    // `launch_render/local.rs` 那一行（1）出列：身份 token 不再拼成 `export` 前缀，作为 `--ccm-launch-id` 交给 `ccm`（经调用行渲染器的 `argv`）。
     // `src/frontend/shell/src/launch.rs` 那一行出表：远端那条 ssh 外壳（包一层 `bash -lic`）随渲染进了本机后端。
     // 1 → 3：文件窗口「在此打开终端」的当前目录（自由文本路径）在这里拼进 `cd`：拼之前过 `posix_free_path_ok`
     //   （POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF）；非 UTF-8 的走字节形 `posix_quote_bytes`，过 `posix_free_path_bytes_ok`。

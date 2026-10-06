@@ -57,15 +57,13 @@ pub(crate) fn answer_cli(args: &Value, facts: &la::Facts) -> Answer {
     Ok(serde_json::json!({ "cmd": cmd, "account": launched(&account) }))
 }
 
-/// `launch-local`：本机起会话那一行。成品 `{cmd, launchId, account}`；坏输入 / 目录不在 ⇒ `refused`；
+/// `launch-local`：本机起会话那一行。成品 `{cmd, account}`；坏输入 / 目录不在 ⇒ `refused`；
 /// 要的号选不了 ⇒ `account_unavailable`。
 pub(crate) fn answer_local(args: &Value, facts: &la::Facts) -> Answer {
     let req: local::LocalLaunchRequest = decode(args)?;
     let account = local::settle(&req, facts).map_err(unavailable)?;
-    let out = local::plan(&req, &account, &local::Facts::PRODUCTION).map_err(refused)?;
-    Ok(
-        serde_json::json!({ "cmd": out.cmd, "launchId": out.launch_id, "account": launched(&account) }),
-    )
+    let cmd = local::plan(&req, &account, &local::Facts::PRODUCTION).map_err(refused)?;
+    Ok(serde_json::json!({ "cmd": cmd, "account": launched(&account) }))
 }
 
 #[cfg(test)]

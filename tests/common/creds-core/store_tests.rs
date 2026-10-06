@@ -91,39 +91,10 @@ fn ordering_is_by_name_not_by_arrival() {
     );
 }
 
-/// `KS10②` 的**端到端那一半**（整份进、整份出）。
-///
-/// ⚠ **订正〔`K-H2` `D1` 阻-3 回修，08-28〕：本段那句「它单独存在时是安慰剂」今天不成立了。**
-/// 先前逐字写的是：「`serde_json::Map` 在今天这份构建里是 `BTreeMap`（插进去就有序）
-/// ⇒『两份插入顺序相反的文档』这个夹具**造不出来**，把排序整条删掉它照样绿（`MU9` 实测 19/19）」。
-/// `K-H2` 给本 crate 的 `[dev-dependencies]` 加了 `serde_json` 的 `preserve_order`
-/// ⇒ **判据构建里 `Map` 就是 `IndexMap`**，那个夹具造得出来了。
-/// 实测：删掉 [`ordered_value`] 的递归 ⇒ **本条与 `nested_objects_…` 两条一起红**（30 passed / 2 failed）。
-/// ⇒ **`MU9` 当年那条「造不出来」是对当时那份构建说的，不是一条永久事实。**
-/// ⚠ 但**牙的来源变了要说清**：本条今天有牙靠的是那一行 dev-dependency；删了它就退回安慰剂。
-/// `ordering_is_by_name_not_by_arrival` 仍然是**不依赖任何 feature** 的那一格，两条配着用。
-///
-/// ⚠⚠ **而「那一行被删掉」这件事，先前没有任何东西会说**〔`D2` `§五-3`，`C-补` 08-28 补上〕。
-/// `D2` `P6` 实测：删掉那行 dev-dependency、**生产码一个字不动** ⇒ 全量门禁 `GATE: OK`、
-/// 三个数逐个不变 —— **本条与 `nested_objects_…` 一起悄悄退回安慰剂，而没人会知道。**
-/// ⇒ 判据体第一段加了**反空真自检**（直接量「`Map` 是不是插入序」）：
-/// 那一行没了 ⇒ **本条当场红**，报文逐字点出是哪一行依赖没了，不再是「悄悄退回」。
+/// `KS10②` 的**端到端那一半**（整份进、整份出）：落盘顺序由渲染时的排法定，不由 `Map` 的迭代顺序定。
+/// 注入倒序排法 ⇒ 输出跟着倒，证明顺序出自排法这一处（与 `Map` 是 `BTreeMap` 还是 `IndexMap` 无关）。
 #[test]
 fn the_field_order_does_not_depend_on_the_map_implementation() {
-    // ★★ **反空真自检排最前**〔`C-补` 08-28〕：本条的牙**整个**架在
-    //    `[dev-dependencies]` 里 `serde_json` 那行 `preserve_order` 上 —— 没有它
-    //    `Map` 是 `BTreeMap`，下面那两份「插入顺序相反」的夹具**根本造不出来**
-    //    （两边喂进去的本来就是同一个有序结构，删掉排序也照绿）。
-    //    这两行就是「那一行没了会说话的东西」。
-    let mut probe = Map::new();
-    probe.insert("z".into(), Value::from(1));
-    probe.insert("a".into(), Value::from(2));
-    assert_eq!(
-        probe.keys().next().map(String::as_str),
-        Some("z"),
-        "判据构建里 Map 不是插入序 —— `preserve_order` 那行 dev-dependency 没了，本条已退回安慰剂"
-    );
-
     // 两份**内容相同、插入顺序相反**的文档。
     let a = parse(r#"{"aaa":1,"mmm":2,"zzz":3}"#).expect("a");
     let b = parse(r#"{"zzz":3,"mmm":2,"aaa":1}"#).expect("b");
@@ -144,6 +115,18 @@ fn the_field_order_does_not_depend_on_the_map_implementation() {
     let im = guard_core::find_pinned(&t, "mmm").expect("mmm 应当恰好出现一处");
     let iz = guard_core::find_pinned(&t, "zzz").expect("zzz 应当恰好出现一处");
     assert!(ia < im && im < iz, "输出不是按键名排序的：{t}");
+    let rev = render(&Value::Object(a.clone()), |k| {
+        k.sort();
+        k.reverse();
+    });
+    let (ra, rz) = (
+        guard_core::find_pinned(&rev, "aaa").expect("aaa"),
+        guard_core::find_pinned(&rev, "zzz").expect("zzz"),
+    );
+    assert!(
+        rz < ra,
+        "注入倒序排法，输出没跟着倒 —— 顺序不是渲染时排出来的：{rev}"
+    );
 }
 
 /// ★★ **`KS10` 的交错那一格**（PM 08-27 点名：别测成「写完能读回来」，那测不到覆盖）。
@@ -557,43 +540,9 @@ fn adding_the_first_account_to_a_legacy_file_keeps_the_legacy_half() {
     assert_eq!(ids, vec![LEGACY_ACCOUNT_ID, "newone"]);
 }
 
-/// **`KH5c`**：落盘文本在**深度 ≥2** 上也按键名排。
-///
-/// # ★★ 它**有牙**（`D1` 阻-3 回修之后）
-///
-/// ⚠⚠ **本段先前写的是「这一条今天没有牙，它是一条给明天用的绊线」，那句话已被实测证伪。**
-/// 病灶是我把一个**关于分母的全称句**（「`BTreeMap` ⇒ 嵌套层乱序的夹具造不出来」）
-/// 当成前提直接写进了头注，而**没有去打它**。
-/// `D1` 只加了一行 dev-dependency（`serde_json` 开 `preserve_order`）就把夹具造了出来。
-///
-/// 今天的读数（我自己复打）：原码 **32 passed / 0 failed**；
-/// 把 [`ordered_value`] 的 `Value::Object` 那一支删成 `other.clone()`
-/// ⇒ **30 passed / 2 failed**，红的是本条 + 隔壁 `the_field_order_does_not_depend_on_the_map_implementation`。
-/// ⇒ **深度 ≥2 今天真有人守着。**
-///
-/// ⚠ 它仍然要配着 `ordering_is_by_name_not_by_arrival` 读：那一条收迭代器，
-/// 与 `Map` 是哪种实现**无关**；本条则是**靠 `preserve_order` 把 `Map` 换成 `IndexMap`** 才有牙的
-/// —— 哪天那一行 dev-dependency 被删掉，本条**先前会悄悄退回**成安慰剂。
-/// 那一行的理由与读数写在 `crates/creds-core/Cargo.toml` 里，**别当成可有可无的依赖**。
-///
-/// ⚠⚠ **「悄悄」那一格已经补上了**〔`D2` `§五-3`，`C-补` 08-28〕：判据体第一段是
-/// **反空真自检**（直接量「`Map` 是不是插入序」）⇒ 那一行没了本条**当场红**。
-/// 立项读数：`D2` `P6` 删掉那行、生产码不动 ⇒ 全量门禁 `GATE: OK`、三个数逐个不变，
-/// **没有任何东西说话**；`P6b`（再删递归）⇒ 32 passed / 0 failed ⇒ 确实退回了安慰剂。
+/// **`KH5c`**：落盘文本在**深度 ≥2** 上也按键名排；注入倒序排法 ⇒ 深度 2 跟着倒，证明每一层都经过排法。
 #[test]
 fn nested_objects_are_also_ordered_by_name_in_what_lands_on_disk() {
-    // ★★ **反空真自检排最前**〔`C-补` 08-28〕：见本条头注最后一段。
-    //    没有 `preserve_order`，下面这个「嵌套层乱序」的夹具造不出来（`parse` 出来就已经排好），
-    //    整条判据会变成「排过的东西还是排过的」——恒真。
-    let mut probe = Map::new();
-    probe.insert("z".into(), Value::from(1));
-    probe.insert("a".into(), Value::from(2));
-    assert_eq!(
-        probe.keys().next().map(String::as_str),
-        Some("z"),
-        "判据构建里 Map 不是插入序 —— `preserve_order` 那行 dev-dependency 没了，本条已退回安慰剂"
-    );
-
     let doc = parse(r#"{"accounts":{"b":{"zzz":1,"aaa":2},"a":{"mmm":3}}}"#).expect("夹具");
     let text = to_pretty_json(&doc);
 
@@ -615,24 +564,21 @@ fn nested_objects_are_also_ordered_by_name_in_what_lands_on_disk() {
     let iaaa = guard_core::find_pinned(&text, "\"aaa\"").expect("`aaa` 应当恰好出现一处");
     let izzz = guard_core::find_pinned(&text, "\"zzz\"").expect("`zzz` 应当恰好出现一处");
     assert!(iaaa < izzz, "深度 2 没按键名排：{text}");
+    let rev = render(&Value::Object(doc.clone()), |k| {
+        k.sort();
+        k.reverse();
+    });
+    let (ra, rz) = (
+        guard_core::find_pinned(&rev, "\"aaa\"").expect("aaa"),
+        guard_core::find_pinned(&rev, "\"zzz\"").expect("zzz"),
+    );
+    assert!(
+        rz < ra,
+        "注入倒序排法，深度 2 没跟着倒 —— 那一层没经过排法：{rev}"
+    );
 }
 
-/// **数组的顺序是数据，不许排；但数组里的对象要递归进去。**
-///
-/// 这一条守的是**方向**：把 [`ordered_value`] 的 `Value::Array` 那一支改成「排数组」会当场红。
-///
-/// # ⚠⚠ 「递归进去」那一半先前**没有牙**，本轮取到了〔`D2` `§五-4`，`C-补` 08-28〕
-///
-/// 本条先前逐字承认：「把那一支改成 `other.clone()`（不递归进数组里的对象）本条**看不出来**
-/// —— 夹具是一个**标量数组**，人群里没有『数组里套对象』那一形」。**那句自陈属实**
-/// （`D2` `P7`：不递归 + 旧夹具 ⇒ **32 passed / 0 failed**，一声不吭）。
-/// ⇒ 本轮把缺的那一形**加进夹具**：`{"list":[{"zzz":1,"aaa":2}]}`，断 `aaa` 排在 `zzz` 前。
-/// 今天这一支**真有人守**：不递归 ⇒ 本条红，报文逐字说「数组里那个对象没被递归排序」。
-///
-/// ⚠ **牙的来源要说清**：新那一段与 `nested_objects_…` 同源 —— 它靠
-/// `[dev-dependencies]` 里 `serde_json` 那行 `preserve_order` 把 `Map` 换成 `IndexMap`，
-/// 否则 `parse` 出来的内层对象**本来就已经排好**，「有没有递归进去」看不出来。
-/// ⇒ 那一段前面同样立着**反空真自检**。**数组本身那一半（顺序是数据、不许排）不依赖它。**
+/// **数组的顺序是数据，不许排；但数组里的对象要递归进去**（注入倒序排法 ⇒ 数组里那个对象跟着倒）。
 #[test]
 fn arrays_keep_their_order_because_that_order_is_data() {
     let doc = parse(r#"{"list":["zzz","aaa","mmm"]}"#).expect("夹具");
@@ -644,17 +590,6 @@ fn arrays_keep_their_order_because_that_order_is_data() {
     assert_ne!(back["list"], serde_json::json!(["aaa", "mmm", "zzz"]));
 
     // ── 另一半：**数组里套的对象要递归进去** ──────────────────
-    // ★★ 反空真自检排在这一段最前（同 `nested_objects_…`）：没有 `preserve_order`
-    //    下面那个内层对象 `parse` 出来就已经排好，这一段会恒真。
-    let mut probe = Map::new();
-    probe.insert("z".into(), Value::from(1));
-    probe.insert("a".into(), Value::from(2));
-    assert_eq!(
-        probe.keys().next().map(String::as_str),
-        Some("z"),
-        "判据构建里 Map 不是插入序 —— `preserve_order` 那行 dev-dependency 没了，下面这一段已退回安慰剂"
-    );
-
     let nested = parse(r#"{"list":[{"zzz":1,"aaa":2}]}"#).expect("嵌套夹具");
     let nested_text = to_pretty_json(&nested);
     // 非空对照：落盘的仍是合法 JSON，而且数组那一层**还在**（不是被压没了）。
@@ -662,10 +597,30 @@ fn arrays_keep_their_order_because_that_order_is_data() {
     assert_eq!(nested_back["list"][0]["aaa"], 2);
     let iaaa = guard_core::find_pinned(&nested_text, "\"aaa\"").expect("`aaa` 应当恰好出现一处");
     let izzz = guard_core::find_pinned(&nested_text, "\"zzz\"").expect("`zzz` 应当恰好出现一处");
-    assert!(
-        iaaa < izzz,
-        "数组里那个对象没被递归排序 —— `ordered_value` 的 `Value::Array` 那一支没有往下走：{nested_text}"
+    assert!(iaaa < izzz, "数组里那个对象没被递归排序：{nested_text}");
+    let rev = render(&Value::Object(nested.clone()), |k| {
+        k.sort();
+        k.reverse();
+    });
+    let (ra, rz) = (
+        guard_core::find_pinned(&rev, "\"aaa\"").expect("aaa"),
+        guard_core::find_pinned(&rev, "\"zzz\"").expect("zzz"),
     );
+    assert!(
+        rz < ra,
+        "注入倒序排法，数组里那个对象没跟着倒 —— 渲染没递归进数组：{rev}"
+    );
+}
+
+/// 手写的渲染与 `serde_json::to_string_pretty` 逐字节相同（嵌套 · 数组 · 空容器 · 转义 · 各种标量）。
+#[test]
+fn the_rendering_is_byte_for_byte_serde_pretty() {
+    let doc = parse(
+        r#"{"b":{"y":[1,2.5,-3,{"q":null,"p":true}],"x":{}},"a":[],"c":"引号\"与\\反斜杠\n换行\u0001","d":false}"#,
+    )
+    .expect("夹具");
+    let want = serde_json::to_string_pretty(&Value::Object(doc.clone())).expect("序列化") + "\n";
+    assert_eq!(to_pretty_json(&doc), want);
 }
 
 /// ★ 模板的三句说明住文案表、骨架住源码：拼出来的那份键序与今天逐字同

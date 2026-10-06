@@ -1,17 +1,13 @@
 //! **本机后端问远端后端**的那一跳 —— 全后端**只此一处**。
 //!
-//! # 出处与裁决
-//!
-//! 「观测方沿它本来就拥有的那条连接去拉被观测方」（零新通道）。
-//! AS2 用这一形造出了资产目录的自动同步；C4c 的历史跨机 join 要同一跳
-//! （`C4c.md §3.3`）。「**把 `DialRemote` ＋ 可达表从 `asset_sync.rs` 提到中立住址
-//! `src/backend/stream/remote_ask.rs`（逻辑一字不改），`asset_sync` 改调它**」—— 一路造、两路用，不各写一份。
+//! 「观测方沿它本来就拥有的那条连接去拉被观测方」（零新通道）。用它的：资产目录同步（[`command_line`] ＋ [`DialRemote`]）·
+//! 两台之间的枢纽 · 公钥 · 历史清单（[`ask_json`]）· 公钥与部署计划（[`capture_full`]）· 端口转发与探测（[`capped_line`] · [`REACH`]）。
 //!
 //! # 形状（乙：池里那条连接上多开一个 capture exec）
 //!
 //! ```text
 //!  monitor（宿主，只交事实） ── remote-reach {origin, dial} ──▶ 可达表（内存）
-//!  调用方 ── ask_with(machine, argv, 表, 对面) ──▶ 查表 ──▶ DialRemote.run(dial, "<落点> <argv…>")
+//!  调用方 ── ask_json(machine, cmd, args, 表, 对面) ──▶ 查表 ──▶ DialRemote.run_coded(dial, "<落点> -- '--<cmd>' '--stdin-line'", stdin = args 一行)
 //!                                          └─ dial::uses::run（池里那条 SSH，多一个 exec 通道，不是新连接）
 //! ```
 //!
@@ -156,7 +152,7 @@ pub fn answer_reach_with(args: &Value, table: &Table) -> Result<Value, (&'static
     Ok(json!({ "origin": o, "reach": reach_rows(table) }))
 }
 
-/// 远端上那条一次性命令的完整字面：`<落点> <argv…>`，argv **每一格都过 POSIX 单引号**（项目目录名等是自由文本）。
+/// 远端上那条一次性命令的完整字面：`<落点> <argv…>`，argv 每一格都过 POSIX 单引号。
 /// 那台后端恒在固定落点（`relay_route_core::BACKEND_LANDING_SHELL`，可填的 `backendPath` 删了）。
 pub fn command_line(argv: &[&str]) -> String {
     // `ccm -- <后端子命令…>`：打头的 `--` 让那台的 `ccm` 当后端用。
@@ -174,60 +170,6 @@ pub(crate) fn unreachable_message(machine: &str) -> String {
         "beRemoteAsk.unreachableMessage.say",
         &[("machine", &machine.to_string())],
     )
-}
-
-/// 问可达表里的那一台跑一条一次性子命令，交回它的 stdout。表与对面由调用方给 —— 生产调用方交进程里那张表（[`REACH`]）
-/// ＋ 真拨号（[`DialRemote`]），判据交自己的表与替身（数得出「一台问了几次」）。
-/// `machine` = 可达表的键（monitor 交来的那台的名字；本后端只当不透明的键用 —— 参数名刻意不叫 origin：
-/// 那个概念在 monitor 里有自己的类型，这里只是一张表的键）。
-pub async fn ask_with(
-    machine: &str,
-    argv: &[&str],
-    table: &Table,
-    remote: &dyn Remote,
-) -> Result<String, String> {
-    ask_with_coded(machine, argv, table, remote)
-        .await
-        .map_err(|s| s.message)
-}
-
-/// 同 [`ask_with`]，失败时连那台 CLI 信封里的码一起交回（[`Said`]；拨不到 / 参数被拒没有码）。
-pub async fn ask_with_coded(
-    machine: &str,
-    argv: &[&str],
-    table: &Table,
-    remote: &dyn Remote,
-) -> Result<String, Said> {
-    let plain = |message: String| Said {
-        code: None,
-        message,
-    };
-    // 〔`INVARIANTS §47` ②〕argv 是自由文本（项目目录名 · 会话路径 · 搜索词 …）⇒
-    //   拼进远端命令之前先过拒绝集（只收 NUL / CR / LF，**不拒 shell 元字符** —— 交给 `command_line` 里那一处 quote）。
-    //   判不过 ⇒ 一次都不拨。那台后端的路径是固定常量。
-    if let Some(a) = argv.iter().find(|a| !shell_quote_core::free_text_ok(a)) {
-        return Err(plain(copy_text(
-            "beRemoteAsk.argv.refused",
-            &[
-                ("machine", &machine.to_string()),
-                ("value", &format!("{a:?}")),
-            ],
-        )));
-    }
-    let r = lock(table)
-        .get(machine)
-        .cloned()
-        .ok_or_else(|| plain(unreachable_message(machine)))?;
-    // 子命令之后的自由文本走 stdin 一行（JSON 数组，收的一侧 `cli_control::expand_stdin_argv`）：
-    //   命令行里只剩落点与旗标 ⇒ 远端登录 shell 是 fish 之类也同读。
-    let (line, stdin) = match argv.split_first() {
-        Some((sub, rest)) if !rest.is_empty() => (
-            command_line(&[sub, crate::STDIN_LINE_FLAG]),
-            Some(format!("{}\n", json!(rest))),
-        ),
-        _ => (command_line(argv), None),
-    };
-    remote.run_coded(&r.dial, line, stdin).await
 }
 
 /// 问可达表里那一台跑一条**帧命令的 CLI 面**（`--<cmd> --stdin-line`），

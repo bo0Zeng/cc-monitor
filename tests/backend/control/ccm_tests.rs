@@ -687,8 +687,8 @@ fn the_alias_preview_speaks_for_a_fresh_terminal_at_home() {
     assert!(e.tmux.is_none(), "新终端不在 tmux 里");
     assert!(e.inherited_config_dir.is_none(), "账号目录变量不继承");
     assert!(
-        e.anthropic_base_url.is_none() && e.ccm_launch_id.is_none(),
-        "常驻后端进程身上的中转地址 / 启动号不是那个终端的"
+        e.anthropic_base_url.is_none(),
+        "常驻后端进程身上的中转地址不是那个终端的"
     );
     // 行为：不给 --cwd ⇒ 落在家目录；容器路内层叫回的是 `ccm`。
     let line = |args: &[&str]| -> String {

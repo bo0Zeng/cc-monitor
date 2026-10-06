@@ -72,7 +72,6 @@ const projectDir = (path: string): string => path.replace(/\//g, "-");
 const baseName = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
 const minutesAgo = (min: number): number => NOW - min * 60_000;
 const historyPath = (p: ShotProject, sid: string): string => `/home/dev/.claude/projects/${projectDir(p.path)}/${sid}.jsonl`;
-const projectsOn = (origin: unknown): ShotProject[] => HISTORY.filter((p) => p.origin === ((origin as string | undefined) ?? LOCAL));
 
 function searchHits(p: ShotProject): Json[] {
   return p.sessions.flatMap((s) =>
@@ -149,42 +148,6 @@ const OPS: Record<string, (origin: string, body: Json) => unknown> = {
       r.type === "user" && r.userText.speaker.kind === "human" && r.userText.text ? [{ uuid: r.uuid, excerpt: r.userText.text.slice(0, 80), timestamp: r.timestamp }] : [],
     ),
   }),
-  "history-projects": (_o, body) => ({
-    rows: projectsOn(body.origin).map((p) => ({
-      projectPath: p.path,
-      projectName: baseName(p.path),
-      projectDir: projectDir(p.path),
-      sessionCount: p.sessions.length,
-      starredCount: 0,
-      hiddenCount: 0,
-      lastActivity: Math.max(...p.sessions.map((s) => minutesAgo(s.agoMin))),
-      hasLive: p.sessions.some((s) => s.live === true),
-      ...withOrigin(p.origin),
-    })),
-    notice: null,
-  }),
-  "history-sessions": (_o, body) => {
-    const p = projectsOn(body.origin).find((x) => projectDir(x.path) === body.project_dir);
-    if (!p) return { rows: [], notice: null };
-    const rows = p.sessions.map((s) => ({
-      sessionId: s.sid,
-      projectPath: p.path,
-      projectName: baseName(p.path),
-      aiTitle: s.title,
-      firstUserExcerpt: s.excerpt,
-      startedAt: minutesAgo(s.agoMin + 40),
-      updatedAt: minutesAgo(s.agoMin),
-      jsonlPath: historyPath(p, s.sid),
-      isLive: s.live === true,
-      messageCountApprox: s.messages,
-      isBg: false,
-      starred: false,
-      customTitle: null,
-      hidden: false,
-      ...withOrigin(p.origin),
-    }));
-    return { rows, notice: null };
-  },
   "history-search": (origin) => HISTORY.filter((p) => p.origin === origin).flatMap(searchHits),
   "history-search-merge": (_o, body) => {
     const rows = [...(body.sessions as { updatedAt: number; hitCount: number }[])].sort((a, b) => b.updatedAt - a.updatedAt);

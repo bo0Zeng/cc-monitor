@@ -124,25 +124,10 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
 }
 
 /// `--list-projects`：每个项目目录一行 JSON：
-/// `{"dirName","projectPath","sessionCount","lastActivityMs","sessionIds"}`
+/// `{"dirName","projectPath","sessionCount","lastActivityMs"}`
 /// projectPath = 该项目**最新** jsonl 的项目目录（适配层 `RecordFace.project_dir`：真实目录，
 /// 而非编码过的目录名）；读不到则空字符串，monitor 侧回退显示 dirName。
 ///
-/// # `sessionIds`（`K-R83` 09-12）：这一行**带得出下游要算的那三个数**
-///
-/// monitor 侧的项目行还要 `starredCount` / `hiddenCount` / `hasLive` 三个数，
-/// 而这三个数的源头在 monitor 那侧（本机 metadata / `SessionMap`）**全部按会话 sid 索引**
-/// —— 缺的从来不是「谁来数」，是「这个项目下有哪几个 sid」。
-/// ⇒ 本行把那份清单带上，下游一次就算得出，**不用每个项目再来一次 `--list-sessions`**
-/// （那是 N 次进程 spawn，而项目列表是用户常开的界面 —— 失效方向逐字记在
-/// monitor 的 `local_read_surface_registry.rs` 那条退役条件里）。
-///
-/// **代价如实记**：`sessionIds` 与 `sessionCount` 同源同一趟 `read_dir`，
-/// **零额外 I/O**；涨的只有输出字节（每会话 ~38 B）。monitor 侧单行上限是 64 MiB
-/// （`stream_source::BACKEND_FRAME_LINE_CAP`），要撞上它得一个项目下约 170 万个会话。
-///
-/// ⚠ **它与 `sessionCount` 恒等长，这是契约的一部分** —— 下游据此判「空清单」是
-/// 「真的没有会话」还是「这一行坏了」（`sessionCount > 0` 而清单空 ⇒ 后者，不许当成 0）。
 /// 老 CLI 那一面照旧**出声**（rc=2）：它是远端 / 一次性问者的契约，零行会被读成「这家没有会话」
 /// （`agents/fake` 那条 S6-Z3 钉着）；但那一形带上结构化的码 [`NO_RECORD_TREE`]（`{code, message}` 信封），
 /// 问的那台后端认码 ⇒ 画「这台还没有会话记录」而不是「没加载上」。其余失败无码（`Err((None, 原因))`）。
@@ -236,9 +221,8 @@ fn unreadable_dir(dir: &Path, e: &std::io::Error) -> String {
 ///
 /// # 为什么它是**一个函数**而不是 `list_projects` 里的一段
 ///
-/// `list_projects` 的出口是 `stdout`，红线内测不了；而 `K-R83` 的三条判据要判的是
-/// **这一行带了什么**，不是「stdout 上出现了什么」。同样的分法在本文件里已有先例：
-/// `analyze_session` 也是把「算出那一行」与「把它印出去」分开的。
+/// `list_projects` 的出口是 `stdout`，红线内测不了；判据要判的是**这一行带了什么**。
+/// 同样的分法在本文件里已有先例：`analyze_session` 也是把「算出那一行」与「把它印出去」分开的。
 fn project_rows(dir: &Path, dir_name: &str) -> Vec<serde_json::Value> {
     project_rows_hiding(dir, dir_name, &hidden_cwd)
 }
@@ -266,46 +250,31 @@ fn project_rows_hiding(
     dir_name: &str,
     hide: &dyn Fn(&str) -> bool,
 ) -> Vec<serde_json::Value> {
-    // `K-R83`：sid 的取法与 `--list-sessions` 那条逐字同源（`analyze_session` 也是
-    // `file_stem`）—— 两条路给同一个会话的 id 必须是同一个字符串，否则下游按 sid
-    // 去查 metadata 会**查不着而看起来像「没有星标」**，又是一次「不知道」装成 0。
-    // 目录与修改时刻也与那一条同源（`project_dir_of` · `mtime_ms`），两边分出来的组才一样。
-    let mut sessions: Vec<(String, Option<String>, i64)> = Vec::new();
+    // 目录与修改时刻与 `--list-sessions` 那条同源（`project_dir_of` · `mtime_ms`），两边分出来的组才一样。
+    let mut sessions: Vec<(Option<String>, i64)> = Vec::new();
     if let Ok(files) = std::fs::read_dir(dir) {
         for f in files.flatten() {
             let p = f.path();
-            if !p.is_file() || !crate::agents::claudecode::records::is_session_file(&p) {
-                continue;
+            if p.is_file() && crate::agents::claudecode::records::is_session_file(&p) {
+                sessions.push((crate::agents::project_dir_of(&p), mtime_ms(&p)));
             }
-            // ⚠ 计数与 sid **共用同一个守卫**：取不到 stem 的那一格不进任何一组，
-            //   `sessionCount` 与清单长度才恒等（下游拿两者对拍分辨「真的没有」与「这一行坏了」）。
-            let Some(sid) = p.file_stem().map(|s| s.to_string_lossy().into_owned()) else {
-                continue;
-            };
-            sessions.push((sid, crate::agents::project_dir_of(&p), mtime_ms(&p)));
         }
     }
-    let keys: Vec<(Option<String>, i64)> =
-        sessions.iter().map(|(_, c, m)| (c.clone(), *m)).collect();
-    let mut groups: std::collections::BTreeMap<String, (Vec<String>, i64)> = Default::default();
-    for ((sid, _, mtime), path) in sessions.into_iter().zip(group_by_cwd(&keys)) {
+    let mut groups: std::collections::BTreeMap<String, (u32, i64)> = Default::default();
+    for ((_, mtime), path) in sessions.iter().zip(group_by_cwd(&sessions)) {
         let g = groups.entry(path).or_default();
-        g.0.push(sid);
-        g.1 = g.1.max(mtime);
+        g.0 += 1;
+        g.1 = g.1.max(*mtime);
     }
     groups
         .into_iter()
         .filter(|(project_path, _)| !hide(project_path))
-        .map(|(project_path, (mut session_ids, last_activity_ms))| {
-            // 排序**不是**为了好看：`read_dir` 的顺序是文件系统给的，两趟未必一样，
-            // 而下游要拿这份清单做对拍与缓存 key —— 不稳定的顺序会让「同一份数据」看起来变了。
-            session_ids.sort_unstable();
+        .map(|(project_path, (count, last_activity_ms))| {
             serde_json::json!({
                 "dirName": dir_name,
                 "projectPath": project_path,
-                "sessionCount": session_ids.len() as u32,
+                "sessionCount": count,
                 "lastActivityMs": last_activity_ms,
-                "sessionIds": session_ids,
             })
         })
         .collect()

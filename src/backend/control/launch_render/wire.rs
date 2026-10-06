@@ -140,7 +140,6 @@ fn with_spec<T>(
         launcher: &req.launcher,
         default_launcher: &req.default_launcher,
         args: &[],
-        launch_id: None,
         ccm_path,
         detach,
     };

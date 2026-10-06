@@ -2426,6 +2426,11 @@ mod tests;
 #[path = "../../../../tests/common/guard-core/test_tiers_tests.rs"]
 mod test_tiers;
 
+/// 判据构建与发布构建解析出的 `serde_json` 特性集相同（`cargo tree --frozen` 现取）。
+#[cfg(test)]
+#[path = "../../../../tests/common/guard-core/build_features_tests.rs"]
+mod build_features;
+
 /// 仓里零引用仓外的开发文档：全部跟踪文本逐行过一张检测网，命中集 == ∅。
 #[cfg(test)]
 #[path = "../../../../tests/common/guard-core/no_outside_refs_tests.rs"]

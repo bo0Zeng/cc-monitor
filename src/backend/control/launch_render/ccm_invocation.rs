@@ -53,8 +53,6 @@ pub enum IdentifierSlot {
     Account,
     /// `--ccm-tmux=<名>`：要**新建**的会话名（`crate::control::gate_rules::new_tmux_name_issue`）。
     TmuxName,
-    /// `--ccm-launch-id <标识>`（`relay_route_core::segment_is_safe`）。
-    LaunchId,
 }
 
 /// [`Refusal::FreeTextRefused`] 是哪一格（各有各的一句话，文案走表）。
@@ -112,9 +110,6 @@ impl Refusal {
                 }
                 IdentifierSlot::Account => {
                     copy_text("rsCcmInvocation.refusal.idAccount", &[("value", value)])
-                }
-                IdentifierSlot::LaunchId => {
-                    copy_text("rsCcmInvocation.refusal.idLaunchId", &[("value", value)])
                 }
                 IdentifierSlot::TmuxName => copy_text(
                     "rsCcmInvocation.refusal.idTmuxName",
@@ -180,8 +175,6 @@ pub struct CliSpec<'a> {
     pub launcher: &'a str,
     pub default_launcher: &'a str,
     pub args: &'a [&'a str],
-    /// 本机回填 sid 用的身份 token（`--ccm-launch-id`）。
-    pub launch_id: Option<&'a str>,
     pub ccm_path: &'a str,
     /// 建进 tmux 之后不接进去（`--detach`，只对新建 tmux 容器那一形有意义）：后端自己替人起会话时用（tab 栏批量在 tmux 里起）。
     pub detach: bool,
@@ -239,15 +232,11 @@ struct Dim {
     caps: &'static [&'static str],
 }
 
-fn starts_agent(s: &CliSpec) -> bool {
-    matches!(s.action, Action::New | Action::Resume { .. })
-}
-
 /// 模型偏好在命令行上的说法：交给 agent 的那一侧 `--model <名>`（不是 ccm 的选项，ccm 原样透传）。
 /// 别名表单的「模型」那一格（`assets/aliases/form.rs`）用同一个。
 pub(crate) const MODEL_FLAG: &str = "--model";
 
-/// **顺序即契约**：`identity` < `agent` < `account` < `model` < `launch-id`。
+/// **顺序即契约**：`identity` < `agent` < `account` < `model`。
 /// 由 `a_fully_loaded_invocation_emits_every_part_in_registry_order`（全触发、逐字节比整条命令）钉住。
 const DIMENSION_ORDER: &[Dim] = &[
     Dim {
@@ -285,17 +274,6 @@ const DIMENSION_ORDER: &[Dim] = &[
             ])
         },
         caps: &["model"],
-    },
-    Dim {
-        id: "launch-id",
-        applies: |s| s.launch_id.is_some() && starts_agent(s),
-        cli_flags: |s| {
-            Some(vec![
-                "--ccm-launch-id".into(),
-                s.launch_id.unwrap_or_default().to_string(),
-            ])
-        },
-        caps: &[],
     },
 ];
 
@@ -510,12 +488,6 @@ fn identifiers_ok(spec: &CliSpec) -> Result<(), Refusal> {
     }
     if let Some(m) = spec.model.filter(|m| !shell_quote_core::model_name_ok(m)) {
         return bad(IdentifierSlot::Model, m);
-    }
-    if let Some(l) = spec
-        .launch_id
-        .filter(|l| !relay_route_core::segment_is_safe(l))
-    {
-        return bad(IdentifierSlot::LaunchId, l);
     }
     Ok(())
 }

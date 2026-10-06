@@ -178,12 +178,14 @@ describe("账号面板 · 重启切换", () => {
     expect(toasts().map((t) => t.textContent)).toEqual([expect.stringContaining("team · 重启切换 · orders")]);
   });
 
-  it("没成、旧会话还在 ⇒ 「原会话保留 · 原因」，只有关闭那一颗", async () => {
+  it("没成、旧会话还在 ⇒ 「原会话保留 · 原因」，只带［日志］", async () => {
     await restart({ state: "failed", code: "stop_failed", old: "kept" });
     const [t] = toasts();
     expect(t.dataset.level).toBe("error");
     expect(t.textContent).toContain("重启切换失败 · 原会话保留 · 停不下旧进程");
-    expect(toastButtons(t)).toEqual([]);
+    expect(toastButtons(t)).toEqual(["日志"]);
+    [...t.querySelectorAll("button")].find((b) => b.textContent === "日志")!.click();
+    expect(openLog).toHaveBeenCalledTimes(1);
     expect(runRemoteAttach).not.toHaveBeenCalled();
   });
 

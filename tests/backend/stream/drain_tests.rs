@@ -509,7 +509,7 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
 /// **退出口只有 `main` 与 `exit_after_drain`**：后端生产树里 `process::exit(` 的所在函数，全树逐处现打。
 ///
 /// 期望（异源：取自 ⑮ 那句裁决与 `main.rs` 的分派形状，不从被扫的源码现推）：
-/// `main.rs::main` 四处（ccm 那一趟 · argv 一族的 stdin 一行读不动 · 一次性查询 · 监听口配置不成立或绑不上口，`claim_then_log` 交回的码）——
+/// `main.rs::main` 三处（ccm 那一趟 · 一次性查询 · 监听口配置不成立或绑不上口，`claim_then_log` 交回的码）——
 /// 都发生在**一条命令都还没收**之前、没有可排空的；`stream/inbound/drain.rs::exit_after_drain_within` 一处
 /// （`exit_after_drain` 的本体：生产入口只经它，期限由 d3 钉）。别处一处都不许有 —— 模块里想退就把退出码交回调用方。
 #[test]
@@ -535,7 +535,6 @@ fn x15_the_process_exits_only_in_main_and_exit_after_drain() {
     );
     found.sort();
     let want: Vec<(String, String)> = [
-        ("main.rs", "main"),
         ("main.rs", "main"),
         ("main.rs", "main"),
         ("main.rs", "main"),

@@ -190,8 +190,6 @@ export async function fetchSessionAccountsOrNull(origin: Origin): Promise<Sessio
  *
  * 口径逐格照它上一个住址（Rust `accounts.rs::SessionAccount` 的 serde：`camelCase`、`pid` 必有、
  * 其余可缺；`bare` / `alive` 缺 ⇒ `false`）：
- * - 🔴 **additive**（`K-P5f` `KP5FD4`）：老后端的行**逐字节没有 `launchId` 键** ⇒ 读成 `null`，
- *   **不许判成坏行**（那会让整台机器的会话账号映射一条不剩、徽章整片消失）；
  * - 某一格**在但类型不对** ⇒ 整行坏（serde 同样整行拒）—— 不替后端猜一个值。
  */
 export function parseSessionAccountLines(lines: string[]): SessionAccount[] {
@@ -219,7 +217,6 @@ export function parseSessionAccountLines(lines: string[]): SessionAccount[] {
       !optStr(o.account) ||
       !optBool(o.bare) ||
       !optBool(o.alive) ||
-      !optStr(o.launchId) ||
       !optBoolOrNull(o.viaRelay)
     ) {
       console.warn("session-accounts 行字段类型不对（跳过）");
@@ -233,7 +230,6 @@ export function parseSessionAccountLines(lines: string[]): SessionAccount[] {
       account: o.account ?? null,
       bare: o.bare ?? false,
       alive: o.alive ?? false,
-      launchId: o.launchId ?? null,
       viaRelay: o.viaRelay ?? null,
     });
   }

@@ -14,7 +14,7 @@
 //!    `parse_request_value(`（把一份拨号请求读成可拨的形状）—— 在 `dial/` 之外**只**出现在本模块；
 //!    `dial/` 自己那几处是正控（同一识别器在 `dial/link.rs` 上命中，扫描没瞎）。
 //! 2. **可达表只有一个写口**：`remote-reach` 与 `assets-sync` 登记同一张表、同一个函数（行为：两条路登记后表逐格相等）。
-//! 3. **问法**：查不到那台 ⇒ 明说、对面一次都没被调；查得到 ⇒ 交给对面的恰是表里那份拨号请求 ＋ 逐格引号的命令行。
+//! 3. **问法**：查不到那台 ⇒ 明说、对面一次都没被调；查得到 ⇒ 交给对面的恰是表里那份拨号请求 ＋ 逐格引号的命令行，参数走 stdin 一行。
 //! 4. **引号**：命令行交给真 `sh` 跑，每一格原样回来（异源：真 shell 对我们的引号）。
 //!
 //! # 买不到
@@ -121,73 +121,39 @@ fn reach_args(origin: &str, host: &str) -> Value {
 async fn an_unregistered_origin_is_said_and_never_dialed() {
     let table = Table::default();
     let far = Recorder::default();
-    let e = ask_with("nowhere", &["--list-projects"], &table, &far)
+    let e = ask_json("nowhere", "history-list", &json!({}), &table, &far)
         .await
         .expect_err("没登记的那台不许问出东西来");
-    assert_eq!(e, unreachable_message("nowhere"));
-    assert!(e.contains("[nowhere]"), "那句话要点名是哪台：{e}");
+    assert_eq!(e.code.as_deref(), Some("unreachable"));
+    assert_eq!(e.message, unreachable_message("nowhere"));
+    assert!(
+        e.message.contains("[nowhere]"),
+        "那句话要点名是哪台：{}",
+        e.message
+    );
     assert_eq!(far.n.load(Ordering::SeqCst), 0, "没登记也去拨了");
 }
 
-/// ★ 判据 3（正向）：交给对面的恰是表里那份拨号请求 ＋ 逐格引号的命令行。
+/// ★ 判据 3（正向）：交给对面的恰是表里那份拨号请求 ＋ 逐格引号的命令行，参数走 stdin 一行。
 #[tokio::test]
 async fn a_registered_origin_is_asked_with_exactly_its_dial_and_a_quoted_command() {
     let table = Table::default();
     answer_reach_with(&reach_args("dev", "10.0.0.2"), &table).unwrap();
     let far = Recorder::default();
-    let out = ask_with("dev", &["--list-sessions", "-home-u-it's"], &table, &far)
+    let args = json!({"dir": "-home-u-it's"});
+    let _ = ask_json("dev", "history-list", &args, &table, &far)
         .await
-        .unwrap();
-    assert_eq!(out, "答");
+        .expect_err("替身答的不是 JSON");
     let calls = far.calls.lock().unwrap().clone();
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].0, reach_args("dev", "10.0.0.2")["dial"]);
-    // 期望值手写成字面量（不拿 `command_line` 去比它自己 —— 死值验 A3：那样两侧同源，拿掉引号也恒绿）。
-    // 命令行里只剩落点与旗标；项目目录名（带 `'`）走 stdin 一行。
+    // 期望值手写成字面量（不拿 `command_line` 去比它自己 —— 那样两侧同源，拿掉引号也恒绿）。
     // 那台后端恒在固定落点：`"$HOME"` 在那台上展开（fish 的双引号里同样展开），其后是安全字节。
     assert_eq!(
         calls[0].1,
-        r#""$HOME"/.cc-monitor/bin/ccm -- '--list-sessions' '--stdin-line'"#
+        r#""$HOME"/.cc-monitor/bin/ccm -- '--history-list' '--stdin-line'"#
     );
-    assert_eq!(calls[0].2.as_deref(), Some("[\"-home-u-it's\"]\n"));
-}
-
-/// ★ 守的要求（逐字）：「起远端后端的命令、历史跨机那几问的 argv 仍拼在远端命令行里 ⇒
-/// 远端登录 shell 是 fish 之类时这几条仍不成立」。发的一侧（`ask_with`）交出去的命令行交真 `sh` 拆词、stdin 那一行交收的一侧
-/// （`cli_control::expand_stdin_argv`）⇒ 拼回来的 argv 与调用方给的逐格相等；命令行里没有任何一格自由文本
-/// （只剩后端路径与旗标 —— 那几格不含 `'` 与 `\`，fish 与 POSIX 单引号同读）。
-#[cfg(unix)]
-#[tokio::test]
-async fn the_free_text_rides_stdin_and_the_remote_gets_the_argv_back_verbatim() {
-    let table = Table::default();
-    answer_reach_with(&reach_args("dev", "10.0.0.2"), &table).unwrap();
-    let far = Recorder::default();
-    let tricky = ["-home-u-it's", "照片 (2019) \\ $HOME `id`", "a & b; c"];
-    for dir in tricky {
-        ask_with("dev", &["--list-sessions", dir], &table, &far)
-            .await
-            .unwrap();
-    }
-    for ((_, line, stdin), dir) in far.calls.lock().unwrap().iter().zip(tricky) {
-        assert!(!line.contains(dir), "自由文本进了远端命令行：{line}");
-        assert!(
-            !line.contains('\\') && line.matches('\'').count() % 2 == 0 && !line.contains("'\\''"),
-            "命令行里有 fish 与 POSIX 读法不同的写法：{line}"
-        );
-        let out = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(format!("set -- {line}; shift 2; printf '%s\\n' \"$@\""))
-            .output()
-            .expect("起 sh");
-        let words: Vec<String> = String::from_utf8_lossy(&out.stdout)
-            .lines()
-            .map(str::to_string)
-            .collect();
-        let stdin = stdin.clone().expect("自由文本没走 stdin");
-        let got = crate::control::cli_control::expand_stdin_argv(words, stdin.as_bytes())
-            .expect("收的一侧读得动");
-        assert_eq!(got, vec!["--list-sessions".to_string(), dir.to_string()]);
-    }
+    assert_eq!(calls[0].2.as_deref(), Some("{\"dir\":\"-home-u-it's\"}\n"));
 }
 
 /// ★ 判据 2：`remote-reach` 与 `assets-sync` 登记的是同一张表、同一个写口 —— 两条路登记同一台之后表逐格相等；
@@ -328,28 +294,6 @@ async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
         .await
         .expect("答完 10 秒了，内层任务还在")
         .expect("哨兵没报信就没了");
-}
-
-/// ★ 〔`INVARIANTS §47` ②〕一次性子命令的 argv 是自由文本：拒绝集只收 NUL / CR / LF（**不拒 shell 元字符**），
-/// 判不过一次都不拨；真实名字（带 `'` `(` `&` 的目录名 · 中文 · 空格）照发（拒过头同样违反 §47）。
-#[tokio::test]
-async fn one_shot_argv_refuses_only_what_the_quote_cannot_hold() {
-    let table = Table::default();
-    answer_reach_with(&reach_args("dev", "10.0.0.2"), &table).unwrap();
-    let far = Recorder::default();
-    for good in ["-home-u-Bob's notes", "照片 (2019)", "a & b; c"] {
-        ask_with("dev", &["--list-sessions", good], &table, &far)
-            .await
-            .unwrap_or_else(|e| panic!("真实好值被拒了：{good:?} ⇒ {e}"));
-    }
-    assert_eq!(far.n.load(Ordering::SeqCst), 3);
-    for bad in ["a\nb", "a\rb", "a\0b"] {
-        let e = ask_with("dev", &["--search", bad], &table, &far)
-            .await
-            .expect_err(&format!("坏值拼进远端命令了：{bad:?}"));
-        assert!(e.contains("dev") && e.contains(&format!("{bad:?}")), "{e}");
-    }
-    assert_eq!(far.n.load(Ordering::SeqCst), 3, "拒了却还是去拨了");
 }
 
 /// 交给 capture 的 stdin 真进了拨号请求的 `capture.stdin`（缺席 = 一个字节不写），

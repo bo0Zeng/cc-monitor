@@ -439,7 +439,6 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/frame_cadence_guard_tests.rs",
     "tests/frontend/shell/gate_singleton_guard_tests.rs",
     "tests/frontend/shell/guard_support_tests.rs",
-    "tests/frontend/shell/launcher_identity_registry_tests.rs",
     "tests/frontend/shell/lib_invariant_population_tests.rs", // §47 / §49 人群判据（读仓内源码）
     "tests/frontend/shell/lib_mod_decl_hygiene_tests.rs",
     "tests/frontend/shell/lib_window_lifecycle_tests.rs",
@@ -715,6 +714,7 @@ const INTEGRATION: &[&str] = &[
     "tests/frontend/shell/dial_host_tests.rs",
     "tests/frontend/shell/doc_claim_registry_tests.rs",
     "tests/common/guard-core/no_outside_refs_tests.rs", // 起 `git ls-files` 取人群，同上一行
+    "tests/common/guard-core/build_features_tests.rs", // 起 `cargo tree --frozen` 现取两种构建的特性集
     "tests/frontend/filewin/bookmarks_tests.rs",
     "tests/frontend/filewin/proc_tests.rs", // 窗口进程那一侧（拨回 · 第一屏 · 就绪那一行）随躯体搬进窗口包
     "tests/frontend/shell/filewin/proc_tests.rs",

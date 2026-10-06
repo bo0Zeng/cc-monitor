@@ -15,7 +15,6 @@ fn base_spec() -> CliSpec<'static> {
         launcher: "claude",
         default_launcher: "claude",
         args: &[],
-        launch_id: None,
         ccm_path: "ccm",
         detach: false,
     }
@@ -132,10 +131,10 @@ fn every_refusal_reason_is_pinned_byte_for_byte() {
         ),
         (
             Refusal::IdentifierRefused {
-                slot: IdentifierSlot::LaunchId,
-                value: q("a/b"),
+                slot: IdentifierSlot::Model,
+                value: q("-m"),
             },
-            "会话标识 \"a/b\" 不合法（1 到 128 位，只许字母数字与 - _）".into(),
+            "模型名 \"-m\" 用不了（字母数字开头，只许字母数字与 . _ - : @ / [ ]，最长 256）".into(),
         ),
     ];
     for (r, want) in &pairs {
@@ -202,7 +201,6 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
         launcher: "ccr code",
         default_launcher: "claude",
         args: &["--verbose"],
-        launch_id: Some("s1"),
         ccm_path: "ccm",
         detach: false,
     };
@@ -210,26 +208,9 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
         render(&spec).unwrap(),
         format!(
             "ccm --resume s1 --model opus --verbose -- --ccm-tmux=cc-s1 --ccm-sid=s1 --ccm-agent claude --account z \
-             --ccm-launch-id s1 --cwd '/w d' --launcher 'ccr code'"
+             --cwd '/w d' --launcher 'ccr code'"
         )
     );
-}
-
-/// 身份 token 只在起 agent 时带（接回不起进程，它没有读者）。
-#[test]
-fn identity_tokens_ride_only_when_an_agent_starts() {
-    let mut s = base_spec();
-    s.launch_id = Some("id-1");
-    assert_eq!(
-        render(&s).unwrap(),
-        "ccm -- new --ccm-agent claude --base --ccm-launch-id id-1"
-    );
-    s.action = Action::Attach { name: "cc-x" };
-    s.container = Container::Tmux {
-        name: "cc-x",
-        send_into: false,
-    };
-    assert_eq!(render(&s).unwrap(), "ccm -- --attach cc-x");
 }
 
 /// 就地 resume：外层只包那一行直路 `ccm …`（键进已有的 pane，再接进去）。
@@ -280,13 +261,6 @@ fn every_value_is_judged_before_it_becomes_a_ccm_argument() {
                 ..base_spec()
             },
             "IdentifierRefused { slot: Account",
-        ),
-        (
-            CliSpec {
-                launch_id: Some("a/b"),
-                ..base_spec()
-            },
-            "IdentifierRefused { slot: LaunchId",
         ),
         (
             CliSpec {

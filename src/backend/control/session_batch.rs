@@ -673,8 +673,8 @@ fn start_window_here(
     };
     let req = local_req(it, b, name.clone());
     match local::plan(&req, account, &deps.local_facts) {
-        Ok(p) => Answer {
-            cmd: Some(p.cmd),
+        Ok(cmd) => Answer {
+            cmd: Some(cmd),
             session: name,
             ..Answer::done(&it.sid)
         },

@@ -112,8 +112,8 @@ pub(crate) fn parse_starttime_from_stat(stat: &str) -> Option<u64> {
 /// - `Unreadable` = 「**环境这一刻取不到**」= 支一 ∪ 支四；
 /// - `Unset` = 「读得到、但这个键不作数」= 支二 ∪ 支三，**仍然合并**。
 ///
-/// 合并那两支的依据是 09-03 逐个调用方现打的等价性：三个调用方的下游谓词
-/// （`launch_id_is_safe` / `pane_is_safe` / `is_safe_config_dir`）**都对空串恒 `false`**
+/// 合并那两支的依据是 09-03 逐个调用方现打的等价性：两个调用方的下游谓词
+/// （`pane_is_safe` / `is_safe_config_dir`）**都对空串恒 `false`**
 /// ⇒ 「键不在」与「值是空串」在今天的每一个调用方那里都落到同一格。
 /// ⚠ 这条等价性**是量出来的、不是永真的**：哪天有调用方开始把空串当有意义的值，
 /// 这两支就得再拆一次。
@@ -131,22 +131,6 @@ pub(crate) enum EnvRead {
     /// 🔴 它**不是**「没设」—— 把它当成「没设」正是 `K-R21` 治的那句假话
     /// （`observe/accounts_query.rs` 会据此把一条真跑在账号 Z 下的会话报成账号 0 的）。
     Unreadable,
-}
-
-impl EnvRead {
-    /// 把「取不到」与「没设」合回一个 `None` —— **今天不需要区分**的调用方用这个。
-    ///
-    /// ⚠ 用它就等于声明「这两件事对我等价」。`K-R21` 逐个核过：
-    /// `control/identity_tag.rs` 与 `accounts_query.rs` 的 `CCM_LAUNCH_ID` 那一处
-    /// 今天都是 **fail-closed**（两条路都得同一个保守答案）⇒ 对它们确实等价。
-    /// 而 `accounts_query.rs` 的 `CLAUDE_CONFIG_DIR` 那一处**不等价**（它 fail-open），
-    /// 所以那一处**不用这个方法**，它自己 `match` 三支。
-    pub(crate) fn value(self) -> Option<String> {
-        match self {
-            EnvRead::Value(v) => Some(v),
-            EnvRead::Unset | EnvRead::Unreadable => None,
-        }
-    }
 }
 
 /// 从 `/proc/<pid>/environ` 抠**某一个**环境变量的值，三态返回（见 [`EnvRead`]）。

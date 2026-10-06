@@ -56,7 +56,7 @@ function requests(): CliRenderRequest[] {
 beforeEach(() => {
   vi.clearAllMocks();
   render.renderCli.mockImplementation(async (_o: string, req: CliRenderRequest) => ({ cmd: lineFor(req), account: null }));
-  render.planLocalLaunch.mockResolvedValue({ cmd: "ccm -- --attach n-cc", launchId: null });
+  render.planLocalLaunch.mockResolvedValue({ cmd: "ccm -- --attach n-cc", account: null });
   term.openTerminal.mockResolvedValue(undefined);
   tmux.sendInto.mockResolvedValue({ verdict: "typed" });
   mint.mintFreshTmuxName.mockResolvedValue({ ok: true, name: "w-cc" });

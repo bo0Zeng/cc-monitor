@@ -2,7 +2,7 @@
 //! （`open_local_terminal`）。
 //!
 //! 一行 = `ccm …`（[`super::ccm_invocation`]）：POSIX 上有会话名 ⇒ 建进 tmux（`--ccm-tmux=`）；Windows / 没名字 ⇒ 直路。
-//! 起 agent 的那几格带 `--ccm-launch-id <token>`（交回调用方回填 sid）。环境与中转地址由 `ccm` 自己定。
+//! 环境与中转地址由 `ccm` 自己定。
 //! 事实（平台 · 目录在不在）由 [`Facts`] 给，[`plan`] 是纯的 —— 判据喂确定的事实驱动生产那一条。
 
 use super::ccm_invocation as ci;
@@ -67,13 +67,6 @@ fn dir_exists(p: &str) -> bool {
     std::path::Path::new(p).is_dir()
 }
 
-/// 一次拉起的成品。`launch_id` = 交给 `ccm` 放进 agent 进程环境的那个身份 token（接回那一格不起 agent ⇒ `None`）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Planned {
-    pub(crate) cmd: String,
-    pub(crate) launch_id: Option<String>,
-}
-
 /// 这一趟用哪个号（[`la::settle`]；缺席 ⇒ 不表态）。选不了 ⇒ `Err`。
 pub(crate) fn settle(
     req: &LocalLaunchRequest,
@@ -94,7 +87,7 @@ pub(crate) fn plan(
     req: &LocalLaunchRequest,
     account: &Settled,
     facts: &Facts,
-) -> Result<Planned, String> {
+) -> Result<String, String> {
     let windows = facts.windows;
     plan_with(req, account, facts, false, |spec, caps| {
         if windows {
@@ -103,7 +96,6 @@ pub(crate) fn plan(
             ci::render_ccm_invocation(spec, caps)
         }
     })
-    .map(|(cmd, launch_id)| Planned { cmd, launch_id })
 }
 
 /// 本机那一行的 argv 形（同 [`plan`]：同一份计划、同一个渲染器），`detach` ⇒ 建进 tmux 之后不接进去。
@@ -117,17 +109,16 @@ pub(crate) fn plan_argv(
     plan_with(req, account, facts, detach, |spec, caps| {
         ci::ccm_argv(spec, caps)
     })
-    .map(|(argv, _)| argv)
 }
 
-/// 整条计划，渲成什么形由 `out` 定（一行字 · argv）。回 `(成品, 身份 token)`。
+/// 整条计划，渲成什么形由 `out` 定（一行字 · argv）。
 fn plan_with<T>(
     req: &LocalLaunchRequest,
     account: &Settled,
     facts: &Facts,
     detach: bool,
     out: impl Fn(&ci::CliSpec, &BTreeSet<String>) -> Result<T, ci::Refusal>,
-) -> Result<(T, Option<String>), String> {
+) -> Result<T, String> {
     let name = req.tmux_name.as_deref().filter(|n| !n.is_empty());
     let entry = (facts.entry)().ok_or_else(|| copy_text("beLaunchRender.entry.noHome", &[]))?;
     if let LocalAction::Attach = req.action {
@@ -137,42 +128,29 @@ fn plan_with<T>(
         let Some(name) = name else {
             return Err(copy_text("rsHistory.launch.noSessionName", &[]));
         };
-        let cmd = with_spec(
+        return with_spec(
             req,
             account,
             ci::Action::Attach { name },
             Some(name),
-            None,
             detach,
             &entry,
             &out,
-        )?;
-        return Ok((cmd, None));
+        );
     }
     if let (LocalAction::New, Some(dir)) = (&req.action, req.cwd.as_deref()) {
         if !dir.is_empty() && !(facts.is_dir)(dir) {
             return Err(copy_text("rsHistory.newSession.noDir", &[("cwd", dir)]));
         }
     }
-    let (action, sid) = match &req.action {
-        LocalAction::Resume { sid } => (ci::Action::Resume { sid }, Some(sid.as_str())),
-        _ => (ci::Action::New, None),
+    let action = match &req.action {
+        LocalAction::Resume { sid } => ci::Action::Resume { sid },
+        _ => ci::Action::New,
     };
-    let token = identity_token(sid)?;
     // Windows 上没有 tmux ⇒ 直路（ccm 在那个 PowerShell 窗口里起 agent、等它退）。
     // §36（只绑 Windows）：Windows 这一行里不渲清嵌套会话变量的那一段 —— 清它们是 `ccm` 在最终 exec 那一处做的。
     let container = if facts.windows { None } else { name };
-    let cmd = with_spec(
-        req,
-        account,
-        action,
-        container,
-        Some(&token),
-        detach,
-        &entry,
-        &out,
-    )?;
-    Ok((cmd, Some(token)))
+    with_spec(req, account, action, container, detach, &entry, &out)
 }
 
 /// 本机那一形的入参 ⇒ 渲染器那份 spec（唯一的映射）。
@@ -181,7 +159,6 @@ fn with_spec<T>(
     account: &Settled,
     action: ci::Action,
     tmux: Option<&str>,
-    launch_id: Option<&str>,
     detach: bool,
     ccm_path: &str,
     f: impl Fn(&ci::CliSpec, &BTreeSet<String>) -> Result<T, ci::Refusal>,
@@ -217,7 +194,6 @@ fn with_spec<T>(
         launcher: launcher.as_deref().unwrap_or(&req.default_launcher),
         default_launcher: &req.default_launcher,
         args: &[],
-        launch_id,
         ccm_path,
         detach,
     };
@@ -227,33 +203,6 @@ fn with_spec<T>(
         .map(str::to_string)
         .collect();
     f(&spec, &caps).map_err(|r| r.reason())
-}
-
-/// 身份 token：resume 用那个 sid（过得了段闸时），否则现铸一个 UUID v4 形的 nonce。
-fn identity_token(sid: Option<&str>) -> Result<String, String> {
-    if let Some(s) = sid.filter(|s| relay_route_core::segment_is_safe(s)) {
-        return Ok(s.to_string());
-    }
-    // 随机数取 OS 那一份（经 `rustls` 带进来的 `ring`，不新增依赖）。
-    let mut b = [0u8; 16];
-    if rustls::crypto::ring::default_provider()
-        .secure_random
-        .fill(&mut b)
-        .is_err()
-    {
-        return Err(copy_text("beLaunchRender.token.noRandom", &[]));
-    }
-    b[6] = (b[6] & 0x0f) | 0x40;
-    b[8] = (b[8] & 0x3f) | 0x80;
-    let h: String = b.iter().map(|x| format!("{x:02x}")).collect();
-    Ok(format!(
-        "{}-{}-{}-{}-{}",
-        &h[..8],
-        &h[8..12],
-        &h[12..16],
-        &h[16..20],
-        &h[20..]
-    ))
 }
 
 /// 自定义启动命令：拼进命令之前过全仓那一张命令片段白名单（`shell_quote_core::launcher_refused_char`）。空 / 纯空白 = 没设。

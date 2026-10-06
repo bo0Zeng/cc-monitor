@@ -796,16 +796,14 @@ async function restartSwitch(o: Open, host: AcctPanelHost, target: string): Prom
   o.switchError = null;
   if (!got || got.state !== "done") {
     const reason = reasonLabel(got ? got.code : "", { agent: ACTIVE_AGENT, target });
+    const log = { label: copyText("acct.sw.log"), run: () => void commands.open_log_file().catch((e) => console.warn("open_log_file failed:", e)) };
     if (got?.old === "ended") {
       toast(copyText("acct.sw.failRestartEnded", { ended: copyText("sessionState.ended.name"), reason }), "", {
         level: "error",
-        action: [
-          { label: copyText("acct.sw.resume"), run: () => host.openResume(o.sid) },
-          { label: copyText("acct.sw.log"), run: () => void commands.open_log_file().catch((e) => console.warn("open_log_file failed:", e)) },
-        ],
+        action: [{ label: copyText("acct.sw.resume"), run: () => host.openResume(o.sid) }, log],
       });
     } else {
-      toast(copyText("acct.sw.failRestart", { reason }), "", { level: "error" });
+      toast(copyText("acct.sw.failRestart", { reason }), "", { level: "error", action: [log] });
     }
     return;
   }

@@ -84,18 +84,6 @@ export interface SessionAccount {
   bare: boolean;
   alive: boolean;
   /**
-   * `K-P5f`：起会话方铸进这条会话进程环境的**身份 token**（`CCM_LAUNCH_ID`），由后端从
-   * `/proc/<pid>/environ` 读回来。`null` = **不作数**（没设 / 形状不合格 / 同一 token 落在
-   * 一条以上活会话上 / 进程已死，四种原因刻意合并，见 `src/frontend/shell/src/accounts.rs`
-   * 的 `SessionAccount::launch_id`）。
-   *
-   * ⚠ **可选是因为老后端的出参里逐字节没有这个键**（additive）。本机那条路来的行是
-   * `src/frontend/ui/generated/SessionAccount.ts`（必有此键），远端那条路是后端直出的原始 JSON
-   * （老后端缺键 ⇒ `undefined`）—— 两者在这里合流，所以这一格写成可选、
-   * 而消费方一律把 `undefined` 与 `null` 当同一件事。
-   */
-  launchId?: string | null;
-  /**
    * 这条会话的上游地址是不是**本机中转**那一形（后端从 `/proc/<pid>/environ` 的 `ANTHROPIC_BASE_URL` 折出的一个布尔，
    * 值本身带中转钥匙、不出参）。`null` = 不知道（进程已死 / 环境这一刻取不到 / 老后端没有这个键）。
    * 读者：机器页「停」本机后端之前数几条会断（`settings/backend-section.ts::stopWarning`）。

@@ -639,7 +639,6 @@ describe("〔HX1 · D-f〕停后端之前数走中转的会话", () => {
     account: null,
     bare: false,
     alive: true,
-    launchId: null,
     viaRelay: false,
     ...o,
   });

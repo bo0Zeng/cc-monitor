@@ -558,7 +558,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     needs_attention: NONE,
     new: NONE,
     ordered_keys: NONE,
-    ordered_value: NONE,
     parse: NONE,
     probe: NONE,
     read_accounts: NONE,

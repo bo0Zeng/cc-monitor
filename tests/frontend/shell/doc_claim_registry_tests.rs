@@ -2352,6 +2352,7 @@ fn every_registered_copy_says_the_number_we_actually_read() {
             }
             // 🔴 **反洗白**：引述那一类不许悄悄装着一句「正好也对」的断言 ——
             // 否则把一处真断言登记成 `Quotes` 就能绕开上面那格。
+            EnvKeyClaim::Released => {}
             EnvKeyClaim::Quotes | EnvKeyClaim::OtherSubject => {
                 if got.is_some_and(|c| want.contains(&c)) {
                     bad.push(format!(

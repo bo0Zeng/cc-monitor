@@ -52,15 +52,10 @@
 //! - `.credentials.json` **只 stat 存在性，绝不读内容**。
 //! - `.claude.json` 只取 `projects[<cwd>].hasTrustDialogAccepted` 一个布尔；
 //!   **绝不回传文件内容**——那里面有 `mcpServers` 的环境变量（可能含 API key）。
-//! - `/proc/<pid>/environ` 只抠**三个写死的键**（`CLAUDE_CONFIG_DIR` · `CCM_LAUNCH_ID` ·`ANTHROPIC_BASE_URL`），
+//! - `/proc/<pid>/environ` 只抠**两个写死的键**（账号配置目录 · `ANTHROPIC_BASE_URL`，键名由适配层给），
 //!   **不回传整个环境快照**。`ANTHROPIC_BASE_URL` 的值带中转钥匙 ⇒ **只折成一个布尔**（`viaRelay`：是不是本机中转那一形地址），
-//!   值本身不出参、不进日志。
-//!   ⚠ `K-P5f` 加第二个键那一拍要求把「两个键」与「整个快照」的界说清楚，界在这里：
-//!   **键名是本文件里的两个常量**（`paths::CONFIG_DIR_ENV` 与 [`LAUNCH_ID_ENV`]），
-//!   **不接受任何调用方传进来的键名**。一旦键名成为一维参数，这条查询就退化成
-//!   「任意环境变量读」原语 —— 与 `--account-trust` 那条「`configDir` 必须 ∈ manifest，
-//!   否则就是任意文件读」是同一形的退化。⇒ 判据 `the_only_env_keys_this_module_reads_are_the_two_named_constants`
-//!   数着本文件生产段里 `proc_env_var(` 的调用点，**多一处 ⇒ 红**。
+//!   值本身不出参、不进日志。键名不接受调用方传进来（否则这条查询就退化成「任意环境变量读」原语）；
+//!   判据数着本文件生产段里 `proc_env_var(` 的调用点，**多一处 ⇒ 红**。
 //! - `--account-trust` 的 `configDir` 必须逐字等于 manifest 里某个账号的 `configDir`，
 //!   否则拒绝——避免它退化成"任意文件读"原语。`--account-trust-zero` 不收路径参数
 //!   （路径是 `$HOME/.claude.json`，写死在代码里），所以它连这个面都没有。
@@ -251,46 +246,7 @@ fn session_process_identity_ok(pid: u32, pidfile: &serde_json::Value) -> bool {
     }
 }
 
-// ------------------------------------------------- K-P5f：身份 token 读回来那一侧
-
-/// cc-monitor 起会话时铸进下一跳进程环境的**身份 token**〔`K-P5b` 写侧，`K-P5f` 读侧〕。
-///
-/// # 双写点 —— 界在这里说清楚
-///
-/// 写侧的家是 `control/ccm/plan.rs::LAUNCH_ID_ENV`（`ccm` 在最终 exec 那一处把 `--ccm-launch-id` 的值放进 agent 进程环境）。
-/// 同一个 crate，但 `control` 与 `observe` 两层互不引用 ⇒ 各留一个常量，由测试对拍
-/// （[`tests::the_launch_id_var_is_one_name_on_both_halves`]）。**改这里必须改那边，反之亦然。**
-///
-/// # ⚠ 它**不住** `agents/claudecode/paths.rs`，这不是疏忽
-///
-/// 那一层装的是「**Claude** 的目录布局与环境变量」（`CONFIG_DIR_ENV` 住那儿是对的：
-/// 那是 Claude 认的变量）。而本变量是 **cc-monitor 自己**铸的 token，Claude 一个字都不认
-/// ⇒ 把它塞进 `agents/claudecode/` 会让那一层多出一件不属于它的知识。
-/// 今天读它的只有本文件这一处，家就设在这里。
-const LAUNCH_ID_ENV: &str = "CCM_LAUNCH_ID";
-
-/// 身份 token 的字符集 —— **fail closed**，形状不对就不往下游递。
-///
-/// 与铸法那一侧同一条：段闸 `relay_route_core::segment_is_safe`（从 monitor `payload.rs` 搬进共享 crate）逐字是
-/// 「只许字母数字与 `-` `_`，1..=128 字节」，而本机起会话铸出来的（`control/launch_render/local.rs` 那一份铸法）
-/// 要么是 UUID v4（`[0-9a-f-]`，36 字节）、要么是过了那条白名单的 sid ⇒ 两种都在集内。
-///
-/// # 为什么读回来还要再核一次（"来源可信"不是放行的理由）
-///
-/// 这个值来自 `/proc/<pid>/environ`，而**谁都能 `export CCM_LAUNCH_ID=…` 再起 claude** ——
-/// 它是本模块唯一一个**任意用户可控**的出参。同 `identity_tag::sid_is_safe` 那条头注
-/// 逐字记的纪律：「本仓栽过的那些坑里，最贵的一类就是『这个值不可能有问题』」。
-fn launch_id_is_safe(v: &str) -> bool {
-    !v.is_empty()
-        && v.len() <= 128
-        && v.bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
-}
-
 /// 一条会话在出参里的全部字段（`--session-accounts` 每行一个）。
-///
-/// `K-P5f` 之前这里没有中间结构、边算边 `json!` —— 现在要有，理由是**防冒名那一格
-/// 只能在看完整批之后才判得出来**（见 [`suppress_inherited_launch_ids`]）。
 struct SessionRow {
     pid: u32,
     sid: Option<String>,
@@ -306,82 +262,12 @@ struct SessionRow {
     ///
     /// ⚠ **不进出参**：出参形状一个字节都没动（`configDir:null` + `account:null`
     /// + `bare:false` 今天就表达得了「不知道」）。要把「为什么不知道」也发出去，
-    /// 那是给出参加状态位、是改上线契约 —— 同 [`suppress_inherited_launch_ids`]
-    /// 头注里那条已被前人裁死的口径。
+    /// 那是给出参加状态位、是改上线契约。
     cfg_env_unreadable: bool,
-    /// 从 `/proc/<pid>/environ` 抠到、且过了 [`launch_id_is_safe`] 的原值。
-    /// 还没过防冒名那一格 —— **别直接往出参里填这一格**。
-    launch_id: Option<String>,
     /// 这条会话的 `ANTHROPIC_BASE_URL` 是不是**本机中转那一形**（回环 ＋ 钥匙段 ＋ 路由，
     /// `relay_route_core::split_keyed_base_url` 认得出）。`None` = 不知道（进程已死 / 环境这一刻取不到）。
     /// 用途：机器页「停」本机后端之前数一数有几条会话会断。
     via_relay: Option<bool>,
-}
-
-/// 🔴🔴 **防冒名：不唯一的身份 token 一律不作数**。
-///
-/// # 它防的是什么（与本文件里另一道身份检查**不是同一件事**）
-///
-/// 同一个文件里已经有一道 [`session_process_identity_ok`]，它防的是 **PID 复用**：
-/// pidfile 记的 `procStart` 必须与 `/proc/<pid>` 当前的 starttime 精确相等，
-/// 否则这个 pid 已经是别人的了。⇒ 它买到的是「**这个 pid 就是写那份 pidfile 的那个进程**」。
-///
-/// **它一个字都不管环境变量是从哪继承来的。** 而 `CCM_LAUNCH_ID` 是**继承型**变量：
-/// `export CCM_LAUNCH_ID=…; claude …` 之后，claude 再 spawn 的**子进程原样继承它**
-/// （SDK 起的、claude 自己起的 claude）。那些子进程会写**自己的** `sessions/<PID>.json`
-/// ⇒ 它们过得了 `procStart` 对拍（pid 与 pidfile 确实是同一个进程），
-/// **但按 pid 读回来的 token 是父会话的**。
-/// ⚠ 这两件事很容易被当成一件 —— 看见那一行 `session_process_identity_ok` 就以为
-/// 「防冒名」已经打过勾了。**那正是本工作区最贵的那族病。**
-///
-/// # 为什么不照抄盘上那两条已上线的防法（`KP5FD5` 要求说清选的是哪条、为什么）
-///
-/// | 盘上的防法 | 它防的 | 能不能用在这里 |
-/// |---|---|---|
-/// | ① `@ccm_sid` 那一侧的 `procStart` 冒名检查（`identity_tag.rs` 头注逐字：backend 打标前已过 `pid_alive` + `add_time_verdict`）| **PID 复用** | ❌ **威胁模型不对** —— 与上面那道是同一族，继承一格都不防 |
-/// | ② `CC_BUS_ID` 那一侧的「无条件覆盖继承值」（`shared/ccm:1128`–`:1136`，记着一次**有可复现反例**的事故）| 继承 | ⚠ **原则可用、实现抄不了**：它成立靠「会话名是这个会话身份的唯一事实来源」——`derive_bus_id` 在**本地**就算得出真值，所以敢无条件覆盖。`CCM_LAUNCH_ID` **没有这样的本地真值**（token 是起会话方现铸的 nonce，被起的那一方无从复算）⇒ 写侧无法分辨「监视器刚给我的」与「我从父进程继承的」 |
-///
-/// ⇒ 本函数落的是 **② 的原则在读侧的兑现**：`CC_BUS_ID` 那条头注最后一句逐字是
-/// 「**继承来的值一律不作数**」。读侧能独立判出来的「不作数」只有一条 ——
-/// **一个 launch token 只对应一次拉起，因而只该落在一条活会话上**；
-/// 落在两条以上，其中至少一条是继承来的，而**谁是原主判不出来**
-/// ⇒ 照 `account: null` 那条「查不到就是查不到，**不猜**」，涉事的**全部**置 `None`。
-///
-/// # ⚠ 它买不到什么（如实写，别读宽）
-///
-/// - **父会话已经死了**的那一格买不到：死进程过不了 `procStart` 对拍 ⇒ `alive:false`
-///   ⇒ 根本不读它的 environ ⇒ 撞不出重复，活着的那个子进程会带着继承来的 token 出现。
-///   ⇒ 这条读回路的诚实边界是「**同一批里唯一**」，不是「**确实是它的**」。
-/// - **跨批次**不判：本查询是一次性的（`exec` 一次、`ssh` 一次），没有跨调用的记忆。
-/// - `launchId: null` **不区分原因**（没设 / 形状不对 / 不唯一 / 进程已死 /
-///   **读那一刻环境取不到**）。要区分就得给出参加状态位，那是**改上线契约**——
-///   与本文件头注给 `configDir` 那一格写下的裁决同一条（「不属本区范围」），此处照办。
-///   ⚠ 第五种是 `K-R21`（09-03）现打出来的：它**一直都在**，只是从前混在「没设」里
-///   数不出来（`platform/proc.rs` 那个 `None` 装着四件事）。**这条不是新增的行为，
-///   是把「四种」这句旧话订正成实话** —— 而 `configDir` 那一半已经把它拆出来了
-///   （`SessionRow::cfg_env_unreadable`），只有身份这一半仍按上面那条裁定合并着。
-fn suppress_inherited_launch_ids(rows: &mut [SessionRow]) {
-    let mut seen: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
-    for r in rows.iter() {
-        if let Some(v) = r.launch_id.as_deref() {
-            *seen.entry(v).or_insert(0) += 1;
-        }
-    }
-    let dup: std::collections::HashSet<String> = seen
-        .into_iter()
-        .filter(|(_, n)| *n > 1)
-        .map(|(v, _)| v.to_string())
-        .collect();
-    for r in rows.iter_mut() {
-        if r.launch_id.as_deref().is_some_and(|v| dup.contains(v)) {
-            tracing::warn!(
-                "会话 pid={} 的 {LAUNCH_ID_ENV} 与别的活会话撞了 —— 至少有一条是继承来的，\
-                 判不出谁是原主 ⇒ 两边都不作数（launchId: null）",
-                r.pid
-            );
-            r.launch_id = None;
-        }
-    }
 }
 
 // ---------------------------------------------------------------- 命令
@@ -726,24 +612,7 @@ pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<Strin
             // 进程已死时一个字节都不读 ⇒ 谈不上「取不到」，那一格照旧是「没读」。
             (None, false)
         };
-        // `K-P5f`：**第二个键**。进程已死时一个字节都不读（同 `configDir` 那一格的理由：
-        // `/proc/<pid>/environ` 在进程消失那一刻整个不存在，读了也只是 `None`；
-        // 而万一 pid 被复用，读到的就是**别人的**环境）。
-        // 形状不对 ⇒ 直接当没有（fail closed，见 `launch_id_is_safe`）。
-        // ⚠ `K-R21` **刻意没动这一处**：它是 fail-closed 的（「取不到」与「没设」
-        // 都得同一个保守答案 `None`），而 `:425` 那条裁定写着要区分就得给出参加状态位、
-        // 那是改上线契约。⇒ 这里用 `.value()`，等于声明「这两件事对我等价」。
-        // 🔴 代价如实登记：那条 flaky 判据
-        // （`an_inherited_launch_id_is_never_reported_as_the_childs_own_identity`）
-        // 红在**这条**读回路上，不是上面那条 ⇒ **本拍没有让它变绿，也不该被读成让它变绿**。
-        let launch_id = if alive {
-            proc_env_var(pid, LAUNCH_ID_ENV)
-                .value()
-                .filter(|v| launch_id_is_safe(v))
-        } else {
-            None
-        };
-        // 第三个键：只折成「走不走本机中转」一个布尔；值带钥匙，这一行之后就丢掉。
+        // 第二个键：只折成「走不走本机中转」一个布尔；值带钥匙，这一行之后就丢掉。
         let via_relay = if alive {
             match proc_env_var(pid, env_keys.base_url) {
                 // 环境里是中转地址 ≠ 真走中转：agent 自己的设置文件可能压过它（`settings_may_set_base_url`）⇒ 那时说不清。
@@ -784,12 +653,9 @@ pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<Strin
             account,
             alive,
             cfg_env_unreadable,
-            launch_id,
             via_relay,
         });
     }
-    // 🔴 防冒名那一格**只能在这里判**：它要看完整批才知道有没有撞（`KP5FD5`）。
-    suppress_inherited_launch_ids(&mut out);
     out.into_iter()
         .map(|r| {
             serde_json::json!({
@@ -803,10 +669,6 @@ pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<Strin
                 // 但没设 `CLAUDE_CONFIG_DIR`」，**Z01 起这不再是异常**：它就是账号 0
                 // （上面的 `account` 会给出名字）。字段保留是因为下游要用它区分
                 // 「账号 0」与「设了 configDir 的账号」——语义从「告警」变成「事实」。
-                // ⚠ **没设 `CCM_LAUNCH_ID` 不进这一格**，理由是两件事：`bare` 答的是
-                // **账号**这一维（它与 `account` 是一对），`launchId` 答的是**身份**这一维。
-                // 让一个布尔同时表示两个变量的缺席，正是本工作区最贵的那族病
-                // （「一个值装了两件事」）；`launchId: null` 自己就说得清「没有」。
                 // 🔴 **`K-R21`（09-03）给它补了第三个合取项，而语义没有拓宽、是收窄**：
                 // 「没设」这句话只有在**环境读得到**的时候才说得出口。环境这一刻取不到时
                 // （exec 窗口 / 僵尸进程）从前这里会斩钉截铁地报 `bare:true` ——
@@ -814,14 +676,6 @@ pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<Strin
                 // ⚠ 布尔仍然只答**账号**这一维，一格都没多装（那正是上一段在防的病）。
                 "bare": r.alive && !r.cfg_env_unreadable && r.config_dir.is_none(),
                 "alive": r.alive,
-                // `K-P5f`：起会话方铸的身份 token（`CCM_LAUNCH_ID`），过了形状核与防冒名两道。
-                // **`null` = 不作数**（没设 / 形状不对 / 与别的活会话撞了 / 进程已死 /
-                // **读那一刻环境取不到**），五种原因**刻意不区分** —— 同 `account: null` 那条「不猜」。
-                // ⚠ 第五种是 `K-R21`（09-03）现打出来的，**它一直都在、只是没人写出来**：
-                // 从前它混在「没设」里数不出来。⇒ 这里不是新增了一种行为，是把一句
-                // 「四种」的旧话订正成实话。
-                // ⚠ 老后端不出这个键，下游读成 `None`（additive）。
-                "launchId": json_str(r.launch_id.as_deref()),
                 // 走不走本机中转：`true` / `false` / `null`（不知道：进程已死或环境这一刻取不到）。
                 // ⚠ 老后端不出这个键，下游读成 `null`（additive）。
                 "viaRelay": r.via_relay,

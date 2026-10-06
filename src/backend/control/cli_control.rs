@@ -107,31 +107,6 @@ pub(crate) fn read_input<R: std::io::BufRead>(
     String::from_utf8(buf).map_err(|e| ("stdin_read_failed", format!("read stdin failed: {e}")))
 }
 
-/// **argv 一族也走「只读一行」**：`<后端> --<老子命令> --stdin-line`（恰好这两个词、且不是帧命令）⇒
-/// stdin 读一行（同 [`read_input`] 的一行形与上限），那一行是**其余 argv 的 JSON 字符串数组**，拼回去照常分派。
-/// 于是自由文本（项目目录名 …）不进远端命令行 —— 远端登录 shell 是 fish 之类也同读。别的形状原样返回、一个字节不读。
-pub fn expand_stdin_argv<R: std::io::BufRead>(
-    args: Vec<String>,
-    r: R,
-) -> Result<Vec<String>, (&'static str, String)> {
-    let [sub, modifier] = args.as_slice() else {
-        return Ok(args);
-    };
-    if modifier != STDIN_LINE_FLAG || handles(sub) {
-        return Ok(args);
-    }
-    let line = read_input(r, true)?;
-    let rest: Vec<String> = serde_json::from_str(line.trim()).map_err(|e| {
-        (
-            "bad_request",
-            contract::malformed(&format!(
-                "{sub} {STDIN_LINE_FLAG}: stdin line is not a JSON array of strings: {e}"
-            )),
-        )
-    })?;
-    Ok(std::iter::once(sub.clone()).chain(rest).collect())
-}
-
 /// 本入口回显给命令的 `id`。**帧面的 `id` 由客户端发号且不透明**，而一次性 exec
 /// 天然 1:1、没有并发的第二条请求可混淆 ⇒ 这里给一个固定值，不假装有号段。
 const CLI_REQUEST_ID: &str = "cli";

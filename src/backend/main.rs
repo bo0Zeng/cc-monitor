@@ -131,12 +131,7 @@ async fn main() {
     let args: Vec<String> = backend_args;
     // Batch7-F24/Batch8-F25：流模式 flag 集合，先剥离再判一次性查询模式
     // （否则误入 query 分支——INVARIANT §26）。纯函数化供单测（审计 D）。
-    let (args_rest, wants) = split_stream_flags(args);
-    // `--<老子命令> --stdin-line` ⇒ 其余 argv 从 stdin 一行拿（远端命令行里不拼自由文本）。
-    let args = match control::cli_control::expand_stdin_argv(args_rest, std::io::stdin().lock()) {
-        Ok(a) => a,
-        Err((code, message)) => std::process::exit(control::cli_control::emit_err(code, message)),
-    };
+    let (args, wants) = split_stream_flags(args);
     if is_query_mode(&args) {
         // 一次性查询模式：--search 全文搜索（#28）/
         // --resolve advisor（backend-04，读 stdin ResumeSpec→stdout CommandPlan），其余走历史查询（#16）。

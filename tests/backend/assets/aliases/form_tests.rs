@@ -118,7 +118,6 @@ const RIGHT_POOL: &[&[&str]] = &[
     &["--bus-register"],
     &["--bus-note", "备 注"],
     &["--ccm-sid", "abc"],
-    &["--ccm-launch-id", "L1"],
     &["--ccm-print"],
     &["--ccm-help"],
     &["--weird"],

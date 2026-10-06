@@ -493,7 +493,7 @@ describe("fetchSessionAccountsOrNull（停后端前那一问）", () => {
 // 逐行解释从 Rust（`accounts.rs::SessionAccount` 的 serde）搬到 `parseSessionAccountLines`，
 //   Rust 那侧两条金样（`accounts_tests.rs` 原来那两条）逐字节搬到这里。
 describe("parseSessionAccountLines（`--session-accounts` 的逐行）", () => {
-  it("★ additive（`K-P5f` `KP5FD4`）：老后端的行**逐字节没有 `launchId` 键** ⇒ 读成 null，不是坏行", () => {
+  it("一行逐格读回（裸起的账号 0）", () => {
     const rows = parseSessionAccountLines([
       `{"pid":66936,"sessionId":"9d66c46d","cwd":"/w","configDir":null,"account":null,"bare":true,"alive":true}`,
     ]);
@@ -502,15 +502,6 @@ describe("parseSessionAccountLines（`--session-accounts` 的逐行）", () => {
     expect(rows[0].bare).toBe(true);
     expect(rows[0].alive).toBe(true);
     expect(rows[0].account).toBeNull();
-    expect(rows[0].launchId, "老后端缺 launchId 应读成 null，不是报错").toBeNull();
-  });
-  it("新后端：`launchId` 有值逐字带回；`null` 读成 null", () => {
-    const [withTok, nulled] = parseSessionAccountLines([
-      `{"pid":1,"sessionId":"s","cwd":"/w","configDir":null,"account":null,"bare":true,"alive":true,"launchId":"tok-1"}`,
-      `{"pid":1,"sessionId":"s","cwd":"/w","configDir":null,"account":null,"bare":true,"alive":true,"launchId":null}`,
-    ]);
-    expect(withTok.launchId).toBe("tok-1");
-    expect(nulled.launchId).toBeNull();
   });
   it("坏行跳过、不毁整次：不是 JSON / 不是对象 / 缺 pid / 某格类型不对", () => {
     const rows = parseSessionAccountLines([
@@ -530,7 +521,6 @@ describe("parseSessionAccountLines（`--session-accounts` 的逐行）", () => {
       account: null,
       bare: false,
       alive: false,
-      launchId: null,
       // 老后端没有这个键 ⇒ null（不知道），不是坏行。
       viaRelay: null,
     });
