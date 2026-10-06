@@ -4,7 +4,7 @@
 import type { SceneCtx, World } from "../fake/types";
 import { defaultWorld } from "../fake/world";
 import { MAIN_SCENES } from "./main";
-import { PANEL_SCENES } from "./panels";
+import { DPI_SCENES, FRONT_SCENES, PANEL_SCENES } from "./panels";
 import { SETTINGS_SCENES } from "./settings";
 import { HISTORY_SCENES } from "./history";
 import { KIT_SCENES } from "./kit";
@@ -24,6 +24,10 @@ export interface Scene {
   world: () => World;
   /** 页地址上另加的参数（查看窗要 `viewer=<sid>`）。 */
   query?: string;
+  /** 设备像素比（高 DPI 那几张给 1.5 / 2；不给 ⇒ 1）。 */
+  scale?: number;
+  /** 装成哪个系统上的 cc-monitor（不给 ⇒ 按浏览器的 UA；↗ 那几张要 `windows`）。 */
+  hostOs?: "windows" | "linux";
   /** 开页之前写进 localStorage 的（tab 栏宽、提示看过没有 …）；不给 ⇒ 用 [`DEFAULT_STORAGE`]。 */
   storage?: Record<string, string>;
   /** 开页之后：等界面画好、点开要截的那一块。返回即可截。 */
@@ -36,7 +40,7 @@ export const DEFAULT_STORAGE: Record<string, string> = {
   "cc-monitor.cmdk-hint.seen": "1",
 };
 
-export const SCENES: Scene[] = [...MAIN_SCENES, ...PANEL_SCENES, ...HISTORY_SCENES, ...SETTINGS_SCENES, ...KIT_SCENES, ...ACCT_SCENES, ...DRAWER_SCENES];
+export const SCENES: Scene[] = [...MAIN_SCENES, ...PANEL_SCENES, ...FRONT_SCENES, ...DPI_SCENES, ...HISTORY_SCENES, ...SETTINGS_SCENES, ...KIT_SCENES, ...ACCT_SCENES, ...DRAWER_SCENES];
 
 export function sceneById(id: string): Scene {
   return (

@@ -2797,6 +2797,11 @@
       "zh": "未批准",
       "args": []
     },
+    "stream.step.awaiting": {
+      "kind": "body",
+      "zh": "等你批准",
+      "args": []
+    },
     "stream.step.failed": {
       "kind": "body",
       "zh": "失败",
@@ -3705,6 +3710,11 @@
       "zh": "失败 · {title} · {why}",
       "args": ["title", "why"]
     },
+    "tabBatch.result.view": {
+      "kind": "action",
+      "zh": "查看",
+      "args": []
+    },
     "tabBatch.why.ended": {
       "kind": "body",
       "zh": "会话已经结束了",
@@ -3850,59 +3860,189 @@
       "zh": "在新窗口打开",
       "args": []
     },
-    "tabSessionActions.front.failed": {
-      "kind": "error",
-      "zh": "切到终端窗口失败",
+    "front.title.unsure": {
+      "kind": "title",
+      "zh": "未切换 · 窗口无法确定",
       "args": []
     },
-    "tabSessionActions.front.timeout": {
-      "kind": "error",
-      "zh": "切到终端窗口超时",
+    "front.title.unbound": {
+      "kind": "title",
+      "zh": "终端窗口无法识别",
       "args": []
     },
-    "tabSessionActions.remoteFront.detached": {
-      "kind": "error",
-      "zh": "这个会话在 tmux 里放在后台，现在没有终端连着它。点这里在新终端里接回",
+    "front.title.noTerminal": {
+      "kind": "title",
+      "zh": "无终端窗口",
       "args": []
     },
-    "tabSessionActions.remoteFront.noTerminal": {
-      "kind": "error",
-      "zh": "这个会话现在没有终端在显示它，它在后台跑",
+    "front.title.elsewhere": {
+      "kind": "title",
+      "zh": "终端在另一台电脑",
       "args": []
     },
-    "tabSessionActions.remoteFront.unreadable": {
-      "kind": "error",
-      "zh": "那台机器读不了连着这个会话的终端。它可能属于别的用户，或权限不够",
+    "front.title.update": {
+      "kind": "title",
+      "zh": "{machine} 要更新",
+      "args": ["machine"]
+    },
+    "front.title.failed": {
+      "kind": "title",
+      "zh": "未切换",
       "args": []
     },
-    "tabSessionActions.remoteFront.notSsh": {
-      "kind": "error",
-      "zh": "这个会话的终端在那台机器自己的屏幕上，不是经 ssh 连的",
+    "front.title.flashing": {
+      "kind": "title",
+      "zh": "任务栏闪烁中",
       "args": []
     },
-    "tabSessionActions.remoteFront.elsewhere": {
-      "kind": "error",
-      "zh": "连着这个会话的终端不在这台电脑上。那台机器看到它来自 {addr}",
+    "front.title.gone": {
+      "kind": "title",
+      "zh": "终端窗口已关闭",
+      "args": []
+    },
+    "front.title.hosted": {
+      "kind": "title",
+      "zh": "未切换 · 终端由 Windows 托管",
+      "args": []
+    },
+    "front.title.unknown": {
+      "kind": "title",
+      "zh": "未切换 · 原因不明",
+      "args": []
+    },
+    "front.title.badShape": {
+      "kind": "title",
+      "zh": "未切换 · 内容无法解析",
+      "args": []
+    },
+    "front.body.several": {
+      "kind": "body",
+      "zh": "{program} {n} 个窗口 · 本会话终端未登记",
+      "args": ["program", "n"]
+    },
+    "front.hint.several": {
+      "kind": "body",
+      "zh": "在目标窗口新开 PowerShell 标签页并重连后可识别",
+      "args": []
+    },
+    "front.body.unbound": {
+      "kind": "body",
+      "zh": "启动于接上终端之前的 PowerShell",
+      "args": []
+    },
+    "front.hint.unbound": {
+      "kind": "body",
+      "zh": "接上终端后新开的 PowerShell 可识别",
+      "args": []
+    },
+    "front.body.detached": {
+      "kind": "body",
+      "zh": "tmux 会话 · 无终端连接",
+      "args": []
+    },
+    "front.body.background": {
+      "kind": "body",
+      "zh": "后台 · 无终端连接",
+      "args": []
+    },
+    "front.body.elsewhere": {
+      "kind": "body",
+      "zh": "终端所在 {addr}",
       "args": ["addr"]
     },
-    "tabSessionActions.remoteFront.mismatch": {
-      "kind": "error",
-      "zh": "终端是经跳板机或端口转换连过去的，这台电脑对不上",
+    "front.body.notSsh": {
+      "kind": "body",
+      "zh": "终端在 {machine} 本地屏幕",
+      "args": ["machine"]
+    },
+    "front.body.mismatch": {
+      "kind": "body",
+      "zh": "经跳板机连接 · 无法对应窗口",
       "args": []
     },
-    "tabSessionActions.remoteFront.queryFailed": {
-      "kind": "error",
-      "zh": "这一次没查成是哪个程序开着那条连接。再点一次试试",
+    "front.body.unreadable": {
+      "kind": "body",
+      "zh": "{machine} 进程信息不可读",
+      "args": ["machine"]
+    },
+    "front.body.update": {
+      "kind": "body",
+      "zh": "切到终端不可用",
       "args": []
     },
-    "tabSessionActions.remoteFront.badShape": {
+    "front.body.timeout": {
       "kind": "error",
-      "zh": "读不懂后端回的终端信息，多半是两端版本对不上",
+      "zh": "{machine} 无应答",
+      "args": ["machine"]
+    },
+    "front.body.offline": {
+      "kind": "error",
+      "zh": "{machine} 离线",
+      "args": ["machine"]
+    },
+    "front.body.refused": {
+      "kind": "body",
+      "zh": "系统阻止抢前台 · 点任务栏闪烁的窗口",
       "args": []
     },
-    "tabSessionActions.remoteFront.tooOld": {
+    "front.body.hosted": {
+      "kind": "body",
+      "zh": "默认终端交接给 Windows Terminal · 窗口不归 {program}",
+      "args": ["program"]
+    },
+    "front.hint.hosted": {
+      "kind": "body",
+      "zh": "从 Windows Terminal 直接打开可切换",
+      "args": []
+    },
+    "front.body.unknown": {
       "kind": "error",
-      "zh": "后端太旧，查不了此刻是哪个终端在显示这个会话。重启 cc-monitor 换上新后端再试",
+      "zh": "原因不明",
+      "args": []
+    },
+    "front.act.connect": {
+      "kind": "action",
+      "zh": "接上终端",
+      "args": []
+    },
+    "front.act.openInTerminal": {
+      "kind": "action",
+      "zh": "在终端里打开",
+      "args": []
+    },
+    "front.act.copy": {
+      "kind": "action",
+      "zh": "复制详情",
+      "args": []
+    },
+    "front.act.update": {
+      "kind": "action",
+      "zh": "更新",
+      "args": []
+    },
+    "front.act.retry": {
+      "kind": "action",
+      "zh": "重试",
+      "args": []
+    },
+    "front.act.reconnect": {
+      "kind": "action",
+      "zh": "重新连接",
+      "args": []
+    },
+    "front.pending.label": {
+      "kind": "body",
+      "zh": "查找终端…",
+      "args": []
+    },
+    "front.pop.close": {
+      "kind": "action",
+      "zh": "关闭",
+      "args": []
+    },
+    "front.pop.aria": {
+      "kind": "title",
+      "zh": "切到终端的结果",
       "args": []
     },
     "tabSessionActions.openCwd.body": {
@@ -4198,31 +4338,6 @@
     "revealInFolder.reveal.failed": {
       "kind": "error",
       "zh": "在文件夹中显示失败",
-      "args": []
-    },
-    "firstRunHint.mount.closeLabel": {
-      "kind": "aria",
-      "zh": "关掉这次的提示",
-      "args": []
-    },
-    "firstRunHint.mount.closeHint": {
-      "kind": "body",
-      "zh": "这次先不看（下次启动还会提示，直到补齐）",
-      "args": []
-    },
-    "firstRunHint.mount.close": {
-      "kind": "action",
-      "zh": "×",
-      "args": []
-    },
-    "firstRunHint.mount.body": {
-      "kind": "body",
-      "zh": "打开设置 → 机器：「诊断」那一块逐条列着缺哪几项。每一项都写了缺了会怎样、点哪里补齐。",
-      "args": []
-    },
-    "firstRunHint.firstRunHintPrefix.prefix": {
-      "kind": "body",
-      "zh": "诊断：",
       "args": []
     },
     "forkAsk.askForkLaunch.launch": {
@@ -10354,41 +10469,6 @@
       "zh": "本机后端拒绝了这次连接：{message}",
       "args": ["message"]
     },
-    "rsBind.activate.refused": {
-      "kind": "error",
-      "zh": "没能把窗口切到前台（它可能在任务栏闪烁；先点一下 monitor 窗口再试）",
-      "args": []
-    },
-    "rsBind.verify.pidReused": {
-      "kind": "error",
-      "zh": "属主进程的 PID 被复用了，启动时间对不上",
-      "args": []
-    },
-    "rsBind.verify.windowReused": {
-      "kind": "error",
-      "zh": "窗口编号被别的进程复用了：当前属主 PID {curOwner}，绑定时 PID {ownerPid}",
-      "args": ["curOwner", "ownerPid"]
-    },
-    "rsBind.verify.windowGone": {
-      "kind": "error",
-      "zh": "窗口已不存在，可能已被关闭",
-      "args": []
-    },
-    "rsBind.front.noWindow": {
-      "kind": "error",
-      "zh": "开着那条连接的程序（{name}）没有窗口。它是在后台跑的",
-      "args": ["name"]
-    },
-    "rsBind.front.hostedElsewhere": {
-      "kind": "error",
-      "zh": "未切换：{shell} 的窗口归 Windows Terminal 托管（默认终端交接）。改在 Windows Terminal 里新开 PowerShell 标签页再连接，即可切到",
-      "args": ["shell"]
-    },
-    "rsBind.front.severalWindows": {
-      "kind": "error",
-      "zh": "{name} 开着好几个窗口，这个终端没登记给 monitor，分不清是哪一个。在要切到的那个窗口里新开一个 PowerShell 标签页，从那里重新连过去就能切到（终端页里要先接入）",
-      "args": ["name"]
-    },
     "rsSftpPool.watch.lost": {
       "kind": "error",
       "zh": "这一趟传输的状态丢了",
@@ -10816,11 +10896,6 @@
       "kind": "error",
       "zh": "没有 log 文件（log 文件未启用或还没产生）",
       "args": []
-    },
-    "rsLib.front.unbound": {
-      "kind": "error",
-      "zh": "会话 {sessionId} 的窗口没登记给 monitor。它是在接入之前开的终端里、或不在 PowerShell 里起的；在终端页接入之后新开一个 PowerShell 起 claude，就能切过去。",
-      "args": ["sessionId"]
     },
     "rsLib.settings.windowTitle": {
       "kind": "title",
@@ -18363,6 +18438,46 @@
       "kind": "aria",
       "zh": "轮换规则说明",
       "args": []
+    },
+    "acct.prev.title": {
+      "kind": "title",
+      "zh": "默认轮换",
+      "args": []
+    },
+    "acct.prev.lead": {
+      "kind": "body",
+      "zh": "本会话用自己的轮换 · 点「默认」改为跟随",
+      "args": []
+    },
+    "acct.prev.cap": {
+      "kind": "body",
+      "zh": "封顶 {n}%",
+      "args": ["n"]
+    },
+    "acct.prev.capAt": {
+      "kind": "body",
+      "zh": "{at} 封顶 {n}%",
+      "args": ["at", "n"]
+    },
+    "acct.jump.rotationElsewhere": {
+      "kind": "body",
+      "zh": "{machine} 的默认轮换在那台会话的账号面板里",
+      "args": ["machine"]
+    },
+    "acct.jump.timelineElsewhere": {
+      "kind": "body",
+      "zh": "{machine} 的时间轴在那台会话的账号面板里",
+      "args": ["machine"]
+    },
+    "acct.jump.switchTo": {
+      "kind": "action",
+      "zh": "切过去",
+      "args": []
+    },
+    "acct.jump.noSession": {
+      "kind": "body",
+      "zh": "{machine} 上没有打开的会话",
+      "args": ["machine"]
     },
     "acct.tl.marks": {
       "kind": "body",

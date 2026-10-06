@@ -27,7 +27,9 @@ import { runRemoteResume } from "./remote-launch-run";
 // 本机 = `LOCAL_ORIGIN`（`"<local>"`，与 Rust `origin.rs::LOCAL` 跨语言对拍）；
 // 「是不是本机」只经 `ipc/origin.ts` 判。`accounts.ts` 那个同名的 `"__local__"` 已退役 —— 全仓只剩一个本机表示。
 import { isLocalOrigin, isRemoteOrigin, type Origin } from "./ipc/origin";
-import { planRemoteFront, type RemoteFrontPlan } from "./remote-terminal-front";
+import { planRemoteFront } from "./remote-terminal-front";
+import type { FrontResult } from "./front-result";
+import type { FrontOutcome } from "./generated/FrontOutcome";
 import { commands } from "./ipc/commands";
 import { probeSessionRecord, reasonOf, type RecordProbe } from "./session-reads";
 import { getBehavior } from "./behavior";
@@ -391,8 +393,8 @@ export const FRONT_PENDING_MIN_MS = 400;
  * ↗ 的一次点击：同一个会话在飞 ⇒ 不重发；`run` 超过 [`FRONT_PENDING_AFTER_MS`] 还没完 ⇒ `pending(true)`
  * （按钮进「进行中」），完了且已停够 [`FRONT_PENDING_MIN_MS`] ⇒ `pending(false)`。
  */
-export async function frontOnce(sid: string, run: () => Promise<void>, pending: (on: boolean) => void): Promise<void> {
-  if (frontInFlight.has(sid)) return;
+export async function frontOnce<T>(sid: string, run: () => Promise<T>, pending: (on: boolean) => void): Promise<T | undefined> {
+  if (frontInFlight.has(sid)) return undefined;
   frontInFlight.add(sid);
   let shownAt: number | null = null;
   const show = window.setTimeout(() => {
@@ -400,7 +402,7 @@ export async function frontOnce(sid: string, run: () => Promise<void>, pending: 
     pending(true);
   }, FRONT_PENDING_AFTER_MS);
   try {
-    await run();
+    return await run();
   } finally {
     window.clearTimeout(show);
     if (shownAt !== null) {
@@ -412,74 +414,40 @@ export async function frontOnce(sid: string, run: () => Promise<void>, pending: 
   }
 }
 
-/**
- * 拉对应终端到前台。v1.7 实现：后端查 sid_hwnd_cache + 复合指纹校验 + SetForegroundWindow。
- *
- * 失败模式（任一都会显示在 toast 上）：
- *   - "未绑定窗口"：该 session 启动时没经过 cc function 握手（直接跑 claude 而非 cc）
- *   - "窗口已不存在"：用户关掉了对应 PS/WT 窗口
- *   - "HWND 复用"：原窗口关闭后 HWND 被另一个无关窗口拿到
- *   - "切到终端窗口超时"：极端情况下 Win32 调用卡住（正文按 CP1 裁词改：不说 invoke / Win32、不说毫秒数）
- */
-export function bringTerminalToFront(sessionId: string): Promise<void> {
-  const timeoutMs = 5000;
-  return Promise.race([
-    commands.bring_terminal_to_front({ sessionId }),
-    new Promise<never>((_, reject) =>
-      window.setTimeout(
-        () => reject(new Error(copyText("tabSessionActions.front.timeout"))),
-        timeoutMs,
-      ),
-    ),
-  ]).catch((e) => {
-    console.warn(`bring_terminal_to_front ${sessionId} failed:`, e);
-    // P4.5: 改走统一 toast stack（去掉单例 #bring-terminal-toast 的"先到先被覆盖"问题）。
-    toast(copyText("tabSessionActions.front.failed"), String(e?.message ?? e));
-  });
+/** 壳那一跳的期限（极端情况下 Win32 调用卡住）：到了 ⇒ 「无应答」。 */
+const FRONT_SHELL_MS = 5000;
+
+/** 壳那一跳：期限内回结局；到期 ⇒ `timeout`；出错 ⇒ `unknown`（细节可复制）。 */
+async function shellFront(ask: () => Promise<FrontOutcome>): Promise<FrontResult> {
+  let timer = 0;
+  try {
+    return await Promise.race([
+      ask(),
+      new Promise<FrontResult>((r) => {
+        timer = window.setTimeout(() => r({ kind: "timeout" }), FRONT_SHELL_MS);
+      }),
+    ]);
+  } catch (e) {
+    console.warn("terminal front failed:", e);
+    return { kind: "unknown", detail: String((e as Error)?.message ?? e) };
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+/** 拉本机会话的终端到前台：壳按 sid → 窗口缓存找、三重指纹校验、拉前；回结局族（界面照族排版，`front-result.ts`）。 */
+export function bringTerminalToFront(sessionId: string): Promise<FrontResult> {
+  return shellFront(() => commands.bring_terminal_to_front({ sessionId }));
 }
 
 /**
- * 拉远端 Tab 对应的本机终端窗口到前台：点那一刻现查 —— 前两问（那台谁在显示它 · 本机哪串进程开着那条连接）住
- * `remote-terminal-front.ts`，最后一跳 monitor 沿进程链找属主的窗口、校验、拉前。
- *
- * 失败时说的话都来自查到的事实：没有终端连着（点提示在新终端里接回）· 没有终端 · 那台读不了 · 不是经 ssh 连的 ·
- * 不在这台电脑上 · 经跳板机 / 端口转换对不上 · 这一次没查成 · 程序没有窗口 / 开着好几个窗口；
- * 另有「切到终端窗口超时」（极端情况下 Win32 调用卡住）。
+ * 拉远端会话对应的本机终端窗口：点那一刻现查 —— 前两问（那台谁在显示它 · 本机哪串进程开着那条连接）住
+ * `remote-terminal-front.ts`，最后一跳壳沿进程链找属主的窗口、校验、拉前。每一步的结局都落成结局族。
  */
-export async function bringRemoteTerminalToFront(
-  origin: Origin,
-  sessionId: string,
-  reattach: () => void,
-): Promise<void> {
-  const failed = (e: unknown): void => {
-    console.warn(`bring_remote_terminal_to_front ${sessionId} failed:`, e);
-    toast(copyText("tabSessionActions.front.failed"), String((e as Error)?.message ?? e));
-  };
-  let plan: RemoteFrontPlan;
-  try {
-    plan = await planRemoteFront(origin, sessionId);
-  } catch (e) {
-    failed(e);
-    return;
-  }
-  if ("said" in plan) {
-    toast(
-      copyText("tabSessionActions.front.failed"),
-      plan.said,
-      plan.reattach ? { onClick: reattach } : {},
-    );
-    return;
-  }
-  const timeoutMs = 5000;
-  return Promise.race([
-    commands.bring_remote_terminal_to_front({ chain: plan.chain }),
-    new Promise<never>((_, reject) =>
-      window.setTimeout(
-        () => reject(new Error(copyText("tabSessionActions.front.timeout"))),
-        timeoutMs,
-      ),
-    ),
-  ]).catch(failed);
+export async function bringRemoteTerminalToFront(origin: Origin, sessionId: string): Promise<FrontResult> {
+  const plan = await planRemoteFront(origin, sessionId);
+  if ("result" in plan) return plan.result;
+  return shellFront(() => commands.bring_remote_terminal_to_front({ chain: plan.chain }));
 }
 
 /** 关 tab 时让后端 event_replay 把这个 session 的历史也丢掉（失败只记日志）。 */

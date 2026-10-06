@@ -414,6 +414,7 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     ("src/frontend/ui/branch-fold.ts", "requestAnimationFrame", 1, "★ F15：live 模式主线重算的**帧末合批**（`scheduleLiveRecompute`）。排一次位（`liveScheduled`）⇒ **不是自链**：回调里不再排下一次，只有新记录到达才会再排。原来这里是逐条同步跑 `computeMainBranch`（扫全部 records 的 Kahn 拓扑）⇒ N 条记录 O(N²)。"),
     ("src/frontend/ui/branch-fold.ts", "setTimeout", 1, "★ F15：上面那条的**无 rAF 兜底**（`typeof requestAnimationFrame !== \"function\"` 时）。0ms，一次性。"),
     ("src/frontend/ui/branch-button.ts", "setTimeout", 1, "2s 后把按钮文字恢复成 `⑂`。一次性 UI 反馈。"),
+    ("src/frontend/ui/front-pop.ts", "setTimeout", 1, "↗ 切过去了：1 秒后把对勾换回 ↗。一次性 UI 反馈。"),
     // P2s（补审 A4）：**有退出条件的自链**，不是 data-poll。
     ("src/frontend/ui/settings/backend-section.ts", "setTimeout", 1,
      "起/停一台机之后轮询状态到落定。**上限 30 次 × 100ms**、由用户动作触发、\
@@ -459,7 +460,7 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     // 5 → 3：`awaitExitFor` 的 ③ `stop(false)` 上限与 ④ 1s 轮询随它一起删了（换号重启直接 kill，不再等退出）。
     // 2 → 4：↗ 的「进行中」两处（`frontOnce`：超过 300ms 才进 · 进了至少停 400ms），都是一次性。
     ("src/frontend/ui/terminal-page.ts", "setTimeout", 2, "① 底部抽屉终端页：送字送键之后 0.5 · 1.5 · 3 秒各再抓一屏（一次动作三次、换会话 / 收起即清，不自链、开着不轮询）② 「已送达」2 秒后收。一次性。"),
-    ("src/frontend/ui/tab-session-actions.ts", "setTimeout", 4, "⑧ ⑨ 两处 `bring_*_terminal_to_front` 的 invoke 超时拒绝。都是一次性，不是周期取数。编号沿用 `tabs.ts` 那一行拆开之前的原号。⑩ ⑪ `frontOnce`：↗ 在飞超过 300ms 才把按钮换成「进行中」· 进了之后至少停 400ms 再收（防闪），一次性。"),
+    ("src/frontend/ui/tab-session-actions.ts", "setTimeout", 3, "⑧ `shellFront`：↗ 壳那一跳的期限（到点落成「无应答」，本机 / 远端两条共用这一处）。一次性，不是周期取数。编号沿用 `tabs.ts` 那一行拆开之前的原号。⑩ ⑪ `frontOnce`：↗ 在飞超过 300ms 才把按钮换成「进行中」· 进了之后至少停 400ms 再收（防闪），一次性。"),
     ("src/frontend/ui/views/grid-monitor.ts", "setInterval", 1, "1s 重绘 —— 按格差量（没变的一拍零 DOM 写），不再整表重建。**ui-clock，不取数**，见 `REGISTERED` 那条。"),
     // 历史页照稿重做：旧页那一处 rAF（展开 / 收起后合并重画）随旧页删了。
     ("src/frontend/ui/views/history.ts", "setTimeout", 3, "① 敲字之后停 150 ms 才问清单（`queryTimer`，再敲就重来）② 方向键走行时停 200 ms 才读右边（`previewTimer`，快速划过不读）③ 焦点离开列表那一下推到下一拍再看焦点去了哪（`focusout` 时 `activeElement` 还没换）。都是一次性，不取数、不是节拍器。"),

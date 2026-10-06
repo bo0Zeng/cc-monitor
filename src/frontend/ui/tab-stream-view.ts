@@ -71,6 +71,8 @@ export interface TabStreamHost {
   userActive(sessionId: string): void;
   /** G6：分叉产出新会话文件之后 —— 起它。 */
   startForkedSession(tab: Tab, res: BranchResult): Promise<void>;
+  /** 这个会话的运行表里那个运行叫什么（agent 来话的事件条起名用；表里没有 ⇒ `undefined`，用来话自带的名字）。 */
+  runLabelOf(sid: string, run: string): string | undefined;
 }
 
 /** `mountTabDom` 建出来、要写进 `Tab` 的那几样。 */
@@ -647,6 +649,8 @@ export class TabStreamView {
       toolUseElements: tab.toolUseElements,
       runCards: tab.runCards,
       pendingToolResults: tab.pendingToolResults,
+      needs: tab.needs, // 在等批准的那一步建出来就画成「在等你批准」
+      runLabelOf: (run) => this.host.runLabelOf(tab.sessionId, run),
       // P5.5：batch 期间走 lazy hljs（代码块占位 + IntersectionObserver 触发再补跑）
       lazy: this.store.inBatch,
     };
@@ -828,6 +832,8 @@ export class TabStreamView {
       toolUseElements: tab.toolUseElements,
       runCards: tab.runCards,
       pendingToolResults: tab.pendingToolResults,
+      needs: tab.needs, // 在等批准的那一步建出来就画成「在等你批准」
+      runLabelOf: (run) => this.host.runLabelOf(tab.sessionId, run),
       lazy: true,
     };
     const sink: StreamSink = {

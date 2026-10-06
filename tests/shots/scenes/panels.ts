@@ -420,8 +420,105 @@ export const PANEL_SCENES: Scene[] = [
     await waitFor("[aria-modal='true']");
     await sleep(400);
   }),
+  panel("panel-batch-result-view", "批量结束 · 结果［查看］", "确认之后：toast 只一句汇总（已结束 4 · 失败 2）＋［查看］；点了打开「消息」、展开那一条，逐条原因在那里", async () => {
+    await mainReady(ALL_TABS);
+    const tabs = [...document.querySelectorAll<HTMLElement>("#tab-bar .tab")];
+    for (const t of tabs) {
+      const r = t.getBoundingClientRect();
+      t.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true, clientX: r.left + 10, clientY: r.top + 5 }));
+      await sleep(60);
+    }
+    await rightClick(tabs[0]);
+    await sleep(600);
+    await click(await byText("[role^=menuitem]", "结束会话（"));
+    await waitFor("[aria-modal='true']");
+    await sleep(300);
+    await click(await byText("[aria-modal='true'] button", /^结束 \d+ 个会话$/));
+    await click(await byText("#kit-toast-stack button", "查看"));
+    await waitFor("[data-role=message-more]");
+    await sleep(500);
+  }, () => {
+    const w = defaultWorld();
+    w.ops["sessions-stop"] = (origin, req) => {
+      if (origin === "devbox") throw { err: { Hop: { idx: 0, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] };
+      return { results: (req.sids as string[]).map((sid) => ({ sid, outcome: "done", why: null, detail: "", session: null, bus: null, cmd: null, account: null, unavailable: null })) };
+    };
+    return w;
+  }),
   panel("panel-first-run", "首次打开", "第一次开：命令面板入口高亮、tab 栏默认宽度", async () => {
     await mainReady(ALL_TABS);
+  }),
+];
+
+/** ↗ 那几张：装成 Windows 上的 cc-monitor；壳 / 那台 / 本机后端各答什么由 `tune` 定。 */
+function frontScene(id: string, title: string, desc: string, act: Scene["act"], tune: (w: World) => void): Scene {
+  const w = (): World => {
+    const x = defaultWorld();
+    tune(x);
+    return x;
+  };
+  return { ...panel(id, title, desc, act, w), hostOs: "windows" };
+}
+
+async function clickHeadFront(): Promise<void> {
+  await click("[data-role=head-front]");
+}
+
+/** 高 DPI：1.5x / 2x 下 1px 线、图标、字形照常（同一屏，像素比不同）。 */
+export const DPI_SCENES: Scene[] = [1.5, 2].map((scale) => ({
+  ...panel(`main-dpi-${scale}x`, `主窗口 · ${scale}x`, `设备像素比 ${scale}：标签页栏、会话头、消息流、状态栏的 1px 线与图标都照常`, async () => {
+    await mainReady(ALL_TABS);
+    await sleep(400);
+  }),
+  scale,
+}));
+
+export const FRONT_SCENES: Scene[] = [
+  frontScene("panel-front-several", "↗ · 分不清是哪个窗口", "本机会话：Windows Terminal 开着 3 个窗口、这个终端没登记 ⇒ 不挑一个切、不闪；浮层锚在会话头的 ↗ 下，照实说拉不了、带候选个数", async () => {
+    await mainReady(ALL_TABS);
+    await clickHeadFront();
+    await waitFor("[data-role=front-result]");
+    await sleep(400);
+  }, (w) => {
+    w.commands.bring_terminal_to_front = () => ({ kind: "several", program: "WindowsTerminal.exe", count: 3 });
+  }),
+  frontScene("panel-front-unbound", "↗ · 本机终端没登记", "在接上终端之前开的 PowerShell：浮层给［接上终端］（直达设置那一节）", async () => {
+    await mainReady(ALL_TABS);
+    await clickHeadFront();
+    await waitFor("[data-role=front-result]");
+    await sleep(400);
+  }, (w) => {
+    w.commands.bring_terminal_to_front = () => ({ kind: "unbound" });
+  }),
+  frontScene("panel-front-remote-detached", "↗ · 远端 tmux 里没有终端连着", "devbox 那台说：tmux 会话在、没有终端连着 ⇒ 无终端窗口 ＋［在终端里打开］（灰）", async () => {
+    await mainReady(ALL_TABS);
+    await openTab(3);
+    await sleep(400);
+    await clickHeadFront();
+    await waitFor("[data-role=front-result]");
+    await sleep(400);
+  }, (w) => {
+    w.ops["session-terminals"] = () => ({ terminals: [], why: "detached" });
+  }),
+  frontScene("panel-front-remote-offline", "↗ · 连不上那台", "devbox 那一问够不着 ⇒ 未切换 · devbox 离线 ＋［重新连接］（红）", async () => {
+    await mainReady(ALL_TABS);
+    await openTab(3);
+    await sleep(400);
+    await clickHeadFront();
+    await waitFor("[data-role=front-result]");
+    await sleep(400);
+  }, (w) => {
+    w.ops["session-terminals"] = () => {
+      throw { err: { Hop: { idx: 0, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] };
+    };
+  }),
+  frontScene("panel-front-busy", "↗ · 在找终端", "壳那一跳超过 300ms 还没回 ⇒ ↗ 转圈、旁边「查找终端…」", async () => {
+    await mainReady(ALL_TABS);
+    await clickHeadFront();
+    await waitFor("[data-role=front-busy]");
+    await sleep(300);
+  }, (w) => {
+    w.commands.bring_terminal_to_front = () => new Promise(() => {});
   }),
 ];
 

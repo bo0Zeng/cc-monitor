@@ -49,6 +49,9 @@ const TAB_LAYER = [
   "src/frontend/ui/tab-session-actions.ts",
 ];
 
+/** 加上 ↗ 结局那一份（tab 层的「切到终端」那几句搬到了它那里）。 */
+const SPOKEN = [...TAB_LAYER, "src/frontend/ui/front-result.ts"];
+
 /** 一份源码里全部字符串 / 模板字面量的文字（模板的各段拼起来，插值处留空）。 */
 export function stringLiterals(src: string): string[] {
   const sf = ts.createSourceFile("x.ts", src, ts.ScriptTarget.Latest, true);
@@ -103,17 +106,17 @@ describe("〔U2〕tab 层的界面文字：拉前 / @ccm_sid / ccm 助手 /〔S4
   });
 
   it("★ 抽取器自检：12 份里抽得出字面量，且认得出改之后的新词", () => {
-    const all = TAB_LAYER.flatMap((f) => spokenIn(readFileSync(resolve(REPO_ROOT, f), "utf8")));
+    const all = SPOKEN.flatMap((f) => spokenIn(readFileSync(resolve(REPO_ROOT, f), "utf8")));
     expect(all.length, "一个字面量都没抽到 —— 抽取器坏了").toBeGreaterThan(200);
-    expect(all).toContain("切到终端窗口失败");
-    expect(all.filter((s) => s === "切到终端窗口超时").length, "两处拉前超时的新正文").toBe(2);
+    expect(all).toContain("未切换 · 窗口无法确定");
+    expect(all, "期限到的那一族（原先「切到终端窗口超时」）").toContain("{machine} 无应答");
     // 模板字面量也要抽得到（插值处留空）。
     expect(all).toContain("[tabs] 骨架未接（）：");
   });
 
   it("★ 零命中：12 份的字符串字面量里一处都没有", () => {
     const found: string[] = [];
-    for (const f of TAB_LAYER) {
+    for (const f of SPOKEN) {
       for (const s of spokenIn(readFileSync(resolve(REPO_ROOT, f), "utf8"))) {
         const h = hitsOf(s);
         if (h.length > 0) found.push(`${f}：「${s.slice(0, 60)}」命中 ${h.join(" / ")}`);

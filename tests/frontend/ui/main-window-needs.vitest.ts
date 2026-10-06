@@ -53,7 +53,7 @@ function tab(sid: string, over: Partial<Tab> = {}): Tab {
 }
 
 const waiting = { status: "waiting", waitingFor: "permission prompt" };
-const approve = (sinceMs: number | null = NOW - 120_000): Needs => ({ kind: "approve", tool: "Bash", what: "rm -rf build/", sinceMs });
+const approve = (sinceMs: number | null = NOW - 120_000): Needs => ({ kind: "approve", tool: "Bash", call: "toolu_b", what: "rm -rf build/", sinceMs });
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -62,7 +62,7 @@ beforeEach(() => {
 
 describe("一个会话读成什么（session-face）", () => {
   it("★ 需要你：活着 ＋ 活动信号说在等才算；种类没到 ⇒「需要你」（不猜）；活动信号说不在等了 ⇒ 手上那份不认；死了 ⇒ 不算", () => {
-    expect(needsOf(tab("a", { activity: waiting }))).toEqual({ kind: "unknown", tool: null, what: null, sinceMs: null });
+    expect(needsOf(tab("a", { activity: waiting }))).toEqual({ kind: "unknown", tool: null, call: null, what: null, sinceMs: null });
     expect(needsOf(tab("a", { activity: waiting, needs: approve() }))?.kind).toBe("approve");
     expect(needsOf(tab("a", { activity: { status: "busy", waitingFor: null }, needs: approve() })), "已经答完：不留一条需要你").toBeNull();
     expect(needsOf(tab("a", { state: RECONNECTABLE, activity: waiting, needs: approve() })), "Claude 已退出：陈旧的在等不算").toBeNull();
@@ -226,9 +226,9 @@ describe("标签页栏：「需要你 N」与机器离线条", () => {
 describe("「需要你」钉条 · 窗口标题 · 系统通知", () => {
   it("★ 钉条第一行：批准写工具名 ＋ 那一步；回答写问题；计划 · 等批准；判不出只写需要你", () => {
     expect(needsHeadline(approve())).toEqual({ label: copyText("needs.bar.approve", { tool: "Bash" }), code: "rm -rf build/" });
-    expect(needsHeadline({ kind: "answer", tool: "AskUserQuestion", what: "要不要也重试？", sinceMs: null })).toEqual({ label: copyText("needs.bar.answer"), code: "要不要也重试？" });
-    expect(needsHeadline({ kind: "plan", tool: "ExitPlanMode", what: null, sinceMs: null }).label).toBe(copyText("needs.bar.plan"));
-    expect(needsHeadline({ kind: "unknown", tool: null, what: null, sinceMs: null })).toEqual({ label: copyText("needs.bar.unknown"), code: null });
+    expect(needsHeadline({ kind: "answer", tool: "AskUserQuestion", call: null, what: "要不要也重试？", sinceMs: null })).toEqual({ label: copyText("needs.bar.answer"), code: "要不要也重试？" });
+    expect(needsHeadline({ kind: "plan", tool: "ExitPlanMode", call: null, what: null, sinceMs: null }).label).toBe(copyText("needs.bar.plan"));
+    expect(needsHeadline({ kind: "unknown", tool: null, call: null, what: null, sinceMs: null })).toEqual({ label: copyText("needs.bar.unknown"), code: null });
   });
 
   it("★ 去哪答：Windows 有 ↗ ⇒ 切到终端；远端在 tmux 里 ⇒ 在终端里打开；本机 Linux 不在 ↗ 上 ⇒ 不给按钮", () => {

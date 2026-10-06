@@ -1466,27 +1466,26 @@ async fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), String> {
 /// v1.7：拉对应终端窗口。
 ///
 /// 流程：sid → 查 SidHwndCache → 校验复合指纹（IsWindow + owner_pid + procStart）
-/// → activate_window。
+/// → activate_window。回的是结局族（`bind::FrontOutcome`），句子在界面的文案表。
 ///
 /// **必须 async + spawn_blocking** 隔离 Win32 sync 调用（v1.6.5 的教训）。
 #[tauri::command]
 async fn bring_terminal_to_front(
     session_id: String,
     cache: tauri::State<'_, Arc<bind::SidHwndCache>>,
-) -> Result<(), String> {
+) -> Result<bind::FrontOutcome, String> {
     let cache = cache.inner().clone();
     tokio::task::spawn_blocking(move || {
-        let binding = cache.lookup(&session_id).ok_or_else(|| {
-            copy_text(
-                "rsLib.front.unbound",
-                &[("sessionId", &session_id.to_string())],
-            )
-        })?;
-        bind::verify_binding(&binding)?;
-        bind::activate(binding.hwnd)
+        let Some(binding) = cache.lookup(&session_id) else {
+            return bind::FrontOutcome::Unbound;
+        };
+        match bind::verify_binding(&binding) {
+            Ok(()) => bind::activate(binding.hwnd),
+            Err(o) => o,
+        }
     })
     .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+    .map_err(|e| format!("spawn_blocking join error: {e}"))
 }
 
 /// 拉对应**远端** Tab 的本地终端窗口：界面先问那台「此刻谁在显示它」、再问本机后端那条连接的进程链，
@@ -1496,11 +1495,11 @@ async fn bring_terminal_to_front(
 async fn bring_remote_terminal_to_front(
     chain: Vec<bind::ChainLink>,
     bind_state: tauri::State<'_, Arc<bind::BindRegistry>>,
-) -> Result<(), String> {
+) -> Result<bind::FrontOutcome, String> {
     let bind = bind_state.inner().clone();
     tokio::task::spawn_blocking(move || bind::bring_chain_window(&chain, &bind))
         .await
-        .map_err(|e| format!("spawn_blocking join error: {e}"))?
+        .map_err(|e| format!("spawn_blocking join error: {e}"))
 }
 
 // === v1.7：PowerShell profile cc 集成 IPC ===

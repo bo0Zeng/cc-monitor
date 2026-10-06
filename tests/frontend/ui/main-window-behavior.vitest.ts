@@ -3,7 +3,7 @@
 // 行为口径：同一时刻同一层只开一块；看得见 ⇔ 在 Esc 弹层栈上，Esc 一次只关最上一层；浮层躲窗口边、贴边内缩 8px；
 // 收起后看不见的动作在右键菜单里有；「说不清」是一个单独的状态，不并进「已结束」。
 import { buildApiErrorCard, buildApiRetryCard, mergeRetry, settleRetry } from "../../../src/frontend/ui/cards/api-error";
-import { fmtStepDur, middleEllipsis, stateOf, stepRight } from "../../../src/frontend/ui/cards/step-line";
+import { buildStepLine, clearAwaiting, fmtStepDur, markAwaiting, middleEllipsis, settleStepLine, stateOf, stepRight } from "../../../src/frontend/ui/cards/step-line";
 import { mergeNotice } from "../../../src/frontend/ui/cards/speaker-bar";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
@@ -559,6 +559,33 @@ describe("重试细条：相邻并成一条 · 接上 / 没接上", () => {
     expect(card.querySelector(".api-error-label")?.textContent).toBe("本轮中断 · 服务器过载");
     expect(card.querySelector(".api-error-next")?.textContent).toBe("重试 10/10 后停止 · 终端里重发可继续");
     expect(card.querySelector(".api-error-body")?.textContent).toBe("529 · API Error: Overloaded");
+  });
+});
+
+// 后端说在等你批准的正是这一步（会话事实 `needs.call`）：琥珀点 · 说明位「等你批准」· 右侧已等多久；不等了回到在跑；结果到了照结果。
+describe("一步「在等你批准」", () => {
+  it("★ 在跑的那一行 ⇒ 等你批准（说明位换掉）；不等了 ⇒ 回到在跑；结果到了 ⇒ 照结果、那三个字去掉；已有结果的那一行不改", () => {
+    const row = buildStepLine("Bash", { tool: "Bash", arg: "rm -rf build/", note: "清掉构建目录", known: true } as never, "");
+    markAwaiting(row, "2m");
+    expect([row.dataset.state, row.querySelector(".step-await")?.textContent, row.querySelector(".step-right")?.textContent]).toEqual(["awaiting", "等你批准", "2m"]);
+    expect(row.querySelector(".step-icon .step-await-dot"), "琥珀点").not.toBeNull();
+    clearAwaiting(row);
+    expect([row.dataset.state, row.querySelector(".step-await")]).toEqual(["running", null]);
+    markAwaiting(row, null);
+    settleStepLine(row, undefined, { ok: true } as never, false, 1200);
+    expect([row.dataset.state, row.querySelector(".step-await")]).toEqual(["ok", null]);
+    markAwaiting(row, "1m");
+    expect(row.dataset.state, "结果已经到了的那一行不改").toBe("ok");
+  });
+
+  it("★ 会话事实比那一步的卡先到：建卡时就照 needs.call 画成等你批准（别的步照常在跑）", () => {
+    const c = { ...ctx(), needs: { kind: "approve", call: "t2", sinceMs: Date.now() - 65_000 } };
+    const use = { ...(toolCalls([{ id: "t1", name: "Bash", input: {} }, { id: "t2", name: "Bash", input: {} }]) as object) } as unknown as JsonlRecord;
+    const r = renderMessage(use, c);
+    if (r.kind !== "tool-group") throw new Error(r.kind);
+    const st = [0, 1].map((i) => r.units[i].querySelector<HTMLElement>(".step-line")!.dataset.state);
+    expect(st).toEqual(["running", "awaiting"]);
+    expect(r.units[1].querySelector(".step-right")?.textContent).toBe("1m05s");
   });
 });
 

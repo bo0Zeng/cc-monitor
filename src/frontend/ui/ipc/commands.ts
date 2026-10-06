@@ -66,6 +66,7 @@ import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
 //   判据 `tests/frontend/ui/ipc/commands.vitest.ts` 末尾「TS 侧 origin 去 null」那一节，全 TS ＋ 生成物）；
 // 生成物 `RemoteHealthPayload.origin` 那最后一处也改成了 `string`（那一节的 `PENDING` 从此为空）。
 import type { Origin } from "../generated/Origin";
+import type { FrontOutcome } from "../generated/FrontOutcome";
 // `K-R69`：本机那条 `ccm` 入口这一格（我们那一份 · PATH 上那一份 · 判词 · 那句话）。
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { ConfigEdit } from "../generated/ConfigEdit";
@@ -398,13 +399,13 @@ export const commands = {
     y?: number;
   }) => invoke<void>("open_session_in_new_window", args),
 
-  /** 本机会话拉前（Windows 按 sid→HWND 缓存）。**桶①**。 */
+  /** 本机会话拉前（Windows 按 sid→HWND 缓存）；回结局族。**桶①**。 */
   bring_terminal_to_front: (args: { sessionId: string }) =>
-    invoke<void>("bring_terminal_to_front", args),
+    invoke<FrontOutcome>("bring_terminal_to_front", args),
 
-  /** 远端会话拉前（后端唯一分派点：先启动令牌、后标题退路）。**桶①**。 */
+  /** 远端会话拉前（沿本机后端给的进程链找窗口）；回结局族。**桶①**。 */
   bring_remote_terminal_to_front: (args: { chain: unknown[] }) =>
-    invoke<void>("bring_remote_terminal_to_front", args),
+    invoke<FrontOutcome>("bring_remote_terminal_to_front", args),
 
   /** 关 tab 时让事件重放忘掉这个会话。**桶①**。 */
   forget_session: (args: { sessionId: string }) => invoke<void>("forget_session", args),

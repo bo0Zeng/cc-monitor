@@ -249,18 +249,23 @@ fn without_a_registration_the_window_is_the_first_one_up_the_chain_and_only_if_i
         pick_chain_window(&chain, none, wins(&[(500, &[0x22])]), start),
         Ok(found(0x22, 500, 5000))
     );
-    // 开着两个窗口 ⇒ 分不清，说出是哪个程序。
+    // 开着两个窗口 ⇒ 分不清：说出是哪个程序与候选个数（不挑）。
     let two = pick_chain_window(&chain, none, wins(&[(500, &[0x22, 0x33])]), start).unwrap_err();
-    assert!(two.contains("WindowsTerminal.exe"), "{two}");
+    assert_eq!(
+        two,
+        FrontOutcome::Several {
+            program: "WindowsTerminal.exe".into(),
+            count: 2
+        }
+    );
     // 链上有 PowerShell 却一个窗口都没有（Windows 默认终端把它交给了 Windows Terminal，窗口属主不在链上）
-    // ⇒ 说终端窗口归别的程序托管、怎么改，不说「在后台跑」。
+    // ⇒ 窗口归别的程序托管，不说「在后台跑」。
     let handed = pick_chain_window(&chain, none, wins(&[]), start).unwrap_err();
     assert_eq!(
         handed,
-        copy_text(
-            "rsBind.front.hostedElsewhere",
-            &[("shell", "powershell.exe")]
-        )
+        FrontOutcome::HostedByWt {
+            program: "ssh.exe".into()
+        }
     );
     // 整条链连个 shell 都没有 ⇒ 真在后台：说开着连接的那个程序没有窗口。
     let bg: Vec<ChainLink> = serde_json::from_value(serde_json::json!([
@@ -271,7 +276,9 @@ fn without_a_registration_the_window_is_the_first_one_up_the_chain_and_only_if_i
     let nowin = pick_chain_window(&bg, none, wins(&[]), start).unwrap_err();
     assert_eq!(
         nowin,
-        copy_text("rsBind.front.noWindow", &[("name", "ssh.exe")])
+        FrontOutcome::NoWindow {
+            program: "ssh.exe".into()
+        }
     );
 }
 
@@ -312,7 +319,10 @@ fn a_registration_above_the_terminal_window_is_not_this_window() {
     .unwrap();
     let reg = |pid: u32| (pid == 400).then(|| entry(400, 0x99, 300));
     let said = pick_chain_window(&chain, reg, wins(&[(500, &[0x22, 0x33])]), |_| 0).unwrap_err();
-    assert!(said.contains("WindowsTerminal.exe"), "{said}");
+    assert!(
+        matches!(&said, FrontOutcome::Several { program, .. } if program == "WindowsTerminal.exe"),
+        "{said:?}"
+    );
 }
 
 /// ★ 握手表里那一条不作数就不用：登记的 PowerShell 已经不是此刻这个进程（起始时刻对不上 / 读不到）、
@@ -337,10 +347,13 @@ fn a_registration_that_fails_its_check_is_not_used_and_several_windows_are_never
             .filter(|e| registration_holds(e, Some(1), |_| true))
     };
     let said = pick_chain_window(&chain, stale, wins(&[(500, &[0x22, 0x33])]), |_| 0).unwrap_err();
-    assert!(said.contains("WindowsTerminal.exe"), "{said}");
-    assert!(
-        said.contains("PowerShell 标签页"),
-        "分不清时要说怎么办（在那个窗口里新开一个 PowerShell 标签页、从那里重新连）：{said}"
+    assert_eq!(
+        said,
+        FrontOutcome::Several {
+            program: "WindowsTerminal.exe".into(),
+            count: 2
+        },
+        "分不清时照实说拉不了、带候选个数，不挑其中任何一个"
     );
 }
 

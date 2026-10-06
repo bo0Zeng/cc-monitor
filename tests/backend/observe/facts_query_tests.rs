@@ -501,6 +501,7 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
         Some(Needs {
             kind: NeedsKind::Approve,
             tool: Some("Bash".into()),
+            call: Some("b".into()),
             what: Some("rm -rf build/".into()),
             since_ms: Some(42)
         })
@@ -520,8 +521,8 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
     let plan = vec![call("p", "ExitPlanMode", None)];
     let n = needs_of(&plan, Some(&wait(None))).unwrap();
     assert_eq!(
-        (n.kind, n.tool.as_deref(), n.what),
-        (NeedsKind::Plan, Some("ExitPlanMode"), None)
+        (n.kind, n.tool.as_deref(), n.call.as_deref(), n.what),
+        (NeedsKind::Plan, Some("ExitPlanMode"), Some("p"), None)
     );
     // 说不出是哪种框 · 没有没结果的调用 ⇒ 判不出（不猜成批准）。
     for (pending, w) in [
@@ -531,8 +532,8 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
     ] {
         let n = needs_of(&pending, Some(&wait(w))).unwrap();
         assert_eq!(
-            (n.kind, n.tool, n.what),
-            (NeedsKind::Unknown, None, None),
+            (n.kind, n.tool, n.call, n.what),
+            (NeedsKind::Unknown, None, None, None),
             "{w:?} / {}",
             pending.len()
         );

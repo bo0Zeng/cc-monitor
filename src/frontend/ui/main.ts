@@ -13,7 +13,7 @@
  */
 // `LOCAL_ORIGIN`：本机那个 origin 的**唯一住址**（Rust 侧是
 // `origin::LOCAL`，三处由 `origin_tests.rs::the_sentinel_agrees_with_the_two_existing_homes` 钉着）。
-import { LOCAL_ORIGIN } from "./ipc/origin";
+import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
 import { icon } from "./kit/icon";
@@ -27,7 +27,7 @@ import { mountTabBarResizer } from "./tab-bar-width";
 import { terminalFrontCommand } from "./terminal-front-command";
 import { loadTheme } from "./theme";
 import { SETTINGS_APPLIED_EVENT } from "./settings";
-import { RESYNC_DONE_EVENT } from "./settings/events";
+import { OPEN_ACCOUNT_PANEL_EVENT, RESYNC_DONE_EVENT, type OpenAccountPanel } from "./settings/events";
 import { SWITCH_TO_SESSION_EVENT, type SwitchToSession } from "./window-events";
 import { listen } from "@tauri-apps/api/event";
 import { HistoryView } from "./views/history";
@@ -48,13 +48,10 @@ import { bindErrorToast } from "./backend-errors";
 import { bindRemoteHealthToast } from "./remote-health";
 // F83（#39）：顶栏远端文件入口——按远端主机数 0/1/N 分支（`sftp-host-picker.ts`）。
 import { openSftpFromTopbar, toggleSftpFromTopbar } from "./sftp-host-picker";
-import { readRemoteConfig, hostKey } from "./remote-config";
-// N-F3：主窗口那一条「还差什么」指路 —— 那张清单此前只在设置面板 → 远端那一节渲染，
-// 刚装完没打开过设置的人一个字都看不到。两个维度两个值，见 first-run-hint.ts 头注。
-import { FirstRunHint } from "./first-run-hint";
-import { LOCAL_MACHINE_KEY, readStatus } from "./settings/machine-status";
+import { readRemoteConfig } from "./remote-config";
 import { createUnknownKeysBar } from "./settings/unknown-keys-notice";
 import { openSettingsWindow } from "./settings/open-settings"; // ST1：点「设置」有反馈（不 import 设置面板）
+import * as dest from "./settings-dest";
 import { collectAccountRows, createEventRefresher } from "./session-accounts-poll";
 import { lastAccounts } from "./history-reads";
 import { TasksPanel } from "./tasks-panel";
@@ -70,7 +67,9 @@ import { getKeybindings } from "./keybindings/store";
 import { installGlobalClickDelegation } from "./entry-render-common";
 import { AccountChip } from "./account-chip";
 import { onQuotaChanged, syncSessions } from "./acct-center";
-import { followActive, toggleAccountPanel, type AcctPanelHost } from "./acct-panel";
+import { followActive, openAccountPanelAt, toggleAccountPanel, type AcctPanelHost } from "./acct-panel";
+import { jumpToAccountPanel } from "./acct-jump";
+import { fullTitle } from "./session-face";
 import { acctSessionWiring } from "./acct-session";
 import { buildAccountCommands } from "./account-commands";
 import { sessionCommands } from "./session-commands";
@@ -252,7 +251,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     tasksPanel,
     agentsPanel,
   );
-  usageHud.host = { openSettings: () => void openSettingsWindow(), retry: () => tabs.retryActiveFacts() };
+  usageHud.host = { openSettings: () => void openSettingsWindow(undefined, dest.CONTEXT_LIMITS), retry: () => tabs.retryActiveFacts() };
   // 活卡的画法（带 `.module.css`）只由主窗口入口装进来 —— 理由见 `live-card-view.ts` 头注。
   tabs.setLivePainter(livePainter);
   // P7a-3（#61）：启动时拉一次标签页集合（住 `config.json`，不是 localStorage —— 见
@@ -284,7 +283,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const panelHost: AcctPanelHost = {
     sessionTitle: (sid) => tabs.snapshotSessions().find((x) => x.sessionId === sid)?.title ?? sid.slice(0, 8),
     cwdOf: (sid) => tabs.snapshotSessions().find((x) => x.sessionId === sid)?.cwd ?? "",
-    openSettings: () => accountChipDeps.openSettings(),
+    openSettings: (origin) => void openSettingsWindow(undefined, dest.accountsOf(origin)),
     openDefaultMenu: (anchor, origin) => void accountChip.openDefaultMenu(anchor, origin),
     defaultOf: (origin) => accountChip.defaultOf(origin),
     // 恢复菜单挂在状态栏上（抽屉的底边）：toast 的按钮点了就收起，没有自己的锚。
@@ -295,9 +294,36 @@ window.addEventListener("DOMContentLoaded", async () => {
   };
   const openAcctPanel = (sid: string, origin: string): void => toggleAccountPanel(sid, origin, panelHost);
   tabs.onOpenAccountPanel = openAcctPanel;
+  // ↗ 浮层的两颗：［接上终端］直达设置那一节 ·［更新］开那台机器页（更新那一颗只住机器卡上）。
+  tabs.onConnectTerminal = () => void openSettingsWindow(undefined, dest.connectTerminalOf(LOCAL_ORIGIN));
+  tabs.onUpdateMachine = (origin) => void openSettingsWindow(undefined, dest.machineOf(origin));
+  // 设置窗账号页「时间轴 · 默认轮换」⇒ 主窗口拉到前面、开账号面板滚到那一节（只开不写）。
+  void listen<OpenAccountPanel>(OPEN_ACCOUNT_PANEL_EVENT, (e) =>
+    jumpToAccountPanel(e.payload, {
+      raise: () => {
+        const w = getCurrentWindow();
+        void w.unminimize().then(() => w.setFocus()).catch(() => {});
+      },
+      active: () => {
+        const sid = tabs.activeSessionId();
+        const origin = sid === null ? null : tabs.originOf(sid);
+        return sid !== null && origin !== null ? { sid, origin } : null;
+      },
+      firstOn: (origin) => {
+        const t = tabs.tabsInOrder().find((x) => x.origin === origin);
+        return t ? { sid: t.sessionId, title: fullTitle(t) } : null;
+      },
+      switchTo: (sid) => tabs.switchTo(sid),
+      openAt: (sid, origin, anchor) => openAccountPanelAt(sid, origin, panelHost, anchor),
+    }),
+  );
   tabs.onViewTerminal = () => mainDrawer.dock.show("terminal");
+  const activeOrigin = (): Origin | null => {
+    const sid = tabs.activeSessionId();
+    return sid === null ? null : tabs.originOf(sid);
+  };
   const accountChipDeps = {
-    openSettings: () => void openSettingsWindow(),
+    openSettings: () => void openSettingsWindow(undefined, dest.accountsOf(activeOrigin() ?? LOCAL_ORIGIN)),
     togglePanel: openAcctPanel,
     // 切号后立刻重算一次：currentByOrigin 只由下面那个事件驱动的刷新器喂，不主动刷的话
     // chip 已显示新账号，而对齐动作会把会话打回**刚被切走**的旧账号（D 审计重-5）。
@@ -414,10 +440,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   // F84b-fix(batch18)：状态栏命令 chip 的键位刷新钩子——改键热应用后同步刷新 chip 显示的 kbd
   //（原实现只在 bootstrap 算一次，改键后 chip 教死键；chip 创建时把重建函数赋进来）。
   let refreshCmdkChord: () => void = () => {};
-  // N-F3：同一个钩子形状给「还差什么」那条指路用。**它必须在这里挂**——
-  // 用户去设置里补齐了一格，广播过来这一拍就是「状态维」该重算的那一刻；
-  // 不挂的话「补齐了 ⇒ 指路消失」要等下次启动才兑现（那就成了一句半真的话）。
-  let refreshFirstRunHint: () => void = () => {};
   // 设置窗「重新对齐」做完 ⇒ 标出那台上记录没了的固定条（不自动摘）。
   void listen<{ origin: string }>(RESYNC_DONE_EVENT, (e) => void tabs.flagPinsWithoutRecord(e.payload.origin));
   // 任何窗口起会话之后交过来的「等它」都在这里收（主窗口订着每台的会话流）。
@@ -436,7 +458,6 @@ window.addEventListener("DOMContentLoaded", async () => {
       refreshCmdkChord(); // 键位变 → 同步刷新命令 chip 的 kbd（兑现「改键即变」）
     });
     void accountChip.refresh(true); // A3：远端配置/默认账号可能变了，刷新账号 chip
-    refreshFirstRunHint(); // N-F3：账本/远端列表可能变了 → 「还差什么」现算一遍
     void loadContextLimits(); // 上下文上限表可能在设置页改过
   });
   // Batch11-F33：竖直 tab 栏——右缘拖拽调宽。整段搬进 tab 栏自己的模块（`tab-bar-width.ts`），
@@ -496,7 +517,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   overlays.register("cc-bus", ccBusView);
 
   // 快捷键一览（`?` · 命令面板）：「改快捷键…」直达设置里快捷键那一节。
-  const keysOverview = new KeysOverview({ editKeys: () => void openSettingsWindow(undefined, { page: "appearance", anchor: "keybindings" }) });
+  const keysOverview = new KeysOverview({ editKeys: () => void openSettingsWindow(undefined, dest.KEYBINDINGS) });
   const toggleFullscreen = (): void => {
     const w = getCurrentWindow();
     void w
@@ -556,7 +577,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         snapshot: accountChip.snapshotReady(),
         chordHint: (id) => chordHint(id as Parameters<typeof chordHint>[0]),
         setCurrent: (name) => void accountChip.applyDefaultByName(name),
-        openSettings: () => void openSettingsWindow(),
+        openSettings: () => void openSettingsWindow(undefined, dest.accountsOf(curOrigin ?? LOCAL_ORIGIN)),
       }).map((c) => ({ ...c, group: "account" as const, icon: "account" as const })),
       {
         id: "acct-default-menu",
@@ -606,10 +627,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  // N-F3：「还差什么」那条指路 —— 放在命令 chip 旁边（同一条状态栏、同一种克制），
-  // 但**语义与它相反**：命令 chip 是一次性知识（见过即不再），这一条是**状态**，
-  // 补齐了自己就消失、又缺了自己就回来。两者的值一个都不共用，见 first-run-hint.ts 头注。
-  //
   // ⚠ 只在主窗口挂：独立 viewer 窗与设置窗各走自己的入口（`entry-viewer.ts` / `entry-settings.ts`），不经过本文件。
   // 🔴 **「配置里有个键没生效」这句话要在主窗口也说得出来。**
   //
@@ -632,31 +649,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   //   ⇒ 这一挂点的失效形状今天**判不了**，缺的是 `main.ts` 的 DOM 台架。**登记，不假装。**
   status.appendChild(createUnknownKeysBar());
 
-  {
-    // `origins` 要读远端配置（异步），所以先拿一份快照，
-    // 由 `reload()` 刷新；`FirstRunHint` 自己不碰 IO（照 readiness.ts 的注入范式）。
-    let origins: string[] = [LOCAL_MACHINE_KEY];
-    const firstRunHint = new FirstRunHint(status, {
-      origins: () => origins,
-      statusOf: readStatus,
-      // 「点得进那张清单」= 打开设置窗口（清单住在它的「远端」那一节）。
-      // ⚠ 今天**只能到窗口这一格**：`open_settings_window` 不收参数，
-      //   直达那一节要动 `src/frontend/shell` 与 `settings/panel.ts`，都在本件写区外。
-      openList: () => void openSettingsWindow(),
-    });
-    const reload = async (): Promise<void> => {
-      try {
-        const cfg = await readRemoteConfig();
-        origins = [LOCAL_MACHINE_KEY, ...cfg.hosts.map(hostKey)];
-      } catch (e) {
-        // 读不到远端配置不该让这条提示消失 —— 本机那几格照样算得出来。
-        console.warn(`[N-F3] 远端配置读失败，只按本机算「还差什么」：${String(e)}`);
-      }
-      firstRunHint.refresh();
-    };
-    refreshFirstRunHint = () => void reload();
-    void reload();
-  }
 
   // 外链 + 代码块复制的全局 click 代理（主窗口 / 独立 viewer 窗口共用）
   installGlobalClickDelegation();
@@ -735,7 +727,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   } catch (e) {
     console.warn("[events] backend_machines 失败，只订本机的会话流：", e);
   }
-  tabs.expectMachines(machines); // 各台都报完了活会话清单 ⇒ 没回来的组员收掉、空组头不留
   // await：保证 listener 注册完成、会话流订阅在 monitor 那一侧登记好，再 emit frontend-ready
   // （它就是这些订阅的就绪点：后端先重发宣告、再按 credit 交留存、再对账 —— 顺序见 `event_replay·rs::ready_point`）。
   await bindEvents({
@@ -752,9 +743,12 @@ window.addEventListener("DOMContentLoaded", async () => {
     onSessionIdle: (sessionId) => tabs.markTmuxIdle(sessionId),
     // 活会话的容器（G3）· 某台机器的活会话清单报完了（说不清 → 已结束）。
     onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container),
-    onOriginSessionsListed: (origin) => {
+    onOriginSessionsListed: (origin, all) => {
       tabs.markOriginSeen(origin);
-      startup?.onListed(origin); // 每台都报完了、记住的那一格还没出现 ⇒ 明说
+      if (!all) return;
+      // 各台都报完了（壳那一拍）⇒ 没回来的组员收掉、空组头不留；记住的那一格还没出现 ⇒ 明说。
+      tabs.markAllListed();
+      startup?.onAllListed();
     },
     // 中转抄出来的 SSE 事件（会话流 `session-tap`）→ 活卡（jsonl 到了整轮覆盖）；那台看不见了 ⇒ 活卡全撤。
     onSessionTap: (e) => tabs.onSessionTap(e),
@@ -770,7 +764,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 那台机器看不见了 ⇒ 那台上活的 · 可重连的说不清（不是已结束）。机器级一格。
     onOriginUnseen: (origin) => tabs.markOriginUnseen(origin),
     // 一台机器一直看不见 ⇒ 提示里「打开设置」（那台连不连得上在机器页里看得到）。
-    openMachineSettings: () => void openSettingsWindow(),
+    openMachineSettings: (origin) => void openSettingsWindow(undefined, dest.machineOf(origin)),
     // 会话复活（resume）：后端 liveness 门控后才发，复活已归档的本地 Tab，免 F5。
     // Batch7-F24：无 Tab（= 运行中途**新出现**的本地会话）→ 建骨架——bg 会话必须
     // 从这条通道拿 kind/name（首行 onLine→ensureTab 不带 kind，会建成无 ⚙ 普通 tab）。
@@ -849,7 +843,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   //   〔从前本机骨架先经 `list_active_sessions`〔散文墓碑〕在这里建好、建时抑制写回（`persistLastActive = false … true`）；
   //    骨架挪到就绪点之后那一对抑制没有要罩住的东西了，删了。〕
   const lastActive = safeGet(LS_KEYS.lastActiveSid);
-  startup = new StartupActive(lastActive, !!lastActive && tabs.hasTab(lastActive), machines, {
+  startup = new StartupActive(lastActive, !!lastActive && tabs.hasTab(lastActive), {
     switchTo: (sid) => tabs.switchTo(sid, "auto"),
     holdMemory: (hold) => {
       tabs.persistLastActive = !hold;
@@ -863,6 +857,8 @@ window.addEventListener("DOMContentLoaded", async () => {
         level: "info",
       }),
   });
+  // 那一拍要是在它之前就到了（就绪点之前的重放）⇒ 当场补上。
+  if (tabs.everAllListed) startup.onAllListed();
 
   // 通知后端可以发了 —— 缓冲的 line 会被 flush 过来。payload 带上次所在 tab
   // （Batch5-F19）：后端 replay 按 session 分组、该 tab 的内容块先发。

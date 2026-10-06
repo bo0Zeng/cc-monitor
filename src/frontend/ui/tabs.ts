@@ -40,7 +40,7 @@ import {
   TERMINAL_FRONT_UNAVAILABLE_DETAIL,
 } from "./terminal-front";
 import { computeTitleFor, isBgKind, type Tab, type TabsSummary } from "./tab-model";
-import { ENDED, LIVE, RECONNECTABLE, closesWithoutMenu, containerEvent, isLive, isResumeOnly, hasTerminal, nextState, type StateEvent } from "./tab-session-state";
+import { ENDED, LIVE, RECONNECTABLE, closesWithoutMenu, containerEvent, isLive, isResumeOnly, hasTerminal, inTmux, nextState, type StateEvent } from "./tab-session-state";
 import type { SessionContainer } from "./generated/SessionContainer";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
 // `Tab` 的形状与标题函数搬去了 `tab-model.ts`；这里原样 re-export，既有 import 面零改动。
@@ -80,6 +80,10 @@ import {
   frontOnce,
   forgetSession,
 } from "./tab-session-actions";
+import { frontView, type FrontAct, type FrontResult } from "./front-result";
+import { awaitedFor, clearAwaiting, markAwaiting } from "./cards/step-line";
+import { machineName } from "./control-said";
+import { closeFrontResult, copyFrontDetail, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
 
 
 export class TabManager {
@@ -133,8 +137,8 @@ export class TabManager {
     this.bar = new TabBarView(this.store, this.prefs, barEl, {
       refreshTabBar: () => this.refreshTabBar(),
       openTabCwd: (sid) => this.openTabCwd(sid),
-      bringTerminalToFront: (sid) => this.front(sid, () => bringTerminalToFront(sid)),
-      bringRemoteTerminalToFront: (sid) => this.front(sid, () => this.bringRemoteFront(sid)),
+      bringTerminalToFront: (sid) => this.frontFrom(sid, "row"),
+      bringRemoteTerminalToFront: (sid) => this.frontFrom(sid, "row"),
       closeTab: (sid) => this.closeTab(sid),
       switchTo: (sid) => this.switchTo(sid),
       pick: (sid, how) => this.pick(sid, how),
@@ -157,6 +161,10 @@ export class TabManager {
       applyAiTitle: (tab, aiTitle) => this.applyAiTitle(tab, aiTitle),
       userActive: (sid) => this.userActive(sid),
       startForkedSession: (tab, res) => this.startForkedSession(tab, res),
+      runLabelOf: (sid, run) => {
+        const r = this.live.board.of(sid).find((x) => x.run === run);
+        return r ? runLabel(r) : undefined;
+      },
     });
   }
 
@@ -1064,7 +1072,6 @@ export class TabManager {
   markOriginSeen(origin: Origin, liveSids?: ReadonlySet<string>): void {
     this.store.seenOrigins.add(origin);
     this.bar.markOriginDown(origin, false);
-    this.settleUnarrivedOnce();
     let changed = false;
     for (const tab of this.store.tabs.values()) {
       if (tab.origin !== origin || tab.state.liveness !== "unseen") continue;
@@ -1100,20 +1107,24 @@ export class TabManager {
     }
   }
 
-  /** 订了会话流的那几台（起步时后端注册表说的；`null` = 还不知道，不判「各台都报完了」）。 */
-  private machines: readonly string[] | null = null;
+  /** 壳说过「各台都报完了」（`listed` 格带 `all`）。 */
+  private allListed = false;
   private unarrivedSettled = false;
 
-  /** 宿主告诉这一份：订了哪几台的会话流（「各台都报完了」按它判）。 */
-  expectMachines(machines: readonly string[]): void {
-    this.machines = machines;
+  /** 「各台都报完了」那一拍（壳给的，`listed` 格的 `all`）。 */
+  markAllListed(): void {
+    this.allListed = true;
     this.settleUnarrivedOnce();
+  }
+
+  /** 这一趟里壳说过「各台都报完了」没有。 */
+  get everAllListed(): boolean {
+    return this.allListed;
   }
 
   /** 各台都报完了活会话清单 ⇒ 盘上记着、却一个都没回来的组员不会再来了：收掉，空了的组随之消失（只做一次）。 */
   private settleUnarrivedOnce(): void {
-    if (this.unarrivedSettled || this.machines === null || !this.prefs.collectionsLoaded) return;
-    if (!this.machines.every((m) => this.store.seenOrigins.has(m))) return;
+    if (this.unarrivedSettled || !this.allListed || !this.prefs.collectionsLoaded) return;
     this.unarrivedSettled = true;
     void this.prefs.forgetUnarrived();
     this.refreshTabBar();
@@ -1186,12 +1197,11 @@ export class TabManager {
     void this.menu.attachRemote(sid);
   }
 
-  /** 会话头的 ↗ 与行尾那颗同一条路。 */
+  /** 会话头 · 钉条 · 命令面板的 ↗ 与行尾那颗同一条路（结果锚在会话头的 ↗）。 */
   frontFor(sid: string): void {
     const tab = this.store.tabs.get(sid);
     if (!tab || !hasTerminal(tab.state) || !terminalFrontAvailable()) return;
-    if (isRemoteOrigin(tab.origin)) void this.front(sid, () => this.bringRemoteFront(sid));
-    else void this.front(sid, () => bringTerminalToFront(sid));
+    void this.frontFrom(sid, "head");
   }
 
   /** 会话头的「打开工作目录」。 */
@@ -1311,8 +1321,23 @@ export class TabManager {
       tab.title = this.computeTitle(tab);
       this.refreshTabBar();
     } else if (ch.writers || ch.needs || ch.peek) this.refreshTabBar();
-    if (ch.needs) tab.turnRail.render(); // 在等你的那一轮琥珀
+    if (ch.needs) {
+      tab.turnRail.render(); // 在等你的那一轮琥珀
+      this.paintAwaitingStep(tab);
+    }
     if ((ch.usage || ch.projectDir) && sid === this.store.activeId) this.publishActive();
+  }
+
+  /** 过程里在等你批准的那一步（后端 `needs.call`）画成「在等你批准」；不再等的那一步回到在跑。 */
+  private paintAwaitingStep(tab: Tab): void {
+    for (const el of tab.toolUseElements.values()) {
+      const row = el.querySelector<HTMLElement>(".step-line[data-state=awaiting]");
+      if (row) clearAwaiting(row);
+    }
+    const n = tab.needs;
+    if (n?.kind !== "approve" || n.call === null) return;
+    const row = tab.toolUseElements.get(n.call)?.querySelector<HTMLElement>(".step-line");
+    if (row) markAwaiting(row, awaitedFor(n.sinceMs, Date.now()));
   }
 
   /** 这个 tab 的会话事实可不可用变了 ⇒ 是 active 就告诉 HUD（要不到 ⇒ 出声，「不可用，不是空表」）。 */
@@ -1532,25 +1557,70 @@ export class TabManager {
     const tab = this.store.tabs.get(this.store.activeId);
     // 还有终端可去（活着，或可重连：登录 shell 的 ssh 窗还在）才拉。
     if (!tab || !hasTerminal(tab.state)) return;
-    // 远端 Tab → 点那一刻现查此刻显示它的本机终端；本地 Tab → 原 sid_hwnd_cache 路径。
-    const sid = this.store.activeId;
-    if (isRemoteOrigin(tab.origin)) {
-      void this.front(sid, () => this.bringRemoteFront(sid));
-    } else {
-      void this.front(sid, () => bringTerminalToFront(sid));
-    }
+    void this.frontFrom(this.store.activeId, "head");
   }
 
-  /** ↗ 的每个入口都经这里：在飞时不重发，慢了按钮进「进行中」。 */
-  private front(sid: string, run: () => Promise<void>): Promise<void> {
-    return frontOnce(sid, run, (on) => this.bar.setFrontPending(sid, on));
+  /** ↗ 浮层的［接上终端］（主窗口接到设置窗那一节）。 */
+  onConnectTerminal: (() => void) | null = null;
+  /** ↗ 浮层的［更新］：开那台机器页（把这一版换到那台的那一颗住机器卡上，主窗口接）。 */
+  onUpdateMachine: ((origin: Origin) => void) | null = null;
+
+  /** ↗ 的锚：行尾那颗（从行上点的）或会话头那颗（别的入口；会话头没在画它 ⇒ 退到行尾那颗）。 */
+  private frontAnchor(sid: string, from: "row" | "head"): HTMLElement | null {
+    const row = this.bar.frontButton(sid);
+    if (from === "row") return row;
+    const head = [...document.querySelectorAll<HTMLElement>("[data-role=head-front]")].find((b) => b.dataset.sid === sid);
+    return head ?? row;
   }
 
-  /** 远端 tab 的 ↗：没有终端连着时，提示里点一下就在新终端里接回（同「在 tmux 里接着用」那一项）。 */
-  private bringRemoteFront(sid: string): Promise<void> {
+  /**
+   * ↗ 的每个入口都经这里：在飞时不重发；慢了按钮进「进行中」、旁边出「查找终端…」；
+   * 切过去了 ↗ 换对勾 1 秒；其余结局一个浮层锚在 ↗ 下面（`front-result.ts` 排版）。
+   */
+  private async frontFrom(sid: string, from: "row" | "head"): Promise<void> {
     const tab = this.store.tabs.get(sid);
-    if (!tab) return Promise.resolve();
-    return bringRemoteTerminalToFront(tab.origin, sid, () => void this.actions.resumeTabTmux(sid));
+    if (!tab) return;
+    const origin = tab.origin;
+    const run = (): Promise<FrontResult> => (isRemoteOrigin(origin) ? bringRemoteTerminalToFront(origin, sid) : bringTerminalToFront(sid));
+    const r = await frontOnce(sid, run, (on) => {
+      this.bar.setFrontPending(sid, on);
+      setFrontBusy(this.frontAnchor(sid, from), on);
+    });
+    if (r === undefined) return;
+    const anchor = this.frontAnchor(sid, from);
+    const now = this.store.tabs.get(sid);
+    const view = frontView(r, machineName(origin), now ? inTmux(now.state) : false);
+    if (view === null) {
+      closeFrontResult(sid);
+      flashFrontDone(anchor);
+      return;
+    }
+    if (!anchor) return;
+    showFrontResult(anchor, sid, view, (a) => this.frontAct(sid, from, origin, a));
+  }
+
+  /** ↗ 浮层上的按钮。 */
+  private async frontAct(sid: string, from: "row" | "head", origin: Origin, a: FrontAct): Promise<void> {
+    switch (a.kind) {
+      case "connect":
+        this.onConnectTerminal?.();
+        return;
+      case "open-in-terminal":
+        await this.menu.attachRemote(sid);
+        return;
+      case "copy":
+        await copyFrontDetail(a.detail);
+        return;
+      case "update":
+        this.onUpdateMachine?.(origin);
+        return;
+      case "retry":
+        await this.frontFrom(sid, from);
+        return;
+      case "reconnect":
+        this.reconnect(origin);
+        return;
+    }
   }
 
   /** 快捷键 Ctrl+F（`session.find`）：当前 tab 的查找面板打开到「搜索」。实现在流视图。 */

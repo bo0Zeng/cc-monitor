@@ -133,7 +133,13 @@ export class SessionHead {
       this.acts.dataset.shape = shape;
       const btns: HTMLButtonElement[] = [];
       if (!remote && tab.projectDir) btns.push(this.iconButton("folder", copyText("tabBarView.tab.cwdHint"), keyed(copyText("tabBarView.tab.cwdHint"), "tab.open-cwd"), () => this.host.openCwd(sid)));
-      if (front) btns.push(this.iconButton("front", copyText("tabBarView.tab.terminalHint"), keyed(copyText("tabBarView.tab.terminalHint"), "terminal.bring-front"), () => this.host.front(sid)));
+      if (front) {
+        const b = this.iconButton("front", copyText("tabBarView.tab.terminalHint"), keyed(copyText("tabBarView.tab.terminalHint"), "terminal.bring-front"), () => this.host.front(sid));
+        // ↗ 的结果浮层锚在这一颗上（按会话找）。
+        b.dataset.role = "head-front";
+        b.dataset.sid = sid;
+        btns.push(b);
+      }
       if (term) btns.push(this.iconButton("terminal", copyText("sessionHead.act.terminal"), keyed(copyText("sessionHead.act.terminal"), "panel.toggle-terminal"), () => this.host.viewTerminal()));
       btns.push(this.iconButton("search", copyText("sessionHead.act.find"), keyed(copyText("sessionHead.act.find"), "session.find"), () => this.host.find()));
       btns.push(this.iconButton("more", copyText("tabBarView.tab.moreHint"), () => copyText("tabBarView.tab.moreHint"), (b) => this.host.more(b, sid)));

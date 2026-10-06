@@ -5,13 +5,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), recentToasts: vi.fn(() => [{ title: "最新一条" }]) }));
+vi.mock("../../../src/frontend/ui/status-messages", () => ({ showMessage: vi.fn() }));
 vi.mock("../../../src/frontend/ui/kit/dialog", () => ({ confirmDialog: vi.fn(), askText: vi.fn() }));
 
 import { openBatchMenu, type TabBatchHost, type TabBatchRun } from "../../../src/frontend/ui/tab-batch-menu";
 import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
 import { askText } from "../../../src/frontend/ui/kit/dialog";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { showMessage } from "../../../src/frontend/ui/status-messages";
 import { LIVE, ENDED, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
 import { LOCAL_ORIGIN, originFromWire } from "../../../src/frontend/ui/ipc/origin";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
@@ -35,7 +37,12 @@ const press = async (label: string): Promise<void> => {
   await flush();
 };
 const open = (): void => openBatchMenu(new MouseEvent("contextmenu", { clientX: 1, clientY: 1 }), tabs.map((t) => t.sessionId), host, run);
-const toastBody = (): string => (vi.mocked(showActionFailureToast).mock.calls.at(-1)?.[1] ?? "") as string;
+/** 逐条原因：不上 toast 正文，只进记录（`more`），在「消息」里展开看。 */
+const toastBody = (): string => {
+  const c = vi.mocked(showActionFailureToast).mock.calls.at(-1);
+  expect(c?.[1], "toast 正文只留汇总一句").toBe("");
+  return ((c?.[2] as { more?: string[] } | undefined)?.more ?? []).join("\n");
+};
 const toastHead = (): string => (vi.mocked(showActionFailureToast).mock.calls.at(-1)?.[0] ?? "") as string;
 
 beforeEach(() => {
@@ -106,10 +113,26 @@ describe("批量菜单", () => {
       copyText("tabBatch.result.failedLine", { title: "T-c", why: "门拦下了" }),
       copyText("tabBatch.result.skippedLine", { title: "T-b", why: copyText("tabBatch.why.ended") }),
     ]);
+    const opts = vi.mocked(showActionFailureToast).mock.calls.at(-1)?.[2] as { action?: { label: string; run: () => void } };
+    expect(opts.action?.label, "有逐条原因 ⇒ 带［查看］").toBe(copyText("tabBatch.result.view"));
+    opts.action!.run();
+    expect(showMessage, "［查看］打开「消息」并展开刚才那一条").toHaveBeenCalledWith({ title: "最新一条" });
     run.confirm.mockResolvedValueOnce(false);
     open();
     await press(copyText("tabBatch.menu.stop", { n: 2 }));
     expect(run.stop, "确认框点了取消 ⇒ 一个都不杀").toHaveBeenCalledTimes(1);
+  });
+
+  it("全都做成了 ⇒ 一句汇总，不带［查看］", async () => {
+    run.stop.mockResolvedValue([
+      { sid: "a", outcome: "done", why: "" },
+      { sid: "c", outcome: "done", why: "" },
+    ]);
+    tabs = [tab("a", true), tab("c", true)];
+    open();
+    await press(copyText("tabBatch.menu.stop", { n: 2 }));
+    expect(toastBody()).toBe("");
+    expect((vi.mocked(showActionFailureToast).mock.calls.at(-1)?.[2] as { action?: unknown }).action).toBeUndefined();
   });
 
   it("远端那几行机器只出一次：标题不带 `[机器]` 前缀，机器写在括号里", async () => {

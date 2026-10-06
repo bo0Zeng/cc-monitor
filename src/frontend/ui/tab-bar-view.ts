@@ -116,6 +116,8 @@ const NEEDS_MENU = { min: 360, ideal: 420, max: 480, viewportGutter: 32 } as con
 const folded = (): boolean => document.body.dataset.tabBar === "folded";
 
 export class TabBarView {
+  /** 起步那一批已经画出去了（之后新出现的行淡入）。 */
+  private painted = false;
   /** sessionId → button DOM refs，避免 refreshTabBar 每次重建整个 bar */
   readonly tabButtons = new Map<string, TabButtonRefs>();
   /** 每个集合在主栏里的容器（组头 + 成员列表）。 */
@@ -273,6 +275,11 @@ export class TabBarView {
     if (sid === undefined) return null;
     const sub = t.closest(".tab-cwd, .tab-focus, .tab-close, .tab-more");
     return { sid, root: root as HTMLElement, sub: sub && root.contains(sub) ? sub : null };
+  }
+
+  /** 这颗 tab 行尾的 ↗（结果浮层锚在它上面）；不在条上 / 不是 Windows ⇒ `null`。 */
+  frontButton(sid: string): HTMLElement | null {
+    return this.tabButtons.get(sid)?.root.querySelector<HTMLElement>(".tab-focus") ?? null;
   }
 
   /** ↗ 在飞超过一会儿 ⇒ 这颗 tab 的 ↗ 进「进行中」（转圈、不可再点由 `frontOnce` 挡）。 */
@@ -442,6 +449,12 @@ export class TabBarView {
       if (!refs) {
         refs = this.createTabButton(sid);
         this.tabButtons.set(sid, refs);
+        // 条上已经有东西之后新出现的一行淡入（起步那一批不算）；减少动效时时长为 0。
+        if (this.painted) {
+          const el = refs.root;
+          el.classList.add("tab-enter");
+          el.addEventListener("animationend", () => el.classList.remove("tab-enter"), { once: true });
+        }
       }
       this.updateTabButton(refs, sid, tab);
       // 分流从三路（抽屉 / 组 / 主栏）降到**两路**（组 / 主栏）。
@@ -460,6 +473,8 @@ export class TabBarView {
     }
     this.updateNeedsStrip();
     this.updateMachineDown();
+    // 起步那一批（重放）画完之后，再新长出来的行才淡入。
+    if (!this.store.inBatch && this.tabButtons.size > 0) this.painted = true;
 
     this.store.notify();
   }

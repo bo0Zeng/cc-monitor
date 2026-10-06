@@ -452,7 +452,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `quota_changed` | —（无载荷） | **这台的额度账显示得出来的那几格变了**（某个号各窗口取整后的百分比 · 重置时刻 · 状态 · 被拒 · 卡在哪个窗口 · 超额那一档）。客户端收到就重拉一次 `quota-read`（额度账的唯一出口仍是那条查询）。中转记账那一路发、走 tap 那条可丢的通道（额度账在盘上，丢了重拉就补上）。详见「额度账与账号轮换」小节 |
 | `rotation_changed` | `sid` | **这台某个会话的轮换或「账号」格变了**（中转换了号 · 记了一条 · 改了它的轮换 · 它跟随的默认轮换改了）。客户端收到就重问一次 `rotation-session-read`（那一份的唯一出口仍是那条查询）。写轮换的那个后端进程发、走 tap 那条可丢的通道（轮换在盘上，丢了重问就补上）。详见「额度账与账号轮换」小节 |
 | `tasks_changed` | `sid` | **这台机器上某个会话的任务清单变了**（watcher 递归盯 `<agent 家>/tasks/`，一批文件事件里同一个 sid 动了几次都只发一帧；`tasks/` 起步不在 ⇒ 它作为 `agent_home` 里的一个事件出现时挂上）。只带 sid：客户端收到就重问一次 `tasks-list` —— 清单本身不在帧里，唯一出口仍是那条查询。本机远端同一个二进制 ⇒ 同形（monitor 自己那份 notify 删了）。monitor 收到交给前端：经通道 `subscribe(origin, "session-tasks")` 那条流里一格 `Frame`（体 `{"sid": …}`）。丢了不可恢复（`overflow.lost` 带身份，subject = sid）|
-| `sessions_replayed` | —（无载荷） | **这台机器的活会话清单报完了**：`watch_loop` 的 Phase 1（同步扫 `sessions/`、对每个活 pidfile 发一帧 `session_added`）走完那一刻发**一次**，排在 Phase 1 所有帧之后、Phase 2 任何帧之前（同一个 sink、同一条线程）；`sessions/` 不在也照发（清单是空的，也是说完了）。**为什么要它**：客户端手里有一条「固定」的会话条目而这台还没报过它时，得分清「这台还没说完」（显示**说不清**）与「说完了、里面没有它」（显示**已结束**）—— 那张表的判据，此前线上没有任何东西分得开。丢了不可恢复（`overflow.lost` 带身份、subject 无）：客户端停在「说不清」，不会被说成已结束。monitor 收到发前端 `origin-sessions-listed {origin}`（与 `remote-session-added` 同一条线程、同序）|
+| `sessions_replayed` | —（无载荷） | **这台机器的活会话清单报完了**：`watch_loop` 的 Phase 1（同步扫 `sessions/`、对每个活 pidfile 发一帧 `session_added`）走完那一刻发**一次**，排在 Phase 1 所有帧之后、Phase 2 任何帧之前（同一个 sink、同一条线程）；`sessions/` 不在也照发（清单是空的，也是说完了）。**为什么要它**：客户端手里有一条「固定」的会话条目而这台还没报过它时，得分清「这台还没说完」（显示**说不清**）与「说完了、里面没有它」（显示**已结束**）—— 那张表的判据，此前线上没有任何东西分得开。丢了不可恢复（`overflow.lost` 带身份、subject 无）：客户端停在「说不清」，不会被说成已结束。monitor 收到发前端 `origin-sessions-listed {origin, all}`（与 `remote-session-added` 同一条线程、同序）；`all` = 这一刻机器表（本机 ＋ 注册着的远端，同 `backend_machines`）里每一台都报完了（「各台都报完」那一拍，monitor `session_book` 按机器表算；机器表热加载后重算，摘掉的正是唯一没报完的那台时当场再发一格带 `all`；F5 重放同一份）|
 | `session_state` | `sid`, `state` | **会话账本的成品**：这条会话离开「活」之后是 `"reconnectable"`（claude 退了、它所在的窗格还挂着 `@ccm_sid`）还是 `"ended"`（进程没了、容器也没了，或被 `superseded` 顶替）。**由这台后端自己裁**（`observe/session_ledger.rs`：摘除原因 ＋ 它自己那份 tmux 快照；`@ccm_sid` 打在窗格上，一个 tmux 会话可挂几个；会话按 `#{session_id}` 认，改名不算关）。`superseded` 紧跟 `session_removed`；`gone` 等一份**摘除之后才起**的 tmux 观测来裁、紧跟那份观测（不拿摘除之前的快照裁，免得先报错一格再翻回来）。收割只对可重连的：它的 tmux 会话关了当场、哪个窗格都不挂它连续两份才落；活着的会话只认 pidfile。新连接第一份可观测的 tmux 快照里「挂着 `@ccm_sid`、却不在活会话里」的各发一帧 `reconnectable`，**排在 `sessions_replayed` 之前**（清单压到第一份快照之后才放）。客户端只收成品、不再查 tmux 原文。丢了不可恢复（`overflow.lost` 带身份）|
 | `session_file_gone` | `session_id`, `path` | **活会话的记录文件不见了**（被删 / 被改名走了）。文件管理器改得动活会话的 jsonl；观察侧当它是「看的、不是管的」：不崩、**不误判结束**（判活看 pidfile / pid，不看 jsonl），出声一次 —— 每次「在 → 不在」只发一帧；同时丢掉那份文件的游标 ⇒ 同名文件再出现（agent 按路径追加重建）从 0 读、`seq` 照旧往上，之后再不见才再发。丢了不可恢复（`overflow.lost` 带身份 subject = sid）。monitor 收到交给那个会话的内容流一格 `{"file_gone": …}`，该 tab 说「记录文件不见了」 |
 | `session_file_reread` | `session_id`, `path`, `why` | **活会话的记录文件被改过了、已从头重读**：`why` = `"truncated"`（比读到过的最长还短）/ `"rewritten"`（没变短，但游标之前那一截被原地改写过：游标旁记着已读前缀的末尾 64 字节，续读前核，对不上即是）。紧排在这一趟重读出来的 `line` 帧**之前**（同一个 sink、同一条线程）；重读的 `seq` 照旧往上（`INVARIANTS §25`），前端按 uuid 去重，本帧只负责出声。⚠ 买不到：长度一字不差的原地改写对得齐、不出声。丢了不可恢复（subject = sid）|
@@ -4038,7 +4038,7 @@ CLI 面随之自动多一条 `--history-find`。
 
 ```text
 → {"id":"q12","cmd":"history-facts","args":{"path":"/home/u/.claude/projects/-p/s.jsonl"}}
-← {"kind":"reply","id":"q12","ok":true,"data":{"end":5120088,"forkedFrom":null,"lastSay":{"text":"改好了。","at":"…"},"needs":{"kind":"approve","tool":"Bash","what":"rm -rf build/","sinceMs":1700000000000},"pending":[{"id":"toolu_1","name":"Bash","what":"rm -rf build/","at":"…"}],"projectDir":"/p","touchedFiles":["/p/a.ts"],"usage":{"promptTokens":41250,"model":…,"peakPromptTokens":352000,"limit":1000000,"limitFrom":"observed"},"writers":[4711]}}
+← {"kind":"reply","id":"q12","ok":true,"data":{"end":5120088,"forkedFrom":null,"lastSay":{"text":"改好了。","at":"…"},"needs":{"kind":"approve","tool":"Bash","call":"toolu_1","what":"rm -rf build/","sinceMs":1700000000000},"pending":[{"id":"toolu_1","name":"Bash","what":"rm -rf build/","at":"…"}],"projectDir":"/p","touchedFiles":["/p/a.ts"],"usage":{"promptTokens":41250,"model":…,"peakPromptTokens":352000,"limit":1000000,"limitFrom":"observed"},"writers":[4711]}}
 → {"id":"q13","cmd":"history-facts","args":{"path":"…/s.jsonl","prior":{上一次的 data 原样},"limits":{"haiku":200000}}}
 ```
 
@@ -4055,7 +4055,7 @@ CLI 面随之自动多一条 `--history-find`。
 | `writers` | ← | 此刻持着这条会话的活进程 pid（这台 pidfile 目录里活着的交互进程、判活同历史清单的「活着」那一格），升序；每次现查、不累加（`prior` 里那一份不用）。不止一个 ⇒ 同一条会话有几个进程在同时写（界面在 tab 上说一句）。不留 pidfile 的那一家恒 `[]` |
 | `pending` | ← | 还没有结果的工具调用，文件序：`[{id, name, what, at}]`。assistant 记录里的 `tool_use` 进，user 记录里同 id 的 `tool_result` 来了摘；user 记录里没有 `tool_result`（你又发了一句 · 中断）⇒ 全摘。`what` ＝ 主参数一行（Bash → `command` · 读写工具 → 路径 · Grep / Glob → `pattern` · WebFetch → `url` · WebSearch → `query` · Task / Agent → `description` · AskUserQuestion → 第一问；头一个非空行、至多 160 字），没登记的工具 ⇒ `null`；`at` ＝ 那条记录的 `timestamp` 原样。至多 16 条（超 ⇒ 丢最早的）。累加、随 `prior` 续传 |
 | `lastSay` | ← | 文件序最后一段 assistant 正文（`text` 块）的头一个非空行（至多 160 字）＋ 那条记录的 `timestamp`：`{text, at}`；一段都没有 ⇒ `null`。悬停卡「它最后一句」用 |
-| `needs` | ← | **需要你**：这台 pidfile 里持着这条会话的活交互进程说 `status: "waiting"` ⇒ `{kind, tool, what, sinceMs}`，否则 `null`。`tool` ＝ 等的那个调用的工具名（判不出 ⇒ `null`）。种类的唯一判定（`facts_query::needs_of`）：`pending` 里有 AskUserQuestion ⇒ `answer`（`what` 是那一问）· 有 ExitPlanMode ⇒ `plan` · 否则 `waitingFor` 带 `permission` 且有没结果的调用 ⇒ `approve`（`what` 是最早那一步的主参数）· 其余 ⇒ `unknown`（不猜）。`sinceMs` ＝ pidfile 的 `statusUpdatedAt`（epoch ms），没有 ⇒ `null`。每次现查、不累加（`prior` 里那一份不用） |
+| `needs` | ← | **需要你**：这台 pidfile 里持着这条会话的活交互进程说 `status: "waiting"` ⇒ `{kind, tool, call, what, sinceMs}`，否则 `null`。`tool` ＝ 等的那个调用的工具名、`call` ＝ 它的 id（记录里 `tool_use.id`；界面把过程里那一步画成「在等你批准」）（判不出 ⇒ 都 `null`）。种类的唯一判定（`facts_query::needs_of`）：`pending` 里有 AskUserQuestion ⇒ `answer`（`what` 是那一问）· 有 ExitPlanMode ⇒ `plan` · 否则 `waitingFor` 带 `permission` 且有没结果的调用 ⇒ `approve`（`what` 是最早那一步的主参数）· 其余 ⇒ `unknown`（不猜）。`sinceMs` ＝ pidfile 的 `statusUpdatedAt`（epoch ms），没有 ⇒ `null`。每次现查、不累加（`prior` 里那一份不用） |
 
 - 本体 `observe/facts_query.rs`（claude 的写类工具表也住那里：进适配层会让「加一个 agent 通用层要改几处」那只许降的棘轮涨一格）。子 agent 的列表与状态不在这里：那是运行表（`session_runs`），判定只有那一处。
 - 整份超过 32 MiB ⇒ `too_large`（不截断）。界面经通道直接问（`src/frontend/ui/session-reads.ts`），本机与远端同一条路；老后端不认 ⇒ `unsupported`（界面说「不可用」，不当成空）。
@@ -4866,8 +4866,11 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 3. **monitor**：`bring_remote_terminal_to_front {chain}` —— 沿进程链从下往上，每一级先查握手表（`ps-registry`，§3）：
    登记过、登记的就是此刻这个进程（起始时刻对得上）且窗口校验通过 ⇒ 用它登记的窗口，精确到窗口；校验不过的不用。
    再看这一级名下有没有可见顶层窗口：有就停在这一级（终端窗口的属主；它以上的进程不在这个窗口里，它们的登记不拿来用）——
-   恰好一个窗口 ⇒ 它；好几个 ⇒ 照实说分不清，并说怎么办（在那个窗口里新开一个 PowerShell 标签页、从那里重新连），不挑。
-   整条链都没有 ⇒ 说没有窗口。拉前三重指纹校验（窗口还在 · 属主 pid · 属主起始时刻，`bind::bring_found_window`）。
+   恰好一个窗口 ⇒ 它；好几个 ⇒ 分不清，不挑。整条链都没有 ⇒ 没有窗口。拉前三重指纹校验（窗口还在 · 属主 pid · 属主起始时刻，`bind::bring_found_window`）。
+4. **回的是结局族**（`bind::FrontOutcome`，生成物 `FrontOutcome.ts`，按 `kind` 分）：`switched` 切过去了 · `several {program, count}` 分不清（`count` 是候选窗口个数；照实说拉不了，不切、不闪）·
+   `unbound` 本机会话的终端没登记 · `window-gone` 认得的窗口已关 · `unclear` 句柄 / 进程号被复用（细节进日志）· `refused` 系统不许抢前台（任务栏闪）·
+   `hosted-by-wt {program}` 链上有控制台 shell 却没有窗口（默认终端交接给 Windows Terminal）· `no-window {program}` 真在后台 · `unsupported` 不是 Windows。
+   本机会话那一条 `bring_terminal_to_front {sessionId}` 回同一族。句子在界面的文案表，不在这里拼。
 
 ### 已知边界
 

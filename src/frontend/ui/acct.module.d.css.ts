@@ -14,6 +14,7 @@ declare const classes: {
   readonly acctChipSwap: string;
   readonly acctChipValue: string;
   readonly acctChipWindow: string;
+  readonly acctDefPreview: string;
   readonly acctDropLine: string;
   readonly acctFoot: string;
   readonly acctFootLabel: string;

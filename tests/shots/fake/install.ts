@@ -10,6 +10,7 @@ import { FakeBackend } from "./backend";
 import { DEFAULT_STORAGE, sceneById } from "../scenes";
 import type { ShotsHandle } from "./types";
 import { LOCAL_MACHINE_KEY, MACHINE_FACETS, recordFacet } from "../../../src/frontend/ui/settings/machine-status";
+import { __setHostOsForTests } from "../../../src/frontend/ui/settings/host-os";
 
 const params = new URLSearchParams(location.search);
 const scene = sceneById(params.get("scene") ?? "");
@@ -20,6 +21,7 @@ const label = location.pathname.startsWith("/settings")
     : "main";
 
 const backend = new FakeBackend(scene.world());
+if (scene.hostOs) __setHostOsForTests(scene.hostOs);
 mockWindows(label);
 mockIPC((cmd, args) => backend.invoke(cmd, (args ?? {}) as Record<string, unknown>), { shouldMockEvents: true });
 backend.attachEmitter((event, payload) => emit(event, payload));

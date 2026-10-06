@@ -332,10 +332,10 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/frontend/ui/views/session-viewer.ts:917": "工具行 `toolsEl`（`sv.svTools`）—— 窗口那一形 Ctrl+F 才露；它写了 display:flex，CSS 里另有 `.svTools[hidden]` 收住",
   "src/frontend/ui/views/session-viewer.ts:1105": "同上 —— 窗口那一形建时收起",
   "src/frontend/ui/views/session-viewer.ts:1104": "头 `head`（`sv.svHead`）—— 窗口那一形不画（细顶栏担）；它写了 display:flex，CSS 里另有 `.svHead[hidden]` 收住",
-  "src/frontend/ui/kit/toast.ts:202": "合流计数 `same.countEl`（`s.count`）—— 合进第二条时出现",
-  "src/frontend/ui/kit/toast.ts:221": "同上 —— 建时收起",
-  "src/frontend/ui/status-messages.ts:30": "「消息」那一枚右上的琥珀点 `this.dot`（`s.smDot`）—— 建时收起；CSS 里另有 `.smDot[hidden]` 收住",
-  "src/frontend/ui/status-messages.ts:36": "同上 —— 有没看过的出错提示时出现",
+  "src/frontend/ui/kit/toast.ts:207": "合流计数 `same.countEl`（`s.count`）—— 合进第二条时出现",
+  "src/frontend/ui/kit/toast.ts:226": "同上 —— 建时收起",
+  "src/frontend/ui/status-messages.ts:43": "「消息」那一枚右上的琥珀点 `this.dot`（`s.smDot`）—— 建时收起；CSS 里另有 `.smDot[hidden]` 收住",
+  "src/frontend/ui/status-messages.ts:58": "同上 —— 有没看过的出错提示时出现",
   // ⚠ `606 → 614`：我在这份文件上方加了一段注释，**行号就漂了**。
   //    这条登记按**裸行号**做键 —— 那是它的固有脆弱：住址没变、内容没变，只因为
   //    上面多了几行就要来改一次。纪律 4 说的是同一件事

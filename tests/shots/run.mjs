@@ -152,7 +152,7 @@ async function shootWeb() {
   for (const s of scenes) {
     const file = path.join(out, s.dir, `${s.id}.png`);
     mkdirSync(path.dirname(file), { recursive: true });
-    const page = await Page.open(cdp, s.width, s.height);
+    const page = await Page.open(cdp, s.width, s.height, s.scale ?? 1);
     let ok = true;
     let note = "";
     try {

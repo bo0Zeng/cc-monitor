@@ -19,7 +19,7 @@ function rig() {
 describe("启动时记住的那一格", () => {
   it("它出现了 ⇒ 切过去；在那之前记忆不许被写（hold）；别的会话出现不算", () => {
     const { log, io } = rig();
-    const s = new StartupActive("want", false, ["<local>", "pi"], io);
+    const s = new StartupActive("want", false, io);
     expect(log).toEqual(["hold true"]);
     s.onAppeared("other");
     expect(s.waitingFor).toBe("want");
@@ -30,12 +30,11 @@ describe("启动时记住的那一格", () => {
     expect(log.filter((l) => l === "switch want")).toHaveLength(1);
   });
 
-  it("每台都报完了清单、它没出现 ⇒ 明说一句、放下等待（不静默换）；只报完一台不算", () => {
+  it("壳说各台都报完了、它没出现 ⇒ 明说一句、放下等待（不静默换）", () => {
     const { log, io } = rig();
-    const s = new StartupActive("want", false, ["<local>", "pi"], io);
-    s.onListed("<local>");
+    const s = new StartupActive("want", false, io);
     expect(log).toEqual(["hold true"]);
-    s.onListed("pi");
+    s.onAllListed();
     expect(log).toEqual(["hold true", "hold false", "gone want"]);
     s.onAppeared("want"); // 放下之后迟到的它不再抢焦点
     expect(log).not.toContain("switch want");
@@ -43,21 +42,21 @@ describe("启动时记住的那一格", () => {
 
   it("用户手动切了 ⇒ 用户的选择优先：放下等待、记下此刻那一格", () => {
     const { log, io } = rig();
-    const s = new StartupActive("want", false, ["pi"], io);
+    const s = new StartupActive("want", false, io);
     s.onManualSwitch();
     expect(log).toEqual(["hold true", "hold false", "remember"]);
     s.onAppeared("want");
-    s.onListed("pi");
+    s.onAllListed();
     expect(log).toEqual(["hold true", "hold false", "remember"]);
   });
 
   it("起步那一刻它就在 ⇒ 当场切、不等不压记忆；没有记住的 ⇒ 什么都不做", () => {
     const a = rig();
-    new StartupActive("here", true, ["pi"], a.io);
+    new StartupActive("here", true, a.io);
     expect(a.log).toEqual(["switch here"]);
     const b = rig();
-    const s = new StartupActive(null, false, ["pi"], b.io);
-    s.onListed("pi");
+    const s = new StartupActive(null, false, b.io);
+    s.onAllListed();
     s.onManualSwitch();
     expect(b.log).toEqual([]);
   });

@@ -280,15 +280,15 @@ export function defaultOps(): Record<string, OpHandler> {
           pending = results.length > 0 ? pending.filter((p) => !results.some((b) => b.tool_use_id === p.id)) : [];
         }
       }
-      let needs: { kind: string; tool: string | null; what: string | null; sinceMs: number | null } | null = null;
+      let needs: { kind: string; tool: string | null; call: string | null; what: string | null; sinceMs: number | null } | null = null;
       if (s?.status === "waiting") {
         const ask = pending.find((p) => p.name === "AskUserQuestion");
         const plan = pending.find((p) => p.name === "ExitPlanMode");
         const sinceMs = s.waitingSinceMs ?? null;
-        if (ask) needs = { kind: "answer", tool: ask.name, what: ask.what, sinceMs };
-        else if (plan) needs = { kind: "plan", tool: plan.name, what: null, sinceMs };
-        else if (pending[0] && /permission/i.test(s.waitingFor ?? "")) needs = { kind: "approve", tool: pending[0].name, what: pending[0].what, sinceMs };
-        else needs = { kind: "unknown", tool: null, what: null, sinceMs };
+        if (ask) needs = { kind: "answer", tool: ask.name, call: ask.id, what: ask.what, sinceMs };
+        else if (plan) needs = { kind: "plan", tool: plan.name, call: plan.id, what: null, sinceMs };
+        else if (pending[0] && /permission/i.test(s.waitingFor ?? "")) needs = { kind: "approve", tool: pending[0].name, call: pending[0].id, what: pending[0].what, sinceMs };
+        else needs = { kind: "unknown", tool: null, call: null, what: null, sinceMs };
       }
       return { end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage, writers: [], pending, lastSay, needs };
     },

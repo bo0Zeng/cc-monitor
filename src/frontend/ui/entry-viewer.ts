@@ -34,6 +34,11 @@ import { newSessionIn } from "./new-session-in";
 import { revealInFolder } from "./reveal-in-folder";
 import { terminalFrontAvailable } from "./terminal-front";
 import { bringRemoteTerminalToFront, bringTerminalToFront } from "./tab-session-actions";
+import { frontView } from "./front-result";
+import { copyFrontDetail, flashFrontDone, showFrontResult } from "./front-pop";
+import { machineName } from "./control-said";
+import { openSettingsWindow } from "./settings/open-settings";
+import { connectTerminalOf } from "./settings-dest";
 import { startInTmuxThenAttach } from "./tmux-resume";
 import { SWITCH_TO_SESSION_EVENT } from "./window-events";
 import { windowStatus, windowTitle } from "./viewer-window-text";
@@ -160,6 +165,23 @@ function crumbsOf(r: HistoryRow, live: boolean): Node[] {
   return out;
 }
 
+/** 顶栏 ↗：切过去了换对勾；其余结局一个浮层锚在它下面（这扇窗做得了的那几颗按钮；更新 · 重新连接在主窗口做）。 */
+async function viewerFront(b: HTMLElement, r: HistoryRow, origin: Origin): Promise<void> {
+  const res = r.origin ? await bringRemoteTerminalToFront(origin, r.sessionId) : await bringTerminalToFront(r.sessionId);
+  const view = frontView(res, machineName(origin), false);
+  if (view === null) {
+    flashFrontDone(b);
+    return;
+  }
+  const acts = view.acts.filter((a) => a.kind !== "update" && a.kind !== "reconnect");
+  showFrontResult(b, r.sessionId, { ...view, acts }, async (a) => {
+    if (a.kind === "copy") await copyFrontDetail(a.detail);
+    else if (a.kind === "retry") await viewerFront(b, r, origin);
+    else if (a.kind === "connect") await openSettingsWindow(undefined, connectTerminalOf(LOCAL_ORIGIN));
+    else if (a.kind === "open-in-terminal") await startInTmuxThenAttach({ origin, agent: r.agent, sid: r.sessionId, cwd: r.projectPath }, FOLLOW, { again: async () => {} });
+  });
+}
+
 /** 右端：［恢复 ▾］或［切过去］· 打开目录（本机）· Windows 上在跑的「切到终端」。 */
 function actionsOf(r: HistoryRow, live: boolean, viewer: SessionViewer): HTMLElement[] {
   const out: HTMLElement[] = [];
@@ -188,12 +210,7 @@ function actionsOf(r: HistoryRow, live: boolean, viewer: SessionViewer): HTMLEle
         kind: "icon",
         icon: "front",
         hint: copyText("tabBarView.tab.terminalHint"),
-        onClick: () =>
-          void (r.origin
-            ? bringRemoteTerminalToFront(origin, r.sessionId, () =>
-                void startInTmuxThenAttach({ origin, agent: r.agent, sid: r.sessionId, cwd: r.projectPath }, FOLLOW, { again: async () => {} }),
-              )
-            : bringTerminalToFront(r.sessionId)),
+        onClick: (ev) => void viewerFront(ev.currentTarget as HTMLElement, r, origin),
       }),
     );
   }
