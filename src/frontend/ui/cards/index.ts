@@ -20,12 +20,16 @@ import { renderMarkdown, renderPlainText } from "../render";
 import { buildSlashCommandCard } from "./slash";
 import { buildBashInputCard, buildBashOutputCard } from "./bash";
 import { buildCompactSummaryCard } from "./compact";
+import { buildAgentBar, buildCoordinatorBar, buildInterruptLine, buildNoticeLine, buildPeerBar } from "./speaker-bar";
 import { drawsCard } from "../speaker";
 import { buildAgentCard } from "./subagent";
 import { buildDiffBody } from "./diff";
-import { buildInteractiveCard, markInteractiveAnswer } from "./interactive";
+import { buildInteractiveCard, settleInteractive } from "./interactive";
 import type { ToolCard } from "../generated/ToolCard";
 import type { ChildRunTag } from "../generated/ChildRunTag";
+import type { ToolStep } from "../generated/ToolStep";
+import type { StepResult } from "../generated/StepResult";
+import { buildStepLine, buildThinkingLine, durBetween, settleStepLine } from "./step-line";
 import { buildApiErrorCard, buildApiRetryCard } from "./api-error";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
 import { firstLineOf, formatTimestampShort, jsonPrefix } from "../format";
@@ -41,6 +45,22 @@ import { isRemoteOrigin, type Origin } from "../ipc/origin";
 export interface ToolUseSeen {
   name: string;
   card: ToolCard | undefined;
+  /** 后端给的一行人话（`toolSteps`；老后端没有）与发出那条记录的时刻（结果到了相减成耗时）。 */
+  step?: ToolStep;
+  at?: string;
+}
+
+/** 一条记录带来的、过程那一行要的成品：assistant 的 `toolSteps` · user 的 `toolResults` · 记录时刻。 */
+interface StepFacts {
+  steps: Readonly<Record<string, ToolStep>>;
+  results: Readonly<Record<string, StepResult>>;
+  at: string;
+}
+const NO_FACTS: StepFacts = Object.freeze({ steps: Object.freeze({}), results: Object.freeze({}), at: "" });
+function stepFactsOf(rec: JsonlRecord): StepFacts {
+  if (rec.type === "assistant") return { steps: rec.toolSteps ?? NO_FACTS.steps, results: NO_FACTS.results, at: rec.timestamp };
+  if (rec.type === "user") return { steps: NO_FACTS.steps, results: rec.toolResults ?? NO_FACTS.results, at: rec.timestamp };
+  return NO_FACTS;
 }
 
 /** 一条记录带来的卡型表（`tool_use.id` → 卡型）；只有 assistant 记录带，别的一律空。 */
@@ -125,6 +145,8 @@ export interface RenderContext {
   toolUseElements: Map<string, HTMLElement>;
   /** 派出子运行的那几张卡（父侧工具调用 id → 卡）；不需要按运行表标卡的调用方不给。 */
   runCards?: Map<string, HTMLElement>;
+  /** 运行 id ⇒ 运行表里的标签（agent 来话的事件条起名用；宿主不给 ⇒ 用来话自带的名字）。 */
+  runLabelOf?: (run: string) => string | undefined;
   /**
    * v2.3.1 (issue #1)：切块场景下 tool_result 可能在 tool_use 之前到达
    * （head 块含 result，older 块才有 tool_use）。此时 injectOrBuildToolResult
@@ -190,6 +212,16 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
           };
         case "toolResult":
           break;
+        case "agentMessage":
+          return { kind: "card", element: buildAgentBar(speaker, rec.timestamp, speaker.from ? ctx.runLabelOf?.(speaker.from) : undefined) };
+        case "peerSession":
+          return { kind: "card", element: buildPeerBar(speaker, rec.timestamp) };
+        case "coordinator":
+          return { kind: "card", element: buildCoordinatorBar(speaker, rec.timestamp) };
+        case "taskNotification":
+          return { kind: "card", element: buildNoticeLine(speaker, rec.timestamp) };
+        case "interrupt":
+          return { kind: "card", element: buildInterruptLine(rec.timestamp) };
         default:
           // 人说的话 · 派给子 agent 的活：用户气泡；没有正文（只有图片之类）不建卡。
           if (!said.text) return { kind: "skip" };
@@ -202,8 +234,9 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
         (b) => b.type === "tool_result",
       );
       if (blocks.length === 0) return { kind: "skip" };
+      const facts = stepFactsOf(rec);
       const units = blocks
-        .map((b) => renderBlock(b, ctx, NO_CARDS))
+        .map((b) => renderBlock(b, ctx, NO_CARDS, NO_RUNS, facts))
         .filter((el): el is HTMLElement => el !== null);
       if (units.length === 0) return { kind: "skip" };
       return {
@@ -220,8 +253,8 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
           kind: "card",
           element: buildApiErrorCard({
             timeLabel: formatTimestampShort(rec.timestamp),
+            reason: rec.apiReason,
             text: extractText(rec.message.content).trim(),
-            category: typeof rec.error === "string" ? rec.error : undefined,
             status: rec.apiErrorStatus,
           }),
         };
@@ -253,8 +286,9 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
         };
       }
       // 全是 thinking / tool_use / tool_result → 工具组成员
+      const facts = stepFactsOf(rec);
       const units = meaningful
-        .map((b) => renderBlock(b, ctx, cards, childRunsOf(rec)))
+        .map((b) => renderBlock(b, ctx, cards, childRunsOf(rec), facts))
         .filter((el): el is HTMLElement => el !== null);
       if (units.length === 0) return { kind: "skip" };
       return {
@@ -271,9 +305,9 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
           kind: "card",
           element: buildApiRetryCard({
             timeLabel: formatTimestampShort(rec.timestamp),
+            reason: rec.apiReason,
             retryAttempt: rec.retryAttempt,
             maxRetries: rec.maxRetries,
-            error: rec.error,
           }),
         };
       }
@@ -406,8 +440,9 @@ function buildAssistantCard(
   const body = document.createElement("div");
   body.className = "card-body";
   const cards = toolCardsOf(rec);
+  const facts = stepFactsOf(rec);
   for (const block of meaningful) {
-    const el = renderBlock(block, ctx, cards, childRunsOf(rec));
+    const el = renderBlock(block, ctx, cards, childRunsOf(rec), facts);
     if (el) body.appendChild(el);
   }
   card.appendChild(body);
@@ -423,14 +458,16 @@ function renderBlock(
   ctx: RenderContext,
   cards: ToolCards,
   runs: ChildRuns = NO_RUNS,
+  facts: StepFacts = NO_FACTS,
 ): HTMLElement | null {
   switch (block.type) {
     case "text":
       return buildTextBlock(block.text, ctx.lazy);
     case "thinking": {
+      // 思考是一步（§5.2.3）：「思考」＋ 第一行斜体预览，点开看全文。
       return makeCollapsible(
         "block-thinking",
-        copyText("cards.thinking.title", { n: block.thinking.length }),
+        buildThinkingLine(copyText("cards.thinking.title"), firstLineOf(block.thinking.trim(), 160).line),
         () => {
           const body = document.createElement("div");
           body.className = "block-body block-body-md";
@@ -444,7 +481,8 @@ function renderBlock(
     case "tool_use": {
       // 记下 id → 名字与卡型，给下一条消息的 tool_result 反查用
       const card = cards[block.id];
-      ctx.toolUseNames.set(block.id, { name: block.name, card });
+      const step = facts.steps[block.id];
+      ctx.toolUseNames.set(block.id, { name: block.name, card, step, at: facts.at || undefined });
 
       // 卡型是那台后端判的（`toolCards`）；派出子运行的那次调用 → 折叠卡，展开是那个子运行的时间线（按运行读）
       if (card === "agent") {
@@ -465,10 +503,10 @@ function renderBlock(
           console.warn("interactive card fallback:", block.name, e);
         }
       }
-      return buildToolUseCard(block, ctx, card);
+      return buildToolUseCard(block, ctx, card, step);
     }
     case "tool_result": {
-      return injectOrBuildToolResult(block, ctx);
+      return injectOrBuildToolResult(block, ctx, facts);
     }
     default: {
       // 未知 block.type（如 server_tool_use / web_search_tool_result 等扩展类型）
@@ -497,15 +535,17 @@ function buildToolUseCard(
   block: Extract<ContentBlock, { type: "tool_use" }>,
   ctx: RenderContext,
   card: ToolCard | undefined,
+  step?: ToolStep,
 ): HTMLElement {
   const command = card === "command" ? commandOf(block.input) : null;
   const summary = command ? commandSummary(command.command) : summarizeInput(block.input);
   const d = document.createElement("details");
   d.className = "block-collapsible block-tool-use";
 
+  // 一步一行（§5.2.3）：主参数与说明是后端给的（`toolSteps`）；没有那一格（老后端）⇒ 工具名 ＋ 入参一句兜底。
   const s = document.createElement("summary");
-  s.className = "block-summary";
-  s.textContent = `🔧 ${block.name}  ${summary}`;
+  s.className = "block-summary block-step";
+  s.appendChild(buildStepLine(block.name, step, summary));
   d.appendChild(s);
 
   const wrap = document.createElement("div");
@@ -678,6 +718,7 @@ export function resetResultTextLedger(): void {
 function injectOrBuildToolResult(
   block: Extract<ContentBlock, { type: "tool_result" }>,
   ctx: RenderContext,
+  facts: StepFacts = NO_FACTS,
 ): HTMLElement | null {
   const text = renderResultContent(block.content);
   // 秤 6：点名的那一处累加。纯计数。
@@ -699,6 +740,12 @@ function injectOrBuildToolResult(
     : "";
 
   const host = ctx.toolUseElements.get(block.tool_use_id);
+  // 提问 / 计划答了之后（B7）：后端读出了答了什么 ⇒ 卡上写结果，不印 Claude Code 的英文原句。
+  const answered = facts.results[block.tool_use_id];
+  if (host && answered && (host.classList.contains("block-ask") || host.classList.contains("block-plan"))) {
+    settleInteractive(host, answered);
+    return null;
+  }
   if (host) {
     const wrap = host.querySelector(".block-body-wrap");
     if (wrap) {
@@ -740,20 +787,9 @@ function injectOrBuildToolResult(
       // 渲染模式 toolbar + body (lazy build 首次展开时再实际产生 DOM)
       buildResultBody(resultEl, text, toolName, mdByDefault);
 
-      // 同步 tool_use summary：只在原 summary 末尾追加错误标记（不重复加预览，
-      // 预览已经在 result 自己的 summary 上）。防止反复追加。
-      const summaryEl = host.querySelector(
-        ":scope > .block-summary",
-      ) as HTMLElement | null;
-      if (summaryEl) {
-        const base = (summaryEl.textContent ?? "").replace(
-          /\s+·\s+(exit\s+\d+|error)$/iu,
-          "",
-        );
-        summaryEl.textContent = `${base}${errTag}`;
-      }
-      // issue #21：AskUserQuestion 提问卡 → 解析答案、高亮选中项（纯增强，失败无害）
-      markInteractiveAnswer(host, text);
+      // 同步那一步的一行：状态图标与右侧小字（后端给的结果一句 ＋ 两条记录的时刻相减）。再来一次结果就再改一次。
+      const line = host.querySelector<HTMLElement>(":scope > .block-summary > .step-line");
+      if (line) settleStepLine(line, seen?.step, facts.results[block.tool_use_id], block.is_error === true, durBetween(seen?.at, facts.at));
     }
     return null;
   }
@@ -1162,7 +1198,7 @@ function saveRenderModePreference(toolName: string, mode: "text" | "md"): void {
  */
 function makeCollapsible(
   cls: string,
-  summaryText: string,
+  summaryText: string | HTMLElement,
   bodyFactory: () => HTMLElement,
 ): HTMLElement {
   const d = document.createElement("details");
@@ -1170,7 +1206,11 @@ function makeCollapsible(
 
   const s = document.createElement("summary");
   s.className = "block-summary";
-  s.textContent = summaryText;
+  if (typeof summaryText === "string") s.textContent = summaryText;
+  else {
+    s.classList.add("block-step");
+    s.appendChild(summaryText);
+  }
   d.appendChild(s);
 
   let rendered = false;

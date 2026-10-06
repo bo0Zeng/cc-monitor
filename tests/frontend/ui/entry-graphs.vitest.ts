@@ -751,7 +751,8 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
  */
 const KIT_AWAITING_FACES: ReadonlySet<string> = new Set(
   // banner · drawer · fold · meter · tabs 已由主窗口的「账号」面板用上；badge · status-dot 由标签页栏（状态点 · 机器徽标 · 「需要你」计数）用上。
-  ["block", "card", "chip", "empty", "field", "list-row", "progress", "skeleton", "switch"].map(
+  // progress 由消息流过程里那一步的「在跑」转圈用上（主窗口第 2 批）。
+  ["block", "card", "chip", "empty", "field", "list-row", "skeleton", "switch"].map(
     (k) => `src/frontend/ui/kit/${k}.module.css`,
   ),
 );
@@ -760,6 +761,8 @@ const KIT_AWAITING_FACES: ReadonlySet<string> = new Set(
 const KIT_PARTIAL: Readonly<Record<string, readonly string[]>> = {
   // 分段按钮（C23）账号面板用上了；分栏（C5）那一形还没有面。
   "src/frontend/ui/kit/tabs.module.css": ["tabs"],
+  // 转圈（在跑的那一步）消息流用上了；进度条（C17）那一形还没有面。
+  "src/frontend/ui/kit/progress.module.css": ["progressFill", "progressReadout", "progressRow", "progressTrack"],
 };
 
 describe("〔UC2〕CSS Modules 在构建产物里（件 10）", () => {

@@ -13,7 +13,7 @@ export default defineConfig({
   root: repoRoot,
   logLevel: "warn",
   build: {
-    outDir: "/tmp/scale2-height-truth/dist",
+    outDir: `${process.env.SCALE2_WORK ?? "/tmp/scale2-height-truth"}/dist`,
     emptyOutDir: true,
     cssCodeSplit: false,
     // 不压缩：探针出问题时要能在产物里直接读到源码形状

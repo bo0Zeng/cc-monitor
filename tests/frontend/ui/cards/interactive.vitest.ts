@@ -21,7 +21,7 @@
 // 判据 `tests/backend/agents/claudecode/cards_tests.rs` 逐名钉着这两个），随 assistant 记录的 `toolCards` 带来；
 // 界面这一半只剩「**照卡型办**」：卡型是 `interactive` ⇒ 整条消息走 `kind: "card"`（不进工具组折叠），没有卡型 ⇒ 工具组。
 import { describe, it, expect } from "vitest";
-import { buildInteractiveCard } from "../../../../src/frontend/ui/cards/interactive";
+import { buildInteractiveCard, settleInteractive } from "../../../../src/frontend/ui/cards/interactive";
 import { renderMessage } from "../../../../src/frontend/ui/cards/index";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import type { JsonlRecord } from "../../../../src/frontend/ui/generated/JsonlRecord";
@@ -91,6 +91,20 @@ describe("交互卡：畸形输入一律 throw，由调用方回退通用折叠�
     expect(text).toContain("甲案");
     expect(text).toContain("乙案");
     // 「在等你」这件事必须是**看得见的**，不只是结构上分了一类。
-    expect(text).toContain("等待你的选择");
+    expect(text).toContain("等回答");
+  });
+
+  it("★ 答了之后（B7）：标题换「提问」/「计划」、底行写后端读出的结果（已选「…」· 已批准 · 未批准），被选项高亮；不印英文原句", () => {
+    const ask = buildInteractiveCard("AskUserQuestion", { questions: [{ question: "选哪个方案", options: [{ label: "甲案" }, { label: "乙案" }] }] }, opts);
+    settleInteractive(ask, { ok: true, answer: { kind: "picked", options: ["乙案"] } });
+    expect(ask.querySelector(".block-ask-title")?.textContent).toBe("提问");
+    expect(ask.querySelector(".block-interactive-done")?.textContent).toBe("已选「乙案」");
+    expect([...ask.querySelectorAll(".ask-option.is-chosen")].map((li) => (li as HTMLElement).dataset.optionLabel)).toEqual(["乙案"]);
+    const plan = buildInteractiveCard("ExitPlanMode", { plan: "甲" }, opts);
+    settleInteractive(plan, { ok: true, answer: { kind: "approved" } });
+    expect([plan.querySelector(".block-plan-title")?.textContent, plan.querySelector(".block-interactive-done")?.textContent]).toEqual(["计划", "已批准"]);
+    settleInteractive(plan, { ok: false, rejected: true });
+    expect(plan.querySelector(".block-interactive-done")?.textContent).toBe("未批准");
+    expect(plan.textContent).not.toMatch(/User has/);
   });
 });

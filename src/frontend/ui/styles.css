@@ -1118,31 +1118,44 @@
 }
 
 /* === issue #21：交互等待卡（AskUserQuestion / ExitPlanMode）——默认展开可见 === */
+/* 在等你（C7「需要你」卡）：左 3px 琥珀；答了之后左条去掉、底行写答了什么（§5.2.7）。 */
 .block-ask,
 .block-plan {
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  border-left: 3px solid var(--accent);
+  border: 1px solid var(--border-medium);
+  border-left: 3px solid var(--warn);
   border-radius: var(--radius-m);
   padding: 8px 12px;
   margin: 6px 0;
-  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  background: var(--card);
 }
 
 .block-ask-title,
 .block-plan-title {
-  color: var(--accent);
+  color: var(--warn);
   font-weight: 600;
   margin-bottom: 6px;
 }
 
-/* 已答复 → 降噪（仍可读，但不再像"等待中"那样醒目） */
-.block-ask.is-answered {
-  border-color: var(--border-strong);
-  background: transparent;
+.block-ask.is-answered,
+.block-plan.is-answered {
+  border-left: 1px solid var(--border-medium);
 }
 
-.block-ask.is-answered .block-ask-title {
-  color: var(--text-faint);
+.block-ask.is-answered .block-ask-title,
+.block-plan.is-answered .block-plan-title {
+  color: var(--text-2);
+}
+
+.block-interactive-done {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+.block-interactive-done[data-rejected="true"] {
+  color: var(--error-text);
 }
 
 .ask-question {
@@ -1231,31 +1244,47 @@
   font-weight: 700;
 }
 
-.api-error-chip {
-  font-size: var(--font-size-xs);
-  color: var(--error);
-  border: 1px solid color-mix(in srgb, var(--error) 55%, transparent);
-  border-radius: var(--radius-xl);
-  padding: 0 8px;
-}
-
 .api-error-ts {
   margin-left: auto;
   color: var(--text-faint);
   font-size: var(--font-size-xs);
 }
 
+.api-error-next {
+  margin-top: 2px;
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+.api-error-raw > summary {
+  margin-top: 4px;
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+  cursor: pointer;
+}
+
 .api-error-body {
   margin-top: 6px;
   color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-/* 形态 2：重试中间态 → 单行细条 */
+/* 形态 2：重试细条（相邻的并成一条）：在重试 左 2px 琥珀 · 接上了变淡 · 没接上收起（次数进报错卡）。 */
+.card-api-retry[data-state="recovered"] {
+  border-left-color: var(--border-medium);
+  color: var(--text-faint);
+}
+
+.card-api-retry[data-state="failed"] {
+  display: none;
+}
+
 .card-api-retry {
   background: transparent;
-  border-left: 3px solid var(--error);
+  border-left: 2px solid var(--warn);
   border-radius: var(--radius-s);
   padding: 3px 12px;
   margin: 4px 0;
@@ -1264,6 +1293,113 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* === 不是人说的（「谁说的」稿 A · 事件条）：左 3px 色条 ＋ 抬头一行（谁 · 交回 / 来话 · 时刻 · 打开窗口 ›），正文可展开 === */
+.card-speaker {
+  margin: 6px 0;
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-m);
+  background: var(--card);
+}
+
+.card-speaker[data-kind="peer"] {
+  border-left-color: var(--warn);
+}
+
+.card-speaker[data-kind="coordinator"] {
+  border-left-color: var(--border-medium);
+}
+
+.speaker-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 12px;
+  color: var(--text);
+  font-size: var(--font-size-small);
+  list-style: none;
+  cursor: pointer;
+}
+
+.speaker-head::-webkit-details-marker {
+  display: none;
+}
+
+.speaker-title {
+  font-weight: var(--font-weight-strong);
+}
+
+.speaker-tag {
+  color: var(--text-2);
+}
+
+.speaker-ts {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.speaker-link {
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: var(--font-size-small);
+  cursor: pointer;
+}
+
+.speaker-body {
+  padding: 4px 16px 10px;
+}
+
+/* 中断标记 · 后台通知：整宽居中一行细线（与压缩摘要条同族）。 */
+.card-event-line,
+.card-notice > .notice-head {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+  text-align: center;
+}
+
+.card-event-line {
+  margin: 6px 0;
+}
+
+.card-notice {
+  margin: 6px 0;
+}
+
+.card-notice > .notice-head {
+  list-style: none;
+  cursor: pointer;
+}
+
+.card-notice > .notice-head::-webkit-details-marker {
+  display: none;
+}
+
+.card-notice[data-single="true"] > .notice-head {
+  cursor: default;
+}
+
+.card-notice[data-failed="true"] > .notice-head,
+.notice-row[data-failed="true"] {
+  color: var(--error-text);
+}
+
+.notice-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+.card-notice[data-single="true"] > .notice-list {
+  display: none;
 }
 
 /* === /compact 摘要折叠卡 === */
@@ -1397,6 +1533,97 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 过程里的一步一行（主窗口稿 §5.2.3）：28 高 · 图标 16 · 工具名 600 · 主参数等宽一行 · 说明 · 右侧小字。没有展开记号（点整行展开）。 */
+.block-collapsible > .block-summary.block-step {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  font-family: var(--font-base);
+  font-size: var(--font-size-small);
+}
+
+.block-collapsible > .block-summary.block-step::before {
+  content: none;
+}
+
+.step-line {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.step-icon {
+  display: inline-flex;
+  flex: none;
+  justify-content: center;
+  width: 16px;
+  color: var(--text-faint);
+}
+
+.step-line[data-state="failed"] .step-icon,
+.step-line[data-state="rejected"] .step-icon {
+  color: var(--error);
+}
+
+.step-line[data-state="running"] .step-icon {
+  color: var(--success);
+}
+
+.step-tool {
+  flex: none;
+  color: var(--text);
+  font-weight: var(--font-weight-strong);
+}
+
+.step-arg {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-preview {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-family: var(--font-prose);
+  font-style: italic;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-note {
+  flex: none;
+  max-width: 30%;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-right {
+  flex: none;
+  margin-left: auto;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.step-note + .step-right {
+  margin-left: 8px;
+}
+
+.step-line[data-state="failed"] .step-right,
+.step-line[data-state="rejected"] .step-right {
+  color: var(--error-text);
 }
 
 .block-collapsible .block-summary::-webkit-details-marker {

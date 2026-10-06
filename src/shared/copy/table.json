@@ -3072,13 +3072,108 @@
     },
     "cards.thinking.title": {
       "kind": "title",
-      "zh": "💭 思考 · {n} 字",
-      "args": ["n"]
+      "zh": "思考",
+      "args": []
     },
     "cards.user.title": {
       "kind": "title",
       "zh": "用户",
       "args": []
+    },
+    "speaker.agent.title": {
+      "kind": "title",
+      "zh": "agent「{label}」",
+      "args": ["label"]
+    },
+    "speaker.agent.unnamed": {
+      "kind": "body",
+      "zh": "agent",
+      "args": []
+    },
+    "speaker.peer.title": {
+      "kind": "title",
+      "zh": "会话「{from}」",
+      "args": ["from"]
+    },
+    "speaker.coordinator.title": {
+      "kind": "title",
+      "zh": "主会话",
+      "args": []
+    },
+    "speaker.tag.handback": {
+      "kind": "body",
+      "zh": "交回",
+      "args": []
+    },
+    "speaker.tag.message": {
+      "kind": "body",
+      "zh": "来话",
+      "args": []
+    },
+    "speaker.link.openRun": {
+      "kind": "action",
+      "zh": "打开窗口 ›",
+      "args": []
+    },
+    "speaker.interrupt.line": {
+      "kind": "body",
+      "zh": "你中断了本轮 · {time}",
+      "args": ["time"]
+    },
+    "speaker.notice.row": {
+      "kind": "body",
+      "zh": "后台任务 {what} {state} · {time}",
+      "args": ["what", "state", "time"]
+    },
+    "speaker.notice.done": {
+      "kind": "body",
+      "zh": "✓",
+      "args": []
+    },
+    "speaker.notice.failed": {
+      "kind": "body",
+      "zh": "✗",
+      "args": []
+    },
+    "speaker.notice.many": {
+      "kind": "body",
+      "zh": "后台任务 ×{n} · {span}{fail}",
+      "args": ["n", "span", "fail"]
+    },
+    "speaker.notice.fails": {
+      "kind": "body",
+      "zh": " · 失败 {n}",
+      "args": ["n"]
+    },
+    "stream.step.rejected": {
+      "kind": "body",
+      "zh": "未批准",
+      "args": []
+    },
+    "stream.step.failed": {
+      "kind": "body",
+      "zh": "失败",
+      "args": []
+    },
+    "stream.step.failedFor": {
+      "kind": "body",
+      "zh": "失败 · {dur}",
+      "args": ["dur"]
+    },
+    "stream.step.unknown": {
+      "kind": "body",
+      "zh": "未识别结果 · 原文",
+      "args": []
+    },
+    "stream.step.lines": {
+      "kind": "body",
+      "zh": "{n} 行",
+      "args": ["n"]
+    },
+    "stream.step.files": {
+      "kind": "body",
+      "zh": "{n} 文件",
+      "args": ["n"]
     },
     "cards.toolGroup.summary": {
       "kind": "body",
@@ -3110,15 +3205,10 @@
       "zh": "用户 · 排队时发出",
       "args": []
     },
-    "apiError.retry.network": {
-      "kind": "body",
-      "zh": "网络/服务异常",
-      "args": []
-    },
     "apiError.retry.line": {
       "kind": "body",
-      "zh": "⚠ API 调用失败：{error}{retry} · {time}",
-      "args": ["error", "retry", "time"]
+      "zh": "{reason}{retry} · {time} 起",
+      "args": ["reason", "retry", "time"]
     },
     "apiError.retry.count": {
       "kind": "body",
@@ -3127,21 +3217,63 @@
     },
     "apiError.card.noDetail": {
       "kind": "body",
-      "zh": "(无错误详情)",
-      "args": [],
-      "waive": {
-        "C-L4": "卡片正文位置的空态占位：括号把它和真错误详情区分开。另：这张卡在秤 2 的真高金标准语料里，改字要重打金标准（台架住 /tmp，已不在）"
-      }
+      "zh": "无原文",
+      "args": []
+    },
+    "apiError.retry.recovered": {
+      "kind": "body",
+      "zh": "{reason} · 重试 ×{a} 后恢复 · {time}",
+      "args": ["reason", "a", "time"]
+    },
+    "apiError.card.next": {
+      "kind": "body",
+      "zh": "重试 {a}/{b} 后停止 · 终端里重发可继续",
+      "args": ["a", "b"]
+    },
+    "apiError.card.nextBare": {
+      "kind": "body",
+      "zh": "终端里重发可继续",
+      "args": []
+    },
+    "apiError.card.raw": {
+      "kind": "action",
+      "zh": "原文",
+      "args": []
+    },
+    "apiError.reason.overloaded": {
+      "kind": "body",
+      "zh": "服务器过载",
+      "args": []
+    },
+    "apiError.reason.quota": {
+      "kind": "body",
+      "zh": "额度满",
+      "args": []
+    },
+    "apiError.reason.network": {
+      "kind": "body",
+      "zh": "网络中断",
+      "args": []
+    },
+    "apiError.reason.auth": {
+      "kind": "body",
+      "zh": "需登录",
+      "args": []
+    },
+    "apiError.reason.context": {
+      "kind": "body",
+      "zh": "上下文超长",
+      "args": []
+    },
+    "apiError.reason.unknown": {
+      "kind": "body",
+      "zh": "原因不明",
+      "args": []
     },
     "apiError.card.title": {
       "kind": "body",
-      "zh": "API 错误 — 本轮已中止",
-      "args": []
-    },
-    "apiError.card.icon": {
-      "kind": "body",
-      "zh": "⛔",
-      "args": []
+      "zh": "本轮中断 · {reason}",
+      "args": ["reason"]
     },
     "bash.output.showAll": {
       "kind": "action",
@@ -3171,9 +3303,34 @@
       "zh": "❯",
       "args": []
     },
+    "interactive.ask.done": {
+      "kind": "title",
+      "zh": "提问",
+      "args": []
+    },
+    "interactive.plan.done": {
+      "kind": "title",
+      "zh": "计划",
+      "args": []
+    },
+    "interactive.done.approved": {
+      "kind": "body",
+      "zh": "已批准",
+      "args": []
+    },
+    "interactive.done.picked": {
+      "kind": "body",
+      "zh": "已选「{option}」",
+      "args": ["option"]
+    },
+    "interactive.done.rejected": {
+      "kind": "body",
+      "zh": "未批准",
+      "args": []
+    },
     "interactive.plan.title": {
       "kind": "title",
-      "zh": "📋 计划待批准",
+      "zh": "计划 · 等批准",
       "args": []
     },
     "interactive.ask.multi": {
@@ -3183,7 +3340,7 @@
     },
     "interactive.ask.title": {
       "kind": "title",
-      "zh": "❓ 等待你的选择",
+      "zh": "等回答",
       "args": []
     },
     "diff.buildDiffBody.showAll": {

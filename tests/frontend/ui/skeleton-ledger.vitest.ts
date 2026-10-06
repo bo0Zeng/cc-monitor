@@ -30,8 +30,8 @@ const toolOnly = (t = "assistant"): SkeletonFacts => ({ o: 0, n: 1, t, fd: 1 });
 const none = (t = "attachment"): SkeletonFacts => ({ o: 0, n: 1, t });
 
 describe("estimateFromFacts / skeletonKind", () => {
-  it("不建卡的记录高 0：系统注入 · agent 来话 · 后台通知 / attachment / ai-title / 解析不出的", () => {
-    for (const f of [user(10, { sp: "system" }), user(10, { sp: "agentMessage" }), user(10, { sp: "taskNotification" }), none(), none("ai-title"), { o: 0, n: 1 }]) {
+  it("不建卡的记录高 0：系统注入 · 本地命令回显 / attachment / ai-title / 解析不出的", () => {
+    for (const f of [user(10, { sp: "system" }), user(10, { sp: "commandOutput" }), none(), none("ai-title"), { o: 0, n: 1 }]) {
       expect(skeletonKind(f)).toBe("none");
       expect(estimateFromFacts(f, "card")).toBe(0);
     }
@@ -39,6 +39,8 @@ describe("estimateFromFacts / skeletonKind", () => {
 
   it("后端判为建卡的来源照常出高（斜杠命令 · 压缩摘要 · 派给子 agent 的活）", () => {
     for (const sp of ["slashCommand", "compactSummary", "agentTask"]) expect(skeletonKind(user(10, { sp }))).toBe("card");
+    // 「谁说的」稿 A：agent 来话 · 另一会话 · 主会话后来的话 · 后台通知 · 中断标记画成事件条，照常出高。
+    for (const sp of ["agentMessage", "peerSession", "coordinator", "taskNotification", "interrupt"]) expect(skeletonKind(user(10, { sp }))).toBe("card");
   });
 
   it("连续的纯工具记录只有第一条出高（并成一张工具组卡）", () => {

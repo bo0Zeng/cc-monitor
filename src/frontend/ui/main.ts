@@ -54,6 +54,7 @@ import { collectAccountRows, createEventRefresher } from "./session-accounts-pol
 import { lastAccounts } from "./history-reads";
 import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
+import { REVEAL_RUN_EVENT } from "./cards/speaker-bar";
 import { getBehavior } from "./behavior";
 import { flipBehavior } from "./behavior-toggle";
 import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
@@ -163,6 +164,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   const agentsPanel = new AgentsPanel();
   status.appendChild(agentsPanel.summaryElement);
   document.getElementById("app")?.appendChild(agentsPanel.popoverElement);
+  // 消息流里 agent 事件条的「打开窗口 ›」：把那个 agent 摆到眼前（agent 窗口那一稿落地之前是面板里它那一行的时间线）。
+  document.addEventListener(REVEAL_RUN_EVENT, (e) => {
+    const run = (e as CustomEvent<{ run?: unknown }>).detail?.run;
+    if (typeof run === "string") agentsPanel.reveal(run);
+  });
 
   // F88b（#52）：context% HUD chip——活跃会话「最新一轮 prompt token ÷ 模型上限」实时占用。
   // 挂 agents chip 旁；TabManager.onActiveUsageChanged 喂数据。**只读 chip，不可点** ——

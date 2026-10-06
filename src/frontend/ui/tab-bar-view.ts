@@ -108,9 +108,8 @@ export interface TabBarViewHost {
   reconnect(origin: string): void;
 }
 
-/** 「需要你」悬停菜单的宽：约 40 个汉字（菜单字号 ＋ 菜单与项的内边距）与「标签页栏宽 ＋ 一道边距」取小。 */
-const NEEDS_MENU_MAX_PX = 40 * 14 + 48;
-const NEEDS_MENU_GUTTER_PX = 16;
+/** 「需要你」悬停菜单的宽：标题放得下约 28 个汉字（≈ 420px），至少 360、至多 480 与视口减 32 的小者；可以盖过标签页栏伸进消息流。 */
+const NEEDS_MENU = { min: 360, ideal: 420, max: 480, viewportGutter: 32 } as const;
 
 /** 窄窗（< 980）：栏收成 44px，悬停卡宽 260。 */
 const NARROW_PX = 980;
@@ -499,7 +498,8 @@ export class TabBarView {
         onClick: () => this.host.switchTo(sid),
       };
     });
-    const width = Math.min(NEEDS_MENU_MAX_PX, this.listEl.getBoundingClientRect().width + NEEDS_MENU_GUTTER_PX);
+    const room = window.innerWidth - NEEDS_MENU.viewportGutter;
+    const width = Math.max(Math.min(NEEDS_MENU.min, room), Math.min(NEEDS_MENU.ideal, NEEDS_MENU.max, room));
     openMenu({ el: this.needsEl }, items, { label: copyText("tabBar.needs.label"), width });
   }
 

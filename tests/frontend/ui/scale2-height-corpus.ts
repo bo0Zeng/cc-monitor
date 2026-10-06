@@ -96,11 +96,15 @@ function freshCtx(): RenderContext {
   };
 }
 
+/** CSS Modules 的哈希类名（vite 构建 `_name_xxxxx_行号` · vitest `_name_xxxxxx`）⇒ 原名：两套构建起的名不同，DOM 是同一个。 */
+const MODULE_CLASS = /\b_([A-Za-z][A-Za-z0-9]*)_[0-9a-z]{5,6}(?:_\d+)?(?=[\s"])/g;
+
 /**
  * 便宜的字符串指纹（FNV-1a 32bit）—— **只用来发现"语料变了"**，不做安全用途。
- * 探针侧与门禁侧必须用同一个，否则金标准过期哨兵恒绿。
+ * 探针侧与门禁侧必须用同一个，否则金标准过期哨兵恒绿。卡里有 kit 件（图标 · 转圈）时，它们的 CSS Modules 类名先归一成原名再算。
  */
-export function htmlFingerprint(s: string): string {
+export function htmlFingerprint(raw: string): string {
+  const s = raw.replace(MODULE_CLASS, "$1");
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);

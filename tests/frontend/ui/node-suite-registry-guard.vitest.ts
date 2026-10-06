@@ -71,7 +71,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   ["test:diff", "tests/frontend/ui/cards/diff.test.ts", 16], // 17 → 16：`isDiffTool` 那一条随判定进了后端（`cards_tests.rs`）
   ["test:branching", "tests/frontend/ui/branching.test.ts", 24], // +1 J10：isInterrupt 只读成品
-  ["test:api-error", "tests/frontend/ui/cards/api-error.test.ts", 5],
+  ["test:api-error", "tests/frontend/ui/cards/api-error.test.ts", 2],
   // `test:bash` 整份删了：斜杠命令与 `!` 输入 / 输出的解析随「谁说的」进了后端（`text_tests.rs::slash_and_bash_forms`）。
   ["test:remote-health", "tests/frontend/ui/remote-health.test.ts", 5],
   // F04b +1：`isValidNewTmuxName` 也禁 `=`（别创建一个主路杀不掉的名字）。
@@ -156,7 +156,9 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
 // **110 → 111**：`context-limit.test.ts` +1（`contextTokensText`）。往上棘到现打值。
 // **111 → 110**（被测对象没了）：`remote-launch.test.ts` −1，e2e 换号重启替身连同读它的那条漂移守卫一起删了。
 // **110 → 109**（被测对象没了）：`remote-launch.test.ts` −1，按目录交号那一形删了。
-const TOTAL_FLOOR = 109;
+// **109 → 106**（**被测对象没了**）：`cards/api-error.test.ts` 5 → 2（报错对象两种形状的解析 `describeRetryError` 删了：原因种类进后端
+// `agents/claudecode/steps.rs::api_reason`，判据在 `steps_tests.rs`；并条与结局的 DOM 那两条挪进 `main-window-behavior.vitest.ts`）。删后现打 106 ⇒ 棘到现打值。
+const TOTAL_FLOOR = 106;
 
 /** 判定一条 npm 命令是不是「用 tsx 跑某个 `.test.ts`」。`tsx …` 与 `npx tsx …` 都算。 */
 const TSX_SUITE_CMD = /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*(\S+\.test\.ts)\s*$/;

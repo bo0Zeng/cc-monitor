@@ -13,6 +13,7 @@
  */
 import { renderMarkdown } from "../render";
 import { copyText } from "../copy-table";
+import type { StepResult } from "../generated/StepResult";
 
 // `isInteractiveTool`〔散文墓碑〕删：哪个 tool_use 在等用户决定由那台后端判（卡型 `interactive`，随记录成品带来）。
 
@@ -138,23 +139,41 @@ function buildPlanCard(input: unknown, opts: { lazy?: boolean }): HTMLElement {
 }
 
 /**
- * tool_result 回填时标记 AskUserQuestion 选中项。result 文本形如：
- * `Your questions have been answered: "问题"="所选label". You can now …`
- * （多问题多对；用户选 Other 时 label 是自由文本，匹配不到选项 → 仅整体置 answered）。
- * 纯增强：解析失败静默跳过，不影响标准 result 注入。
+ * 答了之后（主窗口稿 §5.2.7 · B7）：左条去掉、标题换成「提问」/「计划」、底行写答了什么（已批准 · 已选「…」· 未批准）；
+ * 提问卡里被选的那几项高亮（按后端给的选项原文比对选项标签，排版）。答了什么由后端从结果里读出（`toolResults[].answer` / `.rejected`），
+ * 界面不读 Claude Code 的英文原句。
  */
-export function markInteractiveAnswer(host: HTMLElement, resultText: string): void {
-  if (!host.classList.contains("block-ask")) return;
+export function settleInteractive(host: HTMLElement, res: StepResult): void {
+  const ask = host.classList.contains("block-ask");
+  if (!ask && !host.classList.contains("block-plan")) return;
   host.classList.add("is-answered");
-  const chosen = new Set<string>();
-  for (const m of resultText.matchAll(/"([^"]*)"="([^"]*)"/g)) {
-    const answer = m[2];
-    chosen.add(answer);
-    // multiSelect 的多选答案可能逗号拼接
-    for (const part of answer.split(", ")) chosen.add(part);
+  const title = host.querySelector<HTMLElement>(ask ? ".block-ask-title" : ".block-plan-title");
+  if (title) title.textContent = ask ? copyText("interactive.ask.done") : copyText("interactive.plan.done");
+  const picked = res.answer?.kind === "picked" ? res.answer.options : [];
+  if (picked.length > 0) {
+    const chosen = new Set(picked.flatMap((o) => [o, ...o.split(", ")]));
+    host.querySelectorAll<HTMLElement>(".ask-option").forEach((li) => {
+      if (chosen.has(li.dataset.optionLabel ?? "")) li.classList.add("is-chosen");
+    });
   }
-  if (chosen.size === 0) return;
-  host.querySelectorAll<HTMLElement>(".ask-option").forEach((li) => {
-    if (chosen.has(li.dataset.optionLabel ?? "")) li.classList.add("is-chosen");
-  });
+  const done =
+    res.rejected || !res.ok
+      ? copyText("interactive.done.rejected")
+      : picked.length > 0
+        ? copyText("interactive.done.picked", { option: picked.join(" / ") })
+        : res.answer?.kind === "approved"
+          ? copyText("interactive.done.approved")
+          : "";
+  let line = host.querySelector<HTMLElement>(":scope > .block-interactive-done");
+  if (!done) {
+    line?.remove();
+    return;
+  }
+  if (!line) {
+    line = document.createElement("div");
+    line.className = "block-interactive-done";
+    host.appendChild(line);
+  }
+  line.dataset.rejected = String(res.rejected || !res.ok);
+  line.textContent = done;
 }

@@ -191,7 +191,7 @@ function retryRecord(i: number): NonNullable<Record> {
       timeLabel: "12:34",
       retryAttempt: (i % 5) + 1,
       maxRetries: 5,
-      error: { formatted: "Connection error (ECONNRESET)" },
+      reason: "network",
     }),
     trueH: TRUE_H_PX["card-api-retry"],
   };

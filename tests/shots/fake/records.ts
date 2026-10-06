@@ -6,6 +6,32 @@ import type { JsonlRecord } from "../../../src/frontend/ui/generated/JsonlRecord
 import type { ToolCard } from "../../../src/frontend/ui/generated/ToolCard";
 import type { ChildRunTag } from "../../../src/frontend/ui/generated/ChildRunTag";
 import type { Usage } from "../../../src/frontend/ui/generated/Usage";
+import type { ToolStep } from "../../../src/frontend/ui/generated/ToolStep";
+import type { StepResult } from "../../../src/frontend/ui/generated/StepResult";
+import type { Speaker } from "../../../src/frontend/ui/generated/Speaker";
+
+// 假后端也出记录成品里过程那几格（`toolSteps` · `toolResults` · `apiReason`），口径照真后端 `agents/claudecode/steps.rs` 的那张表抄一份小的。
+const PATH_ARG: Record<string, string> = { Read: "file_path", Edit: "file_path", Write: "file_path", MultiEdit: "file_path" };
+const MAIN_ARG: Record<string, string> = { Bash: "command", Grep: "pattern", Glob: "pattern", WebFetch: "url", WebSearch: "query", Task: "description", Agent: "description" };
+const BARE = new Set(["TodoWrite", "ExitPlanMode", "AskUserQuestion"]);
+function fakeStep(name: string, input: Record<string, unknown>): ToolStep {
+  const str = (k: string) => (typeof input[k] === "string" ? (input[k] as string).split(/\s+/).join(" ") : undefined);
+  if (PATH_ARG[name]) return { tool: name, arg: str(PATH_ARG[name]), path: true, known: true };
+  if (MAIN_ARG[name]) return { tool: name, arg: str(MAIN_ARG[name]), note: MAIN_ARG[name] === "description" ? undefined : str("description"), known: true };
+  return { tool: name, known: BARE.has(name) };
+}
+function fakeResult(name: string, input: Record<string, unknown>, content: string, isError: boolean): StepResult {
+  if (isError) return { ok: false };
+  const lines = (s: unknown) => (typeof s === "string" && s.length > 0 ? s.split("\n").length : 0);
+  if (name === "Edit") return { ok: true, added: lines(input.new_string), removed: lines(input.old_string) };
+  if (name === "Write") return { ok: true, added: lines(input.content), removed: 0 };
+  if (name === "Read") return { ok: true, lines: lines(content) };
+  if (name === "Bash") return { ok: true, lines: lines(content) };
+  if (content.startsWith("User has approved your plan")) return { ok: true, answer: { kind: "approved" } };
+  const picked = [...content.matchAll(/"[^"]*"="([^"]*)"/g)].map((m) => m[1]);
+  if (picked.length > 0) return { ok: true, answer: { kind: "picked", options: picked } };
+  return { ok: true };
+}
 
 type Block = Record<string, unknown> & { type: string };
 
@@ -90,6 +116,27 @@ export class Convo {
       apiErrorStatus: null,
       toolCards: opts.cards,
       childRuns: opts.runs,
+      toolSteps: Object.fromEntries(
+        blocks.filter((b): b is Block & { type: "tool_use"; id: string; name: string; input: Record<string, unknown> } => b.type === "tool_use").map((b) => [b.id, fakeStep(b.name, b.input)]),
+      ),
+    });
+    this.prev = uuid;
+    return this;
+  }
+
+  /** 一条不是人说的 user 记录（事件条：agent 交回 / 来话 · 另一会话 · 后台通知）。 */
+  from(speaker: Speaker): this {
+    const uuid = nextUuid();
+    this.records.push({
+      type: "user",
+      uuid,
+      timestamp: this.stamp(20),
+      message: { role: "user", content: "<frame/>", model: null, usage: null },
+      cwd: this.cwd,
+      sessionId: this.sid,
+      parentUuid: this.prev,
+      forkedFrom: null,
+      userText: { speaker, text: "" },
     });
     this.prev = uuid;
     return this;
@@ -117,11 +164,11 @@ export class Convo {
       cards: opts.card ? { [id]: opts.card } : undefined,
       runs: opts.child ? { [id]: opts.child } : undefined,
     });
-    if (result !== null) this.result(id, result, opts.error ?? false);
+    if (result !== null) this.result(id, result, opts.error ?? false, fakeResult(name, input, result, opts.error ?? false));
     return id;
   }
 
-  result(id: string, content: string, isError = false): this {
+  result(id: string, content: string, isError = false, res?: StepResult): this {
     const uuid = nextUuid();
     this.records.push({
       type: "user",
@@ -138,6 +185,7 @@ export class Convo {
       parentUuid: this.prev,
       forkedFrom: null,
       userText: { speaker: { kind: "toolResult" }, text: "" },
+      toolResults: { [id]: res ?? { ok: !isError } },
     });
     this.prev = uuid;
     return this;
@@ -157,6 +205,7 @@ export class Convo {
       isApiErrorMessage: true,
       error: { type: "api_error" },
       apiErrorStatus: status,
+      apiReason: status === 429 ? "quota" : status === 401 || status === 403 ? "auth" : status >= 500 ? "overloaded" : "unknown",
     });
     this.prev = uuid;
     return this;
@@ -177,6 +226,7 @@ export class Convo {
       retryAttempt: attempt,
       maxRetries: max,
       error: { status: 529, error: { type: "overloaded_error", message: "Overloaded" } },
+      apiReason: "overloaded",
     });
     // 记录链照真记录接着走（不接 ⇒ 下一条与它同父，界面会当成被 ESC 回退过的分叉）
     this.prev = uuid;

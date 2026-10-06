@@ -1,6 +1,6 @@
 {
  "note": "秤 2 的真高金标准。真高只取决于 DOM+CSS+引擎，与 height-estimate.ts 无关 ⇒ 可以静态固化。估值必须门禁跑的时候现算。刷新：bash tests/evidence/U-scale2-run.sh",
- "generatedAt": "2026-09-19",
+ "generatedAt": "2026-10-06",
  "engine": {
   "name": "Chromium 153.0.8010.12 (headless shell, Playwright)",
   "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36"
@@ -10,9 +10,9 @@
   "ua": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15"
  },
  "env": {
+  "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
   "displayLocale": "zh-CN",
   "timeZone": "America/Los_Angeles",
-  "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
   "viewport": {
    "w": 900,
    "h": 700,
@@ -126,8 +126,8 @@
    "htmlHash": "65e8b093",
    "estBrowser": 1956.25,
    "estAppliedBrowser": 1956,
-   "trueBorderBox": 1974.64,
-   "trueContentBox": 1974.64,
+   "trueBorderBox": 1979.78,
+   "trueContentBox": 1979.78,
    "padBorder": 0
   },
   {
@@ -140,8 +140,8 @@
    "htmlHash": "abc0d321",
    "estBrowser": 3221.9,
    "estAppliedBrowser": 3222,
-   "trueBorderBox": 3542.02,
-   "trueContentBox": 3542.02,
+   "trueBorderBox": 3537.02,
+   "trueContentBox": 3537.02,
    "padBorder": 0
   },
   {
@@ -154,8 +154,8 @@
    "htmlHash": "3db78708",
    "estBrowser": 2579.3,
    "estAppliedBrowser": 2579,
-   "trueBorderBox": 2850.45,
-   "trueContentBox": 2850.45,
+   "trueBorderBox": 2868.2,
+   "trueContentBox": 2868.2,
    "padBorder": 0
   },
   {
@@ -168,8 +168,8 @@
    "htmlHash": "e55b0bd1",
    "estBrowser": 1719.21,
    "estAppliedBrowser": 1719,
-   "trueBorderBox": 1853.73,
-   "trueContentBox": 1853.73,
+   "trueBorderBox": 1871,
+   "trueContentBox": 1871,
    "padBorder": 0
   },
   {
@@ -182,8 +182,8 @@
    "htmlHash": "e7bd08e7",
    "estBrowser": 2042.19,
    "estAppliedBrowser": 2042,
-   "trueBorderBox": 2354.41,
-   "trueContentBox": 2354.41,
+   "trueBorderBox": 2370.88,
+   "trueContentBox": 2370.88,
    "padBorder": 0
   },
   {
@@ -196,8 +196,8 @@
    "htmlHash": "f75e28f7",
    "estBrowser": 1744.35,
    "estAppliedBrowser": 1744,
-   "trueBorderBox": 1953,
-   "trueContentBox": 1953,
+   "trueBorderBox": 1953.44,
+   "trueContentBox": 1953.44,
    "padBorder": 0
   },
   {
@@ -210,8 +210,8 @@
    "htmlHash": "70216a91",
    "estBrowser": 2025.15,
    "estAppliedBrowser": 2025,
-   "trueBorderBox": 2235.08,
-   "trueContentBox": 2235.08,
+   "trueBorderBox": 2234.66,
+   "trueContentBox": 2234.66,
    "padBorder": 0
   },
   {
@@ -224,8 +224,8 @@
    "htmlHash": "00d26dd3",
    "estBrowser": 1635.35,
    "estAppliedBrowser": 1635,
-   "trueBorderBox": 1865.33,
-   "trueContentBox": 1865.33,
+   "trueBorderBox": 1870.8,
+   "trueContentBox": 1870.8,
    "padBorder": 0
   },
   {
@@ -238,8 +238,8 @@
    "htmlHash": "01bfb3a6",
    "estBrowser": 1154.7,
    "estAppliedBrowser": 1155,
-   "trueBorderBox": 1250.73,
-   "trueContentBox": 1250.73,
+   "trueBorderBox": 1250.31,
+   "trueContentBox": 1250.31,
    "padBorder": 0
   },
   {
@@ -252,8 +252,8 @@
    "htmlHash": "b9675f9d",
    "estBrowser": 2222.9,
    "estAppliedBrowser": 2223,
-   "trueBorderBox": 2402.86,
-   "trueContentBox": 2402.86,
+   "trueBorderBox": 2411.39,
+   "trueContentBox": 2411.39,
    "padBorder": 0
   },
   {
@@ -266,8 +266,8 @@
    "htmlHash": "746f1f00",
    "estBrowser": 3183.48,
    "estAppliedBrowser": 3183,
-   "trueBorderBox": 3429.36,
-   "trueContentBox": 3429.36,
+   "trueBorderBox": 3463.88,
+   "trueContentBox": 3463.88,
    "padBorder": 0
   },
   {
@@ -280,8 +280,8 @@
    "htmlHash": "e885f6bf",
    "estBrowser": 8041.03,
    "estAppliedBrowser": 8041,
-   "trueBorderBox": 8876.45,
-   "trueContentBox": 8876.45,
+   "trueBorderBox": 8916.48,
+   "trueContentBox": 8916.48,
    "padBorder": 0
   },
   {
@@ -294,8 +294,8 @@
    "htmlHash": "9cbd9114",
    "estBrowser": 4349.82,
    "estAppliedBrowser": 4350,
-   "trueBorderBox": 4725.67,
-   "trueContentBox": 4725.67,
+   "trueBorderBox": 4740.09,
+   "trueContentBox": 4740.09,
    "padBorder": 0
   },
   {
@@ -308,8 +308,8 @@
    "htmlHash": "efe9e3ce",
    "estBrowser": 3179.24,
    "estAppliedBrowser": 3179,
-   "trueBorderBox": 3239.56,
-   "trueContentBox": 3239.56,
+   "trueBorderBox": 3246.36,
+   "trueContentBox": 3246.36,
    "padBorder": 0
   },
   {
@@ -322,8 +322,8 @@
    "htmlHash": "6fe0375c",
    "estBrowser": 3183.48,
    "estAppliedBrowser": 3183,
-   "trueBorderBox": 3429.36,
-   "trueContentBox": 3429.36,
+   "trueBorderBox": 3463.88,
+   "trueContentBox": 3463.88,
    "padBorder": 0
   },
   {
@@ -336,8 +336,8 @@
    "htmlHash": "3fa51d8c",
    "estBrowser": 2929.9,
    "estAppliedBrowser": 2930,
-   "trueBorderBox": 3080.84,
-   "trueContentBox": 3080.84,
+   "trueBorderBox": 3106.2,
+   "trueContentBox": 3106.2,
    "padBorder": 0
   },
   {
@@ -350,8 +350,8 @@
    "htmlHash": "1fb223e9",
    "estBrowser": 4330.35,
    "estAppliedBrowser": 4330,
-   "trueBorderBox": 4727.81,
-   "trueContentBox": 4727.81,
+   "trueBorderBox": 4742.8,
+   "trueContentBox": 4742.8,
    "padBorder": 0
   },
   {
@@ -364,8 +364,8 @@
    "htmlHash": "b0845eaf",
    "estBrowser": 3208.27,
    "estAppliedBrowser": 3208,
-   "trueBorderBox": 3239.56,
-   "trueContentBox": 3239.56,
+   "trueBorderBox": 3246.36,
+   "trueContentBox": 3246.36,
    "padBorder": 0
   },
   {
@@ -378,8 +378,8 @@
    "htmlHash": "db9a20da",
    "estBrowser": 56.75,
    "estAppliedBrowser": 57,
-   "trueBorderBox": 46.8,
-   "trueContentBox": 46.8,
+   "trueBorderBox": 47.8,
+   "trueContentBox": 47.8,
    "padBorder": 0
   },
   {
@@ -392,8 +392,8 @@
    "htmlHash": "02266d72",
    "estBrowser": 56.75,
    "estAppliedBrowser": 57,
-   "trueBorderBox": 46.8,
-   "trueContentBox": 46.8,
+   "trueBorderBox": 47.8,
+   "trueContentBox": 47.8,
    "padBorder": 0
   },
   {
@@ -406,8 +406,8 @@
    "htmlHash": "16abdc21",
    "estBrowser": 81.5,
    "estAppliedBrowser": 82,
-   "trueBorderBox": 71.55,
-   "trueContentBox": 71.55,
+   "trueBorderBox": 73.06,
+   "trueContentBox": 73.06,
    "padBorder": 0
   },
   {
@@ -420,8 +420,8 @@
    "htmlHash": "ee245897",
    "estBrowser": 56.75,
    "estAppliedBrowser": 57,
-   "trueBorderBox": 46.8,
-   "trueContentBox": 46.8,
+   "trueBorderBox": 47.8,
+   "trueContentBox": 47.8,
    "padBorder": 0
   },
   {
@@ -434,8 +434,8 @@
    "htmlHash": "03e42809",
    "estBrowser": 56.75,
    "estAppliedBrowser": 57,
-   "trueBorderBox": 46.8,
-   "trueContentBox": 46.8,
+   "trueBorderBox": 48.31,
+   "trueContentBox": 48.31,
    "padBorder": 0
   },
   {
@@ -448,8 +448,8 @@
    "htmlHash": "d4ed7ab6",
    "estBrowser": 56.75,
    "estAppliedBrowser": 57,
-   "trueBorderBox": 46.8,
-   "trueContentBox": 46.8,
+   "trueBorderBox": 47.8,
+   "trueContentBox": 47.8,
    "padBorder": 0
   },
   {
@@ -462,8 +462,8 @@
    "htmlHash": "cc0450c3",
    "estBrowser": 81.5,
    "estAppliedBrowser": 82,
-   "trueBorderBox": 71.55,
-   "trueContentBox": 71.55,
+   "trueBorderBox": 73.06,
+   "trueContentBox": 73.06,
    "padBorder": 0
   },
   {
@@ -476,8 +476,8 @@
    "htmlHash": "f359ac37",
    "estBrowser": 56.75,
    "estAppliedBrowser": 57,
-   "trueBorderBox": 46.8,
-   "trueContentBox": 46.8,
+   "trueBorderBox": 48.31,
+   "trueContentBox": 48.31,
    "padBorder": 0
   },
   {
@@ -490,8 +490,8 @@
    "htmlHash": "8c220c76",
    "estBrowser": 56.75,
    "estAppliedBrowser": 57,
-   "trueBorderBox": 46.8,
-   "trueContentBox": 46.8,
+   "trueBorderBox": 47.8,
+   "trueContentBox": 47.8,
    "padBorder": 0
   },
   {
@@ -504,15 +504,15 @@
    "htmlHash": "695919a9",
    "estBrowser": 81.5,
    "estAppliedBrowser": 82,
-   "trueBorderBox": 71.55,
-   "trueContentBox": 71.55,
+   "trueBorderBox": 72.55,
+   "trueContentBox": 72.55,
    "padBorder": 0
   },
   {
    "id": "real#29",
    "cls": "card-compact",
    "source": "shaped",
-   "bytes": 23371,
+   "bytes": 23395,
    "bucket": "8-32K",
    "htmlLen": 120,
    "htmlHash": "b7e72636",
@@ -724,8 +724,8 @@
    "source": "shaped",
    "bytes": 4709,
    "bucket": "2-8K",
-   "htmlLen": 374,
-   "htmlHash": "f1d97e4e",
+   "htmlLen": 621,
+   "htmlHash": "670bfac1",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
    "trueBorderBox": 36.59,
@@ -736,7 +736,7 @@
    "id": "real#47",
    "cls": "card-tool-group",
    "source": "shaped",
-   "bytes": 2295,
+   "bytes": 2429,
    "bucket": "2-8K",
    "htmlLen": 311,
    "htmlHash": "b7e4e08c",
@@ -764,10 +764,10 @@
    "id": "real#50",
    "cls": "card-tool-group",
    "source": "shaped",
-   "bytes": 41983,
+   "bytes": 42025,
    "bucket": "32-128K",
-   "htmlLen": 369,
-   "htmlHash": "0f9ce0a6",
+   "htmlLen": 616,
+   "htmlHash": "301556bf",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
    "trueBorderBox": 36.59,
@@ -778,10 +778,10 @@
    "id": "real#51",
    "cls": "card-tool-group",
    "source": "shaped",
-   "bytes": 41983,
+   "bytes": 42025,
    "bucket": "32-128K",
-   "htmlLen": 372,
-   "htmlHash": "99ae523a",
+   "htmlLen": 619,
+   "htmlHash": "dc811b23",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
    "trueBorderBox": 36.59,
@@ -806,10 +806,10 @@
    "id": "real#53",
    "cls": "card-tool-group",
    "source": "shaped",
-   "bytes": 17616,
+   "bytes": 17658,
    "bucket": "8-32K",
-   "htmlLen": 369,
-   "htmlHash": "48f251ba",
+   "htmlLen": 616,
+   "htmlHash": "236391c3",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
    "trueBorderBox": 36.59,
@@ -820,10 +820,10 @@
    "id": "real#54",
    "cls": "card-tool-group",
    "source": "shaped",
-   "bytes": 24542,
+   "bytes": 24584,
    "bucket": "8-32K",
-   "htmlLen": 369,
-   "htmlHash": "e3b85b75",
+   "htmlLen": 616,
+   "htmlHash": "716f7440",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
    "trueBorderBox": 36.59,
@@ -862,10 +862,10 @@
    "id": "real#58",
    "cls": "card-tool-group",
    "source": "shaped",
-   "bytes": 19342,
+   "bytes": 19384,
    "bucket": "8-32K",
-   "htmlLen": 375,
-   "htmlHash": "43c4e0da",
+   "htmlLen": 622,
+   "htmlHash": "5eb97153",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
    "trueBorderBox": 36.59,
@@ -892,8 +892,8 @@
    "source": "shaped",
    "bytes": 1027,
    "bucket": "<2K",
-   "htmlLen": 376,
-   "htmlHash": "df4be360",
+   "htmlLen": 623,
+   "htmlHash": "1d8afe77",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
    "trueBorderBox": 36.59,
@@ -906,8 +906,8 @@
    "source": "shaped",
    "bytes": 639,
    "bucket": "<2K",
-   "htmlLen": 368,
-   "htmlHash": "1f988a9e",
+   "htmlLen": 615,
+   "htmlHash": "c4d9f9ad",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
    "trueBorderBox": 36.59,
@@ -920,8 +920,8 @@
    "source": "shaped",
    "bytes": 483,
    "bucket": "<2K",
-   "htmlLen": 376,
-   "htmlHash": "7be2f930",
+   "htmlLen": 623,
+   "htmlHash": "fab0177b",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
    "trueBorderBox": 36.59,
@@ -962,8 +962,8 @@
    "source": "shaped",
    "bytes": 464,
    "bucket": "<2K",
-   "htmlLen": 376,
-   "htmlHash": "234e6a0c",
+   "htmlLen": 623,
+   "htmlHash": "bbb61bd7",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
    "trueBorderBox": 36.59,
@@ -990,8 +990,8 @@
    "source": "synthetic",
    "bytes": 203,
    "bucket": "<2K",
-   "htmlLen": 96,
-   "htmlHash": "b6587f4c",
+   "htmlLen": 173,
+   "htmlHash": "6496a66d",
    "estBrowser": 17,
    "estAppliedBrowser": 17,
    "trueBorderBox": 23.05,
@@ -1004,8 +1004,8 @@
    "source": "synthetic",
    "bytes": 184,
    "bucket": "<2K",
-   "htmlLen": 77,
-   "htmlHash": "14e170f3",
+   "htmlLen": 173,
+   "htmlHash": "2465308d",
    "estBrowser": 17,
    "estAppliedBrowser": 17,
    "trueBorderBox": 23.05,
@@ -1018,8 +1018,8 @@
    "source": "synthetic",
    "bytes": 210,
    "bucket": "<2K",
-   "htmlLen": 103,
-   "htmlHash": "644e988e",
+   "htmlLen": 173,
+   "htmlHash": "3fbb0405",
    "estBrowser": 17,
    "estAppliedBrowser": 17,
    "trueBorderBox": 23.05,
@@ -1032,8 +1032,8 @@
    "source": "synthetic",
    "bytes": 188,
    "bucket": "<2K",
-   "htmlLen": 81,
-   "htmlHash": "3f4f5c5c",
+   "htmlLen": 173,
+   "htmlHash": "8226f485",
    "estBrowser": 17,
    "estAppliedBrowser": 17,
    "trueBorderBox": 23.05,
@@ -1046,8 +1046,8 @@
    "source": "synthetic",
    "bytes": 585,
    "bucket": "<2K",
-   "htmlLen": 478,
-   "htmlHash": "0273aa73",
+   "htmlLen": 173,
+   "htmlHash": "aecaeee5",
    "estBrowser": 17,
    "estAppliedBrowser": 17,
    "trueBorderBox": 23.05,
@@ -1060,12 +1060,12 @@
    "source": "synthetic",
    "bytes": 266,
    "bucket": "<2K",
-   "htmlLen": 317,
-   "htmlHash": "fe405d48",
-   "estBrowser": 40,
-   "estAppliedBrowser": 40,
-   "trueBorderBox": 67.38,
-   "trueContentBox": 49.38,
+   "htmlLen": 329,
+   "htmlHash": "52b0e10b",
+   "estBrowser": 60,
+   "estAppliedBrowser": 60,
+   "trueBorderBox": 82.88,
+   "trueContentBox": 64.88,
    "padBorder": 18
   },
   {
@@ -1074,12 +1074,12 @@
    "source": "synthetic",
    "bytes": 349,
    "bucket": "<2K",
-   "htmlLen": 386,
-   "htmlHash": "e60ad4a2",
-   "estBrowser": 40,
-   "estAppliedBrowser": 40,
-   "trueBorderBox": 67.38,
-   "trueContentBox": 49.38,
+   "htmlLen": 398,
+   "htmlHash": "19500291",
+   "estBrowser": 60,
+   "estAppliedBrowser": 60,
+   "trueBorderBox": 82.88,
+   "trueContentBox": 64.88,
    "padBorder": 18
   },
   {
@@ -1088,19 +1088,19 @@
    "source": "synthetic",
    "bytes": 1335,
    "bucket": "<2K",
-   "htmlLen": 1386,
-   "htmlHash": "eceede4b",
-   "estBrowser": 40,
-   "estAppliedBrowser": 40,
-   "trueBorderBox": 262.56,
-   "trueContentBox": 244.56,
+   "htmlLen": 1398,
+   "htmlHash": "c725e554",
+   "estBrowser": 60,
+   "estAppliedBrowser": 60,
+   "trueBorderBox": 82.88,
+   "trueContentBox": 64.88,
    "padBorder": 18
   },
   {
    "id": "syn#8",
    "cls": "card-bash-input",
    "source": "synthetic",
-   "bytes": 171,
+   "bytes": 251,
    "bucket": "<2K",
    "htmlLen": 151,
    "htmlHash": "ab5838ae",
@@ -1114,7 +1114,7 @@
    "id": "syn#9",
    "cls": "card-bash-input",
    "source": "synthetic",
-   "bytes": 206,
+   "bytes": 321,
    "bucket": "<2K",
    "htmlLen": 194,
    "htmlHash": "b99e5b81",
@@ -1128,7 +1128,7 @@
    "id": "syn#10",
    "cls": "card-bash-input",
    "source": "synthetic",
-   "bytes": 193,
+   "bytes": 295,
    "bucket": "<2K",
    "htmlLen": 173,
    "htmlHash": "dad789f4",
@@ -1142,7 +1142,7 @@
    "id": "syn#11",
    "cls": "card-bash-output",
    "source": "synthetic",
-   "bytes": 165,
+   "bytes": 244,
    "bucket": "<2K",
    "htmlLen": 235,
    "htmlHash": "7b4ef6c3",
@@ -1156,7 +1156,7 @@
    "id": "syn#12",
    "cls": "card-bash-output",
    "source": "synthetic",
-   "bytes": 199,
+   "bytes": 316,
    "bucket": "<2K",
    "htmlLen": 280,
    "htmlHash": "13c49923",
@@ -1170,7 +1170,7 @@
    "id": "syn#13",
    "cls": "card-bash-output",
    "source": "synthetic",
-   "bytes": 330,
+   "bytes": 577,
    "bucket": "<2K",
    "htmlLen": 395,
    "htmlHash": "040f0cf1",
@@ -1184,7 +1184,7 @@
    "id": "syn#14",
    "cls": "card-bash-output",
    "source": "synthetic",
-   "bytes": 375,
+   "bytes": 667,
    "bucket": "<2K",
    "htmlLen": 435,
    "htmlHash": "3420ccab",
@@ -1198,21 +1198,21 @@
    "id": "syn#15",
    "cls": "card-bash-output",
    "source": "synthetic",
-   "bytes": 870,
+   "bytes": 1657,
    "bucket": "<2K",
    "htmlLen": 513,
    "htmlHash": "e31da270",
    "estBrowser": 471,
    "estAppliedBrowser": 471,
-   "trueBorderBox": 481.41,
-   "trueContentBox": 469.41,
+   "trueBorderBox": 482.45,
+   "trueContentBox": 470.45,
    "padBorder": 12
   },
   {
    "id": "syn#16",
    "cls": "card-bash-output",
    "source": "synthetic",
-   "bytes": 235,
+   "bytes": 356,
    "bucket": "<2K",
    "htmlLen": 384,
    "htmlHash": "f8932089",
@@ -1226,7 +1226,7 @@
    "id": "syn#17",
    "cls": "card-slash",
    "source": "synthetic",
-   "bytes": 240,
+   "bytes": 325,
    "bucket": "<2K",
    "htmlLen": 143,
    "htmlHash": "784bd9e2",
@@ -1240,7 +1240,7 @@
    "id": "syn#18",
    "cls": "card-slash",
    "source": "synthetic",
-   "bytes": 270,
+   "bytes": 382,
    "bucket": "<2K",
    "htmlLen": 186,
    "htmlHash": "609daef2",
@@ -1254,7 +1254,7 @@
    "id": "syn#19",
    "cls": "card-slash",
    "source": "synthetic",
-   "bytes": 269,
+   "bytes": 386,
    "bucket": "<2K",
    "htmlLen": 207,
    "htmlHash": "a148fe26",
@@ -1268,7 +1268,7 @@
    "id": "syn#20",
    "cls": "card-compact",
    "source": "synthetic",
-   "bytes": 9261,
+   "bytes": 18447,
    "bucket": "8-32K",
    "htmlLen": 119,
    "htmlHash": "e8453c1b",
@@ -1282,15 +1282,15 @@
  "crossRows": [
   {
    "id": "real#1",
-   "trueContentBox": 1943.38
+   "trueContentBox": 1935.38
   },
   {
    "id": "real#2",
-   "trueContentBox": 3483.3
+   "trueContentBox": 3477.3
   },
   {
    "id": "real#3",
-   "trueContentBox": 2749.89
+   "trueContentBox": 2745.89
   },
   {
    "id": "real#4",
@@ -1302,23 +1302,23 @@
   },
   {
    "id": "real#6",
-   "trueContentBox": 1924.06
+   "trueContentBox": 1918.06
   },
   {
    "id": "real#7",
-   "trueContentBox": 2201.72
+   "trueContentBox": 2197.72
   },
   {
    "id": "real#8",
-   "trueContentBox": 1904.38
+   "trueContentBox": 1902.38
   },
   {
    "id": "real#9",
-   "trueContentBox": 1236.05
+   "trueContentBox": 1232.05
   },
   {
    "id": "real#10",
-   "trueContentBox": 2785.61
+   "trueContentBox": 2783.61
   },
   {
    "id": "real#11",
@@ -1326,15 +1326,15 @@
   },
   {
    "id": "real#12",
-   "trueContentBox": 9184.69
+   "trueContentBox": 9174.69
   },
   {
    "id": "real#13",
-   "trueContentBox": 4640.41
+   "trueContentBox": 4632.41
   },
   {
    "id": "real#14",
-   "trueContentBox": 3180.13
+   "trueContentBox": 3176.13
   },
   {
    "id": "real#15",
@@ -1342,15 +1342,15 @@
   },
   {
    "id": "real#16",
-   "trueContentBox": 2901.75
+   "trueContentBox": 2897.75
   },
   {
    "id": "real#17",
-   "trueContentBox": 4620.84
+   "trueContentBox": 4618.84
   },
   {
    "id": "real#18",
-   "trueContentBox": 3204.13
+   "trueContentBox": 3200.13
   },
   {
    "id": "real#19",
@@ -1550,15 +1550,15 @@
   },
   {
    "id": "syn#5",
-   "trueContentBox": 48
+   "trueContentBox": 63
   },
   {
    "id": "syn#6",
-   "trueContentBox": 48
+   "trueContentBox": 63
   },
   {
    "id": "syn#7",
-   "trueContentBox": 237
+   "trueContentBox": 63
   },
   {
    "id": "syn#8",
@@ -1590,7 +1590,7 @@
   },
   {
    "id": "syn#15",
-   "trueContentBox": 466
+   "trueContentBox": 467
   },
   {
    "id": "syn#16",

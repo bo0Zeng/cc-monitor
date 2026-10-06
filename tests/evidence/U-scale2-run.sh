@@ -14,8 +14,11 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-WORK=/tmp/scale2-height-truth
-RIG=/tmp/cv-reparent-probe          # G 路留下的两个 runner
+# 两处都可由环境变量改到盘上（`/tmp` 在有的机器上是内存盘，在那里搭 runner 撞过整机 OOM）：
+#   SCALE2_WORK=<探针产物与读数>  SCALE2_RIG=<两个 runner 所在目录>
+WORK="${SCALE2_WORK:-/tmp/scale2-height-truth}"
+RIG="${SCALE2_RIG:-/tmp/cv-reparent-probe}"          # G 路留下的两个 runner
+export SCALE2_WORK="$WORK"
 
 cd "$ROOT"
 mkdir -p "$WORK"

@@ -338,7 +338,11 @@ export function estimateStreamNodeHeight(el: HTMLElement): number | null {
   //   三条卡的落地误差停在 40.8% / 29.1% / 29.1%,**不是**常数本身对应的 0.3% / 2.2% / 2.2%。
   //   地板已去掉(见 `appliedIntrinsicPx`),这三条常数从此**原样出货**。
   //   读数与登记见 `tests/evidence/U-scale2-height-truth.md` §2/§4 与 `S23-floor-removal.md`。
-  if (el.classList.contains("card-api-error")) return 40;
+  // 报错卡（§5.2.5）：抬头 · 下一步 · 「原文」三行。
+  if (el.classList.contains("card-api-error")) return 60;
+  // 事件条（「谁说的」稿 A）：抬头一行 28；展开着（交回 · 另一会话）加正文的一段粗估。中断标记 · 后台通知一行细线。
+  if (el.classList.contains("card-speaker")) return (el as HTMLDetailsElement).open ? 28 + 60 : 28;
+  if (el.classList.contains("card-event-line") || el.classList.contains("card-notice")) return 19;
   if (el.classList.contains("card-slash")) return 19;
   // 修法①:两行常数。card-api-retry 是"重试风暴"时成批出现的那一种。
   if (el.classList.contains("card-api-retry")) return 17;

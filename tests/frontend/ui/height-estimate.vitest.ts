@@ -124,7 +124,7 @@ describe("estimateStreamNodeHeight", () => {
   it("api-error/slash 细条卡走常数(非 120px 兜底)", () => {
     const err = document.createElement("div");
     err.className = "card card-api-error";
-    expect(estimateStreamNodeHeight(err)).toBe(40);
+    expect(estimateStreamNodeHeight(err)).toBe(60); // 抬头 · 下一步 · 「原文」三行（§5.2.5）
     const slash = document.createElement("div");
     slash.className = "card card-slash";
     // 19 = 12px(--font-size-small) × 1.55 的 **content-box** 值(秤 2 的 B 段实测

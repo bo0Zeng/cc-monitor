@@ -53,7 +53,7 @@ interface Probe {
   intrinsic: Intrinsic[];
 }
 
-const WORK = "/tmp/scale2-height-truth";
+const WORK = process.env.SCALE2_WORK ?? "/tmp/scale2-height-truth";
 const GOLDEN = resolve(REPO_ROOT, "tests/evidence/U-scale2-truth-golden.json");
 
 function load(engine: string): Probe {

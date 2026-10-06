@@ -184,7 +184,7 @@ const P90_CEILING: Record<string, number> = {
   // （`white-space: pre-wrap`）会多行 ⇒ 长报错整个虚低。早就点过这一条。
   // ⚠ 这一条**与地板无关**（估值 40 ≥ 旧地板 24，从来没被顶过）⇒ 本轮它一个点都没动，
   //   这也正是「地板改动的爆炸半径只有四个 class」那句话的对照组。
-  "card-api-error": 0.9, //    实测 p90 70.7% / 69.8%（**虚低**方向）
+  "card-api-error": 0.3, //    实测 p90 7.5% / 4.8%（虚低）。主窗口第 2 批：报错卡改成固定三行（抬头 · 下一步 · 原文折叠），常数 40 → 60；此前 70.7% / 69.8%
 };
 
 /**
@@ -198,11 +198,10 @@ const P90_CEILING: Record<string, number> = {
  *     `card-api-retry` 的 p90 从 40.8% 掉到 **0.3%**（`99 条 75` /）。
  *     它此前之所以在名单上，**不是常数算错**，是常数 17 被地板顶回 24 —— 那一格是**地板的账**。
  *
- * 剩下这一条不是地板的账，也还没修：
- *   · `card-api-error` —— 常数 40 假设"单行"，而构造体里有多行长报错 ⇒ 虚低；
- *     而且这个卡型真语料里 **0 条**，读数带着"构造体像不像真的"这个前提。
+ * 原来剩的那一条（`card-api-error`：常数 40 假设单行、长报错虚低）随主窗口第 2 批修了：报错原文收进「原文」折叠，
+ * 卡固定三行、常数 60（p90 7.5% / 4.8%）。名单清空。
  */
-const EXCEEDS_DESIGN_GATE = ["card-api-error"];
+const EXCEEDS_DESIGN_GATE: string[] = [];
 
 /**
  * ★ **F1 · 每个 class 的估值最小值 ≥ 该 class 登记的常数**（`99 条 75` /）。
@@ -240,7 +239,7 @@ const CLASS_MIN_EST: Record<string, { min: number; why: string }> = {
   "card-api-retry": { min: 17, why: "常数 17（11px × 1.55 = 17.05，content-box 实测真高 17.05）" },
   "card-slash": { min: 19, why: "常数 19（12px × 1.55 = 18.59）" },
   "card-bash-input": { min: 19, why: "常数 19（同一套紧凑系 token）" },
-  "card-api-error": { min: 40, why: "常数 40（单行错误卡）" },
+  "card-api-error": { min: 60, why: "常数 60（抬头 · 下一步 · 原文折叠三行）" },
   "card-compact": { min: 38, why: "SUMMARY_H = 38（折叠 <details> 只剩 summary 行）" },
   "card-tool-group": { min: 38, why: "SUMMARY_H = 38（同上）" },
   // ── 算出来的：登记结构下界，⚠ 比今天语料实测的 min 松 ──

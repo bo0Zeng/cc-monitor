@@ -134,6 +134,16 @@ export class AgentsPanel {
     this.setCollapsed(true);
   }
 
+  /** 把这个子运行摆到眼前（消息流里 agent 事件条的「打开窗口 ›」）：展开面板、点开它那一行的时间线。不在表里 ⇒ 只展开面板。 */
+  reveal(run: string): void {
+    if (this.collapsed) this.setCollapsed(false);
+    if (this.runs.some((r) => r.run === run)) {
+      this.open.add(this.keyOf(run));
+      this.render(true);
+      this.nodes.get(`row\u0000${this.keyOf(run)}`)?.scrollIntoView({ block: "nearest" });
+    }
+  }
+
   /** 收起（状态栏另一块浮层开了 ⇒ 这一块让位）。 */
   collapse(): void {
     if (!this.collapsed) this.setCollapsed(true);

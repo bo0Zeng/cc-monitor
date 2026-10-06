@@ -6,7 +6,8 @@ import type { Speaker } from "./generated/Speaker";
 
 export type SpeakerKind = Speaker["kind"];
 
-/** 建卡的那几种来源；其余（系统注入 · agent 来话 · 后台通知 · 输出回显 · 中断标记）不建卡。 */
+/** 建卡的那几种来源（agent 来话 · 另一会话 · 主会话后来的话 · 后台通知 · 中断标记画成事件条，「谁说的」稿 A）；
+ *  其余（系统注入 · 本地命令的输出回显）不建卡。 */
 const DRAWN: ReadonlySet<string> = new Set<SpeakerKind>([
   "human",
   "slashCommand",
@@ -15,6 +16,11 @@ const DRAWN: ReadonlySet<string> = new Set<SpeakerKind>([
   "compactSummary",
   "agentTask",
   "toolResult",
+  "agentMessage",
+  "peerSession",
+  "coordinator",
+  "taskNotification",
+  "interrupt",
 ]);
 
 export function drawsCard(kind: string): boolean {

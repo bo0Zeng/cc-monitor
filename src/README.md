@@ -39,7 +39,7 @@ index.html  ─> /src/frontend/ui/main.ts (defer)
 | **cards/compact.ts** | `/compact` 续接消息折叠（是不是压缩摘要由后端判） | `buildCompactSummaryCard` |
 | **cards/subagent.ts** | Task/Agent tool_use 折叠卡 + 懒加载 subagent JSONL | `isAgentTool / buildAgentCard` |
 | **cards/diff.ts** (issue #14) | Edit/Write/MultiEdit 的行级 diff 卡（tool_use 折叠条 body 级替换；上半纯逻辑 DOM-free，diff.test.ts 锁） | `isDiffTool / buildDiffBody` |
-| **cards/interactive.ts** (issue #21) | AskUserQuestion / ExitPlanMode 默认展开卡（提问+选项 / plan 正文直接可见，不进工具组；答复后降噪+选中高亮） | `isInteractiveTool / buildInteractiveCard / markInteractiveAnswer` |
+| **cards/interactive.ts** (issue #21) | AskUserQuestion / ExitPlanMode 默认展开卡（提问+选项 / plan 正文直接可见，不进工具组；答复后降噪+选中高亮） | `buildInteractiveCard / settleInteractive`（答了什么由后端读出，`toolResults[].answer`） |
 | **cards/api-error.ts** (issue #21) | API 报错可见化：最终失败红色报错卡 + 重试中间态单行细条（双 shape error 解析，api-error.test.ts 锁） | `buildApiErrorCard / buildApiRetryCard / describeRetryError` |
 | **render.ts** | marked + KaTeX + highlight.js + DOMPurify。**v2.6 改 opts.lazy 参数化**（替代原全局 setRenderLazyMode flag）— 同步调用栈 save/restore 模式，避免 SessionViewer / Subagent 被 tabs 的 batch 模式污染走 lazy 路径 | `renderMarkdown(md, { lazy? }) / renderPlainText(text) / enhanceCard / observeForEnhance` |
 | **local-storage.ts** ⭐ v2.6 | localStorage 统一接入层：LS_KEYS 集中常量（含动态 key 工厂 `settingsCollapsed(id)` / `toolRender(toolName)`）+ safeGet/safeSet/safeGetJson/safeSetJson/enumeratePrefix 包 try/catch。INVARIANT § 14 守护 | `LS_KEYS / safeGet / safeSet / safeGetJson / safeSetJson / safeRemove / enumeratePrefix` |
