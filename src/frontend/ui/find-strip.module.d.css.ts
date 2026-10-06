@@ -5,8 +5,12 @@ declare const classes: {
   readonly fsHead: string;
   readonly fsHit: string;
   readonly fsInput: string;
+  readonly fsKeys: string;
   readonly fsList: string;
   readonly fsMark: string;
+  readonly fsMeta: string;
+  readonly fsSnip: string;
+  readonly fsState: string;
   readonly fsStrip: string;
 };
 export default classes;

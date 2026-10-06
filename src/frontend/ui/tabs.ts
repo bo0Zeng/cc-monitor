@@ -1187,6 +1187,30 @@ export class TabManager {
     this.menu.open(anchor, sid, this.view.streamToggles());
   }
 
+  /** 菜单键 / `Shift+F10`：在当前标签页上开右键菜单（锚在它那一行；那一行看不见 ⇒ 锚在会话头）。 */
+  openActiveMenu(): void {
+    const sid = this.store.activeId;
+    if (sid === null) return;
+    const row = document.querySelector<HTMLElement>("#tab-bar .tab.active");
+    const anchor = row && row.getClientRects().length > 0 ? row : document.getElementById("session-head");
+    if (anchor) this.openMenuFor(anchor, sid);
+  }
+
+  /** `End`：当前会话回到底部。 */
+  toBottom(): void {
+    this.activeTab()?.stream.scrollToBottom();
+  }
+
+  /** 命令面板「刷新各台机器上的会话」：同标签页栏顶那颗刷新。 */
+  refreshAll(): void {
+    void this.rereadAll();
+  }
+
+  /** 这个会话固定了没有（命令面板「固定 / 取消固定」那一条的字）。 */
+  isPinned(sid: string): boolean {
+    return this.store.tabs.get(sid)?.pinned === true;
+  }
+
   /** 离线条的［重新连接］：那台断着在退避里等 ⇒ 立刻重拨一次（壳那一侧 `backend_start`：在跑就是「别等了」）。 */
   reconnect(origin: string): void {
     this.actions.reconnect(origin);

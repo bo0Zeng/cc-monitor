@@ -56,6 +56,8 @@ interface Live {
   timer: ReturnType<typeof setTimeout> | null;
   paused: boolean;
   onExpire?: () => void;
+  /** 撤销提示条的那一步（`Ctrl+Z` 撤最新的一条）。 */
+  undo?: () => void;
 }
 
 const live: Live[] = [];
@@ -230,5 +232,21 @@ export function toast(title: string, detail: string, opts: ToastOptions = {}): (
  * 撤销 ⇒ 调 `undo`；没撤（到点 · 点 ×）⇒ 调 `commit`（推荐做法：界面延后 8 秒再真提交，撤销 ＝ 不提交）。
  */
 export function undoToast(title: string, undo: () => void, commit: () => void): () => void {
-  return toast(title, "", { level: "success", action: { label: copyText("kit.toast.undo"), run: undo }, onExpire: commit });
+  const dismiss = toast(title, "", { level: "success", action: { label: copyText("kit.toast.undo"), run: undo }, onExpire: commit });
+  const t = live[live.length - 1];
+  if (t) t.undo = undo;
+  return dismiss;
+}
+
+/** `Ctrl+Z`：撤最新那一条还开着的撤销提示（收起它、不再提交）。没有 ⇒ `false`。 */
+export function undoLatest(): boolean {
+  for (let i = live.length - 1; i >= 0; i--) {
+    const t = live[i];
+    if (!t.undo) continue;
+    const undo = t.undo;
+    drop(t, false);
+    undo();
+    return true;
+  }
+  return false;
 }

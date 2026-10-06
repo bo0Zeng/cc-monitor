@@ -81,9 +81,5 @@ export function mountTabBarResizer(): void {
     window.addEventListener("blur", onBlur);
   });
   appEl.appendChild(resizer);
-  // 窄窗折叠（内容列 780px + 栏 + 呼吸空间放不下 → 图标条 44px）现在**整条在 CSS 里**：
-  // `styles.css` 的 `@media (width < 980px)`（S24）。
-  // 这里原本是一个 `resize` 监听往 body 上挂 `.tabbar-collapsed`，而那个类
-  // **只被写、从没被读**（唯一读者就是那几条 CSS 规则）⇒ 纯视觉断点绕一圈 JS，
-  // 白付一次「窄窗启动先闪一下宽栏」。删掉监听不留等价物，别再加回来。
+  // 收成 44px 的图标条（窗宽 < 980 或手动收起）归 `tab-bar-fold.ts`：body 上一个 `data-tab-bar` 属性，`styles.css` 读它。
 }

@@ -438,10 +438,11 @@ describe("顶栏远端文件的多机选单：再点按钮收起；Esc 只关它
 });
 
 describe("命令面板：远端会话的机器名只出一次", () => {
-  it("「切到会话」那一条的标题里机器名恰一次", () => {
+  it("会话行：机器名只在徽标那一格（标题里不再带一遍）", () => {
     const tm = makeTabs(["r"], "pi");
-    const [cmd] = sessionCommands(tm.snapshotSessions(), () => {});
-    expect(cmd.title.split("[pi]").length - 1, cmd.title).toBe(1);
+    const [cmd] = sessionCommands(tm.tabsInOrder(), () => {}, () => undefined);
+    expect(cmd.session?.machine).toBe("pi");
+    expect(`${cmd.title} ${cmd.session?.title}`, cmd.title).not.toContain("pi");
   });
 });
 

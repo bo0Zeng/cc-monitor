@@ -499,7 +499,7 @@ function builtClasses(win: Win): Set<string> {
 /** 设置窗的 CSS 里不许出现的类族（前缀；`^tab$` 这种精确名也按前缀写，靠 `-` 边界区分）。 */
 const CSS_FORBIDDEN_IN_SETTINGS = ["hljs", "katex", "tab", "card", "code-block", "code-copy", "stream", "block-", "branch-fold", "live-dot"];
 /** viewer 的 CSS 里不许出现的类族。 */
-const CSS_FORBIDDEN_IN_VIEWER = ["settings-panel", "settings-body", "kb-editor", "grid-monitor-cell", "command-bar", "ext-", "accounts-row"];
+const CSS_FORBIDDEN_IN_VIEWER = ["settings-panel", "settings-body", "kb-editor", "grid-monitor-cell", "ext-", "accounts-row"];
 function familyHits(classes: Set<string>, fam: string): string[] {
   return [...classes].filter((c) => (fam.endsWith("-") ? c.startsWith(fam) : c === fam || c.startsWith(`${fam}-`)));
 }
@@ -712,6 +712,9 @@ function moduleStacking(
  * 回来写清它叠不叠、为什么。
  */
 const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
+  "src/frontend/ui/views/command-bar.module.css": { stacked: false, why: "命令面板：外框是 kit 面板，里面全是自己的类" },
+  "src/frontend/ui/views/keys-overview.module.css": { stacked: false, why: "快捷键一览：外框是 kit 面板，里面全是自己的类" },
+  "src/frontend/ui/views/session-find.module.css": { stacked: false, why: "会话内查找面板本体（外框 .session-find 只在 styles.css 管位置，不叠这些类）" },
   "src/frontend/ui/usage-hud.module.css": { stacked: false, why: "状态栏「上下文」chip 与它的浮层：只挂自己的哈希类（chip 本身叠在 kit chip 的哈希类上，不是全局类）" },
   "src/frontend/ui/acct.module.css": { stacked: true, why: "状态栏账号按钮 `.acctChip` 叠在全局 `.status-account` 上（account-chip.ts 里 btn.className 同时挂两样）；面板里经小工具函数挂的类量具认不出挂到哪，按「叠」算" },
   "src/frontend/ui/acct-session.module.css": { stacked: true, why: "换号条 · 提示条：类经小工具函数挂，量具认不出挂到哪，按「叠」算（实际只挂自己的哈希类）" },

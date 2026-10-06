@@ -98,8 +98,8 @@ const overlayOf = (sid = "s1"): HTMLElement =>
 const rowsOf = (sid = "s1"): HTMLButtonElement[] => [
   ...overlayOf(sid).querySelectorAll<HTMLButtonElement>(".user-input-row"),
 ];
-const toggleOf = (sid = "s1"): HTMLButtonElement =>
-  overlayOf(sid).querySelector<HTMLButtonElement>(".user-inputs-toggle")!;
+/** 大纲入口那颗钮（不摆进 DOM —— 入口是查找面板的「大纲」页签；它仍是清单可用与否、几条的那一格状态）。 */
+const toggleOf = (sid = "s1"): HTMLButtonElement => peek(sid).inputsPanel.toggle;
 /**
  * 🔴 找卡**只在那个 tab 自己的流里找**。`[data-uuid]` 在本仓只有一个意思
  * （渲染出来的消息卡）；清单行用的是 `data-input-uuid`，两者不许混着数。
@@ -158,6 +158,7 @@ describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => 
     await settleOutline();
     const first = rowsOf()[0];
     first.click();
+    await settleOutline();
     expect(first.dataset.unjumpable, "先得真的标上，不然「不碰」是空真").toBe("1");
     vi.mocked(invoke).mockClear();
 
@@ -401,31 +402,33 @@ describe("KR45D2 跳：后端给的清单，点到哪一条", () => {
     expect(rowsOf()[1].dataset.unjumpable).toBeUndefined();
   });
 
-  it("点还没建卡的那一条 ⇒ 不许静默：标出来，并说清楚是「还没加载出来」", async () => {
+  it("🔴 点还收在尾部窗口里、还没建卡的那一条 ⇒ 从它往下整段建出卡再跳过去（不叫人往上翻）", async () => {
     await tailFirst();
+    expect(peek("s1").window.pendingCount, "起点：u1 真的还收着").toBe(1);
     rowsOf()[0].click();
-    expect(rowsOf()[0].dataset.unjumpable).toBe("1");
-    expect(rowsOf()[0].title).toContain("还没加载出来");
-    expect(rig.scrollIntoView).not.toHaveBeenCalled();
+    expect(peek("s1").window.pendingCount).toBe(0);
+    expect(rowsOf()[0].dataset.unjumpable).toBeUndefined();
+    expect(rig.scrollIntoView.mock.instances[0]).toBe(cardOf("u1"));
   });
 
   // ★★★ `不可跳 → 可跳` 这条转移的**活体**：把 `delete row.dataset.unjumpable;` 整句删掉在这一格上当场红。
-  it("🔴 上翻补批把它渲出来之后再点 ⇒ 跳得过去，标记与提示都跟着撤掉", async () => {
-    await tailFirst();
+  it("🔴 前端哪里都没有的那一条 ⇒ 标出来；它后来到了再点 ⇒ 跳得过去，标记与提示都跟着撤掉", async () => {
+    outlineBackend.entries = [outlineEntry("late", "后来才到的那句"), outlineEntry("u100", "最新那一句")];
+    feed(userLine(100, "u100", "最新那一句"));
+    await settleOutline();
     const row = rowsOf()[0];
     row.click();
+    await settleOutline();
     expect(row.dataset.unjumpable, "先得真的标上，不然下面那半是空真").toBe("1");
 
-    peek("s1").streamEl.dispatchEvent(new Event("scroll"));
-    expect(peek("s1").window.pendingCount, "补批没真的跑 ⇒ 下面那半是空真").toBe(0);
-    expect(cardOf("u1"), "补批跑了但没建出卡 ⇒ 夹具选错了记录").not.toBeNull();
-
+    feed(userLine(101, "late", "后来才到的那句"));
+    await settleOutline();
+    expect(cardOf("late"), "夹具选错了记录：卡没建出来").not.toBeNull();
     rowsOf()[0].click();
 
     expect(rowsOf()[0], "清单被整表重建过 ⇒ 这一格量的不是同一行").toBe(row);
     expect(row.dataset.unjumpable, "跳得过去了还灰着").toBeUndefined();
-    expect(row.title, "跳得过去了还挂着「跳不过去」那句").toBe("很久以前那一句");
-    expect(rig.scrollIntoView.mock.instances[0]).toBe(cardOf("u1"));
+    expect(row.title, "跳得过去了还挂着「跳不过去」那句").toBe("后来才到的那句");
   });
 });
 

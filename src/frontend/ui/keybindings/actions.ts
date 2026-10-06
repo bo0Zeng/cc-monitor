@@ -24,6 +24,16 @@ import { copyText } from "../copy-table";
 
 export type Category = "Tab" | "Term" | "App" | "Beh" | "Panel" | "Acct";
 
+/**
+ * 何时生效（作用范围）。带修饰键的那一档（Ctrl / Alt / ⌘）由 dispatcher 现判，这里写的是默认键的那一档：
+ * - `any`：随时（输入框里也算；模态开着时只放行 Esc）；
+ * - `idle`：没有输入焦点时；
+ * - `main`：焦点在主区（消息流 · 会话头 · 没焦点）；
+ * - `nav`：焦点在主区或标签页栏；
+ * - `bare`：单键规则 —— 焦点在主区或标签页栏，且没有浮层 / 对话框 / 输入焦点。用户改成带修饰键的键 ⇒ 按 `any` 算。
+ */
+export type Scope = "any" | "idle" | "main" | "nav" | "bare";
+
 export interface Action {
   /** 稳定 id，进 config 的 key */
   readonly id: string;
@@ -41,6 +51,10 @@ export interface Action {
    * `bind()` 它（即使 config 里有覆盖也不会触发）。
    */
   readonly available: boolean;
+  /** 何时生效（见 [`Scope`]）。 */
+  readonly scope: Scope;
+  /** 另一个固定的键（不进配置、改不了），例如菜单键之于 `Shift+F10`。 */
+  readonly also?: string;
 }
 
 /**
@@ -51,99 +65,67 @@ export interface Action {
  *  2. main.ts 里 `dispatcher.bind("<id>", callback)`
  *  3. （如果是预留）`available: false`〔预留位不留 —— 真做时再加〕
  */
-// 默认快捷键全部为**单键**（无 Ctrl/Shift）—— cc-monitor 是只读监视窗口，主视图不接受
-// 文本输入，单键导航更顺手。**前提**：dispatcher 在可编辑文本元素聚焦时不触发快捷键
-// （registry.ts::isEditableTarget），否则单键会在历史搜索 / 设置输入 / 重命名框里误触发。
-// 用户仍可在「设置 → 快捷键」编辑器里改成任意组合键。
+// 主视图不接受文本输入 ⇒ 导航多用单键；单键只在主区 / 标签页栏、没有浮层与输入焦点时生效（`Scope`）。
 export const ACTIONS: ReadonlyArray<Action> = [
   // ===== Tab =====
-  { id: "tab.next", label: copyText("keybindingActions.tab.next"), category: "Tab", default: "BracketRight", available: true },
-  { id: "tab.prev", label: copyText("keybindingActions.tab.prev"), category: "Tab", default: "BracketLeft", available: true },
-  { id: "tab.jump-1", label: copyText("keybindingActions.tab.jump1"), category: "Tab", default: "Digit1", available: true },
-  { id: "tab.jump-2", label: copyText("keybindingActions.tab.jump2"), category: "Tab", default: "Digit2", available: true },
-  { id: "tab.jump-3", label: copyText("keybindingActions.tab.jump3"), category: "Tab", default: "Digit3", available: true },
-  { id: "tab.jump-4", label: copyText("keybindingActions.tab.jump4"), category: "Tab", default: "Digit4", available: true },
-  { id: "tab.jump-5", label: copyText("keybindingActions.tab.jump5"), category: "Tab", default: "Digit5", available: true },
-  { id: "tab.jump-6", label: copyText("keybindingActions.tab.jump6"), category: "Tab", default: "Digit6", available: true },
-  { id: "tab.jump-7", label: copyText("keybindingActions.tab.jump7"), category: "Tab", default: "Digit7", available: true },
-  { id: "tab.jump-8", label: copyText("keybindingActions.tab.jump8"), category: "Tab", default: "Digit8", available: true },
-  { id: "tab.jump-9", label: copyText("keybindingActions.tab.jump9"), category: "Tab", default: "Digit9", available: true },
-  { id: "tab.close-archived", label: copyText("sessionState.closeEnded.shortcut"), category: "Tab", default: "KeyW", available: true },
-  { id: "tab.open-cwd", label: copyText("keybindingActions.tab.openCwd"), category: "Tab", default: "KeyE", available: true },
-  {
-    id: "tab.pop-out",
-    label: copyText("keybindingActions.tab.openInWindow"),
-    category: "Tab",
-    default: "KeyN",
-    available: true,
-  },
-  // 跳到下一个需要你的会话（等得最久的在前）。带 Ctrl：任何时候都要能按到，单键 J 在只读主视图上容易误触。
-  { id: "needs.next", label: copyText("tabBar.needs.hint"), category: "Tab", default: "Ctrl+KeyJ", available: true },
-  // 会话内查找（大纲在同一块面板里）。与命令栏同理带 Ctrl：
-  // 查找要能在任何时候唤起，而单键 F 在只读主视图上容易误触；Ctrl+KeyF 全表空闲（`actions.vitest.ts` 查重）。
-  // ⚠ 只搜当前 tab 这一份会话；跨全部会话的全文搜索在历史浏览器里（它没有独立快捷键，`app.search-history` 那个预留位已删）。
-  {
-    id: "session.find",
-    label: copyText("keybindingActions.session.find"),
-    category: "Tab",
-    default: "Ctrl+KeyF",
-    available: true,
-  },
-  // 过程默认展开 / 收起：完成的轮把过程折成一行，这一键全部摊开 / 全部收回。带 Ctrl 同查找。
-  {
-    id: "session.toggle-process",
-    label: copyText("keybindingActions.session.toggleProcess"),
-    category: "Tab",
-    default: "Ctrl+KeyO",
-    available: true,
-  },
-  // 上 / 下一轮（轮次刻度的键盘那一半）。
-  { id: "session.prev-turn", label: copyText("keybindingActions.session.prevTurn"), category: "Tab", default: "Alt+ArrowUp", available: true },
-  { id: "session.next-turn", label: copyText("keybindingActions.session.nextTurn"), category: "Tab", default: "Alt+ArrowDown", available: true },
+  { id: "tab.next", label: copyText("keybindingActions.tab.next"), category: "Tab", default: "BracketRight", available: true, scope: "bare" },
+  { id: "tab.prev", label: copyText("keybindingActions.tab.prev"), category: "Tab", default: "BracketLeft", available: true, scope: "bare" },
+  { id: "tab.jump-1", label: copyText("keybindingActions.tab.jump1"), category: "Tab", default: "Digit1", available: true, scope: "bare" },
+  { id: "tab.jump-2", label: copyText("keybindingActions.tab.jump2"), category: "Tab", default: "Digit2", available: true, scope: "bare" },
+  { id: "tab.jump-3", label: copyText("keybindingActions.tab.jump3"), category: "Tab", default: "Digit3", available: true, scope: "bare" },
+  { id: "tab.jump-4", label: copyText("keybindingActions.tab.jump4"), category: "Tab", default: "Digit4", available: true, scope: "bare" },
+  { id: "tab.jump-5", label: copyText("keybindingActions.tab.jump5"), category: "Tab", default: "Digit5", available: true, scope: "bare" },
+  { id: "tab.jump-6", label: copyText("keybindingActions.tab.jump6"), category: "Tab", default: "Digit6", available: true, scope: "bare" },
+  { id: "tab.jump-7", label: copyText("keybindingActions.tab.jump7"), category: "Tab", default: "Digit7", available: true, scope: "bare" },
+  { id: "tab.jump-8", label: copyText("keybindingActions.tab.jump8"), category: "Tab", default: "Digit8", available: true, scope: "bare" },
+  { id: "tab.jump-9", label: copyText("keybindingActions.tab.jump9"), category: "Tab", default: "Digit9", available: true, scope: "bare" },
+  { id: "tab.close-archived", label: copyText("sessionState.closeEnded.shortcut"), category: "Tab", default: "KeyW", available: true, scope: "bare" },
+  { id: "tab.open-cwd", label: copyText("keybindingActions.tab.openCwd"), category: "Tab", default: "KeyE", available: true, scope: "bare" },
+  { id: "tab.pop-out", label: copyText("keybindingActions.tab.openInWindow"), category: "Tab", default: "KeyN", available: true, scope: "bare" },
+  // 在当前标签页上开右键菜单（会话头「更多」是同一份菜单）。菜单键是固定的另一个键。
+  { id: "tab.context-menu", label: copyText("keybindingActions.tab.menu"), category: "Tab", default: "Shift+F10", available: true, scope: "nav", also: "ContextMenu" },
+  // 跳到下一个需要你的会话（等得最久的在前）。带 Ctrl：任何时候都要能按到。
+  { id: "needs.next", label: copyText("tabBar.needs.hint"), category: "Tab", default: "Ctrl+KeyJ", available: true, scope: "any" },
+  // 会话内查找（大纲在同一块面板里）：只搜当前 tab 这一份会话；跨全部会话的全文搜索在历史页里。
+  { id: "session.find", label: copyText("keybindingActions.session.find"), category: "Tab", default: "Ctrl+KeyF", available: true, scope: "any" },
+  // 过程默认展开 / 折起：完成的轮把过程折成一行，这一键全部摊开 / 全部收回。
+  { id: "session.toggle-process", label: copyText("keybindingActions.session.toggleProcess"), category: "Tab", default: "Ctrl+KeyO", available: true, scope: "any" },
+  // 上 / 下一轮（轮次刻度的键盘那一半）· 回到底部。
+  { id: "session.prev-turn", label: copyText("keybindingActions.session.prevTurn"), category: "Tab", default: "Alt+ArrowUp", available: true, scope: "main" },
+  { id: "session.next-turn", label: copyText("keybindingActions.session.nextTurn"), category: "Tab", default: "Alt+ArrowDown", available: true, scope: "main" },
+  { id: "session.to-bottom", label: copyText("keybindingActions.session.toBottom"), category: "Tab", default: "End", available: true, scope: "main" },
 
   // ===== Terminal =====
-  { id: "terminal.bring-front", label: copyText("keybindingActions.terminal.front"), category: "Term", default: "Backquote", available: true },
+  { id: "terminal.bring-front", label: copyText("keybindingActions.terminal.front"), category: "Term", default: "Backquote", available: true, scope: "bare" },
 
   // ===== App =====
-  { id: "app.open-settings", label: copyText("keybindingActions.app.settings"), category: "App", default: "Comma", available: true },
-  { id: "app.toggle-history", label: copyText("keybindingActions.app.history"), category: "App", default: "KeyH", available: true },
-  // F84（#57）：命令栏。唯一默认带 Ctrl 的 chord（palette 惯例；单键 K 会在只读主视图误触发，
-  // 且 palette 要在任意上下文唤起，故用组合键——经核实 Ctrl+KeyK 全表空闲、零冲突）。
-  { id: "app.open-command-bar", label: copyText("keybindingActions.app.commandBar"), category: "App", default: "Ctrl+KeyK", available: true },
-  // 这里原先是 `app.search-history`〔散文墓碑〕：历史浏览器全文搜索的**预留位**（`default: null`、
-  //   `available: false`，编辑器里灰着一行「未上线」）。它从没上线过，而全文搜索本身早就能用（H 打开历史后切「全文」）
-  //   ⇒ 用不上的预留位不留，真要给它一个快捷键时再加。它是清单里唯一一条未上线的，
-  //   只为它存在的 `comingSoon` 说明字段与编辑器那枚「未上线（…）」标签一起删了。
-  { id: "app.minimize", label: copyText("keybindingActions.app.minimize"), category: "App", default: "KeyM", available: true },
-  { id: "app.toggle-fullscreen", label: copyText("keybindingActions.app.fullscreen"), category: "App", default: "F11", available: true },
-  {
-    id: "overlay.close",
-    label: copyText("keybindingActions.app.closeOverlay"),
-    category: "App",
-    default: "Escape",
-    available: true,
-  },
+  { id: "app.open-settings", label: copyText("keybindingActions.app.settings"), category: "App", default: "Comma", available: true, scope: "bare" },
+  { id: "app.toggle-history", label: copyText("keybindingActions.app.history"), category: "App", default: "KeyH", available: true, scope: "bare" },
+  { id: "app.open-command-bar", label: copyText("keybindingActions.app.commandBar"), category: "App", default: "Ctrl+KeyK", available: true, scope: "any" },
+  { id: "app.keys", label: copyText("keybindingActions.app.keys"), category: "App", default: "Shift+Slash", available: true, scope: "bare" },
+  { id: "app.minimize", label: copyText("keybindingActions.app.minimize"), category: "App", default: "Ctrl+KeyM", available: true, scope: "any" },
+  { id: "app.toggle-fullscreen", label: copyText("keybindingActions.app.fullscreen"), category: "App", default: "F11", available: true, scope: "any" },
+  { id: "app.zoom-in", label: copyText("keybindingActions.app.zoomIn"), category: "App", default: "Ctrl+Equal", available: true, scope: "any" },
+  { id: "app.zoom-out", label: copyText("keybindingActions.app.zoomOut"), category: "App", default: "Ctrl+Minus", available: true, scope: "any" },
+  { id: "app.zoom-reset", label: copyText("keybindingActions.app.zoomReset"), category: "App", default: "Ctrl+Digit0", available: true, scope: "any" },
+  { id: "app.toggle-tab-bar", label: copyText("keybindingActions.app.toggleTabBar"), category: "App", default: null, available: true, scope: "any" },
+  { id: "app.open-cc-bus", label: copyText("keybindingActions.app.ccBus"), category: "App", default: null, available: true, scope: "any" },
+  { id: "overlay.close", label: copyText("keybindingActions.app.closeOverlay"), category: "App", default: "Escape", available: true, scope: "any" },
+  // 撤销刚才那一步（最近一条还开着的撤销提示）。输入框里的 Ctrl+Z 归输入框。
+  { id: "app.undo", label: copyText("keybindingActions.app.undo"), category: "App", default: "Ctrl+KeyZ", available: true, scope: "idle" },
 
-  // ===== 账号（account-ux U8）=====
-  // default: null（默认不绑）：键位表已经很满，这不是高频操作。想要的人自己在「设置 → 快捷键」里绑。
-  // F09：align-active（对齐当前会话到当前账号）随对齐全套一并删除——批量/一键对齐是组合层便利，
-  // 不做等价替代，用户改走 tab 右键的 Restart flyout 逐会话操作。
-  {
-    id: "account.switch-default",
-    label: copyText("keybindingActions.account.menu"),
-    category: "Acct",
-    default: null,
-    available: true,
-  },
+  // ===== 账号 =====
+  // 默认不绑：键位表已经很满，这不是高频操作。想要的人自己在设置里绑。
+  { id: "account.switch-default", label: copyText("keybindingActions.account.menu"), category: "Acct", default: null, available: true, scope: "any" },
 
   // ===== Behavior toggles =====
-  { id: "behavior.toggle-auto-follow", label: copyText("keybindingActions.behavior.autoFollow"), category: "Beh", default: null, available: true },
-  { id: "behavior.toggle-bring-monitor", label: copyText("keybindingActions.behavior.autoFront"), category: "Beh", default: null, available: true },
+  { id: "behavior.toggle-auto-follow", label: copyText("keybindingActions.behavior.autoFollow"), category: "Beh", default: null, available: true, scope: "any" },
+  { id: "behavior.toggle-bring-monitor", label: copyText("keybindingActions.behavior.autoFront"), category: "Beh", default: null, available: true, scope: "any" },
 
   // ===== Panel =====
-  { id: "panel.toggle-tasks", label: copyText("keybindingActions.panel.tasks"), category: "Panel", default: "KeyT", available: true },
-  { id: "panel.toggle-agents", label: copyText("keybindingActions.panel.agents"), category: "Panel", default: "KeyA", available: true },
-  { id: "panel.toggle-terminal", label: copyText("keybindingActions.panel.terminal"), category: "Panel", default: "Ctrl+Backquote", available: true },
+  { id: "panel.toggle-tasks", label: copyText("keybindingActions.panel.tasks"), category: "Panel", default: "KeyT", available: true, scope: "bare" },
+  { id: "panel.toggle-agents", label: copyText("keybindingActions.panel.agents"), category: "Panel", default: "KeyA", available: true, scope: "bare" },
+  { id: "panel.toggle-terminal", label: copyText("keybindingActions.panel.terminal"), category: "Panel", default: "Ctrl+Backquote", available: true, scope: "any" },
 ] as const;
 
 /** 全部已注册 action 的 id 联合类型；调用方 `bind(id, ...)` 时 TS 检查拼写 */

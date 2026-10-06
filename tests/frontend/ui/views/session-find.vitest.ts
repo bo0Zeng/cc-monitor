@@ -3,10 +3,11 @@
  *
  * # 量什么
  *
- * - **F2 面板**：两个入口各开到各的模式（Ctrl+F ⇒ 搜索、焦点进输入框；大纲按钮 ⇒ 大纲、同一个按钮再按收起）·
- *   ✕ 与 Esc（快捷键弹层栈）收起 · 切走 tab 收起并出栈 · 旧的独立悬浮层 `.live-user-inputs` 零命中（带正控）。
- * - **F3 搜索**：Enter 才发、发一次、参数逐字（问的是这个 tab 那份会话）· 命中按后端给的顺序列、`<mark>` 里是原文 ·
- *   全量 > 条数时说出来 · 查不了说原因 · 迟到的旧结果不盖新结果。
+ * - **面板**：两个入口各开到各的模式（Ctrl+F ⇒ 搜索、焦点进输入框；大纲 ⇒ 大纲、同一个入口再按收起）·
+ *   ✕ 与 Esc（快捷键弹层栈）收起、焦点还回去、跳过去的高亮去掉 · 切走 tab 收起并出栈。
+ * - **搜索**：停 300ms 自己找、回车立刻找、组字中的回车不算 · 参数逐字（问的是这个 tab 那份会话）· 每条「谁 · 第几轮 · 时刻」·
+ *   全量 > 条数时说出来、滚到底续下一页（`skip`）· 回车 / F3 / ↑↓ 选下一条并跳 · 查不了说原因 · 迟到的旧结果不盖新结果。
+ * - **跳**：没加载的那一条写「未加载 · 加载后跳转」，取到就跳；取失败写原因 ＋［重试］。
  * - **F4 跳得准**：命中一条还在骨架占位里、正文已被丢出前端账本（U3b 之后只留尾巴 200 条）的记录 ⇒
  *   等按偏移取回的正文落完、卡建出来、滚过去，**不标**「跳不过去」。这一格在「同步那一下就去找卡」的旧形上必红。
  *
@@ -78,12 +79,14 @@ import { SessionFindPanel, type SessionFindHost } from "../../../../src/frontend
 import { dispatcher } from "../../../../src/frontend/ui/keybindings/registry";
 import type { FindResult } from "../../../../src/frontend/ui/session-reads";
 
-const hit = (uuid: string, matched = "needle", before = "a ", after = " b") => ({
+const hit = (uuid: string, matched = "needle", before = "a ", after = " b", turn = 0, tsMs = 0) => ({
   uuid,
   kind: "assistant",
   before,
   matched,
   after,
+  turn,
+  tsMs,
 });
 const found = (hits: ReturnType<typeof hit>[], total = hits.length): FindResult => ({
   available: true,
@@ -100,19 +103,23 @@ function panelWith(over: Partial<SessionFindHost> = {}): {
 } {
   const search = vi.fn(async () => found([]));
   const jumpTo = vi.fn(() => null);
-  const p = new SessionFindPanel({ search, jumpTo, unjumpableHint: "跳不过去", ...over } as SessionFindHost);
+  const p = new SessionFindPanel({ search, jumpTo, unjumpableHint: "无对应卡片", ...over } as SessionFindHost);
   document.body.appendChild(p.el);
   return { p, search, jumpTo };
 }
 const q = (p: SessionFindPanel, sel: string) => p.el.querySelector<HTMLElement>(sel)!;
-const input = (p: SessionFindPanel) => q(p, ".session-find-input") as HTMLInputElement;
-const box = (p: SessionFindPanel) => q(p, ".session-find-panel");
-const searchPane = (p: SessionFindPanel) => q(p, ".session-find-search");
+const input = (p: SessionFindPanel) => q(p, "[data-role=find-input]") as HTMLInputElement;
+const box = (p: SessionFindPanel) => q(p, "[data-role=session-find-panel]");
+const status = (p: SessionFindPanel) => q(p, "[data-role=find-head]").textContent;
+const press = (p: SessionFindPanel, init: KeyboardEventInit): void => {
+  input(p).dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+};
 const enter = (p: SessionFindPanel, text: string): void => {
   input(p).value = text;
-  input(p).dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  press(p, { key: "Enter" });
 };
-const hitRows = (root: ParentNode) => [...root.querySelectorAll<HTMLButtonElement>(".session-find-hit")];
+const hitRows = (root: ParentNode) => [...root.querySelectorAll<HTMLElement>("[data-role=find-hit]")];
+const stateOf = (row: HTMLElement) => row.querySelector<HTMLElement>("[data-role=find-state]")!;
 
 beforeEach(() => {
   vi.mocked(invoke).mockClear();
@@ -120,54 +127,61 @@ beforeEach(() => {
   stub.finds = [];
   stub.indexRows = null;
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
-describe("SE2 · F2 一块面板两个模式", () => {
-  it("🔴 两个入口各开到各的模式；大纲按钮再按一次收起；✕ 收起", () => {
+describe("会话内查找面板", () => {
+  it("🔴 两个入口各开到各的模式；大纲入口再按一次收起；✕ 收起", () => {
     const { p } = panelWith();
     expect(box(p).hidden, "默认收着").toBe(true);
     p.open("search"); // Ctrl+F 那条路
     expect(box(p).hidden).toBe(false);
-    expect(searchPane(p).hidden).toBe(false);
     expect(p.outline.panel.hidden, "搜索模式下大纲清单不露").toBe(true);
     expect(document.activeElement, "焦点进输入框").toBe(input(p));
     p.outline.toggle.disabled = false;
-    p.outline.toggle.click(); // 大纲按钮：开着「搜索」时 ⇒ 切到「大纲」
+    p.outline.toggle.click(); // 大纲入口：开着「搜索」时 ⇒ 切到「大纲」
     expect(box(p).hidden).toBe(false);
-    expect(searchPane(p).hidden).toBe(true);
     expect(p.outline.panel.hidden).toBe(false);
-    expect(p.outline.toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(p.currentMode).toBe("outline");
     p.outline.toggle.click(); // 同一个入口再按 ⇒ 收起
     expect(box(p).hidden).toBe(true);
-    expect(p.outline.toggle.getAttribute("aria-expanded")).toBe("false");
     p.open("outline");
-    q(p, ".session-find-close").click();
+    q(p, "[aria-label='关闭']").click();
     expect(box(p).hidden).toBe(true);
   });
 
-  it("模式标签：点哪个切哪个，`aria-selected` 跟着走", () => {
+  it("页签：点哪个切哪个，`aria-selected` 跟着走", () => {
     const { p } = panelWith();
     p.open("outline");
-    const tabs = [...p.el.querySelectorAll<HTMLButtonElement>(".session-find-mode")];
-    expect(tabs.map((t) => t.dataset.mode)).toEqual(["search", "outline"]);
+    const tabs = [...p.el.querySelectorAll<HTMLButtonElement>("[role=tab]")];
+    expect(tabs.map((t) => t.dataset.key)).toEqual(["search", "outline"]);
+    expect(tabs.map((t) => t.getAttribute("aria-selected"))).toEqual(["false", "true"]);
     tabs[0].click();
     expect(tabs.map((t) => t.getAttribute("aria-selected"))).toEqual(["true", "false"]);
     expect(p.currentMode).toBe("search");
+    expect(p.outline.panel.hidden).toBe(true);
   });
 
-  it("🔴 Esc 收起：开着时压在快捷键弹层栈上、关了出栈（焦点在输入框里也收得起）", () => {
+  it("🔴 Esc 收起：出弹层栈、焦点回到打开前的地方、跳过去的高亮去掉", () => {
     dispatcher.applyOverrides({}); // 建默认键位表（main.ts 启动时做的同一步）
     dispatcher.start();
+    const before = document.createElement("button");
+    document.body.appendChild(before);
+    before.focus();
+    const flashed = document.createElement("div");
+    flashed.className = "search-hit-flash";
+    document.body.appendChild(flashed);
     const { p } = panelWith();
     p.open("search");
-    const esc = () =>
-      input(p).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
+    const esc = () => press(p, { key: "Escape", code: "Escape" });
     esc();
     expect(box(p).hidden).toBe(true);
-    // 出栈了：再按一次 Esc 不会去关它（它已经关了），也不会把关着的面板再打开
+    expect(document.activeElement, "焦点没还回去").toBe(before);
+    expect(flashed.classList.contains("search-hit-flash"), "关了高亮还在").toBe(false);
     esc();
     expect(box(p).hidden).toBe(true);
-    // 正控：再开一次 ⇒ 再入栈 ⇒ Esc 照样收得起（上面那格不是「Esc 根本不认」绿的）
     p.open("outline");
     expect(box(p).hidden).toBe(false);
     esc();
@@ -175,47 +189,85 @@ describe("SE2 · F2 一块面板两个模式", () => {
   });
 });
 
-describe("SE2 · F3 搜索", () => {
-  it("🔴 Enter 才发、发一次、带着「含工具内容」那个勾；命中按后端给的顺序列、<mark> 里是原文", async () => {
-    const s = vi.fn(async () => found([hit("u9", "NeedLe", "前 ", " 后"), hit("u2")]));
+describe("会话内查找 · 搜索", () => {
+  it("🔴 停 300ms 自己找（打字中途不发）；回车立刻找；组字中的回车不算", async () => {
+    vi.useFakeTimers();
+    const s = vi.fn(async () => found([hit("u1")]));
     const { p } = panelWith({ search: s } as Partial<SessionFindHost>);
     p.open("search");
+    input(p).value = "nee";
+    input(p).dispatchEvent(new Event("input"));
+    await vi.advanceTimersByTimeAsync(200);
     input(p).value = "needle";
-    expect(p.el.querySelectorAll(".session-find-hit").length, "打字不发").toBe(0);
-    (q(p, ".session-find-tools input") as HTMLInputElement).checked = true;
-    enter(p, "  needle  ");
-    await settleOutline();
-    expect(s.mock.calls).toEqual([["needle", true]]);
-    const rows = hitRows(p.el);
-    expect(rows.map((r) => r.dataset.hitUuid)).toEqual(["u9", "u2"]);
-    expect(rows[0].querySelector("mark")!.textContent).toBe("NeedLe");
-    expect(rows[0].textContent).toBe("前 NeedLe 后");
-    expect(rows[0].hasAttribute("data-uuid"), "命中行不许叫 data-uuid（那是消息卡的名字）").toBe(false);
-    expect(q(p, ".session-find-status").textContent).toBe("2 条");
+    input(p).dispatchEvent(new Event("input"));
+    await vi.advanceTimersByTimeAsync(299);
+    expect(s, "停够 300ms 之前不许发").not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(s.mock.calls).toEqual([["needle", false, 0]]);
+    input(p).value = "qie";
+    press(p, { key: "Enter", isComposing: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s).toHaveBeenCalledTimes(1);
+    input(p).value = "切到";
+    press(p, { key: "Enter" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(s, "回车找过了，排着的那一次不许再发").toHaveBeenCalledTimes(2);
   });
 
-  it("全量 > 条数 ⇒ 说出来；零条 ⇒ 说没找到；查不了 ⇒ 说原因；空查询 ⇒ 不发", async () => {
-    const results: FindResult[] = [
-      found([hit("a")], 900),
-      found([]),
-      { available: false, reason: "后端版本旧", hits: [], total: 0 },
-    ];
-    const search = vi.fn(async () => results.shift()!);
+  it("🔴 带着「含工具内容」那个勾；命中按后端给的顺序列、头一行「谁 · 第几轮 · 时刻」、<mark> 里是原文", async () => {
+    const at = new Date(2026, 9, 6, 1, 52).getTime();
+    const s = vi.fn(async () => found([{ ...hit("u9", "NeedLe", "前 ", " 后", 3, at), kind: "user" }, hit("u2")]));
+    const { p } = panelWith({ search: s } as Partial<SessionFindHost>);
+    p.open("search");
+    (p.el.querySelector("input[type=checkbox]") as HTMLInputElement).click();
+    enter(p, "  needle  ");
+    await settleOutline();
+    expect(s.mock.calls.at(-1)).toEqual(["needle", true, 0]);
+    const rows = hitRows(p.el);
+    expect(rows.map((r) => r.dataset.hitUuid)).toEqual(["u9", "u2"]);
+    expect(rows[0].firstElementChild!.textContent).toMatch(/^你 · 第 3 轮 · /);
+    expect(rows[1].firstElementChild!.textContent, "第一句之前的不写轮").toBe("Claude");
+    expect(rows[0].querySelector("mark")!.textContent).toBe("NeedLe");
+    expect(rows[0].hasAttribute("data-uuid"), "命中行不许叫 data-uuid（那是消息卡的名字）").toBe(false);
+    expect(status(p)).toBe("2 条");
+  });
+
+  it("🔴 全量 > 条数 ⇒ 说出来，滚到底续下一页（skip ＝ 已列的条数）", async () => {
+    const pages: FindResult[] = [found([hit("a"), hit("b")], 3), found([hit("c")], 3)];
+    const search = vi.fn(async () => pages.shift()!);
     const { p } = panelWith({ search } as Partial<SessionFindHost>);
-    const status = () => q(p, ".session-find-status").textContent;
     enter(p, "x");
     await settleOutline();
-    expect(status()).toBe("共 900 条，只列了前 1 条");
+    expect(status(p)).toBe("前 2/3");
+    const list = q(p, "[role=listbox]");
+    Object.defineProperty(list, "scrollHeight", { value: 100, configurable: true });
+    Object.defineProperty(list, "clientHeight", { value: 100, configurable: true });
+    list.dispatchEvent(new Event("scroll"));
+    await settleOutline();
+    expect(search.mock.calls.at(-1)).toEqual(["x", false, 2]);
+    expect(hitRows(p.el).map((r) => r.dataset.hitUuid)).toEqual(["a", "b", "c"]);
+    expect(status(p)).toBe("3 条");
+    list.dispatchEvent(new Event("scroll"));
+    await settleOutline();
+    expect(search, "列完了不再要").toHaveBeenCalledTimes(2);
+  });
+
+  it("零条 ⇒ 无匹配；查不了 ⇒ 说原因；空查询 ⇒ 不发", async () => {
+    const results: FindResult[] = [found([]), { available: false, reason: "后端版本旧", hits: [], total: 0 }];
+    const search = vi.fn(async () => results.shift()!);
+    const { p } = panelWith({ search } as Partial<SessionFindHost>);
     enter(p, "y");
     await settleOutline();
-    expect(status()).toBe("没有找到");
+    expect(status(p)).toBe("无匹配「y」");
     enter(p, "z");
     await settleOutline();
-    expect(status()).toBe("现在查不了：后端版本旧");
+    expect(status(p)).toBe("查找失败 · 后端版本旧");
     expect(hitRows(p.el).length).toBe(0);
     enter(p, "   ");
     await settleOutline();
-    expect(search).toHaveBeenCalledTimes(3);
+    expect(search).toHaveBeenCalledTimes(2);
   });
 
   it("🔴 迟到的旧结果不盖新结果", async () => {
@@ -233,26 +285,44 @@ describe("SE2 · F3 搜索", () => {
     expect(hitRows(p.el).map((r) => r.dataset.hitUuid)).toEqual(["new"]);
   });
 
-  it("点命中行 ⇒ 交给宿主去跳；落空 ⇒ 标出来，后来跳得过去 ⇒ 标记与提示两样都撤（异步落点也一样）", async () => {
-    let land: HTMLElement | null = null;
-    const jumpTo = vi.fn(() => Promise.resolve(land));
-    const { p } = panelWith({
-      search: vi.fn(async () => found([hit("u5")])),
-      jumpTo,
-    } as Partial<SessionFindHost>);
+  it("🔴 结果是框里这个词的 ⇒ 回车 / F3 下一条、Shift+F3 上一条、↓ 也走，选中即跳（到头绕回）", async () => {
+    const jumpTo = vi.fn((_uuid: string) => document.createElement("div"));
+    const { p } = panelWith({ search: vi.fn(async () => found([hit("a"), hit("b"), hit("c")])), jumpTo } as Partial<SessionFindHost>);
+    enter(p, "x");
+    await settleOutline();
+    press(p, { key: "Enter" });
+    press(p, { key: "F3" });
+    press(p, { key: "ArrowDown" });
+    press(p, { key: "ArrowDown" });
+    press(p, { key: "F3", shiftKey: true });
+    expect(jumpTo.mock.calls.map((c) => c[0])).toEqual(["a", "b", "c", "a", "c"]);
+    expect(hitRows(p.el).map((r) => r.getAttribute("aria-selected"))).toEqual(["false", "false", "true"]);
+  });
+
+  it("🔴 跳到没加载的：先写「未加载 · 加载后跳转」，取到就撤；取失败写原因 ＋［重试］，重试再跳；落空写宿主那一句", async () => {
+    let settle!: { ok: (el: HTMLElement) => void; no: (e: Error) => void };
+    const jumpTo = vi.fn(() => new Promise<HTMLElement | null>((ok, no) => (settle = { ok, no })));
+    const { p } = panelWith({ search: vi.fn(async () => found([hit("u5")])), jumpTo } as Partial<SessionFindHost>);
     enter(p, "needle");
     await settleOutline();
     const row = hitRows(p.el)[0];
     row.click();
+    expect(stateOf(row).hidden).toBe(false);
+    expect(stateOf(row).textContent).toBe("未加载 · 加载后跳转");
+    settle.no(new Error("网络断开"));
     await settleOutline();
-    expect(jumpTo).toHaveBeenCalledWith("u5");
-    expect(row.dataset.unjumpable).toBe("1");
-    expect(row.title).toBe("跳不过去");
-    land = document.createElement("div");
+    expect(stateOf(row).textContent).toBe("加载失败 · 网络断开重试");
+    stateOf(row).querySelector("button")!.click();
+    expect(jumpTo).toHaveBeenCalledTimes(2);
+    settle.ok(document.createElement("div"));
+    await settleOutline();
+    expect(stateOf(row).hidden, "取到了提示还挂着").toBe(true);
+    expect(row.dataset.unjumpable).toBeUndefined();
+    jumpTo.mockImplementationOnce(() => Promise.resolve(null));
     row.click();
     await settleOutline();
-    expect(row.dataset.unjumpable).toBeUndefined();
-    expect(row.title).toBe("a needle b");
+    expect(stateOf(row).textContent).toBe("无对应卡片");
+    expect(row.dataset.unjumpable).toBe("1");
   });
 });
 
@@ -281,10 +351,10 @@ describe("SE2 · 实时 tab 上的查找面板", () => {
     // 正控：同一个谓词换成新类名 ⇒ 恰好每 tab 一块
     expect(streamRootEl.querySelectorAll(":scope > .session-find").length).toBe(2);
     expect(streamRootEl.querySelectorAll(".live-user-inputs").length).toBe(0);
-    // 大纲的开关与清单都挂在这块面板里（不是另一块悬浮层）
+    // 大纲清单挂在这块面板里（不是另一块悬浮层）；浮着的「大纲 · N」入口不再摆出来（入口是面板的页签）
     const f = findOf();
-    expect(f.querySelector(".user-inputs-toggle")).not.toBeNull();
-    expect(f.querySelector(".session-find-panel .user-inputs")).not.toBeNull();
+    expect(f.querySelector(".user-inputs-toggle")).toBeNull();
+    expect(f.querySelector("[data-role=session-find-panel] .user-inputs")).not.toBeNull();
   });
 
   it("Ctrl+F（`openFind`）⇒ 开的是 active tab 那一块；切走 tab ⇒ 收起", () => {
@@ -292,18 +362,18 @@ describe("SE2 · 实时 tab 上的查找面板", () => {
     feed(withSession(userLine(1, "w1", "二"), "s2"));
     tm.switchTo("s1");
     tm.openFind();
-    const panelOf = (sid: string) => findOf(sid).querySelector<HTMLElement>(".session-find-panel")!;
+    const panelOf = (sid: string) => findOf(sid).querySelector<HTMLElement>("[data-role=session-find-panel]")!;
     expect(panelOf("s1").hidden).toBe(false);
     expect(panelOf("s2").hidden).toBe(true);
     tm.switchTo("s2");
     expect(panelOf("s1").hidden, "切走的 tab 还开着 ⇒ Esc 会去关一块看不见的面板").toBe(true);
   });
 
-  it("🔴 Enter ⇒ 问后端一次，问的是这个 tab 那份会话（参数逐字）", async () => {
+  it("🔴 回车 ⇒ 问后端一次，问的是这个 tab 那份会话（参数逐字）", async () => {
     feed(userLine(1, "u1", "一"));
     stub.finds = [found([hit("u1")])];
     tm.openFind();
-    const inp = findOf().querySelector<HTMLInputElement>(".session-find-input")!;
+    const inp = findOf().querySelector<HTMLInputElement>("[data-role=find-input]")!;
     inp.value = "一";
     inp.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await settleOutline();
@@ -345,7 +415,7 @@ describe("SE2 · 实时 tab 上的查找面板", () => {
 
     stub.finds = [found([hit("u300")])];
     tm.openFind();
-    const inp = findOf().querySelector<HTMLInputElement>(".session-find-input")!;
+    const inp = findOf().querySelector<HTMLInputElement>("[data-role=find-input]")!;
     inp.value = "第 300";
     inp.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await settleOutline();

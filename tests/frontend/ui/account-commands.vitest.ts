@@ -33,10 +33,10 @@ function input(over: Partial<AccountCommandsInput> = {}): AccountCommandsInput {
 const ids = (i: AccountCommandsInput): string[] => buildAccountCommands(i).map((c) => c.id);
 
 describe("account-ux U8：Ctrl+K 账号命令", () => {
-  it("术语用「当前账号」，不再说「切默认为」", () => {
+  it("术语用「默认账号」（新会话用它起），不再说「切默认为」", () => {
     const cmds = buildAccountCommands(input());
     const t = cmds.find((c) => c.id === "acct-default-amy")!.title;
-    expect(t).toContain("当前账号");
+    expect(t).toBe("设 amy 为默认账号");
     expect(t).not.toContain("切默认为");
   });
 
@@ -45,11 +45,11 @@ describe("account-ux U8：Ctrl+K 账号命令", () => {
     expect(c.keywords).toContain("默认");
   });
 
-  it("已是当前账号的那条标注「已是当前」，且点它不动手", () => {
+  it("已是默认的那条标注「已是默认」，且点它不动手", () => {
     const setCurrent = vi.fn();
     const cmds = buildAccountCommands(input({ setCurrent }));
     const cur = cmds.find((c) => c.id === "acct-default-wei")!;
-    expect(cur.title).toContain("已是当前");
+    expect(cur.title).toContain("已是默认");
     cur.run();
     expect(setCurrent).not.toHaveBeenCalled();
   });

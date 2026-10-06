@@ -41,6 +41,8 @@
         "before": "alpha",
         "kind": "user",
         "matched": "zqx",
+        "tsMs": 0,
+        "turn": 1,
         "uuid": "in-1"
       },
       {
@@ -48,6 +50,8 @@
         "before": "gamma",
         "kind": "assistant",
         "matched": "zqx",
+        "tsMs": 0,
+        "turn": 1,
         "uuid": "out-1"
       }
     ],

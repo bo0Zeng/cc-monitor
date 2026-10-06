@@ -78,7 +78,7 @@ export function sessionReadOf(cmd: string, args: unknown): [SessionRead, Record<
     case "list_user_inputs":
       return [which, { origin, jsonlPath: body.path, fromOffset: body.from }];
     case "find_in_session":
-      return [which, { origin, jsonlPath: body.path, query: body.query, includeTools: body.include_tools }];
+      return [which, { origin, jsonlPath: body.path, query: body.query, includeTools: body.include_tools, ...(body.skip === undefined ? {} : { skip: body.skip }) }];
     case "probe_session_record":
       // 这次 resume 要用的账号根（基座不带 ⇒ `undefined`）。
       return [which, { origin, sessionId: body.sid, configDir: body.configDir }];

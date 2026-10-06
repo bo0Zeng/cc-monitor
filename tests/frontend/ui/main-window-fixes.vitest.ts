@@ -121,7 +121,7 @@ describe("输入法组字时 Enter 归输入法", () => {
     let ran = 0;
     const bar = new CommandBarView(() => [{ id: "x", title: "切到会话", run: () => ran++ }]);
     bar.open();
-    const input = document.querySelector<HTMLInputElement>(".command-bar-input")!;
+    const input = document.querySelector<HTMLInputElement>("[data-role=command-input]")!;
     key(input, { key: "Enter", isComposing: true });
     key(input, { key: "Enter", keyCode: 229 } as KeyboardEventInit);
     expect(ran).toBe(0);

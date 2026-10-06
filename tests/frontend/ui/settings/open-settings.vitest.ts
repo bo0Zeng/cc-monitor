@@ -52,13 +52,13 @@ describe("ST1 点设置有反馈", () => {
   });
 
   // 6 → 7：一台机器一直看不见时那条提示里的「打开设置」。7 → 8：状态栏「上下文」浮层里的［改上限…］/［设上限］。
-  it("主窗那八个入口全走它：`main.ts` 里裸的 `commands.open_settings_window()` 零处、helper 调用 8 处", () => {
+  it("主窗那九个入口全走它：`main.ts` 里裸的 `commands.open_settings_window()` 零处、helper 调用 9 处（含快捷键一览「改快捷键…」）", () => {
     const code = readFileSync("src/frontend/ui/main.ts", "utf8")
       .split("\n")
       .filter((l) => !l.trim().startsWith("//"))
       .join("\n");
     expect([...code.matchAll(/commands\.open_settings_window\(/g)].length).toBe(0);
-    expect([...code.matchAll(/\bopenSettingsWindow\(/g)].length).toBe(8);
+    expect([...code.matchAll(/\bopenSettingsWindow\(/g)].length).toBe(9);
   });
 
   it("目的地：原样（JSON）交给壳；不带就是 null；设置窗那一侧只收四格里的非空串，别的忽略", async () => {

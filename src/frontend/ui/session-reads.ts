@@ -45,6 +45,10 @@ export interface FindHit {
   before: string;
   matched: string;
   after: string;
+  /** 第几轮（这条之前含它你说过几句；第一句之前 ＝ 0）。 */
+  turn: number;
+  /** 那条记录的时刻（毫秒；读不出 ＝ 0）。 */
+  tsMs: number;
 }
 
 /** 查找的回包。`available == false` 时 `hits` 为空、`reason` 是给人看的原因（**不是错误**）。 */
@@ -174,7 +178,7 @@ export type FactsResult =
   | { available: false; reason: string; failure: OutlineFailure };
 
 /** 查找一次最多列多少条。**显式带上**，不靠对面的缺省（对面换了缺省，「被砍过」的提示就对不上）。 */
-export const FIND_LIMIT = 500;
+export const FIND_LIMIT = 100;
 
 /** 这三问各自的期限（见头注）。 */
 const READ_BUDGET_MS = 30_000;
@@ -202,10 +206,18 @@ class ShapeError extends Error {
 export function decodeFind(v: unknown): { total: number; hits: FindHit[] } {
   if (!isObj(v) || !isNum(v.total) || !Array.isArray(v.hits)) throw new ShapeError("history-find", copyText("sessionReads.missing.find"));
   const hits = v.hits.map((h): FindHit => {
-    if (!isObj(h) || ![h.uuid, h.kind, h.before, h.matched, h.after].every(isStr)) {
+    if (!isObj(h) || ![h.uuid, h.kind, h.before, h.matched, h.after].every(isStr) || !isNum(h.turn) || !isNum(h.tsMs)) {
       throw new ShapeError("history-find", copyText("sessionReads.missing.findHit"));
     }
-    return { uuid: h.uuid as string, kind: h.kind as string, before: h.before as string, matched: h.matched as string, after: h.after as string };
+    return {
+      uuid: h.uuid as string,
+      kind: h.kind as string,
+      before: h.before as string,
+      matched: h.matched as string,
+      after: h.after as string,
+      turn: h.turn,
+      tsMs: h.tsMs,
+    };
   });
   return { total: v.total, hits };
 }
@@ -390,15 +402,16 @@ export function reasonOf(e: unknown, oldBackendSays: string): string {
 
 // ─── 三问 ───
 
-/** **在这一份会话里找** `query`（大小写不敏感子串；`includeTools` 同全局搜索那个勾）。 */
+/** **在这一份会话里找** `query`（大小写不敏感子串；`includeTools` 同全局搜索那个勾）；`skip` ＝ 跳过前几条（续下一页）。 */
 export async function findInSession(
   origin: Origin,
   jsonlPath: string,
   query: string,
   includeTools: boolean,
+  skip = 0,
 ): Promise<FindResult> {
   try {
-    const body = jsonBody({ path: jsonlPath, query, include_tools: includeTools, limit: FIND_LIMIT });
+    const body = jsonBody(skip > 0 ? { path: jsonlPath, query, include_tools: includeTools, limit: FIND_LIMIT, skip } : { path: jsonlPath, query, include_tools: includeTools, limit: FIND_LIMIT });
     const budget = budgetWithin(READ_BUDGET_MS);
     const reply = await chan.call(origin, "history-find", body, budget);
     const { total, hits } = decodeFind(readJson(reply));

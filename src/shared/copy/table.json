@@ -2807,49 +2807,9 @@
       "zh": "本机",
       "args": []
     },
-    "sessionFind.runSearch.count": {
-      "kind": "body",
-      "zh": "{n} 条",
-      "args": ["n"]
-    },
-    "sessionFind.runSearch.truncated": {
-      "kind": "body",
-      "zh": "共 {total} 条，只列了前 {n} 条",
-      "args": ["total", "n"]
-    },
-    "sessionFind.runSearch.unavailable": {
-      "kind": "error",
-      "zh": "现在查不了：{reason}",
-      "args": ["reason"]
-    },
-    "sessionFind.box.close": {
-      "kind": "action",
-      "zh": "✕",
-      "args": []
-    },
-    "sessionFind.status.none": {
-      "kind": "body",
-      "zh": "没有找到",
-      "args": []
-    },
-    "sessionFind.status.busy": {
-      "kind": "body",
-      "zh": "正在找…",
-      "args": []
-    },
-    "sessionFind.status.idle": {
-      "kind": "body",
-      "zh": "按 Enter 开始找",
-      "args": []
-    },
     "sessionFind.box.closeHint": {
-      "kind": "body",
-      "zh": "关闭（Esc）",
-      "args": []
-    },
-    "sessionFind.box.toolsHint": {
-      "kind": "body",
-      "zh": "默认只搜你的输入和 Claude 的回复；勾上之后也搜工具调用、工具输出与思考过程",
+      "kind": "action",
+      "zh": "关闭",
       "args": []
     },
     "sessionFind.box.tools": {
@@ -2859,7 +2819,7 @@
     },
     "sessionFind.box.placeholder": {
       "kind": "control",
-      "zh": "在这个会话里找，按 Enter",
+      "zh": "在这个会话里找",
       "args": []
     },
     "sessionFind.box.searchLabel": {
@@ -2899,21 +2859,18 @@
     },
     "commandBar.renderList.none": {
       "kind": "body",
-      "zh": "无匹配命令",
+      "zh": "无匹配",
       "args": []
     },
     "commandBar.build.ariaLabel": {
-      "kind": "aria",
-      "zh": "命令栏",
+      "kind": "title",
+      "zh": "命令面板",
       "args": []
     },
     "commandBar.build.placeholder": {
       "kind": "control",
-      "zh": "输入命令 / 会话名…（↑↓ 选择，回车执行，Esc 关闭）",
-      "args": [],
-      "waive": {
-        "C-L3": "括号里是键位提示（↑↓ / 回车 / Esc），不是说明"
-      }
+      "zh": "搜索命令或会话",
+      "args": []
     },
     "outlineSource.run.noReply": {
       "kind": "error",
@@ -3415,12 +3372,12 @@
     },
     "keybindingActions.panel.tasks": {
       "kind": "action",
-      "zh": "底部抽屉 · 任务",
+      "zh": "任务",
       "args": []
     },
     "keybindingActions.behavior.autoFront": {
       "kind": "action",
-      "zh": "切换「自动把 monitor 切到前台」",
+      "zh": "自动切到前台",
       "args": []
     },
     "behaviorToggle.autoFollow.on": {
@@ -3445,52 +3402,52 @@
     },
     "keybindingActions.behavior.autoFollow": {
       "kind": "action",
-      "zh": "切换「自动跟随用户输入」",
+      "zh": "自动跟随",
       "args": []
     },
     "keybindingActions.account.menu": {
       "kind": "action",
-      "zh": "打开账号菜单",
+      "zh": "账号菜单",
       "args": []
     },
     "keybindingActions.app.closeOverlay": {
       "kind": "action",
-      "zh": "关闭弹层 / 历史 / 设置",
+      "zh": "关最上面一层",
       "args": []
     },
     "keybindingActions.app.fullscreen": {
       "kind": "action",
-      "zh": "切换真全屏，盖住任务栏",
+      "zh": "全屏",
       "args": []
     },
     "keybindingActions.app.minimize": {
       "kind": "action",
-      "zh": "最小化主窗口",
+      "zh": "最小化",
       "args": []
     },
     "keybindingActions.app.commandBar": {
       "kind": "action",
-      "zh": "打开命令栏",
+      "zh": "搜索命令或会话",
       "args": []
     },
     "keybindingActions.app.history": {
       "kind": "action",
-      "zh": "打开 / 关闭历史浏览器",
+      "zh": "历史",
       "args": []
     },
     "keybindingActions.app.settings": {
       "kind": "action",
-      "zh": "打开设置面板",
+      "zh": "设置",
       "args": []
     },
     "keybindingActions.terminal.front": {
       "kind": "action",
-      "zh": "把对应终端窗口切到前台",
+      "zh": "切到终端",
       "args": []
     },
     "keybindingActions.session.toggleProcess": {
       "kind": "action",
-      "zh": "过程默认展开 / 收起",
+      "zh": "过程默认展开 / 折起",
       "args": []
     },
     "keybindingActions.session.prevTurn": {
@@ -3505,72 +3462,72 @@
     },
     "keybindingActions.session.find": {
       "kind": "action",
-      "zh": "在当前会话里查找",
+      "zh": "在会话里找",
       "args": []
     },
     "keybindingActions.tab.openInWindow": {
       "kind": "action",
-      "zh": "在新窗口打开当前 Tab",
+      "zh": "在新窗口打开",
       "args": []
     },
     "keybindingActions.tab.openCwd": {
       "kind": "action",
-      "zh": "打开当前 Tab 的工作目录",
+      "zh": "打开工作目录",
       "args": []
     },
     "keybindingActions.tab.jump9": {
       "kind": "action",
-      "zh": "跳到第 9 个 Tab",
+      "zh": "切到第 9 个标签页",
       "args": []
     },
     "keybindingActions.tab.jump8": {
       "kind": "action",
-      "zh": "跳到第 8 个 Tab",
+      "zh": "切到第 8 个标签页",
       "args": []
     },
     "keybindingActions.tab.jump7": {
       "kind": "action",
-      "zh": "跳到第 7 个 Tab",
+      "zh": "切到第 7 个标签页",
       "args": []
     },
     "keybindingActions.tab.jump6": {
       "kind": "action",
-      "zh": "跳到第 6 个 Tab",
+      "zh": "切到第 6 个标签页",
       "args": []
     },
     "keybindingActions.tab.jump5": {
       "kind": "action",
-      "zh": "跳到第 5 个 Tab",
+      "zh": "切到第 5 个标签页",
       "args": []
     },
     "keybindingActions.tab.jump4": {
       "kind": "action",
-      "zh": "跳到第 4 个 Tab",
+      "zh": "切到第 4 个标签页",
       "args": []
     },
     "keybindingActions.tab.jump3": {
       "kind": "action",
-      "zh": "跳到第 3 个 Tab",
+      "zh": "切到第 3 个标签页",
       "args": []
     },
     "keybindingActions.tab.jump2": {
       "kind": "action",
-      "zh": "跳到第 2 个 Tab",
+      "zh": "切到第 2 个标签页",
       "args": []
     },
     "keybindingActions.tab.jump1": {
       "kind": "action",
-      "zh": "跳到第 1 个 Tab",
+      "zh": "切到第 1 个标签页",
       "args": []
     },
     "keybindingActions.tab.prev": {
       "kind": "action",
-      "zh": "切到上一个 Tab",
+      "zh": "上一个标签页",
       "args": []
     },
     "keybindingActions.tab.next": {
       "kind": "action",
-      "zh": "切到下一个 Tab",
+      "zh": "下一个标签页",
       "args": []
     },
     "keybindingEditor.onResetAll.confirmResetAll": {
@@ -3685,7 +3642,7 @@
     },
     "sessionState.closeEnded.shortcut": {
       "kind": "action",
-      "zh": "关闭已结束的 Tab",
+      "zh": "关闭已结束的标签页",
       "args": []
     },
     "remoteLaunchRun.copyFallback.failedManual": {
@@ -3808,31 +3765,6 @@
       "zh": "switch session 切换 会话 {cwd} {machine}",
       "args": ["cwd", "machine"]
     },
-    "main.cmd.switchSession": {
-      "kind": "action",
-      "zh": "切到会话：{title}",
-      "args": ["title"]
-    },
-    "main.cmd.tabPrevKeywords": {
-      "kind": "body",
-      "zh": "prev tab 上一个",
-      "args": []
-    },
-    "main.cmd.tabPrev": {
-      "kind": "action",
-      "zh": "切到上一个 Tab",
-      "args": []
-    },
-    "main.cmd.tabNextKeywords": {
-      "kind": "body",
-      "zh": "next tab 下一个",
-      "args": []
-    },
-    "main.cmd.tabNext": {
-      "kind": "action",
-      "zh": "切到下一个 Tab",
-      "args": []
-    },
     "main.cmd.tasksKeywords": {
       "kind": "body",
       "zh": "task 任务 panel",
@@ -3850,7 +3782,7 @@
     },
     "main.cmd.terminalFront": {
       "kind": "action",
-      "zh": "把对应终端窗口切到前台",
+      "zh": "切到终端",
       "args": []
     },
     "main.cmd.fullscreenKeywords": {
@@ -3860,7 +3792,7 @@
     },
     "main.cmd.fullscreen": {
       "kind": "action",
-      "zh": "切换全屏",
+      "zh": "全屏",
       "args": []
     },
     "main.cmd.minimizeKeywords": {
@@ -3870,7 +3802,7 @@
     },
     "main.cmd.minimize": {
       "kind": "action",
-      "zh": "最小化窗口",
+      "zh": "最小化",
       "args": []
     },
     "main.cmd.filesKeywords": {
@@ -3880,7 +3812,7 @@
     },
     "main.cmd.openFiles": {
       "kind": "action",
-      "zh": "打开文件窗口",
+      "zh": "远端文件",
       "args": []
     },
     "main.cmd.settingsKeywords": {
@@ -3890,7 +3822,7 @@
     },
     "main.cmd.openSettings": {
       "kind": "action",
-      "zh": "打开设置",
+      "zh": "设置",
       "args": []
     },
     "main.cmd.gridKeywords": {
@@ -3900,7 +3832,7 @@
     },
     "main.cmd.openGrid": {
       "kind": "action",
-      "zh": "打开多 agent 监控",
+      "zh": "多 agent 监控",
       "args": []
     },
     "main.cmd.ccBusKeywords": {
@@ -3910,7 +3842,7 @@
     },
     "main.cmd.openCcBus": {
       "kind": "action",
-      "zh": "打开 cc-bus 驾驶舱",
+      "zh": "cc-bus",
       "args": []
     },
     "main.cmd.historyKeywords": {
@@ -3920,7 +3852,7 @@
     },
     "main.cmd.openHistory": {
       "kind": "action",
-      "zh": "打开历史浏览器",
+      "zh": "历史",
       "args": []
     },
     "main.topbar.filesHint": {
@@ -4525,7 +4457,7 @@
     },
     "accountCommands.manage.title": {
       "kind": "action",
-      "zh": "账号：管理…",
+      "zh": "管理账号…",
       "args": []
     },
     "accountCommands.setDefault.keywords": {
@@ -4535,12 +4467,12 @@
     },
     "accountCommands.setDefault.title": {
       "kind": "action",
-      "zh": "账号：设 {name} 为当前账号{current}",
+      "zh": "设 {name} 为默认账号{current}",
       "args": ["name", "current"]
     },
     "accountCommands.setDefault.isCurrent": {
       "kind": "body",
-      "zh": " · 已是当前",
+      "zh": " · 已是默认",
       "args": []
     },
     "accountsDecode.bad.trust": {
@@ -5015,7 +4947,7 @@
     },
     "tabStreamView.search.notLoaded": {
       "kind": "body",
-      "zh": "这一条还没加载出来 —— 往上翻到更早的消息之后再点",
+      "zh": "无对应卡片",
       "args": []
     },
     "tabStreamView.search.noFile": {
@@ -19179,7 +19111,7 @@
     },
     "acct.cmd.default": {
       "kind": "action",
-      "zh": "账号：新会话默认…",
+      "zh": "新会话默认账号…",
       "args": []
     },
     "acct.tl.title": {
@@ -20373,8 +20305,8 @@
       "args": []
     },
     "keybindingActions.panel.agents": {
-      "kind": "control",
-      "zh": "底部抽屉 · agent",
+      "kind": "action",
+      "zh": "agent",
       "args": []
     },
     "terminal.page.title": {
@@ -20558,8 +20490,8 @@
       "args": ["target"]
     },
     "keybindingActions.panel.terminal": {
-      "kind": "control",
-      "zh": "底部抽屉 · 终端",
+      "kind": "action",
+      "zh": "看它的终端",
       "args": []
     },
     "main.cmd.terminal": {
@@ -21396,6 +21328,432 @@
     "addMachine.field.portHelp": {
       "kind": "body",
       "zh": "1–65535 · 默认 22",
+      "args": []
+    },
+    "sessionFind.box.modes": {
+      "kind": "title",
+      "zh": "查找 · 大纲",
+      "args": []
+    },
+    "sessionFind.status.keys": {
+      "kind": "body",
+      "zh": "↑↓ 或 F3",
+      "args": [],
+      "waive": {
+        "C-T1": "F3 是键名（下一条），不是内部编号"
+      }
+    },
+    "sessionFind.status.count": {
+      "kind": "body",
+      "zh": "{n} 条",
+      "args": ["n"]
+    },
+    "sessionFind.status.truncated": {
+      "kind": "body",
+      "zh": "前 {n}/{total}",
+      "args": ["n", "total"]
+    },
+    "sessionFind.who.user": {
+      "kind": "body",
+      "zh": "你",
+      "args": []
+    },
+    "sessionFind.who.assistant": {
+      "kind": "body",
+      "zh": "Claude",
+      "args": []
+    },
+    "sessionFind.who.tool": {
+      "kind": "body",
+      "zh": "工具",
+      "args": []
+    },
+    "sessionFind.hit.meta": {
+      "kind": "body",
+      "zh": "{who} · 第 {n} 轮 · {time}",
+      "args": ["who", "n", "time"]
+    },
+    "sessionFind.hit.metaNoTime": {
+      "kind": "body",
+      "zh": "{who} · 第 {n} 轮",
+      "args": ["who", "n"]
+    },
+    "sessionFind.hit.metaNoTurn": {
+      "kind": "body",
+      "zh": "{who} · {time}",
+      "args": ["who", "time"]
+    },
+    "sessionFind.jump.pending": {
+      "kind": "body",
+      "zh": "未加载 · 加载后跳转",
+      "args": []
+    },
+    "sessionFind.jump.retry": {
+      "kind": "action",
+      "zh": "重试",
+      "args": []
+    },
+    "sessionFind.fetchFailed.line": {
+      "kind": "error",
+      "zh": "加载失败 · {reason}",
+      "args": ["reason"]
+    },
+    "tabStreamView.search.notReady": {
+      "kind": "error",
+      "zh": "索引未就绪",
+      "args": []
+    },
+    "keybindingActions.tab.menu": {
+      "kind": "action",
+      "zh": "在当前标签页上开右键菜单",
+      "args": []
+    },
+    "keybindingActions.session.toBottom": {
+      "kind": "action",
+      "zh": "回到底部",
+      "args": []
+    },
+    "keybindingActions.app.keys": {
+      "kind": "action",
+      "zh": "快捷键一览",
+      "args": []
+    },
+    "keybindingActions.app.zoomIn": {
+      "kind": "action",
+      "zh": "放大",
+      "args": []
+    },
+    "keybindingActions.app.zoomOut": {
+      "kind": "action",
+      "zh": "缩小",
+      "args": []
+    },
+    "keybindingActions.app.zoomReset": {
+      "kind": "action",
+      "zh": "还原缩放",
+      "args": []
+    },
+    "keybindingActions.app.toggleTabBar": {
+      "kind": "action",
+      "zh": "收起 / 展开标签页栏",
+      "args": []
+    },
+    "keybindingActions.app.ccBus": {
+      "kind": "action",
+      "zh": "cc-bus",
+      "args": []
+    },
+    "keybindingActions.app.undo": {
+      "kind": "action",
+      "zh": "撤销刚才那一步",
+      "args": []
+    },
+    "commandBar.key.esc": {
+      "kind": "body",
+      "zh": "Esc",
+      "args": []
+    },
+    "commandBar.foot.keys": {
+      "kind": "body",
+      "zh": "↑↓ 选 · Enter 执行 · Esc 关",
+      "args": []
+    },
+    "commandBar.foot.noWrites": {
+      "kind": "body",
+      "zh": "结束 / 删除：标签页右键",
+      "args": []
+    },
+    "commandBar.group.needs": {
+      "kind": "title",
+      "zh": "需要你",
+      "args": []
+    },
+    "commandBar.group.current": {
+      "kind": "title",
+      "zh": "当前会话",
+      "args": []
+    },
+    "commandBar.group.open": {
+      "kind": "title",
+      "zh": "打开",
+      "args": [],
+      "waive": {
+        "C-Y3": "设计稿定的分组名（命令面板「打开」一组：新建会话 · 历史 · 设置 …）"
+      }
+    },
+    "commandBar.group.window": {
+      "kind": "title",
+      "zh": "窗口",
+      "args": []
+    },
+    "commandBar.group.account": {
+      "kind": "title",
+      "zh": "账号",
+      "args": []
+    },
+    "commandBar.group.sessions": {
+      "kind": "title",
+      "zh": "会话",
+      "args": []
+    },
+    "commandBar.group.commands": {
+      "kind": "title",
+      "zh": "命令",
+      "args": []
+    },
+    "commandBar.session.waiting": {
+      "kind": "body",
+      "zh": "· {what}",
+      "args": ["what"]
+    },
+    "main.cmd.find": {
+      "kind": "action",
+      "zh": "在会话里找",
+      "args": []
+    },
+    "main.cmd.findKeywords": {
+      "kind": "body",
+      "zh": "find search 查找 搜索 大纲",
+      "args": []
+    },
+    "main.cmd.popOut": {
+      "kind": "action",
+      "zh": "在新窗口打开",
+      "args": []
+    },
+    "main.cmd.popOutKeywords": {
+      "kind": "body",
+      "zh": "window pop 窗口",
+      "args": []
+    },
+    "main.cmd.openCwd": {
+      "kind": "action",
+      "zh": "打开工作目录",
+      "args": []
+    },
+    "main.cmd.openCwdKeywords": {
+      "kind": "body",
+      "zh": "folder cwd 目录 文件夹",
+      "args": []
+    },
+    "main.cmd.pin": {
+      "kind": "action",
+      "zh": "固定",
+      "args": []
+    },
+    "main.cmd.unpin": {
+      "kind": "action",
+      "zh": "取消固定",
+      "args": []
+    },
+    "main.cmd.pinKeywords": {
+      "kind": "body",
+      "zh": "pin 固定",
+      "args": []
+    },
+    "main.cmd.procExpand": {
+      "kind": "action",
+      "zh": "过程默认展开",
+      "args": []
+    },
+    "main.cmd.procExpandKeywords": {
+      "kind": "body",
+      "zh": "process expand fold 过程 展开 折叠",
+      "args": []
+    },
+    "main.cmd.keys": {
+      "kind": "action",
+      "zh": "快捷键一览",
+      "args": []
+    },
+    "main.cmd.keysKeywords": {
+      "kind": "body",
+      "zh": "keys shortcut 快捷键 键位",
+      "args": []
+    },
+    "main.cmd.refresh": {
+      "kind": "action",
+      "zh": "刷新各台机器上的会话",
+      "args": []
+    },
+    "main.cmd.refreshKeywords": {
+      "kind": "body",
+      "zh": "refresh reload 刷新",
+      "args": []
+    },
+    "main.cmd.collapseTabBar": {
+      "kind": "action",
+      "zh": "收起标签页栏",
+      "args": []
+    },
+    "main.cmd.expandTabBar": {
+      "kind": "action",
+      "zh": "展开标签页栏",
+      "args": []
+    },
+    "main.cmd.tabBarKeywords": {
+      "kind": "body",
+      "zh": "sidebar tab bar 标签页栏 收起 展开",
+      "args": []
+    },
+    "main.cmd.zoomIn": {
+      "kind": "action",
+      "zh": "放大",
+      "args": []
+    },
+    "main.cmd.zoomOut": {
+      "kind": "action",
+      "zh": "缩小",
+      "args": []
+    },
+    "main.cmd.zoomReset": {
+      "kind": "action",
+      "zh": "还原缩放",
+      "args": []
+    },
+    "main.cmd.zoomKeywords": {
+      "kind": "body",
+      "zh": "zoom 缩放 放大 缩小",
+      "args": []
+    },
+    "terminalFront.unavailable.short": {
+      "kind": "body",
+      "zh": "仅 Windows",
+      "args": []
+    },
+    "keys.title.main": {
+      "kind": "title",
+      "zh": "快捷键",
+      "args": []
+    },
+    "keys.search.placeholder": {
+      "kind": "control",
+      "zh": "按名称或按键过滤",
+      "args": []
+    },
+    "keys.group.between": {
+      "kind": "title",
+      "zh": "会话之间",
+      "args": []
+    },
+    "keys.group.current": {
+      "kind": "title",
+      "zh": "当前会话",
+      "args": []
+    },
+    "keys.group.app": {
+      "kind": "title",
+      "zh": "窗口与应用",
+      "args": []
+    },
+    "keys.group.unbound": {
+      "kind": "title",
+      "zh": "默认不设键",
+      "args": []
+    },
+    "keys.row.jump": {
+      "kind": "body",
+      "zh": "切到第 1–9 个标签页",
+      "args": []
+    },
+    "keys.row.nextPrev": {
+      "kind": "body",
+      "zh": "下一个 / 上一个标签页",
+      "args": []
+    },
+    "keys.row.turns": {
+      "kind": "body",
+      "zh": "上一轮 / 下一轮",
+      "args": []
+    },
+    "keys.row.panels": {
+      "kind": "body",
+      "zh": "任务 / agent",
+      "args": []
+    },
+    "keys.row.front": {
+      "kind": "body",
+      "zh": "切到终端（Windows）",
+      "args": []
+    },
+    "keys.row.historySettings": {
+      "kind": "body",
+      "zh": "历史 · 设置",
+      "args": []
+    },
+    "keys.row.zoom": {
+      "kind": "body",
+      "zh": "放大 / 缩小 / 还原",
+      "args": []
+    },
+    "keys.key.range": {
+      "kind": "body",
+      "zh": "{from} – {to}",
+      "args": ["from", "to"]
+    },
+    "keys.key.menu": {
+      "kind": "body",
+      "zh": "菜单键",
+      "args": []
+    },
+    "keys.scope.any": {
+      "kind": "body",
+      "zh": "随时",
+      "args": []
+    },
+    "keys.scope.idle": {
+      "kind": "body",
+      "zh": "无输入焦点",
+      "args": []
+    },
+    "keys.scope.main": {
+      "kind": "body",
+      "zh": "主区",
+      "args": []
+    },
+    "keys.scope.nav": {
+      "kind": "body",
+      "zh": "主区 / 标签页栏",
+      "args": []
+    },
+    "keys.scope.bare": {
+      "kind": "body",
+      "zh": "主区 / 标签页栏 · 无浮层",
+      "args": []
+    },
+    "keys.foot.bare": {
+      "kind": "body",
+      "zh": "单键：浮层 / 对话框 / 输入焦点时不生效",
+      "args": []
+    },
+    "keys.edit.open": {
+      "kind": "action",
+      "zh": "改快捷键…",
+      "args": []
+    },
+    "keys.close.label": {
+      "kind": "action",
+      "zh": "关闭",
+      "args": []
+    },
+    "registry.prettyChord.up": {
+      "kind": "body",
+      "zh": "↑",
+      "args": []
+    },
+    "registry.prettyChord.down": {
+      "kind": "body",
+      "zh": "↓",
+      "args": []
+    },
+    "registry.prettyChord.left": {
+      "kind": "body",
+      "zh": "←",
+      "args": []
+    },
+    "registry.prettyChord.right": {
+      "kind": "body",
+      "zh": "→",
       "args": []
     }
   }

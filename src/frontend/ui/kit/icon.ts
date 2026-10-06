@@ -49,6 +49,17 @@ import arrowDown from "@phosphor-icons/core/assets/regular/arrow-down.svg?raw";
 import plug from "@phosphor-icons/core/assets/regular/plug.svg?raw";
 import textT from "@phosphor-icons/core/assets/regular/text-t.svg?raw";
 import slidersHorizontal from "@phosphor-icons/core/assets/regular/sliders-horizontal.svg?raw";
+import appWindow from "@phosphor-icons/core/assets/regular/app-window.svg?raw";
+import shareNetwork from "@phosphor-icons/core/assets/regular/share-network.svg?raw";
+import keyboard from "@phosphor-icons/core/assets/regular/keyboard.svg?raw";
+import cornersOut from "@phosphor-icons/core/assets/regular/corners-out.svg?raw";
+import minus from "@phosphor-icons/core/assets/regular/minus.svg?raw";
+import sidebarSimple from "@phosphor-icons/core/assets/regular/sidebar-simple.svg?raw";
+import magnifyingGlassPlus from "@phosphor-icons/core/assets/regular/magnifying-glass-plus.svg?raw";
+import magnifyingGlassMinus from "@phosphor-icons/core/assets/regular/magnifying-glass-minus.svg?raw";
+import arrowsOutLineVertical from "@phosphor-icons/core/assets/regular/arrows-out-line-vertical.svg?raw";
+import userCircle from "@phosphor-icons/core/assets/regular/user-circle.svg?raw";
+import arrowCounterClockwise from "@phosphor-icons/core/assets/regular/arrow-counter-clockwise.svg?raw";
 import s from "./icon.module.css";
 
 const SVG = {
@@ -94,6 +105,17 @@ const SVG = {
   plug: plug,
   text: textT,
   sliders: slidersHorizontal,
+  popOut: appWindow,
+  bus: shareNetwork,
+  keyboard: keyboard,
+  fullscreen: cornersOut,
+  minimize: minus,
+  sidebar: sidebarSimple,
+  zoomIn: magnifyingGlassPlus,
+  zoomOut: magnifyingGlassMinus,
+  zoomReset: arrowCounterClockwise,
+  expand: arrowsOutLineVertical,
+  account: userCircle,
 } as const;
 
 export type IconName = keyof typeof SVG;

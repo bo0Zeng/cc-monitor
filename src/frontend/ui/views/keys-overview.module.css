@@ -1,0 +1,92 @@
+/* 快捷键一览（外框是 kit 面板形 `sheet`）：头（标题 ＋ 过滤框）· 可滚的三列表 · 底栏。 */
+@layer components {
+  .koHead {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-6);
+    padding: var(--space-7) var(--space-7) var(--space-5);
+  }
+
+  .koTitle {
+    margin: 0;
+    font-size: var(--font-size-title);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .koFilter {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: 220px;
+    height: var(--control-h);
+    padding: 0 var(--space-4);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-m);
+    background: var(--field-bg);
+    color: var(--text-2);
+  }
+
+  .koFilter:focus-within {
+    border-color: var(--field-border-focus);
+  }
+
+  .koFilter input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+  }
+
+  .koList {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 var(--space-7);
+  }
+
+  .koGroup {
+    padding: var(--space-5) 0 var(--space-2);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .koRow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 170px 200px;
+    align-items: center;
+    gap: var(--space-5);
+    min-height: 32px;
+    border-bottom: 1px solid var(--border-faint);
+  }
+
+  .koKeys {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .koNone,
+  .koScope {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .koFoot {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-5) var(--space-7) var(--space-6);
+  }
+
+  .koNote {
+    flex: 1;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+}

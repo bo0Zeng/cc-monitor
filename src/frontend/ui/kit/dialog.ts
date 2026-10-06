@@ -241,6 +241,76 @@ export function askText(spec: TextSpec): Promise<string | null> {
   return p;
 }
 
+export interface PanelSpec {
+  /** 读屏名（文案表）。 */
+  label: string;
+  /** 面板形：`palette` 600 宽、贴顶 90px（命令面板）· `sheet` 640 宽、居中（快捷键一览）。 */
+  size: "palette" | "sheet";
+  /** 内容（头 · 身 · 底栏由调用方排）。 */
+  content: HTMLElement[];
+  /** 打开时焦点落在哪。 */
+  first: HTMLElement;
+  /** 关了之后（Esc · 点遮罩 · `close()` · 被下一个对话框顶掉）。 */
+  onClose?: () => void;
+}
+
+export interface PanelHandle {
+  close(): void;
+}
+
+/**
+ * 一块模态面板（命令面板 · 快捷键一览这一类：不是问「要不要做」，是一块要你挑 / 看的东西）。
+ * 与上面几种同一套：模态压栈（快捷键只放行 Esc）· Tab 只在框内转 · Esc / 点遮罩关 · 关后焦点回到打开它的地方 · 同一时刻只一个。
+ */
+export function panelDialog(spec: PanelSpec): PanelHandle {
+  pendingCancel?.();
+  const before = document.activeElement;
+  const backdrop = document.createElement("div");
+  backdrop.className = s.dialogBackdrop;
+  if (spec.size === "palette") backdrop.dataset.place = "top";
+  const panel = document.createElement("div");
+  panel.className = s.dialogPanel;
+  panel.dataset.size = spec.size;
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-modal", "true");
+  panel.setAttribute("aria-label", spec.label);
+  panel.append(...spec.content);
+  backdrop.appendChild(panel);
+  let open = true;
+  const overlay: OverlayHandle = {
+    modal: true,
+    handleEsc: () => {
+      close();
+      return true;
+    },
+  };
+  const close = (): void => {
+    if (!open) return;
+    open = false;
+    if (pendingCancel === close) pendingCancel = null;
+    dispatcher.popOverlay(overlay);
+    backdrop.remove();
+    if (before instanceof HTMLElement && before.isConnected) before.focus();
+    spec.onClose?.();
+  };
+  pendingCancel = close;
+  backdrop.addEventListener("mousedown", (ev) => {
+    if (ev.target === backdrop) close();
+  });
+  panel.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Tab") return;
+    const f = [...panel.querySelectorAll<HTMLElement>("button, input, textarea, select")].filter((e) => !e.hasAttribute("disabled"));
+    ev.preventDefault();
+    if (f.length === 0) return;
+    const i = f.indexOf(document.activeElement as HTMLElement);
+    f[ev.shiftKey ? (i <= 0 ? f.length - 1 : i - 1) : i === f.length - 1 ? 0 : i + 1].focus();
+  });
+  dispatcher.pushOverlay(overlay);
+  document.body.appendChild(backdrop);
+  spec.first.focus();
+  return { close };
+}
+
 export interface FormSpec {
   title: string;
   /** 主按钮上的字（可随内容改：`添加 2 台`）。 */

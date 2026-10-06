@@ -51,6 +51,10 @@ export const LS_KEYS = {
   processExpanded: "cc-monitor.stream.process-expanded",
   /** 「谁说的」稿 A：「显示系统注入」（会话头「⋯」）。每扇窗一份；`"1"` 显示，其余不露。 */
   showInjected: "cc-monitor.stream.show-injected",
+  /** 主窗口缩放（`Ctrl+=` / `Ctrl+-` / `Ctrl+0`）：倍数串，如 `"1.25"`。丢了回到 1。 */
+  mainZoom: "cc-monitor.main.zoom",
+  /** 标签页栏手动收起（命令面板「收起标签页栏」）：`"1"` 收起，其余照窗宽。 */
+  tabBarFolded: "cc-monitor.tab-bar.folded",
 } as const;
 
 export function safeGet(key: string): string | null {

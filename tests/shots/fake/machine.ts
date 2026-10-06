@@ -163,12 +163,14 @@ export function machineOps(): Record<string, OpHandler> {
     }),
     "history-find": (_o, req) => {
       const q = String(req.query ?? "");
+      const at = (min: number): number => Date.now() - min * 60_000;
       return {
-        total: 3,
+        total: 4,
         hits: [
-          { uuid: "00000000-0000-4000-8000-000000000001", kind: "user", before: "帮我加上", matched: q, after: "（指数退避）和整体超时，顺便补测试。" },
-          { uuid: "00000000-0000-4000-8000-000000000006", kind: "assistant", before: "统一做**", matched: q, after: " ＋ 退避 ＋ 整体超时**；" },
-          { uuid: "00000000-0000-4000-8000-000000000007", kind: "assistant", before: "为 InventoryClient._call 写单元测试：成功、", matched: q, after: "后成功、重试耗尽三种。" },
+          { uuid: "00000000-0000-4000-8000-000000000001", kind: "user", before: "帮我加上", matched: q, after: "（指数退避）和整体超时，顺便补测试。", turn: 1, tsMs: at(14) },
+          { uuid: "00000000-0000-4000-8000-000000000006", kind: "assistant", before: "统一做**", matched: q, after: " ＋ 退避 ＋ 整体超时**；", turn: 1, tsMs: at(12) },
+          { uuid: "00000000-0000-4000-8000-000000000007", kind: "assistant", before: "为 InventoryClient._call 写单元测试：成功、", matched: q, after: "后成功、重试耗尽三种。", turn: 1, tsMs: at(11) },
+          { uuid: "00000000-0000-4000-8000-0000000000ff", kind: "assistant", before: "上次讨论过要不要做", matched: q, after: "，当时的结论是先不做", turn: 1, tsMs: at(60 * 26) },
         ],
       };
     },

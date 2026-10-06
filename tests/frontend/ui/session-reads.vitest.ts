@@ -63,9 +63,9 @@ describe("〔C4b〕会话读面三问：按形状收", () => {
     ]);
     const f = decodeFind(golden["history-find"]);
     expect(f.total).toBe(2);
-    expect(f.hits.map((h) => [h.uuid, h.kind, h.before, h.matched, h.after])).toEqual([
-      ["in-1", "user", "alpha", "zqx", "beta"],
-      ["out-1", "assistant", "gamma", "zqx", ""],
+    expect(f.hits.map((h) => [h.uuid, h.kind, h.before, h.matched, h.after, h.turn, h.tsMs])).toEqual([
+      ["in-1", "user", "alpha", "zqx", "beta", 1, 0],
+      ["out-1", "assistant", "gamma", "zqx", "", 1, 0],
     ]);
   });
 
@@ -76,6 +76,7 @@ describe("〔C4b〕会话读面三问：按形状收", () => {
     expect(() => decodeUserInputs({ from: 0, end: 1, entries: [{ uuid: "a", excerpt: "b" }] })).toThrow(/读不懂/);
     expect(() => decodeFind({ lines: [] })).toThrow(/读不懂/);
     expect(() => decodeFind({ total: 1, hits: [{ uuid: "a" }] })).toThrow(/读不懂/);
+    expect(() => decodeFind({ total: 1, hits: [{ uuid: "a", kind: "user", before: "", matched: "x", after: "", turn: "1", tsMs: 0 }] })).toThrow(/读不懂/);
   });
 
   it("★★ 失败种类只看通道的层：不认 ⇒ oldBackend · 装不下 ⇒ truncated · 其余 ⇒ transport", () => {

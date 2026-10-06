@@ -111,8 +111,8 @@ export interface TabBarViewHost {
 /** 「需要你」悬停菜单的宽：标题放得下约 28 个汉字（≈ 420px），至少 360、至多 480 与视口减 32 的小者；可以盖过标签页栏伸进消息流。 */
 const NEEDS_MENU = { min: 360, ideal: 420, max: 480, viewportGutter: 32 } as const;
 
-/** 窄窗（< 980）：栏收成 44px，悬停卡宽 260。 */
-const NARROW_PX = 980;
+/** 栏收成 44px 时（`tab-bar-fold.ts`）悬停卡宽 260。 */
+const folded = (): boolean => document.body.dataset.tabBar === "folded";
 
 export class TabBarView {
   /** sessionId → button DOM refs，避免 refreshTabBar 每次重建整个 bar */
@@ -224,7 +224,7 @@ export class TabBarView {
     delegateTooltip(this.listEl, ".tab", (el) => {
       const sid = this.sidOf.get(el);
       return sid === undefined ? null : this.hoverCard(sid);
-    }, { placement: "right", hold: true, width: () => (window.innerWidth < NARROW_PX ? 260 : 300) });
+    }, { placement: "right", hold: true, width: () => (folded() ? 260 : 300) });
     delegateTooltip(this.listEl, ".tab-cwd, .tab-focus, .tab-more, .tab-close", (el) => actHint(el));
   }
 

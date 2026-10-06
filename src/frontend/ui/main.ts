@@ -38,7 +38,10 @@ import { readContextLimits } from "./views/context-limit";
 import { loadConfig } from "./config";
 import { UsageHud } from "./usage-hud";
 import { recordFileWiring } from "./record-file-notice";
-import { toast } from "./kit/toast";
+import { toast, undoLatest } from "./kit/toast";
+import { KeysOverview } from "./views/keys-overview";
+import { restoreZoom, stepZoom } from "./zoom";
+import { mountTabBarFold, tabBarManuallyFolded, toggleTabBarFold } from "./tab-bar-fold";
 import { attachTooltip } from "./kit/tooltip";
 import { bindErrorToast } from "./backend-errors";
 import { bindRemoteHealthToast } from "./remote-health";
@@ -123,6 +126,8 @@ if (import.meta.hot) {
 
 window.addEventListener("DOMContentLoaded", async () => {
   window.__ccmPerf.domContentLoaded = performance.now();
+  mountTabBarFold(); // 栏收不收（窗宽 / 手动）先定，免得窄窗启动先闪一下宽栏
+  restoreZoom();
   console.info(
     `[perf] DOMContentLoaded @ ${window.__ccmPerf.domContentLoaded.toFixed(0)}ms (since navigation start)`,
   );
@@ -486,58 +491,78 @@ window.addEventListener("DOMContentLoaded", async () => {
   const ccBusView = new CcBusView();
   overlays.register("cc-bus", ccBusView);
 
-  // F84（#57）：键盘命令栏（Ctrl+K）。只读命令面板——组装既有 view/dispatcher 目标 + F91
-  // snapshotSessions() 的「切到会话…」。写/驱动动作（resume/kill/delete）首刀排除（守北极星）。
-  // 键位唯一入口（palette 惯例，顶栏已拥挤，按钮延后）。commandBar 放 sftpTrigger 之后建，
-  // 使 buildCommands 引用的 sftpTrigger 已声明。
+  // 快捷键一览（`?` · 命令面板）：「改快捷键…」直达设置里快捷键那一节。
+  const keysOverview = new KeysOverview({ editKeys: () => void openSettingsWindow(undefined, { page: "appearance", anchor: "keybindings" }) });
+  const toggleFullscreen = (): void => {
+    const w = getCurrentWindow();
+    void w
+      .isFullscreen()
+      .then((f) => w.setFullscreen(!f))
+      .catch((e) => console.warn("toggle-fullscreen failed:", e));
+  };
+
+  // 命令面板（Ctrl+K）：打开那一刻现拼一份（分组 · 键位 · 可不可用由这里给，面板只排版）。
   const buildCommands = (): Command[] => {
-    // 命令项右侧显示对应快捷键（教学式发现，业务二审 gap#3）——取该 action 当前生效 chord 的友好名。
-    const chordHint = (
-      id: Parameters<typeof dispatcher.effectiveChord>[0],
-    ): string | undefined => {
+    const chordHint = (id: Parameters<typeof dispatcher.effectiveChord>[0]): string | undefined => {
       const raw = dispatcher.effectiveChord(id);
       return raw ? KeybindingDispatcher.prettyChord(raw) : undefined;
     };
-    const cmds: Command[] = [
-      { id: "open-history", title: copyText("main.cmd.openHistory"), keywords: copyText("main.cmd.historyKeywords"), hint: chordHint("app.toggle-history"), run: () => overlays.open("history") },
-      { id: "open-cc-bus", title: copyText("main.cmd.openCcBus"), keywords: copyText("main.cmd.ccBusKeywords"), run: () => overlays.open("cc-bus") },
-      { id: "open-grid", title: copyText("main.cmd.openGrid"), keywords: copyText("main.cmd.gridKeywords"), run: () => overlays.open("grid") },
-      { id: "open-settings", title: copyText("main.cmd.openSettings"), keywords: copyText("main.cmd.settingsKeywords"), hint: chordHint("app.open-settings"), run: () => void openSettingsWindow() },
-      { id: "open-sftp", title: copyText("main.cmd.openFiles"), keywords: copyText("main.cmd.filesKeywords"), run: () => void openSftpFromTopbar(sftpTrigger) },
-      { id: "win-minimize", title: copyText("main.cmd.minimize"), keywords: copyText("main.cmd.minimizeKeywords"), hint: chordHint("app.minimize"), run: () => void getCurrentWindow().minimize() },
-      { id: "win-fullscreen", title: copyText("main.cmd.fullscreen"), keywords: copyText("main.cmd.fullscreenKeywords"), hint: chordHint("app.toggle-fullscreen"), run: () => { const w = getCurrentWindow(); void w.isFullscreen().then((f) => w.setFullscreen(!f)).catch((e) => console.warn("toggle-fullscreen failed:", e)); } },
-      // ↗ 那一项只在 ↗ 真能用的机器上列出来（非 Windows 不列；门与 tab 上那颗按钮是同一道，见 `terminal-front-command.ts`）。
-      ...terminalFrontCommand({ id: "term-front", title: copyText("main.cmd.terminalFront"), keywords: copyText("main.cmd.terminalFrontKeywords"), hint: chordHint("terminal.bring-front"), run: () => tabs.bringActiveTerminalToFront() }),
-      { id: "toggle-tasks", title: copyText("main.cmd.tasks"), keywords: copyText("main.cmd.tasksKeywords"), hint: chordHint("panel.toggle-tasks"), run: () => mainDrawer.toggle("tasks") },
-      { id: "toggle-agents", title: copyText("main.cmd.agents"), keywords: copyText("main.cmd.agentsKeywords"), hint: chordHint("panel.toggle-agents"), run: () => mainDrawer.toggle("agents") },
-      { id: "toggle-terminal", title: copyText("main.cmd.terminal"), keywords: copyText("main.cmd.terminalKeywords"), hint: chordHint("panel.toggle-terminal"), run: () => mainDrawer.toggle("terminal") },
-      { id: "tab-next", title: copyText("main.cmd.tabNext"), keywords: copyText("main.cmd.tabNextKeywords"), hint: chordHint("tab.next"), run: () => tabs.cycleActive(1) },
-      { id: "tab-prev", title: copyText("main.cmd.tabPrev"), keywords: copyText("main.cmd.tabPrevKeywords"), hint: chordHint("tab.prev"), run: () => tabs.cycleActive(-1) },
-    ];
-    // A3/U8：账号命令。构造逻辑在 account-commands.ts（纯函数，可测——原先长在这个闭包里，
-    // "命令何时出现"完全测不到，把判定改成恒 true 也不会红）。这里只喂快照与动作。
+    const cur = tabs.activeSessionId();
+    const curOrigin = cur === null ? null : tabs.originOf(cur);
+    const cmds: Command[] = [];
+    // 会话（空输入时只列在等你的那几行，在「需要你」一组）。
+    cmds.push(...sessionCommands(tabs.tabsInOrder(), (sid) => tabs.switchTo(sid), (n) => chordHint(`tab.jump-${n}` as Parameters<typeof chordHint>[0])));
+    if (cur !== null && curOrigin !== null) {
+      cmds.push(
+        { id: "find", group: "current", icon: "search", title: copyText("main.cmd.find"), keywords: copyText("main.cmd.findKeywords"), hint: chordHint("session.find"), run: () => tabs.openFind() },
+        { id: "toggle-tasks", group: "current", icon: "tasks", title: copyText("main.cmd.tasks"), keywords: copyText("main.cmd.tasksKeywords"), hint: chordHint("panel.toggle-tasks"), run: () => mainDrawer.toggle("tasks") },
+        { id: "toggle-agents", group: "current", icon: "agent", title: copyText("main.cmd.agents"), keywords: copyText("main.cmd.agentsKeywords"), hint: chordHint("panel.toggle-agents"), run: () => mainDrawer.toggle("agents") },
+        { id: "toggle-terminal", group: "current", icon: "terminal", title: copyText("main.cmd.terminal"), keywords: copyText("main.cmd.terminalKeywords"), hint: chordHint("panel.toggle-terminal"), run: () => mainDrawer.toggle("terminal") },
+        { id: "pop-out", group: "current", icon: "popOut", title: copyText("main.cmd.popOut"), keywords: copyText("main.cmd.popOutKeywords"), hint: chordHint("tab.pop-out"), run: () => tabs.openActiveInNewWindow() },
+        { id: "open-cwd", group: "current", icon: "folder", title: copyText("main.cmd.openCwd"), keywords: copyText("main.cmd.openCwdKeywords"), hint: chordHint("tab.open-cwd"), run: () => tabs.openActiveTabCwd() },
+        // ↗：只有 cc-monitor 跑在 Windows 上才能用；别的系统上灰着（门与 tab 上那颗按钮是同一道，见 `terminal-front-command.ts`）。
+        ...terminalFrontCommand({ id: "term-front", group: "current" as const, icon: "front" as const, title: copyText("main.cmd.terminalFront"), keywords: copyText("main.cmd.terminalFrontKeywords"), hint: chordHint("terminal.bring-front"), run: () => tabs.bringActiveTerminalToFront() }),
+        tabs.isPinned(cur)
+          ? { id: "unpin", group: "current", icon: "pin", title: copyText("main.cmd.unpin"), keywords: copyText("main.cmd.pinKeywords"), run: () => tabs.togglePin(cur) }
+          : { id: "pin", group: "current", icon: "pin", title: copyText("main.cmd.pin"), keywords: copyText("main.cmd.pinKeywords"), run: () => tabs.togglePin(cur) },
+        { id: "proc-expand", group: "current", icon: "expand", title: copyText("main.cmd.procExpand"), keywords: copyText("main.cmd.procExpandKeywords"), hint: chordHint("session.toggle-process"), run: () => tabs.toggleProcessDefault() },
+        { id: "acct-panel", group: "current", icon: "account", title: copyText("acct.menu.open"), keywords: copyText("acct.menu.open"), run: () => openAcctPanel(cur, curOrigin) },
+      );
+    }
+    cmds.push(
+      { id: "open-history", group: "open", icon: "history", title: copyText("main.cmd.openHistory"), keywords: copyText("main.cmd.historyKeywords"), hint: chordHint("app.toggle-history"), run: () => overlays.open("history") },
+      { id: "open-grid", group: "open", icon: "grid", title: copyText("main.cmd.openGrid"), keywords: copyText("main.cmd.gridKeywords"), run: () => overlays.open("grid") },
+      { id: "open-cc-bus", group: "open", icon: "bus", title: copyText("main.cmd.openCcBus"), keywords: copyText("main.cmd.ccBusKeywords"), hint: chordHint("app.open-cc-bus"), run: () => overlays.open("cc-bus") },
+      { id: "open-settings", group: "open", icon: "settings", title: copyText("main.cmd.openSettings"), keywords: copyText("main.cmd.settingsKeywords"), hint: chordHint("app.open-settings"), run: () => void openSettingsWindow() },
+      { id: "open-sftp", group: "open", icon: "files", title: copyText("main.cmd.openFiles"), keywords: copyText("main.cmd.filesKeywords"), run: () => void openSftpFromTopbar(sftpTrigger) },
+      { id: "keys", group: "open", icon: "keyboard", title: copyText("main.cmd.keys"), keywords: copyText("main.cmd.keysKeywords"), hint: chordHint("app.keys"), run: () => keysOverview.open() },
+      { id: "refresh", group: "open", icon: "refresh", title: copyText("main.cmd.refresh"), keywords: copyText("main.cmd.refreshKeywords"), run: () => tabs.refreshAll() },
+      { id: "win-fullscreen", group: "window", icon: "fullscreen", title: copyText("main.cmd.fullscreen"), keywords: copyText("main.cmd.fullscreenKeywords"), hint: chordHint("app.toggle-fullscreen"), run: toggleFullscreen },
+      { id: "win-minimize", group: "window", icon: "minimize", title: copyText("main.cmd.minimize"), keywords: copyText("main.cmd.minimizeKeywords"), hint: chordHint("app.minimize"), run: () => void getCurrentWindow().minimize() },
+      tabBarManuallyFolded()
+        ? { id: "tab-bar-fold", group: "window", icon: "sidebar", title: copyText("main.cmd.expandTabBar"), keywords: copyText("main.cmd.tabBarKeywords"), hint: chordHint("app.toggle-tab-bar"), run: toggleTabBarFold }
+        : { id: "tab-bar-fold", group: "window", icon: "sidebar", title: copyText("main.cmd.collapseTabBar"), keywords: copyText("main.cmd.tabBarKeywords"), hint: chordHint("app.toggle-tab-bar"), run: toggleTabBarFold },
+      { id: "zoom-in", group: "window", icon: "zoomIn", title: copyText("main.cmd.zoomIn"), keywords: copyText("main.cmd.zoomKeywords"), hint: chordHint("app.zoom-in"), run: () => stepZoom(1) },
+      { id: "zoom-out", group: "window", icon: "zoomOut", title: copyText("main.cmd.zoomOut"), keywords: copyText("main.cmd.zoomKeywords"), hint: chordHint("app.zoom-out"), run: () => stepZoom(-1) },
+      { id: "zoom-reset", group: "window", icon: "zoomReset", title: copyText("main.cmd.zoomReset"), keywords: copyText("main.cmd.zoomKeywords"), hint: chordHint("app.zoom-reset"), run: () => stepZoom(0) },
+    );
+    // 账号：每个号一条「设 X 为默认账号」· 管理账号…（构造在 account-commands.ts，纯函数）· 新会话默认…（同状态栏无会话时那个下拉）。
     cmds.push(
       ...buildAccountCommands({
         snapshot: accountChip.snapshotReady(),
         chordHint: (id) => chordHint(id as Parameters<typeof chordHint>[0]),
         setCurrent: (name) => void accountChip.applyDefaultByName(name),
         openSettings: () => void openSettingsWindow(),
-      }),
+      }).map((c) => ({ ...c, group: "account" as const, icon: "account" as const })),
+      {
+        id: "acct-default-menu",
+        group: "account",
+        icon: "account",
+        title: copyText("acct.cmd.default"),
+        keywords: copyText("acct.cmd.default"),
+        run: () => void accountChip.openDefaultMenu(accountChip.element, curOrigin ?? LOCAL_ORIGIN),
+      },
     );
-    // 「账号…」（当前会话）· 「账号：新会话默认…」（同状态栏无会话时那个下拉）。
-    const cur = tabs.activeSessionId();
-    const curOrigin = cur === null ? null : tabs.originOf(cur);
-    if (cur !== null && curOrigin !== null) {
-      cmds.push({ id: "acct-panel", title: copyText("acct.menu.open"), keywords: copyText("acct.menu.open"), run: () => openAcctPanel(cur, curOrigin) });
-    }
-    cmds.push({
-      id: "acct-default-menu",
-      title: copyText("acct.cmd.default"),
-      keywords: copyText("acct.cmd.default"),
-      run: () => void accountChip.openDefaultMenu(accountChip.element, curOrigin ?? LOCAL_ORIGIN),
-    });
-    // 切到会话（来自 F91 只读投影 snapshotSessions）
-    cmds.push(...sessionCommands(tabs.snapshotSessions(), (sid) => tabs.switchTo(sid)));
     return cmds;
   };
   const commandBar = new CommandBarView(buildCommands);
@@ -657,13 +682,16 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.bind("app.toggle-history", () => overlays.toggle("history"));
   dispatcher.bind("app.open-command-bar", () => commandBar.toggle()); // F84（#57）Ctrl+K 命令栏
   dispatcher.bind("app.minimize", () => void getCurrentWindow().minimize());
-  dispatcher.bind("app.toggle-fullscreen", () => {
-    const w = getCurrentWindow();
-    void w
-      .isFullscreen()
-      .then((f) => w.setFullscreen(!f))
-      .catch((e) => console.warn("toggle-fullscreen failed:", e));
-  });
+  dispatcher.bind("app.toggle-fullscreen", toggleFullscreen);
+  dispatcher.bind("app.keys", () => keysOverview.toggle());
+  dispatcher.bind("app.zoom-in", () => stepZoom(1));
+  dispatcher.bind("app.zoom-out", () => stepZoom(-1));
+  dispatcher.bind("app.zoom-reset", () => stepZoom(0));
+  dispatcher.bind("app.toggle-tab-bar", toggleTabBarFold);
+  dispatcher.bind("app.open-cc-bus", () => overlays.toggle("cc-bus"));
+  dispatcher.bind("app.undo", () => void undoLatest());
+  dispatcher.bind("tab.context-menu", () => tabs.openActiveMenu());
+  dispatcher.bind("session.to-bottom", () => tabs.toBottom());
   dispatcher.bind("panel.toggle-tasks", () => mainDrawer.toggle("tasks"));
   dispatcher.bind("panel.toggle-agents", () => mainDrawer.toggle("agents"));
   dispatcher.bind("panel.toggle-terminal", () => mainDrawer.toggle("terminal"));

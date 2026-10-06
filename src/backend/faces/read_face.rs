@@ -344,9 +344,9 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             Ok(json!({ "from": from, "end": end, "turns": rows.rows }))
         }
         // 会话内查找（Ctrl+F，SE2 的 `--find-in-session`）随骨架索引与大纲一起上帧面。
-        // `limit` 超封顶按封顶算、缺席取缺省 —— 与 CLI 那一臂的 `parse_find_args` 同一对常量。
+        // `limit` 超封顶按封顶算、缺席取缺省 —— 与 CLI 那一臂的 `parse_find_args` 同一对常量；`skip` ＝ 跳过前几条（续下一页）。
         "history-find" => {
-            use crate::observe::search_query::{FIND_DEFAULT_LIMIT, FIND_MAX_LIMIT};
+            use crate::observe::search_query::{FindPage, FIND_DEFAULT_LIMIT, FIND_MAX_LIMIT};
             let path = str_arg(args, "path")?;
             let query = str_arg(args, "query")?;
             let include_tools = args
@@ -355,18 +355,20 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 .unwrap_or(false);
             let limit = u64_arg(args, "limit")?
                 .map_or(FIND_DEFAULT_LIMIT, |n| (n as usize).min(FIND_MAX_LIMIT));
+            let skip = u64_arg(args, "skip")?.unwrap_or(0) as usize;
+            let page = FindPage { skip, limit };
             let target = history_query::session_path_at(home, path).map_err(|e| ("failed", e))?;
             let mut hits = CappedRows::default();
             // 先走 SX1 常驻索引（不再每次从头扫）；不归它管 ⇒ 现扫。
             let scanned =
-                match search_query::find_indexed(home, &target, query, include_tools, limit, |h| {
+                match search_query::find_indexed(home, &target, query, include_tools, page, |h| {
                     hits.push(h)
                 }) {
                     Some(r) => r,
                     None => {
                         let r = history_query::open_session_at(home, path, 0)
                             .map_err(|e| ("failed", e))?;
-                        search_query::scan_session_find(r, query, include_tools, limit, |h| {
+                        search_query::scan_session_find(r, query, include_tools, page, |h| {
                             hits.push(h)
                         })
                     }

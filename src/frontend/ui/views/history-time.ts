@@ -60,3 +60,14 @@ export function spanText(from: number, to: number, now: number): string {
   }
   return `${md(a)} ${hm(a)} – ${md(b)} ${hm(b)}`;
 }
+
+/** 会话内查找那一行的时刻：今天 `01:52` · 昨天 `昨天 18:20` · 更早 `09-30 18:20`（不是今年的 `2025-09-30 18:20`）。 */
+export function hitTime(at: number, now: number): string {
+  const d = new Date(at);
+  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const today = dayStart(now);
+  if (at >= today) return hm;
+  if (at >= today - DAY) return `${copyText("history.section.yesterday")} ${hm}`;
+  const md = `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return d.getFullYear() === new Date(now).getFullYear() ? `${md} ${hm}` : `${d.getFullYear()}-${md} ${hm}`;
+}

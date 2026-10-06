@@ -156,63 +156,6 @@
   padding: 4px 0 8px;
 }
 
-/* 窄窗（< 980，规范 I8 偏离：每格 = 状态点 ＋ 项目名两个字母）：栏收成 44px，栏顶竖排，「需要你」收成「● N」。 */
-@media (width < 980px) {
-  body:not(.viewer-mode) #tab-bar {
-    width: 44px;
-  }
-  body:not(.viewer-mode) #tab-bar-resizer {
-    display: none;
-  }
-  body:not(.viewer-mode) .tab-bar-head,
-  body:not(.viewer-mode) .tab-bar-head-acts {
-    flex-direction: column;
-    height: auto;
-    padding: 6px 0;
-  }
-  body:not(.viewer-mode) .tab-bar-head-sp,
-  body:not(.viewer-mode) .tab-needs-text,
-  body:not(.viewer-mode) .tab-needs kbd,
-  body:not(.viewer-mode) .tab-needs .tab-bar-head-sp,
-  body:not(.viewer-mode) .tab-machine-down-body,
-  body:not(.viewer-mode) .tab-machine-down-act,
-  body:not(.viewer-mode) .tab .tab-title,
-  body:not(.viewer-mode) .tab .tab-trail,
-  body:not(.viewer-mode) .tab .tab-machine,
-  body:not(.viewer-mode) .tab .tab-acts,
-  body:not(.viewer-mode) .tab-group-head > * {
-    display: none;
-  }
-  body:not(.viewer-mode) .tab-needs {
-    justify-content: center;
-    height: 26px;
-    margin: 6px 4px;
-    padding: 0;
-    gap: 3px;
-  }
-  body:not(.viewer-mode) .tab-machine-down-row {
-    justify-content: center;
-    margin: 6px 4px 0;
-    padding: 6px 0;
-  }
-  body:not(.viewer-mode) .tab {
-    flex-direction: column;
-    justify-content: center;
-    gap: 3px;
-    height: 36px;
-    padding: 0;
-  }
-  body:not(.viewer-mode) .tab .tab-abbr {
-    display: block;
-  }
-  body:not(.viewer-mode) .tab-group-head {
-    height: 10px;
-    margin: 6px 8px 2px;
-    padding: 0;
-    border-top: 1px solid var(--border-soft);
-  }
-}
-
 .tab {
   position: relative;
   display: flex;
@@ -2467,7 +2410,7 @@
 }
 
 .search-hit-flash {
-  animation: search-hit-flash 2.2s ease-out;
+  animation: search-hit-flash 1.5s ease-out;
   border-radius: var(--radius-m);
 }
 
@@ -2504,7 +2447,6 @@
   background: var(--bg-2);
 }
 
-.session-find-hit,
 .user-input-row {
   display: block;
   width: 100%;
@@ -2523,7 +2465,6 @@
 /* 「这一条跳不过去」的变灰。原来住在 `jumpToUserInput` 里的 `row.style.opacity = "0.55"`。
    搬到这里顺带修掉一个旧形：那一句只加不减，同一行后来跳得过去了也会一直灰着；
    现在灰不灰只由 `data-unjumpable` 在不在决定，而那个标记是加也删也有的。 */
-.session-find-hit[data-unjumpable],
 .user-input-row[data-unjumpable] {
   opacity: 0.55;
 }
@@ -2557,127 +2498,22 @@
   background: var(--overlay-hover);
 }
 
-/* === 实时 tab 的会话内查找面板（搜索 / 大纲两个模式） ===
-   它取代了 K-R45 乙那块独立悬浮层 `.live-user-inputs`（步 2 的止血形）：大纲并进来当第二个模式，
-   悬浮层从两块变一块（z-index 参与者少一个）。**位置照搬**那块悬浮层的，一个值都没改：
-   🔴 （`§3` 的 E2）：`top: 40px` —— 顶栏那六个入口（`.settings-trigger` 一族）占 4…32px、
-   `--z-chrome`，这一层 `--z-float` 且 `.active` 时 `pointer-events: auto` ⇒ 贴着按钮行放会压住它们、连点击一起吃掉。
-   S21 起 `#message-stream` 显式是层叠上下文，这一层的 `--z-float` 关在流里，结构上也够不到 `#app` 的按钮。
-   🔴 `visibility` 而不是 `display` 翻 `.active`：与 `.stream` 同一套机制（切 tab 0 reflow）。
-   🔴 面板本体、「搜索」那一半、大纲清单都靠 `el.hidden` 收起 ⇒ 它们**绝不许出现 `display`**
-   （作者样式里任何一条 `display` 都会盖掉 UA 的 `[hidden]{display:none}`）。只有从不 `hidden` 的
-   里层容器（模式条 / 输入行）才写 `display`；整块本身一条 `display` 都不写（见它那条规则）。
-   ⚠ **长相在沙箱里验不了**（jsdom 无布局、无真渲染）—— 与上一轮同一条诚实边界。 */
+/* === 实时 tab 的会话内查找面板（搜索 / 大纲两个模式）：外框 ===
+   锚在会话头下、正文区右上（`#message-stream` 是层叠上下文，`--z-float` 关在流里）；面板本体的长相在
+   `views/session-find.module.css`。🔴 `visibility` 而不是 `display` 翻 `.active`：与 `.stream` 同一套机制（切 tab 0 reflow），
+   整块一条 `display` 都不写（判据逐行查）。 */
 .session-find {
   position: absolute;
-  top: 40px;
-  right: 24px;
+  top: var(--space-4);
+  right: var(--space-7);
   z-index: var(--z-float);
-  max-width: min(420px, 60%);
   visibility: hidden;
   pointer-events: none;
-  /* 入口按钮靠右（与原悬浮层一样贴着右边）；面板里的字照常左对齐（见下一条）。
-     不用 flex 排：整块这一条沿用「切 tab 只翻 visibility、一条 display 都不写」的纪律（判据逐行查）。 */
-  text-align: right;
 }
 
 .session-find.active {
   visibility: visible;
   pointer-events: auto;
-}
-
-.session-find-panel {
-  margin-top: 4px;
-  text-align: left;
-  width: min(420px, 60vw);
-  border: 1px solid var(--border-medium);
-  border-radius: var(--radius-l);
-  box-shadow: var(--shadow-float);
-  background: var(--card);
-}
-
-.session-find-modes {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border-strong);
-}
-
-.session-find-mode,
-.session-find-close {
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-s);
-  color: var(--text-2);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--font-size-small);
-  padding: 2px 8px;
-}
-
-.session-find-mode[aria-selected="true"] {
-  color: var(--text);
-  border-color: var(--border-strong);
-  background: var(--overlay-hover);
-}
-
-.session-find-close {
-  margin-left: auto;
-}
-
-.session-find-mode:hover,
-.session-find-close:hover {
-  color: var(--text);
-}
-
-.session-find-query {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-}
-
-.session-find-input {
-  flex: 1;
-  min-width: 0;
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-s);
-  font: inherit;
-  font-size: var(--font-size-small);
-  padding: 3px 6px;
-}
-
-.session-find-tools {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--text-2);
-  font-size: var(--font-size-small);
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.session-find-status {
-  padding: 0 8px 6px;
-  color: var(--text-2);
-  font-size: var(--font-size-small);
-}
-
-.session-find-hits {
-  max-height: 38vh;
-  overflow-y: auto;
-}
-
-/* 命中行的长相与大纲行同一套（上面 `.user-input-row` 那几条共用规则），这里只补片段里的高亮
-   （同历史浏览器全文搜索的 `.search-hit-snippet mark`）。 */
-.session-find-hit mark {
-  background: color-mix(in srgb, var(--accent) 40%, transparent);
-  color: var(--text);
-  border-radius: var(--radius-s);
-  padding: 0 1px;
 }
 
 /* 复用 .stream 容器样式（滚动 + padding），但改 flex item 布局。
@@ -2900,5 +2736,63 @@
   font-size: var(--font-size-small);
   margin-top: 8px;
   padding: 4px 12px;
+}
+
+
+/* 放在层的末尾：它要压过上面那几条同元素的规则（选择器更具体，后写）。 */
+/* 栏收起（窗宽 < 980 或手动收起，`tab-bar-fold.ts` 挂 `data-tab-bar`；规范 I8 偏离：每格 = 状态点 ＋ 项目名两个字母）：
+   栏收成 44px，栏顶竖排，「需要你」收成「● N」。 */
+body[data-tab-bar="folded"]:not(.viewer-mode) #tab-bar {
+  width: 44px;
+}
+body[data-tab-bar="folded"]:not(.viewer-mode) #tab-bar-resizer {
+  display: none;
+}
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-bar-head,
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-bar-head-acts {
+  flex-direction: column;
+  height: auto;
+  padding: 6px 0;
+}
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-bar-head-sp,
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-needs-text,
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-needs kbd,
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-needs .tab-bar-head-sp,
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-machine-down-body,
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-machine-down-act,
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab .tab-title,
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab .tab-trail,
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab .tab-machine,
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab .tab-acts,
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-head > * {
+  display: none;
+}
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-needs {
+  justify-content: center;
+  height: 26px;
+  margin: 6px 4px;
+  padding: 0;
+  gap: 3px;
+}
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-machine-down-row {
+  justify-content: center;
+  margin: 6px 4px 0;
+  padding: 6px 0;
+}
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab {
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  height: 36px;
+  padding: 0;
+}
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab .tab-abbr {
+  display: block;
+}
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-head {
+  height: 10px;
+  margin: 6px 8px 2px;
+  padding: 0;
+  border-top: 1px solid var(--border-soft);
 }
 }

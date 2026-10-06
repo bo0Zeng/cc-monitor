@@ -299,8 +299,12 @@ describe("S30 ⑥ transition 只许动白名单里那几个属性（件 9）", (
  * 但**多一处少一处都要有人看见** —— 多出来的多半是词法器又错位了。
  */
 const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
-  // 查找面板按模式切大纲清单的开合（大纲那一半的 `hidden` 从 `UserInputPanel` 自己手里交给了面板）。
-  "src/frontend/ui/views/session-find.ts:239": // 行号 −1：两条类型 import 并成一条（`../session-reads`）·+1：加了 copyText 的 import ·+2：组字判定的 import 与那一行守卫
+  // 主窗口会话内查找面板（`sf.<类>` 是 CSS Modules 的哈希名，推不出；这几类都不写 `display`）。
+  "src/frontend/ui/views/session-find.ts:74": "面板本体 `this.box`（`s.sfPanel`）—— 建时收起",
+  "src/frontend/ui/views/session-find.ts:134": "同上 —— 打开",
+  "src/frontend/ui/views/session-find.ts:142": "同上 —— 收起",
+  "src/frontend/ui/views/session-find.ts:169": "「搜索」那一页 `this.searchPane`（`s.sfSearch`）—— 切到「大纲」时收起",
+  "src/frontend/ui/views/session-find.ts:170":
     "`this.outline.panel` —— 大纲清单那块，由 `UserInputPanel` 建（类 `.user-inputs`；`styles.css` 里那条规则头注逐字「绝不许出现 display」）",
   // 扩展页的抽屉：`this.drawer` 在构造器里由本文件的 `el()` 小工具建（类 `ext-drawer`，经一层参数传进去 ⇒ 推不出；行号按文件现数）；
   //   `.ext-drawer` 在 `styles/settings.css` 里**没有 display 规则** ⇒ UA 的 `[hidden]` 不会被压过（人工核过）。
@@ -317,7 +321,9 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/frontend/ui/kit/dock.ts:146": "底部抽屉网格那一格 `this.el`（`s.dockSlot`，自己不写 display；竖排的 flex 在里层 `s.dock`）—— 收着时 hidden",
   "src/frontend/ui/kit/fold.ts:46": "折叠块正文 `body`（`s.body`）",
   // 只读查看器（历史页右边）：CSS Modules 的哈希名（`sv.<类>`）推不出；这几类都不写 `display`（kit 骨架自己写了 display ⇒ 包一层再切）。
-  "src/frontend/ui/find-strip.ts:168": "会话内查找的命中清单 `strip`（`s.fsStrip`）—— 它写了 display:flex，CSS 里另有 `.fsStrip[hidden]` 收住",
+  "src/frontend/ui/find-strip.ts:297": "会话内查找的命中清单 `strip`（`s.fsStrip`）—— 它写了 display:flex，CSS 里另有 `.fsStrip[hidden]` 收住",
+  "src/frontend/ui/find-strip.ts:352": "命中行下那一句 `row.state`（`s.fsState`）—— 它写了 display:flex，CSS 里另有 `.fsState[hidden]` 收住",
+  "src/frontend/ui/find-strip.ts:387": "同上 —— 建时收起",
   "src/frontend/ui/views/session-viewer.ts:321": "头下那一条 `bannerEl`（`sv.svBanner`）—— 没有错误条时收起",
   "src/frontend/ui/views/session-viewer.ts:326": "读取中的骨架外层 `loadingEl`（`sv.svLoading`）",
   "src/frontend/ui/views/session-viewer.ts:331": "「你说过的话」清单 `this.said.panel` —— 由 `UserInputPanel` 建（类 `.user-inputs`，`styles.css` 那条规则头注逐字「绝不许出现 display」）",
@@ -326,8 +332,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/frontend/ui/views/session-viewer.ts:917": "工具行 `toolsEl`（`sv.svTools`）—— 窗口那一形 Ctrl+F 才露；它写了 display:flex，CSS 里另有 `.svTools[hidden]` 收住",
   "src/frontend/ui/views/session-viewer.ts:1105": "同上 —— 窗口那一形建时收起",
   "src/frontend/ui/views/session-viewer.ts:1104": "头 `head`（`sv.svHead`）—— 窗口那一形不画（细顶栏担）；它写了 display:flex，CSS 里另有 `.svHead[hidden]` 收住",
-  "src/frontend/ui/kit/toast.ts:135": "合流计数 `same.countEl`（`s.count`）—— 合进第二条时出现",
-  "src/frontend/ui/kit/toast.ts:154": "同上 —— 建时收起",
+  "src/frontend/ui/kit/toast.ts:137": "合流计数 `same.countEl`（`s.count`）—— 合进第二条时出现",
+  "src/frontend/ui/kit/toast.ts:156": "同上 —— 建时收起",
   // ⚠ `606 → 614`：我在这份文件上方加了一段注释，**行号就漂了**。
   //    这条登记按**裸行号**做键 —— 那是它的固有脆弱：住址没变、内容没变，只因为
   //    上面多了几行就要来改一次。纪律 4 说的是同一件事

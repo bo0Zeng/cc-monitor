@@ -30,6 +30,28 @@
     width: min(580px, 100%);
   }
 
+  /* 面板形（命令面板 · 快捷键一览）：外框同上，内容自己排（头 · 可滚的身 · 底栏），四边不留内边距。 */
+  .dialogBackdrop[data-place="top"] {
+    align-items: flex-start;
+    padding-top: 90px;
+  }
+
+  .dialogPanel[data-size="palette"],
+  .dialogPanel[data-size="sheet"] {
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .dialogPanel[data-size="palette"] {
+    width: min(600px, 100%);
+    max-height: calc(100vh - 138px);
+  }
+
+  .dialogPanel[data-size="sheet"] {
+    width: min(640px, 100%);
+  }
+
   @keyframes rise {
     from {
       transform: translateY(4px);

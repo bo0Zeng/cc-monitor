@@ -199,7 +199,7 @@ pub(crate) fn find_indexed(
     target: &Path,
     query: &str,
     include_tools: bool,
-    limit: usize,
+    page: FindPage,
     on_hit: impl FnMut(&Value) -> std::io::Result<()>,
 ) -> Option<std::io::Result<(u64, u64)>> {
     let q = query.trim().to_lowercase();
@@ -210,7 +210,7 @@ pub(crate) fn find_indexed(
     let path = fence.admit(target).ok()?;
     let mut resident = resident();
     let index = resident.entry(fence.root().to_path_buf()).or_default();
-    index.find(&path, &q, include_tools, limit, on_hit)
+    index.find(&path, &q, include_tools, page, on_hit)
 }
 
 /// 进程级常驻索引：规范化的 projects 根 → 那一棵的索引。后端一起来就由 [`warm_in_background`] 后台建；
@@ -364,6 +364,8 @@ struct Rec {
     rt: RecordText,
     ts_ms: i64,
     uuid: String,
+    /// 这一条是你说的一句（一轮的开头；口径同大纲 `user_inputs::user_input_of`）。
+    opens_turn: bool,
 }
 
 impl Facts {
@@ -400,7 +402,15 @@ impl Facts {
                     }
                 }
                 "user" | "assistant" => {
-                    let Some(rt) = record_text(&v, tools) else {
+                    let opens_turn = super::user_inputs::user_input_of(&v).is_some();
+                    let Some(rt) = record_text(&v, tools).or_else(|| {
+                        opens_turn.then(|| RecordText {
+                            is_assistant: false,
+                            report: false,
+                            main: String::new(),
+                            tool: String::new(),
+                        })
+                    }) else {
                         continue;
                     };
                     if !rt.is_assistant
@@ -420,7 +430,12 @@ impl Facts {
                         .and_then(Value::as_str)
                         .unwrap_or("")
                         .to_string();
-                    self.records.push(Rec { rt, ts_ms, uuid });
+                    self.records.push(Rec {
+                        rt,
+                        ts_ms,
+                        uuid,
+                        opens_turn,
+                    });
                 }
                 _ => {}
             }
@@ -579,7 +594,7 @@ impl SearchIndex {
         path: &Path,
         q: &str,
         include_tools: bool,
-        limit: usize,
+        page: FindPage,
         mut on_hit: impl FnMut(&Value) -> std::io::Result<()>,
     ) -> Option<std::io::Result<(u64, u64)>> {
         self.last = Refresh::default();
@@ -589,31 +604,25 @@ impl SearchIndex {
             self.keep(path, entry);
             return None; // 读不动：现扫那一臂是 lossy 读，口径不许在这里变
         }
-        let (mut count, mut total) = (0u64, 0u64);
+        let mut pager = FindPager::new(page);
         let mut result = Ok(());
+        let mut turn: u64 = 0;
         // 会话内查找（主窗口与查看器的查找面板）不收 agent 回报：那一种只在全局搜索里单列（历史页「搜内容时」）。
-        for rec in entry
-            .done
-            .records
-            .iter()
-            .filter(|r| !r.uuid.is_empty() && !r.rt.report)
-        {
+        for rec in entry.done.records.iter() {
+            if rec.opens_turn {
+                turn += 1;
+            }
+            if rec.uuid.is_empty() || rec.rt.report {
+                continue;
+            }
             let Some((kind, hit)) = record_hit(&rec.rt, q, include_tools) else {
                 continue;
             };
-            total += 1;
-            if (count as usize) < limit && result.is_ok() {
-                let (before, matched, after) = search_rules::make_snippet(hit, q);
-                result = on_hit(&serde_json::json!({
-                    "uuid": rec.uuid,
-                    "kind": kind,
-                    "before": before,
-                    "matched": matched,
-                    "after": after,
-                }));
-                count += 1;
+            if pager.take() && result.is_ok() {
+                result = on_hit(&find_hit(&rec.uuid, kind, hit, q, turn, rec.ts_ms));
             }
         }
+        let (count, total) = pager.finish();
         self.keep(path, entry);
         Some(result.map(|()| (count, total)))
     }
@@ -921,10 +930,69 @@ pub(crate) const FIND_DEFAULT_LIMIT: usize = 500;
 /// 会话内查找的上限封顶（调用方要得再多也只列这么多）。
 pub(crate) const FIND_MAX_LIMIT: usize = 2000;
 
+/// 会话内查找要哪一页：跳过前 `skip` 条命中，再列至多 `limit` 条（滚到底续下一页时 `skip` ＝ 已拿到的条数）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FindPage {
+    pub(crate) skip: usize,
+    pub(crate) limit: usize,
+}
+
+impl FindPage {
+    pub(crate) fn first(limit: usize) -> Self {
+        Self { skip: 0, limit }
+    }
+}
+
+/// 一页的账：每条命中都记进全量数，只有落在这一页里的才交出去。
+struct FindPager {
+    page: FindPage,
+    count: u64,
+    total: u64,
+}
+
+impl FindPager {
+    fn new(page: FindPage) -> Self {
+        Self {
+            page,
+            count: 0,
+            total: 0,
+        }
+    }
+
+    /// 又一条命中：落在这一页里 ⇒ `true`（调用方把它交出去）。
+    fn take(&mut self) -> bool {
+        self.total += 1;
+        let inside =
+            self.total as usize > self.page.skip && (self.count as usize) < self.page.limit;
+        if inside {
+            self.count += 1;
+        }
+        inside
+    }
+
+    fn finish(self) -> (u64, u64) {
+        (self.count, self.total)
+    }
+}
+
+/// 一条命中的成品：片段三段 ＋ 第几轮（你说的第几句之后；第一句之前 ＝ 0）＋ 那条记录的时刻（毫秒，读不出 ＝ 0）。
+fn find_hit(uuid: &str, kind: &str, hit: &str, q: &str, turn: u64, ts_ms: i64) -> Value {
+    let (before, matched, after) = search_rules::make_snippet(hit, q);
+    serde_json::json!({
+        "uuid": uuid,
+        "kind": kind,
+        "before": before,
+        "matched": matched,
+        "after": after,
+        "turn": turn,
+        "tsMs": ts_ms,
+    })
+}
+
 /// **会话内查找**的内核：读 `r`（一份会话，从头）逐行找 `query`，
 /// 出三段（形状登记 `IPC-PROTOCOL.md §10.5`）：
 /// 1. 头 `{"kind":"session_find","v":1}`；
-/// 2. 每条命中一行 `{"uuid","kind","before","matched","after"}`，**按文件序**（= 对话序），最多 `limit` 条；
+/// 2. 每条命中一行 `{"uuid","kind","before","matched","after","turn","tsMs"}`，**按文件序**（= 对话序），最多 `limit` 条；
 /// 3. 尾 `{"kind":"session_find_end","count":N,"total":T}` —— `T` = 全量命中数（≥ N）。**没有尾行 ⇒ 截断**。
 ///
 /// 与 `--search` 的差别只在「扫哪些文件、给多少条」：口径（[`record_text`] / [`record_hit`] ＋ `search_rules`
@@ -938,10 +1006,11 @@ pub(crate) fn write_session_find<R: std::io::BufRead, W: std::io::Write>(
     out: &mut W,
 ) -> std::io::Result<(u64, u64)> {
     writeln!(out, "{{\"kind\":\"session_find\",\"v\":1}}")?;
-    let (count, total) = scan_session_find(r, query, include_tools, limit, |hit| {
-        serde_json::to_writer(&mut *out, hit)?;
-        out.write_all(b"\n")
-    })?;
+    let (count, total) =
+        scan_session_find(r, query, include_tools, FindPage::first(limit), |hit| {
+            serde_json::to_writer(&mut *out, hit)?;
+            out.write_all(b"\n")
+        })?;
     writeln!(
         out,
         "{{\"kind\":\"session_find_end\",\"count\":{count},\"total\":{total}}}"
@@ -949,20 +1018,21 @@ pub(crate) fn write_session_find<R: std::io::BufRead, W: std::io::Write>(
     Ok((count, total))
 }
 
-/// [`write_session_find`] 的中段：**逐条命中交给 `on_hit`**（按文件序、最多 `limit` 条），
+/// [`write_session_find`] 的中段：**逐条命中交给 `on_hit`**（按文件序、只交 `page` 那一页），
 /// 回 `(count, total)`。判定一行都不在这一层之外 —— CLI 那一臂（上面，写头尾三段：stdout 要分帧）与帧面那一臂
 /// （`read_face.rs` 的 `history-find`，把同一串命中装成成品 `{total, hits}`）跑的是**同一个**扫描。
+/// 第几轮：每遇到你说的一句（口径同大纲 `user_inputs::user_input_of`）加一，与常驻索引那一臂同一个数法。
 /// `on_hit` 回错 ⇒ 扫描当场停、错原样上抛（帧面那一臂靠它在整份超上限时停下）。
 pub(crate) fn scan_session_find<R: std::io::BufRead>(
     mut r: R,
     query: &str,
     include_tools: bool,
-    limit: usize,
+    page: FindPage,
     mut on_hit: impl FnMut(&Value) -> std::io::Result<()>,
 ) -> std::io::Result<(u64, u64)> {
     let q = query.trim().to_lowercase();
-    let mut count: u64 = 0;
-    let mut total: u64 = 0;
+    let mut pager = FindPager::new(page);
+    let mut turn: u64 = 0;
     let mut buf: Vec<u8> = Vec::new();
     while !q.is_empty() {
         buf.clear();
@@ -975,6 +1045,13 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
         else {
             continue;
         };
+        if matches!(
+            v.get("type").and_then(Value::as_str),
+            Some("user" | "assistant")
+        ) && super::user_inputs::user_input_of(&v).is_some()
+        {
+            turn += 1;
+        }
         let Some(uuid) = v
             .get("uuid")
             .and_then(Value::as_str)
@@ -988,20 +1065,16 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
         let Some((kind, hit)) = record_hit(&rt, &q, include_tools) else {
             continue;
         };
-        total += 1;
-        if (count as usize) < limit {
-            let (before, matched, after) = search_rules::make_snippet(hit, &q);
-            on_hit(&serde_json::json!({
-                "uuid": uuid,
-                "kind": kind,
-                "before": before,
-                "matched": matched,
-                "after": after,
-            }))?;
-            count += 1;
+        if pager.take() {
+            let ts_ms = v
+                .get("timestamp")
+                .and_then(Value::as_str)
+                .and_then(parse_iso8601_ms)
+                .unwrap_or(0);
+            on_hit(&find_hit(uuid, kind, hit, &q, turn, ts_ms))?;
         }
     }
-    Ok((count, total))
+    Ok(pager.finish())
 }
 
 // === 文本抽取 / snippet / 截断：**一份都不在这里**（`K-R100`） ===

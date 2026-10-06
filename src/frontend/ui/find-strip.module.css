@@ -1,4 +1,4 @@
-/* 会话内查找：工具行里的框 ＋ 框下就地展开的命中清单（不是弹层）。历史页查看器与主窗口会话内查找共用。 */
+/* 会话内查找：框 ＋ 命中清单。历史页查看器（就地展开在工具行下）与主窗口会话内查找面板（`data-layout="panel"`）共用。 */
 @layer components {
   .fsBox {
     display: flex;
@@ -12,6 +12,13 @@
     border-radius: var(--radius-m);
     background: var(--field-bg);
     color: var(--text-2);
+  }
+
+  .fsBox[data-layout="panel"] {
+    flex: 1;
+    width: auto;
+    height: var(--control-h);
+    margin-left: 0;
   }
 
   .fsBox:focus-within {
@@ -42,6 +49,12 @@
     background: var(--bg-2);
   }
 
+  .fsStrip[data-layout="panel"] {
+    max-height: min(320px, 50vh);
+    border-bottom: 0;
+    background: transparent;
+  }
+
   .fsStrip[hidden] {
     display: none;
   }
@@ -61,30 +74,53 @@
     min-width: 0;
   }
 
+  .fsKeys {
+    flex: none;
+    color: var(--text-faint);
+  }
+
   .fsList {
     overflow: auto;
     padding: 0 var(--space-4) var(--space-3);
   }
 
   .fsHit {
-    display: block;
-    overflow: hidden;
-    width: 100%;
     padding: var(--space-2) var(--space-4);
-    border: 0;
     border-radius: var(--radius-m);
-    background: transparent;
     color: var(--text);
-    font: inherit;
     font-size: var(--font-size-small);
-    text-align: left;
-    white-space: nowrap;
-    text-overflow: ellipsis;
     cursor: pointer;
   }
 
   .fsHit:hover {
     background: var(--state-hover);
+  }
+
+  .fsHit[aria-selected="true"] {
+    background: var(--state-active);
+  }
+
+  .fsMeta {
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .fsSnip {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .fsState {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .fsState[hidden] {
+    display: none;
   }
 
   .fsHit[data-unjumpable] {

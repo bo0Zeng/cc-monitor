@@ -4960,7 +4960,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/filewin/src/select.rs", 1),
         // 快捷键预留位 `app.search-history` 删了（历史全文搜索从没独立快捷键、预留位不留）：
         //   清单那一处 ＋ 清单头注一处 ＋ 编辑器那枚「未上线」标签的遗址一处，逐处挂了墓碑。
-        ("src/frontend/ui/keybindings/actions.ts", 2),
+        ("src/frontend/ui/keybindings/actions.ts", 1),
         ("src/frontend/ui/keybindings/editor.ts", 1),
         ("tests/frontend/ui/keybindings/actions.vitest.ts", 1),
         // 账号清单与信任预检改走通道（后端出成品）：monitor 那几件函数与它们的判据删了，

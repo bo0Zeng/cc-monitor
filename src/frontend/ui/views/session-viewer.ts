@@ -102,7 +102,7 @@ export function revealCard(container: HTMLElement, uuid: string): HTMLElement | 
   requestAnimationFrame(() => requestAnimationFrame(() => el.scrollIntoView({ block: "center" })));
   el.classList.add("search-hit-flash");
   // 动画结束后移除 class（再次跳同一条还能重放）
-  window.setTimeout(() => el.classList.remove("search-hit-flash"), 2200);
+  window.setTimeout(() => el.classList.remove("search-hit-flash"), 1500);
   return el;
 }
 
@@ -1036,10 +1036,10 @@ export class SessionViewer {
     // 查找：问那台后端 `history-find`（经通道，`session-reads.ts::findInSession`），问的是查看器此刻这一份会话；
     // 跳与「你说过的话」同一个住址（`scrollToMessage`）。
     this.find = new FindStrip({
-      search: async (query, includeTools) => {
+      search: async (query, includeTools, skip) => {
         const where = this.outlineWhere;
         if (!where) return { available: false, reason: "", hits: [], total: 0 };
-        return findInSession(where.origin, where.jsonlPath, query, includeTools);
+        return findInSession(where.origin, where.jsonlPath, query, includeTools, skip);
       },
       jumpTo: (uuid) => this.scrollToMessage(uuid),
       unjumpableHint: copyText("sessionViewer.build.unjumpable"),

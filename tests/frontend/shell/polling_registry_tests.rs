@@ -422,6 +422,7 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
           `backend_stop` 只发 SIGKILL），命令一返回就画等于**每次操作后都显示操作前的状态**。"),
     ("src/frontend/ui/e2e-probe.ts", "requestAnimationFrame", 2, "★ **rAF 自链**：`sample` 每帧重排自己（起点 1 处 + 链内 1 处）。退出条件是 `stopReplayJitterProbe` 显式 `cancelAnimationFrame`。只在 e2e 探针里启用，不在正常路径上。"),
     // 通用组件（`kit/`）：都是一次性 UI 延时，不取数、不自链。
+    ("src/frontend/ui/find-strip.ts", "setTimeout", 1, "停 300ms 自己找（防抖）：每次输入清掉上一个再排；找过 / 收起时清掉。一次性。"),
     ("src/frontend/ui/kit/toast.ts", "setTimeout", 1, "到点收起这一条（纯告知 4s · 带动作 8s；悬停 / 焦点时清掉、离开后按剩下的时间重排）。一次性。"),
     ("src/frontend/ui/kit/tooltip.ts", "setTimeout", 2, "悬停 500ms 才出提示 · 卡式离开宿主与卡 120ms 才收；离开 / 移进卡即 `clearTimeout`。两处都一次性。"),
     ("src/frontend/ui/kit/block.ts", "setTimeout", 2, "① 加载超过 300ms 才画骨架 ② 超过 10s 才写正在做什么；换态时都 `clearTimeout`。一次性。"),
@@ -462,7 +463,7 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     // 历史页照稿重做：旧页那一处 rAF（展开 / 收起后合并重画）随旧页删了。
     ("src/frontend/ui/views/history.ts", "setTimeout", 3, "① 敲字之后停 150 ms 才问清单（`queryTimer`，再敲就重来）② 方向键走行时停 200 ms 才读右边（`previewTimer`，快速划过不读）③ 焦点离开列表那一下推到下一拍再看焦点去了哪（`focusout` 时 `activeElement` 还没换）。都是一次性，不取数、不是节拍器。"),
     ("src/frontend/ui/views/session-viewer.ts", "requestAnimationFrame", 5, "① ② 两处 `maybeFillAbove` —— **向上补料的 rAF 链**，五道守卫在 `:418-426`（世代 / 已到顶 / 在途 等）③ 渲染批前先让状态文绘一帧 ④ ⑤ 双 rAF 后重发 `scrollIntoView`（等 content-visibility 材料化）。"),
-    ("src/frontend/ui/views/session-viewer.ts", "setTimeout", 1, "2.2s 后移除搜索命中的闪烁 class。一次性。原 ①（`setTimeout(r, 0)` 让出主线程、等晚到的 Channel 块）随那条命令改走通道删了：页在同一个 Promise 链里交完。"),
+    ("src/frontend/ui/views/session-viewer.ts", "setTimeout", 1, "1.5s 后移除搜索命中的闪烁 class。一次性。原 ①（`setTimeout(r, 0)` 让出主线程、等晚到的 Channel 块）随那条命令改走通道删了：页在同一个 Promise 链里交完。"),
     ("src/frontend/ui/yield-to-main.ts", "setTimeout", 1, "`makeYieldToMain` 探不到 `MessageChannel` 时的兜底 `setTimeout(run, 0)` —— 让出一跳，由调用方自链（重放 drain · 长回复分片渲染），退出条件在调用方：队列空 / 片渲完。不是节拍器。"),
 ];
 

@@ -110,10 +110,10 @@ describe("P21 ⓪ 量具自检（这几条不过，下面六格全是空转）",
     //    12 → 11：少的是 `.import-preview-back`（设置窗批量导入预览并进 kit 的「添加机器」对话框；它挂在 `document.body` 上）。
     expect(
       fixedSelectors().length,
-      `CSS 里声明 \`position: fixed\` 的选择器有 ${fixedSelectors().length} 个（10-06 实测 11）。\n` +
+      `CSS 里声明 \`position: fixed\` 的选择器有 ${fixedSelectors().length} 个（10-06 实测 10：命令面板的外框换成了 kit 面板，自己那一条 fixed 删了）。\n` +
         "★ 变多 = 新加了一个浮层 ⇒ 去 ② 的登记表里交代它挂在哪；\n" +
         "★ 变少 = 要么真删了一个，要么**切规则那一刀又漏了**（第一版漏了 9 条，报 16）。",
-    ).toBe(11);
+    ).toBe(10);
   });
 
   it("🔴 正控：`alert(` 的量具对合成样本判得出「有」与「没有」两种", () => {

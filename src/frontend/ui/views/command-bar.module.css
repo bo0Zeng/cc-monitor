@@ -1,0 +1,128 @@
+/* 命令面板（外框是 kit 面板形 `palette`）：头一行搜索框 · 可滚的分组清单 · 底栏。 */
+@layer components {
+  .cbHead {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-5);
+    height: 48px;
+    padding: 0 var(--space-6);
+    border-bottom: 1px solid var(--border-soft);
+    color: var(--text-2);
+  }
+
+  .cbInput {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: var(--font-size-base);
+  }
+
+  .cbInput::placeholder {
+    color: var(--field-placeholder);
+  }
+
+  .cbList {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--space-3) var(--space-3) var(--space-4);
+  }
+
+  .cbGroup {
+    padding: var(--space-4) var(--space-4) var(--space-2);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .cbItem {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+    min-height: 32px;
+    padding: var(--space-2) var(--space-4);
+    border-left: 2px solid transparent;
+    border-radius: var(--radius-m);
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  .cbItem[aria-selected="true"] {
+    border-left-color: var(--accent);
+    background: var(--state-active);
+  }
+
+  .cbItem[aria-disabled="true"] {
+    opacity: var(--state-disabled-opacity);
+    cursor: default;
+  }
+
+  .cbMain {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--space-4);
+    min-width: 0;
+    color: var(--text-2);
+  }
+
+  .cbText {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .cbTitle,
+  .cbProject {
+    overflow: hidden;
+    color: var(--text);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .cbProject {
+    flex: none;
+  }
+
+  .cbSub {
+    overflow: hidden;
+    min-width: 0;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .cbWaiting {
+    flex: none;
+    color: var(--warn);
+    font-size: var(--font-size-small);
+  }
+
+  .cbWhy {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .cbEmpty {
+    padding: var(--space-7);
+    color: var(--text-2);
+    text-align: center;
+  }
+
+  .cbFoot {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    height: 32px;
+    padding: 0 var(--space-6);
+    border-top: 1px solid var(--border-soft);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+}

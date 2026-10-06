@@ -17,6 +17,7 @@ const ALLOWED: &[(&str, &str)] = &[
     ("core:window:allow-set-fullscreen", "全屏"),
     ("core:window:allow-is-fullscreen", "查全屏状态"),
     ("core:window:allow-close", "关窗"),
+    ("core:webview:allow-set-webview-zoom", "主窗口放大 / 缩小 / 还原（Ctrl+= · Ctrl+- · Ctrl+0，记住）"),
     (
         "core:window:allow-hide",
         "ST1「关窗改隐藏」：设置窗接管了 close-requested，\

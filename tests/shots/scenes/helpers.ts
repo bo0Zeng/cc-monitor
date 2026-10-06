@@ -70,11 +70,11 @@ export async function hover(sel: string | Element): Promise<void> {
 }
 
 /** 按一个键（`"k"` · `"Escape"` …），修饰键照给。发在当前焦点上（没有焦点 ⇒ body）。 */
-export async function key(k: string, mods: { ctrl?: boolean; shift?: boolean; alt?: boolean; meta?: boolean } = {}): Promise<void> {
+export async function key(k: string, mods: { ctrl?: boolean; shift?: boolean; alt?: boolean; meta?: boolean; code?: string } = {}): Promise<void> {
   const target = (document.activeElement as HTMLElement | null) ?? document.body;
   const init = {
     key: k,
-    code: k.length === 1 ? `Key${k.toUpperCase()}` : k,
+    code: mods.code ?? (k.length === 1 ? `Key${k.toUpperCase()}` : k),
     bubbles: true,
     cancelable: true,
     ctrlKey: mods.ctrl ?? false,

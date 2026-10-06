@@ -1,31 +1,36 @@
 /**
- * F84（#57）：键盘命令栏（⌘K/Ctrl-K 命令面板）。**加分项**，守只读铁律 + 北极星。
+ * 命令面板（`Ctrl+K`）：上方居中的模态面板（kit `panelDialog`，宽 600、距顶 90px），一个框搜命令与会话。
  *
- * body-level overlay（照 HistoryView 范式）：输入框 + 子串过滤命令列表 + 方向键选 + 回车执行 + Esc/点背景关。
- * **只列只读命令**（开 overlay / 窗口操作 / 导航——切会话/切 tab）；resume/new-session/attach/kill/delete 等
- * **写/驱动动作排除**（守北极星）。命令列表由 main.ts 组装后注入（`listCommands`），
- * 复用既有 view.open()/dispatcher 目标 + F91 `snapshotSessions()` 喂「切到会话…」。
+ * - 空输入时分组：需要你（有才出）· 当前会话 · 打开 · 窗口 · 账号。有输入时：会话在前、命令在后（子串匹配标题 · 项目 · 机器 · 关键词）。
+ * - 会话行：状态点 ＋ 机器徽标（只出一次）＋ 项目 ＋ 标题 ＋ 在等什么；右侧它的数字键（1–9 内）。
+ * - 不可用的项：灰，第二行写为什么。
+ * - 写动作不列：结束 · 删除 · 恢复这类有后果的动作在标签页右键里（底栏一句）。这是裁定（U2），明确不做，不是漏做。
+ * - 键盘：↑↓ 走 · Enter 执行并关 · Esc 关 · Tab 不出框；输入法组字时这几个键归输入法。
  *
- * `filterCommands` 纯函数抽出可测；无 fuzzy（子串够用、与既有过滤一致）。全 textContent，无 innerHTML。
- *
- * ## ★★ 写动作**不是待办，是裁过的「不做」**〔`U2` 用@08-11，`P6d` 08-12 补录〕
- *
- * 本注释原写「**首刀**排除……**延后**须 danger + 二次确认」——那写于裁定**之前**，当时准确。
- * 但**不加**。⇒ 那两个词今天会骗人：「首刀 / 延后」读起来是**排期**
- * （下一个人以为「配好 danger 样式就能加」），而事实是**这条路被裁掉了**。
- * 差一个量级 —— 同 `#79` 的「上游还没有 vs 我们还没做」、skill 装卸面的「不许装 vs 还没写」。
- *
- * ⇒ 逐字记住裁定：`#57` 正文那句「输主机名**直接 ssh / attach**」**明确不做**，
- * **不是漏做**。要翻案得先推翻 `U2`（`U2`），
- * 那是**裁定**不是实现工作。
- *
- * ⚠ 如实登记本件的边界：命令栏这一半（只读命令面板）**F84 就交付了**，
- * 本段是 `P6d` 唯一补的东西 —— 因为 `U2` 逐字要求「要写进 `P6d` 的诚实边界」，
- * 而 `P6d` 的件文件当时**根本不存在**，那句指令在账本里悬了一天没人执行。
+ * 只排版：哪几条、可不可用、为什么由调用方（`main.ts`）给；`filterCommands` 是纯函数。
  */
-import { dispatcher } from "../keybindings/registry";
 import { imeComposing } from "../keybindings/ime";
+import { panelDialog, type PanelHandle } from "../kit/dialog";
+import { icon, type IconName } from "../kit/icon";
+import { kbd, tag } from "../kit/badge";
+import { statusDot, type DotState } from "../kit/status-dot";
 import { copyText } from "../copy-table";
+import s from "./command-bar.module.css";
+
+/** 分组（空输入时按这个顺序列；有输入时只分「会话」「命令」）。 */
+export type CommandGroup = "needs" | "current" | "open" | "window" | "account";
+
+/** 会话行要画的那几样（标签页栏同一份事实）。 */
+export interface SessionFace {
+  dot: DotState;
+  dotLabel: string;
+  /** 远端那台的名字；本机 ⇒ `null`（不画徽标）。 */
+  machine: string | null;
+  project: string | null;
+  title: string;
+  /** 在等你什么（`等批准`）；不在等 ⇒ `null`。 */
+  waiting: string | null;
+}
 
 export interface Command {
   id: string;
@@ -33,14 +38,20 @@ export interface Command {
   title: string;
   /** 附加匹配关键词（空格分隔，不展示）。 */
   keywords?: string;
-  /** 右侧提示（该命令对应的快捷键，如 `H`）——把冗余入口变成快捷键教学卡（业务二审 gap#3）。 */
+  /** 右侧：当前键位（会话行是它的数字键）。 */
   hint?: string;
-  /** 执行体（只读命令：开 overlay / 导航 / 窗口操作）。 */
+  icon?: IconName;
+  /** 命令归哪一组；会话行不给。 */
+  group?: CommandGroup;
+  /** 会话行（给了就按会话画、按会话排）。 */
+  session?: SessionFace;
+  /** 不可用：第二行写为什么，点了不做事。 */
+  disabled?: string;
   run: () => void;
 }
 
 /**
- * 子串过滤 + 排序。大小写不敏感。空 query → 原序返回全部。
+ * 子串过滤 ＋ 排序。大小写不敏感。空 query → 原序返回全部。
  * 排序档：标题前缀命中(0) > 标题子串命中(1) > 仅 keywords 命中(2)；同档保原序（稳定）。纯函数。
  */
 export function filterCommands(cmds: Command[], query: string): Command[] {
@@ -60,136 +71,209 @@ export function filterCommands(cmds: Command[], query: string): Command[] {
     .map((x) => x.c);
 }
 
+const GROUP_ORDER: readonly CommandGroup[] = ["needs", "current", "open", "window", "account"];
+
+function groupTitle(g: CommandGroup | "sessions" | "commands"): string {
+  switch (g) {
+    case "needs":
+      return copyText("commandBar.group.needs");
+    case "current":
+      return copyText("commandBar.group.current");
+    case "open":
+      return copyText("commandBar.group.open");
+    case "window":
+      return copyText("commandBar.group.window");
+    case "account":
+      return copyText("commandBar.group.account");
+    case "sessions":
+      return copyText("commandBar.group.sessions");
+    case "commands":
+      return copyText("commandBar.group.commands");
+  }
+}
+
+/** 这一刻要列的段：空输入按分组（会话只列在等你的）；有输入时会话一段、命令一段。纯函数。 */
+export function sections(cmds: Command[], query: string): { title: string; items: Command[] }[] {
+  if (!query.trim()) {
+    return GROUP_ORDER.map((g) => ({
+      title: groupTitle(g),
+      items: cmds.filter((c) => (g === "needs" ? c.session?.waiting != null : !c.session && (c.group ?? "open") === g)),
+    })).filter((sec) => sec.items.length > 0);
+  }
+  const hit = filterCommands(cmds, query);
+  return [
+    { title: groupTitle("sessions"), items: hit.filter((c) => c.session) },
+    { title: groupTitle("commands"), items: hit.filter((c) => !c.session) },
+  ].filter((sec) => sec.items.length > 0);
+}
+
 export class CommandBarView {
-  private root: HTMLElement;
   private input!: HTMLInputElement;
   private listEl!: HTMLElement;
-  private isOpen = false;
-  /** 本次 open 的命令全表（open 时快照一次，避免每次击键重建 + 打字中途会话增减致列表跳动）。 */
+  private handle: PanelHandle | null = null;
+  /** 本次打开时的全表（打开那一刻快照：打字中途会话增减不让列表跳）。 */
   private allCommands: Command[] = [];
-  /** 当前过滤结果（与列表 DOM 同步）。 */
-  private filtered: Command[] = [];
-  /** 选中项在 filtered 中的下标。 */
+  /** 当前列着的、能被选中的那几条（与列表 DOM 同步）。 */
+  private shown: Command[] = [];
+  private rows: HTMLElement[] = [];
   private selected = 0;
 
-  constructor(private listCommands: () => Command[]) {
-    this.root = this.build();
-  }
-
-  private build(): HTMLElement {
-    const root = document.createElement("div");
-    root.className = "command-bar";
-    // 点背景（非 box 内）关闭
-    root.addEventListener("mousedown", (e) => {
-      if (e.target === root) this.close();
-    });
-
-    const box = document.createElement("div");
-    box.className = "command-bar-box";
-
-    this.input = document.createElement("input");
-    this.input.className = "command-bar-input";
-    this.input.type = "text";
-    this.input.placeholder = copyText("commandBar.build.placeholder");
-    this.input.setAttribute("aria-label", copyText("commandBar.build.ariaLabel"));
-    this.input.addEventListener("input", () => this.applyFilter());
-    this.input.addEventListener("keydown", (e) => this.onInputKeydown(e));
-    box.appendChild(this.input);
-
-    this.listEl = document.createElement("div");
-    this.listEl.className = "command-bar-list";
-    box.appendChild(this.listEl);
-
-    root.appendChild(box);
-    return root;
-  }
+  constructor(private listCommands: () => Command[]) {}
 
   isVisible(): boolean {
-    return this.isOpen;
-  }
-
-  /** 模态：开着时快捷键只放行 Esc（再按 Ctrl+K 关它由输入框自己接）。 */
-  readonly modal = true;
-
-  handleEsc(): void {
-    this.close();
+    return this.handle !== null;
   }
 
   toggle(): void {
-    if (this.isOpen) this.close();
+    if (this.handle) this.close();
     else this.open();
   }
 
   open(): void {
-    if (this.isOpen) return;
-    document.body.appendChild(this.root);
-    this.isOpen = true;
-    dispatcher.pushOverlay(this);
-    this.input.value = "";
-    this.allCommands = this.listCommands(); // 本次 open 快照一次
-    this.applyFilter(); // 渲染全表
-    this.input.focus();
+    if (this.handle) return;
+    const head = document.createElement("div");
+    head.className = s.cbHead;
+    head.appendChild(icon("search"));
+    this.input = document.createElement("input");
+    this.input.className = s.cbInput;
+    this.input.dataset.role = "command-input";
+    this.input.type = "text";
+    this.input.placeholder = copyText("commandBar.build.placeholder");
+    this.input.setAttribute("aria-label", copyText("commandBar.build.placeholder"));
+    this.input.addEventListener("input", () => this.applyFilter());
+    this.input.addEventListener("keydown", (e) => this.onInputKeydown(e));
+    head.append(this.input, kbd(copyText("commandBar.key.esc")));
+
+    this.listEl = document.createElement("div");
+    this.listEl.className = s.cbList;
+    this.listEl.setAttribute("role", "listbox");
+
+    const foot = document.createElement("div");
+    foot.className = s.cbFoot;
+    const keys = document.createElement("span");
+    keys.textContent = copyText("commandBar.foot.keys");
+    const noWrites = document.createElement("span");
+    noWrites.textContent = copyText("commandBar.foot.noWrites");
+    foot.append(keys, noWrites);
+
+    this.allCommands = this.listCommands();
+    this.handle = panelDialog({
+      label: copyText("commandBar.build.ariaLabel"),
+      size: "palette",
+      content: [head, this.listEl, foot],
+      first: this.input,
+      onClose: () => {
+        this.handle = null;
+      },
+    });
+    this.applyFilter();
   }
 
   close(): void {
-    if (!this.isOpen) return;
-    this.root.remove();
-    this.isOpen = false;
-    dispatcher.popOverlay(this);
+    this.handle?.close();
   }
 
   private applyFilter(): void {
-    this.filtered = filterCommands(this.allCommands, this.input.value);
-    this.selected = 0;
-    this.renderList();
-  }
-
-  private renderList(): void {
+    const secs = sections(this.allCommands, this.input.value);
     this.listEl.replaceChildren();
-    if (this.filtered.length === 0) {
+    this.shown = [];
+    this.rows = [];
+    if (secs.length === 0) {
       const empty = document.createElement("div");
-      empty.className = "command-bar-empty";
+      empty.className = s.cbEmpty;
       empty.textContent = copyText("commandBar.renderList.none");
       this.listEl.appendChild(empty);
       return;
     }
-    this.filtered.forEach((cmd, i) => {
-      const item = document.createElement("div");
-      item.className = "command-bar-item";
-      if (i === this.selected) item.classList.add("selected");
-      const titleEl = document.createElement("span");
-      titleEl.className = "command-bar-item-title";
-      titleEl.textContent = cmd.title;
-      item.appendChild(titleEl);
-      if (cmd.hint) {
-        const hintEl = document.createElement("span");
-        hintEl.className = "command-bar-item-hint";
-        hintEl.textContent = cmd.hint; // 该命令的快捷键（教学式发现）
-        item.appendChild(hintEl);
+    for (const sec of secs) {
+      const h = document.createElement("div");
+      h.className = s.cbGroup;
+      h.textContent = sec.title;
+      this.listEl.appendChild(h);
+      for (const cmd of sec.items) {
+        const row = this.row(cmd, this.shown.length);
+        this.shown.push(cmd);
+        this.rows.push(row);
+        this.listEl.appendChild(row);
       }
-      item.addEventListener("mousedown", (e) => {
-        e.preventDefault(); // 别让输入框失焦
-        this.run(i);
-      });
-      this.listEl.appendChild(item);
+    }
+    this.selected = Math.max(0, this.shown.findIndex((c) => !c.disabled));
+    this.mark();
+  }
+
+  private row(cmd: Command, index: number): HTMLElement {
+    const item = document.createElement("div");
+    item.className = s.cbItem;
+    item.dataset.role = "command-item";
+    item.setAttribute("role", "option");
+    if (cmd.disabled) item.setAttribute("aria-disabled", "true");
+    const main = document.createElement("div");
+    main.className = s.cbMain;
+    if (cmd.session) {
+      const f = cmd.session;
+      main.appendChild(statusDot(f.dot, f.dotLabel, "compact"));
+      if (f.machine) main.appendChild(tag(f.machine));
+      if (f.project) {
+        const p = document.createElement("span");
+        p.className = s.cbProject;
+        p.textContent = f.project;
+        main.appendChild(p);
+      }
+      const t = document.createElement("span");
+      t.className = f.project ? s.cbSub : s.cbTitle;
+      t.textContent = f.title;
+      main.appendChild(t);
+      if (f.waiting) {
+        const w = document.createElement("span");
+        w.className = s.cbWaiting;
+        w.textContent = copyText("commandBar.session.waiting", { what: f.waiting });
+        main.appendChild(w);
+      }
+    } else {
+      main.appendChild(icon(cmd.icon ?? "command"));
+      const text = document.createElement("span");
+      text.className = s.cbText;
+      const t = document.createElement("span");
+      t.className = s.cbTitle;
+      t.textContent = cmd.title;
+      text.appendChild(t);
+      if (cmd.disabled) {
+        const why = document.createElement("span");
+        why.className = s.cbWhy;
+        why.textContent = cmd.disabled;
+        text.appendChild(why);
+      }
+      main.appendChild(text);
+    }
+    item.appendChild(main);
+    if (cmd.hint) item.appendChild(kbd(cmd.hint));
+    item.addEventListener("mousedown", (e) => {
+      e.preventDefault(); // 别让输入框失焦
+      this.run(index);
     });
+    return item;
+  }
+
+  private mark(): void {
+    this.rows.forEach((el, i) => el.setAttribute("aria-selected", String(i === this.selected)));
+    this.rows[this.selected]?.scrollIntoView?.({ block: "nearest" });
   }
 
   private moveSelection(delta: number): void {
-    if (this.filtered.length === 0) return;
-    const n = this.filtered.length;
-    this.selected = (this.selected + delta + n) % n;
-    // 只更新高亮 + 滚动到可见，不整表重建
-    const items = this.listEl.querySelectorAll<HTMLElement>(".command-bar-item");
-    items.forEach((el, i) => el.classList.toggle("selected", i === this.selected));
-    // 可选调用：jsdom（测试环境）无 scrollIntoView，真实 webview 有。
-    items[this.selected]?.scrollIntoView?.({ block: "nearest" });
+    const n = this.shown.length;
+    if (n === 0) return;
+    let i = this.selected;
+    for (let k = 0; k < n; k++) {
+      i = (i + delta + n) % n;
+      if (!this.shown[i].disabled) break;
+    }
+    this.selected = i;
+    this.mark();
   }
 
   private onInputKeydown(e: KeyboardEvent): void {
     if (imeComposing(e)) return; // 组字中的 Enter / 方向键归输入法
-    // Ctrl+K 再按关闭：dispatcher 的 app.open-command-bar 在输入框聚焦时被可编辑目标守卫拦掉
-    // （registry.ts 只放行 overlay.close），故 toggle 的关分支键盘不可达——在此本地兜住。
+    // 开着时再按 Ctrl+K 关：模态压栈后快捷键只放行 Esc，这一键由框自己接。
     if (e.ctrlKey && e.code === "KeyK") {
       e.preventDefault();
       this.close();
@@ -205,17 +289,16 @@ export class CommandBarView {
       e.preventDefault();
       this.run(this.selected);
     }
-    // Esc 交给 dispatcher overlay 栈（overlay.close → handleEsc），不在此处理。
   }
 
   private run(index: number): void {
-    const cmd = this.filtered[index];
-    if (!cmd) return; // 空列表 / 越界 → no-op
-    this.close(); // 先关命令栏（popOverlay），再执行——命令可能自己 pushOverlay（如开历史）
+    const cmd = this.shown[index];
+    if (!cmd || cmd.disabled) return;
+    this.close(); // 先关（出弹层栈），再执行 —— 命令可能自己开一层（历史）
     try {
       cmd.run();
     } catch (e) {
-      console.warn("command-bar run failed:", e); // run 回调异常不逸出 keydown 处理器
+      console.warn("command-bar run failed:", e);
     }
   }
 }

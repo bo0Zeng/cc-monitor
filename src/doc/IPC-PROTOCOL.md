@@ -4016,8 +4016,8 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 #### `history-find`：会话内查找（2026-09-24 上帧面）
 
 ```text
-→ {"id":"q11","cmd":"history-find","args":{"path":"/home/u/.claude/projects/-p/s.jsonl","query":"--force","include_tools":false,"limit":500}}
-← {"kind":"reply","id":"q11","ok":true,"data":{"total":1,"hits":[{"uuid":…,"kind":…,"before":…,"matched":…,"after":…}]}}
+→ {"id":"q11","cmd":"history-find","args":{"path":"/home/u/.claude/projects/-p/s.jsonl","query":"--force","include_tools":false,"limit":100,"skip":0}}
+← {"kind":"reply","id":"q11","ok":true,"data":{"total":1,"hits":[{"uuid":…,"kind":…,"before":…,"matched":…,"after":…,"turn":3,"tsMs":…}]}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -4026,6 +4026,9 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 | `query` | → | 查询串（原样；以 `--` 起头也照样是查询，不是选项） |
 | `include_tools` | → | 可选，缺省 `false`：工具结果也搜 |
 | `limit` | → | 可选，缺省 500、封顶 2000（与 CLI 的 `--limit` 同一对常量） |
+| `skip` | → | 可选，缺省 0：跳过前几条命中（滚到底续下一页；`total` 照报全量） |
+| `hits[].turn` | ← | 第几轮：这条之前（含）你说过几句（口径同大纲 `history-user-inputs`；第一句之前 ＝ 0） |
+| `hits[].tsMs` | ← | 那条记录的时刻（毫秒；读不出 ＝ 0） |
 | `total` / `hits` | ← | **成品**（口径见 §10.5）：`hits` 与 `--find-in-session` 的 stdout **中段逐行相同**（同一个扫描；头尾只属于 CLI 那一臂），`total` = 全量命中数 |
 
 **为什么上帧面**：与上面两条同一个处境（新子命令、此前在远端逐次拨号）；用户每按一次 Enter 就要一次。

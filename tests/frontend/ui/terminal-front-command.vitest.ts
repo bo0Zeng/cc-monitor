@@ -17,22 +17,23 @@ import { terminalFrontCommand } from "../../../src/frontend/ui/terminal-front-co
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { stripComments } from "../../test-support/strip-comments";
 
-describe("〔U2〕命令面板的 ↗：非 Windows 不列", () => {
+describe("命令面板的 ↗：非 Windows 灰着、第二行「仅 Windows」", () => {
   afterEach(() => __setHostOsForTests(null));
 
-  const cases: ReadonlyArray<readonly [HostOs, number]> = [
-    ["windows", 1],
-    ["linux", 0],
-    ["macos", 0],
-    ["unknown", 1], // 测不出 OS ⇒ 照常列（错藏的代价是 Windows 用户找不到它）
+  const cases: ReadonlyArray<readonly [HostOs, boolean]> = [
+    ["windows", true],
+    ["linux", false],
+    ["macos", false],
+    ["unknown", true], // 测不出 OS ⇒ 当能用（错灰的代价是 Windows 用户点不了它）
   ];
-  for (const [os, n] of cases) {
-    it(`${os} ⇒ 列 ${n} 项`, () => {
+  for (const [os, ok] of cases) {
+    it(`${os} ⇒ ${ok ? "能用" : "灰着"}`, () => {
       __setHostOsForTests(os);
       const item = { id: "term-front" };
       const got = terminalFrontCommand(item);
-      expect(got.length).toBe(n);
-      if (n === 1) expect(got[0]).toBe(item); // 原样那一项，不是副本
+      expect(got.length).toBe(1);
+      if (ok) expect(got[0]).toBe(item); // 原样那一项，不是副本
+      else expect(got[0]).toEqual({ id: "term-front", disabled: "仅 Windows" });
     });
   }
 

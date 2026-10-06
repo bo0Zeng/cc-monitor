@@ -22,7 +22,7 @@
  * 显示给用户时用 `prettyChord()` 转友好名：`Ctrl+Shift+KeyW` → `Ctrl + Shift + W`。
  */
 
-import { ACTIONS, findAction, type ActionId } from "./actions";
+import { ACTIONS, findAction, type ActionId, type Scope } from "./actions";
 import { copyText } from "../copy-table";
 import { imeComposing } from "./ime";
 
@@ -85,6 +85,7 @@ export class KeybindingDispatcher {
   /** 把规范化 chord 串转给用户看的友好名 */
   static prettyChord(chord: string | null): string {
     if (!chord) return copyText("registry.prettyChord.unbound");
+    if (chord === "Shift+Slash") return "?";
     const parts = chord.split("+");
     const out: string[] = [];
     for (const p of parts) {
@@ -106,6 +107,10 @@ export class KeybindingDispatcher {
       else if (p === "BracketLeft") out.push("[");
       else if (p === "BracketRight") out.push("]");
       else if (p === "Backslash") out.push("\\");
+      else if (p === "ArrowUp") out.push(copyText("registry.prettyChord.up"));
+      else if (p === "ArrowDown") out.push(copyText("registry.prettyChord.down"));
+      else if (p === "ArrowLeft") out.push(copyText("registry.prettyChord.left"));
+      else if (p === "ArrowRight") out.push(copyText("registry.prettyChord.right"));
       else out.push(p); // Escape / Tab / F1-F12 / Arrow* 保持原样
     }
     return out.join(" + ");
@@ -226,6 +231,25 @@ export class KeybindingDispatcher {
       // 冲突时后定义的赢；编辑器保存前会先做冲突检测，正常情况不会冲突到这里
       this.chordToAction.set(chord, a.id);
     }
+    // 固定的另一个键（菜单键）：不压过任何人自己绑的键。
+    for (const a of ACTIONS) if (a.also && !this.chordToAction.has(a.also)) this.chordToAction.set(a.also, a.id);
+  }
+
+  /** 此刻焦点在哪儿、这一键的作用范围放不放行（带修饰键的单键动作按「随时」算）。 */
+  static scopeAllows(scope: Scope, chord: string, where: FocusWhere): boolean {
+    const modified = chord.split("+").some((p) => p === "Ctrl" || p === "Alt" || p === "Meta");
+    const s: Scope = scope === "bare" && modified ? "any" : scope;
+    switch (s) {
+      case "any":
+        return true;
+      case "idle":
+        return where !== "input";
+      case "main":
+        return where === "main";
+      case "nav":
+      case "bare":
+        return where === "main" || where === "tabs";
+    }
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
@@ -256,10 +280,10 @@ export class KeybindingDispatcher {
     const id = this.chordToAction.get(chord);
     if (!id) return;
 
-    // 单键快捷键守卫：焦点在**可编辑文本**元素（历史搜索框 / 设置输入 / 重命名 / select 等）
-    // 时，除 overlay.close（Esc，用来关搜索/弹层）外一律不触发——否则默认的单键快捷键
-    // （h/m/t/数字…）会在打字时被误触发。详 isEditableTarget。
-    if (id !== "overlay.close" && isEditableTarget()) return;
+    // 作用范围：焦点在哪儿放行哪一档（单键在输入框 / 抽屉 / 状态栏里不触发；带修饰键的随时）。
+    const action = findAction(id);
+    if (!action?.available) return;
+    if (!KeybindingDispatcher.scopeAllows(action.scope, chord, focusWhere())) return;
 
     // overlay.close 特殊：交给栈顶 overlay 处理
     if (id === "overlay.close") {
@@ -275,10 +299,6 @@ export class KeybindingDispatcher {
 
     // 上面有浮层 / 对话框 / 全屏视图：单键不落到底下看不见的 tab 上（模态连带修饰键的也挡）。
     if (!this.layersPass(id, chord)) return;
-
-    // 未上线 action 即使 chord 命中也不触发
-    const action = findAction(id);
-    if (!action?.available) return;
 
     const cb = this.callbacks.get(id);
     if (!cb) return; // 注册了 chord 但 main.ts 没 bind callback（不该发生）
@@ -315,6 +335,18 @@ function isEditableTarget(): boolean {
     return ["text", "search", "url", "email", "password", "number", "tel"].includes(t);
   }
   return false;
+}
+
+/** 焦点在哪一块：输入框 · 标签页栏 · 主区（消息流 · 会话头 · 没焦点）· 别处（抽屉 · 状态栏 · 浮层里的按钮 …）。 */
+export type FocusWhere = "input" | "tabs" | "main" | "other";
+
+export function focusWhere(): FocusWhere {
+  if (isEditableTarget()) return "input";
+  const el = document.activeElement;
+  if (!(el instanceof HTMLElement) || el === document.body || el === document.documentElement) return "main";
+  if (el.closest("#tab-bar")) return "tabs";
+  if (el.closest("#message-stream, #session-head")) return "main";
+  return "other";
 }
 
 /** 全 app 单例 */

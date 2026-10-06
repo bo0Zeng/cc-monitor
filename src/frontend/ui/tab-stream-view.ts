@@ -250,19 +250,17 @@ export class TabStreamView {
     const branchFolder = new BranchFolder(stream.contentElement);
     const timeline = new RecordTimeline(stream);
 
-    // 本 tab 的查找面板：搜索 ／ 大纲两个模式，**跳只有一个住址**（`jumpInTab`）。
-    // 原先的独立悬浮层 `.live-user-inputs`（K-R45 乙 · 步 2 止血形）整块由它取代。宿主自己的三件事：
+    // 本 tab 的查找面板：搜索 ／ 大纲两个模式，**跳只有一个住址**（`jumpInTab`）。宿主自己的三件事：
     // ① 怎么查 —— 问后端（经通道直接说帧命令 `history-find`，`session-reads.ts`），问的是这个 tab 的那份会话；
-    // ② 怎么跳 —— 见 `jumpInTab`；
-    // ③ 跳空了怎么解释 —— 实时这一侧的成因与查看器**不是同一件事**：那边是「渲染时被剥成空卡」
-    //    （永久），这边是「还收纳在 `TailWindow` 里没建卡」（**上翻补一批就好了**）。
+    // ② 怎么跳 —— 见 `jumpInTab`（没加载的那一段先取回来再跳）；
+    // ③ 落空怎么说 —— 取回来了也找不到那张卡（被并进别的卡 / 渲染成空）。
     const find = new SessionFindPanel({
-      search: async (query, includeTools) => {
+      search: async (query, includeTools, skip) => {
         const t = this.store.tabs.get(sessionId);
         if (!t?.parentPath) {
           return { available: false, reason: copyText("tabStreamView.search.noFile"), hits: [], total: 0 };
         }
-        return findInSession(t.origin, t.parentPath, query, includeTools);
+        return findInSession(t.origin, t.parentPath, query, includeTools, skip);
       },
       jumpTo: (uuid) => this.jumpInTab(sessionId, streamEl, uuid),
       unjumpableHint: copyText("tabStreamView.search.notLoaded"),
@@ -434,23 +432,42 @@ export class TabStreamView {
   }
 
   /**
-   * **跳（大纲行与查找命中行共用这一个住址）**：
-   * - 骨架没接上 / 这条已经物化 ⇒ 直接找卡（`revealCard`）；
-   * - 还在占位里 ⇒ `ensure` 物化它附近那一段；账本里有的当场建卡，没有的按偏移取回（`fetchMissingRows`）——
-   *   **等这个 tab 在途的取正文全部落完**再找卡。同步那一下去找必然落空（U3b 之后前端账本只留尾巴 200 条）。
+   * **跳（大纲行、查找命中行与轮次刻度共用这一个住址）**：
+   * - 这条已经建了卡 ⇒ 直接找卡（`revealCard`）；
+   * - 骨架接上了、还在占位里 ⇒ `ensure` 物化它附近那一段；账本里有的当场建卡，没有的按偏移取回（`fetchMissingRows`）——
+   *   **等这个 tab 在途的取正文全部落完**再找卡；取失败 ⇒ reject 带原因（那一行写原因 ＋［重试］）；
+   * - 骨架没接、还收在尾部窗口里 ⇒ 从它往下整段建卡（尾部窗口只认后缀），再找卡；
+   * - 都不是（骨架还没到）⇒ 踢一次要骨架、reject「索引未就绪」（重试时多半已经接上）。
    * 等的期间 tab 被关掉 ⇒ 落空（`null`）。
    */
   private jumpInTab(sessionId: string, streamEl: HTMLElement, uuid: string): JumpResult {
     const tab = this.store.tabs.get(sessionId);
-    const sk = tab?.skeleton;
+    if (!tab) return null;
+    const sk = tab.skeleton;
     const seq = sk?.ledger.uuidToSeq.get(uuid);
-    if (!tab || !sk || seq === undefined || !sk.isPending(seq)) return revealCard(streamEl, uuid);
-    sk.ensure(seq);
-    const inflight = this.rangeFetches.get(tab);
-    if (!inflight || inflight.size === 0) return revealCard(streamEl, uuid);
-    return Promise.allSettled([...inflight]).then(() =>
-      this.store.tabs.get(sessionId) === tab ? revealCard(streamEl, uuid) : null,
-    );
+    if (sk && seq !== undefined && sk.isPending(seq)) {
+      sk.ensure(seq);
+      const inflight = this.rangeFetches.get(tab);
+      if (!inflight || inflight.size === 0) return revealCard(streamEl, uuid);
+      return Promise.allSettled([...inflight]).then((done) => {
+        if (this.store.tabs.get(sessionId) !== tab) return null;
+        const el = revealCard(streamEl, uuid);
+        const failed = done.find((r): r is PromiseRejectedResult => r.status === "rejected");
+        if (!el && failed) throw failed.reason instanceof Error ? failed.reason : new Error(String(failed.reason));
+        return el;
+      });
+    }
+    const built = revealCard(streamEl, uuid);
+    if (built || sk) return built;
+    const pending = tab.window.peek(tab.window.pendingCount);
+    const at = pending.findIndex((p) => (p.message as { uuid?: unknown }).uuid === uuid);
+    if (at >= 0) {
+      this.renderPayloadsBatch(tab, tab.window.takeTail(pending.length - at));
+      this.updateSentinel(tab);
+      return revealCard(streamEl, uuid);
+    }
+    this.requestSkeleton(tab);
+    return Promise.reject(new Error(copyText("tabStreamView.search.notReady")));
   }
 
   /** 切进来的 tab：物化 / 哨兵 / 骨架索引 / 大纲 / 不可滚时踢一次补批（原是 `switchTo` 中段，逐字）。 */
@@ -1005,11 +1022,15 @@ export class TabStreamView {
           tab.seenSeqs.addRange(a, b); // 这一段整段到过（不可显示的也算）
           if (again.length > 0) this.renderPayloadsBatch(tab, again);
         })
-        .catch((e: unknown) => console.warn(`[tabs] 按偏移取正文失败 [${a},${b})：`, e));
-      // 记进在途集合（「跳」等它落完），落完自己出列
+        .catch((e: unknown) => {
+          console.warn(`[tabs] 按偏移取正文失败 [${a},${b})：`, e);
+          throw e instanceof Error ? e : new Error(String(e)); // 「跳」要说得出没取到的原因
+        });
+      // 记进在途集合（「跳」等它落完），落完自己出列；没人等它时失败也不算没接住
       const set = inflight!;
       set.add(fetched);
-      void fetched.finally(() => set.delete(fetched));
+      fetched.catch(() => {});
+      void fetched.finally(() => set.delete(fetched)).catch(() => {});
     }
   }
 

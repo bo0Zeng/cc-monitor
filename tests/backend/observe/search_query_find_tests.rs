@@ -232,12 +232,17 @@ fn gap1_history_find_rides_the_resident_index_and_equals_the_plain_scan() {
     let scan = |tools: bool| {
         let r = crate::observe::history_query::open_session_at(&home, &p, 0).unwrap();
         let mut hits = Vec::new();
-        let (_, total) =
-            crate::observe::search_query::scan_session_find(r, "zqx", tools, 500, |h| {
+        let (_, total) = crate::observe::search_query::scan_session_find(
+            r,
+            "zqx",
+            tools,
+            crate::observe::search_query::FindPage::first(500),
+            |h| {
                 hits.push(h.clone());
                 Ok(())
-            })
-            .unwrap();
+            },
+        )
+        .unwrap();
         serde_json::json!({ "total": total, "hits": hits })
     };
     let ask = |tools: bool| {
@@ -269,5 +274,88 @@ fn gap1_history_find_rides_the_resident_index_and_equals_the_plain_scan() {
         Some((0, 1, 0)),
         "(整份, 追加, 没读)：该只追加读这一份"
     );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// ★ 每条命中带「第几轮」（这条之前含它你说过几句，口径同大纲）与那条记录的时刻；`skip` 续下一页、`total` 照报全量。
+/// 常驻索引那一臂与现扫那一臂逐字相等（期望的轮号取自夹具 uuid 的命名 `t{轮}-*`，不取自判定函数）。
+#[test]
+fn find_hits_carry_turn_and_time_and_page_by_skip_on_both_arms() {
+    let home = std::env::temp_dir().join(format!("find-turn-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let dir = home.join("projects").join("p");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("s.jsonl");
+    let user = |uuid: &str, text: &str, ts: &str| {
+        serde_json::json!({"type":"user","uuid":uuid,"timestamp":ts,"message":{"content":text}})
+            .to_string()
+    };
+    let asst = |uuid: &str, text: &str, ts: &str| {
+        serde_json::json!({"type":"assistant","uuid":uuid,"timestamp":ts,"message":{"content":[{"type":"text","text":text}]}})
+            .to_string()
+    };
+    // 结构占位：只有带 zqx 的几条会中；第 2 轮你那句不含 zqx（它也要算一轮）。
+    let body = [
+        asst("t0-a", "zqx before any", "2026-01-01T00:00:00.000Z"),
+        user("t1-u", "zqx first", "2026-01-01T00:01:00.000Z"),
+        asst("t1-a", "zqx reply", "2026-01-01T00:02:00.000Z"),
+        user("t2-u", "plain second", "2026-01-01T00:03:00.000Z"),
+        asst("t2-a", "zqx again", "2026-01-01T00:04:00.000Z"),
+        user("t3-u", "zqx third", "bad-time"),
+    ]
+    .join("\n")
+        + "\n";
+    std::fs::write(&path, &body).unwrap();
+    let p = path.display().to_string();
+    let scan = |skip: usize, limit: usize| {
+        let r = crate::observe::history_query::open_session_at(&home, &p, 0).unwrap();
+        let mut hits = Vec::new();
+        let page = crate::observe::search_query::FindPage { skip, limit };
+        let (_, total) =
+            crate::observe::search_query::scan_session_find(r, "zqx", false, page, |h| {
+                hits.push(h.clone());
+                Ok(())
+            })
+            .unwrap();
+        serde_json::json!({ "total": total, "hits": hits })
+    };
+    let ask = |skip: usize, limit: usize| {
+        crate::faces::read_face::answer_at(
+            &home,
+            "history-find",
+            &serde_json::json!({"path": p, "query": "zqx", "skip": skip, "limit": limit}),
+        )
+        .unwrap()
+    };
+    let all = ask(0, 100);
+    assert_eq!(all, scan(0, 100), "索引那一臂 == 现扫");
+    let turns: Vec<(String, u64)> = all["hits"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|h| {
+            (
+                h["uuid"].as_str().unwrap().to_string(),
+                h["turn"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    let want: Vec<(String, u64)> = ["t0-a", "t1-u", "t1-a", "t2-a", "t3-u"]
+        .iter()
+        .map(|u| (u.to_string(), u[1..2].parse().unwrap()))
+        .collect();
+    assert_eq!(turns, want);
+    assert_eq!(all["hits"][1]["tsMs"].as_i64(), Some(1_767_225_660_000));
+    assert_eq!(all["hits"][4]["tsMs"].as_i64(), Some(0), "读不出的时刻 ⇒ 0");
+    let page = ask(2, 2);
+    assert_eq!(page, scan(2, 2));
+    assert_eq!(page["total"].as_u64(), Some(5), "续页照报全量");
+    let uuids: Vec<&str> = page["hits"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|h| h["uuid"].as_str().unwrap())
+        .collect();
+    assert_eq!(uuids, ["t1-a", "t2-a"]);
     let _ = std::fs::remove_dir_all(&home);
 }

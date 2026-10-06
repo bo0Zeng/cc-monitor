@@ -1,0 +1,30 @@
+/* 主窗口会话内查找面板：锚在会话头下、正文区右上（外框位置由 `styles.css` 的 `.session-find` 管：切 tab 只翻 visibility）。 */
+@layer components {
+  .sfPanel {
+    width: min(400px, calc(100vw - 32px));
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-l);
+    background: var(--card);
+    box-shadow: var(--shadow-float);
+    text-align: left;
+  }
+
+  .sfBar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--space-3) 0 var(--space-4);
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .sfSearch {
+    padding-top: var(--space-4);
+  }
+
+  .sfQuery {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+    padding: 0 var(--space-5) var(--space-3);
+  }
+}

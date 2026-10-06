@@ -60,12 +60,30 @@ describe("P6d-Y1：写动作是裁定不做，不是待办", () => {
   });
 });
 
-const cmd = (id: string, title: string, keywords?: string): Command => ({
+const cmd = (id: string, title: string, keywords?: string, group: Command["group"] = "open"): Command => ({
   id,
   title,
   keywords,
+  group,
   run: vi.fn(),
 });
+const ses = (id: string, title: string, waiting: string | null = null): Command => ({
+  id,
+  title,
+  session: { dot: waiting ? "needs-you" : "running", dotLabel: "", machine: null, project: null, title, waiting },
+  run: vi.fn(),
+});
+const ITEM = "[data-role=command-item]";
+const INPUT = "[data-role=command-input]";
+const items = () => [...document.querySelectorAll<HTMLElement>(ITEM)];
+const selectedText = () => document.querySelector(`${ITEM}[aria-selected=true]`)?.textContent;
+const key = (init: KeyboardEventInit) => document.querySelector<HTMLInputElement>(INPUT)!.dispatchEvent(new KeyboardEvent("keydown", init));
+const type = (text: string) => {
+  const input = document.querySelector<HTMLInputElement>(INPUT)!;
+  input.value = text;
+  input.dispatchEvent(new Event("input"));
+};
+const groupTitles = () => [...document.querySelectorAll<HTMLElement>("[role=listbox] > :not([data-role=command-item])")].map((e) => e.textContent);
 
 describe("F84 filterCommands", () => {
   const cmds = [
@@ -99,90 +117,105 @@ describe("F84 filterCommands", () => {
   });
 });
 
-describe("F84 CommandBarView", () => {
+describe("命令面板", () => {
   const mkView = (cmds: Command[]) => new CommandBarView(() => cmds);
 
-  it("open：挂 DOM + pushOverlay + 聚焦输入 + 渲染全表", () => {
+  it("open：模态压栈 ＋ 焦点进框 ＋ 首项选中", () => {
     document.body.replaceChildren();
     pushOverlay.mockClear();
     const view = mkView([cmd("a", "打开历史"), cmd("b", "打开监控")]);
     view.open();
     expect(view.isVisible()).toBe(true);
-    expect(pushOverlay).toHaveBeenCalledWith(view);
-    expect(document.querySelectorAll(".command-bar-item").length).toBe(2);
-    expect(document.activeElement).toBe(document.querySelector(".command-bar-input"));
-    // 首项默认选中
-    expect(document.querySelector(".command-bar-item")?.classList.contains("selected")).toBe(true);
+    expect(pushOverlay.mock.calls[0][0].modal, "开着时快捷键只放行 Esc").toBe(true);
+    expect(items().length).toBe(2);
+    expect(document.activeElement).toBe(document.querySelector(INPUT));
+    expect(selectedText()).toBe("打开历史");
+  });
+
+  it("🔴 空输入：按分组列（需要你 · 当前会话 · 打开 · 窗口 · 账号），会话只列在等你的；有输入：会话在前、命令在后", () => {
+    document.body.replaceChildren();
+    const view = mkView([
+      ses("s1", "表格分页", "等批准"),
+      ses("s2", "清洗日志"),
+      cmd("w", "全屏", "fullscreen", "window"),
+      cmd("f", "在会话里找", "find", "current"),
+      cmd("h", "历史", "history", "open"),
+      cmd("acct", "管理账号…", "account", "account"),
+    ]);
+    view.open();
+    expect(groupTitles()).toEqual(["需要你", "当前会话", "打开", "窗口", "账号"]);
+    expect(items().map((e) => e.textContent)).toEqual(["表格分页· 等批准", "在会话里找", "历史", "全屏", "管理账号…"]);
+    type("日");
+    expect(groupTitles()).toEqual(["会话"]);
+    type("i");
+    expect(groupTitles()).toEqual(["命令"]);
+    view.close();
   });
 
   it("输入过滤缩小列表；无匹配显空态", () => {
     document.body.replaceChildren();
     const view = mkView([cmd("a", "打开历史", "history"), cmd("b", "最小化", "minimize")]);
     view.open();
-    const input = document.querySelector<HTMLInputElement>(".command-bar-input")!;
-    input.value = "历史";
-    input.dispatchEvent(new Event("input"));
-    expect([...document.querySelectorAll(".command-bar-item")].map((e) => e.textContent)).toEqual([
-      "打开历史",
-    ]);
-    input.value = "zzz";
-    input.dispatchEvent(new Event("input"));
-    expect(document.querySelector(".command-bar-empty")?.textContent).toContain("无匹配");
+    type("历史");
+    expect(items().map((e) => e.textContent)).toEqual(["打开历史"]);
+    type("zzz");
+    expect(document.querySelector("[role=listbox]")?.textContent).toBe("无匹配");
   });
 
-  it("ArrowDown/Up 移动选中（环绕）", () => {
+  it("ArrowDown/Up 移动选中（环绕，跳过灰着的）；组字中的方向键 / Enter 归输入法", () => {
     document.body.replaceChildren();
-    const view = mkView([cmd("a", "A"), cmd("b", "B"), cmd("c", "C")]);
+    const view = mkView([cmd("a", "A"), { ...cmd("b", "B"), disabled: "仅 Windows" }, cmd("c", "C")]);
     view.open();
-    const input = document.querySelector<HTMLInputElement>(".command-bar-input")!;
-    const selectedText = () =>
-      document.querySelector(".command-bar-item.selected")?.textContent;
     expect(selectedText()).toBe("A");
-    input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" }));
-    expect(selectedText()).toBe("B");
-    input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp" }));
-    input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp" })); // 环绕到末项
+    key({ key: "ArrowDown" });
+    expect(selectedText(), "灰着的那项不许选中").toBe("C");
+    key({ key: "ArrowDown", isComposing: true });
     expect(selectedText()).toBe("C");
+    key({ key: "ArrowUp" });
+    expect(selectedText()).toBe("A");
+    key({ key: "ArrowUp" }); // 环绕到末项
+    expect(selectedText()).toBe("C");
+    expect(items()[1].getAttribute("aria-disabled")).toBe("true");
+    expect(items()[1].textContent).toBe("B仅 Windows");
   });
 
-  it("Enter 执行选中命令的 run 且 close（先 close 再 run）", () => {
+  it("Enter 执行选中命令的 run 且 close（先 close 再 run）；灰着的点了不做事", () => {
     document.body.replaceChildren();
     popOverlay.mockClear();
     const a = cmd("a", "A");
     const b = cmd("b", "B");
-    const view = mkView([a, b]);
+    const off = { ...cmd("x", "X"), disabled: "仅 Windows" };
+    const view = mkView([a, b, off]);
     let visibleAtRun: boolean | null = null;
     (b.run as ReturnType<typeof vi.fn>).mockImplementation(() => {
-      visibleAtRun = view.isVisible(); // run 执行时命令栏应已关（先 close 再 run）
+      visibleAtRun = view.isVisible();
     });
     view.open();
-    const input = document.querySelector<HTMLInputElement>(".command-bar-input")!;
-    input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" })); // 选 B
-    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    items()[2].dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    expect(off.run).not.toHaveBeenCalled();
+    expect(view.isVisible()).toBe(true);
+    key({ key: "ArrowDown" }); // 选 B
+    key({ key: "Enter", isComposing: true });
+    expect(b.run, "组字中的 Enter 归输入法").not.toHaveBeenCalled();
+    key({ key: "Enter" });
     expect(b.run).toHaveBeenCalledTimes(1);
     expect(a.run).not.toHaveBeenCalled();
     expect(view.isVisible()).toBe(false);
-    expect(popOverlay).toHaveBeenCalledWith(view);
+    expect(popOverlay).toHaveBeenCalled();
     expect(visibleAtRun).toBe(false);
   });
 
-  it("点命令项执行并 close", () => {
+  it("点命令项执行并 close；点遮罩关", () => {
     document.body.replaceChildren();
     const a = cmd("a", "A");
     const view = mkView([a]);
     view.open();
-    const item = document.querySelector<HTMLElement>(".command-bar-item")!;
-    item.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    items()[0].dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     expect(a.run).toHaveBeenCalledTimes(1);
     expect(view.isVisible()).toBe(false);
-  });
-
-  it("点背景（root，非 box）关闭", () => {
-    document.body.replaceChildren();
-    const view = mkView([cmd("a", "A")]);
     view.open();
-    const root = document.querySelector<HTMLElement>(".command-bar")!;
-    root.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    const backdrop = document.querySelector<HTMLElement>("[role=dialog]")!.parentElement!;
+    backdrop.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     expect(view.isVisible()).toBe(false);
   });
 
@@ -190,9 +223,9 @@ describe("F84 CommandBarView", () => {
     document.body.replaceChildren();
     const view = mkView([]);
     view.open();
-    const input = document.querySelector<HTMLInputElement>(".command-bar-input")!;
-    expect(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }))).not.toThrow();
-    expect(view.isVisible()).toBe(true); // 无命令可执行，不关
+    expect(() => key({ key: "Enter" })).not.toThrow();
+    expect(view.isVisible()).toBe(true);
+    view.close();
   });
 
   it("过滤缩表后 selected 重置（不越界、不跑 stale 命令）", () => {
@@ -202,38 +235,25 @@ describe("F84 CommandBarView", () => {
     const c = cmd("c", "打开用量", "usage");
     const view = mkView([a, b, c]);
     view.open();
-    const input = document.querySelector<HTMLInputElement>(".command-bar-input")!;
-    // 选中移到末项（selected=2）
-    input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" }));
-    input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" }));
-    // 过滤到只剩 1 项 → selected 必须重置，否则 filtered[2] 越界
-    input.value = "用量";
-    input.dispatchEvent(new Event("input"));
-    expect(document.querySelector(".command-bar-item.selected")?.textContent).toBe("打开用量");
-    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    key({ key: "ArrowDown" });
+    key({ key: "ArrowDown" });
+    type("用量");
+    expect(selectedText()).toBe("打开用量");
+    key({ key: "Enter" });
     expect(c.run).toHaveBeenCalledTimes(1);
     expect(a.run).not.toHaveBeenCalled();
     expect(b.run).not.toHaveBeenCalled();
   });
 
-  it("开着时 Ctrl+K 关闭（输入框本地兜——dispatcher 被可编辑守卫拦）", () => {
+  it("开着时 Ctrl+K 关闭（模态压栈后快捷键只放行 Esc，这一键由框自己接）；toggle", () => {
     document.body.replaceChildren();
     const view = mkView([cmd("a", "A")]);
     view.open();
-    expect(view.isVisible()).toBe(true);
-    const input = document.querySelector<HTMLInputElement>(".command-bar-input")!;
-    input.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, code: "KeyK", key: "k" }));
-    expect(view.isVisible()).toBe(false);
-  });
-
-  it("handleEsc / toggle", () => {
-    document.body.replaceChildren();
-    const view = mkView([cmd("a", "A")]);
-    view.toggle();
-    expect(view.isVisible()).toBe(true);
-    view.handleEsc();
+    key({ ctrlKey: true, code: "KeyK", key: "k" });
     expect(view.isVisible()).toBe(false);
     view.toggle();
     expect(view.isVisible()).toBe(true);
+    view.toggle();
+    expect(view.isVisible()).toBe(false);
   });
 });

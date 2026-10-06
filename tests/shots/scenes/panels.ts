@@ -21,7 +21,7 @@ async function scrollStreamTop(): Promise<void> {
 async function openCommandBar(): Promise<void> {
   await mainReady(ALL_TABS);
   await click(".status-cmdk");
-  await waitFor(".command-bar-input");
+  await waitFor("[data-role=command-input]");
 }
 
 /** devbox 上的「账单导出」那条已结束：tab 上的账号徽标来自那台记着的「上次用的号」。 */
@@ -195,34 +195,53 @@ export const PANEL_SCENES: Scene[] = [
     await waitFor('aside[role="dialog"]');
     await sleep(500);
   }),
-  panel("panel-cmdk", "命令面板", "Ctrl+K：全部命令（含切到各会话）", async () => {
+  panel("panel-cmdk", "命令面板", "Ctrl+K：空输入时分组（需要你 · 当前会话 · 打开 · 窗口 · 账号），会话行带数字键", async () => {
     await openCommandBar();
     await sleep(300);
   }),
   panel("panel-cmdk-filter", "命令面板 · 过滤", "命令面板里输入「设置」", async () => {
     await openCommandBar();
-    await type(".command-bar-input", "设置");
+    await type("[data-role=command-input]", "设置");
   }),
   panel("panel-cmdk-empty", "命令面板 · 没有匹配", "命令面板里输入一串匹配不到的字", async () => {
     await openCommandBar();
-    await type(".command-bar-input", "zzzzqqq");
+    await type("[data-role=command-input]", "zzzzqqq");
   }),
   panel("panel-cmdk-machine", "命令面板 · 按机器名找会话", "命令面板里输入「gpu-01」：切到那台上的会话，机器名只出一次", async () => {
     await openCommandBar();
-    await type(".command-bar-input", "gpu-01");
+    await type("[data-role=command-input]", "gpu-01");
   }),
-  panel("panel-find", "会话内查找", "Ctrl+F：在当前会话里找「重试」", async () => {
+  panel("panel-find", "会话内查找", "Ctrl+F：停 300ms 自己找「重试」；每条「谁 · 第几轮 · 时刻」＋ 片段，回车选中第一条并跳过去（高亮 1.5 秒）", async () => {
     await mainReady(ALL_TABS);
     await key("f", { ctrl: true });
-    await waitFor(".session-find-input");
-    await type(".session-find-input", "重试");
+    await waitFor("[data-role=find-input]");
+    await type("[data-role=find-input]", "重试");
+    await sleep(700);
     await key("Enter");
+    await sleep(500);
+  }),
+  panel("panel-find-missing", "会话内查找 · 跳到找不到的那条", "选中最后一条（那张卡不在这份会话的流里）：那一行下面写一句", async () => {
+    await mainReady(ALL_TABS);
+    await key("f", { ctrl: true });
+    await waitFor("[data-role=find-input]");
+    await type("[data-role=find-input]", "重试");
+    await sleep(700);
+    await key("ArrowUp");
+    await sleep(700);
+  }),
+  panel("panel-outline", "大纲", "Ctrl+F 面板的「大纲」页：本会话里你说过的每一句", async () => {
+    await mainReady(ALL_TABS);
+    await key("f", { ctrl: true });
+    await waitFor("[data-role=session-find-panel] [role=tab]");
+    const tab = [...document.querySelectorAll<HTMLElement>("[data-role=session-find-panel] [role=tab]")].find((t) => t.dataset.key === "outline")!;
+    await click(tab);
     await sleep(800);
   }),
-  panel("panel-outline", "大纲", "右上「大纲」：本会话里用户说过的每一句", async () => {
+  panel("panel-keys", "快捷键一览", "按 ?：动作 · 当前键 · 何时生效，按分组；顶上按名称或按键过滤，底下［改快捷键…］", async () => {
     await mainReady(ALL_TABS);
-    await click(".user-inputs-toggle");
-    await sleep(800);
+    await key("?", { shift: true, code: "Slash" });
+    await waitFor("[data-role=keys-filter]");
+    await sleep(400);
   }),
   panel("panel-grid", "监控板", "右上田字格：所有会话一屏看", async () => {
     await mainReady(ALL_TABS);
@@ -247,8 +266,8 @@ export const PANEL_SCENES: Scene[] = [
   }),
   panel("panel-cc-bus", "cc-bus 驾驶舱", "命令面板里打开「cc-bus 驾驶舱」：各台机器上 claude 实例之间的消息", async () => {
     await openCommandBar();
-    await type(".command-bar-input", "cc-bus");
-    const item = await byText(".command-bar-item", /cc-bus/);
+    await type("[data-role=command-input]", "cc-bus");
+    const item = await byText("[data-role=command-item]", /cc-bus/);
     await click(item);
     await sleep(1200);
   }),
@@ -343,7 +362,7 @@ export const PANEL_SCENES: Scene[] = [
   }, remoteEndedWorld),
   panel("panel-cmdk-set-default", "命令面板 · 设当前账号", "命令面板里输入「当前账号」：每个号一条「设为当前账号」（写那台账号库清单的默认号）", async () => {
     await openCommandBar();
-    await type(".command-bar-input", "当前账号");
+    await type("[data-role=command-input]", "当前账号");
   }),
   panel("panel-account-reclick", "账号面板 · 再点一下按钮", "面板开着时再点一下状态栏账号按钮：面板收起", async () => {
     await mainReady(ALL_TABS);

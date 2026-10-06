@@ -195,6 +195,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/height-estimate.vitest.ts",
     "tests/frontend/ui/invariants-frontend-guard.vitest.ts",
     "tests/frontend/ui/keybindings/actions.vitest.ts",
+    "tests/frontend/ui/keybindings/scope.vitest.ts",
     "tests/frontend/ui/launch-arrival.vitest.ts", // 起会话的真成功正信号（纯函数 ＋ 假定时器，不碰真窗口）
     "tests/frontend/ui/launcher-diagnostics.vitest.ts",
     "tests/frontend/ui/live-window.vitest.ts",
