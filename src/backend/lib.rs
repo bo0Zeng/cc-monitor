@@ -798,7 +798,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p8d-restart-outcome：rotation-switch 重启支带结局（done / failed ＋ old）；session-restart 停后失败带 stopped；history-search 行带 status · isBg · can；files-create / mkdir / rename 按平台判叶名回 bad_name；StepResult 带 exitCode。
 ///
 /// p8e-dial-password：拨号原因码多 password（要密码与密钥被拒分开）。
-pub const BUILD_ID: &str = "p8e-dial-password";
+///
+/// p8f-launchid-gone：launch-local 成品不带 launchId，ccm 不收 --ccm-launch-id / CCM_LAUNCH_ID，accounts-sessions 行不带 launchId；--list-projects 行不带 sessionIds；删 remote_ask argv 一族。
+pub const BUILD_ID: &str = "p8f-launchid-gone";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
