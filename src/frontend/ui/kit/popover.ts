@@ -70,6 +70,14 @@ export function openPopover(anchor: HTMLElement, content: HTMLElement, opts: { l
   return true;
 }
 
+/** 这个触发物上开着面板 ⇒ 原地换掉里面的内容（不关不重开、位置不动），回 `true`；没开着 ⇒ `false`。 */
+export function swapPopoverContent(anchor: HTMLElement, content: HTMLElement): boolean {
+  const o = current;
+  if (!o || o.anchor !== anchor) return false;
+  o.root.replaceChildren(content);
+  return true;
+}
+
 /** 关掉开着的那个面板（没有就什么都不做）。 */
 export function closePopover(): void {
   const o = current;

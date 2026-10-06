@@ -214,6 +214,11 @@ export function hasTerminal(s: SessionState): boolean {
   return !isResumeOnly(s);
 }
 
+/** 在 tmux 里（活着在 tmux 里，或死了 tmux 会话还在）：终端窗口关了也能「在终端里打开」。 */
+export function inTmux(s: SessionState): boolean {
+  return s.recoverability === "attachable";
+}
+
 /** 活性 == 活。状态栏「活跃 N」· 固定条目的「最后活动时刻」· 机器总览的活跃会话数用它。 */
 export function isLive(s: SessionState): boolean {
   return s.liveness === "live";

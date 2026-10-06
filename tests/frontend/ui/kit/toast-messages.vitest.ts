@@ -93,4 +93,23 @@ describe("toast 排版 ＋「消息」记录", () => {
     expect(kit.unseenErrors()).toBe(false);
     expect(seen).toHaveBeenCalled();
   });
+
+  it("🔴 逐条明细不上 toast、只进记录；［查看］⇒ 打开「消息」并展开那一条，再点那一行收起", async () => {
+    const { StatusMessages, showMessage } = await import("../../../../src/frontend/ui/status-messages");
+    const sm = new StatusMessages();
+    document.body.appendChild(sm.el);
+    kit.toast("已结束 1 · 失败 1", "", { level: "error", more: ["失败 · billing · 门拦下了", "跳过 · notes · 已经结束了"] });
+    kit.toast("已结束 1 · 失败 1", "", { level: "error", more: ["失败 · web · 离线"] });
+    expect(toasts().length, "带明细的各自一条，不合流").toBe(2);
+    expect(toasts()[1].textContent, "明细不画在 toast 上").not.toContain("门拦下了");
+    const first = kit.recentToasts()[1];
+    expect(first.more).toEqual(["失败 · billing · 门拦下了", "跳过 · notes · 已经结束了"]);
+    showMessage(first);
+    const list = document.querySelector<HTMLElement>("[data-role=messages-list]")!;
+    expect(list, "「消息」打开了").not.toBeNull();
+    const more = [...list.querySelectorAll<HTMLElement>("[data-role=message-more]")];
+    expect(more.map((m) => [...m.children].map((c) => c.textContent)), "只展开那一条").toEqual([["失败 · billing · 门拦下了", "跳过 · notes · 已经结束了"]]);
+    list.querySelector<HTMLElement>("[data-more=open] [aria-expanded]")!.click();
+    expect(list.querySelectorAll("[data-role=message-more]").length, "再点收起").toBe(0);
+  });
 });

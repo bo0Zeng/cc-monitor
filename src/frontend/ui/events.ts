@@ -134,7 +134,7 @@ export interface EventHandlers {
    */
   onOriginUnseen?: (origin: string) => void;
   /** 一台机器一直看不见时，那条提示里「打开设置」按它开（没给 ⇒ 提示里不带按钮）。 */
-  openMachineSettings?: () => void;
+  openMachineSettings?: (origin: Origin) => void;
   /**
    * v2.2 (issue #12 性能): 启动重放（jsonl-batch 第一块）到达时调一次。
    * TabManager 在此把所有 tab 的 BranchFolder 切到 batch 模式 + lazy hljs 开关。
@@ -653,7 +653,7 @@ export async function bindEvents(
     const ever = s.ever;
     s.timer = setTimeout(() => {
       s.timer = null;
-      sayUnseen(origin, ever, why, handlers.openMachineSettings);
+      sayUnseen(origin, ever, why, handlers.openMachineSettings ? () => handlers.openMachineSettings?.(origin) : undefined);
     }, UNSEEN_SAY_MS);
   };
   const onSeenAgain = (origin: Origin): void => {

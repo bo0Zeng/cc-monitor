@@ -109,6 +109,11 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ("bring_monitor_to_front", Own::Window, "拉前 monitor 自己"),
     ("bring_terminal_to_front", Own::Front, "拉前本机终端窗口"),
     (
+        "flash_terminal_windows",
+        Own::Front,
+        "让分不清的那几个候选终端窗口在任务栏闪（只闪不切）",
+    ),
+    (
         "bound_terminal_count",
         Own::Front,
         "已跟 monitor 完成拉前握手的终端数（本进程 `BindRegistry`；从前夹在别名读回口里）",

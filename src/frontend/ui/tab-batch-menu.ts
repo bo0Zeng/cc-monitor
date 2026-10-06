@@ -14,7 +14,8 @@ import { openMenu, type MenuItem } from "./kit/menu";
 import { createRefusal, newCollectionId, type CollectionRefusal, type TabCollection } from "./tab-collections";
 import { sayCollectionRefusal } from "./tab-bar-prefs";
 import { confirmDialog, askText, type ConfirmFn } from "./kit/dialog";
-import { toast } from "./kit/toast";
+import { recentToasts, toast, type ToastRecord } from "./kit/toast";
+import { showMessage } from "./status-messages";
 import { machineName } from "./control-said";
 import { fullTitle } from "./session-face";
 import { isRemoteOrigin } from "./ipc/origin";
@@ -58,7 +59,7 @@ function unseenOr(why: string): (t: Tab) => string {
   return (t) => (t.state.liveness === "unseen" ? copyText("sessionState.unseen.tooltip") : why);
 }
 
-/** 结果提示：标题说做的是什么，正文第一行三个数，下面逐个列跳过与失败的（各为什么）。 */
+/** 结果提示：一句汇总（做了 · 失败几个）；逐个跳过与失败的（各为什么）进「消息」那一条，［查看］展开。 */
 export function sayBatch(action: string | ((done: number, failed: number) => string), tabs: readonly Tab[], outcomes: readonly BatchOutcome[]): void {
   const title = (sid: string): string => {
     const t = tabs.find((x) => x.sessionId === sid);
@@ -79,7 +80,11 @@ export function sayBatch(action: string | ((done: number, failed: number) => str
   for (const o of outcomes) {
     if (o.outcome === "skipped") lines.push(copyText("tabBatch.result.skippedLine", { title: title(o.sid), why: o.why }));
   }
-  toast(head, lines.join("\n"), { level: n("failed") > 0 ? "error" : "success" });
+  // toast 只说一句汇总；逐条原因进「消息」那一条，［查看］点了展开它。
+  const made: { rec?: ToastRecord } = {};
+  const view = lines.length > 0 ? { label: copyText("tabBatch.result.view"), run: () => made.rec && showMessage(made.rec) } : undefined;
+  toast(head, "", { level: n("failed") > 0 ? "error" : "success", more: lines, action: view });
+  made.rec = recentToasts()[0];
 }
 
 /** 只经 monitor 的那几项：同步改完 ⇒ 每一个都做成了，跳过的照原因列。 */

@@ -186,3 +186,28 @@ pub fn bring_to_front(hwnd: isize) -> bool {
 pub fn bring_to_front(_hwnd: isize) -> bool {
     false
 }
+
+/// 让窗口在任务栏闪（`FlashWindowEx`：标题栏与任务栏按钮一起闪，直到它到前台）；不切、不抢焦点。回系统收下了没有。
+#[cfg(windows)]
+pub fn flash(hwnd: isize) -> bool {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        FlashWindowEx, FLASHWINFO, FLASHW_ALL, FLASHW_TIMERNOFG,
+    };
+    let info = FLASHWINFO {
+        cbSize: std::mem::size_of::<FLASHWINFO>() as u32,
+        hwnd: HWND(hwnd),
+        dwFlags: FLASHW_ALL | FLASHW_TIMERNOFG,
+        uCount: 0,
+        dwTimeout: 0,
+    };
+    unsafe {
+        let _ = FlashWindowEx(&info);
+    }
+    true
+}
+
+#[cfg(not(windows))]
+pub fn flash(_hwnd: isize) -> bool {
+    false
+}

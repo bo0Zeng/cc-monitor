@@ -7,6 +7,7 @@ declare const classes: {
   readonly smHead: string;
   readonly smKeep: string;
   readonly smList: string;
+  readonly smMore: string;
   readonly smRow: string;
   readonly smText: string;
   readonly smTime: string;

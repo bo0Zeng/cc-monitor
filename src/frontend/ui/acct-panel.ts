@@ -49,7 +49,7 @@ export interface AcctPanelHost {
   /** 会话的项目目录（重启切换要交那台）。 */
   cwdOf(sid: string): string;
   /** 设置窗那台的账号页（`管理账号…` · `设置…` · `接入…`）。 */
-  openSettings(): void;
+  openSettings(origin: Origin): void;
   /** 底栏「新会话默认」那一颗：开那台的默认账号下拉（与无会话时状态栏按钮的同一个）。 */
   openDefaultMenu(anchor: HTMLElement, origin: Origin): void;
   /** 新会话默认此刻是哪个号（底栏那颗按钮上的字）。 */
@@ -73,6 +73,8 @@ interface Open {
   /** 轮换那一块的存失败（重试那一下要写的那一份）。 */
   saveFailed: Rotation | null;
   timelineOpen: boolean;
+  /** 本会话用自己的轮换时，在轮换块下面摊开一块只读的「默认轮换」（设置窗账号页那一行「默认轮换」点进来）。 */
+  showDefault: boolean;
   /** 正在拖 / 正在填：数据到了先不重画。 */
   hold: boolean;
   pending: boolean;
@@ -133,6 +135,7 @@ export function openAccountPanel(sid: string, origin: Origin, host: AcctPanelHos
     switchError: null,
     saveFailed: null,
     timelineOpen: false,
+    showDefault: false,
     hold: false,
     pending: false,
     unsub: [],
@@ -153,6 +156,23 @@ export function openAccountPanel(sid: string, origin: Origin, host: AcctPanelHos
   // 打开那一刻再问一次这个会话（推送丢过也能补上）；额度账同理。
   void refreshSessions(origin, [sid]);
   void refreshQuota(origin);
+}
+
+/** 面板里能直接滚到的两节：时间轴 · 默认轮换。 */
+export type AcctPanelAnchor = "timeline" | "default-rotation";
+
+/**
+ * 打开这个会话的面板并滚到那一节（已开着就不关、原地滚）。只改面板自己的显示（时间轴展开 · 摊开默认轮换），
+ * 不写任何东西：本会话跟不跟随默认照旧。
+ */
+export function openAccountPanelAt(sid: string, origin: Origin, host: AcctPanelHost, anchor: AcctPanelAnchor): void {
+  if (open?.sid !== sid) openAccountPanel(sid, origin, host);
+  const o = open;
+  if (!o) return;
+  if (anchor === "timeline") o.timelineOpen = true;
+  else o.showDefault = true;
+  render(o, host);
+  o.body.querySelector<HTMLElement>(`[data-acct-anchor="${anchor}"]`)?.scrollIntoView({ block: "start" });
 }
 
 /** 拖完 / 填完：放开重画。 */
@@ -239,7 +259,7 @@ function nowBlock(o: Open, entry: SessionRotationEntry | undefined, quota: Quota
   const read = entry?.read;
   if (!entry || !read || read.state === "absent") {
     const sec = section(copyText("acct.now.title"));
-    const connect = button({ label: copyText("acct.now.connect"), kind: "ghost", size: "compact", onClick: () => host.openSettings() });
+    const connect = button({ label: copyText("acct.now.connect"), kind: "ghost", size: "compact", onClick: () => host.openSettings(o.origin) });
     sec.content.appendChild(banner("warn", copyText("acct.now.noRelay"), [connect]));
     return sec.root;
   }
@@ -394,19 +414,56 @@ function rotationBlock(o: Open, entry: SessionRotationEntry, read: Present, quot
   }
   if (follow) {
     const lead = el("div", s.acctLead, def?.state === "absent" || !def ? copyText("acct.rot.leadDefaultEmpty") : copyText("acct.rot.leadFollow"));
-    lead.appendChild(button({ label: copyText("acct.rot.settings"), kind: "ghost", size: "compact", onClick: () => host.openSettings() }));
+    lead.appendChild(button({ label: copyText("acct.rot.settings"), kind: "ghost", size: "compact", onClick: () => host.openSettings(o.origin) }));
     sec.content.appendChild(lead);
   }
   if (r) sec.content.appendChild(rotationList(o, host, read, r, quota, now, tz, !follow));
-  sec.content.appendChild(timelineFold(o, read, r, quota, now, tz));
+  if (o.showDefault && !follow && def?.state === "present") sec.content.appendChild(defaultPreview(o, host, read, def.rotation, quota, now, tz));
+  const tl = timelineFold(o, read, r, quota, now, tz);
+  tl.dataset.acctAnchor = "timeline";
+  sec.content.appendChild(tl);
+  // 本会话跟随默认 ⇒ 这一块画的就是默认那份，「默认轮换」滚到这里。
+  if (follow) sec.root.dataset.acctAnchor = "default-rotation";
   return sec.root;
 }
 
+/** 本会话用自己的轮换时摊开的「默认轮换」：顺序 · 触发 · 封顶，全只读。 */
+function defaultPreview(o: Open, host: AcctPanelHost, read: Present, r: Rotation, quota: QuotaRead | null, now: number, tz: number): HTMLElement {
+  const box = el("div", s.acctDefPreview);
+  box.dataset.acctAnchor = "default-rotation";
+  box.appendChild(el("div", s.acctBlockTitle, copyText("acct.prev.title")));
+  box.appendChild(el("div", s.acctBlockNote, copyText("acct.prev.lead")));
+  // 「实际照什么办」那一句只说本会话；这一块是默认那份自己写的。
+  box.appendChild(triggerControls(o, host, r, true, r.atLimit, "default"));
+  const list = rotationList(o, host, read, r, quota, now, tz, false);
+  for (const row of list.querySelectorAll<HTMLElement>("[data-acct-row]")) {
+    const caps = capText(r, row.dataset.acctRow ?? "");
+    // 封顶贴在名字那一串后面、用量之前。
+    if (caps) row.insertBefore(tagEl(caps), row.lastElementChild);
+  }
+  box.appendChild(list);
+  return box;
+}
+
+/** 一个号的封顶（每个窗口一段，按时段的写出时段）；没有 ⇒ `null`。 */
+function capText(r: Rotation, account: string): string | null {
+  const per = r.cap?.[account];
+  if (!per) return null;
+  const parts: string[] = [];
+  for (const [win, v] of Object.entries(per)) {
+    const pre = win === "*" ? "" : `${slotLabel(win)} `;
+    if (typeof v === "number") parts.push(pre + copyText("acct.prev.cap", { n: v }));
+    else for (const c of v) parts.push(pre + copyText("acct.prev.capAt", { at: c.at, n: c.n }));
+  }
+  return parts.length > 0 ? parts.join(copyText("kit.text.sep")) : null;
+}
+
 /** `触发 (•)满 ( )≥[90]%` ＋ `无号可换 [继续跑 | 停]`（后者只在 `≥N%` 时有效）。 */
-function triggerControls(o: Open, host: AcctPanelHost, r: Rotation, readonly: boolean, actual: AtLimit): HTMLElement {
+function triggerControls(o: Open, host: AcctPanelHost, r: Rotation, readonly: boolean, actual: AtLimit, group = "own"): HTMLElement {
   const box = el("span", s.acctTrigger);
   box.appendChild(el("span", s.acctTriggerLabel, copyText("acct.rot.trigger")));
-  const name = `acct-trigger-${o.sid}`;
+  // 同一份面板里可以有两组（本会话的 · 只读的默认轮换）：名字分开，免得勾一组顶掉另一组。
+  const name = `acct-trigger-${o.sid}-${group}`;
   const pctMode = r.when !== "full";
   const n = r.when === "full" ? 90 : r.when.threshold.n;
   const radio = (on: boolean, label: string, pick: () => void): HTMLLabelElement => {
@@ -491,6 +548,7 @@ function rotationList(o: Open, host: AcctPanelHost, read: Present, r: Rotation, 
     const q = quotaOf(quota, read.agent, row.account);
     const line = el("div", s.acctRow);
     line.setAttribute("role", "listitem");
+    line.dataset.acctRow = row.account;
     line.tabIndex = editable ? 0 : -1;
     if (row.account === cur) line.dataset.inuse = "true";
     if (q && (q.state === "refused" || q.login !== "ok")) line.dataset.dim = "true";
@@ -857,6 +915,6 @@ function footer(o: Open, host: AcctPanelHost): HTMLElement {
     closeMenu();
     host.openDefaultMenu(b, o.origin);
   });
-  f.append(b, el("span", s.acctSpacer), button({ label: copyText("acct.foot.manage"), kind: "ghost", size: "compact", onClick: () => host.openSettings() }));
+  f.append(b, el("span", s.acctSpacer), button({ label: copyText("acct.foot.manage"), kind: "ghost", size: "compact", onClick: () => host.openSettings(o.origin) }));
   return f;
 }

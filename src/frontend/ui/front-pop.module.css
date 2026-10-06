@@ -1,0 +1,61 @@
+/* ↗ 切到终端的结果浮层 · 「查找终端…」那一小行。 */
+@layer components {
+  .fpBox {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    width: 320px;
+    max-width: calc(100vw - 32px);
+  }
+
+  .fpHead {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+
+  .fpTitle {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .fpBox[data-shade="amber"] .fpTitle {
+    color: var(--warn);
+  }
+
+  .fpBox[data-shade="red"] .fpTitle {
+    color: var(--error);
+  }
+
+  .fpBody {
+    color: var(--text);
+    font-size: var(--font-size-small);
+    overflow-wrap: anywhere;
+  }
+
+  .fpHint {
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .fpActs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .fpBusy {
+    position: fixed;
+    z-index: var(--z-menu);
+    padding: 1px var(--space-3);
+    border-radius: var(--radius-m);
+    background: var(--card);
+    box-shadow: var(--shadow-float);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    pointer-events: none;
+    white-space: nowrap;
+  }
+}

@@ -173,7 +173,9 @@ export class FakeBackend {
   }
 }
 
-function refusal(e: unknown): { err: string; body: number[] } {
+function refusal(e: unknown): { err: unknown; body: number[] } {
+  // 场景要演通道那一跳的失败（够不着 · 期限到）：直接抛线上形状 `{err, body}`，原样交回。
+  if (e !== null && typeof e === "object" && "err" in e && "body" in e) return e as { err: unknown; body: number[] };
   if (e instanceof Refuse) {
     const body = e.data === undefined ? { code: e.code, message: e.message } : { code: e.code, message: e.message, data: e.data };
     return { err: "Refused", body: Array.from(enc.encode(JSON.stringify(body))) };

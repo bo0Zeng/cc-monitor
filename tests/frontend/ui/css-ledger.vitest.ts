@@ -51,13 +51,11 @@
  *
  * 上一轮（`S21` 步 3）现打：普查给出的 13 个"死规则"里 **3 个是活的**，三个各属一族。
  * 一把认不出它们的尺子会指挥人去删**正在生效**的样式 ⇒ 比没有尺子更坏。
- * 所以本文件把这三个钉成正控，**并且连"靠哪条机制活下来"一起钉**：
+ * 所以本文件把它们钉成正控，**并且连"靠哪条机制活下来"一起钉**（常量拼接那两个 `.status-first-run-*` 已随那条指路删了，今天只剩第三方那一个）：
  * 只钉"没被判死"是不够的 —— 那条断言在「尺子把所有东西都判活」时同样绿。
  *
  * | 名字 | 它凭什么活着 | 本条要求的裁决 |
  * |---|---|---|
- * | `.status-first-run-open` | `` `${FIRST_RUN_HINT_CLASS}-open` `` 拼出来 | `const-concat` |
- * | `.status-first-run-dismiss` | 同上 | `const-concat` |
  * | `.katex-display` | `katex/dist/katex.min.css` 自产 | `vendor` |
  *
  * ## 诚实边界
@@ -117,7 +115,7 @@ const FLOORS = {
   literals: 1500,
   /** 第三方 CSS 自产的类名个数（现打 184，来自 katex ＋ highlight.js）。 */
   vendorClasses: 80,
-  /** 常量拼接才冒出来的 token 个数（现打 2，正是那两个 `.status-first-run-*`）。 */
+  /** 常量拼接才冒出来的 token 个数（现打 1，`render.ts` 那一处；CSS 里已没有靠它活的类名）。 */
   constConcat: 1,
   /** 模板拼接派生出的前缀候选个数（现打 30）。 */
   prefixCandidates: 10,
@@ -481,7 +479,7 @@ describe("S25 ⓪ 量具自检（这些不过，下面四格全是空转）", ()
     const led = ledger();
     expect(
       led.constConcat.size,
-      "常量拼接一条都没识别出来 —— `const X = \"…\"` 那步坏了，`.status-first-run-*` 会被判死",
+      "常量拼接一条都没识别出来 —— `const X = \"…\"` 那步坏了",
     ).toBeGreaterThanOrEqual(FLOORS.constConcat);
     expect(
       led.vendorClasses.size,
@@ -582,8 +580,8 @@ describe("S25 ② CSS 里的类名有人用", () => {
     const led = ledger();
     const prefixes = ALLOWED_PREFIXES.map((p) => p.prefix);
     const want: [string, string][] = [
-      ["status-first-run-open", "const-concat"],
-      ["status-first-run-dismiss", "const-concat"],
+      // 常量拼接那一族今天在 CSS 里没有对象了（`.status-first-run-*` 随主窗口那句「诊断：…」一起删了）；
+      // 那条识别路径照在（`render.ts` 那一处），有没有货由上面「三条识别路径各自真的有货」那条盯着。
       ["katex-display", "vendor"],
     ];
     for (const [name, kind] of want) {
@@ -597,7 +595,7 @@ describe("S25 ② CSS 里的类名有人用", () => {
           "  裁决**必须是对的那一种**，否则识别路径断了也看不出来。",
       ).toBe(kind);
     }
-    denom("②", want.length, "个已知假阳性（三族各一，裁决与机制都对上了）");
+    denom("②", want.length, "个已知假阳性（裁决与机制都对上了）");
   }, SCAN_TIMEOUT_MS);
 
   it("每个 CSS 类名都说得出谁在用它（未解释的 == 登记的已知死规则）", () => {

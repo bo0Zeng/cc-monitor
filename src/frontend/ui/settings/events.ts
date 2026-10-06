@@ -18,3 +18,15 @@ export interface BehaviorToggled {
   autoFollowUserActive: boolean;
   bringMonitorToFrontOnUserActive: boolean;
 }
+
+/**
+ * 设置窗账号页的指路框 → 主窗口（载荷 {@link OpenAccountPanel}）：主窗口打开当前标签页的账号面板并滚到那一节
+ * （时间轴 · 默认轮换都住在那里，设置窗里不重画）。形状写在壳那一侧 `ui_contract.rs::events` 的注释里（窗到窗，壳不经手）。
+ */
+export const OPEN_ACCOUNT_PANEL_EVENT = "open-account-panel";
+
+export interface OpenAccountPanel {
+  /** 哪台（本机 = `LOCAL_ORIGIN`）。 */
+  machine: string;
+  anchor: "timeline" | "default-rotation";
+}

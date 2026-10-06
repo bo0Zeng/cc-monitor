@@ -33,7 +33,6 @@
 //! [`bring_chain_window`]：沿链从下往上走到终端窗口的属主为止，哪一级 PowerShell 在这张表里登记过、且作数 ⇒ 用它登记的窗口；
 //! 没有就看属主那一级的窗口（好几个就照实说分不清，不挑）；交 [`bring_found_window`] 三重指纹校验 ＋ 拉到前台。
 
-use crate::copy_table::copy_text;
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use parking_lot::RwLock;
@@ -336,33 +335,78 @@ fn find_window_for_marker(req: &AwaitRequest) -> Option<HwndEntry> {
     Some(entry_from_marker_hit(req, m, owner_proc_start))
 }
 
+/// ↗ 一次的结局（闭集；界面按 `kind` 排版，句子在文案表）。分不清是哪个窗口时**不挑一个切**：给出候选，界面可让它们只闪不切。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum FrontOutcome {
+    /// 窗口到前面了。
+    Switched,
+    /// 同一个终端程序开着几个窗口、这个终端没登记 ⇒ 分不清；`windows` 是那几个候选窗口。
+    Several {
+        program: String,
+        #[cfg_attr(test, ts(type = "number[]"))]
+        windows: Vec<isize>,
+    },
+    /// 本机会话的终端没登记（在接上终端之前开的）。
+    Unbound,
+    /// 认得的那个窗口已经不在了。
+    WindowGone,
+    /// 句柄或进程号已被别的进程复用 ⇒ 认不准（细节进日志）。
+    Unclear,
+    /// 找到了，系统不许抢前台（它在任务栏闪）。
+    Refused,
+    /// 链上有控制台 shell 却没有窗口：窗口归了链外的程序（默认终端交接给了 Windows Terminal）。`program` 是开着那条连接的程序。
+    HostedByWt { program: String },
+    /// 整条链连个 shell 都没有：真在后台。
+    NoWindow { program: String },
+    /// 这台系统没有「按句柄找 / 验 / 拉前窗口」这一族。
+    Unsupported,
+}
+
+/// 校验不过的两种：窗口没了 · 句柄 / 进程号被别人复用（细节只进日志）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum VerifyMiss {
+    Gone,
+    Reused(String),
+}
+
+impl VerifyMiss {
+    fn outcome(self) -> FrontOutcome {
+        match self {
+            VerifyMiss::Gone => FrontOutcome::WindowGone,
+            VerifyMiss::Reused(why) => {
+                tracing::info!("bind: 认不准那个窗口：{why}");
+                FrontOutcome::Unclear
+            }
+        }
+    }
+}
+
 /// 验证 hwnd 仍合法 + 当前 owner_pid 跟绑定时一致 + 该进程 procStart 一致。
-/// 返回 Ok(()) 表示通过，Err(reason) 描述失败原因（给 toast 用）。
 ///
 /// 三样事实（窗口还在 · 属主 · 属主起始时刻）由 `platform::{hwnd, pid}` 读，三格比对留在这里；
-/// 这台没有桌面窗口那一族 ⇒ 原先非 Windows 那一句。
-pub fn verify_binding(binding: &SidHwndBinding) -> Result<(), String> {
+/// 这台没有桌面窗口那一族 ⇒ `Unsupported`。
+pub fn verify_binding(binding: &SidHwndBinding) -> Result<(), FrontOutcome> {
+    if !crate::platform::hwnd::SUPPORTED {
+        return Err(FrontOutcome::Unsupported);
+    }
     verify_window(binding.hwnd, binding.owner_pid, binding.owner_proc_start)
+        .map_err(VerifyMiss::outcome)
 }
 
 /// [`verify_binding`] 的本体：只看那三样（句柄 · 属主 pid · 属主起始时刻），绑定从哪来不管。
-fn verify_window(hwnd_v: isize, owner_pid: u32, owner_proc_start: u64) -> Result<(), String> {
+fn verify_window(hwnd_v: isize, owner_pid: u32, owner_proc_start: u64) -> Result<(), VerifyMiss> {
     use crate::platform::hwnd;
-    if !hwnd::SUPPORTED {
-        return Err("only supported on Windows".into());
-    }
     if !hwnd::exists(hwnd_v) {
-        return Err(copy_text("rsBind.verify.windowGone", &[]));
+        return Err(VerifyMiss::Gone);
     }
     let cur_owner = hwnd::owner_pid(hwnd_v);
     if cur_owner != owner_pid {
-        return Err(copy_text(
-            "rsBind.verify.windowReused",
-            &[
-                ("curOwner", &cur_owner.to_string()),
-                ("ownerPid", &owner_pid.to_string()),
-            ],
-        ));
+        return Err(VerifyMiss::Reused(format!(
+            "window handle reused: owner now {cur_owner}, bound {owner_pid}"
+        )));
     }
     if owner_proc_start != 0 {
         // 两边都是 FileTime UTC（u64 同零点）→ 直接比 .0 即可
@@ -370,23 +414,33 @@ fn verify_window(hwnd_v: isize, owner_pid: u32, owner_proc_start: u64) -> Result
             .map(|ft| ft.0)
             .unwrap_or(0);
         if cur_proc_start != 0 && cur_proc_start != owner_proc_start {
-            return Err(copy_text("rsBind.verify.pidReused", &[]));
+            return Err(VerifyMiss::Reused(
+                "owner pid reused: start time differs".into(),
+            ));
         }
     }
     Ok(())
 }
 
-/// 把窗口拉到前台。失败时返 Err（不致命，OS 会让窗口在任务栏闪烁）。
-/// 拉法住 `platform::hwnd::bring_to_front`，这里只答「拉不动说哪句」。
-pub fn activate(hwnd: isize) -> Result<(), String> {
+/// 把窗口拉到前台：系统答应 ⇒ `Switched`；不答应（OS 会让窗口在任务栏闪烁）⇒ `Refused`。
+/// 拉法住 `platform::hwnd::bring_to_front`。
+pub fn activate(hwnd: isize) -> FrontOutcome {
     if !crate::platform::hwnd::SUPPORTED {
-        return Err("only supported on Windows".into());
+        return FrontOutcome::Unsupported;
     }
     if crate::platform::hwnd::bring_to_front(hwnd) {
-        Ok(())
+        FrontOutcome::Switched
     } else {
-        Err(copy_text("rsBind.activate.refused", &[]).into())
+        FrontOutcome::Refused
     }
+}
+
+/// 让这几个窗口在任务栏闪一下（只闪不切，用户自己点哪个）。只闪此刻还是窗口的那几个；回闪了几个。
+pub fn flash_windows(windows: &[isize]) -> usize {
+    windows
+        .iter()
+        .filter(|h| crate::platform::hwnd::exists(**h) && crate::platform::hwnd::flash(**h))
+        .count()
 }
 
 /// 持久化的 sid → 拉前信息缓存。SessionMap 在新 session 时 record；
@@ -499,9 +553,11 @@ pub struct FoundWindow {
 }
 
 /// ↗ 远端那一格的最后一跳：找到的窗口 ⇒ 三重指纹校验（与本机那条同一段）⇒ 拉到前台。
-pub fn bring_found_window(w: &FoundWindow) -> Result<(), String> {
-    verify_window(w.hwnd, w.owner_pid, w.owner_proc_start)?;
-    activate(w.hwnd)
+pub fn bring_found_window(w: &FoundWindow) -> FrontOutcome {
+    match verify_window(w.hwnd, w.owner_pid, w.owner_proc_start) {
+        Ok(()) => activate(w.hwnd),
+        Err(m) => m.outcome(),
+    }
 }
 
 /// 本机后端回的进程链的一级（开着那条连接的进程在前）。`start` 那一格本进程不用（属主起始时刻自己现读）。
@@ -568,13 +624,13 @@ pub(crate) fn walk_chain<'a>(
 }
 
 /// 进程链 ⇒ 要拉的那个窗口：链上登记过的 PowerShell ⇒ 它登记的窗口（精确到窗口）；否则终端窗口的属主恰好一个窗口 ⇒ 它；
-/// 好几个 ⇒ 分不清（不挑，说怎么办）；整条链都没有 ⇒ 没有窗口。`start_of` 读属主的起始时刻。
+/// 好几个 ⇒ 分不清（不挑，交出候选）；整条链都没有 ⇒ 没有窗口。`start_of` 读属主的起始时刻。
 pub(crate) fn pick_chain_window(
     chain: &[ChainLink],
     registered: impl Fn(u32) -> Option<HwndEntry>,
     windows_of: impl Fn(u32) -> Vec<isize>,
     start_of: impl Fn(u32) -> u64,
-) -> Result<FoundWindow, String> {
+) -> Result<FoundWindow, FrontOutcome> {
     match walk_chain(chain, registered, windows_of) {
         ChainHit::Registered(e) => Ok(FoundWindow::of(&e)),
         ChainHit::Owner(l, wins) => match wins.as_slice() {
@@ -583,26 +639,21 @@ pub(crate) fn pick_chain_window(
                 owner_pid: l.pid,
                 owner_proc_start: start_of(l.pid),
             }),
-            _ => Err(copy_text(
-                "rsBind.front.severalWindows",
-                &[("name", &l.name)],
-            )),
+            _ => Err(FrontOutcome::Several {
+                program: l.name.clone(),
+                windows: wins,
+            }),
         },
         // 链上有一个控制台 shell 却没有窗口 ⇒ 它的终端窗口归了链外的程序（Windows 默认终端把它交给了 Windows Terminal），
         // 不是在后台跑；整条链连个 shell 都没有 ⇒ 真在后台。
-        ChainHit::Nothing => match chain.iter().find(|l| is_console_shell(&l.name)) {
-            Some(shell) => Err(copy_text(
-                "rsBind.front.hostedElsewhere",
-                &[("shell", &shell.name)],
-            )),
-            None => {
-                let name = chain.first().map(|l| l.name.as_str()).unwrap_or_default();
-                Err(copy_text(
-                    "rsBind.front.noWindow",
-                    &[("name", &name.to_string())],
-                ))
+        ChainHit::Nothing => {
+            let program = chain.first().map(|l| l.name.clone()).unwrap_or_default();
+            if chain.iter().any(|l| is_console_shell(&l.name)) {
+                Err(FrontOutcome::HostedByWt { program })
+            } else {
+                Err(FrontOutcome::NoWindow { program })
             }
-        },
+        }
     }
 }
 
@@ -624,11 +675,11 @@ fn holding_registration(bind: &BindRegistry, pid: u32) -> Option<HwndEntry> {
 }
 
 /// ↗ 远端那一格：进程链 ⇒ 握手表里登记的窗口（或终端窗口的属主那一个）⇒ 校验 ＋ 拉前。
-pub fn bring_chain_window(chain: &[ChainLink], bind: &BindRegistry) -> Result<(), String> {
+pub fn bring_chain_window(chain: &[ChainLink], bind: &BindRegistry) -> FrontOutcome {
     if !crate::platform::hwnd::SUPPORTED {
-        return Err("only supported on Windows".into());
+        return FrontOutcome::Unsupported;
     }
-    let w = pick_chain_window(
+    let picked = pick_chain_window(
         chain,
         |pid| holding_registration(bind, pid),
         crate::platform::hwnd::visible_top_windows_of,
@@ -637,8 +688,11 @@ pub fn bring_chain_window(chain: &[ChainLink], bind: &BindRegistry) -> Result<()
                 .map(|ft| ft.0)
                 .unwrap_or(0)
         },
-    )?;
-    bring_found_window(&w)
+    );
+    match picked {
+        Ok(w) => bring_found_window(&w),
+        Err(o) => o,
+    }
 }
 
 fn run_heartbeat(this: Arc<BindRegistry>) {

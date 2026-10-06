@@ -275,6 +275,11 @@ export class TabBarView {
     return { sid, root: root as HTMLElement, sub: sub && root.contains(sub) ? sub : null };
   }
 
+  /** 这颗 tab 行尾的 ↗（结果浮层锚在它上面）；不在条上 / 不是 Windows ⇒ `null`。 */
+  frontButton(sid: string): HTMLElement | null {
+    return this.tabButtons.get(sid)?.root.querySelector<HTMLElement>(".tab-focus") ?? null;
+  }
+
   /** ↗ 在飞超过一会儿 ⇒ 这颗 tab 的 ↗ 进「进行中」（转圈、不可再点由 `frontOnce` 挡）。 */
   setFrontPending(sid: string, on: boolean): void {
     this.tabButtons.get(sid)?.root.querySelector(".tab-focus")?.classList.toggle("in-flight", on);

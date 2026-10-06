@@ -56,6 +56,7 @@ use std::path::{Path, PathBuf};
 
 /// 单元层：不读仓内文本、不碰 OS 的测试文件。
 const UNIT: &[&str] = &[
+    "tests/frontend/ui/acct-jump.vitest.ts",
     "tests/frontend/ui/acct-panel.vitest.ts",
     "tests/frontend/ui/acct-session.vitest.ts",
     "tests/frontend/ui/acct-view.vitest.ts",
@@ -193,6 +194,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/fork-ask.vitest.ts",
     "tests/frontend/ui/fork-start.vitest.ts",
     "tests/frontend/ui/format.test.ts",
+    "tests/frontend/ui/front-result.vitest.ts",
     "tests/frontend/ui/height-estimate.vitest.ts",
     "tests/frontend/ui/invariants-frontend-guard.vitest.ts",
     "tests/frontend/ui/keybindings/actions.vitest.ts",
@@ -491,7 +493,6 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/css-modules.vitest.ts",
     "tests/frontend/ui/entry-graphs.vitest.ts",
     "tests/frontend/ui/events-batch-schedule.vitest.ts",
-    "tests/frontend/ui/first-run-hint.vitest.ts",
     "tests/frontend/ui/fork-flow.vitest.ts",
     "tests/frontend/ui/generated-boundary-guard.vitest.ts",
     "tests/frontend/ui/gray-light-wiring.vitest.ts",

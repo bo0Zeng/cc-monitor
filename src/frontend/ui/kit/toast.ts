@@ -22,6 +22,8 @@ export interface ToastOptions {
   action?: ToastAction | ToastAction[];
   /** 到点自己走（或被 × 掉）之后：撤销期过了，做那一步剩下的事。 */
   onExpire?: () => void;
+  /** 逐条明细：不上 toast，只进记录（在「消息」里展开那一条看）。 */
+  more?: readonly string[];
 }
 
 export interface ToastAction {
@@ -45,6 +47,8 @@ export interface ToastRecord {
   actions: ToastAction[];
   /** 出错的那几条：在「消息」里看过没有。 */
   seen: boolean;
+  /** 逐条明细（`ToastOptions.more`）；没有 ⇒ 空。 */
+  more: readonly string[];
 }
 
 const listeners = new Set<() => void>();
@@ -191,7 +195,8 @@ function pause(t: Live, on: boolean): void {
  */
 export function toast(title: string, detail: string, opts: ToastOptions = {}): () => void {
   const level = opts.level ?? "error";
-  const key = opts.action ? `action\u0000${++actionSeq}` : `${level}\u0000${title}`;
+  // 带动作 · 带逐条明细的各自一条（明细要原样留在自己那条记录上）。
+  const key = opts.action || opts.more?.length ? `action\u0000${++actionSeq}` : `${level}\u0000${title}`;
   const same = live.find((t) => t.key === key);
   if (same) {
     same.details.push(detail);
@@ -228,7 +233,7 @@ export function toast(title: string, detail: string, opts: ToastOptions = {}): (
   el.append(icon(LEVEL_ICON[level]), text);
 
   const acts0 = opts.action === undefined ? [] : Array.isArray(opts.action) ? opts.action : [opts.action];
-  const rec: ToastRecord = { level, title, detail, count: 1, at: Date.now(), actions: acts0, seen: level !== "error" };
+  const rec: ToastRecord = { level, title, detail, count: 1, at: Date.now(), actions: acts0, seen: level !== "error", more: opts.more ?? [] };
   const t: Live = {
     key,
     el,

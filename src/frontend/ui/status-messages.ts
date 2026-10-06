@@ -6,17 +6,30 @@ import { chip, setChipOpen } from "./kit/chip";
 import { icon, type IconName } from "./kit/icon";
 import { button } from "./kit/button";
 import { openPopover } from "./kit/popover";
-import { markRecordsSeen, onToastRecords, recentToasts, runRecordAction, unseenErrors, TOAST_RECORD_MAX, type ToastLevel } from "./kit/toast";
+import { markRecordsSeen, onToastRecords, recentToasts, runRecordAction, unseenErrors, TOAST_RECORD_MAX, type ToastLevel, type ToastRecord } from "./kit/toast";
 import { formatTimestampShort } from "./format";
 import { copyText } from "./copy-table";
 import s from "./status-messages.module.css";
 
 const LEVEL_ICON: Record<ToastLevel, IconName> = { success: "success", info: "info", warn: "warning", error: "error" };
 
+let shown: StatusMessages | null = null;
+
+function adopt(m: StatusMessages): void {
+  shown = m;
+}
+
+/** 打开「消息」并展开这一条（批量结果的［查看］用：逐条原因在那里看）。「消息」还没挂上 ⇒ 什么都不做。 */
+export function showMessage(r: ToastRecord): void {
+  shown?.reveal(r);
+}
+
 export class StatusMessages {
   readonly el: HTMLElement;
   private readonly dot: HTMLElement;
   private list: HTMLElement | null = null;
+  /** 展开着的那几条（带逐条明细的才展得开）。 */
+  private readonly expanded = new WeakSet<ToastRecord>();
 
   private readonly trigger: HTMLElement;
 
@@ -30,6 +43,15 @@ export class StatusMessages {
     this.dot.hidden = true;
     this.el.append(this.trigger, this.dot);
     onToastRecords(() => this.refresh());
+    adopt(this);
+  }
+
+  /** 打开（已开着就不关）、展开这一条、滚到它。 */
+  reveal(r: ToastRecord): void {
+    this.expanded.add(r);
+    if (this.list?.isConnected) this.fill(this.list);
+    else this.toggle();
+    this.list?.querySelector<HTMLElement>("[data-more=open]")?.scrollIntoView?.({ block: "nearest" });
   }
 
   private refresh(): void {
@@ -89,6 +111,27 @@ export class StatusMessages {
       text.textContent = r.detail ? copyText("statusBar.messages.line", { title: r.title, detail: r.detail.split("\n")[0] }) : r.title;
       text.title = r.detail ? `${r.title}\n${r.detail}` : r.title;
       row.append(time, icon(LEVEL_ICON[r.level], "compact"), text);
+      const open = r.more.length > 0 && this.expanded.has(r);
+      if (r.more.length > 0) {
+        // 带逐条明细的：点这一行展开 / 收起。
+        row.dataset.more = open ? "open" : "shut";
+        text.setAttribute("role", "button");
+        text.tabIndex = 0;
+        text.setAttribute("aria-expanded", String(open));
+        const flip = (): void => {
+          if (this.expanded.has(r)) this.expanded.delete(r);
+          else this.expanded.add(r);
+          this.fill(list);
+        };
+        text.addEventListener("click", flip);
+        text.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter" || ev.key === " ") {
+            ev.preventDefault();
+            flip();
+          }
+        });
+        text.prepend(icon(open ? "caretDown" : "caretRight", "compact"));
+      }
       if (r.count > 1) {
         const n = document.createElement("span");
         n.className = s.smTime;
@@ -97,6 +140,17 @@ export class StatusMessages {
       }
       for (const a of r.actions) row.appendChild(button({ label: a.label, kind: "ghost", size: "compact", onClick: () => runRecordAction(r, a) }));
       list.appendChild(row);
+      if (open) {
+        const more = document.createElement("div");
+        more.className = s.smMore;
+        more.dataset.role = "message-more";
+        for (const line of r.more) {
+          const l = document.createElement("div");
+          l.textContent = line;
+          more.appendChild(l);
+        }
+        list.appendChild(more);
+      }
     }
   }
 }
