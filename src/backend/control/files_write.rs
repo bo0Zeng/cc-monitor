@@ -2355,7 +2355,7 @@ fn remove_created(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
 /// 从前这里写「别的写一律不许碰会话文件，这一条是唯一的例外」—— 文件管理面今天什么都能改，
 /// 这一条的独特之处只剩「只收 sid、只删恰是那一形的那一份」。
 pub fn delete_session(sid: &str, sessions: &SessionPort) -> Result<PathBuf, WriteRefusal> {
-    delete_session_with(sid, sessions.locate, sessions.is_record)
+    delete_session_with(sid, sessions.locate, sessions.is_record, sessions.file_name)
 }
 
 /// 删会话那一条要问的两件事（落点 · 形状）是 agent 记录布局的知识，
@@ -2367,6 +2367,8 @@ pub struct SessionPort {
     pub locate: fn(&str) -> Result<PathBuf, String>,
     /// 这一份是不是会话记录。
     pub is_record: fn(&Path) -> bool,
+    /// 这一份记录归的那一家给 sid 起的文件名（没有 ⇒ 那一家不按 sid 命名会话文件）。
+    pub file_name: fn(&Path, &str) -> Option<String>,
 }
 
 /// [`delete_session`] 的本体。`locate` / `is_record` 由调用方给（生产侧 = 门递进来的窄口；判据拿临时目录当 home），
@@ -2375,8 +2377,10 @@ pub fn delete_session_with(
     sid: &str,
     locate: impl FnOnce(&str) -> Result<PathBuf, String>,
     is_record: impl FnOnce(&Path) -> bool,
+    file_name: impl FnOnce(&Path, &str) -> Option<String>,
 ) -> Result<PathBuf, WriteRefusal> {
-    let target = fenced_session_file(sid, locate, is_record).map_err(WriteRefusal::Refused)?;
+    let target =
+        fenced_session_file(sid, locate, is_record, file_name).map_err(WriteRefusal::Refused)?;
     std::fs::remove_file(&target).map_err(|e| {
         WriteRefusal::Io(copy_text(
             "beFilesWrite.session.deleteFailed",
@@ -2390,15 +2394,16 @@ pub fn delete_session_with(
 }
 
 /// 删会话那一条**自己的**围栏：落点只能是 `locate(sid)` 找到的那一份，而且**它必须是**
-/// 会话文件的形状、文件名恰是 `<sid>.jsonl`（`locate` 换成什么都骗不过这两问）。
+/// 会话文件的形状、文件名恰是那一家给这个 sid 起的名字（Claude：`<sid>.jsonl`；`locate` 换成什么都骗不过这两问）。
 fn fenced_session_file(
     sid: &str,
     locate: impl FnOnce(&str) -> Result<PathBuf, String>,
     is_record: impl FnOnce(&Path) -> bool,
+    file_name: impl FnOnce(&Path, &str) -> Option<String>,
 ) -> Result<PathBuf, String> {
     let p = locate(sid)?;
-    let want = format!("{sid}.jsonl");
-    if p.file_name() != Some(std::ffi::OsStr::new(&want)) {
+    let want = file_name(&p, sid).unwrap_or_default();
+    if want.is_empty() || p.file_name() != Some(std::ffi::OsStr::new(&want)) {
         return Err(copy_text(
             "beFilesWrite.session.nameMismatch",
             &[

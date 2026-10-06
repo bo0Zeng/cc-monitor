@@ -8,6 +8,7 @@ pub(in crate::stream::inbound) const SESSION_PORT: crate::control::files_write::
     crate::control::files_write::SessionPort {
         locate: crate::agents::locate_session_for_delete,
         is_record: crate::agents::is_session_record,
+        file_name: crate::agents::session_file_name_of,
     };
 
 pub(super) const SPECS: &[CommandSpec] = &[

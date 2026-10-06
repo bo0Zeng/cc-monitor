@@ -377,6 +377,7 @@ fn local_face(
         },
         pidfile_dir,
         cmdline_may_be_agent,
+        tasks_dir: Some(|h| h.join("todo")),
     }
 }
 

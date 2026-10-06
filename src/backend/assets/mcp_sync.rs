@@ -308,7 +308,7 @@ pub(crate) fn servers_of(
             &[("side", &side.to_string())],
         ),
     ))?;
-    match root.get("mcpServers") {
+    match root.get(super::mcp_servers_key()) {
         None => Ok(Map::new()),
         Some(Value::Object(m)) => Ok(m.clone()),
         Some(_) => Err((

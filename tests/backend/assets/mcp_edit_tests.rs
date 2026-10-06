@@ -26,13 +26,13 @@ fn the_mcp_edit_product_matches_the_cross_language_golden() {
     let d = root.display().to_string();
     let put = answer_put(&LocalFiles, &with_dir(&g["put"], &d)).expect("写不进去");
     assert_eq!(put, with_dir(&g["putReply"], &d));
-    let on_disk = std::fs::read_to_string(root.join(MCP_JSON)).unwrap();
+    let on_disk = std::fs::read_to_string(root.join(mcp_json())).unwrap();
     assert_eq!(on_disk, g["mcpJson"].as_str().unwrap());
     let gone =
         answer_remove(&LocalFiles, &with_dir(&g["removeAbsent"], &d)).expect("删不在的不该拒");
     assert_eq!(gone, with_dir(&g["removeAbsentReply"], &d));
     assert_eq!(
-        std::fs::read_to_string(root.join(MCP_JSON)).unwrap(),
+        std::fs::read_to_string(root.join(mcp_json())).unwrap(),
         on_disk,
         "删一条不在的动了盘"
     );
@@ -59,12 +59,12 @@ fn the_mcp_edit_product_matches_the_cross_language_golden() {
 #[test]
 fn a_broken_mcp_json_is_never_overwritten_and_relative_dirs_are_refused() {
     let root = fixture("broken");
-    std::fs::write(root.join(MCP_JSON), "{ not json").unwrap();
+    std::fs::write(root.join(mcp_json()), "{ not json").unwrap();
     let args = json!({ "projectDir": root.display().to_string(), "name": "x", "server": {} });
     let (code, _) = answer_put(&LocalFiles, &args).expect_err("读不懂的也写了");
     assert_eq!(code, "refused");
     assert_eq!(
-        std::fs::read_to_string(root.join(MCP_JSON)).unwrap(),
+        std::fs::read_to_string(root.join(mcp_json())).unwrap(),
         "{ not json"
     );
     let (code, _) = answer_put(

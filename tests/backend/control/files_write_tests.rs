@@ -48,6 +48,7 @@ use super::*;
 const PORT: SessionPort = SessionPort {
     locate: crate::agents::locate_session_for_delete,
     is_record: crate::agents::is_session_record,
+    file_name: crate::agents::session_file_name_of,
 };
 fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
     super::answer_wire(wire_name, args, &PORT)
@@ -56,7 +57,7 @@ fn delete_session_with(
     sid: &str,
     locate: impl FnOnce(&str) -> Result<std::path::PathBuf, String>,
 ) -> Result<std::path::PathBuf, WriteRefusal> {
-    super::delete_session_with(sid, locate, PORT.is_record)
+    super::delete_session_with(sid, locate, PORT.is_record, PORT.file_name)
 }
 
 /// 一个本轮独占的临时目标根。`tag` 区分用例，`pid` 区分并发跑的进程。

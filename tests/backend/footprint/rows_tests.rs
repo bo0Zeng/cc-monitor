@@ -900,13 +900,12 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
         "注册表声明的 ccm 远端落点与 sftp.rs 的 LANDING_REL 不一致"
     );
 
-    // ② 项目 MCP：写进了那台后端（`assets/mcp_edit.rs`），落点常量就是这个文件名
+    // ② 项目 MCP：写进了那台后端（`assets/mcp_edit.rs`），落点是资产面那一家的项目级 MCP 文件名
     let mcp = include_str!("../../../src/backend/assets/mcp_edit.rs");
     assert_eq!(
-        mcp.matches(r#"pub(crate) const MCP_JSON: &str = ".mcp.json";"#)
-            .count(),
-        1,
-        "mcp_edit.rs 里找不到落点常量 MCP_JSON——落点变了还是扫描器失效了？"
+        crate::assets::mcp_edit::mcp_json(),
+        ".mcp.json",
+        "写面的项目级 MCP 落点与足迹申报的不是同一个文件名"
     );
     let pm = TOOLS.iter().find(|t| t.id == "project-mcp").unwrap();
     assert_eq!(
@@ -914,8 +913,8 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
             .iter()
             .map(|c| &c.destination)
             .collect::<Vec<_>>(),
-        // 两个载体（单条写 · 推 / 拉）落同一个文件。两者都进了那台后端，落点常量只有
-        //    `mcp_edit.rs::MCP_JSON` 一处（推 / 拉那一趟 `mcp_sync_flow.rs` 引它）。
+        // 两个载体（单条写 · 推 / 拉）落同一个文件。两者都进了那台后端，落点只问
+        //    `mcp_edit.rs::mcp_json` 一处（推 / 拉那一趟 `mcp_sync_flow.rs` 引它）。
         vec![
             &ToolDestination::ProjectRelative(".mcp.json"),
             &ToolDestination::ProjectRelative(".mcp.json")

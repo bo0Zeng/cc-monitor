@@ -153,6 +153,7 @@ pub(crate) const LOCAL: super::LocalFace = super::LocalFace {
     home_at: paths::home_of,
     pidfile_dir: paths::sessions_root,
     cmdline_may_be_agent: liveness::cmdline_may_be_agent,
+    tasks_dir: Some(paths::tasks_root),
 };
 
 pub(crate) const MCP: super::McpFace = super::McpFace { read: mcp::read };
@@ -196,4 +197,6 @@ pub(crate) const ASSETS: super::AssetFace = super::AssetFace {
     skills_root: assets::skills_root,
     project_skills_root: assets::project_skills_root,
     user_mcp_file: assets::claude_json,
+    project_mcp_file: assets::PROJECT_MCP_FILE,
+    servers_key: assets::SERVERS_KEY,
 };

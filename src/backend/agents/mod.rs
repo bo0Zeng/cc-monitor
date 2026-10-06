@@ -391,6 +391,8 @@ pub(crate) struct LocalFace {
     pub(crate) pidfile_dir: fn(&Path) -> PathBuf,
     /// 小写后的 cmdline 可不可能是这一家的进程（判活的冒名兜底）。
     pub(crate) cmdline_may_be_agent: fn(&str) -> bool,
+    /// 家目录 ⇒ 任务列表的根（其下每个会话一个目录）。`None` ＝ 这一家没有任务列表。
+    pub(crate) tasks_dir: Option<fn(&Path) -> PathBuf>,
 }
 
 /// 一条子运行记录说了什么：属于哪个运行 · 是不是它的终局 · 它做的那件事（行上「最近：…」）。
@@ -968,6 +970,11 @@ pub(crate) fn session_file_name(kind: &str, sid: &str) -> Option<String> {
     record_tree_among(REGISTRY, kind).map(|t| (t.file_name)(sid))
 }
 
+/// 这份会话记录归的那一家（[`record_kind_of`]）给 `sid` 起的文件名。那一家没有记录树 ⇒ `None`。
+pub(crate) fn session_file_name_of(p: &Path, sid: &str) -> Option<String> {
+    session_file_name(record_kind_of(p)?, sid)
+}
+
 /// `kind` 那一家认不认这份文件是它的会话记录（[`RecordFace::is_session_file`]）。认不出这一家 ⇒ `false`。
 pub(crate) fn is_session_file_among(registry: &[Adapter], kind: &str, p: &Path) -> bool {
     adapter_among(registry, kind)
@@ -1171,6 +1178,16 @@ pub(crate) fn account_library_face() -> Option<AccountsFace> {
 /// [`accounts_face`] 的可喂夹具那一半。
 pub(crate) fn accounts_face_among(registry: &[Adapter], kind: &str) -> Option<AccountsFace> {
     adapter_among(registry, kind).and_then(|a| a.accounts)
+}
+
+/// `kind` 那一家家目录 `agent_home` 下用户级的那份设置文件（足迹面 `user_settings` 的第一份）。那一家没有足迹面 ⇒ `None`。
+pub(crate) fn user_settings_of(kind: &str, agent_home: &Path) -> Option<PathBuf> {
+    adapter_among(REGISTRY, kind)
+        .and_then(|a| a.footprint)
+        .map(|f| {
+            let [user, _] = (f.user_settings)(agent_home);
+            user
+        })
 }
 
 /// 注册表里带足迹面的那几家（按注册表顺序）。
@@ -1646,6 +1663,10 @@ pub(crate) struct AssetFace {
     pub(crate) project_skills_root: fn(project: &Path) -> PathBuf,
     /// 这一家自己存用户级 MCP 的那份文件（没有账号库的机器上，用户级 MCP 就是它）。
     pub(crate) user_mcp_file: fn() -> Option<PathBuf>,
+    /// 项目级 MCP 配置的文件名（项目目录下；增 / 改 / 删 · 推 / 拉的落点）。
+    pub(crate) project_mcp_file: &'static str,
+    /// MCP 配置文件里装 server 表的那个顶层键。
+    pub(crate) servers_key: &'static str,
 }
 
 /// 看到的一个 skill：`project` = `None` 是用户级，`Some(项目目录)` 是那个项目里的。
@@ -1683,6 +1704,11 @@ pub(crate) fn asset_sightings(projects: &[String], user_mcp: Option<&Path>) -> V
         .iter()
         .filter_map(|a| a.assets.map(|f| (f.scan)(projects, user_mcp)))
         .collect()
+}
+
+/// `kind` 那一家的资产面。认不出 / 没有 ⇒ `None`。
+pub(crate) fn asset_face(kind: &str) -> Option<AssetFace> {
+    asset_face_among(REGISTRY, kind)
 }
 
 /// `kind` 那一家的资产面。

@@ -8,8 +8,10 @@ use super::door::{self, Door, Edited};
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 
-/// 项目 `.mcp.json` 的文件名（写面只此一个落点）。
-pub(crate) const MCP_JSON: &str = ".mcp.json";
+/// 项目级 MCP 配置的文件名（写面只此一个落点）：资产面那一家的（`AssetFace.project_mcp_file`，Claude：`.mcp.json`）。
+pub(crate) fn mcp_json() -> &'static str {
+    super::project_mcp_file()
+}
 
 type Answer = Result<Value, (&'static str, String)>;
 
@@ -81,7 +83,7 @@ pub(crate) fn upsert_mcp_server_value(
         .as_object_mut()
         .ok_or_else(|| copy_text("beMcpEdit.mcpJson.rootNotObject", &[]))?;
     let servers = obj
-        .entry("mcpServers")
+        .entry(super::mcp_servers_key())
         .or_insert_with(|| Value::Object(Map::new()));
     let smap = servers
         .as_object_mut()
@@ -96,7 +98,7 @@ pub(crate) fn remove_mcp_server_value(root: &mut Value, name: &str) -> Result<bo
         .as_object_mut()
         .ok_or_else(|| copy_text("beMcpEdit.mcpJson.rootNotObject", &[]))?;
     Ok(obj
-        .get_mut("mcpServers")
+        .get_mut(super::mcp_servers_key())
         .and_then(|m| m.as_object_mut())
         .map(|smap| smap.remove(name).is_some())
         .unwrap_or(false))
@@ -110,7 +112,11 @@ pub(crate) fn plan_project_mcp(
     change: &mut impl FnMut(&mut Value) -> Result<bool, String>,
 ) -> Result<Option<String>, String> {
     let mut v = match existing {
-        None => json!({ "mcpServers": {} }),
+        None => {
+            let mut skeleton = Map::new();
+            skeleton.insert(super::mcp_servers_key().to_string(), json!({}));
+            Value::Object(skeleton)
+        }
         Some(t) => serde_json::from_str(t.trim_start_matches('\u{feff}')).map_err(|e| {
             copy_text(
                 "beMcpEdit.plan.parseFailed",
@@ -140,8 +146,8 @@ fn edit_at(
     mut change: impl FnMut(&mut Value) -> Result<bool, String>,
 ) -> Answer {
     let root = project_root(project_dir)?;
-    let target = door::join_under(&root, MCP_JSON);
-    match door::edit(d, &root, MCP_JSON, false, false, |existing| {
+    let target = door::join_under(&root, mcp_json());
+    match door::edit(d, &root, mcp_json(), false, false, |existing| {
         plan_project_mcp(&target, existing, &mut change)
     }) {
         Ok(Edited::Written(l)) => Ok(json!({ "path": l.path, "changed": true })),

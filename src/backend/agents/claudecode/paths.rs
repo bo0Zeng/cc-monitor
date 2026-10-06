@@ -153,6 +153,11 @@ pub(crate) fn projects_root(home: &Path) -> PathBuf {
     home.join(PROJECTS_DIR)
 }
 
+/// `<home>/tasks` —— 任务列表的根（`<sid>/<n>.json`，任务面板读它）。
+pub(crate) fn tasks_root(home: &Path) -> PathBuf {
+    home.join("tasks")
+}
+
 /// `<home>/sessions` —— **pidfile 目录**（`<PID>.json`，判活用）。
 ///
 /// ⚠ 与 Codex 的 `sessions/`（会话记录根）**同名不同物**。`S2` 就是因为这个
