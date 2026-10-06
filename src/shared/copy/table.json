@@ -4320,21 +4320,6 @@
       "zh": "切到终端的结果",
       "args": []
     },
-    "machineUpdate.result.done": {
-      "kind": "body",
-      "zh": "已更新 {machine}",
-      "args": ["machine"]
-    },
-    "machineUpdate.result.failed": {
-      "kind": "error",
-      "zh": "更新失败 · {machine}",
-      "args": ["machine"]
-    },
-    "machineUpdate.result.noConfig": {
-      "kind": "error",
-      "zh": "机器表里没有这台",
-      "args": []
-    },
     "tabSessionActions.openCwd.body": {
       "kind": "error",
       "zh": "这个会话在远端机器 [{machine}]，工作目录 {cwd} 不在本机；{why}。",

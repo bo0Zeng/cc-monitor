@@ -52,7 +52,6 @@ import { readRemoteConfig } from "./remote-config";
 import { createUnknownKeysBar } from "./settings/unknown-keys-notice";
 import { openSettingsWindow } from "./settings/open-settings"; // ST1：点「设置」有反馈（不 import 设置面板）
 import * as dest from "./settings-dest";
-import { updateMachine } from "./machine-update";
 import { collectAccountRows, createEventRefresher } from "./session-accounts-poll";
 import { lastAccounts } from "./history-reads";
 import { TasksPanel } from "./tasks-panel";
@@ -295,9 +294,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   };
   const openAcctPanel = (sid: string, origin: string): void => toggleAccountPanel(sid, origin, panelHost);
   tabs.onOpenAccountPanel = openAcctPanel;
-  // ↗ 浮层的两颗：［接上终端］直达设置那一节 ·［更新］就地做。
+  // ↗ 浮层的两颗：［接上终端］直达设置那一节 ·［更新］开那台机器页（更新那一颗只住机器卡上）。
   tabs.onConnectTerminal = () => void openSettingsWindow(undefined, dest.connectTerminalOf(LOCAL_ORIGIN));
-  tabs.onUpdateMachine = (origin) => void updateMachine(origin);
+  tabs.onUpdateMachine = (origin) => void openSettingsWindow(undefined, dest.machineOf(origin));
   // 设置窗账号页「时间轴 · 默认轮换」⇒ 主窗口拉到前面、开账号面板滚到那一节（只开不写）。
   void listen<OpenAccountPanel>(OPEN_ACCOUNT_PANEL_EVENT, (e) =>
     jumpToAccountPanel(e.payload, {

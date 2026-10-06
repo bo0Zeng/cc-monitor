@@ -1559,7 +1559,7 @@ export class TabManager {
 
   /** ↗ 浮层的［接上终端］（主窗口接到设置窗那一节）。 */
   onConnectTerminal: (() => void) | null = null;
-  /** ↗ 浮层的［更新］：就地把这一版换到那台（主窗口接）。 */
+  /** ↗ 浮层的［更新］：开那台机器页（把这一版换到那台的那一颗住机器卡上，主窗口接）。 */
   onUpdateMachine: ((origin: Origin) => void) | null = null;
 
   /** ↗ 的锚：行尾那颗（从行上点的）或会话头那颗（别的入口；会话头没在画它 ⇒ 退到行尾那颗）。 */
