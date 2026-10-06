@@ -3976,6 +3976,25 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 
 只读、不拨号、不起进程。读不到（目录没有 / 读失败）按「没有」答；界面那一侧 2 秒等不到答复就按「有东西在跑」处理。判定只住后端 `observe/interrupts_query.rs`。宿主 `feature_face`（阻塞档）；CLI 面同样自动派生（`--session-interrupts`），已进 `SUBCOMMANDS`。
 
+#### `machine-interrupts`：停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前，会打断什么（2026-10-06）
+
+```text
+→ {"id":"m1","cmd":"machine-interrupts","args":{"machine":"devbox"}}
+← {"kind":"reply","id":"m1","ok":true,"data":{"relayedSessions":2,"relayedMaybe":0,"liveStreams":3,"forwards":1}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `machine` | → | 可缺。给了 ⇒ `forwards` 数这台后端账上通往那台、链路还在的端口转发（转发住本机后端，界面问本机时给）；缺 ⇒ `forwards` 为 0。不是字符串 ⇒ `bad_args` |
+| `relayedSessions` | ← | 这台的活会话里经本机中转走请求的几个（停了就断，直到再启动） |
+| `relayedMaybe` | ← | 活着、说不清走不走中转的几个（环境这一刻读不出 / agent 自己的设置可能压过它） |
+| `liveStreams` | ← | 这台活着的会话数（停的那几秒 cc-monitor 里它们不更新） |
+| `forwards` | ← | 见 `machine` |
+
+数法与 `accounts-sessions` 同一份行（`observe/accounts_query.rs::machine_product`），读不懂的行跳过。只读、不拨号、不起进程。
+界面停 / 重启 / 更新 / 卸载那台之前问那台（会话三格）＋ 问本机（`machine` = 那台，转发一格），并排画进「中断 · 保留」框，一项都没有就不弹。
+跨语言金样 `tests/__fixtures__/machine-interrupts.golden.json`；界面严格收（`src/frontend/ui/settings/interrupts.ts::decodeInterrupts`）。宿主 `read_face`（阻塞档）；CLI 面同样自动派生（`--machine-interrupts`），已进 `SUBCOMMANDS`。
+
 #### `backend-log`：这台后端的 stderr 诊断文件尾部（2026-09-26）
 
 ```text

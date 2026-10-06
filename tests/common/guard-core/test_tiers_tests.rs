@@ -220,6 +220,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/settings/machine-context.vitest.ts",
     "tests/frontend/ui/settings/machine-list-backend-cells.vitest.ts",
     "tests/frontend/ui/settings/machine-state.vitest.ts",
+    "tests/frontend/ui/settings/interrupts.vitest.ts",
     "tests/frontend/ui/settings/machine-status.vitest.ts",
     "tests/frontend/ui/settings/machine-sync.vitest.ts",
     "tests/frontend/ui/settings/panel-block-isolation.vitest.ts",

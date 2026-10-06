@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 const FAMILY: &[&str] = &[
     "accounts-list",
     "accounts-sessions",
+    "machine-interrupts",
     "accounts-trust",
     "history-index",
     "history-user-inputs",

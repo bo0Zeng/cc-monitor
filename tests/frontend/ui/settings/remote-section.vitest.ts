@@ -32,6 +32,15 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
         const op = name === "chan_call" ? String((args[0] as { op?: unknown } | undefined)?.op) : "";
         if (name === "chan_call") chanOps.push(op);
         // 铸名那一问（`terminal-name-mint`）按帧命令名回：名字 ⇒ 那台后端的成品 `{name}`；别的 ⇒ 原样 reject（通道那一层的错）。
+        // 「会打断什么」按帧命令名回：一个函数 (那台, 请求) ⇒ 那台后端的成品；没摆 ⇒ 原样 reject（问不到）。
+        if (op === "machine-interrupts") {
+          const answer = ipcReplies.get(op) as ((o: string, req: Record<string, unknown>) => unknown) | undefined;
+          if (typeof answer !== "function") return Promise.reject(new Error("没摆"));
+          const a0 = args[0] as { origin: string; payload: number[] };
+          const req = JSON.parse(new TextDecoder().decode(new Uint8Array(a0.payload))) as Record<string, unknown>;
+          const u = new TextEncoder().encode(JSON.stringify(answer(a0.origin, req)));
+          return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
+        }
         if (op === "terminal-name-mint") {
           const minted = ipcReplies.get(op);
           if (typeof minted !== "string") return Promise.reject(minted);
@@ -125,7 +134,7 @@ async function openAdd(sec: RemoteSection): Promise<HTMLElement> {
 }
 
 /** 删第 i 台远端（行的 ⋯ →「从列表删除」，没有行时点卡片自己的删除）；`commit` ⇒ 点掉撤销条（到点同一条路）。 */
-function removeAt(sec: RemoteSection, i: number, commit = true): void {
+async function removeAt(sec: RemoteSection, i: number, commit = true): Promise<void> {
   const rows = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine-row:not(.remote-machine-local)")];
   if (rows.length > 0) {
     rows[i]!.querySelector<HTMLButtonElement>("button[aria-label]")!.click();
@@ -133,6 +142,8 @@ function removeAt(sec: RemoteSection, i: number, commit = true): void {
   } else {
     sec.element.querySelectorAll<HTMLButtonElement>(".remote-machine-remove")[i]!.click();
   }
+  // 删之前先问壳那台有没有端口转发（「停止转发 n」那半句），等它答回来那一行才拿掉。
+  for (let k = 0; k < 4; k++) await new Promise((r) => setTimeout(r, 0));
   if (commit) {
     const close = [...document.querySelectorAll<HTMLButtonElement>("button[aria-label]")].filter(
       (b) => b.getAttribute("aria-label") === copyText("kit.toast.close"),
@@ -429,10 +440,27 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")]);
     // 点那张卡的「删除」按钮（走的是真实 onRemove → removeCard → save 路径）。
     expect(sec.element.querySelectorAll(".remote-machine-remove")).toHaveLength(2);
-    removeAt(sec, 0);
+    await removeAt(sec, 0);
     await new Promise((r) => setTimeout(r, 0));
     expect(saveConfig).toHaveBeenCalled();
     expect(writtenHosts().map((h) => h.label)).toEqual(["b"]);
+  });
+
+  it("删掉正有端口转发的那台 ⇒ 那一句带「停止转发 n」（数是本机后端答的）；没撤 ⇒ 到点停掉经它的那几条", async () => {
+    const answer = (n: number) => (_o: string, req: Record<string, unknown>) => ({ relayedSessions: 0, relayedMaybe: 0, liveStreams: 0, forwards: req.machine ? n : 0 });
+    ipcReplies.set("machine-interrupts", answer(2));
+    const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")]);
+    chanOps.length = 0;
+    await removeAt(sec, 0, false);
+    expect(document.body.textContent).toContain(copyText("machineList.remove.doneForwards", { machine: "a", n: 2 }));
+    ipcReplies.set("machine-interrupts", answer(0));
+    await removeAt(sec, 0, false);
+    expect(document.body.textContent).toContain(copyText("machineList.remove.done", { machine: "b" }));
+    ipcReplies.delete("machine-interrupts");
+    // 两条撤销条都点掉（到点同一条路），不留给后面的用例。
+    for (const b of [...document.querySelectorAll<HTMLButtonElement>("button[aria-label]")].filter((x) => x.getAttribute("aria-label") === copyText("kit.toast.close"))) b.click();
+    for (let k = 0; k < 4; k++) await new Promise((r) => setTimeout(r, 0));
+    expect(chanOps.filter((o) => o === "forward-list"), "到点没去停经它的转发").toHaveLength(1);
   });
 
   it("★ 改机器名 ⇒ 是**改**那一条，不是新增一台 + 留下孤儿", async () => {
@@ -488,7 +516,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 
     // 修之前：save() 把 persistedKey 改成新 origin，而页是按旧 origin 注册的
     // ⇒ removeCard 现算出 `machine:a-renamed`（不存在）⇒ 三者全留下，盘上却真删了。
-    removeAt(sec, 0);
+    await removeAt(sec, 0);
     await new Promise((r) => setTimeout(r, 0));
 
     expect(writtenHosts().map((h) => h.label), "盘上真的少一台").toEqual(["b"]);
@@ -544,7 +572,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     // 增删也按键认元素：同一个 origin 两台 ⇒ `removein` 认出不止一台 ⇒ 整批拒（不猜是哪台），banner 说保存失败。
     const sec = await mount([mkH("dup", "1.1.1.1"), mkH("dup", "2.2.2.2")]);
     vi.mocked(saveConfig).mockClear();
-    removeAt(sec, 0);
+    await removeAt(sec, 0);
     await new Promise((r) => setTimeout(r, 0));
     const sent = vi.mocked(fakeCfg.patches).mock.calls.at(-1)![0] as { op: string }[];
     expect(sent.map((e) => e.op)).toContain("removein");
@@ -556,7 +584,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 
   it("config.json 里的无关顶层键不受影响", async () => {
     const sec = await mount([mkH("a", "1.1.1.1")]);
-    removeAt(sec, 0);
+    await removeAt(sec, 0);
     await new Promise((r) => setTimeout(r, 0));
     const calls = vi.mocked(saveConfig).mock.calls;
     const last = calls[calls.length - 1]![0] as Record<string, unknown>;
@@ -658,7 +686,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     // this.cards 是 S1 保存路径的输入。本机混进去 = 往用户的远端机器列表里
     // 写一台叫「本机」的假机器。
     const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")]);
-    removeAt(sec, 0);
+    await removeAt(sec, 0);
     await new Promise((r) => setTimeout(r, 0));
     const got = writtenHosts();
     expect(got.map((h) => h.label)).toEqual(["b"]);
@@ -815,7 +843,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   it("★ 删掉一台 → 它那一页也被收掉（否则导航里留个指向已删机器的死项）", async () => {
     const p = fakePages();
     const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")], p.host);
-    removeAt(sec, 0);
+    await removeAt(sec, 0);
     await new Promise((r) => setTimeout(r, 0));
     expect(p.removed).toContain("machine:a");
     // 剩下：本机 + b
@@ -871,7 +899,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     localStorage.clear();
     recordFacet("a", "connection", { kind: "ok", at: Date.now() });
     const sec = await mount([mkH("a", "1.1.1.1")]);
-    removeAt(sec, 0);
+    await removeAt(sec, 0);
     await new Promise((r) => setTimeout(r, 0));
     expect(readStatus("a")).toEqual({});
   });

@@ -176,6 +176,25 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前会打断什么（界面问那台 ＋ 问本机数通往那台的转发，并排画）。只读。
+    CommandSpec {
+        name: "machine-interrupts",
+        doc_anchor: Some("#### `machine-interrupts`"),
+        codes: &["bad_args"],
+        fields: &[
+            "forwards",
+            "liveStreams",
+            "machine",
+            "relayedMaybe",
+            "relayedSessions",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "accounts-sessions",
         doc_anchor: Some("#### `accounts-sessions`"),

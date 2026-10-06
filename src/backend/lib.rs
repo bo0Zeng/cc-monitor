@@ -884,6 +884,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   不是第二份实现（理由整段在 `inbound::REGISTRY` 那一段）。
     "--accounts-list",
     "--accounts-sessions",
+    "--machine-interrupts",
     // 帧命令 `accounts-trust` 自动派生出来的 CLI 面（与 `--account-trust` / `--account-trust-zero`
     //   是同一个函数的两个宿主）。⚠ 逼出一次 `BUILD_ID` bump —— 本路不 bump，合并那一拍统一做。
     "--accounts-trust",

@@ -1906,3 +1906,30 @@ fn hx1_via_relay_says_which_live_sessions_point_at_the_local_relay_and_never_lea
     );
     let _ = fs::remove_dir_all(&root);
 }
+
+/// `machine-interrupts` 金样：每一形由生产函数现产，与 `tests/__fixtures__/machine-interrupts.golden.json` 逐格相等；
+/// 界面那一侧（`tests/frontend/ui/settings/interrupts.vitest.ts`）读同一份严格解码。
+#[test]
+fn the_machine_product_matches_the_cross_language_golden() {
+    let golden: serde_json::Value = serde_json::from_str(include_str!(
+        "../../__fixtures__/machine-interrupts.golden.json"
+    ))
+    .expect("金样不是 JSON");
+    let cases = golden["cases"].as_array().expect("金样没有 cases");
+    assert_eq!(cases.len(), 3, "金样的形数变了 —— 两侧一起改");
+    for c in cases {
+        let lines: Vec<String> = c["lines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|l| l.as_str().unwrap().to_string())
+            .collect();
+        let forwards = c["forwards"].as_u64().unwrap() as u32;
+        assert_eq!(
+            machine_product(&lines, forwards),
+            c["reply"],
+            "「{}」：现产的成品与金样对不上",
+            c["name"]
+        );
+    }
+}

@@ -732,6 +732,34 @@ fn account_trust_zero(cwd: &str) -> Result<String, (String, String)> {
 /// 帧面那两条（`accounts-list` / `accounts-sessions`）的入口。
 ///
 /// 跑的是 CLI 那两臂**同一个函数**（[`list_accounts`] / [`session_accounts`]），账号库目录
+/// `machine-interrupts` 的成品：停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前会打断什么。
+/// `lines` 是这台活会话那几行（`accounts-sessions` 同一份）：活着且经本机中转 ⇒ `relayedSessions`；活着而说不清走不走 ⇒ `relayedMaybe`；
+/// 活着的都算 `liveStreams`（停的那几秒 cc-monitor 里这几个不更新）。`forwards` 是这台后端账上通往 `machine` 的转发（没给 `machine` ⇒ 0）。
+/// 读不懂的行跳过。**纯函数**。
+pub(crate) fn machine_product(lines: &[String], forwards: u32) -> serde_json::Value {
+    let (mut relayed, mut maybe, mut live) = (0u32, 0u32, 0u32);
+    for l in lines {
+        let Ok(row) = serde_json::from_str::<serde_json::Value>(l) else {
+            continue;
+        };
+        if row["alive"] != serde_json::Value::Bool(true) {
+            continue;
+        }
+        live += 1;
+        match row.get("viaRelay") {
+            Some(serde_json::Value::Bool(true)) => relayed += 1,
+            Some(serde_json::Value::Bool(false)) => {}
+            _ => maybe += 1,
+        }
+    }
+    serde_json::json!({
+        "relayedSessions": relayed,
+        "relayedMaybe": maybe,
+        "liveStreams": live,
+        "forwards": forwards,
+    })
+}
+
 /// 走同一个解析（只跟着家走）。
 pub(crate) fn lines_for_frame(agent_home: &Path, which: FrameAccounts) -> Vec<String> {
     let accts_dir = resolve_accts_dir();

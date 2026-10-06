@@ -55,20 +55,13 @@ import { formatBytes } from "../format";
 import { recordFacet } from "./machine-status";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
 import { machineName } from "../control-said";
-import { fetchSessionAccountsOrNull } from "../account-reads";
+import { askInterrupts, interruptRows, type Interrupts } from "./interrupts";
 import { button } from "../kit/button";
 import { toggleSwitch } from "../kit/switch";
 import { readRecordDrift } from "../record-reads";
 import { ccRow } from "./cc-row";
 import { decodeMachineState, type MachineState } from "./machine-state";
-import type { SessionAccount } from "../accounts";
 
-/**
- * 停后端之前**要不要先问一句**：走那台中转的活会话在后端停了之后每一次请求都会失败（中转住在后端进程里；远端同形）。
- * 回要问的那句话；`null` = 不用问（问到了、而且一条走中转的活会话都没有）。
- * - 问不到（`rows === null`）⇒ 照样问，说「不知道有几条」（出声，不把「问不到」当成「没有」）；
- * - 活着但说不清走不走中转的（`viaRelay` 缺 / `null`）⇒ 连同确定的几条一起说出来。
- */
 /**
  * 「停」的结局说一句（三个词各一句，穷举 —— 多一个词 tsc 就红）。机器页那一行照它说，不只进 console。
  */
@@ -82,16 +75,6 @@ export function stopSaid(a: StopAnswer): string {
     case "not_running":
       return copyText("backend.stopSaid.notRunning");
   }
-}
-
-export function stopWarning(rows: SessionAccount[] | null): string | null {
-  if (rows === null) return copyText("backend.stop.relayUnknown");
-  const live = rows.filter((r) => r.alive);
-  const n = live.filter((r) => r.viaRelay === true).length;
-  const k = live.filter((r) => r.viaRelay === null || r.viaRelay === undefined).length;
-  if (k > 0) return copyText("backend.stop.relayMaybe", { n, k });
-  if (n > 0) return copyText("backend.stop.relayConfirm", { n });
-  return null;
 }
 
 /** 那个值现读出来的三态（与后端 `exit_policy::Read::state` 逐字对齐）。 */
@@ -285,14 +268,14 @@ export class BackendSection {
 
   /** 停之前那一问 · 数会话那一问（注入缝：判据换成同步答 / 假数据）。 */
   private readonly confirm: ConfirmFn;
-  private readonly sessions: (origin: Origin) => Promise<SessionAccount[] | null>;
+  private readonly interrupts: (origin: Origin) => Promise<Interrupts | null>;
 
   constructor(
     opts: {
       headless?: boolean;
       hosted?: boolean;
       confirm?: ConfirmFn;
-      sessions?: (origin: Origin) => Promise<SessionAccount[] | null>;
+      interrupts?: (origin: Origin) => Promise<Interrupts | null>;
       /** 远端那台画出「已连上」之后（连接 · backend 两格已记进账本）叫一声，宿主据它重画那一行与「诊断」。 */
       onLinkSeen?: (origin: string) => void;
       /** 每次问完那台的连接（`null` ＝ 没问到）。 */
@@ -306,7 +289,7 @@ export class BackendSection {
     this.onMachine = opts.onMachine;
     this.hosted = opts.hosted ?? false;
     this.confirm = opts.confirm ?? confirmDialog;
-    this.sessions = opts.sessions ?? fetchSessionAccountsOrNull;
+    this.interrupts = opts.interrupts ?? askInterrupts;
     this.element = document.createElement("div");
     this.element.className = "settings-section backend-section";
     if (!opts.headless) {
@@ -706,20 +689,19 @@ export class BackendSection {
     const cells = this.cellHosts.get(origin);
     const btns = cells ? [...cells.querySelectorAll<HTMLButtonElement>("[data-op]")] : [];
     for (const b of btns) b.disabled = true;
-    // 停 / 重启之前：有走那台中转的活会话 ⇒ 先问一句、说几条会断。
-    // 远端也问：远端中转住在那台的常驻后端里，停它就停了中转。
+    // 停 / 重启之前：问一次会打断什么（经它的会话请求 · 开着看的会话 · 端口转发）；有才弹框。
     if (what !== "start") {
-      const warn = stopWarning(await this.sessions(origin));
       const restart = what === "restart";
+      const rows = interruptRows(await this.interrupts(origin), machineName(origin), restart ? "restart" : "stop");
       if (
-        warn !== null &&
+        rows.length > 0 &&
         !(await this.confirm({
           title: restart
             ? copyText("backend.restart.title", { machine: machineName(origin) })
             : copyText("backend.stop.title", { machine: machineName(origin) }),
           action: restart ? copyText("backend.restart.action") : copyText("backend.stop.action"),
           danger: !restart,
-          body: warn,
+          rows,
         }))
       ) {
         for (const b of btns) b.disabled = false;

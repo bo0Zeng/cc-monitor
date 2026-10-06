@@ -25,6 +25,8 @@
 
 import { commands } from "../ipc/commands";
 import { openPortForwardPanel } from "../views/port-forward";
+import { listForwards, stopForward } from "../port-forward-reads";
+import { askInterrupts } from "./interrupts";
 // F12：配置数据层已抽到 src/frontend/ui/remote-config.ts（治分层倒挂）——UI 从数据模块 import，不再自持 CRUD。
 import { recordFacet, LOCAL_MACHINE_KEY, forgetMachine, renameMachine } from "./machine-status";
 import {
@@ -173,6 +175,15 @@ export function accountsSummary(state: AccountsState, os: string | null): string
   const n = got.accounts.length;
   const def = got.accounts.find((a) => a.isDefault);
   return def ? copyText("machineList.summary.accounts", { n, name: def.name }) : copyText("machineList.summary.count", { n });
+}
+
+/** 删掉的那台经它在转的端口转发一条条停掉（本机后端那本转发账；停不掉的只进日志）。 */
+async function stopForwardsOf(origin: string): Promise<void> {
+  try {
+    for (const f of await listForwards()) if (f.origin === origin) await stopForward(f.id);
+  } catch (e) {
+    console.warn(`[remove] ${origin} 的端口转发没停干净：`, e);
+  }
 }
 
 // === 共享 DOM 小工具 ===
@@ -559,7 +570,7 @@ export class RemoteSection {
       { label: copyText("machineList.menu.conn"), onClick: () => this.pages?.openMachineSection?.(pageId, "conn") },
       { label: copyText("machineList.menu.cc"), onClick: () => this.pages?.openMachineSection?.(pageId, "cc") },
       { divider: true, label: "" },
-      { label: copyText("machineList.menu.remove"), danger: true, onClick: () => this.removeCard(card) },
+      { label: copyText("machineList.menu.remove"), danger: true, onClick: () => void this.removeCard(card) },
     ];
   }
 
@@ -681,7 +692,7 @@ export class RemoteSection {
       initial,
       {
         onChange: () => void this.save(),
-        onRemove: (c) => this.removeCard(c),
+        onRemove: (c) => void this.removeCard(c),
         onStatusChanged: (c) => this.refreshMachineRow(c),
         tryCells: (c, next) => tryRemoteConfig({ upsert: [{ key: c.persistedKey, value: next, was: c.persistedKey === null ? undefined : findHostByOrigin(this.original.hosts, c.persistedKey) ?? undefined }] }),
       },
@@ -858,15 +869,19 @@ export class RemoteSection {
 
   /**
    * 从列表删除（撤得回 ⇒ 不问）：那一行、那一页当场拿掉，出「已删除 X ［撤销］」8 秒；
-   * 撤销 ⇒ 原样放回（连接设置一格不丢）；没撤 ⇒ 到点才写盘、清那台的状态账本。
+   * 撤销 ⇒ 原样放回（连接设置一格不丢）；没撤 ⇒ 到点才写盘、清那台的状态账本、停掉经它的端口转发。
+   * 那台正有端口转发 ⇒ 那一句带上「停止转发 n」（数由壳答，`machine_interrupts`）。
    */
-  private removeCard(card: MachineCard): void {
+  private async removeCard(card: MachineCard): Promise<void> {
     if (!this.cards.includes(card)) return;
     const name = card.displayName();
+    const origin = card.persistedKey;
+    const forwards = origin ? ((await askInterrupts(origin))?.forwards ?? 0) : 0;
+    if (!this.cards.includes(card)) return;
     const { idx, pageId, row, after } = this.dropCard(card);
     let undone = false;
     undoToast(
-      copyText("machineList.remove.done", { machine: name }),
+      forwards > 0 ? copyText("machineList.remove.doneForwards", { machine: name, n: forwards }) : copyText("machineList.remove.done", { machine: name }),
       () => {
         undone = true;
         this.cards.splice(Math.min(idx, this.cards.length), 0, card);
@@ -884,6 +899,7 @@ export class RemoteSection {
         if (card.persistedKey) forgetMachine(card.persistedKey);
         this.pageIdOf.delete(card);
         void this.save();
+        if (origin && forwards > 0) void stopForwardsOf(origin);
       },
     );
   }

@@ -295,6 +295,20 @@ pub(crate) fn list_with(ledger: &Ledger) -> Value {
     json!({ "forwards": rows })
 }
 
+/// 账上通往 `origin` 那台、链路还在的几条（`machine-interrupts` 的 `forwards` 一格）。
+pub(crate) fn running_to(ledger: &Ledger, origin: &str) -> u32 {
+    ledger
+        .rows()
+        .iter()
+        .filter(|(_, e)| e.spec.origin == origin && !e.pump.0.is_finished())
+        .count() as u32
+}
+
+/// 生产的那一份：进程里那张账。
+pub(crate) fn running_to_machine(origin: &str) -> u32 {
+    running_to(&LEDGER, origin)
+}
+
 /// 生产的 `forward-start`：进程里那张可达表 ＋ 那张账 ＋ 真拨号。
 pub async fn answer_start(args: &Value) -> Result<Value, (&'static str, String)> {
     start_with(

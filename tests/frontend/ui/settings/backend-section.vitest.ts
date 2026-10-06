@@ -117,8 +117,10 @@ vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: () => {} }));
 // 「重新对齐」做完经 Tauri 事件通知主窗口；这里没有 Tauri 运行时 ⇒ 换成空的 emit。
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async () => {}), listen: vi.fn(async () => () => {}) }));
 
-import { BACKEND_COLUMNS, BackendSection, decodeHealthFace, readBackendLog, stopSaid, stopWarning } from "../../../../src/frontend/ui/settings/backend-section";
-import type { SessionAccount } from "../../../../src/frontend/ui/accounts";
+import { BACKEND_COLUMNS, BackendSection, decodeHealthFace, readBackendLog, stopSaid } from "../../../../src/frontend/ui/settings/backend-section";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { interruptRows, type Interrupts } from "../../../../src/frontend/ui/settings/interrupts";
+import type { DialogRow } from "../../../../src/frontend/ui/kit/dialog";
 import { srcDirOf } from "../../../test-support/repo-root";
 import COPY_TABLE from "../../../../src/shared/copy/table.json";
 // 「健康」那一格的成品金样：Rust 侧由生产的 `health_face` 现产、逐格相等（`backend_policy_tests.rs`），这里读同一份。
@@ -625,37 +627,30 @@ describe("〔ST2 · 第二刀 步 6〕后端开关表格式四栏：长文案进
 //   计数分开填 · 占位符填掉由 Rust 侧金样与三档逐格判据管，这里上面那条逐形画、逐格比。
 
 /**
- * **停本机后端之前数一数走本机中转的活会话，>0 就先问一句、说几条会断**。
- * 守的要求：「停后端时有走中转的活会话 ⇒ 先确认（说几条会断）」；「设置页『停』前 >0 就确认，说几条会断」
- * ＋ 用 `ask-dialog.ts::askConfirm`（真 app 里 `window.confirm` 从来不拦）。形状：话按表逐格相等；接线两向（答否 ⇒ 零次 `backend_stop` ·
- * 答是 ⇒ 恰好一次；一条都没有 ⇒ 不问；问不到 ⇒ 照样问；远端 ⇒ 数那台、照样问（后远端中转住那台常驻后端里）。
+ * **停 / 重启那台之前问一次会打断什么（壳 `machine_interrupts`），有才弹框、列出会断的几项**。
+ * 接线两向：答否 ⇒ 零次 `backend_stop` · 答是 ⇒ 恰好一次；什么都不断 ⇒ 不问；问不到 ⇒ 照样问（数不出）；远端 ⇒ 问那台。
  */
-describe("〔HX1 · D-f〕停后端之前数走中转的会话", () => {
-  const row = (o: Partial<SessionAccount>): SessionAccount => ({
-    pid: 1,
-    sessionId: "s",
-    cwd: null,
-    configDir: null,
-    account: null,
-    bare: false,
-    alive: true,
-    viaRelay: false,
-    ...o,
-  });
+describe("〔HX1 · D-f〕停后端之前问会打断什么", () => {
   const zh = (k: string, args: Record<string, number> = {}) =>
     (COPY_TABLE.entries as Record<string, { zh: string }>)[k].zh.replace(/\{(\w+)\}/g, (_m, n: string) => String(args[n]));
 
-  it("stopWarning 逐格：问不到照样问 · 确定几条 · 说不清的一起说 · 一条都没有不问 · 死会话不算", () => {
-    expect(stopWarning(null)).toBe(zh("backend.stop.relayUnknown"));
-    expect(stopWarning([])).toBeNull();
-    expect(stopWarning([row({ viaRelay: false }), row({ alive: false, viaRelay: true })])).toBeNull();
-    expect(stopWarning([row({ viaRelay: true }), row({ viaRelay: true }), row({ viaRelay: false })])).toBe(
-      zh("backend.stop.relayConfirm", { n: 2 }),
-    );
-    expect(stopWarning([row({ viaRelay: true }), row({ viaRelay: null }), row({ viaRelay: undefined })])).toBe(
-      zh("backend.stop.relayMaybe", { n: 1, k: 2 }),
-    );
-    expect(zh("backend.stop.relayConfirm", { n: 2 })).toContain("2 条");
+  const none: Interrupts = { relayedSessions: 0, relayedMaybe: 0, liveStreams: 0, forwards: 0 };
+  const said = (rows: DialogRow[]) => rows.map((r) => `${r.label}：${r.items.join(" · ")}`);
+
+  it("interruptRows 逐格：问不到照样列（数不出）· 什么都不断不弹 · 经它的 / 说不清的 / 开着看的 / 转发各一项 · 停与重启说法不同", () => {
+    expect(interruptRows(null, "甲机", "stop")[0]!.items).toEqual([zh("interrupts.item.relayedUnknown")]);
+    expect(interruptRows(none, "甲机", "stop")).toEqual([]);
+    const all = interruptRows({ relayedSessions: 2, relayedMaybe: 1, liveStreams: 3, forwards: 1 }, "甲机", "stop");
+    expect(all[0]!.label).toBe(zh("interrupts.row.untilStart"));
+    expect(all[0]!.items).toEqual([
+      zh("interrupts.item.relayed", { n: 2 }),
+      zh("interrupts.item.relayedMaybe", { n: 1 }),
+      copyText("interrupts.item.liveGone", { machine: "甲机" }),
+      zh("interrupts.item.forwards", { n: 1 }),
+    ]);
+    expect(all[1]!.items).toEqual([zh("interrupts.item.sessionsRun")]);
+    expect(interruptRows({ ...none, liveStreams: 1 }, "甲机", "restart")[0]!.label).toBe(zh("interrupts.row.brief"));
+    expect(interruptRows({ ...none, forwards: null }, "甲机", "stop")[0]!.items).toEqual([zh("interrupts.item.forwardsUnknown")]);
   });
 
   const stopOf = (s: BackendSection, origin: string) => {
@@ -669,19 +664,19 @@ describe("〔HX1 · D-f〕停后端之前数走中转的会话", () => {
   const stops = () => calls.filter((c) => c.name === "backend_stop").length;
 
   it("接线：答否不停 · 答是停一次 · 没有走中转的不问 · 远端数那台", async () => {
-    let asked: string[] = [];
+    let asked: string[][] = [];
     let answer = false;
-    let rows: SessionAccount[] | null = [row({ viaRelay: true }), row({ viaRelay: true })];
-    let sessionsAsked: string[] = [];
+    let got: Interrupts | null = { ...none, relayedSessions: 2 };
+    let interruptsAsked: string[] = [];
     const s = new BackendSection({
       headless: true,
       confirm: (m) => {
-        asked.push(m.body ?? "");
+        asked.push(said(m.rows ?? []));
         return answer;
       },
-      sessions: (o) => {
-        sessionsAsked.push(o);
-        return Promise.resolve(rows);
+      interrupts: (o) => {
+        interruptsAsked.push(o);
+        return Promise.resolve(got);
       },
     });
     await flush();
@@ -692,7 +687,8 @@ describe("〔HX1 · D-f〕停后端之前数走中转的会话", () => {
     localStop!.click();
     await until(() => asked.length === 1);
     await flush();
-    expect(asked).toEqual([zh("backend.stop.relayConfirm", { n: 2 })]);
+    expect(asked).toEqual([said(interruptRows({ ...none, relayedSessions: 2 }, "本机", "stop"))]);
+    expect(asked[0]![0]).toContain(zh("interrupts.item.relayed", { n: 2 }));
     expect(stops(), "答了否还是停了").toBe(0);
     await until(() => !localStop!.disabled);
     // 答是 ⇒ 停一次。
@@ -701,26 +697,26 @@ describe("〔HX1 · D-f〕停后端之前数走中转的会话", () => {
     await until(() => stops() === 1);
     expect(stops()).toBe(1);
     await until(() => !localStop!.disabled);
-    // 一条都没有 ⇒ 不问、直接停。
+    // 什么都不会断 ⇒ 不问、直接停。
     asked = [];
-    rows = [row({ viaRelay: false })];
+    got = none;
     localStop!.click();
     await until(() => stops() === 2);
-    expect(asked, "没有走中转的会话也问了").toEqual([]);
+    expect(asked, "什么都不会断也问了").toEqual([]);
     await until(() => !localStop!.disabled);
     // 远端 ⇒ 数那台的会话、有走中转的就问；答否不停。
-    sessionsAsked = [];
+    interruptsAsked = [];
     asked = [];
     answer = false;
-    rows = [row({ viaRelay: true })];
+    got = { ...none, forwards: 1 };
     const before = stops();
     const remoteStop = stopOf(s, "甲机");
     expect(remoteStop).toBeTruthy();
     remoteStop!.click();
     await until(() => asked.length === 1);
     await flush();
-    expect(sessionsAsked, "远端的「停」数的不是那台").toEqual(["甲机"]);
-    expect(asked).toEqual([zh("backend.stop.relayConfirm", { n: 1 })]);
+    expect(interruptsAsked, "远端的「停」问的不是那台").toEqual(["甲机"]);
+    expect(asked[0]![0]).toContain(zh("interrupts.item.forwards", { n: 1 }));
     expect(stops(), "远端答了否还是停了").toBe(before);
   });
 });
@@ -745,7 +741,7 @@ describe("〔STOP〕停的结局在机器页那一行说一句", () => {
   });
 
   it("接线：点「停」⇒ 那一行说后端回的那个结局；再点一次换成新结局", async () => {
-    const s = new BackendSection({ headless: true, confirm: () => true, sessions: () => Promise.resolve([]) });
+    const s = new BackendSection({ headless: true, confirm: () => true, interrupts: () => Promise.resolve(null) });
     await flush();
     await flush();
     const r = s.element.querySelector<HTMLElement>(`.backend-row[data-origin="${LOCAL_ORIGIN}"]`);

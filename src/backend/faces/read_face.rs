@@ -163,6 +163,15 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             v["skipped"] = json!(crate::agents::content_search_skips());
             Ok(v)
         }
+        // 停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前会打断什么（`observe/accounts_query.rs::machine_product`）：
+        //   这台的活会话经不经本机中转 · 活着的几个 · 这台账上通往 `machine` 的转发。只读。
+        "machine-interrupts" => {
+            let machine = opt_str_arg(args, "machine")?;
+            let lines =
+                accounts_query::lines_for_frame(home, accounts_query::FrameAccounts::BySession);
+            let forwards = machine.map_or(0, crate::dial::forwards::running_to_machine);
+            Ok(accounts_query::machine_product(&lines, forwards))
+        }
         "accounts-sessions" => {
             let rows =
                 accounts_query::lines_for_frame(home, accounts_query::FrameAccounts::BySession);

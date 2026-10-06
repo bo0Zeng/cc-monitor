@@ -89,6 +89,22 @@ export const SETTINGS_SCENES: Scene[] = [
     box.dispatchEvent(new Event("input", { bubbles: true }));
     await sleep(800);
   }),
+  settings("settings-stop-interrupts", "设置 · 停止前问会打断什么", "devbox「这台上的 cc-monitor」点［停止…］：中断几项 · 保留会话照跑", async () => {
+    await go("machine:devbox");
+    await click(await byText(".settings-page:not([hidden]) button", "这台上的 cc-monitor"));
+    await sleep(500);
+    await click(await byText(".settings-page:not([hidden]) button", "停止…"));
+    await sleep(800);
+  }),
+  settings("settings-update-interrupts", "设置 · 更新前问会打断什么", "devbox 要更新时点［更新］：更新要停几秒，确认键「更新」", async () => {
+    await go("machines");
+    await click(await byText(".machine-problem button", "更新"));
+    await sleep(800);
+  }, () => {
+    const w = defaultWorld();
+    w.staleMachines = ["devbox"];
+    return w;
+  }),
   settings("settings-machines-hostkey", "设置 · 机器 · 主机指纹变了", "gpu-01 出示的指纹与记下的不一样：问题行［比对指纹…］", async () => {
     await go("machines");
   }, hostKeyWorld),

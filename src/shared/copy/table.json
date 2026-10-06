@@ -8365,21 +8365,6 @@
       "zh": "停后端失败",
       "args": []
     },
-    "backend.stop.relayConfirm": {
-      "kind": "body",
-      "zh": "有 {n} 条会话在走这台机器的中转。停了这台的后端之后，它们的每一次请求都会失败，直到再起后端。仍然停？",
-      "args": ["n"]
-    },
-    "backend.stop.relayMaybe": {
-      "kind": "body",
-      "zh": "有 {n} 条会话在走这台机器的中转，另有 {k} 条说不清走不走。停了这台的后端之后，走中转的会话每一次请求都会失败，直到再起后端。仍然停？",
-      "args": ["k", "n"]
-    },
-    "backend.stop.relayUnknown": {
-      "kind": "body",
-      "zh": "问不到现在有几条会话在走这台机器的中转。停了这台的后端之后，走中转的会话每一次请求都会失败，直到再起后端。仍然停？",
-      "args": []
-    },
     "backend.stop.title": {
       "kind": "title",
       "zh": "停止 cc-monitor · {machine}",
@@ -21232,6 +21217,76 @@
       "kind": "body",
       "zh": "启动 cc-monitor",
       "args": []
+    },
+    "interrupts.row.untilStart": {
+      "kind": "body",
+      "zh": "中断（直到再启动）",
+      "args": []
+    },
+    "interrupts.row.brief": {
+      "kind": "body",
+      "zh": "中断几秒",
+      "args": []
+    },
+    "interrupts.row.keep": {
+      "kind": "body",
+      "zh": "保留",
+      "args": []
+    },
+    "interrupts.item.relayed": {
+      "kind": "body",
+      "zh": "{n} 个会话的请求",
+      "args": ["n"]
+    },
+    "interrupts.item.relayedMaybe": {
+      "kind": "body",
+      "zh": "另 {n} 个会话说不清",
+      "args": ["n"]
+    },
+    "interrupts.item.relayedUnknown": {
+      "kind": "body",
+      "zh": "会话请求 · 数不出",
+      "args": []
+    },
+    "interrupts.item.liveGone": {
+      "kind": "body",
+      "zh": "实时显示中断 · {machine} 的会话不可见",
+      "args": ["machine"]
+    },
+    "interrupts.item.liveBrief": {
+      "kind": "body",
+      "zh": "{machine} 的会话这几秒不更新",
+      "args": ["machine"]
+    },
+    "interrupts.item.forwards": {
+      "kind": "body",
+      "zh": "端口转发 {n} 条",
+      "args": ["n"]
+    },
+    "interrupts.item.forwardsUnknown": {
+      "kind": "body",
+      "zh": "端口转发 · 数不出",
+      "args": []
+    },
+    "interrupts.item.sessionsRun": {
+      "kind": "body",
+      "zh": "会话照跑",
+      "args": []
+    },
+    "interrupts.update.title": {
+      "kind": "title",
+      "zh": "更新 cc-monitor · {machine}",
+      "args": ["machine"]
+    },
+    "interrupts.update.action": {
+      "kind": "action",
+      "zh": "更新",
+      "args": []
+    },
+    "machineList.remove.doneForwards": {
+      "kind": "body",
+      "zh": "已删除 {machine} · 停止转发 {n}",
+      "args": ["machine", "n"]
     },
     "machineState.word.hostKey": {
       "kind": "body",

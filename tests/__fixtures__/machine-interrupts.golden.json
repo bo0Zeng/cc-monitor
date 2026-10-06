@@ -1,0 +1,35 @@
+{
+  "说明": [
+    "machine-interrupts 帧命令的跨语言金样（停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前会打断什么）。",
+    "Rust：tests/backend/observe/accounts_query_tests.rs 按 lines ＋ forwards 走生产函数 machine_product 现产，与 reply 逐格相等。",
+    "TS：tests/frontend/ui/settings/interrupts.vitest.ts 读同一份 reply，逐形严格解码、排成「中断 · 保留」两行。",
+    "会话行是结构夹具（pid 与字段是造的），不取自任何真机。"
+  ],
+  "cases": [
+    {
+      "name": "什么都不断",
+      "lines": [],
+      "forwards": 0,
+      "reply": { "relayedSessions": 0, "relayedMaybe": 0, "liveStreams": 0, "forwards": 0 }
+    },
+    {
+      "name": "两个经中转 · 一个说不清 · 一个不经 · 一个已结束 · 一行坏的",
+      "lines": [
+        "{\"pid\":1,\"alive\":true,\"viaRelay\":true}",
+        "{\"pid\":2,\"alive\":true,\"viaRelay\":true}",
+        "{\"pid\":3,\"alive\":true,\"viaRelay\":null}",
+        "{\"pid\":4,\"alive\":true,\"viaRelay\":false}",
+        "{\"pid\":5,\"alive\":false,\"viaRelay\":true}",
+        "不是 JSON"
+      ],
+      "forwards": 0,
+      "reply": { "relayedSessions": 2, "relayedMaybe": 1, "liveStreams": 4, "forwards": 0 }
+    },
+    {
+      "name": "只有通往那台的转发",
+      "lines": [],
+      "forwards": 2,
+      "reply": { "relayedSessions": 0, "relayedMaybe": 0, "liveStreams": 0, "forwards": 2 }
+    }
+  ]
+}

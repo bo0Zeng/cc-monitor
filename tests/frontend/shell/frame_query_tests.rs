@@ -354,6 +354,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "新帧命令（手动对齐）：后端出成品 `{added, removed, retagged, watchers}`（`resync_face.rs` → `observe/watcher.rs::resync`）；\
          前端 `src/frontend/ui/resync.ts::resync` 问、`decodeResynced` 按恰好的键集合收，monitor 这一侧零发送点",
     ),
+    (
+        "machine-interrupts",
+        "`BORN_ON_FRAME` 那一条：后端出成品 `{relayedSessions, relayedMaybe, liveStreams, forwards}`（`accounts_query.rs::machine_product`）；\
+         前端 `src/frontend/ui/settings/interrupts.ts::askInterrupts` 问那台与本机、按恰好的键集合收，monitor 这一侧零发送点",
+    ),
     // 生在帧面上、界面直接问的那一条。
     (
         "backend-log",

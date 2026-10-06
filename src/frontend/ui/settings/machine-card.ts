@@ -22,6 +22,7 @@ import { recordFacet, type MachineFacet } from "./machine-status";
 import { hostKey, readRemoteConfig, resolveRemoteConfigByOrigin, type RemoteHostConfig } from "../remote-config";
 import { parseAddressLines } from "../remote-config";
 import type { MachineFault } from "../generated/MachineFault";
+import { askInterrupts, interruptRows } from "./interrupts";
 // E80：`ConnectStage` 直连生成物，不再绕道 `remote-section`（那条绕道是 import 环的一半）。
 import type { ConnectStage } from "../generated/ConnectStage";
 import { DEFAULT_AGENT, defaultLauncherOf } from "../agent-profile";
@@ -834,7 +835,16 @@ export class MachineCard {
   }
 
   /** 问题行［更新］：把这一版换到这台上（失败就抛，宿主说一句）。 */
+  /** 问题行［更新］：先问会打断什么（有才弹框，确认键「更新」、默认焦点在它 —— 不危险），再把这一版换上去。 */
   async update(): Promise<void> {
+    const machine = this.displayName();
+    const rows = interruptRows(await askInterrupts(this.persistedKey ?? hostKey(this.collect())), machine, "update");
+    if (
+      rows.length > 0 &&
+      !(await confirmDialog({ title: copyText("interrupts.update.title", { machine }), action: copyText("interrupts.update.action"), rows }))
+    ) {
+      return;
+    }
     await commands.deploy_remote_backend({ cfg: this.collect() });
   }
 
@@ -1240,12 +1250,14 @@ export class MachineCard {
       this.showResultText(copyText("machineCard.uninstall.needFields"), "comp");
       return;
     }
+    const rows = interruptRows(await askInterrupts(this.persistedKey ?? hostKey(cfg)), this.displayName(), "uninstall");
     if (
       !(await confirmDialog({
         title: copyText("machineCard.uninstall.title", { host: cfg.host }),
         action: copyText("machineCard.uninstall.action"),
         danger: true,
         body: copyText("machineCard.uninstall.confirm", { host: cfg.host }),
+        rows,
       }))
     ) {
       return;

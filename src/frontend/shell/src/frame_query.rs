@@ -85,6 +85,8 @@ pub(crate) const BORN_ON_FRAME: &[&str] = &[
     "history-search-merge",
     // 按运行读一个子运行的记录（替掉按目录 ＋ 描述 ＋ 时间戳挑的那一条与它的列候选子命令；界面经通道直接问）。
     "history-run",
+    // 停 / 重启 / 更新 / 卸载之前会打断什么（这台的活会话 ＋ 通往那台的转发；界面经通道问那台与本机，monitor 这一侧从不发它）。
+    "machine-interrupts",
 ];
 
 // 按行一问的期限 `LINES_BUDGET`〔散文墓碑〕删：「按行那几条」最后的发送端（子 agent 列候选）随命令退役。

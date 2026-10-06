@@ -47,6 +47,14 @@ function extList(): unknown {
 export function machineOps(): Record<string, OpHandler> {
   return {
     "ext-list": () => extList(),
+    // 停 / 重启 / 更新 / 卸载之前「会打断什么」（形状同 `tests/__fixtures__/machine-interrupts.golden.json`）：
+    //   devbox 上两个会话的请求经它、一个活着；本机账上通往 devbox 的转发一条；别的台什么都不断。
+    "machine-interrupts": (origin, req) => ({
+      relayedSessions: origin === "devbox" ? 2 : 0,
+      relayedMaybe: 0,
+      liveStreams: origin === "devbox" ? 2 : 0,
+      forwards: origin === "<local>" && req.machine === "devbox" ? 1 : 0,
+    }),
     "apikey-read": () => ({ configured: true, masked: "sk-ant-…a1b2", notice: null, path: `${HOME}/.cc-monitor/apikey-credentials.json`, problem: null }),
     "apikey-routing": () => ({ routed: [`${HOME}/.cc-monitor/accounts/api`], running: true }),
     "accounts-mcp-read": () => ({ enabled: true, servers: ["docs-search", "issue-tracker"], conflicts: [], changed: [], notes: [] }),

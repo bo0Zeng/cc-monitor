@@ -275,6 +275,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-tail"
                 | "accounts-list"
                 | "accounts-sessions"
+                | "machine-interrupts" // 读这台的活会话，与上一条同档
                 | "accounts-trust" // 信任预检：读 manifest ＋ `.claude.json`，同档
                 // 〔条 66〕「退出行为」那两条：同步文件 I/O（读一份小文件 / 原子写一份），
                 // 不许占 tokio worker。开跑之后打不断 ⇒ `cancel` 命中回 `not_cancellable`。
@@ -504,6 +505,7 @@ fn every_registered_command_declares_its_run_kind() {
         "history-tail",
         "accounts-list",
         "accounts-sessions",
+        "machine-interrupts",
         "accounts-trust", //
         "exit-policy-read",
         "exit-policy-set",
