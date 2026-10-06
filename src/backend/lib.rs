@@ -774,7 +774,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p7r-filewin-progress：files-index-status / -rebuild 多 unreadable_paths；monitor 通道多 link 流与 link-retry（文件窗口断线过期）。
 ///
 /// p7s-files-exists：files-create / mkdir / rename 撞名回 exists；files-chmod 应答多 before。
-pub const BUILD_ID: &str = "p7s-files-exists";
+///
+/// p7t-needs：history-facts 多 needs（等你的种类 · 工具 · 那一句 · 从何时起）· pending（没结果的调用）· lastSay（最后一句）。
+pub const BUILD_ID: &str = "p7t-needs";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
