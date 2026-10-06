@@ -23,6 +23,9 @@
  */
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import ts from "typescript";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { REPO_ROOT } from "../../../test-support/repo-root";
 
 import { confirmDialog, askText, formDialog, LIST_MAX, type ConfirmSpec } from "../../../../src/frontend/ui/kit/dialog";
 import { dispatcher } from "../../../../src/frontend/ui/keybindings/registry";
@@ -216,6 +219,39 @@ describe("D2 · confirmDialog / askText 的结算语义（C10）", () => {
     expect(document.activeElement).toBe(cancelBtn());
     cancelBtn().click();
     await expect(p).resolves.toBe(false);
+  });
+
+  it("列出会断 / 会改什么的框（不危险也算）：默认焦点在「取消」；什么都不列的普通确认：焦点在动作键", async () => {
+    const a = ask({ rows: [{ label: "中断几秒", items: ["2 个会话的请求"] }] });
+    expect(okBtn().dataset.kind).not.toBe("danger");
+    expect(document.activeElement).toBe(cancelBtn());
+    cancelBtn().click();
+    await a;
+    const b = ask({ rows: [{ label: "中断", items: [] }] });
+    expect(document.activeElement).toBe(okBtn());
+    cancelBtn().click();
+    await b;
+  });
+
+  it("逐项那几行排成一张两列表：各行的标签与值同在一个两列网格里（标签列同宽、值列左对齐）", async () => {
+    const p = ask({
+      rows: [
+        { label: "中断（直到再启动）", items: ["a"] },
+        { label: "保留", items: ["b"] },
+      ],
+    });
+    const labels = [...dialog()!.querySelectorAll("span")].filter((e) => e.textContent === "中断（直到再启动）" || e.textContent === "保留");
+    expect(labels).toHaveLength(2);
+    const grid = labels[0]!.parentElement!.parentElement!;
+    expect(labels[1]!.parentElement!.parentElement).toBe(grid);
+    const css = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/kit/dialog.module.css"), "utf8");
+    const rule = (name: string): string => css.match(new RegExp(`\\.${name} \\{([^}]*)\\}`))?.[1] ?? "";
+    const gridClass = [...grid.classList].find((c) => /dialogRows/.test(c)) ?? "";
+    expect(gridClass).not.toBe("");
+    expect(rule("dialogRows")).toMatch(/display: grid;[\s\S]*grid-template-columns: max-content minmax\(0, 1fr\)/);
+    expect(rule("dialogRow")).toMatch(/display: contents/);
+    cancelBtn().click();
+    await p;
   });
 
   it("逐项 `中断` / `保留`：空的那段不画；清单超过 8 项只列前 8 ＋「另外 n 个」", async () => {

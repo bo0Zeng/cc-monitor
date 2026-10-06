@@ -311,9 +311,9 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // 通用组件（`kit/`）：类名是 CSS Modules 的哈希名（`s.<类>`），静态推不出；那几个类都不写 `display`。
   "src/frontend/ui/settings/machine-state.ts:173":
     "`el` 是调用方交进来的问题行（列表那一行与卡头各一个 `.machine-problem`，跨文件）；`settings.css` 里 `.machine-problem[hidden] { display: none }` 人工核过",
-  "src/frontend/ui/kit/dialog.ts:207": "填值框的错误句 `err`（`s.error`）—— 开时收起",
-  "src/frontend/ui/kit/dialog.ts:214": "同上 —— 校验不过时出现",
-  "src/frontend/ui/kit/dialog.ts:221": "同上 —— 重新输入时收起",
+  "src/frontend/ui/kit/dialog.ts:216": "填值框的错误句 `err`（`s.error`）—— 开时收起",
+  "src/frontend/ui/kit/dialog.ts:223": "同上 —— 校验不过时出现",
+  "src/frontend/ui/kit/dialog.ts:230": "同上 —— 重新输入时收起",
   "src/frontend/ui/kit/dock.ts:146": "底部抽屉网格那一格 `this.el`（`s.dockSlot`，自己不写 display；竖排的 flex 在里层 `s.dock`）—— 收着时 hidden",
   "src/frontend/ui/kit/fold.ts:46": "折叠块正文 `body`（`s.body`）",
   // 只读查看器（历史页右边）：CSS Modules 的哈希名（`sv.<类>`）推不出；这几类都不写 `display`（kit 骨架自己写了 display ⇒ 包一层再切）。

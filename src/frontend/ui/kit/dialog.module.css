@@ -61,15 +61,24 @@
     overflow-wrap: anywhere;
   }
 
+  .dialogRows {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: var(--space-5);
+    row-gap: var(--space-4);
+  }
+
   .dialogRow {
-    display: flex;
-    gap: var(--space-5);
+    display: contents;
   }
 
   .dialogRowLabel {
-    flex: none;
-    min-width: 3em;
     color: var(--text-2);
+  }
+
+  .dialogRowValue {
+    text-align: start;
+    overflow-wrap: anywhere;
   }
 
   .dialogList {

@@ -834,8 +834,7 @@ export class MachineCard {
       ?.remove();
   }
 
-  /** 问题行［更新］：把这一版换到这台上（失败就抛，宿主说一句）。 */
-  /** 问题行［更新］：先问会打断什么（有才弹框，确认键「更新」、默认焦点在它 —— 不危险），再把这一版换上去。 */
+  /** 问题行［更新］：先问会打断什么（有才弹框，确认键「更新」），再把这一版换上去。 */
   async update(): Promise<void> {
     const machine = this.displayName();
     const rows = interruptRows(await askInterrupts(this.persistedKey ?? hostKey(this.collect())), machine, "update");

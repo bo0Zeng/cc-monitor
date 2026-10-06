@@ -10,6 +10,8 @@ declare const classes: {
   readonly dialogPanel: string;
   readonly dialogRow: string;
   readonly dialogRowLabel: string;
+  readonly dialogRowValue: string;
+  readonly dialogRows: string;
   readonly dialogText: string;
   readonly dialogTitle: string;
 };

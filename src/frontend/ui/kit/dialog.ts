@@ -90,17 +90,24 @@ function fillBody(body: HTMLElement, spec: ConfirmSpec): void {
     p.textContent = spec.body;
     body.appendChild(p);
   }
-  for (const r of spec.rows ?? []) {
-    if (r.items.length === 0) continue;
-    const row = document.createElement("div");
-    row.className = s.dialogRow;
-    const k = document.createElement("span");
-    k.className = s.dialogRowLabel;
-    k.textContent = r.label;
-    const v = document.createElement("span");
-    v.textContent = r.items.join(copyText("kit.text.sep"));
-    row.append(k, v);
-    body.appendChild(row);
+  const rows = (spec.rows ?? []).filter((r) => r.items.length > 0);
+  if (rows.length > 0) {
+    // 两列成表：标签一列（各行同宽），值一列左对齐。
+    const table = document.createElement("div");
+    table.className = s.dialogRows;
+    for (const r of rows) {
+      const row = document.createElement("div");
+      row.className = s.dialogRow;
+      const k = document.createElement("span");
+      k.className = s.dialogRowLabel;
+      k.textContent = r.label;
+      const v = document.createElement("span");
+      v.className = s.dialogRowValue;
+      v.textContent = r.items.join(copyText("kit.text.sep"));
+      row.append(k, v);
+      table.appendChild(row);
+    }
+    body.appendChild(table);
   }
   if (spec.list?.length) {
     const box = document.createElement("div");
@@ -189,7 +196,9 @@ export function confirmDialog(spec: ConfirmSpec): Promise<boolean> {
   const b = build(spec.title, spec.action, spec.danger === true);
   if (spec.cancel) setButtonLabel(b.cancel, spec.cancel);
   fillBody(b.body, spec);
-  return run(b, false, () => true, spec.danger ? b.cancel : b.ok, () => false);
+  // 危险的、或逐项列出会断 / 会改什么的框：默认焦点在［取消］。
+  const listsEffects = (spec.rows ?? []).some((r) => r.items.length > 0);
+  return run(b, false, () => true, spec.danger || listsEffects ? b.cancel : b.ok, () => false);
 }
 
 /** 填一个值。确认（或单行框里 Enter）⇒ 框里的值（原样，不 trim）；取消一类 ⇒ `null`。校验不过 ⇒ 错误写在框里、不关。 */
