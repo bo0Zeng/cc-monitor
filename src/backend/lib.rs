@@ -805,7 +805,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p8f-launchid-gone：launch-local 成品不带 launchId，ccm 不收 --ccm-launch-id / CCM_LAUNCH_ID，accounts-sessions 行不带 launchId；--list-projects 行不带 sessionIds；删 remote_ask argv 一族。
 ///
 /// p8g-machine-interrupts：新帧命令 machine-interrupts（停 / 重启 / 更新 / 卸载 / 删机器之前问那台与本机会打断什么）。
-pub const BUILD_ID: &str = "p8g-machine-interrupts";
+///
+/// p8h-find-turn：history-find 每条命中带 turn（第几轮）与 tsMs，新参数 skip 分页。
+pub const BUILD_ID: &str = "p8h-find-turn";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
