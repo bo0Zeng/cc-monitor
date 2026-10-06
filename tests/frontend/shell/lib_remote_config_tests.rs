@@ -2,11 +2,18 @@
 //!
 //! 核原文：`INVARIANTS §28` 逐字「`RemoteConfig.label`（`stream_source/config.rs`，空则回退 `host`）是唯一
 //! 「持久（config.json）+ 上 wire（每条远端行带 `origin`）+ 名字派生」的 key」—— 本族判
-//! `lib.rs::parse_remote_hosts` 缺 label 回退 host、重复 label 加后缀保住唯一。缺必填跳过 / `jump` 空串 / 空数组三条没有逐字住址。
+//! `lib.rs::parse_remote_entries` 缺 label 回退 host、重复 label 加后缀保住唯一。缺必填跳过 / `jump` 空串 / 空数组三条没有逐字住址。
 //! 🔴 `legacy_single_object_one_host` 钉的是旧单对象配置的兼容支，与「不为任何盘上旧状态留兼容层」相抵 —— 待定（断言不动）。〔散文墓碑〕
 //! 已删：那一支与那条测试删了，旧形状今天是「认不出」（`a_remote_section_without_a_hosts_array_is_refused_not_emptied`；不为旧形状留兼容）。
 
-use super::parse_remote_hosts;
+use super::parse_remote_entries;
+
+/// 只看机器（不看「连接这台」）。
+fn parse_remote_hosts(
+    remote: &serde_json::Map<String, serde_json::Value>,
+) -> Result<Vec<crate::stream_source::RemoteConfig>, &'static str> {
+    parse_remote_entries(remote).map(|v| v.into_iter().map(|(c, _)| c).collect())
+}
 use serde_json::json;
 
 fn remote_obj(v: serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
@@ -109,4 +116,27 @@ fn empty_hosts_array_is_empty() {
     assert!(parse_remote_hosts(&remote)
         .expect("hosts 数组该认得")
         .is_empty());
+}
+
+/// 每台的「连接这台」：`"connect": false` 的那台照样认得（卸载 · 测试连接要它的参数），只是标成不连；缺省 = 连。
+#[test]
+fn connect_false_is_kept_but_marked_not_to_connect() {
+    let remote = remote_obj(json!({ "hosts": [
+        { "host": "a", "user": "u" },
+        { "host": "b", "user": "u", "connect": false },
+        { "host": "c", "user": "u", "connect": true },
+    ] }));
+    let got: Vec<(String, bool)> = parse_remote_entries(&remote)
+        .expect("hosts 数组该认得")
+        .into_iter()
+        .map(|(c, k)| (c.origin_label(), k))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("a".to_string(), true),
+            ("b".to_string(), false),
+            ("c".to_string(), true)
+        ]
+    );
 }

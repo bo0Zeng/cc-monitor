@@ -26,6 +26,10 @@
     animation: rise var(--dur-float-in) ease-out;
   }
 
+  .dialogPanel[data-size="wide"] {
+    width: min(580px, 100%);
+  }
+
   @keyframes rise {
     from {
       transform: translateY(4px);

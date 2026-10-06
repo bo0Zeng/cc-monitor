@@ -73,6 +73,11 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
   LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
   RemoteSection: class {
+    headActions = (): HTMLElement[] => [];
+    pageIdOfMachine = (): string | null => null;
+    menuFor = (): unknown[] => [];
+    metaOfPage = (): string | null => null;
+    setConnected = (): void => {};
     originOfPage = (): string | null => null;
     isUnconfiguredPage = (): boolean => false;
     element = document.createElement("div");
@@ -184,12 +189,12 @@ describe("ST1：设置窗关窗 ＝ 隐藏；〔ST2〕全即时：改了就落�
     expect(theme.apply, "关窗把改动回滚了 —— 全即时之后没有「丢弃」这回事").not.toHaveBeenCalledWith({});
   });
 
-  it("★ Claude 数据目录：`change` 就落 ＋ 给重启条供货；Esc 与 X 同一条路（不再是「取消 = 回滚」）", async () => {
+  it("★ Claude 数据目录：`change` 就落 ＋ 给重启条供货；Esc 不关窗，Ctrl+W 与 X 同一条路", async () => {
     const paths = await import("../../../../src/frontend/ui/paths");
     const setDir = vi.mocked(paths.setClaudeDirOverride);
     setDir.mockClear();
     const p = await mount();
-    const dir = document.querySelector<HTMLInputElement>(".settings-input-wide")!;
+    const dir = document.querySelector<HTMLInputElement>('.settings-page[data-route-id="data"] .settings-input-wide')!;
     dir.value = "/elsewhere/.claude";
     dir.dispatchEvent(new Event("change"));
     for (let i = 0; i < 3; i++) await tick();
@@ -198,7 +203,11 @@ describe("ST1：设置窗关窗 ＝ 隐藏；〔ST2〕全即时：改了就落�
     expect(p.isDirty()).toBe(false);
     p.handleEsc();
     await tick();
-    expect(win.hide).toHaveBeenCalledTimes(1);
+    expect(win.hide, "设置窗是窗口不是浮层：Esc 不关它").not.toHaveBeenCalled();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "w", ctrlKey: true }));
+    await tick();
+    // 同一文件里前几条挂的面板也在听 window ⇒ 只断言「藏了」。
+    expect(win.hide, "Ctrl+W 没关窗").toHaveBeenCalled();
   });
 
   it("★ Claude 数据目录填了一个不在的：不存、不给重启条供货，就地说没存下", async () => {
@@ -208,7 +217,7 @@ describe("ST1：设置窗关窗 ＝ 隐藏；〔ST2〕全即时：改了就落�
     setDir.mockClear();
     const p = await mount();
     dirCheck.problem = "/mnt/x 不在";
-    const dir = document.querySelector<HTMLInputElement>(".settings-input-wide")!;
+    const dir = document.querySelector<HTMLInputElement>('.settings-page[data-route-id="data"] .settings-input-wide')!;
     dir.value = "/mnt/x";
     dir.dispatchEvent(new Event("change"));
     for (let i = 0; i < 3; i++) await tick();
@@ -255,7 +264,7 @@ describe("ST1：设置窗关窗 ＝ 隐藏；〔ST2〕全即时：改了就落�
     }
     expect(document.querySelector("[data-close-guard]")).toBeNull();
     const reset = [
-      ...document.querySelectorAll<HTMLButtonElement>('.settings-page[data-route-id="app-appearance"] button'),
+      ...document.querySelectorAll<HTMLButtonElement>('.settings-page[data-route-id="appearance"] button'),
     ].find((b) => b.textContent === "恢复外观默认");
     expect(reset, "「恢复默认」没跟到外观页").toBeDefined();
   });

@@ -484,7 +484,7 @@ describe("P2s backend 开关区", () => {
     await flush();
     await flush();
     const row = s.element.querySelector<HTMLElement>(".backend-row")!;
-    expect([...row.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["起", "停", "日志", "重新对齐"]);
+    expect([...row.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["启动", "停止…", "最近输出", "刷新"]);
     expect(row.querySelector(".backend-row-state")?.textContent).toBe("已连上（pid 42）");
   });
   // 〔「机器一行『重新对齐』（上面整套）」〕按一下 ⇒ 问**那一行那台**的后端 `resync`、整机（不带 sid）。
@@ -493,7 +493,7 @@ describe("P2s backend 开关区", () => {
     await flush();
     await flush();
     const rows = [...s.element.querySelectorAll<HTMLElement>("[data-backend-cells]")];
-    const ask = (i: number) => [...rows[i].querySelectorAll("button")].find((b) => b.textContent === "重新对齐")!.click();
+    const ask = (i: number) => [...rows[i].querySelectorAll("button")].find((b) => b.textContent === "刷新")!.click();
     calls.length = 0;
     ask(1);
     ask(0);
@@ -510,7 +510,7 @@ describe("P2s backend 开关区", () => {
     await flush();
     const rows = [...s.element.querySelectorAll<HTMLElement>("[data-backend-cells]")];
     const ask = (o: string) =>
-      [...rows.find((r) => r.dataset.backendCells === o)!.querySelectorAll("button")].find((b) => b.textContent === "重新对齐")!.click();
+      [...rows.find((r) => r.dataset.backendCells === o)!.querySelectorAll("button")].find((b) => b.textContent === "刷新")!.click();
     calls.length = 0;
     ask("甲机");
     await flush();
@@ -777,7 +777,7 @@ describe("〔GAP1〕每台一行的「日志」：问的是那一台、摆的是
     await flush();
     await flush();
     const row = [...s.element.querySelectorAll<HTMLElement>(".backend-row")].find((r) => r.dataset.origin === "甲机")!;
-    const btn = [...row.querySelectorAll("button")].find((b) => b.textContent === "日志")!;
+    const btn = [...row.querySelectorAll("button")].find((b) => b.textContent === "最近输出")!;
     btn.click();
     await flush();
     await flush();
@@ -799,7 +799,7 @@ describe("〔GAP1〕每台一行的「日志」：问的是那一台、摆的是
     await flush();
     await flush();
     const [local, remote] = [...s.element.querySelectorAll<HTMLElement>(".backend-row")];
-    for (const r of [local, remote]) [...r.querySelectorAll("button")].find((b) => b.textContent === "日志")!.click();
+    for (const r of [local, remote]) [...r.querySelectorAll("button")].find((b) => b.textContent === "最近输出")!.click();
     await flush();
     await flush();
     expect(local.querySelector("[data-backend-log] .settings-hint")?.textContent).toBe("这台的后端没有把输出写进文件");

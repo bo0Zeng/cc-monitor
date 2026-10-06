@@ -36,45 +36,8 @@ describe("RemoteSection 真构造一次（此前 0 次执行）", () => {
     expect(s!.element.isConnected).toBe(true);
   });
 
-  it("待贴块的三句话真的上屏（T03 那个「最实在的收益」此前零执行）", () => {
-    const s = new RemoteSection({ headless: true });
-    document.body.appendChild(s.element);
-    const t = s.element.querySelector(".paste-block-target");
-    const m = s.element.querySelector(".paste-block-merge");
-    const a = s.element.querySelector(".paste-block-activation");
-    expect(t, "贴到哪：必须在 DOM 里").not.toBeNull();
-    expect(m, "怎么合并：必须在 DOM 里").not.toBeNull();
-    expect(a, "怎样才生效：必须在 DOM 里").not.toBeNull();
-    expect(t!.textContent).toContain(".bashrc");
-    expect(m!.textContent!.trim().length).toBeGreaterThan(0);
-    expect(a!.textContent).toContain("source");
-  });
-
-  it("输出面只读、且保住了 <pre> 的不软换行语义（29 行 wrapper 片段）", () => {
-    const s = new RemoteSection({ headless: true });
-    const out =
-      s.element.querySelector<HTMLTextAreaElement>(".paste-block-out");
-    expect(out, "输出面必须在").not.toBeNull();
-    expect(out!.readOnly).toBe(true);
-    expect(out!.tagName).toBe("TEXTAREA");
-    // 内容真的是那段 wrapper（不是空壳）
-    expect(out!.value.length).toBeGreaterThan(100);
-  });
-
-  it("复制按钮存在，且这一处不再自己持有 writeText（T03 迁移的直接证据）", () => {
-    const s = new RemoteSection({ headless: true });
-    const btn = s.element.querySelector<HTMLButtonElement>(".paste-block-copy");
-    expect(btn, "复制按钮必须在").not.toBeNull();
-    expect(btn!.textContent).toBe("复制");
-  });
-
-  it("挂在已有规则的那个 class 上（T04 审计⑤：改名让 styles.css 那条规则失去了宿主）", () => {
-    const s = new RemoteSection({ headless: true });
-    expect(s.element.querySelector(".remote-wrapper-snippet")).not.toBeNull();
-  });
 });
 
-// 后端自动固化 / 各地址不一 ⇒ 机器页那张卡跟着刷新、说出来（期望手写）。
 describe("VIS2 机器页收 host key 告知", () => {
   it("★ 固化了 ⇒ 指纹栏从盘上同步、说一行；别台的不理；各地址不一 ⇒ 说出来、指纹栏不动", async () => {
     invokeMock.mockImplementation((cmd: string) =>

@@ -6448,7 +6448,7 @@
     },
     "machineCard.deploy.uninstall": {
       "kind": "action",
-      "zh": "卸载后端",
+      "zh": "从这台卸载…",
       "args": []
     },
     "machineCard.deploy.installHint": {
@@ -6458,22 +6458,12 @@
     },
     "machineCard.deploy.install": {
       "kind": "action",
-      "zh": "部署后端",
-      "args": []
-    },
-    "machineCard.deploy.intro": {
-      "kind": "body",
-      "zh": "把后端装到上面填的「后端路径」，终端里的 ccm 入口（~/.cc-monitor/bin/ccm）一起放好。启用这台机器之后，连上时也会自动装。",
-      "args": []
-    },
-    "machineCard.deploy.title": {
-      "kind": "title",
-      "zh": "部署后端",
+      "zh": "更新",
       "args": []
     },
     "machineCard.field.resumeCmdHint": {
       "kind": "control",
-      "zh": "留空 = 用全局默认",
+      "zh": "留空 = 通用设置",
       "args": []
     },
     "machineCard.field.nameTaken": {
@@ -6488,32 +6478,12 @@
     },
     "machineCard.field.resumeCmd": {
       "kind": "control",
-      "zh": "resume 命令 · 这台机器",
-      "args": []
-    },
-    "machineCard.build.launchHint": {
-      "kind": "body",
-      "zh": "在这台机器的 tmux 会话里启动一个全新的 Claude。要填工作目录、会话名和启动命令。",
-      "args": []
-    },
-    "machineCard.build.launch": {
-      "kind": "action",
-      "zh": "开新 Claude",
+      "zh": "恢复命令",
       "args": []
     },
     "machineCard.build.filesNeedHost": {
       "kind": "error",
       "zh": "请先填好 host / user 再打开文件窗口。",
-      "args": []
-    },
-    "machineCard.build.filesHint": {
-      "kind": "body",
-      "zh": "在文件窗口里打开这台机器（浏览 / 上传 / 下载 / 管理远端文件）",
-      "args": []
-    },
-    "machineCard.build.files": {
-      "kind": "action",
-      "zh": "文件",
       "args": []
     },
     "machineCard.build.pushKeyHint": {
@@ -6523,7 +6493,7 @@
     },
     "machineCard.build.pushKey": {
       "kind": "action",
-      "zh": "推送公钥",
+      "zh": "推送公钥…",
       "args": []
     },
     "machineCard.build.testHint": {
@@ -6563,7 +6533,7 @@
     },
     "machineCard.field.resetFingerprint": {
       "kind": "action",
-      "zh": "重置主机指纹",
+      "zh": "忘记…",
       "args": []
     },
     "machineCard.field.fingerprintHint": {
@@ -6573,12 +6543,12 @@
     },
     "machineCard.field.fingerprint": {
       "kind": "control",
-      "zh": "主机指纹（可选）",
+      "zh": "主机指纹",
       "args": []
     },
     "machineCard.field.keyPath": {
       "kind": "control",
-      "zh": "私钥路径（可选）",
+      "zh": "私钥",
       "args": []
     },
     "machineCard.field.userHint": {
@@ -6588,32 +6558,32 @@
     },
     "machineCard.field.user": {
       "kind": "control",
-      "zh": "用户 (user)",
+      "zh": "用户",
       "args": []
     },
     "machineCard.field.port": {
       "kind": "control",
-      "zh": "端口 (port)",
+      "zh": "端口",
       "args": []
     },
     "machineCard.field.hostHint": {
       "kind": "control",
-      "zh": "raspberrypi.local 或 192.168.1.10",
+      "zh": "主机名或 IP",
       "args": []
     },
     "machineCard.field.host": {
       "kind": "control",
-      "zh": "主机 (host)",
+      "zh": "地址",
       "args": []
     },
     "machineCard.field.labelHint": {
       "kind": "control",
-      "zh": "pi / nano，留空用主机名",
+      "zh": "留空 = 用地址",
       "args": []
     },
     "machineCard.field.label": {
       "kind": "control",
-      "zh": "名称（可选）",
+      "zh": "名称",
       "args": []
     },
     "machineCard.build.deleteHint": {
@@ -7336,9 +7306,9 @@
       "zh": "字体",
       "args": []
     },
-    "settingsPanel.nav.app": {
+    "settingsPanel.nav.general": {
       "kind": "title",
-      "zh": "应用",
+      "zh": "通用",
       "args": []
     },
     "settingsPanel.group.keybindings": {
@@ -7350,49 +7320,6 @@
       "kind": "title",
       "zh": "行为",
       "args": []
-    },
-    "settingsPanel.machineTab.footprint": {
-      "kind": "title",
-      "zh": "足迹",
-      "args": []
-    },
-    "settingsPanel.machineTab.terminal": {
-      "kind": "title",
-      "zh": "终端",
-      "args": []
-    },
-    "settingsPanel.machineTab.accounts": {
-      "kind": "title",
-      "zh": "账号",
-      "args": []
-    },
-    "settingsPanel.machineTab.components": {
-      "kind": "title",
-      "zh": "组件",
-      "args": []
-    },
-    "settingsPanel.machineTab.connection": {
-      "kind": "title",
-      "zh": "连接",
-      "args": []
-    },
-    "settingsPanel.header.closeHint": {
-      "kind": "body",
-      "zh": "关闭（ESC 也行）",
-      "args": []
-    },
-    "settingsPanel.header.close": {
-      "kind": "action",
-      "zh": "×",
-      "args": []
-    },
-    "settingsPanel.header.title": {
-      "kind": "title",
-      "zh": "设置",
-      "args": [],
-      "waive": {
-        "C-Y3": "这里的「设置」是名词（设置窗口的标题），不是祈使动词"
-      }
     },
     "settingsPanel.claudeDir.pickTitle": {
       "kind": "body",
@@ -7474,9 +7401,9 @@
       "zh": "部分设置项加载失败：{e}",
       "args": ["e"]
     },
-    "settingsPanel.nav.dataPlaces": {
+    "settingsPanel.nav.data": {
       "kind": "title",
-      "zh": "数据位置",
+      "zh": "文件与数据",
       "args": []
     },
     "settingsPanel.nav.logs": {
@@ -7487,51 +7414,6 @@
     "settingsPanel.nav.appearance": {
       "kind": "title",
       "zh": "外观",
-      "args": []
-    },
-    "settingsPanel.info.machinesPage": {
-      "kind": "body",
-      "zh": "{remote}\n\n【别名】{aliases}",
-      "args": ["remote", "aliases"]
-    },
-    "settingsPanel.info.appPage": {
-      "kind": "body",
-      "zh": "【行为】{behavior}\n\n【快捷键】{keybindings}",
-      "args": ["behavior", "keybindings"]
-    },
-    "settingsPanel.info.dataPlaces": {
-      "kind": "body",
-      "zh": "「数据位置」：列出 monitor 自己写入的所有文件位置，比如 config.json、history-metadata.json 和界面数据。每项可点 [打开] 直接到文件管理器。只是展示，没有危险操作。",
-      "args": []
-    },
-    "settingsPanel.info.logs": {
-      "kind": "body",
-      "zh": "「日志」：让后端把细节写进日志文件。出问题时，拿得到一份能发给作者的记录。",
-      "args": []
-    },
-    "settingsPanel.info.appearance": {
-      "kind": "body",
-      "zh": "字体：正文、等宽、字号；颜色：背景、卡片、文字、成功、警告、错误。改了当场生效。",
-      "args": []
-    },
-    "settingsPanel.info.aliases": {
-      "kind": "body",
-      "zh": "「别名」是一个名字加一组 ccm 参数。在终端里敲这个名字，就等于敲 ccm 加上这组参数。Windows 上这一块还管终端集成：把 cc 命令写进 $PROFILE，让你敲 cc 而不是 claude 来启动 Claude Code，并把终端窗口登记给 monitor，Tab 上切到终端的按钮才能用。可以一键安装或卸载。",
-      "args": []
-    },
-    "settingsPanel.info.dataDir": {
-      "kind": "body",
-      "zh": "「Claude 数据目录」—— monitor 读取的 .claude 根目录（下含 projects/ 和 sessions/）。默认 ~/.claude 或 $CLAUDE_CONFIG_DIR。修改后需重启 monitor 生效。",
-      "args": []
-    },
-    "settingsPanel.info.keybindings": {
-      "kind": "body",
-      "zh": "自定义全部快捷键，约 17 项。包括 Tab 切换、终端切到前台、行为开关、弹层关闭等。\n\n改了当场生效，不用重启。点 [改] 后按下你想要的组合键；有冲突会先问要不要覆盖。",
-      "args": []
-    },
-    "settingsPanel.info.behavior": {
-      "kind": "body",
-      "zh": "自动跟随用户输入，并可把 monitor 窗口切到前台。\n\n「自动跟随」：你在 claude 里敲回车，monitor 就切到那个会话的 Tab。只跟真正的用户输入，不跟工具返回、也不跟 claude 的流式回复。你手动点 Tab 后 5 秒内不会被自动切走。\n\n「把 monitor 切到前台」默认关：monitor 在后台安静地切 Tab，不打断你正在用的其他窗口，比如浏览器或 IDE。开启后你在终端里输入时，monitor 会浮上来抢焦点。只在「自动跟随」开着时生效。",
       "args": []
     },
     "settingsPanel.field.error": {
@@ -7940,11 +7822,6 @@
       "zh": "远端设置已更新。",
       "args": []
     },
-    "remote.save.what": {
-      "kind": "body",
-      "zh": "远端机器配置",
-      "args": []
-    },
     "remote.save.fingerprintShape": {
       "kind": "body",
       "zh": "已保存。注意：某台主机指纹不是 SHA256: 开头的格式，请确认没粘错。",
@@ -7955,132 +7832,9 @@
       "zh": "已保存。有 {n} 台的主机、用户或后端路径不完整，后端会跳过这些台；补全后重启 monitor 才会连。",
       "args": ["n"]
     },
-    "remote.wrapper.activation": {
-      "kind": "body",
-      "zh": "source 它，或在该远端开一个新的登录 shell。",
-      "args": []
-    },
-    "remote.wrapper.merge": {
-      "kind": "body",
-      "zh": "追加到文件末尾即可；里面是带 BEGIN / END 两行标记的一块，重复贴会有两份，先删掉旧的那一份。",
-      "args": []
-    },
-    "remote.wrapper.pasteTarget": {
-      "kind": "body",
-      "zh": "这台远端的 ~/.bashrc（或它实际用的 shell 配置文件）",
-      "args": []
-    },
-    "remote.wrapper.help": {
-      "kind": "body",
-      "zh": "用 ccm 起会话（而不是直接用 claude）。这样从终端起的会话 app 也认得出，能切到它的终端窗口、能 attach、能换号重启。\n\n✅ 每台机器页的「组件」栏：「部署后端」放好 ccm 入口（~/.cc-monitor/bin/ccm），「装别名块」把别名块写进 ~/.bashrc，先备份、可以重装。下面片段就是那个别名块，zsh 或自定义 profile 可以手动复制；ccm 入口仍要用「部署后端」放。\n\n⚠ 限制：多个 ssh 会话若开在同一个 Windows Terminal 窗口的不同 tab 里，↗ 只能切到那个窗口、切不到具体 tab。建议每个远端会话单独开窗。",
-      "args": [],
-      "waive": {
-        "C-L3": "四段的帮助说明，括号分散在不同段里，每段至多一处"
-      }
-    },
-    "remote.wrapper.title": {
-      "kind": "title",
-      "zh": "远端 ↗ 切到终端窗口（可选）",
-      "args": []
-    },
-    "remote.batch.done": {
-      "kind": "body",
-      "zh": "批量导入完成：新增 {added} 台{skippedPart}。",
-      "args": ["added", "skippedPart"]
-    },
-    "remote.batch.skipped": {
-      "kind": "body",
-      "zh": "，跳过 {skipped} 台（同名已存在）",
-      "args": ["skipped"]
-    },
-    "remote.preview.import": {
-      "kind": "action",
-      "zh": "导入",
-      "args": []
-    },
-    "remote.preview.cancel": {
-      "kind": "action",
-      "zh": "取消",
-      "args": []
-    },
-    "remote.preview.splitToggle": {
-      "kind": "control",
-      "zh": "拆分",
-      "args": []
-    },
-    "remote.preview.split": {
-      "kind": "body",
-      "zh": "拆成 {n} 台独立机器：{src}",
-      "args": ["n", "src"]
-    },
-    "remote.preview.row": {
-      "kind": "body",
-      "zh": "{host}{addrHint} · {user}{jumpHint} · 来源：{src}",
-      "args": ["host", "addrHint", "user", "jumpHint", "src"]
-    },
     "remote.preview.noUser": {
       "kind": "body",
       "zh": "无用户",
-      "args": []
-    },
-    "remote.preview.jump": {
-      "kind": "body",
-      "zh": " · 跳板 {jump}",
-      "args": ["jump"]
-    },
-    "remote.preview.addresses": {
-      "kind": "body",
-      "zh": " +{n} 备用地址",
-      "args": ["n"]
-    },
-    "remote.preview.title": {
-      "kind": "title",
-      "zh": "从 ~/.ssh/config 导入 · 检测到 {n} 台",
-      "args": ["n"]
-    },
-    "remote.batch.none": {
-      "kind": "body",
-      "zh": "~/.ssh/config 里没有可导入的主机。",
-      "args": []
-    },
-    "remote.batch.failed": {
-      "kind": "error",
-      "zh": "批量导入失败：{e}",
-      "args": ["e"]
-    },
-    "remote.import.failed": {
-      "kind": "error",
-      "zh": "导入别名「{alias}」失败：{e}",
-      "args": ["alias", "e"]
-    },
-    "remote.import.done": {
-      "kind": "body",
-      "zh": "已从别名「{alias}」导入为新机器。",
-      "args": ["alias"]
-    },
-    "remote.import.exists": {
-      "kind": "error",
-      "zh": "已经有一台叫「{alias}」，这次没导入。",
-      "args": ["alias"]
-    },
-    "remote.import.batchHint": {
-      "kind": "body",
-      "zh": "一次导入 ~/.ssh/config 全部主机；同密钥+同用户+同基名前缀的别名智能聚合成一台多地址主机（预览可拆分/勾选）",
-      "args": []
-    },
-    "remote.import.batch": {
-      "kind": "action",
-      "zh": "批量导入…",
-      "args": []
-    },
-    "remote.import.pick": {
-      "kind": "control",
-      "zh": "从 ssh config 导入…",
-      "args": []
-    },
-    "remote.import.hint": {
-      "kind": "body",
-      "zh": "选一个 ~/.ssh/config 里的主机别名，新增一台机器并自动填好。主机、端口、用户和私钥路径用 ssh -G 解析出来；仍可手动微调任意字段。",
       "args": []
     },
     "remote.build.empty": {
@@ -8088,59 +7842,9 @@
       "zh": "尚未添加远端机器。用上方工具条「+ 添加机器」，或从 ssh config 导入。",
       "args": []
     },
-    "remote.build.enableHint": {
-      "kind": "body",
-      "zh": "勾选后，monitor 启动时会额外用 SSH 连下列每台机器。远端会话和本机会话一起显示。\n⚠ 需重启 monitor 才生效。某台配置不完整时后端跳过那一台。列表为空就等于关闭。",
-      "args": []
-    },
-    "remote.build.enable": {
-      "kind": "control",
-      "zh": "启用远端模式",
-      "args": []
-    },
-    "remote.build.portForwardHint": {
-      "kind": "body",
-      "zh": "本地端口转发（-L）管理台。把远端机器或它内网里的端口映射到本机，走已配置的 SSH 连接。",
-      "args": []
-    },
-    "remote.build.portForward": {
-      "kind": "action",
-      "zh": "端口转发…",
-      "args": []
-    },
-    "remote.build.addMachine": {
-      "kind": "action",
-      "zh": "+ 添加机器",
-      "args": []
-    },
     "remote.build.title": {
       "kind": "title",
       "zh": "远端 (SSH)",
-      "args": []
-    },
-    "remote.aliases.none": {
-      "kind": "body",
-      "zh": "未在 ~/.ssh/config 找到可导入的主机别名（也可点「添加机器」手动填写）。",
-      "args": []
-    },
-    "remote.aliases.pick": {
-      "kind": "control",
-      "zh": "选择一个主机别名，导入为新机器…",
-      "args": []
-    },
-    "remote.row.deleteHint": {
-      "kind": "body",
-      "zh": "从列表移除这台机器",
-      "args": []
-    },
-    "remote.row.delete": {
-      "kind": "action",
-      "zh": "删除",
-      "args": []
-    },
-    "remote.gaps.title": {
-      "kind": "title",
-      "zh": "诊断",
       "args": []
     },
     "remote.cards.local": {
@@ -8958,22 +8662,22 @@
     },
     "backend.buildCells.exitKills": {
       "kind": "control",
-      "zh": "monitor 退出时结束它",
+      "zh": "随 cc-monitor 退出停止",
       "args": []
     },
     "backend.buildCells.stop": {
       "kind": "action",
-      "zh": "停",
+      "zh": "停止…",
       "args": []
     },
     "backend.buildCells.log": {
       "kind": "action",
-      "zh": "日志",
+      "zh": "最近输出",
       "args": []
     },
     "backend.buildCells.resync": {
       "kind": "action",
-      "zh": "重新对齐",
+      "zh": "刷新",
       "args": []
     },
     "backend.resync.doneTitle": {
@@ -9023,7 +8727,7 @@
     },
     "backend.buildCells.start": {
       "kind": "action",
-      "zh": "起",
+      "zh": "启动",
       "args": []
     },
     "backend.buildCells.querying": {
@@ -13451,11 +13155,6 @@
       "zh": "ccm 命令入口",
       "args": []
     },
-    "settingsPanel.info.remote": {
-      "kind": "body",
-      "zh": "「远端 (SSH)」：monitor 经 SSH 连到远端主机，把那台机器上的会话也列进来。远端会话和本机会话显示方式相同。\n\n默认关闭，这时一切走本地，不受影响。启用或修改任意远端设置后，需重启 monitor 才生效。配置不完整时，比如缺主机、用户或后端路径，后端自动回退本地模式。",
-      "args": []
-    },
     "rsLocalBackendHost.dataDir.absent": {
       "kind": "body",
       "zh": "没有",
@@ -15143,11 +14842,6 @@
     "settingsPanel.claudeDir.pickFailed": {
       "kind": "error",
       "zh": "选目录的窗口打不开：{e}。可以直接在输入框里填路径。",
-      "args": ["e"]
-    },
-    "remote.import.listFailed": {
-      "kind": "error",
-      "zh": "读不了 ~/.ssh/config：{e}。可以点「添加机器」手动填写。",
       "args": ["e"]
     },
     "machineAliases.autoLaunch.unreadable": {
@@ -21182,6 +20876,336 @@
       "kind": "body",
       "zh": "{dir} · {machine}",
       "args": ["dir", "machine"]
+    },
+    "settingsNav.dot.up": {
+      "kind": "body",
+      "zh": "{machine} · 已连接",
+      "args": ["machine"]
+    },
+    "settingsNav.dot.down": {
+      "kind": "body",
+      "zh": "{machine} · 离线",
+      "args": ["machine"]
+    },
+    "settingsNav.dot.unknown": {
+      "kind": "body",
+      "zh": "{machine} · 状态不明",
+      "args": ["machine"]
+    },
+    "machinePage.conn.how": {
+      "kind": "title",
+      "zh": "连接参数",
+      "args": []
+    },
+    "machinePage.conn.toggle": {
+      "kind": "action",
+      "zh": "连接设置",
+      "args": []
+    },
+    "machinePage.head.more": {
+      "kind": "action",
+      "zh": "更多",
+      "args": []
+    },
+    "machinePage.cc.title": {
+      "kind": "title",
+      "zh": "这台上的 cc-monitor",
+      "args": []
+    },
+    "machinePage.tab.accounts": {
+      "kind": "title",
+      "zh": "账号",
+      "args": []
+    },
+    "machinePage.tab.config": {
+      "kind": "title",
+      "zh": "别名与配置文件",
+      "args": []
+    },
+    "machinePage.state.up": {
+      "kind": "body",
+      "zh": "已连接",
+      "args": []
+    },
+    "machinePage.state.down": {
+      "kind": "body",
+      "zh": "离线",
+      "args": []
+    },
+    "machinePage.problem.offline": {
+      "kind": "error",
+      "zh": "{machine} 离线",
+      "args": ["machine"]
+    },
+    "machinePage.meta.local": {
+      "kind": "body",
+      "zh": "这台电脑 · {os}",
+      "args": ["os"]
+    },
+    "machinePage.meta.localBare": {
+      "kind": "body",
+      "zh": "这台电脑",
+      "args": []
+    },
+    "machineList.menu.launch": {
+      "kind": "action",
+      "zh": "新建会话…",
+      "args": []
+    },
+    "machineList.menu.files": {
+      "kind": "action",
+      "zh": "打开文件",
+      "args": []
+    },
+    "machineList.menu.portForward": {
+      "kind": "action",
+      "zh": "端口转发…",
+      "args": []
+    },
+    "machineList.menu.refresh": {
+      "kind": "action",
+      "zh": "刷新",
+      "args": []
+    },
+    "machineList.menu.conn": {
+      "kind": "action",
+      "zh": "连接设置",
+      "args": []
+    },
+    "machineList.menu.cc": {
+      "kind": "action",
+      "zh": "这台上的 cc-monitor…",
+      "args": []
+    },
+    "machineList.menu.remove": {
+      "kind": "action",
+      "zh": "从列表删除",
+      "args": []
+    },
+    "machineList.remove.done": {
+      "kind": "body",
+      "zh": "已删除 {machine}",
+      "args": ["machine"]
+    },
+    "machineList.head.add": {
+      "kind": "action",
+      "zh": "添加机器",
+      "args": []
+    },
+    "machineList.head.refreshAll": {
+      "kind": "action",
+      "zh": "全部刷新",
+      "args": []
+    },
+    "machineList.count.all": {
+      "kind": "body",
+      "zh": "{n} 台",
+      "args": ["n"]
+    },
+    "machineList.count.offline": {
+      "kind": "body",
+      "zh": "{n} 台 · {a} 台离线",
+      "args": ["n",  "a"]
+    },
+    "machineCard.conn.more": {
+      "kind": "title",
+      "zh": "更多：备用地址 · 跳板机",
+      "args": []
+    },
+    "addMachine.dialog.title": {
+      "kind": "title",
+      "zh": "添加机器",
+      "args": []
+    },
+    "addMachine.tab.ssh": {
+      "kind": "control",
+      "zh": "从 ~/.ssh/config 选",
+      "args": []
+    },
+    "addMachine.tab.manual": {
+      "kind": "control",
+      "zh": "自己填",
+      "args": []
+    },
+    "addMachine.ssh.note": {
+      "kind": "body",
+      "zh": "名称可改 · 已在列表的不可再加",
+      "args": []
+    },
+    "addMachine.ssh.none": {
+      "kind": "body",
+      "zh": "无 ~/.ssh/config",
+      "args": []
+    },
+    "addMachine.ssh.inList": {
+      "kind": "body",
+      "zh": "已在列表",
+      "args": []
+    },
+    "addMachine.ssh.jump": {
+      "kind": "body",
+      "zh": "经 {jump}",
+      "args": ["jump"]
+    },
+    "addMachine.ssh.addresses": {
+      "kind": "body",
+      "zh": "备用地址 {n}",
+      "args": ["n"]
+    },
+    "addMachine.ssh.split": {
+      "kind": "action",
+      "zh": "按地址拆成 {n} 台",
+      "args": ["n"]
+    },
+    "addMachine.ssh.unsplit": {
+      "kind": "action",
+      "zh": "合成一台",
+      "args": []
+    },
+    "addMachine.ssh.splitInto": {
+      "kind": "body",
+      "zh": "拆成：{names}",
+      "args": ["names"]
+    },
+    "addMachine.field.name": {
+      "kind": "control",
+      "zh": "名称",
+      "args": []
+    },
+    "addMachine.field.nameHelp": {
+      "kind": "body",
+      "zh": "左栏与标签页显示名 · 留空 = 用地址",
+      "args": []
+    },
+    "addMachine.field.host": {
+      "kind": "control",
+      "zh": "地址",
+      "args": []
+    },
+    "addMachine.field.user": {
+      "kind": "control",
+      "zh": "用户",
+      "args": []
+    },
+    "addMachine.field.port": {
+      "kind": "control",
+      "zh": "端口",
+      "args": []
+    },
+    "addMachine.field.key": {
+      "kind": "control",
+      "zh": "私钥",
+      "args": []
+    },
+    "addMachine.field.keyHelp": {
+      "kind": "body",
+      "zh": "留空 = ssh 默认",
+      "args": []
+    },
+    "addMachine.field.addresses": {
+      "kind": "control",
+      "zh": "备用地址",
+      "args": []
+    },
+    "addMachine.field.jump": {
+      "kind": "control",
+      "zh": "跳板机",
+      "args": []
+    },
+    "addMachine.err.port": {
+      "kind": "error",
+      "zh": "端口 1–65535",
+      "args": []
+    },
+    "addMachine.err.taken": {
+      "kind": "error",
+      "zh": "{name} 已存在",
+      "args": ["name"]
+    },
+    "addMachine.err.host": {
+      "kind": "error",
+      "zh": "需填地址",
+      "args": []
+    },
+    "addMachine.err.user": {
+      "kind": "error",
+      "zh": "需填用户",
+      "args": []
+    },
+    "addMachine.err.name": {
+      "kind": "error",
+      "zh": "需填名称",
+      "args": []
+    },
+    "addMachine.err.none": {
+      "kind": "error",
+      "zh": "未选机器",
+      "args": []
+    },
+    "addMachine.err.save": {
+      "kind": "error",
+      "zh": "保存失败 · 配置已被别处修改 · 已刷新",
+      "args": []
+    },
+    "addMachine.action.ssh": {
+      "kind": "action",
+      "zh": "添加 {n} 台",
+      "args": ["n"]
+    },
+    "addMachine.action.manual": {
+      "kind": "action",
+      "zh": "添加",
+      "args": []
+    },
+    "addMachine.save.done": {
+      "kind": "body",
+      "zh": "已添加 {names} · 连接中",
+      "args": ["names"]
+    },
+    "addMachine.ssh.after": {
+      "kind": "body",
+      "zh": "添加后连接 · 首次连接时安装 cc-monitor",
+      "args": []
+    },
+    "addMachine.field.addressesHelp": {
+      "kind": "body",
+      "zh": "一行一个",
+      "args": []
+    },
+    "settingsNav.dot.disabled": {
+      "kind": "body",
+      "zh": "{machine} · 已停用",
+      "args": ["machine"]
+    },
+    "machinePage.state.disabled": {
+      "kind": "body",
+      "zh": "已停用",
+      "args": []
+    },
+    "machinePage.problem.disabled": {
+      "kind": "body",
+      "zh": "连接已停用",
+      "args": []
+    },
+    "machinePage.problem.connect": {
+      "kind": "action",
+      "zh": "连接",
+      "args": []
+    },
+    "machineList.reconcile.failed": {
+      "kind": "error",
+      "zh": "连接未更新 · {e}",
+      "args": ["e"]
+    },
+    "machineCard.conn.connect": {
+      "kind": "control",
+      "zh": "连接这台",
+      "args": []
+    },
+    "machineCard.conn.connectHint": {
+      "kind": "body",
+      "zh": "关 = 停用连接 · 即时生效",
+      "args": []
     }
   }
 }

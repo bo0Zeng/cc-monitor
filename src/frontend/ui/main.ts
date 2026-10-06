@@ -306,7 +306,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     try {
       const cfg = await readRemoteConfig();
       if (mySeq !== refreshSeq) return; // 有更晚的刷新已开始 → 本次作废，别覆盖它
-      if (!cfg.enabled) {
+      if (!cfg.hosts.some((h) => h.connect)) {
         // 账号快照整份换进 store，tab 栏徽章订阅它（同一拍应用）。
         appStore.sessionAccounts.set({
           rows: [],

@@ -180,151 +180,143 @@ body.settings-window-mode .settings-panel {
   transition: none;
 }
 
-.settings-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border-strong);
-  font-weight: 600;
-  color: var(--text);
-}
-
-.settings-close {
-  background: transparent;
-  border: none;
-  color: var(--text-2);
-  cursor: pointer;
-  font-size: var(--font-size-title);
-  line-height: 1;
-  padding: 0 4px;
-}
-
-.settings-close:hover {
-  color: var(--text);
-}
-
+/* 外框：左栏导航（--bg-2）＋ 内容区（--bg，自己滚）。窗口本身不滚。 */
 .settings-body {
   flex: 1;
-  overflow-y: auto;
-  padding: 12px 14px;
+  display: flex;
+  min-height: 0;
 }
 
-/* S2（settings-ia）：设置窗两栏 —— 左导航 + 右内容。
-   刻意**不动** `.settings-body` 既有的 `overflow-y: auto`：改滚动容器会牵连 banner、
-   窗口模式、以及 `.settings-flyout` 那套 `position:fixed` 脱流的注释所依赖的前提。
-   导航用 `position: sticky` 跟着 body 滚，效果等价、改动面小得多。 */
 .settings-shell {
   display: flex;
-  gap: 14px;
-  align-items: flex-start;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
 }
 
 .settings-nav {
-  flex: 0 0 150px;
-  position: sticky;
-  top: 0;
+  flex: 0 0 176px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-1);
+  padding: var(--space-5) var(--space-4);
+  overflow-y: auto;
+  background: var(--bg-2);
+  border-right: 1px solid var(--border-strong);
 }
 
 .settings-nav-item {
   appearance: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex: none;
+  width: 100%;
+  height: 32px;
+  padding: 0 var(--space-5);
   background: transparent;
   border: 0;
   border-radius: var(--radius-m);
   color: var(--text-2);
   cursor: pointer;
   font: inherit;
-  padding: 6px 10px;
   text-align: left;
 }
 
 .settings-nav-item:hover {
-  background: var(--bg-2);
+  background: var(--state-hover);
   color: var(--text);
 }
 
-.settings-nav-item-active {
-  background: var(--bg-2);
+.settings-nav-item-active,
+.settings-nav-item-active:hover {
+  background: var(--selected-bg);
   color: var(--text);
-  font-weight: 600;
 }
 
-/* 内容列必须能被压缩，否则里面的宽表格/长路径会把 flex 项撑开、把导航挤没。 */
+.settings-nav-item-child {
+  height: 28px;
+  padding-left: 26px;
+  font-size: var(--font-size-small);
+}
+
+.settings-nav-item-gap {
+  margin-top: var(--space-4);
+}
+
+.settings-nav-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .settings-content {
   flex: 1 1 auto;
   min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 20px 28px 48px;
+  background: var(--bg);
 }
 
-/* 页与页之间不叠：可见性由路由器设 `hidden`，这里只兜底防样式表里别处的
-   `display` 规则把 hidden 元素又显示回来。 */
+.settings-content > * {
+  max-width: 860px;
+}
+
+/* 窄于 640：导航收成内容区顶上的下拉。 */
+.settings-nav-select {
+  display: none;
+}
+
+@media (width < 640px) {
+  .settings-shell:not(.settings-shell-h) > .settings-nav {
+    display: none;
+  }
+
+  .settings-shell:not(.settings-shell-h) > .settings-content > .settings-nav-select {
+    display: block;
+    width: 100%;
+    height: 28px;
+    margin-bottom: var(--space-5);
+  }
+}
+
 .settings-page[hidden] {
   display: none;
 }
 
-/* S3（settings-ia）：机器列表行上的状态格子。
-   「上次动作的结论 + 它有多旧」——绝不伪装成实时。 */
-.remote-machine-status {
-  display: inline-flex;
-  flex-wrap: wrap;
-  font-size: var(--font-size-small);
-  gap: 8px;
-  margin-left: 10px;
+.settings-page-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  min-height: 30px;
+  margin-bottom: var(--space-3);
 }
 
-.remote-status-cell {
-  white-space: nowrap;
-}
-
-.remote-status-ok {
-  color: var(--success);
-}
-
-.remote-status-fail {
-  color: var(--error);
-}
-
-/* 「不适用」与「未测过」用同一种弱化色，但**语义不同**：前者是本机不需要后端，
-   后者是还没测过。区分在文案（title / 图标 — vs ·），不靠颜色。 */
-.remote-status-na,
-.remote-status-unknown {
-  color: var(--text-2);
-}
-
-/* S5 / E56：机器页顶部的「还差什么」。**空的时候整块不渲染**（见 renderGaps），
-   所以这里不必为空态设计。 */
-.remote-gaps {
-  background: var(--bg-2);
-  border-radius: var(--radius-m);
-  margin-bottom: 10px;
-  padding: 8px 10px;
-}
-
-.remote-gaps-head {
-  margin-bottom: 4px;
-}
-
-.remote-gaps-list {
-  font-size: var(--font-size-small);
-  list-style: none;
+.settings-page-title {
   margin: 0;
-  padding: 0;
+  color: var(--text);
+  font-size: var(--font-size-title);
+  font-weight: 600;
 }
 
-.remote-gap {
-  padding: 2px 0;
+.settings-page-head-sp {
+  flex: 1;
 }
 
-/* 「确认缺」与「还没测过」**视觉上必须能分开** —— 它们是两种不同的结论，
-   混成一个颜色就等于把「不知道」说成了「缺」。 */
-.remote-gap[data-kind="missing"] {
-  color: var(--error);
-}
-
-.remote-gap[data-kind="unknown"] {
+.settings-page-sub {
+  margin-bottom: var(--space-6);
   color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+/* 带目的地打开时那一节亮 1.5 秒。 */
+.settings-highlight {
+  border-radius: var(--radius-m);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* S4b-3b-2：页内横向分栏（机器详情页的 连接/组件/账号/工具）。
@@ -334,20 +326,35 @@ body.settings-window-mode .settings-panel {
 }
 
 .settings-shell-h .settings-nav {
-  border-bottom: 1px solid var(--border);
   flex-direction: row;
-  gap: 4px;
-  margin-bottom: 10px;
-  padding-bottom: 4px;
-  position: static;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+  border-right: 0;
+  border-bottom: 1px solid var(--border-strong);
 }
 
 .settings-shell-h .settings-nav-item {
-  border-radius: var(--radius-m) var(--radius-m) 0 0;
+  width: auto;
+  height: auto;
+  margin-bottom: -1px;
+  padding: 6px var(--space-5) 7px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+}
+
+.settings-shell-h .settings-nav-item-active,
+.settings-shell-h .settings-nav-item-active:hover {
+  background: transparent;
+  border-bottom-color: var(--accent);
 }
 
 .settings-shell-h .settings-content {
-  min-width: 0;
+  overflow: visible;
+  padding: 0;
+  background: transparent;
 }
 
 /* 卡片被拆成两半后，两半各自不再需要额外间距（间距由所在栏给）。 */
@@ -355,115 +362,226 @@ body.settings-window-mode .settings-panel {
   margin-top: 0;
 }
 
-/* S4b-3b：机器列表的工具条（列表级动作全在这一条上，且在列表之前）。 */
-.remote-toolbar {
-  align-items: center;
+
+
+/* 机器列表：一台一行（点 · 名字与第二行 · 右侧账号数 · ⋯），整张表一个框。 */
+.remote-machine-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 8px;
+  align-items: flex-start;
+  gap: var(--space-5);
+  min-height: 56px;
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
 }
 
-.remote-toolbar-toggle {
-  align-items: center;
-  display: inline-flex;
-  gap: 4px;
-  margin-left: auto;
+.remote-machine-row:last-child {
+  border-bottom: 0;
 }
 
-/* S4b：列表里的机器行（表单在它自己那一页，这里只有名字 + 状态 + 删除）。 */
-.remote-machine-row .remote-machine-legend {
-  align-items: center;
+.remote-machine-row:hover {
+  background: var(--state-hover);
+}
+
+.remote-machine-dot {
+  margin-top: 7px;
+}
+
+.remote-machine-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.remote-machine-line {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  align-items: baseline;
+  gap: var(--space-4);
 }
 
 .remote-machine-open {
   appearance: none;
+  padding: 0;
+  overflow: hidden;
   background: transparent;
   border: 0;
   color: var(--text);
   cursor: pointer;
   font: inherit;
-  padding: 2px 0;
+  font-weight: 600;
   text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.remote-machine-open:hover {
-  text-decoration: underline;
+.remote-machine-line > .remote-machine-open {
+  flex: 0 1 auto;
 }
 
-/* 〔每台机器一行四格〕后端那四格：状态 / 操作 / 退出行为 / 健康。
-   表头（`[data-backend-columns]`）与每一行的格子（`[data-backend-cells]`）共用这一张列模板 ⇒ 分列对齐；
-   分栏只认 `data-*`（`backend-section.ts::buildRow` 头注：不为分栏新造类）。列宽可压到 0、内容自己折行 ⇒ 窄窗不撑破。
-   一律挂在 `.remote-machines`（机器列表，只在设置窗）底下：光秃秃的 `[data-*]` 会被当成别的窗口也挂得上（`entry-graphs` 完整性）。 */
-.remote-machines [data-backend-columns="head"],
-.remote-machines [data-backend-cells] {
-  column-gap: 16px;
+.remote-machine-word {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+.remote-machine-meta {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-machine-summary {
+  flex: none;
+  margin-top: 2px;
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+  white-space: nowrap;
+}
+
+/* 问题行：一句话 ＋ 至多两颗修法（列表那一行与机器页卡头同一个样子）。 */
+.machine-problem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+  color: var(--text);
+}
+
+.machine-problem[hidden] {
+  display: none;
+}
+
+.machine-problem > svg {
+  color: var(--error);
+}
+
+/* 机器页卡头。 */
+.machine-head {
+  margin-bottom: var(--space-6);
+  padding: var(--space-6) var(--space-6) var(--space-5);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-l);
+  background: var(--bg-2);
+}
+
+.machine-head-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.machine-head-name {
+  font-size: var(--font-size-title);
+  font-weight: 600;
+}
+
+.machine-head-state {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+.machine-head-sp {
+  flex: 1;
+}
+
+.machine-head-meta {
+  margin-top: var(--space-2);
+  overflow-wrap: anywhere;
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+.machine-conn {
+  margin-top: var(--space-6);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border);
+}
+
+.machine-conn-title {
+  margin-bottom: var(--space-5);
+  font-weight: 600;
+}
+
+.machine-conn-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 2fr) minmax(0, 1.2fr);
-  row-gap: 4px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-5) var(--space-6);
 }
 
-/* 窄窗：四栏折成两栏（表头跟着折，对齐不丢）。 */
-@media (width <= 760px) {
-  .remote-machines [data-backend-columns="head"],
-  .remote-machines [data-backend-cells] {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
+.machine-conn-grid > .settings-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+  margin: 0;
 }
 
-/* 表头与行上的格子左右对齐：行的格子缩在「边框 1 ＋ `.remote-machine` 内边距 12 ＋ legend 内边距 6」里，
-   后端清单里有、列表里没有的那几台（`.backend-row`）照同一个缩进摆。 */
-.remote-machines > [data-backend-columns="head"] {
-  padding: 0 19px;
+.machine-conn-grid > .settings-row > .settings-btn {
+  align-self: flex-start;
+  padding: 1px 8px;
+  font-size: var(--font-size-small);
+}
+
+.machine-conn-wide {
+  grid-column: 1 / -1;
+}
+
+.machine-conn-more,
+.machine-monitor-fold {
+  margin-top: var(--space-5);
+}
+
+.machine-fp {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+}
+
+/* 「这台上的 cc-monitor」：后端那几格一格一行（标签左、控件右）。 */
+.machine-monitor [data-backend-cells] {
+  display: flex;
+  flex-direction: column;
+}
+
+.machine-monitor [data-backend-cells] > [data-col] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+  min-height: 44px;
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.machine-monitor [data-backend-cells] .settings-btn {
+  padding: 1px 8px;
+  font-size: var(--font-size-small);
+  white-space: nowrap;
 }
 
 .backend-row {
-  align-items: center;
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
   padding: 6px 19px;
 }
 
-/* 行上：四格另起一行、占满整行（名字与测过的那几项在上一行），不跟着 legend 的粗体与手形。 */
-.remote-machine-legend > [data-backend-cells],
 .backend-row > [data-backend-cells] {
-  cursor: auto;
   flex-basis: 100%;
   font-size: var(--font-size-small);
-  font-weight: normal;
-  order: 1;
-  padding-top: 6px;
-}
-
-.remote-machines [data-backend-cells] > [data-col="ops"] {
-  align-content: start;
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 6px;
-}
-
-.remote-machines [data-backend-cells] .settings-btn {
-  font-size: var(--font-size-small);
-  padding: 1px 8px;
-  white-space: nowrap;
 }
 
 .backend-row-kill {
-  align-items: center;
   display: inline-flex;
+  align-items: center;
   gap: 4px;
 }
 
 .backend-row-exit {
+  margin-top: 2px;
   color: var(--text-2);
   font-size: var(--font-size-xs);
   line-height: 1.5;
-  margin-top: 2px;
 }
 
 .backend-row-state[data-on="true"] {
@@ -474,30 +592,81 @@ body.settings-window-mode .settings-panel {
   color: var(--warn);
 }
 
-/* 导航里的机器子项：缩进一级，与父项「机器」区分开。 */
-.settings-nav-item-child {
-  font-size: var(--font-size-small);
-  padding-left: 22px;
-}
-
-/* 本机行：不可编辑、不可删，视觉上比远端机器卡片轻。 */
-.remote-machine-local {
-  opacity: 0.95;
-}
-
-.settings-page-head {
-  align-items: center;
+/* 添加机器对话框。 */
+.add-machine {
   display: flex;
-  gap: 6px;
-  margin-bottom: 10px;
+  flex-direction: column;
+  gap: var(--space-5);
 }
 
-.settings-page-title {
-  color: var(--text);
-  font-size: var(--font-size-base);
-  font-weight: 600;
-  margin: 0;
+.add-machine-note,
+.add-machine-info {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
 }
+
+.add-machine-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.add-machine-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.add-machine-row[data-in-list="true"] {
+  opacity: var(--state-disabled-opacity);
+}
+
+.add-machine-main {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 每行的名称框不重复画「名称」两字（读屏名照旧）。 */
+.add-machine-main label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.add-machine-tag {
+  color: var(--text-2);
+  font-size: var(--font-size-xs);
+}
+
+.add-machine-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-link);
+  cursor: pointer;
+  font-size: var(--font-size-small);
+}
+
+.add-machine-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-5) var(--space-6);
+}
+
+.add-machine-wide {
+  grid-column: 1 / -1;
+}
+
+.settings-btn.settings-btn-danger-text {
+  color: var(--error);
+}
+
+
 
 .settings-group-title {
   font-size: var(--font-size-small);
@@ -922,51 +1091,22 @@ body.settings-window-mode .settings-panel {
 }
 
 /* Feature ②：远端 ↗ 拉前的只读 ccm wrapper 片段。等宽、保留空白、可横向滚动、带边框。 */
-/* F81（#40）：拉前块默认折叠——<summary> 作可点击标题，自定义披露三角（同 .card-compact-summary 范式）。
-   details 保持块流（不加 .settings-row 的 display:flex，否则折叠失效），补 settings-row 的竖向节奏。 */
-.remote-wrapper-details {
-  padding: 6px 0;
-}
 
-.remote-wrapper-summary {
-  cursor: pointer;
-  list-style: none;
-}
 
-.remote-wrapper-summary::-webkit-details-marker {
-  display: none;
-}
 
-.remote-wrapper-summary::before {
-  content: var(--mark-closed);
-  color: var(--text-faint);
-}
 
-.remote-wrapper-details[open] > .remote-wrapper-summary::before {
-  content: var(--mark-open);
-}
 
-.remote-wrapper-snippet {
-  margin: 8px 0 0;
-  padding: 8px 12px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-m);
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-small);
-  line-height: 1.45;
-  white-space: pre;
-  overflow-x: auto;
-}
 
 /* === 远端机器列表（多机 #30）=== */
 
 .remote-machines {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  overflow: hidden;
   margin: 6px 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-l);
+  background: var(--bg-2);
 }
 
 .remote-machine {
@@ -1021,14 +1161,6 @@ body.settings-window-mode .settings-panel {
   flex-shrink: 0;
 }
 
-/* backend / ccm 安装位置提示：比普通 hint 略醒目的小框（左边框 + 圆角） */
-.remote-install-info {
-  margin: 8px 0 4px;
-  padding: 7px 10px;
-  border-left: 3px solid var(--border-strong);
-  border-radius: var(--radius-s);
-  line-height: 1.55;
-}
 
 /* 动作按钮行（测试 / 装卸 backend / 装卸 ccm）：按钮多，允许换行、右对齐 */
 .settings-row-actions {
@@ -1394,88 +1526,15 @@ body.settings-window-mode .settings-panel {
   background: var(--error);
 }
 
-/* F57:~/.ssh/config 批量导入预览弹框。`--z-overlay` > 设置面板(`--z-view`)——从设置里点开,
-   低值会被右侧 360px 抽屉盖住（F58 D-R1 一并修）。 */
-.import-preview-back {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--overlay-backdrop);
-}
 
-.import-preview-box {
-  width: min(92%, 560px);
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 16px 18px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-l);
-}
 
-.import-preview-title {
-  font-weight: 600;
-  font-size: var(--font-size-base);
-}
 
-.import-preview-list {
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
 
-.import-preview-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-s);
-}
 
-.import-preview-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
 
-.import-preview-label {
-  padding: 3px 6px;
-  background: var(--field-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-s);
-  color: inherit;
-  font-size: var(--font-size-mono);
-}
 
-.import-preview-info {
-  font-size: var(--font-size-xs);
-  opacity: 0.7;
-  overflow-wrap: anywhere;
-}
 
-.import-preview-split {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  font-size: var(--font-size-xs);
-  opacity: 0.85;
-  white-space: nowrap;
-}
 
-.import-preview-foot {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
 
 /* ============================================================
    account-ux U7：设置「账号」组的 IA + 表格样式。
@@ -1907,16 +1966,6 @@ body.settings-window-mode .settings-panel {
   margin-top: 10px;
 }
 
-/* 折叠标记跟随本仓既有范式（.card-compact-summary / .block-summary / .remote-wrapper-summary
-   都是「去掉原生三角 + ::before 自绘 ▸/▾」），别在这里独一份显原生三角。 */
-.accounts-maint-wrap > summary {
-  font-size: var(--font-size-small);
-  color: var(--text-2);
-  cursor: pointer;
-  padding: 4px 0;
-  user-select: none;
-  list-style: none;
-}
 
 .accounts-maint-wrap > summary::-webkit-details-marker {
   display: none;
@@ -2634,5 +2683,10 @@ body.settings-window-mode .settings-panel {
     white-space: normal;
     overflow-wrap: anywhere;
     text-align: left;
+  }
+
+  /* 连接设置里的输入框占满它那一格（排在通用输入框之后）。 */
+  .machine-conn-grid .settings-input-wide {
+    width: 100%;
   }
 }

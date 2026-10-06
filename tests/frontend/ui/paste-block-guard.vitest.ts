@@ -11,7 +11,6 @@ import { join, sep } from "node:path";
 const FAMILY_A = [
   "src/frontend/ui/settings/machine-aliases.ts", // 别名函数 → ~/.bashrc（从 `launcher-diagnostics.ts` 搬来，并进机器页「别名」）
   "src/frontend/ui/settings/ext-section.ts", // cc-bus 那一行每台要加的钩子 → 那台的 agent 设置文件
-  "src/frontend/ui/settings/remote-section.ts", // ccm wrapper → 远端 ~/.bashrc
 ];
 
 /**
@@ -90,7 +89,7 @@ describe("待贴配置文本只有一个实现", () => {
     expect(unknown).toEqual([]);
   });
 
-  it("族 A 三处都必须走 buildPasteBlock，不许再自己拼复制按钮", () => {
+  it("族 A 两处都必须走 buildPasteBlock，不许再自己拼复制按钮", () => {
     for (const f of FAMILY_A) {
       const src = readFileSync(f, "utf8");
       expect(src, `${f} 应引入统一组件`).toContain("buildPasteBlock");

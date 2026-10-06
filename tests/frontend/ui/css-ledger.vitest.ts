@@ -178,10 +178,6 @@ const ALLOWED_PREFIXES: readonly { prefix: string; why: string }[] = [
     why: "`src/frontend/ui/views/port-forward.ts:142` 按端口转发的健康状态拼（ok/err）。",
   },
   {
-    prefix: "remote-status-",
-    why: "`src/frontend/ui/settings/remote-section.ts:163` 按远端探测结果拼（ok/fail/na/unknown）。",
-  },
-  {
     prefix: "status-",
     why: "`src/frontend/ui/tasks-panel.ts:177` 把任务态拼成类名（running/aborted/completed/in_progress/deleted）。态值直接来自会话记录，是**协议里的字符串**，前端不重新枚举。",
   },
@@ -311,13 +307,6 @@ const DESCENDING_SPECIFICITY_EXCEPTIONS: readonly {
     earlier: ".settings-data-item-open:hover:not(:disabled)",
     kind: "harmless",
     why: "〔AR1 判〕`:hover:not(:disabled)` 与 `:disabled` 互斥（同一颗按钮同一刻只落一边），且两边属性不相交（前者只设底色 / 字色 / 边框色，后者只设 `cursor` / `opacity`）",
-  },
-  {
-    file: "src/frontend/ui/styles/settings.css",
-    later: ".remote-machine-legend",
-    earlier: ".remote-machine-row .remote-machine-legend",
-    kind: "harmless",
-    why: "〔AR1 判〕同属性只有 `gap`（与 `display` / `align-items`，值相同）：列表里的机器行（`remote-section.ts` 两处 `.remote-machine-row` 里的 legend）取 6px，机器卡（`machine-card.ts` 的 `fieldset.remote-machine`，不在 row 里）取 8px —— 高特异度那条赢正是作者要的（它头注「S4b：列表里的机器行」就是为行单写的收紧）",
   },
   {
     file: "src/frontend/ui/styles/settings.css",

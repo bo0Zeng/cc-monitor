@@ -55,6 +55,11 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
   LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
   RemoteSection: class {
+    headActions = (): HTMLElement[] => [];
+    pageIdOfMachine = (): string | null => null;
+    menuFor = (): unknown[] => [];
+    metaOfPage = (): string | null => null;
+    setConnected = (): void => {};
     originOfPage = (): string | null => null;
     isUnconfiguredPage = (): boolean => false;
     element = document.createElement("div");
@@ -203,18 +208,19 @@ describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
     new SettingsPanel({ windowMode: true });
     await tick();
     let mark = ipc.calls.length;
-    visit("app");
-    visit("app-appearance");
+    visit("general");
+    visit("appearance");
     await tick();
     expect(since(mark), "「应用」与「外观」两页上没有要读的东西").toEqual([]);
     mark = ipc.calls.length;
-    visit("app-logs");
+    visit("logs");
     await tick();
     expect(since(mark)).toEqual(uniq([...LOGS_PAGE_IPC]));
     mark = ipc.calls.length;
-    visit("app-data");
+    visit("data");
     await tick();
-    expect(since(mark)).toEqual(uniq([...DATA_PAGE_IPC]));
+    // 文件与数据：数据位置那一发 ＋ 足迹 · 未识别的数据（「未识别的数据」经通道问那台后端，`chan_call`）。
+    expect(uniq(since(mark)).sort()).toEqual(uniq([...DATA_PAGE_IPC, ...MACHINE_PAGE_IPC, "chan_call"]).sort());
     // 两页合起来 == 原来「应用」那一趟的三发（拆开不许丢、也不许多）。
     expect(uniq([...LOGS_PAGE_IPC, ...DATA_PAGE_IPC])).toEqual(uniq([...APP_PAGE_IPC]));
   });
@@ -223,31 +229,33 @@ describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
     const p = new SettingsPanel({ windowMode: true });
     void p;
     await tick();
-    visit("app-logs");
-    visit("app-data");
+    visit("logs");
+    visit("data");
     await tick();
     const mark = ipc.calls.length;
     visit("machines");
-    visit("app-logs");
-    visit("app-data");
+    visit("logs");
+    visit("data");
     await tick();
     expect(since(mark)).toEqual([]);
   });
 
-  it("🔴 步 14a：「足迹」那一发跟着**机器子页**走", async () => {
+  it("🔴 「足迹」那一发跟着「文件与数据」页走，进机器页不发", async () => {
     new SettingsPanel({ windowMode: true });
     await tick();
     // 顶层「改动足迹」页已删 —— 连那颗导航按钮都不该有。
     expect(document.querySelector("#settings-tab-footprint")).toBeNull();
-    // 点进本机页才发（足迹 ＋ 未识别的数据，两块同栏）。
-    const mark = ipc.calls.length;
+    let mark = ipc.calls.length;
     document
       .querySelector<HTMLButtonElement>('#settings-tab-machine\\:（本机）')!
       .click();
     await tick();
-    // 「未识别的数据」记录那两面经通道问那台后端（`drift-report`，包装层那一条 `chan_call`）；
-    //   `chan_call` 这个名字别的页也用，不进上面那几张「打开设置不许碰」的表，只在这里点名。
-    expect(since(mark)).toEqual(uniq([...MACHINE_PAGE_IPC, "chan_call"]));
+    for (const name of MACHINE_PAGE_IPC) expect(since(mark), `进机器页不该发 ${name}`).not.toContain(name);
+    mark = ipc.calls.length;
+    visit("data");
+    await tick();
+    // 「未识别的数据」记录那两面经通道问那台后端（`drift-report`，包装层那一条 `chan_call`）。
+    for (const name of [...MACHINE_PAGE_IPC, "chan_call"]) expect(since(mark), `文件与数据页没发 ${name}`).toContain(name);
   });
 
   it("`open()` 之后仍然只碰落地页（这就是用户说的「打开设置」那一下）", async () => {
@@ -268,18 +276,18 @@ describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
   it("🔴 重开一次设置 ⇒ 那几页的第一发**重新算**（不是永远只发一次）", async () => {
     const p = new SettingsPanel({ windowMode: true });
     await tick();
-    visit("app-logs");
-    visit("app-data");
-    await tick();
-    await p.open();
+    visit("logs");
+    visit("data");
     await tick();
     const mark = ipc.calls.length;
-    visit("app-logs");
-    visit("app-data");
+    await p.open(); // 重开停在上次那页（数据）⇒ 当场重读它
     await tick();
-    // 重开之后再点进「应用」要拿到**新读数** —— 否则用户改了外部状态、重开设置
-    // 看到的还是上一次那份，而界面上看不出来。
-    expect(since(mark)).toEqual(uniq([...APP_PAGE_IPC_ON_REOPEN]));
+    visit("logs");
+    visit("data");
+    await tick();
+    // 重开之后两页都要拿到**新读数**（停着的那页在 open 时、另一页在切过去时）。
+    const want = new Set<string>(APP_PAGE_IPC_ON_REOPEN);
+    expect(uniq(since(mark).filter((n) => want.has(n))).sort()).toEqual(uniq([...APP_PAGE_IPC_ON_REOPEN]).sort());
   });
 });
 

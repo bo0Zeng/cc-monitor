@@ -21,11 +21,15 @@ use std::sync::Mutex;
 
 use crate::inbound_client::LOCAL_ORIGIN;
 
-/// 一台远端的「怎么再起」+ 「现在这条流的把手」。
+/// 重起闭包：`lib.rs` 注册时把那台机需要的全部上下文关进来。
+pub type Respawn = Box<dyn Fn() -> tauri::async_runtime::JoinHandle<()> + Send + Sync>;
+
+/// 一台远端的「怎么再起」+「现在这条流的把手」+「按哪份连接参数起的」。
 struct RemoteSlot {
-    /// 重起闭包：`lib.rs` 注册时把该台机需要的全部上下文关进来。
-    respawn: Box<dyn Fn() -> tauri::async_runtime::JoinHandle<()> + Send + Sync>,
+    respawn: Respawn,
     handle: Option<tauri::async_runtime::JoinHandle<()>>,
+    /// 连接参数的指纹（变了 ⇒ 热加载时按新参数重起）。
+    cfg_key: String,
 }
 
 fn remotes() -> &'static Mutex<HashMap<String, RemoteSlot>> {
@@ -36,19 +40,67 @@ fn remotes() -> &'static Mutex<HashMap<String, RemoteSlot>> {
 /// `lib.rs` 启动时每台远端注册一次：给出**怎么起**，并把第一条流的把手交进来。
 ///
 /// ⚠ 注册的是**闭包不是配置** —— 本层不认识 `RemoteConfig`，也不该认识。
-pub fn register_remote(
-    origin: String,
-    respawn: Box<dyn Fn() -> tauri::async_runtime::JoinHandle<()> + Send + Sync>,
-    first: tauri::async_runtime::JoinHandle<()>,
-) {
+/// 机器表里要连的一台：名字 · 连接参数指纹 · 怎么起。
+pub struct WantedRemote {
+    pub origin: String,
+    pub cfg_key: String,
+    pub respawn: Respawn,
+}
+
+/// 热加载那一趟做了什么（按名字排序）。
+#[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Reconciled {
+    pub started: Vec<String>,
+    pub stopped: Vec<String>,
+    pub restarted: Vec<String>,
+}
+
+/// 机器表热加载：注册表照 `wanted` 对齐 —— 表里没有了的停流摘掉；新来的注册并起；
+/// 连接参数变了的停掉按新参数重起；其余一台不碰（在跑的流不断）。启动时与每次改机器表都走这一条。
+pub fn reconcile_remotes(wanted: Vec<WantedRemote>) -> Reconciled {
+    let mut out = Reconciled::default();
     let mut g = remotes().lock().expect("远端把手表锁毒化");
-    g.insert(
-        origin,
-        RemoteSlot {
-            respawn,
-            handle: Some(first),
-        },
-    );
+    let names: std::collections::HashSet<String> =
+        wanted.iter().map(|w| w.origin.clone()).collect();
+    let gone: Vec<String> = g.keys().filter(|k| !names.contains(*k)).cloned().collect();
+    for origin in gone {
+        if let Some(slot) = g.remove(&origin) {
+            if let Some(h) = slot.handle {
+                h.abort();
+            }
+        }
+        out.stopped.push(origin);
+    }
+    for w in wanted {
+        match g.get_mut(&w.origin) {
+            Some(slot) if slot.cfg_key == w.cfg_key => {}
+            Some(slot) => {
+                if let Some(h) = slot.handle.take() {
+                    h.abort();
+                }
+                slot.handle = Some((w.respawn)());
+                slot.respawn = w.respawn;
+                slot.cfg_key = w.cfg_key;
+                out.restarted.push(w.origin);
+            }
+            None => {
+                let first = (w.respawn)();
+                g.insert(
+                    w.origin.clone(),
+                    RemoteSlot {
+                        respawn: w.respawn,
+                        handle: Some(first),
+                        cfg_key: w.cfg_key,
+                    },
+                );
+                out.started.push(w.origin);
+            }
+        }
+    }
+    out.started.sort();
+    out.stopped.sort();
+    out.restarted.sort();
+    out
 }
 
 fn is_local(origin: &str) -> bool {

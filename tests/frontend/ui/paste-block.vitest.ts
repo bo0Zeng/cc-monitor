@@ -141,7 +141,7 @@ describe("走 textContent 的文案不许带 markdown 星号", () => {
     ).toContain("**");
   });
 
-  it("三个真实消费者传给组件的文案里都没有 **", async () => {
+  it("两个真实消费者传给组件的文案里都没有 **", async () => {
     const { readFileSync } = await import("node:fs");
     // 判据必须精确到**传给组件的那个对象字面量**。第一版用「6 空格缩进的字符串」这种
     // 糙启发式，误抓了 section 自己的 hint 文案——虽然那条也确实带字面星号（已顺手清掉），
@@ -150,7 +150,6 @@ describe("走 textContent 的文案不许带 markdown 星号", () => {
     for (const f of [
       "src/frontend/ui/settings/machine-aliases.ts", // 别名那一块从 `launcher-diagnostics.ts` 搬来
       "src/frontend/ui/settings/ext-section.ts", // cc-bus 那一行每台要加的钩子
-      "src/frontend/ui/settings/remote-section.ts",
     ]) {
       const src = readFileSync(f, "utf8");
       const at = src.indexOf("buildPasteBlock({");
@@ -181,7 +180,7 @@ describe("走 textContent 的文案不许带 markdown 星号", () => {
       expect(block).toContain("target:");
       expect(block).toContain("activation:");
     }
-    expect(checked).toBe(3);
+    expect(checked).toBe(2);
   });
 });
 

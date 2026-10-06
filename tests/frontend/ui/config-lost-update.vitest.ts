@@ -91,6 +91,20 @@ const BEHAVIOR = {
 const KEYS = { "open-settings": "Ctrl+,", "kill-session": null };
 
 /** 手写期望：全部写者一起发之后，盘上**恰好**是这一份。 */
+/** 设置窗写机器表那一路插的一台（与盘上读回的形状逐格相同）。 */
+const LU_HOST = {
+  label: "lu",
+  host: "10.9.9.9",
+  port: 22,
+  user: "u",
+  keyPath: "",
+  hostKeyFingerprint: "",
+  addresses: [] as string[],
+  jump: "",
+  resumeCommand: "",
+  connect: true,
+};
+
 const EXPECTED: Record<string, unknown> = {
   tabCollections: COLS,
   tabBar: { order: ["sid-b", "sid-a"], pinned: [PIN], groupOf: { "sid-a": "c1", "sid-b": "c1" } },
@@ -99,7 +113,7 @@ const EXPECTED: Record<string, unknown> = {
   claudeDir: "/tmp/cfg1-claude",
   keybindings: KEYS,
   accounts: { byMachine: { devbox: { modelByAccount: { a1: "opus" } } } },
-  remote: { enabled: true }, // 只写 enabled 那一格，不再整段写出一个空 hosts
+  remote: { hosts: [LU_HOST] }, // 只插一台，不整段写 remote
 };
 
 /** 一个 realm 的全部写者（一份模块实例）。 */
@@ -135,7 +149,7 @@ async function realm(): Promise<{
       paths.setClaudeDirOverride("/tmp/cfg1-claude"),
       kb.setKeybindings(KEYS),
       acc.setModelForAccount("devbox", "a1", "opus"),
-      remote.patchRemoteConfig({ enabled: true }),
+      remote.patchRemoteConfig({ upsert: [{ key: null, value: LU_HOST }] }),
     ],
   };
 }
@@ -170,7 +184,7 @@ describe("CFG1 J1 · 两个 realm × 全部写者同时写，谁写的键谁的�
         "set claudeDir",
         "set keybindings",
         "set accounts.byMachine.devbox.modelByAccount.a1",
-        "set remote.enabled",
+        "insertin remote.hosts",
       ].sort(),
     );
   });

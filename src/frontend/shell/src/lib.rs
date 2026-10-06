@@ -617,7 +617,9 @@ pub fn run() {
                                     .show()
                                 {
                                     // 通知发不出去也要留痕，别让「说出口」这件事静默失败。
-                                    tracing::warn!("本机后端拒绝的通知发不出去（{e}）：{next_step}");
+                                    tracing::warn!(
+                                        "本机后端拒绝的通知发不出去（{e}）：{next_step}"
+                                    );
                                 }
                             }
                             None => {
@@ -698,7 +700,9 @@ pub fn run() {
             }
             {
                 let replay = replay.clone();
-                crate::probe_relay::install_sink(move |ticket, cell| replay.on_probe(&ticket, cell));
+                crate::probe_relay::install_sink(move |ticket, cell| {
+                    replay.on_probe(&ticket, cell)
+                });
             }
             // host key 自动固化 / 各地址不一 ⇒ 经既有的 `remote-health` 告知（机器页据此刷新）。
             {
@@ -737,60 +741,17 @@ pub fn run() {
                 }
             }
 
-            // SSH-remote Phase 0 (issue #15)：远端是**纯附加**数据源。config.json 的
-            // `remote.enabled = true` 且配置完整 → 在本机那条流之外**额外**起一条
-            // stream_source::run（aggregate：本地 + 远端 session 同时显示）。否则（默认 /
-            // 无 remote 配置）此块不执行，本地路径与历史 bit-for-bit 一致。
-            let remote_cfgs = load_remote_configs();
-            if !remote_cfgs.is_empty() {
-                tracing::info!(
-                    "remote mode ENABLED (additive): {} SSH data source(s) (local backend stream still running)",
-                    remote_cfgs.len()
-                );
-
-                // 每台远端各起一条 stream_source::run（多机 #30），与本机那条流同一个内容收口
-                // （`stream_source::LineIntake` → flush_lines）；会话成品交 `session_book` → 上面那唯一的出口线程。
-                // `connected` 是 connection-healthy signal（每台一份）：stream_loop 收到 backend
-                // hello 时置 true，run() 的重连循环据此判定本次是否连上过（连上过→下次立即快速
-                // 重连，否则指数退避）。远端**不**门控 frontend-ready（实时流，无"初始扫完成"概念；
-                // 本机那条今天也是同一个样子，原来那道等待随本机 watcher 一起删了）。
-                for cfg in remote_cfgs {
-                    tracing::info!(
-                        "  remote host [{}]: {}@{}:{}",
-                        cfg.origin_label(),
-                        cfg.user,
-                        cfg.host,
-                        cfg.port
-                    );
-                    // P2s（C8②）：起法包成**闭包**，把手交给 `backend_control` ——
-                    // 那一层只按 origin 找把手，不认识 ssh（也不该认识）。
-                    // 原来这里是直接 `spawn` 且**把 JoinHandle 丢掉** ⇒ 远端流起了就再也停不下来，
-                    // 「每台机一个开关」在远端那侧根本无从谈起。
-                    let origin = cfg.origin_label();
-                    let replay_for_ssh = replay.clone();
-                    let app_for_ssh = app.handle().clone();
-                    let spawn_one = move || {
-                        let cfg = cfg.clone();
-                        let replay = replay_for_ssh.clone();
-                        let app = app_for_ssh.clone();
-                        tauri::async_runtime::spawn(async move {
-                            let label = cfg.origin_label();
-                            // `connected` 每条流各一份：重起的那条不许继承上一条的健康状态，
-                            // 否则「上次连上过 ⇒ 立即快速重连」这个判断会拿着旧账做决定。
-                            let connected = Arc::new(std::sync::atomic::AtomicBool::new(true));
-                            if let Err(e) =
-                                stream_source::run(cfg, replay, remote_health_out(app), connected).await
-                            {
-                                // S8/S9 会把"connection dropped"做成显眼的前端提示；先大声 log。
-                                tracing::error!("stream_source::run [{label}] exited: {e}");
-                            }
-                        })
-                    };
-                    let first = spawn_one();
-                    backend_control::register_remote(origin, Box::new(spawn_one), first);
-                }
-                // tmux 存活对账（收割）搬进了那台后端的会话账本（`src/backend/observe/session_ledger.rs`）：
-                //   monitor 这一侧零 poller、零收割器。
+            // 远端是在本机那条流之外**额外**的数据源（本地 + 远端会话同时显示）；机器表里每台要连的起一条。
+            // 远端那几条流：启动时与之后每次改机器表（`remote_reconcile`）走同一条对齐路。
+            if REMOTE_CTX
+                .set((replay.clone(), app.handle().clone()))
+                .is_err()
+            {
+                tracing::warn!("remote stream context already set");
+            }
+            let done = reconcile_remote_streams();
+            if !done.started.is_empty() {
+                tracing::info!("remote data source(s) started: {:?}", done.started);
             }
 
             // 焦点同步功能已移除：Windows 11 默认 WT 是单进程多窗口架构，
@@ -888,6 +849,7 @@ pub fn run() {
             open_session_in_new_window,
             // F82a(#56+#47): 设置独立窗口
             open_settings_window,
+            remote_reconcile,
             bring_terminal_to_front,
             // 远端 Tab ↗ 拉前对应本地终端窗口（界面问过那台与本机后端，交来对上的窗口）
             bring_remote_terminal_to_front,
@@ -1056,7 +1018,66 @@ pub(crate) fn remote_health_out(app: tauri::AppHandle) -> stream_source::HealthO
     })
 }
 
+/// 起远端流要的两样上下文（启动时放进来，热加载时取用）。
+static REMOTE_CTX: std::sync::OnceLock<(Arc<event_replay::EventReplay>, tauri::AppHandle)> =
+    std::sync::OnceLock::new();
+
+/// 一台远端的重起闭包：每次调用起一条新的 `stream_source::run`。
+fn remote_respawn(
+    cfg: stream_source::RemoteConfig,
+    replay: Arc<event_replay::EventReplay>,
+    app: tauri::AppHandle,
+) -> backend_control::Respawn {
+    Box::new(move || {
+        let cfg = cfg.clone();
+        let replay = replay.clone();
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let label = cfg.origin_label();
+            let connected = Arc::new(std::sync::atomic::AtomicBool::new(true));
+            if let Err(e) = stream_source::run(cfg, replay, remote_health_out(app), connected).await
+            {
+                tracing::error!("stream_source::run [{label}] exited: {e}");
+            }
+        })
+    })
+}
+
+/// 照 config.json 的机器表对齐远端流（要连的才连；连接参数变了的重起；其余不动）。
+fn reconcile_remote_streams() -> backend_control::Reconciled {
+    let Some((replay, app)) = REMOTE_CTX.get() else {
+        return backend_control::Reconciled::default();
+    };
+    let wanted = load_remote_configs()
+        .into_iter()
+        .map(|cfg| backend_control::WantedRemote {
+            origin: cfg.origin_label(),
+            cfg_key: serde_json::to_string(&cfg).unwrap_or_default(),
+            respawn: remote_respawn(cfg, replay.clone(), app.clone()),
+        })
+        .collect();
+    backend_control::reconcile_remotes(wanted)
+}
+
+/// 机器表改了（增删改 · 某台的「连接这台」）：当场对齐，不要重启 cc-monitor。回这一趟起了 / 停了 / 重起了哪几台。
+#[tauri::command]
+async fn remote_reconcile() -> Result<backend_control::Reconciled, String> {
+    tauri::async_runtime::spawn_blocking(reconcile_remote_streams)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 机器表里**要连的**那几台（某台 `"connect": false` ⇒ 不在里面）。
 pub(crate) fn load_remote_configs() -> Vec<stream_source::RemoteConfig> {
+    load_all_remote_configs()
+        .into_iter()
+        .filter(|(_, connect)| *connect)
+        .map(|(cfg, _)| cfg)
+        .collect()
+}
+
+/// 机器表里的每一台，连同它的「连接这台」（缺省 = 连）。
+pub(crate) fn load_all_remote_configs() -> Vec<(stream_source::RemoteConfig, bool)> {
     let Some(cfg_path) = config::resolve_config_path() else {
         return Vec::new();
     };
@@ -1073,12 +1094,7 @@ pub(crate) fn load_remote_configs() -> Vec<stream_source::RemoteConfig> {
         return Vec::new();
     };
 
-    // 全局 enabled 门控：未显式 true → 关闭（默认本地）。
-    if remote.get("enabled").and_then(|v| v.as_bool()) != Some(true) {
-        return Vec::new();
-    }
-
-    match parse_remote_hosts(remote) {
+    match parse_remote_entries(remote) {
         Ok(cfgs) => cfgs,
         Err(why) => {
             tracing::error!("{} 的 remote 段：{why}", cfg_path.display());
@@ -1093,16 +1109,17 @@ pub(crate) const REMOTE_HOSTS_UNRECOGNIZED: &str =
 
 /// 把 `remote` 对象解析成 host 列表（抽出供单测直接喂 JSON 对象）。**只认 `hosts` 数组**；
 /// 没有它 ⇒ `Err`（旧单对象那一支删了）。重复 label 后缀化去重。
-fn parse_remote_hosts(
+/// 每台连同它的「连接这台」（`"connect": false` ⇒ 不连；缺省 = 连）。
+fn parse_remote_entries(
     remote: &serde_json::Map<String, serde_json::Value>,
-) -> Result<Vec<stream_source::RemoteConfig>, &'static str> {
+) -> Result<Vec<(stream_source::RemoteConfig, bool)>, &'static str> {
     let Some(arr) = remote.get("hosts").and_then(|v| v.as_array()) else {
         return Err(REMOTE_HOSTS_UNRECOGNIZED);
     };
     let host_objs: Vec<&serde_json::Map<String, serde_json::Value>> =
         arr.iter().filter_map(|v| v.as_object()).collect();
 
-    let mut out: Vec<stream_source::RemoteConfig> = Vec::new();
+    let mut out: Vec<(stream_source::RemoteConfig, bool)> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     for obj in host_objs {
         let Some(mut cfg) = parse_host_obj(obj) else {
@@ -1122,7 +1139,8 @@ fn parse_remote_hosts(
             tracing::warn!("remote label 重复，'{base}' 改为 '{unique}'");
             cfg.label = unique;
         }
-        out.push(cfg);
+        let connect = obj.get("connect").and_then(|v| v.as_bool()) != Some(false);
+        out.push((cfg, connect));
     }
     Ok(out)
 }
@@ -1192,10 +1210,11 @@ fn parse_host_obj(
     })
 }
 
-/// 按 label 选台。无匹配 → None。
+/// 按 label 选台（停用连接的那台也选得到：卸载 · 测试连接照样要它的参数）。
 pub(crate) fn load_remote_config_by_label(label: &str) -> Option<stream_source::RemoteConfig> {
-    load_remote_configs()
+    load_all_remote_configs()
         .into_iter()
+        .map(|(c, _)| c)
         .find(|c| c.origin_label() == label)
 }
 
@@ -1365,30 +1384,39 @@ async fn open_session_in_new_window(
     Ok(())
 }
 
-/// F82a（#56+#47）：把「设置」开进独立窗口（SS-3 终态：设置搬独立窗）。单例 `settings` 窗，
-/// 已存在则前置聚焦。**必须 `async`**（同 `open_session_in_new_window`：同步命令建窗死锁，见其
-/// doc + `viewer-window-investigation.md` 五坑之一）。设置窗加载 `settings.html`（独立入口 `src/frontend/ui/entry-settings.ts`）→ `bootstrapSettings`
-/// 精简挂载 SettingsPanel（windowMode）。设置项经既有 config 命令读写（窗口无关），无需 replay/事件流；
-/// 保存时前端广播 `settings-applied`，主窗口 listen 后重读并应用主题/行为（跨窗同步）。
+/// 设置窗（单例 `settings`，关窗只是藏起来）：已在 ⇒ show ＋ 聚焦；不在 ⇒ 建（加载 `settings.html`）。
+/// `target` 是一份不透明的目的地 JSON（页 · 机器 · 栏 · 锚点，前端 `open-settings.ts` 定义与解析）：
+/// 已在的窗收 `settings-target` 事件，新建的窗由初始化脚本带进 `window.__CCM_SETTINGS_TARGET__`。
+/// **必须 `async`**（同步命令建窗会死锁）。默认 960×740、最小 640×480，夹进工作区正中。
 #[tauri::command]
-async fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
+async fn open_settings_window(app: tauri::AppHandle, target: Option<String>) -> Result<(), String> {
     use tauri::Manager;
     let label = SETTINGS_WINDOW_LABEL;
     if let Some(w) = app.get_webview_window(label) {
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
+        if let Some(t) = target {
+            let to = tauri::EventTarget::webview_window(label);
+            if let Err(e) = app.emit_to(to, "settings-target", t) {
+                tracing::warn!("settings target not delivered: {e}");
+            }
+        }
         return Ok(());
     }
     let url = tauri::WebviewUrl::App("settings.html".into());
-    let w = tauri::WebviewWindowBuilder::new(&app, label, url)
+    let mut builder = tauri::WebviewWindowBuilder::new(&app, label, url)
         .title(&copy_text("rsLib.settings.windowTitle", &[]))
-        .inner_size(760.0, 820.0)
-        // 与主窗口 backgroundColor 一致，合成间隙露底为主题深色而非 WebView2 默认白（同 viewer）
-        .background_color(tauri::window::Color(0x2b, 0x2a, 0x27, 0xff))
+        .inner_size(960.0, 740.0)
+        .min_inner_size(640.0, 480.0)
+        .background_color(tauri::window::Color(0x2b, 0x2a, 0x27, 0xff));
+    if let Some(t) = target {
+        let lit = serde_json::to_string(&t).map_err(|e| format!("settings target: {e}"))?;
+        builder = builder.initialization_script(format!("window.__CCM_SETTINGS_TARGET__ = {lit};"));
+    }
+    let w = builder
         .build()
         .map_err(|e| format!("create settings window failed: {e}"))?;
-    // 820 高在 768 高的屏上放不下 ⇒ 夹进工作区；摆在正中（每次开都同一处，不跟着系统默认落点漂）。
     center_window_in_work_area(&w);
     Ok(())
 }

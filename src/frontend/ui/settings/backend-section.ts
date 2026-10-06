@@ -264,6 +264,7 @@ export class BackendSection {
    */
   private readonly hosted: boolean;
   private readonly onLinkSeen: ((origin: string) => void) | undefined;
+  private readonly onChannel: ((origin: string, connected: boolean | null) => void) | undefined;
   /** 后端清单（`backend_machines`）。`null` = 还没问到 —— 那时寄居的四格先不画。 */
   private registered: Set<string> | null = null;
 
@@ -279,9 +280,12 @@ export class BackendSection {
       sessions?: (origin: Origin) => Promise<SessionAccount[] | null>;
       /** 远端那台画出「已连上」之后（连接 · backend 两格已记进账本）叫一声，宿主据它重画那一行与「诊断」。 */
       onLinkSeen?: (origin: string) => void;
+      /** 每次问完那台的连接（`null` ＝ 没问到）。 */
+      onChannel?: (origin: string, connected: boolean | null) => void;
     } = {},
   ) {
     this.onLinkSeen = opts.onLinkSeen;
+    this.onChannel = opts.onChannel;
     this.hosted = opts.hosted ?? false;
     this.confirm = opts.confirm ?? confirmDialog;
     this.sessions = opts.sessions ?? fetchSessionAccountsOrNull;
@@ -331,6 +335,11 @@ export class BackendSection {
   }
 
   /** 画一台：后端清单还没到 ⇒ 等 `refresh`；清单里没有 ⇒ 说没登记；有 ⇒ 问状态。 */
+  /** 重问一台（⋯ →「刷新」）。 */
+  async refreshOrigin(origin: string): Promise<void> {
+    await this.paintStatus(origin);
+  }
+
   private paintOne(origin: string): void {
     if (this.registered === null) return;
     if (!this.registered.has(origin)) {
@@ -746,6 +755,7 @@ export class BackendSection {
       const pid = typeof st.pid === "number" ? `（pid ${st.pid}）` : "";
       state.textContent = on ? copyText("backend.status.connected", { pid }) : copyText("backend.status.notConnected");
       state.dataset.on = String(on);
+      this.onChannel?.(origin, on);
       if (on && !isLocalOrigin(origin)) this.noteRemoteLink(origin);
       // 那个值问那台机器的后端要（**每次现问**，不用上一次的）；问不到就是 `null`。
       let answer: ExitAnswer | null;
@@ -761,6 +771,7 @@ export class BackendSection {
       return on;
     } catch (e) {
       state.textContent = copyText("backend.status.unknown");
+      this.onChannel?.(origin, null);
       console.warn(`[P2s] ${origin} 状态查询失败：${String(e)}`);
       return null;
     }

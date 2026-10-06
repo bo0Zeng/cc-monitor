@@ -216,7 +216,6 @@ export function defaultWorld(): World {
 export function defaultConfig(): Record<string, unknown> {
   return {
     remote: {
-      enabled: true,
       hosts: REMOTES.map((label, i) => ({
         label,
         host: `10.0.0.${11 + i}`,
@@ -227,6 +226,7 @@ export function defaultConfig(): Record<string, unknown> {
         addresses: [],
         jump: "",
         resumeCommand: "",
+        connect: true,
       })),
     },
   };

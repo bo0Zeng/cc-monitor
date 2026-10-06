@@ -13,6 +13,10 @@
     height: var(--dot-size-compact);
   }
 
+  .dot[data-state="up"] {
+    background: var(--success);
+  }
+
   .dot[data-state="running"] {
     background: var(--success);
     animation: breathe var(--dur-breathe) ease-in-out infinite;

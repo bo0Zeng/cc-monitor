@@ -96,6 +96,11 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ("open_session_in_new_window", Own::Window, "开窗"),
     ("open_settings_window", Own::Window, "开窗"),
     (
+        "remote_reconcile",
+        Own::Lifecycle,
+        "机器表热加载：照 monitor 自己的机器表起 / 断 / 重起那几条远端流（流是 monitor 进程里的任务）",
+    ),
+    (
         "open_file_window",
         Own::Window,
         "〔09-28 裁 3〕起文件窗口进程、读它那一行就绪 / 原话（第一屏由窗口进程经通道自己列；本侧只拿交接件）",

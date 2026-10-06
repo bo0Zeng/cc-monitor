@@ -36,6 +36,8 @@ import type { ResolvedHost } from "../ssh-config-reads";
 import { confirmDialog } from "../kit/dialog";
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { copyText } from "../copy-table";
+import { fold } from "../kit/fold";
+import { toggleSwitch } from "../kit/switch";
 import { unavailableReason } from "../control-said";
 
 /** 一行：label（上）+ 宽文本 input（下）。change 触发 onChange。 */
@@ -248,6 +250,9 @@ export class MachineCard {
   private resumeCmdInput!: HTMLInputElement;
   /** 名字 / 地址 / 端口最后一次被接受的值：输入框里不合法的那一格不存，交出去的是这一份。 */
   private accepted = { label: "", host: "", port: 22 };
+  /** 连接这台（开关那一格的当前值）。 */
+  private connect = true;
+  private connectSwitch!: { root: HTMLLabelElement; set(on: boolean): void };
   /** 依当前指纹值显隐「重置为 TOFU」按钮（load / 重置后调用）。 */
   private syncResetFpVisibility!: () => void;
   private testButton!: HTMLButtonElement;
@@ -328,7 +333,16 @@ export class MachineCard {
       addresses: parseAddressLines(this.addressesInput.value),
       jump: this.jumpInput.value.trim(),
       resumeCommand: this.resumeCmdInput.value.trim(),
+      connect: this.connect,
     };
+  }
+
+  /** 拨「连接这台」：存盘（宿主随后当场对齐那条流）。 */
+  setConnect(on: boolean): void {
+    if (this.connect === on) return;
+    this.connect = on;
+    this.connectSwitch.set(on);
+    this.hooks.onChange();
   }
 
   /** 导入别名时填充连接参数（host/port/user/keyPath + label=别名）。 */
@@ -482,6 +496,8 @@ export class MachineCard {
     );
     // F43：重置指纹入口——补 aterm 自曝的坑（服务器合法换 host key 后严格校验会永久
     // 拒连，此前只能手动清空输入框、无风险告知）。仅在已固化指纹时显示。
+    this.fingerprintInput.readOnly = true;
+    this.fingerprintInput.classList.add("machine-fp");
     const resetFpBtn = document.createElement("button");
     resetFpBtn.type = "button";
     resetFpBtn.className = "settings-btn";
@@ -564,7 +580,7 @@ export class MachineCard {
     connRow.className = "settings-row settings-row-actions";
     this.testButton = mkBtn(
       copyText("machineCard.build.test"),
-      "settings-btn-primary",
+      "",
       copyText("machineCard.build.testHint"),
       () => void this.onTestConnection(),
     );
@@ -578,35 +594,12 @@ export class MachineCard {
     );
     connRow.appendChild(pushKeyBtn);
     // F48：在原生文件窗口里打开这一台（老 SFTP 面板退役，终点换成 `file-window.ts`）。
-    connRow.appendChild(
-      mkBtn(
-        copyText("machineCard.build.files"),
-        "",
-        copyText("machineCard.build.filesHint"),
-        () => {
-          const cfg = this.collect();
-          if (!cfg.host || !cfg.user) {
-            this.renderTestResult(null, copyText("machineCard.build.filesNeedHost"));
-            return;
-          }
-          void openFileWindow(cfg);
-        },
-      ),
-    );
-    // F53：在这台机开新 Claude——填工作目录/tmux 名/命令，在远端 tmux 里启动全新会话。
-    connRow.appendChild(
-      mkBtn(
-        copyText("machineCard.build.launch"),
-        "",
-        copyText("machineCard.build.launchHint"),
-        () => this.openLauncherDialog(),
-      ),
-    );
     body.appendChild(connRow);
     this.testResult = document.createElement("div");
     this.testResult.className = "remote-test-result";
     this.testResult.style.display = "none";
     body.appendChild(this.testResult);
+    this.layoutConnection(body);
 
     // ↓↓ 从这里起归「组件」栏 ↓↓
     body = this.componentsPart;
@@ -623,20 +616,11 @@ export class MachineCard {
     );
 
     // ── ① 部署后端 ──
-    const deployTitle = document.createElement("div");
-    deployTitle.className = "settings-label";
-    deployTitle.textContent = copyText("machineCard.deploy.title");
-    body.appendChild(deployTitle);
-    const deployHint = document.createElement("div");
-    deployHint.className = "settings-hint remote-install-info";
-    deployHint.textContent =
-      copyText("machineCard.deploy.intro");
-    body.appendChild(deployHint);
     const deployRow = document.createElement("div");
     deployRow.className = "settings-row settings-row-actions";
     this.backendInstallButton = mkBtn(
       copyText("machineCard.deploy.install"),
-      "settings-btn-primary",
+      "",
       // 跳过的条件是两条（版本已是最新、且落点那个文件在），两个事实各自说话。
       copyText("machineCard.deploy.installHint"),
       () => void this.onDeployBackend(),
@@ -644,7 +628,7 @@ export class MachineCard {
     deployRow.appendChild(this.backendInstallButton);
     this.backendUninstallButton = mkBtn(
       copyText("machineCard.deploy.uninstall"),
-      "",
+      "settings-btn-danger-text",
       copyText("machineCard.deploy.uninstallHint"),
       () => void this.onUninstallBackend(),
     );
@@ -687,6 +671,37 @@ export class MachineCard {
     return card;
   }
 
+  /**
+   * 连接设置的排法：名称 · 地址 / 用户 · 端口 两列，私钥 · 主机指纹通栏，
+   * 备用地址 · 跳板机收进「更多」，下面测试连接 · 推送公钥与结果。
+   */
+  private layoutConnection(body: HTMLElement): void {
+    const rowOf = (el: HTMLElement): HTMLElement => el.closest<HTMLElement>(".settings-row") ?? el;
+    const grid = document.createElement("div");
+    grid.className = "machine-conn-grid";
+    grid.append(rowOf(this.labelInput), rowOf(this.hostInput), rowOf(this.userInput), rowOf(this.portInput));
+    const wide = [rowOf(this.keyPathInput), rowOf(this.fingerprintInput)];
+    for (const w of wide) w.classList.add("machine-conn-wide");
+    grid.append(...wide);
+    const moreBody = document.createElement("div");
+    moreBody.append(rowOf(this.addressesInput), rowOf(this.jumpInput));
+    const more = fold({ title: copyText("machineCard.conn.more"), open: false, body: moreBody });
+    more.classList.add("machine-conn-more");
+    this.connectSwitch = toggleSwitch({
+      label: copyText("machineCard.conn.connect"),
+      on: this.connect,
+      onChange: (on) => {
+        this.connect = on;
+        this.hooks.onChange();
+      },
+    });
+    const hint = document.createElement("div");
+    hint.className = "settings-hint";
+    hint.textContent = copyText("machineCard.conn.connectHint");
+    this.connectSwitch.root.classList.add("machine-conn-switch");
+    body.prepend(grid, more, this.connectSwitch.root, hint);
+  }
+
   /** 折叠/展开本卡片：折叠时只剩 legend（机器名行），隐藏全部字段 + 测试/安装。 */
   private setCollapsed(next: boolean): void {
     this.collapsed = next;
@@ -705,6 +720,8 @@ export class MachineCard {
     this.addressesInput.value = cfg.addresses.join("\n");
     this.jumpInput.value = cfg.jump ?? "";
     this.resumeCmdInput.value = cfg.resumeCommand;
+    this.connect = cfg.connect;
+    this.connectSwitch.set(cfg.connect);
     this.acceptInputs();
     this.syncResetFpVisibility();
   }
@@ -789,6 +806,21 @@ export class MachineCard {
     this.element
       .querySelector(".remote-machine-remove")
       ?.remove();
+  }
+
+  /** ⋯ →「新建会话…」。 */
+  openLauncher(): void {
+    this.openLauncherDialog();
+  }
+
+  /** ⋯ →「打开文件」：没填地址 / 用户 ⇒ 在连接设置下面说一句。 */
+  openFiles(): void {
+    const cfg = this.collect();
+    if (!cfg.host || !cfg.user) {
+      this.renderTestResult(null, copyText("machineCard.build.filesNeedHost"));
+      return;
+    }
+    void openFileWindow(cfg);
   }
 
   /** 点「测试连接」：组本卡片 → 本机后端 `remote-probe`（原 Tauri 命令 `test_remote_connection`）→ 渲染结果。 */

@@ -102,12 +102,12 @@ const SCENES: Record<string, Scene> = {
       await page.waitForFunction((n) => document.querySelectorAll('.backend-row-state[data-on="true"]').length === n, MACHINES.length);
     },
   },
-  /** 设置 → devbox → 足迹：cc-monitor 在那台机器上放了什么、现在在不在。 */
+  /** 设置 → devbox → 文件与数据：cc-monitor 在那台机器上放了什么、现在在不在。 */
   footprint: {
     html: "settings.html",
     async drive(page) {
       await page.locator(".settings-nav button", { hasText: exact(REMOTE.label) }).first().click();
-      await page.locator("button:visible", { hasText: exact(copyText("settingsPanel.machineTab.footprint")) }).first().click();
+      await page.locator(".settings-nav button", { hasText: exact(copyText("settingsPanel.nav.data")) }).first().click();
       await page.waitForSelector(".config-surface-tool");
     },
   },

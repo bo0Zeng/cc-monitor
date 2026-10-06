@@ -362,8 +362,11 @@ export const commands = {
     theme: Record<string, string>;
   }) => invoke<number>("open_file_window", args),
 
-  /** 开独立设置窗口（非浮层）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  open_settings_window: () => invoke<void>("open_settings_window"),
+  /** 开设置窗；`target` 是目的地 JSON（`settings/open-settings.ts`）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  open_settings_window: (target: string | null = null) => invoke<void>("open_settings_window", { target }),
+
+  /** 机器表热加载：照 config.json 的机器表起 / 断 / 重起远端那几条流（不要重启 cc-monitor）。 */
+  remote_reconcile: () => invoke<{ started: string[]; stopped: string[]; restarted: string[] }>("remote_reconcile"),
 
   /** 卸远端后端。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
   uninstall_remote_backend: (args: { cfg: unknown }) =>

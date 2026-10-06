@@ -32,12 +32,14 @@ import { RelayOptinSection } from "./relay-optin-section"; // 「终端」栏：
 import { DiagnosticsSection } from "./diagnostics-section";
 import { makeSkeleton } from "./skeleton";
 import { SettingsRouter } from "./router";
+import { buildMachinePage, localMeta, type MachinePage } from "./machine-page";
+import type { IconName } from "../kit/icon";
 // E62：`markRestartNeeded` —— 本文件两处「重启才生效」的改动此前不给常驻条供货。
 import { createRestartBar, markRestartNeeded } from "./restart-notice";
 import { claudeDirProblem } from "./claude-dir-check";
 import { createUnknownKeysBar, rerenderUnknownKeys } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
 import { getCurrentMachine, setCurrentMachine } from "./machine-context";
-import { LOCAL_ORIGIN } from "../ipc/origin";
+import { LOCAL_ORIGIN, isLocalOrigin } from "../ipc/origin";
 import { toast } from "../kit/toast"; // 行为设置落盘失败出声
 import {
   LOCAL_MACHINE_PAGE_ID,
@@ -65,6 +67,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { BEHAVIOR_TOGGLED_EVENT, SETTINGS_APPLIED_EVENT, type BehaviorToggled } from "./events";
 import { confirmDialog } from "../kit/dialog";
 import { copyText } from "../copy-table";
+import { parseSettingsTarget, type SettingsTarget } from "./open-settings";
 
 /**
  * 字段控件类型：
@@ -152,66 +155,36 @@ export interface SettingsPanelOptions {
 
 // 各模块的 ? 图标 tooltip 文案（原来散在表单里的 .settings-hint 长文本收纳到这里）
 
-const BEHAVIOR_INFO_TEXT = (): string =>
-  copyText("settingsPanel.info.behavior");
+/** 顶层页的图标。 */
+const NAV_ICON: Record<"machines" | "data" | "ext" | "appearance" | "general", IconName> = {
+  machines: "machine",
+  data: "files",
+  ext: "plug",
+  appearance: "text",
+  general: "sliders",
+};
 
-const KEYBINDINGS_INFO_TEXT = (): string =>
-  copyText("settingsPanel.info.keybindings");
+/** 顶层页的 id（目的地的 `page` 用同一套）。 */
+const PAGE = {
+  machines: "machines",
+  data: "data",
+  ext: "ext",
+  appearance: "appearance",
+  general: "general",
+  logs: "logs",
+} as const;
 
-// S2：原 `INTEGRATION_INFO_TEXT` 是一段合写的文案，而它描述的两件事在新 IA 里**去了不同的页**
-// ——「Claude 数据目录」是 monitor 自己的配置（应用页），「PowerShell 集成」是某台机器上的
-// 启动器（机器页）。合着搬会让两页各有一半文案对不上眼前的内容，故按语义拆开。
-const DATA_DIR_INFO_TEXT = (): string =>
-  copyText("settingsPanel.info.dataDir");
-// 「终端集成」并进了「别名」那一块（Windows 上它是 PowerShell 那一侧的别名块），说明跟着改口。
-const TERMINAL_INTEGRATION_INFO_TEXT = (): string =>
-  copyText("settingsPanel.info.aliases");
+const SETTINGS_LANDING_ROUTE = PAGE.machines;
 
-const APPEARANCE_INFO_TEXT = (): string =>
-  copyText("settingsPanel.info.appearance");
+/** 目的地的高亮停留多久。 */
+export const SETTINGS_HIGHLIGHT_MS = 1500;
 
-// TL1 那一句改过之后这一段整段进表；做成取值器（模块顶层不留取文口调用）。
-const REMOTE_INFO_TEXT = (): string =>
-  copyText("settingsPanel.info.remote");
+/** 壳把目的地交给已开着的设置窗用的事件。 */
+const SETTINGS_TARGET_EVENT = "settings-target";
 
-// 🔴 改名 ＋ `§2.4` 纪律：两块的名字跟着改（「诊断」→「日志」·
-// 「数据存储」→「数据位置」），并且把 `tracing` 这个**内部标识符**拿掉
-//（那一族 —— 用户不需要知道我们用的是哪个日志库）。
-// 两块各成一个子页之后，这段说明也拆成两段，各归各页。
-const LOGS_INFO_TEXT = (): string =>
-  copyText("settingsPanel.info.logs");
-const DATA_PLACES_INFO_TEXT = (): string =>
-  copyText("settingsPanel.info.dataPlaces");
-
-// 「应用」页自己剩下的两块（行为 / 快捷键）的说明。原来它们拼在「外观」那个折叠组的 ⓘ 里
-// （F82b：外观并了 行为 / 快捷键），折叠组撤掉之后各归各页。
-const APP_PAGE_INFO_TEXT = (): string =>
-  copyText("settingsPanel.info.appPage", { behavior: BEHAVIOR_INFO_TEXT(), keybindings: KEYBINDINGS_INFO_TEXT() });
-// S2：机器页的文案 = 怎么连上远端 + 这台机上的启动器集成。
-const MACHINES_PAGE_INFO_TEXT = (): string =>
-  copyText("settingsPanel.info.machinesPage", { remote: REMOTE_INFO_TEXT(), aliases: TERMINAL_INTEGRATION_INFO_TEXT() });
-// S2 删除：原 `REMOTE_GROUP_INFO_TEXT` 描述的是那个「留空占位」的空组（4 组之一，
-// 后被 A3 借去放账号）。它逐字写着「当前尚无独立项…留空占位」「在上面的『连接』组」——
-// 那个组和那个「上面」都不存在了，留着就是一句会误导人的话。
-
-/**
- * 「应用」下的三个**子页**（`parentId: "app"`）。
- *
- * 原来是「应用」页里两个默认收起的折叠组（外观 · 日志与数据）叠在路由分页之上：
- * 找「字体大小」要 4 步（点应用 → 往下找 → 展开外观 → 找到那一行）。两套隐藏机制叠着 ⇒
- * 用**已有的** `parentId` 一层子项替掉折叠组：点「外观」就到。
- */
-const APP_SUBPAGES = () =>
-  ({
-  appearance: { id: "app-appearance", title: copyText("settingsPanel.nav.appearance") },
-  logs: { id: "app-logs", title: copyText("settingsPanel.nav.logs") },
-  data: { id: "app-data", title: copyText("settingsPanel.nav.dataPlaces") },
-}) as const;
-
-/** S2：落地页 id。指定为「机器」。 */
-const SETTINGS_LANDING_ROUTE = "machines";
+/** 目的地 `tab` → 机器页里的栏。 */
+const MACHINE_TAB_OF_TARGET: Record<string, string> = { acct: "acct", config: "config" };
 /** 顶层「扩展」页的路由 id。 */
-const EXT_PAGE_ID = "ext";
 
 export class SettingsPanel {
   private el: HTMLElement;
@@ -226,7 +199,7 @@ export class SettingsPanel {
   private perMachineBlocks: {
     appliesTo: "local" | "remote" | "both";
     /** S4b-3b-2：这块归详情页的哪一栏。`footprint` 是新增的第五栏。 */
-    tab: "acct" | "term" | "footprint";
+    tab: "acct" | "term" | "data";
     el: HTMLElement;
     /**
      * ST1「延后加载」：这一块的第一发 I/O。**某台机器的子页第一次可见时**才调。
@@ -262,10 +235,16 @@ export class SettingsPanel {
   /** 本次打开以来，哪几页已经放过 I/O 了。`open()` 会清空它（重开要看新读数）。 */
   private readonly pagesLoaded = new Set<string>();
   /** S4b-3b-2：pageId → 该页「账号 / 终端 / 足迹」三栏的容器。 */
-  private machineTabSlots = new Map<
-    string,
-    { acct: HTMLElement; term: HTMLElement; footprint: HTMLElement }
-  >();
+  private machineTabSlots = new Map<string, { acct: HTMLElement; term: HTMLElement }>();
+  /** 机器页 id → 它的卡头与两栏。 */
+  private readonly machinePages = new Map<string, MachinePage>();
+  /** 机器页 id → 它的分栏。 */
+  /** 还没落地的目的地（那台的页还没注册上来时留着，注册了再落）。 */
+  private pendingTarget: SettingsTarget | null = null;
+  /** 各台最近一次问到的连接（导航点照它画；机器页后注册的也照它补）。 */
+  private readonly channelOf = new Map<string, boolean | null>();
+  /** 机器表那一趟读完了（成或败）：还没注册的机器页不会再来了。 */
+  private machinePagesSettled = false;
   /** 当前编辑中的 theme（实时预览用） */
   private current: ThemeConfig = {};
   /** 盘上那一份（打开时读的，之后每次落盘跟着更新）—— 判「还有没落的那一格」用。 */
@@ -338,15 +317,14 @@ export class SettingsPanel {
     this.el = this.build();
     document.body.appendChild(this.el);
     if (this.windowMode) this.installWindowLifecycle();
+    // 新建的窗：壳把目的地放在初始化脚本里。
+    this.goTo(parseSettingsTarget((window as { __CCM_SETTINGS_TARGET__?: unknown }).__CCM_SETTINGS_TARGET__));
     // issue #5: Esc 由 KeybindingDispatcher 统一调度。本面板 open 时
     // pushOverlay 自己，close 时 pop —— 多弹层共存按 LIFO 顺序关。
   }
 
-  /** dispatcher overlay 接口 */
-  handleEsc(): void {
-    // 全即时之后没有「取消 = 回滚」这回事：Esc 与 X 同一条路。
-    if (this.isOpen) this.requestClose();
-  }
+  /** 弹层栈底：设置窗是窗口不是浮层，Esc 不关它（只关压在它上面的那一层）；关窗用 × 或 Ctrl+W。 */
+  handleEsc(): void {}
 
   /**
    * **T07 审计⑤：`safeBlock` 的隔离原先只覆盖生命周期前半。**
@@ -395,9 +373,8 @@ export class SettingsPanel {
     void this.backendSection?.refresh();
     // issue #5: 同步快捷键覆盖数 chip（编辑器关闭时也可能改了）
     this.refreshKbChip();
-    // S2：每次打开回落地页。**刻意不记忆上次停在哪一页** —— 既然计划把「机器」定为落地页，
-    // 记忆就会让这个决定从第二次打开起失效。
-    this.router.navigate(SETTINGS_LANDING_ROUTE);
+    // 同一次运行里再打开：停在上次离开的那一页；带目的地的直达那里。
+    this.applyPendingTarget();
     // ⚠ `navigate()` 在「已经在这一页」时会**提前返回、不通知订阅者**（同页不重复通知，
     //   那条是对的：订阅者会做搬 DOM 这类有代价的事）。⇒ 第二次打开时落地页的 flush
     //   必须在这里补一刀，否则它只在**第一次**打开时发生过。
@@ -598,6 +575,15 @@ export class SettingsPanel {
    *   那时系统 X 退回 Tauri 的默认行为（销毁），只是少了拦截。
    */
   private installWindowLifecycle(): void {
+    window.addEventListener("keydown", (ev) => {
+      if ((ev.ctrlKey || ev.metaKey) && !ev.altKey && !ev.shiftKey && ev.key.toLowerCase() === "w") {
+        ev.preventDefault();
+        this.requestClose();
+      }
+    });
+    void Promise.resolve()
+      .then(() => listen<unknown>(SETTINGS_TARGET_EVENT, (e) => this.goTo(parseSettingsTarget(e.payload))))
+      .catch((e: unknown) => console.warn("[settings] 挂目的地监听失败：", e));
     try {
       const w = getCurrentWindow();
       void w
@@ -627,6 +613,65 @@ export class SettingsPanel {
     this.autoFollowCheckbox.checked = b.autoFollowUserActive;
     this.bringFrontCheckbox.checked = b.bringMonitorToFrontOnUserActive;
     if (!this.autoFollowCheckbox.disabled) this.updateBringFrontEnabled(); // 还在读配置（整组禁用）时不提前放开
+  }
+
+  /** 带目的地打开：直达那一页（那一栏），高亮那一节 1.5 秒。认不出的格忽略。 */
+  goTo(target: SettingsTarget | null): void {
+    if (!target) return;
+    this.pendingTarget = target;
+    this.applyPendingTarget();
+  }
+
+  /** 导航里那台机器前的点：连着 · 离线 · 没问到。 */
+  private paintNavDot(origin: string, connected: boolean | null): void {
+    this.channelOf.set(origin, connected);
+    const local = isLocalOrigin(origin);
+    const pageId = local ? LOCAL_MACHINE_PAGE_ID : this.remoteSection?.pageIdOfMachine(origin);
+    if (!pageId) return;
+    const machine = local ? copyText("remote.cards.local") : origin;
+    this.remoteSection?.setConnected(pageId, connected);
+    if (!local && this.remoteSection?.isDisabledPage(pageId)) {
+      this.machinePages.get(pageId)?.setDisabled(true);
+      this.router.setNavDot(pageId, "exited", copyText("settingsNav.dot.disabled", { machine }));
+      return;
+    }
+    this.machinePages.get(pageId)?.setDisabled(false);
+    this.machinePages.get(pageId)?.setConnected(connected);
+    if (connected === true) this.router.setNavDot(pageId, "up", copyText("settingsNav.dot.up", { machine }));
+    else if (connected === false) this.router.setNavDot(pageId, "failed", copyText("settingsNav.dot.down", { machine }));
+    else this.router.setNavDot(pageId, "unknown", copyText("settingsNav.dot.unknown", { machine }));
+  }
+
+  private applyPendingTarget(): void {
+    const t = this.pendingTarget;
+    if (!t) return;
+    let pageId: string | null = null;
+    if (t.machine) {
+      pageId = isLocalOrigin(t.machine) ? LOCAL_MACHINE_PAGE_ID : (this.remoteSection?.pageIdOfMachine(t.machine) ?? null);
+      if (!pageId || !this.router.has(pageId)) {
+        // 机器页还没注册上来（读机器表是异步的）⇒ 留着，注册了再落；列表都读完了还没有 ⇒ 落在机器列表。
+        if (!this.machinePagesSettled) return;
+        pageId = PAGE.machines;
+      }
+    } else if (t.page && (Object.values(PAGE) as string[]).includes(t.page)) {
+      pageId = t.page;
+    }
+    this.pendingTarget = null;
+    if (!pageId) return;
+    this.router.navigate(pageId);
+    const tabs = this.machinePages.get(pageId)?.tabs;
+    const tabId = t.tab ? MACHINE_TAB_OF_TARGET[t.tab] : undefined;
+    if (tabs && tabId) tabs.navigate(`${pageId}#${tabId}`);
+    const page = this.router.pageOf(pageId);
+    if (!page) return;
+    const spot =
+      (t.anchor ? [...page.querySelectorAll<HTMLElement>("[data-anchor]")].find((e) => e.dataset.anchor === t.anchor) : null) ??
+      (tabs && tabId ? tabs.navButtonOf(`${pageId}#${tabId}`) : null) ??
+      page.querySelector<HTMLElement>(":scope > .settings-page-head");
+    if (!spot) return;
+    spot.scrollIntoView?.({ block: "nearest" });
+    spot.classList.add("settings-highlight");
+    window.setTimeout(() => spot.classList.remove("settings-highlight"), SETTINGS_HIGHLIGHT_MS);
   }
 
   /**
@@ -805,40 +850,14 @@ export class SettingsPanel {
   private build(): HTMLElement {
     const root = document.createElement("div");
     root.className = "settings-panel";
-
-    root.appendChild(this.buildHeader());
-    // 🔴 P12：「配置里有 app 不认识的键」常驻条。**放在最上面、任何一页之前** ——
-    // 它说的是「你写下的某个设置根本没生效」，比面板里任何一格都更该先被看见。
-    // 同 S7 那条：它是状态不是事件，所以不属于任何一页，也刻意没有关闭按钮。
-    root.appendChild(createUnknownKeysBar());
     root.appendChild(this.buildBody());
-    // ★ S7：「有改动待重启」常驻条。**放在 footer 之上、面板底部** —— 它是状态，
-    // 不是某一页的事（改远端配置和改诊断开关都会点亮它），所以不属于任何一页。
-    // 空时整块不渲染；**刻意没有关闭按钮**（见 restart-notice.ts 头注）。
-    root.appendChild(createRestartBar());
-    // 🔴 页脚（恢复默认 / 取消 / 保存）退场：**保存模型统一成全即时**。
-    //   原来外观要点「保存」才落、行为开关与各块自己即时写，界面上长得一样（`§6` #2 的病）。
-    //   「恢复默认」是外观的事，挪进「外观」子页；「取消」「保存」没了（改了就是改了）。
-
+    // 两条常驻条与保存提示住内容区顶（导航不受影响），排在窄窗下拉之后。
+    const content = this.router.contentElement;
+    const anchor = content.querySelector(":scope > .settings-nav-select");
+    const top = [createUnknownKeysBar(), createRestartBar(), this.banner];
+    if (anchor) anchor.after(...top);
+    else content.prepend(...top);
     return root;
-  }
-
-  private buildHeader(): HTMLElement {
-    const header = document.createElement("div");
-    header.className = "settings-header";
-    const title = document.createElement("span");
-    title.textContent = copyText("settingsPanel.header.title");
-    header.appendChild(title);
-
-    const close = document.createElement("button");
-    close.className = "settings-close";
-    close.type = "button";
-    close.textContent = copyText("settingsPanel.header.close");
-    close.title = copyText("settingsPanel.header.closeHint");
-    // ST1：页头 × 与系统 X 同一条路 —— 有没保存的改动先拦一下。
-    close.addEventListener("click", () => this.requestClose());
-    header.appendChild(close);
-    return header;
   }
 
   /**
@@ -852,127 +871,82 @@ export class SettingsPanel {
     isLocal: boolean,
     pageId?: string,
   ): void {
-    for (const b of this.perMachineBlocks) {
+    const movable = this.perMachineBlocks.filter((b) => b.tab !== "data");
+    for (const b of movable) {
       b.el.hidden =
         b.appliesTo !== "both" && b.appliesTo !== (isLocal ? "local" : "remote");
     }
     const slots = pageId ? this.machineTabSlots.get(pageId) : undefined;
     if (slots) {
       // S4b-3b-2：分栏页 —— 每块按 `tab` 归到「账号 / 终端 / 足迹」栏里。
-      for (const b of this.perMachineBlocks) slots[b.tab].appendChild(b.el);
+      for (const b of movable) slots[b.tab as "acct" | "term"].appendChild(b.el);
       return;
     }
     // 没有分栏（本机页、以及 RemoteSection 挂掉时的兜底落点）→ 整块搬，形态同 S4b-2。
-    for (const b of this.perMachineBlocks) this.perMachineSlot.appendChild(b.el);
+    for (const b of movable) this.perMachineSlot.appendChild(b.el);
     page.appendChild(this.perMachineSlot);
   }
 
-  /**
-   * S4b-3b-2：一台远端机器的四栏页。
-   *
-   * 「连接 / 组件」来自 `MachineCard` 拆出的两块；「账号 / 终端 / 足迹」是 per-machine 那几块
-   * 分节的落点 —— 它们是**单例**，由 `movePerMachineTo` 在切页时搬进当前这一页的对应栏。
-   */
-  private buildMachineTabs(
-    pageId: string,
-    parts: MachineCardParts,
-  ): HTMLElement {
-    const tabs = new SettingsRouter({
-      landingId: `${pageId}#conn`,
-      orientation: "horizontal",
-      hidePageHeader: true,
+  /** 一台机器的页（本机远端同形）：卡头（连接设置 · 这台上的 cc-monitor）＋ 账号 · 别名与配置文件。 */
+  private buildMachinePage(pageId: string, title: string, parts?: MachineCardParts): MachinePage {
+    const local = pageId === LOCAL_MACHINE_PAGE_ID;
+    const origin = local ? LOCAL_ORIGIN : (this.remoteSection?.originOfPage(pageId) ?? "");
+    const cc: HTMLElement[] = [];
+    if (origin && this.backendSection) {
+      try {
+        cc.push(this.backendSection.cellsFor(origin));
+      } catch (e) {
+        // 那几格没建起来不许把这一页带走（那台退到后端清单的尾巴里）。
+        console.warn("[settings] 这台上的 cc-monitor 那几格没建起来：", e);
+      }
+    }
+    if (parts) cc.push(parts.components);
+    const page = buildMachinePage({
+      pageId,
+      name: title,
+      meta: local ? localMeta() : (this.remoteSection?.metaOfPage(pageId) ?? ""),
+      connection: parts?.connection,
+      ccMonitor: cc,
+      menu: () => this.remoteSection?.menuFor(pageId) ?? [],
     });
-    tabs.addRoute({ id: `${pageId}#conn`, title: copyText("settingsPanel.machineTab.connection"), element: parts.connection });
-    tabs.addRoute({ id: `${pageId}#comp`, title: copyText("settingsPanel.machineTab.components"), element: parts.components });
-    const acct = document.createElement("div");
-    const term = document.createElement("div");
-    // 「终端」栏：这台终端认识的命令（别名块）排在最前面，本机远端同一个位置（per-machine 那几块由 `movePerMachineTo` 接在它后面）。
-    term.appendChild(parts.terminal);
-    const footprint = document.createElement("div");
-    tabs.addRoute({ id: `${pageId}#acct`, title: copyText("settingsPanel.machineTab.accounts"), element: acct });
-    tabs.addRoute({ id: `${pageId}#term`, title: copyText("settingsPanel.machineTab.terminal"), element: term });
-    // 步 14a（那张图 · `§10.1`）：**第五栏「足迹」**。
-    // ⚠ 它是**新增一栏**，不是把已有的某一栏搬个位置 —— 所以 `§10.4` 把它单列成 `14a`。
-    tabs.addRoute({ id: `${pageId}#footprint`, title: copyText("settingsPanel.machineTab.footprint"), element: footprint });
-    this.machineTabSlots.set(pageId, { acct, term, footprint });
-    return tabs.element;
+    if (parts) page.slots.config.appendChild(parts.terminal);
+    this.machinePages.set(pageId, page);
+    this.machineTabSlots.set(pageId, { acct: page.slots.acct, term: page.slots.config });
+    if (origin) page.setConnected(this.channelOf.get(origin) ?? null);
+    return page;
   }
 
   private buildBody(): HTMLElement {
     const body = document.createElement("div");
     body.className = "settings-body";
 
-    // 顶部状态条（保存提示 / 重启提示等）
     this.banner = document.createElement("div");
     this.banner.className = "settings-banner";
-    body.appendChild(this.banner);
 
-    // ★ S2（settings-ia）：从「一列 4 个折叠组」改成**左导航 + 分页**。
-    //
-    // 原来的 4 组（连接 / 外观 / 账号 / 集成）**不在同一抽象层** —— 「连接」是动作、
-    // 「外观」「账号」是切面、「集成」是其它。判据不统一的后果是可量化的：14 个叶子里
-    // **8 个挤在「集成」**，因为新东西没地方放就往那儿扔。
-    //
-    // 新判据（可机械执行）：**每个顶层 = 一类「被设置的对象」**。
-    // 新功能来了只问一句：**它改的是谁的状态。**
-    //
-    // 「集成」这个名字就此消失 —— 不是改叫「部署」：那 8 个叶子里真属部署的只有 1 个。
-    //
-    // **本轮只搬不改**：每个块的内部实现、构造时机都一字不动（见下面「构造时机」一段）。
-    // 机器列表页 → S3；机器详情页四栏 → S4；改动足迹页扩充 → S5；cc-bus 移出 → S6。
     const router = new SettingsRouter({ landingId: SETTINGS_LANDING_ROUTE });
     this.router = router;
 
-    // ---- 应用：改 monitor 自己的状态 ----
-    const appPage = document.createElement("div");
-    appPage.appendChild(this.safeBlock(copyText("settingsPanel.group.behavior"), () => this.buildBehaviorGroup()));
-    appPage.appendChild(
+    // 页按导航顺序注册：机器（＋ 各台）· 文件与数据 · 扩展 · 外观 · 通用（＋ 日志）。
+    //   各页内容先建好，注册集中在机器页之后（机器子页异步注册，插在「机器」后面）。
+    const appearancePage = document.createElement("div");
+    appearancePage.appendChild(this.buildGroup(copyText("settingsPanel.group.fonts"), FIELDS().filter((f) => f.group === "font")));
+    appearancePage.appendChild(this.buildGroup(copyText("settingsPanel.group.colors"), FIELDS().filter((f) => f.group === "color")));
+    appearancePage.appendChild(
       this.safeBlock(copyText("settingsPanel.group.keybindings"), () => this.buildKeybindingsGroup()),
     );
-    router.addRoute({
-      id: "app",
-      title: copyText("settingsPanel.nav.app"),
-      element: appPage,
-      infoTooltip: APP_PAGE_INFO_TEXT(),
-    });
-
-    // 🔴 原来这里是两个默认收起的折叠组（外观 · 日志与数据）。
-    //   换成「应用」下的三个子页（`APP_SUBPAGES`）：点「外观」就到，不再「翻页 ＋ 展开」两层藏。
-    // ① 外观（字体 ＋ 颜色）。
-    const appearancePage = document.createElement("div");
-    appearancePage.appendChild(
-      this.buildGroup(
-        copyText("settingsPanel.group.fonts"),
-        FIELDS().filter((f) => f.group === "font"),
-      ),
-    );
-    appearancePage.appendChild(
-      this.buildGroup(
-        copyText("settingsPanel.group.colors"),
-        FIELDS().filter((f) => f.group === "color"),
-      ),
-    );
-    // 「高级」那一折：状态栏 ctx% 的模型上限覆盖表（config.json `contextLimits`）。
-    appearancePage.appendChild(
-      this.safeBlock(copyText("contextLimits.editor.title"), () => new ContextLimitsSection().element, { untitled: true }),
-    );
-    // 原页脚的「恢复默认」：它只管外观，搬到外观这一页。
     const resetRow = document.createElement("div");
     resetRow.className = "settings-row settings-row-end";
     resetRow.appendChild(
       this.makeBtn(copyText("settingsPanel.appearance.reset"), "secondary", () => void this.resetAll()),
     );
     appearancePage.appendChild(resetRow);
-    router.addRoute({
-      ...APP_SUBPAGES().appearance,
-      element: appearancePage,
-      parentId: "app",
-      infoTooltip: APPEARANCE_INFO_TEXT(),
-    });
 
-    // ② 日志。🔴：「诊断」→「日志」。**让名**给 `§5.3` 那个改名，否则设置面板里
-    // 会同时有两个「诊断」（一个是「这台机器还缺什么」，一个是 monitor 的日志开关）。
-    // 这一页只有这一块 ⇒ 块不再自带标题（页头已经是「日志」，两个同名标题叠着是重名，`§8` #11）。
+    const generalPage = document.createElement("div");
+    generalPage.appendChild(this.safeBlock(copyText("settingsPanel.group.behavior"), () => this.buildBehaviorGroup()));
+    generalPage.appendChild(
+      this.safeBlock(copyText("contextLimits.editor.title"), () => new ContextLimitsSection().element, { untitled: true }),
+    );
+
     const logsPage = document.createElement("div");
     logsPage.appendChild(
       this.safeBlock(
@@ -985,22 +959,7 @@ export class SettingsPanel {
         { untitled: true },
       ),
     );
-    router.addRoute({
-      ...APP_SUBPAGES().logs,
-      element: logsPage,
-      parentId: "app",
-      infoTooltip: LOGS_INFO_TEXT(),
-    });
-    this.loadOnFirstVisit(APP_SUBPAGES().logs.id, () => this.logsSection?.loadNow());
 
-    // ③ 数据位置（＋ Claude 数据目录：「monitor 读哪、存哪」两件位置上的事放一页）。
-    // 🔴 步 3b（差项 2 · `§10.4` 第一刀）：**这一块原先的 `new` 在 `safeBlock` 外面。**
-    // 原文是 `const dataSection = new DataSection(...)` 裸构造，`safeBlock` 只包住了
-    // `() => dataSection.element` 那个 thunk —— 而 thunk 不可能抛。
-    // ⇒ 这一块**没有 T07 那层隔离**：`§9` 里写着「`safeBlock` 每块一个 catch 不动」，
-    //   那条纪律在这里**漏了一块**。现在 `new` 挪进 thunk 里，与它的九个兄弟同形。
-    // ⚠ 字段仍然在 build 时赋值（`open()` 那边 `?.refresh()` 靠它）——
-    //   构造失败时留 `undefined`，与 `remoteSection` 那一格同一个约定。
     const dataPage = document.createElement("div");
     dataPage.appendChild(this.buildDataGroup());
     dataPage.appendChild(
@@ -1014,14 +973,6 @@ export class SettingsPanel {
         { untitled: true },
       ),
     );
-    router.addRoute({
-      ...APP_SUBPAGES().data,
-      element: dataPage,
-      parentId: "app",
-      infoTooltip: DATA_DIR_INFO_TEXT() + "\n\n" + DATA_PLACES_INFO_TEXT(),
-    });
-    // 步 2：I/O 挂到「这一页首次可见」上 —— 从「应用」一页三发，拆成两个子页各自的那几发。
-    this.loadOnFirstVisit(APP_SUBPAGES().data.id, () => this.dataSection?.loadNow());
 
     // ---- 机器：改**某一台机器**的状态 ----
     //
@@ -1041,6 +992,7 @@ export class SettingsPanel {
         headless: true,
         hosted: true,
         onLinkSeen: (origin) => this.remoteSection?.noteLedgerChanged(origin),
+        onChannel: (origin, connected) => this.paintNavDot(origin, connected),
       });
       this.backendSection = backend;
     } catch (e) {
@@ -1061,8 +1013,6 @@ export class SettingsPanel {
         const sec = new RemoteSection({
           headless: true,
           rowExtras: backend && {
-            head: () => BackendSection.columnHead(),
-            cells: (origin) => backend.cellsFor(origin),
             // 后端清单里有、机器列表里没有的那几台（重名被后缀化 / 列表还没读出来）。
             tail: () => backend.element,
           },
@@ -1088,27 +1038,47 @@ export class SettingsPanel {
               // 复用 `SettingsRouter`（横向 + 无页头）而不是另造 tab 原语 ——
               // 「同一时刻只有一栏可见 + aria + 方向键 + 不重复注册」与左侧导航
               // 逐条相同，另造等于把这套逻辑抄第二遍、然后各自漂。
-              const pageEl = parts ? this.buildMachineTabs(id, parts) : element;
-              router.addRoute({ id, title, element: pageEl, parentId: "machines" });
+              void element;
+              const pageEl = this.buildMachinePage(id, title, parts).element;
+              router.addRoute({ id, title, element: pageEl, parentId: PAGE.machines, hideHead: true });
               // S4b-2：本机页一出现就让那几块 per-machine 分节先落在它上面。
               // 这与 `machine-context` 的初始值（本机 = `LOCAL_ORIGIN`）对齐 —— 否则 slot 在
               // 用户第一次点进某台机器之前是**游离的**（不在文档里，谁也找不到它）。
-              if (id === LOCAL_MACHINE_PAGE_ID) this.movePerMachineTo(element, true);
+              if (id === LOCAL_MACHINE_PAGE_ID) this.movePerMachineTo(pageEl, true, id);
+              const origin = id === LOCAL_MACHINE_PAGE_ID ? LOCAL_ORIGIN : this.remoteSection?.originOfPage(id);
+              if (origin) this.paintNavDot(origin, this.channelOf.get(origin) ?? null);
+              this.applyPendingTarget();
             },
             removeMachinePage: (id) => {
               router.removeRoute(id);
+              this.machinePages.delete(id);
+              this.machineTabSlots.delete(id);
               // 机器没了，它那一页的登记与「放过了没有」一起清 —— 留着就是死条目，
               // 而且同名机器再出现时会被当成「这一页已经放过了」。
               this.pageLoaders.delete(id);
               this.pagesLoaded.delete(id);
             },
             navigateToMachinePage: (id) => router.navigate(id),
-            renameMachinePage: (id, title) => router.setTitle(id, title),
+            renameMachinePage: (id, title) => {
+              router.setTitle(id, title);
+              this.machinePages.get(id)?.setTitle(title);
+              const meta = this.remoteSection?.metaOfPage(id);
+              if (meta !== undefined && meta !== null) this.machinePages.get(id)?.setMeta(meta);
+            },
+            openMachineSection: (id, section) => {
+              router.navigate(id);
+              this.machinePages.get(id)?.open(section);
+            },
+            refreshMachine: (origin) => void this.backendSection?.refreshOrigin(origin),
+            machinesReconciled: () => {
+              for (const [origin, c] of this.channelOf) this.paintNavDot(origin, c);
+              void this.backendSection?.refresh();
+            },
           },
         });
         this.remoteSection = sec;
         return sec.element;
-      }),
+      }, { untitled: true }),
     );
     // ★ S4b-2：这四块**不再挂在列表页上**，而是跟着「当前在看哪台机器」走 ——
     // 它们讲的本来就是某一台机器的事（S4a 已把四份各自为政的 origin 选择器收口）。
@@ -1196,7 +1166,7 @@ export class SettingsPanel {
       //   （`ConfigSurfaceSection.readFootprint` / `answersFor` 头注）。
       {
         appliesTo: "both",
-        tab: "footprint",
+        tab: "data",
         // 字段 `footprintSection` 删了：它唯一的读者（每台机器页各放一发）随上面那次合批一起没了。
         ...this.loadableBlock(copyText("settingsPanel.group.footprint"), () => new ConfigSurfaceSection()),
       },
@@ -1205,11 +1175,11 @@ export class SettingsPanel {
       //   回声对上才画（形状与理由在 `drift-ledger-section.ts` 头注「按机器分」一节）。
       {
         appliesTo: "both",
-        tab: "footprint",
+        tab: "data",
         ...this.loadableBlock(copyText("settingsPanel.group.unknown"), () => new DriftLedgerSection()),
       },
     ];
-    for (const b of this.perMachineBlocks) this.perMachineSlot.appendChild(b.el);
+    for (const b of this.perMachineBlocks) (b.tab === "data" ? dataPage : this.perMachineSlot).appendChild(b.el);
     // ★ 兜底落点：先挂在列表页上。
     //
     // 这不是"顺手"—— 它是 `safeBlock` 隔离的一部分。`RemoteSection` 是唯一活的同步
@@ -1253,7 +1223,13 @@ export class SettingsPanel {
       id: "machines",
       title: copyText("settingsPanel.nav.machines"),
       element: machinesPage,
-      infoTooltip: MACHINES_PAGE_INFO_TEXT(),
+      icon: NAV_ICON.machines,
+      headActions: this.remoteSection?.headActions() ?? [],
+    });
+    router.addRoute({ id: PAGE.data, title: copyText("settingsPanel.nav.data"), element: dataPage, icon: NAV_ICON.data, gapBefore: true });
+    this.loadOnFirstVisit(PAGE.data, () => {
+      this.dataSection?.loadNow();
+      for (const b of this.perMachineBlocks) if (b.tab === "data") b.load?.();
     });
 
     // ---- 扩展：改**跨机器的 skill / MCP**（一类被设置的对象，不挂在某台机器下面）----
@@ -1270,9 +1246,13 @@ export class SettingsPanel {
         { untitled: true },
       ),
     );
-    router.addRoute({ id: EXT_PAGE_ID, title: copyText("settingsPanel.nav.ext"), element: extPage });
+    router.addRoute({ id: PAGE.ext, title: copyText("settingsPanel.nav.ext"), element: extPage, icon: NAV_ICON.ext });
+    router.addRoute({ id: PAGE.appearance, title: copyText("settingsPanel.nav.appearance"), element: appearancePage, icon: NAV_ICON.appearance, gapBefore: true });
+    router.addRoute({ id: PAGE.general, title: copyText("settingsPanel.nav.general"), element: generalPage, icon: NAV_ICON.general });
+    router.addRoute({ id: PAGE.logs, title: copyText("settingsPanel.nav.logs"), element: logsPage, parentId: PAGE.general });
+    this.loadOnFirstVisit(PAGE.logs, () => this.logsSection?.loadNow());
     router.onNavigate((id) => {
-      if (id === EXT_PAGE_ID) this.extSection?.loadNow();
+      if (id === PAGE.ext) this.extSection?.loadNow();
     });
 
     // 🔴 **顶层「改动足迹」页没了。**
@@ -1349,7 +1329,7 @@ export class SettingsPanel {
   private loadPerMachineOnce(): void {
     if (this.perMachineLoaded) return;
     this.perMachineLoaded = true;
-    for (const b of this.perMachineBlocks) {
+    for (const b of this.perMachineBlocks.filter((x) => x.tab !== "data")) {
       try {
         b.load?.();
       } catch (e) {
@@ -1407,6 +1387,8 @@ export class SettingsPanel {
 
   /** 步 3：`RemoteSection` 那趟 `refresh()` 收尾了（成或败）。一个页都没来 ⇒ 兜底。 */
   private onMachinePagesSettled(): void {
+    this.machinePagesSettled = true;
+    this.applyPendingTarget();
     if (this.machinePageRegistered) return;
     this.revealPerMachineFallback(copyText("settingsPanel.machines.unreadable"));
   }

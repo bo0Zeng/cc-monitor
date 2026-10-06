@@ -6,11 +6,11 @@ const { cmd, toast } = vi.hoisted(() => ({
   toast: vi.fn(),
 }));
 vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
-  commands: { open_settings_window: () => cmd.open() },
+  commands: { open_settings_window: (t: string | null) => cmd.open(t) },
 }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: toast }));
 
-import { openSettingsWindow } from "../../../../src/frontend/ui/settings/open-settings";
+import { openSettingsWindow, parseSettingsTarget } from "../../../../src/frontend/ui/settings/open-settings";
 import { readFileSync } from "node:fs";
 
 describe("ST1 点设置有反馈", () => {
@@ -59,6 +59,17 @@ describe("ST1 点设置有反馈", () => {
       .join("\n");
     expect([...code.matchAll(/commands\.open_settings_window\(/g)].length).toBe(0);
     expect([...code.matchAll(/\bopenSettingsWindow\(/g)].length).toBe(8);
+  });
+
+  it("目的地：原样（JSON）交给壳；不带就是 null；设置窗那一侧只收四格里的非空串，别的忽略", async () => {
+    cmd.open.mockResolvedValue(undefined);
+    await openSettingsWindow(null, { machine: "devbox", tab: "acct" });
+    expect(cmd.open).toHaveBeenLastCalledWith('{"machine":"devbox","tab":"acct"}');
+    await openSettingsWindow();
+    expect(cmd.open).toHaveBeenLastCalledWith(null);
+    expect(parseSettingsTarget('{"page":"logs","machine":" ","extra":1,"tab":2}')).toEqual({ page: "logs" });
+    expect(parseSettingsTarget({ anchor: "resume" })).toEqual({ anchor: "resume" });
+    for (const bad of ["{", "[]", 3, null, undefined]) expect(parseSettingsTarget(bad)).toBeNull();
   });
 
   it("本模块不 import 设置面板（主窗的模块图里不该有它）", () => {

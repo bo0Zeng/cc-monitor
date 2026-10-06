@@ -218,7 +218,7 @@ export class AccountChip {
   async refresh(force = false): Promise<void> {
     try {
       const cfg = await readRemoteConfig();
-      this.origin = cfg.enabled ? pickPrimaryOrigin(cfg.hosts) : LOCAL_ORIGIN;
+      this.origin = cfg.hosts.some((h) => h.connect) ? pickPrimaryOrigin(cfg.hosts.filter((h) => h.connect)) : LOCAL_ORIGIN;
     } catch {
       this.origin = LOCAL_ORIGIN;
     }

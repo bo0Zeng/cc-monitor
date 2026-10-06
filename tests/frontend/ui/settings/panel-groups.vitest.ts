@@ -34,7 +34,12 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
   LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
   RemoteSection: class {
+    headActions = (): HTMLElement[] => [];
+    menuFor = (): unknown[] => [];
+    metaOfPage = (): string | null => null;
+    setConnected = (): void => {};
     originOfPage = (): string | null => null;
+    pageIdOfMachine = (o: string): string | null => (o === "devbox" ? "machine:devbox" : null);
     isUnconfiguredPage = (id: string): boolean => (globalThis as { __blankPage?: string }).__blankPage === id;
     element = document.createElement("div");
     refresh = remoteRefresh;
@@ -179,7 +184,7 @@ function navTitles(): string[] {
 }
 
 describe("S2 设置面板分页结构", () => {
-  it("导航 = 应用 / 机器 / 扩展（按序）", () => {
+  it("导航 = 机器 / 文件与数据 / 扩展 / 外观 / 通用 ＞ 日志（按序）", () => {
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
     // S6 已把 cc-bus 驾驶舱移出设置（它是运营视图不是设置，§1-1）。
@@ -187,7 +192,7 @@ describe("S2 设置面板分页结构", () => {
     // 🔴 「改动足迹」顶层页没了 ⇒ 顶层只剩两个。
     // 「应用」下挂三个子页（替掉原来的两个折叠组）。
     // 跨机器的 skill / MCP 是一类被设置的对象 ⇒ 顶层「扩展」页，不挂在某台机器下面。
-    expect(navTitles()).toEqual(["应用", "外观", "日志", "数据位置", "机器", "扩展"]);
+    expect(navTitles()).toEqual(["机器", "文件与数据", "扩展", "外观", "通用", "日志"]);
   });
 
   /** 等 RemoteSection 那边异步注册完本机页（真实实现是在 `refresh()` 里注册的）。 */
@@ -202,15 +207,15 @@ describe("S2 设置面板分页结构", () => {
     await tick();
     // 🔴 两个折叠组（外观 · 日志与数据）换成「应用」下的三个子页。
     //   「日志」「数据位置」那两块各自独占一页 ⇒ 块不再自带标题（页头就是它的名字，§8 #11 不重名）。
-    expect(pageTitles("app")).toEqual(["行为", "快捷键"]);
-    expect(pageTitles("app-appearance")).toEqual(["字体", "颜色"]);
+    expect(pageTitles("general")).toEqual(["行为"]);
+    expect(pageTitles("appearance")).toEqual(["字体", "颜色", "快捷键"]);
     // 「诊断」**让名**给 `§5.3` 那个改名（否则面板里会有两个「诊断」）——今天是页名。
-    expect(pageTitles("app-logs")).toEqual([]);
-    expect(pageTitles("app-data")).toEqual(["Claude 数据目录"]);
+    expect(pageTitles("logs")).toEqual([]);
+    expect(pageTitles("data")).toEqual(["Claude 数据目录", "足迹", "未识别的数据"]);
     // 那两块真的在它们各自那一页上（只是不带块标题）。
     for (const [id, cls] of [
-      ["app-logs", "#stub-diagnostics-section"],
-      ["app-data", "#stub-data-section"],
+      ["logs", "#stub-diagnostics-section"],
+      ["data", "#stub-data-section"],
     ] as const) {
       const page = document.querySelector<HTMLElement>(`.settings-page[data-route-id="${id}"]`)!;
       expect(page.querySelector(cls), `${id} 页上没有它那一块`).not.toBeNull();
@@ -220,7 +225,7 @@ describe("S2 设置面板分页结构", () => {
     //   （四格挂在「远端连接」那块的列表行上，钉在 `machine-list-backend-cells.vitest.ts`）。
     //   ⇒ 列表页的块只剩一块（列表 ＋ 添加 ＋ 全局开关 ＋ 诊断都在它里面，`§8` #10）。
     // 顶层「改动足迹」删掉之后，漂移记账那一块并进**每台机器子页的「足迹」栏**（见下面本机页那张表）。
-    expect(pageTitles("machines")).toEqual(["远端连接"]);
+    expect(pageTitles("machines")).toEqual([]);
     // 它们跟着「当前在看哪台机器」走；初始落在本机页上（与 machine-context 的初始值对齐）。
     expect(pageTitles("machine:（本机）")).toEqual([
       "账号",
@@ -228,11 +233,7 @@ describe("S2 设置面板分页结构", () => {
       // 别名并进机器页，从「应用 → 行为」搬来。
       "别名",
       // MCP · 资产目录 · 插件三块搬去了顶层「扩展」页（跨机器的一类对象）。
-      // cc-bus 钩子那一块拿掉了：cc-bus 是扩展页里的一行，各台的钩子状态在那一行里。
-      // 🔴 （步 14a）：「足迹」从顶层「改动足迹」页搬进来，是**新增的第五块**。
-      "足迹",
-      // 原顶层「改动足迹」页剩下的那一块，同栏。
-      "未识别的数据",
+      // 足迹与未识别的数据去了「文件与数据」页。
     ]);
     // （步 14a）：「配置面审计」→ 改名「足迹」并搬进机器子页。
     // 🔴 顶层「改动足迹」页**删掉**，剩下那一块并进机器页。
@@ -254,18 +255,19 @@ describe("S2 设置面板分页结构", () => {
    * 两向：本机页上**有**（`.machine-aliases`），「应用」页上**没有**任何一块别名
    * （从前那两块的类名 `.ccm-acct-alias` / `.ccm-alias-gen` 一个都不许剩在那一页）。
    */
-  it("★ AL1：本机页挂着「别名」，「应用」页上一块别名都没有", async () => {
+  it("★ AL1：本机页挂着「别名」，「通用」页上一块别名都没有", async () => {
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
     await tick();
-    document.querySelector<HTMLButtonElement>("#settings-tab-app")!.click();
+    document.querySelector<HTMLButtonElement>("#settings-tab-general")!.click();
     await tick();
-    const app = document.querySelector<HTMLElement>('.settings-page[data-route-id="app"]');
-    expect(app, "「应用」页不在 —— 这条断言量错了地方").toBeTruthy();
+    const app = document.querySelector<HTMLElement>('.settings-page[data-route-id="general"]');
+    expect(app, "「通用」页不在 —— 这条断言量错了地方").toBeTruthy();
     expect(app!.querySelector(".ccm-acct-alias, .ccm-alias-gen, .machine-aliases")).toBeNull();
     const local = document.querySelector<HTMLElement>(
       '.settings-page[data-route-id="machine:（本机）"]',
     );
+    document.getElementById("settings-tab-machine:（本机）#config")!.click();
     const block = local!.querySelector<HTMLElement>(".machine-aliases");
     expect(block, "本机页上找不到「别名」那一块").toBeTruthy();
     // ⚠ 「在 DOM 里」不等于「看得见」：per-machine 那几块是**单例 ＋ 按页 hidden**，
@@ -296,22 +298,15 @@ describe("S2 设置面板分页结构", () => {
     expect(visible.map((el) => el.dataset.routeId)).toEqual(["machines"]);
   });
 
-  it("open() 回落地页（刻意不记忆上次停在哪一页）", async () => {
+  it("open()：同一次运行里再打开，停在上次离开的那一页", async () => {
     document.body.replaceChildren();
     const p = new SettingsPanel({ windowMode: true });
-    // 先切走
-    [...document.querySelectorAll<HTMLButtonElement>(".settings-nav-item")][0]!.click();
-    expect(
-      [...document.querySelectorAll<HTMLElement>(".settings-page")]
-        .filter((el) => !el.hidden)
-        .map((el) => el.dataset.routeId),
-    ).toEqual(["app"]);
+    const visible = () =>
+      [...document.querySelectorAll<HTMLElement>(".settings-page")].filter((el) => !el.hidden).map((el) => el.dataset.routeId);
+    expect(visible(), "第一次落在「机器」").toEqual(["machines"]);
+    document.querySelector<HTMLButtonElement>("#settings-tab-general")!.click();
     await p.open();
-    expect(
-      [...document.querySelectorAll<HTMLElement>(".settings-page")]
-        .filter((el) => !el.hidden)
-        .map((el) => el.dataset.routeId),
-    ).toEqual(["machines"]);
+    expect(visible()).toEqual(["general"]);
   });
 
   it("open() 刷新到 RemoteSection / DataSection（守 this.remoteSection/dataSection 字段未丢）", async () => {
@@ -327,15 +322,15 @@ describe("S2 设置面板分页结构", () => {
     // 🔴 步 2：`open()` **不再**无条件 `dataSection.refresh()` ——
     // 那一发在落地页是「机器」的时候是白发的（`§8` 判据 #3 今天正是被它这一族打破的）。
     // 字段还在、契约还在，只是放行的时机换成了「这一页首次可见」。
-    expect(dataRefresh, "落地页是「机器」⇒ 打开设置不许碰「应用」页的 I/O").not.toHaveBeenCalled();
-    expect(dataLoadNow, "还没点进「应用」⇒ 连第一发都不许放").not.toHaveBeenCalled();
+    expect(dataRefresh, "落地页是「机器」⇒ 打开设置不许碰「文件与数据」页的 I/O").not.toHaveBeenCalled();
+    expect(dataLoadNow, "还没点进「文件与数据」⇒ 连第一发都不许放").not.toHaveBeenCalled();
     // 点进「数据位置」——这一刻才放行。**相等断言的反向锚**：上面那两条若因为
     // 字段被漏赋值（`this.dataSection` 是 undefined）而绿，这一条会红。
     // 它今天是「应用」下的子页（原来在「应用」页的折叠组里）。
-    document.querySelector<HTMLButtonElement>("#settings-tab-app")!.click();
-    expect(dataLoadNow, "点「应用」本身不该放数据位置那一发").not.toHaveBeenCalled();
-    document.querySelector<HTMLButtonElement>("#settings-tab-app-data")!.click();
-    expect(dataLoadNow, "点进「数据位置」之后第一发必须真的放出去").toHaveBeenCalled();
+    document.querySelector<HTMLButtonElement>("#settings-tab-general")!.click();
+    expect(dataLoadNow, "点「通用」不该放文件与数据那一发").not.toHaveBeenCalled();
+    document.querySelector<HTMLButtonElement>("#settings-tab-data")!.click();
+    expect(dataLoadNow, "点进「文件与数据」之后第一发必须真的放出去").toHaveBeenCalled();
   });
 
   it("★ 本机页上不出现只对远端有意义的块（S4a 那个半截状态的解药）", async () => {
@@ -395,11 +390,8 @@ describe("S2 设置面板分页结构", () => {
     expect(sk!.getAttribute("aria-busy")).toBe("true");
     // 隔离没有因此被打破：那几块**都还在 DOM 里**，只是先藏着、等机器页来了就搬走。
     expect(pageTitles("machines")).toEqual([
-      "远端连接",
       "账号",
       "别名", // 本机那一格的 ②，跟着 per-machine 那几块一起留在兜底落点（终端集成并进了它）
-      "足迹",
-      "未识别的数据",
     ]);
   });
 
@@ -417,32 +409,24 @@ describe("S2 设置面板分页结构", () => {
     expect(sk?.hidden ?? true, "机器页来了，列表页上那块骨架就该收起来").toBe(true);
   });
 
-  it("★ 远端机器页拆成横向五栏（连接/组件/账号/终端/足迹），本机页不拆；没有「工具」栏", async () => {
-    // 分栏复用 SettingsRouter（横向 + 无页头），不另造 tab 原语。
+  it("★ 机器页本机远端同形：卡头 ＋「账号 · 别名与配置文件」两栏；只远端的卡头里有「连接设置」", async () => {
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
     await tick();
-    // stub 只注册本机页（没有卡片、不带 parts）⇒ 它**不该**被拆栏。
-    const local = document.querySelector<HTMLElement>(
-      '.settings-page[data-route-id="machine:（本机）"]',
-    )!;
-    expect(local.querySelector(".settings-shell-h")).toBeNull();
-
-    // 远端机器页**必须**分栏，且顺序是 连接/组件/账号/终端/足迹。
-    const remote = document.querySelector<HTMLElement>(
-      '.settings-page[data-route-id="machine:devbox"]',
-    )!;
-    const strip = remote.querySelector<HTMLElement>(".settings-shell-h");
-    expect(strip, "远端机器页必须分栏").not.toBeNull();
-    expect(
-      [...strip!.querySelectorAll(".settings-nav-item")].map((b) => b.textContent),
-    ).toEqual(["连接", "组件", "账号", "终端", "足迹"]);
-    // 「连接」是落地栏，同一时刻只有它可见
-    const visible = [...strip!.querySelectorAll<HTMLElement>(".settings-page")].filter(
-      (e) => !e.hidden,
-    );
-    expect(visible).toHaveLength(1);
-    expect(visible[0]!.textContent).toContain("CONN");
+    const tabsOf = (id: string) =>
+      [...document.querySelectorAll(`.settings-page[data-route-id="${id}"] .settings-shell-h > .settings-nav .settings-nav-item`)].map((b) => b.textContent);
+    expect(tabsOf("machine:（本机）")).toEqual(["账号", "别名与配置文件"]);
+    expect(tabsOf("machine:devbox")).toEqual(["账号", "别名与配置文件"]);
+    const local = document.querySelector<HTMLElement>('.settings-page[data-route-id="machine:（本机）"]')!;
+    const remote = document.querySelector<HTMLElement>('.settings-page[data-route-id="machine:devbox"]')!;
+    expect(local.querySelector(".machine-conn"), "本机没有连接设置").toBeNull();
+    const conn = remote.querySelector<HTMLElement>(".machine-conn")!;
+    expect(conn.textContent).toContain("CONN");
+    expect(conn.hidden, "连接设置平时收着").toBe(true);
+    expect(remote.querySelector(".machine-monitor")!.textContent, "组件那一半进了「这台上的 cc-monitor」").toContain("COMP");
+    // 页头不重复卡头的名字。
+    expect(remote.querySelector(":scope > .settings-page-head")).toBeNull();
+    expect(remote.querySelector(".machine-head-name")!.textContent).toBe("devbox");
   });
 
   it("★ 进一张空白卡的页（还没填名称 / 地址）：不切当前机器、按机器的那几块不搬过去（不去问一台不存在的机器）", async () => {
@@ -475,7 +459,7 @@ describe("S2 设置面板分页结构", () => {
       '.settings-page[data-route-id="machine:devbox"] .settings-shell-h',
     )!;
     const tabPage = (id: string) =>
-      strip.querySelector<HTMLElement>(`.settings-page[data-route-id="machine:devbox#${id}"]`)!;
+      strip.querySelector<HTMLElement>(`.settings-page[data-route-id="machine:devbox#${id === "term" ? "config" : id}"]`)!;
     // 账号块进「账号」栏
     expect(tabPage("acct").querySelector(".accounts-section-stub")).toBeTruthy();
     const titles = [...strip.querySelectorAll(".settings-group-title")].map((e) => e.textContent);
@@ -486,7 +470,7 @@ describe("S2 设置面板分页结构", () => {
     // 🔴 这台机器自己的别名在「终端」栏**最前面**，不在「组件」栏 —— 与本机页「终端 → 别名」同一个位置。
     const term = tabPage("term");
     expect(term.querySelector("#stub-remote-aliases"), "远端的别名不在「终端」栏").not.toBeNull();
-    expect(tabPage("comp").querySelector("#stub-remote-aliases")).toBeNull();
+    expect(document.querySelector('.settings-page[data-route-id="machine:devbox"] .machine-monitor #stub-remote-aliases')).toBeNull();
     const stub = term.querySelector<HTMLElement>("#stub-remote-aliases")!;
     expect(stub.parentElement!.firstElementChild, "别名不在「终端」栏最前面").toBe(stub);
     // 「让直接敲的 claude 也走中转（可选）」那一块住「终端」栏，本机远端同一块（跟着当前机器搬）。
@@ -573,7 +557,7 @@ describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
     });
   }
 
-  it("门只管这一块 —— 同一页上的足迹在 Linux 上照常在", async () => {
+  it("门只管这一块 —— 足迹（文件与数据页）在 Linux 上照常在", async () => {
     __setHostOsForTests("linux");
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
@@ -581,10 +565,64 @@ describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
     const titles = [
       ...document
         .querySelector<HTMLElement>(
-          '.settings-page[data-route-id="machine:（本机）"]',
+          '.settings-page[data-route-id="data"]',
         )!
         .querySelectorAll(".settings-group-title"),
     ].map((e) => e.textContent);
     expect(titles).toContain("足迹");
+  });
+});
+
+describe("带目的地打开（页 · 机器 · 栏 · 锚点）", () => {
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const visiblePages = (root: ParentNode) =>
+    [...root.querySelectorAll<HTMLElement>(":scope > .settings-shell > .settings-content > .settings-page")]
+      .filter((e) => !e.hidden)
+      .map((e) => e.dataset.routeId);
+
+  it("新建的窗从初始化脚本读目的地：机器页还没注册时先留着，注册上来就直达那台的那一栏并高亮 1.5 秒", async () => {
+    document.body.replaceChildren();
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      (window as { __CCM_SETTINGS_TARGET__?: unknown }).__CCM_SETTINGS_TARGET__ = JSON.stringify({ machine: "devbox", tab: "acct" });
+      try {
+        new SettingsPanel({ windowMode: true });
+      } finally {
+        delete (window as { __CCM_SETTINGS_TARGET__?: unknown }).__CCM_SETTINGS_TARGET__;
+      }
+      const panelRoot = document.querySelector(".settings-body")!;
+      expect(visiblePages(panelRoot), "机器页还没来：先停在落地页").toEqual(["machines"]);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(visiblePages(panelRoot)).toEqual(["machine:devbox"]);
+      const strip = document.querySelector<HTMLElement>('.settings-page[data-route-id="machine:devbox"] .settings-shell-h')!;
+      const tabVisible = [...strip.querySelectorAll<HTMLElement>(".settings-page")].filter((e) => !e.hidden).map((e) => e.dataset.routeId);
+      expect(tabVisible).toEqual(["machine:devbox#acct"]);
+      const tabBtn = document.getElementById("settings-tab-machine:devbox#acct")!;
+      expect(tabBtn.classList.contains("settings-highlight")).toBe(true);
+      await vi.advanceTimersByTimeAsync(1499);
+      expect(tabBtn.classList.contains("settings-highlight"), "1.5 秒之前就灭了").toBe(true);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(tabBtn.classList.contains("settings-highlight"), "1.5 秒之后还亮着").toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("只给页：直达那一页、高亮页头；锚点在页里 ⇒ 高亮那一节；认不出的值忽略、停在原处", async () => {
+    document.body.replaceChildren();
+    const p = new SettingsPanel({ windowMode: true });
+    await tick();
+    const panelRoot = document.querySelector(".settings-body")!;
+    p.goTo({ page: "logs" });
+    expect(visiblePages(panelRoot)).toEqual(["logs"]);
+    expect(document.querySelector('.settings-page[data-route-id="logs"] > .settings-page-head')!.classList.contains("settings-highlight")).toBe(true);
+    const spot = document.createElement("div");
+    spot.dataset.anchor = "resume";
+    document.querySelector<HTMLElement>('.settings-page[data-route-id="general"]')!.appendChild(spot);
+    p.goTo({ page: "general", anchor: "resume" });
+    expect(visiblePages(panelRoot)).toEqual(["general"]);
+    expect(spot.classList.contains("settings-highlight")).toBe(true);
+    p.goTo({ page: "nope", tab: "zzz" });
+    expect(visiblePages(panelRoot), "认不出的页不该把人带走").toEqual(["general"]);
   });
 });

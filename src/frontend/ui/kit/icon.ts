@@ -46,6 +46,9 @@ import circleDashed from "@phosphor-icons/core/assets/regular/circle-dashed.svg?
 import circleNotch from "@phosphor-icons/core/assets/regular/circle-notch.svg?raw";
 import terminalWindow from "@phosphor-icons/core/assets/regular/terminal-window.svg?raw";
 import arrowDown from "@phosphor-icons/core/assets/regular/arrow-down.svg?raw";
+import plug from "@phosphor-icons/core/assets/regular/plug.svg?raw";
+import textT from "@phosphor-icons/core/assets/regular/text-t.svg?raw";
+import slidersHorizontal from "@phosphor-icons/core/assets/regular/sliders-horizontal.svg?raw";
 import s from "./icon.module.css";
 
 const SVG = {
@@ -88,6 +91,9 @@ const SVG = {
   inProgress: circleNotch,
   terminal: terminalWindow,
   arrowDown: arrowDown,
+  plug: plug,
+  text: textT,
+  sliders: slidersHorizontal,
 } as const;
 
 export type IconName = keyof typeof SVG;

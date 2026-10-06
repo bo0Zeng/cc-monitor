@@ -437,6 +437,7 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     ("src/frontend/ui/entry-render-common.ts", "setTimeout", 2, "① ② 1.2s 后把「已复制」/「失败」还原成「复制」。一次性 UI 反馈。"),
     ("src/frontend/ui/settings/config-surface-section.ts", "setTimeout", 1, "1.5s 后把「已复制」还原。一次性。"),
     ("src/frontend/ui/settings/drift-ledger-section.ts", "setTimeout", 1, "1.5s 后把「已复制」还原。一次性。"),
+    ("src/frontend/ui/settings/panel.ts", "setTimeout", 1, "带目的地打开：1.5s 后撤掉那一节的高亮。一次性 UI 反馈。"),
     // `cc_integration.ts` 并进 `machine-aliases.ts`（终端集成成了 PowerShell 那一侧的别名块）⇒ 那一处跟着换文件：一处没多一处没少。
     // 那一处（「重新扫描」后 500ms 撤掉状态徽章的高亮描边）**删了**：别名块的现状今天随读回口的候选一起到，
     //   「重新读一遍」重读的是整份候选，不再闪一下徽章 ⇒ `machine-aliases.ts` 这一行整行走（少一处，不是换文件）。

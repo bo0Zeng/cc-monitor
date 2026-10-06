@@ -1,7 +1,7 @@
 // F12：远端配置**数据层**（从 settings/remote-section.ts 抽出，治分层倒挂——数据层原住在 1801 行
 // UI 模块里、被 tabs/account-chip/cards/main/port-forward 等非 UI 模块依赖）。本模块**纯数据**：
 // config.json `remote` 段的类型 + 读写 CRUD + 反查/筛选纯函数，无 DOM、无 UI 依赖。行为与抽出前逐字节等价。
-import { loadConfig, patchConfig, setAt, type ConfigEdit } from "./config";
+import { loadConfig, patchConfig, type ConfigEdit } from "./config";
 import { copyText } from "./copy-table";
 
 /**
@@ -38,6 +38,8 @@ export interface RemoteHostConfig {
    * 而回退让「没填过 = 沿用今天的行为」，零意外。
    */
   resumeCommand: string;
+  /** 连接这台：关 ⇒ 不连（盘上 `"connect": false`），开 ⇒ 去连；改了当场生效（`remote_reconcile`）。 */
+  connect: boolean;
 }
 
 /** F45：多行文本 ↔ 地址数组（trim + 去空行）。UI 用 textarea，config/IPC 用数组。 */
@@ -58,9 +60,8 @@ export function parseAddressLines(text: string): string[] {
 //      `doc_claim_registry_tests.rs` 三格 `carriers` ·
 //      `tests/frontend/ui/settings/remote-section.vitest.ts` 两条 `not.toContain`。
 
-/** config.json `remote` 段：全局 enabled + 机器列表。 */
+/** config.json `remote` 段：机器列表（每台自己的「连接这台」）。 */
 export interface RemoteConfig {
-  enabled: boolean;
   hosts: RemoteHostConfig[];
   /**
    * `remote` 段在、却认不出（没有 `hosts` 数组 —— 旧的单台写法、或 `hosts` 写成了别的类型）
@@ -96,6 +97,7 @@ export const HOST_DEFAULTS: RemoteHostConfig = {
   addresses: [],
   jump: "",
   resumeCommand: "",
+  connect: true,
 };
 
 /** F45：容忍 config 里 addresses 为数组 / 换行文本 / 缺失。 */
@@ -127,6 +129,7 @@ function coerceHost(obj: Record<string, unknown>): RemoteHostConfig {
     addresses: coerceAddresses(obj.addresses),
     jump: str("jump", HOST_DEFAULTS.jump),
     resumeCommand: str("resumeCommand", HOST_DEFAULTS.resumeCommand),
+    connect: obj.connect !== false,
   };
 }
 
@@ -140,7 +143,7 @@ export async function readRemoteConfig(): Promise<RemoteConfig> {
     return remoteConfigOf((await loadConfig()) as Record<string, unknown>);
   } catch (e) {
     console.warn("readRemoteConfig failed:", e);
-    return { enabled: false, hosts: [] };
+    return { hosts: [] };
   }
 }
 
@@ -148,21 +151,16 @@ export async function readRemoteConfig(): Promise<RemoteConfig> {
 function remoteConfigOf(cfg: Record<string, unknown>): RemoteConfig {
   const r = cfg.remote;
   if (r === null || typeof r !== "object") {
-    return { enabled: false, hosts: [] };
+    return { hosts: [] };
   }
   const obj = r as Record<string, unknown>;
-  const enabled = typeof obj.enabled === "boolean" ? obj.enabled : false;
-
   if (!Array.isArray(obj.hosts)) {
-    return { enabled, hosts: [], unrecognized: REMOTE_CONFIG_UNRECOGNIZED };
+    return { hosts: [], unrecognized: REMOTE_CONFIG_UNRECOGNIZED };
   }
   const raw = obj.hosts.filter(
     (h): h is Record<string, unknown> => h !== null && typeof h === "object",
   );
-  return {
-    enabled,
-    hosts: raw.map(coerceHost),
-  };
+  return { hosts: raw.map(coerceHost) };
 }
 
 /**
@@ -213,6 +211,7 @@ const REMOTE_HOST_FIELDS = [
   "addresses",
   "jump",
   "resumeCommand",
+  "connect",
 ] as const satisfies readonly (keyof RemoteHostConfig)[];
 
 /** 上面清单**漏掉**的字段（应为 `never`）。 */
@@ -269,8 +268,6 @@ export function hostKey(h: RemoteHostConfig): string {
  * S1：一次**局部**修改。没被提到的机器根本不碰（补丁里没有它）。
  */
 export interface RemoteHostsPatch {
-  /** 全局开关。缺省 = 不动。 */
-  enabled?: boolean;
   /**
    * 要写入的机器。`key` = 这条记录**在盘上当前的 origin**；`null` = 新增（追加到末尾）。
    * key 在盘上找不到（被别处删了/改了）⇒ 整批拒、说出来（不再「找不到就当新增」）。
@@ -304,7 +301,6 @@ export async function patchRemoteConfig(
 export function remoteHostsEdits(patch: RemoteHostsPatch): ConfigEdit[] {
   const hosts = ["remote", "hosts"];
   const edits: ConfigEdit[] = [];
-  if (patch.enabled !== undefined) edits.push(setAt(["remote", "enabled"], patch.enabled));
   for (const k of patch.remove ?? []) edits.push({ op: "removein", path: hosts, where: hostWhere(k) });
   const inserts: ConfigEdit[] = [];
   for (const u of patch.upsert ?? []) {

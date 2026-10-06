@@ -106,7 +106,7 @@ fn starting_reports_failure_as_failure_and_finished_streams_as_not_running() {
     );
 }
 
-/// ★ **接线钉（远端那半）**：`lib.rs` 起每台远端时**真的**把把手注册进来。
+/// ★ **接线钉（远端那半）**：`lib.rs` 起远端（启动时与热加载同一条路）**真的**把把手注册进来。
 ///
 /// 不注册的后果**不是编译错，是运行时一句「没有把手」** —— 而本模块的单测全都照样绿
 /// （它们不需要真把手）。这正是 F03 那个坑：「模块存在 ≠ 模块被调用」。
@@ -116,9 +116,9 @@ fn starting_reports_failure_as_failure_and_finished_streams_as_not_running() {
 #[test]
 fn the_startup_path_really_registers_remote_handles() {
     let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/lib.rs"));
-    guard_core::find_pinned(&prod, "backend_control::register_remote(").unwrap_or_else(|e| {
+    guard_core::find_pinned(&prod, "backend_control::reconcile_remotes(").unwrap_or_else(|e| {
         panic!(
-            "`lib.rs` 的生产段里没有恰好一处 `register_remote(`（{e}）。\n\
+            "`lib.rs` 的生产段里没有恰好一处 `reconcile_remotes(`（{e}）。\n\
                  ⇒ 远端那侧的起/停在运行时只会回一句「没有这台机的把手」，\n\
                  而本模块的单测**全都照样绿**（它们不需要真把手）。"
         )
@@ -170,6 +170,86 @@ fn the_shared_stripper_keeps_the_registration_this_guard_must_scan() {
     guard_core::assert_stripper_keeps(
         "backend_control_tests · lib.rs",
         include_str!("../../../src/frontend/shell/src/lib.rs"),
-        &["backend_control::register_remote("],
+        &["backend_control::reconcile_remotes("],
     );
+}
+
+/// 机器表热加载：新来的那台起流、拿掉 / 停用的那台断流、连接参数变了的重起，其余一台不碰。
+#[test]
+fn reconcile_starts_new_stops_gone_restarts_changed_and_leaves_the_rest() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    /// 流被断（任务被 abort ⇒ future 被丢）时把旗子立起来。
+    struct Dropped(Arc<AtomicBool>);
+    impl Drop for Dropped {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+    let starts: Arc<Mutex<HashMap<String, usize>>> = Arc::new(Mutex::new(HashMap::new()));
+    let dropped: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+    let want = |origin: &str, key: &str| {
+        let (o, s, d) = (origin.to_string(), starts.clone(), dropped.clone());
+        WantedRemote {
+            origin: origin.to_string(),
+            cfg_key: key.to_string(),
+            respawn: Box::new(move || {
+                *s.lock().unwrap().entry(o.clone()).or_insert(0) += 1;
+                let flag = Arc::new(AtomicBool::new(false));
+                d.lock().unwrap().insert(o.clone(), flag.clone());
+                tauri::async_runtime::spawn(async move {
+                    let _guard = Dropped(flag);
+                    std::future::pending::<()>().await;
+                })
+            }),
+        }
+    };
+    let settle = || {
+        tauri::async_runtime::block_on(async {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await
+        })
+    };
+    let count = |o: &str| starts.lock().unwrap().get(o).copied().unwrap_or(0);
+    let was_dropped = |o: &str| dropped.lock().unwrap()[o].load(Ordering::SeqCst);
+
+    let r = reconcile_remotes(vec![
+        want("rc-a", "1"),
+        want("rc-b", "1"),
+        want("rc-c", "1"),
+    ]);
+    assert_eq!(r.started, ["rc-a", "rc-b", "rc-c"]);
+    settle();
+
+    // 停用 b（不在要连的里了）· c 改了连接参数 · a 原样。
+    let r = reconcile_remotes(vec![want("rc-a", "1"), want("rc-c", "2")]);
+    settle();
+    assert_eq!(
+        r,
+        Reconciled {
+            started: vec![],
+            stopped: vec!["rc-b".into()],
+            restarted: vec!["rc-c".into()]
+        }
+    );
+    assert!(was_dropped("rc-b"), "停用的那台流没断");
+    assert!(
+        !backend_machines().unwrap().contains(&"rc-b".to_string()),
+        "停用的那台还在注册表里"
+    );
+    assert_eq!(count("rc-c"), 2, "改了参数的那台没按新参数重起");
+    assert_eq!(count("rc-a"), 1, "没动的那台被重起了");
+    assert!(!was_dropped("rc-a"), "没动的那台流被断了");
+
+    // 再开 b ⇒ 起一条新的；a · c 不动。
+    let r = reconcile_remotes(vec![
+        want("rc-a", "1"),
+        want("rc-b", "1"),
+        want("rc-c", "2"),
+    ]);
+    assert_eq!(r.started, ["rc-b"]);
+    assert!(r.stopped.is_empty() && r.restarted.is_empty());
+    assert_eq!((count("rc-a"), count("rc-b"), count("rc-c")), (1, 2, 2));
+    let _ = reconcile_remotes(vec![]);
 }

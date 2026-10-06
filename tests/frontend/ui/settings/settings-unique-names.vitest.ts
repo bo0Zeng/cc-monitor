@@ -66,7 +66,7 @@ async function names(): Promise<string[]> {
   const root = document.querySelector(".settings-panel")!;
   // 左侧导航：最外层那个 nav（机器子页里的横向栏不算，见头注）。
   const topNav = root.querySelector(".settings-shell:not(.settings-shell-h) > .settings-nav")!;
-  const nav = [...topNav.querySelectorAll(".settings-nav-item")].map(ownText);
+  const nav = [...topNav.querySelectorAll(".settings-nav-item")].map((el) => el.querySelector(".settings-nav-label")?.textContent?.trim() ?? "");
   const blocks = [
     ...root.querySelectorAll(".settings-group-title, .settings-collapsible-title"),
   ].map(ownText);
@@ -85,9 +85,8 @@ describe("：面板上没有重名的导航项 / 块标题", () => {
     }
   });
 
-  it("人群锚：「诊断」（机器列表页）与「日志」（应用页）都在，且人群不小", async () => {
+  it("人群锚：「日志」（通用页下）在，且人群不小", async () => {
     const got = await names();
-    expect(got).toContain("诊断");
     expect(got).toContain("日志");
     expect(got).toContain("机器");
     expect(got).toContain("账号");

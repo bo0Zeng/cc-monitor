@@ -25,23 +25,9 @@
 
 import { commands } from "../ipc/commands";
 import { openPortForwardPanel } from "../views/port-forward";
-import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 // F12：配置数据层已抽到 src/frontend/ui/remote-config.ts（治分层倒挂）——UI 从数据模块 import，不再自持 CRUD。
+import { readStatus, recordFacet, LOCAL_MACHINE_KEY, forgetMachine, renameMachine } from "./machine-status";
 import {
-  describeFacet,
-  FACET_LABELS,
-  MACHINE_FACETS,
-  readStatus,
-  recordFacet,
-  LOCAL_MACHINE_KEY,
-  forgetMachine,
-  renameMachine,
-  type MachineFacet,
-  type MachineStatus,
-  type FacetState,
-} from "./machine-status";
-import {
-  HOST_DEFAULTS,
   readRemoteConfig,
   patchRemoteConfig,
   hostKey,
@@ -54,9 +40,14 @@ import {
   shouldShowResetFingerprint,
   type MachineCardParts,
 } from "./machine-card";
-import { markRestartNeeded } from "./restart-notice";
+import { button } from "../kit/button";
+import { icon } from "../kit/icon";
+import { openMenu, type MenuItem } from "../kit/menu";
+import { statusDot, setDot } from "../kit/status-dot";
+import { toast, undoToast } from "../kit/toast";
+import { openAddMachine } from "./add-machine";
+import { localMeta, type MachineSection } from "./machine-page";
 import { moveMachinePrefs } from "../account-prefs";
-import { computeGaps, summarizeGaps, describeGap } from "./readiness";
 // K-P1/P2s：本机后端那条把手的 origin。**与 `LOCAL_MACHINE_KEY` 不是同一个串** ——
 // 前者是后端注册表里的键（`inbound_client::LOCAL_ORIGIN`），后者是这本 UI 账本的键。
 import { LOCAL_ORIGIN } from "../backend-policy";
@@ -66,7 +57,7 @@ export { shouldShowResetFingerprint };
 import { makeInfoIcon } from "./info-icon";
 
 // C04d 批 5c：五个类型换成生成物（源 `stream_source/`）。手写版与生成物**逐字等价** ⇒ 零漂移。
-import { importSshHosts, listSshHostAliases, resolveSshHost, type ImportGroup, type ImportMember } from "../ssh-config-reads";
+import { importSshHosts } from "../ssh-config-reads";
 
 // E80（2026-08-01）：`describeStage` 与 `ConnectStage` 的再导出**搬去 `machine-card.ts`**。
 //
@@ -91,8 +82,6 @@ const REMOTE_INFO_TEXT = (): string =>
  * 不装成 shell 函数的理由：函数**优先于 PATH**，与用户已有同名函数硬冲突且必然遮蔽；远端是 zsh/fish 时 `.bashrc` 根本不被 source。
  */
 // 单一来源：src/shared/ccm-aliases.sh（后端 sftp.rs include_str! 同一文件，杜绝漂移）
-import CCM_WRAPPER_SNIPPET from "../../../shared/ccm-aliases.sh?raw";
-import { buildPasteBlock } from "../paste-block";
 import { copyText } from "../copy-table"; // T03：待贴文本统一组件
 
 /**
@@ -126,6 +115,12 @@ export interface MachinePagesHost {
    * ⚠ 可选：不带路由器的宿主（既有单测）不必实现它。
    */
   machinePagesSettled?(): void;
+  /** 进那台的页并展开卡头里的「连接设置」/「这台上的 cc-monitor」。 */
+  openMachineSection?(id: string, section: MachineSection): void;
+  /** 重问那台的连接（⋯ →「刷新」）。 */
+  refreshMachine?(origin: string): void;
+  /** 机器表刚对齐过（有台起了 / 断了）：宿主重问后端那几台、重画各台的点。 */
+  machinesReconciled?(): void;
 }
 
 /**
@@ -135,11 +130,7 @@ export interface MachinePagesHost {
  * 不再在列表页上单独占一块。本分节不认识那四格长什么样 —— 只管「每一行给它留个位置」。
  */
 export interface MachineRowExtras {
-  /** 列表最上面那一行表头。 */
-  head(): HTMLElement;
-  /** 某台机器那一行的格子。`origin` 与后端的 origin 同一套名字（本机是后端的本机名）。 */
-  cells(origin: string): HTMLElement;
-  /** 列表最下面：挂在列表里、却对不上任何一行的那几台（由宿主决定装什么）。 */
+  /** 列表末尾：后端清单里有、机器列表里没有的那几台。 */
   tail(): HTMLElement;
 }
 
@@ -163,28 +154,6 @@ export const LOCAL_MACHINE_PAGE_ID = `${MACHINE_PAGE_PREFIX}${LOCAL_MACHINE_KEY}
 
 // === 共享 DOM 小工具 ===
 
-/**
- * S3/S4b：把一台机器的状态格子渲染进容器。**纯读账本，绝不发起探测**。
- * 列表行与本机行共用同一份渲染，免得两处慢慢长歪。
- */
-export function renderStatusCells(
-  strip: HTMLElement,
-  status: MachineStatus,
-  overrides: Partial<Record<MachineFacet, FacetState>> = {},
-): void {
-  strip.replaceChildren();
-  for (const facet of MACHINE_FACETS) {
-    const d = describeFacet(overrides[facet] ?? status[facet]);
-    const cell = document.createElement("span");
-    cell.className = `remote-status-cell remote-status-${d.tone}`;
-    cell.dataset.facet = facet;
-    cell.textContent = `${d.icon} ${FACET_LABELS[facet]}`;
-    // 年龄放 title 只是**补充**：`describeFacet` 的正文已把「多旧」说清楚，
-    // 而 §1-3 明令状态性信息不得只活在 hover 里。
-    cell.title = `${FACET_LABELS[facet]}：${d.text}`;
-    strip.appendChild(cell);
-  }
-}
 
 
 
@@ -215,13 +184,12 @@ export class RemoteSection {
    */
   private pageIdOf = new Map<MachineCard, string>();
   /** S5/E56：「还差什么」清单容器。 */
-  private gapsBox!: HTMLElement;
+  private countLine!: HTMLElement;
+  /** 各页最近一次喂进来的连接（数「几台离线」用）。 */
+  private readonly connected = new Map<string, boolean | null>();
 
   /** 打开面板时从 config 拉到的快照，用于判断是否变化（变了就提示重启）。 */
-  private original: RemoteConfig = {
-    enabled: false,
-    hosts: [],
-  };
+  private original: RemoteConfig = { hosts: [] };
 
   /**
    * S1：本编辑器**加载时**看到的机器 key 列表。保存时 `remove = loadedKeys − 现存卡片的 key`。
@@ -229,13 +197,11 @@ export class RemoteSection {
    */
   private loadedKeys: string[] = [];
 
-  private enabledCheckbox!: HTMLInputElement;
   private machinesContainer!: HTMLElement;
   private emptyHint!: HTMLElement;
   private banner!: HTMLElement;
   /** `remote` 段认不出时那一句（常驻，不像 banner 会被下一次动作冲掉）。 */
   private unrecognizedNote!: HTMLElement;
-  private importSelect!: HTMLSelectElement;
   private importHint!: HTMLElement;
 
   private cards: MachineCard[] = [];
@@ -269,11 +235,8 @@ export class RemoteSection {
     // 🔴 那个「自己从 ☐ 跳到 ☑」的复选框（`§8` 判据 #2）：读回来之前**不可交互**。
     //    否则用户在它变之前以为它是关的、点一下，结果是把它关掉（而他以为自己在打开）。
     //    读失败就一直灰着 —— 那一刻它显示的值不是盘上的值，点它就是写一个假状态回去。
-    this.enabledCheckbox.disabled = true;
     try {
       this.original = await readRemoteConfig();
-      this.enabledCheckbox.checked = this.original.enabled;
-      this.enabledCheckbox.disabled = false;
       this.rebuildCards(this.original.hosts);
       this.unrecognizedNote.textContent = this.original.unrecognized ?? "";
       // ⚠ 用类不用 `hidden`：`.settings-banner-show` 的 `display: block` 盖得过 `hidden` 属性。
@@ -282,7 +245,6 @@ export class RemoteSection {
         this.original.unrecognized !== undefined,
       );
       this.hideBanner();
-      void this.populateAliases();
     } catch (e) {
       // 🔴 步 4：**异步失败落在这一块上**，不再只打到状态栏。
       //
@@ -312,40 +274,194 @@ export class RemoteSection {
    * 由 `remote-section.vitest.ts` 里那条「加了本机行之后写出去的机器数不变」钉住。
    */
   private buildLocalRow(): HTMLElement {
-    const row = document.createElement("div");
-    row.className = "remote-machine remote-machine-row remote-machine-local";
-    row.dataset.pageId = LOCAL_MACHINE_PAGE_ID;
-    const legend = document.createElement("div");
-    legend.className = "remote-machine-legend";
-    row.appendChild(legend);
-
-    // S4b-2：本机也有自己的一页 —— 「本地 = 不走 ssh 的远端」不只是说法，
-    // 它在导航里就该和别的机器长得一样、点得进去。
-    const name = document.createElement("button");
-    name.type = "button";
-    name.className = "remote-machine-name remote-machine-open";
-    name.textContent = copyText("remote.localRow.title");
-    name.addEventListener("click", () =>
-      this.pages?.navigateToMachinePage(LOCAL_MACHINE_PAGE_ID),
-    );
-    legend.appendChild(name);
-
-    const strip = document.createElement("span");
-    strip.className = "remote-machine-status";
-    legend.appendChild(strip);
-    // 🔴 `K-R59`（09-11）：**这里原来写死了一格 `na`** ——
-    //    「backend 那格对本机是不适用，不是「缺组件」：`watcher.rs` 直读 jsonl，
-    //      本机压根不需要后端（那张表逐字写着「不需要」）」。
-    //    那句话在 `C7`〔用 08-03〕之后就不成立了（`local_backend.rs` 就是它的产物），
-    //    而它**一个 `daemonless` 字样都不含** —— 与 `readiness.notApplicable` 那一支同一档。
-    //    ⇒ 撤掉写死值，照实画账本。
-    renderStatusCells(strip, readStatus(LOCAL_MACHINE_KEY));
-    // 后端那四格。本机在后端那套名字里叫 `LOCAL_ORIGIN`（不是本分节的 `LOCAL_MACHINE_KEY`）。
-    this.appendRowExtras(legend, LOCAL_ORIGIN);
+    const row = this.buildRow(LOCAL_MACHINE_PAGE_ID, copyText("remote.localRow.title"), localMeta(), LOCAL_MACHINE_KEY);
+    row.classList.add("remote-machine-local");
     void this.noteLocalBackend();
     void this.noteLocalCcm();
-    // **没有删除按钮** —— 本机删不掉，这不是「暂未实现」，是它本来就不该能删。
     return row;
+  }
+
+  /**
+   * 列表里的一行（本机远端同形）：点 · 名字（不健康时旁边一个词）· 地址与系统 · 右侧账号数 · ⋯；
+   * 掉线时下面一行问题行 ＋ 修法。点整行进那台的页。
+   */
+  private buildRow(pageId: string, name: string, meta: string, ledgerKey: string): HTMLElement {
+    const row = document.createElement("div");
+    row.className = "remote-machine-row";
+    row.dataset.pageId = pageId;
+    row.dataset.ledgerKey = ledgerKey;
+    row.addEventListener("click", (ev) => {
+      if ((ev.target as HTMLElement).closest("button") && !(ev.target as HTMLElement).closest(".remote-machine-open")) return;
+      this.pages?.navigateToMachinePage(pageId);
+    });
+    const dot = statusDot("unknown", copyText("settingsNav.dot.unknown", { machine: name }), "compact");
+    dot.classList.add("remote-machine-dot");
+    const main = document.createElement("div");
+    main.className = "remote-machine-main";
+    const line = document.createElement("div");
+    line.className = "remote-machine-line";
+    const nameBtn = document.createElement("button");
+    nameBtn.type = "button";
+    nameBtn.className = "remote-machine-name remote-machine-open";
+    nameBtn.textContent = name;
+    const word = document.createElement("span");
+    word.className = "remote-machine-word";
+    line.append(nameBtn, word);
+    const metaEl = document.createElement("div");
+    metaEl.className = "remote-machine-meta";
+    metaEl.textContent = meta;
+    const problem = document.createElement("div");
+    problem.className = "machine-problem";
+    problem.hidden = true;
+    main.append(line, metaEl, problem);
+    const summary = document.createElement("span");
+    summary.className = "remote-machine-summary";
+    const more = button({ label: copyText("machinePage.head.more"), kind: "icon", icon: "more", hint: copyText("machinePage.head.more") });
+    more.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      openMenu({ el: more, align: "end" }, this.menuFor(pageId));
+    });
+    row.append(dot, main, summary, more);
+    this.paintSummary(row);
+    return row;
+  }
+
+  /** 右侧那一格：账号数（账本里上次读到的那一句）。 */
+  private paintSummary(row: HTMLElement): void {
+    const box = row.querySelector<HTMLElement>(".remote-machine-summary");
+    if (!box) return;
+    const acct = readStatus(row.dataset.ledgerKey ?? "").accounts;
+    box.textContent = acct && acct.kind !== "fail" ? (acct.detail ?? "") : "";
+  }
+
+  /** 宿主照后端的回答喂进来：那一行的点 · 词 · 问题行。 */
+  setConnected(pageId: string, connected: boolean | null, disabled = this.isDisabledPage(pageId)): void {
+    const row = this.findMachineRow(pageId);
+    if (!row) return;
+    if (disabled) {
+      this.paintRowDisabled(row, pageId);
+      this.paintCount();
+      return;
+    }
+    const name = row.querySelector<HTMLElement>(".remote-machine-open")?.textContent ?? "";
+    const dot = row.querySelector<HTMLElement>(".remote-machine-dot");
+    if (dot) {
+      if (connected === true) setDot(dot, "up", copyText("settingsNav.dot.up", { machine: name }));
+      else if (connected === false) setDot(dot, "failed", copyText("settingsNav.dot.down", { machine: name }));
+      else setDot(dot, "unknown", copyText("settingsNav.dot.unknown", { machine: name }));
+    }
+    const word = row.querySelector<HTMLElement>(".remote-machine-word");
+    if (word) word.textContent = connected === false ? copyText("machinePage.state.down") : "";
+    const problem = row.querySelector<HTMLElement>(".machine-problem");
+    if (problem) {
+      problem.replaceChildren();
+      problem.hidden = connected !== false;
+      if (connected === false) {
+        const text = document.createElement("span");
+        text.textContent = copyText("machinePage.problem.offline", { machine: name });
+        problem.append(icon("error", "compact"), text);
+        if (pageId !== LOCAL_MACHINE_PAGE_ID) {
+          problem.appendChild(
+            button({ label: copyText("machinePage.conn.toggle"), size: "compact", onClick: (ev) => {
+              ev.stopPropagation();
+              this.pages?.openMachineSection?.(pageId, "conn");
+            } }),
+          );
+        }
+      }
+    }
+    this.connected.set(pageId, connected);
+    this.paintCount();
+  }
+
+  private paintRowDisabled(row: HTMLElement, pageId: string): void {
+    const name = row.querySelector<HTMLElement>(".remote-machine-open")?.textContent ?? "";
+    const dot = row.querySelector<HTMLElement>(".remote-machine-dot");
+    if (dot) setDot(dot, "exited", copyText("settingsNav.dot.disabled", { machine: name }));
+    const word = row.querySelector<HTMLElement>(".remote-machine-word");
+    if (word) word.textContent = copyText("machinePage.state.disabled");
+    const problem = row.querySelector<HTMLElement>(".machine-problem");
+    if (!problem) return;
+    const text = document.createElement("span");
+    text.textContent = copyText("machinePage.problem.disabled");
+    problem.replaceChildren(
+      text,
+      button({
+        label: copyText("machinePage.problem.connect"),
+        size: "compact",
+        onClick: (ev) => {
+          ev.stopPropagation();
+          this.setConnect(pageId, true);
+        },
+      }),
+    );
+    problem.hidden = false;
+  }
+
+  /** 拨那台的「连接这台」（问题行［连接］· 连接设置里的开关）。 */
+  setConnect(pageId: string, on: boolean): void {
+    const card = [...this.pageIdOf.entries()].find(([, id]) => id === pageId)?.[0];
+    card?.setConnect(on);
+  }
+
+  /** 页头下那一句：`4 台` ／ `4 台 · 1 台离线`。 */
+  private paintCount(): void {
+    const n = this.cards.length + 1;
+    const off = [...this.connected.entries()].filter(([id, c]) => c === false && this.findMachineRow(id) && !this.isDisabledPage(id)).length;
+    this.countLine.textContent = off > 0 ? copyText("machineList.count.offline", { n, a: off }) : copyText("machineList.count.all", { n });
+  }
+
+  /** 页头右侧：添加机器 ＋ ⋯（端口转发 · 全部刷新）。 */
+  headActions(): HTMLElement[] {
+    const add = button({ label: copyText("machineList.head.add"), icon: "plus", onClick: () => void this.openAdd() });
+    const more = button({ label: copyText("machinePage.head.more"), kind: "icon", icon: "more", hint: copyText("machinePage.head.more") });
+    more.addEventListener("click", () =>
+      openMenu({ el: more, align: "end" }, [
+        { label: copyText("machineList.menu.portForward"), onClick: () => openPortForwardPanel() },
+        {
+          label: copyText("machineList.head.refreshAll"),
+          onClick: () => {
+            void this.refresh().catch(() => {});
+          },
+        },
+      ]),
+    );
+    return [add, more];
+  }
+
+  /** 一台的 ⋯ 菜单（列表那一行与机器页卡头同一份）。 */
+  menuFor(pageId: string): MenuItem[] {
+    if (pageId === LOCAL_MACHINE_PAGE_ID) {
+      return [
+        { label: copyText("machineList.menu.refresh"), onClick: () => this.pages?.refreshMachine?.(LOCAL_ORIGIN) },
+        { divider: true, label: "" },
+        { label: copyText("machineList.menu.cc"), onClick: () => this.pages?.openMachineSection?.(pageId, "cc") },
+      ];
+    }
+    const card = [...this.pageIdOf.entries()].find(([, id]) => id === pageId)?.[0];
+    if (!card) return [];
+    const origin = card.persistedKey ?? hostKey(card.collect());
+    return [
+      { label: copyText("machineList.menu.launch"), onClick: () => card.openLauncher() },
+      { label: copyText("machineList.menu.files"), onClick: () => card.openFiles() },
+      { label: copyText("machineList.menu.portForward"), onClick: () => openPortForwardPanel() },
+      { label: copyText("machineList.menu.refresh"), enabled: origin !== "", onClick: () => this.pages?.refreshMachine?.(origin) },
+      { divider: true, label: "" },
+      { label: copyText("machineList.menu.conn"), onClick: () => this.pages?.openMachineSection?.(pageId, "conn") },
+      { label: copyText("machineList.menu.cc"), onClick: () => this.pages?.openMachineSection?.(pageId, "cc") },
+      { divider: true, label: "" },
+      { label: copyText("machineList.menu.remove"), danger: true, onClick: () => this.removeCard(card) },
+    ];
+  }
+
+  /** 机器页卡头第二行：`user@host:port`（没填主机 ⇒ 空）。 */
+  metaOfPage(pageId: string): string | null {
+    const card = [...this.pageIdOf.entries()].find(([, id]) => id === pageId)?.[0];
+    if (!card) return null;
+    const c = card.collect();
+    if (!c.host) return "";
+    const who = c.user ? `${c.user}@${c.host}` : c.host;
+    return c.port && c.port !== 22 ? `${who}:${c.port}` : who;
   }
 
   /**
@@ -399,11 +515,8 @@ export class RemoteSection {
 
   /** 本机那一行的状态格与「还差什么」按账本重画一次。 */
   private redrawLocalRow(): void {
-    const strip = this.machinesContainer.querySelector<HTMLElement>(
-      ".remote-machine-local .remote-machine-status",
-    );
-    if (strip) renderStatusCells(strip, readStatus(LOCAL_MACHINE_KEY));
-    this.renderGaps(this.original.hosts);
+    const row = this.machinesContainer.querySelector<HTMLElement>(".remote-machine-local");
+    if (row) this.paintSummary(row);
   }
 
   /** 用 config 里的机器列表重建卡片。 */
@@ -417,9 +530,6 @@ export class RemoteSection {
     this.pageIdOf.clear();
     this.machinesContainer.innerHTML = "";
     this.rowsTail = null;
-    if (this.rowExtras) {
-      this.machinesContainer.appendChild(this.guardedExtra(() => this.rowExtras!.head()));
-    }
     this.machinesContainer.appendChild(this.buildLocalRow());
     if (this.pages) {
       // 本机页的内容由宿主（panel）填 —— 它拿得到那几块 per-machine 分节，本分节拿不到。
@@ -440,59 +550,8 @@ export class RemoteSection {
       this.rowsTail = this.guardedExtra(() => this.rowExtras!.tail());
       this.machinesContainer.appendChild(this.rowsTail);
     }
-    this.renderGaps(hosts);
     this.updateEmptyHint();
-  }
-
-  /**
-   * S5/E56：渲染「还差什么」。**纯读账本**（`computeGaps` 是纯函数，不碰 IO）。
-   *
-   * 「缺」与「没测过」分开显示 —— 一个刚装好、什么都没点过的新用户不该看到一屏红叉。
-   * 后果写出来（不只是一个 ✗），让他自己判断值不值得补。
-   */
-  private renderGaps(hosts: RemoteHostConfig[]): void {
-    const gaps = computeGaps({
-      origins: [LOCAL_MACHINE_KEY, ...hosts.map(hostKey)],
-      statusOf: readStatus,
-      // S9：Windows 本机的启动器是「终端集成」那块，不是 POSIX 的 ccm。
-    });
-    const summary = summarizeGaps(gaps);
-    this.gapsBox.replaceChildren();
-    if (!summary) {
-      // 全绿就整块不出现 —— 老用户不该天天看见一个空清单。
-      this.gapsBox.style.display = "none";
-      return;
-    }
-    this.gapsBox.style.display = "";
-    // 🔴：「还差什么（诊断汇总）」→「**诊断**」—— 用户逐字「这种说法太口语了」
-    //    （第六类病：标签写成问句 · 口语语域 · 括号里才是真名）。
-    //    ⚠ 与 `§10.3` 那次改名同拍：「应用」页那块原叫「诊断」的已先让名成「日志」
-    //    （`diagnostics-section.ts`），所以这一刻起面板上只有一个「诊断」（`§8` 判据 #11）。
-    //    名字进块标题（与别的块同一个 `.settings-group-title`），摘要另起一行。
-    const title = document.createElement("div");
-    title.className = "settings-group-title";
-    title.textContent = copyText("remote.gaps.title");
-    this.gapsBox.appendChild(title);
-    const head = document.createElement("div");
-    head.className = "settings-label remote-gaps-head";
-    head.textContent = summary;
-    this.gapsBox.appendChild(head);
-    const list = document.createElement("ul");
-    list.className = "remote-gaps-list";
-    for (const g of gaps) {
-      const li = document.createElement("li");
-      // 「缺 / 不知道」只由下面那一格 `data-kind` 承载 —— 原先同一个值还拼进了类名 `remote-gap-<kind>`（同一个状态写了两遍）。
-      li.className = `remote-gap remote-gap-${g.severity}`;
-      li.dataset.origin = g.origin;
-      li.dataset.facet = g.facet;
-      li.dataset.kind = g.kind;
-      // `KR59D3`：有名字的那条告知，**名字要进 DOM** —— 用户看得见的那一条与判据
-      // 断的那一条是同一个串，不是「日志里 warn 一句」。
-      if (g.code) li.dataset.code = g.code;
-      li.textContent = describeGap(g);
-      list.appendChild(li);
-    }
-    this.gapsBox.appendChild(list);
+    this.paintCount();
   }
 
   private appendCard(
@@ -518,7 +577,10 @@ export class RemoteSection {
       card.setPageMode();
       this.pages.addMachinePage(id, card.displayName(), card.element, card.parts());
       this.machinePageIds.push(id);
-      this.machinesContainer.insertBefore(this.buildMachineRow(card, id), this.rowsTail);
+      this.machinesContainer.insertBefore(
+        this.buildRow(id, card.displayName(), this.metaOfPage(id) ?? "", card.persistedKey ?? hostKey(card.collect())),
+        this.rowsTail,
+      );
     } else {
       this.machinesContainer.appendChild(card.element);
     }
@@ -527,11 +589,6 @@ export class RemoteSection {
   }
 
   /** 往一行上挂宿主给的格子。宿主那一侧抛了**不许把机器列表带走**（同 `safeBlock` 的隔离）。 */
-  private appendRowExtras(legend: HTMLElement, origin: string): void {
-    if (!this.rowExtras) return;
-    legend.appendChild(this.guardedExtra(() => this.rowExtras!.cells(origin)));
-  }
-
   private guardedExtra(make: () => HTMLElement): HTMLElement {
     try {
       return make();
@@ -546,52 +603,6 @@ export class RemoteSection {
    *
    * 状态条只渲染在行上，不再渲染在卡片 legend 上：§2.3 那张图里状态就是**列表**的一列，
    * 而详情页上用户看的是那些动作按钮本身的结果，不需要再来一份缓存结论。
-   */
-  private buildMachineRow(card: MachineCard, pageId: string): HTMLElement {
-    const row = document.createElement("div");
-    row.className = "remote-machine remote-machine-row";
-    row.dataset.pageId = pageId;
-
-    const legend = document.createElement("div");
-    legend.className = "remote-machine-legend";
-    row.appendChild(legend);
-
-    const name = document.createElement("button");
-    name.type = "button";
-    name.className = "remote-machine-name remote-machine-open";
-    name.textContent = card.displayName();
-    name.addEventListener("click", () => this.pages?.navigateToMachinePage(pageId));
-    legend.appendChild(name);
-
-    const strip = document.createElement("span");
-    strip.className = "remote-machine-status";
-    legend.appendChild(strip);
-    renderStatusCells(strip, readStatus(card.persistedKey ?? hostKey(card.collect())));
-    // 后端那四格。还没填地址的空白卡没有 origin ⇒ 不挂（没有后端可言）。
-    const origin = card.persistedKey ?? hostKey(card.collect());
-    if (origin) this.appendRowExtras(legend, origin);
-
-    const removeBtn = document.createElement("button");
-    removeBtn.type = "button";
-    removeBtn.className =
-      "settings-btn remote-machine-remove";
-    removeBtn.textContent = copyText("remote.row.delete");
-    removeBtn.title = copyText("remote.row.deleteHint");
-    removeBtn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      this.removeCard(card);
-    });
-    legend.appendChild(removeBtn);
-    return row;
-  }
-
-  /**
-   * 按 pageId 找列表里那一行。
-   *
-   * **刻意不用 `querySelector` + `CSS.escape`**：pageId 里含用户填的机器名（任意字符），
-   * 直接拼进选择器会炸；而 `CSS.escape` 在 jsdom 里不一定有（实测：用了它之后
-   * `removeCard` 在 `save()` 之前就抛，删除功能整个静默失效，5 条既有测试同时变红）。
-   * 扫一遍 `dataset` 既安全又不依赖宿主实现。
    */
   private findMachineRow(pageId: string): HTMLElement | null {
     for (const el of this.machinesContainer.children) {
@@ -649,6 +660,12 @@ export class RemoteSection {
     return false;
   }
 
+  /** 这台（按名字）的页 id；列表里没有 ⇒ `null`。 */
+  pageIdOfMachine(origin: string): string | null {
+    for (const [card, id] of this.pageIdOf) if (hostKey(card.collect()) === origin) return id;
+    return null;
+  }
+
   originOfPage(pageId: string): string | null {
     for (const [card, id] of this.pageIdOf) {
       if (id === pageId) return hostKey(card.collect()) || null;
@@ -670,16 +687,11 @@ export class RemoteSection {
     if (!row) return;
     const nameBtn = row.querySelector<HTMLElement>(".remote-machine-open");
     if (nameBtn) nameBtn.textContent = card.displayName();
+    const meta = row.querySelector<HTMLElement>(".remote-machine-meta");
+    if (meta) meta.textContent = this.metaOfPage(pageId) ?? "";
+    row.dataset.ledgerKey = card.persistedKey ?? hostKey(card.collect());
+    this.paintSummary(row);
     this.pages.renameMachinePage?.(pageId, card.displayName());
-    const strip = row.querySelector<HTMLElement>(".remote-machine-status");
-    if (strip) {
-      renderStatusCells(
-        strip,
-        readStatus(card.persistedKey ?? hostKey(card.collect())),
-      );
-    }
-    // 账本变了 ⇒「诊断」同一拍重算（测试连接通过之后不该还写着「连接：未测过」）。
-    this.renderGaps(this.original.hosts);
   }
 
   /** 那台的账本被别处写了（后端那几格画出「已连上」时记的两格）⇒ 那一行与「诊断」重画。 */
@@ -688,70 +700,77 @@ export class RemoteSection {
     if (card) this.refreshMachineRow(card);
   }
 
-  private removeCard(card: MachineCard): void {
+  /** 「添加机器」：框里点「添加」才建卡、写盘；没存上 ⇒ 卡收回去、框不关。 */
+  private openAdd(): Promise<boolean> {
+    return openAddMachine({
+      existing: () => this.cards.map((c) => c.collect()),
+      groups: () => importSshHosts(),
+      add: async (cfgs) => {
+        const cards = cfgs.map((c) => this.appendCard(c));
+        if (await this.save()) {
+          this.hideBanner();
+          toast(copyText("addMachine.save.done", { names: cards.map((c) => c.displayName()).join(copyText("kit.text.sep")) }), "", { level: "success" });
+          return null;
+        }
+        for (const c of cards) this.dropCard(c);
+        this.hideBanner();
+        return copyText("addMachine.err.save");
+      },
+    });
+  }
+
+  /** 界面上拿掉一张卡（那一行 · 那一页），不写盘。 */
+  private dropCard(card: MachineCard): { idx: number; pageId: string | null; row: HTMLElement | null; after: Element | null } {
     const idx = this.cards.indexOf(card);
-    if (idx < 0) return;
-    // S3：连同状态账本一起清 —— 否则下一台取同名的机器会**继承上一台的结论**，
-    // 显示一个它从没做过的 ✓。
-    if (card.persistedKey) forgetMachine(card.persistedKey);
-    this.cards.splice(idx, 1);
-    card.element.remove();
-    // S4b：连它那一页和列表行一起收掉，否则导航里会留下一个指向已删机器的死项。
-    // Phase G：**查表拿 id，不再现算** —— 现算会在改过名之后指向一个不存在的页
-    //（那正是「删了还在」那个缺陷）。理由详见 `assignPageId`。
     const pageId = this.pageIdFor(card);
+    const row = pageId ? this.findMachineRow(pageId) : null;
+    const after = row?.nextElementSibling ?? null;
+    if (idx >= 0) this.cards.splice(idx, 1);
+    card.element.remove();
     if (pageId) {
       this.pages?.removeMachinePage(pageId);
       this.machinePageIds = this.machinePageIds.filter((x) => x !== pageId);
-      this.findMachineRow(pageId)?.remove();
-      this.pageIdOf.delete(card);
+      row?.remove();
     }
     this.updateEmptyHint();
-    void this.save();
+    this.paintCount();
+    return { idx, pageId, row, after };
+  }
+
+  /**
+   * 从列表删除（撤得回 ⇒ 不问）：那一行、那一页当场拿掉，出「已删除 X ［撤销］」8 秒；
+   * 撤销 ⇒ 原样放回（连接设置一格不丢）；没撤 ⇒ 到点才写盘、清那台的状态账本。
+   */
+  private removeCard(card: MachineCard): void {
+    if (!this.cards.includes(card)) return;
+    const name = card.displayName();
+    const { idx, pageId, row, after } = this.dropCard(card);
+    let undone = false;
+    undoToast(
+      copyText("machineList.remove.done", { machine: name }),
+      () => {
+        undone = true;
+        this.cards.splice(Math.min(idx, this.cards.length), 0, card);
+        if (pageId && this.pages) {
+          this.pages.addMachinePage(pageId, card.displayName(), card.element, card.parts());
+          this.machinePageIds.push(pageId);
+        }
+        if (row) this.machinesContainer.insertBefore(row, after?.parentNode === this.machinesContainer ? after : this.rowsTail);
+        this.updateEmptyHint();
+        this.paintCount();
+        void this.save();
+      },
+      () => {
+        if (undone) return;
+        if (card.persistedKey) forgetMachine(card.persistedKey);
+        this.pageIdOf.delete(card);
+        void this.save();
+      },
+    );
   }
 
   private updateEmptyHint(): void {
     this.emptyHint.style.display = this.cards.length === 0 ? "block" : "none";
-  }
-
-  /** 从 ~/.ssh/config 拉别名清单填进导入下拉。空 → 禁用下拉 + 提示。 */
-  private async populateAliases(): Promise<void> {
-    let aliases: string[] = [];
-    let unreadable: string | null = null;
-    try {
-      // 问本机常驻后端（`ssh-config-aliases`，按形状严格收）。
-      aliases = await listSshHostAliases();
-    } catch (e) {
-      console.warn("ssh-config-aliases failed:", e);
-      // 读失败与「真没有别名」原先同形（都是空下拉 ＋ 「未找到」）⇒ 分开说。
-      unreadable = String(e);
-    }
-
-    this.importSelect.innerHTML = "";
-    const placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = copyText("remote.aliases.pick");
-    this.importSelect.appendChild(placeholder);
-
-    if (aliases.length === 0) {
-      this.importSelect.disabled = true;
-      this.importHint.textContent =
-        unreadable !== null
-          ? copyText("remote.import.listFailed", { e: unreadable })
-          : copyText("remote.aliases.none");
-      this.importHint.style.display = "block";
-      return;
-    }
-
-    for (const a of aliases) {
-      const opt = document.createElement("option");
-      opt.value = a;
-      opt.textContent = a;
-      this.importSelect.appendChild(opt);
-    }
-    this.importSelect.disabled = false;
-    this.importHint.style.display = "none";
-    this.importSelect.value = "";
   }
 
   // === DOM 构建 ===
@@ -787,63 +806,17 @@ export class RemoteSection {
     //
     // 归拢的判据与 §2.1 同源：**它们改的都不是某一台机器的状态，而是这份列表本身**
     //（加一台 / 导入一批 / 全局开关 / 跨机器的隧道台）。per-machine 的东西在机器详情页上。
-    const toolbar = document.createElement("div");
-    toolbar.className = "settings-row remote-toolbar";
+    this.countLine = document.createElement("div");
+    this.countLine.className = "settings-page-sub remote-machine-count";
+    group.appendChild(this.countLine);
 
-    const addBtn = document.createElement("button");
-    addBtn.type = "button";
-    addBtn.className = "settings-btn";
-    addBtn.textContent = copyText("remote.build.addMachine");
-    addBtn.addEventListener("click", () => {
-      this.appendCard({ ...HOST_DEFAULTS });
-      // 空白机器先不写 config（缺必填字段无意义）；用户填了字段 change 时才 save。
-    });
-    toolbar.appendChild(addBtn);
-
-    // 从 ~/.ssh/config 导入（下拉 + 批量导入按钮）——它自己会往 toolbar 里塞两个控件。
-    this.buildImportRow(toolbar);
-
-    // F58：端口转发管理台入口。**跨机器**的隧道台，属于列表级而非某台机器。
-    const pfBtn = document.createElement("button");
-    pfBtn.type = "button";
-    pfBtn.className = "settings-btn";
-    pfBtn.textContent = copyText("remote.build.portForward");
-    pfBtn.title =
-      copyText("remote.build.portForwardHint");
-    pfBtn.addEventListener("click", () => openPortForwardPanel());
-    toolbar.appendChild(pfBtn);
-
-    // 启用 toggle（全局）。**留在工具条上而不是收进折叠**：它是状态性开关，
-    // 关着的时候整个列表都不生效 —— 藏起来会让人对着一列配好的机器纳闷为什么没连上
-    //（`INVARIANTS §12`：「用户看到了但没注意到关键信息」已真实发生过一次）。
-    const enabledRow = document.createElement("label");
-    enabledRow.className = "settings-row-checkbox remote-toolbar-toggle";
-    this.enabledCheckbox = document.createElement("input");
-    this.enabledCheckbox.type = "checkbox";
-    this.enabledCheckbox.className = "settings-checkbox";
-    this.enabledCheckbox.addEventListener("change", () => void this.save());
-    enabledRow.appendChild(this.enabledCheckbox);
-    const enabledLabel = document.createElement("span");
-    enabledLabel.className = "settings-checkbox-label";
-    enabledLabel.textContent = copyText("remote.build.enable");
-    enabledRow.appendChild(enabledLabel);
-    enabledRow.appendChild(
-      makeInfoIcon(
-        copyText("remote.build.enableHint"),
-      ),
-    );
-    toolbar.appendChild(enabledRow);
-    group.appendChild(toolbar);
-    toolbar.insertAdjacentElement("afterend", this.importHint);
+    this.importHint = document.createElement("div");
+    this.importHint.className = "settings-hint";
+    this.importHint.style.display = "none";
+    group.appendChild(this.importHint);
 
     // ★ S5 / E56：「还差什么」——新用户一站式的落点。
     // **只读 S3 的账本，不发任何请求**（§1-2）；空的时候整块不渲染，不打扰老用户。
-    this.gapsBox = document.createElement("div");
-    this.gapsBox.className = "remote-gaps";
-    this.gapsBox.style.display = "none";
-    group.appendChild(this.gapsBox);
-
-    // 机器列表容器
     this.machinesContainer = document.createElement("div");
     this.machinesContainer.className = "remote-machines";
     group.appendChild(this.machinesContainer);
@@ -858,313 +831,8 @@ export class RemoteSection {
     group.appendChild(this.emptyHint);
 
     // 4. Feature ②：远端 ↗ 拉前用的只读 ccm wrapper 片段
-    this.buildWrapperSnippetRow(group);
 
     return group;
-  }
-
-  /** 顶部「从 ~/.ssh/config 导入」行：label + select + hint。 */
-  /**
-   * S4b-3b：「从 ssh config 导入」的两个控件，**直接塞进工具条**，不再自带一整行。
-   *
-   * 原先它是一整块：标题行「从 ~/.ssh/config 导入」+ ⓘ + 下拉 + 批量按钮 + hint 行。
-   * 归进工具条后标题行是多余的（下拉自己的 placeholder 已经写着「选择一个主机别名…」），
-   * ⓘ 挪到下拉上，hint 仍保留 —— 它承载的是**失败态**（没读到别名 / 读取失败），
-   * 属于 §1-3 说的「不读就会做错事的」，不能收进 hover。
-   */
-  private buildImportRow(toolbar: HTMLElement): void {
-    this.importSelect = document.createElement("select");
-    this.importSelect.className = "settings-input settings-input-select";
-    this.importSelect.title =
-      copyText("remote.import.hint");
-    const placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = copyText("remote.import.pick");
-    this.importSelect.appendChild(placeholder);
-    this.importSelect.disabled = true;
-    this.importSelect.addEventListener(
-      "change",
-      () => void this.onImportAlias(),
-    );
-    toolbar.appendChild(this.importSelect);
-
-    // F57：批量导入——一次导入全部主机,智能聚合同机多地址,预览可拆分。
-    const batchBtn = document.createElement("button");
-    batchBtn.type = "button";
-    batchBtn.className = "settings-btn";
-    batchBtn.textContent = copyText("remote.import.batch");
-    batchBtn.title =
-      copyText("remote.import.batchHint");
-    batchBtn.addEventListener("click", () => void this.onBatchImport());
-    toolbar.appendChild(batchBtn);
-
-    // 失败态提示（读不到别名 / 读取失败）。**不进 hover** —— 见方法头注。
-    // 挂在工具条外面（整行宽），否则长文案会把工具条撑变形。
-    this.importHint = document.createElement("div");
-    this.importHint.className = "settings-hint";
-    this.importHint.style.display = "none";
-    // 挂载挪到 `toolbar` 进了 `group` 之后（`buildBody` 那一句）：这里调用时 `toolbar` 还没有父节点，
-    //   `insertAdjacentElement("afterend")` 是空操作 ⇒ 这块提示从来没进过 DOM（「未找到」「读不了」都没人看得见）。
-  }
-
-  /** 选了别名 → `ssh-config-resolve` → 新增一台机器并填好 → 保存。已有同名的 ⇒ 不建卡、说出来（与批量导入同一条）。 */
-  private async onImportAlias(): Promise<void> {
-    const alias = this.importSelect.value;
-    if (!alias) return;
-    if (this.originTaken(alias)) {
-      this.showBanner(copyText("remote.import.exists", { alias }));
-      this.importSelect.value = "";
-      return;
-    }
-    try {
-      const resolved = await resolveSshHost(alias);
-      const card = this.appendCard({ ...HOST_DEFAULTS });
-      card.applyResolved(resolved, alias);
-      // 没存进去时 `save()` 已经把原因画在横幅上，不拿「已导入」盖掉它。
-      if (await this.save()) this.showBanner(copyText("remote.import.done", { alias }));
-    } catch (e) {
-      console.warn("ssh-config-resolve failed:", e);
-      this.showBanner(copyText("remote.import.failed", { alias, e: String(e) }));
-    } finally {
-      this.importSelect.value = "";
-    }
-  }
-
-  /** F57：批量导入——`ssh-config-import`（后端智能聚合）→ 预览弹框（可拆分/勾选）→ 建卡。 */
-  private async onBatchImport(): Promise<void> {
-    let groups: ImportGroup[];
-    try {
-      groups = await importSshHosts();
-    } catch (e) {
-      this.showBanner(copyText("remote.batch.failed", { e: String(e) }));
-      return;
-    }
-    if (groups.length === 0) {
-      this.showBanner(copyText("remote.batch.none"));
-      return;
-    }
-    this.showImportPreview(groups);
-  }
-
-  /** F57：聚合组 → RemoteHostConfig（label 可被预览编辑覆盖）。 */
-  private groupToCfg(g: ImportGroup, label: string): RemoteHostConfig {
-    return {
-      label: label.trim() || g.label,
-      host: g.host,
-      port: g.port || 22,
-      user: g.user,
-      keyPath: g.keyPath ?? "",
-      hostKeyFingerprint: "",
-      addresses: g.addresses,
-      jump: g.jump ?? "",
-      resumeCommand: "", // S4b-3：空 = 沿用全局默认（导入时无从得知这台该用什么）
-    };
-  }
-
-  /** F57：拆分——组内单个成员 → 一台独立机（label=别名,用成员级 port/proxyJump 精确还原,无备用地址）。 */
-  private memberToCfg(g: ImportGroup, m: ImportMember): RemoteHostConfig {
-    return {
-      label: m.alias,
-      host: m.host,
-      port: m.port || 22,
-      user: g.user,
-      keyPath: g.keyPath ?? "",
-      hostKeyFingerprint: "",
-      addresses: [],
-      jump: m.proxyJump ?? "",
-      resumeCommand: "", // S4b-3：空 = 沿用全局默认（导入时无从得知这台该用什么）
-    };
-  }
-
-  /** F57：批量导入预览弹框——列各聚合组,勾选包含 / 拆分成独立机 / 改 label,确认建卡。 */
-  private showImportPreview(groups: ImportGroup[]): void {
-    type Row = {
-      g: ImportGroup;
-      include: boolean;
-      split: boolean;
-      label: string;
-    };
-    const state: Row[] = groups.map((g) => ({
-      g,
-      include: true,
-      split: false,
-      label: g.label,
-    }));
-
-    const back = document.createElement("div");
-    back.className = "import-preview-back";
-    // 压进 Esc 栈：Esc 只关这个框，不连带关设置窗。
-    const layer: OverlayHandle = { handleEsc: () => (close(), true) };
-    const close = (): void => {
-      dispatcher.popOverlay(layer);
-      back.remove();
-    };
-    const box = document.createElement("div");
-    box.className = "import-preview-box";
-    const title = document.createElement("div");
-    title.className = "import-preview-title";
-    title.textContent = copyText("remote.preview.title", { n: groups.length });
-    box.appendChild(title);
-
-    const list = document.createElement("div");
-    list.className = "import-preview-list";
-    for (const s of state) {
-      const src = s.g.members.map((m) => m.alias).join(", ");
-      const addrHint = s.g.addresses.length
-        ? copyText("remote.preview.addresses", { n: s.g.addresses.length })
-        : "";
-      const jumpHint = s.g.jump ? copyText("remote.preview.jump", { jump: s.g.jump }) : "";
-      const aggLine = copyText("remote.preview.row", { host: s.g.host, addrHint, user: s.g.user || copyText("remote.preview.noUser"), jumpHint, src });
-
-      const item = document.createElement("div");
-      item.className = "import-preview-item";
-      const inc = document.createElement("input");
-      inc.type = "checkbox";
-      inc.checked = true;
-      inc.addEventListener("change", () => (s.include = inc.checked));
-      item.appendChild(inc);
-
-      const body = document.createElement("div");
-      body.className = "import-preview-body";
-      const labelInput = document.createElement("input");
-      labelInput.type = "text";
-      labelInput.className = "import-preview-label";
-      labelInput.value = s.label;
-      labelInput.addEventListener("input", () => (s.label = labelInput.value));
-      body.appendChild(labelInput);
-      const info = document.createElement("div");
-      info.className = "import-preview-info";
-      info.textContent = aggLine;
-      body.appendChild(info);
-      item.appendChild(body);
-
-      if (s.g.members.length > 1) {
-        const splitWrap = document.createElement("label");
-        splitWrap.className = "import-preview-split";
-        const split = document.createElement("input");
-        split.type = "checkbox";
-        split.addEventListener("change", () => {
-          s.split = split.checked;
-          info.textContent = split.checked
-            ? copyText("remote.preview.split", { n: s.g.members.length, src })
-            : aggLine;
-        });
-        splitWrap.append(split, document.createTextNode(copyText("remote.preview.splitToggle")));
-        item.appendChild(splitWrap);
-      }
-      list.appendChild(item);
-    }
-    box.appendChild(list);
-
-    const foot = document.createElement("div");
-    foot.className = "import-preview-foot";
-    const cancel = document.createElement("button");
-    cancel.type = "button";
-    cancel.className = "settings-btn";
-    cancel.textContent = copyText("remote.preview.cancel");
-    cancel.addEventListener("click", close);
-    const confirm = document.createElement("button");
-    confirm.type = "button";
-    confirm.className = "settings-btn settings-btn-primary";
-    confirm.textContent = copyText("remote.preview.import");
-    confirm.addEventListener("click", () => {
-      close();
-      void this.applyImportPreview(state);
-    });
-    foot.append(cancel, confirm);
-    box.appendChild(foot);
-
-    back.addEventListener("click", (e) => {
-      if (e.target === back) close();
-    });
-    back.appendChild(box);
-    dispatcher.pushOverlay(layer);
-    document.body.appendChild(back);
-    box.querySelector("input")?.focus();
-  }
-
-  /** F57：把预览里勾选的组建成机器卡（拆分组建多台;同名 label 已存在则跳过）。 */
-  private async applyImportPreview(
-    state: Array<{
-      g: ImportGroup;
-      include: boolean;
-      split: boolean;
-      label: string;
-    }>,
-  ): Promise<void> {
-    // 已存在的卡（导入前）→ 撞到就跳过（不重复导入）。批内新机同名 → 加后缀消歧（不丢机,F57-1）。
-    const preExisting = new Set(this.cards.map((c) => hostKey(c.collect())));
-    const usedInBatch = new Set<string>();
-    let added = 0;
-    let skipped = 0;
-    const push = (cfg: RemoteHostConfig): void => {
-      const base = cfg.label.trim() || cfg.host;
-      if (preExisting.has(base)) {
-        skipped++;
-        return;
-      }
-      let key = base;
-      let n = 2;
-      while (usedInBatch.has(key)) key = `${base}-${n++}`;
-      if (key !== base) cfg.label = key; // 批内同基名不同机 → 后缀消歧,绝不丢机
-      usedInBatch.add(key);
-      this.appendCard(cfg);
-      added++;
-    };
-    for (const s of state) {
-      if (!s.include) continue;
-      if (s.split) {
-        for (const m of s.g.members) push(this.memberToCfg(s.g, m));
-      } else {
-        push(this.groupToCfg(s.g, s.label));
-      }
-    }
-    // 没存进去时 `save()` 已经把原因画在横幅上，不拿「已导入几台」盖掉它。
-    if (added > 0 && !(await this.save())) return;
-    this.showBanner(
-      copyText("remote.batch.done", { added, skippedPart: skipped ? copyText("remote.batch.skipped", { skipped }) : "" }),
-    );
-  }
-
-  /**
-   * Feature ②：远端 ↗ 拉前的只读 `ccm` wrapper 片段。纯 DOM/信息展示，不读写 config。
-   */
-  private buildWrapperSnippetRow(parent: HTMLElement): void {
-    // F81（#40）：默认折叠——原生 <details> 不带 open 属性即收起；点标题（<summary>）展开看片段。
-    // 片段占位大、多数人配一次不再看，故默认收起。**不加 .settings-row（display:flex）**——flex 的
-    // <details> 在部分浏览器折叠会失效（闭合仍渲染全部子元素）；用块流 + 子元素自身外边距排布。
-    const row = document.createElement("details");
-    row.className = "remote-wrapper-details";
-
-    const label = document.createElement("summary");
-    label.className = "settings-label remote-wrapper-summary";
-    label.textContent = copyText("remote.wrapper.title");
-    label.appendChild(
-      makeInfoIcon(
-        copyText("remote.wrapper.help"),
-      ),
-    );
-    row.appendChild(label);
-
-    // T03：改走统一的待贴块。**这一处此前有两个真缺陷**，只有把三个待贴落点放到一起
-    // 数才看得见：① 没有粘后指引（另两处都有）；② 复制失败被 `console.warn` 吞掉
-    // ——用户点了「复制」，按钮不变、没有任何提示，然后去粘贴，粘到的是上一次剪贴板里的东西。
-    row.appendChild(
-      buildPasteBlock({
-        text: () => CCM_WRAPPER_SNIPPET,
-        target: copyText("remote.wrapper.pasteTarget"),
-        mergeNote:
-          copyText("remote.wrapper.merge"),
-        activation: copyText("remote.wrapper.activation"),
-        multiline: true,
-        rows: 10,
-        // 指回已有规则的那个 class（迁移时改名成 `-paste` 让 styles.css:3480
-        // 那条规则失去了宿主，而新名字一条规则都没有）
-        className: "remote-wrapper-snippet",
-      }).element,
-    );
-
-    parent.appendChild(row);
   }
 
   // === 数据 ===
@@ -1177,11 +845,9 @@ export class RemoteSection {
       const h = c.collect();
       return c.persistedKey !== null || (!!h.host && !!h.user);
     });
-    const next: RemoteConfig = { enabled: this.enabledCheckbox.checked, hosts: saving.map((c) => c.collect()) };
-    // best-effort UI 校验：启用但某台缺必填字段 → 软提示（不拦保存，后端会跳过该台）。
-    const incompleteCount = next.enabled
-      ? next.hosts.filter((h) => !h.host || !h.user).length
-      : 0;
+    const next: RemoteConfig = { hosts: saving.map((c) => c.collect()) };
+    // best-effort UI 校验：某台缺必填字段 → 软提示（不拦保存，后端会跳过该台）。
+    const incompleteCount = next.hosts.filter((h) => !h.host || !h.user).length;
     // 指纹格式软校验：非空且不以 SHA256: 开头 → 大概率粘错字段。
     const fingerprintLooksOff = next.hosts.some(
       (h) =>
@@ -1225,7 +891,6 @@ export class RemoteSection {
       const wasOf = (k: string | null): RemoteHostConfig | undefined =>
         k !== null && loadedCount.get(k) === 1 ? findHostByOrigin(this.original.hosts, k) ?? undefined : undefined;
       await patchRemoteConfig({
-        enabled: next.enabled,
         upsert: saving.map((c) => ({
           key: c.persistedKey,
           value: c.collect(),
@@ -1256,18 +921,40 @@ export class RemoteSection {
       // 那台的默认账号 / 默认模型跟着改名走。
       for (const [from, to] of renames) await moveMachinePrefs(from, to);
       if ((changed || resumeChanged) && incompleteCount === 0 && !fingerprintLooksOff) {
-        // S7：「要重启」这个**状态**收敛到底部常驻条，banner 只报「这次动作成功了」。
-        // 原先每次保存都在 banner 里重说一遍「需要重启」—— 那句话恒真，说多了就成噪音，
-        // 真该注意时反而认不出来（§12）。
-        if (changed) markRestartNeeded(copyText("remote.save.what"));
         this.showBanner(copyText("remote.save.done"));
       }
+      // 机器表改了 ⇒ 当场对齐那几条流（加的去连、删的 · 停用的断开、改了连接参数的重连），不要重启。
+      if (changed) void this.reconcile();
+      for (const c of saving) this.repaintRow(c);
       return true;
     } catch (e) {
       console.warn("save remote config failed:", e);
       this.showBanner(copyText("remote.save.failed", { e: String(e) }));
       return false;
     }
+  }
+
+  /** 照盘上的机器表对齐远端那几条流；这一趟断开的那几台点子跟着换。 */
+  private async reconcile(): Promise<void> {
+    try {
+      await commands.remote_reconcile();
+    } catch (e) {
+      this.showBanner(copyText("machineList.reconcile.failed", { e: String(e) }));
+    }
+    this.pages?.machinesReconciled?.();
+  }
+
+  /** 照这台现在的「连接这台」重画那一行（停用 ⇒ 空心点 ＋「已停用」＋［连接］；开着 ⇒ 照上次问到的连接）。 */
+  private repaintRow(card: MachineCard): void {
+    const pageId = this.pageIdFor(card);
+    if (!pageId) return;
+    this.setConnected(pageId, this.connected.get(pageId) ?? null);
+  }
+
+  /** 这一页是不是停用了连接的那台。 */
+  isDisabledPage(pageId: string): boolean {
+    const card = [...this.pageIdOf.entries()].find(([, id]) => id === pageId)?.[0];
+    return card ? !card.collect().connect : false;
   }
 
   private showBanner(text: string): void {
@@ -1297,7 +984,8 @@ function sameHost(a: RemoteHostConfig, b: RemoteHostConfig): boolean {
     a.user === b.user &&
     a.keyPath === b.keyPath &&
     a.hostKeyFingerprint === b.hostKeyFingerprint &&
-    a.jump === b.jump && // F56（D-I3）:仅改跳板也算变更，触发「需重启生效」提示
+    a.jump === b.jump &&
+    a.connect === b.connect &&
     // F45（Phase G 补）:仅改「备用地址」也算变更。此前独漏 addresses（jump 比了）
     // → 只改多地址、其它不动时「需重启生效」横幅被静默抑制，用户可能不重启、新地址不生效。
     a.addresses.length === b.addresses.length &&
@@ -1307,7 +995,6 @@ function sameHost(a: RemoteHostConfig, b: RemoteHostConfig): boolean {
 
 function sameRemote(a: RemoteConfig, b: RemoteConfig): boolean {
   return (
-    a.enabled === b.enabled &&
     a.hosts.length === b.hosts.length &&
     a.hosts.every((h, i) => sameHost(h, b.hosts[i]))
   );

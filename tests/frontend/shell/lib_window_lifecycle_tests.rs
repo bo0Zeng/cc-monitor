@@ -185,7 +185,8 @@ fn every_emit_to_targets_a_webview_window_not_a_bare_label() {
         got,
         // 定向投递换了住址：独立窗口的定向重放（原 `event_replay` 那一处）退役，
         //   今天唯一的一处是会话流的交格 —— 通道 webview 宿主的出口（主窗口与独立窗口都是定向）。
-        vec!["webview.rs::deliver".to_string()],
+        //   另一处：设置窗已开着时把「目的地」交给它（只给那一扇窗）。
+        vec!["lib.rs::open_settings_window".to_string(), "webview.rs::deliver".to_string()],
         "`emit_to` 的调用点与登记对不上（两向）。新写一处定向投递 ⇒ 先回答 `INVARIANTS §22` 第 2 条，再登记进来"
     );
     for s in &sites {

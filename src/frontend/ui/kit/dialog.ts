@@ -11,7 +11,8 @@
  * - 不能用 `window.confirm`：真 app 里它被换成恒真的异步替身，从来不拦（判据钉生产代码零处原生 `confirm` / `prompt`）。
  */
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
-import { button, buttonRow } from "./button";
+import { button, buttonRow, setBusy, setButtonLabel, setDisabled } from "./button";
+import { banner } from "./banner";
 import { icon } from "./icon";
 import { copyText } from "../copy-table";
 import s from "./dialog.module.css";
@@ -117,7 +118,13 @@ function fillBody(body: HTMLElement, spec: ConfirmSpec): void {
   }
 }
 
-function run<T>(b: Built, cancelled: T, onOk: () => T | undefined, first: HTMLElement, dirty: () => boolean): Promise<T> {
+function run<T>(
+  b: Built,
+  cancelled: T,
+  onOk: () => T | undefined | Promise<T | undefined>,
+  first: HTMLElement,
+  dirty: () => boolean,
+): Promise<T> {
   pendingCancel?.();
   const before = document.activeElement;
   return new Promise<T>((resolve) => {
@@ -145,8 +152,20 @@ function run<T>(b: Built, cancelled: T, onOk: () => T | undefined, first: HTMLEl
     });
     b.cancel.addEventListener("click", () => finish(cancelled));
     b.ok.addEventListener("click", () => {
+      if (b.ok.getAttribute("aria-disabled") === "true" || b.ok.dataset.busy === "true") return;
       const v = onOk();
-      if (v !== undefined) finish(v);
+      if (!(v instanceof Promise)) {
+        if (v !== undefined) finish(v);
+        return;
+      }
+      setBusy(b.ok, b.ok.textContent ?? "");
+      void v.then(
+        (r) => {
+          setBusy(b.ok, null);
+          if (r !== undefined) finish(r);
+        },
+        () => setBusy(b.ok, null),
+      );
     });
     b.panel.addEventListener("keydown", (ev) => {
       if (ev.key !== "Tab") return;
@@ -208,4 +227,48 @@ export function askText(spec: TextSpec): Promise<string | null> {
   const p = run<string | null>(b, null, submit, input, () => input.value !== (spec.initial ?? ""));
   input.select();
   return p;
+}
+
+export interface FormSpec {
+  title: string;
+  /** 主按钮上的字（可随内容改：`添加 2 台`）。 */
+  action: string;
+  body: HTMLElement;
+  /** 宽框（580）：表单 · 清单。 */
+  wide?: boolean;
+  /** 打开时焦点落在哪；缺省第一个可填的格。 */
+  first?: () => HTMLElement | null;
+  /** 主按钮可不可点：`null` ⇒ 可；一句话 ⇒ 禁用、悬停说为什么。内容变了由宿主调 `refresh()`。 */
+  blocked?: () => string | null;
+  /** 点主按钮：`null` ⇒ 成了、关框；一句话 ⇒ 框顶一条错误、不关、填的都在。 */
+  submit: () => Promise<string | null>;
+  /** 填过东西：点遮罩不关。 */
+  dirty?: () => boolean;
+}
+
+export interface FormHandle {
+  /** 成了 ⇒ `true`；取消 · Esc · 遮罩 ⇒ `false`。 */
+  done: Promise<boolean>;
+  refresh(): void;
+  setAction(label: string): void;
+}
+
+/** 一张表单对话框（添加机器这一类）：内容由调用方建，框管按钮 · 错误条 · Esc · 焦点。 */
+export function formDialog(spec: FormSpec): FormHandle {
+  const b = build(spec.title, spec.action, false);
+  if (spec.wide) b.panel.dataset.size = "wide";
+  const errBox = document.createElement("div");
+  b.body.append(errBox, spec.body);
+  const refresh = (): void => setDisabled(b.ok, spec.blocked?.() ?? null);
+  refresh();
+  const submit = async (): Promise<boolean | undefined> => {
+    const why = await spec.submit();
+    if (why === null) return true;
+    errBox.replaceChildren(banner("error", why));
+    return undefined;
+  };
+  const first =
+    spec.first?.() ?? spec.body.querySelector<HTMLElement>("input:not([disabled]), textarea, select") ?? b.ok;
+  const done = run<boolean>(b, false, submit, first, spec.dirty ?? (() => false));
+  return { done, refresh, setAction: (label) => setButtonLabel(b.ok, label) };
 }

@@ -758,8 +758,9 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
  */
 const KIT_AWAITING_FACES: ReadonlySet<string> = new Set(
   // banner · drawer · fold · meter · tabs 已由主窗口的「账号」面板用上；badge · status-dot 由标签页栏（状态点 · 机器徽标 · 「需要你」计数）用上；
-  // progress 由消息流过程里那一步的「在跑」转圈用上（主窗口第 2 批）；empty · skeleton · switch 由历史页（空态 · 骨架 · 筛选里的勾与单选）用上；chip 由状态栏（任务 · agent · 上下文）用上。
-  ["block", "card", "field", "list-row"].map(
+  // progress 由消息流过程里那一步的「在跑」转圈用上（主窗口第 2 批）；empty · skeleton · switch 由历史页（空态 · 骨架 · 筛选里的勾与单选）用上；chip 由状态栏（任务 · agent · 上下文）用上；
+  // field 由设置窗「添加机器」框用上。
+  ["block", "card", "list-row"].map(
     (k) => `src/frontend/ui/kit/${k}.module.css`,
   ),
 );
@@ -769,8 +770,6 @@ const KIT_PARTIAL: Readonly<Record<string, readonly string[]>> = {
   // （分段按钮 C23 账号面板用上了，分栏 C5 那一形由历史页「按时间 | 按项目」用上了 ⇒ tabs 那一条摘了。）
   // 转圈（`spinner`）消息流与历史页都用上了；进度条（C17）那一形还没有面。
   "src/frontend/ui/kit/progress.module.css": ["progressFill", "progressReadout", "progressRow", "progressTrack"],
-  // 勾与单选（`checkbox` · `radio`）历史页的筛选用上了；开关那一形还没有面。
-  "src/frontend/ui/kit/switch.module.css": ["swRow", "swSwitch", "swText"],
 };
 
 describe("〔UC2〕CSS Modules 在构建产物里（件 10）", () => {

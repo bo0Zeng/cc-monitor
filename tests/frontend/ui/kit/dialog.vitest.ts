@@ -24,7 +24,7 @@
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import ts from "typescript";
 
-import { confirmDialog, askText, LIST_MAX, type ConfirmSpec } from "../../../../src/frontend/ui/kit/dialog";
+import { confirmDialog, askText, formDialog, LIST_MAX, type ConfirmSpec } from "../../../../src/frontend/ui/kit/dialog";
 import { dispatcher } from "../../../../src/frontend/ui/keybindings/registry";
 import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../../test-support/production-sources.ts";
 
@@ -342,5 +342,36 @@ describe("D2 · confirmDialog / askText 的结算语义（C10）", () => {
     await p;
     expect(document.activeElement).toBe(before);
     before.remove();
+  });
+
+  it("formDialog：拦着时主按钮禁用并说为什么；交了没成 ⇒ 框顶一条错、不关；成了 ⇒ 关、答 true", async () => {
+    const body = document.createElement("div");
+    const input = document.createElement("input");
+    body.appendChild(input);
+    let reply: string | null = "没存上";
+    const h = formDialog({
+      title: "t",
+      action: "加",
+      body,
+      blocked: () => (input.value === "" ? "需填" : null),
+      submit: async () => reply,
+    });
+    expect(okBtn().getAttribute("aria-disabled")).toBe("true");
+    expect(okBtn().title).toBe("需填");
+    okBtn().click();
+    await Promise.resolve();
+    expect(dialog(), "拦着还交了").not.toBeNull();
+    input.value = "x";
+    h.refresh();
+    h.setAction("加 1 台");
+    expect(okBtn().textContent).toBe("加 1 台");
+    okBtn().click();
+    for (let i = 0; i < 3; i++) await Promise.resolve();
+    expect(dialog(), "没成就关了").not.toBeNull();
+    expect(dialog()!.textContent).toContain("没存上");
+    reply = null;
+    okBtn().click();
+    await expect(h.done).resolves.toBe(true);
+    expect(dialog()).toBeNull();
   });
 });

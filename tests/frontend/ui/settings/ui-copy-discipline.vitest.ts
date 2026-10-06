@@ -57,6 +57,11 @@ vi.mock("../../../../src/frontend/ui/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
   LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
   RemoteSection: class {
+    headActions = (): HTMLElement[] => [];
+    pageIdOfMachine = (): string | null => null;
+    menuFor = (): unknown[] => [];
+    metaOfPage = (): string | null => null;
+    setConnected = (): void => {};
     originOfPage = (): string | null => null;
     isUnconfiguredPage = (): boolean => false;
     element = document.createElement("div");
@@ -278,7 +283,7 @@ describe(" 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源码住址",
       const p = new SettingsPanel({ windowMode: true });
       await p.open();
       await tick();
-      document.querySelector<HTMLButtonElement>('[id="settings-tab-machine:（本机）"]')?.click();
+      document.querySelector<HTMLButtonElement>('[id="settings-tab-data"]')?.click();
       await tick();
       await tick();
       const rows = document.querySelectorAll(".config-surface-row");

@@ -96,7 +96,6 @@ import * as remoteConfigModule from "../../../../src/frontend/ui/remote-config";
 import {
   recordFacet,
   readStatus,
-  forgetMachine,
   LOCAL_MACHINE_KEY,
 } from "../../../../src/frontend/ui/settings/machine-status";
 import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
@@ -105,6 +104,38 @@ import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-o
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { stripComments } from "../../../test-support/strip-comments";
+
+
+/** 菜单里写着 `label` 的那一项（菜单挂在 body 上）。 */
+function menuItem(label: string): HTMLButtonElement {
+  const it = [...document.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]')].find((b) => (b.textContent ?? "").includes(label));
+  if (!it) throw new Error(`菜单里没有「${label}」`);
+  return it;
+}
+
+/** 开「添加机器」框（kit 对话框挂在 body 上）。 */
+async function openAdd(sec: RemoteSection): Promise<HTMLElement> {
+  sec.headActions()[0]!.click();
+  for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0));
+  return document.querySelector<HTMLElement>('[role="dialog"]')!;
+}
+
+/** 删第 i 台远端（行的 ⋯ →「从列表删除」，没有行时点卡片自己的删除）；`commit` ⇒ 点掉撤销条（到点同一条路）。 */
+function removeAt(sec: RemoteSection, i: number, commit = true): void {
+  const rows = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine-row:not(.remote-machine-local)")];
+  if (rows.length > 0) {
+    rows[i]!.querySelector<HTMLButtonElement>("button[aria-label]")!.click();
+    menuItem("从列表删除").click();
+  } else {
+    sec.element.querySelectorAll<HTMLButtonElement>(".remote-machine-remove")[i]!.click();
+  }
+  if (commit) {
+    const close = [...document.querySelectorAll<HTMLButtonElement>("button[aria-label]")].filter(
+      (b) => b.getAttribute("aria-label") === copyText("kit.toast.close"),
+    );
+    close.at(-1)?.click();
+  }
+}
 
 describe("F43 shouldShowResetFingerprint", () => {
   it("已固化非空指纹 → 显示", () => {
@@ -146,6 +177,7 @@ describe("F54 findHostByOrigin", () => {
     addresses: [],
     jump: "",
     resumeCommand: "",
+    connect: true,
       });
   const hosts = [mkHost("devbox", "10.0.0.2"), mkHost("", "pi.local")];
   it("命中 label", () => {
@@ -186,6 +218,7 @@ describe("F56 jump write→read 往返（D-B1 回归）", () => {
     addresses: [],
     jump,
     resumeCommand: "",
+    connect: true,
       });
 
   it("jump 写入 config 并读回不丢", async () => {
@@ -194,7 +227,7 @@ describe("F56 jump write→read 往返（D-B1 回归）", () => {
     vi.mocked(saveConfig).mockImplementation(async (c: unknown) => {
       saved = c as Record<string, unknown>;
     });
-    await patchRemoteConfig({ enabled: true, upsert: [{ key: null, value: host("bastion") }] });
+    await patchRemoteConfig({ upsert: [{ key: null, value: host("bastion") }] });
     // 写入的 config 里 hosts[0] 含 jump（修前此处丢字段 → undefined，测试红）
     const written = (saved.remote as { hosts: Array<{ jump?: string }> }).hosts[0];
     expect(written.jump).toBe("bastion");
@@ -210,7 +243,7 @@ describe("F56 jump write→read 往返（D-B1 回归）", () => {
     vi.mocked(saveConfig).mockImplementation(async (c: unknown) => {
       saved = c as Record<string, unknown>;
     });
-    await patchRemoteConfig({ enabled: true, upsert: [{ key: null, value: host("") }] });
+    await patchRemoteConfig({ upsert: [{ key: null, value: host("") }] });
     vi.mocked(loadConfig).mockResolvedValue(saved);
     const back = await readRemoteConfig();
     expect(back.hosts[0].jump).toBe("");
@@ -231,6 +264,7 @@ describe("S4b-3 resumeCommand write→read 往返（D-B1 同源回归：新字�
     addresses: [],
     jump: "",
     resumeCommand,
+    connect: true,
   });
 
   it("填了 per-machine resume 命令，写进 config 再读回来不丢", async () => {
@@ -240,7 +274,6 @@ describe("S4b-3 resumeCommand write→read 往返（D-B1 同源回归：新字�
       saved = c as Record<string, unknown>;
     });
     await patchRemoteConfig({
-      enabled: true,
       upsert: [{ key: null, value: host("ccm resume --tmux") }],
     });
     vi.mocked(loadConfig).mockResolvedValue(saved);
@@ -278,12 +311,10 @@ describe("F83 sftpEligibleHosts", () => {
     addresses: [],
     jump: "",
     resumeCommand: "",
+    connect: true,
     ...over,
   });
-  const cfg = (hosts: RemoteHostConfig[]): RemoteConfig => ({
-    enabled: false,
-    hosts,
-  });
+  const cfg = (hosts: RemoteHostConfig[]): RemoteConfig => ({ hosts });
 
   it("空 hosts → []", () => {
     expect(sftpEligibleHosts(cfg([]))).toEqual([]);
@@ -306,7 +337,7 @@ describe("F83 sftpEligibleHosts", () => {
   });
   it("不看 enabled（禁用远端也能纯浏览文件）", () => {
     const hosts = [mk({ host: "h", user: "u" })];
-    expect(sftpEligibleHosts({ enabled: false, hosts })).toHaveLength(1);
+    expect(sftpEligibleHosts({ hosts })).toHaveLength(1);
   });
 });
 
@@ -328,6 +359,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     addresses: [],
     jump: "",
     resumeCommand: "",
+    connect: true,
       });
 
   /** S4b：一个假的分页宿主，记录开了哪些页 / 跳去了哪一页。 */
@@ -392,11 +424,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   it("删掉一张卡 ⇒ 只有那台从盘上消失，其余原样", async () => {
     const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")]);
     // 点那张卡的「删除」按钮（走的是真实 onRemove → removeCard → save 路径）。
-    const removeBtns = sec.element.querySelectorAll<HTMLButtonElement>(
-      ".remote-machine-remove",
-    );
-    expect(removeBtns).toHaveLength(2);
-    removeBtns[0]!.click();
+    expect(sec.element.querySelectorAll(".remote-machine-remove")).toHaveLength(2);
+    removeAt(sec, 0);
     await new Promise((r) => setTimeout(r, 0));
     expect(saveConfig).toHaveBeenCalled();
     expect(writtenHosts().map((h) => h.label)).toEqual(["b"]);
@@ -439,40 +468,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   // 这两条在修之前**各自都有绿测试**（改名一条、删除一条），只是从没人把它们串起来
   // ——「组合未覆盖」，不是断言造假。所以这里刻意写成**两步串一起**的场景。
 
-  it("★ 空白卡（还没填名称 / 地址）不是任何一台机器：宿主据此不切机器、不去扫足迹", async () => {
-    const p = fakePages();
-    const sec = await mount([mkH("a", "1.1.1.1")], p.host);
-    [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "+ 添加机器")!.click();
-    const blank = p.added.map((a) => a.id).find((i) => i !== LOCAL_MACHINE_PAGE_ID && i !== "machine:a")!;
-    expect(blank).toBeTruthy();
-    expect(sec.isUnconfiguredPage(blank)).toBe(true);
-    expect(sec.isUnconfiguredPage("machine:a")).toBe(false);
-    // 填了名字、没填主机：仍不是一台连得上的机器。
-    const page = p.added.find((x) => x.id === blank)!;
-    const label = page.element.querySelectorAll<HTMLInputElement>('input[type="text"]')[0]!;
-    label.value = "box2";
-    label.dispatchEvent(new Event("input"));
-    label.dispatchEvent(new Event("change"));
-    await new Promise((r) => setTimeout(r, 0));
-    expect(sec.isUnconfiguredPage(blank)).toBe(true);
-  });
 
-  it("★ 连点两次「+ 添加机器」不许抛（空白卡的 origin 是空串，页 id 会撞）", async () => {
-    const p = fakePages();
-    const sec = await mount([], p.host);
-    const add = [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find(
-      (b) => b.textContent === "+ 添加机器",
-    )!;
-    expect(add, "找不到「+ 添加机器」按钮，下面的断言就是空转").toBeTruthy();
-    add.click();
-    // 修之前：第二次点击命中 router 的重复注册 throw（两次算出的 id 都是 `machine:`），
-    // 而 `this.cards.push` 已经执行 ⇒ 之后任何一次 save 都会把这张
-    // **界面上看不见的幽灵卡**写进 config.json。
-    expect(() => add.click()).not.toThrow();
-    const ids = p.added.map((a) => a.id).filter((i) => i !== LOCAL_MACHINE_PAGE_ID);
-    expect(ids).toHaveLength(2);
-    expect(new Set(ids).size, "两张空白卡必须拿到不同的页 id").toBe(2);
-  });
 
   it("★ 改名之后再删：列表行 / 导航项 / 盘上那条**三者一起**消失", async () => {
     const p = fakePages();
@@ -488,7 +484,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 
     // 修之前：save() 把 persistedKey 改成新 origin，而页是按旧 origin 注册的
     // ⇒ removeCard 现算出 `machine:a-renamed`（不存在）⇒ 三者全留下，盘上却真删了。
-    sec.element.querySelectorAll<HTMLButtonElement>(".remote-machine-remove")[0]!.click();
+    removeAt(sec, 0);
     await new Promise((r) => setTimeout(r, 0));
 
     expect(writtenHosts().map((h) => h.label), "盘上真的少一台").toEqual(["b"]);
@@ -544,9 +540,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     // 增删也按键认元素：同一个 origin 两台 ⇒ `removein` 认出不止一台 ⇒ 整批拒（不猜是哪台），banner 说保存失败。
     const sec = await mount([mkH("dup", "1.1.1.1"), mkH("dup", "2.2.2.2")]);
     vi.mocked(saveConfig).mockClear();
-    sec.element
-      .querySelectorAll<HTMLButtonElement>(".remote-machine-remove")[0]!
-      .click();
+    removeAt(sec, 0);
     await new Promise((r) => setTimeout(r, 0));
     const sent = vi.mocked(fakeCfg.patches).mock.calls.at(-1)![0] as { op: string }[];
     expect(sent.map((e) => e.op)).toContain("removein");
@@ -558,9 +552,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 
   it("config.json 里的无关顶层键不受影响", async () => {
     const sec = await mount([mkH("a", "1.1.1.1")]);
-    sec.element
-      .querySelector<HTMLButtonElement>(".remote-machine-remove")!
-      .click();
+    removeAt(sec, 0);
     await new Promise((r) => setTimeout(r, 0));
     const calls = vi.mocked(saveConfig).mock.calls;
     const last = calls[calls.length - 1]![0] as Record<string, unknown>;
@@ -568,26 +560,6 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   });
 
   // 读 `~/.ssh/config` 失败与「真没有别名」原先同形（空下拉 ＋「未找到」）。
-  it("导入下拉：读别名清单失败 ⇒ 说读不了（原因原样），不说「未找到」；真没有 ⇒ 说未找到（正控）", async () => {
-    // 从 section 自己的 DOM 里取（不是私有字段）：那块提示原先根本没挂进 DOM —— 取字段会假绿。
-    const hint = (sec: RemoteSection): string =>
-      [...sec.element.querySelectorAll<HTMLElement>(".settings-hint")].map((e) => e.textContent ?? "").join("|");
-    ipcReplies.set("ssh-config-aliases", new Error("perm-denied-sshcfg"));
-    try {
-      const bad = await mount([mkH("a", "1.1.1.1")]);
-      await new Promise((r) => setTimeout(r, 0));
-      expect(hint(bad)).toContain("读不了 ~/.ssh/config");
-      expect(hint(bad)).toContain("perm-denied-sshcfg");
-      expect(hint(bad)).not.toContain("未在 ~/.ssh/config 找到");
-      ipcReplies.set("ssh-config-aliases", []);
-      const none = await mount([mkH("a", "1.1.1.1")]);
-      await new Promise((r) => setTimeout(r, 0));
-      expect(hint(none)).toContain("未在 ~/.ssh/config 找到");
-      expect(hint(none)).not.toContain("读不了");
-    } finally {
-      ipcReplies.delete("ssh-config-aliases");
-    }
-  });
 
   it("★ 渲染机器列表：后端调用**不随机器数增长**（状态灯绝不引入轮询）", async () => {
     // 红线。「打开设置时顺便把 N 台机器都探一遍」听起来不像轮询，
@@ -614,34 +586,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     }
   });
 
-  it("★ E56「还差什么」：全新用户（账本空）只说「没测过」，一条「缺」都不说", async () => {
-    // 一个刚装好、什么都没点过的人不该看到一屏红叉。
-    localStorage.clear();
-    const sec = await mount([mkH("a", "1.1.1.1")], fakePages().host);
-    const box = sec.element.querySelector<HTMLElement>(".remote-gaps")!;
-    expect(box.style.display).not.toBe("none");
-    expect(box.textContent).toContain("还没测过");
-    expect(box.textContent).not.toContain("确认缺");
-    const items = [...box.querySelectorAll<HTMLElement>(".remote-gap")];
-    expect(items.length).toBeGreaterThan(0);
-    expect(items.every((i) => i.dataset.kind === "unknown")).toBe(true);
-  });
 
-  it("★ 测过且失败的那项才说「缺」，成功的项不出现", async () => {
-    localStorage.clear();
-    recordFacet("a", "connection", { kind: "ok", at: Date.now() });
-    recordFacet("a", "backend", { kind: "fail", at: Date.now() });
-    const sec = await mount([mkH("a", "1.1.1.1")], fakePages().host);
-    const box = sec.element.querySelector<HTMLElement>(".remote-gaps")!;
-    expect(box.textContent).toContain("确认缺");
-    // **按机器筛**：清单里同时有本机的条目（本机也没测过），不区分 origin 会误判。
-    const ofA = [...box.querySelectorAll<HTMLElement>('.remote-gap[data-origin="a"]')].map(
-      (i) => `${i.dataset.facet}:${i.dataset.kind}`,
-    );
-    expect(ofA).toContain("backend:missing");
-    // devbox 的 connection 测过且 ok ⇒ 它那台不该再出现这一项
-    expect(ofA.some((f) => f.startsWith("connection:"))).toBe(false);
-  });
 
   // 「★ S9：本机的 ccm 条目跟着 monitor 的 OS 走」那一条删了：它钉的是 monitor 跑在哪个 OS 传进 `computeGaps` 的接线，
   //   那个入参随 Windows 豁免一起删了（`readiness.ts::notApplicable` 头注第 3 条），没有被测对象。
@@ -667,79 +612,11 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   // 且逐项等于本机那两格，那一屏就是分母本身。
   // ───────────────────────────────────────────────────────────────────────────
 
-  /**
-   * 本机那几格写绿 —— 值取各自生产写点真会写的那些。
-   *
-   * ⚠ `K-R59`（09-11）**从两格变成三格**：`backend` 那条「本机不适用」的豁免撤了
-   *（`C7` 之后本机也有后端进程），写点是本文件被测对象自己的 `noteLocalBackend`。
-   */
-  function greenLocalTwo(): void {
-    recordFacet(LOCAL_MACHINE_KEY, "backend", { kind: "ok", detail: "已连上" });
-    recordFacet(LOCAL_MACHINE_KEY, "ccm", { kind: "ok", detail: "是它" });
-    recordFacet(LOCAL_MACHINE_KEY, "accounts", { kind: "ok", detail: "3 个" });
-  }
-  const gapsBoxOf = (sec: RemoteSection): HTMLElement =>
-    sec.element.querySelector<HTMLElement>(".remote-gaps")!;
-  /** 这一块里逐条的 `机器/格:类别` —— 按 `data-*` 认，不按文案认。 */
-  const gapKeysOf = (box: HTMLElement): string[] =>
-    [...box.querySelectorAll<HTMLElement>(".remote-gap")].map(
-      (i) => `${i.dataset.origin}/${i.dataset.facet}:${i.dataset.kind}`,
-    );
-
-  it("★ NF2D3 最后那一跳：本机全绿 + 零远端 ⇒ 「还差什么」整块不出现", async () => {
-    // 分母先钉死，别让「一台机器都没有」蒙混过去：
-    //   · 远端 **0** 台，而清单的入参是 `[LOCAL_MACHINE_KEY, ...hosts]` ⇒ 机器数 **1**；
-    //   · 本机的适用格**恰好**是 `backend` / `ccm` / `accounts` 三格（`connection` 不适用）。
-    //     ⚠ `K-R59`：`backend` 是那一拍新算进来的；`ccm` 在 Windows 上也算了。
-    // 下面这一屏是那个分母的**真实渲染**：它必须先真的出现、且逐项等于这两格。
-    localStorage.clear();
-    __setHostOsForTests("windows");
-    const before = gapsBoxOf(await mount([], fakePages().host));
-    expect(
-      before.style.display,
-      "分母塌了：这一块本来就没出现（或 renderGaps 没跑）⇒ 下面那条 none 是空真",
-    ).not.toBe("none");
-    expect(gapKeysOf(before)).toEqual([
-      `${LOCAL_MACHINE_KEY}/backend:unknown`,
-      `${LOCAL_MACHINE_KEY}/ccm:unknown`,
-      `${LOCAL_MACHINE_KEY}/accounts:unknown`,
-    ]);
-
-    // 把那几格写绿 —— 这正是各自的写点会写进去的东西。
-    greenLocalTwo();
-    const after = gapsBoxOf(await mount([], fakePages().host));
-    expect(
-      after.style.display,
-      "本机全绿、零远端，那一块却还挂在落地页最上面 ⇒ 那一支仍是死代码",
-    ).toBe("none");
-    // 「藏起来」与「清空了」是两件事，两样都断 —— 免得将来改成只清空不隐藏（或反过来）。
-    expect(gapKeysOf(after)).toEqual([]);
-  });
-
-  it("★ NF2D3 先证会红：把本机那几格改回「没测过」⇒ 那一块又出现", async () => {
-    localStorage.clear();
-    __setHostOsForTests("windows");
-    greenLocalTwo();
-    expect(gapsBoxOf(await mount([], fakePages().host)).style.display).toBe("none");
-
-    // 只抹掉本机那一栏 = 回到 `N-F2` 之前的行为（那几格从来没人写）。
-    forgetMachine(LOCAL_MACHINE_KEY);
-    expect(readStatus(LOCAL_MACHINE_KEY), "账本没被抹干净，下面那条不算数").toEqual({});
-    const back = gapsBoxOf(await mount([], fakePages().host));
-    expect(back.style.display, "回到旧行为时那一块该又出现").not.toBe("none");
-    expect(back.textContent).toContain("还没测过");
-    expect(gapKeysOf(back)).toEqual([
-      `${LOCAL_MACHINE_KEY}/backend:unknown`,
-      `${LOCAL_MACHINE_KEY}/ccm:unknown`,
-      `${LOCAL_MACHINE_KEY}/accounts:unknown`,
-    ]);
-  });
-
   // 🔴 〔条 80 「不要管旧配置」〕**`KR59D3` 的产品面那条也退役了。**
   //    它断的是「喂一份带旧 `daemonless: true` 的 config ⇒ 清单上真有一条带名字的告知」，
   //    而那条告知这一拍整块删了 ⇒ 没有被测对象。⚠ 用例数 −1，逐条点名在本轮报告里。
 
-  it("★ 渲染「还差什么」不发任何后端请求（只读账本）", async () => {
+  it("★ 渲染机器列表不发任何后端请求（只读账本）", async () => {
     // §1-2：状态灯绝不引入轮询。这块是「新用户第一眼看到的东西」，
     // 更不能因为它就把 N 台机器探一遍。
     localStorage.clear();
@@ -751,80 +628,37 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(withTwo).toEqual([...ipcCalls]);
   });
 
-  it("★ 列表级控件全在**一条工具条**上，且在列表之前", async () => {
-    // S4b-3b：此前它们散在列表上下两侧（导入在最上、端口转发/启用 toggle 在中间、
-    // 添加按钮在列表下方），空列表提示还得写「点**下方**…或从**上方**…」——
-    // 一句提示同时指两个方向，本身就是布局在报警。
+  it("★ 页头右侧是「添加机器」＋ ⋯（端口转发 · 全部刷新）；全局开关与导入下拉都不在了", async () => {
     const sec = await mount([mkH("a", "1.1.1.1")]);
-    const bar = sec.element.querySelector<HTMLElement>(".remote-toolbar");
-    expect(bar, "工具条必须在").not.toBeNull();
-    const texts = [...bar!.querySelectorAll("button, select, span")].map(
-      (e) => e.textContent ?? "",
-    );
-    for (const t of ["+ 添加机器", "批量导入…", "端口转发…", "启用远端模式"]) {
-      expect(texts.some((x) => x.includes(t)), `工具条缺「${t}」`).toBe(true);
-    }
-    // 导入下拉也在条上（它没有稳定文案，按 tagName 认）
-    expect(bar!.querySelector("select")).not.toBeNull();
-    // **顺序**：工具条在机器列表之前 —— 否则「上方工具条」那句提示又变成谎话。
-    const list = sec.element.querySelector<HTMLElement>(".remote-machines")!;
-    expect(
-      bar!.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    const [add, more] = sec.headActions();
+    expect(add!.textContent).toContain("添加机器");
+    more!.click();
+    expect(menuItem("端口转发")).toBeTruthy();
+    expect(menuItem("全部刷新")).toBeTruthy();
+    // 全局「启用远端模式」退场（每台自己的「连接这台」）；单个导入的下拉也退场了。
+    expect(sec.element.textContent).not.toContain("启用远端模式");
   });
 
   it("★ 本机是第一行、没有删除按钮", async () => {
-    const sec = await mount([mkH("a", "1.1.1.1")]);
-    const rows = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine")];
+    const sec = await mount([mkH("a", "1.1.1.1")], fakePages().host);
+    const rows = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine-row")];
     expect(rows[0]!.classList.contains("remote-machine-local")).toBe(true);
     expect(rows[0]!.textContent).toContain("本机");
-    // 本机删不掉 —— 这不是「暂未实现」，是它本来就不该能删（§40）。
-    expect(rows[0]!.querySelector(".remote-machine-remove")).toBeNull();
-    // 真机器那行照样有删除按钮（反向自检：别是选择器写错了导致恒 null）
-    expect(rows[1]!.querySelector(".remote-machine-remove")).not.toBeNull();
+    // 本机删不掉（§40）：它的 ⋯ 里没有「从列表删除」；真机器那行有（反向自检）。
+    const labelsOf = (row: HTMLElement): string[] => sec.menuFor(row.dataset.pageId!).map((m) => m.label);
+    expect(labelsOf(rows[0]!)).not.toContain("从列表删除");
+    expect(labelsOf(rows[1]!)).toContain("从列表删除");
   });
 
   it("★ 本机行不进 this.cards —— 保存写出去的机器数不变（S1 的边界）", async () => {
     // this.cards 是 S1 保存路径的输入。本机混进去 = 往用户的远端机器列表里
     // 写一台叫「本机」的假机器。
     const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")]);
-    sec.element
-      .querySelectorAll<HTMLButtonElement>(".remote-machine-remove")[0]!
-      .click();
+    removeAt(sec, 0);
     await new Promise((r) => setTimeout(r, 0));
     const got = writtenHosts();
     expect(got.map((h) => h.label)).toEqual(["b"]);
     expect(got.some((h) => h.label === "本机")).toBe(false);
-  });
-
-  /**
-   * 🔴 `KR59D1` 第 ⑤ 处载体在**界面这一侧**的落点（`K-R59` 09-11）。
-   *
-   * 这一条此前逐字叫「本机的后端格是「不需要」，不是「缺组件」」——
-   * `buildLocalRow` 那时给 `renderStatusCells` 硬塞一个 `{ backend: { kind: "na",
-   * detail: "不需要" } }` 覆盖值，理由是「`watcher.rs` 直读 jsonl，本机压根不需要后端」。
-   *
-   * 🔴 **那句话在 `C7`〔用 08-03〕之后就不成立了**（`local_backend.rs` 是 `C7` 的产物），
-   * 而这一处**一个 `daemonless` 字样都不含** —— 与 `readiness.notApplicable` 那一支同一档。
-   * ⇒ 撤掉写死值：本机那一格照实画账本。
-   */
-  it("🔴 KR59D1⑤：本机的后端格照实画账本 —— 不再写死一个「不需要」", async () => {
-    localStorage.clear();
-    const sec = await mount([]);
-    const local = sec.element.querySelector<HTMLElement>(".remote-machine-local")!;
-    const cell = local.querySelector<HTMLElement>('[data-facet="backend"]')!;
-    expect(
-      cell.classList.contains("remote-status-na"),
-      "本机的后端又被写死成「不适用」了 —— 那台机器上的后端没起来，用户永远看不见",
-    ).toBe(false);
-    expect(cell.title).not.toContain("不需要");
-    // 账本空着 ⇒ 它该说「未测过」，与本机的「连接」那格同形。
-    expect(cell.classList.contains("remote-status-unknown")).toBe(true);
-    // 对照：本机的「连接」仍然是不适用（`INVARIANTS §40`：本地 = 不走 ssh 的远端）——
-    // 本条撤的只有后端那一格，不是把整条豁免都掀了。
-    const conn = local.querySelector<HTMLElement>('[data-facet="connection"]')!;
-    expect(conn.classList.contains("remote-status-unknown")).toBe(true);
-    expect(conn.title).toContain("未测过");
   });
 
   /**
@@ -853,20 +687,6 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     ipcReplies.delete("backend_status");
     await mount([], fakePages().host);
     expect(readStatus(LOCAL_MACHINE_KEY).backend).toBeUndefined();
-  });
-
-  /** 账本被别处写了（后端那几格画出「已连上」）⇒ 那一台那一行与「诊断」同一拍重画，不再说「连接：未测过」。 */
-  it("★ 那台账本变了 ⇒ 诊断同一拍重算", async () => {
-    localStorage.clear();
-    const sec = await mount([mkH("a", "1.1.1.1")], fakePages().host);
-    const facetsOfA = (): (string | undefined)[] =>
-      [...sec.element.querySelectorAll<HTMLElement>('.remote-gap[data-origin="a"]')].map((i) => i.dataset.facet);
-    expect(facetsOfA()).toContain("connection");
-    recordFacet("a", "connection", { kind: "ok", at: Date.now() });
-    recordFacet("a", "backend", { kind: "ok", at: Date.now() });
-    sec.noteLedgerChanged("a");
-    expect(facetsOfA()).not.toContain("connection");
-    expect(facetsOfA()).not.toContain("backend");
   });
 
   /**
@@ -901,19 +721,6 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     ipcReplies.delete("local_ccm_entry_status");
   });
 
-  it("★ 状态条读的是账本，且带年龄（不是伪装成实时）", async () => {
-    // S4b：状态条从卡片 legend 移到了**列表行**上（§2.3 里状态就是列表的一列），
-    // 所以这条要在分页形态下验。
-    localStorage.clear();
-    recordFacet("a", "connection", { kind: "ok", at: Date.now() - 3 * 60_000 });
-    const p = fakePages();
-    const sec = await mount([mkH("a", "1.1.1.1")], p.host);
-    // 第一行是本机（S4b-2 起它也是一行、也有自己一页），远端机器从第二行开始。
-    const row = sec.element.querySelectorAll<HTMLElement>(".remote-machine-row")[1]!;
-    const cell = row.querySelector<HTMLElement>('[data-facet="connection"]')!;
-    expect(cell.classList.contains("remote-status-ok")).toBe(true);
-    expect(cell.title).toContain("3 分钟前");
-  });
 
   // ---- S4b：每台机器一页 ----
 
@@ -939,10 +746,10 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(got, "远端机器页必须带 parts").toBeTruthy();
     const inConn = got!.connection.textContent ?? "";
     const inComp = got!.components.textContent ?? "";
-    expect(inConn).toContain("主机 (host)");
-    expect(inComp).toContain("resume 命令 · 这台机器");
-    // 反向：resume 命令**不该**留在连接那半
-    expect(inConn).not.toContain("resume 命令 · 这台机器");
+    expect(inConn).toContain("地址");
+    expect(inComp).toContain("恢复命令");
+    // 反向：恢复命令**不该**留在连接那半
+    expect(inConn).not.toContain("恢复命令");
   });
 
   /**
@@ -960,21 +767,20 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const got = p.addedParts[1]!;
     const labels = (el: HTMLElement): string[] =>
       [...el.querySelectorAll<HTMLButtonElement>("button")]
-        .filter((b) => !b.closest("details"))
+        .filter((b) => !b.closest("details") && b.getAttribute("role") !== "switch")
         .map((b) => b.textContent ?? "");
     // 别名放「终端」栏：远端那一块与本机「终端 → 别名」同一个位置。
-    expect(labels(got.components)).toEqual(["部署后端", "卸载后端"]);
+    expect(labels(got.components)).toEqual(["更新", "从这台卸载…"]);
     // ② 别名是与本机同一个组件（`buildAliasManager`，`data-origin` = 这台）；接入 / 卸载在组件里（卸那一颗叫「卸载 ccm」、
     //   接入之后才出现 —— 由 `machine-aliases.vitest.ts` 的远端卡那一条钉）。组件是 `<details>`，栏上裸露的按钮一颗都不剩。
     expect(labels(got.terminal)).toEqual([]);
     const mgr = got.terminal.querySelector<HTMLElement>(".machine-aliases");
     expect(mgr?.dataset.origin).toBe("a");
     expect(got.terminal.textContent).toContain("别名");
-    expect(labels(got.connection).filter((t) => t !== "重置主机指纹")).toEqual([
+    expect(labels(got.connection).filter((t) => t !== "忘记…")).toEqual([
+      "更多：备用地址 · 跳板机",
       "测试连接",
-      "推送公钥",
-      "文件",
-      "开新 Claude",
+      "推送公钥…",
     ]);
     for (const part of [got.connection, got.components, got.terminal]) {
       const txt = [part.textContent ?? "", ...[...part.querySelectorAll("[title]")].map((e) => e.getAttribute("title") ?? "")].join("\n");
@@ -1002,9 +808,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   it("★ 删掉一台 → 它那一页也被收掉（否则导航里留个指向已删机器的死项）", async () => {
     const p = fakePages();
     const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")], p.host);
-    sec.element
-      .querySelectorAll<HTMLButtonElement>(".remote-machine-remove")[0]!
-      .click();
+    removeAt(sec, 0);
     await new Promise((r) => setTimeout(r, 0));
     expect(p.removed).toContain("machine:a");
     // 剩下：本机 + b
@@ -1060,9 +864,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     localStorage.clear();
     recordFacet("a", "connection", { kind: "ok", at: Date.now() });
     const sec = await mount([mkH("a", "1.1.1.1")]);
-    sec.element
-      .querySelectorAll<HTMLButtonElement>(".remote-machine-remove")[0]!
-      .click();
+    removeAt(sec, 0);
     await new Promise((r) => setTimeout(r, 0));
     expect(readStatus("a")).toEqual({});
   });
@@ -1103,9 +905,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     ipcCalls.length = 0;
     chanOps.length = 0;
     ipcReplies.set("terminal-name-mint", minted);
-    const sec = await mount([mkH("a", "1.1.1.1")]);
-    const btns = [...sec.element.querySelectorAll<HTMLButtonElement>("button")];
-    btns.find((b) => b.textContent === "开新 Claude")!.click();
+    const sec = await mount([mkH("a", "1.1.1.1")], fakePages().host);
+    sec.menuFor("machine:a").find((m) => m.label === "新建会话…")!.onClick!();
     const back = document.querySelector<HTMLElement>(".launcher-back")!;
     expect(back, "「开新 Claude」的对话框没开出来 —— 下面的断言会零命中地绿").toBeTruthy();
     back.querySelector<HTMLInputElement>("input")!.value = "/home/u/proj";
@@ -1198,7 +999,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 
   it("每台的续跑命令重开后照样回填；改别台时不被抹成空", async () => {
     const p = fakePages();
-    await mount([{ ...mkH("a", "1.1.1.1"), resumeCommand: "ccm resume --tmux" }, mkH("b", "2.2.2.2")], p.host);
+    await mount([{ ...mkH("a", "1.1.1.1"), resumeCommand: "ccm resume --tmux", connect: true }, mkH("b", "2.2.2.2")], p.host);
     expect(field(pageOf(p, "machine:a"), copyText("machineCard.field.resumeCmdHint")).value).toBe("ccm resume --tmux");
     await change(field(pageOf(p, "machine:b"), copyText("machineCard.field.userHint")), "root");
     expect((await diskHosts()).map((h) => [h.label, h.user, h.resumeCommand])).toEqual([
@@ -1207,22 +1008,6 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     ]);
   });
 
-  it("下拉导入一个已在列表里的别名：不建卡、说已经有了；之后改别台照常存得进去", async () => {
-    ipcReplies.set("ssh-config-aliases", ["a", "c"]);
-    ipcReplies.set("ssh-config-resolve", { host: "1.1.1.1", port: 22, user: "u", keyPath: null, proxyJump: null });
-    const p = fakePages();
-    const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")], p.host);
-    await tick();
-    const sel = sec.element.querySelector<HTMLSelectElement>("select")!;
-    sel.value = "a";
-    sel.dispatchEvent(new Event("change"));
-    for (let i = 0; i < 4; i++) await tick();
-    expect(banner(sec)).toBe(copyText("remote.import.exists", { alias: "a" }));
-    expect(sec.element.querySelectorAll(".remote-machine-row").length, "本机 ＋ a ＋ b，没有多一行").toBe(3);
-    await change(field(pageOf(p, "machine:b"), copyText("machineCard.field.userHint")), "root");
-    expect((await diskHosts()).map((h) => [h.label, h.user])).toEqual([["a", "u"], ["b", "root"]]);
-    ipcReplies.clear();
-  });
 
   it("把一台改名成另一台的名字：就地拦住、不存；之后两台照常改得动", async () => {
     const p = fakePages();
@@ -1236,14 +1021,6 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(banner(sec)).toBe(copyText("remote.save.done"));
   });
 
-  it("「＋ 添加机器」的空白卡：改别台时不写进配置，横幅也不说有几台不完整", async () => {
-    const p = fakePages();
-    const sec = await mount([mkH("a", "1.1.1.1")], p.host);
-    [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("remote.build.addMachine"))!.click();
-    await change(field(pageOf(p, "machine:a"), copyText("machineCard.field.userHint")), "root");
-    expect((await diskHosts()).map((h) => [h.label, h.user])).toEqual([["a", "root"]]);
-    expect(banner(sec)).toBe(copyText("remote.save.done"));
-  });
 
   it("端口越界：就地说、不存（盘上还是原值，不是 22）", async () => {
     const p = fakePages();
@@ -1276,6 +1053,101 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(cfg.accounts.byMachine).toEqual({ c: { defaultName: "w", modelByAccount: { w: "opus" } } });
   });
 
+  describe("添加机器（两栏对话框）", () => {
+    const sshGroups = [
+      { label: "a", host: "1.1.1.1", port: 22, user: "u", keyPath: null, addresses: [], jump: null, members: [{ alias: "a", host: "1.1.1.1", port: 22, proxyJump: null }] },
+      { label: "gpu", host: "9.9.9.9", port: 22, user: "u", keyPath: null, addresses: ["9.9.9.8"], jump: null, members: [{ alias: "gpu", host: "9.9.9.9", port: 22, proxyJump: null }, { alias: "gpu-b", host: "9.9.9.8", port: 22, proxyJump: null }] },
+    ];
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+    const okBtn = (dlg: HTMLElement) => [...dlg.querySelectorAll<HTMLButtonElement>("button")].at(-1)!;
+    beforeEach(() => {
+      vi.resetAllMocks();
+      document.body.replaceChildren();
+    });
+
+    it("★ 已在列表的那台灰着、勾不了；主按钮按勾上的数写「添加 1 台」；点之前一个字节都不写", async () => {
+      ipcReplies.set("ssh-config-import", sshGroups);
+      const sec = await mount([mkH("a", "1.1.1.1")], fakePages().host);
+      vi.mocked(saveConfig).mockClear();
+      const dlg = await openAdd(sec);
+      const rows = [...dlg.querySelectorAll<HTMLElement>(".add-machine-row")];
+      expect(rows).toHaveLength(2);
+      expect(rows[0]!.dataset.inList).toBe("true");
+      expect(rows[0]!.querySelector<HTMLInputElement>('input[type="checkbox"]')!.disabled).toBe(true);
+      expect(okBtn(dlg).textContent).toBe("添加 1 台");
+      expect(saveConfig, "框开着就写了盘").not.toHaveBeenCalled();
+      ipcReplies.clear();
+    });
+
+    it("★ 撞名当场说、主按钮禁用；改掉就能加，写盘一次、框关、新那台进列表", async () => {
+      ipcReplies.set("ssh-config-import", sshGroups.slice(1));
+      const p = fakePages();
+      const sec = await mount([mkH("gpu", "5.5.5.5")], p.host);
+      vi.mocked(saveConfig).mockClear();
+      const dlg = await openAdd(sec);
+      expect(okBtn(dlg).getAttribute("aria-disabled"), "撞名还能点").toBe("true");
+      expect(dlg.textContent).toContain("gpu 已存在");
+      const name = dlg.querySelector<HTMLInputElement>(".add-machine-row input:not([type=checkbox])")!;
+      name.value = "gpu-2";
+      name.dispatchEvent(new Event("input"));
+      expect(okBtn(dlg).hasAttribute("aria-disabled")).toBe(false);
+      okBtn(dlg).click();
+      for (let i = 0; i < 5; i++) await tick();
+      expect(document.querySelector('[role="dialog"]'), "加成了框还开着").toBeNull();
+      expect(writtenHosts().map((h) => h.label)).toEqual(["gpu", "gpu-2"]);
+      expect(p.added.map((a) => a.id)).toContain("machine:gpu-2");
+      ipcReplies.clear();
+    });
+
+    it("★ 写失败：框不关、填的都在、框顶说没存上；卡收回去（列表里不多一台）", async () => {
+      ipcReplies.set("ssh-config-import", []);
+      const p = fakePages();
+      const sec = await mount([mkH("a", "1.1.1.1")], p.host);
+      const dlg = await openAdd(sec);
+      // 没有 ssh config ⇒ 自己填那一栏
+      const inputs = [...dlg.querySelectorAll<HTMLInputElement>(".add-machine-grid input")];
+      const [name, host, user] = inputs;
+      name!.value = "box";
+      host!.value = "7.7.7.7";
+      user!.value = "root";
+      for (const i of [name, host, user]) i!.dispatchEvent(new Event("input"));
+      vi.mocked(fakeCfg.patches).mockImplementationOnce(() => {
+        throw new Error("disk full");
+      });
+      okBtn(dlg).click();
+      for (let i = 0; i < 5; i++) await tick();
+      expect(document.querySelector('[role="dialog"]'), "没存上框却关了").not.toBeNull();
+      expect(host!.value).toBe("7.7.7.7");
+      expect(dlg.textContent).toContain(copyText("addMachine.err.save"));
+      expect(sec.element.querySelectorAll(".remote-machine-row:not(.remote-machine-local)")).toHaveLength(1);
+      ipcReplies.clear();
+    });
+  });
+
+  describe("连接这台（每台一个开关，当场生效）", () => {
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+    it("★ 关掉 ⇒ 盘上那台记 connect:false、当场对齐那几条流；那一行空心点 ＋「已停用」＋［连接］；点［连接］⇒ 记回 true、再对齐", async () => {
+      ipcCalls.length = 0;
+      const p = fakePages();
+      const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")], p.host);
+      const page = pageOf(p, "machine:a");
+      const sw = page.querySelector<HTMLButtonElement>('[role="switch"]')!;
+      expect(sw.getAttribute("aria-checked")).toBe("true");
+      sw.click();
+      for (let i = 0; i < 6; i++) await tick();
+      expect(writtenHosts().map((h) => [h.label, h.connect])).toEqual([["a", false], ["b", true]]);
+      expect(ipcCalls.filter((c) => c === "remote_reconcile"), "改了没当场对齐").toHaveLength(1);
+      const row = sec.element.querySelector<HTMLElement>('.remote-machine-row[data-page-id="machine:a"]')!;
+      expect(row.querySelector(".remote-machine-word")!.textContent).toBe("已停用");
+      expect(row.querySelector<HTMLElement>("[data-state]")!.dataset.state).toBe("exited");
+      [...row.querySelectorAll<HTMLButtonElement>(".machine-problem button")].find((b) => b.textContent === "连接")!.click();
+      for (let i = 0; i < 6; i++) await tick();
+      expect(writtenHosts().map((h) => [h.label, h.connect])).toEqual([["a", true], ["b", true]]);
+      expect(ipcCalls.filter((c) => c === "remote_reconcile")).toHaveLength(2);
+      expect(row.querySelector(".remote-machine-word")!.textContent).toBe("");
+    });
+  });
+
   // Esc 一次只关最上面一层：机器页上的三个小框（批量导入预览 · 开新 Claude · 端口转发）关掉自己，设置窗不跟着关。
   describe("Esc 只关最上面那个小框", () => {
     const esc = (): void => {
@@ -1291,18 +1163,18 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     });
     afterEach(() => dispatcher.popOverlay(panel));
 
-    it("批量导入预览", async () => {
+    it("添加机器", async () => {
       ipcReplies.set("ssh-config-import", [
         { label: "x", host: "h", port: 22, user: "u", keyPath: null, addresses: [], jump: null, members: [{ alias: "x", host: "h", port: 22, proxyJump: null }] },
       ]);
       const sec = await mount([], fakePages().host);
       document.body.appendChild(sec.element);
-      [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("remote.import.batch"))!.click();
+      sec.headActions()[0]!.click();
       await tick();
       await tick();
-      expect(document.querySelector(".import-preview-back"), "前提：预览开着").toBeTruthy();
+      expect(document.querySelector('[role="dialog"]'), "前提：添加机器框开着").toBeTruthy();
       esc();
-      expect(document.querySelector(".import-preview-back")).toBeNull();
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
       expect(panelEsc).not.toHaveBeenCalled();
       esc(); // 再按一次才轮到设置窗
       expect(panelEsc).toHaveBeenCalledTimes(1);
@@ -1312,8 +1184,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 
     it("开新 Claude", async () => {
       const p = fakePages();
-      await mount([mkH("a", "1.1.1.1")], p.host);
-      [...pageOf(p, "machine:a").querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("machineCard.build.launch"))!.click();
+      const sec = await mount([mkH("a", "1.1.1.1")], p.host);
+      sec.menuFor("machine:a").find((m) => m.label === "新建会话…")!.onClick!();
       expect(document.querySelector(".launcher-back"), "前提：对话框开着").toBeTruthy();
       esc();
       expect(document.querySelector(".launcher-back")).toBeNull();
@@ -1322,7 +1194,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 
     it("端口转发", async () => {
       const sec = await mount([], fakePages().host);
-      [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("remote.build.portForward"))!.click();
+      sec.headActions()[1]!.click();
+      menuItem("端口转发").click();
       await tick();
       const pf = document.querySelector<HTMLElement>(".pf-overlay")!;
       expect(pf.style.display, "前提：面板开着").not.toBe("none");
@@ -1347,44 +1220,6 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ST1「那个勾选框会自己跳」（截图对比 ＋ `§8` 判据 #2）：
-// 「启用远端模式」在配置读回来之前**不可交互**；读失败就一直灰着（那一刻它显示的不是盘上的值）。
-// ─────────────────────────────────────────────────────────────────────────────
-describe("ST1：「启用远端模式」读回来之前不可点", () => {
-  beforeEach(() => vi.resetAllMocks());
-  const box = (sec: RemoteSection) =>
-    [...sec.element.querySelectorAll<HTMLInputElement>("input[type=checkbox]")].find(
-      (c) => c.parentElement?.textContent?.includes("启用远端模式"),
-    )!;
-
-  it("读回来之前灰着，读回来之后可点、且值就是盘上的值", async () => {
-    type Cfg = Awaited<ReturnType<typeof loadConfig>>;
-    let release!: (v: Cfg) => void;
-    vi.mocked(loadConfig).mockReturnValue(
-      new Promise((r) => (release = r)) as ReturnType<typeof loadConfig>,
-    );
-    const sec = new RemoteSection({ headless: true });
-    const cb = box(sec);
-    expect(cb, "找不到那个复选框 —— 下面全是空真").toBeTruthy();
-    expect(cb.disabled, "配置还没读回来就能点 —— 用户点下去的是一个假状态").toBe(true);
-    release({ remote: { enabled: true, hosts: [] } } as unknown as Cfg);
-    await new Promise((r) => setTimeout(r, 0));
-    expect(cb.disabled).toBe(false);
-    expect(cb.checked).toBe(true);
-  });
-
-  it("读失败 ⇒ 一直灰着（显示的不是盘上的值，点它就是写假状态回去）", async () => {
-    // ⚠ `readRemoteConfig` 自己会把 `loadConfig` 的异常吞成默认值 ⇒ 要量「读失败」这一支，
-    //   得让它**本身** reject（`refresh()` 的 catch 那一格）。
-    const spy = vi.spyOn(remoteConfigModule, "readRemoteConfig").mockRejectedValue(new Error("读不到"));
-    const sec = new RemoteSection({ headless: true });
-    await new Promise((r) => setTimeout(r, 0));
-    expect(spy, "那条读口没被调 —— 下面是空真").toHaveBeenCalled();
-    expect(box(sec).disabled).toBe(true);
-    spy.mockRestore();
-  });
-});
 
 // 要求：「不为旧配置留兼容」
 // 「认不出就不显示那台、在机器页顶上一句『远端配置认不出：…』」。
@@ -1415,3 +1250,4 @@ describe("remote 段认不出 ⇒ 机器列表顶上说一句、一台都不显�
     expect(note!.textContent).toBe("");
   });
 });
+

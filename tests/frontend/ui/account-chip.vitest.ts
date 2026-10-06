@@ -55,6 +55,7 @@ function host(p: Partial<RemoteHostConfig>): RemoteHostConfig {
     addresses: [],
     jump: "",
     resumeCommand: "",
+    connect: true,
     ...p,
   };
 }

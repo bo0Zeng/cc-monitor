@@ -50,6 +50,7 @@ const host = (over: Partial<RemoteHostConfig>): RemoteHostConfig => ({
   addresses: [],
   jump: "",
   resumeCommand: "",
+  connect: true,
   ...over,
 });
 const ok = {

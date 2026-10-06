@@ -107,12 +107,13 @@ describe("P21 ⓪ 量具自检（这几条不过，下面六格全是空转）",
     //    20 → 14：右键菜单 · 历史右键 · 选主机 · 账号选单 · 说明提示 · toast 栈六个浮层并进通用组件（`kit/` 的 CSS Modules，都挂 `document.body`）。
     //    14 → 13：少的是 `.history-view`（历史页照稿重做，样子进了 `views/history.module.css`；挂在 `document.body` 上、不在 ② 的表里）。
     //    13 → 12：少的是 `.tasks-popover`（任务 · agent 两块浮层并进主区底部抽屉 —— 网格里的一行，不是 fixed 浮层；它原在 ② 的表里，那一行一起摘了）。
+    //    12 → 11：少的是 `.import-preview-back`（设置窗批量导入预览并进 kit 的「添加机器」对话框；它挂在 `document.body` 上）。
     expect(
       fixedSelectors().length,
-      `CSS 里声明 \`position: fixed\` 的选择器有 ${fixedSelectors().length} 个（10-06 实测 12）。\n` +
+      `CSS 里声明 \`position: fixed\` 的选择器有 ${fixedSelectors().length} 个（10-06 实测 11）。\n` +
         "★ 变多 = 新加了一个浮层 ⇒ 去 ② 的登记表里交代它挂在哪；\n" +
         "★ 变少 = 要么真删了一个，要么**切规则那一刀又漏了**（第一版漏了 9 条，报 16）。",
-    ).toBe(12);
+    ).toBe(11);
   });
 
   it("🔴 正控：`alert(` 的量具对合成样本判得出「有」与「没有」两种", () => {

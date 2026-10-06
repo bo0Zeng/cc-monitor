@@ -39,6 +39,7 @@ function mk(over: Partial<RemoteHostConfig> = {}): RemoteHostConfig {
     addresses: [],
     jump: "",
     resumeCommand: "",
+    connect: true,
     ...over,
   };
 }
@@ -96,7 +97,7 @@ describe("〔FIX2 续 · ㊶〕增 / 删一台 ⇒ insertin / removein，不整�
   it("★ 增的那个 origin 盘上已有 / 删的那台盘上没了 / 那个 origin 不止一台 ⇒ 整批拒，盘上不动", async () => {
     disk([A, pinnedB]);
     await expect(patchRemoteConfig({ upsert: [{ key: null, value: { ...B, user: "x" } }] })).rejects.toThrow();
-    await expect(patchRemoteConfig({ enabled: false, remove: ["gone"] })).rejects.toThrow();
+    await expect(patchRemoteConfig({ remove: ["gone"] })).rejects.toThrow();
     const dup = mk({ label: "dup", host: "1.1.1.1" });
     disk([dup, { ...dup, host: "2.2.2.2" }]);
     await expect(patchRemoteConfig({ upsert: [{ key: "dup", value: { ...dup, user: "x" } }] })).rejects.toThrow();
@@ -113,28 +114,28 @@ describe("〔FIX2 续 · ㊶〕增 / 删一台 ⇒ insertin / removein，不整�
 
 describe("S4b-3 pickResumeCommand —— per-machine 优先，全局兜底", () => {
   it("这台机器填了就用它的", () => {
-    expect(pickResumeCommand(mk({ resumeCommand: "ccm resume" }), "claude -r")).toBe(
+    expect(pickResumeCommand(mk({ resumeCommand: "ccm resume", connect: true }), "claude -r")).toBe(
       "ccm resume",
     );
   });
 
   it("★ 没填 / 只填了空白 / 这台机器压根查不到 → 一律回退全局默认", () => {
     // 这是「不做数据迁移」的落点：没填过的机器行为**一字不变**。
-    expect(pickResumeCommand(mk({ resumeCommand: "" }), "claude -r")).toBe("claude -r");
-    expect(pickResumeCommand(mk({ resumeCommand: "   " }), "claude -r")).toBe("claude -r");
+    expect(pickResumeCommand(mk({ resumeCommand: "", connect: true }), "claude -r")).toBe("claude -r");
+    expect(pickResumeCommand(mk({ resumeCommand: "   ", connect: true }), "claude -r")).toBe("claude -r");
     expect(pickResumeCommand(null, "claude -r")).toBe("claude -r");
   });
 
   it("per-machine 值两端空白会被 trim（用户手滑不该产出带空格的命令）", () => {
-    expect(pickResumeCommand(mk({ resumeCommand: "  ccm resume  " }), "x")).toBe(
+    expect(pickResumeCommand(mk({ resumeCommand: "  ccm resume  ", connect: true }), "x")).toBe(
       "ccm resume",
     );
   });
 
   it("★ 两台机器各用各的（这正是全局单值表达不出来的那件事）", () => {
     // A 机装了 ccm、B 机没装 —— 全局单值时这两台只能共用一条命令。
-    const a = mk({ label: "devbox", resumeCommand: "ccm resume" });
-    const b = mk({ label: "nano", resumeCommand: "" });
+    const a = mk({ label: "devbox", resumeCommand: "ccm resume", connect: true });
+    const b = mk({ label: "nano", resumeCommand: "", connect: true });
     expect(pickResumeCommand(a, "claude -r")).toBe("ccm resume");
     expect(pickResumeCommand(b, "claude -r")).toBe("claude -r");
   });
@@ -213,11 +214,10 @@ describe("〔FIX · ㊶〕设置页改一台 ⇒ 按格 setin，不整台盖", (
     } as unknown as Awaited<ReturnType<typeof loadConfig>>);
     // 表单加载时 A 还没有指纹（`was`），用户改了 user 与 label。
     await patchRemoteConfig({
-      enabled: true,
       upsert: [{ key: "alpha", was: A, value: { ...A, user: "new", label: "alpha2" } }],
     });
     const edits = vi.mocked(fakeCfg.patches).mock.calls.at(-1)![0] as { op: string; field?: string }[];
-    expect(edits.map((e) => (e.op === "setin" ? e.field : e.op))).toEqual(["set", "label", "user"]);
+    expect(edits.map((e) => (e.op === "setin" ? e.field : e.op))).toEqual(["label", "user"]);
     const hosts = (vi.mocked(saveConfig).mock.calls.at(-1)![0] as { remote: RemoteConfig }).remote.hosts;
     expect(hosts[0]).toEqual({ ...pinned, user: "new", label: "alpha2" });
     expect(hosts.slice(1)).toEqual([B, C]);
