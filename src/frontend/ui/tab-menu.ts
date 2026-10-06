@@ -88,7 +88,7 @@ export class TabMenu {
 
   /** 右键一个 tab ⇒ 组这一代菜单的项、开菜单、再把要异步就绪的几格（attach 反查 / 本机 kill / 账号项）发出去。 */
   /** 开在指针底下（右键）或锚在一颗按钮上（行尾 / 会话头「更多」）。 */
-  open(e: MouseEvent | HTMLElement, sid: string): void {
+  open(e: MouseEvent | HTMLElement, sid: string, extra: readonly MenuItem[] = []): void {
     const t = this.host.tab(sid);
     const items: MenuItem[] = [
       { label: copyText("tabMenu.open.openInWindow"), onClick: () => void this.actions.openInNewWindow(sid) },
@@ -200,6 +200,8 @@ export class TabMenu {
         onClick: () => openPanel(sid),
       });
     }
+    // 会话头「⋯」多出来的那几个开关（流的开关，不归那台机器能不能做）。
+    if (extra.length > 0) items.push({ label: "", divider: true }, ...extra);
     // 那台握手时说过做不到的那几项置灰（事实住 monitor 那份 `Offer`）。
     openMenu(e instanceof HTMLElement ? { el: e, align: "end" } : { x: e.clientX, y: e.clientY }, t ? items.map((i) => gateByOffer(t.origin, i)) : items);
     if (remote !== null && t?.projectDir) void this.resolveRemoteTmuxItems(remote, sid);

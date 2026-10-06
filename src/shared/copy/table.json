@@ -3145,6 +3145,31 @@
       "zh": " · 失败 {n}",
       "args": ["n"]
     },
+    "stream.proc.head": {
+      "kind": "body",
+      "zh": "过程",
+      "args": []
+    },
+    "stream.proc.tools": {
+      "kind": "body",
+      "zh": "工具 ×{n}",
+      "args": ["n"]
+    },
+    "stream.proc.thinking": {
+      "kind": "body",
+      "zh": "思考 ×{n}",
+      "args": ["n"]
+    },
+    "stream.proc.fails": {
+      "kind": "body",
+      "zh": "失败 ×{n}",
+      "args": ["n"]
+    },
+    "stream.proc.toggle": {
+      "kind": "control",
+      "zh": "过程默认展开",
+      "args": []
+    },
     "stream.step.rejected": {
       "kind": "body",
       "zh": "未批准",
@@ -3501,6 +3526,11 @@
     "keybindingActions.terminal.front": {
       "kind": "action",
       "zh": "把对应终端窗口切到前台",
+      "args": []
+    },
+    "keybindingActions.session.toggleProcess": {
+      "kind": "action",
+      "zh": "过程默认展开 / 收起",
       "args": []
     },
     "keybindingActions.session.find": {

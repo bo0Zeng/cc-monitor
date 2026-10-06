@@ -1460,6 +1460,53 @@
   overflow: auto;
 }
 
+/* === 按轮折叠（主窗口稿 §5.2.2）：完成的轮过程折成一行，28 高 === */
+.proc-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 28px;
+  margin: 4px 0 12px;
+  padding: 0 12px 0 8px;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-m);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--font-size-small);
+  text-align: left;
+  cursor: pointer;
+}
+
+.proc-line:hover {
+  background: var(--overlay-hover);
+  color: var(--text);
+}
+
+.proc-text {
+  overflow: hidden;
+  min-width: 0;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.proc-line .proc-fails {
+  color: var(--error);
+}
+
+.proc-line .proc-span {
+  flex: none;
+  margin-left: auto;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.proc-hidden {
+  display: none;
+}
+
 /* === 工具组合并外层卡 === */
 .card-tool-group {
   margin: 12px 0;
@@ -1498,6 +1545,16 @@
 .card-tool-group-summary:hover {
   background: var(--overlay-hover);
   color: var(--text);
+}
+
+/* 过程里的工具组整组摊开，不再另起一层「工具调用 · N 个」。 */
+.card-tool-group[data-proc-of] {
+  border: 0;
+  margin: 0;
+}
+
+.card-tool-group[data-proc-of] > .card-tool-group-summary {
+  display: none;
 }
 
 .card-tool-group[open] > .card-tool-group-summary {

@@ -89,6 +89,14 @@ export const ACTIONS: ReadonlyArray<Action> = [
     default: "Ctrl+KeyF",
     available: true,
   },
+  // 过程默认展开 / 收起（主窗口稿 §5.2.2 · §5.7）：完成的轮把过程折成一行，这一键全部摊开 / 全部收回。带 Ctrl 同查找。
+  {
+    id: "session.toggle-process",
+    label: copyText("keybindingActions.session.toggleProcess"),
+    category: "Tab",
+    default: "Ctrl+KeyO",
+    available: true,
+  },
 
   // ===== Terminal =====
   { id: "terminal.bring-front", label: copyText("keybindingActions.terminal.front"), category: "Term", default: "Backquote", available: true },

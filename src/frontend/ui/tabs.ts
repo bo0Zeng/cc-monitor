@@ -17,6 +17,7 @@
 import { renderMessage, type RenderContext } from "./cards";
 import { markRunCard } from "./cards/subagent";
 import { runLabel } from "./runs";
+
 import { RunTimeline } from "./run-timeline";
 import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
 import { runForkFlow } from "./fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
@@ -661,7 +662,7 @@ export class TabManager {
       bgName,
     );
 
-    const { streamEl, stream, branchFolder, timeline, inputsEl, inputsPanel, outline } =
+    const { streamEl, stream, branchFolder, timeline, inputsEl, inputsPanel, outline, turnFold } =
       this.view.mountTabDom(sessionId);
 
     // v2.3.0 issue #11: 异步 fetch 初始 task 快照。`session-tasks` 流那一路（`refreshTasks`）并行更新
@@ -706,6 +707,7 @@ export class TabManager {
       midBatchBuffer: [],
       fillHandler: null,
       outline,
+      turnFold,
       inputsPanel,
       inputsEl,
       // issue #23：红绿灯信号若先于建 Tab 到达，从暂存取（否则 null=未知→绿）
@@ -1159,8 +1161,13 @@ export class TabManager {
   }
 
   /** 这个 tab 的菜单锚在一颗按钮上（会话头「更多」）。 */
+  /** 会话头「⋯」：这个标签页的右键菜单 ＋ 流的开关（过程默认展开）。 */
   openMenuFor(anchor: HTMLElement, sid: string): void {
-    this.openMenu(anchor, sid);
+    if (!this.selection.has(sid) && this.selection.size > 0) {
+      this.selection.clear();
+      this.refreshTabBar();
+    }
+    this.menu.open(anchor, sid, this.view.streamToggles());
   }
 
   /** 离线条的［重新连接］：那台断着在退避里等 ⇒ 立刻重拨一次（壳那一侧 `backend_start`：在跑就是「别等了」）。 */
@@ -1485,6 +1492,11 @@ export class TabManager {
   /** 快捷键 Ctrl+F（`session.find`）：当前 tab 的查找面板打开到「搜索」。实现在流视图。 */
   openFind(): void {
     this.view.openFind();
+  }
+
+  /** `Ctrl+O` · 会话头「⋯」：过程默认展开 / 收起（每扇窗一份，所有 tab 一起换）。 */
+  toggleProcessDefault(): void {
+    this.view.toggleProcessExpanded();
   }
 
   /** 快捷键 Ctrl+Shift+E：打开当前活跃 Tab 的工作目录到系统文件管理器 */

@@ -133,6 +133,7 @@ export function richConvo(sid: string, cwd: string): { convo: Convo; agentTool: 
   c.say(
     "改好了。小结：\n\n```python\nclient = InventoryClient(settings.INVENTORY_URL, retries=3, backoff_ms=200, timeout_s=5)\n```\n\n全量测试 **213 passed**。`docs/config.md` 里加了三个配置项的说明。",
     88_000,
+    "end_turn",
   );
   c.turnDuration(184_000);
   return { convo: c, agentTool, agentTool2 };

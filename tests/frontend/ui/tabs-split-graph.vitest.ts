@@ -159,6 +159,8 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/skeleton-view.ts",
     "src/frontend/ui/stream.ts",
     "src/frontend/ui/tab-session-state.ts", // 已结束的不进后台物化队列
+    "src/frontend/ui/turn-fold.ts", // 按轮折叠：每个 tab 一份（问后端 `history-turns`），开关「过程默认展开」
+    "src/frontend/ui/keybindings/registry.ts", // 会话头「⋯」里那个开关右侧灰字：`Ctrl+O` 此刻绑的键
     "src/frontend/ui/views/outline-source.ts",
     "src/frontend/ui/views/session-find.ts", // 查找面板（搜索 ／ 大纲两个模式）
     "src/frontend/ui/views/session-viewer.ts", // 只为 revealCard（方向别扭的那条，理由在 import 处）

@@ -13,6 +13,7 @@ import type { SeqSet, TailWindow } from "./live-window";
 import type { SkeletonView } from "./skeleton-view";
 import type { UserInputPanel } from "./views/user-input-panel";
 import type { OutlineSource } from "./views/outline-source";
+import type { TurnFold } from "./turn-fold";
 import type { FactsSource } from "./views/facts-source";
 import type { ToolUseSeen } from "./cards/index";
 import type { Origin } from "./ipc/origin";
@@ -115,6 +116,8 @@ export interface Tab {
    * 上面四样（分叉血缘 · agent 列表 · 改动文件集 · 最新 usage）只经它落下来 —— `onLine` 上不再有旁路记账员。
    */
   facts: FactsSource;
+  /** 按轮折叠（后端 `history-turns` 的成品 ⇒ 完成的轮过程折成一行，`turn-fold.ts`）。 */
+  turnFold: TurnFold;
   streamEl: HTMLElement;
   stream: MessageStream;
   /** 父 JSONL 路径（subagent 加载需要） */

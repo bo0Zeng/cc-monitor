@@ -28,6 +28,9 @@ import { eagerBodyChars, skeletonKind } from "./height-estimate";
 import type { UserInputPanel, JumpResult } from "./views/user-input-panel";
 import { OutlineSource, outlineSeedFromIndex } from "./views/outline-source";
 import { SessionFindPanel } from "./views/session-find";
+import { TurnFold, processExpandedDefault, setProcessExpandedDefault } from "./turn-fold";
+import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
+import type { MenuItem } from "./kit/menu";
 // ⚠ **实时窗口 import 历史查看器，方向是别扭的 —— 这是写区逼出来的将就，不是惯例。**
 // 共用的只有 `revealCard`（找卡→展开→滚，两条路的卡由同一份渲染器建）。把它搬进中立文件
 // 要同时改 `src/frontend/shell/src/polling_registry.rs` 的调度点分类账（rAF/setTimeout 按文件精确对账），
@@ -78,6 +81,7 @@ export interface TabStreamDom {
   inputsEl: HTMLElement;
   inputsPanel: UserInputPanel;
   outline: OutlineSource;
+  turnFold: TurnFold;
 }
 
 /**
@@ -268,12 +272,17 @@ export class TabStreamView {
       const t = this.store.tabs.get(sessionId);
       return t?.parentPath ? { origin: t.origin, jsonlPath: t.parentPath } : null;
     });
+    // 按轮折叠：一轮的边界与结论问后端（`history-turns`），路径同大纲每次现取。
+    const turnFold = new TurnFold(stream.contentElement, streamEl, () => {
+      const t = this.store.tabs.get(sessionId);
+      return t?.parentPath ? { origin: t.origin, jsonlPath: t.parentPath } : null;
+    });
     // v2.2 issue #12: 重放期创建的新 Tab 也进 batch 模式，避免每条 record 都
     // 触发 O(N) computeMainBranch。批结束时 onBatchEnd 会统一 flush。
     if (this.store.inBatch) {
       branchFolder.setBatchMode(true);
     }
-    return { streamEl, stream, branchFolder, timeline, inputsEl, inputsPanel, outline };
+    return { streamEl, stream, branchFolder, timeline, inputsEl, inputsPanel, outline, turnFold };
   }
 
   /** 给刚建好的 tab 挂上翻补批的滚动监听与视口变大的补批（原是 `ensureTab` 里的一段，逐字）。 */
@@ -296,6 +305,8 @@ export class TabStreamView {
       if (t && t.streamEl.scrollTop <= TabStreamView.TOP_TRIGGER_PX) this.fillAbove(t);
     };
     streamEl.addEventListener("scroll", fillHandler, { passive: true });
+    // 收尾时视口落在过程里、先没收的那一轮：滚出去了再收（同一个监听，摘的时候一起摘）。
+    streamEl.addEventListener("scroll", tab.turnFold.releaseOnScroll, { passive: true });
     tab.fillHandler = fillHandler;
     // ★ 步 3：**视口自己变大 ⇒ 重新补批。**
     //
@@ -331,6 +342,8 @@ export class TabStreamView {
     // 查找面板是 `streamRootEl` 的直接子节点，不随 `streamEl.remove()` 一起走。
     tab.outline.reset();
     tab.facts.reset(); // 会话事实同理：在途那趟回来后不许回写
+    tab.streamEl.removeEventListener("scroll", tab.turnFold.releaseOnScroll);
+    tab.turnFold.dispose(); // 按轮折叠：断观察、在途那趟作废
     this.finds.get(tab.sessionId)?.reset(); // 在途的查找作废、出弹层栈
     this.finds.delete(tab.sessionId);
     tab.inputsEl.remove();
@@ -388,6 +401,8 @@ export class TabStreamView {
       t.inputsEl.classList.toggle("active", sid === sessionId);
       // 切走的 tab 收起面板（出弹层栈）—— 不然 Esc 去关的是一块看不见的面板。
       if (sid !== sessionId) this.finds.get(sid)?.close();
+      if (sid !== sessionId) t.turnFold.release(true); // 先没收的那一轮：切走了就收
+
     }
   }
 
@@ -508,6 +523,8 @@ export class TabStreamView {
     for (const t of this.store.tabs.values()) {
       if (t.facts.needsFetch) void t.facts.refresh();
     }
+    // 按轮折叠：每个 tab 要一次（续取从还没收尾的那一轮起）。
+    for (const t of this.store.tabs.values()) void t.turnFold.refresh();
     return active;
   }
 
@@ -632,6 +649,27 @@ export class TabStreamView {
       void tab.outline.refresh();
     }
     if (!this.store.inBatch) void tab.facts.refresh();
+    if (!this.store.inBatch) void tab.turnFold.refresh();
+  }
+
+  /** `Ctrl+O` · 会话头开关：过程默认展开与否（每扇窗一份，所有 tab 一起换）。 */
+  toggleProcessExpanded(): void {
+    const on = !processExpandedDefault();
+    setProcessExpandedDefault(on);
+    for (const t of this.store.tabs.values()) t.turnFold.setDefault(on);
+  }
+
+  /** 会话头「⋯」里流的开关（接在这个标签页的右键菜单后面）。右侧灰字是那个动作此刻绑的键。 */
+  streamToggles(): MenuItem[] {
+    const chord = dispatcher.effectiveChord("session.toggle-process");
+    return [
+      {
+        label: copyText("stream.proc.toggle"),
+        checked: processExpandedDefault(),
+        detail: chord ? KeybindingDispatcher.prettyChord(chord) : undefined,
+        onClick: () => this.toggleProcessExpanded(),
+      },
+    ];
   }
 
   /**

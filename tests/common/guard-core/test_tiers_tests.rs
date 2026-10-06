@@ -249,6 +249,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/usage-hud.vitest.ts",
     "tests/frontend/ui/main-window-fixes.vitest.ts", // 主窗口交互逻辑：组字 · 弹层栈挡单键 · 确认框焦点 · 子 agent 时间线 · agent 面板原地更新
     "tests/frontend/ui/main-window-behavior.vitest.ts", // 主窗口：状态栏两块浮层 · 右键菜单躲边与关闭 · 说不清单列 · 多机选单 · 工具组与命令卡（jsdom，假后端）
+    "tests/frontend/ui/turn-fold.vitest.ts", // 主窗口：按轮折叠（过程折成一行 · 正在跑的展开 · 单独记住 · Ctrl+O · 续取）· 轮次刻度（jsdom，假读）
     "tests/frontend/ui/main-window-needs.vitest.ts", // 主窗口照稿第一批：一个会话读成什么 · 「需要你」条 / 钉条 / 标题 / 通知 · 机器离线条 · 会话头（jsdom）
     "tests/frontend/ui/views/cc-bus-view.vitest.ts",
     "tests/frontend/ui/views/context-limit.test.ts",

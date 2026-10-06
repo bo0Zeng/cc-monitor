@@ -142,6 +142,51 @@ export function defaultOps(): Record<string, OpHandler> {
           .map((r) => ({ uuid: r.uuid, excerpt: r.userText.text.slice(0, 120), timestamp: r.timestamp })),
       };
     },
+    // 一轮的摘要：照后端 `observe/turns.rs` 那几条口径（你说的一句起、到下一句；结论 ＝ 最后一次工具调用之后带正文的那几条）。
+    "history-turns": (_o, req, w) => {
+      const recs = sessionByPath(w, req.path)?.records ?? [];
+      const { at, end } = layout(recs);
+      type T = { at: number; uuid: string; start: string; end: string; said: string; tools: number; thinking: number; fails: number; conclusion: string[]; reply: string; done: boolean };
+      const turns: T[] = [];
+      let cur: T | null = null;
+      let afterTool: string[] = [];
+      const close = (t: T): void => {
+        t.conclusion = afterTool;
+        const texts = recs.filter((r): r is Extract<JsonlRecord, { type: "assistant" }> => r.type === "assistant" && afterTool.includes(r.uuid));
+        const body = texts.flatMap((r) => ((r.message.content as { type: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text ?? "")));
+        t.reply = body.join("\n").split("\n").filter((l) => l.trim()).slice(0, 3).join("\n").slice(0, 120);
+      };
+      recs.forEach((r, i) => {
+        if (r.type === "user" && r.userText.speaker.kind === "human" && r.userText.text !== "" && r.uuid) {
+          if (cur) {
+            cur.done = true;
+            close(cur);
+          }
+          cur = { at: at[i].o, uuid: r.uuid, start: r.timestamp, end: r.timestamp, said: r.userText.text.split("\n")[0].slice(0, 50), tools: 0, thinking: 0, fails: 0, conclusion: [], reply: "", done: false };
+          turns.push(cur);
+          afterTool = [];
+          return;
+        }
+        if (!cur || (r.type !== "user" && r.type !== "assistant")) return;
+        cur.end = r.timestamp;
+        const content = Array.isArray(r.message.content) ? (r.message.content as { type: string; text?: string; is_error?: boolean }[]) : [];
+        if (r.type === "assistant") {
+          for (const b of content) {
+            if (b.type === "tool_use") {
+              cur.tools++;
+              afterTool = [];
+            }
+            if (b.type === "thinking") cur.thinking++;
+          }
+          if (!(r as { isApiErrorMessage?: boolean }).isApiErrorMessage && content.some((b) => b.type === "text" && b.text?.trim())) afterTool.push(r.uuid);
+          if (r.message.stop_reason === "end_turn") cur.done = true;
+        } else {
+          cur.fails += content.filter((b) => b.type === "tool_result" && b.is_error).length;
+        }
+      });
+      if (cur) close(cur);
+      return { from: 0, end, turns };
+    },
     "history-facts": (_o, req, w) => {
       const s = sessionByPath(w, req.path);
       const recs = s?.records ?? [];

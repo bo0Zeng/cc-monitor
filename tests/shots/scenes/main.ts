@@ -5,7 +5,7 @@ import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { Convo } from "../fake/records";
 import { answerConvo, defaultWorld, LOCAL, session } from "../fake/world";
-import { mainReady, openTab, rightClick, scrollStream, sleep } from "./helpers";
+import { mainReady, openTab, rightClick, scrollStream, sleep, waitFor } from "./helpers";
 
 const W = 1280;
 const H = 800;
@@ -142,13 +142,26 @@ export const MAIN_SCENES: Scene[] = [
   }),
   main("main-stream-steps", "主窗口 · 过程一步一行", "同一个会话的中段：每一步一行（状态图标 · 工具名 · 主参数 · 说明 · 右侧小字）· agent 交回事件条 · 后台通知并条 · 失败那一步", async () => {
     await mainReady(ALL_TABS);
-    await scrollStream(".card-speaker");
-    // 过程折叠（完成的轮折成一行）是下一小批；这里先把工具组展开看一步一行。
-    document.querySelectorAll<HTMLDetailsElement>(".card-tool-group").forEach((d) => (d.open = true));
+    // 完成的轮过程默认折成一行：点开那一行看一步一行。
+    (await waitFor(".stream.active .proc-line")).click();
     await sleep(200);
     const s = document.querySelector<HTMLElement>(".card-speaker")!;
     s.scrollIntoView({ block: "center" });
     await sleep(300);
+  }),
+  main("main-turn-folded", "主窗口 · 完成的轮过程折成一行", "这一轮做完了：你说的 · 过程一行（工具 ×N · 思考 ×N · 失败 ×N · 起止 · 用时）· 结论常显", async () => {
+    await mainReady(ALL_TABS);
+    await waitFor(".stream.active .proc-line");
+    await sleep(200);
+    document.querySelector<HTMLElement>(".stream.active .proc-line")!.scrollIntoView({ block: "start" });
+    await sleep(300);
+  }),
+  main("main-turn-menu", "主窗口 · 会话头「⋯」里的开关", "会话头「⋯」＝ 这个标签页的右键菜单 ＋「过程默认展开」（右侧是它的快捷键）", async () => {
+    await mainReady(ALL_TABS);
+    await waitFor(".stream.active .proc-line");
+    const more = [...document.querySelectorAll<HTMLElement>("button")].find((b) => b.querySelector("[data-icon='more']") && !b.closest("#tab-bar"));
+    more?.click();
+    await sleep(400);
   }),
   main("main-stream-retry", "主窗口 · 重试细条与提问 / 计划结果", "同一个会话靠后：两次重试并成一条（接上了变淡）· 提问答了「已选」· 计划「已批准」", async () => {
     await mainReady(ALL_TABS);

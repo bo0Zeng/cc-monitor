@@ -142,8 +142,9 @@ export class Convo {
     return this;
   }
 
-  say(markdown: string, tokens = 42_000): this {
-    return this.assistant([{ type: "text", text: markdown }], { usage: usage(tokens) });
+  /** `stop: "end_turn"` ＝ 这一轮说完了（一轮的摘要据它认「收尾」）。 */
+  say(markdown: string, tokens = 42_000, stop?: string): this {
+    return this.assistant([{ type: "text", text: markdown }], { usage: usage(tokens), stop });
   }
 
   think(thinking: string, then: string): this {

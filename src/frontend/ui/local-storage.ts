@@ -53,6 +53,8 @@ export const LS_KEYS = {
   restartReasons: "cc-monitor.settings.restart-reasons",
   /** Batch11-F33：竖直 tab 栏拖出来的宽度（px）。从 `main.ts` 的直写收进来，读写者只有 `tab-bar-width.ts`。 */
   tabBarWidth: "cc-monitor.tab-bar-w",
+  /** 主窗口稿 §5.2.2：「过程默认展开」（会话头「⋯」· Ctrl+O）。每扇窗一份；`"1"` 展开，其余收起。 */
+  processExpanded: "cc-monitor.stream.process-expanded",
 } as const;
 
 export function safeGet(key: string): string | null {
