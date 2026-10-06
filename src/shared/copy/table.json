@@ -20203,6 +20203,46 @@
       "kind": "body",
       "zh": "{w} {v} {r}",
       "args": ["w", "v", "r"]
+    },
+    "rsFilewinWriteops.delete.titleOne": {
+      "kind": "title",
+      "zh": "删除 {name}",
+      "args": ["name"]
+    },
+    "rsFilewinWriteops.delete.titleMany": {
+      "kind": "title",
+      "zh": "删除 {n} 项",
+      "args": ["n"]
+    },
+    "rsFilewinWriteops.delete.rowDir": {
+      "kind": "body",
+      "zh": "{name} · 文件夹",
+      "args": ["name"]
+    },
+    "rsFilewinWriteops.delete.more": {
+      "kind": "body",
+      "zh": "另外 {n} 项",
+      "args": ["n"]
+    },
+    "rsFilewinWriteops.delete.body": {
+      "kind": "body",
+      "zh": "不可恢复",
+      "args": []
+    },
+    "rsFilewinWriteops.delete.cancel": {
+      "kind": "action",
+      "zh": "取消",
+      "args": []
+    },
+    "rsFilewinWriteops.delete.go": {
+      "kind": "action",
+      "zh": "删除",
+      "args": []
+    },
+    "rsFilewinWriteops.delete.goMany": {
+      "kind": "action",
+      "zh": "删除 {n} 项",
+      "args": ["n"]
     }
   }
 }

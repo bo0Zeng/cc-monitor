@@ -1025,3 +1025,34 @@ async fn a_big_directory_is_deleted_slice_by_slice_until_nothing_is_left() {
         "还剩着就停了 / 删完了还在发"
     );
 }
+
+/// 删除单独一问：标题按项数写 · 多于 8 项只列 8 个 ＋「另外 n 项」· 文件夹注明 · 「不可恢复」；
+/// 「取消」与 Esc 都不删（答复是空的一摞）。
+#[test]
+fn deleting_asks_once_with_names_and_cannot_be_undone() {
+    let board = WriteBoard::default();
+    let ops: Vec<WriteOp> = (0..10)
+        .map(|i| WriteOp::Delete {
+            path: format!("/srv/d/f{i}"),
+            is_dir: i == 0,
+            raw: None,
+        })
+        .collect();
+    let mut rx = board.ask(ops);
+    let ctx = egui::Context::default();
+    let mut painted = Vec::new();
+    for _ in 0..2 {
+        let out = ctx.run_ui(egui::RawInput::default(), |ui| board.ui(ui));
+        painted = crate::copy::testing::text_in_frame(&out);
+        out.drop_without_applying_deltas();
+    }
+    let has = |t: &str| painted.iter().any(|(s, _)| s == t);
+    assert!(has("删除 10 项"), "标题不对：{painted:?}");
+    assert!(
+        has("f0 · 文件夹") && has("f7") && !has("f8"),
+        "该只列 8 个：{painted:?}"
+    );
+    assert!(has("另外 2 项") && has("不可恢复") && has("删除 10 项") && has("取消"));
+    assert!(board.settle(false));
+    assert_eq!(rx.try_recv().unwrap(), Vec::<WriteOp>::new(), "取消了还删");
+}

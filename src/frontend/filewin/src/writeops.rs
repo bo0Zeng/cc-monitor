@@ -439,6 +439,9 @@ pub fn delete_op(r: &Listed) -> WriteOp {
 /// ⚠ 与后端那一侧无关：后端那几条都在阻塞档、开跑之后打不断；这个数只管「窗口等多久」。
 pub const WRITE_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
 
+/// 删除那一问最多列几项（其余写「另外 n 项」）。
+pub const DELETE_LIST_MAX: usize = 8;
+
 // ═══════════════════════════════════════════════════════════════════════
 // 那个框：**要什么名字 / 改成什么权限**（UI 线程自己的状态）
 // ═══════════════════════════════════════════════════════════════════════
@@ -940,7 +943,86 @@ impl WriteBoard {
             let b = self.inner.lock().unwrap();
             (b.asking.clone(), b.ticks.clone(), b.last.clone())
         };
-        if !asking.is_empty() {
+        // 删除单独一问（规范 `C10`）：标题「删除 main.rs」/「删除 3 项」· 列出名字（多于 8 项只列 8 个 ＋「另外 n 项」）·
+        //   「不可恢复」· 按钮「取消」（焦点）「删除 / 删除 n 项」（危险）。删除撤不回 ⇒ 只问这一次，不再是勾选清单。
+        if !asking.is_empty() && asking.iter().all(|o| matches!(o, WriteOp::Delete { .. })) {
+            let n = asking.len();
+            let name_of = |o: &WriteOp| match o {
+                WriteOp::Delete { path, is_dir, .. } => {
+                    let name = super::source::remote_basename(path).to_string();
+                    if *is_dir {
+                        copy_text("rsFilewinWriteops.delete.rowDir", &[("name", &name)])
+                    } else {
+                        name
+                    }
+                }
+                _ => String::new(),
+            };
+            let title = if n == 1 {
+                let name = match &asking[0] {
+                    WriteOp::Delete { path, .. } => {
+                        super::source::remote_basename(path).to_string()
+                    }
+                    _ => String::new(),
+                };
+                copy_text("rsFilewinWriteops.delete.titleOne", &[("name", &name)])
+            } else {
+                copy_text(
+                    "rsFilewinWriteops.delete.titleMany",
+                    &[("n", &n.to_string())],
+                )
+            };
+            let go_label = if n == 1 {
+                copy_text("rsFilewinWriteops.delete.go", &[])
+            } else {
+                copy_text("rsFilewinWriteops.delete.goMany", &[("n", &n.to_string())])
+            };
+            let mut answer: Option<bool> = None;
+            let p = super::theme::palette(ui.ctx());
+            let (_, esc) = super::shell::modal(ui.ctx(), "filewin-delete-confirm", |ui| {
+                ui.heading(&title);
+                super::shell::modal_list(ui, |ui| {
+                    for o in asking.iter().take(DELETE_LIST_MAX) {
+                        ui.label(name_of(o));
+                    }
+                    if n > DELETE_LIST_MAX {
+                        ui.label(
+                            egui::RichText::new(copy_text(
+                                "rsFilewinWriteops.delete.more",
+                                &[("n", &(n - DELETE_LIST_MAX).to_string())],
+                            ))
+                            .color(p.text2),
+                        );
+                    }
+                });
+                ui.label(
+                    egui::RichText::new(copy_text("rsFilewinWriteops.delete.body", &[]))
+                        .color(p.text2),
+                );
+                ui.add_space(8.0);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let go = egui::Button::new(egui::RichText::new(&go_label).color(p.text))
+                        .fill(p.error_strong);
+                    if ui.add(go).clicked() {
+                        answer = Some(true);
+                    }
+                    let cancel = ui.button(copy_text("rsFilewinWriteops.delete.cancel", &[]));
+                    // 焦点先落在「取消」（撤不回的那一下要多按一次 Tab 才到）。
+                    if ui.memory(|m| m.focused().is_none()) {
+                        cancel.request_focus();
+                    }
+                    if cancel.clicked() {
+                        answer = Some(false);
+                    }
+                });
+            });
+            if esc && answer.is_none() {
+                answer = Some(false);
+            }
+            if let Some(go) = answer {
+                self.settle(go);
+            }
+        } else if !asking.is_empty() {
             let mut answer: Option<bool> = None;
             let mut changed = false;
             let (_, esc) = super::shell::modal(ui.ctx(), "filewin-write-confirm", |ui| {
