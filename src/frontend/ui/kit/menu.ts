@@ -21,8 +21,10 @@ export interface MenuItem {
   detailTone?: "warn";
   /** 紧跟在字后面的一段灰字（邮箱）。 */
   note?: string;
-  /** 字前面的身份块（账号头像）。 */
+  /** 字前面的身份块（账号头像 · 状态点）。 */
   avatar?: HTMLElement;
+  /** 第二行（引用的那一句 / 命令）：等宽小字，至多两行、余下省略；有它这一项就是两行高。 */
+  body?: string;
   /** 当前项：左侧对勾 ＋ 600 字重（下拉、选账号）。 */
   checked?: boolean;
   /** `false` ＝ 灰着不可点；`title` 写为什么。 */
@@ -141,6 +143,14 @@ function makeItem(o: Open, it: MenuItem): HTMLElement {
     d.textContent = it.detail;
     btn.appendChild(d);
   }
+  if (it.body) {
+    btn.dataset.twoLine = "true";
+    const b = document.createElement("span");
+    b.className = s.menuBody;
+    b.dataset.part = "body";
+    b.textContent = it.body;
+    btn.appendChild(b);
+  }
   if (it.title) btn.title = it.title;
   const enabled = it.enabled !== false;
   btn.disabled = !enabled;
@@ -253,7 +263,7 @@ function onKey(ev: KeyboardEvent): void {
  * 开一个菜单（先关掉开着的那个）。锚在触发物上且它开着 ⇒ 当作「再点一次」：关掉、不再开。
  * @returns 开没开（`false` ＝ 这一下是关）。
  */
-export function openMenu(anchor: MenuAnchor, items: MenuItem[], opts: { onClose?: () => void; label?: string } = {}): boolean {
+export function openMenu(anchor: MenuAnchor, items: MenuItem[], opts: { onClose?: () => void; label?: string; width?: number } = {}): boolean {
   if ("el" in anchor && menuAnchoredOn(anchor.el)) {
     closeMenu();
     return false;
@@ -265,6 +275,10 @@ export function openMenu(anchor: MenuAnchor, items: MenuItem[], opts: { onClose?
   root.className = s.menu;
   root.setAttribute("role", "menu");
   if (opts.label) root.setAttribute("aria-label", opts.label);
+  if (opts.width !== undefined) {
+    root.style.width = `${opts.width}px`;
+    root.style.maxWidth = `min(${opts.width}px, calc(100vw - ${2 * EDGE}px))`;
+  }
   const layer: OverlayHandle = {
     handleEsc: () => {
       closeMenu();

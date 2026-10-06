@@ -16,7 +16,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::agents::{ChildRunTag, ToolCard, UserText};
+use crate::agents::{ApiReason, ChildRunTag, StepResult, ToolCard, ToolStep, UserText};
 use std::collections::BTreeMap;
 
 impl JsonlRecord {
@@ -53,6 +53,77 @@ impl JsonlRecord {
                     Some((id.to_string(), card))
                 })
                 .collect();
+        }
+        self
+    }
+
+    /// 过程一步一行（`steps.rs`）：assistant 填 `toolSteps` 与报错的 `apiReason` · user 填 `toolResults` · 要重试的 system 填 `apiReason`；别的原样。
+    pub(crate) fn with_steps(mut self) -> Self {
+        use super::steps;
+        match &mut self {
+            Self::Assistant {
+                message,
+                tool_steps,
+                is_api_error_message,
+                error,
+                api_error_status,
+                api_reason,
+                ..
+            } => {
+                *tool_steps = message
+                    .content
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter(|b| {
+                        b.get("type").and_then(serde_json::Value::as_str) == Some("tool_use")
+                    })
+                    .filter_map(|b| {
+                        let id = b.get("id")?.as_str()?;
+                        let name = b.get("name")?.as_str()?;
+                        let input = b.get("input").unwrap_or(&serde_json::Value::Null);
+                        Some((id.to_string(), steps::step_of(name, input)))
+                    })
+                    .collect();
+                if *is_api_error_message {
+                    let text = super::text::extract_text_blocks(&message.content);
+                    *api_reason = Some(steps::api_reason(*api_error_status, error.as_ref(), &text));
+                }
+            }
+            Self::User {
+                message,
+                tool_use_result,
+                tool_results,
+                ..
+            } => {
+                *tool_results = message
+                    .content
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter(|b| {
+                        b.get("type").and_then(serde_json::Value::as_str) == Some("tool_result")
+                    })
+                    .filter_map(|b| {
+                        let id = b.get("tool_use_id")?.as_str()?;
+                        Some((
+                            id.to_string(),
+                            steps::result_of(b, tool_use_result.as_ref()),
+                        ))
+                    })
+                    .collect();
+                // 原样那一格只喂判定，判完就放（读文件的结果里有整份内容）。
+                *tool_use_result = None;
+            }
+            Self::System {
+                subtype,
+                error,
+                api_reason,
+                ..
+            } if subtype.as_deref() == Some("api_error") => {
+                *api_reason = Some(steps::api_reason(None, error.as_ref(), ""));
+            }
+            _ => {}
         }
         self
     }
@@ -143,6 +214,20 @@ pub enum JsonlRecord {
         /// 界面渲染 / 分叉折叠只读这个成品（不自己再判）。原文里没有这一格：解析完由 [`JsonlRecord::with_user_text`] 填。
         #[serde(rename = "userText", skip_deserializing, default)]
         user_text: UserText,
+        // 只喂结果一句那一判（`steps.rs::result_of`），不上线。
+        #[serde(rename = "toolUseResult", default, skip_serializing)]
+        #[cfg_attr(test, ts(skip))]
+        tool_use_result: Option<serde_json::Value>,
+        /// 〔判定只在后端〕这条里每个 `tool_result` 的结果一句：`tool_use_id` → [`StepResult`]（读了几行 · `+N −M` · 被拒 · 提问 / 计划答了什么）。
+        /// 原文里没有这一格：解析完由 [`JsonlRecord::with_steps`] 填；界面只按它拼字，不认 `toolUseResult` 的形状。
+        #[serde(
+            rename = "toolResults",
+            skip_deserializing,
+            default,
+            skip_serializing_if = "BTreeMap::is_empty"
+        )]
+        #[cfg_attr(test, ts(optional, as = "Option<BTreeMap<String, StepResult>>"))]
+        tool_results: BTreeMap<String, StepResult>,
     },
     #[serde(rename = "assistant")]
     Assistant {
@@ -203,6 +288,25 @@ pub enum JsonlRecord {
         )]
         #[cfg_attr(test, ts(optional, as = "Option<BTreeMap<String, ChildRunTag>>"))]
         child_runs: BTreeMap<String, ChildRunTag>,
+        /// 〔判定只在后端〕这条消息里每个 `tool_use` 的一行人话：`tool_use.id` → [`ToolStep`]（工具名 · 主参数 · 说明 · 认不认得）。
+        /// 原文里没有这一格：解析完由 [`JsonlRecord::with_steps`] 填；界面不认入参结构。
+        #[serde(
+            rename = "toolSteps",
+            skip_deserializing,
+            default,
+            skip_serializing_if = "BTreeMap::is_empty"
+        )]
+        #[cfg_attr(test, ts(optional, as = "Option<BTreeMap<String, ToolStep>>"))]
+        tool_steps: BTreeMap<String, ToolStep>,
+        /// 〔判定只在后端〕`isApiErrorMessage` 的那条：原因种类（[`ApiReason`]）。别的记录缺。
+        #[serde(
+            rename = "apiReason",
+            skip_deserializing,
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        #[cfg_attr(test, ts(optional))]
+        api_reason: Option<ApiReason>,
     },
 
     #[serde(rename = "ai-title")]
@@ -264,6 +368,15 @@ pub enum JsonlRecord {
         // 前端必须先 typeof/形状守卫才能读，这与 §18「宽容 schema」的读法一致。
         #[cfg_attr(test, ts(type = "unknown"))]
         error: Option<serde_json::Value>,
+        /// 〔判定只在后端〕`subtype == "api_error"`（要重试的那一次）的原因种类。别的记录缺。
+        #[serde(
+            rename = "apiReason",
+            skip_deserializing,
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        #[cfg_attr(test, ts(optional))]
+        api_reason: Option<ApiReason>,
     },
 
     // issue #8: attachment 不渲染卡片，但有 uuid+parentUuid 并夹在 user→assistant

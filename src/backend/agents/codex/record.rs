@@ -348,11 +348,14 @@ fn mail_said(text: &str, author: Option<&str>, recipient: Option<&str>) -> UserT
             text: m.payload.to_string(),
             pasted: Vec::new(),
         },
-        (true, _) => UserText::of(Speaker::Coordinator),
+        (true, _) => UserText::of(Speaker::Coordinator {
+            body: Some(m.payload.trim().to_string()).filter(|b| !b.is_empty()),
+        }),
         (false, kind) => UserText::of(Speaker::AgentMessage {
             from: from.map(str::to_string),
             name: None,
             handback: kind == Some("FINAL_ANSWER"),
+            body: Some(m.payload.trim().to_string()).filter(|b| !b.is_empty()),
         }),
     }
 }
@@ -591,6 +594,8 @@ fn assistant_rec(uuid: String, ts: Option<String>, role: &str, content: Value) -
         // Codex 的工具名今天没人考据过⇒ 不带卡型；它不声明子运行 ⇒ 不带派出标签。
         tool_cards: Default::default(),
         child_runs: Default::default(),
+        tool_steps: Default::default(),
+        api_reason: None,
     }
 }
 
@@ -609,6 +614,8 @@ fn user_rec(uuid: String, ts: Option<String>, content: Value, said: UserText) ->
         parent_uuid: None,
         forked_from: None,
         user_text: said,
+        tool_use_result: None,
+        tool_results: Default::default(),
     }
 }
 

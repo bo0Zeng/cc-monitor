@@ -24,6 +24,7 @@ const FAMILY: &[&str] = &[
     "history-find",
     // 会话事实出成品（异源是手抄的要求「三样由后端出成品」，不是 `stream/inbound/`）。
     "history-facts",
+    "history-turns",
     // `history-projects` / `history-sessions` 出列：它们出成品（并注解 ＋ 判活 ＋ 远端那一跳），
     //   交给 `history_join`（历史跨机 join 的唯一的家；异源仍是手抄的要求）。
     "history-read",
@@ -511,6 +512,31 @@ fn golden_facts_session(home: &Path) -> String {
     p.to_string_lossy().to_string()
 }
 
+/// 一轮的摘要那一格的金样夹具（结构占位）：第一轮 思考 · 两次调用（一次失败、一次被拒）· 中间的话 · 结论（`end_turn`）；
+/// 第二轮还在跑（调用发出去、还没结果）。子运行的记录不算进主线的轮。
+fn golden_turns_session(home: &Path) -> String {
+    let dir = home.join("projects").join("-golden");
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("t.jsonl");
+    let body = [
+        r#"{"type":"user","uuid":"t-1","timestamp":"t1","message":{"content":"first line\nsecond"}}"#,
+        r#"{"type":"assistant","uuid":"t-2","timestamp":"t2","message":{"content":[{"type":"thinking","thinking":"h"}]}}"#,
+        r#"{"type":"assistant","uuid":"t-3","timestamp":"t3","message":{"content":[{"type":"text","text":"between"}]}}"#,
+        r#"{"type":"assistant","uuid":"t-4","timestamp":"t4","message":{"content":[{"type":"tool_use","id":"u-1","name":"Bash","input":{"command":"c"}}]}}"#,
+        r#"{"type":"user","uuid":"t-5","timestamp":"t5","message":{"content":[{"type":"tool_result","tool_use_id":"u-1","content":"Exit code 1","is_error":true}]}}"#,
+        r#"{"type":"assistant","uuid":"t-6","timestamp":"t6","message":{"content":[{"type":"tool_use","id":"u-2","name":"Edit","input":{"file_path":"/w/a"}}]}}"#,
+        r#"{"type":"user","uuid":"t-7","timestamp":"t7","message":{"content":[{"type":"tool_result","tool_use_id":"u-2","content":"The user doesn't want to proceed with this tool use.","is_error":true}]}}"#,
+        r#"{"type":"assistant","uuid":"t-8","timestamp":"t8","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"r1\n\nr2\nr3\nr4"}]}}"#,
+        r#"{"type":"user","uuid":"t-9","timestamp":"t9","message":{"content":"next"}}"#,
+        r#"{"type":"assistant","uuid":"t-10","timestamp":"t10","message":{"content":[{"type":"tool_use","id":"u-3","name":"Read","input":{"file_path":"/w/b"}}]}}"#,
+    ]
+    .iter()
+    .map(|r| format!("{r}\n"))
+    .collect::<String>();
+    std::fs::write(&p, body).unwrap();
+    p.to_string_lossy().to_string()
+}
+
 /// ★★**跨语言金样**：三条帧命令对同一份夹具会话的成品 == `tests/__fixtures__/session-reads.golden.json`。
 /// ＋ 第四条 `history-facts`（对它自己那份夹具 [`golden_facts_session`]）。
 ///
@@ -526,6 +552,7 @@ fn the_three_products_match_the_cross_language_golden() {
         "history-user-inputs": answer_at(&home, "history-user-inputs", &serde_json::json!({"path": path, "from": 0})).unwrap(),
         "history-find": answer_at(&home, "history-find", &serde_json::json!({"path": path, "query": "zqx", "include_tools": false, "limit": 500})).unwrap(),
         "history-facts": answer_at(&home, "history-facts", &serde_json::json!({"path": golden_facts_session(&home)})).unwrap(),
+        "history-turns": answer_at(&home, "history-turns", &serde_json::json!({"path": golden_turns_session(&home), "from": 0})).unwrap(),
     });
     let want: serde_json::Value =
         serde_json::from_str(include_str!("../../__fixtures__/session-reads.golden.json"))

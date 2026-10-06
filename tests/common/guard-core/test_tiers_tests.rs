@@ -81,6 +81,8 @@ const UNIT: &[&str] = &[
     "tests/backend/assets/hub_tests.rs", // 两台之间那几件的枢纽（替身的这台 ＋ 替身的远端 capture，纯内存）
     "tests/backend/agents/claudecode/cards_tests.rs", // 原 `tests/common/agent-tools-core/lib_tests.rs`：工具词表收进后端适配层（纯函数）
     "tests/backend/observe/facts_query_tests.rs", // SCAN → UNIT：读生成物那条异源对拍随两份收成一份退役，余下全是行为判据
+    "tests/backend/agents/claudecode/steps_tests.rs", // 过程一步一行 · 结果一句 · 报错原因（纯函数 ＋ 单行解析）
+    "tests/backend/observe/turns_tests.rs",           // 一轮的摘要（内存里的几行）
     "tests/backend/observe/relay_marks_tests.rs", // 中转看见的请求标记：带过即算 · 没看见过说不出 · 上界丢最早的
     "tests/frontend/ui/config-lost-update.vitest.ts", // J1 两 realm 11 写者同拍写 · J5 写者路径集合
     "tests/frontend/ui/config-persist-failure.vitest.ts", // J8 落盘失败恰好一条 toast

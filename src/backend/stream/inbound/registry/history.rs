@@ -238,6 +238,19 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 会话内查找上帧面（此前走逐次拨号 —— `STILL_DIALED` 那一行）。同族同档。
     // 会话事实（`read_face.rs` 那一臂 ＋ `observe/facts_query.rs`）。同族同档、同一个只读宿主。
     //   `prior` 是调用方上一次拿到的应答原样（续传令牌）；应答四格即成品。
+    // 一轮的摘要（`read_face.rs` 那一臂 ＋ `observe/turns.rs`）。同族同档、同一个只读宿主；`from` 是某一轮的 `at`。
+    CommandSpec {
+        name: "history-turns",
+        doc_anchor: Some("#### `history-turns`"),
+        codes: &["bad_args", "failed", "too_large"],
+        fields: &["end", "from", "path", "turns"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     CommandSpec {
         name: "history-facts",
         doc_anchor: Some("#### `history-facts`"),

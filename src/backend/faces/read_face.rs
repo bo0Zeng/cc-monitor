@@ -325,6 +325,17 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             let (_, end) = rows.finish(scanned)?;
             Ok(json!({ "from": from, "end": end, "entries": rows.rows }))
         }
+        // 一轮的摘要（B4）：`from` 是某一轮的 `at`（或 0）；还在跑的最后一轮下次从它的 `at` 再取。
+        "history-turns" => {
+            let path = str_arg(args, "path")?;
+            let from = u64_arg(args, "from")?.unwrap_or(0);
+            let r =
+                history_query::open_user_inputs_at(home, path, from).map_err(|e| ("failed", e))?;
+            let mut rows = CappedRows::default();
+            let scanned = crate::observe::turns::scan_turns(r, from, |row| rows.push(row));
+            let (_, end) = rows.finish(scanned)?;
+            Ok(json!({ "from": from, "end": end, "turns": rows.rows }))
+        }
         // 会话内查找（Ctrl+F，SE2 的 `--find-in-session`）随骨架索引与大纲一起上帧面。
         // `limit` 超封顶按封顶算、缺席取缺省 —— 与 CLI 那一臂的 `parse_find_args` 同一对常量。
         "history-find" => {

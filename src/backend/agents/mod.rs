@@ -429,6 +429,89 @@ pub struct ChildRunTag {
     pub kind: Option<String>,
 }
 
+/// 过程里一步的「一行人话」（主窗口稿 §5.2.3 · B5 前一半）：assistant 记录成品的 `toolSteps`（`tool_use.id` ⇒ 它）。
+/// 怎么从入参里挑主参数与说明是各家的格式知识（`agents/<名>/steps.rs`）；界面只排版，不认入参结构。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct ToolStep {
+    /// 工具名（原样）。
+    pub tool: String,
+    /// 主参数（命令 · 路径 · 搜索词 · 网址 · 任务说明）：一行（换行压成空格）。认不出主参数 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub arg: Option<String>,
+    /// 主参数是不是路径（界面「中间省略」与「打开文件」按它）。
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
+    pub path: bool,
+    /// 说明（Bash 的 `description` 那一类）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub note: Option<String>,
+    /// 这一家认不认得这个工具（`false` ⇒ 界面画问号、给原文）。
+    pub known: bool,
+}
+
+/// 过程里一步的结果一句（B5 后一半 ＋ B7）：user 记录成品的 `toolResults`（`tool_result.tool_use_id` ⇒ 它）。
+/// 数是从结果里读的（各家的格式知识），界面只按这几格拼字；读不出的格缺。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, Default)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct StepResult {
+    /// 成功（`false` ＝ 失败或被拒）。
+    pub ok: bool,
+    /// 人没批准这一步（批准框里选了「不」/ 计划没批）。只在 `ok == false` 时可能为真。
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
+    pub rejected: bool,
+    /// 读了几行（读文件）/ 输出几行（命令）/ 命中几行（搜索）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub lines: Option<u32>,
+    /// 改动：加了几行 · 删了几行。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub added: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub removed: Option<u32>,
+    /// 命中几个文件（搜索 / 列文件）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub files: Option<u32>,
+    /// 提问 / 计划的结果（B7）：批准了 · 选了哪几项。没批准走 `rejected`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub answer: Option<Answer>,
+}
+
+/// 提问 / 计划答了什么（B7）。界面写「已批准」/「已选「{option}」」，不显示 Claude Code 的英文原句。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum Answer {
+    /// 计划批准了。
+    Approved,
+    /// 提问选了这几项（选项原文，按问题顺序；一题多选的那题各项都列）。
+    Picked { options: Vec<String> },
+}
+
+/// 报错 / 重试的原因种类（B6）：界面按它出一词（服务器过载 · 额度满 · 网络中断 · 需登录 · 上下文超长 · 原因不明），不认状态码与报错原文。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub enum ApiReason {
+    Overloaded,
+    Quota,
+    Network,
+    Auth,
+    Context,
+    Unknown,
+}
+
 /// 一条用户角色的记录（或一条排队消息）是**谁说的** —— 通用的值域；怎么认是各家的格式知识（`agents/<名>/`，
 /// 注册表 [`TextFace::user`]）。随记录成品带出（`userText.speaker`），界面按它决定画不画、画成哪种，不认正文里的标记。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -470,15 +553,28 @@ pub enum Speaker {
         #[cfg_attr(test, ts(optional))]
         name: Option<String>,
         handback: bool,
+        /// 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(test, ts(optional))]
+        body: Option<String>,
     },
     /// 另一个会话（另一个实例）发来的话。
     PeerSession {
         #[serde(skip_serializing_if = "Option::is_none")]
         #[cfg_attr(test, ts(optional))]
         from: Option<String>,
+        /// 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(test, ts(optional))]
+        body: Option<String>,
     },
     /// （子 agent 那一侧）主会话后来发给它的话。
-    Coordinator,
+    Coordinator {
+        /// 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(test, ts(optional))]
+        body: Option<String>,
+    },
     /// （子 agent 那一侧）主会话派给它的活。
     AgentTask,
     /// 系统注入：提醒、技能展开、续跑样板、定时触发、额度恢复后的续跑等。
@@ -503,7 +599,7 @@ impl Speaker {
             Self::TaskNotification { .. } => "taskNotification",
             Self::AgentMessage { .. } => "agentMessage",
             Self::PeerSession { .. } => "peerSession",
-            Self::Coordinator => "coordinator",
+            Self::Coordinator { .. } => "coordinator",
             Self::AgentTask => "agentTask",
             Self::System => "system",
             Self::CompactSummary => "compactSummary",
@@ -700,6 +796,8 @@ pub(crate) struct TextFace {
     pub(crate) tool: fn(&serde_json::Value, bool) -> String,
     /// 一条已解析的记录 ⇒ 它是谁说的（[`UserText`]）；不是用户角色的记录 ⇒ `None`。
     pub(crate) user: fn(&serde_json::Value) -> Option<UserText>,
+    /// 一个工具结果块（＋ 记录级的结构化结果）⇒ 结果一句（[`StepResult`]：失败 · 被拒 · 数 · 提问与计划答了什么）。
+    pub(crate) result: fn(&serde_json::Value, Option<&serde_json::Value>) -> StepResult,
 }
 
 /// `kind` 那一家的文本面。
@@ -720,6 +818,21 @@ pub(crate) fn tool_text(kind: &str, content: &serde_json::Value, is_assistant: b
 /// `kind` 那一家判这条记录是谁说的。那一家答不了 ⇒ `None`。
 pub(crate) fn user_text_of(kind: &str, v: &serde_json::Value) -> Option<UserText> {
     text_face(kind).and_then(|t| (t.user)(v))
+}
+
+/// `kind` 那一家怎么读一个工具结果块（一轮的摘要数失败用：被拒的不算失败）。那一家答不了 ⇒ 只看 `is_error`。
+pub(crate) fn step_result_of(
+    kind: &str,
+    block: &serde_json::Value,
+    tur: Option<&serde_json::Value>,
+) -> StepResult {
+    text_face(kind).map_or_else(
+        || StepResult {
+            ok: block.get("is_error").and_then(serde_json::Value::as_bool) != Some(true),
+            ..StepResult::default()
+        },
+        |t| (t.result)(block, tur),
+    )
 }
 
 /// 人在这条记录里说的话（[`UserText::speech`]）；不是人说的 ⇒ `None`。

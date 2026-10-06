@@ -76,6 +76,8 @@ pub(crate) const BORN_ON_FRAME: &[&str] = &[
     // 会话事实出成品（分叉血缘 · 改动文件集 · agent 列表 · 最新 usage）。
     //   此前是前端 `onLine` 旁路自己攒的，没有被替掉的拨号子命令；monitor 这一侧从不发它（界面经通道直接问）。
     "history-facts",
+    // 一轮的摘要（过程行 · 刻度 · 大纲同源；界面经通道直接问，monitor 这一侧从不发它）。
+    "history-turns",
     // 那台后端自己的 stderr 诊断文件尾部（设置页「日志」经通道直接问；monitor 这一侧从不发它）。
     "backend-log",
     // 记录解释进后端之后生在帧面上的两条（界面经通道直接问；monitor 这一侧从不发它们）。

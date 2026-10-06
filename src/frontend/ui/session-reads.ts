@@ -224,6 +224,63 @@ export function decodeUserInputs(v: unknown): { from: number; end: number; entri
   return { from: v.from, end: v.end, entries };
 }
 
+/** 一轮的摘要（后端 `observe/turns.rs::TurnRow`，键名一字不差）：过程行 · 刻度悬停 · 折哪几条都按它。 */
+export interface TurnSummary {
+  /** 这一轮开头（你那句）那一行的字节位置；还在跑的最后一轮下次从这里再取。 */
+  at: number;
+  uuid: string;
+  start: string;
+  end: string;
+  /** 你那句的第一行（≤ 50 字）。 */
+  said: string;
+  tools: number;
+  thinking: number;
+  fails: number;
+  /** 结论那几条 assistant 记录的 uuid（这一轮最后一次工具调用之后带正文的）；其余都是过程。 */
+  conclusion: string[];
+  /** 回复头三行（≤ 120 字）。 */
+  reply: string;
+  /** 这一轮收尾了（后面又有你的一句，或 Claude 说完了）。 */
+  done: boolean;
+}
+
+const TURN_KEYS = ["at", "conclusion", "done", "end", "fails", "reply", "said", "start", "thinking", "tools", "uuid"] as const;
+
+/** `history-turns` 的成品 ⇒ `(from, end, turns)`。键集合恰好、类型逐格对；不对 ⇒ 抛。 */
+export function decodeTurns(v: unknown): { from: number; end: number; turns: TurnSummary[] } {
+  const bad = (): never => {
+    throw new ShapeError("history-turns", copyText("sessionReads.missing.turns"));
+  };
+  if (!isObj(v) || !exactKeys(v, ["end", "from", "turns"]) || !isNum(v.from) || !isNum(v.end) || !Array.isArray(v.turns)) return bad();
+  const turns = v.turns.map((t): TurnSummary => {
+    if (
+      !isObj(t) ||
+      !exactKeys(t, TURN_KEYS) ||
+      ![t.at, t.tools, t.thinking, t.fails].every(isNum) ||
+      ![t.uuid, t.start, t.end, t.said, t.reply].every(isStr) ||
+      typeof t.done !== "boolean" ||
+      !Array.isArray(t.conclusion) ||
+      !t.conclusion.every(isStr)
+    ) {
+      return bad();
+    }
+    return {
+      at: t.at as number,
+      uuid: t.uuid as string,
+      start: t.start as string,
+      end: t.end as string,
+      said: t.said as string,
+      tools: t.tools as number,
+      thinking: t.thinking as number,
+      fails: t.fails as number,
+      conclusion: [...(t.conclusion as string[])],
+      reply: t.reply as string,
+      done: t.done,
+    };
+  });
+  return { from: v.from, end: v.end, turns };
+}
+
 /** `history-index` 的成品 ⇒ `(from, end, rows)`。行本身**不解释**（只验「是对象、带偏移与行长」）。 */
 export function decodeIndex(v: unknown): { from: number; end: number; rows: SkeletonFacts[] } {
   if (!isObj(v) || !isNum(v.from) || !isNum(v.end) || !Array.isArray(v.rows)) {
@@ -364,6 +421,21 @@ export async function listUserInputs(origin: Origin, jsonlPath: string, fromOffs
     const failure: OutlineFailure = e instanceof ChanError ? failureOf(e.error) : "transport";
     const reason = reasonOf(e, copyText("sessionReads.inputs.oldBackend"));
     return { available: false, reason, failure, from: fromOffset, end: fromOffset, entries: [] };
+  }
+}
+
+/** 每轮的摘要的回包：要不到 ⇒ `available:false`（过程行与刻度不出，正文照常）。 */
+export type TurnsResult = { available: true; from: number; end: number; turns: TurnSummary[] } | { available: false; reason: string };
+
+/** **每轮的摘要**：从字节 `fromOffset` 起（冷启动 0 / 续取传还在跑的那一轮的 `at`）。 */
+export async function readTurns(origin: Origin, jsonlPath: string, fromOffset: number): Promise<TurnsResult> {
+  try {
+    const body = jsonBody({ path: jsonlPath, from: fromOffset });
+    const budget = budgetWithin(READ_BUDGET_MS);
+    const reply = await chan.call(origin, "history-turns", body, budget);
+    return { available: true, ...decodeTurns(readJson(reply)) };
+  } catch (e) {
+    return { available: false, reason: reasonOf(e, copyText("sessionReads.turns.oldBackend")) };
   }
 }
 

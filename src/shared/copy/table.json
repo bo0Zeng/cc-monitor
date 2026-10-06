@@ -4991,6 +4991,16 @@
       "zh": "里有一条缺字段",
       "args": []
     },
+    "sessionReads.missing.turns": {
+      "kind": "error",
+      "zh": "缺 from / end / turns 字段，或某一轮的字段不对",
+      "args": []
+    },
+    "sessionReads.turns.oldBackend": {
+      "kind": "error",
+      "zh": "这台机器上的后端版本旧，还给不出每轮的摘要。重装后端之后就有。",
+      "args": []
+    },
     "sessionReads.missing.inputs": {
       "kind": "error",
       "zh": "缺 from / end / entries 字段",

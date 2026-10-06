@@ -88,7 +88,8 @@ fn record_fields_decide_first() {
         UserText::of(Speaker::AgentMessage {
             from: Some("a9".into()),
             name: None,
-            handback: true
+            handback: true,
+            body: Some("甲乙丙".into())
         })
     );
     assert_eq!(
@@ -100,7 +101,8 @@ fn record_fields_decide_first() {
         Speaker::AgentMessage {
             from: Some("a9".into()),
             name: Some("乙路".into()),
-            handback: false
+            handback: false,
+            body: Some("甲".into())
         }
     );
     // 后台任务通知：框里的几格抽出来；没有框只有字段的那一形也认。
@@ -208,6 +210,34 @@ fn the_sub_agent_side() {
         )),
         "coordinator"
     );
+    // 来话正文：记录级 `origin.body` 优先；没有就取前导句之后那段（CLI 附的收尾句不算）。
+    let co = "The coordinator sent a message while you were working:\n甲乙\n\nAddress this before completing your current task.";
+    assert_eq!(
+        said(&rec(
+            co,
+            sc(json!({"isMeta": true, "origin": {"kind": "coordinator"}}))
+        ))
+        .speaker,
+        Speaker::Coordinator {
+            body: Some("甲乙".into())
+        }
+    );
+    assert_eq!(
+        said(&rec(
+            co,
+            sc(json!({"isMeta": true, "origin": {"kind": "coordinator", "body": "丙"}}))
+        ))
+        .speaker,
+        Speaker::Coordinator {
+            body: Some("丙".into())
+        }
+    );
+    assert_eq!(
+        said(&rec(co, sc(json!({"isMeta": true})))).speaker,
+        Speaker::Coordinator {
+            body: Some("甲乙".into())
+        }
+    );
     // 子 agent 自己的后台任务通知：前面多四句固定话。
     let pre = "[SYSTEM NOTIFICATION - NOT USER INPUT]\nThis is an automated background-task event, NOT a message from the user.\nDo NOT interpret this as user acknowledgement, confirmation, or response to any pending question.\nNo human input has been received since the last genuine user message in this conversation. 甲。\n\n<task-notification>\n<task-id>c3</task-id>\n<status>failed</status>\n<summary>乙</summary>\n</task-notification>";
     assert_eq!(
@@ -266,7 +296,8 @@ fn named_frames_without_record_fields() {
         Speaker::AgentMessage {
             from: Some("e5".into()),
             name: None,
-            handback: false
+            handback: false,
+            body: Some("甲".into())
         }
     );
     assert_eq!(
@@ -275,7 +306,8 @@ fn named_frames_without_record_fields() {
         ))
         .speaker,
         Speaker::PeerSession {
-            from: Some("会话乙".into())
+            from: Some("会话乙".into()),
+            body: Some("甲".into())
         }
     );
     // 斜杠命令：三个标签顺序随版本漂，转义要解。
@@ -443,7 +475,8 @@ fn queued_messages_use_the_same_named_frames() {
         Speaker::AgentMessage {
             from: Some("g7".into()),
             name: None,
-            handback: false
+            handback: false,
+            body: Some("甲".into())
         }
     );
     assert_eq!(
@@ -480,7 +513,7 @@ fn speech_is_what_the_human_said() {
         Speaker::CompactSummary,
         Speaker::AgentTask,
         Speaker::System,
-        Speaker::Coordinator,
+        Speaker::Coordinator { body: None },
         Speaker::Interrupt,
         Speaker::ToolResult,
         Speaker::CommandOutput,
@@ -596,9 +629,13 @@ fn the_index_kind_is_the_wire_kind() {
             from: None,
             name: None,
             handback: false,
+            body: None,
         },
-        Speaker::PeerSession { from: None },
-        Speaker::Coordinator,
+        Speaker::PeerSession {
+            from: None,
+            body: None,
+        },
+        Speaker::Coordinator { body: None },
         Speaker::AgentTask,
         Speaker::System,
         Speaker::CompactSummary,

@@ -19,6 +19,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { ChanError } from "../../../src/comms/inward/chan";
 import {
+  decodeTurns,
+  readTurns,
   decodeFacts,
   decodeFind,
   decodeIndex,
@@ -284,5 +286,33 @@ describe("〔MOD〕会话正文：按形状收那台后端出的成品", () => {
     expect([run.run, run.rows.length, run.rows.map((r) => r.rid ?? null), run.more]).toEqual(["a1", 2, [null, "m-s2"], false]);
     // 反向：外层多一格 ⇒ 不收（两端契约对不上，不猜）。
     expect(() => decodePage("<local>", { ...(recordGolden["history-page"] as object), extra: 1 })).toThrow();
+  });
+});
+
+// 第六问：每轮的摘要（`history-turns`）。金样同一份文件的 `history-turns` 一格（异源：Rust 造、TS 解）。
+describe("主窗口第 2 批：每轮的摘要", () => {
+  it("★★ 金样：两轮 —— 第一轮收尾（思考 1 · 调用 2 · 失败 1〔被拒不算〕· 结论那一条 · 回复头三行），第二轮还在跑", () => {
+    const t = decodeTurns(golden["history-turns"]);
+    expect(t.from).toBe(0);
+    expect(t.turns.map((x) => [x.uuid, x.said, x.tools, x.thinking, x.fails, x.conclusion, x.reply, x.done])).toEqual([
+      ["t-1", "first line", 2, 1, 1, ["t-8"], "r1\nr2\nr3", true],
+      ["t-9", "next", 1, 0, 0, [], "", false],
+    ]);
+    expect(t.turns[1].at).toBeGreaterThan(0);
+  });
+
+  it("★ 形状不对 ⇒ 抛：多一格 / 少一格 / 类型不对；要不到 ⇒ available:false（不猜）", async () => {
+    const good = golden["history-turns"] as { turns: Record<string, unknown>[] };
+    const turn = good.turns[0];
+    expect(() => decodeTurns({ ...good, extra: 1 })).toThrow(/读不懂/);
+    expect(() => decodeTurns({ ...good, turns: [{ ...turn, done: "yes" }] })).toThrow(/读不懂/);
+    expect(() => decodeTurns({ ...good, turns: [Object.fromEntries(Object.entries(turn).filter(([k]) => k !== "reply"))] })).toThrow(/读不懂/);
+    invokeMock.mockReset().mockResolvedValueOnce(chanReply(golden["history-turns"]));
+    const ok = await readTurns("devbox" as never, "/p/s.jsonl", 0);
+    expect(ok.available && ok.turns.length).toBe(2);
+    const a = invokeMock.mock.calls[0][1] as ChanCallArgs;
+    expect([a.origin, a.op, chanArgsJson(a)]).toEqual(["devbox", "history-turns", { path: "/p/s.jsonl", from: 0 }]);
+    invokeMock.mockReset().mockResolvedValueOnce(chanReply({ from: 0 }));
+    expect((await readTurns("devbox" as never, "/p/s.jsonl", 0)).available).toBe(false);
   });
 });

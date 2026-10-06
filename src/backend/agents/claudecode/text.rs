@@ -133,6 +133,8 @@ pub(crate) const NOTICE_OPEN: &str = "<task-notification>";
 const NOTICE_CLOSE: &str = "</task-notification>";
 /// 子 agent 那一侧：主会话后来发给它的话以这一行起头。
 const COORDINATOR_LEAD: &str = "The coordinator sent a message while you were working:";
+/// 那段话后面 CLI 附的一句收尾（不是主会话说的）。
+const COORDINATOR_TAIL: &str = "Address this before completing your current task.";
 /// 压缩摘要的开头（老版本没有 `isCompactSummary` 字段时靠它）。
 const COMPACT_LEAD: &str = "This session is being continued from a previous conversation";
 /// 额度恢复后系统替人排进来的续跑话。
@@ -198,7 +200,11 @@ pub(crate) fn user_text(f: &Facts) -> UserText {
         Some("human") if !f.is_meta => return spoken(&raw),
         Some("peer") => return UserText::of(peer(f.origin, &raw)),
         Some("task-notification") => return UserText::of(notice(&raw)),
-        Some("coordinator") => return UserText::of(Speaker::Coordinator),
+        Some("coordinator") => {
+            return UserText::of(Speaker::Coordinator {
+                body: origin_body(f.origin).or_else(|| coordinator_body(&raw)),
+            })
+        }
         Some("auto-continuation") => return UserText::of(Speaker::System),
         _ => {}
     }
@@ -273,6 +279,7 @@ fn peer(origin: Option<&Value>, raw: &str) -> Speaker {
     if opens(t, "cross-session-message") {
         return Speaker::PeerSession {
             from: field("from").or_else(|| attr(t, "from")),
+            body: origin_body(origin).or_else(|| frame_body(t, "cross-session-message")),
         };
     }
     Speaker::AgentMessage {
@@ -282,6 +289,7 @@ fn peer(origin: Option<&Value>, raw: &str) -> Speaker {
             .and_then(|o| o.get("handback"))
             .and_then(Value::as_bool)
             == Some(true),
+        body: origin_body(origin).or_else(|| frame_body(t, "agent-message")),
     }
 }
 
@@ -298,15 +306,19 @@ fn framed(raw: &str, sidechain: bool) -> Option<UserText> {
             from: attr(body, "from"),
             name: None,
             handback: false,
+            body: frame_body(body, "agent-message"),
         }));
     }
     if framed_by(body, "cross-session-message") {
         return Some(UserText::of(Speaker::PeerSession {
             from: attr(body, "from"),
+            body: frame_body(body, "cross-session-message"),
         }));
     }
     if t.lines().next().map(str::trim_end) == Some(COORDINATOR_LEAD) {
-        return Some(UserText::of(Speaker::Coordinator));
+        return Some(UserText::of(Speaker::Coordinator {
+            body: coordinator_body(t),
+        }));
     }
     if t.starts_with(LIMIT_RESET_LEAD) {
         return Some(UserText::of(Speaker::System));
@@ -425,6 +437,32 @@ fn after_lead(text: &str) -> &str {
         };
     }
     t
+}
+
+/// 记录级 `origin.body`（新版 CLI 把来话正文单放一格）；空 ⇒ `None`。
+fn origin_body(origin: Option<&Value>) -> Option<String> {
+    origin
+        .and_then(|o| o.get("body"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|b| !b.is_empty())
+        .map(str::to_string)
+}
+
+/// 具名框里的那段（开头标签之后、第一个收尾之前；trim 过）；空 ⇒ `None`。
+fn frame_body(t: &str, name: &str) -> Option<String> {
+    let from = t.find('>')? + 1;
+    let close = format!("</{name}>");
+    let len = t[from..].find(&close)?;
+    Some(t[from..from + len].trim().to_string()).filter(|b| !b.is_empty())
+}
+
+/// 主会话后来发给子 agent 的话：固定前导行之后那段。
+fn coordinator_body(raw: &str) -> Option<String> {
+    let t = raw.trim_start_matches(|c: char| c.is_whitespace() || c == '\u{feff}');
+    let rest = t.strip_prefix(COORDINATOR_LEAD)?.trim();
+    let rest = rest.strip_suffix(COORDINATOR_TAIL).unwrap_or(rest);
+    Some(rest.trim().to_string()).filter(|b| !b.is_empty())
 }
 
 /// `t` 以 `<name` 起头，且标签名到此为止（后面是空白或 `>`）。

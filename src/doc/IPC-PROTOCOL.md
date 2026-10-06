@@ -4005,6 +4005,47 @@ CLI 面随之自动多一条 `--history-find`。
 - 整份超过 32 MiB ⇒ `too_large`（不截断）。界面经通道直接问（`src/frontend/ui/session-reads.ts`），本机与远端同一条路；老后端不认 ⇒ `unsupported`（界面说「不可用」，不当成空）。
 - CLI 面随之自动多一条 `--history-facts`（stdin 一段 JSON ＝ `args`，stdout 一行 JSON ＝ `data`）。
 
+#### `history-turns`：一轮的摘要（主窗口第 2 批 · B4）
+
+```text
+→ {"id":"q14","cmd":"history-turns","args":{"path":"/home/u/.claude/projects/-p/s.jsonl","from":0}}
+← {"kind":"reply","id":"q14","ok":true,"data":{"from":0,"end":5120088,"turns":[{"at":0,"uuid":"…","start":"…","end":"…","said":"给订单服务加重试","tools":8,"thinking":1,"fails":1,"conclusion":["…"],"reply":"改好了。小结：\n…","done":true},…]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `path` | → | jsonl 路径（围栏同 `history-read`） |
+| `from` | → | 可选，缺 ⇒ 0：从这个字节起扫。只该是 0 或某一轮的 `at`（还在跑的最后一轮下次从它的 `at` 再取，整轮重算，后端零状态）；越过文件尾 ⇒ `failed` |
+| `end` | ← | 最后一个完整行的末字节（残尾不计） |
+| `turns` | ← | 这一段里的每一轮，文件序。一轮 ＝ 从「你说的一句」到下一句：「你说的一句」与大纲同一个口径（`history-user-inputs` 那一条，`user_inputs::user_input_given`）；`from` 之后第一句之前的记录不出（那半轮的开头不在这一段）；子运行的记录（适配层 `run_of` 答得出的）不算进主线的轮 |
+| `turns[].at` | ← | 这一轮开头那一行的字节位置 |
+| `turns[].uuid` · `start` · `end` | ← | 你那句的 uuid 与时刻；`end` ＝ 这一轮最后一条主线 assistant / user 记录的时刻（还没有回应 ⇒ 同 `start`） |
+| `turns[].said` | ← | 你那句的头一个非空行，至多 50 字（截了加 `…`） |
+| `turns[].tools` · `thinking` · `fails` | ← | `tool_use` 块数 · `thinking` / `redacted_thinking` 块数 · 结果标了出错、且不是人拒的（拒的认法同记录成品 `toolResults[].rejected`）`tool_result` 块数 |
+| `turns[].conclusion` | ← | 结论：这一轮最后一个 `tool_use` 之后、带正文（`text` 块非空）的 assistant 记录 uuid，文件序（报错合成的那条不算）；还没有 ⇒ `[]`。界面据此把这一轮其余的记录折进「过程」 |
+| `turns[].reply` | ← | 结论正文的头三个非空行（`\n` 连），至多 120 字 |
+| `turns[].done` | ← | 这一轮收尾了：后面又有你的一句，或有一条 `stop_reason == "end_turn"` 的主线 assistant 记录 |
+
+- 本体 `observe/turns.rs`。整份超过 32 MiB ⇒ `too_large`（不截断；调用方分段取）。界面经通道直接问（`src/frontend/ui/session-reads.ts::readTurns`），本机与远端同一条路；老后端不认 ⇒ `unsupported`（过程行与刻度不出，正文照常）。
+- CLI 面随之自动多一条 `--history-turns`（stdin 一段 JSON ＝ `args`，stdout 一行 JSON ＝ `data`）。
+
+#### 记录成品里过程的那几格（主窗口第 2 批 · B5 B6 B7 ·「谁说的」正文）
+
+`line` 帧的 `message`（记录成品，ts-rs 从 `agents/claudecode/schema.rs` 导出）多出下面几格，**都是加的**（缺 ＝ 没有），判定都在适配层（Claude：`agents/claudecode/steps.rs` · `text.rs`），界面只排版、不认入参与 `toolUseResult` 的形状：
+
+| 记录 | 格 | 说明 |
+|---|---|---|
+| assistant | `toolSteps` | `tool_use.id` ⇒ `{tool, arg?, path?, note?, known}`：一步的一行人话。`arg` 主参数一行（换行压空格、至多 400 字）：Bash `command` · Read / Edit / MultiEdit / Write `file_path` · NotebookEdit / NotebookRead `notebook_path` · Grep / Glob `pattern` · WebFetch `url` · WebSearch `query` · Agent / Task `description` · Skill `skill`；`path: true` ＝ 主参数是路径；`note` ＝ `description`（Bash 那一类；Agent / Task 的说明就是主参数，不重出）；`known: false` ＝ 这一家没登记的工具（MCP 等，界面画问号、给原文），不从入参里挑主参数 |
+| assistant | `apiReason` | 只在 `isApiErrorMessage` 那条：`overloaded` · `quota` · `network` · `auth` · `context` · `unknown`（见下） |
+| user | `toolResults` | `tool_result.tool_use_id` ⇒ `{ok, rejected?, lines?, added?, removed?, files?, answer?}`：结果一句的数。`ok` ＝ 没标出错；`rejected` ＝ 人没批准（结果正文以「The user doesn't want to proceed with this tool use」起头，或 `toolUseResult` 是「User rejected tool use」）；`lines` ＝ `toolUseResult.file.numLines` / `numLines` / 命令输出行数（stdout ＋ stderr）；`added` · `removed` ＝ `structuredPatch` 里 `+` / `-` 起头的行数（新建文件 ⇒ 整份行数 · 0）；`files` ＝ `numFiles`；`answer`（B7）＝ `{kind:"approved"}`（结果带 `plan`，或正文以「User has approved your plan」起头）· `{kind:"picked", options:[…]}`（`toolUseResult.answers` 的各个答，或正文「User has answered your questions: "问"="答", …」里的各个答，选项原文）。计划没批走 `rejected`，不出 `answer`。读不出的格缺 |
+| system（`subtype == "api_error"`，要重试的那一次） | `apiReason` | 同上。第几次 / 最多几次是记录原有的 `retryAttempt` / `maxRetries` |
+| user · 排队消息 | `userText.speaker.body` | `agentMessage` · `peerSession` · `coordinator` 三种来话的正文：记录级 `origin.body` 优先，没有就取框里那段（`<agent-message …>…</agent-message>` / `<cross-session-message …>…</cross-session-message>` / coordinator 前导句之后那段，CLI 附的收尾句「Address this before completing your current task.」不算）；trim 过，空 ⇒ 缺。Codex：信的 `Payload` 那段 |
+
+**原因种类的唯一判定**（`steps.rs::api_reason`，状态码 ＋ `error` 那一格 ＋ 报错正文，次序即优先级）：429 / `rate_limit` / `usage limit` ⇒ `quota` · 401 / 403 / `authentication` / `oauth` / `invalid api key` ⇒ `auth` · `prompt is too long` / `context length` / `context window` ⇒ `context` · 5xx / `overloaded` ⇒ `overloaded` · 有 `error.connection` 或 `ECONNRESET` 一类连接原文 ⇒ `network` · 其余 ⇒ `unknown`（不猜）。原样 `toolUseResult` 只喂判定、不上线。
+
+- 连续几次重试合成一条、接没接上：界面把相邻的 `api_error` 记录排成一条（第几次取最后那条的 `retryAttempt`，起始取第一条的时刻），后面跟着 `isApiErrorMessage` 那条 ⇒ 没接上；跟着别的记录 ⇒ 接上了。这是排版（相邻合并），原因判定只在这里。
+- 一步的状态与耗时：`toolSteps` 与 `toolResults` 按 id 配对（结果到了 ⇒ 成功 / 失败 / 被拒；没到 ⇒ 在跑，或 `history-facts.needs` 说在等批准），耗时 ＝ 两条记录的 `timestamp` 相减。
+
 #### `resolve`：一次性 exec 与流命令**并存**（U6b-3）
 
 ```text

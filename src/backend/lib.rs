@@ -1071,6 +1071,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--history-search",
     "--history-sessions",
     "--history-tail",
+    // `history-turns`（一轮的摘要，主窗口第 2 批）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    "--history-turns",
     "--history-user-inputs",
     // 帧面 `hooks-diag` 自动派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--hooks-diag",

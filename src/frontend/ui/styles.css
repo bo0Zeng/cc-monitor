@@ -99,35 +99,6 @@
   display: inline-flex;
 }
 
-.tab-needs-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-width: 280px;
-}
-
-.tab-needs-row-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.tab-needs-row-state {
-  margin-left: auto;
-  color: var(--warn);
-  white-space: nowrap;
-}
-
-.tab-needs-row-what {
-  margin-top: 2px;
-  padding: 4px 6px;
-  border-radius: var(--radius-m);
-  background: var(--bg-2);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
-  overflow-wrap: anywhere;
-}
-
 /* 机器离线条（I5「过期」）：一台一条；连上了自己消失。 */
 .tab-machine-down {
   flex: none;

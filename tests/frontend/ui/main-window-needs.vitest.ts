@@ -169,6 +169,29 @@ describe("标签页栏：「需要你 N」与机器离线条", () => {
     expect(b.badge.textContent).toBe("3");
   });
 
+  it("★ 悬停「需要你」500ms ⇒ kit 菜单：每个在等你的会话一行（等得最久的在前 · 状态 · 那一句作第二行）；点一行切过去；没到点就移开不开", () => {
+    vi.useFakeTimers();
+    try {
+      const r = bar([tab("a", { activity: waiting, needs: approve(NOW - 10_000) }), tab("b", { activity: waiting, needs: approve(NOW - 60_000) })]);
+      const strip = r.el.querySelector<HTMLElement>(".tab-needs")!;
+      strip.dispatchEvent(new Event("mouseenter"));
+      vi.advanceTimersByTime(400);
+      strip.dispatchEvent(new Event("mouseleave"));
+      vi.advanceTimersByTime(400);
+      expect(document.querySelector('[role="menu"]'), "没到 500ms 就移开 ⇒ 不开").toBeNull();
+      strip.dispatchEvent(new Event("mouseenter"));
+      vi.advanceTimersByTime(500);
+      const rows = [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] [role="menuitem"]')];
+      expect(rows.map((b) => b.querySelector('[data-part="label"]')?.textContent)).toEqual(["b", "a"]);
+      expect(rows[0].querySelector('[data-part="body"]')?.textContent).toBe("rm -rf build/");
+      rows[1].click();
+      expect(r.host.switchTo).toHaveBeenCalledWith("a");
+      expect(document.querySelector('[role="menu"]'), "选了一项就关").toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("★ 机器离线：那台看不见、还有状态不明的会话 ⇒ 一条（离线 · 几个状态不明 · 采样多久前）＋［重新连接］；连上了自己消失", () => {
     const r = bar([tab("a"), tab("g1", { origin: "gpu-01" as never, state: UNSEEN }), tab("g2", { origin: "gpu-01" as never, state: UNSEEN })]);
     r.view.markOriginDown("gpu-01", true, Date.now() - 180_000);

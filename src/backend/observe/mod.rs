@@ -46,5 +46,6 @@ pub(crate) mod tasks_query;
 pub(crate) mod record_page; // 按路径读正文出成品（切行 · 编号 · 挑哪一家解释）
 pub mod runs;
 pub(crate) mod tmux_observe; // tmux 观测（原 `watcher.rs` A 块）
+pub(crate) mod turns; // `history-turns`：一轮的摘要（过程行 · 刻度 · 大纲同源）
 pub(crate) mod user_inputs;
 pub mod watcher;

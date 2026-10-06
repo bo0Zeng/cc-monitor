@@ -166,7 +166,9 @@ describe("C01 边界生成物", () => {
       "AccountRollbackArgs.ts",
       "AccountUnavailable.ts",
       "AliasChange.ts",
+      "Answer.ts", // 提问 / 计划答了什么（后端从结果里读，随 `toolResults` 带来；界面不印英文原句）
       "ApiMessage.ts", //             C04c
+      "ApiReason.ts", // 报错 / 重试的原因种类（后端判，随报错那条记录的 `apiReason` 带来；界面不认状态码）
       "AtLimit.ts", //                换号：阈值模式下到了 N%、没号可换时 continue / stop（`Rotation.atLimit`）
       // 资产目录同步的应答（`assets_sync`）：每一趟的结局 ＋ 可达表。
       // K-A1：账号的**鉴权方式**（`subscription` | `api-key`）。
@@ -286,6 +288,7 @@ describe("C01 边界生成物", () => {
       "Speaker.ts", // 用户角色记录是谁说的（后端适配层判，随 `userText` 带来；界面只按它画）
       // 换号：轮换里的起始账号占位。
       "StartSlot.ts",
+      "StepResult.ts", // 过程里一步的结果一句的数（后端读结果，随 user 记录的 `toolResults` 带来）
       "StreamEv.ts", //               归一流事件（后端按上游协议折好，`tap` 帧的 `ev`）
       // 换号：「切换」结果 · 换号记录 · 为什么换。
       "SwitchOutcome.ts",
@@ -294,6 +297,7 @@ describe("C01 边界生成物", () => {
       "TerminalHost.ts", // 终端宿主（容器那一格的 `host`，认得的那几种）
       "ToolCard.ts", // 一个 tool_use 画成哪一种卡（后端适配层判，随 assistant 记录的 `toolCards` 带来；界面不认工具名）
       // 换号：跳过一个号的原因码。
+      "ToolStep.ts", // 过程里一步的一行人话（后端认入参，随 assistant 记录的 `toolSteps` 带来；界面不认入参结构）
       "Unready.ts",
       // "SftpEntry.ts" 走了（它的 Rust 源随池子那条列目录命令一起删了）。
       // "TransferProgress.ts" 走了（它的 Rust 源随池子最后那条命令一起删了）。
@@ -437,7 +441,7 @@ describe("C01 边界生成物", () => {
     // ——对面那份二进制自报的构建身份（`--ccm-probe` 的 `build=` 行）。同一条理由：
     // **缺席与 `null` 语义不同** —— 缺席 = 那份后端是 `p2f-build-stamp` 之前的旧版、
     // 它压根不吐这一行；写成 `| null` 会把「它没说」与「它说了个空」混成一格。
-    expect(checked, `期望恰好 35 处 skip_serializing_if，实得 ${checked}`).toBe(50); // +11（轮换积木：`Rotation.cap` / `.stint` / `.preempt` · `AccountCell.segment` / `.blocked_above` · `SegmentShow.stint` · `QuotaShow.windows` · `WindowShow.key` / `.pct` / `.resets_at` / `.reset_since_seen`：缺席 = 没有 / 缺省）// +4（额度显示态：`SlotShow.pct` / `.resets_at` · `QuotaShow.limiting` / `.sub_id`：缺席 = 说不出 / 没有）// +7（换号：`SwitchWhy::Full.w` · `SwitchRecord.from_resets_at` · `Blocked.earliest` · `SessionRotation.custom` / `.next` / `.blocked` / `.fallback_api`：缺席 = 没有）// +10（「谁说的」：`Speaker` 各变体的 `taskId` / `status` / `summary` / `toolUseId` / `from`×2 / `name` · `UserText.pasted` · `Pasted.id` · 排队消息的 `userText`：缺席 = 没有） // −1（`SessionLivePayload.rbind_token`：起会话时注的令牌删了）// 子运行 +9（`JsonlRecord::Assistant.child_runs` · `JsonlLinePayload.rid` · `SessionTapPayload.run` · `StreamEv::Block.tool` · `RunInfo.label` / `.kind` / `.tool` / `.last` · `ChildRunTag.kind`：缺席 = 没有；`SessionTapPayload.data` 换成 `.ev`，不增不减）// +1（`JsonlRecord::Assistant.tool_cards`：缺席 = 这条消息里没有要特别画的 tool_use）// +2（`CcmProbeResult.at`：只有问 PATH 那一条探针带 · `SessionLivePayload.rbind_token`：那台读不回就缺席）// −2（`TaskEntry.description` / `.active_form`：`tasks.rs` 删了）// +1（`JsonlLinePayload.skipped_from`：缺席 = 前面没有连着的不可显示段 / 不确知） // 主线 6 ＋ TAP ＋2（`SessionTapPayload.data` / `.end`）⇒ 8 // −1（`SessionHits.origin`：`search.rs` 删了） // 子步 6 −4（`HistoryProject.origin` · `HistorySessionEntry.origin` / `.forked_from_session_id` / `.forked_from_message_uuid`：两个形状随历史清单改走本机后端删了，TS 手写在 `src/frontend/ui/history-reads.ts`） // 子步 3 −2（`RemoteAccount.authKind` / `.authReady`：随 `accounts.rs` 整份删了） // −4（`FindResult.reason` · `UserInputsResult.reason` / `.failure` · `SessionIndexResult.reason`：三个回包类型随会话读面三条改走通道删了）； // +1（`FindResult.reason`：缺席 = 查得了）； +2（`UserInputsResult.reason` / `.failure`：缺席 = 清单可用）； 〔骨架〕+1（`SessionIndexResult.reason`：缺席 = 索引可用）
+    expect(checked, `期望恰好 35 处 skip_serializing_if，实得 ${checked}`).toBe(66); // +16（主窗口第 2 批：`Speaker` 三种来话的 `body`×3 · `ToolStep.arg` / `.path` / `.note` · `StepResult.rejected` / `.lines` / `.added` / `.removed` / `.files` / `.answer` · `JsonlRecord::Assistant.tool_steps` / `.api_reason` · `JsonlRecord::System.api_reason` · `JsonlRecord::User.tool_results`：缺席 = 没有 / 读不出）// +11（轮换积木：`Rotation.cap` / `.stint` / `.preempt` · `AccountCell.segment` / `.blocked_above` · `SegmentShow.stint` · `QuotaShow.windows` · `WindowShow.key` / `.pct` / `.resets_at` / `.reset_since_seen`：缺席 = 没有 / 缺省）// +4（额度显示态：`SlotShow.pct` / `.resets_at` · `QuotaShow.limiting` / `.sub_id`：缺席 = 说不出 / 没有）// +7（换号：`SwitchWhy::Full.w` · `SwitchRecord.from_resets_at` · `Blocked.earliest` · `SessionRotation.custom` / `.next` / `.blocked` / `.fallback_api`：缺席 = 没有）// +10（「谁说的」：`Speaker` 各变体的 `taskId` / `status` / `summary` / `toolUseId` / `from`×2 / `name` · `UserText.pasted` · `Pasted.id` · 排队消息的 `userText`：缺席 = 没有） // −1（`SessionLivePayload.rbind_token`：起会话时注的令牌删了）// 子运行 +9（`JsonlRecord::Assistant.child_runs` · `JsonlLinePayload.rid` · `SessionTapPayload.run` · `StreamEv::Block.tool` · `RunInfo.label` / `.kind` / `.tool` / `.last` · `ChildRunTag.kind`：缺席 = 没有；`SessionTapPayload.data` 换成 `.ev`，不增不减）// +1（`JsonlRecord::Assistant.tool_cards`：缺席 = 这条消息里没有要特别画的 tool_use）// +2（`CcmProbeResult.at`：只有问 PATH 那一条探针带 · `SessionLivePayload.rbind_token`：那台读不回就缺席）// −2（`TaskEntry.description` / `.active_form`：`tasks.rs` 删了）// +1（`JsonlLinePayload.skipped_from`：缺席 = 前面没有连着的不可显示段 / 不确知） // 主线 6 ＋ TAP ＋2（`SessionTapPayload.data` / `.end`）⇒ 8 // −1（`SessionHits.origin`：`search.rs` 删了） // 子步 6 −4（`HistoryProject.origin` · `HistorySessionEntry.origin` / `.forked_from_session_id` / `.forked_from_message_uuid`：两个形状随历史清单改走本机后端删了，TS 手写在 `src/frontend/ui/history-reads.ts`） // 子步 3 −2（`RemoteAccount.authKind` / `.authReady`：随 `accounts.rs` 整份删了） // −4（`FindResult.reason` · `UserInputsResult.reason` / `.failure` · `SessionIndexResult.reason`：三个回包类型随会话读面三条改走通道删了）； // +1（`FindResult.reason`：缺席 = 查得了）； +2（`UserInputsResult.reason` / `.failure`：缺席 = 清单可用）； 〔骨架〕+1（`SessionIndexResult.reason`：缺席 = 索引可用）
   });
 
   it("每一个 u64/i64 字段都配了 ts(type = …)——C03 的大整数策略，打在源上", () => {

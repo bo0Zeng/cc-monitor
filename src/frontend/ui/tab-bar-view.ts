@@ -28,7 +28,8 @@ import { copyText } from "./copy-table";
 import { icon } from "./kit/icon";
 import { statusDot } from "./kit/status-dot";
 import { countBadge, tag, kbd } from "./kit/badge";
-import { attachTooltip, delegateTooltip } from "./kit/tooltip";
+import { attachTooltip, delegateTooltip, TOOLTIP_DELAY_MS } from "./kit/tooltip";
+import { closeMenu, menuAnchoredOn, openMenu, type MenuItem } from "./kit/menu";
 import { abbrOf, dotLabel, dotOf, fullTitle, machineOf, needsOf, needsOrder, needsWord, nextNeeds, peekLine, stateLine, titleParts, sinceText } from "./session-face";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
@@ -106,6 +107,10 @@ export interface TabBarViewHost {
   /** 离线条的［重新连接］：那台断着在退避里等 ⇒ 立刻重拨。 */
   reconnect(origin: string): void;
 }
+
+/** 「需要你」悬停菜单的宽：约 40 个汉字（菜单字号 ＋ 菜单与项的内边距）与「标签页栏宽 ＋ 一道边距」取小。 */
+const NEEDS_MENU_MAX_PX = 40 * 14 + 48;
+const NEEDS_MENU_GUTTER_PX = 16;
 
 /** 窄窗（< 980）：栏收成 44px，悬停卡宽 260。 */
 const NARROW_PX = 980;
@@ -196,7 +201,19 @@ export class TabBarView {
     this.needsKbd = document.createElement("span");
     this.needsKbd.className = "tab-needs-kbd";
     this.needsEl.append(needsDot, needsText, this.needsCount, needsSp, this.needsKbd);
-    attachTooltip(this.needsEl, () => this.needsList(), { placement: "right", hold: true });
+    // 悬停 500ms ⇒ kit 菜单列出每个在等你的会话与那一句，点一行跳过去；没到点就移开 ⇒ 不开。
+    let needsHover: ReturnType<typeof setTimeout> | null = null;
+    this.needsEl.addEventListener("mouseenter", () => {
+      if (needsHover !== null) clearTimeout(needsHover);
+      needsHover = setTimeout(() => {
+        needsHover = null;
+        if (!menuAnchoredOn(this.needsEl)) this.openNeedsMenu();
+      }, TOOLTIP_DELAY_MS);
+    });
+    this.needsEl.addEventListener("mouseleave", () => {
+      if (needsHover !== null) clearTimeout(needsHover);
+      needsHover = null;
+    });
 
     this.downEl = document.createElement("div");
     this.downEl.className = "tab-machine-down";
@@ -269,6 +286,7 @@ export class TabBarView {
       return;
     }
     if (e.target instanceof Node && this.needsEl.contains(e.target)) {
+      if (menuAnchoredOn(this.needsEl)) closeMenu();
       const next = this.nextNeedsSid();
       if (next !== null) this.host.switchTo(next);
       return;
@@ -464,37 +482,25 @@ export class TabBarView {
     this.needsEl.setAttribute("aria-label", copyText("tabBar.needs.aria", { n }));
   }
 
-  /** 悬停「需要你」那一条：每个在等你的会话与它等的那一句（等得最久的在前）。 */
-  private needsList(): HTMLElement | null {
+  /** 「需要你」菜单：每个在等你的会话（等得最久的在前）· 状态 · 等的那一句；点一行切过去。 */
+  private openNeedsMenu(): void {
     const tabs = needsOrder(this.visibleOrder().map((sid) => this.store.tabs.get(sid)).filter((t): t is Tab => t !== undefined));
-    if (tabs.length === 0) return null;
-    const box = document.createElement("div");
-    box.className = "tab-needs-list";
+    if (tabs.length === 0) return;
     const now = Date.now();
-    for (const sid of tabs) {
+    const items: MenuItem[] = tabs.map((sid) => {
       const t = this.store.tabs.get(sid)!;
-      const row = document.createElement("div");
-      row.className = "tab-needs-row";
-      const head = document.createElement("div");
-      head.className = "tab-needs-row-head";
-      head.append(statusDot("needs-you", copyText("sessionFace.dot.needs"), "compact"));
-      const name = document.createElement("span");
-      name.textContent = fullTitle(t);
-      const st = document.createElement("span");
-      st.className = "tab-needs-row-state";
-      st.textContent = stateLine(t, now).text;
-      head.append(name, st);
-      row.appendChild(head);
-      const what = needsOf(t)?.what;
-      if (what) {
-        const q = document.createElement("div");
-        q.className = "tab-needs-row-what";
-        q.textContent = what;
-        row.appendChild(q);
-      }
-      box.appendChild(row);
-    }
-    return box;
+      return {
+        id: sid,
+        label: fullTitle(t),
+        avatar: statusDot("needs-you", copyText("sessionFace.dot.needs"), "compact"),
+        detail: stateLine(t, now).text,
+        detailTone: "warn",
+        body: needsOf(t)?.what || undefined,
+        onClick: () => this.host.switchTo(sid),
+      };
+    });
+    const width = Math.min(NEEDS_MENU_MAX_PX, this.listEl.getBoundingClientRect().width + NEEDS_MENU_GUTTER_PX);
+    openMenu({ el: this.needsEl }, items, { label: copyText("tabBar.needs.label"), width });
   }
 
   /** 机器离线条：看不见的那台、还有状态不明的会话 ⇒ 一条（`{machine} 离线 · N 会话状态不明 / 采样 3m 前［重新连接］`）。 */

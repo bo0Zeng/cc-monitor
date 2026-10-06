@@ -97,6 +97,40 @@
       }
     ]
   },
+  "history-turns": {
+    "end": 1315,
+    "from": 0,
+    "turns": [
+      {
+        "at": 0,
+        "conclusion": [
+          "t-8"
+        ],
+        "done": true,
+        "end": "t8",
+        "fails": 1,
+        "reply": "r1\nr2\nr3",
+        "said": "first line",
+        "start": "t1",
+        "thinking": 1,
+        "tools": 2,
+        "uuid": "t-1"
+      },
+      {
+        "at": 1089,
+        "conclusion": [],
+        "done": false,
+        "end": "t10",
+        "fails": 0,
+        "reply": "",
+        "said": "next",
+        "start": "t9",
+        "thinking": 0,
+        "tools": 1,
+        "uuid": "t-9"
+      }
+    ]
+  },
   "history-user-inputs": {
     "end": 376,
     "entries": [

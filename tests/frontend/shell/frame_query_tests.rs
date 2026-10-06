@@ -382,6 +382,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          monitor 这一侧零发送点（它替掉的是前端 `onLine` 上四个旁路记账员，不是一条 monitor 命令）",
     ),
     (
+        "history-turns",
+        "`BORN_ON_FRAME` 那一条：后端出成品 `{from, end, turns}`（`observe/turns.rs`，一轮的摘要，与大纲同源）；\
+         前端 `src/frontend/ui/session-reads.ts::readTurns` 问、`decodeTurns` 按恰好的键集合收，monitor 这一侧零发送点",
+    ),
+    (
         "history-record",
         "`BORN_ON_FRAME`（U4b）那一条：后端应答就是成品 `{present, root}`，monitor 那条命令（`probe_session_record`）\
          只在转、核两格 —— 核验搬到唯一的消费者 `src/frontend/ui/session-reads.ts::decodeRecord`（缺一格仍是契约坏了，不读成「不在」），\

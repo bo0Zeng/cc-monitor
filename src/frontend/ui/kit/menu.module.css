@@ -57,6 +57,30 @@
     cursor: pointer;
   }
 
+  /* 两行的一项（标题 ＋ 引用的那一句）：标题一行省略，第二行至多两行。 */
+  .menuItem[data-two-line="true"] {
+    flex-wrap: wrap;
+    row-gap: var(--space-1);
+    height: auto;
+    min-height: var(--row-h);
+    padding-top: var(--space-3);
+    padding-bottom: var(--space-3);
+  }
+
+  .menuBody {
+    display: -webkit-box;
+    flex: 1 0 100%;
+    overflow: hidden;
+    padding-left: calc(var(--icon-size) + var(--space-4));
+    color: var(--text-2);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+    white-space: normal;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
   .menuItem:disabled {
     opacity: var(--state-disabled-opacity);
     cursor: default;

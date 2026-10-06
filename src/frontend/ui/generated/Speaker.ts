@@ -4,4 +4,16 @@
  * 一条用户角色的记录（或一条排队消息）是**谁说的** —— 通用的值域；怎么认是各家的格式知识（`agents/<名>/`，
  * 注册表 [`TextFace::user`]）。随记录成品带出（`userText.speaker`），界面按它决定画不画、画成哪种，不认正文里的标记。
  */
-export type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, } | { "kind": "peerSession", from?: string, } | { "kind": "coordinator" } | { "kind": "agentTask" } | { "kind": "system" } | { "kind": "compactSummary" } | { "kind": "interrupt" } | { "kind": "toolResult" };
+export type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
+/**
+ * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ */
+body?: string, } | { "kind": "peerSession", from?: string, 
+/**
+ * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ */
+body?: string, } | { "kind": "coordinator", 
+/**
+ * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ */
+body?: string, } | { "kind": "agentTask" } | { "kind": "system" } | { "kind": "compactSummary" } | { "kind": "interrupt" } | { "kind": "toolResult" };
