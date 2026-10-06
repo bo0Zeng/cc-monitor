@@ -766,7 +766,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p7n-limit-reply：硬上限的用满回包恒带 representative-claim（说不出按 T 远近）＋ retry-after = T − 此刻。
 ///
 /// p7o-files-sort：files-find 后端排（sort · desc · scope；命中带 location · size · mtime_secs · marks）；files-ls 多 link_to · total 与三个打不开码；files-grep 每条 rel · lines。
-pub const BUILD_ID: &str = "p7o-files-sort";
+///
+/// p7p-quota-text：额度与账号界面（A7）＋ CLI 面修饰词 --text（只给 quota-read）；文件窗口删除那一问。
+pub const BUILD_ID: &str = "p7p-quota-text";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
