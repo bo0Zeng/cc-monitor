@@ -25,10 +25,10 @@ vi.mock("../../../../src/frontend/ui/views/session-viewer", () => ({
     element = document.createElement("div");
     load(o: Record<string, unknown>): Promise<void> {
       viewerStub.last = o;
-      const h = o.head as { badges?: HTMLElement[]; actions?: HTMLElement; meta?: HTMLElement[] } | undefined;
+      const h = o.head as { lead?: HTMLElement; badges?: HTMLElement[]; actions?: HTMLElement; meta?: HTMLElement[] } | undefined;
       const head = document.createElement("div");
       head.dataset.role = "viewer-head";
-      head.append(...(h?.badges ?? []), ...(h?.actions ? [h.actions] : []), ...(h?.meta ?? []));
+      head.append(...(h?.lead ? [h.lead] : []), ...(h?.badges ?? []), ...(h?.actions ? [h.actions] : []), ...(h?.meta ?? []));
       this.element.replaceChildren(head);
       return Promise.resolve();
     }
@@ -156,7 +156,7 @@ beforeEach(() => {
     if (c.op === "history-search") {
       if (world.search === "fail") return Promise.reject(new Error("搜不动"));
       return chanReply({
-        lines: [JSON.stringify({ agent: "claude", sessionId: "a", projectPath: "/w/p", projectName: "p", jsonlPath: "/x/a.jsonl", title: "标题 a", updatedAt: NOW, hitCount: 1, hits: [{ uuid: "u1", tsMs: NOW, kind: "user", before: "前", matched: "词", after: "后" }], hitsTruncated: false })],
+        lines: [JSON.stringify({ agent: "claude", sessionId: "a", projectPath: "/w/p", projectName: "p", jsonlPath: "/x/a.jsonl", title: "标题 a", updatedAt: NOW, hitCount: 1, hits: [{ uuid: "u1", tsMs: NOW, kind: "user", before: "**前", matched: "词", after: "`后`" }], hitsTruncated: false })],
         unreadable: 0,
         skipped: [],
       });
@@ -233,6 +233,8 @@ describe("内容搜索", () => {
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await flush();
     expect(document.querySelector("mark")?.textContent).toBe("词");
+    // 片段去行内排版记号（与会话内查找同一个口子 `find-strip.ts::plainSnippet`）
+    expect(document.querySelector("mark")?.parentElement?.textContent).toBe("前词后");
     world.search = "fail";
     vi.spyOn(console, "warn").mockImplementation(() => {});
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
@@ -506,5 +508,59 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
     expect(inHead(copyText("history.row.resume"))!.getAttribute("aria-disabled")).toBe("true");
     expect(inHead(copyText("history.row.resume"))!.title).toBe(copyText("history.row.bgHint"));
     v.close();
+  });
+});
+
+describe("窄档 / 中档 · 列表宽度可拖（乙4-① ⑧）", () => {
+  beforeEach(() => localStorage.clear());
+  const split = (): HTMLElement => document.querySelector<HTMLElement>('[data-pane]')!;
+  const sizer = (): HTMLElement => document.querySelector<HTMLElement>('[role="separator"]')!;
+
+  it("拖那一道改列表宽（夹在 320–640）、松手记下，下次开页照它；← → 一步 16", async () => {
+    world.local = [row({ sessionId: "a" })];
+    const v = await opened();
+    const root = document.querySelector<HTMLElement>(".history-view")!;
+    const sz = sizer();
+    expect(sz.getAttribute("aria-valuenow")).toBe("420");
+    sz.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, clientX: 420, pointerId: 1 }));
+    sz.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: 900, pointerId: 1 }));
+    expect(root.style.getPropertyValue("--hv-list-w")).toBe("640px");
+    sz.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, clientX: 100, pointerId: 1 }));
+    expect(root.style.getPropertyValue("--hv-list-w")).toBe("320px");
+    sz.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    expect(root.style.getPropertyValue("--hv-list-w")).toBe("336px");
+    v.close();
+    const w = new HistoryView();
+    await w.open();
+    expect(document.querySelectorAll<HTMLElement>(".history-view")[0].style.getPropertyValue("--hv-list-w")).toBe("336px");
+    w.close();
+  });
+
+  it("窄档：点开一行 ⇒ 内容盖满；头左端「列表」与 Esc 都回列表、焦点回那一行；方向键走行不翻", async () => {
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("799"), media: q }));
+    try {
+      world.local = [row({ sessionId: "a" }), row({ sessionId: "b", at: NOW - 5000 })];
+      const v = await opened();
+      expect(split().dataset.pane).toBe("list");
+      rows()[0].click();
+      expect(split().dataset.pane).toBe("content");
+      await flush(250);
+      const back = [...document.querySelectorAll<HTMLButtonElement>('[data-role="viewer-head"] button')].find((b) => b.textContent === copyText("history.content.toList"))!;
+      back.click();
+      expect(split().dataset.pane).toBe("list");
+      expect(document.activeElement?.getAttribute("data-key")?.endsWith("a")).toBe(true);
+      document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+      await flush(250);
+      expect(split().dataset.pane, "方向键只走行").toBe("list");
+      document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      expect(split().dataset.pane).toBe("content");
+      // Esc 走快捷键的弹层栈（台子里没起分发器）⇒ 直接问历史页那一层。
+      expect((v as unknown as { handleEsc(): boolean }).handleEsc()).toBe(true);
+      expect(split().dataset.pane).toBe("list");
+      expect(v.isVisible(), "Esc 先回列表，不关历史页").toBe(true);
+      v.close();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

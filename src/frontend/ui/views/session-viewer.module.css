@@ -29,6 +29,30 @@
     text-overflow: ellipsis;
   }
 
+  .svLead {
+    display: inline-flex;
+    flex: none;
+  }
+
+  .svLead:empty {
+    display: none;
+  }
+
+  .svSaidShort {
+    display: none;
+  }
+
+  /* 中档、窄档：「你说过的话 · N」只剩图标 ＋ 数字（乙4-⑧）。 */
+  @media (max-width: 1099px) {
+    .svSaidFull {
+      display: none;
+    }
+
+    .svSaidShort {
+      display: inline;
+    }
+  }
+
   .svBadges {
     display: inline-flex;
     flex: none;

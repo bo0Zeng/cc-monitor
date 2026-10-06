@@ -11,6 +11,7 @@ import { copyText } from "../copy-table";
 import type { HistoryGroup, HistoryRow } from "../history-list-reads";
 import type { Hit, SessionHits } from "./history-search";
 import { rowTime } from "./history-time";
+import { plainSnippet } from "../find-strip";
 import s from "./history.module.css";
 
 /** 一行的键（同一个会话在两台上是两行）。 */
@@ -268,8 +269,10 @@ function hitLine(hit: Hit, onOpen: () => void): HTMLElement {
   x.className = s.hvHitText;
   const mark = document.createElement("mark");
   mark.className = s.hvMark;
-  mark.textContent = hit.matched;
-  x.append(hit.before, mark, hit.after);
+  // 片段去行内排版记号（与会话内查找同一个口子）。
+  const t = plainSnippet(hit);
+  mark.textContent = t.matched;
+  x.append(t.before, mark, t.after);
   el.appendChild(x);
   el.addEventListener("click", (ev) => {
     ev.stopPropagation();

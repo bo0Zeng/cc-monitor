@@ -196,7 +196,8 @@ describe("S30 ⑤ 自定义属性对账，两个方向", () => {
     ).toEqual(fromTs);
     // 2 → 11：多了 `css-marks.ts` 那九个 `--mark-*`（CSS 伪元素里的符号从文案表来）；11 → 10：子菜单箭头改由图标件画（`--mark-submenu` 删）；10 → 10：已结束标题后那个记号随标签页栏重做删了（`--mark-ended`），会话头里「机器 · 目录 · 状态」之间的分隔点进来（`--mark-sep`）。
     // 10 → 9：历史页照稿重做，旧历史页给分叉缩进设的 `--fork-depth` 随旧页删了。
-    expect(fromTs.length, "TS 侧一个 setProperty 都没扫到 ⇒ 上面那条会变成「两边都空」的假绿").toBe(9);
+    // 9 → 10：历史页列表可拖的宽（`--hv-list-w`，拖那一道时设、记在本机）。
+    expect(fromTs.length, "TS 侧一个 setProperty 都没扫到 ⇒ 上面那条会变成「两边都空」的假绿").toBe(10);
   });
 
   it("② theme.ts 那 14 个旋钮，CSS 里必须都有默认值", () => {
@@ -313,11 +314,10 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/frontend/ui/kit/dialog.ts:199": "同上 —— 重新输入时收起",
   "src/frontend/ui/kit/fold.ts:39": "折叠块正文 `body`（`s.body`）",
   // 只读查看器（历史页右边）：CSS Modules 的哈希名（`sv.<类>`）推不出；这几类都不写 `display`（kit 骨架自己写了 display ⇒ 包一层再切）。
-  "src/frontend/ui/find-strip.ts:158": "会话内查找的命中清单 `strip`（`s.fsStrip`）—— 它写了 display:flex，CSS 里另有 `.fsStrip[hidden]` 收住",
-  "src/frontend/ui/views/session-viewer.ts:265": "头下那一条 `bannerEl`（`sv.svBanner`）—— 没有错误条时收起",
-  "src/frontend/ui/views/session-viewer.ts:270": "读取中的骨架外层 `loadingEl`（`sv.svLoading`）",
-  "src/frontend/ui/views/session-viewer.ts:275": "「你说过的话」清单 `this.said.panel` —— 由 `UserInputPanel` 建（类 `.user-inputs`，`styles.css` 那条规则头注逐字「绝不许出现 display」）",
-  "src/frontend/ui/views/session-viewer.ts:836": "清单平时住的那一格 `saidHold`（无类，从不露出）",
+  "src/frontend/ui/find-strip.ts:168": "会话内查找的命中清单 `strip`（`s.fsStrip`）—— 它写了 display:flex，CSS 里另有 `.fsStrip[hidden]` 收住",
+  "src/frontend/ui/views/session-viewer.ts:268": "头下那一条 `bannerEl`（`sv.svBanner`）—— 没有错误条时收起",
+  "src/frontend/ui/views/session-viewer.ts:273": "读取中的骨架外层 `loadingEl`（`sv.svLoading`）",
+  "src/frontend/ui/views/session-viewer.ts:278": "「你说过的话」清单 `this.said.panel` —— 由 `UserInputPanel` 建（类 `.user-inputs`，`styles.css` 那条规则头注逐字「绝不许出现 display」）",
   "src/frontend/ui/kit/toast.ts:130": "合流计数 `same.countEl`（`s.count`）—— 合进第二条时出现",
   "src/frontend/ui/kit/toast.ts:149": "同上 —— 建时收起",
   // ⚠ `606 → 614`：我在这份文件上方加了一段注释，**行号就漂了**。
@@ -529,6 +529,8 @@ const STATE_CLASS_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/frontend/ui/views/history-rows.ts · classList.add(s.hvStrip)": "同上（列表顶的警示条）",
   "src/frontend/ui/views/history.ts · classList.add(s.hvCount)": "同上（「筛选」上的数字徽标）",
   "src/frontend/ui/views/history.ts · classList.add(s.hvViews)": "同上（「按时间 | 按项目」那一条分栏）",
+  "src/frontend/ui/views/history.ts · classList.add(s.hvFilterBtn)": "同上（「筛选」按钮：窄档只剩图标）",
+  "src/frontend/ui/views/history.ts · classList.add(s.hvToList)": "同上（窄档内容头左端的「← 列表」）",
   "src/frontend/ui/kit/split-button.ts · classList.add(s.splitMain)":
     "CSS Modules（`split-button.module.css`）：给拆分按钮的两半（kit 按钮）挂拼接用的版位类；哈希过的类名，不是状态名",
   "src/frontend/ui/kit/split-button.ts · classList.add(s.splitMore)": "同上（▾ 那一半）",

@@ -116,6 +116,31 @@ export const HISTORY_SCENES: Scene[] = [
     await sleep(400);
   }),
   {
+    ...hist("history-14-mid", "历史 · 中档 1000 宽", "800–1100：列表 340、不可拖；内容头第二行折行；「你说过的话」只剩图标 ＋ 数字", async () => {
+      await openHistory();
+      await click(await row(0));
+      await sleep(900);
+    }),
+    width: 1000,
+    height: 760,
+  },
+  {
+    ...hist("history-15-narrow-list", "历史 · 窄档列表", "< 800：单块，只有列表；「筛选」只剩图标", async () => {
+      await openHistory();
+    }),
+    width: 720,
+    height: 560,
+  },
+  {
+    ...hist("history-16-narrow-open", "历史 · 窄档点开一个", "< 800：点一行 ⇒ 内容盖满，头左端「← 列表」（Esc 也回列表）", async () => {
+      await openHistory();
+      await click(await row(0));
+      await sleep(900);
+    }),
+    width: 720,
+    height: 560,
+  },
+  {
     id: "viewer-window",
     page: "viewer",
     query: "viewer=5e550001-0000-4000-8000-000000000001",

@@ -130,6 +130,8 @@ interface JsonlLinePayload {
 
 /** 内容头（设计稿乙4-④）：内容由宿主按那一行的事实拼好，查看器只摆位置。 */
 export interface ViewerHead {
+  /** 标题左边那一格（窄档历史页的「← 列表」）。 */
+  lead?: HTMLElement;
   /** 标题右边的徽标（在跑 · Codex · 分身 …）。 */
   badges?: HTMLElement[];
   /** 第一行右端：［恢复 ▾］· 新窗口 ·［⋯］。 */
@@ -229,6 +231,7 @@ export class SessionViewer {
     void this.maybeFillAbove();
   };
   private titleEl!: HTMLElement;
+  private leadEl!: HTMLElement;
   private badgesEl!: HTMLElement;
   private actionsEl!: HTMLElement;
   private metaEl!: HTMLElement;
@@ -279,6 +282,7 @@ export class SessionViewer {
   setHead(title: string, head: ViewerHead | undefined): void {
     this.titleEl.textContent = title;
     this.titleEl.title = title;
+    this.leadEl.replaceChildren(...(head?.lead ? [head.lead] : []));
     this.badgesEl.replaceChildren(...(head?.badges ?? []));
     this.actionsEl.replaceChildren(...(head?.actions ? [head.actions] : []));
     this.metaEl.replaceChildren(...(head?.meta ?? []), this.countEl);
@@ -688,7 +692,15 @@ export class SessionViewer {
   /** 工具行那颗按钮跟着清单走：`你说过的话 · {n}`；0 条 / 要不到 ⇒ 灰着（原因挂在悬停上，同 `UserInputPanel` 的口径）。 */
   private syncSaid(): void {
     const n = this.said.panel.children.length;
-    this.saidText.textContent = n > 0 ? copyText("sessionViewer.tools.said", { n }) : copyText("sessionViewer.tools.saidNone");
+    // 宽档写全（`你说过的话 · 12`）；中档、窄档只剩数字（图标在前面，乙4-⑧）。
+    const full = document.createElement("span");
+    full.className = sv.svSaidFull;
+    full.dataset.part = "full";
+    full.textContent = n > 0 ? copyText("sessionViewer.tools.said", { n }) : copyText("sessionViewer.tools.saidNone");
+    const short = document.createElement("span");
+    short.className = sv.svSaidShort;
+    short.textContent = String(n);
+    this.saidText.replaceChildren(full, short);
     this.saidBtn.disabled = n === 0;
     this.saidBtn.title = this.said.toggle.title;
     if (n === 0 && popoverOpenOn(this.saidBtn)) closePopover();
@@ -797,7 +809,9 @@ export class SessionViewer {
     this.badgesEl.className = sv.svBadges;
     this.actionsEl = document.createElement("div");
     this.actionsEl.className = sv.svActions;
-    top.append(this.titleEl, this.badgesEl, this.actionsEl);
+    this.leadEl = document.createElement("span");
+    this.leadEl.className = sv.svLead;
+    top.append(this.leadEl, this.titleEl, this.badgesEl, this.actionsEl);
     this.metaEl = document.createElement("div");
     this.metaEl.className = sv.svMeta;
     this.metaEl.dataset.role = "meta";
@@ -832,8 +846,8 @@ export class SessionViewer {
     this.saidBtn.dataset.role = "said";
     this.saidPop = document.createElement("div");
     this.saidPop.className = sv.svSaidPop;
+    // 清单平时住这一格（清单自己收着 ⇒ 这一格不占地方）。
     this.saidHold = document.createElement("div");
-    this.saidHold.hidden = true;
     this.showSaidPanel(false);
     this.saidHold.appendChild(this.said.panel);
     view.appendChild(this.saidHold);

@@ -17,6 +17,16 @@ import type { FindHit, FindResult } from "./session-reads";
 import { markJump, type JumpResult } from "./views/user-input-panel";
 import s from "./find-strip.module.css";
 
+/**
+ * 命中片段去掉行内排版记号（与 `history-turns` 回复头同一套：`**` `__` 反引号，片段开头的 `#` / `>`）—— 片段是纯文本，
+ * 记号留着就是「统一做**重试」那样一串。命中词那一段也去；去完空了（命中的就是记号本身）⇒ 那一段原样留着，高亮不丢。
+ */
+export function plainSnippet(h: { before: string; matched: string; after: string }): { before: string; matched: string; after: string } {
+  const strip = (t: string): string => t.replace(/\*\*|__|`/g, "");
+  const matched = strip(h.matched) || h.matched;
+  return { before: strip(h.before).replace(/^(?:\s*[#>]+)+\s*/, ""), matched, after: strip(h.after) };
+}
+
 export interface FindStripHost {
   /** 在这一份会话里找（宿主决定问哪台机器上的哪份文件）。 */
   search(query: string, includeTools: boolean): Promise<FindResult>;
@@ -166,11 +176,12 @@ export class FindStrip {
     // 🔴 与「你说过的话」清单行同一条纪律：**不叫 `data-uuid`**（那个名字在本仓只指「一张渲染出来的消息卡」）。
     row.dataset.hitUuid = h.uuid;
     row.dataset.kind = h.kind;
+    const t = plainSnippet(h);
     const mark = document.createElement("mark");
     mark.className = s.fsMark;
-    mark.textContent = h.matched;
-    row.append(document.createTextNode(h.before), mark, document.createTextNode(h.after));
-    const plain = `${h.before}${h.matched}${h.after}`;
+    mark.textContent = t.matched;
+    row.append(document.createTextNode(t.before), mark, document.createTextNode(t.after));
+    const plain = `${t.before}${t.matched}${t.after}`;
     row.title = plain;
     row.addEventListener("click", () => markJump(row, this.host.jumpTo(h.uuid), plain, this.host.unjumpableHint));
     return row;

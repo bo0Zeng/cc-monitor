@@ -91,6 +91,8 @@ const rowsOf = (v: SessionViewer): HTMLButtonElement[] => [
 /** 工具行「你说过的话 · N ▾」那颗按钮（设计稿「文件与历史」乙4-④：大纲只这一处入口）。 */
 const toggleOf = (v: SessionViewer): HTMLButtonElement =>
   v.element.querySelector<HTMLButtonElement>('[data-role="said"]')!;
+/** 按钮上写的那一句（宽档那一形；中档、窄档另有一份只写数字的，靠 CSS 换）。 */
+const saidOf = (v: SessionViewer): string => toggleOf(v).querySelector('[data-part="full"]')!.textContent ?? "";
 /** 清单面板：收着时住查看器里，开着时搬进 kit 浮层（挂在 body 上）⇒ 按文档找。 */
 const panelOf = (_v: SessionViewer): HTMLElement =>
   document.querySelector<HTMLElement>(".user-inputs")!;
@@ -127,7 +129,7 @@ describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不
     const rows = rowsOf(v);
     expect(rows.map((r) => r.dataset.inputUuid)).toEqual(["u1", "u7"]);
     expect(rows[0].textContent).toBe("1. 第一句");
-    expect(toggleOf(v).textContent).toBe("你说过的话 · 2");
+    expect(saidOf(v)).toBe("你说过的话 · 2");
   });
 
   it("🔴 查看器不自己判：后端没列的 user 行不出现（反向：旧的 TS 判定若还在，u3 会冒出来）", async () => {
@@ -176,7 +178,7 @@ describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不
     const v = await mount([assistantLine(1, "a1", "只有回复")]);
     expect(rowsOf(v).length).toBe(0);
     expect(toggleOf(v).disabled).toBe(true);
-    expect(toggleOf(v).textContent).toBe("你说过的话"); // 0 条不挂计数
+    expect(saidOf(v)).toBe("你说过的话"); // 0 条不挂计数
   });
 });
 
@@ -265,7 +267,7 @@ describe("KR45D1 点一下跳过去", () => {
     expectLoaded(v.element);
 
     expect(rowsOf(v).map((r) => r.dataset.inputUuid)).toEqual(["n1"]);
-    expect(toggleOf(v).textContent).toBe("你说过的话 · 1");
+    expect(saidOf(v)).toBe("你说过的话 · 1");
   });
 });
 
@@ -366,6 +368,26 @@ describe("㊱③ 查看器的 Ctrl+F：工具行查找框 ＋ 问后端 `history
     expect(cardOf(v, "a1")).toBeTruthy();
     strip.querySelector<HTMLButtonElement>('button[aria-label="收起查找结果"]')!.click();
     expect(strip.hidden).toBe(true);
+  });
+
+  it("命中片段去行内排版记号（`**` `__` 反引号 · 开头的 # / >），命中词照旧高亮", async () => {
+    const v = await mount([assistantLine(1, "a1", "统一做**重试 + 退避**")]);
+    viewerRig.find = {
+      available: true,
+      total: 2,
+      hits: [
+        { uuid: "a1", kind: "assistant", before: "统一做**", matched: "重试", after: " ＋ `退避` ＋ __整体超时__**；" },
+        { uuid: "a1", kind: "assistant", before: "## > ", matched: "**重试**", after: "" },
+      ],
+    };
+    v.openFind();
+    const input = v.element.querySelector<HTMLInputElement>('[data-role="find-input"]')!;
+    input.value = "重试";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await settleOutline();
+    const hits = [...v.element.querySelectorAll<HTMLElement>('[data-role="find-hit"]')];
+    expect(hits.map((h) => h.textContent)).toEqual(["统一做重试 ＋ 退避 ＋ 整体超时；", "重试"]);
+    expect(hits.map((h) => h.querySelector("mark")!.textContent)).toEqual(["重试", "重试"]);
   });
 
   it("勾「含工具输出与思考」⇒ 带着它再问一次；没命中写「无匹配「词」」", async () => {

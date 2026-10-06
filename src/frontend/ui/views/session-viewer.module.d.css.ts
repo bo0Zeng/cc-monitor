@@ -7,10 +7,13 @@ declare const classes: {
   readonly svFoot: string;
   readonly svHead: string;
   readonly svHeadTop: string;
+  readonly svLead: string;
   readonly svLoading: string;
   readonly svMeta: string;
   readonly svPath: string;
+  readonly svSaidFull: string;
   readonly svSaidPop: string;
+  readonly svSaidShort: string;
   readonly svTitle: string;
   readonly svTools: string;
 };

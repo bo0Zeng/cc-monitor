@@ -7,6 +7,7 @@ declare const classes: {
   readonly hvCount: string;
   readonly hvDot: string;
   readonly hvFilter: string;
+  readonly hvFilterBtn: string;
   readonly hvFilterGroup: string;
   readonly hvFilterHead: string;
   readonly hvFilterWarn: string;
@@ -34,11 +35,13 @@ declare const classes: {
   readonly hvRow: string;
   readonly hvSearch: string;
   readonly hvSec: string;
+  readonly hvSizer: string;
   readonly hvSplit: string;
   readonly hvStar: string;
   readonly hvStrip: string;
   readonly hvTime: string;
   readonly hvTitle: string;
+  readonly hvToList: string;
   readonly hvTop: string;
   readonly hvViews: string;
 };

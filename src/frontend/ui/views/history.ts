@@ -61,6 +61,8 @@ interface Prefs {
   hidden: boolean;
   scope: Scope;
   tools: boolean;
+  /** 列表拖到的宽（宽档；缺 = 420）。 */
+  listWidth?: number;
 }
 
 const DEFAULT_PREFS: Prefs = { view: "time", off: [], withinDays: 0, sort: "activity", hidden: false, scope: "all", tools: false };
@@ -81,6 +83,13 @@ const keyOf = (origin: string | undefined): string => origin ?? "";
 
 /** 敲字之后停多久才问（乙5：150 ms）。 */
 const QUERY_DEBOUNCE_MS = 150;
+/** 列表可拖的宽（乙4-①：默认 420，320–640）；键盘一步 16。 */
+const LIST_MIN = 320;
+const LIST_MAX = 640;
+const LIST_STEP = 16;
+/** 窄档（乙4-⑧：< 800 单块）。jsdom 没有 `matchMedia` ⇒ 当宽档。 */
+const isNarrow = (): boolean => window.matchMedia?.("(max-width: 799px)").matches ?? false;
+
 /** 方向键走行时停多久才读右边（快速划过不读）。 */
 const PREVIEW_DEBOUNCE_MS = 200;
 
@@ -123,6 +132,7 @@ export class HistoryView {
   private listHead!: HTMLElement;
   private stripsEl!: HTMLElement;
   private contentEl!: HTMLElement;
+  private splitEl!: HTMLElement;
   private viewer: SessionViewer | null = null;
   private readonly layer = { handleEsc: () => this.handleEsc() };
 
@@ -169,6 +179,11 @@ export class HistoryView {
 
   /** Esc 一次一层（乙5）：焦点在内容里 ⇒ 回列表 ＞ 搜索框有字 ⇒ 清空 ＞ 关历史页。菜单 / 浮层 / 对话框各自在栈上先接。 */
   private handleEsc(): boolean {
+    // 窄档的内容 ⇒ 回列表（焦点在内容里也一样）。
+    if (isNarrow() && this.splitEl.dataset.pane === "content") {
+      this.toList();
+      return true;
+    }
     if (this.contentEl.contains(document.activeElement)) {
       this.focusSelected();
       return true;
@@ -309,6 +324,7 @@ export class HistoryView {
     });
     search.appendChild(this.searchInput);
     this.filterBtn = button({ label: copyText("history.page.filter"), icon: "filter", onClick: () => this.openFilter() });
+    this.filterBtn.classList.add(s.hvFilterBtn);
     this.filterBtn.setAttribute("aria-haspopup", "dialog");
     this.refreshBtn = button({
       label: copyText("history.page.refresh"),
@@ -322,6 +338,9 @@ export class HistoryView {
 
     const split = document.createElement("div");
     split.className = s.hvSplit;
+    // 窄档单块：`list` 只有列表 · `content` 内容盖满（宽档、中档不看它）。
+    split.dataset.pane = "list";
+    this.splitEl = split;
     const col = document.createElement("div");
     col.className = s.hvCol;
     this.stripsEl = document.createElement("div");
@@ -349,10 +368,61 @@ export class HistoryView {
     col.append(this.stripsEl, this.listHead, this.listEl);
     this.contentEl = document.createElement("div");
     this.contentEl.className = s.hvContent;
-    split.append(col, this.contentEl);
+    split.append(col, this.sizer(root), this.contentEl);
     root.appendChild(split);
+    if (this.prefs.listWidth) root.style.setProperty("--hv-list-w", `${this.prefs.listWidth}px`);
     this.showPlaceholder();
     return root;
+  }
+
+  /** 列表与内容之间那一道（宽档）：拖改列表宽（320–640），← → 一步 16；松手记下。 */
+  private sizer(root: HTMLElement): HTMLElement {
+    const el = document.createElement("div");
+    el.className = s.hvSizer;
+    el.tabIndex = 0;
+    el.setAttribute("role", "separator");
+    el.setAttribute("aria-orientation", "vertical");
+    el.setAttribute("aria-label", copyText("history.page.resize"));
+    el.setAttribute("aria-valuemin", String(LIST_MIN));
+    el.setAttribute("aria-valuemax", String(LIST_MAX));
+    const set = (w: number, save: boolean): void => {
+      const v = Math.round(Math.max(LIST_MIN, Math.min(LIST_MAX, w)));
+      root.style.setProperty("--hv-list-w", `${v}px`);
+      el.setAttribute("aria-valuenow", String(v));
+      if (save) {
+        this.prefs.listWidth = v;
+        this.savePrefs();
+      }
+    };
+    el.setAttribute("aria-valuenow", String(this.prefs.listWidth ?? 420));
+    el.addEventListener("pointerdown", (ev) => {
+      ev.preventDefault();
+      el.setPointerCapture?.(ev.pointerId);
+      el.dataset.grabbed = "true";
+      const left = this.listEl.parentElement!.getBoundingClientRect().left;
+      const move = (e: PointerEvent): void => set(e.clientX - left, false);
+      const up = (e: PointerEvent): void => {
+        el.removeEventListener("pointermove", move);
+        el.removeEventListener("pointerup", up);
+        delete el.dataset.grabbed;
+        set(e.clientX - left, true);
+      };
+      el.addEventListener("pointermove", move);
+      el.addEventListener("pointerup", up);
+    });
+    el.addEventListener("keydown", (ev) => {
+      if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+      ev.preventDefault();
+      const now = Number(el.getAttribute("aria-valuenow"));
+      set(now + (ev.key === "ArrowLeft" ? -LIST_STEP : LIST_STEP), true);
+    });
+    return el;
+  }
+
+  /** 窄档：内容 ⇒ 回列表（焦点回选中的那一行）。 */
+  private toList(): void {
+    this.splitEl.dataset.pane = "list";
+    this.focusSelected();
   }
 
   private showPlaceholder(): void {
@@ -767,6 +837,7 @@ export class HistoryView {
         if (ev.shiftKey) return this.consume(ev, () => this.openWindow(r));
         return this.consume(ev, () => {
           this.show(r);
+          this.splitEl.dataset.pane = "content";
           this.viewer?.element.querySelector<HTMLElement>(".session-viewer-stream")?.focus();
         });
       case "F2":
@@ -837,7 +908,10 @@ export class HistoryView {
     const machine = machineTag(r.origin) ?? Object.assign(document.createElement("span"), { textContent: copyText("history.filter.local") });
     const span = document.createElement("span");
     span.textContent = spanText(r.startedAt, r.updatedAt, Date.now());
+    const toList = button({ label: copyText("history.content.toList"), kind: "ghost", icon: "back", size: "compact", onClick: () => this.toList() });
+    toList.classList.add(s.hvToList);
     return {
+      lead: toList,
       badges: rowBadges(r, needs),
       actions: acts,
       meta: [project, machine, ...(r.projectPath ? [viewerPath(r.projectPath)] : []), span],
@@ -895,6 +969,8 @@ export class HistoryView {
           this.quietFocus = false;
         }
         this.moveSelection(rowKey(r), false);
+        // 窄档：点开一行 ⇒ 内容盖满（方向键走行不翻，回车才翻）。
+        this.splitEl.dataset.pane = "content";
       },
       resume: (r) => void this.resume(r),
       menu: (r, at) => this.menu(r, at),

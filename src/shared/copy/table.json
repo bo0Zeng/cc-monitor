@@ -20817,6 +20817,16 @@
       "kind": "action",
       "zh": "恢复中…",
       "args": []
+    },
+    "history.page.resize": {
+      "kind": "aria",
+      "zh": "列表宽度",
+      "args": []
+    },
+    "history.content.toList": {
+      "kind": "action",
+      "zh": "列表",
+      "args": []
     }
   }
 }

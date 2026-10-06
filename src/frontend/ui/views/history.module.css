@@ -71,9 +71,62 @@
     display: flex;
     flex: none;
     flex-direction: column;
-    width: 420px;
+    width: var(--hv-list-w, 420px);
     min-height: 0;
     border-right: 1px solid var(--border-strong);
+  }
+
+  /* 列表与内容之间那一道：拖它改列表宽（320–640）；键盘 ← → 也能改。 */
+  .hvSizer {
+    flex: none;
+    width: 6px;
+    margin: 0 -3px;
+    cursor: col-resize;
+    outline: none;
+  }
+
+  .hvSizer:hover,
+  .hvSizer:focus-visible,
+  .hvSizer[data-grabbed="true"] {
+    background: color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+
+  /* 窄档那颗「← 列表」：宽档、中档不出。 */
+  .hvToList {
+    display: none;
+  }
+
+  /* 中档 800–1100：列表 340、不可拖。 */
+  @media (max-width: 1099px) {
+    .hvCol {
+      width: 340px;
+    }
+
+    .hvSizer {
+      display: none;
+    }
+  }
+
+  /* 窄档 < 800：单块。只有列表；点开一行 ⇒ 内容盖满（头左端「← 列表」）；「筛选」只剩图标。 */
+  @media (max-width: 799px) {
+    .hvCol {
+      flex: 1;
+      width: auto;
+      border-right: 0;
+    }
+
+    .hvSplit[data-pane="list"] > .hvContent,
+    .hvSplit[data-pane="content"] > .hvCol {
+      display: none;
+    }
+
+    .hvToList {
+      display: inline-flex;
+    }
+
+    .hvFilterBtn > span:first-of-type {
+      display: none;
+    }
   }
 
   .hvHead {
