@@ -639,7 +639,10 @@ impl FileWindow {
             Cmd::NewFile => {
                 self.begin_new_file();
             }
-            Cmd::Upload => self.upload.open(),
+            // 系统的选文件框（可多选）；选完由 `settle_pick` 接上拖入那一条（先一次问完同名，再并行传）。
+            Cmd::Upload => {
+                self.start_pick(super::picker::Purpose::Upload, ctx);
+            }
             Cmd::Term => {
                 self.open_terminal_here(ctx);
             }
@@ -961,8 +964,14 @@ impl Workspace {
             }
         }
         let mut cmd = None;
+        // 中档 / 窄档：左栏是盖在列表上的抽屉（开关开的是抽屉）。
+        let wide = Tier::of(ctx.content_rect().width()) == Tier::Wide;
         let view = ViewState {
-            sidebar: self.sidebar_open,
+            sidebar: if wide {
+                self.sidebar_open
+            } else {
+                self.drawer_open
+            },
             two: self.sides() == 2,
             preview: self.preview.is_some(),
         };
@@ -975,7 +984,11 @@ impl Workspace {
             });
         let sidebar = cmd == Some(Cmd::Sidebar);
         if sidebar {
-            self.sidebar_open = !self.sidebar_open;
+            if wide {
+                self.sidebar_open = !self.sidebar_open;
+            } else {
+                self.drawer_open = !self.drawer_open;
+            }
         }
         match cmd {
             Some(Cmd::Split) => {
@@ -1070,13 +1083,42 @@ impl Workspace {
                 self.apply_progress_act(a, Some(ctx.clone()));
             }
         }
-        if self.sidebar_open {
-            // 窗口窄了左栏跟着让（至多占三成），里面的字截成「…」。
+        if wide && self.sidebar_open {
             let w = SIDEBAR_WIDTH.min(ctx.content_rect().width() * 0.3);
             egui::Panel::left("filewin-sidebar")
                 .frame(bar_frame(&ctx).inner_margin(egui::Margin::same(10)))
                 .exact_size(w)
                 .show(ui, |ui| self.sidebar_ui(ui));
+        } else if !wide && self.drawer_open {
+            // 抽屉（稿 21 · 23）：盖在列表左边一层（浮层底、阴影），不挤列表；点别处 · Esc · 点了一项去别处 ⇒ 收。
+            let room = ui.available_rect_before_wrap();
+            let before = self.pane_on(f).cwd.clone();
+            let w = SIDEBAR_WIDTH.min(room.width() * 0.8);
+            let area = egui::Area::new(egui::Id::new("filewin-drawer"))
+                .order(egui::Order::Foreground)
+                .fade_in(false)
+                .fixed_pos(room.left_top())
+                .show(&ctx, |ui| {
+                    egui::Frame::popup(&ctx.global_style())
+                        .fill(palette(&ctx).bg2.to_opaque())
+                        .corner_radius(0.0)
+                        .inner_margin(egui::Margin::same(10))
+                        .show(ui, |ui| {
+                            ui.set_min_size(egui::vec2(w - 20.0, room.height() - 20.0));
+                            ui.set_max_width(w - 20.0);
+                            self.sidebar_ui(ui);
+                        });
+                });
+            let away = ctx.input(|i| {
+                i.key_pressed(egui::Key::Escape)
+                    || (i.pointer.any_pressed()
+                        && i.pointer.interact_pos().is_some_and(|at| {
+                            !area.response.rect.contains(at) && room.contains(at)
+                        }))
+            });
+            if away || self.pane_on(self.focus()).cwd != before {
+                self.drawer_open = false;
+            }
         }
     }
 

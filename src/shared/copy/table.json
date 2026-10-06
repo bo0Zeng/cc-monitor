@@ -9394,41 +9394,6 @@
       "zh": "有一份文本开着",
       "args": []
     },
-    "rsFilewinShell.pull.cancel": {
-      "kind": "action",
-      "zh": "取消",
-      "args": []
-    },
-    "rsFilewinShell.pull.overwrite": {
-      "kind": "action",
-      "zh": "盖掉",
-      "args": []
-    },
-    "rsFilewinShell.pull.overwriteWarn": {
-      "kind": "body",
-      "zh": "盖掉它就没有备份了，不可撤销。",
-      "args": []
-    },
-    "rsFilewinShell.pull.exists": {
-      "kind": "body",
-      "zh": "那儿已经有东西了",
-      "args": []
-    },
-    "rsFilewinShell.pull.ok": {
-      "kind": "action",
-      "zh": "确定",
-      "args": []
-    },
-    "rsFilewinShell.pull.dirHint": {
-      "kind": "body",
-      "zh": "⚠ 以 / 结尾就当成目录，原名接在后面。",
-      "args": []
-    },
-    "rsFilewinShell.pull.askWhere": {
-      "kind": "body",
-      "zh": "把「{name}」存到哪儿？",
-      "args": ["name"]
-    },
     "rsFilewinShell.editor.save": {
       "kind": "action",
       "zh": "保存",
@@ -9528,6 +9493,11 @@
       "kind": "error",
       "zh": "拖进来的 {n} 个东西一个都认不出名字",
       "args": ["n"]
+    },
+    "rsFilewinShell.drop.release": {
+      "kind": "body",
+      "zh": "松开上传 → {dir}（{n} 个文件）",
+      "args": ["dir", "n"]
     },
     "rsFilewinShell.upload.noRuntime": {
       "kind": "error",
@@ -10329,16 +10299,6 @@
       "zh": "大文件模式 · 长行不换行 · 无查找替换",
       "args": []
     },
-    "rsFilewinPicker.ui.browse": {
-      "kind": "action",
-      "zh": "选择…",
-      "args": []
-    },
-    "rsFilewinPicker.pick.none": {
-      "kind": "body",
-      "zh": "没有选到文件，框里的字没动",
-      "args": []
-    },
     "rsFilewinPicker.pick.noRuntime": {
       "kind": "error",
       "zh": "选择框启动不了，请重开这个窗口",
@@ -10604,41 +10564,6 @@
       "zh": "这份有 {len} 字节，超过 {limit} 字节的上限，多了 {over} 字节，没有发出去。",
       "args": ["len", "limit", "over"]
     },
-    "rsFilewinUpload.ui.cancel": {
-      "kind": "action",
-      "zh": "取消",
-      "args": []
-    },
-    "rsFilewinUpload.ui.ok": {
-      "kind": "action",
-      "zh": "确定",
-      "args": []
-    },
-    "rsFilewinUpload.ui.paths": {
-      "kind": "control",
-      "zh": "本机路径，一行一个",
-      "args": []
-    },
-    "rsFilewinUpload.ui.title": {
-      "kind": "title",
-      "zh": "把本机的文件传到这个目录",
-      "args": []
-    },
-    "rsFilewinUpload.judge.noName": {
-      "kind": "error",
-      "zh": "{path} 取不到名字",
-      "args": ["path"]
-    },
-    "rsFilewinUpload.judge.notLocalFile": {
-      "kind": "error",
-      "zh": "{path} 不是本机上的一份文件",
-      "args": ["path"]
-    },
-    "rsFilewinUpload.judge.empty": {
-      "kind": "error",
-      "zh": "要传的文件是空的",
-      "args": []
-    },
     "rsFilewinUpload.label.upload": {
       "kind": "action",
       "zh": "上传",
@@ -10678,21 +10603,6 @@
       "kind": "body",
       "zh": "大文件模式：全文 {size}，最长一行 {longestLine} 字节。只排屏幕上的几行，长行不换行，可横向滚动。",
       "args": ["size", "longestLine"]
-    },
-    "rsFilewinDownload.judge.wrongState": {
-      "kind": "error",
-      "zh": "出错了，请重新选择保存位置",
-      "args": []
-    },
-    "rsFilewinDownload.plan.noName": {
-      "kind": "error",
-      "zh": "{path} 看起来是个目录，可这一行没有名字能接上去",
-      "args": ["path"]
-    },
-    "rsFilewinDownload.plan.empty": {
-      "kind": "error",
-      "zh": "要存到哪儿？保存位置是空的",
-      "args": []
     },
     "rsFilewinDownload.label.download": {
       "kind": "action",
@@ -18783,11 +18693,6 @@
       "kind": "control",
       "zh": "本机",
       "args": []
-    },
-    "rsFilewinDownload.dest.renamed": {
-      "kind": "body",
-      "zh": "名字里有 Windows 不认的字，存成了 {local}",
-      "args": ["local"]
     },
     "history.body.loadFailed": {
       "kind": "error",

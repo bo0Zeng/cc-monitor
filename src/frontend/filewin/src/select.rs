@@ -323,6 +323,18 @@ pub enum Intent {
     Rename,
     /// Ctrl+A（macOS ⌘A）：全选。
     SelectAll,
+    /// 空格：开 / 收「看一眼」浮层（预览栏关着或窄档时；预览栏开着不做事）。
+    Peek,
+    /// Ctrl+Shift+N：就地新建文件夹。
+    NewFolder,
+    /// Ctrl+D：下载选中的。
+    Download,
+    /// Ctrl+U：上传到这里（系统选文件框）。
+    Upload,
+    /// Ctrl+Shift+C：复制选中项的完整路径（多项一行一个）。
+    CopyPath,
+    /// Esc：清掉选择。
+    Clear,
     /// 打字跳转：这一帧敲进来的字。
     Type(String),
 }
@@ -341,6 +353,13 @@ pub enum Intent {
 /// | Delete | 删除选中的那几项（**一次问完**） |
 /// | F2 | 改名（只对一项） |
 /// | Ctrl+A | 全选（macOS 上是 ⌘A） |
+/// | Backspace | 上一级（同 Alt+↑） |
+/// | 空格 | 开 / 收「看一眼」浮层（预览栏开着且是宽档时不做事） |
+/// | Ctrl+Shift+N | 就地新建文件夹 |
+/// | Ctrl+D | 下载选中的（系统存盘框） |
+/// | Ctrl+U | 上传到这里（系统选文件框） |
+/// | Ctrl+Shift+C | 复制选中项的完整路径（多项一行一个） |
+/// | Esc | 清掉选择 |
 /// | 直接打字 | 跳到名字以这几个字开头的那一行（不分大小写，停一秒重来） |
 ///
 /// ⚠ 这张表**不做成一个常量**：它不画在窗口上，而字符串常量会被探针对账
@@ -363,6 +382,13 @@ pub fn intents(events: &[egui::Event]) -> Vec<Intent> {
             } => {
                 let it = match key {
                     Key::ArrowUp if m.alt => Some(Intent::Parent),
+                    Key::Backspace if !m.any() => Some(Intent::Parent),
+                    Key::Space if !m.any() => Some(Intent::Peek),
+                    Key::N if m.command && m.shift => Some(Intent::NewFolder),
+                    Key::D if m.command && !m.shift => Some(Intent::Download),
+                    Key::U if m.command && !m.shift => Some(Intent::Upload),
+                    Key::C if m.command && m.shift => Some(Intent::CopyPath),
+                    Key::Escape if !m.any() => Some(Intent::Clear),
                     Key::ArrowUp => Some(Intent::Step {
                         by: -1,
                         extend: m.shift,
@@ -389,7 +415,8 @@ pub fn intents(events: &[egui::Event]) -> Vec<Intent> {
                     out.push(it);
                 }
             }
-            egui::Event::Text(t) if !t.is_empty() => out.push(Intent::Type(t.clone())),
+            // 空格是「看一眼」那一键，不进打字跳转。
+            egui::Event::Text(t) if !t.is_empty() && t != " " => out.push(Intent::Type(t.clone())),
             _ => {}
         }
     }

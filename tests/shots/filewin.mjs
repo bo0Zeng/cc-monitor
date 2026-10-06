@@ -31,7 +31,11 @@ export const FILEWIN_SCENES = [
   { id: "filewin-chmod", scene: "chmod", title: "文件窗口 · 改权限", desc: "「⋯ → 权限」：「改权限 · main.rs」·「当前 644」· 3 × 3 勾（勾了所有者 / 同组 / 其他人的执行）·「数字写法 755」两边联动 ·［取消］［改权限］（稿 10）" },
   { id: "filewin-upload-clash", scene: "upload-clash", title: "文件窗口 · 上传遇到同名", desc: "上传三个文件、两个同名：「同名 2 · devbox」一张表（☐ 名字 · 本机 · devbox，各写大小 · 时间）·「勾选的覆盖 · 未勾的跳过 · 不重名的 1 个照传」·［取消整批］［全部跳过］［覆盖勾选的 n 个］（稿 12）" },
   { id: "filewin-cross-copy", scene: "cross-copy", title: "文件窗口 · 复制到另一台", desc: "report.pdf「复制到另一台」：「复制到」下拉 gpu-01 ·「放到」那台的面包屑 ＋ 文件夹（选中 inbox）· 右上「新建文件夹」·「目标 gpu-01:…/inbox」·［取消］［复制到 gpu-01］（稿 13；合成后端一台答所有机器，那台的主目录是沙箱路径）" },
-].map((s) => ({ ...s, dir: "文件窗口", width: 1280, height: 800 }));
+  { id: "filewin-drag-in", scene: "drag-in", title: "文件窗口 · 从桌面拖进来", desc: "拖着两个文件经过列表：列表区一层淡强调色底 ＋ 虚线框「松开上传 → orders-service（2 个文件）」（稿 20）" },
+  { id: "filewin-narrow-drawer", scene: "narrow-drawer", width: 720, title: "文件窗口 · 窄档 720 · 左栏抽屉", desc: "窗宽 720：左栏收成盖在列表上的抽屉（不挤列表），开关打开着（稿 23）" },
+  { id: "filewin-peek", scene: "peek", width: 720, title: "文件窗口 · 窄档 · 空格看一眼", desc: "窗宽 720、main.rs 上按空格：窗口正中一块「看一眼」浮层（代码高亮）；Esc / 空格 / 点别处收（稿 24）" },
+  { id: "filewin-focus", scene: "focus", title: "文件窗口 · 键盘焦点环", desc: "按 Tab 走到搜索框：2px 强调色外环（鼠标点出来的不画）" },
+].map((s) => ({ dir: "文件窗口", width: 1280, height: 800, ...s }));
 
 export async function shootFilewin({ repo, sandbox, out, scenes, env, buildEnv, children }) {
   const results = [];
@@ -78,6 +82,7 @@ export async function shootFilewin({ repo, sandbox, out, scenes, env, buildEnv, 
       CCM_SHOTS_FILEWIN_OUT: file,
       CCM_SHOTS_FILEWIN_DIR: home,
       CCM_SHOTS_FILEWIN_PREVIEW: CODE,
+      CCM_SHOTS_FILEWIN_W: String(s.width),
     };
     delete runEnv.WAYLAND_DISPLAY;
     const r = spawnSync(exe, [TEST, "--exact", "--ignored", "--nocapture", "--test-threads=1"], { env: runEnv, encoding: "utf8", timeout: 120_000 });

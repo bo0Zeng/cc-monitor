@@ -248,6 +248,8 @@ pub fn tab(
         );
         closed = xresp.clicked();
     }
+    // 中键点标签 ＝ 关它（同 ×）。
+    closed |= resp.middle_clicked();
     (resp, closed)
 }
 
@@ -985,6 +987,59 @@ pub fn clash_table(ui: &mut Ui, heads: [&str; 3], rows: &[ClashRow], ticks: &mut
         });
     });
     changed
+}
+
+/// 从桌面拖进来时列表区那一层（稿 20）：淡强调色底 ＋ 一圈强调色虚线 ＋ 正中一句「松开上传 → 目录（n 个文件）」。画在最上层，不挤动列表。
+pub fn drop_zone(ctx: &egui::Context, rect: egui::Rect, text: &str) {
+    let p = palette(ctx);
+    let painter = ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Foreground,
+        egui::Id::new("filewin-drop-zone"),
+    ));
+    let r = rect.shrink(6.0);
+    painter.rect_filled(r, 8.0, p.picked);
+    let stroke = egui::Stroke::new(2.0, p.accent);
+    let corners = [
+        r.left_top(),
+        r.right_top(),
+        r.right_bottom(),
+        r.left_bottom(),
+        r.left_top(),
+    ];
+    for w in corners.windows(2) {
+        painter.extend(egui::Shape::dashed_line(&[w[0], w[1]], stroke, 8.0, 6.0));
+    }
+    painter.text(
+        r.center(),
+        egui::Align2::CENTER_CENTER,
+        format!("{}  {}", egui_phosphor::regular::UPLOAD_SIMPLE, text),
+        egui::FontId::proportional(16.0),
+        p.text,
+    );
+}
+
+/// 键盘走到的那个控件画 2px 强调色外环（规范 `I4`）；鼠标点出来的不画（`keyboard` 假）。
+pub fn focus_ring(ctx: &egui::Context, keyboard: bool) {
+    if !keyboard {
+        return;
+    }
+    let Some(id) = ctx.memory(|m| m.focused()) else {
+        return;
+    };
+    let Some(r) = ctx.read_response(id) else {
+        return;
+    };
+    let p = palette(ctx);
+    ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Foreground,
+        egui::Id::new("filewin-focus-ring"),
+    ))
+    .rect_stroke(
+        r.rect.expand(2.0),
+        4.0,
+        egui::Stroke::new(2.0, p.accent),
+        egui::StrokeKind::Outside,
+    );
 }
 
 /// 就地输入那一格下面挂的出错句（稿 07：浮层底 ＋ 错误图标 ＋ 一句；画在最上层，不挤动列表）。

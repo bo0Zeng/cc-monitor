@@ -95,6 +95,12 @@ pub struct Workspace {
     /// 带［撤销］的回执：记号 → 撤销要做的那几件（点了交给焦点那一栏直接做）。
     undo_for: std::collections::HashMap<u64, Vec<super::writeops::WriteOp>>,
     undo_tag: u64,
+    /// 空格弹出的「看一眼」浮层（预览栏关着 / 窄档时；跟焦点那一栏的光标）。`None` ＝ 收着。
+    pub peek: Option<super::preview::Preview>,
+    /// 焦点是不是键盘走过去的（按了 Tab ⇒ 是；按了鼠标 ⇒ 不是）：是才画焦点环。
+    pub kb_nav: bool,
+    /// 中档 / 窄档的左栏是一层盖在列表上的抽屉（不挤列表）：开着没有。宽档照旧用 `sidebar_open`。
+    pub drawer_open: bool,
     /// 上一句收成回执的话（同一句摆着不再收第二次）。
     toasted: Option<String>,
     /// 上一帧发出去的窗口标题（变了才再发）。
@@ -176,6 +182,17 @@ pub enum TabKey {
     New,
     /// Ctrl+W（macOS ⌘W）＝ 焦点那一栏当前标签的「×」（关的是标签页，不是窗口）。
     Close,
+    /// Ctrl+Tab · Ctrl+Shift+Tab：下一个 / 上一个标签页（绕回）。
+    Next,
+    Prev,
+    /// Ctrl+1…9：第 n 个标签页（从 0 数；多出来的不做事）。
+    Nth(usize),
+    /// F6：焦点换到另一栏（双栏时）。
+    OtherSide,
+    /// Ctrl+B · Ctrl+H · Alt+P：左栏 · 显示隐藏文件 · 预览栏。
+    Sidebar,
+    Hidden,
+    Preview,
 }
 
 /// 这一帧的事件 → 标签页快捷键（按到达顺序，只认按下）。
@@ -192,9 +209,31 @@ pub fn tab_keys(events: &[egui::Event]) -> Vec<TabKey> {
                 pressed: true,
                 modifiers: m,
                 ..
-            } if m.command && !m.shift && !m.alt => match key {
-                egui::Key::T => Some(TabKey::New),
-                egui::Key::W => Some(TabKey::Close),
+            } => match key {
+                egui::Key::T if m.command && !m.shift && !m.alt => Some(TabKey::New),
+                egui::Key::W if m.command && !m.shift && !m.alt => Some(TabKey::Close),
+                egui::Key::Tab if m.command && m.shift => Some(TabKey::Prev),
+                egui::Key::Tab if m.command => Some(TabKey::Next),
+                egui::Key::F6 if !m.any() => Some(TabKey::OtherSide),
+                egui::Key::B if m.command && !m.shift && !m.alt => Some(TabKey::Sidebar),
+                egui::Key::H if m.command && !m.shift && !m.alt => Some(TabKey::Hidden),
+                egui::Key::P if m.alt && !m.command => Some(TabKey::Preview),
+                k if m.command && !m.shift && !m.alt => {
+                    let n = [
+                        egui::Key::Num1,
+                        egui::Key::Num2,
+                        egui::Key::Num3,
+                        egui::Key::Num4,
+                        egui::Key::Num5,
+                        egui::Key::Num6,
+                        egui::Key::Num7,
+                        egui::Key::Num8,
+                        egui::Key::Num9,
+                    ]
+                    .iter()
+                    .position(|x| x == k)?;
+                    Some(TabKey::Nth(n))
+                }
                 _ => None,
             },
             _ => None,
@@ -226,6 +265,9 @@ impl Workspace {
             toasts: Default::default(),
             undo_for: Default::default(),
             undo_tag: 0,
+            peek: None,
+            kb_nav: false,
+            drawer_open: false,
             toasted: None,
             title: None,
             progress,
@@ -569,6 +611,44 @@ impl Workspace {
                 TabKey::Close => {
                     let i = self.active_on(side);
                     self.close_tab(side, i);
+                }
+                TabKey::Next | TabKey::Prev => {
+                    let n = self.sides[side].tabs.len();
+                    let i = self.active_on(side);
+                    let to = if *k == TabKey::Next {
+                        (i + 1) % n
+                    } else {
+                        (i + n - 1) % n
+                    };
+                    self.select_tab(side, to);
+                }
+                TabKey::Nth(n) => {
+                    if *n < self.sides[side].tabs.len() {
+                        self.select_tab(side, *n);
+                    }
+                }
+                TabKey::OtherSide => {
+                    if self.sides.len() == 2 {
+                        self.focus_side(1 - side);
+                    }
+                }
+                TabKey::Sidebar => {
+                    if super::chrome::Tier::of(ctx.content_rect().width())
+                        == super::chrome::Tier::Wide
+                    {
+                        self.sidebar_open = !self.sidebar_open;
+                    } else {
+                        self.drawer_open = !self.drawer_open;
+                    }
+                }
+                TabKey::Hidden => {
+                    let pane = self.pane_on_mut(side);
+                    let on = pane.shows_hidden();
+                    pane.set_show_hidden(!on);
+                }
+                TabKey::Preview => {
+                    let on = self.preview.is_some();
+                    self.set_preview(!on);
                 }
             }
         }
@@ -994,6 +1074,28 @@ impl Workspace {
                 }
             }
         }
+        // ── 空格：「看一眼」浮层（预览栏开着且是宽档 ⇒ 不做事；否则开 / 收）──
+        if std::mem::take(&mut self.pane_on_mut(f).want_peek) {
+            let narrow =
+                super::chrome::Tier::of(ctx.content_rect().width()) != super::chrome::Tier::Wide;
+            if self.preview.is_none() || narrow {
+                self.peek = match self.peek.take() {
+                    Some(_) => None,
+                    None => Some(super::preview::Preview::default()),
+                };
+            }
+        }
+        self.peek_ui(&ctx);
+        // ── 焦点环：键盘走到的那一个画 2px 强调色外环；鼠标点出来的不画 ──
+        ctx.input(|i| {
+            if i.key_pressed(egui::Key::Tab) {
+                self.kb_nav = true;
+            }
+            if i.pointer.any_pressed() {
+                self.kb_nav = false;
+            }
+        });
+        super::kit::focus_ring(&ctx, self.kb_nav);
         // ── 窗口标题跟着焦点那一栏当前的标签页 ──
         let title = super::shell::window_title(
             &Self::tab_title(self.pane_on(f)),
@@ -1038,6 +1140,59 @@ impl Workspace {
             self.toasts.items.iter().map(|t| t.tag).collect();
         self.undo_for.retain(|k, _| live.contains(k));
         self.close_ask_ui(&ctx);
+    }
+
+    /// 「看一眼」浮层（稿 24）：窗口正中一块（浮层底、圆角、最宽 720 · 最高 560，不超过窗口减 48），里面是焦点那一栏光标那一项的预览；
+    /// Esc · 空格 · 点别处收。
+    fn peek_ui(&mut self, ctx: &egui::Context) {
+        if self.peek.is_none() {
+            return;
+        }
+        let f = self.focus;
+        let screen = ctx.content_rect();
+        let size = egui::vec2(
+            (screen.width() - 48.0).clamp(200.0, 720.0),
+            (screen.height() - 48.0).clamp(160.0, 560.0),
+        );
+        let mut act = None;
+        let side = &self.sides[f];
+        let pane = &side.tabs[side.active].pane;
+        let Some(p) = self.peek.as_mut() else {
+            return;
+        };
+        p.follow(pane, Some(ctx.clone()));
+        let area = egui::Area::new(egui::Id::new("filewin-peek"))
+            .order(egui::Order::Foreground)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .fixed_pos(screen.center())
+            .show(ctx, |ui| {
+                egui::Frame::popup(&ctx.global_style())
+                    .corner_radius(12.0)
+                    .inner_margin(egui::Margin::same(12))
+                    .show(ui, |ui| {
+                        ui.set_min_size(size);
+                        ui.set_max_size(size);
+                        act = p.ui(ui);
+                    });
+            });
+        let out = ctx.input(|i| {
+            i.key_pressed(egui::Key::Escape)
+                || (i.pointer.any_pressed()
+                    && i.pointer
+                        .interact_pos()
+                        .is_some_and(|at| !area.response.rect.contains(at)))
+        });
+        if out {
+            self.peek = None;
+        }
+        if let Some(a) = act {
+            let action = match a {
+                super::preview::PreviewAct::Edit => super::select::Action::Edit,
+                super::preview::PreviewAct::Download => super::select::Action::Download,
+            };
+            self.peek = None;
+            self.pane_on_mut(f).perform(action, Some(ctx.clone()));
+        }
     }
 
     /// 一栏 / 两栏并排摆（在主底那一块里）。

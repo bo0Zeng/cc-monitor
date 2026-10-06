@@ -64,7 +64,7 @@ pub(crate) fn local_dest_kept(
     )
 }
 
-/// 本机路径的分隔符里有没有 `\`（Windows 有，别处只有 `/`）。原是 `download.rs::plan_dest` · `lossy_pull.rs::split_local` 里各一处 `cfg!(windows)`。
+/// 本机路径的分隔符里有没有 `\`（Windows 有，别处只有 `/`）。原是下载落点那一段（随系统存盘框删了）· `lossy_pull.rs::split_local` 里各一处 `cfg!(windows)`。
 pub const BACKSLASH_IS_SEP: bool = cfg!(windows);
 
 /// 本机文件名按 Windows 的规矩判（非法字符 · 保留的设备名 · 结尾的点与空格）—— 下载落点的缺省名用它（`download.rs`）。

@@ -1232,6 +1232,8 @@ pub fn show(ui: &mut Ui, pane: Option<&mut Pane>, view_h: f32) {
                         );
                         ui.fonts_mut(|f| f.layout_job(job))
                     };
+                    // 当前行底色那一块先占一个位（画在字下面），控件画完拿光标那一行的位置填上。
+                    let band = ui.painter().add(egui::Shape::Noop);
                     let out = egui::TextEdit::multiline(&mut p.text)
                         .id(id)
                         .desired_rows(VIEW_ROWS)
@@ -1241,6 +1243,22 @@ pub fn show(ui: &mut Ui, pane: Option<&mut Pane>, view_h: f32) {
                         .frame(egui::Frame::NONE)
                         .layouter(&mut no_wrap)
                         .show(ui);
+                    if let Some(r) = out.state.cursor.char_range() {
+                        let at = out
+                            .galley
+                            .pos_from_cursor(r.primary)
+                            .translate(out.galley_pos.to_vec2());
+                        let row =
+                            egui::Rect::from_x_y_ranges(out.response.rect.x_range(), at.y_range());
+                        ui.painter().set(
+                            band,
+                            egui::Shape::rect_filled(
+                                row,
+                                0.0,
+                                super::theme::palette(ui.ctx()).hover,
+                            ),
+                        );
+                    }
                     // 查找 / 替换把光标挪到了视野外 ⇒ 滚过去（打字与方向键由控件自己滚）。
                     if let Some(r) = reveal.then(|| out.state.cursor.char_range()).flatten() {
                         let at = out.galley.pos_from_cursor(r.primary).translate(

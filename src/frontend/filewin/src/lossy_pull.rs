@@ -29,7 +29,7 @@ pub fn local_dest(dest: &str, shown: &str, raw: &[u8]) -> (serde_json::Value, Op
 
 // `local_dest_kept` 的两个平台臂（unix 按字节拼 · 别处用有损形并说一句）住 `platform.rs`。
 
-/// 线上那一形 → 本机路径（给「那儿已经有东西了吗」那一问用；判定本身住 `download::dest_exists_at`）。
+/// 线上那一形 → 本机路径（那儿有没有同名由系统存盘框自己问，这里只换形）。
 pub fn local_path_of(v: &serde_json::Value) -> Option<std::path::PathBuf> {
     let b = super::find::decode_path(v)?;
     Some(crate::platform::path_from_bytes(&b))

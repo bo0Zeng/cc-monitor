@@ -259,9 +259,33 @@ fn every_row_of_the_keymap_has_a_live_cell() {
             vec![egui::Event::Text("ze".into())],
             vec![Intent::Type("ze".into())],
         ),
+        (
+            "Backspace",
+            vec![key(Key::Backspace, NONE)],
+            vec![Intent::Parent],
+        ),
+        // 空格：「看一眼」；跟着来的那个 `Text(" ")` 不进打字跳转。
+        (
+            "空格",
+            vec![key(Key::Space, NONE), egui::Event::Text(" ".into())],
+            vec![Intent::Peek],
+        ),
+        (
+            "Ctrl+Shift+N",
+            vec![key(Key::N, CTRL | SHIFT)],
+            vec![Intent::NewFolder],
+        ),
+        ("Ctrl+D", vec![key(Key::D, CTRL)], vec![Intent::Download]),
+        ("Ctrl+U", vec![key(Key::U, CTRL)], vec![Intent::Upload]),
+        (
+            "Ctrl+Shift+C",
+            vec![key(Key::C, CTRL | SHIFT)],
+            vec![Intent::CopyPath],
+        ),
+        ("Esc", vec![key(Key::Escape, NONE)], vec![Intent::Clear]),
     ];
-    assert_eq!(cells.len(), 9, "键位表九行，这里的格数不等");
-    // 反空真：头注里那张表真有这九行（按键名逐个在源码里找得到）。
+    assert_eq!(cells.len(), 16, "键位表十六行，这里的格数不等");
+    // 反空真：头注里那张表真有这十六行（按键名逐个在源码里找得到）。
     let src = include_str!("../../../src/frontend/filewin/src/select.rs");
     for (k, _, _) in &cells {
         assert!(

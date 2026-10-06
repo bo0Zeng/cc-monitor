@@ -1,8 +1,6 @@
-//! **原生选文件框** —— 「原生选文件框 · 上传今天是问一句本机路径」。
-//!
-//! 上传那一问（`upload.rs`）与下载「存到哪儿」那一问（`download.rs` / `shell.rs::pull_ui`）各加一颗「选择…」：
-//! 点了在 tokio 那条线程上起操作系统自己的选择框（`rfd`：Linux 走 GTK3、Windows 走 IFileDialog、macOS 走 NSOpenPanel），
-//! 选完把路径**填进那个框**，人再点「确定」—— 判定照旧走那个框自己的判定（框与选择框两个入口不分岔、全程可判）。
+//! **系统的选文件框 / 存盘框**（照稿 10-05）：命令栏「上传」直接弹选文件框（可多选）、「下载」直接弹存盘框（建议名按本机平台改合法、
+//! 缺省落在系统的「下载」文件夹、同名由系统框自己问）。在 tokio 那条线程上起操作系统自己的框
+//! （`rfd`：Linux 走 GTK3、Windows 走 IFileDialog、macOS 走 NSOpenPanel），结局由 `shell.rs` 的 `settle_pick_with` 接上。
 //! 设计住 §2.13。
 //!
 //! # 依赖
@@ -54,7 +52,10 @@ impl Picker for NativePicker {
                     .pick_files()
                     .await
                     .map(|v| v.into_iter().map(|h| h.path().to_path_buf()).collect()),
-                PickKind::SaveFile { suggested_name } => rfd::AsyncFileDialog::new()
+                PickKind::SaveFile { suggested_name } => downloads_dir()
+                    .map_or_else(rfd::AsyncFileDialog::new, |d| {
+                        rfd::AsyncFileDialog::new().set_directory(d)
+                    })
                     .set_file_name(suggested_name)
                     .save_file()
                     .await
@@ -65,8 +66,41 @@ impl Picker for NativePicker {
 }
 
 /// 进程里那一份生产选择框。
+/// 系统的「下载」文件夹（存盘框缺省落在这儿）：Linux 读 `user-dirs.dirs` 的 `XDG_DOWNLOAD_DIR`（中文环境是「下载」），
+/// 别的平台 ⇒ 主目录底下的 `Downloads`；不在盘上 ⇒ `None`（由系统框自己定）。
+pub fn downloads_dir() -> Option<PathBuf> {
+    let home = PathBuf::from(super::shell::local_home());
+    let xdg = std::fs::read_to_string(home.join(".config/user-dirs.dirs"))
+        .ok()
+        .and_then(|t| {
+            t.lines()
+                .find_map(|l| l.strip_prefix("XDG_DOWNLOAD_DIR="))
+                .map(|v| {
+                    v.trim_matches('\u{22}')
+                        .replace("$HOME", &home.to_string_lossy())
+                })
+        })
+        .map(PathBuf::from);
+    xdg.into_iter()
+        .chain(std::iter::once(home.join("Downloads")))
+        .find(|d| d.is_dir())
+}
+
+#[cfg(not(test))]
 pub fn native() -> Arc<dyn Picker> {
     Arc::new(NativePicker)
+}
+
+/// 测试构建里的缺省：一律答「没选」（要选到东西的判据自己注入一个）。
+#[cfg(test)]
+pub fn native() -> Arc<dyn Picker> {
+    struct NoDialog;
+    impl Picker for NoDialog {
+        fn pick(&self, _kind: PickKind) -> PickFuture {
+            Box::pin(async { None })
+        }
+    }
+    Arc::new(NoDialog)
 }
 
 /// 选完的结局在 tokio 那条线程上落下、UI 线程下一帧取走（形状照别的看板：敲一下窗口）。
@@ -91,22 +125,6 @@ impl PickBoard {
     pub fn take(&self) -> Option<(Purpose, Option<Vec<PathBuf>>)> {
         self.slot.lock().unwrap().take()
     }
-}
-
-/// 上传那个框：把选到的路径**接在**框里已有的字后面，一行一个（框里已有的不动、重复的不再加）。
-pub fn append_lines(existing: &str, picked: &[PathBuf]) -> String {
-    let mut lines: Vec<String> = existing
-        .lines()
-        .map(str::to_string)
-        .filter(|l| !l.trim().is_empty())
-        .collect();
-    for p in picked {
-        let s = p.to_string_lossy().to_string();
-        if !lines.contains(&s) {
-            lines.push(s);
-        }
-    }
-    lines.join("\n")
 }
 
 #[cfg(test)]

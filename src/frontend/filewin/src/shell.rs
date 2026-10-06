@@ -422,7 +422,6 @@ pub struct FileWindow {
     /// 〔「原生选文件框」〕选择框（生产是操作系统自己的，判据换一个假的）＋ 结局落点 ＋ 下载那一问上「没选到」那句话。
     pub picker: std::sync::Arc<dyn super::picker::Picker>,
     pick_board: super::picker::PickBoard,
-    pick_notice: Option<String>,
     /// 「复制为」那个框。`None` = 没在问名字。**UI 线程自己的**（理由见 [`CopyPrompt`]）。
     copy_prompt: Option<CopyPrompt>,
     /// 「复制到另一台」下拉里的机器（开窗种子带来；新标签页照抄）。
@@ -477,11 +476,10 @@ pub struct FileWindow {
     pub pull: super::download::DownloadBoard,
     /// 「存到哪儿 / 盖掉它吗」那两问。`None` = 没在问。
     /// **UI 线程自己的**（同 [`Self::write_prompt`] 的理由：它是一个正在被编辑的草稿）。
-    pull_ask: Option<super::download::Ask>,
+    /// 系统存盘框开着时要下的那一项：`(远端整条路径, 名字)`（选完落点就起下载；取消 ⇒ 什么都不做）。
+    pull_want: Option<(String, String)>,
     /// 那一问摆着的那一行，若整条路径不是 UTF-8：`(整条路径的字节, 显示名, 名字的字节)`。
     pull_raw: Option<(Vec<u8>, String, Vec<u8>)>,
-    /// 工具栏「上传」那一问（状态与判定全在 `upload.rs`，这里只挂着）。
-    pub upload: super::upload::UploadPrompt,
     /// 🔴编辑那一趟的共享落点（读到货 · 存结局）。
     pub edits: super::editor::EditBoard,
     /// 打开着的那一份文本。`None` = 没在编辑。**UI 线程自己的**。
@@ -511,6 +509,8 @@ pub struct FileWindow {
     pub(super) receipt: Option<String>,
     /// 带［撤销］的回执（改名 · 改权限做完）：那句话 ＋ 撤销要做的那几件。窗口那一级收走，点了撤销交回 [`Self::start_undo`]。
     pub(super) receipt_undo: Option<(String, Vec<WriteOp>)>,
+    /// 列表上按了空格（「看一眼」开 / 收）：窗口那一级每帧收走。
+    pub(super) want_peek: bool,
     /// 这个标签页开过的那几趟里，每一类最近那一趟在表里的号
     /// （换一块新看板时，上一趟改由窗口那一级在落地时重列目录，[`Self::track_job`]）。
     job_ids: Vec<(&'static str, u64)>,
@@ -721,7 +721,6 @@ impl FileWindow {
             edit_raw: None,
             picker: super::picker::native(),
             pick_board: super::picker::PickBoard::default(),
-            pick_notice: None,
             copy_prompt: None,
             machines: Vec::new(),
             cross_prompt: None,
@@ -746,9 +745,8 @@ impl FileWindow {
             inline_select: None,
             seen_write_rounds: 0,
             pull: super::download::DownloadBoard::default(),
-            pull_ask: None,
+            pull_want: None,
             pull_raw: None,
-            upload: super::upload::UploadPrompt::default(),
             edits: super::editor::EditBoard::default(),
             editing: None,
             asking_discard: false,
@@ -764,6 +762,7 @@ impl FileWindow {
             link: Default::default(),
             receipt: None,
             receipt_undo: None,
+            want_peek: false,
             job_ids: Vec::new(),
             props: None,
             status_wanted: false,
@@ -2555,26 +2554,9 @@ impl FileWindow {
     // 🔴往外拖：**两问，然后拉**
     // ═══════════════════════════════════════════════════════════════════
 
-    /// 现在在问什么（`None` = 没在问）。判据与界面看同一个值。
-    pub fn pull_ask(&self) -> Option<&super::download::Ask> {
-        self.pull_ask.as_ref()
-    }
-
-    /// 第一问那个框里正在编辑的那几个字（`None` = 现在问的不是落点）。
-    ///
-    /// 🔴 **它是生产代码，不是测试钩子** —— [`Self::pull_ui`] 要一个 `&mut String`
-    /// 去喂 `text_edit_singleline`，而那个 `&mut` 只能从这儿出来。
-    ///
-    /// ⚠ 一开始我给判据单写了一个 `#[cfg(test)]` 的句柄，**门禁当场拒了**：
-    /// `structural_scan::the_split_stays_done_...` 里那条「`src/frontend/shell/src` 的
-    /// 测试专用支撑项」是一条**递减棘轮**（上限 15，逐字「不许把上限调上去让今天好过」）。
-    /// ⇒ 换成这一个具名访问器之后，**界面与判据走的是同一条路**，而那比一个测试钩子更强：
-    /// 判据改的那几个字，正是用户敲进去的那几个字。
-    pub fn pull_dest_mut(&mut self) -> Option<&mut String> {
-        match self.pull_ask.as_mut() {
-            Some(super::download::Ask::Dest { text, .. }) => Some(text),
-            _ => None,
-        }
+    /// 系统存盘框开着时要下的那一项（判据看同一个值）。
+    pub fn pull_want(&self) -> Option<&(String, String)> {
+        self.pull_want.as_ref()
     }
 
     /// 〔「原生选文件框」〕起一趟原生选择框（在 tokio 那条线程上，不堵 UI 线程）。
@@ -2587,16 +2569,17 @@ impl FileWindow {
         use super::picker::{PickKind, Purpose};
         let kind = match purpose {
             Purpose::Upload => PickKind::OpenFiles,
+            // 建议名按本机平台改成合法的（Windows 不认的字换成 `_`），落在系统的「下载」文件夹。
             Purpose::Download => PickKind::SaveFile {
                 suggested_name: self
-                    .pull_ask
+                    .pull_want
                     .as_ref()
-                    .map(|a| a.src_name().to_string())
+                    .map(|(_, n)| super::download::local_name(n, crate::platform::WINDOWS_NAMES))
                     .unwrap_or_default(),
             },
         };
         let Some(h) = self.rt.clone() else {
-            self.pick_notice = Some(copy_text("rsFilewinPicker.pick.noRuntime", &[]));
+            *self.say_slot() = Some(copy_text("rsFilewinPicker.pick.noRuntime", &[]));
             return false;
         };
         let board = self.pick_board.clone();
@@ -2611,30 +2594,40 @@ impl FileWindow {
 
     /// 选择框的结局落回那一问：上传 ⇒ 路径接进框里；下载 ⇒ 保存位置填进「存到哪儿」。没选到 ⇒ 那一问上说一句、框不动。
     pub fn settle_pick(&mut self) -> bool {
+        self.settle_pick_with(None)
+    }
+
+    /// 选择框的结局：上传 ⇒ 选到的那几份走拖入那一条；下载 ⇒ 起那一趟（覆盖由系统存盘框自己问过了）；没选（取消）⇒ 什么都不做。
+    pub fn settle_pick_with(&mut self, ctx: Option<egui::Context>) -> bool {
         use super::picker::Purpose;
         let Some((purpose, picked)) = self.pick_board.take() else {
             return false;
         };
         match purpose {
-            Purpose::Upload => self.upload.take_picked(picked),
-            Purpose::Download => match picked.and_then(|v| v.into_iter().next()) {
-                Some(p) => {
-                    if let Some(text) = self.pull_dest_mut() {
-                        *text = p.to_string_lossy().to_string();
-                    }
-                    self.pick_notice = None;
+            Purpose::Upload => {
+                let paths: Vec<String> = picked
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect();
+                if !paths.is_empty() {
+                    let items = self.pending_for(&paths);
+                    self.start_drop(items, ctx);
                 }
-                None => self.pick_notice = Some(copy_text("rsFilewinPicker.pick.none", &[])),
-            },
+            }
+            Purpose::Download => {
+                let want = self.pull_want.take();
+                match (want, picked.and_then(|v| v.into_iter().next())) {
+                    (Some((src, _)), Some(dest)) => {
+                        self.start_pull(&src, &dest.to_string_lossy(), true, ctx);
+                    }
+                    _ => self.pull_raw = None,
+                }
+            }
         }
         true
     }
 
-    /// 摆出第一问（「存到哪儿」，缺省填 `<本机 home>/<原名>`）。回值 = 真的摆出来了。
-    ///
-    /// ⚠ **缺省值里那个「本机 home」不是本机文件管理器**（[`local_home`] 头注那条）：
-    /// 往外拖就是往本机盘上写一份，落点当然在本机。要求的是「本地不需要**文件管理器**」。
-    /// 🔴〔2026-09-23 本机侧退役〕开头那道「本机源出声拒」的闸删了 —— 同 [`Self::begin_copy`]。
     pub fn begin_pull(&mut self, i: usize) -> bool {
         let Some(row) = self.listing.rows.lock().unwrap().get(i).cloned() else {
             return false;
@@ -2653,18 +2646,11 @@ impl FileWindow {
         self.pull_raw = full
             .is_lossy()
             .then(|| (full.bytes(), row.name.clone(), name_bytes(&row)));
-        self.pull_ask = Some(super::download::Ask::for_row(&row));
-        true
+        self.pull_want = Some((row.path.clone(), row.name.clone()));
+        self.start_pick(super::picker::Purpose::Download, None)
     }
 
     /// 收掉那个框，什么都不做。
-    pub fn cancel_pull(&mut self) {
-        self.pull_ask = None;
-        self.pull_raw = None;
-        *self.prompt_error.lock().unwrap() = None;
-    }
-
-    /// 框里那一串 → 线上的本机落点（有损名那一行按平台换成原始字节 / 有损形），外加结局旁那一句。
     fn pull_local(&self, dest: &str) -> (serde_json::Value, Option<String>) {
         match &self.pull_raw {
             Some((_, shown, raw)) => super::lossy_pull::local_dest(dest, shown, raw),
@@ -2677,56 +2663,6 @@ impl FileWindow {
     /// 🔴 三支各自的下一跳完全不同（理由住 `download::DestVerdict` 的头注）：
     /// 不合法 ⇒ **框留着 ＋ 出声**（收掉的话「点了确认什么都没发生」与成功同形）；
     /// 要确认 ⇒ 换成第二问；可以做 ⇒ 起那一趟并收掉框。
-    pub fn confirm_pull(&mut self, ctx: Option<egui::Context>) -> bool {
-        use super::download::{Ask, DestVerdict};
-        let Some(ask) = self.pull_ask.clone() else {
-            return false;
-        };
-        match ask {
-            // 第二问答了「盖」⇒ 直接做（存在性已经问过，不再判一遍）。
-            Ask::Overwrite { src_path, dest, .. } => {
-                if !self.start_pull(&src_path, &dest, true, ctx) {
-                    return false;
-                }
-                self.pull_ask = None;
-                *self.prompt_error.lock().unwrap() = None;
-                true
-            }
-            Ask::Dest { .. } => {
-                // 「那儿已经有东西了吗」问的是**真落点**（有损名在 Linux 上是原始字节那一份）。
-                let exists = |d: &str| {
-                    super::lossy_pull::local_path_of(&self.pull_local(d).0)
-                        .is_some_and(|p| super::download::dest_exists_at(&p))
-                };
-                match super::download::judge_dest(&ask, exists) {
-                    DestVerdict::Rejected(why) => {
-                        *self.say_slot() = Some(why);
-                        false
-                    }
-                    DestVerdict::NeedsOverwrite(next) => {
-                        self.pull_ask = Some(next);
-                        *self.prompt_error.lock().unwrap() = None;
-                        true
-                    }
-                    DestVerdict::Go { src_path, dest } => {
-                        if !self.start_pull(&src_path, &dest, false, ctx) {
-                            return false;
-                        }
-                        self.pull_ask = None;
-                        *self.prompt_error.lock().unwrap() = None;
-                        true
-                    }
-                }
-            }
-        }
-    }
-
-    /// 真起一趟 —— 扔给 tokio，**不堵住 UI 线程**。
-    ///
-    /// 🔴 `transfer_id` 经 [`super::transfer::launch_unless_cancelled`] 造
-    /// （那是池子取消登记表的唯一造键落点）⇒ 这一趟从此**取消得掉**，
-    /// 与上传/复制两条路共用同一张在飞表。
-    /// `overwrite` ＝ 人在「盖掉它？」那一问里答了盖（有损名那条路经本机后端提交，覆盖要显式给）。
     pub fn start_pull(
         &mut self,
         src_path: &str,
@@ -2825,8 +2761,7 @@ impl FileWindow {
 
     /// 编辑框里那些字（生产那个 `TextEdit` 要的 `&mut String` 从这儿出来）。
     ///
-    /// ⚠ 同 [`Self::pull_dest_mut`]：**它是生产代码，不是测试钩子**
-    /// （那条递减棘轮的来历逐字住那一处）。
+    /// ⚠ **它是生产代码，不是测试钩子**（编辑面那个 `TextEdit` 拿的就是这一个 `&mut`）。
     pub fn editing_text_mut(&mut self) -> Option<&mut String> {
         self.editing.as_mut().map(|p| &mut p.text)
     }
@@ -3654,107 +3589,6 @@ impl FileWindow {
         Some((parts.join(&sep), over))
     }
 
-    /// 🔴画**往外拖**那一摞：两问（模态）＋ 进度 ＋ 上一趟的结局。
-    ///
-    /// ⚠ 与 [`Self::write_ui`] 同一个结构，但两问的第二问**没有输入框** ——
-    /// 它是一个是非题（「盖掉它？」），给一个框反而让用户以为还能改路径。
-    fn pull_ui(&mut self, ui: &mut egui::Ui) {
-        use super::download::Ask;
-        // 进度、停与结局是「进度」表里的一行（`super::progress`），这里只画那两问。
-        // ── 那两问 ──
-        let Some(ask) = self.pull_ask.clone() else {
-            return;
-        };
-        let (mut go, mut cancel, mut browse) = (false, false, false);
-        let pick_notice = self.pick_notice.clone();
-        let pull_error = self.prompt_error();
-        let pull_rename = match &ask {
-            Ask::Dest { src_name, .. } => super::download::rename_note(src_name),
-            Ask::Overwrite { .. } => None,
-        };
-        let (_, esc) = modal(ui.ctx(), "filewin-pull-prompt", |ui| match ask {
-            Ask::Dest { .. } => {
-                ui.heading(copy_text(
-                    "rsFilewinShell.pull.askWhere",
-                    &[("name", &(ask.src_name()).to_string())],
-                ));
-                let Some(text) = self.pull_dest_mut() else {
-                    return;
-                };
-                go |= prompt_field(ui, text);
-                if let Some(e) = &pull_error {
-                    ui.colored_label(ui.visuals().error_fg_color, e);
-                }
-                if let Some(n) = &pull_rename {
-                    ui.label(n);
-                }
-                ui.label(&copy_text("rsFilewinShell.pull.dirHint", &[]));
-                // 原生选择框：选到的保存位置填进上面那个框，确定照旧走这一问的判定。
-                if ui
-                    .button(&copy_text("rsFilewinPicker.ui.browse", &[]))
-                    .clicked()
-                {
-                    browse = true;
-                }
-                if let Some(n) = &pick_notice {
-                    ui.colored_label(ui.visuals().warn_fg_color, n);
-                }
-                ui.horizontal(|ui| {
-                    if ui
-                        .button(&copy_text("rsFilewinShell.pull.ok", &[]))
-                        .clicked()
-                    {
-                        go = true;
-                    }
-                    if ui
-                        .button(&copy_text("rsFilewinShell.pull.cancel", &[]))
-                        .clicked()
-                    {
-                        cancel = true;
-                    }
-                });
-            }
-            Ask::Overwrite { ref dest, .. } => {
-                ui.heading(&copy_text("rsFilewinShell.pull.exists", &[]));
-                ui.label(format!("{dest}"));
-                // 🔴 说清代价：`download_inner` 是 `.part` → `rename` 上位，
-                //    原处那个文件没有备份、盖了就回不来。
-                ui.colored_label(
-                    ui.visuals().warn_fg_color,
-                    &copy_text("rsFilewinShell.pull.overwriteWarn", &[]),
-                );
-                if let Some(e) = &pull_error {
-                    ui.colored_label(ui.visuals().error_fg_color, e);
-                }
-                ui.horizontal(|ui| {
-                    if ui
-                        .button(&copy_text("rsFilewinShell.pull.overwrite", &[]))
-                        .clicked()
-                    {
-                        go = true;
-                    }
-                    if ui
-                        .button(&copy_text("rsFilewinShell.pull.cancel", &[]))
-                        .clicked()
-                    {
-                        cancel = true;
-                    }
-                });
-            }
-        });
-        if cancel || esc {
-            self.pick_notice = None;
-            self.cancel_pull();
-        } else if go {
-            self.pick_notice = None;
-            let ctx = ui.ctx().clone();
-            self.confirm_pull(Some(ctx));
-        } else if browse {
-            let ctx = ui.ctx().clone();
-            self.start_pick(super::picker::Purpose::Download, Some(ctx));
-        }
-    }
-
     /// 画「叫什么名字 / 改成什么权限」那个框。**模态** —— 定下来之前不接别的。
     ///
     /// ⚠ 与 [`super::writeops::WriteBoard::ui`] 分开两处，因为它们的状态住在两个地方：
@@ -4023,12 +3857,9 @@ impl FileWindow {
         self.menu.as_ref()
     }
 
-    /// 要人填字的那几个框（改名 · 新建 · 改权限 · 复制为 · 复制到另一台 · 存到哪儿 · 新建空文件）有一个摆着吗。
+    /// 要人填字的那几个框（改名 · 新建 · 改权限 · 复制为 · 复制到另一台）有一个摆着吗。
     fn prompt_up(&self) -> bool {
-        self.write_prompt.is_some()
-            || self.copy_prompt.is_some()
-            || self.cross_prompt.is_some()
-            || self.pull_ask.is_some()
+        self.write_prompt.is_some() || self.copy_prompt.is_some() || self.cross_prompt.is_some()
     }
 
     /// 做不成的那一下说的话落在哪：有框摆着 ⇒ 框里（[`Self::prompt_error`]）；否则 ⇒ 列表上方那一行。
@@ -4072,9 +3903,7 @@ impl FileWindow {
             || self.copy_prompt.is_some()
             || self.write_board.is_asking()
             || self.write_prompt.is_some()
-            || self.pull_ask.is_some()
-            // 工具栏「上传」那一问（框开着时键盘不许动列表）。
-            || self.upload.is_open()
+
             || self.props.is_some()
     }
 
@@ -4144,6 +3973,34 @@ impl FileWindow {
             Intent::Open => self.open_picked(ctx),
             Intent::Delete => self.perform(Action::Delete, ctx),
             Intent::Rename => self.perform(Action::Rename, ctx),
+            Intent::Peek => {
+                self.want_peek = true;
+                true
+            }
+            Intent::NewFolder => self.begin_mkdir(),
+            Intent::Download => self.perform(Action::Download, ctx),
+            Intent::Upload => self.start_pick(super::picker::Purpose::Upload, ctx),
+            Intent::CopyPath => {
+                let paths: Vec<String> = self
+                    .picked_rows()
+                    .into_iter()
+                    .map(|r| r.path.clone())
+                    .collect();
+                if paths.is_empty() {
+                    self.key_notice = Some(copy_text("rsFilewinSelect.refusal.none", &[]));
+                    return false;
+                }
+                if let Some(c) = &ctx {
+                    c.copy_text(paths.join("\n"));
+                }
+                self.receipt = Some(copy_text("rsFilewinShell.receipt.pathCopied", &[]));
+                true
+            }
+            Intent::Clear => {
+                let had = !self.selection.is_empty();
+                self.selection.clear();
+                had
+            }
             Intent::Type(t) => {
                 let prefix = self.type_ahead.feed(now, &t).to_string();
                 let hit = {
@@ -4485,7 +4342,10 @@ impl FileWindow {
         if self.edit_tab || self.editing.is_some() || self.edits.opening().is_some() {
             self.settle_opened_edits();
             self.settle_saved_edits();
-            self.pull_ui(ui);
+            {
+                let ctx = ui.ctx().clone();
+                self.settle_pick_with(Some(ctx));
+            }
             self.edit_page(ui);
             return;
         }
@@ -4498,6 +4358,19 @@ impl FileWindow {
         {
             let ctx = ui.ctx().clone();
             self.apply_keys(&ctx);
+        }
+        // 从桌面拖着文件经过 ⇒ 列表区一层虚线框「松开上传 → 目录（n 个文件）」（稿 20）；松手那一下由 `take_drops` 接。
+        let hovering = ui.input(|i| i.raw.hovered_files.len());
+        if hovering > 0 && self.focused && !self.modal_up() {
+            let dir = super::source::remote_basename(&self.cwd).to_string();
+            super::kit::drop_zone(
+                ui.ctx(),
+                ui.available_rect_before_wrap(),
+                &copy_text(
+                    "rsFilewinShell.drop.release",
+                    &[("dir", &dir), ("n", &hovering.to_string())],
+                ),
+            );
         }
         // 一次性的那几句（键位做不成的原因 · 跳到隐藏文件 · …）不画在这里：由窗口那一级收成右下角的回执（`Workspace::frame`）。
         // 开终端那一下说的话 —— 摆着不走（到你换台机器 / 换个系统为止都成立的状态）⇒ 一条警告条。
@@ -4620,20 +4493,11 @@ impl FileWindow {
         //    同样模态、同样画在列表之前。
         self.write_board.ui(ui);
         self.write_ui(ui);
-        // 🔴往外拖那两问。同样模态、同样在前。
-        self.pull_ui(ui);
-        // 「上传」那一问：确定之后走拖入那一条（先一次问完覆盖，再并行传）。
-        let up_dir = self.cwd.clone();
-        if let Some(items) = self.upload.ui(ui, &up_dir) {
+        // 系统选文件框 / 存盘框选完了 ⇒ 上传走拖入那一条（先一次问完同名，再并行传）· 下载起那一趟。
+        {
             let ctx = ui.ctx().clone();
-            self.start_drop(items, Some(ctx));
+            self.settle_pick_with(Some(ctx));
         }
-        // 上传那一问上点了「选择…」⇒ 起原生选择框；选完的结局下一帧由 `settle_pick` 填回去。
-        if self.upload.take_browse() {
-            let ctx = ui.ctx().clone();
-            self.start_pick(super::picker::Purpose::Upload, Some(ctx));
-        }
-        self.settle_pick();
         // 🔴编辑那一摞：**先消化到货，再画** ——
         //    反了的话这一帧画的是上一帧的状态（读完了却还显示「正在读」）。
         self.settle_opened_edits();

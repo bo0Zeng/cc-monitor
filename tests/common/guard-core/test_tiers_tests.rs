@@ -154,6 +154,8 @@ const UNIT: &[&str] = &[
     "tests/frontend/filewin/extract_tests.rs", // 解压到这里（窗口那一侧，合成后端）
     "tests/frontend/filewin/workspace_tests.rs",
     "tests/frontend/filewin/writeops_tests.rs",
+    // 下载：「存到哪儿」那一套（碰盘判存在 · 读源码钉唯一住址）随系统存盘框删了，剩下的全是纯逻辑 ⇒ SCAN → UNIT。
+    "tests/frontend/filewin/download_tests.rs",
     "tests/frontend/shell/lib_batch_tests.rs",
     "tests/frontend/shell/lib_nudge_skip_tests.rs",
     "tests/frontend/shell/lib_remote_config_tests.rs",
@@ -423,7 +425,6 @@ const SCAN: &[&str] = &[
     "tests/frontend/filewin/guard_support_tests.rs", // 窗口包的判据住址反空真
     "tests/frontend/shell/filewin/boundary_tests.rs",
     "tests/frontend/filewin/copy_tests.rs",
-    "tests/frontend/filewin/download_tests.rs",
     "tests/frontend/shell/filewin/entry_tests.rs", // INTEGRATION → SCAN：落盘那条（书签旧键搬家）退役删了
     "tests/frontend/filewin/find_tests.rs",
     "tests/frontend/filewin/grep_tests.rs", // 按内容搜：真通道上的合成后端 ＋ 跨半边金样

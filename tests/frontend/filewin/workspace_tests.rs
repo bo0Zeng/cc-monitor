@@ -1204,6 +1204,10 @@ async fn screenshot_for_the_shots_tool() {
         w.perform(crate::select::Action::Delete, None);
     }
     let open_unreadable = scene == "unreadable";
+    let shot_w: f32 = std::env::var("CCM_SHOTS_FILEWIN_W")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1280.0);
     let scene_name = scene.clone();
     let theme = crate::theme::testing::default_theme();
     let preview = scene == "main";
@@ -1290,6 +1294,29 @@ async fn screenshot_for_the_shots_tool() {
                     }
                 }
                 // 复制到另一台：选择器读出那台主目录之后选中 inbox。
+                // 第 4 批那几张：拖着两个文件经过 · 窄档抽屉开着 · 空格「看一眼」· 键盘走到搜索框。
+                if self.scene == "drag-in" && self.n >= 10 {
+                    ui.ctx().input_mut(|i| {
+                        for n in ["release-4.tar.gz", "notes-2.txt"] {
+                            i.raw.hovered_files.push(egui::HoveredFile {
+                                path: Some(n.into()),
+                                ..Default::default()
+                            });
+                        }
+                    });
+                }
+                if self.n == 8 && self.scene == "narrow-drawer" {
+                    self.ws.drawer_open = true;
+                }
+                if self.n == 8 && self.scene == "peek" {
+                    self.ws.pane_on_mut(0).want_peek = true;
+                }
+                if self.n >= 8 && self.scene == "focus" {
+                    self.ws.kb_nav = true;
+                    ui.ctx().memory_mut(|m| {
+                        m.request_focus(egui::Id::new(crate::shell::SEARCH_BOX_ID))
+                    });
+                }
                 if self.n == 20 && self.scene == "cross-copy" {
                     self.ws.pane_on_mut(0).cross_pick.pick("inbox");
                 }
@@ -1333,7 +1360,7 @@ async fn screenshot_for_the_shots_tool() {
         let opts = eframe::NativeOptions {
             event_loop_builder: Some(Box::new(crate::platform::any_thread_hook)),
             viewport: egui::ViewportBuilder::default()
-                .with_inner_size([1280.0, 800.0])
+                .with_inner_size([shot_w, 800.0])
                 .with_title("filewin-shot"),
             ..Default::default()
         };
@@ -1817,4 +1844,77 @@ fn offline_greys_exactly_what_needs_the_machine() {
             if greyed { "" } else { "不" }
         );
     }
+}
+
+/// 标签页那一组键（甲5 键盘表）：Ctrl+Tab / Ctrl+Shift+Tab 绕着走 · Ctrl+n 第 n 个 · F6 换栏 · Ctrl+B 左栏 · Ctrl+H 隐藏文件 · Alt+P 预览。
+#[test]
+fn the_tab_and_view_keys_do_what_the_key_table_says() {
+    use egui::{Key, Modifiers as M};
+    let k = |key, m| egui::Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: m,
+    };
+    assert_eq!(
+        tab_keys(&[
+            k(Key::Tab, M::COMMAND),
+            k(Key::Tab, M::COMMAND | M::SHIFT),
+            k(Key::Num3, M::COMMAND),
+            k(Key::F6, M::NONE),
+            k(Key::B, M::COMMAND),
+            k(Key::H, M::COMMAND),
+            k(Key::P, M::ALT),
+        ]),
+        vec![
+            TabKey::Next,
+            TabKey::Prev,
+            TabKey::Nth(2),
+            TabKey::OtherSide,
+            TabKey::Sidebar,
+            TabKey::Hidden,
+            TabKey::Preview,
+        ]
+    );
+    let mut ws = Workspace::new(pane("/l", &["a"]));
+    assert!(ws.add_side(pane("/r", &["b"])));
+    ws.open_tab(0);
+    ws.focus_side(0);
+    let ctx = egui::Context::default();
+    let run = |ws: &mut Workspace, ev: egui::Event| {
+        let input = egui::RawInput {
+            events: vec![ev],
+            ..Default::default()
+        };
+        ctx.run_ui(input, |ui| {
+            ws.apply_tab_keys(ui.ctx());
+        })
+        .drop_without_applying_deltas();
+    };
+    run(&mut ws, k(Key::Tab, M::COMMAND));
+    assert_eq!(ws.active_on(0), 0, "最后一个之后绕回第一个");
+    run(&mut ws, k(Key::Num2, M::COMMAND));
+    assert_eq!(ws.active_on(0), 1);
+    run(&mut ws, k(Key::F6, M::NONE));
+    assert_eq!(ws.focus, 1, "F6 没换到另一栏");
+    run(&mut ws, k(Key::P, M::ALT));
+    assert!(ws.preview.is_some(), "Alt+P 没开预览");
+}
+
+/// 空格（列表上）⇒ 窗口那一级开「看一眼」浮层；再按收起。预览栏开着且是宽档 ⇒ 不做事。
+#[test]
+fn space_toggles_the_peek_overlay_unless_the_preview_is_open() {
+    let mut ws = Workspace::new(pane("/srv/data", &["a.txt"]));
+    let screen = egui::vec2(1280.0, 800.0);
+    ws.pane_on_mut(0).want_peek = true;
+    let _ = frames_at(&mut ws, screen, 1);
+    assert!(ws.peek.is_some(), "空格没开「看一眼」");
+    ws.pane_on_mut(0).want_peek = true;
+    let _ = frames_at(&mut ws, screen, 1);
+    assert!(ws.peek.is_none(), "再按空格没收起");
+    ws.set_preview(true);
+    ws.pane_on_mut(0).want_peek = true;
+    let _ = frames_at(&mut ws, screen, 1);
+    assert!(ws.peek.is_none(), "预览栏开着（宽档）空格却开了浮层");
 }

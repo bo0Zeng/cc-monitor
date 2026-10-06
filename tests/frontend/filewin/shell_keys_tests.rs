@@ -515,7 +515,7 @@ fn perform_refuses_what_the_table_refuses_and_says_so() {
                 "{pick:?} 上 {a:?} 做不了却没出声"
             );
             assert!(
-                w.write_prompt().is_none() && w.copy_prompt().is_none() && w.pull_ask().is_none()
+                w.write_prompt().is_none() && w.copy_prompt().is_none() && w.pull_want().is_none()
             );
             assert_eq!(w.cwd, "/srv/data");
         }
@@ -778,8 +778,8 @@ fn every_menu_item_lands_on_the_row_it_was_opened_for() {
             Some(p) if p.src_name == "f.txt" => Ok(()),
             other => Err(format!("{other:?}")),
         }),
-        ("下载", |w| match w.pull_ask() {
-            Some(a) if a.src_name() == "f.txt" => Ok(()),
+        ("下载", |w| match w.pull_want() {
+            Some((_, n)) if n == "f.txt" => Ok(()),
             other => Err(format!("{other:?}")),
         }),
         ("改名", |w| match w.write_prompt() {

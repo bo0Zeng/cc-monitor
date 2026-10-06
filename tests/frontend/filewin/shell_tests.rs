@@ -1642,17 +1642,13 @@ async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
 // 🔴往外拖 —— 菜单上「下载」到窗口那两问
 // ════════════════════════════════════════════════════════════════════════
 
-/// 🔴🔴 **整条链一趟走完**：右键那一行、真点菜单上「下载」→ 第一问摆出来了。
+/// 🔴🔴 **整条链一趟走完**：右键那一行、真点菜单上「下载」→ 系统存盘框被要起来（记下要下的是哪一项）。
 ///
-/// # 它与 `download_tests` 那 11 条各买什么（别读重）
-///
-/// 那 11 条判的是 `download.rs` 里的**纯逻辑**（落点怎么算、三支裁决、那一格状态）。
-/// 本条判的是**它们真的被接上了**：`frame_body` → `show_file_rows` →
-/// `RenderTally::menu_clicked` → `apply_menu_click` → 菜单 → `perform` → `begin_pull`，一跳不跳。
-/// 本仓那条「判据不在执行链上就等于不存在」在本会话里已经抓到过两次同一形。
+/// 判的是**接上了**：`frame_body` → `show_file_rows` → `RenderTally::menu_clicked` → `apply_menu_click` → 菜单
+/// → `perform` → `begin_pull` → `start_pick`，一跳不跳（测试构建里缺省的选择框答「没选」⇒ 什么都不起）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_real_click_on_download_opens_the_destination_question() {
-    use crate::download::{Ask, DOWNLOAD_LABEL};
+async fn a_real_click_on_download_asks_the_system_save_box() {
+    use crate::download::DOWNLOAD_LABEL;
     let mut w = FileWindow::seeded(
         Source::remote(synth_cfg("pull-e2e")),
         "/srv/data".to_string(),
@@ -1665,84 +1661,17 @@ async fn a_real_click_on_download_opens_the_destination_question() {
             lossy_name: false,
         }],
     );
-    assert!(w.pull_ask().is_none(), "什么都没点就摆出了框");
+    assert!(w.pull_want().is_none(), "什么都没点就要了存盘框");
     let ctx = egui::Context::default();
-
-    // 第一帧：建字体图集 ＋ 让上一帧的 widget 表有内容（命中测试按上一帧做）。
     menu_pick(&ctx, &mut w, "报表.csv", DOWNLOAD_LABEL.as_str());
-
-    match w.pull_ask() {
-        Some(Ask::Dest {
-            src_path,
-            src_name,
-            text,
-            ..
-        }) => {
-            assert_eq!(src_path, "/srv/data/报表.csv", "问的不是被点那一行");
-            assert_eq!(src_name, "报表.csv");
-            assert!(
-                text.ends_with(&format!("{}报表.csv", std::path::MAIN_SEPARATOR)),
-                "缺省落点没带上原名：{text}"
-            );
-        }
-        other => panic!("真点了「下载」，第一问却没摆出来：{other:?}"),
-    }
-    // 🔴 **一个字节都没动**：还在问，传输一趟都没起。
-    assert_eq!(w.pull.rounds(), 0, "还在问，传输就起来了");
-    assert!(w.pull.in_flight().is_none());
-}
-
-/// 落点已经有东西 ⇒ 窗口**换到第二问**，而不是直接起传输。
-///
-/// ⚠ 本条走 `confirm_pull` 那条真路（它内部调的是生产那个 `dest_exists`，
-/// 真碰盘）⇒ 夹具在临时目录里摆一个**真文件**。
-/// 那是刻意的：注入式的那一半已经由 `download_tests` 判过，
-/// 本条要的正是「生产那条路真的会去看盘」。
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn confirming_onto_an_existing_file_switches_to_the_overwrite_question() {
-    use crate::download::Ask;
-    let (root, _) = synth_tree("pull-ow");
-    let occupied = root.join("f.txt"); // `synth_tree` 造的时候就写了内容
-    assert!(
-        occupied.exists(),
-        "夹具没造出那个文件 —— 本条此刻在量别的东西"
+    assert_eq!(
+        w.pull_want().cloned(),
+        Some(("/srv/data/报表.csv".to_string(), "报表.csv".to_string())),
+        "真点了「下载」，存盘框要下的不是被点那一行"
     );
-
-    let mut w = FileWindow::seeded(
-        Source::remote(synth_cfg("pull-ow")),
-        "/srv/data".to_string(),
-        tokio::runtime::Handle::try_current().ok(),
-        vec![Row {
-            name: "f.txt".into(),
-            path: "/srv/data/f.txt".into(),
-            is_dir: false,
-            size: 3,
-            lossy_name: false,
-        }],
-    );
-    assert!(w.begin_pull(0), "第一问没摆出来");
-    // 把落点改成那个**真的存在**的路径。
-    // 🔴 走的是生产那个访问器（`pull_dest_mut`）—— 界面上 `text_edit_singleline`
-    //    拿的是同一个 `&mut`，所以本条改的那几个字正是用户敲进去的那几个字。
-    *w.pull_dest_mut().expect("现在问的不是落点") = occupied.to_string_lossy().to_string();
-
-    assert!(w.confirm_pull(None), "答完第一问却什么都没推进");
-    match w.pull_ask() {
-        Some(Ask::Overwrite { dest, src_name, .. }) => {
-            assert_eq!(dest, &occupied.to_string_lossy().to_string());
-            assert_eq!(src_name, "f.txt");
-        }
-        other => panic!("落点上有东西，却没换到第二问：{other:?}"),
-    }
-    // 🔴 **还没动手**：第二问摆着，传输一趟都没起。
-    assert_eq!(w.pull.rounds(), 0, "还在问要不要盖，就已经开始拉了");
+    // 🔴 **一个字节都没动**：存盘框还没答，传输一趟都没起。
+    assert_eq!(w.pull.rounds(), 0, "还在选落点，传输就起来了");
     assert!(w.pull.in_flight().is_none());
-
-    // 取消 ⇒ 框收掉，**仍然一趟都没起**（「取消」不许等于「做」）。
-    w.cancel_pull();
-    assert!(w.pull_ask().is_none());
-    assert_eq!(w.pull.rounds(), 0);
-    let _ = std::fs::remove_dir_all(&root);
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -3130,15 +3059,12 @@ async fn a_second_trip_of_the_same_kind_runs_beside_the_first_and_leaves_its_can
         .filter(|j| matches!(j.trip, crate::progress::Trip::Upload { .. }))
         .count();
     assert_eq!(ups, 2, "两摞上传不是「进度」表里的两行");
-    // 下载：一趟在下 ⇒ 菜单 / 键盘再要下载照样摆那一问。
+    // 下载：一趟在下 ⇒ 菜单 / 键盘再要下载照样起存盘框（这扇窗没有运行时 ⇒ 框起不来、说一句，但要下的那一项记下了）。
     let mut w = remote_window_with_rows("/srv/data", vec![file_row("a.bin")]);
     w.pull.begin("big.iso");
     pick_row(&mut w, 0);
-    assert!(w.perform(crate::select::Action::Download, None));
-    assert!(
-        w.pull_ask().is_some(),
-        "在下的时候再要下载，没摆「存到哪儿」"
-    );
+    w.perform(crate::select::Action::Download, None);
+    assert!(w.pull_want().is_some(), "在下的时候再要下载，没起存盘框");
 }
 
 /// 「进度」表上在下的那一行有「停」：点了 ⇒ 这一趟的取消台按下（订阅停掉，`.part` 留着续传）；
