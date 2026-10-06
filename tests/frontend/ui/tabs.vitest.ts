@@ -2254,6 +2254,18 @@ describe("过程里在等你批准的那一步（后端 needs.call）", () => {
   });
 });
 
+describe("agent 来话的事件条：标签按运行表查（流视图把运行表交给渲染）", () => {
+  it("★ 运行表里有那个运行 ⇒ 事件条用表里的标签，不用来话自带的名字", () => {
+    const tm = makeTM();
+    tm.ensureTab("l3", "/w", "p", LOCAL_ORIGIN);
+    tm.switchTo("l3");
+    tm.onSessionRuns({ session_id: "l3", runs: [{ run: "a7", label: "审面板交互" }], ended: [] } as never);
+    const label = (tm as unknown as { view: { host: { runLabelOf(sid: string, run: string): string | undefined } } }).view.host.runLabelOf;
+    expect(label("l3", "a7")).toBe("审面板交互");
+    expect(label("l3", "zz"), "表里没有 ⇒ 不给，用来话自带的").toBeUndefined();
+  });
+});
+
 describe("新出现的一行淡入（起步那一批不算）", () => {
   it("第一批画出去之前建的行不带淡入；之后再长出来的带；动画放完就摘", () => {
     const tm = makeTM();

@@ -162,6 +162,10 @@ export class TabManager {
       applyAiTitle: (tab, aiTitle) => this.applyAiTitle(tab, aiTitle),
       userActive: (sid) => this.userActive(sid),
       startForkedSession: (tab, res) => this.startForkedSession(tab, res),
+      runLabelOf: (sid, run) => {
+        const r = this.live.board.of(sid).find((x) => x.run === run);
+        return r ? runLabel(r) : undefined;
+      },
     });
   }
 
