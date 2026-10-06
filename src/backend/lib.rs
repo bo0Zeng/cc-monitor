@@ -782,7 +782,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p7v-history-list：新命令 history-list（每行事实 ＋ can ＋ 分组 ＋ 后端搜索筛选）；内容搜索多 report 命中；主窗口第 3a 批。
 ///
 /// p7w-turn-rail：history-turns 的回复头跳过代码块围栏行；主窗口轮次刻度。
-pub const BUILD_ID: &str = "p7w-turn-rail";
+///
+/// p7x-paste-fold：userText.pasted 多 bodyStart · bodyEnd · lines；history-turns 的回复头只取正文行。
+pub const BUILD_ID: &str = "p7x-paste-fold";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
