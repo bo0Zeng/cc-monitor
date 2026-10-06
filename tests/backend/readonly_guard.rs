@@ -292,6 +292,7 @@ mod tests {
             "agent_locality_guard",
             "守卫：codex 的格式知识只许住 agents/codex/",
         ),
+        ("build_features", "守卫：判据构建与发布构建的 serde_json 特性集相同"),
         ("build_id_guard", "守卫：加了子命令必须 bump BUILD_ID"),
         (
             "capability_ledger_guard",
