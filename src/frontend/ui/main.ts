@@ -40,6 +40,7 @@ import { UsageHud } from "./usage-hud";
 import { recordFileWiring } from "./record-file-notice";
 import { toast, undoLatest } from "./kit/toast";
 import { KeysOverview } from "./views/keys-overview";
+import { StatusMessages } from "./status-messages";
 import { restoreZoom, stepZoom } from "./zoom";
 import { mountTabBarFold, tabBarManuallyFolded, toggleTabBarFold } from "./tab-bar-fold";
 import { attachTooltip } from "./kit/tooltip";
@@ -153,8 +154,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   //   那个值搬到了后端所在那台机器上，由后端在决定那一刻现读 ⇒
   //   **没有东西要推了**，这一步整条删掉（留着就是第二个源头）。
 
-  // 状态栏：左边空着 · 这个会话的几枚（任务 · agent · 上下文 · 账号）· 竖线 · 命令。没内容的那枚不渲染。
+  // 状态栏：消息 · 空 · 这个会话的几枚（任务 · agent · 上下文 · 账号）· 竖线 · 命令。没内容的那枚不渲染。
   status.innerHTML = "";
+  // 最左「消息」：本次运行里最近 20 条提示（toast 收进来的那几条也在这里找得回）。
+  status.appendChild(new StatusMessages().el);
   const statusSpacer = document.createElement("span");
   statusSpacer.className = "status-sp";
   status.appendChild(statusSpacer);
@@ -292,6 +295,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   };
   const openAcctPanel = (sid: string, origin: string): void => toggleAccountPanel(sid, origin, panelHost);
   tabs.onOpenAccountPanel = openAcctPanel;
+  tabs.onViewTerminal = () => mainDrawer.dock.show("terminal");
   const accountChipDeps = {
     openSettings: () => void openSettingsWindow(),
     togglePanel: openAcctPanel,

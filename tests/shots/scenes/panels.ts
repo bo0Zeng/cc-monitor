@@ -130,11 +130,11 @@ export const PANEL_SCENES: Scene[] = [
     await waitFor(".fork-ask");
     await sleep(700);
   }, forkAskWorld),
-  panel("panel-kill-confirm", "杀死会话前的确认", "tab 右键「杀死会话」：确认框", async () => {
+  panel("panel-kill-confirm", "结束会话前的确认", "tab 右键「结束会话…」：标题点名会话，中断 / 保留逐项写，tmux 会话名在正文里，焦点在「取消」", async () => {
     await mainReady(ALL_TABS);
     await rightClick("#tab-bar .tab");
     await sleep(800);
-    await click(await byText("[role^=menuitem]", "杀死会话"));
+    await click(await byText("[role^=menuitem]", "结束会话…"));
     await waitFor("[aria-modal='true']");
     await sleep(400);
   }),
@@ -153,7 +153,7 @@ export const PANEL_SCENES: Scene[] = [
     await sleep(900);
   }, unseenPinnedWorld),
   {
-    ...panel("panel-batch-kill-short", "批量杀会话的确认框 · 矮窗口", "全选之后右键「杀死会话」，窗口只有 220 高：清单在框里滚、按钮够得着，焦点在「取消」", async () => {
+    ...panel("panel-batch-kill-short", "批量结束的确认框 · 矮窗口", "全选之后右键「结束会话（n）」，窗口只有 220 高：清单在框里滚、按钮够得着，焦点在「取消」", async () => {
       await mainReady(ALL_TABS);
       const tabs = [...document.querySelectorAll<HTMLElement>("#tab-bar .tab")];
       for (const t of tabs) {
@@ -163,7 +163,7 @@ export const PANEL_SCENES: Scene[] = [
       }
       await rightClick(tabs[0]);
       await sleep(600);
-      await click(await byText("[role^=menuitem]", "杀死会话"));
+      await click(await byText("[role^=menuitem]", "结束会话（"));
       await waitFor("[aria-modal='true']");
       await sleep(400);
     }),
@@ -394,6 +394,32 @@ export const PANEL_SCENES: Scene[] = [
     await key("j");
     await sleep(700);
   }, behaviorKeyWorld),
+  panel("panel-messages", "状态栏「消息」", "关掉一个已结束的标签页、按快捷键翻一下自动跟随，再点状态栏最左「消息」：最近的提示（时刻 · 图标 · 一句 · 还能做的动作）", async () => {
+    await mainReady(ALL_TABS);
+    await openTab(2);
+    (document.activeElement as HTMLElement | null)?.blur();
+    await key("w");
+    await sleep(300);
+    await key("j");
+    await sleep(300);
+    await click("[data-role=status-messages]");
+    await waitFor("[data-role=messages-list]");
+    await sleep(400);
+  }, behaviorKeyWorld),
+  panel("panel-batch-kill", "批量结束 · 确认框", "全选之后右键「结束会话（n）」：中断 / 保留逐项写，清单前 8 个 ＋ 另外几个，清单下一行已结束的跳过", async () => {
+    await mainReady(ALL_TABS);
+    const tabs = [...document.querySelectorAll<HTMLElement>("#tab-bar .tab")];
+    for (const t of tabs) {
+      const r = t.getBoundingClientRect();
+      t.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true, clientX: r.left + 10, clientY: r.top + 5 }));
+      await sleep(60);
+    }
+    await rightClick(tabs[0]);
+    await sleep(600);
+    await click(await byText("[role^=menuitem]", "结束会话（"));
+    await waitFor("[aria-modal='true']");
+    await sleep(400);
+  }),
   panel("panel-first-run", "首次打开", "第一次开：命令面板入口高亮、tab 栏默认宽度", async () => {
     await mainReady(ALL_TABS);
   }),

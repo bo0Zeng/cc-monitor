@@ -9,6 +9,7 @@ declare const classes: {
   readonly menuLabel: string;
   readonly menuLead: string;
   readonly menuNote: string;
+  readonly menuWhy: string;
   readonly menuWrap: string;
 };
 export default classes;

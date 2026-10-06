@@ -81,6 +81,17 @@
     -webkit-line-clamp: 2;
   }
 
+  /* 灰着的那一项第二行：为什么（12px，不是等宽）。 */
+  .menuWhy {
+    flex: 1 0 100%;
+    overflow: hidden;
+    padding-left: calc(var(--icon-size) + var(--space-4));
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
   .menuItem:disabled {
     opacity: var(--state-disabled-opacity);
     cursor: default;

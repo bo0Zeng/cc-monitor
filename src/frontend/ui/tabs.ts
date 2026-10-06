@@ -28,7 +28,7 @@ import { detectAccountMismatch, type SessionAccount } from "./accounts";
 import type { BehaviorConfig } from "./behavior";
 import { toast, undoToast } from "./kit/toast";
 import { copyText } from "./copy-table";
-import { needsOf, needsWord } from "./session-face";
+import { fullTitle, needsOf, needsWord } from "./session-face";
 import { SeqSet, TailWindow } from "./live-window";
 import type { AgentsPanel } from "./agents-panel";
 import { turnEndNotifier } from "./turn-notify";
@@ -197,8 +197,25 @@ export class TabManager {
     return this.prefs.loadOrder();
   }
   /** 右键菜单那一项：翻转固定。 */
+  /** 固定 / 取消固定。取消固定撤得回 ⇒ 不确认：直接做 ＋ 8 秒撤销。 */
   togglePin(sid: string): void {
+    const t = this.store.tabs.get(sid);
+    const wasPinned = t?.pinned === true;
     this.prefs.togglePin(sid);
+    if (t && wasPinned) undoToast(copyText("tabBar.unpinned.toast", { title: fullTitle(t) }), () => this.prefs.togglePin(sid), () => {});
+  }
+
+  /** 移出分组：撤得回 ⇒ 不确认：直接做 ＋ 8 秒撤销（组随最后一个人走没了也建得回来）。 */
+  private leaveGroupUndoable(sid: string): void {
+    const col = this.prefs.groupOf(sid);
+    void this.prefs.leaveGroup(sid);
+    this.refreshTabBar();
+    if (!col) return;
+    const before = { ...col };
+    undoToast(copyText("tabBar.group.left", { name: col.name }), () => {
+      void this.prefs.restoreGroup(before, [sid]);
+      this.refreshTabBar();
+    }, () => {});
   }
 
   /**
@@ -253,13 +270,16 @@ export class TabManager {
         this.refreshTabBar();
         return why;
       },
-      leaveGroup: (sid) => {
-        void this.prefs.leaveGroup(sid);
-        this.refreshTabBar();
-      },
+      leaveGroup: (sid) => this.leaveGroupUndoable(sid),
       pinnedLoaded: () => this.prefs.pinnedLoaded,
       togglePin: (sid) => this.togglePin(sid),
       close: (sid) => this.closeTab(sid),
+      openCwd: (sid) => void this.openTabCwd(sid),
+      front: (sid) => this.frontFor(sid),
+      viewTerminal: (sid) => {
+        this.switchTo(sid);
+        this.onViewTerminal?.();
+      },
     },
     this.actions,
   );
@@ -991,6 +1011,8 @@ export class TabManager {
 
   /** 右键「账号…」开哪个面板（主窗口接；独立窗口不接 ⇒ 那一项照样在，点了不动）。 */
   onOpenAccountPanel: ((sid: string, origin: Origin) => void) | null = null;
+  /** 菜单「看它的终端」：切到那个标签页之后开底部抽屉的终端页（抽屉归主窗口入口）。 */
+  onViewTerminal: (() => void) | null = null;
 
   /** 这个会话在哪台（没有这个 tab ⇒ `null`）。 */
   originOf(sessionId: string): Origin | null {
@@ -1329,8 +1351,8 @@ export class TabManager {
     tab.inputsEl.classList.remove("active");
     this.pendingCloses.set(sid, { tab, index });
     const headline = tab.pinned
-      ? copyText("tabBar.close.doneUnpinned", { title: tab.title })
-      : copyText("tabBar.close.done", { title: tab.title });
+      ? copyText("tabBar.close.doneUnpinned", { title: fullTitle(tab) })
+      : copyText("tabBar.close.done", { title: fullTitle(tab) });
     undoToast(headline, () => this.undoClose(sid), () => this.settleClose(sid));
   }
 

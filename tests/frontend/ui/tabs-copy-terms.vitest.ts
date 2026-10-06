@@ -107,8 +107,8 @@ describe("〔U2〕tab 层的界面文字：拉前 / @ccm_sid / ccm 助手 /〔S4
     expect(all.length, "一个字面量都没抽到 —— 抽取器坏了").toBeGreaterThan(200);
     expect(all).toContain("切到终端窗口失败");
     expect(all.filter((s) => s === "切到终端窗口超时").length, "两处拉前超时的新正文").toBe(2);
-    // 模板字面量也要抽得到（Attach 那一项的名字就是模板；按目录猜那句串味警告随那一支删了）。
-    expect(all).toContain("Attach（tmux: ）");
+    // 模板字面量也要抽得到（插值处留空）。
+    expect(all).toContain("[tabs] 骨架未接（）：");
   });
 
   it("★ 零命中：12 份的字符串字面量里一处都没有", () => {

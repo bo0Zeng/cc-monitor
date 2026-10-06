@@ -33,6 +33,8 @@ export interface ConfirmSpec {
   rows?: DialogRow[];
   /** 一批对象（限高可滚，超过 8 项只列前 8）。 */
   list?: string[];
+  /** 清单下面一行小字（`另 1 个已结束 · 跳过`）。 */
+  note?: string;
   /** 取消键的名字（不给 ⇒「取消」）：不做那件事本身就是一个动作时用（「不连接」）。 */
   cancel?: string;
 }
@@ -124,6 +126,12 @@ function fillBody(body: HTMLElement, spec: ConfirmSpec): void {
       box.appendChild(more);
     }
     body.appendChild(box);
+  }
+  if (spec.note) {
+    const n = document.createElement("p");
+    n.className = s.dialogNote;
+    n.textContent = spec.note;
+    body.appendChild(n);
   }
 }
 

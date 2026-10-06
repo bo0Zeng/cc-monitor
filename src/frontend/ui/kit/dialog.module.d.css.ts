@@ -7,6 +7,7 @@ declare const classes: {
   readonly dialogInput: string;
   readonly dialogList: string;
   readonly dialogMore: string;
+  readonly dialogNote: string;
   readonly dialogPanel: string;
   readonly dialogRow: string;
   readonly dialogRowLabel: string;

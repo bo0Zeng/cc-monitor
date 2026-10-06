@@ -1,0 +1,88 @@
+/* 状态栏「消息」那一枚与它的浮层。 */
+@layer components {
+  .smChip {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .smDot {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--warn);
+  }
+
+  .smDot[hidden] {
+    display: none;
+  }
+
+  .smBox {
+    display: flex;
+    flex-direction: column;
+    width: 400px;
+    max-width: calc(100vw - 32px);
+  }
+
+  .smHead {
+    display: flex;
+    justify-content: space-between;
+    padding: var(--space-4) var(--space-5) var(--space-3);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .smKeep {
+    color: var(--text-faint);
+  }
+
+  .smList {
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 0 var(--space-3) var(--space-3);
+  }
+
+  .smRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    min-height: 30px;
+    padding: 0 var(--space-3);
+    font-size: var(--font-size-small);
+  }
+
+  .smRow[data-level="error"] > svg {
+    color: var(--error);
+  }
+
+  .smRow[data-level="warn"] > svg {
+    color: var(--warn);
+  }
+
+  .smRow[data-level="success"] > svg {
+    color: var(--success);
+  }
+
+  .smTime {
+    flex: none;
+    color: var(--text-faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .smText {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .smEmpty {
+    padding: var(--space-5);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+}

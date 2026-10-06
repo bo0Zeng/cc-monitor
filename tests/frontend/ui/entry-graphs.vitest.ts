@@ -712,6 +712,7 @@ function moduleStacking(
  * 回来写清它叠不叠、为什么。
  */
 const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
+  "src/frontend/ui/status-messages.module.css": { stacked: false, why: "状态栏「消息」那一枚的外包与它的浮层：只挂自己的哈希类（里面那颗是 kit chip 的哈希类）" },
   "src/frontend/ui/views/command-bar.module.css": { stacked: false, why: "命令面板：外框是 kit 面板，里面全是自己的类" },
   "src/frontend/ui/views/keys-overview.module.css": { stacked: false, why: "快捷键一览：外框是 kit 面板，里面全是自己的类" },
   "src/frontend/ui/views/session-find.module.css": { stacked: false, why: "会话内查找面板本体（外框 .session-find 只在 styles.css 管位置，不叠这些类）" },

@@ -25,6 +25,7 @@ import qs from "./tab-quota.module.css";
 import { appStore } from "./app-store";
 import { tabBlockedOf } from "./acct-view";
 import { copyText } from "./copy-table";
+import { undoToast } from "./kit/toast";
 import { icon } from "./kit/icon";
 import { statusDot } from "./kit/status-dot";
 import { countBadge, tag, kbd } from "./kit/badge";
@@ -586,8 +587,15 @@ export class TabBarView {
       del.textContent = copyText("tabBarView.group.dissolve");
       del.title = copyText("tabBarView.group.dissolveHint");
       del.addEventListener("click", () => {
+        // 撤得回 ⇒ 不确认：直接解散 ＋ 8 秒撤销。
+        const members = [...this.store.tabs.values()].filter((t) => t.group === col.id).map((t) => t.sessionId);
+        const before = { ...col };
         void this.prefs.dissolveGroup(col.id);
         this.host.refreshTabBar();
+        undoToast(copyText("tabBar.group.dissolved", { name: col.name }), () => {
+          void this.prefs.restoreGroup(before, members);
+          this.host.refreshTabBar();
+        }, () => {});
       });
       head.append(name, del);
       const list = document.createElement("div");

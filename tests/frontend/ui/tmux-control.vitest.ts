@@ -300,7 +300,8 @@ describe("那台握手时说过做不到的，菜单置灰并说为什么", () =
     const click = vi.fn();
     const kill = gateByOffer("net2-box", { id: "kill", label: "结束会话", onClick: click });
     expect(kill.enabled).toBe(false);
-    expect(kill.label).toContain("没有 tmux");
+    expect(kill.why, "第二行写为什么（不拼进项名）").toContain("没有 tmux");
+    expect(kill.label).toBe("结束会话");
     kill.onClick?.();
     expect(click).not.toHaveBeenCalled();
     const preview = { id: "preview", label: "预览", onClick: click };

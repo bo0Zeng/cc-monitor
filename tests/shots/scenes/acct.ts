@@ -321,6 +321,16 @@ export const ACCT_SCENES: Scene[] = [
   })),
   // ── 面板
   scene("acct-panel", "面板 · 本会话 · 第一屏", "点状态栏按钮：当前（两根条）· 轮换（本会话 · 触发 ≥90% · 无号可换 继续跑）· 切换 · 记录 · 底栏新会话默认", openPanel, world(() => {})),
+  scene("acct-panel-toast", "面板开着时来一条提示", "账号面板开着、按快捷键翻一下自动跟随：右下角那条让到面板左边，不压面板底栏「新会话默认」那一行", async () => {
+    await openPanel();
+    const t = document.activeElement as HTMLElement | null;
+    (t ?? document.body).dispatchEvent(new KeyboardEvent("keydown", { key: "J", code: "KeyJ", ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+    await sleep(700);
+  }, world(() => {}, () => {
+    const w = defaultWorld();
+    w.config = { ...w.config, keybindings: { "behavior.toggle-auto-follow": "Ctrl+Shift+KeyJ" } };
+    return w;
+  })),
   scene("acct-panel-lower", "面板 · 切换 · 记录 · 底栏", "同上，滚到下半", async () => {
     await openPanel();
     await scrollPanelTo("切换");

@@ -169,6 +169,7 @@ const DEPS: Record<string, readonly string[]> = {
   ],
   // ④ tab 栏视图：画按钮（账号徽章 · 状态灯 · 分组 · ↗ 的 OS 门），手势全交宿主。
   "src/frontend/ui/tab-bar-view.ts": [
+    "src/frontend/ui/kit/toast.ts", // 组头 × 解散分组：撤得回 ⇒ 直接做 ＋ 8 秒撤销
     "src/frontend/ui/account-color.ts",
     "src/frontend/ui/accounts.ts",
     "src/frontend/ui/acct-view.ts", // 被卡住的会话标题后 `✕ 5h`：排版模型（判定是后端给的 `blocked`）
@@ -227,6 +228,9 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/tab-session-state.ts", // 给 Resume 还是给换号重启 · 本机「杀死会话」占位
     "src/frontend/ui/sessions-where.ts", // 在 tmux 里那几项亮不亮、写哪个名字：问那台（`sessions-where`）
     "src/frontend/ui/views/pane-preview.ts",
+    "src/frontend/ui/keybindings/registry.ts", // 菜单项右侧现拼当前键位（在新窗口打开 N · 打开工作目录 E …）
+    "src/frontend/ui/session-face.ts", // 结束确认框标题里那个会话的名字（`fullTitle`，与会话头同一份）
+    "src/frontend/ui/terminal-front.ts", // 「切到终端」只在 cc-monitor 跑在 Windows 上才列（与 tab 上那颗 ↗ 同一道门）
   ],
   // ⑤ 会话动作。原先是「tab 层唯一直呼 invoke 的一份」；那 11 处收进了包装层，
   //   本份从此与其余几份一样只经 `ipc/commands.ts` 说话。

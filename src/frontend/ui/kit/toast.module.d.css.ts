@@ -4,6 +4,7 @@ declare const classes: {
   readonly toastActions: string;
   readonly toastCount: string;
   readonly toastDetail: string;
+  readonly toastSeg: string;
   readonly toastStack: string;
   readonly toastText: string;
   readonly toastTitle: string;

@@ -301,46 +301,51 @@ export class TabSessionActions {
    * `name` 只用来在确认框里说清是哪个（菜单就绪时那台答的）。变已结束由会话流兜（不主动改状态）。
    * `idle` = 只剩空 shell 的那个（文案别说「正在运行的 Claude」；杀掉它 ⇒ tab 变已结束 ⇒ 可 Resume）。
    */
-  killInTmux(origin: string, sid: string, name: string, opts?: { confirm?: ConfirmFn; idle?: boolean }): void {
+  killInTmux(origin: string, sid: string, name: string, opts?: { confirm?: ConfirmFn; idle?: boolean; title?: string }): void {
     const isLocal = isLocalOrigin(origin);
-    const where = isLocal ? copyText("tabSessionActions.who.local") : copyText("tabSessionActions.who.remoteShort");
-    const body = opts?.idle ? copyText("sessionState.killIdle.confirm") : copyText("tabSessionActions.kill.body", { where });
     const confirmFn: ConfirmFn = opts?.confirm ?? confirmDialog;
     const machine = isLocal ? copyText("tabSessionActions.who.local") : origin;
-    const message = copyText("tabSessionActions.kill.confirm", { name, machine, body, caveat: "" });
+    const title = opts?.title ?? name;
+    const keep = { label: copyText("kit.interrupts.keep"), items: [copyText("tabSessionActions.kill.keeps")] };
+    // tmux 会话名放在正文，不放菜单。Claude 已退出、只剩 tmux 会话的：标题点名 tmux 会话。
+    const spec = opts?.idle
+      ? {
+          title: copyText("sessionState.killIdle.title", { name }),
+          body: copyText("sessionState.reconnectable.name"),
+          rows: [keep],
+          action: copyText("sessionState.killIdle.action"),
+        }
+      : {
+          title: copyText("tabSessionActions.kill.title", { title }),
+          rows: [{ label: copyText("kit.interrupts.cut"), items: [copyText("tabSessionActions.kill.cuts", { machine, name })] }, keep],
+          action: copyText("tabSessionActions.kill.action"),
+        };
     const kill = async (): Promise<void> => {
       let r: Reply;
       try {
         [r] = await callStop(origin, [sid]);
       } catch (e) {
-        toast(copyText("tabSessionActions.kill.failed"), saidOfControl(e));
+        toast(copyText("tabSessionActions.kill.failed", { title }), saidOfControl(e));
         return;
       }
       if (r.outcome !== "done") {
         const said = sayReply(origin, "stop", r);
         // 关卡 2 拒的 ⇒ 提示带「对齐后重试」（只对这个会话重验 ＋ 重打，再过一次关卡）。
-        if (r.why === "wrong_owner") offerResyncRetry(origin, sid, copyText("tabSessionActions.kill.failed"), said, kill);
-        else toast(copyText("tabSessionActions.kill.failed"), said);
+        if (r.why === "wrong_owner") offerResyncRetry(origin, sid, copyText("tabSessionActions.kill.failed", { title }), said, kill);
+        else toast(copyText("tabSessionActions.kill.failed", { title }), said);
         return;
       }
-      const killed = r.session ?? name;
-      const who = isLocal ? copyText("tabSessionActions.who.local") : copyText("tabSessionActions.who.remote", { machine: origin });
-      const done = opts?.idle
-        ? copyText("sessionState.killIdle.done", { who, name: killed })
-        : copyText("sessionState.killLive.done", { who, name: killed });
       // 顺手从 cc-bus 名册注销的结局说一句（没有要说的就不说；说法同单个 `kill` 那一份）。
       let bus: string | null = null;
       try {
-        bus = decodeKilled(origin, killed, { session: killed, killed: true, bus: r.bus });
+        bus = decodeKilled(origin, r.session ?? name, { session: r.session ?? name, killed: true, bus: r.bus });
       } catch {
         bus = null;
       }
-      toast(copyText("tabSessionActions.kill.done"), bus === null ? done : `${done}\n${bus}`, {
-        level: "info",
-      });
+      toast(copyText("sessionState.kill.done", { title }), bus ?? "", { level: "success" });
     };
     void (async () => {
-      if (!(await confirmFn({ title: copyText("tabSessionActions.kill.title", { name }), action: copyText("tabSessionActions.kill.action"), danger: true, body: message }))) return;
+      if (!(await confirmFn({ ...spec, danger: true }))) return;
       await kill();
     })();
   }

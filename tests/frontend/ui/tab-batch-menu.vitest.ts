@@ -26,15 +26,17 @@ let run: TabBatchRun & { stop: ReturnType<typeof vi.fn>; start: ReturnType<typeo
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 const buttons = (): HTMLButtonElement[] => [...document.body.querySelectorAll<HTMLButtonElement>("[role^=menuitem]")];
+const labelOf = (b: Element): string => b.querySelector("[data-part=label]")?.textContent ?? "";
 const press = async (label: string): Promise<void> => {
-  const b = buttons().find((x) => x.textContent === label);
-  expect(b, `菜单里没有「${label}」：${buttons().map((x) => x.textContent).join(" | ")}`).toBeDefined();
+  const b = buttons().find((x) => labelOf(x) === label);
+  expect(b, `菜单里没有「${label}」：${buttons().map(labelOf).join(" | ")}`).toBeDefined();
   b!.click();
   await flush();
   await flush();
 };
 const open = (): void => openBatchMenu(new MouseEvent("contextmenu", { clientX: 1, clientY: 1 }), tabs.map((t) => t.sessionId), host, run);
 const toastBody = (): string => (vi.mocked(showActionFailureToast).mock.calls.at(-1)?.[1] ?? "") as string;
+const toastHead = (): string => (vi.mocked(showActionFailureToast).mock.calls.at(-1)?.[0] ?? "") as string;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -57,8 +59,8 @@ beforeEach(() => {
 describe("批量菜单", () => {
   it("B1 · 每一项写能做的个数；为 0 的置灰", () => {
     open();
+    expect(document.body.querySelector("[role=menu] [role=presentation]")?.textContent, "头一行「已选 N 个」").toBe(copyText("tabBatch.menu.head", { n: 3 }));
     const want = [
-      copyText("tabBatch.menu.head", { n: 3 }),
       copyText("tabBatch.menu.stop", { n: 2 }),
       copyText("tabBatch.menu.startTmux", { n: 1 }),
       copyText("tabBatch.menu.startWindow", { n: 1 }),
@@ -67,12 +69,13 @@ describe("批量菜单", () => {
       copyText("tabBatch.menu.leave", { n: 1 }),
       copyText("tabBatch.menu.close", { n: 1 }),
     ];
-    const got = buttons().map((b) => b.textContent);
+    const got = buttons().map(labelOf);
     for (const w of want) expect(got).toContain(w);
     tabs = [tab("a", true), tab("c", true)];
     open();
-    const close = buttons().find((b) => b.textContent === copyText("tabBatch.menu.close", { n: 0 }));
+    const close = buttons().find((b) => labelOf(b) === copyText("tabBatch.menu.close", { n: 0 }));
     expect(close?.disabled, "一个都关不了 ⇒ 置灰").toBe(true);
+    expect(close?.querySelector("[data-part=why]")?.textContent, "灰着的第二行说为什么").toBe(copyText("tabBatch.why.live"));
   });
 
   it("说不清（那台暂时看不见）的不算可起、也不说「已经结束了」：理由说看不见", async () => {
@@ -92,18 +95,16 @@ describe("批量菜单", () => {
     ]);
     open();
     await press(copyText("tabBatch.menu.stop", { n: 2 }));
-    const spec = run.confirm.mock.calls[0][0] as { body: string; danger?: boolean; action: string };
-    const asked = spec.body;
-    expect(asked).toContain(copyText("tabBatch.stop.line", { title: "T-a", machine: "本机" }));
-    expect(asked).toContain(copyText("tabBatch.stop.line", { title: "T-c", machine: "本机" }));
-    expect(asked).not.toContain("T-b");
+    const spec = run.confirm.mock.calls[0][0] as { list: string[]; note?: string; danger?: boolean; action: string };
+    expect(spec.list, "清单只列这一批里还在跑的（本机的不写机器）").toEqual(["T-a", "T-c"]);
+    expect(spec.note).toBe(copyText("sessionState.batch.skipped", { n: 1 }));
     expect(spec.danger, "批量杀是撤不回的：确认框默认焦点要在「取消」").toBe(true);
     expect(spec.action, "批量确认的数量写在按钮上").toBe(copyText("tabBatch.stop.action", { n: 2 }));
     expect(run.stop.mock.calls[0][0].map((t: Tab) => t.sessionId)).toEqual(["a", "c"]);
+    expect(toastHead()).toBe(copyText("sessionState.batch.someFailed", { done: 1, failed: 1 }));
     expect(toastBody().split("\n")).toEqual([
-      copyText("tabBatch.result.counts", { done: 1, skipped: 1, failed: 1 }),
-      copyText("tabBatch.result.skippedLine", { title: "T-b", why: copyText("tabBatch.why.ended") }),
       copyText("tabBatch.result.failedLine", { title: "T-c", why: "门拦下了" }),
+      copyText("tabBatch.result.skippedLine", { title: "T-b", why: copyText("tabBatch.why.ended") }),
     ]);
     run.confirm.mockResolvedValueOnce(false);
     open();
@@ -115,7 +116,7 @@ describe("批量菜单", () => {
     open();
     await press(copyText("tabBatch.menu.pin", { n: 2 }));
     expect(calls(host.setPinned)).toEqual([[["a", "c"], true]]);
-    expect(toastBody().split("\n")[0]).toBe(copyText("tabBatch.result.counts", { done: 2, skipped: 1, failed: 0 }));
+    expect(toastHead()).toBe(copyText("tabBatch.result.done", { action: copyText("tabBatch.action.pin"), done: 2 }));
     open();
     await press(copyText("tabBatch.menu.leave", { n: 1 }));
     expect(calls(host.leaveGroup)).toEqual([[["c"]]]);

@@ -183,6 +183,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/config-fields.vitest.ts",
     "tests/frontend/ui/e2e-probe.vitest.ts",
     "tests/frontend/ui/kit/toast.vitest.ts",
+    "tests/frontend/ui/kit/toast-messages.vitest.ts",
     "tests/frontend/ui/kit/components.vitest.ts", // 通用组件各态（DOM 形状与行为）
     "tests/frontend/ui/kit/interrupts.vitest.ts",
     "tests/frontend/ui/kit/menu.vitest.ts",

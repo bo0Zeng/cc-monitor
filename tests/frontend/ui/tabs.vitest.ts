@@ -160,7 +160,7 @@ vi.mock("../../../src/frontend/ui/cards", () => ({
 }));
 vi.mock("../../../src/frontend/ui/cards/subagent", () => ({ isAgentTool: () => false }));
 vi.mock("../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
-vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
+vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn(), undoToast: vi.fn() }));
 // Batch14-F41：resumeTab 远端分支改走一键拉起 runner；behavior 提供 launcher 配置。
 vi.mock("../../../src/frontend/ui/remote-launch-run", () => ({
   runRemoteResume: vi.fn().mockResolvedValue(undefined),
@@ -1287,19 +1287,29 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
       new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }),
     );
   };
-  const attachBtn = (): HTMLButtonElement | null => {
+  /** 菜单里字是 `label` 的那一项（只认字那一格，不连右侧键位 / 第二行）。 */
+  const itemLabeled = (label: string): HTMLButtonElement | null => {
     const menu = document.body.querySelector("[role=menu]");
-    const items = [...(menu?.querySelectorAll("[role^=menuitem]") ?? [])];
-    return (
-      (items as HTMLButtonElement[]).find((b) => b.textContent?.startsWith("Attach")) ?? null
-    );
+    const items = [...(menu?.querySelectorAll<HTMLButtonElement>("[role^=menuitem]") ?? [])];
+    return items.find((b) => b.querySelector("[data-part=label]")?.textContent === label) ?? null;
   };
-  const killBtn = (): HTMLButtonElement | null => {
-    const menu = document.body.querySelector("[role=menu]");
-    const items = [...(menu?.querySelectorAll("[role^=menuitem]") ?? [])];
-    return (
-      (items as HTMLButtonElement[]).find((b) => b.textContent?.includes("杀死会话")) ?? null
-    );
+  const whyOf = (b: HTMLElement | null): string | undefined => b?.querySelector("[data-part=why]")?.textContent ?? undefined;
+  const attachBtn = (): HTMLButtonElement | null => itemLabeled(copyText("tabMenu.attach.label"));
+  const killBtn = (): HTMLButtonElement | null => itemLabeled(copyText("tabMenu.kill.label"));
+  /** 点「在终端里打开」⇒ 接的是哪个 tmux 会话（交给那台的名字）。 */
+  const attachTarget = (): string | undefined => {
+    vi.mocked(runRemoteAttach).mockClear();
+    attachBtn()?.click();
+    return vi.mocked(runRemoteAttach).mock.calls.at(-1)?.[2] as string | undefined;
+  };
+  /** 点「结束会话…」⇒ 确认框里写的字（读完按取消关掉）。 */
+  const killConfirmText = async (): Promise<string> => {
+    killBtn()?.click();
+    await flush();
+    const dlg = document.body.querySelector<HTMLElement>("[role=alertdialog]");
+    const text = dlg?.textContent ?? "";
+    [...(dlg?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find((b) => b.textContent === copyText("kit.dialog.cancel"))?.click();
+    return text;
   };
   const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
@@ -1315,7 +1325,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
   it("〔REREAD〕tab 右键菜单里没有「重新读取」，它在栏顶", () => {
     tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
     rightClick("k1abcdef");
-    const labels = [...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ?? [])].map((b) => b.textContent);
+    const labels = [...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ?? [])].map((b) => b.querySelector("[data-part=label]")?.textContent);
     expect(labels).toContain(copyText("tabMenu.open.openInWindow"));
     expect(labels.filter((l) => l?.includes("重新读取") || l === copyText("tabBar.head.refresh"))).toEqual([]);
     expect(document.body.querySelector(".tab-bar-reread")?.getAttribute("aria-label")).toBe(copyText("tabBar.head.refresh"));
@@ -1370,15 +1380,17 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     );
   });
 
-  it("P3 刀2-UI 本机 tab 右键：backend 通道不在（null）→ kill 项消失，不留必失败的破坏性动作", async () => {
+  it("P3 刀2-UI 本机 tab 右键：问不到那台（null）→ 结束项灰着、第二行写原因，不留能点的破坏性动作", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_local_tmux" ? Promise.resolve(null) : Promise.resolve(undefined),
     ));
     tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
     rightClick("k1abcdef");
-    expect(killBtn()?.textContent).toContain("正在找 tmux 会话");
+    expect(killBtn()?.disabled, "还在问：先画出项、不可点").toBe(true);
+    expect(killBtn()?.querySelector("[data-part=label]")?.textContent, "问的时候不换字").toBe(copyText("tabMenu.kill.label"));
     await flush();
-    expect(killBtn()).toBeNull();
+    expect(killBtn()?.disabled).toBe(true);
+    expect(whyOf(killBtn())).toBe(copyText("tabMenu.probe.failed"));
   });
 
   it("P3 刀2-UI 本机 tab 右键：按 @ccm_sid 认出唯一那个（名字前缀是诱饵）", async () => {
@@ -1395,8 +1407,9 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
     rightClick("k1abcdef");
     await flush();
-    expect(killBtn()?.textContent).toContain("unrelated-cc");
-    expect(killBtn()?.textContent).not.toContain("k1abcdef-cc");
+    const said = await killConfirmText();
+    expect(said, "tmux 会话名在确认框正文里").toContain("unrelated-cc");
+    expect(said).not.toContain("k1abcdef-cc");
   });
 
   // ★★ P3 刀 3：本机**空 tmux**（claude 已退、只剩交互 shell）→ 就地 resume。
@@ -1404,15 +1417,9 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
   // 两条：正面（空壳 ⇒ 两格都在）与反面（有活 claude ⇒ 就地那格必须**不在**）。
   // 光有正面不够：把「空壳判定」删掉、无条件给这一格，正面照样绿 ——
   // 而那样会往一个**正在跑 claude** 的会话里再送一遍载荷（F14 逐字记着这个后果）。
-  const resumeIntoBtn = (): HTMLButtonElement | null => {
-    const menu = document.body.querySelector("[role=menu]");
-    const items = [...(menu?.querySelectorAll("[role^=menuitem]") ?? [])];
-    return (
-      (items as HTMLButtonElement[]).find((b) => b.textContent?.includes("就地 resume")) ?? null
-    );
-  };
+  const resumeIntoBtn = (): HTMLButtonElement | null => itemLabeled(copyText("tabMenu.inPlace.label"));
 
-  it("P3 刀3 本机空 tmux → 给「就地 resume」，且 kill 文案改成「kill 空 tmux」", async () => {
+  it("P3 刀3 本机空 tmux（Claude 已退出）→ 给「在 tmux 会话里恢复」，结束的确认框点名那个 tmux 会话", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_local_tmux"
         ? Promise.resolve([
@@ -1424,8 +1431,8 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
     rightClick("k1abcdef");
     await flush();
-    expect(resumeIntoBtn()?.textContent).toContain("i1-cc");
-    expect(killBtn()?.textContent).toContain("空的 tmux 会话");
+    expect(resumeIntoBtn()?.disabled).toBe(false);
+    expect(await killConfirmText()).toContain(copyText("sessionState.killIdle.title", { name: "i1-cc" }));
   });
 
   it("P3 刀3 反面：会话里还跑着 claude → **不给**就地 resume（别往活会话再送一遍载荷）", async () => {
@@ -1440,7 +1447,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     rightClick("k1abcdef");
     await flush();
     expect(resumeIntoBtn()).toBeNull();
-    expect(killBtn()?.textContent).toContain("tmux 会话 i1-cc");
+    expect(await killConfirmText()).toContain("tmux 会话 i1-cc 里的 Claude");
   });
 
   it("P3 刀2-UI 本机 tab 右键：同身份命中 2 个 → 拒绝，不折叠成第一个", async () => {
@@ -1455,7 +1462,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", LOCAL_ORIGIN);
     rightClick("k1abcdef");
     await flush();
-    expect(killBtn()?.textContent).toContain("不能杀");
+    expect(whyOf(killBtn())).toBe(copyText("tabMenu.kill.dupesWhy", { n: 2 }));
     expect(killBtn()?.disabled).toBe(true);
   });
 
@@ -1469,10 +1476,10 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     ));
     tm.ensureTab("A", "/a", "p", "hostA");
     rightClick("A");
-    expect(attachBtn()?.disabled).toBe(true); // 占位「检测中」
+    expect(attachBtn()?.disabled).toBe(true); // 还在问：先画出项、不可点
     await flush();
-    expect(attachBtn()?.textContent).toContain("cc-abc"); // 就绪
-    expect(attachBtn()?.disabled).toBe(false);
+    expect(attachBtn()?.disabled).toBe(false); // 就绪
+    expect(attachTarget()).toBe("cc-abc");
   });
 
   it("前台命令报 node（claude 是 Node CLI）也认(D-Sug2)", async () => {
@@ -1486,7 +1493,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     tm.ensureTab("A", "/a", "p", "hostA");
     rightClick("A");
     await flush();
-    expect(attachBtn()?.textContent).toContain("sess");
+    expect(attachTarget()).toBe("sess");
   });
 
   it("无匹配（cwd 不符）→ 占位移除,不显示 attach", async () => {
@@ -1506,7 +1513,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
   // audit-fixes F03.3（attach-into-idle）：无活 claude 但目标 sid 的空 tmux（@ccm_sid 命中、
   // command=bash）还在 → attach 项就绪为「Attach（空 tmux …）」，让用户 attach 进空 shell。
   // 变异锚点：删 resolveAttachMenuItem else 分支的 idle 处理 → 占位被移除、attachBtn=null → 红。
-  it("无活 claude 但有目标 sid 的空 tmux（idle）→ attach 项就绪为「空 tmux」", async () => {
+  it("无活 claude 但有目标 sid 的空 tmux（idle）→「在终端里打开」就绪、接的就是它", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([
@@ -1517,8 +1524,8 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     tm.ensureTab("A", "/a", "p", "hostA");
     rightClick("A");
     await flush();
-    expect(attachBtn()?.textContent).toContain("空的 tmux 会话 cc-A1");
     expect(attachBtn()?.disabled).toBe(false);
+    expect(attachTarget()).toBe("cc-A1");
   });
 
   // F04（R10）：命中 ≥2 个精确同 sid 的活会话——attach 仍就绪（非破坏性，警告即可），
@@ -1536,9 +1543,9 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     rightClick("A");
     await flush();
     expect(attachBtn()?.disabled).toBe(false);
-    expect(attachBtn()?.textContent).toContain("cc-A1");
+    expect(whyOf(attachBtn())).toBe(copyText("tabMenu.attach.dupesWhy", { n: 2, name: "cc-A1" }));
     expect(killBtn()?.disabled).toBe(true);
-    expect(killBtn()?.textContent).toContain("2 个同身份会话");
+    expect(whyOf(killBtn())).toBe(copyText("tabMenu.kill.dupesWhy", { n: 2 }));
   });
 
   it("R-1 守卫:tab A 查询在飞时右键 tab B → A 迟到结果不污染 B 的菜单", async () => {
@@ -1558,14 +1565,13 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     rightClick("A"); // 菜单 A + A 查询在飞
     rightClick("B"); // 关 A、开菜单 B（新代次）+ B 查询即刻 resolve
     await flush();
-    expect(attachBtn()?.textContent).toContain("B-sess"); // B 自身反查就绪
+    expect(attachBtn()?.disabled).toBe(false); // B 自身反查就绪
 
     resolveA([
       { name: "A-sess", path: "/a", command: "claude", attached: false, windows: 1, sid: "A", agent: true },
     ]);
     await flush(); // A 迟到:代次不符 → 整体 no-op,不动 B 菜单
-    expect(attachBtn()?.textContent).toContain("B-sess");
-    expect(attachBtn()?.textContent).not.toContain("A-sess");
+    expect(attachTarget()).toBe("B-sess");
   });
 });
 
@@ -1591,7 +1597,7 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
   const item = (label: string): HTMLButtonElement | undefined =>
     [...(document.body.querySelector("[role=menu]")?.querySelectorAll<HTMLButtonElement>("[role^=menuitem]") ?? [])].find((b) => labelOf(b) === label);
   const flyout = (): HTMLElement => {
-    const wrap = [...document.body.querySelectorAll("[role=none]")].find((w) => labelOf(w.children[0]) === "Resume 这个会话");
+    const wrap = [...document.body.querySelectorAll("[role=none]")].find((w) => labelOf(w.children[0]) === copyText("tabMenu.item.resume"));
     expect(wrap, "找不到「恢复 ▸」那一项").toBeTruthy();
     return wrap!.querySelector<HTMLElement>(":scope > [role=menu]")!;
   };
@@ -1834,7 +1840,7 @@ describe("auto-e2e F-E4 可注入 confirm seam（killInTmux：交那台 sessions
     const confirmSpy = vi.spyOn(window, "confirm");
     home(tm).actions.killInTmux("hostA", "s1", "cc-abc");
     await microFlush();
-    expect(askDialogText(), "没弹应用内对话框").toContain("杀死会话「cc-abc」");
+    expect(askDialogText(), "没弹应用内对话框").toContain(copyText("tabSessionActions.kill.title", { title: "cc-abc" }));
     expect(killCalls(), "还没答就杀了").toHaveLength(0);
     await answerAskDialog(false);
     expect(killCalls()).toHaveLength(0);
@@ -1879,18 +1885,23 @@ describe("auto-e2e F-E4 可注入 confirm seam（killInTmux：交那台 sessions
     expect(killCalls()[0]).toEqual(["hostA", ["s1"]]);
   });
 
-  // 护栏：live（非 idle）文案必须仍含"正在运行的 Claude"——防日后误改 live 文案不被测出。
-  it("killInTmux 非 idle → 文案含'正在运行的 Claude'（live 路径护栏）", async () => {
-    const msgs: string[] = [];
+  // 护栏：live（非 idle）的确认框逐项写会中断什么（那个 tmux 会话里的 Claude · 当前轮次）与保留什么。
+  it("killInTmux 非 idle → 中断那一项点名 tmux 会话里的 Claude 与当前轮次；保留会话记录（live 路径护栏）", async () => {
+    const rows: { label: string; items: string[] }[][] = [];
     home(tm).actions.killInTmux("hostA", "s1", "cc-live1234", {
+      title: "表格分页",
       confirm: (m) => {
-        msgs.push(m.body ?? "");
+        rows.push(m.rows ?? []);
         return false;
       },
     });
     await microFlush();
-    expect(msgs).toHaveLength(1);
-    expect(msgs[0]).toContain("正在运行的 Claude");
+    expect(rows).toEqual([
+      [
+        { label: copyText("kit.interrupts.cut"), items: [copyText("tabSessionActions.kill.cuts", { machine: "hostA", name: "cc-live1234" })] },
+        { label: copyText("kit.interrupts.keep"), items: [copyText("tabSessionActions.kill.keeps")] },
+      ],
+    ]);
   });
 });
 
@@ -1903,7 +1914,7 @@ describe("F79 杀死会话（二次确认 ＋ 交那台 sessions-stop）", () =>
     await answerAskDialog(true);
     await new Promise((r) => setTimeout(r, 0));
     expect(vi.mocked(callStop).mock.calls).toEqual([["hostA", ["s1"]]]);
-    expect(vi.mocked(showActionFailureToast).mock.calls.at(-1)?.[1]).toContain("cc-abc");
+    expect(vi.mocked(showActionFailureToast).mock.calls.at(-1)?.[0]).toBe(copyText("sessionState.kill.done", { title: "cc-abc" }));
   });
   it("二次确认取消 → 不交", async () => {
     const tm = home(makeTM()).actions;
@@ -1917,7 +1928,7 @@ describe("F79 杀死会话（二次确认 ＋ 交那台 sessions-stop）", () =>
     tm.killInTmux("hostA", "s1", "cc-abc", { confirm: () => true });
     await new Promise((r) => setTimeout(r, 0));
     const [title, body] = vi.mocked(showActionFailureToast).mock.calls.at(-1)!;
-    expect(title).toBe(copyText("tabSessionActions.kill.failed"));
+    expect(title).toBe(copyText("tabSessionActions.kill.failed", { title: "cc-abc" }));
     expect(body).toContain(copyText("resync.retry.hint"));
   });
 });
@@ -2743,10 +2754,10 @@ describe("P7a-3 集合分组渲染", () => {
     const root = [...(bar.querySelector(".tab-list") ?? bar).children].find((e) => e.classList.contains("tab")) as HTMLElement;
     root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
     const labels = [...document.querySelectorAll("[role=menu] button")].map(
-      (e) => e.textContent ?? "",
+      (e) => e.querySelector("[data-part=label]")?.textContent ?? "",
     );
     expect(labels.length, "菜单要真的开出来（否则本判据在空转）").toBeGreaterThan(0);
-    expect(labels.join("|"), "没拉过集合就不给集合入口").not.toContain("加入集合");
+    expect(labels.join("|"), "没拉过集合就不给集合入口").not.toContain("加入分组");
   });
 
   it("★ P7a3-E 反面：**拉过了就必须给入口**（否则「永远不给」也能过）", async () => {
@@ -2756,9 +2767,9 @@ describe("P7a-3 集合分组渲染", () => {
     const root = [...(bar.querySelector(".tab-list") ?? bar).children].find((e) => e.classList.contains("tab")) as HTMLElement;
     root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
     const labels = [...document.querySelectorAll("[role=menu] button")].map(
-      (e) => e.textContent ?? "",
+      (e) => e.querySelector("[data-part=label]")?.textContent ?? "",
     );
-    expect(labels.join("|")).toContain("加入集合");
+    expect(labels.join("|")).toContain("加入分组");
   });
 
   // 要求：「一条都不许静默忽略」。右键菜单那两条入口到上界要出声（正反各一格）。
@@ -2770,7 +2781,7 @@ describe("P7a-3 集合分组渲染", () => {
       const root = [...(bar.querySelector(".tab-list") ?? bar).children].find((e) => e.classList.contains("tab")) as HTMLElement;
       root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
       const btn = [...document.querySelectorAll("[role=menu] button")].find(
-        (e) => e.textContent === "新建集合…",
+        (e) => e.querySelector("[data-part=label]")?.textContent === "新建分组…",
       ) as HTMLButtonElement | undefined;
       expect(btn, "菜单里要有「新建集合…」（否则本判据在空转）").toBeTruthy();
       btn!.click();
@@ -2803,7 +2814,7 @@ describe("P7a-3 集合分组渲染", () => {
       const root = home(tm).bar.tabButtons.get(sid)!.root;
       root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
       const btn = [...document.querySelectorAll("[role=menu] button")].find(
-        (e) => e.textContent === label,
+        (e) => e.querySelector("[data-part=label]")?.textContent === label,
       ) as HTMLButtonElement | undefined;
       expect(btn, `菜单里要有「${label}」（否则本判据在空转）`).toBeTruthy();
       btn!.click();
@@ -2813,7 +2824,7 @@ describe("P7a-3 集合分组渲染", () => {
     click("a", "白天");
     expect(showActionFailureToast).not.toHaveBeenCalled();
     expect(membersOf(tm, "g"), "a 该进组（b 原本就在）").toEqual(["a", "b"]);
-    click("a", "移出「白天」");
+    click("a", "移出分组「白天」");
     expect(membersOf(tm, "g"), "移出只动 a").toEqual(["b"]);
     expect(home(tm).store.tabs.get("a")!.group).toBeNull();
   });
@@ -3048,20 +3059,20 @@ describe("步 17·B 固定：落盘 · 复活 · 正交", () => {
       [
         ...(document.body.querySelector("[role=menu]")?.querySelectorAll("[role^=menuitem]") ??
           []),
-      ].map((b) => b.textContent ?? "");
+      ].map((b) => b.querySelector("[data-part=label]")?.textContent ?? "");
 
     tm.ensureTab("s1", "/c", "p", LOCAL_ORIGIN);
     rightClick("s1");
     expect(labels(), "🔴 没 `loadPinned` 过就给入口 ⇒ 点一下清空用户的固定表").not.toContain(
-      "📌 固定此标签",
+      "固定",
     );
 
     await tm.loadPinned();
     rightClick("s1");
-    expect(labels()).toContain("📌 固定此标签");
+    expect(labels()).toContain("固定");
     (
       [...document.body.querySelectorAll("[role^=menuitem]")].find(
-        (b) => b.textContent === "📌 固定此标签",
+        (b) => b.querySelector("[data-part=label]")?.textContent === "固定",
       ) as HTMLButtonElement
     ).click();
     expect(tabOf("s1").pinned, "菜单项点了没反应 —— 这个仓刚因为这个撤掉过两个取色器").toBe(true);
@@ -5315,17 +5326,18 @@ describe("tab 多选与批量菜单", () => {
     tm.closeTab("e");
     expect(drawnSelected()).toEqual(["a"]);
     rightClick("a");
-    expect(menuLabels()[0], "e 没了 ⇒ 多选只剩 a ⇒ 单个菜单").not.toBe(head(1));
-    expect(menuLabels()[0]).not.toBe(head(2));
+    const batchHead = (): string | null | undefined => document.body.querySelector("[role=menu] [role=presentation]")?.textContent;
+    expect(batchHead(), "e 没了 ⇒ 多选只剩 a ⇒ 单个菜单").not.toBe(head(1));
+    expect(batchHead()).not.toBe(head(2));
     click("b", { ctrlKey: true });
     rightClick("c");
     expect(drawnSelected(), "右键没选中的 ⇒ 清掉多选").toEqual([]);
-    expect(menuLabels()[0], "单个菜单").not.toBe(head(2));
+    expect(batchHead(), "单个菜单").not.toBe(head(2));
     click("b", { ctrlKey: true });
     tm.archiveTab("b");
     rightClick("b");
     const labels = menuLabels();
-    expect(labels[0]).toBe(copyText("tabBatch.menu.head", { n: 2 }));
+    expect(document.body.querySelector("[role=menu] [role=presentation]")?.textContent, "头一行「已选 N 个」").toBe(head(2));
     expect(labels).toContain(copyText("tabBatch.menu.stop", { n: 1 }));
     expect(labels).toContain(copyText("tabBatch.menu.startTmux", { n: 1 }));
     expect(labels).toContain(copyText("tabBatch.menu.close", { n: 1 }));

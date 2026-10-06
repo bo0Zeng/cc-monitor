@@ -59,6 +59,7 @@ import magnifyingGlassPlus from "@phosphor-icons/core/assets/regular/magnifying-
 import magnifyingGlassMinus from "@phosphor-icons/core/assets/regular/magnifying-glass-minus.svg?raw";
 import arrowsOutLineVertical from "@phosphor-icons/core/assets/regular/arrows-out-line-vertical.svg?raw";
 import userCircle from "@phosphor-icons/core/assets/regular/user-circle.svg?raw";
+import bell from "@phosphor-icons/core/assets/regular/bell.svg?raw";
 import arrowCounterClockwise from "@phosphor-icons/core/assets/regular/arrow-counter-clockwise.svg?raw";
 import s from "./icon.module.css";
 
@@ -116,6 +117,7 @@ const SVG = {
   zoomReset: arrowCounterClockwise,
   expand: arrowsOutLineVertical,
   account: userCircle,
+  bell: bell,
 } as const;
 
 export type IconName = keyof typeof SVG;

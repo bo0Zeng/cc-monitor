@@ -2,7 +2,8 @@
 @layer components {
   .toastStack {
     position: fixed;
-    right: var(--space-6);
+    /* 右侧抽屉开着（`--kit-drawer-right` ＝ 它的宽）⇒ 让到它左边，不压它的底栏。 */
+    right: calc(var(--kit-drawer-right, 0px) + var(--space-6));
     bottom: var(--space-7);
     z-index: var(--z-toast);
     display: flex;
@@ -62,7 +63,6 @@
   .toastText {
     flex: 1;
     min-width: 0;
-    overflow-wrap: anywhere;
   }
 
   .toastTitle {
@@ -80,6 +80,11 @@
     color: var(--text-2);
     font-size: var(--font-size-small);
     white-space: pre-wrap;
+  }
+
+  /* 一句按「 · 」分段：段内不拆行，只在段与段之间换行。 */
+  .toastSeg {
+    white-space: nowrap;
   }
 
   .toastDetail:empty {

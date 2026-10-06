@@ -390,13 +390,14 @@ describe("说不清（那台暂时看不见）不当已结束：tab 上是另一
     // W：当前是说不清的那个 ⇒ 不关。
     tm.closeActiveIfArchived();
     expect(st.tabs.has("u")).toBe(true);
-    // 右键菜单里能关，悬停说它若还在跑、连上那台之后会回来。
+    // 右键菜单里能关，第二行说连上那台之后会回来。
     const menu = (tm as unknown as { menu: { open(e: MouseEvent, sid: string): void } }).menu;
     menu.open(new MouseEvent("contextmenu", { clientX: 1, clientY: 1 }), "u");
     const item = [...document.querySelectorAll<HTMLButtonElement>("[role^=menuitem]")].find(
-      (b) => b.textContent === copyText("tabMenu.item.close"),
+      (b) => b.querySelector("[data-part=label]")?.textContent === copyText("tabMenu.item.close"),
     )!;
-    expect(item.title).toBe(copyText("tabMenu.close.unseenHint", { machine: "pi" }));
+    expect(item.disabled).toBe(false);
+    expect(item.querySelector("[data-part=why]")?.textContent).toBe(copyText("tabMenu.close.unseen", { machine: "pi" }));
     item.click();
     expect(st.tabs.has("u")).toBe(false);
     btn("e").dispatchEvent(new MouseEvent("mousedown", { button: 1, bubbles: true, cancelable: true }));

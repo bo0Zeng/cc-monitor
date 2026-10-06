@@ -11,6 +11,7 @@ import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { icon, type IconName } from "./icon";
 import s from "./menu.module.css";
 import { hideTooltips } from "./tooltip";
+import { spinner } from "./progress";
 
 export interface MenuItem {
   id?: string;
@@ -29,8 +30,12 @@ export interface MenuItem {
   body?: string;
   /** 当前项：左侧对勾 ＋ 600 字重（下拉、选账号）。 */
   checked?: boolean;
-  /** `false` ＝ 灰着不可点；`title` 写为什么。 */
+  /** `false` ＝ 灰着不可点；为什么写进 `why`（第二行 12px）。 */
   enabled?: boolean;
+  /** 灰着的那一项为什么（第二行，`gpu-01 不可见`）；不写成「X（为什么）」。 */
+  why?: string;
+  /** 还在问（那台答回来才定能不能点）：先画出项、右侧 14px 转圈、不可点。 */
+  pending?: boolean;
   danger?: boolean;
   title?: string;
   onClick?: () => void;
@@ -165,16 +170,17 @@ function makeItem(o: Open, it: MenuItem): HTMLElement {
     btn.appendChild(d);
     if (it.detailOf) liveDetails.set(d, it.detailOf);
   }
-  if (it.body) {
+  if (it.pending) btn.appendChild(spinner());
+  if (it.body || it.why) {
     btn.dataset.twoLine = "true";
     const b = document.createElement("span");
-    b.className = s.menuBody;
-    b.dataset.part = "body";
-    b.textContent = it.body;
+    b.className = it.body ? s.menuBody : s.menuWhy;
+    b.dataset.part = it.body ? "body" : "why";
+    b.textContent = it.body ?? it.why ?? "";
     btn.appendChild(b);
   }
   if (it.title) btn.title = it.title;
-  const enabled = it.enabled !== false;
+  const enabled = it.enabled !== false && !it.pending;
   btn.disabled = !enabled;
 
   if (it.submenu && it.submenu.length > 0) {

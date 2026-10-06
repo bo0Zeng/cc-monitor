@@ -1992,21 +1992,6 @@
       "zh": "固定它的时候它还没写下任何内容，没有可以 resume 的记录。点标签上的 × 可以关掉它。",
       "args": []
     },
-    "sessionState.killIdle.confirm": {
-      "kind": "body",
-      "zh": "这个会话里的 Claude 已退出，只剩一个空的 tmux 会话。杀掉它之后，标签显示为已结束，可以 resume。它若是那台机器上唯一的 tmux 会话，要等下次重连才会变。",
-      "args": []
-    },
-    "sessionState.killIdle.done": {
-      "kind": "body",
-      "zh": "{who} 的 tmux 会话「{name}」已终止。标签随后显示为已结束，可以 resume。",
-      "args": ["who", "name"]
-    },
-    "sessionState.killLive.done": {
-      "kind": "body",
-      "zh": "{who} 的 tmux 会话「{name}」已终止。标签稍后显示为已结束。",
-      "args": ["who", "name"]
-    },
     "deploy.refused.unsupportedMachine": {
       "kind": "error",
       "zh": "{machine} 是 {os} / {arch} 的机器，cc-monitor 没有这种机器用的后端。它的会话不会自动接上。",
@@ -2114,23 +2099,13 @@
     },
     "tabMenu.item.resume": {
       "kind": "action",
-      "zh": "Resume 这个会话",
+      "zh": "恢复这个会话",
       "args": []
     },
     "tabMenu.item.close": {
       "kind": "action",
-      "zh": "关闭标签",
+      "zh": "关闭标签页",
       "args": []
-    },
-    "tabMenu.close.unseenHint": {
-      "kind": "body",
-      "zh": "它若还在跑，连上 {machine} 之后会回来",
-      "args": ["machine"]
-    },
-    "tabMenu.item.greyed": {
-      "kind": "control",
-      "zh": "{label}（{why}）",
-      "args": ["label", "why"]
     },
     "control.channel.broken": {
       "kind": "error",
@@ -3885,39 +3860,29 @@
       "zh": "暂无活跃会话<br><small>打开终端跑 <code>claude</code> 后将自动出现</small>",
       "args": []
     },
-    "tabMenu.kill.idle": {
-      "kind": "action",
-      "zh": "杀死会话 · 空的 tmux 会话 {name}",
-      "args": ["name"]
-    },
-    "tabMenu.attach.idle": {
-      "kind": "action",
-      "zh": "Attach · 空的 tmux 会话 {name}",
-      "args": ["name"]
-    },
     "tabBatch.menu.head": {
-      "kind": "body",
-      "zh": "已选 {n} 个标签",
+      "kind": "title",
+      "zh": "已选 {n} 个",
       "args": ["n"]
     },
     "tabBatch.menu.stop": {
       "kind": "action",
-      "zh": "杀死会话（{n}）",
+      "zh": "结束会话（{n}）",
       "args": ["n"]
     },
     "tabBatch.menu.startTmux": {
       "kind": "action",
-      "zh": "Resume · 在 tmux 里后台起（{n}）",
+      "zh": "恢复 · 在 tmux 里（{n}）",
       "args": ["n"]
     },
     "tabBatch.menu.startWindow": {
       "kind": "action",
-      "zh": "Resume · 各开一个终端（{n}）",
+      "zh": "恢复 · 各开一个终端（{n}）",
       "args": ["n"]
     },
     "tabBatch.menu.pin": {
       "kind": "action",
-      "zh": "📌 固定（{n}）",
+      "zh": "固定（{n}）",
       "args": ["n"]
     },
     "tabBatch.menu.unpin": {
@@ -3932,27 +3897,22 @@
     },
     "tabBatch.menu.found": {
       "kind": "action",
-      "zh": "新建集合…（{n}）",
+      "zh": "新建分组…（{n}）",
       "args": ["n"]
     },
     "tabBatch.menu.leave": {
       "kind": "action",
-      "zh": "移出集合（{n}）",
+      "zh": "移出分组（{n}）",
       "args": ["n"]
     },
     "tabBatch.menu.close": {
       "kind": "action",
-      "zh": "关闭标签（{n}）",
+      "zh": "关闭标签页（{n}）",
       "args": ["n"]
-    },
-    "tabBatch.stop.confirm": {
-      "kind": "body",
-      "zh": "杀死这 {n} 个会话？\n\n{list}\n\n会终止它们 tmux 会话里正在运行的 Claude，没保存的交互会中断。此操作不可恢复。",
-      "args": ["n", "list"]
     },
     "tabBatch.stop.line": {
       "kind": "body",
-      "zh": "· {title}（{machine}）",
+      "zh": "{title}（{machine}）",
       "args": ["title", "machine"]
     },
     "tabBatch.stop.title": {
@@ -3962,72 +3922,57 @@
     },
     "tabBatch.stop.action": {
       "kind": "action",
-      "zh": "结束 {n} 个",
+      "zh": "结束 {n} 个会话",
       "args": ["n"]
-    },
-    "tabBatch.action.stop": {
-      "kind": "body",
-      "zh": "杀死会话",
-      "args": []
     },
     "tabBatch.action.startTmux": {
       "kind": "body",
-      "zh": "在 tmux 里后台 Resume",
+      "zh": "已在 tmux 里恢复",
       "args": []
     },
     "tabBatch.action.startWindow": {
       "kind": "body",
-      "zh": "各开一个终端 Resume",
+      "zh": "已各开一个终端恢复",
       "args": []
     },
     "tabBatch.action.pin": {
       "kind": "body",
-      "zh": "固定",
+      "zh": "已固定",
       "args": []
     },
     "tabBatch.action.unpin": {
       "kind": "body",
-      "zh": "取消固定",
+      "zh": "已取消固定",
       "args": []
     },
     "tabBatch.action.join": {
       "kind": "body",
-      "zh": "加入集合「{name}」",
+      "zh": "已加入分组「{name}」",
       "args": ["name"]
     },
     "tabBatch.action.found": {
       "kind": "body",
-      "zh": "新建集合「{name}」",
+      "zh": "已新建分组「{name}」",
       "args": ["name"]
     },
     "tabBatch.action.leave": {
       "kind": "body",
-      "zh": "移出集合",
+      "zh": "已移出分组",
       "args": []
     },
     "tabBatch.action.close": {
       "kind": "body",
-      "zh": "关闭标签",
+      "zh": "已关闭",
       "args": []
-    },
-    "tabBatch.result.title": {
-      "kind": "title",
-      "zh": "批量操作：{action}",
-      "args": ["action"]
-    },
-    "tabBatch.result.counts": {
-      "kind": "body",
-      "zh": "做了 {done} 个 · 跳过 {skipped} 个 · 失败 {failed} 个",
-      "args": ["done", "skipped", "failed"]
     },
     "tabBatch.result.skippedLine": {
       "kind": "body",
-      "zh": "跳过 · {title}：{why}",
+      "zh": "跳过 · {title} · {why}",
       "args": ["title", "why"]
     },
     "tabBatch.result.failedLine": {
-      "kind": "body",
-      "zh": "失败 · {title}：{why}",
+      "kind": "error",
+      "zh": "失败 · {title} · {why}",
       "args": ["title", "why"]
     },
     "tabBatch.why.ended": {
@@ -4072,7 +4017,7 @@
     },
     "tabBatch.why.ambiguous": {
       "kind": "error",
-      "zh": "{machine} 上有好几个 tmux 会话都在跑它（{names}），为了不杀错，没有动",
+      "zh": "{machine} · tmux 会话 {names} · 无法确定 · 未动",
       "args": ["machine", "names"]
     },
     "tabBatch.why.running": {
@@ -4120,21 +4065,6 @@
       "zh": "上次用的账号「{name}」现在选不了。单独右键这个标签点 Resume，可以改用当前账号。",
       "args": ["name"]
     },
-    "tabMenu.kill.plain": {
-      "kind": "action",
-      "zh": "杀死会话",
-      "args": []
-    },
-    "tabMenu.kill.dupes": {
-      "kind": "action",
-      "zh": "杀死会话 · 有 {n} 个同身份会话，请到终端里处理",
-      "args": ["n"]
-    },
-    "tabMenu.resolveAttachMenuItem.preview": {
-      "kind": "action",
-      "zh": "预览画面",
-      "args": []
-    },
     "tabMenu.dupes.body": {
       "kind": "error",
       "zh": "这个会话同时活在 {n} 个 tmux 会话里，这次接的是「{name}」。其余几个要不要清理，请到终端里看。",
@@ -4145,54 +4075,14 @@
       "zh": "检测到多个同身份会话",
       "args": []
     },
-    "tabMenu.attach.dupes": {
-      "kind": "action",
-      "zh": "Attach · tmux {name} · ⚠ 还有 {others} 个同身份会话",
-      "args": ["name", "others"]
-    },
-    "tabMenu.kill.named": {
-      "kind": "action",
-      "zh": "杀死会话 · tmux 会话 {name}",
-      "args": ["name"]
-    },
-    "tabMenu.kill.dupesRefused": {
-      "kind": "action",
-      "zh": "杀死会话 · 有 {n} 个同身份会话，不能杀",
-      "args": ["n"]
-    },
-    "tabMenu.inPlace.idle": {
-      "kind": "action",
-      "zh": "就地 resume · 用空的 tmux 会话 {name}",
-      "args": ["name"]
-    },
-    "tabMenu.inPlace.probing": {
-      "kind": "action",
-      "zh": "就地 resume · 正在找 tmux 会话…",
-      "args": []
-    },
-    "tabMenu.kill.probing": {
-      "kind": "action",
-      "zh": "杀死会话 · 正在找 tmux 会话…",
-      "args": []
-    },
-    "tabMenu.preview.probing": {
-      "kind": "action",
-      "zh": "预览画面 · 正在找 tmux 会话…",
-      "args": []
-    },
-    "tabMenu.attach.probing": {
-      "kind": "action",
-      "zh": "Attach · 正在找 tmux 会话…",
-      "args": []
-    },
     "tabMenu.collection.remove": {
       "kind": "action",
-      "zh": "移出「{name}」",
+      "zh": "移出分组「{name}」",
       "args": ["name"]
     },
     "tabMenu.pin.pin": {
       "kind": "action",
-      "zh": "📌 固定此标签",
+      "zh": "固定",
       "args": []
     },
     "tabMenu.pin.unpin": {
@@ -4202,22 +4092,22 @@
     },
     "tabMenu.collection.add": {
       "kind": "action",
-      "zh": "加入集合",
+      "zh": "加入分组",
       "args": []
     },
     "tabMenu.collection.namePrompt": {
-      "kind": "body",
-      "zh": "新集合名：",
+      "kind": "control",
+      "zh": "分组名",
       "args": []
     },
     "tabMenu.collection.new": {
       "kind": "action",
-      "zh": "新建集合…",
+      "zh": "新建分组…",
       "args": []
     },
     "tabMenu.collection.title": {
       "kind": "title",
-      "zh": "新建集合",
+      "zh": "新建分组",
       "args": []
     },
     "tabMenu.collection.action": {
@@ -4307,13 +4197,8 @@
     },
     "tabSessionActions.kill.failed": {
       "kind": "error",
-      "zh": "杀死会话失败",
-      "args": []
-    },
-    "tabSessionActions.kill.done": {
-      "kind": "body",
-      "zh": "已杀死会话",
-      "args": []
+      "zh": "结束失败 · {title}",
+      "args": ["title"]
     },
     "tabSessionActions.who.remote": {
       "kind": "body",
@@ -4335,29 +4220,14 @@
       "zh": "本机",
       "args": []
     },
-    "tabSessionActions.kill.confirm": {
-      "kind": "body",
-      "zh": "杀死会话「{name}」（机器 {machine}）？\n\n{body}\n此操作不可恢复。{caveat}",
-      "args": ["name", "machine", "body", "caveat"]
-    },
-    "tabSessionActions.kill.body": {
-      "kind": "body",
-      "zh": "将终止{where}这个 tmux 会话里正在运行的 Claude，没保存的交互会中断。",
-      "args": ["where"]
-    },
     "tabSessionActions.kill.title": {
       "kind": "title",
-      "zh": "结束会话 {name}",
-      "args": ["name"]
+      "zh": "结束会话「{title}」",
+      "args": ["title"]
     },
     "tabSessionActions.kill.action": {
       "kind": "action",
-      "zh": "结束",
-      "args": []
-    },
-    "tabSessionActions.who.remoteShort": {
-      "kind": "body",
-      "zh": "远端",
+      "zh": "结束会话",
       "args": []
     },
     "tabSessionActions.dupes.body": {
@@ -19174,11 +19044,6 @@
       "zh": "→",
       "args": []
     },
-    "acct.menu.unseen": {
-      "kind": "body",
-      "zh": "{machine} 不可见",
-      "args": ["machine"]
-    },
     "acct.usage.wvr": {
       "kind": "body",
       "zh": "{w} {v} {r}",
@@ -21755,6 +21620,166 @@
       "kind": "body",
       "zh": "→",
       "args": []
+    },
+    "sessionState.killIdle.title": {
+      "kind": "title",
+      "zh": "结束 tmux 会话 {name}",
+      "args": ["name"]
+    },
+    "sessionState.killIdle.action": {
+      "kind": "action",
+      "zh": "结束 tmux 会话",
+      "args": []
+    },
+    "tabSessionActions.kill.cuts": {
+      "kind": "body",
+      "zh": "{machine} tmux 会话 {name} 里的 Claude · 当前轮次",
+      "args": ["machine", "name"]
+    },
+    "tabSessionActions.kill.keeps": {
+      "kind": "body",
+      "zh": "会话记录 · 可恢复",
+      "args": []
+    },
+    "tabMenu.open.cwd": {
+      "kind": "action",
+      "zh": "打开工作目录",
+      "args": []
+    },
+    "tabMenu.open.front": {
+      "kind": "action",
+      "zh": "切到终端",
+      "args": []
+    },
+    "tabMenu.open.drawer": {
+      "kind": "action",
+      "zh": "看它的终端",
+      "args": []
+    },
+    "tabMenu.preview.label": {
+      "kind": "action",
+      "zh": "看一眼终端画面",
+      "args": []
+    },
+    "tabMenu.attach.label": {
+      "kind": "action",
+      "zh": "在终端里打开",
+      "args": []
+    },
+    "tabMenu.attach.dupesWhy": {
+      "kind": "body",
+      "zh": "tmux 会话 ×{n} · 打开「{name}」",
+      "args": ["n", "name"]
+    },
+    "tabMenu.inPlace.label": {
+      "kind": "action",
+      "zh": "在 tmux 会话里恢复",
+      "args": []
+    },
+    "tabMenu.close.live": {
+      "kind": "body",
+      "zh": "运行中 · 先结束",
+      "args": []
+    },
+    "tabMenu.close.unseen": {
+      "kind": "body",
+      "zh": "连上 {machine} 后恢复显示",
+      "args": ["machine"]
+    },
+    "tabMenu.kill.label": {
+      "kind": "action",
+      "zh": "结束会话…",
+      "args": []
+    },
+    "tabMenu.kill.dupesWhy": {
+      "kind": "body",
+      "zh": "tmux 会话 ×{n} · 无法确定",
+      "args": ["n"]
+    },
+    "tabMenu.unseen.why": {
+      "kind": "body",
+      "zh": "{machine} 不可见",
+      "args": ["machine"]
+    },
+    "tabMenu.probe.failed": {
+      "kind": "error",
+      "zh": "tmux 会话未查到",
+      "args": []
+    },
+    "sessionState.kill.done": {
+      "kind": "body",
+      "zh": "已结束「{title}」",
+      "args": ["title"]
+    },
+    "tabBatch.stop.cuts": {
+      "kind": "body",
+      "zh": "各会话当前轮次",
+      "args": []
+    },
+    "tabBatch.result.done": {
+      "kind": "body",
+      "zh": "{action} {done}",
+      "args": ["action", "done"]
+    },
+    "tabBatch.result.someFailed": {
+      "kind": "error",
+      "zh": "{action} {done} · 失败 {failed}",
+      "args": ["action", "done", "failed"]
+    },
+    "sessionState.batch.done": {
+      "kind": "body",
+      "zh": "已结束 {done}",
+      "args": ["done"]
+    },
+    "sessionState.batch.someFailed": {
+      "kind": "error",
+      "zh": "已结束 {done} · 失败 {failed}",
+      "args": ["done", "failed"]
+    },
+    "sessionState.batch.skipped": {
+      "kind": "body",
+      "zh": "另 {n} 个已结束 · 跳过",
+      "args": ["n"]
+    },
+    "statusBar.messages.label": {
+      "kind": "action",
+      "zh": "消息",
+      "args": []
+    },
+    "statusBar.messages.title": {
+      "kind": "title",
+      "zh": "消息",
+      "args": []
+    },
+    "statusBar.messages.keep": {
+      "kind": "body",
+      "zh": "最近 {n} 条",
+      "args": ["n"]
+    },
+    "statusBar.messages.empty": {
+      "kind": "body",
+      "zh": "本次运行还没有提示",
+      "args": []
+    },
+    "statusBar.messages.line": {
+      "kind": "body",
+      "zh": "{title} · {detail}",
+      "args": ["title", "detail"]
+    },
+    "tabBar.group.dissolved": {
+      "kind": "body",
+      "zh": "已解散分组「{name}」",
+      "args": ["name"]
+    },
+    "tabBar.group.left": {
+      "kind": "body",
+      "zh": "已移出分组「{name}」",
+      "args": ["name"]
+    },
+    "tabBar.unpinned.toast": {
+      "kind": "body",
+      "zh": "已取消固定「{title}」",
+      "args": ["title"]
     }
   }
 }

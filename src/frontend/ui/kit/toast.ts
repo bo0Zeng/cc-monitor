@@ -39,6 +39,45 @@ export interface ToastRecord {
   title: string;
   detail: string;
   count: number;
+  /** 出来那一刻（毫秒）。 */
+  at: number;
+  /** 还能做的动作（「重试」「查看」）；撤销期过了的「撤销」不在这里。 */
+  actions: ToastAction[];
+  /** 出错的那几条：在「消息」里看过没有。 */
+  seen: boolean;
+}
+
+const listeners = new Set<() => void>();
+
+/** 「消息」那一枚跟着记录变（新的一条进来 · 撤销期过了 · 看过了）。返回退订。 */
+export function onToastRecords(cb: () => void): () => void {
+  listeners.add(cb);
+  return () => listeners.delete(cb);
+}
+
+function changed(): void {
+  for (const cb of listeners) cb();
+}
+
+/** 有没有还没在「消息」里看过的出错提示。 */
+export function unseenErrors(): boolean {
+  return record.some((r) => r.level === "error" && !r.seen);
+}
+
+/** 在「消息」里点一条的动作：那条 toast 还开着就一起收起（撤销 ＝ 不再提交）；做一次就从记录里摘掉。 */
+export function runRecordAction(r: ToastRecord, a: ToastAction): void {
+  const t = live.find((x) => x.record === r);
+  if (t) drop(t, false);
+  r.actions = r.actions.filter((x) => x !== a);
+  changed();
+  a.run();
+}
+
+/** 打开「消息」⇒ 那几条都算看过。 */
+export function markRecordsSeen(): void {
+  let any = false;
+  for (const r of record) if (!r.seen) any = r.seen = true;
+  if (any) changed();
 }
 
 const STACK_ID = "kit-toast-stack";
@@ -72,6 +111,7 @@ export function recentToasts(): readonly ToastRecord[] {
 function remember(r: ToastRecord): void {
   record.unshift(r);
   record.length = Math.min(record.length, TOAST_RECORD_MAX);
+  changed();
 }
 
 function stack(): HTMLElement {
@@ -87,6 +127,26 @@ function stack(): HTMLElement {
   return st;
 }
 
+/**
+ * 把一句写进 `el`：按「 · 」分段，每段一个不拆行的 span（只在段与段之间换行）；多行的逐行照排。
+ * 一段本身比整条还宽 ⇒ 那一段照常折（`overflow-wrap` 兜底，不溢出）。
+ */
+export function setSegmented(el: HTMLElement, text: string): void {
+  const sep = copyText("kit.text.sep");
+  el.replaceChildren();
+  if (text === "") return; // 空的那一行留空（CSS 的 `:empty` 把它收起）
+  text.split("\n").forEach((line, i) => {
+    if (i > 0) el.appendChild(document.createElement("br"));
+    line.split(sep).forEach((seg, j) => {
+      if (j > 0) el.appendChild(document.createTextNode(sep));
+      const span = document.createElement("span");
+      span.className = s.toastSeg;
+      span.textContent = seg;
+      el.appendChild(span);
+    });
+  });
+}
+
 function lifetime(level: ToastLevel, hasAction: boolean): number | null {
   if (level === "error") return null;
   return hasAction ? TOAST_ACTION_MS : TOAST_PLAIN_MS;
@@ -98,6 +158,11 @@ function drop(t: Live, expired: boolean): void {
   live.splice(i, 1);
   if (t.timer !== null) clearTimeout(t.timer);
   t.el.remove();
+  if (expired && t.undo) {
+    // 撤销期过了（那一步已经提交）⇒ 「消息」里不再给「撤销」。
+    t.record.actions = t.record.actions.filter((a) => a.run !== t.undo);
+    changed();
+  }
   if (expired) t.onExpire?.();
 }
 
@@ -132,7 +197,7 @@ export function toast(title: string, detail: string, opts: ToastOptions = {}): (
     same.details.push(detail);
     same.record.count += 1;
     same.record.detail = detail;
-    same.detailEl.textContent = detail;
+    setSegmented(same.detailEl, detail);
     same.countEl.textContent = copyText("kit.toast.count", { n: same.record.count });
     same.countEl.hidden = false;
     same.el.title = same.details.join("\n");
@@ -149,7 +214,7 @@ export function toast(title: string, detail: string, opts: ToastOptions = {}): (
   text.className = s.toastText;
   const head = document.createElement("div");
   head.className = s.toastTitle;
-  head.textContent = title;
+  setSegmented(head, title);
   const countEl = document.createElement("span");
   countEl.className = s.toastCount;
   countEl.dataset.part = "count";
@@ -158,11 +223,12 @@ export function toast(title: string, detail: string, opts: ToastOptions = {}): (
   const detailEl = document.createElement("div");
   detailEl.className = s.toastDetail;
   detailEl.dataset.part = "detail";
-  detailEl.textContent = detail;
+  setSegmented(detailEl, detail);
   text.append(head, detailEl);
   el.append(icon(LEVEL_ICON[level]), text);
 
-  const rec: ToastRecord = { level, title, detail, count: 1 };
+  const acts0 = opts.action === undefined ? [] : Array.isArray(opts.action) ? opts.action : [opts.action];
+  const rec: ToastRecord = { level, title, detail, count: 1, at: Date.now(), actions: acts0, seen: level !== "error" };
   const t: Live = {
     key,
     el,

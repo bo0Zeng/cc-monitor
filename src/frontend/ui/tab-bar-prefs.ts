@@ -187,6 +187,28 @@ export class TabBarPrefs {
     return null;
   }
 
+  /**
+   * 撤销「移出分组」「解散分组」：组还在 ⇒ 把这几个放回去；组已经随最后一个人走没了 ⇒ 照原来的 id 与名字建回来再放回去。
+   * 放回去时已不在栏里的那几个不管（撤销只还原还在的）。
+   */
+  restoreGroup(col: TabCollection, sids: readonly string[]): Promise<void> {
+    const edits: ConfigEdit[] = [];
+    if (!this.collections.some((c) => c.id === col.id)) {
+      this.collections = [...this.collections, col];
+      edits.push(collectionsEdit(this.collections));
+    }
+    const left = new Set<string | null>();
+    for (const sid of sids) {
+      const t = this.store.tabs.get(sid);
+      if (!t || t.group === col.id) continue;
+      left.add(t.group);
+      t.group = col.id;
+      edits.push(groupOfEdit(sid, col.id));
+    }
+    for (const old of left) edits.push(...this.dropIfEmpty(old));
+    return this.writeGroups(edits);
+  }
+
   /** 右键「加入集合 › X」/ 拖放进组：`sid` 进组 `gid`（原来在别的组 ⇒ 就不在了：`group` 是单值）。 */
   joinGroup(sid: string, gid: string): Promise<void> {
     const t = this.store.tabs.get(sid);
