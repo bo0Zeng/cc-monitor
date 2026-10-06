@@ -1991,6 +1991,10 @@ pub struct StreamWants {
 /// 只该认得这个字面量，不该因此在引用图上连到 CLI 面的分派口（`target_parity_guard` 那条「够不够得着 tmux」按文件级引用图走）。
 pub const STDIN_LINE_FLAG: &str = "--stdin-line";
 
+/// **「给人看」那一形**：跟在 `--quota-read` 后面（`--quota-read --text`）⇒ 同一份回包排成每号一段的字（`control/quota_text.rs`）。
+/// 只给这一条；别的子命令带它 ⇒ `bad_args`。缺省仍是 JSON 进 JSON 出。住这里同 [`STDIN_LINE_FLAG`]：它是 [`SUBCOMMAND_OPTIONS`] 的一员。
+pub const TEXT_FLAG: &str = "--text";
+
 /// 帧命令名 → 它的 CLI 子命令（`launch` → `--launch`）。**唯一一处拼法**：本进程的 CLI 面（`control/cli_control.rs::flag_of`）
 /// 与问远端那台 CLI 面的那一跳（`remote_ask::ask_json`）都经它 —— 住这里而不住 `cli_control`，是为了让
 /// `remote_ask` 不必引 `control/`（引了，按文件画的引用图就把问远端的几条命令连到 tmux 上）。
@@ -2018,6 +2022,8 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     "--scope",
     // CLI 控制面那一族（`--<帧命令>`）的「只读一行 stdin」修饰词。
     STDIN_LINE_FLAG,
+    // `--quota-read` 的「给人看」那一形（只给这一条）。
+    TEXT_FLAG,
     "--until",
 ];
 

@@ -72,6 +72,7 @@ pub(crate) mod child;
 mod fallback_guard;
 pub(crate) mod fs;
 pub(crate) mod liveness;
+pub(crate) mod local_tz;
 pub(crate) mod lock;
 pub(crate) mod paths;
 pub(crate) mod pidwatch;
@@ -85,6 +86,8 @@ pub(crate) mod tcp_rtt;
 pub(crate) mod win_proc;
 #[cfg(windows)]
 pub(crate) mod win_tables;
+#[cfg(windows)]
+pub(crate) mod win_tz;
 
 /// ↗ 那一问的系统事实（已建立的 TCP 连接表 ＋ 进程表，一行 JSON）。只有 Windows 有这一问；别的平台 ⇒ `Err`。
 pub(crate) fn connection_and_process_tables() -> Result<String, String> {

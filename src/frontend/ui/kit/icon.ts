@@ -20,6 +20,9 @@ import warningCircle from "@phosphor-icons/core/assets/regular/warning-circle.sv
 import checkCircle from "@phosphor-icons/core/assets/regular/check-circle.svg?raw";
 import magnifyingGlass from "@phosphor-icons/core/assets/regular/magnifying-glass.svg?raw";
 import tray from "@phosphor-icons/core/assets/regular/tray.svg?raw";
+import arrowsLeftRight from "@phosphor-icons/core/assets/regular/arrows-left-right.svg?raw";
+import dotsSixVertical from "@phosphor-icons/core/assets/regular/dots-six-vertical.svg?raw";
+import caretDown from "@phosphor-icons/core/assets/regular/caret-down.svg?raw";
 import s from "./icon.module.css";
 
 const SVG = {
@@ -37,6 +40,9 @@ const SVG = {
   success: checkCircle,
   search: magnifyingGlass,
   empty: tray,
+  swap: arrowsLeftRight,
+  drag: dotsSixVertical,
+  caretDown: caretDown,
 } as const;
 
 export type IconName = keyof typeof SVG;

@@ -25,6 +25,11 @@ import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { appStore, putAccounts } from "./app-store";
 import { closeMenu, menuAnchoredOn, openMenu, type MenuItem } from "./kit/menu";
+import { attachTooltip } from "./kit/tooltip";
+import { icon } from "./kit/icon";
+import { acctAvatar, hoverTable } from "./acct-dom";
+import { sessionChip, sessionHoverRows, usageOf, usageText, type ChipModel } from "./acct-view";
+import s from "./acct.module.css";
 
 // ------------------------------------------------------------ 纯函数（可测）
 
@@ -61,6 +66,8 @@ export function chipLabel(state: AccountsState | null): string {
 export interface AccountChipDeps {
   /** 打开设置窗口的账号组（A3 设置组落地后接线；先给个跳设置的回调）。 */
   openSettings: () => void;
+  /** 有当前会话时点按钮：开 / 关本会话的「账号」面板。 */
+  togglePanel?: (sid: string, origin: Origin) => void;
   /** F1：切完当前账号后回调——让 main.ts 立刻重算会话账号归属，否则会有最长 10s 的反向窗口。
    *  （chip 是纯全局切换器，只列账号点选切当前账号；批量对齐随 F09 一并删除，不在任何地方。） */
   onDefaultChanged?: () => void;
@@ -70,6 +77,13 @@ export class AccountChip {
   readonly element: HTMLButtonElement;
   private labelSpan: HTMLElement;
   private iconEl: HTMLElement;
+  /** 无会话时名字前那一格 `默认`。 */
+  private prefixEl: HTMLElement;
+  /** 本会话那一形：`[⇄] [头像] 名 窗口 用量 [↻重置]`（无会话时藏着）。 */
+  private sessionEl: HTMLElement;
+  /** 此刻的当前会话（`null` ＝ 没有 tab ⇒ 按钮退成「默认 work」）。 */
+  private active: { sid: string; origin: Origin } | null = null;
+  private chipModel: ChipModel | null = null;
   /** chip 绑的那台机器（`refresh` 之前没意义 —— 那时 `state` 也是 `null`）。 */
   private origin: Origin = LOCAL_ORIGIN;
   /** `D1 阻-5`：这一拍渲染的是**本机**账号吗（没有远端时回落）。 */
@@ -92,24 +106,112 @@ export class AccountChip {
   constructor(private deps: AccountChipDeps) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "status-account";
-    btn.title = copyText("accountChip.ctor.hint");
-    const icon = document.createElement("span");
-    icon.className = "status-account-icon";
-    icon.textContent = copyText("accountChip.ctor.icon");
-    icon.setAttribute("aria-hidden", "true");
-    btn.appendChild(icon);
-    this.iconEl = icon;
+    btn.className = `status-account ${s.acctChip}`;
+    this.prefixEl = document.createElement("span");
+    this.prefixEl.className = s.acctChipPrefix;
+    this.prefixEl.textContent = copyText("acct.chip.default");
+    btn.appendChild(this.prefixEl);
+    const iconSpan = document.createElement("span");
+    iconSpan.className = "status-account-icon";
+    iconSpan.textContent = copyText("accountChip.ctor.icon");
+    iconSpan.setAttribute("aria-hidden", "true");
+    btn.appendChild(iconSpan);
+    this.iconEl = iconSpan;
     this.labelSpan = document.createElement("span");
     this.labelSpan.className = "status-account-label";
     btn.appendChild(this.labelSpan);
-    btn.addEventListener("click", () => void this.toggleMenu());
+    this.sessionEl = document.createElement("span");
+    this.sessionEl.className = s.acctChipSession;
+    btn.appendChild(this.sessionEl);
+    btn.addEventListener("click", () => {
+      if (this.active && this.chipModel && this.deps.togglePanel) this.deps.togglePanel(this.active.sid, this.active.origin);
+      else void this.toggleMenu();
+    });
+    // 本会话那一形才有悬停卡（表格，无可点项）；默认那一形点开就是下拉，不另给提示。
+    attachTooltip(btn, () => this.hoverCard());
     this.element = btn;
     this.element.style.display = "none"; // 拿到数据前先藏
     // 本窗口里任何一次取回（含会话账号刷新器的强制刷新）都经 store 订阅重画，不再只在自己 `refresh` 时画。
     appStore.accounts.subscribe(() => {
       if (this.bound) this.paint();
     });
+    // 本会话那一形：额度账 · 会话轮换格 · 会话归属那份快照任何一样变了 ⇒ 原地换数。
+    const repaint = (): void => {
+      if (this.active) this.paint();
+    };
+    appStore.quota.subscribe(repaint);
+    appStore.sessionRotation.subscribe(repaint);
+    appStore.sessionAccounts.subscribe(repaint);
+  }
+
+  /** 当前会话换了（`tabs.active`）：有 ⇒ 按钮画本会话那个号；没有 ⇒ 退成「默认 work」。 */
+  setActive(a: { sid: string; origin: Origin } | null): void {
+    if (this.active?.sid === a?.sid && this.active?.origin === a?.origin) return;
+    this.active = a;
+    this.paint();
+  }
+
+  /** 这个会话在 tab 栏徽章那份快照里归属的号（中转没见过它时只能画这个）。 */
+  private fallbackAccount(sid: string): string | null {
+    return appStore.sessionAccounts.get()?.rows.find((r) => r.sessionId === sid)?.account ?? null;
+  }
+
+  /** 本会话那一形这一刻的样子（没有当前会话 / 一样都不知道 ⇒ `null`）。 */
+  private sessionModel(): ChipModel | null {
+    const a = this.active;
+    if (!a) return null;
+    const entry = appStore.sessionRotation.get().get(a.sid);
+    return sessionChip(entry, this.fallbackAccount(a.sid), appStore.quota.get().get(a.origin) ?? null);
+  }
+
+  private hoverCard(): HTMLElement | null {
+    const a = this.active;
+    if (!a || !this.chipModel) return null;
+    const entry = appStore.sessionRotation.get().get(a.sid);
+    const rows = sessionHoverRows(entry, this.fallbackAccount(a.sid), appStore.quota.get().get(a.origin) ?? null);
+    if (!rows) return null;
+    const tone = this.chipModel.tone;
+    const tones: Record<number, "refused" | "warn"> = {};
+    if (tone !== "neutral") tones[1] = tone === "refused" ? "refused" : "warn";
+    return hoverTable(this.chipModel.account, rows, tones);
+  }
+
+  /** 画本会话那一形（`m` 由 [`sessionModel`] 算）。 */
+  private paintSession(m: ChipModel): void {
+    const el = this.sessionEl;
+    el.replaceChildren();
+    if (m.swapped) {
+      const sw = document.createElement("span");
+      sw.className = s.acctChipSwap;
+      sw.appendChild(icon("swap", "compact"));
+      el.appendChild(sw);
+    }
+    if (m.account !== null) el.appendChild(acctAvatar(m.account));
+    const name = document.createElement("span");
+    name.className = s.acctChipName;
+    name.textContent = m.name;
+    el.appendChild(name);
+    if (m.window !== null) {
+      const w = document.createElement("span");
+      w.className = s.acctChipWindow;
+      w.textContent = m.window;
+      el.appendChild(w);
+    }
+    if (m.value !== null) {
+      const v = document.createElement("span");
+      v.className = s.acctChipValue;
+      v.textContent = m.value;
+      el.appendChild(v);
+    }
+    if (m.reset !== null) {
+      const r = document.createElement("span");
+      r.className = s.acctChipReset;
+      r.textContent = m.reset;
+      el.appendChild(r);
+    }
+    this.element.dataset.shade = m.tone;
+    this.element.dataset.stale = String(m.stale);
+    this.element.setAttribute("aria-label", copyText("acct.chip.aria", { name: m.name }));
   }
 
   /** 拉数据刷新 chip（初始 / 设置变更 / 手动）。force 透传给缓存。 */
@@ -151,6 +253,19 @@ export class AccountChip {
 
   /** 按此刻 store 里那一台画 chip（`refresh` 末尾 ＋ store 订阅）。 */
   private paint(): void {
+    const m = this.sessionModel();
+    this.chipModel = m;
+    this.element.dataset.mode = m ? "session" : "default";
+    for (const el of [this.prefixEl, this.iconEl, this.labelSpan]) el.style.display = m ? "none" : "";
+    this.sessionEl.style.display = m ? "" : "none";
+    if (m) {
+      this.paintSession(m);
+      this.element.style.display = "";
+      return;
+    }
+    delete this.element.dataset.shade;
+    delete this.element.dataset.stale;
+    this.sessionEl.replaceChildren();
     const st = this.state;
     if (!st) {
       this.element.style.display = "none"; // 本机 not-ready（`D2 阻-7`）/ store 里还没有那一台
@@ -162,6 +277,7 @@ export class AccountChip {
       return;
     }
     this.labelSpan.textContent = text;
+    this.element.setAttribute("aria-label", copyText("acct.chip.ariaDefault", { name: text }));
     // account-ux U4：ready 时把 👤 换成当前账号的彩色头像（与 tab 徽章同色系 → 肉眼可对应）。
     // U8 休眠：只有 1 个可选账号时颜色区分不了任何东西 → 退回 👤，等加了第二个号再点亮。
     const cur = currentWorkingAccount(st);
@@ -182,8 +298,29 @@ export class AccountChip {
     await this.toggleMenu();
   }
 
-  private async toggleMenu(): Promise<void> {
-    if (menuAnchoredOn(this.element)) {
+  /**
+   * 「新会话默认」那个下拉锚到别处（账号面板底栏）：那台是 chip 绑的这台 ⇒ 同一份；别的台 ⇒ 现取那台的账号清单。
+   */
+  async openDefaultMenu(anchor: HTMLElement, origin: Origin): Promise<void> {
+    if (origin !== this.origin) {
+      const st = isLocalOrigin(origin) ? await fetchLocalAccounts() : await fetchAccounts(origin);
+      putAccounts(origin, st);
+    }
+    await this.toggleMenu(anchor, origin);
+  }
+
+  /** 那台的新会话默认是哪个号（面板底栏那颗按钮上的字）；store 里还没有那台 ⇒ 现取一次（取回来面板随 store 重画）、这一次 `null`。 */
+  defaultOf(origin: Origin): string | null {
+    if (!appStore.accounts.get().has(origin)) {
+      void (isLocalOrigin(origin) ? fetchLocalAccounts() : fetchAccounts(origin)).then((st) => putAccounts(origin, st)).catch(() => putAccounts(origin, null));
+      return null;
+    }
+    const st = appStore.accounts.get().get(origin) ?? null;
+    return st && deriveUi(st).kind === "ready" ? (currentWorkingAccount(st)?.name ?? null) : null;
+  }
+
+  private async toggleMenu(anchor: HTMLElement = this.element, origin: Origin = this.origin): Promise<void> {
+    if (menuAnchoredOn(anchor)) {
       closeMenu();
       return;
     }
@@ -193,7 +330,7 @@ export class AccountChip {
     //   🔴 而 [`snapshotReady`] 先前也留在 origin 那道门后面，`D4 阻-4` 查实那是个洞：
     //   **chip 显示、菜单里能切号，而 Ctrl+K 命令面板拿到 `null`** —— 同一件事两个答案，
     //   而且静默。⇒ 它已经与本行**同源**（`accountPickerState()`），别再把两处分开写。
-    const st = this.accountPickerState();
+    const st = origin === this.origin ? this.accountPickerState() : (appStore.accounts.get().get(origin) ?? null);
     if (!st) return;
     const ui = deriveUi(st);
     const items: MenuItem[] = [];
@@ -208,7 +345,8 @@ export class AccountChip {
       items.push({ label: info, enabled: false }, { label: copyText("accountChip.menu.manageDeploy"), onClick: () => this.deps.openSettings() });
     } else {
       const def = currentWorkingAccount(st);
-      for (const a of ui.accounts) items.push(this.accountItem(a, def?.name === a.name));
+      items.push({ label: copyText("acct.foot.default"), enabled: false });
+      for (const a of ui.accounts) items.push(this.accountItem(a, def?.name === a.name, origin));
       items.push(
         { label: "", divider: true },
         { label: copyText("accountChip.menu.manage"), onClick: () => this.deps.openSettings() },
@@ -216,32 +354,37 @@ export class AccountChip {
           label: copyText("accountChip.menu.refresh"),
           onClick: () => {
             // 账号缓存的键就是 origin ⇒ 只清这一台。
-            invalidateAccountsCache(this.origin);
+            invalidateAccountsCache(origin);
             void this.refresh(true);
           },
         },
       );
     }
-    openMenu({ el: this.element, align: "end" }, items, { label: copyText("accountChip.menu.label") });
+    openMenu({ el: anchor, align: "end" }, items, { label: copyText("accountChip.menu.label") });
   }
 
   /**
    * 一个账号那一项：当前的打勾、头像、邮箱 ＋ 登录态（取值只住 `accounts.ts::accountStatusBadge`，与设置里那张账号表同源）；
    * 每一项带上「走不走 apikey 端点改写」的三态（问不到 routing 时不表态）。
    */
-  private accountItem(a: Account, isCurrent: boolean): MenuItem {
+  private accountItem(a: Account, isCurrent: boolean, origin: Origin): MenuItem {
     const selectable = isSelectable(a);
-    const badge = accountStatusBadge(a, this.apikeyRouting ? apikeyEndpointStateFor(a, this.apikeyRouting) : undefined);
+    const badge = accountStatusBadge(a, this.apikeyRouting && origin === this.origin ? apikeyEndpointStateFor(a, this.apikeyRouting) : undefined);
+    // 用量（`5h 63%` · 被拒 `5h ✕ ↻19:00` · `按量`）：那台额度账上有这个号才写；没有 ⇒ 照旧写登录态。
+    const led = appStore.quota.get().get(origin)?.accounts.find((x) => x.account === a.name);
+    const now = appStore.quota.get().get(origin)?.now ?? 0;
+    const u = led && badge.warn !== true ? usageOf(led, led.reading?.resetsAt, now, -new Date(now * 1000).getTimezoneOffset()) : null;
+    const usage = u ? usageText(u) : null;
     return {
       label: a.name,
       checked: isCurrent,
       avatar: accountAvatarEl(a.name, { size: 16 }),
       note: a.email || undefined,
-      detail: badge.text,
-      detailTone: badge.warn ? "warn" : undefined,
+      detail: usage ?? badge.text,
+      detailTone: (u && u.tone !== "neutral") || badge.warn ? "warn" : undefined,
       title: badge.title,
       enabled: selectable,
-      onClick: selectable && !isCurrent ? () => void this.selectDefault(a) : undefined,
+      onClick: selectable && !isCurrent ? () => void this.selectDefault(a, origin) : undefined,
     };
   }
 
@@ -290,27 +433,24 @@ export class AccountChip {
     if (a && isSelectable(a)) await this.selectDefault(a);
   }
 
-  private async selectDefault(a: Account): Promise<void> {
+  private async selectDefault(a: Account, origin: Origin = this.origin): Promise<void> {
     this.closeMenu();
     try {
-      await accountsSetDefault(this.origin, a.name);
+      await accountsSetDefault(origin, a.name);
       // 默认账号住那台的账号库清单：只清这一台的缓存。
-      invalidateAccountsCache(this.origin);
-      await this.refresh(true);
+      invalidateAccountsCache(origin);
+      if (origin === this.origin) await this.refresh(true);
+      else putAccounts(origin, isLocalOrigin(origin) ? await fetchLocalAccounts(true) : await fetchAccounts(origin, true));
       // 立刻重算会话账号/⚠k（否则 currentByOrigin 要等下一拍 10s 轮询，期间"对齐"会把会话
       // 打回刚被切走的旧账号——与用户意图正好相反）。
       this.deps.onDefaultChanged?.();
-      toast(
-        copyText("accountChip.selectDefault.done"),
-        copyText("accountChip.selectDefault.doneBody", { name: a.name, email: a.email ? `（${a.email}）` : "" }),
-        { level: "info" },
-      );
+      // 选即生效、不另报：下拉合上、按钮上的字就是结果（额度稿 §5.2 底栏）。
     } catch (e) {
       toast(copyText("accountChip.selectDefault.failed"), String(e), { level: "error" });
     }
   }
 
   private closeMenu(): void {
-    if (menuAnchoredOn(this.element)) closeMenu();
+    closeMenu();
   }
 }

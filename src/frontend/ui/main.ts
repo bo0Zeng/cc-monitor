@@ -59,6 +59,9 @@ import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
 import { installGlobalClickDelegation } from "./entry-render-common";
 import { AccountChip } from "./account-chip";
+import { onQuotaChanged, syncSessions } from "./acct-center";
+import { followActive, toggleAccountPanel, type AcctPanelHost } from "./acct-panel";
+import { acctSessionWiring } from "./acct-session";
 import { buildAccountCommands } from "./account-commands";
 import { sessionCommands } from "./session-commands";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
@@ -176,6 +179,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     tabBar,
     streamRoot,
     ({ total, live }) => {
+      // tab 集合变了 ⇒ 新出现的会话问一次它那台的轮换格（构造途中也会叫到这里 ⇒ 排到下一拍，`tabs` 已赋值）。
+      queueMicrotask(() => syncSessions(tabs.snapshotSessions()));
       statusCount.textContent = copyText("main.status.count", { live });
       statusMsg.textContent =
         live > 0 ? copyText("main.status.watching") : copyText("main.status.waiting");
@@ -211,12 +216,24 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 回调本身只在用户切号时才真正执行，届时 `refreshSessionAccounts` 早已初始化完毕，不会踩
   // TDZ；但这条"届时早已初始化"的保证依赖"这中间没有 await 会提前执行到回调"这条隐式不变量，
   // 谁在中间插一个真会被调用的 await 就有踩 TDZ 的风险，需要留意。
-  const accountChip = new AccountChip({
+  // 「账号」面板（右侧抽屉）：状态栏按钮 · 右键「账号…」· 会话头 ⋯ 开同一个。
+  const panelHost: AcctPanelHost = {
+    sessionTitle: (sid) => tabs.snapshotSessions().find((x) => x.sessionId === sid)?.title ?? sid.slice(0, 8),
+    cwdOf: (sid) => tabs.snapshotSessions().find((x) => x.sessionId === sid)?.cwd ?? "",
+    openSettings: () => accountChipDeps.openSettings(),
+    openDefaultMenu: (anchor, origin) => void accountChip.openDefaultMenu(anchor, origin),
+    defaultOf: (origin) => accountChip.defaultOf(origin),
+  };
+  const openAcctPanel = (sid: string, origin: string): void => toggleAccountPanel(sid, origin, panelHost);
+  tabs.onOpenAccountPanel = openAcctPanel;
+  const accountChipDeps = {
     openSettings: () => void openSettingsWindow(),
+    togglePanel: openAcctPanel,
     // 切号后立刻重算一次：currentByOrigin 只由下面那个事件驱动的刷新器喂，不主动刷的话
     // chip 已显示新账号，而对齐动作会把会话打回**刚被切走**的旧账号（D 审计重-5）。
     onDefaultChanged: () => accountsRefresher.request(true),
-  });
+  };
+  const accountChip = new AccountChip(accountChipDeps);
   status.appendChild(accountChip.element);
   void accountChip.refresh();
 
@@ -296,7 +313,19 @@ window.addEventListener("DOMContentLoaded", async () => {
   tabs.active.subscribe((a) => {
     usageHud.setActive(a.model, a.promptTokens, a.contextLimit);
     usageHud.setUnavailable(a.unavailable);
+    // 状态栏账号按钮 = 本会话；面板开着就跟着换成那个会话（不关）。
+    const origin = a.sid === null ? null : tabs.originOf(a.sid);
+    const cur = a.sid !== null && origin !== null ? { sid: a.sid, origin } : null;
+    accountChip.setActive(cur);
+    followActive(cur, panelHost);
+    if (a.sid !== null) acctSession.repaintBanner(a.sid); // 「还有多久」只在画的那一刻算：切到这个 tab 那一刻重算
   });
+  // 会话里的换号条 · 提示条；tab 栏被卡住的会话 `✕ 5h`。
+  const acctSession = acctSessionWiring({
+    streamContentOf: (sid) => tabs.streamContentOf(sid),
+    openPanel: openAcctPanel,
+  });
+  appStore.sessionRotation.subscribe(() => tabs.repaintTabBar());
 
   // v2.4 issue #2：拉一次 behavior toggle 初值喂给 TabManager。
   // 设置面板改了之后会再调 applyBehavior 同步。
@@ -429,6 +458,18 @@ window.addEventListener("DOMContentLoaded", async () => {
         openSettings: () => void openSettingsWindow(),
       }),
     );
+    // 「账号…」（当前会话）· 「账号：新会话默认…」（同状态栏无会话时那个下拉）。
+    const cur = tabs.activeSessionId();
+    const curOrigin = cur === null ? null : tabs.originOf(cur);
+    if (cur !== null && curOrigin !== null) {
+      cmds.push({ id: "acct-panel", title: copyText("acct.menu.open"), keywords: copyText("acct.menu.open"), run: () => openAcctPanel(cur, curOrigin) });
+    }
+    cmds.push({
+      id: "acct-default-menu",
+      title: copyText("acct.cmd.default"),
+      keywords: copyText("acct.cmd.default"),
+      run: () => void accountChip.openDefaultMenu(accountChip.element, curOrigin ?? LOCAL_ORIGIN),
+    });
     // 切到会话（来自 F91 只读投影 snapshotSessions）
     cmds.push(...sessionCommands(tabs.snapshotSessions(), (sid) => tabs.switchTo(sid)));
     return cmds;
@@ -652,6 +693,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     // v2.3.0 issue #11: task watcher 推送的 task 列表更新
     // 那台后端说这几个会话的任务变了（或期间可能漏了）⇒ 重问 `tasks-list`。
     onTasksChanged: (origin, sids, all) => tabs.refreshTasks(origin, sids, all),
+    // 那台的额度账 / 某个会话的轮换变了 ⇒ 重问（`acct-center.ts`；画的那几处订 store）。
+    onQuotaChanged,
     // issue #23: 会话红绿灯（busy=绿 / idle·shell=红 / waiting=黄）
     onSessionActivity: (e) =>
       tabs.updateActivity(e.session_id, e.status, e.waiting_for),
@@ -682,6 +725,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     accounts: machines,
     // 每台一条 `session-tasks`（替掉本机那个裸事件 `task-update`；远端第一次有推送）。
     tasks: machines,
+    // 每台一条 `quota-changed`（额度账 · 会话轮换变了）。
+    quota: machines,
   });
   // 账号那一格经通道订（每台一条 `accounts-changed`，上面 `bindEvents` 的 `accounts`）。
   //   订阅登记之前那一窗里连上的不会有 `seen`（句柄只在状态变时说）⇒ `bindEvents` 返回（订阅都登记好了）之后补刷一次 ——

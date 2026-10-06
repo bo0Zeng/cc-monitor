@@ -43,19 +43,25 @@ export function placeTip(host: DOMRect, tip: { width: number; height: number }, 
 
 /**
  * 给 `host` 挂提示。`text` 可以是函数（显示那一刻现取：键位改了跟着变）。
+ * 函数回一个元素 ⇒ 悬停卡（加长版：表格排的「键  值」，不放能点的东西）；回空串 / `null` ⇒ 这一次不出。
  * `immediate` ＝ 不等 500ms（信息图标那种点名要看的）。
  */
-export function attachTooltip(host: HTMLElement, text: string | (() => string), opts: { immediate?: boolean } = {}): void {
+export function attachTooltip(
+  host: HTMLElement,
+  text: string | (() => string | HTMLElement | null),
+  opts: { immediate?: boolean } = {},
+): void {
   let tip: HTMLElement | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   const show = (): void => {
     sweep();
     const t = typeof text === "function" ? text() : text;
-    if (t === "") return;
+    if (t === "" || t === null) return;
     tip ??= document.createElement("div");
-    tip.className = s.tip;
+    tip.className = typeof t === "string" ? s.tip : `${s.tip} ${s.tipCard}`;
     tip.setAttribute("role", "tooltip");
-    tip.textContent = t;
+    if (typeof t === "string") tip.textContent = t;
+    else tip.replaceChildren(t);
     if (!tip.isConnected) {
       document.body.appendChild(tip);
       live.set(tip, host);

@@ -39,6 +39,7 @@
 //!   默认读到 EOF；子命令后面跟 [`STDIN_LINE_FLAG`] ⇒ **只读一行**（读到第一个换行就停，不等 EOF）——
 //!   给「stdin 关不掉」的调用方用（远端命令经 capture 那一跳交载荷，capture 不关远端 stdin）。
 //! · **出**：stdout 一行紧凑 JSON（命令没有返回值时是 `{}`），exit 0。
+//!   唯一的例外是 [`crate::TEXT_FLAG`]：只给 `quota-read`，同一份回包排成给人看的字（`control/quota_text.rs`）；别的命令带它 ⇒ `bad_args`。
 //! · **错**：exit 2 + stderr 一行 `{"code","message"}`。
 //! · **exec 模型**：1 exec = 1 请求 1 响应 1 退出，**无 request-id**（`resolve_query` 头注逐字）。
 
@@ -259,6 +260,11 @@ pub async fn run(args: &[String]) -> i32 {
             contract::malformed(&format!("unknown CLI flag {flag}")),
         );
     };
+    // 「给人看」那一形只给 `quota-read`（`control/quota_text.rs`）；别的命令带它 ⇒ 用法错，不悄悄忽略。
+    let text = args[1..].iter().any(|a| a == crate::TEXT_FLAG);
+    if text && spec.name != "quota-read" {
+        return emit_err("bad_args", copy_core::copy_text("acct.text.onlyQuota", &[]));
+    }
     let mut input = String::new();
     if reads_stdin(spec) {
         let one_line = args.get(1).map(String::as_str) == Some(STDIN_LINE_FLAG);
@@ -301,7 +307,12 @@ pub async fn run(args: &[String]) -> i32 {
     drop(total);
     match outcome {
         Ok(v) => {
-            println!("{}", v.unwrap_or_else(|| serde_json::json!({})));
+            let v = v.unwrap_or_else(|| serde_json::json!({}));
+            if text {
+                println!("{}", crate::control::quota_text::render_here(&v));
+            } else {
+                println!("{v}");
+            }
             0
         }
         Err((code, message)) => emit_err(&code, message),

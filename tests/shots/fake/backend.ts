@@ -96,7 +96,7 @@ export class FakeBackend {
       if (this.world.droppedMachines?.includes(sub.origin)) {
         setTimeout(() => this.send(sub, [{ t: "unseen", idx: 1, tag: "read", why: "Dropped" }]), 1500);
       }
-    } else if (sub.kind === "session-tap" || sub.kind === "accounts-changed" || sub.kind === "session-tasks") {
+    } else if (sub.kind === "session-tap" || sub.kind === "accounts-changed" || sub.kind === "session-tasks" || sub.kind === "quota-changed") {
       this.send(sub, [{ t: "seen", from: null }]);
     } else {
       this.miss(`订阅 ${sub.kind}`);
@@ -147,6 +147,13 @@ export class FakeBackend {
   pushFrames(origin: string, frames: SessionStreamFrame[]): void {
     for (const sub of this.subs.values()) {
       if (sub.origin === origin && sub.kind.startsWith("session-lines")) this.sendFrames(sub, frames);
+    }
+  }
+
+  /** 场景在开页之后推一格 `quota-changed`（`{"quota":true}` / `{"sid": …}`）。 */
+  pushQuota(origin: string, body: unknown): void {
+    for (const sub of this.subs.values()) {
+      if (sub.origin === origin && sub.kind === "quota-changed") this.send(sub, [{ t: "frame", seq: 0, body: JSON.stringify(body) }]);
     }
   }
 

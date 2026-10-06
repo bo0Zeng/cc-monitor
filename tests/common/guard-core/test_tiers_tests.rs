@@ -56,6 +56,9 @@ use std::path::{Path, PathBuf};
 
 /// 单元层：不读仓内文本、不碰 OS 的测试文件。
 const UNIT: &[&str] = &[
+    "tests/frontend/ui/acct-panel.vitest.ts",
+    "tests/frontend/ui/acct-session.vitest.ts",
+    "tests/frontend/ui/acct-view.vitest.ts",
     "tests/frontend/ui/remote-launch.test.ts", // SCAN → UNIT：读 e2e 替身源码那一格随换号重启下沉删了，剩下的格都是纯函数
     // SCAN → UNIT：读 `main.rs` 源码的那一条（`--capture-pane` 够不够得到）随那条子命令删了，余下都是纯函数。
     "tests/backend/main_stream_flag_tests.rs",
@@ -308,6 +311,8 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/account-base-semantics.vitest.ts",
     "tests/frontend/ui/account-chip.vitest.ts",
     "tests/frontend/ui/accounts-decode.vitest.ts", // 读跨语言金样（`tests/__fixtures__/accounts.golden.json`）
+    "tests/frontend/ui/quota-lines.vitest.ts", // 读跨语言金样（`tests/__fixtures__/quota-text.golden.json`）
+    "tests/frontend/ui/quota-stream.vitest.ts", // 读 Rust 源码对拍流名（`event_replay.rs::QUOTA_CHANGED_KIND`）
     "tests/frontend/ui/apikey-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/apikey.golden.json`）
     "tests/frontend/ui/ssh-config-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/ssh-config.golden.json`）
     "tests/frontend/ui/terminal-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/terminals.golden.json`）
@@ -327,6 +332,7 @@ const SCAN: &[&str] = &[
     "tests/backend/control/cc_bus_tests.rs",
     "tests/backend/control/ccm/argv_tests.rs",
     "tests/backend/control/cli_control_tests.rs",
+    "tests/backend/control/quota_text_tests.rs", // 读跨语言金样（`tests/__fixtures__/quota-text.golden.json`）
     "tests/backend/control/gate_tests.rs",
     "tests/backend/control/resolve_query_tests.rs", // UNIT → SCAN：跨仓承诺那一族读冻结金样与 IPC-PROTOCOL
     "tests/backend/dial_sftp_tests.rs",

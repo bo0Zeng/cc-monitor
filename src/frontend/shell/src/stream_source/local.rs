@@ -71,6 +71,8 @@ pub(crate) enum LocalStep {
     Remove { sid: String },
     /// 本机某个会话的任务清单变了 ⇒ 交重放缓冲那张订阅表（与远端同一个 `tasks_changed`）。
     Tasks { sid: String },
+    /// 本机的额度账变了（`None`）/ 某个会话的轮换变了（`Some(sid)`）⇒ 交重放缓冲那张订阅表（与远端同一个口）。
+    Quota { sid: Option<String> },
     /// 进 [`LineIntake::notice`]（冲掉残批、交一格出声）。
     Notice {
         sid: String,
@@ -251,6 +253,11 @@ pub(crate) fn local_step(
         }
         // 任务清单变了：与 bg 藏不藏无关（任务面板按 sid 取，藏起来的会话本来就没有 tab）。
         LocalItem::Frame(InboundFrame::TasksChanged { sid }) => LocalStep::Tasks { sid },
+        // 额度 / 轮换变了：与 bg 藏不藏无关（界面按 sid 取）。
+        LocalItem::Frame(InboundFrame::QuotaChanged) => LocalStep::Quota { sid: None },
+        LocalItem::Frame(InboundFrame::RotationChanged { sid }) => {
+            LocalStep::Quota { sid: Some(sid) }
+        }
         LocalItem::Frame(_) => LocalStep::Skip,
     }
 }
@@ -333,6 +340,9 @@ pub(crate) async fn consume_local(
                 LocalStep::Notice { sid, path, change } => intake.notice(&sid, &path, change).await,
                 LocalStep::Tasks { sid } => {
                     replay.tasks_changed(&crate::origin::Origin(label.clone()), &sid)
+                }
+                LocalStep::Quota { sid } => {
+                    replay.quota_changed(&crate::origin::Origin(label.clone()), sid.as_deref())
                 }
                 LocalStep::Skip => {}
                 LocalStep::Lost => intake.lost().await,

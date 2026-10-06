@@ -82,6 +82,7 @@ pub(crate) mod launch;
 pub(crate) mod launch_account;
 // 起会话的计划与渲染（从 monitor 搬来）：本机起会话 · `ccm …` 调用行 · 载荷 ＋ 外层 tmux 三格。
 pub mod launch_render;
+pub(crate) mod quota_text;
 pub mod resident;
 pub mod resolve_query;
 pub(crate) mod session_batch;

@@ -83,6 +83,15 @@ export function defaultOps(): Record<string, OpHandler> {
         ),
     }),
     "accounts-trust": () => ({ known: true, trusted: true }),
+    // 额度与轮换：缺省世界里中转还没见过任何回包、任何会话（额度场景在 `scenes/acct.ts` 整条覆盖）。
+    "quota-read": () => ({ state: "absent", reason: null, path: "/home/user/.cc-monitor/quota.json", now: Math.floor(Date.now() / 1000), accounts: [], unseen: [], usableNow: [], earliestReturn: null }),
+    "rotation-read": () => ({ state: "absent", reason: null, path: "/home/user/.cc-monitor/rotation.json", rotation: { order: [{ start: true }], enabled: [], when: "full", atLimit: "continue" }, followers: 0 }),
+    "rotation-session-read": (_o, req) => ({
+      state: "absent",
+      reason: null,
+      now: Math.floor(Date.now() / 1000),
+      sessions: Object.fromEntries((req.sids as string[]).map((sid) => [sid, { state: "absent", inPlace: "noRelay" }])),
+    }),
     "history-last-accounts": (_o, _r, w) => ({
       accounts: Object.fromEntries(w.sessions.map((s, i) => [s.sid, ACCOUNTS[i % 2].name])),
     }),

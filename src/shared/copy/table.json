@@ -4491,16 +4491,6 @@
       "zh": "切换当前账号失败",
       "args": []
     },
-    "accountChip.selectDefault.doneBody": {
-      "kind": "body",
-      "zh": "以后新会话和没指定过账号的 resume 都用 {name}{email}。正在跑的会话不受影响；已归属别的账号的会话不变，要换就在那个 tab 上右键选「把此会话切到账号 {name}」。",
-      "args": ["name", "email"]
-    },
-    "accountChip.selectDefault.done": {
-      "kind": "body",
-      "zh": "已切当前账号",
-      "args": []
-    },
     "accountChip.menu.refresh": {
       "kind": "action",
       "zh": "刷新",
@@ -4544,11 +4534,6 @@
     "accountChip.ctor.icon": {
       "kind": "body",
       "zh": "👤",
-      "args": []
-    },
-    "accountChip.ctor.hint": {
-      "kind": "body",
-      "zh": "当前账号（点击切换 / 管理）",
       "args": []
     },
     "accountChip.label.disabled": {
@@ -19314,6 +19299,231 @@
       "zh": "重试",
       "args": []
     },
+    "acct.kind.sub": {
+      "kind": "body",
+      "zh": "订阅",
+      "args": []
+    },
+    "acct.kind.api": {
+      "kind": "body",
+      "zh": "按量",
+      "args": []
+    },
+    "acct.home.name": {
+      "kind": "body",
+      "zh": "~/.claude",
+      "args": []
+    },
+    "acct.tag.login": {
+      "kind": "body",
+      "zh": "需登录",
+      "args": []
+    },
+    "acct.tag.key": {
+      "kind": "body",
+      "zh": "需 key",
+      "args": []
+    },
+    "acct.slot.fiveHour": {
+      "kind": "title",
+      "zh": "5h",
+      "args": []
+    },
+    "acct.slot.sevenDay": {
+      "kind": "title",
+      "zh": "7d",
+      "args": []
+    },
+    "acct.row.over": {
+      "kind": "title",
+      "zh": "超额",
+      "args": []
+    },
+    "acct.row.state": {
+      "kind": "title",
+      "zh": "状态",
+      "args": []
+    },
+    "acct.row.seen": {
+      "kind": "title",
+      "zh": "采样",
+      "args": []
+    },
+    "acct.val.pct": {
+      "kind": "body",
+      "zh": "{pct}%",
+      "args": ["pct"]
+    },
+    "acct.val.refused": {
+      "kind": "body",
+      "zh": "✕",
+      "args": []
+    },
+    "acct.val.none": {
+      "kind": "body",
+      "zh": "—",
+      "args": []
+    },
+    "acct.val.over": {
+      "kind": "body",
+      "zh": "超额",
+      "args": []
+    },
+    "acct.val.overOn": {
+      "kind": "body",
+      "zh": "使用中",
+      "args": []
+    },
+    "acct.reset.at": {
+      "kind": "body",
+      "zh": "↻{at}",
+      "args": ["at"]
+    },
+    "acct.reset.past": {
+      "kind": "body",
+      "zh": "↻{at} 已过",
+      "args": ["at"]
+    },
+    "acct.seen.at": {
+      "kind": "body",
+      "zh": "{at} · {machine}",
+      "args": ["at", "machine"]
+    },
+    "acct.seen.none": {
+      "kind": "body",
+      "zh": "无采样",
+      "args": []
+    },
+    "acct.machine.here": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "acct.text.readFail": {
+      "kind": "error",
+      "zh": "用量记录读取失败",
+      "args": []
+    },
+    "acct.text.onlyQuota": {
+      "kind": "error",
+      "zh": "--text 仅用于 --quota-read",
+      "args": []
+    },
+    "acct.slot.both": {
+      "kind": "title",
+      "zh": "5h/7d",
+      "args": []
+    },
+    "acct.val.noLimit": {
+      "kind": "body",
+      "zh": "无限额",
+      "args": []
+    },
+    "acct.val.overBilled": {
+      "kind": "body",
+      "zh": "另计费",
+      "args": []
+    },
+    "acct.tag.home": {
+      "kind": "body",
+      "zh": "未指定账号",
+      "args": []
+    },
+    "acct.seen.staleShort": {
+      "kind": "body",
+      "zh": "{at} · 旧",
+      "args": ["at"]
+    },
+    "acct.chip.default": {
+      "kind": "body",
+      "zh": "默认",
+      "args": []
+    },
+    "acct.chip.aria": {
+      "kind": "aria",
+      "zh": "账号 {name}",
+      "args": ["name"]
+    },
+    "acct.chip.ariaDefault": {
+      "kind": "aria",
+      "zh": "新会话默认账号 {name}",
+      "args": ["name"]
+    },
+    "acct.hover.next": {
+      "kind": "title",
+      "zh": "下一个",
+      "args": []
+    },
+    "acct.hover.nextNone": {
+      "kind": "body",
+      "zh": "轮换内无未满",
+      "args": []
+    },
+    "acct.hover.usage": {
+      "kind": "title",
+      "zh": "用量",
+      "args": []
+    },
+    "acct.hover.noRelay": {
+      "kind": "body",
+      "zh": "未实时显示",
+      "args": []
+    },
+    "acct.hover.switch": {
+      "kind": "title",
+      "zh": "切换",
+      "args": []
+    },
+    "acct.hover.restartOnly": {
+      "kind": "body",
+      "zh": "仅重启切换",
+      "args": []
+    },
+    "acct.hover.from": {
+      "kind": "body",
+      "zh": "⇄ {at} ← {name}",
+      "args": ["at", "name"]
+    },
+    "acct.panel.title": {
+      "kind": "title",
+      "zh": "账号",
+      "args": []
+    },
+    "acct.panel.sub": {
+      "kind": "body",
+      "zh": "{session} · {machine}",
+      "args": ["session", "machine"]
+    },
+    "acct.now.title": {
+      "kind": "title",
+      "zh": "当前",
+      "args": []
+    },
+    "acct.now.seen": {
+      "kind": "body",
+      "zh": "采样 {at}",
+      "args": ["at"]
+    },
+    "acct.now.noRelay": {
+      "kind": "body",
+      "zh": "未实时显示 · 无用量 · 不自动轮换",
+      "args": []
+    },
+    "acct.now.connect": {
+      "kind": "action",
+      "zh": "接入…",
+      "args": []
+    },
+    "acct.now.readFail": {
+      "kind": "error",
+      "zh": "用量记录读取失败",
+      "args": []
+    },
+    "acct.now.retry": {
+      "kind": "action",
+      "zh": "重试",
+      "args": []
+    },
     "rsFilewinFind.action.refresh": {
       "kind": "action",
       "zh": "刷新",
@@ -19538,6 +19748,461 @@
       "kind": "body",
       "zh": "{size} · {time}",
       "args": ["size", "time"]
+    },
+    "acct.rot.title": {
+      "kind": "title",
+      "zh": "轮换",
+      "args": []
+    },
+    "acct.rot.follow": {
+      "kind": "control",
+      "zh": "默认",
+      "args": []
+    },
+    "acct.rot.custom": {
+      "kind": "control",
+      "zh": "本会话",
+      "args": []
+    },
+    "acct.rot.modeAria": {
+      "kind": "control",
+      "zh": "轮换来源",
+      "args": []
+    },
+    "acct.rot.rule": {
+      "kind": "body",
+      "zh": "起始账号先用；触发后按序取首个未满；不主动换回",
+      "args": []
+    },
+    "acct.rot.trigger": {
+      "kind": "title",
+      "zh": "触发",
+      "args": []
+    },
+    "acct.rot.trigFull": {
+      "kind": "control",
+      "zh": "满",
+      "args": []
+    },
+    "acct.rot.trigPct": {
+      "kind": "control",
+      "zh": "≥",
+      "args": []
+    },
+    "acct.rot.pctUnit": {
+      "kind": "body",
+      "zh": "%",
+      "args": []
+    },
+    "acct.rot.pctRange": {
+      "kind": "error",
+      "zh": "50–99",
+      "args": []
+    },
+    "acct.rot.leadFollow": {
+      "kind": "body",
+      "zh": "跟随本机默认",
+      "args": []
+    },
+    "acct.rot.leadDefaultEmpty": {
+      "kind": "body",
+      "zh": "本机默认：仅起始账号 · 不轮换",
+      "args": []
+    },
+    "acct.rot.settings": {
+      "kind": "action",
+      "zh": "设置…",
+      "args": []
+    },
+    "acct.rot.saveFail": {
+      "kind": "error",
+      "zh": "未保存 · 轮换未变",
+      "args": []
+    },
+    "acct.rot.lockHint": {
+      "kind": "body",
+      "zh": "在用 · 换走用「切换」",
+      "args": []
+    },
+    "acct.lim.label": {
+      "kind": "title",
+      "zh": "无号可换",
+      "args": []
+    },
+    "acct.lim.labelHint": {
+      "kind": "body",
+      "zh": "轮换内账号都 ≥{n}% 时",
+      "args": ["n"]
+    },
+    "acct.lim.go": {
+      "kind": "control",
+      "zh": "继续跑",
+      "args": []
+    },
+    "acct.lim.stop": {
+      "kind": "control",
+      "zh": "停",
+      "args": []
+    },
+    "acct.lim.goHint": {
+      "kind": "body",
+      "zh": "留在当前号照发 · 被拒才换下一个",
+      "args": []
+    },
+    "acct.lim.stopHint": {
+      "kind": "body",
+      "zh": "停发 · 最早有号回到 {n}% 以下时续发",
+      "args": ["n"]
+    },
+    "acct.lim.fullOnly": {
+      "kind": "body",
+      "zh": "仅按 ≥N% 触发时有效",
+      "args": []
+    },
+    "acct.lim.downgraded": {
+      "kind": "body",
+      "zh": "{agent} 不支持停发 · 按继续跑",
+      "args": ["agent"]
+    },
+    "acct.lim.aria": {
+      "kind": "control",
+      "zh": "无号可换时",
+      "args": []
+    },
+    "acct.tag.cur": {
+      "kind": "body",
+      "zh": "在用",
+      "args": []
+    },
+    "acct.tag.start": {
+      "kind": "body",
+      "zh": "起始",
+      "args": []
+    },
+    "acct.row.dragAria": {
+      "kind": "aria",
+      "zh": "拖动排序 {name}",
+      "args": ["name"]
+    },
+    "acct.row.checkAria": {
+      "kind": "aria",
+      "zh": "加入轮换 {name}",
+      "args": ["name"]
+    },
+    "acct.sw.title": {
+      "kind": "title",
+      "zh": "切换",
+      "args": []
+    },
+    "acct.sw.hot": {
+      "kind": "control",
+      "zh": "热切换",
+      "args": []
+    },
+    "acct.sw.restart": {
+      "kind": "control",
+      "zh": "重启切换",
+      "args": []
+    },
+    "acct.sw.hotHint": {
+      "kind": "body",
+      "zh": "热切换  只换计费账号 · 设置 / MCP / 钩子仍为 {name}",
+      "args": ["name"]
+    },
+    "acct.sw.restartHint": {
+      "kind": "body",
+      "zh": "重启切换  连配置一起换 · 中断当前轮次",
+      "args": []
+    },
+    "acct.sw.go": {
+      "kind": "action",
+      "zh": "切换",
+      "args": []
+    },
+    "acct.sw.pickAria": {
+      "kind": "control",
+      "zh": "选账号",
+      "args": []
+    },
+    "acct.sw.optNone": {
+      "kind": "body",
+      "zh": "无可选账号",
+      "args": []
+    },
+    "acct.reason.noRelay": {
+      "kind": "body",
+      "zh": "未实时显示",
+      "args": []
+    },
+    "acct.reason.ended": {
+      "kind": "body",
+      "zh": "{ended} · 恢复时选号",
+      "args": ["ended"]
+    },
+    "acct.reason.notMulti": {
+      "kind": "body",
+      "zh": "未启用多账号",
+      "args": []
+    },
+    "acct.reason.noAccounts": {
+      "kind": "body",
+      "zh": "{agent} 无账号维",
+      "args": ["agent"]
+    },
+    "acct.reason.needsLogin": {
+      "kind": "body",
+      "zh": "{name} 需登录",
+      "args": ["name"]
+    },
+    "acct.reason.needsKey": {
+      "kind": "body",
+      "zh": "{name} 需 key",
+      "args": ["name"]
+    },
+    "acct.reason.ioFailed": {
+      "kind": "body",
+      "zh": "写入失败",
+      "args": []
+    },
+    "acct.reason.unknown": {
+      "kind": "body",
+      "zh": "原因不明",
+      "args": []
+    },
+    "acct.sw.doneHot": {
+      "kind": "body",
+      "zh": "{name} · 热切换",
+      "args": ["name"]
+    },
+    "acct.sw.doneRestart": {
+      "kind": "body",
+      "zh": "{name} · 重启切换 · {session}",
+      "args": ["name", "session"]
+    },
+    "acct.sw.failHot": {
+      "kind": "error",
+      "zh": "未切换 · 仍为 {cur} · {reason}",
+      "args": ["cur", "reason"]
+    },
+    "acct.sw.failRestart": {
+      "kind": "error",
+      "zh": "重启切换失败 · 原会话保留",
+      "args": []
+    },
+    "acct.sw.confirmTitle": {
+      "kind": "title",
+      "zh": "重启切换 → {name}",
+      "args": ["name"]
+    },
+    "acct.sw.confirmGo": {
+      "kind": "action",
+      "zh": "重启切换",
+      "args": []
+    },
+    "acct.sw.confirmKeep": {
+      "kind": "body",
+      "zh": "会话记录 · 续接",
+      "args": []
+    },
+    "acct.hist.title": {
+      "kind": "title",
+      "zh": "记录",
+      "args": []
+    },
+    "acct.hist.start": {
+      "kind": "body",
+      "zh": "起始 {name}",
+      "args": ["name"]
+    },
+    "acct.hist.full": {
+      "kind": "body",
+      "zh": "{name} {w} ✕",
+      "args": ["name", "w"]
+    },
+    "acct.hist.fullAny": {
+      "kind": "body",
+      "zh": "{name} ✕",
+      "args": ["name"]
+    },
+    "acct.hist.pct": {
+      "kind": "body",
+      "zh": "{name} ≥{n}%",
+      "args": ["name", "n"]
+    },
+    "acct.hist.held": {
+      "kind": "body",
+      "zh": "{name} ≥{n}% · 停发",
+      "args": ["name", "n"]
+    },
+    "acct.hist.manualHot": {
+      "kind": "body",
+      "zh": "手动 · 热切换",
+      "args": []
+    },
+    "acct.hist.manualRestart": {
+      "kind": "body",
+      "zh": "手动 · 重启切换",
+      "args": []
+    },
+    "acct.hist.skipped": {
+      "kind": "body",
+      "zh": "跳过 {name}（{reason}）",
+      "args": ["name", "reason"]
+    },
+    "acct.hist.toOverage": {
+      "kind": "body",
+      "zh": "订阅号均满 → 超额",
+      "args": []
+    },
+    "acct.hist.more": {
+      "kind": "body",
+      "zh": "更早 {n}",
+      "args": ["n"]
+    },
+    "acct.strip.move": {
+      "kind": "body",
+      "zh": "{from} → {to}",
+      "args": ["from", "to"]
+    },
+    "acct.strip.api": {
+      "kind": "body",
+      "zh": "{to}（按量）",
+      "args": ["to"]
+    },
+    "acct.strip.open": {
+      "kind": "action",
+      "zh": "账号…",
+      "args": []
+    },
+    "acct.banner.full": {
+      "kind": "body",
+      "zh": "{name} {w} ✕ ↻{at} (+{rel})",
+      "args": ["name", "w", "at", "rel"]
+    },
+    "acct.banner.allFull": {
+      "kind": "body",
+      "zh": "轮换内账号均已满 · 最早 {name} ↻{at} (+{rel})",
+      "args": ["name", "at", "rel"]
+    },
+    "acct.banner.allFullNoAt": {
+      "kind": "body",
+      "zh": "轮换内账号均已满",
+      "args": []
+    },
+    "acct.banner.held": {
+      "kind": "body",
+      "zh": "轮换内账号均 ≥{n}% · 最早 {name} ↻{at} (+{rel})",
+      "args": ["n", "name", "at", "rel"]
+    },
+    "acct.banner.back": {
+      "kind": "body",
+      "zh": "{name} ↻{at} 已过 · 可续发",
+      "args": ["name", "at"]
+    },
+    "acct.banner.toApi": {
+      "kind": "action",
+      "zh": "切到 {name} · 按量",
+      "args": ["name"]
+    },
+    "acct.tab.blocked": {
+      "kind": "body",
+      "zh": "✕ {w}",
+      "args": ["w"]
+    },
+    "acct.tab.hover": {
+      "kind": "body",
+      "zh": "状态 ✕ {w} · 最早 {name} ↻{at}",
+      "args": ["w", "name", "at"]
+    },
+    "acct.foot.default": {
+      "kind": "title",
+      "zh": "新会话默认",
+      "args": []
+    },
+    "acct.foot.manage": {
+      "kind": "action",
+      "zh": "管理账号…",
+      "args": []
+    },
+    "acct.menu.open": {
+      "kind": "action",
+      "zh": "账号…",
+      "args": []
+    },
+    "acct.cmd.default": {
+      "kind": "action",
+      "zh": "账号：新会话默认…",
+      "args": []
+    },
+    "acct.tl.title": {
+      "kind": "title",
+      "zh": "时间轴",
+      "args": []
+    },
+    "acct.tl.usable": {
+      "kind": "body",
+      "zh": "可用 {list}",
+      "args": ["list"]
+    },
+    "acct.tl.nextBack": {
+      "kind": "body",
+      "zh": "下一个恢复 {name} ↻{at}",
+      "args": ["name", "at"]
+    },
+    "acct.tl.allOk": {
+      "kind": "body",
+      "zh": "全部可用",
+      "args": []
+    },
+    "acct.tl.legend": {
+      "kind": "body",
+      "zh": "| 5h 重置 · ◆ 7d 重置 · 红段 被拒区间",
+      "args": []
+    },
+    "acct.usage.wv": {
+      "kind": "body",
+      "zh": "{w} {v}",
+      "args": ["w", "v"]
+    },
+    "acct.home.avatar": {
+      "kind": "body",
+      "zh": "~",
+      "args": []
+    },
+    "acct.now.seenOther": {
+      "kind": "body",
+      "zh": "采样 {machine} {at}",
+      "args": ["machine", "at"]
+    },
+    "acct.sw.busy": {
+      "kind": "action",
+      "zh": "正在切换",
+      "args": []
+    },
+    "acct.rot.infoAria": {
+      "kind": "aria",
+      "zh": "轮换规则说明",
+      "args": []
+    },
+    "acct.tl.marks": {
+      "kind": "body",
+      "zh": "{w} ↻{at}",
+      "args": ["w", "at"]
+    },
+    "acct.strip.arrow": {
+      "kind": "body",
+      "zh": "→",
+      "args": []
+    },
+    "acct.menu.unseen": {
+      "kind": "body",
+      "zh": "{machine} 不可见",
+      "args": ["machine"]
+    },
+    "acct.usage.wvr": {
+      "kind": "body",
+      "zh": "{w} {v} {r}",
+      "args": ["w", "v", "r"]
     }
   }
 }

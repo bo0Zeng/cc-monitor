@@ -4,6 +4,7 @@ declare const classes: {
   readonly drawerBody: string;
   readonly drawerDim: string;
   readonly drawerHead: string;
+  readonly drawerSub: string;
   readonly drawerTitle: string;
 };
 export default classes;

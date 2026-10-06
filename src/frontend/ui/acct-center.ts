@@ -1,0 +1,79 @@
+/**
+ * 额度与轮换的**取数**：什么时候问哪台、问回来放进 `appStore` 哪一格。画的那几处（状态栏按钮 · 悬停卡 · 账号面板 ·
+ * 换号条 · 提示条 · 标签页）只订 `appStore.quota` / `sessionRotation` / `rotationDefault`，不自己问。
+ *
+ * - 问的时机全是事件：tab 来了（新 sid）· 那台推 `quota-changed`（额度账 ⇒ 重读 `quota-read`；某个 sid ⇒ 重问那一个；
+ *   又接上了 / 丢了格 ⇒ 那台全部重问）· 面板打开 · 写了之后。零定时器。
+ * - 判定全在后端；这里不判「能不能换 / 该不该换」。
+ */
+import { appStore, putIn } from "./app-store";
+import type { Origin } from "./ipc/origin";
+import { readQuota, readRotation, readSessionRotation } from "./quota-reads";
+
+/** 每台此刻有 tab 的会话（rotation-session-read 一批问这么多）。 */
+const known = new Map<Origin, Set<string>>();
+
+export async function refreshQuota(origin: Origin): Promise<void> {
+  try {
+    putIn(appStore.quota, origin, await readQuota(origin));
+  } catch (e) {
+    console.warn(`[acct] quota-read [${origin}] 失败：`, e);
+    putIn(appStore.quota, origin, null);
+  }
+}
+
+export async function refreshDefault(origin: Origin): Promise<void> {
+  try {
+    putIn(appStore.rotationDefault, origin, await readRotation(origin));
+  } catch (e) {
+    console.warn(`[acct] rotation-read [${origin}] 失败：`, e);
+    putIn(appStore.rotationDefault, origin, null);
+  }
+}
+
+export async function refreshSessions(origin: Origin, sids: readonly string[]): Promise<void> {
+  if (sids.length === 0) return;
+  try {
+    const got = await readSessionRotation(origin, [...sids]);
+    const next = new Map(appStore.sessionRotation.get());
+    for (const [sid, read] of Object.entries(got.sessions)) next.set(sid, { origin, now: got.now, read });
+    appStore.sessionRotation.set(next);
+  } catch (e) {
+    console.warn(`[acct] rotation-session-read [${origin}] 失败：`, e);
+  }
+}
+
+/**
+ * tab 集合变了 ⇒ 新出现的会话问一次（每台一批）；那台第一次出现 ⇒ 额度账与默认轮换也问一次。
+ * 已经问过的不重问（之后靠推送）。
+ */
+export function syncSessions(tabs: readonly { sessionId: string; origin: Origin }[]): void {
+  const fresh = new Map<Origin, string[]>();
+  for (const t of tabs) {
+    let set = known.get(t.origin);
+    if (!set) {
+      set = new Set();
+      known.set(t.origin, set);
+      void refreshQuota(t.origin);
+      void refreshDefault(t.origin);
+    }
+    if (set.has(t.sessionId)) continue;
+    set.add(t.sessionId);
+    fresh.set(t.origin, [...(fresh.get(t.origin) ?? []), t.sessionId]);
+  }
+  for (const [origin, sids] of fresh) void refreshSessions(origin, sids);
+}
+
+/** 那台推来 `quota-changed`（`events.ts` 的 `onQuotaChanged`）。 */
+export function onQuotaChanged(origin: Origin, change: { quota: boolean; sids: readonly string[]; all: boolean }): void {
+  if (change.quota) void refreshQuota(origin);
+  const sids = change.all ? [...(known.get(origin) ?? [])] : change.sids.filter((s) => known.get(origin)?.has(s));
+  void refreshSessions(origin, sids);
+  // 默认轮换改了（设置里）那台会给跟随它的会话各推一格 ⇒ 有会话变了就顺带重读默认那一份（一次读盘）。
+  if (change.all || sids.length > 0) void refreshDefault(origin);
+}
+
+/** 只给判据用。 */
+export function __resetAcctCenterForTests(): void {
+  known.clear();
+}

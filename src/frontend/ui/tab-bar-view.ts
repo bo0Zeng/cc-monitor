@@ -21,6 +21,9 @@ import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
 import { dispatcher, type OverlayHandle } from "./keybindings/registry";
 import rs from "./tab-group-rename.module.css";
+import qs from "./tab-quota.module.css";
+import { appStore } from "./app-store";
+import { tabBlockedOf } from "./acct-view";
 import { copyText } from "./copy-table";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
@@ -28,6 +31,8 @@ export interface TabButtonRefs {
   root: HTMLButtonElement;
   label: HTMLSpanElement;
   badge: HTMLSpanElement;
+  /** 额度：被卡住的会话标题后那一格红字 `✕ 5h`（能发时藏着）。 */
+  quotaBadge: HTMLSpanElement;
   /** A3：账号徽章（该会话属于哪个账号；本地会话不显示，未知显 —）。 */
   acctBadge: HTMLSpanElement;
   cwdBtn: HTMLSpanElement;
@@ -539,6 +544,12 @@ export class TabBarView {
     label.className = "tab-title";
     root.appendChild(label);
 
+    // 额度：被卡住的会话标题后红字 `✕ 5h`（与「等批准」同位）。默认藏着，updateTabButton 按会话的轮换格填。
+    const quotaBadge = document.createElement("span");
+    quotaBadge.className = qs.tabQuotaBlocked;
+    quotaBadge.style.display = "none";
+    root.appendChild(quotaBadge);
+
     // A3：账号徽章（该会话属于哪个账号）。默认隐藏，updateTabButton 按 sessionBadge 填。
     const acctBadge = document.createElement("span");
     acctBadge.className = "tab-acct-badge";
@@ -580,7 +591,7 @@ export class TabBarView {
     closeBtn.title = copyText("tabBarView.tab.closeHint");
     root.appendChild(closeBtn);
 
-    return { root, label, badge, acctBadge, cwdBtn, pinBadge, drawn: null, acctDrawn: "" };
+    return { root, label, badge, quotaBadge, acctBadge, cwdBtn, pinBadge, drawn: null, acctDrawn: "" };
   }
 
   private updateTabButton(refs: TabButtonRefs, sid: string, tab: Tab): void {
@@ -629,6 +640,9 @@ export class TabBarView {
     if (tab.forkedFromSessionId) {
       titleParts.push(copyText("tabBarView.tab.forkedFrom", { id: tab.forkedFromSessionId.slice(0, 8) }));
     }
+    // 额度：被卡住了（此刻的号被拒、轮换里没有能接的）⇒ 标题后红字 ＋ 悬停多一行。判定是后端给的 `blocked`。
+    const blocked = tabBlockedOf(appStore.sessionRotation.get().get(sid));
+    if (blocked) titleParts.push(blocked.hover);
     const title = titleParts.join("\n");
     const unread = tab.unread > 0 && !active;
     // 未读数只在有未读时写（没未读时徽标由 CSS 藏，文字留着上一次的，与原来逐字相同）。
@@ -649,7 +663,7 @@ export class TabBarView {
     ]
       .map((b) => (b ? "1" : "0"))
       .join("");
-    const drawn = `${flags}\u0000${title}\u0000${tab.title}\u0000${unreadText}`;
+    const drawn = `${flags}\u0000${title}\u0000${tab.title}\u0000${unreadText}\u0000${blocked?.text ?? ""}`;
     if (refs.drawn !== drawn) {
       refs.drawn = drawn;
       refs.root.classList.toggle("active", active);
@@ -670,6 +684,8 @@ export class TabBarView {
       if (unread && refs.badge.textContent !== unreadText) {
         refs.badge.textContent = unreadText;
       }
+      refs.quotaBadge.style.display = blocked === null ? "none" : "";
+      refs.quotaBadge.textContent = blocked?.text ?? "";
     }
     this.updateAccountBadge(refs, sid, tab); // A3：账号徽章随 tab 更新一并刷新
   }

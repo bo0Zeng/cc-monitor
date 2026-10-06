@@ -1,0 +1,564 @@
+/* 额度与账号：状态栏账号按钮 · 悬停卡 · 账号面板 · 换号条 · 提示条 · 标签页 ✕ 5h。 */
+@layer components {
+  /* —— 状态栏账号按钮（本会话那一形） —— */
+  .acctChip {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .acctChip[data-mode="session"] {
+    opacity: 1;
+  }
+
+  .acctChipPrefix {
+    color: var(--text-2);
+  }
+
+  .acctChipSession {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .acctChipSwap {
+    color: var(--text-2);
+  }
+
+  .acctChipName {
+    max-width: 12ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+  }
+
+  .acctChipWindow {
+    color: var(--text-2);
+  }
+
+  .acctChipValue,
+  .acctChipReset {
+    color: var(--text);
+  }
+
+  .acctChip[data-shade="near"] .acctChipValue,
+  .acctChip[data-shade="over"] .acctChipValue {
+    color: var(--warn);
+  }
+
+  .acctChip[data-shade="refused"] {
+    border-color: color-mix(in srgb, var(--error) 45%, transparent);
+  }
+
+  .acctChip[data-shade="refused"] .acctChipValue,
+  .acctChip[data-shade="refused"] .acctChipReset {
+    color: var(--error-text);
+  }
+
+  .acctChip[data-stale="true"] {
+    opacity: 0.55;
+  }
+
+  /* 窄窗（< 720）：只留头像 ＋ 值；名与窗口进悬停卡。 */
+  @media (width < 720px) {
+    .acctChipName,
+    .acctChipWindow,
+    .acctChipReset {
+      display: none;
+    }
+  }
+
+  .acctHomeAvatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-s);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  /* —— 悬停卡：首行 头像 名 标签；下面四列表 —— */
+  .acctHover {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-width: 260px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .acctHoverHead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .acctHoverName {
+    font-weight: var(--font-weight-strong);
+  }
+
+  .acctHoverTag {
+    color: var(--text-2);
+  }
+
+  .acctHoverGrid {
+    display: grid;
+    grid-template-columns: auto auto auto auto;
+    column-gap: var(--space-6);
+    row-gap: var(--space-1);
+  }
+
+  .acctHoverKey {
+    color: var(--text-2);
+  }
+
+  .acctHoverCell {
+    color: var(--text);
+  }
+
+  .acctHoverCell[data-shade="refused"] {
+    color: var(--error-text);
+  }
+
+  .acctHoverCell[data-shade="warn"] {
+    color: var(--warn);
+  }
+
+  /* —— 「账号」面板（抽屉） —— */
+  .acctPanel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+    font-size: var(--font-size-small);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .acctBlock {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding-bottom: var(--space-6);
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .acctBlockHead {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-4);
+  }
+
+  .acctBlockTitle {
+    flex: 1;
+    margin: 0;
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .acctBlockBody {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .acctBlockNote,
+  .acctHint,
+  .acctLead {
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .acctLead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  .acctWho {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .acctWhoName {
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .acctWhoFrom {
+    color: var(--text-2);
+  }
+
+  .acctTag {
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-s);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .acctTag[data-shade="cur"] {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .acctTag[data-shade="warn"] {
+    border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+    color: var(--warn);
+  }
+
+  .acctTag[data-shade="error"] {
+    border-color: color-mix(in srgb, var(--error) 45%, transparent);
+    color: var(--error-text);
+  }
+
+  .acctMeterRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  .acctMeterRel {
+    flex: none;
+    min-width: 6ch;
+    color: var(--text-2);
+    text-align: right;
+  }
+
+  .acctApiLine {
+    display: flex;
+    gap: var(--space-4);
+    color: var(--text-2);
+  }
+
+  .acctApiLine[data-shade="refused"] {
+    color: var(--error-text);
+  }
+
+  .acctRotBar,
+  .acctTrigger,
+  .acctLimit,
+  .acctTriggerWrap {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .acctTriggerWrap {
+    gap: var(--space-5);
+  }
+
+  .acctSpacer {
+    flex: 1;
+  }
+
+  .acctInfo {
+    display: inline-flex;
+    color: var(--text-2);
+    cursor: help;
+  }
+
+  .acctTriggerLabel {
+    color: var(--text-2);
+  }
+
+  .acctRadio {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+  }
+
+  .acctPct {
+    width: 4ch;
+    padding: 0 var(--space-2);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-s);
+    background: var(--field-bg);
+    color: var(--text);
+    text-align: center;
+  }
+
+  .acctPct[data-error="true"] {
+    border-color: var(--error);
+  }
+
+  .acctTriggerUnit {
+    color: var(--text-2);
+  }
+
+  .acctLimit [data-disabled="true"] {
+    opacity: 0.45;
+  }
+
+  .acctList {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(32px * 8);
+    overflow-y: auto;
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+  }
+
+  .acctRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: 32px;
+    padding: 0 var(--space-4);
+    border-left: 2px solid transparent;
+  }
+
+  .acctRow:focus-visible {
+    outline: 1px solid var(--state-focus);
+  }
+
+  .acctRow[data-inuse="true"] {
+    border-left-color: var(--accent);
+  }
+
+  .acctRow[data-dim="true"] {
+    opacity: 0.55;
+  }
+
+  .acctRow[data-lifted="true"] {
+    opacity: 0.35;
+  }
+
+  .acctHandle {
+    display: inline-flex;
+    color: var(--text-faint);
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .acctRowName {
+    color: var(--text);
+  }
+
+  .acctRowUsage {
+    display: inline-flex;
+    gap: var(--space-5);
+    margin-left: auto;
+    color: var(--text-2);
+  }
+
+  .acctRowUsage[data-shade="refused"] {
+    color: var(--error-text);
+  }
+
+  .acctRowSlot {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .acctRowSlot[data-shade="refused"] {
+    color: var(--error-text);
+  }
+
+  .acctRowSlot[data-shade="warn"] {
+    color: var(--warn);
+  }
+
+  .acctRowSlotKey,
+  .acctRowSlotReset {
+    color: var(--text-2);
+  }
+
+  .acctRowSlotVal {
+    min-width: 3ch;
+    text-align: right;
+  }
+
+  .acctMiniBar {
+    display: inline-block;
+    width: 20px;
+    height: 4px;
+    overflow: hidden;
+    border-radius: var(--radius-s);
+    background: var(--border-soft);
+  }
+
+  .acctMiniFill {
+    display: block;
+    height: 100%;
+    background: var(--text-2);
+    transform-origin: left;
+  }
+
+  .acctRowSlot[data-shade="refused"] .acctMiniFill {
+    background: var(--error);
+  }
+
+  .acctRowSlot[data-shade="warn"] .acctMiniFill {
+    background: var(--warn);
+  }
+
+  .acctRowSlot[data-stale="true"] .acctMiniFill {
+    background: repeating-linear-gradient(135deg, var(--text-2) 0 3px, transparent 3px 6px);
+  }
+
+  .acctDropLine {
+    height: 2px;
+    margin: -1px 0;
+    background: var(--accent);
+  }
+
+  .acctTimeline {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding-top: var(--space-3);
+  }
+
+  .acctTlRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding-left: var(--space-2);
+    border-left: 2px solid transparent;
+  }
+
+  .acctTlRow[data-inuse="true"] {
+    border-left-color: var(--accent);
+  }
+
+  .acctTlName {
+    width: 8ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .acctTlTrack {
+    position: relative;
+    flex: 1;
+    height: 12px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .acctTlMark5,
+  .acctTlMark7 {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--text-2);
+  }
+
+  .acctTlMark7 {
+    width: 6px;
+    height: 6px;
+    top: 3px;
+    background: var(--text);
+    transform: rotate(45deg);
+  }
+
+  .acctTlRefused {
+    position: absolute;
+    top: 4px;
+    left: 0;
+    height: 4px;
+    background: var(--error);
+  }
+
+  .acctTlLabel {
+    flex: none;
+    min-width: 10ch;
+    color: var(--text-2);
+    text-align: right;
+  }
+
+  .acctSwitchRow {
+    display: flex;
+    gap: var(--space-4);
+  }
+
+  .acctPick {
+    display: inline-flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--space-3);
+    height: var(--control-h);
+    padding: 0 var(--space-4);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-m);
+    background: var(--field-bg);
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  .acctFoot .acctPick {
+    flex: none;
+    height: var(--control-h-compact);
+  }
+
+  .acctPickName {
+    color: var(--text);
+  }
+
+  .acctPickUsage {
+    flex: 1;
+    color: var(--text-2);
+    text-align: left;
+  }
+
+  .acctModes {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-5);
+  }
+
+  .acctReason {
+    color: var(--text-2);
+  }
+
+  .acctHistRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  .acctHistAt {
+    width: 11ch;
+    flex: none;
+    color: var(--text-2);
+  }
+
+  .acctHistMove {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .acctHistArrow,
+  .acctHistWhy {
+    color: var(--text-2);
+  }
+
+  .acctHistReset {
+    margin-left: var(--space-2);
+  }
+
+  .acctHistMore {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .acctFoot {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--border-soft);
+    background: var(--card);
+  }
+
+  .acctFootLabel {
+    color: var(--text-2);
+  }
+}

@@ -2138,7 +2138,7 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 
 - 很久没流量的号只有「最后一次看到是几点」（`seenAt`），不编、不去探。
 - 每一次都现读盘（一次性 CLI 那一形里没有内存）。中转那一路：显示得出来的几格变了才立刻落盘并推 `quota_changed`；没变的观测盘上的 `seenAt` 至多落后 60 秒。
-- CLI 面随之多一条 `--quota-read`（不读 stdin）。
+- CLI 面随之多一条 `--quota-read`（不读 stdin）；`--quota-read --text` 是给人看的那一形（见「控制面的 CLI 那一半」）。
 
 #### 账号轮换：满了不重启换号（`rotation.json`）
 
@@ -4193,6 +4193,23 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 （`control/cli_control.rs::expand_stdin_argv`），拼回去照常分派；读不动 / 不是字符串数组 ⇒ exit 2 ＋ `{code:"bad_request"}`。
 今天的发送方：资产目录推那一趟（`'<远端后端>' --assets-catalog-merge --stdin-line`）· 历史跨机那一问（`'<远端后端>' --list-sessions --stdin-line`，项目目录名走那一行；`remote_ask::ask_with`）。旧后端不认这个修饰词（它会照旧读到 EOF、一直等）⇒
 随 `BUILD_ID` 换代，远端按身份重部署之后才发。
+
+**给人看：`--text`**（只给 `--quota-read`）：`--quota-read --text` ⇒ 同一份回包排成字，每号一段（段间空一行）：
+首行 `名  类型  [需登录 | 需 key]`，其下 `5h` · `7d` · `超额` · `采样`（按量号 `用量` / `状态`）各一行，格是 值 · `↻` 重置时刻 · 距今；
+时刻按这台的本地钟（当天 `HH:MM` · 非当天 `MM-DD HH:MM` · 非当年 `YYYY-MM-DD HH:MM`，距今 `+1h50m` / `+3d`）。
+
+```text
+$ ccm -- --quota-read --text
+personal  订阅
+  5h    63%  ↻18:30        +1h50m
+  7d    41%  ↻10-09 09:00  +3d
+  超额  —
+  采样  16:38 · 本机
+```
+
+排版住 CLI 那个口旁边（`control/quota_text.rs`），**只读回包 JSON**，不判：被拒 · 超额在兜 · 上一窗已过 · 数旧都是回包里的显示态；标签走文案表。
+与界面悬停卡锁同一份金样 `tests/__fixtures__/quota-text.golden.json`（逐字）。还没看到过回包 ⇒ `无采样`；读不出 ⇒ `用量记录读取失败`（exit 0，原因在 JSON 那一形的 `reason`）。
+别的子命令带 `--text` ⇒ exit 2 ＋ `{code:"bad_args"}`。缺省仍是 JSON 进 JSON 出（给 skill / AI）。
 
 错误写 stderr + 退出码 2（`--account-trust` 用 `--resolve` 那套结构化 `{code,message}` JSON）。**读会话那一族**（`--read-session` / `--read-session-tail` / `--read-session-from-offset` / `--fork-session`）的路径参数严格限制在 `<claude_dir>/projects/` 内（canonicalize 后前缀校验，拒穿越 / symlink 逃逸 / 非 jsonl）。**账号一族不走这条**，各有各的判据：账号库只在 `$HOME/.cc-monitor/accounts`（不收另指位置的参数）；`--account-trust <configDir>` 靠「逐字 ∈ manifest」而非 projects 前缀；`--tmux-notify` 根本不碰文件系统。**旧后端兼容**：不认参数的旧版会照常发 `hello` 进流模式——monitor 以"首行是 hello 帧"识别旧版并提示升级（优雅降级，无版本协商）。
 

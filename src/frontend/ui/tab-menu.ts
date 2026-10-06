@@ -74,6 +74,10 @@ export interface TabMenuHost {
   togglePin(sid: string): void;
   /** 关掉这个标签（与批量菜单「关闭标签」、× 同一个动作）。 */
   close(sid: string): void;
+  /** 「账号…」：开这个会话的「账号」面板（与状态栏账号按钮同一个）；主窗口没接 ⇒ 不给这一项。 */
+  openAccountPanel?: (sid: string) => void;
+  /** 主窗口接上了面板没有（独立窗口没有 ⇒ 不给「账号…」，活会话仍给旧的换号重启）。 */
+  accountPanelWired?: () => boolean;
 }
 
 export class TabMenu {
@@ -181,6 +185,19 @@ export class TabMenu {
         { id: "kill", label: copyText("tabMenu.kill.probing"), enabled: false, danger: true, onClick: () => {} },
         { id: "resume-into", label: copyText("tabMenu.inPlace.probing"), enabled: false, onClick: () => {} },
       );
+    }
+    // 「账号…」：替掉原先的「换号重启 ▸ 账号 ▸ 两种重启」三层子菜单（热切换 / 重启切换都在面板里）。
+    //   说不清（那台看不见）⇒ 灰着、悬停说是哪台。
+    const openPanel = this.host.accountPanelWired?.() ? this.host.openAccountPanel : undefined;
+    if (t && openPanel) {
+      const unseen = t.state.liveness === "unseen";
+      items.push({
+        id: "account",
+        label: copyText("acct.menu.open"),
+        enabled: !unseen,
+        title: unseen ? copyText("acct.menu.unseen", { machine: machineName(t.origin) }) : undefined,
+        onClick: () => openPanel(sid),
+      });
     }
     // 那台握手时说过做不到的那几项置灰（事实住 monitor 那份 `Offer`）。
     openMenu({ x: e.clientX, y: e.clientY }, t ? items.map((i) => gateByOffer(t.origin, i)) : items);
@@ -376,7 +393,7 @@ export class TabMenu {
     // `enumerateAccountModifiers`，而具名账号只在 `selectable.length >= 2` 时被**整批** push
     // （`launch-menu.ts`），故 `realAccounts.length ∈ {0} ∪ [2, ∞)`，永远不可能是 1。
     // 保留作 belt-and-braces（阈值真正的执行方在 launch-menu 侧），但别以为这里在独立执行阈值。
-    if (realAccounts.length < 2) return;
+    if (realAccounts.length < 2 || this.host.accountPanelWired?.()) return;
     // F09 Phase D 审计（UX，重要）：⇄ 按钮删除前，重启中的会话至少有"⇄ 立刻置灰"这个视觉信号；
     // 现在这是唯一入口，若不禁用，点了会静默命中 restartTabWithAccount 的 in-flight 守卫、
     // 什么反应都没有——菜单直接呈现"当前不可点"，而不是点了才知道（守卫本身仍在，这里只是让

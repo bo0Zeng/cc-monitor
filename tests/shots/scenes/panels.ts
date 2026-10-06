@@ -189,10 +189,10 @@ export const PANEL_SCENES: Scene[] = [
     await waitFor(".tasks-popover:not(.agents-popover)");
     await sleep(500);
   }),
-  panel("panel-account", "账号选单", "状态栏点账号徽标：切默认账号的选单", async () => {
+  panel("panel-account", "账号面板", "状态栏点账号按钮（本会话）：本会话的「账号」面板（缺省世界里中转还没见过这个会话）", async () => {
     await mainReady(ALL_TABS);
     await click(".status-account");
-    await waitFor("[role=menu]");
+    await waitFor('aside[role="dialog"]');
     await sleep(500);
   }),
   panel("panel-cmdk", "命令面板", "Ctrl+K：全部命令（含切到各会话）", async () => {
@@ -345,10 +345,10 @@ export const PANEL_SCENES: Scene[] = [
     await openCommandBar();
     await type(".command-bar-input", "当前账号");
   }),
-  panel("panel-account-reclick", "账号选单 · 再点一下徽标", "选单开着时再点一下账号徽标：选单收起", async () => {
+  panel("panel-account-reclick", "账号面板 · 再点一下按钮", "面板开着时再点一下状态栏账号按钮：面板收起", async () => {
     await mainReady(ALL_TABS);
     await click(".status-account");
-    await waitFor("[role=menu]");
+    await waitFor('aside[role="dialog"]');
     await sleep(300);
     await click(".status-account");
     await sleep(500);

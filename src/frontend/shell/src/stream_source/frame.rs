@@ -221,10 +221,10 @@ pub enum InboundFrame {
     Probe { ticket: String, cell: String },
     /// 一轮对话收尾（`turn_end`）。认识但不消费：轮次边界由 `line` 帧自己推（它是发给仓外消费方的）。
     TurnEnd,
-    /// 那台的额度账变了（`quota_changed`）。认识但不消费：界面要额度就发 `quota-read` 读整份。
+    /// 那台的额度账变了（`quota_changed`）⇒ 交订了 `quota-changed` 的订阅一格；界面要额度就发 `quota-read` 读整份。
     QuotaChanged,
-    /// 那台某个会话的轮换 / 「账号」格变了（`rotation_changed`，只带 sid）。认识但不消费：界面要就发 `rotation-session-read`。
-    RotationChanged,
+    /// 那台某个会话的轮换 / 「账号」格变了（`rotation_changed`，只带 sid）⇒ 同上一格 `{sid}`；界面要就发 `rotation-session-read`。
+    RotationChanged { sid: String },
 }
 
 /// 拥塞提示的**措辞**：有没有不可恢复的丢失，说法完全不同。
@@ -621,13 +621,12 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
             req_str(obj, k, "uuid")?;
             InboundFrame::TurnEnd
         }
-        // 认识但不消费：界面要额度就发 `quota-read` 读整份。
+        // 交订了 `quota-changed` 的订阅：界面要额度就发 `quota-read` 读整份。
         "quota_changed" => InboundFrame::QuotaChanged,
-        // 认识但不消费：界面要就发 `rotation-session-read`。形状照样判。
-        "rotation_changed" => {
-            req_str(obj, k, "sid")?;
-            InboundFrame::RotationChanged
-        }
+        // 同上一格 `{sid}`：界面要就发 `rotation-session-read`。
+        "rotation_changed" => InboundFrame::RotationChanged {
+            sid: req_str(obj, k, "sid")?,
+        },
         _ => return Err(Unread::UnknownKind(kind.to_string())),
     })
 }

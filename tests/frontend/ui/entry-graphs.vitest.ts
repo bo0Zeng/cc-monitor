@@ -713,6 +713,9 @@ function moduleStacking(
  */
 const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/usage-hud.module.css": { stacked: true, why: "`.chip` 叠在全局 `.status-tasks` 上（usage-hud.ts 里 btn.className 同时挂 status-tasks 与 s.chip）" },
+  "src/frontend/ui/acct.module.css": { stacked: true, why: "状态栏账号按钮 `.acctChip` 叠在全局 `.status-account` 上（account-chip.ts 里 btn.className 同时挂两样）；面板里经小工具函数挂的类量具认不出挂到哪，按「叠」算" },
+  "src/frontend/ui/acct-session.module.css": { stacked: true, why: "换号条 · 提示条：类经小工具函数挂，量具认不出挂到哪，按「叠」算（实际只挂自己的哈希类）" },
+  "src/frontend/ui/tab-quota.module.css": { stacked: false, why: "tab 标题后 `✕ 5h` 那一格：只挂自己的哈希类（不叠全局类）" },
   "src/frontend/ui/live-card.module.css": { stacked: false, why: "活卡（`live-card-view.ts` 画）：卡 / 顶上那行 / 正文只挂自己的哈希类（不叠全局类）" },
   "src/frontend/ui/record-file-notice.module.css": { stacked: false, why: "tab 顶上「记录文件不见了 / 已从头重读」那一句：只挂自己的哈希类 `.notice`（不叠全局类）" },
   "src/frontend/ui/tab-group-rename.module.css": { stacked: false, why: "组头就地改名的输入框只挂自己的哈希类" },
@@ -745,10 +748,17 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
  * 没登记又不在任何窗口里 ⇒ 照旧红。只许缩。
  */
 const KIT_AWAITING_FACES: ReadonlySet<string> = new Set(
-  ["badge", "banner", "block", "card", "chip", "drawer", "empty", "field", "fold", "list-row", "meter", "progress", "skeleton", "status-dot", "switch", "tabs"].map(
+  // banner · drawer · fold · meter · tabs 已由主窗口的「账号」面板用上。
+  ["badge", "block", "card", "chip", "empty", "field", "list-row", "progress", "skeleton", "status-dot", "switch"].map(
     (k) => `src/frontend/ui/kit/${k}.module.css`,
   ),
 );
+
+/** 已有面用上、但其中一形还没有面的 kit 件：那一形的类今天产物 JS 里没有（两向：用上了就从这里摘）。 */
+const KIT_PARTIAL: Readonly<Record<string, readonly string[]>> = {
+  // 分段按钮（C23）账号面板用上了；分栏（C5）那一形还没有面。
+  "src/frontend/ui/kit/tabs.module.css": ["tabs"],
+};
 
 describe("〔UC2〕CSS Modules 在构建产物里（件 10）", () => {
   it("每份 .module.css 都进了某个窗口的模块图；每个类在产物 CSS 里恰有一个哈希名、原名不出现、哈希名在那个窗口的 JS 里真出现", () => {
@@ -769,7 +779,8 @@ describe("〔UC2〕CSS Modules 在构建产物里（件 10）", () => {
           const hashed = hashedOf(built, k);
           expect(hashed, `${w}：${f} 的 .${k} 在产物 CSS 里应恰有一个哈希名`).toHaveLength(1);
           expect(built.has(k) && !GLOBAL_CLASSES.has(k), `${w}：产物 CSS 里出现了原名 .${k} —— CSS Modules 没生效`).toBe(false);
-          expect(CLOSURES[w].jsCode.includes(hashed[0]), `${w}：哈希名 ${hashed[0]} 不在 JS 里 —— 代码没用上它`).toBe(true);
+          const partial = KIT_PARTIAL[f]?.includes(k) ?? false;
+          expect(CLOSURES[w].jsCode.includes(hashed[0]), partial ? `${w}：${f} 的 .${k} 已经用上了 —— 从 KIT_PARTIAL 摘掉` : `${w}：哈希名 ${hashed[0]} 不在 JS 里 —— 代码没用上它`).toBe(!partial);
           judged++;
         }
       }

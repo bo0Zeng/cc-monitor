@@ -185,6 +185,12 @@ const CHANNELED: &[(&str, &str)] = &[
 /// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
 /// 每一条还要**真的**是后端登记的帧命令（从后端 `stream/inbound/` 生产段数，异源）、monitor 生产段里**零**字面量。
 const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
+    // 额度与轮换（`src/frontend/ui/quota-reads.ts`）：额度账 · 轮换都是那台后端账号域自己的状态，monitor 从没有过这几条命令。
+    ("quota-read", "新帧命令：那台的额度账 ＋ 显示态（判在后端）；界面状态栏按钮 · 悬停卡 · 账号面板只排版"),
+    ("rotation-read", "新帧命令：那台的默认轮换（面板「默认」那一份只读显示）"),
+    ("rotation-session-read", "新帧命令：一批会话的轮换与「账号」格（能不能热切换 · 下一个 · 卡住都由后端给）"),
+    ("rotation-session-set", "新帧命令：改会话的轮换（勾号 · 拖序 · 触发 · 无号可换两态），新勾的按量号由后端挪末尾"),
+    ("rotation-switch", "新帧命令：现在就换（热切换钉号 · 重启切换逐个交 `session-restart`）"),
     // tab 栏多选的批量停 / 起（`src/frontend/ui/tab-batch-run.ts`）：一台一次、那台逐个判逐个答，monitor 从没有过这条命令。
     (
         "sessions-start",

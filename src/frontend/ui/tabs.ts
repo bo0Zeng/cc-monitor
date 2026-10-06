@@ -233,6 +233,11 @@ export class TabManager {
     {
       tab: (sid) => this.store.tabs.get(sid),
       isAttachable: (sid) => this.isAttachable(sid),
+      openAccountPanel: (sid) => {
+        const t = this.store.tabs.get(sid);
+        if (t && this.onOpenAccountPanel) this.onOpenAccountPanel(sid, t.origin);
+      },
+      accountPanelWired: () => this.onOpenAccountPanel !== null,
       collectionsLoaded: () => this.prefs.collectionsLoaded,
       collections: () => this.prefs.collections,
       // 组员关系是 tab 自己的属性：菜单那三个动作改完内存（落盘偏好那一份同时写盘）就重画。
@@ -961,6 +966,24 @@ export class TabManager {
    */
   streamElOf(sessionId: string): HTMLElement | null {
     return this.store.tabs.get(sessionId)?.streamEl ?? null;
+  }
+
+  /** 这个会话的消息流内容那一层（换号条按发生那一刻追加在这里，之后来的记录排在它后面）。 */
+  streamContentOf(sessionId: string): HTMLElement | null {
+    return this.store.tabs.get(sessionId)?.stream.contentElement ?? null;
+  }
+
+  /** 右键「账号…」开哪个面板（主窗口接；独立窗口不接 ⇒ 那一项照样在，点了不动）。 */
+  onOpenAccountPanel: ((sid: string, origin: Origin) => void) | null = null;
+
+  /** 这个会话在哪台（没有这个 tab ⇒ `null`）。 */
+  originOf(sessionId: string): Origin | null {
+    return this.store.tabs.get(sessionId)?.origin ?? null;
+  }
+
+  /** tab 栏上别处的数据变了（额度：被卡的会话 `✕ 5h`）⇒ 重画一遍（按钮只在样子变了才写 DOM）。 */
+  repaintTabBar(): void {
+    this.refreshTabBar();
   }
 
   /**

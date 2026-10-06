@@ -1104,6 +1104,40 @@ async fn the_session_tasks_stream_carries_the_sid_that_changed_and_nothing_else(
     assert_eq!(got, vec![(1, serde_json::json!({"sid": "s1"}))]);
 }
 
+/// `quota-changed` 流：这台额度账变了 ⇒ 体 `{"quota":true}`；这台某个会话的轮换变了 ⇒ 体 `{"sid": …}`。
+/// 只有订了这台 `quota-changed` 的收；别台的 · 同台 `session-tasks` 的都不收。期望手写。
+#[tokio::test]
+async fn the_quota_stream_carries_ledger_and_rotation_changes_to_its_own_machine_only() {
+    let (r, rec) = hub();
+    let box_a = crate::origin::Origin("box-a".into());
+    let box_b = crate::origin::Origin("box-b".into());
+    r.subscribe("w", 1, &box_a, "quota-changed", None, 4);
+    r.subscribe("w", 2, &box_a, "session-tasks", None, 4);
+    r.subscribe("w", 3, &box_b, "quota-changed", None, 4);
+    rec.clear();
+    r.quota_changed(&box_a, None);
+    r.quota_changed(&box_a, Some("s1"));
+    let got: Vec<(u64, serde_json::Value)> = rec
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .flat_map(|(_, id, items)| {
+            items.iter().filter_map(move |i| match i {
+                WItem::Frame { body, .. } => Some((*id, serde_json::from_slice(&body.0).unwrap())),
+                _ => None,
+            })
+        })
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            (1, serde_json::json!({"quota": true})),
+            (1, serde_json::json!({"sid": "s1"}))
+        ]
+    );
+}
+
 /// 〔「测试连接的进度不许倒退」〕`probe-progress/<票>` 流：本机后端推来一格 ⇒ 只有订了**那张票**的收、
 /// 体原样（monitor 不解释）；别的票 · 别台同名 · 空票都不收（空票那一形订不上：`no-such-stream`）。期望手写。
 #[tokio::test]

@@ -167,10 +167,13 @@ const DEPS: Record<string, readonly string[]> = {
   "src/frontend/ui/tab-bar-view.ts": [
     "src/frontend/ui/account-color.ts",
     "src/frontend/ui/accounts.ts",
+    "src/frontend/ui/acct-view.ts", // 被卡住的会话标题后 `✕ 5h`：排版模型（判定是后端给的 `blocked`）
+    "src/frontend/ui/app-store.ts", // 同上：会话的轮换格从 store 读
     "src/frontend/ui/copy-table.ts", // 按钮上的图标 · 悬停提示 · 集合名提示进了文案表
     "src/frontend/ui/ipc/origin.ts", // 远端 tab 才挂 `.remote` / 走远端那条 ↗
     "src/frontend/ui/keybindings/registry.ts", // 组头就地改名：改名时 Esc 走 overlay 栈
     "src/frontend/ui/tab-group-rename.module.css", // 组头就地改名那个输入框的样式（UC2：新样式一律 module）
+    "src/frontend/ui/tab-quota.module.css", // `✕ 5h` 那一格的样式
     "src/frontend/ui/session-status.ts",
     "src/frontend/ui/tab-session-state.ts", // 按钮上的两个状态类 · ↗ / 中键的两道门
     "src/frontend/ui/terminal-front.ts",

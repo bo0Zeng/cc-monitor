@@ -137,6 +137,7 @@ function askCalls(file: string, text: string): { all: Hit[]; unawaited: Hit[] } 
 /** 本路改过、今天调用对话框的文件（期望手写，不从扫描结果派生）。 */
 const ASK_CALLERS = [
   "src/frontend/ui/account-restart.ts", // 重启切换：「会打断什么」那一问
+  "src/frontend/ui/acct-panel.ts", // 账号面板的重启切换：同一问
   "src/frontend/ui/keybindings/editor.ts",
   "src/frontend/ui/settings/accounts-mcp-block.ts",
   "src/frontend/ui/settings/accounts-section.ts",

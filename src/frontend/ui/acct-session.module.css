@@ -1,0 +1,39 @@
+/* 会话里：换号条（消息流里一行居中）· 提示条（会话头下、消息流上）。 */
+@layer components {
+  .acctSessStrip {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    margin: var(--space-5) 0;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .acctSessStripLine {
+    flex: 1;
+    height: 1px;
+    background: var(--border-soft);
+  }
+
+  .acctSessStripText {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .acctSessStripAt,
+  .acctSessStripSep,
+  .acctSessStripMove,
+  .acctSessStripWhy {
+    white-space: nowrap;
+  }
+
+  /* 提示条本身是 kit 的警告条（C15）；这一层只管它在流容器里的位置。 */
+  .acctSessNotice {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
+    margin: 0 0 var(--space-4);
+  }
+}

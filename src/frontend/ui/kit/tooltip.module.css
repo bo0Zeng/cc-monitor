@@ -15,4 +15,11 @@
     white-space: pre-line;
     pointer-events: none;
   }
+
+  /* 悬停卡（加长版）：内容是调用方排好的表格；宽一些、不按换行切。 */
+  .tipCard {
+    max-width: 420px;
+    padding: var(--space-4) var(--space-5);
+    white-space: normal;
+  }
 }

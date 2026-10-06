@@ -94,6 +94,10 @@ pub const ACCOUNTS_CHANGED_KIND: &str = "accounts-changed";
 /// TS 那一侧的同一个串住 `src/frontend/ui/tasks-stream.ts::SESSION_TASKS_KIND`（两侧对拍在 `tests/frontend/ui/events-tap.vitest.ts`）。
 pub const SESSION_TASKS_KIND: &str = "session-tasks";
 
+/// 又一种流：那台机器上「额度账变了」（格体 `{"quota":true}`）或「某个会话的轮换 / 账号格变了」（格体 `{"sid": …}`），没有留存。
+/// 界面收到就重问 `quota-read` / `rotation-session-read`。TS 那一侧的同一个串住 `src/frontend/ui/quota-stream.ts::QUOTA_CHANGED_KIND`。
+pub const QUOTA_CHANGED_KIND: &str = "quota-changed";
+
 /// 〔「测试连接的进度不许倒退」〕又一种流：本机后端里那一趟测试连接的进度（`probe-progress/<票>`，
 /// 格体是后端原样那一格 `{stage}` / `{reached}` / `{end}`，没有留存；只在 `<local>` 上有）。
 /// TS 那一侧的同一个串住 `src/frontend/ui/remote-probe.ts::PROBE_PROGRESS_KIND`（两侧对拍在 `tests/frontend/ui/remote-probe.vitest.ts`）。
@@ -167,6 +171,8 @@ enum SubKind {
     AccountsChanged,
     /// `session-tasks`：只收看得见 / 看不见与「那台某个会话的任务清单变了」那几格，没有留存。
     Tasks,
+    /// `quota-changed`：只收看得见 / 看不见与「那台额度账 / 某个会话的轮换变了」那几格，没有留存。
+    Quota,
     /// `probe-progress/<票>`：一趟测试连接的进度格（`only` = 那张票），没有留存。
     Probe,
 }
@@ -413,6 +419,8 @@ enum Stream {
     AccountsChanged,
     /// `session-tasks`。
     Tasks,
+    /// `quota-changed`。
+    Quota,
     /// `probe-progress/<票>`。
     Probe(String),
 }
@@ -430,6 +438,9 @@ fn parse_kind(kind: &str) -> Result<Stream, ()> {
     }
     if kind == SESSION_TASKS_KIND {
         return Ok(Stream::Tasks);
+    }
+    if kind == QUOTA_CHANGED_KIND {
+        return Ok(Stream::Quota);
     }
     if let Some(ticket) = kind
         .strip_prefix(PROBE_PROGRESS_KIND)
@@ -772,6 +783,7 @@ impl EventReplay {
             Ok(Stream::Tap) => (None, SubKind::Tap),
             Ok(Stream::AccountsChanged) => (None, SubKind::AccountsChanged),
             Ok(Stream::Tasks) => (None, SubKind::Tasks),
+            Ok(Stream::Quota) => (None, SubKind::Quota),
             Ok(Stream::Probe(ticket)) => (Some(ticket), SubKind::Probe),
             Err(()) => {
                 let item = refused("no-such-stream", format!("没有叫 `{kind}` 的流"));
@@ -1052,6 +1064,38 @@ impl EventReplay {
                 .subs
                 .iter_mut()
                 .filter(|s| s.kind == SubKind::Tasks && s.origin == origin)
+                .map(|s| {
+                    let items = plan_live(s, vec![Body(body.clone())]);
+                    (s.label.clone(), s.id, items)
+                })
+                .filter(|(_, _, items)| !items.is_empty())
+                .collect();
+            (sink, plans)
+        };
+        for (label, id, items) in plans {
+            sink.deliver(&label, id, items);
+        }
+    }
+
+    /// 那台机器的后端说「额度账变了」（`quota_changed`，`sid = None`）或「这个会话的轮换 / 账号格变了」（`rotation_changed`）⇒
+    /// 订了那台 `quota-changed` 的每条订阅收一格（体 `{"quota":true}` / `{"sid": …}`；credit 与 `Gap` 与 `session-tasks` 同一套）。
+    pub fn quota_changed(&self, origin: &crate::origin::Origin, sid: Option<&str>) {
+        let origin = origin.as_wire_str();
+        let body = match sid {
+            Some(sid) => serde_json::json!({ "sid": sid }),
+            None => serde_json::json!({ "quota": true }),
+        }
+        .to_string()
+        .into_bytes();
+        let (sink, plans) = {
+            let mut inner = self.inner.lock();
+            let Some(sink) = inner.sink.clone() else {
+                return;
+            };
+            let plans: Vec<(String, u64, Vec<Item>)> = inner
+                .subs
+                .iter_mut()
+                .filter(|s| s.kind == SubKind::Quota && s.origin == origin)
                 .map(|s| {
                     let items = plan_live(s, vec![Body(body.clone())]);
                     (s.label.clone(), s.id, items)

@@ -5,6 +5,7 @@
     inset: 0;
     z-index: var(--z-overlay);
     background: var(--overlay-dim);
+    pointer-events: none;
   }
 
   .drawer {
@@ -42,6 +43,13 @@
     margin: 0;
     font-size: var(--font-size-title);
     font-weight: var(--font-weight-strong);
+  }
+
+  .drawerSub {
+    margin-left: var(--space-4);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    font-weight: normal;
   }
 
   .drawerBody {

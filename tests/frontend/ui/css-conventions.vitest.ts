@@ -126,7 +126,6 @@ const UNUSED_TOKENS: Readonly<Record<string, string>> = {
   // 下面五条是新补的两族里**今天还没有消费者**的部分。
   // 设计要的是「族补齐」（免得下一个人再去猜 `--input-bg` 这种名字），
   // 消费者要等到那些控件下一次被动到时才自然接上 ⇒ 预留是刻意的，不是腐。
-  "--state-focus": "交互态族预留（族一）",
   // 规范 V1–V12 新立的令牌里，通用组件还没接上的（组件件落地一个摘一个）。
   "--dur-float-out": NEW_TOKEN,
   "--space-8": NEW_TOKEN,

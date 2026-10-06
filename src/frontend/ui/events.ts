@@ -6,6 +6,7 @@ import { copyText } from "./copy-table";
 import { toast } from "./kit/toast";
 import { ACCOUNTS_CHANGED_KIND, ACCOUNTS_CHANGED_WINDOW, accountsChangedItems } from "./session-accounts-poll";
 import { SESSION_TASKS_KIND, SESSION_TASKS_WINDOW, tasksChangedItems } from "./tasks-stream";
+import { QUOTA_CHANGED_KIND, QUOTA_CHANGED_WINDOW, quotaChangedItems } from "./quota-stream";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 // C02（rust-ts-boundary）：这 5 个 payload 类型**改成从生成物 re-export**，不再手写。
 // 源是 `src/frontend/shell/src/ui_contract.rs` 的 `#[cfg_attr(test, derive(ts_rs::TS))]`。
@@ -154,6 +155,11 @@ export interface EventHandlers {
    * 调用方重问 `tasks-list`。来自通道 `subscribe(origin, "session-tasks")`（`tasks-panel.ts::tasksChangedItems` 读格）。
    */
   onTasksChanged?: (origin: Origin, sids: readonly string[], all: boolean) => void;
+  /**
+   * 某台的额度账变了（`quota`）/ 某几个会话的轮换 / 账号格变了（`sids`）/ 期间可能漏了（`all`：那台整台重问）。
+   * 来自通道 `subscribe(origin, "quota-changed")`（`quota-stream.ts::quotaChangedItems` 读格）。
+   */
+  onQuotaChanged?: (origin: Origin, change: { quota: boolean; sids: readonly string[]; all: boolean }) => void;
   /**
    * issue #23：会话红绿灯。后端仅在 sessions/<PID>.json 的官方 status 变化时
    * emit（天然稀疏，同 ended 格 直接同步派发）。status: "busy"=运行中 /
@@ -396,6 +402,11 @@ export interface BindEventsOptions {
    * 与会话行 · tap · 账号同一处 `chan.subscribe`；窗口是 `SESSION_TASKS_WINDOW`。
    */
   tasks?: ReadonlyArray<Origin>;
+  /**
+   * 要订 `quota-changed` 的机器（那台的额度账 / 某个会话的轮换变了 ⇒ {@link EventHandlers.onQuotaChanged}）。
+   * 同一处 `chan.subscribe`；窗口是 `QUOTA_CHANGED_WINDOW`。
+   */
+  quota?: ReadonlyArray<Origin>;
 }
 
 /**
@@ -833,6 +844,20 @@ export async function bindEvents(
     if (all || sids.length > 0) handlers.onTasksChanged?.(origin, sids, all);
   };
 
+  // `quota-changed`：一批格 ⇒ 额度账 / 哪几个会话的轮换要重问（`quotaChangedItems` 答）；credit 同 `session-tasks`。
+  const onQuotaItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
+    const { quota, sids, all, frames } = quotaChangedItems(items);
+    if (frames > 0) {
+      if (hold.sub) {
+        hold.sub.want(frames + hold.owed);
+        hold.owed = 0;
+      } else {
+        hold.owed += frames;
+      }
+    }
+    if (quota || all || sids.length > 0) handlers.onQuotaChanged?.(origin, { quota, sids, all });
+  };
+
   // 会话流：起停那几个事件的监听都在了之后再订（订阅一登记，句柄就可能开始交格）。
   //   返回时 monitor 那一侧已经登记好 ⇒ 主界面接着发 `frontend-ready`（就绪点）不会落空。
   // `session-tap` 与会话行走**同一处** `chan.subscribe`（前端对通信层入口的调用点各恰好一处，`X6`）：
@@ -851,6 +876,12 @@ export async function bindEvents(
       kind: SESSION_TASKS_KIND,
       window: SESSION_TASKS_WINDOW,
       feed: onTasksItems,
+    })),
+    ...(opts.quota ?? []).map((origin) => ({
+      origin,
+      kind: QUOTA_CHANGED_KIND,
+      window: QUOTA_CHANGED_WINDOW,
+      feed: onQuotaItems,
     })),
   ];
   await Promise.all(
