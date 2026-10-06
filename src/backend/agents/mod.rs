@@ -623,8 +623,10 @@ pub struct UserText {
     pub pasted: Vec<Pasted>,
 }
 
-/// 人粘贴进来的一块在 `text` 里的位置（`[start, end)`，UTF-16 下标）。
+/// 人粘贴进来的一块在 `text` 里的位置（`[start, end)`，UTF-16 下标，含两头的标记）＋ 正文那一截（`[bodyStart, bodyEnd)`）与它的行数。
+/// 界面据此把超过 12 行的折起来、不超过的只露正文（不认标记的写法）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct Pasted {
@@ -633,6 +635,10 @@ pub struct Pasted {
     pub id: Option<String>,
     pub start: u32,
     pub end: u32,
+    pub body_start: u32,
+    pub body_end: u32,
+    /// 正文的行数（两头的空行不算）。
+    pub lines: u32,
 }
 
 impl Default for UserText {

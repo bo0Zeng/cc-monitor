@@ -1460,6 +1460,39 @@
   overflow: auto;
 }
 
+/* === 人粘贴的块（「谁说的」稿 A）：超过 12 行折成一行，点开就地展开 === */
+.paste-fold {
+  margin: 4px 0;
+}
+
+.paste-fold > summary {
+  cursor: pointer;
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+  list-style: none;
+  user-select: none;
+}
+
+.paste-fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.paste-fold > summary::before {
+  content: var(--mark-closed);
+  display: inline-block;
+  width: 14px;
+}
+
+.paste-fold[open] > summary::before {
+  content: var(--mark-open);
+}
+
+.paste-body {
+  margin-top: 4px;
+  padding-left: 8px;
+  border-left: 2px solid var(--border-medium);
+}
+
 /* === 按轮折叠（主窗口稿 §5.2.2）：完成的轮过程折成一行，28 高 === */
 .proc-line {
   display: flex;

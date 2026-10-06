@@ -607,10 +607,14 @@ fn pasted_spans(text: &str) -> Vec<Pasted> {
             break;
         };
         let end = body + j + close.len();
+        let inner = text[body..body + j].trim_matches(['\n', '\r']);
         out.push(Pasted {
             id,
             start: utf16(start),
             end: utf16(end),
+            body_start: utf16(body),
+            body_end: utf16(body + j),
+            lines: u32::try_from(inner.lines().count()).unwrap_or(u32::MAX),
         });
         from = end;
     }

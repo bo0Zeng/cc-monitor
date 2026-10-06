@@ -68,6 +68,19 @@ function longWorld(): World {
   return w;
 }
 
+/** 一个会话：你那句里粘了一大一小两块。 */
+function pasteWorld(): World {
+  const w = defaultWorld();
+  const sid = "5e55bbbb-0000-4000-8000-00000000bbbb";
+  const c = new Convo(sid, "/home/user/work/orders", "2026-10-01T09:00:00Z");
+  c.title("超时日志排查");
+  const log = Array.from({ length: 20 }, (_, i) => `2026-10-01 08:5${i % 10}:0${i % 6} WARN inventory call timed out after 30s (attempt ${i + 1})`).join("\n");
+  c.user(`这是今早的日志：<pasted_content id="p1">\n${log}\n</pasted_content id="p1">\n配置是：<pasted_content id="p2">retries=0\ntimeout_s=30\nbackoff_ms=0</pasted_content id="p2">\n帮我看看为什么一直超时。`);
+  c.say("日志里每次都是整 30 秒超时、而且没有重试——配置里 `retries=0`。先把重试与整体超时加上。", 30_000, "end_turn");
+  w.sessions = [session(9, LOCAL, "/home/user/work/orders", c, { status: "idle", sid })];
+  return w;
+}
+
 /** gpu-01 上那个会话在等你回答（提问工具）。 */
 function answerWorld(): World {
   const w = defaultWorld();
@@ -179,6 +192,12 @@ export const MAIN_SCENES: Scene[] = [
     t.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     await sleep(700);
   }),
+  main("main-paste-fold", "主窗口 · 粘贴块折起", "你那句里粘进来 20 行日志：折成一行「粘贴的内容 · 20 行」，点开就地展开；3 行的那一块照排、标记不露", async () => {
+    await mainReady(1);
+    await waitFor(".stream.active .paste-fold");
+    document.querySelector<HTMLElement>(".stream.active .card-user")!.scrollIntoView({ block: "start" });
+    await sleep(300);
+  }, pasteWorld),
   main("main-stream-retry", "主窗口 · 重试细条与提问 / 计划结果", "同一个会话靠后：两次重试并成一条（接上了变淡）· 提问答了「已选」· 计划「已批准」", async () => {
     await mainReady(ALL_TABS);
     await scrollStream(".card-api-retry");

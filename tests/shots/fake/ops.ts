@@ -166,7 +166,18 @@ export function defaultOps(): Record<string, OpHandler> {
         t.conclusion = afterTool;
         const texts = recs.filter((r): r is Extract<JsonlRecord, { type: "assistant" }> => r.type === "assistant" && afterTool.includes(r.uuid));
         const body = texts.flatMap((r) => ((r.message.content as { type: string; text?: string }[]).filter((b) => b.type === "text").map((b) => b.text ?? "")));
-        t.reply = body.join("\n").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("```")).slice(0, 3).join("\n").slice(0, 120);
+        // 只取正文行：代码块整块不算；只有代码 ⇒「仅代码」（同后端 `turns.rs::close`）。
+        let fenced = false;
+        let code = false;
+        const prose = body.join("\n").split("\n").map((l) => l.trim()).filter((l) => {
+          if (l.startsWith("```")) {
+            fenced = !fenced;
+            code = true;
+            return false;
+          }
+          return !fenced && l !== "";
+        }).map((l) => l.replace(/^[#>]+\s*/, "").replace(/\*\*|__|`/g, "")).filter((l) => l !== "");
+        t.reply = prose.length === 0 && code ? "仅代码" : prose.slice(0, 3).join("\n").slice(0, 120);
       };
       recs.forEach((r, i) => {
         if (r.type === "user" && r.userText.speaker.kind === "human" && r.userText.text !== "" && r.uuid) {

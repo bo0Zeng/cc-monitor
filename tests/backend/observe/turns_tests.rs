@@ -1,4 +1,4 @@
-//! 一轮的摘要（`turns.rs`）：子运行的记录不算进主线的轮 · 从某一轮的 `at` 接着取只出那一轮起的 · 你那句与回复头的截法（代码块围栏行不算一行）。
+//! 一轮的摘要（`turns.rs`）：子运行的记录不算进主线的轮 · 从某一轮的 `at` 接着取只出那一轮起的 · 你那句与回复头的截法（只取正文行：代码块整块不算，只有代码 ⇒「仅代码」）。
 //! 夹具只造结构（占位词），不采会话正文。成品的整形由跨语言金样管（`read_face_tests.rs`）。
 
 use super::*;
@@ -51,11 +51,30 @@ fn subrun_records_do_not_count_and_from_resumes_at_a_turn() {
 }
 
 #[test]
-fn reply_head_skips_code_fence_lines() {
-    let lines = [
-        r#"{"type":"user","uuid":"a","timestamp":"t1","message":{"content":"q"}}"#,
-        r#"{"type":"assistant","uuid":"b","timestamp":"t2","message":{"content":[{"type":"text","text":"一\n\n```py\n二\n```\n三\n四"}]}}"#,
-    ];
-    let body: String = lines.iter().map(|l| format!("{l}\n")).collect();
-    assert_eq!(scan(&body, 0)[0].reply, "一\n二\n三");
+fn reply_head_is_prose_only() {
+    // 截图那一形：一句 · 空行 · 整块代码 · 再一句 ⇒ 代码整块不算（围栏与里面的行），空行不算。
+    let rec = |text: &str| {
+        let lines = [
+            r#"{"type":"user","uuid":"a","timestamp":"t1","message":{"content":"q"}}"#.to_string(),
+            serde_json::json!({"type":"assistant","uuid":"b","timestamp":"t2","message":{"content":[{"type":"text","text":text}]}}).to_string(),
+        ];
+        lines.iter().map(|l| format!("{l}\n")).collect::<String>()
+    };
+    let mixed = rec("改好了。小结：\n\n```python\nclient = X(retries=3)\n```\n\n全量测试通过。\n文档也加了。\n第四行");
+    assert_eq!(
+        scan(&mixed, 0)[0].reply,
+        "改好了。小结：\n全量测试通过。\n文档也加了。"
+    );
+    // 行内排版记号去掉，只留字。
+    let marked = rec("## 小结\n全量测试 **213 passed**。`docs/config.md` 里加了说明。\n> 引用一句");
+    assert_eq!(
+        scan(&marked, 0)[0].reply,
+        "小结\n全量测试 213 passed。docs/config.md 里加了说明。\n引用一句"
+    );
+    // 只有代码 ⇒ 一个词，不露代码原文。
+    let only = rec("```sh\nrm -rf build\n```");
+    assert_eq!(
+        scan(&only, 0)[0].reply,
+        copy_text("rsTurns.reply.codeOnly", &[])
+    );
 }

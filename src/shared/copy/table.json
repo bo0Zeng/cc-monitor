@@ -3125,6 +3125,11 @@
       "zh": " · 失败 {n}",
       "args": ["n"]
     },
+    "speaker.paste.fold": {
+      "kind": "body",
+      "zh": "粘贴的内容 · {n} 行",
+      "args": ["n"]
+    },
     "stream.rail.tip": {
       "kind": "body",
       "zh": "第 {n} 轮 · {time} · 工具 ×{tools}",
@@ -11314,6 +11319,11 @@
     "rsHooksDiag.diagnose.badJson": {
       "kind": "body",
       "zh": "~/.claude/settings.json 不是合法 JSON —— 未改动它，请先自行修复",
+      "args": []
+    },
+    "rsTurns.reply.codeOnly": {
+      "kind": "body",
+      "zh": "仅代码",
       "args": []
     },
     "rsHooksDiag.diagnose.noSettings": {

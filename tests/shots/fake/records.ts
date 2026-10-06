@@ -47,6 +47,18 @@ export interface ToolOpts {
 }
 
 /** 一段对话：按时间往后排，每条记录挂在上一条后面。 */
+/** 人粘贴进来的块：照后端 `claudecode/text.rs::pasted_spans` 那一形（UTF-16 下标 · 正文那一截 · 行数）。没有 ⇒ 缺。 */
+function pastedOf(text: string): { id?: string; start: number; end: number; bodyStart: number; bodyEnd: number; lines: number }[] | undefined {
+  const out = [];
+  const re = /<pasted_content(?: id="([^"]*)")?>([\s\S]*?)<\/pasted_content(?: id="[^"]*")?>/g;
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    const bodyStart = m.index + m[0].indexOf(">") + 1;
+    const body = m[2];
+    out.push({ ...(m[1] ? { id: m[1] } : {}), start: m.index, end: m.index + m[0].length, bodyStart, bodyEnd: bodyStart + body.length, lines: body.replace(/^[\r\n]+|[\r\n]+$/g, "").split("\n").length });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 export class Convo {
   readonly records: JsonlRecord[] = [];
   private t: number;
@@ -87,7 +99,7 @@ export class Convo {
         ? { speaker: { kind: "interrupt" }, text: "" }
         : opts.meta
           ? { speaker: { kind: "system" }, text: "" }
-          : { speaker: { kind: "human" }, text },
+          : { speaker: { kind: "human" }, text, pasted: pastedOf(text) },
     });
     this.prev = uuid;
     return this;

@@ -504,6 +504,31 @@ describe("一步一行：后端的 toolSteps / toolResults 排成一行", () => 
   });
 });
 
+// 人粘贴的块（「谁说的」稿 A）：边界 / 正文那一截 / 行数是后端的 `userText.pasted`；超过 12 行折起，不超过的只露正文。
+describe("粘贴块", () => {
+  const said = (text: string, pasted: object[]): JsonlRecord =>
+    ({ type: "user", uuid: "p", timestamp: "2026-01-01T14:02:00.000Z", message: { role: "user", content: text }, userText: { speaker: { kind: "human" }, text, pasted } }) as never;
+  const span = (text: string, open: string, body: string, close: string, lines: number) => {
+    const start = text.indexOf(open);
+    const bodyStart = start + open.length;
+    return { start, end: bodyStart + body.length + close.length, bodyStart, bodyEnd: bodyStart + body.length, lines };
+  };
+  it("★ 超过 12 行折成「粘贴的内容 · N 行」、点开是正文；12 行以内照排、两头的标记不露", () => {
+    const long = Array.from({ length: 13 }, (_, i) => `行${i}`).join("\n");
+    const short = "甲\n乙";
+    const text = `看这段：<P1>${long}</P1>再看<P2>${short}</P2>完`;
+    const r = renderMessage(said(text, [span(text, "<P1>", long, "</P1>", 13), span(text, "<P2>", short, "</P2>", 2)]), ctx());
+    if (r.kind !== "card") throw new Error(r.kind);
+    const folds = r.element.querySelectorAll<HTMLDetailsElement>(".paste-fold");
+    expect(folds.length).toBe(1);
+    expect([folds[0].open, folds[0].querySelector("summary")?.textContent]).toEqual([false, "粘贴的内容 · 13 行"]);
+    expect(folds[0].querySelector(".paste-body")?.textContent).toBe(long.replace(/\n/g, ""));
+    const all = r.element.querySelector(".card-body")?.textContent ?? "";
+    expect(all).not.toMatch(/<P|<\/P/);
+    expect(all).toContain("甲乙");
+  });
+});
+
 // 不是人说的（「谁说的」稿 A · 事件条）：来源只看后端给的 speaker，正文是后端补的 `speaker.body`。
 describe("事件条：agent 交回 / 来话 · 另一会话 · 后台通知并条 · 中断标记", () => {
   const userRec = (speaker: object, ts = "2026-01-01T14:02:00.000Z"): JsonlRecord =>

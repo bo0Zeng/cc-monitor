@@ -8,6 +8,7 @@
 //! `from` 之前的那半轮不出（它的开头不在这一段里）。
 
 use super::user_inputs::user_input_given;
+use copy_core::copy_text;
 use serde_json::Value;
 
 /// 你那句留多少字。
@@ -47,17 +48,42 @@ struct Open {
 }
 
 impl Open {
+    /// 回复头：头三行**正文**——代码块整块不算（围栏连同里面的行），空行不算；只有代码 ⇒ 「仅代码」，不露代码原文。
+    /// 行内的排版记号（粗体 / 斜体的 `**` `__`、行内代码的反引号、标题的 `#`、引用的 `>`）去掉，只留字（悬停卡是纯文本）。
     fn close(mut self) -> TurnRow {
-        let head: Vec<&str> = self
-            .reply_text
-            .lines()
-            .map(str::trim)
-            .filter(|l| !l.is_empty() && !l.starts_with("```"))
-            .take(REPLY_LINES)
-            .collect();
-        self.row.reply = clip(&head.join("\n"), REPLY_MAX);
+        let mut fenced = false;
+        let mut code = false;
+        let mut head: Vec<String> = Vec::new();
+        for l in self.reply_text.lines().map(str::trim) {
+            if l.starts_with("```") {
+                fenced = !fenced;
+                code = true;
+                continue;
+            }
+            if fenced {
+                continue;
+            }
+            let l = plain_line(l);
+            if !l.is_empty() {
+                head.push(l);
+                if head.len() == REPLY_LINES {
+                    break;
+                }
+            }
+        }
+        self.row.reply = if head.is_empty() && code {
+            copy_text("rsTurns.reply.codeOnly", &[])
+        } else {
+            clip(&head.join("\n"), REPLY_MAX)
+        };
         self.row
     }
+}
+
+/// 一行正文去掉行内排版记号：行首的 `#` / `>`，以及 `**` `__` 与反引号。
+fn plain_line(l: &str) -> String {
+    let l = l.trim_start_matches(['#', '>']).trim_start();
+    l.replace("**", "").replace("__", "").replace('`', "")
 }
 
 /// 截到 `max` 个字（Unicode 标量），截了加省略号。

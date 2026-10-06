@@ -440,12 +440,18 @@ fn pasted_blocks_are_human_with_their_bounds() {
             Pasted {
                 id: Some("p1".into()),
                 start: at("<pasted_content id"),
-                end: first_end
+                end: first_end,
+                body_start: at("甲"),
+                body_end: at("</pasted_content id"),
+                lines: 2,
             },
             Pasted {
                 id: None,
                 start: at("<pasted_content>"),
-                end: t.encode_utf16().count() as u32
+                end: t.encode_utf16().count() as u32,
+                body_start: at("丙"),
+                body_end: at("</pasted_content>"),
+                lines: 1,
             },
         ]
     );

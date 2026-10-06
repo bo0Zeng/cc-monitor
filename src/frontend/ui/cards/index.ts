@@ -25,6 +25,7 @@ import { drawsCard } from "../speaker";
 import { buildAgentCard } from "./subagent";
 import { buildDiffBody } from "./diff";
 import { buildInteractiveCard, settleInteractive } from "./interactive";
+import type { Pasted } from "../generated/Pasted";
 import type { ToolCard } from "../generated/ToolCard";
 import type { ChildRunTag } from "../generated/ChildRunTag";
 import type { ToolStep } from "../generated/ToolStep";
@@ -225,7 +226,7 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
         default:
           // 人说的话 · 派给子 agent 的活：用户气泡；没有正文（只有图片之类）不建卡。
           if (!said.text) return { kind: "skip" };
-          return { kind: "card", element: buildUserCard(rec, said.text) };
+          return { kind: "card", element: buildUserCard(rec, said.text, said.pasted) };
       }
 
       // 工具结果回灌：注入到对应 tool_use 折叠条内部，返回 null；
@@ -409,9 +410,55 @@ function updateToolGroupSummary(group: ToolGroup): void {
           : copyText("cards.toolGroup.summary", { count, since });
 }
 
+/** 粘贴块超过这么多行就折成一行（「谁说的」稿 A · 10-02 定 12）。 */
+export const PASTE_FOLD_LINES = 12;
+
+/**
+ * 人说的话（含粘贴进来的块）：粘贴块只露正文（两头的标记不露）；超过 [`PASTE_FOLD_LINES`] 行折成一行「粘贴的内容 · N 行」，点开就地展开。
+ * 块的边界、正文那一截与行数都是后端的 `userText.pasted`（UTF-16 下标），界面不认标记的写法。
+ */
+function fillSaid(body: HTMLElement, text: string, pasted: readonly Pasted[] | undefined): void {
+  if (!pasted || pasted.length === 0) {
+    body.innerHTML = renderPlainText(text);
+    return;
+  }
+  const plain = (s: string): void => {
+    if (!s) return;
+    const span = document.createElement("span");
+    span.innerHTML = renderPlainText(s);
+    body.appendChild(span);
+  };
+  let at = 0;
+  let afterFold = false;
+  for (const p of pasted) {
+    const fold = p.lines > PASTE_FOLD_LINES;
+    // 折起来的那一行自己占一行：紧挨着它的那一个换行不再另起空行。
+    let before = text.slice(at, p.start);
+    if (afterFold) before = before.replace(/^\r?\n/, "");
+    if (fold) before = before.replace(/\r?\n$/, "");
+    plain(before);
+    afterFold = fold;
+    const inner = text.slice(p.bodyStart, p.bodyEnd).replace(/^[\r\n]+|[\r\n]+$/g, "");
+    if (fold) {
+      const d = document.createElement("details");
+      d.className = "paste-fold";
+      const s = document.createElement("summary");
+      s.textContent = copyText("speaker.paste.fold", { n: p.lines });
+      const b = document.createElement("div");
+      b.className = "paste-body";
+      b.innerHTML = renderPlainText(inner);
+      d.append(s, b);
+      body.appendChild(d);
+    } else plain(inner);
+    at = p.end;
+  }
+  plain(afterFold ? text.slice(at).replace(/^\r?\n/, "") : text.slice(at));
+}
+
 function buildUserCard(
   rec: Extract<JsonlRecord, { type: "user" }>,
   text: string,
+  pasted?: readonly Pasted[],
 ): HTMLElement {
   const card = document.createElement("div");
   card.className = "card card-user";
@@ -419,7 +466,7 @@ function buildUserCard(
 
   const body = document.createElement("div");
   body.className = "card-body";
-  body.innerHTML = renderPlainText(text);
+  fillSaid(body, text, pasted);
   card.appendChild(body);
   return card;
 }
