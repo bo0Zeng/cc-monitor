@@ -279,6 +279,14 @@ export const MAIN_SCENES: Scene[] = [
     w.sessions[0].records.push({ type: "assistant", timestamp: at, message: { role: "assistant", content: [{ type: "tool_use", id: "toolu_run", name: "Bash", input: { command: "pytest -q tests/test_inventory_client.py" } }] } } as never);
     return w;
   }),
+  main("main-step-awaiting", "主窗口 · 过程里那一步在等你批准", "在等批准的会话：过程里那一步琥珀点 ·「等你批准」· 右侧已等多久（后端 needs.call 指的那一步）", async () => {
+    await mainReady(ALL_TABS);
+    await openTab(1);
+    await sleep(900);
+    for (const d of document.querySelectorAll<HTMLDetailsElement>("#message-stream details")) if (d.querySelector(".step-line[data-state=awaiting]")) d.closest("details:not(.block-tool-use)")?.setAttribute("open", "");
+    document.querySelector(".step-line[data-state=awaiting]")?.scrollIntoView({ block: "center" });
+    await sleep(500);
+  }),
   main("main-needs-list", "主窗口 · 「需要你」菜单", "悬停栏顶「需要你 2」500ms：菜单列出每个在等你的会话与它等的那一句（等得最久的在前；标题一行省略、那一句至多两行；点一行切过去）", async () => {
     await mainReady(ALL_TABS);
     await sleep(600);

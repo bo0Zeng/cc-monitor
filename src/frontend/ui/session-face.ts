@@ -19,7 +19,7 @@ import { fmtDur } from "./quota-lines";
 /** 此刻在等你（活着 ＋ 活动信号说 waiting）⇒ 等的是什么；不在等 ⇒ `null`。 */
 export function needsOf(tab: Tab): Needs | null {
   if (!isLive(tab.state) || tab.activity?.status !== "waiting") return null;
-  return tab.needs ?? { kind: "unknown", tool: null, what: null, sinceMs: null };
+  return tab.needs ?? { kind: "unknown", tool: null, call: null, what: null, sinceMs: null };
 }
 
 /** 状态点（V10）：颜色 ＝ 在干什么，形状 ＝ 进程还在不在。 */

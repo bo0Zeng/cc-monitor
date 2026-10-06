@@ -164,6 +164,8 @@ export interface Needs {
   kind: NeedsKind;
   /** 等的是哪个工具调用（工具名原样）；判不出 ⇒ `null`。 */
   tool: string | null;
+  /** 那个调用的 id（过程里那一步据此画成「在等你批准」）；判不出 ⇒ `null`。 */
+  call: string | null;
   /** 批准：那一步的主参数；回答：问题头一行；其余 ⇒ `null`。 */
   what: string | null;
   /** 何时起等（epoch ms）；没有 ⇒ `null`。 */
@@ -335,8 +337,8 @@ export function decodeFacts(v: unknown): SessionFacts {
   let needs: Needs | null = null;
   if (v.needs !== null) {
     const n = v.needs;
-    if (!isObj(n) || !exactKeys(n, ["kind", "sinceMs", "tool", "what"]) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs))) return bad();
-    needs = { kind: n.kind as NeedsKind, tool: n.tool, what: n.what, sinceMs: n.sinceMs as number | null };
+    if (!isObj(n) || !exactKeys(n, ["call", "kind", "sinceMs", "tool", "what"]) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.call) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs))) return bad();
+    needs = { kind: n.kind as NeedsKind, tool: n.tool, call: n.call, what: n.what, sinceMs: n.sinceMs as number | null };
   }
   if (!Array.isArray(v.writers) || !v.writers.every(isNum)) return bad();
   if (!isNum(v.end) || !(v.forkedFrom === null || isStr(v.forkedFrom))) return bad();

@@ -3067,6 +3067,11 @@
       "zh": "未批准",
       "args": []
     },
+    "stream.step.awaiting": {
+      "kind": "body",
+      "zh": "等你批准",
+      "args": []
+    },
     "stream.step.failed": {
       "kind": "body",
       "zh": "失败",

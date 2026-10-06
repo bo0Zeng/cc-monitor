@@ -138,7 +138,41 @@ export function buildThinkingLine(label: string, preview: string): HTMLElement {
 
 /** 结果到了：改那一行的状态图标与右侧小字（同一步再来一次结果就再改一次，幂等）。 */
 export function settleStepLine(row: HTMLElement, step: ToolStep | undefined, res: StepResult | undefined, isError: boolean, durMs: number | null): StepState {
+  row.querySelector(".step-await")?.remove();
   const state = stateOf(step, res, isError);
   paint(row, state, stepRight(step, res, state, durMs));
   return state;
+}
+
+/** 已等多久（起等时刻 epoch ms；没有 ⇒ `null`），与耗时同一种写法。 */
+export function awaitedFor(sinceMs: number | null, now: number): string | null {
+  return sinceMs === null ? null : fmtStepDur(now - sinceMs) || null;
+}
+
+/**
+ * 后端说这个会话在等你批准的正是这一步（会话事实 `needs.call`）：琥珀点 · 说明位「等你批准」· 右侧已等多久。
+ * 只改还在跑的那一行（结果已经到了的不动）。
+ */
+export function markAwaiting(row: HTMLElement, waited: string | null): void {
+  if (row.dataset.state !== "running" && row.dataset.state !== "awaiting") return;
+  row.dataset.state = "awaiting";
+  const dot = document.createElement("span");
+  dot.className = "step-await-dot";
+  row.querySelector<HTMLElement>(".step-icon")?.replaceChildren(dot);
+  let w = row.querySelector<HTMLElement>(".step-await");
+  if (!w) {
+    w = document.createElement("span");
+    w.className = "step-await";
+    row.insertBefore(w, row.querySelector(".step-right"));
+  }
+  w.textContent = copyText("stream.step.awaiting");
+  const r = row.querySelector<HTMLElement>(".step-right");
+  if (r) r.textContent = waited ?? "";
+}
+
+/** 不再等这一步了（批了 / 换成等别的）⇒ 回到在跑（结果到了由 [`settleStepLine`] 定）。 */
+export function clearAwaiting(row: HTMLElement): void {
+  if (row.dataset.state !== "awaiting") return;
+  row.querySelector(".step-await")?.remove();
+  paint(row, "running", "");
 }

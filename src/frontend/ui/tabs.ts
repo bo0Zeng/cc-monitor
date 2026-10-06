@@ -81,6 +81,7 @@ import {
   forgetSession,
 } from "./tab-session-actions";
 import { frontView, type FrontAct, type FrontResult } from "./front-result";
+import { awaitedFor, clearAwaiting, markAwaiting } from "./cards/step-line";
 import { machineName } from "./control-said";
 import { commands } from "./ipc/commands";
 import { closeFrontResult, copyFrontDetail, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
@@ -1317,8 +1318,23 @@ export class TabManager {
       tab.title = this.computeTitle(tab);
       this.refreshTabBar();
     } else if (ch.writers || ch.needs || ch.peek) this.refreshTabBar();
-    if (ch.needs) tab.turnRail.render(); // 在等你的那一轮琥珀
+    if (ch.needs) {
+      tab.turnRail.render(); // 在等你的那一轮琥珀
+      this.paintAwaitingStep(tab);
+    }
     if ((ch.usage || ch.projectDir) && sid === this.store.activeId) this.publishActive();
+  }
+
+  /** 过程里在等你批准的那一步（后端 `needs.call`）画成「在等你批准」；不再等的那一步回到在跑。 */
+  private paintAwaitingStep(tab: Tab): void {
+    for (const el of tab.toolUseElements.values()) {
+      const row = el.querySelector<HTMLElement>(".step-line[data-state=awaiting]");
+      if (row) clearAwaiting(row);
+    }
+    const n = tab.needs;
+    if (n?.kind !== "approve" || n.call === null) return;
+    const row = tab.toolUseElements.get(n.call)?.querySelector<HTMLElement>(".step-line");
+    if (row) markAwaiting(row, awaitedFor(n.sinceMs, Date.now()));
   }
 
   /** 这个 tab 的会话事实可不可用变了 ⇒ 是 active 就告诉 HUD（要不到 ⇒ 出声，「不可用，不是空表」）。 */

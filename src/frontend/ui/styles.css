@@ -1725,6 +1725,13 @@
   color: var(--success);
 }
 
+.step-await-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
 .step-tool {
   flex: none;
   color: var(--text);
@@ -1760,6 +1767,16 @@
   white-space: nowrap;
 }
 
+.step-line[data-state="awaiting"] .step-note {
+  display: none;
+}
+
+.step-await {
+  flex: none;
+  margin-left: auto;
+  color: var(--warn);
+}
+
 .step-right {
   flex: none;
   margin-left: auto;
@@ -1768,7 +1785,8 @@
   font-size: var(--font-size-xs);
 }
 
-.step-note + .step-right {
+.step-note + .step-right,
+.step-await + .step-right {
   margin-left: 8px;
 }
 

@@ -666,7 +666,7 @@ fn facts_say_what_the_session_is_waiting_for() {
     let _ = std::fs::remove_dir_all(&home);
     assert_eq!(
         waiting,
-        serde_json::json!({"kind": "approve", "tool": "Bash", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64})
+        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64})
     );
     assert_eq!(busy, serde_json::Value::Null, "不在等却报了需要你");
     assert_eq!(dead, serde_json::Value::Null, "在等的进程死了还算需要你");

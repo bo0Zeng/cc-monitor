@@ -223,6 +223,7 @@ import {
 import { COLLECTION_CAP, type TabCollection } from "../../../src/frontend/ui/tab-collections";
 import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, LIVE_UNKNOWN_HOST, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
 import { readFileSync } from "node:fs";
+import { buildStepLine } from "../../../src/frontend/ui/cards/step-line";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { closeMenu } from "../../../src/frontend/ui/kit/menu";
@@ -2224,6 +2225,35 @@ describe("：↗ 远端那一格按顺序问三方", () => {
  * 非 Windows 上 ↗ 的最后一跳（`EnumWindows` / `SetForegroundWindow`）在 Rust 侧是恒失败的桩
  * ⇒ 那颗按钮每点必败。门住 `terminal-front.ts`；`unknown` 照常显示（与 `hostOsAllows` 同一条理由）。
  */
+describe("过程里在等你批准的那一步（后端 needs.call）", () => {
+  it("★ 会话事实说在等批准 b1 ⇒ 那一步画成等你批准；换成等 b2 ⇒ b1 回到在跑、b2 等；不等了 ⇒ 都回到在跑；回答 / 计划不画", () => {
+    const tm = makeTM();
+    tm.ensureTab("l1", "/w", "p", LOCAL_ORIGIN);
+    const tab = home(tm).store.tabs.get("l1") as Tab & { toolUseElements: Map<string, HTMLElement> };
+    const step = (id: string): HTMLElement => {
+      const d = document.createElement("details");
+      d.appendChild(buildStepLine("Bash", { tool: "Bash", arg: id, known: true } as never, ""));
+      tab.toolUseElements.set(id, d);
+      return d.querySelector<HTMLElement>(".step-line")!;
+    };
+    const [b1, b2] = [step("b1"), step("b2")];
+    const paint = (needs: Tab["needs"]): void => {
+      tab.needs = needs;
+      (tm as unknown as { paintAwaitingStep(t: Tab): void }).paintAwaitingStep(tab);
+    };
+    const approve = (call: string) => ({ kind: "approve" as const, tool: "Bash", call, what: call, sinceMs: Date.now() - 125_000 });
+    paint(approve("b1"));
+    expect([b1.dataset.state, b2.dataset.state]).toEqual(["awaiting", "running"]);
+    expect(b1.querySelector(".step-right")?.textContent, "右侧已等多久").toBe("2m05s");
+    paint(approve("b2"));
+    expect([b1.dataset.state, b2.dataset.state]).toEqual(["running", "awaiting"]);
+    paint(null);
+    expect([b1.dataset.state, b2.dataset.state]).toEqual(["running", "running"]);
+    paint({ kind: "answer", tool: "AskUserQuestion", call: "b1", what: "?", sinceMs: null });
+    expect(b1.dataset.state, "回答 / 计划另有卡，不画成等批准").toBe("running");
+  });
+});
+
 describe("新出现的一行淡入（起步那一批不算）", () => {
   it("第一批画出去之前建的行不带淡入；之后再长出来的带；动画放完就摘", () => {
     const tm = makeTM();

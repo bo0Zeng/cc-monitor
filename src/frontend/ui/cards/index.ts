@@ -30,7 +30,7 @@ import type { ToolCard } from "../generated/ToolCard";
 import type { ChildRunTag } from "../generated/ChildRunTag";
 import type { ToolStep } from "../generated/ToolStep";
 import type { StepResult } from "../generated/StepResult";
-import { buildStepLine, buildThinkingLine, durBetween, settleStepLine } from "./step-line";
+import { awaitedFor, buildStepLine, buildThinkingLine, durBetween, markAwaiting, settleStepLine } from "./step-line";
 import { buildApiErrorCard, buildApiRetryCard } from "./api-error";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
 import { firstLineOf, formatTimestampShort, jsonPrefix } from "../format";
@@ -123,6 +123,11 @@ export type ContentBlock =
  * 字段命名保持稳定 —— 跨模块（cards/subagent、tabs）依赖。
  */
 export interface RenderContext {
+  /**
+   * 这个会话此刻在等你什么（会话事实 `needs`，后端成品）：在等批准的那一步（`call`）建出来时就画成「在等你批准」。
+   * 没有 ⇒ 不画。
+   */
+  needs?: { kind: string; call: string | null; sinceMs: number | null } | null;
   /** 父记录路径：派出子运行的那张卡按它（＋ 工具调用 id）读那个子运行的记录 */
   parentPath: string;
   /**
@@ -592,8 +597,11 @@ function buildToolUseCard(
   // 一步一行（§5.2.3）：主参数与说明是后端给的（`toolSteps`）；没有那一格（老后端）⇒ 工具名 ＋ 入参一句兜底。
   const s = document.createElement("summary");
   s.className = "block-summary block-step";
-  s.appendChild(buildStepLine(block.name, step, summary));
+  const line = buildStepLine(block.name, step, summary);
+  s.appendChild(line);
   d.appendChild(s);
+  const n = ctx.needs;
+  if (n?.kind === "approve" && n.call === block.id) markAwaiting(line, awaitedFor(n.sinceMs, Date.now()));
 
   const wrap = document.createElement("div");
   wrap.className = "block-body-wrap";
