@@ -75,6 +75,24 @@ async fn the_handshake_hands_over_how_to_reach_that_machine() {
 // 「应答缺格就报错不猜」那一条随 `parse_reply`〔散文墓碑〕挪到界面：`tests/assets-sync-reads.vitest.ts`（金样 ＋ 逐格坏样）。
 
 /// 跨半边：本侧发的命令名与字段 ⊆ 后端 `REGISTRY` 那一条声明的 `fields`，读的两格也在里面；远端要认的那条命令真在后端命令表里。
+/// 一条登记里 `fields: &[…]` 声明的字段名：每个 `arg(` / `out(` / `both(` 的第一个实参（第二个是说明）。
+fn declared_fields(block: &str) -> std::collections::BTreeSet<String> {
+    let at = block.find("fields: &[").expect("fields 那一格");
+    let list = &block[at..at + block[at..].find("],").expect("fields 没收尾")];
+    let mut out = std::collections::BTreeSet::new();
+    for ctor in ["arg(\"", "out(\"", "both(\""] {
+        for (i, _) in list.match_indices(ctor) {
+            let name = &list[i + ctor.len()..];
+            out.insert(name[..name.find('"').expect("字段名没收尾")].to_string());
+        }
+    }
+    assert!(
+        !out.is_empty(),
+        "从 fields 里一个字段名都没抠到 —— 登记的写法变了"
+    );
+    out
+}
+
 #[test]
 fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
     let families = crate::guard_support::backend_registry_sources();
@@ -83,16 +101,7 @@ fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
         .find_map(|(_, prod)| prod.find(&format!("name: \"{CMD}\"")).map(|at| (prod, at)))
         .unwrap_or_else(|| panic!("后端 REGISTRY 里没有 `{CMD}`"));
     let block = &family[at..at + family[at..].find("run:").expect("那一条的 run")];
-    let fields_line = block
-        .lines()
-        .find(|l| l.trim_start().starts_with("fields:"))
-        .expect("fields 那一行");
-    let declared: std::collections::BTreeSet<String> = fields_line
-        .split('"')
-        .skip(1)
-        .step_by(2)
-        .map(str::to_string)
-        .collect();
+    let declared = declared_fields(block);
     let used: std::collections::BTreeSet<String> = ["origin", "dial", "self", "synced", "reach"]
         .iter()
         .map(|s| s.to_string())
@@ -178,16 +187,7 @@ fn the_reach_registration_sends_what_the_backend_registers() {
         })
         .unwrap_or_else(|| panic!("后端 REGISTRY 里没有 `{REACH_CMD}`"));
     let block = &family[at..at + family[at..].find("run:").expect("那一条的 run")];
-    let fields_line = block
-        .lines()
-        .find(|l| l.trim_start().starts_with("fields:"))
-        .expect("fields 那一行");
-    let declared: std::collections::BTreeSet<String> = fields_line
-        .split('"')
-        .skip(1)
-        .step_by(2)
-        .map(str::to_string)
-        .collect();
+    let declared = declared_fields(block);
     let args = args_for(&cfg()).unwrap();
     let mut used: std::collections::BTreeSet<String> =
         args.as_object().unwrap().keys().cloned().collect();
