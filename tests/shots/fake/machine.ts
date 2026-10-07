@@ -58,7 +58,16 @@ export function machineOps(): Record<string, OpHandler> {
     }),
     "apikey-read": () => ({ configured: true, masked: "sk-ant-…a1b2", notice: null, path: `${HOME}/.cc-monitor/apikey-credentials.json`, problem: null }),
     "apikey-routing": () => ({ routed: [`${HOME}/.cc-monitor/accounts/api`], running: true }),
-    "accounts-mcp-read": () => ({ enabled: true, servers: ["docs-search", "issue-tracker"], conflicts: [], changed: [], notes: [] }),
+    // 共用 MCP：两条共用；issue-tracker 在 personal 号里也改了一版（两边都改，等人选）。
+    "accounts-mcp-read": () => ({
+      enabled: true,
+      sync: true,
+      servers: ["docs-search", "issue-tracker"],
+      conflicts: [{ name: "issue-tracker", choices: [{ from: null, holders: ["work", "api"], gone: false }, { from: "personal", holders: ["personal"], gone: false }] }],
+      changed: [],
+      notes: [],
+    }),
+    "accounts-mcp-sync": (_o, req) => ({ enabled: true, sync: req.on === true, servers: ["docs-search", "issue-tracker"], conflicts: [], changed: [], notes: [] }),
     // devbox 上记下了三种认不出的会话流（结构夹具：键名是造的）。
     "drift-report": (origin) => ({
       faces:
@@ -82,7 +91,8 @@ export function machineOps(): Record<string, OpHandler> {
         },
       };
     },
-    "aliases-render": () => JSON.parse(JSON.stringify(ALIASES_GOLDEN.renderReply).split("<HOME>").join(HOME)),
+    "aliases-render": () => ({ ...JSON.parse(JSON.stringify(ALIASES_GOLDEN.renderReply).split("<HOME>").join(HOME)), problems: [] }),
+    "aliases-from-form": (_o, req) => ({ alias: { name: (req.form as { name: string }).name || "new", args: ["--"], restTo: "agent" } }),
     "forward-list": () => ({
       forwards: [
         { id: "fwd-1", origin: "devbox", localPort: 15432, remoteHost: "localhost", remotePort: 5432, state: "running", connCount: 2 },
@@ -96,12 +106,55 @@ export function machineOps(): Record<string, OpHandler> {
         { label: "bastion", host: "bastion.example.com", port: 22, user: "user", keyPath: null, addresses: [], jump: null, members: [{ alias: "bastion", host: "bastion.example.com", port: 22, proxyJump: null }], inList: false },
       ],
     }),
-    // 别名清单：每个号两条（`{名}cc` · `{名}cct`），分组认作那个号（账号页「命令」那一行读它）。
+    // 别名清单：默认那三条 ＋ 每个号两条（`{名}cc` · `{名}cct`，api 缺 tmux 那条）＋ 自己加的几条；
+    //   ~/.bashrc 已接上（第 40 行），你在第 125 / 129 行自己写了 cc · cct（在块后面 ⇒ 你写的生效）。
     "aliases-read": () => {
       const r = JSON.parse(JSON.stringify(ALIASES_GOLDEN.readReply).split("<HOME>").join(HOME)) as Record<string, unknown>;
-      const rows = ACCOUNTS.flatMap((a) => [false, true].map((tmux) => ({ name: `${a.name}cc${tmux ? "t" : ""}`, args: ["--", "--account", a.name, ...(tmux ? ["--ccm-tmux"] : [])], restTo: "agent", group: { account: a.name, tmux } })));
-      return { ...r, aliases: rows.map(({ group: _g, ...x }) => x), groups: rows.map((x) => x.group) };
+      const acct = ACCOUNTS.flatMap((a) =>
+        [false, true]
+          .filter((tmux) => !(tmux && a.name === "api"))
+          .map((tmux) => ({ name: `${a.name}cc${tmux ? "t" : ""}`, args: ["--", "--account", a.name, ...(tmux ? ["--ccm-tmux"] : [])], restTo: "agent", group: { account: a.name, tmux }, said: `${a.name} 账号 · ${tmux ? "tmux · 自动取名" : "当前终端"}` })),
+      );
+      const other = [
+        { name: "cc", args: [], restTo: "agent", group: null, said: "默认账号 · 当前终端" },
+        { name: "cct", args: ["--", "--ccm-tmux"], restTo: "agent", group: null, said: "默认账号 · tmux · 自动取名" },
+        { name: "cca", args: ["--", "--attach"], restTo: "ccm", group: null, said: "默认账号 · 接回已有 tmux 会话 · 敲 cca 会话名" },
+        { name: "conv", args: ["--", "--account", "work", "--cwd-if", "~", "~/projects/notes"], restTo: "agent", group: null, said: "work 账号 · 当前终端 · 在 ~ 敲就进 ~/projects/notes" },
+        { name: "fe", args: ["--", "--account", "personal", "--cwd", "~/文档/frontend", "--ccm-tmux=fe"], restTo: "agent", group: null, said: "personal 账号 · tmux 会话 fe · 进 ~/文档/frontend" },
+        { name: "opus", args: ["--model", "opus"], restTo: "agent", group: null, said: "默认账号 · 当前终端 · 模型 opus" },
+      ];
+      const rows = [...other.slice(0, 3), ...acct, ...other.slice(3)];
+      const bashrc = {
+        path: `${HOME}/.bashrc`,
+        sourced: false,
+        exists: true,
+        block: {
+          present: true,
+          version: "v2",
+          outdated: false,
+          conflictingFunctions: [
+            { name: "cc", line: 125, wins: "yours" },
+            { name: "cct", line: 129, wins: "yours" },
+          ],
+          manualCleanupHint: "",
+        },
+        unreadable: null,
+        policy: null,
+      };
+      return {
+        ...r,
+        aliases: rows.map(({ group: _g, said: _s, ...x }) => x),
+        groups: rows.map((x) => x.group),
+        said: rows.map((x) => x.said),
+        accounts: ACCOUNTS.map((a) => a.name),
+        missing: [{ account: "api", tmux: true, alias: { name: "apicct", args: ["--", "--account", "api", "--ccm-tmux"], restTo: "agent" } }],
+        rcCandidates: [bashrc],
+      };
     },
+    "aliases-block-render": () => ({
+      text: '# === cc-monitor remote ccm BEGIN v2 ===\nexport PATH="$HOME/.cc-monitor/bin:$PATH"\nif [ -r "$HOME/.cc-monitor/aliases.sh" ]; then . "$HOME/.cc-monitor/aliases.sh"; fi\n# === cc-monitor remote ccm END ===',
+    }),
+    "ccm-print": () => ({ line: "cd ~ && exec claude" }),
     "assets-sync": (_o, _r, w) => ({
       self: null,
       synced: w.machines.slice(1).map((origin) => ({ origin, peer: null, changed: false, pushed: 0, error: null })),

@@ -17,7 +17,7 @@ import { commands } from "../ipc/commands";
 import { open } from "@tauri-apps/plugin-dialog";
 import { homeDir, join } from "@tauri-apps/api/path";
 import { openFileWindow } from "../file-window";
-import { buildAliasManager } from "./machine-aliases"; // ② 别名：远端卡与本机同一个组件（`origin` = 这台）
+import { buildConfigPage } from "./config-page"; // 别名与配置文件：远端卡与本机同一个组件（`origin` = 这台）
 import { recordFacet, type MachineFacet } from "./machine-status";
 import { hostKey, readRemoteConfig, resolveRemoteConfigByOrigin, type RemoteHostConfig } from "../remote-config";
 import { parseAddressLines } from "../remote-config";
@@ -635,14 +635,11 @@ export class MachineCard {
     // ↓↓ 从这里起归「终端」栏 ↓↓
     body = this.terminalPart;
 
-    // ── ② 别名 ──与本机同一个组件：清单在这台读、在这台写，别名块装 / 卸 / 预览都在里面。
-    const aliasTitle = document.createElement("div");
-    aliasTitle.className = "settings-label";
-    aliasTitle.textContent = copyText("machineCard.aliases.title");
-    body.appendChild(aliasTitle);
+    // ── 别名与配置文件 ──与本机同一个组件：清单在这台读、在这台写，别名块装 / 卸 / 预览、共用 MCP、扩展都在里面。
     const origin = (): string => this.persistedKey ?? hostKey(this.collect());
     body.appendChild(
-      buildAliasManager({
+      buildConfigPage({
+        machine: () => this.displayName(),
         // 远端恒 POSIX：只承诺远端 Linux。
         platform: "posix",
         origin,

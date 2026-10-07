@@ -626,6 +626,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "accounts-mcp-read",
         "accounts-mcp-remove",
         "accounts-mcp-pick",
+        "accounts-mcp-sync",
         "authorized-keys-add", // 同步文件 I/O（经本进程文件管理面）
         "files-link",
         "cc-bus-install-state",
@@ -808,6 +809,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "accounts-mcp-read",
         "accounts-mcp-remove",
         "accounts-mcp-pick",
+        "accounts-mcp-sync",
         "authorized-keys-add", // 同步文件 I/O（经本进程文件管理面）
         "files-link",
         "cc-bus-install-state",

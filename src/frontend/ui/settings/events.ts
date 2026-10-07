@@ -36,3 +36,9 @@ export interface OpenAccountPanel {
  * 例：账号页表下「共用 MCP：别名与配置文件」⇒ 同一台的「别名与配置文件」栏。
  */
 export const SETTINGS_GO_EVENT = "settings-go";
+
+/**
+ * 机器页切到「别名与配置文件」那一栏：派到那一栏里每个带 `data-config-shown` 的块上（不冒泡）。
+ * 那一块第一次收到才问那台，之后每次收到重读一遍。
+ */
+export const CONFIG_SHOWN_EVENT = "settings-config-shown";

@@ -343,6 +343,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "accounts-mcp-read"
                 | "accounts-mcp-remove"
                 | "accounts-mcp-pick"
+                | "accounts-mcp-sync"
                 // 公钥并进这台的 `authorized_keys`：同步文件 I/O（经本进程文件管理面）。
                 | "authorized-keys-add"
                 | "files-link"
@@ -577,6 +578,7 @@ fn every_registered_command_declares_its_run_kind() {
         "accounts-mcp-read",
         "accounts-mcp-remove",
         "accounts-mcp-pick",
+        "accounts-mcp-sync",
         "authorized-keys-add", // 同步文件 I/O（经本进程文件管理面）
         "files-link",
         "cc-bus-install-state",

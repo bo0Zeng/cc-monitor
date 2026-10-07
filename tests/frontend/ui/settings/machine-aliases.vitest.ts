@@ -115,10 +115,12 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
           if (rcPath === "/etc/x") return Promise.reject(new Error("拒绝写这个配置文件：只能落在 home 之内"));
           const other = rcPath ? `/h/${rcPath.replace(/^~\//, "")}` : null;
           return Promise.resolve({
+            home: "/h",
             aliasPath: "/h/.cc-monitor/aliases.x",
             exists: true,
             aliases: disk.map((x) => ({ ...x, args: [...x.args] })),
             groups: [...groups],
+            said: disk.map((x) => `说：${x.name}`),
             accounts: ["z", "b"],
             missing: [...missing],
             fingerprint: `fp-${fp}`,
@@ -200,17 +202,21 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     document.body.replaceChildren();
   });
 
-  async function mount(confirm?: (spec: { body?: string }) => boolean): Promise<HTMLDetailsElement> {
+  /** 建好的那几组（`open` 按元素找回它的 `load`：这一栏露出来时宿主就是这样叫的）。 */
+  const built = new Map<HTMLElement, { load(): void }>();
+
+  async function mount(confirm?: (spec: { body?: string }) => boolean): Promise<HTMLElement> {
     const m = await import("../../../../src/frontend/ui/settings/machine-aliases");
-    const el = m.buildAliasManager({ platform: plat, origin: () => "<local>", confirm }) as HTMLDetailsElement;
-    document.body.appendChild(el);
+    const mgr = m.buildAliasManager({ platform: plat, origin: () => "<local>", confirm });
+    built.set(mgr.element, mgr);
+    document.body.appendChild(mgr.element);
     await flush();
-    return el;
+    return mgr.element;
   }
 
-  async function open(el: HTMLDetailsElement): Promise<void> {
-    el.open = true;
-    el.dispatchEvent(new Event("toggle"));
+  /** 这一栏露出来（宿主叫 `load`）。 */
+  async function open(el: HTMLElement): Promise<void> {
+    built.get(el)!.load();
     await flush();
   }
 
@@ -239,7 +245,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
   /** 重读：别名那一份 ＋ 本机 ccm 那一格；PowerShell 那几格跟着重问（用户级 PATH 那一格有自己的「刷新」）。 */
   const REREAD: Record<Plat, string[]> = {
     posix: ["aliases_read", "aliases_render", "local_ccm_entry_status"],
-    powershell: ["aliases_read", "aliases_render", "bound_terminal_count", "cc_get_auto_launch", "local_ccm_entry_status"],
+    powershell: ["aliases_read", "aliases_render", "bound_terminal_count", "cc_get_auto_launch", "ccm_user_path_status", "local_ccm_entry_status"],
   };
 
   const FIRST_OPEN: Record<Plat, string[]> = {
@@ -252,11 +258,9 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     expect(seen, "还没展开就发了 IPC").toEqual([]);
     await open(el);
     expect(seen.map((c) => c.cmd).sort()).toEqual([...FIRST_OPEN[plat]].sort());
-    const n = seen.length;
-    el.open = false;
-    el.dispatchEvent(new Event("toggle"));
+    seen = [];
     await open(el);
-    expect(seen.length, "再展开又读了一遍").toBe(n);
+    expect(seen.map((c) => c.cmd).sort(), "再露出来 ⇒ 重读一遍（不多问别的）").toEqual(REREAD[plat]);
     const shells = seen.filter((c) => c.cmd === "aliases_read" || c.cmd === "aliases_render").map((c) => (c.args as { shell: string }).shell);
     expect(new Set(shells)).toEqual(new Set([plat]));
   });
@@ -283,35 +287,52 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     const access = el.querySelector<HTMLElement>('[data-role="access"]')!;
     const list = el.querySelector(".machine-aliases-list")!;
     expect(access.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING, "接入不在清单上面").toBeTruthy();
-    expect(access.textContent).toContain("还没接入");
-    clickText(access, "接入 /h/rc-a");
+    const off = plat === "powershell" ? copyText("machineAliases.access.offWindow") : copyText("machineAliases.access.off");
+    expect(access.textContent).toContain(off);
+    expect(access.dataset.anchor, "主窗口 ↗［接上终端］落到这里").toBe("connect-terminal");
+    clickText(access, "接上 ~/rc-a");
     await flush();
     expect(seen.filter((c) => c.cmd === "aliases_block_install").map((c) => c.args)).toEqual([{ origin: "<local>", rcPath: "/h/rc-a" }]);
-    expect(access.textContent).toContain("/h/rc-a 已接入");
+    const on = plat === "powershell" ? copyText("machineAliases.access.onWindow", { path: "~/rc-a" }) : copyText("machineAliases.access.on", { path: "~/rc-a" });
+    expect(access.textContent).toContain(on);
+    // 卸载先给要拿掉的那几行（问后端要块的渲染），再点一次才卸。
     clickText(access, "卸载 ccm");
     await flush();
+    expect(seen.filter((c) => c.cmd === "aliases_block_remove"), "没确认就卸了").toEqual([]);
+    expect(access.querySelector('[data-role="block-text"]')!.textContent).toBe("# 接入那几行 → /h/rc-a");
+    clickText(access.querySelector(".cfg-panel")!, "卸载 ccm");
+    await flush();
     expect(seen.filter((c) => c.cmd === "aliases_block_remove").map((c) => c.args)).toEqual([{ origin: "<local>", rcPath: "/h/rc-a" }]);
-    expect(access.textContent).toContain("还没接入");
+    expect(access.textContent).toContain(off);
   });
 
-  it("接入那一格就地说：块外与清单同名的函数（带行号）· 旧版块给「重新接入」", async () => {
-    clashes = [{ name: "cc", line: 5 }];
+  it("同名那一行照后端给的码说谁生效（界面不比行号）· 旧版块给「换成新版」", async () => {
+    clashes = [{ name: "cc", line: 5, wins: "yours" }];
     blockAt.add("/h/rc-a");
     oldAt.add("/h/rc-a");
     const el = await mount();
     await open(el);
+    const clash = el.querySelector<HTMLElement>('[data-role="clash"]')!;
+    expect(clash.parentElement!.hidden).toBe(false);
+    expect(clash.textContent).toBe(copyText("machineAliases.clash.lineOne", { names: "cc", path: "~/rc-a", now: copyText("machineAliases.clash.nowYours") }));
+    const ccRow = [...el.querySelectorAll<HTMLElement>(".machine-aliases-row")].find((r) => r.dataset.name === "cc")!;
+    expect(ccRow.textContent, "清单里那一条标被你写的盖").toContain(copyText("machineAliases.clash.tagCovered"));
     const access = el.querySelector<HTMLElement>('[data-role="access"]')!;
-    expect(access.textContent).toContain("/h/rc-a 第 5 行自己定义了 cc");
-    expect(access.textContent).toContain("旧版");
-    clickText(access, "重新接入");
+    expect(access.textContent).toContain(copyText("machineAliases.access.outdated", { path: "~/rc-a" }));
+    clickText(access, "换成新版");
     await flush();
-    expect(access.textContent).not.toContain("旧版");
+    expect(access.textContent).not.toContain(copyText("machineAliases.access.outdated", { path: "~/rc-a" }));
+    // 码换成「清单那条」⇒ 句子跟着换（同一份界面，只认码）。
+    clashes = [{ name: "cc", line: 5, wins: "list" }];
+    built.get(el)!.load();
+    await flush();
+    expect(el.querySelector('[data-role="clash"]')!.textContent).toContain(copyText("machineAliases.clash.nowList"));
   });
 
   it("「我自己贴」给的是接入那几行（问后端要块的渲染），整份清单从不上屏", async () => {
     const el = await mount();
     await open(el);
-    clickText(el, "我自己贴");
+    clickText(el, "自己贴");
     await flush();
     expect(seen.filter((c) => c.cmd === "aliases_block_render").map((c) => c.args)).toEqual([{ origin: "<local>", rcPath: "/h/rc-a" }]);
     const out = el.querySelector<HTMLTextAreaElement>(".ccm-rc-paste textarea")!;
@@ -322,7 +343,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
   it("换一份：其它文件交给读回口过围栏、选中它再接入；过不了围栏 ⇒ 原话上屏", async () => {
     const el = await mount();
     await open(el);
-    clickText(el, "换一份…");
+    clickText(el, "换一份文件");
     const other = el.querySelector<HTMLInputElement>(".ccm-rc-other")!;
     other.value = "/etc/x";
     clickText(el, "用这份");
@@ -331,7 +352,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     other.value = "~/.zshrc";
     clickText(el, "用这份");
     await flush();
-    clickText(el.querySelector('[data-role="access"]')!, "接入 /h/.zshrc");
+    clickText(el.querySelector('[data-role="access"]')!, "接上 ~/.zshrc");
     await flush();
     expect(seen.filter((c) => c.cmd === "aliases_block_install").map((c) => (c.args as { rcPath: string }).rcPath)).toEqual(["/h/.zshrc"]);
     const last = [...seen].reverse().find((c) => c.cmd === "aliases_read")!.args as { rcPath: string };
@@ -343,13 +364,21 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     await open(el);
     const acct = el.querySelector('[data-role="group-accounts"]');
     const other = el.querySelector('[data-role="group-other"]');
-    expect(rowNames(acct)).toEqual(["alphacc", "alphacct", "缺:b 还没有 betacc（在当前终端起）加上", "缺:b 还没有 betacct（在 tmux 里起）加上"]);
-    expect(rowNames(other)).toEqual(["cc", "mine"]);
+    const pills = [...(acct?.querySelectorAll(".cfg-pill") ?? [])].map((p) => p.textContent);
+    // 表：号 × 当前终端 · tmux（PowerShell 只一列，tmux 那一形落回「其他」）；缺的那一格「＋ 添加 …」。
+    if (plat === "posix") {
+      expect(pills).toEqual(["alphacc", "alphacct", "＋ 添加 betacc", "＋ 添加 betacct"]);
+      expect(rowNames(other)).toEqual(["cc", "mine"]);
+    } else {
+      expect(pills).toEqual(["alphacc", "＋ 添加 betacc"]);
+      expect(rowNames(other)).toEqual(["cc", "mine", "alphacct"]);
+    }
+    expect(other!.textContent, "每条的人话照后端给的画").toContain("说：mine");
     expect(el.textContent).toContain("认不出");
-    // 「加上」= 清单末尾多那一条，带读回时的指纹一步存；存完重读。
+    // 「添加」= 清单末尾多那一条，带读回时的指纹一步存；存完重读。
     const reads = seen.filter((c) => c.cmd === "aliases_read").length;
     const before = [...disk];
-    clickText(acct!, "加上");
+    clickText(acct!, "＋ 添加 betacc");
     await flush();
     expect(installs()).toEqual([{ aliases: [...before, A("betacc", ["--", "--account", "b"])], fingerprint: "fp-1" }]);
     expect(seen.filter((c) => c.cmd === "aliases_read").length).toBe(reads + 1);
@@ -399,7 +428,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     await flush();
     const mine = A("mine", ["--", "--account", "z", "--cwd", "/w"]);
     expect(seen.filter((c) => c.cmd === "aliases_to_form").map((c) => c.args)).toEqual([{ origin: "<local>", alias: mine }]);
-    const form = row.nextElementSibling as HTMLElement;
+    const form = row.parentElement!.nextElementSibling as HTMLElement;
     expect(form.dataset.role).toBe("alias-form");
     expect(form.querySelector<HTMLInputElement>('[data-role="name"]')!.value).toBe("mine");
     expect(form.querySelector<HTMLSelectElement>('[data-role="account"]')!.value).toBe("z");
@@ -472,15 +501,21 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
   it("删：那一条不在了的整份清单一步存；点一行展开「会执行什么」（问一次后端）", async () => {
     const el = await mount();
     await open(el);
-    const zRow = (): HTMLElement =>
-      [...el.querySelectorAll<HTMLElement>(".machine-aliases-row")].find((r) => r.querySelector("code")?.textContent === "alphacc")!;
-    zRow().click();
+    const zPill = (): HTMLElement => el.querySelector<HTMLElement>('.cfg-pill[data-name="alphacc"]')!;
+    zPill().click();
     await flush();
     expect(seen.filter((c) => c.cmd === "chan:ccm-print").map((c) => c.args)).toEqual([{ origin: "<local>", args: ["--", "--account", "z"] }]);
-    expect((zRow().nextElementSibling as HTMLElement).textContent).toContain("LINE -- --account z");
-    clickText(zRow(), "删");
+    const detail = el.querySelector<HTMLElement>('[data-role="group-accounts"] [data-role="alias-detail"]')!;
+    expect(detail.textContent).toContain("LINE -- --account z");
+    expect(detail.textContent).toContain("说：alphacc");
+    clickText(detail, "删");
     await flush();
     expect(installs().at(-1)!.aliases.map((a) => a.name)).toEqual(["cc", "mine", "alphacct"]);
+    // 「其他」里一行：点开展开它的详情。
+    const mine = [...el.querySelectorAll<HTMLElement>(".machine-aliases-row")].find((r) => r.dataset.name === "mine")!;
+    mine.click();
+    await flush();
+    expect(el.querySelector('[data-role="group-other"] [data-role="alias-detail"]')!.textContent).toContain("LINE -- --account z --cwd /w");
   });
 
   it("「在哪起」：POSIX 五项都能选（接回会话 ⇒ 账号那几格一起关）；PowerShell 只有「在当前终端起」", async () => {
@@ -505,27 +540,25 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
   });
 
   if (plat === "powershell") {
-    it("PowerShell：握手数 ＋ 自动打开 monitor ＋ 用户级 PATH 收在「终端接入」里，展开才建、只建一份；没有「同时装 cc 函数」那一问", async () => {
+    it("PowerShell：「Windows 终端」一行（握手数 · 自动打开 · 用户级 PATH 两个开关）露出来才问、只建一份；没有「同时装 cc 函数」那一问", async () => {
       const el = await mount();
-      expect(el.querySelector(".ccm-user-path-block"), "还没展开就建了").toBeNull();
+      const win = el.querySelector<HTMLElement>('[data-role="win-row"]')!;
+      expect(win, "本机 Windows 上有这一行").toBeTruthy();
       await open(el);
-      const access = el.querySelector<HTMLElement>('[data-role="access"]')!;
-      expect(access.querySelector(".ccm-user-path-block")).toBeTruthy();
-      expect(access.querySelector(".settings-cc-stat-value")!.textContent, "握手数另问 monitor").toBe("2");
-      el.open = false;
-      el.dispatchEvent(new Event("toggle"));
+      expect(win.querySelector(".cfg-status")!.textContent, "握手数另问 monitor；PATH 现状另问").toBe(copyText("machineAliases.win.statusPathOff", { n: "2" }));
+      expect(win.querySelectorAll('[data-role="win-auto"]').length).toBe(1);
+      expect(win.querySelectorAll('[data-role="win-path"]').length).toBe(1);
       await open(el);
-      expect(el.querySelectorAll(".ccm-user-path-block").length).toBe(1);
-      expect(el.querySelectorAll(".settings-cc-autolaunch").length).toBe(1);
+      expect(el.querySelectorAll('[data-role="win-path"]').length).toBe(1);
       expect(el.textContent).not.toContain("同时装 cc 函数");
     });
 
-    it("读「自动打开 monitor」失败 ⇒ 复选框禁用、路径那格说读不到（原因原样）", async () => {
+    it("读「自动打开 monitor」失败 ⇒ 开关不给拨、路径那格说读不到（原因原样）", async () => {
       autoLaunchFail = "boom-autolaunch";
       const el = await mount();
       await open(el);
-      expect(el.querySelector<HTMLInputElement>(".settings-cc-autolaunch input[type=checkbox]")!.disabled).toBe(true);
-      expect(el.querySelector(".settings-cc-autolaunch-path-value")!.textContent).toContain("boom-autolaunch");
+      expect(el.querySelector('[data-role="win-auto"] [role="switch"]')!.getAttribute("aria-disabled")).toBe("true");
+      expect(el.querySelector('[data-role="win-auto-path"]')!.textContent).toContain("boom-autolaunch");
     });
 
     const pol = (effective: string, loads: boolean | null, groupPolicy = false): ExecPolicy => ({
@@ -550,7 +583,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
       await open(el);
       const access = el.querySelector<HTMLElement>('[data-role="access"]')!;
       expect(access.textContent).toContain("Restricted");
-      clickText(access, "接入 /h/rc-a");
+      clickText(access, "接上 ~/rc-a");
       await flush();
       expect(access.textContent).toContain("不会加载它");
       expect(access.textContent).not.toContain("装好了");
@@ -569,31 +602,35 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     it("POSIX：没有用户级 PATH 那一格，也没有 PowerShell 那几格", async () => {
       const el = await mount();
       await open(el);
-      expect(el.querySelector(".ccm-user-path-block")).toBeNull();
-      expect(el.textContent).not.toContain("PowerShell 集成");
+      expect(el.querySelector('[data-role="win-row"]')).toBeNull();
+      expect(el.textContent).not.toContain("PowerShell");
     });
   }
 
   it("远端卡是同一个组件：每一发都带那台的 origin，只本机的那几格不挂", async () => {
     const m = await import("../../../../src/frontend/ui/settings/machine-aliases");
     const done: string[] = [];
-    const el = m.buildAliasManager({
+    const mgr = m.buildAliasManager({
       platform: "posix",
       origin: () => "devbox",
       onBlockDone: (verb, err) => done.push(`${verb}:${err ?? "ok"}`),
-    }) as HTMLDetailsElement;
+    });
+    const el = mgr.element;
+    built.set(el, mgr);
     document.body.appendChild(el);
     await flush();
     expect(seen, "构造零 I/O").toEqual([]);
     await open(el);
     expect(seen.map((c) => c.cmd).sort()).toEqual(["aliases_read", "aliases_render"]);
-    clickText(el.querySelector('[data-role="access"]')!, "接入 /h/rc-a");
+    clickText(el.querySelector('[data-role="access"]')!, "接上 ~/rc-a");
     await flush();
     clickText(el.querySelector('[data-role="access"]')!, "卸载 ccm");
     await flush();
-    clickText(el, "我自己贴");
+    clickText(el.querySelector(".cfg-panel")!, "卸载 ccm");
     await flush();
-    clickText(el.querySelector('[data-role="group-accounts"]')!, "加上");
+    clickText(el, "自己贴");
+    await flush();
+    clickText(el.querySelector('[data-role="group-accounts"]')!, "＋ 添加 betacc");
     await flush();
     el.querySelector<HTMLElement>(".machine-aliases-row")!.click();
     await flush();

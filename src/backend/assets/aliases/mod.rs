@@ -215,12 +215,16 @@ pub(crate) struct MissingAlias {
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AliasListing {
+    /// 这台的家目录（界面拿它把路径写成 `~/…` 短形，只做这一步缩写）。
+    pub home: String,
     pub alias_path: String,
     /// 那份文件在不在。不在 ≠ 读失败（读失败是 `Err`）。不在时 `aliases` 是首建时会带上的那几条。
     pub exists: bool,
     pub aliases: Vec<Alias>,
     /// 与 `aliases` 逐条对应：账号那一形 ⇒ `{account, tmux}`，其余 ⇒ `null`。界面照这一格分组，不自己认。
     pub groups: Vec<Option<AccountShape>>,
+    /// 与 `aliases` 逐条对应：这一条用人话怎么说（[`form::said`]，与「改」那一下同一个解析器）。界面照画，不拼句。
+    pub said: Vec<String>,
     /// 这台的账号表（具名号，按账号库的顺序）。
     pub accounts: Vec<String>,
     /// 账号表里的号缺哪一条（没有 tmux 的目标只看 `<号>cc`）。
@@ -631,9 +635,11 @@ pub(crate) fn read_via(
     let accounts = account_table(&home);
     let names: Vec<String> = aliases.iter().map(|a| a.name.clone()).collect();
     Ok(AliasListing {
+        home: home.clone(),
         alias_path: path,
         exists,
         groups: groups_of(&aliases),
+        said: aliases.iter().map(|a| form::said(a, shell)).collect(),
         missing: missing_of(&aliases, &accounts, shell),
         accounts,
         fingerprint: fingerprint_of(text.as_deref()),
@@ -856,6 +862,8 @@ pub(crate) fn rc_candidates_asking(
             path: c.path,
         });
     }
+    let loaded = out.iter().any(|f| f.block.present || f.sourced);
+    block::settle_wins(out.iter_mut().map(|f| &mut f.block), loaded);
     Ok(out)
 }
 

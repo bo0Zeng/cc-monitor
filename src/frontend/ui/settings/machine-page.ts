@@ -14,6 +14,7 @@ import { copyText } from "../copy-table";
 import { SettingsRouter } from "./router";
 import { hostOs, type HostOs } from "./host-os";
 import { paintProblem, type MachineFace, type MachineFix } from "./machine-state";
+import { CONFIG_SHOWN_EVENT } from "./events";
 
 const OS_NAME: Record<HostOs, string | null> = { linux: "Linux", windows: "Windows", macos: "macOS", unknown: null };
 
@@ -155,6 +156,11 @@ export function buildMachinePage(spec: MachinePageSpec): MachinePage {
   tabs.addRoute({ id: `${spec.pageId}#acct`, title: copyText("machinePage.tab.accounts"), element: acct });
   tabs.addRoute({ id: `${spec.pageId}#config`, title: copyText("machinePage.tab.config"), element: config });
   root.appendChild(tabs.element);
+  // 切到「别名与配置文件」那一栏 ⇒ 告诉那一栏里的每一块（第一次露出来才问那台，之后每次露出来重读）。
+  tabs.onNavigate((id) => {
+    if (id !== `${spec.pageId}#config`) return;
+    for (const c of config.querySelectorAll("[data-config-shown]")) c.dispatchEvent(new CustomEvent(CONFIG_SHOWN_EVENT));
+  });
 
   let name = spec.name;
   let connected: boolean | null = null;

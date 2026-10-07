@@ -158,6 +158,7 @@ describe("C01 边界生成物", () => {
       "AccountMcpConflict.ts",
       "AccountMcpNameArgs.ts",
       "AccountMcpPickArgs.ts",
+      "AccountMcpSyncArgs.ts",
       "AccountMcpView.ts",
       "AccountNameArgs.ts",
       "AccountRef.ts",

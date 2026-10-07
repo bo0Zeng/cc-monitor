@@ -272,6 +272,93 @@ pub(crate) fn to_form(a: &Alias) -> AliasForm {
     f
 }
 
+/// 一条别名用人话怎么说（清单那一行的第二格，`aliases-read` 每条带一句）。和「改」那一下同一个解析器（[`to_form`]），
+/// 界面不拼句。`shell` 只决定「当前终端 / 当前窗口」那一个词。
+pub(crate) fn said(a: &Alias, shell: crate::platform::shell::dialect::Shell) -> String {
+    use crate::platform::shell::dialect::Shell;
+    let f = to_form(a);
+    let mut p: Vec<String> = Vec::new();
+    p.push(if f.base {
+        copy_text("rsAccountAliases.said.base", &[])
+    } else if f.account.is_empty() {
+        copy_text("rsAccountAliases.said.defaultAccount", &[])
+    } else {
+        copy_text("rsAccountAliases.said.account", &[("account", &f.account)])
+    });
+    p.push(match f.tmux {
+        TmuxMode::None => match shell {
+            Shell::PowerShell => copy_text("rsAccountAliases.said.hereWindow", &[]),
+            Shell::Posix => copy_text("rsAccountAliases.said.hereTerminal", &[]),
+        },
+        TmuxMode::Auto => copy_text("rsAccountAliases.said.tmuxAuto", &[]),
+        TmuxMode::Named => copy_text("rsAccountAliases.said.tmuxNamed", &[("name", &f.tmux_name)]),
+        TmuxMode::Base => copy_text("rsAccountAliases.said.tmuxBase", &[("name", &f.tmux_name)]),
+        TmuxMode::Attach => copy_text("rsAccountAliases.said.attach", &[]),
+    });
+    if f.tmux == TmuxMode::Attach {
+        p.push(copy_text(
+            "rsAccountAliases.said.attachHow",
+            &[("alias", &f.name)],
+        ));
+    }
+    for c in &f.cwd_if {
+        p.push(copy_text(
+            "rsAccountAliases.said.cwdIf",
+            &[("at", &c.at), ("to", &c.to)],
+        ));
+    }
+    if !f.cwd.is_empty() {
+        p.push(if f.cwd_if.is_empty() {
+            copy_text("rsAccountAliases.said.cwd", &[("dir", &f.cwd)])
+        } else {
+            copy_text("rsAccountAliases.said.cwdElse", &[("dir", &f.cwd)])
+        });
+    }
+    if !f.agent.is_empty() {
+        p.push(copy_text(
+            "rsAccountAliases.said.agent",
+            &[("agent", &f.agent)],
+        ));
+    }
+    if !f.model.is_empty() {
+        p.push(copy_text(
+            "rsAccountAliases.said.model",
+            &[("model", &f.model)],
+        ));
+    }
+    if !f.launcher.is_empty() {
+        p.push(copy_text(
+            "rsAccountAliases.said.launcher",
+            &[("launcher", &f.launcher)],
+        ));
+    }
+    if !f.tmux_size.is_empty() {
+        p.push(copy_text(
+            "rsAccountAliases.said.size",
+            &[("size", &f.tmux_size)],
+        ));
+    }
+    if f.detach {
+        p.push(copy_text("rsAccountAliases.said.detach", &[]));
+    }
+    if f.bus_register {
+        p.push(copy_text("rsAccountAliases.said.bus", &[]));
+    }
+    if !f.passthru.is_empty() {
+        p.push(copy_text(
+            "rsAccountAliases.said.passthru",
+            &[("args", &f.passthru)],
+        ));
+    }
+    if !f.ccm_other.is_empty() {
+        p.push(copy_text(
+            "rsAccountAliases.said.ccmOther",
+            &[("args", &f.ccm_other)],
+        ));
+    }
+    p.join(&copy_text("rsAccountAliases.said.sep", &[]))
+}
+
 /// 一组在表单这个样子下的规范写法（空 = 这一组不出现）。
 /// 控件上关掉的组合照样不拼：不进 tmux ⇒ 容器那几格不出现；不 `--detach` ⇒ 不登记 cc-bus；只有半边的情况不拼。
 fn canon(f: &AliasForm, g: Group) -> Result<Vec<String>, String> {

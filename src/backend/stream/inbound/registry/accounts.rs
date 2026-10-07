@@ -433,6 +433,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "name",
             "notes",
             "servers",
+            "sync",
         ],
         takes_input: false,
         run: Run::Blocking(|r| {
@@ -456,6 +457,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "name",
             "notes",
             "servers",
+            "sync",
         ],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -479,6 +481,33 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "name",
             "notes",
             "servers",
+            "sync",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, &ACCOUNT_KEYS)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 停 / 开各号之间的同步（只改共享集合那份文件里那一格；开回来那一刻同步一趟）。
+    CommandSpec {
+        name: "accounts-mcp-sync",
+        doc_anchor: Some("#### `accounts-mcp-sync`"),
+        codes: &["bad_args", "io_failed", "refused"],
+        fields: &[
+            "changed",
+            "choices",
+            "conflicts",
+            "enabled",
+            "from",
+            "gone",
+            "holders",
+            "name",
+            "notes",
+            "on",
+            "servers",
+            "sync",
         ],
         takes_input: true,
         run: Run::Blocking(|r| {

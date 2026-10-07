@@ -47,10 +47,14 @@ export interface MissingAlias {
   alias: Alias;
 }
 
+/** 同名两条里新开的终端敲它起的是哪一个：你写的 · 清单那条 · 说不清（后端比行号，界面按码取句）。 */
+export type ClashWins = "yours" | "list" | "unclear";
+
 /** 启动文件里、块外自己定义的与清单同名的函数。 */
 export interface NameClash {
   name: string;
   line: number;
+  wins: ClashWins;
 }
 
 /** 进不了代码的那一条为什么进不了。 */
@@ -116,12 +120,16 @@ export interface PolicySet {
 
 /** 读回口的成品。 */
 export interface AliasListing {
+  /** 这台的家目录（只拿来把路径写成 `~/…`）。 */
+  home: string;
   aliasPath: string;
   exists: boolean;
   /** 不在盘上 ⇒ 首建会带上的那几条。 */
   aliases: Alias[];
   /** 与 `aliases` 逐条对应：账号那一形 ⇒ `{account, tmux}`，其余 ⇒ `null`（界面照画，不自己认）。 */
   groups: Array<AccountShape | null>;
+  /** 与 `aliases` 逐条对应：这一条用人话怎么说（后端拼好，界面照画）。 */
+  said: string[];
   /** 这台的账号表。 */
   accounts: string[];
   missing: MissingAlias[];
@@ -217,9 +225,19 @@ function decodeMissing(v: unknown): MissingAlias {
   return { account: v.account, tmux: v.tmux, alias: decodeAlias(v.alias) };
 }
 
+const WINS: readonly string[] = ["yours", "list", "unclear"];
+
 function decodeClash(v: unknown): NameClash {
-  if (!isObj(v) || !sameKeys(v, ["name", "line"]) || typeof v.name !== "string" || typeof v.line !== "number") throw bad();
-  return { name: v.name, line: v.line };
+  if (
+    !isObj(v) ||
+    !sameKeys(v, ["name", "line", "wins"]) ||
+    typeof v.name !== "string" ||
+    typeof v.line !== "number" ||
+    typeof v.wins !== "string" ||
+    !WINS.includes(v.wins)
+  )
+    throw bad();
+  return { name: v.name, line: v.line, wins: v.wins as ClashWins };
 }
 
 /** `aliases-render` 的成品。严格收。 */
@@ -306,10 +324,12 @@ export function decodeAliasListing(v: unknown): AliasListing {
   if (
     !isObj(v) ||
     !sameKeys(v, [
+      "home",
       "aliasPath",
       "exists",
       "aliases",
       "groups",
+      "said",
       "accounts",
       "missing",
       "fingerprint",
@@ -317,11 +337,14 @@ export function decodeAliasListing(v: unknown): AliasListing {
       "rcCandidates",
       "otherRc",
     ]) ||
+    typeof v.home !== "string" ||
     typeof v.aliasPath !== "string" ||
     typeof v.exists !== "boolean" ||
     !Array.isArray(v.aliases) ||
     !Array.isArray(v.groups) ||
     v.groups.length !== v.aliases.length ||
+    !strs(v.said) ||
+    v.said.length !== v.aliases.length ||
     !strs(v.accounts) ||
     !Array.isArray(v.missing) ||
     !optStr(v.fingerprint) ||
@@ -331,10 +354,12 @@ export function decodeAliasListing(v: unknown): AliasListing {
   )
     throw bad();
   return {
+    home: v.home,
     aliasPath: v.aliasPath,
     exists: v.exists,
     aliases: v.aliases.map(decodeAlias),
     groups: v.groups.map(decodeShape),
+    said: v.said,
     accounts: v.accounts,
     missing: v.missing.map(decodeMissing),
     fingerprint: v.fingerprint,

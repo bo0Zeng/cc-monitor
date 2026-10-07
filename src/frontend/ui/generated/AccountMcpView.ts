@@ -2,13 +2,17 @@
 import type { AccountMcpConflict } from "./AccountMcpConflict";
 
 /**
- * `accounts-mcp-read` · `accounts-mcp-remove` · `accounts-mcp-pick` 的成品：这台各号共用的用户级 MCP 此刻的样子。
+ * `accounts-mcp-read` · `accounts-mcp-remove` · `accounts-mcp-pick` · `accounts-mcp-sync` 的成品：这台各号共用的用户级 MCP 此刻的样子。
  */
 export type AccountMcpView = { 
 /**
  * 这台有没有账号库（没有 ⇒ 不做同步，下面几格都是空的）。
  */
 enabled: boolean, 
+/**
+ * 各号之间在不在同步（用户停了 ⇒ `false`：各号各管各的，`conflicts` 恒空）。
+ */
+sync: boolean, 
 /**
  * 共享集合里的名字（排好序）。
  */

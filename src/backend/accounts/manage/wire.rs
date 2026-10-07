@@ -8,8 +8,9 @@ use super::scan::{self, is_under, join, KeyRows, Snapshot};
 use crate::assets::door::{self, Door};
 use acct_core::wire::{
     AccountAddArgs, AccountChange, AccountInitArgs, AccountIsolateArgs, AccountKind,
-    AccountLoginCmd, AccountMcpNameArgs, AccountMcpPickArgs, AccountMcpView, AccountNameArgs,
-    AccountRef, AccountRemoveArgs, AccountRepairArgs, AccountRollbackArgs, VerifyReport,
+    AccountLoginCmd, AccountMcpNameArgs, AccountMcpPickArgs, AccountMcpSyncArgs, AccountMcpView,
+    AccountNameArgs, AccountRef, AccountRemoveArgs, AccountRepairArgs, AccountRollbackArgs,
+    VerifyReport,
 };
 use copy_core::copy_text;
 use serde_json::Value;
@@ -68,6 +69,7 @@ pub(crate) enum McpRequest {
     Read,
     Remove(AccountMcpNameArgs),
     Pick(AccountMcpPickArgs),
+    Sync(AccountMcpSyncArgs),
 }
 
 /// 是这几条之一 ⇒ `Some(收好的入参)`；别的命令 ⇒ `None`。
@@ -82,6 +84,7 @@ pub(crate) fn parse_mcp(cmd: &str, args: &Value) -> Option<Result<McpRequest, Re
         }
         "accounts-mcp-remove" => take(args).map(McpRequest::Remove),
         "accounts-mcp-pick" => take(args).map(McpRequest::Pick),
+        "accounts-mcp-sync" => take(args).map(McpRequest::Sync),
         _ => return None,
     })
 }
@@ -92,6 +95,7 @@ pub(crate) fn run_mcp(d: &dyn Door, req: &McpRequest) -> Result<AccountMcpView, 
         McpRequest::Read => super::mcp_share_exec::read(d),
         McpRequest::Remove(a) => super::mcp_share_exec::remove(d, &a.name),
         McpRequest::Pick(a) => super::mcp_share_exec::pick(d, &a.name, a.from.as_deref()),
+        McpRequest::Sync(a) => super::mcp_share_exec::set_sync(d, a.on),
     }
 }
 

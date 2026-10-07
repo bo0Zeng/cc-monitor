@@ -28,6 +28,7 @@ import arrowSquareOut from "@phosphor-icons/core/assets/regular/arrow-square-out
 import dotsThree from "@phosphor-icons/core/assets/regular/dots-three.svg?raw";
 import pushPin from "@phosphor-icons/core/assets/regular/push-pin.svg?raw";
 import files from "@phosphor-icons/core/assets/regular/files.svg?raw";
+import copySvg from "@phosphor-icons/core/assets/regular/copy.svg?raw";
 import question from "@phosphor-icons/core/assets/regular/question.svg?raw";
 import brain from "@phosphor-icons/core/assets/regular/brain.svg?raw";
 import xCircle from "@phosphor-icons/core/assets/regular/x-circle.svg?raw";
@@ -85,6 +86,7 @@ const SVG = {
   more: dotsThree,
   pin: pushPin,
   files: files,
+  copy: copySvg,
   question: question,
   brain: brain,
   failed: xCircle,

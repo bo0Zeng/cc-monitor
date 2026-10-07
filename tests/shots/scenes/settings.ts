@@ -277,13 +277,41 @@ export const SETTINGS_SCENES: Scene[] = [
   settings("settings-machine-trouble", "设置 · 连不上的那台", "gpu-01 那一页（连不上）", async () => {
     await go("machine:gpu-01");
   }, troubleWorld),
-  settings("settings-machine-term-aliases", "设置 · 远端 · 终端 · 别名展开", "devbox 的「终端」子页，展开「别名」", async () => {
+  settings("settings-machine-config-below", "设置 · 远端 · 别名与配置文件 · 往下", "devbox 的「别名与配置文件」栏往下：其他 · 会动 · 账号与扩展", async () => {
     await go("machine:devbox", "machine:devbox#config");
-    const d = document.querySelector<HTMLDetailsElement>(".settings-page:not([hidden]) details.machine-aliases");
-    if (!d) throw new Error("终端子页里没有别名那一块");
-    d.open = true;
-    d.dispatchEvent(new Event("toggle"));
+    await sleep(800);
+    document.querySelector(".settings-page:not([hidden]) [data-role=group-other]")?.scrollIntoView({ block: "start" });
+    await sleep(400);
+  }),
+  settings("settings-machine-config-mcp", "设置 · 远端 · 共用 MCP 展开", "devbox「共用 MCP」那一行点开：两边都改的选一版 · 共用的两条 · 停止同步", async () => {
+    await go("machine:devbox", "machine:devbox#config");
+    await sleep(800);
+    await click(".settings-page:not([hidden]) [data-role=mcp-row] .cfg-toggle");
+    await sleep(400);
+    document.querySelector(".settings-page:not([hidden]) [data-role=mcp-row]")?.scrollIntoView({ block: "start" });
+    await sleep(300);
+  }),
+  settings("settings-machine-config-pill", "设置 · 远端 · 账号表里点一条", "点 personal 那一行的 personalcct：等于 · 会执行 ·［改］［删］", async () => {
+    await go("machine:devbox", "machine:devbox#config");
+    await sleep(800);
+    await click('.settings-page:not([hidden]) .cfg-pill[data-name="personalcct"]');
+    await sleep(600);
+    document.querySelector(".settings-page:not([hidden]) [data-role=group-accounts]")?.scrollIntoView({ block: "start" });
+    await sleep(300);
+  }),
+  settings("settings-machine-config-new", "设置 · 远端 · 新增别名", "［＋ 新增别名］就地展开：名字 · 账号 · 终端 · 工作目录 · 更多", async () => {
+    await go("machine:devbox", "machine:devbox#config");
+    await sleep(800);
+    await click(await byText(".settings-page:not([hidden]) .cfg-list-head button", "＋ 新增别名"));
+    await sleep(800);
+    document.querySelector(".settings-page:not([hidden]) [data-role=alias-form]")?.scrollIntoView({ block: "start" });
+    await sleep(300);
+  }),
+  settings("settings-machine-config-anchor", "设置 · 带锚点打开 · 接上终端", "主窗口 ↗［接上终端］开 {machine: devbox, tab: config, anchor: connect-terminal}", async () => {
+    await waitFor(".settings-nav");
     await sleep(1500);
+    await emit("settings-target", JSON.stringify({ machine: "devbox", tab: "config", anchor: "connect-terminal" }));
+    await sleep(600);
   }),
   settings("settings-machine-name-taken", "设置 · 远端 · 改名撞名", "devbox 的名字改成 gpu-01（另一台已经叫这个）", async () => {
     await go("machine:devbox");

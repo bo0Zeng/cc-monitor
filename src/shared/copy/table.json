@@ -4730,42 +4730,14 @@
       "zh": "—",
       "args": []
     },
-    "machineAliases.ps.pathLabel": {
-      "kind": "body",
-      "zh": "monitor 路径: ",
-      "args": []
-    },
     "machineAliases.ps.autoLaunchHint": {
       "kind": "body",
-      "zh": "勾选后：跑 cc 或 __ccm_bind 时如果 monitor 没在跑，PowerShell 会自动启动它，路径在下方。\n不勾选：必须先手动开 monitor 再跑 cc，否则登记会超时（3 秒）。",
-      "args": [],
-      "waive": {
-        "C-T1": "__ccm_bind 是要用户亲手写进自己函数开头的那一行命令名，换个说法用户就没法照做"
-      }
+      "zh": "用别名启动 claude 时先打开 cc-monitor",
+      "args": []
     },
     "machineAliases.ps.autoLaunch": {
       "kind": "control",
-      "zh": "用 cc 启动 claude 时自动打开 monitor",
-      "args": []
-    },
-    "machineAliases.ps.registeredHint": {
-      "kind": "body",
-      "zh": "已经登记给 monitor、Tab ↗ 能切过去的 PowerShell 进程数。\n接入之后新开的 PowerShell 会自己登记，接入之前就开着的不会；monitor 起来时在后台标签页里的那几个，在里面敲一次 cc 才会登记。",
-      "args": []
-    },
-    "machineAliases.ps.registered": {
-      "kind": "title",
-      "zh": "已注册 PowerShell session",
-      "args": []
-    },
-    "machineAliases.ps.titleHint": {
-      "kind": "body",
-      "zh": "每开一个 PowerShell 都会把窗口登记给 monitor。monitor 没开就等它开了再登记；之后 Tab ↗ 能切对终端窗口，远端会话也一样。不接入也能用 monitor，只是切不到终端窗口。",
-      "args": []
-    },
-    "machineAliases.ps.title": {
-      "kind": "title",
-      "zh": "PowerShell 集成",
+      "zh": "cc-monitor 未开时自动打开",
       "args": []
     },
     "machineAliases.userPath.removeFailed": {
@@ -4783,14 +4755,9 @@
       "zh": "读不出来：{error}",
       "args": ["error"]
     },
-    "machineAliases.userPath.off": {
-      "kind": "body",
-      "zh": "✗ 还不在你的用户级 PATH 上（三种终端里都敲不到 ccm）",
-      "args": []
-    },
     "machineAliases.userPath.on": {
       "kind": "body",
-      "zh": "✓ 已经在你的用户级 PATH 上",
+      "zh": "已加进你的用户 PATH",
       "args": []
     },
     "machineAliases.userPath.notWindows": {
@@ -4805,52 +4772,12 @@
     },
     "machineAliases.userPath.cmdNote": {
       "kind": "body",
-      "zh": "不想点按钮？下面这段就是按钮会跑的那一段，复制到 PowerShell 里自己跑一次也一样：",
-      "args": []
-    },
-    "machineAliases.userPath.refreshHint": {
-      "kind": "body",
-      "zh": "重新读一次你的用户级 PATH",
-      "args": []
-    },
-    "machineAliases.userPath.refresh": {
-      "kind": "action",
-      "zh": "刷新",
-      "args": []
-    },
-    "machineAliases.userPath.removeHint": {
-      "kind": "body",
-      "zh": "只摘掉 cc-monitor 加的那一项，PATH 上别的不动。",
-      "args": []
-    },
-    "machineAliases.userPath.remove": {
-      "kind": "action",
-      "zh": "从用户级 PATH 撤掉",
-      "args": []
-    },
-    "machineAliases.userPath.add": {
-      "kind": "action",
-      "zh": "加到用户级 PATH",
-      "args": []
-    },
-    "machineAliases.userPath.dirLabel": {
-      "kind": "title",
-      "zh": "那个目录",
-      "args": []
-    },
-    "machineAliases.userPath.statusLabel": {
-      "kind": "title",
-      "zh": "现在状态",
-      "args": []
-    },
-    "machineAliases.userPath.intro": {
-      "kind": "body",
-      "zh": "把 cc-monitor 放 ccm 的那个目录加到你的用户级 PATH 上，三种终端（PowerShell / cmd / Git Bash）就都敲得到 ccm。只改你自己的用户级 PATH：不需要管理员、不碰系统 PATH、不碰别的用户。改完要重开终端才生效。",
+      "zh": "要跑的命令",
       "args": []
     },
     "machineAliases.userPath.title": {
       "kind": "title",
-      "zh": "这台机器的 ccm 命令 · 用户级 PATH",
+      "zh": "cmd / Git Bash 也可用 ccm",
       "args": []
     },
     "machineAliases.invalid.notYet": {
@@ -4933,11 +4860,6 @@
       "zh": "{path} 还不存在",
       "args": ["path"]
     },
-    "machineAliases.readBack.count": {
-      "kind": "body",
-      "zh": "{path}：{n} 条",
-      "args": ["path", "n"]
-    },
     "machineAliases.rc.tagNew": {
       "kind": "control",
       "zh": "还不存在，写入时新建",
@@ -4970,7 +4892,7 @@
     },
     "machineAliases.list.empty": {
       "kind": "body",
-      "zh": "清单是空的。",
+      "zh": "其余别名见上",
       "args": []
     },
     "machineAliases.form.save": {
@@ -4986,16 +4908,6 @@
     "machineAliases.buildAliasManager.noTmux": {
       "kind": "body",
       "zh": "这台机器上没有 tmux",
-      "args": []
-    },
-    "machineAliases.rc.rescanHint": {
-      "kind": "body",
-      "zh": "重新读这台机器上的别名文件与这几份启动文件",
-      "args": []
-    },
-    "machineAliases.rc.rescan": {
-      "kind": "action",
-      "zh": "重新读一遍",
       "args": []
     },
     "machineAliases.rc.openHint": {
@@ -5125,17 +5037,532 @@
     },
     "machineAliases.form.nameHint": {
       "kind": "body",
-      "zh": "在终端里敲的那个词",
+      "zh": "如 alphacct",
       "args": []
     },
-    "machineAliases.manager.intro": {
+    "cfgPage.head.intro": {
       "kind": "body",
-      "zh": "一条别名是一个名字加一组 ccm 参数。在终端里敲这个名字，就等于敲 ccm 加上这组参数，后面还能再接别的参数。",
+      "zh": "别名与 cc-monitor 会改的配置文件 · 均需你点击。要你动手的：「文件与数据 → 要你动手」。",
       "args": []
     },
-    "machineAliases.access.title": {
+    "cfgPage.cap.terminal": {
       "kind": "title",
-      "zh": "终端接入",
+      "zh": "终端",
+      "args": []
+    },
+    "cfgPage.cap.accounts": {
+      "kind": "title",
+      "zh": "账号与扩展",
+      "args": []
+    },
+    "cfgPage.row.reading": {
+      "kind": "body",
+      "zh": "读取中…",
+      "args": []
+    },
+    "cfgPage.mcp.title": {
+      "kind": "title",
+      "zh": "共用 MCP",
+      "args": []
+    },
+    "cfgPage.mcp.noLibrary": {
+      "kind": "body",
+      "zh": "这台没有账号库 · 不同步",
+      "args": []
+    },
+    "cfgPage.mcp.noLibraryBody": {
+      "kind": "body",
+      "zh": "只有一个账号时，MCP 就是 Claude 自己那一份；建了账号库之后，各账号共用这里的一份。",
+      "args": []
+    },
+    "cfgPage.mcp.paused": {
+      "kind": "body",
+      "zh": "已停止同步 · 各账号各管各的 · 共用的 {n} 个留着",
+      "args": ["n"]
+    },
+    "cfgPage.mcp.pausedBody": {
+      "kind": "body",
+      "zh": "已停止同步：各账号的 MCP 各管各的，同步过去的一条不删。开回同步时，停着期间各账号加的会同步到全部账号。",
+      "args": []
+    },
+    "cfgPage.mcp.conflict": {
+      "kind": "body",
+      "zh": "{name} 两边都改 · 选一版",
+      "args": ["name"]
+    },
+    "cfgPage.mcp.pickOpen": {
+      "kind": "action",
+      "zh": "选一版…",
+      "args": []
+    },
+    "cfgPage.mcp.same": {
+      "kind": "body",
+      "zh": "{n} 个 · {machine} 的各账号一致",
+      "args": ["n", "machine"]
+    },
+    "cfgPage.mcp.shared": {
+      "kind": "body",
+      "zh": "任一账号加的同步到 {machine} 全部账号。只在这里删，账号里删会被补回。",
+      "args": ["machine"]
+    },
+    "cfgPage.mcp.conflictHead": {
+      "kind": "body",
+      "zh": "{name} 两边都改 · 未自动选",
+      "args": ["name"]
+    },
+    "cfgPage.mcp.useFrom": {
+      "kind": "action",
+      "zh": "用 {holders} 账号的",
+      "args": ["holders"]
+    },
+    "cfgPage.mcp.useGone": {
+      "kind": "action",
+      "zh": "删掉它",
+      "args": []
+    },
+    "cfgPage.mcp.useShared": {
+      "kind": "action",
+      "zh": "用共享版",
+      "args": []
+    },
+    "cfgPage.mcp.remove": {
+      "kind": "action",
+      "zh": "删",
+      "args": []
+    },
+    "cfgPage.mcp.empty": {
+      "kind": "body",
+      "zh": "无共用 MCP",
+      "args": []
+    },
+    "cfgPage.mcp.newSessions": {
+      "kind": "body",
+      "zh": "新会话生效",
+      "args": []
+    },
+    "cfgPage.mcp.stop": {
+      "kind": "action",
+      "zh": "停止同步",
+      "args": []
+    },
+    "cfgPage.mcp.resume": {
+      "kind": "action",
+      "zh": "开回同步",
+      "args": []
+    },
+    "cfgPage.mcp.stopHint": {
+      "kind": "body",
+      "zh": "停后各账号独立 · 已同步的不删 · 可再开",
+      "args": []
+    },
+    "cfgPage.mcp.resumeHint": {
+      "kind": "body",
+      "zh": "开回后立刻同步一次 · 两边都改的照常让你选",
+      "args": []
+    },
+    "cfgPage.mcp.removeTitle": {
+      "kind": "title",
+      "zh": "从所有账号删除 {name}",
+      "args": ["name"]
+    },
+    "cfgPage.mcp.removeAction": {
+      "kind": "action",
+      "zh": "从所有账号删除",
+      "args": []
+    },
+    "cfgPage.mcp.removeBody": {
+      "kind": "body",
+      "zh": "从 {machine} 的所有账号删除 {name} · 开着的会话不受影响",
+      "args": ["machine", "name"]
+    },
+    "cfgPage.mcp.removeFailed": {
+      "kind": "error",
+      "zh": "没删掉",
+      "args": []
+    },
+    "cfgPage.mcp.pickFailed": {
+      "kind": "error",
+      "zh": "没选上",
+      "args": []
+    },
+    "cfgPage.mcp.syncFailed": {
+      "kind": "error",
+      "zh": "没改成",
+      "args": []
+    },
+    "cfgPage.mcp.readFailed": {
+      "kind": "error",
+      "zh": "读不出这台的共用 MCP",
+      "args": []
+    },
+    "cfgPage.ext.title": {
+      "kind": "title",
+      "zh": "装在 {machine} 的扩展",
+      "args": ["machine"]
+    },
+    "cfgPage.ext.go": {
+      "kind": "action",
+      "zh": "去扩展页",
+      "args": []
+    },
+    "cfgPage.ext.goHint": {
+      "kind": "body",
+      "zh": "安装 / 卸载 / 迁移：扩展页",
+      "args": []
+    },
+    "cfgPage.ext.unknown": {
+      "kind": "body",
+      "zh": "这台连不上 · 说不清装了什么",
+      "args": []
+    },
+    "cfgPage.ext.count": {
+      "kind": "body",
+      "zh": "{skills} 个 skill",
+      "args": ["skills"]
+    },
+    "cfgPage.ext.countWithMcp": {
+      "kind": "body",
+      "zh": "{skills} 个 skill · {mcp} 个 MCP 在项目里",
+      "args": ["skills", "mcp"]
+    },
+    "cfgPage.ext.skills": {
+      "kind": "title",
+      "zh": "Skill",
+      "args": []
+    },
+    "cfgPage.ext.projectMcp": {
+      "kind": "title",
+      "zh": "只在项目里的 MCP",
+      "args": []
+    },
+    "cfgPage.ext.mini": {
+      "kind": "body",
+      "zh": "{name} · {where}",
+      "args": ["name", "where"]
+    },
+    "cfgPage.ext.global": {
+      "kind": "body",
+      "zh": "全局",
+      "args": []
+    },
+    "cfgPage.ext.project": {
+      "kind": "body",
+      "zh": "项目",
+      "args": []
+    },
+    "cfgPage.ext.readFailed": {
+      "kind": "error",
+      "zh": "读不出扩展表",
+      "args": []
+    },
+    "machineAliases.access.onWindow": {
+      "kind": "body",
+      "zh": "接在 {path} · 新开的窗口认得 ccm 与下列别名",
+      "args": ["path"]
+    },
+    "machineAliases.access.offWindow": {
+      "kind": "body",
+      "zh": "新开的窗口不认这些别名",
+      "args": []
+    },
+    "machineAliases.access.otherFile": {
+      "kind": "body",
+      "zh": "另选的 {path} 还没接上",
+      "args": ["path"]
+    },
+    "machineAliases.access.outdatedHint": {
+      "kind": "body",
+      "zh": "替换 cc-monitor 加的那几行 · 写前备份",
+      "args": []
+    },
+    "machineAliases.access.peek": {
+      "kind": "action",
+      "zh": "看一眼",
+      "args": []
+    },
+    "machineAliases.access.whatAdded": {
+      "kind": "action",
+      "zh": "看加了什么",
+      "args": []
+    },
+    "machineAliases.access.willAdd": {
+      "kind": "body",
+      "zh": "会在 {path} 末尾加 cc-monitor 那几行 · 写前备份",
+      "args": ["path"]
+    },
+    "machineAliases.access.previewOn": {
+      "kind": "body",
+      "zh": "cc-monitor 在 {path} 加的那几行：",
+      "args": ["path"]
+    },
+    "machineAliases.access.previewOff": {
+      "kind": "body",
+      "zh": "接上之后 {path} 末尾会多这几行：",
+      "args": ["path"]
+    },
+    "machineAliases.access.uninstallSub": {
+      "kind": "body",
+      "zh": "卸载后新开的终端不认 ccm 与别名 · 清单保留，可再接上",
+      "args": []
+    },
+    "machineAliases.access.uninstallSubWindow": {
+      "kind": "body",
+      "zh": "卸载后新开的窗口不认 ccm 与别名 · 清单保留，可再接上",
+      "args": []
+    },
+    "machineAliases.access.uninstallWhat": {
+      "kind": "body",
+      "zh": "会从 {path} 删除 cc-monitor 加的那几行 · 你写的行不动：",
+      "args": ["path"]
+    },
+    "machineAliases.clash.lineOne": {
+      "kind": "body",
+      "zh": "{names}：你在 {path} 有同名定义 · 敲它起的是{now}。",
+      "args": ["names", "path", "now"]
+    },
+    "machineAliases.clash.lineMany": {
+      "kind": "body",
+      "zh": "{names}：你在 {path} 有同名定义 · 敲它们起的是{now}。",
+      "args": ["names", "path", "now"]
+    },
+    "machineAliases.clash.manyFiles": {
+      "kind": "body",
+      "zh": "几份启动文件里",
+      "args": []
+    },
+    "machineAliases.clash.mixed": {
+      "kind": "body",
+      "zh": "各自不同 · 点开那一条看",
+      "args": []
+    },
+    "machineAliases.clash.nowYours": {
+      "kind": "body",
+      "zh": "你写的 · 清单那条被盖",
+      "args": []
+    },
+    "machineAliases.clash.nowList": {
+      "kind": "body",
+      "zh": "清单那条 · 你写的被盖",
+      "args": []
+    },
+    "machineAliases.clash.nowUnclear": {
+      "kind": "body",
+      "zh": "哪一个说不清 · 别名块在另一份文件里",
+      "args": []
+    },
+    "machineAliases.clash.detailYours": {
+      "kind": "body",
+      "zh": "你在 {path} 第 {line} 行也写了 {name} · 现在敲 {name} 生效：你写的 · 此条被盖",
+      "args": ["path", "line", "name"]
+    },
+    "machineAliases.clash.detailList": {
+      "kind": "body",
+      "zh": "你在 {path} 第 {line} 行也写了 {name} · 现在敲 {name} 生效：此条 · 你写的被盖",
+      "args": ["path", "line", "name"]
+    },
+    "machineAliases.clash.detailUnclear": {
+      "kind": "body",
+      "zh": "你在 {path} 第 {line} 行也写了 {name} · 别名块在另一份文件里，说不清哪个生效",
+      "args": ["path", "line", "name"]
+    },
+    "machineAliases.clash.tagCovered": {
+      "kind": "body",
+      "zh": " · 被你写的盖",
+      "args": []
+    },
+    "machineAliases.clash.tagSame": {
+      "kind": "body",
+      "zh": " · 和你写的同名",
+      "args": []
+    },
+    "machineAliases.detail.equals": {
+      "kind": "body",
+      "zh": "敲 {name} 等于",
+      "args": ["name"]
+    },
+    "machineAliases.detail.equalsLine": {
+      "kind": "body",
+      "zh": "ccm {args}",
+      "args": ["args"]
+    },
+    "machineAliases.detail.runs": {
+      "kind": "body",
+      "zh": "会执行",
+      "args": []
+    },
+    "machineAliases.form.titleNew": {
+      "kind": "title",
+      "zh": "新增别名",
+      "args": []
+    },
+    "machineAliases.form.titleEdit": {
+      "kind": "title",
+      "zh": "改 {name}",
+      "args": ["name"]
+    },
+    "machineAliases.form.labelName": {
+      "kind": "control",
+      "zh": "名字",
+      "args": []
+    },
+    "machineAliases.form.labelAccount": {
+      "kind": "control",
+      "zh": "账号",
+      "args": []
+    },
+    "machineAliases.form.labelWhere": {
+      "kind": "control",
+      "zh": "终端",
+      "args": []
+    },
+    "machineAliases.form.nameHelp": {
+      "kind": "body",
+      "zh": "在终端里敲的那个词。",
+      "args": []
+    },
+    "machineAliases.form.nameHelpPs": {
+      "kind": "body",
+      "zh": "在 PowerShell 里敲的那个词。不分大小写。",
+      "args": []
+    },
+    "machineAliases.form.saveHint": {
+      "kind": "body",
+      "zh": "保存即写入这台 · 已开的终端需 source 别名文件",
+      "args": []
+    },
+    "machineAliases.form.saveHintPs": {
+      "kind": "body",
+      "zh": "保存即写入这台 · 已开的窗口需重开",
+      "args": []
+    },
+    "machineAliases.list.colAccount": {
+      "kind": "title",
+      "zh": "账号",
+      "args": []
+    },
+    "machineAliases.list.colHere": {
+      "kind": "title",
+      "zh": "在当前终端启动",
+      "args": []
+    },
+    "machineAliases.list.colHereWindow": {
+      "kind": "title",
+      "zh": "在当前窗口启动",
+      "args": []
+    },
+    "machineAliases.list.colTmux": {
+      "kind": "title",
+      "zh": "在 tmux 里起",
+      "args": []
+    },
+    "machineAliases.list.groupAccountsHintOne": {
+      "kind": "body",
+      "zh": "新建账号时自动加这一条 · 删账号时一起删",
+      "args": []
+    },
+    "machineAliases.preview.failedLine": {
+      "kind": "error",
+      "zh": "这台答不了：{e}",
+      "args": ["e"]
+    },
+    "machineAliases.rc.chooseTitle": {
+      "kind": "title",
+      "zh": "目标文件",
+      "args": []
+    },
+    "machineAliases.status.on": {
+      "kind": "body",
+      "zh": "{n} 条 · 新开的终端里能用",
+      "args": ["n"]
+    },
+    "machineAliases.status.onWindow": {
+      "kind": "body",
+      "zh": "{n} 条 · 新开的窗口里能用",
+      "args": ["n"]
+    },
+    "machineAliases.status.off": {
+      "kind": "body",
+      "zh": "{n} 条 · 新开的终端不认",
+      "args": ["n"]
+    },
+    "machineAliases.status.offWindow": {
+      "kind": "body",
+      "zh": "{n} 条 · 新开的窗口不认",
+      "args": ["n"]
+    },
+    "machineAliases.status.outdated": {
+      "kind": "body",
+      "zh": "{n} 条 · {path} cc-monitor 那几行要更新 · 新别名不认",
+      "args": ["n", "path"]
+    },
+    "machineAliases.status.clashTail": {
+      "kind": "body",
+      "zh": " · {names} 和你写的同名",
+      "args": ["names"]
+    },
+    "machineAliases.status.readFailed": {
+      "kind": "error",
+      "zh": "读不出这台的别名",
+      "args": []
+    },
+    "machineAliases.status.add": {
+      "kind": "action",
+      "zh": "＋ 新增",
+      "args": []
+    },
+    "machineAliases.status.connect": {
+      "kind": "action",
+      "zh": "接上 {path}…",
+      "args": ["path"]
+    },
+    "machineAliases.status.update": {
+      "kind": "action",
+      "zh": "更新…",
+      "args": []
+    },
+    "machineAliases.userPath.offHelp": {
+      "kind": "body",
+      "zh": "会把 {dir} 加进用户 PATH · 只改你这个用户、不用管理员 · 重开终端生效",
+      "args": ["dir"]
+    },
+    "machineAliases.win.title": {
+      "kind": "title",
+      "zh": "Windows 终端",
+      "args": []
+    },
+    "machineAliases.win.bindTitle": {
+      "kind": "body",
+      "zh": "从标签页切回 PowerShell 窗口",
+      "args": []
+    },
+    "machineAliases.win.bindHelp": {
+      "kind": "body",
+      "zh": "与别名一起接在 PowerShell 配置文件 · 当前 {n} 个窗口可切回",
+      "args": ["n"]
+    },
+    "machineAliases.win.autoPath": {
+      "kind": "body",
+      "zh": "打开的是 {path}",
+      "args": ["path"]
+    },
+    "machineAliases.win.statusPathOn": {
+      "kind": "body",
+      "zh": "能切回 {n} 个窗口 · cmd 里也敲得到 ccm",
+      "args": ["n"]
+    },
+    "machineAliases.win.statusPathOff": {
+      "kind": "body",
+      "zh": "能切回 {n} 个窗口 · cmd 里还敲不到 ccm",
+      "args": ["n"]
+    },
+    "machineAliases.writes.line": {
+      "kind": "body",
+      "zh": "会动：{path} 末尾 cc-monitor 那几行 · 接上时写一次 · 清单变动不再改它",
+      "args": ["path"]
+    },
+    "machineAliases.form.wouldRun": {
+      "kind": "body",
+      "zh": "会执行（家目录里新开一个终端敲它时）",
       "args": []
     },
     "machineAliases.access.connect": {
@@ -5145,18 +5572,18 @@
     },
     "machineAliases.access.connectTo": {
       "kind": "action",
-      "zh": "接入 {path}",
+      "zh": "接上 {path}",
       "args": ["path"]
     },
     "machineAliases.access.on": {
       "kind": "body",
-      "zh": "✓ {path} 已接入：新开的终端认得 ccm 和下面这些别名",
+      "zh": "接在 {path} · 新开的终端认得 ccm 与下列别名",
       "args": ["path"]
     },
     "machineAliases.access.outdated": {
       "kind": "body",
-      "zh": "⚠ {path} 接入的是旧版{version}，点「重新接入」换成新版",
-      "args": ["path", "version"]
+      "zh": "{path} 里 cc-monitor 加的那几行要更新 · 新别名不认",
+      "args": ["path"]
     },
     "machineAliases.access.notLoaded": {
       "kind": "body",
@@ -5165,42 +5592,27 @@
     },
     "machineAliases.access.reconnect": {
       "kind": "action",
-      "zh": "重新接入",
+      "zh": "换成新版",
       "args": []
     },
     "machineAliases.access.off": {
       "kind": "body",
-      "zh": "还没接入：新开的终端不认得 ccm 和下面这些别名",
-      "args": []
-    },
-    "machineAliases.access.clash": {
-      "kind": "body",
-      "zh": "⚠ {path} 第 {line} 行自己定义了 {name}，会和同名别名打架。排在后面的那个生效。",
-      "args": ["path", "line", "name"]
-    },
-    "machineAliases.access.notThisFile": {
-      "kind": "body",
-      "zh": "不是这份文件？",
+      "zh": "新开的终端不认这些别名",
       "args": []
     },
     "machineAliases.access.choose": {
       "kind": "action",
-      "zh": "换一份…",
-      "args": []
-    },
-    "machineAliases.access.selfPasteAsk": {
-      "kind": "body",
-      "zh": "不想让 cc-monitor 动它？",
+      "zh": "换一份文件",
       "args": []
     },
     "machineAliases.access.selfPaste": {
       "kind": "action",
-      "zh": "我自己贴",
+      "zh": "自己贴",
       "args": []
     },
     "machineAliases.aliasPreview.hint": {
       "kind": "body",
-      "zh": "点这一行，看它会执行什么",
+      "zh": "「会执行」：家目录新开终端时那台现算 · 后接的参数交给 claude",
       "args": []
     },
     "machineAliases.form.openFailed": {
@@ -5290,7 +5702,7 @@
     },
     "machineAliases.list.groupAccountsHint": {
       "kind": "body",
-      "zh": "加号时自动加这两条，删号时一起删。",
+      "zh": "新建账号时自动加这两条 · 删账号时一起删",
       "args": []
     },
     "machineAliases.list.groupOther": {
@@ -5298,34 +5710,14 @@
       "zh": "其他",
       "args": []
     },
-    "machineAliases.list.missing": {
-      "kind": "body",
-      "zh": "{account} 还没有 {name}（{what}）",
-      "args": ["account", "name", "what"]
-    },
     "machineAliases.list.addMissing": {
       "kind": "action",
-      "zh": "加上",
-      "args": []
-    },
-    "machineAliases.list.shapeHere": {
-      "kind": "body",
-      "zh": "在当前终端起",
-      "args": []
-    },
-    "machineAliases.list.shapeTmux": {
-      "kind": "body",
-      "zh": "在 tmux 里起",
-      "args": []
+      "zh": "＋ 添加 {name}",
+      "args": ["name"]
     },
     "machineAliases.list.noAccounts": {
       "kind": "body",
-      "zh": "这台还没有账号。",
-      "args": []
-    },
-    "machineAliases.list.saveHint": {
-      "kind": "body",
-      "zh": "改了立刻存到这台机器；已经开着的终端里 source 一次别名文件生效。",
+      "zh": "无账号",
       "args": []
     },
     "machineAliases.save.stale": {
@@ -5856,11 +6248,6 @@
     "machineCard.aliases.uninstall": {
       "kind": "action",
       "zh": "卸载 ccm",
-      "args": []
-    },
-    "machineCard.aliases.title": {
-      "kind": "title",
-      "zh": "别名",
       "args": []
     },
     "machineCard.deploy.uninstallHint": {
@@ -9912,6 +10299,116 @@
       "zh": "读不了 {path}：{e}",
       "args": ["path", "e"]
     },
+    "rsAccountAliases.said.base": {
+      "kind": "body",
+      "zh": "~/.claude",
+      "args": []
+    },
+    "rsAccountAliases.said.defaultAccount": {
+      "kind": "body",
+      "zh": "默认账号",
+      "args": []
+    },
+    "rsAccountAliases.said.account": {
+      "kind": "body",
+      "zh": "{account} 账号",
+      "args": ["account"]
+    },
+    "rsAccountAliases.said.hereTerminal": {
+      "kind": "body",
+      "zh": "当前终端",
+      "args": []
+    },
+    "rsAccountAliases.said.hereWindow": {
+      "kind": "body",
+      "zh": "当前窗口",
+      "args": []
+    },
+    "rsAccountAliases.said.tmuxAuto": {
+      "kind": "body",
+      "zh": "tmux · 自动取名",
+      "args": []
+    },
+    "rsAccountAliases.said.tmuxNamed": {
+      "kind": "body",
+      "zh": "tmux 会话 {name}",
+      "args": ["name"]
+    },
+    "rsAccountAliases.said.tmuxBase": {
+      "kind": "body",
+      "zh": "tmux · 以 {name} 为底",
+      "args": ["name"]
+    },
+    "rsAccountAliases.said.attach": {
+      "kind": "body",
+      "zh": "接回已有 tmux 会话",
+      "args": []
+    },
+    "rsAccountAliases.said.attachHow": {
+      "kind": "body",
+      "zh": "敲 {alias} 会话名",
+      "args": ["alias"]
+    },
+    "rsAccountAliases.said.cwdIf": {
+      "kind": "body",
+      "zh": "在 {at} 敲就进 {to}",
+      "args": ["at", "to"]
+    },
+    "rsAccountAliases.said.cwd": {
+      "kind": "body",
+      "zh": "进 {dir}",
+      "args": ["dir"]
+    },
+    "rsAccountAliases.said.cwdElse": {
+      "kind": "body",
+      "zh": "其余进 {dir}",
+      "args": ["dir"]
+    },
+    "rsAccountAliases.said.agent": {
+      "kind": "body",
+      "zh": "用 {agent}",
+      "args": ["agent"]
+    },
+    "rsAccountAliases.said.model": {
+      "kind": "body",
+      "zh": "模型 {model}",
+      "args": ["model"]
+    },
+    "rsAccountAliases.said.launcher": {
+      "kind": "body",
+      "zh": "用 {launcher} 起",
+      "args": ["launcher"]
+    },
+    "rsAccountAliases.said.size": {
+      "kind": "body",
+      "zh": "窗口 {size}",
+      "args": ["size"]
+    },
+    "rsAccountAliases.said.detach": {
+      "kind": "body",
+      "zh": "启动后返回",
+      "args": []
+    },
+    "rsAccountAliases.said.bus": {
+      "kind": "body",
+      "zh": "在 cc-bus 上线",
+      "args": []
+    },
+    "rsAccountAliases.said.passthru": {
+      "kind": "body",
+      "zh": "另带 {args}",
+      "args": ["args"]
+    },
+    "rsAccountAliases.said.ccmOther": {
+      "kind": "body",
+      "zh": "ccm 另带 {args}",
+      "args": ["args"]
+    },
+    "rsAccountAliases.said.sep": {
+      "kind": "body",
+      "zh": " · ",
+      "args": []
+    },
     "rsAccountAliases.render.duplicate": {
       "kind": "body",
       "zh": "同一个名字出现了两次 —— 后一条会盖掉前一条",
@@ -11174,7 +11671,7 @@
     },
     "machineAliases.aliasPreview.line": {
       "kind": "body",
-      "zh": "会执行：{line}（从家目录的一个新终端里敲）",
+      "zh": "{line}",
       "args": ["line"]
     },
     "machineAliases.aliasPreview.failed": {
@@ -16289,6 +16786,16 @@
       "zh": "各账号共用的 MCP 那份文件 {path} 用不了（{e}）。这一次不同步；把它挪走之后会按各账号现在的样子重建。",
       "args": ["path", "e"]
     },
+    "beAcctMcpShare.sync.paused": {
+      "kind": "error",
+      "zh": "各账号的 MCP 已停止同步：先开回同步再改",
+      "args": []
+    },
+    "beAcctMcpShare.sync.noLibrary": {
+      "kind": "error",
+      "zh": "这台没有账号库，没有要同步的 MCP",
+      "args": []
+    },
     "beAcctMcpShare.store.writeFailed": {
       "kind": "error",
       "zh": "各账号共用的 MCP 那份文件没写进去：{e}",
@@ -16383,106 +16890,6 @@
       "kind": "body",
       "zh": "各账号共用的用户级 MCP",
       "args": []
-    },
-    "accountsMcp.block.title": {
-      "kind": "title",
-      "zh": "各账号共用的 MCP",
-      "args": []
-    },
-    "accountsMcp.block.shared": {
-      "kind": "body",
-      "zh": "这台的各个号共用一份用户级 MCP。在任一个号里加或改的，会同步到所有号。",
-      "args": []
-    },
-    "accountsMcp.block.deleteHere": {
-      "kind": "body",
-      "zh": "删除只在这里做：在某个号里删掉不算数，会被补回去。",
-      "args": []
-    },
-    "accountsMcp.block.newSessions": {
-      "kind": "body",
-      "zh": "已经在跑的会话不会重读，新开的会话才用上。",
-      "args": []
-    },
-    "accountsMcp.list.empty": {
-      "kind": "body",
-      "zh": "还没有共用的 MCP。",
-      "args": []
-    },
-    "accountsMcp.list.remove": {
-      "kind": "action",
-      "zh": "删除",
-      "args": []
-    },
-    "accountsMcp.remove.confirm": {
-      "kind": "body",
-      "zh": "从这台所有号里删掉 {name}？已经在跑的会话不受影响，新开的会话里就没有它了。",
-      "args": ["name"]
-    },
-    "accountsMcp.remove.done": {
-      "kind": "title",
-      "zh": "已从所有号里删掉 {name}",
-      "args": ["name"]
-    },
-    "accountsMcp.remove.failed": {
-      "kind": "error",
-      "zh": "没删成",
-      "args": []
-    },
-    "accountsMcp.remove.title": {
-      "kind": "title",
-      "zh": "删除 MCP {name}",
-      "args": ["name"]
-    },
-    "accountsMcp.remove.action": {
-      "kind": "action",
-      "zh": "删除",
-      "args": []
-    },
-    "accountsMcp.conflict.head": {
-      "kind": "body",
-      "zh": "{name} 两边都改了，没有自动选。用哪一版？",
-      "args": ["name"]
-    },
-    "accountsMcp.conflict.shared": {
-      "kind": "action",
-      "zh": "用共享的那一版",
-      "args": []
-    },
-    "accountsMcp.conflict.gone": {
-      "kind": "action",
-      "zh": "删掉它",
-      "args": []
-    },
-    "accountsMcp.conflict.from": {
-      "kind": "action",
-      "zh": "用 {holders} 号里的那一版",
-      "args": ["holders"]
-    },
-    "accountsMcp.pick.done": {
-      "kind": "title",
-      "zh": "{name} 已统一成你选的那一版",
-      "args": ["name"]
-    },
-    "accountsMcp.pick.failed": {
-      "kind": "error",
-      "zh": "没选成",
-      "args": []
-    },
-    "accountsMcp.read.reading": {
-      "kind": "body",
-      "zh": "正在读各账号共用的 MCP…",
-      "args": []
-    },
-    "accountsMcp.read.failed": {
-      "kind": "body",
-      "zh": "读不出各账号共用的 MCP：{e}",
-      "args": ["e"]
-    },
-    "accountsMcp.change.synced": {
-      "kind": "body",
-      "zh": "改写了：{accounts}",
-      "args": ["accounts"]
     },
     "accountsMcp.list.sep": {
       "kind": "body",

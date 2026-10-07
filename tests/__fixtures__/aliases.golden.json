@@ -21,7 +21,7 @@
       "restTo": "agent"
     }
   ],
-  "rc": "# mine\n",
+  "rc": "# mine\nzcc() { claude; }\n",
   "manifest": {
     "version": 1,
     "accounts": [
@@ -82,6 +82,7 @@
         "tmux": false
       }
     ],
+    "home": "<HOME>",
     "missing": [
       {
         "account": "z",
@@ -129,7 +130,13 @@
     "rcCandidates": [
       {
         "block": {
-          "conflictingFunctions": [],
+          "conflictingFunctions": [
+            {
+              "line": 2,
+              "name": "alphacc",
+              "wins": "yours"
+            }
+          ],
           "manualCleanupHint": "",
           "outdated": false,
           "present": false,
@@ -141,6 +148,9 @@
         "sourced": false,
         "unreadable": null
       }
+    ],
+    "said": [
+      "z 账号 · 当前终端"
     ],
     "unparsed": []
   },

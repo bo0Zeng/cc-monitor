@@ -417,6 +417,10 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "账号库那一族：各账号共用的 MCP，生来就走通道 —— 那台后端同步完回成品，界面 `account-ops.ts` 按生成的线上类型收",
     ),
     (
+        "accounts-mcp-sync",
+        "账号库那一族：各账号共用的 MCP，生来就走通道 —— 那台后端同步完回成品，界面 `account-ops.ts` 按生成的线上类型收",
+    ),
+    (
         "accounts-mcp-read",
         "账号库那一族：各账号共用的 MCP，生来就走通道 —— 那台后端同步完回成品，界面 `account-ops.ts` 按生成的线上类型收",
     ),

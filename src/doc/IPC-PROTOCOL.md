@@ -3114,12 +3114,13 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 
 ```text
 → {"id":"m1","cmd":"accounts-mcp-read","args":{}}
-← {"kind":"reply","id":"m1","ok":true,"data":{"enabled":true,"servers":["anysearch","cclsp"],"conflicts":[{"name":"cclsp","choices":[{"from":null,"holders":["q"],"gone":false},{"from":"z","holders":["z"],"gone":false}]}],"changed":[],"notes":[]}}
+← {"kind":"reply","id":"m1","ok":true,"data":{"enabled":true,"sync":true,"servers":["anysearch","cclsp"],"conflicts":[{"name":"cclsp","choices":[{"from":null,"holders":["q"],"gone":false},{"from":"z","holders":["z"],"gone":false}]}],"changed":[],"notes":[]}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `enabled` | ← | 这台有没有账号库（没有 ⇒ 不做同步，下面几格都是空的；用户级 MCP 就是 agent 自己那一份） |
+| `sync` | ← | 各号之间在不在同步（用户停了 ⇒ `false`：各号各管各的、`conflicts` 恒空；见 `accounts-mcp-sync`） |
 | `servers` | ← | 共享集合里的名字（排好序）。**只有名字** —— 定义里可能带密钥，一个值都不上线 |
 | `conflicts` | ← | 两边都改了、等用户挑的那几条：每条 `{name, choices}` |
 | `name` | ← | 那一条的名字 |
@@ -3141,33 +3142,52 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 
 ```text
 → {"id":"m2","cmd":"accounts-mcp-remove","args":{"name":"anysearch"}}
-← {"kind":"reply","id":"m2","ok":true,"data":{"enabled":true,"servers":["cclsp"],"conflicts":[],"changed":["z","b"],"notes":[]}}
+← {"kind":"reply","id":"m2","ok":true,"data":{"enabled":true,"sync":true,"servers":["cclsp"],"conflicts":[],"changed":["z","b"],"notes":[]}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `name` | → | 要删的那一条（共享集合里与哪个号里都没有 ⇒ `not_found`） |
-| `servers` · `conflicts` · `changed` · `notes` · `enabled` | ← | 同 `accounts-mcp-read`；`changed` = 这一趟撤掉它的那几个号 |
+| `servers` · `conflicts` · `changed` · `notes` · `enabled` · `sync` | ← | 同 `accounts-mcp-read`；`changed` = 这一趟撤掉它的那几个号 |
 | `choices` · `from` · `holders` · `gone` | ← | 同 `accounts-mcp-read` |
 
 删除只有这一条路：在某个号里删掉不算数（分不清是删了还是被盖掉了，按被盖掉补回）。已经在跑的会话不重读配置，新开的会话才用上。
+停着同步时（`sync` = `false`）拒（`refused`）：从所有号删一条就是同步，要先开回来。
 **错误码**：`bad_args` · `not_found` · `io_failed` · `refused`。
 
 #### `accounts-mcp-pick`：两边都改了的那一条用哪一版（**写用户文件**，阻塞档）
 
 ```text
 → {"id":"m3","cmd":"accounts-mcp-pick","args":{"name":"cclsp","from":"z"}}
-← {"kind":"reply","id":"m3","ok":true,"data":{"enabled":true,"servers":["anysearch","cclsp"],"conflicts":[],"changed":["q"],"notes":[]}}
+← {"kind":"reply","id":"m3","ok":true,"data":{"enabled":true,"sync":true,"servers":["anysearch","cclsp"],"conflicts":[],"changed":["q"],"notes":[]}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `name` | → | 那一条 |
 | `from` | ↔ | → 那个号里此刻的那一版；缺席 / `null` = 共享的那一版（共享集合里已经删了 ⇒ 删）。← 同 `accounts-mcp-read` |
-| `servers` · `conflicts` · `changed` · `notes` · `enabled` · `choices` · `holders` · `gone` | ← | 同 `accounts-mcp-read` |
+| `servers` · `conflicts` · `changed` · `notes` · `enabled` · `sync` · `choices` · `holders` · `gone` | ← | 同 `accounts-mcp-read`；停着同步时拒（`refused`） |
 
 挑完之后共享集合是那一版，所有号跟上。那个号里现在没有这一条 ⇒ `refused`（刷新之后再挑）。
 **错误码**：`bad_args` · `not_found` · `io_failed` · `refused`。
+
+
+#### `accounts-mcp-sync`：停 / 开各账号之间同步用户级 MCP（**写 `~/.cc-monitor/`**，阻塞档）
+
+```text
+→ {"id":"m4","cmd":"accounts-mcp-sync","args":{"on":false}}
+← {"kind":"reply","id":"m4","ok":true,"data":{"enabled":true,"sync":false,"servers":["cclsp"],"conflicts":[],"changed":[],"notes":[]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `on` | → | `false` = 停；`true` = 开回来 |
+| `enabled` · `sync` · `servers` · `conflicts` · `changed` · `notes` | ← | 同 `accounts-mcp-read`；开回来那一趟 `changed` = 同步改写了的那几个号 |
+| `choices` · `from` · `holders` · `gone` · `name` | ← | 同 `accounts-mcp-read` |
+
+只改共享集合那份文件里 `sync` 那一格（停着 ⇒ `"sync": false`；开着时这一格不写）。停：之后文件事件与加号那一趟都不写任何号，**已经同步过去的一条不删**；
+`accounts-mcp-remove` / `accounts-mcp-pick` 与扩展页「装到全局」被拒（`refused`）。开：落下那一格之后立刻同步一趟 —— 停着那段时间各号改的照三方对照采纳，两边都改了的照常列进 `conflicts`。
+已经是那一态 ⇒ 不写，照答。**错误码**：`bad_args` · `io_failed` · `refused`（这台没有账号库 · 那份共享集合解不开）。
 
 #### `accounts-sessions`：正在跑的会话各属哪个账号（**不读 stdin**）
 
@@ -3574,19 +3594,20 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 
 ```text
 → {"id":"a2","cmd":"aliases-read","args":{"shell":"posix","rcPath":null}}
-← {"kind":"reply","id":"a2","ok":true,"data":{"aliasPath":"/home/u/.cc-monitor/aliases.sh","exists":true,"aliases":[…],"groups":[{"account":"z","tmux":false},null],"accounts":["z","b"],"missing":[{"account":"b","tmux":false,"alias":{…}}],"fingerprint":"41-5b6a…","unparsed":[],"rcCandidates":[…],"otherRc":null}}
+← {"kind":"reply","id":"a2","ok":true,"data":{"home":"/home/u","aliasPath":"/home/u/.cc-monitor/aliases.sh","exists":true,"aliases":[…],"groups":[{"account":"z","tmux":false},null],"said":["z 账号 · 当前终端","默认账号 · 模型 opus"],"accounts":["z","b"],"missing":[{"account":"b","tmux":false,"alias":{…}}],"fingerprint":"41-5b6a…","unparsed":[],"rcCandidates":[…],"otherRc":null}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `shell` | → | 同 `aliases-render` |
 | `rcPath` | → | 人另指的那一份（`null` = 不指）：过围栏（只许落在 home 之内 · 符号链接不许跑出去）后并进候选 |
-| `aliasPath` · `exists` · `aliases` · `unparsed` | ← | 这台上那份别名文件的路径 · 在不在 · 读回的清单（不在 ⇒ 首建会带上的 `cc` · `cct` · `cca`，PowerShell 只有 `cc`）· 认不出的行（原文带原因） |
+| `home` · `aliasPath` · `exists` · `aliases` · `unparsed` | ← | 这台的家目录（界面只拿它把路径写成 `~/…`）· 这台上那份别名文件的路径 · 在不在 · 读回的清单（不在 ⇒ 首建会带上的 `cc` · `cct` · `cca`，PowerShell 只有 `cc`）· 认不出的行（原文带原因） |
 | `groups` | ← | 与 `aliases` 逐条对应：参数恰是「某号」或「某号 ＋ tmux」⇒ `{account, tmux}`，其余 ⇒ `null`（只看参数，不看名字；界面照这一格分组） |
+| `said` | ← | 与 `aliases` 逐条对应：这一条用人话怎么说（`z 账号 · 当前终端 · 在 ~ 敲就进 ~/文档/x`）。与 `aliases-to-form` 同一个解析器拼，界面照画、不拼句 |
 | `accounts` | ← | 这台的账号表（具名号，按账号库的顺序；没有账号库 ⇒ `[]`） |
 | `missing` | ← | 账号表里的号缺哪一条：`{account, tmux, alias}`（`alias` 就是点「加上」要加进清单的那一条；没有 tmux 的目标只看 `<号>cc`） |
 | `fingerprint` | ← | 盘上那份别名文件的指纹（不透明的串：长度 ＋ 一个 64 位散列；不在 ⇒ `null`），存的时候交回 `aliases-install` |
-| `rcCandidates` | ← | 启动文件候选（方言答列哪几份）：每份 `{path, sourced, exists, block, unreadable, policy}`，`block` = 别名块现状 `{present, version, outdated, conflictingFunctions, manualCleanupHint}`（`conflictingFunctions` = 块外自己定义的、与清单里某条同名的函数 `{name, line}`）；`policy`（只有 `$PROFILE` 那几份有）= 加载它的那一代 PowerShell 的执行策略，现问 `{host, effective, loads, groupPolicy, error}`（`host` = `powershell` / `pwsh`；`loads` = 这一档下它会不会跑这份未签名的本地文件，说不清 ⇒ `null`；`groupPolicy` = 组策略钉着） |
+| `rcCandidates` | ← | 启动文件候选（方言答列哪几份）：每份 `{path, sourced, exists, block, unreadable, policy}`，`block` = 别名块现状 `{present, version, outdated, conflictingFunctions, manualCleanupHint}`（`conflictingFunctions` = 块外自己定义的、与清单里某条同名的函数 `{name, line, wins}`；`wins` = 新开的终端里敲这个名字起的是哪一个：`yours`（你写的）· `list`（清单那条）· `unclear`（说不清）。后定义的算数：只在同一份文件里比别名块与那一行的行号；哪一份候选都没接上别名文件 ⇒ `yours`；别名块在另一份文件里 ⇒ `unclear`）；`policy`（只有 `$PROFILE` 那几份有）= 加载它的那一代 PowerShell 的执行策略，现问 `{host, effective, loads, groupPolicy, error}`（`host` = `powershell` / `pwsh`；`loads` = 这一档下它会不会跑这份未签名的本地文件，说不清 ⇒ `null`；`groupPolicy` = 组策略钉着） |
 | `otherRc` | ← | `rcPath` 过了围栏之后的绝对路径 |
 
 读经本进程文件管理面（`files-home` · `files-peek` · `files-stat`）。已握手的终端数不在这里（住 monitor 进程里）。错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-read`）。
@@ -4426,7 +4447,7 @@ personal  订阅
 
 **账号库那一族追加九条**：`--accounts-init` · `--accounts-add` · `--accounts-remove` · `--accounts-set-default` · `--accounts-repair` · `--accounts-isolate` · `--accounts-rollback` · `--accounts-login-cmd`（读 stdin；`--accounts-add` 的 key 只走 stdin、不收 argv）· `--accounts-verify`（不读 stdin）—— 见上面各自那一小节。与帧面同一个 `run`。
 
-**各账号共用的 MCP 那三条**：`--accounts-mcp-read`（不读 stdin）· `--accounts-mcp-remove` · `--accounts-mcp-pick`（读 stdin）—— 见上面各自那一小节。与帧面同一个 `run`。
+**各账号共用的 MCP 那四条**：`--accounts-mcp-read`（不读 stdin）· `--accounts-mcp-remove` · `--accounts-mcp-pick` · `--accounts-mcp-sync`（读 stdin）—— 见上面各自那一小节。与帧面同一个 `run`。
 
 **扩展页追加两条（09-30）**：`--ext-uninstall-preview` · `--ext-uninstall-apply` —— 从这台卸一个扩展（见上面各自那一小节）。与帧面同一个 `run`；**读 stdin**。`ext-list` · `ext-hub-preview` · `ext-hub-apply` 读本进程的可达表，只在帧面上。
 

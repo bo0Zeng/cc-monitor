@@ -91,7 +91,8 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/account-color.vitest.ts",
     "tests/frontend/ui/account-commands.vitest.ts",
     "tests/frontend/ui/accounts.vitest.ts",
-    "tests/frontend/ui/settings/accounts-mcp-block.vitest.ts", // 账号页各账号共用的 MCP 那一块：只画名字与各版、只交意图（纯替身）
+    "tests/frontend/ui/settings/config-page.vitest.ts", // 「别名与配置文件」栏：露出来才问 · 共用 MCP 只画名字与各版、只交意图 · 扩展只数那台那一列（纯替身）
+    "tests/frontend/ui/settings/machine-page-config-shown.vitest.ts", // 机器页切到「别名与配置文件」才告诉那一栏（纯 DOM）
     "tests/frontend/ui/backend-policy.vitest.ts",
     "tests/backend/accounts/upstream_select/table_tests.rs",
     "tests/backend/accounts/manage/aliases_tests.rs",

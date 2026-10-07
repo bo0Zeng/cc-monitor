@@ -63,6 +63,24 @@ pub(crate) struct NameClash {
     pub name: String,
     /// 1 起的行号。
     pub line: usize,
+    /// 新开的终端里敲这个名字，起的是哪一个（[`Wins`]）。
+    pub wins: Wins,
+}
+
+/// 同名的两条里谁生效：后定义的算数。
+///
+/// 只在同一份文件里比：别名块（它接上别名文件）与你那一行都在这份里 ⇒ 比行号；
+/// 这份里没有别名块、哪一份候选里也没有 ⇒ 别名清单根本没接上，生效的是你写的；
+/// 别名块在另一份文件里 ⇒ 两份谁先读说不清（[`Wins::Unclear`]）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum Wins {
+    /// 你写的那一条。
+    Yours,
+    /// 清单里那一条。
+    List,
+    /// 说不清。
+    Unclear,
 }
 
 /// 一份启动文件（rc / `$PROFILE`）里**别名块**的现状。
@@ -108,7 +126,13 @@ pub(crate) fn block_state(path: &Path, raw: &str, names: &[String]) -> BlockStat
         present,
         version,
         outdated,
-        conflicting_functions: find_conflicting_functions(flavor, content, names),
+        conflicting_functions: find_conflicting_functions(flavor, content, names)
+            .into_iter()
+            .map(|mut c| {
+                c.wins = wins_in_file(flavor, content, c.line);
+                c
+            })
+            .collect(),
         manual_cleanup_hint: match flavor {
             Shell::PowerShell => String::new(),
             Shell::Posix => {
@@ -618,7 +642,43 @@ fn find_block_version(content: &str, marker: &str) -> (bool, Option<String>) {
     (false, None)
 }
 
+/// 同一份文件里谁生效：这份里有别名块 ⇒ 你那一行在块后面就是你写的、在前面就是清单；没有别名块 ⇒ 先记「说不清」，
+/// 读回口看完全部候选再定（[`settle_wins`]）。
+fn wins_in_file(flavor: Shell, content: &str, line: usize) -> Wins {
+    let marker = match flavor {
+        Shell::PowerShell => BEGIN_MARKER,
+        Shell::Posix => CCM_PROFILE_BEGIN,
+    };
+    match content
+        .lines()
+        .position(|l| l.trim_start().starts_with(marker))
+    {
+        Some(begin) if line > begin + 1 => Wins::Yours,
+        Some(_) => Wins::List,
+        None => Wins::Unclear,
+    }
+}
+
+/// 全部候选看完之后定那几条「说不清」：哪一份里都没有别名块、也没有一份接上别名文件 ⇒ 清单没接上，生效的是你写的；
+/// 别名块在另一份里 ⇒ 仍是说不清（两份谁先读，这里不猜）。
+pub(crate) fn settle_wins<'a>(
+    blocks: impl Iterator<Item = &'a mut BlockState>,
+    list_loaded_somewhere: bool,
+) {
+    if list_loaded_somewhere {
+        return;
+    }
+    for b in blocks {
+        for c in b.conflicting_functions.iter_mut() {
+            if c.wins == Wins::Unclear {
+                c.wins = Wins::Yours;
+            }
+        }
+    }
+}
+
 /// 扫描 profile：我们的围栏之外、自己定义了与 `names`（清单里那几条）同名的函数 ⇒ 名字 ＋ 行号（同名按方言认，PowerShell 不分大小写）。
+/// 谁生效（`wins`）由调用方按块的位置补（这里先记「说不清」）。
 fn find_conflicting_functions(flavor: Shell, content: &str, names: &[String]) -> Vec<NameClash> {
     let dia = flavor.dialect();
     let mut inside_ccm_block = false;
@@ -638,6 +698,7 @@ fn find_conflicting_functions(flavor: Shell, content: &str, names: &[String]) ->
                 hits.push(NameClash {
                     name: n.clone(),
                     line: i + 1,
+                    wins: Wins::Unclear,
                 });
             }
         }
