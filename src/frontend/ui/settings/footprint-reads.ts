@@ -13,6 +13,7 @@ import { commands } from "../ipc/commands";
 import { isLocalOrigin, type Origin } from "../ipc/origin";
 import { LOCAL_ORIGIN } from "../backend-policy";
 import { copyText } from "../copy-table";
+import { exactKeys, isObj } from "../ipc/decode";
 
 /** app 与一个环境项的关系（四档，后端 `footprint/registry.rs::EnvTier` 派生）。 */
 export type EnvTier = "AppInstalls" | "AppShipsNoInstallerYet" | "UserInstallsWePrompt" | "AppOnlyChecks";
@@ -64,11 +65,9 @@ function bad(): never {
   throw new Error(copyText("configSurface.refresh.badShape"));
 }
 
-function obj(v: unknown, keys: string): Record<string, unknown> {
-  if (v === null || typeof v !== "object" || Array.isArray(v)) bad();
-  const o = v as Record<string, unknown>;
-  if (Object.keys(o).sort().join(",") !== keys) bad();
-  return o;
+function obj(v: unknown, keys: readonly string[]): Record<string, unknown> {
+  if (!isObj(v) || !exactKeys(v, keys)) bad();
+  return v as Record<string, unknown>;
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v : bad());
@@ -78,20 +77,30 @@ const bool = (v: unknown): boolean => (typeof v === "boolean" ? v : bad());
 function decodeState(v: unknown): SurfaceState {
   const kind = (v as { kind?: unknown } | null)?.kind;
   if (kind === "absent") {
-    obj(v, "kind");
+    obj(v, ["kind"]);
     return { kind };
   }
-  if (kind === "present") return { kind, detail: str(obj(v, "detail,kind").detail) };
-  if (kind === "undetermined") return { kind, why: str(obj(v, "kind,why").why) };
-  if (kind === "expected_absent") return { kind, detail: str(obj(v, "detail,kind").detail) };
+  if (kind === "present") return { kind, detail: str(obj(v, ["detail", "kind"]).detail) };
+  if (kind === "undetermined") return { kind, why: str(obj(v, ["kind", "why"]).why) };
+  if (kind === "expected_absent") return { kind, detail: str(obj(v, ["detail", "kind"]).detail) };
   return bad();
 }
 
 function decodeRow(v: unknown): SurfaceRow {
-  const o = obj(
-    v,
-    "effect_label,host_label,installable,note,path_declared,path_resolved,source_label,state,tier,tool_id,tool_name,uninstallable",
-  );
+  const o = obj(v, [
+    "effect_label",
+    "host_label",
+    "installable",
+    "note",
+    "path_declared",
+    "path_resolved",
+    "source_label",
+    "state",
+    "tier",
+    "tool_id",
+    "tool_name",
+    "uninstallable",
+  ]);
   const tier = str(o.tier);
   if (!TIERS.includes(tier)) bad();
   return {
@@ -111,7 +120,7 @@ function decodeRow(v: unknown): SurfaceRow {
 }
 
 function decodeScope(v: unknown): SettingsScope {
-  const o = obj(v, "has_cc_bus_hooks,path,precedence_note,scope,state");
+  const o = obj(v, ["has_cc_bus_hooks", "path", "precedence_note", "scope", "state"]);
   return {
     scope: str(o.scope),
     path: str(o.path),
@@ -123,7 +132,7 @@ function decodeScope(v: unknown): SettingsScope {
 
 /** `footprint-report` 的应答（整份报告），严格收。 */
 export function decodeFootprint(v: unknown): ConfigSurfaceReport {
-  const r = obj(v, "claude_config_dir,home,rows,settings_scopes");
+  const r = obj(v, ["claude_config_dir", "home", "rows", "settings_scopes"]);
   if (!Array.isArray(r.rows) || !Array.isArray(r.settings_scopes)) bad();
   return {
     rows: r.rows.map(decodeRow),

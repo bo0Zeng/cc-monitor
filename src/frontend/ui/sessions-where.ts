@@ -7,7 +7,8 @@
  */
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody } from "./ipc/chan-caller";
-import { exactKeys, isObj, machineName, settle, unreadable, type Refusals } from "./control-said";
+import { machineName, settle, unreadable, type Refusals } from "./control-said";
+import { exactKeys, isObj } from "./ipc/decode";
 import type { Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { noteMachineTmux } from "./resume-defaults";

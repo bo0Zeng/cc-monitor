@@ -14,6 +14,7 @@ import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidFrom, unreadableFrom } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./backend-policy";
 import type { RemoteHostConfig } from "./remote-config";
+import { exactKeys, isObj } from "./ipc/decode";
 
 /** 一条转发的状态（列表展示）。 */
 export interface ForwardStatus {
@@ -45,13 +46,6 @@ export interface ForwardMachine {
   jump: RemoteHostConfig | null;
 }
 
-type Obj = Record<string, unknown>;
-const isObj = (v: unknown): v is Obj => v !== null && typeof v === "object" && !Array.isArray(v);
-const sameKeys = (o: Obj, want: readonly string[]): boolean => {
-  const got = Object.keys(o).sort();
-  const w = [...want].sort();
-  return got.length === w.length && got.every((k, i) => k === w[i]);
-};
 const isPort = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 65535;
 const isCount = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0;
 
@@ -62,7 +56,7 @@ function bad(): never {
 function decodeRow(v: unknown): ForwardStatus {
   if (
     !isObj(v) ||
-    !sameKeys(v, ["id", "origin", "localPort", "remoteHost", "remotePort", "state", "connCount"]) ||
+    !exactKeys(v, ["id", "origin", "localPort", "remoteHost", "remotePort", "state", "connCount"]) ||
     typeof v.id !== "string" ||
     typeof v.origin !== "string" ||
     !isPort(v.localPort) ||
@@ -86,13 +80,13 @@ function decodeRow(v: unknown): ForwardStatus {
 
 /** `forward-list` 的成品。严格收。 */
 export function decodeForwards(v: unknown): ForwardStatus[] {
-  if (!isObj(v) || !sameKeys(v, ["forwards"]) || !Array.isArray(v.forwards)) bad();
+  if (!isObj(v) || !exactKeys(v, ["forwards"]) || !Array.isArray(v.forwards)) bad();
   return (v.forwards as unknown[]).map(decodeRow);
 }
 
 /** `forward-start` / `forward-stop` 的成品：`{id}`。严格收。 */
 export function decodeId(v: unknown): string {
-  if (!isObj(v) || !sameKeys(v, ["id"]) || typeof v.id !== "string") bad();
+  if (!isObj(v) || !exactKeys(v, ["id"]) || typeof v.id !== "string") bad();
   return v.id as string;
 }
 

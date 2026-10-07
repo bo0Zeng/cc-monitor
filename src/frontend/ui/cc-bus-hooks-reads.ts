@@ -9,6 +9,7 @@ import type { Origin } from "./ipc/origin";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
 import { copyText } from "./copy-table";
+import { exactKeys, isObj } from "./ipc/decode";
 
 export type HookState =
   | { kind: "not-installed" }
@@ -33,10 +34,9 @@ export function decodeHooksReport(v: unknown): HooksReport {
     throw new ReplyUnreadable(`hooks-diag reply shape mismatch: ${what}`);
   };
   const obj = (x: unknown, what: string, keys: string[]): Record<string, unknown> => {
-    if (x === null || typeof x !== "object" || Array.isArray(x)) return bad(`${what} is not an object`);
-    const o = x as Record<string, unknown>;
-    if (Object.keys(o).sort().join(",") !== [...keys].sort().join(",")) return bad(`${what} has keys ${Object.keys(o).sort().join(",")}`);
-    return o;
+    if (!isObj(x)) return bad(`${what} is not an object`);
+    if (!exactKeys(x, keys)) return bad(`${what} has keys ${Object.keys(x).join(",")}`);
+    return x;
   };
   const str = (x: unknown, what: string): string => (typeof x === "string" ? x : bad(`${what} is not a string`));
   const state = (x: unknown, what: string): HookState => {

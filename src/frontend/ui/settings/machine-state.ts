@@ -11,6 +11,7 @@ import { button } from "../kit/button";
 import { icon } from "../kit/icon";
 import { spinner } from "../kit/progress";
 import { copyText } from "../copy-table";
+import { exactKeys, isObj } from "../ipc/decode";
 
 export type { MachineState, MachineFix };
 
@@ -35,10 +36,8 @@ const strOrNull = (v: unknown): v is string | null => v === null || (typeof v ==
 
 /** 严格收：键集恰好那八格、每格取值在闭集里；收不下 ⇒ `null`（那一行照「没问到」画，不替后端编一态）。 */
 export function decodeMachineState(raw: unknown): MachineState | null {
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
-  const v = raw as Record<string, unknown>;
-  const keys = Object.keys(v).sort();
-  if (keys.length !== KEYS.length || keys.some((k, i) => k !== KEYS[i])) return null;
+  if (!isObj(raw) || !exactKeys(raw, KEYS)) return null;
+  const v = raw;
   if (!KINDS.includes(v.state as MachineStateKind)) return null;
   if (!strOrNull(v.reason) || !strOrNull(v.stage) || !strOrNull(v.version) || !strOrNull(v.os) || !strOrNull(v.seenHostKey)) return null;
   if (v.versionRelation !== null && !RELATIONS.includes(v.versionRelation as VersionRelation)) return null;

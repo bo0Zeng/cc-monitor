@@ -145,10 +145,10 @@ fn seqs_of(replay: &EventReplay, sid: &str) -> Vec<u64> {
     let mut v: Vec<u64> = replay
         .inner
         .lock()
-        .history
+        .tails
         .iter()
-        .filter(|p| p.session_id == sid)
-        .map(|p| p.seq)
+        .filter(|(k, _)| k.1 == sid)
+        .flat_map(|(_, t)| t.lines.iter().map(|p| p.seq))
         .collect();
     v.sort_unstable();
     v
@@ -173,6 +173,7 @@ fn every_session_is_trimmed_back_to_keep_after_the_slack() {
             history_len: REPLAY_TAIL_KEEP,
             sessions: 1,
             trimmed_total: (TRIM_SLACK + 1) as u64,
+            held_bytes: replay.inner.lock().held_bytes,
         }
     );
 }
@@ -214,6 +215,105 @@ fn the_highest_seqs_are_kept_even_when_the_tail_arrived_first() {
     // 最低留存之上的新行照进（实时追加）
     push_and_trim(&mut replay.inner.lock(), &[payload("s", n)]);
     assert_eq!(seqs_of(&replay, "s").last().copied(), Some(n as u64));
+}
+
+/// 一行带 `n` 字节正文、记在 `origin` 名下（`None` ＝ 本机）。
+fn sized(origin: Option<&str>, sid: &str, idx: usize, n: usize) -> JsonlLinePayload {
+    let mut p = payload(sid, idx);
+    p.origin = origin.map(str::to_string);
+    p.message =
+        crate::ui_contract::RecordBody::from_json(format!("\"{}\"", "x".repeat(n))).unwrap();
+    p
+}
+
+/// ★ C2：会话再多，总留存也不越过上限（满了整条丢最久没进过行的会话；丢掉的正文界面按行号取回）。
+#[test]
+fn total_retention_stays_under_the_cap_however_many_sessions() {
+    let replay = EventReplay::new();
+    replay.inner.lock().held_cap = 20_000;
+    for s in 0..200 {
+        let batch: Vec<_> = (0..10)
+            .map(|i| sized(None, &format!("s{s}"), i, 100))
+            .collect();
+        hold(&mut replay.inner.lock(), replay.book, &batch);
+        let inner = replay.inner.lock();
+        assert!(
+            inner.held_bytes <= 20_000,
+            "第 {s} 个会话之后总留存 {} 越过上限",
+            inner.held_bytes
+        );
+        let sum: usize = inner.tails.values().map(|t| t.bytes).sum();
+        assert_eq!(sum, inner.held_bytes, "总账与各条之和对不上");
+    }
+    let st = replay.stats();
+    assert!(
+        st.sessions < 200 && st.sessions > 0,
+        "该丢的没丢 / 丢光了：{st:?}"
+    );
+    assert!(!seqs_of(&replay, "s199").is_empty(), "刚进过行的那条被丢了");
+    assert!(seqs_of(&replay, "s0").is_empty(), "最久没进过行的那条还在");
+}
+
+/// C2：满了先丢已经不活的会话（成品缓存说已结束 / 可重连），活的哪怕更久没进过行也后丢。
+#[test]
+fn when_full_sessions_that_are_not_live_go_first() {
+    use crate::session_book::{Fate, In, LiveMeta};
+    let book: &'static parking_lot::RwLock<crate::session_book::Book> =
+        Box::leak(Box::new(parking_lot::RwLock::new(Default::default())));
+    let mut r = EventReplay::new();
+    r.book = book;
+    r.inner.lock().held_cap = 3_000;
+    book.write().step(In::Live {
+        origin: "<local>".into(),
+        sid: "live".into(),
+        meta: LiveMeta::default(),
+    });
+    book.write().step(In::Left {
+        origin: "<local>".into(),
+        sid: "done".into(),
+        fate: Fate::Ended,
+    });
+    let rows = |sid: &str| -> Vec<JsonlLinePayload> {
+        (0..10).map(|i| sized(None, sid, i, 100)).collect()
+    };
+    hold(&mut r.inner.lock(), r.book, &rows("live"));
+    hold(&mut r.inner.lock(), r.book, &rows("done"));
+    hold(&mut r.inner.lock(), r.book, &rows("new"));
+    assert!(seqs_of(&r, "done").is_empty(), "已结束的那条该先丢");
+    assert_eq!(seqs_of(&r, "live").len(), 10, "活的那条不该先丢");
+    assert_eq!(seqs_of(&r, "new").len(), 10);
+}
+
+/// C2：同一个 sid 在两台机器上各是各的留存：一台修剪、从头重读都不碰另一台。
+#[tokio::test]
+async fn the_same_sid_on_two_machines_is_held_apart() {
+    let replay = EventReplay::new();
+    let local: Vec<_> = (0..5).map(|i| sized(None, "s", i, 10)).collect();
+    let pi: Vec<_> = (0..REPLAY_TAIL_KEEP + TRIM_SLACK + 1)
+        .map(|i| sized(Some("pi"), "s", i, 10))
+        .collect();
+    push_and_trim(&mut replay.inner.lock(), &local);
+    push_and_trim(&mut replay.inner.lock(), &pi);
+    let held = |origin: &str| {
+        replay
+            .inner
+            .lock()
+            .tails
+            .get(&(origin.to_string(), "s".to_string()))
+            .map(|t| t.lines.len())
+    };
+    assert_eq!(held("<local>"), Some(5), "那台的修剪碰了本机这条");
+    assert_eq!(held("pi"), Some(REPLAY_TAIL_KEEP));
+    replay
+        .on_session_notice(crate::ui_contract::SessionFileNoticePayload {
+            session_id: "s".into(),
+            origin: "pi".into(),
+            path: "/p".into(),
+            change: "truncated".into(),
+        })
+        .await;
+    assert_eq!(held("pi"), None, "那台从头重读，旧的一代该丢");
+    assert_eq!(held("<local>"), Some(5), "那台从头重读碰了本机这条");
 }
 
 /// R1：`forget` 连同那个会话的账一起抹掉（之后同名会话从头计数、没有最低留存）。

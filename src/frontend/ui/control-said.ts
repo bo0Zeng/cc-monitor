@@ -38,16 +38,6 @@ export function saidOfControl(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-export const isObj = (v: unknown): v is Record<string, unknown> =>
-  v !== null && typeof v === "object" && !Array.isArray(v);
-
-/** 成品的键集合恰好是 `keys`（多一格 / 缺一格都不收）。 */
-export function exactKeys(v: Record<string, unknown>, keys: readonly string[]): boolean {
-  const got = Object.keys(v).sort();
-  const want = [...keys].sort();
-  return got.length === want.length && got.every((k, i) => k === want[i]);
-}
-
 /** 应答形状不对 ⇒ 抛（哪一格不对只进 `detail`；那句话按码取，不猜版本）。 */
 export function unreadable(origin: Origin, op: string, what: string): ControlError {
   return new ControlError(peerVersionSaid("reply_unreadable", origin), `${op} reply ${what}`);
@@ -132,4 +122,22 @@ export function unavailableReason(code: string, machine: string): string {
       // 认不出的码：只说做不到（码不上屏）。
       return copyText("control.unavailable.other", { machine });
   }
+}
+
+/**
+ * 拒绝码 ⇒ 一句话，按表：表里认得的码说那一句（各行自己调 `copyText`，键与参数照旧字面写）；认不出的码有原话 ⇒ `rest.other`，
+ * 原话是空白 ⇒ `rest.none`。新增一个拒绝码只加一行表。
+ */
+export function refusalsByTable(
+  table: Readonly<Record<string, (detail: string) => string>>,
+  rest: { other: (detail: string) => string; none: () => string },
+): Refusals {
+  return {
+    byCode(code, detail) {
+      const say = Object.prototype.hasOwnProperty.call(table, code) ? table[code] : undefined;
+      if (say !== undefined) return say(detail);
+      return detail.trim() !== "" ? rest.other(detail) : rest.none();
+    },
+    noReason: rest.none,
+  };
 }

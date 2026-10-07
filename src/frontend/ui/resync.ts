@@ -7,7 +7,8 @@
  * tab 栏「重新读取」（有打开 tab 的每台各一次整机，`resyncMachines`）。
  */
 import { copyText } from "./copy-table";
-import { ControlError, exactKeys, isObj, settle, unreadable, type Refusals } from "./control-said";
+import { ControlError, settle, unreadable, type Refusals } from "./control-said";
+import { exactKeys, isObj } from "./ipc/decode";
 import { toast } from "./kit/toast";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, refusalOf } from "./ipc/chan-caller";

@@ -36,14 +36,14 @@
 import { copyText } from "./copy-table";
 import {
   ControlError,
-  exactKeys,
-  isObj,
   machineName,
+  refusalsByTable,
   saidOfControl,
   settle,
   unreadable,
   type Refusals,
 } from "./control-said";
+import { exactKeys, isObj } from "./ipc/decode";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, provablyNotSent } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
@@ -60,29 +60,21 @@ const CONTROL_BUDGET_MS = 10_000;
 
 /** 结束会话的拒绝码 ⇒ 一句话。身份门 / 窗口门两档说清拦下的原因（它们的下一步与「会话不在」完全不同）。 */
 export function killRefusals(target: string): Refusals {
-  return {
-    byCode(code, detail) {
-      switch (code) {
-        case "invalid_args":
-          return copyText("tmuxControl.kill.badName", { target, detail });
-        case "no_tmux":
-          return copyText("tmuxControl.kill.noTmux", { target, detail });
-        case "no_such_session":
-          return copyText("tmuxControl.kill.noSuchSession", { target, detail });
-        case "wrong_owner":
-          return copyText("tmuxControl.kill.wrongOwner", { target, detail });
-        case "too_many_windows":
-          return copyText("tmuxControl.kill.tooManyWindows", { target, detail });
-        case "kill_failed":
-          return copyText("tmuxControl.kill.failed", { target, detail });
-        case "child_timed_out":
-          return copyText("tmuxControl.kill.childTimedOut", { target, detail });
-        default:
-          return detail.trim() !== "" ? copyText("tmuxControl.kill.otherCode", { target, detail }) : copyText("tmuxControl.kill.noReason", { target });
-      }
+  return refusalsByTable(
+    {
+      invalid_args: (detail) => copyText("tmuxControl.kill.badName", { target, detail }),
+      no_tmux: (detail) => copyText("tmuxControl.kill.noTmux", { target, detail }),
+      no_such_session: (detail) => copyText("tmuxControl.kill.noSuchSession", { target, detail }),
+      wrong_owner: (detail) => copyText("tmuxControl.kill.wrongOwner", { target, detail }),
+      too_many_windows: (detail) => copyText("tmuxControl.kill.tooManyWindows", { target, detail }),
+      kill_failed: (detail) => copyText("tmuxControl.kill.failed", { target, detail }),
+      child_timed_out: (detail) => copyText("tmuxControl.kill.childTimedOut", { target, detail }),
     },
-    noReason: () => copyText("tmuxControl.kill.noReason", { target }),
-  };
+    {
+      other: (detail) => copyText("tmuxControl.kill.otherCode", { target, detail }),
+      none: () => copyText("tmuxControl.kill.noReason", { target }),
+    },
+  );
 }
 
 /**
@@ -135,29 +127,21 @@ export async function killSession(origin: Origin, target: string, sid?: string):
 
 /** `launch` 那条（发按键 / 就地恢复）的拒绝码 ⇒ 一句话。`wrong_owner` 来自后端的身份门（§34 Gate 2；后端登记表与金样已补上它）。 */
 function keysRefusals(target: string): Refusals {
-  return {
-    byCode(code, detail) {
-      switch (code) {
-        case "invalid_args":
-          return copyText("tmuxControl.keys.badRequest", { target, detail });
-        case "no_tmux":
-          return copyText("tmuxControl.keys.noTmux", { target, detail });
-        case "no_such_session":
-          return copyText("tmuxControl.keys.noSuchSession", { target, detail });
-        case "create_failed":
-          return copyText("tmuxControl.keys.createFailed", { target, detail });
-        case "typed_unconfirmed":
-          return copyText("tmuxControl.keys.unconfirmed", { target, detail });
-        case "wrong_owner":
-          return copyText("tmuxControl.keys.wrongOwner", { target, detail });
-        case "child_timed_out":
-          return copyText("tmuxControl.keys.childTimedOut", { target, detail });
-        default:
-          return detail.trim() !== "" ? copyText("tmuxControl.keys.otherCode", { target, detail }) : copyText("tmuxControl.keys.noReason", { target });
-      }
+  return refusalsByTable(
+    {
+      invalid_args: (detail) => copyText("tmuxControl.keys.badRequest", { target, detail }),
+      no_tmux: (detail) => copyText("tmuxControl.keys.noTmux", { target, detail }),
+      no_such_session: (detail) => copyText("tmuxControl.keys.noSuchSession", { target, detail }),
+      create_failed: (detail) => copyText("tmuxControl.keys.createFailed", { target, detail }),
+      typed_unconfirmed: (detail) => copyText("tmuxControl.keys.unconfirmed", { target, detail }),
+      wrong_owner: (detail) => copyText("tmuxControl.keys.wrongOwner", { target, detail }),
+      child_timed_out: (detail) => copyText("tmuxControl.keys.childTimedOut", { target, detail }),
     },
-    noReason: () => copyText("tmuxControl.keys.noReason", { target }),
-  };
+    {
+      other: (detail) => copyText("tmuxControl.keys.otherCode", { target, detail }),
+      none: () => copyText("tmuxControl.keys.noReason", { target }),
+    },
+  );
 }
 
 /**

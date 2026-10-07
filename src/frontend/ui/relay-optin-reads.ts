@@ -7,6 +7,7 @@
 import type { Origin } from "./ipc/origin";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
+import { exactKeys, isObj } from "./ipc/decode";
 
 /** 五态：已装 · 贴的过期了 · 没装 · 设了别的地址 · 读不了（不当没装）。 */
 export type RelayOptinState = "installed" | "stale" | "absent" | "other" | "unreadable";
@@ -30,10 +31,9 @@ export function decodeRelayOptin(v: unknown): RelayOptinReport {
   const bad = (what: string): never => {
     throw new ReplyUnreadable(`relay-optin reply shape mismatch: ${what}`);
   };
-  if (v === null || typeof v !== "object" || Array.isArray(v)) return bad("reply is not an object");
-  const o = v as Record<string, unknown>;
-  const keys = ["listening", "missing", "note", "snippet", "source", "state"];
-  if (Object.keys(o).sort().join(",") !== keys.join(",")) return bad(`reply has keys ${Object.keys(o).sort().join(",")}`);
+  if (!isObj(v)) return bad("reply is not an object");
+  const o = v;
+  if (!exactKeys(o, ["listening", "missing", "note", "snippet", "source", "state"])) return bad(`reply has keys ${Object.keys(o).join(",")}`);
   const str = (k: string): string => (typeof o[k] === "string" ? (o[k] as string) : bad(`${k} is not a string`));
   const state = STATES.find((s) => s === o.state) ?? bad(`state is ${JSON.stringify(o.state)}`);
   if (typeof o.listening !== "boolean") return bad("listening is not a boolean");

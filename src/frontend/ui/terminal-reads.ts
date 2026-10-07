@@ -10,7 +10,8 @@
  * 期限：抓一屏 20 秒，送字送键 20 秒，名单 15 秒（远端没连着还要握手）。
  */
 import { copyText } from "./copy-table";
-import { isObj, settle, unreadable, type Refusals } from "./control-said";
+import { refusalsByTable, settle, unreadable, type Refusals } from "./control-said";
+import { isObj } from "./ipc/decode";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
@@ -50,36 +51,24 @@ export type TerminalTarget = { terminal: string } | { sid: string };
 
 /** 抓屏的拒绝码 ⇒ 一句话（`target` 是给人看的那个名字）。认不出的码原样带出去。 */
 function previewRefusals(target: string): Refusals {
-  return {
-    byCode(code, detail) {
-      switch (code) {
-        case "no_tmux":
-          return copyText("terminalReads.preview.noTmux", { target, detail });
-        case "no_server":
-          return copyText("terminalReads.preview.noServer", { target, detail });
-        case "no_such_session":
-          return copyText("terminalReads.preview.noSuchSession", { target, detail });
-        case "capture_failed":
-          return copyText("terminalReads.preview.failed", { target, detail });
-        case "bad_target":
-        case "invalid_args":
-          return copyText("terminalReads.preview.badTarget", { target, detail });
-        case "not_known":
-          return copyText("terminalReads.preview.notKnown", { target, detail });
-        case "ambiguous":
-          return copyText("terminalReads.preview.ambiguous", { target, detail });
-        case "unobservable":
-          return copyText("terminalReads.preview.unobservable", { target, detail });
-        case "child_timed_out":
-          return copyText("terminalReads.preview.childTimedOut", { target, detail });
-        default:
-          return detail.trim() !== ""
-            ? copyText("terminalReads.preview.otherCode", { target, detail })
-            : copyText("terminalReads.preview.noReason", { target });
-      }
+  return refusalsByTable(
+    {
+      no_tmux: (detail) => copyText("terminalReads.preview.noTmux", { target, detail }),
+      no_server: (detail) => copyText("terminalReads.preview.noServer", { target, detail }),
+      no_such_session: (detail) => copyText("terminalReads.preview.noSuchSession", { target, detail }),
+      capture_failed: (detail) => copyText("terminalReads.preview.failed", { target, detail }),
+      bad_target: (detail) => copyText("terminalReads.preview.badTarget", { target, detail }),
+      invalid_args: (detail) => copyText("terminalReads.preview.badTarget", { target, detail }),
+      not_known: (detail) => copyText("terminalReads.preview.notKnown", { target, detail }),
+      ambiguous: (detail) => copyText("terminalReads.preview.ambiguous", { target, detail }),
+      unobservable: (detail) => copyText("terminalReads.preview.unobservable", { target, detail }),
+      child_timed_out: (detail) => copyText("terminalReads.preview.childTimedOut", { target, detail }),
     },
-    noReason: () => copyText("terminalReads.preview.noReason", { target }),
-  };
+    {
+      other: (detail) => copyText("terminalReads.preview.otherCode", { target, detail }),
+      none: () => copyText("terminalReads.preview.noReason", { target }),
+    },
+  );
 }
 
 /** `terminal-preview`（`color: false`）的成品 ⇒ 那一屏的文本。`lines` 缺 / 某行没有字符串 `text` ⇒ 抛。空屏是合法的成功。 */

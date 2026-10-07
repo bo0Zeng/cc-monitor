@@ -5,7 +5,8 @@
 import { chan, ChanError } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, refusalOf } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
-import { exactKeys, isObj, saidOfTransport } from "./control-said";
+import { saidOfTransport } from "./control-said";
+import { exactKeys, isObj } from "./ipc/decode";
 import type { ForkLaunch } from "./session-writes";
 import { decodeForkLaunch } from "./session-writes";
 import type { SessionNew } from "./generated/SessionNew";

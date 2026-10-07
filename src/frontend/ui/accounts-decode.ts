@@ -15,14 +15,8 @@ import { copyText } from "./copy-table";
 import { ReplyUnreadable } from "./ipc/chan-caller";
 // 账号种类的取值集只有一份（`acct_core::AUTH_KINDS`），这里读它现生成的那份，不手抄。
 import { AUTH_KINDS } from "./generated/judgment-rules";
+import { exactKeys, isObj } from "./ipc/decode";
 
-const isObj = (v: unknown): v is Record<string, unknown> =>
-  v !== null && typeof v === "object" && !Array.isArray(v);
-const sameKeys = (o: Record<string, unknown>, want: readonly string[]): boolean => {
-  const got = Object.keys(o).sort();
-  const w = [...want].sort();
-  return got.length === w.length && got.every((k, i) => k === w[i]);
-};
 const nullableStr = (v: unknown): v is string | null => v === null || typeof v === "string";
 
 /**
@@ -39,11 +33,11 @@ export function decodeAccountsList(v: unknown): {
   const bad = (what: string): never => {
     throw new ReplyUnreadable(`accounts-list reply: ${what}`);
   };
-  if (!isObj(v) || !sameKeys(v, ["meta", "accounts", "notice"])) return bad(copyText("accountsDecode.where.top"));
+  if (!isObj(v) || !exactKeys(v, ["meta", "accounts", "notice"])) return bad(copyText("accountsDecode.where.top"));
   const m = v.meta;
   if (
     !isObj(m) ||
-    !sameKeys(m, ["enabled", "acctsDir", "manifestPath", "updatedAt", "sharedStore", "count", "error", "unsupported", "nextDefault", "home"]) ||
+    !exactKeys(m, ["enabled", "acctsDir", "manifestPath", "updatedAt", "sharedStore", "count", "error", "unsupported", "nextDefault", "home"]) ||
     typeof m.enabled !== "boolean" ||
     typeof m.acctsDir !== "string" ||
     typeof m.manifestPath !== "string" ||
@@ -62,7 +56,7 @@ export function decodeAccountsList(v: unknown): {
   const accounts: Account[] = v.accounts.map((a, i) => {
     if (
       !isObj(a) ||
-      !sameKeys(a, [
+      !exactKeys(a, [
         "name",
         "email",
         "configDir",
@@ -122,7 +116,7 @@ export function decodeAccountsList(v: unknown): {
 export function decodeTrust(v: unknown): { trusted: boolean; known: boolean } {
   if (
     !isObj(v) ||
-    !sameKeys(v, ["trusted", "known"]) ||
+    !exactKeys(v, ["trusted", "known"]) ||
     typeof v.trusted !== "boolean" ||
     typeof v.known !== "boolean"
   ) {

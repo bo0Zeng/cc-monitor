@@ -10,6 +10,7 @@ import type { Rotation } from "./generated/Rotation";
 import type { SessionRotationState } from "./generated/SessionRotationState";
 import type { RestartOutcome } from "./generated/RestartOutcome";
 import type { SwitchOutcome } from "./generated/SwitchOutcome";
+import { exactKeys } from "./ipc/decode";
 
 /** 读一份额度账 / 轮换（读盘 ＋ 回程）。 */
 const READ_BUDGET_MS = 15_000;
@@ -100,11 +101,10 @@ export function decodeRestartOutcomes(v: unknown): Record<string, RestartOutcome
   const ss = obj(obj(v, "reply").sessions, "sessions");
   for (const [sid, s] of Object.entries(ss)) {
     const x = obj(s, `sessions.${sid}`);
-    const keys = Object.keys(x).sort().join(",");
     const ok =
       x.state === "done"
-        ? keys === "state,terminal" && typeof x.terminal === "string"
-        : x.state === "failed" && keys === "code,old,state" && typeof x.code === "string" && (x.old === "kept" || x.old === "ended");
+        ? exactKeys(x, ["state", "terminal"]) && typeof x.terminal === "string"
+        : x.state === "failed" && exactKeys(x, ["state", "code", "old"]) && typeof x.code === "string" && (x.old === "kept" || x.old === "ended");
     if (!ok) bad(`sessions.${sid}`);
   }
   return ss as Record<string, RestartOutcome>;

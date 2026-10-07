@@ -22,6 +22,7 @@ import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./i
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
 import type { JsonlRecord } from "./generated/JsonlRecord";
+import { exactKeys, isObj } from "./ipc/decode";
 
 /** 一个子运行记录里的一条：渲染模型里的样子 ＋ 它的对账键（撤那个子运行的活卡用）。 */
 export interface RunRecordRow {
@@ -65,16 +66,9 @@ const PIECE_BUDGET_MS = 120_000;
 /** 漂移账：一问（30 秒，同会话读面那几问）。 */
 const DRIFT_BUDGET_MS = 30_000;
 
-const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
 const isStr = (v: unknown): v is string => typeof v === "string";
 
-/** 键集合恰好是 `keys`（多一格 / 缺一格都不收）。 */
-const exactKeys = (v: Record<string, unknown>, keys: readonly string[]): boolean => {
-  const got = Object.keys(v).sort();
-  const want = [...keys].sort();
-  return got.length === want.length && got.every((k, i) => k === want[i]);
-};
 
 /** 应答形状不对：哪条命令只进细目（给人看的那句由 [`answered`] 按码取）。 */
 function badShape(op: string): never {

@@ -39,7 +39,8 @@
 import { copyText } from "./copy-table";
 import { arrivedBody, expectArrival } from "./launch-arrival";
 import { DEFAULT_AGENT } from "./agent-profile";
-import { ControlError, exactKeys, isObj, machineName, settle, unreadable, type Refusals } from "./control-said";
+import { ControlError, machineName, refusalsByTable, settle, unreadable, type Refusals } from "./control-said";
+import { exactKeys, isObj } from "./ipc/decode";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
@@ -89,20 +90,16 @@ export function decodeAgents(origin: Origin, v: unknown): BusAgent[] {
 }
 
 function listRefusals(id: string): Refusals {
-  return {
-    byCode(code, detail) {
-      switch (code) {
-        case "not_installed":
-          return copyText("ccBus.online.notInstalled", { id, detail });
-        case "timed_out":
-          return copyText("ccBus.online.timedOut", { id, detail });
-        default:
-          // 认不出的码：只说那台的原话（码不上屏，留在诊断里）；原话是空的 ⇒ 说没给原因。
-          return detail.trim() !== "" ? copyText("ccBus.online.otherCode", { id, detail }) : copyText("ccBus.online.noReason", { id });
-      }
+  return refusalsByTable(
+    {
+      not_installed: (detail) => copyText("ccBus.online.notInstalled", { id, detail }),
+      timed_out: (detail) => copyText("ccBus.online.timedOut", { id, detail }),
     },
-    noReason: () => copyText("ccBus.online.noReason", { id }),
-  };
+    {
+      other: (detail) => copyText("ccBus.online.otherCode", { id, detail }),
+      none: () => copyText("ccBus.online.noReason", { id }),
+    },
+  );
 }
 
 /**
@@ -124,27 +121,20 @@ export async function agentOnline(origin: Origin, id: string): Promise<boolean> 
 // ─── 发消息（`bus-send`）───
 
 function sendRefusals(id: string): Refusals {
-  return {
-    byCode(code, detail) {
-      switch (code) {
-        case "invalid_args":
-          return copyText("ccBus.send.invalidArgs", { id, detail });
-        case "bad_id":
-          return copyText("ccBus.send.badId", { detail });
-        case "not_installed":
-          return copyText("ccBus.send.notInstalled", { id, detail });
-        case "rejected":
-          return copyText("ccBus.send.rejected", { id, detail });
-        case "timed_out":
-          return copyText("ccBus.send.timedOut", { id, detail });
-        case "too_long":
-          return copyText("ccBus.send.tooLong", { id, detail });
-        default:
-          return detail.trim() !== "" ? copyText("ccBus.send.otherCode", { id, detail }) : copyText("ccBus.send.noReason", { id });
-      }
+  return refusalsByTable(
+    {
+      invalid_args: (detail) => copyText("ccBus.send.invalidArgs", { id, detail }),
+      bad_id: (detail) => copyText("ccBus.send.badId", { detail }),
+      not_installed: (detail) => copyText("ccBus.send.notInstalled", { id, detail }),
+      rejected: (detail) => copyText("ccBus.send.rejected", { id, detail }),
+      timed_out: (detail) => copyText("ccBus.send.timedOut", { id, detail }),
+      too_long: (detail) => copyText("ccBus.send.tooLong", { id, detail }),
     },
-    noReason: () => copyText("ccBus.send.noReason", { id }),
-  };
+    {
+      other: (detail) => copyText("ccBus.send.otherCode", { id, detail }),
+      none: () => copyText("ccBus.send.noReason", { id }),
+    },
+  );
 }
 
 /**
@@ -180,23 +170,18 @@ export async function sendMessage(origin: Origin, id: string, text: string): Pro
 // ─── 收掉（`bus-kill`）───
 
 function killRefusals(id: string): Refusals {
-  return {
-    byCode(code, detail) {
-      switch (code) {
-        case "invalid_args":
-          return copyText("ccBus.kill.invalidArgs", { id, detail });
-        case "bad_id":
-          return copyText("ccBus.kill.badId", { detail });
-        case "not_installed":
-          return copyText("ccBus.kill.notInstalled", { id, detail });
-        case "timed_out":
-          return copyText("ccBus.kill.timedOut", { id, detail });
-        default:
-          return detail.trim() !== "" ? copyText("ccBus.kill.otherCode", { id, detail }) : copyText("ccBus.kill.noReason", { id });
-      }
+  return refusalsByTable(
+    {
+      invalid_args: (detail) => copyText("ccBus.kill.invalidArgs", { id, detail }),
+      bad_id: (detail) => copyText("ccBus.kill.badId", { detail }),
+      not_installed: (detail) => copyText("ccBus.kill.notInstalled", { id, detail }),
+      timed_out: (detail) => copyText("ccBus.kill.timedOut", { id, detail }),
     },
-    noReason: () => copyText("ccBus.kill.noReason", { id }),
-  };
+    {
+      other: (detail) => copyText("ccBus.kill.otherCode", { id, detail }),
+      none: () => copyText("ccBus.kill.noReason", { id }),
+    },
+  );
 }
 
 /**
@@ -241,23 +226,18 @@ export function checkSpawnShape(req: SpawnRequest): void {
 }
 
 function spawnRefusals(): Refusals {
-  return {
-    byCode(code, detail) {
-      switch (code) {
-        case "invalid_args":
-          return copyText("ccBus.spawn.invalidArgs", { detail });
-        case "bad_id":
-          return copyText("ccBus.spawn.badId", { detail });
-        case "not_installed":
-          return copyText("ccBus.spawn.notInstalled", { detail });
-        case "timed_out":
-          return copyText("ccBus.spawn.timedOut", { detail });
-        default:
-          return detail.trim() !== "" ? copyText("ccBus.spawn.otherCode", { detail }) : copyText("ccBus.spawn.noReason");
-      }
+  return refusalsByTable(
+    {
+      invalid_args: (detail) => copyText("ccBus.spawn.invalidArgs", { detail }),
+      bad_id: (detail) => copyText("ccBus.spawn.badId", { detail }),
+      not_installed: (detail) => copyText("ccBus.spawn.notInstalled", { detail }),
+      timed_out: (detail) => copyText("ccBus.spawn.timedOut", { detail }),
     },
-    noReason: () => copyText("ccBus.spawn.noReason"),
-  };
+    {
+      other: (detail) => copyText("ccBus.spawn.otherCode", { detail }),
+      none: () => copyText("ccBus.spawn.noReason"),
+    },
+  );
 }
 
 /**
@@ -304,24 +284,19 @@ export async function spawnAgent(origin: Origin, req: SpawnRequest): Promise<str
 // ─── 广播（`bus-broadcast`）───
 
 function broadcastRefusals(): Refusals {
-  return {
-    byCode(code, detail) {
-      switch (code) {
-        case "invalid_args":
-          return copyText("ccBus.broadcast.invalidArgs", { detail });
-        case "not_installed":
-          return copyText("ccBus.broadcast.notInstalled", { detail });
-        case "timed_out":
-          return copyText("ccBus.broadcast.timedOut", { detail });
-        // 给的 `from` 形状不对（后端交给 `cc-send` 之前先判，一个人都没发）；后端原话说是哪个值。
-        case "bad_id":
-          return copyText("ccBus.broadcast.badId", { detail });
-        default:
-          return detail.trim() !== "" ? copyText("ccBus.broadcast.otherCode", { detail }) : copyText("ccBus.broadcast.noReason");
-      }
+  return refusalsByTable(
+    {
+      invalid_args: (detail) => copyText("ccBus.broadcast.invalidArgs", { detail }),
+      not_installed: (detail) => copyText("ccBus.broadcast.notInstalled", { detail }),
+      timed_out: (detail) => copyText("ccBus.broadcast.timedOut", { detail }),
+      // 给的 `from` 形状不对（后端交给 `cc-send` 之前先判，一个人都没发）；后端原话说是哪个值。
+      bad_id: (detail) => copyText("ccBus.broadcast.badId", { detail }),
     },
-    noReason: () => copyText("ccBus.broadcast.noReason"),
-  };
+    {
+      other: (detail) => copyText("ccBus.broadcast.otherCode", { detail }),
+      none: () => copyText("ccBus.broadcast.noReason"),
+    },
+  );
 }
 
 /**
@@ -448,21 +423,17 @@ export function decodeInbox(origin: Origin, v: unknown): BusInbox {
 }
 
 function readRefusals(): Refusals {
-  return {
-    byCode(code, detail) {
-      switch (code) {
-        case "not_installed":
-          return copyText("ccBus.read.notInstalled", { detail });
-        case "timed_out":
-          return copyText("ccBus.read.timedOut", { detail });
-        case "bad_id":
-          return copyText("ccBus.read.badId", { detail });
-        default:
-          return detail.trim() !== "" ? copyText("ccBus.read.otherCode", { detail }) : copyText("ccBus.read.noReason");
-      }
+  return refusalsByTable(
+    {
+      not_installed: (detail) => copyText("ccBus.read.notInstalled", { detail }),
+      timed_out: (detail) => copyText("ccBus.read.timedOut", { detail }),
+      bad_id: (detail) => copyText("ccBus.read.badId", { detail }),
     },
-    noReason: () => copyText("ccBus.read.noReason"),
-  };
+    {
+      other: (detail) => copyText("ccBus.read.otherCode", { detail }),
+      none: () => copyText("ccBus.read.noReason"),
+    },
+  );
 }
 
 /** 读 `origin` 那台的名册 ＋ 派生台账（登记时间 · 派生时间 · 坏行数）。失败 ⇒ 抛 [`ControlError`]（读不到 ≠ 一个都没有）。 */

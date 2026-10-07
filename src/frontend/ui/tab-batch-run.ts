@@ -8,7 +8,8 @@
  */
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody } from "./ipc/chan-caller";
-import { exactKeys, isObj, machineName, saidOfControl, settle, unavailableSaid, unreadable, type Refusals } from "./control-said";
+import { machineName, saidOfControl, settle, unavailableSaid, unreadable, type Refusals } from "./control-said";
+import { exactKeys, isObj } from "./ipc/decode";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { killRefusals } from "./tmux-control";

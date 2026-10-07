@@ -11,6 +11,7 @@
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { isObj } from "./ipc/decode";
 
 // ─── 成品的形状 ───
 
@@ -26,8 +27,6 @@ const ANNOTATION_BUDGET_MS = 10_000;
 
 // ─── 收货验形 ───
 
-const isObj = (v: unknown): v is Record<string, unknown> =>
-  v !== null && typeof v === "object" && !Array.isArray(v);
 const isStr = (v: unknown): v is string => typeof v === "string";
 const isNum = (v: unknown): v is number =>
   typeof v === "number" && Number.isFinite(v);

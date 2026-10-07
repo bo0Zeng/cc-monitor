@@ -13,6 +13,7 @@
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidFrom, unreadableFrom } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./backend-policy";
+import { exactKeys, isObj } from "./ipc/decode";
 
 /** 一个别名解析出的有效连接参数。 */
 export interface ResolvedHost {
@@ -49,13 +50,6 @@ export interface ImportGroup {
   inList: boolean;
 }
 
-type Obj = Record<string, unknown>;
-const isObj = (v: unknown): v is Obj => v !== null && typeof v === "object" && !Array.isArray(v);
-const sameKeys = (o: Obj, want: readonly string[]): boolean => {
-  const got = Object.keys(o).sort();
-  const w = [...want].sort();
-  return got.length === w.length && got.every((k, i) => k === w[i]);
-};
 const nullableStr = (v: unknown): v is string | null => v === null || typeof v === "string";
 const isPort = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 65535;
 const strs = (v: unknown): v is string[] => Array.isArray(v) && v.every((s) => typeof s === "string");
@@ -66,7 +60,7 @@ function bad(): never {
 
 /** `ssh-config-aliases` 的成品。严格收。 */
 export function decodeAliases(v: unknown): string[] {
-  if (!isObj(v) || !sameKeys(v, ["aliases"]) || !strs(v.aliases)) bad();
+  if (!isObj(v) || !exactKeys(v, ["aliases"]) || !strs(v.aliases)) bad();
   return v.aliases as string[];
 }
 
@@ -74,7 +68,7 @@ export function decodeAliases(v: unknown): string[] {
 export function decodeResolved(v: unknown): ResolvedHost {
   if (
     !isObj(v) ||
-    !sameKeys(v, ["host", "port", "user", "keyPath", "proxyJump"]) ||
+    !exactKeys(v, ["host", "port", "user", "keyPath", "proxyJump"]) ||
     typeof v.host !== "string" ||
     !isPort(v.port) ||
     typeof v.user !== "string" ||
@@ -89,7 +83,7 @@ export function decodeResolved(v: unknown): ResolvedHost {
 function decodeMember(v: unknown): ImportMember {
   if (
     !isObj(v) ||
-    !sameKeys(v, ["alias", "host", "port", "proxyJump"]) ||
+    !exactKeys(v, ["alias", "host", "port", "proxyJump"]) ||
     typeof v.alias !== "string" ||
     typeof v.host !== "string" ||
     !isPort(v.port) ||
@@ -103,7 +97,7 @@ function decodeMember(v: unknown): ImportMember {
 function decodeGroup(v: unknown): ImportGroup {
   if (
     !isObj(v) ||
-    !sameKeys(v, ["label", "host", "port", "user", "keyPath", "addresses", "jump", "members", "inList"]) ||
+    !exactKeys(v, ["label", "host", "port", "user", "keyPath", "addresses", "jump", "members", "inList"]) ||
     typeof v.inList !== "boolean" ||
     typeof v.label !== "string" ||
     typeof v.host !== "string" ||
@@ -131,7 +125,7 @@ function decodeGroup(v: unknown): ImportGroup {
 
 /** `ssh-config-import` 的成品。严格收。 */
 export function decodeImport(v: unknown): ImportGroup[] {
-  if (!isObj(v) || !sameKeys(v, ["groups"]) || !Array.isArray(v.groups)) bad();
+  if (!isObj(v) || !exactKeys(v, ["groups"]) || !Array.isArray(v.groups)) bad();
   return (v.groups as unknown[]).map(decodeGroup);
 }
 

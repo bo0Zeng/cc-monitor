@@ -33,6 +33,7 @@ import { budgetWithin, jsonBody, readJson, refusalOf, ReplyUnreadable, saidFrom 
 import type { Origin } from "./ipc/origin";
 import type { SkeletonFacts } from "./height-estimate";
 import { copyText } from "./copy-table";
+import { exactKeys, isObj } from "./ipc/decode";
 
 // ─── 成品的形状（后端 `read_face.rs` 那三条的应答；跨语言金样 `tests/__fixtures__/session-reads.golden.json`）───
 
@@ -216,7 +217,6 @@ const READ_BUDGET_MS = 30_000;
 
 // ─── 收货验形 ───
 
-const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
 const isStr = (v: unknown): v is string => typeof v === "string";
 const strOrNull = (x: unknown): x is string | null => x === null || isStr(x);
@@ -331,12 +331,6 @@ export function decodeIndex(v: unknown): { from: number; end: number; rows: Skel
   return { from: v.from, end: v.end, rows: v.rows as SkeletonFacts[] };
 }
 
-/** 键集合恰好是 `keys`（多一格 / 缺一格都不收）。 */
-const exactKeys = (v: Record<string, unknown>, keys: readonly string[]): boolean => {
-  const got = Object.keys(v).sort();
-  const want = [...keys].sort();
-  return got.length === want.length && got.every((k, i) => k === want[i]);
-};
 
 /**
  * `history-facts` 的成品 ⇒ [`SessionFacts`]。**每一层键集合恰好是后端出的那一形**（多一格 / 缺一格 / 类型不对 ⇒ 抛
@@ -539,7 +533,7 @@ export interface RecordProbe {
 
 /** `history-record` 的成品 ⇒ [`RecordProbe`]。两格缺一格 / 多一格 / 类型不对 ⇒ 抛 —— **绝不**把缺字段读成「不在」。 */
 export function decodeRecord(v: unknown): RecordProbe {
-  if (!isObj(v) || Object.keys(v).length !== 2 || typeof v.present !== "boolean" || !isStr(v.root)) {
+  if (!isObj(v) || !exactKeys(v, ["present", "root"]) || typeof v.present !== "boolean" || !isStr(v.root)) {
     throw new ShapeError("history-record", copyText("sessionReads.record.badShape"));
   }
   return { present: v.present, root: v.root };

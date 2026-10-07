@@ -378,6 +378,14 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     //    ⚠ 超限那一档走的是**后端回 `truncated: true` ＋ 窗口画一句话**
     //    （`shell.rs` 那一行橙字逐字「没看见的文件不代表它不在」）
     //    ⇒ 正是本表允许的「截断+说清」，而**不是**它明令排除的「静默截断」。
+    // 重放留存的总量（全部会话合起来的正文字节）。超了整条丢：先丢已经不活的会话、再丢最久没进过行的；
+    //   F5 之后界面按骨架 / 行号把那一段取回来（`event_replay·rs` 头注那张表）⇒ 不是静默丢，是「截断+说清」。
+    (
+        "src/frontend/shell/src/event_replay.rs",
+        "HELD_BYTES_CAP",
+        "monitor 重放留存里全部会话合起来的正文字节（单会话另有条数上界 `REPLAY_TAIL_KEEP` ＋ `TRIM_SLACK`）",
+        "截断+说清",
+    ),
     (
         "src/frontend/filewin/src/source.rs",
         "LS_LIMIT",
