@@ -549,6 +549,12 @@ pub enum Frame {
     /// 一批文件事件里 manifest 动了几次都只发一帧。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
     AccountsChanged,
 
+    /// **这台机器上的配置文件（`~/.cc-monitor/profiles.toml`）变了**（别处改了它，或设置窗刚写了它）。
+    ///
+    /// 无载荷：客户端收到就重拉一次 `profiles-read`（那一份的唯一出口仍是那条查询，同 `accounts_changed`）。
+    /// watcher 盯它所在的目录，一批文件事件里动了几次都只发一帧。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    ProfilesChanged,
+
     /// **这台的额度账显示得出来的那几格变了**（某个号的用量取整后的百分比 · 重置时刻 · 状态 · 被拒）。
     ///
     /// 无载荷：客户端收到就重拉一次 `quota-read`（额度账的唯一出口仍是那条查询，同 `accounts_changed`）。
@@ -912,6 +918,8 @@ impl Frame {
             Frame::Cancelled { .. } => false,
             // 一次状态变化的通知，没有「下一次必然重发」⇒ 保守（丢了客户端就一直拿着旧清单）。
             Frame::AccountsChanged => false,
+            // 同上一行：一次变化的通知，丢了那一页就停在旧清单（重开那一页会重读）。
+            Frame::ProfilesChanged => false,
             // 额度账在盘上（`quota-read` 随时重拉得到），下一次变化也会再推 ⇒ 丢了可恢复。
             // ⚠ 它**不走**出方向那条通道（走 tap 那条），列在这里只为穷尽。
             Frame::QuotaChanged => true,
@@ -957,6 +965,7 @@ impl Frame {
             Frame::Reply { id, .. } => ("reply", Some(id.clone())),
             Frame::Cancelled { id } => ("cancelled", Some(id.clone())),
             Frame::AccountsChanged => ("accounts_changed", None),
+            Frame::ProfilesChanged => ("profiles_changed", None),
             Frame::QuotaChanged => ("quota_changed", None),
             Frame::RotationChanged { sid } => ("rotation_changed", Some(sid.clone())),
             Frame::TasksChanged { sid } => ("tasks_changed", Some(sid.clone())),

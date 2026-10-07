@@ -22473,6 +22473,135 @@
       "zh": "args 要写字符串数组，是交给 agent 的那几个词",
       "args": []
     },
+    "beProfile.slot.account": {
+      "kind": "control",
+      "zh": "账号",
+      "args": []
+    },
+    "beProfile.slot.tmux": {
+      "kind": "control",
+      "zh": "在哪起",
+      "args": []
+    },
+    "beProfile.slot.cwdIf": {
+      "kind": "control",
+      "zh": "按目录",
+      "args": []
+    },
+    "beProfile.slot.cwd": {
+      "kind": "control",
+      "zh": "其余进哪",
+      "args": []
+    },
+    "beProfile.slot.agent": {
+      "kind": "control",
+      "zh": "agent",
+      "args": []
+    },
+    "beProfile.slot.args": {
+      "kind": "control",
+      "zh": "交给 agent",
+      "args": []
+    },
+    "beProfile.slot.launcher": {
+      "kind": "control",
+      "zh": "启动器",
+      "args": []
+    },
+    "beProfile.slot.tmuxSize": {
+      "kind": "control",
+      "zh": "tmux 尺寸",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "beProfile.slot.detach": {
+      "kind": "control",
+      "zh": "起完不接进去",
+      "args": []
+    },
+    "beProfile.slot.busRegister": {
+      "kind": "control",
+      "zh": "登记进 cc-bus",
+      "args": []
+    },
+    "beProfile.slot.busNote": {
+      "kind": "control",
+      "zh": "cc-bus 备注",
+      "args": []
+    },
+    "beProfile.said.slot": {
+      "kind": "body",
+      "zh": "{label} {val}",
+      "args": ["label", "val"]
+    },
+    "beProfile.val.base": {
+      "kind": "body",
+      "zh": "不用账号",
+      "args": []
+    },
+    "beProfile.val.tmuxAuto": {
+      "kind": "body",
+      "zh": "tmux · 自动取名",
+      "args": [],
+      "limited": ["tmux"]
+    },
+    "beProfile.val.tmuxNamed": {
+      "kind": "body",
+      "zh": "tmux · 名称固定 {name}",
+      "args": ["name"],
+      "limited": ["tmux"]
+    },
+    "beProfile.val.tmuxBase": {
+      "kind": "body",
+      "zh": "tmux · 以 {name} 为底取名",
+      "args": ["name"],
+      "limited": ["tmux"]
+    },
+    "beProfile.val.cwdIf": {
+      "kind": "body",
+      "zh": "在 {at} 敲进 {to}",
+      "args": ["at", "to"]
+    },
+    "beProfile.val.on": {
+      "kind": "body",
+      "zh": "开",
+      "args": []
+    },
+    "beProfile.form.tmuxName": {
+      "kind": "error",
+      "zh": "在哪起选了固定名 / 以名为底，要写那个名",
+      "args": []
+    },
+    "beProfile.function.always": {
+      "kind": "body",
+      "zh": "这台的终端只认函数，每条都写成函数",
+      "args": []
+    },
+    "beProfile.function.at": {
+      "kind": "body",
+      "zh": "写在 {path}：{line}",
+      "args": ["path", "line"]
+    },
+    "beProfile.rename.taken": {
+      "kind": "error",
+      "zh": "已经有一条叫 {name}",
+      "args": ["name"]
+    },
+    "beProfile.chain.self": {
+      "kind": "error",
+      "zh": "{name} 不能基于自己",
+      "args": ["name"]
+    },
+    "beProfile.init.exists": {
+      "kind": "error",
+      "zh": "配置文件已经在了：{path}",
+      "args": ["path"]
+    },
+    "rsDataPaths.backend.profilesMigrated": {
+      "kind": "body",
+      "zh": "旧别名清单转进配置文件时的说明（设置窗说一次后删）",
+      "args": []
+    },
     "beProfile.value.unknown": {
       "kind": "error",
       "zh": "未知选项 {key}",

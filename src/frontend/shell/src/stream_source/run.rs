@@ -439,6 +439,10 @@ async fn stream_loop(
             Some(InboundFrame::AccountsChanged) => {
                 replay.accounts_changed(&crate::origin::Origin(host_label.clone()));
             }
+            // 那台的配置文件变了 ⇒ 订了这台 `profiles-changed` 的订阅收一格（设置窗「别名与配置文件」那一页据此重读）。
+            Some(InboundFrame::ProfilesChanged) => {
+                replay.profiles_changed(&crate::origin::Origin(host_label.clone()));
+            }
             // 某个会话的任务清单变了 ⇒ 订了这台 `session-tasks` 的订阅收一格 `{sid}`。
             Some(InboundFrame::TasksChanged { sid }) => {
                 replay.tasks_changed(&crate::origin::Origin(host_label.clone()), &sid);

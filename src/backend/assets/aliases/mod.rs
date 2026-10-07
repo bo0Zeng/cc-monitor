@@ -58,6 +58,7 @@ pub(crate) mod block;
 pub(crate) mod fence;
 pub(crate) mod form;
 pub(crate) mod links;
+pub(crate) mod page;
 pub(crate) mod profile;
 
 use crate::assets::door::{self, Door};
@@ -684,6 +685,20 @@ pub(crate) fn migrate(d: &dyn Door, home: &str) -> Result<bool, String> {
     }
     let text = profile::apply_changes(None, &changes)?;
     write_profiles(d, home, None, &text).map_err(|e| e.said())?;
+    let note = serde_json::json!({
+        "count": profile::parse_book(&text).profiles.len(),
+        "path": profile::path_in(home),
+        "skipped": notes,
+    })
+    .to_string();
+    if let Err(e) = write_ours(
+        d,
+        home,
+        relay_route_core::PROFILES_MIGRATED_REL,
+        &mut |_| Ok(Some(note.clone())),
+    ) {
+        tracing::warn!("{e}");
+    }
     let book = profile::parse_book(&text);
     for p in sync_outputs(d, home, &book, None).problems {
         tracing::warn!("{p}");

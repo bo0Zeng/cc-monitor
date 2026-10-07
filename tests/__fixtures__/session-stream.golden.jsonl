@@ -20,6 +20,8 @@
 {"kind":"cancelled","id":"q1"}
 {"kind":"accounts_changed"}
 {"kind":"accounts_changed"}
+{"kind":"profiles_changed"}
+{"kind":"profiles_changed"}
 {"kind":"quota_changed"}
 {"kind":"quota_changed"}
 {"kind":"rotation_changed","sid":"s1"}

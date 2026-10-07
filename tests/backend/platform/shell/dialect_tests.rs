@@ -515,3 +515,55 @@ fn every_powershell_literal_reads_back_as_exactly_its_value() {
     let old = format!("'{}'", "a\u{2019}b".replace('\'', "''"));
     assert_eq!(model_read_ps_literal(&old), None);
 }
+
+/// 子进程那一半：只在外层那条判据拉起它时跑（`PATH` / `HOME` 由外层给成沙箱），把两个名字查撞名的结果逐行打出来。
+const ON_PATH_CHILD_MARK: &str = "CCM_ON_PATH_CHILD";
+
+#[test]
+#[ignore = "只由 our_own_alias_links_on_path_are_not_a_name_clash 拉起"]
+fn on_path_child_reports_what_it_sees() {
+    if std::env::var_os(ON_PATH_CHILD_MARK).is_none() {
+        return;
+    }
+    for name in ["alphacc", "realtool"] {
+        println!("{name}={}", on_path(name, &[""]).is_some());
+    }
+}
+
+/// ★ 我们自己放的别名链接（`~/.cc-monitor/bin/<名>` → `ccm`）在 `PATH` 上不算撞名；同一个目录里真程序照算。
+/// 改的是子进程的 `PATH`（沙箱目录），本进程的环境一格不动。
+#[cfg(unix)]
+#[test]
+fn our_own_alias_links_on_path_are_not_a_name_clash() {
+    let d = std::env::temp_dir().join(format!("ccm-onpath-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    let bin = d.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::write(bin.join("ccm"), "#!/bin/sh\n").unwrap();
+    std::os::unix::fs::symlink("ccm", bin.join("alphacc")).unwrap();
+    std::fs::write(bin.join("realtool"), "#!/bin/sh\n").unwrap();
+    let out = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "platform::shell::dialect::tests::on_path_child_reports_what_it_sees",
+            "--exact",
+            "--ignored",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(ON_PATH_CHILD_MARK, "1")
+        .env("PATH", &bin)
+        .env("HOME", &d)
+        .output()
+        .expect("起子进程");
+    let said = String::from_utf8_lossy(&out.stdout).into_owned();
+    std::fs::remove_dir_all(&d).ok();
+    assert!(out.status.success(), "{said}");
+    assert!(
+        said.lines().any(|l| l.ends_with("alphacc=false")),
+        "指向 ccm 的链接被当成撞名：{said}"
+    );
+    assert!(
+        said.lines().any(|l| l.ends_with("realtool=true")),
+        "真程序没查出来（尺子坏了）：{said}"
+    );
+}

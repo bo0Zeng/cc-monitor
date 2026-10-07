@@ -169,6 +169,8 @@ pub enum InboundFrame {
     Cancelled { id: String },
     /// 那台机器上的账号清单变了（后端 `wire::Frame::AccountsChanged`，无载荷）。
     AccountsChanged,
+    /// 那台机器上的配置文件变了（后端 `wire::Frame::ProfilesChanged`，无载荷）。
+    ProfilesChanged,
     /// 那台机器上某个会话的任务清单变了（后端 `wire::Frame::TasksChanged`，只带 sid）。
     TasksChanged { sid: String },
     /// 一条链路的下行字节（后端 `wire::Frame::LinkData`；`data` 在解帧这一步就解开了 base64）。
@@ -510,6 +512,7 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
             id: req_str(obj, k, "id")?,
         },
         "accounts_changed" => InboundFrame::AccountsChanged,
+        "profiles_changed" => InboundFrame::ProfilesChanged,
         "tasks_changed" => InboundFrame::TasksChanged {
             sid: req_str(obj, k, "sid")?,
         },

@@ -407,6 +407,58 @@ fn rewatch_agent_home(
     false
 }
 
+/// 配置文件（`~/.cc-monitor/profiles.toml`）那道耳朵：盯它所在的目录（不递归；写它是「写旁名再换名上位」，盯文件本身换名之后就聋了）。
+/// 目录起步不在 ⇒ 先挂上一层，出现时重挂（与 `agent_home` 同一个函数）。
+pub(crate) struct ProfilesEar {
+    file: PathBuf,
+    dir: PathBuf,
+    watched: bool,
+    parent_watched: bool,
+}
+
+impl ProfilesEar {
+    pub(crate) fn new(file: PathBuf) -> Option<Self> {
+        let dir = file.parent()?.to_path_buf();
+        Some(ProfilesEar {
+            file,
+            dir,
+            watched: false,
+            parent_watched: false,
+        })
+    }
+
+    pub(crate) fn arm(
+        &mut self,
+        debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
+    ) {
+        rewatch_agent_home(
+            debouncer,
+            &self.dir,
+            "profiles dir",
+            &mut self.watched,
+            &mut self.parent_watched,
+        );
+    }
+
+    /// 一批事件里配置文件动没动。目录自己出现 / 消失 ⇒ 重挂，也算动了（里面的配置文件可能跟着来了 / 没了）。
+    pub(crate) fn touched<'a>(
+        &mut self,
+        debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
+        paths: impl Iterator<Item = &'a Path>,
+    ) -> bool {
+        let mut hit = false;
+        let mut dir_moved = false;
+        for p in paths {
+            hit |= p == self.file;
+            dir_moved |= p == self.dir;
+        }
+        if dir_moved {
+            self.arm(debouncer);
+        }
+        hit || dir_moved
+    }
+}
+
 /// 账号 manifest 所在目录那道耳朵：起步不在 ⇒ 挂它的上一层；
 /// 它出现 / 被删重建（它自己路径上的事件）⇒ 按盘上此刻重挂（与 `agent_home` 同一个函数，VIS2 S3 同法）。
 /// 另挂它下面每个号的目录（不递归）：号的凭据文件出现 / 变了 ⇒ 也算「清单可能变了」（登录完成那一刻界面自己变「已登录」）。
@@ -932,6 +984,11 @@ fn watch_loop(
     // `sock_dir_watched` = 目录**本身**挂上了没有（没挂上时 `arm_ears` 退一层监视它的父）。
     let mut sock_dir_watched = false;
     let mut accounts_ear = accounts_manifest.parent().map(AccountsEar::new);
+    let mut profiles_ear = crate::platform::paths::home_dir()
+        .and_then(|h| ProfilesEar::new(h.join(relay_route_core::PROFILES_REL)));
+    if let Some(ear) = profiles_ear.as_mut() {
+        ear.arm(&mut debouncer);
+    }
     arm_ears(
         &mut debouncer,
         &mut ears,
@@ -991,6 +1048,12 @@ fn watch_loop(
                 ) || dir_moved
                 {
                     sink.send(Frame::AccountsChanged);
+                }
+                // 配置文件动了 ⇒ 一帧 `profiles_changed`（批内合并）。
+                if let Some(ear) = profiles_ear.as_mut() {
+                    if ear.touched(&mut debouncer, events.iter().map(|ev| ev.path.as_path())) {
+                        sink.send(Frame::ProfilesChanged);
+                    }
                 }
                 // 任务目录里的动静 ⇒ 每个动过的会话一帧 `tasks_changed`（批内合并）。
                 for sid in tasks_touched(events.iter().map(|ev| ev.path.as_path()), &ears.tasks) {
@@ -1200,6 +1263,9 @@ fn watch_loop(
                         &mut sock_dir_watched,
                         accounts_ear.as_mut(),
                     );
+                    if let Some(ear) = profiles_ear.as_mut() {
+                        ear.arm(&mut debouncer);
+                    }
                     sink.send(Frame::AccountsChanged);
                 }
                 let got = resync_sessions(&sessions, &mut state, &mut sink, only.as_deref());

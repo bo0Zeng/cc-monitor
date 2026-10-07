@@ -218,6 +218,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/backend/control/ccm/launch_note_e2e_tests.rs", needle: "control::ccm::launch_note_e2e::launch_note_child_entry_point" },
     ),
     (
+        "tests/backend/platform/shell/dialect_tests.rs",
+        "on_path_child_reports_what_it_sees",
+        Trigger::Filter { by: "tests/backend/platform/shell/dialect_tests.rs", needle: "platform::shell::dialect::tests::on_path_child_reports_what_it_sees" },
+    ),
+    (
         "tests/backend/stderr_log_tests.rs",
         "stderr_log_child_entry_point",
         Trigger::Filter { by: "tests/backend/stderr_log_tests.rs", needle: "stderr_log::tests::stderr_log_child_entry_point" },

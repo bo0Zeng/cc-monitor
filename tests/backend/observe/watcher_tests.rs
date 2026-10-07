@@ -3776,3 +3776,56 @@ fn line_frames_carry_the_raw_text_only_when_the_stream_asked() {
         assert_eq!(got, want, "索要了 raw = {asked}");
     }
 }
+
+/// ★ 配置文件（`profiles.toml`）那道耳朵，真 debouncer：直接写 · 写旁名再换名上位（设置窗与 `files-put` 的写法）都听得见；
+/// 同目录别的文件不算；目录起步不在、后建出来也听得见。
+#[cfg(target_os = "linux")]
+#[test]
+fn the_profiles_file_is_heard_written_or_renamed_into_place_and_nothing_else_counts() {
+    let root = std::env::temp_dir().join(format!("ccm-profiles-ear-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let dir = root.join(".cc-monitor");
+    let file = dir.join("profiles.toml");
+    let (etx, erx) = std::sync::mpsc::channel::<WatchEvent>();
+    let mut debouncer = new_debouncer(Duration::from_millis(DEBOUNCE_MS), DebouncerSink(etx))
+        .expect("debouncer 起不来");
+    let mut ear = ProfilesEar::new(file.clone()).expect("有上一层");
+    ear.arm(&mut debouncer);
+    // 做一件事，等到那一批（最多 20 秒）：回这一批里配置文件算不算动了。
+    let mut heard = |ear: &mut ProfilesEar, debouncer: &mut _, act: &dyn Fn()| -> bool {
+        act();
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        let mut got = false;
+        while std::time::Instant::now() < deadline {
+            match erx.recv_timeout(Duration::from_millis(300)) {
+                Ok(WatchEvent::Notify(Ok(evs))) => {
+                    got |= ear.touched(debouncer, evs.iter().map(|e| e.path.as_path()));
+                    if got {
+                        break;
+                    }
+                }
+                Ok(_) => {}
+                Err(_) if got => break,
+                Err(_) => {}
+            }
+        }
+        got
+    };
+    let made = heard(&mut ear, &mut debouncer, &|| {
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(&file, "[cc]\n").unwrap();
+    });
+    let other = heard(&mut ear, &mut debouncer, &|| {
+        std::fs::write(dir.join("aliases.sh"), "x").unwrap()
+    });
+    let renamed = heard(&mut ear, &mut debouncer, &|| {
+        std::fs::write(dir.join(".profiles.toml.tmp"), "[cct]\n").unwrap();
+        std::fs::rename(dir.join(".profiles.toml.tmp"), &file).unwrap();
+    });
+    drop(debouncer);
+    std::fs::remove_dir_all(&root).ok();
+    assert!(made, "目录后建出来、写进配置文件 ⇒ 要听得见");
+    assert!(!other, "同目录别的文件不算配置文件变了");
+    assert!(renamed, "写旁名再换名上位 ⇒ 要听得见");
+}

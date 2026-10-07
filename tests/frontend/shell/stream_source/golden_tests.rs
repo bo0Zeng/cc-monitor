@@ -31,6 +31,7 @@ fn kind_of(f: &InboundFrame) -> &'static str {
         InboundFrame::Reply { .. } => "reply",
         InboundFrame::Cancelled { .. } => "cancelled",
         InboundFrame::AccountsChanged => "accounts_changed",
+        InboundFrame::ProfilesChanged => "profiles_changed",
         InboundFrame::TasksChanged { .. } => "tasks_changed",
         InboundFrame::LinkData { .. } => "link_data",
         InboundFrame::LinkEnd { .. } => "link_end",

@@ -1173,3 +1173,33 @@ async fn the_probe_progress_stream_carries_the_cell_to_the_one_ticket_only() {
         .collect();
     assert_eq!(got, vec![(1, serde_json::json!({"reached": "ssh"}))]);
 }
+
+/// 配置文件那一种流（`profiles-changed`）：「配置文件变了」只进订了那台这一种流的订阅，账号那一种不收；体是约定那一串。
+#[tokio::test]
+async fn the_profiles_changed_stream_gets_only_profile_notices_of_its_own_origin() {
+    let (r, rec) = hub();
+    let box_a = crate::origin::Origin("box-a".into());
+    let box_b = crate::origin::Origin("box-b".into());
+    r.subscribe("w", 1, &box_a, "profiles-changed", None, 4);
+    r.subscribe("w", 2, &box_a, "accounts-changed", None, 4);
+    r.subscribe("w", 3, &box_b, "profiles-changed", None, 4);
+    r.origin_seen(&box_a, true);
+    rec.clear();
+    r.profiles_changed(&box_a);
+    let got: Vec<(u64, serde_json::Value)> = rec
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .flat_map(|(_, id, items)| {
+            items.iter().filter_map(move |i| match i {
+                WItem::Frame { body, .. } => Some((*id, serde_json::from_slice(&body.0).unwrap())),
+                _ => None,
+            })
+        })
+        .collect();
+    assert_eq!(
+        got,
+        vec![(1, serde_json::json!({"profiles_changed": true}))]
+    );
+}

@@ -356,6 +356,11 @@ fn every_registered_command_declares_its_run_kind() {
                 | "aliases-block-render"
                 | "aliases-block-install"
                 | "aliases-block-remove"
+                | "profiles-read"
+                | "profiles-resolve"
+                | "profiles-impact"
+                | "profiles-bases"
+                | "profiles-write"
                 // 起一次那一代 PowerShell 设执行策略再现问（同步子进程）。
                 | "powershell-policy-set"
                 | "ext-uninstall-apply"
@@ -595,6 +600,11 @@ fn every_registered_command_declares_its_run_kind() {
         "aliases-block-render",
         "aliases-block-install",
         "aliases-block-remove",
+        "profiles-read",
+        "profiles-resolve",
+        "profiles-impact",
+        "profiles-bases",
+        "profiles-write",
         // 别名表单两向：纯函数（问 ccm 的解析器），异步档。
         "aliases-to-form",
         "aliases-from-form",

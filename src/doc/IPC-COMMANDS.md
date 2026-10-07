@@ -136,6 +136,12 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 （无字段）
 
+### `profiles_changed`
+
+**这台机器上的配置文件（`~/.cc-monitor/profiles.toml`）变了**（别处改了它，或设置窗刚写了它）。
+
+（无字段）
+
 ### `quota_changed`
 
 **这台的额度账显示得出来的那几格变了**（某个号的用量取整后的百分比 · 重置时刻 · 状态 · 被拒）。
@@ -2397,6 +2403,88 @@ cc-bus 钩子诊断。
 
 码：`bad_args` · `refused` · `stale`
 
+#### `profiles-read`
+
+读回配置文件整份：每段自己写的几项 · 能不能用 · 链接还是终端函数 · 表单回填。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --profiles-read`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `binDir` | ← | 链接住的目录（`~/.cc-monitor/bin`） |
+| `exists` | ← | 配置文件在不在 |
+| `fileProblem` | ← | TOML 本身写坏 ⇒ `{line, message}`（这时 `profiles` 为空、不能按条目改）；否则 `null` |
+| `fingerprint` | ← | 盘上那份的指纹（不在 ⇒ `null`），存的时候交回 `profiles-write` |
+| `home` | ← | 这台的家目录（界面拿它把路径写成 `~/…`） |
+| `migrated` | ← | 旧别名清单一次性转进来之后那张说明 `{count, path, skipped}`（「知道了」之后 `null`） |
+| `modified` | ← | 盘上那份的修改时间（Unix 秒；不在 ⇒ `null`） |
+| `path` | ← | 配置文件的路径 |
+| `profiles` | ← | 每段 `{name, from, own: [{key, slot, vals, line}], agent, usable, problem: {line, message} \| null, kind: link/function, functionWhy, functionLine, said, form}`：`said` 是树里那一行（自己写的几项，「标签 值」）；`form` 是表单回填（没写的格 `null` ＝ 继承）；`problem` 的原话与终端里敲这个名字得到的同一句 |
+| `seed` | ← | 配置文件不在时首建那两条的预览（同 `profiles` 一条的形状；在 ⇒ `[]`） |
+
+码：`refused`
+
+#### `profiles-resolve`
+
+一段合下来的合并表与「等于」那一行（可按未存的表单算）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --profiles-resolve`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `at` | → | 假设在这个目录敲（`~` 打头按这台家目录展开；`null` ＝ 家目录） |
+| `chain` | ← | 继承链（父 → 子） |
+| `edit` | → | 未存的表单（同 `profiles-read` 一段的 `form`；`null` ＝ 按盘上那份算） |
+| `line` | ← | 这台后端算的「等于」那一行（同 `ccm @名 -- --ccm-print`）；算不出 ⇒ `null` |
+| `lineError` | ← | 算不出那一行时 ccm 的原话 |
+| `name` | → ← | 哪一段（带 `edit` 时是正在改的那一段原来的名字，新增写表单里的名字） |
+| `problem` | ← | 合不下来 ⇒ 那一句（同终端里敲这个名字）；否则 `null` |
+| `rows` | ← | 合并表 `[{key, slot, label, vals, said, from, overriddenBy}]`：父 → 子、层内照写的顺序；被后来那一层盖掉的也在，`overriddenBy` 是盖掉它的那一段 |
+
+码：`bad_args` · `refused`
+
+#### `profiles-impact`
+
+这几处改动会让哪几段合下来变（改前改后）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --profiles-impact`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `affected` | ← | 改动直接点名的那几段之外、合下来会变的 `[{name, changes: [{slot, label, before, after}], problem}]`（变得合不下来 ⇒ `problem` 是那一句） |
+| `changes` | → | 同 `profiles-write` 的 `changes`（一个字节不写） |
+
+码：`bad_args` · `refused`
+
+#### `profiles-bases`
+
+「基于」下拉能选的几段（选了不成圈）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --profiles-bases`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `bases` | ← | `[{name, from, said, selectable}]`：选了不会绕成圈的那几段 ＋ 自己（`selectable: false`） |
+| `name` | → | 正在改 / 新建的那一段的名字 |
+
+码：`bad_args` · `refused`
+
+#### `profiles-write`
+
+按条目改配置文件（手写的注释与排版留着），照它补链接 / 终端函数。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --profiles-write`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `changes` | → | 依次做的改动：`{op: "set", was, form}`（新增 `was: null`；名字变了 ⇒ 改名，基于它的跟着改）· `{op: "remove", name, children}`（还被基于 ⇒ `children` 必给：`reparent` 改成基于它的父 · `cascade` 一起删）· `{op: "init", seed}`（配置文件不在时建：`seed` ⇒ 带首建那两条）· `{op: "ackMigrated"}`（迁移说明知道了）。改完多出坏处 ⇒ 整批不写、`refused` |
+| `fingerprint` | → ← | 入：必给（字符串或 `null`），读回时的指纹；盘上此刻不是那一份 ⇒ `stale`。出：写完那一份的指纹 |
+| `modified` | ← | 写完那一份的修改时间（Unix 秒） |
+| `reload` | ← | 终端函数那份文件真改了 ⇒ 给人的那一句「已开的终端要重读」；否则 `null` |
+| `wrote` | ← | 配置文件 / 终端函数文件 / 链接动没动 |
+
+码：`bad_args` · `refused` · `stale`
+
 #### `aliases-block-render`
 
 别名块预览。
@@ -3458,6 +3546,11 @@ cc-bus 钩子诊断。
 | `--ping` | ＝ 帧命令 `ping`：问活：零载荷，回 `ok` |
 | `--place-verdict` | ＝ 帧命令 `place-verdict`：本机那一份放不放 |
 | `--powershell-policy-set` | ＝ 帧命令 `powershell-policy-set`：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned` |
+| `--profiles-bases` | ＝ 帧命令 `profiles-bases`：「基于」下拉能选的几段（选了不成圈） |
+| `--profiles-impact` | ＝ 帧命令 `profiles-impact`：这几处改动会让哪几段合下来变（改前改后） |
+| `--profiles-read` | ＝ 帧命令 `profiles-read`：读回配置文件整份：每段自己写的几项 · 能不能用 · 链接还是终端函数 · 表单回填 |
+| `--profiles-resolve` | ＝ 帧命令 `profiles-resolve`：一段合下来的合并表与「等于」那一行（可按未存的表单算） |
+| `--profiles-write` | ＝ 帧命令 `profiles-write`：按条目改配置文件（手写的注释与排版留着），照它补链接 / 终端函数 |
 | `--pubkey-push` | ＝ 帧命令 `pubkey-push`：把本机公钥推进那台的 `authorized_keys` |
 | `--quota-probe` | ＝ 帧命令 `quota-probe`：用某个号查一次额度 |
 | `--quota-read` | ＝ 帧命令 `quota-read`：这台的额度账 |
