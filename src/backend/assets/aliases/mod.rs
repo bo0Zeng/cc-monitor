@@ -1171,6 +1171,16 @@ pub(crate) fn rc_candidates_asking(
     }
     let loaded = out.iter().any(|f| f.block.present || f.sourced);
     block::settle_wins(out.iter_mut().map(|f| &mut f.block), loaded);
+    // POSIX 上不撞名的那几条是 PATH 里的链接：shell 函数恒盖过 PATH 上的程序 ⇒ 用户写的同名函数不论在接入行前后都生效。
+    if shell == Shell::Posix {
+        for c in out
+            .iter_mut()
+            .flat_map(|f| f.block.conflicting_functions.iter_mut())
+            .filter(|c| !wants_function(&c.name, Shell::Posix))
+        {
+            c.wins = block::Wins::Yours;
+        }
+    }
     Ok(out)
 }
 
