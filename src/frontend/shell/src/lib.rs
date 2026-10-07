@@ -16,7 +16,7 @@
 //! `run()` 在 `tauri::Builder` 之前先 `logging::init`（tracing 全局 dispatcher 必须最先 init），
 //! 然后注册 single-instance plugin（须为链上第一个）、`setup()` 里起本机内容消费者 / 各后台线程
 //! 并 `app.manage` 所有 Arc-shared State，最后注册 `invoke_handler`（IPC 命令清单）。
-//! State 注册矩阵见 src/doc/STATE-MATRIX.md；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
+//! State 都在 `setup()` 里 `app.manage`；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
 
 // `acct_iso_deploy`〔散文墓碑〕删了：账号库今天由那台后端自己管（`src/backend/accounts/manage/`），不再部署外部工具。
 // `adapter`（monitor 那一份 agent 适配表 ＋ 画像生成器，`adapter/claude_code.rs` · `adapter/codex.rs`）删了：
@@ -164,7 +164,6 @@ mod frame_tally;
 // 加 `cfg(test)` 就是把这件事写进类型系统，顺带消掉 5 条 dead_code 警告。
 // `agent_dispatch_registry`〔散文墓碑〕（桌面侧「通用层认得出某个 adapter」逐条登记 ＋ 递减棘轮）退役：桌面侧没有适配器了，
 //   登记的人群清零；「通用层不按名字够某一家」那一条住后端 `agent_locality_guard`。
-mod arch_doc_shape_guard; // F19：顶层架构文档的结构性存在钉（必须覆盖 backend 边界 / 零轮询 / 两条链）+ 形状钉（逐文件模块表不许长回来）
 /// U1a：`shared/ccm` 的强度契约（仅测试构建）。U9 迁移后由同一份 `measure()` 对拍新构造点。
 ///
 /// ⚠ **插在这里、不要插在上面那条注释与 `#[cfg(test)]` 之间。** U1a 初版就插错了位置，
@@ -190,8 +189,6 @@ mod capability_registry;
 mod comm_boundary_registry; // 通信层的边界判据：成员 ＝ 通信层那两个 crate（`cargo metadata` 现取）＋ C1–C5 / X1–X6
 #[cfg(test)]
 mod dial_home_registry; // K-R74：「解耦干净」改述成三样可判的东西 —— 终点二值旗（russh 在不在界面 manifest 里）+ 过程递减棘轮（还没搬走的拨号处数）+ 拨号锚点的唯一住址（整体 #[cfg(test)]）
-#[cfg(test)]
-mod doc_copy_registry; // audit-0805 F18：散文里的数字副本清账（E12 的第二条路变成机检）
 mod e2e_gate_registry; // audit-0805 08-08：每一套 e2e 要么进门禁要么登记为什么不进
 mod exec_site_registry;
 // F10（出口④）：本机读面清账 + 递减棘轮。

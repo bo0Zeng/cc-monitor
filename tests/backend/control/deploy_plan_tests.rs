@@ -339,7 +339,7 @@ fn the_plan_frame_has_exactly_the_golden_keys() {
         .iter()
         .find(|s| s.name == "deploy-plan")
         .expect("deploy-plan 没登记");
-    let mut fields: Vec<String> = spec.fields.iter().map(|s| s.to_string()).collect();
+    let mut fields: Vec<String> = spec.field_names().map(str::to_string).collect();
     fields.sort();
     assert_eq!(fields, keys(&got));
 }

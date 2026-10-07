@@ -52,7 +52,8 @@
      ⚠ **`tracing::error!` 是例外**：记了「第 3 级一落地它就变成对外的」
      ⇒ 它**不进主集**（今天不对外），但**单列成预备队**（面②的 `log-error` 轨），带住址。
   4. **`panic!` / `expect(` / `assert!`**。理由：崩溃信息不是界面文案，且绝大多数住在测块。
-  5. **注释、文档注释、`src/doc/*.md`、`README*`**。理由：`91` 管的是"对外说的话"，不是文档。
+  5. **注释、文档注释、`src/doc/*.md`、`README*`**，以及生成协议参考的料（命令登记 `stream/inbound/registry/` · `stream/inbound/cli_only.rs`）。
+     理由：`91` 管的是"对外说的话"，不是文档。
   6. **`src/frontend/ui/generated/`**（ts-rs 生成物）、`src/frontend/shell/vendor/`（第三方）、`src/frontend/shell/gen/`、
      `tests/`、`*.vitest.ts`。理由：不是人写的对外文案，改它们要改生成器/上游。
   7. **cc-bus 注入给另一个 agent 的文本**。理由：划出去了 ——
@@ -108,6 +109,8 @@ EXCLUDED_DIRS = (
     "src/frontend/shell/icons",
     "src/frontend/shell/capabilities",
     "src/doc",                  # 文档
+    # 协议参考的料：命令登记里的一句话与字段说明（`IPC-COMMANDS.md` 由它生成）—— 文档，不是对外文案（§二 第 5 条同一理由）。
+    "src/backend/stream/inbound/registry",
     # 判据支撑库：只进 monitor / 后端的 `[dev-dependencies]`（与下面 `guard_support.rs`
     # 被排除同一条理由 —— 判据支撑，不是生产面）。它的 `Err(…)` 是判据红时印给开发者看的，不是对外文案。
     "src/common/guard-core",
@@ -117,6 +120,7 @@ EXCLUDED_FILE_RE = re.compile(
     r"|-golden\.ts$"            # 住在 src/ 里的入库夹具（launch-cli-golden.ts …）
     r"|/build\.rs$"             # 构建脚本：println!/panic! 只进构建日志
     r"|/guard_support\.rs$"     # 判据支撑，不是生产面
+    r"|/stream/inbound/cli_only\.rs$"  # 协议参考的料（CLI 独有子命令的说明），同上那条目录
     r"|/tests?/"
     r"|/fixtures?/"
 )

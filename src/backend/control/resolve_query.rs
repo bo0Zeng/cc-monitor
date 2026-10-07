@@ -25,7 +25,7 @@ struct ResumeSpec {
     session_id: String,
     #[serde(default)]
     launch_candidates: Vec<Option<String>>,
-    /// 冻结兼容字段，不许改名（与 `wire.rs::Hello.claude_dir` 同族）：它是 `--resolve` 的 stdin 契约（线上是 `claudeDir`），
+    /// 冻结兼容字段，不许改名（与 `hello` 帧的 `claude_dir` 同族）：它是 `--resolve` 的 stdin 契约（线上是 `claudeDir`），
     /// 与仓外 aterm 冻结对齐。Rust 侧改名 = 线上字段名改名，所以通用层去 agent 名时绕开它，
     /// 登记在 `agent_locality_guard::AGENT_NAMED_WIRE_FIELDS`（带解锁条件）。
     #[allow(dead_code)] // MVP 未用（backend 用自身 agent_home 做 pidfile 查，留字段兼容）

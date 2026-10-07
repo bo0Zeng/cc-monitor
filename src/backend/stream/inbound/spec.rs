@@ -56,35 +56,71 @@ pub(crate) enum Run {
     Builtin,
 }
 
-/// 一条入方向命令的登记。**名字与处理器绑在同一个值里。**
-///
-/// `doc_anchor` / `codes` / `fields` **只被护栏读**（`protocol_doc_guard` 与入方向的
-/// `structure_guards`）—— 那正是它们存在的理由：把「这条命令的契约面」写成**数据**，
-/// 好让机检对着它比。非测试构建里它们确实没有读者，故精确 allow 而不是给整个类型开口子。
+/// 载荷字段的向：请求里的（`args`）· 应答里的（`data`）· 两边都有。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Dir {
+    In,
+    Out,
+    Both,
+}
+
+/// 一条命令的一个载荷字段：线上名 ＋ 向 ＋ 一句话说明（协议文档 `IPC-COMMANDS.md` 由它生成）。
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Field {
+    pub(crate) name: &'static str,
+    pub(crate) dir: Dir,
+    pub(crate) doc: &'static str,
+}
+
+/// 请求里的字段。
+pub(crate) const fn arg(name: &'static str, doc: &'static str) -> Field {
+    Field {
+        name,
+        dir: Dir::In,
+        doc,
+    }
+}
+/// 应答里的字段。
+pub(crate) const fn out(name: &'static str, doc: &'static str) -> Field {
+    Field {
+        name,
+        dir: Dir::Out,
+        doc,
+    }
+}
+/// 请求与应答里都有的字段。
+pub(crate) const fn both(name: &'static str, doc: &'static str) -> Field {
+    Field {
+        name,
+        dir: Dir::Both,
+        doc,
+    }
+}
+
+/// 一条入方向命令的登记。**名字与处理器绑在同一个值里**；协议文档的命令那一半也从这里生成。
 #[cfg_attr(not(test), allow(dead_code))]
 #[derive(Clone, Copy)]
 pub(crate) struct CommandSpec {
     /// 线上命令名。
     pub name: &'static str,
-    /// 它在 `src/doc/IPC-PROTOCOL.md` §10 里那一小节的标题**逐字**；`None` = 没有自己的小节
-    /// （只要求名字出现在「入方向」节里）。**有 `fields` 就必须有小节** —— 由机检钉住。
-    ///
-    /// ⚠ **这是约定不是事实**：护栏只能查「标题在、字段名在它下面出现」，查不了写得对不对。
-    /// 这不是新增局限，是把 `protocol_doc_guard` 早就登记过的那条局限**局部化**
-    /// （从「§10 全节任意反引号」收到「本命令那一小节」），强度只升不降。
-    pub(crate) doc_anchor: Option<&'static str>,
+    /// 一句话：这条命令做什么。
+    pub(crate) summary: &'static str,
     /// 本命令**自己**可能回的 code。**协议级 code 不许出现在这里**（由 R4 的零命中钉住）。
     pub codes: &'static [&'static str],
-    /// 本命令 `args` / `data` 的字段名。空 = 无载荷（如 `ping`）。
+    /// 本命令 `args` / `data` 的字段。空 = 无载荷（如 `ping`）。
+    pub(crate) fields: &'static [Field],
+    /// 这条命令**收不收入方向载荷**（CLI 面据此决定读不读 stdin）。
     ///
-    /// ⚠ 它是**手写镜子**，本身就是一个新的漂移源 —— 所以必须再钉一层：
-    /// 与真正的解析器/输出构造器实测对拍（`launch_fields_match_its_parser_and_output`）。
-    /// 用一个手写清单去证明另一个手写清单是没有意义的。
-    pub(crate) fields: &'static [&'static str],
-    /// 这条命令收不收入方向载荷（CLI 面据此决定读不读 stdin）。每条命令自己说，不从 `fields` 派生：
-    /// `fields` 是「`args` 和 `data` 的字段名」，`bus-list` 这种无输入、有输出字段的命令按派生会去等一个永远不来的 stdin、挂住
-    /// （CLI 面正是给第三方 skill 调的）；拿 `fields.is_empty()` 去守它是恒真的。
+    /// 显式写、不从 `fields` 派生：`bus-list` 无输入却有输出字段，派生的话 CLI 面会挂住等 stdin。
     /// 真不真由行为判据验（`tests/e2e/backend-cc-bus.sh`：声明无输入的命令，在 stdin 不关时必须秒回）。
     pub(crate) takes_input: bool,
     pub(crate) run: Run,
+}
+
+impl CommandSpec {
+    /// 全部字段名（`args` 与 `data` 合起来，登记次序）。
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn field_names(&self) -> impl Iterator<Item = &'static str> {
+        self.fields.iter().map(|f| f.name)
+    }
 }

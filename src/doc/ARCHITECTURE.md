@@ -7,8 +7,7 @@ cc-monitor 是 Claude Code 会话的**观察者和启动器**：`claude` 跑在�
 相关文档：
 
 - 全局不变量 → [INVARIANTS.md](INVARIANTS.md)
-- 帧协议、一次性命令与跨进程文件 → [IPC-PROTOCOL.md](IPC-PROTOCOL.md)
-- Tauri State 注册矩阵 → [STATE-MATRIX.md](STATE-MATRIX.md)
+- 帧协议、一次性命令与跨进程文件 → [IPC-PROTOCOL.md](IPC-PROTOCOL.md)（总述）· [IPC-COMMANDS.md](IPC-COMMANDS.md)（逐格，从代码生成）
 - 加东西 / 撤东西的做法 → [CONTRIBUTING.md](CONTRIBUTING.md)
 - 逐文件清单 → 前端 [`src/README.md`](../README.md) · 壳 [`src/frontend/shell/README.md`](../frontend/shell/README.md) · 后端 [`src/backend/README.md`](../backend/README.md)
 
@@ -196,9 +195,9 @@ monitor 里仍直读本机 agent 目录的地方逐处登记，条数以 `local_
 
 ## 3. Tauri State：只有一个家
 
-State 注册表住 [STATE-MATRIX.md](STATE-MATRIX.md)，改 State 前后都读它，撤回 / 修改任何 Tauri 命令时它是强制 checklist。
+State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；消费者与跨线程持有者从代码现查（做法见 [CONTRIBUTING.md § 3.1](CONTRIBUTING.md)），不另抄一张表。
 
-为什么值得一整份文档：漏一次 `app.manage()` 不会被 `cargo check` 抓住——命令签名照样编译过，运行时第一次调用才 panic。Tauri 的 State 注入是运行期按类型查表的，编译器在这条路上帮不了你，只能靠一份清单兜着。
+为什么值得一整份文档：漏一次 `app.manage()` 不会被 `cargo check` 抓住——命令签名照样编译过，运行时第一次调用才 panic。Tauri 的 State 注入是运行期按类型查表的，编译器在这条路上帮不了你：改完要在 dev 模式里真点一次。
 
 ---
 
