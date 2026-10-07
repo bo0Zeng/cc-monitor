@@ -488,7 +488,7 @@ fn golden_session(home: &Path) -> String {
 }
 
 /// 会话事实那一格的金样夹具：结构占位（id / uuid 按角色命名、正文是无意义占位词），不采任何真会话正文。
-/// 四格各走到一次：分叉（首条 user 记录）· 写类工具 · usage · 项目目录（开头那条的 cwd，后面进了子目录不跟）；派出子运行的调用与它的结果也在，会话事实不认它们。
+/// 四格各走到一次：分叉（首条 user 记录）· 一串接上了的重试 ＋ 一串还没下文的· 写类工具 · usage · 项目目录（开头那条的 cwd，后面进了子目录不跟）；派出子运行的调用与它的结果也在，会话事实不认它们。
 fn golden_facts_session(home: &Path) -> String {
     let dir = home.join("projects").join("-golden");
     std::fs::create_dir_all(&dir).unwrap();
@@ -496,10 +496,12 @@ fn golden_facts_session(home: &Path) -> String {
     let body = [
         r#"{"type":"user","uuid":"f-1","cwd":"/g/proj","forkedFrom":{"sessionId":"src-0","messageUuid":"m-0"},"message":{"content":"q"}}"#,
         r#"{"type":"user","uuid":"f-1b","isMeta":true,"origin":{"kind":"peer","from":"ag-7","handback":true,"body":"report"},"message":{"content":"<agent-message from=\"ag-7\">report</agent-message>"}}"#,
+        r#"{"type":"system","subtype":"api_error","uuid":"rt-1","retryAttempt":1,"maxRetries":10}"#,
         r#"{"type":"assistant","uuid":"f-2","timestamp":"t3","message":{"model":"m-g","usage":{"input_tokens":1,"cache_creation_input_tokens":2,"cache_read_input_tokens":3},"content":[{"type":"tool_use","id":"tu-1","name":"Edit","input":{"file_path":"/w/a.ts"}},{"type":"tool_use","id":"tu-2","name":"Task","input":{"description":"scan","subagent_type":"Explore"}}]}}"#,
         r#"{"type":"user","uuid":"f-3","cwd":"/g/proj/sub","message":{"content":[{"type":"tool_result","tool_use_id":"tu-2","content":"ok"}]}}"#,
         r#"{"type":"assistant","uuid":"f-4","timestamp":"t4","message":{"content":[{"type":"tool_use","id":"tu-3","name":"Agent","input":{"prompt":"p1\np2"}}]}}"#,
         r#"{"type":"assistant","uuid":"f-5","timestamp":"t5","message":{"content":[{"type":"text","text":"done\nmore"}]}}"#,
+        r#"{"type":"system","subtype":"api_error","uuid":"rt-2","retryAttempt":1,"maxRetries":10}"#,
     ]
     .iter()
     .map(|r| format!("{r}\n"))

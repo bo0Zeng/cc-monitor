@@ -81,11 +81,12 @@ import {
   forgetSession,
 } from "./tab-session-actions";
 import { frontView, type FrontAct, type FrontResult } from "./front-result";
-import { awaitedFor, clearAwaiting, markAwaiting } from "./cards/step-line";
+import { awaitedFor, paintWaiting } from "./cards/step-line";
 import { machineName } from "./control-said";
 import { closeFrontResult, copyFrontDetail, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
 import { CHANNEL_ACTS, LaunchSlots, type SlotSpec } from "./launch-slot";
 import { applyHandedBack } from "./cards/speaker-bar";
+import { applyRetries } from "./cards/api-error";
 
 
 export class TabManager {
@@ -756,6 +757,7 @@ export class TabManager {
       needs: null,
       pending: [],
       lastSay: null,
+      retries: new Map(),
       facts: new FactsSource(
         () => {
           // 问的是**当前**那一份 tab 的路径与机器（`parentPath` 由首条行回填；没有 ⇒ 这一趟不要）。
@@ -1331,14 +1333,14 @@ export class TabManager {
     const ch = applyFacts(tab, f);
     // 交回了的子运行：它的收场通知以交回为准（同一个子运行只报一次）。
     applyHandedBack(tab.streamEl, new Set(f.handedBack));
+    // 一串一串重试的结局（按首条的 id）。
+    applyRetries(tab.streamEl, tab.retries);
     if (ch.forkedFrom || ch.projectDir) {
       tab.title = this.computeTitle(tab);
       this.refreshTabBar();
     } else if (ch.writers || ch.needs || ch.peek) this.refreshTabBar();
-    if (ch.needs) {
-      tab.turnRail.render(); // 在等你的那一轮琥珀
-      this.paintAwaitingStep(tab);
-    }
+    if (ch.needs) tab.turnRail.render(); // 在等你的那一轮琥珀
+    this.paintStepWaits(tab);
     if ((ch.usage || ch.projectDir) && sid === this.store.activeId) this.publishActive();
     if (ch.agent) {
       // 是哪一家到了：先画出来的卡头那一格补上那一家的名字（之后建的卡按它直接画）。
@@ -1347,16 +1349,20 @@ export class TabManager {
     }
   }
 
-  /** 过程里在等你批准的那一步（后端 `needs.call`）画成「在等你批准」；不再等的那一步回到在跑。 */
-  private paintAwaitingStep(tab: Tab): void {
-    for (const el of tab.toolUseElements.values()) {
-      const row = el.querySelector<HTMLElement>(".step-line[data-state=awaiting]");
-      if (row) clearAwaiting(row);
-    }
+  /**
+   * 过程里还没结果的那几步照会话事实画：`pending[].state`（在跑 · 在等你 · 状态不明）；事实里已经没有它（那一轮过去了、
+   * 被截在上界外）⇒ 状态不明。结果已经到了的不动（`paintWaiting` 自己守）。
+   */
+  private paintStepWaits(tab: Tab): void {
+    const WAITING_ROWS = '.step-line[data-call]:is([data-state="pending"], [data-state="running"], [data-state="awaiting"], [data-state="unclear"])';
+    const by = new Map(tab.pending.map((p) => [p.id, p] as const));
     const n = tab.needs;
-    if (n?.kind !== "approve" || n.call === null) return;
-    const row = tab.toolUseElements.get(n.call)?.querySelector<HTMLElement>(".step-line");
-    if (row) markAwaiting(row, awaitedFor(n.sinceMs, Date.now()));
+    for (const row of tab.streamEl.querySelectorAll<HTMLElement>(WAITING_ROWS)) {
+      const call = row.dataset.call ?? "";
+      const waited = n?.call === call ? awaitedFor(n.sinceMs, Date.now()) : null;
+      const p = by.get(call);
+      paintWaiting(row, p?.state ?? "unclear", waited, n?.kind === "approve", p?.why ?? null);
+    }
   }
 
   /** 这个 tab 的会话事实可不可用变了 ⇒ 是 active 就告诉 HUD（要不到 ⇒ 出声，「不可用，不是空表」）。 */

@@ -27,6 +27,8 @@
 //! | `writers` | 这台 pidfile 里此刻持着这条会话的活进程（`observe::accounts_query::session_writers`）；每次现查，不在逐行扫描里 |
 //! | `pending` | `assistant` 记录里的工具调用，等到 `user` 记录里同 id 的 `tool_result` 才摘；你又发了一句（`user` 记录里没有 `tool_result`）⇒ 全摘。文件序，至多 [`PENDING_KEEP`] 条 |
 //! | `lastSay` | 文件序最后一段 `assistant` 正文（`text` 块）的头一个非空行，至多 [`SAY_CHARS`] 字 |
+//! | `pending[].state` / `.why` | 每次现判（[`settle_pending`]）：那台说在等的正是这一步 ⇒ `awaiting` · 有活进程持着这条会话 ⇒ `running` · 否则 `unclear`（不当它在跑），`why` 说为什么判不了（[`UnclearWhy`]） |
+//! | `retries` | 一串相邻的 API 重试（`system` · `api_error`）按首条的 `uuid` 记一件，结局看它后面第一条 `assistant` / 人发的 `user`（[`RetryOutcome`]）；别的系统记录不算下文。文件序，至多 [`RETRY_KEEP`] 件 |
 //! | `needs` | 那台 pidfile 说在等（[`PidWait`]）⇒ 配上 `pending` 判种类（[`needs_of`]）；每次现查，不累加 |
 //! | `handedBack` | 交回了的子运行：`user` 记录「谁说的」是 agent 交回（适配层 `agents::user_text_of` 的 `AgentMessage { handback: true }`）⇒ 它的 `from`；去重、文件序，至多 [`HANDED_BACK_KEEP`] 条。同一个子运行的收场通知（`taskNotification.taskId` ＝ 这个 id）以交回为准，界面不再另画 |
 //!
@@ -85,6 +87,9 @@ const WHAT_KEYS: &[(&str, &str)] = &[
 
 /// 没结果的工具调用至多留几条（并发调用一批也就几条；超 ⇒ 丢最早的）。
 pub(crate) const PENDING_KEEP: usize = 16;
+
+/// 重试至多留多少串（超 ⇒ 丢最早的）。
+pub(crate) const RETRY_KEEP: usize = 200;
 
 /// 交回了的子运行至多留多少个（超 ⇒ 丢最早的）。成品要原样回传当续传令牌，一个 id 几十字节。
 pub(crate) const HANDED_BACK_KEEP: usize = 500;
@@ -152,6 +157,27 @@ pub(crate) struct SessionFacts {
     pub(crate) needs: Option<Needs>,
     /// 交回了的子运行（子 agent 的 id，文件序、去重）：同一个子运行的收场通知以交回为准，只报一次。
     pub(crate) handed_back: Vec<String>,
+    /// 一串一串的 API 重试与结局（按首条的 `uuid`，文件序）；最后一串可能还没有下文（`retrying`）。
+    pub(crate) retries: Vec<RetryRun>,
+}
+
+/// 一串相邻的 API 重试。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct RetryRun {
+    /// 这一串首条重试记录的 `uuid`（界面那条细条就挂在它上面）。
+    pub(crate) id: String,
+    pub(crate) outcome: RetryOutcome,
+}
+
+/// 一串重试的结局：还没下文 · 后面来了正常回复（接上了）· 来了报错那条（重试耗尽 / 不可重试）· 人发了一句或打断。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum RetryOutcome {
+    Retrying,
+    Recovered,
+    Failed,
+    Interrupted,
 }
 
 /// 一个还没有结果的工具调用。
@@ -166,6 +192,47 @@ pub(crate) struct PendingCall {
     pub(crate) what: Option<String>,
     /// 那条记录的 `timestamp` 原样（从何时起在跑）；没有 ⇒ `null`。
     pub(crate) at: Option<String>,
+    /// 这一步此刻的样子（[`settle_pending`] 每次现判，不累加；`prior` 里那一份不用）。
+    pub(crate) state: StepWait,
+    /// `state` 是 `unclear` 时为什么判不了；别的 ⇒ `null`。
+    pub(crate) why: Option<UnclearWhy>,
+}
+
+/// 一步状态不明的原因：没有活进程持着这条会话 · 这一家不留 pidfile（判不了活）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum UnclearWhy {
+    NoWriter,
+    Untracked,
+}
+
+/// 一步还没有结果时的样子：在跑（有活进程持着这条会话）· 在等你（那台说在等的正是这一步）· 说不清（没有活进程持着它，
+/// 或这一家不留 pidfile、判不了活）。有了结果之后是完成 / 失败（那条结果的成品 `toolResults` 说），不在这里。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum StepWait {
+    Running,
+    Awaiting,
+    #[default]
+    Unclear,
+}
+
+/// **一步还没结果时的样子的唯一判定**：那台说在等的正是它 ⇒ 在等你；否则有活进程持着这条会话 ⇒ 在跑；否则状态不明
+/// （`tracked` ＝ 这一家留 pidfile、判得了活；不留 ⇒ 原因 `untracked`，留 ⇒ `noWriter`）。要在 `writers` 与 `needs` 现查之后调。
+pub(crate) fn settle_pending(f: &mut SessionFacts, tracked: bool) {
+    let waiting_on = f.needs.as_ref().and_then(|n| n.call.clone());
+    let live = !f.writers.is_empty();
+    for p in &mut f.pending {
+        (p.state, p.why) = if waiting_on.as_deref() == Some(p.id.as_str()) {
+            (StepWait::Awaiting, None)
+        } else if live {
+            (StepWait::Running, None)
+        } else if tracked {
+            (StepWait::Unclear, Some(UnclearWhy::NoWriter))
+        } else {
+            (StepWait::Unclear, Some(UnclearWhy::Untracked))
+        };
+    }
 }
 
 /// 最后一段正文。
@@ -351,6 +418,7 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
         "needs",
         "pending",
         "projectDir",
+        "retries",
         "touchedFiles",
         "usage",
         "writers",
@@ -377,7 +445,10 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
         )?;
     }
     for p in v["pending"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
-        exact_keys(p, &["at", "id", "name", "what"], "prior.pending[]")?;
+        exact_keys(p, &["at", "id", "name", "state", "what", "why"], "prior.pending[]")?;
+    }
+    for r in v["retries"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
+        exact_keys(r, &["id", "outcome"], "prior.retries[]")?;
     }
     serde_json::from_value(v.clone()).map_err(|e| format!("`prior` is not a facts product: {e}"))
 }
@@ -439,6 +510,9 @@ fn could_matter(line: &[u8], facts: &SessionFacts) -> bool {
         || (contains(line, b"\"assistant\"") && contains(line, b"\"text\""))
         // 交回：记录级 `origin.handback`（键名在行里）。
         || contains(line, b"\"handback\"")
+        // 重试：它本身（`api_error`）· 一串还没下文时，它后面的回复 / 人发的一句。
+        || contains(line, b"\"api_error\"")
+        || (open_retry(facts) && (contains(line, b"\"assistant\"") || contains(line, b"\"user\"")))
         // 有没结果的调用：它的结果（行里带着它的 id）· 你又发了一句（`user` 记录、没有工具结果）。
         // 别人的工具结果（常是整份文件内容）照旧连解析都不做。
         || (!facts.pending.is_empty()
@@ -470,6 +544,54 @@ fn note_handback(f: &mut SessionFacts, v: &Value) {
     }
 }
 
+fn open_retry(f: &SessionFacts) -> bool {
+    f.retries.last().is_some_and(|r| r.outcome == RetryOutcome::Retrying)
+}
+
+/// 重试一串一串地记（口径见头注那张表）。`kind` ＝ 记录类型。
+fn note_retry(f: &mut SessionFacts, kind: Option<&str>, v: &Value) {
+    let open = open_retry(f);
+    match kind {
+        Some("system") if v.get("subtype").and_then(Value::as_str) == Some("api_error") => {
+            if open {
+                return;
+            }
+            let Some(id) = v.get("uuid").and_then(Value::as_str) else {
+                return;
+            };
+            f.retries.push(RetryRun {
+                id: id.to_string(),
+                outcome: RetryOutcome::Retrying,
+            });
+            if f.retries.len() > RETRY_KEEP {
+                f.retries.remove(0);
+            }
+        }
+        Some("assistant") if open => {
+            let failed = v.get("isApiErrorMessage").and_then(Value::as_bool) == Some(true);
+            settle_retry(f, if failed { RetryOutcome::Failed } else { RetryOutcome::Recovered });
+        }
+        Some("user") if open => {
+            let meta = v.get("isMeta").and_then(Value::as_bool) == Some(true);
+            let tool_result = v
+                .get("message")
+                .and_then(|m| m.get("content"))
+                .and_then(Value::as_array)
+                .is_some_and(|a| a.iter().any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result")));
+            if !meta && !tool_result {
+                settle_retry(f, RetryOutcome::Interrupted);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn settle_retry(f: &mut SessionFacts, outcome: RetryOutcome) {
+    if let Some(r) = f.retries.last_mut() {
+        r.outcome = outcome;
+    }
+}
+
 fn contains(hay: &[u8], needle: &[u8]) -> bool {
     hay.windows(needle.len()).any(|w| w == needle)
 }
@@ -489,7 +611,9 @@ fn note_record(f: &mut SessionFacts, v: &Value) {
         .get("timestamp")
         .and_then(Value::as_str)
         .map(str::to_string);
-    match v.get("type").and_then(Value::as_str) {
+    let kind = v.get("type").and_then(Value::as_str);
+    note_retry(f, kind, v);
+    match kind {
         Some("user") => note_user(f, v),
         Some("assistant") => {
             if let Some(blocks) = blocks {
@@ -521,6 +645,8 @@ fn note_record(f: &mut SessionFacts, v: &Value) {
                             name: name.to_string(),
                             what: what_of(name, b.get("input")),
                             at: at.clone(),
+                            state: StepWait::default(),
+                            why: None,
                         });
                         if f.pending.len() > PENDING_KEEP {
                             f.pending.remove(0);

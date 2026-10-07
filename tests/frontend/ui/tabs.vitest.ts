@@ -231,7 +231,7 @@ TabManager.prototype.ensureTab = function (this: TabManager, ...args: Parameters
 };
 import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, LIVE_UNKNOWN_HOST, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
 import { readFileSync } from "node:fs";
-import { buildStepLine } from "../../../src/frontend/ui/cards/step-line";
+import { buildStepLine, settleStepLine } from "../../../src/frontend/ui/cards/step-line";
 import { resolve } from "node:path";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { closeMenu } from "../../../src/frontend/ui/kit/menu";
@@ -2248,32 +2248,36 @@ describe("：↗ 远端那一格按顺序问三方", () => {
  * 非 Windows 上 ↗ 的最后一跳（`EnumWindows` / `SetForegroundWindow`）在 Rust 侧是恒失败的桩
  * ⇒ 那颗按钮每点必败。门住 `terminal-front.ts`；`unknown` 照常显示（与 `hostOsAllows` 同一条理由）。
  */
-describe("过程里在等你批准的那一步（后端 needs.call）", () => {
-  it("★ 会话事实说在等批准 b1 ⇒ 那一步画成等你批准；换成等 b2 ⇒ b1 回到在跑、b2 等；不等了 ⇒ 都回到在跑；回答 / 计划不画", () => {
+describe("过程里还没结果的那几步照会话事实画（后端 pending[].state · needs.call）", () => {
+  it("★ 事实说 b1 在等批准 ⇒ 等你批准；b2 在跑 ⇒ 在跑；换过来照换；事实里已经没有的那一步 ⇒ 状态不明；结果到了的那一步不动", () => {
     const tm = makeTM();
     tm.ensureTab("l1", "/w", "p", LOCAL_ORIGIN);
-    const tab = home(tm).store.tabs.get("l1") as Tab & { toolUseElements: Map<string, HTMLElement> };
+    const tab = home(tm).store.tabs.get("l1")!;
     const step = (id: string): HTMLElement => {
-      const d = document.createElement("details");
-      d.appendChild(buildStepLine("Bash", { tool: "Bash", arg: id, known: true } as never, ""));
-      tab.toolUseElements.set(id, d);
-      return d.querySelector<HTMLElement>(".step-line")!;
+      const line = buildStepLine("Bash", { tool: "Bash", arg: id, known: true } as never, "", id);
+      tab.streamEl.appendChild(line);
+      return line;
     };
     const [b1, b2] = [step("b1"), step("b2")];
-    const paint = (needs: Tab["needs"]): void => {
+    expect([b1.dataset.state, b2.dataset.state], "事实到之前不画").toEqual(["pending", "pending"]);
+    const call = (id: string, state: "running" | "awaiting" | "unclear", why: "noWriter" | "untracked" | null = null) => ({ id, name: "Bash", what: id, at: null, state, why });
+    const paint = (pending: Tab["pending"], needs: Tab["needs"]): void => {
+      tab.pending = pending;
       tab.needs = needs;
-      (tm as unknown as { paintAwaitingStep(t: Tab): void }).paintAwaitingStep(tab);
+      (tm as unknown as { paintStepWaits(t: Tab): void }).paintStepWaits(tab);
     };
-    const approve = (call: string) => ({ kind: "approve" as const, tool: "Bash", call, what: call, sinceMs: Date.now() - 125_000 });
-    paint(approve("b1"));
+    const approve = (c: string) => ({ kind: "approve" as const, tool: "Bash", call: c, what: c, sinceMs: Date.now() - 125_000 });
+    paint([call("b1", "awaiting"), call("b2", "running")], approve("b1"));
     expect([b1.dataset.state, b2.dataset.state]).toEqual(["awaiting", "running"]);
     expect(b1.querySelector(".step-right")?.textContent, "右侧已等多久").toBe("2m05s");
-    paint(approve("b2"));
+    paint([call("b1", "running"), call("b2", "awaiting")], approve("b2"));
     expect([b1.dataset.state, b2.dataset.state]).toEqual(["running", "awaiting"]);
-    paint(null);
-    expect([b1.dataset.state, b2.dataset.state]).toEqual(["running", "running"]);
-    paint({ kind: "answer", tool: "AskUserQuestion", call: "b1", what: "?", sinceMs: null });
-    expect(b1.dataset.state, "回答 / 计划另有卡，不画成等批准").toBe("running");
+    paint([call("b2", "unclear", "noWriter")], null);
+    expect([b1.dataset.state, b2.dataset.state]).toEqual(["unclear", "unclear"]);
+    expect(b2.querySelector<HTMLElement>(".step-right")?.title, "原因是后端给的码").toBe("没有进程在跑这个会话");
+    settleStepLine(b1, undefined, { ok: true } as never, false, 10);
+    paint([call("b1", "running")], null);
+    expect(b1.dataset.state, "结果到了的不动").toBe("ok");
   });
 });
 
@@ -4881,6 +4885,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     lastSay: null,
     needs: null,
     handedBack: [],
+    retries: [],
     ...p,
   });
   const line = (sid: string, seq: number, origin: string | null = null) =>

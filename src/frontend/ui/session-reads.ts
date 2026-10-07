@@ -148,7 +148,20 @@ export interface SessionFacts {
   needs: Needs | null;
   /** 交回了的子运行（子 agent 的 id，文件序）：同一个子运行的收场通知以交回为准，消息流里不再另画。 */
   handedBack: string[];
+  /** 一串一串的 API 重试与结局（后端按首条的 uuid 记；消息流里那条细条挂在首条上，按它的 id 读）。 */
+  retries: RetryRun[];
 }
+
+/** 一串相邻的 API 重试（后端 `facts_query::RetryRun`）。 */
+export interface RetryRun {
+  /** 首条重试记录的 uuid。 */
+  id: string;
+  outcome: RetryOutcome;
+}
+
+/** 一串重试的结局：还没下文 · 接上了 · 没接上（来了报错那条）· 人发了一句或打断。 */
+export type RetryOutcome = "retrying" | "recovered" | "failed" | "interrupted";
+const RETRY_OUTCOME: ReadonlySet<string> = new Set<RetryOutcome>(["retrying", "recovered", "failed", "interrupted"]);
 
 /** 一个还没有结果的工具调用（后端 `facts_query::PendingCall`）。 */
 export interface PendingCall {
@@ -158,7 +171,19 @@ export interface PendingCall {
   what: string | null;
   /** 那条记录的时刻（ISO 原样）；没有 ⇒ `null`。 */
   at: string | null;
+  /** 这一步此刻的样子（后端 `facts_query::settle_pending` 判）：在跑 · 在等你 · 状态不明。界面只读它，不按「没有结果」当在跑。 */
+  state: StepWait;
+  /** 状态不明的原因（后端给的码）；别的状态 ⇒ `null`。 */
+  why: UnclearWhy | null;
 }
+
+/** 一步状态不明的原因：没有活进程持着这条会话 · 这一家不留 pidfile、判不了活。 */
+export type UnclearWhy = "noWriter" | "untracked";
+const UNCLEAR_WHY: ReadonlySet<string> = new Set<UnclearWhy>(["noWriter", "untracked"]);
+
+/** 一步还没结果时的样子（后端 `facts_query::StepWait`）。 */
+export type StepWait = "running" | "awaiting" | "unclear";
+const STEP_WAIT: ReadonlySet<string> = new Set<StepWait>(["running", "awaiting", "unclear"]);
 
 /** 「需要你」的种类：批准一步 · 回答一问 · 批准计划 · 判不出（只说在等你）。 */
 export type NeedsKind = "approve" | "answer" | "plan" | "unknown";
@@ -321,12 +346,19 @@ export function decodeFacts(v: unknown): SessionFacts {
   const bad = (): never => {
     throw new ShapeError("history-facts", copyText("sessionReads.missing.facts"));
   };
-  if (!isObj(v) || !exactKeys(v, ["agent", "end", "forkedFrom", "handedBack", "lastSay", "needs", "pending", "projectDir", "touchedFiles", "usage", "writers"])) return bad();
+  if (!isObj(v) || !exactKeys(v, ["agent", "end", "forkedFrom", "handedBack", "lastSay", "needs", "pending", "projectDir", "retries", "touchedFiles", "usage", "writers"])) return bad();
   if (!Array.isArray(v.pending)) return bad();
   const pending: PendingCall[] = [];
   for (const p of v.pending) {
-    if (!isObj(p) || !exactKeys(p, ["at", "id", "name", "what"]) || !isStr(p.id) || !isStr(p.name) || !strOrNull(p.what) || !strOrNull(p.at)) return bad();
-    pending.push({ id: p.id, name: p.name, what: p.what, at: p.at });
+    if (!isObj(p) || !exactKeys(p, ["at", "id", "name", "state", "what", "why"]) || !isStr(p.id) || !isStr(p.name) || !strOrNull(p.what) || !strOrNull(p.at)) return bad();
+    if (!(isStr(p.state) && STEP_WAIT.has(p.state)) || !(p.why === null || (isStr(p.why) && UNCLEAR_WHY.has(p.why)))) return bad();
+    pending.push({ id: p.id, name: p.name, what: p.what, at: p.at, state: p.state as StepWait, why: p.why as UnclearWhy | null });
+  }
+  if (!Array.isArray(v.retries)) return bad();
+  const retries: RetryRun[] = [];
+  for (const r of v.retries) {
+    if (!isObj(r) || !exactKeys(r, ["id", "outcome"]) || !isStr(r.id) || !(isStr(r.outcome) && RETRY_OUTCOME.has(r.outcome))) return bad();
+    retries.push({ id: r.id, outcome: r.outcome as RetryOutcome });
   }
   let lastSay: SessionFacts["lastSay"] = null;
   if (v.lastSay !== null) {
@@ -380,6 +412,7 @@ export function decodeFacts(v: unknown): SessionFacts {
     lastSay,
     needs,
     handedBack: v.handedBack as string[],
+    retries,
   };
 }
 

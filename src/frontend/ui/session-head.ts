@@ -33,6 +33,14 @@ export interface SessionHeadHost {
   reconnect(origin: string): void;
 }
 
+/**
+ * 这个会话此刻能去它的终端的两条路（会话头与消息流里的报错卡同一道）：切到终端（↗ 真能用、还有终端可去）·
+ * 在终端里打开（远端、Claude 已退出）。
+ */
+export function terminalActsOf(tab: Tab): { front: boolean; attach: boolean } {
+  return { front: terminalFrontAvailable() && hasTerminal(tab.state), attach: dotOf(tab) === "exited" && isRemoteOrigin(tab.origin) };
+}
+
 /** 悬停「名字 · 当前键位」（按 `config.json.keybindings` 现拼）。 */
 function keyed(name: string, action: Parameters<typeof dispatcher.effectiveChord>[0] | null): () => string {
   return () => {
@@ -101,10 +109,11 @@ export class SessionHead {
     const d = dotOf(tab);
     const st = stateLine(tab, now);
     const remote = isRemoteOrigin(tab.origin);
-    const front = terminalFrontAvailable() && hasTerminal(tab.state);
+    const acts = terminalActsOf(tab);
+    const front = acts.front;
     // 看它的终端：会话还有终端可去才出（已结束的没有）。
     const term = hasTerminal(tab.state);
-    const extra = canResume(tab.state) ? "resume" : d === "exited" && remote ? "attach" : d === "unknown" ? "reconnect" : "";
+    const extra = canResume(tab.state) ? "resume" : acts.attach ? "attach" : d === "unknown" ? "reconnect" : "";
     const drawn = [tab.sessionId, d, fullTitle(tab), machineOf(tab), tab.projectDir ?? "", st.text, st.needs ? 1 : 0, remote ? 1 : 0, front ? 1 : 0, term ? 1 : 0, extra].join("\u0000");
     if (drawn === this.drawn) return;
     const sameSession = this.drawn?.split("\u0000")[0] === tab.sessionId;
