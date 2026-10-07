@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 /// 宿主交的那一格：当前那份文件的**完整路径**。缺席 / 空白 ⇒ 不接。
-pub const ENV: &str = "CCM_BACKEND_STDERR_LOG";
+pub const ENV: &str = crate::platform::child_env::STDERR_LOG;
 
 /// 每份的字节上限（当前那份 ＋ 旧的那份 ⇒ 盘上 ≈ 两倍；按 `tracing` 行检查，见模块头注）。
 pub const CAP_BYTES: u64 = 4 << 20;

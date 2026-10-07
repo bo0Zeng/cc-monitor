@@ -20,7 +20,7 @@
 //! 一条阻塞档命令里连发几发时，分派那一层装一个 [`Budget`]：各发共用剩下的时间（`run` 取「自己的期限」与「剩下的」里小的那个），
 //! 没剩 ⇒ 不起、直接回超时。总期限 ＝ 后端登记的上限与发起方给的截止时刻（[`Until`]）里早的那个：发起方放手之前，先答的是后端那句准话。
 
-use crate::common::child_env::OWN_ENVS;
+use crate::platform::child_env::OWN_ENVS;
 use copy_core::copy_text;
 use std::cell::Cell;
 use std::ffi::{OsStr, OsString};

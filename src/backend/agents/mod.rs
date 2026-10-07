@@ -60,7 +60,6 @@
 //! 扣出人群的**对价**是判据⑦把本文件的处数钉死成 `REGISTRY.len()`（**一家一行**），
 //! 谁想把别处的直呼挪进来，当场红。
 
-use crate::stream::wire::AgentHome;
 use std::path::{Path, PathBuf};
 
 pub mod claudecode;
@@ -1826,6 +1825,22 @@ pub(crate) fn compact_request_of(kind: &str) -> Option<&'static str> {
 /// `kind` 那一家的这条记录是不是压缩之后续接用的摘要（同渲染模型里 `compactSummary` 那一种来源）。
 pub(crate) fn is_compact_summary(kind: &str, v: &serde_json::Value) -> bool {
     user_text_of(kind, v).is_some_and(|t| t.speaker == Speaker::CompactSummary)
+}
+
+/// `hello.homes` 的一项 —— **某个 agent 在这台机器上的 home 目录**〔`S4` / `D3`〕。
+///
+/// `D3` 逐字：「agent 维度只许出现在**值**里（`agent_kind`），不许出现在**字段名**里」。
+/// 这个结构就是那条 charter 的形状：两个字段名都与任何一个 agent 无关，
+/// **接第三个 agent 是多一个元素，不是多一个字段**。
+///
+/// 它替掉的是并列 `<名>_dir` 那条路。那条路的终点 `D3` 已经写死了：
+/// hello 帧里五个并列的目录字段，而客户端要靠 `if/else` 猜哪个有值。
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+pub struct AgentHome {
+    /// 哪个 agent —— **值**，与 `session_added.agent_kind` 同一套取值空间。
+    pub agent_kind: String,
+    /// 该 agent 在这台机器上的 home 目录（绝对路径）。
+    pub path: String,
 }
 
 /// **这台机器上看得见哪些 agent** —— 直接产出 `hello.homes` 的那张表〔`S5`，`G1` 成功标准③〕。

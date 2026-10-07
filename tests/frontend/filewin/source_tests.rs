@@ -803,8 +803,6 @@ fn breadcrumbs_are_every_prefix_with_the_root_first() {
     assert_eq!(breadcrumbs("/a\\b").len(), 2);
 }
 
-// 「逆向日历算法与正向那一份互为逆」要 monitor `utils::days_from_civil` 当异源正向 ⇒ 挪到 `tests/frontend/shell/filewin/cross_half_tests.rs`。
-
 /// 修改时间按本机时区画：当天只写时分、今年写月日、往年写年月日；完整时间到秒；时区差跨日也对（期望手写）。
 #[test]
 fn a_modification_time_is_printed_in_local_time_short_this_year() {

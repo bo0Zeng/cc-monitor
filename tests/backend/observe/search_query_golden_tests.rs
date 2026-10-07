@@ -176,7 +176,7 @@ pub(super) fn build_corpus(tag: &str) -> std::path::PathBuf {
 /// 查询清单：`(名字, 查询, --search 之后那一截 argv)`。
 pub(super) fn cases() -> Vec<(&'static str, &'static str, Vec<String>)> {
     let a = |xs: &[&str]| xs.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-    let after = crate::observe::search_query::parse_iso8601_ms("2026-02-15T00:00:00Z")
+    let after = crate::common::time::parse_iso8601_ms("2026-02-15T00:00:00Z")
         .expect("解得开")
         .to_string();
     vec![

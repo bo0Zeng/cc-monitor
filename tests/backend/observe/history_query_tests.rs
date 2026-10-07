@@ -204,7 +204,7 @@ fn c4d_the_row_carries_fork_parent_custom_title_and_first_timestamp() {
     assert_eq!(v["aiTitle"], "改过的名字", "custom-title 在后 ⇒ 取它");
     assert_eq!(
         v["startedAtMs"],
-        crate::observe::search_query::parse_iso8601_ms("2026-09-25T01:02:03.456Z").unwrap()
+        crate::common::time::parse_iso8601_ms("2026-09-25T01:02:03.456Z").unwrap()
     );
     assert_eq!(
         v["firstUserExcerpt"], "占位问题 第二行",

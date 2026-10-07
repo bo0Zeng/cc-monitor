@@ -1,6 +1,4 @@
-//! 跨模块工具：日期 / 时间换算 + procStart newtype。原子 JSON 写入搬去了 `host_core::atomic_write_json`（两个前端共用的那一份）。
-//!
-//! `days_from_civil`：按时间戳挑子 agent 那一份进了后端之后，生产段零读者，只剩文件窗口那份日期换算的异源对拍在用。
+//! 跨模块工具：时间换算 + procStart newtype。原子 JSON 写入与天数 ⇒ 公历在 `host_core`（两个前端共用的那一份）。
 //!
 //! ## procStart newtype（P1.1）
 //!
@@ -8,24 +6,6 @@
 //! 来源：Rust 端 `GetProcessTimes`、PS 端 `[Process].StartTime.ToFileTime()`。
 //! Claude Code 在 `sessions/<PID>.json` 里写的 `procStart` 是另一种单位（.NET 本地 ticks，自 0001-01-01）；
 //! monitor 今天不读那个字段，原先为它立的那个 newtype 与换算一个调用方都没有，删了。
-
-/// Howard Hinnant 的 days_from_civil：把公历 (y, m, d) 转换为相对 1970-01-01 的天数。
-/// 跨月 / 跨年 / 闰年都单调。
-///
-/// 参考：http://howardhinnant.github.io/date_algorithms.html
-///
-/// 生产段今天零读者（按时间戳挑子 agent 那一份进了后端）；留着给文件窗口那份日期换算当**异源**正向
-/// （`filewin/source_tests.rs`，它是 `filewin/source.rs` 那份逆运算的对拍）。
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = y.div_euclid(400);
-    let yoe = y - era * 400; // [0, 399]
-    let mp = if m > 2 { m - 3 } else { m + 9 }; // Mar=0..Feb=11
-    let doy = (153 * mp + 2) / 5 + d - 1; // [0, 365]
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy; // [0, 146096]
-    era * 146097 + doe - 719468
-}
 
 /// Win32 FILETIME (自 1601-01-01 UTC, 100ns 单位)。
 /// Rust 端 GetProcessTimes / PS 端 `[Process].StartTime.ToFileTime()` 都给这个。
@@ -61,9 +41,6 @@ pub fn systime_to_ms(t: std::time::SystemTime) -> i64 {
 pub fn now_ms() -> i64 {
     systime_to_ms(std::time::SystemTime::now())
 }
-
-// `parse_iso8601_ms`〔散文墓碑〕删：唯一调用方（按时间戳挑子 agent 那一份）随「找 ＋ 挑」进了后端
-//   （后端 `observe/search_query.rs::parse_iso8601_ms`）。
 
 // === P3：目录扫 + JSON parse → HashMap 通用 helper ===
 

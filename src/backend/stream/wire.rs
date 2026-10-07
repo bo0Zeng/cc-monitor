@@ -116,21 +116,8 @@ fn is_false(b: &bool) -> bool {
     !*b
 }
 
-/// `hello.homes` 的一项 —— **某个 agent 在这台机器上的 home 目录**〔`S4` / `D3`〕。
-///
-/// `D3` 逐字：「agent 维度只许出现在**值**里（`agent_kind`），不许出现在**字段名**里」。
-/// 这个结构就是那条 charter 的形状：两个字段名都与任何一个 agent 无关，
-/// **接第三个 agent 是多一个元素，不是多一个字段**。
-///
-/// 它替掉的是并列 `<名>_dir` 那条路。那条路的终点 `D3` 已经写死了：
-/// hello 帧里五个并列的目录字段，而客户端要靠 `if/else` 猜哪个有值。
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct AgentHome {
-    /// 哪个 agent —— **值**，与 `session_added.agent_kind` 同一套取值空间。
-    pub agent_kind: String,
-    /// 该 agent 在这台机器上的 home 目录（绝对路径）。
-    pub path: String,
-}
+/// `hello.homes` 的一项（类型住 agent 注册表那一侧，帧面只引用它）。
+pub use crate::agents::AgentHome;
 
 /// `hello.unavailable` 的一项 —— **这条命令我接得下，但在这台机器上做不到，以及为什么**
 ///〔`K-P4` 09-04，用户逐字「事前协商是要的」〕。

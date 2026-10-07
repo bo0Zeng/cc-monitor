@@ -13,8 +13,8 @@
 //! ⇒ 一台机器一个常驻后端，与 Claude 目录、与哪一家 agent 都无关。钥匙与「谁在听」也住这个家，都由常驻后端自己写（本机远端一个写者）。
 //! ⚠ 钥匙会出现在 `--resident-ensure` 的 stdout 上：那一行只走 SSH 通道到 monitor 内存，不进日志（调用侧不许打印它）。
 
-use crate::common::child_env::OWN_ENVS;
 use crate::platform::child::{Child, ChildFail};
+use crate::platform::child_env::OWN_ENVS;
 use std::path::{Path, PathBuf};
 
 use copy_core::copy_text;

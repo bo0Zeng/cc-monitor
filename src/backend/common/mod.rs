@@ -5,12 +5,6 @@
 //! ② 平台无关（不含平台 cfg、不依赖某个 OS 的文件布局或 ABI —— 那是 `platform/` 的事）；做 I/O 不算违反（`std::fs` 在哪都一样）
 //! ③ 无域知识（不认识 `WatchEvent` / `ResumeSpec` 这类东西）
 
-/// **常驻后端起子进程时清掉它自有的那几格环境**（监听口 · 钥匙文件 · 中转口 · 诊断文件）。
-///
-/// 它满足门槛的方式：①（≥2 层）control（起会话 · 杀 · 抓屏 · 打标 · 起常驻）、observe（tmux 观测 · 谁连着会话）、
-/// platform（起 shell / PowerShell）、dial（`ssh -G`）都在起子进程 —— 每一处都要过它。②（平台无关）只调 `std` 的 `env_remove`。
-/// ③（无域知识）它只认那几个名字，不认起的是什么。
-pub(crate) mod child_env;
 pub(crate) mod contract;
 pub(crate) mod fs;
 /// 后端建自家目录的那一个函数。① 原生那一块（退出行为 · 资产目录 · skill 装记录 · 中转钥匙 · 常驻登记）与文件管理那一块（暂存区，
@@ -29,6 +23,9 @@ pub(crate) mod path_wire;
 /// 「这台机器上现在有哪些 tmux 会话」那一张快照。① control（`gate::list_sessions` 判活、`ccm` 铸名避让）与 observe（`watcher` 焐热）都用 ——
 /// 住 `control/` 的话 watcher 要走一条 `observe → control` 的回边，住 `observe/` 的话 Gate 引用不到 · ② 起的是跨平台的 `tmux` · ③ 只认「会话名 + `@ccm_sid`」。
 pub(crate) mod session_snapshot;
+/// 公历换算与 ISO8601 时刻。① control（额度时刻排字 · 账号库操作戳）、observe（搜索与历史清单的时刻）、agents（子运行时刻 · 额度窗口重置）都用 ·
+/// ② 纯算术 · ③ 只认日历。
+pub(crate) mod time;
 /// 「tmux 的打印通道必须是 UTF-8」这一个口径的家。① 只在「`-u` 与 `LC_ALL=C.UTF-8` 是一个口径的两种表示」这个读法下成立
 /// （同一个开关 · `-u` 压在 env 之上 · 两者在调用点上不可互换，逐条在该模块头注里）。
 pub(crate) mod tmux_utf8;

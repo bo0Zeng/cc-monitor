@@ -1119,7 +1119,7 @@ mod tests {
         ),
         // stderr 诊断文件：写口是装它的那一个函数，门是 `main.rs`。
         // 装它（`install_from_env`）与滚它（`stderr_writer`，交给 `tracing`）都会写，都只许 `main.rs` 碰 ⇒ 两条针各钉一个写口。
-        // 〔从前针取模块前缀 `stderr_log::`：起子进程清环境那一处（`common/child_env.rs`）要点那个变量的**名字**
+        // 〔从前针取模块前缀 `stderr_log::`：起子进程清环境那一处（`platform/child_env.rs`）要点那个变量的**名字**
         //  （`stderr_log::ENV`，不是写口）就被当成够到了写口 ⇒ 改成逐个点写口；这个模块今天对外的函数就这两个会写。〕
         ("stderr_log.rs", "stderr_log::install_from_env", "main.rs"),
         ("stderr_log.rs", "stderr_log::stderr_writer", "main.rs"),

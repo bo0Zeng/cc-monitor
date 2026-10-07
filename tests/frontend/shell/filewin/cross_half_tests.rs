@@ -126,42 +126,6 @@ fn chunks_reassemble_exactly_each_fits_one_line_and_each_is_filled() {
     );
 }
 
-/// 🔴 **逆向日历算法与正向那一份互为逆** —— 两份住两个文件（`utils.rs` 那份不在本路写区），
-/// 于是「两份漂开」只能靠这一条接：往返恒等在一段稠密的日子上逐日断。
-///
-/// 两侧**不同源**：正向是 `crate::utils::days_from_civil`（另一个人写的、另一个文件），
-/// 逆向是 `source::civil_from_days`。
-#[test]
-fn the_two_date_algorithms_are_each_others_inverse() {
-    let mut checked = 0u32;
-    for y in 1899..=2101 {
-        for m in 1..=12 {
-            let dim = match m {
-                2 if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 => 29,
-                2 => 28,
-                4 | 6 | 9 | 11 => 30,
-                _ => 31,
-            };
-            for d in 1..=dim {
-                let z = crate::utils::days_from_civil(y, m, d);
-                assert_eq!(
-                    cc_monitor_filewin::source::civil_from_days(z),
-                    (y, m, d),
-                    "第 {z} 天往返不回原样"
-                );
-                checked += 1;
-            }
-        }
-    }
-    // 反空真：真的走了约两百年（不是循环体一次没进）。
-    assert_eq!(
-        checked, 74_144,
-        "1899-01-01 ～ 2101-12-31 应当是 74144 天（python `date` 相减现打）"
-    );
-    // 锚：纪元那一天。
-    assert_eq!(cc_monitor_filewin::source::civil_from_days(0), (1970, 1, 1));
-}
-
 /// 🔴 窗口这一侧写死的那几个**线上名字**与对面（monitor 的传输中继）那一份逐字相等（原住 `transfer_tests` 的前半；
 /// 后端提交命令表那一半留在窗口包里）。漂开的症状是具体的：开单答「不认」、订阅答「没有这条流」。
 #[test]

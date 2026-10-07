@@ -10,8 +10,10 @@ const FIXTURE: &str = include_str!("../../../__fixtures__/claude-usage.fixture.t
 const NOW: u64 = 1_772_712_000;
 
 fn utc(y: i64, m: u32, d: u32, h: u32, min: u32) -> u64 {
-    u64::try_from(days_from_civil(y, m, d) * 86_400 + i64::from(h * 3600 + min * 60))
-        .expect("1970 之后")
+    u64::try_from(
+        crate::common::time::days_from_civil(y, m, d) * 86_400 + i64::from(h * 3600 + min * 60),
+    )
+    .expect("1970 之后")
 }
 
 /// ★ 三档照原名读成窗口：用量 · 重置时刻（按 UTC）；没写重置时刻的那一档没在计时（`resetsAt` 缺）；构成那一段不读。

@@ -3,38 +3,6 @@ use super::*;
 use crate::platform::terminal::{base64_encode, powershell_encoded_command};
 
 #[test]
-fn epoch_is_zero() {
-    // 1970-01-01 = 0 days since itself
-    assert_eq!(days_from_civil(1970, 1, 1), 0);
-}
-
-#[test]
-fn monotonic_across_month() {
-    let jan_31 = days_from_civil(2026, 1, 31);
-    let feb_1 = days_from_civil(2026, 2, 1);
-    assert_eq!(feb_1 - jan_31, 1);
-}
-
-#[test]
-fn monotonic_across_year() {
-    let dec_31 = days_from_civil(2025, 12, 31);
-    let jan_1 = days_from_civil(2026, 1, 1);
-    assert_eq!(jan_1 - dec_31, 1);
-}
-
-#[test]
-fn leap_year_feb_29() {
-    // 2024 是闰年，Feb 有 29 天
-    let feb_28 = days_from_civil(2024, 2, 28);
-    let feb_29 = days_from_civil(2024, 2, 29);
-    let mar_1 = days_from_civil(2024, 3, 1);
-    assert_eq!(feb_29 - feb_28, 1);
-    assert_eq!(mar_1 - feb_29, 1);
-}
-
-// `parse_iso8601_ms` 那五条随函数删了（按时间戳挑子 agent 那一份进了后端，后端 `search_query` 那份自带判据）。
-
-#[test]
 fn now_ms_increases_monotonically() {
     let a = now_ms();
     std::thread::sleep(std::time::Duration::from_millis(2));

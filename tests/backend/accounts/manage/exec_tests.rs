@@ -42,11 +42,3 @@ fn backup_names_are_timestamps_only() {
         assert!(!backup_id_ok(bad), "{bad:?}");
     }
 }
-
-#[test]
-fn civil_dates_are_right() {
-    assert_eq!(civil_from_days(0), (1970, 1, 1));
-    assert_eq!(civil_from_days(20_361), (2025, 9, 30));
-    assert_eq!(civil_from_days(-1), (1969, 12, 31));
-    assert_eq!(civil_from_days(11_016), (2000, 2, 29));
-}

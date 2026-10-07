@@ -11,19 +11,6 @@ use serde_json::Value;
 
 const DAY: i64 = 86_400;
 
-/// 天数（自 1970-01-01）⇒ 年月日（Howard Hinnant 的 civil_from_days）。
-fn civil(days: i64) -> (i64, i64, i64) {
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    (era * 400 + yoe + i64::from(m <= 2), m, d)
-}
-
 /// 一个时刻按此刻与时区偏移（分钟，东正）写：当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年 `YYYY-MM-DD HH:MM`。
 pub(crate) fn fmt_at(t: i64, now: i64, tz_min: i64) -> String {
     let local = t + tz_min * 60;
@@ -34,8 +21,8 @@ pub(crate) fn fmt_at(t: i64, now: i64, tz_min: i64) -> String {
     if day == today {
         return hm;
     }
-    let (y, m, d) = civil(day);
-    if y == civil(today).0 {
+    let (y, m, d) = crate::common::time::civil_from_days(day);
+    if y == crate::common::time::civil_from_days(today).0 {
         format!("{m:02}-{d:02} {hm}")
     } else {
         format!("{y}-{m:02}-{d:02} {hm}")

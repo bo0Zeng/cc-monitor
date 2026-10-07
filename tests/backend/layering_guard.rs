@@ -352,6 +352,65 @@ mod tests {
         );
     }
 
+    /// 后端顶层模块名（`lib.rs` 里的 `pub mod <名>;`），从源码现取。
+    fn top_modules() -> Vec<String> {
+        let lib = std::fs::read_to_string(crate::guard_support::src_root().join("lib.rs"))
+            .expect("读 lib.rs");
+        production_code(&lib)
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix("pub mod "))
+            .filter_map(|r| r.split(';').next())
+            .map(|n| n.trim().to_string())
+            .collect()
+    }
+
+    /// 一层的生产段里引了哪些**不在 `allowed` 里**的顶层模块（`文件 → 符号`）。
+    fn upward_refs(files: &[(String, String)], allowed: &[&str]) -> Vec<String> {
+        let mut bad = Vec::new();
+        for m in top_modules() {
+            if allowed.contains(&m.as_str()) {
+                continue;
+            }
+            for (name, code) in files {
+                for sym in refs_to_layer(code, &m) {
+                    bad.push(format!("{name} → {sym}"));
+                }
+            }
+        }
+        bad
+    }
+
+    /// ★ **最下两层只朝下引**：`platform/` 不引本 crate 别的任何一层；`common/` 只引 `platform/`。
+    /// 人群是两层下的全部 `.rs`（采集对账），上层名单从 `lib.rs` 现取（新开一个顶层模块自动进禁区）。
+    #[test]
+    fn the_bottom_two_layers_only_reference_downward() {
+        let mods = top_modules();
+        assert!(
+            mods.len() >= 15 && mods.iter().any(|m| m == "stream"),
+            "从 lib.rs 只取到 {mods:?} —— 取法坏了，下面的禁区是空的"
+        );
+        let platform = layer_sources("platform");
+        assert_collection_is_complete("platform", &platform);
+        let common = layer_sources("common");
+        assert_collection_is_complete("common", &common);
+        let mut bad = upward_refs(&platform, &["platform"]);
+        bad.extend(upward_refs(&common, &["common", "platform"]));
+        assert!(
+            bad.is_empty(),
+            "最下两层引了上层：\n  {}\n名字或类型放错了层 —— 挪到被引的那一侧（下层）去，别加例外。",
+            bad.join("\n  ")
+        );
+        // 正控：同一个判法在一份引了帧面的合成样本上必须认出来。
+        let sample = vec![(
+            "common/x.rs".to_string(),
+            "pub(crate) const A: &str = crate::stream::listen::ENV_PORT;\n".to_string(),
+        )];
+        assert_eq!(
+            upward_refs(&sample, &["common", "platform"]),
+            vec!["common/x.rs → crate::stream::listen::ENV_PORT".to_string()]
+        );
+    }
+
     /// ★ **正向要显式列举且条数钉死**：`observe/` 只许用登记过的那几个 control 符号。
     #[test]
     fn observe_to_control_interface_is_exactly_the_registered_set() {
