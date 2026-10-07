@@ -2997,11 +2997,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // 只为本机读盘服务的适配器门面删了；按本机根前缀判种类的那一个只剩散文（换成按文件名形态判）。
         // `adapter.rs` 的 `kind_of_path` 那一行摘了：那份文件删了。
         (
-            "tests/frontend/shell/byte_cap_registry_tests.rs",
-            "stream_read_remote_session",
-            1,
-        ),
-        (
             "tests/frontend/shell/drift_ledger_tests.rs",
             "stream_read_remote_session",
             1,
@@ -4019,11 +4014,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ), // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         (
-            "tests/frontend/shell/byte_cap_registry_tests.rs",
-            "run_list_query",
-            1,
-        ), // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
-        (
             "tests/frontend/shell/exec_site_registry_tests.rs",
             "run_list_query",
             1,
@@ -4819,7 +4809,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // `launch_wire_f07_main_path_tests.rs` 那一行随文件删了（起会话只交一行 `ccm …`（载荷那一层与它的判据整层删了））。
         // `backend_tests.rs` 那一行摘了：改名重写成 `backend_client_guard_tests.rs`（下一行）。
         ("tests/frontend/shell/backend_client_guard_tests.rs", 3), // 新行：头注里三块（旧文件名 · 旧登记表 · 旧层判据文件）
-        ("tests/frontend/shell/byte_cap_registry_tests.rs", 10), // 10 → 11 // 测试连接搬进本机后端，旧名挂墓碑 9 → 10 // +1：远端 `.claude.json` 那条上限删了；+1：钩子诊断读远端 settings.json 的上限删了；+2：驾驶舱读面那两个上限（名册 · 收件箱）随 shell 读删了 // +1：F10b 那段病史点的远端读会话函数删了 // +1：`K-R112` 地板那段点的查在线命令迁到界面 // +1：`K-R112` 地板那段点的抓屏命令迁到界面 // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
+        ("tests/frontend/shell/byte_cap_registry_tests.rs", 6),
         // `hooks_diag.rs` 那一行随文件删了（钩子诊断整轴进后端，那块墓碑守的「远端拨号 shell」一起没了）。
         ("src/backend/footprint/rows.rs", 3), // 1 → 3：`claude_config_dir` · `config_surface_report` · `with_monitor_probe` 三处删了点旧名 // 新贴：`claude_config_dir` · `resolves_on_path` 从 `hooks_diag.rs` 挪来，点旧住址
         // `tests/frontend/shell/acct_iso_deploy_tests.rs` 那一行随整份判据文件删了（它守的围栏与部署命令一起退役）。
