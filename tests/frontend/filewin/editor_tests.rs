@@ -759,7 +759,9 @@ fn find_and_replace_walk_the_editor_text_through_the_window() {
     let painted = crate::find::testing::frame_text(&ctx, &mut w, Vec::new());
     // 查找框 · 替换框空着时画的是提示字（「查找」「替换为」）；↑ ↓ × 是图标（悬停说「上一个」「下一个」）。
     assert!(
-        painted.iter().any(|t| t.ends_with("查找")),
+        painted
+            .iter()
+            .any(|t| t.ends_with(&*copy_text("rsFilewinShell.editor.findLabel", &[]))),
         "编辑面上没画查找框"
     );
     for label in [
@@ -827,7 +829,9 @@ fn big_file_mode_has_no_find_and_says_so() {
         "大文件模式没出声（底条那一行）：{foot}"
     );
     assert!(
-        !painted.iter().any(|t| t == "全部替换"),
+        !painted
+            .iter()
+            .any(|t| *t == copy_text("rsFilewinShell.editor.replaceAll", &[])),
         "大文件模式也画了查找栏"
     );
     w.find_bar_mut().unwrap().needle = "a".into();

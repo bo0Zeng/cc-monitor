@@ -70,7 +70,7 @@ const chore = (over: Record<string, unknown>) => ({
 
 const report = (over: Record<string, unknown> = {}) => ({
   home: "/h",
-  changedFiles: [{ path: "~/.bashrc", what: "ccm 命令入口", undo: { page: "machine", tab: "config", anchor: "connect-terminal" } }],
+  changedFiles: [{ path: "~/.bashrc", what: copyText("rsToolRegistry.tools.ccmName"), undo: { page: "machine", tab: "config", anchor: "connect-terminal" } }],
   todo: [
     chore({ id: "install:claude-cli", kind: "install", name: "Claude Code", action: "how", howUrl: "https://example.invalid/claude" }),
     chore({ id: "install:git", kind: "installOptional", name: "git", action: "how" }),
@@ -221,7 +221,7 @@ describe("cc-monitor 放了什么", () => {
     [...page.element.querySelectorAll<HTMLButtonElement>(".data-chip")].find((b) => b.textContent === "devbox")!.click();
     const pane = page.element.querySelector<HTMLElement>('[data-pane="placed"]')!;
     expect(pane.textContent).toContain("~/.bashrc");
-    expect(pane.textContent).toContain(copyText("dataPage.changed.line", { what: "ccm 命令入口", where: copyText("dataPage.undo.config") }));
+    expect(pane.textContent).toContain(copyText("dataPage.changed.line", { what: copyText("rsToolRegistry.tools.ccmName"), where: copyText("dataPage.undo.config") }));
     [...pane.querySelectorAll("button")].find((b) => b.textContent === copyText("dataPage.changed.go"))!.click();
     expect(went).toEqual([{ machine: "devbox", tab: "config", anchor: "connect-terminal" }]);
   });

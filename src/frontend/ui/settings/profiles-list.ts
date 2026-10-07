@@ -202,7 +202,7 @@ const SLOT_LABEL: Record<SlotId, () => string> = {
  * 「在哪起」那三种 tmux 取名**撞名时会怎样**（下拉的选项只有名字，没有一句说撞了会怎样）。
  *
  * 规则不在这里：取名与退让住后端 `control/ccm/plan.rs::build`。`stepsAside` 与后端逐条对拍
- * （`tests/frontend/ui/settings/machine-aliases-naming.vitest.ts` 读后端原文，两向相等），说明里「依次试」出现 ⇔ 它为真。
+ * （`tests/frontend/ui/settings/machine-aliases-naming.vitest.ts` 读后端原文，两向相等），说明里点出退让的后缀（-2）⇔ 它为真。
  */
 // ⚠ `text` 是取文函数：模块顶层调 `copyText` 会让打包器把本模块挪进主窗口也要的共享块。
 export const TMUX_NAMING: Record<"auto" | "fixed" | "base", { stepsAside: boolean; text: () => string }> = {

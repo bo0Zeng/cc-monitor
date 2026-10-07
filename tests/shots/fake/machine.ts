@@ -193,7 +193,7 @@ export function machineOps(): Record<string, OpHandler> {
       return {
         home: HOME,
         changedFiles: [
-          { path: "~/.bashrc", what: "ccm 命令入口", undo: { page: "machine", tab: "config", anchor: "connect-terminal" } },
+          { path: "~/.bashrc", what: copyText("rsToolRegistry.tools.ccmName"), undo: { page: "machine", tab: "config", anchor: "connect-terminal" } },
           { path: "~/.claude/skills/cc-bus", what: "cc-bus", undo: { page: "ext" } },
         ],
         todo,
@@ -292,7 +292,7 @@ export function machineCommands(): Record<string, CommandHandler> {
     diagnostics_report: (a) => {
       const keys = (a.configUnknown as string[] | undefined) ?? [];
       return {
-        text: ["cc-monitor 诊断信息", "版本 4.1.1 · 构建 p8n-mcp-sync · linux", "各机器：", "  本机 · up · 版本 4.1.1 · 构建 p8n-mcp-sync", "  devbox · up · 版本 4.1.1 · 构建 p8n-mcp-sync", "未识别数据：", "  devbox · 会话记录 3 条", `  config.json · ${keys.length} 项`, `日志：${HOME}/.cc-monitor/logs/monitor.2026-10-01.log`].join("\n"),
+        text: [copyText("rsDiagReport.text.head"), "版本 4.1.1 · 构建 p8n-mcp-sync · linux", copyText("rsDiagReport.text.machines"), "  本机 · up · 版本 4.1.1 · 构建 p8n-mcp-sync", "  devbox · up · 版本 4.1.1 · 构建 p8n-mcp-sync", copyText("rsDiagReport.text.unknown"), "  devbox · 会话记录 3 条", `  config.json · ${keys.length} 项`, `日志：${HOME}/.cc-monitor/logs/monitor.2026-10-01.log`].join("\n"),
         unknown: [
           { machine: "本机", records: 0 },
           { machine: "devbox", records: 3 },
@@ -340,17 +340,17 @@ function chore(over: Record<string, unknown>): Record<string, unknown> & { kind:
 const SETTINGS = `${HOME}/.claude/settings.json`;
 const WHOLE = '{\n  "env": {\n    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788/k/9f3c2a71/claude",\n    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "32000"\n  }\n}\n';
 const DEVBOX_CHORES = [
-  chore({ id: "stale-ccm", kind: "must", name: "终端里的 ccm 是旧的一份", loc: "/usr/local/bin/ccm", said: "非 cc-monitor 放置 · 先于 cc-monitor 那份", why: "敲 ccm 和别名先找到的是 /usr/local/bin/ccm：不是 cc-monitor 放的，起的会话 cc-monitor 管不到", steps: ["复制下面这一行，到这台的终端里跑"], copy: "sudo rm '/usr/local/bin/ccm'", action: "copyCommand" }),
-  chore({ id: "clash:cc", kind: "decide", name: "cc 重名 · 你写的 / 清单", loc: "~/.bashrc 第 125 行", said: "生效：你写的 · 清单那条被盖", why: "现在敲 cc 起的是后定义的那一个；没生效的那一条白放着", copy: `${HOME}/.bashrc:125`, file: `${HOME}/.bashrc`, go: { page: "machine", tab: "config", anchor: "clash" }, action: "decide" }),
-  chore({ id: "clash:cct", kind: "decide", name: "cct 重名 · 你写的 / 清单", loc: "~/.bashrc 第 129 行", said: "生效：你写的 · 清单那条被盖", why: "现在敲 cct 起的是后定义的那一个；没生效的那一条白放着", copy: `${HOME}/.bashrc:129`, file: `${HOME}/.bashrc`, go: { page: "machine", tab: "config", anchor: "clash" }, action: "decide" }),
-  chore({ id: `dead:${HOME}/.bashrc`, name: ".bashrc · 2 行失效", loc: "~/.bashrc 第 118, 119 行", said: "指向的文件已不存在 · 无影响", why: "这几行指向的文件已经不在了，留着不碍事", steps: ["第 118 行：source ~/.old-ccm.sh", "第 119 行：. ~/bin/ccm-env"], copy: `${HOME}/.bashrc:118`, file: `${HOME}/.bashrc`, action: "locate" }),
+  chore({ id: "stale-ccm", kind: "must", name: copyText("beChore.staleCcm.name"), loc: "/usr/local/bin/ccm", said: copyText("beChore.staleCcm.said"), why: "敲 ccm 和别名先找到的是 /usr/local/bin/ccm：不是 cc-monitor 放的，起的会话 cc-monitor 管不到", steps: [copyText("beChore.staleCcm.step")], copy: "sudo rm '/usr/local/bin/ccm'", action: "copyCommand" }),
+  chore({ id: "clash:cc", kind: "decide", name: "cc 重名 · 你写的 / 清单", loc: "~/.bashrc 第 125 行", said: copyText("beChore.clash.winsYours"), why: "现在敲 cc 起的是后定义的那一个；没生效的那一条白放着", copy: `${HOME}/.bashrc:125`, file: `${HOME}/.bashrc`, go: { page: "machine", tab: "config", anchor: "clash" }, action: "decide" }),
+  chore({ id: "clash:cct", kind: "decide", name: "cct 重名 · 你写的 / 清单", loc: "~/.bashrc 第 129 行", said: copyText("beChore.clash.winsYours"), why: "现在敲 cct 起的是后定义的那一个；没生效的那一条白放着", copy: `${HOME}/.bashrc:129`, file: `${HOME}/.bashrc`, go: { page: "machine", tab: "config", anchor: "clash" }, action: "decide" }),
+  chore({ id: `dead:${HOME}/.bashrc`, name: ".bashrc · 2 行失效", loc: "~/.bashrc 第 118, 119 行", said: copyText("beChore.dead.said"), why: copyText("beChore.dead.why"), steps: ["第 118 行：source ~/.old-ccm.sh", "第 119 行：. ~/bin/ccm-env"], copy: `${HOME}/.bashrc:118`, file: `${HOME}/.bashrc`, action: "locate" }),
   chore({
     id: "relay",
-    name: "直接敲的 claude 也实时显示",
+    name: copyText("beChore.relay.name"),
     loc: "~/.claude/settings.json · env",
-    said: "当前：写入记录后才显示",
-    why: "在终端里直接敲起的会话，要等写进记录才显示，慢一拍；贴好这一行之后也实时显示",
-    steps: ["打开 ~/.claude/settings.json", "在第 2 行后面加下面 1 行", "存盘 · 新开的会话生效"],
+    said: copyText("beChore.relay.saidTodo"),
+    why: copyText("beChore.relay.why"),
+    steps: ["打开 ~/.claude/settings.json", "在第 2 行后面加下面 1 行", copyText("beChore.step.save")],
     diff: [
       { n: 2, op: "same", text: '  "env": {' },
       { n: null, op: "add", text: '    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8788/k/9f3c2a71/claude",' },
@@ -362,9 +362,9 @@ const DEVBOX_CHORES = [
     file: SETTINGS,
     mask: "9f3c2a71",
   }),
-  chore({ id: "cc-bus-hooks", name: "cc-bus 自动收信", loc: "~/.claude/settings.json · hooks", said: "会话开始上线 · 每轮结束收信", why: "会话开始时登记，每轮结束时收信", steps: ["打开 ~/.claude/settings.json", "在第 5 行后面加下面 12 行", "存盘 · 新开的会话生效"], copy: '"hooks": {}', whole: WHOLE, wholeCovers: ["relay", "cc-bus-hooks"], file: SETTINGS }),
+  chore({ id: "cc-bus-hooks", name: copyText("beChore.hooks.name"), loc: "~/.claude/settings.json · hooks", said: copyText("beChore.hooks.said"), why: copyText("beChore.hooks.why"), steps: ["打开 ~/.claude/settings.json", "在第 5 行后面加下面 12 行", copyText("beChore.step.save")], copy: '"hooks": {}', whole: WHOLE, wholeCovers: ["relay", "cc-bus-hooks"], file: SETTINGS }),
 ];
 const LOCAL_CHORES = [
-  chore({ id: "install:xdg-terminal-exec", kind: "installOptional", name: "xdg-terminal-exec", loc: "xdg-terminal-exec", said: "缺了少一个功能", action: "how", howUrl: "https://gitlab.freedesktop.org/terminal-wg/specifications" }),
-  chore({ id: "relay", state: "done", name: "直接敲的 claude 也实时显示", loc: "~/.claude/settings.json · env", said: "已实时显示", file: SETTINGS }),
+  chore({ id: "install:xdg-terminal-exec", kind: "installOptional", name: "xdg-terminal-exec", loc: "xdg-terminal-exec", said: copyText("beChore.install.saidOptional"), action: "how", howUrl: "https://gitlab.freedesktop.org/terminal-wg/specifications" }),
+  chore({ id: "relay", state: "done", name: copyText("beChore.relay.name"), loc: "~/.claude/settings.json · env", said: copyText("beChore.relay.saidDone"), file: SETTINGS }),
 ];

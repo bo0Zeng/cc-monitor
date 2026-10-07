@@ -1,0 +1,293 @@
+{
+  "说明": [
+    "测试源码里与文案表某条 zh 逐字相同、却不该换成文案键的中文字面量（判据：tests/copy/copy-test-literals.vitest.ts）。",
+    "按 文件 · 那句 · 用途 认；用途取自判据里的闭集（输入 · 回显 · 用例名 · 非文案 · 词义）。那份文件里已没有这句（或表值变了）⇒ 死豁免红，删掉这条。"
+  ],
+  "files": {
+    "tests/backend/assets/cc_bus_install_tests.rs": [
+      { "text": "失败", "use": "词义" }
+    ],
+    "tests/backend/control/cc_bus_tests.rs": [
+      { "text": "只读", "use": "非文案" },
+      { "text": "收件箱", "use": "用例名" }
+    ],
+    "tests/backend/control/ccm/plan_tests.rs": [
+      { "text": "项目", "use": "输入" }
+    ],
+    "tests/backend/control/deploy_plan_tests.rs": [
+      { "text": "本机", "use": "输入" }
+    ],
+    "tests/backend/files/capability_guard.rs": [
+      { "text": "没有", "use": "非文案" }
+    ],
+    "tests/backend/files/size_tests.rs": [
+      { "text": "没有", "use": "输入" }
+    ],
+    "tests/backend/platform/cfgless_guard.rs": [
+      { "text": "路径", "use": "非文案" }
+    ],
+    "tests/backend/platform/fallback_guard.rs": [
+      { "text": "只读", "use": "非文案" }
+    ],
+    "tests/backend/platform/shell/dialect_tests.rs": [
+      { "text": "名字", "use": "输入" }
+    ],
+    "tests/backend/plugin_walk_fixture.rs": [
+      { "text": "失败", "use": "词义" }
+    ],
+    "tests/backend/ratchet_guard.rs": [
+      { "text": "刷新", "use": "非文案" }
+    ],
+    "tests/common/guard-core/no_outside_refs_tests.rs": [
+      { "text": "记录", "use": "非文案" }
+    ],
+    "tests/common/shell-quote-core/lib_tests.rs": [
+      { "text": "会话", "use": "输入" },
+      { "text": "模型", "use": "输入" },
+      { "text": "账号", "use": "输入" }
+    ],
+    "tests/frontend/filewin/editor_tests.rs": [
+      { "text": "刷新", "use": "词义" },
+      { "text": "没有", "use": "输入" }
+    ],
+    "tests/frontend/filewin/progress_tests.rs": [
+      { "text": "已取消", "use": "回显" }
+    ],
+    "tests/frontend/filewin/select_tests.rs": [
+      { "text": "回车", "use": "用例名" }
+    ],
+    "tests/frontend/filewin/source_tests.rs": [
+      { "text": "上一级", "use": "非文案" }
+    ],
+    "tests/frontend/filewin/workspace_tests.rs": [
+      { "text": "没有权限", "use": "回显" }
+    ],
+    "tests/frontend/shell/atomic_replace_registry_tests.rs": [
+      { "text": "用户", "use": "非文案" }
+    ],
+    "tests/frontend/shell/byte_table_tests.rs": [
+      { "text": "后端", "use": "词义" }
+    ],
+    "tests/frontend/shell/capability_registry_tests.rs": [
+      { "text": "最小化", "use": "非文案" },
+      { "text": "全屏", "use": "非文案" }
+    ],
+    "tests/frontend/shell/ccm_legacy_tests.rs": [
+      { "text": "不是 cc-monitor 放的", "use": "回显" }
+    ],
+    "tests/frontend/shell/command_home_registry_tests.rs": [
+      { "text": "日志", "use": "非文案" }
+    ],
+    "tests/frontend/shell/diagnostics_report_tests.rs": [
+      { "text": "本机", "use": "输入" }
+    ],
+    "tests/frontend/shell/local_backend_host_tests.rs": [
+      { "text": "崩了", "use": "用例名" },
+      { "text": "被拒了", "use": "用例名" },
+      { "text": "读坏了", "use": "用例名" }
+    ],
+    "tests/frontend/shell/machine_state_tests.rs": [
+      { "text": "要更新", "use": "用例名" }
+    ],
+    "tests/frontend/shell/remote_write_registry_tests.rs": [
+      { "text": "路径", "use": "非文案" },
+      { "text": "命令", "use": "非文案" }
+    ],
+    "tests/frontend/shell/scanning_guard_registry_tests.rs": [
+      { "text": "自己", "use": "非文案" }
+    ],
+    "tests/frontend/shell/sftp_family_registry_tests.rs": [
+      { "text": "命令", "use": "非文案" }
+    ],
+    "tests/frontend/shell/user_files_tests.rs": [
+      { "text": "本机", "use": "输入" }
+    ],
+    "tests/frontend/ui/accounts.vitest.ts": [
+      { "text": "后端", "use": "词义" },
+      { "text": "本机", "use": "词义" }
+    ],
+    "tests/frontend/ui/agent-window.vitest.ts": [
+      { "text": "主会话", "use": "输入" }
+    ],
+    "tests/frontend/ui/branching.test.ts": [
+      { "text": "其他", "use": "输入" }
+    ],
+    "tests/frontend/ui/cc-bus-control.vitest.ts": [
+      { "text": "被拒", "use": "用例名" }
+    ],
+    "tests/frontend/ui/config-persist-failure.vitest.ts": [
+      { "text": "固定", "use": "用例名" },
+      { "text": "快捷键", "use": "用例名" }
+    ],
+    "tests/frontend/ui/design-tokens.vitest.ts": [
+      { "text": "颜色", "use": "非文案" }
+    ],
+    "tests/frontend/ui/front-result.vitest.ts": [
+      { "text": "本机", "use": "输入" }
+    ],
+    "tests/frontend/ui/ipc/commands.vitest.ts": [
+      { "text": "时间", "use": "回显" }
+    ],
+    "tests/frontend/ui/kit/components.vitest.ts": [
+      { "text": "关闭", "use": "输入" },
+      { "text": "卸载", "use": "输入" },
+      { "text": "保存", "use": "输入" },
+      { "text": "显示隐藏文件", "use": "输入" },
+      { "text": "取消", "use": "输入" },
+      { "text": "端口", "use": "输入" },
+      { "text": "路径", "use": "输入" },
+      { "text": "自动跟随", "use": "输入" },
+      { "text": "机器", "use": "输入" },
+      { "text": "连接", "use": "输入" },
+      { "text": "账号", "use": "输入" },
+      { "text": "终端", "use": "输入" },
+      { "text": "默认", "use": "输入" },
+      { "text": "本会话", "use": "输入" },
+      { "text": "详情", "use": "输入" },
+      { "text": "复制", "use": "输入" },
+      { "text": "远端", "use": "输入" },
+      { "text": "运行中", "use": "输入" },
+      { "text": "失败", "use": "输入" },
+      { "text": "复制详情", "use": "输入" },
+      { "text": "重启 cc-monitor 后生效", "use": "输入" },
+      { "text": "无会话", "use": "输入" }
+    ],
+    "tests/frontend/ui/kit/dialog.vitest.ts": [
+      { "text": "保留", "use": "输入" },
+      { "text": "新建", "use": "输入" }
+    ],
+    "tests/frontend/ui/kit/menu.vitest.ts": [
+      { "text": "在新窗口打开", "use": "输入" },
+      { "text": "预览", "use": "输入" },
+      { "text": "结束会话", "use": "输入" },
+      { "text": "恢复", "use": "输入" },
+      { "text": "账号", "use": "输入" },
+      { "text": "运行于", "use": "输入" },
+      { "text": "在 tmux 里", "use": "输入" },
+      { "text": "不用 tmux", "use": "输入" }
+    ],
+    "tests/frontend/ui/kit/select.vitest.ts": [
+      { "text": "默认", "use": "输入" },
+      { "text": "需登录", "use": "输入" },
+      { "text": "账号", "use": "输入" },
+      { "text": "机器", "use": "输入" }
+    ],
+    "tests/frontend/ui/kit/toast-messages.vitest.ts": [
+      { "text": "已复制", "use": "输入" },
+      { "text": "重试", "use": "输入" },
+      { "text": "查看", "use": "输入" }
+    ],
+    "tests/frontend/ui/kit/toast.vitest.ts": [
+      { "text": "已复制", "use": "输入" }
+    ],
+    "tests/frontend/ui/kit/tooltip.vitest.ts": [
+      { "text": "下一个", "use": "输入" },
+      { "text": "刷新", "use": "输入" }
+    ],
+    "tests/frontend/ui/resync.vitest.ts": [
+      { "text": "被拒了", "use": "回显" }
+    ],
+    "tests/frontend/ui/settings/backend-section.vitest.ts": [
+      { "text": "本机", "use": "输入" }
+    ],
+    "tests/frontend/ui/settings/config-page.vitest.ts": [
+      { "text": "本机", "use": "输入" }
+    ],
+    "tests/frontend/ui/settings/data-page.vitest.ts": [
+      { "text": "名字", "use": "输入" }
+    ],
+    "tests/frontend/ui/settings/diagnostics-section.vitest.ts": [
+      { "text": "本机", "use": "输入" }
+    ],
+    "tests/frontend/ui/settings/ext-section.vitest.ts": [
+      { "text": "本机", "use": "输入" }
+    ],
+    "tests/frontend/ui/settings/machine-state.vitest.ts": [
+      { "text": "要更新", "use": "用例名" }
+    ],
+    "tests/frontend/ui/settings/panel-block-isolation.vitest.ts": [
+      { "text": "本机", "use": "输入" }
+    ],
+    "tests/frontend/ui/settings/panel-deferred-io.vitest.ts": [
+      { "text": "本机", "use": "输入" }
+    ],
+    "tests/frontend/ui/settings/panel-groups.vitest.ts": [
+      { "text": "本机", "use": "输入" }
+    ],
+    "tests/frontend/ui/settings/panel-machine-page-visibility.vitest.ts": [
+      { "text": "本机", "use": "输入" }
+    ],
+    "tests/frontend/ui/settings/panel-per-machine-deferred-io.vitest.ts": [
+      { "text": "本机", "use": "输入" }
+    ],
+    "tests/frontend/ui/settings/panel-window-lifecycle.vitest.ts": [
+      { "text": "保存", "use": "词义" },
+      { "text": "取消", "use": "词义" }
+    ],
+    "tests/frontend/ui/settings/profiles-list.vitest.ts": [
+      { "text": "按目录", "use": "回显" },
+      { "text": "在哪起", "use": "回显" }
+    ],
+    "tests/frontend/ui/settings/remote-section.vitest.ts": [
+      { "text": "本机", "use": "词义" }
+    ],
+    "tests/frontend/ui/settings/router.vitest.ts": [
+      { "text": "机器", "use": "输入" },
+      { "text": "未命名机器", "use": "输入" },
+      { "text": "应用", "use": "输入" },
+      { "text": "不存在", "use": "输入" }
+    ],
+    "tests/frontend/ui/settings/settings-skeleton.vitest.ts": [
+      { "text": "本机", "use": "输入" }
+    ],
+    "tests/frontend/ui/settings/ui-copy-discipline.vitest.ts": [
+      { "text": "本机", "use": "输入" }
+    ],
+    "tests/frontend/ui/tab-bar-state.vitest.ts": [
+      { "text": "昨天", "use": "输入" }
+    ],
+    "tests/frontend/ui/tabs.vitest.ts": [
+      { "text": "任务", "use": "输入" }
+    ],
+    "tests/frontend/ui/tmux-control.vitest.ts": [
+      { "text": "预览", "use": "输入" }
+    ],
+    "tests/frontend/ui/views/command-bar.vitest.ts": [
+      { "text": "history 历史", "use": "输入" },
+      { "text": "打开", "use": "输入" },
+      { "text": "切换", "use": "输入" },
+      { "text": "等批准", "use": "输入" },
+      { "text": "全屏", "use": "输入" },
+      { "text": "在会话里找", "use": "输入" },
+      { "text": "历史", "use": "输入" },
+      { "text": "管理账号…", "use": "输入" },
+      { "text": "最小化", "use": "输入" },
+      { "text": "用量", "use": "输入" }
+    ],
+    "tests/frontend/ui/views/history-page.vitest.ts": [
+      { "text": "不指定账号 · ~/.claude", "use": "回显" }
+    ],
+    "tests/frontend/ui/views/live-user-inputs.vitest.ts": [
+      { "text": "连不上", "use": "回显" }
+    ],
+    "tests/frontend/ui/views/session-viewer-user-inputs.vitest.ts": [
+      { "text": "重试", "use": "输入" },
+      { "text": "恢复", "use": "输入" }
+    ],
+    "tests/naming/account-vs-relay-naming.vitest.ts": [
+      { "text": "类型", "use": "非文案" }
+    ],
+    "tests/shots/fake/history.ts": [
+      { "text": "重试", "use": "输入" }
+    ],
+    "tests/shots/fake/machine.ts": [
+      { "text": "日志", "use": "回显" },
+      { "text": "账号", "use": "回显" },
+      { "text": "本机", "use": "输入" }
+    ],
+    "tests/test-support/session-viewer-rig.ts": [
+      { "text": "连不上", "use": "回显" },
+      { "text": "加载失败", "use": "词义" }
+    ]
+  }
+}

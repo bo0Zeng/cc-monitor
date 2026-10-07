@@ -363,7 +363,7 @@ describe("B03 批二：派活 / 收信 / 图形化 spawn", () => {
       tool: "codex",
       account: "", // L2：空串 = 显式基座，**不存在"什么都不传"这一档**
     });
-    expect(btn.textContent).toBe(copyText("ccBus.spawn.go")); // 武装状态要复位，不能一直停在"确认"
+    expect(btn.textContent).toBe(copyText("ccBus.spawn.go")); // 武装状态要复位，不能一直停在「确认」
   });
 
   it("目录为空时连武装都不该发生", async () => {

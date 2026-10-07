@@ -1224,7 +1224,9 @@ fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
             r.tool_id
         );
         assert!(
-            !r.source_label.contains("不由 cc-monitor 提供"),
+            !r.source_label.contains(copy_core::copy_static!(
+                "rsConfigSurface.unmanaged.checkOnlySource"
+            )),
             "`{}` 的措辞把「欠的实现」说成了「不是我们提供的」—— \
                  那与 `K38` 矛盾（`KR65D2` 逐字：不会被读成「不该我们装」）",
             r.tool_id

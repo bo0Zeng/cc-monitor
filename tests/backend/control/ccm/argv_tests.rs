@@ -200,7 +200,11 @@ fn the_combination_rules_all_fail_loudly() {
         .starts_with(copy_core::copy_static!("beArgv.validate.sizeNeedsTmux")));
     assert!(err(&["--ccm-tmux=a", "--tmux-base", "b"])
         .starts_with(copy_core::copy_static!("beArgv.validate.nameAndBase")));
-    assert!(err(&["--ccm-tmux", "--bus-register"]).starts_with("--bus-register 需要配合 --detach"));
+    assert!(
+        err(&["--ccm-tmux", "--bus-register"]).starts_with(copy_core::copy_static!(
+            "beArgv.validate.registerNeedsDetach"
+        ))
+    );
     assert!(err(&["--bus-note", "x"]).starts_with("--bus-note 需要配合 --bus-register"));
     // 这几形不报「未知选项 / 多余的位置参数」，原样交给 agent。
     assert_eq!(ok(&["--nope", "foo"]).passthru, v(&["--nope", "foo"]));
