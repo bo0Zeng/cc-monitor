@@ -213,6 +213,7 @@ describe("复制诊断信息 · 未识别数据那一行", () => {
     expect(box, "没给退路").toBeTruthy();
     expect(box!.value).toBe(report.value.text);
     expect(box!.readOnly).toBe(true);
+    expect([box!.selectionStart, box!.selectionEnd], "没全选好").toEqual([0, report.value.text.length]);
     expect(sec.element.textContent).toContain(copyText("diagnostics.copy.fallback"));
   });
 });
