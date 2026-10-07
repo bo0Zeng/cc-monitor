@@ -426,6 +426,7 @@ const SCAN: &[&str] = &[
     // `tests/frontend/shell/fenced_block_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
     "tests/frontend/filewin/bigfile_tests.rs",
     "tests/frontend/filewin/guard_support_tests.rs", // 窗口包的判据住址反空真
+    "tests/frontend/filewin/xvfb_rig_tests.rs", // 台架与截图工具同经一份脚本起 Xvfb（读那几份文本）
     "tests/frontend/shell/filewin/boundary_tests.rs",
     "tests/frontend/filewin/copy_tests.rs",
     "tests/frontend/shell/filewin/entry_tests.rs", // INTEGRATION → SCAN：落盘那条（书签旧键搬家）退役删了

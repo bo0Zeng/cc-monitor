@@ -839,133 +839,61 @@ fn real_pointer_events_reach_egui_and_the_double_click_side_is_still_unjudgeable
 // Xvfb 台架自己的两条 —— 🔴 **量具会自己烂掉，所以量具也要有人看着**
 // ═══════════════════════════════════════════════════════════════════
 
-/// 🔴 **占用判定必须分得清「有人在用」与「有人留了个死锁」。**
-///
-/// # 它治的是一条真发生过的病（2026-09-21 现打）
-///
-/// 上一版的判定是「`/tmp/.X<n>-lock` 在不在」两态。而台架的 `Drop` 只 `kill`
-/// 掉 Xvfb、**没删那个锁**（SIGKILL 之下 X 服务器不自己收尾）⇒ **每跑一趟漏一个号**。
-/// 号池只有 30 个 ⇒ **跑够 30 趟，那两格永久红**。
-/// 现打当时：`:90`–`:119` **30/30 全被锁**，这些锁记的 pid **全死了**，机器上真在跑的
-/// `Xvfb` 是 **0 个**。四趟里红两趟 —— 那不是抖动，是号池在那一刻见底。
-///
-/// 🔴 更贵的一层：**它红的样子是「这一格判不了」，而那与「这一格过了」在终端上分不开**
-/// ⇒ 上一次门禁「27 格全绿」是在号池还没见底时取的读数。
-///
-/// # 为什么判纯函数而不判 `/tmp`
-///
-/// 往 `/tmp` 里种 30 个假锁会**砸掉同时并行跑的别的格**。
-/// ⇒ 把判定抽成纯函数（内容 ＋ 一个「这个 pid 活着吗」的判定），
-/// 两个方向都用合成输入打，**一个字节都不碰文件系统**。
-// 台架整份是 `#[cfg(not(windows))]` ⇒ 本条在 Windows target 上导入解析不了。
-// 〔现打：`winchk` 那一格交叉编到 `x86_64-pc-windows-gnu` 时 E0432〕
-#[cfg(not(windows))]
-#[test]
-fn a_stale_lock_and_a_live_lock_are_told_apart() {
-    use crate::rows::testing::xvfb::{classify_lock, Slot};
-
-    // 阳性方向：pid 活着 ⇒ 别碰
-    assert_eq!(
-        classify_lock(Some("      1234\n"), |p| p == 1234),
-        Slot::Live(1234),
-        "锁记的 pid 活着，却没判成「有人在用」—— 会把别人正在用的屏回收掉"
-    );
-    // 🔴 阴性方向：pid 已死 ⇒ 可回收。**没有这一条，整条判据就是上一版那个恒「别碰」**
-    assert_eq!(
-        classify_lock(Some("      1234\n"), |_| false),
-        Slot::Stale(1234),
-        "锁记的 pid 已经不在，却没判成「可回收」—— 这个号从此永久报废，\
-         而它报废的样子是「这一格判不了」，与「过了」在终端上分不开"
-    );
-    // 没有锁
-    assert_eq!(classify_lock(None, |_| true), Slot::Free);
-    // 🔴 读不懂的内容**一律保守判「有人在用」** —— 宁可放弃一个号，
-    //    也不要把别人的屏当垃圾回收。
-    for junk in ["", "  \n", "not-a-pid", "0", "-7"] {
-        assert_eq!(
-            classify_lock(Some(junk), |_| false),
-            Slot::Live(0),
-            "锁内容 {junk:?} 解不出 pid，却没保守判成「有人在用」"
-        );
-    }
-}
-
-/// 🔴 **台架收场之后不许留下锁文件** —— 这是「号池只减不增」那条病的另一头。
+/// 🔴 **台架收场之后不许留下这台屏的套接字文件与占号的锁**（号还得回去：下一台挑号时不被一份死文件挡着）。
 ///
 /// ⚠ 它买的是**行为**：真起一台 Xvfb、真析构、再看盘上。
-/// 上面那条纯函数判据**买不到这一条**（它不碰文件系统）——
-/// 两条各买一半，合起来才是「号能还回去」。
 // 台架整份是 `#[cfg(not(windows))]` ⇒ 本条在 Windows target 上导入解析不了。
-// 〔现打：`winchk` 那一格交叉编到 `x86_64-pc-windows-gnu` 时 E0432〕
 #[cfg(not(windows))]
 #[test]
-fn the_rig_leaves_no_lock_behind_when_it_is_dropped() {
+fn the_rig_leaves_no_socket_behind_when_it_is_dropped() {
     use crate::rows::testing::xvfb;
-    xvfb::require_toolbox("「台架收场不漏锁」");
+    xvfb::require_toolbox("「台架收场不留套接字」");
 
-    let (display, lock) = {
+    use std::os::unix::fs::MetadataExt as _;
+    let inode = |p: &str| std::fs::metadata(p).ok().map(|m| m.ino());
+    let (display, socket, ours, lock, held) = {
         let screen = xvfb::Screen::start()
             .unwrap_or_else(|e| panic!("起不了 Xvfb ⇒ 这一格判不了，不是过了：{e}"));
         let d = screen.display().to_string();
         let num: u32 = d.trim_start_matches(':').parse().expect("显示号该是个数");
-        let lock = format!("/tmp/.X{num}-lock");
-        // 反空真：**这一趟真的产生过那个锁**，否则下面「锁没了」是句空话。
-        assert!(
-            std::path::Path::new(&lock).exists(),
-            "Xvfb 起在 {d} 上，却没有 {lock} —— 那么下面那条「收场后锁没了」\
-             会在一个从来不存在的东西上恒真"
-        );
-        (d, lock)
+        let socket = xvfb::socket_path(num);
+        // 反空真：**这一趟真的有过那个套接字**，否则下面「它没了」是句空话。
+        let ours = inode(&socket).unwrap_or_else(|| panic!("Xvfb 起在 {d} 上，却没有 {socket}"));
+        // 占号的锁也在。
+        let lock = xvfb::lock_path(num);
+        let held =
+            inode(&lock).unwrap_or_else(|| panic!("Xvfb 起在 {d} 上，却没有占号的锁 {lock}"));
+        (d, socket, ours, lock, held)
     }; // ← `screen` 在这里析构
 
-    assert!(
-        !std::path::Path::new(&lock).exists(),
-        "台架在 {display} 上收场了，{lock} 还在 —— 这个号从此还不回去。\
-         号池只有 30 个（`:90`–`:119`），漏够 30 次这一族判据就永久红，\
-         而它红的样子是「判不了」，与「过了」在终端上长得一样"
+    // 并行的别的格可能紧接着挑到同一个号、建一份新的 ⇒ 认的是「我们那一份」（同一个节点）还在不在。
+    assert_ne!(
+        inode(&socket),
+        Some(ours),
+        "台架在 {display} 上收场了，它那份 {socket} 还在"
+    );
+    assert_ne!(
+        inode(&lock),
+        Some(held),
+        "台架在 {display} 上收场了，它占号的锁 {lock} 还在"
     );
 }
 
-/// 🔴**号被别人抢走时，台架不许拿着别人的屏回来。**
-///
-/// # 这一条钉的是残余那条 flake 的病根
-///
-/// `slot(num)` 与「Xvfb 真建锁」之间有一段 TOCTOU；`NEXT_BASE` 只错开**起点**，
-/// 两格的扫描路径照样会在下一步汇到同一个号。两格同时 spawn `Xvfb :N` 时，
-/// **X 服务器自己的锁是仲裁者**：输的那台当场退出，stderr 逐字
-/// `Cannot establish any listening sockets`＋`exit=1`（2026-09-22 现打）。
-///
-/// 🔴 **而「问几何」那一跳会成功** —— 答话的是赢家那台。
-/// ⇒ 两个观测量**同时成立**，顺序一反（或者干脆不看第一个，那正是修之前的样子）
-/// 就会返回一个「子进程已死、屏是别人的」`Screen`
-/// ⇒ 两格窗口挤在一台屏上 ⇒ 数窗口那条判据数出 2 个，或赢家 `Drop` 杀屏 ⇒ `BadWindow`。
-///
-/// ⚠ 本条是**纯**的：不起任何 Xvfb、不撞号（同 `classify_lock` 那条的理由）。
-/// 它买不到「真并发下确实不撞」—— 那要两台真服务器，而那一格由
-/// `the_toolbox_hands_out_a_different_display_to_each_screen` 顶着。
+/// 读 Xvfb 报的号：一行十进制 ＋ 换行 ⇒ 那个号；没报就退了（文件尾）· 报的不是数 ⇒ 说出来，不当成哪个号。
 #[test]
 #[cfg(not(windows))]
-fn a_display_number_won_by_someone_else_is_never_reported_as_ours() {
-    use crate::rows::testing::xvfb::{judge_claim, Claim};
-    // 🔴 承重的那一格：**我们那台死了，而几何答得出**（赢家在答话）。
-    assert_eq!(
-        judge_claim(true, true),
-        Claim::TakenByAnother,
-        "我们那台 Xvfb 已经退出，却因为「屏答得出几何」被当成了我们的 —— \
-         那台答话的是赢家，两格的窗口会挤在一起"
-    );
-    // 死了、几何也答不出 ⇒ 同样不是我们的。
-    assert_eq!(judge_claim(true, false), Claim::TakenByAnother);
-    // 活着、答得出 ⇒ 是我们的。
-    assert_eq!(judge_claim(false, true), Claim::Ours);
-    // 活着、还没答得出 ⇒ 再等等（**不是**失败 —— Xvfb 要一会儿才就绪）。
-    assert_eq!(judge_claim(false, false), Claim::NotReadyYet);
+fn the_display_number_is_read_from_what_the_server_reports() {
+    use crate::rows::testing::xvfb::read_display_number;
+    assert_eq!(read_display_number(&mut &b"7\n"[..]), Ok(7));
+    assert_eq!(read_display_number(&mut &b"12\nlater"[..]), Ok(12));
+    assert!(read_display_number(&mut &b""[..]).is_err(), "没报号就退了");
+    assert!(read_display_number(&mut &b"7"[..]).is_err(), "没收尾的半行");
+    assert!(read_display_number(&mut &b"x\n"[..]).is_err());
 }
 
 /// 🔴 **真并发**：两台 `Screen` 同时起，拿到的号必须是两个。
 ///
-/// ⚠ 这一条真起两台 Xvfb（所以它要那两件现物，缺件照旧**红**不跳过）。
-/// 它买的是上一条纯判据买不到的那一半：**修完之后真的不撞了**。
+/// ⚠ 这一条真起两台 Xvfb（所以它要那两件现物，缺件照旧**红**不跳过）：号由服务器自己挑，真并发下也不撞。
 #[test]
 #[cfg(not(windows))]
 fn the_toolbox_hands_out_a_different_display_to_each_screen() {
@@ -974,7 +902,7 @@ fn the_toolbox_hands_out_a_different_display_to_each_screen() {
     //    但它不与那几格实景开窗重叠（逐条理由住 `xvfb::exclusive`）。
     let _guard = exclusive();
     require_toolbox("两台屏各拿一个号");
-    // 同一条线程上连起两台 —— 号池那个原子计数器与「服务器自己的锁」两道都在射程里。
+    // 同一条线程上连起两台 —— 号由服务器自己挑（`-displayfd`），第二台必须挑到另一个。
     let a = Screen::start().expect("第一台起不来");
     let b = Screen::start().expect("第二台起不来");
     assert_ne!(
