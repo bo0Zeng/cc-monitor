@@ -393,7 +393,6 @@ fn registered_commands() -> BTreeSet<String> {
 /// `src/adapter/` **今天就已经存在**（里面暂时没有 `#[tauri::command]`，所以还没炸）。
 ///
 /// 漏掉一条子目录里的命令时会怎样（Phase D 审计订正，原注释把话说满了）：
-/// - `LEDGER.len() == 123`（`ledger_shape_is_pinned`）**照样满足** —— 它只数账本，不数源码；
 /// - 但 `local_or_both_commands_take_no_remote_only_parameter` 的 `checked == 68` **会红**
 ///   —— 前提是漏掉的那条恰好是 `Local`/`Both`。漏掉纯 `Remote` 的命令则两条都不响。
 ///
@@ -771,7 +770,10 @@ fn every_asymmetry_reason_carries_something_you_can_go_check() {
         }
     }
     // 完备性自检：人群空了「全过」与「没测」长得一样。
-    assert!(!ASYMMETRY_REASONS.is_empty(), "一条不对称理由都没有 —— 本条此刻无效");
+    assert!(
+        !ASYMMETRY_REASONS.is_empty(),
+        "一条不对称理由都没有 —— 本条此刻无效"
+    );
     assert!(
         bare.is_empty(),
         "这些不对称理由**没有任何可以去核的东西**（无代码锚 / 无 § 段号 / 无 issue 号）：\n{}\n\n\

@@ -2904,7 +2904,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/frontend/shell/parity_ledger_tests.rs",
             "push_public_key",
-            3,
+            2,
         ),
         ("src/frontend/shell/src/lib.rs", "push_public_key", 1),
         // 删会话 · 分叉 · 钩子诊断三件转交退役（界面经通道直说那台后端）：散文里点那几个旧名讲来历的，逐处挂墓碑。
@@ -2950,16 +2950,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         (
             "tests/comms/inward/origin_tests.rs",
-            "delete_remote_history_session",
-            1,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
-            "create_remote_branch_session",
-            1,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
             "delete_remote_history_session",
             1,
         ),
@@ -3023,11 +3013,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         (
             "tests/comms/inward/origin_tests.rs",
-            "stream_read_remote_session",
-            1,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
             "stream_read_remote_session",
             1,
         ),
@@ -3233,7 +3218,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/frontend/shell/parity_ledger_tests.rs",
             "list_plugin_marketplaces",
-            2,
+            1,
         ),
         (
             "src/frontend/shell/src/lib.rs",
@@ -3384,7 +3369,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/frontend/shell/parity_ledger_tests.rs",
             "deploy_remote_acct_iso",
-            6,
+            4,
         ),
         (
             "tests/frontend/shell/sftp_tests.rs",
@@ -3843,17 +3828,17 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/frontend/shell/parity_ledger_tests.rs",
             "account_usage_local",
-            4,
+            3,
         ),
         (
             "tests/frontend/shell/parity_ledger_tests.rs",
             "aggregate_remote_usage_all",
-            2,
+            1,
         ),
         (
             "tests/frontend/shell/parity_ledger_tests.rs",
             "aggregate_usage_all",
-            2,
+            1,
         ),
         (
             "tests/backend/no_timer_guard.rs",
@@ -3877,11 +3862,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // `src/frontend/ui/ipc/commands.ts` 那一行摘了：点它的那段注释随 `list_mcp_project_dirs` 包装层一起删了。
         (
             "tests/comms/inward/origin_tests.rs",
-            "list_remote_mcp_project_dirs",
-            1,
-        ),
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
             "list_remote_mcp_project_dirs",
             1,
         ),
@@ -4136,11 +4116,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ), // 远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
         (
             "tests/comms/inward/origin_tests.rs",
-            "stream_remote_history_sessions",
-            1,
-        ), // 远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
-        (
-            "tests/frontend/shell/parity_ledger_tests.rs",
             "stream_remote_history_sessions",
             1,
         ), // 远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
@@ -4423,12 +4398,12 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/frontend/shell/parity_ledger_tests.rs",
             "probe_ccm_cli",
-            8,
+            7,
         ),
         (
             "tests/frontend/shell/parity_ledger_tests.rs",
             "relay_all_sessions_switch",
-            5,
+            3,
         ),
         (
             "tests/frontend/shell/utils_tests.rs",
@@ -4876,7 +4851,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/shell/src/asset_sync.rs", 2), // +2：`AssetsSynced` 那几个形状 ＋ 界面那条 Tauri 命令随同步那一问走通道删了
         ("tests/frontend/shell/asset_sync_tests.rs", 1), // +1：「应答缺格就报错不猜」那一条挪到界面（`parse_reply` 删了）
         ("src/frontend/shell/src/user_files.rs", 8), // +2：读改写那一环（`edit` / `Edited`）删了，原地一块 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） // +2：`rename` / `stat_kind` 两形零调用方删了，trait 上留墓碑 // // +1：`rel_under` / `join_under` 随别名进后端删了，留一句墓碑 // // +1：列目录那一形（list_dir）随收件箱进后端删了，trait 上留一句墓碑 // // +1：只删空目录那一形随卸 skill 进后端删了
-        ("tests/frontend/shell/parity_ledger_tests.rs", 69), // 71 → 72：地板那段点的远端 `ccm` 探针等三条退役命令名就地挂墓碑（探针那个名字随替身串改写成了死名） // 72 → 71：全景那三行出表的墓碑随代码全景整条摘掉删了 // 扩展页 70 → 72：插件只读列表删了，点它旧命令名那两句挂墓碑 // 69 → 70：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑 // 67 → 69：足迹那两处（命令行 · ORIGIN 那一条）出表 // 66 → 67：全景问 · 写 · 撤三行出表那一块 // +1：`Mixed` 那一行点公钥推送旧命令名 // 61 → 65：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 基数 44 ＋ MIG-3a +10 ＋ 主线 +5 ⇒ 59 // +1：`assets_sync` 那一条理由随命令摘掉 // // +1：理由表摘掉 MCP 三条处一块 // // +2：acct-iso 两对合一处点的旧名 // 主线 39 ＋ HX2 +1（写 key 那条命令退役） // 主线 37 ＋ LOC1a +2（`get_session_tasks` 退役：LEDGER 那一行 ＋ 理由表那一行）// +1：整份写口 `save_config` 删了，讲来历那一句挂墓碑 // 主线 35 ＋ US1 +1 // 33 → 35（cc-bus 写面五条退役：LEDGER 那一块 ＋ `FRAME_PLANE_VERDICTS` 那三行） // 28 → 33（杀会话 · 送键 · 就地 resume 三条命令退役：LEDGER 两处 ＋ `FRAME_PLANE_VERDICTS` 那一行 ＋ `tmux.manage` 那条理由第七次订正 ＋那一层点的送键命令） // 23 → 28（抓屏那条命令退役：LEDGER 那一行 · `FRAME_PLANE_VERDICTS` 那一行 · 地板那段 · `tmux.manage` 那条理由里那一层点的发送端 ＋ 第七次订正） // 主线 22 ＋ 本路 +1 ⇒ 23（历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑） // 主线 18 ＋ 本路 +4（`replay_keep_tail_only` / `replay_session_to_window` 各退役：LEDGER 那一行 ＋ Local/Both 账那一句）⇒ 22 // 主线 17 ＋ 本路 1 ⇒ 18（PN1b 那行增量账里 `panorama_diagram_kinds` 随内嵌引擎退役，挂墓碑） // 16 → 17（「退出行为」两条退役，`ORIGIN_TAKING_BOTH` 摘掉处一块） // 12 ＋ 本路 2 ＋ AL1d 2 ⇒ 16 // 12 → 14（信任预检 · 记录那一问两条命令退役，`ORIGIN_TAKING_BOTH` 那两条摘掉处各挂一块） // 12 → 14（「终端集成」退役的两行 LEDGER 注释挂墓碑） // 11 → 12（E79 那条本机会话账号命令退役，账本那一行挂墓碑） // 10 → 11（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑） // 44 → 49
+        ("tests/frontend/shell/parity_ledger_tests.rs", 64),
         ("tests/frontend/shell/plugin_class_registry_tests.rs", 2), // 3 → 2：`code-picture` 那一格整行删了，挂着的旧测试名墓碑随之没了 // 2 → 3：`code-picture` 那一格对上之后，旧测试名挂墓碑
         ("tests/frontend/shell/polling_registry_tests.rs", 1),
         // +1：`rollback_note_matches_what_actually_happened` 搬走的那块墓碑。
