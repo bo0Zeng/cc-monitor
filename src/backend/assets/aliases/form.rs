@@ -296,10 +296,16 @@ pub(crate) fn said(a: &Alias, shell: crate::platform::shell::dialect::Shell) -> 
         TmuxMode::Attach => copy_text("rsAccountAliases.said.attach", &[]),
     });
     if f.tmux == TmuxMode::Attach {
-        p.push(copy_text("rsAccountAliases.said.attachHow", &[("alias", &f.name)]));
+        p.push(copy_text(
+            "rsAccountAliases.said.attachHow",
+            &[("alias", &f.name)],
+        ));
     }
     for c in &f.cwd_if {
-        p.push(copy_text("rsAccountAliases.said.cwdIf", &[("at", &c.at), ("to", &c.to)]));
+        p.push(copy_text(
+            "rsAccountAliases.said.cwdIf",
+            &[("at", &c.at), ("to", &c.to)],
+        ));
     }
     if !f.cwd.is_empty() {
         p.push(if f.cwd_if.is_empty() {
@@ -309,16 +315,28 @@ pub(crate) fn said(a: &Alias, shell: crate::platform::shell::dialect::Shell) -> 
         });
     }
     if !f.agent.is_empty() {
-        p.push(copy_text("rsAccountAliases.said.agent", &[("agent", &f.agent)]));
+        p.push(copy_text(
+            "rsAccountAliases.said.agent",
+            &[("agent", &f.agent)],
+        ));
     }
     if !f.model.is_empty() {
-        p.push(copy_text("rsAccountAliases.said.model", &[("model", &f.model)]));
+        p.push(copy_text(
+            "rsAccountAliases.said.model",
+            &[("model", &f.model)],
+        ));
     }
     if !f.launcher.is_empty() {
-        p.push(copy_text("rsAccountAliases.said.launcher", &[("launcher", &f.launcher)]));
+        p.push(copy_text(
+            "rsAccountAliases.said.launcher",
+            &[("launcher", &f.launcher)],
+        ));
     }
     if !f.tmux_size.is_empty() {
-        p.push(copy_text("rsAccountAliases.said.size", &[("size", &f.tmux_size)]));
+        p.push(copy_text(
+            "rsAccountAliases.said.size",
+            &[("size", &f.tmux_size)],
+        ));
     }
     if f.detach {
         p.push(copy_text("rsAccountAliases.said.detach", &[]));
@@ -327,10 +345,16 @@ pub(crate) fn said(a: &Alias, shell: crate::platform::shell::dialect::Shell) -> 
         p.push(copy_text("rsAccountAliases.said.bus", &[]));
     }
     if !f.passthru.is_empty() {
-        p.push(copy_text("rsAccountAliases.said.passthru", &[("args", &f.passthru)]));
+        p.push(copy_text(
+            "rsAccountAliases.said.passthru",
+            &[("args", &f.passthru)],
+        ));
     }
     if !f.ccm_other.is_empty() {
-        p.push(copy_text("rsAccountAliases.said.ccmOther", &[("args", &f.ccm_other)]));
+        p.push(copy_text(
+            "rsAccountAliases.said.ccmOther",
+            &[("args", &f.ccm_other)],
+        ));
     }
     p.join(&copy_text("rsAccountAliases.said.sep", &[]))
 }

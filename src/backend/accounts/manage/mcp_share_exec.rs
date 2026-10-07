@@ -369,7 +369,11 @@ pub(crate) fn set_sync(d: &dyn Door, on: bool) -> Result<AccountMcpView, Refusal
         };
         let h = load(&home, list)?;
         if h.store.paused == !on {
-            return if on { Ok(view_after(&h)) } else { Ok(paused_view(&h)) };
+            return if on {
+                Ok(view_after(&h))
+            } else {
+                Ok(paused_view(&h))
+            };
         }
         let mut store = h.store.clone();
         store.paused = !on;

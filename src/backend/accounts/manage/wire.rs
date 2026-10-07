@@ -8,8 +8,9 @@ use super::scan::{self, is_under, join, KeyRows, Snapshot};
 use crate::assets::door::{self, Door};
 use acct_core::wire::{
     AccountAddArgs, AccountChange, AccountInitArgs, AccountIsolateArgs, AccountKind,
-    AccountLoginCmd, AccountMcpNameArgs, AccountMcpPickArgs, AccountMcpSyncArgs, AccountMcpView, AccountNameArgs,
-    AccountRef, AccountRemoveArgs, AccountRepairArgs, AccountRollbackArgs, VerifyReport,
+    AccountLoginCmd, AccountMcpNameArgs, AccountMcpPickArgs, AccountMcpSyncArgs, AccountMcpView,
+    AccountNameArgs, AccountRef, AccountRemoveArgs, AccountRepairArgs, AccountRollbackArgs,
+    VerifyReport,
 };
 use copy_core::copy_text;
 use serde_json::Value;

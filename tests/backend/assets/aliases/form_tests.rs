@@ -580,17 +580,35 @@ fn the_form_cases_match_the_cross_language_golden() {
 fn each_alias_is_said_in_plain_words_from_the_same_parser() {
     use crate::platform::shell::dialect::Shell;
     let say = |args: &[&str], shell| said(&alias(args), shell);
-    assert_eq!(say(&["--", "--account", "z"], Shell::Posix), "z 账号 · 当前终端");
-    assert_eq!(say(&["--", "--account", "z"], Shell::PowerShell), "z 账号 · 当前窗口");
-    assert_eq!(say(&["--", "--ccm-tmux"], Shell::Posix), "默认账号 · tmux · 自动取名");
+    assert_eq!(
+        say(&["--", "--account", "z"], Shell::Posix),
+        "z 账号 · 当前终端"
+    );
+    assert_eq!(
+        say(&["--", "--account", "z"], Shell::PowerShell),
+        "z 账号 · 当前窗口"
+    );
+    assert_eq!(
+        say(&["--", "--ccm-tmux"], Shell::Posix),
+        "默认账号 · tmux · 自动取名"
+    );
     assert_eq!(say(&["--", "--base"], Shell::Posix), "~/.claude · 当前终端");
     assert_eq!(
-        say(&["--", "--account", "z", "--cwd-if", "~", "~/文档/conv"], Shell::Posix),
+        say(
+            &["--", "--account", "z", "--cwd-if", "~", "~/文档/conv"],
+            Shell::Posix
+        ),
         "z 账号 · 当前终端 · 在 ~ 敲就进 ~/文档/conv"
     );
-    assert_eq!(say(&["--model", "opus"], Shell::Posix), "默认账号 · 当前终端 · 模型 opus");
     assert_eq!(
-        say(&["--", "--ccm-tmux", "--detach", "--bus-register"], Shell::Posix),
+        say(&["--model", "opus"], Shell::Posix),
+        "默认账号 · 当前终端 · 模型 opus"
+    );
+    assert_eq!(
+        say(
+            &["--", "--ccm-tmux", "--detach", "--bus-register"],
+            Shell::Posix
+        ),
         "默认账号 · tmux · 自动取名 · 启动后返回 · 在 cc-bus 上线"
     );
 }

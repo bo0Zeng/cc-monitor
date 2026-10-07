@@ -3159,14 +3159,14 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 
 ```text
 → {"id":"m3","cmd":"accounts-mcp-pick","args":{"name":"cclsp","from":"z"}}
-← {"kind":"reply","id":"m3","ok":true,"data":{"enabled":true,"servers":["anysearch","cclsp"],"conflicts":[],"changed":["q"],"notes":[]}}
+← {"kind":"reply","id":"m3","ok":true,"data":{"enabled":true,"sync":true,"servers":["anysearch","cclsp"],"conflicts":[],"changed":["q"],"notes":[]}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `name` | → | 那一条 |
 | `from` | ↔ | → 那个号里此刻的那一版；缺席 / `null` = 共享的那一版（共享集合里已经删了 ⇒ 删）。← 同 `accounts-mcp-read` |
-| `servers` · `conflicts` · `changed` · `notes` · `enabled` · `choices` · `holders` · `gone` | ← | 同 `accounts-mcp-read` |
+| `servers` · `conflicts` · `changed` · `notes` · `enabled` · `sync` · `choices` · `holders` · `gone` | ← | 同 `accounts-mcp-read`；停着同步时拒（`refused`） |
 
 挑完之后共享集合是那一版，所有号跟上。那个号里现在没有这一条 ⇒ `refused`（刷新之后再挑）。
 **错误码**：`bad_args` · `not_found` · `io_failed` · `refused`。
@@ -4446,7 +4446,7 @@ personal  订阅
 
 **账号库那一族追加九条**：`--accounts-init` · `--accounts-add` · `--accounts-remove` · `--accounts-set-default` · `--accounts-repair` · `--accounts-isolate` · `--accounts-rollback` · `--accounts-login-cmd`（读 stdin；`--accounts-add` 的 key 只走 stdin、不收 argv）· `--accounts-verify`（不读 stdin）—— 见上面各自那一小节。与帧面同一个 `run`。
 
-**各账号共用的 MCP 那三条**：`--accounts-mcp-read`（不读 stdin）· `--accounts-mcp-remove` · `--accounts-mcp-pick`（读 stdin）—— 见上面各自那一小节。与帧面同一个 `run`。
+**各账号共用的 MCP 那四条**：`--accounts-mcp-read`（不读 stdin）· `--accounts-mcp-remove` · `--accounts-mcp-pick` · `--accounts-mcp-sync`（读 stdin）—— 见上面各自那一小节。与帧面同一个 `run`。
 
 **扩展页追加两条（09-30）**：`--ext-uninstall-preview` · `--ext-uninstall-apply` —— 从这台卸一个扩展（见上面各自那一小节）。与帧面同一个 `run`；**读 stdin**。`ext-list` · `ext-hub-preview` · `ext-hub-apply` 读本进程的可达表，只在帧面上。
 

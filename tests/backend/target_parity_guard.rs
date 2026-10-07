@@ -905,6 +905,10 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
     ),
     (
+        "accounts-mcp-sync",
+        "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
+    ),
+    (
         "accounts-mcp-read",
         "账号库那一族（`accounts/manage/` · `faces/accounts_face.rs`）只从 `control/ccm/` 取 `ccm` 那个词与 `--` / `--account` 两个旗标（拼登录那一行 · 账号别名），并经别名那一族写别名文件 —— 按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux",
     ),

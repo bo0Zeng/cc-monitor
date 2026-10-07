@@ -391,20 +391,48 @@ fn who_wins_follows_the_order_inside_one_file() {
             .map(|c| c.wins)
             .collect::<Vec<_>>()
     };
-    assert_eq!(wins(after), vec![Wins::Yours], "你那一行在别名块后面 ⇒ 你写的生效");
-    assert_eq!(wins(before), vec![Wins::List], "你那一行在别名块前面 ⇒ 清单那条生效");
-    assert_eq!(wins(none), vec![Wins::Unclear], "这份里没有别名块 ⇒ 先说不清，等看完别的候选");
+    assert_eq!(
+        wins(after),
+        vec![Wins::Yours],
+        "你那一行在别名块后面 ⇒ 你写的生效"
+    );
+    assert_eq!(
+        wins(before),
+        vec![Wins::List],
+        "你那一行在别名块前面 ⇒ 清单那条生效"
+    );
+    assert_eq!(
+        wins(none),
+        vec![Wins::Unclear],
+        "这份里没有别名块 ⇒ 先说不清，等看完别的候选"
+    );
 }
 
 /// ★ 看完全部候选再定：哪一份都没接上 ⇒ 你写的生效；别名块在另一份 ⇒ 说不清。
 #[test]
 fn who_wins_settles_after_all_candidates() {
-    let mut a = block_state(Path::new("/h/.bashrc"), "cc() { claude; }\n", &["cc".to_string()]);
+    let mut a = block_state(
+        Path::new("/h/.bashrc"),
+        "cc() { claude; }\n",
+        &["cc".to_string()],
+    );
     settle_wins(std::iter::once(&mut a), false);
-    assert_eq!(a.conflicting_functions[0].wins, Wins::Yours, "清单没接上 ⇒ 敲 cc 起的是你写的");
-    let mut b = block_state(Path::new("/h/.bashrc"), "cc() { claude; }\n", &["cc".to_string()]);
+    assert_eq!(
+        a.conflicting_functions[0].wins,
+        Wins::Yours,
+        "清单没接上 ⇒ 敲 cc 起的是你写的"
+    );
+    let mut b = block_state(
+        Path::new("/h/.bashrc"),
+        "cc() { claude; }\n",
+        &["cc".to_string()],
+    );
     settle_wins(std::iter::once(&mut b), true);
-    assert_eq!(b.conflicting_functions[0].wins, Wins::Unclear, "别名块在另一份 ⇒ 跨文件说不清");
+    assert_eq!(
+        b.conflicting_functions[0].wins,
+        Wins::Unclear,
+        "别名块在另一份 ⇒ 跨文件说不清"
+    );
 }
 
 #[test]
