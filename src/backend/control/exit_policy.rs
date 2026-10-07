@@ -71,16 +71,16 @@ pub fn policy_path() -> Option<PathBuf> {
     )
 }
 
+/// 读盘的上限：文件只有一格布尔。
+const MAX_BYTES: u64 = 4096;
+
 /// 读一次 `path`。**每次调用都真去读盘**，没有任何记忆。
 pub fn read_at(path: &Path) -> Read {
-    let body = match std::fs::read_to_string(path) {
-        Ok(b) => b,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Read::Absent,
-        Err(e) => return Read::Unreadable(format!("读 {} 失败：{e}", path.display())),
-    };
-    let v: serde_json::Value = match serde_json::from_str(&body) {
-        Ok(v) => v,
-        Err(e) => return Read::Unreadable(format!("{} 不是 JSON：{e}", path.display())),
+    use crate::common::own_state::{read_json, Read as Raw};
+    let v: serde_json::Value = match read_json(path, MAX_BYTES) {
+        Raw::Present(v) => v,
+        Raw::Absent => return Read::Absent,
+        Raw::Unreadable(why) => return Read::Unreadable(why),
     };
     match v.get(KEY_KILL_ON_EXIT) {
         Some(serde_json::Value::Bool(k)) => Read::Chosen(*k),
@@ -128,11 +128,9 @@ fn render(kill: bool) -> String {
     format!("{{\"{KEY_KILL_ON_EXIT}\":{kill}}}\n")
 }
 
-/// 全仓唯一的写者。`O_EXCL` 新建一份按 pid 命名的临时文件 → 写满 → `sync` → 原子 `rename` 盖到目标上
-/// ⇒ 读者（[`read_at`]）要么看到旧的整份、要么看到新的整份。目录不在就建这一层（`~/.cc-monitor` 本身）。
-/// 失败时把临时文件删掉，不留垃圾、不静默。
+/// 全仓唯一的写者（经 `own_state` 原子写）⇒ 读者（[`read_at`]）要么看到旧的整份、要么看到新的整份。
+/// 目录不在就建这一层（`~/.cc-monitor` 本身）。
 fn write_at(path: &Path, kill: bool) -> Result<(), String> {
-    use std::io::Write as _;
     let dir = path.parent().ok_or_else(|| {
         copy_text(
             "beExitPolicy.writeAt.noParent",
@@ -148,42 +146,7 @@ fn write_at(path: &Path, kill: bool) -> Result<(), String> {
     })?;
     // 第四层同一条规矩：写之前拿那个目录的跨进程锁（`platform/lock.rs`）。这一份没有读—改—写，锁只为这条规矩没有例外（`readonly_guard` 第四层 ⑥）。
     let _lock = crate::platform::lock::hold(dir)?;
-    let tmp = dir.join(format!("{FILE_NAME}.{}.tmp", std::process::id()));
-    let result = (|| {
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&tmp)
-            .map_err(|e| {
-                copy_text(
-                    "beExitPolicy.writeAt.tmpCreateFailed",
-                    &[("tmp", &(tmp.display()).to_string()), ("e", &e.to_string())],
-                )
-            })?;
-        f.write_all(render(kill).as_bytes())
-            .and_then(|()| f.sync_all())
-            .map_err(|e| {
-                copy_text(
-                    "beExitPolicy.writeAt.tmpWriteFailed",
-                    &[("tmp", &(tmp.display()).to_string()), ("e", &e.to_string())],
-                )
-            })?;
-        drop(f);
-        std::fs::rename(&tmp, path).map_err(|e| {
-            copy_text(
-                "beExitPolicy.writeAt.renameFailed",
-                &[
-                    ("tmp", &(tmp.display()).to_string()),
-                    ("path", &(path.display()).to_string()),
-                    ("e", &e.to_string()),
-                ],
-            )
-        })
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
+    crate::common::own_state::write(path, render(kill).as_bytes())
 }
 
 /// 这台后端是不是回环常驻（脱离了起它的那一方）—— 与 `main` 选载体同一个纯函数、同一份环境，不另记一份。

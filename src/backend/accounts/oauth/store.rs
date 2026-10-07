@@ -13,31 +13,25 @@ use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-/// 读一次凭据文件。
-pub(crate) enum Read {
-    /// 文件不在。
-    Absent,
-    Present(Map<String, Value>),
-    /// 文件在但读不出来 / 不是 JSON 对象（只给一句原因，不带内容）。
-    Unreadable(String),
-}
+/// 读一次凭据文件。三态：不在 / 是个 JSON 对象 / 读不出来或不是 JSON 对象（只给一句原因，不带内容）。
+pub(crate) type Read = crate::common::own_state::Read<Map<String, Value>>;
+
+/// 读盘的上限（一份令牌）。
+const MAX_BYTES: u64 = 1 << 20;
 
 pub(crate) fn creds_path(dir: &Path, face: &LoginFace) -> PathBuf {
     dir.join(face.creds_file)
 }
 
 pub(crate) fn read(dir: &Path, face: &LoginFace) -> Read {
-    let p = creds_path(dir, face);
-    match std::fs::read_to_string(&p) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Read::Absent,
-        Err(e) => Read::Unreadable(e.kind().to_string()),
-        Ok(s) => match serde_json::from_str::<Value>(&s) {
+    crate::common::own_state::read_bytes(&creds_path(dir, face), MAX_BYTES).and_then(|b| {
+        match serde_json::from_slice::<Value>(&b) {
             Ok(Value::Object(m)) => Read::Present(m),
             Ok(_) => Read::Unreadable(copy_text("beOauthStore.read.notObject", &[])),
             // 解析错误的文本可能带着原文片段 ⇒ 只说「不是 JSON」。
             Err(_) => Read::Unreadable(copy_text("beOauthStore.read.notJson", &[])),
-        },
-    }
+        }
+    })
 }
 
 /// 持着续期锁时调 `work`；锁有人持着 ⇒ `Err(Busy)`，一把都不留。
@@ -128,36 +122,18 @@ fn make(p: &Path) -> Result<bool, String> {
     }
 }
 
-/// 整份原子写回（只在续期锁里调）：出生即只给本人的临时文件 → 写满 → 原子挪过去；失败删自己的临时文件。
+/// 整份原子写回（只在续期锁里调；经 `own_state`：出生即只给本人 → 写满 → 原子挪过去）。
 pub(crate) fn write_tokens(
     dir: &Path,
     face: &LoginFace,
     doc: &Map<String, Value>,
 ) -> Result<(), String> {
-    use std::io::Write as _;
     let path = creds_path(dir, face);
-    let failed = |e: &dyn std::fmt::Display| {
+    let body = serde_json::to_vec(&Value::Object(doc.clone())).map_err(|e| {
         copy_text(
             "beOauthStore.write.failed",
             &[("path", &path.display().to_string()), ("e", &e.to_string())],
         )
-    };
-    let body = serde_json::to_string(&Value::Object(doc.clone())).map_err(|e| failed(&e))?;
-    let tmp = dir.join(format!(
-        "{}.ccm.{}.tmp",
-        face.creds_file,
-        std::process::id()
-    ));
-    let result = (|| {
-        let mut f = creds_core::perm::create_private(&tmp).map_err(|e| failed(&e))?;
-        f.write_all(body.as_bytes())
-            .and_then(|()| f.sync_all())
-            .map_err(|e| failed(&e))?;
-        drop(f);
-        std::fs::rename(&tmp, &path).map_err(|e| failed(&e))
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
+    })?;
+    crate::common::own_state::write(&path, &body)
 }

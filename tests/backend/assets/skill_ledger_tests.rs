@@ -28,7 +28,7 @@ const D3: &str = "0000000000000003";
 
 fn read_ok(path: &Path) -> Ledger {
     match read_at(path) {
-        Read::Ok(l) => l,
+        Read::Present(l) => l,
         other => panic!("读不回来：{other:?}"),
     }
 }

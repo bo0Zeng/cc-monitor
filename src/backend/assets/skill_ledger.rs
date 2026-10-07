@@ -114,105 +114,46 @@ pub fn ledger_path() -> Option<PathBuf> {
 }
 
 /// 读一次。三态：没有（还没装过）/ 读得懂 / 读不懂（**不覆盖**）。
-#[derive(Debug)]
-pub enum Read {
-    Absent,
-    Ok(Ledger),
-    Unreadable(String),
-}
+pub type Read = crate::common::own_state::Read<Ledger>;
 
 pub fn read_at(path: &Path) -> Read {
-    let bytes = match crate::common::fs::read_regular_capped(path, MAX_BYTES) {
-        Ok(b) => b,
-        Err(_) if !path.exists() => return Read::Absent,
-        Err(e) => {
+    crate::common::own_state::read_bytes(path, MAX_BYTES).and_then(|bytes| {
+        // 先只看版本：更新的格式整份不认（它可能多了这一版不认得的格子），也不覆盖。
+        let v = serde_json::from_slice::<Value>(&bytes)
+            .ok()
+            .and_then(|j| j.get("v").and_then(Value::as_u64));
+        if let Some(v) = v.filter(|v| *v != FORMAT_V) {
             return Read::Unreadable(copy_text(
-                "beSkillLedger.read.failed",
-                &[("path", &path.display().to_string()), ("e", &e.to_string())],
-            ))
+                "beSkillLedger.read.otherVersion",
+                &[
+                    ("path", &path.display().to_string()),
+                    ("mine", &FORMAT_V.to_string()),
+                    ("theirs", &v.to_string()),
+                ],
+            ));
         }
-    };
-    // 先只看版本：更新的格式整份不认（它可能多了这一版不认得的格子），也不覆盖。
-    let v = serde_json::from_slice::<Value>(&bytes)
-        .ok()
-        .and_then(|j| j.get("v").and_then(Value::as_u64));
-    if let Some(v) = v.filter(|v| *v != FORMAT_V) {
-        return Read::Unreadable(copy_text(
-            "beSkillLedger.read.otherVersion",
-            &[
-                ("path", &path.display().to_string()),
-                ("mine", &FORMAT_V.to_string()),
-                ("theirs", &v.to_string()),
-            ],
-        ));
-    }
-    match serde_json::from_slice::<Ledger>(&bytes) {
-        Ok(l) => Read::Ok(l),
-        Err(e) => Read::Unreadable(copy_text(
-            "beSkillLedger.read.unknown",
-            &[("path", &path.display().to_string()), ("e", &e.to_string())],
-        )),
-    }
+        match serde_json::from_slice::<Ledger>(&bytes) {
+            Ok(l) => Read::Present(l),
+            Err(e) => Read::Unreadable(copy_text(
+                "beSkillLedger.read.unknown",
+                &[("path", &path.display().to_string()), ("e", &e.to_string())],
+            )),
+        }
+    })
 }
 
 /// 读成一份可用的记录：没有 ⇒ 空的；读不懂 ⇒ `ledger_unreadable`（读的人也不许把它说成「什么都没装过」）。
 pub fn load_at(path: &Path) -> Result<Ledger, (&'static str, String)> {
     match read_at(path) {
         Read::Absent => Ok(Ledger::default()),
-        Read::Ok(l) => Ok(l),
+        Read::Present(l) => Ok(l),
         Read::Unreadable(why) => Err(("ledger_unreadable", why)),
     }
 }
 
-/// **全仓唯一的写者**：`O_EXCL` 新建临时文件 → 写满 → `sync` → 原子挪过去；失败删临时文件（那一层目录由 [`record_at`] 建）。
+/// **全仓唯一的写者**（经 `own_state` 原子写；那一层目录由 [`record_at`] 在拿锁之前建）。
 fn write_at(path: &Path, ledger: &Ledger) -> Result<(), String> {
-    use std::io::Write as _;
-    let dir = path.parent().ok_or_else(|| {
-        copy_text(
-            "beSkillLedger.write.noParent",
-            &[("path", &path.display().to_string())],
-        )
-    })?;
-    // 那一层目录由 [`record_at`] 在拿锁之前经 `own_dir::ensure_private_dir` 建（挪过去：锁的是这个目录，它得先在）。
-    let body = serde_json::to_string(ledger)
-        .map_err(|e| copy_text("beSkillLedger.write.encodeFailed", &[("e", &e.to_string())]))?;
-    let tmp = dir.join(format!("{FILE_NAME}.{}.tmp", std::process::id()));
-    let result = (|| {
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&tmp)
-            .map_err(|e| {
-                copy_text(
-                    "beSkillLedger.write.tmpCreateFailed",
-                    &[("tmp", &tmp.display().to_string()), ("e", &e.to_string())],
-                )
-            })?;
-        f.write_all(body.as_bytes())
-            .and_then(|()| f.write_all(b"\n"))
-            .and_then(|()| f.sync_all())
-            .map_err(|e| {
-                copy_text(
-                    "beSkillLedger.write.tmpWriteFailed",
-                    &[("tmp", &tmp.display().to_string()), ("e", &e.to_string())],
-                )
-            })?;
-        drop(f);
-        std::fs::rename(&tmp, path).map_err(|e| {
-            copy_text(
-                "beSkillLedger.write.renameFailed",
-                &[
-                    ("tmp", &tmp.display().to_string()),
-                    ("path", &path.display().to_string()),
-                    ("e", &e.to_string()),
-                ],
-            )
-        })
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
+    crate::common::own_state::write_json(path, ledger)
 }
 
 //

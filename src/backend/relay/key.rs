@@ -96,48 +96,10 @@ fn mint() -> Result<Key, String> {
     Key::from_text(&s).ok_or_else(|| copy_text("beDoor.key.noRandom", &[]))
 }
 
-/// 落盘：临时文件出生即只给本人（`O_EXCL`）→ 写满 → 原子挪过去；失败删自己的临时文件（那一层目录由 [`ensure_key`] 在拿锁前建）。
+/// 落盘（经 `own_state`：出生即只给本人 → 写满 → 原子挪过去）。那一层目录由 [`ensure_key`] 在拿锁前建。
 /// 报错里只有路径，**永远没有钥匙本身**。
 fn write_key(path: &Path, k: &Key) -> Result<(), String> {
-    use std::io::Write as _;
-    let dir = path.parent().ok_or_else(|| {
-        copy_text(
-            "beDoor.fs.noParent",
-            &[("path", &path.display().to_string())],
-        )
-    })?;
-    let tmp = dir.join(format!("relay-key.{}.tmp", std::process::id()));
-    let result = (|| {
-        let mut f = creds_core::perm::create_private(&tmp).map_err(|e| {
-            copy_text(
-                "beDoor.fs.tmpCreateFailed",
-                &[("tmp", &tmp.display().to_string()), ("e", &e.to_string())],
-            )
-        })?;
-        f.write_all(k.expose().as_bytes())
-            .and_then(|()| f.sync_all())
-            .map_err(|e| {
-                copy_text(
-                    "beDoor.fs.tmpWriteFailed",
-                    &[("tmp", &tmp.display().to_string()), ("e", &e.to_string())],
-                )
-            })?;
-        drop(f);
-        std::fs::rename(&tmp, path).map_err(|e| {
-            copy_text(
-                "beDoor.fs.renameFailed",
-                &[
-                    ("tmp", &tmp.display().to_string()),
-                    ("path", &path.display().to_string()),
-                    ("e", &e.to_string()),
-                ],
-            )
-        })
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
+    crate::common::own_state::write(path, k.expose().as_bytes())
 }
 
 // 判据 ＋ 同层判据共用的夹具（`TEST_KEY` · `test_key` · `seed_test_home`）都住这一份测试文件里。

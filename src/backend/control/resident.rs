@@ -238,7 +238,7 @@ pub fn rotate_token(path: &Path) -> Result<String, String> {
         ensure_dir(dir)?;
     }
     let t = mint()?;
-    write_private(path, &t)?;
+    crate::common::own_state::write(path, t.as_bytes())?;
     Ok(t)
 }
 
@@ -258,44 +258,6 @@ fn mint() -> Result<String, String> {
         .fill(&mut buf)
         .map_err(|_| copy_text("beResident.token.noRandom", &[]))?;
     Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
-}
-
-/// 临时文件出生即只给本人（`O_EXCL`）→ 写满 → 原子挪过去；失败删自己的临时文件。报错里只有路径。
-fn write_private(path: &Path, body: &str) -> Result<(), String> {
-    use std::io::Write as _;
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let tmp = path.with_file_name(format!("{name}.{}.tmp", std::process::id()));
-    let result = (|| {
-        let (t, p) = (tmp.display().to_string(), path.display().to_string());
-        let mut f = creds_core::perm::create_private(&tmp).map_err(|e| {
-            copy_text(
-                "beResident.fs.tmpCreateFailed",
-                &[("tmp", &t), ("e", &e.to_string())],
-            )
-        })?;
-        f.write_all(body.as_bytes())
-            .and_then(|()| f.sync_all())
-            .map_err(|e| {
-                copy_text(
-                    "beResident.fs.tmpWriteFailed",
-                    &[("tmp", &t), ("e", &e.to_string())],
-                )
-            })?;
-        drop(f);
-        std::fs::rename(&tmp, path).map_err(|e| {
-            copy_text(
-                "beResident.fs.renameFailed",
-                &[("tmp", &t), ("path", &p), ("e", &e.to_string())],
-            )
-        })
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
 }
 
 /// 子进程的环境：口 · 钥匙文件路径（不是钥匙）· 宿主层交的那几格（中转口 · stderr 诊断文件，值里的 `~` 换成家目录）。
@@ -356,9 +318,9 @@ pub fn record_owner(port: u16) -> Result<(), String> {
     if let Some(dir) = path.parent() {
         ensure_dir(dir)?;
     }
-    write_private(
+    crate::common::own_state::write(
         &path,
-        &format!("{}\n{}\n", std::process::id(), exe.display()),
+        format!("{}\n{}\n", std::process::id(), exe.display()).as_bytes(),
     )
 }
 

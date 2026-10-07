@@ -64,25 +64,21 @@ fn remember_locked(file: &std::path::Path, host: &str, port: u16, key: &str) -> 
     let dir = file.parent().ok_or_else(|| file.display().to_string())?;
     crate::common::own_dir::ensure_private_dir(dir).map_err(|e| e.to_string())?;
     let _lock = crate::platform::lock::hold(dir)?;
-    let existing = std::fs::read_to_string(file).unwrap_or_default();
+    use crate::common::own_state::{read_bytes, Read};
+    // 读不出来的那份不覆盖（当成空的写回会把别的几台认下的钥匙一起抹掉）。
+    let existing = match read_bytes(file, MAX_BYTES) {
+        Read::Absent => String::new(),
+        Read::Present(b) => String::from_utf8(b).map_err(|e| e.to_string())?,
+        Read::Unreadable(why) => return Err(why),
+    };
     let Some(body) = merged(&existing, &host_pattern(host, port), key) else {
         return Ok(());
     };
-    write_private(file, &body).map_err(|e| e.to_string())
+    crate::common::own_state::write(file, body.as_bytes())
 }
 
-/// 临时文件出生即只给本人（O_EXCL）→ 写满 → 原子挪过去；失败删自己的临时文件。
-fn write_private(path: &std::path::Path, body: &str) -> std::io::Result<()> {
-    use std::io::Write as _;
-    let tmp = path.with_file_name(format!("known_hosts.{}.tmp", std::process::id()));
-    let r = creds_core::perm::create_private(&tmp)
-        .and_then(|mut f| f.write_all(body.as_bytes()).and_then(|()| f.sync_all()))
-        .and_then(|()| std::fs::rename(&tmp, path));
-    if r.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    r
-}
+/// 读盘的上限（一台一行，远到不了）。
+const MAX_BYTES: u64 = 4 << 20;
 
 #[cfg(test)]
 #[path = "../../../tests/backend/dial_known_hosts_tests.rs"]

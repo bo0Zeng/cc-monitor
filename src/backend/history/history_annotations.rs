@@ -83,21 +83,12 @@ pub fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
 
 /// 读原文（带上限）。`Ok(None)` = 文件不在。
 fn read_raw(path: &Path) -> Result<Option<Vec<u8>>, String> {
-    match std::fs::metadata(path) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        _ => {}
+    use crate::common::own_state::{read_bytes, Read};
+    match read_bytes(path, MAX_BYTES) {
+        Read::Absent => Ok(None),
+        Read::Present(b) => Ok(Some(b)),
+        Read::Unreadable(why) => Err(why),
     }
-    crate::common::fs::read_regular_capped(path, MAX_BYTES)
-        .map(Some)
-        .map_err(|e| {
-            copy_text(
-                "beHistoryAnnotations.readRaw.unreadable",
-                &[
-                    ("path", &(path.display()).to_string()),
-                    ("e", &e.to_string()),
-                ],
-            )
-        })
 }
 
 /// 严格读。
@@ -249,58 +240,12 @@ fn put_entry(raw: &mut Value, sid: &str, entry: Option<&Entry>) {
     }
 }
 
-/// 唯一的写者：`O_EXCL` 新建临时文件 → 写满 → `sync` → 原子挪过去；失败删临时文件（目录由 [`lock_for_write`] 建）。序列化用 `to_string_pretty`。
+/// 唯一的写者（经 `own_state` 原子写；目录由 [`lock_for_write`] 建）。序列化用 `to_string_pretty`。
 fn write_at(path: &Path, raw: &Value) -> Result<(), String> {
-    use std::io::Write as _;
-    let dir = path.parent().ok_or_else(|| {
-        copy_text(
-            "beHistoryAnnotations.writeAt.noParent",
-            &[("path", &(path.display()).to_string())],
-        )
-    })?;
     let body = serde_json::to_string_pretty(raw).map_err(|e| {
         crate::common::contract::malformed(&format!("serializing the annotations failed: {e}"))
     })?;
-    let name = path
-        .file_name()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "annotations".into());
-    let tmp = dir.join(format!("{name}.{}.ccm-tmp", std::process::id()));
-    let result = (|| {
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&tmp)
-            .map_err(|e| {
-                copy_text(
-                    "beHistoryAnnotations.writeAt.tmpCreateFailed",
-                    &[("tmp", &(tmp.display()).to_string()), ("e", &e.to_string())],
-                )
-            })?;
-        f.write_all(body.as_bytes())
-            .and_then(|()| f.sync_all())
-            .map_err(|e| {
-                copy_text(
-                    "beHistoryAnnotations.writeAt.tmpWriteFailed",
-                    &[("tmp", &(tmp.display()).to_string()), ("e", &e.to_string())],
-                )
-            })?;
-        drop(f);
-        std::fs::rename(&tmp, path).map_err(|e| {
-            copy_text(
-                "beHistoryAnnotations.writeAt.renameFailed",
-                &[
-                    ("tmp", &(tmp.display()).to_string()),
-                    ("path", &(path.display()).to_string()),
-                    ("e", &e.to_string()),
-                ],
-            )
-        })
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
+    crate::common::own_state::write(path, body.as_bytes())
 }
 
 fn need_path() -> Result<PathBuf, (&'static str, String)> {

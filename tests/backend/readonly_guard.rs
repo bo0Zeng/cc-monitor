@@ -886,6 +886,12 @@ mod tests {
              不是用户数据。第四层别的几份调它不算越门；第四层之外只有 `control/files_commit.rs` 建暂存区那一处（门）",
         ),
         (
+            "common/own_state.rs",
+            "**后端自有状态文件的读三态与原子写**：第四层各份读写自己那一份文件都经它（旁名出生即只给本人 \
+             `creds_core::perm::create_private`，O_EXCL，带 pid ＋ 线程 ＋ 序号 → 写满 → `sync_all` → 原子挪过去；\
+             挪不过去只删自己建的那个旁名）。它不认识任何一份文件，路径由调用方给；第四层之外零引用（门表里没有它的门）",
+        ),
+        (
             "accounts/oauth/store.rs",
             "**订阅号的凭据文件** `<那个号的配置目录>/.credentials.json`：续登录令牌之后整份写回。那一家的程序（claude）与账号域的 \
              `oauth` 两个写者，所以在**跨进程锁**（配置目录）＋ 那一家自己的两把 `mkdir` 续期锁里做：写前比对盘上的刷新令牌还是不是发出去那个 → \
@@ -1136,6 +1142,8 @@ mod tests {
         ),
         // 针取模块前缀：`run_ensure`（铸钥匙）与 `record_owner`（记 pid）都会写，都只许 `main.rs` 碰。
         ("control/resident.rs", "resident::", "main.rs"),
+        // 读三态与原子写的那一处：只有第四层别的几份调它（门检查本来就跳过第四层成员）⇒ 门空着 = 第四层之外零引用。
+        ("common/own_state.rs", "own_state::", ""),
         // 后端建自家目录的那一个函数：第四层别的几份调它不算（门检查本来就跳过第四层成员）；之外只有暂存区那一处。
         (
             "common/own_dir.rs",
@@ -1629,8 +1637,11 @@ mod tests {
             own_state_door_matches(&root, needle, door);
         }
         // 门表与写口表里出现的门两向相等：登记了一扇没人走的门 / 写口指着一扇没登记的门 ⇒ 红。
-        let doors_used: std::collections::BTreeSet<&str> =
-            OWN_STATE_WRITERS.iter().map(|(_, _, d)| *d).collect();
+        let doors_used: std::collections::BTreeSet<&str> = OWN_STATE_WRITERS
+            .iter()
+            .map(|(_, _, d)| *d)
+            .filter(|d| !d.is_empty())
+            .collect();
         let doors_registered: std::collections::BTreeSet<&str> =
             OWN_STATE_DOORS.iter().map(|(d, _)| *d).collect();
         assert_eq!(
@@ -1653,6 +1664,11 @@ mod tests {
         "common/own_dir.rs",
         "后端建自家目录的那一个函数（`ensure_private_dir`）：只有「建一层目录、已在不动」这一个动词，没有一份文件被读—改—写；\
          而且它正是拿锁之前那一步（锁的就是它建出来的目录）—— 它自己再拿锁是先有鸡还是先有蛋",
+    ),
+    (
+        "common/own_state.rs",
+        "读三态与原子写的原语本身：它不做读—改—写，锁由做读—改—写的那一份在调它之前拿（锁的是那一份自己的目录）；\
+         原语里再拿一次会在同一个目录上锁两回",
     ),
     (
         "control/resident.rs",
@@ -1768,7 +1784,10 @@ mod tests {
             scanned >= 60,
             "只扫到 {scanned} 份后端源文件 —— 遍历坏了，零命中守卫在空人群上恒绿"
         );
-        let want: std::collections::BTreeSet<String> = [door.to_string()].into_iter().collect();
+        let want: std::collections::BTreeSet<String> = [door.to_string()]
+            .into_iter()
+            .filter(|d| !d.is_empty())
+            .collect();
         assert_eq!(
             found,
             want,
@@ -5407,7 +5426,7 @@ mod g6_dependency_signoff {
 
     /// 🔴 **`creds-core` 那条「就是要它写」的边界判据**：它的写半边
     /// （`perm::create_private` · `perm::make_private`）在本 crate 生产段里的引用处，
-    /// **恰好**是第四层登记的那一份 `accounts/upstream_select/file_face.rs`（两向集合相等）。
+    /// **恰好**是第四层的读三态与原子写那一处 `common/own_state.rs`（两向集合相等）。
     ///
     /// # 它顶替的是哪一格
     ///
@@ -5452,19 +5471,9 @@ mod g6_dependency_signoff {
             }
         }
         assert!(scanned >= 60, "只扫到 {scanned} 份后端源文件 —— 遍历坏了");
-        // 第二份：中转钥匙那一份（`relay/key.rs`，第四层登记）—— 钥匙文件出生即只给本人，同一份实现。
-        let want: std::collections::BTreeSet<String> = [
-            // 第四份：订阅号续登录令牌之后写回那份凭据文件（`accounts/oauth/store.rs`，第四层登记）——出生即只给本人，同一份实现。
-            "accounts/oauth/store.rs".to_string(),
-            "accounts/upstream_select/file_face.rs".to_string(),
-            // 第三份：常驻监听口的钥匙 ＋ 远端常驻后端的 pid 文件（`control/resident.rs`，第四层登记）。
-            "control/resident.rs".to_string(),
-            // 第五份：主机钥匙那一份（`dial/known_hosts.rs`，第四层登记）—— 出生即只给本人，同一份实现。
-            "dial/known_hosts.rs".to_string(),
-            "relay/key.rs".to_string(),
-        ]
-        .into_iter()
-        .collect();
+        // 第四层各份（凭据 · 中转钥匙 · 常驻钥匙 · 主机钥匙 …）都经读三态与原子写那一处出生即只给本人 ⇒ 引用处只有它。
+        let want: std::collections::BTreeSet<String> =
+            ["common/own_state.rs".to_string()].into_iter().collect();
         assert_eq!(
             found, want,
             "`creds-core` 的写半边（建私有文件 / 收窄权限）在本 crate 生产段里的引用处对不上：\n\

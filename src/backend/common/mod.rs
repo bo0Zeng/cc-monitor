@@ -17,6 +17,9 @@ pub(crate) mod fs;
 /// `control/files_commit.rs`）都建这一层，两块之间零互相依赖（`files/module_boundary_guard.rs`）· ② unix 权限位那一句是 `std` 的扩展 trait ·
 /// ③ 只认「建一层目录、只给本人」。它写盘（建目录）：`readonly_guard` 第四层登记它（`common/own_dir.rs`）。
 pub(crate) mod own_dir;
+/// 后端自有状态文件的读三态与原子写（旁名唯一 · 0600 · `sync_all` · 失败只删自己的旁名）。① 第四层各份分住 control · accounts · assets ·
+/// history · relay · dial，都经它读写 · ② 只用 `std::fs` 与 `creds_core` 的「出生即只给本人」· ③ 只认「一份文件整份读、整份换」。它写盘：`readonly_guard` 第四层登记它。
+pub(crate) mod own_state;
 /// **路径原始字节的线上两种形**（字符串 / `{"b16": …}`，原住 `files/raw.rs`）。
 ///
 /// 它满足门槛的方式：①（≥2 层）文件管理那一块（整族入参 / 回送）与原生那一块（`dial/terminal.rs`：文件窗口「在此打开终端」
