@@ -179,7 +179,7 @@ export function paintWaiting(row: HTMLElement, state: StepWait, waited: string |
   paint(row, state, stepRight(undefined, undefined, state, null));
   const r = row.querySelector<HTMLElement>(".step-right");
   if (!r) return;
-  if (state === "unclear" && why) r.title = why === "noWriter" ? copyText("stream.step.unclear.noWriter") : copyText("stream.step.unclear.untracked");
+  if (state === "unclear" && why) r.title = why === "noWriter" ? copyText("stream.step.unclearNoWriter") : copyText("stream.step.unclearUntracked");
   else r.removeAttribute("title");
 }
 

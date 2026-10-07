@@ -445,7 +445,11 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
         )?;
     }
     for p in v["pending"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
-        exact_keys(p, &["at", "id", "name", "state", "what", "why"], "prior.pending[]")?;
+        exact_keys(
+            p,
+            &["at", "id", "name", "state", "what", "why"],
+            "prior.pending[]",
+        )?;
     }
     for r in v["retries"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
         exact_keys(r, &["id", "outcome"], "prior.retries[]")?;
@@ -545,7 +549,9 @@ fn note_handback(f: &mut SessionFacts, v: &Value) {
 }
 
 fn open_retry(f: &SessionFacts) -> bool {
-    f.retries.last().is_some_and(|r| r.outcome == RetryOutcome::Retrying)
+    f.retries
+        .last()
+        .is_some_and(|r| r.outcome == RetryOutcome::Retrying)
 }
 
 /// 重试一串一串地记（口径见头注那张表）。`kind` ＝ 记录类型。
@@ -569,7 +575,14 @@ fn note_retry(f: &mut SessionFacts, kind: Option<&str>, v: &Value) {
         }
         Some("assistant") if open => {
             let failed = v.get("isApiErrorMessage").and_then(Value::as_bool) == Some(true);
-            settle_retry(f, if failed { RetryOutcome::Failed } else { RetryOutcome::Recovered });
+            settle_retry(
+                f,
+                if failed {
+                    RetryOutcome::Failed
+                } else {
+                    RetryOutcome::Recovered
+                },
+            );
         }
         Some("user") if open => {
             let meta = v.get("isMeta").and_then(Value::as_bool) == Some(true);
@@ -577,7 +590,10 @@ fn note_retry(f: &mut SessionFacts, kind: Option<&str>, v: &Value) {
                 .get("message")
                 .and_then(|m| m.get("content"))
                 .and_then(Value::as_array)
-                .is_some_and(|a| a.iter().any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result")));
+                .is_some_and(|a| {
+                    a.iter()
+                        .any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result"))
+                });
             if !meta && !tool_result {
                 settle_retry(f, RetryOutcome::Interrupted);
             }

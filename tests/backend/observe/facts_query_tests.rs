@@ -657,29 +657,60 @@ fn a_step_without_a_result_is_running_only_when_a_live_process_holds_the_session
         tool_use("s1", "Bash", json!({"command": "make"})),
         tool_use("s2", "Bash", json!({"command": "rm -rf build/"})),
     ])]);
-    let states = |f: &SessionFacts| f.pending.iter().map(|p| (p.state, p.why)).collect::<Vec<_>>();
+    let states = |f: &SessionFacts| {
+        f.pending
+            .iter()
+            .map(|p| (p.state, p.why))
+            .collect::<Vec<_>>()
+    };
     let unclear = |w| (StepWait::Unclear, Some(w));
     let mut f = scan_all(&text);
     settle_pending(&mut f, true);
-    assert_eq!(states(&f), [unclear(UnclearWhy::NoWriter); 2], "没有活进程 ⇒ 状态不明（不当在跑）");
+    assert_eq!(
+        states(&f),
+        [unclear(UnclearWhy::NoWriter); 2],
+        "没有活进程 ⇒ 状态不明（不当在跑）"
+    );
     settle_pending(&mut f, false);
-    assert_eq!(states(&f), [unclear(UnclearWhy::Untracked); 2], "这一家不留 pidfile ⇒ 判不了活");
+    assert_eq!(
+        states(&f),
+        [unclear(UnclearWhy::Untracked); 2],
+        "这一家不留 pidfile ⇒ 判不了活"
+    );
     f.writers = vec![4711];
     settle_pending(&mut f, true);
     assert_eq!(states(&f), [(StepWait::Running, None); 2]);
-    f.needs = needs_of(&f.pending, Some(&PidWait { waiting_for: Some("permission prompt".into()), since_ms: None }));
+    f.needs = needs_of(
+        &f.pending,
+        Some(&PidWait {
+            waiting_for: Some("permission prompt".into()),
+            since_ms: None,
+        }),
+    );
     assert_eq!(f.needs.as_ref().and_then(|n| n.call.as_deref()), Some("s1"));
     settle_pending(&mut f, true);
-    assert_eq!(states(&f), [(StepWait::Awaiting, None), (StepWait::Running, None)]);
+    assert_eq!(
+        states(&f),
+        [(StepWait::Awaiting, None), (StepWait::Running, None)]
+    );
     // 续传：令牌里带着上一次的样子也收（形状恰好）。
     let wire = serde_json::to_value(&f).unwrap();
-    assert_eq!((wire["pending"][0]["state"].clone(), wire["pending"][0]["why"].clone()), (json!("awaiting"), Value::Null));
+    assert_eq!(
+        (
+            wire["pending"][0]["state"].clone(),
+            wire["pending"][0]["why"].clone()
+        ),
+        (json!("awaiting"), Value::Null)
+    );
     let back = prior_from(&wire).expect("带着 state 的成品能原样回传");
     assert_eq!(back.pending[0].state, StepWait::Awaiting);
     f.writers.clear();
     f.needs = None;
     settle_pending(&mut f, true);
-    assert_eq!(serde_json::to_value(&f).unwrap()["pending"][1]["why"], "noWriter");
+    assert_eq!(
+        serde_json::to_value(&f).unwrap()["pending"][1]["why"],
+        "noWriter"
+    );
 }
 
 /// ★ 一串重试的结局按首条给（界面按卡上的 id 读）：后面来了正常回复 ⇒ 接上了 · 来了报错那条 ⇒ 没接上 ·
@@ -702,7 +733,11 @@ fn a_retry_run_is_settled_by_what_follows_it_and_keyed_by_its_first_record() {
     ];
     let text = jsonl(&recs);
     let whole = scan_all(&text);
-    let got: Vec<(&str, RetryOutcome)> = whole.retries.iter().map(|r| (r.id.as_str(), r.outcome)).collect();
+    let got: Vec<(&str, RetryOutcome)> = whole
+        .retries
+        .iter()
+        .map(|r| (r.id.as_str(), r.outcome))
+        .collect();
     assert_eq!(
         got,
         [
@@ -713,16 +748,33 @@ fn a_retry_run_is_settled_by_what_follows_it_and_keyed_by_its_first_record() {
         ]
     );
     let wire = serde_json::to_value(&whole).unwrap();
-    assert_eq!(wire["retries"][0], json!({"id": "a1", "outcome": "recovered"}));
+    assert_eq!(
+        wire["retries"][0],
+        json!({"id": "a1", "outcome": "recovered"})
+    );
     let mut cuts = vec![0usize];
     cuts.extend(text.match_indices('\n').map(|(i, _)| i + 1));
     for cut in cuts {
-        let prior = prior_from(&serde_json::to_value(scan_all(&text[..cut])).unwrap()).expect("带着重试那一格的成品能原样回传");
-        assert_eq!(scan_facts(&text.as_bytes()[cut..], prior, &Vec::new(), None).unwrap(), whole, "在字节 {cut} 处接力");
+        let prior = prior_from(&serde_json::to_value(scan_all(&text[..cut])).unwrap())
+            .expect("带着重试那一格的成品能原样回传");
+        assert_eq!(
+            scan_facts(&text.as_bytes()[cut..], prior, &Vec::new(), None).unwrap(),
+            whole,
+            "在字节 {cut} 处接力"
+        );
     }
     let many: Vec<Value> = (0..RETRY_KEEP + 3)
-        .flat_map(|i| [retry(&format!("r{i}"), 1), json!({"type": "assistant", "message": {"content": []}})])
+        .flat_map(|i| {
+            [
+                retry(&format!("r{i}"), 1),
+                json!({"type": "assistant", "message": {"content": []}}),
+            ]
+        })
         .collect();
     let f = scan_all(&jsonl(&many));
-    assert_eq!((f.retries.len(), f.retries[0].id.as_str()), (RETRY_KEEP, "r3"), "超了丢最早的");
+    assert_eq!(
+        (f.retries.len(), f.retries[0].id.as_str()),
+        (RETRY_KEEP, "r3"),
+        "超了丢最早的"
+    );
 }
