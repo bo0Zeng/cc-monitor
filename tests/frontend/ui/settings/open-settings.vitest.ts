@@ -62,7 +62,7 @@ describe("ST1 点设置有反馈", () => {
     const bare: string[] = calls.filter((a) => a === ")" || a === "settingsTrigger)");
     expect(bare.length, "不带目的地的：栏顶「设置」· 命令面板「设置」· 快捷键").toBe(3);
     const rest = calls.filter((a) => !bare.includes(a));
-    expect(rest.length, "带目的地的入口（账号 chip · 命令面板管理账号 · 账号面板 · ↗ 接上终端 · ↗ 更新 · 上下文 · 快捷键一览 · 机器看不见）").toBe(8);
+    expect(rest.length, "带目的地的入口（账号 chip · 命令面板管理账号 · 账号面板 · ↗ 接上终端 · ↗ 更新 · 上下文 · 快捷键一览 · 机器看不见 · 要你动手）").toBe(9);
     for (const a of rest) expect(a, "带目的地的那几处都取 settings-dest 的").toMatch(/^undefined, dest\./);
   });
 

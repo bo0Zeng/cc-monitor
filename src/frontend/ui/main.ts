@@ -176,7 +176,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       return Array.isArray(got) ? got.filter((o): o is string => typeof o === "string") : [LOCAL_ORIGIN];
     },
     chores: choresOf,
-    open: () => void openSettingsWindow(null, { page: "data" }),
+    open: () => void openSettingsWindow(undefined, dest.CHORES),
   });
   status.appendChild(chores.el);
   void chores.refreshAll();
