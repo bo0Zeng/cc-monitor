@@ -4741,7 +4741,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 项目 `.mcp.json` 的本机写原语删了（改经后端写）。
         // `src/frontend/shell/src/mcp.rs` 那一行随文件删了（MCP 读写进了那台后端）。
         // 写点表摘掉那三行时留的一块。
-        ("tests/frontend/shell/write_site_registry_tests.rs", 8), // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） // +1：`deploy_into` 随装 cc-bus 进后端的墓碑 // // +1：收件箱写那一行的来历挂墓碑 // // 2 → 3：副本那一行登记删了，原地一块 //, // +1：整份写口 `save_config` 删了，讲来历那一句挂墓碑
+        ("tests/frontend/shell/write_site_registry_tests.rs", 7),
         // 「盘上有字节却读到空」那一道从 monitor 的 `LocalFile::read` 搬到后端 `hollow_read`
         //   （住址并进 FW5 那一行，两边各 +1）。
         // Windows ACL 那条判据从 monitor 搬去后端：两头各一块墓碑。
@@ -4968,7 +4968,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // `tasks.rs` 那一行随文件删了（本机任务 notify 整轴进后端，那几块墓碑守的来历一起走了）。
         // `backend_layering.rs` 那一行摘了：monitor 侧的层判据随 `backend` 目录删了。
         ("tests/frontend/shell/spawn_managed_exit_sites.rs", 3), // +1：本机 cc-bus 读那一处出表
-        ("tests/frontend/shell/write_site_registry_spawn_sites.rs", 3), // +1：本机 cc-bus 读那一处出表
+        ("tests/frontend/shell/write_site_registry_spawn_sites.rs", 2),
         // `accounts.ts` 里 `auth_ready` 订阅分支的第二份（带「旧后端」回落的 `authReady()` 包装）删了，
         //   点它的散文各挂一块：`Account.authReady` 字段头注那一处 · KAY4 判据头注第 4 条那一处。
         ("src/frontend/ui/accounts.ts", 1), // 2 → 1：API key 徽章那段头注改成现状（本机远端同一条路），那一块随之去掉 // 3 → 2：空态那句的墓碑随「只能在终端里做」那条理由退役 // 2 → 3：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 1 → 2
