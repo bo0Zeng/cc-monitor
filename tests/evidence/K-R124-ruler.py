@@ -34,6 +34,10 @@
    两处发布步骤的 `files:` ↔ 登记两向一一对上；登记、交叉编译、改名成资产的 musl 目标都等于
    x86_64 / aarch64；每份校验和恰好一步生成、排在发布前，算的那几份 ↔ 登记里进它的资产两向一一对上。
    ⚠ 只认文件名；glob 那几样（deb · 安装器 · msi）真叫什么由打包器定，它判不了。
+8. **第三方许可声明 ↔ 现打的依赖**（⑰）：`THIRD-PARTY-NOTICES.txt` 里的 crate ∪ `tests/evidence/third-party-not-shipped.txt`
+   == 两份 `Cargo.lock` 的第三方包 ∪ `src/vendor/` 下的包（两向、两份不相交）；声明里的 npm 包 == `package-lock.json` 的生产依赖
+   （两向）；发版那一趟在每个发布 job 之前重新生成并逐字比（`--check`），装的 cargo-about 版本 == 生成器钉的；声明进安装包
+   （`tauri.sidecar.conf.json` 的 `bundle.resources`）。⚠ 「哪些包进产物」由 cargo-about 按目标平台算，本格不重算，只认生成器写下的那一分。
 
 # 🔴 第 3 句为什么归这份判据，而不是归 `platform` 那一格
 
@@ -849,6 +853,65 @@ def hashed_files(run):
     return None
 
 
+# ── ⑰ 第三方许可声明 ────────────────────────────────────────────────────────
+NOTICES = "THIRD-PARTY-NOTICES.txt"
+NOT_SHIPPED = "tests/evidence/third-party-not-shipped.txt"
+NOTICES_GEN = "tests/scripts/third-party-notices.py"
+NOTICES_CHECK = "python3 %s --check" % NOTICES_GEN
+CARGO_LOCKS = ["src/backend/Cargo.lock", "src/frontend/shell/Cargo.lock"]
+SIDECAR_CONF = "src/frontend/shell/tauri.sidecar.conf.json"
+
+
+def listed(text, kind):
+    """声明 / 不进产物那份里 `<kind>: 名 版本` 的行 → 集合（`名 版本`）。"""
+    return set(re.findall(r"^\s*%s: (\S+ \S+)\s*$" % kind, text or "", re.M))
+
+
+def locked_third_party():
+    """两份 `Cargo.lock` 里有来源（注册表 / git）的包 ∪ `src/vendor/*/Cargo.toml` 的包；读不到给 `None`。"""
+    got = set()
+    for rel in CARGO_LOCKS:
+        text = read_rel(rel)
+        if text is None:
+            return None
+        for name, ver, src in re.findall(
+                r'\[\[package\]\]\nname = "([^"]+)"\nversion = "([^"]+)"\n(?:source = "([^"]+)")?', text):
+            if src:
+                got.add("%s %s" % (name, ver))
+    for manifest in sorted((ROOT / "src/vendor").glob("*/Cargo.toml")):
+        text = manifest.read_text(encoding="utf-8")
+        name = re.search(r'^name\s*=\s*"([^"]+)"', text, re.M)
+        ver = re.search(r'^version\s*=\s*"([^"]+)"', text, re.M)
+        if not (name and ver):
+            return None
+        got.add("%s %s" % (name.group(1), ver.group(1)))
+    return got
+
+
+def npm_production():
+    """`package-lock.json` 里不带 `dev` 的包（`名 版本`）；读不到给 `None`。"""
+    text = read_rel("package-lock.json")
+    if text is None:
+        return None
+    pk = json.loads(text).get("packages") or {}
+    return {"%s %s" % (k.rsplit("node_modules/", 1)[-1], v.get("version"))
+            for k, v in pk.items() if k and not v.get("dev")}
+
+
+def needs_closure(jobs, jname):
+    """`jname` 经 `needs` 直接间接等着的 job 集合（不含它自己）。"""
+    seen, stack = set(), [jname]
+    while stack:
+        need = (jobs.get(stack.pop()) or {}).get("needs") or []
+        if isinstance(need, str):  # 自带的切块器把行内 `[a, b]` 留成字符串
+            need = [x.strip() for x in need.strip("[]").split(",") if x.strip()]
+        for n in need:
+            if n not in seen:
+                seen.add(n)
+                stack.append(n)
+    return seen
+
+
 # ── 判据 ────────────────────────────────────────────────────────────────────
 def run_checks(emit):
     fails = []
@@ -1509,6 +1572,42 @@ def run_checks(emit):
         check(all(int(x) == len(got or []) for x in cnt),
               "⑯d份数守卫·%s 那一步的恒等 == 算的份数" % sname,
               "守卫写 %s · 算的 %d 份" % (cnt, len(got or [])))
+
+    # ══ ⑰ 第三方许可声明 ↔ 现打的依赖（新加的依赖没进声明 ⇒ 红；声明里留着已经删掉的 ⇒ 红）════════
+    notices, rest = read_rel(NOTICES), read_rel(NOT_SHIPPED)
+    lock = locked_third_party()
+    shipped, unshipped = listed(notices, "crate"), listed(rest, "crate")
+    check(bool(lock) and bool(shipped) and notices is not None and rest is not None,
+          "⑰地板·声明 · 不进产物那份 · 两份锁文件都读得出来",
+          "锁文件第三方 %d · 声明 %d · 不进产物 %d" % (len(lock or []), len(shipped), len(unshipped)))
+    lock = lock or set()
+    check(shipped | unshipped == lock and not (shipped & unshipped),
+          "⑰a Rust 依赖·声明 ∪ 不进产物 == 锁文件第三方 ∪ src/vendor，两向且不相交",
+          "锁文件有而两份都没有 %s · 两份有而锁文件没有 %s · 两份都有 %s —— 跑 `python3 %s` 重新生成"
+          % (sorted(lock - shipped - unshipped)[:8], sorted((shipped | unshipped) - lock)[:8],
+             sorted(shipped & unshipped)[:8], NOTICES_GEN))
+    npm_want, npm_got = npm_production() or set(), listed(notices, "npm")
+    check(bool(npm_want) and npm_want == npm_got, "⑰b npm 生产依赖·声明 == package-lock 不带 dev 的包，两向",
+          "锁里有没声明 %s · 声明了锁里没有 %s" % (sorted(npm_want - npm_got), sorted(npm_got - npm_want)))
+    gen = read_rel(NOTICES_GEN) or ""
+    pinned = re.search(r'^CARGO_ABOUT_VERSION = "([^"]+)"', gen, re.M)
+    checkers = [(jn, st) for jn, _, st in steps if NOTICES_CHECK in str(st.get("run") or "")]
+    pub_job_names = sorted({jn for jn, _, _ in pubsteps})
+    gating = [jn for jn, _ in checkers if all(jn in needs_closure(jobs, p) for p in pub_job_names)]
+    check(len(checkers) == 1 and gating, "⑰c发版那一趟·`%s` 恰好一步，所在 job 是每个发布 job 都等着的" % NOTICES_CHECK,
+          "现打 %d 步（%s）· 发布 job %s" % (len(checkers), [jn for jn, _ in checkers], pub_job_names))
+    tools = [str((st.get("with") or {}).get("tool") or "") for jn, _, st in steps
+             if checkers and jn == checkers[0][0] and "install-action" in str(st.get("uses") or "")]
+    want_tool = "cargo-about@%s" % (pinned.group(1) if pinned else "?")
+    check(bool(pinned) and want_tool in tools, "⑰c工具版本·那个 job 装的 cargo-about == 生成器钉的",
+          "生成器钉 %s · 那个 job 装 %s" % (want_tool, tools))
+    try:
+        res = (json.loads(read_rel(SIDECAR_CONF) or "{}").get("bundle") or {}).get("resources") or {}
+    except ValueError:
+        res = {}
+    into = [v for k, v in (res.items() if isinstance(res, dict) else []) if leaf(k) == NOTICES]
+    check(into == [NOTICES], "⑰d声明进安装包·`%s` 的 bundle.resources 把它放进包根" % SIDECAR_CONF,
+          "现打 %r" % (res,))
 
     return (1 if fails else 0), passes[0], fails
 

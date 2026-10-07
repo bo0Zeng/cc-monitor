@@ -11,6 +11,8 @@
 | [`re-embed.sh`](re-embed.sh) | `BUILD_ID` bump 的同拍步骤：把内嵌的那几份后端字节重编并铺回落点，全仓唯一的本机产字节入口。配方与 `release.yml` 产字节那一步同源（门禁 `release-gate` 那一格两向对拍）；`--check` 只问盘上的字节与源码对不对得上，`--native` 铺本机那一份，`--clean` 删落点 |
 | [`xvfb-free.sh`](xvfb-free.sh) | 起一台私有 Xvfb：在 `:100–:899` 里挑空号、按 X 的老规矩建 `/tmp/.X<n>-lock` 占住（门禁的网络命名空间里外都认得），号由 Xvfb 写在标准输出第一行；`release <n> <pid>` 收场。文件窗口台架与截图工具共用 |
 | [`release-notes.mjs`](release-notes.mjs) | GitHub Release 的正文生成器：从 `CHANGELOG.md` 里本版那一段生成正文，`release.yml` 两处发布步骤都用它；`--check` 只验不写，门禁 `release-gate` 那一格调它 |
+| [`third-party-notices.py`](third-party-notices.py) | 第三方许可声明的生成器：用 cargo-about（版本钉在脚本里，没有就装进 `.build/tools`）与 `node_modules/` 生成仓根 `THIRD-PARTY-NOTICES.txt`（随安装包与 Release 分发）和 `tests/evidence/third-party-not-shipped.txt`；`--check` 只验不写，`release.yml` 发版那一趟调它；加删依赖后重跑一次再提交（门禁 `release-gate` ⑰ 两向核） |
+| [`third-party-about.toml`](third-party-about.toml) | 上面那个生成器给 cargo-about 的配置：收哪几种许可 · 按哪几个目标平台收依赖 · 不收开发期依赖 |
 
 跑法与射程都在各脚本自己的头注里。这张表由 `doc_claim_registry_tests.rs::every_script_in_the_directory_is_listed_in_its_readme` 钉住：往本目录放新文件而不登记就会红。
 

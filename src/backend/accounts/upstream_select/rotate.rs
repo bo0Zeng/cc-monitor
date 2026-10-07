@@ -312,8 +312,8 @@ impl Hop {
             .dir_of(&face, lib, account)
             .ok_or(Unready::NeedsLogin)?;
         let ep = self.endpoint(&face).ok_or(Unready::NeedsLogin)?;
-        let token =
-            oauth::access_token(&dir, &face, &ep, now.saturating_mul(1000)).map_err(|u| {
+        let token = oauth::access_token(&dir, &face, &ep, now.saturating_mul(1000), account)
+            .map_err(|u| {
                 tracing::warn!("[rotate] {}", u.said(account));
                 Unready::NeedsLogin
             })?;

@@ -125,11 +125,13 @@ fn fresh(n: &Now, face: &LoginFace, now_ms: u64) -> bool {
 }
 
 /// 这个号此刻能用的访问令牌：没过期直接给；快过期就续（加锁、写回）再给。
+/// 真去续的每一发记一行进后端日志（[`renew_line`]：号 `account` · 成败 · 状态码 · 错误码）。
 pub(crate) fn access_token(
     dir: &Path,
     face: &LoginFace,
     endpoint: &TokenEndpoint,
     now_ms: u64,
+    account: &str,
 ) -> Result<SecretKey, Unusable> {
     let n = look(dir, face)?;
     if fresh(&n, face, now_ms) {
@@ -138,7 +140,9 @@ pub(crate) fn access_token(
     if n.access.is_none() && n.refresh.is_none() {
         return Err(Unusable::NotLoggedIn);
     }
-    match store::with_refresh_lock(dir, face, || refresh_locked(dir, face, endpoint, now_ms)) {
+    match store::with_refresh_lock(dir, face, |reclaimed| {
+        refresh_locked(dir, face, endpoint, now_ms, account, reclaimed)
+    }) {
         Ok(store::Locked::Held(r)) => r,
         Ok(store::Locked::Busy) => Err(Unusable::Busy),
         Err(why) => Err(Unusable::NotRenewed(why)),
@@ -152,14 +156,107 @@ fn refresh_locked(
     face: &LoginFace,
     endpoint: &TokenEndpoint,
     now_ms: u64,
+    account: &str,
+    reclaimed: &store::Reclaimed,
 ) -> Result<SecretKey, Unusable> {
     let n = look(dir, face)?;
+    let mut trail = Trail {
+        reclaimed: reclaimed.0.clone(),
+        ..Trail::default()
+    };
     if fresh(&n, face, now_ms) {
-        return n.access.ok_or(Unusable::NotLoggedIn);
+        let r = n.access.ok_or(Unusable::NotLoggedIn);
+        if !trail.reclaimed.is_empty() {
+            // 收回了过期锁、而盘上已经是新令牌（别人续过）⇒ 不去续，这一行照记。
+            trail.yielded = true;
+            tracing::info!("{}", renew_line(account, &trail, &r));
+        }
+        return r;
     }
-    let Some(posted) = n.refresh else {
+    let Some(posted) = n.refresh.as_ref() else {
         return Err(Unusable::Expired);
     };
+    let r = renew(dir, face, endpoint, now_ms, &n, posted, &mut trail);
+    let line = renew_line(account, &trail, &r);
+    if r.is_ok() {
+        tracing::info!("{line}");
+    } else {
+        tracing::warn!("{line}");
+    }
+    r
+}
+
+/// 续期那一发留下的、可以进日志的几格（全是闭集或数字，没有一格取自令牌）。
+#[derive(Default)]
+struct Trail {
+    /// 令牌端点回的状态码；没连上 ⇒ `None`。
+    status: Option<u16>,
+    /// 令牌端点回的错误码（回包 `error` 那一格，只收 [`error_code`] 认得的形状）。
+    code: Option<String>,
+    /// 没成时卡在哪（固定的短词）。
+    why: Option<String>,
+    /// 续成了，但盘上的刷新令牌已被那个号自己换掉 ⇒ 用盘上的、不写回。
+    yielded: bool,
+    /// 拿锁时当无主收回的那几把（[`store::Reclaimed`]）。
+    reclaimed: Vec<&'static str>,
+}
+
+/// 令牌端点回包里 `error` 那一格：只收 OAuth 错误码的形状（小写字母与下划线，至多 40 个），别的一概不收。
+fn error_code(body: &[u8]) -> Option<String> {
+    let v: Value = serde_json::from_slice(body).ok()?;
+    let code = v.get("error")?.as_str()?;
+    (!code.is_empty()
+        && code.len() <= 40
+        && code.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'))
+    .then(|| code.to_string())
+}
+
+/// 续期那一发记进后端日志的一行：号 · 成 / 败 / 让位 · 状态码 · 错误码 · 原因。只用 [`Trail`] 那几格 ⇒ 不带令牌、不带回包体。
+fn renew_line(account: &str, t: &Trail, r: &Result<SecretKey, Unusable>) -> String {
+    let outcome = match r {
+        Ok(_) if t.yielded => "让位",
+        Ok(_) => "成",
+        Err(_) => "败",
+    };
+    let why = match r {
+        Ok(_) => None,
+        Err(Unusable::Refused(_)) => Some("refused".to_string()),
+        Err(Unusable::WriteFailed(_)) => Some("write-failed".to_string()),
+        Err(Unusable::Expired) => Some("expired".to_string()),
+        Err(Unusable::NotLoggedIn) => Some("not-logged-in".to_string()),
+        Err(Unusable::Unreadable(_)) => Some("unreadable".to_string()),
+        Err(Unusable::Busy) => Some("busy".to_string()),
+        Err(Unusable::NotRenewed(_)) => t.why.clone(),
+    };
+    format!(
+        "[auth] 续期：号 {account} · {outcome} · 状态码 {} · 错误码 {} · 原因 {} · 收回过期锁 {}",
+        t.status.map_or_else(|| "—".to_string(), |s| s.to_string()),
+        t.code.as_deref().unwrap_or("—"),
+        why.as_deref().unwrap_or("—"),
+        if t.reclaimed.is_empty() {
+            "—".to_string()
+        } else {
+            t.reclaimed.join("、")
+        },
+    )
+}
+
+/// 令牌端点那一发没连上 / 没读完：原因只记 `io::ErrorKind` 那一个词。
+fn unreached(trail: &mut Trail, e: &std::io::Error) -> Unusable {
+    trail.why = Some(format!("transport({})", e.kind()));
+    Unusable::NotRenewed(e.kind().to_string())
+}
+
+/// 发续期 → 读回包 → 写前比对 → 整份写回；一路把能进日志的几格记进 `trail`。
+fn renew(
+    dir: &Path,
+    face: &LoginFace,
+    endpoint: &TokenEndpoint,
+    now_ms: u64,
+    n: &Now,
+    posted: &SecretKey,
+    trail: &mut Trail,
+) -> Result<SecretKey, Unusable> {
     let sec = n.doc.get(face.section);
     let client = sec
         .and_then(|s| s.get(face.client_field))
@@ -182,7 +279,7 @@ fn refresh_locked(
             ("client_id", &client),
             ("scope", &scope),
         ],
-        ("refresh_token", &posted),
+        ("refresh_token", posted),
     );
     let answer = crate::relay::fetch(
         &endpoint.base,
@@ -193,8 +290,11 @@ fn refresh_locked(
         endpoint.deadline,
         ANSWER_CAP,
     )
-    .map_err(|e| Unusable::NotRenewed(e.kind().to_string()))?;
+    .map_err(|e| unreached(trail, &e))?;
+    trail.status = Some(answer.status);
     if answer.status != 200 {
+        trail.code = error_code(&answer.body);
+        trail.why = Some("status".to_string());
         return Err(if matches!(answer.status, 400 | 401) {
             Unusable::Refused(answer.status)
         } else {
@@ -207,10 +307,11 @@ fn refresh_locked(
     let got: Map<String, Value> = match serde_json::from_slice(&answer.body) {
         Ok(Value::Object(m)) => m,
         _ => {
+            trail.why = Some("not-json".to_string());
             return Err(Unusable::NotRenewed(copy_text(
                 "beOauth.refresh.notJson",
                 &[],
-            )))
+            )));
         }
     };
     let wrapped = Map::from_iter([(String::from("t"), Value::Object(got.clone()))]);
@@ -218,6 +319,7 @@ fn refresh_locked(
         secret_in(&wrapped, "t", "access_token"),
         got.get("expires_in").and_then(Value::as_u64),
     ) else {
+        trail.why = Some("missing".to_string());
         return Err(Unusable::NotRenewed(copy_text(
             "beOauth.refresh.missing",
             &[],
@@ -226,11 +328,8 @@ fn refresh_locked(
     let refresh = secret_in(&wrapped, "t", "refresh_token");
     // 写前比对：盘上的刷新令牌已经不是发出去那个了 ⇒ 别人（那个号自己的 claude）抢先续过，用它的，不覆盖。
     let disk = look(dir, face)?;
-    if !disk
-        .refresh
-        .as_ref()
-        .is_some_and(|r| r.same_secret(&posted))
-    {
+    if !disk.refresh.as_ref().is_some_and(|r| r.same_secret(posted)) {
+        trail.yielded = true;
         return disk.access.ok_or(Unusable::Expired);
     }
     let mut plain: Vec<(&str, Value)> = vec![(

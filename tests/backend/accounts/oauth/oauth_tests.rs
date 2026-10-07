@@ -113,7 +113,7 @@ fn a_token_that_is_not_about_to_expire_is_handed_out_without_refreshing() {
     let d = temp_dir("fresh");
     let acct = d.join("acct");
     write_creds(&acct, "acc-old", "ref-old", NOW_MS + 3_600_000);
-    let got = access_token(&acct, &FACE, &nowhere(), NOW_MS).expect("能用");
+    let got = access_token(&acct, &FACE, &nowhere(), NOW_MS, "q").expect("能用");
     assert_eq!(expose(&got), "acc-old");
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -125,7 +125,7 @@ fn an_expiring_token_is_refreshed_and_the_whole_file_is_written_back_atomically(
     // 还剩 1 分钟（< 5 分钟余量）⇒ 要续。
     write_creds(&acct, "acc-old", "ref-old", NOW_MS + 60_000);
     let (addr, posted) = spawn_token_endpoint(NEW_TOKENS, 200, None);
-    let got = access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS).expect("续得上");
+    let got = access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "q").expect("续得上");
     assert_eq!(expose(&got), "acc-new");
     assert_eq!(
         posted.lock().expect("lock").clone(),
@@ -179,7 +179,9 @@ fn two_refreshes_at_once_reach_the_endpoint_once() {
     let hs: Vec<_> = (0..2)
         .map(|_| {
             let (acct, ep) = (acct.clone(), Arc::clone(&ep));
-            std::thread::spawn(move || access_token(&acct, &FACE, &ep, NOW_MS).map(|s| expose(&s)))
+            std::thread::spawn(move || {
+                access_token(&acct, &FACE, &ep, NOW_MS, "q").map(|s| expose(&s))
+            })
         })
         .collect();
     let outs: Vec<_> = hs.into_iter().map(|h| h.join().expect("join")).collect();
@@ -199,7 +201,7 @@ fn a_lock_held_by_someone_else_is_said_and_left_alone() {
     std::fs::create_dir(acct.join(FACE.lock_inside)).expect("别人的锁");
     let (addr, posted) = spawn_token_endpoint(NEW_TOKENS, 200, None);
     assert_eq!(
-        access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS).map(|s| expose(&s)),
+        access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "q").map(|s| expose(&s)),
         Err(Unusable::Busy)
     );
     assert!(posted.lock().expect("lock").is_empty());
@@ -215,7 +217,7 @@ fn a_refused_refresh_says_log_in_again_and_leaves_the_file_as_it_was() {
     write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
     let before = on_disk(&acct);
     let (addr, _) = spawn_token_endpoint(r#"{"error":"invalid_grant"}"#, 400, None);
-    let r = access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS).map(|s| expose(&s));
+    let r = access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "q").map(|s| expose(&s));
     assert_eq!(r, Err(Unusable::Refused(400)));
     assert_eq!(on_disk(&acct), before);
     let said = Unusable::Refused(400).said("q");
@@ -229,7 +231,7 @@ fn when_the_agent_refreshed_first_its_tokens_win_and_ours_are_not_written() {
     let acct = d.join("acct");
     write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
     let (addr, _) = spawn_token_endpoint(NEW_TOKENS, 200, Some(acct.clone()));
-    let got = access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS).expect("用它的");
+    let got = access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "q").expect("用它的");
     assert_eq!(expose(&got), "acc-by-claude");
     assert_eq!(
         on_disk(&acct)["claudeAiOauth"]["refreshToken"],
@@ -242,7 +244,7 @@ fn when_the_agent_refreshed_first_its_tokens_win_and_ours_are_not_written() {
 fn no_credentials_file_is_not_logged_in() {
     let d = temp_dir("none");
     assert_eq!(
-        access_token(&d.join("acct"), &FACE, &nowhere(), NOW_MS).map(|s| expose(&s)),
+        access_token(&d.join("acct"), &FACE, &nowhere(), NOW_MS, "q").map(|s| expose(&s)),
         Err(Unusable::NotLoggedIn)
     );
     let _ = std::fs::remove_dir_all(&d);
@@ -253,4 +255,265 @@ fn the_registered_token_endpoint_parses() {
     let ep = TokenEndpoint::of(&FACE, std::time::Duration::from_secs(1)).expect("端点");
     assert!(ep.base.tls);
     assert_eq!(ep.rest, "/v1/oauth/token");
+}
+
+// ── 续期与被拒进日志：按号一行，令牌形状一样都不许进 ──────────────────────────────
+
+/// 跑 `f`，把这段里 `tracing` 打出来的全部文本收回来（只收本线程：续期是同步的）。
+fn logged<T>(f: impl FnOnce() -> T) -> (T, String) {
+    #[derive(Clone, Default)]
+    struct Buf(Arc<Mutex<Vec<u8>>>);
+    impl std::io::Write for Buf {
+        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().expect("lock").extend_from_slice(b);
+            Ok(b.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Buf {
+        type Writer = Buf;
+        fn make_writer(&'a self) -> Buf {
+            self.clone()
+        }
+    }
+    let buf = Buf::default();
+    let sub = tracing_subscriber::fmt()
+        .with_writer(buf.clone())
+        .with_ansi(false)
+        .without_time()
+        .finish();
+    let out = tracing::subscriber::with_default(sub, f);
+    let text = String::from_utf8_lossy(&buf.0.lock().expect("lock")).into_owned();
+    (out, text)
+}
+
+/// 日志里像令牌的东西：`sk-ant` 前缀 · UUID（8-4-4-4-12 位十六进制）· 连着 24 个以上的令牌字符。
+fn token_shapes(text: &str) -> Vec<String> {
+    let mut hits = Vec::new();
+    if text.contains("sk-ant") {
+        hits.push("sk-ant".to_string());
+    }
+    let tok =
+        |c: char| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '~' | '+' | '/' | '=');
+    for run in text.split(|c: char| !tok(c)).filter(|r| !r.is_empty()) {
+        if run.chars().count() >= 24 {
+            hits.push(run.to_string());
+        }
+        let parts: Vec<&str> = run.split('-').collect();
+        let lens: Vec<usize> = parts.iter().map(|p| p.len()).collect();
+        if parts.len() >= 5
+            && lens.windows(5).any(|w| w == [8, 4, 4, 4, 12])
+            && parts.iter().all(|p| {
+                p.chars()
+                    .all(|c| c.is_ascii_hexdigit() || c.is_ascii_alphabetic())
+            })
+        {
+            hits.push(run.to_string());
+        }
+    }
+    hits
+}
+
+const UUID: &str = "8c1f3b2a-4d5e-4f60-9a7b-0c1d2e3f4a5b";
+const LIVE_ACCESS: &str = "sk-ant-oat01-Qm9vYmFyQmF6UXV4Q29yZ2VHcmF1bHRHYXJwbHk";
+const LIVE_REFRESH: &str = "sk-ant-ort01-WmFwRm9vQmFyQmF6UXV4Q29yZ2VHcmF1bHQ";
+
+#[test]
+fn the_token_shape_detector_sees_every_shape_it_is_meant_to() {
+    assert!(!token_shapes(LIVE_ACCESS).is_empty());
+    assert!(!token_shapes(&format!("x {UUID} y")).is_empty());
+    assert!(!token_shapes("Qm9vYmFyQmF6UXV4Q29yZ2VHcmF1").is_empty());
+    assert!(token_shapes(
+        "[auth] 续期：号 b · 败 · 状态码 400 · 错误码 invalid_grant · 原因 refused"
+    )
+    .is_empty());
+}
+
+#[test]
+fn every_renewal_is_one_log_line_naming_the_account_outcome_code_and_status() {
+    // 成
+    let d = temp_dir("log-ok");
+    let acct = d.join("acct");
+    write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
+    let (addr, _) = spawn_token_endpoint(NEW_TOKENS, 200, None);
+    let (r, log) = logged(|| access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "b"));
+    assert!(r.is_ok());
+    let lines: Vec<&str> = log.lines().filter(|l| l.contains("[auth] 续期")).collect();
+    assert_eq!(lines.len(), 1, "{log}");
+    assert!(
+        lines[0].contains("[auth] 续期：号 b · 成 · 状态码 200 · 错误码 — · 原因 —"),
+        "{log}"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+
+    // 败：令牌端点不收（invalid_grant）
+    let d = temp_dir("log-refused");
+    let acct = d.join("acct");
+    write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
+    let (addr, _) = spawn_token_endpoint(
+        r#"{"error":"invalid_grant","error_description":"Refresh token not found or invalid"}"#,
+        400,
+        None,
+    );
+    let (r, log) = logged(|| access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "b"));
+    assert_eq!(r.map(|s| expose(&s)), Err(Unusable::Refused(400)));
+    assert!(
+        log.contains("[auth] 续期：号 b · 败 · 状态码 400 · 错误码 invalid_grant · 原因 refused"),
+        "{log}"
+    );
+    assert!(
+        !log.contains("Refresh token not found"),
+        "error_description 不进日志：{log}"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+
+    // 败：连不上（没有状态码）
+    let d = temp_dir("log-down");
+    let acct = d.join("acct");
+    write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
+    let (_, log) = logged(|| access_token(&acct, &FACE, &nowhere(), NOW_MS, "b"));
+    assert!(
+        log.contains("[auth] 续期：号 b · 败 · 状态码 — · 错误码 —"),
+        "{log}"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+
+    // 让位：发出去的刷新令牌在盘上已被那个号自己的 claude 换掉
+    let d = temp_dir("log-cas");
+    let acct = d.join("acct");
+    write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
+    let (addr, _) = spawn_token_endpoint(NEW_TOKENS, 200, Some(acct.clone()));
+    let (_, log) = logged(|| access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "b"));
+    assert!(
+        log.contains("[auth] 续期：号 b · 让位 · 状态码 200"),
+        "{log}"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+
+    // 没去续 ⇒ 不记
+    let d = temp_dir("log-fresh");
+    let acct = d.join("acct");
+    write_creds(&acct, "acc-old", "ref-old", NOW_MS + 3_600_000);
+    let (_, log) = logged(|| access_token(&acct, &FACE, &nowhere(), NOW_MS, "b"));
+    assert!(!log.contains("[auth]"), "{log}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn no_token_refresh_token_or_account_uuid_reaches_the_renewal_log() {
+    let d = temp_dir("log-shapes");
+    let acct = d.join("acct");
+    write_creds(&acct, LIVE_ACCESS, LIVE_REFRESH, NOW_MS - 1);
+    // 端点把刷新令牌与账号 UUID 回显进 `error` 与 `error_description`（最坏的那一种回包）。
+    let echo: &'static str = Box::leak(
+        format!(r#"{{"error":"{LIVE_REFRESH}","error_description":"token {LIVE_REFRESH} of {UUID}","account":{{"uuid":"{UUID}"}}}}"#)
+            .into_boxed_str(),
+    );
+    let (addr, _) = spawn_token_endpoint(echo, 401, None);
+    let (_, log) = logged(|| access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "b"));
+    assert!(log.contains("[auth] 续期：号 b · 败 · 状态码 401"), "{log}");
+    assert_eq!(token_shapes(&log), Vec::<String>::new(), "{log}");
+    let _ = std::fs::remove_dir_all(&d);
+
+    // 成的那一发：回包里是真形状的新令牌。
+    let d = temp_dir("log-shapes-ok");
+    let acct = d.join("acct");
+    write_creds(&acct, LIVE_ACCESS, LIVE_REFRESH, NOW_MS - 1);
+    let fresh: &'static str = Box::leak(
+        format!(r#"{{"access_token":"{LIVE_ACCESS}x","refresh_token":"{LIVE_REFRESH}y","expires_in":3600,"account":{{"uuid":"{UUID}"}}}}"#)
+            .into_boxed_str(),
+    );
+    let (addr, _) = spawn_token_endpoint(fresh, 200, None);
+    let (_, log) = logged(|| access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "b"));
+    assert!(log.contains("[auth] 续期：号 b · 成"), "{log}");
+    assert_eq!(token_shapes(&log), Vec::<String>::new(), "{log}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn an_upstream_401_or_403_is_one_line_per_account_and_nothing_else_is() {
+    use crate::accounts::upstream_select::auth_refusal_line;
+    assert_eq!(
+        auth_refusal_line("b", 401).as_deref(),
+        Some("[auth] 被拒：号 b · 状态码 401 · 令牌不被上游认")
+    );
+    assert_eq!(
+        auth_refusal_line("b", 403).as_deref(),
+        Some("[auth] 被拒：号 b · 状态码 403 · 令牌不被上游认")
+    );
+    for s in [200, 400, 404, 429, 500, 529, 0] {
+        assert_eq!(auth_refusal_line("b", s), None, "{s}");
+    }
+    assert!(token_shapes(&auth_refusal_line("b", 401).unwrap_or_default()).is_empty());
+}
+
+// ── 续期锁：持锁中途出事不留锁 · 过期的锁目录当无主 · 新鲜的照旧挡 ─────────────────────
+
+/// 把一个锁目录的修改时刻拨回 `ago`（模拟持有方早就死了）。
+fn age_dir(p: &Path, ago: std::time::Duration) {
+    let f = std::fs::File::open(p).expect("开锁目录");
+    f.set_modified(std::time::SystemTime::now() - ago)
+        .expect("拨修改时刻");
+}
+
+#[test]
+fn a_panic_while_holding_the_refresh_lock_leaves_no_lock_behind() {
+    let d = temp_dir("panic");
+    let acct = d.join("acct");
+    write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = store::with_refresh_lock(&acct, &FACE, |_| -> () {
+            panic!("续期那一趟里出事")
+        });
+    }));
+    assert!(r.is_err(), "panic 该传出来");
+    assert!(!acct.join(FACE.lock_inside).exists(), "里面那把留下了");
+    assert!(!d.join("acct.lock").exists(), "旁边那把留下了");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn a_stale_lock_directory_no_longer_blocks_renewal_and_the_reclaim_is_logged() {
+    let d = temp_dir("stale");
+    let acct = d.join("acct");
+    write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
+    let inside = acct.join(FACE.lock_inside);
+    let beside = d.join("acct.lock");
+    std::fs::create_dir(&inside).expect("死掉的持有方留下的锁");
+    std::fs::create_dir(&beside).expect("死掉的持有方留下的锁");
+    let ago = std::time::Duration::from_millis(FACE.lock_stale_ms + 30_000);
+    age_dir(&inside, ago);
+    age_dir(&beside, ago);
+    let (addr, posted) = spawn_token_endpoint(NEW_TOKENS, 200, None);
+    let (r, log) = logged(|| access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "b"));
+    assert_eq!(r.map(|s| expose(&s)), Ok("acc-new".to_string()), "{log}");
+    assert_eq!(posted.lock().expect("lock").len(), 1);
+    assert!(!inside.exists() && !beside.exists(), "续完两把都放掉");
+    assert!(log.contains("[auth] 续期：号 b · 成"), "{log}");
+    assert!(log.contains("收回过期锁 里面那把、旁边那把"), "{log}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn a_fresh_lock_directory_still_says_busy() {
+    let d = temp_dir("fresh-lock");
+    let acct = d.join("acct");
+    write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
+    let inside = acct.join(FACE.lock_inside);
+    std::fs::create_dir(&inside).expect("别人的锁");
+    // 比门限新一点点：活着的持有方
+    age_dir(
+        &inside,
+        std::time::Duration::from_millis(FACE.lock_stale_ms.saturating_sub(5_000)),
+    );
+    let (addr, posted) = spawn_token_endpoint(NEW_TOKENS, 200, None);
+    assert_eq!(
+        access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "b").map(|s| expose(&s)),
+        Err(Unusable::Busy)
+    );
+    assert!(posted.lock().expect("lock").is_empty());
+    assert!(inside.is_dir(), "活着的锁不许动");
+    let _ = std::fs::remove_dir_all(&d);
 }

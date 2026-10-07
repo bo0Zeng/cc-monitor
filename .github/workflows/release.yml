@@ -219,6 +219,21 @@ jobs:
         with:
           tool: cargo-zigbuild@0.23.0
 
+      # 第三方许可声明（`THIRD-PARTY-NOTICES.txt`，随安装包与 Release 分发）：按现打的依赖重新生成、与仓里那份逐字比，
+      # 不同就不往下走（加了依赖没重新生成 ⇒ 发不出去）。版本 == `tests/scripts/third-party-notices.py` 的 `CARGO_ABOUT_VERSION`（release-gate ⑰c 对拍）。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install cargo-about
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.2
+      - name: Third-party notices match the dependencies being built
+        run: |
+          npm ci
+          python3 tests/scripts/third-party-notices.py --check
+
       # cc-monitor-backend 是独立 crate（无 workspace），静态编译成 musl。
       # build_id 由源码 const BUILD_ID 决定（拼进字节里的身份戳），从源码编译天然版本一致。
       #
@@ -534,10 +549,10 @@ jobs:
         shell: pwsh
         run: |
           $bundleDir = ".build\shell\release\bundle"
-          $want = @("$bundleDir\nsis\*-setup.exe", "$bundleDir\msi\*.msi", ".build\shell\release\cc-monitor.exe")
+          $want = @("$bundleDir\nsis\*-setup.exe", "$bundleDir\msi\*.msi", ".build\shell\release\cc-monitor.exe", "THIRD-PARTY-NOTICES.txt")
           $got = @(Get-ChildItem -Path $want -ErrorAction SilentlyContinue)
           if ($got.Count -ne $want.Count) {
-            Write-Error "产物份数对不上：要 $($want.Count) 份（nsis setup · msi · 裸 exe），现打 $($got.Count) 份（$($got.Name -join ', ')）—— 这一形就是 2026-09-23 逮到的那条：产物根搬去了 .build/shell/ 而这里还写着 src/frontend/shell/target/ ⇒ 全空，却一声不响"
+            Write-Error "产物份数对不上：要 $($want.Count) 份（nsis setup · msi · 裸 exe · 第三方许可声明），现打 $($got.Count) 份（$($got.Name -join ', ')）—— 这一形就是 2026-09-23 逮到的那条：产物根搬去了 .build/shell/ 而这里还写着 src/frontend/shell/target/ ⇒ 全空，却一声不响"
             exit 1
           }
           $got |
@@ -567,6 +582,7 @@ jobs:
             .build/shell/release/cc-monitor.exe
             .build/shell/release/bundle/nsis/*-setup.exe
             .build/shell/release/bundle/msi/*.msi
+            THIRD-PARTY-NOTICES.txt
             SHA256SUMS.txt
 
   # ────────────────────────────────────────────────────────────────────────────

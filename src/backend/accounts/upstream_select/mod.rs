@@ -438,6 +438,9 @@ impl Destinations for Accounts {
 
     fn observe(&self, _mode: Mode, key: &RouteKey, _ask: &Ask<'_>, seen: &Heard<'_>) {
         let agent = key.seg1.as_str();
+        if let Some(line) = auth_refusal_line(seen.tag, seen.status) {
+            tracing::warn!("{line}");
+        }
         let Some(read) = crate::agents::quota_read_of(agent) else {
             return;
         };
@@ -475,6 +478,12 @@ pub(crate) fn refusal_line(
         r.limiting.as_deref().unwrap_or("—"),
         retry_after.filter(|v| !v.is_empty()).unwrap_or("—"),
     )
+}
+
+/// 上游以令牌无效拒了这一发（401 / 403）⇒ 记进后端日志的一行：号名 · 状态码。别的状态码 ⇒ `None`。只用这两格 ⇒ 不带令牌、不带回包体。
+pub(crate) fn auth_refusal_line(account: &str, status: u16) -> Option<String> {
+    matches!(status, 401 | 403)
+        .then(|| format!("[auth] 被拒：号 {account} · 状态码 {status} · 令牌不被上游认"))
 }
 
 /// 上游选择 `Refuse` 的码 —— **只有这一处**。

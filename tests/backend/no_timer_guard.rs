@@ -661,6 +661,14 @@ mod tests {
         "收窄人群",
         "续令牌那一发的期限改由别处给（或换号不再续令牌）的那天。",
     ),
+    (
+        "accounts/oauth/store.rs",
+        "Duration::from_millis(face.lock_stale_ms)",
+        "续期锁目录的过期门限（`LoginFace::lock_stale_ms`）：拿锁那一刻拿锁目录的修改时刻比一次，\
+         早过它就当无主收回。只是一次比较的尺子，不等、不睡、不让任何线程醒来。不是定时器。",
+        "收窄人群",
+        "续期锁不再按修改时刻判过期（或不再用 mkdir 锁）的那天。",
+    ),
     ];
     // `relay/machine.rs` 那一行（差分探针的 socket 读写期限）摘了：「在不在」改由常驻后端进程内的状态答，探针删了。
 
@@ -1438,9 +1446,10 @@ mod g6_reach {
         // 7 → **8**：多的那一条是 `platform/child.rs` 的 `Deadline`（起子进程原语的期限类型，只交给那一次有界等待）。
         // 8 → **9**：多的那一条是 `observe/one_wait.rs` 的一次性等待期限（换号重启等压缩 / 等会话报出，值由发起方给）。
         // 9 → **10**：多的那一条是 `accounts/upstream_select/rotate.rs` 的 `TOKEN_DEADLINE`（换号续令牌那一发的 socket 读写上限）。
+        // 10 → **11**：多的那一条是 `accounts/oauth/store.rs` 的续期锁过期门限（拿锁时比一次锁目录的修改时刻）。
         assert_eq!(
-            registered, 10,
-            "登记表从 10 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
+            registered, 11,
+            "登记表从 11 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
              改它等于改判据的射程"
         );
     }
