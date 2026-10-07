@@ -1377,6 +1377,8 @@ pub(crate) struct LoginFace {
     /// 续期锁：配置目录里那一把的名字 · 配置目录旁边那一把的后缀（那一家自己续期时拿的同一套）。
     pub(crate) lock_inside: &'static str,
     pub(crate) lock_beside: Option<&'static str>,
+    /// 续期锁目录的修改时刻比现在早过这么多毫秒 ⇒ 持有方已经不在，当无主收回（删了重拿）。
+    pub(crate) lock_stale_ms: u64,
     /// 一个号的账号身份住哪份文件：（配置目录, 账号 0 时的家目录）→ 那份文件。
     pub(crate) identity_file: fn(&Path, Option<&Path>) -> PathBuf,
     /// 那份文件里的账号身份（请求里跟着鉴权一起换的那一格的值）；读不到 ⇒ `None`。

@@ -140,8 +140,8 @@ pub(crate) fn access_token(
     if n.access.is_none() && n.refresh.is_none() {
         return Err(Unusable::NotLoggedIn);
     }
-    match store::with_refresh_lock(dir, face, || {
-        refresh_locked(dir, face, endpoint, now_ms, account)
+    match store::with_refresh_lock(dir, face, |reclaimed| {
+        refresh_locked(dir, face, endpoint, now_ms, account, reclaimed)
     }) {
         Ok(store::Locked::Held(r)) => r,
         Ok(store::Locked::Busy) => Err(Unusable::Busy),
@@ -157,15 +157,25 @@ fn refresh_locked(
     endpoint: &TokenEndpoint,
     now_ms: u64,
     account: &str,
+    reclaimed: &store::Reclaimed,
 ) -> Result<SecretKey, Unusable> {
     let n = look(dir, face)?;
+    let mut trail = Trail {
+        reclaimed: reclaimed.0.clone(),
+        ..Trail::default()
+    };
     if fresh(&n, face, now_ms) {
-        return n.access.ok_or(Unusable::NotLoggedIn);
+        let r = n.access.ok_or(Unusable::NotLoggedIn);
+        if !trail.reclaimed.is_empty() {
+            // 收回了过期锁、而盘上已经是新令牌（别人续过）⇒ 不去续，这一行照记。
+            trail.yielded = true;
+            tracing::info!("{}", renew_line(account, &trail, &r));
+        }
+        return r;
     }
     let Some(posted) = n.refresh.as_ref() else {
         return Err(Unusable::Expired);
     };
-    let mut trail = Trail::default();
     let r = renew(dir, face, endpoint, now_ms, &n, posted, &mut trail);
     let line = renew_line(account, &trail, &r);
     if r.is_ok() {
@@ -187,6 +197,8 @@ struct Trail {
     why: Option<String>,
     /// 续成了，但盘上的刷新令牌已被那个号自己换掉 ⇒ 用盘上的、不写回。
     yielded: bool,
+    /// 拿锁时当无主收回的那几把（[`store::Reclaimed`]）。
+    reclaimed: Vec<&'static str>,
 }
 
 /// 令牌端点回包里 `error` 那一格：只收 OAuth 错误码的形状（小写字母与下划线，至多 40 个），别的一概不收。
@@ -217,10 +229,15 @@ fn renew_line(account: &str, t: &Trail, r: &Result<SecretKey, Unusable>) -> Stri
         Err(Unusable::NotRenewed(_)) => t.why.clone(),
     };
     format!(
-        "[auth] 续期：号 {account} · {outcome} · 状态码 {} · 错误码 {} · 原因 {}",
+        "[auth] 续期：号 {account} · {outcome} · 状态码 {} · 错误码 {} · 原因 {} · 收回过期锁 {}",
         t.status.map_or_else(|| "—".to_string(), |s| s.to_string()),
         t.code.as_deref().unwrap_or("—"),
         why.as_deref().unwrap_or("—"),
+        if t.reclaimed.is_empty() {
+            "—".to_string()
+        } else {
+            t.reclaimed.join("、")
+        },
     )
 }
 

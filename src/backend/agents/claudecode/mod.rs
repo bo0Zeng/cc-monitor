@@ -108,6 +108,9 @@ pub(crate) const LOGIN: super::LoginFace = super::LoginFace {
     margin_ms: 300_000,
     lock_inside: ".oauth_refresh.lock",
     lock_beside: Some(".lock"),
+    // 60 秒：旁边那把是 proper-lockfile 的形状，持有方每 5 秒刷一次修改时刻、10 秒没刷算过期（按锁的形状推断，没核那一家的源码）；
+    // 我方持锁时不刷修改时刻，最长一趟是令牌端点那一发（每次读写期限 15 秒）。取 60 秒，活着的持有方（它的、我们的）都不会被判过期。
+    lock_stale_ms: 60_000,
     identity_file: accounts::identity_file,
     identity_in: accounts::identity_in,
     rewrite_identity: accounts::rewrite_identity,

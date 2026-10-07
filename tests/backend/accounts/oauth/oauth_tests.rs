@@ -448,3 +448,72 @@ fn an_upstream_401_or_403_is_one_line_per_account_and_nothing_else_is() {
     }
     assert!(token_shapes(&auth_refusal_line("b", 401).unwrap_or_default()).is_empty());
 }
+
+// ── 续期锁：持锁中途出事不留锁 · 过期的锁目录当无主 · 新鲜的照旧挡 ─────────────────────
+
+/// 把一个锁目录的修改时刻拨回 `ago`（模拟持有方早就死了）。
+fn age_dir(p: &Path, ago: std::time::Duration) {
+    let f = std::fs::File::open(p).expect("开锁目录");
+    f.set_modified(std::time::SystemTime::now() - ago)
+        .expect("拨修改时刻");
+}
+
+#[test]
+fn a_panic_while_holding_the_refresh_lock_leaves_no_lock_behind() {
+    let d = temp_dir("panic");
+    let acct = d.join("acct");
+    write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = store::with_refresh_lock(&acct, &FACE, |_| -> () {
+            panic!("续期那一趟里出事")
+        });
+    }));
+    assert!(r.is_err(), "panic 该传出来");
+    assert!(!acct.join(FACE.lock_inside).exists(), "里面那把留下了");
+    assert!(!d.join("acct.lock").exists(), "旁边那把留下了");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn a_stale_lock_directory_no_longer_blocks_renewal_and_the_reclaim_is_logged() {
+    let d = temp_dir("stale");
+    let acct = d.join("acct");
+    write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
+    let inside = acct.join(FACE.lock_inside);
+    let beside = d.join("acct.lock");
+    std::fs::create_dir(&inside).expect("死掉的持有方留下的锁");
+    std::fs::create_dir(&beside).expect("死掉的持有方留下的锁");
+    let ago = std::time::Duration::from_millis(FACE.lock_stale_ms + 30_000);
+    age_dir(&inside, ago);
+    age_dir(&beside, ago);
+    let (addr, posted) = spawn_token_endpoint(NEW_TOKENS, 200, None);
+    let (r, log) = logged(|| access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "b"));
+    assert_eq!(r.map(|s| expose(&s)), Ok("acc-new".to_string()), "{log}");
+    assert_eq!(posted.lock().expect("lock").len(), 1);
+    assert!(!inside.exists() && !beside.exists(), "续完两把都放掉");
+    assert!(log.contains("[auth] 续期：号 b · 成"), "{log}");
+    assert!(log.contains("收回过期锁 里面那把、旁边那把"), "{log}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn a_fresh_lock_directory_still_says_busy() {
+    let d = temp_dir("fresh-lock");
+    let acct = d.join("acct");
+    write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
+    let inside = acct.join(FACE.lock_inside);
+    std::fs::create_dir(&inside).expect("别人的锁");
+    // 比门限新一点点：活着的持有方
+    age_dir(
+        &inside,
+        std::time::Duration::from_millis(FACE.lock_stale_ms.saturating_sub(5_000)),
+    );
+    let (addr, posted) = spawn_token_endpoint(NEW_TOKENS, 200, None);
+    assert_eq!(
+        access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "b").map(|s| expose(&s)),
+        Err(Unusable::Busy)
+    );
+    assert!(posted.lock().expect("lock").is_empty());
+    assert!(inside.is_dir(), "活着的锁不许动");
+    let _ = std::fs::remove_dir_all(&d);
+}

@@ -191,8 +191,12 @@ src/backend/accounts/upstream_select/mod.rs:476	—	保留	[不对外] refusal_l
 src/backend/accounts/oauth/mod.rs:205	让位	保留	[不对外] renew_line：续访问令牌那一发 tracing 打的那一行（号 · 成败 · 状态码 · 错误码 · 原因），只进后端日志
 src/backend/accounts/oauth/mod.rs:206	成	保留	[不对外] renew_line：续访问令牌那一发 tracing 打的那一行（号 · 成败 · 状态码 · 错误码 · 原因），只进后端日志
 src/backend/accounts/oauth/mod.rs:207	败	保留	[不对外] renew_line：续访问令牌那一发 tracing 打的那一行（号 · 成败 · 状态码 · 错误码 · 原因），只进后端日志
-src/backend/accounts/oauth/mod.rs:220	[auth] 续期：号 {account} · {outcome} · 状态码 {} · 错误码 {} · 原因 {}	保留	[不对外] renew_line：续访问令牌那一发 tracing 打的那一行（号 · 成败 · 状态码 · 错误码 · 原因），只进后端日志
 src/backend/accounts/oauth/mod.rs:221	—	保留	[不对外] renew_line：续访问令牌那一发 tracing 打的那一行（号 · 成败 · 状态码 · 错误码 · 原因），只进后端日志
 src/backend/accounts/oauth/mod.rs:222	—	保留	[不对外] renew_line：续访问令牌那一发 tracing 打的那一行（号 · 成败 · 状态码 · 错误码 · 原因），只进后端日志
 src/backend/accounts/oauth/mod.rs:223	—	保留	[不对外] renew_line：续访问令牌那一发 tracing 打的那一行（号 · 成败 · 状态码 · 错误码 · 原因），只进后端日志
 src/backend/accounts/upstream_select/mod.rs:486	[auth] 被拒：号 {account} · 状态码 {status} · 令牌不被上游认	保留	[不对外] auth_refusal_line：上游 401 / 403 拒时 tracing::warn! 打的那一行，只进后端日志
+src/backend/accounts/oauth/mod.rs:232	[auth] 续期：号 {account} · {outcome} · 状态码 {} · 错误码 {} · 原因 {} · 收回过期锁 {}	保留	[不对外] renew_line：续访问令牌那一发 tracing 打的那一行（号 · 成败 · 状态码 · 错误码 · 原因 · 收回过期锁），只进后端日志
+src/backend/accounts/oauth/mod.rs:237	—	保留	[不对外] renew_line：续访问令牌那一发 tracing 打的那一行（号 · 成败 · 状态码 · 错误码 · 原因 · 收回过期锁），只进后端日志
+src/backend/accounts/oauth/mod.rs:239	、	保留	[不对外] renew_line：续访问令牌那一发 tracing 打的那一行（号 · 成败 · 状态码 · 错误码 · 原因 · 收回过期锁），只进后端日志
+src/backend/accounts/oauth/store.rs:65	里面那把	保留	[不对外] 续期锁收回过期锁时记下的锁名，只进 renew_line 那一行后端日志
+src/backend/accounts/oauth/store.rs:78	旁边那把	保留	[不对外] 续期锁收回过期锁时记下的锁名，只进 renew_line 那一行后端日志
