@@ -3,114 +3,29 @@ use std::path::{Path, PathBuf};
 /// 裸遍历的形态。
 const RAW_WALKS: &[&str] = &["read_dir(", "WalkDir", "collect_rs(", "collect_ts("];
 
-/// **存量**：测试段里仍在裸遍历的文件（08-06 实测 31 个）。
+/// **存量**：测试段里仍在裸遍历的文件，与现扫两向相等。
 ///
-/// ⚠ **只许变短。** 迁一个就从这里删一行并把 `PENDING_CEILING` 调下来。
-/// 不许往里加 —— 新写的扫描型判据必须走 `guard_core::scan_tree!`。
-///
-/// # 🔴 「只许变短」今天**谁在守它**（`K-R38` 09-06，`D3①`）
-///
-/// [`the_pending_ratchet_never_turns_backwards`] —— 它拿**git 历史**当权威，
-/// 断「今天这个数不许比它在历史上出现过的**最低档**还高」。
-/// ⇒ **在此之前这句话只是一行注释里的纪律**：守它的
-/// [`the_pending_inventory_only_shrinks`] 断的是 `n <= PENDING_CEILING`，
-/// 而那个上限就在下面几行 ⇒ 抬一下就过（`K-R33` 的 `R33M3` 实打不红）。
-///
-/// ## ⚠ 它买到的比这句话的名字**小**，逐字写明没买到什么
-///
-/// - 守的是**这个数不许涨回去**，**不是**「清单真的在变短」——
-///   一年一条没迁，本条照样绿。
-/// - **删一行来腾余量**不归它管：接住那一形的是
-///   [`no_new_guard_walks_the_tree_without_excluding_itself`]
-///   （删掉的那份文件还在裸遍历 ⇒ 当场以 `newcomers` 红）。
-/// - 它**挡不住把那条判据本身删掉** —— 买的是**留痕**，不是不可能。
+/// ⚠ **只许变短。** 迁一个就从这里删一行；不许往里加 —— 新写的扫描型判据必须走 `guard_core::scan_tree!`。
+/// 守「只许变短」的是 [`the_pending_ratchet_never_turns_backwards`]：它拿 **git 历史**当权威，
+/// 断「今天的条数不许比它在历史上出现过的**最低档**还高」（不是「清单真的在变短」；挡不住把那条判据本身删掉）。
 const PENDING: &[&str] = &[
-    // 🔴 〔步 7c 剖分 2026-09-19〕**下面 15 行换了住址，条数一格没变。**
-    //    整份是判据的那批 registry 文件这一轮剖分了 ⇒ 它们的裸遍历跟着测试段
-    //    搬进了 `tests/frontend/shell/`。`PENDING_CEILING` **没有动** —— 一个裸遍历都没少。
-    //    逐份点名（`src/frontend/shell/src/X.rs` → `tests/frontend/shell/…`）：
-    //      `atomic_replace_registry.rs`      → `atomic_replace_registry_tests.rs`
-    //      `backend/mod.rs`                  → `backend_layering.rs`〔见下面那条注〕
-    //      `backend/observe/local_query.rs`  → `backend/observe/local_query_tests.rs`
-    //      `cross_half_edge_registry.rs`     → `cross_half_edge_registry_tests.rs`
-    //      `doc_claim_registry.rs`           → `doc_claim_registry_tests.rs`
-    //      `doc_copy_registry.rs`            → `doc_copy_registry_tests.rs`
-    //      `frame_cadence_guard.rs`          → `frame_cadence_guard_tests.rs`
-    //      `gate_singleton_guard.rs`         → `gate_singleton_guard_tests.rs`
-    //      `local_read_surface_registry.rs`  → `local_read_surface_registry_tests.rs`
-    //      `polling_registry.rs`             → `polling_registry_tests.rs`
-    //      `quote_singleton_guard.rs`        → `quote_singleton_guard_tests.rs`
-    //      `rust_timer_registry.rs`          → `rust_timer_registry_tests.rs`
-    //      `session_name_registry.rs`        → `session_name_registry_tests.rs`
-    //      `shared_crate_registry.rs`        → `shared_crate_registry_tests.rs`
-    //      `tmux_backend_gate_guard.rs`       → `tmux_backend_gate_guard_tests.rs`
-    //
-    // ⚠ **`backend/mod.rs` 那一条差点顶破棘轮，如实记**：它剖成了**两份**
-    //    （`backend_tests.rs` ＋ `backend_layering.rs`），两份里都有裸遍历
-    //    ⇒ 按文件数的这张清单会从 1 条变 2 条。抬上限是被明文禁止的
-    //    （而且 `the_pending_ratchet_never_turns_backwards` 对着 git 历史比，
-    //    抬了也不会绿）⇒ **真迁掉一个**：`backend_tests.rs` 里 `backend_files` 那个（那份文件今天改写成 `backend_client_guard_tests.rs`）
-    //    手写递归改走 `guard_core::scan_tree_excluding`（语义逐字相同，是纯死重）。
-    //    ⇒ 清单里只留 `backend_layering.rs` 一条，条数与上限都不变。
-    // 🔴 〔搬树 2026-09-18〕**下面 7 行换了住址，条数一格没变**
-    //    （`PENDING_CEILING` 因此**没有动** —— 一个裸遍历都没少，只是它们跟着
-    //    自己那条判据搬进了 `tests/`）。逐份点名：
-    //      `backend/control/backend_kill.rs`  → `tests/frontend/shell/backend_kill_tests.rs`
-    //      `backend/control/launch_wire.rs`  → `tests/frontend/shell/launch_wire_f07_main_path_tests.rs`
-    //      `panorama.rs`                     → `tests/frontend/shell/panorama_tests.rs`
-    //      `parser.rs`                       → `tests/frontend/shell/parser_tests.rs`（今天在 `tests/backend/agents/claudecode/parse_tests.rs`）
-    //      `profile_installer.rs`            → `tests/frontend/shell/profile_installer_tests.rs`
-    //      `ssh_source.rs`                   → `tests/frontend/shell/ssh_source_f032_idle_tests.rs`
-    //      `utils.rs`                        → `tests/frontend/shell/utils_tests.rs`
     "tests/frontend/shell/atomic_replace_registry_tests.rs",
     "tests/frontend/shell/backend_kill_tests.rs",
-    // `launch_wire_f07_main_path_tests.rs` 这一行删了 —— 随载荷内核搬进后端测试段，同拍把手写递归换成 `scan_tree_excluding`
-    //   （真迁完了）⇒ 存量少一条，上限同拍往下拧一格。
-    // `backend_layering.rs` 这一行删了 —— 那份判据随 monitor 侧 `backend` 目录删了 ⇒ 存量少一条，上限同拍往下拧一格。
-    // `tests/frontend/shell/backend/observe/local_query_tests.rs` 这一行删了 —— 那份判据文件随被测的
-    //   `local_query.rs` 一起删（本机那几问改走 `<local>` 长连接）⇒ 存量少一条，上限同拍往下拧一格。
-    // 🔴 **`cross_half_edge_registry_tests.rs` 这一行删了 —— 真迁完了。**
-    //    它的 `both_halves()` 手写递归改走了 `guard_core::scan_tree_excluding`
-    //    （语义逐字相同，是纯死重）。腾出来的这一格给了 watcher 那条「一变二」。
-    //    ⇒ 清单条数 28 → 28，`PENDING_CEILING` **一格没动**。
-    // `doc_claim_registry_tests.rs` 这一行删了 —— 那一族四处手写遍历改走 `git ls-files`（跟踪着的文件才是人群）
-    //   ⇒ 存量少一条，上限同拍往下拧一格。
     "tests/frontend/shell/doc_copy_registry_tests.rs",
     "tests/frontend/shell/frame_cadence_guard_tests.rs",
     "tests/frontend/shell/gate_singleton_guard_tests.rs",
     "tests/frontend/shell/local_read_surface_registry_tests.rs",
-    // `tests/frontend/shell/panorama_tests.rs` 这一行删了：那份文件随 monitor 的内嵌引擎（`panorama.rs`（已删））一起删了 ⇒ 上限跟着 −1。
-    // `tests/frontend/shell/parser_tests.rs` 随记录解析搬进后端 → `tests/backend/agents/claudecode/parse_tests.rs`（同一条手动台账，照旧裸遍历真语料）。
     "tests/backend/agents/claudecode/parse_tests.rs",
     "tests/frontend/shell/polling_registry_tests.rs",
-    // `tests/frontend/shell/profile_installer_tests.rs` → `tests/backend/assets/aliases/block_tests.rs`（别名块那一半的判据随代码进了后端，
-    //   裸遍历那几处跟着走；monitor 留下的那份不再遍历）⇒ 换住址，条数不变。
     "tests/backend/assets/aliases/block_tests.rs",
     "tests/frontend/shell/quote_singleton_guard_tests.rs",
     "tests/frontend/shell/rust_timer_registry_tests.rs",
     "tests/frontend/shell/session_name_registry_tests.rs",
     "tests/frontend/shell/shared_crate_registry_tests.rs",
-    // `tests/frontend/shell/ssh_source_f032_idle_tests.rs` 这一行删了：那份判据随 monitor 的 idle / tmux 账本一起删 ⇒ 存量少一条，上限同拍往下拧一格。
     "tests/frontend/shell/tmux_backend_gate_guard_tests.rs",
-    // 原 `tests/frontend/shell/utils_tests.rs`：那一处 `read_dir`（查临时目录里有没有残留的临时件）随原子写的判据搬进 `host-core`，条数不变。
     "tests/common/host-core/lib_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/no_timer_guard.rs",
-    // 🔴 〔步 7c 后端剖分 2026-09-19〕**watcher 这一条变成了两条，逐份点名。**
-    //
-    // · `tests/backend/observe/watcher_tests.rs` —— 测试段搬过来的那一份；
-    // · `src/backend/observe/watcher.rs` —— **生产段那份仍然命中**，而它命中的原因
-    //   是本判据 `test_regions()` 的**粗切法**：那份文件顶上有几行 `#[cfg(test)] use …`，
-    //   粗切从那里一直吃到下一个列 0 的 `}`，把紧跟其后的 `use walkdir::WalkDir;`
-    //   （一行**生产 import**，不是遍历）一起收进了「测试段」。
-    //   ⚠ 这是**剖分前就存在的假阳**（那时两者同文件、算一条），不是本轮新增的债。
-    //   〔现打：这一份的命中就是那一行 `use`；测试树那一份的 5 处命中全是**字符串针**。〕
-    //   ⇒ 两条都如实登记，而**上限一格没抬** —— 腾出来的那一格是真迁的：
-    //     `tests/frontend/shell/cross_half_edge_registry_tests.rs::both_halves` 的手写递归
-    //     改走 `guard_core::scan_tree_excluding`（语义逐字相同，是纯死重）。
-    //   〔同轮另迁了一处但**没**腾出格子，如实记：
-    //    `tests/backend/no_timer_guard.rs::backend_sources` 也改走了那个原语，
-    //    但那份文件里还有 3 处别的 `read_dir(`（本判据按**文件**数）⇒ 它仍在清单上。〕
     "src/backend/observe/watcher.rs",
     "tests/backend/observe/watcher_tests.rs",
     "tests/backend/platform/fallback_guard.rs",
@@ -118,16 +33,6 @@ const PENDING: &[&str] = &[
     "tests/backend/readonly_guard.rs",
 ];
 
-/// 存量上限（**递减棘轮**）。
-///
-/// 🔴 **只许往下调。** 守这句话的是 [`the_pending_ratchet_never_turns_backwards`]
-/// （`K-R38` 09-06）：它对着 **git 历史**比，把这个数抬上去**当场红，而且提交了也不会绿**
-/// —— 历史里那个更低的档还在。⇒ 别在这里试「先抬一格让今天好过」，那正是它挡的动作。
-/// ⚠ 它守的是这个**数**；「删一行腾余量」那一形归
-/// [`no_new_guard_walks_the_tree_without_excluding_itself`]。
-// 08-08：`backend_route.rs` 的裸遍历迁到了 `guard_core::scan_tree!`（那一轮把它的
-// 发现面从一个目录扩到整棵树，顺带就该换掉手写遍历）⇒ 清单少一行，上限一起降。
-const PENDING_CEILING: usize = 22; // 23 → 22：`doc_claim_registry_tests.rs` 改按 `git ls-files` 取人群 · 24 → 23：`backend_layering.rs` 随 `backend` 目录删了 · // 两路各少一条（MIG-1 `ssh_source_f032_idle_tests.rs` · MIG-2 f07）⇒ 24 · f07 那份真迁完 ⇒ 26 → 25 · `local_query_tests.rs` 随被测模块删了 ⇒ 存量少一条，上限同拍往下拧一格 · `tests/frontend/shell/panorama_tests.rs` 随 monitor 的内嵌引擎删了 ⇒ 存量少一条，上限同拍往下拧一格：`account_usage.rs` 整删 ⇒ 存量少一条，上限同拍往下拧一格
 
 /// 判定「这是一个带登记表的判据文件」的声明形态。**闭集，按名字认。**
 ///
@@ -363,39 +268,20 @@ fn every_registry_guard_keeps_its_reverse_half() {
             }
         }
     }
-    // 抽取器自检⑤（`K-R37`）：**采集量地板，逐子树一个** —— 不是只看总数。
-    //
-    // 🔴 它买的是 `D2` 的 acceptor 逐字点名的那一格：「把新树加进实参而**实际上采不到
-    // 东西**」（路径拼错 / 后缀过滤掉了）。为什么必须**逐子树**：backend 那棵今天对
-    // `population` 的贡献是 **0**（闭集里那几个名字在那棵树上一处都没有，`D1` 现打），
-    // ⇒ 把它的实参改坏，下面那些断言**一条都不会红**，而总数地板也顶得过去
-    //（`src/frontend/shell/src` 那 100 多份自己就够）。**一个只看总数的地板在这里等于没有。**
-    //
-    // ⚠ 诚实边界：路径**不存在**那一形其实不靠本格 —— `scan_tree_excluding_self`
-    // 自己会 `panic!("读目录 … 失败")`。本格接的是**存在、但采不到东西**那一形
-    //（后缀写错 · 指到一个几乎空的子目录）。两形各有各的接手人，别把本格读大。
-    // 🔴 **地板按子树各给一个**，不是一个数管三棵。
-    // `"tests"` 是新加的那棵，而它只有 **19 份 `.rs`**
-    // （另外 150 份是 `.ts`，不在本条的后缀里）⇒ 一个 40 的通用地板会**假红**，
-    // 而假红正是本仓记过账的那件事：「假阳会训练人绕过判据」。
-    // 现打：`src/frontend/shell/src` 111 · `src/backend` 72 · `tests` 19。
-    let floor_of = |sub: &str| -> usize {
-        match sub {
-            "tests" => 15,
-            _ => 40,
-        }
-    };
-    let starved: Vec<String> = scanned
+    // 抽取器自检⑤：**逐子树对拍采集面** —— git 跟踪着的每一份 `.rs` 都得被打开过。
+    // 路径拼错 · 后缀过滤掉 · 静默跳过子目录都红。
+    let starved: Vec<String> = ["src/frontend/shell/src", "src/backend", "tests"]
         .iter()
-        .filter(|(sub, n)| *n < floor_of(sub))
-        .map(|(sub, n)| format!("  {sub} —— 只采到 {n} 份（地板 {}）", floor_of(sub)))
+        .flat_map(|sub| tracked_rs_under(sub))
+        .filter(|rel| !seen.iter().any(|q| q == rel))
+        .map(|rel| format!("  {rel}"))
         .collect();
     assert!(
         starved.is_empty(),
-        "这几棵子树的采集量低于它自己那条地板：\n{}\n\
-             ⇒ 那个实参此刻**几乎什么都没采到**，而本条对它「全绿」——\n\
+        "这几份 git 跟踪着的 `.rs` 本条没打开过：\n{}\n\
+             ⇒ 那个实参此刻漏了东西，而本条对漏掉的「全绿」——\n\
              那正是「没红」与「没看」在输出上一模一样的那一格。\n\
-             ⇒ 先核实参（路径拼对了吗 · 后缀过滤对吗），别调地板让今天好过。\n\
+             ⇒ 先核实参（路径拼对了吗 · 后缀过滤对吗）。\n\
              （本趟逐子树的采集量：{scanned:?}）",
         starved.join("\n")
     );
@@ -450,11 +336,10 @@ fn every_registry_guard_keeps_its_reverse_half() {
         population.len(),
         population.join("\n  ")
     );
-    // 抽取器自检①：人群不能空 —— 空了下面那条会零命中地绿。
+    // 抽取器自检①：人群不能空 —— 空了下面那条会零命中地绿（点名那一形由③钉）。
     assert!(
-        population.len() >= 5,
-        "只认出 {} 个带登记表的判据文件（08-06 实测 6 · 09-06 实测 9）—— 抽取器坏了，本条此刻是空转的：{population:?}",
-        population.len()
+        !population.is_empty(),
+        "一个带登记表的判据文件都没认出来 —— 抽取器坏了，本条此刻是空转的"
     );
     // 抽取器自检③（`K-R33`，**点名**）：闭集是**按名字**认的，而名字是会被改的。
     // 改一个名字 ⇒ 那一形当场退回「没被扫到」，而「没被扫到」与「过了」在上面那条
@@ -803,12 +688,6 @@ fn raw_walkers() -> Vec<String> {
 #[test]
 fn no_new_guard_walks_the_tree_without_excluding_itself() {
     let found = raw_walkers();
-    // 抽取器自检：扫不到时下面的对拍会两边都空、静默变绿。
-    assert!(
-        found.len() >= 20,
-        "只扫到 {} 个裸遍历文件（08-06 实测 31）—— 抽取器坏了",
-        found.len()
-    );
     let newcomers: Vec<&String> = found
         .iter()
         .filter(|f| !PENDING.contains(&f.as_str()))
@@ -832,15 +711,9 @@ fn no_new_guard_walks_the_tree_without_excluding_itself() {
     );
 }
 
-/// ★ **递减棘轮**：存量只许降。
+/// ★ **存量清单与现扫两向相等**的反向那半（正向那半是上一条）。
 #[test]
 fn the_pending_inventory_only_shrinks() {
-    let n = PENDING.iter().filter(|s| !s.is_empty()).count();
-    assert!(
-        n <= PENDING_CEILING,
-        "存量清单涨到 {n}（上限 {PENDING_CEILING}）—— **只许降**。\
-             迁一个就删一行并把上限调下来；**不许把上限调上去让今天好过**。"
-    );
     // 清单不许长草：登记的文件必须真的还在裸遍历。
     let found = raw_walkers();
     let stale: Vec<&&str> = PENDING
@@ -850,27 +723,28 @@ fn the_pending_inventory_only_shrinks() {
     assert!(
         stale.is_empty(),
         "存量清单里这些已经不裸遍历了（迁完了或文件没了）：{stale:?}\n\
-             ⇒ 删掉它们并把 `PENDING_CEILING` 一起调下来 —— 留着就是把棘轮的余量白送出去。"
+             ⇒ 删掉它们 —— 留着就是把棘轮的余量白送出去。"
     );
 }
 
-// ── 🔴 `K-R38` 09-06：给那个「只许降」的棘轮装闸 ─────────────────────────
-//
-// 上面那条断的是 `n <= PENDING_CEILING`，而 `PENDING_CEILING` 就住在这份文件里
-// ⇒ **抬上限只会让它更容易过**。选路（乙 · 对着 git 历史面比）、它的代价、
-// 以及它**没有**买到什么，全写在模块头注 `K-R38` 那一节，这里不写第二遍。
+/// git 跟踪着的、住在 `sub` 下的 `.rs`（仓根相对、正斜杠；工作树里已删的不算）。
+///
+/// 采集面对拍的另一侧：与 `scan_tree!` 不同源（一个问 git 索引，一个走文件系统）。
+fn tracked_rs_under(sub: &str) -> Vec<String> {
+    let root = repo_root();
+    git_read(&root, &["ls-files", "-z", "--", sub])
+        .split('\0')
+        .filter(|rel| rel.ends_with(".rs") && root.join(rel).is_file())
+        .map(str::to_string)
+        .collect()
+}
 
 /// 本文件在仓里的相对住址 —— 下面要拿它去问 git 历史。
 ///
-/// 🔴 〔步 7c 剖分 2026-09-19〕**从 `src/frontend/shell/src/…` 换到
-/// `tests/frontend/shell/…`**：`PENDING` 与 `PENDING_CEILING` 这一轮跟着测试段搬过来了，
-/// 而这两个解析器要跑在**住着那两个常量的那份文件**的历史版本上。
-/// 没跟着改的后果现打过：两个解析器在「本文件此刻的源码」上都回 `None`
-/// ⇒ 对拍自检当场红（`left: (None, None)` / `right: (Some(28), Some(28))`）——
-/// 红得对，而它红的正是「住址馊了」这一格（上面第 ③ 条来路逐字写着）。
+/// 解析器要跑在**住着 `PENDING` 的那份文件**的历史版本上。
 const SELF_REL: &str = "tests/frontend/shell/scanning_guard_registry_tests.rs";
 
-/// 那两个常量在 git 历史上住过的**全部**住址，`(相对路径, 要不要 --follow)`。
+/// `PENDING` 在 git 历史上住过的**全部**住址，`(相对路径, 要不要 --follow)`。
 ///
 /// 🔴 为什么是一张表而不是一个字符串：**剖分不是改名**，`--follow` 跨不过去。
 /// 逐条写明每一个住址买到哪一段历史（缺一段 = 历史面变短 = 棘轮变松）：
@@ -883,33 +757,10 @@ const SELF_HOMES: &[(&str, bool)] = &[
     ("src/frontend/shell/src/scanning_guard_registry.rs", true),
 ];
 
-/// 找 `PENDING_CEILING` 那行声明的针 —— 🔴 **运行时拼，别写成字面量**。
-///
-/// 承重，理由是本模块头注治的那一族：下面两个解析器要跑在**本文件自己的历史版本**上，
-/// 而针一旦写成字面量，每一份历史 blob 里它就有**两处**（真声明 ＋ 这行字面量），
-/// 于是「解析到的是哪一处」由两者在文件里的先后决定 —— 一次挪动就能让它悄悄解析错，
-/// **而错的方向是静默的绿**。★「判据在自己的常量里找到了自己」在这里不许复发。
-/// ★ 拼法照本文件已有的那一处（`concat!("#[te", "st]")`）—— 同一个理由，别改回字面量。
-fn ceiling_needle() -> &'static str {
-    concat!("const PENDING_", "CEILING", ": usize = ")
-}
-
-/// 找 `PENDING` 那张表表头的针 —— 同上，**拼出来的，不写字面量**。
-/// ⚠ 必须带冒号：`const PENDING_CEILING` 也以 `const PENDING` 打头。
+/// 找 `PENDING` 那张表表头的针 —— 🔴 **运行时拼，别写成字面量**：
+/// 写成字面量的话每一份历史 blob 里它就有两处（真声明 ＋ 这行字面量），解析到哪一处由先后决定，错的方向是静默的绿。
 fn pending_needle() -> &'static str {
     concat!("const ", "PENDING", ": &[&str] = &[")
-}
-
-/// 一份**本文件源码文本**里的 `PENDING_CEILING` 值。找不到 ⇒ `None`（不许默默当 0）。
-fn ceiling_in(src: &str) -> Option<usize> {
-    let needle = ceiling_needle();
-    let at = src.find(needle)? + needle.len();
-    src[at..]
-        .chars()
-        .take_while(char::is_ascii_digit)
-        .collect::<String>()
-        .parse()
-        .ok()
 }
 
 /// 一份**本文件源码文本**里 `PENDING` 的条数。找不到那张表 ⇒ `None`。
@@ -965,32 +816,15 @@ fn git_read(root: &Path, args: &[&str]) -> String {
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
-/// 本文件在 git 历史上每一个版本的读数 —— `(短 sha, 上限, 条数)`，外加**没解析出来**的份数。
+/// 本文件在 git 历史上每一个版本的读数 —— `(短 sha, 条数)`，外加**没解析出来**的份数。
 ///
 /// ⚠ 解析不出来的**不静默丢掉**：份数一起回，由调用方连读数印出来。
 /// （合法的一形：某个提交早于这两个常量存在。今天 9 份全解析得出，实测。）
-fn ratchet_history(root: &Path) -> (Vec<(String, usize, usize)>, usize) {
+fn ratchet_history(root: &Path) -> (Vec<(String, usize)>, usize) {
     let mut rows = Vec::new();
     let mut unparsed = 0usize;
-    // 🔴 `--follow` ＋ **按「当时的路径」取 blob** —— 两件都是必须的：
-    // 搬树（2026-09-17）给本文件改了名，于是
-    //   ① `git log -- <新路径>` 只看得到改名之后的提交（现打：1 份 vs 92 份）；
-    //   ② 即便用 `--follow` 拿回了 sha，`git show <老sha>:<新路径>` 也读不到
-    //      —— 那些提交里它叫**旧名字**（现打：92 份里 91 份读不出来）。
-    // ⇒ 用 `--name-only` 让 git 顺带报出每个提交里**当时的**路径，成对取。
-    // 少任何一半，这条棘轮都会「历史面一空 ⇒ 下面几格恒真地绿」。
-    //
-    // 🔴 〔步 7c 剖分 2026-09-19〕**再加一件：历史面要跨「剖分」这一刀。**
-    //
-    // `--follow` 认的是**改名**（git 的相似度检测）。而剖分不是改名：
-    // `PENDING`/`PENDING_CEILING` 从 `src/frontend/shell/src/scanning_guard_registry.rs`
-    // 里被**切出一段**放进新文件 `tests/frontend/shell/scanning_guard_registry_tests.rs`
-    // ⇒ git 眼里那是一个**新增文件**，`--follow` 一步都跨不过去。
-    // 现打：只把 `SELF_REL` 改成新住址 ⇒ 历史面从 9 份掉到 **1 份**，
-    // 地板（5）当场红 —— 红得对，而**不许靠调低地板让今天好过**（上面那句逐字）。
-    // ⇒ 历史面改成**两个住址并起来**：新住址查剖分之后的提交，
-    //   旧住址带 `--follow` 查剖分之前的整条历史（它自己还跨着 09-17 那次搬树改名）。
-    //   按 sha 去重。少任何一个住址，这条棘轮都会退回「历史面一空 ⇒ 恒真地绿」。
+    // `--follow` ＋ **按「当时的路径」取 blob**（改名之前那些提交里它叫旧名字），
+    // 且历史面是 `SELF_HOMES` 几个住址并起来（剖分不是改名，`--follow` 跨不过去）；按 sha 去重。
     let mut pairs: Vec<(String, String)> = Vec::new();
     for (rel, follow) in SELF_HOMES {
         let mut args: Vec<&str> = vec!["log"];
@@ -1020,9 +854,9 @@ fn ratchet_history(root: &Path) -> (Vec<(String, usize, usize)>, usize) {
     for (sha, path_then) in pairs {
         let spec = format!("{sha}:{path_then}");
         let blob = git_read(root, &["show", &spec]);
-        match (ceiling_in(&blob), pending_count_in(&blob)) {
-            (Some(c), Some(p)) => rows.push((sha.to_string(), c, p)),
-            _ => unparsed += 1,
+        match pending_count_in(&blob) {
+            Some(p) => rows.push((sha.to_string(), p)),
+            None => unparsed += 1,
         }
     }
     (rows, unparsed)
@@ -1059,81 +893,42 @@ fn the_pending_ratchet_never_turns_backwards() {
     let n = PENDING.iter().filter(|s| !s.is_empty()).count();
     let (hist, unparsed) = ratchet_history(&root);
 
-    // 抽取器自检①：**历史面不许是空的 / 短的**。
-    //
-    // 🔴 这一格是本条的地基：`ratchet_backslide` 拿到空历史时回 `None`（绿），
-    // 于是「git 读不到历史」与「棘轮没被倒着转」**输出完全相同** ——
-    // 那正是本模块从头到尾在治的形状，只是这次长在本条自己头上。
-    // 会把历史面弄空的真实来路：浅克隆（`--depth 1`）· 两个常量被改了名
-    //（针是按名字认的）· 本文件被挪了地方（`SELF_REL` 就馊了）。
-    const HISTORY_FLOOR: usize = 5;
+    // 抽取器自检①：**历史面不许只剩今天这一份**（浅克隆 · 表改了名 · 本文件挪了地方都会让它变空，
+    // 而 `ratchet_backslide` 拿到空历史回 `None` ＝ 绿）。
     assert!(
-        hist.len() >= HISTORY_FLOOR,
-        "只从 git 历史里读出 {} 份本文件的旧版本（地板 {HISTORY_FLOOR}，09-06 实测 9 份，\
-             另有 {unparsed} 份解析不出来）——\n\
-             ⇒ **本条此刻是空转的**：历史面一空，下面那两格恒真地绿。\n\
-             常见来路：① 浅克隆把历史截掉了（要 `fetch-depth: 0`）；\n\
-                       ② `PENDING` / `PENDING_CEILING` 被改了名（针是按名字认的）；\n\
-                       ③ 本文件挪了位置 ⇒ `SELF_REL`（`{SELF_REL}`）馊了。\n\
-             🔴 **不许靠调低地板让今天好过** —— 那是把闸拆了，而拆完输出还是绿的。",
+        hist.len() > 1,
+        "只从 git 历史里读出 {} 份本文件的版本（另有 {unparsed} 份解析不出来）——\n\
+             ⇒ **本条此刻是空转的**。常见来路：① 浅克隆把历史截掉了（要 `fetch-depth: 0`）；\n\
+                       ② `PENDING` 被改了名（针是按名字认的）；\n\
+                       ③ 本文件挪了位置 ⇒ `SELF_HOMES`（`{SELF_REL}`）馊了。",
         hist.len()
     );
 
-    // 抽取器自检②：**解析器与真常量对拍。**
-    //
-    // 上面那两个针是拿文本认的，而下面比的是**真常量**（`PENDING_CEILING` / `n`）。
-    // 解析器要是系统性偏了（比如总是多数一行、或总回一个大数），历史最低档跟着偏，
-    // 而**真树上照样绿**。⇒ 拿本文件此刻的源码喂一遍解析器，逼它复现那两个真值。
-    // 🔴 〔步 7c 剖分 2026-09-19〕**嵌的是「本文件」，不是那份生产文件。**
-    //
-    // 这一行的意思逐字是「拿**本文件此刻的源码**喂一遍解析器」。剖分之前本条住在
-    // `src/frontend/shell/src/scanning_guard_registry.rs` 的 `#[cfg(test)]` 段里，那份文件就是本文件；
-    // 剖分之后那两个常量跟着本条搬来了 `tests/frontend/shell/`，而生产段那份里一个都没有了。
-    // ⚠ 剖分器把这条相对路径**按原语义重定向**过（它仍然指向那份生产文件）——
-    //   路径是对的，指错的是**对象**。这一格正是「机械正确、语义失效」那一形。
+    // 抽取器自检②：解析器在**本文件此刻的源码**上复现真条数（系统性偏了的话历史最低档跟着偏，真树上照样绿）。
     let me = include_str!("scanning_guard_registry_tests.rs");
     assert_eq!(
-        (ceiling_in(me), pending_count_in(me)),
-        (Some(PENDING_CEILING), Some(n)),
-        "解析器在**本文件此刻的源码**上复现不出那两个真常量 —— 它偏了。\n\
-             ⇒ 历史面上的读数跟着一起偏，而真树上本条**照样绿**（两边同向偏）。\n\
-             这一格就是为了不让那种偏法静默通过。"
+        pending_count_in(me),
+        Some(n),
+        "解析器在本文件此刻的源码上复现不出 `PENDING` 的条数 —— 它偏了。"
     );
 
     // 只在 `--nocapture` 下可见 —— 射程与历史面本身也是读数（`brief` 13b：现算，别写死）。
     eprintln!(
         "〔存量棘轮 · 本趟的历史面〕{} 份旧版本（解析不出 {unparsed} 份）· \
-             今天 上限={PENDING_CEILING} 条数={n}\n  {}",
+             今天 条数={n}\n  {}",
         hist.len(),
         hist.iter()
-            .map(|(s, c, p)| format!("{s} 上限={c} 条数={p}"))
+            .map(|(s, p)| format!("{s} 条数={p}"))
             .collect::<Vec<_>>()
             .join("\n  ")
     );
 
-    let ceilings: Vec<(String, usize)> = hist.iter().map(|(s, c, _)| (s.clone(), *c)).collect();
-    let counts: Vec<(String, usize)> = hist.iter().map(|(s, _, p)| (s.clone(), *p)).collect();
-
-    if let Some((sha, was)) = ratchet_backslide(PENDING_CEILING, &ceilings) {
-        panic!(
-            "🔴 **棘轮被倒着转了**：`PENDING_CEILING` 今天是 {PENDING_CEILING}，\
-                 而它在 `{sha}` 上是 {was}。\n\
-                 上面那行头注写着「只许变短」——**这一条从今天起是机器在守，不再是纪律**。\n\
-                 ⇒ 处置：把上限调回 {was} 或更低。\n\
-                 ★ 想「先抬一格让今天好过」的话，本条正是来挡这个动作的：\n\
-                   在它之前，抬这个数是**改一个字符、零阻力、零留痕、零人知道**\n\
-                  （`n <= PENDING_CEILING` 里那个上限就在同一份文件里 ⇒ 抬它只会更容易过）。\n\
-                 ⚠ 提交了也不会变绿：本条比的是**历史上出现过的最低档**，那个更低的档还在。\n\
-                 ⚠ 真有一条新的非进 `PENDING` 不可 ⇒ 先答「为什么它不能走 `scan_tree!`」，\
-                   那是一次要被人看见的讨论，不是一个字符。"
-        );
-    }
-    if let Some((sha, was)) = ratchet_backslide(n, &counts) {
+    if let Some((sha, was)) = ratchet_backslide(n, &hist) {
         panic!(
             "🔴 **存量清单涨回去了**：`PENDING` 今天 {n} 条，而它在 `{sha}` 上是 {was} 条。\n\
                  头注逐字写着「**只许变短**」——今天守它的是本条。\n\
                  ⇒ 处置：把新加的那几行拿掉，改走 `guard_core::scan_tree!`。\n\
-                 ⚠ 别去抬 `PENDING_CEILING` —— 上面那一格会当场逮住它。"
+                 ⚠ 提交了也不会变绿：本条比的是**历史上出现过的最低档**。"
         );
     }
 }
@@ -1142,7 +937,7 @@ fn the_pending_ratchet_never_turns_backwards() {
 ///
 /// # 没有它，本条是一场仪式
 ///
-/// 真树上今天 `PENDING_CEILING` 与 `n` **恰好等于**历史最低档（9 个提交上余量都是 0）。
+/// 真树上今天 `n` 常常**恰好等于**历史最低档。
 /// ⇒ 把 [`ratchet_backslide`] 里的 `>` 写成 `<`、把 `min_by_key` 写成 `max_by_key`、
 /// 或者让历史面传成空的 —— **真树上的输出与判对了一模一样（绿）**。
 /// 那正是本模块从头到尾在治的形状：**「判过了」与「压根没判」不可区分。**
@@ -1185,28 +980,16 @@ fn the_ratchet_reader_can_tell_a_raise_from_a_drop() {
     assert_eq!(ratchet_backslide(0, &hist), None, "降到底，仍然不许红");
 
     // 🔴 **空历史 ⇒ 它回 `None`（绿）**，这一格是**故意钉住的诚实边界**，不是缺陷：
-    // 接住「历史面读不到」的是 `the_pending_ratchet_never_turns_backwards` 里那条**地板**。
+    // 接住「历史面读不到」的是 `the_pending_ratchet_never_turns_backwards` 里那条历史面自检。
     // 钉在这里，是为了不让谁把这一支改成 panic 之后顺手把那条地板删掉 ——
     // 那样一来两格并成一格，而并完之后**没有任何输出会变**。
     assert_eq!(
         ratchet_backslide(usize::MAX, &[]),
         None,
-        "空历史这一支归**地板**管，不归这把尺子管；两格刻意分开，别并"
+        "空历史这一支归历史面自检管，不归这把尺子管；两格刻意分开，别并"
     );
 
     // 解析器那一半：针是运行时拼的，拿它自己拼出来的文本正反各喂一遍。
-    let synthetic = format!("    {}{};\n", ceiling_needle(), 7);
-    assert_eq!(
-        ceiling_in(&synthetic),
-        Some(7),
-        "解析器认不出自己那根针拼出来的声明"
-    );
-    assert_eq!(
-        ceiling_in("没有这根针的一段文本"),
-        None,
-        "认不出就要回 None，不许默默当 0"
-    );
-
     let table = format!(
         "    {}\n        \"a.rs\",\n        \"b.rs\",\n    ];\n",
         pending_needle()
@@ -1277,22 +1060,18 @@ const SELF_EXCL_DEFUSED: &[&str] = &[
 /// 凑成一次「共现」—— 现打试过：整段那一档会把「Windows 分隔符没归一」那段误报）。
 const SELF_EXCL_WINDOW: usize = 2;
 
-/// 散文树：**判据树两棵 ＋ 生产树三棵**，逐棵给地板。
+/// 散文树：判据树与生产树，逐棵与 `git ls-files` 对拍采集面。
 ///
-/// ⚠ 五棵**互不包含**（纪律 1）。为什么生产树也要扫：那几句话有一半
-/// 住在**生产文件的 `//!` 头注**里（剖分把一条判据的散文劈成了两个住址），
-/// 只扫 `tests/` 会漏掉它们，而**少扫不会红**。
-const PROSE_TREES: &[(&str, usize)] = &[
-    ("src/frontend/shell/src", 100),
-    ("src/common", 8),
-    ("src/backend", 58),
-    // 140 → 120：文件窗口那 31 份判据搬去 `tests/frontend/filewin/`（下一行）；P1 删了 monitor 适配表那一族的判据，这一棵现打 124。
-    ("tests/frontend/shell", 120),
-    // 文件窗口独立成包，它的判据从上一棵搬到这里（地板取现打份数）。
-    ("tests/frontend/filewin", 33),
-    ("tests/backend", 65),
-    // 通信层成员的单测镜像（从上面两棵里搬出来的 9 份 ＋ 1 份 `.vitest.ts` 不在 `.rs` 人群）；地板取现打份数。
-    ("tests/comms", 9),
+/// ⚠ 互不包含（纪律 1）。为什么生产树也要扫：那几句话有一半
+/// 住在**生产文件的 `//!` 头注**里，只扫 `tests/` 会漏掉它们，而**少扫不会红**。
+const PROSE_TREES: &[&str] = &[
+    "src/frontend/shell/src",
+    "src/common",
+    "src/backend",
+    "tests/frontend/shell",
+    "tests/frontend/filewin",
+    "tests/backend",
+    "tests/comms",
 ];
 
 /// 一行算不算**散文行**：注释行，或**续行字符串**（`"…\` 那种多行失败文案）的一部分。
@@ -1380,7 +1159,7 @@ fn live_self_exclusion_claims() -> (Vec<(String, String, String)>, Vec<(&'static
     let root = repo_root();
     let mut out: Vec<(String, String, String)> = Vec::new();
     let mut scanned: Vec<(&'static str, usize)> = Vec::new();
-    for (sub, _) in PROSE_TREES {
+    for sub in PROSE_TREES {
         // 🔴 走 `scan_tree_excluding` 而不是 `scan_tree!`，而名单**明写成空的**。
         //
         // 本条治的就是「靠 `file!()` 自摘」那句话（它在这一处恒空转），
@@ -1495,26 +1274,21 @@ fn no_guard_prose_still_claims_the_scan_tree_self_exclusion_works() {
 
     let (live, scanned) = live_self_exclusion_claims();
 
-    // ★ 抽取器自检①：**逐棵树各一条地板**。一个总数管五棵挡不住「一棵指错了」——
-    //   本模块 `K-R37` 那一节逐字记过这个形状（一棵树对人群的贡献是 0 时，
-    //   把它的实参改坏，一条断言都不会红，而总数地板顶得过去）。
+    // ★ 抽取器自检①：**逐棵树对拍采集面**：每棵树采到的份数不少于 git 跟踪着的 `.rs`
+    //   （本条不摘任何文件）。一棵指错了 / 后缀写错 / 静默跳过一个子目录都红。
     let starved: Vec<String> = PROSE_TREES
         .iter()
-        .filter_map(|(sub, floor)| {
-            let got = scanned.iter().find(|(s, _)| s == sub).map(|(_, n)| *n)?;
-            if got < *floor {
-                Some(format!("  {sub} —— 只采到 {got} 份（地板 {floor}）"))
-            } else {
-                None
-            }
+        .filter_map(|sub| {
+            let got = scanned.iter().find(|(s, _)| s == sub).map_or(0, |(_, n)| *n);
+            let want = tracked_rs_under(sub).len();
+            (got < want).then(|| format!("  {sub} —— 采到 {got} 份，git 跟踪着 {want} 份"))
         })
         .collect();
     assert!(
         starved.is_empty(),
-        "这几棵散文树的采集量低于它自己那条地板：\n{}\n\
-         ⇒ 那个实参此刻几乎什么都没采到，而本条对它「全绿」—— 那正是「没红」与「没看」\n\
-         在输出上一模一样的那一格。先核实参（路径拼对了吗），别调地板让今天好过。\n\
-         （本趟逐棵读数：{scanned:?}）",
+        "这几棵散文树没采全：\n{}\n\
+         ⇒ 那个实参此刻漏了东西，而本条对漏掉的「全绿」—— 那正是「没红」与「没看」\n\
+         在输出上一模一样的那一格。先核实参（路径拼对了吗）。",
         starved.join("\n")
     );
 
