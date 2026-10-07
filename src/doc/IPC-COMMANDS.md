@@ -3030,29 +3030,11 @@ cc-bus 钩子诊断。
 | `expected` | ← | 那一格这一版带着的字节自报的身份（对照物） |
 | `label` | ← | 那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`） |
 | `leftovers` | ← | 落点目录里没人要的上传残件（家目录相对，排序）；列不出那个目录 ⇒ `[]`（下次连上再问） |
-| `legacy` | ← | 旧落点那一份：`absent`（不在）· `remove`（身份戳恰一个 ⇒ 删）· `keep`（别的 ⇒ 不动）· `unknown`（连问都没问成） |
-| `legacy_why` | ← | `unknown` 时的原话，否则 `null` |
 | `os` | ← | 那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`） |
 | `theirs` | ← | `keep` 时那台上那一份自报的身份，否则 `null` |
 | `why` | ← | 人读原因（`skip` 时空串） |
 
 码：`bad_args` · `io_failed` · `refused` · `unreachable` · `undecidable`
-
-#### `deploy-retired`
-
-那台旧入口 `~/.local/bin/ccm` 的去向。
-
-收 `args` · 可撤 · CLI：`ccm -- --deploy-retired`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `dial` | → | 怎么够到那台（与 `files` 链路同一份拨号请求）；沿池里那条 SSH 开只读 SFTP：stat ＋ 至多一次读回（上限 256 KiB，与 `files-peek` 同一个口径） |
-| `expect` | ← | 只在 `remove` 时是字符串：读到的全文，删时原样交 `files-delete` 当期望值（盘上变了就不删）；其余 `null` |
-| `text` | → | 与 `dial` 二选一：本机 PATH 上另一个 `ccm` 的开头一截（monitor 读的），按同一条规矩认它是不是我们早先放的；不读盘、不拨号（monitor 本机探针只拿来说话，不删） |
-| `verdict` | ← | `absent`（不在）· `remove`（第一行 `#!`、第二行认得出两形记号之一 ⇒ 是我们放的）· `keep`（别的一律不动） |
-| `why` | ← | 只在 `keep` 时是字符串：为什么不动（不是我们放的 · 读不成文本）；其余 `null` |
-
-码：`bad_args` · `unreachable`
 
 #### `resident-verdict`
 
@@ -3394,7 +3376,6 @@ cc-bus 钩子诊断。
 | `--cc-bus-install-state` | ＝ 帧命令 `cc-bus-install-state`：装 cc-bus 到这台之前看一眼 |
 | `--data-report` | ＝ 帧命令 `data-report`：「文件与数据」那一份成品 |
 | `--deploy-plan` | ＝ 帧命令 `deploy-plan`：那台的后端要不要换、换成哪一格 |
-| `--deploy-retired` | ＝ 帧命令 `deploy-retired`：那台旧入口 `~/.local/bin/ccm` 的去向 |
 | `--drift-report` | ＝ 帧命令 `drift-report`：这台后端的漂移账 |
 | `--exit-policy-read` | ＝ 帧命令 `exit-policy-read`：读「退出行为」那个值（值住后端所在那台） |
 | `--exit-policy-set` | ＝ 帧命令 `exit-policy-set`：写「退出行为」那个值，写完读回 |

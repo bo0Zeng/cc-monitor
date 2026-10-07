@@ -46,7 +46,8 @@ fn the_fixture_covers_both_ok_and_refusal() {
     // 实数：21 ok（9 ＋ 新一形 1 ＋ Codex resume 1 ＋ path 6 ＋ print-parity 4）＋ 6 refusal（「启动期令牌」ok 与「坏令牌」拒随令牌删了；
     // 加「Codex 会话选了具名账号」一条拒；「只有目录」那条 ok 与 path 分叉继承目录那条随「按目录交号」删了）。
     // 21 → 20：path「远端开新会话」那条 ok 删了（起新会话收成后端 `session-new`，界面不再拼那一发）。
-    assert_eq!(ok, 20, "ok 类条数变了（实数 20）");
+    // 20 → 17：path「远端 tmux 建会话 resume」与就地 resume 那两条随界面那两个入口删了。
+    assert_eq!(ok, 17, "ok 类条数变了（实数 17）");
     assert_eq!(
         refused, 6,
         "refusal 类条数变了（实数 6）—— 要防的正是「该拒却渲染出来了」"
@@ -176,8 +177,9 @@ fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv() {
         checked += 1;
     }
     assert_eq!(
-        checked, 18,
-        "ok 用例条数不对（20 条 ok 去掉外层包了 tmux 的那两条；「远端开新会话」那条路径随起新会话收成后端一个请求删了）—— 上面那条在少数几行上成立不算数"
+        checked, 16,
+        "ok 用例条数不对（17 条 ok 去掉外层包了 tmux 的那一条；「远端开新会话」那条路径随起新会话收成后端一个请求删了，\
+         远端 tmux 建会话 resume 与就地 resume 那三条路径随界面那两个入口删了）—— 上面那条在少数几行上成立不算数"
     );
     assert_eq!(
         shell_words("ccm -- new --cwd '/home/用户/带 空格'"),
@@ -187,17 +189,11 @@ fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv() {
 }
 
 /// ★★ 起会话只有 ccm 一处：monitor 每一条远端起会话路径真发出去的那一形（夹具里的 `path:` 那几条，意图由生产 `plan*` 现造）
-/// 过生产命令，交出去的都只是一行 `ccm …`；就地 resume 回落那一形外层只包一层 tmux，包的那一行同样以 `ccm ` 开头。
+/// 过生产命令，交出去的都只是一行 `ccm …`。
 /// 路径名单手写、与夹具两向相等（少一条路径 / 多一条没登记的都红）。本机那几条在 `local_tests.rs`。
 #[test]
 fn every_monitor_launch_path_hands_over_one_ccm_line() {
-    const PATHS: &[&str] = &[
-        "path:远端直连 resume",
-        "path:远端 tmux 建会话 resume（换号重启 · 分叉）",
-        "path:就地 resume 键进 pane 的那一行",
-        "path:就地 resume 回落那一整串（外层只包那一行）",
-        "path:远端接回",
-    ];
+    const PATHS: &[&str] = &["path:远端直连 resume", "path:远端接回"];
     let f = fixture();
     let got: Vec<&str> = f
         .cases

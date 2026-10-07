@@ -34,47 +34,6 @@ export function planResumeDirect(
   };
 }
 
-/** 新建 tmux 会话，resume 进去。`name` 必填：省略就意味着一个不做撞名避让的默认值。 */
-export function planResumeTmux(
-  agent: string,
-  sid: string,
-  cwd: string,
-  launcher: string | undefined,
-  name: string,
-  mods: LaunchModifiers = {},
-): LaunchContext {
-  return {
-    agent,
-    action: { kind: "resume", sid },
-    container: { kind: "tmux", name, mode: "create" },
-    cwd: cwd.trim() || null,
-    account: mods.account ?? { kind: "follow" },
-    models: mods.models ?? {},
-    launcherOverride: launcher ?? defaultLauncherOf(agent),
-    ccmSid: sid, // 自建 resume 会话打完整 sid，供精确找回那个会话
-  };
-}
-
-/** 往已存在的空 tmux 会话就地 resume（键入那一行，不新建会话）。 */
-export function planResumeIntoExistingTmux(
-  agent: string,
-  sid: string,
-  name: string,
-  launcher = defaultLauncherOf(agent),
-  mods: LaunchModifiers = {},
-): LaunchContext {
-  return {
-    agent,
-    action: { kind: "resume", sid },
-    container: { kind: "tmux", name, mode: "send-into" },
-    cwd: null,
-    account: mods.account ?? { kind: "follow" },
-    models: mods.models ?? {},
-    launcherOverride: launcher,
-    ccmSid: undefined, // 复用的会话建时已打过标，不重设
-  };
-}
-
 /** 接回一个已存在的 tmux 会话，不启动任何东西 ⇒ 不收修饰（不起 agent 进程，令牌没有读者）。`agent` 是那个会话的那一家。 */
 export function planAttach(agent: string, name: string): LaunchContext {
   return {

@@ -14,8 +14,6 @@ vi.mock("../../../src/frontend/ui/launch-render", () => ({
 }));
 const term = vi.hoisted(() => ({ openTerminal: vi.fn() }));
 vi.mock("../../../src/frontend/ui/terminal-open", () => ({ openTerminal: term.openTerminal }));
-const tmux = vi.hoisted(() => ({ sendInto: vi.fn() }));
-vi.mock("../../../src/frontend/ui/tmux-control", () => ({ sendInto: tmux.sendInto }));
 const mint = vi.hoisted(() => ({ mintFreshTmuxName: vi.fn(), refuseUnmintable: vi.fn() }));
 vi.mock("../../../src/frontend/ui/terminal-name-mint", () => mint);
 vi.mock("../../../src/frontend/ui/resync", () => ({ offerResyncRetry: vi.fn() }));
@@ -56,7 +54,6 @@ beforeEach(() => {
   render.renderCli.mockImplementation(async (_o: string, req: CliRenderRequest) => ({ cmd: lineFor(req), account: null }));
   render.planLocalLaunch.mockResolvedValue({ cmd: "ccm -- --attach n-cc", account: null });
   term.openTerminal.mockResolvedValue(undefined);
-  tmux.sendInto.mockResolvedValue({ verdict: "typed" });
   mint.mintFreshTmuxName.mockResolvedValue({ ok: true, name: "w-cc" });
   stubClipboard(vi.fn().mockResolvedValue(undefined));
 });

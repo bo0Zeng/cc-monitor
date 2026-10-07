@@ -231,18 +231,9 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "history-run",
         "一个子运行的记录，按运行读（父记录 ＋ 子运行 ‖ 派出它的工具调用）：子运行住哪、哪条属于谁都问那台后端的适配层，成品 `{run, path, rows, end, more}`",
     ),
-    // `~/.ssh/config` 的解读从 monitor 三条 Tauri 命令（`stream_source/` 里那三条，〔散文墓碑〕）搬进后端。
-    (
-        "ssh-config-aliases",
-        "别名清单：后端 `dial/ssh_config.rs` 读 `~/.ssh/config` 出成品 `{aliases}`；前端 `src/frontend/ui/ssh-config-reads.ts` 按形状收，monitor 零 `.ssh` 读面",
-    ),
     (
         "ssh-config-import",
         "批量导入预览：逐个 `ssh -G` ＋ 聚合都在后端（`dial/ssh_config.rs::aggregate_ssh_hosts`），成品 `{groups}`；前端按形状收",
-    ),
-    (
-        "ssh-config-resolve",
-        "一个别名的有效连接参数：`ssh -G` 由后端起（`dial/ssh_config.rs::resolve`），monitor 从此不起 `ssh`（「monitor 零 SSH」）",
     ),
     // 测试连接：monitor 那条 Tauri 命令与它手里那份探针退役，本机后端组请求、拨一次、回结局。
     (
@@ -355,13 +346,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "data-report",
         "后端出成品 `{home, changedFiles, needsInstall, tmux, chores}`；前端 `src/frontend/ui/settings/data-reads.ts::readDataReport` 问、\
          `decodeDataReport` 按恰好的键集合收；monitor 这一侧零发送点，本机那一栏只答它自己那台那几行的事实（`footprint_client_facts`）",
-    ),
-    // 足迹：成品由那台后端出（申报表 ＋ 判定进了后端）。
-    (
-        "footprint-report",
-        "后端出成品 `{report, clientAsks}`（`src/backend/footprint/`）；前端 `src/frontend/ui/settings/footprint-reads.ts::readFootprint` 问、\
-         `decodeFootprint` 按恰好的键集合收（金样 `footprint-report.golden.json`）；monitor 这一侧零发送点（`footprint_remote.rs`〔散文墓碑〕删了），\
-         只答它自己那台那几行的事实（`footprint_client_facts`）",
     ),
     // 生在帧面上、界面直接问的一条（不是只读宿主那一族，故不进 `BORN_ON_FRAME`）。
     (
@@ -477,11 +461,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "history-last-accounts",
         "sid → 上次用哪个号起（账号徽章回落 · 带账号 resume 前现读）；从前是 monitor 读那份文件",
     ),
-    // API key 那两问（`creds.apikey` 读 · `apikey.routing`）—— 后端出成品，界面经 `src/frontend/ui/apikey-reads.ts` 问。
-    (
-        "apikey-read",
-        "那台机器上那份凭据文件的状态（只回掩码）：monitor 那条命令（`read_apikey_credentials_status`）本机自己读文件、远端转这一条          —— 本机那一份读者删了，界面按形状严格收（`apikey-reads.ts::decodeApikeyStatus`，跨语言金样 `apikey.golden.json`）。 monitor 写 key 之前核路径那一问（`apikey_remote::send_key`〔散文墓碑〕）随写臂一起删了 —— monitor 生产段零处问它",
-    ),
     // `creds.apikey` 写：界面经 `src/frontend/ui/apikey-reads.ts::writeApikeyKey` 直接交那台后端（账号 id 由后端推）。
     (
         "apikey-key-set",
@@ -506,14 +485,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "后端应答就是成品 `{session, killed}`（身份门 ＋ 窗口门在后端先过、对句柄下手）；monitor 那条命令只在拒空目标、\
          转、核 `killed`、按三态说人话 —— 那一份解释搬到 `src/frontend/ui/tmux-control.ts::killSession`，命令与发送端\
          （`backend_kill.rs`）删了",
-    ),
-    (
-        "launch",
-        "界面只说它的 `send-into` 一个 mode（送键 · 就地 resume；`create-or-attach` 归 ccm；裸键 mode 已删）；\
-         后端应答就是成品 `{session, created, typed}`。monitor 那两个发送端（`backend_send_keys.rs` / `backend_launch.rs`）\
-         只在拒空目标 / 空载荷、把 `enter` 翻成 mode 名、核 `typed`、按三态说人话、给就地 resume 判「能不能回落」—— \
-         那一份搬到 `src/frontend/ui/tmux-control.ts::sendKeys` / `sendInto`（F14 那条规则住 `ipc/chan-caller.ts::provablyNotSent`，\
-         与 Rust `route_call_error` 跨语言金样对拍）",
     ),
     // `C4c.md §5.6` A 组 `cc-bus.cockpit`：五条 Tauri 命令（`check_cc_bus_agent_online` / `cc_bus_send` /
     //   `cc_bus_kill` / `cc_bus_spawn` / `cc_bus_broadcast`〔散文墓碑〕）同拍迁完。广播那一条先在后端长出 `bus-broadcast`
@@ -617,13 +588,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          前端 `src/frontend/ui/alias-reads.ts::allowLocalScripts` 问（用户点了、确认了之后），monitor 这一侧零发送点",
     ),
     // `skill-read` / `skill-install-plan` / `skill-install-apply` 界面不再直问：只经本机那两条枢纽命令。
-    // 基数 → 增量 +1：数据位置页 `$PROFILE` 备份那一格（`src/frontend/ui/settings/profile-backups.ts`）问本机后端那几个目录里
-    //   有没有 `.ccm-backup-`（候选由 `aliases-read` 答）；monitor 那份探法删了。文件窗口自己也列目录（见 `ASKED_BY_MONITOR_ITSELF`）。
-    (
-        "files-ls",
-        "列一个目录：后端 `files/mod.rs::answer_ls` 出 `{entries, truncated}`；主界面只在 `$PROFILE` 备份那一格用它认备份名，\
-         判读（「名字里有 `.ccm-backup-`」）住 `profile-backups.ts`",
-    ),
+    // `files-ls` 那一行退役：数据位置页 `$PROFILE` 备份那一格随它的读口一起删了（文件窗口自己列目录不经界面）。
     // 基数 → 增量 +1：设置里填的 Claude 数据目录存之前问本机后端那个路径在不在（`src/frontend/ui/settings/claude-dir-check.ts`）。
     (
         "files-stat",
@@ -669,12 +634,7 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
     // `skill-uninstall-plan` 那一行退役：卸那一趟的删与摘记录进了被卸那台后端（`skill-uninstall-apply`），monitor 零处问它。
     // `tasks-list` 那一行退役：本机任务 notify 删了（监视进后端，`tasks_changed` 帧 ⇒ 通道 `session-tasks`），
     //   monitor 零处再问它。
-    // 基数 → 增量 +1：文件窗口（monitor 包里的第二个 `[[bin]]`，独立前端）列目录走它自己的那一问（`filewin/source.rs::CMD_LS`）。
-    (
-        "files-ls",
-        1,
-        "文件窗口列目录（`filewin/source.rs::CMD_LS`）：窗口进程自己问那台后端，不是替主界面转",
-    ),
+    // `files-ls` 那一行退役：界面不再问它（见上表），文件窗口列目录（`filewin/source.rs::CMD_LS`）是另一个前端自己的事。
     // 文件窗口问一个路径的元数据走它自己的那几问（`filewin/props.rs::CMD_STAT` · `transfer.rs` · `writeops.rs`），不是替主界面转。
     (
         "files-stat",

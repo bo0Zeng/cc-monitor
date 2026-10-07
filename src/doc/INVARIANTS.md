@@ -37,7 +37,7 @@ monitor 那一跳（连同它那道「sid 必须恰是那一行文件名的 stem
 3. **远端历史删除（issue F11）**：**已并进第 1 条**（远端也经那台机器后端的 `files-delete-session`，只收 sid）。
    原文留档：**远端历史删除（issue F11，`history::delete_history_session` 带远端 `origin` → 远端分支 `remote_history::delete_remote_history_session` → `sftp::remove_remote_file`；本机与远端已合成一条命令）**：用户**主动**点删除 + 前端**二次确认**后，经 SFTP 移除远端 `~/.claude/projects/` 下的 jsonl；**双重路径守卫**（`is_safe_remote_jsonl`〔散文墓碑〕：须 `.jsonl` + 含 `/projects/` + 无 `..`；并 SFTP `canonicalize` 解 symlink 后再校验）。〔2026-09-24：本条的实现已换 —— 两侧都经那台机器后端的 `files-delete-session`（**只收 sid**，会话文件围栏唯一的例外，落点由后端按 sid 找、解到底必须恰是 `<项目>/<sid>.jsonl`）；SFTP 直删与这道守卫一起走了。〕**注**：标星 / 重命名 / 隐藏是 **monitor 本地元数据**（`history-metadata.json` 按 sid），**不写远端**——唯一写远端的用户数据操作就是删除 jsonl。〔散文墓碑〕
 4. **profile 写（F10，本机 `profile_installer` cc 集成 ＋ 别名文件 `~/.cc-monitor/aliases.sh`（接上它的那一行 source 只住别名块里，；从前另有一处代装进 rc 的，退役）＋ 远端同一组 `aliases_block_install`/`aliases_block_remove`（带 `origin`，经那台后端写；从前远端另有两条命令），从前叫「装/卸 ccm 助手」）**：写用户自己的 shell profile（本机 `~/.bashrc` / `$PROFILE` / **远端 `~/.bashrc`**）装/卸 cc(m) 助手——用户显式触发、BEGIN/END 块 + 备份 + 写后校验回滚。
-**落盘不在 monitor 进程**：本机与远端都经那台机器的后端（`user_files::edit` → `files-peek` / `files-put`），
+**落盘不在 monitor 进程**：本机与远端都是那台机器的后端自己读改写（文件管理那一面 `files-peek` / `files-put`），
    monitor 只算新内容（`fenced_block::splice_in/out`）；备份 · 替换 · 回读 · 回滚那一份规则住后端（见 §4）。**注（batch20 审计修）**：F10 **含远端 `~/.bashrc` 写**（原 `sftp.rs` 头「非远端」措辞已订正）。
 5. **MCP 项目配置写（F87 本机 / F89a 远端；**那台后端自己算、自己写**：帧命令 `mcp-server-put` / `mcp-server-remove`（`mcp_edit.rs::answer_put` / `answer_remove`，经本进程文件管理面 `files-peek` / `files-put`），本机远端同一条路）**：用户**显式**点「添加/更新」或「删除」（删带二次确认）后，写**项目** `.mcp.json`（落点 = 那台上的绝对项目目录 ＋ `.mcp.json`，`mcp_edit.rs::project_root` 守：绝对、不含 `..`；坏 JSON 拒覆盖、不留备份）。**SS-14**：写面**只** `.mcp.json`，**绝不**写 `~/.claude.json`/settings.json。`.mcp.json` 是**用户项目配置**（决定项目用哪些 MCP server），**非** Claude 会话数据（jsonl/pidfile）——与本约正交（同 F47 SFTP 面板性质），非驱动运行中会话。
 6. **公钥推送（F50，本机常驻后端帧命令 `pubkey-push`，`src/backend/assets/pubkey.rs`）**：用户显式点推送后，把本地公钥**追加**到远端 `~/.ssh/authorized_keys` —— 那台后端在 ⇒ 经它的文件管理面（`authorized-keys-add`，CAS）；不在 ⇒ 一次 SSH-exec（`posix::add_line_once`：key 经唯一的 quote 防注入、`grep -qxF` 幂等去重、只 append 不删）——用户自己的免密配置、非 Claude 数据。
@@ -46,7 +46,7 @@ monitor 那一跳（连同它那道「sid 必须恰是那一行文件名的 stem
 
 **上面这几条今天的实现形状（只有后端的文件管理部分写**用户的文件**，本机也算）**：
 monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / 别名文件 / 项目 `.mcp.json` / skill 收件箱 / `<claude_dir>/skills/cc-bus/` /
-删历史会话 / 本机分叉，本机与远端**同一条路**：经那台机器的后端（`user_files::BackendDoor{origin}` 或 `--fork-session`），
+删历史会话 / 本机分叉，本机与远端**同一条路**：经那台机器的后端（界面经通道直说 `files-delete-session` 或 `--fork-session`），
 后端没连上 ⇒ 明确报错、不回落（`D11`）。守着这件事的判据：
 `write_site_registry_tests::every_monitor_write_site_lands_outside_the_users_files`（monitor 写盘落点分类闭集、**没有「用户文件」一档**）·
 `::the_files_that_used_to_write_users_files_write_nothing_now`（搬走写盘的那几份零写原语，带正控）·
@@ -229,7 +229,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 **unix** 同目录 `O_EXCL` 暂存旁名写满、沿用原权限位、换名上位（原子）；**Windows** 已在的目标**就地覆盖写**
 （保住 dst 的 ACL / ADS / 创建时间 —— 后端没有 `ReplaceFileW` 那条平台原语；**代价：非原子**，兜底是 ③ 的备份 ＋ ⑤ 回读回滚）·
 ⑤ 回读**逐字节**比对，不符回滚（原来在 ⇒ 原文换回；原来不在 ⇒ 删掉刚建的）· 盘上有字节却读到空 ⇒ 停（OneDrive / 杀软那一形）。
-最后一段是链接 ⇒ 改真文件、链接留着。monitor 侧只「读 · 算 · 交」（`user_files::edit`）。
+最后一段是链接 ⇒ 改真文件、链接留着。读 · 算 · 写都在那台后端里。
 判据：`files_write_tests.rs` 的 `put_*` 一族（含 Windows 那条 `put_keeps_explicit_acl_entries_on_windows`，⚠ 只在 Windows 上跑、本机门禁只编不跑）。
 
 下面是这一条的原文（monitor 进程里写 profile 的那一版，`profile_installer` 的原子写原语已删），**理由那一半今天照样成立**，

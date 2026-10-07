@@ -1963,58 +1963,6 @@
       "zh": "{machine} 的后端没有确认 {target} 已经结束。这次按没结束处理，刷新会话列表后再决定要不要重试。",
       "args": ["machine", "target"]
     },
-    "tmuxControl.keys.badRequest": {
-      "kind": "error",
-      "zh": "发送不了按键给 {target}：后端不接受这个请求（{detail}）",
-      "args": ["target", "detail"]
-    },
-    "tmuxControl.keys.childTimedOut": {
-      "kind": "error",
-      "zh": "送键到 {target}：{detail}",
-      "args": ["target", "detail"]
-    },
-    "tmuxControl.keys.noTmux": {
-      "kind": "error",
-      "zh": "发送不了按键给 {target}：那台机器上起不来 tmux（{detail}）",
-      "args": ["target", "detail"],
-      "limited": ["tmux"]
-    },
-    "tmuxControl.keys.noSuchSession": {
-      "kind": "error",
-      "zh": "发送不了按键给 {target}：这个会话不存在，可能刚结束（{detail}）",
-      "args": ["target", "detail"]
-    },
-    "tmuxControl.keys.createFailed": {
-      "kind": "error",
-      "zh": "发送不了按键给 {target}：那台机器上建会话失败了（{detail}）",
-      "args": ["target", "detail"]
-    },
-    "tmuxControl.keys.unconfirmed": {
-      "kind": "error",
-      "zh": "按键未必送到了 {target}：会话在，但发送失败（{detail}）",
-      "args": ["target", "detail"]
-    },
-    "tmuxControl.keys.wrongOwner": {
-      "kind": "error",
-      "zh": "没有发送按键给 {target}：认不出它是 cc-monitor 管理的会话。为了不误伤你自己的 tmux 会话，这次拒绝了（{detail}）",
-      "args": ["target", "detail"],
-      "limited": ["tmux"]
-    },
-    "tmuxControl.keys.otherCode": {
-      "kind": "error",
-      "zh": "发送按键给 {target} 被拒：{detail}",
-      "args": ["target", "detail"]
-    },
-    "tmuxControl.keys.noReason": {
-      "kind": "error",
-      "zh": "发送按键给 {target} 被拒，没有给出原因。",
-      "args": ["target"]
-    },
-    "tmuxControl.keys.notConfirmed": {
-      "kind": "error",
-      "zh": "{machine} 的后端没有确认按键已经送到 {target}。这次按没送到处理，没有重发。",
-      "args": ["machine", "target"]
-    },
     "ccBus.online.notInstalled": {
       "kind": "error",
       "zh": "问不到 {id} 在不在线：那台机器上找不到 cc-bus（{detail}）",
@@ -7487,16 +7435,6 @@
       "args": [],
       "limited": ["SSH"]
     },
-    "configSurface.backend.tooOld": {
-      "kind": "error",
-      "zh": "这台的后端太旧，查不了足迹。本机重启 cc-monitor 就会换上新的后端，远端要重新部署后端。",
-      "args": []
-    },
-    "configSurface.refresh.badShape": {
-      "kind": "error",
-      "zh": "后端返回的足迹读不懂，多半是后端版本不对，需要更新。",
-      "args": []
-    },
     "diagnostics.openDir.failed": {
       "kind": "error",
       "zh": "打开日志目录失败",
@@ -8210,16 +8148,6 @@
       "zh": "同一版，字节不同（重新编过）",
       "args": []
     },
-    "beDeployRetired.kept.notOurs": {
-      "kind": "body",
-      "zh": "不是 cc-monitor 放的",
-      "args": []
-    },
-    "beDeployRetired.kept.unreadable": {
-      "kind": "body",
-      "zh": "读不成文本（读不动、不是 UTF-8 或太大），认不出是不是 cc-monitor 放的",
-      "args": []
-    },
     "rsSftp.identity.undecidable": {
       "kind": "error",
       "zh": "判不了 {machine} 的 {path} 是哪一版后端，没有动它：{why}",
@@ -8240,21 +8168,6 @@
       "zh": "那里是旧版 cc-monitor 放的 ccm 入口，换成了新版",
       "args": [],
       "limited": ["ccm"]
-    },
-    "rsSftp.legacyBackend.removed": {
-      "kind": "body",
-      "zh": "旧版 cc-monitor 放的后端 {rel} 已删掉。",
-      "args": ["rel"]
-    },
-    "rsSftp.legacyBackend.kept": {
-      "kind": "body",
-      "zh": "{rel} 没动：它说不出自己是 cc-monitor 编的哪一版。",
-      "args": ["rel"]
-    },
-    "rsSftp.legacyBackend.failed": {
-      "kind": "error",
-      "zh": "没查成旧版后端 {rel}：{e}。",
-      "args": ["rel", "e"]
     },
     "rsSftp.identity.unstamped": {
       "kind": "error",
@@ -10045,11 +9958,6 @@
       "zh": "目录，{count} 项",
       "args": ["count"]
     },
-    "rsConfigSurface.observe.retiredGone": {
-      "kind": "body",
-      "zh": "没有旧版遗留",
-      "args": []
-    },
     "rsConfigSurface.home.multiStar": {
       "kind": "error",
       "zh": "只支持一个 *，实得 {declared}",
@@ -10608,26 +10516,6 @@
       "kind": "error",
       "zh": "本机后端：{message}",
       "args": ["message"]
-    },
-    "rsUserFiles.home.unknown": {
-      "kind": "error",
-      "zh": "{machine} 的后端没答出 home 在哪",
-      "args": ["machine"]
-    },
-    "rsUserFiles.ask.emptyReply": {
-      "kind": "error",
-      "zh": "{who} 的后端回了一条空回答",
-      "args": ["who"]
-    },
-    "rsUserFiles.ask.tooBig": {
-      "kind": "error",
-      "zh": "这份文件太大（{bytes} 字节，上限 {cap}），没有动。",
-      "args": ["bytes", "cap"]
-    },
-    "rsUserFiles.ask.backendDown": {
-      "kind": "error",
-      "zh": "{who} 的后端没连上，这一步要经它来写（{why}）—— 一个字节都没动。先在设置里把这台机器的后端起起来再点一次",
-      "args": ["who", "why"]
     },
     "rsPlatformFs.chmod.failed": {
       "kind": "error",
@@ -11290,12 +11178,6 @@
       "kind": "body",
       "zh": "终端里敲 ccm 走到的是 {at}，不是 cc-monitor 装的那份。\n· 它自报：{theirs}\n· cc-monitor 这一份：{ours}，在 {where}\ncc-monitor 不动它，要不要删、什么时候删由你决定。想让终端用 cc-monitor 这一份：把它挪开，或让上面那个目录排在 PATH 前面，或用下面生成的那条命令。",
       "args": ["at", "theirs", "ours", "where"],
-      "limited": ["ccm"]
-    },
-    "rsCcmProbe.hint.oldEntry": {
-      "kind": "body",
-      "zh": "终端里敲 ccm 走到的是 {at}，那是 cc-monitor 早先放的旧入口，现在不用了。\ncc-monitor 不替你删。要让终端用 cc-monitor 这一份（{where}）：删掉 {at}，或让 ~/.cc-monitor/bin 排在 PATH 更前面。",
-      "args": ["at", "where"],
       "limited": ["ccm"]
     },
     "rsCcmProbe.cell.notLanded": {
@@ -12243,51 +12125,6 @@
       "zh": "{who}没在 {secs} 秒内答完，已停下",
       "args": ["who", "secs"]
     },
-    "accounts.local.scopeHint": {
-      "kind": "body",
-      "zh": "这一节只把这台机器上的账号清单列出来（只读）；在这里改不了它们。",
-      "args": []
-    },
-    "accounts.local.currentMark": {
-      "kind": "body",
-      "zh": "当前",
-      "args": []
-    },
-    "accounts.local.unknownReason": {
-      "kind": "error",
-      "zh": "后端没有给出原因",
-      "args": []
-    },
-    "accounts.local.loadFailed": {
-      "kind": "error",
-      "zh": "读不出这台机器的账号清单",
-      "args": []
-    },
-    "accounts.local.emptyNext": {
-      "kind": "body",
-      "zh": "多账号已经启用，只是还没有账号：在下面新建一个。",
-      "args": []
-    },
-    "accounts.local.emptyTitle": {
-      "kind": "title",
-      "zh": "这台机还没有隔离账号",
-      "args": []
-    },
-    "accounts.local.manifestPrefix": {
-      "kind": "body",
-      "zh": "清单",
-      "args": []
-    },
-    "accounts.local.countSuffix": {
-      "kind": "body",
-      "zh": "个账号",
-      "args": []
-    },
-    "accounts.local.heading": {
-      "kind": "title",
-      "zh": "这台机器上的账号",
-      "args": []
-    },
     "accounts.setModel.invalid": {
       "kind": "error",
       "zh": "模型名不合法，没有保存：{model}",
@@ -12312,31 +12149,6 @@
       "kind": "body",
       "zh": "账号 {account}{email} · 来源：实时探测",
       "args": ["account", "email"]
-    },
-    "accounts.loginAction.loginHint": {
-      "kind": "body",
-      "zh": "在终端里用这个号起 claude，按提示登录",
-      "args": []
-    },
-    "accounts.loginAction.goLogin": {
-      "kind": "action",
-      "zh": "去登录",
-      "args": []
-    },
-    "accounts.loginAction.loginTerminal": {
-      "kind": "action",
-      "zh": "登录终端",
-      "args": []
-    },
-    "accounts.loginAction.openTerminalHint": {
-      "kind": "body",
-      "zh": "在终端里用这个号起 claude（API key 号不需要登录）",
-      "args": []
-    },
-    "accounts.loginAction.openTerminal": {
-      "kind": "action",
-      "zh": "打开终端",
-      "args": []
     },
     "accounts.badge.signedIn": {
       "kind": "body",
@@ -12940,34 +12752,9 @@
       "zh": "读 {path} 失败：{e}",
       "args": ["path", "e"]
     },
-    "rsConfigSurface.effect.retiredLegacy": {
-      "kind": "body",
-      "zh": "cc-monitor 旧版放的：认出是它放的就删，认不出的不动",
-      "args": []
-    },
     "rsToolRegistry.tools.skillInstallsLedgerNote": {
       "kind": "body",
       "zh": "装到哪台就记在哪台。那台后端自己的装记录：每个装写进去的文件的摘要，和装之前在不在。卸只认这里记着的，卸掉的从这里摘掉",
-      "args": []
-    },
-    "rsCcmLegacy.say.removed": {
-      "kind": "body",
-      "zh": "旧版放在 ~/{rel} 的入口已删掉。",
-      "args": ["rel"]
-    },
-    "rsCcmLegacy.say.kept": {
-      "kind": "body",
-      "zh": "~/{rel} 没动：{why}。",
-      "args": ["rel", "why"]
-    },
-    "rsCcmLegacy.verdict.unreadable": {
-      "kind": "error",
-      "zh": "本机后端的回答读不懂，多半是后端版本不对。",
-      "args": []
-    },
-    "rsCcmLegacy.kept.changed": {
-      "kind": "body",
-      "zh": "刚读完它就被改了，这一次不删",
       "args": []
     },
     "rsDialHost.deadline.expired": {
@@ -12999,27 +12786,6 @@
       "kind": "body",
       "zh": "当前 {mode}",
       "args": ["mode"]
-    },
-    "rsSftp.ccmLegacy.checkFailed": {
-      "kind": "body",
-      "zh": "旧版入口 ~/{rel} 这一次没查成：{e}",
-      "args": ["rel", "e"]
-    },
-    "rsToolRegistry.tools.ccmLegacyNote": {
-      "kind": "body",
-      "zh": "旧版 cc-monitor 放的入口（现在入口在 ~/.cc-monitor/bin/ccm）。部署后端时、连上那台时各看一眼，认出是 cc-monitor 放的就删，认不出的不动",
-      "args": [],
-      "limited": ["ccm"]
-    },
-    "rsToolRegistry.tools.backendLegacyExtractNote": {
-      "kind": "body",
-      "zh": "旧版 cc-monitor 在本机放的后端（文件名带版本号）。启动时认出是 cc-monitor 编的就删，删不掉的下次再删",
-      "args": []
-    },
-    "rsToolRegistry.tools.backendLegacyNote": {
-      "kind": "body",
-      "zh": "旧版 cc-monitor 按「后端路径」配置放的那份后端。部署后端时、连上那台时各看一眼，认出是 cc-monitor 编的就删，认不出的不动",
-      "args": []
     },
     "ccBus.broadcast.listSep": {
       "kind": "body",

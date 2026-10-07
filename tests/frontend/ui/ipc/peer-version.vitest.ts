@@ -69,7 +69,6 @@ const EXPECTED_REMAINING: string[] = [
   "beRemoteAsk.json.unreadable",
   "beRemoteAsk.run.tooOld",
   "rsBackendRoute.layer.unsupported",
-  "rsCcmLegacy.verdict.unreadable",
   "rsChanHost.terminal.badReply",
   "rsFilewinCopy.remote.noBytes",
   "rsFilewinCopy.remote.noCount",

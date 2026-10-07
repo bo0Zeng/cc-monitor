@@ -31,7 +31,7 @@ fn a_stale_ccm_on_path_is_named_out_loud() {
     };
     let v = classify_path_ccm(&ours, &legacy);
     assert_eq!(v, PathCcmVerdict::NotOurs, "旧的没被认出来");
-    let hint = render_path_ccm_hint(v, &ours, &legacy, Some("$HOME/.cc-monitor/bin/ccm"), false);
+    let hint = render_path_ccm_hint(v, &ours, &legacy, Some("$HOME/.cc-monitor/bin/ccm"));
     assert!(
         // 名片那半句按文案键取（`rsCcmProbe.card.summary` 不再是 `version=` 日志行形），不钉原文。
         hint.contains("不是")
@@ -48,7 +48,7 @@ fn a_stale_ccm_on_path_is_named_out_loud() {
     // ★ 同版本同能力 ⇒ 判 `Ours`，而且**没有话要说**（免得每次打开都吓人一跳）。
     assert_eq!(classify_path_ccm(&ours, &ours), PathCcmVerdict::Ours);
     assert_eq!(
-        render_path_ccm_hint(PathCcmVerdict::Ours, &ours, &ours, None, false),
+        render_path_ccm_hint(PathCcmVerdict::Ours, &ours, &ours, None),
         ""
     );
     // ★ 我们自己那份没装 ⇒ **说不出**，不许说成「你 PATH 上那个是旧的」。
@@ -354,31 +354,22 @@ fn the_local_ccm_cell_reports_both_halves_and_names_where_ccm_really_goes() {
     let mine = d.join("mine-ccm");
     std::fs::write(&mine, "#!/bin/sh\necho hi\n").unwrap();
     let s = |p: &std::path::Path| p.to_string_lossy().into_owned();
-    // 认旧入口的是后端（`deploy-retired` 的 `{text}`，真值表住后端 `deploy_plan_tests`）；这里只钉「交过去的是那个文件的开头原文」。
-    let shim_text = std::fs::read_to_string(&shim).unwrap();
-    let asked = |head: &str| head == shim_text;
-    assert_eq!(reach_of(None, Some(&landing), &asked), Reach::Nothing);
+    assert_eq!(reach_of(None, Some(&landing)), Reach::Nothing);
     assert_eq!(
-        reach_of(Some(&s(&link)), Some(&landing), &asked),
+        reach_of(Some(&s(&link)), Some(&landing)),
         Reach::Landing,
         "软链到落点就是它"
     );
     assert_eq!(
-        reach_of(Some(&s(&shim)), Some(&landing), &asked),
-        Reach::OtherFile {
-            path: s(&shim),
-            old_entry: true
-        }
+        reach_of(Some(&s(&shim)), Some(&landing)),
+        Reach::OtherFile { path: s(&shim) }
     );
     assert_eq!(
-        reach_of(Some(&s(&mine)), Some(&landing), &asked),
-        Reach::OtherFile {
-            path: s(&mine),
-            old_entry: false
-        }
+        reach_of(Some(&s(&mine)), Some(&landing)),
+        Reach::OtherFile { path: s(&mine) }
     );
     assert_eq!(
-        reach_of(Some("ccm"), Some(&landing), &asked),
+        reach_of(Some("ccm"), Some(&landing)),
         Reach::NotAFile,
         "函数 / 别名不是文件"
     );
@@ -389,10 +380,7 @@ fn the_local_ccm_cell_reports_both_halves_and_names_where_ccm_really_goes() {
         build: None,
         at: Some(s(&shim)),
     };
-    let other = Reach::OtherFile {
-        path: s(&shim),
-        old_entry: true,
-    };
+    let other = Reach::OtherFile { path: s(&shim) };
     assert_eq!(
         judge_path_ccm(&card, &card, &other),
         PathCcmVerdict::NotOurs,
@@ -401,17 +389,6 @@ fn the_local_ccm_cell_reports_both_halves_and_names_where_ccm_really_goes() {
     assert_eq!(
         judge_path_ccm(&card, &card, &Reach::NotAFile),
         PathCcmVerdict::Ours
-    );
-    let hint = render_path_ccm_hint(
-        PathCcmVerdict::NotOurs,
-        &card,
-        &card,
-        Some("$HOME/.cc-monitor/bin/ccm"),
-        true,
-    );
-    assert!(
-        hint.contains(&s(&shim)) && hint.contains("删掉") && !hint.contains("请删除"),
-        "旧入口那句要指名是哪一份、怎么清，不催：{hint}"
     );
     let _ = std::fs::remove_dir_all(&d);
 

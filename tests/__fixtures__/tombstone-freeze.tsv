@@ -103,7 +103,6 @@ REGISTERED	tests/backend/assets/aliases/fence_tests.rs		3
 REGISTERED	tests/frontend/filewin/source_tests.rs		2
 REGISTERED	src/frontend/shell/src/asset_sync.rs		2
 REGISTERED	tests/frontend/shell/asset_sync_tests.rs		1
-REGISTERED	src/frontend/shell/src/user_files.rs		8
 REGISTERED	tests/frontend/shell/parity_ledger_tests.rs		72
 REGISTERED	tests/frontend/shell/plugin_class_registry_tests.rs		2
 REGISTERED	tests/frontend/shell/polling_registry_tests.rs		1
@@ -137,7 +136,7 @@ REGISTERED	src/frontend/ui/keybindings/editor.ts		1
 REGISTERED	tests/frontend/ui/keybindings/actions.vitest.ts		1
 REGISTERED	src/backend/faces/read_face.rs		2
 REGISTERED	src/frontend/shell/src/frame_query.rs		6
-REGISTERED	tests/frontend/shell/frame_query_tests.rs		20
+REGISTERED	tests/frontend/shell/frame_query_tests.rs		16
 REGISTERED	src/frontend/shell/src/backend_policy.rs		2
 REGISTERED	src/frontend/ui/settings/backend-section.ts		2
 REGISTERED	src/backend/accounts/upstream_select/mod.rs		3
@@ -151,7 +150,6 @@ REGISTERED	tests/backend/observe/history_query_tests.rs		1
 REGISTERED	tests/backend/faces/read_face_tests.rs		1
 REGISTERED	tests/backend/history/history_annotations_tests.rs		1
 REGISTERED	src/frontend/shell/src/ccm_probe.rs		4
-REGISTERED	src/frontend/ui/tmux-control.ts		1
 REGISTERED	src/frontend/ui/cc-bus-control.ts		4
 REGISTERED	src/frontend/ui/views/pane-preview.ts		1
 REGISTERED	tests/frontend/shell/backend_route_senders_tests.rs		8
@@ -188,9 +186,7 @@ REGISTERED	src/backend/dial/terminal.rs		2
 REGISTERED	tests/frontend/ui/views/history-search.vitest.ts		1
 REGISTERED	tests/frontend/shell/launch_tests.rs		2
 REGISTERED	tests/frontend/shell/quote_singleton_guard_tests.rs		2
-REGISTERED	src/frontend/shell/src/ccm_legacy.rs		1
 REGISTERED	src/common/deploy-contract/src/lib.rs		1
-REGISTERED	tests/backend/control/deploy_plan_tests.rs		1
 REGISTERED	tests/frontend/shell/lib_invariant_population_tests.rs		2
 REGISTERED	src/frontend/ui/settings/machine-card.ts		1
 REGISTERED	src/backend/control/ccm/mod.rs		3
@@ -223,7 +219,6 @@ REGISTERED	tests/frontend/ui/tmux-reads.vitest.ts		1
 REGISTERED	tests/backend/dial_probe_tests.rs		1
 REGISTERED	src/backend/agents/claudecode/footprint.rs		1
 REGISTERED	src/frontend/ui/settings/config-surface-section.ts		2
-REGISTERED	src/frontend/ui/settings/footprint-reads.ts		1
 REGISTERED	tests/e2e/local-backend-supervise.sh		2
 REGISTERED	tests/scripts/gate.sh		3
 REGISTERED	src/backend/assets/pubkey.rs		1
@@ -265,7 +260,6 @@ TOMBSTONED	src/frontend/ui/ipc/commands.ts	config_surface_report	1
 TOMBSTONED	tests/frontend/shell/command_home_registry_tests.rs	config_surface_report	1
 TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	config_surface_report	2
 TOMBSTONED	tests/frontend/ui/ipc/commands.vitest.ts	config_surface_report	2
-TOMBSTONED	src/frontend/ui/settings/footprint-reads.ts	config_surface_report	1
 TOMBSTONED	tests/frontend/shell/local_read_surface_registry_tests.rs	with_monitor_probe	1
 TOMBSTONED	src/backend/observe/tmux_observe.rs	observation_tokens_double_write_point_stays_in_sync	1
 TOMBSTONED	src/backend/stream/wire.rs	removal_cause_wire_literal_stays_in_sync	1
@@ -629,7 +623,6 @@ TOMBSTONED	src/frontend/shell/src/ccm_probe.rs	probe_ccm_cli	1
 TOMBSTONED	src/frontend/shell/src/lib.rs	relay_all_sessions_switch	1
 TOMBSTONED	src/frontend/shell/src/local_origin_registry.rs	probe_ccm_cli	1
 TOMBSTONED	src/frontend/shell/src/parity_ledger.rs	probe_ccm_cli	1
-TOMBSTONED	src/frontend/shell/src/user_files.rs	probe_ccm_cli	1
 TOMBSTONED	tests/frontend/shell/exec_site_registry_tests.rs	probe_ccm_cli	3
 TOMBSTONED	tests/frontend/shell/launcher_identity_registry_tests.rs	relay_all_sessions_switch	2
 TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	probe_ccm_cli	8

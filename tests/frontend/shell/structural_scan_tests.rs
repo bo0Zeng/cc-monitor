@@ -2731,11 +2731,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             2,
         ),
         (
-            "src/frontend/ui/settings/footprint-reads.ts",
-            "config_surface_report",
-            1,
-        ),
-        (
             "tests/frontend/shell/local_read_surface_registry_tests.rs",
             "with_monitor_probe",
             1,
@@ -4267,7 +4262,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "probe_ccm_cli",
             1,
         ),
-        ("src/frontend/shell/src/user_files.rs", "probe_ccm_cli", 1),
         (
             "tests/frontend/shell/exec_site_registry_tests.rs",
             "probe_ccm_cli",
@@ -4726,7 +4720,6 @@ fn every_prose_tombstone_mark_is_registered() {
         //   三个计数旁的增量注（`EXPECTED_LOCAL_OR_BOTH` · `LEDGER.len()` · 增量账）。
         ("src/frontend/shell/src/asset_sync.rs", 2), // +2：`AssetsSynced` 那几个形状 ＋ 界面那条 Tauri 命令随同步那一问走通道删了
         ("tests/frontend/shell/asset_sync_tests.rs", 1), // +1：「应答缺格就报错不猜」那一条挪到界面（`parse_reply` 删了）
-        ("src/frontend/shell/src/user_files.rs", 8), // +2：读改写那一环（`edit` / `Edited`）删了，原地一块 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） // +2：`rename` / `stat_kind` 两形零调用方删了，trait 上留墓碑 // // +1：`rel_under` / `join_under` 随别名进后端删了，留一句墓碑 // // +1：列目录那一形（list_dir）随收件箱进后端删了，trait 上留一句墓碑 // // +1：只删空目录那一形随卸 skill 进后端删了
         ("tests/frontend/shell/parity_ledger_tests.rs", 63),
         ("tests/frontend/shell/plugin_class_registry_tests.rs", 2), // 3 → 2：`code-picture` 那一格整行删了，挂着的旧测试名墓碑随之没了 // 2 → 3：`code-picture` 那一格对上之后，旧测试名挂墓碑
         ("tests/frontend/shell/polling_registry_tests.rs", 1),
@@ -4786,7 +4779,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // `tests/frontend/shell/accounts_tests.rs` 那一行去掉：整份随 `accounts.rs` 删了（守的那条 serde 名对拍随 Rust 枚举一起退役，字面量今天由后端金样 ＋ TS 解码器钉）。
         // 记录那一问（`history-record`）改走通道：monitor 的发送端与它的判据删了，原处各一块。
         ("src/frontend/shell/src/frame_query.rs", 6), // 7 → 6：点全景旧发送点那一句随代码全景整条摘掉删了 // 3 → 7 // 2 → 3：点 `panorama_call.rs` 旧住址那一句 // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
-        ("tests/frontend/shell/frame_query_tests.rs", 19), // 20 → 19：抓屏那一行改成 `terminal-preview`，点旧发送端的墓碑随之没了 // 21 → 20：全景那三条命令的行删了，挂着的墓碑随之没了 // 17 → 21 // 16 → 17：足迹那一行点旧发送点 // 15 → 16：全景那两行点旧发送点 // 14 → 15：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 13 → 14 // 主线 12 ＋ MIG-3b +1（点分叉旧判据文件那一句） // +1：skill 装卸 ＋ 同步那一块点删掉的四条命令 // // +1：`CHANNELED_ELSEWHERE` 的 MCP 那一块点删掉的两份文件 // // +1：本机 shellinit 那一个期限发起点并掉 // +3：`apikey-read` 那一行说核路径那一问删了 · `apikey-key-set` 新行点删掉的命令 · `ASKED_BY_MONITOR_ITSELF` 退役那一行 // +1：`CHANNELED_ELSEWHERE` 的 cc-bus 那一块点删掉的五条命令 // +1：`kill` / `launch` 两行点删掉的三条命令 // +1：`CHANNELED_ELSEWHERE` 的 `capture-pane` 那一行点删掉的发送端 // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑 // 11 → 12
+        ("tests/frontend/shell/frame_query_tests.rs", 16), // 19 → 16：界面不再问的那几行（`ssh-config-aliases` / `-resolve` · `footprint-report` · `apikey-read` · `launch` · `files-ls`）删了，挂着的墓碑随之没了 // 20 → 19：抓屏那一行改成 `terminal-preview`，点旧发送端的墓碑随之没了 // 21 → 20：全景那三条命令的行删了，挂着的墓碑随之没了 // 17 → 21 // 16 → 17：足迹那一行点旧发送点 // 15 → 16：全景那两行点旧发送点 // 14 → 15：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 13 → 14 // 主线 12 ＋ MIG-3b +1（点分叉旧判据文件那一句） // +1：skill 装卸 ＋ 同步那一块点删掉的四条命令 // // +1：`CHANNELED_ELSEWHERE` 的 MCP 那一块点删掉的两份文件 // // +1：本机 shellinit 那一个期限发起点并掉 // +3：`apikey-read` 那一行说核路径那一问删了 · `apikey-key-set` 新行点删掉的命令 · `ASKED_BY_MONITOR_ITSELF` 退役那一行 // +1：`CHANNELED_ELSEWHERE` 的 cc-bus 那一块点删掉的五条命令 // +1：`kill` / `launch` 两行点删掉的三条命令 // +1：`CHANNELED_ELSEWHERE` 的 `capture-pane` 那一行点删掉的发送端 // 逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑 // 11 → 12
         // 「退出行为」问 / 交写改走通道：monitor 那两条命令与它们的期限删了，原处各一块；设置页头注点它们旧名。
         ("src/frontend/shell/src/backend_policy.rs", 2),
         ("src/frontend/ui/settings/backend-section.ts", 2), // 1 → 2
@@ -4808,7 +4801,6 @@ fn every_prose_tombstone_mark_is_registered() {
         //   原处与点它们旧名的散文各一块。
         // `src/frontend/shell/src/command_args.rs` 那一行删了：整份随它最后两个调用方（送键 · 就地 resume 的发送端）删掉。
         ("src/frontend/shell/src/ccm_probe.rs", 3), // 1 → 4
-        ("src/frontend/ui/tmux-control.ts", 1),
         // cc-bus 驾驶舱写面五条改由界面经通道直接说：新家的头注点 monitor 那五条旧命令名。
         ("src/frontend/ui/cc-bus-control.ts", 4), // +3：TS 副本 `isValidBusId` / `refuseBadId` 删了（原处一行两块）· `checkSpawnShape` 头注点它一块
         // `backend/mod.rs` 那一行摘了：随 `backend` 目录删了。
@@ -4874,9 +4866,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/ui/views/history-search.vitest.ts", 1), // 合并那三条搬进后端，原处一块
         ("tests/frontend/shell/launch_tests.rs", 2),
         ("tests/frontend/shell/quote_singleton_guard_tests.rs", 2),
-        ("src/frontend/shell/src/ccm_legacy.rs", 1), // 两边各自贴的墓碑相加，按盘上现数（跑出来核过）
         ("src/common/deploy-contract/src/lib.rs", 1), // 随契约那一半改名（`SHIM_MARK` 头注那一块）
-        ("tests/backend/control/deploy_plan_tests.rs", 1), // 旧入口两形真值表随判定从 monitor `ccm_legacy_tests.rs` 搬来，那块墓碑跟着搬
         ("tests/frontend/shell/lib_invariant_population_tests.rs", 2),
         ("src/frontend/ui/settings/machine-card.ts", 1), // 「后端路径」那一格删了，按用户名预填它的函数原地留一块
         ("src/backend/control/ccm/plan.rs", 1),          // `self_argv` 的入口②那一形删了，原地一块
@@ -4910,7 +4900,6 @@ fn every_prose_tombstone_mark_is_registered() {
         // 基数 → 增量 +1 行：`apikey_remote`整删，「形状照它」那句挂墓碑。
         // `src/frontend/shell/src/footprint_remote.rs` 那一行随文件删了（足迹两趟问法进了后端 face）。
         ("src/backend/agents/claudecode/footprint.rs", 1), // 新行：cc-bus 那一条随 Claude 布局那一半搬来，带着它那块（`~/.cc-bus/` note 点写面旧命令名）
-        ("src/frontend/ui/settings/footprint-reads.ts", 1), // 新行：头注点旧 Tauri 命令名
         ("tests/e2e/local-backend-supervise.sh", 2), // e2e 起真后端那条删掉的判据名挂墓碑（gate · local-backend 套件）
         ("tests/scripts/gate.sh", 1), // 2 → 1：shellcheck 那一格「立项理由已不成立、原话照留」那段随人群搬进门禁一起删了（那段讲的是 CI 独有、人群住 ci.yml）· 3 → 2：e2e 那段逐套条数的沿革注释删了，local-backend 那块墓碑随之没了
         // 公钥推送进本机后端：新文件头注点旧命令名挂墓碑。

@@ -54,12 +54,8 @@ fn landing_scan() -> String {
     deploy_contract::stamp_scan_cmd(relay_route_core::BACKEND_LANDING_SHELL, MARKS)
 }
 
-fn legacy_scan() -> String {
-    deploy_contract::stamp_scan_cmd(deploy_contract::LEGACY_BACKEND_WORD, MARKS)
-}
-
 impl Fake {
-    /// 一台 Linux x86_64，落点那一份自报 `landing`（`None` = 不在），旧落点不在。
+    /// 一台 Linux x86_64，落点那一份自报 `landing`（`None` = 不在）。
     fn linux(landing: Option<&str>) -> Fake {
         let mut f = Fake::default();
         f.exec
@@ -79,10 +75,6 @@ impl Fake {
                 );
             }
         }
-        f.stat.insert(
-            deploy_contract::LEGACY_BACKEND_REL.into(),
-            (None, Some(false)),
-        );
         f
     }
 }
@@ -136,11 +128,10 @@ fn carried(id: &str) -> Vec<(Key, String)> {
 }
 
 #[tokio::test]
-async fn the_same_build_at_the_landing_is_skipped_and_an_absent_legacy_says_nothing() {
+async fn the_same_build_at_the_landing_is_skipped() {
     let f = Fake::linux(Some("p9a-mine"));
     let p = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap();
     assert_eq!(p.action, DeployAction::Skip);
-    assert_eq!(p.legacy, LegacyVerdict::Absent);
     assert_eq!(p.expected, "p9a-mine");
 }
 
@@ -248,26 +239,6 @@ async fn an_unstamped_landing_is_undecidable_unless_it_is_our_old_three_line_ent
     );
 }
 
-#[tokio::test]
-async fn a_stamped_legacy_backend_is_marked_for_removal_and_an_unasked_one_is_unknown() {
-    let mut f = Fake::linux(Some("p9a-mine"));
-    f.stat.insert(
-        deploy_contract::LEGACY_BACKEND_REL.into(),
-        (Some(Some(9)), None),
-    );
-    f.exec.insert(legacy_scan(), said(0, &stamp("p1a-ancient")));
-    let p = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap();
-    assert_eq!(p.legacy, LegacyVerdict::Remove);
-
-    f.stat.remove(deploy_contract::LEGACY_BACKEND_REL);
-    let p = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap();
-    assert!(
-        matches!(p.legacy, LegacyVerdict::Unknown(_)),
-        "{:?}",
-        p.legacy
-    );
-}
-
 /// 要求：「部署失败留下半截 ~/.cc-monitor/bin/ccm.…tmp，之后连上也不清」⇒「下次连上清旧的」。
 /// 落点目录里陈旧的临时件 · 备份件 ⇒ 进计划；新的（另一个部署者正在写）· 恰在门槛上 · 修改时间缺 · 不是 `put_atomic` 那个形状（陈旧也不碰）
 /// · 落点本身 ⇒ 不进（两向相等）。目录列不出 ⇒ 空、计划照出。
@@ -328,7 +299,6 @@ fn the_plan_frame_has_exactly_the_golden_keys() {
             theirs: "p9b".into(),
             why: "w".into(),
         },
-        legacy: LegacyVerdict::Unknown("e".into()),
         leftovers: vec![".cc-monitor/bin/ccm.1-2-3.tmp".into()],
         ack: fake_ack(1),
     };
@@ -451,119 +421,6 @@ fn the_verdict_frame_has_exactly_two_keys_and_refuses_missing_args() {
             "{bad}"
         );
     }
-}
-
-// ═══ `deploy-retired`：那台旧入口 `~/.local/bin/ccm` 的去向 ═══════════════════════
-//
-// 要求：「部署后端时、每次连上时各扫一次，认出是我们放的才删（`files-delete` 带期望值），
-// 认不出的不动」＋「判定只在后端」。真值表的期望是字面量，取自 git 史上那两份真文件的头两行
-// （`git show e8f9e08e^:shared/ccm` · `ccm_entry_shim`〔散文墓碑〕在 `b2bab98f` / `e2af9404` 的两代；从前住 monitor `ccm_legacy_tests.rs` 的 L1）。
-
-/// 09-15 那一代 shim（带 `CCM_SELF` 那一行）。
-const SHIM_0915: &str = "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\n# CCM_SELF：内层载荷要用「我是被当作什么叫的」那个名字，不是二进制真身（容器路靠它）。\nCCM_SELF=\"${CCM_SELF:-$0}\" exec '/home/u/.cc-monitor/bin/cc-monitor-backend' ccm \"$@\"\n";
-/// 最后一代 shim（MC1 起，不带 `CCM_SELF`）。
-const SHIM_LAST: &str = "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec '/home/u/.cc-monitor/bin/cc-monitor-backend' ccm \"$@\"\n";
-/// 09-11 之前那份 bash 启动器的头两行（后面几千行略去 —— 认它只看头两行）。
-const LAUNCHER_HEAD: &str =
-    "#!/usr/bin/env bash\n# ccm — cc-monitor 统一启动器（unify-launch F02）\n#\n# 核心思想……\n";
-
-async fn retired_at(stat: (Option<Option<u64>>, Option<bool>), bytes: Option<&[u8]>) -> Value {
-    let mut f = Fake::default();
-    f.stat
-        .insert(deploy_contract::LEGACY_ENTRY_REL.into(), stat);
-    if let Some(b) = bytes {
-        f.read
-            .insert(deploy_contract::LEGACY_ENTRY_REL.into(), b.to_vec());
-    }
-    let args = serde_json::json!({ "dial": { "host": "h" } });
-    answer_retired(&args, &f).await.expect("答得出")
-}
-
-/// 两形认、别的一律不认；认出 ⇒ `remove` 且 `expect` 恰是读到的全文；答的形状恰三格。
-#[tokio::test]
-async fn retired_only_the_two_forms_we_ever_placed_are_removed_and_with_what_was_read() {
-    let present = (Some(Some(64)), None);
-    let remove = |t: &str| serde_json::json!({ "verdict": "remove", "expect": t, "why": null });
-    for (what, text) in [
-        ("09-15 那一代 shim", SHIM_0915),
-        ("最后一代 shim", SHIM_LAST),
-        ("09-11 之前的 bash 启动器", LAUNCHER_HEAD),
-    ] {
-        assert_eq!(
-            retired_at(present, Some(text.as_bytes())).await,
-            remove(text),
-            "{what}"
-        );
-    }
-    let kept = |v: &Value| v["verdict"] == "keep" && v["expect"].is_null() && v["why"].is_string();
-    for (what, text) in [
-        ("用户自己的脚本", "#!/bin/sh\nexec my-own-ccm \"$@\"\n"),
-        ("只有一行", "#!/bin/sh\n"),
-        (
-            "记号不在第二行",
-            "#!/bin/sh\n# 我自己的包装\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\n",
-        ),
-        (
-            "第一行不是 #!",
-            "# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\n",
-        ),
-    ] {
-        let v = retired_at(present, Some(text.as_bytes())).await;
-        assert!(kept(&v), "{what}：{v}");
-    }
-    // 不在 ⇒ absent；0 字节 ⇒ keep；在但读不回来 / 不是 UTF-8 ⇒ keep（不猜）。
-    assert_eq!(
-        retired_at((None, Some(false)), None).await,
-        serde_json::json!({ "verdict": "absent", "expect": null, "why": null })
-    );
-    assert!(kept(&retired_at((Some(Some(0)), None), None).await));
-    assert!(kept(&retired_at(present, None).await));
-    assert!(kept(&retired_at(present, Some(&[0xff, 0xfe, b'\n'])).await));
-}
-
-/// 要求：「判定只在后端」· 「（`is_ours`，只显示不删）→ 后端答，monitor 只显示」。
-/// `{text}` 那一形（本机 PATH 上另一个 `ccm` 的开头一截）与 `{dial}` 读回来的走同一条规矩：
-/// 逐条与 [`retired_at`] 读回同一段字节的答相等，且一次 stat / 读都不发（`Fake` 什么都没登记，发了就是 `unreachable`）。
-#[tokio::test]
-async fn retired_text_form_judges_the_same_way_without_touching_any_disk() {
-    let f = Fake::default();
-    for text in [
-        SHIM_0915,
-        SHIM_LAST,
-        LAUNCHER_HEAD,
-        "#!/bin/sh\nexec my-own-ccm \"$@\"\n",
-        "#!/bin/sh\n",
-    ] {
-        let got = answer_retired(&serde_json::json!({ "text": text }), &f)
-            .await
-            .expect("答得出");
-        assert_eq!(
-            got,
-            retired_at((Some(Some(64)), None), Some(text.as_bytes())).await,
-            "{text:?}"
-        );
-    }
-}
-
-/// 缺 `dial` ⇒ `bad_args`（不许退成问本机）；`dial` 与 `text` 都给 ⇒ `bad_args`；SFTP 开不成 ⇒ `unreachable`。
-#[tokio::test]
-async fn retired_refuses_without_a_dial_and_says_unreachable_when_the_link_fails() {
-    let f = Fake::default();
-    let (code, _) = answer_retired(&serde_json::json!({}), &f)
-        .await
-        .unwrap_err();
-    assert_eq!(code, "bad_args");
-    let (code, _) = answer_retired(
-        &serde_json::json!({ "dial": { "host": "h" }, "text": SHIM_LAST }),
-        &f,
-    )
-    .await
-    .unwrap_err();
-    assert_eq!(code, "bad_args");
-    let (code, _) = answer_retired(&serde_json::json!({ "dial": { "host": "h" } }), &f)
-        .await
-        .unwrap_err();
-    assert_eq!(code, "unreachable");
 }
 
 // ═══ 随判定从共享 crate `deploy-core` 搬来的逐格判据（判定只在后端；期望一字未改）══════════════
@@ -827,35 +684,6 @@ fn an_old_three_line_entry_at_the_landing_is_recognised_as_ours() {
         Some(old.as_bytes())
     )
     .is_err());
-}
-
-/// 旧落点那份后端字节：恰一个戳（我们编的）⇒ 删；不在 ⇒ 不说话；别的 ⇒ 不动；连问都没问成 ⇒ 带原话。四格互不合并。
-#[test]
-fn the_legacy_backend_is_removed_only_when_it_carries_exactly_one_stamp() {
-    assert_eq!(
-        legacy_verdict(Ok(RemoteIdentity::Missing)),
-        LegacyVerdict::Absent
-    );
-    assert_eq!(
-        legacy_verdict(Ok(RemoteIdentity::Stamp("p1a-x".into()))),
-        LegacyVerdict::Remove
-    );
-    for kept in [
-        RemoteIdentity::Empty,
-        RemoteIdentity::NoStamp,
-        RemoteIdentity::Ambiguous(vec!["a1".into(), "b2".into()]),
-        RemoteIdentity::Unreadable("Permission denied".into()),
-    ] {
-        assert_eq!(
-            legacy_verdict(Ok(kept.clone())),
-            LegacyVerdict::Keep,
-            "{kept:?}"
-        );
-    }
-    assert_eq!(
-        legacy_verdict(Err("链路断了".into())),
-        LegacyVerdict::Unknown("链路断了".into())
-    );
 }
 
 /// 拒绝点的前三步各在一步上：键拒 · 产线拒 · 承诺拒，第四步（带没带）不在这里。

@@ -495,23 +495,6 @@ pub(crate) fn ask_place_verdict(
     ask_once(staged, "place-verdict", args, PLACE_ASK_TIMEOUT)
 }
 
-/// PATH 上另一个 `ccm` 的开头一截是不是我们早先放的旧入口 —— **问我们自己那一份后端**（`deploy-retired` 的 `{text}` 形），
-/// 本文件不认记号。问不成 ⇒ `false`（说不清就不说「是旧的」，退回泛泛那一句），记一行 debug。
-fn old_entry_by_backend(ours: &std::path::Path, head: &str) -> bool {
-    match ask_once(
-        ours,
-        "deploy-retired",
-        &serde_json::json!({ "text": head }),
-        OURS_PROBE_TIMEOUT,
-    ) {
-        Ok(v) => v["verdict"] == "remove",
-        Err(e) => {
-            tracing::debug!("本机 ccm 探针：问我们那一份「PATH 上那个是不是旧入口」没问成（{e:?}）—— 不说它是旧的");
-            false
-        }
-    }
-}
-
 // 🪦这里原来是 Tauri 命令 `probe_ccm_cli`〔散文墓碑〕（界面先问那台后端 `ccm-probe`、再把结果带去渲染）：
 //   `ccm …` 调用行的渲染进了那台后端，能力问它自己（`launch_render/wire.rs::render_ccm_launch`），这一跳删了。
 
@@ -578,19 +561,14 @@ pub(crate) enum Reach {
     Nothing,
     /// 解过链接就是我们落点上那一份。
     Landing,
-    /// 另一个文件。`old_entry` = 认得出是 cc-monitor 早先放的旧入口（三行 shim / bash 启动器）—— 认的是后端（`deploy-retired`）。
-    OtherFile { path: String, old_entry: bool },
+    /// 另一个文件。
+    OtherFile { path: String },
     /// 不是一个文件路径（shell 函数 / 别名）。
     NotAFile,
 }
 
-/// `at` = 登录 shell 里 `command -v ccm` 的答；`landing` = 我们那一份的绝对路径（没装 ⇒ `None`）；
-/// `old_entry_of` = 另一个文件开头那一截是不是我们早先放的旧入口（生产 = [`old_entry_by_backend`]：判在后端）。
-pub(crate) fn reach_of(
-    at: Option<&str>,
-    landing: Option<&std::path::Path>,
-    old_entry_of: &dyn Fn(&str) -> bool,
-) -> Reach {
+/// `at` = 登录 shell 里 `command -v ccm` 的答；`landing` = 我们那一份的绝对路径（没装 ⇒ `None`）。
+pub(crate) fn reach_of(at: Option<&str>, landing: Option<&std::path::Path>) -> Reach {
     let Some(at) = at else {
         return Reach::Nothing;
     };
@@ -602,13 +580,8 @@ pub(crate) fn reach_of(
     if landing.is_some_and(|l| same(p, l)) {
         return Reach::Landing;
     }
-    // 只读开头一小截认记号（记号在第二行）；读不到就当认不出。
-    let head: Vec<u8> = std::fs::read(p)
-        .map(|b| b.into_iter().take(4096).collect())
-        .unwrap_or_default();
     Reach::OtherFile {
         path: at.to_string(),
-        old_entry: old_entry_of(&String::from_utf8_lossy(&head)),
     }
 }
 
@@ -701,7 +674,6 @@ pub fn render_path_ccm_hint(
     ours: &CcmProbeResult,
     on_path: &CcmProbeResult,
     entry: Option<&str>,
-    old_entry: bool,
 ) -> String {
     let ours_card = describe_card(ours);
     let not_installed = copy_text("rsCcmProbe.hint.notInstalled", &[]);
@@ -710,11 +682,6 @@ pub fn render_path_ccm_hint(
     let at = on_path.at.clone().unwrap_or_else(|| "ccm".to_string());
     match verdict {
         PathCcmVerdict::Ours => String::new(),
-        // 认得出是我们早先放的旧入口 ⇒ 说清怎么清（不代清）。
-        PathCcmVerdict::NotOurs if old_entry => copy_text(
-            "rsCcmProbe.hint.oldEntry",
-            &[("at", &at), ("where", &where_ours.to_string())],
-        ),
         PathCcmVerdict::NotOurs => copy_text(
             "rsCcmProbe.hint.notOurs",
             &[
@@ -827,34 +794,18 @@ pub(crate) fn local_ccm_entry_now(fresh: Option<bool>) -> LocalCcmEntry {
         )
     });
     // 这台问不了 PATH（Windows）⇒ 说不清，不说成「没有」。
-    let (on_path, verdict, old_entry) = match probe_path_ccm() {
-        None => (parse_probe_output(""), PathCcmVerdict::Undetermined, false),
+    let (on_path, verdict) = match probe_path_ccm() {
+        None => (parse_probe_output(""), PathCcmVerdict::Undetermined),
         Some(on_path) => {
-            // 「是不是我们早先放的」问我们自己那一份（字节认得出是我们编的才跑它，同上面 `--ccm-probe` 那一条）。
-            let asked = |head: &str| match installed {
-                Some(p) if ours_bytes => old_entry_by_backend(p, head),
-                _ => false,
-            };
-            let reach = reach_of(
-                on_path.at.as_deref(),
-                installed.map(|p| p.as_path()),
-                &asked,
-            );
-            let old_entry = matches!(
-                reach,
-                Reach::OtherFile {
-                    old_entry: true,
-                    ..
-                }
-            );
+            let reach = reach_of(on_path.at.as_deref(), installed.map(|p| p.as_path()));
             let v = judge_path_ccm(&ours, &on_path, &reach);
-            (on_path, v, old_entry)
+            (on_path, v)
         }
     };
     let shown = installed
         .zip(entry.as_deref())
         .map(|(p, e)| crate::platform::login_shell::ccm_entry_shown(p, e));
-    let message = render_path_ccm_hint(verdict, &ours, &on_path, shown.as_deref(), old_entry);
+    let message = render_path_ccm_hint(verdict, &ours, &on_path, shown.as_deref());
     let (ok, summary) = local_ccm_cell(installed.is_some(), ours_bytes, verdict, &on_path);
     LocalCcmEntry {
         entry,

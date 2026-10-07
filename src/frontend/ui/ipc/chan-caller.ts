@@ -160,24 +160,3 @@ function unsupported(err: CallError): err is Extract<CallError, { why: "unsuppor
   return err.layer === "peer" && err.why === "unsupported";
 }
 
-/**
- * 这一次失败能不能**证明一个字节都没到对端**（F14 那条安全判定：只有这时才许换一条路重做）。
- *
- * 判准与 Rust `backend_route::route_call_error` 那一收拢**同一条**（跨语言金样 `tests/__fixtures__/reach-collapse.golden.json`
- * 钉着两份：Rust 侧把 inbound 的每一种失败分层上线、连同它判出的「可回落」写成金样，本函数读同一份逐行判）：
- * - `hop` 且 `reach == NotSent`（没有控制通道 · 在飞上限顶满 · 期限在发之前就过了）⇒ 能证明；
- * - `peer/unsupported`（对端**事前**就说不认这条命令，一个字节没发）⇒ 能证明；
- * - 其余（`reach` 是 `Unknown` / `Sent` · 对端说了「不行」· 撤了 · 本侧坏了）⇒ **拿不准就按最坏算**，不能证明。
- *
- * ⚠ 它**不认识任何一条具体命令**：说的只是通道那一跳的归因（`D7`），不是业务判断。
- */
-export function provablyNotSent(err: CallError): boolean {
-  switch (err.layer) {
-    case "hop":
-      return err.reach === "NotSent";
-    case "peer":
-      return err.why === "unsupported";
-    case "ours":
-      return false;
-  }
-}

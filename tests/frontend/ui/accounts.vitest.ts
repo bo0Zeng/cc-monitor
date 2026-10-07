@@ -11,8 +11,8 @@ vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { loadConfig } from "../../../src/frontend/ui/config";
 import { fakeCfg } from "./config-patch-fake";
-import { deriveUi, effectiveDefault, currentWorkingAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, detectAccountMismatch, isSelectable, accountConfigDir, badgeText, sessionBadge, shouldShowAccountBadge, isAccountZero, accountStatusBadge, apikeyEndpointStateFor, accountLoginActionLabel, type AccountsState, type Account, type SessionAccount } from "../../../src/frontend/ui/accounts";
-import { fetchAccounts, fetchSessionAccounts, parseSessionAccountLines, invalidateAccountsCache, __resetAccountsCacheForTest, fetchLocalApikeyRouting } from "../../../src/frontend/ui/account-reads";
+import { deriveUi, effectiveDefault, currentWorkingAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, detectAccountMismatch, isSelectable, accountConfigDir, badgeText, sessionBadge, shouldShowAccountBadge, accountStatusBadge, apikeyEndpointStateFor, type AccountsState, type Account, type SessionAccount } from "../../../src/frontend/ui/accounts";
+import { fetchAccounts, fetchSessionAccounts, parseSessionAccountLines, invalidateAccountsCache, __resetAccountsCacheForTest, fetchMachineApikeyRouting } from "../../../src/frontend/ui/account-reads";
 import { getModelForAccount, setModelForAccount, moveMachinePrefs } from "../../../src/frontend/ui/account-prefs";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
@@ -588,19 +588,6 @@ describe("Z01 账号 0（configDir 缺席）", () => {
   const zero = () =>
     acct({ name: "0", configDir: null, mode: "bare", loggedIn: true, exists: true });
 
-  it("判据是结构性的（configDir 为 null），不认名字", () => {
-    expect(isAccountZero(zero())).toBe(true);
-    expect(isAccountZero(acct({ name: "0", configDir: "/h/.claude-alt/0" }))).toBe(
-      false,
-      // 名字叫 0 但有 config dir ⇒ 那是个普通账号，不是账号 0
-    );
-    expect(isAccountZero(acct({ name: "叫别的", configDir: null }))).toBe(true);
-  });
-
-  it("★ 空串不是账号 0（空值 ≠ 未设）", () => {
-    expect(isAccountZero(acct({ configDir: "" }))).toBe(false);
-  });
-
   it("暂不可选：从 UI 起它需要 unset 注入，launch-plan 今天只会 export", () => {
     expect(isSelectable(zero())).toBe(false);
     const st = state({ accounts: [zero()] });
@@ -726,18 +713,11 @@ describe("K-A1 KA6a：api-key 号的 UI 文案不许说「已登录」", () => {
     expect(b.text).toBe("API key（未配置端点）");
   });
 
-  it("「去登录」按钮对 api-key 号也是假话 ⇒ 换成「打开终端」", () => {
-    expect(accountLoginActionLabel(apiKey()).label).toBe("打开终端");
-    expect(accountLoginActionLabel(apiKey()).title).not.toContain("/login）");
-  });
-
   it("订阅号那三态一格没变（阴性对照）", () => {
     expect(accountStatusBadge(acct({})).text).toBe("已登录");
     expect(accountStatusBadge(acct({})).warn).toBe(false);
     expect(accountStatusBadge(acct({ loggedIn: false, authReady: false })).text).toBe("未登录");
     expect(accountStatusBadge(acct({ mode: "in-place" })).text).toBe("不支持切换");
-    expect(accountLoginActionLabel(acct({})).label).toBe("登录终端");
-    expect(accountLoginActionLabel(acct({ loggedIn: false, authReady: false })).label).toBe("去登录");
   });
 
   it("逃生口优先于 api-key（in-place 压根不支持切号，先说那件事）", () => {
@@ -831,7 +811,7 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
   // 不是「界面上真的显出来了」。
   it("★ 产出方：经通道问 `apikey-routing`，入参是 agent ＋ 那几个 configDir（〔US1〕）", async () => {
     invokeMock.mockResolvedValue(chanReply({ routed: ["/h/.claude-alt/acct-a"], running: true }));
-    const got = await fetchLocalApikeyRouting(["/h/.claude-alt/acct-a", "/h/.claude-alt/acct-b"]);
+    const got = await fetchMachineApikeyRouting(LOCAL_ORIGIN, ["/h/.claude-alt/acct-a", "/h/.claude-alt/acct-b"]);
     // 帧命令名打错在生产上是**运行时**那台后端回 unsupported（不是编译错）⇒ 在这里钉死它。
     const calls = invokeMock.mock.calls;
     expect(calls.map((c) => c[0])).toEqual(["chan_call"]);
@@ -845,10 +825,10 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
   });
 
   it("★★ 走真产出方 → 三档：读数从那条命令来，三个账号落到三个不同的徽章上", async () => {
-    // ⚠ 与下面那条的差别就是**这一格**：这里的 routing 是 `fetchLocalApikeyRouting` 的返回值
+    // ⚠ 与下面那条的差别就是**这一格**：这里的 routing 是 `fetchMachineApikeyRouting` 的返回值
     //（即那条命令的产物），不是判据手写的字面量 ⇒ 命令名 / 入参 / 字段名任一处坏掉，这里就散。
     invokeMock.mockResolvedValue(chanReply({ routed: ["/h/.claude-alt/acct-a"], running: true }));
-    const routing = await fetchLocalApikeyRouting([
+    const routing = await fetchMachineApikeyRouting(LOCAL_ORIGIN, [
       "/h/.claude-alt/acct-a",
       "/h/.claude-alt/acct-b",
     ]);
@@ -862,7 +842,7 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
     );
     // 非空对照：同一条产出方、只把 `running` 翻过来 ⇒ 第三档真的分得开。
     invokeMock.mockResolvedValue(chanReply({ routed: ["/h/.claude-alt/acct-a"], running: false }));
-    const stopped = await fetchLocalApikeyRouting(["/h/.claude-alt/acct-a"]);
+    const stopped = await fetchMachineApikeyRouting(LOCAL_ORIGIN, ["/h/.claude-alt/acct-a"]);
     expect(accountStatusBadge(a, apikeyEndpointStateFor(a, stopped)).text).toBe(
       "API key（中转未运行）",
     );
