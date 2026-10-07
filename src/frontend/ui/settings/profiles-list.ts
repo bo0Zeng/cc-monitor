@@ -13,6 +13,7 @@ import { chan, type Sub } from "../../../comms/inward/chan";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { copyText } from "../copy-table";
 import { homeShort } from "../kit/path";
+import { select as kitSelect } from "../kit/select";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import { toast } from "../kit/toast";
 import { confirmDialog, type ConfirmFn } from "../kit/dialog";
@@ -945,26 +946,25 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
     };
     const nameIn = text(f.name, copyText("profilesPage.form.nameHint"), (v) => changed({ ...f, name: v }), "name");
     field(copyText("profilesPage.form.name"), nameIn, el("div", "cfg-hint", copyText("profilesPage.form.nameHelp")));
-    const fromSel = el("select", "settings-input");
-    fromSel.dataset.role = "from";
-    const none = el("option", "", copyText("profilesPage.form.fromNone"));
-    none.value = "";
-    fromSel.appendChild(none);
-    for (const b of bases) {
-      const o = el("option", "", b.said ? `${b.name}　${b.said}` : b.name);
-      o.value = b.name;
-      o.disabled = !b.selectable;
-      if (!b.selectable) o.textContent = copyText("profilesPage.form.fromSelf", { name: b.name });
-      fromSel.appendChild(o);
-    }
-    if (f.from && !bases.some((b) => b.name === f.from)) {
-      const o = el("option", "", f.from);
-      o.value = f.from;
-      fromSel.appendChild(o);
-    }
-    fromSel.value = f.from ?? "";
-    fromSel.addEventListener("change", () => changed({ ...f, from: fromSel.value || null }));
-    field(copyText("profilesPage.form.from"), fromSel, el("div", "cfg-hint", copyText("profilesPage.form.fromHelp")));
+    // 「基于」下拉：名字 ＋ 小字摘要（后端给的那一句）；自己那一条灰着说为什么。
+    const fromSel = kitSelect({
+      label: copyText("profilesPage.form.from"),
+      options: [
+        { value: "", label: copyText("profilesPage.form.fromNone") },
+        ...bases.map((b) => ({
+          value: b.name,
+          label: b.name,
+          note: b.selectable ? b.said : undefined,
+          enabled: b.selectable,
+          why: b.selectable ? undefined : copyText("profilesPage.form.fromSelf"),
+        })),
+        ...(f.from && !bases.some((b) => b.name === f.from) ? [{ value: f.from, label: f.from }] : []),
+      ],
+      value: f.from ?? "",
+      onChange: (v) => changed({ ...f, from: v || null }),
+    });
+    fromSel.el.dataset.role = "from";
+    field(copyText("profilesPage.form.from"), fromSel.el, el("div", "cfg-hint", copyText("profilesPage.form.fromHelp")));
     const accounts = book?.accounts ?? [];
     for (const s of MAIN_SLOTS) field(SLOT_LABEL[s](), slotEditor(s, f, accounts));
     const more = el("details", "prof-more");

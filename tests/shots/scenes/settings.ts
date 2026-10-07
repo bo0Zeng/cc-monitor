@@ -350,7 +350,9 @@ export const SETTINGS_SCENES: Scene[] = [
     await sleep(500);
     setField(pf("[data-role=profile-form] [data-role=name]"), "bcct2");
     await sleep(400);
-    setField(pf("[data-role=profile-form] [data-role=from]"), "cct");
+    await click(pf("[data-role=profile-form] [data-role=from]"));
+    await sleep(300);
+    await click(await byText("[role^=menuitem]", /^cct/));
     await sleep(500);
     await click(await byText(pf("[data-role=profile-form] .prof-segb"), "b"));
     await sleep(700);

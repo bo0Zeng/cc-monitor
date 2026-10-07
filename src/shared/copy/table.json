@@ -5637,9 +5637,9 @@
       "args": []
     },
     "profilesPage.form.fromSelf": {
-      "kind": "control",
-      "zh": "{name}　自己",
-      "args": ["name"]
+      "kind": "body",
+      "zh": "自己",
+      "args": []
     },
     "profilesPage.form.impactHint": {
       "kind": "body",
