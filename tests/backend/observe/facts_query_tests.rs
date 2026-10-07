@@ -606,10 +606,16 @@ fn handed_back_runs_are_the_ones_that_handed_back() {
     let cut = jsonl(&recs[..3]).len();
     let head = scan_all(&text[..cut]);
     assert_eq!(head.handed_back, ["a2"]);
-    let prior = prior_from(&serde_json::to_value(&head).unwrap()).expect("带着交回那一格的成品能原样回传");
-    assert_eq!(scan_facts(&text.as_bytes()[cut..], prior, &Vec::new(), None).unwrap(), whole);
+    let prior =
+        prior_from(&serde_json::to_value(&head).unwrap()).expect("带着交回那一格的成品能原样回传");
+    assert_eq!(
+        scan_facts(&text.as_bytes()[cut..], prior, &Vec::new(), None).unwrap(),
+        whole
+    );
 
-    let many: Vec<Value> = (0..HANDED_BACK_KEEP + 3).map(|i| handback(&format!("r{i}"), true)).collect();
+    let many: Vec<Value> = (0..HANDED_BACK_KEEP + 3)
+        .map(|i| handback(&format!("r{i}"), true))
+        .collect();
     let f = scan_all(&jsonl(&many));
     assert_eq!(f.handed_back.len(), HANDED_BACK_KEEP);
     assert_eq!(f.handed_back[0], "r3", "超了丢最早的");
