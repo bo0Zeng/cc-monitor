@@ -246,8 +246,12 @@ export const commands = {
   /** log 目录与文件清单。`current_size_bytes`/`size_bytes` 是**字节数**、`modified_ms` 是**毫秒时间戳**——两个量纲的上限论证在 Rust 侧分开写（C03 纪律）。 */
   get_log_file_info: () => invoke<LogFileInfo>("get_log_file_info"),
 
-  /** 日志页「复制诊断信息」：整段诊断文本 ＋ 那一行「未识别数据」用的数（同一份）。`configUnknown` 是界面那份键表认不出的顶层键。 */
-  diagnostics_report: (args: { configUnknown: string[] }) => invoke<DiagnosticsReport>("diagnostics_report", args),
+  /**
+   * 日志页「复制诊断信息」：整段诊断文本 ＋ 那一行「未识别数据」用的数（同一份）。`configUnknown` 是界面那份键表认不出的顶层键；
+   * `drift` 是界面经通道问回来的各台记录账（`drift-report` 的应答，问不到 ⇒ `null`）。
+   */
+  diagnostics_report: (args: { configUnknown: string[]; drift: { origin: string; report: unknown }[] }) =>
+    invoke<DiagnosticsReport>("diagnostics_report", args),
 
   /** 部署内嵌的后端到远端。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
   /** 部署远端后端（连同 `ccm` 入口，一次）。 */

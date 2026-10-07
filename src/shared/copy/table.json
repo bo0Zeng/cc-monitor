@@ -7698,7 +7698,7 @@
     },
     "diagnostics.level.info": {
       "kind": "control",
-      "zh": "一般（默认）",
+      "zh": "一般",
       "args": []
     },
     "diagnostics.level.debug": {
@@ -11386,8 +11386,8 @@
     },
     "rsDiagReport.text.version": {
       "kind": "body",
-      "zh": "版本 {version} · 构建 {build} · {os}",
-      "args": ["version", "build", "os"]
+      "zh": "版本 {version} · 构建 {build}",
+      "args": ["version", "build"]
     },
     "rsDiagReport.text.machines": {
       "kind": "body",
@@ -11396,12 +11396,12 @@
     },
     "rsDiagReport.text.machine": {
       "kind": "body",
-      "zh": "  {machine} · {state}{reason} · 版本 {version} · 构建 {build}",
-      "args": ["machine", "state", "reason", "version", "build"]
+      "zh": "  {machine} · {os} · {state}{reason} · 版本 {version} · 构建 {build}",
+      "args": ["machine", "os", "state", "reason", "version", "build"]
     },
     "rsDiagReport.text.reason": {
       "kind": "body",
-      "zh": "（{reason}）",
+      "zh": " · {reason}",
       "args": ["reason"]
     },
     "rsDiagReport.text.unknown": {

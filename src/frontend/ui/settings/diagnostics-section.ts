@@ -3,7 +3,8 @@
  * 记多细 · 后台出错弹提示 · 文件（今天的日志 · 本机 cc-monitor 输出）· 远端输出去哪看。
  *
  * 诊断信息整段由壳一个命令出（`diagnostics_report`：各版本 · 各台状态与原因码 · 未识别数据 · 日志位置；不含会话内容与 key），
- * 这一页只排版；那一行「未识别数据 · …」读同一份答复里的数。读到之前 / 读不到 ⇒ 复制置灰（悬停说为什么）。
+ * 这一页只排版、只交原料：各台的记录账（经通道问那台 `drift-report`，问不到交 `null`）与认不出的顶层键（键表住界面）。
+ * 那一行「未识别数据 · …」读同一份答复里的数。读到之前 / 读不到 ⇒ 复制置灰（悬停说为什么）。
  * 构造零 I/O：宿主在这一页第一次可见时调 [`loadNow`]。
  */
 
@@ -21,14 +22,17 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import { homeDir } from "@tauri-apps/api/path";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { DiagnosticsReport } from "../generated/DiagnosticsReport";
+import { readRecordDrift, type RecordDriftFace } from "../record-reads";
+import { hostKey, readRemoteConfig } from "../remote-config";
+import { LOCAL_ORIGIN } from "../ipc/origin";
 
-/** 记多细：界面上的四档（后端那一格的值 → 文案键）。 */
-const LEVELS = [
-  ["error", "diagnostics.level.error"],
-  ["warn", "diagnostics.level.warn"],
-  ["info", "diagnostics.level.info"],
-  ["debug", "diagnostics.level.debug"],
-] as const;
+/** 记多细：界面上的四档（后端那一格的值 ＋ 怎么说）。 */
+const LEVELS = (): readonly (readonly [string, string])[] => [
+  ["error", copyText("diagnostics.level.error")],
+  ["warn", copyText("diagnostics.level.warn")],
+  ["info", copyText("diagnostics.level.info")],
+  ["debug", copyText("diagnostics.level.debug")],
+];
 
 type SwitchHandle = ReturnType<typeof toggleSwitch>;
 
@@ -85,10 +89,10 @@ export class DiagnosticsSection {
     const level = this.line(copyText("diagnostics.build.level"));
     this.levelSelect = document.createElement("select");
     this.levelSelect.className = "settings-input";
-    for (const [v, key] of LEVELS) {
+    for (const [v, said] of LEVELS()) {
       const opt = document.createElement("option");
       opt.value = v;
-      opt.textContent = copyText(key);
+      opt.textContent = said;
       this.levelSelect.appendChild(opt);
     }
     this.levelSelect.addEventListener("change", () => void this.save({ log_level: this.levelSelect.value }));
@@ -232,7 +236,7 @@ export class DiagnosticsSection {
   /** 诊断信息那一份：那一行的数 ＋ 复制用的整段。 */
   private async readReport(): Promise<void> {
     try {
-      this.report = await commands.diagnostics_report({ configUnknown: unknownConfigKeys() });
+      this.report = await commands.diagnostics_report({ configUnknown: unknownConfigKeys(), drift: await driftOfAll() });
       this.unknownLine.textContent = unknownSaid(this.report);
     } catch (e) {
       this.report = null;
@@ -328,6 +332,25 @@ export function unknownSaid(r: DiagnosticsReport): string {
   if (r.configUnknown > 0) parts.push(copyText("diagnostics.unknown.config", { n: r.configUnknown }));
   if (parts.length === 0) return copyText("diagnostics.unknown.none");
   return copyText("diagnostics.unknown.line", { parts: parts.join(copyText("kit.text.sep")) });
+}
+
+/** 各台的记录账（本机 ＋ 机器表里每一台；问不到 ⇒ `null`，壳照实写「读不到」）。 */
+async function driftOfAll(): Promise<{ origin: string; report: { faces: RecordDriftFace[] } | null }[]> {
+  let hosts: string[] = [];
+  try {
+    hosts = (await readRemoteConfig()).hosts.map(hostKey).filter((h) => h.trim() !== "");
+  } catch {
+    hosts = [];
+  }
+  return Promise.all(
+    [LOCAL_ORIGIN, ...hosts].map(async (origin) => {
+      try {
+        return { origin, report: { faces: await readRecordDrift(origin) } };
+      } catch {
+        return { origin, report: null };
+      }
+    }),
+  );
 }
 
 function sizeOf(bytes: number): HTMLElement {

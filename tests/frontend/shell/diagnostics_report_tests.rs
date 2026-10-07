@@ -2,9 +2,16 @@
 
 use super::*;
 
-fn line(name: &str, state: &str, reason: Option<&str>, build: Option<&str>, records: Option<u64>) -> MachineLine {
+fn line(
+    name: &str,
+    state: &str,
+    reason: Option<&str>,
+    build: Option<&str>,
+    records: Option<u64>,
+) -> MachineLine {
     MachineLine {
         name: name.to_string(),
+        os: Some("Linux".to_string()),
         state: state.to_string(),
         reason: reason.map(str::to_string),
         version: None,
@@ -18,7 +25,6 @@ fn 一段里有版本构建各台状态与原因码未识别数据日志位置()
     let r = render(
         "4.1.1",
         Some("p8n-mcp-sync"),
-        "linux",
         &[
             line("本机", "up", None, Some("p8n-mcp-sync"), Some(0)),
             line("devbox", "down", Some("auth"), None, None),
@@ -30,20 +36,33 @@ fn 一段里有版本构建各台状态与原因码未识别数据日志位置()
     for want in [
         "4.1.1",
         "p8n-mcp-sync",
-        "devbox · down（auth）",
+        "devbox · Linux · down · auth",
         "gpu-01 · 会话记录 3 条",
         "devbox · 读不到",
         "config.json · 2 项：resumeCommandLocal、x",
         "/h/.cc-monitor/logs/monitor.2026-10-06.log",
     ] {
-        assert!(r.text.contains(want), "诊断信息里没有「{want}」：\n{}", r.text);
+        assert!(
+            r.text.contains(want),
+            "诊断信息里没有「{want}」：\n{}",
+            r.text
+        );
     }
     assert_eq!(
         r.unknown,
         vec![
-            UnknownOnMachine { machine: "本机".into(), records: Some(0) },
-            UnknownOnMachine { machine: "devbox".into(), records: None },
-            UnknownOnMachine { machine: "gpu-01".into(), records: Some(3) },
+            UnknownOnMachine {
+                machine: "本机".into(),
+                records: Some(0)
+            },
+            UnknownOnMachine {
+                machine: "devbox".into(),
+                records: None
+            },
+            UnknownOnMachine {
+                machine: "gpu-01".into(),
+                records: Some(3)
+            },
         ],
         "日志页那一行读的数与段里的不是同一份"
     );
@@ -52,8 +71,18 @@ fn 一段里有版本构建各台状态与原因码未识别数据日志位置()
 
 #[test]
 fn 没写日志文件与没有认不出的键各有一句() {
-    let r = render("4.1.1", None, "linux", &[line("本机", "up", None, None, Some(0))], &[], None);
-    assert!(r.text.contains(&copy_text("rsDiagReport.text.noLog", &[])), "{}", r.text);
+    let r = render(
+        "4.1.1",
+        None,
+        &[line("本机", "up", None, None, Some(0))],
+        &[],
+        None,
+    );
+    assert!(
+        r.text.contains(&copy_text("rsDiagReport.text.noLog", &[])),
+        "{}",
+        r.text
+    );
     assert!(r.text.contains("config.json · 0 项：—"), "{}", r.text);
 }
 
@@ -65,7 +94,11 @@ fn 记录账各面各条相加_形状不对不猜成零() {
     ]});
     assert_eq!(records_in(&v), Some(8));
     assert_eq!(records_in(&serde_json::json!({"faces": []})), Some(0));
-    assert_eq!(records_in(&serde_json::json!({})), None, "缺 faces 说成 0 条 ＝ 把读不到说成都认得");
+    assert_eq!(
+        records_in(&serde_json::json!({})),
+        None,
+        "缺 faces 说成 0 条 ＝ 把读不到说成都认得"
+    );
     assert_eq!(
         records_in(&serde_json::json!({"faces": [{"entries": [{"count": "x"}]}]})),
         None

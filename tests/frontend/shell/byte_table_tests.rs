@@ -635,6 +635,8 @@ fn my_version_is_read_only_through_my_backend_id() {
         "cc_bus_deploy.rs",
         // 本机那一台的状态成品（版本 · 不可比）
         "backend_control.rs",
+        // 日志页「复制诊断信息」那一段里写出这一版的构建标识（只读出来写进文本，不判）
+        "diagnostics_report.rs",
     ]
     .into_iter()
     .map(String::from)

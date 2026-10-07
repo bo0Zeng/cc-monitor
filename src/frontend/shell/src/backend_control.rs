@@ -222,6 +222,11 @@ fn backend_status_now(origin: String) -> Result<serde_json::Value, String> {
     }))
 }
 
+/// 那台此刻的状态成品（通道在不在现看）：`machine-state` 推送与诊断信息那一段读这一处。
+pub(crate) fn machine_now(origin: &str) -> crate::machine_state::MachineState {
+    machine_product(origin, crate::inbound_client::client_for(origin).is_some())
+}
+
 /// 那台的状态成品（`backend_status` 的 `machine` 一格与 `machine-state` 推送同一处）：本机按通道与手上这一版；
 /// 远端按那张表，「连接这台」关着 ⇒ 停用。
 pub(crate) fn machine_product(origin: &str, channel: bool) -> crate::machine_state::MachineState {
