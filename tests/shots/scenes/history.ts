@@ -160,6 +160,11 @@ export const HISTORY_SCENES: Scene[] = [
     await click(await waitFor('.history-view [data-role="resume"] button[aria-haspopup="menu"]'));
     await sleep(500);
   }),
+  hist("history-18-empty", "历史 · 0 条消息的会话", "点开一个没有消息的会话（排序模型评测脚本，Codex）：消息流那一格是空态「无消息」，不是一片空白", async () => {
+    await openHistory();
+    await click(await byText('.history-view [role="option"]', "排序模型评测脚本"));
+    await sleep(900);
+  }),
   hist("history-09-said", "历史 · 你说过的话", "查看器工具行「你说过的话 · N ▾」：浮层列出你说过的每一句，当前读到的那句高亮", async () => {
     await openHistory();
     await click(await row(0));

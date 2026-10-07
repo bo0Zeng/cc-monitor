@@ -125,6 +125,19 @@
     padding: var(--space-6);
   }
 
+  /* 0 条消息：占住消息流那一格，空态居中。 */
+  .svEmpty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+  }
+
+  .svEmpty[hidden] {
+    display: none;
+  }
+
   .svBroken {
     display: flex;
     align-items: center;

@@ -4,6 +4,7 @@ declare const classes: {
   readonly svBadges: string;
   readonly svBanner: string;
   readonly svBroken: string;
+  readonly svEmpty: string;
   readonly svFoot: string;
   readonly svHead: string;
   readonly svHeadTop: string;
