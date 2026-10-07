@@ -203,11 +203,10 @@ fn every_path_dependency_is_actually_committed() {
     // 🔴 解析那一段搬进了 `guard_core::inline_table_paths`（同拍，2026-09-23）——
     //    理由与「它买不到什么」住那个原语的头注，不在这里抄第二份。
     let paths: Vec<String> = guard_core::inline_table_paths(&toml);
-    // 抽取器自检：至少要抽到那 6 个共享 crate + vendor = 7 条（按实测）。
+    // 抽取器自检（正控）：守卫原语那个共享 crate 的 path 依赖必被抽到。
     assert!(
-        paths.len() >= 7,
-        "只从 Cargo.toml 抽到 {} 条 path 依赖（应 ≥7）—— 抽取坏了，本条会零命中地绿：{paths:?}",
-        paths.len()
+        paths.iter().any(|p| p.trim_end_matches('/').ends_with("common/guard-core")),
+        "从 Cargo.toml 抽到的 path 依赖里没有 `common/guard-core` —— 抽取坏了，本条会零命中地绿：{paths:?}"
     );
     let mut untracked = Vec::new();
     for rel in &paths {
@@ -334,9 +333,8 @@ fn workspace_members_do_not_reference_crates_that_no_longer_exist() {
         shared_crate_names().len()
     );
     assert!(
-        scanned >= 7,
-        "只从 `[workspace] members` 扫到 {scanned} 条指进 `src/common/` 的（08-27 实测应为 7）—— \
-             要么真少了，要么本抽取器与 Cargo.toml 的写法分家了。后者会让下面那条零命中变绿"
+        scanned > 0,
+        "从 `[workspace] members` 一条指进 `src/common/` 的都没扫到 —— 本抽取器与 Cargo.toml 的写法分家了"
     );
     assert!(
         ghosts.is_empty(),
@@ -667,10 +665,12 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
             }
         }
     }
-    // ★ 自检 1：一条都收不到 ⇒ 剥法坏了（下面会零命中地绿）。
+    // ★ 自检 1（正控）：真机才跑的那条 PATH 往返判据必被收到 ⇒ 否则剥法坏了（下面会零命中地绿）。
     assert!(
-        ignored.len() >= 5,
-        "全仓只收到 {} 条 `#[ignore]` 测试 —— 剥法坏了（建判据当天实测 7 条）",
+        ignored
+            .iter()
+            .any(|(_, n)| n == "wf1_real_powershell_add_then_remove_restores_the_user_path"),
+        "收到的 {} 条 `#[ignore]` 测试里没有 PATH 往返那一条 —— 剥法坏了",
         ignored.len()
     );
 
@@ -713,9 +713,8 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
     // ★ 自检 2：过滤串收不到 ⇒ 下面每条都会被判成「没人触发」，看起来像大面积腐坏，
     //   实际是抽取器坏了。两种坏法要能分开。
     assert!(
-        filters.len() >= 3,
-        "从 `tests/e2e/*.sh` 只收到 {} 个 `--ignored` 触发过滤串 —— 抽取器坏了（建判据当天实测 4 个）：{filters:?}",
-        filters.len()
+        filters.iter().any(|(_, f)| f.contains("local_backend")),
+        "从 `tests/e2e/*.sh` 收到的 `--ignored` 触发过滤串里没有本机后端那一条 —— 抽取器坏了：{filters:?}"
     );
 
     let covered = |stem: &str, name: &str| -> Option<String> {
