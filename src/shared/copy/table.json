@@ -9799,7 +9799,7 @@
     },
     "rsLocalBackend.resolve.notBeside": {
       "kind": "error",
-      "zh": "本机离线 · cc-monitor 安装不完整 · 缺 {stem} · 重新装一次安装包 · 远端同样不可连",
+      "zh": "本机离线 · 安装不完整 · 缺 {stem} · 重新装上安装包 · 远端同样不可连",
       "args": ["stem"]
     },
     "rsBackendControl.handle.missing": {

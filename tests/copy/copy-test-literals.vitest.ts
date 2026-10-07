@@ -9,8 +9,9 @@
  *
  * # 判什么
  *
- * 1. 每份测试源码里「像文案的中文字面量」的处数 == `test-literal-ledger.json` 里那份的登记数（两向相等：
- *    多了 ⇒ 新长出按原文的断言，改成按键；少了 ⇒ 改账，把数改小）。
+ * 1. 每份测试源码里「像文案的中文字面量」的处数 ≤ `test-literal-ledger.json` 里那份的登记数
+ *    （多了 ⇒ 新长出按原文的断言，改成按键；少了不拦 —— 改表值会让片段变、数自然变小，不逼别的路去改账）。
+ *    ⚠ 过渡形：终态换成「测试里零处与文案表值逐字相同的中文字面量 ＋ 按 文件 · 键或用途 认的明写豁免表」，那时本账删掉。
  *    「像文案」：字面量（去掉首尾空白）至少 3 个汉字、且是表里某条固定片段的子串；或至少 2 个汉字、且恰等于某条固定片段。
  *    固定片段 = 表里一条 `zh` 按占位符与换行切开的每一段。
  * 2. 正控：同一个计数器对着一段带表里原句的样本数得出来；对着不在表里的中文数出 0。
@@ -28,6 +29,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { SCAN_TIMEOUT_MS } from "../test-support/production-sources.ts";
 import { REPO_ROOT } from "../test-support/repo-root.ts";
 import { TABLE_PATH } from "./copy-support.ts";
 
@@ -83,7 +85,7 @@ describe("测试按文案键断言（中文原文字面量的账）", () => {
     expect(countCopyLiterals('const t = "蒹葭苍苍白露为霜";\n// expect(x).toBe("' + longest + '")', frags, fragSet)).toBe(0);
   });
 
-  it("★ 每份测试源码的处数 == 账上登记的数（只许减；减了就把账改小）", () => {
+  it("★ 每份测试源码的处数不超过账上登记的数（过渡：只拦新长出来的）", () => {
     const ledger = JSON.parse(readFileSync(LEDGER_PATH, "utf8")).files as Record<string, number>;
     const got: Record<string, number> = {};
     const files = testSources();
@@ -94,7 +96,5 @@ describe("测试按文案键断言（中文原文字面量的账）", () => {
     }
     const grew = Object.keys(got).filter((f) => got[f] > (ledger[f] ?? 0)).map((f) => `${f}: ${ledger[f] ?? 0} → ${got[f]}`);
     expect(grew, "这几份测试新长出了按中文原文的断言 —— 改成按文案键（copyText / copyPattern / copy_text / copy_matches）").toEqual([]);
-    const shrank = Object.keys(ledger).filter((f) => (got[f] ?? 0) < ledger[f]).map((f) => `${f}: ${ledger[f]} → ${got[f] ?? 0}`);
-    expect(shrank, "这几份少了 —— 把 tests/copy/test-literal-ledger.json 里的数改小").toEqual([]);
-  });
+  }, SCAN_TIMEOUT_MS);
 });

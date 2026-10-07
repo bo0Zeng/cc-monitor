@@ -2535,7 +2535,10 @@ fn e2e_a_binary_that_always_dies_is_given_up_on_within_the_cap() {
         })
     })
     .expect("10s 内没放弃 —— 它在无限自旋？");
-    assert!(gave_up.contains("崩了 3 次"), "放弃理由不对：{gave_up}");
+    assert!(
+        copy_core::copy_matches("rsLocalBackend.decide.crashLoop", &gave_up),
+        "放弃理由不对：{gave_up}"
+    );
     let n = h.attempts();
     assert_eq!(n, 3, "应当正好起 3 次就放弃，实得 {n}");
     println!("E2E-OK 必崩二进制在 3 次内被判死，没有自旋");

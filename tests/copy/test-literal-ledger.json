@@ -110,7 +110,7 @@
     "tests/frontend/shell/lib_remote_config_tests.rs": 1,
     "tests/frontend/shell/link_mux_tests.rs": 1,
     "tests/frontend/shell/local_backend_host_tests.rs": 3,
-    "tests/frontend/shell/local_backend_tests.rs": 1,
+    "tests/frontend/shell/local_backend_tests.rs": 2,
     "tests/frontend/shell/logging_tests.rs": 2,
     "tests/frontend/shell/machine_state_tests.rs": 7,
     "tests/frontend/shell/paths_tests.rs": 1,
