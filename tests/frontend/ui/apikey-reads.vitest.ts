@@ -81,7 +81,7 @@ describe("严格收：形状不对 ⇒ 抛「两端版本对不上」", () => {
   });
   it.each([
     ["多一格", { ...rt, x: 1 }],
-    [copyText("dataPage.install.title", { name: "running" }), { routed: [] }],
+    ["缺 running", { routed: [] }],
     ["routed 里不是字符串", { routed: [1], running: true }],
     ["running 不是布尔", { routed: [], running: 1 }],
   ])("apikey-routing · %s", (_n, v) => {
