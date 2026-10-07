@@ -85,7 +85,10 @@ export interface LiveSeen {
 interface Pending extends ArrivalSpec {
   /** `{cwd}` 那一格：预期那一刻这台已经报过的 sid（它们不算「新起的」）。 */
   before: Set<string>;
-  timer: ReturnType<typeof setTimeout>;
+  /** 到点说「没看到」的那一下；`null` ＝ 不设期限（占位标签页那一形：一直等到报到或被关掉）。 */
+  timer: ReturnType<typeof setTimeout> | null;
+  /** 报到了交给谁（占位标签页那一形）；没有 ⇒ 照常说那一句、回发起方。 */
+  onArrived?: (sid: string) => void;
 }
 
 const pending = new Set<Pending>();
@@ -160,6 +163,24 @@ export function watchArrival(spec: ArrivalSpec): void {
   pending.add(p);
 }
 
+/**
+ * 主窗口：起好了的那一个一直等到那台报出它（不设期限：没报到的样子由占位标签页自己画），报到了交 `onArrived`。
+ * 回一个「不等了」（占位标签页被关掉时调）。
+ */
+export function watchUntilArrived(origin: Origin, match: ArrivalMatch, onArrived: (sid: string) => void): () => void {
+  const p: Pending = {
+    origin,
+    match,
+    tmuxName: null,
+    arrived: null,
+    before: new Set(seenLive.get(key(origin)) ?? []),
+    timer: null,
+    onArrived,
+  };
+  pending.add(p);
+  return () => void pending.delete(p);
+}
+
 function answer(p: ArrivalSpec, sid: string | null): void {
   if (p.ticket === undefined) return;
   emit(LAUNCH_DONE_EVENT, { ticket: p.ticket, sid }).catch((e: unknown) => console.warn("[launch-arrival] 回不了发起方：", e));
@@ -198,8 +219,12 @@ export function noteLive(origin: Origin, sid: string, seen: LiveSeen): void {
   const k = key(origin);
   for (const p of pending) {
     if (key(p.origin) !== k || !arrivalMatches(p.match, sid, seen, p.before)) continue;
-    clearTimeout(p.timer);
+    if (p.timer !== null) clearTimeout(p.timer);
     pending.delete(p);
+    if (p.onArrived) {
+      p.onArrived(sid);
+      continue;
+    }
     if (p.arrived !== null) say(p, p.arrived.title, p.arrived.body, "info");
     answer(p, sid);
   }
@@ -224,9 +249,14 @@ export function bindLaunchEcho(): void {
   });
 }
 
+/** 只给判据用：还在等的有几件。 */
+export function __pendingCountForTests(): number {
+  return pending.size;
+}
+
 /** 只给判据用。 */
 export function __resetArrivalsForTests(): void {
-  for (const p of pending) clearTimeout(p.timer);
+  for (const p of pending) if (p.timer !== null) clearTimeout(p.timer);
   pending.clear();
   seenLive.clear();
 }

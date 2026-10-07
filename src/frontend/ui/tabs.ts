@@ -85,6 +85,7 @@ import { frontView, type FrontAct, type FrontResult } from "./front-result";
 import { awaitedFor, clearAwaiting, markAwaiting } from "./cards/step-line";
 import { machineName } from "./control-said";
 import { closeFrontResult, copyFrontDetail, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
+import { CHANNEL_ACTS, LaunchSlots, type SlotSpec } from "./launch-slot";
 
 
 export class TabManager {
@@ -151,6 +152,16 @@ export class TabManager {
       rereadAll: () => this.rereadAll(),
       reconnect: (origin) => this.reconnect(origin),
     });
+    this.slots = new LaunchSlots(
+      {
+        tail: this.bar.slotTail,
+        root: streamRootEl,
+        hasTab: (sid) => this.store.tabs.has(sid),
+        switchTo: (sid) => this.switchTo(sid),
+        shown: (on) => this.onSlotShown?.(on),
+      },
+      CHANNEL_ACTS,
+    );
     this.dragger = new TabBarDrag(this.store, this.prefs, barEl, this.bar.tabButtons, {
       refreshTabBar: () => this.refreshTabBar(),
       openInNewWindow: (sid, screenX, screenY) => this.openInNewWindow(sid, screenX, screenY),
@@ -238,6 +249,10 @@ export class TabManager {
    * 而且判据会把实例上的 `refreshTabBar` 换成计数替身 —— 帧末合批那一刷必须经它。
    */
   private readonly bar: TabBarView;
+  /** 起新会话之后、报到之前的占位标签页（`launch-slot.ts`）：栏里跟在列表末尾，那一页盖在消息流上。 */
+  private readonly slots: LaunchSlots;
+  /** 占位标签页那一页显 / 收（宿主让会话头跟着让开）。 */
+  onSlotShown: ((on: boolean) => void) | null = null;
 
   /**
    * F40c DEV 探针用:active tab 状态一行 JSON（形状、口径与秤 6 的三个账本见 `tab-stream-view.ts` 那一份）。
@@ -1654,6 +1669,16 @@ export class TabManager {
     if (this.store.activeId) void this.openInNewWindow(this.store.activeId);
   }
 
+  /** 起新会话：那台回了「起好了 / 开窗」⇒ 长出一个占位标签页、主区换成它（报到了换成真的）。 */
+  addLaunchSlot(spec: SlotSpec): void {
+    this.slots.add(spec);
+  }
+
+  /** 只给判据用：占位标签页此刻几个 · 正看着哪一个。 */
+  debugSlots(): { ids: number[]; showing: number | null } {
+    return this.slots.debug();
+  }
+
   /** account-ux U8：当前活跃会话 sid（只读投影，供 Ctrl+K / 快捷键判定"对当前会话做某事"）。 */
   activeSessionId(): string | null {
     return this.store.activeId;
@@ -1670,6 +1695,11 @@ export class TabManager {
    */
   switchTo(sessionId: string, source: "manual" | "auto" = "manual"): void {
     if (!this.store.tabs.has(sessionId)) return;
+    // 正看着占位标签页：自动跟随不把人拽走；手动切 ⇒ 那一页收起（切回原来那个标签页也算）。
+    if (this.slots.isShowing()) {
+      if (source === "auto") return;
+      this.slots.hide();
+    }
     if (this.store.activeId === sessionId) return;
 
     // 切 active 走 .active class（CSS visibility 控制），避免 display:none/block

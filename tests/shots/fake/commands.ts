@@ -11,5 +11,7 @@ export function defaultCommands(): Record<string, CommandHandler> {
     patch_config: () => null,
     backend_machines: (_a, w) => w.machines,
     frontend_perf_log: () => null,
+    // 本机开一个终端窗口跑那一行：截图里不真开，当作开了。
+    open_local_terminal: () => null,
   };
 }

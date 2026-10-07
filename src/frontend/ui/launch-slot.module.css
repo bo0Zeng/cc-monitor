@@ -1,0 +1,110 @@
+/* 起会话之后的占位标签页：栏里那几行跟在列表末尾；主区那一页盖在消息流上（头一行 ＋ 没报到时的报错卡）。 */
+@layer components {
+  .slotTail:empty {
+    display: none;
+  }
+
+  .slotPanel {
+    position: absolute;
+    inset: 0;
+    /* 盖住这一格里的一切（流 · 刻度条 · 查找条都在 `--z-float`）；`#message-stream` 自成层叠上下文，出不了这一格。 */
+    z-index: var(--z-view);
+    overflow-y: auto;
+    background: var(--bg);
+  }
+
+  .slotPanel[hidden] {
+    display: none;
+  }
+
+  .slotHead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    height: 40px;
+    min-width: 0;
+    padding: 0 var(--space-3) 0 var(--space-6);
+    border-bottom: 1px solid var(--border-faint);
+  }
+
+  .slotTitle {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    font-weight: var(--font-weight-strong);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .slotWhere {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .slotState {
+    color: var(--error);
+    font-size: var(--font-size-small);
+    white-space: nowrap;
+  }
+
+  .slotState::before {
+    margin-right: var(--space-3);
+    color: var(--text-faint);
+    content: var(--mark-sep);
+  }
+
+  .slotCard {
+    display: flex;
+    gap: var(--space-4);
+    max-width: 780px;
+    margin: var(--space-6) auto 0;
+    padding: var(--space-5) var(--space-6);
+    border-left: 3px solid var(--error);
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+  }
+
+  .slotCard > svg {
+    flex: none;
+    margin-top: 2px;
+    color: var(--error);
+  }
+
+  .slotBody {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .slotSub {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    overflow-wrap: anywhere;
+  }
+
+  .slotOut {
+    margin: var(--space-3) 0 0;
+    padding: var(--space-2) var(--space-3);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .slotActs {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+  }
+
+  .slotSp {
+    flex: 1;
+  }
+}
