@@ -840,7 +840,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p8v-token-log：中转替某号续令牌与上游 401 / 403 按号记日志；续期锁释放进 Drop、锁目录过期收回。
 ///
 /// p8w-step-state：history-facts 的 pending[] 带 state / why（在跑 · 在等你 · 状态不明及原因码），另给 retries（一串重试接上没有）。
-pub const BUILD_ID: &str = "p8w-step-state";
+///
+/// p8x-own-state：后端自有状态文件读写收成 common/own_state；记录一遍扫出五样并缓存；宣告会话查 sid 表；线上形状不变。
+pub const BUILD_ID: &str = "p8x-own-state";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
