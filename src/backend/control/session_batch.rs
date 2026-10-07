@@ -59,6 +59,18 @@ pub(crate) struct Deps<'a> {
     pub(crate) accounts: &'a la::Facts<'a>,
     /// sid ⇒ 此刻持着它的活进程 pid（这台的 pidfile，升序）。起之前问：已有在写的 ⇒ 不再起一个。
     pub(crate) writers: &'a dyn Fn(&str) -> Vec<u32>,
+    /// `(号目录, 工作目录)` ⇒ 起之前把工作目录标成那个号信任过（那一家没有「信任」这件事 ⇒ 什么都不做；写不成只出声、照常起）。
+    pub(crate) pretrust: &'a dyn Fn(&str, &str),
+}
+
+/// 起之前那一下：用的是账号库里的号 ⇒ 工作目录标成那个号信任过（[`Deps::pretrust`]）。账号 0 / 不表态 ⇒ 不写
+/// （账号 0 那一份是用户主配置，一个字节不写）。
+pub(crate) fn pretrust(account: &Settled, cwd: &str, deps: &Deps) {
+    if let Settled::Account(a) = account {
+        if !cwd.is_empty() {
+            (deps.pretrust)(&a.config_dir, cwd);
+        }
+    }
 }
 
 /// 原因码：这条会话已有活进程在写，没起（再起一个就是两个进程同写一份记录）。
@@ -476,8 +488,12 @@ fn start_one(
     let done = match tmux {
         true => start_in_tmux(it, b, &account, rows, here, &live, deps),
         false if !live.is_empty() => already_live(&it.sid, &live),
-        false if here => start_window_here(it, b, &account, rows, deps),
+        false if here => {
+            pretrust(&account, &it.cwd, deps);
+            start_window_here(it, b, &account, rows, deps)
+        }
         false => {
+            pretrust(&account, &it.cwd, deps);
             let line = own_entry(deps).and_then(|entry| {
                 wire::render_ccm_launch_with(
                     &wire_req(it, b, None, true),
@@ -552,10 +568,13 @@ fn start_in_tmux(
             });
             let done = match line {
                 Err(said) => Answer::failed(&it.sid, ("refused", said)),
-                Ok(line) => match (deps.send_into)(&n, &it.sid, &line) {
-                    Ok(()) => Answer::done(&it.sid),
-                    Err(e) => Answer::failed(&it.sid, e),
-                },
+                Ok(line) => {
+                    pretrust(account, &it.cwd, deps);
+                    match (deps.send_into)(&n, &it.sid, &line) {
+                        Ok(()) => Answer::done(&it.sid),
+                        Err(e) => Answer::failed(&it.sid, e),
+                    }
+                }
             };
             Answer {
                 session: Some(n),
@@ -638,13 +657,18 @@ pub(crate) fn start_named(
     };
     let done = match argv {
         Err(said) => Answer::failed(&it.sid, ("refused", said)),
-        Ok(argv) => match (deps.run_ccm)(&argv) {
-            Ok((0, _, _)) => Answer::done(&it.sid),
-            // ccm 的退出码 3 = 会话名被占（它响亮失败，不接回别人的会话）。
-            Ok((3, _, _)) => Answer::failed(&it.sid, ("name_taken", name.clone())),
-            Ok((_, _, err)) => Answer::failed(&it.sid, ("start_failed", err.trim().to_string())),
-            Err(e) => Answer::failed(&it.sid, e),
-        },
+        Ok(argv) => {
+            pretrust(account, &it.cwd, deps);
+            match (deps.run_ccm)(&argv) {
+                Ok((0, _, _)) => Answer::done(&it.sid),
+                // ccm 的退出码 3 = 会话名被占（它响亮失败，不接回别人的会话）。
+                Ok((3, _, _)) => Answer::failed(&it.sid, ("name_taken", name.clone())),
+                Ok((_, _, err)) => {
+                    Answer::failed(&it.sid, ("start_failed", err.trim().to_string()))
+                }
+                Err(e) => Answer::failed(&it.sid, e),
+            }
+        }
     };
     Answer {
         session: Some(name),

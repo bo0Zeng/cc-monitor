@@ -28,8 +28,9 @@
 //!
 //! # 本轮**没有**做到的，逐条写在这里（别读成做到了）
 //!
-//! - **信任这个目录吗**：ccm 不替用户答 —— 不写 `~/.claude.json` / `~/.codex/config.toml`，
-//!   也不往会话里按键。`claude` 首次进一个目录会问，由用户在会话里自己答（那是它的安全检查）。
+//! - **信任这个目录吗**：ccm 自己不替用户答 —— 不写 `~/.claude.json` / `~/.codex/config.toml`，
+//!   也不往会话里按键；用户在终端里直接敲的那一趟照样由 agent 自己问。cc-monitor 经后端起 / 重启会话时，
+//!   后端在起之前把工作目录标进要用的那个号（`accounts::manage::trust_share_exec::pretrust`），不在这里。
 //! - **`--help` 的正文**：旧实现是 `sed` 自己的注释块；这里是 [`USAGE`] 常量，**文本不同**。
 
 pub(crate) mod argv;

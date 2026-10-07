@@ -1184,6 +1184,18 @@ pub(crate) struct AccountsFace {
     pub(crate) session_env: SessionEnvKeys,
     /// 一个配置根下、对某个 cwd 的信任状态 ⇒ 一行 JSON（`{trusted, known, error}`）；读不了 ⇒ `(码, 原话)`。
     pub(crate) trust_in: fn(root: &Path, cwd: &str) -> Result<String, (String, String)>,
+    /// 「这个目录信任过」在那份配置文件里记在哪一格（各号之间同步信任 · 起会话前预标都只碰它）；没有这件事的家 ⇒ `None`。
+    pub(crate) trust: Option<TrustCells>,
+}
+
+/// 信任记在配置文件里的那一格：顶层 `table` 是「目录 → 那个目录的一项」的表；`flag` 是那一项里记「信任过」的那一格
+/// （`None` ⇒ 那一项本身就是 `true`）。通用层只按这几格读写，不认任何一家的键名。
+#[derive(Clone, Copy)]
+pub(crate) struct TrustCells {
+    pub(crate) table: &'static str,
+    pub(crate) flag: Option<&'static str>,
+    /// 一个工作目录在表里用哪个键（这一家进程认的那一形，如解开符号链接 · 换分隔符）。
+    pub(crate) dir_key: fn(&str) -> String,
 }
 
 /// 账号归属从会话进程环境里读的那两个键，收成一处：账号（配置根）· 上游地址。

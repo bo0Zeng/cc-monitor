@@ -99,6 +99,7 @@ pub(crate) fn restart_outcome(
 pub(crate) async fn answer_switch(
     args: Value,
     until: Option<crate::platform::child::Until>,
+    files: super::launch_face::Files,
 ) -> Answer {
     let ask = switch_ask(&args)?;
     let now = crate::accounts::quota::now_unix();
@@ -123,8 +124,12 @@ pub(crate) async fn answer_switch(
     }
     for item in ask.items {
         let sid = item["sid"].as_str().unwrap_or_default().to_string();
-        let r = crate::faces::session_restart_face::answer(restart_args(&item, &ask.target), until)
-            .await;
+        let r = crate::faces::session_restart_face::answer(
+            restart_args(&item, &ask.target),
+            until,
+            files,
+        )
+        .await;
         let mut o = restart_outcome(&r);
         if r.is_ok() {
             // 换过去了（报没报出都算）⇒ 记一条；写不进 ⇒ `ioFailed`（旧的已停）。

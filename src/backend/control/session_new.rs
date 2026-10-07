@@ -249,6 +249,8 @@ pub(crate) fn answer(
         agent: kind.to_string(),
         cwd: cwd.clone(),
     };
+    // 起之前：工作目录标成要用的那个号信任过（三种起法同一下）。
+    super::session_batch::pretrust(&account, &cwd, deps);
     let out = match name {
         Some(name) => {
             let argv = own_entry(deps).and_then(|entry| {

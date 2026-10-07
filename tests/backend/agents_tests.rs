@@ -695,6 +695,7 @@ const fn accounts(config_file: &'static str) -> AccountsFace {
             settings_may_set_base_url: |_, _, _| false,
         },
         trust_in: |_, _| Err((String::new(), String::new())),
+        trust: None,
     }
 }
 

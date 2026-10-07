@@ -27,6 +27,8 @@ struct Rig {
     forks: RefCell<Vec<(String, String)>>,
     /// 号 `work` 能用；`gone` 选不了（替代 ＝ `work`，这台的默认号）。
     last: Option<&'static str>,
+    /// 预标信任那几下：`<号目录> <工作目录> @<此前已交的 ccm 数>`。
+    marks: RefCell<Vec<String>>,
 }
 
 impl Rig {
@@ -38,6 +40,7 @@ impl Rig {
             mints: RefCell::new(vec![]),
             forks: RefCell::new(vec![]),
             last: None,
+            marks: RefCell::new(vec![]),
         }
     }
 
@@ -90,6 +93,10 @@ impl Rig {
             library: &library,
             last: &last_of,
         };
+        let pretrust = |dir: &str, cwd: &str| {
+            let at = self.ccm.borrow().len();
+            self.marks.borrow_mut().push(format!("{dir} {cwd} @{at}"));
+        };
         let deps = Deps {
             list: &list,
             record: &record,
@@ -105,6 +112,7 @@ impl Rig {
             },
             accounts: &accounts,
             writers: &writers,
+            pretrust: &pretrust,
         };
         answer(&args, &deps, &fork, Some(std::path::Path::new("/h")))
     }
@@ -377,6 +385,7 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
             },
             accounts: &accounts,
             writers: &|_| vec![],
+            pretrust: &|_, _| unreachable!("核目录不起会话"),
         };
         dir_answer(&args, &deps, Some(std::path::Path::new("/h")))
     };
@@ -398,4 +407,44 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
             .0,
         "bad_args"
     );
+}
+
+/// 起之前预标信任：三种起法（tmux · 本机开窗 · 远端开窗）都在起 / 交回那一行之前把工作目录标进要用的那个号；
+/// 某一格不行（什么都不起）⇒ 不标；账号 0 ⇒ 不标（那一份是用户主配置）。
+#[test]
+fn a_new_session_marks_its_cwd_trusted_in_its_account_before_it_starts() {
+    let named = json!({ "account": { "kind": "named", "name": "work" } });
+    let rig = Rig::new(Some(vec![]));
+    rig.call(req(named.clone())).unwrap();
+    assert_eq!(
+        *rig.marks.borrow(),
+        vec!["/h/.cc/work /srv/proj @0".to_string()]
+    );
+    assert_eq!(rig.ccm.borrow().len(), 1);
+
+    for local in [true, false] {
+        let rig = Rig::new(Some(vec![]));
+        let mut a = req(named.clone());
+        a["place"] = json!("window");
+        a["local"] = json!(local);
+        rig.call(a).unwrap();
+        assert_eq!(
+            *rig.marks.borrow(),
+            vec!["/h/.cc/work /srv/proj @0".to_string()],
+            "开窗 local={local}"
+        );
+    }
+
+    let rig = Rig::new(Some(vec![]));
+    rig.call(req(json!({ "account": { "kind": "base" } })))
+        .unwrap();
+    assert!(rig.marks.borrow().is_empty(), "账号 0 不标");
+
+    let rig = Rig::new(Some(vec![]));
+    assert!(rig
+        .call(req(
+            json!({ "account": { "kind": "named", "name": "work" }, "cwd": "/gone" })
+        ))
+        .is_err());
+    assert!(rig.marks.borrow().is_empty(), "目录不在 ⇒ 什么都不起、不标");
 }

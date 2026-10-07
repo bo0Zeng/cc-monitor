@@ -26,7 +26,7 @@ const MAX_SMALL_BYTES: u64 = 8 * 1024 * 1024;
 /// 改写某个号的配置文件之前那份原文放在备份目录下的哪一层（每个号一份 `<号><配置文件名>`）。
 const BACKUP_SUBDIR: &str = "accounts-mcp";
 /// 各号配置文件的读取上限（它被项目历史与 MCP 配置撑大，同适配层读它时的那个量级）。
-const MAX_CONFIG_BYTES: u64 = 32 * 1024 * 1024;
+pub(crate) const MAX_CONFIG_BYTES: u64 = 32 * 1024 * 1024;
 
 /// 一个号读出来的样子 ＋ 原文（落盘时当 `expect`；`None` = 文件不在）。
 struct Account {
@@ -45,7 +45,7 @@ struct Here {
     notes: Vec<String>,
 }
 
-fn read_text(p: &str, cap: u64) -> Result<Option<String>, String> {
+pub(crate) fn read_text(p: &str, cap: u64) -> Result<Option<String>, String> {
     match item_at(p) {
         Item::Absent => Ok(None),
         Item::File { .. } => {
@@ -179,7 +179,7 @@ fn load(home: &str, list: Vec<(String, String)>) -> Result<Here, Refusal> {
 }
 
 /// 写一份只该自己读的文件：已在 ⇒ 带 `expect` 照常写（沿用原权限位）；不在 ⇒ 先落一份空的、改成 0600、再写内容。
-fn put_private(
+pub(crate) fn put_private(
     d: &dyn Door,
     home: &str,
     rel: &str,
@@ -257,7 +257,7 @@ fn view_of(store: &Store, conflicts: &[mcp_share::Conflict]) -> AccountMcpView {
 
 /// 账号库在就拿它那把锁（与改账号库那几条命令同一把：锁的是账号库目录本身）。
 /// 不借命令那一层的那一份：那一层还认得 `ccm` 的命令行，扩展页读共享集合时会被连带引用进来。
-fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Refusal> {
+pub(crate) fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Refusal> {
     let accts = super::scan::accts_root(home);
     if item_at(&accts).exists() {
         crate::platform::lock::hold(Path::new(&accts))
