@@ -17,8 +17,10 @@ pub(crate) const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_co
 /// 每个会话至多留几条换号记录（最早的先丢）。
 pub(crate) const HISTORY_KEPT: usize = 32;
 
-/// 上限（「到 N% 换」的 N · 每号覆盖的上限）与单段预算收哪些值。
+/// 「到 N% 换」的 N 与单段预算收哪些值。
 pub(crate) const THRESHOLD_RANGE: std::ops::RangeInclusive<u8> = 1..=99;
+/// 每号覆盖的上限收哪些值：多一个 `0` ＝ 这个号（这一时段）不用，不管用量多少。
+pub(crate) const CAP_RANGE: std::ops::RangeInclusive<u8> = 0..=99;
 
 /// 每号那一格里「这个号的所有窗口」的键。
 pub(crate) const ALL_WINDOWS: &str = "*";
@@ -806,9 +808,13 @@ fn window_key_ok(k: &str) -> bool {
 }
 
 fn pct_in_range(v: &Value) -> Option<u8> {
+    in_range(v, &THRESHOLD_RANGE)
+}
+
+fn in_range(v: &Value, range: &std::ops::RangeInclusive<u8>) -> Option<u8> {
     v.as_u64()
         .and_then(|n| u8::try_from(n).ok())
-        .filter(|n| THRESHOLD_RANGE.contains(n))
+        .filter(|n| range.contains(n))
 }
 
 /// 每号那一层：`{号: {窗口键|"*": 值}}`，值由 `one(值, 这一格的名字)` 读。
@@ -844,14 +850,14 @@ fn per_account<T>(
     Ok(out)
 }
 
-/// 上限的一个值：`1..=99`，或 `[{at: "HH:MM-HH:MM", n: 1..=99}, …]`（至少一段）。
+/// 上限的一个值：`0..=99`，或 `[{at: "HH:MM-HH:MM", n: 0..=99}, …]`（至少一段）。`0` ＝ 不用这个号。
 fn cap_value(v: &Value, cell: &str) -> Result<CapValue, String> {
-    if let Some(n) = pct_in_range(v) {
+    if let Some(n) = in_range(v, &CAP_RANGE) {
         return Ok(CapValue::N(n));
     }
     let bad = || {
         format!(
-            "`{cell}` must be an integer 1..=99 or [{{\"at\":\"HH:MM-HH:MM\",\"n\":1..=99}}, …]"
+            "`{cell}` must be an integer 0..=99 or [{{\"at\":\"HH:MM-HH:MM\",\"n\":0..=99}}, …]"
         )
     };
     let arr = v.as_array().filter(|a| !a.is_empty()).ok_or_else(bad)?;
@@ -870,8 +876,8 @@ fn cap_value(v: &Value, cell: &str) -> Result<CapValue, String> {
             })?;
         let n = m
             .get("n")
-            .and_then(pct_in_range)
-            .ok_or_else(|| format!("`{cell}[{i}].n` must be an integer 1..=99"))?;
+            .and_then(|n| in_range(n, &CAP_RANGE))
+            .ok_or_else(|| format!("`{cell}[{i}].n` must be an integer 0..=99"))?;
         slots.push(CapSlot {
             at: at.to_string(),
             n,
@@ -881,7 +887,7 @@ fn cap_value(v: &Value, cell: &str) -> Result<CapValue, String> {
 }
 
 /// 读一份轮换：键 `order` · `enabled` · `when`，可选 `atLimit`（`"continue"` · `"stop"`，缺 ⇒ `continue`）·
-/// `cap`（`{号: {窗口键|"*": 1..=99 | [{at, n}]}}`）· `stint`（`{号: {窗口键|"*": 1..=99}}`）· `preempt`（布尔，缺 ⇒ 关）。`start_slots` ＝ 起始账号占位该有几个（默认恰好 1；会话自己那份 0 或 1）。
+/// `cap`（`{号: {窗口键|"*": 0..=99 | [{at, n}]}}`，`0` ＝ 不用这个号）· `stint`（`{号: {窗口键|"*": 1..=99}}`）· `preempt`（布尔，缺 ⇒ 关）。`start_slots` ＝ 起始账号占位该有几个（默认恰好 1；会话自己那份 0 或 1）。
 /// `account_ok(号)` 判这一格当得了轮换里的号；`is_api(号)` 判按量号；`prior` 是改之前那一份：**新勾上的按量号挪到 `order` 末尾**（订阅号用完才轮到它）。
 /// 不合法 ⇒ `Err(哪一格、为什么)`（英文诊断，不进文案表）。
 pub(crate) fn rotation_from(

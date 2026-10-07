@@ -296,7 +296,11 @@ fn a_bad_new_cell_is_refused_naming_it() {
         (json!({"cap": {"q": {}}}), "`cap.q`"),
         (json!({"cap": {"q": {"5 h": 90}}}), "`cap.q.5 h`"),
         (json!({"cap": {"q": {"5h": 100}}}), "`cap.q.5h`"),
-        (json!({"cap": {"q": {"5h": 0}}}), "`cap.q.5h`"),
+        (json!({"cap": {"q": {"5h": 100}}}), "`cap.q.5h`"),
+        (
+            json!({"cap": {"q": {"*": [{"at": "01:00-20:00", "n": -1}]}}}),
+            "`cap.q.*[0].n`",
+        ),
         (json!({"cap": {"q": {"5h": []}}}), "`cap.q.5h`"),
         (
             json!({"cap": {"q": {"*": [{"at": "1:00-20:00", "n": 99}]}}}),
@@ -340,6 +344,23 @@ fn a_bad_new_cell_is_refused_naming_it() {
             .expect_err(&extra.to_string());
         assert!(e.contains(cell), "{extra} ⇒ {e}，应点名 {cell}");
     }
+}
+
+/// ★ 上限可以取 0（不用这个号）：写死的 · 按时段的都收、读回同形；单段预算仍不收 0（上面那条拒）。
+#[test]
+fn a_cap_of_zero_is_taken_and_reads_back_the_same() {
+    let ok = |a: &str| a != "_";
+    let none = |_: &str| false;
+    let with = |extra: serde_json::Value| {
+        let mut v = json!({"order": [{"start": true}, "z", "q", "b"], "enabled": ["z", "q", "b"], "when": {"threshold": {"n": 90}}});
+        for (k, x) in extra.as_object().unwrap() {
+            v[k] = x.clone();
+        }
+        v
+    };
+    let cap = json!({"q": {"*": [{"at": "17:00-02:00", "n": 0}, {"at": "02:00-17:00", "n": 99}]}, "b": {"5h": 0}});
+    let r = rotation_from(&with(json!({ "cap": cap })), 1..=1, &ok, &none, None).expect("收 0");
+    assert_eq!(serde_json::to_value(&r).unwrap()["cap"], cap);
 }
 
 /// 时段：含起不含止；跨午夜；止可写 24:00（到当天结束）。

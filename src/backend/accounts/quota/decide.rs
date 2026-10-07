@@ -6,7 +6,7 @@
 //! |---|---|
 //! | 被拒 | 刚回来的回包被拒（429）；或额度账上被拒、还没到它说的回来时刻（[`refused_at`]） |
 //! | 超额在兜 | 订阅号正在用付费超额、卡着的窗口还没重置 |
-//! | 过上限 | 有窗口用到它的上限、还没重置。上限按窗口键取：这个号这个窗口的 → 这个号 `*` 的 → 这份轮换的 `when`（「满了才换」没有缺省上限）；按时段写的取此刻（本地钟）落在的那一段，落不进 ⇒ 往下一层 |
+//! | 过上限 | 有窗口用到它的上限、还没重置。上限按窗口键取：这个号这个窗口的 → 这个号 `*` 的 → 这份轮换的 `when`（「满了才换」没有缺省上限）；按时段写的取此刻（本地钟）落在的那一段，落不进 ⇒ 往下一层。此刻取到的上限是 `0` ⇒ 这个号不用：不看用量（刚重置的 0%、从没见过都算），回来的时刻 ＝ 那一段的止 |
 //! | 能用 | 其余 |
 //!
 //! 「几点回来」＝ 卡着它的每一处（被拒 / 超额那个窗口 · 过了上限的每个窗口）都重置的那一刻；有一处说不出 ⇒ 说不出。
@@ -218,6 +218,42 @@ pub(crate) fn cap_of(f: &Facts<'_>, account: &str, key: &str) -> Option<u8> {
         })
 }
 
+/// 这个号此刻有没有哪一格上限取到 `0`（不用它）：有 ⇒ （那一格到几点不再是 `0`：按时段写的取那一段的止，写死的 `0` 说不出, 窗口键；`*` ⇒ `None`）。
+fn off_now(f: &Facts<'_>, account: &str) -> Option<(Option<u64>, Option<String>)> {
+    let per = f.cap.get(account)?;
+    let minute = minute_of(f);
+    per.keys().find_map(|k| {
+        if cap_of(f, account, k) != Some(0) {
+            return None;
+        }
+        // 取到 0 的那一层：这个窗口自己的那一格落得进 ⇒ 它；否则是 `*` 那一格。
+        let pick = |v: &CapValue| match v {
+            CapValue::N(0) => Some(None),
+            CapValue::Slots(s) => s
+                .iter()
+                .find(|x| x.n == 0 && x.holds(minute))
+                .map(|x| span_end(f, &x.at)),
+            CapValue::N(_) => None,
+        };
+        let until = per
+            .get(k)
+            .and_then(pick)
+            .or_else(|| per.get(ALL_WINDOWS).and_then(pick))
+            .flatten();
+        Some((until, (k != ALL_WINDOWS).then(|| k.clone())))
+    })
+}
+
+/// 此刻所在的那一段 `at` 几点止（unix 秒）。
+fn span_end(f: &Facts<'_>, at: &str) -> Option<u64> {
+    let (_, to) = super::rotation::span_of(at)?;
+    let local = i128::from(f.now) + i128::from(f.offset);
+    let into_day = local.rem_euclid(86_400);
+    let left = (i128::from(to) * 60 - into_day).rem_euclid(86_400);
+    let left = if left == 0 { 86_400 } else { left };
+    u64::try_from(i128::from(f.now) + left).ok()
+}
+
 /// 这份轮换有没有上限（缺省的，或给池里哪个号设的）：硬上限只在有上限时成立。
 fn has_caps(f: &Facts<'_>) -> bool {
     matches!(f.when, RotationWhen::Threshold { .. }) || f.pool.iter().any(|a| f.cap.contains_key(a))
@@ -233,9 +269,14 @@ fn standing_in(f: &Facts<'_>, account: &str, r: &QuotaReading, heard: bool) -> S
         parts.push((r.resets_at, r.limiting.as_deref().and_then(|l| (f.key)(l))));
     }
     let mut first_n: Option<u8> = None;
+    if let Some(part) = off_now(f, account) {
+        first_n = Some(0);
+        parts.push(part);
+    }
     for w in &r.windows {
         let Some(k) = (f.key)(&w.name) else { continue };
-        let Some(n) = cap_of(f, account, &k) else {
+        // 取到 0 的那一格上面已经记过（不看用量）。
+        let Some(n) = cap_of(f, account, &k).filter(|n| *n > 0) else {
             continue;
         };
         if over(w, n, f.now) {
@@ -271,9 +312,16 @@ fn standing_in(f: &Facts<'_>, account: &str, r: &QuotaReading, heard: bool) -> S
     }
 }
 
-/// ★ 谓词：这个号此刻能不能用（按额度账；没见过 ⇒ 能用）。
+/// ★ 谓词：这个号此刻能不能用（按额度账；没见过 ⇒ 只看上限有没有取到 `0`）。
 pub(crate) fn standing(account: &str, f: &Facts<'_>) -> Standing {
-    (f.seen)(account).map_or(Standing::Usable, |r| standing_in(f, account, &r, false))
+    match (f.seen)(account) {
+        Some(r) => standing_in(f, account, &r, false),
+        None => off_now(f, account).map_or(Standing::Usable, |(until, key)| Standing::OverCap {
+            n: 0,
+            until,
+            key,
+        }),
+    }
 }
 
 /// 此刻的号：刚回来的回包被拒 ⇒ 按它判；没被拒（那一发照过了）⇒ 能用；问「发之前」⇒ 按额度账。
