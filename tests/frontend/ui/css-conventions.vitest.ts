@@ -300,11 +300,12 @@ describe("S30 ⑥ transition 只许动白名单里那几个属性（件 9）", (
  */
 const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // 主窗口会话内查找面板（`sf.<类>` 是 CSS Modules 的哈希名，推不出；这几类都不写 `display`）。
-  "src/frontend/ui/views/session-find.ts:74": "面板本体 `this.box`（`s.sfPanel`）—— 建时收起",
-  "src/frontend/ui/views/session-find.ts:134": "同上 —— 打开",
-  "src/frontend/ui/views/session-find.ts:142": "同上 —— 收起",
-  "src/frontend/ui/views/session-find.ts:169": "「搜索」那一页 `this.searchPane`（`s.sfSearch`）—— 切到「大纲」时收起",
-  "src/frontend/ui/views/session-find.ts:170":
+  //   行号 +8：命中行头一行的「谁」多了一种（agent 回报），那一句拆成多行。
+  "src/frontend/ui/views/session-find.ts:82": "面板本体 `this.box`（`s.sfPanel`）—— 建时收起",
+  "src/frontend/ui/views/session-find.ts:142": "同上 —— 打开",
+  "src/frontend/ui/views/session-find.ts:150": "同上 —— 收起",
+  "src/frontend/ui/views/session-find.ts:177": "「搜索」那一页 `this.searchPane`（`s.sfSearch`）—— 切到「大纲」时收起",
+  "src/frontend/ui/views/session-find.ts:178":
     "`this.outline.panel` —— 大纲清单那块，由 `UserInputPanel` 建（类 `.user-inputs`；`styles.css` 里那条规则头注逐字「绝不许出现 display」）",
   // 扩展页的抽屉：`this.drawer` 在构造器里由本文件的 `el()` 小工具建（类 `ext-drawer`，经一层参数传进去 ⇒ 推不出；行号按文件现数）；
   //   `.ext-drawer` 在 `styles/settings.css` 里**没有 display 规则** ⇒ UA 的 `[hidden]` 不会被压过（人工核过）。

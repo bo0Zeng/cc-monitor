@@ -36,7 +36,7 @@ import { TabManager } from "../../../src/frontend/ui/tabs";
 import { AgentsPanel } from "../../../src/frontend/ui/agents-panel";
 import { livePainter } from "../../../src/frontend/ui/live-card-view";
 import { panelGroups, RECENT_ENDED } from "../../../src/frontend/ui/runs";
-import { installViewerRig, line } from "../../test-support/session-viewer-rig";
+import { installViewerRig, line, userLine } from "../../test-support/session-viewer-rig";
 
 const O = "<local>";
 const SID = "s1";
@@ -193,6 +193,40 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
         .map((r) => r.state),
       "跑完的 / 败了的 / 被叫停的 / 状态不明的显示成了在跑",
     ).not.toContain(copyText("runs.state.running"));
+  });
+
+  it("★ 运行表先到、交回那一条后到 ⇒ 消息流里那条交回的抬头用运行表给的标签（不是来话自带的名字）；运行表里没有它 ⇒ 退到来话自带的名字", () => {
+    const { tm, streamRootEl } = rig();
+    tm.onLine(dispatch(0, "t1", "扫目录"));
+    tm.switchTo(SID);
+    tm.onSessionRuns({ session_id: SID, runs: [run("w6", "done", "扫目录", "t1")], ended: [] });
+    const handback = (seq: number, from: string) =>
+      userLine(seq, `u${seq}`, "<agent-message>…</agent-message>", {
+        userText: { speaker: { kind: "agentMessage", from, name: "worker-7", handback: true, body: "报告正文" }, text: "报告正文" },
+      }) as never;
+    tm.onLine(handback(1, "w6"));
+    tm.onLine(handback(2, "w9"));
+    const titles = [...streamRootEl.querySelectorAll<HTMLElement>(".card-speaker[data-kind=agent] .speaker-title")].map((t) => t.textContent);
+    expect(titles).toEqual([copyText("speaker.agent.title", { label: "扫目录" }), copyText("speaker.agent.title", { label: "worker-7" })]);
+  });
+
+  it("★ 交回与收场通知只报一次：会话事实说那个子运行交回了 ⇒ 消息流里它的收场通知收起，交回那一条留着", () => {
+    const { tm, streamRootEl } = rig();
+    tm.onLine(dispatch(0, "t1", "扫目录"));
+    tm.switchTo(SID);
+    const rec = (seq: number, speaker: Record<string, unknown>) =>
+      userLine(seq, `u${seq}`, "x", { userText: { speaker, text: "x" } }) as never;
+    tm.onLine(rec(1, { kind: "agentMessage", from: "w6", name: "worker-7", handback: true, body: "报告正文" }));
+    tm.onLine(rec(2, { kind: "taskNotification", taskId: "w6", status: "completed", summary: "扫目录" }));
+    tm.onLine(rec(3, { kind: "taskNotification", taskId: "w8", status: "completed", summary: "别的" }));
+    const notices = () =>
+      [...streamRootEl.querySelectorAll<HTMLElement>(".card-notice:not([hidden]) .notice-row:not([hidden])")].map((r) => r.textContent ?? "");
+    expect(notices().join("|")).toContain("扫目录");
+    const facts = { agent: "claude", end: 1, forkedFrom: null, touchedFiles: [], usage: null, projectDir: null, writers: [], pending: [], lastSay: null, needs: null, handedBack: ["w6"] };
+    (tm as unknown as { onSessionFacts(sid: string, f: unknown): void }).onSessionFacts(SID, facts);
+    expect(notices().join("|")).not.toContain("扫目录");
+    expect(notices().join("|"), "别的子运行的通知照常").toContain("别的");
+    expect(streamRootEl.querySelectorAll(".card-speaker[data-kind=agent]").length, "交回那一条留着").toBe(1);
   });
 
   it("★ 后台派出、只拿到「已启动」那次结果、没有完成通知 ⇒ 面板上不是 ✓（界面不自己判「有结果 ⇒ 完成」）；被叫停 ⇒「已停止」", () => {

@@ -195,7 +195,7 @@ describe("〔STC〕第五问：会话事实", () => {
   it("★★ 金样：TS 解码器读得懂后端真出的会话事实（逐字段）", () => {
     const f = decodeFacts(golden["history-facts"]);
     expect(f).toEqual({
-      end: 876,
+      end: 1067,
       forkedFrom: "src-0",
       touchedFiles: ["/w/a.ts"],
       usage: { promptTokens: 6, model: "m-g", peakPromptTokens: 6, limit: 1_000_000, limitFrom: "assumed" },
@@ -208,6 +208,7 @@ describe("〔STC〕第五问：会话事实", () => {
       ],
       lastSay: { text: "done", at: "t5" },
       needs: null,
+      handedBack: ["ag-7"],
     });
   });
 
@@ -234,6 +235,10 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(() => decodeFacts({ ...good, needs: { kind: "plan", tool: null, what: null } }), "缺 sinceMs").toThrow(/读不懂/);
     expect(() => decodeFacts({ ...good, pending: [{ id: "x", name: "Bash", what: null }] }), "缺 at").toThrow(/读不懂/);
     expect(() => decodeFacts({ ...good, lastSay: { text: 1, at: null } })).toThrow(/读不懂/);
+    // 交回了的子运行：只收字符串数组，缺了也不行（成品要原样当令牌交回去）。
+    expect(() => decodeFacts(without("handedBack")), "缺 handedBack").toThrow(/读不懂/);
+    expect(() => decodeFacts({ ...good, handedBack: [7] }), "id 只收字符串").toThrow(/读不懂/);
+    expect(() => decodeFacts({ ...good, handedBack: "ag-7" })).toThrow(/读不懂/);
   });
 
   it("★ 说对的帧命令、对的请求体：没有令牌 ⇒ 只带 path；有 ⇒ 令牌原样放进 prior；失败折成 available:false ＋ 种类", async () => {

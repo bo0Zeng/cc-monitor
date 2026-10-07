@@ -21810,6 +21810,11 @@
       "zh": "工具",
       "args": []
     },
+    "sessionFind.who.report": {
+      "kind": "body",
+      "zh": "agent 回报",
+      "args": []
+    },
     "sessionFind.hit.meta": {
       "kind": "body",
       "zh": "{who} · 第 {n} 轮 · {time}",

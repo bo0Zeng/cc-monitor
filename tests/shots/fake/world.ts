@@ -97,6 +97,8 @@ export function richConvo(sid: string, cwd: string): { convo: Convo; agentTool: 
     { card: "agent", child: { label: "检查其他服务有没有同类调用", kind: "Explore" } },
   );
   c.from({ kind: "agentMessage", from: "a7f3", name: "补重试的单元测试", handback: true, body: "测试已写好：`tests/test_inventory_client.py`，成功、重试后成功、重试耗尽三个用例全部通过。" });
+  // 同一个子运行的收场通知（以交回为准：会话事实 handedBack 说它交回了 ⇒ 消息流里不画这一条）。
+  c.from({ kind: "taskNotification", taskId: "a7f3", status: "completed", summary: "补重试的单元测试" });
   c.from({ kind: "taskNotification", taskId: "b1", status: "completed", summary: "lint" });
   c.from({ kind: "taskNotification", taskId: "b2", status: "failed", summary: "类型检查" });
   c.tool("Bash", { command: "pytest -q tests/test_inventory_client.py", description: "跑测试" }, "...\n3 passed in 0.41s", { card: "command" });

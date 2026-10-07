@@ -4,7 +4,7 @@
 // 收起后看不见的动作在右键菜单里有；「说不清」是一个单独的状态，不并进「已结束」。
 import { buildApiErrorCard, buildApiRetryCard, mergeRetry, settleRetry } from "../../../src/frontend/ui/cards/api-error";
 import { buildStepLine, clearAwaiting, fmtStepDur, markAwaiting, middleEllipsis, settleStepLine, stateOf, stepRight } from "../../../src/frontend/ui/cards/step-line";
-import { mergeNotice } from "../../../src/frontend/ui/cards/speaker-bar";
+import { applyHandedBack, mergeNotice } from "../../../src/frontend/ui/cards/speaker-bar";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(undefined) }));
@@ -722,5 +722,33 @@ describe("事件条：agent 交回 / 来话 · 另一会话 · 后台通知并�
     expect(a.querySelectorAll(".notice-row").length).toBe(3);
     expect(a.querySelector(".notice-head")?.textContent).toMatch(/^后台任务 ×3 · .+–.+ · 失败 1$/);
     expect(a.dataset.failed).toBe("true");
+  });
+
+  it("★ 交回与收场通知去重：会话事实说哪几个子运行交回了 ⇒ 它们的收场通知行收起（整条都是 ⇒ 整条收起），计数 / 时段 / 失败数只算露着的；交回后到也照样收", () => {
+    const n = (task: string, status: string, ts: string) => {
+      const r = renderMessage(userRec({ kind: "taskNotification", taskId: task, status, summary: `跑${task}` }, ts), ctx());
+      if (r.kind !== "card") throw new Error(r.kind);
+      return r.element as HTMLDetailsElement;
+    };
+    const root = document.createElement("div");
+    const a = n("w1", "completed", "2026-01-01T14:02:00.000Z");
+    mergeNotice(a, n("w2", "failed", "2026-01-01T14:03:00.000Z"));
+    mergeNotice(a, n("w3", "completed", "2026-01-01T14:07:00.000Z"));
+    const solo = n("w4", "completed", "2026-01-01T15:00:00.000Z");
+    root.append(a, solo);
+    applyHandedBack(root, new Set());
+    expect(a.querySelector(".notice-head")?.textContent).toMatch(/^后台任务 ×3 · .+–.+ · 失败 1$/);
+
+    applyHandedBack(root, new Set(["w2", "w4"]));
+    expect([...a.querySelectorAll<HTMLElement>(".notice-row")].map((r) => r.hidden)).toEqual([false, true, false]);
+    expect(a.querySelector(".notice-head")?.textContent, "只剩露着的两条、没有失败").toMatch(/^后台任务 ×2 · .+–.+$/);
+    expect(a.dataset.failed).toBe("false");
+    expect(solo.hidden, "整条都交回了 ⇒ 整条收起").toBe(true);
+
+    applyHandedBack(root, new Set(["w1", "w2", "w3", "w4"]));
+    expect(a.hidden).toBe(true);
+    applyHandedBack(root, new Set(["w2", "w3"]));
+    expect(a.hidden).toBe(false);
+    expect(a.querySelector(".notice-head")?.textContent, "只剩一条 ⇒ 就是那一条").toContain("跑w1");
   });
 });
