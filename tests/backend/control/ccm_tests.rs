@@ -282,6 +282,7 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
         pwd: "/p".into(),
         accts_manifest: "/nonexistent/accounts.json".into(),
         account_env: "CLAUDE_CONFIG_DIR".into(),
+        base_url_env: crate::agents::claudecode::paths::BASE_URL_ENV.into(),
         self_argv: vec!["/usr/local/bin/ccm".into()],
         ..Default::default()
     };
@@ -301,7 +302,7 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
     };
 
     let mut with_relay = base_env();
-    with_relay.anthropic_base_url = Some("https://relay.example/v1".into());
+    with_relay.inherited_base_url = Some("https://relay.example/v1".into());
     let sent = payload_of(&with_relay);
     assert!(
         sent.contains("export ANTHROPIC_BASE_URL='https://relay.example/v1'"),
@@ -654,6 +655,9 @@ fn the_alias_preview_is_the_same_plan_as_ccm_print() {
             account_env: crate::agents::account_env_of(&o.agent)
                 .unwrap_or_default()
                 .to_string(),
+            base_url_env: crate::agents::base_url_env_of(&o.agent)
+                .unwrap_or_default()
+                .to_string(),
             self_argv: vec!["ccm".into()],
             bus_scripts: plan::discover_bus_scripts(),
             ..Default::default()
@@ -687,7 +691,7 @@ fn the_alias_preview_speaks_for_a_fresh_terminal_at_home() {
     assert!(e.tmux.is_none(), "新终端不在 tmux 里");
     assert!(e.inherited_config_dir.is_none(), "账号目录变量不继承");
     assert!(
-        e.anthropic_base_url.is_none(),
+        e.inherited_base_url.is_none(),
         "常驻后端进程身上的中转地址不是那个终端的"
     );
     // 行为：不给 --cwd ⇒ 落在家目录；容器路内层叫回的是 `ccm`。
@@ -1193,5 +1197,74 @@ fn nothing_but_ccm_renders_a_command_that_starts_an_agent() {
         outside,
         ["control/resolve_query.rs：调了这一家的 resume 命令形"],
         "ccm 以外又有地方渲出了直接起 agent 的命令 —— 起会话只交一行 `ccm …`，环境 / 中转地址 / 身份由那台的 ccm 做"
+    );
+}
+
+/// ★ 找上游那个变量名问注册表那一家的上游格：Claude 有（继承值照读、不注入时照清）；Codex 没登记上游 ⇒ 名字空、继承值不读，
+/// 它的载荷一个字不提那个变量（不注入、也不清 —— 它本就不读）。不继承（别名预览）⇒ 两样继承值都不读。
+#[test]
+fn the_upstream_variable_comes_from_the_agents_own_upstream_cell() {
+    let ours = format!(
+        "http://127.0.0.1:8788/{}/t/claude-code/q",
+        "0123456789abcdef".repeat(4)
+    );
+    let ours = ours.as_str();
+    let get = |k: &str| match k {
+        "ANTHROPIC_BASE_URL" => Some(ours.to_string()),
+        "CLAUDE_CONFIG_DIR" => Some("/acct/q".to_string()),
+        _ => None,
+    };
+    let filled = |agent: &str, inherit: bool| {
+        let mut e = Env::default();
+        agent_env(
+            agent,
+            &mut e,
+            inherit.then_some(&get as &dyn Fn(&str) -> Option<String>),
+        );
+        e
+    };
+    let claude = filled("claude", true);
+    assert_eq!(claude.base_url_env, "ANTHROPIC_BASE_URL");
+    assert_eq!(claude.inherited_base_url.as_deref(), Some(ours));
+    assert_eq!(claude.inherited_config_dir.as_deref(), Some("/acct/q"));
+    let codex = filled("codex", true);
+    assert_eq!(
+        (
+            codex.base_url_env.as_str(),
+            codex.inherited_base_url.as_deref()
+        ),
+        ("", None)
+    );
+    let preview = filled("claude", false);
+    assert_eq!(
+        (preview.inherited_base_url, preview.inherited_config_dir),
+        (None, None)
+    );
+    // 载荷：Claude 不注入时清掉继承来的那条中转；Codex 一个字不提。
+    let line = |agent: &str| {
+        let mut e = filled(agent, true);
+        e.home = "/home/pi".into();
+        e.pwd = "/p".into();
+        e.accts_manifest = "/nonexistent/accounts.json".into();
+        e.self_argv = vec!["/usr/local/bin/ccm".into()];
+        let a: Vec<String> = ["--ccm-agent", agent, "--cwd", "/p"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let Parsed::Opts(o) = argv::parse(&argv::tests::mixed_to_split(&a)).expect("该解析得动")
+        else {
+            panic!("不该是 Early")
+        };
+        plan::render(&plan::build(&o, &e, &AccountTable::default(), None).expect("计划"))
+    };
+    assert!(
+        line("claude").contains("unset ANTHROPIC_BASE_URL; "),
+        "{}",
+        line("claude")
+    );
+    assert!(
+        !line("codex").contains("ANTHROPIC_BASE_URL"),
+        "{}",
+        line("codex")
     );
 }

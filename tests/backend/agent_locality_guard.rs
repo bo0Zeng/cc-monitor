@@ -208,27 +208,6 @@ mod tests {
         ),
     ];
 
-    /// 判据①扫得到、还没收进注册表的 agent 知识（`文件`, `片段`, 为什么还在这里）—— **欠账表，只许缩短**。
-    ///
-    /// 与 [`NOT_AGENT_KNOWLEDGE`] 性质相反：那张是「判据看走眼、永远留着」，这张是「真是 agent 知识、将来要清零」。
-    /// 条数有天花板 [`AGENT_KNOWLEDGE_DEBT_CEILING`]（只许降）；收走一条，幽灵检查逼着同轮摘登记。
-    const AGENT_KNOWLEDGE_DEBT: &[(&str, &str, &str)] = &[
-        (
-            "footprint/registry.rs",
-            ".mcp.json",
-            "项目级 MCP 那一条足迹申报住通用那张表：挪进 Claude 的足迹面会改变足迹清单的行序（对外形状），\
-             留到足迹清单按 agent 分组那一轮",
-        ),
-        (
-            "control/ccm/plan.rs",
-            "ANTHROPIC_BASE_URL",
-            "`ccm` 注入中转地址用的变量名（与读继承值那一格）：随「中转地址变量收进注册表」那一批收走",
-        ),
-    ];
-
-    /// [`AGENT_KNOWLEDGE_DEBT`] 的天花板。**只许降**。
-    const AGENT_KNOWLEDGE_DEBT_CEILING: usize = 2;
-
     /// ② 的针：每一家 agent 的**名字**（wire kind · 适配器 id · 中转路由名），外加夹具家的 kind，**带引号的整串**。
     /// 从注册表派生，不另写一份 —— 加一家，针跟着长。
     ///
@@ -398,7 +377,9 @@ mod tests {
             .collect()
     }
 
-    /// ① 任何 agent 的目录/格式知识都只许住 `agents/<名>/`。
+    /// ① 任何 agent 的目录/格式知识都只许住 `agents/<名>/`：通用层**零命中**（[`NOT_AGENT_KNOWLEDGE`] 登记的假阳除外）。
+    /// 欠账已清零（`ccm` 的上游变量名收进 `DefaultUpstream.base_url_env` · 项目级 MCP 的足迹申报挪进 Claude 的足迹面），
+    /// 不再设欠账表 ⇒ 新出现的一处当场红。
     #[test]
     fn agent_format_knowledge_lives_only_in_agent_homes() {
         let files = sources();
@@ -419,7 +400,6 @@ mod tests {
         let needles = needles();
         let mut leaks: Vec<String> = Vec::new();
         let mut excused: Vec<&str> = Vec::new();
-        let mut owed: Vec<(&str, &str)> = Vec::new();
         for (rel, prod) in &files {
             if HOMES.iter().any(|h| rel.starts_with(h)) {
                 continue; // agent 自己的家
@@ -436,13 +416,6 @@ mod tests {
                         excused.push(f);
                         continue;
                     }
-                    if let Some((f, frag, _)) = AGENT_KNOWLEDGE_DEBT
-                        .iter()
-                        .find(|(f, frag, _)| rel == f && line.contains(frag))
-                    {
-                        owed.push((f, frag));
-                        continue;
-                    }
                     leaks.push(format!("{rel}:{}  [{what}] {}", line_no + 1, line.trim()));
                 }
             }
@@ -457,22 +430,6 @@ mod tests {
             leaks.len(),
             leaks.join("\n  ")
         );
-        // 欠账表：条数不过天花板、每条写了为什么、每条都还真的命中（收走了就摘）。
-        assert!(
-            AGENT_KNOWLEDGE_DEBT.len() <= AGENT_KNOWLEDGE_DEBT_CEILING,
-            "`AGENT_KNOWLEDGE_DEBT` 涨到 {} 条（天花板 {AGENT_KNOWLEDGE_DEBT_CEILING}）—— 新的 agent 知识收进注册表那一格，不进欠账表",
-            AGENT_KNOWLEDGE_DEBT.len()
-        );
-        for (f, frag, why) in AGENT_KNOWLEDGE_DEBT {
-            assert!(
-                why.trim().len() >= 10,
-                "欠账 `{f}`（`{frag}`）没写为什么还在这里"
-            );
-            assert!(
-                owed.contains(&(f, frag)),
-                "`AGENT_KNOWLEDGE_DEBT` 里登记的 `{f}`（片段 `{frag}`）已经不再命中 —— 收走了就摘掉它"
-            );
-        }
         // 反向：登记的假阳必须**真的还在命中**，否则它就是幽灵条目。
         for (f, frag, _) in NOT_AGENT_KNOWLEDGE {
             assert!(

@@ -1263,6 +1263,8 @@ pub(crate) struct DefaultUpstream {
     pub(crate) env: &'static str,
     /// 没配 `env` 时这一家发到哪儿。
     pub(crate) fallback: &'static str,
+    /// 这一家进程读哪个环境变量找上游：`ccm` 起会话时中转地址经它注入，继承来的那一条（用户自己的端点 · 别的号的中转）也只看它。
+    pub(crate) base_url_env: &'static str,
     /// 这一家的请求里**它自己带着会话标识**的那个头（中转拿它给流打标签）。`None` = 说不出 ⇒ 流不带标签。
     pub(crate) session_header: Option<&'static str>,
     /// 这一家的上游说哪种流协议（归一流的折法）。`None` ＝ 它的流不折（活卡认不得）。
@@ -1786,6 +1788,16 @@ pub(crate) fn account_env_of(kind: &str) -> Option<&'static str> {
         .iter()
         .find(|a| a.kind == kind)
         .and_then(|a| a.account_env)
+}
+
+/// 某一家找上游读的那个环境变量（[`DefaultUpstream::base_url_env`]）。认不出这家 / 这一家没登记上游 ⇒ `None`
+/// （`ccm` 对它不注入中转、也不清继承来的那一条）。
+pub(crate) fn base_url_env_of(kind: &str) -> Option<&'static str> {
+    REGISTRY
+        .iter()
+        .find(|a| a.kind == kind)
+        .and_then(|a| a.upstream.as_ref())
+        .map(|u| u.base_url_env)
 }
 
 /// 某一家请求压缩上下文用的那一句（[`Adapter::compact_request`]）。认不出这家 / 这一家不支持 ⇒ `None`。

@@ -305,23 +305,37 @@ pub fn run(args: &[String], process_argv: &[String], running: RunningScan) -> i3
     }
 }
 
+/// 账号载体与找上游的那两个变量名只有**知道是哪一家**才问得出来 ⇒ 解析完 argv 再补这四格（名字问注册表那一家的格）。
+/// `inherit` ＝ 读继承值的那只手（`None` ＝ 不继承：别名预览）；没有这一维的家 ⇒ 名字空串、继承值不读。
+fn agent_env(agent: &str, env: &mut Env, inherit: Option<&dyn Fn(&str) -> Option<String>>) {
+    env.account_env = crate::agents::account_env_of(agent)
+        .unwrap_or_default()
+        .to_string();
+    env.base_url_env = crate::agents::base_url_env_of(agent)
+        .unwrap_or_default()
+        .to_string();
+    let read = |k: &str| {
+        inherit
+            .filter(|_| !k.is_empty())
+            .and_then(|g| g(k))
+            .filter(|v| !v.is_empty())
+    };
+    env.inherited_config_dir = read(&env.account_env);
+    env.inherited_base_url = read(&env.base_url_env);
+}
+
 /// 解析好的 argv ＋ 一份环境 ⇒ 那一条计划。**真跑、`--ccm-print`、别名预览（[`answer_print`]）都从这里拿计划**，
 /// 三条路结构上不可能各算各的。
 ///
 /// `inherit_account`：要不要读**这个进程**环境里继承来的账号目录变量。一次性模式（用户终端里敲的）要；
 /// 别名预览不要 —— 那一问答的是「从一个新终端敲这条别名」，常驻后端进程身上的变量不是那个终端的。
 fn plan_of(o: &argv::Opts, mut env: Env, inherit_account: bool) -> Result<Plan, Die> {
-    // 账号维度的载体名只有**知道是哪一家**才问得出来 ⇒ 解析完 argv 再补这两格。
-    env.account_env = crate::agents::account_env_of(&o.agent)
-        .unwrap_or_default()
-        .to_string();
-    env.inherited_config_dir = (inherit_account && !env.account_env.is_empty())
-        .then(|| {
-            std::env::var(&env.account_env)
-                .ok()
-                .filter(|v| !v.is_empty())
-        })
-        .flatten();
+    let get = |k: &str| std::env::var(k).ok();
+    agent_env(
+        &o.agent,
+        &mut env,
+        inherit_account.then_some(&get as &dyn Fn(&str) -> Option<String>),
+    );
     let table = if needs_account_table(o, &env) {
         AccountTable::load(&env.accts_manifest)
     } else {
@@ -734,11 +748,11 @@ fn exec_direct(d: &plan::Direct) -> i32 {
         match crate::accounts::upstream_select::endpoint::keyed_for_exec(url, &|k| {
             std::env::var(k).ok()
         }) {
-            Some(keyed) => std::env::set_var(plan::BASE_URL_ENV, keyed),
+            Some(keyed) => std::env::set_var(&d.base_url_env, keyed),
             None => return die(&copy_text("beCcm.relay.noKey", &[])),
         }
     } else if d.clears_inherited_relay {
-        std::env::remove_var(plan::BASE_URL_ENV);
+        std::env::remove_var(&d.base_url_env);
     }
     if !d.cwd.is_empty() && std::env::set_current_dir(&d.cwd).is_err() {
         return die(&copy_text(

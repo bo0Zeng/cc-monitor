@@ -20,13 +20,11 @@ use crate::common::session_snapshot::TakenNames;
 use crate::platform::shell::posix;
 use shell_quote_core::posix_quote as sq;
 
-/// 中转地址那个环境变量。
-pub(crate) const BASE_URL_ENV: &str = "ANTHROPIC_BASE_URL";
 /// 本机起新会话回填 sid 用的身份 token 那个环境变量（读侧 `observe/accounts_query.rs` 的同名常量）。
 
-/// 直路注入中转地址那一句（`--ccm-print` 与非得经 shell 那一趟同一份）。
-pub(crate) fn relay_export(url: &str) -> String {
-    posix::export(BASE_URL_ENV, &relay_word(url))
+/// 直路注入中转地址那一句（`--ccm-print` 与非得经 shell 那一趟同一份）。`var` ＝ 这一家找上游读的那个环境变量。
+pub(crate) fn relay_export(var: &str, url: &str) -> String {
+    posix::export(var, &relay_word(url))
 }
 
 /// 一条不带钥匙的中转地址 ⇒ `--ccm-print` 里那个 shell 词：钥匙段写成读那台钥匙文件的命令替换（钥匙不进打印出来的命令）。
@@ -39,12 +37,12 @@ fn relay_word(url: &str) -> String {
     }
 }
 
-/// 环境里继承来的 `ANTHROPIC_BASE_URL` 里，**用户自己的端点**那一个（不是我们的中转那一形）。
+/// 环境里继承来的那一条上游地址（[`Env::base_url_env`] 那个变量）里，**用户自己的端点**那一个（不是我们的中转那一形）。
 ///
 /// 我们的中转地址属于某一个号（路由里带着账号段）：它是外层 shell / 上一趟 ccm 留下的，
 /// 不是这一发的 ⇒ 不认（容器路不转进 pane，直路按这一发的目标账号重问）。用户自己的端点 ⇒ 照旧不动。
 fn user_base_url(env: &Env) -> Option<&str> {
-    env.anthropic_base_url
+    env.inherited_base_url
         .as_deref()
         .filter(|v| !v.is_empty() && !crate::accounts::upstream_select::endpoint::ours(v))
 }
@@ -64,7 +62,10 @@ pub(crate) struct Env {
     ///   在**字段访问**上命中（`env.claude_config_dir` 里逐字含 `.claude`）——
     ///   而这个字段装的是「调用方选了哪个号」，不是 Claude 的目录布局。
     pub(crate) inherited_config_dir: Option<String>,
-    pub(crate) anthropic_base_url: Option<String>,
+    /// 这一家找上游读的那个环境变量（`agents::base_url_env_of`，由 `mod.rs` 解析完 argv 补；没登记上游 ⇒ 空串：不注入、不清）。
+    pub(crate) base_url_env: String,
+    /// 调用方**继承来的**那个变量的值（同上，由 `mod.rs` 补；预览不继承）。
+    pub(crate) inherited_base_url: Option<String>,
     /// 起 agent 前要 eval 的机器级 env 串。
     pub(crate) ccm_env: String,
     // 🔴 `K-R58`：这里原来有一个 `workspace: String`（`$CCM_WORKSPACE`，`$HOME` 下裸敲时
@@ -87,7 +88,7 @@ pub(crate) struct Env {
     /// 问「此刻哪些会话在跑」的那一次扫描（观测层的，由入口注入 —— control 不引用 observe）。
     /// 入参 = 这一趟要用的账号配置目录（`None` = agent 自己的默认家目录）。`None` = 这一趟不问（预览 / 不是 resume）。
     pub(crate) running_sessions: Option<super::RunningScan>,
-    /// 这一发往 `ANTHROPIC_BASE_URL` 里写什么（上游选择那张决策表，入口注入）。`None` = 不问（判据 / 不起 agent）。
+    /// 这一发往 [`Self::base_url_env`] 里写什么（上游选择那张决策表，入口注入）。`None` = 不问（判据 / 不起 agent）。
     pub(crate) relay: Option<RelayAsk>,
 }
 
@@ -114,7 +115,9 @@ impl Env {
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default(),
             tmux: get("TMUX"),
-            anthropic_base_url: get("ANTHROPIC_BASE_URL"),
+            // 找上游那个变量名与它的继承值，要等**解析完 argv 知道是哪一家**才填得了 ⇒ 由 `mod.rs` 补。
+            base_url_env: String::new(),
+            inherited_base_url: None,
             ccm_env: pick("CCM_ENV", Defaults::ENV.to_string()),
             accts_manifest: accts_manifest_under(&home),
             // 继承值与载体名一样，要等**解析完 argv 知道是哪一家**才填得了 ⇒ 由 `mod.rs` 补。
@@ -155,7 +158,8 @@ impl Env {
         Env {
             pwd: home.clone(),
             tmux: None,
-            anthropic_base_url: None,
+            base_url_env: String::new(),
+            inherited_base_url: None,
             ccm_env: pick("CCM_ENV", Defaults::ENV.to_string()),
             accts_manifest: accts_manifest_under(&home),
             inherited_config_dir: None,
@@ -495,9 +499,11 @@ pub(crate) struct Direct {
     pub(crate) argv: Vec<String>,
     /// 这一趟有没有身份面（claude 有、codex 没有）。
     pub(crate) has_identity: bool,
+    /// 这一家找上游读的那个环境变量（见 [`Env::base_url_env`]；没登记上游 ⇒ 空串，下面两格恒为空 / 假）。
+    pub(crate) base_url_env: String,
     /// 要注入的中转地址（不带钥匙；钥匙在 exec 那一刻从那台的钥匙文件读）。`None` = 不注入。
     pub(crate) relay: Option<String>,
-    /// 环境里本来就有一个不是我们注入的 `ANTHROPIC_BASE_URL`（用户自己的端点）⇒ 不动它，说一句。
+    /// 环境里本来就有一个不是我们注入的上游地址（用户自己的端点）⇒ 不动它，说一句。
     pub(crate) keeps_user_base_url: bool,
     /// 环境里继承来的是我们的中转那一形（别的号的），而这一发不注入 ⇒ exec 之前清掉它。
     pub(crate) clears_inherited_relay: bool,
@@ -849,7 +855,7 @@ fn inherited_gate(env: &Env) -> Result<(), Die> {
             env.account_env.as_str(),
             env.inherited_config_dir.as_deref(),
         ),
-        ("ANTHROPIC_BASE_URL", user_base_url(env)),
+        (env.base_url_env.as_str(), user_base_url(env)),
     ] {
         if let Some(v) = v.filter(|v| !shell_quote_core::free_text_ok(v)) {
             return Err(refuse(what, v));
@@ -1057,7 +1063,7 @@ pub(crate) fn build_among(
             }
         }
         if let Some(v) = user_base_url(env) {
-            payload = format!("{}{payload}", posix::export(BASE_URL_ENV, &sq(v)));
+            payload = format!("{}{payload}", posix::export(&env.base_url_env, &sq(v)));
         }
         // 自检**共用载荷那一段 export 前缀**（它要在 pane 那份环境里跑）：上面只往前面加，
         // ⇒ 前缀 = 载荷去掉末尾那段裸命令。
@@ -1136,7 +1142,7 @@ pub(crate) fn build_among(
     // 这一发不注入时还要清掉它（否则 agent 拿着别的号的路由出去）。
     let keeps_user_base_url = user_base_url(env).is_some();
     let relay = match (keeps_user_base_url, env.relay, face) {
-        (false, Some(ask), Some(f)) => {
+        (false, Some(ask), Some(f)) if !env.base_url_env.is_empty() => {
             let account = if !config_dir.is_empty() {
                 LaunchAccount::Named {
                     config_dir: config_dir.clone(),
@@ -1162,7 +1168,7 @@ pub(crate) fn build_among(
     let clears_inherited_relay = relay.is_none()
         && !keeps_user_base_url
         && env
-            .anthropic_base_url
+            .inherited_base_url
             .as_deref()
             .is_some_and(|v| !v.is_empty());
 
@@ -1182,6 +1188,7 @@ pub(crate) fn build_among(
         cwd,
         argv,
         has_identity: face.is_some_and(|f| f.has_identity),
+        base_url_env: env.base_url_env.clone(),
         relay,
         keeps_user_base_url,
         clears_inherited_relay,
@@ -1350,9 +1357,9 @@ fn render_direct(d: &Direct) -> String {
         line.push_str(&posix::unset(&d.nested));
     }
     if let Some(url) = &d.relay {
-        line.push_str(&relay_export(url));
+        line.push_str(&relay_export(&d.base_url_env, url));
     } else if d.clears_inherited_relay {
-        line.push_str(&posix::unset(&[BASE_URL_ENV]));
+        line.push_str(&posix::unset(&[&d.base_url_env]));
     }
     if !d.cwd.is_empty() {
         line.push_str(&format!("cd {} && ", sq(&d.cwd)));
@@ -1388,9 +1395,9 @@ fn render_direct_ps(d: &Direct) -> String {
             }
             None => pq(url),
         };
-        line.push_str(&ps::set_env(BASE_URL_ENV, &word));
+        line.push_str(&ps::set_env(&d.base_url_env, &word));
     } else if d.clears_inherited_relay {
-        line.push_str(&ps::remove_env(&[BASE_URL_ENV]));
+        line.push_str(&ps::remove_env(&[&d.base_url_env]));
     }
     if !d.cwd.is_empty() {
         line.push_str(&ps::set_location(&pq(&d.cwd)));

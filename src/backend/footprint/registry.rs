@@ -636,44 +636,6 @@ pub const TOOLS: &[ToolSpec] = &[
             },
         ],
     },
-    ToolSpec {
-        id: "project-mcp",
-        display_name: Text(|| copy_text("rsToolRegistry.tools.projectMcpName", &[])),
-        installable: true,
-        uninstallable: true,
-        carriers: &[
-            Carrier {
-                what: Text(|| copy_text("rsToolRegistry.tools.projectMcpWhat", &[])),
-                source: ToolSource::Generated,
-                destination: ToolDestination::ProjectRelative(".mcp.json"),
-                touches: &[TouchedFile {
-                    path: ".mcp.json",
-                    host: HostScope::ProjectDir,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.projectMcpNote", &[])
-                    })),
-                    effect: TouchEffect::OwnedFile,
-                }],
-            },
-            // **推 / 拉**（B，用户 09-24）：同一份文件的**第二个写入来源** ——
-            //   内容不是这台机器上现场编的，是从另一台机器那份里**原样**拷来的条目（`mcp_sync.rs`）。
-            //   落点、写法（经那台后端 `files-put`）与上一格同一个；单列一格是为了让「这个 app 动过你哪些文件」
-            //   那一页说得出「有些条目是从别的机器搬来的」（每个写点都要在足迹里可见）。
-            //   远端那台的足迹栏按那台机器问（RM1a），这一格的 `host` 与上一格同是项目目录 —— 在哪台上就算哪台的。
-            Carrier {
-                what: Text(|| copy_text("rsToolRegistry.tools.mcpSyncWhat", &[])),
-                source: ToolSource::Generated,
-                destination: ToolDestination::ProjectRelative(".mcp.json"),
-                touches: &[TouchedFile {
-                    path: ".mcp.json",
-                    host: HostScope::ProjectDir,
-                    // 资产目录那一块的「装到这台」（MCP）走的就是这一格（同一条命令 `mcp_sync_apply`，只勾那一条）。
-                    note: Some(Text(|| copy_text("rsToolRegistry.tools.mcpSyncNote", &[]))),
-                    effect: TouchEffect::OwnedFile,
-                }],
-            },
-        ],
-    },
     // ═══ **从第三档升上来的第一项** ═══
     //
     // 它昨天还住在 [`UNMANAGED_ENV`]（`app 假设它在`），`why` 那一格逐字写着
