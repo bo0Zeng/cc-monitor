@@ -62,6 +62,11 @@ pub(crate) fn ours(d: &dyn Door, home: &str) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
+/// 「名字：那一句」。
+fn named(name: &str, said: &str) -> String {
+    copy_core::copy_text("beProfile.named.say", &[("name", name), ("said", said)])
+}
+
 /// 链接这一趟做了什么：动没动 · 没做成的几条（每条一句，带名字）。
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct Synced {
@@ -109,7 +114,7 @@ pub(crate) fn sync(d: &dyn Door, home: &str, want: &[String]) -> Synced {
     for gone in have.iter().filter(|h| !want.contains(h)) {
         match door::remove(d, home, &rel_of(gone), false) {
             Ok(()) => out.changed = true,
-            Err(e) => out.problems.push(format!("{gone}：{e}")),
+            Err(e) => out.problems.push(named(gone, &e)),
         }
     }
     for name in want.iter().filter(|w| !have.contains(w)) {
@@ -125,7 +130,7 @@ pub(crate) fn sync(d: &dyn Door, home: &str, want: &[String]) -> Synced {
         }
         match door::link(d, home, &rel_of(name), target()) {
             Ok(()) => out.changed = true,
-            Err(e) => out.problems.push(format!("{name}：{e}")),
+            Err(e) => out.problems.push(named(name, &e)),
         }
     }
     out

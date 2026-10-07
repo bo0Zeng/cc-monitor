@@ -224,7 +224,7 @@ pub(crate) fn parse_book(text: &str) -> Book {
     let mut book = Book::default();
     let line_of = |k: &toml_edit::Key| k.span().map_or(0, |s| line_at(text, s.start));
     for (name, item) in doc.iter() {
-        let (key, _) = doc.as_table().get_key_value(name).expect("刚列出来的键");
+        let (key, _) = doc.as_table().get_key_value(name).expect("key listed just above");
         let line = line_of(key);
         let mut problem = |profile: Option<&str>, line: usize, message: String| {
             book.problems.push(Problem {
@@ -254,7 +254,7 @@ pub(crate) fn parse_book(text: &str) -> Book {
             items: Vec::new(),
         };
         for (k, v) in t.iter() {
-            let (kk, _) = t.get_key_value(k).expect("刚列出来的键");
+            let (kk, _) = t.get_key_value(k).expect("key listed just above");
             let kl = line_of(kk);
             match k {
                 FROM_KEY => match v.as_str() {
@@ -342,7 +342,10 @@ pub(crate) fn chain<'a>(book: &'a Book, name: &str) -> Result<Vec<&'a Profile>, 
             names.push(&cur.name);
             return Err(copy_text(
                 "beProfile.chain.cycle",
-                &[("chain", &names.join(" → "))],
+                &[(
+                    "chain",
+                    &names.join(&copy_text("beProfile.chain.arrow", &[])),
+                )],
             ));
         }
         if let Some(p) = book.problem_of(&cur.name) {
@@ -569,7 +572,7 @@ pub(crate) fn problems_after(text: &str) -> Vec<String> {
                 .line
                 .map_or(p.message.clone(), |l| at_line(l, p.message.clone()));
             match &p.profile {
-                Some(n) => format!("{n}：{said}"),
+                Some(n) => copy_text("beProfile.named.say", &[("name", n), ("said", &said)]),
                 None => said,
             }
         })

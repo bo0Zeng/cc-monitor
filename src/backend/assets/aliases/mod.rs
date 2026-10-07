@@ -674,7 +674,10 @@ pub(crate) fn migrate(d: &dyn Door, home: &str) -> Result<bool, String> {
                 "{}",
                 copy_text(
                     "beProfile.migrate.unparsed",
-                    &[("line", &format!("{}（{why}）", a.name))]
+                    &[(
+                        "line",
+                        &copy_text("beProfile.named.say", &[("name", &a.name), ("said", &why)])
+                    )]
                 )
             ),
         }
@@ -698,9 +701,15 @@ pub fn migrate_here() {
             None => migrate(&d, &home),
         }
     }) {
-        Ok(true) => tracing::info!("别名清单已转进配置文件"),
+        Ok(true) => tracing::info!(
+            "{}",
+            copy_text(
+                "beProfile.migrate.done",
+                &[("path", relay_route_core::PROFILES_REL)]
+            )
+        ),
         Ok(false) => {}
-        Err(e) => tracing::warn!("别名清单转进配置文件没成：{e}"),
+        Err(e) => tracing::warn!("{}", copy_text("beProfile.migrate.failed", &[("e", &e)])),
     }
 }
 
@@ -963,7 +972,13 @@ pub(crate) fn install_in(
         if !kids.is_empty() {
             return Err(InstallErr::Refused(copy_text(
                 "beProfile.install.basedOn",
-                &[("name", &p.name), ("children", &kids.join("、"))],
+                &[
+                    ("name", &p.name),
+                    (
+                        "children",
+                        &kids.join(&copy_text("beProfile.list.sep", &[])),
+                    ),
+                ],
             )));
         }
         changes.push(profile::Change::Remove(p.name.clone()));

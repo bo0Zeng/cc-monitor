@@ -4128,8 +4128,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_resolution_path_really_puts_the_local_ccm_entry_down",
             1,
         ),
-        // 分流收成 `route`：抢词表与它的判据退役。
-        ("src/backend/control/ccm/mod.rs", "routes_to_backend", 1),
+        // 分流收成 `route`：抢词表的判据退役。
         (
             "tests/backend/control/ccm_tests.rs",
             "under_the_name_ccm_only_backend_first_words_reach_the_backend",
@@ -4923,7 +4922,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/backend/control/deploy_plan_tests.rs", 1), // 旧入口两形真值表随判定从 monitor `ccm_legacy_tests.rs` 搬来，那块墓碑跟着搬
         ("tests/frontend/shell/lib_invariant_population_tests.rs", 2),
         ("src/frontend/ui/settings/machine-card.ts", 1), // 「后端路径」那一格删了，按用户名预填它的函数原地留一块
-        ("src/backend/control/ccm/mod.rs", 3), // 抢词表 `routes_to_backend` 删了，原地一块；入口②（`<bin> ccm …`）删了，头注与 `SUBCOMMAND_WORD` 各一块
         ("src/backend/control/ccm/plan.rs", 1), // `self_argv` 的入口②那一形删了，原地一块
         ("tests/e2e/backend-cc-bus.sh", 1),    // [17] 前的入口②说明删了，原地一块
         ("tests/e2e/backend-gate2-acceptance.sh", 1), // `meta_dollar` 那条登记豁免换成版本门，原地一块
