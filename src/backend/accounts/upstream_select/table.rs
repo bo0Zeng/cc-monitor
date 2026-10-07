@@ -17,6 +17,7 @@
 //! # 「这一行的 `base_url` 缺席」与「这一行不在表里」是两件事
 //!
 //! - 缺席 ⇒ 用这一行所属那个 agent 的默认上游（每 agent 一行，`agents::Adapter::upstream`）。那是一个已经存在的行的字段取默认值，不是回落。
+//!   进程级的那一个默认上游（旧址 `server.rs:24`）不存在。
 //! - 不在表里 ⇒ 404，一个字节都不发上游。
 
 use crate::relay::{segment_is_safe, Base};
