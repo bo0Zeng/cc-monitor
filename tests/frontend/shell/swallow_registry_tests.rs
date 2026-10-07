@@ -222,6 +222,7 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/frontend/shell/src/lib.rs", "let _ = w.set_focus();", 2, Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/lib.rs", "let _ = w.show();", 2, Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/lib.rs", "let _ = w.unminimize();", 2, Why::WindowBestEffort, ""),
+    ("src/frontend/shell/src/lib.rs", "let _ = w.request_user_attention(Some(tauri::UserAttentionType::Informational));", 1, Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/platform/window.rs", "let _ = win.set_focus();", 1, Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/platform/window.rs", "let _ = win.show();", 2, Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/platform/window.rs", "let _ = win.unminimize();", 2, Why::WindowBestEffort, ""),

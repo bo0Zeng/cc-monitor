@@ -122,12 +122,12 @@ const UNIT: &[&str] = &[
     "tests/comms/outward/route_tests.rs", // 跨半边抠 monitor 源码那几条退役 ⇒ 只剩纯解析 ＋ 成品→决策表（SCAN → UNIT）
     "tests/comms/outward/tee_tests.rs",
     "tests/comms/outward/upstream_tests.rs",
-    "tests/backend/stream/tap_tests.rs",       // hub
-    "tests/backend/stream/run_route_tests.rs", // 流归位那一跳的丢弃账
+    "tests/backend/stream/tap_tests.rs",        // hub
+    "tests/backend/stream/run_route_tests.rs",  // 流归位那一跳的丢弃账
     "tests/frontend/ui/live-card.vitest.ts", // 活卡：状态机 · 真 TabManager 三向相等（台架夹具那一条随折法搬进后端）
     "tests/frontend/ui/runs.vitest.ts", // 子运行：主 tab 零子运行行、agent 面板分组与五态、主活卡只有主运行那段、状态标到那张卡上
     "tests/frontend/ui/agent-window.vitest.ts", // agent 窗口：标题 · 说明 · 派活那段话 · 它派出的 agent · 不拽人 · 进来停在哪 · 回到派出它的地方
-    "tests/backend/writer_task_tests.rs", // 写者优先序（tap 最低）
+    "tests/backend/writer_task_tests.rs",       // 写者优先序（tap 最低）
     "tests/frontend/ui/branch-button.vitest.ts",
     "tests/frontend/ui/branch-fold-batching.vitest.ts",
     "tests/frontend/ui/branching.test.ts",
