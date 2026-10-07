@@ -12,25 +12,8 @@
 import { copyText } from "../copy-table";
 import { button } from "../kit/button";
 import type { ApiReason } from "../generated/ApiReason";
+import { reasonWord } from "./api-reason";
 import type { RetryOutcome } from "../session-reads";
-
-/** 原因一词（后端没给 ⇒ 原因不明）。 */
-export function reasonWord(reason: ApiReason | undefined): string {
-  switch (reason) {
-    case "overloaded":
-      return copyText("apiError.reason.overloaded");
-    case "quota":
-      return copyText("apiError.reason.quota");
-    case "network":
-      return copyText("apiError.reason.network");
-    case "auth":
-      return copyText("apiError.reason.auth");
-    case "context":
-      return copyText("apiError.reason.context");
-    default:
-      return copyText("apiError.reason.unknown");
-  }
-}
 
 /** 报错卡。`text` 是报错原文（进「原文」折叠，含状态码）。 */
 export function buildApiErrorCard(args: { timeLabel: string; reason?: ApiReason; text: string; status?: number | null }): HTMLElement {
