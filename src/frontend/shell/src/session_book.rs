@@ -9,7 +9,7 @@
 //! 唯一一件 monitor 自己知道、后端不知道的事是**到那台的连接断了**（[`In::LinkLost`]）：那台的成品随之作废（整份摘掉），
 //! 当时还活的 / 可重连的交出去说「说不清」（不许显示成已结束）。重连之后那台的新连接自己重报一遍。
 //!
-//! 原先住在这一侧的那一套裁决（tmux 原文账 · idle 账 · `classify_removed` · 两份收割 · 重连后重新裁 · 本机活会话表）已删。
+//! 裁决一条都不在这一侧。
 
 use parking_lot::RwLock;
 use std::collections::{BTreeMap, HashMap};

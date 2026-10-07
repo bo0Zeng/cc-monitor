@@ -5,20 +5,13 @@ use crate::event_replay::EventReplay;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Line 帧攒批缓冲（Batch5-F17）。
-///
-/// backend 线协议没有批量帧（一行一帧），首连 snapshot 的几千行历史若逐帧调
-/// 一批一条地交重放缓冲，恒 1 < INCREMENTAL_BATCH_THRESHOLD → 全部走
-/// 逐条 jsonl-line live 渲染管线（v2.4.2 给本地修掉的逐行刷屏在远端重现）。
-/// 客户端把**连续到达**的 Line 帧聚合成批再交重放缓冲：snapshot 密集
-/// 连发天然聚成大批 → 自动跨过阈值复用 chunked 回放路径；日常单行增量
-/// 只多一个静默窗口（~30ms）的延迟。时序判定（静默窗口）留在 [`LineIntake::recv_or_flush`]
-/// 的 `tokio::time::timeout` 里；本结构只管容量与顺序，纯逻辑可直测。
+/// Line 帧攒批缓冲。backend 线协议一行一帧；首连 snapshot 的几千行若一帧一批地交重放缓冲，恒小于 INCREMENTAL_BATCH_THRESHOLD → 全部走逐条渲染管线（刷屏）。
+/// 客户端把连续到达的 Line 帧聚合成批：snapshot 密集连发天然聚成大批 → 跨过阈值走 chunked 回放；日常单行增量只多一个静默窗口（~30ms）的延迟。
+/// 时序判定（静默窗口）在 [`LineIntake::recv_or_flush`] 的 `tokio::time::timeout` 里；本结构只管容量与顺序，纯逻辑可直测。
 struct Batcher {
     pending: Vec<JsonlLine>,
     cap: usize,
-    /// 首行入缓冲的时刻——批龄上限用（F17 审计 R3：帧间隔持续 < 静默窗口时
-    /// 永不静默，首行可见延迟无界；批龄到点强制 flush 双保险）。
+    /// 首行入缓冲的时刻 —— 批龄上限用（帧间隔持续小于静默窗口时永不静默，首行可见延迟无界；批龄到点强制 flush）。
     born: Option<std::time::Instant>,
 }
 
@@ -66,11 +59,8 @@ const BATCH_CAP: usize = 600;
 /// 批龄上限：无论帧流多密集，首行入缓冲后最迟这么久必 flush（见 Batcher.born）。
 const BATCH_MAX_AGE_MS: u64 = 200;
 
-/// 攒批出口（Batch5-F17）：远端流、本机流、旁路快照三路的行**都**从这里出去
-/// （`batch_to_payloads` → `on_line_batch_awaited`），用 **awaited 变体**——大批的块序列发完才返回，保证行
-/// emit 严格先于随后的 SessionRemoved/断连归档（审计 R1：spawn 化的行若晚于
-/// ended 格 到达前端，会把刚归档的远端 Tab 复活成僵尸 live），同时对
-/// backend 帧流形成天然背压。
+/// 攒批出口：远端流、本机流、旁路快照三路的行都从这里出去（`batch_to_payloads` → `on_line_batch_awaited`），用 awaited 变体 —— 大批的块序列发完才返回，
+/// 保证行 emit 严格先于随后的 SessionRemoved / 断连归档（晚到的行会把刚归档的远端 Tab 复活成僵尸 live），同时对 backend 帧流形成天然背压。
 pub(super) async fn flush_lines(
     replay: &Arc<EventReplay>,
     host_label: &str,
