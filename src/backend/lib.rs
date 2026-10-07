@@ -817,7 +817,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p8l-acct-keymask：accounts-list 每个 API 号带 keyMasked（8 点 ＋ 末四位）与 baseUrl、meta 带 home；apikey-read / apikey-key-set 掩码同形；LaunchFace 多 models（画像表多 displayName · models）。
 ///
 /// p8m-refused-60s：无限额头无 retry-after 的 429 只挡 60 秒；rotation next 与真换号同一处判接不接得上；显示态每格带 full；accounts-add / 写别名结果带「重读别名」提示。
-pub const BUILD_ID: &str = "p8m-refused-60s";
+///
+/// p8n-mcp-sync：新写口 accounts-mcp-sync {on}；aliases-read 带 said 与 home；NameClash 带 wins（yours / list / unclear）。
+pub const BUILD_ID: &str = "p8n-mcp-sync";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
