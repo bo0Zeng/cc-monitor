@@ -366,7 +366,7 @@ gate_assert_judged() {
   case "$out" in
     *"  ok   "*)
       fails+=("gate $name（**「$cut」这一条判定不再判了** —— 喂一份只有它拦得住的合成输入，\
-那一格却印出了绿行 ⇒ 一条判定被掏空、门禁照旧放行，正是 N-G2 立这一族探针要治的那一形）")
+那一格却印出了绿行 ⇒ 一条判定被掏空、门禁照旧放行，门禁照旧放行）")
       return 0 ;;
   esac
   case "$out" in
@@ -382,55 +382,54 @@ gate_selftest() {
   # 探针不受 `GATE_ONLY` 影响：`gate_wants` 第一行读它，动态作用域下调出去的 `run_gate*` 里也看得见。
   local GATE_PROBE=1
   local probe
-  probe="$(run_gate 自检① - bash -c 'printf "error: KR22-PROBE-A\n"; exit 3' 2>&1)"
+  probe="$(run_gate 自检① - bash -c 'printf "error: GATE-PROBE-A\n"; exit 3' 2>&1)"
   case "$probe" in
-    *KR22-PROBE-A*) ;;
-    *) fails+=("gate 自检①（run_gate 的失败支没把被测命令的输出印出来 —— K-R22 那一格被改回去了：\
-门禁红了又不说为什么红）") ;;
+    *GATE-PROBE-A*) ;;
+    *) fails+=("gate 自检①（run_gate 的失败支没把被测命令的输出印出来 —— 门禁红了又不说为什么红）") ;;
   esac
-  probe="$(run_gate_sum 自检② gate_probe_libs_a bash -c 'printf "error[E0425]: KR22-PROBE-B\n --> src/x.rs:1:1\n"; exit 101' 2>&1)"
+  probe="$(run_gate_sum 自检② gate_probe_libs_a bash -c 'printf "error[E0425]: GATE-PROBE-B\n --> src/x.rs:1:1\n"; exit 101' 2>&1)"
   case "$probe" in
-    *KR22-PROBE-B*) ;;
+    *GATE-PROBE-B*) ;;
     *) fails+=("gate 自检②（run_gate_sum 的失败支在「编译错误」那一形上印不出东西 —— \
-那一形没有 failures: 段，正是 K-R22 D2 点名要盖住的那格）") ;;
+那一形没有 failures: 段）") ;;
   esac
   probe="$(run_gate 自检③ - bash -c 'i=1; while [ $i -le 100 ]; do
-      if [ $i -ge 97 ]; then printf "尾部第 %s 行 KR22-PROBE-C\n" "$i"; else printf "无关行 %s\n" "$i"; fi
+      if [ $i -ge 97 ]; then printf "尾部第 %s 行 GATE-PROBE-C\n" "$i"; else printf "无关行 %s\n" "$i"; fi
       i=$((i + 1)); done; exit 4' 2>&1)"
   case "$probe" in
-    *KR22-PROBE-C*) ;;
+    *GATE-PROBE-C*) ;;
     *) fails+=("gate 自检③（模式表一条都没匹配上时，「原文尾部恒印」那半兜底没走到 —— \
 fail-closed 的承重墙塌了：从此模式表漏掉的形状会退化成一个字都不印）") ;;
   esac
   # 探针④：失败行**行首带 ANSI 色码**（vitest 那一形），哨兵只在这一行上；
   # 垫的无关行条数现算，保证①之外的两条路（②尾部 / ③全印）**都够不着**它。
   probe="$(run_gate 自检④ - bash -c '
-      printf "\033[41m\033[1m FAIL \033[22m\033[49m NG1-PROBE-D 行首带色的失败行\n"
+      printf "\033[41m\033[1m FAIL \033[22m\033[49m GATE-PROBE-D 行首带色的失败行\n"
       n=$(( $1 + $2 + 10 )); i=1
       while [ "$i" -le "$n" ]; do printf "无关行 %s\n" "$i"; i=$((i + 1)); done
       exit 5' _ "$GATE_DIAG_TAIL" "$GATE_DIAG_WHOLE" 2>&1)"
   case "$probe" in
-    *NG1-PROBE-D*) ;;
+    *GATE-PROBE-D*) ;;
     *) fails+=("gate 自检④（失败行行首带 ANSI 色码时，「关键行」那一段匹配不上 —— \
-N-G1 治的正是这一形：vitest 在非 TTY 下照样上色，ESC 不是 [[:space:]]，\
-于是每一趟红都退化成「一条都没匹配上」，死值验拿不到失败用例的名字）") ;;
+vitest 在非 TTY 下照样上色，ESC 不是 [[:space:]]，\
+于是每一趟红都退化成「一条都没匹配上」，看不到失败用例的名字）") ;;
   esac
 
   # 探针⑤ · `run_gate` 的退出码那条：读数 `7 passed` 已满足「0 passed 不是绿」。
-  probe="$(run_gate 自检⑤ - bash -c 'printf "NG2-PROBE-E 7 passed\n"; exit 3' 2>&1)"
-  gate_assert_judged 自检⑤ "$probe" NG2-PROBE-E "run_gate 的「退出码非零 ⇒ 红」"
+  probe="$(run_gate 自检⑤ - bash -c 'printf "GATE-PROBE-E 7 passed\n"; exit 3' 2>&1)"
+  gate_assert_judged 自检⑤ "$probe" GATE-PROBE-E "run_gate 的「退出码非零 ⇒ 红」"
   # 探针⑥ · `run_gate` 的「0 passed 不是绿」：`exit 0` 已满足退出码那条。
-  probe="$(run_gate 自检⑥ - bash -c 'printf "NG2-PROBE-F 0 passed\n"; exit 0' 2>&1)"
-  gate_assert_judged 自检⑥ "$probe" NG2-PROBE-F "run_gate 的「0 passed 不是绿」"
+  probe="$(run_gate 自检⑥ - bash -c 'printf "GATE-PROBE-F 0 passed\n"; exit 0' 2>&1)"
+  gate_assert_judged 自检⑥ "$probe" GATE-PROBE-F "run_gate 的「0 passed 不是绿」"
   # 探针⑦ · `run_gate_sum` 的退出码那条：跑到的 {a} == 该跑的 {a}、合计 7，其余两条都已满足。
-  probe="$(run_gate_sum 自检⑦ gate_probe_libs_a bash -c 'printf "  Running unittests src/lib.rs (/x/deps/a-0a1b)\ntest result: ok. 7 passed\nNG2-PROBE-G\n"; exit 3' 2>&1)"
-  gate_assert_judged 自检⑦ "$probe" NG2-PROBE-G "run_gate_sum 的「退出码非零 ⇒ 红」"
+  probe="$(run_gate_sum 自检⑦ gate_probe_libs_a bash -c 'printf "  Running unittests src/lib.rs (/x/deps/a-0a1b)\ntest result: ok. 7 passed\nGATE-PROBE-G\n"; exit 3' 2>&1)"
+  gate_assert_judged 自检⑦ "$probe" GATE-PROBE-G "run_gate_sum 的「退出码非零 ⇒ 红」"
   # 探针⑧ · `run_gate_sum` 的成员集合那条：`exit 0`、合计 7，只跑到 {a} 而该跑的是 {a, b}。
-  probe="$(run_gate_sum 自检⑧ gate_probe_libs_ab bash -c 'printf "  Running unittests src/lib.rs (/x/deps/a-0a1b)\ntest result: ok. 7 passed\nNG2-PROBE-H\n"; exit 0' 2>&1)"
-  gate_assert_judged 自检⑧ "$probe" NG2-PROBE-H "run_gate_sum 的「成员集合 == 跑到的包集合」"
+  probe="$(run_gate_sum 自检⑧ gate_probe_libs_ab bash -c 'printf "  Running unittests src/lib.rs (/x/deps/a-0a1b)\ntest result: ok. 7 passed\nGATE-PROBE-H\n"; exit 0' 2>&1)"
+  gate_assert_judged 自检⑧ "$probe" GATE-PROBE-H "run_gate_sum 的「成员集合 == 跑到的包集合」"
   # 探针⑨ · `run_gate_sum` 的「0 passed 不是绿」：`exit 0` ＋ 集合相等，合计恰好是 0。
-  probe="$(run_gate_sum 自检⑨ gate_probe_libs_a bash -c 'printf "  Running unittests src/lib.rs (/x/deps/a-0a1b)\ntest result: ok. 0 passed\nNG2-PROBE-I\n"; exit 0' 2>&1)"
-  gate_assert_judged 自检⑨ "$probe" NG2-PROBE-I "run_gate_sum 的「0 passed 不是绿」"
+  probe="$(run_gate_sum 自检⑨ gate_probe_libs_a bash -c 'printf "  Running unittests src/lib.rs (/x/deps/a-0a1b)\ntest result: ok. 0 passed\nGATE-PROBE-I\n"; exit 0' 2>&1)"
+  gate_assert_judged 自检⑨ "$probe" GATE-PROBE-I "run_gate_sum 的「0 passed 不是绿」"
   # 探针⑩ · 采集面认得带颜色的 cargo 输出（CI 上就是这一形）。
   [ "$(printf '\033[1m\033[92m     Running\033[0m unittests src/lib.rs (/x/deps/a-0a1b)\n' | gate_ran_libs)" = a ] ||
     fails+=("gate 自检⑩（带颜色的 cargo 输出里认不出跑到的包 ⇒ CI 上 cargo 格必红）")
@@ -440,21 +439,21 @@ gate_selftest
 # ── `worktree-clean`：前置条件 —— 仓里不许有第二份工作副本 ──
 # 排在所有格之前：一族判据的人群是「走文件系统」，仓内多一份副本（并发的 worktree、变异副本）人群就静默膨胀 ——
 # 恒等断言红一片和改动无关的，地板断言则一声不吭地过去。本格红时先清副本再重跑。
-run_gate worktree-clean '判过的条数（抽样的 4 个扩展名 `.sh`/`.mjs`/`.rs`/`.ts`，每个一条**恒等**断言：`git ls-files` 认的份数 == 走文件系统走出的份数）。⚠ **抽样不是全集** —— 挑的是那几条真出过事的判据在数的东西（`.sh`→shellcheck 那一族 · `.mjs`→eslint 基线 · `.rs`→`readonly_guard` 的分区恒等 · `.ts`→`tsc` 的 `want`）。⚠ 它买的是「仓里没有第二份工作副本」，**买不到**「所有判据的人群都对」——一份被 `.gitignore` 掉的源码同样会让走文件系统的判据多看一份，而本格按 gitignore 的口径算、看不见它' \
+run_gate worktree-clean '判过的条数（抽样 4 个扩展名 `.sh`/`.mjs`/`.rs`/`.ts`，每个一条恒等断言：`git ls-files` 认的份数 == 走文件系统走出的份数）。⚠ 抽样不是全集：挑的是走文件系统的判据在数的东西。买的是「仓里没有第二份工作副本」，不买「所有判据的人群都对」—— 被 `.gitignore` 掉的源码同样会让走文件系统的判据多看一份，本格按 gitignore 的口径算、看不见它' \
          python3 tests/evidence/K-W25-worktree-clean.py
 
 # ── `hooks`：`tests/hooks/` 里会被 git 执行的那几份跑不跑得起来 ──
 # 本仓 `core.filemode=false`，`chmod +x` 不进 git，而 644 的 hook 会被 git 忽略并照常提交。
 # 所以「盘上可执行」（`test -x`）与「库里记着可执行位」（index mode）分开判；只判「文件在不在」不算数。
 # 判据本体住 `tests/scripts/hooks-are-runnable.sh`（含阳性对照，能对着变异副本跑）。
-run_gate hooks '每个被跟踪的 hook 文件 3 条（盘上可执行 · 库里记着可执行位 · 语法过得了它自己声明的解释器）＋ 8 条阳性对照。⚠本行原先写着「现打 hooks/ 下 1 个文件 ⇒ 11」——那是个**手抄的份数**，而本拍加了 `tests/hooks/pre-push` 之后盘上是 2 份 ⇒ 14。同 `copy2` 那一拍的订正：**摘掉抄来的数**，份数以判据本体自己印的那一行为准（它每趟从 `git ls-files tests/hooks/` 现算）。hooks/ 之外的任何一棵树本行都盖不到' \
+run_gate hooks '每个被跟踪的 hook 文件 3 条（盘上可执行 · 库里记着可执行位 · 语法过得了它自己声明的解释器）＋ 8 条阳性对照；份数以判据本体那一行为准（它从 `git ls-files tests/hooks/` 现算）。hooks/ 之外的树本行盖不到' \
          bash tests/scripts/hooks-are-runnable.sh
 
 # ── `copy2`：量具的还原那一跳有没有把旧 mtime 搬回被测树 ──
 # 用 `shutil.copy2` 还原源码会带回旧 mtime ⇒ cargo 判「源码没变」、复用上一刀的产物，那一趟读数作废。
 # 判复制的目的地落不落在被 git 跟踪的工作树内容上（造夹具、拷读数是正当用途，不红）。
 # 判据本体与它看不见什么住 `tests/evidence/K-R115-ruler.py` 头注。本格是唯一盖到 `evidence/` 的门。
-run_gate copy2 '`evidence/*.py` 里，`shutil` 保元数据复制族（copy2 · copytree · copystat）的**调用点**数，逐处判目的地；绿行那个数就是判过的调用点数。⚠ 本行原先写着「现打 176 份」——那是从判据本体那句现算的分母**手抄**过来的第二份，而本件落地前盘上已经是 183、落地后 185 ⇒ **摘掉那个抄来的数**，份数以 `tests/evidence/K-R115-ruler.py` 自己印的那一行为准。⚠ 只看 `evidence/` 下的 `.py`，别的目录、别的语言、shell 串里的 `cp -a` 本行一概盖不到' \
+run_gate copy2 '`evidence/*.py` 里 `shutil` 保元数据复制族（copy2 · copytree · copystat）的调用点数，逐处判目的地；份数以 `tests/evidence/K-R115-ruler.py` 自己印的那一行为准。⚠ 只看 `evidence/` 下的 `.py`；别的目录、别的语言、shell 串里的 `cp -a` 本行盖不到' \
          bash -c 'python3 tests/evidence/K-R115-ruler.py'
 
 # ── `shellcheck`：shell 脚本的 `--severity=error` 那一档 ───────────────────────────────────────
@@ -556,24 +555,24 @@ run_gate e2e-smoke '步数：`tests/e2e/*.py` 的 `py_compile` · `tests/e2e/exe
 #   `release.yml` 的触发与发布闸 · 产字节那条路（承诺的平台 ↔ 产线 ↔ 登记）· `BUILD_ID` 的抠法实打得到 ·
 #   本文件 `muslbuild` 点名的工具链版本 == `release.yml` 真装的 · `tests/scripts/re-embed.sh` 与发版那一步同源。
 # 射程与买不到的东西住那份文件头注。它不编字节：re-embed 只真跑 `--check`（只读）。
-run_gate release-gate '判过的条数（`release.yml` 上逐行印出来的 PASS：三条地板 ＋ ①触发得了 ②手工默认不发布 ③`env.PUBLISH` 字面 ④两处发布步骤的闸 ⑤CI 门的闸 ⑥两处发布步骤各自的正文来源 ⑦生成器排在发布步骤前面 ⑧生成器吐得出本版正文 ＋⑨产字节那条路（承诺的平台 ↔ 产线 · 编后端的步骤 ↔ 登记 · target triple ↔ 登记，三条都是**两向集合相等**；每条产线步骤在那个 job 里 count()==1；runner 标签逐字）⑩每一处抠 `const BUILD_ID`／身份戳界标的住址，逐处计数相等 ＋ **实打去读那份源码**、抠不出恰好一行就红 ⑪`build.rs` 那一侧「抠不到」是所有构建形态都响的失败（`unknown` 兜底从类型上消失）⑫本文件 `muslbuild` 裁词点名的工具链版本 == `release.yml` 真装的那两个 ＋⑬`BUILD_ID` bump 的同拍步骤 re-embed（`tests/scripts/re-embed.sh` 是出路的**唯一住址**，`build.rs::REEMBED_CMD` 逐字指着它；本机那条配方与 `release.yml` 产字节那一步**同源** —— target **两向集合相等** ＋ 旗标逐字相同；它铺的 arch ↔ `build.rs` 吃的 arch **两向集合相等**；三个内嵌落点 ↔ `src/frontend/shell/.gitignore` 里带机检锚的那几行**两向集合相等**；`build.rs` 那两个内嵌函数的出路各点名那条命令 ≥2 处、代码行里不许再手抄第二条产字节配方；mtime 那张安全网仍看**两份**源码；末一条**真跑** `re-embed.sh --check`，要有数）＋⑯ Release 资产 ↔ `src/doc/RELEASING.md` §2.2 登记表（两处 `files:` 两向一一对上 · 两个 musl 目标登记 ↔ 交叉编译 ↔ 改名成资产 · 每份校验和恰好一步生成、算的那几份 ↔ 登记两向）。⚠ 它**不执行 GitHub 的表达式求值器**，也**不跑那条流水线** ⇒ 「盘上这几份文本满足这几条」不等于「云端那一趟会绿」——⑨ 尤其如此：「登记的那一步在文件里」≠「那一步在 runner 上编得出字节」，更不等于「那份字节在目标机器上跑得起来」，真机那一维仍是**判不了**；⚠ 「往 Release 上写」只认两种形状（`softprops/action-gh-release` 的 `uses:` · `run:` 里的 `gh release`/`gh api …/releases`），换第三种路子上传它看不见；⚠ 正文**写得对不对**它一个字都不判；⚠ ⑬ 那一组同一条边界 —— ⑬a–⑬f 全是**盘上文本**的对拍，「配方写得一样」≠「那条命令今天在这台机器上跑得出字节」（它要 zig ＋ cargo-zigbuild，本格一个都不装、不跑）；⑬g 真跑的只是 `--check`（**只读**），在一棵没铺字节的树上它只答得出「这里没有一份对不上的字节」，**不是**「字节是对的」，更不是「发版那一拍办完了」' \
+run_gate release-gate '判过的条数（`release.yml` 上逐行印出来的 PASS：触发与发布闸 · 两处发布步骤的正文来源与生成器 · 产字节那条路（承诺的平台 ↔ 产线 ↔ 登记、target triple，两向集合相等；runner 标签逐字）· 每一处抠 `const BUILD_ID`／身份戳界标的住址实打读得到恰好一行 · 本文件 muslbuild 点名的工具链版本 == `release.yml` 真装的 · `tests/scripts/re-embed.sh` 与发版那一步同源（target 与旗标逐字、落点 ↔ `.gitignore` 两向）并真跑 `--check` · Release 资产 ↔ `src/doc/RELEASING.md` §2.2 登记表）。⚠ 不执行 GitHub 的表达式求值器、不跑流水线 ⇒ 「盘上文本满足这几条」不等于「云端那一趟会绿」，更不等于字节在目标机器上跑得起来；往 Release 上写只认 `softprops/action-gh-release` 与 `gh release`/`gh api …/releases` 两种形状；正文写得对不对不判；`--check` 只读，在没铺字节的树上只答得出「没有对不上的字节」' \
          python3 tests/evidence/K-R124-ruler.py
 
 # ── `muslbuild`：远端 Linux 那一格 —— 两个 musl target 编得出静态字节 ──
 # 用 `cargo zigbuild`，版本与 `release.yml` 对齐（`release-gate` 两向对拍）：版本一漂，本格的绿就不代表发版那趟会绿。
 # 买不到「在真远端上跑得起来」，也不编 test 档（只编 bin）。
-run_gate muslbuild '不是数出来的数：两个 musl target 各一趟 `cargo zigbuild`，只有绿/红两态。分母 = **条 63 承诺的「远端 Linux」那一格的两个 arch**（`x86_64` ＋ `aarch64`），逐个编。⚠ 买的是「编得出静态字节」，**不买**「在真远端上跑得起来」（无真机、不运行）、**不买** test 档（只编 bin）。⚠ 工具链版本与 `release.yml` 对齐（zig 0.14.0 / cargo-zigbuild 0.23.0）—— 版本一漂，本格的绿就不再代表发版那趟会绿' \
+run_gate muslbuild '不是数出来的数：两个 musl target（`x86_64` ＋ `aarch64`）各一趟 `cargo zigbuild`，只有绿/红两态。⚠ 买的是「编得出静态字节」，不买「在真远端上跑得起来」、不买 test 档（只编 bin）。⚠ 工具链版本与 `release.yml` 对齐（zig 0.14.0 / cargo-zigbuild 0.23.0）—— 版本一漂，本格的绿就不再代表发版那趟会绿' \
          bash -c 'cd src/backend && n=0; for t in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do cargo zigbuild --target "$t" >/dev/null || { echo "musl: $t 编不过"; exit 1; }; n=$((n+1)); done; printf "muslbuild: %s passed（两个 arch 各一趟 cargo zigbuild，zig $(zig version)）\n" "$n"'
 
 # ── `platform`：承诺的平台 ↔ 门禁真跑的格（判据本体 `tests/evidence/K-G4-platform-ledger.py`）──
 # 各格只说「我编得过」，这一格说「该编的都编了」：少一格、或多一个没登记的 target 都红。只判登记，不编东西。
-run_gate platform '判过的条数（判据本体每趟现算并印在它自己那行上：P1 承诺表↔门禁格**两向集合相等** ＋ P2 每格一条逐字锚点 count()==1 ＋ P3 显式拒绝的那格全仓零脚印；原来的 P4「壳-折」随那一档放弃删了）。⚠ **反空真锚是 P1 那两向相等**，不是「承诺表里每条都找得到」——后者在表被清空时恒真。⚠ 它不编任何东西：判的是**门禁盖到了哪些平台**，不判那些平台上真跑得起来' \
+run_gate platform '判过的条数（判据本体每趟现算并印在它自己那行上：P1 承诺表 ↔ 门禁格两向集合相等 ＋ P2 每格一条逐字锚点 count()==1 ＋ P3 显式拒绝的那格全仓零脚印）。⚠ 反空真锚是 P1 那两向相等。⚠ 它不编任何东西：判的是门禁盖到了哪些平台，不判那些平台上真跑得起来' \
          python3 tests/evidence/K-G4-platform-ledger.py
 
 # ── `installface`：安装面那 22 条命令的分组与前端落点（判据本体 `tests/evidence/K-R117-ruler.py`）──
 # 每组前端落点的名单钉在 `FRONTEND_PIN` 里、逐字相等（不是 `<=`）：多一份落点或表记错都红；收干净一组就同拍把那一行降下来。
 # 射程见那份文件头注；`parity_ledger.rs` 那一份判不了（命令名就从它解析），它的闸在闭集判定。
-run_gate installface '判过的条数（`§S5c`/`§S5d`/`§S5e` 三节逐条印出来的 PASS：22 条命令各归一组 ＋ 闭集并集两向 ＋ 五组交集空 ＋ 5 组前端落点棘轮 ＋ 22 条包装层入口两侧 ＋ `claims()` 10 个装/卸符号各有着落）。⚠ `ruler.py` 原有的 `R1`–`R7` **不在这个数里**（它们只在红的时候出声，没有逐条的「过了」事件）⇒ 这个数**不是**「那把尺子判过的全部条数」。⚠ 落点只认**调用形状** `.<命令>(`，只在注释/散文里提到命令名的**不算落点**（否则这把尺子可以靠删一条注释变绿）；别的调用形状（`invoke("<名>")` 直呼）它看不见，那一档逐处印在 `§S5d` 第二档里只出读数。⚠ 度量的是「几**份**文件」不是「几处引用」⇒ 往一份已经在名单里的文件里再加一处引用**不红**。⚠ `parity_ledger.rs` 那一份 `§S5e` **判不了**（空真），闸在 `§S5c`' \
+run_gate installface '判过的条数（判据本体逐条印出来的 PASS：22 条命令各归一组 ＋ 闭集并集两向 ＋ 五组交集空 ＋ 5 组前端落点棘轮 ＋ 22 条包装层入口两侧 ＋ `claims()` 10 个装/卸符号各有着落）。⚠ 只在红的时候出声的那几条不在这个数里。⚠ 落点只认调用形状 `.<命令>(`（注释里提到命令名不算），`invoke("<名>")` 直呼只出读数；度量的是几份文件不是几处引用。⚠ `parity_ledger.rs` 那一份判不了（空真），闸在闭集判定' \
          python3 tests/evidence/K-R117-ruler.py
 
 # ── `ccbus-twophase`：cc-bus 两阶段读口 ＋ 三个适配 trait ＋ Windows 那一侧 ──
@@ -601,7 +600,7 @@ run_gate fmt-backend '不是数出来的数：`cargo fmt --check` 只有绿/红�
 # `--all-targets`：生产段 ＋ test 档，与 `winchk-backend` 同一个面。买的是「编得过」：不买「行为对」（要真 Windows）、
 #   不买 MSVC 上链接得起来（`check` 不链接）。依赖沙箱装了 mingw-w64 与该 target，没装就红在「找不到 target」。
 # `--locked`：本格同时是 `src/frontend/shell/Cargo.toml ↔ Cargo.lock` 的对账落点（`doc_claim_registry` 逐字点名）；`winchk-backend` 不带，那是另一维。
-run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `-p monitor` 与文件窗口包 `-p cc-monitor-filewin`（搬家前它的代码与判据都在 monitor 包里，射程不缩）两个包的**生产段 ＋ test 档**（`src/frontend/shell/src` 的 67 处 `cfg(windows)`；`--all-targets` 是 `A5` 补的，与兄弟格 `winchk-backend` 对齐 —— 那一格的读数逐字「云端那 10 个错全在 test 档」）；`src/backend` 那 17 处与 `creds-core` 那 2 处本行盖不到' \
+run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `-p monitor` 与文件窗口包 `-p cc-monitor-filewin` 两个包的生产段 ＋ test 档（与 `winchk-backend` 同一个面）；`src/backend` 与 `creds-core` 的 `--features harden` 本行盖不到' \
          bash -c 'cd src/frontend/shell && cargo check --locked --all-targets -p monitor -p cc-monitor-filewin --target x86_64-pc-windows-gnu 2>&1 && echo "winchk: 1 passed"'
 
 # ── `winchk-backend`：`src/backend` 在 Windows 上编不编得过 ──
@@ -705,20 +704,20 @@ run_gate deadcode '不是数出来的数：`cargo check -p monitor`（非 test�
 # ── `clippy` / `appbuild`：`ci.yml` 里 `rust` job 的 `cargo clippy --workspace --all-targets` 与 `linux-app-build` job 的 `cargo build` ──
 # clippy 不带 `-D warnings`（deny 档的 lint 与编译错照样红）；appbuild 真编真链 Linux 上的两个二进制（`cargo` 那格带 `--lib`、`deadcode` 只 check）。
 # 成功时只印输出尾部两行：警告片段会带出源码散文里的数字，而 `run_gate` 取最大的那个数。红的时候整份照印。
-run_gate clippy '不是数出来的数：`cargo clippy --workspace --all-targets` 只有绿/红两态，分母是 `src/frontend/shell` 那个 workspace 的全部成员与全部 target（含 test 档）。⚠ 与 CI 那一步同一条命令、不加 `-D warnings` ⇒ 警告不红，只有 deny 档的 lint 与编译错红；CI 那一步跑在 windows-latest 上，本格跑在 Linux 上（Windows 那一维由 `winchk` 盖）。本格墙钟〔量于 2026-09-30，本工作树〕首趟 73 秒、源码没变时 4 秒' \
+run_gate clippy '不是数出来的数：`cargo clippy --workspace --all-targets` 只有绿/红两态，分母是 `src/frontend/shell` 那个 workspace 的全部成员与全部 target（含 test 档）。⚠ 与 CI 那一步同一条命令、不加 `-D warnings` ⇒ 警告不红，只有 deny 档的 lint 与编译错红；CI 那一步跑在 windows-latest 上，本格跑在 Linux 上（Windows 那一维由 `winchk` 盖）' \
          bash -c 'cd src/frontend/shell && out=$(cargo clippy --workspace --all-targets 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "clippy: 1 passed"'
-run_gate appbuild '不是数出来的数：`cargo build`（dev）只有绿/红两态，射程 = `src/frontend/shell` 根包 `monitor` 的 lib 与两个二进制（`cc-monitor` · `cc-monitor-filewin`）在 Linux 上**真编真链**一趟，与 `ci.yml` 的 `linux-app-build` 那一步同一条命令。⚠ 只链不跑；release 档不编；前端产物（`dist/`）由 `npm` 那格里的真 vite 构建与 `tsc` 那格盖。本格墙钟〔量于 2026-09-30，本工作树〕首趟（依赖全量编译）106 秒' \
+run_gate appbuild '不是数出来的数：`cargo build`（dev）只有绿/红两态，射程 = `src/frontend/shell` 根包 `monitor` 的 lib 与两个二进制（`cc-monitor` · `cc-monitor-filewin`）在 Linux 上真编真链一趟，与 `ci.yml` 的 `linux-app-build` 那一步同一条命令。⚠ 只链不跑；release 档不编；前端产物（`dist/`）由 `npm` 那格里的真 vite 构建与 `tsc` 那格盖' \
          bash -c 'cd src/frontend/shell && out=$(cargo build 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "appbuild: 1 passed"'
 
 run_gate backend '单包 src/backend，只有一行 test result ⇒ 最大值 = 合计' \
          gate_cargo_test_nonet src/backend
-run_gate clippy-backend '不是数出来的数：`cargo clippy --all-targets` 只有绿/红两态，射程 = `src/backend` 那一个 crate 的全部 target，与 `ci.yml` 的 `backend` job 那一步同一条命令（不带 `-D warnings` ⇒ 只有 deny 档的 lint 与编译错红）。本格墙钟〔量于 2026-09-30，本工作树〕首趟 32 秒' \
+run_gate clippy-backend '不是数出来的数：`cargo clippy --all-targets` 只有绿/红两态，射程 = `src/backend` 那一个 crate 的全部 target，与 `ci.yml` 的 `backend` job 那一步同一条命令（不带 `-D warnings` ⇒ 只有 deny 档的 lint 与编译错红）' \
          bash -c 'cd src/backend && out=$(cargo clippy --all-targets 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "clippy-backend: 1 passed"'
 # ── `tsc`：类型检查（`npm run build` 的前一半）──
 # `npm` 那格的 tsx 与 vitest 只转译、不做类型检查，纯类型错误在那里一条都不红。`vite build` 与 `cargo tauri build` 本格盖不到。
 # 第二条判定：程序面没被掏空 —— 空程序上 tsc 也退 0。`--listFiles` 真读进的仓内 `.ts`/`.tsx`/`.mts` 份数
 #   与盘上份数同一趟现打、恒等对账，一个都不写死。
-run_gate tsc '不是「几条断言过了」：这个数是**这一趟真读进 tsc 程序**的仓内 `.ts`/`.tsx`/`.mts` 份数（`tsconfig.json` 的 include 现打是 `[\"src\", \"tests\"]`），并与盘上现打的份数**恒等对账**。🔴 **本行原先两侧都只数 `src` ＋ `tests/e2e`（210 份），而 tsc 真读进去的是 372 份** —— 两侧同时把 `tests/` 的其余 **162** 份剔掉，于是等式照样成立、本格照样绿。⚠ **那不是少印一个数，是一个静默洞**：有人把 `include` 收窄成 `[\"src\", \"tests/e2e\"]`，那 162 份当场不再被检，而 `want` 与 `got` 会一起掉到 210 ⇒ **仍然相等、仍然全绿**。本拍把两侧都改成按 `include` 的真值数（372 == 372），这条路才堵上。⚠ 只判类型（`npm run build` 的前一半）；`vite build` 与 `cargo tauri build` 那两段、以及仓根那几份不在 include 里的 `.ts`（`vite.config.ts` / `vitest.config.ts`），本行一概盖不到' \
+run_gate tsc '不是「几条断言过了」：这个数是这一趟真读进 tsc 程序的仓内 `.ts`/`.tsx`/`.mts` 份数，并与盘上 `src` ＋ `tests` 下现打的份数恒等对账（与 `tsconfig.json` 的 include 同一个面）—— include 被收窄时两边不再相等。⚠ 只判类型（`npm run build` 的前一半）；`vite build` 与 `cargo tauri build` 那两段、以及仓根那几份不在 include 里的 `.ts`（`vite.config.ts` / `vitest.config.ts`），本行一概盖不到' \
          bash -c 'out=$(node_modules/.bin/tsc --noEmit --listFiles 2>&1); rc=$?; \
 want=$(find src tests -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.mts" \) | wc -l | tr -d " "); \
 got=$(printf "%s\n" "$out" | grep -v "/node_modules/" | grep -cE "/(src|tests)/.*\.(ts|tsx|mts)$"); \
@@ -728,17 +727,17 @@ if [ "$rc" -ne 0 ]; then printf "tsc: 退出码 %s —— 类型没编过。它�
 if [ "$got" -ne "$want" ]; then printf "tsc: 真读进程序的 %s 份 != 盘上现打的 %s 份 —— tsconfig 的 include 被掏空或收窄了。空程序上 tsc 退出码也是 0，「一个文件都没检」与「全检过了」在退出码上一模一样，所以一律按红记\n" "$got" "$want"; exit 1; fi; \
 printf "tsc: %s passed（仓内 %s 份 .ts 全部过 tsc --noEmit；两个数同一趟现打）\n" "$got" "$want"'
 
-run_gate npm '17 个套件（16 tsx + 1 vitest）里只有 2 个打得出数字（test:dom 1480 · test:diff 17），而取最大值 ⇒ 这个数恒是 test:dom 的；另 15 个 tsx 套件只打「all X tests passed」，它们「跑了 0 个」这一格守不住（失败仍由 && 链的退出码守）' \
+run_gate npm '`npm test` 串起来的各套件里，只有 vitest（`test:dom`）那一套的数大，取最大值 ⇒ 这个数是 `test:dom` 的；只打「all X tests passed」的 tsx 套件「跑了 0 个」这一格守不住（失败仍由 && 链的退出码守）' \
          npm test
 
 # ── `coverage` / `audit`：`ci.yml` 的 `frontend` job 里那三步 ─────────────────────
 # 覆盖率逐文件地板（`tests/scripts/assert-coverage-floors.mjs`）点名具体文件：文件被删或改名而清单还点着它，本格红。
 # 两格都按步骤名从 `ci.yml` 现取原样跑，地板与清单只住它们自己的文件。
-run_gate coverage '这一趟 vitest（带 v8 覆盖率）真跑过的条数：`ci.yml` 的 `coverage floor (vitest jsdom)`（`npm run coverage`，`vitest.config.ts` 里的全局阈值）＋ `coverage per-file floors + zero-coverage ratchet`（逐文件地板与零覆盖棘轮）两步原样跑。⚠ 与 `npm` 那格是同一批 vitest 文件再跑一遍（这一趟带插桩，慢一截）；覆盖率只量 `src/**/*.ts`，tsx 套件与 Rust 一概不进分母。本格墙钟〔量于 2026-09-30，本工作树〕约 40 秒' \
+run_gate coverage '这一趟 vitest（带 v8 覆盖率）真跑过的条数：`ci.yml` 的 `coverage floor (vitest jsdom)`（`npm run coverage`，`vitest.config.ts` 里的全局阈值）＋ `coverage per-file floors + zero-coverage ratchet`（逐文件地板与零覆盖棘轮）两步原样跑。⚠ 与 `npm` 那格是同一批 vitest 文件再跑一遍（带插桩，慢一截）；覆盖率只量 `src/**/*.ts`，tsx 套件与 Rust 一概不进分母' \
          gate_ci_steps coverage "coverage floor (vitest jsdom)" "coverage per-file floors + zero-coverage ratchet"
 # ⚠ 要联网：它问的是 npm registry **当下**的漏洞库 —— 断网时退出码非零、本格红（不静默跳过）；
 #   同一棵树也可能因为库里新登了一条 high 而隔夜变红，那与 CI 上同一步的行为一致。
-run_gate audit '步数：`ci.yml` 的 `npm audit (production deps, high)` 一步原样跑（`--omit=dev --audit-level=high`），只有绿/红两态。⚠ 要联网、判的是 registry 当下的漏洞库；dev 依赖与 high 以下的档本行不看。本格墙钟〔量于 2026-09-30，本工作树〕约 1 秒' \
+run_gate audit '步数：`ci.yml` 的 `npm audit (production deps, high)` 一步原样跑（`--omit=dev --audit-level=high`），只有绿/红两态。⚠ 要联网、判的是 registry 当下的漏洞库；dev 依赖与 high 以下的档本行不看' \
          gate_ci_steps audit "npm audit (production deps, high)"
 
 # ── 真机 e2e：每一套一行 `run_e2e <套件>` ─────────────────────────────────────────
@@ -771,8 +770,8 @@ run_e2e() {
 gate_selftest_e2e() {
   local GATE_PROBE=1   # 同 `gate_selftest`：探针不受 `GATE_ONLY` 影响
   local probe
-  probe="$(run_e2e '自检⑩ 合计 PASS=7 NG2-PROBE-J' 2>&1)"
-  gate_assert_judged 自检⑩ "$probe" NG2-PROBE-J "run_e2e 的「退出码非零 ⇒ 红」"
+  probe="$(run_e2e '自检⑩ 合计 PASS=7 GATE-PROBE-J' 2>&1)"
+  gate_assert_judged 自检⑩ "$probe" GATE-PROBE-J "run_e2e 的「退出码非零 ⇒ 红」"
 }
 gate_selftest_e2e
 
@@ -985,8 +984,8 @@ run_gate tmux-default '不是数出来的数：整趟门禁跑完，挂载换进
 # ── 射程：`GATE: OK` 那一行不对什么负责 ──────
 # `键|说明`，条数现算。这是一张列不全的黑名单：保证列出来的这几条不会悄悄变成没人守的散文。只在 OK / PARTIAL 两支印。
 GATE_BLIND=(
-  "windows-runner|Windows runner 上才犯的那一族 —— 本门禁的 npm / tsc / e2e 全跑在 Linux 上，路径分隔符恒是 /。K-R119 那趟云端 vitest 的唯一一条红（1 failed / 1725 passed）就是这一形，本机在构造上红不了"
-  "ci-job-shape|.github/workflows/*.yml 里那些 job 自己的形状 —— 装了哪条工具链、runner 是谁、缓存与 needs 怎么连、每一步的 if 条件。Linux 那几个 job 的命令就是调本脚本（GATE_ONLY），命令只住这里；但 job 的环境（apt 装了什么、runner 是谁）本门禁不判。release-gate 割走了 release.yml 的一部分（触发器、发布闸、产字节那条路、BUILD_ID 的抠法、工具链版本，见 K-R124），上传清单与校验和算哪几份也对上了资产登记表；其余每一步（打包 · artifact 传递）仍然没人看；那些切片买的也只是「盘上这份文本满足这几条」"
+  "windows-runner|Windows runner 上才犯的那一族 —— 本门禁的 npm / tsc / e2e 全跑在 Linux 上，路径分隔符恒是 /，这一形本机在构造上红不了"
+  "ci-job-shape|.github/workflows/*.yml 里那些 job 自己的形状 —— 装了哪条工具链、runner 是谁、缓存与 needs 怎么连、每一步的 if 条件。Linux 那几个 job 的命令就是调本脚本（GATE_ONLY），命令只住这里；但 job 的环境（apt 装了什么、runner 是谁）本门禁不判。release-gate 割走了 release.yml 的一部分（触发器、发布闸、产字节那条路、BUILD_ID 的抠法、工具链版本），上传清单与校验和算哪几份也对上了资产登记表；其余每一步（打包 · artifact 传递）仍然没人看；那些切片买的也只是「盘上这份文本满足这几条」"
   "msvc-abi|MSVC ABI 专属的那一类跨平台编译问题 —— 两格 Windows 交叉检查用的都是 -gnu（沙箱里没有 zig，ring 的 build script 缺 lib.exe）。只在 msvc 上才犯的毛病本门禁盖不到"
   "did-ci-actually-run|云端那条流水线到底跑没跑、绿没绿 —— 本门禁一次 gh run view 都不做。GATE: OK 说的是这棵树在本机这几格上的样子，不是它在云端的样子。ci.yml 的触发器只有 push(main/v*) 与 pull_request，而本仓不推送 ⇒ 那几个 job 在 GitHub runner 上从未起过；tests/hooks/pre-push 同理"
 )
