@@ -3,4 +3,8 @@
 /**
  * 一个语义位（`5h` / `7d`）的那一格：取整的百分比 · 几点重置（说不出 ⇒ 缺）。
  */
-export type SlotShow = { slot: string, pct?: number, resetsAt?: number, };
+export type SlotShow = { slot: string, pct?: number, resetsAt?: number, 
+/**
+ * 用满：这个窗口用到 100%、还没重置（画 `✕`；被拒而没用满画「{pct}% · 被拒」）。没用满 ⇒ 缺。
+ */
+full?: boolean, };

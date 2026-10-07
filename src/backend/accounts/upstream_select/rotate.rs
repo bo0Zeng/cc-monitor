@@ -323,11 +323,21 @@ impl Hop {
         Ok((token, who))
     }
 
+    /// ★ 一个号此刻接不接得上（只读，不续令牌）—— 「下一个」（[`Self::view`]）只问它，真换号（[`Self::prepare`]）先问它再拿令牌，
+    /// 两边同一处判：起会话的号 ⇒ 接得上；按量号 ⇒ key 表里那一行接得上；订阅号 ⇒ 盘上有登录、读得出账号身份。
+    fn reach(&self, a: &Turn<'_>, lib: &Library, account: &str) -> Result<Reach, Unready> {
+        if account == a.start {
+            return Ok(Reach::Start);
+        }
+        match kind_of(a, lib, account) {
+            Kind::Api if (a.row)(account) == Some(true) => Ok(Reach::Api),
+            Kind::Api => Err(Unready::NeedsKey),
+            Kind::Sub => self.who_on_disk(a.agent, lib, account).map(|_| Reach::Sub),
+        }
+    }
+
     /// 备好走 `account` 的这一发（起会话的号 ⇒ [`Go::Start`]）。
     fn prepare(&self, a: &Turn<'_>, lib: &Library, account: &str) -> Result<Go, Unready> {
-        if account == a.start {
-            return Ok(Go::Start);
-        }
         let rewrite = |who: &str| -> Result<Option<Vec<u8>>, Unready> {
             let face = crate::agents::login_of(a.agent).ok_or(Unready::UnsureBody)?;
             match (face.rewrite_identity)(a.body, who) {
@@ -336,21 +346,21 @@ impl Hop {
                 IdentityCell::Unsure => Err(Unready::UnsureBody),
             }
         };
-        if kind_of(a, lib, account) == Kind::Api {
-            if (a.row)(account) != Some(true) {
-                return Err(Unready::NeedsKey);
-            }
-            return Ok(Go::Api {
+        match self.reach(a, lib, account)? {
+            Reach::Start => Ok(Go::Start),
+            Reach::Api => Ok(Go::Api {
                 account: account.to_string(),
                 body: rewrite("")?,
-            });
+            }),
+            Reach::Sub => {
+                let (token, who) = self.login(a.agent, lib, account, a.now)?;
+                Ok(Go::Sub {
+                    account: account.to_string(),
+                    token,
+                    body: rewrite(&who)?,
+                })
+            }
         }
-        let (token, who) = self.login(a.agent, lib, account, a.now)?;
-        Ok(Go::Sub {
-            account: account.to_string(),
-            token,
-            body: rewrite(&who)?,
-        })
     }
 
     /// 这一家有可换的订阅号登录、这一发带着会话 id ⇒ 这个会话在这台的轮换状态（第一次看见 / 换了起它的号 ⇒ 记下）。
@@ -682,15 +692,7 @@ impl Hop {
             &slot_of,
             &key,
         );
-        let mut ready = |x: &str| -> Result<(), Unready> {
-            match kind_of(&a, &lib, x) {
-                _ if x == s.start => Ok(()),
-                Kind::Api => (row(x) == Some(true))
-                    .then_some(())
-                    .ok_or(Unready::NeedsKey),
-                Kind::Sub => self.who_on_disk(&s.agent, &lib, x).map(|_| ()),
-            }
-        };
+        let mut ready = |x: &str| self.reach(&a, &lib, x).map(|_| ());
         let next = decide::next_of(&f, &mut ready);
         let held = match decide::decide(&f, &mut ready) {
             Verdict::Hold { back, .. } => Some(back),
@@ -781,6 +783,13 @@ fn kind_with(row: &dyn Fn(&str) -> Option<bool>, lib: &Library, account: &str) -
     } else {
         Kind::Sub
     }
+}
+
+/// [`Hop::reach`] 的答：接得上的是哪一种。
+enum Reach {
+    Start,
+    Api,
+    Sub,
 }
 
 /// 中转按 [`Go`] 发：起会话的号走那张决策表；按量号照它那一行；订阅号换上它的令牌（上游 ＝ 这一家的默认上游）。

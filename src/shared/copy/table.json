@@ -9787,6 +9787,11 @@
       "zh": "{path} 在这一页读到它之后被别处改过，这次没写。",
       "args": ["path"]
     },
+    "rsAccountAliases.install.reload": {
+      "kind": "body",
+      "zh": "已开的终端要运行「. {path}」或新开一个",
+      "args": ["path"]
+    },
     "rsAccountAliases.read.failed": {
       "kind": "error",
       "zh": "读不了 {path}：{e}",
@@ -17472,6 +17477,21 @@
     "acct.val.refused": {
       "kind": "body",
       "zh": "✕",
+      "args": []
+    },
+    "acct.val.full": {
+      "kind": "body",
+      "zh": "✕",
+      "args": []
+    },
+    "acct.val.refusedPct": {
+      "kind": "body",
+      "zh": "{pct}% · 被拒",
+      "args": ["pct"]
+    },
+    "acct.val.refusedOnly": {
+      "kind": "body",
+      "zh": "被拒",
       "args": []
     },
     "acct.val.none": {

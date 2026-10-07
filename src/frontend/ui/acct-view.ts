@@ -55,7 +55,7 @@ export function usageOf(
   if (q.kind === "api") {
     if (q.state !== "refused") return { window: null, value: copyText("acct.kind.api"), reset: null, tone: "neutral" };
     const at = readingReset;
-    return { window: null, value: copyText("acct.val.refused"), reset: at === undefined ? null : copyText("acct.reset.at", { at: fmtAt(at, now, tz) }), tone: "refused" };
+    return { window: null, value: copyText("acct.val.refusedOnly"), reset: at === undefined ? null : copyText("acct.reset.at", { at: fmtAt(at, now, tz) }), tone: "refused" };
   }
   const w = q.limiting ?? "5h";
   const slot = q.slots.find((s) => s.slot === w);
@@ -65,7 +65,7 @@ export function usageOf(
     case "refused":
       return {
         window,
-        value: copyText("acct.val.refused"),
+        value: slot?.full ? copyText("acct.val.full") : slot?.pct === undefined ? copyText("acct.val.refusedOnly") : copyText("acct.val.refusedPct", { pct: slot.pct }),
         reset: resetAt === undefined ? null : copyText("acct.reset.at", { at: fmtAt(resetAt, now, tz) }),
         tone: "refused",
       };
@@ -78,7 +78,7 @@ export function usageOf(
       break;
   }
   if (slot?.pct === undefined) return { window, value: copyText("acct.val.none"), reset: null, tone: "neutral" };
-  if (slot.pct > 100) return { window, value: copyText("acct.val.refused"), reset: null, tone: "refused" };
+  if (slot.full) return { window, value: copyText("acct.val.full"), reset: null, tone: "refused" };
   return { window, value: copyText("acct.val.pct", { pct: slot.pct }), reset: null, tone: q.state === "near" ? "near" : "neutral" };
 }
 
@@ -276,7 +276,7 @@ export function tabBlockedOf(entry: SessionRotationEntry | undefined): { text: s
   return { text, hover: copyText("acct.tab.hover", { w, name: accountLabel(e.account), at: fmtAt(e.at, entry.now, localTzMin(entry.now)) }) };
 }
 
-/** 一个号用量的一格字（下拉项右侧 · 切换那颗按钮）：`5h 63%` · `5h ✕ ↻19:00` · `按量`。 */
+/** 一个号用量的一格字（下拉项右侧 · 切换那颗按钮）：`5h 63%` · 用满 `5h ✕ ↻19:00` · 被拒 `5h 58% · 被拒 ↻19:00` · `按量`。 */
 export function usageText(u: { window: string | null; value: string; reset: string | null }): string {
   if (u.window === null) return u.reset === null ? u.value : copyText("acct.usage.wv", { w: u.value, v: u.reset });
   return u.reset === null ? copyText("acct.usage.wv", { w: u.window, v: u.value }) : copyText("acct.usage.wvr", { w: u.window, v: u.value, r: u.reset });

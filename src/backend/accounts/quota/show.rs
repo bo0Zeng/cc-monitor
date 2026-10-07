@@ -3,11 +3,13 @@
 //! | 态 | 判 |
 //! |---|---|
 //! | `unseen` | 额度账上没有它 |
-//! | `refused` | 上次那一发被拒、重置时刻未到（回包没给时刻也算） |
+//! | `refused` | 上次那一发被拒、它说的回来时刻未到（与轮换同一个判法 `decide::refused_at`；过了 ⇒ 照下面几行判，各窗口的数照旧作数） |
 //! | `overageInUse` | 订阅号正在用付费超额、卡着的窗口未重置 |
 //! | `resetSinceSeen` | 卡着的那个窗口（被拒 · 超额 · 按钮那个窗口）看到之后已经重置过了：上次的数不再作数 |
 //! | `near` | 有语义位的窗口用到 N%、未重置（同轮换的「到阈值」一个判法），或回包说越过了预警线 |
 //! | `ok` | 其余 |
+//!
+//! 每个语义位另带一格 `full`（用满：用到 100%、未重置）：画 `✕` 只看它；被拒而没用满画「{pct}% · 被拒」。
 //!
 //! 另叠一格 `stale`：最后一次看到距今超过 [`STALE_AFTER`]。各窗口照原名的那几格（[`windows_of`]）由调用方按额度账那一条补上。N 由调用方给：这台的账用默认轮换的 N，会话那一份用会话的 N；
 //! 没设（满了才换）⇒ [`NEAR_DEFAULT`]。
@@ -65,6 +67,10 @@ pub struct SlotShow {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[cfg_attr(test, ts(optional, type = "number"))]
     pub resets_at: Option<u64>,
+    /// 用满：这个窗口用到 100%、还没重置（画 `✕`；被拒而没用满画「{pct}% · 被拒」）。没用满 ⇒ 缺。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
+    pub full: bool,
 }
 
 /// 一个号的显示态。
@@ -166,7 +172,11 @@ pub(crate) struct Facts {
     pub(crate) sub_id: Option<String>,
 }
 
-fn slots_of(r: &QuotaReading, slot: &dyn Fn(&str) -> Option<&'static str>) -> Vec<SlotShow> {
+fn slots_of(
+    r: &QuotaReading,
+    now: u64,
+    slot: &dyn Fn(&str) -> Option<&'static str>,
+) -> Vec<SlotShow> {
     SLOTS
         .iter()
         .filter_map(|s| {
@@ -184,9 +194,15 @@ fn slots_of(r: &QuotaReading, slot: &dyn Fn(&str) -> Option<&'static str>) -> Ve
                 slot: (*s).to_string(),
                 pct: w.used.map(|u| (u * 100.0).round().max(0.0) as u32),
                 resets_at: w.resets_at,
+                full: full(w, now),
             })
         })
         .collect()
+}
+
+/// 用满的唯一判法：这个窗口用到 100%、还没重置。
+fn full(w: &crate::agents::QuotaWindow, now: u64) -> bool {
+    w.used.is_some_and(|u| u >= 1.0) && !super::reset_since_seen(w.resets_at, now)
 }
 
 /// ★ 判一个号的显示态。`seen` ＝ 额度账上那一条（快照 ＋ 看到的时刻）；`n` ＝ 「快满」的门槛。
@@ -209,7 +225,7 @@ pub(crate) fn show(
             windows: Vec::new(),
         };
     };
-    let slots = slots_of(r, slot);
+    let slots = slots_of(r, now, slot);
     let limiting = r
         .limiting
         .as_deref()
@@ -229,10 +245,10 @@ pub(crate) fn show(
         .and_then(|x| x.resets_at)
         .or(r.resets_at);
     let overage = facts.kind == Kind::Sub && r.overage.as_ref().is_some_and(|o| o.in_use);
-    let state = if (r.refused || overage) && passed(r.resets_at) {
-        QuotaState::ResetSinceSeen
-    } else if r.refused {
+    let state = if decide::refused_at(r, now) {
         QuotaState::Refused
+    } else if overage && passed(r.resets_at) {
+        QuotaState::ResetSinceSeen
     } else if decide::overage_in_use(r, facts.kind, now) {
         QuotaState::OverageInUse
     } else if passed(shown_reset) {

@@ -370,7 +370,7 @@ export class AccountChip {
   private accountItem(a: Account, isCurrent: boolean, origin: Origin): MenuItem {
     const selectable = isSelectable(a);
     const badge = accountStatusBadge(a, this.apikeyRouting && origin === this.origin ? apikeyEndpointStateFor(a, this.apikeyRouting) : undefined);
-    // 用量（`5h 63%` · 被拒 `5h ✕ ↻19:00` · `按量`）：那台额度账上有这个号才写；没有 ⇒ 照旧写登录态。
+    // 用量（`5h 63%` · 用满 `5h ✕ ↻19:00` · 被拒 `5h 58% · 被拒 ↻19:00` · `按量`）：那台额度账上有这个号才写；没有 ⇒ 照旧写登录态。
     const led = appStore.quota.get().get(origin)?.accounts.find((x) => x.account === a.name);
     const now = appStore.quota.get().get(origin)?.now ?? 0;
     const u = led && badge.warn !== true ? usageOf(led, led.reading?.resetsAt, now, -new Date(now * 1000).getTimezoneOffset()) : null;

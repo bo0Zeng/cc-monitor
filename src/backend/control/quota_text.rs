@@ -1,7 +1,7 @@
 //! 终端 `--text`：`--quota-read` 那一份回包排成给人看的字（每号一段）。CLI 面的修饰词，只给 `quota-read`。
 //!
-//! - **只读回包 JSON**：与界面一样是那一份回包的消费方，不碰账号域的内部类型、不判 —— 「被拒 · 超额在兜 · 上一窗已过 ·
-//!   数旧 · 卡人的窗口」都是回包里后端给的词，这里照词选字。
+//! - **只读回包 JSON**：与界面一样是那一份回包的消费方，不碰账号域的内部类型、不判 —— 「被拒 · 用满 · 超额在兜 · 上一窗已过 ·
+//!   数旧 · 卡人的窗口」都是回包里后端给的词，这里照词选字（用满 `✕`，被拒而没用满「{pct}% · 被拒」）。
 //! - 行模型与界面悬停卡（`src/frontend/ui/quota-lines.ts`）同一份写法，两边锁同一份金样
 //!   `tests/__fixtures__/quota-text.golden.json`（每号每行每格 ＋ 整段字逐字）。标签走文案表。
 //! - 缺省仍是 JSON 进 JSON 出（给 skill / AI）；`--text` 只是给人看的那一形。
@@ -124,16 +124,21 @@ fn slot_row(a: &Value, slot: &str, now: i64, tz: i64) -> Vec<String> {
     let here = s(a, "limiting") == slot;
     let state = s(a, "state");
     let pct = x.get("pct").and_then(Value::as_u64);
-    let value = if here && state == "refused" {
-        copy_text("acct.val.refused", &[])
-    } else if here && state == "overageInUse" {
+    let full = x.get("full").and_then(Value::as_bool).unwrap_or(false);
+    let value = if here && state == "overageInUse" {
         copy_text("acct.val.over", &[])
     } else if here && state == "resetSinceSeen" {
         copy_text("acct.val.none", &[])
+    } else if full {
+        copy_text("acct.val.full", &[])
+    } else if here && state == "refused" {
+        match pct {
+            Some(p) => copy_text("acct.val.refusedPct", &[("pct", &p.to_string())]),
+            None => copy_text("acct.val.refusedOnly", &[]),
+        }
     } else {
         match pct {
             None => copy_text("acct.val.none", &[]),
-            Some(p) if p > 100 => copy_text("acct.val.refused", &[]),
             Some(p) => copy_text("acct.val.pct", &[("pct", &p.to_string())]),
         }
     };
@@ -148,7 +153,7 @@ fn slot_row(a: &Value, slot: &str, now: i64, tz: i64) -> Vec<String> {
 
 fn state_row(a: &Value, now: i64, tz: i64) -> Option<Vec<String>> {
     let value = match s(a, "state") {
-        "refused" => copy_text("acct.val.refused", &[]),
+        "refused" => copy_text("acct.val.refusedOnly", &[]),
         "resetSinceSeen" => copy_text("acct.val.none", &[]),
         _ => return None,
     };

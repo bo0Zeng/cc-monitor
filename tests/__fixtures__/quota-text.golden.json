@@ -159,7 +159,7 @@
       "text": "personal  订阅\n  5h    86%  ↻18:30        +1h50m\n  7d    41%  ↻10-09 09:00  +3d\n  超额  —\n  采样  16:38 · 本机"
     },
     {
-      "name": "订阅 · 被拒：卡着的窗口写 ✕ ＋ 几点重置",
+      "name": "订阅 · 用满被拒：卡着的窗口用满（full）写 ✕ ＋ 几点重置",
       "machine": "本机",
       "tzOffsetMin": 480,
       "reply": {
@@ -183,7 +183,8 @@
               {
                 "slot": "5h",
                 "pct": 100,
-                "resetsAt": 1791198000
+                "resetsAt": 1791198000,
+                "full": true
               },
               {
                 "slot": "7d",
@@ -235,6 +236,84 @@
         }
       ],
       "text": "work  订阅\n  5h    ✕    ↻19:00        +2h20m\n  7d    78%  ↻10-07 09:00  +1d\n  超额  —\n  采样  16:38 · 本机"
+    },
+    {
+      "name": "订阅 · 被拒而没用满（短时限流）：卡着的窗口写 {pct}% · 被拒 ＋ 几点重置",
+      "machine": "本机",
+      "tzOffsetMin": 480,
+      "reply": {
+        "state": "present",
+        "reason": null,
+        "path": "/home/u/.cc-monitor/quota.json",
+        "now": 1791189600,
+        "accounts": [
+          {
+            "agent": "claude-code",
+            "account": "work",
+            "seenAt": 1791189480,
+            "reading": {
+              "refused": true,
+              "resetsAt": 1791189660
+            },
+            "kind": "sub",
+            "state": "refused",
+            "stale": false,
+            "slots": [
+              {
+                "slot": "5h",
+                "pct": 58,
+                "resetsAt": 1791198000
+              },
+              {
+                "slot": "7d",
+                "pct": 78,
+                "resetsAt": 1791334800
+              }
+            ],
+            "login": "ok",
+            "subId": "3f9c0e1a2b3c4d5e6f708192",
+            "limiting": "5h"
+          }
+        ],
+        "unseen": [],
+        "usableNow": [],
+        "earliestReturn": {
+          "account": "work",
+          "at": 1791198000
+        }
+      },
+      "blocks": [
+        {
+          "account": "work",
+          "rows": [
+            [
+              "work",
+              "订阅"
+            ],
+            [
+              "5h",
+              "58% · 被拒",
+              "↻19:00",
+              "+2h20m"
+            ],
+            [
+              "7d",
+              "78%",
+              "↻10-07 09:00",
+              "+1d"
+            ],
+            [
+              "超额",
+              "—"
+            ],
+            [
+              "采样",
+              "16:38 · 本机"
+            ]
+          ]
+        }
+      ],
+      "text": "work  订阅\n  5h    58% · 被拒  ↻19:00        +2h20m\n  7d    78%         ↻10-07 09:00  +1d\n  超额  —\n  采样  16:38 · 本机"
     },
     {
       "name": "订阅 · 超额在兜：卡着的窗口写 超额，超额一行 使用中 另计费",
@@ -441,7 +520,7 @@
             ],
             [
               "状态",
-              "✕",
+              "被拒",
               "↻17:25",
               "+45m"
             ],
@@ -456,10 +535,10 @@
           ]
         }
       ],
-      "text": "work  订阅\n  5h    —\n  7d    —\n  状态  ✕  ↻17:25  +45m\n  超额  —\n  采样  16:38 · 本机"
+      "text": "work  订阅\n  5h    —\n  7d    —\n  状态  被拒  ↻17:25  +45m\n  超额  —\n  采样  16:38 · 本机"
     },
     {
-      "name": "订阅 · 需登录 · 用量超过 100% 照 ✕ 画（非卡着的窗口）· 7d 没给时刻",
+      "name": "订阅 · 需登录 · 用满（full，用量超过 100%）照 ✕ 画（非卡着的窗口）· 7d 没给时刻",
       "machine": "本机",
       "tzOffsetMin": 480,
       "reply": {
@@ -486,7 +565,8 @@
               },
               {
                 "slot": "7d",
-                "pct": 103
+                "pct": 103,
+                "full": true
               }
             ],
             "login": "needsLogin",
@@ -608,7 +688,7 @@
       "text": "~/.claude  订阅  未指定账号\n  5h    31%  ↻18:40  +2h\n  7d    9%   ↻17:25  +45m\n  超额  —\n  采样  16:31 · devbox"
     },
     {
-      "name": "按量 · 正常（5h/7d — 无限额）/ 被拒带时刻 / 被拒没时刻 / 需 key",
+      "name": "按量 · 正常（5h/7d — 无限额）/ 被拒带时刻（写 被拒）/ 需 key",
       "machine": "本机",
       "tzOffsetMin": 480,
       "reply": {
@@ -637,19 +717,6 @@
             "reading": {
               "refused": true,
               "resetsAt": 1791190320
-            },
-            "kind": "api",
-            "state": "refused",
-            "stale": false,
-            "slots": [],
-            "login": "ok"
-          },
-          {
-            "agent": "claude-code",
-            "account": "api3",
-            "seenAt": 1791189000,
-            "reading": {
-              "refused": true
             },
             "kind": "api",
             "state": "refused",
@@ -708,26 +775,9 @@
             ],
             [
               "状态",
-              "✕",
+              "被拒",
               "↻16:52",
               "+12m"
-            ],
-            [
-              "采样",
-              "16:30 · 本机"
-            ]
-          ]
-        },
-        {
-          "account": "api3",
-          "rows": [
-            [
-              "api3",
-              "按量"
-            ],
-            [
-              "状态",
-              "✕"
             ],
             [
               "采样",
@@ -755,7 +805,7 @@
           ]
         }
       ],
-      "text": "api  按量\n  5h/7d  —  无限额\n  采样   16:30 · 本机\n\napi2  按量\n  状态  ✕  ↻16:52  +12m\n  采样  16:30 · 本机\n\napi3  按量\n  状态  ✕\n  采样  16:30 · 本机\n\napi4  按量  需 key\n  5h/7d  —  无限额\n  采样   16:30 · 本机"
+      "text": "api  按量\n  5h/7d  —  无限额\n  采样   16:30 · 本机\n\napi2  按量\n  状态  被拒  ↻16:52  +12m\n  采样  16:30 · 本机\n\napi4  按量  需 key\n  5h/7d  —  无限额\n  采样   16:30 · 本机"
     },
     {
       "name": "没出过数：订阅（需登录）与按量各一（— 无采样，不出采样一行）",

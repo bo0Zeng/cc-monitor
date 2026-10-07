@@ -183,3 +183,8 @@ src/backend/control/files_write.rs:621	它有 {links} 个硬链接	保留	[不�
 src/backend/control/files_write.rs:625	它的属主（uid {owner}）不是后端这个用户（uid {me}）	保留	[不对外] in_place_reason 拼的原因只进 tracing::warn 那一行日志（覆盖写退回就地写时），不上界面
 src/backend/control/files_write.rs:628	、	保留	[不对外] in_place_reason 拼的原因只进 tracing::warn 那一行日志（覆盖写退回就地写时），不上界面
 src/backend/files/mod.rs:368	从一份普通文件的 `offset` 起读至多 `len` 字节（原始字节，b16 送回）—— 下载非 UTF-8 名那条路的一块	保留	[不对外] 命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/accounts/upstream_select/mod.rs:473	[quota] 被拒：号 {account} · 状态码 {status} · 限额头 {} · 代表窗 {} · retry-after {}	保留	[不对外] refusal_line：中转被拒时 tracing::warn! 打的那一行，只进后端日志
+src/backend/accounts/upstream_select/mod.rs:474	有	保留	[不对外] refusal_line：中转被拒时 tracing::warn! 打的那一行，只进后端日志
+src/backend/accounts/upstream_select/mod.rs:474	无	保留	[不对外] refusal_line：中转被拒时 tracing::warn! 打的那一行，只进后端日志
+src/backend/accounts/upstream_select/mod.rs:475	—	保留	[不对外] refusal_line：中转被拒时 tracing::warn! 打的那一行，只进后端日志
+src/backend/accounts/upstream_select/mod.rs:476	—	保留	[不对外] refusal_line：中转被拒时 tracing::warn! 打的那一行，只进后端日志
