@@ -2197,7 +2197,7 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     const LABELED = [{ ...TERMINALS[0], window: "600-639150434950992340" }];
     answer({ terminals: LABELED }, { chain: CHAIN }, () => Promise.resolve({ kind: "switched" }), () => Promise.resolve({ kind: "switched" }));
     const tm = makeTM();
-    tm.createSkeletonTab("r3", "/p", "devbox", "interactive", null);
+    tm.createSkeletonTab("r3", "/p", "devbox", false, null);
     await clickFront(tm, "r3");
     const calls = mockInvoke.mock.calls as [string, unknown][];
     expect(calls.filter(([c]) => c === "bring_remote_terminal_to_front").map(([, a]) => a)).toEqual([{ terminals: LABELED }]);
@@ -2208,7 +2208,7 @@ describe("：↗ 远端那一格按顺序问三方", () => {
   it("★ 按窗口标签没对上（monitor 回 null）⇒ 接着问本机后端、交进程链", async () => {
     answer({ terminals: TERMINALS }, { chain: CHAIN }, () => Promise.resolve({ kind: "switched" }));
     const tm = makeTM();
-    tm.createSkeletonTab("r4", "/p", "devbox", "interactive", null);
+    tm.createSkeletonTab("r4", "/p", "devbox", false, null);
     await clickFront(tm, "r4");
     const calls = mockInvoke.mock.calls as [string, unknown][];
     expect(calls.filter(([c]) => c === "bring_remote_terminal_to_front").map(([, a]) => a)).toEqual([{ terminals: TERMINALS }, { chain: CHAIN }]);
