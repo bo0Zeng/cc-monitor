@@ -132,7 +132,7 @@ ck "--help 交给 claude（ccm 自己的帮助是 --ccm-help）" \
    "$UNSET; cd '/p' && exec claude --help" \
    "$(ccm --help -- --cwd /p --ccm-print)"
 ck "--ccm-version 是 ccm 自己的版本" \
-   "ccm 6" \
+   "ccm 7" \
    "$(ccm -- --ccm-version)"
 ck "--attach 接回（位置动作 attach 取消）" \
    "if [ -n \"\${TMUX:-}\" ]; then tmux switch-client -t '=cc-foo:'; else tmux attach -t '=cc-foo:'; fi" \
@@ -398,7 +398,7 @@ ck "漏了 -- 的一次性叫法（--list-projects）：退出码 5、claude 没
 ck "有 -- 的不看终端：-- --ccm-print 照样印出那一行" \
    "$UNSET; cd '/p' && exec claude" \
    "$(bare -- --cwd /p --ccm-print </dev/null 2>&1)"
-ck "有 -- 的不看终端：-- --ccm-version 照答" "ccm 6" "$(bare -- --ccm-version </dev/null 2>&1)"
+ck "有 -- 的不看终端：-- --ccm-version 照答" "ccm 7" "$(bare -- --ccm-version </dev/null 2>&1)"
 # 有终端的正常起法不误伤：script 给一个伪终端（同 tmux 窗格、用户自己的终端、别名展开后的那一行）。
 ptyrun() { script -qec "$1" /dev/null >/dev/null 2>&1; }
 Q="env -u CLAUDE_CONFIG_DIR -u TMUX PATH='$FAKEBIN:$PATH' HOME='$NOHOME' CCM_CONFIG=/nonexistent '$CCM'"
