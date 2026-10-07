@@ -721,6 +721,26 @@ pub(crate) fn list_user_inputs_into(
     Ok(())
 }
 
+/// 冷开那几问共用的扫描图（过读会话那同一道围栏；没变就是留着的那张，见 [`super::record_scan`]）。
+pub(crate) fn cold_scan(
+    agent_home: &Path,
+    jsonl_path: &str,
+) -> Result<std::sync::Arc<super::record_scan::ScanMap>, String> {
+    let target = validate_session_path(agent_home, jsonl_path)?;
+    super::record_scan::global()
+        .get(&target)
+        .map_err(|e| format!("open failed: {e}"))
+}
+
+/// 尾段那张图：扫描图留着且没变 ⇒ 从它切；否则现数一遍行（只数行、不解析，比等整遍扫描快得多 —— 冷开时界面最先要它）。
+pub(crate) fn tail_now(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<TailPlan, String> {
+    let target = validate_session_path(agent_home, jsonl_path)?;
+    if let Some(map) = super::record_scan::global().peek(&target) {
+        return Ok(map.tail(n));
+    }
+    tail_plan(agent_home, jsonl_path, n).map(|(plan, _)| plan)
+}
+
 /// 大纲清单的打开口（围栏 ＋「起点越过文件尾 ⇒ 报错」＋ 定位）—— CLI 臂与帧面臂共用。
 pub(crate) fn open_user_inputs_at(
     agent_home: &Path,
@@ -1085,14 +1105,17 @@ fn is_zero(n: &u32) -> bool {
 /// 解析失败（半截 / 非 JSON）**不丢这一行** —— 它仍占一个 seq，只是没有料（`t` 省略）；
 /// 丢了它，后面每一行的 seq 都会错一位（那是「计数对不上而且不会报错」的那一形）。
 pub(crate) fn index_row(line: &[u8], offset: u64, len: u64) -> IndexRow {
+    index_row_of(super::record_scan::parse_record(line).as_ref(), offset, len)
+}
+
+/// [`index_row`] 的后半：这一行已经解析过（解析不了 ⇒ `None`，那一行照样占位）。
+pub(crate) fn index_row_of(v: Option<&serde_json::Value>, offset: u64, len: u64) -> IndexRow {
     let mut row = IndexRow {
         o: offset,
         n: len,
         ..IndexRow::default()
     };
-    let text = String::from_utf8_lossy(line);
-    let trimmed = text.trim_start_matches('\u{feff}').trim();
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+    let Some(v) = v else {
         return row;
     };
     row.t = v.get("type").and_then(|t| t.as_str()).map(str::to_string);
@@ -1238,9 +1261,17 @@ pub(crate) fn tail_plan(
     // 审计 D：整文件 std::fs::read 在 Pi 级设备上对数百 MB 会话有 OOM 风险
     // （旧 --read-session 是 io::copy 流式）——改单遍流式扫描（环形缓冲只存
     // 最近 N 个可计行的字节偏移，O(N) 内存）+ 两次 seek 范围拷贝。
-    use std::io::BufRead;
     let f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
     let mut reader = std::io::BufReader::new(f);
+    let plan = tail_plan_of(&mut reader, n).map_err(|e| format!("scan failed: {e}"))?;
+    Ok((plan, reader.into_inner()))
+}
+
+/// [`tail_plan`] 的扫描本体：读 `reader`（从字节 0 起）出 [`TailPlan`]。**纯 I/O 泛型**。
+pub(crate) fn tail_plan_of<R: std::io::BufRead>(
+    mut reader: R,
+    n: usize,
+) -> std::io::Result<TailPlan> {
     let mut recent: std::collections::VecDeque<u64> = std::collections::VecDeque::new();
     let keep = n.max(1);
     let mut total: u64 = 0;
@@ -1249,9 +1280,7 @@ pub(crate) fn tail_plan(
     let mut buf: Vec<u8> = Vec::new();
     loop {
         buf.clear();
-        let read = reader
-            .read_until(b'\n', &mut buf)
-            .map_err(|e| format!("scan failed: {e}"))?;
+        let read = reader.read_until(b'\n', &mut buf)?;
         if read == 0 {
             break;
         }
@@ -1272,15 +1301,12 @@ pub(crate) fn tail_plan(
     }
     let tail_from = total - recent.len() as u64;
     let split_at = recent.front().copied().unwrap_or(complete_end);
-    Ok((
-        TailPlan {
-            total,
-            tail_from,
-            split_at,
-            end: complete_end,
-        },
-        reader.into_inner(),
-    ))
+    Ok(TailPlan {
+        total,
+        tail_from,
+        split_at,
+        end: complete_end,
+    })
 }
 
 /// 帧面按字节区间分页读一份会话的**一页**（`history-read`）。

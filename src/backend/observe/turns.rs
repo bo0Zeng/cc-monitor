@@ -170,10 +170,9 @@ pub(crate) fn scan_turns<R: std::io::BufRead>(
     from: u64,
     mut on_row: impl FnMut(&TurnRow) -> std::io::Result<()>,
 ) -> std::io::Result<(u64, u64)> {
-    let tree = crate::agents::record_tree_kind().unwrap_or_default();
+    let mut scan = TurnScan::default();
     let mut end = from;
     let mut count: u64 = 0;
-    let mut open: Option<Open> = None;
     let mut buf: Vec<u8> = Vec::new();
     loop {
         buf.clear();
@@ -183,25 +182,52 @@ pub(crate) fn scan_turns<R: std::io::BufRead>(
         }
         let at = end;
         end += read as u64;
-        let text = String::from_utf8_lossy(&buf[..buf.len() - 1]);
-        let Ok(v) = serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}').trim())
-        else {
+        let Some(v) = super::record_scan::parse_record(&buf[..buf.len() - 1]) else {
             continue;
         };
-        let spoke = crate::agents::user_text_of(tree, &v);
-        if let Some(said) = user_input_given(&v, spoke.as_ref()) {
+        if let Some(row) = scan.line(at, &v) {
+            on_row(&row)?;
+            count += 1;
+        }
+    }
+    if let Some(row) = scan.finish() {
+        on_row(&row)?;
+        count += 1;
+    }
+    Ok((count, end))
+}
+
+/// 逐条记录攒轮次：[`TurnScan::line`] 收一条（`at` = 它的字节位置），新的一句收尾了上一轮就交出上一轮；
+/// [`TurnScan::finish`] 交出还开着的那一轮。
+pub(crate) struct TurnScan {
+    tree: &'static str,
+    open: Option<Open>,
+}
+
+impl Default for TurnScan {
+    fn default() -> Self {
+        TurnScan {
+            tree: crate::agents::record_tree_kind().unwrap_or_default(),
+            open: None,
+        }
+    }
+}
+
+impl TurnScan {
+    pub(crate) fn line(&mut self, at: u64, v: &Value) -> Option<TurnRow> {
+        let spoke = crate::agents::user_text_of(self.tree, v);
+        if let Some(said) = user_input_given(v, spoke.as_ref()) {
             let speech = spoke.and_then(|s| s.speech()).unwrap_or_default();
             let first = speech
                 .lines()
                 .map(str::trim)
                 .find(|l| !l.is_empty())
                 .unwrap_or("");
-            if let Some(mut t) = open.take() {
+            let closed = self.open.take().map(|mut t| {
                 t.row.done = true;
-                on_row(&t.close())?;
-                count += 1;
-            }
-            open = Some(Open {
+                t.close()
+            });
+            self.open = Some(Open {
                 row: TurnRow {
                     at,
                     uuid: said.uuid,
@@ -212,20 +238,20 @@ pub(crate) fn scan_turns<R: std::io::BufRead>(
                 },
                 reply_text: String::new(),
             });
-            continue;
+            return closed;
         }
-        if crate::agents::run_of_record(tree, &v).is_some() {
-            continue;
+        if crate::agents::run_of_record(self.tree, v).is_some() {
+            return None;
         }
-        if let Some(t) = open.as_mut() {
-            feed(tree, t, &v);
+        if let Some(t) = self.open.as_mut() {
+            feed(self.tree, t, v);
         }
+        None
     }
-    if let Some(t) = open.take() {
-        on_row(&t.close())?;
-        count += 1;
+
+    pub(crate) fn finish(self) -> Option<TurnRow> {
+        self.open.map(Open::close)
     }
-    Ok((count, end))
 }
 
 /// 某一条记录（`uuid`）落在第几轮、那一轮从何时起（分叉框顶上那一句）。轮的口径同 [`scan_turns`]：你说的一句起一轮。

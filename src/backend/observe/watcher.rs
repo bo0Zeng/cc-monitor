@@ -996,6 +996,12 @@ fn watch_loop(
                 for sid in tasks_touched(events.iter().map(|ev| ev.path.as_path()), &ears.tasks) {
                     sink.send(Frame::TasksChanged { sid });
                 }
+                // 记录文件的表先跟上这一批（同一批里 pidfile 先到、记录文件后到时，宣告也查得到它）。
+                for ev in &events {
+                    if is_jsonl(&ev.path) {
+                        note_jsonl(&mut state, &ev.path);
+                    }
+                }
                 // 子运行记录动过的会话（批内合并：一批里同一个会话的运行表只发一帧）。
                 let mut runs_touched = std::collections::BTreeSet::new();
                 for ev in events {
@@ -1193,6 +1199,8 @@ fn watch_loop(
             // 与起步同一套：耳朵重挂 · 账号清单重读（整机时）· pidfile 对表（顺手对账标签）· 重探 tmux。
             WatchEvent::Resync { only, done } => {
                 if only.is_none() {
+                    // 整机重对表：记录文件的表作废，下一次宣告整棵走一遍重建（事件可能丢过）。
+                    state.sid_files = None;
                     arm_ears(
                         &mut debouncer,
                         &mut ears,
@@ -1224,6 +1232,9 @@ fn watch_loop(
 /// Not behind a lock: the reader is single-threaded (one OS thread), so all
 /// access is serialized by construction.
 struct ReaderState {
+    /// 「sid → 它的记录文件」那张表：第一次宣告会话时整棵 `projects/` 走一遍建起来，之后跟着记录文件的事件改
+    /// （[`note_jsonl`]）；整机重对表时作废（下一次宣告再建）。`None` = 还没建。
+    sid_files: Option<HashMap<String, HashSet<PathBuf>>>,
     /// `<claude_dir>/projects` — used to rescan a session's jsonl when it becomes
     /// active (so its existing lines stream the moment the session is announced;
     /// monitor 那一侧从前的「会话出现就强制重扫」随它自己的读者 CF1 删了，今天只剩这一处).
@@ -1287,6 +1298,7 @@ struct ReaderState {
 impl ReaderState {
     fn new(projects: PathBuf, with_bg: bool, tail_only: bool) -> Self {
         ReaderState {
+            sid_files: None,
             projects,
             offsets: HashMap::new(),
             tails: HashMap::new(),
@@ -2149,8 +2161,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     // Batch8-F25：先定位该 sid 的 jsonl（帧要带 path 供 monitor 旁路快照；
     // mtime 降序，first=当前活跃文件。会话刚起还没写首行时为空 → path=None，
     // 此时无历史可拉，后续行天然从 tail 全量到达）。
-    let projects = state.projects.clone();
-    let jsonls = find_sid_jsonls(&projects, &sid);
+    let jsonls = sid_jsonls(state, &sid);
     // 历史处理按模式分流（Batch8-F25）：
     // - tail-only：**先 prime**（推进 cursor/seq 到当前完整行数 L，零行帧）——
     //   帧要带 first 文件的 L 供 monitor 校验快照完整性（审计 D-I2），prime
@@ -2393,6 +2404,62 @@ fn find_sid_jsonls(projects: &Path, sid: &str) -> Vec<std::path::PathBuf> {
     // lines 取 first，快照拉错陈文件 = 当前历史全缺）。
     v.sort_by_key(|p| std::cmp::Reverse(std::fs::metadata(p).and_then(|m| m.modified()).ok()));
     v
+}
+
+/// 宣告会话时找它的记录文件：先查 [`ReaderState::sid_files`]（没建 ⇒ 整棵走一遍建起来）；表里没有这个 sid ⇒ 整棵走一遍
+/// （会话刚起、记录文件的事件还没到）。交出来的同 [`find_sid_jsonls`]：此刻还在的那几份，修改时刻新的在前。
+fn sid_jsonls(state: &mut ReaderState, sid: &str) -> Vec<std::path::PathBuf> {
+    let projects = state.projects.clone();
+    let table = state
+        .sid_files
+        .get_or_insert_with(|| walk_sid_files(&projects));
+    let mut v: Vec<std::path::PathBuf> = table
+        .get(sid)
+        .map(|set| set.iter().filter(|p| p.is_file()).cloned().collect())
+        .unwrap_or_default();
+    if v.is_empty() {
+        let found = find_sid_jsonls(&projects, sid);
+        if !found.is_empty() {
+            table.insert(sid.to_string(), found.iter().cloned().collect());
+        }
+        return found;
+    }
+    v.sort_by_key(|p| std::cmp::Reverse(std::fs::metadata(p).and_then(|m| m.modified()).ok()));
+    v
+}
+
+/// 整棵 `projects/` 走一遍：每个 sid 的记录文件。
+fn walk_sid_files(projects: &Path) -> HashMap<String, HashSet<PathBuf>> {
+    let mut t: HashMap<String, HashSet<PathBuf>> = HashMap::new();
+    if !projects.is_dir() {
+        return t;
+    }
+    for p in WalkDir::new(projects)
+        .into_iter()
+        .filter_map(Result::ok)
+        .map(|e| e.into_path())
+        .filter(|p| is_jsonl(p))
+    {
+        if let Some(sid) = file_stem_str(&p) {
+            t.entry(sid).or_default().insert(p);
+        }
+    }
+    t
+}
+
+/// 一份记录文件动了（事件）⇒ 表跟上：在 ⇒ 记下；不在 ⇒ 摘掉。表还没建 ⇒ 不管（建的时候整棵走）。
+fn note_jsonl(state: &mut ReaderState, p: &Path) {
+    let (Some(table), Some(sid)) = (state.sid_files.as_mut(), file_stem_str(p)) else {
+        return;
+    };
+    if p.exists() {
+        table.entry(sid).or_default().insert(p.to_path_buf());
+    } else if let Some(set) = table.get_mut(&sid) {
+        set.remove(p);
+        if set.is_empty() {
+            table.remove(&sid);
+        }
+    }
 }
 
 /// Batch8-F25：tail-only 的初扫/宣告路径——把 cursor 与 seq 计数器推进到当前

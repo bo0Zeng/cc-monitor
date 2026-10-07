@@ -41,9 +41,7 @@ fn tree() -> &'static str {
 /// 一行 jsonl → 是用户输入就给一条 [`UserInputRow`]，不是 ⇒ `None`。**纯函数**。
 /// 解析不出的行（半截 / 非 JSON）⇒ `None`；判定本身在 [`user_input_of`]。
 pub(crate) fn user_input_row(line: &[u8]) -> Option<UserInputRow> {
-    let text = String::from_utf8_lossy(line);
-    let v: Value = serde_json::from_str(text.trim_start_matches('\u{feff}').trim()).ok()?;
-    user_input_of(&v)
+    user_input_of(&super::record_scan::parse_record(line)?)
 }
 
 /// 一条**已解析**的记录 → 是用户输入就给一条 [`UserInputRow`]。**口径的唯一住址**（见头注）。

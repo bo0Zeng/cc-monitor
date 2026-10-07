@@ -165,7 +165,7 @@ fn the_fast_path_never_changes_the_answer() {
     let mut slow = SessionFacts::default();
     for line in text.lines() {
         slow.end += line.len() as u64 + 1;
-        if let Some(v) = parse_line(line.as_bytes()) {
+        if let Some(v) = crate::observe::record_scan::parse_record(line.as_bytes()) {
             note_record(&mut slow, &v);
         }
     }
@@ -573,7 +573,7 @@ fn the_fast_path_keeps_pending_and_last_say_exact() {
     let mut slow = SessionFacts::default();
     for line in text.lines() {
         slow.end += line.len() as u64 + 1;
-        if let Some(v) = parse_line(line.as_bytes()) {
+        if let Some(v) = crate::observe::record_scan::parse_record(line.as_bytes()) {
             note_record(&mut slow, &v);
         }
     }

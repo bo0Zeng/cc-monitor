@@ -3776,3 +3776,50 @@ fn line_frames_carry_the_raw_text_only_when_the_stream_asked() {
         assert_eq!(got, want, "索要了 raw = {asked}");
     }
 }
+
+/// 宣告会话找它的记录文件：先查「sid → 记录文件」那张表（起步一遍、之后跟着记录文件的事件改），查不到才整棵走一遍。
+/// 表与整棵走得出的同一份（同 sid 两份 ⇒ 都在、按修改时刻新的在前）；删掉的不交；新长出来的经事件进表。
+#[test]
+fn announcing_a_session_finds_its_records_from_the_table_not_a_full_walk() {
+    let base = std::env::temp_dir().join(format!("ccm-c4-sidfiles-{}", std::process::id()));
+    std::fs::remove_dir_all(&base).ok();
+    let projects = base.join("projects");
+    let sid = "0000aaaa-0000-4000-8000-00000000c4c4";
+    let a = projects.join("-p-old").join(format!("{sid}.jsonl"));
+    let b = projects.join("-p-new").join(format!("{sid}.jsonl"));
+    for p in [&a, &b] {
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    }
+    std::fs::write(&a, "{}\n").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    std::fs::write(&b, "{}\n").unwrap();
+    let mut st = ReaderState::new(projects.clone(), false, false);
+    assert!(st.sid_files.is_none(), "表应在第一次宣告时才建");
+    assert_eq!(sid_jsonls(&mut st, sid), find_sid_jsonls(&projects, sid));
+    assert_eq!(sid_jsonls(&mut st, sid), vec![b.clone(), a.clone()]);
+    assert!(st.sid_files.is_some(), "第一次宣告之后表该在了");
+    // 表在之后：整棵树换成一个走不到的根，表照样答得出（证明答案来自表，不是又走了一遍）。
+    st.projects = base.join("nowhere");
+    assert_eq!(sid_jsonls(&mut st, sid), vec![b.clone(), a.clone()]);
+    // 删一份 ＋ 它的事件 ⇒ 不交它。
+    std::fs::remove_file(&a).unwrap();
+    note_jsonl(&mut st, &a);
+    assert_eq!(sid_jsonls(&mut st, sid), vec![b.clone()]);
+    // 新长一份（另一条会话）＋ 它的事件 ⇒ 进表。
+    let sid2 = "0000aaaa-0000-4000-8000-00000000c4c5";
+    let c = projects.join("-p-new").join(format!("{sid2}.jsonl"));
+    std::fs::write(&c, "{}\n").unwrap();
+    note_jsonl(&mut st, &c);
+    assert_eq!(sid_jsonls(&mut st, sid2), vec![c.clone()]);
+    // 表里没有的 sid ⇒ 整棵走一遍（根换回来才走得到）。
+    st.projects = projects.clone();
+    let sid3 = "0000aaaa-0000-4000-8000-00000000c4c6";
+    let d = projects.join("-p-old").join(format!("{sid3}.jsonl"));
+    std::fs::write(&d, "{}\n").unwrap();
+    assert_eq!(
+        sid_jsonls(&mut st, sid3),
+        vec![d.clone()],
+        "表里没有就该整棵走一遍"
+    );
+    std::fs::remove_dir_all(&base).ok();
+}
