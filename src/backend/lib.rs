@@ -846,7 +846,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p8y-profiles-page：profiles-read / -resolve / -impact / -bases / -write 与 profiles_changed 推帧；删 aliases-render / -install / -to-form / -from-form。
 ///
 /// p8z-window-label：session-terminals 每个终端多回 window（接入块 v8 设的 LC_CCM_WINDOW，只认 <数字>-<数字>）。
-pub const BUILD_ID: &str = "p8z-window-label";
+///
+/// p9a-chores：data-report 换形（todo ＝ 要你动手各件成品 · chores 角标）；新命令 chores-mark（chores.json）与 agent-home-check（Claude 目录像不像由后端判）。
+pub const BUILD_ID: &str = "p9a-chores";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
