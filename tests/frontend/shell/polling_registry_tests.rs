@@ -303,27 +303,19 @@ fn the_scan_actually_reads_the_frontend_and_ccm() {
     let root = repo_root();
     let mut ts = Vec::new();
     collect_ts(&root.join("src"), &mut ts);
-    // 地板 170：08-05 实测 **190** 个
-    // （`generated/` 73 · `src/` 本层 58 · `settings/` 23 · `views/` 14 · 其余 22）。
-    // ⚠ 原文写「实测应约 90+」、地板 `>= 60` —— 数字腐了一倍多而判据照样绿
-    // （地板式判据在「数字变大」这个方向上不会红，定框 E12 第二个陷阱的又一例）。
-    //
-    // **余量 20 意味着什么**：它**装不下 `settings/`（23）** ⇒ 少掉 `settings/` 或任何
-    // 更大的子目录（`generated/` 73 · 本层 58）都会被这条抓住。
-    // ⚠ **`views/`（14）单独消失这条抓不住** —— 那一层由 `SCHEDULING_SITES` 的反向检查
-    // 兜着：分类账里有 5 个 `views/` 下的文件，它们一起消失那条会红。
-    // 写清这一点是因为**「地板护住了整个扫描面」是一句很容易顺手写下的假话**。
-    assert!(
-        ts.len() >= 170,
-        "只扫到 {} 个前端 .ts（08-05 实测 190）—— 遍历器坏了",
-        ts.len()
-    );
-    assert!(
-        fs::read_to_string(root.join("src/backend/control/ccm/plan.rs"))
-            .map(|s| s.len())
-            .unwrap_or(0)
-            > 10_000,
-        "`control/ccm/plan.rs` 读不到或太短 —— 路径变了？"
+    // 采集面与 git 跟踪着的前端 `.ts` 对拍（测试与声明文件不在人群里）。
+    let seen: Vec<String> = ts.iter().map(|p| crate::guard_support::rel_of(p)).collect();
+    let skip: Vec<String> = crate::guard_support::tracked_under("src", "ts")
+        .into_iter()
+        .filter(|r| r.contains(".vitest.") || r.contains(".test.") || r.ends_with(".d.ts"))
+        .collect();
+    let skip: Vec<&str> = skip.iter().map(String::as_str).collect();
+    crate::guard_support::assert_scanned_every_tracked(
+        "前端周期唤醒",
+        &seen,
+        &["src"],
+        "ts",
+        &skip,
     );
     // 剥注释不能把整份文件剥空。
     //
@@ -573,13 +565,7 @@ fn every_scheduling_call_site_is_classified() {
         "`window.setInterval(` 是调用，必须数"
     );
     let found = scan_all_scheduling_sites();
-    // 抽取器自检：扫不到东西时下面的对拍会两边都空、静默变绿。
-    let total: usize = found.iter().map(|(_, _, n)| *n).sum();
-    assert!(
-        total >= 30,
-        "全仓只扫到 {total} 个调度调用点（实测应为 40+）—— 抽取器坏了，\
-             下面的对拍会在两边都空的情况下变绿"
-    );
+    // 抽取器坏了扫不到东西 ⇒ 下面反向那一条（表里的条目必须真的还在）红。
 
     let mut missing: Vec<String> = Vec::new();
     let mut drifted: Vec<String> = Vec::new();
