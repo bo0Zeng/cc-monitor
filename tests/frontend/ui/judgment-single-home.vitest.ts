@@ -639,6 +639,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     file_name_of: NONE,
     listen_pid_file_name: NONE,
     POSIX_ALIASES_REL: NONE,
+    PROFILES_REL: NONE,
     PS_ALIASES_REL: NONE,
     SKILL_LEDGER_REL: NONE,
     // 额度账 · 账号轮换（后端账号域写；数据位置页按它列）。

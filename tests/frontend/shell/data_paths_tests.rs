@@ -199,6 +199,7 @@ fn backend_rows_point_where_the_backend_itself_writes() {
             "file",
         ),
         row("backend.json", h.join(rr::BACKEND_POLICY_REL), "file"),
+        row("profiles.toml", h.join(rr::PROFILES_REL), "file"),
         row("aliases.sh", h.join(rr::POSIX_ALIASES_REL), "file"),
         row("aliases.ps1", h.join(rr::PS_ALIASES_REL), "file"),
         row("skill-installs.json", h.join(rr::SKILL_LEDGER_REL), "file"),
