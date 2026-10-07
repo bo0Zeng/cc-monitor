@@ -735,18 +735,23 @@ window.addEventListener("DOMContentLoaded", async () => {
   for (let i = 1; i <= 9; i++) {
     dispatcher.bind(`tab.jump-${i}` as const, () => tabs.jumpToIndex(i));
   }
-  dispatcher.bind("tab.close-archived", () => tabs.closeActiveIfArchived());
-  dispatcher.bind("tab.open-cwd", () => tabs.openActiveTabCwd());
+  // 作用于当前会话的那几键：占位标签页那一页显着时让开（不落到底下那个真标签页）。
+  const onSession = (id: Parameters<typeof tabs.shadowedBySlot>[0], fn: () => void): void =>
+    dispatcher.bind(id, () => {
+      if (!tabs.shadowedBySlot(id)) fn();
+    });
+  onSession("tab.close-archived", () => tabs.closeActiveIfArchived());
+  onSession("tab.open-cwd", () => tabs.openActiveTabCwd());
   dispatcher.bind("needs.next", () => tabs.jumpToNextNeeds());
-  dispatcher.bind("tab.pop-out", () => tabs.openActiveInNewWindow());
+  onSession("tab.pop-out", () => tabs.openActiveInNewWindow());
   // 会话内查找（大纲同一块面板）；历史查看器开着时落在它上面（它盖在 tab 上）。
   dispatcher.bind("session.find", () => {
-    if (!historyView.openFind()) tabs.openFind();
+    if (!historyView.openFind() && !tabs.shadowedBySlot("session.find")) tabs.openFind();
   });
-  dispatcher.bind("session.toggle-process", () => tabs.toggleProcessDefault());
-  dispatcher.bind("session.prev-turn", () => tabs.stepTurn(-1));
-  dispatcher.bind("session.next-turn", () => tabs.stepTurn(1));
-  dispatcher.bind("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
+  onSession("session.toggle-process", () => tabs.toggleProcessDefault());
+  onSession("session.prev-turn", () => tabs.stepTurn(-1));
+  onSession("session.next-turn", () => tabs.stepTurn(1));
+  onSession("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
   dispatcher.bind("app.open-settings", () => void openSettingsWindow()); // F82a：开独立设置窗口
   dispatcher.bind("app.toggle-history", () => overlays.toggle("history"));
   dispatcher.bind("app.open-command-bar", () => commandBar.toggle()); // F84（#57）Ctrl+K 命令栏
@@ -759,8 +764,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.bind("app.toggle-tab-bar", toggleTabBarFold);
   dispatcher.bind("app.open-cc-bus", () => overlays.toggle("cc-bus"));
   dispatcher.bind("app.undo", () => void undoLatest());
-  dispatcher.bind("tab.context-menu", () => tabs.openActiveMenu());
-  dispatcher.bind("session.to-bottom", () => tabs.toBottom());
+  onSession("tab.context-menu", () => tabs.openActiveMenu());
+  onSession("session.to-bottom", () => tabs.toBottom());
   dispatcher.bind("panel.toggle-tasks", () => mainDrawer.toggle("tasks"));
   dispatcher.bind("panel.toggle-agents", () => mainDrawer.toggle("agents"));
   dispatcher.bind("panel.toggle-terminal", () => mainDrawer.toggle("terminal"));
