@@ -224,6 +224,12 @@ fn renew_line(account: &str, t: &Trail, r: &Result<SecretKey, Unusable>) -> Stri
     )
 }
 
+/// 令牌端点那一发没连上 / 没读完：原因只记 `io::ErrorKind` 那一个词。
+fn unreached(trail: &mut Trail, e: &std::io::Error) -> Unusable {
+    trail.why = Some(format!("transport({})", e.kind()));
+    Unusable::NotRenewed(e.kind().to_string())
+}
+
 /// 发续期 → 读回包 → 写前比对 → 整份写回；一路把能进日志的几格记进 `trail`。
 fn renew(
     dir: &Path,
@@ -267,10 +273,7 @@ fn renew(
         endpoint.deadline,
         ANSWER_CAP,
     )
-    .map_err(|e| {
-        trail.why = Some(format!("transport({})", e.kind()));
-        Unusable::NotRenewed(e.kind().to_string())
-    })?;
+    .map_err(|e| unreached(trail, &e))?;
     trail.status = Some(answer.status);
     if answer.status != 200 {
         trail.code = error_code(&answer.body);
