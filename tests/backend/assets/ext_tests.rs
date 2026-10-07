@@ -1079,8 +1079,8 @@ fn no_production_code_writes_the_agent_settings_file() {
     assert!(code(fake).contains(NEEDLE) && writes(&code(fake)));
     let writer = files
         .iter()
-        .find(|(p, _)| p.ends_with("assets/asset_catalog.rs"))
-        .expect("正控：那份写目录文件的模块不在扫描范围里");
+        .find(|(p, _)| p.ends_with("common/own_state.rs"))
+        .expect("正控：后端自有状态文件原子写的那一处不在扫描范围里");
     assert!(
         writes(&code(&writer.1)),
         "正控：写法表认不出一份真在写盘的模块"
