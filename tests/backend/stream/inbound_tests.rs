@@ -588,6 +588,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "footprint-report",
         // 「文件与数据」那一份：同一份足迹重排。
         "data-report",
+        // 换 Claude 目录前那一问：stat 两次。
+        "agent-home-check",
         // 别名预览：读账号库 manifest ＋ 问会话快照。
         "ccm-print",
         // 资产目录两条：扫盘 ＋ 原子写目录文件。
@@ -772,6 +774,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "launch-render-cli",
         "footprint-report",
         "data-report",
+        "agent-home-check",
         // 本机那一份放不放：读一遍落点那个文件 ⇒ 阻塞档。
         "place-verdict",
         // 别名预览，阻塞档。

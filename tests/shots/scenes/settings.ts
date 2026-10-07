@@ -282,11 +282,10 @@ export const SETTINGS_SCENES: Scene[] = [
   }),
   settings("settings-general-advanced", "设置 · 通用 · 高级", "通用页展开「高级：上下文上限」", async () => {
     await go("general");
-    const d = document.querySelector<HTMLDetailsElement>(".settings-page:not([hidden]) details");
-    if (d) {
-      d.open = true;
-      d.dispatchEvent(new Event("toggle"));
-      d.scrollIntoView({ block: "start" });
+    const head = document.querySelector<HTMLElement>('.settings-page:not([hidden]) [data-anchor="context-limits"] [aria-expanded]');
+    if (head) {
+      head.click();
+      head.scrollIntoView({ block: "start" });
     }
     await sleep(700);
   }),

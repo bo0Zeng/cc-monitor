@@ -192,6 +192,9 @@ const SETTINGS_TARGET_EVENT = "settings-target";
 const MACHINE_TAB_OF_TARGET: Record<string, string> = { acct: "acct", config: "config" };
 /** 顶层「扩展」页的路由 id。 */
 
+/** 带目的地跳到一节时发给那一节的事件：折着的那一节据此展开。 */
+const REVEAL_EVENT = "settings-reveal";
+
 export class SettingsPanel {
   private el: HTMLElement;
   /** S2：页面路由器。`open()` 每次回落地页（计划指定不记忆上次停在哪一页）。 */
@@ -714,6 +717,7 @@ export class SettingsPanel {
       (tabs && tabId ? tabs.navButtonOf(`${pageId}#${tabId}`) : null) ??
       page.querySelector<HTMLElement>(":scope > .settings-page-head");
     if (!spot) return;
+    spot.dispatchEvent(new Event(REVEAL_EVENT));
     spot.scrollIntoView?.({ block: "nearest" });
     spot.classList.add("settings-highlight");
     window.setTimeout(() => spot.classList.remove("settings-highlight"), SETTINGS_HIGHLIGHT_MS);
@@ -993,7 +997,16 @@ export class SettingsPanel {
     const generalPage = document.createElement("div");
     generalPage.appendChild(this.safeBlock(copyText("settingsPanel.group.behavior"), () => this.buildBehaviorGroup()));
     generalPage.appendChild(this.safeBlock(copyText("settingsPanel.group.resume"), () => this.buildResumeGroup()));
-    const limitsBlock = this.safeBlock(copyText("contextLimits.editor.title"), () => new ContextLimitsSection().element, { untitled: true });
+    let limits: ContextLimitsSection | null = null;
+    const limitsBlock = this.safeBlock(
+      copyText("contextLimits.editor.title"),
+      () => {
+        limits = new ContextLimitsSection();
+        return limits.element;
+      },
+      { untitled: true },
+    );
+    limitsBlock.addEventListener(REVEAL_EVENT, () => limits?.reveal());
     // 主窗口［设上限］开 `{page: "general", anchor: "context-limits"}`：落到这一节（展开）并高亮。
     limitsBlock.dataset.anchor = "context-limits";
     generalPage.appendChild(limitsBlock);
@@ -1561,7 +1574,7 @@ export class SettingsPanel {
     openBtn.className = "settings-btn";
     openBtn.textContent = copyText("settingsPanel.keybindings.open");
     openBtn.addEventListener("click", () => {
-      if (!this.kbEditor) this.kbEditor = new KeybindingsEditor();
+      if (!this.kbEditor) this.kbEditor = new KeybindingsEditor({ onChange: () => this.refreshKbChip() });
       this.kbEditor.open();
     });
     row.appendChild(openBtn);

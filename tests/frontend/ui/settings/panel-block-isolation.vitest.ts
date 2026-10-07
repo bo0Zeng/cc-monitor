@@ -400,6 +400,11 @@ describe("通用页 · 行为与恢复", () => {
 
   it("上下文上限那一节挂锚点 context-limits（主窗口［设上限］跳过来）", () => {
     new SettingsPanel({ windowMode: true });
-    expect(document.querySelector('[data-anchor="context-limits"]')).toBeTruthy();
+    const spot = document.querySelector<HTMLElement>('[data-anchor="context-limits"]')!;
+    expect(spot).toBeTruthy();
+    // 跳过来那一下展开折着的那一节。
+    expect(spot.querySelector("[aria-expanded]")!.getAttribute("aria-expanded")).toBe("false");
+    spot.dispatchEvent(new Event("settings-reveal"));
+    expect(spot.querySelector("[aria-expanded]")!.getAttribute("aria-expanded")).toBe("true");
   });
 });

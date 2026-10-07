@@ -3118,4 +3118,16 @@ body.settings-window-mode .settings-panel {
 .prof-empty-state .prof-trow {
   cursor: default;
 }
+
+/* 通用页「高级：上下文上限」那一折：说明一行 ＋ 整宽的文本框。 */
+.ctx-limits-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ctx-limits-box {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
 }

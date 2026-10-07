@@ -1875,6 +1875,19 @@ sid → 上次用哪个号起。
 
 码：`bad_args` · `failed`
 
+#### `agent-home-check`
+
+那个目录能不能当 agent 家目录。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --agent-home-check`
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `path` | → | 要查的目录：绝对路径，或 `~/` 开头（按这台家目录展开） |
+| `state` | ← | `ok`（在、是目录、里面有那一家的记录树）· `missing`（不在）· `not_dir`（不是目录）· `no_records`（里面没有记录树） |
+
+码：`bad_args`
+
 #### `mcp-sync-plan`
 
 MCP 资产同步的判定。

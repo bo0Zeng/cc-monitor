@@ -2,7 +2,7 @@
 //!
 //! - `changedFiles`：cc-monitor 写进**你的**文件的那几处（今天在、cc-monitor 装口放的、不在 `~/.cc-monitor/` 里），
 //!   每处说改了什么、撤回在哪一页（页 · 栏 · 锚点，界面照它跳）。
-//! - `needsInstall`：你自己装、cc-monitor 只查的那几样里，这台**确实缺**的（查不动的不算缺，不报）；`required` ＝ 缺了起不了会话。
+//! - `needsInstall`：你自己装、cc-monitor 只查的那几样里，这台**确实缺**的（查不动的不算缺，不报；tmux 一律可选、不进这里）；`required` ＝ 缺了起不了会话。
 //! - `tmux`：这台有没有 tmux（查不动 ⇒ `null`）—— 恢复菜单默认「运行于」照它回落。
 //! - `chores`：「要你动手」里进角标的件数（`required` 的那几件），设置窗左栏角标与主窗口状态栏那一枚读这一个数。
 //!
@@ -37,7 +37,6 @@ fn required(tool_id: &str) -> bool {
 fn how_url(tool_id: &str) -> Option<&'static str> {
     match tool_id {
         "claude-cli" => Some("https://docs.anthropic.com/en/docs/claude-code/setup"),
-        "tmux" => Some("https://github.com/tmux/tmux/wiki/Installing"),
         "login-shell" => Some("https://www.gnu.org/software/bash/"),
         _ => None,
     }
@@ -60,6 +59,10 @@ fn changed(r: &SurfaceRow) -> Option<Value> {
 
 fn missing(r: &SurfaceRow) -> Option<Value> {
     if r.tier != EnvTier::UserInstallsWePrompt || r.state != SurfaceState::Absent {
+        return None;
+    }
+    // tmux 一律可选：缺了不进「要装」（有没有它只走 `tmux` 那一格，没有的那台不出 tmux 相关项）。
+    if r.tool_id == "tmux" {
         return None;
     }
     Some(json!({

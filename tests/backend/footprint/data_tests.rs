@@ -118,11 +118,10 @@ fn 要装只报确实缺的_查不动的不算缺_缺了起不了会话的才进
         .collect();
     assert_eq!(
         ids,
-        vec!["claude-cli", "tmux"],
-        "查不动的说成缺 ＝ 对能用的环境报假警报"
+        vec!["claude-cli"],
+        "查不动的说成缺 ＝ 对能用的环境报假警报；tmux 一律可选，缺了不进「要装」，只走 tmux 那一格"
     );
     assert_eq!(got["needsInstall"][0]["required"], json!(true));
-    assert_eq!(got["needsInstall"][1]["required"], json!(false));
     assert_eq!(got["chores"], json!(1), "进角标的只算缺了起不了会话的");
     assert_eq!(got["tmux"], json!(false));
 }

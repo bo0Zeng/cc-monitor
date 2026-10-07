@@ -5850,16 +5850,6 @@
       "zh": "连同 {kids}，{n} 条一起删。",
       "args": ["kids", "n"]
     },
-    "profilesPage.remove.confirmBody": {
-      "kind": "body",
-      "zh": "只删配置文件里那一段，别的段一个字节不动。",
-      "args": []
-    },
-    "profilesPage.remove.confirmTitle": {
-      "kind": "title",
-      "zh": "删 {name}",
-      "args": ["name"]
-    },
     "profilesPage.remove.goCascade": {
       "kind": "action",
       "zh": "{n} 条一起删",
@@ -7090,16 +7080,6 @@
       "zh": "读不到",
       "args": []
     },
-    "dataReads.shape.bad": {
-      "kind": "error",
-      "zh": "那台答的「文件与数据」形状认不出",
-      "args": []
-    },
-    "dataReads.ask.failed": {
-      "kind": "error",
-      "zh": "问不到那台的「文件与数据」",
-      "args": []
-    },
     "settingsPanel.nav.logs": {
       "kind": "title",
       "zh": "日志",
@@ -7577,16 +7557,6 @@
       "args": [],
       "limited": ["SSH"]
     },
-    "configSurface.backend.tooOld": {
-      "kind": "error",
-      "zh": "这台的后端太旧，查不了足迹。本机重启 cc-monitor 就会换上新的后端，远端要重新部署后端。",
-      "args": []
-    },
-    "configSurface.refresh.badShape": {
-      "kind": "error",
-      "zh": "后端返回的足迹读不懂，多半是后端版本不对，需要更新。",
-      "args": []
-    },
     "diagnostics.openDir.failed": {
       "kind": "error",
       "zh": "打开日志目录失败",
@@ -7930,11 +7900,6 @@
       "zh": "保存后端策略失败",
       "args": []
     },
-    "backend.policy.badShape": {
-      "kind": "error",
-      "zh": "后端写完回来的内容格式不对，可能是后端版本不对",
-      "args": []
-    },
     "backend.stopSaid.graceful": {
       "kind": "body",
       "zh": "已停：后端（进程 {pid}）做完手上的事，自己退了。",
@@ -7973,11 +7938,6 @@
     "backend.health.detail": {
       "kind": "title",
       "zh": "详情",
-      "args": []
-    },
-    "backend.health.badShape": {
-      "kind": "error",
-      "zh": "健康状态的格式不对",
       "args": []
     },
     "backend.buildCells.exitKills": {
@@ -8035,16 +7995,6 @@
       "zh": "取不回这台后端的日志：{e}",
       "args": ["e"]
     },
-    "backend.log.oldBackend": {
-      "kind": "error",
-      "zh": "这台的后端版本旧，还不给看日志（重装后端之后就有）",
-      "args": []
-    },
-    "backend.log.badShape": {
-      "kind": "error",
-      "zh": "后端回的日志格式不对",
-      "args": []
-    },
     "backend.buildCells.start": {
       "kind": "action",
       "zh": "启动",
@@ -8093,11 +8043,6 @@
     "backend.column.status": {
       "kind": "title",
       "zh": "状态",
-      "args": []
-    },
-    "backend.exitPolicy.oldBackend": {
-      "kind": "body",
-      "zh": "那台机器的后端太旧，看不了退出行为，需要更新。",
       "args": []
     },
     "bePubkey.add.noOutcome": {
@@ -12019,11 +11964,11 @@
     },
     "contextLimits.editor.intro": {
       "kind": "body",
-      "zh": "上下文占用按会话的上限算。中转看见过这个会话的请求，就照请求里开没开扩展上下文定；没看见过的先看这张表，再看模型名和用过最多的一轮；都看不出就只写用了多少，不算百分比。一行一条，写「模型名片段 = 上限 tokens」，例如 claude-haiku-4-5 = 200000。离开这一格就存。",
+      "zh": "一行一条 · 模型名片段 = 上限 tokens · 例：claude-haiku-4-5 = 200000 · 离开即存",
       "args": []
     },
     "contextLimits.editor.field": {
-      "kind": "control",
+      "kind": "aria",
       "zh": "模型上限覆盖",
       "args": []
     },
@@ -22567,6 +22512,16 @@
       "kind": "body",
       "zh": "{name}：{said}",
       "args": ["name", "said"]
+    },
+    "profilesPage.remove.done": {
+      "kind": "body",
+      "zh": "已删除 {name}",
+      "args": ["name"]
+    },
+    "contextLimits.editor.count": {
+      "kind": "body",
+      "zh": "已改 {n}",
+      "args": ["n"]
     }
   }
 }

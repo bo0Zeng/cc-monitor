@@ -34,6 +34,19 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 设置里换 agent 家目录存之前那一问：在不在 · 是不是目录 · 有没有那一家的记录树，回一个码（`footprint/agent_home_check.rs`）。只读，阻塞档（stat）。
+    CommandSpec {
+        name: "agent-home-check",
+        summary: "那个目录能不能当 agent 家目录",
+        codes: &["bad_args"],
+        fields: &[arg("path", "要查的目录：绝对路径，或 `~/` 开头（按这台家目录展开）"), out("state", "`ok`（在、是目录、里面有那一家的记录树）· `missing`（不在）· `not_dir`（不是目录）· `no_records`（里面没有记录树）")],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::footprint::agent_home_check::answer_check(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     // **MCP 资产同步的判定**（B，用户 09-24）：两份原文进、
     //   差异四态 ＋ 可疑项（带这台机器的事实）＋「写哪几条」出。由**要被写的那一台**跑（事实是那台的）。
     //   只读：原文由 monitor 经 `files-peek` 读来，写经 `files-put`（CAS）—— 本条一个字节都不落盘。阻塞档（`stat`）。

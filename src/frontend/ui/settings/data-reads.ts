@@ -4,10 +4,9 @@
  * 设置窗左栏角标与主窗口状态栏那一枚读同一个数（[`choresOf`]），界面不另数。
  */
 import { chan } from "../../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
+import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "../ipc/chan-caller";
 import { commands } from "../ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
-import { copyText } from "../copy-table";
 
 /** 一次 stat 一批、读几份小文件：给 30 秒。 */
 const DATA_BUDGET_MS = 30_000;
@@ -51,7 +50,7 @@ const sameKeys = (o: Record<string, unknown>, keys: string[]): boolean => {
   return got.length === want.length && got.every((k, i) => k === want[i]);
 };
 const bad = (): never => {
-  throw new Error(copyText("dataReads.shape.bad"));
+  throw new ReplyUnreadable("data-report reply shape");
 };
 const str = (v: unknown): string => (typeof v === "string" ? v : bad());
 
@@ -95,9 +94,13 @@ export async function readDataReport(origin: Origin): Promise<DataReport> {
     const budget = budgetWithin(DATA_BUDGET_MS);
     reply = await chan.call(target, "data-report", body, budget);
   } catch (e) {
-    throw new Error(saidOf(e, copyText("dataReads.ask.failed")));
+    throw new Error(saidFrom(e, origin));
   }
-  return decodeDataReport(readJson(reply));
+  try {
+    return decodeDataReport(readJson(reply));
+  } catch (e) {
+    throw new Error(saidFrom(e, origin));
+  }
 }
 
 /** 那台进角标的件数（问不到 ⇒ `null`，不当 0）。设置窗角标与主窗口状态栏读这一个。 */

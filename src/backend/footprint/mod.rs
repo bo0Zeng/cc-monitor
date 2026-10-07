@@ -12,6 +12,7 @@
 //! 目录最多列 [`MAX_ENTRIES`] 个名字（超了 ⇒ 列不动，不截断：截断的清单会被当成完整的去数 glob）·
 //! 查钩子字样的文件最多 [`MAX_HOOK_FILE_BYTES`] 字节（内容一个字节都不回）。
 
+pub(crate) mod agent_home_check;
 pub(crate) mod data;
 pub(crate) mod registry;
 pub(crate) mod rows;
