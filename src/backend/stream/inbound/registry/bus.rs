@@ -3,9 +3,10 @@
 use crate::stream::inbound::spec::{CommandSpec, Run};
 
 pub(super) const SPECS: &[CommandSpec] = &[
-    // cc-bus 的两条基础命令：转调本机的 cc-bus 命令，不在后端里重实现总线（cc-bus 自己会变，只把它的命令当接口）。
-    // 刻意没有 `bus-recv`：`cc-recv` 会推进已读位置，backend 代读等于把消息从人那里偷走。「有没有新的」由 `bus-list` 的待读数回答（只读、不消费）。
-    // 理由全文在 `control/cc_bus.rs`。
+    // P4f：cc-bus 的两条基础命令。**转调本机的 cc-bus 命令**，不在后端里重实现总线
+    //（用户 08-13 逐字：「细节先按原本的就行」「后面我可能要改ccbus」）。
+    // ⚠ 刻意**没有** `bus-recv`：`cc-recv` 会推进已读位置，backend 代读等于把消息从人那里
+    //   偷走。「有没有新的」由 `bus-list` 的待读数回答（只读、不消费）。理由全文在 `control/cc_bus.rs`。
     CommandSpec {
         name: "bus-list",
         doc_anchor: Some("#### `bus-list`"),
@@ -91,8 +92,12 @@ pub(super) const SPECS: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| crate::control::cc_bus::spawn_for_inbound(&r.args).map(Some)),
     },
-    // 一次回全的具名读命令：`agents` 那一半就是 `bus-list` 那一半（同一个 `agents_via_cc_list`，`cc_bus::tests::bus_state_answers_both_halves_from_one_call` 钉住），
-    // 多出来的是 spawn 台账。两半必须在同一条命令里回：它们互相引用，分两条命令取回来的是两个时刻的。
+    // `K-R113`（09-13）：**一次回全的具名读命令。**
+    //
+    // 它不是 `bus-list` 的超集写法 —— `agents` 那一半**就是** `bus-list` 那一半
+    //（同一个 `agents_via_cc_list`，由 `cc_bus::tests::bus_state_answers_both_halves_from_one_call`
+    // 钉住），多出来的是 spawn 台账。⚠ 两半必须在**同一条命令**里回：总线名单与 spawn 台账
+    // 互相引用，分两条命令取回来的两份是两个时刻的，拼出来的状态盘上从没存在过。
     CommandSpec {
         name: "bus-state",
         doc_anchor: Some("#### `bus-state`"),
