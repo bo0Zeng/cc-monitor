@@ -22475,9 +22475,8 @@
     },
     "beProfile.value.unknown": {
       "kind": "error",
-      "zh": "认不得 {key}。ccm 没有 --{key} 这个选项，或它每次取值都不同、不能写进配置",
-      "args": ["key"],
-      "limited": ["ccm"]
+      "zh": "未知选项 {key}",
+      "args": ["key"]
     },
     "beProfile.file.syntax": {
       "kind": "error",

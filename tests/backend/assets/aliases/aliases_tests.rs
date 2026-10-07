@@ -1038,6 +1038,50 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
 // 别名块与别名文件那一行共用一份候选、一次扫描
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// 用户 rc 里块外自己定义的同名函数，谁生效要按这一条是链接还是终端函数分开说（10-07 沙箱 `bash -ic 'type …'` 读数）：
+/// 链接那几条（`~/.cc-monitor/bin/<名>`）是 PATH 上的程序，shell 函数恒盖过它 ⇒ 不论写在接入行之前之后都是「你写的」；
+/// 终端函数那几条（撞名才有）是 `aliases.sh` 里的函数，后定义的赢 ⇒ 照行的先后判（与今天同一条）。
+#[test]
+fn a_users_function_always_beats_a_link_but_only_a_later_one_beats_a_function() {
+    let h = tmp_home("wins");
+    inst(
+        &h,
+        &[
+            al("zzlinkq", &["--account", "z"]),
+            al("sh", &["--account", "z"]),
+        ],
+        P,
+    )
+    .expect("写");
+    let rc_path = h.0.join(".bashrc");
+    std::fs::write(&rc_path, "zzlinkq() { echo mine; }\nsh() { echo mine; }\n").unwrap();
+    run(block::install_to_profile(&door(&h), &rc_path)).expect("装别名块（接入行在用户函数之后）");
+    let rc = read_in(&h.0, P, None)
+        .unwrap()
+        .rc_candidates
+        .into_iter()
+        .find(|c| c.path.ends_with(".bashrc"))
+        .expect("候选里有 .bashrc");
+    let wins = |n: &str| {
+        rc.block
+            .conflicting_functions
+            .iter()
+            .find(|c| c.name == n)
+            .map(|c| c.wins)
+            .unwrap_or_else(|| panic!("{n} 没认出同名：{:?}", rc.block))
+    };
+    assert_eq!(
+        wins("zzlinkq"),
+        block::Wins::Yours,
+        "链接那条：函数恒盖过 PATH 上的程序"
+    );
+    assert_eq!(
+        wins("sh"),
+        block::Wins::List,
+        "终端函数那条：接入行在后 ⇒ 清单那条后定义、生效"
+    );
+}
+
 /// 🔴 **P3**：别名块的现状**随候选走**，不另起一扫 —— 往某一份候选里装了块，读回口报「块在」的候选集合
 /// **恰好**就是那一份（两向：装了的那份报在；没装的一份都不报在）。两种方言各走一遍。
 ///
