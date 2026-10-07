@@ -19,6 +19,8 @@ export interface TaskSpec {
 export interface SessionSpec {
   sid: string;
   origin: string;
+  /** 哪一家（会话事实的 `agent`）；缺 ⇒ claude。 */
+  agent?: string;
   cwd: string;
   name: string | null;
   /** `null` / `"interactive"` = 交互；`"bg"` = 后台。 */
