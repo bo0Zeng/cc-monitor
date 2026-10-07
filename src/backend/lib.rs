@@ -813,7 +813,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p8j-agent-faces：通用层不再直呼 Claude 适配层（记录树 · 会话文件判定 · pidfile · 判活 · 本机 home · 账号环境键 · 信任判定 · 任务目录 · 删会话文件名 · 钩子设置 · 项目 MCP · 别名名字都问那一家的格）；对外形状不变。
 ///
 /// p8k-front-outcome：history-facts 的 needs 带 call（等批准那一步的调用 id）；壳 ↗ 回结局族、listed 格带 all。
-pub const BUILD_ID: &str = "p8k-front-outcome";
+///
+/// p8l-acct-keymask：accounts-list 每个 API 号带 keyMasked（8 点 ＋ 末四位）与 baseUrl、meta 带 home；apikey-read / apikey-key-set 掩码同形；LaunchFace 多 models（画像表多 displayName · models）。
+pub const BUILD_ID: &str = "p8l-acct-keymask";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
