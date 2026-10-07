@@ -842,7 +842,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p8w-step-state：history-facts 的 pending[] 带 state / why（在跑 · 在等你 · 状态不明及原因码），另给 retries（一串重试接上没有）。
 ///
 /// p8x-own-state：后端自有状态文件读写收成 common/own_state；记录一遍扫出五样并缓存；宣告会话查 sid 表；线上形状不变。
-pub const BUILD_ID: &str = "p8x-own-state";
+///
+/// p8y-profiles-page：profiles-read / -resolve / -impact / -bases / -write 与 profiles_changed 推帧；删 aliases-render / -install / -to-form / -from-form。
+pub const BUILD_ID: &str = "p8y-profiles-page";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
