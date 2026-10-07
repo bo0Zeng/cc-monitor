@@ -214,13 +214,16 @@ const THIRTY_THREE_B_QUESTIONS: &[(&str, &[&str])] = &[
     //    量法③ 那三格连同三条 `carriers` 一起收掉。
 ];
 
-/// **对不上那一栏的递减棘轮**（09-12 现打 **5** 条；载荷那一格改成反向量法后 **4** 条，全部是「读文件找针」那一支）。
+/// **对不上那一栏的已知欠账**：普查表里判 `FallsShort` 的键必须恰好是这几条（两向）。
 ///
-/// 🔴 **只许降。** 修好一条就把这个数调下来，**不许调上去让今天好过**。
-/// ⚠ 它只挡「别再长」，**不代表这 4 条已经排期** —— 排期是另一件事，
-/// 而把「已知的欠账」和「有人在还」混成一句话，正是本模块治的那个病。
+/// 修好一条就从这里摘；不许新添 —— 新量法先量对再登记。
+/// ⚠ 在册**不代表已经排期**。
 #[cfg(test)]
-const FALLS_SHORT_CEILING: usize = 4;
+const KNOWN_FALLS_SHORT: &[&str] = &[
+    "posix-quote-has-one-home",
+    "ccm-invocation-kernel-exists",
+    "production-ts-calls-the-rust-renderers",
+];
 
 // ═════════════════════════════════════════════════════════════════════════════
 // `K-P5g` `KP5GD3`：**一句话散在好几处** —— 本模块头注那个病的第三次发作
@@ -275,11 +278,6 @@ enum EnvKeyClaim {
 /// （`the_registry_file_itself_stays_out_of_that_population` 钉着这条性质）。
 #[cfg(test)]
 const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
-    // 🔴 〔步 7c 后端剖分 2026-09-19〕
-    //    `src/backend/observe/accounts_query.rs` 那 5 行换成
-    //    `tests/backend/observe/accounts_query_tests.rs` —— 那 5 份副本全在测试段里，
-    //    随剖分整批搬走了。**副本份数一格没变**（`the_environ_key_claim_scan_is_not_zero_hit`
-    //    那条地板量的就是份数，它没动）。
     // ── 断言当下的那几份 ──────────────────────────────────────────────────
     // 🔴 `K-P5f` 漏的就是这一份：铁律那一节，全树寿命最长的文档。
     (

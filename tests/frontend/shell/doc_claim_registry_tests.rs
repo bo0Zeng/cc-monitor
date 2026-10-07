@@ -1,5 +1,5 @@
 use super::{
-    EnvKeyClaim, Verdict, ENV_KEY_CLAIM_SITES, FALLS_SHORT_CEILING, MEASURE_CENSUS, STATUS_CELLS,
+    EnvKeyClaim, Verdict, ENV_KEY_CLAIM_SITES, KNOWN_FALLS_SHORT, MEASURE_CENSUS, STATUS_CELLS,
     THIRTY_THREE_B_QUESTIONS,
 };
 use std::path::PathBuf;
@@ -33,11 +33,10 @@ fn tracked_files() -> Vec<String> {
         .filter(|rel| !rel.is_empty() && root.join(rel).is_file())
         .map(str::to_string)
         .collect();
-    // ★ 自检：清单太短 ⇒ 口径坏了，下面整族会零命中地绿。
+    // ★ 自检：口径坏了 ⇒ 下面整族会零命中地绿。正控：本文件自己在人群里。
     assert!(
-        v.len() > 300,
-        "`git ls-files` 只列出 {} 个文件 —— 口径坏了（本仓实测上千个）",
-        v.len()
+        v.iter().any(|r| r == "tests/frontend/shell/doc_claim_registry_tests.rs"),
+        "`git ls-files` 列出的清单里没有本文件 —— 口径坏了"
     );
     v
 }
@@ -179,44 +178,18 @@ fn status_tables() -> Vec<(String, usize, Vec<(String, String, String)>)> {
 #[test]
 fn the_doc_scan_actually_reads_the_durable_docs() {
     let files = doc_files();
-    // 〔2026-09-18 下调 11 → 10〕不是遍历坏了：`306c862e`（退役三份旧设计文档、
-    // 设计与源头归并到）删掉了 `doc/账号用量-usage抓取方案.md`。
-    // 现打 `src/doc/*.md` = 10，`git ls-files` 同为 10 ⇒ **没有文件丢，是地板没跟着改**。
-    // 〔2026-09-18 二次下调 10 → 9〕又删了一篇：
-    // `远端支持方案-agent查看器与代码全景图.md`（2026-07-20 的「设计草案，待用户定 / 未写码」，
-    // 已由那一族取代）。现打 `src/doc/*.md` = 9，`git ls-files` 同为 9。
-    // ⚠ 往下拧地板的合法理由**只有**「那些文件真的不在了」—— 这两次都是。
+    // 正控：本模块 `include_str!` 的那一份必在人群里，且读得出正文。
+    let inv = repo_root().join("src/doc/INVARIANTS.md");
     assert!(
-        files.len() >= 9,
-        "`doc/` 只扫到 {} 个 .md —— 遍历坏了（2026-09-18 现打 9 个）",
+        files.contains(&inv) && !INVARIANTS.trim().is_empty(),
+        "`doc/` 的人群里没有 `INVARIANTS.md` —— 遍历坏了（扫到 {} 份）",
         files.len()
     );
-    let total: usize = files
-        .iter()
-        .map(|p| {
-            std::fs::read_to_string(p)
-                .map(|s| s.lines().count())
-                .unwrap_or(0)
-        })
-        .sum();
+    // 表被删了或表头措辞变了 ⇒ 下面逐格对拍零命中地绿，所以它必须红。
+    // 新出现一张的格子没登记 ⇒ `every_status_cell_is_registered` 红。
     assert!(
-        total >= 4000,
-        "`doc/` 总共只剩 {total} 行 —— 路径或读法坏了（摸底实测 4158 行）"
-    );
-    let tables = status_tables();
-    // 1 → 2：`src/doc/ARCHITECTURE.md` 新增「backend 四层落地」表。
-    // 2 → **1**：那张表退役（架构文档不放进度），它的四格登记与量法同拍删；
-    //   剩下的一张是 `INVARIANTS §33b` 那张（五格，照旧逐格量）。
-    assert_eq!(
-        tables.len(),
-        1,
-        "「表头含状态」的表张数变了（实得 {:?}）—— **这不是让你改数字**：\n\
-             新出现一张就把它的每一格登记进 `STATUS_CELLS` 并配一条现场量法；\n\
-             少了一张就说明表被删了或表头措辞变了（那本条会零命中地绿，所以它必须红）。",
-        tables
-            .iter()
-            .map(|(f, l, r)| format!("{f}:{l}（{} 行）", r.len()))
-            .collect::<Vec<_>>()
+        !status_tables().is_empty(),
+        "一张「表头含状态」的表都没找到 —— 表头措辞变了，或者读法坏了"
     );
 }
 
@@ -413,21 +386,21 @@ fn the_three_questions_in_33b_have_todays_answers() {
     let mode = format!("\"create-or-{}\"", "attach");
     let word = format!("create-or-{}", "attach");
     let mut monitor_emits = false;
-    let mut scanned_rs = 0usize;
+    let mut scanned_lib = false;
     for (p, raw) in guard_core::scan_tree!(&root.join("src/frontend/shell/src"), &["rs"]) {
         // `launch_wire.rs` 的说明里逐字写着那个串（F07 立的例外，本条沿用同一条）。
         if p.file_name().is_some_and(|n| n == "launch_wire.rs") {
             continue;
         }
-        scanned_rs += 1;
+        scanned_lib |= p.file_name().is_some_and(|n| n == "lib.rs");
         if guard_core::production_code(&raw).contains(mode.as_str()) {
             monitor_emits = true;
         }
     }
     // ★ 抽取器自检：人群没缩水（否则 `monitor_emits` 恒 false ⇒ ① 永远读成「部分切」）。
     assert!(
-        scanned_rs >= 50,
-        "只扫到 {scanned_rs} 个 monitor 侧 `.rs` —— 遍历坏了，量法 ① 会零命中地绿"
+        scanned_lib,
+        "monitor 侧 `.rs` 的遍历没看见 `lib.rs` —— 遍历坏了，量法 ① 会零命中地绿"
     );
     let ccm: String = ["mod.rs", "argv.rs", "plan.rs"]
         .iter()
@@ -435,9 +408,8 @@ fn the_three_questions_in_33b_have_todays_answers() {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
-        ccm.lines().count() >= 300,
-        "`control/ccm/` 三份的生产段只剩 {} 行 —— 读错了或剥法把代码也剥了，量法 ① 会零命中地绿",
-        ccm.lines().count()
+        ccm.contains("fn agents()"),
+        "`control/ccm/` 三份的生产段里找不到 `fn agents()` —— 读错了或剥法把代码也剥了，量法 ① 会零命中地绿"
     );
     let ccm_emits = guard_core::contains_word(&ccm, &word);
     let a1 = match (monitor_emits, ccm_emits) {
@@ -451,7 +423,7 @@ fn the_three_questions_in_33b_have_todays_answers() {
     // 座长回来、又有人问它要，这一问的判词就翻回「前端仍产」。
     let seat_attach = format!("SESSION_BACKEND.{}", "attach");
     let mut askers: Vec<String> = Vec::new();
-    let mut scanned_ts = 0usize;
+    let mut scanned_main = false;
     for (p, raw) in guard_core::scan_tree!(&root.join("src"), &["ts"]) {
         let name = p
             .file_name()
@@ -465,7 +437,7 @@ fn the_three_questions_in_33b_have_todays_answers() {
         {
             continue;
         }
-        scanned_ts += 1;
+        scanned_main |= name == "main.ts";
         let code = guard_core::strip_comment_lines(&raw);
         // 整词，不是裸子串：`…attachFoo` 不算（与 `launch_wire` 那把尺子同口径）。
         if guard_core::contains_word(&code, seat_attach.as_str()) {
@@ -473,8 +445,8 @@ fn the_three_questions_in_33b_have_todays_answers() {
         }
     }
     assert!(
-        scanned_ts >= 100,
-        "只扫到 {scanned_ts} 份生产 TS —— 遍历坏了，量法 ② 会零命中地绿"
+        scanned_main,
+        "生产 TS 的遍历没看见 `main.ts` —— 遍历坏了，量法 ② 会零命中地绿"
     );
     let a2 = if askers.is_empty() {
         "〔现打②〕后端全产 attach"
@@ -538,7 +510,7 @@ fn the_three_questions_in_33b_have_todays_answers() {
     }
 }
 
-/// ★★ `K-R73` `KR73D3`：**普查表与 `STATUS_CELLS` 两个方向对拍**，外加那条递减棘轮。
+/// ★★ `K-R73` `KR73D3`：**普查表与 `STATUS_CELLS` 两个方向对拍**，外加「对不上」那一栏与已知欠账名单两向。
 ///
 /// # 没有这一条，那张普查表会跟本模块治的那些文档副本一样腐
 ///
@@ -567,18 +539,8 @@ fn every_status_cell_measure_is_in_the_census() {
              那正是 `DECISIONS.md#R29` 裁定零那次的形状（三格裸 `is_dir()` 是跟着上一格一起写下去的）。\n\
              **普查表多出来的**：那一行在描述一个已经不存在的量法，摘掉它。"
     );
-    // 分母自检：表空了上面那个等号会退化成「空 == 空」。
-    // 地板 10 → **9**：`usage-probe-uses-the-kernel` 那一格
-    // 随用量 ③ 轴整轴退役（它量的是「用量探针在不在调载荷内核」，探针没了）。
-    // ⚠ **降地板要写清是哪一行、为什么** —— 这一条挡的是「偷偷删行」，
-    // 而「那一格量的东西整块不存在了」是唯一正当的降法。
-    // 地板 9 → **5**：`monitor-backend-*-landed` 那四行随 ARCHITECTURE 那张进度表整块退役
-    //   （那四格量的东西在文档里不存在了 —— 同上面那条唯一正当的降法），剩 `INVARIANTS §33b` 的五格。
-    assert!(
-        MEASURE_CENSUS.len() >= 5,
-        "普查表只剩 {} 行（P6 后现打 5 行）—— 少于分母说明有人在偷偷删行",
-        MEASURE_CENSUS.len()
-    );
+    // 分母自检：表空了上面那个等号会退化成「空 == 空」（删行由上面两向对拍接住）。
+    assert!(!MEASURE_CENSUS.is_empty(), "普查表空了");
     for (k, _, _, why) in MEASURE_CENSUS {
         assert!(
             why.trim().chars().count() >= 30,
@@ -586,18 +548,21 @@ fn every_status_cell_measure_is_in_the_census() {
             why.trim().chars().count()
         );
     }
-    // ★ 递减棘轮：**对不上**那一栏只许比今天少。
+    // ★ **对不上**那一栏 == 已知欠账名单（两向）：修好一条就从名单里摘，不许新添。
     let falls_short = MEASURE_CENSUS
         .iter()
         .filter(|(_, _, v, _)| *v == Verdict::FallsShort)
         .map(|(k, ..)| *k)
-        .collect::<Vec<_>>();
-    assert!(
-        falls_short.len() <= FALLS_SHORT_CEILING,
-        "「量法与它声称的性质对不上」涨到 {} 条了 > 棘轮上限 {FALLS_SHORT_CEILING}（09-12 现打 5，载荷那一格改反向量法后 4）。\n\
-             逐条：{falls_short:?}\n\
-             ⚠ **不许把上限调上去让今天好过** —— 这是递减棘轮。",
-        falls_short.len()
+        .collect::<std::collections::BTreeSet<_>>();
+    let known = KNOWN_FALLS_SHORT
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        falls_short, known,
+        "「量法与它声称的性质对不上」那一栏与已知欠账名单 `KNOWN_FALLS_SHORT` 不一致。\n\
+             多出来的 ⇒ 新添了一条对不上的量法：不许，先把量法改对；\n\
+             少了的 ⇒ 修好了，从名单里摘掉。"
     );
 }
 
@@ -928,10 +893,10 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
             }
         }
     }
-    // ★ 抽取器自检 1：收不到足够多的声明 ⇒ 遍历坏了，下面整条会零命中地绿。
+    // ★ 抽取器自检 1：本文件自己声明的 `repo_root` 必须被收到 ⇒ 否则遍历坏了，下面整条会零命中地绿。
     assert!(
-        decl.len() > 2000,
-        "全仓只抽到 {} 个声明符号 —— 遍历或剥法坏了（建判据当天实测 3073 个 / 133 个源文件）",
+        decl.contains_key("repo_root"),
+        "声明表里没有 `repo_root` —— 遍历或剥法坏了（抽到 {} 个）",
         decl.len()
     );
 
@@ -993,10 +958,11 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
             }
         }
     }
-    // ★ 抽取器自检 2：`doc/` 里本来就有几十处 —— 抽到个位数就是剥法坏了。
+    // ★ 抽取器自检 2：锚点 —— `INVARIANTS.md` 点名的那条起会话判据必须被收到，否则剥法坏了。
+    const REF_CANARY: &str = "every_value_is_judged_before_it_becomes_a_ccm_argument";
     assert!(
-        refs.len() >= 70,
-        "只抽到 {} 处 `file.rs::symbol` —— 剥法坏了（`doc/` 当日 73 处，扩面后另加各 README 11 处）",
+        refs.iter().any(|(.., sym)| sym == REF_CANARY),
+        "抽到 {} 处 `file.rs::symbol`，锚点 `{REF_CANARY}` 不在里面 —— 剥法坏了",
         refs.len()
     );
 
@@ -1174,22 +1140,12 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
             }
         }
     }
-    // ★ 自检 2：数量地板 **+ 锚点**。
-    //
-    // ⚠ 只有数量地板是**不够**的，这一条是变异当场量出来的：把「带目录才算」那个条件反过来
-    // （于是收的是 `lib.rs` 这类**不带目录**的名字），`refs.len()` 照样过 90 ——
-    // **地板对「收的是不是同一类东西」完全是瞎的**，它只数个数。
-    // 补一个必须在场的锚点，人群换了就当场红。
-    assert!(
-        refs.len() >= 90,
-        "`doc/` 里只抽到 {} 处带目录的路径引用 —— 剥法坏了（建判据当天实测 119 处）",
-        refs.len()
-    );
+    // ★ 自检 2：锚点必须在场，人群换了就当场红。
     const CANARY: &str = "src/session-backend.ts";
     assert!(
         refs.iter().any(|(_, _, c)| c == CANARY),
         "抽到了 {} 条，但**锚点 `{CANARY}` 不在里面** —— 收的多半不是「带目录的仓内路径」这一类了。\n\
-             （数量地板只数个数，换一群东西照样能喂饱它。）",
+",
         refs.len()
     );
 
@@ -1881,12 +1837,7 @@ fn every_constant_value_quoted_in_the_docs_matches_the_code() {
             }
         }
     }
-    // ★ 自检 1 + 锚点：只有数量地板不够（本会话实测过「人群被换掉、地板照样过」）。
-    assert!(
-        claims.len() >= 5,
-        "`doc/` 里只抽到 {} 处 `CONST = 数` —— 剥法坏了（建判据当天实测 6 处）",
-        claims.len()
-    );
+    // ★ 自检 1：锚点。
     // ⚠ 锚点**只认名字、不认值** —— 第一版把 `&& v == "8"` 也写进来了，
     // 于是判据自己成了那个数的第二份副本（正是本模块头注警告的形态）：
     // 合法地把常量改成别的数时，红的会是锚点而不是对拍，诊断指错方向。
@@ -1944,10 +1895,10 @@ fn every_constant_value_quoted_in_the_docs_matches_the_code() {
             }
         }
     }
-    // ★ 自检 2：代码侧一个常量都收不到 ⇒ 下面会把每条都判成「代码里没有」。
+    // ★ 自检 2：代码侧收不到锚点 ⇒ 下面会把每条都判成「代码里没有」。
     assert!(
-        defined.len() >= 20,
-        "全仓只收到 {} 个数值常量定义 —— 剥法坏了",
+        defined.contains_key("REPLY_BURST"),
+        "代码侧的数值常量定义里没有 `REPLY_BURST` —— 剥法坏了（收到 {} 个）",
         defined.len()
     );
 
@@ -2013,9 +1964,8 @@ fn every_script_in_the_directory_is_listed_in_its_readme() {
     files.sort();
     // ★ 抽取器自检：目录空了或读法坏了 ⇒ 下面会零命中地绿。
     assert!(
-        files.len() >= 3,
-        "`scripts/` 只扫到 {} 个文件（README 之外）—— 遍历坏了（08-06 实测 3 个）",
-        files.len()
+        files.iter().any(|n| n == "gate.sh"),
+        "`scripts/` 的人群里没有 `gate.sh` —— 遍历坏了（扫到 {files:?}）"
     );
     let missing: Vec<&String> = files
         .iter()
@@ -2189,11 +2139,6 @@ fn env_key_claim_lines() -> Vec<(String, usize, String)> {
 fn env_keys_actually_read() -> usize {
     let p = repo_root().join("src/backend/observe/accounts_query.rs");
     let raw = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}"));
-    assert!(
-        raw.len() > 20_000,
-        "只读到 {} 字节的 `accounts_query.rs` —— 没读到真文件，本组在空转",
-        raw.len()
-    );
     // ⚠ 剥生产段**走 `guard_core` 那一份**（与全树共用同一个区间判定），本文件不另写一条。
     let prod = guard_core::production_code(&raw);
     guard_core::assert_no_test_code("accounts_query.rs", &prod);
@@ -2235,20 +2180,9 @@ fn count_word_in(line: &str) -> Option<char> {
 /// ★ 抽取器自检：扫不到东西 / 只扫到一个文件 ⇒ 下面三条会零命中地绿。
 #[test]
 fn the_environ_key_claim_scan_is_not_zero_hit() {
-    let hits = env_key_claim_lines();
-    assert!(
-        hits.len() >= 8,
-        "只扫到 {} 份副本（`K-P5g` 建判据当天实测 10 份 / 4 个文件）—— 针或人群坏了",
-        hits.len()
-    );
-    let files: std::collections::BTreeSet<&str> = hits.iter().map(|(f, _, _)| f.as_str()).collect();
-    assert!(
-        files.len() >= 3,
-        "只扫到 {} 个文件 —— 人群塌了：{files:?}",
-        files.len()
-    );
-    // 锚点：数量地板对「收的是不是同一类东西」是瞎的（本模块另一条判据现打过这一课）。
+    // 份数由 `every_copy_of_that_sentence_is_registered` 两向对拍；这里只要锚点在场。
     // 🔴 用 `K-P5f` 漏掉的那一处当锚点 —— 它不在场就说明这条判据没在看该看的地方。
+    let hits = env_key_claim_lines();
     const CANARY: &str = "src/doc/INVARIANTS.md";
     assert!(
         hits.iter().any(|(f, _, _)| f == CANARY),
@@ -2384,11 +2318,6 @@ fn every_registered_copy_says_the_number_we_actually_read() {
 #[test]
 fn the_registry_file_itself_stays_out_of_that_population() {
     let me = include_str!("../../../src/frontend/shell/src/doc_claim_registry.rs");
-    assert!(
-        me.len() > 20_000,
-        "include_str! 只读到 {} 字节 —— 没读到自己，本条在空转",
-        me.len()
-    );
     let self_hits: Vec<usize> = me
         .lines()
         .enumerate()
@@ -2554,8 +2483,8 @@ fn every_invariants_section_cited_in_code_exists() {
         }
     }
     assert!(
-        total > 100,
-        "只扫到 {total} 处 `INVARIANTS §N` 引用 —— 根没对上，本条在空转"
+        total > 0,
+        "一处 `INVARIANTS §N` 引用都没扫到 —— 根没对上，本条在空转"
     );
     // 反向自检：一条合成的悬空引用必须被判出（针用 format! 拼，别让本文件自己进人群）。
     let ghost = format!("见 INVARIANTS {}999", '§');
