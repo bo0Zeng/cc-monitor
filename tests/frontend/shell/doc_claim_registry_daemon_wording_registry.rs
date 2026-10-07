@@ -53,7 +53,6 @@ const EXEMPT: &[(&str, &str, &str)] = &[
      "与仓外 aterm **冻结在 2026-07-18** 的那份契约文档的**名字**，不是散文"),
 ];
 
-
 /// ASCII 标识符字符 —— **汉字不算**，这一条就是「两个数」的分水岭。
 fn is_ident(c: u8) -> bool {
     c.is_ascii_alphanumeric() || c == b'_'
@@ -120,7 +119,10 @@ fn no_prose_in_the_wording_sites_still_says_daemon() {
 
     // ── 抽取器自检①：语料真喂进来了（读空了下面每一条都会零命中地绿）──
     for (rel, t) in &bodies {
-        assert!(!t.trim().is_empty(), "{rel} 读出来是空的 —— 抽取器坏了，本条在空转");
+        assert!(
+            !t.trim().is_empty(),
+            "{rel} 读出来是空的 —— 抽取器坏了，本条在空转"
+        );
     }
 
     // ── 抽取器自检②：切 token 那一步两个方向都要对 ──

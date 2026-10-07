@@ -432,7 +432,7 @@ fn members_are_the_two_comms_crates_and_nothing_is_path_mounted_into_them() {
     assert!(
         files
             .iter()
-            .any(|(p, _)| p.ends_with("src/frontend/shell/src/lib.rs")),
+            .any(|(p, _)| *p == root.join("src/frontend/shell/src/lib.rs")),
         "`src/` 下的遍历没走到 `frontend/shell/src/lib.rs`（走到 {} 份）—— 取法坏了，下面的零命中在空转",
         files.len()
     );
@@ -2248,10 +2248,7 @@ fn criteria_biting(rel: &str, prod: &str) -> BTreeSet<&'static str> {
 ///   这一格是有意的：完成判据点名的是「那 5 处读盘」，
 ///   把六条判据的判词全立起来会变成一张没人读的大表。**要补是另一件活，不是这一件的漏。**
 /// - **不买「表里那几份该不该进来」** —— 归属判断永远是人做的，见两张表各自的头注。
-fn assert_left_outside(
-    table: &[(&str, &[&str], &[&str], &str)],
-    label: &str,
-) {
+fn assert_left_outside(table: &[(&str, &[&str], &[&str], &str)], label: &str) {
     let root = repo_root();
     // 表里的编号必须都是真判据（拼错一个 ⇒ 那一行从此恒不命中）。
     let known: BTreeSet<&str> = CRITERIA.iter().map(|(id, _, _)| *id).collect();

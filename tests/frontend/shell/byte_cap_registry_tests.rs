@@ -1627,7 +1627,9 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
 fn every_inline_read_cap_resolves_to_something_registered() {
     // 抽取器正控：一处紧邻字节读的 `.take(…)` 要被看见，不紧邻的不算。
     assert_eq!(
-        take_args_before_a_read("let n = r.take(FOO_CAP + 1).read_to_end(&mut b)?; it.take(3).count();"),
+        take_args_before_a_read(
+            "let n = r.take(FOO_CAP + 1).read_to_end(&mut b)?; it.take(3).count();"
+        ),
         vec!["FOO_CAP + 1".to_string()],
         "内联读上限的抽取器坏了，下面的默认拒绝此刻是空转的"
     );

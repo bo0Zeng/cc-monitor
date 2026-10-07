@@ -33,7 +33,6 @@ const PENDING: &[&str] = &[
     "tests/backend/readonly_guard.rs",
 ];
 
-
 /// 判定「这是一个带登记表的判据文件」的声明形态。**闭集，按名字认。**
 ///
 /// 🔴 **这是一个闭集，不是一族形状** —— 往里加一个名字就是在**放宽**一条守卫，
@@ -1279,7 +1278,10 @@ fn no_guard_prose_still_claims_the_scan_tree_self_exclusion_works() {
     let starved: Vec<String> = PROSE_TREES
         .iter()
         .filter_map(|sub| {
-            let got = scanned.iter().find(|(s, _)| s == sub).map_or(0, |(_, n)| *n);
+            let got = scanned
+                .iter()
+                .find(|(s, _)| s == sub)
+                .map_or(0, |(_, n)| *n);
             let want = tracked_rs_under(sub).len();
             (got < want).then(|| format!("  {sub} —— 采到 {got} 份，git 跟踪着 {want} 份"))
         })

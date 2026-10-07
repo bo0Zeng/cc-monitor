@@ -35,7 +35,8 @@ fn tracked_files() -> Vec<String> {
         .collect();
     // ★ 自检：口径坏了 ⇒ 下面整族会零命中地绿。正控：本文件自己在人群里。
     assert!(
-        v.iter().any(|r| r == "tests/frontend/shell/doc_claim_registry_tests.rs"),
+        v.iter()
+            .any(|r| r == "tests/frontend/shell/doc_claim_registry_tests.rs"),
         "`git ls-files` 列出的清单里没有本文件 —— 口径坏了"
     );
     v
