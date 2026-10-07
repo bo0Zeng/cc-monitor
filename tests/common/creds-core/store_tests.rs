@@ -177,7 +177,7 @@ fn a_broken_file_is_reported_instead_of_being_read_as_not_configured() {
         .unwrap_err()
         .said(std::path::Path::new("/p"));
     assert!(
-        msg.contains("手编"),
+        copy_core::copy_matches("credsStore.error.notJson", &msg),
         "错误说法没告诉人这文件是手编的：{msg}"
     );
     assert!(

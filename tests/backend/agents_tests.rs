@@ -296,7 +296,11 @@ fn an_agent_name_left_out_is_the_default_and_a_misspelled_one_is_refused() {
     assert_eq!(adapter(Some("codex")), Ok("codex"));
     assert_eq!(
         adapter(Some("claude")),
-        Err("不认识这个 agent：claude（认得的：claude-code / codex / fake）".to_string()),
+        Err(copy_core::copy_text(
+            "beAgents.pick.unknown",
+            &[("agent", "claude"), ("known", "claude-code / codex / fake")]
+        )
+        .to_string()),
         "适配器 id 那一问把 wire kind 也认了"
     );
     // 生产那张：入口共用的两个口与默认那一家对得上。

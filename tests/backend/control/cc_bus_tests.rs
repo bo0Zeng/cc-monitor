@@ -296,7 +296,10 @@ fn an_old_cc_bus_or_a_half_read_is_said_not_read_as_empty() {
     }
     let half = parse_roster_tsv("#cc-list-tsv\t1\nalpha_cc\ta:0.0\tts\t1\t0\n")
         .expect_err("缺末行的名册必须回错");
-    assert!(half.1.contains("半份"), "{half:?}");
+    assert!(
+        copy_core::copy_matches("beCcBus.read.truncated", &half.1),
+        "{half:?}"
+    );
     // 正控：首尾齐的空名单是「真的一个都没有」，不是错。
     assert_eq!(
         parse_roster_tsv("#cc-list-tsv\t1\n#skipped\t0\n").unwrap(),
@@ -468,7 +471,10 @@ fn bus_spawn_refuses_to_pick_an_account_for_the_user() {
     assert_eq!(code, "invalid_args");
     assert_eq!(
         said,
-        "不认识这个 agent：not-an-agent（认得的：claude / codex）"
+        copy_core::copy_text(
+            "beAgents.pick.unknown",
+            &[("agent", "not-an-agent"), ("known", "claude / codex")]
+        )
     );
 }
 
@@ -520,7 +526,8 @@ fn bus_spawn_timeout_warns_that_the_agent_may_already_be_running() {
     let (c, m) = classify_spawn(Some(TIMED_OUT_CODE), "x", 10).unwrap_err();
     assert_eq!(c, "timed_out");
     assert!(
-        m.contains("可能已经起来了") && m.contains("直接重试"),
+        copy_core::copy_matches("beCcBus.spawn.timedOut", &m)
+            && copy_core::copy_matches("beCcBus.spawn.timedOut", &m),
         "超时那句没把「副作用可能已经发生」说出来 —— 用户会直接重试、再起一个真 agent：{m}"
     );
     assert_eq!(classify_spawn(Some(1), "x", 10).unwrap_err().0, "failed");

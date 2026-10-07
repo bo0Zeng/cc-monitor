@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 import { onSessionEntry } from "../../../src/frontend/ui/acct-session.ts";
 import type { SessionRotationEntry } from "../../../src/frontend/ui/app-store.ts";
 import type { SwitchRecord } from "../../../src/frontend/ui/generated/SwitchRecord.ts";
+import { copyText } from "../../../src/frontend/ui/copy-table";
+import { copyPattern } from "../../test-support/copy-pattern";
 
 const NOW = 1_791_189_600;
 const entry = (history: SwitchRecord[], blocked?: { account: string; at: number }): SessionRotationEntry => ({
@@ -35,15 +37,15 @@ describe("换号条 · 提示条", () => {
     const strips = [...content.querySelectorAll<HTMLElement>("[data-acct-strip]")];
     expect(strips.length).toBe(1);
     expect(strips[0].textContent).toContain("personal → team");
-    expect(strips[0].textContent).toContain("手动 · 热切换");
+    expect(strips[0].textContent).toContain(copyText("acct.hist.manualHot"));
   });
   it("卡住 ⇒ 内容层最前面一条提示条；能发了 ⇒ 摘掉", () => {
     const content = document.createElement("div");
     content.appendChild(document.createElement("p"));
     const host = { streamContentOf: () => content, openPanel: () => {} };
     onSessionEntry("s2", entry([], { account: "team", at: Math.floor(Date.now() / 1000) + 5400 }), host); // 提示条按画的那一刻算「还有多久」
-    expect(content.firstElementChild?.textContent).toMatch(/轮换内账号均已满 · 最早 team/);
+    expect(content.firstElementChild?.textContent).toMatch(copyPattern("acct.banner.allFull", { name: "team" }));
     onSessionEntry("s2", entry([]), host);
-    expect(content.textContent).not.toMatch(/轮换内账号均已满/);
+    expect(content.textContent).not.toMatch(copyText("acct.banner.allFullNoAt"));
   });
 });

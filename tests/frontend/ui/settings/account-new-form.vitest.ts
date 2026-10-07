@@ -12,6 +12,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invokeMock
 
 import { renderNewAccountForm, aliasHintFor, checkBaseUrl, type NewAccountRequest } from "../../../../src/frontend/ui/settings/account-new-form";
 import { accountsFakeInvoke, chanArgsJson, isChanCall, refusedReply, type ChanCallArgs } from "../../../test-support/chan-fake";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 /** 表单问的那几发预演（交给了哪台 ＋ 请求体）。 */
 const asked: ChanCallArgs[] = [];
@@ -59,10 +60,10 @@ function form(confirmAnswer = true) {
     const l = [...el.querySelectorAll("label")].find((x) => x.textContent === t && x.htmlFor !== "")!;
     return el.querySelector<HTMLInputElement>(`#${l.htmlFor}`)!;
   };
-  const name = byLabel("名字");
+  const name = byLabel(copyText("acctNew.name.label"));
   const key = byLabel("API key");
-  const base = byLabel("地址");
-  const cred = byLabel("已有登录的凭据文件");
+  const base = byLabel(copyText("acctNew.base.label"));
+  const cred = byLabel(copyText("acctNew.import.label"));
   const radio = (t: string) => [...el.querySelectorAll<HTMLLabelElement>("label")].find((l) => l.textContent === t)!.querySelector("input")!;
   const btn = (t: string) => [...el.querySelectorAll("button")].find((b) => b.textContent === t)!;
   const type = async (inp: HTMLInputElement, v: string) => {
@@ -78,14 +79,14 @@ function form(confirmAnswer = true) {
   return { f, el, seen, name, key, base, cred, radio, btn, type, pick, fieldOf, asks, cancelled: () => cancelled };
 }
 
-const SUB = "订阅 · 终端登录";
+const SUB = copyText("acctNew.access.subscription");
 
 describe("新建账号表单", () => {
   it("量具自检：两支、四个输入框、两颗按钮都找得到（否则下面全是空真）", () => {
     const f = form();
     for (const x of [f.name, f.key, f.base, f.cred, f.radio(SUB), f.radio("API key")]) expect(x).toBeTruthy();
-    expect(f.btn("创建并登录")).toBeTruthy();
-    expect(f.btn("取消")).toBeTruthy();
+    expect(f.btn(copyText("acctNew.form.createLogin"))).toBeTruthy();
+    expect(f.btn(copyText("acctNew.form.cancel"))).toBeTruthy();
   });
 
   it("默认是「订阅」：地址 / key 两格藏着、主按钮「创建并登录」；切到 API key 两格出来、主按钮「创建」、导入那一项藏起", async () => {
@@ -94,25 +95,25 @@ describe("新建账号表单", () => {
     expect([hidden(f.base), hidden(f.key)]).toEqual([true, true]);
     await f.pick("API key");
     expect([hidden(f.base), hidden(f.key)]).toEqual([false, false]);
-    expect(f.btn("创建")).toBeTruthy();
-    expect(f.btn("导入已有登录 · 免登录").hidden).toBe(true);
-    expect(f.el.textContent).toContain("存于 devbox · 仅显示末四位");
+    expect(f.btn(copyText("acctNew.form.create"))).toBeTruthy();
+    expect(f.btn(copyText("acctNew.import.toggle")).hidden).toBe(true);
+    expect(f.el.textContent).toContain(copyText("acctNew.key.help", { machine: "devbox" }));
   });
 
   it("名字下面「新增命令：betacc、betacct」是那台预演答的别名名字", async () => {
     const f = form();
     await f.type(f.name, "b");
-    expect(f.el.textContent).toContain("新增命令：betacc、betacct");
+    expect(f.el.textContent).toContain(copyText("acctNew.name.commands", { names: "betacc、betacct" }));
     expect(aliasHintFor([])).toBe("");
   });
 
   it("订阅：交出去的是 {name, kind: subscription, credFile?}，交完各格清空", async () => {
     const f = form();
     await f.type(f.name, "b");
-    f.btn("导入已有登录 · 免登录").click();
+    f.btn(copyText("acctNew.import.toggle")).click();
     await f.type(f.cred, "~/snap.json");
-    expect(f.btn("创建并登录").disabled).toBe(false);
-    f.btn("创建并登录").click();
+    expect(f.btn(copyText("acctNew.form.createLogin")).disabled).toBe(false);
+    f.btn(copyText("acctNew.form.createLogin")).click();
     expect(f.seen).toEqual([{ name: "b", kind: "subscription", credFile: "~/snap.json" }]);
     expect([f.name.value, f.cred.value, f.key.value]).toEqual(["", "", ""]);
   });
@@ -121,12 +122,12 @@ describe("新建账号表单", () => {
     const f = form();
     await f.type(f.name, "b");
     await f.pick("API key");
-    expect(f.btn("创建").disabled).toBe(true);
-    f.btn("创建").click(); // jsdom 里 disabled 不拦 click —— 表单自己也得挡
+    expect(f.btn(copyText("acctNew.form.create")).disabled).toBe(true);
+    f.btn(copyText("acctNew.form.create")).click(); // jsdom 里 disabled 不拦 click —— 表单自己也得挡
     expect(f.seen).toEqual([]);
     await f.type(f.key, "  sk-ant-TYPED  ");
-    expect(f.btn("创建").disabled).toBe(false);
-    f.btn("创建").click();
+    expect(f.btn(copyText("acctNew.form.create")).disabled).toBe(false);
+    f.btn(copyText("acctNew.form.create")).click();
     expect(f.seen).toEqual([{ name: "b", kind: "api-key", key: "sk-ant-TYPED" }]);
     for (const a of asked) expect((chanArgsJson(a) as { key?: string }).key, "预演带上了 key 的明文").toBeUndefined();
     expect(f.key.value, "交完 key 还留在输入框里").toBe("");
@@ -135,14 +136,14 @@ describe("新建账号表单", () => {
   it("名字不合法：当场说原因、灰掉、绕过 disabled 点也不交；撞名那一句是那台拒的原话", async () => {
     const f = form();
     await f.type(f.name, "B!");
-    expect(f.btn("创建并登录").disabled).toBe(true);
+    expect(f.btn(copyText("acctNew.form.createLogin")).disabled).toBe(true);
     expect(f.el.querySelector("[data-error]")).not.toBeNull();
-    f.btn("创建并登录").click();
+    f.btn(copyText("acctNew.form.createLogin")).click();
     expect(f.seen).toEqual([]);
-    refuse = "b 已存在 · devbox";
+    refuse = copyText("rsFilewinCrossCopy.ask.taken", { path: "b", machine: "devbox" });
     await f.type(f.name, "b");
-    expect(f.el.textContent).toContain("b 已存在 · devbox");
-    expect(f.btn("创建并登录").disabled).toBe(true);
+    expect(f.el.textContent).toContain(copyText("rsFilewinCrossCopy.ask.taken", { path: "b", machine: "devbox" }));
+    expect(f.btn(copyText("acctNew.form.createLogin")).disabled).toBe(true);
   });
 
   it("名字框里 Enter ＝ 点主按钮（合法时）", async () => {
@@ -160,7 +161,7 @@ describe("新建账号表单", () => {
     await f.pick("API key");
     await f.type(f.base, "ftp://x");
     await f.type(f.key, "sk");
-    expect(f.btn("创建").disabled).toBe(true);
+    expect(f.btn(copyText("acctNew.form.create")).disabled).toBe(true);
   });
 
   it("Esc：空表单直接收；填过先问「放弃填写的内容」，答不放弃就不收", async () => {
@@ -170,6 +171,6 @@ describe("新建账号表单", () => {
     const b = form(false);
     await b.type(b.name, "b");
     expect(await b.f.dismiss()).toBe(false);
-    expect([b.asks, b.cancelled()]).toEqual([["放弃填写的内容"], 0]);
+    expect([b.asks, b.cancelled()]).toEqual([[copyText("acctNew.discard.title")], 0]);
   });
 });

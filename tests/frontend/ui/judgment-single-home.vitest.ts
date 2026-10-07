@@ -535,6 +535,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   // `chan-core` 那一格删了：通道成了通信层 crate `comms-inward`（住 `src/comms/inward/`，不在 `src/common/` 的人群里）。
   "copy-core": {
     backend_old: "J22",
+    // 测试按文案键断言用（占位处任意值）；TS 那一侧的同形在测试支架 `tests/test-support/copy-pattern.ts`，不是生产判定。
+    copy_matches: NONE,
     copy_text: "J11",
     local_machine: "J22",
     reply_unreadable: "J22",

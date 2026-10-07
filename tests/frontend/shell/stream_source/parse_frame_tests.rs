@@ -301,7 +301,10 @@ fn version_warning_messages() {
         version_warning(EXPECTED_PROTO_V, "p1a-history", "pi", true, MINE).expect("stale warns");
     assert!(stale.contains("pi") && stale.contains("p1a-history") && stale.contains("p9z-mine"));
     let incompat = version_warning(2, "p9z-mine", "wsl", false, MINE).expect("incompat warns");
-    assert!(incompat.contains("wsl") && incompat.contains("不兼容"));
+    assert!(
+        incompat.contains("wsl")
+            && copy_core::copy_matches("rsSshSource.version.protoMismatch", &incompat)
+    );
 }
 
 /// 手上没带后端字节（「我这一版」是 `None`）：健康信息那一句是「不可比」，不说那台旧、不说会换掉它。
@@ -311,7 +314,10 @@ fn without_own_bytes_the_version_line_says_incomparable() {
         .expect("没带字节也要说一句");
     assert_eq!(
         said,
-        "远端 [pi] 后端 p1a-history · 未带后端字节 · 版本不可比"
+        copy_core::copy_text(
+            "rsSshSource.version.noOwnBytes",
+            &[("label", "pi"), ("reported", "p1a-history")]
+        )
     );
     for wrong in ["旧版", "自动换", "换回去"] {
         assert!(!said.contains(wrong), "没有对照物却说了「{wrong}」：{said}");
@@ -328,19 +334,22 @@ fn hx2_the_version_warning_says_which_side_is_older() {
     let older =
         version_warning(EXPECTED_PROTO_V, "p1a-history", "pi", true, MINE).expect("旧的该提示");
     assert!(
-        older.contains("旧版 p1a-history") && older.contains("下次连上时自动换成这一版"),
+        older.contains("旧版 p1a-history")
+            && copy_core::copy_matches("rsSshSource.version.remoteOlder", &older),
         "{older}"
     );
     let newer =
         version_warning(EXPECTED_PROTO_V, "p99a-future", "pi", false, MINE).expect("新的该提示");
     assert!(
-        newer.contains("p99a-future") && newer.contains("不会把它换回去") && newer.contains("升级"),
+        newer.contains("p99a-future")
+            && copy_core::copy_matches("rsSshSource.version.remoteNotOlder", &newer)
+            && copy_core::copy_matches("rsSshSource.version.remoteNotOlder", &newer),
         "{newer}"
     );
     let odd = version_warning(EXPECTED_PROTO_V, "hand-built", "pi", false, MINE)
         .expect("解不出序的也该提示");
     assert!(
-        odd.contains("不会把它换回去"),
+        copy_core::copy_matches("rsSshSource.version.remoteNotOlder", &odd),
         "后端答「不旧」⇒ 按「不比这一版旧」说：{odd}"
     );
     for m in [&older, &newer, &odd] {

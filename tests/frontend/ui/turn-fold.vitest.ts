@@ -11,6 +11,7 @@ import { RecordTimeline } from "../../../src/frontend/ui/record-timeline";
 import { estimateFromFacts, setInjectedShown, skeletonKind } from "../../../src/frontend/ui/height-estimate";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import type { JsonlLinePayload } from "../../../src/frontend/ui/events";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const turn = (uuid: string, at: number, over: Partial<TurnSummary> = {}): TurnSummary => ({
   at,
@@ -67,9 +68,9 @@ describe("按轮折叠", () => {
     expect([u1, bar, c1, u2, live].map(hidden)).toEqual([false, false, false, false, false]);
     const line = lines(content)[0];
     expect(line.getAttribute("aria-expanded")).toBe("false");
-    expect(line.textContent).toContain("工具 ×2");
-    expect(line.textContent).toContain("思考 ×1");
-    expect(line.querySelector(".proc-fails")?.textContent).toBe("失败 ×1");
+    expect(line.textContent).toContain(copyText("stream.proc.tools", { n: "2" }));
+    expect(line.textContent).toContain(copyText("stream.proc.thinking", { n: "1" }));
+    expect(line.querySelector(".proc-fails")?.textContent).toBe(copyText("stream.proc.fails", { n: "1" }));
   });
 
   it("正在跑的那一轮：不出过程行、过程展开，工具组整组摊开", async () => {

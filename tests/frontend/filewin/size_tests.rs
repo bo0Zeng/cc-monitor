@@ -52,11 +52,36 @@ fn the_outcome_line_says_the_numbers_as_reported() {
     };
     assert_eq!(
         size_line(&quiet),
-        "proj：2.0 KB（2048 字节），3 个文件、2 个目录"
+        copy_core::copy_text(
+            "rsFilewinSize.outcome.line",
+            &[
+                ("name", "proj"),
+                ("human", "2.0 KB"),
+                ("bytes", "2048"),
+                ("files", "3"),
+                ("dirs", "2")
+            ]
+        )
     );
     assert_eq!(
         outcome_text(&[Ok(quiet), Err(("x".into(), "原话".into()))]),
-        "proj：2.0 KB（2048 字节），3 个文件、2 个目录；x 算不出来：原话"
+        [
+            copy_core::copy_text(
+                "rsFilewinSize.outcome.line",
+                &[
+                    ("name", "proj"),
+                    ("human", "2.0 KB"),
+                    ("bytes", "2048"),
+                    ("files", "3"),
+                    ("dirs", "2")
+                ]
+            ),
+            copy_core::copy_text(
+                "rsFilewinSize.outcome.failed",
+                &[("name", "x"), ("why", "原话")]
+            ),
+        ]
+        .join(copy_core::copy_static!("rsFilewinSize.outcome.sep"))
     );
 }
 
@@ -114,7 +139,10 @@ async fn size_on_the_menu_walks_to_the_wire_for_each_picked_item() {
         "{said}"
     );
     assert!(
-        said.contains("refuse-me 算不出来：") && said.contains("读不到"),
+        said.contains(&copy_core::copy_text(
+            "rsFilewinSize.outcome.failed",
+            &[("name", "refuse-me"), ("why", "")]
+        )) && said.contains(copy_core::copy_static!("rsFilewinProps.value.unknown")),
         "被拒那一项没带原话：{said}"
     );
 }

@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { srcDirOf } from "../../../test-support/repo-root";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 /**
  * `P6d-Y1`：写动作那半的**裁定**必须写在头注上，且措辞是「裁定不加」而不是「延后再加」。
  *
@@ -143,12 +144,12 @@ describe("命令面板", () => {
       cmd("acct", "管理账号…", "account", "account"),
     ]);
     view.open();
-    expect(groupTitles()).toEqual(["需要你", "当前会话", "打开", "窗口", "账号"]);
-    expect(items().map((e) => e.textContent)).toEqual(["表格分页· 等批准", "在会话里找", "历史", "全屏", "管理账号…"]);
+    expect(groupTitles()).toEqual([copyText("commandBar.group.needs"), copyText("commandBar.group.current"), copyText("commandBar.group.open"), copyText("commandBar.group.window"), copyText("commandBar.group.account")]);
+    expect(items().map((e) => e.textContent)).toEqual([`表格分页${copyText("commandBar.session.waiting", { what: "等批准" })}`, "在会话里找", "历史", "全屏", "管理账号…"]);
     type("日");
-    expect(groupTitles()).toEqual(["会话"]);
+    expect(groupTitles()).toEqual([copyText("commandBar.group.sessions")]);
     type("i");
-    expect(groupTitles()).toEqual(["命令"]);
+    expect(groupTitles()).toEqual([copyText("commandBar.group.commands")]);
     view.close();
   });
 
@@ -159,7 +160,7 @@ describe("命令面板", () => {
     type("历史");
     expect(items().map((e) => e.textContent)).toEqual(["打开历史"]);
     type("zzz");
-    expect(document.querySelector("[role=listbox]")?.textContent).toBe("无匹配");
+    expect(document.querySelector("[role=listbox]")?.textContent).toBe(copyText("commandBar.renderList.none"));
   });
 
   it("ArrowDown/Up 移动选中（环绕，跳过灰着的）；组字中的方向键 / Enter 归输入法", () => {

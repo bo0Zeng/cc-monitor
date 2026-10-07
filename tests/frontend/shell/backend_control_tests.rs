@@ -145,7 +145,7 @@ fn an_empty_origin_is_refused_by_every_port() {
 fn an_unknown_remote_origin_says_so_instead_of_pretending() {
     let e = tauri::async_runtime::block_on(backend_stop("从没注册过的机器".into())).unwrap_err();
     assert!(
-        e.contains("没有这台机器的记录"),
+        copy_core::copy_matches("rsBackendControl.handle.missing", &e),
         "对不认识的 origin 应当明说没有把手，而不是返回一句像成功的话：{e}"
     );
 }

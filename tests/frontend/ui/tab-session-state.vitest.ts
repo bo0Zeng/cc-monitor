@@ -40,6 +40,7 @@ import {
   type SessionState,
   type StateEvent,
 } from "../../../src/frontend/ui/tab-session-state";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 /** 八个态（列序 == `U4b.md §1.3` 那张转移表的列序）。 */
 const FROM: SessionState[] = [LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, LIVE_UNKNOWN_HOST, RECONNECTABLE, ENDED, GONE, UNSEEN];
@@ -49,7 +50,7 @@ const NAME = new Map<SessionState, string>([
   [LIVE_RESUMABLE, "活·只能重开"],
   [LIVE_UNKNOWN_HOST, "活·形式未知"],
   [RECONNECTABLE, "可重连"],
-  [ENDED, "已结束"],
+  [ENDED, copyText("sessionState.ended.name")],
   [GONE, "记录没了"],
   [UNSEEN, "说不清"],
 ]);
@@ -60,7 +61,7 @@ describe("S1 / T1 转移表（〔U4b〕7 态 × 10 事件 ＋〔GP1〕`unseen` �
   // 「=」表示不变（且必须是同一个对象：调用方靠它判「变没变」）。**手写自设计表，不从实现生成。**
   type Row = [string, string, string, string, string, string, string, string];
   const TABLE: Record<StateEvent, Row> = {
-    ended: ["已结束", "已结束", "已结束", "已结束", "已结束", "=", "=", "已结束"],
+    ended: [copyText("sessionState.ended.name"), copyText("sessionState.ended.name"), copyText("sessionState.ended.name"), copyText("sessionState.ended.name"), copyText("sessionState.ended.name"), "=", "=", copyText("sessionState.ended.name")],
     idle: ["可重连", "可重连", "可重连", "可重连", "=", "=", "=", "可重连"],
     started: ["=", "=", "=", "=", "活", "活", "活", "活"],
     "remote-line": ["=", "=", "=", "=", "活", "活", "活", "活"],
@@ -70,8 +71,8 @@ describe("S1 / T1 转移表（〔U4b〕7 态 × 10 事件 ＋〔GP1〕`unseen` �
     // 不认识的宿主：活着的都落「形式未知」（不当可接回）；死了的不动。
     "container-other": ["活·形式未知", "活·形式未知", "活·形式未知", "=", "=", "=", "=", "="],
     "record-gone": ["=", "=", "=", "=", "=", "记录没了", "=", "="],
-    "record-present": ["=", "=", "=", "=", "=", "=", "已结束", "="],
-    "seen-absent": ["=", "=", "=", "=", "=", "=", "=", "已结束"],
+    "record-present": ["=", "=", "=", "=", "=", "=", copyText("sessionState.ended.name"), "="],
+    "seen-absent": ["=", "=", "=", "=", "=", "=", "=", copyText("sessionState.ended.name")],
     // 那台机器看不见了：还有终端可去的两态（活 · 可重连）⇒ 说不清；死透了的不动（看不见推翻不了它们的死）。
     unseen: ["说不清", "说不清", "说不清", "说不清", "说不清", "=", "=", "="],
   };
@@ -140,13 +141,13 @@ describe("S2 / T2 呈现表（〔U4b〕7 态 → 类 · 状态名 · 提示句 =
   it("★ 八个态逐格相等（期望串是本文件的字面量，被测串来自文案表）", () => {
     expect(FROM.map(stateView)).toEqual([
       { ended: false, unseen: false, reconnectable: false, name: null, tooltip: null },
-      { ended: false, unseen: false, reconnectable: false, name: null, tooltip: "在 tmux 会话里运行：程序退了也能接回去" },
-      { ended: false, unseen: false, reconnectable: false, name: null, tooltip: "不在 tmux 会话里：程序退了只能 resume" },
-      { ended: false, unseen: false, reconnectable: false, name: null, tooltip: "终端形式未知" },
-      { ended: false, unseen: false, reconnectable: true, name: "Claude 已退出", tooltip: "Claude 已退出 · tmux 会话在" },
-      { ended: true, unseen: false, reconnectable: false, name: "已结束", tooltip: "已结束 · 可恢复" },
-      { ended: true, unseen: false, reconnectable: false, name: "记录已不在", tooltip: "记录已不在 · 不可恢复" },
-      { ended: false, unseen: true, reconnectable: false, name: "状态不明", tooltip: "状态不明 · 机器不可见" },
+      { ended: false, unseen: false, reconnectable: false, name: null, tooltip: copyText("sessionState.liveAttachable.tooltip") },
+      { ended: false, unseen: false, reconnectable: false, name: null, tooltip: copyText("sessionState.liveResumable.tooltip") },
+      { ended: false, unseen: false, reconnectable: false, name: null, tooltip: copyText("sessionState.liveUnknownHost.tooltip") },
+      { ended: false, unseen: false, reconnectable: true, name: copyText("sessionState.reconnectable.name"), tooltip: copyText("sessionState.reconnectable.tooltip") },
+      { ended: true, unseen: false, reconnectable: false, name: copyText("sessionState.ended.name"), tooltip: copyText("sessionState.ended.tooltip") },
+      { ended: true, unseen: false, reconnectable: false, name: copyText("sessionState.gone.name"), tooltip: copyText("sessionState.gone.tooltip") },
+      { ended: false, unseen: true, reconnectable: false, name: copyText("sessionState.unseen.name"), tooltip: copyText("sessionState.unseen.tooltip") },
     ]);
   });
 
@@ -162,9 +163,9 @@ describe("S2 / T2 呈现表（〔U4b〕7 态 → 类 · 状态名 · 提示句 =
 
   it("★ T4 说不清不许说成已结束：说不清那一格的状态名与提示句里零处「已结束」（正控：已结束那一格有）", () => {
     const u = stateView(UNSEEN);
-    expect(`${u.name}${u.tooltip}`).not.toMatch(/已结束/);
+    expect(`${u.name}${u.tooltip}`).not.toMatch(copyText("sessionState.ended.name"));
     const e = stateView(ENDED);
-    expect(`${e.name}${e.tooltip}`).toMatch(/已结束/);
+    expect(`${e.name}${e.tooltip}`).toMatch(copyText("sessionState.ended.name"));
   });
 });
 
@@ -246,7 +247,7 @@ describe("S5 说到会话状态的字只在文案表 `sessionState.*`（零命�
     expect(saying.filter((k) => !k.startsWith("sessionState."))).toEqual([]);
     expect(
       Object.entries(table)
-        .filter(([, e]) => e.zh === "已结束" || e.zh === "Claude 已退出")
+        .filter(([, e]) => e.zh === copyText("sessionState.ended.name") || e.zh === copyText("sessionState.reconnectable.name"))
         .map(([k]) => k)
         .sort(),
     ).toEqual(["sessionState.ended.name", "sessionState.reconnectable.name"]);

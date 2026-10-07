@@ -228,13 +228,15 @@ fn present_absent_and_dir_listing() {
     assert_eq!(
         observe(&PathResolution::Local("/h/f".into()), &f),
         SurfaceState::Present {
-            detail: "文件，42 字节".into()
+            detail: copy_core::copy_text("rsConfigSurface.observe.fileSize", &[("bytes", "42")])
+                .into()
         }
     );
     assert_eq!(
         observe(&PathResolution::Local("/h/d".into()), &f),
         SurfaceState::Present {
-            detail: "目录，2 项".into()
+            detail: copy_core::copy_text("rsConfigSurface.observe.dirCount", &[("count", "2")])
+                .into()
         }
     );
     assert_eq!(
@@ -277,7 +279,8 @@ fn glob_counts_only_real_matches() {
     assert_eq!(
         observe(&g, &f),
         SurfaceState::Present {
-            detail: "2 项匹配".into()
+            detail: copy_core::copy_text("rsConfigSurface.observe.globCount", &[("count", "2")])
+                .into()
         }
     );
     // 一个都不匹配 → 是真的没有，可以说 Absent
@@ -448,7 +451,10 @@ fn either_host_reports_present_when_found_locally() {
     let r = PathResolution::EitherHost(Box::new(PathResolution::Local("/h/.cc-bus".into())));
     match observe(&r, &f) {
         SurfaceState::Present { detail } => {
-            assert!(detail.contains("本机存在"), "实得 {detail}");
+            assert!(
+                copy_core::copy_matches("rsConfigSurface.observe.eitherPresent", &detail),
+                "实得 {detail}"
+            );
             assert!(detail.contains("7 字节"), "内层细节要保住：{detail}");
         }
         other => panic!("实得 {other:?}"),
@@ -490,8 +496,17 @@ fn either_host_keeps_the_glob_count() {
     .unwrap();
     match observe(&r, &f) {
         SurfaceState::Present { detail } => {
-            assert!(detail.contains("12 项匹配"), "计数丢了：{detail}");
-            assert!(detail.contains("本机存在"), "要标明是本机：{detail}");
+            assert!(
+                detail.contains(&copy_core::copy_text(
+                    "rsConfigSurface.observe.globCount",
+                    &[("count", "12")]
+                )),
+                "计数丢了：{detail}"
+            );
+            assert!(
+                copy_core::copy_matches("rsConfigSurface.observe.eitherPresent", &detail),
+                "要标明是本机：{detail}"
+            );
         }
         other => panic!("有 12 条匹配却报 {other:?}——这正是阻塞 1 的形态"),
     }
@@ -730,17 +745,20 @@ fn host_labels_are_distinct_and_truthful() {
     assert_eq!(uniq.len(), 4, "四个 host 标签必须互不相同，实得 {labels:?}");
     // **确定在客户端 / 确定在项目目录的，标签里不许出现"远端"**
     assert!(
-        !host_label(Client).contains("远端"),
+        !host_label(Client).contains(copy_core::copy_static!("rsConfigSurface.host.remote")),
         "$PROFILE 确定在客户端，标签不许含「远端」：{}",
         host_label(Client)
     );
     assert!(
-        !host_label(ProjectDir).contains("远端"),
+        !host_label(ProjectDir).contains(copy_core::copy_static!("rsConfigSurface.host.remote")),
         ".mcp.json 确定在项目目录，标签不许含「远端」：{}",
         host_label(ProjectDir)
     );
     // 而 Either 必须**明说**两端皆可（那是它存在的理由）
-    assert!(host_label(Either).contains("本机") && host_label(Either).contains("远端"));
+    assert!(
+        host_label(Either).contains(copy_core::copy_static!("rsConfigSurface.host.client"))
+            && host_label(Either).contains(copy_core::copy_static!("rsConfigSurface.host.remote"))
+    );
 }
 
 /// `host` 的四个变体都得有真实使用者。
@@ -1287,12 +1305,18 @@ fn rows_carry_the_host_label() {
         "至少三种 host 出现在表里，实得 {labels:?}"
     );
     let ps = rows.iter().find(|r| r.path_declared == "$PROFILE").unwrap();
-    assert_eq!(ps.host_label, "本机");
+    assert_eq!(
+        ps.host_label,
+        copy_core::copy_static!("rsConfigSurface.host.client")
+    );
     let ccm = rows
         .iter()
         .find(|r| r.path_declared == "~/.cc-monitor/bin/ccm")
         .unwrap();
-    assert_eq!(ccm.host_label, "远端");
+    assert_eq!(
+        ccm.host_label,
+        copy_core::copy_static!("rsConfigSurface.host.remote")
+    );
 }
 
 /// `GenerateOnly` 的措辞必须**明确说我们不写**——这是用户定的调，写错了就是失信。
@@ -1341,12 +1365,25 @@ fn settings_scopes_include_local_and_admit_project_is_unchecked() {
     assert_eq!(s[1].has_cc_bus_hooks, Some(true));
     assert_eq!(s[0].has_cc_bus_hooks, Some(false));
     // 项目级：**明说没查**，且不给 has_cc_bus_hooks 一个假答案
-    assert_eq!(s[2].scope, "项目级");
+    assert_eq!(
+        s[2].scope,
+        copy_core::copy_static!("rsConfigSurface.scope.project")
+    );
     assert_eq!(s[2].has_cc_bus_hooks, None);
     match &s[2].state {
         SurfaceState::Undetermined { why } => {
-            assert!(why.contains("没查"), "实得 {why}");
-            assert!(why.contains("可能是错的"), "要点明结论可能错，实得 {why}");
+            assert!(
+                why.contains(copy_core::copy_static!(
+                    "rsConfigSurface.scope.projectNotChecked"
+                )),
+                "实得 {why}"
+            );
+            assert!(
+                why.contains(copy_core::copy_static!(
+                    "rsConfigSurface.scope.projectNotChecked"
+                )),
+                "要点明结论可能错，实得 {why}"
+            );
         }
         other => panic!("项目级不该有确定结论，实得 {other:?}"),
     }

@@ -45,6 +45,8 @@ import {
 import { ControlError } from "../../../src/frontend/ui/control-said";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, refusedReply, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
+import { copyText, type CopyKey } from "../../../src/frontend/ui/copy-table";
+import { copyPattern } from "../../test-support/copy-pattern";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -136,20 +138,20 @@ describe("〔C4e〕金样：请求体 == 金样、解码器读得懂后端真出
 
   it("★★ 发消息（bus-send）：以 cc-monitor 的身份发", async () => {
     answer({ ok: SEND.reply });
-    await expect(sendMessage("devbox", String(SEND.request.to), String(SEND.request.text))).resolves.toMatch(/已投递给 alpha_cc/);
+    await expect(sendMessage("devbox", String(SEND.request.to), String(SEND.request.text))).resolves.toMatch(copyText("ccBus.send.delivered", { id: "alpha_cc" }));
     expect(sentCalls()).toEqual([["devbox", "bus-send", SEND.request]]);
     expect(SEND.request.from).toBe(MONITOR_BUS_ID);
   });
 
   it("★★ 收掉（bus-kill）", async () => {
     answer({ ok: KILL.reply });
-    await expect(killAgent("devbox", String(KILL.request.id))).resolves.toMatch(/已收掉 alpha_cc/);
+    await expect(killAgent("devbox", String(KILL.request.id))).resolves.toMatch(copyPattern("ccBus.kill.killed", { id: "alpha_cc" }));
     expect(sentCalls()).toEqual([["devbox", "bus-kill", KILL.request]]);
   });
 
   it("★★ 派生（bus-spawn）：没选账号 ⇒ 显式 `base:true`；选了 ⇒ `account`，两样不同时出现", async () => {
     answer({ ok: SPAWN.reply });
-    await expect(spawnAgent("devbox", { tool: "claude", dir: "/w/proj", task: "t" })).resolves.toMatch(/已派生 proj_cc/);
+    await expect(spawnAgent("devbox", { tool: "claude", dir: "/w/proj", task: "t" })).resolves.toMatch(copyPattern("ccBus.spawn.done", { id: "proj_cc" }));
     await spawnAgent("devbox", { tool: "claude", dir: "/w/proj", task: "t", account: "" });
     await spawnAgent("devbox", { tool: "claude", dir: "/w/proj", task: "t", account: "z" });
     expect(sentCalls()).toEqual([
@@ -161,7 +163,7 @@ describe("〔C4e〕金样：请求体 == 金样、解码器读得懂后端真出
 
   it("★★ 广播（bus-broadcast）", async () => {
     answer({ ok: BCAST.reply });
-    await expect(broadcast("devbox", String(BCAST.request.text))).resolves.toMatch(/已广播给 1 个在线的 agent，跳过 1 个不在线的。1 个失败：x_cc（timed_out）/);
+    await expect(broadcast("devbox", String(BCAST.request.text))).resolves.toMatch(copyText("ccBus.broadcast.doneFailed", { sent: "1", skipped: "1", failed: "1", who: "x_cc（timed_out）" }));
     expect(sentCalls()).toEqual([["devbox", "bus-broadcast", BCAST.request]]);
   });
 
@@ -193,8 +195,8 @@ describe("〔DUP2 · J12〕id：界面不判，后端判（规则只有一份）
     answer({ fail: refusedReply("bad_id", "BACKEND-SAYS") });
     const send = await saidOf(() => sendMessage("devbox", bad, "hi"));
     const kill = await saidOf(() => killAgent("devbox", bad));
-    expect(send).toMatch(/消息没有发出去/);
-    expect(kill).toMatch(/没有收掉/);
+    expect(send).toMatch(copyPattern("ccBus.send.badId"));
+    expect(kill).toMatch(copyPattern("ccBus.kill.badId"));
     for (const s of [send, kill]) expect(s, "后端的原话被吃掉了").toContain("BACKEND-SAYS");
     expect(sentCalls().map((c) => c[1]), "界面自己把坏 id 拦下了 —— 规则只许后端那一份").toEqual(["bus-send", "bus-kill"]);
     const [sent, killed] = sentCalls().map((c) => c[2] as Record<string, unknown>);
@@ -205,14 +207,14 @@ describe("〔DUP2 · J12〕id：界面不判，后端判（规则只有一份）
 describe("〔C4e〕发出去之前：调用方不能靠对端校验", () => {
   it("★ 空正文就地拒（发消息 · 广播），一个字节都不发", async () => {
     answer({ ok: SEND.reply });
-    expect(await saidOf(() => sendMessage("devbox", "alpha_cc", "  \n"))).toMatch(/消息是空的/);
-    expect(await saidOf(() => broadcast("devbox", ""))).toMatch(/广播内容是空的/);
+    expect(await saidOf(() => sendMessage("devbox", "alpha_cc", "  \n"))).toMatch(copyText("ccBus.send.empty"));
+    expect(await saidOf(() => broadcast("devbox", ""))).toMatch(copyText("ccBus.broadcast.empty"));
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
   it("★★ 派生的形状先核：目录非空；**不判 tool**（空 ⇒ 默认那一家、认不认归后端注册表）；账号名交后端判（`bad_id` 说成人话）", async () => {
     answer({ ok: SPAWN.reply });
-    expect(thrownBy(() => checkSpawnShape({ tool: "claude", dir: " ", task: "" }))).toMatch(/工作目录是空的/);
+    expect(thrownBy(() => checkSpawnShape({ tool: "claude", dir: " ", task: "" }))).toMatch(copyText("ccBus.spawn.noDir"));
     expect(invokeMock, "坏形状也发出去了").not.toHaveBeenCalled();
     // 空的 / 没见过的 tool 照样交给后端 —— 本侧不维护第二份名单（后端认不出会拒，那一句走 `invalid_args`）。
     expect(() => checkSpawnShape({ tool: "", dir: "/w", task: "" })).not.toThrow();
@@ -222,7 +224,7 @@ describe("〔C4e〕发出去之前：调用方不能靠对端校验", () => {
     // 坏账号名原样交给后端（界面不判），后端回 `bad_id` ⇒ 「没有派生：<后端那一句>」。
     answer({ fail: refusedReply("bad_id", "BACKEND-SAYS") });
     const said = await saidOf(() => spawnAgent("devbox", { tool: "claude", dir: "/w", task: "", account: "--help" }));
-    expect(said).toMatch(/没有派生/);
+    expect(said).toMatch(copyPattern("ccBus.spawn.badId"));
     expect(said).toContain("BACKEND-SAYS");
   });
 });
@@ -230,20 +232,20 @@ describe("〔C4e〕发出去之前：调用方不能靠对端校验", () => {
 describe("〔C4e〕查在线：问不到 ≠ 不在线", () => {
   it("★★ 不在名单里 / `live` 是 null / 通道不在 / 被拒 ⇒ 一律抛，没有一条路回 false", async () => {
     const withNull = { agents: [{ id: "n_cc", target: "n_cc:0.0", unread: 0, live: null, ccm_sid: null }] };
-    const cases: [string, { ok: unknown } | { fail: unknown }, string][] = [
-      ["不在名单里", { ok: LIST.reply }, "nobody_cc"],
-      ["live 是 null", { ok: withNull }, "n_cc"],
-      ["通道不在", { fail: NO_CHANNEL }, "alpha_cc"],
-      ["被拒", { fail: refusedReply("timed_out", "RAW") }, "alpha_cc"],
+    const cases: [string, { ok: unknown } | { fail: unknown }, string, CopyKey][] = [
+      ["不在名单里", { ok: LIST.reply }, "nobody_cc", "ccBus.online.unknown"],
+      ["live 是 null", { ok: withNull }, "n_cc", "ccBus.online.unknown"],
+      ["通道不在", { fail: NO_CHANNEL }, "alpha_cc", "control.channel.remoteDown"],
+      ["被拒", { fail: refusedReply("timed_out", "RAW") }, "alpha_cc", "ccBus.online.timedOut"],
     ];
-    for (const [what, reply, id] of cases) {
+    for (const [what, reply, id, key] of cases) {
       answer(reply);
       const said = await saidOf(() => agentOnline("devbox", id));
-      expect(said, what).toMatch(/问不到|找不到 devbox 的后端|连不上|不在/);
-      expect(said, `${what}：说成了「不在线」`).not.toMatch(/^.*当前不在线/);
+      expect(said, what).toMatch(copyPattern(key));
+      expect(said, `${what}：说成了「不在线」`).not.toMatch(copyPattern("ccBus.send.offline"));
     }
     answer({ ok: withNull });
-    expect(await saidOf(() => agentOnline("devbox", "n_cc"))).toMatch(/这是问不到，不是不在线/);
+    expect(await saidOf(() => agentOnline("devbox", "n_cc"))).toMatch(copyPattern("ccBus.online.unknown"));
   });
 });
 
@@ -256,9 +258,9 @@ describe("〔C4e〕回值几态逐态一句", () => {
       saidOfDelivery("devbox", "a_cc", { ...SEND.reply, live: null }),
     ];
     expect(new Set(said).size, JSON.stringify(said)).toBe(4);
-    expect(said[1]).toMatch(/不在线/);
-    expect(said[2]).toMatch(/没在总线上登记过/);
-    expect(said[3]).toMatch(/问不到/);
+    expect(said[1]).toMatch(copyText("ccBus.check.offline"));
+    expect(said[2]).toMatch(copyPattern("ccBus.send.ghost"));
+    expect(said[3]).toMatch(copyPattern("ccBus.send.unknownLive"));
   });
 
   it("★★ 收掉：真收了 / 只摘了登记 / 两样都没发生 三句不同；形状不认识 ⇒「不知道收掉了没有」而不是「没收掉」", () => {
@@ -268,21 +270,20 @@ describe("〔C4e〕回值几态逐态一句", () => {
       saidOfKill("devbox", "a_cc", { id: "a_cc", killed: false, stale_only: false }),
     ];
     expect(new Set(said).size, JSON.stringify(said)).toBe(3);
-    expect(said[1]).toMatch(/会话没动/);
+    expect(said[1]).toMatch(copyPattern("ccBus.kill.staleOnly"));
     const unsure = thrownBy(() => saidOfKill("devbox", "a_cc", { id: "a_cc", killed: "yes" }));
-    expect(unsure).toMatch(/不知道 a_cc 收掉了没有/);
-    expect(unsure).toMatch(/不要直接重来/);
+        expect(unsure).toMatch(copyPattern("ccBus.kill.unsure"));
   });
 
   it("★★ 派生：认不出名字 ≠ 没起来（明说别重试）；形状不认识 ⇒「不确定起没起」", () => {
     const done = saidOfSpawn(SPAWN.reply);
     const noName = saidOfSpawn({ ...SPAWN.reply, id: null });
-    expect(done).toMatch(/已派生 proj_cc/);
-    expect(noName).toMatch(/已派生，但没认出新会话的名字/);
-    expect(noName).toMatch(/不要重试/);
+    expect(done).toMatch(copyPattern("ccBus.spawn.done", { id: "proj_cc" }));
+    expect(noName).toMatch(copyPattern("ccBus.spawn.noName"));
+    expect(noName).toMatch(copyPattern("ccBus.spawn.noName"));
     expect(noName).not.toMatch(/失败|没有派生/);
     const unsure = thrownBy(() => saidOfSpawn({ ...SPAWN.reply, spawned: false }));
-    expect(unsure).toMatch(/不确定会话有没有起来/);
+    expect(unsure).toMatch(copyText("ccBus.spawn.unsure"));
   });
 
   it("★★ 广播：发到几个 · 跳过几个 · 失败几个分开说；问不到谁在线时明说全发了 —— 四形两两不同", () => {
@@ -295,8 +296,8 @@ describe("〔C4e〕回值几态逐态一句", () => {
       saidOfBroadcast("devbox", { ...base, skipped_offline: 0, liveness_unknown: true, failed: one }),
     ];
     expect(new Set(said).size, JSON.stringify(said)).toBe(4);
-    expect(said[0]).toMatch(/已广播给 3 个在线的 agent，跳过 2 个不在线的/);
-    expect(said[1]).toMatch(/1 个失败：x_cc（timed_out）/);
+    expect(said[0]).toMatch(copyPattern("ccBus.broadcast.done", { sent: 3, skipped: 2 }));
+    expect(said[1]).toMatch(copyPattern("ccBus.broadcast.doneFailed", { failed: 1, who: "x_cc（timed_out）" }));
     expect(said[2]).toMatch(/问不到谁在线，所以全发了/);
     expect(said[3]).toMatch(/所以全发了。1 个失败/);
   });

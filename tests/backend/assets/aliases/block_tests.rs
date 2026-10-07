@@ -215,7 +215,7 @@ fn damaged_fence_leaves_the_file_byte_identical() {
             String::from_utf8_lossy(&after)
         );
         assert!(
-            e.contains("找不到配对的 END"),
+            copy_core::copy_matches("rsFencedBlock.pair.noEnd", &e),
             "{what}：应因围栏损坏中止，实得：{e}"
         );
         // 顺带：不许留下备份/临时文件（上一版变异② 的泄漏形态）
@@ -250,8 +250,14 @@ fn damaged_fence_aborts_instead_of_eating_user_content() {
     let damaged = "# my stuff\n# === cc-monitor BEGIN v1 ===\nfunction cc { }\n";
     // **修后：第一次就 Err 中止，用户内容一个字节都不动。**
     let e = replace_or_append_block(damaged, BLOCK, "C:/x/profile.ps1").unwrap_err();
-    assert!(e.contains("找不到配对的 END"), "{e}");
-    assert!(e.contains("已中止"), "要让用户知道我们没动文件：{e}");
+    assert!(
+        copy_core::copy_matches("rsFencedBlock.pair.noEnd", &e),
+        "{e}"
+    );
+    assert!(
+        e.contains(copy_core::copy_static!("runs.state.stopped")),
+        "要让用户知道我们没动文件：{e}"
+    );
     // T04 审计⑥：`what` 现在传**真路径**而不是类别名（调用方手里一直有它）。
     // 原断言写的是类别名，与它自己的注释"要说清是哪个文件"不符。
     assert!(
@@ -1116,11 +1122,11 @@ fn the_hint_names_every_line_and_the_product_deletes_nothing() {
     }
     // 措辞：**不许**是「请删除」。产品指名，不替人做决定。
     assert!(
-        hint.contains("由你自己定"),
+        copy_core::copy_matches("rsProfileInstaller.hint.head", &hint),
         "措辞必须把决定权留给用户 —— 我们够不着边界，猜一个边界去删是最坏的那条路"
     );
     assert!(
-        hint.contains("一个字节都不会碰"),
+        copy_core::copy_matches("rsProfileInstaller.hint.head", &hint),
         "提示要明说产品不动手（`K31` + 用户逐字「原本的配置要手动删除」）"
     );
     // 没有裸行时是空串（界面靠它决定这一块出不出现）。
@@ -1546,7 +1552,10 @@ fn remote_merge_boundary_semantics_after_migration() {
     // ② BEGIN 与 END 同一行 → 现在 Err（**退化，如实记**：旧实现能替换该行）
     let same_line = format!("a\n{CCM_PROFILE_BEGIN} {CCM_PROFILE_END}\nb\n");
     let e = merge_profile_block(&same_line, snip, "远端 ~/.bashrc").unwrap_err();
-    assert!(e.contains("找不到配对的 END"), "{e}");
+    assert!(
+        copy_core::copy_matches("rsFencedBlock.pair.noEnd", &e),
+        "{e}"
+    );
     // ③ 缩进 marker → 归一到列 0（旧实现保留 BEGIN 缩进、丢 END 缩进，不自洽）
     let indented = format!("a\n  {CCM_PROFILE_BEGIN}\nold\n\t{CCM_PROFILE_END}\nb\n");
     let got = merge_profile_block(&indented, snip, "远端 ~/.bashrc").unwrap();
@@ -1571,8 +1580,14 @@ fn strip_aborts_on_malformed_begin_without_end() {
     // 现在两侧的装与卸四条路全走 `find_pair`，此处必须 Err 中止。
     let corrupt = format!("a\n{CCM_PROFILE_BEGIN}\nccm() {{ :; }}\nuser code\n");
     let e = strip_profile_block(&corrupt, "远端 ~/.bashrc").unwrap_err();
-    assert!(e.contains("找不到配对的 END"), "{e}");
-    assert!(e.contains("已中止"), "要让用户知道我们没动文件：{e}");
+    assert!(
+        copy_core::copy_matches("rsFencedBlock.pair.noEnd", &e),
+        "{e}"
+    );
+    assert!(
+        e.contains(copy_core::copy_static!("runs.state.stopped")),
+        "要让用户知道我们没动文件：{e}"
+    );
     assert!(e.contains("远端 ~/.bashrc"), "要说清是哪个文件：{e}");
     // 而**没有** BEGIN 时仍是正常的 no-op（别把这条也变成错误）
     assert_eq!(

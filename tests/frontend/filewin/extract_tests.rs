@@ -106,7 +106,10 @@ async fn an_unknown_archive_says_so_and_a_directory_is_not_offered() {
     let (name, o) = w.extract_board.last().expect("没有结局");
     let said = outcome_text(&name, &o);
     assert!(
-        said.starts_with("bad.rar 没解成：") && said.contains("不认这种包"),
+        said.starts_with(&copy_core::copy_text(
+            "rsFilewinExtract.outcome.failed",
+            &[("name", "bad.rar"), ("why", "")]
+        )) && said.contains("不认这种包"),
         "后端原话没进结局：{said}"
     );
     let dir: crate::source::Listed = crate::source::Row {

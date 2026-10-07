@@ -64,14 +64,17 @@ fn the_overflow_message_stops_lying_when_state_was_lost() {
     ];
     let m = super::overflow_health_message("box1", 7, &lost, false);
     assert!(
-        !m.contains("重开该会话可看完整历史"),
+        !copy_core::copy_matches("rsSshSource.health.overflowLines", &m),
         "丢了状态增量帧还说「重开会话可看完整历史」—— 那是假话。实得：{m}"
     );
     assert!(
         m.contains("sid-a") && m.contains("sid-b"),
         "要点名受影响的会话：{m}"
     );
-    assert!(m.contains("补不回来"), "要说清这部分补不回来：{m}");
+    assert!(
+        copy_core::copy_matches("rsSshSource.health.overflowLost", &m),
+        "要说清这部分补不回来：{m}"
+    );
     assert!(!m.contains("清单**不全**"), "没截断就别说截断：{m}");
 }
 

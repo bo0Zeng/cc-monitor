@@ -280,7 +280,7 @@ fn a_broken_reader_is_never_counted_as_a_crash() {
     let d = verdict(&ev).expect("读坏了也是一件要上账的事");
     assert_eq!(
         death_kind(&d),
-        "读坏了",
+        copy_core::copy_static!("rsBackendPolicy.death.misread"),
         "读端出错被判成了别的 —— 而这一维说的是**我们这一侧**，不是那个进程"
     );
     let origin = "kp3-读坏了不算崩-甲";
@@ -1045,7 +1045,7 @@ fn a_reader_that_never_existed_is_neither_a_clean_eof_nor_a_misread() {
     };
     assert_eq!(
         death_kind(&verdict(&never).expect("起不来是一件要上账的事")),
-        "从来没起来",
+        copy_core::copy_static!("rsBackendPolicy.death.neverStarted"),
         "没有读端被判成了别的 —— 「读坏了」说的是我们这一侧读**出了错**，\
              而那条路上连读端都没有过"
     );
@@ -1059,7 +1059,7 @@ fn a_reader_that_never_existed_is_neither_a_clean_eof_nor_a_misread() {
     };
     assert_eq!(
         death_kind(&verdict(&signalled).expect("被信号打死要上账")),
-        "崩了",
+        copy_core::copy_static!("rsBackendPolicy.death.crashed"),
         "`NotObserved` 把一次真的异常终止判成了别的格"
     );
 }
@@ -1306,13 +1306,13 @@ fn the_status_command_hands_the_panel_the_finished_face() {
 /// 常量写错一位（或按数值换算成了别的数）⇒ 这里当场红。
 #[test]
 fn a_console_ctrl_kill_is_said_in_words_not_as_a_bare_code() {
-    const SAID: &str = "被控制台事件杀死 —— 可能是那个弹出的终端窗口被关了";
+    let said: &str = copy_core::copy_static!("rsBackendPolicy.death.consoleCtrl");
     let crashed = Death::Crashed {
         how: Outcome::Exited(-1073741510),
     };
-    assert_eq!(last_brief(&crashed), format!("崩了，{SAID}"));
+    assert_eq!(last_brief(&crashed), format!("崩了，{said}"));
     let refused = Death::Refused { code: -1073741510 };
-    assert_eq!(last_brief(&refused), format!("被拒了，{SAID}"));
+    assert_eq!(last_brief(&refused), format!("被拒了，{said}"));
     for d in [&crashed, &refused] {
         let brief = last_brief(d);
         assert!(
@@ -1326,7 +1326,7 @@ fn a_console_ctrl_kill_is_said_in_words_not_as_a_bare_code() {
         );
         // 日志那一行同一个来源：也说人话（日志里要看码，去 `exit_status` 的判定一处看）。
         assert!(
-            ledger_line("o", d).contains(&format!("退出状态={SAID}")),
+            ledger_line("o", d).contains(&format!("退出状态={said}")),
             "日志那一行没跟上：{}",
             ledger_line("o", d)
         );

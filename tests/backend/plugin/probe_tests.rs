@@ -193,7 +193,10 @@ fn a_stranger_that_happens_to_have_the_same_name_is_rejected() {
         .expect("陌生程序没被拒");
     let msg = err.message();
     assert!(msg.contains("something-else"), "没说看到的是什么：{msg}");
-    assert!(msg.contains("找错了程序"), "归因说反了：{msg}");
+    assert!(
+        copy_core::copy_matches("beProbe.message.wrongProgram", &msg),
+        "归因说反了：{msg}"
+    );
 
     // 键值成对、但名字不对的那种，也要拒。
     let other = format!(

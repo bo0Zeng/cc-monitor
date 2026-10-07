@@ -812,7 +812,7 @@ async fn dragging_rows_onto_the_other_side_copies_them_and_dropping_back_does_no
     );
     let painted = d.frame(&mut ws, vec![egui::Event::PointerMoved(right_mid)]);
     assert!(
-        painted.iter().any(|(t, _)| t == "复制 1 项到另一栏"),
+        painted.iter().any(|(t, _)| t == &copy_core::copy_text("rsFilewinWorkspace.drag.hint", &[("n", "1")])),
         "拖到另一栏上方时没说「复制 1 项到另一栏」：{:?}",
         painted.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>()
     );
@@ -1626,8 +1626,17 @@ fn a_narrow_window_cuts_nothing_off() {
             assert!(ws.add_side(pane(dir, &["Cargo.toml", "README.md"])));
         }
         ws.set_notice(
-            "这个标签页还没忙完（正在读写 /home/user/work/一个很长很长的路径/文件.txt），先别关"
-                .into(),
+            copy_core::copy_text(
+                "rsFilewinWorkspace.closeTab.busy",
+                &[(
+                    "why",
+                    &*copy_core::copy_text(
+                        "rsFilewinShell.busy.io",
+                        &[("path", "/home/user/work/一个很长很长的路径/文件.txt")],
+                    ),
+                )],
+            )
+            .into(),
         );
         let painted = frames_at(&mut ws, screen, 4);
         let whole = egui::Rect::from_min_size(egui::Pos2::ZERO, screen).expand(0.5);

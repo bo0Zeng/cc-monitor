@@ -84,7 +84,7 @@ describe("一个会话读成什么（session-face）", () => {
   });
 
   it("★ 状态句：等批准 · 等了多久 / 运行中 · 调用哪个工具 · 多久 / 空闲 · 完成多久前（没看 ⇒ 多说一个「未看」）/ 状态不明 · 哪台", () => {
-    expect(stateLine(tab("a", { activity: waiting, needs: approve() }), NOW)).toEqual({ text: copyText("sessionFace.state.waiting", { kind: "等批准", waited: "2m" }), needs: true });
+    expect(stateLine(tab("a", { activity: waiting, needs: approve() }), NOW)).toEqual({ text: copyText("sessionFace.state.waiting", { kind: copyText("tabBar.needsKind.approve"), waited: "2m" }), needs: true });
     const running = tab("b", { activity: { status: "busy", waitingFor: null }, pending: [{ id: "x", name: "Bash", what: "pytest", at: new Date(NOW - 65_000).toISOString(), state: "running", why: null }] });
     expect(stateLine(running, NOW).text).toBe(copyText("sessionFace.state.runningFor", { tool: "Bash", dur: "1m" }));
     const idle = (unread: number) => tab("c", { unread, activity: { status: "idle", waitingFor: null }, lastSay: { text: "改好了", at: new Date(NOW - 240_000).toISOString() } });
@@ -291,7 +291,7 @@ describe("「需要你」钉条 · 窗口标题 · 系统通知", () => {
       await vi.runAllTimersAsync();
       r.w.observe([t]);
       await vi.runAllTimersAsync();
-      expect(r.sent).toEqual([[copyText("needs.notify.title", { title: "a", machine: copyText("sessionFace.machine.local"), kind: "等批准" }), "rm -rf build/"]]);
+      expect(r.sent).toEqual([[copyText("needs.notify.title", { title: "a", machine: copyText("sessionFace.machine.local"), kind: copyText("tabBar.needsKind.approve") }), "rm -rf build/"]]);
       // 老后端：种类一直不来 ⇒ 等满 NOTIFY_WAIT_MS 照发「需要你」。
       const old = tab("b", { activity: waiting });
       r.w.observe([old]);
@@ -468,7 +468,7 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     expect(r.page.el.textContent).toContain(copyText("terminal.input.unsure", { machine: copyText("sessionFace.machine.local") }));
     expect([r.sent.length, b.value]).toEqual([2, "1"]);
     r.setReply(async () => {
-      throw new Error("连不上");
+      throw new Error(copyText("machineCard.test.unreachable"));
     });
     key(b, "Enter");
     await flush();

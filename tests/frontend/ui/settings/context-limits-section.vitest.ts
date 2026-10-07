@@ -19,6 +19,7 @@ vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async (n: string) => void 
 
 import { ContextLimitsSection, limitsToText, textToLimits } from "../../../../src/frontend/ui/settings/context-limits-section";
 import { readContextLimits } from "../../../../src/frontend/ui/views/context-limit";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
@@ -54,6 +55,6 @@ describe("FIX4 · contextLimits 的入口", () => {
       { op: "remove", path: ["contextLimits"] },
     ]);
     expect(emitted).toEqual(["settings-applied", "settings-applied"]);
-    expect(s.element.textContent).toContain("第 1 行读不懂");
+    expect(s.element.textContent).toContain(copyText("contextLimits.editor.badLine", { n: 1 }));
   });
 });

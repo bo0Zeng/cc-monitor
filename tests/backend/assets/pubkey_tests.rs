@@ -64,7 +64,8 @@ async fn the_push_entry_point_actually_sanitizes_the_key() {
             .await
             .expect_err("空公钥竟然一路走通了 —— 净化没接上");
         assert!(
-            err.1.contains("公钥为空"),
+            err.1
+                .contains(copy_core::copy_static!("rsPubkey.sanitizePublicKey.empty")),
             "拒绝了，但不是净化拒的：{err:?}"
         );
         assert!(

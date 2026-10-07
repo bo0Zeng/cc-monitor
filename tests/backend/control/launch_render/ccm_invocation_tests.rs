@@ -101,40 +101,56 @@ fn every_refusal_reason_is_pinned_byte_for_byte() {
     let pairs: Vec<(Refusal, String)> = vec![
         (
             Refusal::MissingCap("tmux".into()),
-            "这台机器上的 ccm 做不到这样起会话（缺 tmux）".into(),
+            copy_core::copy_text("rsCcmInvocation.refusal.missingCap", &[("c", "tmux")]).into(),
         ),
-        (Refusal::AttachNeedsTmux, "只能接入 tmux 里的会话".into()),
+        (
+            Refusal::AttachNeedsTmux,
+            copy_core::copy_static!("rsCcmInvocation.refusal.attachNeedsTmux").into(),
+        ),
         (Refusal::UnknownAgent("那一句".into()), "那一句".into()),
         (
             Refusal::AgentNoAccounts {
                 agent: "Codex".into(),
             },
-            "Codex 会话还不能选账号".into(),
+            copy_core::copy_text(
+                "rsCcmInvocation.refusal.agentNoAccounts",
+                &[("agent", "Codex")],
+            )
+            .into(),
         ),
         (
             Refusal::DimensionCannotSpeak("account".into()),
-            "这一项设置（account）写不成 ccm 参数".into(),
+            copy_core::copy_text("rsCcmInvocation.refusal.cannotSpeak", &[("id", "account")])
+                .into(),
         ),
         (
             Refusal::DimensionNeedsCap {
                 dim: "model".into(),
                 cap: "model".into(),
             },
-            "这台机器上的 ccm 不认 model 这一项设置（缺 model）".into(),
+            copy_core::copy_text(
+                "rsCcmInvocation.refusal.dimensionNeedsCap",
+                &[("dim", "model"), ("cap", "model")],
+            )
+            .into(),
         ),
         (
             Refusal::FreeTextRefused {
                 slot: FreeTextSlot::Cwd,
                 value: q("rel/dir"),
             },
-            "工作目录 \"rel/dir\" 用不了。要绝对路径，不含 .. 段、换行或 NUL".into(),
+            copy_core::copy_text(
+                "rsCcmInvocation.refusal.freeTextCwd",
+                &[("value", "\"rel/dir\"")],
+            )
+            .into(),
         ),
         (
             Refusal::IdentifierRefused {
                 slot: IdentifierSlot::Model,
                 value: q("-m"),
             },
-            "模型名 \"-m\" 用不了（字母数字开头，只许字母数字与 . _ - : @ / [ ]，最长 256）".into(),
+            copy_core::copy_text("rsCcmInvocation.refusal.idModel", &[("value", "\"-m\"")]).into(),
         ),
     ];
     for (r, want) in &pairs {
@@ -372,7 +388,13 @@ fn an_agent_without_accounts_refuses_a_named_account_and_says_so() {
                 agent: "Codex".into()
             })
         );
-        assert_eq!(r.unwrap_err().reason(), "Codex 会话还不能选账号");
+        assert_eq!(
+            r.unwrap_err().reason(),
+            copy_core::copy_text(
+                "rsCcmInvocation.refusal.agentNoAccounts",
+                &[("agent", "Codex")]
+            )
+        );
     }
     s.account = CliAccount::Inherit;
     assert_eq!(render(&s).unwrap(), "ccm resume s1 -- --ccm-agent codex");

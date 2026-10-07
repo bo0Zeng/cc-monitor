@@ -39,6 +39,8 @@ import { decodeFail } from "../../../src/comms/inward/chan";
 import { provablyNotSent } from "../../../src/frontend/ui/ipc/chan-caller";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, refusedReply, UNSUPPORTED, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
+import { copyText, type CopyKey } from "../../../src/frontend/ui/copy-table";
+import { copyPattern } from "../../test-support/copy-pattern";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -106,9 +108,9 @@ async function detailOf(act: () => Promise<unknown>): Promise<string> {
 // ════════════════════════════════════════════════════════════════════════════
 
 /** 三个动作各自「跑一趟、拿那一句」。 */
-const ACTIONS: [string, (origin: string, target: string) => Promise<unknown>][] = [
-  ["结束会话", (o, t) => killSession(o, t)],
-  ["发按键", (o, t) => sendKeys(o, t, "/exit")],
+const ACTIONS: [string, (origin: string, target: string) => Promise<unknown>, CopyKey][] = [
+  [copyText("tabSessionActions.kill.action"), (o, t) => killSession(o, t), "tmuxControl.kill.badName"],
+  ["发按键", (o, t) => sendKeys(o, t, "/exit"), "tmuxControl.keys.badRequest"],
 ];
 
 describe("〔C4e〕结束会话 · 发按键：按形状收", () => {
@@ -134,13 +136,13 @@ describe("〔C4e〕结束会话 · 发按键：按形状收", () => {
   });
 
   it("★★ 没明说做成了 ⇒ 不当成功：`killed` / `typed` 为假、多一格 / 缺一格 / 类型不对都抛", () => {
-    expect(() => decodeKilled("devbox", "demo-cc", { ...KILL.reply, killed: false })).toThrow(/没有确认 demo-cc 已经结束/);
-    expect(() => decodeTyped("devbox", "demo-cc", { ...LAUNCH.reply, typed: false })).toThrow(/没有确认按键已经送到 demo-cc/);
+    expect(() => decodeKilled("devbox", "demo-cc", { ...KILL.reply, killed: false })).toThrow(copyPattern("tmuxControl.kill.notConfirmed", { target: "demo-cc" }));
+    expect(() => decodeTyped("devbox", "demo-cc", { ...LAUNCH.reply, typed: false })).toThrow(copyPattern("tmuxControl.keys.notConfirmed", { target: "demo-cc" }));
     for (const bad of [{ ...KILL.reply, extra: 1 }, { killed: true }, { session: "demo-cc", killed: "yes" }, null]) {
-      expect(() => decodeKilled("devbox", "demo-cc", bad), JSON.stringify(bad)).toThrow(/读不懂/);
+      expect(() => decodeKilled("devbox", "demo-cc", bad), JSON.stringify(bad)).toThrow(copyPattern("peerVersion.said.unreadable"));
     }
     for (const bad of [{ ...LAUNCH.reply, extra: 1 }, { session: "demo-cc", typed: true }, { ...LAUNCH.reply, created: 1 }]) {
-      expect(() => decodeTyped("devbox", "demo-cc", bad), JSON.stringify(bad)).toThrow(/读不懂/);
+      expect(() => decodeTyped("devbox", "demo-cc", bad), JSON.stringify(bad)).toThrow(copyPattern("peerVersion.said.unreadable"));
     }
   });
 });
@@ -168,16 +170,16 @@ describe("FIX4 · 杀会话顺手注销的结局", () => {
     const bus = (b: unknown) => ({ ...KILL.reply, bus: b });
     expect(decodeKilled("devbox", "demo-cc", KILL.reply)).toBeNull();
     expect(decodeKilled("devbox", "demo-cc", bus({ removed: ["p_cc", "q_cc"], failed: [], unread: null }))).toBe(
-      "顺手从 cc-bus 名册里注销了 p_cc、q_cc。",
+      copyText("tmuxControl.kill.busRemoved", { ids: "p_cc、q_cc" }),
     );
     expect(decodeKilled("devbox", "demo-cc", bus({ removed: [], failed: [{ id: "r_cc", why: "它不在" }], unread: null }))).toBe(
-      "从 cc-bus 名册注销 r_cc 没成，名册里那一行还在：它不在",
+      copyText("tmuxControl.kill.busFailed", { id: "r_cc", why: "它不在" }),
     );
     expect(decodeKilled("devbox", "demo-cc", bus({ removed: [], failed: [], unread: "cc-list 退出 1" }))).toBe(
-      "读不到 cc-bus 名册，登记在这个会话上的 id 没注销：cc-list 退出 1",
+      copyText("tmuxControl.kill.busUnread", { why: "cc-list 退出 1" }),
     );
     for (const bad of [{ session: "demo-cc", killed: true }, bus({ removed: [], failed: [] }), bus({ removed: [1], failed: [], unread: null })]) {
-      expect(() => decodeKilled("devbox", "demo-cc", bad), JSON.stringify(bad)).toThrow(/读不懂/);
+      expect(() => decodeKilled("devbox", "demo-cc", bad), JSON.stringify(bad)).toThrow(copyPattern("peerVersion.said.unreadable"));
     }
   });
 });
@@ -185,9 +187,9 @@ describe("FIX4 · 杀会话顺手注销的结局", () => {
 describe("〔C4e〕结束会话 · 发按键：发出去之前与失败怎么说", () => {
   it("★ 〔DUP3〕空目标不在界面判：原样交给后端，后端拒了照原话说（两个动作各一遍）", async () => {
     answer({ fail: refusedReply("invalid_args", "`name` 为空") });
-    for (const [label, act] of ACTIONS) {
+    for (const [label, act, badKey] of ACTIONS) {
       const said = await saidOf(() => act("devbox", ""));
-      expect(said, label).toMatch(/后端不接受/);
+      expect(said, label).toMatch(copyPattern(badKey));
       expect(said, label).toContain("`name` 为空");
     }
     expect(sentCalls().map(([, op, body]) => [op, (body as { name?: unknown }).name]), "界面自己把空目标拦下了").toEqual([
@@ -202,9 +204,9 @@ describe("〔C4e〕结束会话 · 发按键：发出去之前与失败怎么说
       const local = await saidOf(() => act(LOCAL_ORIGIN, "demo-cc"));
       const remote = await saidOf(() => act("kr-remote-label", "demo-cc"));
       expect(local, label).not.toBe(remote);
-      expect(local, label).toMatch(/本机后端/);
+      expect(local, label).toMatch(copyText("control.channel.localDown"));
       expect(remote, label).toContain("kr-remote-label");
-      for (const x of [local, remote]) expect(x, label).not.toMatch(/未找到远端配置/);
+      for (const x of [local, remote]) expect(x, label).not.toMatch(copyPattern("rsLaunch.remote.noConfig"));
     }
     expect(sentCalls().filter(([o]) => o === LOCAL_ORIGIN).length, "本机没经通道问").toBe(2);
   });
@@ -298,15 +300,15 @@ describe("那台握手时说过做不到的，菜单置灰并说为什么", () =
     );
     await chan.offer("net2-box");
     const click = vi.fn();
-    const kill = gateByOffer("net2-box", { id: "kill", label: "结束会话", onClick: click });
+    const kill = gateByOffer("net2-box", { id: "kill", label: copyText("tabSessionActions.kill.action"), onClick: click });
     expect(kill.enabled).toBe(false);
-    expect(kill.why, "第二行写为什么（不拼进项名）").toContain("没有 tmux");
-    expect(kill.label).toBe("结束会话");
+    expect(kill.why, "第二行写为什么（不拼进项名）").toContain(`${copyText("extPage.state.missing")} tmux`);
+    expect(kill.label).toBe(copyText("tabSessionActions.kill.action"));
     kill.onClick?.();
     expect(click).not.toHaveBeenCalled();
     const preview = { id: "preview", label: "预览", onClick: click };
     expect(gateByOffer("net2-box", preview)).toBe(preview);
-    const elsewhere = { id: "kill", label: "结束会话", onClick: click };
+    const elsewhere = { id: "kill", label: copyText("tabSessionActions.kill.action"), onClick: click };
     expect(gateByOffer("net2-other", elsewhere)).toBe(elsewhere);
   });
 });

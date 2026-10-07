@@ -32,6 +32,7 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 
 import { DataSection, LOGS_DIR_LABEL, describeDataClass } from "../../../../src/frontend/ui/settings/data-section";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const SRC = "src/frontend/ui/settings/data-section.ts";
 
@@ -168,17 +169,17 @@ describe("数据位置「真相 / 缓存」那一格", () => {
       r.querySelector<HTMLElement>("[data-data-class]")!.textContent,
     ]);
     expect(got).toEqual([
-      ["config.json", "删了会丢"],
-      ["history-metadata.json", "删了会丢"],
-      ["sid-hwnd-cache.json", "可随手删"],
-      ["logs/", "可随手删"],
+      ["config.json", copyText("data.class.keep")],
+      ["history-metadata.json", copyText("data.class.keep")],
+      ["sid-hwnd-cache.json", copyText("data.class.disposable")],
+      ["logs/", copyText("data.class.disposable")],
     ]);
   });
 
   it("★ 后端将来加第三类 ⇒ 原样说出来，不整页炸、也不假装认识", () => {
-    expect(describeDataClass("truth")).toBe("删了会丢");
-    expect(describeDataClass("cache")).toBe("可随手删");
-    expect(describeDataClass("archive" as never)).toBe("类别未知（archive）");
+    expect(describeDataClass("truth")).toBe(copyText("data.class.keep"));
+    expect(describeDataClass("cache")).toBe(copyText("data.class.disposable"));
+    expect(describeDataClass("archive" as never)).toBe(copyText("data.class.unknown", { kind: "archive" }));
   });
 });
 
@@ -221,13 +222,13 @@ describe("〔ST2 · 步 15〕logs/ 那一行指向「日志」、不再自带 [�
       rows.find((r) => r.querySelector(".settings-data-item-label")!.textContent === l)!;
     const logs = byLabel(LOGS_DIR_LABEL);
     expect(logs.querySelector("button"), "logs/ 那一行还自带按钮 —— 与「日志」页的「打开日志目录」重复").toBeNull();
-    expect(logs.querySelector('[data-see-also="logs"]')?.textContent).toBe("在「日志」页里打开");
+    expect(logs.querySelector('[data-see-also="logs"]')?.textContent).toBe(copyText("data.item.inLogsPage"));
     expect(logs.querySelector(".settings-data-item-path")?.textContent).toBe("/h/.cc-monitor/logs/");
     const backendLogs = byLabel(`${LOGS_DIR_LABEL}backend/`);
     expect(backendLogs.querySelector("button"), "logs/backend/ 那一行也不该自带按钮").toBeNull();
     expect(backendLogs.querySelector('[data-see-also="logs"]')).not.toBeNull();
     // 反向对照：别的行照旧能打开（否则「logs/ 没按钮」可能是整张表都没按钮）。
-    expect(byLabel("ps-registry/").querySelector("button")?.textContent).toBe("打开");
+    expect(byLabel("ps-registry/").querySelector("button")?.textContent).toBe(copyText("data.item.open"));
   });
 });
 
@@ -266,7 +267,7 @@ describe("「在文件夹中显示」：每一条在盘上的路径都有，点�
     for (const r of rows) {
       const b = r.querySelector<HTMLButtonElement>("button[data-reveal]");
       if (!b) continue;
-      expect(b.textContent).toBe("在文件夹中显示");
+      expect(b.textContent).toBe(copyText("data.item.reveal"));
       b.click();
     }
     await new Promise((r) => setTimeout(r, 0));

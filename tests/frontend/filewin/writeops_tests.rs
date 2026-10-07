@@ -455,8 +455,8 @@ fn exactly_delete_asks_first() {
     assert_eq!(
         asking,
         vec![
-            "删除文件 /a".to_string(),
-            "删除目录 /a（连同里面全部内容）".to_string(),
+            copy_core::copy_text("rsFilewinWriteops.op.rm", &[("path", "/a")]).to_string(),
+            copy_core::copy_text("rsFilewinWriteops.op.rmdir", &[("path", "/a")]).to_string(),
         ],
         "要问的那几档变了 —— 连着 `super` 头注 §四那张表一起改，别只改代码"
     );
@@ -470,7 +470,7 @@ fn every_op_can_say_what_it_is() {
             path: "/srv/d".into()
         }
         .label(),
-        "新建目录 /srv/d"
+        copy_core::copy_text("rsFilewinWriteops.op.mkdir", &[("path", "/srv/d")])
     );
     assert_eq!(
         WriteOp::Rename {
@@ -479,7 +479,10 @@ fn every_op_can_say_what_it_is() {
             raw: None,
         }
         .label(),
-        "改名 /srv/a → /srv/b"
+        copy_core::copy_text(
+            "rsFilewinWriteops.op.rename",
+            &[("from", "/srv/a"), ("to", "/srv/b")]
+        )
     );
     // 权限**按八进制**说 —— 说成十进制（`420`）用户读不出那是 `644`。
     assert_eq!(
@@ -489,7 +492,10 @@ fn every_op_can_say_what_it_is() {
             raw: None,
         }
         .label(),
-        "改权限 /srv/a → 644"
+        copy_core::copy_text(
+            "rsFilewinWriteops.op.chmod",
+            &[("path", "/srv/a"), ("mode", "644")]
+        )
     );
 }
 
@@ -585,7 +591,7 @@ fn every_box_says_what_it_is_asking() {
     assert_eq!(WritePrompt::for_rename("/srv", &r).heading(), "");
     assert_eq!(
         WritePrompt::for_chmod("/srv", &r).heading(),
-        "改权限 · a.bin"
+        copy_core::copy_text("rsFilewinWriteops.heading.chmodOne", &[("name", "a.bin")])
     );
 }
 
@@ -868,7 +874,10 @@ fn one_chmod_box_for_many_rows_yields_one_op_per_row() {
         ..row("\u{FFFD}", false, true)
     };
     let mut p = WritePrompt::for_chmod_many("/srv/data", &[&a, &d, &l]);
-    assert_eq!(p.heading(), "改权限 · 3 项");
+    assert_eq!(
+        p.heading(),
+        copy_core::copy_text("rsFilewinWriteops.heading.chmodMany", &[("n", "3")])
+    );
     assert_eq!(p.text, "", "批量那个框也不许预填（读不到现值）");
     p.text = "750".into();
     assert_eq!(
@@ -920,24 +929,54 @@ fn gp1_the_chmod_box_says_the_current_mode_and_prefills_only_what_it_really_read
         modes: modes.to_vec(),
     };
     let cells: [(&[Option<u32>], ModeReadout); 6] = [
-        (&[Some(0o644)], r("当前 644", Some("644"), &[Some(0o644)])),
+        (
+            &[Some(0o644)],
+            r(
+                &*copy_core::copy_text("rsFilewinWriteops.mode.now", &[("mode", "644")]),
+                Some("644"),
+                &[Some(0o644)],
+            ),
+        ),
         (
             &[Some(0o4755)],
-            r("当前 4755", Some("4755"), &[Some(0o4755)]),
+            r(
+                &*copy_core::copy_text("rsFilewinWriteops.mode.now", &[("mode", "4755")]),
+                Some("4755"),
+                &[Some(0o4755)],
+            ),
         ),
         (
             &[Some(0o750), Some(0o750)],
-            r("当前 750", Some("750"), &[Some(0o750), Some(0o750)]),
+            r(
+                &*copy_core::copy_text("rsFilewinWriteops.mode.now", &[("mode", "750")]),
+                Some("750"),
+                &[Some(0o750), Some(0o750)],
+            ),
         ),
         (
             &[Some(0o750), Some(0o644)],
-            r("当前权限不一致", None, &[Some(0o750), Some(0o644)]),
+            r(
+                copy_core::copy_static!("rsFilewinWriteops.mode.mixed"),
+                None,
+                &[Some(0o750), Some(0o644)],
+            ),
         ),
         (
             &[Some(0o644), None],
-            r("当前权限不可读", None, &[Some(0o644), None]),
+            r(
+                copy_core::copy_static!("rsFilewinWriteops.mode.unreadable"),
+                None,
+                &[Some(0o644), None],
+            ),
         ),
-        (&[], r("当前权限不可读", None, &[])),
+        (
+            &[],
+            r(
+                copy_core::copy_static!("rsFilewinWriteops.mode.unreadable"),
+                None,
+                &[],
+            ),
+        ),
     ];
     for (modes, want) in cells {
         assert_eq!(mode_readout(modes), want, "mode_readout({modes:?})");
@@ -1002,7 +1041,7 @@ fn gp1_a_late_answer_for_an_old_box_never_lands_on_the_new_one() {
     probe.land(new, vec![Some(0o600)]);
     assert_eq!(
         probe.readout().map(|r| r.line),
-        Some("当前 600".to_string())
+        Some(copy_core::copy_text("rsFilewinWriteops.mode.now", &[("mode", "600")]).to_string())
     );
 }
 
@@ -1058,10 +1097,21 @@ fn deleting_asks_once_with_names_and_cannot_be_undone() {
     let has = |t: &str| painted.iter().any(|(s, _)| s == t);
     assert!(has("删除 10 项"), "标题不对：{painted:?}");
     assert!(
-        has("f0") && has("文件夹") && has("571 B") && has("f7") && !has("f8"),
+        has("f0")
+            && has(copy_core::copy_static!("rsFilewinWriteops.delete.rowDir"))
+            && has("571 B")
+            && has("f7")
+            && !has("f8"),
         "该只列 8 个：{painted:?}"
     );
-    assert!(has("另外 2 项") && has("不可恢复") && has("删除 10 项") && has("取消"));
+    assert!(
+        has(&*copy_core::copy_text(
+            "rsFilewinWriteops.delete.more",
+            &[("n", "2")]
+        )) && has(copy_core::copy_static!("rsFilewinWriteops.delete.body"))
+            && has("删除 10 项")
+            && has(copy_core::copy_static!("rsFilewinWriteops.delete.cancel"))
+    );
     assert!(board.settle(false));
     assert_eq!(rx.try_recv().unwrap(), Vec::<WriteOp>::new(), "取消了还删");
 }
@@ -1128,7 +1178,10 @@ fn the_inline_cell_selects_the_stem_and_a_same_name_rename_is_no_op() {
     let e = row(".env", false, false);
     assert_eq!(WritePrompt::for_rename("/srv/data", &e).select_chars(), 4);
     let n = WritePrompt::for_new("/srv/data", false);
-    assert_eq!(n.text, "新建文件夹");
+    assert_eq!(
+        n.text,
+        copy_core::copy_static!("rsFilewinWriteops.inline.newDir")
+    );
     assert_eq!(n.select_chars(), 5);
     assert_eq!(
         n.to_inline(),
@@ -1161,7 +1214,10 @@ fn receipts_say_what_was_done_and_carry_an_undo_only_when_it_is_whole() {
     };
     assert_eq!(
         receipt_of(&ok, &[del.clone()], &[]),
-        Some(("已删除 1 项".to_string(), Vec::new()))
+        Some((
+            copy_core::copy_text("rsFilewinWriteops.result.deleted", &[("n", "1")]).to_string(),
+            Vec::new()
+        ))
     );
     assert_eq!(
         receipt_of(
@@ -1170,7 +1226,11 @@ fn receipts_say_what_was_done_and_carry_an_undo_only_when_it_is_whole() {
             &[ch("/s/deploy.sh", 0o644)]
         ),
         Some((
-            "已把 deploy.sh 改成 755".to_string(),
+            copy_core::copy_text(
+                "rsFilewinWriteops.result.chmodOne",
+                &[("name", "deploy.sh"), ("mode", "755")]
+            )
+            .to_string(),
             vec![ch("/s/deploy.sh", 0o644)]
         ))
     );
@@ -1180,17 +1240,34 @@ fn receipts_say_what_was_done_and_carry_an_undo_only_when_it_is_whole() {
             &[ch("/s/a", 0o755), ch("/s/b", 0o755)],
             &[ch("/s/a", 0o644)]
         ),
-        Some(("已改权限 · 2 项".to_string(), Vec::new())),
+        Some((
+            copy_core::copy_text("rsFilewinWriteops.result.chmodMany", &[("n", "2")]).to_string(),
+            Vec::new()
+        )),
         "撤销只撤得回一半却给了撤销"
     );
     let bad = WriteOutcome {
-        failed: vec![("删除文件 /s/a".into(), "盘满了".into())],
+        failed: vec![(
+            copy_core::copy_text("rsFilewinWriteops.op.rm", &[("path", "/s/a")]).into(),
+            "盘满了".into(),
+        )],
         ..WriteOutcome::default()
     };
     assert_eq!(
         receipt_of(&bad, &[], &[]),
         Some((
-            "未完成 1 项 · 删除文件 /s/a · 盘满了".to_string(),
+            copy_core::copy_text(
+                "rsFilewinWriteops.result.failed",
+                &[
+                    ("n", "1"),
+                    (
+                        "what",
+                        &*copy_core::copy_text("rsFilewinWriteops.op.rm", &[("path", "/s/a")])
+                    ),
+                    ("why", "盘满了")
+                ]
+            )
+            .to_string(),
             Vec::new()
         ))
     );

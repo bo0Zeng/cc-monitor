@@ -47,7 +47,7 @@ describe("〔W5-UI〕会话流关了要出声", () => {
     await bind();
     streamFake.subscriptions[0].sink([{ t: "closed", by: { ours: "Broken" } }]);
     expect(toast.mock.calls).toEqual([
-      ["会话更新停了", "本机的会话不会再自动更新。重启 cc-monitor 可以重新接上。"],
+      [copyText("events.stream.closedTitle"), copyText("events.stream.closedLocal")],
     ]);
   });
 
@@ -55,7 +55,7 @@ describe("〔W5-UI〕会话流关了要出声", () => {
     await bind();
     streamFake.subscriptions[1].sink([{ t: "closed", by: { peer: '{"code":"bad_args"}' } }]);
     expect(toast.mock.calls).toEqual([
-      ["会话更新停了", "devbox 上的会话不会再自动更新。重启 cc-monitor 可以重新接上。"],
+      [copyText("events.stream.closedTitle"), copyText("events.stream.closedRemote", { machine: "devbox" })],
     ]);
   });
 

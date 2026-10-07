@@ -68,7 +68,11 @@ fn read_hands_over_every_file_with_its_text_or_a_reason() {
         got,
         vec![
             ("SKILL.md".into(), true, None),
-            ("bin/blob".into(), false, Some("不是文本文件".into())),
+            (
+                "bin/blob".into(),
+                false,
+                Some(copy_core::copy_static!("beSkillInstall.text.binary").into())
+            ),
             ("scripts/run.sh".into(), true, None),
         ]
     );
@@ -187,7 +191,10 @@ fn what_cannot_travel_as_text_cannot_be_taken() {
             .unwrap()
             .clone()
     };
-    assert_eq!(row("blob")["blocked"], json!("不是文本文件"));
+    assert_eq!(
+        row("blob")["blocked"],
+        json!(copy_core::copy_static!("beSkillInstall.text.binary"))
+    );
     assert_eq!(
         row("bin")["suspects"],
         json!([{"kind": "binary", "value": "", "there": null}])

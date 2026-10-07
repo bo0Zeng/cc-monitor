@@ -121,7 +121,7 @@ async fn a_symlinked_directory_under_a_root_cannot_carry_a_write_out() {
     let s = rig::session_on(fs.clone()).await;
     let r = super::put_atomic(&s, ".cc-monitor/bin/evil/authorized_keys", b"k", 0o600).await;
     assert!(
-        matches!(&r, Err(Refusal::Fenced(m)) if m.contains("落到了可写目录外面")),
+        matches!(&r, Err(Refusal::Fenced(m)) if copy_core::copy_matches("beSftp.fence.escaped", &m)),
         "解链接那一道没拦住：{r:?}"
     );
     let r2 = super::make_dirs(&s, ".cc-monitor/bin/evil/deeper").await;
@@ -163,7 +163,7 @@ async fn opening_a_symlink_for_write_is_refused() {
     let s = rig::session_on(fs.clone()).await;
     let r = open_for_write(&s, ".cc-monitor/staging/k.part", false).await;
     assert!(
-        matches!(r, Err(Refusal::Fenced(ref m)) if m.contains("链接")),
+        matches!(r, Err(Refusal::Fenced(ref m)) if m.contains(copy_core::copy_static!("rsFilewinKind.label.link"))),
         "链接没拦住"
     );
     assert!(fs.lock().unwrap().mutated.is_empty());

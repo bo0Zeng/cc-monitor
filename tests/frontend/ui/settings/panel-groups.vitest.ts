@@ -194,7 +194,7 @@ describe("S2 设置面板分页结构", () => {
     // 🔴 「改动足迹」顶层页没了 ⇒ 顶层只剩两个。
     // 「应用」下挂三个子页（替掉原来的两个折叠组）。
     // 跨机器的 skill / MCP 是一类被设置的对象 ⇒ 顶层「扩展」页，不挂在某台机器下面。
-    expect(navTitles()).toEqual(["机器", "文件与数据", "扩展", "外观", "通用", "日志"]);
+    expect(navTitles()).toEqual([copyText("settingsPanel.nav.machines"), copyText("settingsPanel.nav.data"), copyText("settingsPanel.nav.ext"), copyText("settingsPanel.nav.appearance"), copyText("settingsPanel.nav.general"), copyText("settingsPanel.nav.logs")]);
   });
 
   /** 等 RemoteSection 那边异步注册完本机页（真实实现是在 `refresh()` 里注册的）。 */
@@ -209,8 +209,8 @@ describe("S2 设置面板分页结构", () => {
     await tick();
     // 🔴 两个折叠组（外观 · 日志与数据）换成「应用」下的三个子页。
     //   「日志」「数据位置」那两块各自独占一页 ⇒ 块不再自带标题（页头就是它的名字，§8 #11 不重名）。
-    expect(pageTitles("general")).toEqual(["行为", "恢复"]);
-    expect(pageTitles("appearance")).toEqual(["字体", "颜色", "快捷键"]);
+    expect(pageTitles("general")).toEqual([copyText("settingsPanel.group.behavior"), copyText("settingsPanel.group.resume")]);
+    expect(pageTitles("appearance")).toEqual([copyText("settingsPanel.group.fonts"), copyText("settingsPanel.group.colors"), copyText("settingsPanel.group.keybindings")]);
     // 「诊断」**让名**给 `§5.3` 那个改名（否则面板里会有两个「诊断」）——今天是页名。
     expect(pageTitles("logs")).toEqual([]);
     // 文件与数据：两栏（要你动手 · cc-monitor 放了什么）；「足迹」并进「放了什么」，「未识别的数据」并进日志页的诊断信息。
@@ -233,10 +233,10 @@ describe("S2 设置面板分页结构", () => {
     expect(pageTitles("machines")).toEqual([]);
     // 它们跟着「当前在看哪台机器」走；初始落在本机页上（与 machine-context 的初始值对齐）。
     expect(pageTitles("machine:（本机）")).toEqual([
-      "账号",
+      copyText("machinePage.tab.accounts"),
       // 「终端集成」并进了下面「别名」那一块（Windows 上它是 PowerShell 那一侧的别名块）。
       // 别名并进机器页，从「应用 → 行为」搬来。
-      "别名",
+      copyText("settingsPanel.group.aliases"),
       // MCP · 资产目录 · 插件三块搬去了顶层「扩展」页（跨机器的一类对象）。
       // 足迹与未识别的数据去了「文件与数据」页。
     ]);
@@ -351,7 +351,7 @@ describe("S2 设置面板分页结构", () => {
       .filter((g) => !g.hidden)
       .map((g) => g.querySelector(".settings-group-title")?.textContent ?? "");
     // 「别名」（含从前的「终端集成」，PowerShell $PROFILE 那一块）只对本机有意义 ⇒ 显示。
-    expect(visibleTitles).toContain("别名");
+    expect(visibleTitles).toContain(copyText("settingsPanel.group.aliases"));
     // 🔴 **`N-F1b`（09-05）改了这一格的事实，PM 落**。
     //
     // 旧断言逐字：`expect(visibleTitles).not.toContain("账号");`
@@ -369,8 +369,8 @@ describe("S2 设置面板分页结构", () => {
     // `appliesTo: "remote"` 时本条绿、那条红；改成 `"both"` 时反过来。
     // **任何时刻恰好一绿一红，两条不可能同时绿**（`N-F1b` 的 `NbM5` 实打过）。
     // ⇒ 同一件事实写在两处，本件改了那件事实 ⇒ 两处一起改，不是二选一。
-    expect(visibleTitles).toContain("账号");
-    expect(visibleTitles).not.toContain("cc-bus 钩子");
+    expect(visibleTitles).toContain(copyText("machinePage.tab.accounts"));
+    expect(visibleTitles).not.toContain(copyText("rsConfigSurface.scope.userNote"));
   });
 
   it("🔴 步 3：机器页还没注册上来时，列表页上是**骨架**，不是兜底态", async () => {
@@ -395,8 +395,8 @@ describe("S2 设置面板分页结构", () => {
     expect(sk!.getAttribute("aria-busy")).toBe("true");
     // 隔离没有因此被打破：那几块**都还在 DOM 里**，只是先藏着、等机器页来了就搬走。
     expect(pageTitles("machines")).toEqual([
-      "账号",
-      "别名", // 本机那一格的 ②，跟着 per-machine 那几块一起留在兜底落点（终端集成并进了它）
+      copyText("machinePage.tab.accounts"),
+      copyText("settingsPanel.group.aliases"), // 本机那一格的 ②，跟着 per-machine 那几块一起留在兜底落点（终端集成并进了它）
     ]);
   });
 
@@ -420,8 +420,8 @@ describe("S2 设置面板分页结构", () => {
     await tick();
     const tabsOf = (id: string) =>
       [...document.querySelectorAll(`.settings-page[data-route-id="${id}"] .settings-shell-h > .settings-nav .settings-nav-item`)].map((b) => b.textContent);
-    expect(tabsOf("machine:（本机）")).toEqual(["账号", "别名与配置文件"]);
-    expect(tabsOf("machine:devbox")).toEqual(["账号", "别名与配置文件"]);
+    expect(tabsOf("machine:（本机）")).toEqual([copyText("machinePage.tab.accounts"), copyText("machinePage.tab.config")]);
+    expect(tabsOf("machine:devbox")).toEqual([copyText("machinePage.tab.accounts"), copyText("machinePage.tab.config")]);
     const local = document.querySelector<HTMLElement>('.settings-page[data-route-id="machine:（本机）"]')!;
     const remote = document.querySelector<HTMLElement>('.settings-page[data-route-id="machine:devbox"]')!;
     expect(local.querySelector(".machine-conn"), "本机没有连接设置").toBeNull();
@@ -468,10 +468,10 @@ describe("S2 设置面板分页结构", () => {
     // 账号块进「账号」栏
     expect(tabPage("acct").querySelector(".accounts-section-stub")).toBeTruthy();
     const titles = [...strip.querySelectorAll(".settings-group-title")].map((e) => e.textContent);
-    expect(titles, "cc-bus 钩子那一块该拿掉了（它在扩展页 cc-bus 那一行里）").not.toContain("cc-bus 钩子");
+    expect(titles, "cc-bus 钩子那一块该拿掉了（它在扩展页 cc-bus 那一行里）").not.toContain(copyText("rsConfigSurface.scope.userNote"));
     // 反向：账号**不该**也出现在终端栏里（搬 DOM 一处一份，不能有两份）
     const termTitles = [...tabPage("term").querySelectorAll(".settings-group-title")].map((e) => e.textContent);
-    expect(termTitles).not.toContain("账号");
+    expect(termTitles).not.toContain(copyText("machinePage.tab.accounts"));
     // 🔴 这台机器自己的别名在「终端」栏**最前面**，不在「组件」栏 —— 与本机页「终端 → 别名」同一个位置。
     const term = tabPage("term");
     expect(term.querySelector("#stub-remote-aliases"), "远端的别名不在「终端」栏").not.toBeNull();
@@ -486,7 +486,7 @@ describe("S2 设置面板分页结构", () => {
     const localTitles = [
       ...document.querySelectorAll('.settings-page[data-route-id="machine:（本机）"] .settings-group-title'),
     ].map((e) => e.textContent);
-    expect(localTitles).toContain("别名");
+    expect(localTitles).toContain(copyText("settingsPanel.group.aliases"));
     expect(
       document.querySelector('.settings-page[data-route-id="machine:（本机）"] details.relay-optin'),
       "本机页上没有「直接敲的也走中转」那一块",

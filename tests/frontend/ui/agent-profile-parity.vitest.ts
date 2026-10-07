@@ -88,6 +88,7 @@ import {
 } from "../../../src/frontend/ui/generated/agent-profile-table";
 import { stripComments } from "../../test-support/strip-comments";
 import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources";
+import { copyPattern } from "../../test-support/copy-pattern";
 
 const REPO = resolve(__dirname, "../../..");
 const GOLDEN = "tests/__fixtures__/agent-profile-golden.tsv";
@@ -372,13 +373,13 @@ describe("K-R93 前端那份 agent 画像：值来自后端", () => {
       "facts",
     );
     if (!miss.known) {
-      expect(miss.message, "问不到时那句话得说得出口").toMatch(/查不到/);
+      expect(miss.message, "问不到时那句话得说得出口").toMatch(copyPattern("agentProfile.lookup.unknown"));
       expect(miss.message).toContain("no-such-agent");
     }
     // 抛，而不是给一份「看起来像 claude」的默认画像。
-    expect(() => fullAgentProfile("no-such-agent")).toThrow(/查不到/);
+    expect(() => fullAgentProfile("no-such-agent")).toThrow(copyPattern("agentProfile.lookup.unknown"));
     // 表里有的那一家、换一张空表去问也是抛 —— 不留「反正是 claude」的暗门。
-    expect(() => fullAgentProfile(listAgents()[0], [])).toThrow(/查不到/);
+    expect(() => fullAgentProfile(listAgents()[0], [])).toThrow(copyPattern("agentProfile.lookup.unknown"));
   });
 
   // 「`null` 那一格是『没人考据过』」那一条退役：会是 `null` 的那五格（codex 的工具 / 判活进程词表）随判定进了后端

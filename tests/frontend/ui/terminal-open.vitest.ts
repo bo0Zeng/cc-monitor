@@ -21,6 +21,7 @@ import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { chanArgsJson, chanReply, isChanCall, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
 import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
+import { copyPattern } from "../../test-support/copy-pattern";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const FACTS = { machine: { host: "10.0.0.2", user: "u", port: 22, label: "devbox" }, saved: null, jump: null, prefer: null };
@@ -71,9 +72,9 @@ describe("问不到", () => {
     serve(() => undefined);
     await expect(openTerminal("devbox", "x")).rejects.toThrow();
     serve(() => ({ command: LINE, extra: 1 }));
-    await expect(openTerminal("devbox", "x")).rejects.toThrow(/读不懂/);
+    await expect(openTerminal("devbox", "x")).rejects.toThrow(copyPattern("peerVersion.said.unreadable"));
     serve(() => ({ command: "" }));
-    await expect(openTerminal("devbox", "x")).rejects.toThrow(/读不懂/);
+    await expect(openTerminal("devbox", "x")).rejects.toThrow(copyPattern("peerVersion.said.unreadable"));
     expect(calls("open_terminal_window")).toEqual([]);
     expect(decodeTerminalLine({ command: LINE })).toBe(LINE);
   });

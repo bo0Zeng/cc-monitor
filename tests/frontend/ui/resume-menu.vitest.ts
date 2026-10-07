@@ -101,7 +101,7 @@ const LIST: ResumeAccounts = {
   items: [
     { name: "work", label: "work", quota: "5h 41%", last: true },
     { name: "home", label: "home", quota: null, last: false },
-    { name: null, label: "不指定账号 · ~/.claude", quota: null, last: false },
+    { name: null, label: copyText("resumeMenu.account.base"), quota: null, last: false },
   ],
 };
 const shape = (items: ReturnType<typeof resumeMenuItems>): string[] =>
@@ -114,7 +114,7 @@ describe("菜单怎么摆", () => {
       `[${copyText("resumeMenu.group.account")}]`,
       `✓work|${copyText("resumeMenu.account.quotaLast", { quota: "5h 41%" })}`,
       "home",
-      "不指定账号 · ~/.claude",
+      copyText("resumeMenu.account.base"),
       "—",
       `[${copyText("resumeMenu.group.run")}]`,
       copyText("resumeMenu.run.tmux"),
@@ -136,7 +136,7 @@ describe("菜单怎么摆", () => {
     expect(pick).toEqual({ tmux: true, account: undefined, useBase: true });
     expect(seen.length).toBe(3);
     expect(resumeHint(LIST, pick)).toBe(
-      copyText("resumeMenu.hint.pick", { pick: copyText("resumeMenu.pick.account", { account: "不指定账号 · ~/.claude", run: copyText("resumeMenu.hint.tmux") }) }),
+      copyText("resumeMenu.hint.pick", { pick: copyText("resumeMenu.pick.account", { account: copyText("resumeMenu.account.base"), run: copyText("resumeMenu.hint.tmux") }) }),
     );
   });
 

@@ -141,10 +141,13 @@ fn powershell_reader_names_what_it_cannot_take() {
         "{got:?}"
     );
     assert!(
-        matches!(&got[2], Err(e) if e.contains("zcd") && e.contains("手改")),
+        matches!(&got[2], Err(e) if e.contains("zcd") && copy_core::copy_matches("rsShellDialect.ps.handEdited", &e)),
         "{got:?}"
     );
-    assert!(matches!(&got[3], Err(e) if e.contains("收尾")), "{got:?}");
+    assert!(
+        matches!(&got[3], Err(e) if copy_core::copy_matches("rsShellDialect.ps.noClose", &e)),
+        "{got:?}"
+    );
 }
 
 /// 方言只看目标文件的扩展名（`.ps1` 大小写都认），不看宿主平台。
@@ -272,12 +275,15 @@ fn startup_files_follow_each_shells_own_convention() {
 fn powershell_knows_the_names_its_own_block_defines() {
     assert!(PowerShell
         .name_taken("CC", &own(Shell::PowerShell))
-        .is_none_or(|n| !n.contains("终端集成块")));
+        .is_none_or(|n| !copy_core::copy_matches("rsShellDialect.ps.nameTakenIntegration", &n)));
     for n in ["__ccm_bind", "__CCM_BIND"] {
         let note = PowerShell
             .name_taken(n, &own(Shell::PowerShell))
             .unwrap_or_else(|| panic!("`{n}` 在终端集成模板里就有，却一声不吭"));
-        assert!(note.contains("终端集成块"), "{note}");
+        assert!(
+            copy_core::copy_matches("rsShellDialect.ps.nameTakenIntegration", &note),
+            "{note}"
+        );
     }
     assert!(PowerShell
         .name_taken("zzz_no_such_command_anywhere", &own(Shell::PowerShell))

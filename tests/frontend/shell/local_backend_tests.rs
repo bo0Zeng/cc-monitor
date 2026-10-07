@@ -410,7 +410,7 @@ fn the_two_verdicts_hand_the_user_two_different_sentences() {
     };
     let transient = etxtbsy_gave_up_reason(bin, tries, &last);
     assert!(
-        transient.contains("再开一次多半就好"),
+        copy_core::copy_matches("rsLocalBackend.etxtbsy.gaveUp", &transient),
         "撞上竞态那句话没告诉用户「再开一次多半就好」，他仍然不知道该不该重开：{transient}"
     );
     assert!(
@@ -437,7 +437,7 @@ fn the_two_verdicts_hand_the_user_two_different_sentences() {
         "两句话串了：竞态那句里带上了真失败的逐字：{transient}"
     );
     assert!(
-        !e.contains("再开一次"),
+        !copy_core::copy_matches("rsLocalBackend.etxtbsy.gaveUp", &e),
         "「这台机器上就是起不来」那句里混进了「会自己过去」的说法：{e}"
     );
 }
@@ -1035,7 +1035,7 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
     assert!(!partial.exists(), "放上去之后暂存件还在（该是换名上位）");
     assert_eq!(
         asked[0].2,
-        serde_json::json!({ "dest": dest.to_string_lossy(), "machine": "本机" })
+        serde_json::json!({ "dest": dest.to_string_lossy(), "machine": copy_core::copy_static!("rsLocalBackend.place.thisMachine") })
     );
     assert!(no_partials());
     // 逐字节相同 ⇒ 不问
@@ -1076,7 +1076,10 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
     ] {
         let fake = FakeAsk::new(answer.clone(), &mine);
         match put(&fake) {
-            Err(Unplaced::Said(s)) => assert!(s.contains("答不出该不该放"), "{answer:?}：{s}"),
+            Err(Unplaced::Said(s)) => assert!(
+                copy_core::copy_matches("rsLocalBackend.place.unasked", &s),
+                "{answer:?}：{s}"
+            ),
             other => panic!("{answer:?}：该是「问不成、没放」，实得 {other:?}"),
         }
         assert_eq!(disk(), newer, "{answer:?}：问不成却动了盘上那份");
@@ -2989,7 +2992,7 @@ fn a_refusal_from_the_byte_table_reaches_the_missing_reason_and_writes_nothing()
     };
     assert!(reason.contains(said), "拒绝的话没到 reason 里：{reason}");
     assert!(
-        reason.contains("旁边没有本机后端"),
+        copy_core::copy_matches("rsLocalBackend.resolve.notBeside", &reason),
         "「旁边没有」那一句被换掉了（两件事都要说）：{reason}"
     );
     // 「一个字节都不写」：空目录才删得掉（`remove_dir` 对非空目录报错）—— 不遍历目录。

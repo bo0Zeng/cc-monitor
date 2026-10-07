@@ -265,7 +265,15 @@ fn only_the_lines_under_the_viewport_are_laid_out_however_big_the_file() {
         );
         let notice = seen
             .iter()
-            .filter(|s| s.text.starts_with("大文件模式"))
+            .filter(|s| {
+                [
+                    "rsFilewinBigfile.notice.size",
+                    "rsFilewinBigfile.notice.longest",
+                    "rsFilewinBigfile.notice.both",
+                ]
+                .iter()
+                .any(|k| copy_core::copy_matches(k, &s.text))
+            })
             .count();
         assert_eq!(notice, 1);
         assert_eq!(
@@ -366,7 +374,15 @@ fn a_long_line_lays_out_only_the_stretch_in_view() {
             );
             let notice = seen
                 .iter()
-                .filter(|s| s.text.starts_with("大文件模式"))
+                .filter(|s| {
+                    [
+                        "rsFilewinBigfile.notice.size",
+                        "rsFilewinBigfile.notice.longest",
+                        "rsFilewinBigfile.notice.both",
+                    ]
+                    .iter()
+                    .any(|k| copy_core::copy_matches(k, &s.text))
+                })
                 .count();
             assert_eq!(
                 galleys(&fresh),

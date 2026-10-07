@@ -7,6 +7,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { rowTime, sectionKey, sectionLabel, spanText } from "../../../../src/frontend/ui/views/history-time";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 // 本地日历：2026-10-07 是周三。
 const at = (y: number, m: number, d: number, h = 12, mi = 0): number => new Date(y, m - 1, d, h, mi).getTime();
@@ -14,12 +15,12 @@ const NOW = at(2026, 10, 7, 15, 30);
 
 describe("分段", () => {
   it.each([
-    [at(2026, 10, 7, 0, 1), "d0", "今天"],
-    [at(2026, 10, 6, 23, 59), "d1", "昨天"],
-    [at(2026, 10, 5, 8), "w0", "本周"],
-    [at(2026, 10, 4, 22), "m2026-10", "10 月"],
-    [at(2026, 9, 30), "m2026-09", "9 月"],
-    [at(2025, 12, 31), "m2025-12", "2025 年 12 月"],
+    [at(2026, 10, 7, 0, 1), "d0", copyText("history.section.today")],
+    [at(2026, 10, 6, 23, 59), "d1", copyText("history.section.yesterday")],
+    [at(2026, 10, 5, 8), "w0", copyText("history.section.week")],
+    [at(2026, 10, 4, 22), "m2026-10", copyText("history.section.month", { month: "10" })],
+    [at(2026, 9, 30), "m2026-09", copyText("history.section.month", { month: "9" })],
+    [at(2025, 12, 31), "m2025-12", copyText("history.section.yearMonth", { year: 2025, month: 12 })],
   ])("%s ⇒ %s", (t, key, label) => {
     expect(sectionKey(t, NOW)).toBe(key);
     expect(sectionLabel(key, NOW)).toBe(label);

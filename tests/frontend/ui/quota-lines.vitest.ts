@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { quotaBlocks, type QuotaRead } from "../../../src/frontend/ui/quota-lines.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 interface Case {
   name: string;
@@ -23,7 +24,7 @@ describe("额度行模型 ＝ 金样", () => {
   it("金样不空、各形都在（被拒 · 超额 · 按量 · 需登录 · 需 key · 无采样 · 已过 · 跨年）", () => {
     const all = JSON.stringify(golden.cases.map((c) => c.blocks));
     expect(golden.cases.length).toBeGreaterThanOrEqual(10);
-    for (const w of ["✕", "超额", "使用中", "按量", "需登录", "需 key", "无采样", "已过", "2027-", "2025-", "+3d", "+1h50m", "+45m", "+2h\""]) {
+    for (const w of ["✕", copyText("acct.val.over"), copyText("acct.val.overOn"), copyText("acct.kind.api"), copyText("acct.tag.login"), copyText("acct.tag.key"), copyText("acct.seen.none"), copyText("acct.reset.past", { at: "" }).replace("↻", "").trim(), "2027-", "2025-", "+3d", "+1h50m", "+45m", "+2h\""]) {
       expect(all, w).toContain(w);
     }
   });

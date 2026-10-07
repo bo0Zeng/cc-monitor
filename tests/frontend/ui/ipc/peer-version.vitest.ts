@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { ChanError } from "../../../../src/comms/inward/chan";
 import { ReplyUnreadable, peerVersionCodeOf, saidFrom } from "../../../../src/frontend/ui/ipc/chan-caller";
 import TABLE from "../../../../src/shared/copy/table.json";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const zh = (k: string): string => (TABLE.entries as Record<string, { zh: string }>)[k].zh;
 
@@ -27,7 +28,7 @@ describe("两个码", () => {
   });
 
   it("本机说「本机」", () => {
-    expect(saidFrom(new ChanError({ layer: "peer", why: "unsupported" }), "<local>")).toMatch(/^本机/);
+    expect(saidFrom(new ChanError({ layer: "peer", why: "unsupported" }), "<local>")).toBe(copyText("peerVersion.said.old", { machine: copyText("control.machine.local") }));
   });
 
   it("够不着 / 对端说不行 / 别的错 ⇒ 不落进这两个码", () => {

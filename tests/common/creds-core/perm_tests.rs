@@ -227,7 +227,10 @@ fn undetermined_is_not_a_green_light() {
     assert!(v.needs_attention(), "「查不出来」被当成了没问题");
     match &v {
         Verdict::Undetermined { why } => {
-            assert!(why.contains("这不等于它没问题"), "说法太软：{why}");
+            assert!(
+                copy_core::copy_matches("credsPerm.judge.undetermined", &why),
+                "说法太软：{why}"
+            );
             assert!(why.contains("harden"), "说法里没带上原因：{why}");
         }
         other => panic!("应当是 Undetermined，实得 {other:?}"),

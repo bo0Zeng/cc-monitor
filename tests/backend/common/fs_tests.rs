@@ -16,7 +16,10 @@ fn an_oversized_file_is_rejected_before_it_is_read() {
 
     let err = read_regular_capped(&path, 10).expect_err("100 字节 > cap 10，必须拒");
     assert!(
-        err.contains("超过 10 字节上限"),
+        err.contains(&copy_core::copy_text(
+            "beFs.readRegularCapped.tooBig",
+            &[("cap", "10")]
+        )),
         "拒绝信息要说清上限，实得：{err}"
     );
     assert!(

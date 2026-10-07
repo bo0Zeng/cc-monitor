@@ -912,7 +912,10 @@ fn w5vis_s4_ran_keeps_what_the_real_process_said_on_stderr() {
     let e = ran(crate::platform::child::Child::new(dir.join("gone")), &["x"]).unwrap_err();
     assert_eq!(e.0, "no_tmux");
     // `said_of`：没说话 ⇒ 那句占位；一个灌一整屏的 tmux 截在 `SAID_CAP` 之内（字符边界上）并标 `…`。
-    assert_eq!(said_of(b"  \n"), "tmux 没说原因");
+    assert_eq!(
+        said_of(b"  \n"),
+        copy_core::copy_static!("beLaunch.said.silent")
+    );
     let long = "错".repeat(SAID_CAP);
     let s = said_of(long.as_bytes());
     assert!(

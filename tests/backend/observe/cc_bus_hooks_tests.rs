@@ -124,7 +124,9 @@ fn working_entry_wins_over_path_missing() {
 // ===== 脏输入逐层容忍，不抛、不让坏条目吃掉整份诊断 =====
 #[test]
 fn malformed_input_degrades_with_a_reason() {
-    assert!(diagnose(None, &always).note.contains("没读到"));
+    assert!(diagnose(None, &always)
+        .note
+        .contains(copy_core::copy_static!("rsHooksDiag.diagnose.noSettings")));
     assert!(diagnose(Some("{not json"), &always)
         .note
         .contains("不是合法 JSON"));
@@ -349,7 +351,13 @@ fn a_machine_without_settings_says_so() {
     let home = scratch("none");
     let agent = home.join(".claude");
     let rep = answer_at(Some(&home), &agent, Some(&agent.join("skills")), true);
-    assert!(rep.diagnosis.note.contains("没读到"), "{:?}", rep.diagnosis);
+    assert!(
+        rep.diagnosis
+            .note
+            .contains(copy_core::copy_static!("rsHooksDiag.diagnose.noSettings")),
+        "{:?}",
+        rep.diagnosis
+    );
     assert_eq!(rep.diagnosis.session_start, HookState::NotInstalled);
     assert!(rep.source.ends_with("settings.json"));
     assert_eq!(rep.snippet, None, "cc-bus 没装 ⇒ 不给要加的内容");

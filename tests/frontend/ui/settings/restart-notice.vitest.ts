@@ -13,6 +13,7 @@ import {
   __resetRestartNoticeForTests,
   __rehydrateRestartNoticeForTests,
 } from "../../../../src/frontend/ui/settings/restart-notice";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 beforeEach(() => __resetRestartNoticeForTests());
 
@@ -28,7 +29,7 @@ describe("restart-notice", () => {
     markRestartNeeded("远端机器配置");
     expect(bar.hidden).toBe(false);
     expect(bar.textContent).toContain("远端机器配置");
-    expect(bar.textContent).toContain("重启");
+    expect(bar.textContent).toBe(copyText("restartNotice.render.pending", { list: "远端机器配置" }));
   });
 
   it("多条改动都列出来，同一条重复标记只算一次", () => {
@@ -89,10 +90,10 @@ describe("同一次启动里关窗再开条还在，真重启就消", () => {
 
   it("★★ 关窗再开（同一次启动）→ 原因还在", () => {
     markRestartNeeded("远端机器配置");
-    markRestartNeeded("Claude 数据目录");
+    markRestartNeeded(copyText("settingsPanel.save.claudeDir"));
     // 模拟「设置窗网页重新载入」：内存清空，从这一次启动的存储里重新读
     __rehydrateRestartNoticeForTests();
-    expect(restartReasons()).toEqual(["远端机器配置", "Claude 数据目录"]);
+    expect(restartReasons()).toEqual(["远端机器配置", copyText("settingsPanel.save.claudeDir")]);
   });
 
   it("★★ monitor 真重启（新进程：模块重新载入、会话存储是空的、持久存储还在）→ 原因清空", async () => {

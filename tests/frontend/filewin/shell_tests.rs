@@ -2510,7 +2510,13 @@ fn the_chrome_really_paints_breadcrumbs_the_terminal_button_and_the_sorted_heade
         .collect();
     let name = crate::source::SortBy::Name.label();
     let up = format!("{name} {}", egui_phosphor::regular::CARET_UP);
-    for want in ["终端", "srv", "data", "子目录", up.as_str()] {
+    for want in [
+        copy_core::copy_static!("rsFilewinShell.frame.terminal"),
+        "srv",
+        "data",
+        "子目录",
+        up.as_str(),
+    ] {
         assert!(
             painted.iter().any(|t| t == want),
             "这一帧上没有「{want}」。画出来的是：{painted:?}"
@@ -2702,7 +2708,7 @@ fn gp1_a_chmod_box_without_a_line_says_the_current_mode_is_unreadable() {
     assert_eq!(
         w.mode_probe.readout(),
         Some(crate::writeops::ModeReadout {
-            line: "当前权限不可读".to_string(),
+            line: copy_core::copy_static!("rsFilewinWriteops.mode.unreadable").to_string(),
             prefill: None,
             modes: vec![None],
         })
@@ -3396,7 +3402,10 @@ async fn an_inline_rename_says_exists_under_the_cell_or_lands_with_an_undo() {
     settle_inline_of(&mut w).await;
     assert_eq!(
         w.prompt_error().as_deref(),
-        Some("exists.txt 已存在"),
+        Some(&*copy_core::copy_text(
+            "rsFilewinWriteops.inline.exists",
+            &[("name", "exists.txt")]
+        )),
         "名字被占了，那一格下面说的不对"
     );
     assert!(w.write_prompt().is_some(), "名字被占了，那一格却收掉了");
@@ -3408,7 +3417,10 @@ async fn an_inline_rename_says_exists_under_the_cell_or_lands_with_an_undo() {
     assert!(w.write_prompt().is_none(), "改成了，那一格还摆着");
     assert_eq!(w.reveal_name(), Some("b.txt"), "新名字没被选中");
     let (text, undo) = w.receipt_undo.take().expect("改成了却没有带撤销的回执");
-    assert_eq!(text, "已改名为 b.txt");
+    assert_eq!(
+        text,
+        copy_core::copy_text("rsFilewinWriteops.inline.renamed", &[("name", "b.txt")])
+    );
     assert_eq!(
         undo,
         vec![WriteOp::Rename {
@@ -3478,7 +3490,13 @@ async fn a_chmod_is_done_without_asking_and_offers_the_backends_before_as_undo()
     }
     assert!(w.settle_finished_writes());
     let (text, undo) = w.receipt_undo.take().expect("改权限做完没有带撤销的回执");
-    assert_eq!(text, "已把 deploy.sh 改成 755");
+    assert_eq!(
+        text,
+        copy_core::copy_text(
+            "rsFilewinWriteops.result.chmodOne",
+            &[("name", "deploy.sh"), ("mode", "755")]
+        )
+    );
     assert_eq!(
         undo,
         vec![WriteOp::Chmod {

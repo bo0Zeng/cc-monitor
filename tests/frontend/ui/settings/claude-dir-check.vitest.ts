@@ -10,6 +10,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { claudeDirProblem } from "../../../../src/frontend/ui/settings/claude-dir-check";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { chanReply, refusedReply, type ChanCallArgs } from "../../../test-support/chan-fake";
+import { copyPattern } from "../../../test-support/copy-pattern";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -42,7 +43,7 @@ describe("Claude 数据目录：存之前问在不在", () => {
 
     invokeMock.mockReset();
     backend(() => ({ err: { Hop: { idx: 0, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] }));
-    expect(await claudeDirProblem("/h/y")).toMatch(/^没法确认 \/h\/y 在不在/);
+    expect(await claudeDirProblem("/h/y")).toMatch(copyPattern("settingsPanel.claudeDir.uncheckable", { path: "/h/y" }, { whole: true }));
   });
 
   it("★ 在、是目录、但里面没有 projects/ ⇒ 说无会话记录（不存）；有 projects/ ⇒ 能用", async () => {

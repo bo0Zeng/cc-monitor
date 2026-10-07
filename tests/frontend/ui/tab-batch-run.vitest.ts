@@ -79,7 +79,7 @@ describe("批量停：每台一次、逐个答", () => {
     ]);
     const by = Object.fromEntries(out.map((o) => [o.sid, o]));
     expect(by.a).toEqual({ sid: "a", outcome: "done", why: "" });
-    expect(by.b).toEqual({ sid: "b", outcome: "skipped", why: copyText("tabBatch.why.notInTmux", { machine: "本机" }) });
+    expect(by.b).toEqual({ sid: "b", outcome: "skipped", why: copyText("tabBatch.why.notInTmux", { machine: copyText("control.machine.local") }) });
     expect(by.c).toEqual({ sid: "c", outcome: "failed", why: killRefusals("c-cc").byCode("too_many_windows", "2") });
     expect(by.d.outcome).toBe("failed");
     expect(by.d.why).not.toBe("");

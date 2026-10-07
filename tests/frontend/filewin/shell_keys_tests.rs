@@ -215,7 +215,10 @@ fn clicks_with_modifiers_pick_exactly_those_rows_and_paint_exactly_those() {
     // 选中不止一项 ⇒ 状态栏上说几项（与合计大小）。
     let painted = d.frame(&mut w, Vec::new());
     let line = w.status_line();
-    assert!(line.contains("选中 3 项"), "{line}");
+    assert!(
+        copy_core::copy_matches("rsFilewinChrome.status.picked", &line) && line.contains(" 3 "),
+        "{line}"
+    );
     assert_eq!(rects_of(&painted, &line).len(), 1, "状态栏上没画出那一行");
 }
 
@@ -395,7 +398,10 @@ fn typing_jumps_to_the_first_name_with_that_prefix() {
     // 那一句浮在状态栏左端（不弹框；`status_ui` 画它）。
     assert_eq!(
         w.key_notice(),
-        Some("没有以「q」开头的项"),
+        Some(&*copy_core::copy_text(
+            "rsFilewinShell.intent.noPrefix",
+            &[("prefix", "q")]
+        )),
         "没找到却一句话都没说"
     );
     let ctx = egui::Context::default();
@@ -403,7 +409,8 @@ fn typing_jumps_to_the_first_name_with_that_prefix() {
     let painted = crate::copy::testing::text_in_frame(&out);
     out.drop_without_applying_deltas();
     assert!(
-        painted.iter().any(|(t, _)| t == "没有以「q」开头的项"),
+        painted.iter().any(|(t, _)| t
+            == &copy_core::copy_text("rsFilewinShell.intent.noPrefix", &[("prefix", "q")])),
         "状态栏上没画那一句：{painted:?}"
     );
 }
@@ -686,16 +693,16 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             "f.txt",
             // +「解压到这里」。
             vec![
-                "编辑",
-                "复制",
-                "下载",
-                "算大小",
-                "解压到这里",
-                "复制到另一台…",
-                "改名",
-                "权限",
-                "删除",
-                "属性",
+                copy_core::copy_static!("rsFilewinEditor.label.edit"),
+                copy_core::copy_static!("rsFilewinCopy.label.copy"),
+                copy_core::copy_static!("rsFilewinDownload.label.download"),
+                copy_core::copy_static!("rsFilewinSize.label.size"),
+                copy_core::copy_static!("rsFilewinExtract.label.extract"),
+                copy_core::copy_static!("rsFilewinCrossCopy.label.cross"),
+                copy_core::copy_static!("rsFilewinWriteops.label.rename"),
+                copy_core::copy_static!("rsFilewinWriteops.label.chmod"),
+                copy_core::copy_static!("rsFilewinWriteops.label.delete"),
+                copy_core::copy_static!("rsFilewinSelect.label.properties"),
             ],
         ),
         (
@@ -704,7 +711,15 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             vec![],
             "sub",
             // 目录能复制了。
-            vec!["打开", "复制", "算大小", "改名", "权限", "删除", "属性"],
+            vec![
+                copy_core::copy_static!("rsFilewinSelect.label.open"),
+                copy_core::copy_static!("rsFilewinCopy.label.copy"),
+                copy_core::copy_static!("rsFilewinSize.label.size"),
+                copy_core::copy_static!("rsFilewinWriteops.label.rename"),
+                copy_core::copy_static!("rsFilewinWriteops.label.chmod"),
+                copy_core::copy_static!("rsFilewinWriteops.label.delete"),
+                copy_core::copy_static!("rsFilewinSelect.label.properties"),
+            ],
         ),
         (
             "一个超编辑上限的文件",
@@ -712,15 +727,15 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             vec![],
             "h.bin",
             vec![
-                "复制",
-                "下载",
-                "算大小",
-                "解压到这里",
-                "复制到另一台…",
-                "改名",
-                "权限",
-                "删除",
-                "属性",
+                copy_core::copy_static!("rsFilewinCopy.label.copy"),
+                copy_core::copy_static!("rsFilewinDownload.label.download"),
+                copy_core::copy_static!("rsFilewinSize.label.size"),
+                copy_core::copy_static!("rsFilewinExtract.label.extract"),
+                copy_core::copy_static!("rsFilewinCrossCopy.label.cross"),
+                copy_core::copy_static!("rsFilewinWriteops.label.rename"),
+                copy_core::copy_static!("rsFilewinWriteops.label.chmod"),
+                copy_core::copy_static!("rsFilewinWriteops.label.delete"),
+                copy_core::copy_static!("rsFilewinSelect.label.properties"),
             ],
         ),
         (
@@ -735,14 +750,26 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             vec![file("a.bin"), file("b.bin"), file("c.bin")],
             vec![("a.bin", NONE), ("c.bin", CTRL)],
             "c.bin",
-            vec!["算大小", "改权限 · 2 项", "删除 2 项"],
+            vec![
+                copy_core::copy_static!("rsFilewinSize.label.size"),
+                "改权限 · 2 项",
+                "删除 2 项",
+            ],
         ),
         (
             "右键落在选中外：换成只选它",
             vec![file("a.bin"), file("b.bin"), dir("c")],
             vec![("a.bin", NONE), ("b.bin", CTRL)],
             "c",
-            vec!["打开", "复制", "算大小", "改名", "权限", "删除", "属性"],
+            vec![
+                copy_core::copy_static!("rsFilewinSelect.label.open"),
+                copy_core::copy_static!("rsFilewinCopy.label.copy"),
+                copy_core::copy_static!("rsFilewinSize.label.size"),
+                copy_core::copy_static!("rsFilewinWriteops.label.rename"),
+                copy_core::copy_static!("rsFilewinWriteops.label.chmod"),
+                copy_core::copy_static!("rsFilewinWriteops.label.delete"),
+                copy_core::copy_static!("rsFilewinSelect.label.properties"),
+            ],
         ),
         (
             "两项混着有损名",
@@ -770,31 +797,46 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
 fn every_menu_item_lands_on_the_row_it_was_opened_for() {
     type Check = fn(&FileWindow) -> Result<(), String>;
     let on_file: Vec<(&str, Check)> = vec![
-        ("编辑", |w| {
+        (copy_core::copy_static!("rsFilewinEditor.label.edit"), |w| {
             let e = w.listing.error.lock().unwrap().clone().unwrap_or_default();
             e.contains("启动不了").then_some(()).ok_or(e)
         }),
-        ("复制", |w| match w.copy_prompt() {
-            Some(p) if p.src_name == "f.txt" => Ok(()),
-            other => Err(format!("{other:?}")),
-        }),
-        ("下载", |w| match w.pull_want() {
-            Some((_, n)) if n == "f.txt" => Ok(()),
-            other => Err(format!("{other:?}")),
-        }),
-        ("改名", |w| match w.write_prompt() {
-            Some(p) if p.src_name == "f.txt" && p.text == "f.txt" => Ok(()),
-            other => Err(format!("{other:?}")),
-        }),
-        ("权限", |w| match w.write_prompt() {
-            Some(p) if p.src_name == "f.txt" && p.text.is_empty() => Ok(()),
-            other => Err(format!("{other:?}")),
-        }),
-        ("删除", |w| {
-            // 没有运行时 ⇒ 那一摞起不来，而它**出声**（不静默吞掉一次删除）。
-            let e = w.listing.error.lock().unwrap().clone().unwrap_or_default();
-            e.contains("启动不了").then_some(()).ok_or(e)
-        }),
+        (
+            copy_core::copy_static!("rsFilewinCopy.label.copy"),
+            |w| match w.copy_prompt() {
+                Some(p) if p.src_name == "f.txt" => Ok(()),
+                other => Err(format!("{other:?}")),
+            },
+        ),
+        (
+            copy_core::copy_static!("rsFilewinDownload.label.download"),
+            |w| match w.pull_want() {
+                Some((_, n)) if n == "f.txt" => Ok(()),
+                other => Err(format!("{other:?}")),
+            },
+        ),
+        (
+            copy_core::copy_static!("rsFilewinWriteops.label.rename"),
+            |w| match w.write_prompt() {
+                Some(p) if p.src_name == "f.txt" && p.text == "f.txt" => Ok(()),
+                other => Err(format!("{other:?}")),
+            },
+        ),
+        (
+            copy_core::copy_static!("rsFilewinWriteops.label.chmod"),
+            |w| match w.write_prompt() {
+                Some(p) if p.src_name == "f.txt" && p.text.is_empty() => Ok(()),
+                other => Err(format!("{other:?}")),
+            },
+        ),
+        (
+            copy_core::copy_static!("rsFilewinWriteops.label.delete"),
+            |w| {
+                // 没有运行时 ⇒ 那一摞起不来，而它**出声**（不静默吞掉一次删除）。
+                let e = w.listing.error.lock().unwrap().clone().unwrap_or_default();
+                e.contains("启动不了").then_some(()).ok_or(e)
+            },
+        ),
     ];
     for (label, check) in on_file {
         let (mut d, mut w, texts) = open_menu(vec![file("a.bin"), file("f.txt")], &[], "f.txt");
@@ -808,7 +850,11 @@ fn every_menu_item_lands_on_the_row_it_was_opened_for() {
     }
     // 目录：「打开」⇒ 进去。
     let (mut d, mut w, _) = open_menu(vec![file("a.bin"), dir("sub")], &[], "sub");
-    click_menu_item(&mut d, &mut w, "打开");
+    click_menu_item(
+        &mut d,
+        &mut w,
+        copy_core::copy_static!("rsFilewinSelect.label.open"),
+    );
     assert_eq!(w.cwd, "/srv/data/sub");
 }
 
@@ -1173,7 +1219,10 @@ async fn batch_chmod_and_a_recursive_delete_reach_the_wire_with_the_right_shapes
     assert!(w.perform(Action::Chmod, None), "批量改权限没摆出框");
     {
         let p = w.write_prompt.as_mut().expect("框没摆出来");
-        assert_eq!(p.heading(), "改权限 · 3 项");
+        assert_eq!(
+            p.heading(),
+            copy_core::copy_text("rsFilewinWriteops.heading.chmodMany", &[("n", "3")])
+        );
         p.text = "640".into();
     }
     assert!(w.confirm_write(None), "框里的字没变成一摞");

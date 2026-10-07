@@ -4136,7 +4136,7 @@ fn the_never_started_reason_is_the_same_string_the_caller_gets() {
     let d = crate::backend_policy::verdict(&same_evidence).expect("起不来是一件要上账的事");
     assert_eq!(
         crate::backend_policy::death_kind(&d),
-        "从来没起来",
+        copy_core::copy_static!("rsBackendPolicy.death.neverStarted"),
         "同一份证据判出来的不是「从来没起来」—— 那接线喂进去的三维就不是这一份"
     );
     assert_eq!(

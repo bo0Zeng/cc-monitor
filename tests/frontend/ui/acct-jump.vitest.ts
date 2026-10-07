@@ -9,6 +9,7 @@ vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 import { jumpToAccountPanel, type AcctJumpHost } from "../../../src/frontend/ui/acct-jump";
 import { toast } from "../../../src/frontend/ui/kit/toast";
 import type { ToastOptions } from "../../../src/frontend/ui/kit/toast";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 let host: AcctJumpHost & { [K in keyof AcctJumpHost]: ReturnType<typeof vi.fn> };
 const lastToast = (): [string, string, ToastOptions] => vi.mocked(toast).mock.calls.at(-1) as never;
@@ -18,7 +19,7 @@ beforeEach(() => {
   host = {
     raise: vi.fn(),
     active: vi.fn(() => ({ sid: "a", origin: "devbox" })),
-    firstOn: vi.fn((o: string) => (o === "gpu-01" ? { sid: "g", title: "ranker 排序模型" } : null)),
+    firstOn: vi.fn((o: string) => (o === "gpu-01" ? { sid: "g", title: `ranker ${copyText("history.filter.sort")}${copyText("gridMonitor.fact.model")}` } : null)),
     switchTo: vi.fn(),
     openAt: vi.fn(),
   } as never;
@@ -39,15 +40,15 @@ describe("open-account-panel", () => {
     expect(host.switchTo, "不替人切标签页").not.toHaveBeenCalled();
     expect(host.openAt).not.toHaveBeenCalled();
     const [title, detail, opts] = lastToast();
-    expect(title).toBe("gpu-01 的默认轮换在那台会话的账号面板里");
-    expect(detail, "第二行是要切过去的那个会话").toBe("ranker 排序模型");
+    expect(title).toBe(copyText("acct.jump.rotationElsewhere", { machine: "gpu-01" }));
+    expect(detail, "第二行是要切过去的那个会话").toBe(`ranker ${copyText("history.filter.sort")}${copyText("gridMonitor.fact.model")}`);
     const act = opts.action as { label: string; run: () => void };
-    expect(act.label).toBe("切过去");
+    expect(act.label).toBe(copyText("acct.jump.switchTo"));
     act.run();
     expect(host.switchTo).toHaveBeenCalledWith("g");
     expect(host.openAt).toHaveBeenCalledWith("g", "gpu-01", "default-rotation");
     jumpToAccountPanel({ machine: "gpu-01", anchor: "timeline" }, host);
-    expect(lastToast()[0]).toBe("gpu-01 的时间轴在那台会话的账号面板里");
+    expect(lastToast()[0]).toBe(copyText("acct.jump.timelineElsewhere", { machine: "gpu-01" }));
   });
 
   it("那台一个会话都没开 ⇒ 只一条提示，不开面板", () => {
@@ -56,7 +57,7 @@ describe("open-account-panel", () => {
     expect(host.raise).toHaveBeenCalledTimes(1);
     expect(host.openAt).not.toHaveBeenCalled();
     const [title, , opts] = lastToast();
-    expect(title).toBe("本机上没有打开的会话");
+    expect(title).toBe(copyText("acct.jump.noSession", { machine: copyText("control.machine.local") }));
     expect(opts.action, "没有可切的就不给按钮").toBeUndefined();
   });
 });

@@ -62,6 +62,7 @@ import { RemoteSection } from "../../../../src/frontend/ui/settings/remote-secti
 import { BACKEND_UNREGISTERED_WHY, BackendSection } from "../../../../src/frontend/ui/settings/backend-section";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/backend-policy";
 import type { RemoteHostConfig } from "../../../../src/frontend/ui/remote-config";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -143,9 +144,9 @@ describe("后端那几格住机器页", () => {
     const all = pageBox.querySelectorAll<HTMLElement>("[data-backend-cells]");
     expect(all.length).toBe(2);
     for (const cells of all) {
-      expect(cells.querySelector(".backend-row-state")?.textContent).toBe("运行中");
-      expect([...cells.querySelectorAll('[data-col="state"] [data-op]')].map((b) => b.textContent)).toEqual(["停止…", "重启", "启动"]);
-      expect([...cells.querySelectorAll('[data-col="ops"] button')].map((b) => b.textContent)).toEqual(["最近输出", "刷新"]);
+      expect(cells.querySelector(".backend-row-state")?.textContent).toBe(copyText("backend.status.connected"));
+      expect([...cells.querySelectorAll('[data-col="state"] [data-op]')].map((b) => b.textContent)).toEqual([copyText("backend.buildCells.stop"), copyText("backend.buildCells.restart"), copyText("backend.buildCells.start")]);
+      expect([...cells.querySelectorAll('[data-col="ops"] button')].map((b) => b.textContent)).toEqual([copyText("backend.buildCells.log"), copyText("backend.buildCells.resync")]);
       expect(cells.querySelector('.backend-row-kill [role="switch"]')!.getAttribute("aria-disabled")).toBeNull();
     }
     const asked = ipc.calls
@@ -159,7 +160,7 @@ describe("后端那几格住机器页", () => {
     const { sec } = await mount([mkH("甲机", "1.1.1.1")]);
     void sec;
     const cells = pageBox.querySelector<HTMLElement>('[data-backend-cells="甲机"]')!;
-    expect(cells.querySelector(".backend-row-state")?.textContent).toBe("未登记");
+    expect(cells.querySelector(".backend-row-state")?.textContent).toBe(copyText("backend.paintUnregistered.unregistered"));
     expect(cells.querySelector("[aria-label]")?.getAttribute("aria-label")).toBe(BACKEND_UNREGISTERED_WHY());
     expect(cells.querySelectorAll("button").length, "没有把手的一台还摆着起 / 停").toBe(0);
     expect(cells.querySelector(".backend-row-kill")).toBeNull();
@@ -170,7 +171,7 @@ describe("后端那几格住机器页", () => {
     // 反向对照：登记了的本机照常画。
     expect(
       pageBox.querySelector<HTMLElement>(`[data-backend-cells="${LOCAL_ORIGIN}"] .backend-row-state`)?.textContent,
-    ).toBe("运行中");
+    ).toBe(copyText("backend.status.connected"));
   });
 
   it("★★ 后端清单里有、列表里没有 ⇒ 不丢：列表尾巴里另起一行，且只有这一台", async () => {

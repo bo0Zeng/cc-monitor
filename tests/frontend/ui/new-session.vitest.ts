@@ -56,6 +56,8 @@ vi.mock("../../../src/frontend/ui/tab-batch-run", () => win);
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async () => {}), listen: vi.fn(async () => () => {}) }));
 
 import { openNewSession, setNewSessionPlaceholder } from "../../../src/frontend/ui/new-session";
+import { copyText } from "../../../src/frontend/ui/copy-table";
+import { copyPattern } from "../../test-support/copy-pattern";
 
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
@@ -81,7 +83,7 @@ const choose = (b: HTMLButtonElement, label: string): void => {
 };
 const input = (label: string): HTMLInputElement => dialog().querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
 const rowOf = (el: HTMLElement): HTMLElement => el.closest<HTMLElement>("[class*=nsRow]")!;
-const createBtn = (): HTMLButtonElement => [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "新建")!;
+const createBtn = (): HTMLButtonElement => [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.action.create"))!;
 const newRequests = (): Record<string, unknown>[] => sent.filter((s) => s.op === "session-new").map((s) => s.body);
 
 const FACTS = { recent: [{ cwd: "/home/u/srv/orders", lastMs: 2 }, { cwd: "/home/u/srv/billing", lastMs: 1 }], tmux: true, agents: ["claude"], fork: null };
@@ -104,13 +106,13 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
   it("★ 目录预填那台最近用过的第一个；只有一家能起 ⇒ 没有 agent 那一行；账号默认号在前、需登录的标出来", async () => {
     void openNewSession({ origin: "devbox" });
     await flush();
-    expect(input("工作目录").value).toBe("/home/u/srv/orders");
-    expect(rowOf(sel("agent")).hidden).toBe(true);
-    const acct = sel("账号");
+    expect(input(copyText("newSession.label.cwd")).value).toBe("/home/u/srv/orders");
+    expect(rowOf(sel(copyText("newSession.label.agent"))).hidden).toBe(true);
+    const acct = sel(copyText("newSession.label.account"));
     expect(acct.dataset.value).toBe("work");
     expect(acct.querySelector(".acct-avatar"), "框上带头像").not.toBeNull();
-    expect(optionsOf(acct), "每项头像在前（▣）· 名字 · 灰字").toEqual(["▣work默认", "▣personal需登录"]);
-    expect(input("tmux 会话名").placeholder).toBe("orders-cc");
+    expect(optionsOf(acct), "每项头像在前（▣）· 名字 · 灰字").toEqual([`▣work${copyText("newSession.account.default")}`, `▣personal${copyText("newSession.account.needLogin")}`]);
+    expect(input(copyText("newSession.label.tmuxName")).placeholder).toBe("orders-cc");
     expect(sent.find((s) => s.op === "session-new-facts")!.body).toEqual({});
   });
 
@@ -118,20 +120,20 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
     replies.set("session-new-facts", { ...FACTS, tmux: false, agents: ["claude", "codex"] });
     void openNewSession({ origin: "devbox" });
     await flush();
-    expect(rowOf(sel("agent")).hidden).toBe(false);
+    expect(rowOf(sel(copyText("newSession.label.agent"))).hidden).toBe(false);
     const radios = [...dialog().querySelectorAll<HTMLInputElement>('input[type="radio"]')];
     expect(radios.find((r) => r.value === "tmux")!.closest("label")!.hidden).toBe(true);
     expect(radios.find((r) => r.value === "window")!.checked).toBe(true);
-    expect(dialog().textContent).toContain("无 tmux · 仅终端窗口");
+    expect(dialog().textContent).toContain(copyText("newSession.place.noTmux"));
   });
 
   it("选了需登录的号 ⇒ 那一格下说「需登录」＋［登录…］，［新建］灰着", async () => {
     void openNewSession({ origin: "devbox" });
     await flush();
-    const acct = sel("账号");
+    const acct = sel(copyText("newSession.label.account"));
     choose(acct, "personal");
-    expect(rowOf(acct).textContent).toContain("personal 需登录");
-    expect(rowOf(acct).textContent).toContain("登录…");
+    expect(rowOf(acct).textContent).toContain(copyText("launch.account.notLoggedIn", { name: "personal" }));
+    expect(rowOf(acct).textContent).toContain(copyText("newSession.account.login"));
     expect(createBtn().getAttribute("aria-disabled")).toBe("true");
   });
 });
@@ -176,17 +178,17 @@ describe("点［新建］：交那台的那一份", () => {
     await flush();
     await flush();
     expect(arrival.awaitArrival).toHaveBeenCalledWith(expect.objectContaining({ origin: "devbox", match: { cwd: "/home/u/srv/orders" }, tmuxName: "orders-cc" }));
-    expect(document.body.textContent).toContain("已启动 orders-cc · devbox");
+    expect(document.body.textContent).toContain(copyText("launch.fromSettings.done", { name: "orders-cc", machine: "devbox" }));
   });
 
   it("★ 那台说目录那一格不行 ⇒ 错误落在目录那一格下、框不关、什么都没起", async () => {
-    refusal = { op: "session-new", code: "no_dir", message: "目录不存在：/nope，没有起。", data: { field: "cwd", unavailable: null } };
+    refusal = { op: "session-new", code: "no_dir", message: copyText("beSessionNew.cwd.missing", { cwd: "/nope" }), data: { field: "cwd", unavailable: null } };
     void openNewSession({ origin: "devbox" });
     await flush();
     createBtn().click();
     await flush();
     expect(dialog(), "框不关").toBeTruthy();
-    expect(rowOf(input("工作目录")).textContent).toContain("目录不存在 · devbox");
+    expect(rowOf(input(copyText("newSession.label.cwd"))).textContent).toContain(copyText("launch.dir.missing", { machine: "devbox" }));
     expect(arrival.awaitArrival).not.toHaveBeenCalled();
   });
 
@@ -201,9 +203,9 @@ describe("点［新建］：交那台的那一份", () => {
     await flush();
     createBtn().click();
     await flush();
-    const acctRow = rowOf(sel("账号"));
-    expect(acctRow.textContent).toContain("work 不可用");
-    const use = [...acctRow.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "改用 personal")!;
+    const acctRow = rowOf(sel(copyText("newSession.label.account")));
+    expect(acctRow.textContent).toContain(copyText("launch.account.unavailable", { name: "work" }));
+    const use = [...acctRow.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.account.useAlt", { alt: "personal" }))!;
     expect(use).toBeTruthy();
     expect(newRequests()).toHaveLength(1);
     use.click();
@@ -217,8 +219,8 @@ describe("点［新建］：交那台的那一份", () => {
     await flush();
     createBtn().click();
     await flush();
-    expect(dialog().textContent).toContain("启动无应答 · devbox");
-    expect([...dialog().querySelectorAll("button")].some((b) => b.textContent === "重试")).toBe(true);
+    expect(dialog().textContent).toContain(copyText("launch.timeout.noAnswer", { machine: "devbox" }));
+    expect([...dialog().querySelectorAll("button")].some((b) => b.textContent === copyText("newSession.retry.action"))).toBe(true);
   });
 });
 
@@ -236,10 +238,10 @@ describe("分叉那一形", () => {
     void openNewSession({ origin: "devbox", fork: { sid: "src-1", uuid: "msg-9", title: "给订单服务加重试" } });
     await flush();
     expect(sent.find((s) => s.op === "session-new-facts")!.body).toEqual({ forkOf: "src-1", at: "msg-9" });
-    expect(dialog().textContent).toMatch(/分叉自「给订单服务加重试」· 第 9 轮 \d\d:\d\d/);
-    expect(dialog().querySelector('input[aria-label="tmux 会话名"]'), "分叉不给终端名那一格").toBeNull();
-    expect(input("工作目录").value).toBe("/home/u/work/orders");
-    expect(sel("机器").disabled).toBe(true);
+    expect(dialog().textContent).toMatch(copyPattern("newSession.fork.from", { title: "给订单服务加重试", n: 9 }));
+    expect(dialog().querySelector(`input[aria-label="${copyText("newSession.label.tmuxName")}"]`), "分叉不给终端名那一格").toBeNull();
+    expect(input(copyText("newSession.label.cwd")).value).toBe("/home/u/work/orders");
+    expect(sel(copyText("newSession.label.machine")).disabled).toBe(true);
     createBtn().click();
     await flush();
     const req = newRequests()[0];

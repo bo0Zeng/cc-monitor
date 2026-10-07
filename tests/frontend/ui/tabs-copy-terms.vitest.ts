@@ -32,6 +32,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { loadTable, loadTerms, scannerOf } from "../../copy/copy-support.ts";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 /** tab 层：拆之前的 `tabs.ts` 拆成的这 12 份（与 `tabs-split-graph.vitest.ts` 的登记表同一群）。 */
 const TAB_LAYER = [
@@ -108,8 +109,8 @@ describe("〔U2〕tab 层的界面文字：拉前 / @ccm_sid / ccm 助手 /〔S4
   it("★ 抽取器自检：12 份里抽得出字面量，且认得出改之后的新词", () => {
     const all = SPOKEN.flatMap((f) => spokenIn(readFileSync(resolve(REPO_ROOT, f), "utf8")));
     expect(all.length, "一个字面量都没抽到 —— 抽取器坏了").toBeGreaterThan(200);
-    expect(all).toContain("未切换 · 窗口无法确定");
-    expect(all, "期限到的那一族（原先「切到终端窗口超时」）").toContain("{machine} 无应答");
+    expect(all).toContain(copyText("front.title.unsure"));
+    expect(all, "期限到的那一族（原先「切到终端窗口超时」）").toContain(copyText("front.body.timeout", { machine: "{machine}" }));
     // 模板字面量也要抽得到（插值处留空）。
     expect(all).toContain("[tabs] 骨架未接（）：");
   });

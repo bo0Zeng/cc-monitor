@@ -19,6 +19,7 @@ import {
 import type { GridSessionSnapshot } from "../../../../src/frontend/ui/session-status";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import { ENDED, LIVE, RECONNECTABLE } from "../../../../src/frontend/ui/tab-session-state";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const snap = (over: Partial<GridSessionSnapshot>): GridSessionSnapshot => ({
   sessionId: "s",
@@ -47,7 +48,7 @@ describe("F91 groupSessionsByOrigin", () => {
       snap({ sessionId: "l2", origin: LOCAL_ORIGIN }),
       snap({ sessionId: "r-a2", origin: "alpha" }),
     ]);
-    expect(groups.map((g) => g.label)).toEqual(["本机", "alpha", "beta"]);
+    expect(groups.map((g) => g.label)).toEqual([copyText("gridMonitor.groups.local"), "alpha", "beta"]);
     expect(groups[0].origin).toBe(LOCAL_ORIGIN);
     expect(groups[0].sessions.map((s) => s.sessionId)).toEqual(["l1", "l2"]); // 保输入序
     expect(groups[1].sessions.map((s) => s.sessionId)).toEqual(["r-a", "r-a2"]);
@@ -124,7 +125,7 @@ describe("F91 GridMonitorView", () => {
     document.body.replaceChildren();
     const source = mkSource([
       snap({ sessionId: "l1", title: "本地会话", origin: LOCAL_ORIGIN, activityStatus: "busy", runningAgents: 2 }),
-      snap({ sessionId: "r1", title: "远端会话", origin: "pi", activityStatus: "waiting", waitingFor: "permission prompt" }),
+      snap({ sessionId: "r1", title: `${copyText("rsConfigSurface.host.remote")}${copyText("commandBar.group.sessions")}`, origin: "pi", activityStatus: "waiting", waitingFor: "permission prompt" }),
     ]);
     const view = new GridMonitorView(source);
     view.open();
@@ -132,11 +133,9 @@ describe("F91 GridMonitorView", () => {
     expect(view.isVisible()).toBe(true);
     expect(pushOverlay).toHaveBeenCalledWith(view);
     const summary = document.querySelector(".grid-monitor-summary")?.textContent ?? "";
-    expect(summary).toContain("2 台机器");
-    expect(summary).toContain("2 个活跃会话");
-    expect(summary).toContain("2 个 agent 运行中");
+    expect(summary).toBe(copyText("gridMonitor.render.summary", { machines: 2, liveSessions: 2, runningAgents: 2 }));
     const groupTitles = [...document.querySelectorAll(".grid-monitor-group-title")].map((e) => e.textContent);
-    expect(groupTitles).toEqual(["本机（1）", "pi（1）"]);
+    expect(groupTitles).toEqual([`${copyText("gridMonitor.groups.local")}（1）`, "pi（1）"]);
     let cells = document.querySelectorAll<HTMLElement>(".grid-monitor-cell");
     expect(cells.length).toBe(2);
     expect(document.querySelector(".badge-waiting")?.textContent).toContain("permission prompt");
@@ -363,7 +362,7 @@ describe("F91 GridMonitorView", () => {
     document.body.replaceChildren();
     const view = new GridMonitorView(mkSource([]));
     view.open();
-    expect(document.querySelector(".grid-monitor-empty")?.textContent).toContain("暂无会话");
+    expect(document.querySelector(".grid-monitor-empty")?.textContent).toContain(copyText("gridMonitor.render.empty"));
     expect(document.querySelector(".grid-monitor-summary")?.textContent).toBe("");
     view.close();
   });
@@ -547,7 +546,7 @@ describe("UP1 机器总览按行更新", () => {
       expect(order).toEqual(["l2", "l1", "l3", "n1", "n2", "p1", "p2"]); // 远端组按名字升序：nano 在 pi 前
       expect(t.cellOf("n1").querySelector(".grid-monitor-cell-cwd")).toBeNull();
       expect(t.cellOf("p1").querySelector(".badge-waiting")).toBeNull();
-      expect(t.cellOf("l2").querySelector(".badge-waiting")?.textContent).toBe("等待：worker request");
+      expect(t.cellOf("l2").querySelector(".badge-waiting")?.textContent).toBe(copyText("gridMonitor.renderBadges.waiting", { waitingFor: "worker request" }));
     } finally {
       t.done();
     }

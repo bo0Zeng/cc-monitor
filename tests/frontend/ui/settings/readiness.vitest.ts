@@ -13,6 +13,21 @@ import {
   type Gap,
 } from "../../../../src/frontend/ui/settings/readiness";
 import { LOCAL_MACHINE_KEY, type MachineStatus } from "../../../../src/frontend/ui/settings/machine-status";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { copyPattern } from "../../../test-support/copy-pattern";
+
+/** 摘要的期望值：分哪几档、每档几项，字取自文案表（拼法同 `summarizeGaps`）。 */
+type Tally = { missing?: number; unknown?: number };
+const want = (...groups: ["blocking" | "optional", Tally][]): string =>
+  groups
+    .map(([sev, c]) => {
+      const parts = [
+        c.missing ? copyText("readiness.gaps.missing", { missing: c.missing }) : "",
+        c.unknown ? copyText("readiness.gaps.unknown", { unknown: c.unknown }) : "",
+      ].filter(Boolean);
+      return copyText(sev === "blocking" ? "readiness.gaps.blocking" : "readiness.gaps.optional", { parts: parts.join(copyText("readiness.gaps.sep")) });
+    })
+    .join(copyText("readiness.gaps.groupSep"));
 
 const T = 1_700_000_000_000;
 const none = (): MachineStatus => ({});
@@ -206,7 +221,7 @@ describe("N-F2 NF2D3：本机全绿 + 没有远端 ⇒ 那张清单该整块消�
     ]);
     const s = summarizeGaps(gaps);
     // 〔缺口三〕后端那一格是必需的，另几格可选 —— 摘要按轻重分开说。
-    expect(s).toBe("必需：1 项还没测过；可选：2 项还没测过");
+    expect(s).toBe(want(["blocking", { unknown: 1 }], ["optional", { unknown: 2 }]));
   });
 
   it("★ 本机的 `ccm` 一格照常算数：没记 ⇒ 剩它一条，记上 ok ⇒ 清空", () => {
@@ -239,14 +254,14 @@ describe("summarizeGaps —— 措辞必须区分「缺」与「没测过」", (
 
   it("两类都有时分开说", () => {
     expect(summarizeGaps([mk("missing"), mk("unknown"), mk("unknown")])).toBe(
-      "可选：1 项确认缺，2 项还没测过",
+      want(["optional", { missing: 1, unknown: 2 }]),
     );
   });
 
   it("只有没测过时**不说「缺」**", () => {
     const s = summarizeGaps([mk("unknown"), mk("unknown")])!;
-    expect(s).toBe("可选：2 项还没测过");
-    expect(s).not.toContain("缺");
+    expect(s).toBe(copyText("readiness.gaps.optional", { parts: copyText("readiness.gaps.unknown", { unknown: "2" }) }));
+    expect(s).not.toContain(copyText("readiness.gapHead.missing"));
   });
 
   /**
@@ -263,20 +278,20 @@ describe("summarizeGaps —— 措辞必须区分「缺」与「没测过」", (
       severity,
     });
     const table: [Gap[], string][] = [
-      [[at("blocking", "missing")], "必需：1 项确认缺"],
-      [[at("optional", "unknown")], "可选：1 项还没测过"],
+      [[at("blocking", "missing")], want(["blocking", { missing: 1 }])],
+      [[at("optional", "unknown")], want(["optional", { unknown: 1 }])],
       [
         [at("optional", "unknown"), at("blocking", "unknown"), at("blocking", "missing")],
-        "必需：1 项确认缺，1 项还没测过；可选：1 项还没测过",
+        want(["blocking", { missing: 1, unknown: 1 }], ["optional", { unknown: 1 }]),
       ],
       [
         [at("blocking", "unknown"), at("optional", "missing"), at("optional", "unknown")],
-        "必需：1 项还没测过；可选：1 项确认缺，1 项还没测过",
+        want(["blocking", { unknown: 1 }], ["optional", { missing: 1, unknown: 1 }]),
       ],
     ];
     for (const [gaps, want] of table) expect(summarizeGaps(gaps)).toBe(want);
     // 正控：旧形（不分轻重）说不出这几格 —— 一档里全是必需时也不许读成「可选」。
-    expect(summarizeGaps([at("blocking", "missing")])).not.toContain("可选");
+    expect(summarizeGaps([at("blocking", "missing")])).not.toMatch(copyPattern("readiness.gaps.optional"));
   });
 
   it("空列表 → null", () => {
@@ -293,8 +308,8 @@ describe("describeGap", () => {
       consequence: "终端里没有 cc 命令",
       severity: "optional",
     });
-    expect(t).toContain("本机");
-    expect(t).toContain("缺");
+    expect(t).toContain(copyText("readiness.gap.local"));
+    expect(t).toContain(copyText("readiness.gapHead.missing"));
     expect(t).toContain("终端里没有 cc 命令");
   });
 
@@ -306,8 +321,8 @@ describe("describeGap", () => {
       consequence: "c",
       severity: "blocking",
     });
-    expect(t).toContain("未测过");
-    expect(t).not.toContain("缺");
+    expect(t).toContain(copyText("readiness.gapHead.untested"));
+    expect(t).not.toContain(copyText("readiness.gapHead.missing"));
   });
 
   // 🔴 这一对词今天**有第二个读者**（配置面审计那一页）⇒ 它必须只有一个住址。

@@ -51,8 +51,8 @@ const listWith = (there: unknown, extra: ReturnType<typeof row>[] = []) => ({
   machines,
   problems: [],
   rows: [
-    row("skill", "demo", [here, there], { about: "does demo", detail: [{ label: "文件", value: "1 个" }], new: true }),
-    row("mcp", "fs", [cell("same", [place(user, "same", false, "只读")], bring({ scope: { from: user, to: proj }, targets: targets(false, "全局的只读") })), cell("missing", [place(user, "missing")], null, "没项目")], {
+    row("skill", "demo", [here, there], { about: "does demo", detail: [{ label: copyText("diagnostics.files.title"), value: copyText("accounts.status.count", { n: "1" }) }], new: true }),
+    row("mcp", "fs", [cell("same", [place(user, "same", false, copyText("agentWindow.status.plain"))], bring({ scope: { from: user, to: proj }, targets: targets(false, "全局的只读") })), cell("missing", [place(user, "missing")], null, "没项目")], {
       about: "npx fs",
     }),
     ...extra,
@@ -115,7 +115,7 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     ]);
     const rows = () => [...s.element.querySelectorAll(".ext-row")].map((r) => r.getAttribute("data-key"));
     expect(rows()).toEqual(["skill/demo", "mcp/fs", "skill/noted"]);
-    expect(s.element.querySelector('.ext-row[data-key="skill/demo"] .ext-new')?.textContent).toBe("新");
+    expect(s.element.querySelector('.ext-row[data-key="skill/demo"] .ext-new')?.textContent).toBe(copyText("extPage.row.new"));
     expect(s.element.querySelector('.ext-row[data-key="mcp/fs"] .ext-new')).toBeNull();
     const marked = [...s.element.querySelectorAll(".ext-row")].filter((r) => r.querySelector(".ext-note-mark")).map((r) => r.getAttribute("data-key"));
     expect(marked).toEqual(["skill/noted"]);
@@ -143,7 +143,7 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     const lines = machineLines(s);
     expect(lines.map((l) => [...l.querySelectorAll(".ext-machine-top button")].map((b) => b.textContent))).toEqual([[copyText("extPage.button.bring")], []]);
     expect(lines[1].querySelector(":scope > .settings-hint")?.textContent).toBe("没项目");
-    expect([...lines[0].querySelectorAll(".ext-place .settings-hint")].map((h) => h.textContent)).toEqual(["只读"]);
+    expect([...lines[0].querySelectorAll(".ext-place .settings-hint")].map((h) => h.textContent)).toEqual([copyText("agentWindow.status.plain")]);
     open(s, "skill/demo");
     const places = machineLines(s).map((l) =>
       [...l.querySelectorAll(".ext-place")].map((p) => [p.querySelector(".ext-place-at")?.textContent, [...p.querySelectorAll("button")].map((b) => b.textContent)]),
@@ -235,7 +235,7 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
   });
 
   it("后端答了一个错误 ⇒ 那一行就是「装到 <那台> 失败：」＋ 它那一句本身，码不上屏；「装到哪」留着可以换一处", async () => {
-    const said = "项目目录「w/x」不是绝对路径。要从根目录或盘符写起，中间不能有 ..";
+    const said = copyText("beMcpEdit.path.notAbsolute", { dir: "w/x" });
     backend([listWith(demoMissing)]);
     const answer = invokeMock.getMockImplementation() as (cmd: string, a: ChanCallArgs) => Promise<unknown>;
     invokeMock.mockImplementation(async (cmd: string, a: ChanCallArgs) => {

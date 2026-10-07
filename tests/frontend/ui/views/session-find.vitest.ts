@@ -78,6 +78,8 @@ import { TabManager, type Tab } from "../../../../src/frontend/ui/tabs";
 import { SessionFindPanel, type SessionFindHost } from "../../../../src/frontend/ui/views/session-find";
 import { dispatcher } from "../../../../src/frontend/ui/keybindings/registry";
 import type { FindResult } from "../../../../src/frontend/ui/session-reads";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { copyPattern } from "../../../test-support/copy-pattern";
 
 const hit = (uuid: string, matched = "needle", before = "a ", after = " b", turn = 0, tsMs = 0) => ({
   uuid,
@@ -103,7 +105,7 @@ function panelWith(over: Partial<SessionFindHost> = {}): {
 } {
   const search = vi.fn(async () => found([]));
   const jumpTo = vi.fn(() => null);
-  const p = new SessionFindPanel({ search, jumpTo, unjumpableHint: "无对应卡片", ...over } as SessionFindHost);
+  const p = new SessionFindPanel({ search, jumpTo, unjumpableHint: copyText("tabStreamView.search.notLoaded"), ...over } as SessionFindHost);
   document.body.appendChild(p.el);
   return { p, search, jumpTo };
 }
@@ -148,7 +150,7 @@ describe("会话内查找面板", () => {
     p.outline.toggle.click(); // 同一个入口再按 ⇒ 收起
     expect(box(p).hidden).toBe(true);
     p.open("outline");
-    q(p, "[aria-label='关闭']").click();
+    q(p, `[aria-label='${copyText("sessionFind.box.closeHint")}']`).click();
     expect(box(p).hidden).toBe(true);
   });
 
@@ -227,12 +229,12 @@ describe("会话内查找 · 搜索", () => {
     expect(s.mock.calls.at(-1)).toEqual(["needle", true, 0]);
     const rows = hitRows(p.el);
     expect(rows.map((r) => r.dataset.hitUuid)).toEqual(["u9", "u2", "u4"]);
-    expect(rows[0].firstElementChild!.textContent).toMatch(/^你 · 第 3 轮 · /);
+    expect(rows[0].firstElementChild!.textContent).toMatch(copyPattern("sessionFind.hit.meta", { who: copyText("sessionFind.who.user"), n: 3 }, { whole: true }));
     expect(rows[1].firstElementChild!.textContent, "第一句之前的不写轮").toBe("Claude");
-    expect(rows[2].firstElementChild!.textContent, "子 agent 交回的正文命中单列一种").toBe("agent 回报 · 第 2 轮");
+    expect(rows[2].firstElementChild!.textContent, "子 agent 交回的正文命中单列一种").toBe(copyText("sessionFind.hit.metaNoTime", { who: copyText("sessionFind.who.report"), n: "2" }));
     expect(rows[0].querySelector("mark")!.textContent).toBe("NeedLe");
     expect(rows[0].hasAttribute("data-uuid"), "命中行不许叫 data-uuid（那是消息卡的名字）").toBe(false);
-    expect(status(p)).toBe("3 条");
+    expect(status(p)).toBe(copyText("sessionFind.status.count", { n: "3" }));
   });
 
   it("🔴 全量 > 条数 ⇒ 说出来，滚到底续下一页（skip ＝ 已列的条数）", async () => {
@@ -241,7 +243,7 @@ describe("会话内查找 · 搜索", () => {
     const { p } = panelWith({ search } as Partial<SessionFindHost>);
     enter(p, "x");
     await settleOutline();
-    expect(status(p)).toBe("前 2/3");
+    expect(status(p)).toBe(copyText("sessionFind.status.truncated", { n: "2", total: "3" }));
     const list = q(p, "[role=listbox]");
     Object.defineProperty(list, "scrollHeight", { value: 100, configurable: true });
     Object.defineProperty(list, "clientHeight", { value: 100, configurable: true });
@@ -249,7 +251,7 @@ describe("会话内查找 · 搜索", () => {
     await settleOutline();
     expect(search.mock.calls.at(-1)).toEqual(["x", false, 2]);
     expect(hitRows(p.el).map((r) => r.dataset.hitUuid)).toEqual(["a", "b", "c"]);
-    expect(status(p)).toBe("3 条");
+    expect(status(p)).toBe(copyText("sessionFind.status.count", { n: "3" }));
     list.dispatchEvent(new Event("scroll"));
     await settleOutline();
     expect(search, "列完了不再要").toHaveBeenCalledTimes(2);
@@ -261,10 +263,10 @@ describe("会话内查找 · 搜索", () => {
     const { p } = panelWith({ search } as Partial<SessionFindHost>);
     enter(p, "y");
     await settleOutline();
-    expect(status(p)).toBe("无匹配「y」");
+    expect(status(p)).toBe(copyText("findStrip.status.none", { q: "y" }));
     enter(p, "z");
     await settleOutline();
-    expect(status(p)).toBe("查找失败 · 后端版本旧");
+    expect(status(p)).toBe(copyText("findStrip.status.unavailable", { reason: "后端版本旧" }));
     expect(hitRows(p.el).length).toBe(0);
     enter(p, "   ");
     await settleOutline();
@@ -309,10 +311,10 @@ describe("会话内查找 · 搜索", () => {
     const row = hitRows(p.el)[0];
     row.click();
     expect(stateOf(row).hidden).toBe(false);
-    expect(stateOf(row).textContent).toBe("未加载 · 加载后跳转");
+    expect(stateOf(row).textContent).toBe(copyText("sessionFind.jump.pending"));
     settle.no(new Error("网络断开"));
     await settleOutline();
-    expect(stateOf(row).textContent).toBe("加载失败 · 网络断开重试");
+    expect(stateOf(row).textContent).toBe(copyText("sessionFind.fetchFailed.line", { reason: "网络断开" }) + copyText("sessionFind.jump.retry"));
     stateOf(row).querySelector("button")!.click();
     expect(jumpTo).toHaveBeenCalledTimes(2);
     settle.ok(document.createElement("div"));
@@ -322,7 +324,7 @@ describe("会话内查找 · 搜索", () => {
     jumpTo.mockImplementationOnce(() => Promise.resolve(null));
     row.click();
     await settleOutline();
-    expect(stateOf(row).textContent).toBe("无对应卡片");
+    expect(stateOf(row).textContent).toBe(copyText("tabStreamView.search.notLoaded"));
     expect(row.dataset.unjumpable).toBe("1");
   });
 });

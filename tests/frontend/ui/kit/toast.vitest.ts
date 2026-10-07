@@ -2,6 +2,7 @@
  * toast（C13）与撤销提示条（I11）：停留时长 · 出错不自己走 · 悬停停表 · 最多 3 条 ＋ 记录 · 同类合流 ×N 明细不丢 · 撤销 / 到点提交。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 type Kit = typeof import("../../../../src/frontend/ui/kit/toast");
 let kit: Kit;
@@ -28,7 +29,7 @@ describe("toast（C13）", () => {
 
   it("纯告知 4s 自己走；带动作 8s；出错不自己走", () => {
     kit.toast("已复制", "", { level: "info" });
-    kit.toast("已删除 devbox", "", { level: "success", action: { label: "撤销", run: () => {} } });
+    kit.toast(copyText("machineList.remove.done", { machine: "devbox" }), "", { level: "success", action: { label: copyText("kit.toast.undo"), run: () => {} } });
     kit.toast("恢复失败 · orders", "devbox 离线", { level: "error" });
     vi.advanceTimersByTime(kit.TOAST_PLAIN_MS + 1);
     expect(toasts().length).toBe(2);
@@ -104,7 +105,7 @@ describe("撤销提示条（I11）", () => {
     const log: string[] = [];
     kit.undoToast("已关闭 orders", () => log.push("undo"), () => log.push("commit"));
     const [undo] = buttonsOf(toasts()[0]);
-    expect(undo.textContent).toBe("撤销");
+    expect(undo.textContent).toBe(copyText("kit.toast.undo"));
     undo.click();
     vi.advanceTimersByTime(20_000);
     expect(log).toEqual(["undo"]);
@@ -118,7 +119,7 @@ describe("撤销提示条（I11）", () => {
 
   it("点 × ⇒ 当作不撤：提交", () => {
     const log: string[] = [];
-    kit.undoToast("已删除 devbox", () => log.push("undo"), () => log.push("commit"));
+    kit.undoToast(copyText("machineList.remove.done", { machine: "devbox" }), () => log.push("undo"), () => log.push("commit"));
     buttonsOf(toasts()[0]).at(-1)!.click();
     expect(log).toEqual(["commit"]);
   });

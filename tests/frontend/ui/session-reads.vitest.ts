@@ -37,6 +37,8 @@ import {
 } from "../../../src/frontend/ui/session-reads";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, refusedReply, UNSUPPORTED, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
+import { copyText } from "../../../src/frontend/ui/copy-table";
+import { copyPattern } from "../../test-support/copy-pattern";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const golden = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/session-reads.golden.json"), "utf8")) as Record<
@@ -126,7 +128,7 @@ describe("〔C4b〕会话读面三问：经通道说对的帧命令", () => {
     invokeMock.mockRejectedValueOnce(UNSUPPORTED);
     const a = await listUserInputs("devbox", "/p/s.jsonl", 5);
     expect([a.available, a.failure, a.from, a.end, a.entries]).toEqual([false, "oldBackend", 5, 5, []]);
-    expect(a.reason).toContain("后端版本旧");
+    expect(a.reason).toMatch(copyPattern("peerVersion.said.old"));
 
     invokeMock.mockReset().mockRejectedValueOnce(refusedReply("failed", "past EOF"));
     const b = await listUserInputs("devbox", "/p/s.jsonl", 5);
@@ -139,12 +141,12 @@ describe("〔C4b〕会话读面三问：经通道说对的帧命令", () => {
     invokeMock.mockReset().mockRejectedValueOnce(NO_CHANNEL);
     const c = await readSessionIndex("devbox", "/p/s.jsonl", 0);
     expect([c.available, c.rows]).toEqual([false, []]);
-    expect(c.reason).toContain("够不着");
+    expect(c.reason).toContain(copyText("chanCaller.said.unreachable"));
 
     invokeMock.mockReset().mockResolvedValueOnce(chanReply({ lines: [] }));
     const d = await findInSession("devbox", "/p/s.jsonl", "q", false);
     expect([d.available, d.hits, d.total]).toEqual([false, [], 0]);
-    expect(d.reason).toContain("读不懂");
+    expect(d.reason).toMatch(copyPattern("peerVersion.said.unreadable"));
   });
 
   it("正控：`ChanError` 是经通道那一层抛出来的那一个（折叠认得它）", async () => {
@@ -275,7 +277,7 @@ describe("〔STC〕第五问：会话事实", () => {
     const r3 = await readSessionFacts("pi", "/p/s.jsonl", null);
     expect(r3.available).toBe(false);
     expect(r3.available === false && r3.failure).toBe("oldBackend");
-    expect(r3.available === false && r3.reason).toMatch(/后端版本旧/);
+    expect(r3.available === false && r3.reason).toMatch(copyPattern("peerVersion.said.old"));
 
     invokeMock.mockRejectedValueOnce(refusedReply("failed", "past EOF"));
     const r4 = await readSessionFacts("pi", "/p/s.jsonl", product);

@@ -35,6 +35,7 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { UserInputPanel } from "../../../../src/frontend/ui/views/user-input-panel";
 import type { UserInputEntry } from "../../../../src/frontend/ui/session-reads";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const HINT = "这一条还没加载出来 —— 上翻到更早的消息之后再点";
 
@@ -138,7 +139,7 @@ describe("SE1 清单面板：追加一截时，已经标上的那一行不许被
     expect(f.rows()[0].dataset.unjumpable).toBe("1");
     expect(f.rows()[0].title).toBe(HINT);
     expect(f.rows()[1].textContent).toBe("2. 第二句");
-    expect(f.panel.toggle.textContent).toBe("大纲 · 2");
+    expect(f.panel.toggle.textContent).toBe(`${copyText("userInputPanel.outline.label")} · 2`);
   });
 
   it("setEntries 换成完全不同的一份（冷启动 / 文件被重写）⇒ 旧行不许留下，序号从 1 起", () => {
@@ -156,7 +157,7 @@ describe("SE1 清单面板：追加一截时，已经标上的那一行不许被
     expect(f.panel.toggle.title).toContain("本机后端不在");
     f.panel.setEntries([entry("u1", "第一句")]);
     expect(f.panel.toggle.disabled).toBe(false);
-    expect(f.panel.toggle.title).toBe("按你的输入跳转");
+    expect(f.panel.toggle.title).toBe(copyText("userInputPanel.outline.hint"));
   });
 });
 
@@ -165,7 +166,7 @@ describe("K-R45 清单面板：开关与收起", () => {
     f.panel.setEntries([]);
     expect(f.rows().length).toBe(0);
     expect(f.panel.toggle.disabled).toBe(true);
-    expect(f.panel.toggle.textContent).toBe("大纲"); // 0 条不挂计数
+    expect(f.panel.toggle.textContent).toBe(copyText("userInputPanel.outline.label")); // 0 条不挂计数
   });
 
   it("面板默认收着，点开关才展开（默认收着 ⇒ 对宿主既有布局零影响）", () => {
@@ -187,7 +188,7 @@ describe("K-R45 清单面板：开关与收起", () => {
     expect(f.rows().length).toBe(0);
     expect(f.panel.panel.hidden).toBe(true);
     expect(f.panel.toggle.disabled).toBe(true);
-    expect(f.panel.toggle.textContent).toBe("大纲"); // 0 条不挂计数
+    expect(f.panel.toggle.textContent).toBe(copyText("userInputPanel.outline.label")); // 0 条不挂计数
     expect(f.panel.toggle.getAttribute("aria-expanded")).toBe("false");
   });
 });

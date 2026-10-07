@@ -1027,7 +1027,7 @@ fn a_manifest_we_cannot_parse_says_so_instead_of_claiming_there_is_no_library() 
         "坏掉的账号库被报成了别的东西：{said}"
     );
     assert!(
-        !said.contains("无账号库"),
+        !said.contains(copy_core::copy_static!("bePlan.names.none")),
         "坏掉的账号库被谎称成「没有账号库」—— 用户会去找一个不存在的原因：{said}"
     );
 
@@ -1035,14 +1035,21 @@ fn a_manifest_we_cannot_parse_says_so_instead_of_claiming_there_is_no_library() 
     //（少了这一半，上面那两比可以靠「恒说解析不动」全绿，
     //  那时没装过账号库的用户会收到一句「你的文件坏了」）。
     let none = AccountTable::load("/nonexistent/accounts.json");
-    assert!(none.names().contains("无账号库"), "实得 {}", none.names());
+    assert!(
+        none.names()
+            .contains(copy_core::copy_static!("bePlan.names.none")),
+        "实得 {}",
+        none.names()
+    );
     assert!(!none.names().contains("读不懂"), "实得 {}", none.names());
 
     // 空文件 == 没有账号库（**不是**坏文件）。
     let e = format!("{d}/empty.json");
     std::fs::write(&e, "   \n").expect("造夹具");
     assert!(
-        AccountTable::load(&e).names().contains("无账号库"),
+        AccountTable::load(&e)
+            .names()
+            .contains(copy_core::copy_static!("bePlan.names.none")),
         "空文件被报成了坏文件"
     );
 }

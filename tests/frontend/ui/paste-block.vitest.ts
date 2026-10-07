@@ -13,6 +13,7 @@ vi.mock("../../../src/frontend/ui/kit/toast", () => ({
 }));
 
 import { buildPasteBlock, type PasteSpec } from "../../../src/frontend/ui/paste-block";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 function spec(over: Partial<PasteSpec> = {}): PasteSpec {
   return {
@@ -74,7 +75,7 @@ describe("校验门", () => {
     b.element.querySelector<HTMLButtonElement>(".paste-block-copy")!.click();
     expect(writeText).not.toHaveBeenCalled();
     expect(toastMock).toHaveBeenCalledWith(
-      "还不能贴",
+      copyText("pasteBlock.buildPasteBlock.notReady"),
       "先填一个合法的别名名字。",
       expect.objectContaining({ level: "info" }),
     );
@@ -108,8 +109,8 @@ describe("复制失败必须说出来（迁移前 A3 的真缺陷）", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(toastMock).toHaveBeenCalledWith(
-      "复制失败",
-      expect.stringContaining("手动选中复制"),
+      copyText("pasteBlock.buildPasteBlock.copyFailed"),
+      expect.stringContaining(copyText("pasteBlock.buildPasteBlock.noClipboard")),
       expect.objectContaining({ level: "error" }),
     );
   });
@@ -122,7 +123,7 @@ describe("复制失败必须说出来（迁移前 A3 的真缺陷）", () => {
     const b = buildPasteBlock(spec());
     b.element.querySelector<HTMLButtonElement>(".paste-block-copy")!.click();
     expect(toastMock).toHaveBeenCalledWith(
-      "复制失败",
+      copyText("pasteBlock.buildPasteBlock.copyFailed"),
       expect.any(String),
       expect.objectContaining({ level: "error" }),
     );

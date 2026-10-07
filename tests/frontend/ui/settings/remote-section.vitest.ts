@@ -137,7 +137,7 @@ async function removeAt(sec: RemoteSection, i: number, commit = true): Promise<v
   const rows = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine-row:not(.remote-machine-local)")];
   if (rows.length > 0) {
     rows[i]!.querySelector<HTMLButtonElement>("button[aria-label]")!.click();
-    menuItem("从列表删除").click();
+    menuItem(copyText("machineList.menu.remove")).click();
   } else {
     sec.element.querySelectorAll<HTMLButtonElement>(".remote-machine-remove")[i]!.click();
   }
@@ -211,12 +211,12 @@ import { describeStage } from "../../../../src/frontend/ui/settings/machine-card
 
 describe("F46 describeStage", () => {
   it("各阶段 kind 有图标+文案", () => {
-    expect(describeStage({ kind: "dialing", endpoint: "h:22" }).text).toContain("拨号 h:22");
+    expect(describeStage({ kind: "dialing", endpoint: "h:22" }).text).toContain(copyText("machineCard.stage.dial", { endpoint: "h:22" }));
     expect(describeStage({ kind: "won", endpoint: "h:22" }).icon).toBe("✓");
-    expect(describeStage({ kind: "failed", endpoint: "h:22", reason: "x" }).text).toContain("失败");
-    expect(describeStage({ kind: "auth", ok: false, detail: "被拒" }).text).toContain("被拒");
-    expect(describeStage({ kind: "auth", ok: true, detail: null }).text).toContain("鉴权通过");
-    expect(describeStage({ kind: "established" }).text).toContain("就绪");
+    expect(describeStage({ kind: "failed", endpoint: "h:22", reason: "x" }).text).toBe(copyText("machineCard.stage.failed", { endpoint: "h:22", reason: "x" }));
+    expect(describeStage({ kind: "auth", ok: false, detail: copyText("acct.val.refusedOnly") }).text).toContain(copyText("acct.val.refusedOnly"));
+    expect(describeStage({ kind: "auth", ok: true, detail: null }).text).toContain(copyText("machineCard.stage.authOk"));
+    expect(describeStage({ kind: "established" }).text).toContain(copyText("machineCard.seg.ready"));
     expect(describeStage({ kind: "hostKey", endpoint: "h:22", fingerprint: "SHA256:x" }).text).toContain("SHA256:x");
   });
 });
@@ -662,10 +662,10 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   it("★ 页头右侧是「添加机器」＋ ⋯（端口转发 · 全部刷新）；全局开关与导入下拉都不在了", async () => {
     const sec = await mount([mkH("a", "1.1.1.1")]);
     const [add, more] = sec.headActions();
-    expect(add!.textContent).toContain("添加机器");
+    expect(add!.textContent).toContain(copyText("machineList.head.add"));
     more!.click();
-    expect(menuItem("端口转发")).toBeTruthy();
-    expect(menuItem("全部刷新")).toBeTruthy();
+    expect(menuItem(copyText("machineList.menu.portForward"))).toBeTruthy();
+    expect(menuItem(copyText("machineList.head.refreshAll"))).toBeTruthy();
     // 全局「启用远端模式」退场（每台自己的「连接这台」）；单个导入的下拉也退场了。
     expect(sec.element.textContent).not.toContain("启用远端模式");
   });
@@ -674,11 +674,11 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const sec = await mount([mkH("a", "1.1.1.1")], fakePages().host);
     const rows = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine-row")];
     expect(rows[0]!.classList.contains("remote-machine-local")).toBe(true);
-    expect(rows[0]!.textContent).toContain("本机");
+    expect(rows[0]!.textContent).toContain(copyText("remote.cards.local"));
     // 本机删不掉（§40）：它的 ⋯ 里没有「从列表删除」；真机器那行有（反向自检）。
     const labelsOf = (row: HTMLElement): string[] => sec.menuFor(row.dataset.pageId!).map((m) => m.label);
-    expect(labelsOf(rows[0]!)).not.toContain("从列表删除");
-    expect(labelsOf(rows[1]!)).toContain("从列表删除");
+    expect(labelsOf(rows[0]!)).not.toContain(copyText("machineList.menu.remove"));
+    expect(labelsOf(rows[1]!)).toContain(copyText("machineList.menu.remove"));
   });
 
   it("★ 本机行不进 this.cards —— 保存写出去的机器数不变（S1 的边界）", async () => {
@@ -689,7 +689,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     await new Promise((r) => setTimeout(r, 0));
     const got = writtenHosts();
     expect(got.map((h) => h.label)).toEqual(["b"]);
-    expect(got.some((h) => h.label === "本机")).toBe(false);
+    expect(got.some((h) => h.label === copyText("remote.cards.local"))).toBe(false);
   });
 
   /**
@@ -759,7 +759,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const p = fakePages();
     const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")], p.host);
     // 本机排第一（§40：本地就是机器列表里的一行），远端跟在后面。
-    expect(p.added.map((x) => x.title)).toEqual(["本机", "a", "b"]);
+    expect(p.added.map((x) => x.title)).toEqual([copyText("remote.cards.local"), "a", "b"]);
     expect(p.added.slice(1).map((x) => x.id)).toEqual(["machine:a", "machine:b"]);
     // 列表里是行，不是表单：行上没有 host 输入框（那在详情页上）。
     const rows = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine-row")];
@@ -777,10 +777,10 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(got, "远端机器页必须带 parts").toBeTruthy();
     const inConn = got!.connection.textContent ?? "";
     const inComp = got!.components.textContent ?? "";
-    expect(inConn).toContain("地址");
-    expect(inComp).toContain("恢复命令");
+    expect(inConn).toContain(copyText("machineCard.field.host"));
+    expect(inComp).toContain(copyText("machineCard.field.resumeCmd"));
     // 反向：恢复命令**不该**留在连接那半
-    expect(inConn).not.toContain("恢复命令");
+    expect(inConn).not.toContain(copyText("machineCard.field.resumeCmd"));
   });
 
   /**
@@ -809,12 +809,12 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect([...got.terminal.querySelectorAll("button")].filter((b) => !b.closest(".cfg-page")).map((b) => b.textContent)).toEqual([]);
     const mgr = got.terminal.querySelector<HTMLElement>(".machine-aliases");
     expect(mgr?.dataset.origin).toBe("a");
-    expect(got.terminal.textContent).toContain("别名");
-    expect(labels(got.connection).filter((t) => t !== "忘记…").map((t) => (t.startsWith("更多") ? "更多" : t))).toEqual([
-      "选…",
-      "更多",
-      "测试连接",
-      "推送公钥…",
+    expect(got.terminal.textContent).toContain(copyText("machineAliases.manager.title"));
+    expect(labels(got.connection).filter((t) => t !== copyText("machineCard.field.resetFingerprint")).map((t) => (t.startsWith(copyText("machineCard.conn.more")) ? "MORE" : t))).toEqual([
+      copyText("machineCard.field.keyPick"),
+      "MORE",
+      copyText("machineCard.build.test"),
+      copyText("machineCard.build.pushKey"),
     ]);
     for (const part of [got.connection, got.components, got.terminal]) {
       const txt = [part.textContent ?? "", ...[...part.querySelectorAll("[title]")].map((e) => e.getAttribute("title") ?? "")].join("\n");
@@ -825,7 +825,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   it("本机页不带 parts（它没有卡片，不该被拆栏）", async () => {
     const p = fakePages();
     await mount([], p.host);
-    expect(p.added[0]!.title).toBe("本机");
+    expect(p.added[0]!.title).toBe(copyText("remote.cards.local"));
     expect(p.addedParts[0]).toBeUndefined();
   });
 
@@ -868,7 +868,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     // 同时留下新旧两项，而旧那项点进去是一台已经不存在的机器。
     const p = fakePages();
     const sec = await mount([mkH("a", "1.1.1.1")], p.host);
-    expect(p.added.map((x) => x.title)).toEqual(["本机", "a"]);
+    expect(p.added.map((x) => x.title)).toEqual([copyText("remote.cards.local"), "a"]);
 
     vi.mocked(loadConfig).mockResolvedValue({
       remote: { enabled: true, hosts: [mkH("b", "2.2.2.2")] },
@@ -876,7 +876,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     await sec.refresh();
 
     expect(p.removed).toContain("machine:a");
-    expect(p.added.map((x) => x.title)).toEqual(["本机", "a", "本机", "b"]);
+    expect(p.added.map((x) => x.title)).toEqual([copyText("remote.cards.local"), "a", copyText("remote.cards.local"), "b"]);
     // 列表里也只剩新的那一台（外加恒在的本机行）
     const rows = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine-row")];
     expect(rows.map((r) => r.dataset.pageId)).toEqual([
@@ -916,7 +916,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     });
     const sec = await mount([mkH("a", "1.1.1.1")]);
     const btns = [...sec.element.querySelectorAll<HTMLButtonElement>("button")];
-    const testBtn = btns.find((b) => b.textContent?.includes("测试连接"))!;
+    const testBtn = btns.find((b) => b.textContent?.includes(copyText("machineCard.build.test")))!;
     testBtn.click();
     for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
     expect(ipcCalls).toContain("remote-probe");
@@ -935,12 +935,12 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     ipcCalls.length = 0;
     chanOps.length = 0;
     const sec = await mount([mkH("a", "1.1.1.1")], fakePages().host);
-    sec.menuFor("machine:a").find((m) => m.label === "新建会话…")!.onClick!();
+    sec.menuFor("machine:a").find((m) => m.label === copyText("machineList.menu.launch"))!.onClick!();
     for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
     const dlg = document.querySelector<HTMLElement>('[role="dialog"]');
     expect(dlg, "起新会话框没开出来 —— 下面的断言会零命中地绿").toBeTruthy();
-    expect(dlg!.textContent).toContain("新建会话 · a");
-    expect(dlg!.querySelector<HTMLButtonElement>('button[aria-label="机器"]')!.disabled).toBe(true);
+    expect(dlg!.textContent).toContain(copyText("newSession.title.onMachine", { machine: "a" }));
+    expect(dlg!.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("newSession.label.machine")}"]`)!.disabled).toBe(true);
     expect(chanOps).not.toContain("terminal-name-mint");
     expect(chanOps.some((op) => /^launch-render-/.test(op))).toBe(false);
     document.body.innerHTML = "";
@@ -959,7 +959,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       backendGaps: [{ code: "no_tmux", count: 3 }],
     });
     const sec = await mount([mkH("a", "1.1.1.1")]);
-    [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes("测试连接"))!.click();
+    [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes(copyText("machineCard.build.test")))!.click();
     for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
     const box = sec.element.querySelector<HTMLElement>(".remote-test-result")!;
     const text = box.textContent ?? "";
@@ -984,7 +984,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     });
     const sec = await mount([mkH("a", "1.1.1.1")]);
     const btns = [...sec.element.querySelectorAll<HTMLButtonElement>("button")];
-    btns.find((b) => b.textContent?.includes("测试连接"))!.click();
+    btns.find((b) => b.textContent?.includes(copyText("machineCard.build.test")))!.click();
     for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0)); // 先读一次已保存的机器、再问本机后端
     const st = readStatus("a");
     expect(st.connection?.kind).toBe("ok");
@@ -1084,7 +1084,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       expect(rows).toHaveLength(2);
       expect(rows[0]!.dataset.inList).toBe("true");
       expect(rows[0]!.querySelector<HTMLInputElement>('input[type="checkbox"]')!.disabled).toBe(true);
-      expect(okBtn(dlg).textContent).toBe("添加 1 台");
+      expect(okBtn(dlg).textContent).toBe(copyText("addMachine.action.ssh", { n: "1" }));
       expect(saveConfig, "框开着就写了盘").not.toHaveBeenCalled();
       ipcReplies.clear();
     });
@@ -1096,7 +1096,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       vi.mocked(saveConfig).mockClear();
       const dlg = await openAdd(sec);
       expect(okBtn(dlg).getAttribute("aria-disabled"), "撞名还能点").toBe("true");
-      expect(dlg.textContent).toContain("gpu 已存在");
+      expect(dlg.textContent).toContain(copyText("addMachine.err.taken", { name: "gpu" }));
       const name = dlg.querySelector<HTMLInputElement>(".add-machine-row input:not([type=checkbox])")!;
       name.value = "gpu-2";
       name.dispatchEvent(new Event("input"));
@@ -1150,9 +1150,9 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       expect(writtenHosts().map((h) => [h.label, h.connect])).toEqual([["a", false], ["b", true]]);
       expect(ipcCalls.filter((c) => c === "remote_reconcile"), "改了没当场对齐").toHaveLength(1);
       const row = sec.element.querySelector<HTMLElement>('.remote-machine-row[data-page-id="machine:a"]')!;
-      expect(row.querySelector(".remote-machine-word")!.textContent).toBe("已停用");
+      expect(row.querySelector(".remote-machine-word")!.textContent).toBe(copyText("machinePage.state.disabled"));
       expect(row.querySelector<HTMLElement>("[data-state]")!.dataset.state).toBe("exited");
-      [...row.querySelectorAll<HTMLButtonElement>(".machine-problem button")].find((b) => b.textContent === "连接")!.click();
+      [...row.querySelectorAll<HTMLButtonElement>(".machine-problem button")].find((b) => b.textContent === copyText("machinePage.problem.connect"))!.click();
       for (let i = 0; i < 6; i++) await tick();
       expect(writtenHosts().map((h) => [h.label, h.connect])).toEqual([["a", true], ["b", true]]);
       expect(ipcCalls.filter((c) => c === "remote_reconcile")).toHaveLength(2);
@@ -1197,7 +1197,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     it("新建会话", async () => {
       const p = fakePages();
       const sec = await mount([mkH("a", "1.1.1.1")], p.host);
-      sec.menuFor("machine:a").find((m) => m.label === "新建会话…")!.onClick!();
+      sec.menuFor("machine:a").find((m) => m.label === copyText("machineList.menu.launch"))!.onClick!();
       await tick();
       expect(document.querySelector('[role="dialog"]'), "前提：起新会话框开着").toBeTruthy();
       esc();
@@ -1208,7 +1208,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     it("端口转发", async () => {
       const sec = await mount([], fakePages().host);
       sec.headActions()[1]!.click();
-      menuItem("端口转发").click();
+      menuItem(copyText("machineList.menu.portForward")).click();
       await tick();
       const pf = document.querySelector<HTMLElement>(".pf-overlay")!;
       expect(pf.style.display, "前提：面板开着").not.toBe("none");

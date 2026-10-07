@@ -246,7 +246,10 @@ fn the_posix_message_states_a_decision_not_a_missing_feature() {
         !m.contains("v1") && !m.contains("v2"),
         "文案里带版本号会被读成「以后会支持」：{m}"
     );
-    assert!(m.contains("刻意"), "没说清这是刻意的：{m}");
+    assert!(
+        m.contains(copy_core::copy_static!("rsLaunch.posix.noTerminalWindow")),
+        "没说清这是刻意的：{m}"
+    );
     assert!(
         m.contains("tmux"),
         "没说清会话容器是什么，用户不知道去哪找：{m}"
@@ -306,7 +309,7 @@ fn the_posix_marker_is_the_one_the_frontend_matches_on() {
     // 反面：标记不许宽到把**真失败**也软化掉。
     for real_failure in [
         "未找到远端配置: \"x\"",
-        "拒绝启动：远端命令含控制字符",
+        &*copy_core::copy_text("rsLaunch.refuse.control", &[("what", "远端命令")]),
         "spawn powershell failed: No such file",
     ] {
         assert!(

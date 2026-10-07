@@ -133,7 +133,7 @@ fn an_answer_that_is_not_utf8_is_not_parroted_as_mojibake() {
         let said = refusal.say("vmself");
         assert!(!said.contains('\u{FFFD}'), "界面那句里照抄了乱码：{said}");
         assert!(
-            said.contains("不是 UTF-8"),
+            said.contains(copy_core::copy_static!("rsByteTable.key.notUtf8")),
             "那句话没说出「不是 UTF-8」：{said}"
         );
         assert!(said.contains("vmself"), "{said}");
@@ -142,7 +142,10 @@ fn an_answer_that_is_not_utf8_is_not_parroted_as_mojibake() {
     match key_from_uname(Some(1), "", "'uname' is not recognized") {
         Err(Refusal::OsUnknown { why }) => {
             assert!(why.contains("'uname' is not recognized"), "{why}");
-            assert!(!why.contains("不是 UTF-8"), "{why}");
+            assert!(
+                !why.contains(copy_core::copy_static!("rsByteTable.key.notUtf8")),
+                "{why}"
+            );
         }
         other => panic!("{other:?}"),
     }
@@ -198,10 +201,10 @@ fn every_refusal_names_the_machine_and_what_it_is() {
             arch: "arm64".into(),
         },
         Refusal::OsUnknown {
-            why: "它没有答".into(),
+            why: copy_core::copy_static!("rsByteTable.key.noAnswer").into(),
         },
         Refusal::ArchUnknown {
-            why: "它没有答".into(),
+            why: copy_core::copy_static!("rsByteTable.key.noAnswer").into(),
         },
         Refusal::NotPromisedHere {
             os: "Windows".into(),
