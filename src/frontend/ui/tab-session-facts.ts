@@ -60,6 +60,7 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
   const peek = JSON.stringify([tab.pending, tab.lastSay]) !== JSON.stringify([f.pending, f.lastSay]);
   tab.pending = f.pending;
   tab.lastSay = f.lastSay;
+  tab.retries = new Map(f.retries.map((r) => [r.id, r.outcome]));
 
   return { forkedFrom, touchedFiles, usage, projectDir, agent, writers, needs, peek };
 }

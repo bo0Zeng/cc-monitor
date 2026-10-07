@@ -69,6 +69,7 @@ async function resumeLocalCore(req: LocalResumeRequest): Promise<"unsent" | "sen
       match: { sid: req.sid },
       tmuxName,
       arrived: { title: copyText("localResume.launch.arrived"), body: arrivedBody(LOCAL_ORIGIN) },
+      slot: { cwd: req.cwd, agent: req.agent },
     });
     return "sent";
   } catch (err) {

@@ -18,7 +18,7 @@ import { spinner } from "./kit/progress";
 import { statusDot } from "./kit/status-dot";
 import { confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { toast } from "./kit/toast";
-import { lastWords, watchUntilArrived, type ArrivalMatch } from "./launch-arrival";
+import { lastWords, watchUntilArrived, type SlotSpec } from "./launch-arrival";
 import { listTerminals, previewText } from "./terminal-reads";
 import { openPanePreview } from "./views/pane-preview";
 import { runRemoteAttach } from "./remote-launch-run";
@@ -28,17 +28,7 @@ import s from "./launch-slot.module.css";
 /** 多久没报到算「未报到」（到点只换样子，不放弃等）。 */
 export const SLOT_MISS_MS = 20_000;
 
-export interface SlotSpec {
-  origin: Origin;
-  /** 起在哪个目录（那台展开过的）。 */
-  cwd: string;
-  /** 起在 tmux 会话里 ⇒ 它的名字；开窗起的 ⇒ `null`。 */
-  tmuxName: string | null;
-  /** 起的是哪一家（［在终端里打开］按它渲命令）。 */
-  agent: string;
-  /** 认报到用的那一格（分叉 ⇒ sid；新起的 ⇒ 目录）。 */
-  match: ArrivalMatch;
-}
+export type { SlotSpec };
 
 /** 没报到时那个 tmux 会话的样子：在（画面是这几行）· 不在 · 读不到（那一句）。 */
 export type SlotScreen = { kind: "there"; terminal: string; words: string } | { kind: "gone" } | { kind: "unread"; why: string };

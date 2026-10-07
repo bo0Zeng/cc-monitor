@@ -40,6 +40,20 @@ export type LaunchWait = "arrived" | "missed" | "unsent";
 /** 认它用的那一格。 */
 export type ArrivalMatch = { sid: string } | { cwd: string };
 
+/** 占位标签页那一件要的（`launch-slot.ts` 画它）：放在这里，起会话的几条路交它时不必 import 画它的那一份。 */
+export interface SlotSpec {
+  origin: Origin;
+  /** 起在哪个目录（那台展开过的）。 */
+  cwd: string;
+  /** 起在 tmux 会话里 ⇒ 它的名字；开窗起的 ⇒ `null`。 */
+  tmuxName: string | null;
+  /** 起的是哪一家（［在终端里打开］按它渲命令）。 */
+  agent: string;
+  /** 认报到用的那一格（分叉 ⇒ sid；新起的 ⇒ 目录）。 */
+  match: ArrivalMatch;
+}
+
+
 export interface ArrivalSpec {
   origin: Origin;
   match: ArrivalMatch;
@@ -51,6 +65,14 @@ export interface ArrivalSpec {
   ticket?: string;
   /** 发起方所在的窗口（不是主窗口 ⇒ 那一句在那里也说一遍）。由 [`expectArrival`] 填。 */
   from?: string;
+  /** 占位标签页要的两样（起在哪个目录 · 哪一家）：给了、又是在主窗口里发起的 ⇒ 走占位标签页（[`setArrivalSlots`]）。 */
+  slot?: { cwd: string; agent: string };
+}
+
+/** 主窗口：长出占位标签页（`main.ts` 装一次，同起新会话那一件）；别的窗口没有 ⇒ 照旧到点说一句。 */
+let slots: ((spec: SlotSpec) => void) | null = null;
+export function setArrivalSlots(fn: ((spec: SlotSpec) => void) | null): void {
+  slots = fn;
 }
 
 /** 那一句：主窗口里说，发起方在别的窗口 ⇒ 那里也说一遍。 */
@@ -148,8 +170,15 @@ export function expectArrival(spec: ArrivalSpec): void {
   emit(LAUNCH_EXPECT_EVENT, { ...spec, from: spec.from ?? thisWindow() }).catch((e: unknown) => console.warn("[launch-arrival] 交不给主窗口：", e));
 }
 
-/** 主窗口：收下一件「等它」。 */
+/**
+ * 主窗口：收下一件「等它」。在主窗口里发起、带着占位要的两样、不等回话的 ⇒ 交占位标签页（报到了换成真的、没报到它自己画），
+ * 这里不计时；别的 ⇒ 预算到了说一句「没看到」。
+ */
 export function watchArrival(spec: ArrivalSpec): void {
+  if (slots && spec.slot && spec.ticket === undefined && (spec.from === undefined || spec.from === MAIN_WINDOW)) {
+    slots({ origin: spec.origin, cwd: spec.slot.cwd, tmuxName: spec.tmuxName, agent: spec.slot.agent, match: spec.match });
+    return;
+  }
   const p: Pending = {
     ...spec,
     before: new Set(seenLive.get(key(spec.origin)) ?? []),

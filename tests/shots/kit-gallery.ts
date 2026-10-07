@@ -13,6 +13,8 @@ import { chip, connectionPill, setChipOpen } from "../../src/frontend/ui/kit/chi
 import { card } from "../../src/frontend/ui/kit/card";
 import { listRow, setRowState } from "../../src/frontend/ui/kit/list-row";
 import { fold } from "../../src/frontend/ui/kit/fold";
+import { select } from "../../src/frontend/ui/kit/select";
+import { accountAvatarEl } from "../../src/frontend/ui/account-color";
 import { banner } from "../../src/frontend/ui/kit/banner";
 import { emptyState, noMatch } from "../../src/frontend/ui/kit/empty";
 import { countBadge, tag, kbd } from "../../src/frontend/ui/kit/badge";
@@ -110,6 +112,21 @@ function overview(): void {
       ["校验中", fVal.root],
       ["只读", fRo.root],
       ["禁用", fDis.root],
+    ]),
+  );
+
+  const acctOpts = [
+    { value: "work", label: "work", note: "默认 · 5h 63%", lead: () => accountAvatarEl("work", { size: 16 }) },
+    { value: "personal", label: "personal", note: "5h 12%", lead: () => accountAvatarEl("personal", { size: 16 }) },
+    { value: "api", label: "api", enabled: false, why: "需登录", lead: () => accountAvatarEl("api", { size: 16 }) },
+  ];
+  const selDis = select({ label: "账号", options: acctOpts });
+  selDis.setDisabled(true);
+  document.body.append(
+    section("下拉", "C3", "g-cols3", [
+      ["收着（身份块 · 字 · 灰字）", select({ label: "账号", options: acctOpts }).el],
+      ["没有身份块", select({ label: "agent", options: [{ value: "claude", label: "claude" }] }).el],
+      ["禁用", selDis.el],
     ]),
   );
 

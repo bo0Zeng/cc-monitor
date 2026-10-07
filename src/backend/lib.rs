@@ -838,7 +838,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p8u-profiles：别名改成配置文件 ~/.cc-monitor/profiles.toml 里带继承的具名配置；ccm 认 @<名>，被叫成别的名字时取同名那一段（CCM_VERSION 7）。
 ///
 /// p8v-token-log：中转替某号续令牌与上游 401 / 403 按号记日志；续期锁释放进 Drop、锁目录过期收回。
-pub const BUILD_ID: &str = "p8v-token-log";
+///
+/// p8w-step-state：history-facts 的 pending[] 带 state / why（在跑 · 在等你 · 状态不明及原因码），另给 retries（一串重试接上没有）。
+pub const BUILD_ID: &str = "p8w-step-state";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 

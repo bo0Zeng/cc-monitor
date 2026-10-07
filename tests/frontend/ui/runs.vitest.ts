@@ -223,7 +223,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     const notices = () =>
       [...streamRootEl.querySelectorAll<HTMLElement>(".card-notice:not([hidden]) .notice-row:not([hidden])")].map((r) => r.textContent ?? "");
     expect(notices().join("|")).toContain("扫目录");
-    const facts = { agent: "claude", end: 1, forkedFrom: null, touchedFiles: [], usage: null, projectDir: null, writers: [], pending: [], lastSay: null, needs: null, handedBack: ["w6"] };
+    const facts = { agent: "claude", end: 1, forkedFrom: null, touchedFiles: [], usage: null, projectDir: null, writers: [], pending: [], lastSay: null, needs: null, handedBack: ["w6"], retries: [] };
     (tm as unknown as { onSessionFacts(sid: string, f: unknown): void }).onSessionFacts(SID, facts);
     expect(notices().join("|")).not.toContain("扫目录");
     expect(notices().join("|"), "别的子运行的通知照常").toContain("别的");

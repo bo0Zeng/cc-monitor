@@ -196,7 +196,7 @@ describe("〔STC〕第五问：会话事实", () => {
   it("★★ 金样：TS 解码器读得懂后端真出的会话事实（逐字段）", () => {
     const f = decodeFacts(golden["history-facts"]);
     expect(f).toEqual({
-      end: 1067,
+      end: 1241,
       forkedFrom: "src-0",
       touchedFiles: ["/w/a.ts"],
       usage: { promptTokens: 6, model: "m-g", peakPromptTokens: 6, limit: 1_000_000, limitFrom: "assumed" },
@@ -204,12 +204,16 @@ describe("〔STC〕第五问：会话事实", () => {
       projectDir: "/g/proj",
       writers: [],
       pending: [
-        { id: "tu-1", name: "Edit", what: "/w/a.ts", at: "t3" },
-        { id: "tu-3", name: "Agent", what: null, at: "t4" },
+        { id: "tu-1", name: "Edit", what: "/w/a.ts", at: "t3", state: "unclear", why: "noWriter" },
+        { id: "tu-3", name: "Agent", what: null, at: "t4", state: "unclear", why: "noWriter" },
       ],
       lastSay: { text: "done", at: "t5" },
       needs: null,
       handedBack: ["ag-7"],
+      retries: [
+        { id: "rt-1", outcome: "recovered" },
+        { id: "rt-2", outcome: "retrying" },
+      ],
     });
   });
 
@@ -240,6 +244,16 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(() => decodeFacts(without("handedBack")), "缺 handedBack").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, handedBack: [7] }), "id 只收字符串").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, handedBack: "ag-7" })).toThrow(ReplyUnreadable);
+    // 每步状态：state 只认那三种、why 只认那两种（或 null）；重试结局只认那四种，每件恰好两格。
+    const step = { id: "x", name: "Bash", what: null, at: null, state: "unclear", why: "untracked" };
+    expect(decodeFacts({ ...good, pending: [step] }).pending[0]).toEqual(step);
+    expect(() => decodeFacts({ ...good, pending: [{ ...step, state: "done" }] }), "state 只认那三种").toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, pending: [{ ...step, why: "guess" }] }), "why 只认那两种").toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, pending: [{ id: "x", name: "Bash", what: null, at: null, state: "running" }] }), "缺 why").toThrow(ReplyUnreadable);
+    expect(() => decodeFacts(without("retries")), "缺 retries").toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, retries: [{ id: "r", outcome: "maybe" }] }), "结局只认那四种").toThrow(ReplyUnreadable);
+    expect(() => decodeFacts({ ...good, retries: [{ id: "r" }] })).toThrow(ReplyUnreadable);
+    expect(decodeFacts({ ...good, retries: [{ id: "r", outcome: "interrupted" }] }).retries).toEqual([{ id: "r", outcome: "interrupted" }]);
   });
 
   it("★ 说对的帧命令、对的请求体：没有令牌 ⇒ 只带 path；有 ⇒ 令牌原样放进 prior；失败折成 available:false ＋ 种类", async () => {

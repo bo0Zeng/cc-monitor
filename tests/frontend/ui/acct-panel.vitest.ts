@@ -160,6 +160,21 @@ describe("账号面板", () => {
   });
 });
 
+describe("账号面板 · 额度格照后端显示态画", () => {
+  const refused = (full: boolean) => ({ ...LEDGER.accounts[0], state: "refused" as const, slots: [{ slot: "5h", pct: full ? 100 : 58, resetsAt: NOW + 3600, ...(full ? { full: true } : {}) }] });
+  it("★ 被拒而没用满 ⇒「58% · 被拒」（不画 ✕）；用满 ⇒ ✕", () => {
+    seed({ quota: refused(false) }, undefined);
+    openAccountPanel("s1", "<local>", host);
+    expect(panel().textContent).toContain("58% · 被拒");
+    expect(panel().textContent).not.toContain("✕");
+    toggleAccountPanel("s1", "<local>", host);
+    seed({ quota: refused(true) }, undefined);
+    openAccountPanel("s1", "<local>", host);
+    expect(panel().textContent).toContain("✕");
+    expect(panel().textContent).not.toContain("100% · 被拒");
+  });
+});
+
 describe("账号面板 · 重启切换", () => {
   /** 热切换不成立 ⇒ 主按钮是「重启切换」；点它，等那一趟回来。 */
   async function restart(reply: unknown): Promise<void> {

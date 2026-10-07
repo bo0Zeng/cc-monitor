@@ -71,7 +71,7 @@ interface LaunchToasts {
  * `claim` = 没起进程（接回）⇒ 窗口开了就说。
  */
 type AfterOpen =
-  | { kind: "expect"; match: ArrivalMatch; tmuxName: string | null }
+  | { kind: "expect"; match: ArrivalMatch; tmuxName: string | null; slot: { cwd: string; agent: string } }
   | { kind: "silent" }
   | { kind: "claim" };
 
@@ -107,6 +107,7 @@ async function invokeLaunchOrCopyFallback(
         match: after.match,
         tmuxName: after.tmuxName,
         arrived: { title: toasts.success, body: arrivedBody(origin) },
+        slot: after.slot,
       });
     } else if (after.kind === "claim") {
       toast(toasts.success, toasts.successDetail ?? "", { level: "info" });
@@ -173,7 +174,7 @@ async function resumeDirectCore(
     success: copyText("remoteLaunchRun.resume.started"),
     failureCopied: copyText("remoteLaunchRun.resume.failedCopied"),
     failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
-  }, { kind: "expect", match: { sid }, tmuxName: null });
+  }, { kind: "expect", match: { sid }, tmuxName: null, slot: { cwd, agent } });
 }
 
 /** F51：一键 attach 到远端 tmux 会话:拉起 `ssh -t … tmux attach -t <名>`;失败回退复制命令。

@@ -408,4 +408,14 @@ describe("D2 · confirmDialog / askText 的结算语义（C10）", () => {
     await expect(h.done).resolves.toBe(true);
     expect(dialog()).toBeNull();
   });
+
+  it("formDialog 的宽度刻度：缺省不标（560）· wide 580 · narrow 520", () => {
+    const sizes = [{}, { wide: true }, { narrow: true }].map((extra) => {
+      formDialog({ title: "t", action: "a", body: document.createElement("div"), submit: async () => null, ...extra });
+      const size = dialog()!.dataset.size ?? "";
+      cancelBtn().click();
+      return size;
+    });
+    expect(sizes).toEqual(["", "wide", "narrow"]);
+  });
 });

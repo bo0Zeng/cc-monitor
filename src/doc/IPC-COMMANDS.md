@@ -1698,10 +1698,17 @@ sid → 上次用哪个号起。
 | `agent` | ← | 这份记录是哪一家的（线上的 kind，适配层按记录认）；认不出 ⇒ `null` |
 | `end` | ← | 最后一个完整行的末字节 |
 | `forkedFrom` | ← | 源会话 sid：首条带 `forkedFrom`（`sessionId` 与 `messageUuid` 都是串）的 user / assistant 记录；不是分叉来的 ⇒ `null` |
+| `handedBack` | ← | 交回了的子运行 id（按「谁说的」认），去重、文件序 |
+| `lastSay` | ← | 最后一段正文的头一行 `{text, at}`；没有 ⇒ `null` |
+| `needs` | ← | 那台说在等你 ⇒ `{kind, tool, call, what, sinceMs}`（`kind`：approve · answer · plan · unknown）；不在等 ⇒ `null` |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
+| `pending` | ← | 还没结果的工具调用 `{id, name, what, at, state, why}`：`state` 在跑 running · 在等你 awaiting · 状态不明 unclear（每次现判）；`why` 只在 unclear 时给：noWriter（没有活进程持着这条会话）· untracked（这一家不留 pidfile，判不了活） |
 | `prior` | → | 可选：**上一次应答的 `data` 原样**（续传令牌） |
+| `projectDir` | ← | 会话起在哪个目录（记录开头）；还没读到 ⇒ `null` |
+| `retries` | ← | 一串相邻的 API 重试按首条的 `uuid` 记一件 `{id, outcome}`：retrying（还没下文）· recovered（后面来了正常回复）· failed（来了报错那条）· interrupted（人发了一句 / 打断）；文件序，至多 200 件 |
 | `touchedFiles` | ← | 写类工具（Edit / Write / MultiEdit → `file_path`，NotebookEdit → `notebook_path`）碰过的文件，原样、去重、近因序（最近碰的在末尾），至多 1000 条（超 ⇒ 丢最久没碰的） |
 | `usage` | ← | 文件序最后一条 `input_tokens + cache_creation_input_tokens + cache_read_input_tokens > 0` 的 assistant 记录 ⇒ `{promptTokens, model, peakPromptTokens, limit, limitFrom}`（`model` 缺 ⇒ `null`）；一条都没有 ⇒ `null` |
+| `writers` | ← | 此刻持着这条会话的活进程 pid（这台的 pidfile），升序；不留 pidfile 的那一家恒空 |
 
 码：`bad_args` · `failed` · `too_large`
 

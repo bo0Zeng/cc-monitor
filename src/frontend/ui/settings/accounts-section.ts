@@ -18,7 +18,7 @@ import { accountsAgentProfile, fetchAccounts, invalidateAccountsCache, launchAge
 import { setModelForAccount, getModelForAccount } from "../account-prefs";
 import { accountAvatarEl } from "../account-color";
 import { readQuota } from "../quota-reads";
-import { fmtAt, slotLabel, type QuotaRead } from "../quota-lines";
+import { fmtAt, slotLabel, slotValue, type QuotaRead } from "../quota-lines";
 import type { QuotaShow } from "../generated/QuotaShow";
 import { localTzMin } from "../acct-view";
 import { readProfiles } from "../profiles-reads";
@@ -891,15 +891,7 @@ function fillUsage(u5: HTMLElement, u7: HTMLElement, q: QuotaShow | null, now: n
   ] as const) {
     const x = q.slots.find((v) => v.slot === slot);
     const here = (q.limiting ?? "5h") === slot;
-    // 照显示态画（与主窗口额度那一行同一套）：用满才 ✕；被拒没用满 `58% · 被拒`；超额在兜 `超额`；上一窗已过 / 没采样 `—`。
-    let v: string;
-    if (here && q.state === "overageInUse" && x?.pct !== undefined) v = copyText("acct.val.over");
-    else if (here && (q.state === "resetSinceSeen" || q.state === "unseen")) v = copyText("acct.val.none");
-    else if (x?.full) v = copyText("acct.val.full");
-    else if (here && q.state === "refused") v = x?.pct === undefined ? copyText("acct.val.refusedOnly") : copyText("acct.val.refusedPct", { pct: x.pct });
-    else if (!x || x.pct === undefined) v = copyText("acct.val.none");
-    else v = copyText("acct.val.pct", { pct: x.pct });
-    const parts = [slotLabel(slot), v];
+    const parts = [slotLabel(slot), slotValue(q, slot)];
     if (x?.resetsAt !== undefined && x.resetsAt > now && (slot === "5h" || (here && q.state === "refused"))) parts.push(copyText("acct.reset.at", { at: fmtAt(x.resetsAt, now, tz) }));
     cell.textContent = parts.join(" ");
     if (x?.full || (here && q.state === "refused")) cell.dataset.shade = "refused";

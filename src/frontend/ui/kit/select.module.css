@@ -1,0 +1,69 @@
+/* 下拉（C3）：外观同输入框 ＋ 右侧 14px 向下箭头；面板是弹出菜单（menu.module.css）。 */
+@layer components {
+  .select {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    min-width: 0;
+    min-height: var(--control-h);
+    padding: 0 var(--space-4);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-m);
+    background: var(--field-bg);
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color var(--dur-press);
+  }
+
+  .select:hover {
+    border-color: var(--text-faint);
+  }
+
+  .select:focus-visible,
+  .select[aria-expanded="true"] {
+    border-color: var(--field-border-focus);
+    outline: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+
+  .select:disabled {
+    border-color: var(--field-border);
+    opacity: var(--state-disabled-opacity);
+    cursor: default;
+  }
+
+  .select > svg {
+    flex: none;
+    color: var(--text-2);
+  }
+
+  .selectLead {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+  }
+
+  .selectLead:empty {
+    display: none;
+  }
+
+  .selectText {
+    flex: none;
+    max-width: 60%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .selectNote {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-2);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

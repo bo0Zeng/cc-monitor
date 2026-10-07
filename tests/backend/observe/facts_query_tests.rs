@@ -58,7 +58,17 @@ fn mixed() -> Vec<Value> {
         ]),
         json!({"type": "assistant", "message": {"usage": {"input_tokens": 0}, "content": []}}),
         json!({"type": "user", "forkedFrom": {"sessionId": "src-2", "messageUuid": "m2"}, "message": {"content": "q"}}),
+        retry("rA1", 1),
+        json!({"type": "system", "subtype": "local_command", "uuid": "x"}),
+        retry("rA2", 2),
+        json!({"type": "assistant", "uuid": "a9", "message": {"content": []}}),
+        retry("rB1", 1),
     ]
+}
+
+/// 一次 API 重试（CLI 写的 `system` · `api_error` 那一形；结构占位）。
+fn retry(uuid: &str, attempt: u32) -> Value {
+    json!({"type": "system", "subtype": "api_error", "uuid": uuid, "retryAttempt": attempt, "maxRetries": 10, "error": {"status": 529}})
 }
 
 /// ★ 三格逐格：分叉只认 user/assistant 且两个键都在、首条锁定 · 改动文件近因序去重 · usage 取最后一条有效的。
@@ -489,6 +499,8 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
         name: name.into(),
         what: what.map(str::to_string),
         at: None,
+        state: StepWait::Unclear,
+        why: None,
     };
     let wait = |w: Option<&str>| PidWait {
         waiting_for: w.map(str::to_string),
@@ -635,4 +647,134 @@ fn a_product_that_is_waiting_on_you_round_trips_as_prior() {
         ..SessionFacts::default()
     };
     assert_eq!(prior_from(&serde_json::to_value(&f).unwrap()), Ok(f));
+}
+
+/// ★ 一步还没结果时的样子只在这里判：那台说在等的正是它 ⇒ 在等你；有活进程 ⇒ 在跑；没有 ⇒ 状态不明、带原因码
+/// （没有活进程持着 `noWriter` · 这一家不留 pidfile、判不了活 `untracked`）；每次现判、不随续传令牌留下来。
+#[test]
+fn a_step_without_a_result_is_running_only_when_a_live_process_holds_the_session() {
+    let text = jsonl(&[assistant(vec![
+        tool_use("s1", "Bash", json!({"command": "make"})),
+        tool_use("s2", "Bash", json!({"command": "rm -rf build/"})),
+    ])]);
+    let states = |f: &SessionFacts| {
+        f.pending
+            .iter()
+            .map(|p| (p.state, p.why))
+            .collect::<Vec<_>>()
+    };
+    let unclear = |w| (StepWait::Unclear, Some(w));
+    let mut f = scan_all(&text);
+    settle_pending(&mut f, true);
+    assert_eq!(
+        states(&f),
+        [unclear(UnclearWhy::NoWriter); 2],
+        "没有活进程 ⇒ 状态不明（不当在跑）"
+    );
+    settle_pending(&mut f, false);
+    assert_eq!(
+        states(&f),
+        [unclear(UnclearWhy::Untracked); 2],
+        "这一家不留 pidfile ⇒ 判不了活"
+    );
+    f.writers = vec![4711];
+    settle_pending(&mut f, true);
+    assert_eq!(states(&f), [(StepWait::Running, None); 2]);
+    f.needs = needs_of(
+        &f.pending,
+        Some(&PidWait {
+            waiting_for: Some("permission prompt".into()),
+            since_ms: None,
+        }),
+    );
+    assert_eq!(f.needs.as_ref().and_then(|n| n.call.as_deref()), Some("s1"));
+    settle_pending(&mut f, true);
+    assert_eq!(
+        states(&f),
+        [(StepWait::Awaiting, None), (StepWait::Running, None)]
+    );
+    // 续传：令牌里带着上一次的样子也收（形状恰好）。
+    let wire = serde_json::to_value(&f).unwrap();
+    assert_eq!(
+        (
+            wire["pending"][0]["state"].clone(),
+            wire["pending"][0]["why"].clone()
+        ),
+        (json!("awaiting"), Value::Null)
+    );
+    let back = prior_from(&wire).expect("带着 state 的成品能原样回传");
+    assert_eq!(back.pending[0].state, StepWait::Awaiting);
+    f.writers.clear();
+    f.needs = None;
+    settle_pending(&mut f, true);
+    assert_eq!(
+        serde_json::to_value(&f).unwrap()["pending"][1]["why"],
+        "noWriter"
+    );
+}
+
+/// ★ 一串重试的结局按首条给（界面按卡上的 id 读）：后面来了正常回复 ⇒ 接上了 · 来了报错那条 ⇒ 没接上 ·
+/// 你又说了一句 / 打断 ⇒ 中断了 · 还没下文 ⇒ 还在重试。中间夹的别的系统记录不算下文；接力扫 == 一次扫完。
+#[test]
+fn a_retry_run_is_settled_by_what_follows_it_and_keyed_by_its_first_record() {
+    let api_error = json!({"type": "assistant", "uuid": "e1", "isApiErrorMessage": true, "message": {"content": []}});
+    let recs = vec![
+        retry("a1", 1),
+        json!({"type": "system", "subtype": "local_command", "uuid": "x"}),
+        retry("a2", 2),
+        json!({"type": "assistant", "uuid": "ok", "message": {"content": []}}),
+        retry("b1", 1),
+        retry("b2", 2),
+        api_error,
+        retry("c1", 1),
+        json!({"type": "user", "isMeta": true, "message": {"content": "meta"}}),
+        user_text("[Request interrupted by user]"),
+        retry("d1", 1),
+    ];
+    let text = jsonl(&recs);
+    let whole = scan_all(&text);
+    let got: Vec<(&str, RetryOutcome)> = whole
+        .retries
+        .iter()
+        .map(|r| (r.id.as_str(), r.outcome))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("a1", RetryOutcome::Recovered),
+            ("b1", RetryOutcome::Failed),
+            ("c1", RetryOutcome::Interrupted),
+            ("d1", RetryOutcome::Retrying),
+        ]
+    );
+    let wire = serde_json::to_value(&whole).unwrap();
+    assert_eq!(
+        wire["retries"][0],
+        json!({"id": "a1", "outcome": "recovered"})
+    );
+    let mut cuts = vec![0usize];
+    cuts.extend(text.match_indices('\n').map(|(i, _)| i + 1));
+    for cut in cuts {
+        let prior = prior_from(&serde_json::to_value(scan_all(&text[..cut])).unwrap())
+            .expect("带着重试那一格的成品能原样回传");
+        assert_eq!(
+            scan_facts(&text.as_bytes()[cut..], prior, &Vec::new(), None).unwrap(),
+            whole,
+            "在字节 {cut} 处接力"
+        );
+    }
+    let many: Vec<Value> = (0..RETRY_KEEP + 3)
+        .flat_map(|i| {
+            [
+                retry(&format!("r{i}"), 1),
+                json!({"type": "assistant", "message": {"content": []}}),
+            ]
+        })
+        .collect();
+    let f = scan_all(&jsonl(&many));
+    assert_eq!(
+        (f.retries.len(), f.retries[0].id.as_str()),
+        (RETRY_KEEP, "r3"),
+        "超了丢最早的"
+    );
 }

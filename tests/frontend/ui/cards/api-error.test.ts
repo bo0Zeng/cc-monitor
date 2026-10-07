@@ -3,7 +3,7 @@
  *
  * 跑法：`npm run test:api-error`（tsx，零 DOM）。失败 throw 非零退出。DOM 那几条（并条 · 结局）在 `main-window-behavior.vitest.ts`。
  */
-import { reasonWord } from "../../../../src/frontend/ui/cards/api-error.ts";
+import { reasonWord } from "../../../../src/frontend/ui/cards/api-reason.ts";
 
 let failed = 0;
 function test(name: string, fn: () => void): void {

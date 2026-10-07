@@ -18,7 +18,8 @@ import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
 import { abbrOf, dotOf, needsOf, needsOrder, nextNeeds, peekLine, stateLine, titleParts } from "../../../src/frontend/ui/session-face";
 import { NeedsBar, NeedsWatch, NOTIFY_WAIT_MS, answerWhere, needsHeadline } from "../../../src/frontend/ui/needs-bar";
-import { SessionHead } from "../../../src/frontend/ui/session-head";
+import { SessionHead, terminalActsOf } from "../../../src/frontend/ui/session-head";
+import { buildApiErrorCard } from "../../../src/frontend/ui/cards/api-error";
 import { TerminalPage, type TerminalReads } from "../../../src/frontend/ui/terminal-page";
 import type { TerminalSend, TerminalSent } from "../../../src/frontend/ui/terminal-reads";
 import { fmtDur } from "../../../src/frontend/ui/quota-lines";
@@ -84,7 +85,7 @@ describe("一个会话读成什么（session-face）", () => {
 
   it("★ 状态句：等批准 · 等了多久 / 运行中 · 调用哪个工具 · 多久 / 空闲 · 完成多久前（没看 ⇒ 多说一个「未看」）/ 状态不明 · 哪台", () => {
     expect(stateLine(tab("a", { activity: waiting, needs: approve() }), NOW)).toEqual({ text: copyText("sessionFace.state.waiting", { kind: "等批准", waited: "2m" }), needs: true });
-    const running = tab("b", { activity: { status: "busy", waitingFor: null }, pending: [{ id: "x", name: "Bash", what: "pytest", at: new Date(NOW - 65_000).toISOString() }] });
+    const running = tab("b", { activity: { status: "busy", waitingFor: null }, pending: [{ id: "x", name: "Bash", what: "pytest", at: new Date(NOW - 65_000).toISOString(), state: "running", why: null }] });
     expect(stateLine(running, NOW).text).toBe(copyText("sessionFace.state.runningFor", { tool: "Bash", dur: "1m" }));
     const idle = (unread: number) => tab("c", { unread, activity: { status: "idle", waitingFor: null }, lastSay: { text: "改好了", at: new Date(NOW - 240_000).toISOString() } });
     expect(stateLine(idle(0), NOW).text).toBe(copyText("sessionFace.state.idleSeen", { ago: "4m" }));
@@ -95,7 +96,7 @@ describe("一个会话读成什么（session-face）", () => {
 
   it("peek：在等你 ⇒ 等的那一句；在跑 ⇒ 正在做的那一步；空闲 ⇒ 最后一句；拿不到 ⇒ 不出", () => {
     expect(peekLine(tab("a", { activity: waiting, needs: approve() }))).toBe("rm -rf build/");
-    expect(peekLine(tab("b", { pending: [{ id: "x", name: "Read", what: "src/a.ts", at: null }] }))).toBe("src/a.ts");
+    expect(peekLine(tab("b", { pending: [{ id: "x", name: "Read", what: "src/a.ts", at: null, state: "running", why: null }] }))).toBe("src/a.ts");
     expect(peekLine(tab("c", { activity: { status: "idle", waitingFor: null }, lastSay: { text: "结论", at: null } }))).toBe("结论");
     expect(peekLine(tab("d", { state: ENDED, lastSay: { text: "结论", at: null } }))).toBeNull();
   });
@@ -525,5 +526,25 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     vi.mocked(terminalFrontAvailable).mockReturnValue(false);
     r.page.sessionChanged();
     expect(front.style.display).toBe("none");
+  });
+});
+
+describe("报错卡上去它的终端那两颗（与会话头同一道）", () => {
+  it("★ 切到终端：↗ 真能用且还有终端可去；在终端里打开：远端、Claude 已退出；别的都不出", () => {
+    vi.mocked(terminalFrontAvailable).mockReturnValue(true);
+    expect(terminalActsOf(tab("a"))).toEqual({ front: true, attach: false });
+    expect(terminalActsOf(tab("b", { state: ENDED })).front).toBe(false);
+    vi.mocked(terminalFrontAvailable).mockReturnValue(false);
+    expect(terminalActsOf(tab("a"))).toEqual({ front: false, attach: false });
+    expect(terminalActsOf(tab("c", { origin: "devbox" as never, state: RECONNECTABLE }))).toEqual({ front: false, attach: true });
+    expect(terminalActsOf(tab("d", { state: RECONNECTABLE })).attach, "本机：没有接回终端的那条路").toBe(false);
+  });
+
+  it("报错卡摆出两颗（看不看得见由消息流根上的标记管），点了的那颗带着它是哪条路", () => {
+    const card = buildApiErrorCard({ timeLabel: "02:10", text: "overloaded" });
+    expect([...card.querySelectorAll<HTMLElement>(".api-error-acts [data-act]")].map((b) => [b.dataset.act, b.textContent])).toEqual([
+      ["front", copyText("terminal.head.front")],
+      ["attach", copyText("sessionHead.act.openTerm")],
+    ]);
   });
 });

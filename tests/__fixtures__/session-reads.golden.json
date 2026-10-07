@@ -1,7 +1,7 @@
 {
   "history-facts": {
     "agent": "claude",
-    "end": 1067,
+    "end": 1241,
     "forkedFrom": "src-0",
     "handedBack": [
       "ag-7"
@@ -16,16 +16,30 @@
         "at": "t3",
         "id": "tu-1",
         "name": "Edit",
-        "what": "/w/a.ts"
+        "state": "unclear",
+        "what": "/w/a.ts",
+        "why": "noWriter"
       },
       {
         "at": "t4",
         "id": "tu-3",
         "name": "Agent",
-        "what": null
+        "state": "unclear",
+        "what": null,
+        "why": "noWriter"
       }
     ],
     "projectDir": "/g/proj",
+    "retries": [
+      {
+        "id": "rt-1",
+        "outcome": "recovered"
+      },
+      {
+        "id": "rt-2",
+        "outcome": "retrying"
+      }
+    ],
     "touchedFiles": [
       "/w/a.ts"
     ],

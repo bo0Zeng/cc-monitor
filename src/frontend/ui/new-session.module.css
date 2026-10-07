@@ -94,31 +94,26 @@
     color: var(--field-placeholder);
   }
 
-  .nsSelect {
-    flex: 1;
-    min-width: 0;
-    padding: 0;
-    border: 0;
-    outline: none;
-    background: transparent;
-    color: var(--text);
-    font: inherit;
-  }
-
-  .nsSelect:disabled {
-    opacity: var(--state-disabled-opacity);
-  }
-
   .nsRecent {
+    display: inline-flex;
     flex: none;
-    max-width: 96px;
+    align-items: center;
+    gap: var(--space-1);
     padding: 0;
     border: 0;
+    border-radius: var(--radius-s);
     outline: none;
     background: transparent;
     color: var(--text-2);
     font: inherit;
     font-size: var(--font-size-small);
+    cursor: pointer;
+  }
+
+  .nsRecent:hover,
+  .nsRecent:focus-visible,
+  .nsRecent[aria-expanded="true"] {
+    color: var(--text);
   }
 
   .nsNote {
@@ -178,9 +173,16 @@
     font-size: var(--font-size-small);
   }
 
+  /* 「更多」那一行跟控件那一列对齐（让出左边标签那 72px）。 */
+  .nsMoreRow {
+    padding-left: calc(72px + var(--space-4));
+  }
+
+  /* 展开的那几行照常从左边标签起（抵掉上面让出的那一段）。 */
   .nsMore {
     display: flex;
     flex-direction: column;
+    margin-left: calc(-72px - var(--space-4));
     gap: var(--space-4);
   }
 }

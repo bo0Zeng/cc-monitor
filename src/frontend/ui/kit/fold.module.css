@@ -45,4 +45,26 @@
     padding: var(--space-4) var(--space-5);
     border-top: 1px solid var(--border-soft);
   }
+
+  /* 不带框的一行：灰小字，展开的内容紧贴在下面。 */
+  .fold[data-bare="true"] {
+    border: none;
+  }
+
+  .fold[data-bare="true"] > .foldHead {
+    height: auto;
+    padding: var(--space-1) 0;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .fold[data-bare="true"] > .foldHead:hover,
+  .fold[data-bare="true"] > .foldHead:focus-visible {
+    color: var(--text);
+  }
+
+  .fold[data-bare="true"] > .foldBody {
+    padding: var(--space-3) 0 0;
+    border-top: none;
+  }
 }

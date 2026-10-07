@@ -2866,6 +2866,26 @@
       "zh": "等你批准",
       "args": []
     },
+    "stream.step.awaitingYou": {
+      "kind": "body",
+      "zh": "在等你",
+      "args": []
+    },
+    "stream.step.unclear": {
+      "kind": "body",
+      "zh": "状态不明",
+      "args": []
+    },
+    "stream.step.unclearNoWriter": {
+      "kind": "body",
+      "zh": "没有进程在跑这个会话",
+      "args": []
+    },
+    "stream.step.unclearUntracked": {
+      "kind": "body",
+      "zh": "这一家不留进程记录，判不了在不在跑",
+      "args": []
+    },
     "stream.step.failed": {
       "kind": "body",
       "zh": "失败",
@@ -2939,6 +2959,11 @@
     "apiError.retry.recovered": {
       "kind": "body",
       "zh": "{reason} · 重试 ×{a} 后恢复 · {time}",
+      "args": ["reason", "a", "time"]
+    },
+    "apiError.retry.interrupted": {
+      "kind": "body",
+      "zh": "{reason} · 重试 ×{a} 后中断 · {time}",
       "args": ["reason", "a", "time"]
     },
     "apiError.card.next": {
@@ -18084,11 +18109,6 @@
       "zh": "{pct}%",
       "args": ["pct"]
     },
-    "acct.val.refused": {
-      "kind": "body",
-      "zh": "✕",
-      "args": []
-    },
     "acct.val.full": {
       "kind": "body",
       "zh": "✕",
@@ -22323,6 +22343,11 @@
     "sessionState.batch.skipped": {
       "kind": "body",
       "zh": "另 {n} 个已结束 · 跳过",
+      "args": ["n"]
+    },
+    "statusBar.todo.label": {
+      "kind": "action",
+      "zh": "要你动手 {n}",
       "args": ["n"]
     },
     "statusBar.messages.label": {

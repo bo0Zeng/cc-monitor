@@ -11,6 +11,8 @@ export interface FoldSpec {
   open: boolean;
   body: HTMLElement;
   onToggle?: (open: boolean) => void;
+  /** 不带框的一行（表单里「› 更多：…」那一类）：灰字、展开的内容不另起框。 */
+  bare?: boolean;
 }
 
 const summaries = new WeakMap<HTMLElement, HTMLElement>();
@@ -24,6 +26,7 @@ export function setFoldSummary(root: HTMLElement, text: string): void {
 export function fold(spec: FoldSpec): HTMLDivElement {
   const root = document.createElement("div");
   root.className = s.fold;
+  if (spec.bare) root.dataset.bare = "true";
   const head = document.createElement("button");
   head.type = "button";
   head.className = s.foldHead;

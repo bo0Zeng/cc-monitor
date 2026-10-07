@@ -50,6 +50,8 @@ import { recordFileWiring } from "./record-file-notice";
 import { toast, undoLatest } from "./kit/toast";
 import { KeysOverview } from "./views/keys-overview";
 import { StatusMessages } from "./status-messages";
+import { StatusChores } from "./status-chores";
+import { choresOf } from "./settings/data-reads";
 import { restoreZoom, stepZoom } from "./zoom";
 import { mountTabBarFold, tabBarManuallyFolded, toggleTabBarFold } from "./tab-bar-fold";
 import { attachTooltip } from "./kit/tooltip";
@@ -85,12 +87,12 @@ import { sessionCommands } from "./session-commands";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
 import { currentAccountForBadge } from "./accounts";
 import { fetchSessionAccounts, fetchAccounts } from "./account-reads";
-import { bindLaunchArrivals, noteLive } from "./launch-arrival";
+import { bindLaunchArrivals, noteLive, setArrivalSlots } from "./launch-arrival";
 import { FOCUS_SESSION_EVENT, openNewSession, setNewSessionPlaceholder } from "./new-session";
 import { copyText } from "./copy-table";
 import { appStore } from "./app-store";
 import { OverlayRouter } from "./overlay-router";
-import { SessionHead } from "./session-head";
+import { SessionHead, terminalActsOf } from "./session-head";
 import { NeedsBar, NeedsWatch } from "./needs-bar";
 import { notifySend } from "./turn-notify";
 
@@ -167,6 +169,22 @@ window.addEventListener("DOMContentLoaded", async () => {
   status.innerHTML = "";
   // 最左「消息」：本次运行里最近 20 条提示（toast 收进来的那几条也在这里找得回）。
   status.appendChild(new StatusMessages().el);
+  // 「要你动手 N」（有才出）：各台「文件与数据」进角标的件数相加，与设置窗左栏同一个数。
+  const chores = new StatusChores({
+    machines: async () => {
+      const got: unknown = await commands.backend_machines();
+      return Array.isArray(got) ? got.filter((o): o is string => typeof o === "string") : [LOCAL_ORIGIN];
+    },
+    chores: choresOf,
+    open: () => void openSettingsWindow(undefined, dest.CHORES),
+  });
+  status.appendChild(chores.el);
+  void chores.refreshAll();
+  void getCurrentWindow()
+    .onFocusChanged(({ payload: focused }) => {
+      if (focused) void chores.refreshAll();
+    })
+    .catch((e: unknown) => console.warn("[status-chores] 挂焦点监听失败：", e));
   const statusSpacer = document.createElement("span");
   statusSpacer.className = "status-sp";
   status.appendChild(statusSpacer);
@@ -257,6 +275,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       queueMicrotask(() => {
         sessionHead.render();
         terminalPage.sessionChanged();
+        paintTerminalActs();
         needsBar.render();
         needsWatch.observe(tabs.tabsInOrder());
       });
@@ -313,6 +332,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   tabs.onUpdateMachine = (origin) => void openSettingsWindow(undefined, dest.machineOf(origin));
   // 起新会话：在主窗口里起的先长出占位标签页、报到了换成真的；在设置 / 查看窗里起的点了［切过去］再切，先把主窗口拉到前面。
   setNewSessionPlaceholder((spec) => tabs.addLaunchSlot(spec));
+  // 别的起会话路（恢复 · cc-bus 派生 · 开窗 resume）在主窗口里发起的也走同一件占位标签页。
+  setArrivalSlots((spec) => tabs.addLaunchSlot(spec));
   // 占位标签页那一页显着：会话头与真标签页的选中样子让开。
   tabs.onSlotShown = (on) => {
     sessionHead.el.toggleAttribute("data-slot-over", on);
@@ -433,10 +454,26 @@ window.addEventListener("DOMContentLoaded", async () => {
   };
   void loadContextLimits();
   activeTab = () => tabs.activeTab();
+  // 报错卡上去它的终端那两颗：当前会话的消息流根上标「能不能」（与会话头同一道），点了交 `tabs`。
+  function paintTerminalActs(): void {
+    const t = tabs.activeTab();
+    if (!t) return;
+    const acts = terminalActsOf(t);
+    t.streamEl.dataset.canFront = acts.front ? "1" : "0";
+    t.streamEl.dataset.canAttach = acts.attach ? "1" : "0";
+  }
+  streamRoot.addEventListener("click", (e) => {
+    const b = (e.target as HTMLElement | null)?.closest?.<HTMLElement>(".api-error-acts [data-act]");
+    const sid = tabs.activeSessionId();
+    if (!b || sid === null) return;
+    if (b.dataset.act === "front") tabs.frontFor(sid);
+    else if (b.dataset.act === "attach") tabs.attachInTerminal(sid);
+  });
   tabs.active.subscribe((a) => {
     // 切了 tab ⇒ 会话头 · 「需要你」钉条 · 抽屉的终端页换成这一个。
     sessionHead.render();
     terminalPage.sessionChanged();
+    paintTerminalActs();
     needsBar.render();
     usageHud.setActive(a.model, a.promptTokens, a.contextLimit, a.limitFrom);
     usageHud.setUnavailable(a.unavailable);
@@ -716,18 +753,23 @@ window.addEventListener("DOMContentLoaded", async () => {
   for (let i = 1; i <= 9; i++) {
     dispatcher.bind(`tab.jump-${i}` as const, () => tabs.jumpToIndex(i));
   }
-  dispatcher.bind("tab.close-archived", () => tabs.closeActiveIfArchived());
-  dispatcher.bind("tab.open-cwd", () => tabs.openActiveTabCwd());
+  // 作用于当前会话的那几键：占位标签页那一页显着时让开（不落到底下那个真标签页）。
+  const onSession = (id: Parameters<typeof tabs.shadowedBySlot>[0], fn: () => void): void =>
+    dispatcher.bind(id, () => {
+      if (!tabs.shadowedBySlot(id)) fn();
+    });
+  onSession("tab.close-archived", () => tabs.closeActiveIfArchived());
+  onSession("tab.open-cwd", () => tabs.openActiveTabCwd());
   dispatcher.bind("needs.next", () => tabs.jumpToNextNeeds());
-  dispatcher.bind("tab.pop-out", () => tabs.openActiveInNewWindow());
+  onSession("tab.pop-out", () => tabs.openActiveInNewWindow());
   // 会话内查找（大纲同一块面板）；历史查看器开着时落在它上面（它盖在 tab 上）。
   dispatcher.bind("session.find", () => {
-    if (!historyView.openFind()) tabs.openFind();
+    if (!historyView.openFind() && !tabs.shadowedBySlot("session.find")) tabs.openFind();
   });
-  dispatcher.bind("session.toggle-process", () => tabs.toggleProcessDefault());
-  dispatcher.bind("session.prev-turn", () => tabs.stepTurn(-1));
-  dispatcher.bind("session.next-turn", () => tabs.stepTurn(1));
-  dispatcher.bind("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
+  onSession("session.toggle-process", () => tabs.toggleProcessDefault());
+  onSession("session.prev-turn", () => tabs.stepTurn(-1));
+  onSession("session.next-turn", () => tabs.stepTurn(1));
+  onSession("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
   dispatcher.bind("app.open-settings", () => void openSettingsWindow()); // F82a：开独立设置窗口
   dispatcher.bind("app.toggle-history", () => overlays.toggle("history"));
   dispatcher.bind("app.open-command-bar", () => commandBar.toggle()); // F84（#57）Ctrl+K 命令栏
@@ -740,8 +782,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.bind("app.toggle-tab-bar", toggleTabBarFold);
   dispatcher.bind("app.open-cc-bus", () => overlays.toggle("cc-bus"));
   dispatcher.bind("app.undo", () => void undoLatest());
-  dispatcher.bind("tab.context-menu", () => tabs.openActiveMenu());
-  dispatcher.bind("session.to-bottom", () => tabs.toBottom());
+  onSession("tab.context-menu", () => tabs.openActiveMenu());
+  onSession("session.to-bottom", () => tabs.toBottom());
   dispatcher.bind("panel.toggle-tasks", () => mainDrawer.toggle("tasks"));
   dispatcher.bind("panel.toggle-agents", () => mainDrawer.toggle("agents"));
   dispatcher.bind("panel.toggle-terminal", () => mainDrawer.toggle("terminal"));

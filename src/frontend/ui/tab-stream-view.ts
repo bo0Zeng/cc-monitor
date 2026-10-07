@@ -650,7 +650,9 @@ export class TabStreamView {
       toolUseElements: tab.toolUseElements,
       runCards: tab.runCards,
       pendingToolResults: tab.pendingToolResults,
-      needs: tab.needs, // 在等批准的那一步建出来就画成「在等你批准」
+      needs: tab.needs, // 在等你的那一步建出来就画成「在等你」
+      stepWait: (call) => tab.pending.find((p) => p.id === call),
+      retryOutcome: (id) => tab.retries.get(id),
       runLabelOf: (run) => this.host.runLabelOf(tab.sessionId, run),
       // P5.5：batch 期间走 lazy hljs（代码块占位 + IntersectionObserver 触发再补跑）
       lazy: this.store.inBatch,
@@ -834,7 +836,9 @@ export class TabStreamView {
       toolUseElements: tab.toolUseElements,
       runCards: tab.runCards,
       pendingToolResults: tab.pendingToolResults,
-      needs: tab.needs, // 在等批准的那一步建出来就画成「在等你批准」
+      needs: tab.needs, // 在等你的那一步建出来就画成「在等你」
+      stepWait: (call) => tab.pending.find((p) => p.id === call),
+      retryOutcome: (id) => tab.retries.get(id),
       runLabelOf: (run) => this.host.runLabelOf(tab.sessionId, run),
       lazy: true,
     };

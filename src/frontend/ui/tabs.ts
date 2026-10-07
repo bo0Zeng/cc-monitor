@@ -81,11 +81,13 @@ import {
   forgetSession,
 } from "./tab-session-actions";
 import { frontView, type FrontAct, type FrontResult } from "./front-result";
-import { awaitedFor, clearAwaiting, markAwaiting } from "./cards/step-line";
+import { awaitedFor, paintWaiting } from "./cards/step-line";
 import { machineName } from "./control-said";
 import { closeFrontResult, copyFrontDetail, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
 import { CHANNEL_ACTS, LaunchSlots, type SlotSpec } from "./launch-slot";
 import { applyHandedBack } from "./cards/speaker-bar";
+import { applyRetries } from "./cards/api-error";
+import type { ActionId } from "./keybindings/actions";
 
 
 export class TabManager {
@@ -156,7 +158,10 @@ export class TabManager {
         root: streamRootEl,
         hasTab: (sid) => this.store.tabs.has(sid),
         switchTo: (sid) => this.switchTo(sid),
-        shown: (on) => this.onSlotShown?.(on),
+        shown: (on) => {
+          this.slotOver = on;
+          this.onSlotShown?.(on);
+        },
       },
       CHANNEL_ACTS,
     );
@@ -250,6 +255,21 @@ export class TabManager {
   private readonly slots: LaunchSlots;
   /** 占位标签页那一页显 / 收（宿主让会话头跟着让开）。 */
   onSlotShown: ((on: boolean) => void) | null = null;
+  /** 占位标签页那一页此刻显没显（显着 ⇒ 作用于当前会话的快捷键不落到底下那个真标签页，[`shadowedBySlot`]）。 */
+  private slotOver = false;
+  /** 作用于当前会话的那几键（占位标签页显着时让开）。 */
+  private static readonly ACTS_ON_ACTIVE_SESSION: ReadonlySet<ActionId> = new Set<ActionId>([
+    "session.find",
+    "session.toggle-process",
+    "session.prev-turn",
+    "session.next-turn",
+    "session.to-bottom",
+    "tab.close-archived",
+    "tab.open-cwd",
+    "tab.pop-out",
+    "tab.context-menu",
+    "terminal.bring-front",
+  ]);
 
   /**
    * F40c DEV 探针用:active tab 状态一行 JSON（形状、口径与秤 6 的三个账本见 `tab-stream-view.ts` 那一份）。
@@ -756,6 +776,7 @@ export class TabManager {
       needs: null,
       pending: [],
       lastSay: null,
+      retries: new Map(),
       facts: new FactsSource(
         () => {
           // 问的是**当前**那一份 tab 的路径与机器（`parentPath` 由首条行回填；没有 ⇒ 这一趟不要）。
@@ -1331,14 +1352,14 @@ export class TabManager {
     const ch = applyFacts(tab, f);
     // 交回了的子运行：它的收场通知以交回为准（同一个子运行只报一次）。
     applyHandedBack(tab.streamEl, new Set(f.handedBack));
+    // 一串一串重试的结局（按首条的 id）。
+    applyRetries(tab.streamEl, tab.retries);
     if (ch.forkedFrom || ch.projectDir) {
       tab.title = this.computeTitle(tab);
       this.refreshTabBar();
     } else if (ch.writers || ch.needs || ch.peek) this.refreshTabBar();
-    if (ch.needs) {
-      tab.turnRail.render(); // 在等你的那一轮琥珀
-      this.paintAwaitingStep(tab);
-    }
+    if (ch.needs) tab.turnRail.render(); // 在等你的那一轮琥珀
+    this.paintStepWaits(tab);
     if ((ch.usage || ch.projectDir) && sid === this.store.activeId) this.publishActive();
     if (ch.agent) {
       // 是哪一家到了：先画出来的卡头那一格补上那一家的名字（之后建的卡按它直接画）。
@@ -1347,16 +1368,20 @@ export class TabManager {
     }
   }
 
-  /** 过程里在等你批准的那一步（后端 `needs.call`）画成「在等你批准」；不再等的那一步回到在跑。 */
-  private paintAwaitingStep(tab: Tab): void {
-    for (const el of tab.toolUseElements.values()) {
-      const row = el.querySelector<HTMLElement>(".step-line[data-state=awaiting]");
-      if (row) clearAwaiting(row);
-    }
+  /**
+   * 过程里还没结果的那几步照会话事实画：`pending[].state`（在跑 · 在等你 · 状态不明）；事实里已经没有它（那一轮过去了、
+   * 被截在上界外）⇒ 状态不明。结果已经到了的不动（`paintWaiting` 自己守）。
+   */
+  private paintStepWaits(tab: Tab): void {
+    const WAITING_ROWS = '.step-line[data-call]:is([data-state="pending"], [data-state="running"], [data-state="awaiting"], [data-state="unclear"])';
+    const by = new Map(tab.pending.map((p) => [p.id, p] as const));
     const n = tab.needs;
-    if (n?.kind !== "approve" || n.call === null) return;
-    const row = tab.toolUseElements.get(n.call)?.querySelector<HTMLElement>(".step-line");
-    if (row) markAwaiting(row, awaitedFor(n.sinceMs, Date.now()));
+    for (const row of tab.streamEl.querySelectorAll<HTMLElement>(WAITING_ROWS)) {
+      const call = row.dataset.call ?? "";
+      const waited = n?.call === call ? awaitedFor(n.sinceMs, Date.now()) : null;
+      const p = by.get(call);
+      paintWaiting(row, p?.state ?? "unclear", waited, n?.kind === "approve", p?.why ?? null);
+    }
   }
 
   /** 这个 tab 的会话事实可不可用变了 ⇒ 是 active 就告诉 HUD（要不到 ⇒ 出声，「不可用，不是空表」）。 */
@@ -1671,6 +1696,11 @@ export class TabManager {
   /** 起新会话：那台回了「起好了 / 开窗」⇒ 长出一个占位标签页、主区换成它（报到了换成真的）。 */
   addLaunchSlot(spec: SlotSpec): void {
     this.slots.add(spec);
+  }
+
+  /** 这一键此刻要不要让开：占位标签页那一页显着、而它作用于当前会话（底下那个真标签页不是你看着的那个）。 */
+  shadowedBySlot(id: ActionId): boolean {
+    return this.slotOver && TabManager.ACTS_ON_ACTIVE_SESSION.has(id);
   }
 
   /** 只给判据用：占位标签页此刻几个 · 正看着哪一个。 */

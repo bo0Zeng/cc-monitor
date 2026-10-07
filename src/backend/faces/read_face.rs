@@ -415,6 +415,13 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 &facts.pending,
                 accounts_query::session_wait(home, sid).as_ref(),
             );
+            // 每一步还没结果时的样子：在等你 · 在跑 · 状态不明（界面只读这一格）。这一家不留 pidfile ⇒ 判不了活。
+            let tracked = facts
+                .agent
+                .as_deref()
+                .and_then(|k| crate::agents::launch_face_among(crate::agents::REGISTRY, k))
+                .is_some_and(|f| f.has_pidfiles);
+            facts_query::settle_pending(&mut facts, tracked);
             let v = serde_json::to_value(&facts).map_err(|e| ("failed", e.to_string()))?;
             let size = v.to_string().len();
             if size > LINES_CAP_BYTES {
