@@ -836,7 +836,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p8t-agent-window：运行表多给九格（谁派的 · 开始 / 收场 / 最近动静三个时刻 · 在等哪个工具 · 收场原因码 · 报错原话 · 调了几次工具 · 后台派出）；开 agent 窗口的命令带 run。
 ///
 /// p8u-profiles：别名改成配置文件 ~/.cc-monitor/profiles.toml 里带继承的具名配置；ccm 认 @<名>，被叫成别的名字时取同名那一段（CCM_VERSION 7）。
-pub const BUILD_ID: &str = "p8u-profiles";
+///
+/// p8v-token-log：中转替某号续令牌与上游 401 / 403 按号记日志；续期锁释放进 Drop、锁目录过期收回。
+pub const BUILD_ID: &str = "p8v-token-log";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
