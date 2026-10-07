@@ -18208,11 +18208,6 @@
       "zh": "{pct}%",
       "args": ["pct"]
     },
-    "acct.val.refused": {
-      "kind": "body",
-      "zh": "✕",
-      "args": []
-    },
     "acct.val.full": {
       "kind": "body",
       "zh": "✕",

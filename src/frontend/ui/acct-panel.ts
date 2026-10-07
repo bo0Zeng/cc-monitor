@@ -30,7 +30,7 @@ import { segmented } from "./kit/tabs";
 import { toast } from "./kit/toast";
 import { attachTooltip } from "./kit/tooltip";
 import { ARRIVAL_BUDGET_MS } from "./launch-arrival";
-import { accountLabel, fmtAt, fmtRel, slotLabel, type QuotaRead } from "./quota-lines";
+import { accountLabel, fmtAt, fmtRel, slotLabel, slotValue, type QuotaRead } from "./quota-lines";
 import { switchHot, switchRestart, writeSessionRotation } from "./quota-reads";
 import { runRemoteAttach } from "./remote-launch-run";
 import { standingOf } from "./sessions-where";
@@ -240,13 +240,9 @@ function slotMeter(q: QuotaShow, slot: string, now: number, tz: number): HTMLEle
   let state: MeterState = "normal";
   if (!x || x.pct === undefined) state = "none";
   else if (q.stale) state = "stale";
-  else if (here && q.state === "refused") state = "refused";
+  else if (x.full || (here && q.state === "refused")) state = "refused";
   else if (here && (q.state === "near" || q.state === "overageInUse")) state = "near";
-  let value: string;
-  if (!x || x.pct === undefined || (here && (q.state === "resetSinceSeen" || q.state === "unseen"))) value = copyText("acct.val.none");
-  else if (here && q.state === "refused") value = copyText("acct.val.refused");
-  else if (here && q.state === "overageInUse") value = copyText("acct.val.over");
-  else value = copyText("acct.val.pct", { pct: x.pct });
+  const value = slotValue(q, slot);
   const at = x?.resetsAt;
   const rel = at === undefined ? null : fmtRel(at, now);
   const reset = at === undefined ? undefined : rel === null ? copyText("acct.reset.past", { at: fmtAt(at, now, tz) }) : copyText("acct.reset.at", { at: fmtAt(at, now, tz) });
@@ -379,17 +375,12 @@ function rowUsage(q: QuotaShow | null, now: number, tz: number, readingReset: nu
     fill.style.transform = `scaleX(${Math.max(0, Math.min(1, (x?.pct ?? 0) / 100))})`;
     bar.appendChild(fill);
     cell.appendChild(bar);
-    let v: string;
-    if (!x || x.pct === undefined || (here && (q.state === "resetSinceSeen" || q.state === "unseen"))) v = copyText("acct.val.none");
-    else if (here && q.state === "refused") v = copyText("acct.val.refused");
-    else if (here && q.state === "overageInUse") v = copyText("acct.val.over");
-    else v = copyText("acct.val.pct", { pct: x.pct });
-    cell.appendChild(el("span", s.acctRowSlotVal, v));
+    cell.appendChild(el("span", s.acctRowSlotVal, slotValue(q, slot)));
     if (here && x?.resetsAt !== undefined && slot === "5h") {
       const rel = fmtRel(x.resetsAt, now);
       cell.appendChild(el("span", s.acctRowSlotReset, rel === null ? copyText("acct.reset.past", { at: fmtAt(x.resetsAt, now, tz) }) : copyText("acct.reset.at", { at: fmtAt(x.resetsAt, now, tz) })));
     }
-    if (here && q.state === "refused") cell.dataset.shade = "refused";
+    if (x?.full || (here && q.state === "refused")) cell.dataset.shade = "refused";
     else if (here && (q.state === "near" || q.state === "overageInUse")) cell.dataset.shade = "warn";
     if (q.stale) cell.dataset.stale = "true";
     box.appendChild(cell);

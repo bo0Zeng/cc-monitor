@@ -940,7 +940,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const dlg = document.querySelector<HTMLElement>('[role="dialog"]');
     expect(dlg, "起新会话框没开出来 —— 下面的断言会零命中地绿").toBeTruthy();
     expect(dlg!.textContent).toContain("新建会话 · a");
-    expect(dlg!.querySelector<HTMLSelectElement>('select[aria-label="机器"]')!.disabled).toBe(true);
+    expect(dlg!.querySelector<HTMLButtonElement>('button[aria-label="机器"]')!.disabled).toBe(true);
     expect(chanOps).not.toContain("terminal-name-mint");
     expect(chanOps.some((op) => /^launch-render-/.test(op))).toBe(false);
     document.body.innerHTML = "";
