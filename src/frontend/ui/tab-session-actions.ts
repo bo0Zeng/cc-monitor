@@ -130,7 +130,7 @@ export class TabSessionActions {
       // 问不到 / 形状不对（旧后端）同「不知道」：只有一个明明白白的 `present: false` 才拦 —— 但说出来。
       toast(
         copyText("tabSessionActions.recordUnknown.title"),
-        reasonOf(e, copyText("tabSessionActions.recordUnknown.oldBackend")),
+        reasonOf(e, tab.origin),
       );
       return true;
     }

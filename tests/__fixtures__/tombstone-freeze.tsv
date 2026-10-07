@@ -58,7 +58,6 @@ REGISTERED	tests/frontend/shell/local_backend_tests.rs		3
 REGISTERED	src/backend/assets/aliases/mod.rs		1
 REGISTERED	src/backend/platform/shell/dialect.rs		2
 REGISTERED	tests/backend/assets/aliases/aliases_tests.rs		1
-REGISTERED	tests/frontend/ui/generated-boundary-guard.vitest.ts		3
 REGISTERED	tests/frontend/ui/settings/panel-deferred-io.vitest.ts		1
 REGISTERED	src/backend/stream/wire.rs		2
 REGISTERED	src/frontend/shell/README.md		15
@@ -435,7 +434,6 @@ TOMBSTONED	tests/frontend/shell/write_site_registry_tests.rs	atomic_write_string
 TOMBSTONED	tests/backend/control/files_write_tests.rs	install_preserves_explicit_acl_entries	1
 TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	write_account_aliases	3
 TOMBSTONED	tests/backend/assets/aliases/aliases_tests.rs	validate_alias_line	1
-TOMBSTONED	tests/frontend/ui/generated-boundary-guard.vitest.ts	write_account_aliases	1
 TOMBSTONED	tests/frontend/ui/settings/panel-deferred-io.vitest.ts	write_account_aliases	1
 TOMBSTONED	src/backend/assets/aliases/block.rs	legacy_profile_paths	1
 TOMBSTONED	src/backend/assets/aliases/block.rs	scan_legacy_profiles	3
@@ -547,7 +545,6 @@ TOMBSTONED	tests/frontend/shell/history_tests.rs	last_account_serde_and_patch_se
 TOMBSTONED	tests/frontend/shell/history_tests.rs	the_local_project_list_is_whatever_the_backend_said	1
 TOMBSTONED	tests/frontend/shell/history_tests.rs	the_three_counts_can_say_i_do_not_know	1
 TOMBSTONED	tests/frontend/shell/history_tests.rs	truncate_chars_unicode	1
-TOMBSTONED	tests/frontend/ui/generated-boundary-guard.vitest.ts	forked_from_message_uuid	1
 TOMBSTONED	src/frontend/shell/README.md	stream_remote_history_sessions	1
 TOMBSTONED	tests/comms/inward/origin_tests.rs	stream_remote_history_sessions	1
 TOMBSTONED	tests/frontend/shell/parity_ledger_tests.rs	stream_remote_history_sessions	1

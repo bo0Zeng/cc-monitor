@@ -8,6 +8,8 @@
  * 这一行的事实（标题 · 项目 · 记录在哪 · 在不在跑 · 能做什么）问那台的 `history-list`（`sid` 那一形：只要这一个会话）；
  * 内容按记录读、在跑的订 `session-lines/<sid>` 跟着长（`SessionViewer` 的 `follow`）。
  *
+ * 带 `run=<运行>` ⇒ 这扇窗是一个子运行自己的窗口（agent 窗口，`views/agent-window.ts`）。
+ *
  * 🔴 本窗的模块图里**没有**设置面板 / 历史页 / 命令栏 —— 判据是 `tests/frontend/ui/entry-graphs.vitest.ts`。
  */
 import "./entry-common"; // 全局错误捕获（模块副作用）
@@ -44,6 +46,7 @@ import { connectTerminalOf } from "./settings-dest";
 import { startInTmuxThenAttach } from "./tmux-resume";
 import { SWITCH_TO_SESSION_EVENT } from "./window-events";
 import { windowStatus, windowTitle } from "./viewer-window-text";
+import { bootstrapAgentWindow } from "./views/agent-window";
 
 // Vite HMR：任何热更新一律整页重载（理由见 `main.ts` 同名那段）。
 if (import.meta.hot) {
@@ -64,8 +67,31 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 这个会话在哪台机器上（`history-list` 与会话流的寻址键）。缺 ⇒ 本机。
   const rawOrigin = q.get("origin");
   const origin: Origin = rawOrigin === null || rawOrigin === "" || isLocalOrigin(rawOrigin) ? LOCAL_ORIGIN : rawOrigin;
+  // 带 `run` ⇒ 这扇窗是这个会话里一个子运行自己的窗口（agent 窗口）。
+  const run = q.get("run");
+  if (run) {
+    await loadKeys();
+    await bootstrapAgentWindow(sid, run, origin);
+    return;
+  }
   await bootstrapViewer(sid, origin);
 });
+
+/** 这扇窗也认的那几条快捷键（最小化 · 全屏）＋ 出错提示。 */
+async function loadKeys(): Promise<void> {
+  installGlobalClickDelegation();
+  dispatcher.bind("app.minimize", () => void getCurrentWindow().minimize());
+  dispatcher.bind("app.toggle-fullscreen", () => {
+    const w = getCurrentWindow();
+    void w
+      .isFullscreen()
+      .then((f) => w.setFullscreen(!f))
+      .catch((e) => console.warn("toggle-fullscreen failed:", e));
+  });
+  dispatcher.applyOverrides(await getKeybindings());
+  dispatcher.start();
+  bindErrorToast();
+}
 
 async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
   document.body.classList.add("viewer-mode");

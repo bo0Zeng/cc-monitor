@@ -5,6 +5,7 @@
  * - 交回默认展开（是要读的）；途中来话默认收起；另一个会话的来话左条琥珀。
  * - 「打开窗口 ›」：点了把那个 agent 交给宿主（`ccm:reveal-run` 事件，带运行 id）。
  * - 后台通知：一条一行；相邻的由管线并成一条 `后台任务 ×3 · 14:02–14:07 · 失败 1`，展开看逐条（[`mergeNotice`]）。
+ *   同一个子运行已经交回了（会话事实 `handedBack`，那台配的对）⇒ 它那条收场通知不画（[`applyHandedBack`]），只报交回那一次。
  */
 import type { Speaker } from "../generated/Speaker";
 import { copyText } from "../copy-table";
@@ -140,6 +141,8 @@ function noticeRow(sp: Of<"taskNotification">, at: string): HTMLElement {
   r.className = "notice-row";
   const failed = sp.status === "failed" || sp.status === "killed";
   r.dataset.failed = String(failed);
+  if (sp.taskId) r.dataset.task = sp.taskId;
+  r.dataset.at = at;
   r.textContent = copyText("speaker.notice.row", {
     what: sp.summary ?? sp.taskId ?? "?",
     state: failed ? copyText("speaker.notice.failed") : copyText("speaker.notice.done"),
@@ -148,10 +151,30 @@ function noticeRow(sp: Of<"taskNotification">, at: string): HTMLElement {
   return r;
 }
 
+/**
+ * 会话事实说这几个子运行已经交回了 ⇒ 它们的收场通知行收起（整条都是 ⇒ 整条收起），计数与时段只算还露着的。幂等：
+ * 每到一份事实就按那一份重摆一遍（交回在通知之后才到也照样收）。
+ */
+export function applyHandedBack(root: HTMLElement, handedBack: ReadonlySet<string>): void {
+  for (const d of root.querySelectorAll<HTMLDetailsElement>("details.card-notice")) {
+    let changed = false;
+    for (const r of d.querySelectorAll<HTMLElement>(".notice-row")) {
+      const gone = r.dataset.task !== undefined && handedBack.has(r.dataset.task);
+      if (r.hidden !== gone) {
+        r.hidden = gone;
+        changed = true;
+      }
+    }
+    if (changed) paintNotice(d);
+  }
+}
+
 function paintNotice(d: HTMLDetailsElement): void {
-  const rows = [...d.querySelectorAll<HTMLElement>(".notice-row")];
+  const rows = [...d.querySelectorAll<HTMLElement>(".notice-row")].filter((r) => !r.hidden);
   const head = d.querySelector<HTMLElement>(".notice-head");
   if (!head) return;
+  d.hidden = rows.length === 0;
+  if (rows.length === 0) return;
   const fails = rows.filter((r) => r.dataset.failed === "true").length;
   d.dataset.failed = String(fails > 0);
   if (rows.length === 1) {
@@ -160,8 +183,10 @@ function paintNotice(d: HTMLDetailsElement): void {
     return;
   }
   delete d.dataset.single;
-  const from = formatTimestampShort(d.dataset.from ?? "");
-  const to = formatTimestampShort(d.dataset.to ?? "");
+  // 时段取露着的那几行的两头。
+  const ats = rows.map((r) => r.dataset.at ?? "").sort();
+  const from = formatTimestampShort(ats[0] ?? d.dataset.from ?? "");
+  const to = formatTimestampShort(ats[ats.length - 1] ?? d.dataset.to ?? "");
   head.textContent = copyText("speaker.notice.many", {
     n: rows.length,
     span: from === to ? from : `${from}–${to}`,

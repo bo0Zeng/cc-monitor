@@ -28,6 +28,7 @@
 //! | `pending` | `assistant` 记录里的工具调用，等到 `user` 记录里同 id 的 `tool_result` 才摘；你又发了一句（`user` 记录里没有 `tool_result`）⇒ 全摘。文件序，至多 [`PENDING_KEEP`] 条 |
 //! | `lastSay` | 文件序最后一段 `assistant` 正文（`text` 块）的头一个非空行，至多 [`SAY_CHARS`] 字 |
 //! | `needs` | 那台 pidfile 说在等（[`PidWait`]）⇒ 配上 `pending` 判种类（[`needs_of`]）；每次现查，不累加 |
+//! | `handedBack` | 交回了的子运行：`user` 记录「谁说的」是 agent 交回（适配层 `agents::user_text_of` 的 `AgentMessage { handback: true }`）⇒ 它的 `from`；去重、文件序，至多 [`HANDED_BACK_KEEP`] 条。同一个子运行的收场通知（`taskNotification.taskId` ＝ 这个 id）以交回为准，界面不再另画 |
 //!
 //! # 快路
 //!
@@ -84,6 +85,9 @@ const WHAT_KEYS: &[(&str, &str)] = &[
 
 /// 没结果的工具调用至多留几条（并发调用一批也就几条；超 ⇒ 丢最早的）。
 pub(crate) const PENDING_KEEP: usize = 16;
+
+/// 交回了的子运行至多留多少个（超 ⇒ 丢最早的）。成品要原样回传当续传令牌，一个 id 几十字节。
+pub(crate) const HANDED_BACK_KEEP: usize = 500;
 /// 一行人话至多几个字（工具主参数 · 最后一段正文的头一行）。
 pub(crate) const SAY_CHARS: usize = 160;
 
@@ -146,6 +150,8 @@ pub(crate) struct SessionFacts {
     pub(crate) last_say: Option<LastSay>,
     /// **需要你**：那台说在等、等的是什么（不累加，每次现查；`prior` 里那一份不用）。不在等 ⇒ `null`。
     pub(crate) needs: Option<Needs>,
+    /// 交回了的子运行（子 agent 的 id，文件序、去重）：同一个子运行的收场通知以交回为准，只报一次。
+    pub(crate) handed_back: Vec<String>,
 }
 
 /// 一个还没有结果的工具调用。
@@ -340,6 +346,7 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
         "agent",
         "end",
         "forkedFrom",
+        "handedBack",
         "lastSay",
         "needs",
         "pending",
@@ -365,7 +372,7 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     if !v["needs"].is_null() {
         exact_keys(
             &v["needs"],
-            &["kind", "sinceMs", "tool", "what"],
+            &["call", "kind", "sinceMs", "tool", "what"],
             "prior.needs",
         )?;
     }
@@ -430,12 +437,37 @@ fn could_matter(line: &[u8], facts: &SessionFacts) -> bool {
         || contains(line, b"\"usage\"")
         || contains(line, b"\"tool_use\"")
         || (contains(line, b"\"assistant\"") && contains(line, b"\"text\""))
+        // 交回：记录级 `origin.handback`（键名在行里）。
+        || contains(line, b"\"handback\"")
         // 有没结果的调用：它的结果（行里带着它的 id）· 你又发了一句（`user` 记录、没有工具结果）。
         // 别人的工具结果（常是整份文件内容）照旧连解析都不做。
         || (!facts.pending.is_empty()
             && contains(line, b"\"user\"")
             && (!contains(line, b"\"tool_result\"")
                 || facts.pending.iter().any(|p| contains(line, p.id.as_bytes()))))
+}
+
+/// 这条是 agent 交回 ⇒ 那个子运行进 `handed_back`（谁说的由适配层判，口径同全局搜索的「agent 回报」）。
+fn note_handback(f: &mut SessionFacts, v: &Value) {
+    let kind = crate::agents::record_tree_kind().unwrap_or_default();
+    let Some(said) = crate::agents::user_text_of(kind, v) else {
+        return;
+    };
+    let crate::agents::Speaker::AgentMessage {
+        from: Some(from),
+        handback: true,
+        ..
+    } = said.speaker
+    else {
+        return;
+    };
+    if f.handed_back.contains(&from) {
+        return;
+    }
+    f.handed_back.push(from);
+    if f.handed_back.len() > HANDED_BACK_KEEP {
+        f.handed_back.remove(0);
+    }
 }
 
 fn contains(hay: &[u8], needle: &[u8]) -> bool {
@@ -512,8 +544,10 @@ fn note_record(f: &mut SessionFacts, v: &Value) {
     }
 }
 
-/// `user` 记录：带着工具结果 ⇒ 摘掉结果对上的那几个调用；没有工具结果（你发的一句 · 中断）⇒ 没结果的全摘（那一轮过去了）。
+/// `user` 记录：是 agent 交回 ⇒ 记下那个子运行；带着工具结果 ⇒ 摘掉结果对上的那几个调用；
+/// 没有工具结果（你发的一句 · 中断）⇒ 没结果的全摘（那一轮过去了）。
 fn note_user(f: &mut SessionFacts, v: &Value) {
+    note_handback(f, v);
     if f.pending.is_empty() {
         return;
     }

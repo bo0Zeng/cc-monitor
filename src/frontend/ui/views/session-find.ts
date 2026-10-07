@@ -32,7 +32,15 @@ export interface SessionFindHost {
 
 /** 命中行头一行：谁 · 第几轮 · 时刻（第一句之前的不写轮）。 */
 export function hitMeta(h: FindHit, now: number): string {
-  const who = h.kind === "user" ? copyText("sessionFind.who.user") : h.kind === "tool" ? copyText("sessionFind.who.tool") : copyText("sessionFind.who.assistant");
+  // 种类由那台给（`history-find` 的 `kind`）：你 · agent 回报（子 agent 交回 / 发来的话 · 另一个会话发来的话）· 工具 · 那一家。
+  const who =
+    h.kind === "user"
+      ? copyText("sessionFind.who.user")
+      : h.kind === "report"
+        ? copyText("sessionFind.who.report")
+        : h.kind === "tool"
+          ? copyText("sessionFind.who.tool")
+          : copyText("sessionFind.who.assistant");
   const time = h.tsMs > 0 ? hitTime(h.tsMs, now) : "";
   if (h.turn > 0 && time) return copyText("sessionFind.hit.meta", { who, n: h.turn, time });
   if (h.turn > 0) return copyText("sessionFind.hit.metaNoTime", { who, n: h.turn });

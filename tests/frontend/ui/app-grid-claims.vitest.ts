@@ -146,6 +146,14 @@ const INSERTED_CHILDREN: readonly AppChild[] = [
     modes: ["viewer"],
     why: "只有 bootstrapViewer 建它，而它第一件事就是挂 body.viewer-mode",
   },
+  {
+    // agent 窗口（查看窗那个入口带 `run=`）：与只读查看窗同一种细顶栏。
+    file: "src/frontend/ui/views/agent-window.ts",
+    expr: "topbar",
+    selector: ".viewer-topbar",
+    modes: ["viewer"],
+    why: "只有 bootstrapAgentWindow 建它，而它第一件事就是挂 body.viewer-mode",
+  },
   // 🔴 `.tab-archive` 这条**摘掉** —— 那个插入点没了。
   //    归档抽屉整个删除，
   //    `ensureArchiveUi()` 与 `#app` 模板里的 `archive` 那一行一并消失。

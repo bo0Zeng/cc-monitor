@@ -182,11 +182,7 @@ function cycleComponents(graph: Map<string, string[]>): string[][] {
 const TYPE_CYCLE_EXEMPT: ReadonlyArray<readonly [members: readonly string[], why: string]> = [
   // `accounts-decode ⇄ accounts` 那一行摘了：`accounts.ts` 拆成模型（纯）＋ 读面（`account-reads.ts`）之后，
   //   值 import 解码器的是读面，解码器 `import type` 的是模型 ⇒ 环断（子步 4 登记时写明归本路摘）。
-  [
-    ["src/frontend/ui/cards/index.ts", "src/frontend/ui/cards/subagent.ts"],
-    "纯类型边闭合（`cards/subagent.ts` 回头 `import type { JsonlRecord, RenderContext, RenderResult } from \"./index\"`）；" +
-      "上面那条运行期判据的头注点过名。不在 FE1 写区：拆法是把那三个类型挪进卡片系的一个叶子，归卡片那一片的主人。",
-  ],
+  // `cards/index ⇄ cards/subagent` 那一行摘了：派出卡不再就地展开时间线，`subagent.ts` 不再 `import type` 回 `./index`（agent 窗口那一路）。
   // `launch-dimensions ⇄ launch-plan` 那一行摘了：IR 的类型拆进纯类型叶子 `src/frontend/ui/launch-types.ts`，
   //   `launch-dimensions.ts` 改 `import type { LaunchDimension } from "./launch-types.ts"` ⇒ 环断（本行登记时写明归 LR2 摘）。
 ];

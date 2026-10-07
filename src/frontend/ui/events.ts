@@ -33,6 +33,7 @@ import type { SessionIdlePayload } from "./generated/SessionIdlePayload";
 import type { SessionActivityPayload } from "./generated/SessionActivityPayload";
 import type { SessionTapPayload } from "./generated/SessionTapPayload";
 import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
+import { decodeRunsPayload } from "./runs";
 import type { SessionContainer } from "./generated/SessionContainer";
 // 本文件内部也用这些名字（8 处），所以 import + re-export 都要有：
 // 只写 `export type { … } from` 不会把名字带进本地作用域。
@@ -720,7 +721,9 @@ export async function bindEvents(
         } else if (f !== null && typeof f === "object" && "container" in f) {
           queue.push({ kind: "container", sessionId: f.container.session_id, container: f.container.container });
         } else if (f !== null && typeof f === "object" && "runs" in f) {
-          queue.push({ kind: "runs", payload: f.runs });
+          const runs = decodeRunsPayload(f.runs);
+          if (runs) queue.push({ kind: "runs", payload: runs });
+          else console.warn("[events] 运行表那一格形状不对，不收：", JSON.stringify(f.runs).slice(0, 200));
         } else if (f !== null && typeof f === "object" && "idle" in f) {
           queue.push({ kind: "idle", sessionId: f.idle.session_id });
         } else if (f !== null && typeof f === "object" && "ended" in f) {
@@ -907,7 +910,9 @@ export type FollowEvent =
   /** 会话起了 / 结束了。 */
   | { t: "live"; live: boolean }
   /** 那台看不看得见（看不见 ⇒ 这条流此刻不在交东西）。 */
-  | { t: "sight"; seen: boolean };
+  | { t: "sight"; seen: boolean }
+  /** 这个会话的运行表（每次变都是整份）。 */
+  | { t: "runs"; payload: SessionRunsPayload };
 
 /**
  * **跟着一个会话**：订 `session-lines/<sid>`（与独立查看窗同一条订阅；留存订阅当场交、之后的实时行接着交），
@@ -937,6 +942,11 @@ export async function followSession(origin: Origin, sid: string, sink: (e: Follo
         else if ("ended" in f && (f.ended as { session_id?: string }).session_id === sid) out.push({ t: "live", live: false });
         else if ("live" in f && (f.live as { session_id?: string }).session_id === sid) out.push({ t: "live", live: true });
         else if ("unseen" in f) out.push({ t: "sight", seen: false });
+        else if ("runs" in f) {
+          const p = decodeRunsPayload(f.runs);
+          if (p === null) console.warn("[events] 运行表那一格形状不对，不收：", JSON.stringify(f.runs).slice(0, 200));
+          else if (p.session_id === sid) out.push({ t: "runs", payload: p });
+        }
       } else if (it.t === "gap") {
         out.push({ t: "gap" });
       } else if (it.t === "unseen" || it.t === "closed") {

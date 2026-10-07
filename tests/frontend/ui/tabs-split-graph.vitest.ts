@@ -91,10 +91,10 @@ const DEPS: Record<string, readonly string[]> = {
   // 组装根：把下面每一份接起来 ＋ 原样 re-export 旧的 import 面（tab-drop / tab-model / tmux-sessions）。
   "src/frontend/ui/tabs.ts": [
     "src/frontend/ui/agent-profile.ts", // 会话事实说是哪一家 ⇒ 卡头那一格补上那一家的短名（画像 `speakerName`）
+    "src/frontend/ui/agent-window-open.ts", // 面板那一行 / 派出卡的卡头：开那个子运行自己的窗口
     "src/frontend/ui/cards/speaker.ts", // 卡头那一格在哪（补名字时按它找）
     "src/frontend/ui/accounts.ts", // debugSessionsSnapshot 的「账号不一致」派生（detectAccountMismatch）
     "src/frontend/ui/app-store.ts", // 「账号快照变了」改订阅 store（`appStore.sessionAccounts`）
-    "src/frontend/ui/cards/index.ts", // onLine：这一行是不是 compact 摘要（换号重启的等待者）；子运行时间线用同一套渲染器
     "src/frontend/ui/cards/step-line.ts", // 会话事实说在等批准的那一步：那一行画成「在等你批准」/ 不等了回到在跑
     "src/frontend/ui/cards/subagent.ts", // 运行表到了：派出子运行的那张卡标上是哪个、什么状态
     "src/frontend/ui/control-said.ts", // ↗ 结局浮层里的机器名（`machineName`）
@@ -102,12 +102,12 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/kit/toast.ts", // bringActiveTerminalToFront：非 Windows 说一句实话
     "src/frontend/ui/new-session.ts", // forkFrom：消息流「从这里分叉」开起新会话框（分叉随起会话那一个请求写）
     "src/frontend/ui/launch-slot.ts", // 起新会话之后的占位标签页：栏末那几行与盖在消息流上的那一页（报到了换成真的）
+    "src/frontend/ui/cards/speaker-bar.ts", // applyHandedBack：会话事实说哪几个子运行交回了 ⇒ 它们的收场通知收起（同一个子运行只报一次）
     "src/frontend/ui/front-pop.ts", // ↗ 的回执：「查找终端…」· 对勾 · 结局浮层
     "src/frontend/ui/front-result.ts", // ↗ 结局族 ⇒ 浮层的标题 · 正文 · 按钮
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端只经这一处判（线上缺省 = 本机的那一下表示法转换也在这里）
     "src/frontend/ui/live-card.ts", // 中转抄出的流式活卡：tap 格进状态机、同对账键的记录落盘即撤卡；子运行那几行
     "src/frontend/ui/live-window.ts", // ensureTab：新 tab 的尾部窗口
-    "src/frontend/ui/run-timeline.ts", // agent 面板那一行点开：那个子运行的实时时间线（按运行续读）
     "src/frontend/ui/runs.ts", // 监控板 peek 的子运行名：标签缺席时的通用叫法只住 `runs.ts::runLabel`
     "src/frontend/ui/tab-bar-drag.ts",
     "src/frontend/ui/tab-bar-prefs.ts",

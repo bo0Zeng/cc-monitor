@@ -602,12 +602,12 @@ impl SearchIndex {
         let mut pager = FindPager::new(page);
         let mut result = Ok(());
         let mut turn: u64 = 0;
-        // 会话内查找（主窗口与查看器的查找面板）不收 agent 回报：那一种只在全局搜索里单列（历史页「搜内容时」）。
+        // 会话内查找（主窗口与查看器的查找面板）也收 agent 回报（子 agent 交回 / 发来的话 · 另一个会话发来的话），种类 `report` 单列。
         for rec in entry.done.records.iter() {
             if rec.opens_turn {
                 turn += 1;
             }
-            if rec.uuid.is_empty() || rec.rt.report {
+            if rec.uuid.is_empty() {
                 continue;
             }
             let Some((kind, hit)) = record_hit(&rec.rt, q, include_tools) else {
@@ -1054,7 +1054,7 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
         else {
             continue;
         };
-        let Some(rt) = record_text(&v, include_tools).filter(|rt| !rt.report) else {
+        let Some(rt) = record_text(&v, include_tools) else {
             continue;
         };
         let Some((kind, hit)) = record_hit(&rt, &q, include_tools) else {

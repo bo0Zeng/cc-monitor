@@ -122,3 +122,27 @@ fn the_interpolation_is_one_pass_and_never_rescans_a_value() {
         "预览画面 · [devbox] tmux: %1"
     );
 }
+
+/// 因对方版本说不成的两个码各一句：取的是 `table.json` 里那两条（与界面 `chan-caller.ts::peerVersionSaid` 同键），本机说「本机」。
+#[test]
+fn the_two_peer_version_codes_each_say_their_one_line() {
+    let entry = |k: &str| {
+        entries()[k]["zh"]
+            .as_str()
+            .expect("table.json 里缺这一条")
+            .to_string()
+    };
+    assert_eq!(
+        backend_old("devbox"),
+        entry("peerVersion.said.old").replace("{machine}", "devbox")
+    );
+    assert_eq!(
+        reply_unreadable("devbox"),
+        entry("peerVersion.said.unreadable").replace("{machine}", "devbox")
+    );
+    assert!(
+        !reply_unreadable("devbox").contains("版本"),
+        "认不出那一句不猜版本"
+    );
+    assert!(backend_old(&local_machine()).starts_with("本机"));
+}

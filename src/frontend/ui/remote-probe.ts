@@ -11,9 +11,8 @@
  * 拨号请求在后端组（`src/backend/dial/machine.rs`）。按形状严格收；本机后端不在 ⇒ 通道那一层报（D11，不回落）。
  */
 import { chan, ChanError, type Item } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, saidOf } from "./ipc/chan-caller";
+import { budgetWithin, jsonBody, saidFrom, unreadableFrom } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./backend-policy";
-import { copyText } from "./copy-table";
 import type { ConnectStage } from "./generated/ConnectStage";
 import { hostKey, type RemoteHostConfig } from "./remote-config";
 
@@ -48,7 +47,7 @@ export type ProbeStop =
   | { at: "hello" }
   | { at: "control" };
 
-/** 到点没等到结局：`stop` = 最后收到的那一格说的那一段；`message` = 通道那一层怎么说的（按层，`saidOf`）。 */
+/** 到点没等到结局：`stop` = 最后收到的那一格说的那一段；`message` = 通道那一层怎么说的（按层，`saidFrom`）。 */
 export class ProbeStalled extends Error {
   constructor(
     readonly stop: ProbeStop,
@@ -69,7 +68,7 @@ const sameKeys = (o: Obj, want: readonly string[]): boolean => {
 const nullableStr = (v: unknown): v is string | null => v === null || typeof v === "string";
 
 function bad(): never {
-  throw new Error(copyText("remoteProbe.reply.badShape"));
+  throw unreadableFrom(LOCAL_ORIGIN, "remoteProbe reply shape");
 }
 
 /** 结局那一格的体。严格收。 */
@@ -129,8 +128,6 @@ const PROBE_BUDGET_MS = 15_000;
 /** 进度流一开始给的 credit：握手那几行（每个地址至多三行 ＋ 鉴权 ＋ 开通道）＋ 三段 ＋ 结局，远不到这个数。 */
 const PROBE_WINDOW = 256;
 
-/** 本机后端比这一问老（不认这条命令）时的那句话。 */
-const OLD_BACKEND = copyText("remoteProbe.backend.tooOld");
 
 /**
  * 测一台机器。`saved` = 已保存的全部机器（从里面找「已保存的那一份」与跳板那一台）。`onStage` 每收到一行握手阶段调一次（边收边画）。
@@ -162,7 +159,7 @@ export async function probeMachine(
         try {
           cell = decodeCell(JSON.parse(it.body));
         } catch (e) {
-          broken = e instanceof Error ? e : new Error(String(e));
+          broken = unreadableFrom(LOCAL_ORIGIN, e instanceof Error ? e.message : String(e));
           arrived();
           return;
         }
@@ -177,7 +174,7 @@ export async function probeMachine(
         }
       } else if (it.t === "gap" || it.t === "closed") {
         // 进度格不许丢（丢了就说不清停在哪）；流关了而结局没到 ⇒ 两端契约对不上。
-        broken = new Error(copyText("remoteProbe.reply.badShape"));
+        broken = unreadableFrom(LOCAL_ORIGIN, "remoteProbe reply shape");
         arrived();
       }
     }
@@ -192,9 +189,9 @@ export async function probeMachine(
     } catch (e) {
       if (end !== null) return end;
       if (e instanceof ChanError && e.error.layer === "hop" && e.error.why === "Overrun") {
-        throw new ProbeStalled(stop, saidOf(e, OLD_BACKEND));
+        throw new ProbeStalled(stop, saidFrom(e, LOCAL_ORIGIN));
       }
-      throw new Error(saidOf(e, OLD_BACKEND));
+      throw new Error(saidFrom(e, LOCAL_ORIGIN));
     }
     // 结局那一格排在应答之前发（同一条应答通道），但两条路到界面的先后不保证 ⇒ 等它到。
     await ended;

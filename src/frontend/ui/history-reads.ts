@@ -9,9 +9,8 @@
  * 注解几问 10 秒（读写一份小文件）。
  */
 import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
+import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
-import { copyText } from "./copy-table";
 
 // ─── 成品的形状 ───
 
@@ -38,15 +37,11 @@ const orNull =
   (v: unknown): v is T | null =>
     v === null || p(v);
 
-/** 形状不对。给人看的那句不带内部名；哪一格不对只进 `detail`（日志 —— 只进日志的细目用英文写，不进文案表）。 */
-export class HistoryShapeError extends Error {
-  readonly detail: string;
+/** 形状不对（本机后端回的东西认不出）。`message` 只是细目（英文，进日志）；给人看的那句由 [`historyReasonOf`] 按码取。 */
+export class HistoryShapeError extends ReplyUnreadable {
   constructor(what: string) {
-    super(
-      copyText("historyReads.shape.unreadable"),
-    );
+    super(what);
     this.name = "HistoryShapeError";
-    this.detail = what;
   }
 }
 
@@ -98,11 +93,9 @@ export function decodeLastAccounts(v: unknown): Record<string, string> {
   return m as Record<string, string>;
 }
 
-/** 一次失败 ⇒ 给人看的那句话（按层说的那一份住 `chan-caller.ts::saidOf`；形状不对时细目进日志）。 */
+/** 一次失败 ⇒ 给人看的那句话（`chan-caller.ts::saidFrom`；清单与搜索都是本机后端答的，远端那台的原因由它说成人话带回来）。 */
 export function historyReasonOf(e: unknown): string {
-  if (e instanceof HistoryShapeError)
-    console.warn(`[history-reads] ${e.detail}`);
-  return saidOf(e, copyText("historyReads.reason.fallback"));
+  return saidFrom(e, LOCAL_ORIGIN);
 }
 
 // ─── 问 ───

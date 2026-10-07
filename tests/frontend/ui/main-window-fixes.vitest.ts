@@ -88,6 +88,7 @@ import { fullTitle } from "../../../src/frontend/ui/session-face";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { RunTimeline } from "../../../src/frontend/ui/run-timeline";
 import { buildAgentCard, markRunCard } from "../../../src/frontend/ui/cards/subagent";
+import { REVEAL_RUN_EVENT } from "../../../src/frontend/ui/cards/speaker-bar";
 import { AgentsPanel } from "../../../src/frontend/ui/agents-panel";
 import { applyFacts } from "../../../src/frontend/ui/tab-session-facts";
 import type { SessionFacts } from "../../../src/frontend/ui/session-reads";
@@ -392,65 +393,40 @@ describe("子 agent 的时间线：读失败一次不丢之前显示过的", () 
   });
 });
 
-describe("消息流里的子 agent 卡：展开之后跟着长、读失败能再读", () => {
-  it("运行表每来一帧（在跑）续读一次；收起再展开也续读；第一次读失败之后能接上", async () => {
-    pages.calls = 0;
-    let n = 0;
-    pages.load = async (from: number) => {
-      n++;
-      if (n === 1) throw new Error("瞬时失败");
-      return page(from, 1);
-    };
-    const ctx = {
-      parentPath: "/p/s.jsonl",
-      origin: LOCAL_ORIGIN,
-      toolUseNames: new Map(),
-      toolUseElements: new Map(),
-      pendingToolResults: new Map(),
-    };
-    const card = buildAgentCard("tool1", "Task", undefined, ctx as never, renderNum as never) as HTMLDetailsElement;
+describe("消息流里的派出卡：点卡头 ⇒ 交宿主开那个子运行的窗口（带运行 / 工具调用 id）", () => {
+  it("还没对上是哪个子运行 ⇒ 带工具调用 id；对上了 ⇒ 带运行", () => {
+    const card = buildAgentCard("tool1", "Task", { label: "扫目录", kind: "Explore" });
     document.body.appendChild(card);
-    const settle = () => new Promise((r) => setTimeout(r, 0));
-    card.open = true; // 展开（`toggle` 由 DOM 自己发）
-    await settle();
-    await settle();
-    expect(card.querySelector(".block-agent-error"), "第一次读失败 ⇒ 说一句").not.toBeNull();
-    markRunCard(card, "r", "running"); // 运行表到了：续读（也就是重试）
-    await settle();
-    expect(nums(card)).toEqual(["0"]);
-    markRunCard(card, "r", "running"); // 又一帧
-    await settle();
-    expect(nums(card)).toEqual(["0", "1"]);
-    card.open = false;
-    await settle();
-    card.open = true; // 再展开：续读一次
-    await settle();
-    await settle();
-    expect(nums(card)).toEqual(["0", "1", "2"]);
+    const got: unknown[] = [];
+    document.addEventListener(REVEAL_RUN_EVENT, (e) => got.push((e as CustomEvent).detail));
+    const head = card.querySelector("button")!;
+    head.click();
+    markRunCard(card, "r", "running");
+    head.click();
+    expect(got).toEqual([
+      { run: undefined, tool: "tool1" },
+      { run: "r", tool: "tool1" },
+    ]);
   });
 });
 
 describe("agent 面板：运行表每来一帧不整表重建", () => {
-  it("同一份再来 ⇒ 一个节点都不换；状态变了 ⇒ 行原地改字，键盘焦点与展开的时间线留着", () => {
-    const timelines = new Map<string, HTMLElement>();
+  it("同一份再来 ⇒ 一个节点都不换；状态变了 ⇒ 行原地改字，键盘焦点留着；点一行交宿主开它的窗口", () => {
+    const opened: string[] = [];
     const p = new AgentsPanel();
     p.host = {
-      timeline: (_sid, run) => {
-        let el = timelines.get(run);
-        if (!el) timelines.set(run, (el = document.createElement("div")));
-        return el;
-      },
-      closed: () => {},
+      open: (_sid, run) => opened.push(run),
+      isOpen: () => false,
       liveOf: () => null,
     };
     document.body.append(p.summaryElement, p.pageElement);
     const run = (id: string, state: string): RunInfo => ({ run: id, state, label: id, kind: "Explore", tool: `t-${id}` }) as never;
     p.setSession("s", [run("r1", "running"), run("r2", "running")]);
     const rowOf = (id: string) => p.pageElement.querySelector<HTMLElement>(`.agent-row[data-run="${id}"]`)!;
-    rowOf("r2").click(); // 展开 r2 的时间线
+    rowOf("r2").click(); // 开 r2 的窗口
+    expect(opened).toEqual(["r2"]);
     const r1 = rowOf("r1");
     r1.focus();
-    const tl = timelines.get("r2")!;
     p.setSession("s", [run("r1", "running"), run("r2", "running")]);
     expect(rowOf("r1")).toBe(r1);
     expect(document.activeElement).toBe(r1);
@@ -458,7 +434,6 @@ describe("agent 面板：运行表每来一帧不整表重建", () => {
     expect(rowOf("r1"), "状态变了：同一个行节点原地改").toBe(r1);
     expect(document.activeElement, "键盘焦点还在那一行").toBe(r1);
     expect(r1.classList.contains("agent-done")).toBe(true);
-    expect(tl.isConnected, "展开着的时间线留在原处").toBe(true);
   });
 });
 
@@ -494,6 +469,7 @@ describe("上下文占用：状态栏与监控板读同一个上限（后端定�
     pending: [],
     lastSay: null,
     needs: null,
+    handedBack: [],
     usage: { promptTokens: 350_000, model: "claude-opus-5-5", peakPromptTokens: 350_000, limit, limitFrom },
   });
   it("中转说是 1M：35%（不是 175%）；状态栏与监控板同一个数", () => {

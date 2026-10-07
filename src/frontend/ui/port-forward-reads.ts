@@ -11,9 +11,8 @@
  * 按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」）。
  */
 import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
+import { budgetWithin, jsonBody, readJson, saidFrom, unreadableFrom } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./backend-policy";
-import { copyText } from "./copy-table";
 import type { RemoteHostConfig } from "./remote-config";
 
 /** 一条转发的状态（列表展示）。 */
@@ -57,7 +56,7 @@ const isPort = (v: unknown): v is number => typeof v === "number" && Number.isIn
 const isCount = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0;
 
 function bad(): never {
-  throw new Error(copyText("portForwardReads.reply.badShape"));
+  throw unreadableFrom(LOCAL_ORIGIN, "portForwardReads reply shape");
 }
 
 function decodeRow(v: unknown): ForwardStatus {
@@ -103,11 +102,9 @@ export function decodeId(v: unknown): string {
 const FORWARD_START_BUDGET_MS = 30_000;
 const FORWARD_LEDGER_BUDGET_MS = 10_000;
 
-/** 本机后端比这三问老（不认这条命令）时的那句话。 */
-const OLD_BACKEND = copyText("portForwardReads.backend.tooOld");
 
 function said(e: unknown): Error {
-  return new Error(saidOf(e, OLD_BACKEND));
+  return new Error(saidFrom(e, LOCAL_ORIGIN));
 }
 
 /** 起一条转发，回它的号。口绑不上 / 连不上 ⇒ 抛那句原话。 */

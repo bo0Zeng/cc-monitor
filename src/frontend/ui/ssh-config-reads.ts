@@ -11,9 +11,8 @@
  * 按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」）；跨语言金样 `tests/__fixtures__/ssh-config.golden.json`。
  */
 import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
+import { budgetWithin, jsonBody, readJson, saidFrom, unreadableFrom } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./backend-policy";
-import { copyText } from "./copy-table";
 
 /** 一个别名解析出的有效连接参数。 */
 export interface ResolvedHost {
@@ -62,7 +61,7 @@ const isPort = (v: unknown): v is number => typeof v === "number" && Number.isIn
 const strs = (v: unknown): v is string[] => Array.isArray(v) && v.every((s) => typeof s === "string");
 
 function bad(): never {
-  throw new Error(copyText("sshConfigReads.reply.badShape"));
+  throw unreadableFrom(LOCAL_ORIGIN, "sshConfigReads reply shape");
 }
 
 /** `ssh-config-aliases` 的成品。严格收。 */
@@ -143,12 +142,10 @@ export function decodeImport(v: unknown): ImportGroup[] {
 const SSH_CONFIG_BUDGET_MS = 10_000;
 const SSH_IMPORT_BUDGET_MS = 30_000;
 
-/** 本机后端比这三问老（不认这条命令）时的那句话。 */
-const OLD_BACKEND = copyText("sshConfigReads.backend.tooOld");
 
 /** 三问共用的那一句：通道三层 → 一句人话（本机后端不在 / 太旧 / 拒了）。 */
 function said(e: unknown): Error {
-  return new Error(saidOf(e, OLD_BACKEND));
+  return new Error(saidFrom(e, LOCAL_ORIGIN));
 }
 
 /** `~/.ssh/config` 里可点的别名。问不到 ⇒ 抛一句人话（与「真没有别名」分开）。 */

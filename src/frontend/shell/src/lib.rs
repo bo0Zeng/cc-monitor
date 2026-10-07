@@ -1348,6 +1348,10 @@ fn forget_session(
 /// 加载 `viewer.html?viewer=<sid>` —— 独立入口 `src/frontend/ui/entry-viewer.ts`（三入口拆分）。
 /// 窗口已存在则前置聚焦（不重复开）。双屏 / 并排查看用。
 ///
+/// `run` 有 ⇒ 开的是这个会话里**一个子运行**的窗口（agent 窗口）：窗口名按「会话 ＋ 运行」定（`viewer-agent-<sid>-<运行>`），
+/// URL 多带 `run=<运行>`；同一个子运行至多一个窗口（已在 ⇒ 前置聚焦）。没给落点时错开叠放：从另一个 agent 窗口开的
+/// 在它右下错开 [`AGENT_WINDOW_STEP`]；从别的窗口开的，按此刻已开着几个 agent 窗口依次错开。
+///
 /// **必须 `async`**：Tauri 2 同步 `fn` 命令在**主线程**执行，而
 /// `WebviewWindowBuilder::build()` 要把窗口创建派发到主线程并阻塞等待 —— 同步命令
 /// 就是在主线程里等主线程 → 死锁（表现：新窗口白屏 + 整个 app 卡死连 X 都点不了）。
@@ -1356,29 +1360,42 @@ fn forget_session(
 /// 拖拽撕离（tear-off）：`x` / `y` 为可选的**逻辑屏幕坐标**（CSS px），来自前端
 /// mouseup 的 `e.screenX/screenY`。两者皆 `Some` 时新窗口在该落点打开（双屏拖出体验）；
 /// 任一为 `None`（右键菜单 / Ctrl+Shift+N 老调用方）则维持默认居中行为，不破坏旧路径。
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 async fn open_session_in_new_window(
     app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
     session_id: String,
     origin: crate::origin::Origin,
     title: String,
     x: Option<f64>,
     y: Option<f64>,
+    run: Option<String>,
 ) -> Result<(), String> {
     use tauri::Manager;
     // 独立窗口自己订 `session-lines/<sid>`（`subscribe(origin, kind)`：origin 是唯一寻址键）
     //   ⇒ 窗口要知道这个会话在哪台机器上；随 URL 交过去（百分号编码：本机那个 `<local>` 有尖括号）。
     origin.route("open_session_in_new_window")?;
     let origin_q = pct_encode(origin.as_wire_str());
-    let label = format!("viewer-{session_id}");
+    let run = run.filter(|r| !r.is_empty());
+    let label = match &run {
+        Some(r) => agent_window_label(&session_id, r),
+        None => format!("viewer-{session_id}"),
+    };
     if let Some(w) = app.get_webview_window(&label) {
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
+        let _ = w.request_user_attention(Some(tauri::UserAttentionType::Informational));
         return Ok(());
     }
-    let url =
-        tauri::WebviewUrl::App(format!("viewer.html?viewer={session_id}&origin={origin_q}").into());
+    let run_q = run
+        .as_deref()
+        .map(|r| format!("&run={}", pct_encode(r)))
+        .unwrap_or_default();
+    let url = tauri::WebviewUrl::App(
+        format!("viewer.html?viewer={session_id}&origin={origin_q}{run_q}").into(),
+    );
     let mut builder = tauri::WebviewWindowBuilder::new(&app, &label, url)
         .title(if title.is_empty() {
             "cc-monitor"
@@ -1391,7 +1408,19 @@ async fn open_session_in_new_window(
         // 而非 WebView2 默认白（tauri.conf.json 主窗口同款 #2b2a27）
         .background_color(tauri::window::Color(0x2b, 0x2a, 0x27, 0xff));
     // 落点定位：仅当 x/y 都给出时按逻辑坐标摆放（Tauri 2 builder 取 LogicalPosition）。
-    if let (Some(x), Some(y)) = (x, y) {
+    let at = match (x, y) {
+        (Some(x), Some(y)) => Some((x, y)),
+        _ if run.is_some() => {
+            let open = app
+                .webview_windows()
+                .keys()
+                .filter(|l| l.starts_with(AGENT_WINDOW_PREFIX))
+                .count();
+            agent_window_spot(&window, open)
+        }
+        _ => None,
+    };
+    if let Some((x, y)) = at {
         builder = builder.position(x, y);
     }
     let w = builder
@@ -1399,6 +1428,46 @@ async fn open_session_in_new_window(
         .map_err(|e| format!("create viewer window failed: {e}"))?;
     fit_window_to_work_area(&w);
     Ok(())
+}
+
+/// agent 窗口名的前缀（`viewer-agent-<sid>-<运行>`：落在查看窗那一组窗口名里，同一套权限）。
+const AGENT_WINDOW_PREFIX: &str = "viewer-agent-";
+/// agent 窗口错开叠放的一步（逻辑 px）。
+const AGENT_WINDOW_STEP: f64 = 32.0;
+/// 从别的窗口依次错开时，至多错开几步就绕回第一格。
+const AGENT_WINDOW_STEPS: usize = 8;
+
+/// 一个子运行的窗口名：`viewer-agent-<sid>-<运行>`。窗口名只许字母数字与 `-` `/` `:` `_`，别的字节写成 `_xx`（十六进制）。
+fn agent_window_label(sid: &str, run: &str) -> String {
+    let mut out = String::from(AGENT_WINDOW_PREFIX);
+    for (i, part) in [sid, run].into_iter().enumerate() {
+        if i > 0 {
+            out.push('-');
+        }
+        for b in part.bytes() {
+            // 运行那一段连 `-` 也写成 `_2d`：会话那一段带 `-`，两段之间的 `-` 才不会认错。
+            if b.is_ascii_alphanumeric() || (b == b'-' && i == 0) {
+                out.push(char::from(b));
+            } else {
+                out.push_str(&format!("_{b:02x}"));
+            }
+        }
+    }
+    out
+}
+
+/// 新 agent 窗口的落点（逻辑坐标）：从 agent 窗口开 ⇒ 它右下一步；从别的窗口开 ⇒ 那扇窗左上角往里错开
+/// `1 + 已开着几个 agent 窗口`（绕着 [`AGENT_WINDOW_STEPS`]）步。读不出那扇窗的位置 ⇒ `None`（交给系统摆）。
+fn agent_window_spot(from: &tauri::WebviewWindow, open: usize) -> Option<(f64, f64)> {
+    let scale = from.scale_factor().ok()?;
+    let p = from.outer_position().ok()?.to_logical::<f64>(scale);
+    let steps = if from.label().starts_with(AGENT_WINDOW_PREFIX) {
+        1
+    } else {
+        1 + open % AGENT_WINDOW_STEPS
+    };
+    let d = AGENT_WINDOW_STEP * steps as f64;
+    Some((p.x + d, p.y + d))
 }
 
 /// 设置窗（单例 `settings`，关窗只是藏起来）：已在 ⇒ show ＋ 聚焦；不在 ⇒ 建（加载 `settings.html`）。
@@ -1675,6 +1744,10 @@ mod env_scrub_tests;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/lib_batch_tests.rs"]
 mod batch_tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/agent_window_label_tests.rs"]
+mod agent_window_label_tests;
 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/lib_mod_decl_hygiene_tests.rs"]

@@ -325,14 +325,22 @@ export function defaultOps(): Record<string, OpHandler> {
         else if (pending[0] && /permission/i.test(s.waitingFor ?? "")) needs = { kind: "approve", tool: pending[0].name, call: pending[0].id, what: pending[0].what, sinceMs };
         else needs = { kind: "unknown", tool: null, call: null, what: null, sinceMs };
       }
-      return { agent: s?.agent ?? "claude", end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage, writers: [], pending, lastSay, needs };
+      // 交回了的子运行：成品里「谁说的」是 agent 交回的那几条的 `from`（去重、文件序；同后端 `facts_query::note_handback`）。
+      const handedBack: string[] = [];
+      for (const r of recs) {
+        const sp = (r as { userText?: { speaker?: { kind?: string; handback?: boolean; from?: string } } }).userText?.speaker;
+        if (sp?.kind === "agentMessage" && sp.handback === true && sp.from && !handedBack.includes(sp.from)) handedBack.push(sp.from);
+      }
+      return { agent: s?.agent ?? "claude", end: layout(recs).end, forkedFrom: null, projectDir: s?.cwd ?? null, touchedFiles: [...touched], usage, writers: [], pending, lastSay, needs, handedBack };
     },
     "history-run": (_o, req, w) => {
       const s = sessionByPath(w, req.parent);
       const run = s?.runs.find((r) => r.run === req.run || (req.tool !== undefined && r.tool === req.tool));
-      const rows = run && s ? (s.runRecords[run.run] ?? []).map((message) => ({ message })) : [];
+      const all = run && s ? (s.runRecords[run.run] ?? []).map((message) => ({ message })) : [];
+      // 一条记录当 400 字节：续读从 `from` 那一条往后。
+      const rows = all.slice(Math.floor(Number(req.from ?? 0) / 400));
       const path = `${s?.cwd ?? ""}/${s?.sid ?? ""}/subagents/${run?.run ?? "x"}.jsonl`;
-      return { run: run?.run ?? String(req.run ?? ""), path, rows, end: rows.length * 400, more: false };
+      return { run: run?.run ?? String(req.run ?? ""), path, rows, end: all.length * 400, more: false };
     },
   };
 }

@@ -15,12 +15,11 @@
  * 逐字不变，事件怎么在上面几份之间流转写在这里。拆分逐子步提交，每一步 `tabs.vitest` 全绿、断言不动。
  */
 import { speakerNameOf } from "./agent-profile";
-import { renderMessage, type RenderContext } from "./cards";
 import { SPEAKER_SELECTOR } from "./cards/speaker";
-import { markRunCard } from "./cards/subagent";
+import { markRunCard, markRunWindow } from "./cards/subagent";
+import { openAgentWindow } from "./agent-window-open";
 import { runLabel } from "./runs";
 
-import { RunTimeline } from "./run-timeline";
 import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
 import { openNewSession } from "./new-session";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
@@ -86,6 +85,7 @@ import { awaitedFor, clearAwaiting, markAwaiting } from "./cards/step-line";
 import { machineName } from "./control-said";
 import { closeFrontResult, copyFrontDetail, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
 import { CHANNEL_ACTS, LaunchSlots, type SlotSpec } from "./launch-slot";
+import { applyHandedBack } from "./cards/speaker-bar";
 
 
 export class TabManager {
@@ -118,16 +118,14 @@ export class TabManager {
     /** issue #23: 全局 AgentsPanel（子运行列表：运行表的成品），喂数方式同 tasksPanel */
     private agentsPanel?: AgentsPanel,
   ) {
-    // 子运行的流有动静 ⇒ 它开着的时间线尾巴上那一截活卡重画；面板那一行的「最近：…」跟着变。
-    this.live.onRunLive = (sid, run) => {
-      const t = this.runTimelines.get(`${sid}\u0000${run}`);
-      if (t) this.live.paintCards(t.live, sid, run);
+    // 子运行的流有动静 ⇒ 面板那一行的「最近：…」跟着变。
+    this.live.onRunLive = (sid) => {
       if (sid === this.store.activeId) this.agentsPanel?.refresh();
     };
     if (agentsPanel) {
       agentsPanel.host = {
-        timeline: (sid, run) => this.runTimeline(sid, run),
-        closed: (sid, run) => this.closeRunTimeline(sid, run),
+        open: (sid, run) => void this.openRunWindow(sid, { run }),
+        isOpen: (sid, run) => this.runWindows.has(`${sid}\u0000${run}`),
         liveOf: (sid, run) => this.live.core.liveBlockOf(sid, run),
       };
     }
@@ -190,7 +188,6 @@ export class TabManager {
       return t && t.origin === origin ? t.sessionId : null;
     },
     (sid) => this.store.tabs.get(sid)?.stream.trailerElement ?? null,
-    (sid, run) => this.runTimelines.has(`${sid}\u0000${run}`),
   );
 
 
@@ -931,12 +928,12 @@ export class TabManager {
     this.live.onTap(p);
   }
 
-  /** agent 面板里点开着的子运行时间线：`sid\0run` ⇒ 它。 */
-  private readonly runTimelines = new Map<string, RunTimeline>();
+  /** 开着窗口的那几个子运行（`sid\0run`；agent 窗口开 / 关时自己报，`window-events.ts`）。 */
+  private readonly runWindows = new Set<string>();
 
   /**
    * 一个会话的运行表到了（会话流里的 `runs` 格）：派出它们的那几张工具卡记上是哪个子运行、什么状态（被挤出表的已收场那几个
-   * 在 `ended` 里，卡照样标）；当前 tab 的就交 agent 面板；开着的时间线续读一次。主 tab 的消息流里不画子运行。
+   * 在 `ended` 里，卡照样标）；当前 tab 的就交 agent 面板。主 tab 的消息流里不画子运行。
    */
   onSessionRuns(p: SessionRunsPayload): void {
     const tab = this.store.tabs.get(p.session_id);
@@ -945,49 +942,49 @@ export class TabManager {
     for (const r of p.runs) {
       if (r.tool === undefined) continue;
       const card = tab.runCards.get(r.tool);
-      if (card) markRunCard(card, r.run, r.state);
+      if (!card) continue;
+      markRunCard(card, r.run, r.state, r);
+      markRunWindow(card, this.runWindows.has(`${tab.sessionId}\u0000${r.run}`));
     }
     for (const e of p.ended) {
       const card = tab.runCards.get(e.tool);
-      if (card) markRunCard(card, e.run, e.state);
+      if (!card) continue;
+      markRunCard(card, e.run, e.state);
+      markRunWindow(card, this.runWindows.has(`${tab.sessionId}\u0000${e.run}`));
     }
     if (tab.sessionId === this.store.activeId) this.agentsPanel?.setSession(tab.sessionId, p.runs);
-    for (const [k, t] of this.runTimelines) if (k.startsWith(`${tab.sessionId}\u0000`)) void t.refresh();
   }
 
-  /** agent 面板里某一行点开：那个子运行的时间线（第一次建、之后留着续读）。 */
-  runTimeline(sid: string, run: string): HTMLElement {
+  /** 一个子运行的窗口开了 / 关了：面板那一行与派出它的那张卡标「窗口已开」。 */
+  setRunWindow(sid: string, run: string, open: boolean): void {
     const k = `${sid}\u0000${run}`;
-    let t = this.runTimelines.get(k);
+    if (open === this.runWindows.has(k)) return;
+    if (open) this.runWindows.add(k);
+    else this.runWindows.delete(k);
     const tab = this.store.tabs.get(sid);
-    if (!t && tab) {
-      const ctx: RenderContext = {
-        parentPath: tab.parentPath,
-        speaker: speakerNameOf(tab.agent),
-        origin: tab.origin,
-        toolUseNames: new Map(),
-        toolUseElements: new Map(),
-        pendingToolResults: new Map(),
-      };
-      t = new RunTimeline({
-        origin: tab.origin,
-        parent: tab.parentPath,
-        which: { run },
-        render: (rec) => renderMessage(rec, ctx),
-        onRecord: (rid) => this.live.onRecord(sid, rid, run),
-      });
-      this.runTimelines.set(k, t);
-      void t.refresh();
-    }
-    if (!t) return document.createElement("div");
-    this.live.paintCards(t.live, sid, run);
-    return t.element;
+    const tool = this.live.board.of(sid).find((r) => r.run === run)?.tool;
+    const card = tab && tool !== undefined ? tab.runCards.get(tool) : undefined;
+    if (card) markRunWindow(card, open);
+    if (sid === this.store.activeId) this.agentsPanel?.refresh();
   }
 
-  /** 面板那一行收起了：它的时间线不再留。 */
-  closeRunTimeline(sid: string, run: string): void {
-    this.runTimelines.delete(`${sid}\u0000${run}`);
-    this.live.unwatched(sid, run);
+  /** 开一个子运行自己的窗口（按运行 · 或按派出它的那次工具调用找；运行表里还没有 ⇒ 不开）。已开着 ⇒ 壳把它拉到前面。 */
+  async openRunWindow(sid: string, which: { run?: string; tool?: string }): Promise<void> {
+    const tab = this.store.tabs.get(sid);
+    const r = this.live.board.of(sid).find((x) => (which.run !== undefined ? x.run === which.run : x.tool === which.tool));
+    if (!tab || !r) return;
+    await openAgentWindow({ origin: tab.origin, sid, run: r, session: tab.aiTitle ?? tab.title, machine: isRemoteOrigin(tab.origin) ? tab.origin : null });
+  }
+
+  /** 回到派出它的地方：切到那个会话、滚到派出它的那张卡、闪一下。没有这张卡 ⇒ 只切过去。 */
+  showRunCard(sid: string, tool: string): void {
+    this.switchTo(sid);
+    const card = this.store.tabs.get(sid)?.runCards.get(tool);
+    if (!card) return;
+    card.scrollIntoView({ block: "center" });
+    card.classList.remove("search-hit-flash");
+    void card.offsetWidth;
+    card.classList.add("search-hit-flash");
   }
 
   /** 装活卡的画法（主窗口入口装；独立查看器不装 ⇒ 只记账不画，见 `live-card.ts::LivePainter`）。 */
@@ -1332,6 +1329,8 @@ export class TabManager {
     const tab = this.store.tabs.get(sid);
     if (!tab) return;
     const ch = applyFacts(tab, f);
+    // 交回了的子运行：它的收场通知以交回为准（同一个子运行只报一次）。
+    applyHandedBack(tab.streamEl, new Set(f.handedBack));
     if (ch.forkedFrom || ch.projectDir) {
       tab.title = this.computeTitle(tab);
       this.refreshTabBar();

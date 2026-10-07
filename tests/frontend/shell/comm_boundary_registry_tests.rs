@@ -1988,9 +1988,8 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     );
     let mut offenders: Vec<String> = Vec::new();
     let mut sites = 0usize;
-    // 按入口分开数：`subscribe` 进来了（窗口里第一处），而它**没有期限参数**
-    //   （签名逐字）⇒ 「显式给 `Budget`」只对带期限的入口判；条数两个入口各自恒等。
-    let mut per_entry: std::collections::BTreeMap<&str, usize> = Default::default();
+    // 按入口分开记谁在说：`subscribe` **没有期限参数**（签名逐字）⇒ 「显式给 `Budget`」只对带期限的入口判。
+    let mut holders: BTreeMap<&str, BTreeSet<&str>> = Default::default();
     // `chan.call`（主界面那一侧）同样带期限 —— 死值验现打：只写 `call` 的话，
     //   把主界面某处调用的期限换成一个不叫 budget 的东西，本条**照绿**（入口按全名分，`chan.call` 不在这张表里就不判）。
     const HAS_DEADLINE: &[&str] = &["call", "chan.call"];
@@ -2003,7 +2002,9 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
             let head = format!("{entry}(");
             let n = prod.matches(head.as_str()).count();
             sites += n;
-            *per_entry.entry(entry).or_default() += n;
+            if n > 0 {
+                holders.entry(entry).or_default().insert(rel.as_str());
+            }
             if !HAS_DEADLINE.contains(entry) {
                 continue;
             }
@@ -2019,81 +2020,33 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
          「这条路该等多久」没有任何调用方想过（`§9`：那 8 条无期限路径连实测分布都没有）。",
         offenders.join("\n")
     );
-    // 🔴调用点**条数恒等**（不是地板）：`call` 恰好 1 处（`filewin/source.rs::ask`）；
-    // `subscribe` 恰好 1 处（`filewin/source.rs::watch`）。
-    //    变多 ＝ 窗口里长出了第二处说它的地方（期限 / 撤的住址跟着分家）；
-    //    变少 ＝ 那一处没了 —— 上面那条零违例会在零个调用点上**恒绿**。
-    // `chan.call`（TS，主界面）恰好 2 处：`account-reads.ts::fetchSessionAccounts`（`accounts-sessions`）·
-    //    `views/history-search.ts` 逐台那一问（`history-search`）。**X6 的 TS 人群第一次非空。**
-    // 2 → 5：`session-reads.ts` 的三问（`history-index` / `history-user-inputs` / `history-find`，
-    //    会话读面那三条从 monitor 的 Tauri 命令改走通道；每处显式给期限）。5 → 6：`settings/plugins-section.ts::fetchSurvey`
-    //    （`plugins-marketplaces`）。
-    // 6 → 8：`account-reads.ts::fetchAccounts`（`accounts-list`）· `account-reads.ts::checkTrust`（`accounts-trust`）——
-    //    账号清单与信任预检从 monitor 的三条 Tauri 命令改走通道；每处显式给期限。
-    //    8 → 9：`session-reads.ts::probeSessionRecord`（`history-record`，resume 之前问记录还在不在）。
-    //    9 → 11：`settings/backend-section.ts::askExitPolicy` / `putExitPolicy`（「退出行为」问 / 交写）。
-    // 11 → 12：`settings/assets-section.ts` 问那台的资产目录（`assets-catalog`，显式给期限）。
-    // 12 → 18：历史清单与注解从 monitor 的 Tauri 命令改走通道（`history-reads.ts`），
-    //    一律问本机常驻后端（远端那台由它去问）；每处显式给期限。
-    // 18 → 20：`settings/assets-section.ts` 问那台记着的「从别处装来的 skill」（`skill-installs`）·
-    //    点「卸」之后问那台的卸判定（`skill-uninstall-plan`）；两处都显式给期限。
-    // 18 → 19：`tmux-control.ts::capturePane`（`capture-pane`，预览窗抓一屏从 monitor 的 Tauri 命令改走通道；
-    //    显式给期限）。
-    // 19 → 22：`tmux-control.ts` 的 `killSession`（`kill`）· `sendKeys` · `sendInto`（都是 `launch`）——
-    //    杀会话 / 送键 / 就地 resume 三条 Tauri 命令改走通道；每处显式给期限（操作名留在调用点写字面量，见 `settle` 头注）。
-    // 22 → 27：`cc-bus-control.ts` 五处（`bus-list` 查在线 · `bus-send` · `bus-kill` · `bus-spawn` · `bus-broadcast`）——
-    //    cc-bus 驾驶舱的写面从 monitor 的五条 Tauri 命令改走通道；每处显式给期限。
-    // 〔合并 SU1 ＋ C4e〕基数 18 ＋ SU1 增量 2 ＋ C4e 增量 9 = 29（两路各自从 18 起算；上面两段各写各的增量）。
-    // 主线 29 ＋ 2：`apikey-reads.ts::readApikeyStatus`（`apikey-read`）· `fetchApikeyRouting`（`apikey-routing`）——
-    //    API key 那两问从 monitor 的两条 Tauri 命令改走通道；每处显式给期限。
-    // 31 → 32：`account-reads.ts::fetchSessionAccountsOrNull`（`accounts-sessions`，机器页「停」本机后端之前
-    //    现问一次走中转的活会话；不走缓存、问不到回 `null`）；显式给期限。
-    // 主线 31 ＋ 1：`tasks-panel.ts::fetchSessionTasks`（`tasks-list`）——
-    //    任务快照从 monitor 的 Tauri 命令改走通道（C4e 批 4）；显式给期限。
-    // 两路各自 31 ＋ 1 ⇒ 31 ＋ 2 = 33。
-    // 主线 33 ＋ 1 ⇒ 34：`apikey-reads.ts::writeApikeyKey`（`apikey-key-set`，写 key 从 monitor 那条 Tauri 命令改走通道）；显式给期限。
-    // 主线 35 ＋ 1 ⇒ 36：`session-reads.ts::readSessionFacts`（`history-facts`，会话事实出成品 ——
-    //    此前是前端 `onLine` 旁路自己攒的，不是替掉一条 Tauri 命令）；显式给期限（`READ_BUDGET_MS`）。
-    // `chan.subscribe`（TS，主界面）恰好 1 处：`events.ts::bindEvents` 按 `streams` 订会话内容流
-    //    （主窗口每台机器一条、独立窗口一条，都经这一处）。
-    // `session-tap` 与会话行走同一处（`plan` 里多一种流），仍是 1。
-    // `accounts-changed`（替掉裸事件 `remote-backend-ready`；「前端只有两个动作」）同样经这一处
-    //    （合并 TAP 时从单独一处 `watchAccountsChanged` 收回 `bindEvents` 的 `plan`，照 TAP 那一形）⇒ 仍是 1。
-    // ＋1（合并主线 3c815828 之后 34 → 35；那一拍两边各自写成 34、git 当同一行合了，现打 35）：`settings/machine-aliases.ts::previewAlias` 一处（别名预览 `ccm-print`，
-    //    问本机常驻后端「这条别名实际会执行什么」）；显式给期限（`PREVIEW_BUDGET_MS`）。
-    // 36 → 37：`settings/acct-deploy.ts::askAcctIsoCmd` 一处（cc-acct-iso 步骤那一行问那台后端 `acct-iso-cmd`；
-    //    新建表单预览 · 启用向导预览 · 弹终端三个用处都经这一处）；显式给期限（`CMD_BUDGET_MS`）。
-    // 37 → 39：`cc-bus-control.ts::readState` / `readInbox`（`bus-state` / `bus-inbox`，驾驶舱读面从 monitor 那两条 Tauri 命令改走通道）；显式给期限（`READ_BUDGET_MS`）。
-    // 39 → 40：`settings/backend-section.ts::askBackendLog`（`backend-log`，那台后端的诊断文件尾部）；显式给期限。
-    // 基数 40 → 增量 +1 ⇒ 41：`resync.ts::resync`（`resync`，机器一行「重新对齐」与关卡 2「对齐后重试」共用这一处）；显式给期限（`RESYNC_BUDGET_MS`）。
-    // 基数 41 → 增量 +6 ⇒ 47：`mcp-reads.ts` 三处（`mcp-read` · `mcp-server-put` / `-remove`）＋ `mcp-sync-reads.ts` 三处（`mcp-sync-source` / `-preview` / `-apply`），
-    //    MCP 读写与推拉从 monitor 那八条 Tauri 命令改走通道；显式给期限（`MCP_BUDGET_MS` / `SYNC_BUDGET_MS`）。
-    // 基数 47 → 增量 +5 ⇒ 52：`skill-install-reads.ts` 四处（`skill-read` · `skill-install-plan` · `-apply` · `skill-uninstall-apply`）
-    //    ＋ `assets-sync-reads.ts` 一处（`assets-sync`）；显式给期限（`SKILL_BUDGET_MS` / `SYNC_BUDGET_MS`）。
-    // 基数 52 ＋ MIG-3a +11 ＋ MIG-2 +4 ⇒ 67。
-    // 基数 61 → 增量 +2 ⇒ 63：`cc-bus-install-reads.ts` 两处（`cc-bus-install` / `-state`）。
-    // 基数 63 → 增量 −2 ⇒ 61：MCP 推拉 3 → 2、skill 装 3 → 2（经前端中继那一形改成只问本机枢纽一次）。
-    // 基数 57 → 增量 +6 ⇒ 63：`alias-reads.ts` 六处（`aliases-*`）；显式给期限（`ALIAS_BUDGET_MS`）。
-    // 基数 54 → 增量 +3 ⇒ 57：`skill-inbox-reads.ts` 三处（`skill-host-list` / `-read` / `-write`）；显式给期限（`INBOX_BUDGET_MS`）。
-    // 基数 52 → 增量 +2 ⇒ 54：`acct-iso-reads.ts` 两处（`acct-iso-status` · `acct-iso-shellinit`）；显式给期限（`ACCT_ISO_BUDGET_MS`）。
-    // 〔09-28 裁 2〕基数 67 → 增量 +1 ⇒ 68：`acct-iso-reads.ts` 一处（`acct-iso-install`）；显式给期限（`ACCT_ISO_BUDGET_MS`）。
-    // 基数 41 → 增量 +3 ⇒ 44：`ssh-config-reads.ts` 三处（`ssh-config-aliases` · `-resolve` · `-import`，`~/.ssh/config` 导入从 monitor 三条 Tauri 命令改问本机常驻后端）；各自显式给期限。
-    // 基数 41 ＋ MIG-3a 11 ＋ MIG-1 3 ⇒ 55。
-    // 基数 52 → 增量 +4 ⇒ 56：`launch-render.ts` 四处（`launch-render-cli` · `launch-render-payload` · `launch-endpoint` · `launch-local`），
-    //    起会话的渲染 / 中转地址 / 本机计划从 monitor 那几条 Tauri 命令改走通道；显式给期限（`budgetWithin(...)`）。
-    // 主线 56 ＋ MIG-1 本路 6（ssh 配置三问 ＋ 端口转发三问）⇒ 62。
-    assert_eq!(
-        per_entry,
-        [
-            ("call", 1usize),
-            ("chan.call", 104usize), // +1：`settings/data-reads.ts::readDataReport`（`data-report`，文件与数据那一份）；显式给期限（`DATA_BUDGET_MS`） // +2：`new-session-reads.ts` 三处（`session-new-facts` · `session-new-dir` · `session-new`，起新会话框那三问）、`session-writes.ts::forkSession`（`session-fork`）一处删了（分叉随起会话那一个请求写）；显式给期限 // +1：`account-ops.ts::accountsMcpSync`（`accounts-mcp-sync`，共用 MCP 停 / 开同步）；显式给期限（`CHANGE_BUDGET_MS`） // ±0：`account-reads.ts::fetchSessionAccountsOrNull` 删了、`settings/interrupts.ts::askOne`（`machine-interrupts`，停 / 重启 / 更新 / 卸载之前问那台与本机会打断什么）一处，显式给期限（`INTERRUPTS_BUDGET_MS`） // +1：`terminal-reads.ts::sendToTerminal`（`terminal-input`，底部抽屉终端页送字送键）；显式给期限（`INPUT_BUDGET_MS`） // 历史页照稿重做 −2：`history-reads.ts` 那三处（项目清单 · 远端项目清单 · 会话清单）随旧页删了，`history-list-reads.ts::fetchList` 一处（`history-list`，平铺清单问本机后端，显式给期限 `LIST_BUDGET_MS`） // +1：`session-reads.ts::readTurns`（`history-turns`，一轮的摘要）；显式给期限（`READ_BUDGET_MS`） // +5：`quota-reads.ts` 五处（`quota-read` · `rotation-read` · `rotation-session-read` · `rotation-session-set` · `rotation-switch`，额度与轮换那几问）；显式给期限（`READ_BUDGET_MS` / 重启切换那一趟的总期限） // +1：`interrupt-reads.ts::askSessionInterrupts`（`session-interrupts`，动会话之前问那台会打断什么）；显式给期限（`INTERRUPTS_WITHIN_MS`） // +1：`account-ops.ts::accountsSetDefault`（`accounts-set-default`，设默认号改写那台的账号库清单，monitor 那份默认号删了）；显式给期限（`CHANGE_BUDGET_MS`） // +1：`settings/claude-dir-check.ts::claudeDirProblem`（`files-stat`，Claude 数据目录存之前问本机那个路径在不在）；显式给期限（`STAT_BUDGET_MS`） // +2：`alias-reads.ts::aliasToForm` / `aliasFromForm`（`aliases-to-form` / `aliases-from-form`，别名表单与参数互转交那台后端）；显式给期限（`ALIAS_BUDGET_MS`） // 合并：86 基线，这边 −1 ＋2（`terminal-open.ts` 本机那一支不再问 · `remote-terminal-front.ts::planRemoteFront` 两处），主线 ＋3 ⇒ 90 // +1：`sessions-where.ts::standingsOf`（`sessions-where`，这个会话在哪个 tmux 会话里问那台）；显式给期限（`STANDING_BUDGET_MS`） // +2：`tab-batch-run.ts` 的 `sessions-stop` · `sessions-start`（tab 栏批量停 / 起，每台一次）；显式给期限（按个数放宽） // 88 − 2：`launch-render.ts` 里 `launch-render-payload` · `launch-endpoint` 两处随起会话只交一行 `ccm …` 删了 // +1：`relay-optin-reads.ts::fetchRelayOptin`（`relay-optin`，「终端」栏直接敲的也走中转）；显式给期限（`RELAY_OPTIN_BUDGET_MS`） // 两边增量相加：扩展页这边 −1、账号间共用 MCP ＋ 摘全景那边 ±0 ⇒ 88 − 1 = 87 // 扩展页这边 −1：`cc-bus-install-reads.ts` 两处（装 cc-bus 改走枢纽）· 钩子那一块一处删了，`cc-bus-hooks-reads.ts` 一处 · `ext-reads.ts` 多一处（`ext-note-set`）⇒ −3 ＋2 // 〔合并扩展页 × 账号库〕两边的增量相加：95 ＋ 账号库 +3 ＋ 扩展页 −10 ⇒ 88 // 扩展页原注：删 15 处（`mcp-reads.ts` 3 · `mcp-sync-reads.ts` 2 · `skill-install-reads.ts` 3 · `skill-inbox-reads.ts` 3 · `plugins-section.ts` 1 · `assets-section.ts` 3）、加 5 处（`ext-reads.ts`：`ext-list` · `ext-hub-preview` / `-apply` · `ext-uninstall-preview` / `-apply`，各自显式给期限） // 账号库原注：账号库那一族：−4（`acct-iso-reads.ts` 三处 · `acct-deploy.ts` 一处随旧工具删）＋ 7（`account-ops.ts` 七条命令各一处，显式给期限 `CHANGE_BUDGET_MS` / `READ_BUDGET_MS`）// +1：`terminal-open.ts::openTerminal` 本机那一支问本机后端 `terminal-local`（令牌握手前奏由后端接）；显式给期限（`RENDER_BUDGET_MS`） // +1：`alias-reads.ts::allowLocalScripts`（`powershell-policy-set`，用户确认后改执行策略）；显式给期限（`ALIAS_BUDGET_MS`） // +1：`views/history-search.ts::searchAllMachines`（`history-search-merge`，各台结果合一份问本机后端）；显式给期限（`MERGE_BUDGET_MS`） // +1：`terminal-open.ts::openTerminal` 远端那一支（`terminal-ssh`，开终端那一行问本机后端渲）；显式给期限（`RENDER_BUDGET_MS`） // +1：`terminal-name-mint.ts::askMint`（`terminal-name-mint`，起会话要的 tmux 名问那台后端铸）；显式给期限（`MINT_BUDGET_MS`） // +1：`settings/panorama-section.ts::uninstallPanorama`（`panorama-uninstall`，全景小程序卸口）；显式给期限（`UNINSTALL_BUDGET_MS`） // +5：`record-reads.ts` 五处（`history-page` 两处 · `history-lines` · `history-subagent` · `drift-report`；会话正文四条从 monitor 那几条 Tauri 命令改走通道，漂移账记录那两面问那台后端）// +1：`settings/footprint-reads.ts` 的 `ask`（`footprint-report`，足迹从 monitor 那条 Tauri 命令改走通道）// +2：`panorama/api.ts` 的 `remote`（`panorama`）· `edit`（`panorama-edit`），全景从 monitor 那三条 Tauri 命令改走通道 // +1：`pubkey-push.ts::pushPublicKey` 问本机 `pubkey-push` // 基数 79 → 增量 +1：`settings/profile-backups.ts` 问本机 `files-ls`（`$PROFILE` 备份那一格） // 基数 67 ＋ 主线 +11（78）＋ MIG-3a +1（`acct-iso-install`）⇒ 79
-            ("chan.subscribe", 2usize), // 3 → 2：订建索引进度流那一处随代码全景删了
-            ("subscribe", 2usize) // 1 → 2：`filewin/source.rs::watch_link`（那台连没连着，`link` 流；订阅没有期限参数）
-        ]
-        .into_iter()
-        .collect(),
-        "前端对通信层两个入口的调用点不再各恰好一处（共 {sites}）"
-    );
+    // 正控（按符号认，不数个数）：每个入口点名一份今天确实在说它的文件 —— 抽取坏了 / 语料面缩了，
+    //   上面那条零违例会在零个调用点上恒绿。
+    const ANCHORS: &[(&str, &str)] = &[
+        ("chan.call", "src/frontend/ui/account-reads.ts"),
+        ("chan.subscribe", "src/frontend/ui/events.ts"),
+        ("call", "src/frontend/filewin/src/source.rs"),
+        ("subscribe", "src/frontend/filewin/src/source.rs"),
+    ];
+    for (entry, file) in ANCHORS {
+        assert!(
+            holders.get(entry).is_some_and(|h| h.contains(file)),
+            "正控：`{file}` 里没扫到 `{entry}(` —— 抽取 / 语料面坏了（或那一处真搬走了：换一份点名）。今天说它的：{:?}",
+            holders.get(entry)
+        );
+    }
+    // 窗口进程（Rust）说通信层只许 `filewin/source.rs` 一个文件：多一份 ＝ 期限 / 撤的住址跟着分家。
+    for entry in ["call", "subscribe"] {
+        let h: Vec<&str> = holders
+            .get(entry)
+            .map(|h| h.iter().copied().collect())
+            .unwrap_or_default();
+        assert_eq!(
+            h,
+            vec!["src/frontend/filewin/src/source.rs"],
+            "窗口里说 `{entry}(` 的不再只有 `filewin/source.rs` 一份"
+        );
+    }
     assert_eq!(
         call_sites_without_budget("await call(origin, op, payload);\n", "call").len(),
         1,

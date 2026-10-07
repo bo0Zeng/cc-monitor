@@ -4,10 +4,13 @@
 //! | 格 | 本假适配层 |
 //! |---|---|
 //! | 对账键 | 记录的 `resp` |
-//! | 归属 | `lane`（有它 ＝ 子运行；`over: "ok"` / `"bad"` ＝ 终局；`use` ＝ 调了哪个工具，`kind: "say"` ＝ 在说话） |
+//! | 归属 | `lane`（有它 ＝ 子运行；`spawned` / `settled` 两种里写下它的子运行在 `by`；`over: "ok"` / `"bad"` ＝ 终局；`use` ＝ 调了哪个工具，`kind: "say"` ＝ 在说话） |
 //! | 派出 | `{"kind":"spawn","call":…,"title":…,"role":…}` 给标签；`{"kind":"spawned","call":…,"lane":…}` 说是哪个（带 `fin: "ok"/"bad"` ＝ 前台跑完） |
 //! | 收场 | `{"kind":"settled","lane":…,"how":"ok"/"bad"/"halted"}`（派出那一方说的）；子运行自己 `over: "cut"` ＝ 被叫停 |
 //! | 子运行记录住址 | `<父记录去后缀>.lanes/<lane>.ndjson` |
+//! | 时刻 | `clock`（自 1970 起的秒） |
+//! | 后台派出 | `spawned` 不带 `fin` |
+//! | 交回工具结果 · 报错原话 | 子运行 `back: true` · `why`（子运行 `over: "bad"` 或派出那一方 `fin: "bad"` 时） |
 //! | 流协议 | `{"ev":"open","rid":…}` · `{"ev":"part","at":i,"is":"call"|"words","call":…}` · `{"ev":"chunk","at":i,"txt":…}` · `{"ev":"shut"}` · `{"ev":"fail"}` |
 
 use crate::agents::{
@@ -28,10 +31,13 @@ fn response_id(v: &Value) -> Option<String> {
 }
 
 fn run_of(v: &Value) -> Option<RunMark> {
-    let run = s(v, "lane")?.to_string();
-    if matches!(s(v, "kind"), Some("spawned" | "settled")) {
-        return None;
-    }
+    // 「说到某个子运行」的那两种里 `lane` 是被说到的那个；写下它的子运行在 `by`。
+    let owner = if matches!(s(v, "kind"), Some("spawned" | "settled")) {
+        "by"
+    } else {
+        "lane"
+    };
+    let run = s(v, owner)?.to_string();
     let end = match s(v, "over") {
         Some("ok") => Some(RunEnd::Done),
         Some("bad") => Some(RunEnd::Failed),
@@ -45,7 +51,15 @@ fn run_of(v: &Value) -> Option<RunMark> {
         (None, Some("say")) => Some(RunDid::Say),
         _ => None,
     };
-    Some(RunMark { run, end, did })
+    Some(RunMark {
+        run,
+        end,
+        did,
+        answered: v.get("back").and_then(Value::as_bool) == Some(true),
+        error: (end == Some(RunEnd::Failed))
+            .then(|| s(v, "why").map(str::to_string))
+            .flatten(),
+    })
 }
 
 fn child_link(v: &Value) -> Vec<ChildLink> {
@@ -76,10 +90,18 @@ fn child_link(v: &Value) -> Vec<ChildLink> {
             tool: Some(call.to_string()),
             run: s(v, "lane").map(str::to_string),
             end: how("fin"),
+            error: (how("fin") == Some(RunEnd::Failed))
+                .then(|| s(v, "why").map(str::to_string))
+                .flatten(),
+            background: s(v, "fin").is_none(),
             ..ChildLink::default()
         }],
         _ => Vec::new(),
     }
+}
+
+fn written(v: &Value) -> Option<u64> {
+    v.get("clock")?.as_u64()?.checked_mul(1000)
 }
 
 fn hint(line: &str) -> bool {
@@ -126,6 +148,7 @@ pub(crate) const FACES: RunFaces = RunFaces {
         sources,
         owner,
         hint,
+        written,
     }),
 };
 

@@ -10,6 +10,7 @@
 //   - config.json 里的账号偏好（每号模型）→ `account-prefs.ts`
 //   - 起会话那一格「要哪个号」与「选不了」那个选择框 → `launch-account.ts`
 // 本文件从此**不 import 任何有 IO 的模块**（不碰通道、不碰 config、不碰历史注解）。
+import { peerVersionSaid } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 // API key 那两问的成品（`apikey-routing`）住 `apikey-reads.ts`（经通道、后端出成品）；本文件只把那份读数落到账号上。
 // 先前这个类型住本文件、是 `ipc/commands.ts` 的返回类型 ⇒ 通信层在类型上依赖账号域，七模块类型环靠这一条边闭合。
@@ -139,7 +140,7 @@ export function deriveUi(state: AccountsState): AccountsUi {
   if (!state.available) {
     const e = state.error ?? "";
     // 按失败的**种类**分（从前按原因串里有没有「过旧」猜，又把其余一律并进「需更新」—— 真机上远端没部署上 / 拒转发都说成要更新）。
-    if (state.oldBackend) return { kind: "needs-update", reason: e || copyText("accounts.deriveUi.needsUpdate") };
+    if (state.oldBackend) return { kind: "needs-update", reason: peerVersionSaid("backend_old", state.origin) };
     return { kind: "query-failed", reason: e || copyText("accounts.deriveUi.unavailable") };
   }
   if (!state.meta?.enabled || state.accounts.length === 0) {

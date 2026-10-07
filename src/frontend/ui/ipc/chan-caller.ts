@@ -12,6 +12,7 @@
  */
 import { ChanError, type Budget, type CallError } from "../../../comms/inward/chan";
 import { copyText } from "../copy-table";
+import { isLocalOrigin, type Origin } from "./origin";
 
 /**
  * 造一个期限：从现在起 `ms` 毫秒（`performance.now()` 钟面的绝对时刻）。
@@ -64,6 +65,59 @@ export function refusalOf(body: Uint8Array): { code: string; message: string; da
     // 体不是 JSON ⇒ 当成没说原因
   }
   return null;
+}
+
+/**
+ * 因对方版本说不成的两个码，全产品各一句（文案表 `peerVersion.said.*`）：
+ * - `backend_old`：那台后端事前就说不认这条命令（`peer/unsupported`）；
+ * - `reply_unreadable`：那台回了，但回的东西认不出（不是 JSON / 形状不对）—— 只说认不出，不猜版本。
+ */
+export type PeerVersionCode = "backend_old" | "reply_unreadable";
+
+/** 一句话里怎么称呼这台机器：本机说「本机」，远端说它的名字。 */
+export function machineName(origin: Origin): string {
+  return isLocalOrigin(origin) ? copyText("control.machine.local") : origin;
+}
+
+/** 码 ⇒ 那一句（唯一住址）。 */
+export function peerVersionSaid(code: PeerVersionCode, origin: Origin): string {
+  const machine = machineName(origin);
+  return code === "backend_old"
+    ? copyText("peerVersion.said.old", { machine })
+    : copyText("peerVersion.said.unreadable", { machine });
+}
+
+/** 那台回的东西认不出。`message` 只是细目（进日志）；给人看的那句由 [`saidFrom`] 按码取。 */
+export class ReplyUnreadable extends Error {
+  constructor(detail: string) {
+    super(detail);
+    this.name = "ReplyUnreadable";
+  }
+}
+
+/** 已经知道是哪台回的东西认不出 ⇒ 直接带那一句的 `Error`（不经 [`saidFrom`] 的那几处用）。 */
+export function unreadableFrom(origin: Origin, detail: string): Error {
+  console.warn(`reply unreadable from ${origin}: ${detail}`);
+  return new Error(peerVersionSaid("reply_unreadable", origin));
+}
+
+/** 这一次失败落在两个码的哪一个上；都不是 ⇒ `null`（按层说别的原因）。JSON 解不出（`SyntaxError`）算认不出。 */
+export function peerVersionCodeOf(e: unknown): PeerVersionCode | null {
+  if (e instanceof ReplyUnreadable || e instanceof SyntaxError) return "reply_unreadable";
+  if (e instanceof ChanError && unsupported(e.error)) return "backend_old";
+  return null;
+}
+
+/**
+ * 问 `origin` 那台的一次查询失败了 ⇒ 给人看的那句话。两个码按码取句（[`peerVersionSaid`]），其余按层说（同 [`saidOf`]）。
+ */
+export function saidFrom(e: unknown, origin: Origin): string {
+  const code = peerVersionCodeOf(e);
+  if (code !== null) {
+    if (code === "reply_unreadable") console.warn(`reply unreadable from ${origin}:`, e instanceof Error ? e.message : e);
+    return peerVersionSaid(code, origin);
+  }
+  return saidOf(e, "");
 }
 
 /**

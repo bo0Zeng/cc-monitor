@@ -662,7 +662,7 @@ export class SessionViewer {
       this.live = e.live;
       if (this.loaded) this.updateStatus(this.payloads.length);
       this.onLive?.(e.live);
-    } else {
+    } else if (e.t === "sight") {
       this.following = e.seen;
       if (this.loaded) this.updateStatus(this.payloads.length);
       // 又看得见了 ⇒ 看不见那段时间里写出来的按行号补上。

@@ -59,6 +59,10 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "ERROR_CHARS",
+        "`backend/observe/runs.rs`：运行表里失败收场的报错原话至多留几个**字**（字符数，不是字节；运行表一变就整份重发，留短一点）",
+    ),
+    (
         "TH32CS_SNAPPROCESS",
         "**标志位**不是体量：`CreateToolhelp32Snapshot` 那一问「要进程表」的那个位（`platform/win_tables.rs`）。",
     ),

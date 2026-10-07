@@ -377,8 +377,17 @@ export const MAIN_SCENES: Scene[] = [
   card("card-diff", "改动卡（展开）", "Edit 工具卡展开：行级对比", async () => {
     await openCard(".block-tool-use", 2);
   }),
-  card("card-agent", "子 agent 卡", "两张子 agent 卡：一张跑完、一张还在跑", async () => {
-    await openCard(".block-agent", 0);
+  card("card-agent", "子 agent 卡", "两张子 agent 卡：一张跑完（交回的结果收在卡里、展开）、一张还在跑；卡头点了开它自己的窗口", async () => {
+    await mainReady(ALL_TABS);
+    // 派出卡收在那一轮的「过程」里：先点开那一行。
+    const card0 = document.querySelector<HTMLElement>('[data-role="run-card"]');
+    const proc = [...document.querySelectorAll<HTMLElement>('.proc-line[aria-expanded="false"]')].find((l) => l.parentElement?.contains(card0) ?? false) ?? document.querySelector<HTMLElement>('.proc-line[aria-expanded="false"]');
+    proc?.click();
+    await sleep(400);
+    await openCard('[data-role="run-card"]', 0);
+    const res = document.querySelector<HTMLDetailsElement>('[data-role="run-card"] [data-role="run-result"]');
+    if (res) await expand(res);
+    await sleep(400);
   }),
   card("card-thinking", "思考折叠条（展开）", "thinking 块展开", async () => {
     await openCard(".block-thinking", 0);

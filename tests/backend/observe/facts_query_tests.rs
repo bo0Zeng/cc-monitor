@@ -148,8 +148,10 @@ fn the_fast_path_never_changes_the_answer() {
     recs.push(result("g2"));
     recs.push(result("g2"));
     recs.push(json!({"type": "attachment", "x": 1}));
+    recs.push(handback("fp-1", true));
     let text = jsonl(&recs);
     let fast = scan_all(&text);
+    assert_eq!(fast.handed_back, ["fp-1"], "交回那一行没漏过快路");
     let mut slow = SessionFacts::default();
     for line in text.lines() {
         slow.end += line.len() as u64 + 1;
@@ -575,4 +577,62 @@ fn the_fast_path_keeps_pending_and_last_say_exact() {
         br#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"b2"}]}}"#,
         &f
     ));
+}
+
+/// 一条 agent 来话（记录级 `origin`，同 Claude Code 写的那一形）：`handback` ＝ 是不是交回。
+fn handback(from: &str, handback: bool) -> Value {
+    json!({"type": "user", "isMeta": true,
+           "origin": {"kind": "peer", "from": from, "handback": handback, "body": "b"},
+           "message": {"content": format!("<agent-message from=\"{from}\">b</agent-message>")}})
+}
+
+/// ★ 交回了的子运行：只记交回（途中来话不算）、去重、文件序、有上界；接力扫 == 一次扫完；成品能原样回传。
+/// 同一个子运行的收场通知以交回为准 —— 界面按这一格收起那条通知（通知本身不进这一格）。
+#[test]
+fn handed_back_runs_are_the_ones_that_handed_back() {
+    let recs = vec![
+        handback("a1", false),
+        json!({"type": "user", "origin": {"kind": "task-notification"},
+               "message": {"content": "<task-notification><task-id>a1</task-id><status>completed</status></task-notification>"}}),
+        handback("a2", true),
+        handback("a1", true),
+        handback("a2", true),
+        // 没有记录级字段、只有框的那一形：认不出是交回 ⇒ 不记。
+        json!({"type": "user", "message": {"content": "<agent-message from=\"a3\">b</agent-message>"}}),
+    ];
+    let text = jsonl(&recs);
+    let whole = scan_all(&text);
+    assert_eq!(whole.handed_back, ["a2", "a1"]);
+    let cut = jsonl(&recs[..3]).len();
+    let head = scan_all(&text[..cut]);
+    assert_eq!(head.handed_back, ["a2"]);
+    let prior =
+        prior_from(&serde_json::to_value(&head).unwrap()).expect("带着交回那一格的成品能原样回传");
+    assert_eq!(
+        scan_facts(&text.as_bytes()[cut..], prior, &Vec::new(), None).unwrap(),
+        whole
+    );
+
+    let many: Vec<Value> = (0..HANDED_BACK_KEEP + 3)
+        .map(|i| handback(&format!("r{i}"), true))
+        .collect();
+    let f = scan_all(&jsonl(&many));
+    assert_eq!(f.handed_back.len(), HANDED_BACK_KEEP);
+    assert_eq!(f.handed_back[0], "r3", "超了丢最早的");
+}
+
+/// 在等你的那一份（带 `needs.call`）也能原样回传当续传令牌（之前 `prior.needs` 的键集合少了 `call`，等你时每次都得从头扫）。
+#[test]
+fn a_product_that_is_waiting_on_you_round_trips_as_prior() {
+    let f = SessionFacts {
+        needs: Some(Needs {
+            kind: NeedsKind::Approve,
+            tool: Some("Bash".into()),
+            call: Some("b1".into()),
+            what: None,
+            since_ms: Some(1),
+        }),
+        ..SessionFacts::default()
+    };
+    assert_eq!(prior_from(&serde_json::to_value(&f).unwrap()), Ok(f));
 }

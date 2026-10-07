@@ -788,13 +788,15 @@ fn tap_frames_parse_into_their_shapes_and_bad_ones_are_none() {
 /// 不是数组 / 缺了 ⇒ 坏帧。
 #[test]
 fn session_runs_frames_carry_the_runs_verbatim() {
-    let line = r#"{"kind":"session_runs","sid":"s1","runs":[{"run":"a2","state":"done","last":{"t":"say"}}],"ended":[{"run":"a0","tool":"t0","state":"failed"}]}"#;
+    let line = r#"{"kind":"session_runs","sid":"s1","runs":[{"run":"a2","state":"failed","last":{"t":"say"},"started_ms":1000,"active_ms":2000,"ended_ms":3000,"why":"reported","error":"boom"}],"ended":[{"run":"a0","tool":"t0","state":"failed"}]}"#;
     match parse_frame(line) {
         Ok(InboundFrame::SessionRuns { sid, runs, ended }) => {
             assert_eq!(sid, "s1");
             assert_eq!(
                 json(runs.0.get()),
-                json(r#"[{"run":"a2","state":"done","last":{"t":"say"}}]"#)
+                json(
+                    r#"[{"run":"a2","state":"failed","last":{"t":"say"},"started_ms":1000,"active_ms":2000,"ended_ms":3000,"why":"reported","error":"boom"}]"#
+                )
             );
             assert_eq!(
                 json(ended.0.get()),

@@ -7,6 +7,7 @@
  * （主 tab 零子运行行、面板分组与五态、后台派出只拿到「已启动」那次结果的不是完成、被叫停的是「已停止」）。
  */
 import { describe, it, expect, vi } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
 
 vi.mock("@tauri-apps/api/core", async () => {
   const rig = await import("../../test-support/session-viewer-rig");
@@ -36,7 +37,7 @@ import { TabManager } from "../../../src/frontend/ui/tabs";
 import { AgentsPanel } from "../../../src/frontend/ui/agents-panel";
 import { livePainter } from "../../../src/frontend/ui/live-card-view";
 import { panelGroups, RECENT_ENDED } from "../../../src/frontend/ui/runs";
-import { installViewerRig, line } from "../../test-support/session-viewer-rig";
+import { installViewerRig, line, userLine } from "../../test-support/session-viewer-rig";
 
 const O = "<local>";
 const SID = "s1";
@@ -195,6 +196,40 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     ).not.toContain(copyText("runs.state.running"));
   });
 
+  it("★ 运行表先到、交回那一条后到 ⇒ 消息流里那条交回的抬头用运行表给的标签（不是来话自带的名字）；运行表里没有它 ⇒ 退到来话自带的名字", () => {
+    const { tm, streamRootEl } = rig();
+    tm.onLine(dispatch(0, "t1", "扫目录"));
+    tm.switchTo(SID);
+    tm.onSessionRuns({ session_id: SID, runs: [run("w6", "done", "扫目录", "t1")], ended: [] });
+    const handback = (seq: number, from: string) =>
+      userLine(seq, `u${seq}`, "<agent-message>…</agent-message>", {
+        userText: { speaker: { kind: "agentMessage", from, name: "worker-7", handback: true, body: "报告正文" }, text: "报告正文" },
+      }) as never;
+    tm.onLine(handback(1, "w6"));
+    tm.onLine(handback(2, "w9"));
+    const titles = [...streamRootEl.querySelectorAll<HTMLElement>(".card-speaker[data-kind=agent] .speaker-title")].map((t) => t.textContent);
+    expect(titles).toEqual([copyText("speaker.agent.title", { label: "扫目录" }), copyText("speaker.agent.title", { label: "worker-7" })]);
+  });
+
+  it("★ 交回与收场通知只报一次：会话事实说那个子运行交回了 ⇒ 消息流里它的收场通知收起，交回那一条留着", () => {
+    const { tm, streamRootEl } = rig();
+    tm.onLine(dispatch(0, "t1", "扫目录"));
+    tm.switchTo(SID);
+    const rec = (seq: number, speaker: Record<string, unknown>) =>
+      userLine(seq, `u${seq}`, "x", { userText: { speaker, text: "x" } }) as never;
+    tm.onLine(rec(1, { kind: "agentMessage", from: "w6", name: "worker-7", handback: true, body: "报告正文" }));
+    tm.onLine(rec(2, { kind: "taskNotification", taskId: "w6", status: "completed", summary: "扫目录" }));
+    tm.onLine(rec(3, { kind: "taskNotification", taskId: "w8", status: "completed", summary: "别的" }));
+    const notices = () =>
+      [...streamRootEl.querySelectorAll<HTMLElement>(".card-notice:not([hidden]) .notice-row:not([hidden])")].map((r) => r.textContent ?? "");
+    expect(notices().join("|")).toContain("扫目录");
+    const facts = { agent: "claude", end: 1, forkedFrom: null, touchedFiles: [], usage: null, projectDir: null, writers: [], pending: [], lastSay: null, needs: null, handedBack: ["w6"] };
+    (tm as unknown as { onSessionFacts(sid: string, f: unknown): void }).onSessionFacts(SID, facts);
+    expect(notices().join("|")).not.toContain("扫目录");
+    expect(notices().join("|"), "别的子运行的通知照常").toContain("别的");
+    expect(streamRootEl.querySelectorAll(".card-speaker[data-kind=agent]").length, "交回那一条留着").toBe(1);
+  });
+
   it("★ 后台派出、只拿到「已启动」那次结果、没有完成通知 ⇒ 面板上不是 ✓（界面不自己判「有结果 ⇒ 完成」）；被叫停 ⇒「已停止」", () => {
     const { tm, panel } = rig();
     tm.onLine(dispatch(0, "t1", "扫目录"));
@@ -211,35 +246,81 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     const { tm, streamRootEl, panel } = rig();
     tm.onLine(dispatch(0, "t1", "扫目录"));
     tm.switchTo(SID);
-    const card = streamRootEl.querySelector<HTMLElement>(".block-agent")!;
-    const title = copyText("runCard.summary.text", { kind: "Explore", label: "扫目录" });
+    const card = streamRootEl.querySelector<HTMLElement>('[data-role="run-card"]')!;
     tm.onSessionRuns({ session_id: SID, runs: [], ended: [{ run: "w6", tool: "t1", state: "done" }] });
-    expect([card.dataset.runState, card.querySelector("summary")?.textContent]).toEqual([
-      "done",
-      copyText("runCard.summary.state", { title, state: copyText("runs.state.done") }),
-    ]);
+    expect([card.dataset.runState, card.querySelector('[data-role="run-state"]')?.textContent]).toEqual(["done", copyText("runs.state.done")]);
     expect(panel.pageElement.querySelector('.agent-row[data-run="w6"]')).toBeNull();
   });
 
-  it("派出它的那张工具卡标状态；点面板那一行 ⇒ 它下面展开它的时间线，再点收起", () => {
+  it("派出它的那张工具卡标状态与用时，不就地展开时间线；点面板那一行 / 点卡头 ⇒ 开它自己的窗口；窗口开着 ⇒ 两处都标「窗口已开」", () => {
     const { tm, streamRootEl, panel } = rig();
     tm.onLine(dispatch(0, "t1", "扫目录"));
     tm.switchTo(SID);
-    const card = streamRootEl.querySelector<HTMLElement>(".block-agent")!;
-    const title = copyText("runCard.summary.text", { kind: "Explore", label: "扫目录" });
+    const card = streamRootEl.querySelector<HTMLElement>('[data-role="run-card"]')!;
+    const stateOf = () => card.querySelector('[data-role="run-state"]')?.textContent;
     tm.onSessionRuns({ session_id: SID, runs: [run("w6", "running", "扫目录", "t1")], ended: [] });
-    expect([card.dataset.runState, card.querySelector("summary")?.textContent]).toEqual(["running", title]);
-    tm.onSessionRuns({ session_id: SID, runs: [run("w6", "failed", "扫目录", "t1")], ended: [] });
-    expect([card.dataset.runState, card.querySelector("summary")?.textContent]).toEqual([
+    expect([card.dataset.runState, stateOf()]).toEqual(["running", copyText("runs.state.running")]);
+    const T = Date.parse("2026-10-01T10:00:00Z");
+    tm.onSessionRuns({ session_id: SID, runs: [{ ...run("w6", "failed", "扫目录", "t1"), started_ms: T, ended_ms: T + 120_000 }], ended: [] });
+    expect([card.dataset.runState, stateOf()]).toEqual([
       "failed",
-      copyText("runCard.summary.state", { title, state: copyText("runs.state.failed") }),
+      [copyText("runs.state.failed"), copyText("agentWindow.facts.took", { dur: "2m" })].join(copyText("kit.text.sep")),
     ]);
+    expect(card.querySelector("details:not([data-role])"), "卡里不再有就地展开的时间线").toBeNull();
 
+    const opened = () => vi.mocked(invoke).mock.calls.filter((c) => c[0] === "open_session_in_new_window").map((c) => (c[1] as { run?: string }).run);
     const row = () => panel.pageElement.querySelector<HTMLElement>('.agent-row[data-run="w6"]')!;
     row().click();
-    expect(row().getAttribute("aria-expanded")).toBe("true");
-    expect(panel.pageElement.querySelector(".agent-timeline .block-agent-body")).not.toBeNull();
-    row().click();
+    expect(opened()).toEqual(["w6"]);
+    expect(row().getAttribute("aria-expanded"), "面板里不再就地展开").toBeNull();
     expect(panel.pageElement.querySelector(".agent-timeline")).toBeNull();
+
+    expect(row().querySelector('[data-role="window-open"]')).toBeNull();
+    tm.setRunWindow(SID, "w6", true);
+    expect(row().querySelector('[data-role="window-open"]')?.textContent).toBe(copyText("agentsPanel.row.opened"));
+    expect(card.querySelector('[data-role="window-open"]')?.textContent).toBe(copyText("agentsPanel.row.opened"));
+    tm.setRunWindow(SID, "w6", false);
+    expect(row().querySelector('[data-role="window-open"]')).toBeNull();
+    expect(card.querySelector('[data-role="window-open"]')).toBeNull();
+  });
+
+  it("窗口先开着、运行表后到（主窗口重新载入那一形）⇒ 派出卡照样标「窗口已开」", () => {
+    const { tm, streamRootEl } = rig();
+    tm.onLine(dispatch(0, "t1", "扫目录"));
+    tm.switchTo(SID);
+    tm.setRunWindow(SID, "w6", true);
+    tm.onSessionRuns({ session_id: SID, runs: [run("w6", "running", "扫目录", "t1")], ended: [] });
+    const card = streamRootEl.querySelector<HTMLElement>('[data-role="run-card"]')!;
+    expect(card.querySelector('[data-role="window-open"]')).not.toBeNull();
+  });
+
+  it("回到派出它的地方（主会话派的）⇒ 切到那个会话、派出它的那张卡闪一下", () => {
+    const { tm, streamRootEl } = rig();
+    tm.onLine(dispatch(0, "t1", "扫目录"));
+    tm.showRunCard(SID, "t1");
+    expect(tm.activeSessionId()).toBe(SID);
+    expect(streamRootEl.querySelector('[data-role="run-card"]')?.classList.contains("search-hit-flash")).toBe(true);
+  });
+
+  it("派出那一方拿到的结果收在派出卡里、可展开：交回的结果写几个字；报错写「报错」", () => {
+    const { tm, streamRootEl } = rig();
+    tm.onLine(dispatch(0, "t1", "扫目录"));
+    tm.onLine(
+      line(1, {
+        type: "user",
+        uuid: "u1",
+        timestamp: "2026-09-10T00:00:01.000Z",
+        message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "找到两处", is_error: false }] },
+        sessionId: SID,
+      }) as never,
+    );
+    tm.switchTo(SID);
+    const res = streamRootEl.querySelector<HTMLDetailsElement>('[data-role="run-card"] [data-role="run-result"]')!;
+    expect(res.querySelector("summary")?.textContent).toBe(copyText("runCard.result.done", { n: 4 }));
+    expect(res.open).toBe(false);
+    expect(res.textContent, "收着时不建正文").not.toContain("找到两处");
+    res.open = true;
+    res.dispatchEvent(new Event("toggle"));
+    expect(res.textContent).toContain("找到两处");
   });
 });

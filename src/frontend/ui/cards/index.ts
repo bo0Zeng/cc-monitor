@@ -22,7 +22,8 @@ import { buildBashInputCard, buildBashOutputCard } from "./bash";
 import { buildCompactSummaryCard } from "./compact";
 import { buildAgentBar, buildCoordinatorBar, buildInterruptLine, buildNoticeLine, buildPeerBar } from "./speaker-bar";
 import { drawsCard } from "../speaker";
-import { buildAgentCard } from "./subagent";
+import { buildBriefCard } from "./brief";
+import { buildAgentCard, isRunCard, settleRunCard } from "./subagent";
 import { buildDiffBody } from "./diff";
 import { buildInteractiveCard, settleInteractive } from "./interactive";
 import type { Pasted } from "../generated/Pasted";
@@ -156,6 +157,10 @@ export interface RenderContext {
   toolUseElements: Map<string, HTMLElement>;
   /** 派出子运行的那几张卡（父侧工具调用 id → 卡）；不需要按运行表标卡的调用方不给。 */
   runCards?: Map<string, HTMLElement>;
+  /**
+   * 派活的那段话（子运行记录里那一条）是谁派的：某个 agent ⇒ 它的标签；主会话 ⇒ `null`。不给 ⇒ 当主会话派的。
+   */
+  briefFrom?: string | null;
   /** 运行 id ⇒ 运行表里的标签（agent 来话的事件条起名用；宿主不给 ⇒ 用来话自带的名字）。 */
   runLabelOf?: (run: string) => string | undefined;
   /**
@@ -233,8 +238,12 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
           return { kind: "card", element: buildNoticeLine(speaker, rec.timestamp) };
         case "interrupt":
           return { kind: "card", element: buildInterruptLine(rec.timestamp) };
+        case "agentTask":
+          // 派给子 agent 的活：不是用户说的，画成带抬头的框（谁派的 · 几点派的）。
+          if (!said.text) return { kind: "skip" };
+          return { kind: "card", element: buildBriefCard(said.text, rec.timestamp, ctx.briefFrom ?? null) };
         default:
-          // 人说的话 · 派给子 agent 的活：用户气泡；没有正文（只有图片之类）不建卡。
+          // 人说的话：用户气泡；没有正文（只有图片之类）不建卡。
           if (!said.text) return { kind: "skip" };
           return { kind: "card", element: buildUserCard(rec, said.text, said.pasted) };
       }
@@ -409,7 +418,8 @@ function updateToolGroupSummary(group: ToolGroup): void {
   const count = group.count;
   const since = formatTimestampShort(group.startedAt);
   const failed = group.body.querySelectorAll(":scope > .block-has-error, :scope > .block-tool-result.block-error").length;
-  const agents = group.body.querySelectorAll(":scope > .block-agent").length;
+  let agents = 0;
+  for (const el of group.body.children) if (isRunCard(el)) agents++;
   group.summary.textContent =
     failed > 0 && agents > 0
       ? copyText("cards.toolGroup.summaryBoth", { count, failed, agents, since })
@@ -538,10 +548,11 @@ function renderBlock(
       const step = facts.steps[block.id];
       ctx.toolUseNames.set(block.id, { name: block.name, card, step, at: facts.at || undefined });
 
-      // 卡型是那台后端判的（`toolCards`）；派出子运行的那次调用 → 折叠卡，展开是那个子运行的时间线（按运行读）
+      // 卡型是那台后端判的（`toolCards`）；派出子运行的那次调用 → 派出卡（卡头点了开那个子运行自己的窗口）
       if (card === "agent") {
-        const runCard = buildAgentCard(block.id, block.name, runs[block.id], ctx, renderMessage);
+        const runCard = buildAgentCard(block.id, block.name, runs[block.id]);
         ctx.runCards?.set(block.id, runCard);
+        ctx.toolUseElements.set(block.id, runCard); // 派出那一方拿到的那次结果收进这张卡（`settleRunCard`）
         return runCard;
       }
       // issue #21：交互等待工具 → 默认展开的提问卡 / plan 卡（用户在被等着，
@@ -797,6 +808,8 @@ function injectOrBuildToolResult(
     : "";
 
   const host = ctx.toolUseElements.get(block.tool_use_id);
+  // 派出子运行的那次调用：交回的结果 / 报错收进派出卡（可展开）。
+  if (host && settleRunCard(host, text, block.is_error === true)) return null;
   // 提问 / 计划答了之后（B7）：后端读出了答了什么 ⇒ 卡上写结果，不印 Claude Code 的英文原句。
   const answered = facts.results[block.tool_use_id];
   if (host && answered && (host.classList.contains("block-ask") || host.classList.contains("block-plan"))) {
