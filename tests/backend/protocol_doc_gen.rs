@@ -122,7 +122,19 @@ fn members(body: &str) -> Vec<Member> {
     out
 }
 
-/// 一个顶层类型：`pub struct X { … }` / `pub enum X { … }`，连同它前面的文档注释与属性。
+/// 去掉打头的可见性（`pub` / `pub(crate)` / `pub(super)`）。
+fn unpub(s: &str) -> &str {
+    let s = s.trim_start();
+    let Some(rest) = s.strip_prefix("pub") else {
+        return s;
+    };
+    match rest.strip_prefix('(') {
+        Some(r) => r.split_once(')').map_or(s, |(_, after)| after.trim_start()),
+        None => rest.trim_start(),
+    }
+}
+
+/// 一个顶层类型：`struct X { … }` / `enum X { … }`（可见性不论），连同它前面的文档注释与属性。
 struct TypeDef {
     name: String,
     is_enum: bool,
@@ -134,10 +146,10 @@ struct TypeDef {
 fn type_defs(src: &str) -> Vec<TypeDef> {
     let mut out = Vec::new();
     for top in members_top(src) {
-        let h = top.head.as_str();
-        let (is_enum, rest) = if let Some(r) = h.strip_prefix("pub enum ") {
+        let h = unpub(top.head.as_str());
+        let (is_enum, rest) = if let Some(r) = h.strip_prefix("enum ") {
             (true, r)
-        } else if let Some(r) = h.strip_prefix("pub struct ") {
+        } else if let Some(r) = h.strip_prefix("struct ") {
             (false, r)
         } else {
             continue;
@@ -178,11 +190,15 @@ fn members_top(src: &str) -> Vec<Member> {
             let end = close_of(b, at + 1);
             attrs.push(src[at + 2..end].to_string());
             i = end + 1;
-        } else if ["pub struct ", "pub enum "]
+        } else if ["struct ", "enum "]
             .iter()
-            .any(|kw| line.strip_prefix(kw).is_some())
+            .any(|kw| unpub(line).strip_prefix(kw).is_some())
         {
-            let head_end = rest.find(['{', ';', '(']).unwrap_or(rest.len());
+            // 从关键字起找（`pub(crate)` 里的括号不算）。
+            let kw_at = (eol - line.len()) + (line.len() - unpub(line).len());
+            let head_end = rest[kw_at..]
+                .find(['{', ';', '('])
+                .map_or(rest.len(), |k| kw_at + k);
             let head = rest[..head_end].trim().to_string();
             if rest.as_bytes().get(head_end) == Some(&b'{') {
                 let end = close_of(b, i + head_end);
@@ -381,7 +397,8 @@ fn wire_type(ty: &str) -> (String, bool) {
         return (format!("{{{}: {}}}", wire_type(k).0, wire_type(v).0), false);
     }
     let t = match last {
-        "String" | "&'static str" | "&str" | "PathBuf" => "string".to_string(),
+        "String" | "PathBuf" => "string".to_string(),
+        t if t.starts_with('&') && t.ends_with("str") => "string".to_string(),
         "u8" | "u16" | "u32" | "u64" | "usize" | "i32" | "i64" | "f64" => "number".to_string(),
         "bool" => "bool".to_string(),
         "Value" => "JSON".to_string(),

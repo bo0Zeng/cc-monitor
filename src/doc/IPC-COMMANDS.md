@@ -3495,6 +3495,82 @@ cc-bus 钩子诊断。
 
 ### `--resolve`（入参 `ResumeSpec` 从 stdin，出参 `CommandPlan` / `ResolveError`）
 
+#### `ResumeSpec`
+
+stdin 入参（camelCase 对齐 aterm `ResumeSpec`）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `sessionId` | string |  |
+| `launchCandidates` | [string]? |  |
+| `claudeDir` | string? | ⚠ **冻结兼容字段，不许改名**—— 与 `wire.rs::Hello.claude_dir` 同族 |
+| `fallbackCwd` | string? |  |
+| `alreadyInTmux` | bool? |  |
+| `agentKind` | string? | 会话属哪 agent kind → DG6 据此构 `codex resume <uuid>` vs `claude --resume` |
+
+#### `Capabilities`
+
+stdout 出参 caps（4 名**逐字复用 aterm `SessionCapabilities`**，camelCase 免映射）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `supportsSendKeys` | bool |  |
+| `supportsCapture` | bool |  |
+| `supportsMultiClient` | bool |  |
+| `supportsMultiWindow` | bool |  |
+
+#### `CommandPlan`
+
+stdout 出参（camelCase 对齐 aterm `ResumePlan` + 加 mode/capabilities）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `command` | string | **唯一可信的一项** |
+| `mode` | string | "PtyInject"（resume 走 pty send-keys 注入 §5④）\| "ExecOnce"（未来） |
+| `capabilities` | Capabilities | **典型档，不是探测结果**（见结构体头注） |
+| `sessionName` | string? | **纯从 sid 派生，不是探测结果**（见结构体头注）——拿它去 attach 一个「并不存在」的 tmux 会话是现实风险 |
+| `launchLabel` | string? |  |
+| `substitutedFrom` | string? |  |
+
+#### `ResolveError`
+
+错误信封（exit 2 + stderr 出此 JSON）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `code` | string |  |
+| `message` | string |  |
+
 ### `--fork-session` 的出参
 
+#### `ForkResult`
+
+成功时 stdout 输出的一行 JSON（camelCase，与 monitor 侧 `BranchResult` 同形）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `sessionId` | string |  |
+| `jsonlPath` | string |  |
+
 ### `--read-session-from-offset … --index` 的出参行
+
+#### `IndexRow`
+
+骨架索引的一行：**位置 ＋ 身份 ＋ 宽度无关料**（第一格 · `§2.5b 路 D`）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `o` | number | 行起点字节偏移（绝对，0-based）—— 按需取正文就是 `[o, o+n)` |
+| `n` | number | 行字节长（**含**结尾 `\n`） |
+| `t` | string? | 记录 `type`；解析不出（非 JSON / 没有 type）⇒ 省略 |
+| `u` | string? | `uuid`（前端 `uuidToIdx` —— 跳转与对账的锚） |
+| `sc` | bool? | 这条记录属于某个子运行（适配层 `RecordFace::run_of` 答得出） |
+| `sp` | string? | user 记录是谁说的（`Speaker` 的 `kind`），人说的与工具结果省略（那两种按正文 / 折叠单元就分得清） |
+| `ch` | number? | 正文字符数（**代码块之外**；Unicode 标量计，不含换行） |
+| `cj` | number? | 其中 CJK/全宽字符数（口径 = `height-estimate.ts::fallbackTextHeight` 的 `> 0x2E80`） |
+| `pl` | number? | 正文**非空**硬行数（代码块之外） |
+| `cb` | number? | 围栏代码块数（```` ``` ```` / `~~~` 开合一对算一个；没合上的算到文末）。 |
+| `cl` | number? | 代码块内总行数 |
+| `fd` | number? | 折叠单元数：`tool_use` / `tool_result` / `thinking` / `redacted_thinking` / `image` 块 |
+| `x` | string? | 这一行是一条**用户输入**（大纲的一项）⇒ 它的摘要；不是 ⇒ 省略 |
+| `ts` | string? | 同上那一行的 `timestamp`（空串 ⇒ 省略；清单那边的空串 == 这里缺席） |
