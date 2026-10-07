@@ -31,7 +31,6 @@ pub(crate) fn ccm_bin_dir_rel() -> Option<&'static str> {
         .map(|(d, _)| d)
 }
 
-
 /// 让用户自己跑一次的那条命令（用户级 PATH）。产品只生成这段文字，一个字节都不执行；这是三种 shell 里唯一一条 `cmd` 也认的路。
 ///
 /// 两个经典地雷都绕开（判据在数）：
