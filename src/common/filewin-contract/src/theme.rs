@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 pub type Rgba = [u8; 4];
 
 /// 主界面那一侧要读、要交过来的令牌，**恰好**这些（多一个少一个都是错，[`Theme::from_tokens`] 两向都拒）。
-pub const THEME_TOKENS: [&str; 47] = [
+pub const THEME_TOKENS: [&str; 48] = [
     "--bg",
     "--bg-2",
     "--card",
@@ -58,6 +58,7 @@ pub const THEME_TOKENS: [&str; 47] = [
     "--icon-size",
     "--shadow-float",
     "--shadow-modal",
+    "--overlay-dim",
 ];
 
 /// 解出来的那一套。字段与 [`THEME_TOKENS`] 一一对应。
@@ -121,6 +122,8 @@ pub struct Theme {
     /// 浮层（菜单 · 悬浮提示）与对话框的投影。
     pub shadow_float: Shadow,
     pub shadow_modal: Shadow,
+    /// 抽屉开着时盖在内容区上的那层淡暗（规范 `C11`：内容区变暗、仍看得见）。
+    pub overlay_dim: Rgba,
 }
 
 /// 一道投影：偏移 · 模糊半径 · 颜色（CSS `box-shadow` 的 `x y blur color` 那一形）。
@@ -291,6 +294,7 @@ impl Theme {
             icon_size: px("--icon-size")?,
             shadow_float: shadow("--shadow-float")?,
             shadow_modal: shadow("--shadow-modal")?,
+            overlay_dim: color("--overlay-dim")?,
         })
     }
 }

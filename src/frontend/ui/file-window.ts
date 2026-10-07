@@ -77,6 +77,7 @@ export const FILE_WINDOW_THEME_TOKENS = [
   "--icon-size",
   "--shadow-float",
   "--shadow-modal",
+  "--overlay-dim",
 ] as const;
 
 /** 此刻 `:root` 上那几格的计算值。 */

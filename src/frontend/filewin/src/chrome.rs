@@ -21,6 +21,8 @@ const SEARCH_SLOT: f32 = 440.0;
 const ADDR_MIN: f32 = 160.0;
 /// 左栏多宽（可收起，不拖宽：书签那几格的字超出就截成「…」）。
 const SIDEBAR_WIDTH: f32 = 220.0;
+/// 中档 / 窄档左栏抽屉那一层（底下内容区的淡暗也画在这一层，判据按这个名字找层）。
+pub const DRAWER_ID: &str = "filewin-drawer";
 /// 面包屑最多摆几段（再深就把开头几段收成「…」）。
 const CRUMBS_SHOWN: usize = 6;
 
@@ -1090,18 +1092,31 @@ impl Workspace {
                 .exact_size(w)
                 .show(ui, |ui| self.sidebar_ui(ui));
         } else if !wide && self.drawer_open {
-            // 抽屉（稿 21 · 23）：盖在列表左边一层（浮层底、阴影），不挤列表；点别处 · Esc · 点了一项去别处 ⇒ 收。
+            // 抽屉（稿 21 · 23 · 规范 `C11`）：盖在列表左边一层，不挤列表 —— 浮层底（`--card`）、外侧两角圆（对话框那一档）、
+            // 对话框那一档投影；底下的内容区盖一层淡暗（`--overlay-dim`，仍看得见）。点别处 · Esc · 点了一项去别处 ⇒ 收。
             let room = ui.available_rect_before_wrap();
             let before = self.pane_on(f).cwd.clone();
             let w = SIDEBAR_WIDTH.min(room.width() * 0.8);
-            let area = egui::Area::new(egui::Id::new("filewin-drawer"))
+            let style = ctx.global_style();
+            let outer = style.visuals.window_corner_radius.ne;
+            let area = egui::Area::new(egui::Id::new(DRAWER_ID))
                 .order(egui::Order::Foreground)
                 .fade_in(false)
                 .fixed_pos(room.left_top())
                 .show(&ctx, |ui| {
-                    egui::Frame::popup(&ctx.global_style())
-                        .fill(palette(&ctx).bg2.to_opaque())
-                        .corner_radius(0.0)
+                    // 淡暗与抽屉同一层、先画 ⇒ 永远压在抽屉下面，盖住抽屉以外的内容区。
+                    ui.painter()
+                        .with_clip_rect(room)
+                        .rect_filled(room, 0.0, palette(&ctx).dim);
+                    egui::Frame::popup(&style)
+                        .fill(palette(&ctx).card.to_opaque())
+                        .shadow(style.visuals.window_shadow)
+                        .corner_radius(egui::CornerRadius {
+                            nw: 0,
+                            sw: 0,
+                            ne: outer,
+                            se: outer,
+                        })
                         .inner_margin(egui::Margin::same(10))
                         .show(ui, |ui| {
                             ui.set_min_size(egui::vec2(w - 20.0, room.height() - 20.0));

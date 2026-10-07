@@ -1653,6 +1653,69 @@ fn a_narrow_window_cuts_nothing_off() {
     }
 }
 
+/// 这一帧画出来的每一块实心矩形（递归进 `Shape::Vec`），按画的先后。
+fn rect_shapes(out: &egui::FullOutput) -> Vec<egui::epaint::RectShape> {
+    fn walk(s: &egui::Shape, acc: &mut Vec<egui::epaint::RectShape>) {
+        match s {
+            egui::Shape::Rect(r) => acc.push(r.clone()),
+            egui::Shape::Vec(v) => v.iter().for_each(|x| walk(x, acc)),
+            _ => {}
+        }
+    }
+    let mut acc = Vec::new();
+    for cs in &out.shapes {
+        walk(&cs.shape, &mut acc);
+    }
+    acc
+}
+
+/// 🔴 **窄档左栏抽屉照规范 `C11` 画**（720 宽开着抽屉）：浮层底（`--card`）· 外侧两角圆、贴边两角方 ·
+/// 对话框那一档投影（`--shadow-modal`）· 底下的内容区盖一层 `--overlay-dim`，比抽屉宽（盖到抽屉以外），且先于抽屉画（压在下面）。
+#[test]
+fn the_narrow_drawer_floats_with_a_shadow_over_a_dimmed_list() {
+    let t = crate::theme::testing::default_theme();
+    let p = crate::theme::Palette::of_theme(&t);
+    let mut ws = Workspace::new(pane("/home/user/work", &["Cargo.toml", "README.md"]));
+    ws.drawer_open = true;
+    let ctx = egui::Context::default();
+    crate::theme::install(&ctx, &t);
+    let screen = egui::vec2(720.0, 800.0);
+    let mut rects = Vec::new();
+    for k in 0..4 {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, screen)),
+            time: Some(k as f64),
+            ..Default::default()
+        };
+        let out = ctx.run_ui(input, |ui| ws.frame(ui));
+        rects = rect_shapes(&out);
+        out.drop_without_applying_deltas();
+    }
+    assert!(ws.drawer_open, "抽屉自己收了");
+    let card = p.card.to_opaque();
+    let drawer = rects
+        .iter()
+        .position(|r| r.fill == card && r.corner_radius.nw == 0 && r.corner_radius.ne > 0)
+        .expect("没有一块 --card 底、外侧圆角的抽屉");
+    let d = &rects[drawer];
+    let xl = t.radius_xl.round() as u8;
+    assert_eq!(
+        (d.corner_radius.nw, d.corner_radius.sw, d.corner_radius.ne, d.corner_radius.se),
+        (0, 0, xl, xl),
+        "抽屉的角：贴边两角方、外侧两角是对话框那一档"
+    );
+    let blur = t.shadow_modal.blur.round();
+    assert!(
+        rects.iter().any(|r| r.blur_width > 0.0 && (r.blur_width - blur).abs() < 1.0),
+        "抽屉没有对话框那一档投影（blur {blur}）"
+    );
+    let dim = rects
+        .iter()
+        .position(|r| r.fill == p.dim && r.rect.width() > d.rect.width() + 100.0)
+        .expect("抽屉底下的内容区没盖那层淡暗");
+    assert!(dim < drawer, "淡暗画在抽屉之后 ⇒ 盖到抽屉上了");
+}
+
 /// 当前目录的名字不是合法 UTF-8：新标签页 / 双栏照样落在那个目录（带着原始字节），不报「目录不存在」。
 #[test]
 fn a_new_tab_or_side_keeps_a_non_utf8_directory_by_its_bytes() {
