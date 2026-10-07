@@ -174,6 +174,17 @@ export const SETTINGS_SCENES: Scene[] = [
     await click(await byText(".settings-page:not([hidden]) button", "这台上的 cc-monitor"));
     await sleep(800);
   }),
+  settings("settings-machine-local-cc", "设置 · 本机 · 这台上的 cc-monitor", "本机卡头里展开「这台上的 cc-monitor」：状态 · 随退出停止 · 恢复命令（仅本机 · 留空 = 通用设置）", async () => {
+    await go("machine:（本机）");
+    await click(await byText(".settings-page:not([hidden]) button", "这台上的 cc-monitor"));
+    await sleep(800);
+  }),
+  settings("settings-logs-restart", "设置 · 日志 · 改了要重启", "日志页拨「日志写入文件」：行内「重启 cc-monitor 后生效」＋ 顶上那条", async () => {
+    await go("logs");
+    const sw = [...document.querySelectorAll<HTMLLabelElement>(".settings-page:not([hidden]) label")].find((l) => l.textContent?.startsWith("日志写入文件"));
+    sw?.querySelector<HTMLButtonElement>("[role=switch]")?.click();
+    await sleep(800);
+  }),
   settings("settings-machine-acct", "设置 · 远端 · 账号", "devbox 的「账号」栏：表头 · 一号一行（默认 · 5h · 7d · 按量）· 表下指路框", async () => go("machine:devbox", "machine:devbox#acct"), acctWorld()),
   settings("settings-acct-detail", "设置 · 账号 · 一行展开", "点 api 那一行：命令 · API key · 默认模型（仅 devbox · api）· 账号目录 · 删除", async () => {
     await go("machine:devbox", "machine:devbox#acct");

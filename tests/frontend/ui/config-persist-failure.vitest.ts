@@ -44,28 +44,6 @@ import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/to
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { TabBarPrefs } from "../../../src/frontend/ui/tab-bar-prefs";
 import { KeybindingsEditor } from "../../../src/frontend/ui/keybindings/editor";
-import { SettingsPanel } from "../../../src/frontend/ui/settings/panel";
-
-/** 设置面板「行为」那一格：绕过构造（整个面板太重），只摆 `onBehaviorToggle` 读的那几样。 */
-function behaviorPanel(): { onBehaviorToggle(): Promise<void> } {
-  const cb = (): { checked: boolean } => ({ checked: false });
-  const input = (): { value: string } => ({ value: "" });
-  return Object.assign(Object.create(SettingsPanel.prototype) as object, {
-    updateBringFrontEnabled: () => {},
-    renderResumePresets: () => {},
-    broadcastApplied: () => {},
-    autoFollowCheckbox: cb(),
-    bringFrontCheckbox: cb(),
-    showBgCheckbox: cb(),
-    notifyTurnEndCheckbox: cb(),
-    notifyNeedsCheckbox: cb(),
-    resumeLocalInput: input(),
-    resumeRemoteInput: input(),
-    resumeLocalPresets: [],
-    resumeRemotePresets: [],
-    showBgOriginal: false,
-  }) as unknown as { onBehaviorToggle(): Promise<void> };
-}
 
 const toast = vi.mocked(showActionFailureToast);
 
@@ -87,7 +65,6 @@ const CASES: readonly { name: string; run: () => Promise<void>; head: string }[]
   { name: "分组", run: () => groupedPrefs().dissolveGroup("g"), head: copyText("tabBar.persist.collectionsFailed") },
   { name: "固定", run: () => prefs().persistPinned(), head: copyText("tabBar.persist.pinnedFailed") },
   { name: "顺序", run: () => prefs().persistOrder(), head: copyText("tabBar.persist.orderFailed") },
-  { name: "行为设置", run: () => behaviorPanel().onBehaviorToggle(), head: copyText("settings.behavior.saveFailed") },
   {
     name: "快捷键",
     run: () =>

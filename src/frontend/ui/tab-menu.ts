@@ -317,8 +317,8 @@ export class TabMenu {
    */
   private buildResumeSubmenu(sid: string, accounts: ResumeAccounts): MenuItem[] {
     let pick = this.resumePicks.get(sid);
-    if (!pick) this.resumePicks.set(sid, (pick = defaultPick()));
     const t = this.host.tab(sid);
+    if (!pick) this.resumePicks.set(sid, (pick = defaultPick(t?.origin)));
     const dir = t?.projectDir ?? "";
     return resumeMenuItems({
       accounts,

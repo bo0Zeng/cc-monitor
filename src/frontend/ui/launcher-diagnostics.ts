@@ -44,7 +44,7 @@ function baseLaunchers(): string[] {
  *  「你绕开了 ccm」，而他做的与填 `claude` 是同一件事。今天名单由后端那张表给。 */
 export function diagnoseRemoteLauncher(cmd: string): string | null {
   const trimmed = cmd.trim();
-  if (!trimmed) return null; // 空 = 走默认（后端 `ACTIVE_AGENT` 那一份），不算绕过
+  if (!trimmed) return null; // 空 = 走默认（后端注册表里默认那一家的启动器），不算绕过
   if (baseLaunchers().includes(trimmed)) return null; // 显式基座，不是旧式包装
   if (/ccm/.test(trimmed)) return null; // 命令本身含 ccm 子串（可能是包了一层的自定义命令）
   return copyText("launcherDiagnostics.diagnoseRemoteLauncher.bypassesCcm");

@@ -127,6 +127,12 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ("get_diagnostics_config", Own::Log, "诊断开关"),
     ("set_diagnostics_config", Own::Log, "诊断开关"),
     ("get_log_file_info", Own::Log, "日志"),
+    (
+        "diagnostics_report",
+        Own::Lifecycle,
+        "日志页「复制诊断信息」那一段：各台此刻的状态成品（读这台后端通道在不在，与 `backend_status` 同一个读面）\
+         ＋ 界面交来的记录账 ＋ 日志位置，只读、不经后端发东西",
+    ),
     ("open_log_file", Own::Log, "日志"),
     ("open_log_dir", Own::Log, "日志"),
     (

@@ -26,8 +26,7 @@ import { appStore } from "./app-store";
 import { refreshQuota } from "./acct-center";
 import { fiveHourCell } from "./quota-lines";
 import { machineModels } from "./account-prefs";
-import { getBehavior } from "./behavior";
-import { resolveResumeCommand } from "./remote-config";
+import { resumeCommandFor } from "./remote-config";
 import { configuredLauncherFor } from "./launch-requests";
 import { chosenAccount, type AccountAsk } from "./launch-account";
 import { openWindow } from "./tab-batch-run";
@@ -610,8 +609,7 @@ function safeLauncher(agent: string): string {
 /** 设置里配的启动命令（只给默认那一家；和默认启动器一样 ⇒ 空，表示用默认）。 */
 async function configuredCommand(origin: Origin, agent: string): Promise<string> {
   try {
-    const behavior = await getBehavior();
-    const configured = isLocalOrigin(origin) ? behavior.resumeCommandLocal : await resolveResumeCommand(origin, behavior.resumeCommandRemote);
+    const configured = await resumeCommandFor(origin);
     const c = configuredLauncherFor(agent, configured).trim();
     return c === safeLauncher(agent) ? "" : c;
   } catch {

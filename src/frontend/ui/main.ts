@@ -27,6 +27,7 @@ import { mountTabBarResizer } from "./tab-bar-width";
 import { terminalFrontCommand } from "./terminal-front-command";
 import { loadTheme } from "./theme";
 import { SETTINGS_APPLIED_EVENT } from "./settings";
+import { setResumeInTmux } from "./resume-defaults";
 import { OPEN_ACCOUNT_PANEL_EVENT, RESYNC_DONE_EVENT, type OpenAccountPanel } from "./settings/events";
 import { SWITCH_TO_SESSION_EVENT, type SwitchToSession } from "./window-events";
 import { listen } from "@tauri-apps/api/event";
@@ -441,7 +442,10 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // v2.4 issue #2：拉一次 behavior toggle 初值喂给 TabManager。
   // 设置面板改了之后会再调 applyBehavior 同步。
-  void getBehavior().then((b) => tabs.applyBehavior(b));
+  void getBehavior().then((b) => {
+    tabs.applyBehavior(b);
+    setResumeInTmux(b.resumeInTmux);
+  });
 
   // F82a（#56+#47）：设置改由**独立窗口**承载（SS-3 终态），主窗口不再内嵌设置浮层。
   // 设置窗口保存 / 行为 toggle 后广播 SETTINGS_APPLIED_EVENT → 主窗口重读并应用主题 + 行为
@@ -461,7 +465,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   void listen(SETTINGS_APPLIED_EVENT, () => {
     void loadTheme(); // 主题：loadTheme 内部 applyTheme
-    void getBehavior().then((b) => tabs.applyBehavior(b)); // 行为
+    void getBehavior().then((b) => {
+      tabs.applyBehavior(b); // 行为
+      setResumeInTmux(b.resumeInTmux); // 恢复默认的「运行于」
+    });
     void getKeybindings().then((kb) => {
       dispatcher.applyOverrides(kb); // 键位：热应用主窗口 dispatcher
       refreshCmdkChord(); // 键位变 → 同步刷新命令 chip 的 kbd（兑现「改键即变」）

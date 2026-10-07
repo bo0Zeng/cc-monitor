@@ -92,6 +92,7 @@ vi.mock("../../../../src/frontend/ui/settings/diagnostics-section", () => ({
   DiagnosticsSection: class {
     element = Object.assign(document.createElement("div"), { id: "stub-diagnostics-section" });
     loadNow = vi.fn();
+    headButton = () => document.createElement("button");
   },
 }));
 vi.mock("../../../../src/frontend/ui/settings/ext-section", () => ({
@@ -141,10 +142,9 @@ vi.mock("../../../../src/frontend/ui/behavior", () => ({
     bringMonitorToFrontOnUserActive: false,
     showBgSessions: false,
     notifyTurnEnd: false,
-    resumeCommandLocal: "",
-    resumeCommandRemote: "",
-    resumeCommandLocalPresets: [],
-    resumeCommandRemotePresets: [],
+    resumeCommand: "",
+    resumeCommandPresets: [],
+    resumeInTmux: false,
   }),
   setBehavior: vi.fn().mockResolvedValue(undefined),
 }));
@@ -209,7 +209,7 @@ describe("S2 设置面板分页结构", () => {
     await tick();
     // 🔴 两个折叠组（外观 · 日志与数据）换成「应用」下的三个子页。
     //   「日志」「数据位置」那两块各自独占一页 ⇒ 块不再自带标题（页头就是它的名字，§8 #11 不重名）。
-    expect(pageTitles("general")).toEqual(["行为"]);
+    expect(pageTitles("general")).toEqual(["行为", "恢复"]);
     expect(pageTitles("appearance")).toEqual(["字体", "颜色", "快捷键"]);
     // 「诊断」**让名**给 `§5.3` 那个改名（否则面板里会有两个「诊断」）——今天是页名。
     expect(pageTitles("logs")).toEqual([]);

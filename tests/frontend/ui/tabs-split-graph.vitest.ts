@@ -244,7 +244,6 @@ const DEPS: Record<string, readonly string[]> = {
   "src/frontend/ui/tab-session-actions.ts": [
     "npm:@tauri-apps/plugin-opener",
     "src/frontend/ui/kit/dialog.ts", // 杀会话的确认（原 `window.confirm`：真 app 里恒真值，等于没问）
-    "src/frontend/ui/behavior.ts",
     "src/frontend/ui/copy-table.ts", // 杀空 tmux / 杀会话的确认与回执（说到会话状态）住文案表
     "src/frontend/ui/kit/toast.ts",
     "src/frontend/ui/file-window.ts", // F78：远端会话「打开工作目录」（老 SFTP 面板删了，改开文件窗口）

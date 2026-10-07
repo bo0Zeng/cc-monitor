@@ -17,6 +17,7 @@ import { accountAvatarEl } from "./account-color";
 import { fiveHourCell } from "./quota-lines";
 import { lookupAgentProfile } from "./agent-profile";
 import type { Origin } from "./ipc/origin";
+import { resumeInTmuxFor } from "./resume-defaults";
 import type { MenuItem } from "./kit/menu";
 import type { IconName } from "./kit/icon";
 
@@ -52,9 +53,9 @@ export interface ResumeMenuSpec {
   newInDir?: () => void;
 }
 
-/** 默认那一组：上次的号（跟随）· 不用 tmux（设置里「默认在不在 tmux 里」那一格还没有）。 */
-export function defaultPick(): ResumePick {
-  return { tmux: false, account: undefined, useBase: false };
+/** 默认那一组：上次的号（跟随）· 运行于照通用页那一格；那台说了没有 tmux ⇒ 不用 tmux（没问到 ⇒ 照那一格）。 */
+export function defaultPick(origin?: Origin): ResumePick {
+  return { tmux: resumeInTmuxFor(origin), account: undefined, useBase: false };
 }
 
 /** 勾着的号叫什么；跟随 ⇒ 上次的号（知道的话）；这一家没有账号这一维 ⇒ 那一家的名字。 */

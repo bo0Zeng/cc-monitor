@@ -29,7 +29,7 @@ vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn().mockResolvedValu
 vi.mock("../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
 vi.mock("../../../src/frontend/ui/turn-notify", () => ({ turnEndNotifier: { observe: vi.fn() } }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({
-  getBehavior: vi.fn().mockResolvedValue({ resumeCommandLocal: "", resumeCommandRemote: "cct" }),
+  getBehavior: vi.fn().mockResolvedValue({ resumeCommand: "cct" }),
 }));
 vi.mock("../../../src/frontend/ui/remote-launch-run", () => ({
   runRemoteResume: vi.fn().mockResolvedValue(undefined),

@@ -14,14 +14,6 @@
   padding-right: 6px;
 }
 
-/* 复选框行（同时安装 wrapper / auto-launch） */
-.settings-row-checkbox {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  margin-top: 6px;
-  cursor: pointer;
-}
 
 /* S7：「有改动待重启」常驻条。空时 `hidden`，不占位。
    刻意做得**看得见但不刺眼** —— 它会一直在，直到用户真的重启；

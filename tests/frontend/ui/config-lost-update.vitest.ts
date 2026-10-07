@@ -80,10 +80,9 @@ const BEHAVIOR = {
   autoFollowUserActive: false,
   bringMonitorToFrontOnUserActive: true,
   showBgSessions: false,
-  resumeCommandLocal: "claude --resume",
-  resumeCommandRemote: "claude --resume",
-  resumeCommandLocalPresets: [],
-  resumeCommandRemotePresets: [],
+  resumeCommand: "claude --resume",
+  resumeCommandPresets: [],
+  resumeInTmux: true,
   notifyTurnEnd: true,
   notifyNeeds: true,
   // `forceLaunchPayloadRenderer` 退役，行为配置里没有这一格了。

@@ -5,6 +5,9 @@ import { loadConfig, patchConfig, type ConfigEdit } from "./config";
 import { commands } from "./ipc/commands";
 import type { MachineFault } from "./generated/MachineFault";
 import { copyText } from "./copy-table";
+import { getBehavior } from "./behavior";
+import { getLocalResumeCommand } from "./local-machine-prefs";
+import { isLocalOrigin } from "./ipc/origin";
 
 /**
  * 单台远端机器配置（config.json `remote.hosts[]` 的元素）。**key 必须与 Rust reader 一致**。
@@ -32,7 +35,7 @@ export interface RemoteHostConfig {
   jump: string;
   /**
    * S4b-3：**这台机器**的 resume 启动命令。空 = 用全局默认
-   *（`behavior.resumeCommandRemote`）。
+   *（`behavior.resumeCommand`，通用页那一格）。
    *
    * 为什么必须 per-machine：「装 ccm 助手」是**每台机器一个按钮**，而 resume 命令
    * 此前是**全局单值** ⇒ A 机装了 ccm、B 机没装时，今天的数据模型根本表达不出来。
@@ -238,17 +241,7 @@ function serializeHost(h: RemoteHostConfig): Record<string, unknown> {
 }
 
 /** S1：一台机器在盘上的定位键 = 它的 origin（与 [`findHostByOrigin`] 同口径）。 */
-/**
- * S4b-3：某台机器该用哪条 resume 启动命令。**纯函数。**
- *
- * **per-machine 优先，全局兜底。** 全局值（`behavior.resumeCommandRemote`）从「唯一真相」
- * 降级为「默认值」—— 这样没填过 per-machine 的机器行为**一字不变**，不需要数据迁移
- *（迁移会静默改写用户已有的设置）。
- *
- * 为什么必须 per-machine：「装 ccm 助手」是**每台机器一个按钮**，而 resume 命令此前是
- * 全局单值 ⇒ A 机装了 ccm、B 机没装时，数据模型根本表达不出来。于是「装完 ccm 却忘了改
- * resume 命令」是个**结构性陷阱**（那两处此前还隔着两个顶层组）。
- */
+/** 某台机器该用哪条恢复命令（纯函数）：那台自己那一格优先，空 ⇒ 通用页那一格默认。 */
 export function pickResumeCommand(
   host: RemoteHostConfig | null,
   globalDefault: string,
@@ -256,15 +249,14 @@ export function pickResumeCommand(
   return (host?.resumeCommand ?? "").trim() || globalDefault;
 }
 
-/** [`pickResumeCommand`] 的 IO 包装：按 origin 查这台机器，再决定用哪条命令。 */
-export async function resolveResumeCommand(
-  origin: string,
-  globalDefault: string,
-): Promise<string> {
-  return pickResumeCommand(
-    await resolveRemoteConfigByOrigin(origin),
-    globalDefault,
-  );
+/**
+ * 某台恢复会话用哪条命令：那台自己那一格（远端：机器表里那台的 `resumeCommand`；本机：`local-machine-prefs.ts`）优先，
+ * 空 ⇒ 通用页那一格默认（`resumeCommand`）。各处起会话只问这一处。
+ */
+export async function resumeCommandFor(origin: string): Promise<string> {
+  const b = await getBehavior();
+  if (isLocalOrigin(origin)) return (await getLocalResumeCommand()).trim() || b.resumeCommand;
+  return pickResumeCommand(await resolveRemoteConfigByOrigin(origin), b.resumeCommand);
 }
 
 export function hostKey(h: RemoteHostConfig): string {

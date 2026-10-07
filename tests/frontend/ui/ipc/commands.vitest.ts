@@ -126,7 +126,7 @@ vi.mock("../../../../src/frontend/ui/cards/subagent", () => ({ isAgentTool: () =
 vi.mock("../../../../src/frontend/ui/tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
 vi.mock("../../../../src/frontend/ui/turn-notify", () => ({ turnEndNotifier: { observe: vi.fn() } }));
 vi.mock("../../../../src/frontend/ui/behavior", () => ({
-  getBehavior: () => ({ resumeCommandLocal: "", resumeCommandRemote: "" }),
+  getBehavior: () => ({ resumeCommand: "" }),
 }));
 vi.mock("../../../../src/frontend/ui/format", () => ({ formatTimestampSmart: () => "时间" }));
 

@@ -47,8 +47,8 @@ vi.mock("../../../src/frontend/ui/account-reads", () => ({
 }));
 vi.mock("../../../src/frontend/ui/acct-center", () => ({ refreshQuota: vi.fn(async () => {}) }));
 vi.mock("../../../src/frontend/ui/account-prefs", () => ({ machineModels: vi.fn(async () => ({})) }));
-vi.mock("../../../src/frontend/ui/behavior", () => ({ getBehavior: vi.fn(async () => ({ resumeCommandLocal: "", resumeCommandRemote: "" })) }));
-vi.mock("../../../src/frontend/ui/remote-config", () => ({ resolveResumeCommand: vi.fn(async () => "") }));
+vi.mock("../../../src/frontend/ui/behavior", () => ({ getBehavior: vi.fn(async () => ({ resumeCommand: "" })) }));
+vi.mock("../../../src/frontend/ui/remote-config", () => ({ resumeCommandFor: vi.fn(async () => "") }));
 const arrival = vi.hoisted(() => ({ awaitArrival: vi.fn(async () => "new-sid") }));
 vi.mock("../../../src/frontend/ui/launch-arrival", () => arrival);
 const win = vi.hoisted(() => ({ openWindow: vi.fn(async () => null) }));

@@ -134,6 +134,7 @@ const UNIT: &[&str] = &[
     // `tests/frontend/shell/adapter/claude_code_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
     // `tests/frontend/shell/adapter/codex_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
     "tests/backend/control/launch_render/launch_cli_parity_tests.rs",
+    "tests/frontend/shell/diagnostics_report_tests.rs",
     "tests/frontend/shell/chan/transfer_stream_tests.rs",
     "tests/backend/agents/claudecode/branch_tests.rs", // 原 `tests/common/branch-core/lib_tests.rs`：分叉变换收进后端适配层
     "tests/backend/control/gate_rules_tests.rs", // 原 `tests/common/gate-core/lib_tests.rs`：gate-core 收成后端模块
@@ -212,6 +213,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/remote-launch-run.vitest.ts",
     "tests/frontend/ui/render-window.vitest.ts",
     "tests/frontend/ui/resume-presets.vitest.ts",
+    "tests/frontend/ui/resume-defaults.vitest.ts",
     "tests/frontend/ui/route-parity.vitest.ts",
     "tests/frontend/ui/session-accounts-poll.vitest.ts",
     "tests/frontend/ui/session-status.vitest.ts",
@@ -221,6 +223,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/settings/config-surface-section.vitest.ts",
     "tests/frontend/ui/settings/context-limits-section.vitest.ts", // `contextLimits` 的入口（假 IPC）
     "tests/frontend/ui/settings/diagnostics-section.vitest.ts",
+    "tests/frontend/ui/settings/local-resume-row.vitest.ts",
     "tests/frontend/ui/settings/drift-ledger-section.vitest.ts",
     "tests/frontend/ui/settings/host-os.vitest.ts",
     "tests/frontend/ui/kit/tooltip.vitest.ts",

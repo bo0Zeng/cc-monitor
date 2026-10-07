@@ -1,19 +1,17 @@
 /**
- * S7 收尾（Phase G 核账逮出来的）：**诊断分节要给「待生效」那条常驻条供货**。
- *
- * 病灶：后端对「启用 log 文件」这一项明确回 `RestartHint = "needs_restart"`，
- * 而前端此前只弹一个 6 秒 toast。S7 立的规矩是「有改动没生效」是**状态**、
- * 唯一去处是底部那条常驻条 —— 漏了这个供给方，用户切完 log 开关、错过 toast，
- * 再看条子是空的，会读成「没有待生效的改动」。
- * **条子的存在本身让它显得权威**，所以漏供比没有条子更误导。
+ * 设置窗「日志」页（`diagnostics-section.ts`）：
+ * - 「日志写入文件」改了 ⇒ 行内「重启后生效」＋ 顶上那条；拨回这次运行起来时的值 ⇒ 两处一起消。
+ * - 会写回壳的三格读回来之前不可交互；读不到 ⇒ 原因落在这一页上。
+ * - 存失败 ⇒ 拇指退回 ＋ 行下一句。
+ * - 本机 cc-monitor 输出：有 ⇒ 路径 ＋［打开］打开恰是它；没有 ⇒ 只说没有，不摆按钮。
+ * - 复制诊断信息：读到那一份之前置灰（悬停说为什么）；读到 ⇒ 复制的是壳出的那一整段；剪贴板不可用 ⇒ 只读文本框全选好。
+ * - 「未识别数据」那一行读同一份答复里的数（读不到的那台照实说读不到）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { setDiag, restartHint, getDiag, logInfo, opened } = vi.hoisted(() => ({
-  setDiag: vi.fn(),
-  restartHint: { value: "none" as "none" | "needs_restart" },
-  getDiag: { fail: null as Error | null },
-  // `get_log_file_info` 的应答（生成物 `LogFileInfo` 的形状）。
+const { setDiag, getDiag, logInfo, opened, report } = vi.hoisted(() => ({
+  setDiag: { fail: null as Error | null, calls: [] as unknown[] },
+  getDiag: { fail: null as Error | null, logEnabled: true },
   logInfo: {
     value: {
       dir: "/d/logs",
@@ -24,161 +22,198 @@ const { setDiag, restartHint, getDiag, logInfo, opened } = vi.hoisted(() => ({
     },
   },
   opened: vi.fn(),
+  report: {
+    fail: null as Error | null,
+    value: {
+      text: "cc-monitor 诊断信息\n版本 4.1.1",
+      unknown: [
+        { machine: "本机", records: 0 },
+        { machine: "devbox", records: 3 },
+        { machine: "gpu-01", records: null },
+      ],
+      configUnknown: 2,
+    },
+  },
 }));
 
 vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
   commands: {
-    set_diagnostics_config: (...a: unknown[]) => {
-      setDiag(...a);
-      return Promise.resolve(restartHint.value);
+    set_diagnostics_config: (a: unknown) => {
+      setDiag.calls.push(a);
+      return setDiag.fail ? Promise.reject(setDiag.fail) : Promise.resolve("none");
     },
     get_diagnostics_config: () =>
-      getDiag.fail ? Promise.reject(getDiag.fail) : Promise.resolve({
-        log_enabled: true,
-        log_level: "info",
-        error_toast: true,
-        max_files: 3,
-      }),
+      getDiag.fail
+        ? Promise.reject(getDiag.fail)
+        : Promise.resolve({ log_enabled: getDiag.logEnabled, log_level: "info", error_toast: true, max_files: 3 }),
     get_log_file_info: () => Promise.resolve(logInfo.value),
+    diagnostics_report: () => (report.fail ? Promise.reject(report.fail) : Promise.resolve(report.value)),
+    open_log_dir: () => Promise.resolve(),
   },
 }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: opened }));
+vi.mock("@tauri-apps/api/path", () => ({ homeDir: () => Promise.resolve("/d") }));
 
 import { DiagnosticsSection } from "../../../../src/frontend/ui/settings/diagnostics-section";
-import {
-  restartReasons,
-  __resetRestartNoticeForTests,
-} from "../../../../src/frontend/ui/settings/restart-notice";
+import { restartReasons, __resetRestartNoticeForTests } from "../../../../src/frontend/ui/settings/restart-notice";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
-/** 切一下「启用 log 文件」复选框，等异步 save 落地。 */
-async function toggleLogEnabled(): Promise<void> {
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+async function loaded(): Promise<DiagnosticsSection> {
   const sec = new DiagnosticsSection();
+  document.body.appendChild(sec.element);
   sec.loadNow();
-  await new Promise((r) => setTimeout(r, 0));
-  const cb = sec.element.querySelector<HTMLInputElement>(
-    'input[type="checkbox"]',
-  )!;
-  cb.checked = !cb.checked;
-  cb.dispatchEvent(new Event("change"));
-  // save() → invoke → then；两个微任务轮足够
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
+  await settle();
+  await settle();
+  return sec;
 }
 
-describe("诊断分节 → 「需重启」常驻条", () => {
-  beforeEach(() => {
-    __resetRestartNoticeForTests();
-    setDiag.mockClear();
-    restartHint.value = "none";
-    document.body.replaceChildren();
+/** 名字是 `label` 的那个开关。 */
+function sw(el: HTMLElement, label: string): HTMLButtonElement {
+  const row = [...el.querySelectorAll("label")].find((l) => l.querySelector("span")?.firstChild?.textContent === label);
+  expect(row, `找不到开关「${label}」—— 下面是空真`).toBeTruthy();
+  return row!.querySelector<HTMLButtonElement>("[role=switch]")!;
+}
+
+const fileSwitch = (el: HTMLElement) => sw(el, copyText("diagnostics.file.enable"));
+const restartLine = (el: HTMLElement) => el.querySelector<HTMLElement>(".diag-restart")!;
+
+beforeEach(() => {
+  __resetRestartNoticeForTests();
+  setDiag.fail = null;
+  setDiag.calls = [];
+  getDiag.fail = null;
+  getDiag.logEnabled = true;
+  report.fail = null;
+  logInfo.value.backend_stderr = [];
+  opened.mockClear();
+  document.body.replaceChildren();
+});
+
+describe("日志写入文件：改了要重启、拨回原值两处一起消", () => {
+  it("★ 拨离这次运行起来时的值 ⇒ 行内一句 ＋ 顶上那条；拨回 ⇒ 两处都消", async () => {
+    const sec = await loaded();
+    expect(restartLine(sec.element).hidden, "前提：没改过时不说要重启").toBe(true);
+    fileSwitch(sec.element).click();
+    await settle();
+    expect(setDiag.calls, "先确认真的交出去了（否则下面断言是空转）").toHaveLength(1);
+    expect(restartLine(sec.element).hidden).toBe(false);
+    expect(restartReasons()).toContain(copyText("diagnostics.save.fileSwitch"));
+    fileSwitch(sec.element).click();
+    await settle();
+    expect(restartLine(sec.element).hidden, "拨回原值了还说要重启").toBe(true);
+    expect(restartReasons(), "拨回原值了顶上那条还挂着").toEqual([]);
   });
 
-  it("★ 后端说 needs_restart → 条子上必须列出这一项（不能只弹一个会消失的 toast）", async () => {
-    restartHint.value = "needs_restart";
-    await toggleLogEnabled();
-    expect(setDiag, "先确认 save 真的发出去了（否则下面断言是空转）").toHaveBeenCalled();
-    // 改名：块叫「日志」、那一项叫「日志文件」⇒ 条子上的理由跟着改。
-    expect(restartReasons()).toContain("日志文件开关");
-  });
-
-  it("★ 反向自检：后端说 none 时**不许**点亮条子（恒亮 = 背景噪音）", async () => {
-    restartHint.value = "none";
-    await toggleLogEnabled();
-    expect(setDiag).toHaveBeenCalled();
+  it("★ 存失败 ⇒ 拇指退回 ＋ 行下一句，不说要重启", async () => {
+    const sec = await loaded();
+    setDiag.fail = new Error("写不进去-xyz");
+    fileSwitch(sec.element).click();
+    await settle();
+    expect(fileSwitch(sec.element).getAttribute("aria-checked"), "存失败了拇指还停在新位置").toBe("true");
+    expect(sec.element.textContent).toContain("写不进去-xyz");
     expect(restartReasons()).toEqual([]);
   });
 });
 
-// 那处真缺陷 ＋ `§8` 判据 #2：读不到当前设置时，三个控件**不许**顶着构造期默认值给人点。
-describe("日志分节：读不到当前设置 ⇒ 说出来，并且三个控件读回来之前不可交互", () => {
-  beforeEach(() => {
-    getDiag.fail = null;
-    document.body.replaceChildren();
-  });
-  const controls = (el: HTMLElement) => [
-    ...el.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input[type=checkbox], select"),
+describe("会写回壳的三格：读回来之前不可交互", () => {
+  const ready = (el: HTMLElement) => [
+    !el.querySelector("select")!.disabled,
+    fileSwitch(el).getAttribute("aria-disabled") !== "true",
+    sw(el, copyText("diagnostics.toast.enable")).getAttribute("aria-disabled") !== "true",
   ];
 
-  it("还没读：三个都灰着（构造期那几个默认值不是后端的真状态）", () => {
+  it("还没读：三个都灰着；读成功：三个都亮起", async () => {
     const sec = new DiagnosticsSection();
-    expect(controls(sec.element).length, "控件找不到 —— 下面是空真").toBe(3);
-    expect(controls(sec.element).every((c) => c.disabled)).toBe(true);
-  });
-
-  it("读成功：三个都亮起、没有失败那一行", async () => {
-    const sec = new DiagnosticsSection();
+    expect(ready(sec.element)).toEqual([false, false, false]);
     sec.loadNow();
-    await new Promise((r) => setTimeout(r, 0));
-    expect(controls(sec.element).every((c) => !c.disabled)).toBe(true);
-    expect(sec.element.querySelector(".settings-banner-show")).toBeNull();
+    await settle();
+    expect(ready(sec.element)).toEqual([true, true, true]);
   });
 
-  it("读失败：原因落在这一块上，三个继续灰着", async () => {
+  it("读失败：原因落在这一页上，三个继续灰着", async () => {
     getDiag.fail = new Error("后端没起来");
-    const sec = new DiagnosticsSection();
-    sec.loadNow();
-    await new Promise((r) => setTimeout(r, 0));
-    expect(controls(sec.element).every((c) => c.disabled)).toBe(true);
-    expect(sec.element.querySelector(".settings-banner-show")?.textContent).toContain("后端没起来");
-  });
-
-  it("先读成功、再读失败：三个重新灰掉（上一次的值此刻已经不能当真）", async () => {
-    const sec = new DiagnosticsSection();
-    sec.loadNow();
-    await new Promise((r) => setTimeout(r, 0));
-    expect(controls(sec.element).every((c) => !c.disabled), "前提：先得亮起来").toBe(true);
-    getDiag.fail = new Error("第二次读挂了");
-    [...sec.element.querySelectorAll("button")].find((b) => b.textContent === "刷新信息")!.click();
-    await new Promise((r) => setTimeout(r, 0));
-    expect(controls(sec.element).every((c) => c.disabled)).toBe(true);
+    const sec = await loaded();
+    expect(ready(sec.element)).toEqual([false, false, false]);
+    expect(sec.element.textContent).toContain("后端没起来");
   });
 });
 
-// 守的要求（住址，纪律 19）：「本机 · 脱离常驻载体 | null | **仍开**」·
-//   要求：「脱离载体的常驻后端 stderr 落本机日志文件（有上限、滚动），设置页『日志』里看得到」。
-describe("日志分节：本机后端的输出（NT2 · S1）", () => {
-  beforeEach(() => {
-    getDiag.fail = null;
-    opened.mockClear();
-    document.body.replaceChildren();
-  });
-  const row = (el: HTMLElement) =>
-    [...el.querySelectorAll(".settings-row")].find((r) =>
-      r.textContent?.startsWith("本机后端的输出"),
-    )!;
+describe("文件：本机 cc-monitor 输出", () => {
+  const row = (el: HTMLElement) => el.querySelector<HTMLElement>("[data-role=local-output]")!;
 
-  it("★ 有那份文件：显示路径与大小，「打开」打开的恰是它（新在前的第一份）", async () => {
+  it("★ 有那份文件：显示路径（~ 缩写）与大小，［打开］打开的恰是它（新在前的第一份）", async () => {
     logInfo.value.backend_stderr = [
       { path: "/d/logs/backend/stderr.log", size_bytes: 2048, modified_ms: 2 },
       { path: "/d/logs/backend/stderr.old.log", size_bytes: 9, modified_ms: 1 },
     ];
-    const sec = new DiagnosticsSection();
-    sec.loadNow();
-    await new Promise((r) => setTimeout(r, 0));
-    const r = row(sec.element);
-    expect(r, "找不到那一行 —— 下面是空真").toBeTruthy();
-    expect(r.textContent).toContain("/d/logs/backend/stderr.log");
-    expect(r.textContent).not.toContain("stderr.old.log");
-    const btn = r.querySelector("button")!;
-    expect(btn.disabled).toBe(false);
-    btn.click();
-    await new Promise((r2) => setTimeout(r2, 0));
+    const sec = await loaded();
+    expect(row(sec.element).textContent).toContain("~/logs/backend/stderr.log");
+    expect(row(sec.element).textContent).not.toContain("stderr.old.log");
+    row(sec.element).querySelector("button")!.click();
+    await settle();
     expect(opened).toHaveBeenCalledWith("/d/logs/backend/stderr.log");
   });
 
-  it("★ 另一向：没有那份文件 ⇒ 说清为什么没有，「打开」灰着、点不出东西", async () => {
-    logInfo.value.backend_stderr = [];
+  it("★ 另一向：没有那份文件 ⇒ 只说没有，不摆按钮", async () => {
+    const sec = await loaded();
+    expect(row(sec.element).textContent).toContain(copyText("diagnostics.files.outputNone"));
+    expect(row(sec.element).querySelector("button")).toBeNull();
+  });
+});
+
+describe("复制诊断信息 · 未识别数据那一行", () => {
+  it("★ 读到之前置灰（悬停说为什么）；读到 ⇒ 亮起，复制的是壳出的那一整段", async () => {
+    const write = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText: write } });
     const sec = new DiagnosticsSection();
+    const head = sec.headButton();
+    const btns = [head, ...sec.element.querySelectorAll<HTMLButtonElement>("[data-role=copy-diagnostics]")];
+    expect(btns.length, "页头一颗 ＋ 那一行一颗").toBe(2);
+    expect(btns.every((b) => b.getAttribute("aria-disabled") === "true")).toBe(true);
+    expect(head.title).toBe(copyText("diagnostics.copy.notYet"));
     sec.loadNow();
-    await new Promise((r) => setTimeout(r, 0));
-    const r = row(sec.element);
-    expect(r.textContent).toContain("还没有");
-    const btn = r.querySelector("button")!;
-    expect(btn.disabled).toBe(true);
-    btn.click();
-    await new Promise((r2) => setTimeout(r2, 0));
-    expect(opened).not.toHaveBeenCalled();
+    await settle();
+    await settle();
+    expect(btns.every((b) => b.getAttribute("aria-disabled") === null)).toBe(true);
+    head.click();
+    await settle();
+    expect(write).toHaveBeenCalledWith(report.value.text);
+  });
+
+  it("★ 读不到 ⇒ 复制一直灰着、那一行说读不到（不拿空段冒充「都认得」）", async () => {
+    report.fail = new Error("壳没答-xyz");
+    const sec = new DiagnosticsSection();
+    const head = sec.headButton();
+    sec.loadNow();
+    await settle();
+    await settle();
+    expect(head.getAttribute("aria-disabled")).toBe("true");
+    expect(sec.element.textContent).toContain("壳没答-xyz");
+  });
+
+  it("那一行读同一份答复：有数的那台 · 读不到的那台 · config.json 几项", async () => {
+    const sec = await loaded();
+    const line = sec.element.textContent ?? "";
+    expect(line).toContain(copyText("diagnostics.unknown.machine", { machine: "devbox", n: 3 }));
+    expect(line).toContain(copyText("diagnostics.unknown.machineUnread", { machine: "gpu-01" }));
+    expect(line).toContain(copyText("diagnostics.unknown.config", { n: 2 }));
+    expect(line, "0 条的那台不该占一格").not.toContain(copyText("diagnostics.unknown.machine", { machine: "本机", n: 0 }));
+  });
+
+  it("★ 剪贴板不可用 ⇒ 页内一个只读文本框、全选好，说按 Ctrl+C", async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockRejectedValue(new Error("no clipboard")) } });
+    const sec = await loaded();
+    const head = sec.headButton();
+    head.click();
+    await settle();
+    const box = sec.element.querySelector<HTMLTextAreaElement>(".diag-fallback textarea");
+    expect(box, "没给退路").toBeTruthy();
+    expect(box!.value).toBe(report.value.text);
+    expect(box!.readOnly).toBe(true);
+    expect([box!.selectionStart, box!.selectionEnd], "没全选好").toEqual([0, report.value.text.length]);
+    expect(sec.element.textContent).toContain(copyText("diagnostics.copy.fallback"));
   });
 });

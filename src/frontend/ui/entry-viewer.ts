@@ -29,6 +29,8 @@ import { icon } from "./kit/icon";
 import { splitButton } from "./kit/split-button";
 import { defaultPick, resumeAccounts, resumeHint, resumeMenuItems, type ResumeAccounts, type ResumePick } from "./resume-menu";
 import { resumeHistoryRow } from "./history-resume";
+import { resumeInTmuxFor, setResumeInTmux } from "./resume-defaults";
+import { getBehavior } from "./behavior";
 import { askOf, FOLLOW, type AccountAsk } from "./launch-account";
 import { openNewSession } from "./new-session";
 import { revealInFolder } from "./reveal-in-folder";
@@ -220,7 +222,7 @@ function actionsOf(r: HistoryRow, live: boolean, viewer: SessionViewer): HTMLEle
 
 /** ［恢复 ▾］：与历史页同一个组件；起了 ⇒ 主窗口那边等它出现（窗口留着）；没起 ⇒ 消息流上面一条错误条 ＋［重试］。 */
 function resumeControl(r: HistoryRow, viewer: SessionViewer): HTMLElement {
-  const pick: ResumePick = defaultPick();
+  const pick: ResumePick = defaultPick(r.origin ?? LOCAL_ORIGIN);
   let accounts: ResumeAccounts = !r.can.accounts
     ? { kind: "none", agentName: r.agentTag ?? r.agent }
     : r.lastAccount
@@ -257,6 +259,16 @@ function resumeControl(r: HistoryRow, viewer: SessionViewer): HTMLElement {
     },
   });
   sb.root.dataset.role = "resume";
+  // 默认的「运行于」照通用页「恢复到 tmux 里」（这扇窗自己读一次；菜单没动过才换）。
+  let touched = false;
+  const before = pick.tmux;
+  void getBehavior().then((b) => {
+    setResumeInTmux(b.resumeInTmux);
+    if (touched || pick.tmux !== before) return;
+    pick.tmux = resumeInTmuxFor(r.origin ?? LOCAL_ORIGIN);
+    sb.main.title = resumeHint(accounts, pick);
+  });
+  sb.more.addEventListener("click", () => (touched = true), { once: true });
   if (r.can.resume === "bg") {
     setDisabled(sb.main, copyText("history.row.bgHint"));
     setDisabled(sb.more, copyText("history.row.bgHint"));

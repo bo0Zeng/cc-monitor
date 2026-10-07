@@ -7,7 +7,7 @@ import { describe, it, expect, vi } from "vitest";
 // `?.refresh()` 会静默 no-op）。vi.hoisted 让 spy 在被提升的 vi.mock 工厂里可见。
 const { remoteRefresh, dataRefresh, boom, behaviorStub } = vi.hoisted(() => ({
   // P6c：让单条测试能改预设（`vi.mock` 的工厂被提升，引不到普通顶层变量）。
-  behaviorStub: { localPresets: [] as string[], remotePresets: [] as string[] },
+  behaviorStub: { presets: [] as string[] },
   remoteRefresh: vi.fn(),
   dataRefresh: vi.fn(),
   boom: { remote: false, ext: false, kb: false } as {
@@ -66,6 +66,7 @@ vi.mock("../../../../src/frontend/ui/settings/data-section", () => ({
 vi.mock("../../../../src/frontend/ui/settings/diagnostics-section", () => ({
   DiagnosticsSection: class {
     element = document.createElement("div");
+    headButton = () => document.createElement("button");
   },
 }));
 // `cc_integration.ts` 并进了 `machine-aliases.ts`（终端集成成了「别名」那一块 PowerShell 那一侧），它的替身随之删掉。
@@ -125,10 +126,10 @@ vi.mock("../../../../src/frontend/ui/behavior", () => ({
     bringMonitorToFrontOnUserActive: false,
     showBgSessions: false,
     notifyTurnEnd: false,
-    resumeCommandLocal: "",
-    resumeCommandRemote: "",
-    resumeCommandLocalPresets: behaviorStub.localPresets,
-    resumeCommandRemotePresets: behaviorStub.remotePresets,
+    notifyNeeds: false,
+    resumeCommand: "",
+    resumeCommandPresets: behaviorStub.presets,
+    resumeInTmux: false,
   })),
   setBehavior: vi.fn().mockResolvedValue(undefined),
   withResumePreset: (list: readonly string[], cmd: string) => {
@@ -266,28 +267,25 @@ describe("T07 分区块隔离（真行为）", () => {
   });
 });
 
-// ===== P6c：resume 命令预设（#69 b/c）=====
-describe("P6c resume 命令预设", () => {
+// ===== P6c：恢复命令预设（#69 b/c）—— 通用页一格（各台的默认）=====
+describe("P6c 恢复命令预设", () => {
   beforeEach(() => {
-    behaviorStub.localPresets = [];
-    behaviorStub.remotePresets = [];
+    behaviorStub.presets = [];
     document.body.textContent = "";
   });
   // 面板自己把 DOM 挂到 document（windowMode）—— 与本文件其余判据同一种查法。
-  const chips = (cls: string) =>
-    [...document.querySelectorAll<HTMLButtonElement>(`.${cls} .settings-preset`)];
+  const chips = () => [...document.querySelectorAll<HTMLButtonElement>(".resume-presets .settings-preset")];
+  const resumeInput = () =>
+    [...document.querySelectorAll<HTMLInputElement>("input")].find((i) => i.placeholder === copyText("settingsPanel.behavior.resumeHint"))!;
 
   it("★ P6c-Y1：点一条预设 ⇒ 输入框变成它，并**真的走保存路径**", async () => {
-    behaviorStub.localPresets = ["cct", "claude"];
+    behaviorStub.presets = ["cct", "claude"];
     const p = new SettingsPanel({ windowMode: true });
     await p.open();
     void p;
-    const list = chips("resume-presets-local");
+    const list = chips();
     expect(list.map((b) => b.textContent)).toEqual(["cct", "claude"]);
-
-    const input = [...document.querySelectorAll<HTMLInputElement>("input")].find(
-      (i) => i.placeholder === "默认：检测 cc，回退 claude",
-    )!;
+    const input = resumeInput();
     expect(input).toBeTruthy();
     vi.mocked(setBehavior).mockClear();
     list[1].click();
@@ -297,54 +295,38 @@ describe("P6c resume 命令预设", () => {
     // 只填输入框不保存 ⇒ 用户以为选了、其实没存。**必须钉保存真的发生了。**
     expect(vi.mocked(setBehavior)).toHaveBeenCalled();
     const saved = vi.mocked(setBehavior).mock.calls.at(-1)![0];
-    expect(saved.resumeCommandLocal).toBe("claude");
+    expect(saved.resumeCommand).toBe("claude");
   });
 
-  it("★ P6c-Y3：点**远端**预设要走同一条越层诊断（预设是放大器，不是绕过口）", async () => {
-    // 远端输入框的 tooltip 逐字：「别填 cct 这类自己建 tmux 的命令」——
-    // 手打错一次是一次，存成预设是把错误**固化成一键**。
-    behaviorStub.remotePresets = ["cct"];
+  it("★ P6c-Y3：点预设要走同一条越层诊断（这一格也是远端几台的默认；预设是放大器，不是绕过口）", async () => {
+    behaviorStub.presets = ["cct"];
     const p = new SettingsPanel({ windowMode: true });
     await p.open();
     const warn = document.querySelector<HTMLElement>(".settings-launcher-warning")!;
     expect(warn.style.display).toBe("none"); // 起手没有警告
 
-    chips("resume-presets-remote")[0].click();
+    chips()[0].click();
     await new Promise((r) => setTimeout(r, 0));
     expect(warn.style.display).toBe("block");
     expect(warn.textContent ?? "").not.toBe("");
   });
 
   it("★ P6c-D：预设能移除，但**正在生效的那条不给移除**", async () => {
-    // 只进不出是个缺陷：打错一个 `ccmm`，它会一直占着位子直到被后来的挤出去。
-    // 而移除一条**此刻正在用**的命令是自相矛盾的 —— 保存时它必然又被记回来
-    // （`withResumePreset` 会把输入框里的值并进去），用户会看见「点了没反应」。
-    behaviorStub.localPresets = ["ccm", "claude"];
+    behaviorStub.presets = ["ccm", "claude"];
     const p = new SettingsPanel({ windowMode: true });
     await p.open();
     void p;
-    const dels = [
-      ...document.querySelectorAll<HTMLButtonElement>(
-        ".resume-presets-local .settings-preset-del",
-      ),
-    ];
-    expect(dels).toHaveLength(2);
-    expect(dels.every((d) => d.textContent === "×")).toBe(true);
+    const dels = () => [...document.querySelectorAll<HTMLButtonElement>(".resume-presets .settings-preset-del")];
+    expect(dels()).toHaveLength(2);
+    expect(dels().every((d) => d.textContent === "×")).toBe(true);
 
     // 先选中 ccm 让它「正在生效」。
     vi.mocked(setBehavior).mockClear();
-    document
-      .querySelectorAll<HTMLButtonElement>(".resume-presets-local .settings-preset")[0]
-      .click();
+    chips()[0].click();
     await new Promise((r) => setTimeout(r, 0));
-    const after = [
-      ...document.querySelectorAll<HTMLButtonElement>(
-        ".resume-presets-local .settings-preset-del",
-      ),
-    ];
-    const activeDel = after[0];
-    expect(activeDel.disabled, "正在生效的那条不给移除").toBe(true);
-    expect(activeDel.title).toContain("正在生效");
+    const after = dels();
+    expect(after[0].disabled, "正在生效的那条不给移除").toBe(true);
+    expect(after[0].title).toContain("正在生效");
     expect(after[1].disabled, "别的那条照常可移除").toBe(false);
 
     // 移除**不在生效**的那条 ⇒ 真的从落盘的列表里没了。
@@ -352,14 +334,72 @@ describe("P6c resume 命令预设", () => {
     after[1].click();
     await new Promise((r) => setTimeout(r, 0));
     const saved = vi.mocked(setBehavior).mock.calls.at(-1)![0];
-    expect(saved.resumeCommandLocalPresets).not.toContain("claude");
-    expect(saved.resumeCommandLocalPresets).toContain("ccm");
+    expect(saved.resumeCommandPresets).not.toContain("claude");
+    expect(saved.resumeCommandPresets).toContain("ccm");
   });
 
   it("★ P6c-Y1b：没有预设时不留空盒子（一排看不见的元素只会挡布局）", async () => {
     const p = new SettingsPanel({ windowMode: true });
     await p.open();
-    expect(chips("resume-presets-local")).toHaveLength(0);
-    expect(chips("resume-presets-remote")).toHaveLength(0);
+    expect(chips()).toHaveLength(0);
+  });
+});
+
+// ===== 通用页：开关拨了马上存；存失败拇指退回 ＋ 行下一句（C4）· 恢复到 tmux 里 · 上下文上限锚点 =====
+describe("通用页 · 行为与恢复", () => {
+  beforeEach(() => {
+    behaviorStub.presets = [];
+    document.body.textContent = "";
+    vi.mocked(setBehavior).mockReset();
+    vi.mocked(setBehavior).mockResolvedValue(undefined);
+  });
+  /** 名字是 `label` 的那个开关（拇指）与它那一行。 */
+  const sw = (label: string): { thumb: HTMLButtonElement; row: HTMLElement } => {
+    const l = [...document.querySelectorAll<HTMLLabelElement>(".settings-switch-row label")].find(
+      (x) => x.querySelector("span")?.firstChild?.textContent === label,
+    );
+    expect(l, `找不到开关「${label}」—— 下面是空真`).toBeTruthy();
+    return { thumb: l!.querySelector<HTMLButtonElement>("[role=switch]")!, row: l!.closest<HTMLElement>(".settings-switch-row")! };
+  };
+
+  it("★ 拨「恢复到 tmux 里」⇒ 存的那一份 resumeInTmux 翻过来，别的格原样", async () => {
+    const p = new SettingsPanel({ windowMode: true });
+    await p.open();
+    const { thumb } = sw(copyText("settingsPanel.behavior.resumeInTmux"));
+    expect(thumb.getAttribute("aria-checked")).toBe("false");
+    thumb.click();
+    await new Promise((r) => setTimeout(r, 0));
+    const saved = vi.mocked(setBehavior).mock.calls.at(-1)![0];
+    expect(saved.resumeInTmux).toBe(true);
+    expect(saved.notifyNeeds).toBe(false);
+  });
+
+  it("★ 存失败 ⇒ 拇指退回原位 ＋ 那一行下面说为什么（不弹会消失的 toast 了事）", async () => {
+    const p = new SettingsPanel({ windowMode: true });
+    await p.open();
+    vi.mocked(setBehavior).mockRejectedValueOnce(new Error("盘满了-xyz"));
+    const { thumb, row } = sw(copyText("settingsPanel.behavior.notifyNeeds"));
+    thumb.click();
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(thumb.getAttribute("aria-checked"), "存失败了拇指还停在新位置").toBe("false");
+    const err = row.querySelector<HTMLElement>(".settings-row-error")!;
+    expect(err.hidden).toBe(false);
+    expect(err.textContent).toContain("盘满了-xyz");
+  });
+
+  it("「同时提到前台」挂在上一项下：上一项关着时禁用", async () => {
+    const p = new SettingsPanel({ windowMode: true });
+    await p.open();
+    // 这一份桩里 autoFollowUserActive 是 false。
+    expect(sw(copyText("settingsPanel.behavior.autoFront")).thumb.getAttribute("aria-disabled")).toBe("true");
+    sw(copyText("settingsPanel.behavior.autoFollow")).thumb.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(sw(copyText("settingsPanel.behavior.autoFront")).thumb.getAttribute("aria-disabled")).toBe("false");
+  });
+
+  it("上下文上限那一节挂锚点 context-limits（主窗口［设上限］跳过来）", () => {
+    new SettingsPanel({ windowMode: true });
+    expect(document.querySelector('[data-anchor="context-limits"]')).toBeTruthy();
   });
 });

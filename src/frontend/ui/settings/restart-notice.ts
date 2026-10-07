@@ -83,6 +83,16 @@ export function markRestartNeeded(reason: string): void {
   notify();
 }
 
+/**
+ * 那一项拨回了这次运行起来时的值 ⇒ 它不再「待重启才生效」，这一笔划掉（行内那一句与这条一起消）。
+ * 只给「改回原值」这一种情形用：改动还没生效时不许拿它把条划掉。
+ */
+export function clearRestartNeeded(reason: string): void {
+  if (!reasons.delete(reason.trim())) return;
+  persist();
+  notify();
+}
+
 /** 当前待生效的改动（按加入顺序）。空 = 没有，条不该出现。 */
 export function restartReasons(): string[] {
   return [...reasons];
@@ -93,7 +103,7 @@ export function subscribeRestart(fn: Listener): () => void {
   return () => listeners.delete(fn);
 }
 
-/** 仅供测试：清空。**生产里刻意没有「清除」入口** —— 见下。 */
+/** 仅供测试：清空（生产里只有「拨回原值」那一种划掉，见 [`clearRestartNeeded`]）。 */
 export function __resetRestartNoticeForTests(): void {
   reasons.clear();
   listeners.clear();
@@ -122,8 +132,8 @@ function notify(): void {
  * 底部常驻条。**只在有待生效改动时出现**，空时整块不渲染。
  *
  * 刻意**不给「知道了」按钮**：那会让用户把一个仍然为真的状态划掉
- * ——「改动还没生效」这件事不会因为他点了一下就不成立。要让它消失只有一个办法：
- * 真的重启。（这也是为什么生产里没有清除入口。）
+ * ——「改动还没生效」这件事不会因为他点了一下就不成立。要让它消失只有两个办法：
+ * 真的重启，或把那一项拨回这次运行起来时的值。
  */
 export function createRestartBar(): HTMLElement {
   const bar = document.createElement("div");

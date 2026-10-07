@@ -37,7 +37,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({
-  getBehavior: vi.fn().mockResolvedValue({ resumeCommandLocal: "" }),
+  getBehavior: vi.fn().mockResolvedValue({ resumeCommand: "" }),
 }));
 
 import { invoke } from "@tauri-apps/api/core";
