@@ -57,7 +57,7 @@ const CALL: &str = "load_remote_config_by_label(";
 
 /// 本机**结构性够不到**的调用点，逐条登记：(文件, 函数, 为什么 `<local>` 到不了这里)。
 ///
-/// ⚠ 登记的是「够不到」，不是「还没做」。**「以后再说」不是理由** —— 那种进 [`TRIAGE_DEBT`]。
+/// ⚠ 登记的是「够不到」，不是「还没做」。**「以后再说」不是理由** —— 那种先去加本机分支。
 #[cfg(test)]
 const REMOTE_ONLY: &[(&str, &str, &str)] = &[(
     "dial_host.rs",
@@ -75,56 +75,6 @@ const REMOTE_ONLY: &[(&str, &str, &str)] = &[(
     "只被 `backend_stop` 调，且在它 `is_local(&origin)` 那一支已经把本机分走之后（本机停的是本机常驻后端，\
      走 `local_backend_host::stop_local_backend`）⇒ `<local>` 结构上走不到这里。",
 )];
-
-/// ★★ **本轮没有逐条量过的存量**（`P4d-Y5` 08-12 立表 19 条；`P4a` 08-12 还掉 3 条 ⇒ 16；
-/// `K-R56` 09-11 还掉 1 条 —— `tmux_send_keys`〔散文墓碑〕（这条命令整个迁到界面了），它是 `K-R54` 逐处裁定表第 1 处
-/// 点名的那一条「`kill` 有的『本机不许回落』保护，`send-keys` 没有」⇒ **15**）。
-///
-/// # 为什么它不是 [`REMOTE_ONLY`] 的一部分
-///
-/// 这 19 处**我没有逐个读过**。给它们各编一句「本机够不到，因为……」很容易，
-/// 而那正是 `P3b` 刚刚立判据去抓的东西：**B 类假理由（写下时就没验证过）**。
-/// B 类的特点是时间线扫不到它 —— 它从来没真过，所以没有「哪天变假的」那一刻可查。
-/// 在这里造 19 条，等于亲手制造一批下次审计要花力气才能识别的假话。
-///
-/// ⇒ 本表逐字承认：**这是欠账，不是裁定。** 它对本护栏的作用只有一个 ——
-/// 挡住**新增**。存量该怎么处置，归那件事，不藏在护栏的白名单里。
-///
-/// ⚠ **只许变短。** 下面那个数是等号不是地板：少一条要回来改它（那是好事，说明有人真去量了），
-/// 多一条同样会红（新增的必须走 `REMOTE_ONLY` 或者去加本机分支）。
-#[cfg(test)]
-const TRIAGE_DEBT: &[(&str, &str)] = &[
-    // 🔴 **`K-R104`（09-13）：用量探针那一行还掉了，不是删掉。**
-    //    它欠的是「这一处**够不够得到本机**没人量过」。今天量得出来了，而且答案变了：
-    //    编排搬上后端帧面之后，`account_usage`（远端）与 `account_usage_local`（本机）  〔散文墓碑〕
-    //    **是同一个函数**，只差一个 origin —— `<local>` 也是一个 origin，`client_for` 两侧都答得出。
-    //    ⇒ 它不再是「只服务远端」的那一族。**表只许变短，这一次它真的短了。**
-    // 账号面那一行（`cfg_for`，原住 `accounts.rs`）〔散文墓碑〕**还掉了**：它只服务远端账号清单与信任预检两条 Tauri 命令，
-    //   两条都改走通道（`<local>` 与远端同一条路、不查远端配置），函数随命令一起删了。**表只许变短，这一次它真的短了。**
-    // `probe_ccm_cli`〔散文墓碑〕 那一行还掉了：它不再查远端配置（改经那台后端的门问 `ccm-probe`，`<local>` 也是一个 origin）。
-    // 远端钩子诊断那一行还掉了：它不再查远端配置（今天整件是那台后端的帧命令 `hooks-diag`）。
-    // `launch.rs` 那一行（远端拼 ssh 外壳时查跳板配置，`build_remote_ssh_ps_command`〔散文墓碑〕）**还掉了**：
-    //   ssh 外壳进了本机后端（`terminal-ssh`），跳板配置由宿主 `dial_host.rs::machine_facts` 查（上面 `REMOTE_ONLY` 那一行同一个家）。
-    //   **表只许变短，这一次它真的短了。**
-    // `mcp.rs` 的 `list_remote_mcp_project_dirs`〔散文墓碑〕 / `read_remote_mcp_servers` 两行还掉了：MCP 列表改问那台后端，不再查远端配置。
-    // `mcp.rs` 那最后一行（远端项目 `.mcp.json` 读）随文件删了：MCP 读写进了那台后端，界面经通道直问、不查远端配置。
-    // `mcp.rs` 远端写 / 删两个分支（`write_remote_mcp_server` / `remove_remote_mcp_server`）
-    //   从这里还掉了：它们不再去查远端配置，改经那台机器的后端写（门开在 origin 上，`<local>` 与远端同一条路）。
-    //   **表只许变短，这一次它真的短了。**
-    // 端口转发那一行（宿主起转发那个函数）还掉了：转发账进了本机常驻后端，查的是后端自己的可达表，
-    //   monitor 不再查远端配置。本机那条路仍没有端口转发（可达表里没有 `<local>` ⇒ 回 `unreachable`，明说）。
-    // `remote_branch.rs` 的 `create_remote_branch_session` 那一行**还掉了**：分叉本机远端同走帧命令 `session-fork`，〔散文墓碑〕
-    //   不再查远端配置（`client_for(origin)` 对 `<local>` 与远端一视同仁）。
-    // `("remote_history.rs", "require_cfg_by_label")` 摘了：那份文件随子 agent 那条命令删了。
-    // `inproc_dial.rs` 那一行（跳板那一跳查配置，只服务 SFTP）**还掉了**：界面进程零 SSH，
-    //   那份文件整份删了 —— 跳板配置今天由宿主 `dial_host.rs::request` 查（上面 `forward` 那一行同一个家）。
-    // 🔴 〔归属 2026-09-19〕住址从 `tmux.rs` 改成 `backend/control/tmux.rs` ——
-    //    **文件真的挪了**（`lib.rs` 顶层 → `backend/control/`），欠的那笔债一格没变。
-    // `backend/control/tmux.rs` 里列会话那一行（那条命令已整条搬走）还掉了：列终端改问那台后端 `terminals-list`，不再查远端配置。
-    // `K-R56`（09-11）：`tmux_send_keys`〔散文墓碑〕从这里**还掉了** —— 它当时在
-    // `load_remote_config_by_label` 之前分本机（`Routed::NoChannel` 那一臂的早退）。
-    // 那条命令整个迁到界面（`src/frontend/ui/tmux-control.ts::sendKeys`），当年钉它的行为判据随之退役。
-];
 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/local_origin_registry_tests.rs"]

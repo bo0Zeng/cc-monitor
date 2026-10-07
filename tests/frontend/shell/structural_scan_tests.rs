@@ -2734,11 +2734,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "build_remote_ssh_ps_command",
             1,
         ),
-        (
-            "src/frontend/shell/src/local_origin_registry.rs",
-            "build_remote_ssh_ps_command",
-            1,
-        ),
         ("tests/frontend/shell/launch_tests.rs", "build_jump_arg", 1),
         (
             "tests/frontend/shell/launch_tests.rs",
@@ -2933,11 +2928,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "create_branch_session",
             1,
         ),
-        (
-            "src/frontend/shell/src/local_origin_registry.rs",
-            "create_remote_branch_session",
-            1,
-        ),
         // ARCHITECTURE 那两行（`create_branch_session` 2 · `create_remote_branch_session` 1）摘了：零侵入那一段按 4.0.0 重写，只讲今天的写口；
         //   那块墓碑本身（`validate_branch_source`）照留，只是同一行不再捎带这两个旧名。
         ("src/doc/INVARIANTS.md", "delete_remote_history_session", 1),
@@ -2946,11 +2936,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "tests/frontend/shell/frame_query_tests.rs",
             "remote_branch_tests",
             1,
-        ),
-        (
-            "tests/frontend/shell/local_origin_registry_tests.rs",
-            "create_remote_branch_session",
-            2,
         ),
         (
             "tests/comms/inward/origin_tests.rs",
@@ -3257,11 +3242,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         // `backend/control/mod.rs` · `sftp_move_ledger` 那一行摘了：那份文件随 `backend` 目录删了。
         ("src/frontend/shell/src/lib.rs", "sftp_move_ledger", 1),
-        (
-            "tests/frontend/shell/local_origin_registry_tests.rs",
-            "connect_via_jump",
-            2,
-        ),
         (
             "tests/backend/footprint/registry_tests.rs",
             "sftp_move_ledger",
@@ -3825,11 +3805,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // `inbound_client_tests.rs` 里 `the_two_tmux_primitive_arg_builders_…` 那一行摘掉：那条判据（它的后继）
         //   随抓屏的参数构造器一起退役，原处换成一块只点后继名的墓碑（`command_args` 那一行登记着）。
         (
-            "src/frontend/shell/src/local_origin_registry.rs",
-            "account_usage_local",
-            1,
-        ),
-        (
             "tests/frontend/shell/parity_ledger_tests.rs",
             "account_usage_local",
             3,
@@ -3866,11 +3841,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // `src/frontend/ui/ipc/commands.ts` 那一行摘了：点它的那段注释随 `list_mcp_project_dirs` 包装层一起删了。
         (
             "tests/comms/inward/origin_tests.rs",
-            "list_remote_mcp_project_dirs",
-            1,
-        ),
-        (
-            "src/frontend/shell/src/local_origin_registry.rs",
             "list_remote_mcp_project_dirs",
             1,
         ),
@@ -4363,11 +4333,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "require_cfg_by_label",
             1,
         ), // 记录解释进后端 / 会话正文四条退役，点旧名
-        (
-            "tests/frontend/shell/local_origin_registry_tests.rs",
-            "require_cfg_by_label",
-            2,
-        ), // 记录解释进后端 / 会话正文四条退役，点旧名
         // 起会话只交一行 `ccm …`：载荷那一层（外层渲染 · 配置目录判定 · PowerShell 中转前缀）、读全量注入开关那条 Tauri 命令删了，
         //   远端 `ccm` 探针那个旧命令名最后一处活提名（执行器套件的替身串）随套件重写没了 ⇒ 点它们的那几行墓碑从此落在死名人群上。
         ("src/doc/INVARIANTS.md", "config_dir_command_safe", 1),
@@ -4376,11 +4341,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "src/frontend/shell/src/lib.rs",
             "relay_all_sessions_switch",
-            1,
-        ),
-        (
-            "src/frontend/shell/src/local_origin_registry.rs",
-            "probe_ccm_cli",
             1,
         ),
         (
@@ -4698,7 +4658,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // `inproc_dial.rs` 整份删了（界面进程零 SSH）⇒ 从界面侧搬来的旧函数名全仓只剩散文：
         ("src/backend/dial/connect.rs", 2), // 头注「搬自」那一句里跳板 · agent 鉴权两个旧名
         ("src/backend/platform/ssh_agent.rs", 1), // 头注「搬自」那一句里 agent 鉴权旧名
-        ("tests/frontend/shell/local_origin_registry_tests.rs", 10), // 9 → 11 // 7 → 9：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑 // +1：地板 15 → 13 那段点的两处读面函数删了 // +1：`K-R112` 地板那段点的查在线命令迁到界面 // +1：K-R56 那一行点的送键命令迁到界面 // +1：`K-R112` 地板那段点的抓屏命令迁到界面 // +1：分诊债 11 → 10（账号面那一处查远端配置随命令删了）// 地板 17 → 16 · 分诊债 12 → 11 两处（跳板查配置那一处随文件走了）
+        ("tests/frontend/shell/local_origin_registry_tests.rs", 0),
         // `sftp_move_ledger`（SFTP 14 处拨号的挡路石底账）随那 14 处全搬完退役：点它名字的两处旁注各一块。
         // `backend/control/mod.rs` 那一行摘了：随 `backend` 目录删了。
         ("tests/backend/footprint/registry_tests.rs", 2), // 1 → 2：两个现算口从生产段搬来、旧住址那一句
@@ -4798,7 +4758,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // `src/frontend/shell/src/adapter.rs` 那一行摘了：monitor 那份适配表整删（起会话事实只住后端适配层）。
         ("src/backend/agents/claudecode/resume.rs", 1), // 新贴：头注点 monitor 那份适配器的旧住址
         // `tests/frontend/shell/adapter_tests.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
-        ("src/frontend/shell/src/local_origin_registry.rs", 12), // 10 → 12：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑 // 地址解析 / 组拨号请求搬进后端 dial/machine.rs，点旧名的散文挂墓碑 9 → 10 // 主线 8 ＋ MIG-3b +1（删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑） // +1：MCP 远端那两行还掉处点的旧名 // +1：包装层那一格点的 `cfg_of` 随驾驶舱 shell 读删了 // +1：P4a 变异 M5 那一格点的发消息命令迁到界面 // +2：`K-R56` 还掉的那一条（送键命令）今天整个迁到界面，两处点它 // +1：分诊债表里账号面那一行还掉了 // 7 → 8
+        ("src/frontend/shell/src/local_origin_registry.rs", 4),
         ("src/frontend/shell/src/spawn_managed.rs", 5), // 6 → 5：`LifetimeGuard` 的 Drop 那一块随平台原语搬进 `platform/spawn.rs`（那边 +1） // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 4 → 6 // +2：一次性本机查询那一格删了，点旧名的散文挂墓碑
         ("src/frontend/shell/src/structural_scan.rs", 1),
         ("src/doc/ARCHITECTURE.md", 3), // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 2 → 3 // +1：本机一次性 exec / 任务行解释 / 分叉 exec 那几条路删了，点旧名的散文挂墓碑
