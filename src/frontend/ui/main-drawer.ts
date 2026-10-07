@@ -81,7 +81,6 @@ export class MainDrawer {
     agents.onChip = () => this.toggle("agents");
     tasks.onLabel = (l) => this.dock.setLabel("tasks", l);
     agents.onLabel = (l) => this.dock.setLabel("agents", l);
-    agents.onReveal = () => this.dock.show("agents");
     this.sync();
   }
 

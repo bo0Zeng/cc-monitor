@@ -664,8 +664,8 @@ pub struct RunEnded {
     pub state: RunState,
 }
 
-/// 一个子运行此刻的样子（[`Frame::SessionRuns`] 的一项）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// 一个子运行此刻的样子（[`Frame::SessionRuns`] 的一项）。三个时刻是自 1970 起的毫秒（记录自己写着的时刻；记录里没写 ⇒ 读到它的时刻）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct RunInfo {
@@ -680,18 +680,59 @@ pub struct RunInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub tool: Option<String>,
+    /// 派出它的那个子运行；主运行派的（或还没对上派出它的那次调用）⇒ 不上线。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub parent: Option<String>,
     pub state: RunState,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub last: Option<crate::agents::RunDid>,
+    /// 在等哪个工具的结果（它最近一条记录是一次还没拿到结果的工具调用、且还在跑）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub waiting: Option<String>,
+    /// 开始：派出它的那条记录（没见到 ⇒ 它自己最早的一条）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional, type = "number"))]
+    pub started_ms: Option<u64>,
+    /// 最近动静：它自己最近一条记录。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional, type = "number"))]
+    pub active_ms: Option<u64>,
+    /// 收场：说它收场的那一条（还没收场 / 状态不明 ⇒ 不上线）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional, type = "number"))]
+    pub ended_ms: Option<u64>,
+    /// 为什么是这个结局（在跑 ⇒ 不上线）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub why: Option<RunWhy>,
+    /// 失败收场时的报错原话（说得出才有；至多 `observe::runs::ERROR_CHARS` 个字）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub error: Option<String>,
+    /// 它调了几次工具（它自己的记录里数的；零 ⇒ 不上线）。
+    #[serde(skip_serializing_if = "is_zero")]
+    #[cfg_attr(test, ts(optional, as = "Option<u32>"))]
+    pub calls: u32,
+    /// 派出那一方没等它、接着做自己的事（后台派出；否则不上线）。
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
+    pub background: bool,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 /// 子运行的五态。收场的三态以派出那一方说的为准（子记录自己写出终局也算，先到先算）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "lowercase")]
 pub enum RunState {
+    #[default]
     Running,
     Done,
     Failed,
@@ -699,6 +740,22 @@ pub enum RunState {
     Stopped,
     /// 没有任何收场信号、子记录又久未再写（`observe::runs::STALE_AFTER`）：不当它在跑。
     Unknown,
+}
+
+/// 一个子运行为什么是这个结局（[`RunInfo::why`]）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "lowercase")]
+pub enum RunWhy {
+    /// 派出它的那一方说的（拿到了结果 / 收到了收场通知）。
+    Reported,
+    /// 它自己的记录写出了终局。
+    Own,
+    /// 没有收场信号、它的记录久未再写（状态不明）。
+    Quiet,
+    /// 派出它的会话退了，再也等不到收场信号（状态不明）。
+    Orphaned,
 }
 
 /// 一个响应怎么收场的（[`Frame::Tap`] 的 `end`）。

@@ -110,7 +110,7 @@ src/frontend/shell/
 <!-- MCP 读写六条与推 / 拉两条退役：界面经通道直问那台后端（`mcp-read` · `mcp-server-put` / `-remove` · `mcp-sync-source` / `-preview` / `-apply`，`src/frontend/ui/mcp-reads.ts` · `src/frontend/ui/mcp-sync-reads.ts`）。`list_remote_mcp_origins` 读的是 monitor 自己的配置，挪进 `config.rs`。 -->
 | `list_remote_accounts / check_account_trust` (A2 #68/#69) | `{ origin }` / `{ origin, dir }` | `AccountsResult / bool` | 多账号**只读**查询（各账号名/邮箱/登录态 · 目录是否可信）——账号=一个 `CLAUDE_CONFIG_DIR`，经后端纯只读（`accounts.rs`，全 stateless）。「某会话属哪个账号」那一条退役：前端经通道 `chan_call` 直接说帧命令 `accounts-sessions`（本机与远端同一条路） |
 | `forget_session` | `{ sessionId }` | `()` | 用户关闭 archived Tab |
-| `open_session_in_new_window` (issue #10) | `{ sessionId, title }` | `()` | Tab 右键「在新窗口打开」/ Ctrl+Shift+N，建 `viewer-<sid>` 独立只读窗口 |
+| `open_session_in_new_window` (issue #10) | `{ sessionId, origin, title, x?, y?, run? }` | `()` | Tab 右键「在新窗口打开」/ Ctrl+Shift+N，建 `viewer-<sid>` 独立只读窗口；带 `run` ⇒ 那个子运行自己的窗口 `viewer-agent-<sid>-<运行>`（已开着就前置、没给落点就错开叠放） |
 | `chan_subscribe` / `chan_want` / `chan_stop` | `{ origin, kind, from, want, id }` / `{ id, more }` / `{ id }`（webview 注入） | `()` | 通道 `subscribe` 在 Tauri IPC 那一跳：会话内容流（`session-lines` / `session-lines/<sid>`），交格走事件 `chan-items`；经 `src/comms/inward/chan.ts` 用 |
 | 历史清单 | — | — | 界面经通道问本机常驻后端 `history-list`（`src/frontend/ui/history-list-reads.ts`；远端那台由它沿池里那条 SSH 去问） |
 | `stream_read_session_jsonl` | `{ origin, jsonlPath, onChunk }` | `u32` (count) | 点击历史会话进入只读视图（流式 Channel）。**本机与远端合成了一条**，`origin` 是它的参数。旧的远端命令名**已退役、不留别名** |

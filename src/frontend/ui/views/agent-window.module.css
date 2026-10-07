@@ -1,0 +1,207 @@
+/*
+ * agent 窗口（`agent-window.ts`）：标题区 · 说明 · 它派出的 agent · 结束线 · 细状态栏。外壳（细顶栏）照只读查看窗。
+ */
+@layer components {
+  .awView {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+
+
+  .awHead {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding-top: var(--space-6);
+  }
+
+  .awTitle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    min-width: 0;
+  }
+
+  .awLabel {
+    min-width: 0;
+    color: var(--text);
+    font-size: var(--font-size-title);
+    font-weight: var(--font-weight-strong);
+    overflow-wrap: anywhere;
+  }
+
+  .awFacts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .awMark[data-state="running"] {
+    border-color: var(--success);
+    color: var(--success);
+  }
+
+  .awMark[data-state="failed"] {
+    border-color: var(--error);
+    color: var(--error-text);
+  }
+
+  .awWhy {
+    margin-top: var(--space-5);
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-l);
+    background: var(--bg-2);
+    color: var(--text);
+    font-size: var(--font-size-small);
+  }
+
+  .awWhy[data-state="unknown"] {
+    border-style: dashed;
+  }
+
+  .awWhyLine {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  .awWhyNote {
+    color: var(--text-faint);
+  }
+
+  .awWhyAct {
+    margin-left: auto;
+  }
+
+  .awWhyError {
+    margin: var(--space-4) 0 0;
+    padding: var(--space-3) var(--space-4);
+    border-left: 2px solid var(--error);
+    border-radius: var(--radius-s);
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-small);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .awKids {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin-top: var(--space-5);
+  }
+
+  .awKidsHead {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .awKidsRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .awKid {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    max-width: 320px;
+    padding: var(--space-1) var(--space-4);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+    color: var(--text);
+    font-size: var(--font-size-small);
+    cursor: pointer;
+  }
+
+  .awKid:hover {
+    border-color: var(--border);
+  }
+
+  .awStateIcon {
+    flex: none;
+    margin-right: var(--space-2);
+    color: var(--text-faint);
+  }
+
+  .awStateIcon[data-state="running"] {
+    color: var(--success);
+  }
+
+  .awStateIcon[data-state="failed"] {
+    color: var(--error);
+  }
+
+  .awKidLabel {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .awTimeline {
+    margin-top: var(--space-5);
+  }
+
+  .awEnd {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    margin: var(--space-6) 0;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .awEndHead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    width: 100%;
+  }
+
+  .awEndHead::before,
+  .awEndHead::after {
+    flex: 1;
+    border-top: 1px solid var(--border-soft);
+    content: "";
+  }
+
+  .awEndSub {
+    color: var(--text-faint);
+  }
+
+  .awCrumb {
+    min-width: 0;
+    padding: 0;
+    overflow: hidden;
+    border: none;
+    background: none;
+    color: var(--text-2);
+    font: inherit;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+
+  .awCrumb:hover {
+    color: var(--text);
+  }
+
+  .awFoot {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+}

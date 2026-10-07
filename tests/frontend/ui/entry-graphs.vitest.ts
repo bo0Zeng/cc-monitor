@@ -226,8 +226,9 @@ describe("三入口 · 住址对账（html ↔ 入口模块 ↔ vite input ↔ T
     const rs = readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/lib.rs"), "utf8");
     const urls = [...rs.matchAll(/WebviewUrl::App\(\s*(?:format!\()?"([^"]+)"/g)].map((m) => m[1]);
     // 分母：今天恰好两处开窗（设置窗 ＋ viewer 窗）。多了少了都要有人来看一眼。
-    // viewer 的 URL 多带一个 `origin`：独立窗口自己订 `session-lines/<sid>`，要知道会话在哪台机器上。
-    expect(urls.sort()).toEqual(["settings.html", "viewer.html?viewer={session_id}&origin={origin_q}"]);
+    // viewer 的 URL 多带一个 `origin`：独立窗口自己订 `session-lines/<sid>`，要知道会话在哪台机器上；
+    // 开的是一个子运行自己的窗口（agent 窗口）时再带 `&run=<运行>`（`run_q`，同一个入口）。
+    expect(urls.sort()).toEqual(["settings.html", "viewer.html?viewer={session_id}&origin={origin_q}{run_q}"]);
     const htmls = new Set<string>(Object.values(WINDOWS).map((w) => w.html));
     for (const u of urls) expect(htmls.has(u.split("?")[0]), `lib.rs 开窗指向 ${u}，它不是构建输入之一`).toBe(true);
     // 主窗口由 tauri.conf.json 的 windows[0] 开，不写 url ＝ 默认 index.html。
@@ -725,6 +726,9 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/acct-session.module.css": { stacked: true, why: "换号条 · 提示条：类经小工具函数挂，量具认不出挂到哪，按「叠」算（实际只挂自己的哈希类）" },
   "src/frontend/ui/tab-quota.module.css": { stacked: false, why: "tab 标题后 `✕ 5h` 那一格：只挂自己的哈希类（不叠全局类）" },
   "src/frontend/ui/views/history.module.css": { stacked: true, why: "历史页根上同时挂全局 `history-view`、搜索框挂 `history-search`（只当截图 / 端到端找它的钩子，全局 CSS 里没有这两条）" },
+  "src/frontend/ui/cards/run-card.module.css": { stacked: false, why: "派出卡（`cards/subagent.ts`）：卡 / 卡头 / 结果只挂自己的哈希类（里面的徽标与图标是 kit 的哈希类）" },
+  "src/frontend/ui/cards/brief.module.css": { stacked: false, why: "派活的那段话（`cards/brief.ts`）：框 / 抬头 / 正文只挂自己的哈希类（收起与否走 `data-clamped`）" },
+  "src/frontend/ui/views/agent-window.module.css": { stacked: false, why: "agent 窗口（`views/agent-window.ts`）：标题区 · 说明 · 小片 · 结束线只挂自己的哈希类；滚动容器挂全局 `.stream`，不叠这些类" },
   "src/frontend/ui/live-card.module.css": { stacked: false, why: "活卡（`live-card-view.ts` 画）：卡 / 顶上那行 / 正文只挂自己的哈希类（不叠全局类）" },
   "src/frontend/ui/needs-bar.module.css": { stacked: false, why: "「需要你」钉条（`needs-bar.ts`）：只挂自己的哈希类" },
   "src/frontend/ui/session-head.module.css": { stacked: false, why: "会话头（`session-head.ts`）：只挂自己的哈希类" },

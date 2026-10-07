@@ -191,6 +191,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
         sources: runs::sources,
         owner: runs::owner,
         hint: runs::hint,
+        written: runs::written,
     }),
     project_dir: Some(parse::project_dir),
 };

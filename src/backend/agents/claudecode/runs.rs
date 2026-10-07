@@ -12,6 +12,8 @@
 //!   ③ 子记录自己那一轮以 `end_turn` 收尾；API 报错的那条（`isApiErrorMessage`，`stop_reason` 不定）本身就是失败收场；
 //!      最后一条是打断标记 ⇒ 被叫停。
 //! - 请求：子 agent 发的每条请求带 `x-claude-code-agent-id`（值 ＝ 它的 `agentId`）；主运行的请求不带。
+//! - 时刻：每条记录的 `timestamp`（ISO 8601）。在等工具：子记录里带 `tool_result` 的 user 记录交回了之前那次调用的结果。
+//!   报错原话：前台那次调用 `is_error` 的结果正文 · API 报错那条 assistant 记录的正文。
 
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -74,6 +76,11 @@ pub(crate) fn run_of(v: &Value) -> Option<super::super::RunMark> {
             .and_then(|m| m.get("content"))
             .is_some_and(super::text::is_interrupt_content);
     let end = end.or(interrupted.then_some(RunEnd::Stopped));
+    let answered =
+        s(v, "type") == Some("user") && content(v).any(|b| s(b, "type") == Some("tool_result"));
+    let error = (assistant && api_error)
+        .then(|| texts(v.get("message").and_then(|m| m.get("content"))))
+        .flatten();
     let did = if assistant {
         content(v).last().and_then(|b| match s(b, "type") {
             Some("tool_use") => s(b, "name").map(|n| RunDid::Tool {
@@ -86,7 +93,38 @@ pub(crate) fn run_of(v: &Value) -> Option<super::super::RunMark> {
     } else {
         None
     };
-    Some(RunMark { run, end, did })
+    Some(RunMark {
+        run,
+        end,
+        did,
+        answered,
+        error,
+    })
+}
+
+/// 一段正文（字符串，或 `[{type:"text",text}]` 那一形）⇒ 文字（空 ⇒ `None`）。
+fn texts(c: Option<&Value>) -> Option<String> {
+    let t = match c? {
+        Value::String(t) => t.clone(),
+        Value::Array(a) => a
+            .iter()
+            .filter(|b| s(b, "type") == Some("text"))
+            .filter_map(|b| s(b, "text"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => return None,
+    };
+    let t = trim(&t);
+    (!t.is_empty()).then(|| t.to_string())
+}
+
+/// 一条记录写着的时刻（`timestamp`，ISO 8601 ⇒ 自 1970 起的毫秒）。
+pub(crate) fn written(v: &Value) -> Option<u64> {
+    u64::try_from(crate::observe::search_query::parse_iso8601_ms(s(
+        v,
+        "timestamp",
+    )?)?)
+    .ok()
 }
 
 /// trim：Unicode 空白 ＋ BOM。
@@ -153,6 +191,8 @@ fn result_link(v: &Value) -> Vec<super::super::ChildLink> {
                 } else {
                     (!launched).then_some(RunEnd::Done)
                 },
+                error: failed.then(|| texts(b.get("content"))).flatten(),
+                background: launched,
                 ..ChildLink::default()
             })
         })
@@ -234,8 +274,7 @@ pub(crate) fn links_in_content(content: &Value) -> Vec<super::super::ChildLink> 
                 tool: Some(s(b, "id")?.to_string()),
                 label: Some(label),
                 kind: field("subagent_type").map(str::to_string),
-                run: None,
-                end: None,
+                ..ChildLink::default()
             })
         })
         .collect()

@@ -6,7 +6,7 @@
 //! - [`RunTrack`]：watcher 那一侧的手 —— 子运行的记录文件在哪（`ChildFace::sources`）、读到哪了；与主记录走同一条文件事件管线，不轮询。
 
 use crate::agents::{ChildLink, RunEnd, RunFaces, RunMark};
-use crate::stream::wire::{Frame, RunEnded, RunInfo, RunState};
+use crate::stream::wire::{Frame, RunEnded, RunInfo, RunState, RunWhy};
 use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Seek, SeekFrom};
@@ -25,6 +25,28 @@ pub(crate) const RIDS_KEEP: usize = 512;
 /// 一个子运行没有任何收场信号、它的记录又这么久没再写 ⇒ 「状态不明」，不当它在跑。到点就判（watcher 有在跑的运行时
 /// 至多等到最早那个期限，[`next_event`]），读记录 / 出帧时也判。比一次前台工具调用最长的等待（10 分钟）再宽一截。
 pub(crate) const STALE_AFTER: Duration = Duration::from_millis(15 * 60 * 1000);
+/// 失败收场的报错原话至多留几个字（运行表一变就整份重发）。
+pub(crate) const ERROR_CHARS: usize = 2000;
+
+/// 自 1970 起的毫秒（线上那三个时刻）。
+fn ms(t: SystemTime) -> Option<u64> {
+    t.duration_since(SystemTime::UNIX_EPOCH)
+        .ok()
+        .and_then(|d| u64::try_from(d.as_millis()).ok())
+}
+
+fn capped(e: Option<String>) -> Option<String> {
+    e.map(|e| e.chars().take(ERROR_CHARS).collect())
+}
+
+/// 一次派出（父侧那次工具调用）：标签 · 类别 · 派出它的那个子运行（主运行 ⇒ `None`）· 那条记录的时刻（毫秒）。
+#[derive(Clone)]
+struct Spawn {
+    label: Option<String>,
+    kind: Option<String>,
+    parent: Option<String>,
+    at: Option<u64>,
+}
 
 /// 簿里的一个运行：线上那一格 ＋ 它最近一次动静的时刻（子记录的写入时刻；只有父侧说到过 ⇒ 说到它的那份记录的时刻）。
 struct Run {
@@ -52,10 +74,9 @@ impl Closed {
     }
 }
 
-/// 被挤出运行表的已收场运行（[`ENDED_KEEP`]）：只记派出它的那次工具调用 · 终态 · 判续跑要的那一格。
+/// 被挤出运行表的已收场运行（[`ENDED_KEEP`]）：线上那一格（派出它的那次工具调用 · 终态 · 几个时刻）· 判续跑要的那一格。
 struct Gone {
-    tool: Option<String>,
-    state: RunState,
+    info: RunInfo,
     closed: Closed,
 }
 
@@ -73,8 +94,8 @@ struct Sess {
     /// 被挤出 `runs` 的已收场运行（`gone_order` 先进先出）。一个运行只在两处之一。
     gone: HashMap<String, Gone>,
     gone_order: VecDeque<String>,
-    /// 父侧工具调用 id ⇒（标签, 类别）：调用先到、子运行是哪个后到。
-    labels: HashMap<String, (Option<String>, Option<String>)>,
+    /// 父侧工具调用 id ⇒ 那次派出：调用先到、子运行是哪个后到。
+    labels: HashMap<String, Spawn>,
     label_order: VecDeque<String>,
     /// 对账键 ⇒ 哪个运行（`None` ＝ 主运行）。
     rids: HashMap<String, Option<String>>,
@@ -107,41 +128,33 @@ impl Sess {
             let victim = oldest(false).or_else(|| oldest(true)).unwrap_or(0);
             let v = self.runs.remove(victim);
             if let Some(closed) = v.closed {
-                self.bury(v.info.run, v.info.tool, v.info.state, closed);
+                self.bury(v.info, closed);
             }
         }
-        let tool = back.as_ref().and_then(|g| g.tool.clone());
-        let (label, kind) = tool
-            .as_ref()
-            .and_then(|t| self.labels.get(t).cloned())
-            .unwrap_or_default();
+        let (info, closed) = match back {
+            Some(g) => (g.info, Some(g.closed)),
+            None => (
+                RunInfo {
+                    run: run.to_string(),
+                    ..RunInfo::default()
+                },
+                None,
+            ),
+        };
         self.runs.push(Run {
-            info: RunInfo {
-                run: run.to_string(),
-                label,
-                kind,
-                tool,
-                state: back.as_ref().map_or(RunState::Running, |g| g.state),
-                last: None,
-            },
+            info,
             seen,
             rid: None,
-            closed: back.map(|g| g.closed),
+            closed,
         });
         self.runs.last_mut().expect("just pushed")
     }
 
-    fn bury(&mut self, run: String, tool: Option<String>, state: RunState, closed: Closed) {
+    fn bury(&mut self, info: RunInfo, closed: Closed) {
+        let run = info.run.clone();
         if self
             .gone
-            .insert(
-                run.clone(),
-                Gone {
-                    tool,
-                    state,
-                    closed,
-                },
-            )
+            .insert(run.clone(), Gone { info, closed })
             .is_none()
         {
             self.gone_order.push_back(run);
@@ -164,9 +177,15 @@ impl Sess {
         }
     }
 
-    /// 子运行自己的一条记录（对账键 `rid`，`seen` ＝ 那份记录的写入时刻）。先到的收场信号算数；收场只粘同一轮
-    /// （[`Closed::resumed_by`]：被续跑 ⇒ 回到在跑）。
-    fn mark(&mut self, m: RunMark, rid: Option<String>, seen: SystemTime) -> bool {
+    /// 子运行自己的一条记录（对账键 `rid`，`seen` ＝ 那份记录的写入时刻，`when` ＝ 记录自己写着的时刻）。先到的收场信号算数；
+    /// 收场只粘同一轮（[`Closed::resumed_by`]：被续跑 ⇒ 回到在跑）。
+    fn mark(
+        &mut self,
+        m: RunMark,
+        rid: Option<String>,
+        seen: SystemTime,
+        when: Option<u64>,
+    ) -> bool {
         if let Some(g) = self.gone.get_mut(&m.run) {
             if !g.closed.resumed_by(rid.as_deref(), seen) {
                 if m.end.is_some() {
@@ -182,15 +201,33 @@ impl Sess {
         let r = self.slot(&m.run, seen);
         let before = r.info.clone();
         r.seen = seen;
+        let w = when;
+        r.info.active_ms = r.info.active_ms.max(w);
+        r.info.started_ms = match (r.info.started_ms, w) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
         if r.closed
             .as_ref()
             .is_some_and(|c| c.resumed_by(rid.as_deref(), seen))
         {
             r.closed = None;
+            r.info.ended_ms = None;
+            r.info.why = None;
+            r.info.error = None;
         }
         match (&r.closed, m.end) {
             (None, None) => r.info.state = RunState::Running,
-            (None, Some(e)) => r.info.state = state_of(e),
+            (None, Some(e)) => {
+                r.info.state = state_of(e);
+                r.info.why = Some(RunWhy::Own);
+                r.info.ended_ms = w;
+                r.info.error = if e == RunEnd::Failed {
+                    capped(m.error.clone())
+                } else {
+                    None
+                };
+            }
             (Some(_), _) => {}
         }
         if m.end.is_some() {
@@ -203,15 +240,40 @@ impl Sess {
         if rid.is_some() {
             r.rid = rid;
         }
+        if r.info.state != RunState::Running {
+            r.info.waiting = None;
+        } else if let Some(crate::agents::RunDid::Tool { name }) = &m.did {
+            r.info.waiting = Some(name.clone());
+        } else if m.answered || m.did.is_some() {
+            r.info.waiting = None;
+        }
+        if matches!(m.did, Some(crate::agents::RunDid::Tool { .. })) {
+            r.info.calls = r.info.calls.saturating_add(1);
+        }
         if m.did.is_some() {
             r.info.last = m.did;
         }
         r.info != before
     }
 
-    fn end(r: &mut Run, e: Option<RunEnd>, at: SystemTime) {
+    /// 派出那一方说它收场了（`at` 判续跑用，`when` ＝ 那条记录自己写着的时刻）。已经收过场的不动。
+    fn end(
+        r: &mut Run,
+        e: Option<RunEnd>,
+        error: Option<String>,
+        at: SystemTime,
+        when: Option<u64>,
+    ) {
         if let (Some(e), None) = (e, &r.closed) {
             r.info.state = state_of(e);
+            r.info.why = Some(RunWhy::Reported);
+            r.info.ended_ms = when;
+            r.info.waiting = None;
+            r.info.error = if e == RunEnd::Failed {
+                capped(error)
+            } else {
+                None
+            };
             r.closed = Some(Closed {
                 rid: r.rid.clone(),
                 at,
@@ -220,42 +282,63 @@ impl Sess {
         }
     }
 
-    /// 说到子运行的一条（`at` ＝ 那条记录的时刻：来自子记录 ⇒ 那份记录的写入时刻）。
-    fn link(&mut self, l: ChildLink, at: SystemTime) -> bool {
+    /// 一次派出记到运行上：标签与类别（派出那一格有才盖）· 派出它的那个子运行 · 开始的时刻（取早的）。
+    fn spawned(r: &mut Run, sp: &Spawn) {
+        r.info.label = sp.label.clone().or(r.info.label.take());
+        r.info.kind = sp.kind.clone().or(r.info.kind.take());
+        r.info.parent = sp.parent.clone();
+        let at = sp.at;
+        r.info.started_ms = match (r.info.started_ms, at) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
+    }
+
+    /// 说到子运行的一条（`at` ＝ 那条记录的时刻：来自子记录 ⇒ 那份记录的写入时刻；`when` ＝ 记录自己写着的时刻；
+    /// `from` ＝ 这条记录是哪个子运行写的，主运行 ⇒ `None`）。
+    fn link(
+        &mut self,
+        l: ChildLink,
+        at: SystemTime,
+        when: Option<u64>,
+        from: Option<&str>,
+    ) -> bool {
         match (l.run, l.tool) {
             (Some(run), Some(tool)) => {
                 // 被挤出表的已收场运行：只补上是哪次调用派出的（收场是粘的，不回表）。
                 if let Some(g) = self.gone.get_mut(&run) {
-                    let changed = g.tool.as_deref() != Some(tool.as_str());
-                    g.tool = Some(tool);
+                    let changed = g.info.tool.as_deref() != Some(tool.as_str());
+                    g.info.tool = Some(tool);
                     return changed;
                 }
                 let known = self.labels.get(&tool).cloned();
                 let r = self.slot(&run, at);
                 let before = r.info.clone();
                 r.info.tool = Some(tool);
-                if let Some((label, kind)) = known {
-                    r.info.label = label.or(r.info.label.take());
-                    r.info.kind = kind.or(r.info.kind.take());
+                r.info.background |= l.background;
+                if let Some(sp) = &known {
+                    Self::spawned(r, sp);
                 }
-                Self::end(r, l.end, at);
+                Self::end(r, l.end, l.error, at, when);
                 r.info != before
             }
             // 只说收场：认识的运行才算（同一种通知也说别的后台任务，那些不是子运行）。
             (Some(run), None) => match self.find(&run) {
                 Some(r) => {
-                    let before = r.info.state;
-                    Self::end(r, l.end, at);
-                    r.info.state != before
+                    let before = r.info.clone();
+                    Self::end(r, l.end, l.error, at, when);
+                    r.info != before
                 }
                 None => false,
             },
             (None, Some(tool)) => {
-                if self
-                    .labels
-                    .insert(tool.clone(), (l.label.clone(), l.kind.clone()))
-                    .is_none()
-                {
+                let sp = Spawn {
+                    label: l.label,
+                    kind: l.kind,
+                    parent: from.map(str::to_string),
+                    at: when,
+                };
+                if self.labels.insert(tool.clone(), sp.clone()).is_none() {
                     self.label_order.push_back(tool.clone());
                     while self.label_order.len() > LINKS_KEEP {
                         if let Some(old) = self.label_order.pop_front() {
@@ -269,11 +352,11 @@ impl Sess {
                     .iter_mut()
                     .filter(|r| r.info.tool.as_deref() == Some(&tool))
                 {
-                    if r.info.label != l.label || r.info.kind != l.kind {
-                        r.info.label = l.label.clone();
-                        r.info.kind = l.kind.clone();
-                        changed = true;
-                    }
+                    let before = r.info.clone();
+                    r.info.label = sp.label.clone();
+                    r.info.kind = sp.kind.clone();
+                    Self::spawned(r, &sp);
+                    changed |= r.info != before;
                 }
                 changed
             }
@@ -288,6 +371,8 @@ impl Sess {
             let quiet = now.duration_since(r.seen).unwrap_or_default();
             if r.info.state == RunState::Running && quiet >= STALE_AFTER {
                 r.info.state = RunState::Unknown;
+                r.info.why = Some(RunWhy::Quiet);
+                r.info.waiting = None;
                 changed = true;
             }
         }
@@ -309,8 +394,8 @@ impl Sess {
                 let g = self.gone.get(run)?;
                 Some(RunEnded {
                     run: run.clone(),
-                    tool: g.tool.clone()?,
-                    state: g.state,
+                    tool: g.info.tool.clone()?,
+                    state: g.info.state,
                 })
             })
             .collect()
@@ -404,11 +489,13 @@ impl RunBook {
             }
             let mut changed = false;
             let at = child.unwrap_or(now);
+            let when = faces.written(v).or_else(|| ms(at));
+            let from = mark.as_ref().map(|mk| mk.run.clone());
             if let Some(mk) = mark {
-                changed |= s.mark(mk, own_rid, at);
+                changed |= s.mark(mk, own_rid, at, when);
             }
             for l in links {
-                changed |= s.link(l, at);
+                changed |= s.link(l, at, when, from.as_deref());
             }
             changed |= s.settle(now);
             (changed, learned)
@@ -426,11 +513,12 @@ impl RunBook {
             return false;
         }
         let now = SystemTime::now();
+        let when = faces.written(v).or_else(|| ms(now));
         self.with(|m| {
             let s = m.entry(sid.to_string()).or_default();
             let mut changed = false;
             for l in links {
-                changed |= s.link(l, now);
+                changed |= s.link(l, now, when, None);
             }
             changed
         })
@@ -498,6 +586,8 @@ impl RunBook {
             for r in m.get_mut(sid).into_iter().flat_map(|s| s.runs.iter_mut()) {
                 if r.info.state == RunState::Running {
                     r.info.state = RunState::Unknown;
+                    r.info.why = Some(RunWhy::Orphaned);
+                    r.info.waiting = None;
                     changed = true;
                 }
             }

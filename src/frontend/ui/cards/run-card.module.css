@@ -1,0 +1,94 @@
+/*
+ * 派出子运行的那张卡（`subagent.ts`）：卡头一整行（点了开那个子运行的窗口）＋「最近：…」＋ 可展开的「交回的结果 / 报错」。
+ */
+@layer components {
+  .runCard {
+    margin: var(--space-3) 0;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-l);
+    background: var(--bg-2);
+  }
+
+  .runCard[data-run-state="unknown"] {
+    border-style: dashed;
+  }
+
+  .runHead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    min-width: 0;
+    padding: var(--space-3) var(--space-5);
+    border: none;
+    border-radius: var(--radius-l);
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: var(--font-size-small);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .runHead:hover {
+    background: var(--overlay-hover);
+  }
+
+  .runIcon {
+    flex: none;
+    width: 1em;
+    color: var(--text-faint);
+  }
+
+  .runIcon[data-state="running"] {
+    color: var(--success);
+  }
+
+  .runIcon[data-state="failed"] {
+    color: var(--error);
+  }
+
+  .runLabel {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .runRight {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-3);
+    margin-left: auto;
+    color: var(--text-2);
+  }
+
+  .runSub {
+    padding: 0 var(--space-5) var(--space-3) calc(var(--space-5) + 1em + var(--space-3));
+    color: var(--text-faint);
+    font-size: var(--font-size-small);
+  }
+
+  .runResult {
+    padding: 0 var(--space-5) var(--space-3) calc(var(--space-5) + 1em + var(--space-3));
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .runResult[data-failed="1"] > summary {
+    color: var(--error-text);
+  }
+
+  .runResultBody {
+    margin: var(--space-3) 0 0;
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-s);
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-small);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}

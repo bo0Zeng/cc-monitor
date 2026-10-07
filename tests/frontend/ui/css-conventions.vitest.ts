@@ -330,14 +330,14 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/frontend/ui/launch-slot.ts:129": "同上 —— 切回真的标签页时收起",
   "src/frontend/ui/launch-slot.ts:162": "同上 —— 点到 / 新长出一个占位标签页时出现",
   // 起新会话框（`new-session.ts`）：CSS Modules 的哈希名（`s.<类>`）推不出；写了 display 的那几类（`nsRow` · `nsNote` · `nsPlace`）CSS 里各有一条 `[hidden]` 收住。
-  "src/frontend/ui/new-session.ts:152": "一格下那一行说明 / 错误 `note`（`s.nsNote`）—— 建时收起",
-  "src/frontend/ui/new-session.ts:157": "同上 —— 有话才出",
-  "src/frontend/ui/new-session.ts:261": "「agent」那一行 `agentRow.root`（`s.nsRow`）—— 建时收起（那台能起的多于一家才出）",
-  "src/frontend/ui/new-session.ts:269": "「账号」那一行 `accountRow.root`（`s.nsRow`）—— 建时收起",
-  "src/frontend/ui/new-session.ts:351": "「tmux 里」那一张单选 `tmuxRadio.label`（`s.nsPlace`）—— 那台没 tmux 时收起",
-  "src/frontend/ui/new-session.ts:359": "「tmux 会话名」那一行 `tmuxRow.root`（`s.nsRow`）—— 放在终端窗口时收起",
-  "src/frontend/ui/new-session.ts:364": "「agent」那一行 —— 那台能起的只有一家时收起",
-  "src/frontend/ui/new-session.ts:372": "「账号」那一行 —— 那一家没有账号这一维 / 那台没开多账号时收起",
+  "src/frontend/ui/new-session.ts:151": "一格下那一行说明 / 错误 `note`（`s.nsNote`）—— 建时收起",
+  "src/frontend/ui/new-session.ts:156": "同上 —— 有话才出",
+  "src/frontend/ui/new-session.ts:260": "「agent」那一行 `agentRow.root`（`s.nsRow`）—— 建时收起（那台能起的多于一家才出）",
+  "src/frontend/ui/new-session.ts:268": "「账号」那一行 `accountRow.root`（`s.nsRow`）—— 建时收起",
+  "src/frontend/ui/new-session.ts:350": "「tmux 里」那一张单选 `tmuxRadio.label`（`s.nsPlace`）—— 那台没 tmux 时收起",
+  "src/frontend/ui/new-session.ts:358": "「tmux 会话名」那一行 `tmuxRow.root`（`s.nsRow`）—— 放在终端窗口时收起",
+  "src/frontend/ui/new-session.ts:363": "「agent」那一行 —— 那台能起的只有一家时收起",
+  "src/frontend/ui/new-session.ts:371": "「账号」那一行 —— 那一家没有账号这一维 / 那台没开多账号时收起",
   "src/frontend/ui/views/session-viewer.ts:319": "头下那一条 `bannerEl`（`sv.svBanner`）—— 没有错误条时收起",
   "src/frontend/ui/views/session-viewer.ts:324": "读取中的骨架外层 `loadingEl`（`sv.svLoading`）",
   "src/frontend/ui/views/session-viewer.ts:329": "「你说过的话」清单 `this.said.panel` —— 由 `UserInputPanel` 建（类 `.user-inputs`，`styles.css` 那条规则头注逐字「绝不许出现 display」）",
@@ -350,6 +350,7 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/frontend/ui/kit/toast.ts:228": "同上 —— 建时收起",
   "src/frontend/ui/status-messages.ts:43": "「消息」那一枚右上的琥珀点 `this.dot`（`s.smDot`）—— 建时收起；CSS 里另有 `.smDot[hidden]` 收住",
   "src/frontend/ui/status-messages.ts:58": "同上 —— 有没看过的出错提示时出现",
+  "src/frontend/ui/views/agent-window.ts:235": "agent 窗口的「↓ 新内容」（kit 按钮，挂查看器的 `svPill`；`svPill[hidden]` 有 `display: none`）—— 往上翻着又读到新东西时出现",
   // ⚠ `606 → 614`：我在这份文件上方加了一段注释，**行号就漂了**。
   //    这条登记按**裸行号**做键 —— 那是它的固有脆弱：住址没变、内容没变，只因为
   //    上面多了几行就要来改一次。纪律 4 说的是同一件事
@@ -537,6 +538,11 @@ const STATE_CLASS_UNRESOLVED: Readonly<Record<string, string>> = {
     "图标件：svg 元素的 `className` 不是串、只能走 classList；`s.icon` 是 CSS Modules 哈希名，与 `data-*` 撞不了名",
   "src/frontend/ui/tab-bar-drag.ts · classList.toggle(cls, on)":
     "拖拽落点标记只动新旧两个（P3）：`cls` 是 `drop-before` / `drop-onto` 之一（同文件的常量），不是一个状态名的载体选择",
+  "src/frontend/ui/cards/brief.ts · classList.add(s.briefMore)":
+    "CSS Modules（`brief.module.css`）：给 kit 按钮挂「展开全部」的版位类；哈希过的类名，不是状态名（收起与否走 `data-clamped`）",
+  "src/frontend/ui/views/agent-window.ts · classList.add(s.awMark)": "CSS Modules（`agent-window.module.css`）：给 kit 徽标挂状态标记的版位类；状态走 `data-state`",
+  "src/frontend/ui/views/agent-window.ts · classList.add(s.awWhyAct)": "同上（说明里的［刷新］，kit 按钮）",
+  "src/frontend/ui/views/agent-window.ts · classList.add(sv.svPill)": "CSS Modules（`session-viewer.module.css`）：「↓ 新内容」与查看器同一个版位类；哈希过的类名，不是状态名",
   "src/frontend/ui/usage-hud.ts · classList.add(s.hudChip)":
     "CSS Modules（`usage-hud.module.css`）：`s.hudChip` 是构建时哈希过的类名（数字等宽那一条），不是状态名；预警态走 kit chip 的 `data-intent`",
   "src/frontend/ui/views/history-rows.ts · classList.add(s.hvDot)":

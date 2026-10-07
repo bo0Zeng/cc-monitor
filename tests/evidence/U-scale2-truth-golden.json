@@ -1,6 +1,6 @@
 {
  "note": "秤 2 的真高金标准。真高只取决于 DOM+CSS+引擎，与 height-estimate.ts 无关 ⇒ 可以静态固化。估值必须门禁跑的时候现算。刷新：bash tests/evidence/U-scale2-run.sh",
- "generatedAt": "2026-10-06",
+ "generatedAt": "2026-10-07",
  "engine": {
   "name": "Chromium 153.0.8010.12 (headless shell, Playwright)",
   "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36"
@@ -738,8 +738,8 @@
    "source": "shaped",
    "bytes": 2429,
    "bucket": "2-8K",
-   "htmlLen": 311,
-   "htmlHash": "b7e4e08c",
+   "htmlLen": 976,
+   "htmlHash": "dec57cb0",
    "estBrowser": 38,
    "estAppliedBrowser": 38,
    "trueBorderBox": 36.59,

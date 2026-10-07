@@ -1,0 +1,60 @@
+/*
+ * 派活的那段话（`brief.ts`）：整宽靠左、左边一条竖线、底色深一档，与右边的用户气泡、带抬头的回复一眼分得开。
+ */
+@layer components {
+  .brief {
+    display: flex;
+    flex-direction: column;
+    margin: var(--space-4) 0;
+    border: 1px solid var(--border-soft);
+    border-left: 3px solid var(--text-faint);
+    border-radius: var(--radius-l);
+    background: var(--bg-2);
+  }
+
+  .briefHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-5);
+    border-bottom: 1px solid var(--border-soft);
+    color: var(--text);
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .briefWho {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .briefWhen {
+    flex: none;
+    color: var(--text-faint);
+    font-family: var(--font-mono);
+    font-weight: normal;
+  }
+
+  .briefBody {
+    padding: var(--space-4) var(--space-5);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .briefBody[data-clamped] {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+  }
+
+  .briefMore {
+    align-self: flex-end;
+    margin: 0 var(--space-3) var(--space-3) 0;
+  }
+}

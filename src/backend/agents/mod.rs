@@ -405,12 +405,15 @@ pub(crate) struct LocalFace {
     pub(crate) tasks_dir: Option<fn(&Path) -> PathBuf>,
 }
 
-/// 一条子运行记录说了什么：属于哪个运行 · 是不是它的终局 · 它做的那件事（行上「最近：…」）。
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// 一条子运行记录说了什么：属于哪个运行 · 是不是它的终局 · 它做的那件事（行上「最近：…」）·
+/// 它交回了一次工具调用的结果没有（之前那次工具调用就不再算在等）· 失败收场时的原话。
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct RunMark {
     pub(crate) run: String,
     pub(crate) end: Option<RunEnd>,
     pub(crate) did: Option<RunDid>,
+    pub(crate) answered: bool,
+    pub(crate) error: Option<String>,
 }
 
 /// 子运行怎么收场的。
@@ -448,6 +451,10 @@ pub(crate) struct ChildLink {
     pub(crate) run: Option<String>,
     /// 派出那一方说这个子运行已经收场了；没说 ⇒ `None`。
     pub(crate) end: Option<RunEnd>,
+    /// 派出那一方收到的报错原话（失败收场时，说得出才有）。
+    pub(crate) error: Option<String>,
+    /// 后台派出：派出那一方当场拿到的只是「已启动」，没等它。
+    pub(crate) background: bool,
 }
 
 /// 记录成品里「这次工具调用派出了一个子运行」的那一格（父侧工具调用 id ⇒ 它）：界面按它给那张工具卡起名，不认工具名与入参。
@@ -721,6 +728,8 @@ pub(crate) struct ChildFace {
     /// 父记录的一行原文可能说到子运行（[`RecordFace::child_link`] 会答出东西）—— 便宜的预筛：漏判不许，多判无妨。
     /// 只读尾巴的那条流接上会话时，靠它从父记录已有的那一截里只挑这几行解析。
     pub(crate) hint: fn(&str) -> bool,
+    /// 一条记录自己写着的时刻（自 1970 起的毫秒；运行表的开始 · 最近动静 · 收场三个时刻用）；记录里没写 ⇒ `None`（通用层退回读到它的时刻）。
+    pub(crate) written: fn(&serde_json::Value) -> Option<u64>,
 }
 
 /// 一个上游协议的流面：把一个原始流事件（SSE `data:` 后面那段原文）折成归一事件。认不出 ⇒ 空。
@@ -821,6 +830,10 @@ impl RunFaces {
 
     pub(crate) fn hint(&self, line: &str) -> bool {
         self.children.is_some_and(|c| (c.hint)(line))
+    }
+
+    pub(crate) fn written(&self, v: &serde_json::Value) -> Option<u64> {
+        self.children.and_then(|c| (c.written)(v))
     }
 }
 

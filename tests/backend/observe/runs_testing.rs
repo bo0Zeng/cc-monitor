@@ -8,10 +8,7 @@ pub(crate) fn seed_running(book: &RunBook, sid: &str, run: &str, label: Option<&
             info: RunInfo {
                 run: run.to_string(),
                 label: label.map(str::to_string),
-                kind: None,
-                tool: None,
-                state: RunState::Running,
-                last: None,
+                ..RunInfo::default()
             },
             seen: SystemTime::now(),
             rid: None,

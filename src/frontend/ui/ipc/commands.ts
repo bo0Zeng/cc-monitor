@@ -398,6 +398,7 @@ export const commands = {
   /**
    * issue #10：把某会话在一个独立只读窗口（`viewer-<sid>`）里打开。`x`/`y` = 拖拽撕离的落点。**桶①**。
    * `origin`：窗口自己订那个会话的流（`session-lines/<sid>`），要知道它在哪台机器上。
+   * `run`：开的是这个会话里一个子运行自己的窗口（agent 窗口；一个子运行至多一个，已开着就前置；没给落点就错开叠放）。
    */
   open_session_in_new_window: (args: {
     sessionId: string;
@@ -405,6 +406,7 @@ export const commands = {
     title: string;
     x?: number;
     y?: number;
+    run?: string;
   }) => invoke<void>("open_session_in_new_window", args),
 
   /** 本机会话拉前（Windows 按 sid→HWND 缓存）；回结局族。**桶①**。 */

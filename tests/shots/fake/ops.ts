@@ -336,9 +336,11 @@ export function defaultOps(): Record<string, OpHandler> {
     "history-run": (_o, req, w) => {
       const s = sessionByPath(w, req.parent);
       const run = s?.runs.find((r) => r.run === req.run || (req.tool !== undefined && r.tool === req.tool));
-      const rows = run && s ? (s.runRecords[run.run] ?? []).map((message) => ({ message })) : [];
+      const all = run && s ? (s.runRecords[run.run] ?? []).map((message) => ({ message })) : [];
+      // 一条记录当 400 字节：续读从 `from` 那一条往后。
+      const rows = all.slice(Math.floor(Number(req.from ?? 0) / 400));
       const path = `${s?.cwd ?? ""}/${s?.sid ?? ""}/subagents/${run?.run ?? "x"}.jsonl`;
-      return { run: run?.run ?? String(req.run ?? ""), path, rows, end: rows.length * 400, more: false };
+      return { run: run?.run ?? String(req.run ?? ""), path, rows, end: all.length * 400, more: false };
     },
   };
 }

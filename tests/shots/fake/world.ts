@@ -11,7 +11,7 @@ import { machineCommands, machineOps } from "./machine";
 export const LOCAL = "<local>";
 export const REMOTES = ["devbox", "gpu-01", "win-laptop"];
 
-const sidOf = (n: number): string => `5e55${n.toString(16).padStart(4, "0")}-0000-4000-8000-00000000${n.toString(16).padStart(4, "0")}`;
+export const sidOf = (n: number): string => `5e55${n.toString(16).padStart(4, "0")}-0000-4000-8000-00000000${n.toString(16).padStart(4, "0")}`;
 
 export function session(n: number, origin: string, cwd: string, c: Convo | null, over: Partial<SessionSpec> = {}): SessionSpec {
   return {
