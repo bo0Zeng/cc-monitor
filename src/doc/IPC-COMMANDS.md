@@ -3503,7 +3503,7 @@ stdin 入参（camelCase 对齐 aterm `ResumeSpec`）。
 |---|---|---|
 | `sessionId` | string |  |
 | `launchCandidates` | [string]? |  |
-| `claudeDir` | string? | ⚠ **冻结兼容字段，不许改名**—— 与 `wire.rs::Hello.claude_dir` 同族 |
+| `claudeDir` | string? | ⚠ **冻结兼容字段，不许改名**—— 与 `hello` 帧的 `claude_dir` 同族 |
 | `fallbackCwd` | string? |  |
 | `alreadyInTmux` | bool? |  |
 | `agentKind` | string? | 会话属哪 agent kind → DG6 据此构 `codex resume <uuid>` vs `claude --resume` |

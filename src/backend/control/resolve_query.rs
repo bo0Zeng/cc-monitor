@@ -34,7 +34,7 @@ struct ResumeSpec {
     session_id: String,
     #[serde(default)]
     launch_candidates: Vec<Option<String>>,
-    /// ⚠ **冻结兼容字段，不许改名**—— 与 `wire.rs::Hello.claude_dir` 同族。
+    /// ⚠ **冻结兼容字段，不许改名**—— 与 `hello` 帧的 `claude_dir` 同族。
     ///
     /// 它是 `--resolve` 的 **stdin 契约**（`rename_all = "camelCase"` ⇒ 线上是 `claudeDir`），
     /// 与仓外 aterm **冻结在 2026-07-18**。Rust 侧标识符改名 = 线上字段名改名
