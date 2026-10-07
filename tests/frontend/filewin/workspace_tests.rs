@@ -1700,13 +1700,20 @@ fn the_narrow_drawer_floats_with_a_shadow_over_a_dimmed_list() {
     let d = &rects[drawer];
     let xl = t.radius_xl.round() as u8;
     assert_eq!(
-        (d.corner_radius.nw, d.corner_radius.sw, d.corner_radius.ne, d.corner_radius.se),
+        (
+            d.corner_radius.nw,
+            d.corner_radius.sw,
+            d.corner_radius.ne,
+            d.corner_radius.se
+        ),
         (0, 0, xl, xl),
         "抽屉的角：贴边两角方、外侧两角是对话框那一档"
     );
     let blur = t.shadow_modal.blur.round();
     assert!(
-        rects.iter().any(|r| r.blur_width > 0.0 && (r.blur_width - blur).abs() < 1.0),
+        rects
+            .iter()
+            .any(|r| r.blur_width > 0.0 && (r.blur_width - blur).abs() < 1.0),
         "抽屉没有对话框那一档投影（blur {blur}）"
     );
     let dim = rects

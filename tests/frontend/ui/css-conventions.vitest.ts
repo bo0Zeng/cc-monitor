@@ -313,12 +313,16 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "头 `head`（`sv.svHead`）—— 窗口那一形不画（细顶栏担）；它写了 display:flex，CSS 里另有 `.svHead[hidden]` 收住",
   "src/frontend/ui/views/session-viewer.ts::this.bannerEl":
     "头下那一条 `bannerEl`（`sv.svBanner`）—— 没有错误条时收起",
+  "src/frontend/ui/views/session-viewer.ts::this.emptyEl":
+    "0 条消息的空态那一格 `emptyEl`（`sv.svEmpty`）—— 有消息时收起；它写了 display:flex，CSS 里另有 `.svEmpty[hidden]` 收住",
   "src/frontend/ui/views/session-viewer.ts::this.loadingEl":
     "读取中的骨架外层 `loadingEl`（`sv.svLoading`）",
   "src/frontend/ui/views/session-viewer.ts::this.newPill":
     "「↓ 新内容」`newPill`（kit 按钮 ＋ `sv.svPill`）—— kit 按钮写了 display，CSS 里另有 `.svPill[hidden]` 收住",
   "src/frontend/ui/views/session-viewer.ts::this.said.panel":
     "「你说过的话」清单 `this.said.panel` —— 由 `UserInputPanel` 建（类 `.user-inputs`，`styles.css` 那条规则头注逐字「绝不许出现 display」）",
+  "src/frontend/ui/views/session-viewer.ts::this.streamEl":
+    "消息流 `streamEl`（`stream session-viewer-stream`，全局类）—— 0 条消息时让位给空态；`.stream` / `.session-viewer-stream` 都不写 display",
   "src/frontend/ui/views/session-viewer.ts::this.toolsEl":
     "工具行 `toolsEl`（`sv.svTools`）—— 窗口那一形 Ctrl+F 才露；它写了 display:flex，CSS 里另有 `.svTools[hidden]` 收住",
   "src/frontend/ui/views/session-viewer.ts::tools":
