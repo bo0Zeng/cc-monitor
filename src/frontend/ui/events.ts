@@ -33,6 +33,7 @@ import type { SessionIdlePayload } from "./generated/SessionIdlePayload";
 import type { SessionActivityPayload } from "./generated/SessionActivityPayload";
 import type { SessionTapPayload } from "./generated/SessionTapPayload";
 import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
+import { decodeRunsPayload } from "./runs";
 import type { SessionContainer } from "./generated/SessionContainer";
 // 本文件内部也用这些名字（8 处），所以 import + re-export 都要有：
 // 只写 `export type { … } from` 不会把名字带进本地作用域。
@@ -720,7 +721,9 @@ export async function bindEvents(
         } else if (f !== null && typeof f === "object" && "container" in f) {
           queue.push({ kind: "container", sessionId: f.container.session_id, container: f.container.container });
         } else if (f !== null && typeof f === "object" && "runs" in f) {
-          queue.push({ kind: "runs", payload: f.runs });
+          const runs = decodeRunsPayload(f.runs);
+          if (runs) queue.push({ kind: "runs", payload: runs });
+          else console.warn("[events] 运行表那一格形状不对，不收：", JSON.stringify(f.runs).slice(0, 200));
         } else if (f !== null && typeof f === "object" && "idle" in f) {
           queue.push({ kind: "idle", sessionId: f.idle.session_id });
         } else if (f !== null && typeof f === "object" && "ended" in f) {

@@ -246,7 +246,7 @@ const SESSION_STREAM_GOLDEN: &str = "tests/__fixtures__/session-stream.golden.js
 fn golden_pairs() -> Vec<[Frame; 2]> {
     use crate::agents::{RunDid, StreamEv};
     use crate::stream::wire::{
-        AgentHome, LostFrame, RereadWhy, RunEnded, RunInfo, RunState, SessionContainer,
+        AgentHome, LostFrame, RereadWhy, RunEnded, RunInfo, RunState, RunWhy, SessionContainer,
         SessionFate, TapEnd, TerminalHost, TransferEnd, Unavailable,
     };
     let s = |v: &str| v.to_string();
@@ -476,22 +476,39 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 end: Some(TapEnd::Done),
             },
         ],
-        both(Frame::SessionRuns {
-            sid: s("s1"),
-            runs: vec![RunInfo {
-                run: s("a1"),
-                label: Some(s("scan")),
-                kind: Some(s("Explore")),
-                tool: Some(s("t1")),
-                state: RunState::Running,
-                last: Some(RunDid::Tool { name: s("Bash") }),
-            }],
-            ended: vec![RunEnded {
-                run: s("a0"),
-                tool: s("t0"),
-                state: RunState::Failed,
-            }],
-        }),
+        [
+            Frame::SessionRuns {
+                sid: s("s1"),
+                runs: vec![RunInfo {
+                    run: s("a1"),
+                    label: Some(s("scan")),
+                    kind: Some(s("Explore")),
+                    tool: Some(s("t1")),
+                    parent: Some(s("a9")),
+                    state: RunState::Failed,
+                    last: Some(RunDid::Tool { name: s("Bash") }),
+                    waiting: Some(s("Bash")),
+                    started_ms: Some(1_000),
+                    active_ms: Some(2_000),
+                    ended_ms: Some(3_000),
+                    why: Some(RunWhy::Reported),
+                    error: Some(s("boom")),
+                }],
+                ended: vec![RunEnded {
+                    run: s("a0"),
+                    tool: s("t0"),
+                    state: RunState::Failed,
+                }],
+            },
+            Frame::SessionRuns {
+                sid: s("s1"),
+                runs: vec![RunInfo {
+                    run: s("a1"),
+                    ..RunInfo::default()
+                }],
+                ended: vec![],
+            },
+        ],
     ]
 }
 
@@ -747,7 +764,7 @@ fn tap_frames_have_exactly_these_bytes() {
 #[test]
 fn session_runs_frames_have_exactly_these_bytes() {
     use crate::agents::RunDid;
-    use crate::stream::wire::{RunEnded, RunInfo, RunState};
+    use crate::stream::wire::{RunEnded, RunInfo, RunState, RunWhy};
     let f = Frame::SessionRuns {
         sid: "s1".into(),
         runs: vec![
@@ -756,18 +773,32 @@ fn session_runs_frames_have_exactly_these_bytes() {
                 label: Some("scan".into()),
                 kind: Some("Explore".into()),
                 tool: Some("t1".into()),
+                parent: Some("a0".into()),
                 state: RunState::Running,
                 last: Some(RunDid::Tool {
                     name: "Bash".into(),
                 }),
+                waiting: Some("Bash".into()),
+                started_ms: Some(1_000),
+                active_ms: Some(2_000),
+                ..RunInfo::default()
             },
             RunInfo {
                 run: "a2".into(),
-                label: None,
-                kind: None,
-                tool: None,
-                state: RunState::Done,
+                state: RunState::Failed,
                 last: Some(RunDid::Say),
+                started_ms: Some(1_000),
+                active_ms: Some(2_000),
+                ended_ms: Some(3_000),
+                why: Some(RunWhy::Reported),
+                error: Some("boom".into()),
+                ..RunInfo::default()
+            },
+            RunInfo {
+                run: "a3".into(),
+                state: RunState::Unknown,
+                why: Some(RunWhy::Quiet),
+                ..RunInfo::default()
             },
         ],
         ended: vec![RunEnded {
@@ -778,7 +809,7 @@ fn session_runs_frames_have_exactly_these_bytes() {
     };
     assert_eq!(
         to_line(&f).unwrap(),
-        "{\"kind\":\"session_runs\",\"sid\":\"s1\",\"runs\":[{\"run\":\"a1\",\"label\":\"scan\",\"kind\":\"Explore\",\"tool\":\"t1\",\"state\":\"running\",\"last\":{\"t\":\"tool\",\"name\":\"Bash\"}},{\"run\":\"a2\",\"state\":\"done\",\"last\":{\"t\":\"say\"}}],\"ended\":[{\"run\":\"a0\",\"tool\":\"t0\",\"state\":\"failed\"}]}\n"
+        "{\"kind\":\"session_runs\",\"sid\":\"s1\",\"runs\":[{\"run\":\"a1\",\"label\":\"scan\",\"kind\":\"Explore\",\"tool\":\"t1\",\"parent\":\"a0\",\"state\":\"running\",\"last\":{\"t\":\"tool\",\"name\":\"Bash\"},\"waiting\":\"Bash\",\"started_ms\":1000,\"active_ms\":2000},{\"run\":\"a2\",\"state\":\"failed\",\"last\":{\"t\":\"say\"},\"started_ms\":1000,\"active_ms\":2000,\"ended_ms\":3000,\"why\":\"reported\",\"error\":\"boom\"},{\"run\":\"a3\",\"state\":\"unknown\",\"why\":\"quiet\"}],\"ended\":[{\"run\":\"a0\",\"tool\":\"t0\",\"state\":\"failed\"}]}\n"
     );
     assert!(
         !f.loss_is_recoverable(),

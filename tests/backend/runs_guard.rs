@@ -113,6 +113,28 @@ struct Shape {
     notice: fn(&str, RunEnd) -> String,
     /// 一次应答的原始流事件（对账键, 工具名）：开始 ＋ 一块工具 ＋ 收尾。
     sse: fn(&str, Option<&str>) -> Vec<String>,
+    /// 给一条记录写上它自己的时刻（基准时刻之后第几秒）。
+    stamp: fn(&str, u64) -> String,
+    /// 把一条父侧记录改成某个子运行自己写的（子运行派出孙运行那一形）。
+    in_run: fn(&str, &str) -> String,
+    /// 子运行的一条记录：交回了它上一次工具调用的结果（子运行）。
+    child_answer: fn(&str) -> String,
+    /// 子运行自己写出的失败终局（子运行, 对账键, 报错原话）。
+    child_failed: fn(&str, &str, &str) -> String,
+    /// 父记录：前台派出的那次以报错收场（工具调用 id, 子运行, 报错原话）。
+    fg_failed: fn(&str, &str, &str) -> String,
+}
+
+/// 记录时刻的基准（2026-10-01T10:00:00Z，自 1970 起的秒）。
+const BASE_S: u64 = 1_790_848_800;
+
+/// 往一条 JSON 记录里加几格。
+fn with(line: &str, extra: &[(&str, serde_json::Value)]) -> String {
+    let mut v: serde_json::Value = serde_json::from_str(line).unwrap();
+    for (k, x) in extra {
+        v.as_object_mut().unwrap().insert((*k).to_string(), x.clone());
+    }
+    v.to_string()
 }
 
 fn claude_code() -> Shape {
@@ -187,6 +209,26 @@ fn claude_code() -> Shape {
             v.push(r#"{"type":"message_stop"}"#.into());
             v
         },
+        stamp: |line, secs| {
+            let ts = format!("2026-10-01T10:{:02}:{:02}.000Z", secs / 60, secs % 60);
+            with(line, &[("timestamp", ts.into())])
+        },
+        in_run: |line, run| with(line, &[("isSidechain", true.into()), ("agentId", run.into())]),
+        child_answer: |run| {
+            format!(
+                r#"{{"type":"user","isSidechain":true,"agentId":"{run}","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"x","content":"x"}}]}}}}"#
+            )
+        },
+        child_failed: |run, rid, why| {
+            format!(
+                r#"{{"type":"assistant","isSidechain":true,"agentId":"{run}","isApiErrorMessage":true,"message":{{"id":"{rid}","role":"assistant","content":[{{"type":"text","text":"{why}"}}]}}}}"#
+            )
+        },
+        fg_failed: |tool, run, why| {
+            format!(
+                r#"{{"type":"user","uuid":"r-{tool}","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"{tool}","is_error":true,"content":[{{"type":"text","text":"{why}"}}]}}]}},"toolUseResult":{{"status":"completed","agentId":"{run}"}}}}"#
+            )
+        },
     }
 }
 
@@ -240,6 +282,23 @@ fn fake() -> Shape {
             }
             v.push(r#"{"ev":"shut"}"#.into());
             v
+        },
+        stamp: |line, secs| with(line, &[("clock", (BASE_S + secs).into())]),
+        in_run: |line, run| {
+            let v: serde_json::Value = serde_json::from_str(line).unwrap();
+            let by = matches!(v["kind"].as_str(), Some("spawned" | "settled"));
+            if by {
+                with(line, &[("by", run.into()), ("back", true.into())])
+            } else {
+                with(line, &[("lane", run.into())])
+            }
+        },
+        child_answer: |run| format!(r#"{{"kind":"got","lane":"{run}","back":true}}"#),
+        child_failed: |run, rid, why| {
+            format!(r#"{{"kind":"say","lane":"{run}","resp":"{rid}","over":"bad","why":"{why}"}}"#)
+        },
+        fg_failed: |tool, run, why| {
+            format!(r#"{{"kind":"spawned","call":"{tool}","lane":"{run}","fin":"bad","why":"{why}"}}"#)
         },
     }
 }
@@ -1138,4 +1197,153 @@ fn a_file_event_only_looks_under_its_own_parent_record() {
             shape.name
         );
     }
+}
+
+// ── 运行表多给的几格：谁派的 · 三个时刻 · 在等哪个工具 · 为什么是这个结局 · 报错原话 ─────────────────────
+
+/// 一个运行此刻的那一格。
+fn info_of(book: &RunBook, run: &str) -> crate::stream::wire::RunInfo {
+    book.runs(SID)
+        .into_iter()
+        .find(|r| r.run == run)
+        .unwrap_or_else(|| panic!("运行表里没有 {run}"))
+}
+
+/// 基准之后第 `secs` 秒（毫秒）。
+fn at(secs: u64) -> Option<u64> {
+    Some((BASE_S + secs) * 1000)
+}
+
+/// 主运行派出 g1（后台）与 g2（前台、以报错收场）；g1 在等一个工具、又派出孙运行 g3，g3 自己写出终局；
+/// g4 自己写出失败终局；g5 久未再写；会话退休时 g1 还在跑。每条记录都写着自己的时刻（与读到它的时刻无关）。
+fn extra_cells_scenario(shape: &Shape) {
+    use crate::stream::wire::RunWhy;
+    let dir = scratch(&format!("{}-cells", shape.name));
+    let parent = (shape.parent_of)(&dir, SID);
+    let book = Arc::new(RunBook::default());
+    let mut track = RunTrack::new(shape.faces, book.clone());
+    let st = |l: String, secs: u64| (shape.stamp)(&l, secs);
+    let main = vec![
+        st((shape.spawn)("t1", "L1"), 100),
+        st((shape.spawned)("t1", "g1"), 101),
+        st((shape.spawn)("t2", "L2"), 102),
+        st((shape.fg_failed)("t2", "g2", "boom"), 300),
+        st((shape.spawn)("t4", "L4"), 103),
+        st((shape.spawned)("t4", "g4"), 104),
+        st((shape.spawn)("t5", "L5"), 105),
+        st((shape.spawned)("t5", "g5"), 106),
+    ];
+    append(&parent, &main);
+    for l in &main {
+        track.main_record(SID, l);
+    }
+    let g1 = (shape.child_of)(&parent, "g1");
+    append(&g1, &[st((shape.child_tool)("g1", "r1", "Bash"), 110)]);
+    // g2 最后那条写在派出那一方说它收场之前（之后才写的新应答 ＝ 被续跑）。
+    child_file(
+        shape,
+        &parent,
+        "g2",
+        &[st((shape.child_tool)("g2", "r2", "Read"), 150)],
+        Some(Duration::from_secs(60)),
+    );
+    child_file(shape, &parent, "g4", &[st((shape.child_failed)("g4", "r4", "overloaded"), 160)], None);
+    child_file(
+        shape,
+        &parent,
+        "g5",
+        &[st((shape.child_tool)("g5", "r5", "Grep"), 170)],
+        Some(STALE_AFTER + Duration::from_secs(60)),
+    );
+    track.adopt(SID, &parent);
+    let i = info_of(&book, "g1");
+    assert_eq!(
+        (i.state, i.waiting.as_deref(), i.parent.as_deref(), i.started_ms, i.active_ms),
+        (RunState::Running, Some("Bash"), None, at(100), at(110)),
+        "[{}] 在跑、最近一条是还没拿到结果的工具调用 ⇒ 在等它；主运行派的不带 parent；开始 ＝ 派出那条的时刻",
+        shape.name
+    );
+    // g1 派出孙运行 g3、拿到它的结果、又调一个工具并拿到结果；g3 自己写出终局。
+    append(
+        &g1,
+        &[
+            st((shape.in_run)(&(shape.spawn)("t3", "L3"), "g1"), 120),
+            st((shape.in_run)(&(shape.spawned)("t3", "g3"), "g1"), 125),
+            st((shape.child_tool)("g1", "r1b", "Read"), 128),
+            st((shape.child_answer)("g1"), 130),
+        ],
+    );
+    track.on_path(&g1);
+    let g3 = (shape.child_of)(&parent, "g3");
+    append(&g3, &[st((shape.child_end)("g3", "r3"), 200)]);
+    track.on_path(&g3);
+
+    let i = info_of(&book, "g1");
+    assert_eq!(
+        (i.state, i.waiting, i.active_ms, i.why, i.ended_ms),
+        (RunState::Running, None, at(130), None, None),
+        "[{}] 交回了结果 ⇒ 不再在等；最近动静 ＝ 它自己最近那条；在跑的没有结局",
+        shape.name
+    );
+    let i = info_of(&book, "g3");
+    assert_eq!(
+        (i.state, i.parent.as_deref(), i.label.as_deref(), i.started_ms, i.ended_ms, i.why, i.error),
+        (RunState::Done, Some("g1"), Some("L3"), at(120), at(200), Some(RunWhy::Own), None),
+        "[{}] 孙运行：parent ＝ 派出它的那个子运行；自己写出终局 ⇒ own、收场时刻是那一条的",
+        shape.name
+    );
+    let i = info_of(&book, "g2");
+    assert_eq!(
+        (i.state, i.started_ms, i.active_ms, i.ended_ms, i.why, i.error.as_deref(), i.waiting),
+        (RunState::Failed, at(102), at(150), at(300), Some(RunWhy::Reported), Some("boom"), None),
+        "[{}] 前台以报错收场：派出那一方说的 ⇒ reported、带报错原话、不再在等",
+        shape.name
+    );
+    let i = info_of(&book, "g4");
+    assert_eq!(
+        (i.state, i.why, i.error.as_deref(), i.ended_ms),
+        (RunState::Failed, Some(RunWhy::Own), Some("overloaded"), at(160)),
+        "[{}] 自己写出失败终局：own ＋ 那条的原话",
+        shape.name
+    );
+    let i = info_of(&book, "g5");
+    assert_eq!(
+        (i.state, i.why, i.ended_ms, i.waiting),
+        (RunState::Unknown, Some(RunWhy::Quiet), None, None),
+        "[{}] 久未再写 ⇒ 状态不明（quiet），没有收场时刻、不算在等",
+        shape.name
+    );
+    // g6 的记录先读到（140）、派出它的那两条后到（135）：开始取早的那个。
+    child_file(shape, &parent, "g6", &[st((shape.child_tool)("g6", "r6", "Bash"), 140)], None);
+    track.on_path(&(shape.child_of)(&parent, "g6"));
+    for l in [st((shape.spawn)("t6", "L6"), 135), st((shape.spawned)("t6", "g6"), 136)] {
+        track.main_record(SID, &l);
+    }
+    assert_eq!(
+        info_of(&book, "g6").started_ms,
+        at(135),
+        "[{}] 派出那条比它自己最早那条早 ⇒ 开始取派出那条",
+        shape.name
+    );
+    let Some(Frame::SessionRuns { runs, .. }) = track.retire(SID) else {
+        panic!("[{}] 会话退休时 g1 还在跑，却没出最后那一帧", shape.name);
+    };
+    let g1 = runs.iter().find(|r| r.run == "g1").unwrap();
+    assert_eq!(
+        (g1.state, g1.why),
+        (RunState::Unknown, Some(RunWhy::Orphaned)),
+        "[{}] 会话退休 ⇒ 还在跑的变状态不明（orphaned）",
+        shape.name
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_fake_adapter_gives_the_extra_run_cells() {
+    extra_cells_scenario(&fake());
+}
+
+#[test]
+fn claude_code_gives_the_extra_run_cells() {
+    extra_cells_scenario(&claude_code());
 }

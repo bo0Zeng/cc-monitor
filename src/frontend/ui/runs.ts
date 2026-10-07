@@ -10,6 +10,10 @@ import { copyText } from "./copy-table";
 import type { RunInfo } from "./generated/RunInfo";
 import type { RunState } from "./generated/RunState";
 import type { BlockKind } from "./generated/BlockKind";
+import type { RunEnded } from "./generated/RunEnded";
+import type { RunDid } from "./generated/RunDid";
+import type { RunWhy } from "./generated/RunWhy";
+import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
 
 /** 一个子运行此刻在生成的那一块（活卡状态机给的，只取「最近：…」要用的两格）。 */
 export interface LiveBlockView {
@@ -114,4 +118,67 @@ export function runLastText(r: RunInfo, live: LiveBlockView | null): string | nu
   if (last.t === "tool") return copyText("runs.last.tool", { tool: last.name });
   if (last.t === "think") return copyText("runs.last.think");
   return copyText("runs.last.say");
+}
+
+const STATES: readonly RunState[] = ["running", "done", "failed", "stopped", "unknown"];
+const WHYS: readonly RunWhy[] = ["reported", "own", "quiet", "orphaned"];
+const RUN_REQUIRED = ["run", "state"] as const;
+const RUN_TEXT = ["label", "kind", "tool", "parent", "waiting", "error"] as const;
+const RUN_TIMES = ["started_ms", "active_ms", "ended_ms"] as const;
+
+const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
+const isStr = (v: unknown): v is string => typeof v === "string";
+const isMs = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
+const isState = (v: unknown): v is RunState => STATES.includes(v as RunState);
+
+function didOf(v: unknown): RunDid | null {
+  if (!isObj(v)) return null;
+  const keys = Object.keys(v).sort().join(",");
+  if ((v.t === "say" || v.t === "think") && keys === "t") return { t: v.t };
+  if (v.t === "tool" && keys === "name,t" && isStr(v.name)) return { t: "tool", name: v.name };
+  return null;
+}
+
+function runOf(v: unknown): RunInfo | null {
+  if (!isObj(v) || !isStr(v.run) || !isState(v.state)) return null;
+  const out: RunInfo = { run: v.run, state: v.state };
+  const known = new Set<string>([...RUN_REQUIRED, ...RUN_TEXT, ...RUN_TIMES, "last", "why"]);
+  for (const k of Object.keys(v)) if (!known.has(k)) return null;
+  for (const k of RUN_TEXT) {
+    if (v[k] === undefined) continue;
+    const x = v[k];
+    if (!isStr(x)) return null;
+    out[k] = x;
+  }
+  for (const k of RUN_TIMES) {
+    if (v[k] === undefined) continue;
+    const x = v[k];
+    if (!isMs(x)) return null;
+    out[k] = x;
+  }
+  if (v.last !== undefined) {
+    const d = didOf(v.last);
+    if (!d) return null;
+    out.last = d;
+  }
+  if (v.why !== undefined) {
+    if (!WHYS.includes(v.why as RunWhy)) return null;
+    out.why = v.why as RunWhy;
+  }
+  return out;
+}
+
+function endedOf(v: unknown): RunEnded | null {
+  if (!isObj(v) || Object.keys(v).sort().join(",") !== "run,state,tool" || !isStr(v.run) || !isStr(v.tool) || !isState(v.state)) return null;
+  return { run: v.run, tool: v.tool, state: v.state };
+}
+
+/** 会话流里 `runs` 那一格 ⇒ 运行表（按形状严格收：多一格 / 缺一格 / 类型不对 ⇒ `null`，那一格不收）。 */
+export function decodeRunsPayload(v: unknown): SessionRunsPayload | null {
+  if (!isObj(v) || Object.keys(v).sort().join(",") !== "ended,runs,session_id" || !isStr(v.session_id)) return null;
+  if (!Array.isArray(v.runs) || !Array.isArray(v.ended)) return null;
+  const runs = v.runs.map(runOf);
+  const ended = v.ended.map(endedOf);
+  if (runs.some((r) => r === null) || ended.some((e) => e === null)) return null;
+  return { session_id: v.session_id, runs: runs as RunInfo[], ended: ended as RunEnded[] };
 }
