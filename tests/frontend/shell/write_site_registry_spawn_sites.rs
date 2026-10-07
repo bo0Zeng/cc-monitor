@@ -410,11 +410,7 @@ fn every_local_spawn_is_declared() {
     }
     found.sort();
     found.dedup();
-    assert!(
-        found.len() >= 5,
-        "全树只找到 {} 处本机起进程（08-08 实测 8 个「文件::函数」）—— 抽取器坏了，本条此刻无效",
-        found.len()
-    );
+    // 抽取器坏了扫不到东西 ⇒ 下面反向那一条（申报的落点必须真在）红。
 
     let missing: Vec<String> = found
         .iter()
