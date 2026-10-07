@@ -1,21 +1,18 @@
-# `scripts/` 目录
+# `tests/scripts/` 目录
 
 | 脚本 | 作用 |
 |---|---|
 | [`run.ps1`](run.ps1) | 自动注入 MSVC dev shell 环境后跑 tauri 命令 |
-| [`gate.sh`](gate.sh) | 出货前的**唯一闸门**：cargo（monitor + backend）· npm · `pb check` 跑一遍，末尾只吐一行 `GATE: OK` / `GATE: FAIL …`。★ 它解决的是**过程**问题——门禁散成三条命令时，很容易写成「跑门禁 && git commit」一条龙，而长输出里那行 `1 failed` 会滚过去（08-13 实测发生过一次，红着出了货）。⇒ **先跑它、看见 OK，再单独敲 commit**；它**故意不提供 `--commit` 开关** |
-| [`verify-committed-state.sh`](verify-committed-state.sh) | 从**提交状态**（不是工作树）编一次。★ **提交推上 `main` 之前 CI 看不见它们 ⇒ 推之前在本机跑**；理由与那次「约二十轮编不过」的事故见它自己的头注 |
-| [`hooks-are-runnable.sh`](hooks-are-runnable.sh) | 门禁第 13 格（`K-R82`）：`hooks/` 下**会被 git 执行**的每一个脚本，盘上有没有可执行位 · 库里记没记那个位 · 语法过不过它自己声明的解释器。★ 两句话分开判 —— 本仓 `core.filemode=false`，`chmod +x` 进不了 git，于是「这棵树里跑得起来」与「新 checkout 出来也跑得起来」是两个互不相干的事实（落地那趟就现打逮到 index 里是 `100644`）。自带 8 条阳性对照（三把尺子正反各一条）。跑法与射程见它自己的头注 |
-| [`assert-coverage-floors.mjs`](assert-coverage-floors.mjs) | 逐文件覆盖率地板 + 0% 文件递减棘轮（聚合阈值看不见单模块归零）。跑法与登记见它自己的头注 |
-| [`rust-coverage.sh`](rust-coverage.sh) | **Rust 覆盖率量具**（TQ1）：rustc 自带的 `-C instrument-coverage` ＋ 系统 `llvm-profdata` / `llvm-cov`，**不装任何东西**。两侧各跑一遍与门禁同一条 `cargo test`（插桩版、单独 target 目录），报生产源码被执行到的行数。★ 是**量具不是门禁**：不进 `gate.sh`、不进 CI、不给任何数定地板；读数进。射程与买不到的写在它自己的头注 |
-| [`re-embed.sh`](re-embed.sh) | **`BUILD_ID` bump 的同拍步骤**（步 `19c`）：把内嵌的那几份后端字节重编并铺回落点，**全仓唯一的本机产字节入口**。★ 它治的是一件实地踩过的事 —— bump 了 `src/backend/lib.rs` 的 `const BUILD_ID`，盘上那两份 musl 字节当场变旧，`src/frontend/shell/build.rs` 的半 bump 守卫 panic，**整棵树编不过**（2026-09-18，四路 agent 同时中）。配方与 `release.yml` 产字节那一步**同源**（门禁 `release-gate` 那一格的 ⑬b 两向对拍）；`--check` 只问「盘上的字节与源码对不对得上」不产字节，`--native` 铺本机那一份，`--clean` 是守卫给的第二条出路。⚠ **诚实边界**：本机重编买到的是「开发期自洽 ＋ 裸 exe 恢复部署能力」，**不等于**发版那一拍办完了。跑法与逐条射程见它自己的头注 |
-| [`xvfb-free.sh`](xvfb-free.sh) | 起一台私有 Xvfb：在 `:100–:899` 里挑空号、按 X 的老规矩建 `/tmp/.X<n>-lock` 占住（门禁的网络命名空间里外都认得；光靠 `-displayfd` 沙箱里外会挑到同一个号），号由 Xvfb 写在标准输出第一行；`release <n> <pid>` 收场。文件窗口台架（`tests/frontend/filewin/xvfb_rig.rs`）与截图工具（`tests/shots/filewin.mjs`）共用这一份起法，号不各写死一段 |
-| [`release-notes.mjs`](release-notes.mjs) | GitHub Release 的**正文生成器**（`K-R124`）：从 `CHANGELOG.md` 里本版那一段生成 `RELEASE_BODY.md`，`release.yml` **两处**发布步骤各跑一次、都用它当 `body_path`。★ 在它之前两处发布步骤一处写着 `generate_release_notes: true`、另一处连 `body` 都没有 ⇒ **真发出去的正文是 GitHub 自动生成的提交列表**，我们写的一个字都不在上面。`src/`src/doc/RELEASING.md` § 5` 早就写着「用 CHANGELOG 对应版本段」这条 SOP，只是一直是手工的一步、从 v3.6.0 起没人做。`--check` 只验不写，本地门禁 `release-gate` 那一格调它。跑法与射程见它自己的头注 |
+| [`gate.sh`](gate.sh) | 出货前的唯一闸门：各格跑一遍，末尾只吐一行 `GATE: OK` / `GATE: PARTIAL` / `GATE: FAIL …`。先跑它、看见 OK，再单独提交；它故意不提供 `--commit` 开关 |
+| [`verify-committed-state.sh`](verify-committed-state.sh) | 从提交状态（不是工作树）编一次：工作树里有未提交改动时，「工作树绿」与「提交状态绿」是两件事。本仓不推送，CI 见不到这些提交，所以在本机跑 |
+| [`hooks-are-runnable.sh`](hooks-are-runnable.sh) | 门禁 `hooks` 那一格：`tests/hooks/` 下会被 git 执行的每个脚本，盘上有没有可执行位 · 库里记没记那个位 · 语法过不过它自己声明的解释器（本仓 `core.filemode=false`，前两条分开判）。自带 8 条阳性对照 |
+| [`assert-coverage-floors.mjs`](assert-coverage-floors.mjs) | 逐文件覆盖率地板 + 0% 文件递减棘轮（聚合阈值看不见单模块归零） |
+| [`rust-coverage.sh`](rust-coverage.sh) | Rust 覆盖率量具：rustc 自带的 `-C instrument-coverage` ＋ 系统 `llvm-profdata` / `llvm-cov`，不装任何东西；两侧各跑一遍与门禁同一条 `cargo test`，报生产源码被执行到的行数。是量具不是门禁 |
+| [`re-embed.sh`](re-embed.sh) | `BUILD_ID` bump 的同拍步骤：把内嵌的那几份后端字节重编并铺回落点，全仓唯一的本机产字节入口。配方与 `release.yml` 产字节那一步同源（门禁 `release-gate` 那一格两向对拍）；`--check` 只问盘上的字节与源码对不对得上，`--native` 铺本机那一份，`--clean` 删落点 |
+| [`xvfb-free.sh`](xvfb-free.sh) | 起一台私有 Xvfb：在 `:100–:899` 里挑空号、按 X 的老规矩建 `/tmp/.X<n>-lock` 占住（门禁的网络命名空间里外都认得），号由 Xvfb 写在标准输出第一行；`release <n> <pid>` 收场。文件窗口台架与截图工具共用 |
+| [`release-notes.mjs`](release-notes.mjs) | GitHub Release 的正文生成器：从 `CHANGELOG.md` 里本版那一段生成正文，`release.yml` 两处发布步骤都用它；`--check` 只验不写，门禁 `release-gate` 那一格调它 |
 
-> ⚠ **这张表由判据钉住**：`doc_claim_registry_tests.rs::every_script_in_the_directory_is_listed_in_its_readme`
-> —— 往 `scripts/` 放新文件而不登记就会红。
-> 它是补出来的：08-06 之前这张表**只有 `run.ps1`**，于是照 README 找不到
-> 「唯一量提交状态、且必须本机跑」的那道门。
+跑法与射程都在各脚本自己的头注里。这张表由 `doc_claim_registry_tests.rs::every_script_in_the_directory_is_listed_in_its_readme` 钉住：往本目录放新文件而不登记就会红。
 
 另有一份 PowerShell 模板存在 `src/frontend/shell/scripts/`（编译时 `include_str!` 进 Rust 二进制，不在本目录）：
 

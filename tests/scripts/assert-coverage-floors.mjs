@@ -1,32 +1,12 @@
 #!/usr/bin/env node
 /**
- * **逐文件覆盖率地板 + 0% 文件递减棘轮**〔audit-0805 F17 下半，报告 §5.4/§5.5〕。
+ * 逐文件覆盖率地板 + 0% 文件递减棘轮。
  *
- * # 为什么聚合阈值不够
+ * `vitest.config.ts` 的阈值是聚合值：单个模块掉到 0%，聚合值只动零点几个点，看不见。本脚本补两条：
+ * 1. 核心模块的逐文件地板：语句数大、已有可观覆盖的那批各自不许掉；地板设在当前值下方 ~5 点（吸收 v8 版本差与用例增删的抖动）。
+ * 2. 0% 文件递减棘轮：逐个登记，条数只住 `ZERO_COUNT_CEILING`；新文件掉进 0% ⇒ 红，0% 文件数只许降。
  *
- * `vitest.config.ts` 的阈值是**聚合值**（statements/branches/functions/lines 各一个数）。
- * 后果：**单个模块掉到 0% 看不见** —— 187 个文件里少数几个归零，聚合值只动零点几个点，
- * 而地板留着 2-3 点余量，门禁一声不响。
- *
- * ⚠ 这不是推测：`vitest.config.ts` 那段注释自己就写着
- * 「收紧留后续按核心 DOM 模块 **per-file**」 —— **本脚本就是那个「后续」**。
- *
- * # 两条判据
- *
- * 1. **核心模块的逐文件地板**：语句数大、且今天已有可观覆盖的那批，各自不许掉下去。
- *    地板设在**当前值下方 ~5 点**（吸收 v8 版本差与用例增删的抖动），只挡明显回归。
- * 2. **0% 文件递减棘轮**：逐个登记，条数的家是 `ZERO_COUNT_CEILING`。
- *    ⚠ 这里**不写数**：它引入时是一个数、棘紧过之后是另一个数，而本行原先抄的是
- *    中间某一刻的第三个数 —— 三个都对过，也就都错过。副本没有任何判据读它
- *    （`plan-lint` 判据 3.9 那一族，这次犯在代码注释里）。
- *    - **新文件掉进 0% ⇒ 红**（那正是聚合阈值看不见的那格）；
- *    - **0% 文件数只许降**。
- *
- * # 怎么跑
- *
- *   npm run coverage && node scripts/assert-coverage-floors.mjs
- *
- * CI 里紧跟在 `coverage floor` 那步之后（那步**无 `|| true`**，是真阻断门禁）。
+ * 跑法：`npm run coverage && node tests/scripts/assert-coverage-floors.mjs`（CI 里紧跟在 `coverage floor` 那步之后，是真阻断门禁）。
  */
 import { readFileSync } from "node:fs";
 import { resolve, dirname, relative, sep } from "node:path";
@@ -38,23 +18,12 @@ const SUMMARY = resolve(REPO, "coverage/coverage-summary.json");
 /**
  * 核心模块的逐文件覆盖地板：**语句 + 分支**。
  *
- * `[文件, 语句地板%, 写下时实测%, 分支地板%, 写下时实测%]`（08-06）——
- * **实测值一起写下**，照 `vitest.config.ts` 那条棘紧纪律：
- * 只改数字不写实测，下一个人看不出它过期没过期。
- *
- * # 为什么加分支那一列〔audit-0805 §5 2b〕
- *
- * 2b 逐字写着「一个模块 statements 不掉、branches 掉光，本判据看不见」。
- * 量下去证实这不是假设：当时有一个视图文件 statements **56.5%** 而 branches
- * 只有 **24.8%** —— 一半以上的分支从没被走过，而语句地板一点反应都没有（那份文件今天已删）。
- *
- * ⚠ 分支地板同样设在**当前值下方 ~5 点**（与语句同一套纪律），只挡明显回归；
- * 分支覆盖比语句更容易被 v8 版本差与用例增删扰动，余量不能收得太紧。
+ * `[文件, 语句地板%, 写下时实测%, 分支地板%, 写下时实测%]`：实测值一起写下，下一个人才看得出地板过期没有。
+ * 分支单列：语句不掉、分支掉光时语句地板没反应。分支地板同样设在当前值下方 ~5 点。
  */
 const PER_FILE_FLOORS = [
   ["src/frontend/ui/tabs.ts", 64, 69.9, 54, 59.7],
-  // `tabs.ts` 拆成 13 份，它原先那一格地板护着的代码大半搬走了 ⇒ 搬去的四份大的各自接一格
-  //   （同一套纪律：当前值下方 ~5 点，实测一起写下）。`tabs.ts` 那一行不动（今天实测 79.0 / 67.4，高于原地板）。
+
   ["src/frontend/ui/tab-stream-view.ts", 85, 90.8, 78, 83.9],
   ["src/frontend/ui/tab-session-actions.ts", 62, 67.5, 59, 64.7],
   ["src/frontend/ui/tab-menu.ts", 66, 71.4, 70, 75.4],
@@ -63,32 +32,17 @@ const PER_FILE_FLOORS = [
   ["src/frontend/ui/settings/panel.ts", 75, 80.6, 50, 55.6],
   ["src/frontend/ui/settings/accounts-section.ts", 75, 80.7, 49, 54.2],
   ["src/frontend/ui/settings/remote-section.ts", 60, 65.6, 40, 45.1],
-  // 〔墓碑〕`src/frontend/ui/settings/mcp-section.ts` —— MCP 并进顶层「扩展」页、整份删除（原地板 58/63.5 · 49/54.5）；
-  //   接它那一格的是扩展页本身（同一套纪律：当前值下方 ~5 点，实测一起写下）。
   ["src/frontend/ui/settings/ext-section.ts", 69, 74.6, 61, 66.4],
   ["src/frontend/ui/settings/cc-bus-section.ts", 90, 95.7, 70, 75.0],
   ["src/frontend/ui/views/grid-monitor.ts", 89, 94.7, 84, 89.3],
-  // 〔墓碑〕`src/frontend/ui/views/usage-view.ts` —— 随用量 ②③ 两轴整轴退役而整删（2026-09-18）。
-  // 原地板 81/86.2 · 63/68.4。删这一行的理由是**那个文件不在了**，不是「地板太严」——
-  // 往下拧地板的合法理由只有这一个（同 `doc_claim_registry` 那条纪律）。
   ["src/frontend/ui/accounts.ts", 83, 88.9, 83, 88.1],
-  // `accounts.ts` 按域拆开（1670 → 663 行，语句 102）：上面那一格的地板**不动**（拆后实测 100 / 96.2，
-  //   高于原地板）。它原先护着的代码大半搬走了 ⇒ 搬去的两份大的各自接一格（同一套纪律：当前值下方 ~5 点，实测一起写下）。
-  //   另两份小的（`account-prefs.ts` 39 句 · `local-launch-backfill.ts` 33 句）不单列：语句数不够「核心」那一档。
   ["src/frontend/ui/account-reads.ts", 92, 97.3, 89, 94.3],
   ["src/frontend/ui/launch-account.ts", 91, 96.5, 81, 86.0],
-  // F17 下半：批量调度状态机三条分支落地（53.33 → 84.44）。它决定整个重放期是 batch 还是 live。
   ["src/frontend/ui/events.ts", 81, 86.7, 62, 67.0],
 ];
 
 /**
- * 今天仍是 0% 的文件。**这是欠账清单，不是豁免清单。**
- * ⚠ 条数**刻意不抄在这里** —— 它的家是 `ZERO_COUNT_CEILING`；
- *   同一个数在两处各存一份，改一处就是下一个假陈述（定框 E12，本仓已实测多次）。
- *
- * ⚠ 台账 §5.4 那张表已被订正过一次（`cards/index.ts` 今天是 5.8% 不是 0%），
- * 本轮重测又对上两处：`main.ts` 是 **594** 语句不是 611（F14 第三刀搬走了一圈轮询）。
- * ⇒ **这类清单必须跟着重测走**，抄一次就腐一次。
+ * 今天仍是 0% 的文件。这是欠账清单，不是豁免清单；条数只住 `ZERO_COUNT_CEILING`，清单跟着重测走。
  */
 const ZERO_TODAY = [
   "src/frontend/ui/main.ts",
@@ -100,15 +54,8 @@ const ZERO_TODAY = [
 ];
 
 /** 0% 文件总数的棘轮地板（含上面没逐个列出的小文件）。**只许降。** */
-// ⚠ 08-06 F15 把 `src/frontend/ui/branch-fold.ts` 从 0% 里领走了（它此前**一条专属单测都没有**，
-// 而那条 O(N²) 主线重算就住在里面）⇒ 上限 17→16。**只许降**。
-//
-// ⚠ **08-06 再棘一格：16→…→14→13。** 本会话给三个此前零覆盖的模块补了 vitest
-// （`cards/bash.ts` 的折叠阈值 · `cards/interactive.ts` 的「等你决定」不许折叠 ·
-// `views/pane-preview.ts` 的过期守卫），它们从 0% 集合里走了出来。
-// ★ 棘紧这一步**不是顺手做的**：跑完 `assert-coverage-floors.mjs` 读到
-// 「0% 文件 13/14」——**余量出现的那一刻就该收掉**，否则下一个掉进 0% 的文件
-// 会被这一格余量悄悄吃掉（定框 §3「每加一条判据都要顺手棘紧」）。
+// 棘轮记录 17→16→…→14→13：余量一出现就收掉，否则下一个掉进 0% 的文件会被余量悄悄吃掉。
+// 改这个数要同时在这条记录末尾续一格（判据读它）。
 const ZERO_COUNT_CEILING = 13;
 
 let summary;
@@ -124,34 +71,10 @@ try {
 }
 
 /**
- * 把 summary 的键归一成**仓根相对 + 正斜杠**（`src/frontend/ui/tabs.ts`）—— 下面每一处比对都吃归一化后的键。
- *
- * # 为什么必须归一（09-09，本脚本第一次在 windows-latest 上执行时逐条打出来的）
- *
- * 键是 `getFileCoverage().path`（`istanbul-reports/lib/json-summary/index.js:onDetail`），
- * 即**该平台的原生绝对路径**：Linux 上是 `/home/…/cc-monitor/src/frontend/ui/tabs.ts`，
- * Windows 上是 `D:\a\cc-monitor\cc-monitor\src\tabs.ts`。
- * 而本文件里那两张清单（`PER_FILE_FLOORS` · `ZERO_TODAY`）写的全是**正斜杠相对路径**。
- * ⇒ 原来那套 `k.endsWith("/" + rel)` 在 Windows 上**恒 false**：
- *   12 条逐文件地板**一条不漏**地报「在覆盖率报告里找不到」（那 12 个文件全在盘上）
- *   〔2026-09-18：`usage-view.ts` 整删后剩 **11** 条；上面那个 12 是当时的读数，留作原文〕，
- *   6 个登记在册的 0% 文件**全部**被误判成「新掉进 0%」。
- *   ⚠ 这是**量具坏了**，不是判据在说话 —— 而当时没有任何东西说得出这句话。
- *
- * # 为什么用 `relative(REPO, k)` 而不是「切掉 `/cc-monitor/` 之前那截」
- *
- * 原来 `zeroNow` 那行靠 `k.split("/cc-monitor/").pop()`，它有两处赌：赌分隔符是正斜杠、
- * 赌仓目录恰好叫 `cc-monitor` 且**只出现一次**。GitHub Actions 的 checkout 路径逐字是
- * `D:\a\cc-monitor\cc-monitor\`（owner 名与仓名同名 ⇒ **同名目录套两层**），两处赌全输。
- * `relative()` 一处赌都不用：`REPO` 是从本文件位置算出来的（`<repo>/scripts/..`），
- * 与目录叫什么、嵌几层无关；`sep` 让「拆分隔符」也不用赌平台
- * （POSIX 下 `sep` 是 `/`，所以不会去动文件名里合法的反斜杠）。
- *
- * # 非文件键
- *
- * `json-summary` 只写两种键：根节点那一条字面量 `total`（`onSummary` 里 `node.isRoot()` 才写，
- * 所以**没有**目录级条目）+ 每个文件一条绝对路径。⇒ 滤掉 `total` 就够，且必须**滤在归一化之前**
- * （`relative(REPO, "total")` 会算出一串 `../..`，那才是真的乱）。
+ * 把 summary 的键归一成仓根相对 + 正斜杠（`src/frontend/ui/tabs.ts`），下面每一处比对都吃归一化后的键。
+ * 键是该平台的原生绝对路径（Windows 上是 `D:\a\cc-monitor\cc-monitor\src\…`，同名目录套两层），
+ * 所以用 `relative(REPO, k)`：`REPO` 从本文件位置算出，与目录叫什么、嵌几层无关；`sep` 不赌平台。
+ * `json-summary` 只有根节点 `total` 与逐文件两种键 ⇒ 滤掉 `total` 就够，且要滤在归一化之前。
  */
 const normKey = (k) => relative(REPO, k).split(sep).join("/");
 
@@ -160,11 +83,10 @@ const files = Object.entries(summary)
   .map(([k, v]) => [normKey(k), v]);
 // 抽取器自检①：解析不出文件时下面每条都会零命中地绿。
 if (files.length < 150) {
-  console.error(`只解析出 ${files.length} 个文件（08-06 实测 187）—— 抽取器坏了`);
+  console.error(`只解析出 ${files.length} 个文件 —— 抽取器坏了`);
   process.exit(2);
 }
 // 抽取器自检②：归一化之后必须真的落回 `src/…` 这个形状。
-// 上面那段说的病**当时没有任何东西认得出来** —— 它长得跟「12 个文件同时被删了」一模一样。
 // `vitest.config.ts` 的 `coverage.include` 逐字是 `src/**/*.ts` ⇒ 一条都不落在 `src/` 下时，
 // 唯一的解释是归一化的基准错了（键不在 `REPO` 之下）。**这时候要说「量具坏了」，不许往下判。**
 if (!files.some(([k]) => k.startsWith("src/"))) {
@@ -198,13 +120,12 @@ for (const [rel, floor, measured, bFloor, bMeasured] of PER_FILE_FLOORS) {
         "    ★ 聚合阈值看不见这种单模块回归 —— 187 个文件里掉一个，总数只动零点几个点。",
     );
   }
-  // ★〔audit-0805 §5 2b〕**分支单独判**：语句不掉、分支掉光时，上面那条一点反应都没有。
-  // 实测样本：当时一个视图文件语句 56.5% 而分支只有 24.8%。
+  // 分支单独判：语句不掉、分支掉光时，上面那条没反应。
   if (v.branches.pct < bFloor) {
     problems.push(
       `  ${rel}：分支 ${v.branches.pct}% < 地板 ${bFloor}%（写下这条时实测 ${bMeasured}%）\n` +
         "    ★ **语句地板看不见这种回归**：删掉一条 `if` 的一侧、或让某个错误分支再没人走到，\n" +
-        "      语句覆盖几乎不动，而那条分支从此无人验证。2b 说的正是这个。",
+        "      语句覆盖几乎不动，而那条分支从此无人验证。",
     );
   }
 }
@@ -212,8 +133,7 @@ for (const [rel, floor, measured, bFloor, bMeasured] of PER_FILE_FLOORS) {
 // 键已经是仓根相对正斜杠（见上面 `normKey`）⇒ 这里不再切、不再猜。
 const zeroNow = files.filter(([, v]) => v.statements.pct === 0).map(([k]) => k);
 
-// ⚠ 三处都改成**等号**，不再用 `endsWith`：两边现在是同一种形状（仓根相对 + 正斜杠），
-//   而 `endsWith` 会把 `src/a/src/tabs.ts` 也认成 `src/frontend/ui/tabs.ts` —— 松匹配在这里只会掩盖问题。
+// 用等号不用 `endsWith`：两边同一种形状，`endsWith` 会把 `src/a/src/tabs.ts` 也认成 `src/frontend/ui/tabs.ts`。
 const newZero = zeroNow.filter((f) => !ZERO_TODAY.includes(f));
 // 只有语句数够大的新 0% 才算回归；小工具文件天然可能没测。
 const newZeroBig = newZero.filter((f) => {
