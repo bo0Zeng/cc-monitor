@@ -159,7 +159,7 @@ describe("抓一屏：失败怎么说", () => {
     answer({ "terminal-preview": { fail: { err: { Hop: { idx: 1, tag: "wait", reach: "Unknown", why: "Overrun" } }, body: [] } } });
     expect(await saidBy("devbox")).toBe(copyText("control.channel.unsure", { machine: "devbox" }));
     answer({ "terminal-preview": { fail: { err: { Ours: "Cancelled" }, body: [] } } });
-    expect(await saidBy("devbox")).toMatch(/撤回/);
+    expect(await saidBy("devbox")).toBe(copyText("control.channel.cancelled"));
   });
 
   it("★★ 拒绝码（取自金样）逐码一句、带名字与后端原话；认不出的码不上屏（码在诊断里）", async () => {

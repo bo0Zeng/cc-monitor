@@ -3365,6 +3365,19 @@ impl FileWindow {
                 {
                     save = true;
                 }
+            } else if let Some(note) = e.save_note.as_ref().filter(|_| !dirty) {
+                // 存成了、没拿到新摘要：那一句挂着，给一颗「重新读取」（重读拿到摘要，之后照常存）。
+                if super::kit::banner(
+                    ui,
+                    super::kit::Tone::Warn,
+                    note,
+                    &[copy_text("rsFilewinEditPage.more.reload", &[])],
+                )
+                .is_some()
+                    && idle
+                {
+                    reopen = true;
+                }
             }
             if self.link.offline() {
                 super::kit::banner(

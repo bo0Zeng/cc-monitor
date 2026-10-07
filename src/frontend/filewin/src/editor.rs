@@ -462,6 +462,8 @@ pub struct Pane {
     pub(crate) reveal: bool,
     /// 上一次存成的那一刻（UNIX 秒；编辑页头条「已保存 13:42」）。
     pub saved_at: Option<u64>,
+    /// 存成了、却没拿到新摘要时挂的那一句（「重开后再改」）；下一次存成且拿到摘要就收起。
+    pub save_note: Option<String>,
 }
 
 /// 编辑面那一截查找替换的状态。
@@ -530,6 +532,7 @@ impl Pane {
             fresh: true,
             reveal: false,
             saved_at: None,
+            save_note: None,
         }
     }
 
@@ -549,9 +552,18 @@ impl Pane {
     ///
     /// ⚠ 基准线是**发出去的那一份**（`sent`），不是此刻的 `text`：存在路上时用户又敲了字，那几个字没存过，
     /// 该算「改过了」。
-    pub fn mark_saved(&mut self, sent: &str, sha256: String) {
+    ///
+    /// 写进去了却没拿到新摘要（`sha256 == None`）⇒ 照样算存成（字已在盘上），基准摘要**不动**：
+    /// 下一次存交旧的那一份 ⇒ 撞 `stale`、让人选，而不是悄悄覆盖；另挂一句「重开后再改」。
+    pub fn mark_saved(&mut self, sent: &str, sha256: Option<String>) {
         self.original = sent.to_string();
-        self.base_sha256 = sha256;
+        self.save_note = match sha256 {
+            Some(s) => {
+                self.base_sha256 = s;
+                None
+            }
+            None => Some(copy_text("rsFilewinEditor.saved.noDigest", &[])),
+        };
         self.last_save = Some(Ok(()));
         self.stale = false;
         self.saved_at = std::time::SystemTime::now()
@@ -902,11 +914,11 @@ pub async fn write_text_at(
     saved_from_reply(content, r)
 }
 
-/// 存成了：发出去的那一份 ＋ 后端交的新摘要（下一次存的 `expect`）。
+/// 存成了：发出去的那一份 ＋ 后端交的新摘要（下一次存的 `expect`；后端写了却没交像样的摘要 ⇒ `None`）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Saved {
     pub sent: String,
-    pub sha256: String,
+    pub sha256: Option<String>,
 }
 
 /// 存没成的两形 —— 下一步完全不同，不压成一句话：
@@ -919,22 +931,21 @@ pub enum SaveError {
 
 /// 存那一趟的结局 → [`Saved`] / [`SaveError`]。**纯函数**（判得动）。
 ///
-/// 对端回 `stale` ⇒ `Stale`；成了却没交新摘要（或形状不对）⇒ `Failed`：后端已经写了，但下一次存交不出
-/// 「盘上那份」，那句话照实说（关掉重开就好）。
+/// 对端回 `stale` ⇒ `Stale`；别的失败 ⇒ `Failed`；成了却没交新摘要（或形状不对）⇒ 仍是存成
+/// （后端已经写了），摘要那格 `None`，由 [`Pane::mark_saved`] 挂「重开后再改」。
 pub fn saved_from_reply(
     sent: &str,
     r: Result<serde_json::Value, super::source::Failed>,
 ) -> Result<Saved, SaveError> {
     match r {
-        Ok(d) => d
-            .get("sha256")
-            .and_then(serde_json::Value::as_str)
-            .filter(|s| is_sha256_hex(s))
-            .map(|s| Saved {
-                sent: sent.to_string(),
-                sha256: s.to_string(),
-            })
-            .ok_or_else(|| SaveError::Failed(copy_text("rsFilewinEditor.saved.noDigest", &[]))),
+        Ok(d) => Ok(Saved {
+            sent: sent.to_string(),
+            sha256: d
+                .get("sha256")
+                .and_then(serde_json::Value::as_str)
+                .filter(|s| is_sha256_hex(s))
+                .map(str::to_string),
+        }),
         Err(f) if f.code.as_deref() == Some("stale") => Err(SaveError::Stale(f.said)),
         Err(f) => Err(SaveError::Failed(f.said)),
     }

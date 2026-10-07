@@ -123,7 +123,7 @@ describe("记录 · 提示条 · 标签页", () => {
     expect(bannerOf(all, NOW)?.text).toMatch(copyPattern("acct.banner.allFull", { name: "team", rel: "1h30m" }, { whole: true }));
     const held = entry({ blocked: { earliest: { account: "team", at: NOW + 600 } }, account: { start: "personal", current: "personal", since: NOW, history: [{ at: NOW, from: "personal", to: "personal", why: { held: { n: 90 } } }], inPlace: "ok" } });
     expect(bannerOf(held, NOW)?.text).toMatch(copyPattern("acct.banner.held", { n: 90, name: "team" }, { whole: true }));
-    expect(bannerOf(all, NOW + 6000)).toEqual({ text: expect.stringMatching(/^team ↻\d\d:\d\d 已过 · 可续发$/), tone: "neutral" });
+    expect(bannerOf(all, NOW + 6000)).toEqual({ text: expect.stringMatching(copyPattern("acct.banner.back", { name: "team" }, { whole: true })), tone: "neutral" });
   });
   it("标签页：被卡 ⇒ `✕ 5h` ＋ 悬停一行；能发 ⇒ 不出", () => {
     expect(tabBlockedOf(entry())).toBeNull();

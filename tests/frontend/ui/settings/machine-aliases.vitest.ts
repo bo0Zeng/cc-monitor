@@ -228,11 +228,11 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     const on = plat === "powershell" ? copyText("machineAliases.access.onWindow", { path: "~/rc-a" }) : copyText("machineAliases.access.on", { path: "~/rc-a" });
     expect(access.textContent).toContain(on);
     // 卸载先给要拿掉的那几行（问后端要块的渲染），再点一次才卸。
-    clickText(access, copyText("machineCard.aliases.uninstall"));
+    clickText(access, copyText("machineAliases.rc.uninstall"));
     await flush();
     expect(seen.filter((c) => c.cmd === "aliases_block_remove"), "没确认就卸了").toEqual([]);
     expect(access.querySelector('[data-role="block-text"]')!.textContent).toBe("# 接入那几行 → /h/rc-a");
-    clickText(access.querySelector(".cfg-panel")!, copyText("machineCard.aliases.uninstall"));
+    clickText(access.querySelector(".cfg-panel")!, copyText("machineAliases.rc.uninstall"));
     await flush();
     expect(seen.filter((c) => c.cmd === "aliases_block_remove").map((c) => c.args)).toEqual([{ origin: "<local>", rcPath: "/h/rc-a" }]);
     expect(access.textContent).toContain(off);
@@ -307,9 +307,9 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     expect(seen.map((c) => c.cmd).sort()).toEqual(["aliases_read", "profiles_read"]);
     clickText(el.querySelector('[data-role="access"]')!, copyText("machineAliases.access.connectTo", { path: "~/rc-a" }));
     await flush();
-    clickText(el.querySelector('[data-role="access"]')!, "卸载 ccm");
+    clickText(el.querySelector('[data-role="access"]')!, copyText("machineCard.aliases.uninstall"));
     await flush();
-    clickText(el.querySelector(".cfg-panel")!, "卸载 ccm");
+    clickText(el.querySelector(".cfg-panel")!, copyText("machineCard.aliases.uninstall"));
     await flush();
     clickText(el, copyText("machineAliases.access.selfPaste"));
     await flush();

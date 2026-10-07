@@ -1655,10 +1655,14 @@ fn hitting_the_cap_gives_up_and_says_why() {
     let Decision::GiveUp { reason } = decide(&[1_000, 2_000, 3_000], 3_000, l) else {
         panic!("第 3 次崩溃就该放弃 —— 差一位的错本仓出现过");
     };
-    assert!(reason.contains("崩了 3 次"), "诊断要带实际次数：{reason}");
-    assert!(
-        reason.contains("远端功能不受影响"),
-        "放弃了要说清影响面：{reason}"
+    // 带实际次数与上限，并说清影响面（远端连接全经本机这一份，本机起不来远端一样连不上）。
+    assert_eq!(
+        reason,
+        copy_core::copy_text(
+            "rsLocalBackend.decide.crashLoop",
+            &[("windowMs", "10000"), ("recent", "3"), ("maxCrashes", "3")]
+        ),
+        "诊断要带实际次数与上限：{reason}"
     );
 }
 

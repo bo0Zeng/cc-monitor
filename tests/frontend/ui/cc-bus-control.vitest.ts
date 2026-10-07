@@ -298,7 +298,7 @@ describe("〔C4e〕回值几态逐态一句", () => {
     expect(new Set(said).size, JSON.stringify(said)).toBe(4);
     expect(said[0]).toMatch(copyPattern("ccBus.broadcast.done", { sent: 3, skipped: 2 }));
     expect(said[1]).toMatch(copyPattern("ccBus.broadcast.doneFailed", { failed: 1, who: "x_cc（timed_out）" }));
-    expect(said[2]).toMatch(/问不到谁在线，所以全发了/);
+    expect(said[2]).toMatch(copyPattern("ccBus.broadcast.doneUnknown"));
     expect(said[3]).toMatch(/所以全发了。1 个失败/);
   });
 });

@@ -147,10 +147,19 @@ export function defaultGroupName(
   if (dir) return dir;
   let max = 0;
   for (const name of existingNames) {
-    const m = /^组\s*(\d+)$/.exec(name.trim());
-    if (m) max = Math.max(max, Number(m[1]));
+    const n = defaultNameNumber(name);
+    if (n !== null) max = Math.max(max, n);
   }
   return copyText("tabDrop.group.defaultName", { n: max + 1 });
+}
+
+/** 一个组名是不是默认名、编号几：照「组 {n}」那一条文案现取模板认（改了文案照样认得），不在代码里写那个字。 */
+function defaultNameNumber(name: string): number | null {
+  const mark = "\u0000";
+  const [pre, post = ""] = copyText("tabDrop.group.defaultName", { n: mark }).split(mark);
+  const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const m = new RegExp(`^${esc(pre.trim())}\\s*(\\d+)\\s*${esc(post.trim())}$`).exec(name.trim());
+  return m ? Number(m[1]) : null;
 }
 
 /**
