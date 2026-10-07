@@ -4440,6 +4440,31 @@
       "zh": "更早的（{n}）",
       "args": ["n"]
     },
+    "agentsPanel.row.opened": {
+      "kind": "body",
+      "zh": "窗口已开",
+      "args": []
+    },
+    "agentsPanel.row.openedHint": {
+      "kind": "body",
+      "zh": "窗口已开 · 点击前置",
+      "args": []
+    },
+    "agentsPanel.row.openHint": {
+      "kind": "body",
+      "zh": "在新窗口看",
+      "args": []
+    },
+    "runCard.result.done": {
+      "kind": "body",
+      "zh": "交回结果 · {n} 字",
+      "args": ["n"]
+    },
+    "runCard.result.failed": {
+      "kind": "body",
+      "zh": "报错",
+      "args": []
+    },
     "agentsPanel.row.last": {
       "kind": "body",
       "zh": "最近：{last}",
@@ -16950,21 +16975,6 @@
       "kind": "error",
       "zh": "读不到这个子 agent 的记录：{e}",
       "args": ["e"]
-    },
-    "runCard.summary.text": {
-      "kind": "body",
-      "zh": "{kind}  ·  {label}",
-      "args": ["kind", "label"]
-    },
-    "runCard.summary.bare": {
-      "kind": "body",
-      "zh": "{label}",
-      "args": ["label"]
-    },
-    "runCard.summary.state": {
-      "kind": "body",
-      "zh": "{title} · {state}",
-      "args": ["title", "state"]
     },
     "rsRun.load.notFound": {
       "kind": "error",

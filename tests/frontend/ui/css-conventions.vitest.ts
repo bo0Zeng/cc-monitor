@@ -345,6 +345,7 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/frontend/ui/kit/toast.ts:228": "同上 —— 建时收起",
   "src/frontend/ui/status-messages.ts:43": "「消息」那一枚右上的琥珀点 `this.dot`（`s.smDot`）—— 建时收起；CSS 里另有 `.smDot[hidden]` 收住",
   "src/frontend/ui/status-messages.ts:58": "同上 —— 有没看过的出错提示时出现",
+  "src/frontend/ui/views/agent-window.ts:235": "agent 窗口的「↓ 新内容」（kit 按钮，挂查看器的 `svPill`；`svPill[hidden]` 有 `display: none`）—— 往上翻着又读到新东西时出现",
   // ⚠ `606 → 614`：我在这份文件上方加了一段注释，**行号就漂了**。
   //    这条登记按**裸行号**做键 —— 那是它的固有脆弱：住址没变、内容没变，只因为
   //    上面多了几行就要来改一次。纪律 4 说的是同一件事
@@ -548,6 +549,11 @@ const STATE_CLASS_UNRESOLVED: Readonly<Record<string, string>> = {
     "图标件：svg 元素的 `className` 不是串、只能走 classList；`s.icon` 是 CSS Modules 哈希名，与 `data-*` 撞不了名",
   "src/frontend/ui/tab-bar-drag.ts · classList.toggle(cls, on)":
     "拖拽落点标记只动新旧两个（P3）：`cls` 是 `drop-before` / `drop-onto` 之一（同文件的常量），不是一个状态名的载体选择",
+  "src/frontend/ui/cards/brief.ts · classList.add(s.briefMore)":
+    "CSS Modules（`brief.module.css`）：给 kit 按钮挂「展开全部」的版位类；哈希过的类名，不是状态名（收起与否走 `data-clamped`）",
+  "src/frontend/ui/views/agent-window.ts · classList.add(s.awMark)": "CSS Modules（`agent-window.module.css`）：给 kit 徽标挂状态标记的版位类；状态走 `data-state`",
+  "src/frontend/ui/views/agent-window.ts · classList.add(s.awWhyAct)": "同上（说明里的［刷新］，kit 按钮）",
+  "src/frontend/ui/views/agent-window.ts · classList.add(sv.svPill)": "CSS Modules（`session-viewer.module.css`）：「↓ 新内容」与查看器同一个版位类；哈希过的类名，不是状态名",
   "src/frontend/ui/usage-hud.ts · classList.add(s.hudChip)":
     "CSS Modules（`usage-hud.module.css`）：`s.hudChip` 是构建时哈希过的类名（数字等宽那一条），不是状态名；预警态走 kit chip 的 `data-intent`",
   "src/frontend/ui/views/history-rows.ts · classList.add(s.hvDot)":

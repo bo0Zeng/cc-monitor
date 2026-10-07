@@ -4,6 +4,7 @@
 import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { defaultWorld } from "../fake/world";
+import { emit } from "@tauri-apps/api/event";
 import { click, mainReady, openTab, waitFor, sleep } from "./helpers";
 
 const ALL_TABS = 7;
@@ -49,6 +50,14 @@ export const DRAWER_SCENES: Scene[] = [
     await waitFor("#bottom-drawer:not([hidden])");
     await click(".status-agents");
     await waitFor("#bottom-drawer .agent-row");
+    await sleep(500);
+  }),
+  scene("drawer-agents-opened", "底部抽屉 · agent · 点过的行标「窗口已开」", "点一行开了它自己的窗口：那一行状态字左边多一个「窗口已开」，派出它的那张卡同一个位置也标上", async () => {
+    await mainReady(ALL_TABS);
+    await click(".status-agents");
+    await waitFor("#bottom-drawer .agent-row");
+    await emit("agent-window", { sessionId: defaultWorld().sessions[0].sid, run: "agent-a2", open: true });
+    await waitFor('#bottom-drawer [data-role="window-open"]');
     await sleep(500);
   }),
   scene("drawer-empty", "底部抽屉 · 切到没有任务的会话", "抽屉开着切标签页：照开，页里写空态（不藏），页签退成页名", async () => {

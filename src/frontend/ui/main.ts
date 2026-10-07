@@ -29,7 +29,15 @@ import { loadTheme } from "./theme";
 import { SETTINGS_APPLIED_EVENT } from "./settings";
 import { setResumeInTmux } from "./resume-defaults";
 import { OPEN_ACCOUNT_PANEL_EVENT, RESYNC_DONE_EVENT, type OpenAccountPanel } from "./settings/events";
-import { SWITCH_TO_SESSION_EVENT, type SwitchToSession } from "./window-events";
+import {
+  AGENT_WINDOW_EVENT,
+  AGENT_WINDOWS_ASK_EVENT,
+  SHOW_RUN_CARD_EVENT,
+  SWITCH_TO_SESSION_EVENT,
+  type AgentWindowSaid,
+  type ShowRunCard,
+  type SwitchToSession,
+} from "./window-events";
 import { listen } from "@tauri-apps/api/event";
 import { HistoryView } from "./views/history";
 import { CcBusView } from "./views/cc-bus-view";
@@ -186,10 +194,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   const mainDrawer = new MainDrawer(tasksPanel, agentsPanel, terminalPage, () => (document.getElementById("app")?.clientHeight ?? window.innerHeight) - status.getBoundingClientRect().height);
   mainDrawer.dock.el.id = "bottom-drawer";
   document.getElementById("app")?.insertBefore(mainDrawer.dock.el, status);
-  // 消息流里 agent 事件条的「打开窗口 ›」：把那个 agent 摆到眼前（抽屉 agent 页里它那一行的时间线）。
+  // 消息流里 agent 事件条的「打开窗口 ›」· 派出卡的卡头：开那个子运行自己的窗口（已开着 ⇒ 拉到前面）。
   document.addEventListener(REVEAL_RUN_EVENT, (e) => {
-    const run = (e as CustomEvent<{ run?: unknown }>).detail?.run;
-    if (typeof run === "string") agentsPanel.reveal(run);
+    const d = (e as CustomEvent<{ run?: unknown; tool?: unknown }>).detail;
+    const sid = tabs.activeSessionId();
+    if (sid === null) return;
+    if (typeof d?.run === "string") void tabs.openRunWindow(sid, { run: d.run });
+    else if (typeof d?.tool === "string") void tabs.openRunWindow(sid, { tool: d.tool });
   });
 
   // 「上下文」chip：当前会话最新一轮占上限多少（后端定上限）；点开看用量与上限来源。
@@ -457,9 +468,20 @@ window.addEventListener("DOMContentLoaded", async () => {
   void listen<{ origin: string }>(RESYNC_DONE_EVENT, (e) => void tabs.flagPinsWithoutRecord(e.payload.origin));
   // 任何窗口起会话之后交过来的「等它」都在这里收（主窗口订着每台的会话流）。
   bindLaunchArrivals();
-  // 独立查看窗里点［切过去］⇒ 主窗口拉到前面、切到那个会话的标签页。
+  // 独立查看窗里点［切过去］· agent 窗口路径上点会话那一段 ⇒ 主窗口拉到前面、切到那个会话的标签页。
   void listen<SwitchToSession>(SWITCH_TO_SESSION_EVENT, (e) => {
     tabs.switchTo(e.payload.sessionId);
+    const w = getCurrentWindow();
+    void w.unminimize().then(() => w.setFocus()).catch(() => {});
+  });
+  // agent 窗口开了 / 关了 ⇒ 面板那一行与派出卡标「窗口已开」；主窗口（重新载入之后）先问一次哪些开着。
+  void listen<AgentWindowSaid>(AGENT_WINDOW_EVENT, (e) => tabs.setRunWindow(e.payload.sessionId, e.payload.run, e.payload.open)).then(() =>
+    emit(AGENT_WINDOWS_ASK_EVENT, {}).catch(() => {}),
+  );
+  // agent 窗口里「回到派出它的地方」（主会话派的）⇒ 主窗口拉到前面、切到那个会话、滚到那张派出卡。
+  void listen<ShowRunCard>(SHOW_RUN_CARD_EVENT, (e) => {
+    if (e.payload.in !== null) return;
+    tabs.showRunCard(e.payload.sessionId, e.payload.tool);
     const w = getCurrentWindow();
     void w.unminimize().then(() => w.setFocus()).catch(() => {});
   });

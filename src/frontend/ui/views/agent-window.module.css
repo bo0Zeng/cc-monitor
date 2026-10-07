@@ -164,10 +164,6 @@
     font-size: var(--font-size-small);
   }
 
-  .awEnd[hidden] {
-    display: none;
-  }
-
   .awEndHead {
     display: flex;
     align-items: center;

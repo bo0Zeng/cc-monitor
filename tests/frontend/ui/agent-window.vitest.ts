@@ -199,6 +199,26 @@ describe("agent 窗口", () => {
     }
   });
 
+  it("孙 agent 回到这扇窗：派出它的那张卡闪一下；卡还没读到 ⇒ 读到了再闪", async () => {
+    const agentCall = {
+      message: {
+        type: "assistant",
+        uuid: "c9",
+        timestamp: "2026-10-01T10:02:00Z",
+        message: { role: "assistant", content: [{ type: "tool_use", id: "t9", name: "Spawn", input: {} }], model: "m", usage: null },
+        toolCards: { t9: "agent" },
+        childRuns: { t9: { label: "孙", kind: "Explore" } },
+      },
+    };
+    h.pages = [{ rows: [] }, { rows: [agentCall] }];
+    const { w, root } = await open();
+    w.showCard("t9");
+    expect(root.querySelector('[data-role="run-card"]')).toBeNull();
+    frame([RUN]);
+    await settle();
+    expect(root.querySelector('[data-role="run-card"]')?.classList.contains("search-hit-flash")).toBe(true);
+  });
+
   it("回到派出它的地方：主会话派的 ⇒ 交主窗口滚到那张派出卡", async () => {
     h.pages = [{ rows: [] }, { rows: [] }];
     const { root } = await open();

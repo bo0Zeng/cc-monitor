@@ -725,6 +725,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/acct-session.module.css": { stacked: true, why: "换号条 · 提示条：类经小工具函数挂，量具认不出挂到哪，按「叠」算（实际只挂自己的哈希类）" },
   "src/frontend/ui/tab-quota.module.css": { stacked: false, why: "tab 标题后 `✕ 5h` 那一格：只挂自己的哈希类（不叠全局类）" },
   "src/frontend/ui/views/history.module.css": { stacked: true, why: "历史页根上同时挂全局 `history-view`、搜索框挂 `history-search`（只当截图 / 端到端找它的钩子，全局 CSS 里没有这两条）" },
+  "src/frontend/ui/cards/run-card.module.css": { stacked: false, why: "派出卡（`cards/subagent.ts`）：卡 / 卡头 / 结果只挂自己的哈希类（里面的徽标与图标是 kit 的哈希类）" },
   "src/frontend/ui/cards/brief.module.css": { stacked: false, why: "派活的那段话（`cards/brief.ts`）：框 / 抬头 / 正文只挂自己的哈希类（收起与否走 `data-clamped`）" },
   "src/frontend/ui/views/agent-window.module.css": { stacked: false, why: "agent 窗口（`views/agent-window.ts`）：标题区 · 说明 · 小片 · 结束线只挂自己的哈希类；滚动容器挂全局 `.stream`，不叠这些类" },
   "src/frontend/ui/live-card.module.css": { stacked: false, why: "活卡（`live-card-view.ts` 画）：卡 / 顶上那行 / 正文只挂自己的哈希类（不叠全局类）" },

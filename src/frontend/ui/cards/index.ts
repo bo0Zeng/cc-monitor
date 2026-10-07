@@ -23,7 +23,7 @@ import { buildCompactSummaryCard } from "./compact";
 import { buildAgentBar, buildCoordinatorBar, buildInterruptLine, buildNoticeLine, buildPeerBar } from "./speaker-bar";
 import { drawsCard } from "../speaker";
 import { buildBriefCard } from "./brief";
-import { buildAgentCard } from "./subagent";
+import { buildAgentCard, settleRunCard } from "./subagent";
 import { buildDiffBody } from "./diff";
 import { buildInteractiveCard, settleInteractive } from "./interactive";
 import type { Pasted } from "../generated/Pasted";
@@ -418,7 +418,7 @@ function updateToolGroupSummary(group: ToolGroup): void {
   const count = group.count;
   const since = formatTimestampShort(group.startedAt);
   const failed = group.body.querySelectorAll(":scope > .block-has-error, :scope > .block-tool-result.block-error").length;
-  const agents = group.body.querySelectorAll(":scope > .block-agent").length;
+  const agents = group.body.querySelectorAll(':scope > [data-role="run-card"]').length;
   group.summary.textContent =
     failed > 0 && agents > 0
       ? copyText("cards.toolGroup.summaryBoth", { count, failed, agents, since })
@@ -547,10 +547,11 @@ function renderBlock(
       const step = facts.steps[block.id];
       ctx.toolUseNames.set(block.id, { name: block.name, card, step, at: facts.at || undefined });
 
-      // 卡型是那台后端判的（`toolCards`）；派出子运行的那次调用 → 折叠卡，展开是那个子运行的时间线（按运行读）
+      // 卡型是那台后端判的（`toolCards`）；派出子运行的那次调用 → 派出卡（卡头点了开那个子运行自己的窗口）
       if (card === "agent") {
-        const runCard = buildAgentCard(block.id, block.name, runs[block.id], ctx, renderMessage);
+        const runCard = buildAgentCard(block.id, block.name, runs[block.id]);
         ctx.runCards?.set(block.id, runCard);
+        ctx.toolUseElements.set(block.id, runCard); // 派出那一方拿到的那次结果收进这张卡（`settleRunCard`）
         return runCard;
       }
       // issue #21：交互等待工具 → 默认展开的提问卡 / plan 卡（用户在被等着，
@@ -806,6 +807,8 @@ function injectOrBuildToolResult(
     : "";
 
   const host = ctx.toolUseElements.get(block.tool_use_id);
+  // 派出子运行的那次调用：交回的结果 / 报错收进派出卡（可展开）。
+  if (host && settleRunCard(host, text, block.is_error === true)) return null;
   // 提问 / 计划答了之后（B7）：后端读出了答了什么 ⇒ 卡上写结果，不印 Claude Code 的英文原句。
   const answered = facts.results[block.tool_use_id];
   if (host && answered && (host.classList.contains("block-ask") || host.classList.contains("block-plan"))) {

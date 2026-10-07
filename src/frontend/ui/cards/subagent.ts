@@ -1,95 +1,125 @@
 /**
  * **派出子运行的那张工具卡**（卡型 `agent` 由那台后端判，随记录成品的 `toolCards` 带来）。
  *
- * 标题用后端给的通用标签（记录成品的 `childRuns`：标签 ＋ 类别），不读工具入参；展开就是那个子运行的时间线
- * （`run-timeline.ts`，按运行读、与主运行同一套渲染器）。子运行收场后状态收到这张卡上（`markRunCard`）。
+ * 卡头一整行：状态图标 · 类别 · 标签 ｜「窗口已开」· 状态 · 用时 · ↗；点卡头 ⇒ 开那个子运行自己的窗口（发 [`REVEAL_RUN_EVENT`]，
+ * 宿主接：主窗口 / agent 窗口）。卡里不就地展开时间线；派出那一方拿到的那次结果（交回的结果 / 报错）收在卡里、可展开
+ * （[`settleRunCard`]，结果那一条到了时由渲染管线交来）。
+ * 标题用后端给的通用标签（记录成品的 `childRuns`：标签 ＋ 类别），不读工具入参；状态 · 时刻只读运行表（[`markRunCard`]）。
  */
-import type { JsonlRecord, RenderContext, RenderResult } from "./index";
 import type { ChildRunTag } from "../generated/ChildRunTag";
+import type { RunInfo } from "../generated/RunInfo";
 import type { RunState } from "../generated/RunState";
-import { RunTimeline } from "../run-timeline";
-import { runStateText } from "../runs";
+import { runLastText, runStateIcon, runStateText } from "../runs";
 import { copyText } from "../copy-table";
+import { fmtDur } from "../quota-lines";
+import { icon } from "../kit/icon";
+import { tag } from "../kit/badge";
+import { REVEAL_RUN_EVENT } from "./speaker-bar";
+import s from "./run-card.module.css";
 
-/** 卡标题：`<类别> · <标签>`（没有类别 ⇒ 只有标签；连标签都没有 ⇒ 工具名）。 */
-function titleOf(tag: ChildRunTag | undefined, toolName: string): string {
-  const label = tag && tag.label.length > 0 ? tag.label : toolName;
-  return tag?.kind ? copyText("runCard.summary.text", { kind: tag.kind, label }) : copyText("runCard.summary.bare", { label });
-}
-
-/**
- * 构造派出子运行的那张卡。
- * @param toolId       父侧工具调用 id（后端按它找派出链接 ⇒ 子运行）
- * @param toolName     工具名（没有标签时的退路，只作显示）
- * @param tag          后端给的通用标签
- * @param ctx          含 parentPath（父记录路径）与 origin
- * @param renderChild  主渲染入口（子运行的记录用同一套画）
- */
-export function buildAgentCard(
-  toolId: string,
-  toolName: string,
-  tag: ChildRunTag | undefined,
-  ctx: RenderContext,
-  renderChild: (rec: JsonlRecord, ctx: RenderContext) => RenderResult,
-): HTMLElement {
-  const d = document.createElement("details");
-  d.className = "block-collapsible block-agent";
-  const title = titleOf(tag, toolName);
-  const state: CardState = { title, run: null, timeline: null };
-  cardState.set(d, state);
-
-  const s = document.createElement("summary");
-  s.className = "block-summary";
-  s.textContent = title;
-  d.appendChild(s);
-
-  d.addEventListener("toggle", () => {
-    if (!d.open) return;
-    // 建过 ⇒ 再展开时续读一次（收起期间子运行可能又做了事；上次读失败的也在这里重试）。
-    if (state.timeline) {
-      void state.timeline.refresh();
-      return;
-    }
-    const run = state.run;
-    const nested: RenderContext = {
-      parentPath: ctx.parentPath,
-      speaker: ctx.speaker ?? null,
-      origin: ctx.origin,
-      toolUseNames: new Map(),
-      toolUseElements: new Map(),
-      pendingToolResults: new Map(),
-    };
-    const timeline = new RunTimeline({
-      origin: ctx.origin,
-      parent: ctx.parentPath,
-      which: run ? { run, tool: toolId } : { tool: toolId },
-      render: (rec) => renderChild(rec, nested),
-    });
-    state.timeline = timeline;
-    d.appendChild(timeline.element);
-    void timeline.refresh();
-  });
-  return d;
-}
-
-/** 卡上记着的：标题（收场后在它后面接状态）· 运行表说的是哪个子运行（展开时按它读；还没对上 ⇒ 按工具调用 id 读）· 展开过的时间线。 */
+/** 卡上记着的：标签 · 运行表说的是哪个子运行（还没对上 ⇒ `null`，点卡头按工具调用 id 找）· 那几格。 */
 interface CardState {
-  title: string;
+  label: string;
   run: string | null;
-  timeline: RunTimeline | null;
+  head: HTMLElement;
+  icon: HTMLElement;
+  state: HTMLElement;
+  opened: HTMLElement;
+  sub: HTMLElement;
 }
 const cardState = new WeakMap<HTMLElement, CardState>();
 
-/** 子运行的状态收到它那张卡上（运行表给的成品：哪个子运行 · 状态）。 */
-export function markRunCard(card: HTMLElement, run: string, state: RunState): void {
+/**
+ * 构造派出子运行的那张卡。
+ * @param toolId    父侧工具调用 id（宿主按它 ⇒ 子运行）
+ * @param toolName  工具名（没有标签时的退路，只作显示）
+ * @param runTag    后端给的通用标签
+ */
+export function buildAgentCard(toolId: string, toolName: string, runTag: ChildRunTag | undefined): HTMLElement {
+  const card = document.createElement("div");
+  card.className = s.runCard;
+  card.dataset.role = "run-card";
+  card.dataset.tool = toolId;
+  const label = runTag && runTag.label.length > 0 ? runTag.label : toolName;
+
+  const head = document.createElement("button");
+  head.type = "button";
+  head.className = s.runHead;
+  head.title = copyText("agentsPanel.row.openHint");
+  const ic = document.createElement("span");
+  ic.className = s.runIcon;
+  const name = document.createElement("span");
+  name.className = s.runLabel;
+  name.textContent = label;
+  const right = document.createElement("span");
+  right.className = s.runRight;
+  // 「窗口已开」只在开着时挂进来（徽标自带 display，`hidden` 盖不住）。
+  const opened = tag(copyText("agentsPanel.row.opened"));
+  opened.title = copyText("agentsPanel.row.openedHint");
+  opened.dataset.role = "window-open";
+  const state = document.createElement("span");
+  state.dataset.role = "run-state";
+  right.append(state, icon("front", "compact"));
+  head.appendChild(ic);
+  if (runTag?.kind) head.appendChild(tag(runTag.kind));
+  head.append(name, right);
+  head.addEventListener("click", () => {
+    const run = cardState.get(card)?.run ?? undefined;
+    card.dispatchEvent(new CustomEvent(REVEAL_RUN_EVENT, { bubbles: true, detail: { run, tool: toolId } }));
+  });
+  // 「最近：…」只在跑着时挂进来。
+  const sub = document.createElement("div");
+  sub.className = s.runSub;
+  card.append(head);
+  cardState.set(card, { label, run: null, head, icon: ic, state, opened, sub });
+  return card;
+}
+
+/** 子运行的状态收到它那张卡上（运行表给的成品：哪个子运行 · 状态；有整格时再写用时与「最近：…」）。 */
+export function markRunCard(card: HTMLElement, run: string, state: RunState, info?: RunInfo): void {
   const st = cardState.get(card);
   if (!st) return;
-  const changed = st.run !== run || card.dataset.runState !== state;
-  // 展开着的时间线跟着长：在跑 ⇒ 运行表每来一帧续读一次；刚收场 ⇒ 最后读一次收尾巴。
-  if (st.timeline && (card as HTMLDetailsElement).open && (state === "running" || changed)) void st.timeline.refresh();
-  if (!changed) return;
   st.run = run;
   card.dataset.runState = state;
-  const s = card.querySelector(":scope > summary");
-  if (s) s.textContent = state === "running" ? st.title : copyText("runCard.summary.state", { title: st.title, state: runStateText(state) });
+  st.icon.dataset.state = state;
+  st.icon.textContent = runStateIcon(state);
+  const took =
+    info && state !== "running" && state !== "unknown" && info.started_ms !== undefined && info.ended_ms !== undefined
+      ? copyText("agentWindow.facts.took", { dur: fmtDur((info.ended_ms - info.started_ms) / 1000) })
+      : null;
+  st.state.textContent = took ? [runStateText(state), took].join(copyText("kit.text.sep")) : runStateText(state);
+  const last = info && state === "running" ? runLastText(info, null) : null;
+  if (last === null) st.sub.remove();
+  else {
+    st.sub.textContent = copyText("agentsPanel.row.last", { last });
+    if (!st.sub.isConnected) st.head.after(st.sub);
+  }
+}
+
+/** 这个子运行的窗口开着没有（卡头「窗口已开」）。 */
+export function markRunWindow(card: HTMLElement, open: boolean): void {
+  const st = cardState.get(card);
+  if (!st) return;
+  if (open && !st.opened.isConnected) st.state.before(st.opened);
+  else if (!open) st.opened.remove();
+  st.head.title = open ? copyText("agentsPanel.row.openedHint") : copyText("agentsPanel.row.openHint");
+}
+
+/** 派出那一方拿到的那次结果：交回的结果（几个字）或报错，收在卡里、可展开。是这种卡 ⇒ `true`。 */
+export function settleRunCard(card: HTMLElement, text: string, failed: boolean): boolean {
+  const st = cardState.get(card);
+  if (!st) return false;
+  for (const old of card.querySelectorAll('[data-role="run-result"]')) old.remove();
+  const d = document.createElement("details");
+  d.className = s.runResult;
+  d.dataset.role = "run-result";
+  d.dataset.failed = failed ? "1" : "0";
+  const sum = document.createElement("summary");
+  sum.textContent = failed ? copyText("runCard.result.failed") : copyText("runCard.result.done", { n: [...text].length });
+  const body = document.createElement("pre");
+  body.className = s.runResultBody;
+  body.textContent = text;
+  d.append(sum, body);
+  card.appendChild(d);
+  return true;
 }

@@ -256,16 +256,12 @@ describe("底部抽屉：任务 · agent 共用一个；看得见 ⇔ 在 Esc �
     drawer.dock.close();
   });
 
-  it("页签上 ← → 换页；「打开窗口 ›」开到 agent 页", () => {
+  it("页签上 ← → 换页", () => {
     const { tasks, agents, drawer } = mountPanels();
     tasks.setSession("s", [task("1")]);
     agents.setSession("s", [run("r1")]);
     drawer.toggle("tasks");
     drawer.dock.el.querySelector("[role=tablist]")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
-    expect(open(drawer)).toBe("agents");
-    drawer.toggle("agents");
-    Element.prototype.scrollIntoView ??= () => {};
-    agents.reveal("r1");
     expect(open(drawer)).toBe("agents");
     drawer.dock.close();
   });

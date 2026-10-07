@@ -15,7 +15,8 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { copyText } from "../copy-table";
 import { renderMessage, type JsonlRecord, type RenderContext } from "../cards";
-import { markRunCard } from "../cards/subagent";
+import { markRunCard, markRunWindow } from "../cards/subagent";
+import { REVEAL_RUN_EVENT } from "../cards/speaker-bar";
 import { speakerNameOf } from "../agent-profile";
 import { followSession, type FollowEvent } from "../events";
 import { fetchList, type HistoryRow } from "../history-list-reads";
@@ -60,6 +61,8 @@ export class AgentWindow {
   private readonly why: HTMLElement;
   private readonly kids: HTMLElement;
   private readonly end: HTMLElement;
+  /** 记录那一段（结束线跟在它后面）。 */
+  private readonly wrap: HTMLElement;
   private readonly pill: HTMLButtonElement;
   private readonly crumbs: HTMLElement;
   private readonly status: HTMLElement;
@@ -78,6 +81,8 @@ export class AgentWindow {
   /** 要滚到的派出卡（卡还没读到时先记着）。 */
   private pendingCard: string | null = null;
   private readonly ctx: RenderContext;
+  /** 这个会话里开着窗口的那几个子运行（各窗口开 / 关时广播的）。 */
+  private readonly windows = new Set<string>();
 
   constructor(
     private readonly sid: string,
@@ -113,6 +118,8 @@ export class AgentWindow {
     this.kids = document.createElement("div");
     this.end = document.createElement("div");
     this.end.className = s.awEnd;
+    this.wrap = document.createElement("div");
+    this.wrap.className = s.awTimeline;
     this.ctx = {
       parentPath: "",
       speaker: null,
@@ -133,16 +140,16 @@ export class AgentWindow {
       size: "compact",
       onClick: () => {
         this.stream.scrollToBottom();
-        this.pill.hidden = true;
+        this.showPill(false);
       },
     });
     this.pill.classList.add(sv.svPill);
     this.pill.dataset.role = "new-content";
-    this.pill.hidden = true;
+    this.showPill(false);
     pillRow.appendChild(this.pill);
     view.appendChild(pillRow);
     this.scrollEl.addEventListener("scroll", () => {
-      if (this.stream.stuckToBottom) this.pill.hidden = true;
+      if (this.stream.stuckToBottom) this.showPill(false);
     }, { passive: true });
     parts.main.replaceChildren(view);
 
@@ -151,6 +158,12 @@ export class AgentWindow {
     session.dataset.role = "session";
     parts.foot.className = s.awFoot;
     parts.foot.replaceChildren(this.status, session);
+    // 消息流里它派出的那几张卡：点卡头 ⇒ 开那个孙 agent 自己的窗口。
+    document.addEventListener(REVEAL_RUN_EVENT, (e) => {
+      const d = (e as CustomEvent<{ run?: unknown; tool?: unknown }>).detail;
+      const r = this.runs.find((x) => (typeof d?.run === "string" ? x.run === d.run : x.tool === d?.tool));
+      if (r) void this.open(r);
+    });
   }
 
   /** 读这个会话的那一行、订它的流、读第一页。 */
@@ -178,10 +191,8 @@ export class AgentWindow {
       which: { run: this.run },
       render: (rec: JsonlRecord) => renderMessage(rec, this.ctx),
     });
-    const wrap = document.createElement("div");
-    wrap.className = s.awTimeline;
-    wrap.appendChild(this.timeline.element);
-    this.stream.contentElement.append(wrap, this.end);
+    this.wrap.appendChild(this.timeline.element);
+    this.stream.contentElement.append(this.wrap);
     this.paint();
     await this.announce();
     const sub = await followSession(this.origin, this.sid, (e) => this.onFollow(e));
@@ -215,8 +226,13 @@ export class AgentWindow {
     this.markKids();
     this.loaded = true;
     if (!this.placed) this.place();
-    else if (t.body.childElementCount > before && !this.stream.stuckToBottom) this.pill.hidden = false;
+    else if (t.body.childElementCount > before && !this.stream.stuckToBottom) this.showPill(true);
     if (this.pendingCard) this.showCard(this.pendingCard);
+  }
+
+  /** 「↓ 新内容」露不露（人不在底部、又读到了新东西）。 */
+  private showPill(on: boolean): void {
+    this.pill.hidden = !on;
   }
 
   /** 进来时停在哪：在跑的停在最底（跟着长），收场的停在最上（从派活的那段话读起）。 */
@@ -246,12 +262,14 @@ export class AgentWindow {
     }
   }
 
-  /** 它派出的那几张卡标上状态（运行表里 `tool` 对得上的）。 */
+  /** 它派出的那几张卡标上状态与「窗口已开」（运行表里 `tool` 对得上的）。 */
   private markKids(): void {
     for (const r of this.runs) {
       if (r.tool === undefined) continue;
       const card = this.runCards.get(r.tool);
-      if (card) markRunCard(card, r.run, r.state);
+      if (!card) continue;
+      markRunCard(card, r.run, r.state, r);
+      markRunWindow(card, this.windows.has(r.run));
     }
   }
 
@@ -355,10 +373,9 @@ export class AgentWindow {
     // 结束线
     const e = endOf(r, now);
     if (e === null || !this.info) {
-      this.end.replaceChildren();
-      this.end.hidden = true;
+      this.end.remove();
     } else {
-      this.end.hidden = false;
+      if (this.wrap.isConnected) this.wrap.after(this.end);
       this.end.dataset.state = r.state;
       const head = document.createElement("div");
       head.className = s.awEndHead;
@@ -444,6 +461,12 @@ export class AgentWindow {
   private async announce(): Promise<void> {
     const said = (open: boolean): Promise<void> => emit(AGENT_WINDOW_EVENT, { sessionId: this.sid, run: this.run, open } satisfies AgentWindowSaid).catch(() => {});
     await listen(AGENT_WINDOWS_ASK_EVENT, () => void said(true));
+    await listen<AgentWindowSaid>(AGENT_WINDOW_EVENT, (ev) => {
+      if (ev.payload.sessionId !== this.sid) return;
+      if (ev.payload.open) this.windows.add(ev.payload.run);
+      else this.windows.delete(ev.payload.run);
+      this.markKids();
+    });
     await listen<ShowRunCard>(SHOW_RUN_CARD_EVENT, (ev) => {
       if (ev.payload.sessionId !== this.sid || ev.payload.in !== this.run) return;
       const w = getCurrentWindow();
@@ -477,6 +500,7 @@ export async function bootstrapAgentWindow(sid: string, run: string, origin: Ori
     return;
   }
   const topbar = document.createElement("div");
+  topbar.className = "viewer-topbar";
   app.insertBefore(topbar, app.firstChild);
   const w = new AgentWindow(sid, run, origin, { topbar, main, foot });
   await w.start();
