@@ -825,7 +825,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p8p-agent-facts：history-facts 带 agent（后端按记录认）；画像多 speakerName（LaunchFace.speaker_name）。
 ///
 /// p8q-base-url-face：ccm 找上游的变量名由那一家的上游格给（Codex 不注入也不清 ANTHROPIC_BASE_URL）；项目级 MCP 足迹申报归 Claude 足迹面。
-pub const BUILD_ID: &str = "p8q-base-url-face";
+///
+/// p8r-data-report：新帧命令 data-report（足迹重排成改过你的文件 · 要装 · 有没有 tmux · 角标件数）。
+pub const BUILD_ID: &str = "p8r-data-report";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
