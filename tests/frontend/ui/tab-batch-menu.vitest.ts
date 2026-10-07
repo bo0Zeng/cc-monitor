@@ -19,7 +19,7 @@ import { LOCAL_ORIGIN, originFromWire } from "../../../src/frontend/ui/ipc/origi
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 
 const tab = (sid: string, live: boolean, extra: Partial<Tab> = {}): Tab =>
-  ({ sessionId: sid, origin: LOCAL_ORIGIN, title: `T-${sid}`, aiTitle: `T-${sid}`, projectDir: null, kind: null, bgName: null, forkedFromSessionId: null, state: live ? LIVE : ENDED, pinned: false, group: null, ...extra }) as Tab;
+  ({ sessionId: sid, origin: LOCAL_ORIGIN, title: `T-${sid}`, aiTitle: `T-${sid}`, projectDir: null, background: false, bgName: null, forkedFromSessionId: null, state: live ? LIVE : ENDED, pinned: false, group: null, ...extra }) as Tab;
 
 let tabs: Tab[];
 let host: TabBatchHost;

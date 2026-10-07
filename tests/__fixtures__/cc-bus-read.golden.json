@@ -76,7 +76,7 @@
       "truncated": false
     },
     "codes": [
-      "invalid_args",
+      "bad_args",
       "bad_id",
       "not_installed",
       "timed_out",

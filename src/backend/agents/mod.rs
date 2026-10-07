@@ -402,6 +402,23 @@ pub(crate) struct LocalFace {
     pub(crate) cmdline_may_be_agent: fn(&str) -> bool,
     /// 家目录 ⇒ 任务列表的根（其下每个会话一个目录）。`None` ＝ 这一家没有任务列表。
     pub(crate) tasks_dir: Option<fn(&Path) -> PathBuf>,
+    /// 进程状态文件（已解析）⇒ 是不是后台会话（不是人坐在终端里对话的那种，不成 tab）。
+    pub(crate) background_of: fn(&serde_json::Value) -> bool,
+    /// 进程状态文件 ⇒ 此刻在干什么；说不清 ⇒ `None`。
+    pub(crate) activity_of: fn(&serde_json::Value) -> Option<SessionActivity>,
+}
+
+/// 一条活会话此刻在干什么（与哪一家无关的几态；适配层从那一家的进程状态翻过来，翻不出 ⇒ 不给）。
+/// 线上 `session_added.activity` · `session_status.activity` 送它。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionActivity {
+    /// 一轮在跑。
+    Working,
+    /// 在等人（批准 · 回答 · 弹窗）。
+    NeedsYou,
+    /// 闲着，等下一句输入。
+    Idle,
 }
 
 /// 一条子运行记录说了什么：属于哪个运行 · 是不是它的终局 · 它做的那件事（行上「最近：…」）·
@@ -1030,6 +1047,16 @@ pub fn home_at(config_dir: Option<&Path>, from_env: bool) -> PathBuf {
 /// 没有那一家 ⇒ 家目录下一个不会有 pidfile 的位置（读出零份）。判活与账号归属读同一处。
 pub(crate) fn pidfile_dir(home: &Path) -> PathBuf {
     tree_local_face().map_or_else(|| home.join(NO_PIDFILES), |f| (f.pidfile_dir)(home))
+}
+
+/// 后端盯着的那一家的进程状态文件 `v` 说这是后台会话（[`LocalFace::background_of`]）。没有那一家 ⇒ `false`。
+pub(crate) fn pidfile_background(v: &serde_json::Value) -> bool {
+    tree_local_face().is_some_and(|f| (f.background_of)(v))
+}
+
+/// 后端盯着的那一家的进程状态文件 `v` 说此刻在干什么（[`LocalFace::activity_of`]）。没有那一家 / 说不清 ⇒ `None`。
+pub(crate) fn pidfile_activity(v: &serde_json::Value) -> Option<SessionActivity> {
+    tree_local_face().and_then(|f| (f.activity_of)(v))
 }
 
 /// 注册表里没有判活那一家时 [`pidfile_dir`] 指的那个名字（不建、不写，只读出零份）。

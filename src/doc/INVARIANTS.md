@@ -1110,7 +1110,7 @@ monitor 的每一条起会话路径（新起 · resume · 换号重启 · 分叉
    就是「已有会话」那一条 `gate_rules::existing_tmux_name_issue`（空 · 控制符 · 视觉欺骗字符，§47 ②）。
    先前「只拒空」有两个住址（界面 `tmux-control.ts` 的一个谓词，抓屏 · 送键 · 杀会话三条共用 · monitor `tmux.rs` 的私有谓词），
    都是它的真子集：界面那一份删了（TS 零 —— 空目标原样交给后端，由后端入口拒：
-   `src/backend/control/kill.rs::parse_name`（kill · capture 共用）· `src/backend/control/launch.rs::parse_request`，`invalid_args`，
+   `src/backend/control/kill.rs::parse_name`（kill · capture 共用）· `src/backend/control/launch.rs::parse_request`，`bad_args`，
    界面照各动作那句「后端不接受这个会话名」带后端原话说）；monitor 那一份 Gate 1 前检（只剩跨轨锚点在用）
 删了 —— monitor 一道门都没有。后端那两个入口并成 `kill.rs::admit_existing_name` → 同一条 `gate_rules`。
    空 target（`=:` 会被 tmux 解析成「当前会话」）是唯一真正危险的默认值。**不额外收紧 glob / 元字符**——

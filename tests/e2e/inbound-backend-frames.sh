@@ -328,7 +328,7 @@ else
   send '{"id":"e2e-launch-5","cmd":"launch","args":{"mode":"attach-only","name":"x","payload":"y"}}'
   if wait_for '"id":"e2e-launch-5"'; then
     R="$(grep -F '"id":"e2e-launch-5"' "$OUT" | head -1)"
-    if printf '%s' "$R" | grep -qF 'invalid_args'; then ok "attach-only 被拒（平面 ③ 不归后端）"; else
+    if printf '%s' "$R" | grep -qF 'bad_args'; then ok "attach-only 被拒（平面 ③ 不归后端）"; else
       bad "attach-only 居然被接受了：$R"
     fi
   else

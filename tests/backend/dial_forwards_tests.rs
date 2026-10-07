@@ -60,7 +60,7 @@ async fn the_spec_fence_stands_before_any_lookup_or_dial() {
         )
         .unwrap_err()
         .0,
-        "invalid_args"
+        "bad_args"
     );
 }
 

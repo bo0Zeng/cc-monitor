@@ -62,7 +62,7 @@ function previewRefusals(target: string): Refusals {
         case "capture_failed":
           return copyText("terminalReads.preview.failed", { target, detail });
         case "bad_target":
-        case "invalid_args":
+        case "bad_args":
           return copyText("terminalReads.preview.badTarget", { target, detail });
         case "not_known":
           return copyText("terminalReads.preview.notKnown", { target, detail });

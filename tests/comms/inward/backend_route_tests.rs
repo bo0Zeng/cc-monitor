@@ -52,7 +52,7 @@ fn only_the_errors_that_prove_nothing_was_sent_allow_a_fallback() {
             data: None,
         },
         CallError::Remote {
-            code: "invalid_args".into(),
+            code: "bad_args".into(),
             message: "未知 mode `attach-only`".into(),
             data: None,
         },

@@ -43,7 +43,7 @@ fn said(e: &CallError) -> String {
 }
 
 /// 上行一块的**步长**（`poll_write` 一次收多少；多出来的留给调用方下一次写，不丢不截）。
-/// **与后端 `dial::link::LINK_CHUNK_BYTES` 同一个数** —— 那边它是上限（超了 `invalid_args`），
+/// **与后端 `dial::link::LINK_CHUNK_BYTES` 同一个数** —— 那边它是上限（超了 `bad_args`），
 /// 这边按它切就永远打不到那条上限（`link_mux_tests::the_chunk_cap_is_the_same_number_on_both_sides`
 /// 从后端源码现抠着对拍）。
 pub(crate) const LINK_STEP: usize = 32 * 1024;

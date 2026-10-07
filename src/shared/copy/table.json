@@ -10116,15 +10116,16 @@
       "zh": "没读到 ~/.claude/settings.json（文件不存在或读取失败）",
       "args": []
     },
-    "rsDriftLedger.consequence.unknownBackendToken": {
-      "kind": "body",
-      "zh": "这项功能不会被用上。多半是远端后端比 monitor 新",
-      "args": []
-    },
     "rsDriftLedger.consequence.unknownSessionKind": {
       "kind": "body",
       "zh": "该会话被当作后台：关掉「显示后台会话」就完全看不见它",
       "args": []
+    },
+    "rsDriftLedger.consequence.unknownSessionStatus": {
+      "kind": "body",
+      "zh": "活动灯按「在运行」显示。多半是 Claude Code 加了新的会话状态",
+      "args": [],
+      "limited": ["Claude Code"]
     },
     "rsDriftLedger.consequence.knownTypeParse": {
       "kind": "body",

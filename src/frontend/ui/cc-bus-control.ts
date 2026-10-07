@@ -127,7 +127,7 @@ function sendRefusals(id: string): Refusals {
   return {
     byCode(code, detail) {
       switch (code) {
-        case "invalid_args":
+        case "bad_args":
           return copyText("ccBus.send.invalidArgs", { id, detail });
         case "bad_id":
           return copyText("ccBus.send.badId", { detail });
@@ -183,7 +183,7 @@ function killRefusals(id: string): Refusals {
   return {
     byCode(code, detail) {
       switch (code) {
-        case "invalid_args":
+        case "bad_args":
           return copyText("ccBus.kill.invalidArgs", { id, detail });
         case "bad_id":
           return copyText("ccBus.kill.badId", { detail });
@@ -244,7 +244,7 @@ function spawnRefusals(): Refusals {
   return {
     byCode(code, detail) {
       switch (code) {
-        case "invalid_args":
+        case "bad_args":
           return copyText("ccBus.spawn.invalidArgs", { detail });
         case "bad_id":
           return copyText("ccBus.spawn.badId", { detail });
@@ -307,7 +307,7 @@ function broadcastRefusals(): Refusals {
   return {
     byCode(code, detail) {
       switch (code) {
-        case "invalid_args":
+        case "bad_args":
           return copyText("ccBus.broadcast.invalidArgs", { detail });
         case "not_installed":
           return copyText("ccBus.broadcast.notInstalled", { detail });

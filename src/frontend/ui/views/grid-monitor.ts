@@ -17,10 +17,11 @@
 import { dispatcher } from "../keybindings/registry";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import {
-  activityLightClass,
+  activityFace,
   type GridSessionSnapshot,
   type SessionPeek,
 } from "../session-status";
+import { dotLabel } from "../session-face";
 import { isLive, isResumeOnly, stateView } from "../tab-session-state";
 import { copyText } from "../copy-table";
 import { contextTokensText } from "./context-limit";
@@ -61,22 +62,21 @@ export function groupSessionsByOrigin(sessions: GridSessionSnapshot[]): OriginGr
   return groups;
 }
 
-/** 组内排序优先级：活会话先于归档；活会话内 waiting（要你操作）> busy（运行中）> idle/shell > 未知。
+/** 组内排序优先级：活会话先于归档；活会话内 等人（要你操作）> 在干活 > 闲着 > 说不清。
  *  同档保持输入序（稳定）。纯函数——不改入参，返回新数组。 */
 export function sortSessionsInGroup(sessions: GridSessionSnapshot[]): GridSessionSnapshot[] {
   const rank = (s: GridSessionSnapshot): number => {
     // 两轴：已结束（只能 resume）排最后；可重连（claude 退、tmux 在）排活会话之后、已结束之前。
     if (isResumeOnly(s.state)) return 9;
     if (s.state.liveness === "dead") return 8;
-    switch (s.activityStatus) {
-      case "waiting":
+    switch (s.activity) {
+      case "needs_you":
         return 0;
-      case "busy":
+      case "working":
         return 1;
       case "idle":
-      case "shell":
         return 2;
-      default:
+      case null:
         return 3;
     }
   };
@@ -121,7 +121,7 @@ function peekSignature(selected: GridSessionSnapshot | null, peek: SessionPeek |
     selected.cwd,
     selected.state.liveness, // 两轴都签：「状态」一格从两轴派生
     selected.state.recoverability,
-    selected.activityStatus,
+    selected.activity,
     selected.waitingFor,
     peek?.model ?? null,
     peek?.agents.length ?? 0,
@@ -162,7 +162,7 @@ function badgesInputs(s: GridSessionSnapshot): string {
     s.contextPct == null ? "" : Math.round(s.contextPct),
     s.contextPct == null && s.contextTokens != null ? contextTokensText(s.contextTokens) : "",
     s.unread,
-    s.activityStatus === "waiting" && s.waitingFor ? s.waitingFor : "",
+    s.activity === "needs_you" && s.waitingFor ? s.waitingFor : "",
   ].join("\u0000");
 }
 
@@ -198,7 +198,7 @@ function renderBadges(s: GridSessionSnapshot, badges: HTMLElement): void {
     b.title = copyText("gridMonitor.renderBadges.unread", { unread: s.unread });
     badges.appendChild(b);
   }
-  if (s.activityStatus === "waiting" && s.waitingFor) {
+  if (s.activity === "needs_you" && s.waitingFor) {
     const b = document.createElement("span");
     b.className = "grid-monitor-badge badge-waiting";
     b.textContent = copyText("gridMonitor.renderBadges.waiting", { waitingFor: s.waitingFor });
@@ -483,12 +483,13 @@ export class GridMonitorView {
       facts.appendChild(row);
     };
     if (selected.cwd) addFact(copyText("gridMonitor.fact.dir"), selected.cwd);
+    const doing = selected.activity === null ? null : dotLabel(activityFace(selected.activity).dot);
     const act =
-      selected.activityStatus === null
+      doing === null
         ? copyText("gridMonitor.renderPeek.unknown")
         : selected.waitingFor
-          ? copyText("gridMonitor.renderPeek.statusWaiting", { activityStatus: selected.activityStatus, waitingFor: selected.waitingFor })
-          : selected.activityStatus;
+          ? copyText("gridMonitor.renderPeek.statusWaiting", { activityStatus: doing, waitingFor: selected.waitingFor })
+          : doing;
     // 活着 ⇒ 活动状态；死了 ⇒ 状态名（已结束 / 可重连）。原先是「已归档 · <活动>」，死会话的活动是陈旧的。
     addFact(copyText("gridMonitor.fact.status"), stateView(selected.state).name ?? act);
     if (peek?.model) addFact(copyText("gridMonitor.fact.model"), peek.model);
@@ -579,11 +580,11 @@ export class GridMonitorView {
     // `toggle(x, 布尔)` 状态没变时不写 DOM（规范：force 与现状一致直接返回）。
     const view = stateView(s.state); // 类与灯只从两轴派生（与 tab 栏同一份）
     cell.classList.toggle("ended", view.ended);
-    cell.classList.toggle("cell-bg", s.kind !== null && s.kind !== "interactive");
+    cell.classList.toggle("cell-bg", s.background);
     cell.classList.toggle("is-selected", s.sessionId === this.selectedId); // F91b 选中高亮
 
     // 红绿灯点。audit-fixes F03.2：可重连 · 说不清的暗色灯覆写红绿黄（.live-dot.reconnectable / .unseen，同 tab-bar 语义）。
-    const light = activityLightClass(s.activityStatus);
+    const light = activityFace(s.activity).light;
     const dotClass = `live-dot${light ? ` ${light}` : ""}${view.reconnectable ? " reconnectable" : ""}${view.unseen ? " unseen" : ""}`;
     if (refs.dot.className !== dotClass) refs.dot.className = dotClass;
     if (refs.name.textContent !== s.title) refs.name.textContent = s.title;

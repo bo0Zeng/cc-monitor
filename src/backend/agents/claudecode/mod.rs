@@ -41,6 +41,7 @@ pub(crate) mod liveness;
 pub(crate) mod mcp;
 pub(crate) mod parse;
 pub mod paths;
+pub(crate) mod pidfile;
 // 回包头里的额度那一族 → 通用的额度快照。
 pub(crate) mod quota;
 pub(crate) mod records;
@@ -160,6 +161,8 @@ pub(crate) const LOCAL: super::LocalFace = super::LocalFace {
     pidfile_dir: paths::sessions_root,
     cmdline_may_be_agent: liveness::cmdline_may_be_agent,
     tasks_dir: Some(paths::tasks_root),
+    background_of: pidfile::background_of,
+    activity_of: pidfile::activity_of,
 };
 
 pub(crate) const MCP: super::McpFace = super::McpFace { read: mcp::read };

@@ -14,7 +14,7 @@
  * # 本文件做的只有四件（都是调用方那一侧的事）
  *
  * 1. **不判目标名**（`§34` Gate 1 并进后端 `control/gate_rules.rs` 的 tmux 名那一族，TS 零）：会话名原样交给后端；
- *    空目标由后端入口拒（`invalid_args`，`=:` 会被 tmux 读成「当前会话」那一格），本文件照各动作那句「后端不接受这个会话名」
+ *    空目标由后端入口拒（`bad_args`，`=:` 会被 tmux 读成「当前会话」那一格），本文件照各动作那句「后端不接受这个会话名」
  *    带上后端原话说出来。**Gate 2 / 3（身份门 · 窗口门）只在后端 `control/gate.rs`**，本文件不写第二份。
  *    （先前这里有一道「空目标就地拒、一个字节都不发」—— 那是 Gate 1 在界面的一份，删了。）
  * 2. **按形状收**：成品恰好是那几格、类型对 ⇒ 收；多一格 / 缺一格 / 类型不对 ⇒ 当成「两边版本对不上」抛，不猜。
@@ -63,7 +63,7 @@ export function killRefusals(target: string): Refusals {
   return {
     byCode(code, detail) {
       switch (code) {
-        case "invalid_args":
+        case "bad_args":
           return copyText("tmuxControl.kill.badName", { target, detail });
         case "no_tmux":
           return copyText("tmuxControl.kill.noTmux", { target, detail });
@@ -138,7 +138,7 @@ function keysRefusals(target: string): Refusals {
   return {
     byCode(code, detail) {
       switch (code) {
-        case "invalid_args":
+        case "bad_args":
           return copyText("tmuxControl.keys.badRequest", { target, detail });
         case "no_tmux":
           return copyText("tmuxControl.keys.noTmux", { target, detail });

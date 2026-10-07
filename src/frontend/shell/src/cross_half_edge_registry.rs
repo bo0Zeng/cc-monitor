@@ -257,7 +257,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "★〔SR1a 09-24 新增〕**monitor 的上行步长 == 后端一块的上限、窗口落在后端肯收的区间里** —— \
          `link_mux::tests::the_chunk_cap_is_the_same_number_on_both_sides`。两侧各写一个数（`LINK_STEP` / \
          `LINK_CHUNK_BYTES`，两棵依赖树，共享常量要一条新依赖）；失效方向：monitor 的块比后端的大 ⇒ \
-         后端对每一块回 `invalid_args`、上行整条断；窗口越出区间 ⇒ 后端拒开每一条链路。",
+         后端对每一块回 `bad_args`、上行整条断；窗口越出区间 ⇒ 后端拒开每一条链路。",
     ),
     (
         "monitor→backend",

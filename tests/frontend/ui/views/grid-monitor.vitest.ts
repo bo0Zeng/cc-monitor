@@ -26,14 +26,14 @@ const snap = (over: Partial<GridSessionSnapshot>): GridSessionSnapshot => ({
   origin: LOCAL_ORIGIN,
   cwd: null,
   state: LIVE,
-  activityStatus: null,
+  activity: null,
   waitingFor: null,
   runningAgents: 0,
   totalAgents: 0,
   contextPct: null,
   contextTokens: null,
   unread: 0,
-  kind: null,
+  background: false,
   account: null,
   ...over,
 });
@@ -62,14 +62,14 @@ describe("F91 groupSessionsByOrigin", () => {
 });
 
 describe("F91 sortSessionsInGroup", () => {
-  it("活会话先于归档；活内 waiting>busy>idle/shell>未知；同档稳定", () => {
+  it("活会话先于归档；活内 等人>在干活>闲着>说不清；同档稳定", () => {
     const sorted = sortSessionsInGroup([
       snap({ sessionId: "arch", state: ENDED }),
-      snap({ sessionId: "idle", activityStatus: "idle" }),
-      snap({ sessionId: "unknown", activityStatus: null }),
-      snap({ sessionId: "wait", activityStatus: "waiting" }),
-      snap({ sessionId: "busy", activityStatus: "busy" }),
-      snap({ sessionId: "shell", activityStatus: "shell" }),
+      snap({ sessionId: "idle", activity: "idle" }),
+      snap({ sessionId: "unknown", activity: null }),
+      snap({ sessionId: "wait", activity: "needs_you" }),
+      snap({ sessionId: "busy", activity: "working" }),
+      snap({ sessionId: "shell", activity: "idle" }),
     ]);
     expect(sorted.map((s) => s.sessionId)).toEqual([
       "wait",
@@ -81,7 +81,7 @@ describe("F91 sortSessionsInGroup", () => {
     ]);
   });
   it("不改入参（返回新数组）", () => {
-    const input = [snap({ sessionId: "a", activityStatus: "idle" }), snap({ sessionId: "b", activityStatus: "busy" })];
+    const input = [snap({ sessionId: "a", activity: "idle" }), snap({ sessionId: "b", activity: "working" })];
     const before = input.map((s) => s.sessionId);
     sortSessionsInGroup(input);
     expect(input.map((s) => s.sessionId)).toEqual(before);
@@ -90,8 +90,8 @@ describe("F91 sortSessionsInGroup", () => {
     const sorted = sortSessionsInGroup([
       snap({ sessionId: "arch", state: ENDED }),
       // idle-tmux：status 仍 live、activityStatus 可为任意陈旧值——tmuxIdle 优先降到 8
-      snap({ sessionId: "tidle", state: RECONNECTABLE, activityStatus: "busy" }),
-      snap({ sessionId: "busy", activityStatus: "busy" }),
+      snap({ sessionId: "tidle", state: RECONNECTABLE, activity: "working" }),
+      snap({ sessionId: "busy", activity: "working" }),
     ]);
     expect(sorted.map((s) => s.sessionId)).toEqual(["busy", "tidle", "arch"]);
   });
@@ -123,8 +123,8 @@ describe("F91 GridMonitorView", () => {
   it("open 渲染分组标题 + 摘要 + cell；F91b 点 cell = 高亮不关（不 switchTo、板保持开）", () => {
     document.body.replaceChildren();
     const source = mkSource([
-      snap({ sessionId: "l1", title: "本地会话", origin: LOCAL_ORIGIN, activityStatus: "busy", runningAgents: 2 }),
-      snap({ sessionId: "r1", title: "远端会话", origin: "pi", activityStatus: "waiting", waitingFor: "permission prompt" }),
+      snap({ sessionId: "l1", title: "本地会话", origin: LOCAL_ORIGIN, activity: "working", runningAgents: 2 }),
+      snap({ sessionId: "r1", title: "远端会话", origin: "pi", activity: "needs_you", waitingFor: "permission prompt" }),
     ]);
     const view = new GridMonitorView(source);
     view.open();
@@ -161,7 +161,7 @@ describe("F91 GridMonitorView", () => {
     document.body.replaceChildren();
     const source = mkSource([
       // activityStatus=busy（会加 act 类）但 tmuxIdle=true → 灰类必须叠上、CSS 源序覆写。
-      snap({ sessionId: "gi", title: "灰会话", origin: "pi", state: RECONNECTABLE, activityStatus: "busy" }),
+      snap({ sessionId: "gi", title: "灰会话", origin: "pi", state: RECONNECTABLE, activity: "working" }),
     ]);
     const view = new GridMonitorView(source);
     view.open();
@@ -454,11 +454,11 @@ describe("F91 GridMonitorView interval 生命周期", () => {
 describe("UP1 机器总览按行更新", () => {
   /** 三台机器、七个会话；`snapshotSessions` 每拍都返回**新对象**（与 `TabManager.snapshotSessions` 同形）。 */
   const base = (): GridSessionSnapshot[] => [
-    snap({ sessionId: "l1", title: "本机一", cwd: "/w/a", activityStatus: "busy", runningAgents: 2, totalAgents: 3 }),
+    snap({ sessionId: "l1", title: "本机一", cwd: "/w/a", activity: "working", runningAgents: 2, totalAgents: 3 }),
     snap({ sessionId: "l2", title: "本机二", cwd: "/w/b", contextPct: 85, unread: 4 }),
     snap({ sessionId: "l3", title: "本机三", state: ENDED }),
-    snap({ sessionId: "p1", title: "派一", origin: "pi", activityStatus: "waiting", waitingFor: "permission prompt" }),
-    snap({ sessionId: "p2", title: "派二", origin: "pi", state: RECONNECTABLE, kind: "bg" }),
+    snap({ sessionId: "p1", title: "派一", origin: "pi", activity: "needs_you", waitingFor: "permission prompt" }),
+    snap({ sessionId: "p2", title: "派二", origin: "pi", state: RECONNECTABLE, background: true }),
     snap({ sessionId: "n1", title: "诺一", origin: "nano", cwd: "/srv", unread: 120 }),
     snap({ sessionId: "n2", title: "诺二", origin: "nano", contextPct: 12 }),
   ];
@@ -535,9 +535,9 @@ describe("UP1 机器总览按行更新", () => {
     try {
       const before = new Map(["l1", "l2", "l3", "p1", "p2", "n1", "n2"].map((sid) => [sid, t.cellOf(sid)]));
       t.set((s) => {
-        s[1].activityStatus = "waiting"; // l2 排到本机组最前
+        s[1].activity = "needs_you"; // l2 排到本机组最前
         s[1].waitingFor = "worker request";
-        s[3].activityStatus = "busy"; // p1 不再等
+        s[3].activity = "working"; // p1 不再等
         s[5].cwd = null; // n1 的 cwd 行摘掉
         s[6].unread = 1;
       });
@@ -609,7 +609,7 @@ describe("UP1 机器总览按行更新", () => {
       vi.advanceTimersByTime(1000);
       expect(document.activeElement).toBe(t.cellOf("n2"));
       t.set((s) => {
-        s[6].activityStatus = "waiting"; // n2 排到 nano 组最前（被 insertBefore 挪动）
+        s[6].activity = "needs_you"; // n2 排到 nano 组最前（被 insertBefore 挪动）
         s[6].waitingFor = "x";
       });
       vi.advanceTimersByTime(1000);

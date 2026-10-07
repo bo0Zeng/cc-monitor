@@ -10,15 +10,16 @@
 import type { DotState } from "./kit/status-dot";
 import type { Needs, NeedsKind } from "./session-reads";
 import type { Tab } from "./tab-model";
-import { isBgKind, projectNameFromCwd } from "./tab-model";
+import { projectNameFromCwd } from "./tab-model";
+import { activityFace } from "./session-status";
 import { isLive } from "./tab-session-state";
 import { isRemoteOrigin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { fmtDur } from "./quota-lines";
 
-/** 此刻在等你（活着 ＋ 活动信号说 waiting）⇒ 等的是什么；不在等 ⇒ `null`。 */
+/** 此刻在等你（活着 ＋ 活动信号说在等人）⇒ 等的是什么；不在等 ⇒ `null`。 */
 export function needsOf(tab: Tab): Needs | null {
-  if (!isLive(tab.state) || tab.activity?.status !== "waiting") return null;
+  if (!isLive(tab.state) || tab.activity?.doing !== "needs_you") return null;
   return tab.needs ?? { kind: "unknown", tool: null, call: null, what: null, sinceMs: null };
 }
 
@@ -30,12 +31,8 @@ export function dotOf(tab: Tab): DotState {
       return "unknown";
     case "dead":
       return s.recoverability === "attachable" ? "exited" : s.recoverability === "gone" ? "gone" : "ended";
-    case "live": {
-      const st = tab.activity?.status ?? null;
-      if (st === "waiting") return "needs-you";
-      if (st === "idle" || st === "shell") return "idle";
-      return "running";
-    }
+    case "live":
+      return activityFace(tab.activity?.doing ?? null).dot;
   }
 }
 
@@ -145,7 +142,7 @@ export interface TitleParts {
 
 export function titleParts(tab: Tab): TitleParts {
   const proj = tab.projectDir ? projectNameFromCwd(tab.projectDir) : null;
-  const bg = isBgKind(tab.kind);
+  const bg = tab.background;
   const forked = tab.forkedFromSessionId !== null;
   const named = bg ? (tab.bgName ?? tab.aiTitle) : tab.aiTitle;
   if (named) return { proj, title: named, bg, forked };

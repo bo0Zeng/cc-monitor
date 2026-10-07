@@ -94,18 +94,45 @@ impl Fate {
     }
 }
 
+/// 一条活会话此刻在干什么（后端 `session_added.activity` · `session_status.activity`，那台后端的适配层翻好的）。
+/// 原样交给界面（`ui_contract::SessionActivityPayload`）；缺席 ＝ 说不清。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+#[serde(rename_all = "snake_case")]
+pub enum SessionActivity {
+    /// 一轮在跑。
+    Working,
+    /// 在等人。
+    NeedsYou,
+    /// 闲着，等下一句输入。
+    Idle,
+}
+
+impl SessionActivity {
+    /// 线上词 ⇒ 这一态；认不出 ⇒ `None`（解码那一侧当契约对不上）。
+    pub fn from_wire(w: &str) -> Option<Self> {
+        match w {
+            "working" => Some(Self::Working),
+            "needs_you" => Some(Self::NeedsYou),
+            "idle" => Some(Self::Idle),
+            _ => None,
+        }
+    }
+}
+
 /// 一条活会话宣告时带来的那几格（后端 `session_added`）。之后按 `session_status` 更新灯。
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LiveMeta {
-    /// `session_kind`（"interactive" / "bg"；旧 CC 缺）。
-    pub kind: Option<String>,
+    /// 后台会话（那台后端判好的 `background`）。
+    pub background: bool,
     pub attachable: Option<bool>,
     /// pidfile 记的起会话目录（认「我刚起的那条」用）。
     pub cwd: Option<String>,
     /// 会话的项目目录（那台后端给的；tab 标题用它）。
     pub project_dir: Option<String>,
     pub name: Option<String>,
-    pub status: Option<String>,
+    pub activity: Option<SessionActivity>,
     pub waiting_for: Option<String>,
     pub container: Option<SessionContainer>,
     /// 那个 claude 进程的 pid（本机 ↗ 绑窗口用；老后端 / 没索要 ⇒ `None`）。
@@ -130,7 +157,7 @@ pub enum In {
     Status {
         origin: String,
         sid: String,
-        status: Option<String>,
+        activity: Option<SessionActivity>,
         waiting_for: Option<String>,
     },
     Left {
@@ -162,7 +189,7 @@ pub enum Out {
     Status {
         origin: String,
         sid: String,
-        status: Option<String>,
+        activity: Option<SessionActivity>,
         waiting_for: Option<String>,
     },
     Left {
@@ -228,7 +255,7 @@ impl Book {
             In::Status {
                 origin,
                 sid,
-                status,
+                activity,
                 waiting_for,
             } => {
                 if let Some(Product::Live(m)) = self
@@ -236,13 +263,13 @@ impl Book {
                     .get_mut(&origin)
                     .and_then(|b| b.sessions.get_mut(&sid))
                 {
-                    m.status = status.clone();
+                    m.activity = activity;
                     m.waiting_for = waiting_for.clone();
                 }
                 vec![Out::Status {
                     origin,
                     sid,
-                    status,
+                    activity,
                     waiting_for,
                 }]
             }
@@ -422,7 +449,7 @@ impl Out {
                     F::Live(b::SessionLivePayload {
                         session_id: sid.clone(),
                         origin: origin.clone(),
-                        kind: meta.kind.clone(),
+                        background: meta.background,
                         attachable: meta.attachable,
                         cwd: meta.cwd.clone(),
                         project_dir: meta.project_dir.clone(),
@@ -430,7 +457,7 @@ impl Out {
                     }),
                     F::Activity(b::SessionActivityPayload {
                         session_id: sid.clone(),
-                        status: meta.status.clone(),
+                        activity: meta.activity,
                         waiting_for: meta.waiting_for.clone(),
                     }),
                 ];
@@ -444,12 +471,12 @@ impl Out {
             }
             Out::Status {
                 sid,
-                status,
+                activity,
                 waiting_for,
                 ..
             } => vec![F::Activity(b::SessionActivityPayload {
                 session_id: sid.clone(),
-                status: status.clone(),
+                activity: *activity,
                 waiting_for: waiting_for.clone(),
             })],
             Out::Left { sid, fate, .. } => vec![match fate {

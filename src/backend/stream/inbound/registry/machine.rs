@@ -119,7 +119,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "pubkey-push",
         summary: "把本机公钥推进那台的 `authorized_keys`",
-        codes: &["invalid_args", "bad_jump", "refused", "failed"],
+        codes: &["bad_args", "bad_jump", "refused", "failed"],
         fields: &[arg("jump", "同 `remote-probe`"), arg("machine", "同 `remote-probe`"), out("outcome", "`added`（新加的）· `already`（本就有整行相等的一行，没写）"), arg("pubKeyPath", "本机那份 `.pub` 的路径；缺席 / 空 ⇒ 私钥同名 `.pub`（两样都没有 ⇒ `refused`，界面让用户挑文件）"), out("pubPath", "实际推的是哪一份（给人看）"), arg("saved", "同 `remote-probe`"), out("via", "走了哪条：`backend`（那台后端的文件管理面）· `exec`（那一次 exec）")],
         takes_input: true,
         run: Run::Async(|r| {
@@ -211,7 +211,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "forward-start",
         summary: "起一条本地端口转发",
         codes: &[
-            "invalid_args",
+            "bad_args",
             "bad_spec",
             "unreachable",
             "bad_jump",
@@ -235,7 +235,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "remote-probe",
         summary: "测试连接",
-        codes: &["invalid_args", "bad_jump", "failed"],
+        codes: &["bad_args", "bad_jump", "failed"],
         fields: &[out("backendHello", "那台后端的一句（往返毫秒 · 版本 · 做不到几项）"), out("backendOk", "那台后端答没答（hello ＋ `ping` 往返）"), out("end", "结局，**最后一格**"), out("endpoint", "实际连上的地址"), out("fingerprint", "那台的主机指纹（`sshOk:false` 时不给）"), arg("jump", "跳板那一台的配置（可缺）"), arg("machine", "那台的配置（可能还没保存）：`host` · `port` · `user` · `keyPath` · `addresses` · `jump` …"), out("message", "结局那一句"), out("reached", "`ssh` 握手过了 · `hello` 那台后端回了 hello · `control` ping 往返了"), arg("saved", "已保存的那一份（可缺）"), out("sshOk", "SSH 握手 ＋ 鉴权过没过（结局 `end` 里）"), out("stage", "拨号阶段行，与界面 `ConnectStage` 同形"), both("ticket", "界面交来的票（1..=64 个 `[A-Za-z0-9-]`），进度帧 `probe` 原样回填")],
         takes_input: true,
         run: Run::Builtin,
@@ -243,7 +243,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "forward-stop",
         summary: "停一条转发",
-        codes: &["invalid_args", "not_found"],
+        codes: &["bad_args", "not_found"],
         fields: &[both("id", "转发号（`fwd-<n>`）")],
         takes_input: true,
         run: Run::Async(|r| {
@@ -320,7 +320,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "ssh-config-resolve",
         summary: "一个别名的有效连接参数",
-        codes: &["invalid_args", "bad_alias", "failed", "child_timed_out"],
+        codes: &["bad_args", "bad_alias", "failed", "child_timed_out"],
         fields: &[arg("alias", "必填"), out("host", "`ssh -G` 的 `hostname`（缺省回退别名）"), out("keyPath", "第一个**展开后存在**的 `identityfile`（只问在不在，不读内容）；都不存在 ⇒ `null`"), out("port", "`port`（缺省 22）"), out("proxyJump", "`proxyjump`（`none` ⇒ `null`）"), out("user", "`user`（缺省空串）")],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -332,8 +332,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "ssh-config-import",
         summary: "批量导入预览",
-        codes: &["invalid_args"],
-        fields: &[out("addresses", "其余地址，端口不同则 `host:port`"), out("alias", "成员的别名"), out("groups", "聚成组的机器，每组 `{label, host, port, user, keyPath, addresses, jump, members, inList}`"), both("host", "组首的 host"), out("inList", "组首或任一成员的地址 ＋ 组的用户 ＋ 端口与 `known` 里某台相同，去首尾空白比 ⇒ 已在列表里，界面照它灰、不自己比"), out("jump", "组内首个非空 proxyjump"), out("keyPath", "组首"), arg("known", "机器列表里已有的那几台，`[{host, user, port}]`；缺 / 形状不对 ⇒ `invalid_args`"), out("label", "单成员组 = 完整别名，多成员 = 基名"), out("members", "`alias` / `host` / `port` / `proxyJump`，界面「拆分」时据此还原"), both("port", "组首的端口"), out("proxyJump", "成员的跳板"), both("user", "组首的用户")],
+        codes: &["bad_args"],
+        fields: &[out("addresses", "其余地址，端口不同则 `host:port`"), out("alias", "成员的别名"), out("groups", "聚成组的机器，每组 `{label, host, port, user, keyPath, addresses, jump, members, inList}`"), both("host", "组首的 host"), out("inList", "组首或任一成员的地址 ＋ 组的用户 ＋ 端口与 `known` 里某台相同，去首尾空白比 ⇒ 已在列表里，界面照它灰、不自己比"), out("jump", "组内首个非空 proxyjump"), out("keyPath", "组首"), arg("known", "机器列表里已有的那几台，`[{host, user, port}]`；缺 / 形状不对 ⇒ `bad_args`"), out("label", "单成员组 = 完整别名，多成员 = 基名"), out("members", "`alias` / `host` / `port` / `proxyJump`，界面「拆分」时据此还原"), both("port", "组首的端口"), out("proxyJump", "成员的跳板"), both("user", "组首的用户")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::dial::ssh_config::answer_import(&r.args)

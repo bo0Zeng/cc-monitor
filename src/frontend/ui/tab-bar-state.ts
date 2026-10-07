@@ -167,8 +167,8 @@ export interface PinnedTab {
    *   前端**没有这个数**（`Tab` 上零时间戳字段，现打），所以原样沿用盘上那份、否则 `null`。
    */
   lastActiveAt: number | null;
-  /** bg 任务 vs 交互（复活骨架时喂给 `createSkeletonTab`）。 */
-  kind: string | null;
+  /** 后台会话（复活骨架时喂给 `createSkeletonTab`）。 */
+  background: boolean;
   /** bgName（同上）。 */
   name: string | null;
   /** 存一份，骨架期就能显示正确标题（不等读完）。 */
@@ -225,7 +225,7 @@ export function sanitizePinned(raw: unknown): PinnedTab[] {
       origin,
       account: pinStrOrNull(o.account),
       lastActiveAt: typeof ts === "number" && Number.isFinite(ts) ? ts : null,
-      kind: pinStrOrNull(o.kind),
+      background: o.background === true,
       name: pinStrOrNull(o.name),
       // 标题缺了也要有个认得出的东西 —— 照全仓那条「session_id 前 8 位」的兜底。
       title: pinStr(o.title) || sid.slice(0, 8),

@@ -45,7 +45,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "terminal-ssh",
         summary: "给一台远端开终端要跑的那一串",
-        codes: &["invalid_args", "bad_jump", "refused"],
+        codes: &["bad_args", "bad_jump", "refused"],
         fields: &[both("command", "要在那台跑的命令；应答里是那一整行 PowerShell `& ssh -t … -- 'bash -lic …'`")],
         takes_input: true,
         run: Run::Async(|r| {
@@ -89,7 +89,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "terminals-list",
         summary: "这台的终端名单（形状与宿主无关；这一版宿主是 tmux）",
-        codes: &["invalid_args", "unobservable", "child_timed_out"],
+        codes: &["bad_args", "unobservable", "child_timed_out"],
         fields: &[out("agent", "`session` 里：哪一家（没标就缺）"), out("can", "这个调用方能做什么：`preview` · `input` · `end`，做不了的写成 `{no: 原因}`"), both("client", "请求里可选：自报的前端，决定每行的 `mine` / `can`；`started_by` 里：会话上的 `@ccm_client`（没声明 ⇒ `null`）"), out("clients", "此刻连着它的终端客户端，每项 `{kind, since, last_activity}`；空 ＝ 后台"), out("complete", "`false` ＝ 名单里有读不懂的行（画「部分」）"), out("cwd", "当前目录"), out("end", "能不能结束（`{no: \"not-yours\" | \"not-managed\" | \"other-windows\"}`）"), out("host", "终端宿主（这一版是 `tmux`）"), out("input", "输入方式：`shared`（tmux：各端都能打字）"), out("kind", "`clients` 一项：客户端种类（`terminal-window` …）"), out("last_activity", "最近动静（秒）"), out("mine", "这个调用方能不能送字 / 结束"), out("no", "做不了的原因"), out("preview", "能不能抓屏"), out("program", "前台程序名"), out("purpose", "`normal` …"), out("session", "里面跑着会话（`@ccm_sid`）时才有：`{sid, agent?}`"), out("sid", "`session` 里：会话 id"), out("since", "`clients` 一项：连上的时刻（秒）"), out("started_by", "谁起的：`{client, mine}`"), out("state", "`running` · `idle`（没会话、前台是 shell）· `program-exited`（有会话、前台是 shell）"), out("terminal", "名单里那一行的不透明句柄（前端不拼、不解析；送字 / 抓屏时交回）"), out("terminals", "终端名单（每行一个终端）"), out("title", "窗格标题"), out("tmux_name", "tmux 会话名")],
         takes_input: true,
         run: Run::Blocking(|r| crate::control::terminals::list_for_inbound(&r.args).map(Some)),
@@ -99,7 +99,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         summary: "抓一个终端的一屏（只抓一次，轮询归调用方）",
         codes: &[
             "bad_target",
-            "invalid_args",
+            "bad_args",
             "not_known",
             "ambiguous",
             "no_tmux",
@@ -118,7 +118,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         summary: "往一个终端送字或送键（过身份门）",
         codes: &[
             "bad_target",
-            "invalid_args",
+            "bad_args",
             "no_tmux",
             "no_server",
             "no_such_session",
@@ -135,7 +135,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "terminal-name-mint",
         summary: "起会话要的终端名",
-        codes: &["invalid_args", "child_timed_out"],
+        codes: &["bad_args", "child_timed_out"],
         fields: &[out("name", "铸出来的终端名（这台避让过）")],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -150,7 +150,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "kill",
         summary: "杀一个 tmux 会话",
         codes: &[
-            "invalid_args",
+            "bad_args",
             "no_tmux",
             "no_such_session",
             "wrong_owner",
@@ -167,7 +167,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "sessions-stop",
         summary: "停一批会话（逐个答，一个不成不挡下一个）",
-        codes: &["invalid_args", "unobservable"],
+        codes: &["bad_args", "unobservable"],
         fields: &[out("bus", "同 `kill`"), arg("client", "自报的前端，同 `kill`"), both("cmd", "只有开终端那一形有"), out("detail", "那一个的原话"), out("outcome", "`done` · `skipped` · `failed`"), out("results", "逐个结果，与入参同序"), out("session", "落在哪个 tmux 会话上"), both("sid", "会话 id"), arg("sids", "要停的会话（1–64 个，不重复）"), out("why", "`skipped` / `failed` 的码")],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -179,7 +179,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "sessions-where",
         summary: "一批会话各在这台哪个终端里",
-        codes: &["invalid_args", "unobservable"],
+        codes: &["bad_args", "unobservable"],
         fields: &[arg("client", "自报的前端，同 `kill`"), out("host", "终端宿主"), out("names", "带着它的 tmux 会话名"), out("results", "逐个结果，与入参同序"), both("sid", "会话 id"), arg("sids", "要问的会话（1–64 个，不重复）"), out("standing", "`running` · `ambiguous` · `idle` · `none` · `no_tmux`"), out("terminal", "名单里那一行的句柄"), out("terminals", "与 `names` 同序同数，每项 `{host, terminal}`")],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -191,7 +191,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "sessions-start",
         summary: "起 / 接回一批会话（逐个答）",
-        codes: &["invalid_args", "unobservable"],
+        codes: &["bad_args", "unobservable"],
         fields: &[both("account", "那一项用哪个号：缺 ＝ 跟随 · `{kind:\"base\"}` · `{kind:\"named\", name}`；应答里是实际用的号"), arg("client", "自报的前端，同 `kill`"), both("cmd", "开终端那一形要跑的那一行"), out("configDir", "`account` 里：那个号的配置目录"), arg("cwd", "那一项的工作目录"), arg("defaultLauncher", "整批一份：那一家的默认启动器"), arg("fork_of", "可缺：源会话 sid（只许与 `fresh_terminal: true` 一起）"), out("detail", "那一个的原话"), arg("fresh_terminal", "可缺：分叉出来的那一条 ⇒ 必铸新终端名"), arg("items", "要起的会话，每项 `{sid, cwd, account?, fresh_terminal?, fork_of?}`"), both("kind", "`account` 的种类"), arg("launcher", "整批一份：用户设置的 resume 命令原值"), arg("local", "这台是不是界面所在那台（开终端那一形按它选本机 / 远端那一行）"), arg("mode", "`tmux`（在 tmux 里后台起）· `window`（只渲那一行交回，窗口由界面开）"), out("model", "`account` 里：用的模型"), both("name", "`account` 为 `named` 时的号名"), out("outcome", "`done` · `skipped` · `failed`"), out("results", "逐个结果，与入参同序"), out("session", "落在哪个 tmux 会话上"), both("sid", "会话 id"), out("unavailable", "选不了号的那一项：`{requested, pinned, listKnown, alternative}`"), out("why", "`skipped` / `failed` 的码")],
         takes_input: true,
         run: Run::Blocking(|r| {
@@ -258,8 +258,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "session-interrupts",
         summary: "动一个会话之前，会打断什么",
-        codes: &["invalid_args", "failed"],
-        fields: &[out("families", "按族的清单，空族不出现；一族都没有 ⇒ `[]`（界面直接做，不问）"), out("family", "`turn`（那个会话有一轮在跑：活着的 pidfile 里 `status` 是 `busy`）· `agent`（它派出去还在跑的子运行）· `task`（它任务表里 `in_progress` 的）"), out("names", "显示名：子运行的标签（无标签用种类 / 运行号）· 任务主题；`turn` 那一族为空表"), arg("sid", "会话 id（空 / 缺 ⇒ `invalid_args`）")],
+        codes: &["bad_args", "failed"],
+        fields: &[out("families", "按族的清单，空族不出现；一族都没有 ⇒ `[]`（界面直接做，不问）"), out("family", "`turn`（那个会话有一轮在跑：活着的会话进程状态说在干活）· `agent`（它派出去还在跑的子运行）· `task`（它任务表里 `in_progress` 的）"), out("names", "显示名：子运行的标签（无标签用种类 / 运行号）· 任务主题；`turn` 那一族为空表"), arg("sid", "会话 id（空 / 缺 ⇒ `bad_args`）")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::feature_face::answer(&r.cmd, &r.args)
@@ -273,7 +273,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "session-restart",
         summary: "换号重启",
         codes: &[
-            "invalid_args",
+            "bad_args",
             "unobservable",
             "account_unavailable",
             "not_in_terminal",
@@ -303,7 +303,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         // 〔C4e 问 2〕+`wrong_owner`：`send-into` 过 `gate::admit`（§34 Gate 2），
         // 它真会回这个码，登记表原先漏了。由 `gate_tests.rs::every_command_that_passes_the_gate_lists_the_gates_codes` 从 gate.rs 源码派生钉住。
         codes: &[
-            "invalid_args",
+            "bad_args",
             "no_tmux",
             "no_such_session",
             "wrong_owner",

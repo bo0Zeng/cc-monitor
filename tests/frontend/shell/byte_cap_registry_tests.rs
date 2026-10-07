@@ -136,7 +136,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     ),
     (
         "INBOX_LINES_MAX",
-        "**行数**不是体量：后端 `bus-inbox` 的 `lines` 入参上界（看收件箱尾巴最多几行，越界 ⇒ `invalid_args`）；\
+        "**行数**不是体量：后端 `bus-inbox` 的 `lines` 入参上界（看收件箱尾巴最多几行，越界 ⇒ `bad_args`）；\
              限字节总量的是同文件的 `INBOX_CAP`。",
     ),
     (

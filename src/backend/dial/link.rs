@@ -45,7 +45,7 @@ use crate::stream::wire::{b64_decode, b64_encode, Frame};
 pub const LINK_CHUNK_BYTES: usize = 32 * 1024;
 
 /// 一条链路手里的信用（= 在途字节）的上限：初始窗口与累计还回来的都不许超过它。
-/// **超了 ⇒ 拒收＋回错**（`invalid_args`）：对端不守约，不替它夹 —— 夹掉就是替它猜。
+/// **超了 ⇒ 拒收＋回错**（`bad_args`）：对端不守约，不替它夹 —— 夹掉就是替它猜。
 pub const MAX_WINDOW: u64 = 16 << 20;
 
 /// 一条流连接上同时开着的链路数上限（有界资源：每条三个任务、两根管子）。
@@ -133,12 +133,12 @@ impl Table {
     pub fn open(&self, id: &str, args: &serde_json::Value) -> Frame {
         let link = match link_arg(args) {
             Ok(l) => l,
-            Err(m) => return Frame::err(id, "invalid_args", &m),
+            Err(m) => return Frame::err(id, "bad_args", &m),
         };
         let Some(dial) = args.get("dial") else {
             return Frame::err(
                 id,
-                "invalid_args",
+                "bad_args",
                 &crate::common::contract::malformed("missing `dial` (a dial request)"),
             );
         };
@@ -160,7 +160,7 @@ impl Table {
             _ => {
                 return Frame::err(
                     id,
-                    "invalid_args",
+                    "bad_args",
                     &crate::common::contract::malformed(&format!("`window` (initial credit, bytes) must be within [{LINK_CHUNK_BYTES}, {MAX_WINDOW}]")),
                 )
             }
@@ -245,23 +245,23 @@ impl Table {
     pub fn data(&self, id: &str, args: &serde_json::Value) -> Option<Frame> {
         let link = match link_arg(args) {
             Ok(l) => l,
-            Err(m) => return Some(Frame::err(id, "invalid_args", &m)),
+            Err(m) => return Some(Frame::err(id, "bad_args", &m)),
         };
         let Some(text) = args.get("data").and_then(serde_json::Value::as_str) else {
             return Some(Frame::err(
                 id,
-                "invalid_args",
+                "bad_args",
                 &crate::common::contract::malformed("missing `data` (base64)"),
             ));
         };
         let bytes = match b64_decode(text) {
             Ok(b) => b,
-            Err(e) => return Some(Frame::err(id, "invalid_args", &e)),
+            Err(e) => return Some(Frame::err(id, "bad_args", &e)),
         };
         if bytes.len() > LINK_CHUNK_BYTES {
             return Some(Frame::err(
                 id,
-                "invalid_args",
+                "bad_args",
                 &crate::common::contract::malformed(&format!(
                     "a chunk of {} bytes exceeds {LINK_CHUNK_BYTES}",
                     bytes.len()
@@ -297,10 +297,10 @@ impl Table {
     pub fn credit(&self, id: &str, args: &serde_json::Value) -> Frame {
         let link = match link_arg(args) {
             Ok(l) => l,
-            Err(m) => return Frame::err(id, "invalid_args", &m),
+            Err(m) => return Frame::err(id, "bad_args", &m),
         };
         let Some(bytes) = args.get("bytes").and_then(serde_json::Value::as_u64) else {
-            return Frame::err(id, "invalid_args", "缺 `bytes`（非负整数）");
+            return Frame::err(id, "bad_args", "缺 `bytes`（非负整数）");
         };
         let g = lock(&self.links);
         let Some(e) = g.get(&link) else {
@@ -311,7 +311,7 @@ impl Table {
         if have.saturating_add(bytes) > MAX_WINDOW {
             return Frame::err(
                 id,
-                "invalid_args",
+                "bad_args",
                 &format!("还了 {bytes} 字节信用，累计会超过上限 {MAX_WINDOW}（手里已有 {have}）"),
             );
         }
@@ -323,7 +323,7 @@ impl Table {
     pub fn close(&self, id: &str, args: &serde_json::Value) -> Frame {
         let link = match link_arg(args) {
             Ok(l) => l,
-            Err(m) => return Frame::err(id, "invalid_args", &m),
+            Err(m) => return Frame::err(id, "bad_args", &m),
         };
         if let Some(e) = lock(&self.links).remove(&link) {
             e.abort_all();

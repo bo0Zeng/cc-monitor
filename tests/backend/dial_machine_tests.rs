@@ -147,7 +147,7 @@ fn a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first() {
         resolve(&json!({"host": "10.0.0.2", "user": "u", "port": 22}))
             .map(|_| ())
             .map_err(|(c, _)| c),
-        Err("invalid_args")
+        Err("bad_args")
     );
 }
 

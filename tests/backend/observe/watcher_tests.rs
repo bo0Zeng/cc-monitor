@@ -1442,6 +1442,7 @@ fn plain_lifecycle_regression() {
 #[cfg(target_os = "linux")]
 #[test]
 fn status_diff_emits_session_status_frame() {
+    use crate::agents::SessionActivity;
     let _iso = crate::control::identity_tag::door::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-status-{}", std::process::id()));
     std::fs::create_dir_all(dir.join("projects")).unwrap();
@@ -1466,9 +1467,21 @@ fn status_diff_emits_session_status_frame() {
     write("busy", None);
     process_session_added(&pidfile, &mut state, &mut sink);
     match rx.try_recv() {
-        Ok(Frame::SessionAdded { sid, status, .. }) => {
+        Ok(Frame::SessionAdded {
+            sid,
+            status,
+            activity,
+            background,
+            ..
+        }) => {
             assert_eq!(sid, "st-sid");
             assert_eq!(status.as_deref(), Some("busy"), "宣告带初始 status");
+            assert_eq!(
+                activity,
+                Some(SessionActivity::Working),
+                "适配层翻好的活动态"
+            );
+            assert!(!background, "不写 kind ⇒ 交互");
         }
         other => panic!("expected SessionAdded, got {other:?}"),
     }
@@ -1482,11 +1495,13 @@ fn status_diff_emits_session_status_frame() {
         Ok(Frame::SessionStatus {
             sid,
             status,
+            activity,
             waiting_for,
             ..
         }) => {
             assert_eq!(sid, "st-sid");
             assert_eq!(status.as_deref(), Some("waiting"));
+            assert_eq!(activity, Some(SessionActivity::NeedsYou));
             assert_eq!(waiting_for.as_deref(), Some("permission prompt"));
         }
         other => panic!("expected SessionStatus, got {other:?}"),
@@ -1496,7 +1511,7 @@ fn status_diff_emits_session_status_frame() {
     process_session_added(&pidfile, &mut state, &mut sink);
     assert!(matches!(
         rx.try_recv(),
-        Ok(Frame::SessionStatus { status: Some(s), waiting_for: None, .. }) if s == "idle"
+        Ok(Frame::SessionStatus { status: Some(s), activity: Some(SessionActivity::Idle), waiting_for: None, .. }) if s == "idle"
     ));
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -1660,12 +1675,14 @@ fn with_bg_announces_bg_with_metadata() {
         Ok(Frame::SessionAdded {
             sid,
             session_kind,
+            background,
             cwd,
             name,
             ..
         }) => {
             assert_eq!(sid, "bg-sid");
             assert_eq!(session_kind.as_deref(), Some("bg"));
+            assert!(background, "后台会话那一格由适配层判好");
             assert_eq!(cwd.as_deref(), Some("/proj/x"));
             assert_eq!(name.as_deref(), Some("评估任务"));
         }
@@ -1724,18 +1741,14 @@ fn session_added_carries_the_project_dir_from_the_record_head() {
 // === Batch6-F21：kind 交互性门 ===
 
 #[test]
-fn parse_kind_variants() {
-    assert_eq!(
-        parse_kind(br#"{"sessionId":"s","kind":"bg","jobId":"j"}"#).as_deref(),
-        Some("bg"),
+fn background_reads_through_the_adapter() {
+    assert!(
+        is_background(br#"{"sessionId":"s","kind":"bg","jobId":"j"}"#),
         "真实 bg 样本形态"
     );
-    assert_eq!(
-        parse_kind(br#"{"sessionId":"s","kind":"interactive"}"#).as_deref(),
-        Some("interactive")
-    );
-    assert_eq!(parse_kind(br#"{"sessionId":"s"}"#), None, "旧 CC 无 kind");
-    assert_eq!(parse_kind(b"not json"), None);
+    assert!(!is_background(br#"{"sessionId":"s","kind":"interactive"}"#));
+    assert!(!is_background(br#"{"sessionId":"s"}"#), "不写 kind ⇒ 交互");
+    assert!(!is_background(b"not json"));
 }
 
 /// 集成：kind:"bg" 的 pidfile（真实存活进程 = 本进程，身份/时间证据全过）
@@ -2009,6 +2022,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         agent_kind: None,
         liveness_confidence: None,
         session_kind: None,
+        background: false,
         attachable: None,
         cwd: None,
         project_dir: None,
@@ -2016,6 +2030,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         path: None,
         lines: None,
         status: None,
+        activity: None,
         waiting_for: None,
         container: None,
         pid: None,
@@ -2025,6 +2040,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         agent_kind: None,
         liveness_confidence: None,
         session_kind: None,
+        background: false,
         attachable: None,
         cwd: None,
         project_dir: None,
@@ -2032,6 +2048,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         path: None,
         lines: None,
         status: None,
+        activity: None,
         waiting_for: None,
         container: None,
         pid: None,
@@ -2047,6 +2064,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         agent_kind: None,
         liveness_confidence: None,
         session_kind: None,
+        background: false,
         attachable: None,
         cwd: None,
         project_dir: None,
@@ -2054,6 +2072,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         path: None,
         lines: None,
         status: None,
+        activity: None,
         waiting_for: None,
         container: None,
         pid: None,
@@ -2063,6 +2082,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         agent_kind: None,
         liveness_confidence: None,
         session_kind: None,
+        background: false,
         attachable: None,
         cwd: None,
         project_dir: None,
@@ -2070,6 +2090,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         path: None,
         lines: None,
         status: None,
+        activity: None,
         waiting_for: None,
         container: None,
         pid: None,
@@ -2079,6 +2100,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         agent_kind: None,
         liveness_confidence: None,
         session_kind: None,
+        background: false,
         attachable: None,
         cwd: None,
         project_dir: None,
@@ -2086,6 +2108,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         path: None,
         lines: None,
         status: None,
+        activity: None,
         waiting_for: None,
         container: None,
         pid: None,
@@ -2118,6 +2141,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         agent_kind: None,
         liveness_confidence: None,
         session_kind: None,
+        background: false,
         attachable: None,
         cwd: None,
         project_dir: None,
@@ -2125,6 +2149,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         path: None,
         lines: None,
         status: None,
+        activity: None,
         waiting_for: None,
         container: None,
         pid: None,

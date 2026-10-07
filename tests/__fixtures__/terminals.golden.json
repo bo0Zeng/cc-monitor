@@ -100,7 +100,7 @@
       ]
     },
     "codes": [
-      "invalid_args",
+      "bad_args",
       "unobservable",
       "child_timed_out"
     ]
@@ -152,7 +152,7 @@
     },
     "codes": [
       "bad_target",
-      "invalid_args",
+      "bad_args",
       "not_known",
       "ambiguous",
       "no_tmux",
@@ -192,7 +192,7 @@
     ],
     "codes": [
       "bad_target",
-      "invalid_args",
+      "bad_args",
       "no_tmux",
       "no_server",
       "no_such_session",
