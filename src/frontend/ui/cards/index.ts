@@ -23,7 +23,7 @@ import { buildCompactSummaryCard } from "./compact";
 import { buildAgentBar, buildCoordinatorBar, buildInterruptLine, buildNoticeLine, buildPeerBar } from "./speaker-bar";
 import { drawsCard } from "../speaker";
 import { buildBriefCard } from "./brief";
-import { buildAgentCard, settleRunCard } from "./subagent";
+import { buildAgentCard, isRunCard, settleRunCard } from "./subagent";
 import { buildDiffBody } from "./diff";
 import { buildInteractiveCard, settleInteractive } from "./interactive";
 import type { Pasted } from "../generated/Pasted";
@@ -418,7 +418,8 @@ function updateToolGroupSummary(group: ToolGroup): void {
   const count = group.count;
   const since = formatTimestampShort(group.startedAt);
   const failed = group.body.querySelectorAll(":scope > .block-has-error, :scope > .block-tool-result.block-error").length;
-  const agents = group.body.querySelectorAll(':scope > [data-role="run-card"]').length;
+  let agents = 0;
+  for (const el of group.body.children) if (isRunCard(el)) agents++;
   group.summary.textContent =
     failed > 0 && agents > 0
       ? copyText("cards.toolGroup.summaryBoth", { count, failed, agents, since })

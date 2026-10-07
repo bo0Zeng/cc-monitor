@@ -39,13 +39,13 @@ fn capped(e: Option<String>) -> Option<String> {
     e.map(|e| e.chars().take(ERROR_CHARS).collect())
 }
 
-/// 一次派出（父侧那次工具调用）：标签 · 类别 · 派出它的那个子运行（主运行 ⇒ `None`）· 那条记录的时刻。
+/// 一次派出（父侧那次工具调用）：标签 · 类别 · 派出它的那个子运行（主运行 ⇒ `None`）· 那条记录的时刻（毫秒）。
 #[derive(Clone)]
 struct Spawn {
     label: Option<String>,
     kind: Option<String>,
     parent: Option<String>,
-    at: SystemTime,
+    at: Option<u64>,
 }
 
 /// 簿里的一个运行：线上那一格 ＋ 它最近一次动静的时刻（子记录的写入时刻；只有父侧说到过 ⇒ 说到它的那份记录的时刻）。
@@ -152,7 +152,11 @@ impl Sess {
 
     fn bury(&mut self, info: RunInfo, closed: Closed) {
         let run = info.run.clone();
-        if self.gone.insert(run.clone(), Gone { info, closed }).is_none() {
+        if self
+            .gone
+            .insert(run.clone(), Gone { info, closed })
+            .is_none()
+        {
             self.gone_order.push_back(run);
             while self.gone_order.len() > ENDED_KEEP {
                 if let Some(old) = self.gone_order.pop_front() {
@@ -175,7 +179,13 @@ impl Sess {
 
     /// 子运行自己的一条记录（对账键 `rid`，`seen` ＝ 那份记录的写入时刻，`when` ＝ 记录自己写着的时刻）。先到的收场信号算数；
     /// 收场只粘同一轮（[`Closed::resumed_by`]：被续跑 ⇒ 回到在跑）。
-    fn mark(&mut self, m: RunMark, rid: Option<String>, seen: SystemTime, when: SystemTime) -> bool {
+    fn mark(
+        &mut self,
+        m: RunMark,
+        rid: Option<String>,
+        seen: SystemTime,
+        when: Option<u64>,
+    ) -> bool {
         if let Some(g) = self.gone.get_mut(&m.run) {
             if !g.closed.resumed_by(rid.as_deref(), seen) {
                 if m.end.is_some() {
@@ -191,7 +201,7 @@ impl Sess {
         let r = self.slot(&m.run, seen);
         let before = r.info.clone();
         r.seen = seen;
-        let w = ms(when);
+        let w = when;
         r.info.active_ms = r.info.active_ms.max(w);
         r.info.started_ms = match (r.info.started_ms, w) {
             (Some(a), Some(b)) => Some(a.min(b)),
@@ -247,11 +257,17 @@ impl Sess {
     }
 
     /// 派出那一方说它收场了（`at` 判续跑用，`when` ＝ 那条记录自己写着的时刻）。已经收过场的不动。
-    fn end(r: &mut Run, e: Option<RunEnd>, error: Option<String>, at: SystemTime, when: SystemTime) {
+    fn end(
+        r: &mut Run,
+        e: Option<RunEnd>,
+        error: Option<String>,
+        at: SystemTime,
+        when: Option<u64>,
+    ) {
         if let (Some(e), None) = (e, &r.closed) {
             r.info.state = state_of(e);
             r.info.why = Some(RunWhy::Reported);
-            r.info.ended_ms = ms(when);
+            r.info.ended_ms = when;
             r.info.waiting = None;
             r.info.error = if e == RunEnd::Failed {
                 capped(error)
@@ -271,7 +287,7 @@ impl Sess {
         r.info.label = sp.label.clone().or(r.info.label.take());
         r.info.kind = sp.kind.clone().or(r.info.kind.take());
         r.info.parent = sp.parent.clone();
-        let at = ms(sp.at);
+        let at = sp.at;
         r.info.started_ms = match (r.info.started_ms, at) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
@@ -280,7 +296,13 @@ impl Sess {
 
     /// 说到子运行的一条（`at` ＝ 那条记录的时刻：来自子记录 ⇒ 那份记录的写入时刻；`when` ＝ 记录自己写着的时刻；
     /// `from` ＝ 这条记录是哪个子运行写的，主运行 ⇒ `None`）。
-    fn link(&mut self, l: ChildLink, at: SystemTime, when: SystemTime, from: Option<&str>) -> bool {
+    fn link(
+        &mut self,
+        l: ChildLink,
+        at: SystemTime,
+        when: Option<u64>,
+        from: Option<&str>,
+    ) -> bool {
         match (l.run, l.tool) {
             (Some(run), Some(tool)) => {
                 // 被挤出表的已收场运行：只补上是哪次调用派出的（收场是粘的，不回表）。
@@ -467,7 +489,7 @@ impl RunBook {
             }
             let mut changed = false;
             let at = child.unwrap_or(now);
-            let when = faces.written(v).unwrap_or(at);
+            let when = faces.written(v).or_else(|| ms(at));
             let from = mark.as_ref().map(|mk| mk.run.clone());
             if let Some(mk) = mark {
                 changed |= s.mark(mk, own_rid, at, when);
@@ -491,7 +513,7 @@ impl RunBook {
             return false;
         }
         let now = SystemTime::now();
-        let when = faces.written(v).unwrap_or(now);
+        let when = faces.written(v).or_else(|| ms(now));
         self.with(|m| {
             let s = m.entry(sid.to_string()).or_default();
             let mut changed = false;

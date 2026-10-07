@@ -76,8 +76,11 @@ pub(crate) fn run_of(v: &Value) -> Option<super::super::RunMark> {
             .and_then(|m| m.get("content"))
             .is_some_and(super::text::is_interrupt_content);
     let end = end.or(interrupted.then_some(RunEnd::Stopped));
-    let answered = s(v, "type") == Some("user") && content(v).any(|b| s(b, "type") == Some("tool_result"));
-    let error = (assistant && api_error).then(|| texts(v.get("message").and_then(|m| m.get("content")))).flatten();
+    let answered =
+        s(v, "type") == Some("user") && content(v).any(|b| s(b, "type") == Some("tool_result"));
+    let error = (assistant && api_error)
+        .then(|| texts(v.get("message").and_then(|m| m.get("content"))))
+        .flatten();
     let did = if assistant {
         content(v).last().and_then(|b| match s(b, "type") {
             Some("tool_use") => s(b, "name").map(|n| RunDid::Tool {
@@ -115,10 +118,13 @@ fn texts(c: Option<&Value>) -> Option<String> {
     (!t.is_empty()).then(|| t.to_string())
 }
 
-/// 一条记录写着的时刻（`timestamp`，ISO 8601）。
-pub(crate) fn written(v: &Value) -> Option<std::time::SystemTime> {
-    let ms = crate::observe::search_query::parse_iso8601_ms(s(v, "timestamp")?)?;
-    Some(std::time::UNIX_EPOCH + std::time::Duration::from_millis(u64::try_from(ms).ok()?))
+/// 一条记录写着的时刻（`timestamp`，ISO 8601 ⇒ 自 1970 起的毫秒）。
+pub(crate) fn written(v: &Value) -> Option<u64> {
+    u64::try_from(crate::observe::search_query::parse_iso8601_ms(s(
+        v,
+        "timestamp",
+    )?)?)
+    .ok()
 }
 
 /// trim：Unicode 空白 ＋ BOM。

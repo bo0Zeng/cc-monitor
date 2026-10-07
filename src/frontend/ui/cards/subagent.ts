@@ -75,6 +75,11 @@ export function buildAgentCard(toolId: string, toolName: string, runTag: ChildRu
   return card;
 }
 
+/** 是不是一张派出卡（工具组收着时那一行数「几个子 agent」）。 */
+export function isRunCard(el: Element): boolean {
+  return cardState.has(el as HTMLElement);
+}
+
 /** 子运行的状态收到它那张卡上（运行表给的成品：哪个子运行 · 状态；有整格时再写用时与「最近：…」）。 */
 export function markRunCard(card: HTMLElement, run: string, state: RunState, info?: RunInfo): void {
   const st = cardState.get(card);
@@ -116,10 +121,15 @@ export function settleRunCard(card: HTMLElement, text: string, failed: boolean):
   d.dataset.failed = failed ? "1" : "0";
   const sum = document.createElement("summary");
   sum.textContent = failed ? copyText("runCard.result.failed") : copyText("runCard.result.done", { n: [...text].length });
-  const body = document.createElement("pre");
-  body.className = s.runResultBody;
-  body.textContent = text;
-  d.append(sum, body);
+  d.appendChild(sum);
+  // 正文展开时才建（交回的结果可能很长；收着的卡不为它付排版）。
+  d.addEventListener("toggle", () => {
+    if (!d.open || d.childElementCount > 1) return;
+    const body = document.createElement("pre");
+    body.className = s.runResultBody;
+    body.textContent = text;
+    d.appendChild(body);
+  });
   card.appendChild(d);
   return true;
 }

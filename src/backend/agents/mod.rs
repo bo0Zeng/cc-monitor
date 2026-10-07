@@ -728,8 +728,8 @@ pub(crate) struct ChildFace {
     /// 父记录的一行原文可能说到子运行（[`RecordFace::child_link`] 会答出东西）—— 便宜的预筛：漏判不许，多判无妨。
     /// 只读尾巴的那条流接上会话时，靠它从父记录已有的那一截里只挑这几行解析。
     pub(crate) hint: fn(&str) -> bool,
-    /// 一条记录自己写着的时刻（运行表的开始 · 最近动静 · 收场三个时刻用）；记录里没写 ⇒ `None`（通用层退回读到它的时刻）。
-    pub(crate) written: fn(&serde_json::Value) -> Option<std::time::SystemTime>,
+    /// 一条记录自己写着的时刻（自 1970 起的毫秒；运行表的开始 · 最近动静 · 收场三个时刻用）；记录里没写 ⇒ `None`（通用层退回读到它的时刻）。
+    pub(crate) written: fn(&serde_json::Value) -> Option<u64>,
 }
 
 /// 一个上游协议的流面：把一个原始流事件（SSE `data:` 后面那段原文）折成归一事件。认不出 ⇒ 空。
@@ -832,7 +832,7 @@ impl RunFaces {
         self.children.is_some_and(|c| (c.hint)(line))
     }
 
-    pub(crate) fn written(&self, v: &serde_json::Value) -> Option<std::time::SystemTime> {
+    pub(crate) fn written(&self, v: &serde_json::Value) -> Option<u64> {
         self.children.and_then(|c| (c.written)(v))
     }
 }

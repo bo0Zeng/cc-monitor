@@ -126,6 +126,7 @@ const UNIT: &[&str] = &[
     "tests/backend/stream/run_route_tests.rs", // 流归位那一跳的丢弃账
     "tests/frontend/ui/live-card.vitest.ts", // 活卡：状态机 · 真 TabManager 三向相等（台架夹具那一条随折法搬进后端）
     "tests/frontend/ui/runs.vitest.ts", // 子运行：主 tab 零子运行行、agent 面板分组与五态、主活卡只有主运行那段、状态标到那张卡上
+    "tests/frontend/ui/agent-window.vitest.ts", // agent 窗口：标题 · 说明 · 派活那段话 · 它派出的 agent · 不拽人 · 进来停在哪 · 回到派出它的地方
     "tests/backend/writer_task_tests.rs", // 写者优先序（tap 最低）
     "tests/frontend/ui/branch-button.vitest.ts",
     "tests/frontend/ui/branch-fold-batching.vitest.ts",
@@ -329,6 +330,8 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/quota-lines.vitest.ts", // 读跨语言金样（`tests/__fixtures__/quota-text.golden.json`）
     "tests/frontend/ui/quota-stream.vitest.ts", // 读 Rust 源码对拍流名（`event_replay.rs::QUOTA_CHANGED_KIND`）
     "tests/frontend/ui/apikey-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/apikey.golden.json`）
+    "tests/frontend/ui/runs-decode.vitest.ts", // 读跨语言金样（`tests/__fixtures__/session-stream.golden.jsonl` 的运行表那两行）
+    "tests/frontend/shell/agent_window_label_tests.rs", // 读权限文件（`capabilities/default.json`）：agent 窗口名落在查看窗那一组里
     "tests/frontend/ui/ssh-config-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/ssh-config.golden.json`）
     "tests/frontend/ui/terminal-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/terminals.golden.json`）
     "tests/frontend/ui/port-forward-reads.vitest.ts", // 读跨语言金样（`tests/__fixtures__/forward-list.golden.json`）

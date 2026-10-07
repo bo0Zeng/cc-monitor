@@ -132,7 +132,9 @@ const BASE_S: u64 = 1_790_848_800;
 fn with(line: &str, extra: &[(&str, serde_json::Value)]) -> String {
     let mut v: serde_json::Value = serde_json::from_str(line).unwrap();
     for (k, x) in extra {
-        v.as_object_mut().unwrap().insert((*k).to_string(), x.clone());
+        v.as_object_mut()
+            .unwrap()
+            .insert((*k).to_string(), x.clone());
     }
     v.to_string()
 }
@@ -213,7 +215,12 @@ fn claude_code() -> Shape {
             let ts = format!("2026-10-01T10:{:02}:{:02}.000Z", secs / 60, secs % 60);
             with(line, &[("timestamp", ts.into())])
         },
-        in_run: |line, run| with(line, &[("isSidechain", true.into()), ("agentId", run.into())]),
+        in_run: |line, run| {
+            with(
+                line,
+                &[("isSidechain", true.into()), ("agentId", run.into())],
+            )
+        },
         child_answer: |run| {
             format!(
                 r#"{{"type":"user","isSidechain":true,"agentId":"{run}","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"x","content":"x"}}]}}}}"#
@@ -300,7 +307,9 @@ fn fake() -> Shape {
             format!(r#"{{"kind":"say","lane":"{run}","resp":"{rid}","over":"bad","why":"{why}"}}"#)
         },
         fg_failed: |tool, run, why| {
-            format!(r#"{{"kind":"spawned","call":"{tool}","lane":"{run}","fin":"bad","why":"{why}"}}"#)
+            format!(
+                r#"{{"kind":"spawned","call":"{tool}","lane":"{run}","fin":"bad","why":"{why}"}}"#
+            )
         },
     }
 }
@@ -1249,7 +1258,13 @@ fn extra_cells_scenario(shape: &Shape) {
         &[st((shape.child_tool)("g2", "r2", "Read"), 150)],
         Some(Duration::from_secs(60)),
     );
-    child_file(shape, &parent, "g4", &[st((shape.child_failed)("g4", "r4", "overloaded"), 160)], None);
+    child_file(
+        shape,
+        &parent,
+        "g4",
+        &[st((shape.child_failed)("g4", "r4", "overloaded"), 160)],
+        None,
+    );
     child_file(
         shape,
         &parent,
@@ -1295,22 +1310,59 @@ fn extra_cells_scenario(shape: &Shape) {
     );
     let i = info_of(&book, "g3");
     assert_eq!(
-        (i.state, i.parent.as_deref(), i.label.as_deref(), i.started_ms, i.ended_ms, i.why, i.error),
-        (RunState::Done, Some("g1"), Some("L3"), at(120), at(200), Some(RunWhy::Own), None),
+        (
+            i.state,
+            i.parent.as_deref(),
+            i.label.as_deref(),
+            i.started_ms,
+            i.ended_ms,
+            i.why,
+            i.error
+        ),
+        (
+            RunState::Done,
+            Some("g1"),
+            Some("L3"),
+            at(120),
+            at(200),
+            Some(RunWhy::Own),
+            None
+        ),
         "[{}] 孙运行：parent ＝ 派出它的那个子运行；自己写出终局 ⇒ own、收场时刻是那一条的",
         shape.name
     );
     let i = info_of(&book, "g2");
     assert_eq!(
-        (i.state, i.started_ms, i.active_ms, i.ended_ms, i.why, i.error.as_deref(), i.waiting),
-        (RunState::Failed, at(102), at(150), at(300), Some(RunWhy::Reported), Some("boom"), None),
+        (
+            i.state,
+            i.started_ms,
+            i.active_ms,
+            i.ended_ms,
+            i.why,
+            i.error.as_deref(),
+            i.waiting
+        ),
+        (
+            RunState::Failed,
+            at(102),
+            at(150),
+            at(300),
+            Some(RunWhy::Reported),
+            Some("boom"),
+            None
+        ),
         "[{}] 前台以报错收场：派出那一方说的 ⇒ reported、带报错原话、不再在等",
         shape.name
     );
     let i = info_of(&book, "g4");
     assert_eq!(
         (i.state, i.why, i.error.as_deref(), i.ended_ms),
-        (RunState::Failed, Some(RunWhy::Own), Some("overloaded"), at(160)),
+        (
+            RunState::Failed,
+            Some(RunWhy::Own),
+            Some("overloaded"),
+            at(160)
+        ),
         "[{}] 自己写出失败终局：own ＋ 那条的原话",
         shape.name
     );
@@ -1322,9 +1374,18 @@ fn extra_cells_scenario(shape: &Shape) {
         shape.name
     );
     // g6 的记录先读到（140）、派出它的那两条后到（135）：开始取早的那个。
-    child_file(shape, &parent, "g6", &[st((shape.child_tool)("g6", "r6", "Bash"), 140)], None);
+    child_file(
+        shape,
+        &parent,
+        "g6",
+        &[st((shape.child_tool)("g6", "r6", "Bash"), 140)],
+        None,
+    );
     track.on_path(&(shape.child_of)(&parent, "g6"));
-    for l in [st((shape.spawn)("t6", "L6"), 135), st((shape.spawned)("t6", "g6"), 136)] {
+    for l in [
+        st((shape.spawn)("t6", "L6"), 135),
+        st((shape.spawned)("t6", "g6"), 136),
+    ] {
         track.main_record(SID, &l);
     }
     assert_eq!(

@@ -794,7 +794,9 @@ fn session_runs_frames_carry_the_runs_verbatim() {
             assert_eq!(sid, "s1");
             assert_eq!(
                 json(runs.0.get()),
-                json(r#"[{"run":"a2","state":"failed","last":{"t":"say"},"started_ms":1000,"active_ms":2000,"ended_ms":3000,"why":"reported","error":"boom"}]"#)
+                json(
+                    r#"[{"run":"a2","state":"failed","last":{"t":"say"},"started_ms":1000,"active_ms":2000,"ended_ms":3000,"why":"reported","error":"boom"}]"#
+                )
             );
             assert_eq!(
                 json(ended.0.get()),

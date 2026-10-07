@@ -284,6 +284,9 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     const res = streamRootEl.querySelector<HTMLDetailsElement>('[data-role="run-card"] [data-role="run-result"]')!;
     expect(res.querySelector("summary")?.textContent).toBe(copyText("runCard.result.done", { n: 4 }));
     expect(res.open).toBe(false);
+    expect(res.textContent, "收着时不建正文").not.toContain("找到两处");
+    res.open = true;
+    res.dispatchEvent(new Event("toggle"));
     expect(res.textContent).toContain("找到两处");
   });
 });

@@ -100,8 +100,8 @@ fn child_link(v: &Value) -> Vec<ChildLink> {
     }
 }
 
-fn written(v: &Value) -> Option<std::time::SystemTime> {
-    Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(v.get("clock")?.as_u64()?))
+fn written(v: &Value) -> Option<u64> {
+    v.get("clock")?.as_u64()?.checked_mul(1000)
 }
 
 fn hint(line: &str) -> bool {
