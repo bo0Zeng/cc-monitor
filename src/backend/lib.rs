@@ -823,7 +823,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p8o-session-new：新帧命令 session-new / session-new-facts / session-new-dir（起新会话一个请求、最近用过的目录 · 能起哪几家 · 目录在不在）；轮换 cap 的 n 收 0（那一时段不用这个号）。
 ///
 /// p8p-agent-facts：history-facts 带 agent（后端按记录认）；画像多 speakerName（LaunchFace.speaker_name）。
-pub const BUILD_ID: &str = "p8p-agent-facts";
+///
+/// p8q-base-url-face：ccm 找上游的变量名由那一家的上游格给（Codex 不注入也不清 ANTHROPIC_BASE_URL）；项目级 MCP 足迹申报归 Claude 足迹面。
+pub const BUILD_ID: &str = "p8q-base-url-face";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
