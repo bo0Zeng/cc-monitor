@@ -364,6 +364,13 @@ mod tests {
     ///    （往 `homes` 里加一项，不要加字段）。
     #[test]
     fn every_frozen_compat_entry_states_how_it_gets_unfrozen() {
+        // 只许那一个历史字段（`claude_dir`）冻结着：加第二个 `<名>_dir` 字段正是 `D3` 排除掉的那条路。
+        for (file, frag, ..) in FROZEN_COMPAT {
+            assert!(
+                frag.contains("claude_dir"),
+                "`FROZEN_COMPAT` 登记了 `{file}` 的 `{frag}` —— 只许 `claude_dir` 那一个历史字段，往 `homes` 里加一项，不要加字段"
+            );
+        }
         for (file, frag, why, unlock) in FROZEN_COMPAT {
             assert!(
                 !why.trim().is_empty(),
