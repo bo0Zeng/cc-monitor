@@ -27,11 +27,6 @@ fn alias_names_follow_the_shell_function_rules() {
     assert_eq!(alias_name("a_b", true).as_deref(), Some("a_bcct"));
     assert_eq!(alias_name("2x", false).as_deref(), Some("_2xcc"));
     assert_eq!(alias_name("---", true), None);
-    assert_eq!(alias_args("z", false), ["--", "--account", "z"]);
-    assert_eq!(
-        alias_args("z", true),
-        ["--", "--account", "z", "--ccm-tmux"]
-    );
 }
 
 #[test]

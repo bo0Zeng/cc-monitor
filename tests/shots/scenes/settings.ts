@@ -55,6 +55,31 @@ function acctWorld(verifyFail = false): () => World {
   };
 }
 
+/** 配置文件那一页换一种样子（`fake/profiles.ts`）。 */
+const profilesWorld = (state: NonNullable<World["profiles"]>) => (): World => ({ ...defaultWorld(), profiles: state });
+
+/** 别名那一行露出来、清单读回之后（树或卡片画好）。 */
+async function profilesPage(): Promise<void> {
+  await go("machine:devbox", "machine:devbox#config");
+  await waitFor(".settings-page:not([hidden]) [data-role=profiles] .prof-tree, .settings-page:not([hidden]) [data-role=file-problem], .settings-page:not([hidden]) [data-role=seed]");
+  await sleep(500);
+}
+
+const pf = (sel: string): string => `.settings-page:not([hidden]) [data-role=profiles] ${sel}`;
+
+/** 把那一块滚到视口顶上。 */
+function top(sel: string): void {
+  document.querySelector(sel)?.scrollIntoView({ block: "start" });
+}
+
+/** 改表单里一个下拉 / 输入并通知（与人改一样走 change）。 */
+function setField(sel: string, value: string): void {
+  const e = document.querySelector(sel) as HTMLInputElement | HTMLSelectElement | null;
+  if (!e) return;
+  e.value = value;
+  e.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 function troubleWorld(): World {
   const w = defaultWorld();
   w.unseenMachines = ["gpu-01"];
@@ -300,34 +325,112 @@ export const SETTINGS_SCENES: Scene[] = [
   settings("settings-machine-trouble", "设置 · 连不上的那台", "gpu-01 那一页（连不上）", async () => {
     await go("machine:gpu-01");
   }, troubleWorld),
-  settings("settings-machine-config-below", "设置 · 远端 · 别名与配置文件 · 往下", "devbox 的「别名与配置文件」栏往下：其他 · 会动 · 账号与扩展", async () => {
-    await go("machine:devbox", "machine:devbox#config");
-    await sleep(800);
-    document.querySelector(".settings-page:not([hidden]) [data-role=group-other]")?.scrollIntoView({ block: "start" });
+  settings("profiles-01-tree", "设置 · 别名 · 01 清单按「基于」排成树", "devbox「别名与配置文件」：清单按基于排成树、每行只写自己那几项；cc · cct 标终端函数", async () => {
+    await profilesPage();
+    top(".settings-page:not([hidden]) .machine-aliases");
+    await sleep(300);
+  }, defaultWorld, 860),
+  settings("profiles-02-merge", "设置 · 别名 · 02 点一行看合并表（宽窗）", "点 betacct：右栏合并表（项 · 值 · 来自哪一段）· 假设在这个目录敲 · 等于", async () => {
+    await profilesPage();
+    await click(pf('.prof-trow[data-name="betacct"]'));
+    await sleep(700);
+    top(pf("[data-role=tree]"));
+    await sleep(300);
+  }, defaultWorld, 860, 1180),
+  settings("profiles-02-merge-narrow", "设置 · 别名 · 02 点一行看合并表（窄窗）", "窄窗：合并表落到那一行下面", async () => {
+    await profilesPage();
+    await click(pf('.prof-trow[data-name="betacct"]'));
+    await sleep(700);
+    top(pf('.prof-trow[data-name="cct"]'));
+    await sleep(300);
+  }, defaultWorld, 860, 860),
+  settings("profiles-03-new", "设置 · 别名 · 03 新建", "＋ 新增别名：名字 bcct2 · 基于 cct · 账号 b；在哪起 / 按目录灰着写继承值；等于问后端", async () => {
+    await profilesPage();
+    await click(await byText(pf(".prof-head button"), "＋ 新增别名"));
+    await sleep(500);
+    setField(pf("[data-role=profile-form] [data-role=name]"), "bcct2");
     await sleep(400);
-  }),
+    setField(pf("[data-role=profile-form] [data-role=from]"), "cct");
+    await sleep(500);
+    await click(await byText(pf("[data-role=profile-form] .prof-segb"), "b"));
+    await sleep(700);
+    top(pf("[data-role=profile-form]"));
+    await sleep(300);
+  }, defaultWorld, 900),
+  settings("profiles-04-impact", "设置 · 别名 · 04 改父那一条先看连带谁", "改 cct 的在哪起：表单上方列出会跟着变的子、树里那几行淡黄、存旁写会连带 3 条", async () => {
+    await profilesPage();
+    await click(pf('.prof-trow[data-name="cct"] .cfg-link'));
+    await sleep(600);
+    setField(pf('[data-role=profile-form] [data-slot=tmux] select'), "named");
+    await sleep(500);
+    setField(pf('[data-role=profile-form] [data-slot=tmux] input'), "work");
+    await sleep(700);
+    await click(await byText(pf("[data-role=impact-note] .cfg-link"), "看每条改前改后"));
+    await sleep(400);
+    top(pf(".prof-notes"));
+    await sleep(300);
+  }, defaultWorld, 1000),
+  settings("profiles-05-remove", "设置 · 别名 · 05 删一条被别人基于的", "删 cct：三个选择，推荐改成基于 cc；看改前改后", async () => {
+    await profilesPage();
+    await click(pf('.prof-trow[data-name="cct"] .cfg-link-danger'));
+    await sleep(700);
+    top(pf(".prof-notes"));
+    await sleep(300);
+  }, defaultWorld, 900),
+  settings("profiles-06-edited", "设置 · 别名 · 06 配置文件被手改过", "配置文件的修改时间比这页上次存的晚：清单头一行小字 ＋ 看配置文件", async () => {
+    try {
+      localStorage.setItem("cc-monitor.profiles.lastWrite", JSON.stringify({ devbox: 1 }));
+    } catch {
+      // 截图沙箱里存不了就不出那一句。
+    }
+    await profilesPage();
+    top(pf(".prof-notes"));
+    await sleep(300);
+  }, profilesWorld("edited"), 860),
+  settings("profiles-07-broken", "设置 · 别名 · 07 手改写错一段", "betacct 写错：行上标现在不能用、摘要换成后端原话带行号；别的照常", async () => {
+    await profilesPage();
+    top(pf("[data-role=tree]"));
+    await sleep(300);
+  }, profilesWorld("broken"), 760),
+  settings("profiles-07-syntax", "设置 · 别名 · 07 TOML 写坏", "整份不能用：清单换成一张卡（行号 · 原话 · 打开配置文件）", async () => {
+    await profilesPage();
+    top(".settings-page:not([hidden]) .machine-aliases");
+    await sleep(300);
+  }, profilesWorld("syntax"), 760),
+  settings("profiles-08-stale", "设置 · 别名 · 08 保存时被别处改过", "改 betacct 的账号存：配置文件已不是打开时那一份 ⇒ 一个字节不写、填的还在、重新读", async () => {
+    await profilesPage();
+    await click(pf('.prof-trow[data-name="betacct"] .cfg-link'));
+    await sleep(600);
+    await click(await byText(pf("[data-role=profile-form] .prof-segb"), "z"));
+    await sleep(500);
+    await click(pf("[data-role=profile-form] [data-role=save]"));
+    await sleep(700);
+    top(pf("[data-role=profile-form]"));
+    await sleep(300);
+  }, profilesWorld("stale"), 860),
+  settings("profiles-09-function", "设置 · 别名 · 09 与系统命令同名的那一条", "点 cc：合并表下多一段「cc · 终端函数」：和 /usr/bin/cc 同名 · 写在哪", async () => {
+    await profilesPage();
+    await click(pf('.prof-trow[data-name="cc"]'));
+    await sleep(700);
+    top(pf("[data-role=tree]"));
+    await sleep(300);
+  }, defaultWorld, 860, 1180),
+  settings("profiles-10-migrated", "设置 · 别名 · 10 第一次升级后", "页首绿卡：11 条已转进配置文件（知道了）；.bashrc 里同名函数三个选择", async () => {
+    await profilesPage();
+    top(pf(".prof-notes"));
+    await sleep(300);
+  }, profilesWorld("migrated"), 1000),
+  settings("profiles-11-empty", "设置 · 别名 · 11 空态", "没有配置文件：首建两条的预览 · 建这两条 · 从空的开始", async () => {
+    await profilesPage();
+    top(".settings-page:not([hidden]) .machine-aliases");
+    await sleep(300);
+  }, profilesWorld("empty"), 700),
   settings("settings-machine-config-mcp", "设置 · 远端 · 共用 MCP 展开", "devbox「共用 MCP」那一行点开：两边都改的选一版 · 共用的两条 · 停止同步", async () => {
     await go("machine:devbox", "machine:devbox#config");
     await sleep(800);
     await click(".settings-page:not([hidden]) [data-role=mcp-row] .cfg-toggle");
     await sleep(400);
     document.querySelector(".settings-page:not([hidden]) [data-role=mcp-row]")?.scrollIntoView({ block: "start" });
-    await sleep(300);
-  }),
-  settings("settings-machine-config-pill", "设置 · 远端 · 账号表里点一条", "点 personal 那一行的 personalcct：等于 · 会执行 ·［改］［删］", async () => {
-    await go("machine:devbox", "machine:devbox#config");
-    await sleep(800);
-    await click('.settings-page:not([hidden]) .cfg-pill[data-name="personalcct"]');
-    await sleep(600);
-    document.querySelector(".settings-page:not([hidden]) [data-role=group-accounts]")?.scrollIntoView({ block: "start" });
-    await sleep(300);
-  }),
-  settings("settings-machine-config-new", "设置 · 远端 · 新增别名", "［＋ 新增别名］就地展开：名字 · 账号 · 终端 · 工作目录 · 更多", async () => {
-    await go("machine:devbox", "machine:devbox#config");
-    await sleep(800);
-    await click(await byText(".settings-page:not([hidden]) .cfg-list-head button", "＋ 新增别名"));
-    await sleep(800);
-    document.querySelector(".settings-page:not([hidden]) [data-role=alias-form]")?.scrollIntoView({ block: "start" });
     await sleep(300);
   }),
   settings("settings-machine-config-anchor", "设置 · 带锚点打开 · 接上终端", "主窗口 ↗［接上终端］开 {machine: devbox, tab: config, anchor: connect-terminal}", async () => {

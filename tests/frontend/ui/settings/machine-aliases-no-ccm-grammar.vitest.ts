@@ -22,7 +22,7 @@ import { resolve } from "node:path";
 
 import { REPO_ROOT } from "../../../test-support/repo-root";
 
-const FILES = ["src/frontend/ui/settings/machine-aliases.ts", "src/frontend/ui/alias-reads.ts"];
+const FILES = ["src/frontend/ui/settings/machine-aliases.ts", "src/frontend/ui/alias-reads.ts", "src/frontend/ui/settings/profiles-list.ts", "src/frontend/ui/profiles-reads.ts"];
 
 /**
  * 剥注释（块注释 · 整行与行尾的 `//`）。不用 `test-support/strip-comments`：那台状态机不认 TS 的正则字面量，

@@ -3,7 +3,7 @@
  * 点行展开详情（命令 · API key · 默认模型 · 账号目录 · 删除）。本机远端同一张表，差别只在「打开账号目录」是文件夹还是文件窗口。
  *
  * 判定全在那台后端：清单与登录态（`accounts-list`）· 删了默认号之后谁接（`meta.nextDefault`）· 用量（`quota-read`）·
- * 对不上的几处（`accounts-verify`，打开时顺手核一次）· 命令名（别名清单里认作这个号的那几条，`aliases-read` 的 `groups`）·
+ * 对不上的几处（`accounts-verify`，打开时顺手核一次）· 命令名（配置文件里认作这个号的那几段，`profiles-read` 的 `accountShape`）·
  * 能不能开终端窗口（壳那一处）。这里只排版、只认最后一趟回答（切机器快过读时，晚到的整份作废）。
  * 那台账号清单 / 凭据 / 用量一变，后端推一帧（`accounts-changed` · `quota-changed`），这一页自己重读。
  */
@@ -13,7 +13,6 @@ import { recordFacet, LOCAL_MACHINE_KEY } from "./machine-status";
 import { SETTINGS_APPLIED_EVENT, OPEN_ACCOUNT_PANEL_EVENT, SETTINGS_GO_EVENT } from "./events";
 import { renderNewAccountForm, checkBaseUrl, type NewAccountForm, type NewAccountRequest } from "./account-new-form";
 import { openLoginWindow, loginInTmux } from "./account-login";
-import { localShell } from "./machine-aliases";
 import { accountRowKind, deriveUi, effectiveDefault, type Account, type AccountsState } from "../accounts";
 import { accountsAgentProfile, fetchAccounts, invalidateAccountsCache, launchAgentId } from "../account-reads";
 import { setModelForAccount, getModelForAccount } from "../account-prefs";
@@ -22,7 +21,7 @@ import { readQuota } from "../quota-reads";
 import { fmtAt, slotLabel, type QuotaRead } from "../quota-lines";
 import type { QuotaShow } from "../generated/QuotaShow";
 import { localTzMin } from "../acct-view";
-import { readAliases } from "../alias-reads";
+import { readProfiles } from "../profiles-reads";
 import { writeApikeyKey } from "../apikey-reads";
 import { revealInFolder } from "../reveal-in-folder";
 import { openFileWindow } from "../file-window";
@@ -215,17 +214,16 @@ export class AccountsSection {
     if (!state.available || deriveUi(state).kind !== "ready") {
       return { origin, state, quota: null, verify: null, commands: empty, unknown: false };
     }
-    const shell = isLocalOrigin(origin) ? (localShell() ?? "posix") : "posix";
-    const [quota, verify, aliases] = await Promise.all([
+    const [quota, verify, book] = await Promise.all([
       readQuota(origin).catch(() => null),
       accountsVerify(origin).catch(() => null),
-      readAliases(origin, shell, null).catch(() => null),
+      readProfiles(origin).catch(() => null),
     ]);
     const commands = new Map<string, string[]>();
-    aliases?.aliases.forEach((a, i) => {
-      const g = aliases.groups[i];
-      if (g) commands.set(g.account, [...(commands.get(g.account) ?? []), a.name]);
-    });
+    for (const p of book?.profiles ?? []) {
+      const g = p.accountShape;
+      if (g) commands.set(g.account, [...(commands.get(g.account) ?? []), p.name]);
+    }
     return { origin, state, quota, verify, commands, unknown: false };
   }
 

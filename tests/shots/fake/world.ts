@@ -7,6 +7,7 @@ import { defaultOps } from "./ops";
 import { defaultCommands } from "./commands";
 import { historyOps } from "./history";
 import { machineCommands, machineOps } from "./machine";
+import { profilesOps } from "./profiles";
 
 export const LOCAL = "<local>";
 export const REMOTES = ["devbox", "gpu-01", "win-laptop"];
@@ -211,7 +212,7 @@ export function defaultWorld(): World {
     staleMachines: [],
     config: defaultConfig(),
     sessions,
-    ops: { ...defaultOps(), ...historyOps(), ...machineOps() },
+    ops: { ...defaultOps(), ...historyOps(), ...machineOps(), ...profilesOps() },
     commands: { ...defaultCommands(), ...machineCommands() },
   };
 }

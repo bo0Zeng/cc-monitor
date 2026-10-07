@@ -1,140 +1,16 @@
 {
   "说明": [
-    "别名六问的跨语言金样：后端对临时 home 现算 == reply；界面 `src/frontend/ui/alias-reads.ts` 的解码器读同一份。",
-    "只采结构（占位名字 / 占位参数）。`<HOME>` 由测试换成临时 home。",
-    "`manifest` 是铺在临时 home 上的账号库清单（两个占位号），读回口据它答账号表、归组与缺的那几条。",
-    "`formCases`：表单两向（`aliases-to-form` · `aliases-from-form`）的样本 —— 后端现算 `alias → form` == `form`、`form ＋ orig → alias` == `alias`；界面的解码器读同一份，第一条是空白别名（界面「＋ 新增」那张空表单与它逐格相等）。"
-  ],
-  "aliases": [
-    {
-      "name": "alphacc",
-      "args": [
-        "--",
-        "--account",
-        "z"
-      ],
-      "restTo": "agent"
-    },
-    {
-      "name": "bad name",
-      "args": [],
-      "restTo": "agent"
-    }
+    "别名接入那几口（aliases-read 启动文件候选 · aliases-block-*）的跨语言金样：后端对临时 home 现算 == reply；界面 `src/frontend/ui/alias-reads.ts` 的解码器读同一份。",
+    "只采结构（占位名字）。`<HOME>` 由测试换成临时 home。清单那一半在 `profiles.golden.json`。"
   ],
   "rc": "# mine\nzcc() { claude; }\n",
-  "manifest": {
-    "version": 1,
-    "accounts": [
-      {
-        "name": "z",
-        "email": "",
-        "configDir": "<HOME>/.cc-monitor/accounts/z",
-        "isDefault": true
-      },
-      {
-        "name": "b",
-        "email": "",
-        "configDir": "<HOME>/.cc-monitor/accounts/b",
-        "isDefault": false
-      }
-    ]
-  },
-  "renderReply": {
-    "collisions": [],
-    "fileText": "# === cc-monitor aliases BEGIN v2 ===\n# 照配置文件 ~/.cc-monitor/profiles.toml 生成，别手改，下一次会原样重写。\n# 这里只有与系统命令同名的别名，比如 cc；每条一行，只把调用交给 ccm @名字，规则住配置文件。\n# 别的别名是 ~/.cc-monitor/bin 里指向 ccm 的链接。写法是 POSIX sh 函数，bash / zsh 都 source 得了；fish 不行。\n# （当前一条别名都没有）\n# === cc-monitor aliases END ===\n",
-    "lines": [],
-    "problems": [
-      {
-        "message": "名字只能用字母、数字、下划线，而且不能以数字开头",
-        "name": "bad name"
-      }
-    ]
-  },
-  "installReply": {
-    "aliasPath": "<HOME>/.cc-monitor/profiles.toml",
-    "reload": "已开的终端要运行「. <HOME>/.cc-monitor/aliases.sh」或新开一个",
-    "wroteAliasFile": true
-  },
   "readReply": {
-    "accounts": [
-      "z",
-      "b"
-    ],
-    "aliasPath": "<HOME>/.cc-monitor/profiles.toml",
-    "aliases": [
-      {
-        "args": [
-          "--",
-          "--account",
-          "z"
-        ],
-        "name": "alphacc",
-        "restTo": "agent"
-      }
-    ],
-    "exists": true,
-    "fingerprint": "278-a545e734836f06b4",
-    "groups": [
-      {
-        "account": "z",
-        "tmux": false
-      }
-    ],
     "home": "<HOME>",
-    "missing": [
-      {
-        "account": "z",
-        "alias": {
-          "args": [
-            "--",
-            "--account",
-            "z",
-            "--ccm-tmux"
-          ],
-          "name": "alphacct",
-          "restTo": "agent"
-        },
-        "tmux": true
-      },
-      {
-        "account": "b",
-        "alias": {
-          "args": [
-            "--",
-            "--account",
-            "b"
-          ],
-          "name": "betacc",
-          "restTo": "agent"
-        },
-        "tmux": false
-      },
-      {
-        "account": "b",
-        "alias": {
-          "args": [
-            "--",
-            "--account",
-            "b",
-            "--ccm-tmux"
-          ],
-          "name": "betacct",
-          "restTo": "agent"
-        },
-        "tmux": true
-      }
-    ],
     "otherRc": null,
     "rcCandidates": [
       {
         "block": {
-          "conflictingFunctions": [
-            {
-              "line": 2,
-              "name": "alphacc",
-              "wins": "yours"
-            }
-          ],
+          "conflictingFunctions": [],
           "manualCleanupHint": "",
           "outdated": false,
           "present": false,
@@ -146,11 +22,7 @@
         "sourced": false,
         "unreadable": null
       }
-    ],
-    "said": [
-      "z 账号 · 当前终端"
-    ],
-    "unparsed": []
+    ]
   },
   "blockRenderKeys": [
     "text"
@@ -168,157 +40,9 @@
       "bad_args",
       "refused"
     ],
-    "aliases-from-form": [
-      "bad_args",
-      "refused"
-    ],
-    "aliases-install": [
-      "bad_args",
-      "refused",
-      "stale"
-    ],
     "aliases-read": [
       "bad_args",
       "refused"
-    ],
-    "aliases-render": [
-      "bad_args",
-      "refused"
-    ],
-    "aliases-to-form": [
-      "bad_args"
     ]
-  },
-  "formCases": [
-    {
-      "alias": {
-        "name": "",
-        "args": [],
-        "restTo": "agent"
-      },
-      "form": {
-        "name": "",
-        "cwdIf": [],
-        "cwd": "",
-        "account": "",
-        "base": false,
-        "tmux": "none",
-        "tmuxName": "",
-        "agent": "",
-        "model": "",
-        "launcher": "",
-        "tmuxSize": "",
-        "detach": false,
-        "busRegister": false,
-        "busNote": "",
-        "passthru": "",
-        "ccmOther": ""
-      }
-    },
-    {
-      "alias": {
-        "name": "mine",
-        "args": [
-          "--append-system-prompt",
-          "be brief",
-          "--",
-          "--account-dir",
-          "/srv/acc",
-          "--cwd",
-          "/w"
-        ],
-        "restTo": "agent"
-      },
-      "form": {
-        "name": "mine",
-        "cwdIf": [],
-        "cwd": "/w",
-        "account": "",
-        "base": false,
-        "tmux": "none",
-        "tmuxName": "",
-        "agent": "",
-        "model": "",
-        "launcher": "",
-        "tmuxSize": "",
-        "detach": false,
-        "busRegister": false,
-        "busNote": "",
-        "passthru": "--append-system-prompt 'be brief'",
-        "ccmOther": "--account-dir /srv/acc"
-      }
-    },
-    {
-      "alias": {
-        "name": "convz",
-        "args": [
-          "--model",
-          "opus",
-          "--",
-          "--cwd-if",
-          "~",
-          "~/a b",
-          "--account",
-          "z",
-          "--ccm-tmux=w",
-          "--detach",
-          "--bus-register",
-          "--bus-note",
-          "n"
-        ],
-        "restTo": "agent"
-      },
-      "form": {
-        "name": "convz",
-        "cwdIf": [
-          {
-            "at": "~",
-            "to": "~/a b"
-          }
-        ],
-        "cwd": "",
-        "account": "z",
-        "base": false,
-        "tmux": "named",
-        "tmuxName": "w",
-        "agent": "",
-        "model": "opus",
-        "launcher": "",
-        "tmuxSize": "",
-        "detach": true,
-        "busRegister": true,
-        "busNote": "n",
-        "passthru": "",
-        "ccmOther": ""
-      }
-    },
-    {
-      "alias": {
-        "name": "cca",
-        "args": [
-          "--",
-          "--attach"
-        ],
-        "restTo": "ccm"
-      },
-      "form": {
-        "name": "cca",
-        "cwdIf": [],
-        "cwd": "",
-        "account": "",
-        "base": false,
-        "tmux": "attach",
-        "tmuxName": "",
-        "agent": "",
-        "model": "",
-        "launcher": "",
-        "tmuxSize": "",
-        "detach": false,
-        "busRegister": false,
-        "busNote": "",
-        "passthru": "",
-        "ccmOther": ""
-      }
-    }
-  ]
+  }
 }

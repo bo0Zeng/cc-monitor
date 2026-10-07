@@ -394,8 +394,16 @@ fn init_writes_the_seed_or_an_empty_file() {
 fn the_form_slots_cover_exactly_the_profile_keys() {
     let mut keys: Vec<String> = SLOTS
         .iter()
-        .flat_map(|s| s.keys())
-        .map(str::to_string)
+        .flat_map(|s| {
+            if s.flags.is_empty() {
+                vec![profile::ARGS_KEY.to_string()]
+            } else {
+                s.flags
+                    .iter()
+                    .map(|f| f.trim_start_matches('-').to_string())
+                    .collect()
+            }
+        })
         .collect();
     keys.sort();
     let mut want: Vec<String> = profile::PROFILE_KEYS
@@ -435,4 +443,99 @@ fn a_migration_is_told_once_with_what_could_not_move_and_ack_removes_it() {
     assert!(skipped[0].as_str().unwrap().contains("cca"));
     write(&t, json!([{"op": "ackMigrated"}])).unwrap();
     assert!(read(&t)["migrated"].is_null());
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 跨语言金样（界面 `src/frontend/ui/profiles-reads.ts` 的解码器读同一份）＋ 码集合 == 登记表
+// ═══════════════════════════════════════════════════════════════════════════
+
+fn profiles_golden() -> Value {
+    serde_json::from_str(include_str!("../../../__fixtures__/profiles.golden.json")).unwrap()
+}
+
+/// 机器上会变的几格换成占位：家目录 · 修改时间 · 「等于」那一行（它跟这台的 tmux 会话、账号库、cc-bus 脚本走）。
+fn normalized(v: &Value, home: &str) -> Value {
+    let mut v: Value = serde_json::from_str(&v.to_string().replace(home, "<HOME>")).unwrap();
+    if v.get("modified").is_some_and(Value::is_u64) {
+        v["modified"] = json!("<MTIME>");
+    }
+    if v.get("line").is_some_and(Value::is_string) {
+        v["line"] = json!("<LINE>");
+    }
+    v
+}
+
+/// 五口的成品（夹具：两个号的账号库 · 一份有一段写错的配置文件）== 金样；五口的码集合 == 登记表。
+#[test]
+fn the_profiles_wire_matches_the_cross_language_golden() {
+    let g = profiles_golden();
+    let t = tmp("golden", Some(g["book"].as_str().unwrap()));
+    let home = t.0.display().to_string();
+    let accts = t.0.join(".cc-monitor/accounts");
+    std::fs::create_dir_all(&accts).unwrap();
+    std::fs::write(
+        accts.join("accounts.json"),
+        g["manifest"].to_string().replace("<HOME>", &home),
+    )
+    .unwrap();
+    let read = answer_read(&t.door(), &json!({})).unwrap();
+    let resolve = answer_resolve(&t.door(), &json!({"name": "betacct", "at": "/tmp"})).unwrap();
+    let impact = answer_impact(&t.door(), &g["impactArgs"]).unwrap();
+    let bases = answer_bases(&t.door(), &json!({"name": "mycct"})).unwrap();
+    let write = answer_write(
+        &t.door(),
+        &json!({"changes": g["impactArgs"]["changes"], "fingerprint": read["fingerprint"]}),
+    )
+    .unwrap();
+    let got = json!({
+        "readReply": normalized(&read, &home),
+        "resolveReply": normalized(&resolve, &home),
+        "impactReply": normalized(&impact, &home),
+        "basesReply": normalized(&bases, &home),
+        "writeReply": normalized(&write, &home),
+    });
+    // `CCM_BLESS_PROFILES_GOLDEN=<路径>`：把现算的那一份（连同夹具与码集合）写到那个路径，人对过再拷回金样。
+    if let Some(out) = std::env::var_os("CCM_BLESS_PROFILES_GOLDEN") {
+        let mut g2 = g.clone();
+        for k in [
+            "readReply",
+            "resolveReply",
+            "impactReply",
+            "basesReply",
+            "writeReply",
+        ] {
+            g2[k] = got[k].clone();
+        }
+        g2["codes"] = json!(crate::stream::inbound::REGISTRY
+            .iter()
+            .filter(|s| s.name.starts_with("profiles-"))
+            .map(|s| (s.name.to_string(), s.codes.to_vec()))
+            .collect::<std::collections::BTreeMap<_, _>>());
+        std::fs::write(out, serde_json::to_string_pretty(&g2).unwrap()).unwrap();
+    }
+    for k in [
+        "readReply",
+        "resolveReply",
+        "impactReply",
+        "basesReply",
+        "writeReply",
+    ] {
+        assert_eq!(
+            g[k],
+            got[k],
+            "{k} 与金样不一样；现算：{}",
+            serde_json::to_string_pretty(&got[k]).unwrap()
+        );
+    }
+    let codes: std::collections::BTreeMap<String, Vec<String>> = crate::stream::inbound::REGISTRY
+        .iter()
+        .filter(|s| s.name.starts_with("profiles-"))
+        .map(|s| {
+            (
+                s.name.to_string(),
+                s.codes.iter().map(|c| c.to_string()).collect(),
+            )
+        })
+        .collect();
+    assert_eq!(serde_json::to_value(&codes).unwrap(), g["codes"]);
 }

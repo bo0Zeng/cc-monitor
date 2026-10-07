@@ -42,15 +42,44 @@ fn alias_path(home: &Path, shell: Shell) -> PathBuf {
     PathBuf::from(alias_file_in(&home.display().to_string(), shell))
 }
 
-/// 存清单：指纹取盘上此刻那份配置文件（「读回之后没人动过」那一形）。
-fn inst(h: &TmpHome, list: &[Alias], shell: Shell) -> Result<AliasInstallReport, InstallErr> {
-    let now = std::fs::read_to_string(profiles_path(&h.0)).ok();
-    install_in(
-        &door(h),
-        list,
-        shell,
-        fingerprint_of(now.as_deref()).as_deref(),
-    )
+/// 存一份清单（每条一段、清单里没了的那一段删掉；「基于」照盘上那一段留着），再照它生成别名文件与链接 —— 与设置窗存的那一步
+/// 同一组函数（`profile::apply_changes` · `write_profiles` · `sync_outputs`）。回：动没动；整份合不下来 ⇒ 那几句。
+fn inst(h: &TmpHome, list: &[Alias], shell: Shell) -> Result<bool, String> {
+    let d = door(h);
+    let store = load(&d)?;
+    let mut changes: Vec<profile::Change> = store
+        .book
+        .profiles
+        .iter()
+        .filter(|p| !list.iter().any(|a| a.name == p.name))
+        .map(|p| profile::Change::Remove(p.name.clone()))
+        .collect();
+    for a in list {
+        let from = store.book.find(&a.name).and_then(|p| p.from.clone());
+        changes.push(profile::Change::Set(edit_of_alias(a, from)));
+    }
+    let text = profile::apply_changes(store.text.as_deref(), &changes)?;
+    let bad = profile::problems_after(&text);
+    if !bad.is_empty() {
+        return Err(bad.join("\n"));
+    }
+    let wrote =
+        write_profiles(&d, &store.home, store.text.as_deref(), &text).map_err(|e| e.said())?;
+    let out = sync_outputs(&d, &store.home, &profile::parse_book(&text), Some(shell));
+    Ok(wrote || out.links_changed || !out.rewrote.is_empty())
+}
+
+/// 盘上配置文件里那几段的名字（不在 ⇒ 空）。
+fn names_on_disk(h: &TmpHome) -> Vec<String> {
+    std::fs::read_to_string(profiles_path(&h.0))
+        .map(|t| {
+            profile::parse_book(&t)
+                .profiles
+                .into_iter()
+                .map(|p| p.name)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// 「这份文本里**有整整一行**逐字等于它」。
@@ -120,13 +149,7 @@ fn injection_attempts_arrive_as_plain_args_in_bash() {
     ];
     let h = tmp_home("evil");
     for v in evil {
-        if v.contains('\n') {
-            // 换行 / 控制字符根本进不了别名（一条别名只许占一行）。
-            assert!(check_alias(&al("evil", &["--model", v]), P).is_err());
-            continue;
-        }
         let a = al("evil", &["--model", v]);
-        assert_eq!(check_alias(&a, P), Ok(()), "{v:?}");
         inst(&h, &[a], P).expect("写");
         let text = std::fs::read_to_string(profiles_path(&h.0)).unwrap();
         let book = profile::parse_book(&text);
@@ -175,7 +198,7 @@ fn rewriting_drops_the_alias_you_deleted() {
         al("alphacc", &["--account", "z"]),
         al("betacc", &["--account", "b"]),
     ];
-    assert!(inst(&h, &two, P).unwrap().wrote_alias_file);
+    assert!(inst(&h, &two, P).unwrap());
     assert_eq!(link_of(&h, "alphacc").as_deref(), Some("ccm"));
     assert_eq!(link_of(&h, "betacc").as_deref(), Some("ccm"));
     let one = vec![al("alphacc", &["--account", "z"])];
@@ -194,18 +217,6 @@ fn rewriting_drops_the_alias_you_deleted() {
     );
 }
 
-/// 同名两条 ⇒ 拒，一个字节都不写（后一条会静默盖掉前一条，而用户只会看见「少了一个命令」）。
-#[test]
-fn duplicate_names_are_refused() {
-    let h = tmp_home("dup");
-    let two = vec![
-        al("alphacc", &["--account", "z"]),
-        al("alphacc", &["--account", "b"]),
-    ];
-    assert!(inst(&h, &two, P).is_err());
-    assert!(!alias_path(&h.0, P).exists());
-}
-
 /// 🔴 别名文件改名 `account-aliases.sh` → `aliases.sh`，**不留兼容**：盘上只有旧名那份时读回口不读它（当作没有、给首建那几条）。
 #[test]
 fn the_old_alias_file_name_is_not_read() {
@@ -216,11 +227,10 @@ fn the_old_alias_file_name_is_not_read() {
         "alphacc() { ccm --account z \"$@\"; }\n",
     )
     .expect("铺旧文件");
-    let listing = read_in(&h.0, P, None).expect("读回");
+    read_in(&h.0, P, None).expect("读回");
     assert!(
-        !listing.exists && listing.aliases == first_aliases(P),
-        "读回口去读了旧名：{:?}",
-        listing.aliases
+        !profiles_path(&h.0).exists(),
+        "读回口去读了旧名（拿它迁移了）"
     );
 }
 
@@ -330,43 +340,6 @@ fn al(name: &str, args: &[&str]) -> Alias {
     Alias::new(name, left)
 }
 
-/// 黄金串：别名文件里只有与系统命令撞名的那几条，每条一行固定的 `名字() { ccm @名字 "$@"; }`；别的不进文件（是链接）。
-#[test]
-fn rendering_is_byte_stable_and_quotes_only_what_needs_it() {
-    let r = render(
-        &[
-            al("alphacc", &["--account", "z"]),
-            al(
-                "sh",
-                &["--ccm-tmux", "--account", "z", "--cwd", "/home/u/文档/c c"],
-            ),
-            al("mo", &["--model", "it's", "--", "--verbose"]),
-        ],
-        P,
-    );
-    assert!(r.problems.is_empty(), "{:?}", r.problems);
-    assert_eq!(
-        r.lines,
-        vec![r#"sh() { ccm @sh "$@"; }"#.to_string()],
-        "`sh` 在 PATH 上，只有它写成函数"
-    );
-    for l in &r.lines {
-        assert!(pinned(&r.file_text, l), "整份代码里缺这一行：{l}");
-    }
-    let ps = render(&[al("alphacc", &["--account", "z"])], PS);
-    assert_eq!(ps.lines.len(), 1, "PowerShell 一律是函数：{:?}", ps.lines);
-    assert!(
-        ps.lines[0].contains("'@alphacc'"),
-        "`@` 在 PowerShell 里是展开记号，要引起来：{}",
-        ps.lines[0]
-    );
-    assert_eq!(
-        render(&[al("sh", &["--account", "z"])], P).file_text,
-        render(&[al("sh", &["--account", "y"])], P).file_text,
-        "规则住配置文件：别名文件只随名字变"
-    );
-}
-
 /// 🔴 **异源判据**：真 bash 执行别名文件里那一行 —— 调用时跟的词（空格 / 单引号 / 中文 / `--` 之后的 ccm 选项）原样接在 `@名字` 后面。
 #[test]
 fn a_rendered_alias_really_appends_the_callers_args_in_bash() {
@@ -389,56 +362,6 @@ fn a_rendered_alias_really_appends_the_callers_args_in_bash() {
     );
 }
 
-/// 存进去的是一段段配置；读回来的清单与存进去的**两向相等**；再存一次同一份一个字节都不写；
-/// 盘上那一段手写的注释、「基于」照留（清单这一形说不出「基于」，按名字从盘上那一段接上）。
-#[test]
-fn what_is_installed_reads_back_as_the_same_list() {
-    let h = tmp_home("roundtrip");
-    let list = vec![
-        al("alphacc", &["--account", "z"]),
-        al("alphacct", &["--ccm-tmux", "--account", "z"]),
-        al(
-            "mine",
-            &["--cwd", "/x y", "--ccm-agent", "codex", "--", "--foo"],
-        ),
-    ];
-    let rep = inst(&h, &list, P).expect("写");
-    assert!(rep.wrote_alias_file);
-    let text = std::fs::read_to_string(profiles_path(&h.0)).unwrap();
-    assert!(
-        text.contains("[alphacct]\nccm-tmux = true\naccount = \"z\"\n"),
-        "{text}"
-    );
-    assert!(
-        text.contains("[mine]\nargs = [\"--foo\"]\ncwd = \"/x y\"\nccm-agent = \"codex\"\n"),
-        "{text}"
-    );
-    let back = read_in(&h.0, P, None).expect("读回");
-    assert!(
-        back.exists && back.unparsed.is_empty(),
-        "{:?}",
-        back.unparsed
-    );
-    assert_eq!(back.aliases, list);
-    assert!(
-        !inst(&h, &list, P).unwrap().wrote_alias_file,
-        "同一份再存 ⇒ 一个字节都不写"
-    );
-    // 手改：加注释、让 alphacct 基于 alphacc ⇒ 再从界面存一次，注释与「基于」都留着。
-    let hand = text.replace("[alphacct]\n", "# 我自己加的\n[alphacct]\nfrom = \"alphacc\"\n");
-    std::fs::write(profiles_path(&h.0), &hand).unwrap();
-    let mut edited = list.clone();
-    edited[1] = al("alphacct", &["--ccm-tmux", "--account", "y"]);
-    inst(&h, &edited, P).expect("写");
-    let after = std::fs::read_to_string(profiles_path(&h.0)).unwrap();
-    assert!(
-        after.contains("# 我自己加的\n[alphacct]\nfrom = \"alphacc\"\nccm-tmux = true\naccount = \"y\"\n"),
-        "{after}"
-    );
-    let said = &read_in(&h.0, P, None).unwrap().said[1];
-    assert!(said.starts_with("基于 alphacc"), "{said}");
-}
-
 /// **一次性迁移**：配置文件还不在、旧形状的别名文件在 ⇒ 每条转成一段、写出配置文件、别名文件重写成新形状、补链接；
 /// 认不出的行与转不进去的（诊断口 · 接回会话那一形）不进配置文件（记进日志）；配置文件在了就不再看旧文件。
 #[test]
@@ -457,18 +380,21 @@ fn the_old_alias_file_is_migrated_once_into_the_profiles_file() {
          # === cc-monitor account aliases END ===\n",
     )
     .unwrap();
-    let back = read_in(&h.0, P, None).unwrap();
+    read_in(&h.0, P, None).unwrap();
+    let book = profile::parse_book(&std::fs::read_to_string(profiles_path(&h.0)).unwrap());
+    assert!(book.problems.is_empty(), "{:?}", book.problems);
+    let got: Vec<(String, Vec<String>)> = book
+        .profiles
+        .iter()
+        .map(|p| (p.name.clone(), p.ccm_words()))
+        .collect();
+    let w = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
     assert_eq!(
-        back.aliases,
+        got,
         vec![
-            al("alphacc", &["--account", "z"]),
-            al("betacct", &["--ccm-tmux", "--account", "b"])
+            ("alphacc".to_string(), w(&["--account", "z"])),
+            ("betacct".to_string(), w(&["--ccm-tmux", "--account", "b"])),
         ]
-    );
-    assert!(
-        back.exists && back.unparsed.is_empty(),
-        "{:?}",
-        back.unparsed
     );
     let new_file = std::fs::read_to_string(&p).unwrap();
     assert!(
@@ -479,272 +405,12 @@ fn the_old_alias_file_is_migrated_once_into_the_profiles_file() {
     assert_eq!(link_of(&h, "betacct").as_deref(), Some("ccm"));
     // 迁过了 ⇒ 旧文件再出现也不看。
     std::fs::write(&p, "gammacc() { ccm \"$@\" -- --account q; }\n").unwrap();
-    assert!(read_in(&h.0, P, None)
-        .unwrap()
-        .aliases
-        .iter()
-        .all(|a| a.name != "gammacc"));
-    // 两样都不在 ≠ 读失败（清单的起点是首建那几条，配置文件不建）。
+    read_in(&h.0, P, None).unwrap();
+    assert!(!names_on_disk(&h).contains(&"gammacc".to_string()));
+    // 两样都不在 ≠ 读失败（配置文件不建）。
     let empty = tmp_home("none");
-    let l = read_in(&empty.0, P, None).unwrap();
-    assert!(!l.exists && l.aliases == first_aliases(P) && l.fingerprint.is_none());
+    read_in(&empty.0, P, None).unwrap();
     assert!(!profiles_path(&empty.0).exists());
-}
-
-/// 组合规则：每一条各有一个会被拦下的例子；有一条不合格 ⇒ **整批不写**。
-#[test]
-fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
-    // 几格之间怎么组合（号与 --base · 要 tmux 的几项 …）要连「基于」那一层一起看 ⇒ 存的时候整份判（见下面 `inst`）；
-    // 一条单独看只判每一项自己。
-    let combos = [
-        al("a", &["--account", "z", "--base"]),
-        al("b", &["--ccm-tmux=w", "--tmux-base", "w"]),
-        al("c", &["--ccm-tmux", "--bus-register"]),
-        al("d", &["--detach"]),
-        al("e", &["--tmux-size", "80x24"]),
-        al("l", &["--ccm-agent", "gemini"]),
-    ];
-    for a in &combos {
-        let h = tmp_home("combo");
-        assert!(
-            inst(&h, std::slice::from_ref(a), P).is_err(),
-            "该拦没拦：{a:?}"
-        );
-        assert!(!profiles_path(&h.0).exists(), "有一条不合格却写了");
-    }
-    let h = tmp_home("agent");
-    let e = inst(&h, &[al("l", &["--ccm-agent", "gemini"])], P).unwrap_err();
-    // 写错的 agent 说的是 ccm 运行时同一句（列出认得的几家），不是一句笼统的「参数不对」。
-    assert!(
-        matches!(&e, InstallErr::Refused(m) if m.contains("不认识这个 agent：gemini（认得的：claude / codex）")),
-        "{e:?}"
-    );
-    let bad = [
-        al("1x", &[]),
-        al("ccm", &[]),
-        // 第三档（诊断口 · `--attach`）；相对 / 带 `..` 的 `--cwd`。
-        al("f", &["--ccm-print"]),
-        al("g", &["--attach", "abc"]),
-        al("j", &["--cwd", "rel/dir"]),
-        al("k", &["--cwd", "/a/../b"]),
-        al("h", &["--account"]),
-        al("i", &["--cwd", "a\nb"]),
-        al("m", &["--tmux-size", "big"]),
-    ];
-    for a in &bad {
-        assert!(check_alias(a, P).is_err(), "该拦没拦：{a:?}");
-    }
-    let good = [
-        al(
-            "ok1",
-            &[
-                "--ccm-tmux",
-                "--detach",
-                "--bus-register",
-                "--bus-note",
-                "x",
-            ],
-        ),
-        al("ok2", &["--ccm-tmux=w", "--tmux-size", "80x24"]),
-        al("ok3", &["--base", "--ccm-agent", "codex"]),
-        // 交给 claude 的词原样放行；绝对 `--cwd` 放行（正控）。
-        al("ok4", &["--model", "opus", "--continue"]),
-        al("ok5", &["--cwd", "/srv/my proj"]),
-        // 写空的 agent ⇒ 默认那一家（与 ccm 运行时同一条）。
-        al("ok6", &["--ccm-agent", ""]),
-    ];
-    for a in &good {
-        assert_eq!(check_alias(a, P), Ok(()), "{a:?}");
-    }
-    // 同一份配置两种 shell 共用：盘符根 / UNC / POSIX 绝对路径都收（不对的那一种由 ccm 运行时说），相对与带 `..` 的拒。
-    for (cwd, want_ok) in [
-        ("C:\\work", true),
-        ("\\\\srv\\share", true),
-        ("work", false),
-        ("/srv", true),
-        ("C:\\a\\..\\b", false),
-    ] {
-        assert_eq!(
-            check_alias(&al("w", &["--cwd", cwd]), PS).is_ok(),
-            want_ok,
-            "{cwd:?}"
-        );
-    }
-    let h = tmp_home("bad");
-    let mut list = good.to_vec();
-    list.push(bad[2].clone());
-    let e = inst(&h, &list, P).unwrap_err();
-    assert!(
-        matches!(&e, InstallErr::Refused(m) if m.contains("一条都没写")),
-        "{e:?}"
-    );
-    assert!(!profiles_path(&h.0).exists(), "有一条不合格却写了");
-    // 重名也是一条问题。
-    let r = render(&[al("z", &[]), al("z", &["--ccm-tmux"])], P);
-    assert_eq!(r.problems.len(), 1);
-}
-
-/// 别名放行的，ccm 起会话时也得收：一条别名就是一条 ccm argv，合法与否只问 ccm 自己的解析器。
-/// 这几条 ccm 运行时会拒（尺寸不是数字 · 账号名带空格 · 值像漏了参数），别名这一侧不许先放行。
-#[test]
-fn an_alias_is_valid_only_if_ccm_itself_takes_its_argv() {
-    let ccm_takes = |a: &Alias| {
-        let mut argv = a.args.clone();
-        if a.rest_to == RestTo::Ccm {
-            argv.push("cc-x".into()); // 调用时跟上的那个词
-        }
-        crate::control::ccm::argv::parse(&argv).is_ok()
-    };
-    let corpus = [
-        al("s1", &["--ccm-tmux", "--tmux-size", "abc"]),
-        al("s2", &["--account", "a b"]),
-        al(
-            "s3",
-            &[
-                "--ccm-tmux",
-                "--detach",
-                "--bus-register",
-                "--bus-note",
-                "-x",
-            ],
-        ),
-        al("s4", &["--ccm-tmux", "--tmux-base", "-w"]),
-        al("s5", &["--ccm-tmux", "--tmux-size", "80x24"]),
-        al("s6", &["--account", "z", "--cwd", "/srv"]),
-    ];
-    for a in &corpus {
-        if check_alias(a, P).is_ok() {
-            assert!(ccm_takes(a), "别名放行了一条 ccm 不收的：{:?}", a.args);
-        }
-    }
-    // 正控：ccm 收的这两条，别名这一侧也收（上面那条不是靠全拒绿的）。
-    assert_eq!(check_alias(&corpus[4], P), Ok(()));
-    assert_eq!(check_alias(&corpus[5], P), Ok(()));
-}
-
-/// `--cwd-if` 两个目录都许 `~` 打头或绝对（不含 `..`）；接回会话那一形（调用时的词交给 ccm）只许单放 `--attach`，
-/// 没有 tmux 的目标拒（能力闸先说）。真 bash 执行：`cca foo` 到 ccm 手里是 `-- --attach foo`。
-#[test]
-fn cwd_if_and_the_attach_form_are_checked_like_ccm_takes_them() {
-    let raw = |args: &[&str], rest_to: RestTo| Alias {
-        name: "x".into(),
-        args: args.iter().map(|s| s.to_string()).collect(),
-        rest_to,
-    };
-    let c = RestTo::Agent;
-    for ok in [
-        &["--", "--cwd-if", "~", "~/文档/c c"][..],
-        &[
-            "--", "--cwd-if", "/a", "/b", "--cwd-if", "~/x", "/c", "--cwd", "/d",
-        ],
-        &["--", "--cwd", "~/文档"],
-        &["--", "--cwd", "~"],
-    ] {
-        assert_eq!(check_alias(&raw(ok, c), P), Ok(()), "{ok:?}");
-    }
-    for bad in [
-        &["--", "--cwd-if", "rel", "/b"][..],
-        &["--", "--cwd-if", "~/a/../b", "/b"],
-        &["--", "--cwd-if", "/a"],
-        &["--", "--cwd", "~/../x"],
-        &["--", "--cwd", "rel"],
-    ] {
-        assert!(check_alias(&raw(bad, c), P).is_err(), "{bad:?}");
-    }
-    assert!(
-        first_aliases(P).iter().all(|a| a.name != "cca"),
-        "接回会话那一形不再做成别名"
-    );
-    for bad in [
-        raw(&["--", "--attach"], RestTo::Ccm),
-        raw(&["--", "--attach", "abc"], c),
-    ] {
-        assert!(check_alias(&bad, P).is_err(), "{bad:?}");
-    }
-}
-
-/// 读回口：每条的归组 · 这台的账号表 · 哪个号缺哪一条 · 指纹（盘上那一份的；不在 ⇒ `null`）。
-/// 归组只看参数（改了名的账号那一形照样归账号组），缺不缺也只看形（不看名字）。
-#[test]
-fn the_listing_groups_by_shape_and_names_what_each_account_lacks() {
-    let h = tmp_home("groups");
-    let accts = h.0.join(".cc-monitor/accounts");
-    std::fs::create_dir_all(&accts).unwrap();
-    std::fs::write(
-        accts.join("accounts.json"),
-        json!({ "version": 1, "accounts": [
-            { "name": "z", "configDir": format!("{}/.cc-monitor/accounts/z", hs(&h)) },
-            { "name": "b", "configDir": format!("{}/.cc-monitor/accounts/b", hs(&h)) },
-        ]})
-        .to_string(),
-    )
-    .unwrap();
-    let list = vec![
-        al("cc", &[]),
-        al("zz", &["--account", "z"]),
-        al("alphacct", &["--ccm-tmux", "--account", "z"]),
-        al("work", &["--account", "b", "--cwd", "/w"]),
-    ];
-    inst(&h, &list, P).expect("写");
-    let l = read_in(&h.0, P, None).expect("读回");
-    assert_eq!(l.accounts, ["z", "b"]);
-    let shape = |a: &str, t: bool| {
-        Some(AccountShape {
-            account: a.into(),
-            tmux: t,
-        })
-    };
-    assert_eq!(
-        l.groups,
-        vec![None, shape("z", false), shape("z", true), None]
-    );
-    let lacks: Vec<(String, bool, String)> = l
-        .missing
-        .iter()
-        .map(|m| (m.account.clone(), m.tmux, m.alias.name.clone()))
-        .collect();
-    assert_eq!(
-        lacks,
-        vec![
-            ("b".into(), false, "betacc".into()),
-            ("b".into(), true, "betacct".into())
-        ]
-    );
-    assert_eq!(l.missing[0].alias, al("betacc", &["--account", "b"]));
-    let on_disk = std::fs::read_to_string(profiles_path(&h.0)).unwrap();
-    assert_eq!(l.fingerprint, fingerprint_of(Some(&on_disk)));
-    assert_ne!(
-        fingerprint_of(Some(&on_disk)),
-        fingerprint_of(Some(&format!("{on_disk} ")))
-    );
-}
-
-/// 🔴 存的那一刻盘上那份不是读回时那一份（被别处改过 / 删了）⇒ 一个字节不写、`Stale`；对得上 ⇒ 照写。
-#[test]
-fn an_alias_file_changed_since_it_was_read_is_not_overwritten() {
-    let h = tmp_home("stale");
-    let list = vec![al("alphacc", &["--account", "z"])];
-    let p = profiles_path(&h.0);
-    let fp0 = read_in(&h.0, P, None).unwrap().fingerprint;
-    install_in(&door(&h), &list, P, fp0.as_deref()).expect("不在 ⇒ 指纹 null 写得进");
-    let fp1 = read_in(&h.0, P, None).unwrap().fingerprint;
-    std::fs::write(&p, "# 别处改的\n").unwrap();
-    let e = install_in(&door(&h), &list, P, fp1.as_deref()).expect_err("被别处改过");
-    assert!(
-        matches!(&e, InstallErr::Stale(m) if m.contains("别处改过")),
-        "{e:?}"
-    );
-    assert_eq!(
-        std::fs::read_to_string(&p).unwrap(),
-        "# 别处改的\n",
-        "被改过还写了"
-    );
-    let fp2 = read_in(&h.0, P, None).unwrap().fingerprint;
-    assert!(
-        install_in(&door(&h), &list, P, fp2.as_deref())
-            .unwrap()
-            .wrote_alias_file
-    );
 }
 
 /// 🔴 **异源**：别名里能放的每个旗标，都得是后端 `ccm --help` 里真有的那个词
@@ -845,141 +511,6 @@ fn the_generic_layer_holds_no_shell_text() {
     );
 }
 
-/// 读后端 `control/ccm/mod.rs::CCM_TMUX_CARRIED` 的原文（两棵树不共享源码 ⇒ 异源）。
-fn backend_tmux_carried() -> Vec<String> {
-    let src = std::fs::read_to_string(
-        crate::guard_support::repo_root().join("src/backend/control/ccm/mod.rs"),
-    )
-    .expect("读后端 ccm/mod.rs");
-    let from = guard_core::find_pinned(&src, "pub(crate) const CCM_TMUX_CARRIED: &[&str] = &[\n")
-        .expect("`CCM_TMUX_CARRIED` 那张表锚不住");
-    let body = &src[from..];
-    let body = &body[..body.find("];").expect("表没收尾")];
-    body.lines()
-        .skip(1)
-        .filter_map(|l| {
-            let l = l.trim();
-            let rest = l.strip_prefix('"')?;
-            Some(rest[..rest.find('"')?].to_string())
-        })
-        .collect()
-}
-
-/// 🔴 D6：能力闸拒的那几个旗标 **==** 后端「靠 tmux 活着的 ccm 能力」∩ 别名能放的旗标（两向相等，异源）。
-/// 行为那一格：每个旗标**单独**放进一条别名，PowerShell 目标下必以「没有 tmux」被拒；其余旗标单独放进去，
-/// 被拒也不许是因为 tmux（闸不许比事实宽）。
-#[test]
-fn the_tmux_gate_is_exactly_the_backends_tmux_carried_flags() {
-    let carried = backend_tmux_carried();
-    assert!(
-        carried.len() >= 5,
-        "后端那张表抽出来太少，抽取器坏了：{carried:?}"
-    );
-    let want: std::collections::BTreeSet<String> = carried
-        .iter()
-        // 用户 09-26：能力 `tmux` 的旗标改名成 `--ccm-tmux`（claude 自己有 `--tmux`），其余能力名即旗标名。
-        .map(|c| {
-            if c == "tmux" {
-                "--ccm-tmux".to_string()
-            } else {
-                format!("--{c}")
-            }
-        })
-        .filter(|f| profile::PROFILE_FLAGS.contains(&f.as_str()))
-        .collect();
-    let got: std::collections::BTreeSet<String> =
-        NEEDS_TMUX.iter().map(|s| s.to_string()).collect();
-    assert_eq!(got, want, "能力闸与后端的 tmux 载体表对不上");
-    for flag in profile::PROFILE_FLAGS {
-        // 跟几个值问 ccm 的解析器（别名这一侧不另记一份）。
-        let probe = [flag.to_string(), "v".to_string(), "v".to_string()];
-        let takes = crate::control::ccm::argv::word_at(&probe, 0).map_or(0, |g| g.len - 1);
-        let mut args = vec![flag.to_string()];
-        for _ in 0..takes {
-            args.push("v".to_string());
-        }
-        let e = check_alias(
-            &al("x", &args.iter().map(String::as_str).collect::<Vec<_>>()),
-            PS,
-        );
-        let by_tmux = matches!(&e, Err(m) if m.contains("没有 tmux"));
-        assert_eq!(
-            by_tmux,
-            NEEDS_TMUX.contains(flag),
-            "`{flag}` 在 PowerShell 目标下：{e:?}"
-        );
-    }
-    assert!(check_alias(&al("x", &["--ccm-tmux=w"]), PS).is_err_and(|m| m.contains("没有 tmux")));
-    // 同一条别名在 POSIX 目标下是合格的（闸只在没有 tmux 的地方关）。
-    let full = al(
-        "x",
-        &[
-            "--ccm-tmux",
-            "--detach",
-            "--bus-register",
-            "--tmux-size",
-            "80x24",
-        ],
-    );
-    assert_eq!(check_alias(&full, P), Ok(()));
-    assert!(check_alias(&full, PS).is_err());
-}
-
-/// 🔴 D7：`--bus-note` 要有 `--bus-register` —— 后端 `argv.rs` 那道闸在别名这一侧也有（异源：读后端原文锚它还在）。
-#[test]
-fn a_bus_note_without_a_registration_is_refused_like_the_backend_does() {
-    let argv = std::fs::read_to_string(
-        crate::guard_support::repo_root().join("src/backend/control/ccm/argv.rs"),
-    )
-    .expect("读后端 argv.rs");
-    guard_core::find_pinned(&argv, "if !o.bus_note.is_empty() && !o.bus_register {")
-        .expect("后端那道「备注要有登记」的闸不在了 —— 本侧这条规则要跟着重看");
-    let h = tmp_home("busnote");
-    let e = inst(
-        &h,
-        &[al("x", &["--ccm-tmux", "--detach", "--bus-note", "n"])],
-        P,
-    )
-    .unwrap_err();
-    assert!(
-        matches!(&e, InstallErr::Refused(m) if m.contains("--bus-register")),
-        "{e:?}"
-    );
-    assert_eq!(
-        check_alias(
-            &al(
-                "x",
-                &[
-                    "--ccm-tmux",
-                    "--detach",
-                    "--bus-register",
-                    "--bus-note",
-                    "n"
-                ]
-            ),
-            P
-        ),
-        Ok(())
-    );
-}
-
-/// PowerShell：名字大小写不敏感 ⇒ `Zcc` 与 `alphacc` 算重名；POSIX 不算。
-#[test]
-fn powershell_duplicates_fold_case() {
-    let two = [al("alphacc", &[]), al("Zcc", &["--base"])];
-    assert_eq!(render(&two, PS).problems.len(), 1);
-    assert!(render(&two, P).problems.is_empty());
-}
-
-/// PowerShell 传不过去的值在渲染前就拦住（方言答「传不传得过去」，通用层判「那就不合格」）。
-#[test]
-fn a_value_powershell_would_mangle_is_a_problem_there_only() {
-    // 之后 `--cwd` 要是这种 shell 的绝对路径 ⇒ 把那个值换到交给 claude 的位置上测。
-    let a = al("x", &["--", "C:\\a \"b\""]);
-    assert!(check_alias(&a, PS).is_err());
-    assert_eq!(check_alias(&a, P), Ok(()));
-}
-
 /// 🔴 PowerShell 那一臂的写与读回：别名文件 `aliases.ps1` 带 BOM；读回的清单 == 写进去的；再写一次一个字节都不动；
 /// POSIX 那份文件不受影响。往 `$PROFILE` 装上别名块之后，候选表答「已经接上」—— 与 POSIX 那一侧对称。
 #[test]
@@ -994,8 +525,7 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
     ];
     let profile =
         h.0.join("Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1");
-    let rep = inst(&h, &list, PS).expect("写");
-    assert!(rep.wrote_alias_file, "{rep:?}");
+    assert!(inst(&h, &list, PS).expect("写"));
     let ours = alias_path(&h.0, PS);
     assert!(ours.ends_with(".cc-monitor/aliases.ps1"), "{ours:?}");
     let bytes = std::fs::read(&ours).unwrap();
@@ -1005,18 +535,13 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
         "PowerShell 的别名文件落盘没有 BOM"
     );
     let text = String::from_utf8(bytes).unwrap();
+    let lines: Vec<String> = list.iter().map(|a| render_line(&a.name, PS)).collect();
     assert_eq!(
         text,
-        format!("\u{feff}{}", render(&list, PS).file_text),
-        "落盘的不是预览的那一份"
+        format!("\u{feff}{}", render_file(PS, &lines)),
+        "落盘的不是每条一个函数的那一份"
     );
-    let back = read_in(&h.0, PS, None).expect("读回");
-    assert!(
-        back.exists && back.unparsed.is_empty(),
-        "{:?}",
-        back.unparsed
-    );
-    assert_eq!(back.aliases, list);
+    assert_eq!(names_on_disk(&h), ["alphacc", "mine"]);
     run(block::install_to_profile(&door(&h), &profile)).expect("装别名块");
     let cand = read_in(&h.0, PS, None)
         .unwrap()
@@ -1028,10 +553,7 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
         cand.sourced && cand.exists && cand.block.present,
         "{cand:?}"
     );
-    assert!(!inst(&h, &list, PS).unwrap().wrote_alias_file);
-    // 配置文件两种 shell 共用一份：POSIX 那一侧读到的是同一份清单。
-    let posix = read_in(&h.0, P, None).unwrap();
-    assert!(posix.exists && posix.aliases == list);
+    assert!(!inst(&h, &list, PS).unwrap(), "内容一样就一个字节不写");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1201,14 +723,12 @@ fn the_alias_file_path_is_joined_segment_by_segment() {
 /// 一个哪儿都没有的名字 ⇒ 不报。
 #[test]
 fn a_name_on_this_machines_path_is_reported() {
-    let here = render(&[al("sh", &[])], P).collisions;
+    let here = collision_note("sh", P);
     assert!(
-        here.iter().any(|c| c.contains("sh")),
+        here.as_deref().is_some_and(|c| c.contains("sh")),
         "这台的 PATH 上有 `sh`，该报 —— {here:?}"
     );
-    assert!(render(&[al("zzz_no_such_command_anywhere", &[])], P)
-        .collisions
-        .is_empty());
+    assert_eq!(collision_note("zzz_no_such_command_anywhere", P), None);
 }
 
 /// 🔴 **B4′**：围栏两层 —— 词法四条按字符串判（一个盘上**不存在**的 home 也判得完；Windows 写法同样）·
@@ -1312,26 +832,11 @@ fn a_dialect_this_machine_does_not_speak_is_refused_out_loud() {
             e.contains("PowerShell") && e.contains(&crate::assets::asset_catalog::machine_label()),
             "{e}"
         );
-        let (code, _) = answer_render(&json!({ "aliases": [], "shell": "powershell" }))
+        let h = tmp_home("ps-refuse");
+        let (code, _) = answer_read(&door(&h), &json!({ "shell": "powershell", "rcPath": null }))
             .expect_err("线上那一口也该拒");
         assert_eq!(code, "refused");
     }
-}
-
-/// `new` 是 ccm 自己的位置词：别名里只许是 `--` 右边第一个词；写在左边就是交给 claude 的一个词（照放）。
-#[test]
-fn new_is_accepted_only_as_the_first_word_right_of_the_end() {
-    let raw = |args: &[&str]| Alias::new("n", args.iter().map(|s| s.to_string()).collect());
-    assert_eq!(check_alias(&raw(&["-p", "--", "new", "--base"]), P), Ok(()));
-    assert_eq!(
-        check_alias(&raw(&["new"]), P),
-        Ok(()),
-        "左边的 new 是 claude 的"
-    );
-    assert!(
-        check_alias(&raw(&["--", "--base", "new"]), P).is_err(),
-        "new 不在右边第一个却放行了"
-    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1346,9 +851,7 @@ fn sub_home(v: &Value, home: &str) -> Value {
     serde_json::from_str(&v.to_string().replace("<HOME>", home)).unwrap()
 }
 
-/// 渲染 → 写 → 读回三口的成品 == 金样（`<HOME>` 换成临时 home）；块那三口的码集合 == 登记表。
-/// 临时 home 上铺一份账号库清单（一个号 `z`、一个号 `b`）⇒ 读回带账号表、归组与缺的那几条。
-/// 写那一口：指纹不对 ⇒ `stale`、一个字节不写；对 ⇒ 写。
+/// 读回口（启动文件候选）的成品 == 金样（`<HOME>` 换成临时 home）；块预览的键 · 这一族的码集合 == 登记表。
 #[test]
 fn the_alias_wire_matches_the_cross_language_golden() {
     let g = golden();
@@ -1356,39 +859,14 @@ fn the_alias_wire_matches_the_cross_language_golden() {
     std::fs::write(h.0.join(".bashrc"), g["rc"].as_str().unwrap()).unwrap();
     let d = door(&h);
     let home = hs(&h);
-    let accts = h.0.join(".cc-monitor/accounts");
-    std::fs::create_dir_all(&accts).unwrap();
-    std::fs::write(
-        accts.join("accounts.json"),
-        sub_home(&g["manifest"], &home).to_string(),
-    )
-    .unwrap();
-    let args = json!({ "aliases": g["aliases"], "shell": "posix" });
-    let render = answer_render(&args).expect("渲染");
-    let bad = json!({ "aliases": g["aliases"], "shell": "posix", "fingerprint": null });
-    let (code, _) = answer_install(&d, &bad).expect_err("有一条不合格 ⇒ 整批不写");
-    assert_eq!(code, "refused");
-    let good = json!({ "aliases": [g["aliases"][0]], "shell": "posix", "fingerprint": null });
-    let install = answer_install(&d, &good).expect("写");
-    let (code, _) = answer_install(&d, &good).expect_err("盘上已不是读到的那一份（不在）⇒ 不写");
-    assert_eq!(code, "stale");
     let read = answer_read(&d, &json!({ "shell": "posix", "rcPath": null })).expect("读回");
-    let fp = read["fingerprint"].clone();
-    assert!(fp.is_string(), "{read}");
-    let again = json!({ "aliases": [g["aliases"][0]], "shell": "posix", "fingerprint": fp });
-    let unchanged = answer_install(&d, &again).expect("指纹对 ⇒ 照常");
-    assert_eq!(unchanged["wroteAliasFile"], false);
-    assert_eq!(unchanged["reload"], Value::Null, "没写 ⇒ 不叫人重读");
-    let got = json!({ "renderReply": render, "installReply": install, "readReply": read });
-    let norm = serde_json::from_str::<Value>(&got.to_string().replace(&home, "<HOME>")).unwrap();
-    for k in ["renderReply", "installReply", "readReply"] {
-        assert_eq!(
-            sub_home(&g[k], &home),
-            got[k],
-            "{k} 与金样不一样；现算（换回占位）：{}",
-            serde_json::to_string_pretty(&norm[k]).unwrap()
-        );
-    }
+    let norm = serde_json::from_str::<Value>(&read.to_string().replace(&home, "<HOME>")).unwrap();
+    assert_eq!(
+        sub_home(&g["readReply"], &home),
+        read,
+        "readReply 与金样不一样；现算（换回占位）：{}",
+        serde_json::to_string_pretty(&norm).unwrap()
+    );
     let block = answer_block_render(&d, &json!({ "rcPath": "~/.bashrc" })).expect("块预览");
     let keys: Vec<&str> = block
         .as_object()

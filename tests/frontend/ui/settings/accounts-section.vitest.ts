@@ -17,7 +17,7 @@ const readQuota = vi.fn();
 const accountsVerify = vi.fn();
 const accountsRemove = vi.fn();
 const accountsSetDefault = vi.fn();
-const readAliases = vi.fn();
+const readProfiles = vi.fn();
 const readRemoteConfig = vi.fn();
 const emit = vi.fn();
 const openLoginWindow = vi.fn();
@@ -37,7 +37,7 @@ vi.mock("../../../../src/frontend/ui/account-reads", () => ({
   accountsAgentProfile: () => ({ displayName: "Claude Code", models: ["sonnet", "opus"] }),
 }));
 vi.mock("../../../../src/frontend/ui/quota-reads", () => ({ readQuota: (...a: unknown[]) => readQuota(...a) }));
-vi.mock("../../../../src/frontend/ui/alias-reads", () => ({ readAliases: (...a: unknown[]) => readAliases(...a) }));
+vi.mock("../../../../src/frontend/ui/profiles-reads", () => ({ readProfiles: (...a: unknown[]) => readProfiles(...a) }));
 vi.mock("../../../../src/frontend/ui/remote-config", () => ({
   readRemoteConfig: () => readRemoteConfig(),
   findHostByOrigin: (hosts: { label: string }[], o: string) => hosts.find((h) => h.label === o) ?? null,
@@ -141,7 +141,7 @@ beforeEach(() => {
   setCurrentMachine("devbox");
   confirmed = [];
   answer = true;
-  for (const m of [fetchAccounts, readQuota, accountsVerify, accountsRemove, accountsSetDefault, readAliases, readRemoteConfig, emit, openLoginWindow, loginInTmux, setModelForAccount, accountsInit, accountsRepair, accountsAdd, writeApikeyKey]) m.mockReset();
+  for (const m of [fetchAccounts, readQuota, accountsVerify, accountsRemove, accountsSetDefault, readProfiles, readRemoteConfig, emit, openLoginWindow, loginInTmux, setModelForAccount, accountsInit, accountsRepair, accountsAdd, writeApikeyKey]) m.mockReset();
   const change = (p: object = {}) => ({ applied: true, steps: ["一步"], notes: [], backup: null, account: null, loginCmd: null, aliasNames: ["betacc", "betacct"], keyMasked: null, keyProblem: null, aliases: [], ...p });
   accountsInit.mockResolvedValue(change());
   accountsRepair.mockResolvedValue(change());
@@ -150,7 +150,13 @@ beforeEach(() => {
   fetchAccounts.mockResolvedValue(state());
   readQuota.mockResolvedValue(quota());
   accountsVerify.mockResolvedValue({ pass: true, fails: 0, warns: 0, checks: [] });
-  readAliases.mockResolvedValue({ aliases: [{ name: "apicc" }, { name: "apicct" }, { name: "x" }], groups: [{ account: "api", tmux: false }, { account: "api", tmux: true }, null] });
+  readProfiles.mockResolvedValue({
+    profiles: [
+      { name: "apicc", accountShape: { account: "api", tmux: false } },
+      { name: "apicct", accountShape: { account: "api", tmux: true } },
+      { name: "x", accountShape: null },
+    ],
+  });
   accountsRemove.mockResolvedValue({ applied: true, steps: [], notes: [] });
   accountsSetDefault.mockResolvedValue({ applied: true, steps: [], notes: [] });
   setModelForAccount.mockResolvedValue(undefined);

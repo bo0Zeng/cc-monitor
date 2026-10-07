@@ -350,9 +350,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "authorized-keys-add"
                 | "files-link"
                 | "cc-bus-install-state"
-                | "aliases-render"
                 | "aliases-read"
-                | "aliases-install"
                 | "aliases-block-render"
                 | "aliases-block-install"
                 | "aliases-block-remove"
@@ -594,9 +592,7 @@ fn every_registered_command_declares_its_run_kind() {
         "authorized-keys-add", // 同步文件 I/O（经本进程文件管理面）
         "files-link",
         "cc-bus-install-state",
-        "aliases-render",
         "aliases-read",
-        "aliases-install",
         "aliases-block-render",
         "aliases-block-install",
         "aliases-block-remove",
@@ -605,9 +601,6 @@ fn every_registered_command_declares_its_run_kind() {
         "profiles-impact",
         "profiles-bases",
         "profiles-write",
-        // 别名表单两向：纯函数（问 ccm 的解析器），异步档。
-        "aliases-to-form",
-        "aliases-from-form",
         "powershell-policy-set",
         "ext-uninstall-apply",
         "mcp-server-put",

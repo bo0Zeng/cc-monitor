@@ -31,17 +31,6 @@ pub(crate) struct Slot {
 }
 
 impl Slot {
-    /// 这一格在配置文件里的键。
-    pub(crate) fn keys(&self) -> Vec<&'static str> {
-        if self.flags.is_empty() {
-            return vec![profile::ARGS_KEY];
-        }
-        self.flags
-            .iter()
-            .map(|f| f.trim_start_matches('-'))
-            .collect()
-    }
-
     fn label_text(&self) -> String {
         (self.label)()
     }
@@ -127,6 +116,7 @@ pub(crate) fn said_of(f: Option<&str>, vals: &[String]) -> String {
         Some(flag::TMUX) => copy_text("beProfile.val.tmuxNamed", &[("name", &v(0))]),
         Some(flag::TMUX_BASE) => copy_text("beProfile.val.tmuxBase", &[("name", &v(0))]),
         Some(flag::CWD_IF) => copy_text("beProfile.val.cwdIf", &[("at", &v(0)), ("to", &v(1))]),
+        Some(flag::CWD) => copy_text("beProfile.val.cwd", &[("dir", &v(0))]),
         Some(flag::DETACH | flag::BUS_REGISTER) => copy_text("beProfile.val.on", &[]),
         Some(_) => vals.join(" "),
     }
@@ -326,45 +316,50 @@ fn words_of(p: &Profile) -> Vec<(&'static str, Vec<String>)> {
     out
 }
 
-/// 树里那一行：这一段自己写的几项，按 [`SLOTS`] 的顺序，「标签 值」。没有「基于」、也没写 tmux 的那一段前面说「当前终端」。
+/// 树里那一行里的一项：值自己说得清的（不用账号 · tmux · 按目录 · 进哪）只写值；开关只写标签；其余「标签 值」。
+/// 子那一段写的 tmux 前面带「+」（它是加在父上面的）。
+fn phrase_of(f: Option<&'static str>, vals: &[String], child: bool) -> String {
+    let slot = slot_of(f);
+    let val = said_of(f, vals);
+    match f {
+        Some(flag::TMUX | flag::TMUX_BASE) if child => {
+            copy_text("beProfile.said.plus", &[("val", &val)])
+        }
+        Some(flag::BASE | flag::TMUX | flag::TMUX_BASE | flag::CWD_IF | flag::CWD) => val,
+        Some(flag::DETACH | flag::BUS_REGISTER) => slot.label_text(),
+        _ => copy_text(
+            "beProfile.said.slot",
+            &[("label", &slot.label_text()), ("val", &val)],
+        ),
+    }
+}
+
+/// 树里那一行：这一段自己写的几项，按 [`SLOTS`] 的顺序。没有「基于」、也没写 tmux 的那一段前面说「当前终端」。
 fn summary_of(p: &Profile, shell: Shell) -> String {
+    let child = p.from.is_some();
     let mut parts: Vec<(usize, String)> = words_of(p)
         .into_iter()
         .map(|(f, vals)| {
-            let slot = slot_of(Some(f));
-            let at = SLOTS.iter().position(|s| s.id == slot.id).unwrap_or(0);
-            (
-                at,
-                copy_text(
-                    "beProfile.said.slot",
-                    &[
-                        ("label", &slot.label_text()),
-                        ("val", &said_of(Some(f), &vals)),
-                    ],
-                ),
-            )
+            let at = SLOTS
+                .iter()
+                .position(|s| s.id == slot_of(Some(f)).id)
+                .unwrap_or(0);
+            (at, phrase_of(Some(f), &vals, child))
         })
         .collect();
     if !p.agent.is_empty() {
-        let slot = slot_of(None);
-        let at = SLOTS.iter().position(|s| s.id == slot.id).unwrap_or(0);
-        parts.push((
-            at,
-            copy_text(
-                "beProfile.said.slot",
-                &[
-                    ("label", &slot.label_text()),
-                    ("val", &said_of(None, &p.agent)),
-                ],
-            ),
-        ));
+        let at = SLOTS
+            .iter()
+            .position(|s| s.id == slot_of(None).id)
+            .unwrap_or(0);
+        parts.push((at, phrase_of(None, &p.agent, child)));
     }
     parts.sort_by_key(|(at, _)| *at);
     let mut out: Vec<String> = parts.into_iter().map(|(_, s)| s).collect();
     let has_tmux = words_of(p)
         .iter()
         .any(|(f, _)| slot_of(Some(f)).id == "tmux");
-    if p.from.is_none() && !has_tmux {
+    if !child && !has_tmux {
         out.insert(
             0,
             match shell {
@@ -420,6 +415,8 @@ struct ProfileOut {
     function_line: Option<String>,
     said: String,
     form: ProfileForm,
+    /// 「账号那一形」（自己只写了号、可再加 tmux）⇒ `{account, tmux}`，号与 tmux 按合并下来的算；其余 ⇒ `null`（账号页按它列各号的命令名）。
+    account_shape: Option<Value>,
 }
 
 fn profile_out(book: &Book, p: &Profile, shell: Shell, alias_file: &str) -> ProfileOut {
@@ -479,6 +476,8 @@ fn profile_out(book: &Book, p: &Profile, shell: Shell, alias_file: &str) -> Prof
         }),
         said: summary_of(p, shell),
         form: form_of(p),
+        account_shape: crate::accounts::manage::aliases::shape_of(book, p)
+            .map(|(account, tmux)| json!({ "account": account, "tmux": tmux })),
     }
 }
 
@@ -571,6 +570,7 @@ pub(crate) fn answer_read(d: &dyn Door, _args: &Value) -> Answer {
         "seed": seed,
         "migrated": migrated_note(d, &store.home),
         "binDir": door::join_under(&store.home, links::bin_rel()),
+        "accounts": super::account_table(&store.home),
     }))
 }
 

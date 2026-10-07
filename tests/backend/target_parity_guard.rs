@@ -863,27 +863,9 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
          按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
     ),
     (
-        "aliases-install",
-        "别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
-         按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
-    ),
-    (
         "aliases-read",
         "别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
          按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
-    ),
-    (
-        "aliases-render",
-        "别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
-         按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
-    ),
-    (
-        "aliases-to-form",
-        "别名表单两向住 `assets/aliases/`（引用图按文件算，因此连带）；本身是纯函数，只问 ccm 的解析器 `argv.rs`，不碰 tmux",
-    ),
-    (
-        "aliases-from-form",
-        "别名表单两向住 `assets/aliases/`（引用图按文件算，因此连带）；本身是纯函数，只问 ccm 的解析器 `argv.rs`，不碰 tmux",
     ),
     (
         "powershell-policy-set",
