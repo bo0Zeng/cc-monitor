@@ -12,6 +12,7 @@
  */
 import type { Account, AccountsMeta, AuthKind } from "./accounts";
 import { copyText } from "./copy-table";
+import { ReplyUnreadable } from "./ipc/chan-caller";
 // 账号种类的取值集只有一份（`acct_core::AUTH_KINDS`），这里读它现生成的那份，不手抄。
 import { AUTH_KINDS } from "./generated/judgment-rules";
 
@@ -36,7 +37,7 @@ export function decodeAccountsList(v: unknown): {
   notice: string | null;
 } {
   const bad = (what: string): never => {
-    throw new Error(copyText("accountsDecode.bad.list", { what }));
+    throw new ReplyUnreadable(`accounts-list reply: ${what}`);
   };
   if (!isObj(v) || !sameKeys(v, ["meta", "accounts", "notice"])) return bad(copyText("accountsDecode.where.top"));
   const m = v.meta;
@@ -125,7 +126,7 @@ export function decodeTrust(v: unknown): { trusted: boolean; known: boolean } {
     typeof v.trusted !== "boolean" ||
     typeof v.known !== "boolean"
   ) {
-    throw new Error(copyText("accountsDecode.bad.trust"));
+    throw new ReplyUnreadable("accounts-trust reply shape");
   }
   return { trusted: v.trusted, known: v.known };
 }

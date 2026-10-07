@@ -5,9 +5,8 @@
  * （金样 `tests/__fixtures__/assets-sync.golden.json`）。
  */
 import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
+import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
-import { copyText } from "./copy-table";
 
 /** 一趟同步的结局（`error` = 那一趟哪里没办成，`null` = 全办成了）。 */
 export interface AssetsSyncRow {
@@ -38,7 +37,7 @@ const sameKeys = (o: Record<string, unknown>, want: readonly string[]): boolean 
   return got.length === w.length && got.every((k, i) => k === w[i]);
 };
 const optStr = (v: unknown): v is string | null => v === null || typeof v === "string";
-const bad = (): Error => new Error(copyText("assetsSyncReads.reply.badShape"));
+const bad = (): Error => new ReplyUnreadable("assetsSyncReads reply shape");
 
 /** `assets-sync` 的成品。严格收。 */
 export function decodeAssetsSynced(v: unknown): AssetsSynced {
@@ -74,6 +73,6 @@ export async function syncAssets(origin: Origin): Promise<AssetsSynced> {
     const budget = budgetWithin(SYNC_BUDGET_MS);
     return decodeAssetsSynced(readJson(await chan.call(LOCAL_ORIGIN, "assets-sync", body, budget)));
   } catch (e) {
-    throw new Error(saidOf(e, copyText("mcpReads.backend.tooOld")));
+    throw new Error(saidFrom(e, LOCAL_ORIGIN));
   }
 }

@@ -19,7 +19,7 @@
  */
 import type { Origin } from "./ipc/origin";
 import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
+import { budgetWithin, jsonBody, peerVersionSaid, readJson, saidFrom } from "./ipc/chan-caller";
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
 
@@ -44,7 +44,7 @@ async function askMint(origin: Origin, args: { cwd: string }): Promise<MintOutco
     const budget = budgetWithin(MINT_BUDGET_MS);
     reply = await chan.call(origin, "terminal-name-mint", body, budget);
   } catch (e) {
-    return { ok: false, why: saidOf(e, copyText("tmuxMint.backend.tooOld")) };
+    return { ok: false, why: saidFrom(e, origin) };
   }
   let name: string | null = null;
   try {
@@ -52,7 +52,7 @@ async function askMint(origin: Origin, args: { cwd: string }): Promise<MintOutco
   } catch {
     name = null;
   }
-  return name !== null ? { ok: true, name } : { ok: false, why: copyText("tmuxMint.reply.badShape") };
+  return name !== null ? { ok: true, name } : { ok: false, why: peerVersionSaid("reply_unreadable", origin) };
 }
 
 /** 起新会话 / 全新 resume：那台按 cwd 派生 `<项目名>-cc`、按它的会话快照避让。 */

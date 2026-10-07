@@ -12,8 +12,10 @@
  */
 import { copyText } from "./copy-table";
 import { chan, ChanError, unavailableCode, type CallError } from "../../comms/inward/chan";
-import { readJson, refusalOf } from "./ipc/chan-caller";
+import { machineName, peerVersionSaid, readJson, refusalOf } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
+
+export { machineName };
 
 /**
  * 一次控制动作没做成。`message` 就是给人看的那一句（已经说成人话）；`detail` 只进日志；
@@ -46,14 +48,9 @@ export function exactKeys(v: Record<string, unknown>, keys: readonly string[]): 
   return got.length === want.length && got.every((k, i) => k === want[i]);
 }
 
-/** 一句话里怎么称呼这台机器：本机说「本机」，远端说它的名字。 */
-export function machineName(origin: Origin): string {
-  return isLocalOrigin(origin) ? copyText("control.machine.local") : origin;
-}
-
-/** 应答形状不对 ⇒ 抛（哪一格不对只进 `detail`）。 */
+/** 应答形状不对 ⇒ 抛（哪一格不对只进 `detail`；那句话按码取，不猜版本）。 */
 export function unreadable(origin: Origin, op: string, what: string): ControlError {
-  return new ControlError(copyText("control.reply.unreadable", { machine: machineName(origin) }), `${op} reply ${what}`);
+  return new ControlError(peerVersionSaid("reply_unreadable", origin), `${op} reply ${what}`);
 }
 
 /**
@@ -71,7 +68,7 @@ export function saidOfTransport(origin: Origin, err: CallError): string {
       return copyText("control.channel.unsure", { machine: machineName(origin) });
     case "peer":
       // `unsupported`：那台后端事前就说不认这条命令（比这条动作老）。`refused` 由调用方先接走，走不到这里。
-      return copyText("control.channel.oldBackend", { machine: machineName(origin) });
+      return peerVersionSaid("backend_old", origin);
     case "ours":
       if (err.why !== "Cancelled") return copyText("control.channel.broken");
       // 那台对这一条不认撤 ⇒ 说它可能还在跑。

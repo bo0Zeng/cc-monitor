@@ -7,6 +7,7 @@
  * 要求：「历史 / 账号 / tmux / MCP 四个面，本机与远端走同一条代码路径」。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { ReplyUnreadable } from "../../../../src/frontend/ui/ipc/chan-caller";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -128,7 +129,7 @@ describe("合并问本机后端", () => {
       { ...ok, sessions: [{ ...mk("a", 1, 1), origin: 3 }] },
       null,
     ]) {
-      expect(() => decodeMerged(bad)).toThrow(/读不懂/);
+      expect(() => decodeMerged(bad)).toThrow(ReplyUnreadable);
     }
   });
 });

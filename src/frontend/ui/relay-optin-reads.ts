@@ -6,8 +6,7 @@
  */
 import type { Origin } from "./ipc/origin";
 import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
-import { copyText } from "./copy-table";
+import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
 
 /** 五态：已装 · 贴的过期了 · 没装 · 设了别的地址 · 读不了（不当没装）。 */
 export type RelayOptinState = "installed" | "stale" | "absent" | "other" | "unreadable";
@@ -29,7 +28,7 @@ const RELAY_OPTIN_BUDGET_MS = 30_000;
 /** `relay-optin` 的成品 → {@link RelayOptinReport}。按形状严格收：多一格 / 缺一格 / 类型不对 / 认不得的态 ⇒ 抛（两端契约对不上）。 */
 export function decodeRelayOptin(v: unknown): RelayOptinReport {
   const bad = (what: string): never => {
-    throw new Error(`relay-optin reply shape mismatch: ${what}`); // 程序员错误，刻意英文
+    throw new ReplyUnreadable(`relay-optin reply shape mismatch: ${what}`);
   };
   if (v === null || typeof v !== "object" || Array.isArray(v)) return bad("reply is not an object");
   const o = v as Record<string, unknown>;
@@ -55,6 +54,6 @@ export async function fetchRelayOptin(origin: Origin): Promise<RelayOptinReport>
     const budget = budgetWithin(RELAY_OPTIN_BUDGET_MS);
     return decodeRelayOptin(readJson(await chan.call(origin, "relay-optin", body, budget)));
   } catch (e) {
-    throw new Error(saidOf(e, copyText("relayOptin.fetch.oldBackend")));
+    throw new Error(saidFrom(e, origin));
   }
 }

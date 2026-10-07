@@ -17,9 +17,8 @@
  * 「这台已握手的终端数」不是那台盘上的事实（住 monitor 进程里）⇒ 不在成品里，另问 monitor（`commands.bound_terminal_count`）。
  */
 import { chan, ChanError } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, refusalOf, saidOf } from "./ipc/chan-caller";
+import { budgetWithin, jsonBody, readJson, refusalOf, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
-import { copyText } from "./copy-table";
 
 /** 方言：别名文件、别名块、source 那一行问的是同一个问题（线上名与后端 `dialect::Shell` 逐字）。 */
 export type Shell = "posix" | "powershell";
@@ -199,7 +198,7 @@ const sameKeys = (o: Record<string, unknown>, want: readonly string[]): boolean 
 };
 const strs = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
 const optStr = (v: unknown): v is string | null => v === null || typeof v === "string";
-const bad = (): Error => new Error(copyText("aliasReads.reply.badShape"));
+const bad = (): Error => new ReplyUnreadable("aliases reply shape");
 
 function decodeAlias(v: unknown): Alias {
   if (
@@ -459,7 +458,7 @@ export function decodeAliasInstallReport(v: unknown): AliasInstallReport {
 
 /** 六问的期限：读几份小文件 / 写一份 / 起一次 PowerShell 问内建别名（秒级）。给 30 秒。 */
 const ALIAS_BUDGET_MS = 30_000;
-const said = (e: unknown): Error => new Error(saidOf(e, copyText("mcpReads.backend.tooOld")));
+const said = (e: unknown, origin: Origin): Error => new Error(saidFrom(e, origin));
 
 /** 清单 → 代码（纯：一个字节都不写）。 */
 export async function renderAliases(origin: Origin, aliases: Alias[], shell: Shell): Promise<AliasRender> {
@@ -468,7 +467,7 @@ export async function renderAliases(origin: Origin, aliases: Alias[], shell: She
     const budget = budgetWithin(ALIAS_BUDGET_MS);
     return decodeAliasRender(readJson(await chan.call(origin, "aliases-render", body, budget)));
   } catch (e) {
-    throw said(e);
+    throw said(e, origin);
   }
 }
 
@@ -479,7 +478,7 @@ export async function readAliases(origin: Origin, shell: Shell, rcPath: string |
     const budget = budgetWithin(ALIAS_BUDGET_MS);
     return decodeAliasListing(readJson(await chan.call(origin, "aliases-read", body, budget)));
   } catch (e) {
-    throw said(e);
+    throw said(e, origin);
   }
 }
 
@@ -497,9 +496,9 @@ export async function installAliases(
   } catch (e) {
     const err = e instanceof ChanError ? e.error : null;
     if (err && err.layer === "peer" && err.why === "refused" && refusalOf(err.body)?.code === "stale") {
-      throw new AliasesStale(saidOf(e, copyText("mcpReads.backend.tooOld")));
+      throw new AliasesStale(saidFrom(e, origin));
     }
-    throw said(e);
+    throw said(e, origin);
   }
 }
 
@@ -512,7 +511,7 @@ export async function aliasToForm(origin: Origin, alias: Alias): Promise<AliasFo
     if (!isObj(v) || !sameKeys(v, ["form"])) throw bad();
     return decodeAliasForm(v.form);
   } catch (e) {
-    throw said(e);
+    throw said(e, origin);
   }
 }
 
@@ -528,7 +527,7 @@ export async function aliasFromForm(origin: Origin, form: AliasForm, orig: Alias
     if (!isObj(v) || !sameKeys(v, ["alias"])) throw bad();
     return decodeAlias(v.alias);
   } catch (e) {
-    throw said(e);
+    throw said(e, origin);
   }
 }
 
@@ -541,7 +540,7 @@ export async function renderAliasBlock(origin: Origin, rcPath: string): Promise<
     if (!isObj(v) || !sameKeys(v, ["text"]) || typeof v.text !== "string") throw bad();
     return v.text;
   } catch (e) {
-    throw said(e);
+    throw said(e, origin);
   }
 }
 
@@ -556,7 +555,7 @@ export async function installAliasBlock(origin: Origin, rcPath: string): Promise
     const budget = budgetWithin(ALIAS_BUDGET_MS);
     decodeEmpty(readJson(await chan.call(origin, "aliases-block-install", body, budget)));
   } catch (e) {
-    throw said(e);
+    throw said(e, origin);
   }
 }
 
@@ -570,7 +569,7 @@ export async function allowLocalScripts(origin: Origin, host: PsHost): Promise<P
     const budget = budgetWithin(ALIAS_BUDGET_MS);
     return decodePolicySet(readJson(await chan.call(origin, "powershell-policy-set", body, budget)));
   } catch (e) {
-    throw said(e);
+    throw said(e, origin);
   }
 }
 
@@ -581,6 +580,6 @@ export async function removeAliasBlock(origin: Origin, rcPath: string): Promise<
     const budget = budgetWithin(ALIAS_BUDGET_MS);
     decodeEmpty(readJson(await chan.call(origin, "aliases-block-remove", body, budget)));
   } catch (e) {
-    throw said(e);
+    throw said(e, origin);
   }
 }

@@ -153,7 +153,7 @@ describe("抓一屏：失败怎么说", () => {
 
   it("★ 那台后端比这条命令老 ⇒ 说版本不对；断了 / 超时 ⇒ 说不知道；撤回 ⇒ 说撤回了", async () => {
     answer({ "terminal-preview": { fail: UNSUPPORTED } });
-    expect(await saidBy("devbox")).toMatch(/devbox 的后端版本不对/);
+    expect(await saidBy("devbox")).toMatch(/devbox 的后端版本旧/);
     answer({ "terminal-preview": { fail: { err: { Hop: { idx: 1, tag: "wait", reach: "Unknown", why: "Overrun" } }, body: [] } } });
     expect(await saidBy("devbox")).toMatch(/不知道 devbox 那边做完了没有/);
     answer({ "terminal-preview": { fail: { err: { Ours: "Cancelled" }, body: [] } } });

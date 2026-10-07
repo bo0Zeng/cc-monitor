@@ -14,7 +14,7 @@
  * 买不到：真 Tauri IPC 与真后端（后端那一侧的判据在 Rust 里；monitor 那一跳由 `webview_tests` 量）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { copyText } from "../../../src/frontend/ui/copy-table";
+import { peerVersionSaid, ReplyUnreadable } from "../../../src/frontend/ui/ipc/chan-caller";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -55,9 +55,8 @@ function onlyChanCall(): { origin: string; op: string; body: unknown } {
   return { origin: a.origin, op: a.op, body: chanArgsJson(a) };
 }
 
-/** 「账号清单格式不对」那一句（按文案键取；`{what}` 那一截随用例变，只夹住前后两截）。 */
-const esc = (t: string): string => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const LIST_BAD = new RegExp(copyText("accountsDecode.bad.list", { what: "\u0000" }).split("\u0000").map(esc).join("[^]*"));
+/** 账号清单形状不对 ⇒ 解码器抛的那一种（给人看的那句由读面按码取）。 */
+const LIST_BAD = ReplyUnreadable;
 
 describe("金样：后端出的成品，TS 这一侧读得懂", () => {
   it("accounts-list：三格照收，账号逐格照收（并过表的那一个是 api-key 且可选）", () => {
@@ -117,8 +116,8 @@ describe("严格收：形状不对就抛，不补值", () => {
     });
   }
   it("信任预检：缺一格 / 多一格都抛", () => {
-    expect(() => decodeTrust({ trusted: true })).toThrow(copyText("accountsDecode.bad.trust"));
-    expect(() => decodeTrust({ trusted: true, known: false, error: null })).toThrow(copyText("accountsDecode.bad.trust"));
+    expect(() => decodeTrust({ trusted: true })).toThrow(ReplyUnreadable);
+    expect(() => decodeTrust({ trusted: true, known: false, error: null })).toThrow(ReplyUnreadable);
   });
 });
 
@@ -157,16 +156,16 @@ describe("失败：折成 available:false ＋ 一句人话，不抛", () => {
     invokeMock.mockRejectedValue(UNSUPPORTED);
     const st = await fetchAccounts("devbox");
     expect(st.available).toBe(false);
-    expect(st.error).toMatch(/过旧/);
+    expect(st.error).toMatch(/版本旧/);
     expect([st.oldBackend, deriveUi(st).kind]).toEqual([true, "needs-update"]);
     const t = await checkTrust("devbox", "/h/a", "/w");
     expect(t.available).toBe(false);
-    expect(t.error).toMatch(/过旧/);
+    expect(t.error).toMatch(/版本旧/);
   });
   it("老后端回旧形状 `{lines}` ⇒ 不可用（两端契约对不上），不当成零个账号", async () => {
     invokeMock.mockResolvedValue(linesReply(['{"kind":"accounts-meta","enabled":true}']));
     const st = await fetchAccounts("devbox");
     expect(st.available).toBe(false);
-    expect(st.error).toMatch(LIST_BAD);
+    expect(st.error).toBe(peerVersionSaid("reply_unreadable", "devbox"));
   });
 });

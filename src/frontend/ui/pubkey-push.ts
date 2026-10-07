@@ -6,9 +6,8 @@
  * （可能还没保存）＋ 已保存的那一份 ＋ 跳板那一台（同 `remote-probe.ts`），按形状严格收。本机后端不在 ⇒ 通道那一层报（D11，不回落）。
  */
 import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
+import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./backend-policy";
-import { copyText } from "./copy-table";
 import { hostKey, type RemoteHostConfig } from "./remote-config";
 
 /** 推送的结局。 */
@@ -24,11 +23,9 @@ export interface PushResult {
 /** 期限（值归发起方，DL1）：一次拨号 ＋ 至多一次远端 CLI 往返，秒级；给足余量。 */
 const PUSH_BUDGET_MS = 60_000;
 
-/** 本机后端比这一问老（不认这条命令）时的那句话。 */
-const OLD_BACKEND = copyText("pubkeyPush.backend.tooOld");
 
 function bad(): never {
-  throw new Error(copyText("pubkeyPush.reply.badShape"));
+  throw new ReplyUnreadable("pubkeyPush reply shape");
 }
 
 /** 应答体。严格收：恰好三格、值在闭集里。 */
@@ -57,11 +54,9 @@ export async function pushPublicKey(
   const jump = jumpName ? (saved.find((h) => hostKey(h) === jumpName) ?? null) : null;
   const body = jsonBody({ machine, saved: mine, jump, pubKeyPath });
   const budget = budgetWithin(PUSH_BUDGET_MS);
-  let reply: Uint8Array;
   try {
-    reply = await chan.call(LOCAL_ORIGIN, "pubkey-push", body, budget);
+    return decodePush(readJson(await chan.call(LOCAL_ORIGIN, "pubkey-push", body, budget)));
   } catch (e) {
-    throw new Error(saidOf(e, OLD_BACKEND));
+    throw new Error(saidFrom(e, LOCAL_ORIGIN));
   }
-  return decodePush(readJson(reply));
 }

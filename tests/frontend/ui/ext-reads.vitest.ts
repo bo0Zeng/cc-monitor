@@ -3,7 +3,7 @@
  * 线上形状由跨语言金样钉住（后端测试产出 == `ext-flow.golden.json`，这里读同一份）；「装」只问本机后端（它当枢纽），「卸」问被卸的那一台。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { copyText } from "../../../src/frontend/ui/copy-table";
+import { peerVersionSaid } from "../../../src/frontend/ui/ipc/chan-caller";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -32,7 +32,7 @@ const golden = (n: string) =>
   JSON.parse(readFileSync(resolve(REPO_ROOT, `tests/__fixtures__/${n}.golden.json`), "utf8")) as Record<string, unknown>;
 const SYNC = golden("assets-sync");
 const EXT = golden("ext-flow");
-const BAD = copyText("extReads.reply.badShape");
+const BAD = peerVersionSaid("reply_unreadable", "<local>");
 
 beforeEach(() => {
   invokeMock.mockReset();
