@@ -95,7 +95,10 @@ fn read_gives_each_section_its_own_items_with_lines_and_the_shared_labels() {
         copy_text("beProfile.said.slot", &[("label", &label), ("val", "b")])
     );
     // 表单回填：自己写的那几格有值，没写的继承（null）。
-    assert_eq!(b["form"]["account"], json!({"kind": "account", "name": "b"}));
+    assert_eq!(
+        b["form"]["account"],
+        json!({"kind": "account", "name": "b"})
+    );
     assert!(b["form"]["tmux"].is_null());
     let p = prof(&r, "pcc");
     assert_eq!(p["form"]["account"], json!({"kind": "base"}));
