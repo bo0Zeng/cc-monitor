@@ -827,7 +827,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p8q-base-url-face：ccm 找上游的变量名由那一家的上游格给（Codex 不注入也不清 ANTHROPIC_BASE_URL）；项目级 MCP 足迹申报归 Claude 足迹面。
 ///
 /// p8r-data-report：新帧命令 data-report（足迹重排成改过你的文件 · 要装 · 有没有 tmux · 角标件数）。
-pub const BUILD_ID: &str = "p8r-data-report";
+///
+/// p8s-handed-back：会话事实 history-facts 多一格 handedBack（交回了的子运行 id，按「谁说的」认、随续传令牌累加）；history-find 也收 agent 回报（种类 report）；续传令牌 needs 认 call。
+pub const BUILD_ID: &str = "p8s-handed-back";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
