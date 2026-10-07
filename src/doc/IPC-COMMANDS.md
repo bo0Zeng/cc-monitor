@@ -3503,10 +3503,10 @@ stdin 入参（camelCase 对齐 aterm `ResumeSpec`）。
 |---|---|---|
 | `sessionId` | string |  |
 | `launchCandidates` | [string]? |  |
-| `claudeDir` | string? | ⚠ **冻结兼容字段，不许改名**—— 与 `hello` 帧的 `claude_dir` 同族 |
+| `claudeDir` | string? | 冻结兼容字段，不许改名（与 `hello` 帧的 `claude_dir` 同族）：它是 `--resolve` 的 stdin 契约（线上是 `claudeDir`），与仓外 aterm 冻结对齐 |
 | `fallbackCwd` | string? |  |
 | `alreadyInTmux` | bool? |  |
-| `agentKind` | string? | 会话属哪 agent kind → DG6 据此构 `codex resume <uuid>` vs `claude --resume` |
+| `agentKind` | string? | 会话属哪个 agent kind ⇒ 据此构 `codex resume <uuid>` 或 `claude --resume`（additive，线上 `agentKind`） |
 
 #### `Capabilities`
 
@@ -3521,7 +3521,7 @@ stdout 出参 caps（4 名**逐字复用 aterm `SessionCapabilities`**，camelCa
 
 #### `CommandPlan`
 
-stdout 出参（camelCase 对齐 aterm `ResumePlan` + 加 mode/capabilities）。
+stdout 出参（camelCase 对齐 aterm `ResumePlan`，另加 mode/capabilities）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|

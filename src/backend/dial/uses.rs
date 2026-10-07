@@ -1,9 +1,5 @@
-//! 开出 channel 之后的三种用法（[`super::Use`]）。握手已过：每一支先回 ack（失败就回失败的 ack），
-//! 再干自己那件事。
-//!
-//! I/O 从「本进程的 stdin / stdout」换成调用方给的一对 `AsyncRead` / `AsyncWrite`
-//! （常驻后端里是那条链路的两根内存管子，`link.rs`）；连接从「这一趟自己拨的」换成
-//! 「池里拿的」（[`Lease`]，同身份复用）。三种用法本身一行语义没改。
+//! 开出 channel 之后的几种用法（[`super::Use`]）。握手已过：每一支先回 ack（失败就回失败的 ack），再干自己那件事。
+//! I/O 是调用方给的一对 `AsyncRead` / `AsyncWrite`（常驻后端里是那条链路的两根内存管子，`link.rs`）；连接是池里拿的（[`Lease`]，同身份复用）。
 
 use copy_core::copy_text;
 use std::sync::Arc;
@@ -46,11 +42,8 @@ fn ok_ack(l: &Linked, req: &DialRequest) -> DialAck {
     }
 }
 
-/// `channel.exec(true, cmd)` 装进一个**显式 `Send`** 的盒子。
-///
-/// ⚠ 不是装饰：russh 的 `Channel::exec` 是借 `&self` 的 `async fn`，放进要 `tokio::spawn` 的链路任务里
-/// 会撞 rustc 的「`implementation of Send is not general enough`」（Send 在高阶生命周期上推不出来）。
-/// 在这里把 Send 写死在一个具体生命周期上，调用点就不必再推。
+/// `channel.exec(true, cmd)` 装进一个显式 `Send` 的盒子：russh 的 `Channel::exec` 是借 `&self` 的 `async fn`，放进要 `tokio::spawn`
+/// 的链路任务里会撞 rustc 的「`implementation of Send is not general enough`」。在这里把 Send 写死在一个具体生命周期上。
 fn exec(
     channel: &russh::Channel<russh::client::Msg>,
     cmd: Vec<u8>,
@@ -79,12 +72,11 @@ impl Closable for russh::ChannelWriteHalf<russh::client::Msg> {
     }
 }
 
-/// **被丢 ⇒ 向远端发一次关通道**（与 russh 自己给 `into_stream` 那一形的 `ChannelCloseOnDrop` 同形）。
+/// 被丢 ⇒ 向远端发一次关通道（与 russh 给 `into_stream` 那一形的 `ChannelCloseOnDrop` 同形）。
 ///
-/// 为什么要它：russh 0.61 的裸 `Channel` 被丢**不发 `CHANNEL_CLOSE`**（只有 `into_stream` 那一形会发）。
-/// capture 那一臂拿的是裸通道 ⇒ 链路被关（调用方期限到点 / 界面走了）或 `abort_marker` 提前收工（老后端掉进流模式）时，
-/// 本地那一格已经还回预算，远端那条 session 通道与它上面的进程却还开着 ⇒ 下一次开通道被远端回拒、这条连接的上限被**学小**。
-/// 关通道是**尽力**的（对端撤活只是尽力）：发出去了，对面怎么收场是它的事。
+/// russh 0.61 的裸 `Channel` 被丢不发 `CHANNEL_CLOSE`。capture 那一臂拿的是裸通道 ⇒ 链路被关或 `abort_marker` 提前收工时，
+/// 本地那一格已经还回预算，远端那条 session 通道与它上面的进程却还开着 ⇒ 下一次开通道被远端回拒、这条连接的上限被学小。
+/// 关通道是尽力的：发出去了，对面怎么收场是它的事。
 pub(crate) struct CloseOnDrop<W: Closable>(Option<W>);
 
 impl<W: Closable> CloseOnDrop<W> {
@@ -275,12 +267,8 @@ impl Lease {
     }
 }
 
-/// 一份拨号请求的**完整一趟**：拿连接（池里复用或新拨）→ 按用法服务 → 结束。
-/// 结束 = 调用方手里那根下行管子读到 EOF（`out` 随本函数返回被丢掉）。
-///
-/// ⚠ 返回类型**显式写出 `+ Send`**，不是装饰：链路任务要 `tokio::spawn`，而 `async fn` 的 Send 由调用点
-/// 在高阶生命周期上推 —— russh 那几个借 `&self` 的 `async fn`（`exec` 等）会撞 rustc 的
-/// 「`implementation of Send is not general enough`」。在定义处写死 Send，推导就落在具体生命周期上。
+/// 一份拨号请求的完整一趟：拿连接（池里复用或新拨）→ 按用法服务 → 结束（调用方手里那根下行管子读到 EOF）。
+/// 返回类型显式写出 `+ Send`：理由同 [`exec`]（russh 借 `&self` 的 `async fn` 在高阶生命周期上推不出 Send）。
 pub(crate) fn run<'a, R, W>(
     req: &'a DialRequest,
     stages: &'a StageSink,
@@ -347,11 +335,8 @@ async fn serve<R, W>(
                 tracing::error!("dial: 写 ack 失败（界面已经走了？）");
                 return;
             }
-            // 两条方向对拷。**哪一边先结束就收工**（`K-P6b` 那一版的语义，C2 一度改成「上行结束只半关」又改回来）：
-            // 下行结束 = 远端那头走了；上行结束 = **界面走了**（链路被关 / 句柄被丢）。
-            // ⚠ 不许把上行 EOF 读成「半关、接着等下行」：远端后端的长流**不会**因为 stdin EOF 退出
-            //   ⇒ 会挂在一条没人收的下行上（C2 现打逮到过一个这样挂了 42 分钟的代理）。
-            //   本 crate 不许睡，也就没有「等一会儿再收」这一形。
+            // 两条方向对拷，哪一边先结束就收工：下行结束 = 远端那头走了；上行结束 = 界面走了（链路被关 / 句柄被丢）。
+            // 不许把上行 EOF 读成「半关、接着等下行」：远端后端的长流不会因为 stdin EOF 退出，会挂在一条没人收的下行上。
             let (mut down, mut up) = tokio::io::split(channel.into_stream());
             tokio::select! {
                 r = tokio::io::copy(&mut input, &mut up) => {
@@ -606,10 +591,8 @@ async fn forward<R, W>(
             a = listener.accept() => {
                 let (mut tcp, _peer) = match a {
                     Ok(v) => v,
-                    // ⚠ 界面侧原来在这里 100ms 退避后重试（瞬时错误不杀转发）。本 crate 不许「睡到点自己醒」
-                    //   （`no_timer_guard`），而不退避直接重试会在 fd 耗尽（EMFILE，持续性的）时空转吃满一核
-                    //   ⇒ **收工并出声**：界面那侧读到链路结束，把这条转发标成 `error`，用户重开即可。
-                    //   代价：一次真·瞬时的 ECONNABORTED 也会让这条转发结束。
+                    // 不退避、不重试：本 crate 不许「睡到点自己醒」，不退避直接重试会在 fd 耗尽（EMFILE，持续性的）时空转吃满一核
+                    // ⇒ 收工并出声：界面读到链路结束，把这条转发标成 `error`，用户重开即可。代价：一次真·瞬时的 ECONNABORTED 也会让这条转发结束。
                     Err(e) => {
                         tracing::error!("dial: 转发的本地口 accept 失败，这条转发收工：{e}");
                         break;

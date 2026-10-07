@@ -1,16 +1,10 @@
-//! Linux 实现：`pidfd_open(2)` + 无超时 `poll(2)`。**从 `platform/pidwatch.rs` 逐字搬来。**
-//!
-//! 整个文件 `#![cfg(target_os = "linux")]` —— U4a 之前它是无条件编译的，
-//! 那正是后端在 Windows 上 12 个错里 11 个的来源（`SYS_pidfd_open` / `std::os::fd` /
-//! `libc::poll` / `pollfd` / `POLLIN` / `pid_t`，**一个 cfg 都没有** —— 计划自审 §0.5-3
-//! 说的「cfg 位置扫描抓不到它」指的就是这里）。
+//! Linux 实现：`pidfd_open(2)` + 无超时 `poll(2)`。整个文件 `#![cfg(target_os = "linux")]`：
+//! `SYS_pidfd_open` / `std::os::fd` / `libc::poll` / `pollfd` / `POLLIN` / `pid_t` 都只在 Linux 上有。
 
 #![cfg(target_os = "linux")]
 
-/// P2：`pidfd_open(2)`。绑的是**进程实例本身**而不是 pid 数字 ⇒ **PID 复用在机制上
-/// 不存在**（不是"检测得更准"，是"无从发生"）。这是本工作区唯一一条正确性改进。
-///
-/// 需 Linux 5.3+（本机 7.0）。失败最常见的是 `ESRCH`——目标在 open 之前就没了。
+/// `pidfd_open(2)`：绑的是进程实例本身而不是 pid 数字 ⇒ PID 复用在机制上不存在。
+/// 需 Linux 5.3+。失败最常见的是 `ESRCH` —— 目标在 open 之前就没了。
 pub(crate) fn pidfd_open(pid: u32) -> std::io::Result<std::os::fd::OwnedFd> {
     use std::os::fd::FromRawFd;
     // SAFETY：`SYS_pidfd_open` 只读地为目标进程创建一个 fd，不解引用任何指针。

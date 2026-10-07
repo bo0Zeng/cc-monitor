@@ -1,23 +1,10 @@
-//! **「你说过的话」清单**：会话里每一条**主线用户输入**，按文件顺序。
-//!
-//! 大纲（原名「我说过的 N 句」）的数据源。前端从此不再自己攒这份清单 —— 它问后端要。
-//!
-//! # 🔴 改之前的现打（子步 1，基线 `0ca822cd`）：旁路账本是哪份、大纲的数据今天从哪来
-//!
-//! | 宿主 | 今天的数据源 | 病 |
-//! |---|---|---|
-//! | 实时 tab | **旁路账本** `tabs.ts` 的 `Tab.userInputs`：`onLine` 在双重去重之后调 `trackUserInput`，一条一条喂 `user-input-index.ts::toUserInputEntry`（它再调 `collectUserInputs`）攒出来的数组，每来一句整表交给 `UserInputPanel.setEntries` 就地对账 | ① **到达序不是对话序**：重放是「尾块先到、老块后到」⇒ 编号错；② monitor 起得晚 / 只重放尾部时**清单不全**；③ 每个 tab 各攒一份 |
-//! | 历史查看器 | `session-viewer.ts::rebuildUserInputs`：`collectUserInputs(this.payloads…)`，payloads 是收集阶段读进来的**全量** | 判定口径与实时 tab 共用一个 TS 住址，没毛病；但它是前端的判定 —— 后端一旦出这份清单，留着它就是「各写一遍判定」 |
-//!
-//! ⇒ 判定（四条口径）从 TS 搬到这里，**全仓只剩这一个住址**；两个宿主都经 monitor 的
-//!   `list_user_inputs`（走 `subagent::Backend` 的本机/远端分流）来要，TS 那份删掉。
-//! monitor 那条命令也退役了：界面经通道直接说帧命令 `history-user-inputs`，
-//!   本文件的扫描直接出成品（`read_face.rs`），本机与远端同一条路。
+//! 「你说过的话」清单：会话里每一条主线用户输入，按文件顺序。大纲的数据源，判定（四条口径）全仓只这一个住址；
+//! 界面经通道直接说帧命令 `history-user-inputs`，本文件的扫描直接出成品（`read_face.rs`），本机与远端同一条路。
 //!
 //! # 口径
 //!
 //! 「一条用户输入」＝ 同时满足的 jsonl 记录：
-//! 1. 是 user 记录，且**人在这里说了话**（适配层判「谁说的」，经注册表 `agents::user_text_of` 够；人打的 · 粘贴的 ·
+//! 1. 是 user 记录，且人在这里说了话（适配层判「谁说的」，经注册表 `agents::user_text_of` 够；人打的 · 粘贴的 ·
 //!    斜杠命令 · `!` 输入算，agent 发来的 · 后台通知 · 系统注入 · 压缩摘要 · 中断标记 · 工具结果 · 输出回显都不算）；
 //! 2. 不属于任何子运行（适配层 `RecordFace::run_of` 答不出）—— 子运行里的话是主线派下去的活，不是人在这个会话里说的；
 //! 3. 有 uuid（列出来要跳得过去）。
@@ -26,11 +13,10 @@
 //!
 //! 1. 头 `{"kind":"user_inputs","v":1,"from":F}` —— 首行就认得出「对面会出这份清单」；
 //! 2. 每条一行 [`UserInputRow`]；
-//! 3. 尾 `{"kind":"user_inputs_end","count":N,"end":E}` —— `E` = 最后一个**完整行**的末字节
-//!    （torn 残尾不计）＝ 下一次增量该带的 `--from`。**没有尾行 ⇒ 输出被截断**，不许当全量。
+//! 3. 尾 `{"kind":"user_inputs_end","count":N,"end":E}` —— `E` = 最后一个完整行的末字节（torn 残尾不计）＝ 下一次增量该带的 `--from`。
+//!    没有尾行 ⇒ 输出被截断，不许当全量。
 //!
-//! 本文件**不含任何 `--旗标` 字面量**：argv 在 `history_query.rs` 里解析（那份在
-//! `protocol_doc_guard::DISPATCH_FILES` 里，旗标受 IPC-PROTOCOL 对拍约束）；这里只有纯核。
+//! 本文件不含任何 `--旗标` 字面量：argv 在 `history_query.rs` 里解析（那份在 `protocol_doc_guard::DISPATCH_FILES` 里）；这里只有纯核。
 
 use serde_json::Value;
 

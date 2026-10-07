@@ -1,46 +1,18 @@
-//! U-CC1：**数据面漂移记账** —— 把「Claude Code 变了」从不可观测变成看一眼就知道。
+//! 数据面漂移记账：把「Claude Code 变了」从不可观测变成看一眼就知道。
 //!
-//! # 为什么需要它（这条是实测，不是预防性设计）
-//!
-//! `src/doc/INVARIANTS.md §18.1`（F63，2026-07-16）记下当时的实测：**7 个未知 `type` /
-//! 8,774 条 / 157,385 行**。2026-08-02 本机重新全量扫一遍（只读）：
-//!
-//! ```text
-//! 1,904 个 jsonl · 472,115 条记录 · 非法 JSON 1 条
-//! 20 种 type，monitor 认识 11 种（含自造的 cc-monitor-unrecognized）
-//! 未知 10 种 / 27,747 条 / 5.88%
-//!   mode 20526 · file-history-delta 2564 · agent-name 2312 · pr-link 2198 ·
-//!   relocated 108 · worktree-state 19 · started 6 · result 6 · fork-context-ref 5 · frame-link 3
-//! ```
-//!
-//! 也就是说 **CC 在 17 天里新增了 3 个记录类型**（`started` / `result` / `fork-context-ref`），
-//! **而仓里没有任何东西知道这件事** —— 要靠人手工扫语料才发现。
-//!
-//! # 「宽容降级」与「排他白名单」有一个共同的、此前缺失的配套义务
-//!
-//! **宽容 ≠ 无声；排他 ≠ 无声。**
-//!
-//! - `parse.rs` 对未知 `type` **刻意不 warn**（那个决定是对的：20,526 条 `mode` 会刷屏）；
-//! - monitor 对未登记的 pidfile `kind` 一声不吭（那个排他也是对的，`kind` 是**授权型**判据；那一面记在 monitor 那本）。
-//!
-//! 两者都是**正确的行为**，但都不该是**无声的**：否则「CC 变了」这件事本身不可观测。
-//! 本模块只做一件事 —— **记账**。它**不改变任何行为**，不发 warn，不影响渲染。
+//! CC 的记录类型会自己长（`src/doc/INVARIANTS.md §18.1` 记着语料里未知 `type` 的读数），而仓里没有别的东西知道这件事。
+//! `parse.rs` 对未知 `type` 刻意不 warn（几万条 `mode` 会刷屏）、未登记的 pidfile `kind` 一声不吭（`kind` 是授权型判据）——
+//! 两者都对，但都不该是无声的。本模块只做一件事：记账。不改变任何行为，不发 warn，不影响渲染。
 //!
 //! # 有界
 //!
-//! 键数上限 [`MAX_KEYS`]；再多的一律并进 `<overflow>`。样例只留首见的一条并截断到
-//! [`MAX_SAMPLE_BYTES`]。**这是诊断面，不是数据管道** —— 内存必须有硬上界。
+//! 键数上限 [`MAX_KEYS`]；再多的一律并进 `<overflow>`。样例只留首见的一条并截断到 [`MAX_SAMPLE_BYTES`]。这是诊断面，不是数据管道。
 //!
-//! # 这本账跟着解析搬进了后端，只剩记录那两面
+//! # 按机器分
 //!
-//! 原先整本账住 monitor（远端的记录也在 monitor 里解析），第一层键是 origin。记录解释搬进后端之后，
-//! 看不懂的那一刻在场的是**那台机器自己的后端** ⇒ 账天然按机器分，origin 那一层没了；
-//! 界面按机器经通道问那台后端（帧命令 `drift-report`）。monitor 天生观测的两面（未登记的会话 `kind` ·
-//! 后端 `hello` 里不认识的能力 token）仍记在 monitor 自己那本（`src/frontend/shell/src/drift_ledger.rs`）。
-//!
-//! # 计数的量纲
-//!
-//! 两面都是**每条记录一次**（解析热路径）。**要看的是键的集合，不是数字。**
+//! 记录在那台机器自己的后端里解析 ⇒ 账天然按机器分；界面按机器经通道问那台后端（帧命令 `drift-report`）。
+//! monitor 天生观测的两面（未登记的会话 `kind` · 后端 `hello` 里不认识的能力 token）记在 monitor 自己那本（`src/frontend/shell/src/drift_ledger.rs`）。
+//! 计数是每条记录一次（解析热路径）；要看的是键的集合，不是数字。
 
 use copy_core::copy_text;
 use std::collections::BTreeMap;
@@ -82,10 +54,7 @@ impl DriftFace {
 pub struct DriftEntry {
     /// 看不懂的那个值（记录 type / kind / status / token）。
     pub key: String,
-    /// 见过多少次。**本进程内**的计数，不落盘。
-    ///
-    /// C03：`u64` 必须显式声明 TS 侧类型，否则 ts-rs 默认吐 `bigint`，
-    /// 与 JSON IPC 的运行时（`number`）不一致。
+    /// 见过多少次。本进程内的计数，不落盘。`u64` 必须显式声明 TS 侧类型，否则 ts-rs 默认吐 `bigint`，与 JSON IPC 的运行时（`number`）不一致。
     pub count: u64,
     /// **首见**的一条样例（截断）。后来的不再覆盖 —— 第一条最接近「它刚出现时长什么样」。
     pub first_sample: Option<String>,
@@ -135,17 +104,8 @@ pub fn record(face: DriftFace, key: &str, sample: Option<&str>) {
     record_into(&mut lock(), face, key, sample);
 }
 
-/// [`record`] 的纯形式：**显式传账本**。
-///
-/// # 为什么要拆出来（实测踩过，不是洁癖）
-///
-/// 账本是进程内全局的，而**任何跑过 `parse_line` 的测试都会往里写**
-/// （`history` / `search` / `lib` 的批处理测试都会）。于是「reset + 断言整表形状」这种
-/// 单测**必然 flaky**：实测 6 次全量跑里红 4 次。加一把跨模块串行闸也救不了 ——
-/// 那些测试根本不知道有这把闸。
-///
-/// ⇒ 单测一律在**局部账本**上跑（完全隔离、不需要闸）；只有接缝测试碰全局，
-/// 而它必须写成**容忍污染**的形状（断言「我那条在」，不断言「表里只有我那条」）。
+/// [`record`] 的纯形式：显式传账本。账本是进程内全局的，任何跑过 `parse_line` 的测试都会往里写 ⇒ 「reset + 断言整表形状」必然 flaky。
+/// 单测一律在局部账本上跑；只有接缝测试碰全局，而它写成容忍污染的形状（断言「我那条在」，不断言「表里只有我那条」）。
 fn record_into(led: &mut Ledger, face: DriftFace, key: &str, sample: Option<&str>) {
     let key = if key.is_empty() { "<empty>" } else { key };
     let per_face = led.entry(face).or_default();
@@ -192,8 +152,7 @@ fn snapshot_of(led: &Ledger) -> Vec<DriftFaceReport> {
     out
 }
 
-/// U-CC1：诊断面读口的成品（帧命令 `drift-report`，经注册表 `RecordFace.drift` 够到）：`{faces: [...]}`。
-/// **只读、按需，不新增任何轮询。**
+/// 诊断面读口的成品（帧命令 `drift-report`，经注册表 `RecordFace.drift` 够到）：`{faces: [...]}`。只读、按需，不新增任何轮询。
 pub(crate) fn report() -> serde_json::Value {
     serde_json::json!({ "faces": snapshot() })
 }

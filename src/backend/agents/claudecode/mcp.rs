@@ -1,6 +1,6 @@
 //! Claude 的 **MCP 布局**：`.claude.json` 顶层 `mcpServers`（user）· `projects[<目录>].mcpServers`（local）·
 //! `<目录>/.mcp.json` 的 `mcpServers`（project）。读法宽容：缺 ⇒ 那一段空；坏 ⇒ 那一段空并说出来（`problems`）。
-//! `.claude.json` 找哪一份与资产目录同一处（`assets::claude_json`）；monitor 那两个读者（本机直读 · 远端 SSH `cat`）退役。
+//! `.claude.json` 找哪一份与资产目录同一处（`assets::claude_json`）。
 
 use std::path::Path;
 

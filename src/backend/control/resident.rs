@@ -1,12 +1,12 @@
-//! **远端常驻后端的起 · 找 · 停**（「远端常驻、本机远端同形」·）。
+//! 远端常驻后端的起 · 找 · 停（本机远端同形）。
 //!
-//! 两条一次性子命令，由 monitor 经本机常驻后端的链路 `capture` 在远端跑（设计住仓外）：
+//! 两条一次性子命令，由 monitor 经本机常驻后端的链路 `capture` 在远端跑：
 //! - `--resident-ensure [--replace]`：口上已有人在听 ⇒ 不再起，回盘上那把钥匙（`~/.cc-monitor/listen-token`，它起来时写的）；
 //!   没人 ⇒ 起一个脱离的自己（常驻载体；钥匙文件只交路径），回一行 `{"port","token","pid"}`，`token` 为 `null`：
 //!   钥匙由那个常驻后端绑上口之后自己写（[`rotate_token`]），客户端读到 hello 之后再问一次就拿得到。本进程不等任何东西（零定时器）。
 //!   `--replace`：先按下面那个停法停掉口上那一位（它自己记的 pid 文件），再起（只升不降由 monitor 按 hello 判）。
 //! - `--resident-stop [--grace <秒>]`：**同机监督者**那一形（k8s `terminationGracePeriodSeconds` · systemd `TimeoutStopSec`）：
-//!   SIGTERM（它按 HX1 排空后自己退）→ 在宽限期内等内核通知 → 到点 SIGKILL → 回 `{"stopped":"graceful"|"killed"|"not_running","pid":n|null}`。
+//!   SIGTERM（它排空后自己退）→ 在宽限期内等内核通知 → 到点 SIGKILL → 回 `{"stopped":"graceful"|"killed"|"not_running","pid":n|null}`。
 //!   等待住这个一次性进程里，常驻后端的事件循环不加定时器（`no_timer_guard::REGISTERED_ONE_SHOT_CLI_WAITS`）。
 //!
 //! 口按这台的家算（`~/.cc-monitor`，隔离跑时 `CCM_DATA_DIR`；共享 crate `relay_route_core::listen_port_for`，本机宿主同一个函数）

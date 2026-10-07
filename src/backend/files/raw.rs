@@ -1,32 +1,13 @@
-//! **路径的原始字节** —— `files-read` 这一族的地基。
+//! 路径的原始字节 —— `files-read` 这一族的地基。非 UTF-8 文件名一旦在某一跳被有损解码，回程拿着替换字符去找的是一个不存在的名字
+//! ⇒ 本族从遍历到回送，路径一路走字节。
 //!
-//! # 它解掉的是那一条
+//! 1. 取字节走 [`std::ffi::OsStr::as_encoded_bytes`]：跨平台、无损、不需要平台条件编译（本族不住 `platform/`，写 `std::os::…` 会让 `cfgless_guard` 红）。
+//! 2. 一处有损解码都不许有：把路径转成人话的那几个调用（连 `Path` 的 `Display`）在本族目录下零命中
+//!    （`tests/backend/files/capability_guard.rs` 的 `no_lossy_decode_anywhere_in_the_family`）。
+//! 3. 回送时 [`to_json`] 对有效 UTF-8 才交字符串，其余一律交 `{"b16": "<十六进制>"}`；两条路都双向无损（往返恒等判据，含非 UTF-8 夹具）。
 //!
-//! 那张表逐字：「非 UTF-8 文件名 —— 库层有损解码，**寻址不到**」。
-//! 「寻址不到」不是显示难看：一旦文件名在某一跳被有损解码过，回程拿着那串
-//! 替换字符去找那个文件，**找的是一个不存在的名字**。
-//! ⇒ 本族从遍历到回送，路径**一路走字节**，中间没有任何一跳把它当文本读。
-//!
-//! # 三条实现纪律（都是判据在钉，不是自律）
-//!
-//! 1. **取字节走 [`std::ffi::OsStr::as_encoded_bytes`]** —— 它是跨平台的、无损的，
-//!    而且**不需要任何平台条件编译**。
-//!    ⚠ 这一条不是偏好：`platform/` 之外一写平台原语，`cfgless_guard` 的 `A1` 当场红
-//!    （`std::os::…` 那一族在它的信号表上），而本族不住 `platform/`。
-//! 2. **一处有损解码都不许有**。把路径转成人话的那几个调用（连 `Path` 的 `Display`
-//!    一起）在本族目录下**零命中**，由 `tests/backend/files/capability_guard.rs`
-//!    的 `no_lossy_decode_anywhere_in_the_family` 逐份扫源码钉住。
-//! 3. **回送时不许「顺手解一下」**：[`to_json`] 对有效 UTF-8 才交字符串，
-//!    其余一律交 `{"b16": "<十六进制>"}`。两条路**都是双向无损的**，
-//!    由一条往返恒等判据钉住（含一份合成的、含非 UTF-8 字节的夹具）。
-//!
-//! # ⚠ 它**没有**买到什么
-//!
-//! - **Windows 那一侧的字节是 WTF-8，不是 UTF-16。** `as_encoded_bytes` 给的是
-//!   标准库内部那套编码；同一个文件名在 Linux 与 Windows 上取出来的字节**不保证相同**。
-//!   本族只承诺「**同一台机器上**取出去的字节，原样送回来能再指到同一个名字」，
-//!   **不承诺跨平台的字节对等**。
-//! - **不做归一化**（大小写 / Unicode NFC-NFD / 路径分隔符）。匹配是字节级的。
+//! 买不到：Windows 那一侧的字节是 WTF-8，同一个文件名在两个平台上取出来的字节不保证相同 —— 只承诺同一台机器上取出去的字节原样送回来能再指到同一个名字。
+//! 不做归一化（大小写 / NFC-NFD / 分隔符），匹配是字节级的。
 
 /// 一个路径的**原始字节**。
 ///
@@ -36,22 +17,13 @@ pub fn path_bytes(p: &std::path::Path) -> &[u8] {
     p.as_os_str().as_encoded_bytes()
 }
 
-// 路径字节的**线上两种形**（字符串 / `{"b16": …}`：`HEX_KEY` · `to_json` · `from_json` 与十六进制那两个小函数）逐字搬进了
-//   `common/path_wire.rs`：文件管理那一块与原生那一块（`dial/terminal.rs`：文件窗口「在此打开终端」交来的当前目录）都要读这一形，
-//   两块之间零互相依赖（`files/module_boundary_guard.rs`），共用的只许住 `common/`。本族照旧经这里用它。
+// 路径字节的线上两种形（字符串 / `{"b16": …}`）住 `common/path_wire.rs`：文件管理与原生那一块（`dial/terminal.rs`）都要读这一形，
+// 两块之间零互相依赖（`files/module_boundary_guard.rs`），共用的只许住 `common/`。
 pub use crate::common::path_wire::{from_json, to_json, HEX_KEY};
 
-/// 把一串路径字节还原成能交给标准库的 `PathBuf`。
-///
-/// 🔴 **这是本族唯一一处 `unsafe`，理由写死在这里：**
-/// `as_encoded_bytes` 与 `from_encoded_bytes_unchecked` 是标准库同一份编码的两侧，
-/// 文档逐字要求喂进去的字节**必须来自同一平台的 `as_encoded_bytes`**。
-/// 本族满足它：字节要么由 [`path_bytes`] 在**这台机器上**取出，要么由
-/// [`from_json`] 从我们自己刚发出去的那两种形里读回来（往返恒等判据钉着）。
-///
-/// ⚠ 拿一串**外来**字节（比如别的平台发过来的）喂它是未定义行为 ——
-/// 所以入方向的路径参数只许从**本机刚发出去的那一份**回流，
-/// 不许由第三方凭空构造。这一条只能靠协议纪律，机器钉不住，**如实登记**。
+/// 把一串路径字节还原成能交给标准库的 `PathBuf`。本族唯一一处 `unsafe`：`from_encoded_bytes_unchecked` 要求字节来自同一平台的
+/// `as_encoded_bytes`；本族满足它 —— 字节要么由 [`path_bytes`] 在这台机器上取出，要么由 [`from_json`] 从我们自己发出去的那两种形里读回来。
+/// 拿外来字节喂它是未定义行为 ⇒ 入方向的路径参数只许从本机发出去的那一份回流；这一条只能靠协议纪律，机器钉不住。
 pub fn to_path_buf(bytes: &[u8]) -> std::path::PathBuf {
     // SAFETY: 见上面那段 —— 字节来自同一平台的 `as_encoded_bytes`。
     let os: &std::ffi::OsStr = unsafe { std::ffi::OsStr::from_encoded_bytes_unchecked(bytes) };

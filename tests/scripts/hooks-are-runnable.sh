@@ -1,62 +1,11 @@
 #!/usr/bin/env bash
-# `K-R82` `KR82D1`：**`hooks/` 下会被执行的脚本，跑不跑得起来这件事有人守。**
-#
-# ## 它治的是什么
-#
-# `K-R80` 的转置读数逐字：**`hooks/` · `evidence/` · 仓根文件三棵树，12 格里 0 格覆盖**。
-# 而 `hooks/` 与另两棵**性质不同** —— `tests/hooks/pre-commit` 是**会被 git 执行**的东西，
-# 跑在**每一次提交**上，**能改仓**。它坏了不是读数错，是**提交路坏了**。
-#
-# ★ **两种坏法的形状不一样，现打过，别凭印象写**（`git version 2.43.0`，沙箱
-#   `ccmon-devbox:latest`，合成仓 + `core.hooksPath hooks`，读数落在
-#   `tests/evidence/K-R82-hooks-gate.md` `§1`）：
-#     · **没有可执行位** ⇒ git **忽略这个 hook 并照常提交**：`rc=0`，提交真的进去了，
-#       只在 stderr 上留一句 `hint: The 'tests/hooks/pre-commit' hook was ignored because
-#       it's not set as executable.` —— 而那句 hint **`git config advice.ignoredHook false`
-#       就能关掉**，且它是提示不是失败。⇒ **闸门整个不在了，而退出码看起来一切正常。**
-#       ⚠ 上一版本文件的头注这里写的是「一个字都不印」—— **那句是错的**，现打推翻，已订正。
-#     · **有可执行位但语法坏** ⇒ 解释器报错、`rc=1`，提交**被挡住**。这一形是 fail-closed 的，
-#       但它把**每一次提交**都变成一次报错 ⇒ 提交路坏了，同样得有东西红。
-# ⇒ 「hook 在盘上」与「hook 真的会跑」是两句话。
-#
-# ## 🔴 两句话分开判 —— 这是本格的承重设计，不是啰嗦
-#
-# 本仓 `core.filemode=false`（现打：`git config core.filemode` ⇒ `false`）
-# ⇒ **`chmod +x` 进不了 git**（记忆条 `filemode-false-chmod-invisible`）。
-# 于是同一份 hook 会长出**两个互不相干的事实**：
-#   · **盘上跑不跑得起来** —— `test -x`。它跟着**这一棵工作树的 checkout** 走。
-#   · **库里记没记** —— index 里的 mode（`100755` / `100644`）。它跟着**提交**走。
-# 两者能长期不一致而没人发现：`K-R82` 落地前盘上现打就是这一形 ——
-# 主树 `cc-monitor` 里 `tests/hooks/pre-commit` 是 `-rwxrwxr-x`（能跑），
-# 而 `git ls-files -s hooks/` 是 **`100644`**（没记）⇒ **任何一棵新开的工作树 checkout 出来都是 644**，
-# 那份 hook 在那些树里**静默地不跑**。本文件把这两句各判一条，红的时候也分开说。
-#
-# ## 🔴 失效方向（件计划 `KR82D1` 逐字点名）：**只判「文件在不在」**
-#
-# 那和「它跑得起来」是两件事。⇒ 本文件一条 `test -e` 都没有：三条判据分别是
-# **盘上可执行** · **库里记着可执行位** · **语法过得了它自己声明的解释器**。
-#
-# ## 口径（fail-closed，别静默放行）
-#
-# **`hooks/` 下 git 跟踪的每一个文件，都当成「会被 git 执行的东西」。**
-# 往里放一份不该被执行的文件（`README.md` 之类）⇒ 本格会红 ——
-# 那时**回来改这条口径**，不许在这里加一条「跳过非脚本」的静默豁免：
-# 「跳过」与「查过了」在输出上一模一样，那正是本区最贵的那族病。
-# 同理：`hooks/` 不存在、或一个跟踪文件都没有 ⇒ **红**（空真挡在门外）。
-#
-# ## 阳性对照（`K-R79` / `K-R81`：自检别写成地板）
-#
-# 三把尺子**各自带正反两条对照**（`S1`–`S8`，跑在 `mktemp -d` 里的合成夹具上，
-# 不碰工作树）：坏的必须被逮到（挡「尺子瞎了」）、好的必须放行（挡「尺子恒红」）。
-# 对照与真判据**走同一个函数**，不是另写一份 —— 两份必漂。
-#
-# ## 跑法
-#
-#     bash scripts/hooks-are-runnable.sh [<仓根>]
-#
-# 不给参数就用本文件的上一级目录。给参数是为了**对着变异过的副本跑**（死值验）：
-# 那个副本得是个真 git 仓（`index` 那条判据要 `git ls-files -s`），造法见
-# `tests/evidence/K-R82-hooks-gate.md`。
+# `tests/hooks/` 下会被 git 执行的脚本跑不跑得起来。每个跟踪文件判三条：
+#   盘上可执行（`test -x`）· 库里记着可执行位（index mode `100755`）· 语法过得了它自己 shebang 声明的解释器。
+# 没有可执行位时 git 忽略这个 hook 并照常提交（rc=0，只留一句可关掉的 hint）。本仓 `core.filemode=false`，
+#   `chmod +x` 不进 git，盘上与库里会各自不一致 ⇒ 分开判、分开说。只判「文件在不在」不算数。
+# 口径 fail-closed：`tests/hooks/` 下每个跟踪文件都当成会被执行的东西；目录不在或一个跟踪文件都没有 ⇒ 红。
+# 三把尺子各带正反两条阳性对照（`S1`–`S8`，跑在 `mktemp -d` 的合成夹具上），与真判据走同一个函数。
+# 跑法：`bash tests/scripts/hooks-are-runnable.sh [<仓根>]`；给仓根是为了对着变异过的副本（得是个真 git 仓）跑。
 
 set -uo pipefail
 
@@ -69,7 +18,7 @@ bad()  { fails+=("$1"); }
 
 # ── 三把尺子。真判据与阳性对照**都只走这三个函数**。────────────────────────────
 
-# 尺子① 盘上跑不跑得起来。⚠ 不是 `test -e` —— 那正是件计划点名的失效方向。
+# 尺子① 盘上跑不跑得起来（不是 `test -e`）。
 chk_disk_exec() { [ -x "$1" ]; }
 
 # 尺子② 库里记没记。入参是 `git ls-files -s` 那一列 mode 字符串。
@@ -152,7 +101,7 @@ else
     f="$ROOT/$path"
     # ① 盘上
     if chk_disk_exec "$f"; then ok; disk="可执行"
-    else bad "$path **盘上没有可执行位** —— 现打（git 2.43.0）：git **忽略这个 hook 并照常提交**（rc=0，只在 stderr 留一句 advice hint，而那句 hint 用 advice.ignoredHook 就能关掉）⇒ 这一棵工作树里那道挡等于不在。修：chmod +x $path"; disk="不可执行"; fi
+    else bad "$path **盘上没有可执行位** —— git **忽略这个 hook 并照常提交**（rc=0，只在 stderr 留一句 advice hint，而那句 hint 用 advice.ignoredHook 就能关掉）⇒ 这一棵工作树里那道挡等于不在。修：chmod +x $path"; disk="不可执行"; fi
     # ② 库里
     if chk_index_exec "$mode"; then ok
     else bad "$path **库里记的是 $mode，不是 100755** —— 本仓 core.filemode=false，chmod 进不了 git ⇒ 从这次提交 checkout 出来的每一棵新工作树，这个 hook 都是 644、都不跑。修：git update-index --chmod=+x $path 之后只提交暂存区"; fi

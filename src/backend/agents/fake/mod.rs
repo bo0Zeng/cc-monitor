@@ -153,12 +153,8 @@ pub(crate) const CAPABILITIES: &[&str] = &[
     "resume 会话名前缀",
 ];
 
-/// 假 agent 交出来的一整套能力。
-///
-/// ⚠ **每一项都是 `Option`，这是本结构存在的全部理由**：`S6` 的反向夹具要「把某一种能力
-/// **删掉**」，而删掉之后流程必须在一个**说得出话**的地方停下来。用 `Option` 而不是真去
-/// 注释掉一个函数，是为了让那个反向夹具成为**常驻判据**而不是一次性的手工变异
-/// —— 手工变异证明的是"那天它会红"，常驻判据证明的是"以后它一直会红"。
+/// 假 agent 交出来的一整套能力。每一项都是 `Option`：反向夹具要能「把某一种能力删掉」，而删掉之后流程必须在一个说得出话的地方停下来；
+/// 用 `Option` 而不是手工注释掉一个函数，那个反向夹具才是常驻判据。
 #[derive(Clone)]
 pub(crate) struct FakeCaps {
     pub(crate) records_root: Option<fn(&Path) -> PathBuf>,
@@ -441,8 +437,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         capabilities: vec![],
         emits: vec![],
         commands: vec![],
-        // `K-P4`（09-04）：握手帧第四条面。这一格与 `S6` 无关（第三家 agent 不带命令），
-        // 空表 ⇒ 省略 ⇒ 下面那串期望字节一个都没动。
+        // 握手帧的「这台做不到」：第三家 agent 不带命令，空表 ⇒ 省略 ⇒ 下面那串期望字节不变。
         unavailable: vec![],
         host_env: Default::default(),
         uncancellable: vec![],

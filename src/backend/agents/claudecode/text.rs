@@ -131,9 +131,9 @@ const LEAD_LINES: [&str; 5] = [
 const NOTICE_MARK: &str = "[SYSTEM NOTIFICATION - NOT USER INPUT]";
 pub(crate) const NOTICE_OPEN: &str = "<task-notification>";
 const NOTICE_CLOSE: &str = "</task-notification>";
-/// 子 agent 那一侧：主会话后来发给它的话以这一行起头。
+/// 子 agent 那一侧：协调方后来发给它的话以这一行起头。
 const COORDINATOR_LEAD: &str = "The coordinator sent a message while you were working:";
-/// 那段话后面 CLI 附的一句收尾（不是主会话说的）。
+/// 那段话后面 CLI 附的一句收尾（不是协调方说的）。
 const COORDINATOR_TAIL: &str = "Address this before completing your current task.";
 /// 压缩摘要的开头（老版本没有 `isCompactSummary` 字段时靠它）。
 const COMPACT_LEAD: &str = "This session is being continued from a previous conversation";
@@ -467,7 +467,7 @@ fn frame_body(t: &str, name: &str) -> Option<String> {
     Some(t[from..from + len].trim().to_string()).filter(|b| !b.is_empty())
 }
 
-/// 主会话后来发给子 agent 的话：固定前导行之后那段。
+/// 协调方后来发给子 agent 的话：固定前导行之后那段。
 fn coordinator_body(raw: &str) -> Option<String> {
     let t = raw.trim_start_matches(|c: char| c.is_whitespace() || c == '\u{feff}');
     let rest = t.strip_prefix(COORDINATOR_LEAD)?.trim();

@@ -1,18 +1,14 @@
-//! 〔规矩 1〕**把这台二进制带着的 cc-bus 装到这台的 `<skills 根>/cc-bus/`**。
+//! 把这台二进制带着的 cc-bus 装到这台的 `<skills 根>/cc-bus/`。资产的装不算部署：判 · 写 · 记都在那台后端，
+//! 写经它自己的文件管理面（[`crate::assets::door`]），装卸账复用 skill 装记录那一份（`skill_ledger`，`name = "cc-bus"`）。
 //!
-//! 从前是 monitor 那一侧读盘判、
-//! 算好经本机后端写。「资产的装不算部署」—— 往那台放 cc-bus 归**后端代管的资产**：判 · 写 · 记都在那台后端，
-//! 写经它自己的文件管理面（[`crate::assets::door`]），装卸账**复用 skill 装记录那一份**（`skill_ledger`，同形：`name = "cc-bus"`，
-//! 目录由记录模块按 skills 根算，不另立第二份账）。
+//! # `INVARIANTS` 第 7 条例外的四个配套要求
 //!
-//! # `INVARIANTS` 第 7 条例外的四个配套要求（一条都不许省，逐条对应到下面）
+//! - 用户显式动作：只由扩展页 cc-bus 那一行的确认卡经枢纽说 `cc-bus-install`（`assets/hub.rs`），启动 / 后台路径一处都不调。
+//! - 独立 realpath 白名单：[`fenced_root`] —— `<skills 根>` 若已在，解到底必须仍在它的上一层（claude 目录）底下。
+//! - 幂等：逐文件比内容，全一致就一个字节不写、不备份。
+//! - 可撤销：覆盖前把整个目录改名成 `cc-bus.bak-<秒>`（`files-rename`，原子、不留半份）。
 //!
-//! - **用户显式动作**：只由扩展页 cc-bus 那一行的确认卡经枢纽说 `cc-bus-install`（`assets/hub.rs`），启动 / 后台路径一处都不调。
-//! - **独立 realpath 白名单**：[`fenced_root`] —— `<skills 根>` 若已在，解到底必须仍在它的上一层（claude 目录）底下。
-//! - **幂等**：逐文件比内容，全一致就一个字节不写、不备份。
-//! - **可撤销**：覆盖前把整个目录改名成 `cc-bus.bak-<秒>`（`files-rename`，原子、不留半份）。
-//!
-//! 源是**内嵌**的（装了的二进制身边没有仓）：单一事实源仍是 `src/shared/cc-bus/`（两棵树都不属于），编译期固化。
+//! 源是内嵌的（装了的二进制身边没有仓）：单一事实源是 `src/shared/cc-bus/`，编译期固化。
 
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
@@ -36,8 +32,7 @@ const FILES: &[(&str, &[u8])] = &[
         "examples/cc-busd.service",
         include_bytes!("../../shared/cc-bus/examples/cc-busd.service"),
     ),
-    // 〔保活 09-24〕设计：保活是 cc-bus 的**调用方**，所以它住 `examples/`，
-    // 不进 `scripts/`（那里的命令面条数有判据钉着，而「保活不是 cc-bus 的功能」本来就该在结构上看得见）。
+    // 保活是 cc-bus 的调用方，所以住 `examples/`、不进 `scripts/`（那里的命令面条数有判据钉着）。
     (
         "examples/cc-keepalive",
         include_bytes!("../../shared/cc-bus/examples/cc-keepalive"),
@@ -46,11 +41,8 @@ const FILES: &[(&str, &[u8])] = &[
         "examples/config",
         include_bytes!("../../shared/cc-bus/examples/config"),
     ),
-    // 设计「部署要跟上」：**带注释的默认 kinds 表**随包落盘。
-    // ⚠ 它落在 `<claude_dir>/skills/cc-bus/examples/`，**不是** `~/.cc-bus/kinds.tsv` ——
-    //   只读铁律第 7 条例外只放行 `skills/cc-bus` 这一个落点（`fenced_dest`）。
-    //   脚本按「`~/.cc-bus/kinds.tsv` → 随包这一份 → 内置 msg」的顺序找，所以随包这份**就是生效的默认**，
-    //   用户要改时复制到 `~/.cc-bus/` 再改（`cc-bus-install.sh` 顺手放一份 `.example`）。
+    // 带注释的默认 kinds 表随包落盘，落在 `<claude_dir>/skills/cc-bus/examples/`，不是 `~/.cc-bus/kinds.tsv`：只读第 7 条例外只放行 `skills/cc-bus` 这一个落点。
+    // 脚本按「`~/.cc-bus/kinds.tsv` → 随包这一份 → 内置 msg」的顺序找 ⇒ 随包这份就是生效的默认；用户要改时复制到 `~/.cc-bus/` 再改。
     (
         "examples/kinds.tsv",
         include_bytes!("../../shared/cc-bus/examples/kinds.tsv"),
