@@ -100,7 +100,12 @@ fn the_overflow_message_says_so_when_the_identity_list_was_truncated() {
         subject: Some("sid-a".into()),
     }];
     let m = super::overflow_health_message("box1", 99, &lost, true);
-    assert!(m.contains("不全"), "截断了就要说出来：{m}");
+    assert!(
+        m.contains(copy_core::copy_static!(
+            "rsSshSource.health.overflowTruncated"
+        )),
+        "截断了就要说出来：{m}"
+    );
 }
 
 /// ★ **旧后端的 overflow 帧必须照旧能解析**〔additive 的真正代价在这里〕。

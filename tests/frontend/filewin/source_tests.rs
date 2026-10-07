@@ -510,7 +510,10 @@ fn one_unreadable_entry_fails_the_whole_screen_instead_of_vanishing() {
     });
     let e = rows_from_ls_data(&d, SortBy::default())
         .expect_err("有一条解不出来，整趟却成功了 —— 那一行被悄悄吞了");
-    assert!(e.contains("第 1 条"), "报错没说是第几条：{e}");
+    assert!(
+        copy_core::copy_matches("rsFilewinSource.ls.noPath", &e),
+        "报错没说是哪一条：{e}"
+    );
     // 阴性对照：三条都好的时候它成得了（否则上面可以靠「什么都失败」全绿）。
     let ok = serde_json::json!({ "entries": [ { "path": "/a/x", "kind": "file" } ] });
     assert_eq!(

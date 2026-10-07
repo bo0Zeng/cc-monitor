@@ -205,7 +205,8 @@ fn the_combination_rules_all_fail_loudly() {
             "beArgv.validate.registerNeedsDetach"
         ))
     );
-    assert!(err(&["--bus-note", "x"]).starts_with("--bus-note 需要配合 --bus-register"));
+    assert!(err(&["--bus-note", "x"])
+        .starts_with(copy_core::copy_static!("beArgv.validate.noteNeedsRegister")));
     // 这几形不报「未知选项 / 多余的位置参数」，原样交给 agent。
     assert_eq!(ok(&["--nope", "foo"]).passthru, v(&["--nope", "foo"]));
     assert_eq!(
@@ -334,7 +335,10 @@ fn an_account_name_is_judged_before_it_goes_anywhere() {
     assert_eq!(ok(&["--account", "work"]).account, "work");
     for bad in ["a.b", "_a", "a b"] {
         let arg = format!("--account={bad}");
-        assert!(err(&[&arg]).contains("用不了"), "坏账号名 {bad:?} 放行了");
+        assert!(
+            copy_core::copy_matches("beArgv.validate.badAccount", &err(&[&arg])),
+            "坏账号名 {bad:?} 放行了"
+        );
     }
 }
 

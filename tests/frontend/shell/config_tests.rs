@@ -199,7 +199,8 @@ fn an_unreadable_file_is_left_alone() {
         );
         let msg = err.to_string();
         assert!(
-            msg.contains("config.json") && msg.contains("没有存"),
+            msg.contains("config.json")
+                && copy_core::copy_matches("rsConfig.write.unreadable", &msg),
             "{msg}"
         );
         assert_eq!(std::fs::read_to_string(&file).unwrap(), original);

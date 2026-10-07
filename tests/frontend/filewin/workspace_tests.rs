@@ -670,7 +670,10 @@ async fn copy_across_takes_the_whole_selection_and_a_directory_goes_recursive() 
     let last = ws.pane_on(1).copy_board.last().expect("没有结局");
     let said = crate::copy::outcome_notice(&last).text;
     assert!(
-        said.contains("复制完成：2 项，4 个文件、2 个目录、84 字节"),
+        said.contains(&copy_core::copy_text(
+            "rsFilewinCopy.outcome.batchDone",
+            &[("n", "2"), ("files", "4"), ("dirs", "2"), ("bytes", "84")]
+        )),
         "结局那句没把两件加起来：{said}"
     );
 }
@@ -1646,7 +1649,10 @@ fn a_narrow_window_cuts_nothing_off() {
             .collect();
         assert!(out.is_empty(), "{screen:?}：这几段字画到了窗口外：{out:?}");
         let has = |pred: &dyn Fn(&str) -> bool| painted.iter().any(|(t, _)| pred(t));
-        assert!(has(&|t| t.contains("文件名")), "{screen:?}：搜索框不见了");
+        assert!(
+            has(&|t| t.contains(copy_core::copy_static!("rsFilewinShell.search.hint"))),
+            "{screen:?}：搜索框不见了"
+        );
         assert!(
             has(&|t| t == egui_phosphor::regular::DOTS_THREE),
             "{screen:?}：没有「⋯」"

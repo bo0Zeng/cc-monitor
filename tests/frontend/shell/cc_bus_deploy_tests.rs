@@ -102,7 +102,14 @@ fn windows_precheck_really_probes_and_its_five_answers_are_distinguishable() {
             );
         }
         assert!(
-            get(k).contains("查不了"),
+            copy_core::copy_matches(
+                if k == "没装" {
+                    "rsCcBusDeploy.win.notInstalled"
+                } else {
+                    "rsCcBusDeploy.win.noVersion"
+                },
+                &get(k)
+            ),
             "「{k}」没把「查不了」说出来：{}",
             get(k)
         );
@@ -119,7 +126,7 @@ fn windows_precheck_really_probes_and_its_five_answers_are_distinguishable() {
     );
     let fine = get("全对");
     assert!(
-        fine.contains("PATH") && fine.contains("那一份"),
+        copy_core::copy_matches("rsCcBusDeploy.win.ok", &fine),
         "「全对」那一档必须说清查的是 cc-monitor 那一份、不是 PATH 上那个：{fine}"
     );
 }
@@ -140,12 +147,28 @@ fn windows_precheck_without_own_bytes_says_incomparable() {
     let caveat = crate::copy_table::copy_text("rsCcBusDeploy.win.pathCaveat", &[]);
     assert_eq!(
         full,
-        format!("cc-monitor 装的 ccm（{at}）p1a-older · 未带后端字节 · 版本不可比\n{caveat}")
+        crate::copy_table::copy_text(
+            "rsCcBusDeploy.win.noOwnBytes",
+            &[
+                ("at", at),
+                ("build", "p1a-older"),
+                ("lack", ""),
+                ("pathCaveat", &caveat)
+            ]
+        )
     );
     let lacking = windows_ccm_precheck(Some((at, &card(&["detach"]))), None);
     assert!(
         copy_core::copy_matches("rsCcBusDeploy.win.noOwnBytes", &lacking)
-            && lacking.contains("· 缺 tmux-size"),
+            && lacking.contains(&crate::copy_table::copy_text(
+                "rsCcBusDeploy.win.lackShort",
+                &[(
+                    "list",
+                    &["tmux-size", "tmux-base", "bus-register"].join(
+                        &crate::copy_table::copy_text("rsCcBusDeploy.win.listSep", &[])
+                    )
+                )]
+            )),
         "没带字节时缺的能力照样要点名：{lacking}"
     );
     for said in [&full, &lacking] {

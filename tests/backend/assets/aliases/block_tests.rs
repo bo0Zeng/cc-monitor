@@ -46,7 +46,12 @@ fn the_profile_fence_keeps_writes_inside_home() {
             "围栏放行了 {bad:?} —— 那三条命令会往它写/重写/探测存在性"
         );
         assert!(
-            r.unwrap_err().starts_with("拒绝写这个配置文件"),
+            {
+                let e = r.unwrap_err();
+                ["symlinkEscape", "outsideHome", "dotdot", "notAbsolute"]
+                    .iter()
+                    .any(|k| copy_core::copy_matches(&format!("rsProfileInstaller.fence.{k}"), &e))
+            },
             "拒绝理由要能一眼看出是围栏拒的（调用方与用户都要读它）"
         );
     }
@@ -1107,19 +1112,24 @@ fn the_hint_names_every_line_and_the_product_deletes_nothing() {
     assert!(!hint.is_empty(), "有裸行却生成了一段空提示");
     for h in &hits {
         assert!(
-            hint.contains(&format!("第 {} 行", h.line_no)),
+            copy_core::copy_matches_with(
+                "rsProfileInstaller.hint.line",
+                &[("lineNo", &h.line_no.to_string())],
+                &hint
+            ),
             "提示里没点名第 {} 行",
             h.line_no
         );
+        let line = copy_core::copy_text(
+            "rsProfileInstaller.hint.line",
+            &[
+                ("lineNo", &h.line_no.to_string()),
+                ("text", h.text.trim_end()),
+            ],
+        );
+        let line = line.trim_end_matches('\n');
         assert!(
-            pinned(
-                &hint,
-                &format!("  第 {} 行  {}", h.line_no, h.text.trim_end())
-            ) || hint.lines().any(|l| l.starts_with(&format!(
-                "  第 {} 行  {}",
-                h.line_no,
-                h.text.trim_end()
-            ))),
+            pinned(&hint, line) || hint.lines().any(|l| l.starts_with(line)),
             "提示里那一行的原文被改写了 —— 用户要照着它去自己文件里认行"
         );
     }

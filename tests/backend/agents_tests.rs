@@ -287,7 +287,10 @@ fn an_agent_name_left_out_is_the_default_and_a_misspelled_one_is_refused() {
         let said = kind(Some(bad)).expect_err(&format!("{bad:?} 被认成了某一家"));
         assert_eq!(
             said,
-            format!("不认识这个 agent：{bad}（认得的：claude / codex / fake）")
+            copy_core::copy_text(
+                "beAgents.pick.unknown",
+                &[("agent", bad), ("known", "claude / codex / fake")]
+            )
         );
     }
     // 适配器 id 那一个值域同一条规则（名单换成适配器 id）。

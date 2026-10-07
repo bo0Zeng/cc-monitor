@@ -158,7 +158,7 @@ async fn what_is_not_read_says_why_and_sends_nothing() {
     );
     step(&mut w, &mut p); // big.log
     assert!(
-        matches!(p.view(), View::Idle(s) if s.contains("big.log") && s.contains("以内")),
+        matches!(p.view(), View::Idle(s) if copy_core::copy_matches_with("rsFilewinPreview.decide.tooBig", &[("name", "big.log")], &s)),
         "{:?}",
         p.view()
     );
@@ -185,7 +185,8 @@ async fn what_is_not_read_says_why_and_sends_nothing() {
     ); // binary.bin
     follow_until_settled(&mut p, &w).await;
     assert!(
-        matches!(p.view(), View::Said(s) if s.contains("不是文本")),
+        matches!(p.view(), View::Said(s) if copy_core::copy_matches("rsFilewinPreview.follow.notText", &s)
+            || copy_core::copy_matches("rsFilewinPreview.decide.binaryKind", &s)),
         "{:?}",
         p.view()
     );

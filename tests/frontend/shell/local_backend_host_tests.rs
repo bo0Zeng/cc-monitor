@@ -4397,7 +4397,10 @@ fn hx2_a_backend_started_for_another_data_dir_is_refused_out_loud() {
     }
     // C-L5：值是汉字 ⇒ 与前面的汉字之间不隔空格
     assert!(
-        matches!(hello_verdict(&seen, Some("b1"), &want("/iso/a")[..1]), HelloVerdict::Stranger(w) if w.contains("CCM_DATA_DIR：它用的是 /iso/a，这个 monitor 要的是没有")),
+        matches!(hello_verdict(&seen, Some("b1"), &want("/iso/a")[..1]), HelloVerdict::Stranger(w) if w.contains(&copy_core::copy_text(
+            "rsLocalBackendHost.dataDir.slot",
+            &[("name", "CCM_DATA_DIR"), ("theirs", "/iso/a"), ("ours", copy_core::copy_static!("rsLocalBackendHost.dataDir.absent"))]
+        ))),
         "它多一格（它住隔离的家，这一趟住默认的家）⇒ 该拒"
     );
     assert!(

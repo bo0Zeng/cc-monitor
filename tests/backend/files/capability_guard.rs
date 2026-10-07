@@ -1729,7 +1729,7 @@ fn one_byte_over_the_cap_is_refused_whole_and_exactly_at_the_cap_is_not() {
     );
     match over {
         Err(("too_large", m)) => assert!(
-            m.contains("多了 1 字节"),
+            copy_core::copy_matches_with("beFilesRead.text.tooLarge", &[("over", "1")], &m),
             "拒了，但那句话没说多了多少（用户据此知道要删掉多少）：{m}"
         ),
         other => panic!("🔴 超上限一个字节没被整趟拒（截断了？）：{other:?}"),

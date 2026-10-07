@@ -290,7 +290,7 @@ fn an_old_cc_bus_or_a_half_read_is_said_not_read_as_empty() {
     ] {
         let e = got.expect_err(what);
         assert!(
-            e.1.contains("重新部署"),
+            copy_core::copy_matches("beCcBus.read.tooOld", &e.1),
             "{what}：老 cc-bus 那一句没说清下一步：{e:?}"
         );
     }
@@ -324,7 +324,14 @@ fn the_not_installed_message_names_the_places_it_looked() {
         msg.contains(".claude/skills/cc-bus/scripts/cc-list"),
         "{msg}"
     );
-    assert!(msg.contains("9 个目录"), "PATH 那半没说：{msg}");
+    assert!(
+        copy_core::copy_matches_with(
+            "beDiscover.notInstalledMessage.notFound",
+            &[("pathDirs", "9")],
+            &msg
+        ),
+        "PATH 那半没说：{msg}"
+    );
     assert!(msg.contains("CC_BUS_BIN_DIR"), "没告诉人怎么指过去：{msg}");
 }
 
@@ -800,7 +807,14 @@ fn a_timeout_says_how_long_it_actually_waited() {
     assert_eq!(out.waited_secs, Some(1), "原语交回的不是截短后的那个时长");
     let (code, said) = classify_send(out.code, "", waited_secs(&out)).unwrap_err();
     assert_eq!(code, "timed_out");
-    assert!(said.contains("等了 1 s") && !said.contains("10"), "{said}");
+    assert!(
+        copy_core::copy_matches_with("beCcBus.timedOut.say", &[("secs", "1")], &said)
+            && !said.contains("10"),
+        "{said}"
+    );
     let (_, said) = classify_spawn(out.code, "", waited_secs(&out)).unwrap_err();
-    assert!(said.contains("等了 1 s"), "{said}");
+    assert!(
+        copy_core::copy_matches_with("beCcBus.timedOut.say", &[("secs", "1")], &said),
+        "{said}"
+    );
 }

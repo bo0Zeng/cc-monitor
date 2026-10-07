@@ -180,10 +180,6 @@ fn a_broken_file_is_reported_instead_of_being_read_as_not_configured() {
         copy_core::copy_matches("credsStore.error.notJson", &msg),
         "错误说法没告诉人这文件是手编的：{msg}"
     );
-    assert!(
-        msg.contains("没有动它"),
-        "错误说法没说清程序没破坏文件：{msg}"
-    );
 }
 
 /// key 字段的几种「等于没配」的写法。

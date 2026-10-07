@@ -334,8 +334,11 @@ fn hx2_the_version_warning_says_which_side_is_older() {
     let older =
         version_warning(EXPECTED_PROTO_V, "p1a-history", "pi", true, MINE).expect("旧的该提示");
     assert!(
-        older.contains("旧版 p1a-history")
-            && copy_core::copy_matches("rsSshSource.version.remoteOlder", &older),
+        copy_core::copy_matches_with(
+            "rsSshSource.version.remoteOlder",
+            &[("reported", "p1a-history")],
+            &older
+        ),
         "{older}"
     );
     let newer =

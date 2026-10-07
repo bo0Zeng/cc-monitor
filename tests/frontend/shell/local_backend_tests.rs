@@ -414,7 +414,11 @@ fn the_two_verdicts_hand_the_user_two_different_sentences() {
         "撞上竞态那句话没告诉用户「再开一次多半就好」，他仍然不知道该不该重开：{transient}"
     );
     assert!(
-        transient.contains("连着 3 次"),
+        copy_core::copy_matches_with(
+            "rsLocalBackend.etxtbsy.gaveUp",
+            &[("tries", "3")],
+            &transient
+        ),
         "没说清试了几次 ⇒ 这句话没法与「一次都没试」区分开：{transient}"
     );
 
@@ -1299,7 +1303,7 @@ fn the_missing_local_backend_diagnosis_hands_the_user_a_next_step() {
         panic!("应当是 Missing");
     };
     assert!(
-        A_STEP_THE_USER_CAN_TAKE.iter().any(|m| reason.contains(m)),
+        copy_core::copy_matches("rsLocalBackend.resolve.notBeside", &reason),
         "诊断没给读它的人任何一条做得到的下一步（找过 {A_STEP_THE_USER_CAN_TAKE:?}）。\n\
              「本机后端没有」本身**不是**下一步 —— 用户要的是「那我该干嘛」。\n\
              逐字：{reason}"
@@ -1381,7 +1385,7 @@ fn the_extraction_refusal_is_a_different_sentence_from_having_no_backend_at_all(
     //    〔铁律 15「我治的是这一处，还是所有同职的地方」：这两格是那一条判据
     //      已经买过的性质，而它的射程逐字写着**盖不到本函数** ⇒ 在这里补齐。〕
     assert!(
-        A_STEP_THE_USER_CAN_TAKE.iter().any(|m| refused.contains(m)),
+        copy_core::copy_matches("rsLocalBackend.extraction.failed", &refused),
         "「放不下来」那一句没给读它的人任何一条做得到的下一步（找过 {A_STEP_THE_USER_CAN_TAKE:?}）。\n逐字：{refused}"
     );
     let id = internal_item_id_in(&refused);

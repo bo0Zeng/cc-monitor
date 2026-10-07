@@ -1182,7 +1182,17 @@ fn too_many_interim_responses_are_refused_with_502() {
         "502 那一发没带原因头（拿到的是：{got:?}）"
     );
     assert!(
-        got.contains("一直不给最终响应。卡在读响应这一步。"),
+        copy_core::copy_matches_with(
+            "beServer.sentence.say",
+            &[
+                (
+                    "result",
+                    copy_core::copy_static!("beServer.words.onlyInterim")
+                ),
+                ("hop", copy_core::copy_static!("beServer.words.hopRead")),
+            ],
+            &got
+        ),
         "502 那一发没说清卡在哪（拿到的是：{got:?}）"
     );
 }
@@ -3563,7 +3573,18 @@ fn relay_transport_failures_answer_502_or_504_saying_who_and_where() {
         got.contains(&reason("upstream-connect")),
         "① 原因头：{got:?}"
     );
-    let want = format!("上游 127.0.0.1:{dead} 连不上。卡在建立连接这一步。");
+    let want = copy_core::copy_text(
+        "beServer.sentence.say",
+        &[
+            ("host", "127.0.0.1"),
+            ("port", &dead.to_string()),
+            (
+                "result",
+                copy_core::copy_static!("beServer.words.cantConnect"),
+            ),
+            ("hop", copy_core::copy_static!("beServer.words.hopConnect")),
+        ],
+    );
     assert!(
         got.contains(&want),
         "① 没说清是谁、卡在哪：want {want:?} got {got:?}"
@@ -3578,7 +3599,10 @@ fn relay_transport_failures_answer_502_or_504_saying_who_and_where() {
         "同一个中转上「表里没这一行」该回 404 ＋ 原因头：{miss:?}"
     );
     assert!(
-        miss.ends_with("404 Not Found\n这个账号在凭据文件里没有配置\n"),
+        miss.ends_with(&format!(
+            "404 Not Found\n{}\n",
+            copy_core::copy_static!("beUpstream.decide.noRow")
+        )),
         "拒绝那一发没说为什么：{miss:?}"
     );
 
@@ -3598,10 +3622,7 @@ fn relay_transport_failures_answer_502_or_504_saying_who_and_where() {
         "② 请求没发完上游就断了该回 502 ＋ upstream-send：{:?}",
         &got[..got.len().min(300)]
     );
-    let want = format!(
-        "上游 127.0.0.1:{} 在请求发完之前断开了。卡在发请求这一步。",
-        up.port()
-    );
+    let want = upstream_said(up.port(), "sendFailed", "hopSend");
     assert!(got.contains(&want), "② want {want:?} got {got:?}");
 
     // ③ 没回应就断开。
@@ -3612,10 +3633,7 @@ fn relay_transport_failures_answer_502_or_504_saying_who_and_where() {
         got.starts_with(BAD_GATEWAY) && got.contains(&reason("upstream-closed")),
         "③ 上游不回就关该回 502：{got:?}"
     );
-    let want = format!(
-        "上游 127.0.0.1:{} 没回应就断开了。卡在等响应这一步。",
-        up.port()
-    );
+    let want = upstream_said(up.port(), "closedBeforeAnswer", "hopWait");
     assert!(got.contains(&want), "③ want {want:?} got {got:?}");
 
     // ④ 等响应超时：唯一回 504 的那一格。
@@ -3627,7 +3645,7 @@ fn relay_transport_failures_answer_502_or_504_saying_who_and_where() {
             && got.contains(&reason("upstream-no-answer")),
         "④ 等响应超时该回 504：{got:?}"
     );
-    let want = format!("上游 127.0.0.1:{} 没有回应。卡在等响应这一步。", up.port());
+    let want = upstream_said(up.port(), "noAnswer", "hopWait");
     assert!(got.contains(&want), "④ want {want:?} got {got:?}");
 
     // ⑤ 回的不是 HTTP。
@@ -3638,11 +3656,27 @@ fn relay_transport_failures_answer_502_or_504_saying_who_and_where() {
         got.starts_with(BAD_GATEWAY) && got.contains(&reason("upstream-not-http")),
         "⑤ 回的不是 HTTP 该回 502：{got:?}"
     );
-    let want = format!(
-        "上游 127.0.0.1:{} 回的不是 HTTP 响应。卡在读响应这一步。",
-        up.port()
-    );
+    let want = upstream_said(up.port(), "notHttp", "hopRead");
     assert!(got.contains(&want), "⑤ want {want:?} got {got:?}");
+}
+
+/// 中转替上游说的那一句（`beServer.sentence.say`），结果与卡在哪一步按文案键取。
+fn upstream_said(port: u16, result: &str, hop: &str) -> String {
+    copy_core::copy_text(
+        "beServer.sentence.say",
+        &[
+            ("host", "127.0.0.1"),
+            ("port", &port.to_string()),
+            (
+                "result",
+                &copy_core::copy_text(&format!("beServer.words.{result}"), &[]),
+            ),
+            (
+                "hop",
+                &copy_core::copy_text(&format!("beServer.words.{hop}"), &[]),
+            ),
+        ],
+    )
 }
 
 /// 本 crate 生产段里**每一个** HTTP 状态码字面量的住址（`D2`）。

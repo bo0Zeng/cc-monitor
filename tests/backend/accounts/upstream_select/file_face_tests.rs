@@ -590,10 +590,10 @@ fn us1_a_broken_file_is_surfaced_instead_of_looking_unconfigured() {
     let s2 = read_at(&p);
     assert_eq!(s2["configured"], json!(false));
     assert!(
-        s2["problem"]
-            .as_str()
-            .expect("读坏了必须有说法")
-            .contains("手编"),
+        copy_core::copy_matches(
+            "credsStore.error.notJson",
+            s2["problem"].as_str().expect("读坏了必须有说法")
+        ),
         "没告诉人这是一份手编的文件：{s2}"
     );
     let _ = std::fs::remove_dir_all(&dir);

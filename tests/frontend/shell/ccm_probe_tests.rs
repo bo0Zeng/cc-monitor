@@ -34,7 +34,7 @@ fn a_stale_ccm_on_path_is_named_out_loud() {
     let hint = render_path_ccm_hint(v, &ours, &legacy, Some("$HOME/.cc-monitor/bin/ccm"), false);
     assert!(
         // 名片那半句按文案键取（`rsCcmProbe.card.summary` 不再是 `version=` 日志行形），不钉原文。
-        hint.contains("不是")
+        copy_core::copy_matches("rsCcmProbe.hint.notOurs", &hint)
             && hint.contains(&describe_card(&legacy))
             && hint.contains(&describe_card(&ours)),
         "那句话没把「它是谁 / 我们是谁」摆出来 —— 只说「不一样」等于没说：\n{hint}"
@@ -410,7 +410,8 @@ fn the_local_ccm_cell_reports_both_halves_and_names_where_ccm_really_goes() {
         true,
     );
     assert!(
-        hint.contains(&s(&shim)) && hint.contains("删掉") && !hint.contains("请删除"),
+        copy_core::copy_matches_with("rsCcmProbe.hint.oldEntry", &[("at", &s(&shim))], &hint)
+            && !hint.contains("请删除"),
         "旧入口那句要指名是哪一份、怎么清，不催：{hint}"
     );
     let _ = std::fs::remove_dir_all(&d);
@@ -427,7 +428,7 @@ fn the_local_ccm_cell_reports_both_halves_and_names_where_ccm_really_goes() {
         local_ccm_cell(true, true, PathCcmVerdict::NotOurs, &card),
         (
             Some(false),
-            format!("装下来了，但终端里敲 ccm 走到的是 {}", s(&shim))
+            copy_core::copy_text("rsCcmProbe.cell.elsewhere", &[("at", &s(&shim))])
         )
     );
     assert_eq!(
