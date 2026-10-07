@@ -333,7 +333,7 @@ fn the_definition_table_and_the_call_site_table_name_the_same_exits() {
 ///
 /// monitor 仍开着 `harden`（Windows 上读 DACL 要它），编译器因此兜不住「monitor 写不了这份文件」—— 由本条兜：
 /// 人群 = `src/frontend/shell/src` 下全部 `.rs` 的生产段（剥测试段与注释），针两根，**零命中**。
-/// 正控：同一把针在后端那一份写口（`src/backend/accounts/upstream_select/file_face.rs`）上数得到 —— 针没瞎。
+/// 正控：同一把针在后端自有状态文件原子写那一处（`src/backend/common/own_state.rs`，这份文件的写口经它落盘）上数得到 —— 针没瞎。
 /// 要求住址：「每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端」（`GP1.md §3`）。
 #[test]
 fn gp1_the_monitor_never_reaches_the_credentials_write_half() {
@@ -361,9 +361,8 @@ fn gp1_the_monitor_never_reaches_the_credentials_write_half() {
         hits.is_empty(),
         "monitor 生产段够到了凭据文件的写半边 —— 本机那一份的写者是本机常驻后端，monitor 一个字节都不写：{hits:?}"
     );
-    let face = guard_core::production_code(include_str!(
-        "../../../src/backend/accounts/upstream_select/file_face.rs"
-    ));
+    let face =
+        guard_core::production_code(include_str!("../../../src/backend/common/own_state.rs"));
     assert!(
         needles.iter().any(|n| face.contains(n.as_str())),
         "正控失败：后端那一份写口里也数不到 —— 针瞎了"

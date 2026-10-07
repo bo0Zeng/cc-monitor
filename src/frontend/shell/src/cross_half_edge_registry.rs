@@ -151,6 +151,13 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "本机凭据文件的写者换成本机常驻后端之后，「monitor 生产段零处够写半边」那条零命中判据的**正控** \
          要落在真写者身上 —— 同一把针在后端那一份写口里数得到，才说明零命中不是针瞎了（合成样本证不了针对准了真写口）",
     ),
+    (
+        "monitor→backend",
+        "tests/frontend/shell/creds_store_tests.rs",
+        "src/backend/common/own_state.rs",
+        "本机凭据文件的写者换成本机常驻后端之后，「monitor 生产段零处够写半边」那条零命中判据的**正控** \
+         要落在真写者身上 —— 后端那份写口经自有状态原子写这一处出生即只给本人，同一把针在这里数得到，才说明零命中不是针瞎了",
+    ),
     // `tests/frontend/shell/inbound_client_tests.rs → src/backend/stream/inbound/mod.rs` 那一条摘了：手抄的命令名单删了、
     //   命令名只住命令表各族，那条对拍改成运行时逐族读（`guard_support::backend_registry_sources`），不再是编译期边。
     (
@@ -195,7 +202,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→backend",
         "tests/frontend/shell/logging_tests.rs",
-        "src/backend/stderr_log.rs",
+        "src/backend/platform/child_env.rs",
         "**跨 crate 字面量对拍**：宿主交给脱离常驻那条载体的 `CCM_BACKEND_STDERR_LOG` 与后端读的那一个，\
          两边各声明一份；漂了**不会报错** —— 后端当作「没交」、stderr 照旧进 `/dev/null`，设置页那一行永远是「还没有」。\
          ⇒ 只能同时读两侧的源码才验得了（形状同下一行 `CCM_LISTEN_PORT` 那一条）。",
@@ -204,11 +211,15 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "monitor→backend",
         "tests/frontend/shell/local_backend_host_tests.rs",
         "src/backend/stream/listen.rs",
-        "★**跨 crate 字面量对拍**：常驻监听口那两个 env 名\
-         （`CCM_LISTEN_PORT` / `CCM_LISTEN_TOKEN_FILE`）宿主与后端各声明一份，\
-         而两边漂了**不会报错** —— backend 会把它当成「没设」走 stdio 那条路，\
-         宿主则等在一个永远没人 bind 的口上，日志里只有一句「连不上」。\
-         ⇒ 只能同时读两侧的源码才验得了（形状抄 `the_local_origin_is_the_same_string_on_both_sides`）。",
+        "★**跨 crate 字面量对拍**：「口被占着」那句拒绝原因（`REFUSE_BUSY`）宿主与后端各声明一份，宿主凭它判「这次拒绝会不会自己好」；\
+         漂了**不会报错** —— 上一个 monitor 刚退、对面还没反应过来，会被当成不可恢复直接报失败 ⇒ 同时读两侧源码才验得了",
+    ),
+    (
+        "monitor→backend",
+        "tests/frontend/shell/local_backend_host_tests.rs",
+        "src/backend/platform/child_env.rs",
+        "★**跨 crate 字面量对拍**：常驻监听口那两个 env 名的家在后端最下层（帧面监听引它）—— \
+         宿主与后端各声明一份，漂了**不会报错**（backend 当成「没设」走 stdio，宿主等在没人 bind 的口上）⇒ 同时读两侧源码才验得了",
     ),
     // `tests/frontend/shell/sftp_tests.rs` → `tests/backend/build_id_guard.rs` 那一行摘了：序键随部署判定搬进共享 crate（序键今天住契约 crate `deploy-contract`，只升不降那条判定住后端 `control/deploy_plan.rs`），
     //   读历史表的那一格（`hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs`）挪到后端 `deploy_plan_tests.rs` ——
