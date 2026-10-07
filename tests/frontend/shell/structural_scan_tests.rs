@@ -4763,7 +4763,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/shell/src/spawn_managed.rs", 5), // 6 → 5：`LifetimeGuard` 的 Drop 那一块随平台原语搬进 `platform/spawn.rs`（那边 +1） // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 4 → 6 // +2：一次性本机查询那一格删了，点旧名的散文挂墓碑
         ("src/frontend/shell/src/structural_scan.rs", 1),
         ("src/doc/ARCHITECTURE.md", 3), // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 2 → 3 // +1：本机一次性 exec / 任务行解释 / 分叉 exec 那几条路删了，点旧名的散文挂墓碑
-        ("src/doc/INVARIANTS.md", 28), // 27 → 28：§33b 三问 ② 的原文留档点的外层渲染函数随载荷那一层删了，就地挂墓碑 // 25 → 27：§33b「变严的代价」那句点的载荷那一层配置目录判定 · 只绑 Windows 的 §36 点的本机后端那份 PowerShell 渲染函数，两处随那一层删了挂墓碑 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 19 → 25 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 基数 12 ＋ MIG-3a +2 ＋ 主线 +4 ⇒ 18 // +2：U8c-1「变严的代价」那一节补一句「收口了，收法是删」·「本地路径借 IR 做校验」那一节记 `validateLocalLaunch` 删了 // +1：§6 探活双重校验那一格搬去后端，点 monitor 旧函数名那句挂一块 // +2：§1 例外 3 那道远端删会话守卫 · 例外 1 本机那道路径守卫（`validate_delete_target`） // 12 → 16
+        ("src/doc/INVARIANTS.md", 27),
         // +3：§33b 产出方表 `session-backend.ts` 那格 · 三问表 ③ 那格 · 「删掉座的代价也换人了」那段 —— 点着随 TS 兜底一族删掉 / 改写的判据
         //   ⇒ 6（基）＋1（LOC1b）＋3（LR2）= 10
         ("src/doc/IPC-PROTOCOL.md", 10), // 11 → 10：载荷渲染那一节随载荷那一层删了，讲它来历的那一处墓碑跟着走（`launch-render-cli` / `launch-local` 两节重写、来历那两处留着）// 账号库收进后端：12 → 11（`acct-iso-install` 那一节随命令删了，它那一处墓碑跟着走）// 11 → 12：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 主线 8 ＋ MIG-1 本路增量 ⇒ 11（盘上现打） // +1：整份写口 `save_config` 删了，讲来历那一句挂墓碑 // 5 → 8
