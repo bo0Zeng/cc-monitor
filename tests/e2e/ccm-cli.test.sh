@@ -25,6 +25,8 @@ CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
 CCMDIR="$(mktemp -d)"; trap 'rm -rf "$CCMDIR"; tmux_shim_cleanup' EXIT
 ln -s "$CCM_NATIVE" "$CCMDIR/ccm"
 CCM="$CCMDIR/ccm"
+# 报错那几句按文案键取（`copy-text.mts`，与界面同一个取文口），本文件不钉原文。
+zh() { "$REPO/node_modules/.bin/tsx" "$REPO/tests/e2e/copy-text.mts" "$@"; }
 # 中转那一格由 ccm 在最终 exec 那一处自己判（这台家目录下的钥匙 ＋ 回环口连得上）⇒ 不隔离的话，开发机上真跑着的
 #   常驻后端会让每条黄金串多出一句注入（结果随「是谁在跑测试」漂移）。家目录一律换成沙箱（没有钥匙 ⇒ 当中转不在），
 #   中转那几个变量一律不继承。注入那一形另有专测（`plan_tests.rs` · `tests/e2e/restart-suite.sh`）。
@@ -114,16 +116,16 @@ ck "new 是 ccm 自己的词：写在 -- 右边第一个 = 起新会话（与不
    "$UNSET; cd '/p' && exec claude -p x" \
    "$(ccm -p x -- new --cwd /p --ccm-print)"
 ck "new 不在 -- 右边第一个 ⇒ 报错（不猜）" \
-   "ccm: new 只能是 -- 右边第一个词（ccm [交给 claude 的…] -- new [ccm 的选项…]）" \
+   "ccm: $(zh beArgv.parse.newNotFirst)" \
    "$(ccm -- --cwd /p new --ccm-print 2>&1)"
 ck "--launcher 'ccr code' 拆成词（用户 09-26）" \
    "$UNSET; cd '/p' && exec ccr code -p x" \
    "$(ccm -p x -- --launcher 'ccr code' --cwd /p --ccm-print)"
 ck "--account 与 --base 互斥" \
-   "ccm: --account 与 --base 互斥" \
+   "ccm: $(zh beArgv.validate.accountAndBase)" \
    "$(ccm -- --cwd /p --account z --base --ccm-print)"
 ck "不认识的 agent 报错并说出认得的几家" \
-   "ccm: 不认识这个 agent：gpt（认得的：claude / codex）" \
+   "ccm: $(zh beAgents.pick.unknown agent=gpt 'known=claude / codex')" \
    "$(ccm -- --ccm-agent gpt --cwd /p --ccm-print)"
 ck "未知选项原样交给 claude（从前报「未知选项」）" \
    "$UNSET; cd '/p' && exec claude --nope" \
@@ -154,7 +156,7 @@ ck "显式 --account 注入其 configDir" \
    "$(acct -- --cwd /p --account b --ccm-print)"
 # B1：die 在 \$(...) 里只杀子 shell —— 曾"报错后照跑"，落到继承来的账号上且 rc=0
 ck "账号不存在 → 中止（rc≠0，且不得吐出 exec）" \
-   "ccm: 账号 'nope' 不可用（不在 $AL/accounts.json，或其目录不存在）。可用: z b" \
+   "ccm: $(zh bePlan.resolveAccount.unavailable account=nope "manifestPath=$AL/accounts.json" 'names=z b')" \
    "$(acct -- --cwd /p --account nope --ccm-print)"
 ck "账号不存在 → rc=2" "2" \
    "$(acct -- --cwd /p --account nope --ccm-print >/dev/null 2>&1; echo $?)"
@@ -179,10 +181,10 @@ ck "resume 不做 auto 解析（cc-monitor 已 cd 到会话目录，再解析会
    "$UNSET; cd '$PWD' && exec claude --resume s1" \
    "$(ccm --resume s1 -- --ccm-print)"
 ck "--attach 后跟 flag → 报错（别把 --ccm-tmux 当会话名）" \
-   "ccm: --attach 需要一个值，但拿到的是 '--ccm-tmux'（像是漏了参数）" \
+   "ccm: $(zh beArgv.needVal.looksMissing name=--attach v=--ccm-tmux)" \
    "$(ccm -- --attach --ccm-tmux --ccm-print)"
 ck "--attach 缺值 → 报错" \
-   "ccm: --attach 需要一个值" \
+   "ccm: $(zh beArgv.needVal.missing name=--attach)" \
    "$(ccm -- --attach)"
 
 echo
@@ -376,10 +378,10 @@ ck "claude 自己的 -- 照写，按最后一个 -- 切（ccm 部分为空时写
    "$UNSET; cd '$HERE_P' && exec claude -p -- -x" \
    "$(cd "$HERE_P" && ccm -p -- -x -- --ccm-print 2>&1 | head -1)"
 ck "-- 右边认不得的词直接报错（不猜）" \
-   "ccm: -- 右边只放 ccm 自己的选项，--model 不是；交给 claude 的参数写在 -- 左边（ccm -- --ccm-help 看选项）" \
+   "ccm: $(zh beArgv.parse.unknownRight w=--model)" \
    "$(ccm -- --model opus --ccm-print)"
 ck "后端子命令只能紧跟打头的 --" \
-   "ccm: --list-sessions 是后端的子命令，只能紧跟打头的 --（ccm -- --list-sessions …），前面不许有交给 claude 的参数" \
+   "ccm: $(zh beArgv.parse.backendWordAfterClaudeArgs w=--list-sessions)" \
    "$(ccm -p -- --list-sessions)"
 
 echo "===== 没有 -- 又没有终端：不起 claude（被别的程序经管道驱动的裸调用）====="
@@ -446,12 +448,12 @@ ck "被叫成 betacc（指向 ccm 的链接）＝ ccm @betacc：继承 cc 的目
 ck "betacc 里的 b 号真用上了（这台没有账号库 ⇒ ccm 说 b 不可用，退出码 2）" \
    "2" "$(pccm "$PHOME" "$CCMDIR/betacc" -- --ccm-print >/dev/null 2>&1; echo $?)"
 ck "「基于」绕成圈：报错退出 2" \
-   "ccm: 「基于」绕成了圈：loop1 → loop2 → loop1" \
+   "ccm: $(zh beProfile.chain.cycle "chain=loop1$(zh beProfile.chain.arrow)loop2$(zh beProfile.chain.arrow)loop1")" \
    "$(pccm "$PHOME" "$CCM" @loop1 -- --ccm-print)"
 ck "「基于」的那一段不存在：报到那一行" \
-   "ccm: 第 19 行：orphan 基于的 nobody 不存在" \
+   "ccm: $(zh beProfile.at.line line=19 "e=$(zh beProfile.chain.missingFrom name=orphan from=nobody)")" \
    "$(pccm "$PHOME" "$CCM" @orphan -- --ccm-print)"
-ck "没有这一段：说清" "ccm: 没有叫 nope 的配置" "$(pccm "$PHOME" "$CCM" @nope -- --ccm-print)"
+ck "没有这一段：说清" "ccm: $(zh beProfile.chain.unknown name=nope)" "$(pccm "$PHOME" "$CCM" @nope -- --ccm-print)"
 ck "@ 后面当不了配置名（@文件 那种提问）：整行原样交 claude" \
    "$UNSET; cd '/p' && exec claude '@README.md 讲讲'" \
    "$(pccm "$PHOME" "$CCM" '@README.md 讲讲' -- --cwd /p --ccm-print)"

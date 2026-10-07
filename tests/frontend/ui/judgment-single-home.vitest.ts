@@ -537,6 +537,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     backend_old: "J22",
     // 测试按文案键断言用（占位处任意值）；TS 那一侧的同形在测试支架 `tests/test-support/copy-pattern.ts`，不是生产判定。
     copy_matches: NONE,
+    // 同上，只钉给了值的那几格（TS 那一侧是 `copyPattern(键, 已知值)`）。
+    copy_matches_with: NONE,
     copy_text: "J11",
     local_machine: "J22",
     reply_unreadable: "J22",
