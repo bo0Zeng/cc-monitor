@@ -13,6 +13,11 @@
     animation: float-in var(--dur-float-in) ease-out;
   }
 
+  /* 锚在模态框里的触发物上：压过那个框。 */
+  .menu[data-over-modal="true"] {
+    z-index: var(--z-modal-menu);
+  }
+
   @keyframes float-in {
     from {
       transform: translateY(-4px);

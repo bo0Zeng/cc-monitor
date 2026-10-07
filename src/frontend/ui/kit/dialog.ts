@@ -326,6 +326,8 @@ export interface FormSpec {
   body: HTMLElement;
   /** 宽框（580）：表单 · 清单。 */
   wide?: boolean;
+  /** 窄框（520）：标签在左的短表单（起新会话）。缺这两样 ⇒ 560。 */
+  narrow?: boolean;
   /** 打开时焦点落在哪；缺省第一个可填的格。 */
   first?: () => HTMLElement | null;
   /** 打开时焦点落在主按钮（起会话这一类：大多照预填直接点）。压过 `first`。 */
@@ -351,6 +353,7 @@ export interface FormHandle {
 export function formDialog(spec: FormSpec): FormHandle {
   const b = build(spec.title, spec.action, false);
   if (spec.wide) b.panel.dataset.size = "wide";
+  else if (spec.narrow) b.panel.dataset.size = "narrow";
   const errBox = document.createElement("div");
   b.body.append(errBox, spec.body);
   const refresh = (): void => setDisabled(b.ok, spec.blocked?.() ?? null);

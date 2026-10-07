@@ -87,7 +87,7 @@ async function startNewSession(place: "tmux" | "window" = "tmux"): Promise<void>
   await openCommandBar();
   await type("[data-role=command-input]", "新建会话");
   await key("Enter");
-  await waitFor('[role="dialog"] select[aria-label="账号"] option');
+  await waitFor('[role="dialog"] button[aria-label="账号"]:not([data-value=""])');
   await sleep(300);
   if (place === "window") await click('[role="dialog"] input[value="window"]');
   await click(await byText('[role="dialog"] button', "新建"));
@@ -158,14 +158,30 @@ export const PANEL_SCENES: Scene[] = [
     await openCommandBar();
     await type("[data-role=command-input]", "新建会话");
     await key("Enter");
-    await waitFor('[role="dialog"] select[aria-label="账号"] option');
+    await waitFor('[role="dialog"] button[aria-label="账号"]:not([data-value=""])');
     await sleep(600);
+  }),
+  panel("panel-new-session-account", "起新会话 · 挑账号", "账号那一格点开：头像在前 · 当前项打勾 · 默认 / 5h 用量灰字跟在名字后", async () => {
+    await openCommandBar();
+    await type("[data-role=command-input]", "新建会话");
+    await key("Enter");
+    await waitFor('[role="dialog"] button[aria-label="账号"]:not([data-value=""])');
+    await click('[role="dialog"] button[aria-label="账号"]');
+    await sleep(500);
+  }),
+  panel("panel-new-session-more", "起新会话 · 更多", "「更多」展开：tmux 会话名（那台铸的作占位）· 启动命令", async () => {
+    await openCommandBar();
+    await type("[data-role=command-input]", "新建会话");
+    await key("Enter");
+    await waitFor('[role="dialog"] button[aria-label="账号"]:not([data-value=""])');
+    await click(await byText('[role="dialog"] button', "更多：tmux 会话名 · 启动命令"));
+    await sleep(500);
   }),
   panel("panel-new-session-nodir", "起新会话 · 目录那一格不行", "点［新建］、那台说目录不在：错误落在目录那一格下，框不关", async () => {
     await openCommandBar();
     await type("[data-role=command-input]", "新建会话");
     await key("Enter");
-    await waitFor('[role="dialog"] select[aria-label="账号"] option');
+    await waitFor('[role="dialog"] button[aria-label="账号"]:not([data-value=""])');
     await sleep(300);
     await click(await byText('[role="dialog"] button', "新建"));
     await sleep(600);
@@ -191,7 +207,7 @@ export const PANEL_SCENES: Scene[] = [
     await scrollStreamTop();
     const btn = await waitFor(".stream.active .viewer-branch-btn");
     await click(btn);
-    await waitFor('[role="dialog"] select[aria-label="账号"] option');
+    await waitFor('[role="dialog"] button[aria-label="账号"]:not([data-value=""])');
     await sleep(700);
   }),
   panel("panel-fork-unavailable", "分叉 · 原会话的号选不了", "在跑的会话上分叉、它用的号选不了：不起、不悄悄换号 —— 那一格下「原会话账号 · 不自动换」＋［改用 work］［登录…］", async () => {
@@ -200,7 +216,7 @@ export const PANEL_SCENES: Scene[] = [
     await scrollStreamTop();
     const btn = await waitFor(".stream.active .viewer-branch-btn");
     await click(btn);
-    await waitFor('[role="dialog"] select[aria-label="账号"] option');
+    await waitFor('[role="dialog"] button[aria-label="账号"]:not([data-value=""])');
     await sleep(300);
     await click(await byText('[role="dialog"] button', "新建"));
     await sleep(600);

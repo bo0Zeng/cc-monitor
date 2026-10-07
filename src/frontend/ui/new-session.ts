@@ -14,6 +14,9 @@ import { banner } from "./kit/banner";
 import { button } from "./kit/button";
 import { fold } from "./kit/fold";
 import { icon } from "./kit/icon";
+import { openMenu } from "./kit/menu";
+import { select, type SelectOption } from "./kit/select";
+import { tag } from "./kit/badge";
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
 import { commands } from "./ipc/commands";
@@ -22,6 +25,7 @@ import { machineName } from "./control-said";
 import { DEFAULT_AGENT, agentHasAccounts, defaultLauncherOf, lookupAgentProfile } from "./agent-profile";
 import { fetchAccounts } from "./account-reads";
 import { isSelectable, type Account } from "./accounts";
+import { accountAvatarEl } from "./account-color";
 import { appStore } from "./app-store";
 import { refreshQuota } from "./acct-center";
 import { fiveHourCell } from "./quota-lines";
@@ -117,11 +121,26 @@ async function listAccounts(origin: Origin, agent: string): Promise<AccountOpt[]
   return [...opts.filter((a) => a.isDefault), ...opts.filter((a) => !a.isDefault)];
 }
 
-function accountLabel(a: AccountOpt): string {
-  const parts = [a.name + (a.isDefault ? ` ${copyText("newSession.account.default")}` : "")];
-  if (a.quota) parts.push(a.quota);
-  if (!a.ready) parts.push(copyText("newSession.account.needLogin"));
-  return parts.join(copyText("kit.text.sep"));
+/** 账号那一项：头像 · 名字 · 灰字（`默认 · 5h 63%` · 需登录）。 */
+function accountOption(a: AccountOpt): SelectOption {
+  const note: string[] = [];
+  if (a.isDefault) note.push(copyText("newSession.account.default"));
+  if (a.quota) note.push(a.quota);
+  if (!a.ready) note.push(copyText("newSession.account.needLogin"));
+  return { value: a.name, label: a.name, note: note.join(copyText("kit.text.sep")), lead: () => accountAvatarEl(a.name, { size: 16 }) };
+}
+
+/** 机器那一项：远端带机器标记；连不上的灰着、说「离线」（正选着的那台照样列出、可选）。 */
+function machineOption(m: MachineOpt, chosen: Origin): SelectOption {
+  const name = machineName(m.origin);
+  return {
+    value: m.origin,
+    label: name,
+    lead: isLocalOrigin(m.origin) ? undefined : () => tag(name),
+    note: m.up ? undefined : copyText("newSession.machine.down"),
+    enabled: m.up || m.origin === chosen,
+    why: copyText("newSession.machine.down"),
+  };
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string): HTMLElementTagNameMap[K] {
@@ -163,14 +182,6 @@ function row(label: string, control: HTMLElement, boxed = true): { root: HTMLEle
     note.append(...acts);
   };
   return { root, cell, note, setNote };
-}
-
-function option(value: string, label: string, disabled = false): HTMLOptionElement {
-  const o = document.createElement("option");
-  o.value = value;
-  o.textContent = label;
-  o.disabled = disabled;
-  return o;
 }
 
 /** 「第 9 轮 02:05」那一段的时刻（本地钟面，时:分）。 */
@@ -231,10 +242,18 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   }
 
   // 机器
-  const machineSel = el("select");
-  machineSel.className = s.nsSelect;
-  machineSel.setAttribute("aria-label", copyText("newSession.label.machine"));
-  const machineRow = row(copyText("newSession.label.machine"), machineSel);
+  const machineSel = select({
+    label: copyText("newSession.label.machine"),
+    options: [machineOption({ origin, up: true }, origin)],
+    value: origin,
+    onChange: (v) => {
+      origin = v;
+      cwdInput.value = "";
+      cwdRow.setNote("");
+      void loadMachine();
+    },
+  });
+  const machineRow = row(copyText("newSession.label.machine"), machineSel.el, false);
   form.appendChild(machineRow.root);
 
   // 工作目录 ＋「最近的」
@@ -244,28 +263,43 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   cwdInput.spellcheck = false;
   cwdInput.value = spec.cwd ?? "";
   cwdInput.setAttribute("aria-label", copyText("newSession.label.cwd"));
-  const recentSel = el("select");
-  recentSel.className = s.nsRecent;
-  recentSel.setAttribute("aria-label", copyText("newSession.recent.label"));
+  // 「最近的」：那台最近用过的目录，点一项填进目录格。
+  const recentBtn = el("button");
+  recentBtn.type = "button";
+  recentBtn.className = s.nsRecent;
+  recentBtn.setAttribute("aria-label", copyText("newSession.recent.label"));
+  recentBtn.append(el("span", copyText("newSession.recent.label")), icon("caretDown", "compact"));
   const cwdWrap = el("div");
   cwdWrap.className = s.nsBox;
-  cwdWrap.append(cwdInput, recentSel);
+  cwdWrap.append(cwdInput, recentBtn);
   const cwdRow = row(copyText("newSession.label.cwd"), cwdWrap, false);
   form.appendChild(cwdRow.root);
 
   // agent（那台能起的多于一家才出）
-  const agentSel = el("select");
-  agentSel.className = s.nsSelect;
-  agentSel.setAttribute("aria-label", copyText("newSession.label.agent"));
-  const agentRow = row(copyText("newSession.label.agent"), agentSel);
+  const agentSel = select({
+    label: copyText("newSession.label.agent"),
+    options: [],
+    onChange: (v) => {
+      agent = v;
+      paintAgent();
+      void configuredCommand(origin, agent).then((c) => (cmdInput.value = c));
+      void paintAccounts().then(() => handle.refresh());
+    },
+  });
+  const agentRow = row(copyText("newSession.label.agent"), agentSel.el, false);
   agentRow.root.hidden = true;
   form.appendChild(agentRow.root);
 
   // 账号
-  const accountSel = el("select");
-  accountSel.className = s.nsSelect;
-  accountSel.setAttribute("aria-label", copyText("newSession.label.account"));
-  const accountRow = row(copyText("newSession.label.account"), accountSel);
+  const accountSel = select({
+    label: copyText("newSession.label.account"),
+    options: [],
+    onChange: () => {
+      paintAccountNote();
+      handle.refresh();
+    },
+  });
+  const accountRow = row(copyText("newSession.label.account"), accountSel.el, false);
   accountRow.root.hidden = true;
   form.appendChild(accountRow.root);
 
@@ -311,14 +345,17 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   more.className = s.nsMore;
   if (!fork) more.appendChild(tmuxRow.root);
   more.appendChild(cmdRow.root);
-  form.appendChild(
-    fold({ title: fork ? copyText("newSession.more.fork") : copyText("newSession.more.plain"), open: false, body: more }),
+  const moreRow = el("div");
+  moreRow.className = s.nsMoreRow;
+  moreRow.appendChild(
+    fold({ title: fork ? copyText("newSession.more.fork") : copyText("newSession.more.plain"), open: false, body: more, bare: true }),
   );
+  form.appendChild(moreRow);
 
   const place = (): "tmux" | "window" => (tmuxRadio.input.checked && !tmuxRadio.label.hidden ? "tmux" : "window");
   const up = (): boolean => machines.find((m) => m.origin === origin)?.up ?? false;
   const chosenAccountOpt = (): AccountOpt | null =>
-    accounts?.find((a) => a.name === accountSel.value) ?? null;
+    accounts?.find((a) => a.name === accountSel.value()) ?? null;
 
   const paintTop = (): void => {
     top.replaceChildren();
@@ -362,8 +399,10 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const paintAgent = (): void => {
     const offered = facts?.agents ?? [];
     agentRow.root.hidden = offered.length <= 1;
-    agentSel.replaceChildren(...offered.map((k) => option(k, k)));
-    if (offered.includes(agent)) agentSel.value = agent;
+    agentSel.setOptions(
+      offered.map((k) => ({ value: k, label: k })),
+      offered.includes(agent) ? agent : undefined,
+    );
     cmdInput.placeholder = copyText("newSession.command.placeholder", { launcher: safeLauncher(agent) });
   };
 
@@ -371,15 +410,14 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     accounts = await listAccounts(origin, agent);
     accountRow.root.hidden = accounts === null;
     if (accounts === null) return;
-    const opts: HTMLOptionElement[] = [];
+    const opts: SelectOption[] = [];
     // 分叉、而那台说不出源会话的号 ⇒ 跟随（那台按源会话上次的号判），不拿当前号顶替。
     const forkAccount = facts?.fork?.launch.account;
-    if (fork && forkAccount?.kind !== "known") opts.push(option(ACCOUNT_FOLLOW, copyText("newSession.account.follow")));
-    opts.push(...accounts.map((a) => option(a.name, accountLabel(a))));
-    accountSel.replaceChildren(...opts);
-    if (fork && forkAccount?.kind === "known" && forkAccount.value !== null) accountSel.value = forkAccount.value;
-    else if (fork) accountSel.value = ACCOUNT_FOLLOW;
-    else accountSel.value = accounts[0].name;
+    if (fork && forkAccount?.kind !== "known") opts.push({ value: ACCOUNT_FOLLOW, label: copyText("newSession.account.follow") });
+    opts.push(...accounts.map(accountOption));
+    const pick =
+      fork && forkAccount?.kind === "known" && forkAccount.value !== null ? forkAccount.value : fork ? ACCOUNT_FOLLOW : accounts[0].name;
+    accountSel.setOptions(opts, pick);
     paintAccountNote();
   };
 
@@ -424,13 +462,6 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     } else if (!facts.agents.includes(agent) && facts.agents.length > 0 && !facts.agents.includes(DEFAULT_AGENT)) {
       agent = facts.agents[0];
     }
-    recentSel.replaceChildren(
-      option("", copyText("newSession.recent.label")),
-      ...(facts.recent.length === 0
-        ? [option("", copyText("newSession.recent.none"), true)]
-        : facts.recent.map((r) => option(r.cwd, r.cwd))),
-    );
-    recentSel.value = "";
     if (cwdInput.value === "" && facts.recent.length > 0) cwdInput.value = facts.recent[0].cwd;
     cmdInput.value = await configuredCommand(origin, agent);
     paintAgent();
@@ -444,7 +475,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     pendingTop = null;
     paintTop();
     for (const r of [cwdRow, accountRow, tmuxRow, cmdRow, agentRow, placeRow]) r.setNote("");
-    const accountValue = accountRow.root.hidden ? null : accountSel.value;
+    const accountValue = accountRow.root.hidden ? null : accountSel.value();
     const account: AccountAsk | undefined =
       accountValue === null || accountValue === ACCOUNT_FOLLOW ? undefined : chosenAccount(accountValue);
     const req: NewRequest = {
@@ -488,7 +519,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
         const alt = u.alternative;
         const use = button({ label: copyText("newSession.account.useAlt", { alt }), size: "compact" });
         use.addEventListener("click", () => {
-          accountSel.value = alt;
+          accountSel.setValue(alt);
           paintAccountNote();
           handle.submit();
         });
@@ -529,6 +560,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     title,
     action: copyText("newSession.action.create"),
     body: form,
+    narrow: true,
     focusAction: true,
     blocked: () => {
       if (!up()) return copyText("newSession.machine.offline", { machine: machineName(origin) });
@@ -556,42 +588,32 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     handle.refresh();
   });
   cwdInput.addEventListener("blur", () => void checkDir());
-  recentSel.addEventListener("change", () => {
-    if (recentSel.value === "") return;
-    cwdInput.value = recentSel.value;
-    recentSel.value = "";
-    cwdRow.setNote("");
-    handle.refresh();
-    void checkDir();
-  });
-  agentSel.addEventListener("change", () => {
-    agent = agentSel.value;
-    paintAgent();
-    void configuredCommand(origin, agent).then((c) => (cmdInput.value = c));
-    void paintAccounts().then(() => handle.refresh());
-  });
-  accountSel.addEventListener("change", () => {
-    paintAccountNote();
-    handle.refresh();
+  recentBtn.addEventListener("click", () => {
+    const recent = facts?.recent ?? [];
+    const use = (cwd: string): void => {
+      cwdInput.value = cwd;
+      cwdRow.setNote("");
+      handle.refresh();
+      void checkDir();
+    };
+    openMenu(
+      { el: recentBtn, align: "end" },
+      recent.length === 0
+        ? [{ label: copyText("newSession.recent.none"), enabled: false }]
+        : recent.map((r) => ({ label: r.cwd, checked: r.cwd === cwdInput.value.trim(), onClick: () => use(r.cwd) })),
+      { label: copyText("newSession.recent.label"), onClose: () => cwdInput.focus() },
+    );
   });
   for (const r of [tmuxRadio, windowRadio]) r.input.addEventListener("change", paintPlace);
-  machineSel.addEventListener("change", () => {
-    origin = machineSel.value;
-    cwdInput.value = "";
-    cwdRow.setNote("");
-    void loadMachine();
-  });
 
   // 机器清单（连不上的灰着、第二行「离线」）；分叉 / 机器卡入口锁定那一台。
   void listMachines().then((ms) => {
     machines = ms.some((m) => m.origin === origin) ? ms : [...ms, { origin, up: false }];
-    machineSel.replaceChildren(
-      ...machines.map((m) =>
-        option(m.origin, m.up ? machineName(m.origin) : `${machineName(m.origin)}${copyText("kit.text.sep")}${copyText("newSession.machine.down")}`, !m.up && m.origin !== origin),
-      ),
+    machineSel.setOptions(
+      machines.map((m) => machineOption(m, origin)),
+      origin,
     );
-    machineSel.value = origin;
-    machineSel.disabled = spec.lockMachine === true || fork !== null;
+    machineSel.setDisabled(spec.lockMachine === true || fork !== null);
     void loadMachine();
   });
   paintPlace();

@@ -26,6 +26,10 @@
     animation: rise var(--dur-float-in) ease-out;
   }
 
+  .dialogPanel[data-size="narrow"] {
+    width: min(520px, 100%);
+  }
+
   .dialogPanel[data-size="wide"] {
     width: min(580px, 100%);
   }

@@ -326,6 +326,7 @@ export function openMenu(anchor: MenuAnchor, items: MenuItem[], opts: { onClose?
   root.className = s.menu;
   root.setAttribute("role", "menu");
   if (opts.label) root.setAttribute("aria-label", opts.label);
+  if ("el" in anchor && anchor.el.closest('[aria-modal="true"]')) root.dataset.overModal = "true";
   if (opts.width !== undefined) {
     root.style.width = `${opts.width}px`;
     root.style.maxWidth = `min(${opts.width}px, calc(100vw - ${2 * EDGE}px))`;
