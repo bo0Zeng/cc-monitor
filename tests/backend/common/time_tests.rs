@@ -64,28 +64,18 @@ fn t3_iso8601() {
 fn t4_the_constant_lives_only_here() {
     let root = crate::guard_support::src_root();
     let needle = "719_468";
-    let mut hits = Vec::new();
-    let mut scanned = 0usize;
-    let mut stack = vec![root.clone()];
-    while let Some(d) = stack.pop() {
-        for e in std::fs::read_dir(&d).expect("ls") {
-            let p = e.expect("entry").path();
-            if p.is_dir() {
-                stack.push(p);
-            } else if p.extension().and_then(|x| x.to_str()) == Some("rs") {
-                scanned += 1;
-                let src = std::fs::read_to_string(&p).expect("read");
-                if crate::guard_support::production_code(&src).contains(needle) {
-                    hits.push(
-                        p.strip_prefix(&root)
-                            .unwrap()
-                            .to_string_lossy()
-                            .replace('\\', "/"),
-                    );
-                }
-            }
-        }
-    }
+    let files = guard_core::scan_tree!(&root, &["rs"]);
+    let scanned = files.len();
+    let hits: Vec<String> = files
+        .iter()
+        .filter(|(_, src)| crate::guard_support::production_code(src).contains(needle))
+        .map(|(p, _)| {
+            p.strip_prefix(&root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .collect();
     assert!(scanned >= 60, "只扫到 {scanned} 份 —— 遍历坏了");
     assert_eq!(
         hits,

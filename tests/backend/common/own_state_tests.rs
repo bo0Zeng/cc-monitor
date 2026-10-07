@@ -21,10 +21,11 @@ fn sandbox(tag: &str) -> PathBuf {
     base
 }
 
-fn names(dir: &std::path::Path) -> Vec<String> {
-    let mut v: Vec<String> = std::fs::read_dir(dir)
-        .expect("ls")
-        .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+/// 目录底下留着的旁名（`.tmp` 结尾）。
+fn side_files(dir: &std::path::Path) -> Vec<String> {
+    let mut v: Vec<String> = guard_core::scan_tree!(dir, &["tmp"])
+        .into_iter()
+        .map(|(p, _)| p.file_name().unwrap().to_string_lossy().into_owned())
         .collect();
     v.sort();
     v
@@ -70,7 +71,8 @@ fn s2_round_trip_newline_and_private() {
         let mode = std::fs::metadata(&p).expect("meta").permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "后端自有状态文件不是只给本人");
     }
-    assert_eq!(names(&base), vec!["x.json".to_string()], "留了旁名");
+    assert!(side_files(&base).is_empty(), "留了旁名");
+    assert!(p.is_file());
     std::fs::remove_dir_all(&base).ok();
 }
 
@@ -99,7 +101,8 @@ fn s3_concurrent_writers_never_collide_on_the_side_name() {
         fails.len(),
         fails.first()
     );
-    assert_eq!(names(&base), vec!["x.json".to_string()], "留了旁名");
+    assert!(side_files(&base).is_empty(), "留了旁名");
+    assert!(p.is_file());
     std::fs::remove_dir_all(&base).ok();
 }
 
@@ -112,9 +115,10 @@ fn s4_failed_rename_removes_only_its_own_side_file() {
     std::fs::write(base.join("x.json.other.tmp"), b"theirs").expect("foreign");
     assert!(write(&target, b"mine").is_err(), "挪到非空目录上居然成了");
     assert_eq!(
-        names(&base),
-        vec!["x.json".to_string(), "x.json.other.tmp".to_string()],
+        side_files(&base),
+        vec!["x.json.other.tmp".to_string()],
         "旁名没删，或删了别人的文件"
     );
+    assert!(target.join("keep").is_file(), "挪的目标被动了");
     std::fs::remove_dir_all(&base).ok();
 }

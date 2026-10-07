@@ -344,11 +344,11 @@ pub(crate) fn key_facts_at(path: &Path) -> Vec<KeyFact> {
 
 /// 读一次、解析一次。`Ok(None)` = 文件不在（还没配）；空文件 = 空对象。
 /// 读盘的上限（一个号一格 key）。
-const MAX_BYTES: u64 = 4 << 20;
+const KEY_FILE_READ_CAP: u64 = 4 << 20;
 
 fn read_doc(path: &Path) -> Result<Option<Map<String, Value>>, (&'static str, String)> {
     use crate::common::own_state::{read_bytes, Read};
-    let raw = match read_bytes(path, MAX_BYTES) {
+    let raw = match read_bytes(path, KEY_FILE_READ_CAP) {
         Read::Present(b) => String::from_utf8_lossy(&b).into_owned(),
         Read::Absent => return Ok(None),
         Read::Unreadable(why) => return Err(("io_failed", why)),
