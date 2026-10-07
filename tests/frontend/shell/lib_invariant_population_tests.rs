@@ -512,6 +512,14 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "这台后端自己的 skills 根下那两个脚本的路径",
     ),
+    // 「要你动手」旧 ccm 那一件：复制给人自己跑的 `rm <路径>`，路径是这台 PATH 上找到的那个文件（这台自己的路径，不进任何会跑的串）。
+    (
+        "src/backend/footprint/chores/mod.rs",
+        1,
+        &[],
+        "",
+        "这台 PATH 上先找到的那个 ccm 的路径（只复制给人，不拿去跑）",
+    ),
     // stream_source/exec.rs 2 → 0 · remote_resident.rs 2 → 0：远端后端落点是固定常量 `BACKEND_CMD`（`backendPath` 那一格删了），
     //   流 / 探针 / 常驻起停四条命令不再 quote 任何外来值 ⇒ 两行出列。
 ];

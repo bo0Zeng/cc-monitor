@@ -141,14 +141,14 @@ describe("走 textContent 的文案不许带 markdown 星号", () => {
     ).toContain("**");
   });
 
-  it("两个真实消费者传给组件的文案里都没有 **", async () => {
+  it("真实消费者传给组件的文案里都没有 **", async () => {
     const { readFileSync } = await import("node:fs");
     // 判据必须精确到**传给组件的那个对象字面量**。第一版用「6 空格缩进的字符串」这种
     // 糙启发式，误抓了 section 自己的 hint 文案——虽然那条也确实带字面星号（已顺手清掉），
     // 但守卫报错的位置和它声称守的东西对不上，就是个会被关掉的守卫。
     let checked = 0;
     for (const f of [
-      "src/frontend/ui/settings/machine-aliases.ts", // 别名那一块从 `launcher-diagnostics.ts` 搬来
+      // 别名那一行的「我自己贴」不再就地弹代码（去「要你动手」那一件），机器页别名那一块不再用组件。
       "src/frontend/ui/settings/ext-section.ts", // cc-bus 那一行每台要加的钩子
     ]) {
       const src = readFileSync(f, "utf8");
@@ -180,7 +180,7 @@ describe("走 textContent 的文案不许带 markdown 星号", () => {
       expect(block).toContain("target:");
       expect(block).toContain("activation:");
     }
-    expect(checked).toBe(2);
+    expect(checked).toBe(1);
   });
 });
 
