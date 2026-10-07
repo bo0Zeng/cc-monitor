@@ -77,10 +77,10 @@ const OWN_HOME: &str = "后端自家目录";
 const DIR_CREATORS: &[(&str, &str, &str)] = &[
     ("common/own_dir.rs", "ensure_private_dir", OWN_HOME),
     ("dial/sftp.rs", "make_dir", OWN_HOME),
-    // 订阅号续期锁（+1）：与那个号自己的 claude 同一套 `mkdir` 锁（配置目录里那一把 · 旁边那一把），建成即持有、续完即删。
+    // 订阅号续期锁（+1）：与那个号自己的 claude 同一套 `mkdir` 锁（配置目录里那一把 · 旁边那一把），建成即持有、续完即删（`make` 建；过期的那把删了重建也走它）。
     (
         "accounts/oauth/store.rs",
-        "take",
+        "make",
         "续期锁目录（那个号的配置目录里外各一把，claude 自己续期时拿的同一套）",
     ),
     (
