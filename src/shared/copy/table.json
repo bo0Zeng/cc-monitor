@@ -295,9 +295,9 @@
       "args": ["path"]
     },
     "beAcctFace.aliases.unparsed": {
-      "kind": "body",
-      "zh": "别名文件 {path} 里有 {n} 行认不出来，这次没动它。到「别名」里看一眼。",
-      "args": ["path", "n"]
+      "kind": "error",
+      "zh": "配置文件 {path} 里有 {n} 处写错了，这次没动它。到「别名」里看一眼。",
+      "args": ["n", "path"]
     },
     "beAcctFace.aliases.writeFailed": {
       "kind": "error",
@@ -10203,11 +10203,6 @@
       "zh": "已开的终端要运行「. {path}」或新开一个",
       "args": ["path"]
     },
-    "rsAccountAliases.read.failed": {
-      "kind": "error",
-      "zh": "读不了 {path}：{e}",
-      "args": ["path", "e"]
-    },
     "rsAccountAliases.said.base": {
       "kind": "body",
       "zh": "~/.claude",
@@ -10328,27 +10323,6 @@
       "zh": "同一个名字出现了两次 —— 后一条会盖掉前一条",
       "args": []
     },
-    "rsAccountAliases.check.notAllowed": {
-      "kind": "error",
-      "zh": "{word} 不能放进别名（这个选项每次现敲）",
-      "args": ["word"]
-    },
-    "rsAccountAliases.check.cwdNotAbsolute": {
-      "kind": "error",
-      "zh": "--cwd 要写完整路径或以 ~ 开头（不含 ..）：{value}",
-      "args": ["value"]
-    },
-    "rsAccountAliases.check.cwdIfNotPinned": {
-      "kind": "error",
-      "zh": "--cwd-if 的目录要写完整路径或以 ~ 开头（不含 ..）：{value}",
-      "args": ["value"]
-    },
-    "rsAccountAliases.check.attachAlone": {
-      "kind": "error",
-      "zh": "接回 tmux 会话的那一条只能单放 --attach，会话名在敲的时候跟上",
-      "args": [],
-      "limited": ["tmux"]
-    },
     "rsAccountAliases.check.noTmux": {
       "kind": "error",
       "zh": "这台机器上没有 tmux —— {flags} 都用不了",
@@ -10434,12 +10408,9 @@
     },
     "rsShellDialect.ps.header": {
       "kind": "body",
-      "zh": "# 这份文件由 cc-monitor 设置里「别名」那一块整份重写，别手改 —— 下一次写入会原样覆盖。\n# 每一个函数是一条别名：名字 ＋ 一组 ccm 参数，调用时再给的参数接在后面。\n# 写法是 PowerShell 函数，5.1 与 7 都 dot-source 得了。\n",
+      "zh": "# 照配置文件 ~/.cc-monitor/profiles.toml 生成，别手改，下一次会原样重写。\n# 每一个函数是一条别名，只把调用交给 ccm @名字，规则住配置文件。\n# 写法是 PowerShell 函数，5.1 与 7 都 dot-source 得了。\n",
       "args": [],
-      "limited": ["PowerShell", "ccm"],
-      "waive": {
-        "C-L1": "写进用户 PowerShell 配置的头注释；首句是一整句警告，CP1 裁保留"
-      }
+      "limited": ["PowerShell", "ccm"]
     },
     "rsShellDialect.ps.badCall": {
       "kind": "error",
@@ -10473,12 +10444,9 @@
     },
     "rsShellDialect.posix.header": {
       "kind": "body",
-      "zh": "# 这份文件由 cc-monitor 设置里「别名」那一块整份重写，别手改 —— 下一次写入会原样覆盖。\n# 每一行是一条别名：名字 ＋ 一组 ccm 参数，调用时再给的参数接在后面。\n# 写法是 POSIX sh 函数，bash / zsh 都 source 得了；fish 不行。\n",
+      "zh": "# 照配置文件 ~/.cc-monitor/profiles.toml 生成，别手改，下一次会原样重写。\n# 这里只有与系统命令同名的别名，比如 cc；每条一行，只把调用交给 ccm @名字，规则住配置文件。\n# 别的别名是 ~/.cc-monitor/bin 里指向 ccm 的链接。写法是 POSIX sh 函数，bash / zsh 都 source 得了；fish 不行。\n",
       "args": [],
-      "limited": ["ccm"],
-      "waive": {
-        "C-L1": "写进用户 shell 文件的头注释；首句是一整句警告，CP1 裁保留"
-      }
+      "limited": ["ccm"]
     },
     "rsShellDialect.posix.notCcm": {
       "kind": "error",
@@ -11037,7 +11005,7 @@
     },
     "rsDataPaths.backend.aliasesPosix": {
       "kind": "body",
-      "zh": "你建的别名（bash、zsh 读这一份）",
+      "zh": "照配置文件生成的别名（bash、zsh 读这一份；只有与系统命令同名的那几条）",
       "args": []
     },
     "rsDataPaths.backend.aliasesPs": {
@@ -13332,7 +13300,7 @@
     },
     "beCcm.usage.body": {
       "kind": "body",
-      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；没有 -- 又没有终端可交互（被别的程序经管道叫）时不起 claude；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，认不得就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --ccm-tmux）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（说不出账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --cwd <目录>       工作目录；不给就是当前目录，开头的 ~ 是家目录，相对路径按当前目录补全\n  --cwd-if <在哪> <进哪> 正好在「在哪」这个目录里敲时进「进哪」（可写多次，按顺序第一条对上的算；\n                     两边都可用 ~，链接解开再比；都没对上才看 --cwd）\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是家目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --ccm-print        不跑，印出等价的一行 shell 命令\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（你自己设了就不动）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
+      "zh": "用法：ccm [交给 claude 的参数…] -- [new] [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；没有 -- 又没有终端可交互（被别的程序经管道叫）时不起 claude；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，认不得就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n配置文件（~/.cc-monitor/profiles.toml，一段 [名字] 是一组 ccm 选项，可写 from = \"另一段\" 基于它）\n  ccm @<名> [交给 claude 的参数…] [-- ccm 选项…]   用那一段：继承链父 → 子合并，-- 右边当场给的最后盖\n  <名> …            ~/.cc-monitor/bin/<名> 是指向 ccm 的链接：被叫成这个名字就等同 ccm @<名> …\n                     （与系统命令同名的，如 cc，是交互终端里的 shell 函数，同样只调 ccm @<名>）\n\n选项\n  new                起新会话（缺省就是它；只许是 -- 右边第一个词。ccm new 没有 -- 时交给 claude）\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --ccm-tmux）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --account-dir <目录> 用这个账号配置目录起（说不出账号名时用；与 --account / --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --cwd <目录>       工作目录；不给就是当前目录，开头的 ~ 是家目录，相对路径按当前目录补全\n  --cwd-if <在哪> <进哪> 正好在「在哪」这个目录里敲时进「进哪」（可写多次，按顺序第一条对上的算；\n                     两边都可用 ~，链接解开再比；都没对上才看 --cwd）\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是家目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --ccm-print        不跑，印出等价的一行 shell 命令\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n\n中转\n  这台机器上 cc-monitor 的中转在听时，ccm 起 agent 前把 ANTHROPIC_BASE_URL 指向它（你自己设了就不动）；\n  环境变量 CCM_RELAY_ALL_SESSIONS=0 时只有要经中转换 key 的账号才指过去\n",
       "args": [],
       "limited": ["tmux", "ccm"],
       "waive": {
@@ -22463,6 +22431,167 @@
       "kind": "body",
       "zh": "已取消固定「{title}」",
       "args": ["title"]
+    },
+    "beProfile.name.own": {
+      "kind": "error",
+      "zh": "「{name}」是 ccm 自己的名字，不能当配置名",
+      "args": ["name"],
+      "limited": ["ccm"]
+    },
+    "beProfile.name.bad": {
+      "kind": "error",
+      "zh": "「{name}」当不了命令名。只能用字母、数字、下划线，不能以数字打头",
+      "args": ["name"]
+    },
+    "beProfile.value.shape": {
+      "kind": "error",
+      "zh": "{key} 的写法不对。开关写 true，一个值写字符串，几个值写字符串数组",
+      "args": ["key"]
+    },
+    "beProfile.value.switchFalse": {
+      "kind": "error",
+      "zh": "{key} 是开关，只能写 true。不要就删掉这一项",
+      "args": ["key"]
+    },
+    "beProfile.value.parser": {
+      "kind": "error",
+      "zh": "{key}：{e}",
+      "args": ["e", "key"]
+    },
+    "beProfile.value.notPinned": {
+      "kind": "error",
+      "zh": "{key} 里的目录要以 ~ 打头或写绝对路径：{value}",
+      "args": ["key", "value"]
+    },
+    "beProfile.value.from": {
+      "kind": "error",
+      "zh": "from 要写一个配置名，用引号括起来",
+      "args": []
+    },
+    "beProfile.value.args": {
+      "kind": "error",
+      "zh": "args 要写字符串数组，是交给 agent 的那几个词",
+      "args": []
+    },
+    "beProfile.value.unknown": {
+      "kind": "error",
+      "zh": "认不得 {key}。ccm 没有 --{key} 这个选项，或它每次取值都不同、不能写进配置",
+      "args": ["key"],
+      "limited": ["ccm"]
+    },
+    "beProfile.file.syntax": {
+      "kind": "error",
+      "zh": "配置文件写错了：{e}",
+      "args": ["e"]
+    },
+    "beProfile.file.topLevel": {
+      "kind": "error",
+      "zh": "{key} 要写进某一段 [名字] 里，顶层只放段",
+      "args": ["key"]
+    },
+    "beProfile.file.unreadable": {
+      "kind": "error",
+      "zh": "配置文件 {path} 读不了：{e}",
+      "args": ["e", "path"]
+    },
+    "beProfile.at.line": {
+      "kind": "error",
+      "zh": "第 {line} 行：{e}",
+      "args": ["e", "line"]
+    },
+    "beProfile.chain.unknown": {
+      "kind": "error",
+      "zh": "没有叫 {name} 的配置",
+      "args": ["name"]
+    },
+    "beProfile.chain.cycle": {
+      "kind": "error",
+      "zh": "「基于」绕成了圈：{chain}",
+      "args": ["chain"]
+    },
+    "beProfile.chain.broken": {
+      "kind": "error",
+      "zh": "{name} 写错了，此刻不能用 —— {e}",
+      "args": ["e", "name"]
+    },
+    "beProfile.chain.missingFrom": {
+      "kind": "error",
+      "zh": "{name} 基于的 {from} 不存在",
+      "args": ["from", "name"]
+    },
+    "beProfile.resolve.refused": {
+      "kind": "error",
+      "zh": "配置 {name} 合下来用不了：{e}",
+      "args": ["e", "name"]
+    },
+    "beProfile.file.header": {
+      "kind": "body",
+      "zh": "ccm 的配置文件，可以手改。\n一段 [名字] 是一组 ccm 选项，键就是 ccm 选项 -- 后面那个词；写 from = \"另一段\" 就基于它。\n用法：ccm @名字 …，或直接敲名字。设置窗改的时候只动改的那一段。",
+      "args": [],
+      "limited": ["ccm"]
+    },
+    "beProfile.link.occupied": {
+      "kind": "error",
+      "zh": "{name}：~/.cc-monitor/bin 里已有同名的 {kind}，不是 cc-monitor 放的链接，没有动它",
+      "args": ["kind", "name"]
+    },
+    "beProfile.migrate.restToCcm": {
+      "kind": "body",
+      "zh": "{name} 没有转进配置文件。接回会话那一形不再做成别名，要接回直接敲 ccm -- --attach <会话名>",
+      "args": ["name"],
+      "limited": ["ccm"]
+    },
+    "beProfile.migrate.unparsed": {
+      "kind": "body",
+      "zh": "旧别名文件里这一行认不出，没有转进配置文件：{line}",
+      "args": ["line"]
+    },
+    "beProfile.said.from": {
+      "kind": "body",
+      "zh": "基于 {from}；{said}",
+      "args": ["from", "said"]
+    },
+    "beProfile.install.basedOn": {
+      "kind": "error",
+      "zh": "{name} 还被 {children} 基于着，不能删；先把它们改成基于别的、或一起删掉",
+      "args": ["children", "name"]
+    },
+    "rsAccountAliases.check.restToCcm": {
+      "kind": "error",
+      "zh": "接回会话那一形不再做成别名。要接回直接敲 ccm -- --attach <会话名>",
+      "args": [],
+      "limited": ["ccm"]
+    },
+    "rsDataPaths.backend.profiles": {
+      "kind": "body",
+      "zh": "你的别名与 ccm 配置（一段一组 ccm 选项，可以手改）",
+      "args": [],
+      "limited": ["ccm"]
+    },
+    "beProfile.chain.arrow": {
+      "kind": "body",
+      "zh": " → ",
+      "args": []
+    },
+    "beProfile.list.sep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
+    "beProfile.migrate.done": {
+      "kind": "body",
+      "zh": "别名清单已转进配置文件 {path}",
+      "args": ["path"]
+    },
+    "beProfile.migrate.failed": {
+      "kind": "error",
+      "zh": "别名清单转进配置文件没成：{e}",
+      "args": ["e"]
+    },
+    "beProfile.named.say": {
+      "kind": "body",
+      "zh": "{name}：{said}",
+      "args": ["name", "said"]
     }
   }
 }

@@ -17,6 +17,27 @@ impl Drop for Tmp {
     }
 }
 
+/// 这台的配置文件读出来的样子（别名清单住这里）。
+fn book(t: &Tmp) -> crate::assets::aliases::profile::Book {
+    crate::assets::aliases::profile::parse_book(&t.read(".cc-monitor/profiles.toml"))
+}
+
+/// 配置文件里有哪几段。
+fn profile_names(t: &Tmp) -> Vec<String> {
+    book(t).profiles.iter().map(|p| p.name.clone()).collect()
+}
+
+/// 那一段：基于谁 ＋ 自己写的 ccm 选项。
+fn own(t: &Tmp, name: &str) -> (Option<String>, Vec<String>) {
+    let b = book(t);
+    let p = b.find(name).unwrap_or_else(|| panic!("没有 {name}"));
+    (p.from.clone(), p.ccm_words())
+}
+
+fn sv(a: &[&str]) -> Vec<String> {
+    a.iter().map(|s| s.to_string()).collect()
+}
+
 fn tmp(tag: &str) -> Tmp {
     let h = std::env::temp_dir().join(format!(
         "acct-face-{tag}-{}-{}",
@@ -27,6 +48,10 @@ fn tmp(tag: &str) -> Tmp {
             .unwrap_or(0)
     ));
     std::fs::create_dir_all(&h).unwrap();
+    // 别名的链接指向这台的 ccm：放一个占位，链接才不是断的。
+    let bin = h.join(crate::assets::aliases::links::bin_rel());
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::write(bin.join("ccm"), "").unwrap();
     Tmp(h)
 }
 
@@ -289,17 +314,21 @@ fn init_moves_the_identity_links_the_rest_and_writes_the_manifest_and_alias() {
             .contains("cred-d"),
         "清单里漏了凭据"
     );
-    // 别名文件第一次建出来：首建那三条 ＋ 这个号的两条（只在建号那一刻加）。
-    let alias = t.read(".cc-monitor/aliases.sh");
-    for line in [
-        "cc() { ccm \"$@\"; }",
-        "cct() { ccm \"$@\" -- --ccm-tmux; }",
-        "cca() { ccm -- --attach \"$@\"; }",
-        "zetacc() { ccm \"$@\" -- --account d; }",
-        "zetacct() { ccm \"$@\" -- --account d --ccm-tmux; }",
-    ] {
-        assert!(alias.lines().any(|l| l == line), "少了 {line}：\n{alias}");
-    }
+    // 配置文件第一次建出来：首建那两段 ＋ 这个号的两段（基于 cc / cct、只写自己的号；只在建号那一刻加）。
+    assert_eq!(profile_names(&t), ["cc", "cct", "zetacc", "zetacct"]);
+    assert_eq!(own(&t, "zetacc"), (Some("cc".into()), sv(&["--account", "d"])));
+    assert_eq!(
+        own(&t, "zetacct"),
+        (Some("cct".into()), sv(&["--account", "d"]))
+    );
+    assert_eq!(
+        std::fs::read_link(t.p(".cc-monitor/bin/zetacct"))
+            .unwrap()
+            .display()
+            .to_string(),
+        "ccm",
+        "不撞名的做成指向 ccm 的链接"
+    );
     assert_eq!(got["aliases"][0]["added"], json!(["zetacc", "zetacct"]));
     assert_eq!(got["aliasNames"], json!(["zetacc", "zetacct"]));
 }
@@ -350,9 +379,10 @@ fn init_on_an_empty_home_creates_the_shared_root_too() {
 fn add_imports_credentials_links_shared_items_and_updates_manifest_and_aliases() {
     let t = machine("add");
     ok(&t, "accounts-init", json!({ "name": "d" }));
+    // 用户自己手写进配置文件的一段：建号不碰它。
     t.write(
-        ".cc-monitor/aliases.sh",
-        &(t.read(".cc-monitor/aliases.sh") + "mine() { ccm \"$@\" -- --ccm-tmux; }\n"),
+        ".cc-monitor/profiles.toml",
+        &(t.read(".cc-monitor/profiles.toml") + "\n# 我的\n[mine]\nccm-tmux = true\n"),
     );
     t.write(".claude/stats-cache.json", "{\"tpl\":1}");
     t.write("snap/cred-x.json", "{\"fake\":\"cred-x\"}");
@@ -400,30 +430,15 @@ fn add_imports_credentials_links_shared_items_and_updates_manifest_and_aliases()
         .map(|a| a["name"].as_str().unwrap())
         .collect();
     assert_eq!(names, ["d", "x", "0"]);
-    let alias = t.read(".cc-monitor/aliases.sh");
-    for line in [
-        "zetacc() { ccm \"$@\" -- --account d; }",
-        "xcc() { ccm \"$@\" -- --account x; }",
-        "xcct() { ccm \"$@\" -- --account x --ccm-tmux; }",
-        "mine() { ccm \"$@\" -- --ccm-tmux; }",
-    ] {
-        assert!(alias.contains(line), "少了 {line}：\n{alias}");
+    let have = profile_names(&t);
+    for n in ["zetacc", "xcc", "xcct", "mine"] {
+        assert!(have.iter().any(|h| h == n), "少了 {n}：{have:?}");
     }
     assert_eq!(got["aliases"][0]["added"], json!(["xcc", "xcct"]));
-    // 别名文件改了 ⇒ 结果里叫已开的终端重读它（那一句与 `aliases-install` 的 `reload` 同一处出）。
-    let reload = crate::assets::aliases::reload_hint(&t.s(".cc-monitor/aliases.sh"));
-    assert!(
-        reload.contains(". ") && reload.contains("aliases.sh"),
-        "{reload}"
-    );
-    assert!(
-        got["notes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|n| n.as_str() == Some(reload.as_str())),
-        "{got}"
-    );
+    // 新加的两条是链接：已开的终端马上能用，不叫人重读。
+    for n in ["xcc", "xcct"] {
+        assert!(t.p(&format!(".cc-monitor/bin/{n}")).is_symlink(), "{n}");
+    }
 
     // 两个号的身份互不覆盖：各写各的。
     t.write(
@@ -629,8 +644,12 @@ fn remove_deletes_only_the_account_dir_and_its_alias() {
     assert_eq!(got["applied"], true);
     assert!(!t.exists(".cc-monitor/accounts/x"));
     assert_eq!(tree(&t.p(".claude")), shared_before, "共享库被动了");
-    assert!(!t.read(".cc-monitor/aliases.sh").contains("xcc"));
-    assert!(t.read(".cc-monitor/aliases.sh").contains("zetacc"));
+    assert!(!profile_names(&t).iter().any(|n| n.starts_with("xcc")));
+    assert!(profile_names(&t).iter().any(|n| n == "zetacc"));
+    assert!(
+        !t.p(".cc-monitor/bin/xcc").is_symlink(),
+        "删掉的那一段，链接也没了"
+    );
     assert_eq!(got["aliases"][0]["removed"], json!(["xcc", "xcct"]));
     assert_eq!(
         code(&t, "accounts-remove", json!({ "name": "d" })),
@@ -1048,7 +1067,7 @@ fn rollback_of_init_puts_the_identity_back() {
     assert!(t.p(".claude/backups/one.json").is_file());
     assert!(!t.exists(".cc-monitor/accounts/d"));
     assert!(!t.exists(".cc-monitor/accounts/accounts.json"));
-    assert!(!t.read(".cc-monitor/aliases.sh").contains("zetacc"));
+    assert!(!profile_names(&t).iter().any(|n| n == "zetacc"));
 }
 
 /// 回滚一次删号 ⇒ 号回来了，它的两条也按建号加回（清单只跟着账号表里号的增减走）；用户改过名的那条不重复加。
@@ -1057,12 +1076,10 @@ fn rollback_of_a_removal_brings_the_accounts_aliases_back() {
     let t = two_accounts("rb-rm");
     let got = ok(&t, "accounts-remove", json!({ "name": "x" }));
     let id = got["backup"].as_str().unwrap().to_string();
-    assert!(!t.read(".cc-monitor/aliases.sh").contains("xcc"));
+    assert!(!profile_names(&t).iter().any(|n| n == "xcc"));
     let back = ok(&t, "accounts-rollback", json!({ "backup": id }));
     assert_eq!(back["aliases"][0]["added"], json!(["xcc", "xcct"]));
-    assert!(t
-        .read(".cc-monitor/aliases.sh")
-        .contains("xcct() { ccm \"$@\" -- --account x --ccm-tmux; }"));
+    assert!(profile_names(&t).iter().any(|n| n == "xcct"));
 }
 
 /// 回滚的安全：备份名只收时间戳字符集（`..` · `/` 一律拒）；撤销清单里指到三个根之外的还原条目跳过、其余照做、整趟报「部分没做成」。
@@ -1102,13 +1119,13 @@ fn rollback_refuses_traversal_and_skips_out_of_bounds_entries() {
 
 // ───────────────────────────── 别名文件 ─────────────────────────────
 
-/// 别名文件里有认不出的行 ⇒ 不重写它（重写会丢那几行），应答里说一句；账号那一趟照样成。
+/// 配置文件里有写错的地方 ⇒ 不动它（等人先改好），应答里说一句；账号那一趟照样成。
 #[test]
-fn an_alias_file_with_unknown_lines_is_left_alone() {
+fn a_profiles_file_with_a_mistake_is_left_alone() {
     let t = machine("alias-odd");
-    t.write(".cc-monitor/aliases.sh", "alias weird='echo hi'\n");
+    t.write(".cc-monitor/profiles.toml", "[cc]\nbogus = 1\n");
     let got = ok(&t, "accounts-init", json!({ "name": "d" }));
-    assert_eq!(t.read(".cc-monitor/aliases.sh"), "alias weird='echo hi'\n");
+    assert_eq!(t.read(".cc-monitor/profiles.toml"), "[cc]\nbogus = 1\n");
     assert_eq!(got["aliases"][0]["changed"], false);
     assert!(got["aliases"][0]["note"].is_string());
     assert!(t.p(".cc-monitor/accounts/d").is_dir());
@@ -1123,12 +1140,11 @@ fn a_user_alias_with_the_same_name_is_not_overwritten() {
         "zetacc() { ccm \"$@\" -- --ccm-tmux; }\n",
     );
     let got = ok(&t, "accounts-init", json!({ "name": "d" }));
-    assert!(t
-        .read(".cc-monitor/aliases.sh")
-        .contains("zetacc() { ccm \"$@\" -- --ccm-tmux; }"));
-    assert!(!t
-        .read(".cc-monitor/aliases.sh")
-        .contains("zetacc() { ccm \"$@\" -- --account d; }"));
+    assert_eq!(
+        own(&t, "zetacc"),
+        (None, sv(&["--ccm-tmux"])),
+        "用户那一条（迁进配置文件的）没被盖"
+    );
     assert_eq!(got["aliases"][0]["skipped"], json!(["zetacc"]));
     assert_eq!(got["aliases"][0]["added"], json!(["zetacct"]));
 }
@@ -1197,13 +1213,12 @@ fn end_to_end_from_an_empty_home() {
         "accounts-add",
         json!({ "name": "side-2", "kind": "subscription" }),
     );
-    let alias = t.read(".cc-monitor/aliases.sh");
-    for line in [
-        "maincc() { ccm \"$@\" -- --account main; }",
-        "workcc() { ccm \"$@\" -- --account work; }",
-        "side2cc() { ccm \"$@\" -- --account side-2; }",
+    for (n, acct) in [
+        ("maincc", "main"),
+        ("workcc", "work"),
+        ("side2cc", "side-2"),
     ] {
-        assert!(alias.contains(line), "{alias}");
+        assert_eq!(own(&t, n).1, sv(&["--account", acct]), "{n}");
     }
     assert_eq!(verify(&t)["pass"], true);
     std::fs::remove_file(t.p(".cc-monitor/accounts/work/skills")).unwrap();

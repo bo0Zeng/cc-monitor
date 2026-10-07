@@ -280,6 +280,8 @@ tar = { version = "0.4", default-features = false }
 zip = { version = "2", default-features = false, features = ["deflate-flate2", "flate2"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# 配置文件（`~/.cc-monitor/profiles.toml`）的读与按条目改：保留用户手写的注释与排版（`assets/profiles`）。
+toml_edit = { version = "0.25", default-features = false, features = ["parse", "display"] }
 
 [dev-dependencies]
 # 组合判据（真中转 ＋ 上游选择 / tap / 内存探针）要够到中转的内部件：只在测试档开，不进发布二进制。

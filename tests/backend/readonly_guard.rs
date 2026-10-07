@@ -4984,6 +4984,14 @@ mod g6_dependency_signoff {
             "日志门面：它自己不选落点，落点由 subscriber 那一条决定",
         ),
         (
+            "toml_edit",
+            DEPS,
+            UNMEASURED,
+            "配置文件（`~/.cc-monitor/profiles.toml`）的解析与按条目改（`assets/aliases/profile.rs`）：缺省 feature 关了，只开 `parse` 与 `display`，\
+             纯内存把文本变成文档树、再变回文本（保留注释与排版）。读盘与落盘都在本 crate：读是 ccm 那一趟的 `read_to_string` 与经文件管理面的 `files-peek`，\
+             写经文件管理面的 `files-put`。写不写盘：本 crate 对它的用法只有 `Document::parse` / `DocumentMut` 的内存编辑（用法签字，没扫它的源码）",
+        ),
+        (
             "tracing-subscriber",
             DEPS,
             UNMEASURED,

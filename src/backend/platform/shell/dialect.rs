@@ -258,7 +258,10 @@ fn on_path(name: &str, exts: &[&str]) -> Option<PathBuf> {
             } else {
                 dir.join(format!("{name}.{ext}"))
             };
-            if cand.is_file() {
+            // 我们自己放的别名链接（`~/.cc-monitor/bin/<名>` → `ccm`，`assets/aliases/links.rs`）不算撞名：那就是这条别名本身。
+            let ccm = relay_route_core::BACKEND_LANDING_REL.rsplit('/').next();
+            let ours = std::fs::read_link(&cand).is_ok_and(|t| t.to_str() == ccm);
+            if cand.is_file() && !ours {
                 return Some(cand);
             }
         }

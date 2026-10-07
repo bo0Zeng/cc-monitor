@@ -52,45 +52,66 @@ fn the_name_avoidance_has_exactly_one_source_and_the_plan_settles_it() {
 // `under_the_name_ccm_only_backend_first_words_reach_the_backend`〔散文墓碑〕并进 `claude_flags_tests` 那一条（切法 ＋ 撞名收成一刀）。
 
 /// 〔「路由不看 argv0」〕要求：「没有 `--` ⇒ 整行原样交 claude」＋「route 里没有 base ≠ ccm 那一支」。
-/// 分流只看 argv：同一串 argv 不论二进制叫什么都进同一边；零参数是「起一个 claude」；打头的 `--` 紧跟后端词才进后端。
-/// 回环：pane 里把自己再叫一次（[`self_invocation`] ＋ 内层参数）叫得回 ccm、参数一个不多一个不少。
+/// 分流先看被叫成什么、再看参数：叫 `ccm` / 后端本名 ⇒ 零参数是「起一个 claude」，打头的 `--` 紧跟后端词才进后端；
+/// 被叫成别的名字（`~/.cc-monitor/bin/<名>` 那条链接）⇒ 等同 `ccm @<名> …`，参数一个都不进后端。
+/// 回环：pane 里把自己再叫一次（[`self_invocation`] ＋ 内层参数）叫得回 ccm 本身、参数一个不多一个不少、配置不叠第二遍。
 #[test]
-fn routing_reads_the_argv_only_never_the_binary_name() {
+fn routing_reads_the_name_it_was_called_by_then_the_argv() {
     let v = |xs: &[&str]| xs.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-    assert_eq!(route(&[]), Entry::Ccm(vec![]), "零参数不再是流模式");
+    for me in [
+        "ccm",
+        "/x/ccm",
+        "C:\\x\\ccm.exe",
+        "/x/cc-monitor-backend",
+        "cc-monitor-backend-4.1.2",
+    ] {
+        assert_eq!(
+            route(me, &[]),
+            Entry::Ccm(vec![]),
+            "零参数不再是流模式（{me}）"
+        );
+        assert_eq!(
+            route(me, &v(&["--stream"])),
+            Entry::Ccm(v(&["--stream"])),
+            "没有打头的 `--` 就交 claude"
+        );
+        assert_eq!(
+            route(me, &v(&["--", "--stream", "--tail-only"])),
+            Entry::Backend(v(&["--stream", "--tail-only"]))
+        );
+        assert_eq!(
+            route(me, &v(&["--", "--ping"])),
+            Entry::Backend(v(&["--ping"]))
+        );
+        assert_eq!(
+            route(me, &v(&["--", "--ccm-tmux"])),
+            Entry::Ccm(v(&["--", "--ccm-tmux"]))
+        );
+    }
     assert_eq!(
-        route(&v(&["--stream"])),
-        Entry::Ccm(v(&["--stream"])),
-        "没有打头的 `--` 就交 claude"
+        route(
+            "/home/u/.cc-monitor/bin/betacct",
+            &v(&["你好", "--", "--ccm-print"])
+        ),
+        Entry::Ccm(v(&["@betacct", "你好", "--", "--ccm-print"]))
     );
     assert_eq!(
-        route(&v(&["ccm", "--resume", "x"])),
-        Entry::Ccm(v(&["ccm", "--resume", "x"])),
-        "入口② 不在了"
-    );
-    assert_eq!(
-        route(&v(&["--", "--stream", "--tail-only"])),
-        Entry::Backend(v(&["--stream", "--tail-only"]))
-    );
-    assert_eq!(route(&v(&["--", "--ping"])), Entry::Backend(v(&["--ping"])));
-    assert_eq!(
-        route(&v(&["--", "--ccm-tmux"])),
-        Entry::Ccm(v(&["--", "--ccm-tmux"]))
-    );
-    let prod = guard_core::production_code(own_source());
-    let at = guard_core::find_pinned(&prod, "pub fn route(").expect("route 不在了");
-    let body = &prod[at..at + prod[at..].find("\n}\n").expect("route 没收尾")];
-    assert!(
-        !body.contains("argv0") && !body.contains("rsplit"),
-        "分流又去看二进制的名字了：{body}"
+        route("betacct", &v(&["--", "--ping"])),
+        Entry::Ccm(v(&["@betacct", "--", "--ping"])),
+        "被叫成配置名的那一趟不进后端"
     );
     let inner = v(&["--tail-only", "--", "--cwd", "/p", "--ccm-agent", "claude"]);
-    for a0 in ["/x/ccm", "/x/cc-monitor-backend"] {
+    for (a0, me) in [
+        ("/x/ccm", "/x/ccm"),
+        ("/x/cc-monitor-backend", "/x/cc-monitor-backend"),
+        ("/x/betacct", "/x/ccm"),
+        ("betacct", "ccm"),
+    ] {
         let mut again = self_invocation(&v(&[a0, "--", "--ccm-tmux=n"]));
-        assert_eq!(again, v(&[a0]), "「怎么叫我」不只是 argv0");
+        assert_eq!(again, v(&[me]), "「怎么叫我」（{a0}）");
         again.extend(inner.iter().cloned());
         assert_eq!(
-            intercept(&again[1..]),
+            intercept(&again[0], &again[1..]),
             Some(inner.clone()),
             "从 {a0} 进来的在 pane 里叫不回 ccm"
         );

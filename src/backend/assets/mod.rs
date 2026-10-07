@@ -1,6 +1,7 @@
 //! 后端代管的用户资产那一域：别名 · MCP · skill 的计算与判定住这里，写经这台后端自己的文件管理面（[`door`]）。
 
-pub(crate) mod aliases;
+// `pub`：后端起来时那一次别名清单迁移由 `main.rs` 调（`aliases::migrate_here`）。
+pub mod aliases;
 pub(crate) mod cc_bus_install;
 pub(crate) mod door;
 // 设置「扩展」页的后端：跨机器一张表 · 从一台卸（装那一件的枢纽住 `hub`）。

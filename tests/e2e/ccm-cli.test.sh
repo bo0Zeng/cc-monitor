@@ -408,5 +408,53 @@ rm -f "$MARK"; ptyrun "$Q -r s1 | cat"
 ck "stdin 是终端、stdout 进管道（ccm … | tee 那一形）：照起" "-r s1" "$(cat "$MARK" 2>/dev/null)"
 rm -f "$MARK"; ptyrun "echo | $Q --model x"
 ck "stdout 是终端、stdin 来自管道：照起" "--model x" "$(cat "$MARK" 2>/dev/null)"
+echo "===== 配置文件：@<名> 与被叫成那个名字（继承链父 → 子，命令行当场给的最后盖）====="
+# 家目录换成本段自己的：配置文件住 `<家>/.cc-monitor/profiles.toml`。链接与 `~/.cc-monitor/bin/<名>` 同形：指向 ccm 的符号链接。
+PHOME="$CCMDIR/phome"; mkdir -p "$PHOME/.cc-monitor" "$CCMDIR/elsewhere"
+cat > "$PHOME/.cc-monitor/profiles.toml" <<'TOML'
+# 手写的注释
+[cc]
+cwd-if = [["~", "~/projects/notes"]]
+
+[cct]
+from = "cc"
+ccm-tmux = true
+
+[betacc]
+from = "cc"
+account = "b"
+
+[loop1]
+from = "loop2"
+[loop2]
+from = "loop1"
+
+[orphan]
+from = "nobody"
+TOML
+ln -s "$CCM_NATIVE" "$CCMDIR/betacc"
+pccm() { (cd "$1" && shift && env -u CLAUDE_CONFIG_DIR HOME="$PHOME" "$@" 2>&1); }
+ck "@cc 从家目录起：进 cwd-if 给的那个目录，你好原样交 claude" \
+   "$UNSET; cd '$PHOME/projects/notes' && exec claude '你好'" \
+   "$(pccm "$PHOME" "$CCM" @cc 你好 -- --ccm-print)"
+ck "@cc 从别处起：cwd-if 没对上 ⇒ 就在当前目录" \
+   "$UNSET; cd '$(cd "$CCMDIR/elsewhere" && pwd -P)' && exec claude '你好'" \
+   "$(pccm "$CCMDIR/elsewhere" "$CCM" @cc 你好 -- --ccm-print)"
+ck "被叫成 betacc（指向 ccm 的链接）＝ ccm @betacc：继承 cc 的目录规则；临时选项盖住配置里的号" \
+   "$(pccm "$PHOME" "$CCM" @betacc 你好 -- --ccm-print --base)" \
+   "$(pccm "$PHOME" "$CCMDIR/betacc" 你好 -- --ccm-print --base)"
+ck "betacc 里的 b 号真用上了（这台没有账号库 ⇒ ccm 说 b 不可用，退出码 2）" \
+   "2" "$(pccm "$PHOME" "$CCMDIR/betacc" -- --ccm-print >/dev/null 2>&1; echo $?)"
+ck "「基于」绕成圈：报错退出 2" \
+   "ccm: 「基于」绕成了圈：loop1 → loop2 → loop1" \
+   "$(pccm "$PHOME" "$CCM" @loop1 -- --ccm-print)"
+ck "「基于」的那一段不存在：报到那一行" \
+   "ccm: 第 19 行：orphan 基于的 nobody 不存在" \
+   "$(pccm "$PHOME" "$CCM" @orphan -- --ccm-print)"
+ck "没有这一段：说清" "ccm: 没有叫 nope 的配置" "$(pccm "$PHOME" "$CCM" @nope -- --ccm-print)"
+ck "@ 后面当不了配置名（@文件 那种提问）：整行原样交 claude" \
+   "$UNSET; cd '/p' && exec claude '@README.md 讲讲'" \
+   "$(pccm "$PHOME" "$CCM" '@README.md 讲讲' -- --cwd /p --ccm-print)"
+
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
 [ "$FAIL" -eq 0 ]

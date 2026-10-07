@@ -1,14 +1,11 @@
 //! **账号的两条别名**（纯）：每个号 `<名>cc`（`-- --account <号>`）与 `<名>cct`（`-- --account <号> --ccm-tmux`）。
 //!
-//! 只在**建号、删号那一刻**动用户那份别名清单：建号加这两条（名字被占就跳过、说出来）；删号删掉参数指向这个号的
-//! 全部（不论名字）。平时不回补 —— 改了名、删掉其中一条，都保持用户改后的样子。账号表不另存别名名字。
+//! 只在**建号、删号那一刻**动用户那份配置文件：建号加这两段（基于 `cc` / `cct`、只写自己的号；名字被占就跳过、说出来）；
+//! 删号删掉合下来用这个号的全部段（不论名字）。平时不回补 —— 改了名、删掉其中一条，都保持用户改后的样子。账号表不另存别名名字。
 //! 「账号那一形」（[`shape_of`]）也住这里：读回口据它给每条归组、说哪个号缺哪一条。
 
-use crate::control::ccm::argv::flag;
-use crate::platform::shell::dialect::RestTo;
-
-/// 一条别名：`(名字, ccm 参数, 调用时的词交给谁)`。
-pub(crate) type Entry = (String, Vec<String>, RestTo);
+use crate::assets::aliases::profile::{self, Book, Change, Profile, ProfileEdit};
+use crate::control::ccm::argv::{flag, Parsed};
 
 /// 一个号那一条别名叫什么：账号名去掉 shell 函数名里放不下的字符（今天只有 `-`）＋ 账号库那一家的 wrapper 名
 /// （`agents::wrapper_alias`，Claude：`cc`；`tmux` ⇒ 再加 `t`）；以数字打头 ⇒ 前面补 `_`。
@@ -44,94 +41,124 @@ pub(crate) fn alias_args(account: &str, tmux: bool) -> Vec<String> {
     v
 }
 
-/// 这一条是不是「账号那一形」：`--` 左边没有词、调用时的词交给 claude、右边恰是 `--account <号>`（可再带一个
-/// `--ccm-tmux`，先后不论）。是 ⇒ `(号, 是否 tmux)`。**不看名字**（名字是用户可改的）。
-pub(crate) fn shape_of(args: &[String], rest: RestTo) -> Option<(String, bool)> {
-    if rest != RestTo::Agent || args.first().map(String::as_str) != Some(flag::END) {
+/// 这一段是不是「账号那一形」：自己只写了号（可再加 tmux），没有交给 agent 的词 ⇒ `(号, 是否 tmux)`，号与 tmux 按合并下来的算
+/// （`alphacct` 基于 `cct` 只写了号，也是「z 号 ＋ tmux」）。**不看名字**（名字是用户可改的）；合不下来的那一段不算。
+pub(crate) fn shape_of(book: &Book, p: &Profile) -> Option<(String, bool)> {
+    let acct = flag::ACCOUNT.trim_start_matches('-');
+    let tmux = flag::TMUX.trim_start_matches('-');
+    let own: Vec<&str> = p.items.iter().map(|i| i.key.as_str()).collect();
+    if !own.contains(&acct) || own.iter().any(|k| *k != acct && *k != tmux) || !p.agent.is_empty() {
         return None;
     }
-    let right = &args[1..];
-    if right.iter().any(|w| w == flag::END) {
-        return None;
-    }
-    let at = right.iter().position(|w| w == flag::ACCOUNT)?;
-    let account = right.get(at + 1)?.clone();
-    let others: Vec<&String> = right
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| *i != at && *i != at + 1)
-        .map(|(_, w)| w)
-        .collect();
-    match others.as_slice() {
-        [] => Some((account, false)),
-        [t] if t.as_str() == flag::TMUX => Some((account, true)),
-        _ => None,
+    match profile::resolve(book, &p.name, &[]).ok()?.parsed {
+        Parsed::Opts(o) => Some((o.account.clone(), o.use_tmux)),
+        Parsed::Early(_) => None,
     }
 }
 
-/// 这一条的参数是不是**指向**这个号（ccm 那一半里 `--account <号>`，不论别的参数、不论名字）。
-pub(crate) fn points_at(args: &[String], account: &str) -> bool {
-    let Some(k) = args.iter().rposition(|w| w == flag::END) else {
-        return false;
-    };
-    args[k + 1..]
-        .windows(2)
-        .any(|w| w[0] == flag::ACCOUNT && w[1] == account)
+/// 这一段合下来用的是不是这个号（不论名字、不论号是自己写的还是基于来的）。
+fn uses(book: &Book, p: &Profile, account: &str) -> bool {
+    matches!(
+        profile::resolve(book, &p.name, &[]).map(|r| r.parsed),
+        Ok(Parsed::Opts(o)) if o.account == account
+    )
 }
 
-/// 建号那一刻并进清单的结局。
+/// 建号 / 删号那一刻要对配置文件做的改动，与说给人听的那几个名字。
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct Added {
-    pub list: Vec<Entry>,
+pub(crate) struct Planned {
+    pub changes: Vec<Change>,
     /// 这一趟加进去的名字。
     pub added: Vec<String>,
-    /// 名字被别的别名占着、没加的那几个名字。
+    /// 名字被别的段占着、没加的那几个名字。
     pub skipped: Vec<String>,
+    /// 这一趟删掉的名字。
+    pub removed: Vec<String>,
 }
 
-/// 建号：给 `account` 加上 `<名>cc`（`tmux` 为真时再加 `<名>cct`）。清单里已有同一形的（不论名字）⇒ 不再加；
-/// 名字被占（参数不一样）⇒ 跳过、记下。`same_name` 是那种 shell 认不认两个名字是同一个（PowerShell 不分大小写）。
-pub(crate) fn on_add(
-    current: &[Entry],
+/// 建号：给 `account` 加上 `<名>cc`（`tmux` 为真时再加 `<名>cct`），各自基于 wrapper 那两段（`cc` / `cct`，在的话）、只写自己的号。
+/// 已有同一形的（不论名字）⇒ 不再加；名字被占 ⇒ 跳过、记下。`same_name` 是那种 shell 认不认两个名字是同一个。
+pub(crate) fn plan_add(
+    book: &Book,
     account: &str,
     tmux: bool,
     same_name: &dyn Fn(&str, &str) -> bool,
-) -> Added {
-    let mut out = Added {
-        list: current.to_vec(),
-        ..Added::default()
-    };
+) -> Planned {
+    let mut out = Planned::default();
     let wants: &[bool] = if tmux { &[false, true] } else { &[false] };
+    let wrapper =
+        crate::agents::sole_kind(|a| a.accounts.is_some()).and_then(crate::agents::wrapper_alias);
+    let has = |n: &str| book.find(n).is_some();
     for &t in wants {
         let Some(name) = alias_name(account, t) else {
             continue;
         };
-        let have = out.list.iter().any(|e| {
-            shape_of(&e.1, e.2)
-                .as_ref()
-                .is_some_and(|(a, tt)| a == account && *tt == t)
-        });
-        if have {
+        if book
+            .profiles
+            .iter()
+            .any(|p| shape_of(book, p).is_some_and(|(a, tt)| a == account && tt == t))
+        {
             continue;
         }
-        if out.list.iter().any(|e| same_name(&e.0, &name)) {
+        if book.profiles.iter().any(|p| same_name(&p.name, &name))
+            || out.added.iter().any(|a| same_name(a, &name))
+        {
             out.skipped.push(name);
             continue;
         }
-        out.list
-            .push((name.clone(), alias_args(account, t), RestTo::Agent));
+        let mut ccm = vec![flag::ACCOUNT.to_string(), account.to_string()];
+        let from = match (wrapper, t) {
+            (Some(w), true) if has(&format!("{w}t")) => Some(format!("{w}t")),
+            (Some(w), _) if has(w) => {
+                if t {
+                    ccm.push(flag::TMUX.to_string());
+                }
+                Some(w.to_string())
+            }
+            _ => {
+                if t {
+                    ccm.push(flag::TMUX.to_string());
+                }
+                None
+            }
+        };
+        out.changes.push(Change::Set(ProfileEdit {
+            name: name.clone(),
+            from,
+            agent: Vec::new(),
+            ccm,
+        }));
         out.added.push(name);
     }
     out
 }
 
-/// 删号：删掉参数指向 `account` 的全部（不论名字）。回 `(清单, 删掉的名字)`。
-pub(crate) fn on_remove(current: &[Entry], account: &str) -> (Vec<Entry>, Vec<String>) {
-    let (gone, kept): (Vec<Entry>, Vec<Entry>) = current
+/// 删号：删掉合下来用这个号的全部段（不论名字）；剩下的段里基于被删那一段的，改成基于它基于的那一段（往上找到第一个没删的）。
+pub(crate) fn plan_remove(book: &Book, account: &str) -> Planned {
+    let mut out = Planned::default();
+    let gone: Vec<&str> = book
+        .profiles
         .iter()
-        .cloned()
-        .partition(|e| points_at(&e.1, account));
-    (kept, gone.into_iter().map(|e| e.0).collect())
+        .filter(|p| uses(book, p, account))
+        .map(|p| p.name.as_str())
+        .collect();
+    let up = |mut f: Option<String>| {
+        while let Some(n) = f.as_deref().filter(|n| gone.contains(n)) {
+            f = book.find(n).and_then(|p| p.from.clone());
+        }
+        f
+    };
+    for p in &book.profiles {
+        if gone.contains(&p.name.as_str()) {
+            out.changes.push(Change::Remove(p.name.clone()));
+            out.removed.push(p.name.clone());
+        } else if p.from.as_deref().is_some_and(|f| gone.contains(&f)) {
+            let mut e = profile::edit_of(p);
+            e.from = up(p.from.clone());
+            out.changes.push(Change::Set(e));
+        }
+    }
+    out
 }
 
 #[cfg(test)]
