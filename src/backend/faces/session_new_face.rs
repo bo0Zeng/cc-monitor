@@ -81,7 +81,10 @@ pub(crate) fn recent_dirs(items: &[(String, i64)], hidden: &dyn Fn(&str) -> bool
 /// 记录树那一家的项目 ＋ 合成历史那几家的会话 ⇒ `(工作目录, 最近一次)`。
 fn record_dirs(home: &std::path::Path) -> Vec<(String, i64)> {
     let mut buf: Vec<u8> = Vec::new();
-    let _ = crate::observe::history_query::list_projects_into(home, &mut buf);
+    // 读不出记录树 ⇒ 记一行、少这一家的目录（框里照常起，只是「最近的」少几项）。
+    if let Err(e) = crate::observe::history_query::list_projects_into(home, &mut buf) {
+        tracing::warn!("session-new-facts：读不出记录树的项目清单：{e}");
+    }
     let mut out: Vec<(String, i64)> = String::from_utf8_lossy(&buf)
         .lines()
         .filter_map(|l| serde_json::from_str::<Value>(l).ok())

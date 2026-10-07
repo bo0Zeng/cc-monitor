@@ -2929,11 +2929,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/doc/INVARIANTS.md", "delete_remote_history_session", 1),
         ("src/doc/INVARIANTS.md", "validate_delete_target", 1),
         (
-            "tests/frontend/ui/branch-button.vitest.ts",
-            "create_remote_branch_session",
-            1,
-        ),
-        (
             "tests/frontend/shell/frame_query_tests.rs",
             "remote_branch_tests",
             1,
@@ -5067,7 +5062,6 @@ fn every_prose_tombstone_mark_is_registered() {
         // `tests/frontend/shell/agent_dispatch_registry_tests.rs` 那一行摘了：那份判据随 monitor 适配表退役、文件删了。
         ("src/README.md", 1), // 新贴：点分叉那条旧命令名的散文挂墓碑
         ("src/backend/agents/claudecode/branch.rs", 2), // 住址随 branch-core 收进后端适配层；1 → 2：`is_plain_sid` 那个再导出删了，原处一块 // 新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
-        ("tests/frontend/ui/branch-button.vitest.ts", 1), // 新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
         ("src/frontend/ui/account-reads.ts", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         // `agent-profile.ts` 那一行摘了：适配器 id 那个导出零消费者、随起会话只交一行 `ccm …` 删了，它头注那块墓碑跟着走。
         ("src/frontend/ui/backend-policy.ts", 1), // 起会话的计划与渲染搬进后端：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
