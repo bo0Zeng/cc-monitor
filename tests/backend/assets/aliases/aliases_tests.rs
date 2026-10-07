@@ -1275,10 +1275,9 @@ fn the_alias_wire_matches_the_cross_language_golden() {
     let fp = read["fingerprint"].clone();
     assert!(fp.is_string(), "{read}");
     let again = json!({ "aliases": [g["aliases"][0]], "shell": "posix", "fingerprint": fp });
-    assert_eq!(
-        answer_install(&d, &again).expect("指纹对 ⇒ 照常")["wroteAliasFile"],
-        false
-    );
+    let unchanged = answer_install(&d, &again).expect("指纹对 ⇒ 照常");
+    assert_eq!(unchanged["wroteAliasFile"], false);
+    assert_eq!(unchanged["reload"], Value::Null, "没写 ⇒ 不叫人重读");
     let got = json!({ "renderReply": render, "installReply": install, "readReply": read });
     let norm = serde_json::from_str::<Value>(&got.to_string().replace(&home, "<HOME>")).unwrap();
     for k in ["renderReply", "installReply", "readReply"] {

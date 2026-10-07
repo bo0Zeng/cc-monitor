@@ -171,6 +171,42 @@ fn a_batch_read_answers_every_session_and_marks_the_unknown() {
     assert!(answer_session_read_with(&ctx, &json!({"sids": ["bad id"]}), now()).is_err());
 }
 
+/// ★ 「下一个」跳过用不了的号：没登录的（c）· 被拒着的（b：一发没带限额头、也没说几点再试的 429，照适配层读成的那一形记进额度账）；
+/// 被拒的短期限一过，b 照常排回下一个。
+#[test]
+fn next_skips_an_account_without_login_and_one_refused_without_a_reset() {
+    let home = Home::new("next-skip");
+    let ctx = home.ctx();
+    answer_set_with(
+        &ctx,
+        &json!({"rotation": {"order": [{"start": true}, "b", "c", "api"], "enabled": ["b", "c", "api"], "when": "full"}}),
+    )
+    .expect("ok");
+    home.saw(&ctx, "s-1");
+    let t = now();
+    let r = crate::agents::claudecode::quota::read(429, &[], t).expect("被拒");
+    ledger::record_seen(&ctx.hop.quota, "claude-code", "b", r, t);
+    let next_at = |at: u64| {
+        let got = answer_session_read_with(&ctx, &json!({"sids": ["s-1"]}), at).expect("ok");
+        let SessionRotationState::Present(v) =
+            serde_json::from_value(got["sessions"]["s-1"].clone()).expect("shape")
+        else {
+            panic!("应查得到");
+        };
+        v.next
+    };
+    assert_eq!(
+        next_at(t).as_deref(),
+        Some("api"),
+        "b 被拒着、c 没登录 ⇒ 都跳过"
+    );
+    assert_eq!(
+        next_at(t + crate::agents::claudecode::quota::REFUSED_BRIEFLY).as_deref(),
+        Some("b"),
+        "短期限过了 ⇒ b 照常可选"
+    );
+}
+
 /// ★ 改会话轮换：自己那一份 → 切回跟随（自己那一份留着）→ `"custom"` 恢复它；不合法整批拒；没见过的跳过。
 #[test]
 fn a_session_can_go_custom_and_back_keeping_its_own() {

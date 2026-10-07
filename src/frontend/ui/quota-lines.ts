@@ -140,17 +140,17 @@ function resetCells(at: number | undefined, now: number, tz: number): string[] {
   return rel === null ? [copyText("acct.reset.past", { at: s })] : [copyText("acct.reset.at", { at: s }), rel];
 }
 
-/** 一个语义位那一行。卡着的窗口按显示态换字（被拒 `✕` · 超额在兜 `超额` · 上一窗已过 `—`）。 */
+/** 一个语义位那一行。用满 `✕`；卡着的窗口按显示态换字（被拒 `58% · 被拒` · 超额在兜 `超额` · 上一窗已过 `—`）。 */
 function slotRow(a: QuotaReadAccount, slot: string, now: number, tz: number): string[] {
   const s = a.slots.find((x) => x.slot === slot);
   if (!s) return [slotLabel(slot), copyText("acct.val.none")];
   const here = a.limiting === slot;
   let value: string;
-  if (here && a.state === "refused") value = copyText("acct.val.refused");
-  else if (here && a.state === "overageInUse") value = copyText("acct.val.over");
+  if (here && a.state === "overageInUse") value = copyText("acct.val.over");
   else if (here && a.state === "resetSinceSeen") value = copyText("acct.val.none");
+  else if (s.full) value = copyText("acct.val.full");
+  else if (here && a.state === "refused") value = s.pct === undefined ? copyText("acct.val.refusedOnly") : copyText("acct.val.refusedPct", { pct: s.pct });
   else if (s.pct === undefined) value = copyText("acct.val.none");
-  else if (s.pct > 100) value = copyText("acct.val.refused");
   else value = copyText("acct.val.pct", { pct: s.pct });
   return [slotLabel(slot), value, ...resetCells(s.resetsAt, now, tz)];
 }
@@ -158,7 +158,7 @@ function slotRow(a: QuotaReadAccount, slot: string, now: number, tz: number): st
 /** 被拒 / 被拒过、却没有分窗口的数可画（按量号 · 被拒时回包没带那一族头）⇒ `状态` 一行。 */
 function stateRow(a: QuotaReadAccount, now: number, tz: number): string[] | null {
   if (a.state !== "refused" && a.state !== "resetSinceSeen") return null;
-  const value = a.state === "refused" ? copyText("acct.val.refused") : copyText("acct.val.none");
+  const value = a.state === "refused" ? copyText("acct.val.refusedOnly") : copyText("acct.val.none");
   return [copyText("acct.row.state"), value, ...resetCells(a.reading?.resetsAt, now, tz)];
 }
 

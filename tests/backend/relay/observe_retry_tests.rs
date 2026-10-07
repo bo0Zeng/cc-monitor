@@ -589,6 +589,23 @@ fn nothing_to_swap_to_hands_down_the_refusal_as_is() {
     );
 }
 
+/// ★ 真换号与「下一个」同一处判：b 刚吃了一发不带限额头、也没说几点再试的 429（额度账上被拒着，短期限内）⇒
+/// a 被拒时不换到 b，原样交回 a 的拒绝（上游只收到一发）。
+#[test]
+fn a_refused_account_is_not_swapped_onto_one_refused_without_a_reset() {
+    let home = Home::new("brief");
+    home.set_default(&["b"], serde_json::json!("full"));
+    let now = crate::accounts::quota::now_unix();
+    let side = Ledger::at(Some(home.root.join(ledger::FILE_NAME)));
+    let r = crate::agents::claudecode::quota::read(429, &[], now).expect("被拒");
+    ledger::record_seen(&side, "claude-code", "b", r, now);
+    let (up, got) = spawn_judging_upstream(a_refused_b_serves);
+    let resp = send_as_a(home.relay(up));
+    assert_eq!(resp, refused_with_quota());
+    assert_eq!(got.lock().expect("lock").len(), 1, "不先撞一次被拒着的 b");
+    assert_eq!(home.session("s-1").current, "a");
+}
+
 /// ★ 阈值模式：200 回包里过了阈值 ⇒ 这一发照常交下去，下一发换到 b。
 #[test]
 fn threshold_mode_moves_the_next_request() {
@@ -797,4 +814,39 @@ fn in_tests_a_request_to_a_real_host_panics_before_any_connection() {
     let why = hit.expect_err("应当 panic");
     let said = why.downcast_ref::<String>().cloned().unwrap_or_default();
     assert_eq!(said, "测试档不许出网：platform.claude.com");
+}
+
+/// ★ 被拒那一行日志：号名 · 状态码 · 有没有限额头 · 代表窗 · retry-after；两种 429 各一形；只用这几格 ⇒ 令牌与回包体无从进来。
+#[test]
+fn a_refusal_logs_one_line_of_who_and_how() {
+    use crate::accounts::upstream_select::refusal_line;
+    let h = |pairs: &[(&str, &str)]| -> Vec<(String, String)> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect()
+    };
+    let now = 1_800_000_000;
+    let bare = crate::agents::claudecode::quota::read(429, &h(&[]), now).expect("被拒");
+    assert_eq!(
+        refusal_line("y", 429, &bare, None),
+        "[quota] 被拒：号 y · 状态码 429 · 限额头 无 · 代表窗 — · retry-after —"
+    );
+    let full = crate::agents::claudecode::quota::read(
+        429,
+        &h(&[
+            ("anthropic-ratelimit-unified-status", "rejected"),
+            (
+                "anthropic-ratelimit-unified-representative-claim",
+                "five_hour",
+            ),
+            ("anthropic-ratelimit-unified-reset", "1800003600"),
+        ]),
+        now,
+    )
+    .expect("被拒");
+    assert_eq!(
+        refusal_line("z", 429, &full, Some("3600")),
+        "[quota] 被拒：号 z · 状态码 429 · 限额头 有 · 代表窗 five_hour · retry-after 3600"
+    );
 }

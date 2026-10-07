@@ -443,9 +443,38 @@ impl Destinations for Accounts {
         };
         let now = crate::accounts::quota::now_unix();
         if let Some(reading) = read(seen.status, seen.headers, now) {
+            if reading.refused {
+                let retry_after = seen
+                    .headers
+                    .iter()
+                    .find(|(k, _)| k.eq_ignore_ascii_case(RETRY_AFTER))
+                    .map(|(_, v)| v.trim());
+                tracing::warn!(
+                    "{}",
+                    refusal_line(seen.tag, seen.status, &reading, retry_after)
+                );
+            }
             ledger::record_seen(&self.quota, agent, seen.tag, reading, now);
         }
     }
+}
+
+/// HTTP 通用的「几秒后再试」头（不是哪一家的）。
+const RETRY_AFTER: &str = "retry-after";
+
+/// 被拒那一发记进后端日志的一行：号名 · 状态码 · 有没有限额头 · 代表窗 · `retry-after`。只用这几格 ⇒ 不带令牌、不带回包体。
+pub(crate) fn refusal_line(
+    account: &str,
+    status: u16,
+    r: &crate::agents::QuotaReading,
+    retry_after: Option<&str>,
+) -> String {
+    format!(
+        "[quota] 被拒：号 {account} · 状态码 {status} · 限额头 {} · 代表窗 {} · retry-after {}",
+        if r.status.is_some() { "有" } else { "无" },
+        r.limiting.as_deref().unwrap_or("—"),
+        retry_after.filter(|v| !v.is_empty()).unwrap_or("—"),
+    )
 }
 
 /// 上游选择 `Refuse` 的码 —— **只有这一处**。

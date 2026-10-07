@@ -101,6 +101,10 @@ pub(crate) fn answer(d: &dyn Door, cmd: &str, args: &Value, keys: &KeyDoor) -> A
             .into_iter()
             .map(|shell| amend_aliases(d, shell, &done.alias_events))
             .collect();
+        // 别名文件真改了 ⇒ 已开着的终端要重读它（启动文件只在启动时读一次）。
+        for a in change.aliases.iter().filter(|a| a.changed) {
+            change.notes.push(aliases::reload_hint(&a.path));
+        }
     }
     if change.applied {
         sync_mcp(d, &mut change);

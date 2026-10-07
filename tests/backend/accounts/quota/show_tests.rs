@@ -79,15 +79,23 @@ fn every_state_comes_out_of_its_own_facts() {
     refused.resets_at = Some(EARLIER);
     assert_eq!(
         state_of(&refused, Kind::Sub, 80),
-        QuotaState::ResetSinceSeen,
-        "被拒到的那一刻已过"
+        QuotaState::Near,
+        "被拒到的那一刻已过、窗口还没重置 ⇒ 不再画被拒，照窗口的数判"
     );
-    // 按量号：没有分窗口的数；被拒、回包没给时刻也照实是被拒。
-    let api_refused = QuotaReading {
+    let mut over = sub(1.0, EARLIER);
+    over.refused = true;
+    over.resets_at = Some(EARLIER);
+    assert_eq!(
+        state_of(&over, Kind::Sub, 80),
+        QuotaState::ResetSinceSeen,
+        "被拒到的那一刻与卡着的窗口都已过"
+    );
+    // 按量号：没有分窗口的数；被拒照它说的回来时刻。
+    let mut api_refused = QuotaReading {
         status: None,
         refused: true,
         limiting: None,
-        resets_at: None,
+        resets_at: Some(LATER),
         windows: Vec::new(),
         overage: None,
     };
@@ -96,6 +104,9 @@ fn every_state_comes_out_of_its_own_facts() {
         (s.state, s.limiting, s.slots.len()),
         (QuotaState::Refused, None, 0)
     );
+    // 说不出回来时刻的旧账（适配层今天不再出这一形）⇒ 不算被拒，与轮换同一个判法。
+    api_refused.resets_at = None;
+    assert_eq!(state_of(&api_refused, Kind::Api, 80), QuotaState::Ok);
 }
 
 /// ★ 「快满」跟着给的 N 走；轮换没设 N（满了才换）⇒ 80%。回包说越过了预警线也算。
@@ -145,14 +156,44 @@ fn slots_are_rounded_and_named_by_their_semantic_position() {
             SlotShow {
                 slot: "5h".into(),
                 pct: Some(63),
-                resets_at: Some(LATER)
+                resets_at: Some(LATER),
+                full: false,
             },
             SlotShow {
                 slot: "7d".into(),
                 pct: Some(41),
-                resets_at: Some(NOW + 5 * 86_400)
+                resets_at: Some(NOW + 5 * 86_400),
+                full: false,
             },
         ]
+    );
+}
+
+/// ★ 用满与被拒分开：用到 100%、未重置才 `full`；被拒而没用满（短时限流）不 `full`；99.6% 取整成 100 也不算用满；窗口重置过了不算。
+#[test]
+fn full_is_a_window_at_a_hundred_not_a_refusal() {
+    let full_of = |used: f64, resets: u64, refused: bool| {
+        let mut r = sub(used, resets);
+        r.refused = refused;
+        r.resets_at = Some(LATER);
+        show(Some((&r, NOW)), facts(Kind::Sub), 80, NOW, &slot).slots[0].clone()
+    };
+    let s = full_of(1.0, LATER, true);
+    assert_eq!((s.full, full_of(1.0, LATER, true).pct), (true, Some(100)));
+    assert!(full_of(1.03, LATER, false).full, "用满不看被拒没有");
+    let s = full_of(0.58, LATER, true);
+    assert_eq!((s.full, s.pct), (false, Some(58)), "被拒而没用满");
+    let s = full_of(0.996, LATER, false);
+    assert_eq!((s.full, s.pct), (false, Some(100)));
+    assert!(!full_of(1.0, EARLIER, false).full, "窗口已重置");
+    let wire = serde_json::to_value(full_of(1.0, LATER, true)).expect("json");
+    assert_eq!(wire["full"], true);
+    assert!(
+        serde_json::to_value(full_of(0.5, LATER, false))
+            .expect("json")
+            .get("full")
+            .is_none(),
+        "没用满 ⇒ 缺"
     );
 }
 

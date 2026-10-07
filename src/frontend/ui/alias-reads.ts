@@ -137,6 +137,8 @@ export interface AliasListing {
 export interface AliasInstallReport {
   aliasPath: string;
   wroteAliasFile: boolean;
+  /** 真写了 ⇒ 后端给人的那一句（已开的终端要重读别名文件或新开一个）；没写 ⇒ `null`。 */
+  reload: string | null;
 }
 
 /** 「在哪起」那一格（线上名与后端 `form::TmuxMode` 逐字）：当前终端 · tmux 三种取名 · 接回一个 tmux 会话。 */
@@ -421,12 +423,13 @@ export function emptyForm(): AliasForm {
 export function decodeAliasInstallReport(v: unknown): AliasInstallReport {
   if (
     !isObj(v) ||
-    !sameKeys(v, ["aliasPath", "wroteAliasFile"]) ||
+    !sameKeys(v, ["aliasPath", "wroteAliasFile", "reload"]) ||
     typeof v.aliasPath !== "string" ||
-    typeof v.wroteAliasFile !== "boolean"
+    typeof v.wroteAliasFile !== "boolean" ||
+    (v.reload !== null && typeof v.reload !== "string")
   )
     throw bad();
-  return { aliasPath: v.aliasPath, wroteAliasFile: v.wroteAliasFile };
+  return { aliasPath: v.aliasPath, wroteAliasFile: v.wroteAliasFile, reload: v.reload };
 }
 
 /** 六问的期限：读几份小文件 / 写一份 / 起一次 PowerShell 问内建别名（秒级）。给 30 秒。 */

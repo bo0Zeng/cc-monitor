@@ -109,6 +109,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "aliasPath",
             "aliases",
             "fingerprint",
+            "reload",
             "shell",
             "wroteAliasFile",
         ],

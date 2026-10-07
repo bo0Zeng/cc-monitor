@@ -2158,7 +2158,7 @@ POSIX 上有会话名 ⇒ `--ccm-tmux=`（建进 tmux）；Windows 没有 tmux �
 | `earliestReturn` | ← | 被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null` |
 
 `reading` 的形状（通用，各家读法翻成它）：`status`（`allowed` · `warning` · `rejected`；回包没说 ⇒ 缺）· `refused`（这一发被上游拒了，状态码 429）·
-`limiting`（此刻卡着的窗口名）· `resetsAt`（卡着的那个窗口几点重置；被拒且没有这一族头时 = 现在 ＋ `retry-after`）·
+`limiting`（此刻卡着的窗口名）· `resetsAt`（卡着的那个窗口几点重置；被拒且没有这一族头时 = 现在 ＋ `retry-after`；被拒却两样都没说 ⇒ 现在 ＋ 60 秒（`agents/claudecode/quota.rs::REFUSED_BRIEFLY`，多是短时限流）—— 被拒的快照恒带这一格）·
 `windows`（`[{name, used?, resetsAt?, warnedAt?}]`，`used` 是比例、通常 0–1、可以超过 1；窗口**按原名分开记**，按模型的周额度不并进 7 天那一个。
 Claude 的窗口名：回包头里 `five_hour` · `seven_day` · `seven_day_overage_included` · `overage`；`/usage` 里另有 `seven_day_sonnet` · `seven_day_<模型名小写>`（如 `seven_day_fable`））·
 `overage?`（`{status?, resetsAt?, disabled?, inUse}`：付费超额那一档）。
@@ -2169,10 +2169,10 @@ Claude 的窗口名：回包头里 `five_hour` · `seven_day` · `seven_day_over
 | 格 | 说明 |
 |---|---|
 | `kind` | `sub`（订阅号）· `api`（按量号：这台 key 表里有它，或账号库说它是）|
-| `state` | `ok` · `near`（有 `5h` / `7d` 窗口用到 N%、未重置 —— 与轮换「到 N% 换」同一个判法 —— 或回包说越过了预警线）· `refused`（上次被拒、重置时刻未到；回包没给时刻也算）· `overageInUse`（订阅号正用付费超额）· `resetSinceSeen`（卡着的那个窗口看到之后已重置：上次的数不再作数）。`unseen` 只出现在会话那一份（那个号没出过数）|
+| `state` | `ok` · `near`（有 `5h` / `7d` 窗口用到 N%、未重置 —— 与轮换「到 N% 换」同一个判法 —— 或回包说越过了预警线）· `refused`（上次被拒、它说的回来时刻未到 —— 与轮换判「被拒」同一处 `decide::refused_at`；过了 ⇒ 照其余几态判，窗口的数照旧作数）· `overageInUse`（订阅号正用付费超额）· `resetSinceSeen`（卡着的那个窗口看到之后已重置：上次的数不再作数）。`unseen` 只出现在会话那一份（那个号没出过数）|
 | `stale` | 最后一次看到距今超过 30 分钟（与 `state` 叠着画）|
 | `limiting?` | 按钮上那个窗口的语义位 `5h` / `7d`（卡着的那个；回包没说 ⇒ 用得最多的那个）；没有分窗口的数 ⇒ 缺 |
-| `slots` | `[{slot, pct?, resetsAt?}]`：`5h` · `7d` 各一格（有数的才出；同一语义位几个窗口取用得最多的）；`pct` 取整、可超过 100 |
+| `slots` | `[{slot, pct?, resetsAt?, full?}]`：`5h` · `7d` 各一格（有数的才出；同一语义位几个窗口取用得最多的）；`pct` 取整、可超过 100；`full: true` ＝ 用满（用到 100%、未重置；没用满 ⇒ 缺）。画法：用满画 `✕`，被拒而没用满画「{pct}% · 被拒」，界面与 `--text` 都只看这两格 |
 | `login` | `ok` · `needsLogin`（只对订阅号：凭据文件不在或读不出账号身份）· `needsKey`（只对按量号：这台 key 表里没有它）|
 | `subId?` | 同一订阅的稳定标识：账号身份加固定前缀做 SHA-256、取前 12 字节十六进制。两台看到的同一订阅相同（界面据此并成一行、取 `seenAt` 新的），由它反推不出原值；订阅号读得出身份才有 |
 | `windows?` | 各窗口照原名一格（`slots` 那两格照留，这里一个窗口一格），按 `reading.windows` 的次序：`{name, key?, pct?, resetsAt?, seenAt, from, resetSinceSeen?}`。`key` 窗口键（`5h` · `7d` · `7d:<模型>`，由那一家的适配层给；轮换的上限 · 单段预算按它配；超额那一档没有）· `pct` 取整（已重置未计时 ⇒ 0）· `resetsAt` 有 ＝ 这个窗口在计时 · `seenAt` / `from` 那个窗口几点、从哪看到的 · `resetSinceSeen: true` ＝ 重置时刻已过、之后没再看到（上次的数不再作数：用量当 0、窗口没开）。没有分窗口的数 ⇒ 缺 |
@@ -2975,7 +2975,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 
 ```text
 → {"id":"a2","cmd":"accounts-add","args":{"name":"b","kind":"subscription","credFile":"~/snap/b.json"}}
-← {"kind":"reply","id":"a2","ok":true,"data":{"applied":true,"steps":[…],"notes":[],"backup":"20260930-120000","account":{"name":"b","configDir":"/home/u/.cc-monitor/accounts/b"},"loginCmd":null,"aliasNames":["betacc","betacct"],"keyMasked":null,"keyProblem":null,"aliases":[{"path":"/home/u/.cc-monitor/aliases.sh","changed":true,"added":["betacc","betacct"],"removed":[],"skipped":[],"note":null}]}}
+← {"kind":"reply","id":"a2","ok":true,"data":{"applied":true,"steps":[…],"notes":["已开的终端要运行「. /home/u/.cc-monitor/aliases.sh」或新开一个"],"backup":"20260930-120000","account":{"name":"b","configDir":"/home/u/.cc-monitor/accounts/b"},"loginCmd":null,"aliasNames":["betacc","betacct"],"keyMasked":null,"keyProblem":null,"aliases":[{"path":"/home/u/.cc-monitor/aliases.sh","changed":true,"added":["betacc","betacct"],"removed":[],"skipped":[],"note":null}]}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -2990,7 +2990,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 | `configDir` | ← | 那个号的配置目录（`account` 里） |
 | `loginCmd` | ← | 订阅号没导入凭据时：在终端里跑这一行登录（`'<家>/.cc-monitor/bin/ccm' -- --account '<名>'`，claude 自己的登录界面）；否则 `null` |
 | `keyMasked` · `keyProblem` | ← | API 号：写进 apikey 表之后的掩码；号建好了 key 却没写进去时那一句（界面据此让人在那一行重填） |
-| `applied` · `steps` · `notes` · `backup` · `aliasNames` · `aliases` | ← | 同 `accounts-init` |
+| `applied` · `steps` · `notes` · `backup` · `aliasNames` · `aliases` | ← | 同 `accounts-init`；别名文件真改了（`aliases[].changed`）⇒ `notes` 每份多一句「已开的终端要运行「. <那份文件>」或新开一个」（同 `aliases-install` 的 `reload`） |
 
 号的目录：链齐共享项；身份之外那几份本机状态从共享库复制成它自己的一份（共享库那份是模板）；身份本体绝不从别的号复制。
 
@@ -3595,7 +3595,7 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 
 ```text
 → {"id":"a3","cmd":"aliases-install","args":{"aliases":[…],"shell":"posix","fingerprint":"41-5b6a…"}}
-← {"kind":"reply","id":"a3","ok":true,"data":{"aliasPath":"/home/u/.cc-monitor/aliases.sh","wroteAliasFile":true}}
+← {"kind":"reply","id":"a3","ok":true,"data":{"aliasPath":"/home/u/.cc-monitor/aliases.sh","wroteAliasFile":true,"reload":"已开的终端要运行「. /home/u/.cc-monitor/aliases.sh」或新开一个"}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -3603,6 +3603,7 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 | `aliases` · `shell` | → | 同 `aliases-render`（有一条不合格 ⇒ 整批不写、`refused`） |
 | `fingerprint` | → | 必给（字符串或 `null`）：读回时那份的指纹（`aliases-read` 的 `fingerprint`）。盘上此刻不是那一份（被别处改过 / 删了 / 新出现了）⇒ `stale`、一个字节不写 |
 | `aliasPath` · `wroteAliasFile` | ← | 写到哪 · 真写了没有（内容一致就一个字节不写） |
+| `reload` | ← | 真写了 ⇒ 给人的那一句「已开的终端要运行「. <aliasPath>」或新开一个」（已开着的终端不会自己重读）；没写 ⇒ `null` |
 
 写经本进程 `files-put`（读改写一次、CAS，逐级补目录、不备份：那是 cc-monitor 自己的文件）。错误码：`bad_args` · `refused` · `stale`（界面重读再让人存）。⚠ **CLI 面也有它**（`--aliases-install`）。
 

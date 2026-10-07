@@ -145,7 +145,34 @@ fn a_429_without_the_family_is_refused_for_retry_after_seconds() {
             overage: None,
         })
     );
-    assert_eq!(read(429, &h(&[]), NOW).and_then(|r| r.resets_at), None);
+}
+
+/// ★ 被拒却没说几点能再用（没有这一族头、也没有 `retry-after`；或有这一族却没有 `reset`）⇒ [`REFUSED_BRIEFLY`] 秒之后回来，
+/// 不一直挂成被拒；这个短期限是 60 秒。
+#[test]
+fn a_429_that_says_nothing_about_when_is_refused_only_briefly() {
+    assert_eq!(REFUSED_BRIEFLY, 60);
+    assert_eq!(
+        read(429, &h(&[]), NOW).and_then(|r| r.resets_at),
+        Some(NOW + REFUSED_BRIEFLY)
+    );
+    let got = read(
+        429,
+        &h(&[("anthropic-ratelimit-unified-status", "rejected")]),
+        NOW,
+    )
+    .expect("被拒");
+    assert_eq!(got.resets_at, Some(NOW + REFUSED_BRIEFLY));
+    assert_eq!(
+        read(
+            200,
+            &h(&[("anthropic-ratelimit-unified-status", "allowed")]),
+            NOW
+        )
+        .and_then(|r| r.resets_at),
+        None,
+        "没被拒的不编时刻"
+    );
 }
 
 #[test]

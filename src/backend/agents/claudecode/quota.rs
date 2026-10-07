@@ -11,7 +11,8 @@
 //! | `overage-status` · `overage-reset` · `overage-disabled-reason` · `overage-in-use` | 三值 · unix 秒 · 原值 · `true` | `overage` |
 //!
 //! 被拒以状态码为准（429）：有这一族头时卡在哪、几点重置照头说；没有（API key 号的回包永远没有这一族）⇒
-//! 几点能再用看 `retry-after`（秒）。`status = rejected` 但回的是 200（超额兜着）不算被拒。
+//! 几点能再用看 `retry-after`（秒）；两样都没说 ⇒ [`REFUSED_BRIEFLY`] 秒之后（多是短时限流，不是用满）。
+//! 被拒的快照恒带回来的时刻。`status = rejected` 但回的是 200（超额兜着）不算被拒。
 
 use crate::agents::{LimitReply, QuotaOverage, QuotaReading, QuotaStatus, QuotaWindow};
 
@@ -26,6 +27,9 @@ pub(crate) const WINDOWS: &[(&str, &str)] = &[
 ];
 
 const REFUSED: u16 = 429;
+
+/// 被拒却没说几点能再用（没有 `reset`、没有 `retry-after`）⇒ 当它这么多秒之后回来。
+pub(crate) const REFUSED_BRIEFLY: u64 = 60;
 
 /// 窗口名 → 语义位：5 小时那一个是 `5h`；7 天那几个（含分模型的）是 `7d`；超额那一档没有语义位。
 pub(crate) fn slot_of(name: &str) -> Option<&'static str> {
@@ -98,12 +102,12 @@ fn status_of(v: Option<&str>) -> Option<QuotaStatus> {
 pub(crate) fn read(status: u16, headers: &[(String, String)], now: u64) -> Option<QuotaReading> {
     let refused = status == REFUSED;
     let retry_at = || {
-        refused
-            .then(|| instant(header(headers, "retry-after")).map(|s| now.saturating_add(s)))
-            .flatten()
+        refused.then(|| {
+            now.saturating_add(instant(header(headers, "retry-after")).unwrap_or(REFUSED_BRIEFLY))
+        })
     };
     let Some(said) = unified(headers, "status") else {
-        // 限流器没说话：只有被拒时才有一件事可记（这个号此刻用不了、`retry-after` 秒之后再试）。
+        // 限流器没说话：只有被拒时才有一件事可记（这个号此刻用不了、`retry-after` 秒之后再试，没说就 [`REFUSED_BRIEFLY`] 秒）。
         return refused.then(|| QuotaReading {
             status: None,
             refused: true,

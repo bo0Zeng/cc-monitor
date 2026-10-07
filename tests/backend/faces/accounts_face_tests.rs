@@ -410,6 +410,20 @@ fn add_imports_credentials_links_shared_items_and_updates_manifest_and_aliases()
         assert!(alias.contains(line), "少了 {line}：\n{alias}");
     }
     assert_eq!(got["aliases"][0]["added"], json!(["xcc", "xcct"]));
+    // 别名文件改了 ⇒ 结果里叫已开的终端重读它（那一句与 `aliases-install` 的 `reload` 同一处出）。
+    let reload = crate::assets::aliases::reload_hint(&t.s(".cc-monitor/aliases.sh"));
+    assert!(
+        reload.contains(". ") && reload.contains("aliases.sh"),
+        "{reload}"
+    );
+    assert!(
+        got["notes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|n| n.as_str() == Some(reload.as_str())),
+        "{got}"
+    );
 
     // 两个号的身份互不覆盖：各写各的。
     t.write(

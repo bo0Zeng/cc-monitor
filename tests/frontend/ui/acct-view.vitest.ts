@@ -55,20 +55,24 @@ describe("状态栏账号按钮：各态", () => {
     const sw = entry({ account: { start: "work", current: "personal", since: NOW - 600, history: [], inPlace: "ok" } });
     expect(chip(sw).swapped).toBe(true);
   });
-  it("到阈值数字琥珀 · 被拒红带 ↻ · 超额琥珀 · 无数 `—` · 数旧降透明度", () => {
+  it("到阈值数字琥珀 · 用满 ✕ / 被拒没用满 `58% · 被拒`，都红带 ↻ · 超额琥珀 · 无数 `—` · 数旧降透明度", () => {
     expect(chip(entry({}, { state: "near", slots: [{ slot: "5h", pct: 86 }] }))).toMatchObject({ value: "86%", tone: "near" });
-    const refused = chip(entry({}, { state: "refused", slots: [{ slot: "5h", pct: 100, resetsAt: NOW + 3600 }] }));
+    const refused = chip(entry({}, { state: "refused", slots: [{ slot: "5h", pct: 100, resetsAt: NOW + 3600, full: true }] }));
     expect(refused).toMatchObject({ value: "✕", tone: "refused" });
     expect(refused.reset).toMatch(/^↻\d\d:\d\d$/);
+    const brief = chip(entry({}, { state: "refused", slots: [{ slot: "5h", pct: 58, resetsAt: NOW + 3600 }] }));
+    expect(brief).toMatchObject({ value: "58% · 被拒", tone: "refused" });
+    expect(chip(entry({}, { state: "refused", slots: [] })).value).toBe("被拒");
+    expect(chip(entry({}, { slots: [{ slot: "5h", pct: 103, full: true }] }))).toMatchObject({ value: "✕", tone: "refused" });
     expect(chip(entry({}, { state: "overageInUse" }))).toMatchObject({ value: "超额", tone: "over" });
     expect(chip(entry({}, { state: "resetSinceSeen" })).value).toBe("—");
     expect(chip(entry({}, { state: "unseen", slots: [], limiting: undefined })).value).toBe("—");
     expect(chip(entry({}, { stale: true })).stale).toBe(true);
   });
-  it("按量 `按量`；按量被拒 `✕ ↻..`（时刻取额度账那一条）", () => {
+  it("按量 `按量`；按量被拒 `被拒 ↻..`（时刻取额度账那一条）", () => {
     expect(chip(entry({}, { kind: "api", slots: [], limiting: undefined }))).toMatchObject({ window: null, value: "按量", tone: "neutral" });
     const e = entry({ account: { start: "api", current: "api", since: NOW, history: [], inPlace: "ok" } }, { kind: "api", state: "refused", slots: [], limiting: undefined });
-    expect(chip(e)).toMatchObject({ value: "✕", tone: "refused" });
+    expect(chip(e)).toMatchObject({ value: "被拒", tone: "refused" });
     expect(chip(e).reset).toMatch(/^↻/);
   });
   it("中转没见过这个会话 ⇒ 只画归属的号、无用量；什么都不知道 ⇒ 不画；`_` 写 ~/.claude", () => {

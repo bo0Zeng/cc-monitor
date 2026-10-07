@@ -4,7 +4,7 @@
 //!
 //! | 结论 | 判（先到先得） |
 //! |---|---|
-//! | 被拒 | 刚回来的回包被拒（429）；或额度账上被拒、还没到重置时刻 |
+//! | 被拒 | 刚回来的回包被拒（429）；或额度账上被拒、还没到它说的回来时刻（[`refused_at`]） |
 //! | 超额在兜 | 订阅号正在用付费超额、卡着的窗口还没重置 |
 //! | 过上限 | 有窗口用到它的上限、还没重置。上限按窗口键取：这个号这个窗口的 → 这个号 `*` 的 → 这份轮换的 `when`（「满了才换」没有缺省上限）；按时段写的取此刻（本地钟）落在的那一段，落不进 ⇒ 往下一层 |
 //! | 能用 | 其余 |
@@ -181,6 +181,12 @@ pub(crate) fn window_over<'r>(
         .find(|w| over(w, n, now))
 }
 
+/// 「额度账上这个号此刻被拒着」的唯一判法：上次那一发被拒、它说的回来时刻还没到（适配层给被拒的快照恒带时刻；
+/// 说不出时刻的旧账 ⇒ 不算）。显示态（`show`）同问这一处。
+pub(crate) fn refused_at(r: &QuotaReading, now: u64) -> bool {
+    r.refused && r.resets_at.is_some_and(|t| t > now)
+}
+
 /// 订阅号正在用付费超额、卡着的窗口还没重置。
 pub(crate) fn overage_in_use(r: &QuotaReading, kind: Kind, now: u64) -> bool {
     kind == Kind::Sub && r.overage.as_ref().is_some_and(|o| o.in_use) && live(r.resets_at, now)
@@ -221,7 +227,7 @@ fn has_caps(f: &Facts<'_>) -> bool {
 fn standing_in(f: &Facts<'_>, account: &str, r: &QuotaReading, heard: bool) -> Standing {
     // 卡着它的每一处：（重置时刻, 窗口键）。
     let mut parts: Vec<(Option<u64>, Option<String>)> = Vec::new();
-    let refused = r.refused && (heard || r.resets_at.is_some_and(|t| t > f.now));
+    let refused = (heard && r.refused) || refused_at(r, f.now);
     let overage = !refused && overage_in_use(r, (f.kind)(account), f.now);
     if refused || overage {
         parts.push((r.resets_at, r.limiting.as_deref().and_then(|l| (f.key)(l))));

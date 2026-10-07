@@ -54,7 +54,8 @@
   },
   "installReply": {
     "aliasPath": "<HOME>/.cc-monitor/aliases.sh",
-    "wroteAliasFile": true
+    "wroteAliasFile": true,
+    "reload": "已开的终端要运行「. <HOME>/.cc-monitor/aliases.sh」或新开一个"
   },
   "readReply": {
     "accounts": [

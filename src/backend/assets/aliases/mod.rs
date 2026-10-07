@@ -242,6 +242,13 @@ pub(crate) struct AliasListing {
 pub(crate) struct AliasInstallReport {
     pub alias_path: String,
     pub wrote_alias_file: bool,
+    /// 真写了 ⇒ 那一句「已开的终端要重读它或新开一个」（[`reload_hint`]）；没写 ⇒ `null`。
+    pub reload: Option<String>,
+}
+
+/// 别名文件写过之后给人的那一句：已开着的终端不会自己重读它（启动文件只在启动时读一次）。
+pub(crate) fn reload_hint(path: &str) -> String {
+    copy_text("rsAccountAliases.install.reload", &[("path", path)])
 }
 
 /// 别名文件第一次被建出来时带上的那几条（之后和别的别名一样可改可删、删了不回补），名字由默认那一家的 wrapper 名派生
@@ -712,6 +719,7 @@ pub(crate) fn install_in(
     });
     match wrote {
         Ok(wrote_alias_file) => Ok(AliasInstallReport {
+            reload: wrote_alias_file.then(|| reload_hint(&path)),
             alias_path: path,
             wrote_alias_file,
         }),
