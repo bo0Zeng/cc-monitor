@@ -31,8 +31,8 @@ function acctWorld(verifyFail = false): () => World {
     const w = defaultWorld();
     const now = Math.floor(Date.now() / 1000);
     const slots = (p5: number, p7: number) => [
-      { slot: "5h", pct: p5, resetsAt: now + 5400 },
-      { slot: "7d", pct: p7, resetsAt: now + 4 * 86400 },
+      { slot: "5h", pct: p5, resetsAt: now + 5400, ...(p5 >= 100 ? { full: true } : {}) },
+      { slot: "7d", pct: p7, resetsAt: now + 4 * 86400, ...(p7 >= 100 ? { full: true } : {}) },
     ];
     w.ops["quota-read"] = () => ({
       state: "present",
@@ -41,7 +41,7 @@ function acctWorld(verifyFail = false): () => World {
       now,
       accounts: [
         { agent: "claude-code", account: "work", seenAt: now - 120, kind: "sub", state: "refused", stale: false, limiting: "5h", slots: slots(100, 78), login: "ok" },
-        { agent: "claude-code", account: "personal", seenAt: now - 120, kind: "sub", state: "ok", stale: false, limiting: "5h", slots: slots(63, 41), login: "ok" },
+        { agent: "claude-code", account: "personal", seenAt: now - 120, kind: "sub", state: "refused", stale: false, limiting: "5h", slots: slots(58, 41), login: "ok" },
         { agent: "claude-code", account: "api", seenAt: now - 120, kind: "api", state: "ok", stale: false, slots: [], login: "ok" },
       ],
       unseen: [],
