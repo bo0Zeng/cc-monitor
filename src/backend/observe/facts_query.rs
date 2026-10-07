@@ -487,27 +487,26 @@ pub(crate) fn scan_facts<R: std::io::BufRead>(
         }
         facts.end += read as u64;
         let line = &buf[..buf.len() - 1];
-        if !could_matter(line, &facts) {
-            continue;
-        }
-        if let Some(v) = parse_line(line) {
-            note_record(&mut facts, &v);
+        if could_matter(line, &facts) {
+            if let Some(v) = super::record_scan::parse_record(line) {
+                note_record(&mut facts, &v);
+            }
         }
     }
+    settle_limit(&mut facts, limits, relay);
+    Ok(facts)
+}
+
+/// 扫完之后按上限表与中转标记定上下文上限（每次按调用方给的表重判，不进扫描）。
+pub(crate) fn settle_limit(facts: &mut SessionFacts, limits: &ContextLimits, relay: Option<bool>) {
     if let Some(u) = facts.usage.as_mut() {
         (u.limit, u.limit_from) =
             context_limit(u.model.as_deref(), u.peak_prompt_tokens, limits, relay);
     }
-    Ok(facts)
-}
-
-fn parse_line(line: &[u8]) -> Option<Value> {
-    let text = String::from_utf8_lossy(line);
-    serde_json::from_str(text.trim_start_matches('\u{feff}').trim()).ok()
 }
 
 /// 这一行有没有可能改动事实（快路，见头注）。**只许放过、不许误拦**：凡是 [`note_record`] 会动的记录，这里必为真。
-fn could_matter(line: &[u8], facts: &SessionFacts) -> bool {
+pub(crate) fn could_matter(line: &[u8], facts: &SessionFacts) -> bool {
     (facts.forked_from.is_none() && contains(line, b"\"forkedFrom\""))
         || contains(line, b"\"usage\"")
         || contains(line, b"\"tool_use\"")
@@ -608,12 +607,24 @@ fn settle_retry(f: &mut SessionFacts, outcome: RetryOutcome) {
     }
 }
 
+/// 子串在不在：按首字节跳着找，命中首字节再比后面（大工具输出那几行每行要问好几次，逐窗比较太慢）。
 fn contains(hay: &[u8], needle: &[u8]) -> bool {
-    hay.windows(needle.len()).any(|w| w == needle)
+    let Some((&first, rest)) = needle.split_first() else {
+        return true;
+    };
+    let mut from = 0;
+    while let Some(p) = hay[from..].iter().position(|&b| b == first) {
+        let at = from + p;
+        if hay[at + 1..].starts_with(rest) {
+            return true;
+        }
+        from = at + 1;
+    }
+    false
 }
 
 /// 一条**已解析**的记录累加到 `f` 上。三格口径的唯一住址（见头注那张表）。
-fn note_record(f: &mut SessionFacts, v: &Value) {
+pub(crate) fn note_record(f: &mut SessionFacts, v: &Value) {
     if f.forked_from.is_none() {
         if let Some((sid, _)) = super::history_query::fork_origin(v) {
             f.forked_from = Some(sid);

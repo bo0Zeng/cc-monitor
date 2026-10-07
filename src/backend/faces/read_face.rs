@@ -314,33 +314,55 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             let path = str_arg(args, "path")?;
             let offset = u64_arg(args, "offset")?.unwrap_or(0);
             let until = u64_arg(args, "until")?;
-            let r =
-                history_query::open_session_at(home, path, offset).map_err(|e| ("failed", e))?;
             let mut rows = CappedRows::default();
-            let scanned = history_query::scan_session_index(r, offset, until, |row| rows.push(row));
-            let (_, end) = rows.finish(scanned)?;
+            let end = if offset == 0 && until.is_none() {
+                let map = history_query::cold_scan(home, path).map_err(|e| ("failed", e))?;
+                let pushed = rows.push_all(&map.index);
+                rows.finish(pushed)?;
+                map.end
+            } else {
+                let r = history_query::open_session_at(home, path, offset)
+                    .map_err(|e| ("failed", e))?;
+                let scanned =
+                    history_query::scan_session_index(r, offset, until, |row| rows.push(row));
+                rows.finish(scanned)?.1
+            };
             Ok(json!({ "from": offset, "end": end, "rows": rows.rows }))
         }
         "history-user-inputs" => {
             let path = str_arg(args, "path")?;
             let from = u64_arg(args, "from")?.unwrap_or(0);
-            let r =
-                history_query::open_user_inputs_at(home, path, from).map_err(|e| ("failed", e))?;
             let mut rows = CappedRows::default();
-            let scanned =
-                crate::observe::user_inputs::scan_user_inputs(r, from, |row| rows.push(row));
-            let (_, end) = rows.finish(scanned)?;
+            let end = if from == 0 {
+                let map = history_query::cold_scan(home, path).map_err(|e| ("failed", e))?;
+                let pushed = rows.push_all(&map.inputs);
+                rows.finish(pushed)?;
+                map.end
+            } else {
+                let r = history_query::open_user_inputs_at(home, path, from)
+                    .map_err(|e| ("failed", e))?;
+                let scanned =
+                    crate::observe::user_inputs::scan_user_inputs(r, from, |row| rows.push(row));
+                rows.finish(scanned)?.1
+            };
             Ok(json!({ "from": from, "end": end, "entries": rows.rows }))
         }
         // 一轮的摘要（B4）：`from` 是某一轮的 `at`（或 0）；还在跑的最后一轮下次从它的 `at` 再取。
         "history-turns" => {
             let path = str_arg(args, "path")?;
             let from = u64_arg(args, "from")?.unwrap_or(0);
-            let r =
-                history_query::open_user_inputs_at(home, path, from).map_err(|e| ("failed", e))?;
             let mut rows = CappedRows::default();
-            let scanned = crate::observe::turns::scan_turns(r, from, |row| rows.push(row));
-            let (_, end) = rows.finish(scanned)?;
+            let end = if from == 0 {
+                let map = history_query::cold_scan(home, path).map_err(|e| ("failed", e))?;
+                let pushed = rows.push_all(&map.turns);
+                rows.finish(pushed)?;
+                map.end
+            } else {
+                let r = history_query::open_user_inputs_at(home, path, from)
+                    .map_err(|e| ("failed", e))?;
+                let scanned = crate::observe::turns::scan_turns(r, from, |row| rows.push(row));
+                rows.finish(scanned)?.1
+            };
             Ok(json!({ "from": from, "end": end, "turns": rows.rows }))
         }
         // 会话内查找（Ctrl+F，SE2 的 `--find-in-session`）随骨架索引与大纲一起上帧面。
@@ -385,14 +407,14 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             use crate::observe::facts_query;
             let path = str_arg(args, "path")?;
             let prior = match args.get("prior") {
-                None | Some(Value::Null) => facts_query::SessionFacts::default(),
-                Some(v) => facts_query::prior_from(v)
-                    .map_err(|e| ("bad_args", crate::common::contract::malformed(&e)))?,
+                None | Some(Value::Null) => None,
+                Some(v) => Some(
+                    facts_query::prior_from(v)
+                        .map_err(|e| ("bad_args", crate::common::contract::malformed(&e)))?,
+                ),
             };
             let limits = facts_query::limits_from(args.get("limits"))
                 .map_err(|e| ("bad_args", crate::common::contract::malformed(&e)))?;
-            let r =
-                history_query::open_facts_at(home, path, prior.end).map_err(|e| ("failed", e))?;
             // 中转看见过这个会话的请求 ⇒ 它带没带扩展上下文那一项（会话 id ＝ 记录文件名，中转的流标签就是它）。
             let sid = std::path::Path::new(path)
                 .file_stem()
@@ -401,8 +423,18 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             let relay = crate::agents::context_marks()
                 .into_iter()
                 .find_map(|m| crate::observe::relay_marks::seen(sid, m));
-            let mut facts = facts_query::scan_facts(r, prior, &limits, relay)
-                .map_err(|e| ("failed", format!("stream failed: {e}")))?;
+            let mut facts = match prior {
+                // 冷开（没有续点）⇒ 共用那张扫描图；有续点 ⇒ 从它的 `end` 接着扫、累加在它上面。
+                None => history_query::cold_scan(home, path)
+                    .map_err(|e| ("failed", e))?
+                    .facts(&limits, relay),
+                Some(prior) => {
+                    let r = history_query::open_facts_at(home, path, prior.end)
+                        .map_err(|e| ("failed", e))?;
+                    facts_query::scan_facts(r, prior, &limits, relay)
+                        .map_err(|e| ("failed", format!("stream failed: {e}")))?
+                }
+            };
             if facts.project_dir.is_none() {
                 facts.project_dir = history_query::facts_project_dir(home, path);
             }
@@ -435,8 +467,8 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 "bad_args",
                 crate::common::contract::malformed("missing `n`"),
             ))?;
-            let (plan, _) =
-                history_query::tail_plan(home, path, n as usize).map_err(|e| ("failed", e))?;
+            let plan =
+                history_query::tail_now(home, path, n as usize).map_err(|e| ("failed", e))?;
             Ok(json!({
                 "total": plan.total,
                 "tail_from": plan.tail_from,
@@ -557,6 +589,11 @@ impl CappedRows {
         }
         self.rows.push(v);
         Ok(())
+    }
+
+    /// 一整张表逐条推（冷开那几问从扫描图出）；超了上限就停。
+    fn push_all<T: serde::Serialize>(&mut self, rows: &[T]) -> std::io::Result<()> {
+        rows.iter().try_for_each(|r| self.push(r))
     }
 
     /// 扫描的结局 ⇒ 帧面的结局。超了上限的那一次停下，原因是「超了」，不是扫描函数报的那句 I/O 错。

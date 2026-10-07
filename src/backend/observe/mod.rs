@@ -32,7 +32,9 @@ pub(crate) mod interrupts_query; // `session-interrupts`：重启切换 / 结束
 pub(crate) mod tasks_query;
 // 「你说过的话」清单的纯核（四条口径的唯一住址）；argv 与分派在 `history_query`。
 // 运行簿：会话 ＝ 主运行 ＋ 子运行；只认「运行」，每家的形状问适配层（watcher 写、流归位读）。
+// 冷开一条会话那几问（尾段 · 骨架索引 · 用户输入 · 轮次 · 事实）一遍扫出、按（路径 · 长度 · 修改时刻）留着共用。
 pub(crate) mod record_page; // 按路径读正文出成品（切行 · 编号 · 挑哪一家解释）
+pub(crate) mod record_scan;
 pub mod runs;
 pub(crate) mod tmux_observe; // tmux 观测（原 `watcher.rs` A 块）
 pub(crate) mod turns; // `history-turns`：一轮的摘要（过程行 · 刻度 · 大纲同源）
