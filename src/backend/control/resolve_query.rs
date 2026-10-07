@@ -1,26 +1,17 @@
-//! resolve RPC（advisor · ADR-01）：一次性 exec `--resolve`，读 **stdin** 的 ResumeSpec JSON、
-//! 输出 **stdout** 的 CommandPlan JSON（camelCase，字段名与 aterm 严格一致）。
+//! resolve RPC：一次性 exec `--resolve`，读 stdin 的 ResumeSpec JSON，出 stdout 的 CommandPlan JSON
+//! （camelCase，字段名与仓外 aterm 严格一致）。
 //!
-//! 契约定死（cc-bus 与 `android-terminal_cc` 对齐 2026-07-18，见 `daemon-协议-v1 §3`）：
-//! - **入**：stdin `ResumeSpec{sessionId, launchCandidates:[String?], claudeDir, fallbackCwd,
-//!   alreadyInTmux}`（走 stdin 非 argv——`launchCandidates` 可多条、避 argv 长度限）。
-//! - **出**：stdout `CommandPlan{command, mode:"PtyInject"|"ExecOnce",
+//! 契约（与 aterm 冻结对齐）：
+//! - 入：stdin `ResumeSpec{sessionId, launchCandidates:[String?], claudeDir, fallbackCwd, alreadyInTmux}`
+//!   （走 stdin 不走 argv：`launchCandidates` 可多条、避 argv 长度限）。
+//! - 出：stdout `CommandPlan{command, mode:"PtyInject"|"ExecOnce",
 //!   capabilities{supportsSendKeys,supportsCapture,supportsMultiClient,supportsMultiWindow},
-//!   sessionName?, launchLabel?, substitutedFrom?}`，exit 0。
-//!   ★ caps 4 名**复用 aterm `SessionCapabilities`（`SessionBackend.kt:13`）**——两端 parity 免映射。
-//! - **错误**：exit 2 + stderr 出轻结构化 `{code, message}` JSON（aterm 要 resume 失败可诊断；
-//!   `runCatching` 也兜 exit2+stderr，取结构化）。
-//! - **exec 模型**：1 exec = 1 请求 1 响应 1 退出、天然 1:1，**无 request-id**；超时 = 客户端杀 exec。
+//!   sessionName?, launchLabel?, substitutedFrom?}`，exit 0。caps 四个名字复用 aterm 的 `SessionCapabilities`，两端免映射。
+//! - 错误：exit 2 + stderr 一行 `{code, message}` JSON。
+//! - exec 模型：1 exec = 1 请求 1 响应 1 退出，无 request-id；超时 = 客户端杀 exec。
 //!
-//! **advisory not owning（§5④）**：只返命令串、backend 零 handle、绝不执行后端。
-//! **B2 纪律**：backend 是权威也**保留本地 `is_valid_session_id` 校验**（对后端自己产出的 plan
-//! 也过一遍——sessionId 会进 command 串，注入防线）。
-//!
-//! ★ **MVP 范围**（aterm 现走 β TailTransport、DaemonTransport 未建、**暂不消费 resolve**）：本轮锁
-//! **wire 信封**（stdin/stdout/错误/字段名）。command 构建 = 首个可用 `launchCandidate` + `--resume
-//! <sid>`（无候选→默认 `claude`），`substitutedFrom` 记来源——合理 MVP 默认；pidfile-based sid 消解
-//! （post-/branch 正确 sid + kind，backend 深层权威）与 aterm `ResumePlan` 模板精确对齐**留 aterm 接
-//! DaemonTransport 时联调**（那时才真消费）。caps 用 tmux/pty 典型档、待后续 backend 探测细化。
+//! 只返命令串：backend 零 handle、绝不执行。sessionId 会进 command 串 ⇒ 后端自己产出的 plan 也过一遍本地 `is_valid_session_id`。
+//! command = 首个可用 `launchCandidate` + `--resume <sid>`（无候选 ⇒ 默认 `claude`）；caps 是 tmux/pty 的典型档，不是探测值。
 
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
@@ -34,16 +25,9 @@ struct ResumeSpec {
     session_id: String,
     #[serde(default)]
     launch_candidates: Vec<Option<String>>,
-    /// ⚠ **冻结兼容字段，不许改名**—— 与 `wire.rs::Hello.claude_dir` 同族。
-    ///
-    /// 它是 `--resolve` 的 **stdin 契约**（`rename_all = "camelCase"` ⇒ 线上是 `claudeDir`），
-    /// 与仓外 aterm **冻结在 2026-07-18**。Rust 侧标识符改名 = 线上字段名改名
-    ///（除非再挂一条 `serde(rename)` —— 那是把一条契约拆成两个源头），
-    /// 所以 `S4b` 那轮「通用层标识符去 agent 名」**绕开它**，登记在
-    /// `agent_locality_guard::AGENT_NAMED_WIRE_FIELDS`（带解锁条件）。
-    ///
-    /// ★ `S4` 只盘了 `wire.rs`，**没看见这一条** —— 因为 `S1` 的判据只扫
-    /// `CORE_FILES`，而 `control/resolve_query.rs` 不在表里。`S4b` 把它补登记了。
+    /// 冻结兼容字段，不许改名（与 `wire.rs::Hello.claude_dir` 同族）：它是 `--resolve` 的 stdin 契约（线上是 `claudeDir`），
+    /// 与仓外 aterm 冻结对齐。Rust 侧改名 = 线上字段名改名，所以通用层去 agent 名时绕开它，
+    /// 登记在 `agent_locality_guard::AGENT_NAMED_WIRE_FIELDS`（带解锁条件）。
     #[allow(dead_code)] // MVP 未用（backend 用自身 agent_home 做 pidfile 查，留字段兼容）
     #[serde(default)]
     claude_dir: String,
@@ -53,8 +37,8 @@ struct ResumeSpec {
     #[allow(dead_code)] // MVP 未据此分支（PtyInject 对 alreadyInTmux 与否一致，留字段兼容）
     #[serde(default)]
     already_in_tmux: bool,
-    /// DG3（#2D，additive）：会话属哪 agent kind → DG6 据此构 `codex resume <uuid>` vs `claude --resume`。
-    /// camelCase（rename_all）→ wire `agentKind`。注册表里的一家 = 那一家；缺/`""` = 默认那一家；别的名字 ⇒ `bad_request`。
+    /// 会话属哪个 agent kind ⇒ 据此构 `codex resume <uuid>` 或 `claude --resume`（additive，线上 `agentKind`）。
+    /// 注册表里的一家 = 那一家；缺 / `""` = 默认那一家；别的名字 ⇒ `bad_request`。
     #[serde(default)]
     agent_kind: String,
 }
@@ -69,22 +53,17 @@ struct Capabilities {
     supports_multi_window: bool,
 }
 
-/// stdout 出参（camelCase 对齐 aterm `ResumePlan` + 加 mode/capabilities）。
+/// stdout 出参（camelCase 对齐 aterm `ResumePlan`，另加 mode/capabilities）。
 ///
-/// # ★ E71：**这里面哪些是探测出来的、哪些是派生的**
-///
-/// 三个字段的可信度不一样，而字段名读起来一模一样 —— 消费方（已经有一个了）很容易
-/// 把派生值当事实用。跨项目那份说明在 `src/doc/IPC-PROTOCOL.md` §10.1
-///（**外部消费方不会读这份 Rust 源码**，所以那边才是正本）。
+/// 三个字段的可信度不一样，而字段名读起来一模一样（跨项目的说明正本在 `src/doc/IPC-PROTOCOL.md` §10.1）：
 ///
 /// | 字段 | 可信度 |
 /// |---|---|
-/// | `command` | **可信**：调用方给的候选 + `--resume <调用方给的 sid>` |
-/// | `session_name` | **派生**：纯从 sid 拼（`cc-<sid8>`），没读过 pidfile、没查过 tmux |
-/// | `capabilities` | **典型档**：硬编码的常见组合，不是这台机器此刻的实测能力 |
+/// | `command` | 可信：调用方给的候选 + `--resume <调用方给的 sid>` |
+/// | `session_name` | 派生：纯从 sid 拼（`cc-<sid8>`），没读过 pidfile、没查过 tmux |
+/// | `capabilities` | 典型档：硬编码的常见组合，不是这台机器此刻的实测能力 |
 ///
-/// 实现上留着痕迹：`run(_agent_home, …)` 的参数带下划线 —— 它**手上有 home 目录却没用**
-///（入参 `ResumeSpec.claude_dir` 也一样标着 `#[allow(dead_code)]`）。
+/// `run(_agent_home, …)` 的参数带下划线：手上有 home 目录却没用（`ResumeSpec.claude_dir` 也标着 `#[allow(dead_code)]`）。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CommandPlan {
@@ -135,17 +114,8 @@ pub fn run(_agent_home: &Path, _args: &[String]) -> i32 {
     }
 }
 
-/// U6b-3：给**流通道上的 `resolve` 命令**用的入口。
-///
-/// 与一次性 `--resolve` 复用**同一个** [`resolve_from_json`] —— 这是「吸收」的全部含义。
-///
-/// # 为什么不把一次性那条路搬走
-///
-/// 它的契约与仓外 aterm **冻结在 2026-07-18**（`daemon-协议-v1 §3`），且本文件头注写着
-/// aterm 现走 β TailTransport、DaemonTransport 未建、**暂不消费 resolve**
-/// —— 也就是说这条契约**随时可能开始被消费**。现在拆掉它是拿别人的集成期赌。
-///
-/// 两条路的差别只在信封：一次性那条是「1 exec = 1 请求 1 响应 1 退出、天然 1:1、无 request-id」；
+/// 给流通道上的 `resolve` 命令用的入口；与一次性 `--resolve` 复用同一个 [`resolve_from_json`]。
+/// 一次性那条路留着：它与仓外 aterm 的契约冻结着、随时可能开始被消费。两条路只差信封 ——
 /// 流通道那条有 `id`、可取消、不用为一次极小的 RPC 单开一整条 SSH exec。
 pub fn resolve_json_for_inbound(input: &str) -> Result<serde_json::Value, (&'static str, String)> {
     resolve_json_among(crate::agents::REGISTRY, input)
@@ -167,9 +137,7 @@ pub(crate) fn resolve_json_among(
     })
 }
 
-/// 纯：ResumeSpec JSON 串 → CommandPlan JSON 串（或 `(code,message)`）。`run()` 与单测共用——
-/// 审计 quality-阻塞：让 stdin→响应 的分发逻辑（bad_request / serialize / happy）**可测**，
-/// 不必真接 stdin/stdout（此前 `run()` 零覆盖、commit「端到端 smoke」实为手工一次性验证、无测件）。
+/// 纯：ResumeSpec JSON 串 → CommandPlan JSON 串（或 `(code,message)`）。`run()` 与单测共用，分发逻辑不必真接 stdin/stdout 就可测。
 fn resolve_from_json(
     registry: &[crate::agents::Adapter],
     input: &str,
@@ -191,7 +159,7 @@ fn resolve(
     registry: &[crate::agents::Adapter],
     spec: &ResumeSpec,
 ) -> Result<CommandPlan, (&'static str, String)> {
-    // B2 纪律：sessionId 会进 command 串 → 先过本地校验（注入防线，backend 自产也过）。
+    // sessionId 会进 command 串 ⇒ 先过本地校验（注入防线，backend 自产也过）。
     if !is_valid_session_id(&spec.session_id) {
         return Err((
             "invalid_session_id",
@@ -216,10 +184,8 @@ fn resolve(
         Some(c) => c.to_string(),
         None => face.default_launcher.to_string(),
     };
-    // 审计 security-重要①：B2 纪律**对称化**——`base` 同样进 command 串、由客户端 pty 执行，
-    // 原只校验 sid、base 零校验（端到端两侧都没人查 base：客户端 B2 复校也只覆盖 sid）。补 base
-    // 的 shell-safe 校验，兑现模块 doc 自称的 B2 注入防线（defense-in-depth：advisory 不执行 +
-    // 同信任域下当前不可利用，但污染 ResumeSpec 会被洗成带后端权威的可注入 CommandPlan）。
+    // `base` 同样进 command 串、由客户端 pty 执行 ⇒ 与 sid 对称地校验 shell-safe（advisory 不执行，
+    // 但一份被污染的 ResumeSpec 不该被洗成带后端权威的可注入 CommandPlan）。
     if !is_shell_safe_base(&base) {
         return Err((
             "unsafe_launch_candidate",
@@ -243,17 +209,13 @@ fn resolve(
         },
         session_name: Some(session_name_for(&spec.session_id, face.session_name_prefix)),
         launch_label: None, // MVP 不产 label（aterm 侧自算）
-        // substitutedFrom：aterm 语义（`TmuxBackend.resume` 核实，2026-07-18 回）=「被替换掉的原命令」
-        // = `intended?.takeIf { it != launch }`——仅当解析出的 launch ≠ 用户原意首候选时非空。MVP backend
-        // 不做「解析可能异于原意」的候选消解（直接用首候选/默认，launch==intended），恒无替换 → None（省略）。
-        // 待后端有真候选消解（候选不可用回退 / post-/branch sid 变更）再填原值。**修正 backend-04 此前
-        // 误设为「被用候选」**（反了 aterm 语义、与 command 冗余；审计 flag、aterm 2026-07-18 确认语义）。
+        // substitutedFrom（aterm 语义）=「被替换掉的原命令」：仅当解析出的 launch ≠ 用户原意首候选时非空。
+        // 这里不做候选消解（直接用首候选 / 默认，launch == intended）⇒ 恒为 None（省略）。
         substituted_from: None,
     })
 }
 
-/// B2 校验：非空、仅 `[0-9a-zA-Z_-]`（无 shell 元字符/空白 = 注入安全）、长度 ≤128。
-/// CC sessionId 实为 UUID（此集的子集），此处放宽到安全字符集、不强求 UUID 形（宽松但仍安全）。
+/// 校验：非空、仅 `[0-9a-zA-Z_-]`（无 shell 元字符 / 空白）、长度 ≤128。CC 的 sessionId 是 UUID（此集的子集），这里不强求 UUID 形。
 fn is_valid_session_id(sid: &str) -> bool {
     !sid.is_empty()
         && sid.len() <= 128
@@ -262,10 +224,9 @@ fn is_valid_session_id(sid: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
-/// base（launchCandidate 或默认 `claude`）会进 `command` 串、由客户端 pty 执行 → 拒 shell 注入。
-/// 允许 launcher 常见形（字母数字/空格/`- _ . / = : ,`，支持带路径与 flag），拒 shell 元字符
-/// `; | & $ ` ( ) < > \ " ' * ? { } !`、换行/控制字符（0x00–0x1f、0x7f）。defense-in-depth——
-/// backend advisory 不执行，但不应产出一份可注入的 CommandPlan（客户端 pty-inject 它）。
+/// base（launchCandidate 或默认 `claude`）会进 `command` 串、由客户端 pty 执行 ⇒ 拒 shell 注入。
+/// 允许 launcher 常见形（字母数字 / 空格 / `- _ . / = : ,`，支持带路径与 flag），拒 shell 元字符
+/// `; | & $ ` ( ) < > \ " ' * ? { } !`、换行 / 控制字符（0x00–0x1f、0x7f）。
 fn is_shell_safe_base(s: &str) -> bool {
     !s.is_empty()
         && !s.bytes().any(|b| {

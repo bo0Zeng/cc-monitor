@@ -1,20 +1,10 @@
-//! U2（2026-08-01）：**路径的平台语义**。
-//!
-//! 与 [`super::proc`] 分开成两个文件，不是为了整齐：`path_key` 处理的是
-//! **NTFS 的大小写不敏感**，既不是 `/proc` 也不是进程身份，塞进那个自称
-//! 「`/proc` 与进程身份这一族」的模块名不副实。
-//!
-//! 更实际的理由是 **U4**：给 Windows 补第二套实现时，路径语义与进程语义会各自长出一批分支，
-//! 现在分开是零成本，到时候再搬就是第二次搬同一段代码 —— 那正是账本要防的「补丁叠补丁」。
-//! （功能计划步骤 1 本来就写了要建本文件，实现时漏了，Phase D 审计逮出来补上。）
+//! 路径的平台语义（`path_key` 处理 NTFS 的大小写不敏感 · 临时根 · uid · 设备号 · 文档目录 · 保留设备名）。
+//! 与 [`super::proc`] 分开：这些既不是 `/proc` 也不是进程身份，两边各自长平台分支。
 
 use std::path::{Path, PathBuf};
 
 /// Case-fold the path on Windows so notify's NTFS case variance does not double
-/// emit; on other platforms keep the path verbatim.
-///
-/// 从前这里写「与 monitor 侧那份 jsonl 读者的同名两分支同规则」—— 那份读者 CF1 删了，
-/// 今天这两个分支只有这一份（调用方是本 crate 的 `observe/watcher.rs`）。
+/// emit; on other platforms keep the path verbatim. 调用方是 `observe/watcher.rs`。
 #[cfg(windows)]
 pub(crate) fn path_key(p: &Path) -> PathBuf {
     PathBuf::from(p.to_string_lossy().to_ascii_lowercase())
@@ -25,23 +15,9 @@ pub(crate) fn path_key(p: &Path) -> PathBuf {
     p.to_path_buf()
 }
 
-/// `K-R55`（2026-09-11）：**本平台放「每用户临时文件」的那个根目录**。
-///
-/// # 它从哪来
-///
-/// `K-R52` 的 A2 堆里挂着 `observe/tmux_observe.rs::tmux_socket_dir` 那句
-/// `PathBuf::from("/tmp")`，签字栏逐字：「同一行上方的 `uid` 那半**已经**有两条
-/// `#[cfg]` 臂了，而这一半没有 —— 典型的『只修一半』。该和 `platform/paths.rs` 住一起。」
-/// 这就是它搬过来之后的样子，连同它那另一半（[`current_uid`]）。
-///
-/// ⚠ **搬的是平台原语，不是那条组合**：`tmux_socket_dir` 自己（读 `TMUX_TMPDIR`、
-/// 拼 `tmux-<uid>`）是 **tmux 的约定**，不是平台语义 ⇒ 它留在 `observe/`。
-/// 分界线就是 `K33` 裁定二那一句：住进适配层的是「这台机器上这件事怎么做」，
-/// 不是「这件事是什么」。
-///
-/// ⚠ 非 unix 那一臂给的是 `std::env::temp_dir()`，**不是**一个编出来的答案：
-/// 那是标准库对同一个概念（本平台的临时目录）在那个平台上的取值口。
-/// 而 tmux 在那里本来就不存在 ⇒ 这条路走不到，给它一个真实的根目录只为**别撒谎**。
+/// 本平台放「每用户临时文件」的那个根目录（与 [`current_uid`] 一起是平台原语）。
+/// `observe/tmux_observe.rs::tmux_socket_dir`（读 `TMUX_TMPDIR`、拼 `tmux-<uid>`）是 tmux 的约定，留在 `observe/`。
+/// 非 unix 那一臂给 `std::env::temp_dir()`：那里没有 tmux、这条路走不到，给一个真实的根目录只为别撒谎。
 #[cfg(unix)]
 pub(crate) fn temp_root() -> PathBuf {
     PathBuf::from("/tmp")
@@ -69,11 +45,9 @@ pub(crate) fn current_uid() -> u32 {
     0
 }
 
-/// 〔「不跨文件系统边界那一档没做（设备号要走 `platform/`）」〕
-/// 一个路径（**跟链接**）所在文件系统的设备号 —— 走一棵树时「这一层是不是挂着另一个文件系统」那一判用它
+/// 一个路径（跟链接）所在文件系统的设备号 —— 走一棵树时「这一层是不是挂着另一个文件系统」那一判用它
 /// （`files::index::build` · `files::size`）。调用方只把它用在「不跟链接地看过、确是目录」的条目上，跟不跟链接在那里没有差别。
-///
-/// 非 unix ⇒ `None`：那一判在那个平台上**不开口**（全当同一个文件系统），如实登记，不编一个数。
+/// 非 unix ⇒ `None`：那一判在那个平台上不开口（全当同一个文件系统），不编一个数。
 #[cfg(unix)]
 pub(crate) fn device_of(p: &Path) -> Option<u64> {
     use std::os::unix::fs::MetadataExt as _;
@@ -120,9 +94,8 @@ pub(crate) fn link_target_of(p: &Path) -> Option<std::path::PathBuf> {
     std::fs::read_link(p).ok()
 }
 
-/// 这台机器的**「文档」目录**（Windows 上 OneDrive 会把它挪走 ⇒ 问系统 `SHGetKnownFolderPath`）。
-/// 从前是 monitor 进程问（`dirs::document_dir`）；别名方言进了后端之后，`$PROFILE` 在哪由**那台后端**问它自己的系统。
-/// 非 Windows ⇒ `None`（那里没有 `$PROFILE` 要找，调用方退回 `home/Documents`，不编一个答案）。
+/// 这台机器的「文档」目录（Windows 上 OneDrive 会把它挪走 ⇒ 问系统 `SHGetKnownFolderPath`）。`$PROFILE` 在哪由那台后端问它自己的系统。
+/// 非 Windows ⇒ `None`（那里没有 `$PROFILE` 要找，调用方退回 `home/Documents`）。
 #[cfg(windows)]
 pub(crate) fn documents_dir() -> Option<PathBuf> {
     use std::os::windows::ffi::OsStringExt as _;

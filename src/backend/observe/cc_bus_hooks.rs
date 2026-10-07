@@ -1,16 +1,13 @@
-//! 〔「本机远端两条路、两个命令」〕**cc-bus 钩子诊断** —— 帧命令 `hooks-diag` 的本体（只读）。
+//! cc-bus 钩子诊断 —— 帧命令 `hooks-diag` 的本体（只读）。
 //!
-//! 这台后端读**它自己那台**的 agent 配置根下的 `settings.json`、就地 stat 钩子点名的程序，出整份成品
+//! 这台后端读它自己那台的 agent 配置根下的 `settings.json`、就地 stat 钩子点名的程序，出整份成品
 //! （诊断 ＋ 要加的内容 ＋ 读的是哪份文件）。要加的内容只有一形：两条钩子直接指向这台装好的 cc-bus 里的那两个脚本
-//! （脚本靠 `readlink -f` 认自己的目录，直接跑得通；不依赖 `PATH`）；cc-bus 没装 ⇒ 不给。本机远端同一条命令（`chan.call(origin, "hooks-diag")`）；
-//! monitor 那两条 Tauri 命令（本机自己读盘 · 远端问三趟再判）连同判定本体一起删了。帧面宿主在顶层 `feature_face`。
+//! （脚本靠 `readlink -f` 认自己的目录；不依赖 `PATH`）；cc-bus 没装 ⇒ 不给。本机远端同一条命令（`chan.call(origin, "hooks-diag")`），
+//! 帧面宿主在顶层 `feature_face`。
 //!
-//! # 判据为什么不是字符串等值（B04，从 monitor 原样搬来）
-//!
-//! 用户盘上装的是 `"$HOME/.local/bin/cc-register" >/dev/null 2>&1 || true`，规范片段是 `cc-register …`：
-//! 功能等价、字符串不等 ⇒ 按「被执行的程序」判，而不是比原文。看不懂的形态答「无法判断」，不猜「未装」。
-//!
-//! 只读：不写 `settings.json`（这是用户的共享全局配置，由用户自己合并），只生成要加的内容。
+//! 判据不是字符串等值：`"$HOME/.local/bin/cc-register" >/dev/null 2>&1 || true` 与规范片段 `cc-register …` 功能等价、字符串不等
+//! ⇒ 按「被执行的程序」判。看不懂的形态答「无法判断」，不猜「未装」。
+//! 只读：不写 `settings.json`（用户的共享全局配置，由用户自己合并），只生成要加的内容。
 
 use crate::platform::shell::posix;
 use copy_core::copy_text;
@@ -36,8 +33,7 @@ pub(crate) enum HookState {
     InstalledAtPath { command: String, path: String },
     /// 显式路径但**该路径不存在** —— 看着像装了，其实指不到东西。
     PathMissing { command: String, path: String },
-    /// **无法判断**：命令里出现了目标程序名，但它不是被直接执行的那个（`sh -c` / `env` / `timeout` 包着）。
-    /// 猜「未装」和猜「已装」一样是猜（B04-4）。
+    /// 无法判断：命令里出现了目标程序名，但它不是被直接执行的那个（`sh -c` / `env` / `timeout` 包着）。猜「未装」和猜「已装」一样是猜。
     Unknown { command: String },
 }
 
@@ -234,7 +230,7 @@ pub(crate) fn snippet(skills: &Path, home: Option<&Path>) -> Option<String> {
     serde_json::to_string_pretty(&v).ok()
 }
 
-/// `$HOME/…` · `${HOME}/…` · `~/…` 按这台家目录展开；其余原样（B04-3：花括号那一形也要认）。
+/// `$HOME/…` · `${HOME}/…` · `~/…` 按这台家目录展开；其余原样。
 fn expand(s: &str, home: Option<&Path>) -> PathBuf {
     // 哪几种写法算「家目录底下」住 `platform::shell::posix`。
     match (posix::home_relative(s), home) {

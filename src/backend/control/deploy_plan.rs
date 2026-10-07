@@ -1,4 +1,4 @@
-//! MIG-3b 第 1 条 ——「`sftp.rs` 部署决策（该不该换 · 换成什么 · 身份判定）进后端；monitor 只放字节」。
+//! 部署决策（该不该换 · 换成什么 · 身份判定）：monitor 只放字节，判定都在这里。
 //!
 //! # 帧命令 `deploy-plan`（本机常驻后端答）
 //!
@@ -18,7 +18,7 @@
 //! monitor 照答经那台后端 `files-delete` 删。不并进 `deploy-plan` 的答：计划是连上那台常驻后端**之前**问的（预检），
 //! 那时 `files-delete` 无门可走（那一格在 SFTP 两个写根之外）；删它的两个时刻（部署按钮 · 那台长连接握手完成）那台后端都在。
 //!
-//! 回计划，一个字节都不写：放字节（mkdir · 原子上传 · 读回比对）与删旧落点 · 删残件仍是 monitor 经 `files` 链路做（SR1b 那条路不变）。
+//! 回计划，一个字节都不写：放字节（mkdir · 原子上传 · 读回比对）与删旧落点 · 删残件是 monitor 经 `files` 链路做。
 //!
 //! # 帧命令 `resident-verdict`（同一家）
 //!
@@ -27,7 +27,7 @@
 //! # 帧命令 `place-verdict`（同一家：本机那一份放不放）
 //!
 //! monitor 放本机后端之前还没有常驻后端可问 ⇒ 问手上那份字节自己（写成暂存件、跑它的 CLI 面）：表 B 本机那一行 · 落点那一份
-//! vs 自己的 `BUILD_ID`（[`place_verdict`]）。原共享 crate `deploy-core` 的判定那一半（承诺 · 换不换 · 认不认 · 取样解释）从此只住本文件；
+//! vs 自己的 `BUILD_ID`（[`place_verdict`]）。判定（承诺 · 换不换 · 认不认 · 取样解释）只住本文件；
 //! 契约那一半在 `deploy_contract`。
 //!
 //! # 它归 `control/` 的理由
@@ -36,7 +36,7 @@
 //!
 //! # 买不到的
 //!
-//! - 判定与放字节之间有窗（TOCTOU）：计划出来之后那台上的文件被人换了，monitor 照计划放 —— 与从前在 monitor 里判一样。
+//! - 判定与放字节之间有窗（TOCTOU）：计划出来之后那台上的文件被人换了，monitor 照计划放。
 //! - 第一次连一台没钉过指纹的机器：这一问在本机后端里拨，ack 里那枚指纹这一跳不交 monitor 去钉；
 //!   紧接着 monitor 开 `files` 链路（池里同一条连接）那一跳照旧钉（`dial_host::settle_host_key`）。
 
@@ -79,16 +79,14 @@ pub trait Facing: Send + Sync {
     fn list<'a>(&'a self, rel: &'a str) -> Fut<'a, Option<Vec<(String, Option<u64>)>>>;
 }
 
-// ═══ 部署判定：原共享 crate `deploy-core` 的判定那一半（判定只在后端）══════════════
+// ═══ 部署判定（判定只在后端）══════════════
 //
 // 契约那一半（键 · 戳格式 · 答话形状 · 路径）住 `deploy_contract`，两侧同一份；下面这几条裁决只住这里，
 // monitor 那两处自举（本机后端放下去之前）改问手上那份字节自己（[`answer_place`]，帧命令 `place-verdict`）。
 
-/// 表 B：这个 origin 今天承诺哪几种机器（本机 Windows x86_64 · 本机 Linux〔用户 09-18「算」〕· 远端 Linux 两个 arch）。
+/// 表 B：这个 origin 承诺哪几种机器（本机 Windows x86_64 · 本机 Linux x86_64 · 远端 Linux 两个 arch）。
 ///
-/// 用户原话「不承诺. 适配部分, 即os适配部分后面单独写单独做.」⇒ **本机 (Linux, aarch64) 不承诺**
-/// （那句「建议本机 Linux 限定 x86_64、本机侧走「不承诺」那一形」，即 [`Refusal::NotPromisedHere`]）。于是本表不再只按 OS 分：
-/// 本机那两行都钉到 x86_64（本机 Windows arm64 本来就不在产线里），远端 Linux 两个 arch 照旧。
+/// 本机 (Linux, aarch64) 不承诺（[`Refusal::NotPromisedHere`]；OS 适配以后单独做）⇒ 本机那两行都钉到 x86_64，远端 Linux 两个 arch 照旧。
 /// 承诺面的唯一住址是 `tests/evidence/K-G4-platform-ledger.py` 的 `PROMISE_FACE`；本函数与它两向相等
 /// 由 `deploy_plan_tests.rs::the_promise_face_in_the_ledger_equals_the_code` 钉着。
 pub fn promised(route: Route, key: Key) -> bool {
@@ -126,15 +124,14 @@ pub enum TargetBinary {
     Present,
     /// stat **明确说**它不在。
     Missing,
-    /// stat 说它在，但是 **0 字节** —— 不是假想形态：原子上传那一段（今天住后端 `dial/sftp.rs::put_atomic`）里
-    /// 「绝不 set_metadata」那条注释记的就是真机 e2e 实测把后端截成 0 字节、
-    /// 不可 exec 的那次事故。`try_exists` 会把它算成「在」。
+    /// stat 说它在，但是 0 字节 —— 原子上传（`dial/sftp.rs::put_atomic`）里「绝不 set_metadata」防的就是把后端截成 0 字节、
+    /// 不可 exec 的那一形。`try_exists` 会把它算成「在」。
     Empty,
     /// 问不出来（无权限 / 传输失败 / 服务器不给属性）—— 不许读成上面任何一个。
     Unknown,
 }
 
-/// stat 那两次取样的**解释**（纯函数，可单测 —— K-W4b）。
+/// stat 那两次取样的解释（纯函数，可单测）。
 ///
 /// 形状：**吃两次调用各自的结果，不吃会话**。拆出来的理由是一个具体缺陷，不是行数：解释这一半原先焊在 async 体里，
 /// 四个状态的映射规则因此一条判据都没有（`tests/evidence/K-W4b-readings.md`）。
@@ -170,7 +167,7 @@ pub fn is_newer(mine: &str, theirs: &str) -> bool {
 /// `Err` = 显式失败、**一个字节都不写**（出路交给用户：机器页「卸载后端」删掉那个文件，就是明确授权覆盖）。
 ///
 /// 「另一版」那一格按 [`deploy_contract::build_order`] 拆两格：那台上的**比这一版旧** ⇒ 换；**不比这一版旧** ⇒ [`DeployAction::Keep`]
-/// （两个不同版本的 monitor 连同一台远端，从此只会升不会降，不再每次连上互相换掉 —— 审计 E3）。
+/// （两个不同版本的 monitor 连同一台远端，只升不降，不会每次连上互相换掉）。
 pub fn identity_decision(
     id: &RemoteIdentity,
     expected: &str,
@@ -565,8 +562,7 @@ pub async fn answer(args: &Value, facing: &dyn Facing) -> Result<Value, (&'stati
 
 // ═══ 旧入口 `~/.local/bin/ccm` 的去向（帧命令 `deploy-retired`）══════════════════════════════
 //
-// 与上传残件（[`stale_leftovers`]）同一家：落点上该清的东西，判在这里，monitor 照删。从前 monitor `ccm_legacy::sweep`
-// 自己读、自己认（`is_ours`）、自己决定删；今天它只把这里的答交给那台后端的 `files-delete`（带 `expect`）。
+// 与上传残件（[`stale_leftovers`]）同一家：落点上该清的东西，判在这里；monitor 只把这里的答交给那台后端的 `files-delete`（带 `expect`）。
 
 /// 旧入口那一份的去向。
 #[derive(Debug, PartialEq, Eq)]
@@ -647,10 +643,9 @@ fn retired_json(r: Retired) -> Value {
 
 // ═══ 远端常驻后端 hello 的新旧（帧命令 `resident-verdict`）═══════════════════════════
 //
-// monitor 接远端常驻后端时读到 hello，从前自己判「那台比手上这一版旧 ⇒ 换一次」（`is_newer`）；
-// 判定归后端（「判定只在后端」），与部署计划同一家：「换不换」都在这里判，monitor 只照做。
+// monitor 接远端常驻后端时读到 hello，「那台比手上这一版旧 ⇒ 换一次」在这里判，monitor 只照做。
 
-/// hello 那一问的答：`replace` = 换掉再接（只升不降，HX2 D-b，且只换一次）；`older` = 那台比手上这一版旧（版本那句话按它挑）。
+/// hello 那一问的答：`replace` = 换掉再接（只升不降，且只换一次）；`older` = 那台比手上这一版旧（版本那句话按它挑）。
 #[derive(Debug, PartialEq, Eq)]
 pub struct Verdict {
     pub replace: bool,
@@ -694,7 +689,7 @@ pub fn answer_resident_verdict(args: &Value) -> Result<Value, (&'static str, Str
 // 本机常驻后端放下去之前没有后端可问 —— 可「`ccm` 就是后端本体」：monitor 手上那份字节就是一个后端。
 // monitor 把它写成暂存件、跑 `<暂存件> -- --place-verdict` 问一次（CLI 面自动派生），照答放或不放（`local_backend::extract_embedded_to`）；
 // 判定（表 B 本机那一行 · 落点那一份 vs 自己的 `BUILD_ID`，只升不降）只在这里。
-// 〔已知偏离〕本机 (Linux, aarch64) 的「不承诺」落在写暂存件之后（字面是写第一个字节之前）：问完即删、净足迹零。
+// 本机 (Linux, aarch64) 的「不承诺」落在写暂存件之后（不是写第一个字节之前）：问完即删、净足迹零。
 
 /// 本机那一份的去向。
 #[derive(Debug, PartialEq, Eq)]

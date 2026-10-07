@@ -1,25 +1,13 @@
-//! **skill「装到这台」** —— 两条只读帧命令：读来源那台的 skill · 在要被写的那一台上判。
-//! 又多两条只读帧命令：`skill-installs`（这台记着哪几个从别处装来的）· `skill-uninstall-plan`（卸：判在被卸的那一台）—— 见文件末尾那一段。
+//! skill「装到这台」—— 只读帧命令：读来源那台的 skill · 在要被写的那一台上判；另有 `skill-installs`（这台记着哪几个从别处装来的）·
+//! `skill-uninstall-plan`（卸：判在被卸的那一台）—— 见文件末尾那一段。装要用户点，内容原样拷过去并标出可疑项（可执行文件 / 绝对路径 / 对面未必有的命令）。
 //!
-//! # 要求
-//!
-//!「目录自动同步，**装要你点**」· 「这样远端后端也能在远端装skill或者mcp」；「内容，原样拷过去并标出可疑项」
-//! —— 不替用户改写。「skill 可能带脚本 / 二进制：可疑项规则要覆盖『可执行文件 / 绝对路径 / 对面未必有的命令』」。
-//!
-//! # 两条命令
-//!
-//! - `skill-read {name}`（**来源那台**跑）：`<skill 根>/<名>/` 下每个文件 `{path, text, bytes, exec, why}` ——
-//!   `text` 是原文（不是文本 / 太大 / 读不出来 ⇒ `null` ＋ `why`：这一个装不过去，今天的写口只收文本）。
-//! - `skill-install-plan {name, source, take?, overwrite?}`（**要被写的那一台**跑，事实是那台的）：
+//! - `skill-read {name}`（来源那台跑）：`<skill 根>/<名>/` 下每个文件 `{path, text, bytes, exec, why}` ——
+//!   `text` 是原文（不是文本 / 太大 / 读不出来 ⇒ `null` ＋ `why`：这一个装不过去，写口只收文本）。
+//! - `skill-install-plan {name, source, take?, overwrite?}`（要被写的那一台跑，事实是那台的）：
 //!   逐文件四态 · 可疑项 · 那台上现有那几份的原文（当 CAS 期望）· 给了 `take` 才答「写哪几个」。
 //!
-//! # 复用 AS1，不写第二份（`AS2.md §1.3`）
-//!
-//! 差异四态与「不同的要显式说盖、不然整趟拒」那道闸**原样用** `mcp_sync::{diff, plan}`（键 = 文件相对路径，
-//! 值 = `{text, exec}`，JSON 值相等即相同）；这台机器的事实（有没有这条路径 · `PATH` 上找不找得到这个名字）
-//! 原样用 `mcp_sync::{Facts, Live, There, is_abs_any}`。本模块只多出 skill 自己的那几条可疑项规则（[`suspects_of`]）。
-//!
-//! # 它**不**做什么
+//! 差异四态与「不同的要显式说盖、不然整趟拒」那道闸用 `mcp_sync::{diff, plan}`（键 = 文件相对路径，值 = `{text, exec}`，JSON 值相等即相同）；
+//! 这台机器的事实用 `mcp_sync::{Facts, Live, There, is_abs_any}`。本模块只多出 skill 自己的那几条可疑项规则（[`suspects_of`]）。
 //!
 //! 一个字节都不写（写经 monitor → 那台后端 `files-put`，带 `expect`）· 不改写任何一个文件的内容。
 
@@ -191,7 +179,7 @@ pub fn answer_read_at(root: Option<&Path>, args: &Value) -> Answer {
                 "path": rel,
                 "text": text,
                 "bytes": bytes,
-                // 读执行位是平台原语：借插件口那一份（`plugin::discover::is_executable`，非 unix 上恒 false —— 如实登记）。
+                // 读执行位是平台原语：借插件口那一份（`plugin::discover::is_executable`，非 unix 上恒 false）。
                 "exec": crate::plugin::discover::is_executable(abs),
                 "why": why,
             })
@@ -406,7 +394,7 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
             None => (p.clone(), json!({ "unreadable": "来源那台读不出原文" })),
         })
         .collect();
-    // AS1 那一份差异（键 = 相对路径；值相等才算相同）。
+    // 差异（键 = 相对路径；值相等才算相同）。
     let rows = mcp_sync::diff(&there, &here);
     let rows_json: Vec<Value> = rows
         .iter()

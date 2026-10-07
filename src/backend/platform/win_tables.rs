@@ -1,9 +1,9 @@
 //! **这台 Windows 的已建立 TCP 连接表 ＋ 进程表**（↗ 那一问的系统事实，`dial/terminal_processes.rs` 判）—— 直调系统接口：
 //! `GetExtendedTcpTable`（IPv4 / IPv6，带拥有者进程号）· `CreateToolhelp32Snapshot`（进程号 · 父进程号 · 名字）·
-//! `GetProcessTimes`（启动时刻，`win_proc::start_filetime`）。从前是每问一次起一趟 PowerShell 5.1（单跑就 0.9–1.8 s），
+//! `GetProcessTimes`（启动时刻，`win_proc::start_filetime`）。直调系统接口（起一趟 PowerShell 就要 1–2 s），
 //! 这里几十毫秒。只读：不读任何进程的命令行与内存。
 //!
-//! 产出与从前那段 PowerShell 同形的一行 JSON（`{tcp:[{la,lp,ra,rp,pid}…], proc:[{pid,ppid,name,start}…]}`，
+//! 产出一行 JSON（`{tcp:[{la,lp,ra,rp,pid}…], proc:[{pid,ppid,name,start}…]}`，
 //! `start` 是 FILETIME；开不出句柄的进程 ⇒ 0），解析与判定照旧只在 `terminal_processes.rs`。
 //! 签名照 `win_proc.rs` 先例手写 `extern "system"`（`DWORD` = `u32`、`HANDLE` = 指针宽）。
 
@@ -155,7 +155,7 @@ fn established() -> Result<Vec<serde_json::Value>, String> {
     Ok(out)
 }
 
-/// 进程表四格。启动时刻开不出句柄 ⇒ 0（与从前那段一样：系统没给）。
+/// 进程表四格。启动时刻开不出句柄 ⇒ 0（系统没给）。
 fn processes() -> Result<Vec<serde_json::Value>, String> {
     // SAFETY：只按值收两个整数；失败回 `INVALID_HANDLE_VALUE`（-1）。成功的句柄归 `OwnedHandle`（`Drop` 时关）。
     let raw = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };

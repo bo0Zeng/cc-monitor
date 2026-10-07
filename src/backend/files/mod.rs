@@ -1,143 +1,35 @@
-//! **`files-read` 这一族** —— 后端侧**只读**的文件面，
+//! `files-read` 这一族：后端侧只读的文件面 —— 搜索（SFTP 只能递归 `READDIR`、N 次往返，协议里也没有常驻索引）及其同族的纯读
+//! （列目录 · 元数据 · 读文本 / 按块读 · 问 home · 算大小 · grep）。写面住 `control/files_write.rs`，SFTP 只做传输。
 //!
-//! # 这一族为什么存在（只有一条理由，别读宽）
+//! # 三条硬边界（能力声明的一部分，不是注释）
 //!
-//! 那张表**只有一行**：
+//! ## ① 整族一个字节都不写，而且这一条进声明的语义
 //!
-//! > **远端搜索** —— SFTP 只能递归 `READDIR`，N 次往返；
-//! > 而且**协议里没有「放一份常驻索引」这个概念**。
-//!
-//! ⇒ 这一族买到的**只有搜索**（及其同族的纯读：读文本 · 问 home），而它们**纯读**。
-//! 这里原先写着「删 / 改名 / 建目录 / 复制全部留在 SFTP」——**今天正相反**：
-//! 写面住后端文件管理的另一个模块（`control/files_write.rs`），
-//! SFTP 只做传输。不变的是**本族**一个字节都不写 —— 写面不在这里。
-//!
-//! # 🔴 三条硬边界—— 它们是**能力声明的一部分**，不是注释
-//!
-//! ## ① 整族一个字节都不写，而且**这一条要进声明的语义**
-//!
-//! 边界① 逐字：
-//!
-//! > 这一条要进 `CAPABILITIES` 的语义，**不是注释**：将来谁往这一族里加一个写操作，
-//! > **能力声明这一侧就该先红**，而不是靠 `readonly_guard` 兜底 ——
-//! > 两道都要，但声明那道更早。
-//!
-//! 兑现处是下面那张 [`CAPABILITIES`] 的第三栏 [`Capability::effect`]：
-//! 它是一个**闭集**（[`Effect`]），每一条能力都要说自己落在哪一格。
-//! 而 `tests/backend/files/capability_guard.rs` 把那一栏钉成一条**相等**断言：
-//!
-//! ```text
-//! 从实现源码里**派生**出来的那一格  ==  这里**声明**的那一格
-//! ```
-//!
-//! 派生的人群是 [`Capability::impl_files`]，而那几张表的并集又被钉成
-//! 「**恰好等于**本族目录下现打的全部 `.rs`」（分区恒等）——
-//! 新加一份文件想躲开派生，那条恒等当场红。
-//!
-//! ⇒ 往本族任何一份实现里写一个改动盘上东西的动词，**声明这一侧第一个红**
-//!（`readonly_guard` 那一侧会跟着红，两道都在）。
-//! 🔴 这一条**有死值验**：把一个写盘动词塞进 `index.rs` 再跑，
-//! `the_declared_effect_equals_the_effect_derived_from_the_implementation` 逐字点名。
+//! [`CAPABILITIES`] 的第三栏 [`Capability::effect`] 是闭集（[`Effect`]），每条能力都说自己落在哪一格；
+//! `tests/backend/files/capability_guard.rs` 把它钉成相等断言：从实现源码派生出来的那一格 == 这里声明的那一格。
+//! 派生的人群是 [`Capability::impl_files`]，那几张表的并集又被钉成恰好等于本族目录下的全部 `.rs`（分区恒等）。
+//! ⇒ 往本族任何一份实现里写一个改动盘上东西的动词，声明这一侧第一个红（`readonly_guard` 跟着红，两道都在）。
 //!
 //! ## ② 跨 target 不对等，而且必须如实声明
 //!
-//! 边界② 逐字：
-//!
-//! > 本篇 `§2` 那条跨 target 对拍断言，对这一族要判的是「**能力在不在**」，
-//! > **不是「新鲜度一样」** —— 后者在三个平台上本来就不同。
-//! > **把它们判成相等会逼人写假声明。**
-//!
-//! ⇒ 本模块把这两件事拆成**两张表**，各自一套判法：
-//!
 //! | 表 | 判法 | 为什么 |
 //! |---|---|---|
-//! | [`CAPABILITIES`] 的 [`Capability::targets`] | 🔴 **集合相等** —— 每条能力在 [`TARGETS`] 全体上都要有 | 「能力在不在」在三个平台上必须是同一个答案 |
-//! | [`FRESHNESS`] | **逐 target 一行，刻意不判相等** | 保鲜机制逐平台不是一件事；判成相等 = 逼人写假声明 |
+//! | [`CAPABILITIES`] 的 [`Capability::targets`] | 集合相等 —— 每条能力在 [`TARGETS`] 全体上都要有 | 「能力在不在」在各平台上必须是同一个答案 |
+//! | [`FRESHNESS`] | 逐 target 一行，刻意不判相等 | 保鲜机制逐平台不是一件事；判成相等 = 逼人写假声明 |
 //!
-//! 而 [`FRESHNESS`] 那张表另有一条**反向**判据接着：它不许**全部**平台都填同一个
-//! 机制串。那一条挡的正是「为了让某条对拍变绿，把三行抄成一样」——
-//! 也就是上面那句「假声明」的具体长相。
+//! [`FRESHNESS`] 另有一条反向判据：不许全部平台都填同一个机制串（为了让对拍变绿把几行抄成一样，就是假声明的长相）。
 //!
 //! ## ③ 「定期重走」的周期是能力的一部分，必须可查询
 //!
-//! 住 [`index::REWALK_INTERVAL_SECS`]（那里逐条写了这个数怎么定的、依据是什么），
-//! 由 `files.index.status` 交出去（[`index::Status::rewalk_interval_secs`]）。
-//! 要求那个延迟**显示在界面上**，不许让用户猜为什么搜不到。
+//! 住 [`index::REWALK_INTERVAL_SECS`]，由 `files.index.status` 交出去（[`index::Status::rewalk_interval_secs`]），界面显示那个延迟。
 //!
-//! # ⚠ 本件**没有**做到的（那三层里的第 3 层，以及线上那一跳）
+//! # 线上面与汇总
 //!
-//! 1. ✅〔步 `8a`〕**汇总接上了，而且不是靠硬塞。**
-//!
-//!    先前这一条逐字写着「`CAPABILITIES` 的汇总没接 …… 硬塞进 `lib.rs::CAPABILITIES`
-//!    会当场红，而且会是**红对了**。⇒ 汇总要先有第 2 层那个派生机制，那是另一件活」。
-//!    那件活就是步 `8a`，已落地：
-//!
-//!    - 🔴 **「硬塞会红」那句话现打核过，成立** —— 把 `"files.ls"` 加进
-//!      `lib.rs::CAPABILITIES` 之后 backend 套 `769 passed / 1 failed`，**只红一条**，
-//!      逐字点名 `main_stream_flag_tests::every_capability_token_is_strippable`
-//!      「无 flag 映射……否则埋 §26 死循环」。⇒ **那一处一个字都没动。**
-//!    - 汇总的住址是 [`crate::capability_ledger`]（第 2 层那份
-//!      「由它们汇总而来」），人群是 [`crate::CAPABILITY_FACES`]。
-//!      本族在里面是**一个面**（`files-read`，六条，射程那一类是
-//!      [`crate::CapabilityKind::Asset`]）；`lib.rs::CAPABILITIES` 也是**一个面**
-//!      （`stream-flags`，两条，[`crate::CapabilityKind::Protocol`]）——
-//!      **接法是并列成面，不是往那张表里塞。**
-//!    - 本族的声明表[`CAPABILITIES`]一个字节没改，`Capability` 那八栏一栏没动。
-//!      唯一的变动是 target 轴的**住址**升到了汇总那一层（`files::Target` 原样可用，
-//!      理由写在下面 [`Target`] 那条再导出上）。
-//!    - 判据住 `tests/backend/capability_ledger_guard.rs`（七条），
-//!      两侧刻意异源：汇总侧是纯函数、被对的那侧是住测试树的点名表 ＋ 源码树现打。
-//!
-//!    ⚠ **别把它读宽成「§2 做完了」**：接上的只有第 2 层。第 3 层（跨 target 的
-//!    **对等断言** ＋ 逐条登记的豁免表）**没做**，见下面第 5 条。
-//! 2. ✅**线上那一跳已经接上**：四条能力同拍进了
-//!    `inbound::REGISTRY` / `inbound::COMMANDS`（帧面）· `lib::SUBCOMMANDS`（CLI 面）·
-//!    `src/doc/IPC-PROTOCOL.md §10`（四个小节 ＋ CLI 那一半那一段），并 bump 了 `BUILD_ID`。
-//!    [`answer`] 一个字节没改 —— 它的签名本来就是照着 `inbound::CommandSpec` 的处理器形状
-//!    做的（一进一出、`(code, message)` 的错误信封），接线那一拍加的是四条登记，不是重写。
-//!    线上名与能力名的翻译**只有一处**：[`answer_wire`]。
-//!    🔴 **但这不等于「搜索能用了」，两条如实登记：**
-//!    ① **索引今天没有任何线上办法叫它建。** 〔✅ 已由第三刀补上，见下面第 3 条〕
-//!    ② **消费侧还没有** 〔✅ 2026-09-21 翻牌，本条已假 —— 留原话当墓碑〕
-//!       原话是「`src/frontend/shell` 那一头一个字节都没动，`age_secs` / `rewalk_interval_secs`
-//!       / `stale` 还没显示在界面上」。**波 β 的 `P2` 把它接上了**：
-//!       `src/frontend/filewin/src/find.rs` 是这四条线上命令在客户端侧的第一个发送端，
-//!       那九个字段**原样**画在窗口的「新鲜度那一行」上（秒数不换算）。
-//!       ⚠ **但别把它读宽**：接上的是**这个原生窗口**这一条路；
-//!       「不看这个窗口时索引也会变新」**仍然没有，而且刻意不做**（那要一个与用户动作
-//!       无关的节拍）。⇒ 那条 ⬜ 翻了一半。
-//! 3. ✅〔`24f` **第三刀**〕**那两个机制各有了一个线上面**：
-//!    `files.index.rebuild`（线上名 `files-index-rebuild`）＝ [`index::rebuild_once`] 的线上面 ·
-//!    `files.browse`（线上名 `files-browse`）＝ [`browse_watch::set_browsing`] 的线上面。
-//!    两条同拍进了 `inbound::REGISTRY` / `inbound::COMMANDS`（帧面）· `lib::SUBCOMMANDS`
-//!   （CLI 面）· `src/doc/IPC-PROTOCOL.md §10`，并 bump 了 `BUILD_ID`。
-//!    🔴 **节拍仍然不归后端**（`no_timer_guard` 那条铁律一个字没动）：这两条只是**机制**的
-//!    线上面，「隔多久叫一次」仍然是调用方的事（`K37` 逐字「后端只给机制，不给偏好」）。
-//!    🔴 **所以登记的那个缺口没被填掉，只是换了形**：
-//!    调用方不发那条命令，索引就永远不会自己变新，而「调用方到底发不发」
-//!    本 crate 的判据钉不住（它在另一棵树上）⇒ **没人发的时候 `files.find` 照旧恒回
-//!    `index_missing: true`**。**别把「命令存在了」读成「缺口填上了」。**
-//!    ⚠ **还有一条边界，现打出来的，别读宽**：常驻那一份是**进程级**的 static
-//!    ⇒ 这两条与 `files.find` **必须在同一条连接上**才配得起来（帧面：一条长连接、
-//!    多次往返）。**CLI 面配不起来** —— 一次 exec 是「1 请求 1 响应 1 退出」，
-//!    `--files-index-rebuild` 建好的索引随那个进程一起没了，紧接着的 `--files-find`
-//!    那一 exec 照旧回 `index_missing: true`（本机 debug 档现打过这两趟）。
-//!    ⇒ CLI 面这两条的用处是**量一趟遍历** ／ 在一个常驻后端进程里换名单，
-//!    不是给下一个 exec 预热。
-//! 上一版这里登记「`BrowseWatcher` 零生产调用方」—— 今天 [`answer_browse`]
-//!    让进程里那一个监听器跟上名单（[`browse_watch::keep_watching`]）；仍然买不到的见那里。
-//! 4. **按内容搜 / 模糊匹配 / 排序** —— 「一条都没设计」，本件也没做。
-//! 5. ** 第 3 层没做，而且它缺的不止一样**〔步 `8a` 如实留账〕：
-//!    - **跨 target 的对等断言**（「所有 target 的能力集**完全相等**，不相等就红，
-//!      并**逐条登记豁免理由**」）——今天各面只是**各自声明**了自己的 `targets`，
-//!      没有一条判据把它们横着对起来，豁免表也还不存在。
-//!    - 🔴 **而「在这台机器上做不到」那个轴与本轴还没对上**，两件事别混：
-//!      本轴（target 轴）逐字答「每个平台**编不编得过**」，是**编译期**的；
-//!      [`crate::stream::wire::Unavailable`] 那个轴答「这条命令我接得下，但**在这台机器上**做不到」，
-//!      是**运行期逐机器**的。后者已真填（`main.rs` 填 `unavailable_here()`，
-//!      `main_fourth_face_tests::production_hello_fills_unavailable_from_this_machine` 钉着），
-//!      判准与本轴同源（`codes` 里的 `no_tmux` / `no_unix_mode`）。
-//!    ⇒ 这两样都在步 `8a` 的射程之外，登记在。
+//! 线上名与能力名的翻译只有一处：[`answer_wire`]。本族在能力汇总 [`crate::capability_ledger`] 里是一个面（人群 [`crate::CAPABILITY_FACES`]）。
+//! 索引怎么建、什么时候变新是机制的线上面：`files-index-rebuild`（[`index::rebuild_once`]）· `files-browse`（[`browse_watch::set_browsing`]）；
+//! 节拍归调用方（后端零定时器）—— 没人发 rebuild，`files.find` 就回 `index_missing: true`。
+//! 常驻那一份索引是进程级的 ⇒ 这几条要在同一条连接上才配得起来；CLI 面一次 exec 一个进程，建好的索引随进程没了。
+//! 跨 target 的对等断言（各面能力集横着对、逐条登记豁免）没做；它与「在这台机器上做不到」（[`crate::stream::wire::Unavailable`]，运行期逐机器）是两个轴。
 
 pub mod browse_watch;
 pub mod grep;
@@ -165,19 +57,7 @@ pub enum Effect {
     TouchesDisk,
 }
 
-/// 编译 target 轴 —— **住址已经搬到 [`crate::Target`]**〔步 `8a`〕。
-///
-/// # 为什么搬走（不是整理，是「一个数只有一个住址」）
-///
-/// 这个轴原先定义在本族里，那在**只有本族一个能力面**的时候是对的。
-/// 步 `8a` 接上第 2 层那条汇总之后，**声明 target 的面不止一个**
-///（[`crate::CAPABILITY_FACES`] 现打三个）—— 轴要是留在本族，另外两个面就得
-/// 从一个**兄弟**那里引它，或者各写一份。后者是两个住址，前者是层序颠倒。
-/// ⇒ 轴升到 `lib.rs`（汇总那一层），本族**再导出**它，本族的散文与判据一个字不用改。
-///
-/// ⚠ 与那条「两个壳」的对等断言**不是同一条断言**
-///（开头逐字分过这两个轴：壳答「折进去会不会改变它能干什么」，
-/// target 答「每个平台编不编得过」）。本族登记的是后者。
+/// 编译 target 轴：住 [`crate::Target`]（汇总那一层，声明 target 的面不止一个），本族再导出它。
 pub use crate::{Target, TARGETS};
 
 /// 一条能力的登记。
@@ -215,12 +95,6 @@ pub const CAPABILITIES: &[Capability] = &[
         effect: Effect::ReadsOnly,
         impl_files: &["mod.rs", "raw.rs"],
         targets: TARGETS,
-        // 🔴 这里原先还有一条 `"ignore_ascii_case"` ——
-        //    **[`answer_ls`] 一次都没读它**（现打：它只调 [`path_arg`] 与 [`limit_of`]）。
-        //    那是从下面 `files.find` 那条抄过来的一个鬼影：本表没有任何判据拿 `args`
-        //    去对真解析器，所以它一直没红。接线那一拍必须先把它摘掉 ——
-        //    不然 `src/doc/IPC-PROTOCOL.md §10` 那份**冻结的线上契约**里就会多出一个
-        //    「写了也不起作用」的参数，而那份文档的读者在仓外。
         args: &["limit", "path"],
         fields: &[
             "entries",
@@ -300,14 +174,9 @@ pub const CAPABILITIES: &[Capability] = &[
         ],
         codes: &[],
     },
-    // ── 裁出来的第五、第六条 ────────────────
-    //
-    // 🔴 **它们补的是「机制的线上面」，不是节拍**：那条裁定逐字
-    //   「机制在后端 · 偏好由后端声明 · 节拍归调用方」——`§3.5.2` 那三段各该有一条命令，
-    //   而第二刀只接了「查」那一段。这两条把「建索引」与「保鲜」那两段补齐。
-    // ⚠ 两条都在边界① 之内，逐条核过：`rebuild_once` 是遍历 ＋ 换掉内存里那一份，
-    //   `set_browsing` 是登记名单 ＋ 重列一遍 —— **都不往盘上写一个字节**
-    //   ⇒ 整族仍然纯读，`readonly_guard` 那 4259 行照旧一行不用改。
+    // ── 建索引 · 保鲜 ────────────────
+    // 机制的线上面，不是节拍（节拍归调用方）。两条都在边界① 之内：`rebuild_once` 是遍历 ＋ 换掉内存里那一份，
+    // `set_browsing` 是登记名单 ＋ 重列一遍 —— 都不往盘上写一个字节。
     Capability {
         name: "files.index.rebuild",
         purpose: "🔴 **走一遍，就一遍，做完返回** —— `index::rebuild_once` 的线上面（只有机制，没有节拍）",
@@ -350,13 +219,8 @@ pub const CAPABILITIES: &[Capability] = &[
         ],
         codes: &["bad_args", "bad_path"],
     },
-    // ──：窗口换走通道的那两问 ────────────
-    //
-    // 🔴 **它们补的是「窗口进程里还不是通道」那张欠账表上的两格**：
-    //   编辑器读一份文本（此前走 SFTP 把字节整份搬过来）· 开窗前「那台机器的 home 在哪」
-    //   （此前走 SFTP 问 `.` 解成什么）。两条都**纯读** ⇒ 进这一族，整族照旧一个字节不写。
-    // ⚠ 本族头注那句「后端买到的**只有搜索**」因此不再是全部 —— 那句话写于 `24f`，
-    // （薄窗口 ＋ 逻辑在后端）之后窗口的每一问都该有一条后端命令。
+    // ── 窗口的两问：读一份文本 · 那台机器的 home 在哪 ────────────
+    // 两条都纯读 ⇒ 进这一族。
     Capability {
         name: "files.read.text",
         purpose: "读一份文本进编辑器 —— **超上限整趟拒、不截断**；含 NUL / 不是 UTF-8 也拒",
@@ -388,9 +252,8 @@ pub const CAPABILITIES: &[Capability] = &[
         ],
         codes: &["bad_path", "unreadable"],
     },
-    // ── 〔用户〕读族第十条：按字节寻址分块读回 ─────────────────────────
-    //   非 UTF-8 名的下载（SFTP 库的路径是 `String`，寻址不到）经后端链路一块一块读回；下载对远端只读。
-    //   与 `files-stage-chunk` 对称（那条是分块写进暂存区）。纯读。
+    // ── 按字节寻址分块读回 ─────────────────────────
+    // 非 UTF-8 名的下载（SFTP 库的路径是 `String`，寻址不到）经后端链路一块一块读回；与 `files-stage-chunk`（分块写进暂存区）对称。纯读。
     Capability {
         name: "files.read.chunk",
         purpose: "从一份普通文件的 `offset` 起读至多 `len` 字节（原始字节，b16 送回）—— 下载非 UTF-8 名那条路的一块",
@@ -461,7 +324,7 @@ pub struct Freshness {
 pub enum Evidence {
     /// 本机现打，读数有住址。
     Measured,
-    /// 文献读数，**没实测**。
+    /// 文献读数，没实测。
     LiteratureOnly,
     /// 判不了 —— 缺什么写在 [`Freshness::gap`] 里。
     Undetermined,
@@ -510,19 +373,11 @@ pub const FRESHNESS: &[Freshness] = &[
 
 // ══════════════════════ 命令面（形状照 `inbound::CommandSpec` 的处理器）══════════════════════
 
-/// 一条能力的答案：成功交 JSON，失败交 `(code, message)`。
-///
-/// ⚠ 与 `inbound` 那一侧**逐字同形**（它的 `CmdResult` 是
-/// `Result<Option<serde_json::Value>, (String, String)>`）——接线那一拍才不用改形状。
+/// 一条能力的答案：成功交 JSON，失败交 `(code, message)`（与 `inbound` 的 `CmdResult` 同形）。
 pub type Answer = Result<serde_json::Value, (&'static str, String)>;
 
-/// 每次回送的条数上限的**默认值**。
-///
-/// 调用方给 `limit` 就用它的。给 0 或不给 ⇒ 用这个。
-/// ⚠ 上限存在的理由不是省内存，是「一次往返」这句话要成立：
-/// 那趟现打里有一次查询命中 **52 666** 条 ——
-/// 把它们一次全推过去，「零流量搜索」那句话就只剩半句。
-/// 回送被截断时 `truncated` 与 `total_hits` 两个字段都会说出来。
+/// 每次回送的条数上限的默认值（调用方给 `limit` 就用它的；给 0 或不给 ⇒ 用这个）。
+/// 理由是「一次往返」：一次查询可以命中五万多条，一次全推过去就不再是零流量搜索。截断时 `truncated` 与 `total_hits` 会说出来。
 pub const DEFAULT_LIMIT: usize = 1000;
 
 fn limit_of(args: &serde_json::Value) -> usize {
@@ -719,14 +574,8 @@ where
     })
 }
 
-/// `files.stat` —— 一个路径的元数据。
-///
-/// ⚠ **它跟 symlink**（拿的是链接指向的那个东西的元数据）。
-/// 不跟的那个读法要另一个动词，而那个动词**不在** `readonly_guard` 的只读白名单上
-///（那张表在另一棵树上、不在本件写区；往它加动词是**放宽**一条红线，
-/// 不是本件该顺手做的事）。⇒ **这是一条真实的局限，如实登记。**
-/// 需要区分链接本身时，先用 `files.ls` 看它父目录那一行的 `kind`
-///（那一栏走的是不跟链接的读法）。
+/// `files.stat` —— 一个路径的元数据。它跟 symlink（拿链接指向的那个东西的元数据）：不跟的读法要另一个动词，
+/// 那个动词不在 `readonly_guard` 的只读白名单上。需要区分链接本身时，先用 `files.ls` 看它父目录那一行的 `kind`。
 fn answer_stat(args: &serde_json::Value) -> Answer {
     let path = path_arg(args)?;
     let md = std::fs::metadata(&path).map_err(|e| {
@@ -965,25 +814,12 @@ fn answer_status() -> Answer {
     }))
 }
 
-/// `files.index.rebuild` —— **走一遍，就一遍，做完返回。**
+/// `files.index.rebuild` —— 走一遍，就一遍，做完返回。
 ///
-/// # 🔴 根读不进去 ⇒ **拒**，常驻那一份一个字节不动
-///
-/// 这一格是本刀现打逼出来的：[`index::build`] 对一个打不开的根**不会失败** ——
-/// 它只把 `unreadable_dirs` 加一，然后交一份**空快照**；而 [`index::rebuild_once`]
-/// 会把常驻那一份**整份换掉**。
-/// ⇒ 调用方把路径打错一个字母，手上那份好索引就被一份空的顶掉，
-/// 而回参看起来像一次成功的重走（`entries: 0` 与「这台机器上真的没文件」同形）。
-/// 那正是本仓反复治的**静默缩水**（地板在「变少」方向上是瞎的）。
-///
-/// ⇒ 本层在换之前**先探一次根**：打不开就回 `unreadable`，**不调 `rebuild_once`**。
-/// 判据那一侧是一条**相等**断言（换之前的条目数 == 被拒之后的条目数），
-/// 不是「回了个错就算过」。
-///
-/// ⚠ 这一档加在**命令面**，[`index::rebuild_once`] 的语义**一个字没动** ——
-/// 机制那一侧仍然逐字是「走一遍，就一遍」。
-/// ⚠ 它**不判**根底下那些子目录：那些读不进去的照旧落在 `unreadable_dirs` 里
-///（「不是 0 就说明这份索引有洞」）。
+/// 根读不进去 ⇒ 拒，常驻那一份一个字节不动：[`index::build`] 对一个打不开的根不会失败（只把 `unreadable_dirs` 加一、交一份空快照），
+/// 而 [`index::rebuild_once`] 会把常驻那一份整份换掉 ⇒ 路径打错一个字母，好索引就被空的顶掉、回参还像一次成功的重走。
+/// 所以换之前先探一次根，打不开回 `unreadable`（判据：换之前的条目数 == 被拒之后的条目数）。
+/// 根底下读不进去的子目录照旧落在 `unreadable_dirs` 里（不是 0 就说明这份索引有洞）。
 fn answer_index_rebuild(args: &serde_json::Value) -> Answer {
     // 不给 `path` ⇒ 这台机器的家目录（默认的根）。
     let root = match args.get("path") {
@@ -1006,17 +842,8 @@ fn answer_index_rebuild(args: &serde_json::Value) -> Answer {
             ),
         )
     })?;
-    // 🔴 **「有一趟已经在跑」走错误码那条路，不走成功回参。**
-    //
-    // 2026-09-21 起 `rebuild_once` 是非阻塞互斥的（理由与业界对照住它的头注）。
-    // 抢不到时它回 `None`，而这里**刻意不把它做成一个带 `skipped: true` 的成功回参** ——
-    // 那样「没走」与「走完了但树是空的」就都是一个成功答复，只差一个布尔，
-    // 而本文件下面那段头注逐字警告过同一形：
-    // 「回参看起来像一次成功的重走（`entries: 0` 与『这台机器上真的没文件』同形）」。
-    //
-    // ⇒ 走错误码：`already_rebuilding`。这样两形在**结构上**就不可能混
-    //   （一个是 `Ok(fields)`、一个是 `Err(code)`），而且它用的是这条能力
-    //   **声明表里已有的那一栏**（`codes`）—— 不新造机械。
+    // 「有一趟已经在跑」（`rebuild_once` 非阻塞互斥、抢不到回 `None`）走错误码 `already_rebuilding`，不走带 `skipped` 的成功回参：
+    // 那样「没走」与「走完了但树是空的」在结构上就分不开。
     let stats = index::rebuild_once(&root).ok_or_else(|| {
         (
             "already_rebuilding",
@@ -1047,21 +874,14 @@ fn unreadable_paths_json() -> Vec<serde_json::Value> {
 
 /// `files.browse` —— 告诉后端「用户现在在看哪几个目录」。
 ///
-/// # 它买到的（比上一版多一截）
-///
-/// [`browse_watch::set_browsing`] 做两件事：**登记名单** ＋ **当场把那几个目录各重列一遍**（结果进 overlay，
-/// 查询时盖掉大索引里的对应条目）。之后 [`browse_watch::keep_watching`] 让**进程里那一个监听器**
-/// 跟上名单（第一次时起、此后一直持有；新来的挂上、离开的卸掉）⇒ 浏览的目录此后一有动静 overlay 就跟着重列。
-/// ⚠ 仍然买不到：watch 绑 inode 不绑路径 · 内核队列溢出 · 窗口关了没人发空名单（最后那份名单的 watch 留到下一次）。
-///
-/// ⚠ `rejected` 必须跟着回去（[`browse_watch::Applied::rejected`] 头注逐字）：
-/// 静默截断会让「我明明在看这个目录、新建的文件却要等重走」变成一个查不出原因的现象。
-/// 回参里同拍带上 `browse_watch_cap` —— 只回一个 `rejected` 的数、不说上限是多少，
-/// 调用方没法判「该少送几个」。
+/// [`browse_watch::set_browsing`] 登记名单 ＋ 当场把那几个目录各重列一遍（结果进 overlay，查询时盖掉大索引里的对应条目）；
+/// [`browse_watch::keep_watching`] 让进程里那一个监听器跟上名单 ⇒ 浏览的目录此后一有动静 overlay 就跟着重列。
+/// 买不到：watch 绑 inode 不绑路径 · 内核队列溢出 · 窗口关了没人发空名单（最后那份名单的 watch 留到下一次）。
+/// `rejected` 必须跟着回去，并同拍带上 `browse_watch_cap`：只回一个数、不说上限，调用方没法判该少送几个。
 fn answer_browse(args: &serde_json::Value) -> Answer {
     let dirs = dirs_arg(args)?;
     let applied = browse_watch::set_browsing(&dirs);
-    // 名单登记了之后让进程里那一个监听器跟上（此前 `BrowseWatcher` 零生产调用方）。
+    // 名单登记了之后让进程里那一个监听器跟上。
     let w = browse_watch::keep_watching();
     Ok(serde_json::json!({
         "added": applied.added,
@@ -1150,21 +970,6 @@ pub fn file_sha256(path: &std::path::Path) -> std::io::Result<String> {
     }
 }
 
-/// `files.read.text` —— 读一份文本。**超上限整趟拒，不截断**（截断过的文本存回去会写坏文件）。
-///
-/// 三道拒，各有自己的码（调用方据此说三句不同的话，而不是一个灰按钮）：
-///
-/// | 码 | 什么时候 |
-/// |---|---|
-/// | `too_large` | `stat` 出来的大小超过 `max_bytes`；**或者**读的时候比 `stat` 时大（文件在长）|
-/// | `not_text` | 不是普通文件 · 含 NUL 字节 · 不是合法 UTF-8 |
-/// | `unreadable` | 读不到（不存在 / 没权限）|
-///
-/// ⚠ 大小判两次不是啰嗦：`stat` 与真读之间文件可以被换大，第二道用 `take(max + 1)`
-/// 读 —— 最多只多读一个字节就知道「超了」，不会把一个刚变成几个 G 的文件整个读进内存。
-/// ⚠ 它**不过会话数据围栏**：那道围栏立在写侧（「不许改坏正被 Claude 打开的那份」），
-/// 读一份会话记录进编辑框不改任何东西；存回去那一下才过围栏（写面那条会拒）。
-/// 〔用户「文件管理器全部都可以改. 不需要任何围栏」〕写侧那道也拿掉了：存得回去。
 /// `files.read.chunk`：`{path, offset, len}` → `{path, offset, size, eof, content: {b16}}`。
 /// 只读普通文件（不是 ⇒ `not_text`，与读族同一个码）；`offset` 越过末尾 ⇒ 空块、`eof: true`。
 fn answer_read_chunk(args: &serde_json::Value) -> Answer {
@@ -1224,6 +1029,15 @@ fn answer_read_chunk(args: &serde_json::Value) -> Answer {
     }))
 }
 
+/// `files.read.text` —— 读一份文本。超上限整趟拒，不截断（截断过的文本存回去会写坏文件）。
+///
+/// | 码 | 什么时候 |
+/// |---|---|
+/// | `too_large` | `stat` 出来的大小超过 `max_bytes`；或者读的时候比 `stat` 时大（文件在长）|
+/// | `not_text` | 不是普通文件 · 含 NUL 字节 · 不是合法 UTF-8 |
+/// | `unreadable` | 读不到（不存在 / 没权限）|
+///
+/// 大小判两次：`stat` 与真读之间文件可以被换大，第二道用 `take(max + 1)` 读 —— 最多多读一个字节就知道「超了」。
 fn answer_read_text(args: &serde_json::Value) -> Answer {
     let path = path_arg(args)?;
     let max = args
@@ -1319,12 +1133,6 @@ fn answer_read_text(args: &serde_json::Value) -> Answer {
     }))
 }
 
-/// 后端这个进程的用户 home（环境里那一格，原样）。空串算没有。
-///
-/// ⚠ 与 SFTP 那一问（`realpath(".")`）**是同一个答案的两个出处**：sshd 起会话时按
-/// 账号库给 `HOME`、并把 SFTP 子系统的起点放在同一处；后端正是经那条 SSH 以同一个用户起的。
-/// 两者分得开的只有一形：有人在登录脚本里改了 `HOME` —— 那时本命令答的是改过之后的那个，
-/// 而那正是这台机器上其余东西（shell、Claude）认的那个。
 /// `files.size` —— 走法与诚实边界住 [`size`] 头注。
 fn answer_size(args: &serde_json::Value) -> Answer {
     let path = path_arg(args)?;
@@ -1349,6 +1157,8 @@ fn answer_size(args: &serde_json::Value) -> Answer {
     }))
 }
 
+/// 后端这个进程的用户 home（环境里那一格，原样）。空串算没有。与 SFTP 那一问（`realpath(".")`）是同一个答案的两个出处
+/// （sshd 按账号给 `HOME` 并把 SFTP 子系统的起点放在同一处）；有人在登录脚本里改了 `HOME` 时答改过之后的那个 —— shell 与 Claude 认的也是它。
 fn home_var() -> Option<std::ffi::OsString> {
     crate::platform::paths::home_dir().map(std::path::PathBuf::into_os_string)
 }

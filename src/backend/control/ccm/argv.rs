@@ -1,32 +1,17 @@
-//! `ccm` 这套 argv 的**唯一解析口**（`KR48D2`）与**唯一默认值住址**（`KR48D4`）。
+//! `ccm` 这套 argv 的唯一解析口与唯一默认值住址。
 //!
-//! 〔用@09-11 `K33` 逐字〕「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**。
-//! **所有命令只许有一处**，其他都是**根据传参来调用**。」
-//!
-//! # 本文件承的是哪两条 DoD
-//!
-//! - `KR48D2`「终端里敲的那个命令，实现只有一处」⇒ 这套 argv 的**解析**只许在这一个文件里。
-//!   `plan.rs` / `mod.rs` 一律拿 [`Opts`]，**不许自己再看一眼 `args`**。
-//!   由 `the_ccm_argv_is_parsed_in_exactly_one_place` 机检。
-//! - `KR48D4`「一个参数的默认值只有一处住址」⇒ 每个参数的默认值只许写在 [`Defaults`] 里。
-//!   由 `every_default_lives_only_in_the_defaults_block` 机检。
-//!
-//! # 旗标名也只有一处住址
-//!
-//! 每个 `--flag` 的**字面量**只住在 [`flag`] 里。`plan.rs` 拼内层载荷时要用同样的字面量
-//! （`--account` / `--base` / …），在那边再敲一遍就是第二处住址 —— 那正是 `K-R50`
-//! 那件事的成因（两份写法迟早分叉）。
-//!
-//! ⚠ **本文件是本 crate 里唯一允许持有 ccm 旗标字面量的地方**，
-//! 由 `protocol_doc_guard::TERMINAL_SURFACE_FILES` 登记并机检（见那边的头注：
-//! 它换掉了 `dispatch_registry_is_complete` 在本文件上的那一格，不是绕过它）。
+//! - 解析只许在这一个文件里：`plan.rs` / `mod.rs` 一律拿 [`Opts`]，不许自己再看一眼 `args`
+//!   （`the_ccm_argv_is_parsed_in_exactly_one_place` 机检）。
+//! - 每个参数的默认值只许写在 [`Defaults`] 里（`every_default_lives_only_in_the_defaults_block` 机检）：两份默认迟早分叉。
+//! - 每个 `--flag` 的字面量只住在 [`flag`] 里；`plan.rs` 拼内层载荷时也从这里取。本文件是本 crate 里唯一允许持有
+//!   ccm 旗标字面量的地方（`protocol_doc_guard::TERMINAL_SURFACE_FILES` 登记并机检）。
 
 use copy_core::copy_text;
 
-/// 每个 `--flag` 的字面量，**唯一住址**。
+/// 每个 `--flag` 的字面量，唯一住址。
 ///
 /// ccm 是 claude 的壳：它只认下面这些（壳层选项 ＋ `--ccm-*` 诊断口 ＋ `--`），其余每个词原样交给 agent。
-/// 用户 09-26：与 claude 同名的两个改名 `--ccm-tmux` / `--ccm-agent`（claude 2.1.283 自己有 `--tmux` / `--agent`）。
+/// `--ccm-tmux` / `--ccm-agent` 带前缀：claude 自己有 `--tmux` / `--agent`。
 pub(crate) mod flag {
     pub(crate) const TMUX: &str = "--ccm-tmux";
     pub(crate) const TMUX_BASE: &str = "--tmux-base";
@@ -74,16 +59,10 @@ pub(crate) enum CwdSpec {
     Explicit(String),
 }
 
-/// 🔴 **每个参数的默认值，唯一住址**（`KR48D4`）。
+/// 每个参数的默认值，唯一住址。
 ///
-/// 「可以省略参数，而且能省就尽量省」（`K33` 裁定五后半）的前提是**默认值不许在两处各写一份**：
-/// 两份默认迟早分叉，而那正是 `K-R50` 那件事的成因（漏传不报错、悄悄换成另一个值）。
-///
-/// ✅ **`--account` 那一格已经裁了**（用户 09-12，住址 `DECISIONS.md#R28`）：
-/// **不给 ⇒ 落 manifest 的默认账号，这就是要的行为**；用户逐字「不是有选默认账号吗? 就用那个」。
-/// ⚠ 与它成对的另一半同样是裁定的一部分：**调用方已经选好的号不许被静默换掉**
-/// （`plan::resolve_account` 的继承那一支，闸的来历是 `R08` 真机复现过的一次静默换号）。
-/// ⇒ 这两句**别再读成「照搬 `shared/ccm` 的病灶、等人来裁」** —— 那是 09-11 的读法，已经过期。
+/// `--account` 不给 ⇒ 落 manifest 的默认账号（`DECISIONS.md#R28`）；成对的另一半：调用方已经选好的号不许被静默换掉
+/// （`plan::resolve_account` 的继承那一支）。
 pub(crate) struct Defaults;
 
 impl Defaults {
@@ -91,8 +70,7 @@ impl Defaults {
     pub(crate) fn agent() -> &'static str {
         crate::agents::default_kind()
     }
-    /// 不给 `--cwd` ⇒ `auto`，而 `K-R58` 起 **`auto` 就是恒等**：调用方自己的 cwd。
-    /// 见 `plan::resolve_cwd`（`K37` 第三条：诚实的默认 = 恒等 / 不作为 / 沿用调用者状态）。
+    /// 不给 `--cwd` ⇒ `auto`，而 `auto` 就是恒等：调用方自己的 cwd（`plan::resolve_cwd`；诚实的默认 = 沿用调用者状态）。
     pub(crate) const CWD: CwdSpec = CwdSpec::Auto;
     /// 不给 `--tmux` ⇒ 不进容器路。
     pub(crate) const USE_TMUX: bool = false;
@@ -104,12 +82,9 @@ impl Defaults {
     pub(crate) const PRINT: bool = false;
     /// 不给 `--bus-register` ⇒ 不登记 cc-bus。
     pub(crate) const BUS_REGISTER: bool = false;
-    // 🔴 `K-R58`：这里原来有 `WORKSPACE_REL = "projects/notes"`（`$HOME` 下裸敲时
-    //    的落点）。它是**一张表里替用户挑的那个具体值**，`K37` 第三条判它「不诚实」⇒ 删了，
-    //    连同读它的 `CCM_WORKSPACE`。默认值表里少一格，是因为那一格的默认现在是恒等。
-    // 账号库 manifest 的门牌号不在这张默认值表里：它是后端的家那一族（`plan::accts_manifest_under`），
-    // 不是一个可以换的默认值。
-    /// 起 agent 前要 eval 的机器级 env（旧 `CC_ENV` 的搬家）。
+    // 工作目录不在这张表里：它的默认是恒等（上面 `CWD`），不替用户挑一个具体目录。
+    // 账号库 manifest 的门牌号也不在：它是后端的家那一族（`plan::accts_manifest_under`），不是一个可以换的默认值。
+    /// 起 agent 前要 eval 的机器级 env。
     pub(crate) const ENV: &'static str = "";
 }
 
@@ -301,7 +276,7 @@ pub(crate) fn word_at(args: &[String], i: usize) -> Result<Word, Die> {
             let (v, n) = one()?;
             (vec![v], n)
         }
-        // 开关：`--x=值` 那个值不看（与从前一样）。
+        // 开关：`--x=值` 那个值不看。
         _ => (Vec::new(), 1),
     };
     Ok(Word {
@@ -355,13 +330,12 @@ pub(crate) fn apply_word(o: &mut Opts, w: &Word, at: usize) -> Result<Option<Ear
     Ok(None)
 }
 
-/// 🔴 **这套 argv 的唯一解析口。**
+/// 这套 argv 的唯一解析口。
 ///
-/// 〔用户 09-27〕格式 `ccm [交给 claude 的…] -- [ccm 自己的…]`：没有 `--` ⇒ 整行原样交 agent（[`Opts::passthru`]，
-/// 一个词都不拦）；有 ⇒ 按**最后一个** `--` 切（[`last_end`]），左边原样交 agent（claude 自己的 `--` 照写，
-/// 没有 ccm 部分时末尾补一个空 `--`），右边逐词只认 ccm 表（壳层选项 ＋ `--ccm-*` 诊断口），认不得就报错、不猜。
+/// 格式 `ccm [交给 claude 的…] -- [ccm 自己的…]`：没有 `--` ⇒ 整行原样交 agent（[`Opts::passthru`]，一个词都不拦）；
+/// 有 ⇒ 按最后一个 `--` 切（[`last_end`]），左边原样交 agent（claude 自己的 `--` 照写，没有 ccm 部分时末尾补一个空 `--`），
+/// 右边逐词只认 ccm 表（壳层选项 ＋ `--ccm-*` 诊断口），认不得就报错、不猜。
 /// 逐词那一圈是 [`word_at`]（几个词）＋ [`apply_word`]（什么意思）。
-/// 〔墓碑 —— 上一版：壳层选项在任何位置都认、首词 `new` 是 ccm 的位置动作、`--` 之后一律透传。〕
 pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
     let (left, right): (&[String], &[String]) = match last_end(args) {
         Some(k) => (&args[..k], &args[k + 1..]),
@@ -467,8 +441,8 @@ fn validate(o: &Opts) -> Result<(), Die> {
             &[("size", &o.tmux_size.to_string())],
         ));
     }
-    // 〔`INVARIANTS §47` ①〕标识符在拼进容器路那条 shell 串之前先过放行判定
-    // （判定住 `shell-quote-core`，全仓唯一一份；quote 只管元字符，管不了 `-` 开头的选项注入）。
+    // 标识符在拼进容器路那条 shell 串之前先过放行判定（`INVARIANTS §47` ①；判定住 `shell-quote-core`；
+    // quote 只管元字符，管不了 `-` 开头的选项注入）。
     if !o.ccm_sid.is_empty() && !shell_quote_core::session_id_ok(&o.ccm_sid) {
         return die(copy_text(
             "beArgv.validate.badCcmSid",

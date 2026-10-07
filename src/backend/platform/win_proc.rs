@@ -1,41 +1,16 @@
-//! **Windows 上「一个 pid 还在不在 · 它哪一刻起的 · 等它死」的 Win32 读法** —— 唯一住址。
+//! Windows 上「一个 pid 还在不在 · 它哪一刻起的 · 等它死」的 Win32 读法 —— 唯一住址。
 //!
-//! # 为什么有这份文件
+//! `proc.rs` 的判活三件与 `pidwatch` 的看守在 Windows 上的读法住这里；判定规则一条都不在这里
+//! （「exists / captured / current 三者怎么组合成存活」只住 `liveness.rs`）。
+//! 用 `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` ＋ `GetExitCodeProcess == STILL_ACTIVE` ＋ `GetProcessTimes`，与 Linux 那一臂同契约：
+//! ① 「拒绝访问」算存在：`pid_alive` 的契约是存在性（Linux 的 `/proc/<pid>` 对别的用户的进程照样存在），不是「我能不能碰它」；
+//! ② 起始时刻交 FILETIME 原值（UTC、100ns、自 1601），不换成本地 ticks：消费者要的是「同一个读法读两次能不能对上」，不该带进时区与夏令时。
 //!
-//! `proc.rs` 的判活三件（`pid_alive` / `proc_starttime` / `start_epoch_from_ticks`）与
-//! `pidwatch` 的看守，在非 Linux 上从 U4a 起就是空壳（`pid_alive` 甚至是 `unimplemented!()`）。
-//! 而 Windows 本机**一定**有一个后端进程在跑 ⇒ 它的 `watcher` 每见一份
-//! `sessions/<PID>.json` 就调一次 `pid_alive` ⇒ **见到第一个 claude 会话就 panic**。
-//! 这份文件把那几件的 Windows 读法补上；**判定规则一条都不在这里**（翻译官只翻译读法）
-//! —— 「exists / captured / current 三者怎么组合成存活」仍只住 `liveness.rs`。
+//! 不用 `windows` / `windows-sys` crate：为几个 `kernel32` 函数加一条依赖不如手写 `extern "system"`。签名逐个对着 Win32 文档写：
+//! `HANDLE` = 指针宽度（与 `std::os::windows::io::RawHandle` 同形）、`BOOL` = `i32`、`DWORD` = `u32`。
 //!
-//! # 身份那一半是照搬，不是新写
-//!
-//! monitor 侧当年 `session_map.rs` 那份进程判活（随本机判活改由本机后端的帧来删了）的 `cfg(windows)` 那支
-//! （`OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` ＋ `GetExitCodeProcess == STILL_ACTIVE`
-//! ＋ `GetProcessTimes`）在 Windows 用户机上跑过很久（`tests/frontend/shell/rust_timer_registry_tests.rs`
-//! 那条「F12 解锁闹钟」的头注逐字）。本文件用的是**同一组 Win32 调用、同一个访问掩码**。
-//! 差别只有两处，都是为了与 Linux 那一臂同契约：
-//! ① **「拒绝访问」算存在**：Linux 的 `/proc/<pid>` 对别的用户的进程照样存在，
-//!    `pid_alive` 的契约是「存在性」，不是「我能不能碰它」；monitor 那一份把它算成死（它问的是另一件事）。
-//! ② **起始时刻交 FILETIME 原值**（UTC、100ns、自 1601），不换成 .NET 本地 ticks ——
-//!    `proc_starttime` 的消费者要的是「同一个读法读两次能不能对上」（`#34` 基线），
-//!    换成本地时间就把时区与夏令时带进了一个本该只比相等的值里。
-//!
-//! # 这里刻意不用 `windows` / `windows-sys` crate
-//!
-//! 本 crate 今天一条 Windows 专属依赖都没有；为四个 `kernel32` 函数加一条依赖（还要动 lock）
-//! 不如手写 `extern "system"`（monitor 那一侧原先换 FILETIME 时区的那一处也是这么写的，那段随它唯一的用途删了）。
-//! 签名逐个对着 Win32 文档写：`HANDLE` = 指针宽度（与 `std::os::windows::io::RawHandle` 同形）、
-//! `BOOL` = `i32`、`DWORD` = `u32`。
-//!
-//! # 🚫 买不到（写在最前面，别把绿读成验过）
-//!
-//! 本机是 Linux：这份文件**只在 Windows 编译时存在**，门禁买到的是 `winchk-backend`
-//! 那一格的「编得过」。「在真 Windows 上 `OpenProcess` 真的回那几个错误码、
-//! `WaitForSingleObject` 真的在进程退出那一刻醒」—— **一格都没有读数**（本路不碰 Win11 虚拟机，
-//! 未拍）。能在 Linux 上验的只有纯函数那一半（`proc.rs::unix_secs_from_filetime`）
-//! 与「看守三条判死路径 ＋ 一条不判死」和 Linux 臂逐形对拍（`pidwatch` 那边的源码判据）。
+//! 买不到：这份文件只在 Windows 编译时存在，门禁买到的是 `winchk-backend` 的「编得过」；`OpenProcess` 的错误码、`WaitForSingleObject`
+//! 在进程退出那一刻醒，都没有真机读数。能在 Linux 上验的只有纯函数那一半（`proc.rs::unix_secs_from_filetime`）与看守和 Linux 臂的逐形对拍。
 
 #![cfg(windows)]
 

@@ -96,7 +96,7 @@ pub(crate) fn lock(t: &Table) -> std::sync::MutexGuard<'_, BTreeMap<String, Reac
 
 /// 可达表**唯一的写口**：`{origin, dial}` 两格齐了才记（那台后端的路径不再由 monitor 交：落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`）（`origin` 是 monitor 交来的名字，本后端只当不透明的键用）。
 /// 同一台再记一次 ⇒ 换新的拨号请求，`peer`（对面的资产目录 id）留着。
-/// 这一段原样搬自 `asset_sync::answer_with`（AS2），逻辑一字不改；`remote-reach` 与 `assets-sync` 都经它。
+/// `remote-reach` 与 `assets-sync` 都经它。
 pub(crate) fn register(table: &Table, args: &Value) -> Result<String, (&'static str, String)> {
     let o = args.get("origin").and_then(Value::as_str).ok_or((
         "bad_args",
@@ -303,8 +303,7 @@ impl Drop for AbortOnDrop {
 
 /// 经一条内存链路跑一趟 capture：`serve` 拿上行读端与下行写端（生产 = `dial::uses::run`），这里读 ack 与结果那一行。
 /// **抽出来是为了判据**：「外层被丢 ⇒ 内层一起收」不需要真 SSH 就验得动（`remote_ask_tests` 喂一个永不答的 `serve`）。
-/// 〔09-28 裁 4〕失败时带上那台 CLI 信封里的码（`{code, message}` 读得出来才有）；只要话的调用方取 `.message`
-/// （不另留一个只丢码的包装 —— 它唯一的生产调用方 `DialRemote::run` 已改转 `run_coded`）。
+/// 失败时带上那台 CLI 信封里的码（`{code, message}` 读得出来才有）；只要话的调用方取 `.message`。
 pub(crate) async fn pull_over_coded<F, Fut>(serve: F) -> Result<String, Said>
 where
     F: FnOnce(tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
@@ -321,7 +320,7 @@ where
 /// （`uname` · 扫身份戳）要的正是这三样 —— `grep` 退出 1 是「一个都没有」，不是失败。拨号请求同 [`capture_request`]。
 ///
 /// 连同那一趟的 **ack**（`DialAck` 原样那一行）一起交回：拨号在本机后端里发生，逐地址指纹要交 monitor 固化
-/// （`VIS2` 那一条，`dial_host::settle_host_key`），不另写一份判定。
+/// （`dial_host::settle_host_key`），不另写一份判定。
 pub(crate) async fn capture_full(
     dial: &Value,
     command: String,
@@ -394,7 +393,7 @@ where
 }
 
 /// 一次性子命令的结果那一行 → 它的 stdout（老后端 · 非 0 退出 · 超上限各是一句错）。
-/// 〔09-28 裁 4〕非 0 退出时把那台 CLI 信封里的码一起交回（[`Said`]）。
+/// 非 0 退出时把那台 CLI 信封里的码一起交回（[`Said`]）。
 fn settle_pulled(got: &Value) -> Result<String, Said> {
     let plain = |message: String| Said {
         code: None,

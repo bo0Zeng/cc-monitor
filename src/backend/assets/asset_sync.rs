@@ -1,44 +1,30 @@
-//! **资产目录的自动同步** —— 本机常驻后端沿它已有的那条 SSH 连接，拉远端的目录、合并、回写。
-//!
-//! # 要求（逐字）
-//!
-//! 「比如本机后端在本机看见一个skill并记录下来, 就会和远端后端同步, 这样远端后端也能在远端装skill或者mcp」·
-//! 「目录自动同步，装要你点」。：「观测方沿它本来就拥有的那条连接去拉被观测方」（零新通道）。
+//! 资产目录的自动同步：本机常驻后端沿它已有的那条 SSH 连接，拉远端的目录、合并、回写（零新通道）。目录自动同步，装要用户点。
 //!
 //! # 形状（一趟 = 对一台远端）
 //!
 //! ```text
-//!  本机常驻后端（池里那条 SSH 连接上多开一个 exec 通道，不是新连接）
-//!   ① 拉：capture `<远端后端> --assets-catalog`            ──▶ 远端现扫、记下、回它的整份
-//!   ② 并：本机 `assets-catalog-merge {catalog: 远端那份}`   （经门递进来的写口；同一台取 gen 大的整份）
-//!   ③ 推：远端缺的 / 比远端新的那几台快照（不含远端自己那格）
-//!          capture `<远端后端> --assets-catalog-merge --stdin-line`，载荷一行写进它的 stdin ──▶ 远端并进它自己的文件（一台一个写者）
-//!   ④ 本机目录因这一趟变了 ⇒ 对可达表里**其余**各台各做一趟 ①–③（只一层，不递归）
+//! 本机常驻后端（池里那条 SSH 连接上多开一个 exec 通道，不是新连接）
+//! ① 拉：capture `<远端后端> --assets-catalog`            ──▶ 远端现扫、记下、回它的整份
+//! ② 并：本机 `assets-catalog-merge {catalog: 远端那份}`   （经门递进来的写口；同一台取 gen 大的整份）
+//! ③ 推：远端缺的 / 比远端新的那几台快照（不含远端自己那格）
+//! capture `<远端后端> --assets-catalog-merge --stdin-line`，载荷一行写进它的 stdin ──▶ 远端并进它自己的文件（一台一个写者）
+//! ④ 本机目录因这一趟变了 ⇒ 对可达表里其余各台各做一趟 ①–③（只一层，不递归）
 //! ```
 //!
-//! # 为什么是 capture ＋「只读一行 stdin」，不是长流
+//! # capture ＋「只读一行 stdin」，不是长流
 //!
-//! - **不起远端的流模式**：流模式一起来就往 tmux server 装全局 hook（`control/tmux_hook.rs::install_hooks`，
-//!   载荷里烤着**那个进程**的 pid）—— 一个用完就退的流会把 monitor 那条真流的 hook 盖成一个死 pid。
-//! - **CLI 面默认读 stdin 读到 EOF**，而 capture 不关远端的 stdin ⇒推那一趟走 CLI 面的
-//!   「只读一行」入口（`lib.rs::STDIN_LINE_FLAG`，`control/cli_control.rs::read_input` 收）：命令行里只有后端路径与两个旗标，载荷一行由 capture 写进远端 stdin。
-//!   此前是 `printf '%s\n' '<json>' | …` 把载荷拼进命令行 —— 那要求远端登录 shell 认 POSIX 单引号与管道（fish 不认），已退役。
-//!   ⚠ 后端路径那一格仍过 POSIX 单引号（`remote_ask::command_line`）：路径里没有 `'` / `\` 时 fish 也认；
-//!   起远端后端那条命令用的也是同一个口径（`shell_quote_core::posix_quote`；monitor `stream_source` 那层转调壳已删）。
-//! - **一趟的大小有上限**：远端 CLI 面 stdin 的上限（`cli_control::MAX_CLI_STDIN`，1 MiB，超了拒、不截断）⇒ 推的载荷按台切块，
-//!   一块不超过 [`PUSH_MAX_BYTES`]；**单独一台就超了 ⇒ 那一台不推、说出来**（不截断）。
+//! - 不起远端的流模式：流模式一起来就往 tmux server 装全局 hook（载荷里烤着那个进程的 pid），一个用完就退的流会把 monitor 那条真流的 hook 盖成一个死 pid。
+//! - capture 不关远端的 stdin ⇒ 推那一趟走 CLI 面的「只读一行」入口（`lib.rs::STDIN_LINE_FLAG`，`control/cli_control.rs::read_input` 收）：
+//!   命令行里只有后端路径与两个旗标，载荷不进命令行（不要求远端登录 shell 认 POSIX 单引号与管道）。
+//!   后端路径那一格仍过 POSIX 单引号（`remote_ask::command_line` · `shell_quote_core::posix_quote`）：路径里没有 `'` / `\` 时 fish 也认。
+//! - 一趟的大小有上限：远端 CLI 面 stdin 的上限（`cli_control::MAX_CLI_STDIN`，1 MiB，超了拒）⇒ 推的载荷按台切块，
+//!   一块不超过 [`PUSH_MAX_BYTES`]；单独一台就超了 ⇒ 那一台不推、说出来。
 //!
 //! # 事件，不是定时（`no_timer_guard`）
 //!
-//! 触发只有两种：monitor 在远端那条流握手成功那一刻交一次 `assets-sync {origin, dial}`（连上）；
-//! 界面看机器页前交一次 `assets-sync {}`（对可达表里每一台各一趟）。本模块一个会自己醒的构件都没有；
-//! 一趟的期限归调用方（monitor 那一侧的调用预算），同本后端其余异步命令。
-//!
-//! # 可达表（内存）与「问远端」那一跳
-//!
-//! 两样都**不住这里了**：「一路造、两路用」—— `DialRemote`（capture 那一跳）
-//! 与可达表（`origin → {拨号请求, 远端后端路径, 对面的 id}`）原样提到中立住址 `crate::stream::remote_ask`，逻辑一字不改；
-//! 本模块只剩资产目录那一套（拉什么、并什么、推什么、扇不扇出）。历史跨机 join 用的是同一张表、同一个对面。
+//! 触发只有两种：monitor 在远端那条流握手成功那一刻交一次 `assets-sync {origin, dial}`；界面看机器页前交一次 `assets-sync {}`
+//! （对可达表里每一台各一趟）。一趟的期限归调用方。
+//! 「问远端」那一跳（`DialRemote`）与可达表住 `crate::stream::remote_ask`；本模块只管资产目录拉什么、并什么、推什么、扇不扇出。
 
 use copy_core::copy_text;
 use std::collections::BTreeMap;
@@ -271,7 +257,7 @@ pub async fn answer_with(
         }
         first = Some(o.to_string());
     } else if origin.is_some() {
-        // 登记那一段原样搬进 `remote_ask::register`（可达表唯一的写口；`remote-reach` 也经它）。
+        // 登记走 `remote_ask::register`（可达表唯一的写口；`remote-reach` 也经它）。
         first = Some(crate::stream::remote_ask::register(table, args)?);
     } else if args.get("dial").is_some() {
         return Err((
