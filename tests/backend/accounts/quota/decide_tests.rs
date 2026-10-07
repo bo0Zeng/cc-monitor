@@ -833,3 +833,76 @@ fn a_manual_switch_is_not_undone_by_preempt() {
         "b 自己过上限 ⇒ 照常换走"
     );
 }
+
+/// ★ 上限 0 ＝ 这一时段不用这个号：用户那份 `q: {"*": [17:00-02:00 → 0, 02:00-17:00 → 99]}`。
+/// 17 点到次日 2 点 q 不能用 —— 刚重置的 0%、从没见过都不选；「下一个」与真换号同一处判（`next_of` 也跳过它）；
+/// 跨午夜那一段 01:59 仍不用、02:00 起又能用；q 被挡时换走的会话在 02:00 经 `preempt` 切回（与「时段换了上限」同一条）。
+#[test]
+fn a_cap_of_zero_keeps_an_account_out_for_its_slot_and_preempt_brings_it_back() {
+    let mut w = World::new(&["q", "z"]);
+    w.when = RotationWhen::Threshold { n: 90 };
+    w.preempt = true;
+    w.cap = caps(&[(
+        "q",
+        "*",
+        CapValue::Slots(vec![
+            CapSlot {
+                at: "17:00-02:00".into(),
+                n: 0,
+            },
+            CapSlot {
+                at: "02:00-17:00".into(),
+                n: 99,
+            },
+        ]),
+    )]);
+    let far = NOW + 3 * 86_400;
+    w.seen.insert("z".into(), at(0.10, far));
+    // 刚重置的 0%（上一窗的重置时刻已过）也不选。
+    local(&mut w, 18, 0);
+    w.seen.insert("q".into(), at(0.0, w.now - 60));
+    let (v, _) = w.judge("q", None, &[]);
+    assert_eq!(to_of(&v), Some("z"), "18:00 q 不用 ⇒ 换走：{v:?}");
+    assert!(
+        matches!(
+            &v,
+            Verdict::Switch {
+                why: SwitchWhy::Threshold { n: 0 },
+                ..
+            }
+        ),
+        "{v:?}"
+    );
+    // 「下一个」同一处判：z 当前时下一个不会是 q。
+    let next = w.with("z", None, &[], |f| super::next_of(f, &mut |_| Ok(())));
+    assert_eq!(next, None, "q 此刻不用，不该排成下一个");
+    // 从没见过也不选。
+    w.seen.remove("q");
+    assert_eq!(to_of(&w.judge("q", None, &[]).0), Some("z"));
+    // 回来的时刻 ＝ 那一段的止（次日 02:00 本地）。
+    let back = w.with("z", None, &[], |f| super::back_at("q", f));
+    let two_am = DAY + 86_400 + 2 * 3600 - 8 * 3600 + 86_400;
+    assert_eq!(back, Some(two_am));
+    // 换到 z；跨午夜：01:59 仍不用，不切回；02:00 起 q 又能用 ⇒ 切回。
+    w.seen.insert("q".into(), at(0.0, w.now - 60));
+    w.enter("z");
+    assert_eq!(w.above, ["q"]);
+    local(&mut w, 1, 59);
+    w.now += 86_400; // 次日 01:59
+    assert_eq!(w.judge("z", None, &[]).0, Verdict::Stay, "01:59 q 还不用");
+    w.now += 60; // 02:00
+    assert_eq!(w.now, two_am);
+    assert_eq!(
+        w.judge("z", None, &[]).0,
+        Verdict::Switch {
+            to: "q".into(),
+            why: SwitchWhy::Preempt,
+            from_resets_at: None,
+            skipped: vec![]
+        }
+    );
+    // 写死的 0：一直不用、说不出几点回来。
+    w.cap = caps(&[("q", "5h", CapValue::N(0))]);
+    assert!(!w.with("z", None, &[], |f| super::standing("q", f)).usable());
+    assert_eq!(w.with("z", None, &[], |f| super::back_at("q", f)), None);
+}
