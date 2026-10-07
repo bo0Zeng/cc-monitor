@@ -1,45 +1,15 @@
-//! **`KS5` + `KS11` 的住址**：把这份文件收窄到只给本人（`KS5`），
-//! 以及读之前查一次它是不是被放宽了（`KS11`）。
+//! 把凭据文件收窄到只给本人，以及读之前查一次它是不是被放宽了。
 //!
-//! # 两个平台**同一个签名**，各自的边界各自写清（`KS5`）
+//! 两个平台同一个签名，Windows 那半不是「无操作」：「谁能读这个文件」在 Windows 上有对应物（DACL），写成无操作等于两个平台的保证不一样而代码里看不出来
+//! （[`tests::the_windows_half_is_not_a_no_op`] 钉住）。建文件时显式设 DACL（`SetNamedSecurityInfoW`）并置 `PROTECTED_DACL_SECURITY_INFORMATION`（= 断继承）：
+//! `%LOCALAPPDATA%` 的默认 ACL 只靠继承，目录被搬过、从宽松的父目录继承、或者用户改过，ACL 就变了而没人知道。
+//! 设 DACL 与「能手编」不冲突：ACL 限的是谁能读写，不是用什么程序读写。
 //!
-//! 形状照 `src/frontend/shell/src/platform/fs.rs::make_executable` 那个现成先例
-//! （Unix 置 `0o700`、Windows 文档化的无操作、**签名两边一致**、由宿主注入给平台无关的一半）。
-//!
-//! ⚠⚠ **但本模块的 Windows 那半不许照抄那个「无操作」**：
-//! `make_executable` 可以无操作（Windows 靠扩展名判可执行，本来就没有那个位）；
-//! 而「**谁能读这个文件**」在 Windows 上**是有对应物的**（DACL）——
-//! 写成无操作等于**两个平台的保证不一样而代码里看不出来**，
-//! 那正是本工作区最贵的那族病（量具/口径的作用域对不上事实）。
-//! ⇒ 由 [`tests::the_windows_half_is_not_a_no_op`] 逐条钉住。
-//!
-//! # 为什么 Windows 那半要**显式设 DACL 并断继承**，而不是靠 `%LOCALAPPDATA%` 的默认
-//!
-//! `%LOCALAPPDATA%` 的默认 ACL 已经只给「本人 + SYSTEM + Administrators」，
-//! **但只靠继承是脆的**：目录被搬过、从一个宽松的父目录继承、或者用户自己改过，ACL 就变了，
-//! 而**没有任何东西会告诉你它变了**。⇒ 建文件时显式设 DACL（`SetNamedSecurityInfoW`）
-//! 并置 `PROTECTED_DACL_SECURITY_INFORMATION`（= 断继承）。
-//!
-//! ⭐ **设 DACL 与「能手编」不冲突**：ACL 限的是**谁**能读写，不是**用什么程序**读写。
-//! 文件的属主照样能用记事本打开改。（被推翻的 DPAPI 冲突的是**格式**，不是权限，两者别混。）
-//!
-//! # 写与读的能力**是分开的**，而且是编译期分开的
-//!
-//! - [`make_private`] / [`create_private`] 只在 `harden` feature 打开时存在。
-//!   ⚠ 先前这里写的是「⇒ **backend 那侧根本调不到它**（`K-H2a` 裁四），编译器兜的」——
-//!   **今天不成立了**：远端那台机器上的 key 只能由那台的后端写，后端也开了 `harden`。
-//!   「后端里只有账号域那一份碰得到写半边」改由判据兜（`readonly_guard::g6_dependency_signoff`
-//!   那条写半边引用处判据），不再是编译器。本仓的偏好「让它写不出来，而不是再检测一遍」
-//!   在这一格上**让了一步**，。
+//! - [`make_private`] / [`create_private`] 只在 `harden` feature 打开时存在（后端也开了它：远端那台的 key 只能由那台的后端写；
+//!   「后端里只有账号域那一份碰得到写半边」由 `readonly_guard::g6_dependency_signoff` 那条判据兜）。
 //! - [`probe`] / [`judge`] 两侧都在。
 //!
-//! # ⚠ 诚实边界：没有判据钉「平台原语只许住这里」
-//!
-//! 这条是从 `platform/fs.rs` 的**诚实边界 `10g`** 原样继承来的：
-//! `backend/mod.rs` 那条只扫 `backend/`，backend 的 `fallback_guard` 只扫 `platform/`，
-//! **两条都扫不到 `src/common/`** ⇒ 有人在别处再写一个平台 cfg，**不会红**。
-//! 今天靠约定。⚠ 而本 crate 是 `crates/` 这一层里**第一个**带平台 cfg 的
-//! （现打 08-27：另外 6 个 crate 平台 cfg 全树 0 处），所以这条边界比在 `platform/fs.rs` 里更该说清。
+//! 没有判据钉「平台原语只许住这里」：后端那几条只扫 `backend/` / `platform/`，扫不到 `src/common/` ⇒ 别处再写一个平台 cfg 不会红，今天靠约定。
 
 use copy_core::copy_text;
 
@@ -79,15 +49,8 @@ impl Verdict {
     }
 }
 
-/// Windows 上算「宽泛」的主体（SDDL 简称）。**白名单的反面：这是一张点名表，射程写在下面。**
-///
-/// `WD` = Everyone · `BU` = BUILTIN\Users · `AU` = Authenticated Users · `IU` = Interactive ·
-/// `WR` = Restricted Code。
-///
-/// ⚠ **射程**：它认的就是这 5 个简称。有人用**完整 SID**写同一个主体
-/// （`S-1-1-0` 就是 Everyone），本表**看不见**。这一形没做，如实记在这里 ——
-/// `KS4` 那条「黑名单必漏」的道理在这里同样成立，
-/// 只是这一格今天**没有白名单可用**（DACL 里合法出现的主体集合不是一个能枚举的东西）。
+/// Windows 上算「宽泛」的主体（SDDL 简称）：`WD` = Everyone · `BU` = BUILTIN\Users · `AU` = Authenticated Users · `IU` = Interactive · `WR` = Restricted Code。
+/// 它认的就是这 5 个简称；有人用完整 SID 写同一个主体（`S-1-1-0` 就是 Everyone），本表看不见（DACL 里合法出现的主体集合不是能枚举的东西，没有白名单可用）。
 pub const WIDE_PRINCIPALS: &[&str] = &["WD", "BU", "AU", "IU", "WR"];
 
 /// **判断只有这一处。** 两个平台、三种量到的东西，都在这里变成同一种结论。
@@ -201,26 +164,13 @@ pub fn make_private(p: &std::path::Path) -> Result<(), String> {
     }
 }
 
-/// **建**一个只给本人的新文件，并把写句柄交出来。
+/// 建一个只给本人的新文件，并把写句柄交出来。与 [`make_private`]（把已经在盘上的文件收窄，管终态）是两件事：「先按 umask 建出来、写进明文、再收窄」
+/// 那条路上，文件出生到收窄之间有一个宽窗口（常见 umask `0022` 下是 `0644`，全机可读），里面已经有明文 ⇒ 本函数管出生那一刻。
 ///
-/// # ★★ 它与 [`make_private`] 是两件事，别用一个替另一个〔D1 阻-2，08-27〕
-///
-/// `make_private` 是「**把一份已经在盘上的文件收窄**」——它管**终态**。
-/// 而「先按 umask 建出来、写进明文、再收窄」这条路上，**文件出生到收窄之间有一个真实的宽窗口**，
-/// 那个窗口里已经有明文。D1 审计探针实打：
-/// `tmp 刚建出来那一刻 mode=0664，里面已经有明文 = true`（那台机器 umask `0002`；
-/// 常见的 `0022` 下是 `0644` —— **全机可读**）。
-/// 而 crate 头注逐字承诺的正是「**保**：同机器上别的用户读不到」。
-///
-/// ⇒ 本函数管**出生那一刻**：权限是**创建调用自己带上去的**，不存在「还没收窄」的那一段。
-///
-/// - Unix：`OpenOptions::create_new(true).mode(0o600)` —— `mode` 在**创建时**生效。
-///   ⚠ 用 `create_new`（`O_EXCL`）而不是 `create`：目标若已存在（上次崩溃留下的残骸、
-///   或别人预置的一个符号链接），`create` 会**跟随并截断**它，而那时权限是**它的**不是我们的。
-///   `O_EXCL` 让这种情况直接失败，调用方先删再建。
-/// - Windows：`CreateFileW` + `SECURITY_ATTRIBUTES`，DACL 与 [`make_private`] 用的是
-///   **同一句 SDDL**（`owner_only_sddl`）⇒ 两条路不会各自漂。`CREATE_NEW` 是 `O_EXCL` 的对应物。
-/// - 其余平台：**报错**，不假装做到了。
+/// - Unix：`OpenOptions::create_new(true).mode(0o600)` —— `mode` 在创建时生效。用 `create_new`（`O_EXCL`）：目标若已存在（崩溃残骸、或别人预置的符号链接），
+///   `create` 会跟随并截断它，那时权限是它的不是我们的；`O_EXCL` 让这种情况直接失败，调用方先删再建。
+/// - Windows：`CreateFileW` + `SECURITY_ATTRIBUTES`，DACL 与 [`make_private`] 用同一句 SDDL（`owner_only_sddl`）。`CREATE_NEW` 是 `O_EXCL` 的对应物。
+/// - 其余平台：报错，不假装做到了。
 #[cfg(feature = "harden")]
 pub fn create_private(p: &std::path::Path) -> std::io::Result<std::fs::File> {
     #[cfg(unix)]
