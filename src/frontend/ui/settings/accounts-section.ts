@@ -830,9 +830,10 @@ export class AccountsSection {
       const got = await openLoginWindow(origin, req.name, change.loginCmd ?? undefined).catch(() => "noWindow" as const);
       if (got === "opened") this.waiting.add(key);
       else this.noWindow.add(key);
-      toast(got === "opened" ? copyText("acctPage.new.doneLogin", { name: req.name, machine }) : copyText("acctPage.new.done", { name: req.name, machine }), "");
+      // 下一行照后端回的那几句（如「已开的终端要重读别名」），界面不另拼。
+      toast(got === "opened" ? copyText("acctPage.new.doneLogin", { name: req.name, machine }) : copyText("acctPage.new.done", { name: req.name, machine }), change.notes.join("\n"));
     } else {
-      toast(copyText("acctPage.new.done", { name: req.name, machine }), change.keyProblem ?? "", change.keyProblem ? { level: "error" } : {});
+      toast(copyText("acctPage.new.done", { name: req.name, machine }), [change.keyProblem, ...change.notes].filter((x): x is string => !!x).join("\n"), change.keyProblem ? { level: "error" } : {});
       if (change.keyProblem) this.open.add(key);
     }
     if (req.isDefault) void emit(SETTINGS_APPLIED_EVENT);
@@ -878,7 +879,7 @@ function kindLine(a: Account, waiting: boolean): string {
   return a.email ? copyText("acctPage.row.sub", { email: a.email }) : copyText("acctPage.row.subNoEmail");
 }
 
-/** `5h 63% ↻18:30` · `7d 41%`；被拒 `5h ✕ ↻19:00`（红）；按量号 `按量`；没采样 `—`。 */
+/** `5h 63% ↻18:30` · `7d 41%`；用满 `5h ✕ ↻19:00`（红）· 被拒没用满 `5h 58% · 被拒`（红）；按量号 `按量`；没采样 `—`。 */
 function fillUsage(u5: HTMLElement, u7: HTMLElement, q: QuotaShow | null, now: number, tz: number): void {
   if (!q) return;
   if (q.kind === "api") {
@@ -892,15 +893,18 @@ function fillUsage(u5: HTMLElement, u7: HTMLElement, q: QuotaShow | null, now: n
   ] as const) {
     const x = q.slots.find((v) => v.slot === slot);
     const here = (q.limiting ?? "5h") === slot;
+    // 照显示态画（与主窗口额度那一行同一套）：用满才 ✕；被拒没用满 `58% · 被拒`；超额在兜 `超额`；上一窗已过 / 没采样 `—`。
     let v: string;
-    if (here && q.state === "refused") v = copyText("acct.val.refused");
-    else if (!x || x.pct === undefined || (here && (q.state === "resetSinceSeen" || q.state === "unseen"))) v = copyText("acct.val.none");
-    else if (here && q.state === "overageInUse") v = copyText("acct.val.over");
+    if (here && q.state === "overageInUse" && x?.pct !== undefined) v = copyText("acct.val.over");
+    else if (here && (q.state === "resetSinceSeen" || q.state === "unseen")) v = copyText("acct.val.none");
+    else if (x?.full) v = copyText("acct.val.full");
+    else if (here && q.state === "refused") v = x?.pct === undefined ? copyText("acct.val.refusedOnly") : copyText("acct.val.refusedPct", { pct: x.pct });
+    else if (!x || x.pct === undefined) v = copyText("acct.val.none");
     else v = copyText("acct.val.pct", { pct: x.pct });
     const parts = [slotLabel(slot), v];
     if (x?.resetsAt !== undefined && x.resetsAt > now && (slot === "5h" || (here && q.state === "refused"))) parts.push(copyText("acct.reset.at", { at: fmtAt(x.resetsAt, now, tz) }));
     cell.textContent = parts.join(" ");
-    if (here && q.state === "refused") cell.dataset.shade = "refused";
+    if (x?.full || (here && q.state === "refused")) cell.dataset.shade = "refused";
     else if (here && (q.state === "near" || q.state === "overageInUse")) cell.dataset.shade = "warn";
     if (q.stale) cell.dataset.stale = "true";
   }

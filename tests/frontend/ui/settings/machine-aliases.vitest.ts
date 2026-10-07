@@ -26,7 +26,8 @@ type Plat = "posix" | "powershell";
 
 describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat) => {
   let seen: Array<{ cmd: string; args?: unknown }>;
-  let disk: Alias[];
+  const toasted: string[] = [];
+let disk: Alias[];
   let groups: Array<AccountShape | null>;
   let missing: MissingAlias[];
   let fp: number;
@@ -74,6 +75,8 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     toFormFail = null;
     fromFormFail = null;
     vi.resetModules();
+    toasted.length = 0;
+    vi.doMock("../../../../src/frontend/ui/kit/toast", () => ({ toast: (title: string, body: string) => toasted.push(`${title}|${body}`) }));
     vi.doMock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
     vi.doMock("../../../../src/comms/inward/chan", () => ({
       ChanError: class ChanError extends Error {},
@@ -144,7 +147,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
           disk = aliases;
           groups = aliases.map((a) => (a.name === "betacc" ? { account: "b", tmux: false } : null));
           fp += 1;
-          return Promise.resolve({ aliasPath: "/h/.cc-monitor/aliases.x", wroteAliasFile: true });
+          return Promise.resolve({ aliasPath: "/h/.cc-monitor/aliases.x", wroteAliasFile: true, reload: "已开的终端要重读别名-xyz" });
         },
         installAliasBlock: (origin: string, rcPath: string) => {
           seen.push({ cmd: "aliases_block_install", args: { origin, rcPath } });
@@ -382,6 +385,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     await flush();
     expect(installs()).toEqual([{ aliases: [...before, A("betacc", ["--", "--account", "b"])], fingerprint: "fp-1" }]);
     expect(seen.filter((c) => c.cmd === "aliases_read").length).toBe(reads + 1);
+    expect(toasted.some((t) => t.endsWith("|已开的终端要重读别名-xyz")), "写进别名文件之后没照后端那一句提示重读").toBe(true);
   });
 
   it("＋ 新增别名：就地展开一张空表单（账号下拉读那台的账号表）；表单原样交后端拼，「会执行：…」与保存都用拼回来的那一条", async () => {

@@ -632,7 +632,9 @@ export function buildAliasManager(opts: AliasManagerSpec): AliasManager {
   /** 存一份新清单：带读回时的指纹；成了 ⇒ 重读；被别处改过 ⇒ 重读、回那句话（表单留着）。 */
   const store = async (next: Alias[]): Promise<string | null> => {
     try {
-      await installAliases(opts.origin(), next, shell, fingerprint);
+      const done = await installAliases(opts.origin(), next, shell, fingerprint);
+      // 写进了别名文件 ⇒ 照后端回的那一句说「已开的终端要重读别名」（新开的终端自己认得）。
+      if (done.reload) toast(copyText("machineAliases.save.done"), done.reload, { level: "info" });
     } catch (e) {
       await readBack();
       return e instanceof AliasesStale

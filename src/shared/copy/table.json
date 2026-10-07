@@ -5725,6 +5725,11 @@
       "zh": "没存上：{why} 已经重新读了一遍，看一眼再存。",
       "args": ["why"]
     },
+    "machineAliases.save.done": {
+      "kind": "body",
+      "zh": "已保存别名",
+      "args": []
+    },
     "machineAliases.tmuxNaming.attach": {
       "kind": "body",
       "zh": "接回一个已有的 tmux 会话：会话名在敲的时候跟上（如 cca 会话名）。",
