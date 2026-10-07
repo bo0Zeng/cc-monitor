@@ -3543,11 +3543,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            "tests/frontend/ui/generated-boundary-guard.vitest.ts",
-            "write_account_aliases",
-            1,
-        ),
-        (
             "tests/frontend/ui/settings/panel-deferred-io.vitest.ts",
             "write_account_aliases",
             1,
@@ -4132,11 +4127,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/frontend/shell/history_tests.rs",
             "truncate_chars_unicode",
-            1,
-        ), // 历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑
-        (
-            "tests/frontend/ui/generated-boundary-guard.vitest.ts",
-            "forked_from_message_uuid",
             1,
         ), // 历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑
         (
@@ -4805,7 +4795,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/assets/aliases/mod.rs", 1), // +1：`ccmInvocation` 那一句（搬走了，剩 `buildAliasLine` 那一块）
         ("src/backend/platform/shell/dialect.rs", 2), // 住址 `assets/aliases/` → `platform/shell/`，块数不变 // 搬进后端 +1：`look_on_path` 那一格随规则住进那台后端退役 //
         ("tests/backend/assets/aliases/aliases_tests.rs", 1),
-        ("tests/frontend/ui/generated-boundary-guard.vitest.ts", 3), // +1：整份写口 `save_config` 删了，讲来历那一句挂墓碑 // 历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
         ("tests/frontend/ui/settings/panel-deferred-io.vitest.ts", 1),
         ("src/backend/stream/wire.rs", 2), // 1 → 2：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 //
         // +2：`install_remote_ccm_helper` 改名那两行。
