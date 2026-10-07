@@ -969,7 +969,7 @@ run_gate winchk-backend '不是数出来的数：`cargo check --all-targets --ta
 run_gate muslbuild '不是数出来的数：两个 musl target（`x86_64` ＋ `aarch64`）各一趟 `cargo zigbuild`，只有绿/红两态。⚠ 买的是「编得出静态字节」，不买「在真远端上跑得起来」、不买 test 档（只编 bin）。⚠ 工具链版本与 `release.yml` 对齐（zig 0.14.0 / cargo-zigbuild 0.23.0）—— 版本一漂，本格的绿就不再代表发版那趟会绿' \
          bash -c 'cd src/backend && n=0; for t in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do cargo zigbuild --target "$t" >/dev/null || { echo "musl: $t 编不过"; exit 1; }; n=$((n+1)); done; printf "muslbuild: %s passed（两个 arch 各一趟 cargo zigbuild，zig $(zig version)）\n" "$n"'
 
-# ── 「前端」道：读 `src/frontend/ui/generated/` 的那几格，等 `cargo` 与 `backend` 两格写完它 ──
+# ── 「前端」道（与下面「覆盖率」道）：读 `src/frontend/ui/generated/` 的那几格，等 `cargo` 与 `backend` 两格写完它 ──
 gate_lane 前端 after cargo backend
 
 # ── `generated`：改了 Rust 不跑生成，这里红 ──
@@ -1027,8 +1027,22 @@ run_gate npm '`npm test` 串起来的各套件里，只有 vitest（`test:dom`�
 # ── `coverage`：`ci.yml` 的 `frontend` job 里那两步覆盖率 ─────────────────────
 # 覆盖率逐文件地板（`tests/scripts/assert-coverage-floors.mjs`）点名具体文件：文件被删或改名而清单还点着它，本格红。
 # 按步骤名从 `ci.yml` 现取原样跑（`audit` 同法，在「静态」道），地板与清单只住它们自己的文件。
+# 自己一条道，与 `npm` 那格同时跑：两趟 vitest 都读写 `node_modules/.vite` 下的结果缓存，而 vitest 读它不设防
+#   （读到另一趟写了一半的 JSON 当场抛）⇒ 并跑时本格在一层挂载命名空间里换一个自己的 `node_modules/.vite`。
+gate_private_vite() {
+  local t rc
+  if [ "$GATE_PAR" != 1 ]; then "$@"; return; fi
+  t="$(mktemp -d "$GATE_CELL_DIR/vite.XXXXXX")" || return 1
+  mkdir -p node_modules/.vite || return 1
+  export -f gate_ci_steps gate_ci_step_body
+  bwrap --dev-bind / / --bind "$t" "$PWD/node_modules/.vite" --die-with-parent -- bash -c '"$@"' _ "$@"
+  rc=$?
+  rm -rf -- "$t"
+  return "$rc"
+}
+gate_lane 覆盖率 after cargo backend
 run_gate coverage '这一趟 vitest（带 v8 覆盖率）真跑过的条数：`ci.yml` 的 `coverage floor (vitest jsdom)`（`npm run coverage`，`vitest.config.ts` 里的全局阈值）＋ `coverage per-file floors + zero-coverage ratchet`（逐文件地板与零覆盖棘轮）两步原样跑。⚠ 与 `npm` 那格是同一批 vitest 文件再跑一遍（带插桩，慢一截）；覆盖率只量 `src/**/*.ts`，tsx 套件与 Rust 一概不进分母' \
-         gate_ci_steps coverage "coverage floor (vitest jsdom)" "coverage per-file floors + zero-coverage ratchet"
+         gate_private_vite gate_ci_steps coverage "coverage floor (vitest jsdom)" "coverage per-file floors + zero-coverage ratchet"
 
 # 18 套摊成几条道（按热缓存时长大致拉平）；各套各在自己的网络命名空间与 `/tmp` 里，互不相见。
 # `local-backend` 在壳里跑 `cargo test --lib`，等 `cargo` 那格编完再起，免得两条道抢壳的 target 锁。
