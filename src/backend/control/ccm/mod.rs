@@ -44,8 +44,8 @@ use plan::{AccountTable, Env, Plan};
 /// `version=` 这一行分辨对面是哪一版。
 ///
 /// `4` 是最后一版 bash 实现；`5` 起是**后端的原生命令**（本模块）；`6` 起是 claude 的壳（
-/// 位置动作取消、不认的词原样交 agent、诊断口改 `--ccm-*`）。
-pub(crate) const CCM_VERSION: &str = "6";
+/// 位置动作取消、不认的词原样交 agent、诊断口改 `--ccm-*`）；`7` 起认 `@<名>` 与按被叫成的名字取配置文件里那一段。
+pub(crate) const CCM_VERSION: &str = "7";
 
 /// 认得的 agent。**闭集只有一处住址**（`brief` 13b）：注册表里带起会话事实的那几家
 /// （`agents::launchable_kinds`）。从前这里是一份手写的闭集常量，与注册表那一格是同一件事的两处。
