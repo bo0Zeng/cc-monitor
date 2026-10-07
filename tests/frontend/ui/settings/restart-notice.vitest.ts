@@ -21,7 +21,7 @@ describe("restart-notice", () => {
   it("★ 没有改动时条不出现（不是显示一句空话）", () => {
     const bar = createRestartBar();
     expect(bar.hidden).toBe(true);
-    expect(bar.textContent).toBe("");
+    expect(bar.querySelector("span")?.textContent).toBe("");
   });
 
   it("★ 有改动才出现，且**列出改了什么**（只说「有改动」用户没法判断要不要现在重启）", () => {
@@ -29,7 +29,7 @@ describe("restart-notice", () => {
     markRestartNeeded("远端机器配置");
     expect(bar.hidden).toBe(false);
     expect(bar.textContent).toContain("远端机器配置");
-    expect(bar.textContent).toBe(copyText("restartNotice.render.pending", { list: "远端机器配置" }));
+    expect(bar.querySelector("span")?.textContent).toBe(copyText("restartNotice.render.pending", { n: 1, list: "远端机器配置" }));
   });
 
   it("多条改动都列出来，同一条重复标记只算一次", () => {
@@ -67,12 +67,14 @@ describe("restart-notice", () => {
     expect(good).toHaveBeenCalled();
   });
 
-  it("★ 条上**没有**「知道了」这类关闭按钮", () => {
+  it("★ 条上**没有**「知道了」这类关闭按钮：唯一一颗是［现在重启］", () => {
     // 「改动还没生效」不会因为用户点一下就不成立。给关闭按钮 = 允许他把一个
     // 仍然为真的状态划掉，那正是 §12 那类事故的做法。
     const bar = createRestartBar();
     markRestartNeeded("x");
-    expect(bar.querySelector("button")).toBeNull();
+    const btns = [...bar.querySelectorAll("button")];
+    expect(btns.map((b) => b.dataset.action)).toEqual(["restart-now"]);
+    expect(btns[0].textContent).toBe(copyText("restartNow.bar.action"));
   });
 });
 

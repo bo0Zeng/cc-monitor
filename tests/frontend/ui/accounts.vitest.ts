@@ -7,6 +7,8 @@ vi.mock("../../../src/frontend/ui/config", async (orig) => (await import("./conf
 // 记账失败要出声：只换 toast 这一个出口，判据读它收到了什么。
 // 账号选不了的那句提示由 `withAccount` 自己出（先前是调用方各带一个「账号不可用」回调）。
 vi.mock("../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
+// 上次值交本机后端记那一跳另有判据（`last-seen.vitest.ts`）；这里数的是账号那一问。
+vi.mock("../../../src/frontend/ui/last-seen", () => ({ rememberSeen: vi.fn(async () => {}), recallSeen: vi.fn(async () => null) }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { loadConfig } from "../../../src/frontend/ui/config";

@@ -91,6 +91,9 @@ pub const PROFILES_MIGRATED_REL: &str = ".cc-monitor/profiles-migrated.json";
 /// 〔同上〕「要你动手」里记下的选择：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件（后端 `footprint/chores/marks.rs` 写）。
 pub const CHORES_REL: &str = ".cc-monitor/chores.json";
 
+/// 〔同上〕离线那台的上次值：本机后端替界面记下每台最近一次读成的账号清单与「文件与数据」那一份（后端 `footprint/last_seen.rs` 写；连不上时照它画、跨重启还在）。
+pub const LAST_SEEN_REL: &str = ".cc-monitor/last-seen.json";
+
 /// 〔同上〕skill 装记录（后端 `assets/skill_ledger.rs` 写；卸的时候按它删）。
 pub const SKILL_LEDGER_REL: &str = ".cc-monitor/skill-installs.json";
 

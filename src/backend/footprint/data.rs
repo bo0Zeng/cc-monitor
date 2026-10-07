@@ -7,6 +7,8 @@
 //! - `tmux`：这台有没有 tmux（查不动 ⇒ `null`；与起新会话那一问同一个判法 `control::terminals::rows_here`）。
 //! - `chores`：「要你动手」里进角标的件数（要做 ＋ 要装 ＋ 要你定，还没做完的），设置窗左栏角标与主窗口状态栏那一枚读这一个数。
 //!
+//! - `own`：cc-monitor 在这台自己家里（`~/.cc-monitor/`）放的每一样（[`own_rows`]）：在不在 · 文件多大 · 删了会丢还是能重建。
+//!
 //! 另带 `home`（显示用：路径的 `~` 缩写按它）。
 //!
 //! 判定只在这里：哪一行算「改过你的文件」、撤回去哪、哪一样缺了起不了会话、怎么装的链接。
@@ -80,8 +82,66 @@ pub(crate) fn needs_install(report: &ConfigSurfaceReport) -> Vec<Value> {
     report.rows.iter().filter_map(missing).collect()
 }
 
-/// 整份足迹 ＋「要你动手」各件 ＋ 有没有 tmux ⇒ 这一页的成品。
-pub(crate) fn shape(report: &ConfigSurfaceReport, todo: Vec<Value>, tmux: Option<bool>) -> Value {
+/// 自己家里的那几样：`(id, 相对家目录, 是目录, 删了会丢)`。名字各取契约常量（`relay_route_core`，后端按同一份落盘）；
+/// 后端落点由它所在的 `bin/` 那一行代表。只住 monitor 那一侧的（监听口进程记录 · API key 表 · 后端错误输出）不在这里。
+fn own_table() -> [(&'static str, &'static str, bool, bool); 21] {
+    use relay_route_core as rr;
+    let bin = rr::BACKEND_LANDING_REL
+        .rsplit_once('/')
+        .map_or(rr::BACKEND_LANDING_REL, |(d, _)| d);
+    [
+        ("bin", bin, true, false),
+        ("staging", rr::STAGING_DIR_REL, true, false),
+        ("relayKey", rr::KEY_FILE_REL, false, true),
+        ("listenToken", rr::LISTEN_TOKEN_FILE_REL, false, true),
+        ("policy", rr::BACKEND_POLICY_REL, false, true),
+        ("profiles", rr::PROFILES_REL, false, true),
+        ("profilesMigrated", rr::PROFILES_MIGRATED_REL, false, true),
+        ("aliasesPosix", rr::POSIX_ALIASES_REL, false, true),
+        ("aliasesPs", rr::PS_ALIASES_REL, false, true),
+        ("skillLedger", rr::SKILL_LEDGER_REL, false, true),
+        ("chores", rr::CHORES_REL, false, true),
+        ("lastSeen", rr::LAST_SEEN_REL, false, false),
+        ("assetCatalog", rr::ASSET_CATALOG_REL, false, false),
+        ("quota", rr::QUOTA_LEDGER_REL, false, true),
+        ("rotation", rr::ROTATION_REL, false, true),
+        ("launchAccounts", rr::LAUNCH_ACCOUNTS_REL, false, true),
+        ("launchNotes", rr::LAUNCH_NOTES_DIR_REL, true, false),
+        ("knownHosts", rr::KNOWN_HOSTS_REL, false, false),
+        ("accounts", rr::ACCOUNTS_DIR_REL, true, true),
+        ("accountsMcp", rr::ACCOUNTS_MCP_REL, false, true),
+        ("extBackups", rr::EXT_BACKUPS_DIR_REL, true, true),
+    ]
+}
+
+/// 这台家里那几样各一行 `{id, path, dir, class, exists, size}`：`path` 写成 `~/…`；目录不算大小（不递归，免得大目录卡住）。
+pub(crate) fn own_rows(home: &std::path::Path) -> Vec<Value> {
+    own_table()
+        .iter()
+        .map(|&(id, rel, dir, truth)| {
+            let p = home.join(rel);
+            let meta = std::fs::metadata(&p).ok();
+            let exists = meta.as_ref().is_some_and(|m| m.is_dir() == dir);
+            let size = meta.filter(|m| exists && m.is_file()).map(|m| m.len());
+            json!({
+                "id": id,
+                "path": format!("~/{rel}"),
+                "dir": dir,
+                "class": if truth { "truth" } else { "cache" },
+                "exists": exists,
+                "size": size,
+            })
+        })
+        .collect()
+}
+
+/// 整份足迹 ＋「要你动手」各件 ＋ 有没有 tmux ＋ 自己家里那几样 ⇒ 这一页的成品。
+pub(crate) fn shape(
+    report: &ConfigSurfaceReport,
+    todo: Vec<Value>,
+    tmux: Option<bool>,
+    own: Vec<Value>,
+) -> Value {
     let changed_files: Vec<Value> = report.rows.iter().filter_map(changed).collect();
     let chores = super::chores::badge(&todo);
     json!({
@@ -90,6 +150,7 @@ pub(crate) fn shape(report: &ConfigSurfaceReport, todo: Vec<Value>, tmux: Option
         "todo": todo,
         "tmux": tmux,
         "chores": chores,
+        "own": own,
     })
 }
 

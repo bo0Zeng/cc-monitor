@@ -188,7 +188,31 @@ export function machineOps(): Record<string, OpHandler> {
     "exit-policy-read": () => ({ state: "absent", killOnExit: false, reason: null, path: null, said: copyText("backendPolicy.exit.unattended") }),
     "footprint-report": () => footprint(),
     // 文件与数据：devbox 照稿 25 那六件（旧 ccm · 两条重名 · 失效行 · 实时显示 · 收信）；本机缺一个可选的开终端工具、实时显示已做；改过 ~/.bashrc 与扩展装的 skill。
-    "data-report": (o) => {
+    // 离线那台的上次值（本机后端记着的）：gpu-01 两天前读成的那一份「文件与数据」；记下一律答好。
+    "last-seen-write": () => ({ atMs: Date.now() }),
+    "last-seen-read": (_o, r) => ({
+      accounts: null,
+      data:
+        r.origin === "gpu-01"
+          ? {
+              atMs: Date.now() - 2 * 24 * 3600 * 1000,
+              value: {
+                home: HOME,
+                changedFiles: [{ path: "~/.bashrc", what: "ccm 命令入口", undo: { page: "machine", tab: "config", anchor: "connect-terminal" } }],
+                todo: [],
+                tmux: true,
+                chores: 0,
+                own: [
+                  { id: "bin", path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: true, size: null },
+                  { id: "profiles", path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, size: 920 },
+                  { id: "accounts", path: "~/.cc-monitor/accounts", dir: true, class: "truth", exists: true, size: null },
+                ],
+              },
+            }
+          : null,
+    }),
+    "data-report": (o, _r, w) => {
+      if (w.unseenMachines.includes(o)) throw new Error(`${o} 连不上`);
       const todo = o === "devbox" ? DEVBOX_CHORES : o === "<local>" ? LOCAL_CHORES : [];
       return {
         home: HOME,
@@ -199,6 +223,17 @@ export function machineOps(): Record<string, OpHandler> {
         todo,
         tmux: o !== "win-laptop",
         chores: todo.filter((c) => ["must", "install", "decide"].includes(c.kind) && (c.state === "todo" || c.state === "expired")).length,
+        own: [
+          { id: "bin", path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: true, size: null },
+          { id: "relayKey", path: "~/.cc-monitor/relay-key", dir: false, class: "truth", exists: true, size: 64 },
+          { id: "policy", path: "~/.cc-monitor/backend.json", dir: false, class: "truth", exists: false, size: null },
+          { id: "profiles", path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, size: 1840 },
+          { id: "aliasesPosix", path: "~/.cc-monitor/aliases.sh", dir: false, class: "truth", exists: true, size: 512 },
+          { id: "chores", path: "~/.cc-monitor/chores.json", dir: false, class: "truth", exists: true, size: 96 },
+          { id: "quota", path: "~/.cc-monitor/quota.json", dir: false, class: "truth", exists: true, size: 3172 },
+          { id: "accounts", path: "~/.cc-monitor/accounts", dir: true, class: "truth", exists: true, size: null },
+          { id: "knownHosts", path: "~/.cc-monitor/known_hosts", dir: false, class: "cache", exists: true, size: 802 },
+        ],
       };
     },
     "sessions-where": (_o, req, w) => ({

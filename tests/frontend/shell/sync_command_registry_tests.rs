@@ -70,6 +70,10 @@ const PENDING: &[(&str, &[&str], &str)] = &[];
 /// 新加一条同步命令 ⇒ 要么写 `async`（`§10` 默认），要么在这里写一句为什么它不等外面（不起进程 · 不连口 · 不睡 · 不等锁）。
 const SYNC_ALLOWED: &[(&str, &str)] = &[
     (
+        "app_restart.rs::restart_app",
+        "只往事件循环递一个「退出后重起」的请求（`request_restart`）就回，不起子进程、不等外面",
+    ),
+    (
         "backend_control.rs::backend_machines",
         "读进程内那张远端句柄表的名字（内存，锁只在这一下）",
     ),

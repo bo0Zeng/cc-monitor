@@ -134,6 +134,11 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
          ＋ 界面交来的记录账 ＋ 日志位置，只读、不经后端发东西",
     ),
     ("open_log_file", Own::Log, "日志"),
+    (
+        "restart_app",
+        Own::Lifecycle,
+        "设置窗「现在重启」：重起 cc-monitor 自己（走退出臂，本机后端照它自己那份退出行为去留）",
+    ),
     ("open_log_dir", Own::Log, "日志"),
     (
         "drift_ledger_report",

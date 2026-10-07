@@ -38,6 +38,7 @@
  */
 import { LS_KEYS } from "../local-storage";
 import { copyText } from "../copy-table";
+import { restartNowButton } from "./restart-now";
 
 type Listener = (reasons: string[]) => void;
 
@@ -139,14 +140,11 @@ export function createRestartBar(): HTMLElement {
   const bar = document.createElement("div");
   bar.className = "settings-restart-bar";
   bar.setAttribute("role", "status");
+  const text = document.createElement("span");
+  bar.append(text, restartNowButton());
   const render = (list: string[]): void => {
-    if (list.length === 0) {
-      bar.hidden = true;
-      bar.textContent = "";
-      return;
-    }
-    bar.hidden = false;
-    bar.textContent = copyText("restartNotice.render.pending", { list: list.join(copyText("restartNotice.render.listSep")) });
+    bar.hidden = list.length === 0;
+    text.textContent = list.length === 0 ? "" : copyText("restartNotice.render.pending", { n: list.length, list: list.join(copyText("restartNotice.render.listSep")) });
   };
   render(restartReasons());
   subscribeRestart(render);

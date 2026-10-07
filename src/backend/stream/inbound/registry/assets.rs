@@ -26,10 +26,36 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "data-report",
         summary: "「文件与数据」那一份成品",
         codes: &["bad_args", "failed"],
-        fields: &[arg("client", "同 `footprint-report`（本机那一栏才带）"), out("changedFiles", "cc-monitor 写进你的文件的那几处 `{path, what, undo}`（`undo` ＝ 撤回在哪：设置窗的页 · 栏 · 锚点）"), out("chores", "「要你动手」里进角标的件数：要做 ＋ 要装 ＋ 要你定，还没做完的"), out("home", "这台家目录（显示时 `~` 缩写按它）"), out("tmux", "这台有没有 tmux（查不动 ⇒ `null`）"), out("todo", "「要你动手」各件 `{id, kind, state, name, loc, said, why, steps, diff, copy, whole, wholeCovers, file, go, howUrl, mask, action}`：`kind` 闭集 `must` · `install` · `decide` · `installOptional` · `optional`；`state` 闭集 `todo` · `done` · `expired` · `blocked` · `declined`；`action` 闭集 `copyCommand` · `copySnippet` · `decide` · `locate` · `how` · `installFirst`；`diff` 每行 `{n, op, text}`（`op` ＝ `same` · `del` · `add`，加的那几行 `n` 为 `null`）；`mask` ＝ 显示时要遮住的那把钥匙")],
+        fields: &[arg("client", "同 `footprint-report`（本机那一栏才带）"), out("changedFiles", "cc-monitor 写进你的文件的那几处 `{path, what, undo}`（`undo` ＝ 撤回在哪：设置窗的页 · 栏 · 锚点）"), out("chores", "「要你动手」里进角标的件数：要做 ＋ 要装 ＋ 要你定，还没做完的"), out("home", "这台家目录（显示时 `~` 缩写按它）"), out("own", "cc-monitor 在这台自己家里放的每一样 `{id, path, dir, class, exists, size}`：`id` 闭集同 `~/.cc-monitor/` 下的契约常量；`class` ＝ `truth`（删了会丢）· `cache`（能重建）；目录 `size` 为 `null`"), out("tmux", "这台有没有 tmux（查不动 ⇒ `null`）"), out("todo", "「要你动手」各件 `{id, kind, state, name, loc, said, why, steps, diff, copy, whole, wholeCovers, file, go, howUrl, mask, action}`：`kind` 闭集 `must` · `install` · `decide` · `installOptional` · `optional`；`state` 闭集 `todo` · `done` · `expired` · `blocked` · `declined`；`action` 闭集 `copyCommand` · `copySnippet` · `decide` · `locate` · `how` · `installFirst`；`diff` 每行 `{n, op, text}`（`op` ＝ `same` · `del` · `add`，加的那几行 `n` 为 `null`）；`mask` ＝ 显示时要遮住的那把钥匙")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::footprint::data_answer(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 离线那台的上次值（`footprint/last_seen.rs`）：本机后端替界面记下每台最近一次读成的账号清单 · 「文件与数据」那一份，
+    //   连不上时界面照它画「上次的」，跨重启还在。写后端自己的 `~/.cc-monitor/last-seen.json`（锁里读—改—写、原子写）。阻塞档。
+    CommandSpec {
+        name: "last-seen-read",
+        summary: "读离线那台的上次值",
+        codes: &["bad_args", "io_failed"],
+        fields: &[arg("origin", "哪台（机器名）"), out("accounts", "上次读成的 `accounts-list` 应答 `{atMs, value}`；没记过 ⇒ `null`"), out("data", "上次读成的 `data-report` 应答 `{atMs, value}`；没记过 ⇒ `null`")],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::footprint::last_seen::answer_read(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "last-seen-write",
+        summary: "记下一台这一次读成的那一份",
+        codes: &["bad_args", "io_failed", "too_large"],
+        fields: &[out("atMs", "记下的时刻（毫秒）"), arg("kind", "闭集 `accounts` · `data`"), arg("origin", "哪台（机器名）"), arg("value", "那一份应答（对象，序列化后 ≤ 256 KiB）；最多记 64 台，超了先丢最久没更新的那台")],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::footprint::last_seen::answer_write(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

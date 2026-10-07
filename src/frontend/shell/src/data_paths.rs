@@ -318,6 +318,11 @@ fn backend_entries(
             DataClass::Truth,
         ),
         file(
+            rr::LAST_SEEN_REL,
+            copy_text("rsDataPaths.backend.lastSeen", &[]),
+            DataClass::Cache,
+        ),
+        file(
             rr::ASSET_CATALOG_REL,
             copy_text("rsDataPaths.backend.assetCatalog", &[]),
             DataClass::Cache,

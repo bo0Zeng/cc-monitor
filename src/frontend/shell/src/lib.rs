@@ -52,6 +52,7 @@ mod config;
 mod data_paths;
 mod footprint_client; // 「足迹」里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 在本机后端）
                       // U-CC1：数据面漂移记账 —— 把「CC 变了」从不可观测变成看一眼就知道。只记账，零行为变化。
+mod app_restart; // 设置窗「现在重启」：重起 cc-monitor 自己
 mod diagnostics_report; // 日志页「复制诊断信息」：一个命令出整段诊断文本
 mod drift_ledger;
 mod event_replay;
@@ -846,6 +847,7 @@ pub fn run() {
             footprint_client::footprint_client_facts,
             drift_ledger::drift_ledger_report,
             diagnostics_report::diagnostics_report,
+            app_restart::restart_app,
             // `ccm …` 调用行 · 载荷渲染两条退役：那台后端的帧命令 `launch-render-cli` / `launch-render-payload`。
             // MCP 读写（`mcp::*` 六条）与推 / 拉两条退役：界面经通道问那台后端
             //   （`mcp-read` · `mcp-server-put` / `-remove` · `mcp-sync-source` / `-preview` / `-apply`，`src/frontend/ui/mcp-reads.ts` · `src/frontend/ui/mcp-sync-reads.ts`）。

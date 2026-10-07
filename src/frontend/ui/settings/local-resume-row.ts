@@ -1,20 +1,14 @@
 /**
- * 本机「这台上的 cc-monitor」里那一格恢复命令（只管本机；留空 ＝ 通用页那一格）。远端那一格在机器卡里（存进机器表那台）。
- * 失焦 / 回车存；存失败 ⇒ 退回存过的值、行下一句。
+ * 本机「这台上的 cc-monitor」里那一格恢复命令（只管本机；「通用设置」＝ 跟通用页那一格）。远端那一格在机器卡里（存进机器表那台）。
+ * 下拉（候选同通用页那一格）；选了就存；存失败 ⇒ 退回存过的值、行下一句。
  */
 import { ccRow } from "./cc-row";
 import { copyText } from "../copy-table";
 import { getLocalResumeCommand, setLocalResumeCommand } from "../local-machine-prefs";
+import { getBehavior } from "../behavior";
+import { ResumeSelect } from "./resume-select";
 
 export function localResumeRow(): HTMLElement {
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "settings-input machine-cc-input";
-  input.placeholder = copyText("machineCard.field.resumeCmdHint");
-  input.spellcheck = false;
-  input.autocomplete = "off";
-  input.disabled = true;
-  input.dataset.role = "local-resume";
   const help = document.createElement("div");
   help.textContent = copyText("machineCard.field.resumeCmdScope", { machine: copyText("remote.cards.local") });
   const err = document.createElement("div");
@@ -22,27 +16,32 @@ export function localResumeRow(): HTMLElement {
   err.hidden = true;
   help.appendChild(err);
   let saved = "";
-  void getLocalResumeCommand().then((v) => {
+  let presets: string[] = [];
+  const sel = new ResumeSelect({
+    inherit: true,
+    onChange: (next) => {
+      err.hidden = true;
+      setLocalResumeCommand(next).then(
+        () => {
+          saved = next;
+        },
+        (e: unknown) => {
+          sel.set(saved, presets);
+          err.textContent = copyText("settings.behavior.saveFailedLine", { why: String(e) });
+          err.hidden = false;
+        },
+      );
+    },
+  });
+  sel.disabled = true;
+  sel.element.dataset.role = "local-resume";
+  void Promise.all([getLocalResumeCommand(), getBehavior().catch(() => null)]).then(([v, b]) => {
     saved = v;
-    input.value = saved;
-    input.disabled = false;
+    presets = b?.resumeCommandPresets ?? [];
+    sel.set(saved, presets);
+    sel.disabled = false;
   });
-  input.addEventListener("change", () => {
-    const next = input.value.trim();
-    err.hidden = true;
-    setLocalResumeCommand(next).then(
-      () => {
-        saved = next;
-        input.value = next;
-      },
-      (e: unknown) => {
-        input.value = saved;
-        err.textContent = copyText("settings.behavior.saveFailedLine", { why: String(e) });
-        err.hidden = false;
-      },
-    );
-  });
-  const row = ccRow(copyText("machineCard.field.resumeCmd"), help, [input]);
+  const row = ccRow(copyText("machineCard.field.resumeCmd"), help, [sel.element]);
   row.dataset.col = "resume";
   return row;
 }

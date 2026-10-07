@@ -31,9 +31,11 @@ import { DiagnosticsSection } from "./diagnostics-section";
 import { makeSkeleton } from "./skeleton";
 import { SettingsRouter } from "./router";
 import { buildMachinePage, localMeta, type MachinePage } from "./machine-page";
-import type { IconName } from "../kit/icon";
+import { icon, type IconName } from "../kit/icon";
 // E62：`markRestartNeeded` —— 本文件两处「重启才生效」的改动此前不给常驻条供货。
 import { createRestartBar, markRestartNeeded } from "./restart-notice";
+import { restartNowButton } from "./restart-now";
+import { ResumeSelect } from "./resume-select";
 import { claudeDirProblem } from "./claude-dir-check";
 import { createUnknownKeysBar, rerenderUnknownKeys } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
 import { setCurrentMachine } from "./machine-context";
@@ -267,6 +269,8 @@ export class SettingsPanel {
 
   /** Claude 数据目录输入框 —— 改动后保存会提示需要重启 */
   private claudeDirInput!: HTMLInputElement;
+  /** Claude 目录那一行下：「重启 cc-monitor 后生效 ［现在重启］」（存了一个新的目录之后出现）。 */
+  private claudeDirRestart!: HTMLElement;
   /** 打开时 claudeDir 的快照，用于判断是否变化（变了就提示重启） */
   private claudeDirOriginal: string = "";
   /** E62：打开设置时 `showBgSessions` 的值——用来判断「真的改了没」。 */
@@ -300,9 +304,7 @@ export class SettingsPanel {
   /** 打开时读回的那一份行为（开关拨动按它改一格再存）。 */
   private behaviorNow: BehaviorConfig | null = null;
   /** 恢复命令那一格（各台的默认）与它的预设条 · 存失败时的那一句。 */
-  private resumeInput!: HTMLInputElement;
-  private resumePresetsBox!: HTMLElement;
-  private resumePresets: string[] = [];
+  private resumeSelect!: ResumeSelect;
   private resumeError!: HTMLElement;
   private remoteLauncherWarning!: HTMLElement; // F08：越层启动器诊断提示（只诊断，不代改）
   private onBehaviorChange?: (cfg: BehaviorConfig) => void;
@@ -421,9 +423,9 @@ export class SettingsPanel {
     const controls: HTMLInputElement[] = [
       ...[...this.inputs.values()].filter((c): c is HTMLInputElement => c instanceof HTMLInputElement),
       this.claudeDirInput,
-      this.resumeInput,
     ];
     for (const c of controls) c.disabled = pending;
+    this.resumeSelect.disabled = pending;
     for (const sw of this.behaviorSwitches()) sw.input.setAttribute("aria-disabled", String(pending));
     if (!pending) this.updateBringFrontEnabled();
   }
@@ -446,9 +448,7 @@ export class SettingsPanel {
     this.notifyTurnEndSw.set(behavior.notifyTurnEnd);
     this.notifyNeedsSw.set(behavior.notifyNeeds);
     this.resumeInTmuxSw.set(behavior.resumeInTmux);
-    this.resumeInput.value = behavior.resumeCommand;
-    this.resumePresets = behavior.resumeCommandPresets;
-    this.renderResumePresets();
+    this.resumeSelect.set(behavior.resumeCommand, behavior.resumeCommandPresets);
     this.updateRemoteLauncherWarning();
     this.syncInputs();
   }
@@ -467,59 +467,20 @@ export class SettingsPanel {
   /** F08：越层启动器诊断——只读提示，不碰恢复命令那一格本身（设计
    *  原则#7：只诊断+引导迁移，不自动降级、不偷改配置）。 */
   private updateRemoteLauncherWarning(): void {
-    const msg = diagnoseRemoteLauncher(this.resumeInput.value);
+    const msg = diagnoseRemoteLauncher(this.resumeSelect.value);
     this.remoteLauncherWarning.textContent = msg ?? "";
     this.remoteLauncherWarning.style.display = msg ? "block" : "none";
   }
 
-  /**
-   * P6c：恢复命令的预设渲染成可点的 chip。点完走同一条越层诊断（`updateRemoteLauncherWarning`）：
-   * 这一格也是远端几台的默认，存成预设是把错误固化成一键。
-   */
-  private renderResumePresets(): void {
-    const box = this.resumePresetsBox;
-    const input = this.resumeInput;
-    box.replaceChildren();
-    for (const cmd of this.resumePresets) {
-      const wrap = document.createElement("span");
-      wrap.className = "settings-preset-wrap";
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "settings-btn settings-preset";
-      chip.textContent = cmd;
-      chip.title = cmd;
-      chip.addEventListener("click", () => {
-        input.value = cmd;
-        this.updateRemoteLauncherWarning();
-        void this.saveResumeCommand();
-      });
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "settings-btn settings-preset-del";
-      del.textContent = copyText("settingsPanel.preset.remove");
-      // 正在生效的那条不给移除：存时它必然又被记回来（`withResumePreset` 把输入框里的值并进去）。
-      const active = input.value.trim() === cmd;
-      del.disabled = active;
-      del.title = active ? copyText("settingsPanel.preset.inUse", { cmd }) : copyText("settingsPanel.preset.removeHint", { cmd });
-      del.addEventListener("click", () => void this.removeResumePreset(cmd));
-      wrap.append(chip, del);
-      box.appendChild(wrap);
+  /** 恢复命令那一格选了 / 自定义那格失焦：存，并记进用过的那几条（空 ＝ 用默认那一家的启动器，不记）。 */
+  private async saveResumeCommand(cmd: string): Promise<void> {
+    const b = this.behaviorNow;
+    if (!b) return;
+    this.updateRemoteLauncherWarning();
+    if (!(await this.saveBehavior({ ...b, resumeCommand: cmd, resumeCommandPresets: withResumePreset(b.resumeCommandPresets, cmd) }))) {
+      this.resumeSelect.set(b.resumeCommand, b.resumeCommandPresets);
+      this.updateRemoteLauncherWarning();
     }
-  }
-
-  /** P6c：把一条预设从列表里拿掉并落盘。生效中的那条到不了这里（按钮是 disabled 的）。 */
-  private async removeResumePreset(cmd: string): Promise<void> {
-    const b = this.behaviorNow;
-    if (!b) return;
-    await this.saveBehavior({ ...b, resumeCommandPresets: b.resumeCommandPresets.filter((x) => x !== cmd) });
-  }
-
-  /** 恢复命令那一格失焦 / 回车 / 点预设：存，并记进用过的那几条（空 ＝ 用那台后端的默认，不记）。 */
-  private async saveResumeCommand(): Promise<void> {
-    const b = this.behaviorNow;
-    if (!b) return;
-    const cmd = this.resumeInput.value.trim();
-    await this.saveBehavior({ ...b, resumeCommand: cmd, resumeCommandPresets: withResumePreset(b.resumeCommandPresets, cmd) });
   }
 
   /** 拨一个开关：按读回的那份改这一格再存；没读回 / 存失败 ⇒ `false`（拇指退回）。 */
@@ -544,8 +505,7 @@ export class SettingsPanel {
       return false;
     }
     this.behaviorNow = next;
-    this.resumePresets = next.resumeCommandPresets;
-    this.renderResumePresets();
+    this.resumeSelect.set(next.resumeCommand, next.resumeCommandPresets);
     this.updateBringFrontEnabled();
     // E62：`showBgSessions` 是重启生效的（后端启动时读一次）⇒ 真改了才供货「重启后生效」。
     if (next.showBgSessions !== this.showBgOriginal) {
@@ -838,6 +798,7 @@ export class SettingsPanel {
     // E62：给 S7 那条常驻条**供货**。这里的 banner 是一次性的（关窗即没），
     // 而「还没生效」是个会一直为真到重启为止的状态 —— 两者不是一回事，都要有。
     markRestartNeeded(copyText("settingsPanel.save.claudeDir"));
+    this.claudeDirRestart.hidden = false;
     this.banner.textContent =
       copyText("settingsPanel.claudeDir.updated");
     this.banner.classList.add("settings-banner-show");
@@ -1513,19 +1474,9 @@ export class SettingsPanel {
     textCol.className = "settings-label-col";
     textCol.append(text, help);
     row.appendChild(textCol);
-    this.resumeInput = document.createElement("input");
-    this.resumeInput.type = "text";
-    this.resumeInput.className = "settings-input settings-input-mono";
-    this.resumeInput.placeholder = copyText("settingsPanel.behavior.resumeHint");
-    this.resumeInput.spellcheck = false;
-    this.resumeInput.autocomplete = "off";
-    this.resumeInput.addEventListener("change", () => void this.saveResumeCommand());
-    this.resumeInput.addEventListener("input", () => this.updateRemoteLauncherWarning());
-    row.appendChild(this.resumeInput);
+    this.resumeSelect = new ResumeSelect({ inherit: false, onChange: (v) => void this.saveResumeCommand(v) });
+    row.appendChild(this.resumeSelect.element);
     group.appendChild(row);
-    this.resumePresetsBox = document.createElement("div");
-    this.resumePresetsBox.className = "settings-presets resume-presets";
-    group.appendChild(this.resumePresetsBox);
     // F08：越层启动器诊断——只诊断 ＋ 引导，不自动改这一格（设计原则 #7）。
     this.remoteLauncherWarning = document.createElement("div");
     this.remoteLauncherWarning.className = "settings-launcher-warning";
@@ -1615,6 +1566,12 @@ export class SettingsPanel {
     pickBtn.addEventListener("click", () => void this.pickClaudeDir());
     row.append(resetBtn, pickBtn);
     group.appendChild(row);
+    this.claudeDirRestart = document.createElement("div");
+    this.claudeDirRestart.className = "diag-restart";
+    this.claudeDirRestart.dataset.role = "claude-dir-restart";
+    this.claudeDirRestart.hidden = true;
+    this.claudeDirRestart.append(icon("warning", "compact"), document.createTextNode(copyText("diagnostics.file.restart")), restartNowButton());
+    group.appendChild(this.claudeDirRestart);
     return group;
   }
 

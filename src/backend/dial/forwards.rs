@@ -309,6 +309,15 @@ pub(crate) fn running_to_machine(origin: &str) -> u32 {
     running_to(&LEDGER, origin)
 }
 
+/// 账上链路还在的全部几条（「现在重启 cc-monitor」而这台后端随它一起停时，这些都断）。
+pub(crate) fn running_all() -> u32 {
+    LEDGER
+        .rows()
+        .iter()
+        .filter(|(_, e)| !e.pump.0.is_finished())
+        .count() as u32
+}
+
 /// 生产的 `forward-start`：进程里那张可达表 ＋ 那张账 ＋ 真拨号。
 pub async fn answer_start(args: &Value) -> Result<Value, (&'static str, String)> {
     start_with(

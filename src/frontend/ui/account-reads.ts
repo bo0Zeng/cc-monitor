@@ -17,6 +17,7 @@ import { decodeAccountsList, decodeTrust } from "./accounts-decode";
 import type { AccountsState, SessionAccount } from "./accounts";
 // API key 那两问的成品（`apikey-routing`）住 `apikey-reads.ts`；本文件只给账号面包一层（`agent` 与账号清单同一个出处）。
 import { fetchApikeyRouting, type ApikeyRoutingView } from "./apikey-reads";
+import { recallSeen, rememberSeen } from "./last-seen";
 
 const ACCOUNTS_TTL_MS = 30_000; // 账号列表极少变（迁移/登录才变），缓存久一点省 SSH
 const SESSION_ACCOUNTS_TTL_MS = 8_000; // 会话账号归属随起停变，照 tabs.ts tmuxCache 的 8s
@@ -27,7 +28,7 @@ interface CacheEntry<T> {
 const accountsCache = new Map<string, CacheEntry<AccountsState>>();
 const sessionAccountsCache = new Map<string, CacheEntry<SessionAccount[]>>();
 
-/** 每台最近一次答成的那一份 ＋ 时刻（这次运行里、这个窗口里；那台没问到时画「上次的」）。 */
+/** 每台最近一次答成的那一份 ＋ 时刻（这次运行里、这个窗口里；那台没问到时画「上次的」。这次运行里还没答成过 ⇒ 问本机后端记着的那一份，跨重启还在）。 */
 const lastGood = new Map<string, { meta: NonNullable<AccountsState["meta"]>; accounts: AccountsState["accounts"]; atMs: number }>();
 
 /**
@@ -53,7 +54,8 @@ export async function fetchAccounts(origin: Origin, force = false): Promise<Acco
     const body = jsonBody({ agent: launchAgentId() });
     const budget = budgetWithin(ACCOUNTS_BUDGET_MS);
     const reply = await chan.call(origin, "accounts-list", body, budget);
-    const got = decodeAccountsList(readJson(reply));
+    const raw = readJson(reply);
+    const got = decodeAccountsList(raw);
     state = {
       origin,
       available: true,
@@ -64,8 +66,12 @@ export async function fetchAccounts(origin: Origin, force = false): Promise<Acco
       // Z01：后端说的「能用但有缺」（manifest 里没有账号 0）。
       notice: got.notice,
     };
-    if (got.meta !== null) lastGood.set(origin, { meta: got.meta, accounts: got.accounts, atMs: now });
+    if (got.meta !== null) {
+      lastGood.set(origin, { meta: got.meta, accounts: got.accounts, atMs: now });
+      void rememberSeen(origin, "accounts", raw);
+    }
   } catch (e) {
+    if (!lastGood.has(origin)) await recallLastGood(origin);
     state = {
       origin,
       available: false,
@@ -80,6 +86,18 @@ export async function fetchAccounts(origin: Origin, force = false): Promise<Acco
   accountsCache.set(origin, { at: now, value: state });
   putAccounts(origin, state); // 每台的账号快照只住 store 一处，读者订阅它
   return state;
+}
+
+/** 本机后端记着的那台上次那一份 ⇒ 收进 `lastGood`（收不下 / 没有 ⇒ 不动）。 */
+async function recallLastGood(origin: Origin): Promise<void> {
+  const seen = await recallSeen(origin, "accounts");
+  if (seen === null) return;
+  try {
+    const got = decodeAccountsList(seen.value);
+    if (got.meta !== null) lastGood.set(origin, { meta: got.meta, accounts: got.accounts, atMs: seen.atMs });
+  } catch {
+    // 记着的那份形状对不上（旧版记的）⇒ 当没有。
+  }
 }
 
 /**
