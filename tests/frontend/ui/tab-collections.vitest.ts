@@ -40,6 +40,7 @@ import {
 } from "../../../src/frontend/ui/tab-collections";
 import { patchConfig } from "../../../src/frontend/ui/config";
 import { groupMoveForDrop, type DropTarget, type GroupMove } from "../../../src/frontend/ui/tab-drop";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const c = (id: string, name: string): TabCollection => ({ id, name });
 
@@ -131,12 +132,12 @@ describe("〔TL2 · E13〕到上界：为什么没做", () => {
     expect(createRefusal(many(COLLECTION_CAP))).toEqual({ kind: "collections-full" });
     expect(createRefusal(many(COLLECTION_CAP - 1))).toBeNull();
     // 与数据层对拍：判定说「满」的那一格，`createCollection` 恰好原样返回。
-    expect(createCollection(many(COLLECTION_CAP), "新").length).toBe(COLLECTION_CAP);
+    expect(createCollection(many(COLLECTION_CAP), copyText("extPage.row.new")).length).toBe(COLLECTION_CAP);
   });
 
   it("那一句：带上界数、零占位符残留", () => {
     const a = collectionRefusalText({ kind: "collections-full" });
-    expect(a.title).toBe("没有建新集合");
+    expect(a.title).toBe(copyText("tabCollections.full.collectionsTitle"));
     expect(a.body).toContain(String(COLLECTION_CAP));
     for (const t of [a.title, a.body]) {
       expect(t).not.toMatch(/[{〔]/);

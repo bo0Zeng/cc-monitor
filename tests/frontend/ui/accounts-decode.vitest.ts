@@ -36,6 +36,8 @@ import {
   UNSUPPORTED,
   type ChanCallArgs,
 } from "../../test-support/chan-fake";
+import { copyText } from "../../../src/frontend/ui/copy-table";
+import { copyPattern } from "../../test-support/copy-pattern";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const golden = JSON.parse(
@@ -148,7 +150,7 @@ describe("失败：折成 available:false ＋ 一句人话，不抛", () => {
     const st = await fetchAccounts("devbox");
     expect(st.available).toBe(false);
     expect(st.accounts).toEqual([]);
-    expect(st.error).toMatch(/够不着/);
+    expect(st.error).toMatch(copyText("chanCaller.said.unreachable"));
     // 够不着 ≠ 要更新。
     expect([st.oldBackend, deriveUi(st).kind]).toEqual([false, "query-failed"]);
   });
@@ -156,11 +158,11 @@ describe("失败：折成 available:false ＋ 一句人话，不抛", () => {
     invokeMock.mockRejectedValue(UNSUPPORTED);
     const st = await fetchAccounts("devbox");
     expect(st.available).toBe(false);
-    expect(st.error).toMatch(/版本旧/);
+    expect(st.error).toMatch(copyPattern("peerVersion.said.old"));
     expect([st.oldBackend, deriveUi(st).kind]).toEqual([true, "needs-update"]);
     const t = await checkTrust("devbox", "/h/a", "/w");
     expect(t.available).toBe(false);
-    expect(t.error).toMatch(/版本旧/);
+    expect(t.error).toMatch(copyPattern("peerVersion.said.old"));
   });
   it("老后端回旧形状 `{lines}` ⇒ 不可用（两端契约对不上），不当成零个账号", async () => {
     invokeMock.mockResolvedValue(linesReply(['{"kind":"accounts-meta","enabled":true}']));

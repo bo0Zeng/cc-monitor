@@ -75,6 +75,7 @@ import {
 import { REPO_ROOT } from "../../../test-support/repo-root";
 import { TabManager, type Tab } from "../../../../src/frontend/ui/tabs";
 import { MAX_TRANSIENT_FAILURES } from "../../../../src/frontend/ui/views/outline-source";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 /** 这一趟里发了哪些 `list_user_inputs`（只看参数）。 */
 const outlineCalls = (): unknown[] =>
@@ -139,7 +140,7 @@ describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => 
     await settleOutline();
     expect(rowsOf().map((r) => r.dataset.inputUuid)).toEqual(["u1", "u100"]);
     expect(rowsOf().map((r) => r.textContent)).toEqual(["1. 很久以前那一句", "2. 最新那一句"]);
-    expect(toggleOf().textContent).toBe("大纲 · 2");
+    expect(toggleOf().textContent).toBe(`${copyText("userInputPanel.outline.label")} · 2`);
     // 批期不要、批结束 active tab 要**一次**：本机 origin 逐字 `<local>`、从 0 起
     expect(outlineCalls()).toEqual([{ origin: "<local>", jsonlPath: "/p/s1.jsonl", fromOffset: 0 }]);
   });
@@ -219,7 +220,7 @@ describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => 
     await settleOutline();
     expect(rowsOf().length).toBe(0);
     expect(toggleOf().disabled).toBe(true);
-    expect(toggleOf().title).toContain("本机的后端版本旧");
+    expect(toggleOf().title).toContain(copyText("peerVersion.said.old", { machine: copyText("control.machine.local") }));
     expect(outlineCalls().length, "结构性失败只该要一次").toBe(1);
     vi.mocked(invoke).mockClear();
     feed(userLine(101, "u101", "又说一句"));
@@ -243,7 +244,7 @@ describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => 
     await settleOutline();
     expect(outlineCalls().length, "瞬时失败之后下一次触发没再要").toBe(2);
     expect(rowsOf().map((r) => r.dataset.inputUuid)).toEqual(["u1", "u100", "u101"]);
-    expect(toggleOf().title).toBe("按你的输入跳转");
+    expect(toggleOf().title).toBe(copyText("userInputPanel.outline.hint"));
   });
 
   it("瞬时失败时手上已有清单 ⇒ 不动它（行与续点都不动），下一次从原续点接着要", async () => {
@@ -312,7 +313,7 @@ describe("SE1 清单问后端要：顺序是后端给的，前端不攒", () => 
     expect(outlineCalls().length).toBeGreaterThan(0); // 真的问过了，不是没问
     expect(rowsOf().length).toBe(0);
     expect(toggleOf().disabled).toBe(true);
-    expect(toggleOf().textContent).toBe("大纲");
+    expect(toggleOf().textContent).toBe(copyText("userInputPanel.outline.label"));
   });
 });
 
@@ -349,7 +350,7 @@ describe("SE2 首屏：索引顺带出大纲 ⇒ 同一份文件只读一遍", (
     expect(outlineCalls()).toEqual([]);
     expect(rowsOf().map((r) => r.dataset.inputUuid)).toEqual(["u1", "u100"]);
     expect(rowsOf().map((r) => r.textContent)).toEqual(["1. 很久以前那一句", "2. 最新那一句"]);
-    expect(toggleOf().textContent).toBe("大纲 · 2");
+    expect(toggleOf().textContent).toBe(`${copyText("userInputPanel.outline.label")} · 2`);
   });
 
   it("种上之后，真用户输入上屏 ⇒ 从索引的 end 接着要增量（不是从 0）", async () => {

@@ -214,7 +214,7 @@ fn the_said_line_is_exact_on_every_cell() {
     assert_eq!(cells, 10, "穷举的格数不对 —— 循环坏了");
     let unattended = copy_text("backendPolicy.exit.unattended", &[]);
     assert!(
-        unattended.contains("无人监护"),
+        unattended.contains(copy_core::copy_static!("backendPolicy.exit.unattended")),
         "常驻那一句没说「无人监护」（K14 那一半）"
     );
     for key in [
@@ -223,7 +223,7 @@ fn the_said_line_is_exact_on_every_cell() {
         "backendPolicy.exit.unreadable",
     ] {
         assert!(
-            !copy_text(key, &[]).contains("无人监护"),
+            !copy_text(key, &[]).contains(copy_core::copy_static!("backendPolicy.exit.unattended")),
             "`{key}` 承诺了无人监护 —— 那一档它不会继续跑"
         );
     }

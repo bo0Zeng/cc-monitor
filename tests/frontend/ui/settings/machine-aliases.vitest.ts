@@ -222,17 +222,17 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     const off = plat === "powershell" ? copyText("machineAliases.access.offWindow") : copyText("machineAliases.access.off");
     expect(access.textContent).toContain(off);
     expect(access.dataset.anchor, "主窗口 ↗［接上终端］落到这里").toBe("connect-terminal");
-    clickText(access, "接上 ~/rc-a");
+    clickText(access, copyText("machineAliases.access.connectTo", { path: "~/rc-a" }));
     await flush();
     expect(seen.filter((c) => c.cmd === "aliases_block_install").map((c) => c.args)).toEqual([{ origin: "<local>", rcPath: "/h/rc-a" }]);
     const on = plat === "powershell" ? copyText("machineAliases.access.onWindow", { path: "~/rc-a" }) : copyText("machineAliases.access.on", { path: "~/rc-a" });
     expect(access.textContent).toContain(on);
     // 卸载先给要拿掉的那几行（问后端要块的渲染），再点一次才卸。
-    clickText(access, "卸载 ccm");
+    clickText(access, copyText("machineAliases.rc.uninstall"));
     await flush();
     expect(seen.filter((c) => c.cmd === "aliases_block_remove"), "没确认就卸了").toEqual([]);
     expect(access.querySelector('[data-role="block-text"]')!.textContent).toBe("# 接入那几行 → /h/rc-a");
-    clickText(access.querySelector(".cfg-panel")!, "卸载 ccm");
+    clickText(access.querySelector(".cfg-panel")!, copyText("machineAliases.rc.uninstall"));
     await flush();
     expect(seen.filter((c) => c.cmd === "aliases_block_remove").map((c) => c.args)).toEqual([{ origin: "<local>", rcPath: "/h/rc-a" }]);
     expect(access.textContent).toContain(off);
@@ -251,7 +251,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     expect(clash.textContent).toContain("~/rc-a");
     const access = el.querySelector<HTMLElement>('[data-role="access"]')!;
     expect(access.textContent).toContain(copyText("machineAliases.access.outdated", { path: "~/rc-a" }));
-    clickText(access, "换成新版");
+    clickText(access, copyText("machineAliases.access.reconnect"));
     await flush();
     expect(access.textContent).not.toContain(copyText("machineAliases.access.outdated", { path: "~/rc-a" }));
     // 码换成「清单那条」⇒ 句子跟着换（同一份界面，只认码）。
@@ -266,7 +266,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     const went: unknown[] = [];
     el.addEventListener("settings-go", (e) => went.push((e as CustomEvent).detail));
     await open(el);
-    clickText(el, "自己贴");
+    clickText(el, copyText("machineAliases.access.selfPaste"));
     await flush();
     expect(seen.filter((c) => c.cmd === "chan:chores-mark").map((c) => c.args)).toEqual([{ origin: "<local>", op: "selfPaste", rc: "/h/rc-a" }]);
     expect(seen.some((c) => c.cmd === "aliases_block_render"), "不再就地渲染那几行").toBe(false);
@@ -282,16 +282,16 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
   it("换一份：其它文件交给读回口过围栏、选中它再接入；过不了围栏 ⇒ 原话上屏", async () => {
     const el = await mount();
     await open(el);
-    clickText(el, "换一份文件");
+    clickText(el, copyText("machineAliases.access.choose"));
     const other = el.querySelector<HTMLInputElement>(".ccm-rc-other")!;
     other.value = "/etc/x";
-    clickText(el, "用这份");
+    clickText(el, copyText("machineAliases.rc.useOther"));
     await flush();
     expect(el.textContent).toContain("拒绝写这个配置文件");
     other.value = "~/.zshrc";
-    clickText(el, "用这份");
+    clickText(el, copyText("machineAliases.rc.useOther"));
     await flush();
-    clickText(el.querySelector('[data-role="access"]')!, "接上 ~/.zshrc");
+    clickText(el.querySelector('[data-role="access"]')!, copyText("machineAliases.access.connectTo", { path: "~/.zshrc" }));
     await flush();
     expect(seen.filter((c) => c.cmd === "aliases_block_install").map((c) => (c.args as { rcPath: string }).rcPath)).toEqual(["/h/.zshrc"]);
     const last = [...seen].reverse().find((c) => c.cmd === "aliases_read")!.args as { rcPath: string };
@@ -313,13 +313,13 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     expect(seen, "构造零 I/O").toEqual([]);
     await open(el);
     expect(seen.map((c) => c.cmd).sort()).toEqual(["aliases_read", "profiles_read"]);
-    clickText(el.querySelector('[data-role="access"]')!, "接上 ~/rc-a");
+    clickText(el.querySelector('[data-role="access"]')!, copyText("machineAliases.access.connectTo", { path: "~/rc-a" }));
     await flush();
-    clickText(el.querySelector('[data-role="access"]')!, "卸载 ccm");
+    clickText(el.querySelector('[data-role="access"]')!, copyText("machineCard.aliases.uninstall"));
     await flush();
-    clickText(el.querySelector(".cfg-panel")!, "卸载 ccm");
+    clickText(el.querySelector(".cfg-panel")!, copyText("machineCard.aliases.uninstall"));
     await flush();
-    clickText(el, "自己贴");
+    clickText(el, copyText("machineAliases.access.selfPaste"));
     await flush();
     const sent = seen.filter((c) => c.cmd.startsWith("aliases_") || c.cmd.startsWith("profiles_") || c.cmd === "chan:chores-mark");
     expect(new Set(sent.map((c) => c.cmd))).toEqual(new Set(["aliases_read", "profiles_read", "aliases_block_render", "aliases_block_install", "aliases_block_remove", "chan:chores-mark"]));
@@ -327,7 +327,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）", (plat)
     expect(seen.filter((c) => !sent.includes(c)), "远端卡问了只有本机才答得了的事").toEqual([]);
     expect(done).toEqual(["install:ok", "remove:ok"]);
     expect(el.querySelector(".ccm-user-path-block")).toBeNull();
-    expect([...el.querySelectorAll("button")].map((b) => b.textContent)).not.toContain("打开这份文件");
+    expect([...el.querySelectorAll("button")].map((b) => b.textContent)).not.toContain(copyText("machineAliases.rc.open"));
   });
 });
 
@@ -346,7 +346,7 @@ describe("localShell：本机用哪种方言", () => {
       expect(localShell(), os).toBe(sh);
     }
     const block = buildUnknownOsAliasBlock();
-    expect(block.textContent).toContain("认不出这台的系统，没法生成别名块");
-    expect([...block.querySelectorAll("button")].map((b) => [b.textContent, b.disabled])).toEqual([["接入", true]]);
+    expect(block.textContent).toContain(copyText("machineAliases.unknownOs.said"));
+    expect([...block.querySelectorAll("button")].map((b) => [b.textContent, b.disabled])).toEqual([[copyText("machineAliases.access.connect"), true]]);
   });
 });

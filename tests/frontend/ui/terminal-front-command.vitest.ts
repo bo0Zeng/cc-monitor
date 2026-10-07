@@ -16,6 +16,7 @@ import { __setHostOsForTests, type HostOs } from "../../../src/frontend/ui/setti
 import { terminalFrontCommand } from "../../../src/frontend/ui/terminal-front-command";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { stripComments } from "../../test-support/strip-comments";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 describe("命令面板的 ↗：非 Windows 灰着、第二行「仅 Windows」", () => {
   afterEach(() => __setHostOsForTests(null));
@@ -33,7 +34,7 @@ describe("命令面板的 ↗：非 Windows 灰着、第二行「仅 Windows」"
       const got = terminalFrontCommand(item);
       expect(got.length).toBe(1);
       if (ok) expect(got[0]).toBe(item); // 原样那一项，不是副本
-      else expect(got[0]).toEqual({ id: "term-front", disabled: "仅 Windows" });
+      else expect(got[0]).toEqual({ id: "term-front", disabled: copyText("terminalFront.unavailable.short") });
     });
   }
 

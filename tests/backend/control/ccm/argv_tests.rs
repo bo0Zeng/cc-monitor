@@ -145,7 +145,7 @@ fn the_resumed_session_is_read_the_way_that_agent_resumes() {
 /// 没有账号这一维的那一家（Codex）：`--account` / `--account-dir` 明说不行（从前静默导出一个它不读的变量）；`--base` 照收。
 #[test]
 fn an_agent_without_accounts_refuses_to_pick_one() {
-    let want = "codex 还没有账号可选：不收 --account / --account-dir（--base 照收）";
+    let want = copy_core::copy_text("beArgv.validate.agentNoAccounts", &[("agent", "codex")]);
     let said = |a: &[&str]| match crate::control::ccm::argv::parse(&v(a)) {
         Err(Die(m)) => m,
         other => panic!("{a:?} 该被拒：{other:?}"),
@@ -181,20 +181,25 @@ fn the_attach_option_never_swallows_the_next_flag_as_its_value() {
 fn the_combination_rules_all_fail_loudly() {
     assert_eq!(
         err(&["--ccm-agent", "gemini"]),
-        "不认识这个 agent：gemini（认得的：claude / codex）"
+        copy_core::copy_text(
+            "beAgents.pick.unknown",
+            &[("agent", "gemini"), ("known", "claude / codex")]
+        )
     );
     // 写空 ⇒ 默认那一家（两种写法），不当成漏了参数、也不报不认识。
     assert_eq!(ok(&["--ccm-agent", ""]).agent, Defaults::agent());
     assert_eq!(ok(&["--ccm-agent="]).agent, Defaults::agent());
     assert_eq!(
         err(&["--account", "z", "--base"]),
-        "--account 与 --base 互斥"
+        copy_core::copy_static!("beArgv.validate.accountAndBase")
     );
-    assert!(err(&["--detach"]).starts_with("--detach 只能和 --ccm-tmux 一起用"));
-    assert!(err(&["--tmux-size", "1x1"]).starts_with("--tmux-size 需要配合 --ccm-tmux"));
     assert!(
-        err(&["--ccm-tmux=a", "--tmux-base", "b"]).starts_with("--ccm-tmux=<名> 与 --tmux-base")
+        err(&["--detach"]).starts_with(copy_core::copy_static!("beArgv.validate.detachNeedsTmux"))
     );
+    assert!(err(&["--tmux-size", "1x1"])
+        .starts_with(copy_core::copy_static!("beArgv.validate.sizeNeedsTmux")));
+    assert!(err(&["--ccm-tmux=a", "--tmux-base", "b"])
+        .starts_with(copy_core::copy_static!("beArgv.validate.nameAndBase")));
     assert!(err(&["--ccm-tmux", "--bus-register"]).starts_with("--bus-register 需要配合 --detach"));
     assert!(err(&["--bus-note", "x"]).starts_with("--bus-note 需要配合 --bus-register"));
     // 这几形不报「未知选项 / 多余的位置参数」，原样交给 agent。
@@ -223,7 +228,10 @@ fn the_size_is_two_plain_decimals_or_it_is_refused() {
     ] {
         assert!(parse_size(bad).is_none(), "'{bad}' 不该被当成合法尺寸");
     }
-    assert!(err(&["--ccm-tmux", "--tmux-size", "x50"]).starts_with("非法 --tmux-size"));
+    assert!(copy_core::copy_matches(
+        "beArgv.validate.badSize",
+        &err(&["--ccm-tmux", "--tmux-size", "x50"])
+    ));
 }
 
 /// 〔搬自 `ccm-cli`「`-- 之后透传给 agent`」〕`--` 之后的壳层选项名也交给 agent（claude 自己的 `--tmux` 走这条）。
@@ -340,7 +348,7 @@ fn new_is_ccms_word_only_as_the_first_word_right_of_the_end() {
         "`ccm new` 该整行交 claude"
     );
     assert!(
-        matches!(raw(&["--", "--ccm-tmux", "new"]), Err(super::Die(m)) if m.contains("new 只能是 -- 右边第一个词")),
+        matches!(raw(&["--", "--ccm-tmux", "new"]), Err(super::Die(m)) if m.contains(copy_core::copy_static!("beArgv.parse.newNotFirst"))),
         "`new` 不在右边第一个却被认了 / 没说清为什么"
     );
 }

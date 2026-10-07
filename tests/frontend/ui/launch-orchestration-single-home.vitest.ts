@@ -48,6 +48,7 @@ import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { mintFreshTmuxName } from "../../../src/frontend/ui/terminal-name-mint";
 import { resumeLocalSession } from "../../../src/frontend/ui/local-resume";
 import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -188,7 +189,7 @@ describe("K4 · D-h：本机后端说「要的号选不了」⇒ 不开窗、说
     expect(opened(), "选不了还开了窗 —— 静默换号（E7 本机那一形）").toBe(0);
     const calls = vi.mocked(showActionFailureToast).mock.calls;
     expect(calls).toHaveLength(1);
-    expect(calls[0][0]).toBe("账号现在选不了，没有起会话");
+    expect(calls[0][0]).toBe(copyText("accountPick.refused.title"));
     expect(calls[0][1]).toContain("「z」");
     expect(calls[0][1]).toContain("「b」");
     calls[0][2]!.onClick!();

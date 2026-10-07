@@ -34,6 +34,8 @@ import {
   UNSUPPORTED,
   type ChanCallArgs,
 } from "../../test-support/chan-fake";
+import { copyText } from "../../../src/frontend/ui/copy-table";
+import { copyPattern } from "../../test-support/copy-pattern";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const golden = JSON.parse(
@@ -79,7 +81,7 @@ describe("严格收：形状不对 ⇒ 抛「两端版本对不上」", () => {
   });
   it.each([
     ["多一格", { ...rt, x: 1 }],
-    ["缺 running", { routed: [] }],
+    [copyText("dataPage.install.title", { name: "running" }), { routed: [] }],
     ["routed 里不是字符串", { routed: [1], running: true }],
     ["running 不是布尔", { routed: [], running: 1 }],
   ])("apikey-routing · %s", (_n, v) => {
@@ -118,13 +120,13 @@ describe("请求：经通道问那台机器的后端", () => {
 describe("失败：一句人话，不退化成「没配」/「没行」", () => {
   it("那台后端不认这一问 ⇒ 说后端太旧", async () => {
     invokeMock.mockRejectedValue(UNSUPPORTED);
-    await expect(readApikeyStatus("host-a")).rejects.toThrow(/版本旧/);
+    await expect(readApikeyStatus("host-a")).rejects.toThrow(copyPattern("peerVersion.said.old"));
   });
   it("没有控制通道 ⇒ 说够不着（不是空表）", async () => {
     invokeMock.mockRejectedValue(NO_CHANNEL);
     await expect(
       fetchApikeyRouting("host-a", "claude-code", ["/d"]),
-    ).rejects.toThrow(/够不着/);
+    ).rejects.toThrow(copyText("chanCaller.said.unreachable"));
   });
 });
 
@@ -167,7 +169,7 @@ describe("〔HX2〕W2 写 key：经通道交那台机器的后端", () => {
   it("失败说人话、话里不带明文", async () => {
     invokeMock.mockRejectedValue(NO_CHANNEL);
     const err = await writeApikeyKey("host-a", "/d", "sk-SHOULD-NOT-SHOW").catch((e: Error) => e);
-    expect(String(err)).toMatch(/够不着/);
+    expect(String(err)).toMatch(copyText("chanCaller.said.unreachable"));
     expect(String(err)).not.toContain("sk-SHOULD-NOT-SHOW");
   });
 });

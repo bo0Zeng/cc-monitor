@@ -115,6 +115,7 @@ import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
+import { copyPattern } from "../../../test-support/copy-pattern";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -199,7 +200,7 @@ describe("ST1：设置窗关窗 ＝ 隐藏；〔ST2〕全即时：改了就落�
     dir.dispatchEvent(new Event("change"));
     for (let i = 0; i < 3; i++) await tick();
     expect(setDir).toHaveBeenCalledWith("/elsewhere/.claude");
-    expect(document.querySelector(".settings-restart-bar")!.textContent).toContain("Claude 数据目录");
+    expect(document.querySelector(".settings-restart-bar")!.textContent).toContain(copyText("settingsPanel.save.claudeDir"));
     expect(p.isDirty()).toBe(false);
     p.handleEsc();
     await tick();
@@ -223,9 +224,9 @@ describe("ST1：设置窗关窗 ＝ 隐藏；〔ST2〕全即时：改了就落�
     for (let i = 0; i < 3; i++) await tick();
     dirCheck.problem = null;
     expect(setDir).not.toHaveBeenCalled();
-    expect(document.querySelector(".settings-restart-bar")!.textContent).not.toContain("Claude 数据目录");
+    expect(document.querySelector(".settings-restart-bar")!.textContent).not.toContain(copyText("settingsPanel.save.claudeDir"));
     expect(document.querySelector(".settings-panel .settings-banner")!.textContent).toBe(
-      "Claude 数据目录没存下：/mnt/x 不在",
+      copyText("settingsPanel.save.failed", { what: copyText("settingsPanel.save.claudeDir"), e: "/mnt/x 不在" }),
     );
     void p;
   });
@@ -265,7 +266,7 @@ describe("ST1：设置窗关窗 ＝ 隐藏；〔ST2〕全即时：改了就落�
     expect(document.querySelector("[data-close-guard]")).toBeNull();
     const reset = [
       ...document.querySelectorAll<HTMLButtonElement>('.settings-page[data-route-id="appearance"] button'),
-    ].find((b) => b.textContent === "恢复外观默认");
+    ].find((b) => b.textContent === copyText("settingsPanel.appearance.reset"));
     expect(reset, "「恢复默认」没跟到外观页").toBeDefined();
   });
 
@@ -300,11 +301,11 @@ describe("〔W5-UI〕选 Claude 数据目录的窗口打不开 ⇒ 说出来", (
     const pick = (): Promise<void> => (p as unknown as { pickClaudeDir(): Promise<void> }).pickClaudeDir();
     vi.mocked(openDialog).mockResolvedValueOnce(null);
     await pick();
-    expect(document.body.textContent ?? "").not.toContain("选目录的窗口打不开");
+    expect(document.body.textContent ?? "").not.toMatch(copyPattern("settingsPanel.claudeDir.pickFailed"));
     vi.mocked(openDialog).mockRejectedValueOnce(new Error("dialog-refused-xyz"));
     await pick();
     const text = document.body.textContent ?? "";
-    expect(text, "打不开也不说").toContain("选目录的窗口打不开");
+    expect(text, "打不开也不说").toMatch(copyPattern("settingsPanel.claudeDir.pickFailed"));
     expect(text).toContain("dialog-refused-xyz");
   });
 });

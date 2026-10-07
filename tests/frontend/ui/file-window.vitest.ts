@@ -26,6 +26,7 @@ import { openFileWindow, fileWindowTheme, FILE_WINDOW_THEME_TOKENS } from "../..
 import type { RemoteHostConfig } from "../../../src/frontend/ui/remote-config";
 import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources";
 import { stripComments } from "../../test-support/strip-comments";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const CFG = {
   label: "devbox",
@@ -74,7 +75,7 @@ describe("F7b 开口：三种落点 → open_file_window 的实参", () => {
   it("开不起来 ⇒ 带着 Rust 侧原文出声，回 false", async () => {
     invokeMock.mockRejectedValue("窗口没起来：没有图形会话");
     expect(await openFileWindow(CFG, { dir: "/srv" })).toBe(false);
-    expect(toastMock.mock.calls).toEqual([["文件窗口打开失败", "窗口没起来：没有图形会话"]]);
+    expect(toastMock.mock.calls).toEqual([[copyText("fileWindow.openFileWindow.failed"), "窗口没起来：没有图形会话"]]);
   });
 });
 
@@ -86,7 +87,7 @@ function entryCensus(): string[] {
     const code = stripComments(text, "ts");
     for (const m of code.matchAll(/\bopenFileWindow\(([^)]*)\)/g)) {
       const arg = m[1];
-      const kind = /\brevealFile\b/.test(arg) ? "定位文件" : /\bdir\b/.test(arg) ? "目录" : "home";
+      const kind = /\brevealFile\b/.test(arg) ? "定位文件" : /\bdir\b/.test(arg) ? copyText("gridMonitor.fact.dir") : "home";
       out.push(`${file} · ${kind}`);
     }
   }
@@ -98,15 +99,15 @@ function entryCensus(): string[] {
  */
 const ENTRIES: readonly string[] = [
   "src/frontend/ui/cards/index.ts · 定位文件", // 会话工具卡上的文件链接（老面板 revealPath，F54）
-  "src/frontend/ui/settings/ext-section.ts · 目录", // 扩展页抽屉：远端那台上一个 skill 的目录「在文件窗口里打开」
+  `src/frontend/ui/settings/ext-section.ts · ${copyText("gridMonitor.fact.dir")}`, // 扩展页抽屉：远端那台上一个 skill 的目录「在文件窗口里打开」
   "src/frontend/ui/settings/data-page.ts · 定位文件", // 「要你动手」点开一件：远端那台上要改的那份文件「打开这份文件」
-  "src/frontend/ui/settings/accounts-section.ts · 目录", // 账号页：远端那台一个号的账号目录「在文件窗口里打开」
+  `src/frontend/ui/settings/accounts-section.ts · ${copyText("gridMonitor.fact.dir")}`, // 账号页：远端那台一个号的账号目录「在文件窗口里打开」
   "src/frontend/ui/settings/machine-card.ts · home", // 机器页「文件」按钮
   // 顶栏远端文件那两处随选主机小单从 `src/frontend/ui/main.ts` 搬进 `src/frontend/ui/sftp-host-picker.ts`。
   "src/frontend/ui/sftp-host-picker.ts · home", // 顶栏 / 命令面板：只有一台远端时直开
   "src/frontend/ui/sftp-host-picker.ts · home", // 顶栏 / 命令面板：多台时选单里点一台
   // 住址随会话动作从 `src/frontend/ui/tabs.ts` 搬到 `src/frontend/ui/tab-session-actions.ts`（openTabCwd 逐字随行）。
-  "src/frontend/ui/tab-session-actions.ts · 目录", // 远端会话「打开工作目录」（老面板 initialDir，F78）
+  `src/frontend/ui/tab-session-actions.ts · ${copyText("gridMonitor.fact.dir")}`, // 远端会话「打开工作目录」（老面板 initialDir，F78）
 ];
 
 describe("F7b 入口人群", () => {

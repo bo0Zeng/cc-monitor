@@ -36,6 +36,7 @@ import {
 import type { CliRenderRequest } from "../../../src/frontend/ui/launch-cli-wire";
 import { configuredLauncherFor } from "../../../src/frontend/ui/launch-requests";
 import { ControlError } from "../../../src/frontend/ui/control-said";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const toastMock = showActionFailureToast as unknown as ReturnType<typeof vi.fn>;
 const arrivalMock = expectArrival as unknown as ReturnType<typeof vi.fn>;
@@ -81,7 +82,7 @@ describe("那台说「要的号选不了」⇒ 不开窗、说清、给显式选
     expect(term.openTerminal).not.toHaveBeenCalled();
     expect(toastMock).toHaveBeenCalledTimes(1);
     const [title, body, opts] = toastMock.mock.calls[0] as [string, string, { onClick?: () => void }];
-    expect(title).toBe("账号现在选不了，没有起会话");
+    expect(title).toBe(copyText("accountPick.refused.title"));
     expect(body).toContain("「z」");
     opts.onClick!();
     await vi.waitFor(() => expect(term.openTerminal).toHaveBeenCalledTimes(1));

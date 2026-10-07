@@ -228,11 +228,14 @@ fn the_done_notice_says_how_many_bytes_and_where_and_is_quiet() {
     });
     assert_eq!(
         n.text,
-        "复制完成：8388608 字节，在那台机器上复制的，没经过你这台机器"
+        copy_core::copy_text("rsFilewinCopy.outcome.done", &[("bytes", "8388608")])
     );
     assert!(!n.loud, "复制成了是它该有的样子，不是警告");
     let f = outcome_notice(&CopyOutcome::Failed("原话".into()));
-    assert_eq!(f.text, "复制失败：原话");
+    assert_eq!(
+        f.text,
+        copy_core::copy_text("rsFilewinCopy.outcome.failed", &[("e", "原话")])
+    );
     assert!(f.loud, "失败不是警告档 —— 那一行会混在普通提示里");
 }
 
@@ -548,7 +551,10 @@ async fn copying_goes_through_the_channel_with_the_overwrite_policy_on_the_wire(
     )
     .await
     .expect_err("旧后端不认这条命令，竟然复制成了");
-    assert!(e.contains("版本旧"), "旧后端那一形没说清：{e}");
+    assert!(
+        e.contains(copy_core::copy_static!("rsFilewinSource.said.unknownCmd")),
+        "旧后端那一形没说清：{e}"
+    );
     assert_eq!(old.count(CMD_COPY), 0);
 }
 

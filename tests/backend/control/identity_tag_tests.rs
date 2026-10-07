@@ -291,7 +291,10 @@ fn w5vis_s2_set_sid_carries_what_tmux_said() {
     }
     let mute = fake_tmux("mute", "#!/bin/sh\nexit 1\n");
     match set_sid(fake_cmd(&mute), "%9".into(), "abc", "tmux-1-9".into()) {
-        Outcome::Failed(why) => assert!(why.contains("tmux 没说原因"), "{why}"),
+        Outcome::Failed(why) => assert!(
+            why.contains(copy_core::copy_static!("beLaunch.said.silent")),
+            "{why}"
+        ),
         other => panic!("{other:?}"),
     }
     // 正控：成功那一形是 `Tagged(终端句柄)`。

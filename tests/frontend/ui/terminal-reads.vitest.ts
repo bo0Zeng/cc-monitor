@@ -21,6 +21,8 @@ import { ControlError } from "../../../src/frontend/ui/control-said";
 import { decodePreview, decodeSent, decodeShot, decodeTerminals, previewByTmuxName, previewText, sendToTerminal } from "../../../src/frontend/ui/terminal-reads";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, refusedReply, UNSUPPORTED, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
+import { copyText } from "../../../src/frontend/ui/copy-table";
+import { copyPattern } from "../../test-support/copy-pattern";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -77,7 +79,7 @@ describe("抓一屏：金样与形状", () => {
     expect(decodePreview("devbox", { lines: [] })).toBe("");
     expect(decodePreview("devbox", { lines: [{ text: "a", spans: [] }], extra: 1 })).toBe("a");
     for (const v of [{}, { lines: "x" }, { lines: [{}] }, { lines: [{ text: 1 }] }, null, "screen"]) {
-      expect(() => decodePreview("devbox", v), JSON.stringify(v)).toThrow(/读不懂/);
+      expect(() => decodePreview("devbox", v), JSON.stringify(v)).toThrow(copyPattern("peerVersion.said.unreadable"));
     }
   });
 
@@ -85,7 +87,7 @@ describe("抓一屏：金样与形状", () => {
     const rows = decodeTerminals("devbox", LIST.reply);
     expect(rows.length).toBe((LIST.reply.terminals as unknown[]).length);
     expect(rows.every((r) => r.terminal !== "" && r.tmuxName !== "")).toBe(true);
-    expect(() => decodeTerminals("devbox", { terminals: [{ terminal: "t" }] })).toThrow(/读不懂/);
+    expect(() => decodeTerminals("devbox", { terminals: [{ terminal: "t" }] })).toThrow(copyPattern("peerVersion.said.unreadable"));
   });
 
   it("★ 名单（终端页要的几格）：会话 ID · 连着几个终端窗口 · 输入在谁手里 · 能不能送（原因码原样）", () => {
@@ -103,7 +105,7 @@ describe("抓一屏：金样与形状", () => {
       { result: "refused", why: "screen-changed", screen: "0000000000000000" },
       { result: "unsure" },
     ]);
-    expect(() => decodeSent("devbox", { result: "maybe" })).toThrow(/读不懂/);
+    expect(() => decodeSent("devbox", { result: "maybe" })).toThrow(copyPattern("peerVersion.said.unreadable"));
   });
 
   it("★ 送字带句柄 · 字 · 回车 · 看到的那一屏的指纹；送键只带键", async () => {
@@ -137,7 +139,7 @@ describe("抓一屏：发出去", () => {
       ["devbox", "terminals-list", {}],
       ["devbox", "terminal-preview", { terminal: terminals[0].terminal, color: false }],
     ]);
-    await expect(previewByTmuxName("devbox", "no-such-cc")).rejects.toThrow(/不在名单/);
+    await expect(previewByTmuxName("devbox", "no-such-cc")).rejects.toThrow(copyPattern("terminalReads.preview.notKnown"));
   });
 });
 
@@ -147,17 +149,17 @@ describe("抓一屏：失败怎么说", () => {
     const local = await saidBy(LOCAL_ORIGIN);
     const remote = await saidBy("kr-remote-label");
     expect(local).not.toBe(remote);
-    expect(local).toMatch(/本机后端/);
+    expect(local).toMatch(copyText("control.channel.localDown"));
     expect(remote).toContain("kr-remote-label");
   });
 
   it("★ 那台后端比这条命令老 ⇒ 说版本不对；断了 / 超时 ⇒ 说不知道；撤回 ⇒ 说撤回了", async () => {
     answer({ "terminal-preview": { fail: UNSUPPORTED } });
-    expect(await saidBy("devbox")).toMatch(/devbox 的后端版本旧/);
+    expect(await saidBy("devbox")).toBe(copyText("peerVersion.said.old", { machine: "devbox" }));
     answer({ "terminal-preview": { fail: { err: { Hop: { idx: 1, tag: "wait", reach: "Unknown", why: "Overrun" } }, body: [] } } });
-    expect(await saidBy("devbox")).toMatch(/不知道 devbox 那边做完了没有/);
+    expect(await saidBy("devbox")).toBe(copyText("control.channel.unsure", { machine: "devbox" }));
     answer({ "terminal-preview": { fail: { err: { Ours: "Cancelled" }, body: [] } } });
-    expect(await saidBy("devbox")).toMatch(/撤回/);
+    expect(await saidBy("devbox")).toBe(copyText("control.channel.cancelled"));
   });
 
   it("★★ 拒绝码（取自金样）逐码一句、带名字与后端原话；认不出的码不上屏（码在诊断里）", async () => {

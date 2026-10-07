@@ -31,6 +31,7 @@ import {
   withHistoryReads,
   type ChanCallArgs,
 } from "../../test-support/chan-fake";
+import { copyPattern } from "../../test-support/copy-pattern";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const loadCfg = loadConfig as unknown as ReturnType<typeof vi.fn>;
@@ -82,8 +83,8 @@ describe("deriveUi 降级矩阵（DESIGN §7）", () => {
   //    **再也到不了**，连档带测一起下岗。
   // 要求：「后端需更新在任何查询失败时都显示」⇒「只在真的版本不够时显示；查询失败按码说查询失败」。
   it("🔴 K-R59 · WF2：`available:false` 按失败种类分 —— 对端不认 ⇒ needs-update；其余 ⇒ query-failed（原因原样）；不再有「安静隐藏」那一档", () => {
-    const failed = deriveUi(state({ available: false, error: "现在够不着那台机器的后端，连接不在或断了" }));
-    expect(failed).toEqual({ kind: "query-failed", reason: "现在够不着那台机器的后端，连接不在或断了" });
+    const failed = deriveUi(state({ available: false, error: copyText("chanCaller.said.unreachable") }));
+    expect(failed).toEqual({ kind: "query-failed", reason: copyText("chanCaller.said.unreachable") });
     // 原因串里碰巧有「过旧」也不算（从前按串猜）：种类只看 `oldBackend`。
     expect(deriveUi(state({ available: false, error: "版本过旧？" })).kind).toBe("query-failed");
   });
@@ -276,7 +277,7 @@ describe("sessionBadge（§3 优先级）", () => {
     expect(b?.known).toBe(true);
     expect(b?.text).toBe("z");
     expect(b?.tooltip).toContain("z@x.edu");
-    expect(b?.tooltip).toContain("实时探测");
+    expect(b?.tooltip).toMatch(copyPattern("accounts.sessionBadge.live"));
   });
   it("account:null（探测不到）→ — 不猜", () => {
     const m = live([{ pid: 1, sessionId: "s1", cwd: "/w", configDir: null, account: null, bare: true, alive: true }]);
@@ -331,8 +332,8 @@ describe("modelByAccount config 读写（F07，按机器）", () => {
   // MODEL_DIMENSION.apply() 才发现——那样会让该账号往后每一次会话拉起都统一失败。
   it("非法模型名（含 shell 元字符/空格）→ throw，不落盘", async () => {
     loadCfg.mockResolvedValue({ accounts: {} });
-    await expect(setModelForAccount("devbox", "z", "opus; rm -rf /")).rejects.toThrow(/模型名不合法/);
-    await expect(setModelForAccount("devbox", "z", "Claude Opus 4.5")).rejects.toThrow(/模型名不合法/); // 空格非法
+    await expect(setModelForAccount("devbox", "z", "opus; rm -rf /")).rejects.toThrow(copyPattern("accounts.setModel.invalid"));
+    await expect(setModelForAccount("devbox", "z", "Claude Opus 4.5")).rejects.toThrow(copyPattern("accounts.setModel.invalid")); // 空格非法
     expect(saveCfg).not.toHaveBeenCalled();
   });
   // 规则换成共享那一份（生成物）之后，真实模型名都放行：
@@ -378,7 +379,7 @@ describe("fetchAccounts TTL 缓存", () => {
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => ({ available: true, error: null, meta, accounts: [acct({})] }))));
     const first = await fetchAccounts("devbox");
     expect(first.available).toBe(true);
-    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => Promise.reject("连不上"))));
+    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => Promise.reject(copyText("machineCard.test.unreachable")))));
     const down = await fetchAccounts("devbox", true);
     expect(down.available).toBe(false);
     expect(down.accounts, "上次的混进了此刻的事实").toEqual([]);
@@ -521,13 +522,13 @@ describe("sessionBadge 源②（lastAccount 兜底，A4）", () => {
     ]);
     const b = sessionBadge("s1", "devbox", m, emailBy, new Map([["s1", "b"]]));
     expect(b?.text).toBe("z");
-    expect(b?.tooltip).toContain("实时探测");
+    expect(b?.tooltip).toMatch(copyPattern("accounts.sessionBadge.live"));
   });
   it("无 live 但有 lastAccount → 用源②，标注上次 + 带邮箱", () => {
     const b = sessionBadge("s1", "devbox", new Map(), emailBy, new Map([["s1", "b"]]));
     expect(b?.known).toBe(true);
     expect(b?.text).toBe("b");
-    expect(b?.tooltip).toContain("上次用本工具起");
+    expect(b?.tooltip).toMatch(copyPattern("accounts.sessionBadge.last"));
     expect(b?.tooltip).toContain("b@y.com");
   });
   it("live 存在但已死 + 有 lastAccount → 回退源②", () => {
@@ -536,7 +537,7 @@ describe("sessionBadge 源②（lastAccount 兜底，A4）", () => {
     ]);
     const b = sessionBadge("s1", "devbox", m, emailBy, new Map([["s1", "b"]]));
     expect(b?.text).toBe("b");
-    expect(b?.tooltip).toContain("上次");
+    expect(b?.tooltip).toContain(copyText("resumeMenu.account.last"));
   });
   it("都无 → —（含不传 lastAccountByS 也安全）", () => {
     expect(sessionBadge("s1", "devbox", new Map(), emailBy, new Map())?.text).toBe("—");
@@ -711,40 +712,39 @@ describe("K-A1 KA6a：api-key 号的 UI 文案不许说「已登录」", () => {
 
   it("★ 徽章写「api-key（未配置端点）」而不是「已登录」", () => {
     const b = accountStatusBadge(apiKey());
-    expect(b.text).toBe("API key（未配置端点）");
-    expect(b.text).not.toContain("已登录");
+    expect(b.text).toBe(copyText("accounts.badge.apikeyNoEndpoint"));
+    expect(b.text).not.toContain(copyText("accounts.badge.signedIn"));
     expect(b.warn).toBe(true);
     // hover 要把「选得中、起得来、但请求发不出去」这件事说清（不是一句「不可用」）。
-    expect(b.title).toContain("鉴权失败");
-    expect(b.title).toContain("端点");
+    expect(b.title).toMatch(copyPattern("accounts.badge.apikeyNoEndpointHint"));
   });
 
   it("★ 有凭据文件的 api-key 号也一样 —— 它压根不看那个文件", () => {
     const b = accountStatusBadge(
       acct({ name: "api", loggedIn: true, authKind: "api-key", authReady: true }),
     );
-    expect(b.text).toBe("API key（未配置端点）");
+    expect(b.text).toBe(copyText("accounts.badge.apikeyNoEndpoint"));
   });
 
   it("「去登录」按钮对 api-key 号也是假话 ⇒ 换成「打开终端」", () => {
-    expect(accountLoginActionLabel(apiKey()).label).toBe("打开终端");
+    expect(accountLoginActionLabel(apiKey()).label).toBe(copyText("accounts.loginAction.openTerminal"));
     expect(accountLoginActionLabel(apiKey()).title).not.toContain("/login）");
   });
 
   it("订阅号那三态一格没变（阴性对照）", () => {
-    expect(accountStatusBadge(acct({})).text).toBe("已登录");
+    expect(accountStatusBadge(acct({})).text).toBe(copyText("accounts.badge.signedIn"));
     expect(accountStatusBadge(acct({})).warn).toBe(false);
-    expect(accountStatusBadge(acct({ loggedIn: false, authReady: false })).text).toBe("未登录");
-    expect(accountStatusBadge(acct({ mode: "in-place" })).text).toBe("不支持切换");
-    expect(accountLoginActionLabel(acct({})).label).toBe("登录终端");
-    expect(accountLoginActionLabel(acct({ loggedIn: false, authReady: false })).label).toBe("去登录");
+    expect(accountStatusBadge(acct({ loggedIn: false, authReady: false })).text).toBe(copyText("accounts.badge.notSignedIn"));
+    expect(accountStatusBadge(acct({ mode: "in-place" })).text).toBe(copyText("accounts.badge.inPlace"));
+    expect(accountLoginActionLabel(acct({})).label).toBe(copyText("accounts.loginAction.loginTerminal"));
+    expect(accountLoginActionLabel(acct({ loggedIn: false, authReady: false })).label).toBe(copyText("accounts.loginAction.goLogin"));
   });
 
   it("逃生口优先于 api-key（in-place 压根不支持切号，先说那件事）", () => {
     const b = accountStatusBadge(
       acct({ mode: "in-place", authKind: "api-key", authReady: true }),
     );
-    expect(b.text).toBe("不支持切换");
+    expect(b.text).toBe(copyText("accounts.badge.inPlace"));
   });
 });
 
@@ -759,7 +759,7 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
 
   it("★ 表里有这一行 · 中转在跑 ⇒ 「经中转」，且不再是警示态", () => {
     const b = accountStatusBadge(apiKey(), { hasRow: true, running: true });
-    expect(b.text).toBe("API key（经中转）");
+    expect(b.text).toBe(copyText("accounts.badge.apikeyRelayed"));
     expect(b.warn).toBe(false);
     // 它保证的是哪一截，必须写在 hover 里 —— 不许暗示「这个 key 一定能用」。
     // 按文案键断言，不按原文：原先钉着「ANTHROPIC_BASE_URL」，那是配置键名直出（R1），与 CP1 裁词相冲。
@@ -768,7 +768,7 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
 
   it("★ 表里有这一行 · 中转没跑 ⇒ 「中转未运行」，且说明会被当场拒", () => {
     const b = accountStatusBadge(apiKey(), { hasRow: true, running: false });
-    expect(b.text).toBe("API key（中转未运行）");
+    expect(b.text).toBe(copyText("accounts.badge.apikeyRelayDown"));
     expect(b.warn).toBe(true);
     // `KH2B2`②：这一条**不许**被说成静默失败 —— 起会话那一侧会当场拒。
     // 按文案键断言，不按原文（原先钉着「当场拒」三个字，改说法就红）。
@@ -777,31 +777,31 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
 
   it("★ 表里没有这一行 ⇒ 仍是「未配置端点」，而且说得出**为什么**", () => {
     const b = accountStatusBadge(apiKey(), { hasRow: false, running: true });
-    expect(b.text).toBe("API key（未配置端点）");
-    expect(b.title).toContain("没有这个账号的一行");
+    expect(b.text).toBe(copyText("accounts.badge.apikeyNoEndpoint"));
+    expect(b.title).toContain(copyText("accounts.badge.whyNoRow"));
     // 阴性对照：本机远端同一条路，不许再说成「远端不做」。
-    expect(b.title).not.toContain("远端");
+    expect(b.title).not.toContain(copyText("rsConfigSurface.host.remote"));
   });
 
   it("★ 远端那一台与本机同一条路：那台答的事实成立 ⇒ 同样是「经中转」，hover 不说「本机」也不说「远端不做」", () => {
     // 远端那台起的会话由那台的 ccm 定往哪发、那台的中转按那台 key 表里这一行换上 key（与本机同一条路）。
     const b = accountStatusBadge(apiKey(), { hasRow: true, running: true });
-    expect(b.text).toBe("API key（经中转）");
+    expect(b.text).toBe(copyText("accounts.badge.apikeyRelayed"));
     expect(b.warn).toBe(false);
     for (const st of [{ hasRow: true, running: true }, { hasRow: true, running: false }, { hasRow: false, running: true }]) {
       const t = accountStatusBadge(apiKey(), st).title;
       expect(t).not.toContain("本机");
-      expect(t).not.toContain("远端");
+      expect(t).not.toContain(copyText("rsConfigSurface.host.remote"));
     }
   });
 
   it("★ 调用方没说是哪一半 ⇒ **不替它下判断**，只把两条前置说清", () => {
     const b = accountStatusBadge(apiKey());
-    expect(b.text).toBe("API key（未配置端点）");
-    expect(b.title).toContain("两件事都成立");
-    expect(b.title).toContain("无法判断端点是否已配置");
+    expect(b.text).toBe(copyText("accounts.badge.apikeyNoEndpoint"));
+    expect(b.title).toContain(copyText("accounts.badge.whyUnknown"));
+    expect(b.title).toContain(copyText("accounts.badge.whyUnknown"));
     // ⚠ 这一档**不许**断言「表里没有这一行」——那是它看不见的事实。
-    expect(b.title).not.toContain("没有这个账号的一行");
+    expect(b.title).not.toContain(copyText("accounts.badge.whyNoRow"));
   });
 
   it("★ 那句已经成假的话，三档里一句都不许再出现（分母 = 我列的这 3 档 + 缺席）", () => {
@@ -818,7 +818,7 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
     for (const st of states) {
       expect(accountStatusBadge(apiKey(), st).title).not.toContain(LIE);
       // 顺带：任何一档都不许说成「已登录」（KA6a 的原话，人群扩到了新那几档）。
-      expect(accountStatusBadge(apiKey(), st).text).not.toContain("已登录");
+      expect(accountStatusBadge(apiKey(), st).text).not.toContain(copyText("accounts.badge.signedIn"));
     }
   });
 
@@ -856,15 +856,15 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
       acct({ name, configDir: dir, loggedIn: false, authKind: "api-key", authReady: true });
     const a = withDir("acct-a", "/h/.claude-alt/acct-a");
     const b = withDir("acct-b", "/h/.claude-alt/acct-b");
-    expect(accountStatusBadge(a, apikeyEndpointStateFor(a, routing)).text).toBe("API key（经中转）");
+    expect(accountStatusBadge(a, apikeyEndpointStateFor(a, routing)).text).toBe(copyText("accounts.badge.apikeyRelayed"));
     expect(accountStatusBadge(b, apikeyEndpointStateFor(b, routing)).text).toBe(
-      "API key（未配置端点）",
+      copyText("accounts.badge.apikeyNoEndpoint"),
     );
     // 非空对照：同一条产出方、只把 `running` 翻过来 ⇒ 第三档真的分得开。
     invokeMock.mockResolvedValue(chanReply({ routed: ["/h/.claude-alt/acct-a"], running: false }));
     const stopped = await fetchLocalApikeyRouting(["/h/.claude-alt/acct-a"]);
     expect(accountStatusBadge(a, apikeyEndpointStateFor(a, stopped)).text).toBe(
-      "API key（中转未运行）",
+      copyText("accounts.badge.apikeyRelayDown"),
     );
   });
 
@@ -875,28 +875,28 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
 
     // ① 表里有这一行 + 中转在跑 ⇒ 「经中转」。
     const a = withDir("acct-a", "/h/.claude-alt/acct-a");
-    expect(accountStatusBadge(a, apikeyEndpointStateFor(a, routing)).text).toBe("API key（经中转）");
+    expect(accountStatusBadge(a, apikeyEndpointStateFor(a, routing)).text).toBe(copyText("accounts.badge.apikeyRelayed"));
     // ② 表里没有这一行 ⇒ 仍是「未配置端点」，而且说得出为什么。
     const b = withDir("acct-b", "/h/.claude-alt/acct-b");
     const bb = accountStatusBadge(b, apikeyEndpointStateFor(b, routing));
-    expect(bb.text).toBe("API key（未配置端点）");
-    expect(bb.title).toContain("没有这个账号的一行");
+    expect(bb.text).toBe(copyText("accounts.badge.apikeyNoEndpoint"));
+    expect(bb.title).toContain(copyText("accounts.badge.whyNoRow"));
     // ③ 同一个账号、只把「中转在不在跑」翻过来 ⇒ 第三档（非空对照：两档真的分得开）。
     const stopped = { routed: ["/h/.claude-alt/acct-a"], running: false };
-    expect(accountStatusBadge(a, apikeyEndpointStateFor(a, stopped)).text).toBe("API key（中转未运行）");
+    expect(accountStatusBadge(a, apikeyEndpointStateFor(a, stopped)).text).toBe(copyText("accounts.badge.apikeyRelayDown"));
     // ④ 账号 0（没有 configDir）⇒ 推不出 id ⇒ **不表态**，回落到缺席那一档。
     const zero = withDir("0", null);
     expect(apikeyEndpointStateFor(zero, routing)).toBeUndefined();
     expect(accountStatusBadge(zero, apikeyEndpointStateFor(zero, routing)).title).toContain(
-      "无法判断端点是否已配置",
+      copyText("accounts.badge.whyUnknown"),
     );
   });
 
   it("★ 订阅号一格不受影响（阴性对照：新参数不许改到别的 kind）", () => {
     for (const st of [undefined, { hasRow: false, running: false } as const, { hasRow: true, running: true } as const]) {
-      expect(accountStatusBadge(acct({}), st).text).toBe("已登录");
-      expect(accountStatusBadge(acct({ loggedIn: false, authReady: false }), st).text).toBe("未登录");
-      expect(accountStatusBadge(acct({ mode: "in-place" }), st).text).toBe("不支持切换");
+      expect(accountStatusBadge(acct({}), st).text).toBe(copyText("accounts.badge.signedIn"));
+      expect(accountStatusBadge(acct({ loggedIn: false, authReady: false }), st).text).toBe(copyText("accounts.badge.notSignedIn"));
+      expect(accountStatusBadge(acct({ mode: "in-place" }), st).text).toBe(copyText("accounts.badge.inPlace"));
     }
   });
 });

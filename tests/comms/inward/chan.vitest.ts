@@ -50,6 +50,7 @@ import { ChanError, chan, decodeFail, decodeItem, remaining, type CallError, typ
 import { budgetWithin, saidFrom } from "../../../src/frontend/ui/ipc/chan-caller";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { stripComments } from "../../test-support/strip-comments";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -162,7 +163,7 @@ describe("〔C4a〕webview 通道客户端", () => {
       ac.abort();
       const e = await failOf(p);
       expect(e, op).toEqual(runsOn ? { layer: "ours", why: "Cancelled", runsOn: true } : { layer: "ours", why: "Cancelled" });
-      expect(saidFrom(new ChanError(e), "net2-m").includes("可能还在跑"), op).toBe(runsOn);
+      expect(saidFrom(new ChanError(e), "net2-m").includes(copyText("chanCaller.said.withdrawnRunsOn")), op).toBe(runsOn);
     }
     answer(new ArrayBuffer(0));
     // monitor 交回的那一形（`WireErr::OursRunsOn`）解回同一格。

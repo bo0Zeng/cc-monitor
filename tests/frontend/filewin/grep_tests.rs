@@ -110,12 +110,18 @@ fn the_window_decodes_the_backend_golden() {
     );
     assert_eq!(stopped_line(&o), None);
     // 总述：几处 · 几个文件（处数是每份命中行数之和）；跳过的另起一段，详情分行。
-    assert_eq!(summary_line(&o), "3 处 · 2 个文件");
+    assert_eq!(
+        summary_line(&o),
+        copy_core::copy_text("rsFilewinGrep.summary.line", &[("m", "3"), ("n", "2")])
+    );
     assert_eq!(
         skipped_line(&o),
-        Some("跳过 1（过大 / 非文本）".to_string())
+        Some(copy_core::copy_text("rsFilewinGrep.summary.skipped", &[("k", "1")]).to_string())
     );
-    assert_eq!(skipped_detail(&o), vec!["非文本 1".to_string()]);
+    assert_eq!(
+        skipped_detail(&o),
+        vec![copy_core::copy_text("rsFilewinGrep.detail.binary", &[("n", "1")]).to_string()]
+    );
 }
 
 #[tokio::test]

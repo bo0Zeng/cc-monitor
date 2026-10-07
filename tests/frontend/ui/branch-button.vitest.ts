@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 
 import { attachBranchButton, isOffMainCard, FOLD_WRAP_SELECTOR } from "../../../src/frontend/ui/branch-button";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 function card(): HTMLElement {
   const el = document.createElement("div");
@@ -72,7 +73,7 @@ describe("G5：off-main 的判据与呈现", () => {
     attachBranchButton(el, { uuid: "u1", onFork: () => {} });
     const b = btnOf(el)!;
     b.dispatchEvent(new Event("mouseenter"));
-    expect(b.title).toContain("ESC 回退");
+    expect(b.title).toContain(copyText("branchButton.title.offMain"));
     // 入口**保留**——「要给路口」，区分的是呈现不是能力
     expect(b.disabled).toBe(false);
   });
@@ -82,8 +83,8 @@ describe("G5：off-main 的判据与呈现", () => {
     attachBranchButton(el, { uuid: "u1", onFork: () => {} });
     const b = btnOf(el)!;
     b.dispatchEvent(new Event("mouseenter"));
-    expect(b.title).not.toContain("ESC 回退");
-    expect(b.title).toContain("从这一轮创建分支");
+    expect(b.title).not.toContain(copyText("branchButton.title.offMain"));
+    expect(b.title).toBe(copyText("branchButton.title.onMain"));
   });
 
   it("★ tooltip 在指上去那一刻才定 —— 一条消息会从 on-main 变成 off-main", () => {
@@ -92,7 +93,7 @@ describe("G5：off-main 的判据与呈现", () => {
     attachBranchButton(el, { uuid: "u1", onFork: () => {} });
     const b = btnOf(el)!;
     b.dispatchEvent(new Event("mouseenter"));
-    expect(b.title).not.toContain("ESC 回退");
+    expect(b.title).not.toContain(copyText("branchButton.title.offMain"));
 
     // 事后被 BranchFolder 收进折叠块（真实重建就是这么搬 DOM 的）
     const wrap = document.createElement("div");
@@ -101,6 +102,6 @@ describe("G5：off-main 的判据与呈现", () => {
     wrap.appendChild(el);
 
     b.dispatchEvent(new Event("mouseenter"));
-    expect(b.title).toContain("ESC 回退");
+    expect(b.title).toContain(copyText("branchButton.title.offMain"));
   });
 });

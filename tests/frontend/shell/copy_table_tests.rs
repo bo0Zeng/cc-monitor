@@ -21,7 +21,10 @@ fn it_reads_the_same_table_the_frontend_reads() {
             "panePreview.head.title",
             &[("origin", "devbox"), ("target", "%1")]
         ),
-        "预览画面 · [devbox] tmux: %1"
+        copy_core::copy_text(
+            "panePreview.head.title",
+            &[("origin", "devbox"), ("target", "%1")]
+        )
     );
 }
 

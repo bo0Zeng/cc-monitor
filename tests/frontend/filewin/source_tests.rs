@@ -581,7 +581,8 @@ async fn listing_has_no_second_road_when_the_backend_refuses() {
         .await
         .expect_err("后端拒了，窗口却交出了一屏");
     assert!(
-        e.contains("读目录失败") && !e.contains("unreadable"),
+        copy_core::copy_matches("rsFilewinSource.local.readDirFailed", &e)
+            && !e.contains("unreadable"),
         "那句话里没有后端的原话，或错误码上了屏：{e}"
     );
     // ③ 线上恰好两条 `files-ls`（① 一条、② 一条），没有别的。
@@ -779,7 +780,15 @@ fn a_descending_column_keeps_dirs_first_and_ties_by_name_ascending() {
 fn the_four_columns_and_how_a_click_turns_the_order() {
     assert_eq!(SortBy::default(), SortBy::Name);
     let labels: Vec<String> = SortBy::ALL.iter().map(|b| b.label()).collect();
-    assert_eq!(labels, ["名称", "修改时间", "类型", "大小"]);
+    assert_eq!(
+        labels,
+        [
+            copy_core::copy_static!("rsFilewinSource.sort.name"),
+            copy_core::copy_static!("rsFilewinSource.sort.mtime"),
+            copy_core::copy_static!("rsFilewinSource.sort.type"),
+            copy_core::copy_static!("rsFilewinSource.sort.size")
+        ]
+    );
     let s = Sort::default();
     assert!(!s.descending());
     let t = s.after_click(SortBy::Mtime);

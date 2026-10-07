@@ -57,6 +57,8 @@ import { SessionViewer } from "../../../../src/frontend/ui/views/session-viewer"
 import { invoke } from "@tauri-apps/api/core";
 import { chanArgsJson, sessionReadCalls, type ChanCallArgs } from "../../../test-support/chan-fake";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { copyPattern } from "../../../test-support/copy-pattern";
 
 let rig: ViewerRigHandles;
 
@@ -129,7 +131,7 @@ describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不
     const rows = rowsOf(v);
     expect(rows.map((r) => r.dataset.inputUuid)).toEqual(["u1", "u7"]);
     expect(rows[0].textContent).toBe("1. 第一句");
-    expect(saidOf(v)).toBe("你说过的话 · 2");
+    expect(saidOf(v)).toBe(copyText("sessionViewer.tools.said", { n: "2" }));
   });
 
   it("🔴 查看器不自己判：后端没列的 user 行不出现（反向：旧的 TS 判定若还在，u3 会冒出来）", async () => {
@@ -149,7 +151,7 @@ describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不
     expect(toggleOf(v).disabled).toBe(true);
     // 「老后端」那一档今天是通道的「对端事前说不认」（`peer/unsupported`）—— 它不带原因，
     //   那句话由 `session-reads.ts` 说（原因文字只在 `refused` 那一档原样带过来，下一格量它）。
-    expect(toggleOf(v).title).toContain("后端版本旧");
+    expect(toggleOf(v).title).toMatch(copyPattern("peerVersion.said.old"));
     // 瞬时那一档（对端说「不行」）：原因原样带上。
     const w = new SessionViewer();
     document.body.appendChild(w.element);
@@ -178,7 +180,7 @@ describe("SE1 清单挂进查看器：后端给什么就列什么（查看器不
     const v = await mount([assistantLine(1, "a1", "只有回复")]);
     expect(rowsOf(v).length).toBe(0);
     expect(toggleOf(v).disabled).toBe(true);
-    expect(saidOf(v)).toBe("你说过的话"); // 0 条不挂计数
+    expect(saidOf(v)).toBe(copyText("sessionViewer.tools.saidNone")); // 0 条不挂计数
   });
 });
 
@@ -229,7 +231,7 @@ describe("KR45D1 点一下跳过去", () => {
     rowsOf(v)[1].click();
 
     expect(rowsOf(v)[1].dataset.unjumpable).toBe("1"); // 看得出来
-    expect(rowsOf(v)[1].title).toContain("无法定位");
+    expect(rowsOf(v)[1].title).toContain(copyText("sessionViewer.build.unjumpable"));
     expect(rig.scrollIntoView).not.toHaveBeenCalled();
   });
 
@@ -247,7 +249,7 @@ describe("KR45D1 点一下跳过去", () => {
     ]);
     // 先证明「没有任何未渲染的段留着」——否则下面那句「永久」是空真
     const status = v.element.querySelector('[data-role="status"]')!.textContent ?? "";
-    expect(status, "还有未渲染的段 ⇒ 这一格证不了「永久」").toBe("2 条");
+    expect(status, "还有未渲染的段 ⇒ 这一格证不了「永久」").toBe(copyText("sessionViewer.status.all", { n: "2" }));
 
     rowsOf(v)[1].click();
     expect(rowsOf(v)[1].dataset.unjumpable).toBe("1");
@@ -267,7 +269,7 @@ describe("KR45D1 点一下跳过去", () => {
     expectLoaded(v.element);
 
     expect(rowsOf(v).map((r) => r.dataset.inputUuid)).toEqual(["n1"]);
-    expect(saidOf(v)).toBe("你说过的话 · 1");
+    expect(saidOf(v)).toBe(copyText("sessionViewer.tools.said", { n: "1" }));
   });
 });
 
@@ -359,14 +361,14 @@ describe("㊱③ 查看器的 Ctrl+F：工具行查找框 ＋ 问后端 `history
     expect(sessionReadCalls(vi.mocked(invoke).mock.calls, "find_in_session")).toEqual([
       { origin: "<local>", jsonlPath: "/p/s1.jsonl", query: "needle", includeTools: false },
     ]);
-    expect(strip.querySelector('[data-role="find-head"]')!.textContent).toBe("1 处");
+    expect(strip.querySelector('[data-role="find-head"]')!.textContent).toBe(copyText("findStrip.status.count", { n: "1" }));
     const hits = [...strip.querySelectorAll<HTMLButtonElement>('[data-role="find-hit"]')];
     expect(hits.map((h) => h.dataset.hitUuid)).toEqual(["a1"]);
     hits[0].click();
     await settleOutline();
     expect(hits[0].dataset.unjumpable, "命中那一条跳空了 —— 查看器的「跳」没接到查找上").toBeUndefined();
     expect(cardOf(v, "a1")).toBeTruthy();
-    strip.querySelector<HTMLButtonElement>('button[aria-label="收起查找结果"]')!.click();
+    strip.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("findStrip.box.close")}"]`)!.click();
     expect(strip.hidden).toBe(true);
   });
 
@@ -399,7 +401,7 @@ describe("㊱③ 查看器的 Ctrl+F：工具行查找框 ＋ 问后端 `history
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await settleOutline();
     const strip = v.element.querySelector<HTMLElement>('[data-role="find-strip"]')!;
-    expect(strip.querySelector('[data-role="find-head"]')!.textContent).toBe("无匹配「nothing」");
+    expect(strip.querySelector('[data-role="find-head"]')!.textContent).toBe(copyText("findStrip.status.none", { q: "nothing" }));
     const box = strip.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
     box.click();
     await settleOutline();
@@ -414,11 +416,11 @@ describe("乙4-④ 查看器的头 · 底一行 · 各态", () => {
 
   it("底一行只说条数（没有「首屏 ms」「渲染失败」那类读数）；长会话没渲完 ⇒「{n} 条 · 上翻加载更早」", async () => {
     const v = await mount([userLine(1, "u1", "第一句"), assistantLine(2, "a1", "回复")]);
-    expect(status(v)).toBe("2 条");
+    expect(status(v)).toBe(copyText("sessionViewer.status.all", { n: "2" }));
     const many: RigPayload[] = [];
     for (let i = 1; i <= 200; i++) many.push(userLine(i, `m${i}`, `第 ${i} 句`));
     const w = await mount(many);
-    expect(status(w)).toBe("200 条 · 上翻加载更早");
+    expect(status(w)).toBe(copyText("sessionViewer.status.more", { n: "200" }));
     expect(status(w)).not.toMatch(/ms|渲染/);
   });
 
@@ -429,11 +431,11 @@ describe("乙4-④ 查看器的头 · 底一行 · 各态", () => {
     const kids = [...streamOf(v).querySelectorAll<HTMLElement>("[data-uuid], [data-role=\"broken\"]")];
     expect(kids.map((k) => k.dataset.uuid ?? `broken:${k.dataset.seq}`)).toEqual(["u1", "broken:2", "a1"]);
     const broken = streamOf(v).querySelector<HTMLElement>('[data-role="broken"]')!;
-    expect(broken.textContent).toContain("这一条显示不了");
-    [...broken.querySelectorAll("button")].find((b) => b.textContent === "复制详情")!.click();
+    expect(broken.textContent).toContain(copyText("sessionViewer.card.broken"));
+    [...broken.querySelectorAll("button")].find((b) => b.textContent === copyText("sessionViewer.card.copyDetail"))!.click();
     expect(write.mock.calls[0][0]).toContain("这一条坏了");
     expect(write.mock.calls[0][0]).toContain('"uuid": "boom"');
-    expect(status(v)).toBe("3 条");
+    expect(status(v)).toBe(copyText("sessionViewer.status.all", { n: "3" }));
   });
 
   it("头：标题 ＋ 宿主给的徽标 · 按钮 · 第二行；读完在第二行后面接「· {n} 条」", async () => {
@@ -450,7 +452,7 @@ describe("乙4-④ 查看器的头 · 底一行 · 各态", () => {
     expect(title.textContent).toBe("支付回调验签");
     expect(title.nextElementSibling?.textContent).toBe("Codex");
     expect(v.element.contains(act)).toBe(true);
-    expect(v.element.querySelector('[data-role="meta"]')!.textContent).toBe("orders1 条");
+    expect(v.element.querySelector('[data-role="meta"]')!.textContent).toBe(`orders${copyText("sessionViewer.head.count", { n: 1 })}`);
   });
 
   it("读不出 ⇒ 头下一条错误条「读取会话失败 · …」［重试］，点了再读同一份", async () => {
@@ -461,13 +463,13 @@ describe("乙4-④ 查看器的头 · 底一行 · 各态", () => {
     await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", origin: LOCAL_ORIGIN, suppressBranch: true });
     await settleOutline();
     const bar = v.element.querySelector<HTMLElement>('[role="alert"]')!;
-    expect(bar.textContent).toContain("读取会话失败");
+    expect(bar.textContent).toMatch(copyPattern("sessionViewer.load.failed"));
     expect(status(v)).toBe("");
     viewerRig.failPage = false;
-    [...bar.querySelectorAll("button")].find((b) => b.textContent === "重试")!.click();
+    [...bar.querySelectorAll("button")].find((b) => b.textContent === copyText("sessionViewer.load.retry"))!.click();
     await settleOutline();
     expect(v.element.querySelector('[role="alert"]')).toBeNull();
-    expect(status(v)).toBe("1 条");
+    expect(status(v)).toBe(copyText("sessionViewer.status.all", { n: 1 }));
   });
 
   it("按轮折叠与主窗口同一个：读完问那台这一份会话的 `history-turns`（从 0 起）", async () => {

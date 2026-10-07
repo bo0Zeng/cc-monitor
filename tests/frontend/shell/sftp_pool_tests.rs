@@ -316,7 +316,10 @@ async fn without_a_local_backend_the_transfer_is_refused_out_loud() {
     .await
     .expect_err("本机后端不在也开得了单？");
     assert_eq!(code, "backend_unavailable");
-    assert!(e.contains("本机后端不在"), "{e}");
+    assert!(
+        copy_core::copy_matches("rsDialHost.local.absent", &e),
+        "{e}"
+    );
 }
 
 /// 🔴 本机落点是一份会话记录的形状 ⇒ **照样转给本机后端开单**，落点原样带过去。

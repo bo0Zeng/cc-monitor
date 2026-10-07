@@ -12,6 +12,7 @@ import { toast } from "../../../src/frontend/ui/kit/toast";
 import { __pendingCountForTests, __resetArrivalsForTests, noteLive } from "../../../src/frontend/ui/launch-arrival";
 import { LaunchSlots, SLOT_MISS_MS, type SlotActs, type SlotScreen, type SlotSpec } from "../../../src/frontend/ui/launch-slot";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 let tail: HTMLElement;
 let root: HTMLElement;
@@ -77,11 +78,11 @@ describe("报到之前", () => {
   it("★ 起好了 ⇒ 栏末一行「正在启动」（机器 ＋ 项目名、转圈），主区换成它那一页、会话头让开", () => {
     const slots = make();
     slots.add(SPEC);
-    expect(rows().map((r) => r.textContent)).toEqual(["devboxbilling正在启动"]);
+    expect(rows().map((r) => r.textContent)).toEqual([`devboxbilling${copyText("launch.placeholder.title")}`]);
     expect(rows()[0].dataset.state).toBe("starting");
     expect(rows()[0].classList.contains("active")).toBe(true);
     expect(panelHidden()).toBe(false);
-    expect(panelText()).toBe("正在启动devbox · /home/u/srv/billing");
+    expect(panelText()).toBe(`${copyText("launch.placeholder.title")}devbox · /home/u/srv/billing`);
     expect(shownLog).toEqual([true]);
   });
 
@@ -147,14 +148,14 @@ describe("20 s 没报到", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(acts.screen).toHaveBeenCalledWith("devbox", "billing-2");
     expect(rows()[0].dataset.state).toBe("missed");
-    expect(rows()[0].textContent).toBe("devboxbilling未报到");
+    expect(rows()[0].textContent).toBe(`devboxbilling${copyText("launch.slot.missedTitle")}`);
     expect(panelText()).toBe(
-      "未报到devbox · /home/u/srv/billing未报到 · 20s" +
-        "已发启动命令 · 20s 未报到devbox · tmux 会话 billing-2 在 · 画面末几行：" +
+      `${copyText("launch.slot.missedTitle")}devbox · /home/u/srv/billing${copyText("launch.slot.missedTitle")} · 20s` +
+        copyText("launch.slot.missedCard", { secs: 20 }) + copyText("launch.slot.tmuxThere", { machine: "devbox", name: "billing-2" }) +
         "claude: error: unknown option '--modle'\n(Did you mean --model?)\n$" +
-        "终端画面在终端里打开结束 tmux 会话关闭标签页",
+        `${copyText("launch.slot.screen")}${copyText("sessionHead.act.openTerm")}${copyText("sessionState.killIdle.action")}${copyText("launch.slot.close")}`,
     );
-    expect(actsOnCard()).toEqual(["screen:终端画面", "attach:在终端里打开", "kill:结束 tmux 会话", "close:关闭标签页"]);
+    expect(actsOnCard()).toEqual([`screen:${copyText("launch.slot.screen")}`, `attach:${copyText("sessionHead.act.openTerm")}`, `kill:${copyText("sessionState.killIdle.action")}`, `close:${copyText("launch.slot.close")}`]);
     expect(vi.mocked(toast), "不再另弹「没看到会话起来」").not.toHaveBeenCalled();
   });
 
@@ -171,28 +172,28 @@ describe("20 s 没报到", () => {
   it("本机起的：没有［在终端里打开］（本机没有接回终端那条路）", async () => {
     make().add({ ...SPEC, origin: LOCAL_ORIGIN });
     await missNow();
-    expect(actsOnCard()).toEqual(["screen:终端画面", "kill:结束 tmux 会话", "close:关闭标签页"]);
+    expect(actsOnCard()).toEqual([`screen:${copyText("launch.slot.screen")}`, `kill:${copyText("sessionState.killIdle.action")}`, `close:${copyText("launch.slot.close")}`]);
   });
 
   it("tmux 会话已经不在 ⇒ 说不在，只剩［关闭标签页］", async () => {
     screen = { kind: "gone" };
     make().add(SPEC);
     await missNow();
-    expect(panelText()).toContain("devbox · tmux 会话 billing-2 不在");
-    expect(actsOnCard()).toEqual(["close:关闭标签页"]);
+    expect(panelText()).toContain(copyText("launch.slot.tmuxGone", { machine: "devbox", name: "billing-2" }));
+    expect(actsOnCard()).toEqual([`close:${copyText("launch.slot.close")}`]);
   });
 
   it("画面读不到 ⇒ 照说原因；画面是空的 ⇒ 说空、不出那一块", async () => {
     screen = new Error("那台无应答");
     make().add(SPEC);
     await missNow();
-    expect(panelText()).toContain("devbox · tmux 会话 billing-2 · 画面读不到：那台无应答");
-    expect(actsOnCard()).toEqual(["close:关闭标签页"]);
+    expect(panelText()).toContain(copyText("launch.slot.noScreen", { machine: "devbox", name: "billing-2", why: "那台无应答" }));
+    expect(actsOnCard()).toEqual([`close:${copyText("launch.slot.close")}`]);
 
     screen = { kind: "there", terminal: "%7", words: "" };
     make().add({ ...SPEC, cwd: "/home/u/b2" });
     await missNow();
-    expect(root.lastElementChild?.textContent).toContain("devbox · tmux 会话 billing-2 在 · 画面为空");
+    expect(root.lastElementChild?.textContent).toContain(copyText("launch.slot.tmuxEmpty", { machine: "devbox", name: "billing-2" }));
     expect(root.lastElementChild?.querySelector("pre")).toBeNull();
   });
 
@@ -200,8 +201,8 @@ describe("20 s 没报到", () => {
     make().add({ ...SPEC, tmuxName: null });
     await missNow();
     expect(acts.screen).not.toHaveBeenCalled();
-    expect(panelText()).toBe("未报到devbox · /home/u/srv/billing未报到 · 20s已发启动命令 · 20s 未报到关闭标签页");
-    expect(actsOnCard()).toEqual(["close:关闭标签页"]);
+    expect(panelText()).toBe(`${copyText("launch.slot.missedTitle")}devbox · /home/u/srv/billing${copyText("launch.slot.missedState", { secs: 20 })}${copyText("launch.slot.missedCard", { secs: 20 })}${copyText("launch.slot.close")}`);
+    expect(actsOnCard()).toEqual([`close:${copyText("launch.slot.close")}`]);
   });
 });
 
@@ -223,10 +224,10 @@ describe("报错卡上的几颗", () => {
     click("kill");
     await vi.advanceTimersByTimeAsync(0);
     expect(acts.confirm).toHaveBeenCalledWith({
-      title: "结束 tmux 会话 billing-2",
-      action: "结束 tmux 会话",
+      title: copyText("sessionState.killIdle.title", { name: "billing-2" }),
+      action: copyText("sessionState.killIdle.action"),
       danger: true,
-      rows: [{ label: "中断", items: ["devbox tmux 会话 billing-2 里正在跑的程序"] }],
+      rows: [{ label: copyText("kit.interrupts.cut"), items: [copyText("launch.slot.killCuts", { machine: "devbox", name: "billing-2" })] }],
     });
     expect(acts.kill).toHaveBeenCalledWith("devbox", "billing-2");
     expect(rows()).toEqual([]);
@@ -245,7 +246,7 @@ describe("报错卡上的几颗", () => {
     acts.kill.mockRejectedValueOnce(new Error("不在名单"));
     click("kill");
     await vi.advanceTimersByTimeAsync(0);
-    expect(vi.mocked(toast)).toHaveBeenCalledWith("结束失败 · billing-2", "不在名单");
+    expect(vi.mocked(toast)).toHaveBeenCalledWith(copyText("tabSessionActions.kill.failed", { title: "billing-2" }), "不在名单");
     expect(rows()).toHaveLength(1);
   });
 

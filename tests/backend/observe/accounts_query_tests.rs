@@ -1477,7 +1477,11 @@ fn the_list_product_says_when_account_zero_is_missing() {
     let (root, accts) = c4c_fixture("c4c-nozero", false);
     let v = list_product_at(&accts, &[], "claude-code", "claude-code");
     let n = v["notice"].as_str().expect("缺账号 0 却没出那一句");
-    assert!(n.contains("默认账号") && !n.contains("远端"), "{n}");
+    assert!(
+        n.contains("默认账号")
+            && !n.contains(copy_core::copy_static!("rsConfigSurface.host.remote")),
+        "{n}"
+    );
     let off = list_product_at(&root.join("nope"), &[], "claude-code", "claude-code");
     assert_eq!(off["meta"]["enabled"], false);
     assert!(off["notice"].is_null(), "没启用谈不上缺账号 0");

@@ -3454,7 +3454,7 @@
     },
     "main.sftp.noMachineHint": {
       "kind": "error",
-      "zh": "先在设置 → 连接 配好 host / user，再打开文件窗口。",
+      "zh": "无远端机器",
       "args": []
     },
     "main.sftp.noMachine": {
@@ -4091,12 +4091,12 @@
     },
     "tabSessionActions.openCwd.noConfig": {
       "kind": "body",
-      "zh": "找不到这台机器的连接配置（到设置 → 连接里添加）",
+      "zh": "机器列表无此机器",
       "args": []
     },
     "tabSessionActions.openCwd.incomplete": {
       "kind": "body",
-      "zh": "这台机器的连接配置缺 host 或 user（到设置 → 连接里补全）",
+      "zh": "连接配置缺主机或用户名",
       "args": []
     },
     "tabSessionActions.kill.failed": {
@@ -7194,7 +7194,7 @@
     },
     "ccBus.broadcast.confirm": {
       "kind": "body",
-      "zh": "广播给 {n} 个 agent？\n\n{text}",
+      "zh": "只发在线的 agent · 名单 {n}\n\n{text}",
       "args": ["n", "text"]
     },
     "ccBus.kill.failed": {
@@ -7427,7 +7427,7 @@
     },
     "ccBus.build.intro": {
       "kind": "body",
-      "zh": "只读查看远端 cc-bus 上登记过的 agent。可以给某个 agent 发消息、看它的收件箱。「登记」不等于「在线」：名单只说明它曾经登记过，要确认某个还活着请点那一行的「检查」。本面板不做后台轮询，只在你点「读取」时发一次请求。",
+      "zh": "cc-bus 名单 · 可发消息 · 广播 · 结束 · 新开 agent · 在不在线点「检查」",
       "args": []
     },
     "ccBusHooks.snippet.activation": {
@@ -7485,7 +7485,7 @@
     },
     "remote.save.incomplete": {
       "kind": "body",
-      "zh": "已保存。有 {n} 台的主机、用户或后端路径不完整，后端会跳过这些台；补全后重启 monitor 才会连。",
+      "zh": "已保存 · 缺主机或用户名 {n}",
       "args": ["n"]
     },
     "remote.preview.noUser": {
@@ -9552,7 +9552,7 @@
     },
     "rsFilewinEditor.saved.noDigest": {
       "kind": "error",
-      "zh": "已经存进去了。要再改，请关掉重新打开，不然下次存会被当成文件被别处改过。",
+      "zh": "已保存 · 未取得新校验值 · 重开后再改",
       "args": []
     },
     "rsFilewinEditor.overwrite.notText": {
@@ -9718,12 +9718,12 @@
     },
     "rsLocalBackend.decide.crashLoop": {
       "kind": "error",
-      "zh": "本机后端在 {windowMs} 毫秒内崩了 {recent} 次（上限 {maxCrashes}），不再重起，免得崩溃循环。远端功能不受影响；日志里有每次的退出状态。",
+      "zh": "本机离线 · {windowMs}ms 内退出 ×{recent}（上限 {maxCrashes}）· 远端同样不可连",
       "args": ["windowMs", "recent", "maxCrashes"]
     },
     "rsLocalBackend.resolve.notBeside": {
       "kind": "error",
-      "zh": "cc-monitor 旁边没有本机后端（{stem}）。它随安装包一起装，和 cc-monitor 在同一个目录；装一次安装包（Releases 页）就有。远端功能不受影响。",
+      "zh": "本机离线 · 安装不完整 · 缺 {stem} · 重新装上安装包 · 远端同样不可连",
       "args": ["stem"]
     },
     "rsBackendControl.handle.missing": {
@@ -10137,7 +10137,7 @@
     },
     "rsDriftLedger.consequence.unknownSessionKind": {
       "kind": "body",
-      "zh": "该会话被当作后台：关掉「显示后台会话」就完全看不见它",
+      "zh": "按后台任务会话算 · 关「显示后台任务会话」即隐藏",
       "args": []
     },
     "rsDriftLedger.consequence.knownTypeParse": {
@@ -10659,7 +10659,7 @@
     },
     "rsDialHost.local.absent": {
       "kind": "error",
-      "zh": "本机后端不在，远端连不了：等了 {ms} 毫秒还没连上本机后端。到设置 → 后端里看本机后端的状态",
+      "zh": "本机离线 · 远端不可连 · 已等 {ms}ms",
       "args": ["ms"]
     },
     "rsLinkMux.b64.badChar": {
@@ -12021,7 +12021,7 @@
     },
     "rsHistory.relay.downRefused": {
       "kind": "error",
-      "zh": "起不了会话：账号 {account} 在{where}的 API key 表里有一行，但{where}的中转没在运行（{why}）。\n先让那台机器的后端（本机：设置 → 本机后端）与它的中转起来再试，或把这个账号那一行从那台机器的凭据文件里去掉。",
+      "zh": "新建会话失败 · {account} 是按量账号 · {where}实时显示未运行（{why}）",
       "args": ["account", "where", "why"]
     },
     "startupActive.gone.title": {
@@ -12429,7 +12429,7 @@
     },
     "rsToolRegistry.tools.posixAliasesRcWhat": {
       "kind": "body",
-      "zh": "「按账号生成命令」那一块里的 rc 下拉。从盘上真有的 .bashrc / .zshrc / .bash_profile / .profile 里由你自己选",
+      "zh": "接上终端时选的 rc 文件 · .bashrc / .zshrc / .bash_profile / .profile",
       "args": []
     },
     "rsToolRegistry.tools.posixAliasesWhat": {
@@ -15689,7 +15689,7 @@
     },
     "beSkillFlow.install.recordFailed": {
       "kind": "error",
-      "zh": "装好了，但没记下来（{e}）—— 这一趟装的文件卸不掉。",
+      "zh": "已安装 · 安装记录未写入（{e}）· 卸载时先整份备份再删",
       "args": ["e"]
     },
     "beSkillFlow.uninstall.noSeen": {

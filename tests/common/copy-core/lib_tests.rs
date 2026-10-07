@@ -146,3 +146,29 @@ fn the_two_peer_version_codes_each_say_their_one_line() {
     );
     assert!(backend_old(&local_machine()).starts_with("本机"));
 }
+
+/// 测试按键断言用：`copy_matches` 认一段文字里有没有那一条（占位处任意值、接缝空格可有可无）。
+#[test]
+fn copy_matches_finds_an_entry_whatever_its_values_are() {
+    // 无参：整句在里头才算
+    let plain = copy_text("control.machine.local", &[]);
+    assert!(copy_matches(
+        "control.machine.local",
+        &format!("前缀 {plain} 后缀")
+    ));
+    // 有参：值换成什么都认，值挨着汉字时取文口补的那个空格也认
+    let said = copy_text("peerVersion.said.old", &[("machine", "devbox")]);
+    assert!(copy_matches("peerVersion.said.old", &said));
+    let said_local = copy_text("peerVersion.said.old", &[("machine", &plain)]);
+    assert!(copy_matches("peerVersion.said.old", &said_local));
+    // 反例：缺了固定字的一截、顺序颠倒、表里没有的键，都不认
+    let fixed: Vec<&str> = entries()["peerVersion.said.old"]["zh"]
+        .as_str()
+        .unwrap()
+        .split("{machine}")
+        .filter(|s| !s.trim().is_empty())
+        .collect();
+    let cut = said.replacen(fixed[0].trim(), "", 1);
+    assert!(!copy_matches("peerVersion.said.old", &cut));
+    assert!(!copy_matches("no.such.key", &said));
+}

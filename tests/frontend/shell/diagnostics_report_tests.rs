@@ -37,8 +37,14 @@ fn 一段里有版本构建各台状态与原因码未识别数据日志位置()
         "4.1.1",
         "p8n-mcp-sync",
         "devbox · Linux · down · auth",
-        "gpu-01 · 会话记录 3 条",
-        "devbox · 读不到",
+        &*copy_core::copy_text(
+            "diagnostics.unknown.machine",
+            &[("machine", "gpu-01 ·"), ("n", "3")],
+        ),
+        &*copy_core::copy_text(
+            "diagnostics.unknown.machineUnread",
+            &[("machine", "devbox ·")],
+        ),
         "config.json · 2 项：resumeCommandLocal、x",
         "/h/.cc-monitor/logs/monitor.2026-10-06.log",
     ] {

@@ -29,6 +29,8 @@ import { buildAccountCommands } from "../../../src/frontend/ui/account-commands"
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { putAccounts } from "../../../src/frontend/ui/app-store";
 import { dispatcher, type OverlayHandle } from "../../../src/frontend/ui/keybindings/registry";
+import { copyText } from "../../../src/frontend/ui/copy-table";
+import { copyPattern } from "../../test-support/copy-pattern";
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -114,19 +116,19 @@ describe("pickPrimaryOrigin", () => {
 
 describe("chipLabel", () => {
   it("无 state → 未连远端", () => {
-    expect(chipLabel(null)).toBe("未连远端");
+    expect(chipLabel(null)).toBe(copyText("accountChip.label.noRemote"));
   });
   it("旧 backend → 后端需更新", () => {
-    expect(chipLabel(state({ available: false, oldBackend: true, error: "版本过旧" }))).toBe("后端需更新");
+    expect(chipLabel(state({ available: false, oldBackend: true, error: "版本过旧" }))).toBe(copyText("accountChip.label.backendOld"));
   });
   // 没问出来 ≠ 要更新。
   it("查询失败 → 账号没查到（不说需更新）", () => {
-    expect(chipLabel(state({ available: false, error: "现在够不着那台机器的后端" }))).toBe("账号没查到");
+    expect(chipLabel(state({ available: false, error: "现在够不着那台机器的后端" }))).toBe(copyText("accountChip.label.queryFailed"));
   });
   it("未启用 → 未启用", () => {
     expect(
       chipLabel(state({ meta: { enabled: false, acctsDir: "/a", manifestPath: "/a/x", updatedAt: null, sharedStore: null, count: 0, error: null } })),
-    ).toBe("未启用");
+    ).toBe(copyText("accountChip.label.disabled"));
   });
   it("ready → 显示那台清单里的默认号（isDefault）", () => {
     const s = state({ accounts: [acct({ name: "z" }), acct({ name: "b", isDefault: true })] });
@@ -289,7 +291,7 @@ describe("：chip 上的用量面已退役（翻面判据）", () => {
     const actions = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].map(
       (b) => b.textContent,
     );
-    expect(actions).not.toContain("刷新用量");
+    expect(actions).not.toContain(`${copyText("accountChip.menu.refresh")}${copyText("acct.hover.usage")}`);
     // 折叠态那个用量 span 也不该再存在（`.status-account-usage` 整条删了）。
     expect(chip.element.querySelector(".status-account-usage")).toBeNull();
   });
@@ -337,16 +339,16 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     const kk = acct({ name: "kk", authKind: "api-key", loggedIn: false, authReady: true });
     const items = await menuRows([acct({ name: "wei" }), kk], "wei");
     const row = rowOf(items, "kk");
-    expect(statusOf(row)).toBe("API key（未配置端点）");
+    expect(statusOf(row)).toBe(copyText("accounts.badge.apikeyNoEndpoint"));
     // 三条阴性：替换**前**这一行会写「未登录 ⚠」（因为 `loggedIn: false`），而 KA6a 点名的
     // 坏体验是「已登录」那一档。两句都不许再出现在这个格子里。
-    expect(statusOf(row)).not.toBe("已登录");
-    expect(statusOf(row)).not.toBe("未登录 ⚠");
-    expect(statusOf(row)).not.toBe("未登录");
+    expect(statusOf(row)).not.toBe(copyText("accounts.badge.signedIn"));
+    expect(statusOf(row)).not.toBe(`${copyText("accounts.badge.notSignedIn")} ⚠`);
+    expect(statusOf(row)).not.toBe(copyText("accounts.badge.notSignedIn"));
     // title 是 `accountStatusBadge` 给的那一句：等号防漂 + 一句字面量防「两边一起坏」的循环自证。
     // `menuRows` 造的是远端那一档，那台的两格事实这里没给（问不到）⇒ 徽章不表态，与缺席那一档同一句。
     expect(row.title).toBe(accountsMod.accountStatusBadge(kk).title);
-    expect(row.title).toContain("请求会在 claude 那边报鉴权失败");
+    expect(row.title).toMatch(copyPattern("accounts.badge.apikeyNoEndpointHint"));
     // ★ 第三轮：这一格**本来就该是警示态**（选得中却连不上），警示由 `.warn` 类呈现 ——
     // 文本里一个字形都不拼，所以上面那三条 `not.toBe` 与这一条并不打架。
     expect(warnOf(row), "api-key 那格没拿到 warn 类 ⇒ 用户看到的是一句普通灰字").toBe(true);
@@ -358,7 +360,7 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
       .spyOn(readsMod, "fetchMachineApikeyRouting")
       .mockResolvedValue({ routed: ["/h/.cc-monitor/accounts/kk"], running: true });
     const items = await menuRows([acct({ name: "wei" }), kk], "wei");
-    expect(statusOf(rowOf(items, "kk"))).toBe("API key（经中转）");
+    expect(statusOf(rowOf(items, "kk"))).toBe(copyText("accounts.badge.apikeyRelayed"));
     expect(warnOf(rowOf(items, "kk"))).toBe(false);
     expect(spy.mock.calls.map((c) => c[0])).toEqual([pickPrimaryOrigin([host({ label: "devbox" })])]);
     spy.mockRestore();
@@ -368,9 +370,9 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     const esc = acct({ name: "esc", mode: "in-place" });
     const items = await menuRows([esc, acct({ name: "wei" })], "wei");
     const row = rowOf(items, "esc");
-    expect(statusOf(row)).toBe("不支持切换");
+    expect(statusOf(row)).toBe(copyText("accounts.badge.inPlace"));
     expect(row.title).toBe(accountsMod.accountStatusBadge(esc).title);
-    expect(row.title).toContain("in-place 模式");
+    expect(row.title).toContain(copyText("accounts.badge.inPlaceHint"));
     // 这一格断的是 `accountStatusBadge` **实际给的** `warn` 值 —— 实读 `src/frontend/ui/accounts.ts:185-191`：
     // in-place 那一支逐字 `warn: true`（它「选得中但不支持按会话切号」，同样是警示态）。
     expect(accountsMod.accountStatusBadge(esc).warn, "取值源变了就该在这儿先红").toBe(true);
@@ -381,10 +383,10 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     const old = acct({ name: "old", loggedIn: false, authReady: false });
     const items = await menuRows([old, acct({ name: "wei" })], "wei");
     const row = rowOf(items, "old");
-    expect(statusOf(row)).toBe("未登录");
-    expect(statusOf(row)).not.toBe("已登录");
+    expect(statusOf(row)).toBe(copyText("accounts.badge.notSignedIn"));
+    expect(statusOf(row)).not.toBe(copyText("accounts.badge.signedIn"));
     // 这一句 title 与替换前**逐字相同**（见下面那条「真发现」里贴的替换前三句）。
-    expect(row.title).toBe("该账号尚未登录——请在终端里用它 /login");
+    expect(row.title).toBe(copyText("accounts.badge.notSignedInHint"));
     expect(row.title).toBe(accountsMod.accountStatusBadge(old).title);
     // ★ 第三轮：第二轮丢掉的那个 ⚠ 就补在这儿 —— 不是拼回文本，是拿到 `.warn` 类。
     expect(warnOf(row), "订阅号缺凭据那格没拿到 warn 类 ⇒ 「未登录」丢了警示呈现").toBe(true);
@@ -394,7 +396,7 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     const wei = acct({ name: "wei", loggedIn: true, authKind: "subscription", authReady: true });
     const items = await menuRows([wei], "wei");
     const row = rowOf(items, "wei");
-    expect(statusOf(row)).toBe("已登录");
+    expect(statusOf(row)).toBe(copyText("accounts.badge.signedIn"));
     // 替换前这一支**不设** `row.title`（读作空串）；`accountStatusBadge` 给的 title 是 ""
     // ⇒ 读数逐字相同（差别只在 DOM 上多了个空的 `title` 属性，用户看不见）。
     expect(row.title).toBe("");
@@ -431,11 +433,11 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     const old = acct({ name: "old", loggedIn: false, authReady: false });
     const items = await menuRows([esc, old], "old");
     // Δ① text：⚠ 没了
-    expect(statusOf(rowOf(items, "old"))).not.toBe("未登录 ⚠");
-    expect(statusOf(rowOf(items, "old"))).toBe("未登录");
+    expect(statusOf(rowOf(items, "old"))).not.toBe(`${copyText("accounts.badge.notSignedIn")} ⚠`);
+    expect(statusOf(rowOf(items, "old"))).toBe(copyText("accounts.badge.notSignedIn"));
     // Δ② title：in-place 那句换了
     expect(rowOf(items, "esc").title).not.toBe("in-place 模式：不支持按会话切号");
-    expect(rowOf(items, "esc").title).toBe("in-place 模式：cc-monitor 不支持对它按会话切号");
+    expect(rowOf(items, "esc").title).toBe(copyText("accounts.badge.inPlaceHint"));
   });
 
   // ★ 第三轮补的地板：上面那 4 条 warn 断言测的是**类加没加**，jsdom 不加载 `styles.css`
@@ -520,15 +522,15 @@ describe("K-H2b D1 阻-5：没有远端时 chip 渲染本机账号，徽章带 a
     const B = apiKey("acct-b", "/h/.claude-alt/acct-b");
     // ① 有行 + 在跑 ⇒ 「经中转」；同一趟里 B 没行 ⇒ 「未配置端点」（非空对照就在同一趟）。
     let items = await localMenuRows([A, B], { routed: ["/h/.claude-alt/acct-a"], running: true });
-    expect(statusOf(rowOf(items, "acct-a"))).toBe("API key（经中转）");
-    expect(statusOf(rowOf(items, "acct-b"))).toBe("API key（未配置端点）");
+    expect(statusOf(rowOf(items, "acct-a"))).toBe(copyText("accounts.badge.apikeyRelayed"));
+    expect(statusOf(rowOf(items, "acct-b"))).toBe(copyText("accounts.badge.apikeyNoEndpoint"));
     // ② 只把「中转在不在跑」翻过来 ⇒ 第三档。
     items = await localMenuRows([A, B], { routed: ["/h/.claude-alt/acct-a"], running: false });
-    expect(statusOf(rowOf(items, "acct-a"))).toBe("API key（中转未运行）");
+    expect(statusOf(rowOf(items, "acct-a"))).toBe(copyText("accounts.badge.apikeyRelayDown"));
     // ③ 问不到 routing ⇒ **不表态**，回落到缺席那一档（只说条件、不下判断）。
     items = await localMenuRows([A, B], "fail");
-    expect(statusOf(rowOf(items, "acct-a"))).toBe("API key（未配置端点）");
-    expect(rowOf(items, "acct-a").title).toContain("无法判断端点是否已配置");
+    expect(statusOf(rowOf(items, "acct-a"))).toBe(copyText("accounts.badge.apikeyNoEndpoint"));
+    expect(rowOf(items, "acct-a").title).toContain(copyText("accounts.badge.whyUnknown"));
   });
 
   it("★ 本机那一趟问的是本机那条路（不是 `list_remote_accounts`）", async () => {
@@ -587,9 +589,9 @@ describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => 
     await chip.openMenu();
     const labels = [...document.querySelectorAll('[role="menu"] *')].map((e) => e.textContent);
     // 非空对照：菜单确实渲染出来了（否则下面那条 not.toContain 是空真）。
-    expect(labels).toContain("管理账号…");
+    expect(labels).toContain(copyText("accountChip.menu.manage"));
     // 正题：那个按钮在本机那一档是死的（`loadCurrentAccountUsage` 首行就 return）。
-    expect(labels).not.toContain("刷新用量");
+    expect(labels).not.toContain(`${copyText("accountChip.menu.refresh")}${copyText("acct.hover.usage")}`);
   });
 });
 

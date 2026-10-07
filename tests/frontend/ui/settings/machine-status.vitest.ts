@@ -16,6 +16,7 @@ import {
   LOCAL_MACHINE_KEY,
 } from "../../../../src/frontend/ui/settings/machine-status";
 import { LS_KEYS } from "../../../../src/frontend/ui/local-storage";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const T0 = 1_700_000_000_000;
 
@@ -92,10 +93,10 @@ describe("账本读写", () => {
    */
   it("★ N-F2：`LOCAL_MACHINE_KEY` 记得进也读得出（它落进那条静默丢弃的话，本机那两格会无声地回到「没测过」）", () => {
     expect(LOCAL_MACHINE_KEY, "本机那个 key 是空的 ⇒ recordFacet 会静默丢掉每一次写").toBeTruthy();
-    recordFacet(LOCAL_MACHINE_KEY, "accounts", { kind: "ok", detail: "3 个", at: T0 });
+    recordFacet(LOCAL_MACHINE_KEY, "accounts", { kind: "ok", detail: copyText("accounts.status.count", { n: "3" }), at: T0 });
     expect(readStatus(LOCAL_MACHINE_KEY).accounts).toEqual({
       kind: "ok",
-      detail: "3 个",
+      detail: copyText("accounts.status.count", { n: "3" }),
       at: T0,
     });
     // 反向自检：它与真实 origin 不撞车（本机的记录不该被一台叫这个名字的远端继承）。
@@ -110,21 +111,21 @@ describe("账本读写", () => {
 
 describe("formatAge —— 刻意粗粒度", () => {
   it("分钟 / 小时 / 天三档", () => {
-    expect(formatAge(T0, T0 + 30_000)).toBe("刚刚");
-    expect(formatAge(T0, T0 + 3 * 60_000)).toBe("3 分钟前");
-    expect(formatAge(T0, T0 + 2 * 3_600_000)).toBe("2 小时前");
-    expect(formatAge(T0, T0 + 5 * 86_400_000)).toBe("5 天前");
+    expect(formatAge(T0, T0 + 30_000)).toBe(copyText("machineStatus.age.justNow"));
+    expect(formatAge(T0, T0 + 3 * 60_000)).toBe(copyText("machineStatus.age.minutes", { n: "3" }));
+    expect(formatAge(T0, T0 + 2 * 3_600_000)).toBe(copyText("machineStatus.age.hours", { n: "2" }));
+    expect(formatAge(T0, T0 + 5 * 86_400_000)).toBe(copyText("machineStatus.age.days", { n: "5" }));
   });
 
   it("边界不跳档跳错（59 秒还是刚刚，60 秒才是 1 分钟前）", () => {
-    expect(formatAge(T0, T0 + 59_999)).toBe("刚刚");
-    expect(formatAge(T0, T0 + 60_000)).toBe("1 分钟前");
-    expect(formatAge(T0, T0 + 3_599_999)).toBe("59 分钟前");
-    expect(formatAge(T0, T0 + 3_600_000)).toBe("1 小时前");
+    expect(formatAge(T0, T0 + 59_999)).toBe(copyText("machineStatus.age.justNow"));
+    expect(formatAge(T0, T0 + 60_000)).toBe(copyText("machineStatus.age.minutes", { n: "1" }));
+    expect(formatAge(T0, T0 + 3_599_999)).toBe(copyText("machineStatus.age.minutes", { n: "59" }));
+    expect(formatAge(T0, T0 + 3_600_000)).toBe(copyText("machineStatus.age.hours", { n: "1" }));
   });
 
   it("时钟回拨不显示负数（存档可能来自另一台机器 / 系统时间被改过）", () => {
-    expect(formatAge(T0, T0 - 10_000)).toBe("刚刚");
+    expect(formatAge(T0, T0 - 10_000)).toBe(copyText("machineStatus.age.justNow"));
   });
 });
 
@@ -133,7 +134,7 @@ describe("describeFacet", () => {
     // 填个好看的 ✓ 等于替用户下了一个他从没做过的结论。
     expect(describeFacet(undefined, T0)).toEqual({
       icon: "·",
-      text: "未测过",
+      text: copyText("machineStatus.facet.untested"),
       tone: "unknown",
     });
   });
@@ -141,9 +142,9 @@ describe("describeFacet", () => {
   it("★ 「不适用」与「没测过」是两回事", () => {
     // 本机不需要后端（写「不需要」）。混成一个值的话，
     // 用户会以为本机缺了个组件。
-    const na = describeFacet({ kind: "na", detail: "不需要", at: T0 }, T0);
+    const na = describeFacet({ kind: "na", detail: copyText("machineStatus.facet.na"), at: T0 }, T0);
     expect(na.tone).toBe("na");
-    expect(na.text).toBe("不需要");
+    expect(na.text).toBe(copyText("machineStatus.facet.na"));
     expect(na.tone).not.toBe(describeFacet(undefined, T0).tone);
     // 不适用没有新鲜度可言 —— 不带时间
     expect(na.text).not.toMatch(/前|刚刚/);
@@ -152,12 +153,12 @@ describe("describeFacet", () => {
   it("ok / fail 都带年龄（这是「绝不显示成实时」的落点）", () => {
     const ok = describeFacet({ kind: "ok", at: T0 }, T0 + 3 * 60_000);
     expect(ok.icon).toBe("✓");
-    expect(ok.text).toBe("3 分钟前");
+    expect(ok.text).toBe(copyText("machineStatus.age.minutes", { n: "3" }));
     const fail = describeFacet(
-      { kind: "fail", detail: "连不上", at: T0 },
+      { kind: "fail", detail: copyText("machineCard.test.unreachable"), at: T0 },
       T0 + 2 * 3_600_000,
     );
     expect(fail.icon).toBe("✗");
-    expect(fail.text).toBe("连不上 · 2 小时前");
+    expect(fail.text).toBe(copyText("machineStatus.age.hours", { n: copyText("events.unseen.unreachableTitle", { machine: "· 2" }) }));
   });
 });

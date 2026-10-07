@@ -141,6 +141,7 @@ import type { TabSessionActions } from "../../../../src/frontend/ui/tab-session-
 import { __resetAccountsCacheForTest } from "../../../../src/frontend/ui/account-reads";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import { historyCalls, launchRenderShim, localLaunchCalls, withAccountReads, withHistoryReads } from "../../../test-support/chan-fake";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 /** Rust 有、但 TS 侧**静态**看不见的命令（全部经动态命令名调用）。见头注「不能写的断言 2」。 */
 /**
@@ -539,7 +540,7 @@ describe("本机起会话的主路：交「跟随」给本机后端、界面一�
 
   // 起新会话不在这里：它走 `session-new` 那一个请求（框里的号是点名的那一个，见 `new-session.vitest.ts`）。
   it("★ 历史页 resume · tab 栏 resume：交的都是「跟随」，界面一条 pin 都不写", async () => {
-    await clickRowAction("恢复");
+    await clickRowAction(copyText("history.row.resume"));
     expect(payloadOf("resume_history_session").account).toEqual({ kind: "follow" });
     await resumeLocalTab("t1");
     expect(localLaunchCalls(invokeMock.mock.calls, "resume_history_session").map((c) => c.account)).toEqual([

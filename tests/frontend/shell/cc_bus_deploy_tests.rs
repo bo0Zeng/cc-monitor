@@ -144,12 +144,14 @@ fn windows_precheck_without_own_bytes_says_incomparable() {
     );
     let lacking = windows_ccm_precheck(Some((at, &card(&["detach"]))), None);
     assert!(
-        lacking.contains("版本不可比") && lacking.contains("· 缺 tmux-size"),
+        copy_core::copy_matches("rsCcBusDeploy.win.noOwnBytes", &lacking)
+            && lacking.contains("· 缺 tmux-size"),
         "没带字节时缺的能力照样要点名：{lacking}"
     );
     for said in [&full, &lacking] {
         assert!(
-            !said.contains("不是这一版") && !said.contains("是这一版"),
+            !copy_core::copy_matches("rsCcBusDeploy.win.stale", &said)
+                && !said.contains("是这一版"),
             "没有对照物却判了版本：{said}"
         );
     }

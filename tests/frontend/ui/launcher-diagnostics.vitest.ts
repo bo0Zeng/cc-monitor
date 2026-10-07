@@ -5,6 +5,7 @@
 // shell 文本归后端 `tests/frontend/shell/account_aliases_tests.rs`（真 bash 执行那一条在那边）。
 import { describe, it, expect } from "vitest";
 import { diagnoseRemoteLauncher } from "../../../src/frontend/ui/launcher-diagnostics";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 describe("diagnoseRemoteLauncher", () => {
   it("空/纯空白 → 不诊断（走默认 claude，不算绕过）", () => {
@@ -37,8 +38,8 @@ describe("diagnoseRemoteLauncher", () => {
   it("诊断文案是只读提示，不含任何会被误当成命令/配置的内容，且指向别名那一块（Phase D 审计：两个 UI 曾互不指涉）", () => {
     const msg = diagnoseRemoteLauncher("cct");
     expect(msg).toContain("ccm");
-    expect(msg).toContain("账号和模型偏好");
+    expect(msg).toContain(copyText("launcherDiagnostics.diagnoseRemoteLauncher.bypassesCcm"));
     // 从前指「下面的生成器」—— 生成器并进了机器页的「别名」，那句话跟着指过去。
-    expect(msg).toContain("本机 → 终端 → 别名");
+    expect(msg).toContain(copyText("launcherDiagnostics.diagnoseRemoteLauncher.bypassesCcm"));
   });
 });

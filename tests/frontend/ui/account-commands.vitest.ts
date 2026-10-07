@@ -5,6 +5,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { buildAccountCommands, type AccountCommandsInput } from "../../../src/frontend/ui/account-commands";
 import type { Account } from "../../../src/frontend/ui/accounts";
+import { copyText } from "../../../src/frontend/ui/copy-table";
+import { copyPattern } from "../../test-support/copy-pattern";
 
 function acct(p: Partial<Account>): Account {
   return {
@@ -36,20 +38,20 @@ describe("account-ux U8：Ctrl+K 账号命令", () => {
   it("术语用「默认账号」（新会话用它起），不再说「切默认为」", () => {
     const cmds = buildAccountCommands(input());
     const t = cmds.find((c) => c.id === "acct-default-amy")!.title;
-    expect(t).toBe("设 amy 为默认账号");
+    expect(t).toBe(copyText("accountCommands.setDefault.title", { name: "amy", current: "" }));
     expect(t).not.toContain("切默认为");
   });
 
   it("keywords 仍保留「默认」做搜索别名（老习惯搜得到）", () => {
     const c = buildAccountCommands(input()).find((x) => x.id === "acct-default-amy")!;
-    expect(c.keywords).toContain("默认");
+    expect(c.keywords).toMatch(copyPattern("accountCommands.setDefault.keywords"));
   });
 
   it("已是默认的那条标注「已是默认」，且点它不动手", () => {
     const setCurrent = vi.fn();
     const cmds = buildAccountCommands(input({ setCurrent }));
     const cur = cmds.find((c) => c.id === "acct-default-wei")!;
-    expect(cur.title).toContain("已是默认");
+    expect(cur.title).toContain(copyText("accountCommands.setDefault.isCurrent"));
     cur.run();
     expect(setCurrent).not.toHaveBeenCalled();
   });

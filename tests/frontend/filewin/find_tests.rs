@@ -836,7 +836,7 @@ async fn the_unreadable_dirs_can_be_listed_and_a_click_copies_the_path() {
     assert_eq!(look.len(), 1, "状态行上没有［查看］：{painted:?}");
     assert!(crate::copy::testing::painted_contains(
         &painted,
-        "3 个目录无权限"
+        &*copy_core::copy_text("rsFilewinFind.status.holes", &[("n", "3")])
     ));
     let rel = "a/locked";
     assert!(
@@ -972,11 +972,15 @@ async fn the_cold_first_build_line_is_on_the_frame_while_it_runs_and_gone_after(
         );
         let after = testing::frame_text(&ctx, &mut w, Vec::new());
         assert!(
-            !after.iter().any(|t| t.contains("首建文件清单")),
+            !after
+                .iter()
+                .any(|t| copy_core::copy_matches("rsFilewinFind.firstBuild.line", &t)),
             "首建走完了，帧上还说「首建文件清单」：{after:?}"
         );
         assert!(
-            after.iter().any(|t| t.starts_with("文件清单 · ")),
+            after
+                .iter()
+                .any(|t| copy_core::copy_matches("rsFilewinFind.status.age", &t)),
             "首建走完之后「文件清单 · 多久前」该回来：{after:?}"
         );
         assert_eq!(

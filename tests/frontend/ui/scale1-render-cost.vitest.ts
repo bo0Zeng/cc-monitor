@@ -78,6 +78,7 @@ import {
 import type { JsonlLinePayload } from "../../../src/frontend/ui/events";
 import type { JsonlRecord, RenderContext } from "../../../src/frontend/ui/cards/index";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 // `__dirname` 在 vitest 里指向 `tests/`（同 `scale2-height-truth.vitest.ts` 的用法）
 const FIXTURE = resolve(__dirname, "../../__fixtures__/scale2-height-records.jsonl");
@@ -283,7 +284,7 @@ beforeAll(() => {
   disableRenderCostProbe();
   steady = Array.from({ length: EXPECTED_RECORDS }, (_, i) => {
     const runs = Array.from({ length: PASSES }, (_, k) => samples[k * EXPECTED_RECORDS + i]);
-    const route = (s: RenderCostSample | undefined) => (s ? `${s.bytes}/${s.card}/${s.branch}` : "缺");
+    const route = (s: RenderCostSample | undefined) => (s ? `${s.bytes}/${s.card}/${s.branch}` : copyText("readiness.gapHead.missing"));
     if (new Set(runs.map(route)).size !== 1) {
       throw new Error(`第 ${i} 条记录各遍的 (字节, 卡型, 分支) 不一致：${runs.map(route).join(" · ")}`);
     }

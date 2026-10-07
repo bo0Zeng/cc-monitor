@@ -26,6 +26,7 @@ import {
   watchArrival,
   type ArrivalSpec,
 } from "../../../src/frontend/ui/launch-arrival";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const toast = showActionFailureToast as unknown as ReturnType<typeof vi.fn>;
 const capture = previewByTmuxName as unknown as ReturnType<typeof vi.fn>;
@@ -84,9 +85,9 @@ describe("等它", () => {
     expect(toast).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(2);
     expect(capture).toHaveBeenCalledWith("devbox", "cc-s1");
-    expect(toast.mock.calls[0][0]).toBe("命令发出去了，但没看到会话起来");
+    expect(toast.mock.calls[0][0]).toBe(copyText("launchArrival.missed.title"));
     expect(toast.mock.calls[0][1]).toBe(
-      "等了 45 秒，devbox 上没有报出这个会话。tmux 会话「cc-s1」最后几行：\n$ claude --resume s1\nbash: claude: command not found\n$",
+      copyText("launchArrival.missed.words", { secs: "45", machine: "devbox", name: "cc-s1", words: "$ claude --resume s1\nbash: claude: command not found\n$" }),
     );
   });
 
@@ -97,8 +98,8 @@ describe("等它", () => {
     await vi.advanceTimersByTimeAsync(ARRIVAL_BUDGET_MS + 1);
     const bodies = toast.mock.calls.map((c) => String(c[1])).sort();
     expect(bodies).toEqual([
-      "等了 45 秒，devbox 上没有报出这个会话。tmux 会话「cc-x」那一屏读不到：Error: 没有这个会话",
-      "等了 45 秒，本机上没有报出这个会话。启动器的原话在那个终端窗口里，这边读不到。",
+      copyText("launchArrival.missed.noScreen", { secs: "45", machine: "devbox", name: "cc-x", why: "Error: 没有这个会话" }),
+      copyText("launchArrival.missed.inWindow", { secs: "45", machine: copyText("control.machine.local") }),
     ]);
   });
 });
@@ -128,13 +129,13 @@ describe("FIX4 ④ 带票的等", () => {
       { ticket: "T1", sid: "s1" },
       { ticket: "T2", sid: null },
     ]);
-    expect(toast.mock.calls.map((c) => c[0])).toEqual(["命令发出去了，但没看到会话起来"]);
+    expect(toast.mock.calls.map((c) => c[0])).toEqual([copyText("launchArrival.missed.title")]);
   });
 
   // 要求：「文案小事：『lx上报出了这个会话』机器名与汉字无空格」。
   it("机器名以字母数字收尾 ⇒ 与后面的汉字隔一个空格；「本机」不隔", () => {
-    expect(arrivedBody("lx")).toBe("lx 上报出了这个会话。");
-    expect(arrivedBody("<local>")).toBe("本机上报出了这个会话。");
+    expect(arrivedBody("lx")).toBe(copyText("launchArrival.arrived.body", { machine: "lx" }));
+    expect(arrivedBody("<local>")).toBe(copyText("launchArrival.arrived.body", { machine: copyText("control.machine.local") }));
   });
 });
 
@@ -160,8 +161,8 @@ describe("发起方在别的窗口 ⇒ 那一句也交回那扇窗", () => {
     expect(echoed()).toEqual([
       {
         to: "settings",
-        title: "命令发出去了，但没看到会话起来",
-        body: "等了 45 秒，devbox 上没有报出这个会话。tmux 会话「nope-cc」最后几行：\nccm: 无法进入目录: /home/u/nope",
+        title: copyText("launchArrival.missed.title"),
+        body: copyText("launchArrival.missed.words", { secs: "45", machine: "devbox", name: "nope-cc", words: "ccm: 无法进入目录: /home/u/nope" }),
         level: "error",
       },
     ]);

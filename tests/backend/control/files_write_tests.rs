@@ -223,7 +223,10 @@ fn a_symlink_onto_a_session_file_passes_inside_the_root_and_is_refused_only_for_
     std::os::unix::fs::symlink(&live, other.join("docs")).expect("放 symlink");
     let lexical = lexical_in_root(&other, "docs/abc.jsonl").expect("解析① 本来就该放过它");
     let err = resolve_parent_in_root(&other, &lexical).expect_err("链接指出根外，解析② 竟然放行了");
-    assert!(err.contains("外面，不动它"), "拒了，但说的不是越界：{err}");
+    assert!(
+        copy_core::copy_matches("beFilesWrite.path.escaped", &err),
+        "拒了，但说的不是越界：{err}"
+    );
     assert!(
         !err.contains("会话数据"),
         "🔴 不该再有「会话数据」那一句：{err}"
@@ -253,7 +256,7 @@ fn the_resolved_fence_lets_a_symlink_into_a_claude_tree_through_when_it_is_not_a
         resolve_parent_in_root(&root, &lexical).expect_err("这一格今天该以「跑出目标根」被拒");
     // 🔴 它仍然被拒，**但理由必须是越界，不是 Claude** —— 两者的差别就是这一裁的全部内容。
     assert!(
-        err.contains("外面，不动它"),
+        copy_core::copy_matches("beFilesWrite.path.escaped", &err),
         "🔴 拒的理由是 Claude 那一关，说明「整棵树」那一档没撤干净：{err}"
     );
     assert!(
@@ -303,7 +306,10 @@ fn the_resolved_fence_catches_a_symlink_out_of_the_target_root() {
     let lexical = lexical_in_root(&root, "out/a.md").expect("围栏① 该放过它");
     let err =
         resolve_parent_in_root(&root, &lexical).expect_err("symlink 指出目标根，围栏② 竟然放行了");
-    assert!(err.contains("外面，不动它"), "拒了，但说的不是越界：{err}");
+    assert!(
+        copy_core::copy_matches("beFilesWrite.path.escaped", &err),
+        "拒了，但说的不是越界：{err}"
+    );
     std::fs::remove_dir_all(&base).ok();
 }
 
@@ -427,7 +433,7 @@ fn a_clean_write_lands_once_and_never_overwrites() {
         err.code()
     );
     assert!(
-        err.message().starts_with("新建 "),
+        copy_core::copy_matches("beFilesWrite.create.failed", &err.message()),
         "失败了，但不是我们的报错：{}",
         err.message()
     );
@@ -474,7 +480,7 @@ fn the_write_entry_point_is_still_fenced_after_a_symlink_is_resolved() {
         .expect_err("词法上干净、解完却落到根外 —— 写入口竟然放行了");
     assert_eq!(err.code(), "refused", "档位不对：{err:?}");
     assert!(
-        err.message().contains("外面，不动它"),
+        copy_core::copy_matches("beFilesWrite.path.escaped", &err.message()),
         "拒了，但不是解析② 拒的：{}",
         err.message()
     );
@@ -579,7 +585,7 @@ fn the_command_face_reaches_the_lexical_fence() {
     .expect_err("命令面放过了一个上跳段 —— 围栏① 在这一侧没接上");
     assert_eq!(code, "refused", "档位不对（{msg}）");
     assert!(
-        msg.contains("不能有 ..："),
+        copy_core::copy_matches("beFilesWrite.path.parentStep", &msg),
         "拒了，但不是词法那道拒的：{msg}"
     );
     assert!(
@@ -609,7 +615,7 @@ fn the_command_face_reaches_the_resolved_fence() {
     .expect_err("词法上干净、解完却落到根外 —— 命令面竟然放行了");
     assert_eq!(code, "refused", "档位不对（{msg}）");
     assert!(
-        msg.contains("外面，不动它"),
+        copy_core::copy_matches("beFilesWrite.path.escaped", &msg),
         "拒了，但不是解析② 拒的：{msg}"
     );
     assert!(

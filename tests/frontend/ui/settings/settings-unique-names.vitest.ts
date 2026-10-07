@@ -49,6 +49,7 @@ vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
 import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -87,9 +88,9 @@ describe("：面板上没有重名的导航项 / 块标题", () => {
 
   it("人群锚：「日志」（通用页下）在，且人群不小", async () => {
     const got = await names();
-    expect(got).toContain("日志");
-    expect(got).toContain("机器");
-    expect(got).toContain("账号");
+    expect(got).toContain(copyText("settingsPanel.nav.logs"));
+    expect(got).toContain(copyText("settingsPanel.nav.machines"));
+    expect(got).toContain(copyText("settingsPanel.group.accounts"));
     // 旧名一个都不许还在。
     expect(got.filter((t) => t.includes("还差什么"))).toEqual([]);
   });

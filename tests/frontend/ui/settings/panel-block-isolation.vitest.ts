@@ -149,6 +149,7 @@ import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-o
 import { setBehavior } from "../../../../src/frontend/ui/behavior";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { beforeEach, afterEach } from "vitest";
+import { copyPattern } from "../../../test-support/copy-pattern";
 
 // S9：jsdom 的 UA 含 `linux`。从前非 Windows 上「终端集成」那块**根本不构造**，钉成 windows 为的是守完整那组；
 // 那块并进了「别名」、两个平台都构造 ⇒ 这一钉只是沿用本文件一直以来的 Windows 形态。
@@ -186,9 +187,9 @@ describe("T07 分区块隔离（真行为）", () => {
       ".settings-block-failed",
     );
     expect(failed, "失败块必须在").not.toBeNull();
-    expect(failed!.textContent).toContain("此区块加载失败");
+    expect(failed!.textContent).toMatch(copyPattern("settingsPanel.safeBlock.failed"));
     expect(failed!.textContent).toContain("REMOTE_BOOM");
-    expect(failed!.dataset.failedBlock).toBe("远端连接");
+    expect(failed!.dataset.failedBlock).toBe(copyText("settingsPanel.group.remote"));
     // 其余块照常出——「每块一个 catch」的真正含义。
     // S2 后判据从「四个折叠组」换成「四页都在」：折叠组只剩两个（外观 / 日志与数据），
     // 而「一块坏不影响其余」这条性质现在体现在**页面结构完整**上。
@@ -326,7 +327,7 @@ describe("P6c 恢复命令预设", () => {
     await new Promise((r) => setTimeout(r, 0));
     const after = dels();
     expect(after[0].disabled, "正在生效的那条不给移除").toBe(true);
-    expect(after[0].title).toContain("正在生效");
+    expect(after[0].title).toMatch(copyPattern("settingsPanel.preset.inUse"));
     expect(after[1].disabled, "别的那条照常可移除").toBe(false);
 
     // 移除**不在生效**的那条 ⇒ 真的从落盘的列表里没了。

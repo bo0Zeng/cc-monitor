@@ -304,7 +304,7 @@ fn the_alias_blocks_only_wire_up_ccm() {
 fn the_generated_file_is_byte_stable() {
     let lines = vec!["alphacc() { ccm --account 'z' \"$@\"; }".to_string()];
     assert_eq!(render_file(P, &lines), render_file(P, &lines));
-    assert!(render_file(P, &[]).contains("一条别名都没有"));
+    assert!(render_file(P, &[]).contains(copy_core::copy_static!("rsAccountAliases.file.empty")));
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -659,7 +659,16 @@ fn another_startup_file_goes_through_the_fence_before_it_is_read() {
     let h = tmp_home("other-rc");
     for bad in ["/etc/profile", "relative.rc", "~/../x.rc"] {
         let e = read_in(&h.0, P, Some(bad)).expect_err(bad);
-        assert!(e.starts_with("拒绝写这个配置文件"), "{bad}：{e}");
+        assert!(
+            [
+                "rsProfileInstaller.fence.outsideHome",
+                "rsProfileInstaller.fence.notAbsolute",
+                "rsProfileInstaller.fence.dotdot"
+            ]
+            .iter()
+            .any(|k| copy_core::copy_matches(k, &e)),
+            "{bad}：{e}"
+        );
     }
     let ok = read_in(&h.0, P, Some("~/.config/x.rc")).expect("home 之内的放行");
     let want = h.0.join(".config/x.rc").display().to_string();
@@ -749,7 +758,16 @@ fn the_fence_is_lexical_then_measures_this_machines_disk() {
         "/nonexistent-ccm-al2-homeX/.rc",
     ] {
         let e = fence(ghost, bad).expect_err(bad);
-        assert!(e.starts_with("拒绝写这个配置文件"), "{bad}：{e}");
+        assert!(
+            [
+                "rsProfileInstaller.fence.outsideHome",
+                "rsProfileInstaller.fence.notAbsolute",
+                "rsProfileInstaller.fence.dotdot"
+            ]
+            .iter()
+            .any(|k| copy_core::copy_matches(k, &e)),
+            "{bad}：{e}"
+        );
     }
     assert_eq!(
         fence_lexical(r"C:\Users\user", r"~\Documents\x.ps1").as_deref(),

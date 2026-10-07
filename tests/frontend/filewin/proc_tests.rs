@@ -51,7 +51,10 @@ async fn the_window_dials_back_with_the_handoff_and_refuses_to_open_without_it()
         Ok(_) => panic!("钥匙不对竟然拨通了"),
         Err(e) => e,
     };
-    assert!(e.contains("窗口连不上主程序"), "{e}");
+    assert!(
+        copy_core::copy_matches("rsFilewinProc.dialBack.failed", &e),
+        "{e}"
+    );
     // ③ 口不在（拿一个刚放掉的回环端口）。
     let dead = {
         let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();

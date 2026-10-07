@@ -127,6 +127,7 @@ import COPY_TABLE from "../../../../src/shared/copy/table.json";
 import HEALTH_GOLDEN from "../../../__fixtures__/backend-health.golden.json";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/backend-policy";
 import { readStatus } from "../../../../src/frontend/ui/settings/machine-status";
+import { copyPattern } from "../../../test-support/copy-pattern";
 
 // 那四句由后端出成品（`exit-policy-read` 的 `said`，判定与十格穷举住 `exit_policy_tests.rs`）；
 //   这里只取表里的原文当桩里后端回的那一句，判界面原样摆、不再判。
@@ -273,7 +274,7 @@ describe("P2s backend 开关区", () => {
       .filter((c) => c.name === "backend_status")
       .map((c) => (c.args as { origin: string }).origin);
     expect(asked.sort()).toEqual([LOCAL_ORIGIN, "甲机"].sort());
-    expect(s.element.querySelector(".backend-row-state")?.textContent).toContain("运行中");
+    expect(s.element.querySelector(".backend-row-state")?.textContent).toContain(copyText("backend.status.connected"));
   });
 
   it("★ 〔MIG-2 · ㊴〕那一行原样摆后端的 `said`：常驻那台说「无人监护」，与 monitor 的 `detached` 无关", async () => {
@@ -333,7 +334,7 @@ describe("P2s backend 开关区", () => {
     expect(
       s.element.querySelector(".backend-row-state")?.textContent,
       "起完只画了一次就停手 —— 那张是操作前的快照（backend_start 只是 spawn 了监护线程就返回）",
-    ).toContain("运行中");
+    ).toContain(copyText("backend.status.connected"));
   });
 
   it("★★ K-P3b：读数**另起一行**画出来，而退出那一行一个字节不变", async () => {
@@ -386,7 +387,7 @@ describe("P2s backend 开关区", () => {
       expect(
         s.element.querySelector(".backend-row-state")?.textContent,
         `「${what}」把状态那一格也带走了 —— 失败该落在健康那一格上`,
-      ).toBe("运行中");
+      ).toBe(copyText("backend.status.connected"));
       expect(decodeHealthFace(health), `解码器收下了「${what}」`).toBeNull();
     }
   });
@@ -487,10 +488,10 @@ describe("P2s backend 开关区", () => {
     await flush();
     await flush();
     const row = s.element.querySelector<HTMLElement>(".backend-row")!;
-    expect([...row.querySelectorAll("button:not([role=switch])")].map((b) => b.textContent)).toEqual(["停止…", "重启", "启动", "最近输出", "刷新"]);
+    expect([...row.querySelectorAll("button:not([role=switch])")].map((b) => b.textContent)).toEqual([copyText("backend.buildCells.stop"), copyText("backend.buildCells.restart"), copyText("backend.buildCells.start"), copyText("backend.buildCells.log"), copyText("backend.buildCells.resync")]);
     // 在跑 ⇒「启动」不露面；［停止…］［重启］在。
     expect(row.querySelector<HTMLElement>('[data-op="start"]')!.style.display).toBe("none");
-    expect(row.querySelector(".backend-row-state")?.textContent).toBe("运行中");
+    expect(row.querySelector(".backend-row-state")?.textContent).toBe(copyText("backend.status.connected"));
   });
   // 〔「机器一行『重新对齐』（上面整套）」〕按一下 ⇒ 问**那一行那台**的后端 `resync`、整机（不带 sid）。
   it("★ 〔RESYNC〕[重新对齐] 问的是那一行那台的后端、整机", async () => {
@@ -498,7 +499,7 @@ describe("P2s backend 开关区", () => {
     await flush();
     await flush();
     const rows = [...s.element.querySelectorAll<HTMLElement>("[data-backend-cells]")];
-    const ask = (i: number) => [...rows[i].querySelectorAll("button")].find((b) => b.textContent === "刷新")!.click();
+    const ask = (i: number) => [...rows[i].querySelectorAll("button")].find((b) => b.textContent === copyText("backend.buildCells.resync"))!.click();
     calls.length = 0;
     ask(1);
     ask(0);
@@ -515,7 +516,7 @@ describe("P2s backend 开关区", () => {
     await flush();
     const rows = [...s.element.querySelectorAll<HTMLElement>("[data-backend-cells]")];
     const ask = (o: string) =>
-      [...rows.find((r) => r.dataset.backendCells === o)!.querySelectorAll("button")].find((b) => b.textContent === "刷新")!.click();
+      [...rows.find((r) => r.dataset.backendCells === o)!.querySelectorAll("button")].find((b) => b.textContent === copyText("backend.buildCells.resync"))!.click();
     calls.length = 0;
     ask("甲机");
     await flush();
@@ -537,7 +538,7 @@ describe("〔ST2 · 第二刀 步 6〕后端开关表格式四栏：长文案进
     expect(want).toEqual(["state", "exit", "drift", "ops"]);
     const head = s.element.querySelector<HTMLElement>('[data-backend-columns="head"]')!;
     expect([...head.children].map((c) => (c as HTMLElement).dataset.col)).toEqual(want);
-    expect([...head.children].map((c) => c.textContent)).toEqual(["状态", "退出行为", "未识别内容", "操作"]);
+    expect([...head.children].map((c) => c.textContent)).toEqual([copyText("backend.column.status"), copyText("backend.column.exit"), copyText("backend.cc.drift"), copyText("backend.column.actions")]);
     const rows = [...s.element.querySelectorAll<HTMLElement>(".backend-row")];
     expect(rows.length, "一行都没有 —— 下面的逐行比在空人群上恒绿").toBe(2);
     for (const r of rows) {
@@ -560,11 +561,11 @@ describe("〔ST2 · 第二刀 步 6〕后端开关表格式四栏：长文案进
     await flush();
     const col = s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!;
     expect(col.querySelector(".backend-row-health")?.textContent).toBe(face.summary);
-    expect(face.summary).toBe("无退出记录");
+    expect(face.summary).toBe(copyText("rsBackendPolicy.health.unknown"));
     const why = col.querySelector<HTMLElement>('[data-health-extra="why"]');
     expect(why, "无记录那一格没有 ⓘ —— 「无记录 ≠ 没崩过」那条区分被一起扫掉了").not.toBeNull();
     expect(why!.getAttribute("aria-label")).toBe(face.why);
-    expect(face.why).toContain("关闭后清零");
+    expect(face.why).toContain(copyText("rsBackendPolicy.health.unknownWhy"));
     expect(col.querySelector('[data-health-extra="detail"]'), "无记录却给了 [详情]").toBeNull();
   });
 
@@ -576,11 +577,11 @@ describe("〔ST2 · 第二刀 步 6〕后端开关表格式四栏：长文案进
     await flush();
     const col = s.element.querySelector<HTMLElement>('.backend-row [data-col="health"]')!;
     expect(col.querySelector(".backend-row-health")?.textContent).toBe(
-      "异常退出 ×4 · 崩了，exit -1073741819",
+      copyText("rsBackendPolicy.health.crashed", { crashed: "4", last: `${copyText("rsBackendPolicy.death.crashed")}，exit -1073741819` }),
     );
     const more = col.querySelector<HTMLElement>('[data-health-extra="detail"]')!;
     expect(more.tagName).toBe("DETAILS");
-    expect(more.querySelector("summary")?.textContent).toBe("详情");
+    expect(more.querySelector("summary")?.textContent).toBe(copyText("backend.health.detail"));
     expect(more.querySelector(".settings-hint")?.textContent).toBe(face.detail);
     for (const n of ["异常退出 4", "被拒 1", "未启动 0", "读取失败 2"]) expect(face.detail).toContain(n);
     expect(col.querySelector('[data-health-extra="why"]'), "有记录还挂着「无记录」的 ⓘ").toBeNull();
@@ -776,7 +777,7 @@ describe("〔GAP1〕每台一行的「日志」：问的是那一台、摆的是
     await flush();
     await flush();
     const row = [...s.element.querySelectorAll<HTMLElement>(".backend-row")].find((r) => r.dataset.origin === "甲机")!;
-    const btn = [...row.querySelectorAll("button")].find((b) => b.textContent === "最近输出")!;
+    const btn = [...row.querySelectorAll("button")].find((b) => b.textContent === copyText("backend.buildCells.log"))!;
     btn.click();
     await flush();
     await flush();
@@ -784,7 +785,7 @@ describe("〔GAP1〕每台一行的「日志」：问的是那一台、摆的是
     const box = row.querySelector<HTMLElement>("[data-backend-log]")!;
     expect(box.dataset.backendLog).toBe("甲机");
     expect(box.querySelector(".settings-hint")?.textContent).toBe(
-      "/h/.cc-monitor/logs/backend/stderr.log（2.0 KB） 只显示了最后一段",
+      `/h/.cc-monitor/logs/backend/stderr.log（2.0 KB） ${copyText("backend.log.truncated")}`,
     );
     expect(box.querySelector("pre")?.textContent).toBe("WARN 打标失败\n");
     btn.click();
@@ -798,11 +799,11 @@ describe("〔GAP1〕每台一行的「日志」：问的是那一台、摆的是
     await flush();
     await flush();
     const [local, remote] = [...s.element.querySelectorAll<HTMLElement>(".backend-row")];
-    for (const r of [local, remote]) [...r.querySelectorAll("button")].find((b) => b.textContent === "最近输出")!.click();
+    for (const r of [local, remote]) [...r.querySelectorAll("button")].find((b) => b.textContent === copyText("backend.buildCells.log"))!.click();
     await flush();
     await flush();
-    expect(local.querySelector("[data-backend-log] .settings-hint")?.textContent).toBe("这台的后端没有把输出写进文件");
-    expect(remote.querySelector("[data-backend-log] .settings-hint")?.textContent).toMatch(/^取不回这台后端的日志：/);
+    expect(local.querySelector("[data-backend-log] .settings-hint")?.textContent).toBe(copyText("backend.log.none"));
+    expect(remote.querySelector("[data-backend-log] .settings-hint")?.textContent).toMatch(copyPattern("backend.log.failed", {}, { whole: true }));
     expect(readBackendLog({ path: "/p", size: 1, text: "x" }), "缺 truncated ⇒ 形状不对").toBeNull();
   });
 });

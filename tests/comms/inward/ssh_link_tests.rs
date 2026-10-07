@@ -141,7 +141,9 @@ async fn an_old_proxy_is_named_not_misread() {
             v: 0
         }
     );
-    assert!(e.to_string().contains("本机后端太旧"));
+    assert!(e
+        .to_string()
+        .contains(copy_core::copy_static!("rsSshLink.dial.tooOld")));
     // 同一个 ack，请求的是长流 ⇒ **照样出声**（见下面那句为什么）
     let mut r = tokio::io::BufReader::new(out.as_bytes());
     let e = handshake(&mut r, "stream", CAP, &mut |_| {}).await;

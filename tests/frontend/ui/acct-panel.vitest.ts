@@ -31,6 +31,7 @@ import { appStore } from "../../../src/frontend/ui/app-store.ts";
 import type { QuotaRead } from "../../../src/frontend/ui/quota-lines.ts";
 import type { Rotation } from "../../../src/frontend/ui/generated/Rotation.ts";
 import type { SessionRotation } from "../../../src/frontend/ui/generated/SessionRotation.ts";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const NOW = 1_791_189_600;
 const host: AcctPanelHost = {
@@ -113,7 +114,7 @@ describe("账号面板", () => {
     seed({}, { order: [{ start: true }, "team"], enabled: ["team"], when: "full", atLimit: "continue" });
     openAccountPanel("s1", "<local>", host);
     const boxes = [...panel().querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
-    expect(boxes.map((b) => b.getAttribute("aria-label"))).toEqual(["加入轮换 work", "加入轮换 team", "加入轮换 api"]);
+    expect(boxes.map((b) => b.getAttribute("aria-label"))).toEqual([copyText("acct.row.checkAria", { name: "work" }), copyText("acct.row.checkAria", { name: "team" }), copyText("acct.row.checkAria", { name: "api" })]);
     expect(boxes[0].disabled, "起始 · 在用那一行锁着").toBe(true);
     boxes[2].click();
     await flush();
@@ -123,8 +124,8 @@ describe("账号面板", () => {
   it("无号可换：「满」触发时两态灰着；≥N% 时点「停」⇒ 写 atLimit stop", async () => {
     seed({}, { order: [{ start: true }], enabled: [], when: "full", atLimit: "continue" });
     openAccountPanel("s1", "<local>", host);
-    const seg = (): HTMLButtonElement[] => [...panel().querySelectorAll<HTMLButtonElement>('[aria-label="无号可换时"] button')];
-    expect(seg().map((b) => [b.textContent, b.disabled])).toEqual([["继续跑", true], ["停", true]]);
+    const seg = (): HTMLButtonElement[] => [...panel().querySelectorAll<HTMLButtonElement>(`[aria-label="${copyText("acct.lim.aria")}"] button`)];
+    expect(seg().map((b) => [b.textContent, b.disabled])).toEqual([[copyText("acct.lim.go"), true], [copyText("acct.lim.stop"), true]]);
     toggleAccountPanel("s1", "<local>", host);
     seed({}, { order: [{ start: true }], enabled: [], when: { threshold: { n: 90 } }, atLimit: "continue" });
     openAccountPanel("s1", "<local>", host);
@@ -136,7 +137,7 @@ describe("账号面板", () => {
   it("切换：缺省选后端给的下一个；热切换 ⇒ rotation-switch hot", async () => {
     seed({}, undefined);
     openAccountPanel("s1", "<local>", host);
-    const go = [...panel().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "切换")!;
+    const go = [...panel().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("acct.sw.go"))!;
     go.click();
     await flush();
     expect(switchHot).toHaveBeenCalledWith("<local>", ["s1"], "team");
@@ -147,8 +148,8 @@ describe("账号面板", () => {
     openAccountPanel("s1", "<local>", host);
     const radios = [...panel().querySelectorAll<HTMLInputElement>('input[type="radio"][name^="acct-mode"]')];
     expect(radios.map((r) => [r.disabled, r.checked])).toEqual([[true, false], [false, true]]);
-    expect(panel().textContent).toContain("未实时显示");
-    expect([...panel().querySelectorAll("button")].some((b) => b.textContent === "重启切换")).toBe(true);
+    expect(panel().textContent).toContain(copyText("acct.reason.noRelay"));
+    expect([...panel().querySelectorAll("button")].some((b) => b.textContent === copyText("acct.sw.restart"))).toBe(true);
   });
 
   it("跟随默认：列表只读（无把手、勾都灰），上方写「本机默认」那一句", () => {
@@ -156,7 +157,7 @@ describe("账号面板", () => {
     openAccountPanel("s1", "<local>", host);
     expect(panel().querySelectorAll('[aria-label^="拖动排序"]').length).toBe(0);
     expect([...panel().querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].every((b) => b.disabled)).toBe(true);
-    expect(panel().textContent).toContain("跟随本机默认");
+    expect(panel().textContent).toContain(copyText("acct.rot.leadFollow"));
   });
 });
 
@@ -165,13 +166,13 @@ describe("账号面板 · 额度格照后端显示态画", () => {
   it("★ 被拒而没用满 ⇒「58% · 被拒」（不画 ✕）；用满 ⇒ ✕", () => {
     seed({ quota: refused(false) }, undefined);
     openAccountPanel("s1", "<local>", host);
-    expect(panel().textContent).toContain("58% · 被拒");
+    expect(panel().textContent).toContain(copyText("acct.val.refusedPct", { pct: "58" }));
     expect(panel().textContent).not.toContain("✕");
     toggleAccountPanel("s1", "<local>", host);
     seed({ quota: refused(true) }, undefined);
     openAccountPanel("s1", "<local>", host);
     expect(panel().textContent).toContain("✕");
-    expect(panel().textContent).not.toContain("100% · 被拒");
+    expect(panel().textContent).not.toContain(copyText("acct.val.refusedPct", { pct: "100" }));
   });
 });
 
@@ -181,7 +182,7 @@ describe("账号面板 · 重启切换", () => {
     switchRestart.mockResolvedValue({ s1: reply });
     seed({ account: { start: "work", current: "work", since: NOW, history: [], inPlace: "noRelay" } }, undefined);
     openAccountPanel("s1", "<local>", host);
-    [...panel().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "重启切换")!.click();
+    [...panel().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("acct.sw.restart"))!.click();
     await flush();
   }
   const toasts = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('[role="alert"], [role="status"]')];
@@ -191,16 +192,16 @@ describe("账号面板 · 重启切换", () => {
     await restart({ state: "done", terminal: "proj-cc-2" });
     expect(switchRestart).toHaveBeenCalledWith("<local>", [expect.objectContaining({ sid: "s1", compact_first: false })], "team", expect.any(Number));
     expect(runRemoteAttach).toHaveBeenCalledWith("<local>", expect.any(String), "proj-cc-2", { quiet: true });
-    expect(toasts().map((t) => t.textContent)).toEqual([expect.stringContaining("team · 重启切换 · orders")]);
+    expect(toasts().map((t) => t.textContent)).toEqual([expect.stringContaining(copyText("acct.sw.doneRestart", { name: "team", session: "orders" }))]);
   });
 
   it("没成、旧会话还在 ⇒ 「原会话保留 · 原因」，只带［日志］", async () => {
     await restart({ state: "failed", code: "stop_failed", old: "kept" });
     const [t] = toasts();
     expect(t.dataset.level).toBe("error");
-    expect(t.textContent).toContain("重启切换失败 · 原会话保留 · 停不下旧进程");
-    expect(toastButtons(t)).toEqual(["日志"]);
-    [...t.querySelectorAll("button")].find((b) => b.textContent === "日志")!.click();
+    expect(t.textContent).toContain(copyText("acct.sw.failRestart", { reason: copyText("acct.reason.stopFailed") }));
+    expect(toastButtons(t)).toEqual([copyText("acct.sw.log")]);
+    [...t.querySelectorAll("button")].find((b) => b.textContent === copyText("acct.sw.log"))!.click();
     expect(openLog).toHaveBeenCalledTimes(1);
     expect(runRemoteAttach).not.toHaveBeenCalled();
   });
@@ -209,30 +210,30 @@ describe("账号面板 · 重启切换", () => {
     await restart({ state: "failed", code: "start_failed", old: "ended" });
     const [t] = toasts();
     expect(t.dataset.level).toBe("error");
-    expect(t.textContent).toContain("重启切换失败 · 原会话已结束 · 新会话未起");
-    expect(toastButtons(t)).toEqual(["恢复…", "日志"]);
-    [...t.querySelectorAll("button")].find((b) => b.textContent === "恢复…")!.click();
+    expect(t.textContent).toContain(copyText("acct.sw.failRestartEnded", { ended: copyText("sessionState.ended.name"), reason: copyText("acct.reason.startFailed") }));
+    expect(toastButtons(t)).toEqual([copyText("acct.sw.resume"), copyText("acct.sw.log")]);
+    [...t.querySelectorAll("button")].find((b) => b.textContent === copyText("acct.sw.resume"))!.click();
     expect(host.openResume).toHaveBeenCalledWith("s1");
     await restart({ state: "failed", code: "notArrived", old: "ended" });
     const last = toasts().at(-1)!;
-    expect(last.textContent).toContain("原会话已结束 · 未报到");
-    [...last.querySelectorAll("button")].find((b) => b.textContent === "日志")!.click();
+    expect(last.textContent).toContain(copyText("acct.sw.failRestartEnded", { ended: copyText("sessionState.ended.name"), reason: copyText("acct.reason.notArrived") }));
+    [...last.querySelectorAll("button")].find((b) => b.textContent === copyText("acct.sw.log"))!.click();
     expect(openLog).toHaveBeenCalledTimes(1);
   });
 
   it("那台给的码逐个说成人话，不落「原因不明」", async () => {
     const said: Record<string, string> = {
-      account_unavailable: "team 不可用",
-      ambiguous: "在多个终端里",
-      not_in_terminal: "不在 tmux 里",
-      session_already_live: "另有进程在写",
-      shutting_down: "后端正在退出",
+      account_unavailable: copyText("acct.reason.accountUnavailable", { name: "team" }),
+      ambiguous: copyText("acct.reason.ambiguous"),
+      not_in_terminal: copyText("acct.reason.notInTerminal"),
+      session_already_live: copyText("acct.reason.alreadyLive"),
+      shutting_down: copyText("acct.reason.shuttingDown"),
     };
     for (const [code, words] of Object.entries(said)) {
       document.body.replaceChildren();
       if (document.querySelector('[role="dialog"]')) toggleAccountPanel("s1", "<local>", host);
       await restart({ state: "failed", code, old: "kept" });
-      expect(toasts().at(-1)!.textContent, code).toContain(`原会话保留 · ${words}`);
+      expect(toasts().at(-1)!.textContent, code).toContain(copyText("acct.sw.failRestart", { reason: words }));
     }
   });
 
@@ -257,13 +258,13 @@ describe("账号面板 · 重启切换", () => {
       openAccountPanelAt("s1", "<local>", host, "default-rotation");
       await flush();
       const seg = panel().querySelector('[role="radiogroup"] [aria-checked="true"]');
-      expect(seg?.textContent, "开关照实显示本会话的档").toBe("本会话");
+      expect(seg?.textContent, "开关照实显示本会话的档").toBe(copyText("acct.rot.custom"));
       const box = anchored("default-rotation");
       expect(box, "默认轮换那一块摊开了").not.toBeNull();
       expect(scrolled, "滚到那一块").toHaveBeenLastCalledWith(box);
-      expect(box!.textContent).toContain("本会话用自己的轮换 · 点「默认」改为跟随");
+      expect(box!.textContent).toContain(copyText("acct.prev.lead"));
       expect([...box!.querySelectorAll("[data-acct-row]")].map((r) => r.getAttribute("data-acct-row"))).toEqual(["work", "team", "api"]);
-      expect(box!.querySelector('[data-acct-row="team"]')?.textContent).toContain("01:00-20:00 封顶 99%");
+      expect(box!.querySelector('[data-acct-row="team"]')?.textContent).toContain(copyText("acct.prev.capAt", { at: "01:00-20:00", n: "99" }));
       const radios = [...box!.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
       expect(radios.map((r) => [r.checked, r.disabled]), "触发照默认那份（≥N%）、全灰").toEqual([[false, true], [true, true]]);
       expect([...box!.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].every((b) => b.disabled), "勾选全灰").toBe(true);

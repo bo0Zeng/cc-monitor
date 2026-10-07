@@ -152,7 +152,7 @@ async fn what_is_not_read_says_why_and_sends_nothing() {
     };
     step(&mut w, &mut p); // dir
     assert!(
-        matches!(p.view(), View::Idle(s) if s.contains("目录")),
+        matches!(p.view(), View::Idle(s) if s.contains(copy_core::copy_static!("gridMonitor.fact.dir"))),
         "{:?}",
         p.view()
     );
@@ -166,7 +166,7 @@ async fn what_is_not_read_says_why_and_sends_nothing() {
     p.follow(&w, None);
     assert_eq!(
         p.view(),
-        &View::Idle("选中了 4 项，预览只看一个文件".into())
+        &View::Idle(copy_core::copy_text("rsFilewinPreview.decide.many", &[("n", "4")]).into())
     );
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     assert!(

@@ -65,7 +65,7 @@ fn an_oversized_file_says_so_with_both_numbers_and_never_asks_the_remote() {
     );
     // 而「拒编而非截断」这条契约要说出来（`editor::MAX_EDIT_BYTES` 头注逐字；第九刀时那句话住池子那份同名常量上）。
     assert!(
-        why.contains("拒编"),
+        copy_core::copy_matches("rsFilewinEditor.notEditable.tooBig", &why),
         "没说清为什么不是「截断给你看」：{why}"
     );
     assert!(!is_editable(&over));
@@ -82,7 +82,10 @@ fn an_oversized_file_says_so_with_both_numbers_and_never_asks_the_remote() {
 fn a_directory_and_a_lossy_name_each_get_their_own_sentence() {
     let d = why_not_editable(&row("sub", true, false, 0)).expect("目录竟然可编辑");
     let l = why_not_editable(&row("bad", false, true, 10)).expect("有损名竟然可编辑");
-    assert!(d.contains("目录"), "{d}");
+    assert!(
+        d.contains(copy_core::copy_static!("gridMonitor.fact.dir")),
+        "{d}"
+    );
     assert!(l.contains("UTF-8"), "{l}");
     assert_ne!(d, l, "两种拒绝说的是同一句话 —— 那用户分不清是哪一种");
 }
@@ -221,7 +224,10 @@ async fn reading_goes_through_the_channel_and_each_refusal_lands_on_its_own_shap
     )
     .await
     .expect_err("旧后端不认这条命令，竟然读到了");
-    assert!(e.contains("版本旧"), "旧后端那一形没说清：{e}");
+    assert!(
+        e.contains(copy_core::copy_static!("rsFilewinSource.said.unknownCmd")),
+        "旧后端那一形没说清：{e}"
+    );
     assert_eq!(old.count(CMD_READ_TEXT), 0);
 }
 
@@ -265,7 +271,7 @@ fn a_failed_save_keeps_every_character_the_user_typed() {
         other => panic!("{other:?}"),
     }
     // 还要能再存一次（失败不是终态）。
-    p.mark_saved("new", SHA0.to_string());
+    p.mark_saved("new", Some(SHA0.to_string()));
     assert!(!p.dirty(), "存成功之后基准线没跟上");
     assert_eq!(p.last_save, Some(Ok(())));
     assert_eq!(p.text, "new");
@@ -463,9 +469,15 @@ async fn a_save_that_fits_one_line_goes_as_one_write_and_one_byte_more_goes_in_c
         "刚好装得进一行的那一份没走一条写"
     );
 
-    write_text(&wired.line, &origin, SAVE_PATH, &over, &first.sha256)
-        .await
-        .expect("多一个字节的那一份没存成（拿上一次应答交的摘要存）");
+    write_text(
+        &wired.line,
+        &origin,
+        SAVE_PATH,
+        &over,
+        first.sha256.as_deref().expect("第一趟没交摘要"),
+    )
+    .await
+    .expect("多一个字节的那一份没存成（拿上一次应答交的摘要存）");
     let n = plan_chunks(&over, chunk_budget()).len();
     let mut want = vec![CMD_WRITE_TEXT.to_string()];
     want.extend(std::iter::repeat_n(CMD_STAGE_CHUNK.to_string(), n));
@@ -590,7 +602,7 @@ fn a_save_reply_splits_into_saved_stale_and_failed_by_the_peers_code() {
         saved_from_reply("x", Ok(serde_json::json!({ "sha256": sha.clone() }))),
         Ok(Saved {
             sent: "x".into(),
-            sha256: sha.clone()
+            sha256: Some(sha.clone())
         })
     );
     assert_eq!(
@@ -608,12 +620,13 @@ fn a_save_reply_splits_into_saved_stale_and_failed_by_the_peers_code() {
         serde_json::json!({}),
         serde_json::json!({ "sha256": sha.to_uppercase() }),
     ] {
-        assert!(
-            matches!(
-                saved_from_reply("x", Ok(bad.clone())),
-                Err(SaveError::Failed(_))
-            ),
-            "{bad}：没交（像样的）新摘要却当成存好了 —— 下一次存交不出盘上那一份"
+        assert_eq!(
+            saved_from_reply("x", Ok(bad.clone())),
+            Ok(Saved {
+                sent: "x".into(),
+                sha256: None
+            }),
+            "{bad}：后端已经写了、只是没交（像样的）新摘要 ⇒ 算存成了（不许报「没保存」），摘要那格空着"
         );
     }
 }
@@ -645,7 +658,7 @@ fn after_a_save_the_baseline_is_what_was_sent_and_the_digest_is_the_new_one() {
     let sent = p.text.clone();
     p.text.push_str(" + typed while saving");
     let new_sha = crate::find::testing::fake_sha256("sent");
-    p.mark_saved(&sent, new_sha.clone());
+    p.mark_saved(&sent, Some(new_sha.clone()));
     assert!(p.dirty(), "存在路上时敲的字被当成存过了");
     assert_eq!(
         p.expect_sha256(),
@@ -730,7 +743,9 @@ fn find_and_replace_walk_the_editor_text_through_the_window() {
     let (mut w, ctx) = window_editing("x=1\nx=2\ny=3\n");
     let painted = crate::find::testing::frame_text(&ctx, &mut w, Vec::new());
     assert!(
-        !painted.iter().any(|t| t == "全部替换"),
+        !painted
+            .iter()
+            .any(|t| t == copy_core::copy_static!("rsFilewinShell.editor.replaceAll")),
         "没按 Ctrl+F 查找条就摆出来了"
     );
     let ctrl_f = egui::Event::Key {
@@ -747,7 +762,11 @@ fn find_and_replace_walk_the_editor_text_through_the_window() {
         painted.iter().any(|t| t.ends_with("查找")),
         "编辑面上没画查找框"
     );
-    for label in ["替换为", "替换", "全部替换"] {
+    for label in [
+        copy_core::copy_static!("rsFilewinShell.editor.replaceLabel"),
+        copy_core::copy_static!("rsFilewinShell.editor.replaceOne"),
+        copy_core::copy_static!("rsFilewinShell.editor.replaceAll"),
+    ] {
         assert!(
             painted.iter().any(|t| t == label),
             "编辑面上没画「{label}」"
@@ -765,7 +784,10 @@ fn find_and_replace_walk_the_editor_text_through_the_window() {
     assert_eq!(picked(&ctx), Some((0, 2)), "没找到却挪了选区");
     assert_eq!(
         w.find_bar_mut().unwrap().notice.as_deref(),
-        Some("没找到「zz」")
+        Some(&*copy_core::copy_text(
+            "rsFilewinShell.editor.findNone",
+            &[("needle", "zz")]
+        ))
     );
     // 替换：选中的恰是查找串 ⇒ 换掉它、选中下一处。
     {
@@ -780,7 +802,10 @@ fn find_and_replace_walk_the_editor_text_through_the_window() {
     assert_eq!(w.editing().unwrap().text, "k=1\nk=2\ny=3\n");
     assert_eq!(
         w.find_bar_mut().unwrap().notice.as_deref(),
-        Some("替换了 1 处")
+        Some(&*copy_core::copy_text(
+            "rsFilewinShell.editor.replacedAll",
+            &[("n", "1")]
+        ))
     );
     assert!(
         w.editing().unwrap().dirty(),
@@ -824,4 +849,23 @@ fn a_lossy_path_is_saved_by_its_bytes() {
         save_args("/srv/a.txt", "x", SHA0),
         "合法 UTF-8 那一形变了"
     );
+}
+
+/// 写进去了、却没拿到新摘要 ⇒ **算存成了**（不说「没保存」），另挂一句「重开后再改」；
+/// 基准摘要不动 ⇒ 下一次存交旧的那一份，撞 stale 而不是悄悄覆盖。
+#[test]
+fn a_save_without_a_new_digest_is_saved_with_a_note_and_keeps_the_old_baseline() {
+    let mut p = Pane::opened("/srv/a.txt", "a.txt", "old".into(), SHA0.to_string());
+    p.text = "new".into();
+    p.mark_saved("new", None);
+    assert!(!p.dirty(), "写进去了却还算没存");
+    assert_eq!(p.last_save, Some(Ok(())), "写进去了却报了没保存");
+    assert_eq!(
+        p.save_note.as_deref(),
+        Some(copy_core::copy_static!("rsFilewinEditor.saved.noDigest"))
+    );
+    assert_eq!(p.expect_sha256(), SHA0, "没拿到新摘要却换了基准");
+    // 下一次真拿到了 ⇒ 那句收起
+    p.mark_saved("new", Some(crate::find::testing::fake_sha256("new")));
+    assert_eq!(p.save_note, None);
 }

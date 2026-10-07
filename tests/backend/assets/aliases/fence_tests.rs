@@ -146,9 +146,18 @@ fn paired_block_is_found_by_line_index() {
 fn begin_without_end_is_an_error_not_an_append() {
     let t = "# my stuff\n# === cc-monitor BEGIN v1 ===\nfunction cc { }\n";
     let e = find_pair(t, B, E, "PowerShell profile").unwrap_err();
-    assert!(e.contains("第 2 行"), "要报出是哪一行：{e}");
-    assert!(e.contains("找不到配对的 END"), "{e}");
-    assert!(e.contains("已中止"), "措辞要让用户知道我们没动文件：{e}");
+    assert!(
+        copy_core::copy_matches("rsFencedBlock.pair.noEnd", &e) && e.contains(" 2 "),
+        "要报出是哪一行：{e}"
+    );
+    assert!(
+        copy_core::copy_matches("rsFencedBlock.pair.noEnd", &e),
+        "{e}"
+    );
+    assert!(
+        e.contains(copy_core::copy_static!("runs.state.stopped")),
+        "措辞要让用户知道我们没动文件：{e}"
+    );
     assert!(e.contains("PowerShell profile"), "要说清是哪个文件：{e}");
     // 用户可见文案不许带 markdown 星号（前端 toast 是纯文本渲染）
     assert!(!e.contains("**"), "文案里有字面星号：{e}");

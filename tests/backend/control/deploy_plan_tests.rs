@@ -603,15 +603,22 @@ fn identity_decision_answers_each_state_without_merging_them() {
             "没说哪台哪个文件：{e}"
         );
     }
-    assert!(no.contains("不说自己是哪一版"), "{no}");
+    assert!(
+        copy_core::copy_matches("rsSftp.identity.unstamped", &no),
+        "{no}"
+    );
     assert!(many.contains("a1") && many.contains("b2"), "{many}");
     assert!(
-        cant.contains("判不了") && cant.contains("Permission denied"),
+        copy_core::copy_matches("rsSftp.identity.undecidable", &cant)
+            && cant.contains("Permission denied"),
         "{cant}"
     );
     assert!(no != many && many != cant && no != cant);
     // 出路是一个真存在的动作（机器页「卸载后端」），不是一句空话。
-    assert!(no.contains("卸载后端") && many.contains("卸载后端"));
+    assert!(
+        no.contains(copy_core::copy_static!("rsSftp.identity.handsOff"))
+            && many.contains(copy_core::copy_static!("rsSftp.identity.handsOff"))
+    );
 }
 
 // ── K-W4b：取样层那四个状态的**映射规则**逐格各一条 ─────────────────────

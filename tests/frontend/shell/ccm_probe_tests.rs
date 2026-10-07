@@ -418,7 +418,10 @@ fn the_local_ccm_cell_reports_both_halves_and_names_where_ccm_really_goes() {
     // ③
     assert_eq!(
         local_ccm_cell(true, true, PathCcmVerdict::Ours, &card),
-        (Some(true), "装下来了，终端里敲 ccm 用的就是它".to_string())
+        (
+            Some(true),
+            copy_core::copy_static!("rsCcmProbe.cell.ours").to_string()
+        )
     );
     assert_eq!(
         local_ccm_cell(true, true, PathCcmVerdict::NotOurs, &card),
@@ -429,11 +432,17 @@ fn the_local_ccm_cell_reports_both_halves_and_names_where_ccm_really_goes() {
     );
     assert_eq!(
         local_ccm_cell(true, true, PathCcmVerdict::Absent, &card),
-        (Some(false), "装下来了，但终端里敲 ccm 找不到它".to_string())
+        (
+            Some(false),
+            copy_core::copy_static!("rsCcmProbe.cell.absent").to_string()
+        )
     );
     assert_eq!(
         local_ccm_cell(false, false, PathCcmVerdict::Undetermined, &card),
-        (Some(false), "cc-monitor 自带的那份没装下来".to_string())
+        (
+            Some(false),
+            copy_core::copy_static!("rsCcmProbe.cell.notLanded").to_string()
+        )
     );
     assert_eq!(
         local_ccm_cell(true, true, PathCcmVerdict::Undetermined, &card),

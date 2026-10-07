@@ -4,6 +4,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { StatusChores } from "../../../src/frontend/ui/status-chores";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 5; i++) await Promise.resolve();
@@ -18,18 +19,18 @@ describe("状态栏「要你动手 N」", () => {
     expect(c.el.childElementCount, "问到之前不出").toBe(0);
     await c.refreshAll();
     await flush();
-    expect([c.el.childElementCount, c.el.textContent]).toEqual([1, "要你动手 3"]);
+    expect([c.el.childElementCount, c.el.textContent]).toEqual([1, copyText("statusBar.todo.label", { n: "3" })]);
     counts.set("devbox", 0);
     counts.set("<local>", 0);
     chores.mockClear();
     await c.refresh("devbox");
     expect(chores.mock.calls.map((x) => x[0]), "只重问那一台").toEqual(["devbox"]);
-    expect(c.el.textContent).toBe("要你动手 1");
+    expect(c.el.textContent).toBe(copyText("statusBar.todo.label", { n: "1" }));
     await c.refresh("<local>");
     expect(c.el.childElementCount, "0 不渲染").toBe(0);
     counts.set("gpu-01", 4);
     await c.refresh("gpu-01");
-    expect(c.el.textContent).toBe("要你动手 4");
+    expect(c.el.textContent).toBe(copyText("statusBar.todo.label", { n: "4" }));
     c.el.querySelector("button")!.click();
     expect(open).toHaveBeenCalledTimes(1);
   });

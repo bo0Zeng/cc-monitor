@@ -34,6 +34,7 @@ vi.mock("../../../../src/frontend/ui/kit/toast", () => ({
 }));
 
 import { openPanePreview, closePanePreview } from "../../../../src/frontend/ui/views/pane-preview";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 /** 一个能从外面 resolve/reject 的 promise —— 用来把「回包」按在半空。 */
 function deferred<T>() {
@@ -80,7 +81,7 @@ describe("远端画面预览：正路", () => {
   it("抓到空串 → 明确写「画面为空」，不是留一个空白框", async () => {
     capture.mockResolvedValue("");
     await openPanePreview("devbox", "%1", { sid: "sid-a" });
-    expect(preText(overlayEl())).toBe("（画面为空）");
+    expect(preText(overlayEl())).toBe(copyText("panePreview.body.empty"));
   });
 });
 
@@ -92,7 +93,7 @@ describe("★ 竞态：回包晚于关闭 / 换预览", () => {
 
     const old = overlayEl();
     expect(old, "壳没建起来，下面的断言会变成空转").not.toBeNull();
-    expect(preText(old)).toBe("抓取中…");
+    expect(preText(old)).toBe(copyText("panePreview.body.loading"));
 
     closePanePreview(); // 用户在回包之前就关了
     expect(overlayEl(), "关了之后 DOM 里不该还留着壳").toBeNull();
@@ -100,7 +101,7 @@ describe("★ 竞态：回包晚于关闭 / 换预览", () => {
     d.resolve("迟到的画面");
     await pending;
 
-    expect(preText(old), "迟到的回包写回了一个已经摘掉的旧壳").toBe("抓取中…");
+    expect(preText(old), "迟到的回包写回了一个已经摘掉的旧壳").toBe(copyText("panePreview.body.loading"));
     expect(overlayEl(), "迟到的回包把壳又挂回来了").toBeNull();
   });
 
@@ -133,20 +134,20 @@ describe("抽表前后界面文字逐字不变（CP2a 样板区）", () => {
     capture.mockReturnValue(d.promise);
     const pending = openPanePreview("devbox", "%1", { sid: "sid-a" });
     const root = overlayEl();
-    expect(root?.querySelector(".pane-preview-title")?.textContent).toBe("预览画面 · [devbox] tmux: %1");
+    expect(root?.querySelector(".pane-preview-title")?.textContent).toBe(copyText("panePreview.head.title", { origin: "devbox", target: "%1" }));
     const btns = [...(root?.querySelectorAll("button") ?? [])];
     expect(btns.map((b) => [b.textContent, b.title])).toEqual([
-      ["重新抓取", ""],
-      ["✕", "关闭"],
+      [copyText("panePreview.head.refresh"), ""],
+      [copyText("panePreview.head.closeIcon"), copyText("panePreview.head.close")],
     ]);
-    expect(preText(root)).toBe("抓取中…");
+    expect(preText(root)).toBe(copyText("panePreview.body.loading"));
     d.resolve("");
     await pending;
-    expect(preText(overlayEl())).toBe("（画面为空）");
+    expect(preText(overlayEl())).toBe(copyText("panePreview.body.empty"));
 
     closePanePreview();
     capture.mockRejectedValue(new Error("boom"));
     await openPanePreview("devbox", "%1", { sid: "sid-a" });
-    expect(toast.mock.calls[0]?.[0]).toBe("预览画面失败");
+    expect(toast.mock.calls[0]?.[0]).toBe(copyText("panePreview.capture.failed"));
   });
 });

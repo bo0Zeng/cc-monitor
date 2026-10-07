@@ -107,6 +107,7 @@ import { sessionCommands } from "../../../src/frontend/ui/session-commands";
 import { buildToolGroup, addToToolGroup, renderMessage, type RenderContext } from "../../../src/frontend/ui/cards/index";
 import type { JsonlRecord } from "../../../src/frontend/ui/generated/JsonlRecord";
 import type { RunInfo } from "../../../src/frontend/ui/generated/RunInfo";
+import { copyPattern } from "../../test-support/copy-pattern";
 
 const inside = (tm: TabManager): { store: TabStore } => tm as unknown as { store: TabStore };
 
@@ -159,9 +160,9 @@ describe("状态栏这个会话的几枚：字从文案表来，没内容就不�
     const { tasks, agents } = mountPanels();
     const t = (id: string, status: string): TaskEntry => ({ ...task(id), status });
     tasks.setSession("s", [t("1", "completed"), t("2", "completed"), t("3", "in_progress"), t("4", "pending")]);
-    expect([tasks.summaryElement.textContent, shown(tasks.summaryElement)]).toEqual(["任务 2/4", true]);
+    expect([tasks.summaryElement.textContent, shown(tasks.summaryElement)]).toEqual([copyText("statusBar.tasks.chip", { done: "2", total: "4" }), true]);
     agents.setSession("s", [run("r1"), { ...run("r2"), state: "done" } as RunInfo]);
-    expect(agents.summaryElement.textContent).toBe("agent 2 · 1 在跑");
+    expect(agents.summaryElement.textContent).toBe(copyText("agentsPanel.render.summary", { n: "2", running: "1" }));
     agents.setSession("s", [{ ...run("r1"), state: "done" } as RunInfo, { ...run("r2"), state: "done" } as RunInfo, { ...run("r3"), state: "done" } as RunInfo]);
     expect(agents.summaryElement.textContent).toBe("agent 3");
     tasks.setSession("t", []);
@@ -182,7 +183,7 @@ describe("底部抽屉：任务 · agent 共用一个；看得见 ⇔ 在 Esc �
     expect(open(drawer)).toBeNull();
     tasks.summaryElement.click();
     expect([open(drawer), tasks.summaryElement.getAttribute("aria-expanded")]).toEqual(["tasks", "true"]);
-    expect(tabText(drawer)).toEqual(["任务 0/1", "agent 1 · 1 在跑", "终端"]);
+    expect(tabText(drawer)).toEqual([copyText("statusBar.tasks.chip", { done: "0", total: "1" }), copyText("agentsPanel.render.summary", { n: "1", running: "1" }), copyText("terminal.page.title")]);
     agents.summaryElement.click();
     expect([open(drawer), tasks.summaryElement.getAttribute("aria-expanded"), agents.summaryElement.getAttribute("aria-expanded")]).toEqual(["agents", "false", "true"]);
     agents.summaryElement.click();
@@ -209,8 +210,8 @@ describe("底部抽屉：任务 · agent 共用一个；看得见 ⇔ 在 Esc �
     tasks.setSession("b", []);
     agents.setSession("b", []);
     expect(open(drawer)).toBe("tasks");
-    expect(pageOf(drawer)).toBe("无任务");
-    expect(tabText(drawer)).toEqual(["任务", "agent", "终端"]);
+    expect(pageOf(drawer)).toBe(copyText("tasksPanel.page.empty"));
+    expect(tabText(drawer)).toEqual([copyText("tasksPanel.page.title"), "agent", copyText("terminal.page.title")]);
     esc();
     expect([open(drawer), below.hits]).toEqual([null, 0]);
     dispatcher.popOverlay(below);
@@ -489,9 +490,9 @@ describe("工具组收着时说出里面有失败的、有子 agent", () => {
     addToToolGroup(g, r.units);
     const quiet = g.summary.textContent ?? "";
     expect(quiet).not.toMatch(/失败/);
-    expect(quiet).toMatch(/1 个子 agent/);
+    expect(quiet).toMatch(copyPattern("cards.toolGroup.summaryAgents", { agents: 1 }));
     renderMessage(results([{ id: "t1", text: "1 failed", error: true }, { id: "t3", text: "ok" }]), c);
-    expect(g.summary.textContent).toMatch(/1 个失败 · 1 个子 agent/);
+    expect(g.summary.textContent).toMatch(copyPattern("cards.toolGroup.summaryBoth", { failed: 1, agents: 1 }));
   });
 });
 
@@ -545,21 +546,21 @@ describe("重试细条：相邻并成一条 · 结局照会话事实", () => {
   };
   it("相邻重试并成一条：次数取后来的、起始留前一条；事实说接上了 ⇒ 重试 ×N 后恢复；后面来什么都不自己判", () => {
     const a = buildApiRetryCard({ timeLabel: "02:10", reason: "overloaded", retryAttempt: 1, maxRetries: 10, id: "r1" });
-    expect(a.textContent).toBe("服务器过载 · 重试 1/10 · 02:10 起");
+    expect(a.textContent).toBe(copyText("apiError.retry.line", { reason: copyText("apiError.reason.overloaded"), retry: copyText("apiError.retry.count", { retryAttempt: 1, maxRetries: 10 }), time: "02:10" }));
     mergeRetry(a, buildApiRetryCard({ timeLabel: "02:11", reason: "overloaded", retryAttempt: 3, maxRetries: 10, id: "r2" }));
-    expect(a.textContent).toBe("服务器过载 · 重试 3/10 · 02:10 起");
+    expect(a.textContent).toBe(copyText("apiError.retry.line", { reason: copyText("apiError.reason.overloaded"), retry: copyText("apiError.retry.count", { retryAttempt: 3, maxRetries: 10 }), time: "02:10" }));
     const root = stream(a, document.createElement("div"));
     applyRetries(root, new Map([["r2", "recovered"]]));
     expect(a.dataset.state, "按首条的 id 读，并进来的那条的 id 不算").toBe("retrying");
     applyRetries(root, new Map([["r1", "recovered"]]));
-    expect(a.textContent).toBe("服务器过载 · 重试 ×3 后恢复 · 02:11");
+    expect(a.textContent).toBe(copyText("apiError.retry.recovered", { reason: copyText("apiError.reason.overloaded"), a: "3", time: "02:11" }));
     applyRetries(root, new Map([["r1", "interrupted"]]));
-    expect(a.textContent).toBe("服务器过载 · 重试 ×3 后中断 · 02:11");
+    expect(a.textContent).toBe(copyText("apiError.retry.interrupted", { reason: copyText("apiError.reason.overloaded"), a: "3", time: "02:11" }));
   });
 
   it("建卡时事实已经到了 ⇒ 照它画", () => {
     const a = buildApiRetryCard({ timeLabel: "02:10", reason: "network", retryAttempt: 2, maxRetries: 10, id: "r1", outcome: "recovered" });
-    expect(a.textContent).toBe("网络中断 · 重试 ×2 后恢复 · 02:10");
+    expect(a.textContent).toBe(copyText("apiError.retry.recovered", { reason: copyText("apiError.reason.network"), a: "2", time: "02:10" }));
   });
 
   it("事实说没接上 ⇒ 细条收起、次数进紧跟着的报错卡（那两颗终端按钮不被冲掉）；报错卡标题带原因、原文进折叠", () => {
@@ -567,8 +568,8 @@ describe("重试细条：相邻并成一条 · 结局照会话事实", () => {
     const card = buildApiErrorCard({ timeLabel: "02:12", reason: "overloaded", text: "API Error: Overloaded", status: 529 });
     applyRetries(stream(bar, card), new Map([["r1", "failed"]]));
     expect(bar.dataset.state).toBe("failed");
-    expect(card.querySelector(".api-error-label")?.textContent).toBe("本轮中断 · 服务器过载");
-    expect(card.querySelector(".api-error-next-text")?.textContent).toBe("重试 10/10 后停止 · 终端里重发可继续");
+    expect(card.querySelector(".api-error-label")?.textContent).toBe(copyText("apiError.card.title", { reason: copyText("apiError.reason.overloaded") }));
+    expect(card.querySelector(".api-error-next-text")?.textContent).toBe(copyText("apiError.card.next", { a: "10", b: "10" }));
     expect(card.querySelectorAll(".api-error-acts [data-act]").length).toBe(2);
     expect(card.querySelector(".api-error-body")?.textContent).toBe("529 · API Error: Overloaded");
   });
@@ -583,15 +584,15 @@ describe("一步还没结果时：照会话事实画", () => {
     paintWaiting(row, "running", null, false);
     expect([row.dataset.state, row.querySelector(".step-icon [role=progressbar], .step-icon > span") !== null]).toEqual(["running", true]);
     paintWaiting(row, "awaiting", "2m", true);
-    expect([row.dataset.state, row.querySelector(".step-await")?.textContent, row.querySelector(".step-right")?.textContent]).toEqual(["awaiting", "等你批准", "2m"]);
+    expect([row.dataset.state, row.querySelector(".step-await")?.textContent, row.querySelector(".step-right")?.textContent]).toEqual(["awaiting", copyText("stream.step.awaiting"), "2m"]);
     expect(row.querySelector(".step-icon .step-await-dot"), "琥珀点").not.toBeNull();
     paintWaiting(row, "awaiting", null, false);
-    expect(row.querySelector(".step-await")?.textContent).toBe("在等你");
+    expect(row.querySelector(".step-await")?.textContent).toBe(copyText("stream.step.awaitingYou"));
     paintWaiting(row, "unclear", null, false, "untracked");
-    expect([row.dataset.state, row.querySelector(".step-await"), row.querySelector(".step-right")?.textContent, icon(row)]).toEqual(["unclear", null, "状态不明", "svg"]);
-    expect(row.querySelector<HTMLElement>(".step-right")?.title, "悬停说后端给的原因").toBe("这一家不留进程记录，判不了在不在跑");
+    expect([row.dataset.state, row.querySelector(".step-await"), row.querySelector(".step-right")?.textContent, icon(row)]).toEqual(["unclear", null, copyText("stream.step.unclear"), "svg"]);
+    expect(row.querySelector<HTMLElement>(".step-right")?.title, "悬停说后端给的原因").toBe(copyText("stream.step.unclearUntracked"));
     paintWaiting(row, "unclear", null, false, "noWriter");
-    expect(row.querySelector<HTMLElement>(".step-right")?.title).toBe("没有进程在跑这个会话");
+    expect(row.querySelector<HTMLElement>(".step-right")?.title).toBe(copyText("stream.step.unclearNoWriter"));
     settleStepLine(row, undefined, { ok: true } as never, false, 1200);
     expect([row.dataset.state, row.querySelector(".step-await")]).toEqual(["ok", null]);
     paintWaiting(row, "running", null, false);
@@ -644,8 +645,8 @@ describe("一步一行：后端的 toolSteps / toolResults 排成一行", () => 
     expect([0, 1, 2, 3].map((i) => [line(i).dataset.state, line(i).querySelector(".step-right")?.textContent])).toEqual([
       ["ok", "1m00s"],
       ["ok", "+38 −6"],
-      ["ok", "212 行"],
-      ["failed", "失败 · 1m00s"],
+      ["ok", copyText("stream.step.lines", { n: "212" })],
+      ["failed", copyText("stream.step.failedFor", { dur: "1m00s" })],
     ]);
   });
 
@@ -671,9 +672,9 @@ describe("一步一行：后端的 toolSteps / toolResults 排成一行", () => 
   });
 
   it("认不出的工具 ⇒ 问号 ＋「未识别结果 · 原文」；人拒了 ⇒「未批准」；没有 toolSteps（老后端）⇒ 工具名 ＋ 入参一句兜底", () => {
-    expect(stepRight({ tool: "mcp__x", known: false }, { ok: true }, stateOf({ tool: "mcp__x", known: false }, { ok: true }, false), 10)).toBe("未识别结果 · 原文");
+    expect(stepRight({ tool: "mcp__x", known: false }, { ok: true }, stateOf({ tool: "mcp__x", known: false }, { ok: true }, false), 10)).toBe(copyText("stream.step.unknown"));
     expect(stateOf(undefined, { ok: false, rejected: true }, true)).toBe("rejected");
-    expect(stepRight(undefined, { ok: false, rejected: true }, "rejected", 10)).toBe("未批准");
+    expect(stepRight(undefined, { ok: false, rejected: true }, "rejected", 10)).toBe(copyText("stream.step.rejected"));
     expect([fmtStepDur(300), fmtStepDur(41_000), fmtStepDur(182_000)]).toEqual(["0.3s", "41s", "3m02s"]);
     expect(middleEllipsis(`/${"a".repeat(100)}/file.py`, 40)).toMatch(/^\/a+…\/file\.py$/);
   });
@@ -696,7 +697,7 @@ describe("粘贴块", () => {
     if (r.kind !== "card") throw new Error(r.kind);
     const folds = r.element.querySelectorAll<HTMLDetailsElement>(".paste-fold");
     expect(folds.length).toBe(1);
-    expect([folds[0].open, folds[0].querySelector("summary")?.textContent]).toEqual([false, "粘贴的内容 · 13 行"]);
+    expect([folds[0].open, folds[0].querySelector("summary")?.textContent]).toEqual([false, copyText("speaker.paste.fold", { n: "13" })]);
     expect(folds[0].querySelector(".paste-body")?.textContent).toBe(long.replace(/\n/g, ""));
     const all = r.element.querySelector(".card-body")?.textContent ?? "";
     expect(all).not.toMatch(/<P|<\/P/);
@@ -714,7 +715,7 @@ describe("事件条：agent 交回 / 来话 · 另一会话 · 后台通知并�
     const r = renderMessage(userRec({ kind: "agentMessage", from: "a7", handback: true, body: "甲乙丙已查完" }), c);
     if (r.kind !== "card") throw new Error(r.kind);
     const el = r.element as HTMLDetailsElement;
-    expect([el.open, el.querySelector(".speaker-title")?.textContent, el.querySelector(".speaker-tag")?.textContent]).toEqual([true, "agent「审面板交互」", "交回"]);
+    expect([el.open, el.querySelector(".speaker-title")?.textContent, el.querySelector(".speaker-tag")?.textContent]).toEqual([true, "agent「审面板交互」", copyText("speaker.tag.handback")]);
     expect(el.querySelector(".speaker-body")?.textContent).toContain("甲乙丙已查完");
     document.body.appendChild(el);
     const got: unknown[] = [];
@@ -726,7 +727,7 @@ describe("事件条：agent 交回 / 来话 · 另一会话 · 后台通知并�
     expect([(m.element as HTMLDetailsElement).open, m.element.querySelector(".speaker-title")?.textContent]).toEqual([false, "agent「改中转」"]);
     const i = renderMessage(userRec({ kind: "interrupt" }), c);
     if (i.kind !== "card") throw new Error(i.kind);
-    expect(i.element.textContent).toMatch(/^你中断了本轮/);
+    expect(i.element.textContent).toMatch(copyPattern("speaker.interrupt.line", {}, { whole: true }));
     expect(renderMessage(userRec({ kind: "system" }), c).kind, "系统注入默认不露").toBe("skip");
   });
 
@@ -740,7 +741,7 @@ describe("事件条：agent 交回 / 来话 · 另一会话 · 后台通知并�
     mergeNotice(a, n("completed", "2026-01-01T14:03:00.000Z"));
     mergeNotice(a, n("failed", "2026-01-01T14:07:00.000Z"));
     expect(a.querySelectorAll(".notice-row").length).toBe(3);
-    expect(a.querySelector(".notice-head")?.textContent).toMatch(/^后台任务 ×3 · .+–.+ · 失败 1$/);
+    expect(a.querySelector(".notice-head")?.textContent).toMatch(copyPattern("speaker.notice.many", { n: 3, fail: copyText("speaker.notice.fails", { n: 1 }) }, { whole: true }));
     expect(a.dataset.failed).toBe("true");
   });
 
@@ -757,11 +758,11 @@ describe("事件条：agent 交回 / 来话 · 另一会话 · 后台通知并�
     const solo = n("w4", "completed", "2026-01-01T15:00:00.000Z");
     root.append(a, solo);
     applyHandedBack(root, new Set());
-    expect(a.querySelector(".notice-head")?.textContent).toMatch(/^后台任务 ×3 · .+–.+ · 失败 1$/);
+    expect(a.querySelector(".notice-head")?.textContent).toMatch(copyPattern("speaker.notice.many", { n: 3, fail: copyText("speaker.notice.fails", { n: 1 }) }, { whole: true }));
 
     applyHandedBack(root, new Set(["w2", "w4"]));
     expect([...a.querySelectorAll<HTMLElement>(".notice-row")].map((r) => r.hidden)).toEqual([false, true, false]);
-    expect(a.querySelector(".notice-head")?.textContent, "只剩露着的两条、没有失败").toMatch(/^后台任务 ×2 · .+–.+$/);
+    expect(a.querySelector(".notice-head")?.textContent, "只剩露着的两条、没有失败").toMatch(copyPattern("speaker.notice.many", { n: 2, fail: "" }, { whole: true }));
     expect(a.dataset.failed).toBe("false");
     expect(solo.hidden, "整条都交回了 ⇒ 整条收起").toBe(true);
 

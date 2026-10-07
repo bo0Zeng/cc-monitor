@@ -168,11 +168,11 @@ beforeEach(() => {
 describe("账号表", () => {
   it("表头说是哪台、新会话默认谁；一号一行，默认号带「默认」，用量两列照那台的额度账", async () => {
     const el = await mount();
-    expect(el.querySelector(".acct-head-title")!.textContent).toBe("devbox 上的账号");
-    expect(el.querySelector(".acct-head-sub")!.textContent).toBe("新会话默认 work");
+    expect(el.querySelector(".acct-head-title")!.textContent).toBe(copyText("acctPage.head.title", { machine: "devbox" }));
+    expect(el.querySelector(".acct-head-sub")!.textContent).toBe(copyText("acctPage.head.default", { name: "work" }));
     expect([...el.querySelectorAll("[data-account]")].map((r) => (r as HTMLElement).dataset.account)).toEqual(["work", "personal", "api"]);
     const nameLine = (n: string) => rowOf(el, n).querySelector(".acct-row-name")!.textContent;
-    expect(nameLine("work")).toBe("work默认");
+    expect(nameLine("work")).toBe(`work${copyText("acctPage.row.default")}`);
     expect(nameLine("personal")).toBe("personal");
     const slots = (name: string) => [...rowOf(el, name).querySelectorAll<HTMLElement>(".acct-row-slot")];
     expect(slots("work")[0].textContent).toMatch(/^5h ✕ ↻\d\d:\d\d$/);
@@ -180,8 +180,8 @@ describe("账号表", () => {
     expect(slots("work")[1].textContent).toBe("7d 78%");
     expect(slots("personal")[0].textContent).toMatch(/^5h 63% ↻\d\d:\d\d$/);
     expect(slots("personal")[1].textContent).toBe("7d 41%");
-    expect(slots("api")[0].textContent).toBe("按量");
-    expect(rowOf(el, "work").querySelector(".acct-row-kind")!.textContent).toBe("订阅 · work@example.com");
+    expect(slots("api")[0].textContent).toBe(copyText("acct.kind.api"));
+    expect(rowOf(el, "work").querySelector(".acct-row-kind")!.textContent).toBe(copyText("acctPage.row.sub", { email: "work@example.com" }));
   });
 
   it("★ 被拒没用满 ⇒ 写「{pct}% · 被拒」（红），不画成 ✕；用满才 ✕", async () => {
@@ -194,8 +194,8 @@ describe("账号表", () => {
 
   it("非默认号那一行有［设为默认］，点了问那台 accounts-set-default 并说「新会话默认 X」", async () => {
     const el = await mount();
-    expect(buttonNamed(rowOf(el, "work"), "设为默认")).toBeUndefined();
-    buttonNamed(rowOf(el, "personal"), "设为默认").click();
+    expect(buttonNamed(rowOf(el, "work"), copyText("acctPage.row.setDefault"))).toBeUndefined();
+    buttonNamed(rowOf(el, "personal"), copyText("acctPage.row.setDefault")).click();
     await settle();
     expect(accountsSetDefault).toHaveBeenCalledWith("devbox", "personal");
   });
@@ -206,7 +206,7 @@ describe("账号表", () => {
     await settle();
     const detail = rowOf(el, "api").querySelector(".acct-detail")!;
     expect(detail.querySelector(".acct-detail-mono")!.textContent).toBe("apicc · apicct");
-    expect(detail.textContent).toContain("仅 devbox · api");
+    expect(detail.textContent).toContain(copyText("acctPage.detail.modelScope", { machine: "devbox", name: "api" }));
   });
 
   it("API key 号：第二行「API key · 地址」，详情「掩码 地址［更换…］」（掩码是那台遮好的）；没存上 ⇒ 那一句", async () => {
@@ -217,13 +217,13 @@ describe("账号表", () => {
     const key = rowOf(el, "api").querySelector(".acct-key")!;
     expect(key.querySelector(".acct-detail-mono")!.textContent).toBe("••••••••a1b2");
     expect(key.querySelector(".acct-key-host")!.textContent).toBe("api.example.com");
-    expect(buttonNamed(rowOf(el, "api"), "更换…")).toBeDefined();
+    expect(buttonNamed(rowOf(el, "api"), copyText("acctPage.detail.keyChange"))).toBeDefined();
     fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "api", authKind: "api-key", email: "", keyMasked: null, baseUrl: null })] }));
     const el2 = await mount();
     expect(rowOf(el2, "api").querySelector(".acct-row-kind")!.textContent).toBe("API key");
     (rowOf(el2, "api").querySelector(".acct-row") as HTMLElement).click();
     await settle();
-    expect(rowOf(el2, "api").querySelector(".acct-key .acct-detail-mono")!.textContent).toBe("API key 没存上");
+    expect(rowOf(el2, "api").querySelector(".acct-key .acct-detail-mono")!.textContent).toBe(copyText("acctPage.row.keyNotSaved"));
   });
 
   it("账号目录写成 ~/… 短形（家目录是那台答的；不在家目录下 / 没答 ⇒ 原样）", async () => {
@@ -246,7 +246,7 @@ describe("账号表", () => {
     await settle();
     const sel = rowOf(el, "api").querySelector<HTMLSelectElement>("select.acct-detail-model")!;
     expect([...sel.options].map((o) => [o.value, o.textContent])).toEqual([
-      ["", "Claude Code 默认"],
+      ["", copyText("acctPage.detail.modelDefault", { agent: "Claude Code" })],
       ["sonnet", "sonnet"],
       ["opus", "opus"],
       ["claude-opus-4-1", "claude-opus-4-1"],
@@ -265,7 +265,7 @@ describe("账号表", () => {
   it("表下一行「共用 MCP：别名与配置文件」：点了冒泡一个目的地（同一台 · 别名与配置文件栏）", async () => {
     const el = await mount();
     const line = el.querySelector<HTMLElement>(".acct-mcp-line")!;
-    expect(line.textContent).toBe("共用 MCP：别名与配置文件");
+    expect(line.textContent).toBe(`${copyText("acctPage.mcp.where")}${copyText("machinePage.tab.config")}`);
     const got: unknown[] = [];
     document.body.addEventListener(SETTINGS_GO_EVENT, (ev) => got.push((ev as CustomEvent).detail));
     line.querySelector<HTMLButtonElement>("button")!.click();
@@ -281,7 +281,7 @@ describe("账号表", () => {
     await settle();
     fetchAccounts.mockResolvedValue(state({ origin: "gpu-01", accounts: [acct({ name: "team", isDefault: true })] }));
     setCurrentMachine("gpu-01");
-    expect(s.element.querySelector(".acct-head-title")!.textContent).toBe("gpu-01 上的账号");
+    expect(s.element.querySelector(".acct-head-title")!.textContent).toBe(copyText("acctPage.head.title", { machine: "gpu-01" }));
     await settle();
     release(state());
     await settle();
@@ -294,16 +294,16 @@ describe("删号", () => {
     const el = await mount();
     (rowOf(el, "work").querySelector(".acct-row") as HTMLElement).click();
     await settle();
-    buttonNamed(rowOf(el, "work"), "删除 work…").click();
+    buttonNamed(rowOf(el, "work"), copyText("acctPage.menu.remove", { name: "work" })).click();
     await settle();
     expect(confirmed).toHaveLength(1);
     const spec = confirmed[0];
-    expect(spec.title).toBe("删除账号 work · devbox");
-    expect(spec.action).toBe("删除 work");
+    expect(spec.title).toBe(copyText("acctPage.remove.title", { name: "work", machine: "devbox" }));
+    expect(spec.action).toBe(copyText("acctPage.remove.action", { name: "work" }));
     expect(spec.danger).toBe(true);
-    expect(spec.body).toBe("之后新会话默认 personal");
-    expect(spec.rows?.map((r) => r.label)).toEqual(["删除", "保留"]);
-    expect(spec.rows?.[1].items).toEqual(["运行中的会话"]);
+    expect(spec.body).toBe(copyText("acctPage.remove.next", { name: "personal" }));
+    expect(spec.rows?.map((r) => r.label)).toEqual([copyText("acctPage.remove.cut"), copyText("acctPage.remove.keep")]);
+    expect(spec.rows?.[1].items).toEqual([copyText("acctPage.remove.sessions")]);
     expect(accountsRemove).toHaveBeenCalledWith("devbox", { name: "work", force: true });
     expect(setModelForAccount).toHaveBeenCalledWith("devbox", "work", null);
   });
@@ -313,10 +313,10 @@ describe("删号", () => {
     const el = await mount();
     (rowOf(el, "api").querySelector(".acct-row") as HTMLElement).click();
     await settle();
-    buttonNamed(rowOf(el, "api"), "删除 api…").click();
+    buttonNamed(rowOf(el, "api"), copyText("acctPage.menu.remove", { name: "api" })).click();
     await settle();
     expect(confirmed[0].body).toBeUndefined();
-    expect(confirmed[0].rows?.[0].items).toContain("命令 apicc apicct");
+    expect(confirmed[0].rows?.[0].items).toContain(copyText("acctPage.remove.commands", { names: "apicc apicct" }));
     expect(accountsRemove).not.toHaveBeenCalled();
   });
 });
@@ -325,17 +325,17 @@ describe("各态", () => {
   it("机器表里没有这台 ⇒「X 未连接过」，新建账号禁用，不去问那台", async () => {
     setCurrentMachine("build-02");
     const el = await mount();
-    expect(el.textContent).toContain("build-02 未连接过");
-    expect(el.textContent).toContain("连接后列出账号");
-    expect(buttonNamed(el, "新建账号").getAttribute("aria-disabled")).toBe("true");
+    expect(el.textContent).toContain(copyText("acctPage.never.title", { machine: "build-02" }));
+    expect(el.textContent).toContain(copyText("acctPage.never.hint"));
+    expect(buttonNamed(el, copyText("acctPage.head.new")).getAttribute("aria-disabled")).toBe("true");
     expect(fetchAccounts).not.toHaveBeenCalled();
   });
 
   it("这一次没问到、有上次的 ⇒ 警告条「离线 · 采样 n 前 · 只读」＋［重试］，画上次的表、只读", async () => {
     fetchAccounts.mockResolvedValue(state({ available: false, error: "超时", last: { meta: META, accounts: [acct({ name: "work", isDefault: true })], atMs: Date.now() - 3 * 60_000 } }));
     const el = await mount();
-    expect(el.textContent).toContain("devbox 离线 · 采样 3m 前 · 只读");
-    expect(buttonNamed(el, "重试")).toBeDefined();
+    expect(el.textContent).toContain(copyText("acctPage.offline.bar", { machine: "devbox", ago: "3m" }));
+    expect(buttonNamed(el, copyText("acctPage.offline.retry"))).toBeDefined();
     expect(el.querySelector(".acct-table")!.getAttribute("data-readonly")).toBe("true");
     expect(rowOf(el, "work")).not.toBeNull();
   });
@@ -343,25 +343,25 @@ describe("各态", () => {
   it("这台做不了多账号（后端说的）⇒「Windows · 不支持多账号」卡，不摆启用表单", async () => {
     fetchAccounts.mockResolvedValue(state({ meta: { ...META, enabled: false, unsupported: "这台不支持" }, accounts: [] }));
     const el = await mount();
-    expect(el.textContent).toContain("Windows · 不支持多账号");
-    expect(el.textContent).toContain("会话用这台 ~/.claude 的登录");
+    expect(el.textContent).toContain(copyText("acctPage.unsupported.title"));
+    expect(el.textContent).toContain(copyText("acctPage.unsupported.hint"));
     expect(el.querySelector(".acct-enable")).toBeNull();
   });
 
   it("没启用多账号 ⇒ 启用卡（名字框 ＋［启用］）", async () => {
     fetchAccounts.mockResolvedValue(state({ meta: { ...META, enabled: false }, accounts: [] }));
     const el = await mount();
-    expect(el.querySelector(".acct-enable")!.textContent).toContain("未启用多账号");
-    expect(buttonNamed(el, "启用")).toBeDefined();
+    expect(el.querySelector(".acct-enable")!.textContent).toContain(copyText("acctPage.notEnabled.title"));
+    expect(buttonNamed(el, copyText("acctPage.notEnabled.enable"))).toBeDefined();
   });
 
   it("打开时核一次：有对不上的才出警告条（说那个号 ＋［修复…］）；都对得上 ⇒ 不占地方", async () => {
     let el = await mount();
-    expect(el.textContent).not.toContain("修复…");
+    expect(el.textContent).not.toContain(copyText("acctPage.verify.fix"));
     accountsVerify.mockResolvedValue({ pass: false, fails: 1, warns: 0, checks: [{ level: "fail", account: "personal", text: "登录信息缺失" }] });
     el = await mount();
     expect(el.textContent).toContain("personal：登录信息缺失");
-    expect(buttonNamed(el, "修复…")).toBeDefined();
+    expect(buttonNamed(el, copyText("acctPage.verify.fix"))).toBeDefined();
   });
 });
 
@@ -371,14 +371,14 @@ describe("登录与指路", () => {
     openLoginWindow.mockResolvedValue("noWindow");
     loginInTmux.mockResolvedValue(undefined);
     const el = await mount();
-    expect(rowOf(el, "b").querySelector(".acct-row-kind")!.textContent).toBe("订阅 · 未登录");
-    buttonNamed(rowOf(el, "b"), "更多操作 · b").click();
-    const relogin = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes("重新登录…"))!;
+    expect(rowOf(el, "b").querySelector(".acct-row-kind")!.textContent).toBe(copyText("acctPage.row.notLoggedIn"));
+    buttonNamed(rowOf(el, "b"), copyText("acctPage.row.more", { name: "b" })).click();
+    const relogin = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes(copyText("acctPage.menu.relogin")))!;
     relogin.click();
     await settle();
     expect(openLoginWindow).toHaveBeenCalledWith("devbox", "b", undefined);
-    expect(rowOf(el, "b").textContent).toContain("本机无法开终端窗口");
-    buttonNamed(rowOf(el, "b"), "在 tmux 里登录").click();
+    expect(rowOf(el, "b").textContent).toContain(copyText("acctPage.login.noWindow"));
+    buttonNamed(rowOf(el, "b"), copyText("acctPage.login.inTmux")).click();
     await settle();
     expect(loginInTmux).toHaveBeenCalledWith("devbox", "b", "/h/.cc-monitor/accounts/z");
   });
@@ -400,17 +400,17 @@ describe("登录与指路", () => {
     fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "b", loggedIn: false, email: "" })] }));
     openLoginWindow.mockResolvedValue("opened");
     const el = await mount();
-    buttonNamed(rowOf(el, "b"), "更多操作 · b").click();
-    [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes("重新登录…"))!.click();
+    buttonNamed(rowOf(el, "b"), copyText("acctPage.row.more", { name: "b" })).click();
+    [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes(copyText("acctPage.menu.relogin")))!.click();
     await settle();
-    expect(rowOf(el, "b").querySelector(".acct-row-kind")!.textContent).toBe("订阅 · 等待终端登录…");
-    expect(buttonNamed(rowOf(el, "b"), "重新打开登录窗口")).toBeDefined();
+    expect(rowOf(el, "b").querySelector(".acct-row-kind")!.textContent).toBe(copyText("acctPage.row.waiting"));
+    expect(buttonNamed(rowOf(el, "b"), copyText("acctPage.login.reopen"))).toBeDefined();
   });
 
   it("指路框只有「时间轴 · 默认轮换」两项（没有自动起算），点了发 open-account-panel {machine, anchor}", async () => {
     const el = await mount();
     const links = [...el.querySelectorAll<HTMLButtonElement>(".acct-pointer .acct-pointer-link")];
-    expect(links.map((b) => b.textContent)).toEqual(["时间轴", "默认轮换"]);
+    expect(links.map((b) => b.textContent)).toEqual([copyText("acctPage.pointer.timeline"), copyText("acctPage.pointer.rotation")]);
     expect(el.querySelector(".acct-pointer")!.textContent).not.toContain("自动起算");
     links[1].click();
     expect(emit).toHaveBeenCalledWith(OPEN_ACCOUNT_PANEL_EVENT, { machine: "devbox", anchor: "default-rotation" });
@@ -421,7 +421,7 @@ describe("登录与指路", () => {
     setCurrentMachine(LOCAL_ORIGIN);
     fetchAccounts.mockResolvedValue(state({ origin: LOCAL_ORIGIN }));
     const el = await mount();
-    expect(el.querySelector(".acct-head-title")!.textContent).toMatch(/^本机\s?上的账号$/);
+    expect(el.querySelector(".acct-head-title")!.textContent).toBe(copyText("acctPage.head.title", { machine: copyText("control.machine.local") }));
     expect(fetchAccounts.mock.calls[0][0]).toBe(LOCAL_ORIGIN);
   });
 });
@@ -432,7 +432,7 @@ describe("动作", () => {
     const el = await mount();
     const input = el.querySelector<HTMLInputElement>(".acct-enable input")!;
     input.value = "main";
-    buttonNamed(el, "启用").click();
+    buttonNamed(el, copyText("acctPage.notEnabled.enable")).click();
     await settle();
     expect(accountsInit.mock.calls[0]).toEqual(["devbox", { name: "main", dryRun: true }]);
     expect(confirmed[0].list).toEqual(["一步"]);
@@ -441,7 +441,7 @@ describe("动作", () => {
     answer = false;
     accountsInit.mockClear();
     el.querySelector<HTMLInputElement>(".acct-enable input")!.value = "main";
-    buttonNamed(el, "启用").click();
+    buttonNamed(el, copyText("acctPage.notEnabled.enable")).click();
     await settle();
     expect(accountsInit.mock.calls).toEqual([["devbox", { name: "main", dryRun: true }]]);
   });
@@ -449,29 +449,29 @@ describe("动作", () => {
   it("警告条［修复…］：预演出几步 ⇒ 确认框列出来，确认后才修；修过之后条上 ⋯ 里才有「恢复到修复之前」", async () => {
     accountsVerify.mockResolvedValue({ pass: false, fails: 1, warns: 0, checks: [{ level: "fail", account: "personal", text: "登录信息缺失" }] });
     const el = await mount();
-    expect(buttonNamed(el, "更多")).toBeUndefined();
-    buttonNamed(el, "修复…").click();
+    expect(buttonNamed(el, copyText("acctPage.verify.more"))).toBeUndefined();
+    buttonNamed(el, copyText("acctPage.verify.fix")).click();
     await settle();
-    expect(confirmed[0].title).toBe("修复账号 · devbox");
+    expect(confirmed[0].title).toBe(copyText("acctPage.verify.repairTitle", { machine: "devbox" }));
     expect(accountsRepair.mock.calls.map((c) => c[1])).toEqual([{ dryRun: true }, {}]);
-    expect(buttonNamed(el, "更多")).toBeDefined();
+    expect(buttonNamed(el, copyText("acctPage.verify.more"))).toBeDefined();
   });
 
   it("新建订阅号：交给那台 accounts-add，建好就开登录窗口，那一行「等待终端登录…」", async () => {
     openLoginWindow.mockResolvedValue("opened");
     const el = await mount();
-    buttonNamed(el, "新建账号").click();
+    buttonNamed(el, copyText("acctPage.head.new")).click();
     const name = el.querySelector<HTMLInputElement>(".acct-new input")!;
     name.value = "b";
     name.dispatchEvent(new Event("input"));
     await settle();
     fetchAccounts.mockResolvedValue(state({ accounts: [acct({ name: "work", isDefault: true }), acct({ name: "b", loggedIn: false, email: "" })] }));
-    buttonNamed(el, "创建并登录").click();
+    buttonNamed(el, copyText("acctNew.form.createLogin")).click();
     await settle();
     expect(accountsAdd).toHaveBeenLastCalledWith("devbox", { name: "b", kind: "subscription" });
     expect(openLoginWindow).toHaveBeenCalledWith("devbox", "b", "ccm -- --account b");
     expect(el.querySelector(".acct-new")).toBeNull();
-    expect(rowOf(el, "b").querySelector(".acct-row-kind")!.textContent).toBe("订阅 · 等待终端登录…");
+    expect(rowOf(el, "b").querySelector(".acct-row-kind")!.textContent).toBe(copyText("acctPage.row.waiting"));
   });
 
   it("★ 建好那一句的下一行照后端回的提示（如「已开的终端要重读别名」），界面不另拼", async () => {
@@ -480,12 +480,12 @@ describe("动作", () => {
       Promise.resolve({ applied: true, steps: [], notes: a.dryRun ? [] : ["已开的终端要重读别名-xyz"], backup: null, account: null, loginCmd: "ccm -- --account b", aliasNames: ["betacc", "betacct"], keyMasked: null, keyProblem: null, aliases: [] }),
     );
     const el = await mount();
-    buttonNamed(el, "新建账号").click();
+    buttonNamed(el, copyText("acctPage.head.new")).click();
     const name = el.querySelector<HTMLInputElement>(".acct-new input")!;
     name.value = "b";
     name.dispatchEvent(new Event("input"));
     await settle();
-    buttonNamed(el, "创建并登录").click();
+    buttonNamed(el, copyText("acctNew.form.createLogin")).click();
     await settle();
     expect(vi.mocked(toast).mock.calls.some((c) => String(c[1]).includes("已开的终端要重读别名-xyz")), "后端回的提示没上屏").toBe(true);
   });
@@ -496,10 +496,10 @@ describe("动作", () => {
     (rowOf(el, "api").querySelector(".acct-row") as HTMLElement).click();
     await settle();
     const row = rowOf(el, "api");
-    buttonNamed(row, "更换…").click();
+    buttonNamed(row, copyText("acctPage.detail.keyChange")).click();
     const key = row.querySelector<HTMLInputElement>(".acct-key-form input[type=password]")!;
     key.value = "sk-ant-NEW";
-    buttonNamed(row, "保存").click();
+    buttonNamed(row, copyText("acctPage.detail.keySave")).click();
     await settle();
     expect(writeApikeyKey).toHaveBeenCalledWith("devbox", "/h/.cc-monitor/accounts/z", "sk-ant-NEW", undefined);
     expect(row.querySelector(".acct-key")!.textContent).toContain("••••••••c3d4gw.example.com");

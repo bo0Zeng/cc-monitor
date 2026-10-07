@@ -43,6 +43,8 @@ import { fetchAccounts } from "../../../../src/frontend/ui/account-reads";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/backend-policy";
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
 import { answerAskDialog, askDialogText, noAskDialog } from "../../../test-support/ask-dialog-driver.ts";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { copyPattern } from "../../../test-support/copy-pattern";
 
 const mockFetchAccounts = fetchAccounts as unknown as ReturnType<typeof vi.fn>;
 
@@ -80,7 +82,7 @@ describe("B03 cc-bus 驾驶舱：不预取、不轮询", () => {
     const called = mockInvoke.mock.calls.map((c) => c[0]);
     // 账号列表经 `fetchAccounts`（已 mock），不走 invoke。
     expect(called).toEqual(["list_remote_mcp_origins"]);
-    expect(s.element.querySelector(".cc-bus-status")?.textContent).toContain("尚未读取");
+    expect(s.element.querySelector(".cc-bus-status")?.textContent).toContain(copyText("ccBus.build.notRead"));
     expect(s.element.querySelector(".cc-bus-deploy")).toBeNull();
   });
 
@@ -130,7 +132,7 @@ describe("B03 登记 ≠ 在线", () => {
     const s = await setup();
     expect(mockInvoke.mock.calls.filter((c) => c[0] === "check_cc_bus_agent_online")).toHaveLength(0);
     const states = [...s.element.querySelectorAll(".cc-bus-online")].map((e) => e.textContent);
-    expect(states).toEqual(["在线未知", "在线未知"]);
+    expect(states).toEqual([copyText("ccBus.row.onlineUnknown"), copyText("ccBus.row.onlineUnknown")]);
   });
 
   it("点某一行的「检查」只查那一行", async () => {
@@ -147,9 +149,9 @@ describe("B03 登记 ≠ 在线", () => {
     const checks = mockInvoke.mock.calls.filter((c) => c[0] === "check_cc_bus_agent_online");
     expect(checks).toHaveLength(1);
     expect(checks[0][1]).toEqual({ origin: "devbox" });
-    expect(rows[1].querySelector(".cc-bus-online")?.textContent).toBe("在线");
+    expect(rows[1].querySelector(".cc-bus-online")?.textContent).toBe(copyText("ccBus.check.online"));
     // 另一行不受影响，仍是未知
-    expect(rows[0].querySelector(".cc-bus-online")?.textContent).toBe("在线未知");
+    expect(rows[0].querySelector(".cc-bus-online")?.textContent).toBe(copyText("ccBus.row.onlineUnknown"));
   });
 
   it("查失败 ≠ 不在线（不能把网络抖动报成 agent 死了）", async () => {
@@ -161,8 +163,8 @@ describe("B03 登记 ≠ 在线", () => {
     (row.querySelector(".cc-bus-check") as HTMLButtonElement).click();
     await flush();
     const el = row.querySelector(".cc-bus-online")!;
-    expect(el.textContent).toContain("查不到");
-    expect(el.textContent).not.toBe("不在线");
+    expect(el.textContent).toMatch(copyPattern("ccBus.check.failed", {}, { whole: true }));
+    expect(el.textContent).not.toBe(copyText("ccBus.check.offline"));
     expect((el as HTMLElement).dataset.state).toBe("error"); // 状态从类名改成 data-state
   });
 });
@@ -180,9 +182,9 @@ describe("B03 脏数据如实呈现", () => {
     (s.element.querySelector(".cc-bus-read") as HTMLButtonElement).click();
     await flush();
     const txt = s.element.querySelector(".cc-bus-status")?.textContent ?? "";
-    expect(txt).toContain("8 条无法解析");
-    expect(txt).toContain("登记 2 个");
-    expect(txt).toContain("登记」不等于「在线");
+    expect(txt).toContain(copyText("ccBus.summary.skipped", { skipped: 8 }));
+    expect(txt).toContain(copyText("ccBus.summary.registered", { n: "2" }));
+    expect(txt).toContain(copyText("ccBus.summary.notOnline"));
   });
 
   it("skipped=0 时不显示那句（不制造无谓噪音）", async () => {
@@ -196,7 +198,7 @@ describe("B03 脏数据如实呈现", () => {
     await flush();
     (s.element.querySelector(".cc-bus-read") as HTMLButtonElement).click();
     await flush();
-    expect(s.element.querySelector(".cc-bus-status")?.textContent).not.toContain("无法解析");
+    expect(s.element.querySelector(".cc-bus-status")?.textContent).not.toMatch(copyPattern("ccBus.summary.skipped"));
   });
 
   it("读取失败要说清，不能留空面板让人以为「没有 agent」", async () => {
@@ -210,7 +212,7 @@ describe("B03 脏数据如实呈现", () => {
     (s.element.querySelector(".cc-bus-read") as HTMLButtonElement).click();
     await flush();
     const txt = s.element.querySelector(".cc-bus-status")?.textContent ?? "";
-    expect(txt).toContain("读取失败");
+    expect(txt).toMatch(copyPattern("ccBus.reload.readFailed"));
     expect(txt).toContain("ssh timeout");
   });
 
@@ -223,7 +225,7 @@ describe("B03 脏数据如实呈现", () => {
     document.body.appendChild(s.element);
     await flush();
     expect((s.element.querySelector(".cc-bus-read") as HTMLButtonElement).disabled).toBe(false);
-    expect(s.element.querySelector(".cc-bus-status")?.textContent).toContain("未配置远端");
+    expect(s.element.querySelector(".cc-bus-status")?.textContent).toContain(copyText("ccBus.machine.noRemote"));
     // 唯一的可选项就是本机。
     const sel = s.element.querySelector(".cc-bus-origin") as HTMLSelectElement;
     expect([...sel.options].map((o) => o.value)).toEqual(["<local>"]);
@@ -247,10 +249,10 @@ describe("B03 脏数据如实呈现", () => {
     await flush();
     const metas = [...s.element.querySelectorAll(".cc-bus-meta")].map((e) => e.textContent ?? "");
     // 「cc-spawn 派生」改说「派生」（spawn 是术语表禁档的英文实现词）⇒ 区分改成两向：一边有、一边没有。
-    expect(metas[0]).toContain("派生");
-    expect(metas[1]).not.toContain("派生");
+    expect(metas[0]).toContain(copyText("ccBus.spawn.go"));
+    expect(metas[1]).not.toContain(copyText("ccBus.spawn.go"));
     expect(metas[0]).toContain("/home/user/proj");
-    expect(metas[1]).toContain("自行登记");
+    expect(metas[1]).toContain(copyText("ccBus.row.selfRegistered"));
   });
 });
 
@@ -274,7 +276,7 @@ describe("B03 批二：派活 / 收信 / 图形化 spawn", () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "read_cc_bus_inbox")
         return [
-          { from: "KVM_cc", ts: "2026-07-26T05:06:19-07:00", text: "A 就绪", class: "direct" },
+          { from: "KVM_cc", ts: "2026-07-26T05:06:19-07:00", text: `A ${copyText("machineCard.seg.ready")}`, class: "direct" },
         ];
       throw new Error(cmd);
     });
@@ -285,7 +287,7 @@ describe("B03 批二：派活 / 收信 / 图形化 spawn", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0][1]).toEqual({ origin: "devbox", id: "proj_cc" });
     expect(row.querySelector(".cc-bus-detail")?.textContent).toContain("KVM_cc");
-    expect(row.querySelector(".cc-bus-detail")?.textContent).toContain("A 就绪");
+    expect(row.querySelector(".cc-bus-detail")?.textContent).toContain(`A ${copyText("machineCard.seg.ready")}`);
   });
 
   it("空收件箱要说「空」，不能留个空白让人以为坏了", async () => {
@@ -294,7 +296,7 @@ describe("B03 批二：派活 / 收信 / 图形化 spawn", () => {
     const row = s.element.querySelector<HTMLElement>(".cc-bus-row")!;
     (row.querySelector(".cc-bus-inbox") as HTMLButtonElement).click();
     await flush();
-    expect(row.querySelector(".cc-bus-detail")?.textContent).toContain("空的");
+    expect(row.querySelector(".cc-bus-detail")?.textContent).toBe(copyText("ccBus.inbox.empty"));
   });
 
   it("发消息把原文原样交给后端（引用是后端的事，前端不得自己加工）", async () => {
@@ -333,8 +335,8 @@ describe("B03 批二：派活 / 收信 / 图形化 spawn", () => {
     btn.click();
     await flush();
     expect(mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn")).toHaveLength(0);
-    expect(btn.textContent).toContain("确认");
-    expect(s.element.querySelector(".cc-bus-spawn-out")?.textContent).toContain("消耗额度");
+    expect(btn.textContent).toContain(copyText("extPage.card.confirm"));
+    expect(s.element.querySelector(".cc-bus-spawn-out")?.textContent).toMatch(copyPattern("ccBus.spawn.confirmBody"));
   });
 
   it("第二次点才真派生，且把 tool/dir/task 原样传下去", async () => {
@@ -361,7 +363,7 @@ describe("B03 批二：派活 / 收信 / 图形化 spawn", () => {
       tool: "codex",
       account: "", // L2：空串 = 显式基座，**不存在"什么都不传"这一档**
     });
-    expect(btn.textContent).toBe("派生"); // 武装状态要复位，不能一直停在"确认"
+    expect(btn.textContent).toBe(copyText("ccBus.spawn.go")); // 武装状态要复位，不能一直停在"确认"
   });
 
   it("目录为空时连武装都不该发生", async () => {
@@ -370,8 +372,8 @@ describe("B03 批二：派活 / 收信 / 图形化 spawn", () => {
     const btn = s.element.querySelector<HTMLButtonElement>(".cc-bus-spawn-go")!;
     btn.click();
     await flush();
-    expect(btn.textContent).toBe("派生");
-    expect(s.element.querySelector(".cc-bus-spawn-out")?.textContent).toContain("请先填工作目录");
+    expect(btn.textContent).toBe(copyText("ccBus.spawn.go"));
+    expect(s.element.querySelector(".cc-bus-spawn-out")?.textContent).toContain(copyText("ccBus.spawn.needDir"));
     expect(mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn")).toHaveLength(0);
   });
 
@@ -427,9 +429,9 @@ describe("B03 审计修复：驾驶舱如实呈现 + 两步确认不可绕过", 
   it("【阻塞-1】头条数字必须与可见行数自洽（`其中` 只能数交集）", async () => {
     const s = await load(SKEWED);
     const txt = s.element.querySelector(".cc-bus-status")?.textContent ?? "";
-    expect(txt).toContain("登记 2 个");
-    expect(txt).toContain("其中派生的 1 个"); // 交集是 1，不是 spawned 全集 3
-    expect(txt).toContain("另有 2 个派生过但未登记");
+    expect(txt).toContain(copyText("ccBus.summary.registered", { n: "2" }));
+    expect(txt).toContain(copyText("ccBus.summary.spawned", { n: "1" })); // 交集是 1，不是 spawned 全集 3
+    expect(txt).toContain(copyText("ccBus.summary.unregistered", { n: "2" }));
     expect(txt).not.toContain("其中 spawn 的 3 个");
   });
 
@@ -438,7 +440,7 @@ describe("B03 审计修复：驾驶舱如实呈现 + 两步确认不可绕过", 
     const ghost = [...s.element.querySelectorAll<HTMLElement>(".cc-bus-row")].find(
       (r) => r.dataset.busAgent === "ghost_cc",
     )!;
-    expect(ghost.querySelector(".cc-bus-meta")?.textContent).toContain("未登记");
+    expect(ghost.querySelector(".cc-bus-meta")?.textContent).toContain(copyText("ccBus.row.unregistered"));
     expect(ghost.querySelector(".cc-bus-meta")?.textContent).toContain("/d/ghost");
   });
 
@@ -450,7 +452,7 @@ describe("B03 审计修复：驾驶舱如实呈现 + 两步确认不可绕过", 
     dir.value = "/home/user/a";
     btn.click();
     await flush();
-    expect(btn.textContent).toBe("确认派生");
+    expect(btn.textContent).toBe(copyText("ccBus.spawn.confirm"));
     // 偷偷换个目录
     dir.value = "/home/user/b";
     dir.dispatchEvent(new Event("input"));
@@ -490,7 +492,7 @@ describe("B03 审计修复：驾驶舱如实呈现 + 两步确认不可绕过", 
     btn.click(); // 原实现：这一下就执行了，全程没出现确认文案
     await flush();
     expect(mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn")).toHaveLength(0);
-    expect(btn.textContent).toBe("确认派生"); // 应该是刚武装，不是已执行
+    expect(btn.textContent).toBe(copyText("ccBus.spawn.confirm")); // 应该是刚武装，不是已执行
   });
 
   it("【重要-1】UI 不得承诺代码没实现的行为（原文案写了「点别处不算」）", () => {
@@ -513,7 +515,7 @@ describe("B03 审计修复：驾驶舱如实呈现 + 两步确认不可绕过", 
     btn.click();
     await flush();
     expect(mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn")).toHaveLength(1);
-    expect(btn.textContent).toBe("派生");
+    expect(btn.textContent).toBe(copyText("ccBus.spawn.go"));
   });
 });
 
@@ -542,12 +544,12 @@ describe("B03 审计修复：指纹比对是承重机制（隔离测试）", () 
     dir.value = "/d/one";
     btn.click();
     await flush();
-    expect(btn.textContent).toBe("确认派生");
+    expect(btn.textContent).toBe(copyText("ccBus.spawn.confirm"));
     dir.value = "/d/two"; // 直接赋值，不派发事件
     btn.click();
     await flush();
     expect(mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn")).toHaveLength(0);
-    expect(s.element.querySelector(".cc-bus-spawn-out")?.textContent).toContain("参数已改动");
+    expect(s.element.querySelector(".cc-bus-spawn-out")?.textContent).toContain(copyText("ccBus.spawn.changed"));
   });
 
   it("程序化改 task（无事件）也算参数变化", async () => {
@@ -575,12 +577,12 @@ describe("B03 审计修复：指纹比对是承重机制（隔离测试）", () 
     dir.value = "/d/first";
     btn.click();
     await flush();
-    expect(btn.textContent).toBe("确认派生");
+    expect(btn.textContent).toBe(copyText("ccBus.spawn.confirm"));
     dir.value = "";
     btn.click();
     await flush();
-    expect(btn.textContent).toBe("派生");
-    expect(s.element.querySelector(".cc-bus-spawn-out")?.textContent).toContain("请先填工作目录");
+    expect(btn.textContent).toBe(copyText("ccBus.spawn.go"));
+    expect(s.element.querySelector(".cc-bus-spawn-out")?.textContent).toContain(copyText("ccBus.spawn.needDir"));
   });
 
   it("清空目录（无事件）再填新的，也必须重新确认", async () => {
@@ -648,7 +650,7 @@ describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () =>
     const s = await load();
     const sel = s.element.querySelector<HTMLSelectElement>(".cc-bus-spawn-acct")!;
     expect(sel.value).toBe("");
-    expect(sel.options[0].textContent).toContain("不指定");
+    expect(sel.options[0].textContent).toBe(copyText("ccBus.spawn.accountNone"));
   });
 
   it("只列可选账号（未登录 / in-place 不进下拉；★ api-key 号进）", async () => {
@@ -687,8 +689,8 @@ describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () =>
     btn.click();
     await flush();
     const out = s.element.querySelector(".cc-bus-spawn-out")?.textContent ?? "";
-    expect(out).toContain("账号 z");
-    expect(out).toContain("消耗额度");
+    expect(out).toContain(copyText("ccBus.acctLabel.named", { value: "z" }));
+    expect(out).toMatch(copyPattern("ccBus.spawn.confirmBody"));
   });
 
   it("不选账号时文案要说「不指定」，不能含糊", async () => {
@@ -696,7 +698,7 @@ describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () =>
     s.element.querySelector<HTMLInputElement>(".cc-bus-spawn-dir")!.value = "/d";
     (s.element.querySelector(".cc-bus-spawn-go") as HTMLButtonElement).click();
     await flush();
-    expect(s.element.querySelector(".cc-bus-spawn-out")?.textContent).toContain("不指定");
+    expect(s.element.querySelector(".cc-bus-spawn-out")?.textContent).toMatch(copyPattern("ccBus.spawn.confirmBody", { account: copyText("ccBus.acctLabel.none") }));
   });
 
   it("武装后改账号必须重新确认（换号 = 换花谁的钱）", async () => {
@@ -853,7 +855,7 @@ describe("P4c 广播与收掉", () => {
     kills[1].click();
     await flush();
     expect(kills[1].textContent).toContain("b_cc");
-    expect(kills[0].textContent, "上一颗必须复位成「收掉」").toBe("收掉");
+    expect(kills[0].textContent, "上一颗必须复位成「收掉」").toBe(copyText("ccBus.row.kill"));
   });
 
   it("★ P4c-Y3：广播的确认**带数字**（不带数字的「确定吗」等于没问）", async () => {

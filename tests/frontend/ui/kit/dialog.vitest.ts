@@ -30,6 +30,7 @@ import { REPO_ROOT } from "../../../test-support/repo-root";
 import { confirmDialog, askText, formDialog, LIST_MAX, type ConfirmSpec } from "../../../../src/frontend/ui/kit/dialog";
 import { dispatcher } from "../../../../src/frontend/ui/keybindings/registry";
 import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../../test-support/production-sources.ts";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 // ─────────────────────────────── D1 ───────────────────────────────
 
@@ -206,7 +207,7 @@ describe("D2 · confirmDialog / askText 的结算语义（C10）", () => {
     expect(d.querySelector("h2")?.textContent).toBe("结束会话 orders");
     expect(d.querySelector("b"), "正文被当成 HTML 解释了").toBeNull();
     expect(d.textContent).toContain("删掉 <b>x</b>\n\n撤不回");
-    expect(buttons().map((b) => b.textContent)).toEqual(["取消", "结束"]);
+    expect(buttons().map((b) => b.textContent)).toEqual([copyText("kit.dialog.cancel"), "结束"]);
     expect(document.activeElement, "一般确认打开时焦点在动作键上").toBe(okBtn());
     okBtn().click();
     await expect(p).resolves.toBe(true);
@@ -221,12 +222,12 @@ describe("D2 · confirmDialog / askText 的结算语义（C10）", () => {
   });
 
   it("列出会断 / 会改什么的框（不危险也算）：默认焦点在「取消」；什么都不列的普通确认：焦点在动作键", async () => {
-    const a = ask({ rows: [{ label: "中断几秒", items: ["2 个会话的请求"] }] });
+    const a = ask({ rows: [{ label: copyText("interrupts.row.brief"), items: [copyText("interrupts.item.relayed", { n: "2" })] }] });
     expect(okBtn().dataset.kind).not.toBe("danger");
     expect(document.activeElement).toBe(cancelBtn());
     cancelBtn().click();
     await a;
-    const b = ask({ rows: [{ label: "中断", items: [] }] });
+    const b = ask({ rows: [{ label: copyText("kit.interrupts.cut"), items: [] }] });
     expect(document.activeElement).toBe(okBtn());
     cancelBtn().click();
     await b;
@@ -235,11 +236,11 @@ describe("D2 · confirmDialog / askText 的结算语义（C10）", () => {
   it("逐项那几行排成一张两列表：各行的标签与值同在一个两列网格里（标签列同宽、值列左对齐）", async () => {
     const p = ask({
       rows: [
-        { label: "中断（直到再启动）", items: ["a"] },
+        { label: copyText("interrupts.row.untilStart"), items: ["a"] },
         { label: "保留", items: ["b"] },
       ],
     });
-    const labels = [...dialog()!.querySelectorAll("span")].filter((e) => e.textContent === "中断（直到再启动）" || e.textContent === "保留");
+    const labels = [...dialog()!.querySelectorAll("span")].filter((e) => e.textContent === copyText("interrupts.row.untilStart") || e.textContent === "保留");
     expect(labels).toHaveLength(2);
     const grid = labels[0]!.parentElement!.parentElement!;
     expect(labels[1]!.parentElement!.parentElement).toBe(grid);
@@ -256,17 +257,17 @@ describe("D2 · confirmDialog / askText 的结算语义（C10）", () => {
   it("逐项 `中断` / `保留`：空的那段不画；清单超过 8 项只列前 8 ＋「另外 n 个」", async () => {
     const p = ask({
       rows: [
-        { label: "中断", items: ["当前轮次"] },
+        { label: copyText("kit.interrupts.cut"), items: [copyText("kit.interrupts.turn")] },
         { label: "保留", items: [] },
       ],
       list: Array.from({ length: LIST_MAX + 3 }, (_, i) => `s${i}`),
     });
     const t = dialog()!.textContent ?? "";
-    expect(t).toContain("中断");
+    expect(t).toContain(copyText("kit.interrupts.cut"));
     expect(t).not.toContain("保留");
     expect(t).toContain(`s${LIST_MAX - 1}`);
     expect(t).not.toContain(`s${LIST_MAX}`);
-    expect(t).toContain("另外 3 个");
+    expect(t).toContain(copyText("kit.dialog.more", { n: "3" }));
     cancelBtn().click();
     await p;
   });
@@ -397,8 +398,8 @@ describe("D2 · confirmDialog / askText 的结算语义（C10）", () => {
     expect(dialog(), "拦着还交了").not.toBeNull();
     input.value = "x";
     h.refresh();
-    h.setAction("加 1 台");
-    expect(okBtn().textContent).toBe("加 1 台");
+    h.setAction("加一台");
+    expect(okBtn().textContent).toBe("加一台");
     okBtn().click();
     for (let i = 0; i < 3; i++) await Promise.resolve();
     expect(dialog(), "没成就关了").not.toBeNull();

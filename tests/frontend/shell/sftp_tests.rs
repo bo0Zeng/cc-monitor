@@ -598,7 +598,10 @@ fn upload_verify_catches_same_length_corruption() {
         Some((want.len() as u64, Some(k))),
     )
     .unwrap_err();
-    assert!(e.contains("长度相同"), "{e}");
+    assert!(
+        copy_core::copy_matches("rsSftp.verify.contentDiffers", &e),
+        "{e}"
+    );
     assert!(
         e.contains(&format!("首个差异在第 {k} 字节")),
         "要指出位置：{e}"
@@ -610,11 +613,17 @@ fn upload_verify_catches_same_length_corruption() {
 #[test]
 fn upload_verify_catches_truncation_and_unreadable() {
     let e = verify_readback("/r/x", 10, Some((5, Some(5)))).unwrap_err();
-    assert!(e.contains("长度不匹配"), "{e}");
+    assert!(
+        copy_core::copy_matches("rsSftp.verify.lengthDiffers", &e),
+        "{e}"
+    );
     assert!(e.contains("期望 10 字节"), "{e}");
     // 读不回来 ≠ 写对了
     let e2 = verify_readback("/r/x", 10, None).unwrap_err();
-    assert!(e2.contains("读不回"), "{e2}");
+    assert!(
+        copy_core::copy_matches("rsSftp.verify.unreadable", &e2),
+        "{e2}"
+    );
     assert!(e2.contains("/r/x"), "{e2}");
 }
 

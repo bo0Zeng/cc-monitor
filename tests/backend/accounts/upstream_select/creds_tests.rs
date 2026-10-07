@@ -126,7 +126,7 @@ fn a_broken_file_is_a_problem_not_a_silent_not_configured() {
     assert!(loaded.accounts.is_empty());
     let problem = loaded.problem.expect("读坏了必须有说法");
     assert!(
-        problem.contains("手编"),
+        copy_core::copy_matches("credsStore.error.notJson", &problem),
         "说法没告诉人这是手编的文件：{problem}"
     );
 

@@ -184,6 +184,56 @@ macro_rules! copy_static {
     }};
 }
 
+/// 一段文字里有没有表里那一条（占位处任意值；取文口在接缝上补 / 删的那一个空格可有可无）。
+///
+/// 给测试按文案键断言用：值事先算不出、只要那一句在 ⇒ `assert!(copy_matches("键", &text))`，
+/// 改表值不撞，改键 / 删键撞。表里没有这个键 ⇒ `false`。
+pub fn copy_matches(key: &str, text: &str) -> bool {
+    let Some(zh) = entries()
+        .get(key)
+        .and_then(|e| e.get("zh"))
+        .and_then(|z| z.as_str())
+    else {
+        return false;
+    };
+    let mut frags: Vec<&str> = Vec::new();
+    let mut rest = zh;
+    while let Some(open) = rest.find('{') {
+        match rest[open..].find('}') {
+            Some(close)
+                if rest[open + 1..open + close]
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric())
+                    && close > 1 =>
+            {
+                frags.push(&rest[..open]);
+                rest = &rest[open + close + 1..];
+            }
+            _ => break,
+        }
+    }
+    frags.push(rest);
+    let last = frags.len() - 1;
+    let mut at = 0;
+    for (i, f) in frags.iter().enumerate() {
+        let mut f = *f;
+        if i > 0 {
+            f = f.strip_prefix(' ').unwrap_or(f);
+        }
+        if i < last {
+            f = f.strip_suffix(' ').unwrap_or(f);
+        }
+        if f.is_empty() {
+            continue;
+        }
+        match text[at..].find(f) {
+            Some(p) => at += p + f.len(),
+            None => return false,
+        }
+    }
+    true
+}
+
 #[cfg(test)]
 #[path = "../../../../tests/common/copy-core/lib_tests.rs"]
 mod tests;
