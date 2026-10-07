@@ -14,7 +14,7 @@
  * src/backend/agents/<名>/resume.rs（注册表 `Adapter.launch`）   ← 唯一的值源（从前是 monitor `adapter.rs`）
  *   └─（cargo test --lib export_bindings ＝ npm run gen:types）→
  *      src/frontend/ui/generated/agent-profile-table.ts         ← 生成物，不许手改
- *        └─（本文件）→ AGENT_PROFILE / lookupAgentProfile / listAgents
+ *        └─（本文件）→ lookupAgentProfile / listAgents / speakerNameOf / displayNameOf
  * ```
  *
  * **改后端那一份 ⇒ 前端拿到的值跟着变**；改了不重跑生成 ⇒ 门禁第六格 `generated` 红
@@ -31,22 +31,21 @@
  * 会是 `null` 的那五格（工具 / 判活进程词表）随判定进了后端，今天这张表里没有可空的列表格了。
  * 3. **不许在本文件里再写一份工具名 / 进程名 / 启动器名** —— `agent-profile-parity.vitest.ts`
  *    有一条判据扫本文件的生产段，把后端那张表里的**任何一个值**写死进来就红
- *    （`KR93D1` 第三刀）。这也是 `AGENT_PROFILE` 用 `ACTIVE_AGENT` 而不是字面量 `"claude"`
- *    取那一行的原因：**谁是当前 agent 也是后端的事实**。
+ *    （`KR93D1` 第三刀）。**一个会话是哪一家也是后端的事实**：会话事实的 `agent`（标签页）· 历史清单那一行的 `agent`（历史页），
+ *    不设「当前那一家」—— 没有一份单家画像可取。
  *
  * ★ **第二刀仍然没做**（原头注那句话原样留着）：本件**不拆记录模型、不动 `renderMessage`
  * 的 `switch(rec.type)` 分发** —— 件文件 `§0b` 逐字挡住了，那是等第二个 wire 样本看清
  * 真·共性之后的事（SS-1）。
  */
 import {
-  ACTIVE_AGENT,
   AGENT_PROFILE_TABLE,
   DEFAULT_AGENT,
   type AgentProfileRow,
 } from "./generated/agent-profile-table";
 import { copyText } from "./copy-table";
 
-export { ACTIVE_AGENT, DEFAULT_AGENT };
+export { DEFAULT_AGENT };
 export type { AgentProfileRow };
 
 /** 查画像的结果。**没有第三态**：要么查得到，要么说得出为什么查不到。 */
@@ -80,7 +79,7 @@ export function lookupAgentProfile(
 }
 
 /**
- * 考据齐全的画像 —— 每一格都有值。`AGENT_PROFILE` 就是当前 agent 那一份。
+ * 考据齐全的画像 —— 每一格都有值（按会话的那一家取）。
  *
  * 〔判定只在后端〕从前这里还有五格判定用的词表（agent 工具 · 交互工具 · 写类工具 · markdown 工具 ·
  * 判活进程名），界面按它们判卡型、认 tmux 会话。那几张表进了后端适配层：卡型随记录成品带出（`toolCards`），
@@ -145,11 +144,16 @@ export function agentHasAccounts(agent: string): boolean {
   return got.known && got.facts.hasAccounts;
 }
 
-/**
- * **当前 agent 那一份画像** —— 本仓今天所有 `AGENT_PROFILE.*` 的消费者走的都是它。
- *
- * ⚠ 名字刻意留着（件文件 `§0b`：判据认的是**值从哪来**，不是名字）。
- * 是哪一个 agent 由后端 `adapter::active()` 说了算（生成物里的 `ACTIVE_AGENT`），
- * 不是这里挑的；表里没有它 ⇒ **模块加载当场抛**，不静默给一份空画像。
- */
-export const AGENT_PROFILE = fullAgentProfile(ACTIVE_AGENT);
+/** 这一家在消息流里叫什么（卡头 · 刻度悬停的短名）。认不出 / 还不知道是哪一家 ⇒ `null`（不顶替成哪一家）。 */
+export function speakerNameOf(agent: string | null): string | null {
+  if (agent === null) return null;
+  const got = lookupAgentProfile(agent);
+  return got.known ? got.facts.speakerName : null;
+}
+
+/** 这一家的产品全称（「{名} 会话还不能选账号」这类话里用）。认不出 ⇒ `null`。 */
+export function displayNameOf(agent: string | null): string | null {
+  if (agent === null) return null;
+  const got = lookupAgentProfile(agent);
+  return got.known ? got.facts.displayName : null;
+}

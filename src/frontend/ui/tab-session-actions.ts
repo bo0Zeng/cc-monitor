@@ -43,7 +43,6 @@ import {
 import { callStop, sayReply, type Reply, type StartItem } from "./tab-batch-run";
 import { startInTmuxThenAttach } from "./tmux-resume";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
-import { ACTIVE_AGENT } from "./agent-profile";
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
 import { decodeKilled, saidOfControl } from "./tmux-control";
@@ -211,9 +210,18 @@ export class TabSessionActions {
     return true;
   }
 
+  /** 这个会话是哪一家（会话事实到了才知道）；还不知道 ⇒ 说一句、`null`（不落哪一家）。 */
+  private agentOrSay(tab: Tab): string | null {
+    if (tab.agent !== null) return tab.agent;
+    toast(copyText("tabSessionActions.agent.unknown"), "", { level: "info" });
+    return null;
+  }
+
   async resumeTab(sid: string, accountName?: string, useBase = false): Promise<void> {
     const tab = this.host.tab(sid);
     if (!tab || this.refuseUnseen(tab)) return;
+    const agent = this.agentOrSay(tab);
+    if (agent === null) return;
     // 用哪个号那台判（点名的号 / 账号 0 / 跟随这条会话上次的号）；判完、开窗之前问记录还在不在（查那个号那棵树）。
     const account = askOf(accountName, useBase);
     const behavior = await getBehavior();
@@ -222,7 +230,7 @@ export class TabSessionActions {
       const origin = tab.origin;
       await runRemoteResume(
         origin,
-        ACTIVE_AGENT,
+        agent,
         sid,
         tab.projectDir ?? "",
         await resolveResumeCommand(origin, behavior.resumeCommandRemote),
@@ -232,7 +240,7 @@ export class TabSessionActions {
     }
     // 本机 resume 的编排只有一份（`local-resume.ts`）：铸名 → 起（本机后端判号）。
     await resumeLocalSession({
-      agent: ACTIVE_AGENT,
+      agent,
       sid,
       cwd: tab.projectDir ?? "",
       account,
@@ -283,8 +291,10 @@ export class TabSessionActions {
     item: StartItem,
     again: (account?: AccountAsk) => Promise<void>,
   ): Promise<void | false> {
+    const agent = this.agentOrSay(tab);
+    if (agent === null) return false;
     return startInTmuxThenAttach(
-      { origin: tab.origin, agent: ACTIVE_AGENT, sid: tab.sessionId, cwd: item.cwd },
+      { origin: tab.origin, agent, sid: tab.sessionId, cwd: item.cwd },
       item.account ?? FOLLOW,
       { again, onRecord: (present) => this.host.markRecord(tab.sessionId, present) },
     );

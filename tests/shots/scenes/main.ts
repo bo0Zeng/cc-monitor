@@ -261,6 +261,15 @@ export const MAIN_SCENES: Scene[] = [
     await openTab(5);
     await sleep(600);
   }, answerWorld),
+  main("main-codex-card", "主窗口 · Codex 会话的卡头", "会话事实说这条是 Codex 的：卡头写「Codex」（画像里的短名），不按文件名猜", async () => {
+    await mainReady(ALL_TABS);
+    await openTab(0);
+    await sleep(900);
+  }, () => {
+    const w = defaultWorld();
+    w.sessions[0].agent = "codex";
+    return w;
+  }),
   main("main-hover-card", "主窗口 · 标签页悬停卡", "悬停第二个标签页 500ms：全名 · 机器 · 目录 · 状态句 · 它在等的那一句 · 数字键", async () => {
     await mainReady(ALL_TABS);
     const row = document.querySelectorAll<HTMLElement>("#tab-bar .tab")[1];

@@ -14,7 +14,9 @@
  * 本文件拆完只剩 `TabManager` 这个**组装根**：对外 API（`main.ts` / `entry-viewer.ts` 调的那些）
  * 逐字不变，事件怎么在上面几份之间流转写在这里。拆分逐子步提交，每一步 `tabs.vitest` 全绿、断言不动。
  */
+import { speakerNameOf } from "./agent-profile";
 import { renderMessage, type RenderContext } from "./cards";
+import { SPEAKER_SELECTOR } from "./cards/speaker";
 import { markRunCard } from "./cards/subagent";
 import { runLabel } from "./runs";
 
@@ -701,6 +703,7 @@ export class TabManager {
       projectDir,
       aiTitle: null,
       forkedFromSessionId: null, // issue #63①：后端的会话事实到了才有（`onSessionFacts`）
+      agent: null, // 是哪一家：会话事实到了才有（`onSessionFacts`），之前要分家的那几项灰着
       writers: [], // 同上
       origin,
       state: LIVE, // 见了行 / 宣告了才建 ⇒ 活着；早到的死亡信号在下面落实
@@ -945,6 +948,7 @@ export class TabManager {
     if (!t && tab) {
       const ctx: RenderContext = {
         parentPath: tab.parentPath,
+        speaker: speakerNameOf(tab.agent),
         origin: tab.origin,
         toolUseNames: new Map(),
         toolUseElements: new Map(),
@@ -1014,6 +1018,11 @@ export class TabManager {
   onViewTerminal: (() => void) | null = null;
 
   /** 这个会话在哪台（没有这个 tab ⇒ `null`）。 */
+  /** 这个会话是哪一家（会话事实给的 `agent`）；还不知道 ⇒ `null`。 */
+  agentOf(sessionId: string): string | null {
+    return this.store.tabs.get(sessionId)?.agent ?? null;
+  }
+
   originOf(sessionId: string): Origin | null {
     return this.store.tabs.get(sessionId)?.origin ?? null;
   }
@@ -1317,6 +1326,11 @@ export class TabManager {
       this.paintAwaitingStep(tab);
     }
     if ((ch.usage || ch.projectDir) && sid === this.store.activeId) this.publishActive();
+    if (ch.agent) {
+      // 是哪一家到了：先画出来的卡头那一格补上那一家的名字（之后建的卡按它直接画）。
+      const who = speakerNameOf(tab.agent) ?? "";
+      for (const el of tab.streamEl.querySelectorAll<HTMLElement>(SPEAKER_SELECTOR)) el.textContent = who;
+    }
   }
 
   /** 过程里在等你批准的那一步（后端 `needs.call`）画成「在等你批准」；不再等的那一步回到在跑。 */

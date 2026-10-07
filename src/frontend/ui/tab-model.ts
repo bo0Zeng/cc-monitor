@@ -41,6 +41,11 @@ export interface Tab {
    * `null` = 后端没给（老后端）。
    */
   projectDir: string | null;
+  /**
+   * 这个会话是哪一家（线上的 kind）：只来自后端（会话事实的 `agent`，那台按记录认）。恢复 · 接回 · 选号 · 账号面板 · 卡头都按它；
+   * `null` ＝ 事实还没到 / 认不出 ⇒ 要分家的那几项灰着，不落哪一家。
+   */
+  agent: string | null;
   /** Claude 给出的语义标题（JSONL 里 `ai-title` 记录的 aiTitle 字段），出现一次就锁定 */
   aiTitle: string | null;
   /**

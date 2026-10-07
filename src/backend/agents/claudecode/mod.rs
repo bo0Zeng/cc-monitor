@@ -120,6 +120,7 @@ pub(crate) const COMPACT_REQUEST: &str = "/compact";
 pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     adapter_id: UPSTREAM.route_id,
     display_name: "Claude Code",
+    speaker_name: "Claude",
     default_launcher: resume::DEFAULT_COMMAND,
     launcher_alias: Some(resume::LAUNCHER_ALIAS),
     resume_token: resume::RESUME_TOKEN,

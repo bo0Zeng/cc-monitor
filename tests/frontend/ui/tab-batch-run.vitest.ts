@@ -24,8 +24,8 @@ import { chanArgsJson, chanReply, NO_CHANNEL, type ChanCallArgs } from "../../te
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
-const tab = (sid: string, origin: string, cwd = `/w/${sid}`): Tab =>
-  ({ sessionId: sid, origin, projectDir: cwd, title: `T-${sid}` }) as unknown as Tab;
+const tab = (sid: string, origin: string, cwd = `/w/${sid}`, agent: string | null = "claude"): Tab =>
+  ({ sessionId: sid, origin, projectDir: cwd, title: `T-${sid}`, agent }) as unknown as Tab;
 
 /** 后端那一跳：`(origin, op)` ⇒ 怎么答（成品 / 抛）。记下每一次调用。 */
 let calls: [string, string, Record<string, unknown>][] = [];

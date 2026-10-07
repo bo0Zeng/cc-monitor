@@ -152,6 +152,8 @@ pub(crate) struct LaunchFace {
     pub(crate) adapter_id: &'static str,
     /// 这一家对用户的叫法（「{名} 会话还不能选账号」这类话里用）。
     pub(crate) display_name: &'static str,
+    /// 消息流里说话的那一方叫什么（卡头 · 刻度悬停「{名}：…」）—— 短名，不是产品全称。
+    pub(crate) speaker_name: &'static str,
     /// 默认启动器（无候选时的命令基底）。
     pub(crate) default_launcher: &'static str,
     /// shell 集成 wrapper：探得到先用它，探不到回退默认启动器；没有 ⇒ `None`。

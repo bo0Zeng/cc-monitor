@@ -76,9 +76,9 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
-  ACTIVE_AGENT,
-  AGENT_PROFILE,
+  displayNameOf,
   fullAgentProfile,
+  speakerNameOf,
   listAgents,
   lookupAgentProfile,
 } from "../../../src/frontend/ui/agent-profile";
@@ -313,14 +313,23 @@ describe("K-R93 前端那份 agent 画像：值来自后端", () => {
     }
   });
 
-  it("★ `KR93D1`：`AGENT_PROFILE` 就是后端那张表里 `ACTIVE_AGENT` 那一行，不是另抄的一份", () => {
-    const r = row(ACTIVE_AGENT);
-    // 同序，不是同集合：这几个键的顺序直接决定送到远端那条 `unset` 命令的字节。
-    expect(AGENT_PROFILE.nestedEnvVars).toEqual(r.nestedEnvVars);
-    expect(AGENT_PROFILE.defaultLauncher).toBe(r.defaultLauncher);
-    expect(AGENT_PROFILE.launcherAlias).toBe(r.launcherAlias);
-    expect(AGENT_PROFILE.resumeKind).toBe(r.resumeKind);
-    expect(AGENT_PROFILE.resumeFlag).toBe(r.resumeToken);
+  it("★ `KR93D1`：每一家的画像就是后端那张表里那一行，不是另抄的一份；没有「当前那一家」", () => {
+    for (const a of listAgents()) {
+      const r = row(a);
+      const p = fullAgentProfile(a);
+      // 同序，不是同集合：这几个键的顺序直接决定送到远端那条 `unset` 命令的字节。
+      expect(p.nestedEnvVars).toEqual(r.nestedEnvVars);
+      expect(p.defaultLauncher).toBe(r.defaultLauncher);
+      expect(p.launcherAlias).toBe(r.launcherAlias);
+      expect(p.resumeKind).toBe(r.resumeKind);
+      expect(p.resumeFlag).toBe(r.resumeToken);
+      // 名字（卡头的短名 · 话里的全称）同样从那一行来；认不出 / 还不知道是哪一家 ⇒ `null`，不顶替成哪一家。
+      expect(speakerNameOf(a)).toBe(r.speakerName);
+      expect(displayNameOf(a)).toBe(r.displayName);
+    }
+    expect(speakerNameOf(null)).toBeNull();
+    expect(speakerNameOf("nope")).toBeNull();
+    expect(displayNameOf("nope")).toBeNull();
   });
 
   it("★ `KR93D1` 第三刀：`agent-profile.ts` 的生产段里不许出现后端表里的任何一个值", () => {
@@ -368,8 +377,8 @@ describe("K-R93 前端那份 agent 画像：值来自后端", () => {
     }
     // 抛，而不是给一份「看起来像 claude」的默认画像。
     expect(() => fullAgentProfile("no-such-agent")).toThrow(/查不到/);
-    // 连 `ACTIVE_AGENT` 自己都问不到时（空表）也是抛 —— 不留「反正是 claude」的暗门。
-    expect(() => fullAgentProfile(ACTIVE_AGENT, [])).toThrow(/查不到/);
+    // 表里有的那一家、换一张空表去问也是抛 —— 不留「反正是 claude」的暗门。
+    expect(() => fullAgentProfile(listAgents()[0], [])).toThrow(/查不到/);
   });
 
   // 「`null` 那一格是『没人考据过』」那一条退役：会是 `null` 的那五格（codex 的工具 / 判活进程词表）随判定进了后端
@@ -413,13 +422,14 @@ describe("界面上的 agent 名单只从后端注册表来", () => {
 
 describe("起会话按会话的那一家取画像", () => {
   it(
-    "★ 界面生产段里 `AGENT_PROFILE`（当前那一家的画像）只剩 agent-profile.ts 自己；拼起法意图（`launcherOverride:`）只在 launch-requests.ts",
+    "★ 界面生产段里零处 `AGENT_PROFILE` / `ACTIVE_AGENT`（没有「当前那一家」：会话是哪一家由后端说）；拼起法意图（`launcherOverride:`）只在 launch-requests.ts",
     () => {
-      const profile = /\bAGENT_PROFILE\b(?!_)/;
+      const profile = /\bAGENT_PROFILE\b(?!_)|\bACTIVE_AGENT\b/;
       const ctx = /\blauncherOverride\s*:/;
       // 正控：从前的写法认得出；画像表与类型声明不算。
       expect(profile.test("launcher = AGENT_PROFILE.defaultLauncher")).toBe(true);
       expect(profile.test("AGENT_PROFILE_TABLE.map(f)")).toBe(false);
+      expect(profile.test("callStart(origin, mode, items, ACTIVE_AGENT)")).toBe(true);
       expect(ctx.test("return { action, launcherOverride: launcher, ccmSid };")).toBe(true);
       const files = productionTsFiles("src/frontend/ui");
       expect(files.length, "扫描面塌了").toBeGreaterThan(100);
@@ -430,9 +440,7 @@ describe("起会话按会话的那一家取画像", () => {
         if (profile.test(code)) profileAt.push(file);
         if (ctx.test(code)) ctxAt.push(file);
       }
-      expect(profileAt, "起法又按「当前那一家」取启动器了 —— 按会话的 agent 取（`defaultLauncherOf(agent)`）").toEqual([
-        "src/frontend/ui/agent-profile.ts",
-      ]);
+      expect(profileAt, "又按「当前那一家」取了 —— 按会话的 agent 取（标签页 `tab.agent` · 历史行 `agent`，都是后端给的）").toEqual([]);
       expect(ctxAt.sort(), "起法意图只许在 launch-requests.ts 拼（类型声明在 launch-types.ts）").toEqual([
         "src/frontend/ui/launch-requests.ts",
         "src/frontend/ui/launch-types.ts",

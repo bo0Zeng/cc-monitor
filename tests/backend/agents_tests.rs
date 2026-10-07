@@ -436,21 +436,18 @@ export type AgentProfileRow = {
   nestedEnvVars: string[];
   /** 这一家有没有账号这一维（选号 · 跟随上次的号只对有的那一家）。 */
   hasAccounts: boolean;
-  /** 这一家对用户的叫法（「{名} 默认」）。 */
+  /** 这一家对用户的叫法（产品全称：「{名} 默认」·「{名} 会话还不能选账号」这类话里用）。 */
   displayName: string;
   /** 这一家认得的模型名（账号页「默认模型」下拉的选项）；`null` ＝ 没考据过。 */
   models: string[] | null;
+  /** 消息流里说话的那一方叫什么（卡头 · 刻度悬停）：短名。 */
+  speakerName: string;
 "#;
 
 /// 接着上面那一段 —— **第一行就是那个收尾的 `};`**（见上面为什么不能合并）。
 const TABLE_HEADER_TAIL: &str = r#"};
 
 export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
-"#;
-
-/// `ACTIVE_AGENT` 那一格的头注。
-const ACTIVE_HEADER: &str = r#"
-/** 后端流式 watcher 跟的那一家（记录树那一家）—— `AGENT_PROFILE` 就是它那一份。 */
 "#;
 
 /// `DEFAULT_AGENT` 那一格的头注。
@@ -496,6 +493,7 @@ fn render_row(kind: &str, f: &LaunchFace, has_accounts: bool) -> String {
                 },
             ),
         ),
+        ("speakerName", ts_str(f.speaker_name)),
     ];
     let mut s = String::from("  {\n");
     for (key, value) in fields {
@@ -514,16 +512,6 @@ fn render_agent_profile_table() -> String {
         }
     }
     s.push_str("];\n");
-    s.push_str(ACTIVE_HEADER);
-    let active = REGISTRY
-        .iter()
-        .find(|a| a.history.is_none() && a.launch.is_some())
-        .map(|a| a.kind)
-        .expect("注册表里没有记录树那一家");
-    s.push_str(&format!(
-        "export const ACTIVE_AGENT: string = {};\n",
-        ts_str(active)
-    ));
     s.push_str(DEFAULT_HEADER);
     s.push_str(&format!(
         "export const DEFAULT_AGENT: string = {};\n",

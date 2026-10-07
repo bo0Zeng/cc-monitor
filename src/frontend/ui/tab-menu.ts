@@ -23,7 +23,7 @@ import { openNewSession } from "./new-session";
 import { askOf } from "./launch-account";
 import { runRemoteAttach } from "./remote-launch-run";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
-import { ACTIVE_AGENT } from "./agent-profile";
+import { agentHasAccounts, displayNameOf } from "./agent-profile";
 // 本机 = `LOCAL_ORIGIN`（`"<local>"`）；「是不是本机」只经 `ipc/origin.ts` 判。
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { openPanePreview } from "./views/pane-preview";
@@ -209,7 +209,7 @@ export class TabMenu {
   openResumeMenu(anchor: HTMLElement, sid: string): void {
     const t = this.host.tab(sid);
     if (!t || !canResume(t.state)) return;
-    void this.resumeAccountsOf(t.origin).then((accounts) => {
+    void this.resumeAccountsOf(t.origin, t.agent).then((accounts) => {
       if (anchor.isConnected) openMenu({ el: anchor, align: "end" }, this.buildResumeSubmenu(sid, accounts).map((i) => gateByOffer(t.origin, i)));
     });
   }
@@ -229,7 +229,11 @@ export class TabMenu {
       return;
     }
     if (s.kind === "ambiguous") toast(copyText("tabMenu.dupes.title"), copyText("tabMenu.dupes.body", { n: s.names.length, name: s.names[0] }), { level: "info" });
-    void runRemoteAttach(t.origin, ACTIVE_AGENT, s.names[0]);
+    if (t.agent === null) {
+      toast(copyText("tabSessionActions.agent.unknown"), "", { level: "info" });
+      return;
+    }
+    void runRemoteAttach(t.origin, t.agent, s.names[0]);
   }
 
   /** 远端：那台答回这个会话在哪个 tmux 会话里 ⇒ 在终端里打开 · 看一眼画面 · 结束三格就位（菜单已换 / 已关 ⇒ 不动）。 */
@@ -243,12 +247,14 @@ export class TabMenu {
     const name = s.names[0];
     if (s.kind === "idle" && !this.host.isAttachable(sid)) return drop("attach", "preview", "kill");
     const ambiguous = s.kind === "ambiguous";
+    const agent = this.host.tab(sid)?.agent ?? null;
     updateMenuItem("attach", {
       id: "attach",
       icon: "terminal",
       label: copyText("tabMenu.attach.label"),
-      why: ambiguous ? copyText("tabMenu.attach.dupesWhy", { n: s.names.length, name }) : undefined,
-      onClick: () => void runRemoteAttach(origin, ACTIVE_AGENT, name), // 命中多个 ⇒ 接第一个（第二行已经说了）
+      // 还不知道是哪一家（会话事实没到）⇒ 灰着，不落哪一家；命中多个 ⇒ 接第一个（第二行已经说了）。
+      why: agent === null ? copyText("tabSessionActions.agent.unknown") : ambiguous ? copyText("tabMenu.attach.dupesWhy", { n: s.names.length, name }) : undefined,
+      ...(agent === null ? { enabled: false } : { onClick: () => void runRemoteAttach(origin, agent, name) }),
     });
     if (s.kind === "idle") removeMenuItem("preview"); // Claude 已退出：没有画面可看
     else updateMenuItem("preview", gateByOffer(origin, { id: "preview", icon: "search", label: copyText("tabMenu.preview.label"), onClick: () => void openPanePreview(origin, name, { terminal: s.terminals[0] }) }));
@@ -299,9 +305,10 @@ export class TabMenu {
   /** 每个标签页「恢复 ▸」里勾着的那一组（本窗开着时记）。 */
   private resumePicks = new Map<string, ResumePick>();
 
-  /** 那台的号 ⇒ 恢复菜单的账号组（标签页里的会话都是流跟的那一家）。 */
-  private resumeAccountsOf(origin: Origin): Promise<ResumeAccounts> {
-    return resumeAccounts(origin, ACTIVE_AGENT, { hasAccounts: true, agentName: ACTIVE_AGENT });
+  /** 那台的号 ⇒ 恢复菜单的账号组（按这个会话的那一家；还不知道是哪一家 ⇒ 不出账号组，不落哪一家）。 */
+  private resumeAccountsOf(origin: Origin, agent: string | null): Promise<ResumeAccounts> {
+    if (agent === null) return Promise.resolve({ kind: "off" });
+    return resumeAccounts(origin, agent, { hasAccounts: agentHasAccounts(agent), agentName: displayNameOf(agent) ?? agent });
   }
 
   /**
@@ -336,7 +343,7 @@ export class TabMenu {
   ): Promise<void> {
     if (state.liveness === "unseen" || !isResumeOnly(state)) return;
     const gen = menuGeneration();
-    const accounts = await this.resumeAccountsOf(origin);
+    const accounts = await this.resumeAccountsOf(origin, this.host.tab(sid)?.agent ?? null);
     if (gen !== menuGeneration() || accounts.kind === "off") return;
     updateMenuItem("resume", { id: "resume", icon: "history", label: copyText("tabMenu.item.resume"), submenu: this.buildResumeSubmenu(sid, accounts) });
   }

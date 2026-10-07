@@ -138,7 +138,7 @@ export class StatusMessages {
         n.textContent = copyText("kit.toast.count", { n: r.count });
         row.appendChild(n);
       }
-      for (const a of r.actions) row.appendChild(button({ label: a.label, kind: "ghost", size: "compact", onClick: () => runRecordAction(r, a) }));
+      for (const a of r.actions.filter((x) => !x.toastOnly)) row.appendChild(button({ label: a.label, kind: "ghost", size: "compact", onClick: () => runRecordAction(r, a) }));
       list.appendChild(row);
       if (open) {
         const more = document.createElement("div");

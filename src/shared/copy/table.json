@@ -2792,10 +2792,10 @@
       "zh": "你：{text}",
       "args": ["text"]
     },
-    "stream.rail.claude": {
+    "stream.rail.reply": {
       "kind": "body",
-      "zh": "Claude：{text}",
-      "args": ["text"]
+      "zh": "{who}：{text}",
+      "args": ["who", "text"]
     },
     "stream.proc.head": {
       "kind": "body",
@@ -11888,6 +11888,21 @@
       "kind": "body",
       "zh": "已启动 {name} · {machine}",
       "args": ["name", "machine"]
+    },
+    "tabSessionActions.agent.unknown": {
+      "kind": "error",
+      "zh": "还不知道这个会话是哪一家 agent，先没动",
+      "args": []
+    },
+    "tabBatch.why.agentUnknown": {
+      "kind": "body",
+      "zh": "还不知道是哪一家 agent",
+      "args": []
+    },
+    "acct.agent.unknown": {
+      "kind": "body",
+      "zh": "这一家 agent",
+      "args": []
     },
     "launchArrival.arrived.body": {
       "kind": "body",

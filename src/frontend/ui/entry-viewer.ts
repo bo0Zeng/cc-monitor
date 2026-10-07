@@ -131,6 +131,7 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
     jsonlPath: r.jsonlPath,
     displayTitle: r.untitled ? copyText("history.row.untitled") : r.label,
     origin,
+    agent: r.agent,
     cwd: r.projectPath,
     suppressBranch: !r.can.fork,
     statusOf: windowStatus,

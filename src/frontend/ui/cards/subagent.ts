@@ -53,6 +53,7 @@ export function buildAgentCard(
     const run = state.run;
     const nested: RenderContext = {
       parentPath: ctx.parentPath,
+      speaker: ctx.speaker ?? null,
       origin: ctx.origin,
       toolUseNames: new Map(),
       toolUseElements: new Map(),

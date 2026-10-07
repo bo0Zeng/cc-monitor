@@ -11,6 +11,7 @@
 
 // 本机那个 origin 的**唯一住址**（Rust 侧是 `inbound_client::LOCAL_ORIGIN`，
 // 两侧由 `origin_tests::the_sentinel_agrees_with_the_two_existing_homes` 两向钉着）。
+import { speakerNameOf } from "../agent-profile";
 import type { Origin } from "../ipc/origin";
 import { MessageStream } from "../stream";
 import {
@@ -161,6 +162,8 @@ export interface ViewerOptions {
    * 现在**必填**（子 agent 查看器就曾因此把远端子 agent 的文件拿去本机读）。
    */
   origin: Origin;
+  /** 这个会话是哪一家（历史清单那一行的 `agent`，后端给的）：卡头那一家的名字按它取。 */
+  agent?: string | null;
   /**
    * F62：会话工作目录（= 历史条目 projectPath）。分叉出新会话后作它的起始目录。
    * **G6 订正**：原注释写着"远端会话不建分支，可缺省"——远端现在也能分叉了，
@@ -384,6 +387,7 @@ export class SessionViewer {
     // Batch13-F39:lazy hljs(此前 viewer eager 全量高亮,是 65s 的组成部分)
     const ctx: RenderContext = {
       parentPath: opts.jsonlPath,
+      speaker: speakerNameOf(opts.agent ?? null),
       toolUseNames: new Map(),
       toolUseElements: new Map(),
       pendingToolResults: new Map(),

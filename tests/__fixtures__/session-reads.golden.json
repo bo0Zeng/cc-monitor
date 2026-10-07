@@ -1,5 +1,6 @@
 {
   "history-facts": {
+    "agent": "claude",
     "end": 876,
     "forkedFrom": "src-0",
     "lastSay": {

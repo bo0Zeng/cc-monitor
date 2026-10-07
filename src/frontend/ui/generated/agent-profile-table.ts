@@ -20,10 +20,12 @@ export type AgentProfileRow = {
   nestedEnvVars: string[];
   /** 这一家有没有账号这一维（选号 · 跟随上次的号只对有的那一家）。 */
   hasAccounts: boolean;
-  /** 这一家对用户的叫法（「{名} 默认」）。 */
+  /** 这一家对用户的叫法（产品全称：「{名} 默认」·「{名} 会话还不能选账号」这类话里用）。 */
   displayName: string;
   /** 这一家认得的模型名（账号页「默认模型」下拉的选项）；`null` ＝ 没考据过。 */
   models: string[] | null;
+  /** 消息流里说话的那一方叫什么（卡头 · 刻度悬停）：短名。 */
+  speakerName: string;
 };
 
 export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
@@ -38,6 +40,7 @@ export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
     hasAccounts: true,
     displayName: "Claude Code",
     models: ["sonnet", "opus", "haiku", "sonnet[1m]", "opusplan"],
+    speakerName: "Claude",
   },
   {
     agent: "codex",
@@ -50,11 +53,9 @@ export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
     hasAccounts: false,
     displayName: "Codex",
     models: null,
+    speakerName: "Codex",
   },
 ];
-
-/** 后端流式 watcher 跟的那一家（记录树那一家）—— `AGENT_PROFILE` 就是它那一份。 */
-export const ACTIVE_AGENT: string = "claude";
 
 /** 不说是哪一家时起的那一家（注册表里声明默认的那一家）：不给 agent 名字 ⇒ 就是它；给了表里没有的名字 ⇒ 拒。 */
 export const DEFAULT_AGENT: string = "claude";

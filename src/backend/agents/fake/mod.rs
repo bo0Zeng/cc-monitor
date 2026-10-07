@@ -117,6 +117,7 @@ pub(crate) const SESSION_NAME_PREFIX: &str = "fk";
 pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     adapter_id: AGENT_KIND,
     display_name: "Fake",
+    speaker_name: "Fake",
     default_launcher: DEFAULT_COMMAND,
     launcher_alias: None,
     resume_token: RESUME_TOKEN,

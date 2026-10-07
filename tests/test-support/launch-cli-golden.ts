@@ -8,7 +8,7 @@
  *
  * 住 `tests/test-support/`：期望里有整条命令（就地 resume 那一格外层的 `tmux send-keys`），而 `src/` 生产段零 shell 串（条 1）。
  */
-import { AGENT_PROFILE, DEFAULT_AGENT } from "../../src/frontend/ui/agent-profile.ts";
+import { DEFAULT_AGENT, defaultLauncherOf } from "../../src/frontend/ui/agent-profile.ts";
 import type { LaunchContext } from "../../src/frontend/ui/launch-types.ts";
 import { buildCliRenderRequest } from "../../src/frontend/ui/launch-cli-wire.ts";
 import {
@@ -71,7 +71,7 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
     ok: true, out: "ccm -- new --ccm-sid=sid-1 --ccm-agent claude --base" },
   { name: "自定义 launcher", caps: ALL_CAPS, ctx: base({ launcherOverride: "mycc" }),
     ok: true, out: "ccm -- new --ccm-agent claude --base --launcher mycc" },
-  { name: "launcher 等于默认 ⇒ 不吐 --launcher", caps: ALL_CAPS, ctx: base({ launcherOverride: AGENT_PROFILE.defaultLauncher }),
+  { name: "launcher 等于默认 ⇒ 不吐 --launcher", caps: ALL_CAPS, ctx: base({ launcherOverride: defaultLauncherOf(DEFAULT_AGENT) }),
     ok: true, out: "ccm -- new --ccm-agent claude --base" },
   { name: "attach（不起 agent，不收修饰）", caps: ALL_CAPS, ctx: base({
       action: { kind: "attach", name: "cc-foo" },
@@ -138,7 +138,7 @@ export function renderCliGoldenFixture(): string {
   return `${JSON.stringify(
     {
       _: "由 tests/test-support/launch-cli-golden.ts 生成，勿手改。重生成：npm run gen:cli-golden",
-      defaultLauncher: AGENT_PROFILE.defaultLauncher,
+      defaultLauncher: defaultLauncherOf(DEFAULT_AGENT),
       cases: CLI_GOLDEN_CASES.map((c) => ({
         name: c.name,
         // `req` 由生产代码构造（`buildCliRenderRequest`）：字段名 · `deny_unknown_fields` · 映射臂 · 请求构造漏没漏字段一次覆盖。

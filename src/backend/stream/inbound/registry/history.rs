@@ -252,6 +252,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         doc_anchor: Some("#### `history-facts`"),
         codes: &["bad_args", "failed", "too_large"],
         fields: &[
+            "agent",
             "end",
             "forkedFrom",
             "path",

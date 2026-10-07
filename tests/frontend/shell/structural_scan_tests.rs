@@ -4390,12 +4390,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ), // 记录解释进后端 / 会话正文四条退役，点旧名
         (
-            "src/frontend/ui/cards/index.ts",
-            "codex_sid_from_rollout",
-            1,
-        ), // 记录解释进后端 / 会话正文四条退役，点旧名
-        ("src/frontend/ui/cards/index.ts", "kind_of_record_name", 1), // 记录解释进后端 / 会话正文四条退役，点旧名
-        (
             "tests/backend/observe/record_page_tests.rs",
             "parse_for_kind_dispatches_claude_and_codex",
             1,
@@ -5091,7 +5085,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/agents/codex/record.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/comms/inward/origin.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/frontend/shell/src/utils.rs", 1), // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
-        ("src/frontend/ui/cards/index.ts", 2), // 1 → 2：结果默认怎么画的那个谓词（`defaultModeForTool`）删了，卡型随记录成品带来 // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
+        ("src/frontend/ui/cards/index.ts", 1), // 2 → 1：卡头按文件名猜家那一段（点 `codex_sid_from_rollout` · `kind_of_record_name` 的墓碑）随「会话是哪一家由后端说」删了 // 1 → 2：结果默认怎么画的那个谓词（`defaultModeForTool`）删了，卡型随记录成品带来 // 新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         // `src/frontend/ui/record-reads.ts` 那一行摘了：头注里点旧命令名的那一句改成说它做什么（按目录读子 agent 那一条整轴退役），不再提那个名字。
         // `tests/backend/agents/claudecode/parse_tests.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
         (

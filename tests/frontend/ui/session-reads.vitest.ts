@@ -199,6 +199,7 @@ describe("〔STC〕第五问：会话事实", () => {
       forkedFrom: "src-0",
       touchedFiles: ["/w/a.ts"],
       usage: { promptTokens: 6, model: "m-g", peakPromptTokens: 6, limit: 1_000_000, limitFrom: "assumed" },
+      agent: "claude",
       projectDir: "/g/proj",
       writers: [],
       pending: [

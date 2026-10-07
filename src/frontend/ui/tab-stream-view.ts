@@ -11,6 +11,7 @@
  * 三个静态常量的类名换成本类。`replay-tail-keep.vitest.ts` 按原文抽 `MATERIALIZE_TAIL_K` 与
  * `MATERIALIZE_ROUNDS_PER_CALL`（原先是 `materializeUntilFilled` 循环里的字面量 `4`）对拍 Rust 侧的 `REPLAY_TAIL_KEEP`。
  */
+import { speakerNameOf } from "./agent-profile";
 import { MessageStream } from "./stream";
 import { reconcilePendingToolResults, type RenderContext } from "./cards";
 import { BranchFolder } from "./branch-fold";
@@ -285,6 +286,7 @@ export class TabStreamView {
     const turnRail = new TurnRail(streamEl, stream.contentElement, {
       turns: () => turnFold.all,
       waiting: () => this.store.tabs.get(sessionId)?.needs != null,
+      speaker: () => speakerNameOf(this.store.tabs.get(sessionId)?.agent ?? null),
       jump: (uuid) => void this.jumpInTab(sessionId, streamEl, uuid),
     });
     turnFold.onTurns = () => turnRail.render();
@@ -516,6 +518,7 @@ export class TabStreamView {
       // 切块场景下，老块的 tool_use 现在已渲染 → 重试匹配早到的 fallback result
       const ctx: RenderContext = {
         parentPath: t.parentPath,
+        speaker: speakerNameOf(t.agent),
         origin: t.origin,
         toolUseNames: t.toolUseNames,
         toolUseElements: t.toolUseElements,
@@ -641,6 +644,7 @@ export class TabStreamView {
 
     const ctx: RenderContext = {
       parentPath: tab.parentPath,
+      speaker: speakerNameOf(tab.agent),
       origin: tab.origin,
       toolUseNames: tab.toolUseNames,
       toolUseElements: tab.toolUseElements,
@@ -824,6 +828,7 @@ export class TabStreamView {
     if (payloads.length === 0) return;
     const ctx: RenderContext = {
       parentPath: tab.parentPath,
+      speaker: speakerNameOf(tab.agent),
       origin: tab.origin,
       toolUseNames: tab.toolUseNames,
       toolUseElements: tab.toolUseElements,

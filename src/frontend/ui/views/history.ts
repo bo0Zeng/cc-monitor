@@ -879,6 +879,7 @@ export class HistoryView {
       displayTitle: labelOf(r),
       head: this.headOf(r),
       origin: r.origin ?? LOCAL_ORIGIN,
+      agent: r.agent,
       cwd: r.projectPath,
       scrollToUuid: jumpTo,
       suppressBranch: !r.can.fork,

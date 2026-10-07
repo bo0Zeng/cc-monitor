@@ -17,6 +17,8 @@ export interface FactsChange {
   touchedFiles: boolean;
   usage: boolean;
   projectDir: boolean;
+  /** 是哪一家那一格到了 / 变了（卡头那一家的名字要补上）。 */
+  agent: boolean;
   writers: boolean;
   /** 需要你那一格变了。 */
   needs: boolean;
@@ -47,6 +49,9 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
   const projectDir = f.projectDir !== null && f.projectDir !== tab.projectDir;
   if (projectDir) tab.projectDir = f.projectDir;
 
+  const agent = f.agent !== null && f.agent !== tab.agent;
+  if (agent) tab.agent = f.agent;
+
   const writers = tab.writers.length !== f.writers.length || tab.writers.some((p, i) => p !== f.writers[i]);
   tab.writers = [...f.writers];
 
@@ -56,5 +61,5 @@ export function applyFacts(tab: Tab, f: SessionFacts): FactsChange {
   tab.pending = f.pending;
   tab.lastSay = f.lastSay;
 
-  return { forkedFrom, touchedFiles, usage, projectDir, writers, needs, peek };
+  return { forkedFrom, touchedFiles, usage, projectDir, agent, writers, needs, peek };
 }
