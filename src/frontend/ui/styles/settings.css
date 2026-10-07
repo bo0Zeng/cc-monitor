@@ -2908,10 +2908,10 @@ body.settings-window-mode .settings-panel {
   margin-left: var(--space-3);
   padding: 0 var(--space-3);
   border: 1px solid var(--border-medium);
-  border-radius: 9px;
+  border-radius: var(--radius-l);
   color: var(--text-2);
   font-family: var(--font-base);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 .prof-chip.fn {
   border-color: color-mix(in srgb, var(--warn) 55%, transparent);

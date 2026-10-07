@@ -495,14 +495,12 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "身份戳正则（构建期常量拼的）",
     ),
-    // 〔§47〕订正：词本身**是判了的** —— 渲染只经 `account_aliases::render`，它先过 `check_alias`（拒控制字符 · `arg_is_passable` · 旗表闭集），
-    //   不过的那一条进 `problems`、不渲。那道拒绝集收的是全部控制字符（比 NUL / CR / LF 宽一点，既有、没放松）。
-    // 别名那一族进了那台后端（`assets/aliases/`），这一行跟着换住址，判法一字没变。
-    // 方言再搬一次：进后端 OS 适配层（`platform/shell/`），判法一字没变。
+    // 别名文件里每条只有名字（`名字() { ccm @名字 "$@"; }`），规则住配置文件；名字先过 `profile::name_ok`
+    //   （两种 shell 都认得的命令名 `[A-Za-z_][A-Za-z0-9_]*`），过不了的那一段不进别名文件。
     (
         "src/backend/platform/shell/dialect.rs",
         1,
-        &[("src/backend/assets/aliases/mod.rs", "check_alias")],
+        &[("src/backend/assets/aliases/profile.rs", "name_ok")],
         "",
         "我们那份别名文件的路径",
     ),

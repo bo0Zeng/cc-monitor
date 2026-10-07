@@ -18,8 +18,8 @@ import type { Origin } from "./ipc/origin";
 /** 配置文件变了的那一种流（与 Rust `event_replay.rs::PROFILES_CHANGED_KIND` 同一个串）。 */
 export const PROFILES_CHANGED_KIND = "profiles-changed";
 
-export type AccountPick = { kind: "named"; name: string } | { kind: "base" };
-export type TmuxMode = "auto" | "named" | "base";
+export type AccountPick = { kind: "account"; name: string } | { kind: "base" };
+export type TmuxMode = "auto" | "fixed" | "base";
 export interface TmuxPick {
   mode: TmuxMode;
   name: string;
@@ -157,13 +157,13 @@ function decodeForm(v: unknown): ProfileForm {
   if (v.account !== null) {
     const a = v.account;
     if (isObj(a) && a.kind === "base" && sameKeys(a, ["kind"])) account = { kind: "base" };
-    else if (isObj(a) && a.kind === "named" && sameKeys(a, ["kind", "name"]) && typeof a.name === "string") account = { kind: "named", name: a.name };
+    else if (isObj(a) && a.kind === "account" && sameKeys(a, ["kind", "name"]) && typeof a.name === "string") account = { kind: "account", name: a.name };
     else throw bad();
   }
   let tmux: TmuxPick | null = null;
   if (v.tmux !== null) {
     const t = v.tmux;
-    if (!isObj(t) || !sameKeys(t, ["mode", "name"]) || typeof t.name !== "string" || (t.mode !== "auto" && t.mode !== "named" && t.mode !== "base")) throw bad();
+    if (!isObj(t) || !sameKeys(t, ["mode", "name"]) || typeof t.name !== "string" || (t.mode !== "auto" && t.mode !== "fixed" && t.mode !== "base")) throw bad();
     tmux = { mode: t.mode, name: t.name };
   }
   let cwdIf: CwdCase[] | null = null;

@@ -95,7 +95,7 @@ fn read_gives_each_section_its_own_items_with_lines_and_the_shared_labels() {
         copy_text("beProfile.said.slot", &[("label", &label), ("val", "b")])
     );
     // 表单回填：自己写的那几格有值，没写的继承（null）。
-    assert_eq!(b["form"]["account"], json!({"kind": "named", "name": "b"}));
+    assert_eq!(b["form"]["account"], json!({"kind": "account", "name": "b"}));
     assert!(b["form"]["tmux"].is_null());
     let p = prof(&r, "pcc");
     assert_eq!(p["form"]["account"], json!({"kind": "base"}));
@@ -227,7 +227,7 @@ fn impact_names_only_the_children_whose_merged_result_changes_with_before_and_af
     let t = tmp("impact", Some(BOOK));
     let r = answer_impact(
         &t.door(),
-        &json!({"changes": [{"op": "set", "was": "cct", "form": {"name": "cct", "from": "cc", "tmux": {"mode": "named", "name": "work"}}}]}),
+        &json!({"changes": [{"op": "set", "was": "cct", "form": {"name": "cct", "from": "cc", "tmux": {"mode": "fixed", "name": "work"}}}]}),
     )
     .unwrap();
     let names: Vec<&str> = r["affected"]
@@ -275,7 +275,7 @@ fn write_set_changes_only_that_section_and_keeps_hand_comments() {
     let t = tmp("set", Some(BOOK));
     write(
         &t,
-        json!([{"op": "set", "was": "betacct", "form": {"name": "betacct", "from": "cct", "account": {"kind": "named", "name": "q"}}}]),
+        json!([{"op": "set", "was": "betacct", "form": {"name": "betacct", "from": "cct", "account": {"kind": "account", "name": "q"}}}]),
     )
     .unwrap();
     let now = t.text();
@@ -356,7 +356,7 @@ fn a_write_may_fix_the_broken_section_but_may_not_break_another() {
     // 改坏的那一段：按条目改会覆盖那一项 ⇒ 存了就修好。
     write(
         &t,
-        json!([{"op": "set", "was": "betacct", "form": {"name": "betacct", "from": "cct", "account": {"kind": "named", "name": "b"}}}]),
+        json!([{"op": "set", "was": "betacct", "form": {"name": "betacct", "from": "cct", "account": {"kind": "account", "name": "b"}}}]),
     )
     .unwrap();
     assert!(

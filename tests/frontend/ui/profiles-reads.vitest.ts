@@ -50,7 +50,7 @@ describe("profiles-* 五问的成品按金样严格收", () => {
     const rows = book.profiles as Record<string, unknown>[];
     expect(() => decodeBook({ ...book, profiles: [{ ...rows[0], kind: "alias" }] })).toThrow(ReplyUnreadable);
     const form = rows[0].form as Record<string, unknown>;
-    expect(() => decodeBook({ ...book, profiles: [{ ...rows[0], form: { ...form, account: { kind: "named" } } }] })).toThrow(ReplyUnreadable);
+    expect(() => decodeBook({ ...book, profiles: [{ ...rows[0], form: { ...form, account: { kind: "account" } } }] })).toThrow(ReplyUnreadable);
   });
 
   it("那台说 stale ⇒ ProfilesStale；别的拒绝是普通的错", async () => {

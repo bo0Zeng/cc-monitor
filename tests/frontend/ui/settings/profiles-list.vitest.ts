@@ -148,7 +148,7 @@ describe("buildProfilesList", () => {
     await flush();
     el.querySelector<HTMLButtonElement>('[data-role="save"]')!.click();
     await flush();
-    expect(writes).toEqual([{ changes: [{ op: "set", was: "cct", form: { ...form("cct", "cc"), account: { kind: "named", name: "z" } } }], fingerprint: "fp-1" }]);
+    expect(writes).toEqual([{ changes: [{ op: "set", was: "cct", form: { ...form("cct", "cc"), account: { kind: "account", name: "z" } } }], fingerprint: "fp-1" }]);
     expect(el.querySelector('[data-role="profile-form"]')).toBeNull();
   });
 

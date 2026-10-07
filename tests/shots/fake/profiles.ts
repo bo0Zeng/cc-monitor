@@ -83,9 +83,9 @@ function summary(p: P): string {
 function formOf(p: P): Record<string, unknown> {
   const f: Record<string, unknown> = { name: p.name, from: p.from, account: null, tmux: null, cwdIf: null, cwd: null, agent: null, args: null, launcher: null, tmuxSize: null, detach: false, busRegister: false, busNote: null };
   for (const o of p.own) {
-    if (o.key === "account") f.account = { kind: "named", name: o.vals[0] };
+    if (o.key === "account") f.account = { kind: "account", name: o.vals[0] };
     if (o.key === "base") f.account = { kind: "base" };
-    if (o.key === "ccm-tmux") f.tmux = o.vals.length ? { mode: "named", name: o.vals[0] } : { mode: "auto", name: "" };
+    if (o.key === "ccm-tmux") f.tmux = o.vals.length ? { mode: "fixed", name: o.vals[0] } : { mode: "auto", name: "" };
     if (o.key === "cwd-if") f.cwdIf = [{ at: o.vals[0], to: o.vals[1] }];
     if (o.key === "cwd") f.cwd = o.vals[0];
     if (o.key === "ccm-agent") f.agent = o.vals[0];
@@ -97,7 +97,7 @@ function formOf(p: P): Record<string, unknown> {
 function ownOfForm(f: Record<string, unknown>): Item[] {
   const out: Item[] = [];
   const a = f.account as { kind: string; name?: string } | null;
-  if (a?.kind === "named") out.push(item("account", [a.name ?? ""], 0));
+  if (a?.kind === "account") out.push(item("account", [a.name ?? ""], 0));
   if (a?.kind === "base") out.push(item("base", [], 0));
   const t = f.tmux as { mode: string; name: string } | null;
   if (t) out.push(item("ccm-tmux", t.mode === "auto" ? [] : [t.name], 0));

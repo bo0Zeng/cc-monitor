@@ -166,7 +166,7 @@ function startSlot(f: ProfileForm, s: SlotId, accounts: readonly string[]): Prof
   const n = { ...f };
   switch (s) {
     case "account":
-      n.account = accounts.length ? { kind: "named", name: accounts[0] } : { kind: "base" };
+      n.account = accounts.length ? { kind: "account", name: accounts[0] } : { kind: "base" };
       break;
     case "tmux":
       n.tmux = { mode: "auto", name: "" };
@@ -205,9 +205,9 @@ const SLOT_LABEL: Record<SlotId, () => string> = {
  * （`tests/frontend/ui/settings/machine-aliases-naming.vitest.ts` 读后端原文，两向相等），说明里「依次试」出现 ⇔ 它为真。
  */
 // ⚠ `text` 是取文函数：模块顶层调 `copyText` 会让打包器把本模块挪进主窗口也要的共享块。
-export const TMUX_NAMING: Record<"auto" | "named" | "base", { stepsAside: boolean; text: () => string }> = {
+export const TMUX_NAMING: Record<"auto" | "fixed" | "base", { stepsAside: boolean; text: () => string }> = {
   auto: { stepsAside: true, text: () => copyText("machineAliases.tmuxNaming.auto") },
-  named: { stepsAside: false, text: () => copyText("machineAliases.tmuxNaming.named") },
+  fixed: { stepsAside: false, text: () => copyText("machineAliases.tmuxNaming.named") },
   base: { stepsAside: true, text: () => copyText("machineAliases.tmuxNaming.base") },
 };
 
@@ -840,9 +840,9 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
         return b;
       };
       seg.appendChild(chip(copyText("profilesPage.form.inheritChip"), f.account === null, () => ({ ...f, account: null })));
-      const named = f.account?.kind === "named" ? f.account.name : null;
+      const named = f.account?.kind === "account" ? f.account.name : null;
       const names = named && !accounts.includes(named) ? [...accounts, named] : accounts;
-      for (const a of names) seg.appendChild(chip(a, named === a, () => ({ ...f, account: { kind: "named", name: a } })));
+      for (const a of names) seg.appendChild(chip(a, named === a, () => ({ ...f, account: { kind: "account", name: a } })));
       seg.appendChild(chip(copyText("beProfile.val.base"), f.account?.kind === "base", () => ({ ...f, account: { kind: "base" } })));
       cell.appendChild(seg);
       if (f.account === null) cell.appendChild(el("div", "prof-inh", inherited(s)));
@@ -863,7 +863,7 @@ export function buildProfilesList(opts: ProfilesListSpec): ProfilesList {
       const sel = el("select", "settings-input");
       for (const [v, label] of [
         ["auto", copyText("beProfile.val.tmuxAuto")],
-        ["named", copyText("profilesPage.form.tmuxNamed")],
+        ["fixed", copyText("profilesPage.form.tmuxNamed")],
         ["base", copyText("profilesPage.form.tmuxBase")],
       ] as const) {
         const o = el("option", "", label);

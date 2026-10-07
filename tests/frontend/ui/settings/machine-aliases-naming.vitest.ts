@@ -15,9 +15,9 @@ import { copyText } from "../../../../src/frontend/ui/copy-table";
 const PLAN_RS = readFileSync(resolve(__dirname, "../../../../src/backend/control/ccm/plan.rs"), "utf8");
 
 /** 后端三条取名路的锚（逐字取自 `plan.rs::build`；各必须恰好一处，否则判据够不着被测对象）。 */
-const PATHS: Array<{ mode: "auto" | "named" | "base"; anchor: RegExp }> = [
+const PATHS: Array<{ mode: "auto" | "fixed" | "base"; anchor: RegExp }> = [
   { mode: "base", anchor: /\(o\.tmux_base\.clone\(\), (true|false)\)/g },
-  { mode: "named", anchor: /\(o\.tmux_name\.clone\(\), (true|false)\)/g },
+  { mode: "fixed", anchor: /\(o\.tmux_name\.clone\(\), (true|false)\)/g },
   { mode: "auto", anchor: /\(derive_tmux_name\(&cwd\), (true|false)\)/g },
 ];
 
@@ -89,7 +89,7 @@ describe("D1 · tmux 四选的说明与后端退让规则同一张表", () => {
     change.click();
     const sel = () => list.element.querySelector<HTMLSelectElement>('[data-role="tmux"]')!;
     expect(sel(), "找不到 tmux 那个下拉").toBeTruthy();
-    for (const v of ["auto", "named", "base"] as const) {
+    for (const v of ["auto", "fixed", "base"] as const) {
       const o = [...sel().options].find((x) => x.value === v)!;
       expect(o.title).toBe(TMUX_NAMING[v].text());
       sel().value = v;

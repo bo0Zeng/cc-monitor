@@ -126,7 +126,7 @@ pub(crate) fn said_of(f: Option<&str>, vals: &[String]) -> String {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) enum AccountPick {
-    Named { name: String },
+    Account { name: String },
     Base,
 }
 
@@ -136,8 +136,8 @@ pub(crate) enum AccountPick {
 pub(crate) enum TmuxMode {
     /// tmux，名字自动取。
     Auto,
-    /// tmux，就用这个名。
-    Named,
+    /// tmux，就用这个名（撞了不让）。
+    Fixed,
     /// tmux，以这个名为底取名（撞了换一个）。
     Base,
 }
@@ -205,7 +205,7 @@ pub(crate) fn edit_of_form(f: &ProfileForm) -> Result<ProfileEdit, String> {
         }
     };
     match &f.account {
-        Some(AccountPick::Named { name }) if !name.trim().is_empty() => {
+        Some(AccountPick::Account { name }) if !name.trim().is_empty() => {
             ccm.extend([flag::ACCOUNT.to_string(), name.trim().to_string()])
         }
         Some(AccountPick::Base) => ccm.push(flag::BASE.to_string()),
@@ -215,7 +215,7 @@ pub(crate) fn edit_of_form(f: &ProfileForm) -> Result<ProfileEdit, String> {
         let n = t.name.trim();
         match t.mode {
             TmuxMode::Auto => ccm.push(flag::TMUX.to_string()),
-            TmuxMode::Named if !n.is_empty() => ccm.push(format!("{}={n}", flag::TMUX)),
+            TmuxMode::Fixed if !n.is_empty() => ccm.push(format!("{}={n}", flag::TMUX)),
             TmuxMode::Base if !n.is_empty() => {
                 ccm.extend([flag::TMUX_BASE.to_string(), n.to_string()])
             }
@@ -264,7 +264,7 @@ pub(crate) fn form_of(p: &Profile) -> ProfileForm {
     for (fl, vals) in words_of(p) {
         let one = || vals.first().cloned().unwrap_or_default();
         match fl {
-            flag::ACCOUNT => f.account = Some(AccountPick::Named { name: one() }),
+            flag::ACCOUNT => f.account = Some(AccountPick::Account { name: one() }),
             flag::BASE => f.account = Some(AccountPick::Base),
             flag::TMUX if vals.is_empty() => {
                 f.tmux = Some(TmuxPick {
@@ -274,7 +274,7 @@ pub(crate) fn form_of(p: &Profile) -> ProfileForm {
             }
             flag::TMUX => {
                 f.tmux = Some(TmuxPick {
-                    mode: TmuxMode::Named,
+                    mode: TmuxMode::Fixed,
                     name: one(),
                 })
             }
