@@ -293,122 +293,73 @@ describe("S30 ⑥ transition 只许动白名单里那几个属性（件 9）", (
 // ───────────────── ⑦ `hidden` 与 `display` 不许同框（约定 1 · 件 7）─────────────────
 
 /**
- * **静态解析不出类名的 `.hidden =` 处**，逐处登记。
+ * **静态解析不出类名的 `.hidden =` 处**，按「文件::接收者表达式」登记（同一份文件里切同一个元素的几处是一格；不认行号）。
  *
- * 为什么要登记而不是跳过：跳过 ＝「扫不到就绿」。这三处今天真的推不出来，
- * 但**多一处少一处都要有人看见** —— 多出来的多半是词法器又错位了。
+ * 为什么要登记而不是跳过：跳过 ＝「扫不到就绿」。多出一个推不出的元素要有人看见 —— 多出来的多半是词法器又错位了。
  */
 const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
-  // 主窗口会话内查找面板（`sf.<类>` 是 CSS Modules 的哈希名，推不出；这几类都不写 `display`）。
-  "src/frontend/ui/views/session-find.ts:74": "面板本体 `this.box`（`s.sfPanel`）—— 建时收起",
-  "src/frontend/ui/views/session-find.ts:134": "同上 —— 打开",
-  "src/frontend/ui/views/session-find.ts:142": "同上 —— 收起",
-  "src/frontend/ui/views/session-find.ts:169": "「搜索」那一页 `this.searchPane`（`s.sfSearch`）—— 切到「大纲」时收起",
-  "src/frontend/ui/views/session-find.ts:170":
-    "`this.outline.panel` —— 大纲清单那块，由 `UserInputPanel` 建（类 `.user-inputs`；`styles.css` 里那条规则头注逐字「绝不许出现 display」）",
-  // 扩展页的抽屉：`this.drawer` 在构造器里由本文件的 `el()` 小工具建（类 `ext-drawer`，经一层参数传进去 ⇒ 推不出；行号按文件现数）；
-  //   `.ext-drawer` 在 `styles/settings.css` 里**没有 display 规则** ⇒ UA 的 `[hidden]` 不会被压过（人工核过）。
-  // 228/338 → 229/339：上方多一行 import（「在文件夹中显示」）。
-  // 229/339 → 230/340：「装到…」那张卡多记一格填的值。
-  "src/frontend/ui/settings/ext-section.ts:230": "`this.drawer` —— 构造时收起",
-  "src/frontend/ui/settings/ext-section.ts:340": "`this.drawer` —— 点开一行才拉出来",
-  // 通用组件（`kit/`）：类名是 CSS Modules 的哈希名（`s.<类>`），静态推不出；那几个类都不写 `display`。
-  "src/frontend/ui/settings/machine-state.ts:173":
-    "`el` 是调用方交进来的问题行（列表那一行与卡头各一个 `.machine-problem`，跨文件）；`settings.css` 里 `.machine-problem[hidden] { display: none }` 人工核过",
-  "src/frontend/ui/kit/dialog.ts:224": "填值框的错误句 `err`（`s.error`）—— 开时收起",
-  "src/frontend/ui/kit/dialog.ts:231": "同上 —— 校验不过时出现",
-  "src/frontend/ui/kit/dialog.ts:238": "同上 —— 重新输入时收起",
-  "src/frontend/ui/kit/dock.ts:146": "底部抽屉网格那一格 `this.el`（`s.dockSlot`，自己不写 display；竖排的 flex 在里层 `s.dock`）—— 收着时 hidden",
-  "src/frontend/ui/kit/fold.ts:46": "折叠块正文 `body`（`s.body`）",
-  // 只读查看器（历史页右边）：CSS Modules 的哈希名（`sv.<类>`）推不出；这几类都不写 `display`（kit 骨架自己写了 display ⇒ 包一层再切）。
-  "src/frontend/ui/find-strip.ts:297": "会话内查找的命中清单 `strip`（`s.fsStrip`）—— 它写了 display:flex，CSS 里另有 `.fsStrip[hidden]` 收住",
-  "src/frontend/ui/find-strip.ts:352": "命中行下那一句 `row.state`（`s.fsState`）—— 它写了 display:flex，CSS 里另有 `.fsState[hidden]` 收住",
-  "src/frontend/ui/find-strip.ts:387": "同上 —— 建时收起",
-  // 起会话之后的占位标签页（`launch-slot.ts`）：那一页 `this.panel`（`s.slotPanel`，CSS Modules 的哈希名推不出；它不写 display，CSS 里另有 `.slotPanel[hidden]` 收住）。
-  "src/frontend/ui/launch-slot.ts:92": "占位标签页那一页 `this.panel`（`s.slotPanel`）—— 建时收起",
-  "src/frontend/ui/launch-slot.ts:129": "同上 —— 切回真的标签页时收起",
-  "src/frontend/ui/launch-slot.ts:162": "同上 —— 点到 / 新长出一个占位标签页时出现",
-  // 起新会话框（`new-session.ts`）：CSS Modules 的哈希名（`s.<类>`）推不出；写了 display 的那几类（`nsRow` · `nsNote` · `nsPlace`）CSS 里各有一条 `[hidden]` 收住。
-  "src/frontend/ui/new-session.ts:152": "一格下那一行说明 / 错误 `note`（`s.nsNote`）—— 建时收起",
-  "src/frontend/ui/new-session.ts:157": "同上 —— 有话才出",
-  "src/frontend/ui/new-session.ts:261": "「agent」那一行 `agentRow.root`（`s.nsRow`）—— 建时收起（那台能起的多于一家才出）",
-  "src/frontend/ui/new-session.ts:269": "「账号」那一行 `accountRow.root`（`s.nsRow`）—— 建时收起",
-  "src/frontend/ui/new-session.ts:351": "「tmux 里」那一张单选 `tmuxRadio.label`（`s.nsPlace`）—— 那台没 tmux 时收起",
-  "src/frontend/ui/new-session.ts:359": "「tmux 会话名」那一行 `tmuxRow.root`（`s.nsRow`）—— 放在终端窗口时收起",
-  "src/frontend/ui/new-session.ts:364": "「agent」那一行 —— 那台能起的只有一家时收起",
-  "src/frontend/ui/new-session.ts:372": "「账号」那一行 —— 那一家没有账号这一维 / 那台没开多账号时收起",
-  "src/frontend/ui/views/session-viewer.ts:319": "头下那一条 `bannerEl`（`sv.svBanner`）—— 没有错误条时收起",
-  "src/frontend/ui/views/session-viewer.ts:324": "读取中的骨架外层 `loadingEl`（`sv.svLoading`）",
-  "src/frontend/ui/views/session-viewer.ts:329": "「你说过的话」清单 `this.said.panel` —— 由 `UserInputPanel` 建（类 `.user-inputs`，`styles.css` 那条规则头注逐字「绝不许出现 display」）",
-  "src/frontend/ui/views/session-viewer.ts:738": "「↓ 新内容」`newPill`（kit 按钮 ＋ `sv.svPill`）—— kit 按钮写了 display，CSS 里另有 `.svPill[hidden]` 收住",
-  "src/frontend/ui/views/session-viewer.ts:1073": "同上 —— 建时收起",
-  "src/frontend/ui/views/session-viewer.ts:904": "工具行 `toolsEl`（`sv.svTools`）—— 窗口那一形 Ctrl+F 才露；它写了 display:flex，CSS 里另有 `.svTools[hidden]` 收住",
-  "src/frontend/ui/views/session-viewer.ts:1092": "同上 —— 窗口那一形建时收起",
-  "src/frontend/ui/views/session-viewer.ts:1091": "头 `head`（`sv.svHead`）—— 窗口那一形不画（细顶栏担）；它写了 display:flex，CSS 里另有 `.svHead[hidden]` 收住",
-  "src/frontend/ui/kit/toast.ts:209": "合流计数 `same.countEl`（`s.count`）—— 合进第二条时出现",
-  "src/frontend/ui/kit/toast.ts:228": "同上 —— 建时收起",
-  "src/frontend/ui/status-messages.ts:43": "「消息」那一枚右上的琥珀点 `this.dot`（`s.smDot`）—— 建时收起；CSS 里另有 `.smDot[hidden]` 收住",
-  "src/frontend/ui/status-messages.ts:58": "同上 —— 有没看过的出错提示时出现",
-  // ⚠ `606 → 614`：我在这份文件上方加了一段注释，**行号就漂了**。
-  //    这条登记按**裸行号**做键 —— 那是它的固有脆弱：住址没变、内容没变，只因为
-  //    上面多了几行就要来改一次。纪律 4 说的是同一件事
-  //    （「按位置认的针」在搬动面前是结构性盲区）。
-  //    ⇒ 本条**不改成按内容认**：那要重写抽取器的键，跨出本轮射程；
-  //      如实记在这里，等哪一轮真动这张表时一并收。
-  // ⚠ `614 → 662`：又漂了一次，原因同上（本轮在 `panel.ts`
-  //    上游加了字段与注释）。**住址没变、内容没变**，只是行号跟着挪。
-  // ⚠ `662 → 668` / `1085 → 1091` / `1092 → 1098`：**又漂了一次**，
-  //    原因同上 —— 本轮在 `panel.ts` 上游加了一行 import ＋ 建面板时多挂了一条常驻条
-  //    （「配置里有不认识的键」那条）。**住址没变、内容没变**，只是行号跟着挪；
-  //    三处逐处现打核过（`b.el` / 两处 `perMachineFallbackHint`），语义一字未动。
-  // ⚠ `668 → 791` / `1091 → 1250` / `1098 → 1259`：**又漂了一次**，原因同上 ——
-  //    本轮在 `panel.ts` 上游加了延后加载（`loadableBlock`）与关窗接管（`installWindowLifecycle` /
-  //    拦截条）。三处逐处现打核过：仍是 `b.el` 与两处 `perMachineFallbackHint`，语义一字未动。
-  // ⚠ `791 → 788` / `1250 → 1259` / `1259 → 1268`：**又漂了一次**，原因同上 ——
-  //    AL1 在 `panel.ts` 上游把 import 收成一行、per-machine 表里多挂「别名」一块、删「行为」组里那段别名挂载。
-  //    三处逐处现打核过：仍是 `b.el` 与两处 `perMachineFallbackHint`，语义一字未动。
-  // ⚠ 又漂了（多拍）：步 14 / 删顶层「改动足迹」/ 步 15 在 `panel.ts` 上游
-  //    改了 buildBody（后端四格寄居、应用下挂三个子页、漂移记账那块）。住址与语义一字未动，只是行号跟着挪；
-  //    三处照旧由脚本按「`b.el.hidden =` / 两处 `perMachineFallbackHint.hidden =`」现打。
-  // 这一批行号随 C4a 在同文件里加的 import（origin 判定那一行）各挪一两行，住址与语义一字未动。
-  // `802 → 792` / `1306 → 1288` / `1319 → 1301`：又漂了一次 ——「终端集成」一块并进「别名」，
-  //    `panel.ts` 上游删了它的 import / OS 门常量 / 挂载那几行与「不适用」替身。三处照旧是 `b.el` 与两处
-  //    `perMachineFallbackHint`，语义一字未动。
-  // `792 → 793` / `1288 → 1297` / `1301 → 1310`：`panel.ts` 多了资产目录那一行 import 与那一块登记，三处语义一字未动。
-  // 〔W5-UI ＋ CFG1 合并〕W5-UI 那三处 +4 与 CFG1 +3 叠加（`panel.ts` 785 → 792 · 1289 → 1296 · 1302 → 1309；`history.ts` 1612 → 1616），语义一字未动。原注：`785 → 789` / `1289 → 1293` / `1302 → 1306`：`panel.ts` 多一行 import（应用内对话框）＋ 选目录失败那处 catch 多三行出声，三处语义一字未动。
-  // 🔴 通用页「行为」「恢复」那几行存失败时的那一句（`saveBehavior` 的 `errorAt` 是参数：哪一行的那一句由调用方交进来，
-  //    这把尺子只走两跳推不出来）。那几句都挂 `settings-row-error`（`behaviorSwitch` / `buildResumeGroup` 建的），
-  //    `settings.css` 里那条规则只有颜色 · 字号 · 上边距，**没有 display** ⇒ `hidden` 不会被压过。人工核过。
-  "src/frontend/ui/settings/panel.ts:535": "`errorAt` —— 参数，类名 `settings-row-error` 由调用方建的那一句挂",
-  "src/frontend/ui/settings/panel.ts:541": "`errorAt` —— 同上（存失败那一支）",
-  "src/frontend/ui/settings/panel.ts:920": // −14：通用页那几格改开关、恢复命令收成一格 ·  +2：窗里一节冒泡上来的目的地照样落（监听两行） · +7：机器状态推送订阅 ＋ 比对指纹那一支 · // −5：修法的两颗收回机器卡 / 后端那几格 · +1 · +41：照状态成品画那台 ＋ 问题行的修法 · +11：「这台上的 cc-monitor」那一折的摘要与版本 · 设置窗照稿重排 · 设置窗照稿重排 · +4：重置外观那一问带标题与动作名 · // 行号 +11：主窗口翻行为开关之后同步那两个开关（监听 ＋ 摆值的私有方法） // 行号 +1：多一行 import（「直接敲的也走中转」那一块） // 行号 −1：钩子那一块的 import 删了 // 行号 −1：代码全景卸口那一块的 import 删了 // 〔合并扩展页 × 账号库〕按合并后的文件现打（扩展页 +2）· 账号库收进后端：−1（本机账号读口那一行 import 随「为每个账号加一条」删了）· 同上 · −7：逃生口 forceLaunchPayloadRenderer 那段缓存字段删了 · +35：openInner 拆出两个私有方法 · +2：多两行 import
-    "`b.el` —— `b` 来自 `this.perMachineBlocks` 数组，元素由各 section 自己建，跨文件",
-  // 🔴 兜底态那块提示的显隐。它的类名是
-  //    `skeleton.ts::makeSkeleton` 挂上去的（`settings-hint`），**跨文件** ——
-  //    这把尺子刻意只走两跳、不跨文件，所以推不出来。
-  //    ⚠ 顺带说清它安不安全：`settings-hint` 在 `src/frontend/ui/styles.css` 里**没有 display 规则**
-  //      ⇒ UA 的 `[hidden] { display: none }` 不会被压过，那两句不是空写。
-  //      这一条是**人工核过的**，不是这把尺子判的 —— 所以它在登记表里，不在绿里。
-  "src/frontend/ui/settings/panel.ts:1431": // −4（同上） ·  +3（同上 ＋ 快捷键那一节挂锚点） · +7（同上） · // −5（同上） · +1 · +43（同上） · +13（同上） · 设置窗照稿重排 · 设置窗照稿重排 · +4（同上） · // 行号 +7（空白卡页不切机器那几行 ＋ 后端那几格的回调） // 行号 +11（同上） // 行号 +8：多一行 import ＋ 「终端」栏那一块登记七行 // 行号 −8：cc-bus 钩子那一块删了 // 行号 −7：import 一行 ＋ 全景卸口那一格六行删了 // 〔合并扩展页 × 账号库〕按合并后的文件现打（扩展页 −1）· 账号库收进后端：−2 · 行号 −6：字面量进表后几段多行拼接收成一行 · 再 −7（同上） · +1（别名管理器多传一行 origin） · +35 · +16：外观「高级」那一折 ＋ 全景卸口那一格 ＋ 认不出 OS 那一分支
-    "`this.perMachineFallbackHint` —— 类名由 `skeleton.ts::makeSkeleton` 挂，跨文件",
-  "src/frontend/ui/settings/panel.ts:1444": // −4（同上） ·  +3（同上） · +7（同上） · // −5（同上） · +1 · +43（同上） · +13（同上） · 设置窗照稿重排 · 设置窗照稿重排 · +4（同上） · // 行号 +7（同上） // 行号 +11（同上） // 行号 +8（同上） // 行号 −8（同上） // 行号 −7（同上） // 〔合并扩展页 × 账号库〕按合并后的文件现打（扩展页 −1）· 账号库收进后端：−2 · 同上 · −7 · +1 · +35 · +16
-    "`this.perMachineFallbackHint` —— 同上（兜底态亮出来那一支）",
-  // 🔴 「足迹」那一块里，本机那一整套的显隐包装。
-  //    它**刻意不挂任何类**：只负责显隐、不要样式。挂了类就得在 CSS 里给它写规则
-  //    （`css-ledger` 的两条棘轮会要求），而那条规则会是一句纯装饰。
-  //    ⇒ 没有类 ⇒ 不可能有「自己身上的裸 display」⇒ 这一格在构造上就是安全的。
-  // 漂移记账按机器分（这一拍只做本机）那两处（本机那一整套的包装 · 远端那一句）
-  // 随账按机器分一起退场：本机与远端同一套 DOM，这一块不再切任何显隐 ⇒ 两行删掉。
-  // 远端也有真栏之后，这个包装本机与远端都用；显隐切两处：`applyOriginGate`（摆出来）
-  //    与 `showUnanswered`（远端那台答不了时收起来）。同一个包装、同一个理由。
-  // 440/447 → 436/443：`readFootprint` 去掉那一道 `as unknown as`（命令签名本来就收 `{ origin }`），上移 4 行。
-  // 436/443 → 437/444：上方多一行 import（`$PROFILE` 备份改问本机后端），那一处本身没动。
-  // 415/422 → 419/426：上方 `expected_absent` 那一档（缺口 · 语气）多四行，那一处本身没动。
-  // 419/426 → 450/457：上方多三行 import 与每一行「去看看它」那颗按钮（`showButton`），那一处本身没动。
-  "src/frontend/ui/settings/config-surface-section.ts:450":
+  "src/frontend/ui/find-strip.ts::row.state":
+    "命中行下那一句 `row.state`（`s.fsState`）—— 它写了 display:flex，CSS 里另有 `.fsState[hidden]` 收住",
+  "src/frontend/ui/find-strip.ts::state":
+    "命中行下那一句（`s.fsState`，建时的局部名）—— 它写了 display:flex，CSS 里另有 `.fsState[hidden]` 收住",
+  "src/frontend/ui/find-strip.ts::this.strip":
+    "会话内查找的命中清单 `strip`（`s.fsStrip`）—— 它写了 display:flex，CSS 里另有 `.fsStrip[hidden]` 收住",
+  "src/frontend/ui/kit/dialog.ts::err":
+    "填值框的错误句 `err`（`s.error`）—— 开时收起",
+  "src/frontend/ui/kit/dock.ts::this.el":
+    "底部抽屉网格那一格 `this.el`（`s.dockSlot`，自己不写 display；竖排的 flex 在里层 `s.dock`）—— 收着时 hidden",
+  "src/frontend/ui/kit/fold.ts::body":
+    "折叠块正文 `body`（`s.body`）",
+  "src/frontend/ui/kit/toast.ts::countEl":
+    "合流计数（`s.count`，建时的局部名）—— 建时收起",
+  "src/frontend/ui/kit/toast.ts::same.countEl":
+    "合流计数 `same.countEl`（`s.count`）—— 合进第二条时出现",
+  "src/frontend/ui/launch-slot.ts::this.panel":
+    "占位标签页那一页 `this.panel`（`s.slotPanel`）—— 建时收起",
+  "src/frontend/ui/new-session.ts::accountRow.root":
+    "「账号」那一行 `accountRow.root`（`s.nsRow`）—— 建时收起",
+  "src/frontend/ui/new-session.ts::agentRow.root":
+    "「agent」那一行 `agentRow.root`（`s.nsRow`）—— 建时收起（那台能起的多于一家才出）",
+  "src/frontend/ui/new-session.ts::note":
+    "一格下那一行说明 / 错误 `note`（`s.nsNote`）—— 建时收起",
+  "src/frontend/ui/new-session.ts::tmuxRadio.label":
+    "「tmux 里」那一张单选 `tmuxRadio.label`（`s.nsPlace`）—— 那台没 tmux 时收起",
+  "src/frontend/ui/new-session.ts::tmuxRow.root":
+    "「tmux 会话名」那一行 `tmuxRow.root`（`s.nsRow`）—— 放在终端窗口时收起",
+  "src/frontend/ui/settings/config-surface-section.ts::this.localOnly":
     "那一整套的显隐包装（本机与远端都用），刻意不挂类名（没有类就不会有裸 display 压过 [hidden]）",
-  "src/frontend/ui/settings/config-surface-section.ts:457":
-    "同一个包装，远端那台答不了时收起来（`showUnanswered`）",
+  "src/frontend/ui/settings/ext-section.ts::this.drawer":
+    "`this.drawer` —— 构造时收起",
+  "src/frontend/ui/settings/machine-state.ts::el":
+    "`el` 是调用方交进来的问题行（列表那一行与卡头各一个 `.machine-problem`，跨文件）；`settings.css` 里 `.machine-problem[hidden] { display: none }` 人工核过",
+  "src/frontend/ui/settings/panel.ts::b.el":
+    "`b.el` —— `b` 来自 `this.perMachineBlocks` 数组，元素由各 section 自己建，跨文件",
+  "src/frontend/ui/settings/panel.ts::errorAt":
+    "`errorAt` —— 参数，类名 `settings-row-error` 由调用方建的那一句挂",
+  "src/frontend/ui/settings/panel.ts::this.perMachineFallbackHint":
+    "`this.perMachineFallbackHint` —— 类名由 `skeleton.ts::makeSkeleton` 挂，跨文件",
+  "src/frontend/ui/status-messages.ts::this.dot":
+    "「消息」那一枚右上的琥珀点 `this.dot`（`s.smDot`）—— 建时收起；CSS 里另有 `.smDot[hidden]` 收住",
+  "src/frontend/ui/views/session-find.ts::this.box":
+    "面板本体 `this.box`（`s.sfPanel`）—— 建时收起",
+  "src/frontend/ui/views/session-find.ts::this.outline.panel":
+    "`this.outline.panel` —— 大纲清单那块，由 `UserInputPanel` 建（类 `.user-inputs`；`styles.css` 里那条规则头注逐字「绝不许出现 display」）",
+  "src/frontend/ui/views/session-find.ts::this.searchPane":
+    "「搜索」那一页 `this.searchPane`（`s.sfSearch`）—— 切到「大纲」时收起",
+  "src/frontend/ui/views/session-viewer.ts::head":
+    "头 `head`（`sv.svHead`）—— 窗口那一形不画（细顶栏担）；它写了 display:flex，CSS 里另有 `.svHead[hidden]` 收住",
+  "src/frontend/ui/views/session-viewer.ts::this.bannerEl":
+    "头下那一条 `bannerEl`（`sv.svBanner`）—— 没有错误条时收起",
+  "src/frontend/ui/views/session-viewer.ts::this.loadingEl":
+    "读取中的骨架外层 `loadingEl`（`sv.svLoading`）",
+  "src/frontend/ui/views/session-viewer.ts::this.newPill":
+    "「↓ 新内容」`newPill`（kit 按钮 ＋ `sv.svPill`）—— kit 按钮写了 display，CSS 里另有 `.svPill[hidden]` 收住",
+  "src/frontend/ui/views/session-viewer.ts::this.said.panel":
+    "「你说过的话」清单 `this.said.panel` —— 由 `UserInputPanel` 建（类 `.user-inputs`，`styles.css` 那条规则头注逐字「绝不许出现 display」）",
+  "src/frontend/ui/views/session-viewer.ts::this.toolsEl":
+    "工具行 `toolsEl`（`sv.svTools`）—— 窗口那一形 Ctrl+F 才露；它写了 display:flex，CSS 里另有 `.svTools[hidden]` 收住",
+  "src/frontend/ui/views/session-viewer.ts::tools":
+    "工具行（`sv.svTools`，建时的局部名）—— 窗口那一形建时收起；它写了 display:flex，CSS 里另有 `.svTools[hidden]` 收住",
 } as const;
 
 /**
@@ -441,10 +392,10 @@ describe("S30 ⑦ 会被 hidden 切的元素，CSS 不许在它身上裸写 disp
   });
 
   it("解析不出类名的那几处 == 登记表（不许静默跳过）", () => {
-    const unresolved = sorted(HIDDEN.filter((h) => h.classes === null).map((h) => `${h.file}:${h.line}`));
+    const unresolved = sorted(new Set(HIDDEN.filter((h) => h.classes === null).map((h) => `${h.file}::${h.recv}`)));
     expect(
       unresolved,
-      "「静态推不出它挂的是哪个类」的处数变了。\n" +
+      "「静态推不出它挂的是哪个类」的元素变了。\n" +
         "  多出来的：要么那一处真的推不出（登记进 HIDDEN_UNRESOLVED，写清为什么）、\n" +
         "  要么词法器又错位了（第一版就因为只比最后一个标识符，把 `b.el` 认成了 `this.el`）。",
     ).toEqual(sorted(Object.keys(HIDDEN_UNRESOLVED)));
