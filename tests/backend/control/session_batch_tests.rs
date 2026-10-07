@@ -222,7 +222,7 @@ fn a_malformed_batch_is_refused_whole() {
         json!({ "sids": (0..=MAX_BATCH).map(|i| format!("s{i}")).collect::<Vec<_>>() }),
     ] {
         let e = rig.run(|d| stop(&bad, d)).unwrap_err();
-        assert_eq!(e.0, "invalid_args", "{bad}");
+        assert_eq!(e.0, "bad_args", "{bad}");
     }
     assert!(rig.calls.borrow().is_empty());
 }
@@ -727,6 +727,6 @@ fn fresh_terminal_and_fork_of_are_checked() {
         let (code, _) = rig
             .run(|d| start(&batch("tmux", false, vec![bad.clone()]), d))
             .unwrap_err();
-        assert_eq!(code, "invalid_args", "{bad}");
+        assert_eq!(code, "bad_args", "{bad}");
     }
 }

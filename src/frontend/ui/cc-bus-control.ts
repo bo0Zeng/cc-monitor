@@ -123,7 +123,7 @@ export async function agentOnline(origin: Origin, id: string): Promise<boolean> 
 function sendRefusals(id: string): Refusals {
   return refusalsByTable(
     {
-      invalid_args: (detail) => copyText("ccBus.send.invalidArgs", { id, detail }),
+      bad_args: (detail) => copyText("ccBus.send.invalidArgs", { id, detail }),
       bad_id: (detail) => copyText("ccBus.send.badId", { detail }),
       not_installed: (detail) => copyText("ccBus.send.notInstalled", { id, detail }),
       rejected: (detail) => copyText("ccBus.send.rejected", { id, detail }),
@@ -172,7 +172,7 @@ export async function sendMessage(origin: Origin, id: string, text: string): Pro
 function killRefusals(id: string): Refusals {
   return refusalsByTable(
     {
-      invalid_args: (detail) => copyText("ccBus.kill.invalidArgs", { id, detail }),
+      bad_args: (detail) => copyText("ccBus.kill.invalidArgs", { id, detail }),
       bad_id: (detail) => copyText("ccBus.kill.badId", { detail }),
       not_installed: (detail) => copyText("ccBus.kill.notInstalled", { id, detail }),
       timed_out: (detail) => copyText("ccBus.kill.timedOut", { id, detail }),
@@ -228,7 +228,7 @@ export function checkSpawnShape(req: SpawnRequest): void {
 function spawnRefusals(): Refusals {
   return refusalsByTable(
     {
-      invalid_args: (detail) => copyText("ccBus.spawn.invalidArgs", { detail }),
+      bad_args: (detail) => copyText("ccBus.spawn.invalidArgs", { detail }),
       bad_id: (detail) => copyText("ccBus.spawn.badId", { detail }),
       not_installed: (detail) => copyText("ccBus.spawn.notInstalled", { detail }),
       timed_out: (detail) => copyText("ccBus.spawn.timedOut", { detail }),
@@ -286,7 +286,7 @@ export async function spawnAgent(origin: Origin, req: SpawnRequest): Promise<str
 function broadcastRefusals(): Refusals {
   return refusalsByTable(
     {
-      invalid_args: (detail) => copyText("ccBus.broadcast.invalidArgs", { detail }),
+      bad_args: (detail) => copyText("ccBus.broadcast.invalidArgs", { detail }),
       not_installed: (detail) => copyText("ccBus.broadcast.notInstalled", { detail }),
       timed_out: (detail) => copyText("ccBus.broadcast.timedOut", { detail }),
       // 给的 `from` 形状不对（后端交给 `cc-send` 之前先判，一个人都没发）；后端原话说是哪个值。

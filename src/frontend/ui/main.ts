@@ -867,7 +867,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     onSessionStarted: (sessionId, meta) => {
       const had = tabs.hasTab(sessionId);
       // 没有就建骨架；已有（固定的 / 归档的）就对齐后端给的项目目录，再复活。
-      tabs.createSkeletonTab(sessionId, meta.projectDir || null, LOCAL_ORIGIN, meta.kind, meta.name);
+      tabs.createSkeletonTab(sessionId, meta.projectDir || null, LOCAL_ORIGIN, meta.background, meta.name);
       if (had) tabs.reviveTab(sessionId);
       // 本机骨架也在就绪点才到（与远端同一条路）⇒ 上次所在 tab 是本机会话时同样在这里补切。
       startup?.onAppeared(sessionId);
@@ -889,9 +889,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     onTasksChanged: (origin, sids, all) => tabs.refreshTasks(origin, sids, all),
     // 那台的额度账 / 某个会话的轮换变了 ⇒ 重问（`acct-center.ts`；画的那几处订 store）。
     onQuotaChanged,
-    // issue #23: 会话红绿灯（busy=绿 / idle·shell=红 / waiting=黄）
+    // 会话红绿灯（后端翻好的活动态）
     onSessionActivity: (e) =>
-      tabs.updateActivity(e.session_id, e.status, e.waiting_for),
+      tabs.updateActivity(e.session_id, e.activity, e.waiting_for),
     // Batch5-F18：远端会话宣告 → 骨架 Tab。附项目目录 / kind / name
     // ——骨架标题即时完整（bg → ⚙ ＋ 任务名；不再挂宿主排成树）；旧后端不给项目目录 ⇒ 标题退到 aiTitle / sid。
     onRemoteSessionAdded: (sessionId, origin, meta) => {
@@ -900,7 +900,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         sessionId,
         meta.projectDir || null,
         origin,
-        meta.kind,
+        meta.background,
         meta.name,
         meta.attachable, // E73
       );

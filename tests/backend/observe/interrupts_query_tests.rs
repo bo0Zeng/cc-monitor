@@ -1,4 +1,4 @@
-//! `session-interrupts`：三族事实 ⇒ 按族的清单（空族不出）；任务只认 `in_progress`；sid 缺 ⇒ `invalid_args`；读不到按没有答。
+//! `session-interrupts`：三族事实 ⇒ 按族的清单（空族不出）；任务只认 `in_progress`；sid 缺 ⇒ `bad_args`；读不到按没有答。
 
 use super::*;
 use serde_json::json;
@@ -70,10 +70,10 @@ fn the_frame_face_answers_a_shape_and_refuses_a_missing_sid() {
     let v = answer_at(&home, &json!({"sid": "zz-none"})).unwrap();
     assert_eq!(v, json!({"families": []}));
     let e = answer_at(&home, &json!({})).unwrap_err();
-    assert_eq!(e.0, "invalid_args");
+    assert_eq!(e.0, "bad_args");
     assert_eq!(
         answer_at(&home, &json!({"sid": ""})).unwrap_err().0,
-        "invalid_args"
+        "bad_args"
     );
     let _ = std::fs::remove_dir_all(&home);
 }

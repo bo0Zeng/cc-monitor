@@ -129,7 +129,7 @@ fn ticket_of(args: &Value) -> Result<String, (&'static str, String)> {
         || !t.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
     {
         return Err((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed("`ticket` must be 1..=64 chars of [A-Za-z0-9-]"),
         ));
     }

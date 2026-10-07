@@ -61,7 +61,7 @@ export interface TabBarPrefsHost {
     sessionId: string,
     projectDir: string | null,
     origin: Origin,
-    kind: string | null,
+    background: boolean,
     name: string | null,
   ): void;
   /** 复活出来的固定 tab 空态里那颗「Resume 这个会话」（与右键菜单的 Resume 同一个动作）。 */
@@ -360,7 +360,7 @@ export class TabBarPrefs {
    *
    * # 复活流程（`§B.5` 逐字）
    * ```
-   * 读 tabBar.pinned[] → 逐条 createSkeletonTab(sid, cwd, origin, kind, name)
+   * 读 tabBar.pinned[] → 逐条 createSkeletonTab(sid, cwd, origin, background, name)
    *   ├ 标 pinned = true
    *   ├ 标 state = UNSEEN（说不清；那台报完清单 ⇒ 已结束 / 活，见 `TabManager.markOriginSeen`）
    *   │ 那台已经报完了 ⇒ 直接 ENDED（没有活进程；后端 replay 随后宣告它活着 ⇒ 事件流会改回活）
@@ -379,7 +379,7 @@ export class TabBarPrefs {
     for (const p of list) {
       const existed = this.store.tabs.get(p.sid);
       if (!existed) {
-        this.host.createSkeletonTab(p.sid, p.cwd, p.origin, p.kind, p.name);
+        this.host.createSkeletonTab(p.sid, p.cwd, p.origin, p.background, p.name);
         const t = this.store.tabs.get(p.sid);
         if (!t) continue;
         // 没有活进程 ⇒ 灰着。`archiveTab` 那条路要求 tab 已在事件流里，这里是**凭空造**，
@@ -465,7 +465,7 @@ export class TabBarPrefs {
         null,
       // 按活性一轴判：可重连的 claude 已经没了 ⇒ 不是「此刻还活着」（改两轴之前它借着 `status: live` 被刷成此刻）。
       lastActiveAt: isLive(tab.state) ? Date.now() : prev?.lastActiveAt ?? null,
-      kind: tab.kind,
+      background: tab.background,
       name: tab.bgName,
       title: tab.title,
     };

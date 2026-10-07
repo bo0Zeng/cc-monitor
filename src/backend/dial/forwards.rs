@@ -51,7 +51,7 @@ pub(crate) struct Spec {
 }
 
 fn invalid(detail: &str) -> (&'static str, String) {
-    ("invalid_args", crate::common::contract::malformed(detail))
+    ("bad_args", crate::common::contract::malformed(detail))
 }
 
 fn port_of(args: &Value, key: &str) -> Result<u16, (&'static str, String)> {
@@ -63,7 +63,7 @@ fn port_of(args: &Value, key: &str) -> Result<u16, (&'static str, String)> {
 }
 
 /// 读规格并过围栏 —— **在任何查表 / 拨号之前**（`INVARIANTS §47`：外部值交给对端之前本侧先判）。
-/// 端口 0 · 远端 host 空白 ⇒ `bad_spec`；缺格 / 类型不对 ⇒ `invalid_args`。
+/// 端口 0 · 远端 host 空白 ⇒ `bad_spec`；缺格 / 类型不对 ⇒ `bad_args`。
 pub(crate) fn parse_spec(args: &Value) -> Result<Spec, (&'static str, String)> {
     let origin = args
         .get("origin")

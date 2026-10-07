@@ -11,7 +11,7 @@
  * |---|---|
  * | TS 解码器读得懂后端真出的成品 —— 同一份跨语言金样，后端那侧 `kill_tests` 对拍它（异源：Rust 构造器造、TS 解） | 「金样」 |
  * | 形状不对 ⇒ 抛（多一格 / 缺一格 / 类型不对），不猜 | 「形状不对」 |
- * | 界面不判目标名：空目标原样交给后端；后端 `invalid_args` ⇒ 各动作那句「后端不接受这个会话名」带后端原话 | 「空目标」 |
+ * | 界面不判目标名：空目标原样交给后端；后端 `bad_args` ⇒ 各动作那句「后端不接受这个会话名」带后端原话 | 「空目标」 |
  * | 本机与远端同一条路（`<local>` 照样经通道问），通道不在时两句话不同、远端那句点得出是哪台 | 「本机」「通道不在」 |
  * | 拒绝码逐码一句、两两不同、带上会话名与后端原话；认不出的码不上屏（只说原话，码在诊断里）、不被猜成已知档（码集合取自金样，不是手抄） | 「拒绝码」 |
  * | 结束会话：请求体 == 金样；`killed` 不为真不当成功；门拒绝 ≠ 通道不在 | 「结束会话」两组 |
@@ -155,7 +155,7 @@ describe("FIX4 · 杀会话顺手注销的结局", () => {
 
 describe("〔C4e〕结束会话：发出去之前与失败怎么说", () => {
   it("★ 〔DUP3〕空目标不在界面判：原样交给后端，后端拒了照原话说", async () => {
-    answer({ fail: refusedReply("invalid_args", "`name` 为空") });
+    answer({ fail: refusedReply("bad_args", "`name` 为空") });
     for (const [label, act, badKey] of ACTIONS) {
       const said = await saidOf(() => act("devbox", ""));
       expect(said, label).toMatch(copyPattern(badKey));

@@ -50,7 +50,8 @@ A new session file appeared。
 | `sid` | string | 会话 id |
 | `agent_kind` | string? | 会话属哪 agent kind——`"codex"`（Codex 会话） |
 | `liveness_confidence` | string? | 判活置信度——`"heuristic"`（Codex 无 pidfile、mtime/proc 启发） |
-| `session_kind` | string? | pidfile 里的会话种类（`interactive` · `bg` …） |
+| `session_kind` | string? | pidfile 里的会话种类原词（`interactive` · `bg` …） |
+| `background` | bool? | 是不是后台会话（不是人坐在终端里对话的那种） |
 | `attachable` | bool? | attach 进去对人有没有意义 |
 | `cwd` | string? | pidfile 记的 `cwd`：进程起在哪个目录（客户端认「我刚起的那条起来了」用） |
 | `project_dir` | string? | 会话的项目目录：会话起在哪个目录（tab 标题 · 打开工作目录 · 分组都用它） |
@@ -58,6 +59,7 @@ A new session file appeared。
 | `path` | string? | 该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）——monitor 旁路快照（`--read-session`）用 |
 | `lines` | number? | Batch8 审计 D-I2（additive）：tail-only 模式下 prime 时的完整行数 L ——monitor 校验快照拉到的行数 ≥ L 才算成功（不足 = 中途断/backend 报错，触发重试；exit status 经 ChannelStream 拿不到，行数校验更强） |
 | `status` | string? | 宣告时的初始 status/waitingFor——连接建立灯就对 |
+| `activity` | SessionActivity? | 宣告时此刻在干什么（适配层翻好的，`SessionActivity`） |
 | `waiting_for` | string? | 宣告时在等什么（同 `session_status`） |
 | `container` | SessionContainer? | 这条会话住在什么容器里（见 `SessionContainer`） |
 | `pid` | number? | 那个 claude 进程的 **pid** |
@@ -69,7 +71,8 @@ A new session file appeared。
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `sid` | string | 会话 id |
-| `status` | string? | 红绿灯状态（pidfile 里的 `status`） |
+| `status` | string? | 红绿灯状态（pidfile 里的 `status` 原词；monitor 读 `activity`，第二个前端读它，冻结） |
+| `activity` | SessionActivity? | 此刻在干什么（同 `session_added.activity`） |
 | `waiting_for` | string? | 在等什么（pidfile 里的 `waitingFor`） |
 | `liveness_confidence` | string? | 判活置信度（同 SessionAdded；状态变化时带） |
 
@@ -290,6 +293,14 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `agent_kind` | string | 哪个 agent —— **值**，与 `session_added.agent_kind` 同一套取值空间 |
 | `path` | string | 该 agent 在这台机器上的 home 目录（绝对路径） |
 
+#### `SessionActivity`
+
+一条活会话此刻在干什么（与哪一家无关的几态；适配层从那一家的进程状态翻过来，翻不出 ⇒ 不给）。
+
+- `working` —— 一轮在跑
+- `needs_you` —— 在等人（批准 · 回答 · 弹窗）
+- `idle` —— 闲着，等下一句输入
+
 #### `Unavailable`
 
 `hello.unavailable` 的一项 —— **这条命令我接得下，但在这台机器上做不到，以及为什么**。
@@ -426,7 +437,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `link` | → | 链路 id：客户端给、客户端负责唯一 |
 | `window` | → | 初始下行信用（字节），在 [32 KiB, 16 MiB] 之内 |
 
-码：`invalid_args` · `unsupported_use` · `duplicate_link` · `too_many_links`
+码：`bad_args` · `unsupported_use` · `duplicate_link` · `too_many_links`
 
 #### `link-data`
 
@@ -439,7 +450,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `data` | → | 无 |
 | `link` | → | 链路 id |
 
-码：`invalid_args` · `no_such_link` · `link_busy` · `link_closed`
+码：`bad_args` · `no_such_link` · `link_busy` · `link_closed`
 
 #### `link-credit`
 
@@ -452,7 +463,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `bytes` | → | 客户端读走了多少字节（累计信用不超过 16 MiB） |
 | `link` | → | 链路 id |
 
-码：`invalid_args` · `no_such_link`
+码：`bad_args` · `no_such_link`
 
 #### `link-close`
 
@@ -464,7 +475,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 |---|---|---|
 | `link` | → | 链路 id；关不存在的也回 `ok` |
 
-码：`invalid_args`
+码：`bad_args`
 
 #### `transfer-upload`
 
@@ -2513,7 +2524,7 @@ cc-bus 钩子诊断。
 | `skipped_offline` | ← | 因不在线跳过几个 |
 | `text` | → | 正文（非空） |
 
-码：`invalid_args` · `not_installed` · `timed_out` · `failed` · `bad_id`
+码：`bad_args` · `not_installed` · `timed_out` · `failed` · `bad_id`
 
 #### `bus-kill`
 
@@ -2527,7 +2538,7 @@ cc-bus 钩子诊断。
 | `killed` | ← | 会话真的被杀了 |
 | `stale_only` | ← | 身份对不上：只摘掉那条陈旧登记，会话与收件箱都没动 |
 
-码：`invalid_args` · `bad_id` · `not_installed` · `timed_out` · `failed`
+码：`bad_args` · `bad_id` · `not_installed` · `timed_out` · `failed`
 
 #### `bus-send`
 
@@ -2543,7 +2554,7 @@ cc-bus 钩子诊断。
 | `sent` | ← | 投出去了 |
 | `to` | → ← | 收件人身份 |
 
-码：`invalid_args` · `bad_id` · `not_installed` · `rejected` · `timed_out` · `too_long` · `failed`
+码：`bad_args` · `bad_id` · `not_installed` · `rejected` · `timed_out` · `too_long` · `failed`
 
 #### `bus-spawn`
 
@@ -2557,7 +2568,7 @@ cc-bus 钩子诊断。
 | `said` | ← | `cc-spawn` 的原始回显，给人看 |
 | `spawned` | ← | 恒 `true` |
 
-码：`invalid_args` · `bad_id` · `not_installed` · `timed_out` · `failed`
+码：`bad_args` · `bad_id` · `not_installed` · `timed_out` · `failed`
 
 #### `bus-state`
 
@@ -2600,7 +2611,7 @@ cc-bus 钩子诊断。
 | `truncated` | ← | 回显超过 4 MiB ⇒ 保尾，`true` |
 | `ts` | ← | 时间 |
 
-码：`invalid_args` · `bad_id` · `not_installed` · `timed_out` · `failed`
+码：`bad_args` · `bad_id` · `not_installed` · `timed_out` · `failed`
 
 ### 4.8 终端与会话
 
@@ -2660,7 +2671,7 @@ cc-bus 钩子诊断。
 |---|---|---|
 | `command` | → ← | 要在那台跑的命令；应答里是那一整行 PowerShell `& ssh -t … -- 'bash -lic …'` |
 
-码：`invalid_args` · `bad_jump` · `refused`
+码：`bad_args` · `bad_jump` · `refused`
 
 #### `terminal-processes`
 
@@ -2732,7 +2743,7 @@ cc-bus 钩子诊断。
 | `title` | ← | 窗格标题 |
 | `tmux_name` | ← | tmux 会话名 |
 
-码：`invalid_args` · `unobservable` · `child_timed_out`
+码：`bad_args` · `unobservable` · `child_timed_out`
 
 #### `terminal-preview`
 
@@ -2757,7 +2768,7 @@ cc-bus 钩子诊断。
 | `terminal` | → | 目标：名单里的句柄（与 `sid` 恰给一个） |
 | `text` | ← | `lines` 一项：那一行的文字 |
 
-码：`bad_target` · `invalid_args` · `not_known` · `ambiguous` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
+码：`bad_target` · `bad_args` · `not_known` · `ambiguous` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
 
 #### `terminal-input`
 
@@ -2779,7 +2790,7 @@ cc-bus 钩子诊断。
 | `text` | → | 送字：字面字，原样送、不解释成键名；多行按粘贴送（与 `key` 恰给一个） |
 | `why` | ← | `refused` 的原因：`not-known` · `ambiguous` · `ended` · `not-yours` · `not-managed` · `screen-changed` |
 
-码：`bad_target` · `invalid_args` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
+码：`bad_target` · `bad_args` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
 
 #### `terminal-name-mint`
 
@@ -2791,7 +2802,7 @@ cc-bus 钩子诊断。
 |---|---|---|
 | `name` | ← | 铸出来的终端名（这台避让过） |
 
-码：`invalid_args` · `child_timed_out`
+码：`bad_args` · `child_timed_out`
 
 #### `kill`
 
@@ -2808,7 +2819,7 @@ cc-bus 钩子诊断。
 | `session` | ← | 杀掉的 tmux 会话名 |
 | `sid` | → | 可带：只结束挂着这个会话（`@ccm_sid`）的窗格 |
 
-码：`invalid_args` · `no_tmux` · `no_such_session` · `wrong_owner` · `too_many_windows` · `kill_failed` · `child_timed_out`
+码：`bad_args` · `no_tmux` · `no_such_session` · `wrong_owner` · `too_many_windows` · `kill_failed` · `child_timed_out`
 
 #### `sessions-stop`
 
@@ -2829,7 +2840,7 @@ cc-bus 钩子诊断。
 | `sids` | → | 要停的会话（1–64 个，不重复） |
 | `why` | ← | `skipped` / `failed` 的码 |
 
-码：`invalid_args` · `unobservable`
+码：`bad_args` · `unobservable`
 
 #### `sessions-where`
 
@@ -2849,7 +2860,7 @@ cc-bus 钩子诊断。
 | `terminal` | ← | 名单里那一行的句柄 |
 | `terminals` | ← | 与 `names` 同序同数，每项 `{host, terminal}` |
 
-码：`invalid_args` · `unobservable`
+码：`bad_args` · `unobservable`
 
 #### `sessions-start`
 
@@ -2882,7 +2893,7 @@ cc-bus 钩子诊断。
 | `unavailable` | ← | 选不了号的那一项：`{requested, pinned, listKnown, alternative}` |
 | `why` | ← | `skipped` / `failed` 的码 |
 
-码：`invalid_args` · `unobservable`
+码：`bad_args` · `unobservable`
 
 #### `session-new`
 
@@ -2962,11 +2973,11 @@ cc-bus 钩子诊断。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `families` | ← | 按族的清单，空族不出现；一族都没有 ⇒ `[]`（界面直接做，不问） |
-| `family` | ← | `turn`（那个会话有一轮在跑：活着的 pidfile 里 `status` 是 `busy`）· `agent`（它派出去还在跑的子运行）· `task`（它任务表里 `in_progress` 的） |
+| `family` | ← | `turn`（那个会话有一轮在跑：活着的会话进程状态说在干活）· `agent`（它派出去还在跑的子运行）· `task`（它任务表里 `in_progress` 的） |
 | `names` | ← | 显示名：子运行的标签（无标签用种类 / 运行号）· 任务主题；`turn` 那一族为空表 |
-| `sid` | → | 会话 id（空 / 缺 ⇒ `invalid_args`） |
+| `sid` | → | 会话 id（空 / 缺 ⇒ `bad_args`） |
 
-码：`invalid_args` · `failed`
+码：`bad_args` · `failed`
 
 #### `session-restart`
 
@@ -2998,7 +3009,7 @@ cc-bus 钩子诊断。
 | `terminal` | ← | 所在的终端（会话名） |
 | `why` | ← | `stop_failed` / `start_failed` 失败的 `data`：那一步的码 |
 
-码：`invalid_args` · `unobservable` · `account_unavailable` · `not_in_terminal` · `ambiguous` · `session_already_live` · `stop_failed` · `start_failed`
+码：`bad_args` · `unobservable` · `account_unavailable` · `not_in_terminal` · `ambiguous` · `session_already_live` · `stop_failed` · `start_failed`
 
 #### `launch`
 
@@ -3021,7 +3032,7 @@ cc-bus 钩子诊断。
 | `typed` | ← | `send-keys` 退出 0：只有 `send-keys` 的退出码那么强（pane 在 copy-mode 时照样退 0、键被吃掉） |
 | `width` | → | 可选，仅 create-or-attach：1–4 位十进制字符串，与 `height` 同时给或都不给 |
 
-码：`invalid_args` · `no_tmux` · `no_such_session` · `wrong_owner` · `create_failed` · `typed_unconfirmed` · `child_timed_out`
+码：`bad_args` · `no_tmux` · `no_such_session` · `wrong_owner` · `create_failed` · `typed_unconfirmed` · `child_timed_out`
 
 ### 4.9 机器
 
@@ -3118,7 +3129,7 @@ cc-bus 钩子诊断。
 | `saved` | → | 同 `remote-probe` |
 | `via` | ← | 走了哪条：`backend`（那台后端的文件管理面）· `exec`（那一次 exec） |
 
-码：`invalid_args` · `bad_jump` · `refused` · `failed`
+码：`bad_args` · `bad_jump` · `refused` · `failed`
 
 #### `authorized-keys-add`
 
@@ -3209,7 +3220,7 @@ cc-bus 钩子诊断。
 | `remotePort` | → | 绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip |
 | `saved` | → | 已保存的那一份机器配置（可缺） |
 
-码：`invalid_args` · `bad_spec` · `unreachable` · `bad_jump` · `full` · `failed`
+码：`bad_args` · `bad_spec` · `unreachable` · `bad_jump` · `full` · `failed`
 
 #### `remote-probe`
 
@@ -3233,7 +3244,7 @@ cc-bus 钩子诊断。
 | `stage` | ← | 拨号阶段行，与界面 `ConnectStage` 同形 |
 | `ticket` | → ← | 界面交来的票（1..=64 个 `[A-Za-z0-9-]`），进度帧 `probe` 原样回填 |
 
-码：`invalid_args` · `bad_jump` · `failed`
+码：`bad_args` · `bad_jump` · `failed`
 
 #### `forward-stop`
 
@@ -3245,7 +3256,7 @@ cc-bus 钩子诊断。
 |---|---|---|
 | `id` | → ← | 转发号（`fwd-<n>`） |
 
-码：`invalid_args` · `not_found`
+码：`bad_args` · `not_found`
 
 #### `forward-list`
 
@@ -3333,7 +3344,7 @@ cc-bus 钩子诊断。
 | `proxyJump` | ← | `proxyjump`（`none` ⇒ `null`） |
 | `user` | ← | `user`（缺省空串） |
 
-码：`invalid_args` · `bad_alias` · `failed` · `child_timed_out`
+码：`bad_args` · `bad_alias` · `failed` · `child_timed_out`
 
 #### `ssh-config-import`
 
@@ -3350,14 +3361,14 @@ cc-bus 钩子诊断。
 | `inList` | ← | 组首或任一成员的地址 ＋ 组的用户 ＋ 端口与 `known` 里某台相同，去首尾空白比 ⇒ 已在列表里，界面照它灰、不自己比 |
 | `jump` | ← | 组内首个非空 proxyjump |
 | `keyPath` | ← | 组首 |
-| `known` | → | 机器列表里已有的那几台，`[{host, user, port}]`；缺 / 形状不对 ⇒ `invalid_args` |
+| `known` | → | 机器列表里已有的那几台，`[{host, user, port}]`；缺 / 形状不对 ⇒ `bad_args` |
 | `label` | ← | 单成员组 = 完整别名，多成员 = 基名 |
 | `members` | ← | `alias` / `host` / `port` / `proxyJump`，界面「拆分」时据此还原 |
 | `port` | → ← | 组首的端口 |
 | `proxyJump` | ← | 成员的跳板 |
 | `user` | → ← | 组首的用户 |
 
-码：`invalid_args`
+码：`bad_args`
 
 ## 5. CLI 子命令
 

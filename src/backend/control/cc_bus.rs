@@ -376,7 +376,7 @@ pub(crate) fn classify_send(
         Some(0) => Ok(()),
         // cc-send 自己的白名单校验（`仅 [A-Za-z0-9_-]`）
         Some(2) => Err((
-            "invalid_args".to_string(),
+            "bad_args".to_string(),
             copy_text("beCcBus.send.refused", &[("detail", &detail.to_string())]),
         )),
         // 路由层拦截（ACL / 限流 / 去重 / 灭环），bus.log 里有 REJECT/THROTTLE 一行
@@ -422,20 +422,20 @@ fn refuse_bad_bus_id(v: &str, said: impl FnOnce(&str) -> String) -> Result<(), C
 /// 收件人**是否存在**（成员资格）仍归 cc-bus —— 见 [`classify_send`]。
 fn parse_send(args: &serde_json::Value) -> Result<(String, String, Option<String>), CmdErr> {
     let obj = args.as_object().ok_or((
-        "invalid_args",
+        "bad_args",
         crate::common::contract::malformed("args must be an object"),
     ))?;
     let to = obj.get("to").and_then(|v| v.as_str()).ok_or((
-        "invalid_args",
+        "bad_args",
         crate::common::contract::malformed("missing `to`"),
     ))?;
     let text = obj.get("text").and_then(|v| v.as_str()).ok_or((
-        "invalid_args",
+        "bad_args",
         crate::common::contract::malformed("missing `text`"),
     ))?;
     if to.trim().is_empty() {
         return Err((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed("`to` is empty"),
         ));
     }
@@ -557,7 +557,7 @@ fn read_via(name: &str, args: &[&str]) -> Result<String, (String, String)> {
     match out.code {
         Some(0) => Ok(String::from_utf8_lossy(&out.stdout).into_owned()),
         Some(2) => Err((
-            "invalid_args".to_string(),
+            "bad_args".to_string(),
             copy_text(
                 "beCcBus.run.refused",
                 &[("name", &name.to_string()), ("detail", &out.diagnosis())],
@@ -670,7 +670,7 @@ pub(crate) fn parse_inbox(args: &serde_json::Value) -> Result<(String, u64), (St
         .filter(|s| !s.is_empty())
         .ok_or_else(|| {
             (
-                "invalid_args".to_string(),
+                "bad_args".to_string(),
                 crate::common::contract::malformed("missing `id`"),
             )
         })?;
@@ -683,7 +683,7 @@ pub(crate) fn parse_inbox(args: &serde_json::Value) -> Result<(String, u64), (St
             .filter(|n| (1..=INBOX_LINES_MAX).contains(n))
             .ok_or_else(|| {
                 (
-                    "invalid_args".to_string(),
+                    "bad_args".to_string(),
                     crate::common::contract::malformed(&format!(
                         "`lines` must be an integer in 1..={INBOX_LINES_MAX}"
                     )),
@@ -821,7 +821,7 @@ fn kill_id(id: &str) -> Result<serde_json::Value, (String, String)> {
         // cc-kill 自己的白名单校验（非法 id）
         Some(2) => {
             return Err((
-                "invalid_args".to_string(),
+                "bad_args".to_string(),
                 copy_text("beCcBus.kill.refused", &[("detail", &detail.to_string())]),
             ))
         }
@@ -929,7 +929,7 @@ pub(crate) fn parse_kill(args: &serde_json::Value) -> Result<String, (String, St
         .filter(|s| !s.is_empty())
         .ok_or_else(|| {
             (
-                "invalid_args".to_string(),
+                "bad_args".to_string(),
                 crate::common::contract::malformed("missing `id`"),
             )
         })?;
@@ -1032,16 +1032,16 @@ pub(crate) fn send_reply(
 /// `bus-broadcast` 的入参 —— 纯函数。`text` 必须非空（空广播不是缺省）；`from` 可选（同 [`parse_send`]）。
 fn parse_broadcast(args: &serde_json::Value) -> Result<(String, Option<String>), CmdErr> {
     let obj = args.as_object().ok_or((
-        "invalid_args",
+        "bad_args",
         crate::common::contract::malformed("args must be an object"),
     ))?;
     let text = obj.get("text").and_then(|v| v.as_str()).ok_or((
-        "invalid_args",
+        "bad_args",
         crate::common::contract::malformed("missing `text`"),
     ))?;
     if text.trim().is_empty() {
         return Err((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed("`text` is empty"),
         ));
     }
@@ -1185,17 +1185,16 @@ pub(crate) struct SpawnArgs {
 /// 给了 `account` 就先过形状判定（[`refuse_bad_bus_id`]，`§47` ①）。
 pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr> {
     let obj = args.as_object().ok_or((
-        "invalid_args",
+        "bad_args",
         crate::common::contract::malformed("args must be an object"),
     ))?;
     let s = |k: &str| obj.get(k).and_then(|v| v.as_str()).unwrap_or("").trim();
-    // 哪一家问注册表（不写名字白名单）：认不出 ⇒ `invalid_args`，那句话列出认得的几家；交给 cc-spawn 的是解析好的 kind。
-    let (tool, _) =
-        crate::agents::pick_kind(Some(s("tool"))).map_err(|say| ("invalid_args", say))?;
+    // 哪一家问注册表（不写名字白名单）：认不出 ⇒ `bad_args`，那句话列出认得的几家；交给 cc-spawn 的是解析好的 kind。
+    let (tool, _) = crate::agents::pick_kind(Some(s("tool"))).map_err(|say| ("bad_args", say))?;
     let dir = s("dir");
     if dir.is_empty() {
         return Err((
-            "invalid_args",
+            "bad_args",
             crate::common::contract::malformed("missing `dir` (working directory)"),
         ));
     }
@@ -1212,13 +1211,13 @@ pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr>
         (true, true) => None,
         (false, true) => {
             return Err((
-                "invalid_args",
+                "bad_args",
                 crate::common::contract::malformed("`account` and `base` are mutually exclusive"),
             ))
         }
         (true, false) => {
             return Err((
-                "invalid_args",
+                "bad_args",
                 crate::common::contract::malformed("one of `account` or `base:true` is required")
                     .to_string(),
             ))
@@ -1279,7 +1278,7 @@ pub(crate) fn spawned_id_of(said: &str) -> Option<String> {
 /// | `cc-spawn` rc | 码 | 说法 |
 /// |---|---|---|
 /// | 0 | —— | 回 `{spawned:true, id, said}`；`id` 认不出是 `null`（**起了**，只是没认出名字） |
-/// | 2 | `invalid_args` | 它自己的参数校验（目录不存在 / 未知 tool / 账号互斥 / ccm 太旧）|
+/// | 2 | `bad_args` | 它自己的参数校验（目录不存在 / 未知 tool / 账号互斥 / ccm 太旧）|
 /// | 124 | `timed_out` | 🔴 **会话可能已经起来了** —— 说法里明写「先看 `bus-state` 再决定要不要重来」|
 /// | 其它 / 信号 | `failed` | 原样带上它的诊断 |
 ///
@@ -1315,7 +1314,7 @@ pub(crate) fn classify_spawn(
     match code {
         Some(0) => Ok(()),
         Some(2) => Err((
-            "invalid_args".to_string(),
+            "bad_args".to_string(),
             copy_text("beCcBus.spawn.refused", &[("detail", &detail.to_string())]),
         )),
         Some(TIMED_OUT_CODE) => {

@@ -73,7 +73,7 @@ export interface EventHandlers {
       cwd: string | null;
       /** 会话的项目目录（后端给的那一格；标题只认它）。 */
       projectDir: string | null;
-      kind: string | null;
+      background: boolean;
       name: string | null;
     },
   ) => void;
@@ -83,7 +83,7 @@ export interface EventHandlers {
     sessionId: string,
     origin: string,
     meta: {
-      kind: string | null;
+      background: boolean;
       /** E73：`null` = 没说（旧 backend / 存量会话）= 视为可以 attach。 */
       attachable: boolean | null;
       /** pidfile 记的起会话目录（认「我刚起的那条」用）。 */
@@ -233,7 +233,7 @@ type QueueItem =
       sessionId: string;
       cwd: string | null;
       projectDir: string | null;
-      sessionKind: string | null;
+      background: boolean;
       name: string | null;
     }
   // Batch5-F18：远端会话宣告（backend session_added 透传）——骨架 Tab 入口。
@@ -242,7 +242,7 @@ type QueueItem =
       kind: "remote-added";
       sessionId: string;
       origin: string;
-      sessionKind: string | null;
+      background: boolean;
       /** E73：attach 进去对人有没有意义。`null` = 没说（旧 backend / 存量会话）= 视为可以。 */
       attachable: boolean | null;
       cwd: string | null;
@@ -547,12 +547,12 @@ export async function bindEvents(
         handlers.onSessionStarted?.(item.sessionId, {
           cwd: item.cwd,
           projectDir: item.projectDir,
-          kind: item.sessionKind,
+          background: item.background,
           name: item.name,
         });
       } else if (item.kind === "remote-added") {
         handlers.onRemoteSessionAdded?.(item.sessionId, item.origin, {
-          kind: item.sessionKind,
+          background: item.background,
           attachable: item.attachable,
           cwd: item.cwd,
           projectDir: item.projectDir,
@@ -700,7 +700,7 @@ export async function bindEvents(
               sessionId: p.session_id,
               cwd: p.cwd ?? null,
               projectDir: p.project_dir ?? null,
-              sessionKind: p.kind ?? null,
+              background: p.background,
               name: p.name ?? null,
             });
           } else {
@@ -708,7 +708,7 @@ export async function bindEvents(
               kind: "remote-added",
               sessionId: p.session_id,
               origin: p.origin,
-              sessionKind: p.kind ?? null,
+              background: p.background,
               attachable: p.attachable ?? null,
               cwd: p.cwd ?? null,
               projectDir: p.project_dir ?? null,

@@ -529,7 +529,7 @@ fn the_exit_code_shape_guard_actually_bites() {
 pub(crate) fn classify(code: Option<i32>, detail: &str) -> Result<(), (String, String)> {
     match code {
         Some(0) => Ok(()),
-        Some(2) => Err(("invalid_args".to_string(), detail.to_string())),
+        Some(2) => Err(("bad_args".to_string(), detail.to_string())),
         Some(3) => Err(("rejected".to_string(), detail.to_string())),
         Some(c) => Err(("failed".to_string(), format!("退出码 {c}"))),
         None => Err(("failed".to_string(), detail.to_string())),

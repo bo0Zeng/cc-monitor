@@ -33,7 +33,7 @@ fn attach_is_not_a_mode_here() {
         "mode": "attach-only", "name": "x", "payload": "y"
     })))
     .unwrap_err();
-    assert_eq!(e.0, "invalid_args");
+    assert_eq!(e.0, "bad_args");
     assert!(e.1.contains("unknown mode"), "错误没说清楚为什么：{}", e.1);
 }
 
@@ -48,21 +48,18 @@ fn shape_validation_rejects_the_things_that_would_break_tmux() {
     ] {
         match parse_request(&base(name, payload)) {
             Ok(_) => panic!("{why} 居然通过了"),
-            Err(e) => assert_eq!(e.0, "invalid_args", "{why}"),
+            Err(e) => assert_eq!(e.0, "bad_args", "{why}"),
         }
     }
     // 超长
     let long = "x".repeat(MAX_FIELD_BYTES + 1);
-    assert_eq!(
-        parse_request(&base("n", &long)).unwrap_err().0,
-        "invalid_args"
-    );
+    assert_eq!(parse_request(&base("n", &long)).unwrap_err().0, "bad_args");
     // `ccm_sid` 会被拼进 tmux 格式串，收紧字符集
     let e = parse_request(&serde_json::json!({
         "mode":"create-or-attach","name":"n","payload":"p","ccm_sid":"a b"
     }))
     .unwrap_err();
-    assert_eq!(e.0, "invalid_args");
+    assert_eq!(e.0, "bad_args");
 }
 
 /// ★`agent` / `width` / `height` 的形状校验。
@@ -135,7 +132,7 @@ fn the_create_only_fields_have_their_own_shapes() {
     ] {
         match parse_request(&ok(extra)) {
             Ok(_) => panic!("{why} 居然通过了"),
-            Err(e) => assert_eq!(e.0, "invalid_args", "{why}"),
+            Err(e) => assert_eq!(e.0, "bad_args", "{why}"),
         }
     }
 }
@@ -484,7 +481,7 @@ fn the_three_success_shapes_are_distinguishable() {
 
 // ===== 裸键 mode `send-keys-raw` 删了（之后无生产调用者）=====
 
-/// mode 集合恰好是 `create-or-attach` / `send-into` 两个；删掉的 `send-keys-raw` 回 `invalid_args`，
+/// mode 集合恰好是 `create-or-attach` / `send-into` 两个；删掉的 `send-keys-raw` 回 `bad_args`，
 /// 错误文案列的是真集合（不再提那个名字）。
 #[test]
 fn the_mode_set_is_exactly_the_two_and_the_raw_one_is_gone() {
@@ -503,7 +500,7 @@ fn the_mode_set_is_exactly_the_two_and_the_raw_one_is_gone() {
         "mode": "send-keys-raw", "name": "x-cc", "payload": "Escape"
     }))
     .expect_err("删掉的 mode 必须被拒");
-    assert_eq!(e.0, "invalid_args");
+    assert_eq!(e.0, "bad_args");
     let listed =
         e.1.split("expected")
             .nth(1)
@@ -960,7 +957,7 @@ fn w5vis_s4_s5_no_tmux_result_or_stderr_is_thrown_away_any_more() {
 }
 
 /// ★ 〔（逐字「后端 `launch` 新建会话那一支没接 J6 新建规则」）〕`create-or-attach` 要新建的名字过 J6 新建那一条：
-/// 过不了、会话也不在 ⇒ `invalid_args` 带与 `ccm` 铸名同一句、**一次 `new-session` 都不起**；过不了但会话已在 ⇒ 照旧幂等接回；
+/// 过不了、会话也不在 ⇒ `bad_args` 带与 `ccm` 铸名同一句、**一次 `new-session` 都不起**；过不了但会话已在 ⇒ 照旧幂等接回；
 /// 过得了 ⇒ 与先前逐字同（先 `new-session`）。
 #[test]
 fn the_create_arm_refuses_a_name_the_new_session_rule_refuses_unless_it_already_exists() {
@@ -972,7 +969,7 @@ fn the_create_arm_refuses_a_name_the_new_session_rule_refuses_unless_it_already_
     for bad in ["-x", "a.b", "a*b"] {
         let f = FakeTmux::new(|_| said(false, "can't find session"));
         let e = run_with(&with_name(bad), &|a| f.call(a)).unwrap_err();
-        assert_eq!(e.0, "invalid_args", "{bad}");
+        assert_eq!(e.0, "bad_args", "{bad}");
         assert_eq!(
             Some(e.1),
             new_tmux_name_said(bad),

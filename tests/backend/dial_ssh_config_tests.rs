@@ -301,6 +301,6 @@ fn in_list_is_judged_by_host_user_and_port() {
             .map(|_| ())
             .unwrap_err()
             .0,
-        "invalid_args"
+        "bad_args"
     );
 }

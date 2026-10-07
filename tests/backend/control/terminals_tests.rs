@@ -187,11 +187,7 @@ fn text_and_keys_are_separate_and_keys_come_from_a_closed_table() {
         json!({ "text": "a\u{1b}b" }),
         json!({ "text": "a", "enter": "yes" }),
     ] {
-        assert_eq!(
-            input_of(&bad).map_err(|e| e.0),
-            Err("invalid_args"),
-            "{bad}"
-        );
+        assert_eq!(input_of(&bad).map_err(|e| e.0), Err("bad_args"), "{bad}");
     }
 }
 

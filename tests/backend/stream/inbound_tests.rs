@@ -460,12 +460,12 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     assert!(matches!(d("cancel"), Disposition::Done));
     assert!(matches!(d("nope"), Disposition::Reply(..)));
     // 链路四条是硬臂、**就地**做完（不进任何 spawn 档）：`link-data` 要保序，
-    // 另三条只碰本连接的链路表。空 `args` ⇒ 当场回一条 `invalid_args` 应答（不起任务）。
+    // 另三条只碰本连接的链路表。空 `args` ⇒ 当场回一条 `bad_args` 应答（不起任务）。
     for c in ["link-open", "link-data", "link-credit", "link-close"] {
         assert!(
             matches!(
                 d(c),
-                Disposition::Reply(Frame::Reply { code: Some(ref code), .. }) if code == "invalid_args"
+                Disposition::Reply(Frame::Reply { code: Some(ref code), .. }) if code == "bad_args"
             ),
             "`{c}` 没有就地回应答 —— 它该是硬臂，不该进 spawn 档"
         );

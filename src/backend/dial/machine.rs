@@ -38,9 +38,9 @@ fn nonempty(v: Option<&Value>) -> Option<String> {
 }
 
 impl Machine {
-    /// 读界面那一格。缺 `host` / `user` ⇒ `invalid_args`（调用方是我们自己的界面：契约错）。
+    /// 读界面那一格。缺 `host` / `user` ⇒ `bad_args`（调用方是我们自己的界面：契约错）。
     pub(crate) fn parse(v: &Value) -> Result<Machine, (&'static str, String)> {
-        let bad = |d: &str| ("invalid_args", crate::common::contract::malformed(d));
+        let bad = |d: &str| ("bad_args", crate::common::contract::malformed(d));
         let host = nonempty(v.get("host")).ok_or_else(|| bad("machine without `host`"))?;
         let user = nonempty(v.get("user")).ok_or_else(|| bad("machine without `user`"))?;
         let port = match v.get("port") {
@@ -191,7 +191,7 @@ pub(crate) fn request(
 /// 线上交来的一份拨号 ⇒ 拨号请求：`{machine, saved?, jump?, prefer?: {host, port}, use?, …}`，其余格（`command` · `capture` ·
 /// `forward` · `tunnel_port` · `stages` · `probe` · `agent_sock`）原样进请求。`use` 缺席 ⇒ `stream`。
 pub(crate) fn resolve(v: &Value) -> Result<crate::dial::DialRequest, (&'static str, String)> {
-    let bad = |d: &str| ("invalid_args", crate::common::contract::malformed(d));
+    let bad = |d: &str| ("bad_args", crate::common::contract::malformed(d));
     let obj = v.as_object().ok_or_else(|| bad("dial is not an object"))?;
     let (machine, saved, jump) = from_args(v)?;
     let prefer = match obj.get("prefer") {
@@ -229,7 +229,7 @@ pub(crate) fn from_args(
     args: &Value,
 ) -> Result<(Machine, Option<Machine>, Option<Machine>), (&'static str, String)> {
     let m = args.get("machine").ok_or((
-        "invalid_args",
+        "bad_args",
         crate::common::contract::malformed("missing `machine`"),
     ))?;
     let opt = |k: &str| -> Result<Option<Machine>, (&'static str, String)> {

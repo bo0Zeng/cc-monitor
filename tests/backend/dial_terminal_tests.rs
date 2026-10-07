@@ -182,17 +182,17 @@ fn bad_inputs_are_refused_and_say_which_cell() {
     // 契约错：缺命令 / 缺机器 / 机器缺 user。
     assert_eq!(
         answer(&json!({ "machine": c() })).unwrap_err().0,
-        "invalid_args"
+        "bad_args"
     );
     assert_eq!(
         answer(&json!({ "command": "x" })).unwrap_err().0,
-        "invalid_args"
+        "bad_args"
     );
     assert_eq!(
         answer(&json!({ "machine": { "host": "h" }, "command": "x" }))
             .unwrap_err()
             .0,
-        "invalid_args"
+        "bad_args"
     );
 }
 
@@ -333,7 +333,7 @@ fn the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold() 
 }
 
 /// `terminal-ssh` 收意图 `cwd`：渲出来的那一行与「先拼好命令再交 `command`」**逐字相同**
-/// （文件窗口与主界面开终端同一条路、同一处渲）；`command` 与 `cwd` 恰好给一个，两个都给 / 都不给 ⇒ `invalid_args`。
+/// （文件窗口与主界面开终端同一条路、同一处渲）；`command` 与 `cwd` 恰好给一个，两个都给 / 都不给 ⇒ `bad_args`。
 #[test]
 fn a_cwd_intent_renders_exactly_like_the_command_it_stands_for() {
     let m = machine("pi.local", "pi", 22, None);
@@ -353,7 +353,7 @@ fn a_cwd_intent_renders_exactly_like_the_command_it_stands_for() {
         json!({ "machine": m, "cwd": "/srv", "command": "ls" }),
         json!({ "machine": m }),
     ] {
-        assert_eq!(answer(&bad).unwrap_err().0, "invalid_args", "{bad}");
+        assert_eq!(answer(&bad).unwrap_err().0, "bad_args", "{bad}");
     }
 }
 

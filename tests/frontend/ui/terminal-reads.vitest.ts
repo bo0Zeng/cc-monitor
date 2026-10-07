@@ -169,7 +169,7 @@ describe("抓一屏：失败怎么说", () => {
       said.push(await saidBy("devbox"));
     }
     expect(said.length, "金样里一个码都没有 —— 下面全是空转").toBeGreaterThan(0);
-    // `bad_target` 与 `invalid_args` 说的是同一件事（请求那一格不对），共用一句。
+    // `bad_target` 与 `bad_args` 说的是同一件事（请求那一格不对），共用一句。
     expect(new Set(said).size).toBe(said.length - 1);
     for (const s of said) {
       expect(s).toContain("demo-cc");
