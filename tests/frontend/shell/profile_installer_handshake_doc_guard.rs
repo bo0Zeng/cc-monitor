@@ -53,25 +53,6 @@ fn ps_template_sets_the_window_title_before_writing_the_await_file() {
     );
 }
 
-/// 模板里的 deadline / 轮询步长必须在协议文档里出现（防「改了代码忘了改图」）。
-#[test]
-fn handshake_timings_in_the_template_appear_in_the_protocol_doc() {
-    let t = &tpl();
-    let deadline = between(t, "AddMilliseconds(", ")").expect("模板里没有 deadline");
-    let poll = between(t, "[System.Threading.Thread]::Sleep(", ")").expect("模板里没有轮询步长");
-
-    // 这两个数曾双双漂移：文档停在 800ms，实现早已 3000ms。
-    assert!(
-        IPC_DOC.contains(&format!("{deadline}ms")),
-        "PS 握手 deadline 是 {deadline}ms，但 src/doc/IPC-PROTOCOL.md 里没有 `{deadline}ms` \
-             —— 文档还停在旧数字上（上一次是 800ms）"
-    );
-    assert!(
-        IPC_DOC.contains(&format!("{poll}ms")),
-        "PS 轮询步长是 {poll}ms，但 src/doc/IPC-PROTOCOL.md 里没有 `{poll}ms`"
-    );
-}
-
 /// monitor 侧同理：debouncer 窗口 + 「找不到窗口就重试」的总时长。
 ///
 /// 重试那一条是**旧模板用户唯一的活路**（老 profile 不会自动更新），
@@ -123,7 +104,7 @@ fn every_doc_that_describes_the_handshake_states_the_current_order() {
 /// # 改这些数怎么办
 ///
 /// 它们是**协议的一部分**（PS 与 monitor 两侧必须对齐，且旧模板用户靠重试兜底）。
-/// 要改就三处一起改：实现 · 本 pin · `src/doc/IPC-PROTOCOL.md` 的时序图。
+/// 要改就两处一起改：实现 · 本 pin（文档的时序图不写这些数，只指向实现）。
 /// 本 pin 红了不是"更新一下数字"，是提醒你**这是一次协议变更**。
 #[test]
 fn handshake_timings_match_their_pinned_values() {
@@ -163,38 +144,6 @@ fn handshake_timings_match_their_pinned_values() {
         "找不到窗口时的重试节奏变了。**那是旧模板用户唯一的活路** ——\n\
              老 profile 不会自动更新，它们靠这 600ms 兜住「标题还没设上」的窗口。\n\
              D 审计把它缩成 3×10ms=30ms，四条护栏当时全绿。"
-    );
-}
-
-#[test]
-fn monitor_side_timings_appear_in_the_protocol_doc() {
-    let bind = bind_rs();
-    let debounce =
-        between(&bind, "new_debouncer(Duration::from_millis(", ")").expect("找不到 debouncer");
-    assert!(
-        IPC_DOC.contains(&format!("{debounce}ms")),
-        "notify debouncer 是 {debounce}ms，src/doc/IPC-PROTOCOL.md 里没有 —— \
-             图上曾长期写着 100ms"
-    );
-
-    // 重试：`for _ in 0..12 { sleep(50ms) }` ⇒ 总 600ms。两个数都得对得上。
-    let n: u32 = between(&bind, "for _ in 0..", " {")
-        .expect("找不到重试次数")
-        .parse()
-        .expect("重试次数不是整数");
-    let step: u32 = between(
-        &bind,
-        "std::thread::sleep(std::time::Duration::from_millis(",
-        ")",
-    )
-    .expect("找不到重试步长")
-    .parse()
-    .expect("重试步长不是整数");
-    let total = n * step;
-    assert!(
-        IPC_DOC.contains(&format!("{total}ms")) && IPC_DOC.contains(&format!("{n} × {step}")),
-        "monitor 找不到窗口时重试 {n} × {step}ms = {total}ms，\
-             src/doc/IPC-PROTOCOL.md 必须同时写出总时长 `{total}ms` 和拆分 `{n} × {step}`（当前缺其一）"
     );
 }
 

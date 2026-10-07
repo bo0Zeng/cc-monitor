@@ -481,48 +481,6 @@ fn frozen_both_entry_points_of_the_commitment_are_still_wired() {
     );
 }
 
-/// R5 文档那一节与金样两向相等：`IPC-PROTOCOL.md`「跨仓承诺」小节里四行列表
-/// （入参 / 出参 / `capabilities` 四名 / 错误码）逐行取反引号里的名字 == 金样四个集合。
-#[test]
-fn frozen_the_protocol_doc_lists_exactly_the_frozen_shape() {
-    let doc =
-        std::fs::read_to_string(crate::guard_support::repo_root().join("src/doc/IPC-PROTOCOL.md"))
-            .expect("读不到 IPC-PROTOCOL.md");
-    let start = doc
-        .find("##### ★ 跨仓承诺 ——")
-        .expect("IPC-PROTOCOL 里找不到「跨仓承诺」小节");
-    let sec = &doc[start..];
-    let sec = &sec[..sec[5..].find("\n#").map(|i| i + 5).unwrap_or(sec.len())];
-    let names_after = |lead: &str| -> Vec<String> {
-        let line = sec
-            .lines()
-            .find(|l| l.starts_with(lead))
-            .unwrap_or_else(|| panic!("小节里找不到以 {lead} 开头的那一行"));
-        let body = &line[line
-            .find('：')
-            .map(|i| i + '：'.len_utf8())
-            .expect("那一行没有「：」")..];
-        body.split('`')
-            .skip(1)
-            .step_by(2)
-            .map(str::to_string)
-            .collect()
-    };
-    let g = frozen_golden();
-    for (lead, key) in [
-        ("- **入参**", "request_fields"),
-        ("- **出参**", "plan_fields"),
-        ("- **`capabilities` 四名**", "capabilities"),
-        ("- **错误码**", "error_codes"),
-    ] {
-        assert_eq!(
-            frozen_sorted(names_after(lead)),
-            frozen_sorted(frozen_list(&g, key)),
-            "IPC-PROTOCOL 跨仓承诺小节「{lead}」那一行 ≠ 冻结金样 `{key}`（两向）"
-        );
-    }
-}
-
 /// 会话 id 的校验规则：第二个前端照它铸 / 认 id（非空 · ≤128 · 只 `[0-9A-Za-z_-]`）。放宽或收紧都红。
 #[test]
 fn the_session_id_rule_the_second_frontend_relies_on_stays_put() {

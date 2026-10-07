@@ -755,6 +755,10 @@ fn every_comment_stripping_transformer_is_registered() {
     const TRANSFORMERS: &[(&str, &str)] = &[
         ("lib.rs::strip_comment_lines", "★ **共享原语本体**（`guard_core`）"),
         ("lib.rs::production_code", "共享原语：剥注释 + 剥测试段"),
+        (
+            "protocol_doc_gen.rs::first_sentence",
+            "把已经取出来的 `///` 正文收成一句话（输入是注释本身，不在源码里剥注释）",
+        ),
         // 08-08 删掉 `lib.rs::test_source`：它**根本不剥注释**（只是把测试段拼起来）。
         // 它当初被检出，是因为旧检测器取「函数体起点后 700 字符」的定长窗口，
         // 一路吃进了它的邻居 `production_code`（那个才剥）。⇒ **这一行是误登记**，
@@ -2458,11 +2462,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         ("src/backend/observe/watcher.rs", "spawn_tmux_ticker", 2),
-        (
-            "tests/backend/protocol_doc_guard.rs",
-            "hello_commands_match_the_dispatch_table",
-            1,
-        ),
         ("src/comms/outward/http1.rs", "handle_alloc_error", 1),
         // 〔步 7c 后端剖分 2026-09-19 · C 类〕散文随测试段搬家，处数一格没变。
         (
@@ -2814,11 +2813,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         ("src/doc/INVARIANTS.md", "tmux_origin_for_sid", 1),
-        (
-            "src/doc/IPC-PROTOCOL.md",
-            "removal_cause_wire_literal_stays_in_sync",
-            1,
-        ),
         (
             "tests/frontend/shell/inbound_client_tests.rs",
             "removal_cause_wire_literal_stays_in_sync",
@@ -3412,15 +3406,10 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "walking_up_uses_slashes_on_the_remote_side_and_the_platform_on_the_local_side",
             1,
         ),
-        // 🔴 下面这 9 行全是同一件事的账：`shared/ccm` 那个 bash
+        // 🔴 下面这几行全是同一件事的账：`shared/ccm` 那个 bash
         //    脚本与它那一族判据删了（`K33`：「不要有什么 bash 脚本」），而**散文里那几处
         //    点名它们的句子留着是有用的**（它们说的正是「这个东西为什么不在了」）
         //    ⇒ 按第②条出路走：加 `PROSE_NAME_TOMBSTONE` 标记 ＋ 在这里记一笔账。
-        (
-            "src/doc/IPC-PROTOCOL.md",
-            "the_local_launch_recipe_is_reachable_only_from_print",
-            1,
-        ),
         (
             "src/frontend/shell/src/platform/terminal.rs", // 原 `launch.rs`（开窗的平台臂连同头注搬来）
             "resolve_from_backend",
@@ -3685,21 +3674,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/frontend/shell/ccm_cli_contract_tests.rs",
             "the_avoidance_lives_in_ccm_now",
-            1,
-        ),
-        (
-            "src/doc/IPC-PROTOCOL.md",
-            "handlers_never_run_on_the_reader_task",
-            1,
-        ),
-        (
-            "src/doc/IPC-PROTOCOL.md",
-            "hello_commands_match_the_dispatch_table",
-            1,
-        ),
-        (
-            "src/doc/IPC-PROTOCOL.md",
-            "hello_is_flushed_before_the_inbound_reader_starts",
             1,
         ),
         (
@@ -4216,8 +4190,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/frontend/shell/src/lib.rs", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
         ("src/frontend/shell/src/lib.rs", "list_session_activity", 1), // ⑬ 会话生命周期并进会话流后退役
         ("src/doc/ARCHITECTURE.md", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
-        ("src/doc/IPC-PROTOCOL.md", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
-        ("src/doc/IPC-PROTOCOL.md", "list_session_activity", 1), // ⑬ 会话生命周期并进会话流后退役
         ("src/doc/STATE-MATRIX.md", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
         ("src/doc/STATE-MATRIX.md", "list_session_activity", 1), // ⑬ 会话生命周期并进会话流后退役
         ("src/frontend/ui/main.ts", "list_active_sessions", 1), // ⑬ 会话生命周期并进会话流后退役
@@ -4801,7 +4773,6 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/doc/INVARIANTS.md", 28), // 27 → 28：§33b 三问 ② 的原文留档点的外层渲染函数随载荷那一层删了，就地挂墓碑 // 25 → 27：§33b「变严的代价」那句点的载荷那一层配置目录判定 · 只绑 Windows 的 §36 点的本机后端那份 PowerShell 渲染函数，两处随那一层删了挂墓碑 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） 19 → 25 // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 基数 12 ＋ MIG-3a +2 ＋ 主线 +4 ⇒ 18 // +2：U8c-1「变严的代价」那一节补一句「收口了，收法是删」·「本地路径借 IR 做校验」那一节记 `validateLocalLaunch` 删了 // +1：§6 探活双重校验那一格搬去后端，点 monitor 旧函数名那句挂一块 // +2：§1 例外 3 那道远端删会话守卫 · 例外 1 本机那道路径守卫（`validate_delete_target`） // 12 → 16
         // +3：§33b 产出方表 `session-backend.ts` 那格 · 三问表 ③ 那格 · 「删掉座的代价也换人了」那段 —— 点着随 TS 兜底一族删掉 / 改写的判据
         //   ⇒ 6（基）＋1（LOC1b）＋3（LR2）= 10
-        ("src/doc/IPC-PROTOCOL.md", 10), // 11 → 10：载荷渲染那一节随载荷那一层删了，讲它来历的那一处墓碑跟着走（`launch-render-cli` / `launch-local` 两节重写、来历那两处留着）// 账号库收进后端：12 → 11（`acct-iso-install` 那一节随命令删了，它那一处墓碑跟着走）// 11 → 12：点 `deploy_remote_acct_iso` 旧名那几处挂墓碑 // // 主线 8 ＋ MIG-1 本路增量 ⇒ 11（盘上现打） // +1：整份写口 `save_config` 删了，讲来历那一句挂墓碑 // 5 → 8
         // +1：别名那一块搬走时留的墓碑（`buildAccountAliasBlock`）。
         ("src/frontend/ui/apikey-reads.ts", 2), // +1：`apikey_remote`整删，点它的那一处挂墓碑 // 写 key 改走通道：头注点旧命令名
         ("tests/backend/control/gate_tests.rs", 1),

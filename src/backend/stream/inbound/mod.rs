@@ -40,12 +40,14 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 
 mod caps;
+mod cli_only;
 mod doors;
 mod drain;
 mod sniff;
 mod spec;
 
 pub(crate) use caps::install as install_total;
+pub use cli_only::CLI_ONLY_DOCS;
 pub use doors::watch_account_mcp;
 pub(crate) use doors::LocalFiles;
 pub use drain::{exit_after_drain, shutdown_listener, SHUTTING_DOWN};
@@ -55,7 +57,7 @@ pub(crate) use drain::{DRAIN, DRAIN_DEADLINE};
 use sniff::sniff_id;
 pub use sniff::ID_SNIFF_BYTES;
 use spec::{BlockingHandler, BoxFut, DataHandler, Fail, Handler, Outcome};
-pub(crate) use spec::{CommandSpec, Run};
+pub(crate) use spec::{CommandSpec, Dir, Run};
 
 /// 单行上限。超过即整行丢弃 + 回 `line_too_long`。
 ///
@@ -442,7 +444,7 @@ pub fn uncancellable() -> Vec<String> {
 }
 
 /// 命令表按族分住 `registry/` 下各一份（每份一张 `SPECS`），在编译期拼回一张 [`REGISTRY`]。
-mod registry {
+pub(crate) mod registry {
     pub(super) mod accounts;
     pub(super) mod aliases;
     pub(super) mod assets;
@@ -455,7 +457,7 @@ mod registry {
     pub(super) mod terminals;
 
     /// 族的全集：`registry/` 下每一份文件恰好一行（`inbound_structure_guards` 两向钉住）。次序就是 [`super::REGISTRY`] 里的次序。
-    pub(super) const FAMILIES: &[&[super::CommandSpec]] = &[
+    pub(crate) const FAMILIES: &[&[super::CommandSpec]] = &[
         link::SPECS,
         file_manager::SPECS,
         accounts::SPECS,

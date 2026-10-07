@@ -1238,19 +1238,19 @@ fn the_wire_names_never_carry_a_dot() {
 /// 🔴 出方向那几个字段名与**那份冻结的线上契约**逐个对得上。
 ///
 /// 两侧不同源：这一侧是 `find.rs` 里手写的 [`FIND_FIELDS`] / [`STATUS_FIELDS`]，
-/// 那一侧现读 `src/doc/IPC-PROTOCOL.md §10` 那两张表（读者在仓外的那份契约）。
+/// 那一侧现读协议参考 `src/doc/IPC-COMMANDS.md` 那两张表（由后端的命令登记生成）。
 /// ⇒ 后端改了字段名而文档跟着改，本条会红，逼这一侧一起改。
 ///
 /// ⚠ **它买不到「后端真的发这几个字段」** —— 后端那棵树不在本 crate 的依赖图里
 /// （`src/backend` 是独立 crate）。它买到的是「这一侧与那份文档不漂」。
 #[test]
 fn the_reply_shapes_match_the_frozen_wire_contract() {
-    let doc = include_str!("../../../src/doc/IPC-PROTOCOL.md");
+    let doc = include_str!("../../../src/doc/IPC-COMMANDS.md");
     for (cmd, declared) in [(CMD_FIND, FIND_FIELDS), (CMD_INDEX_STATUS, STATUS_FIELDS)] {
         let heading = format!("#### `{cmd}`");
         let start = doc
             .find(&heading)
-            .unwrap_or_else(|| panic!("`src/doc/IPC-PROTOCOL.md` 里没有 `{heading}` 那一小节"));
+            .unwrap_or_else(|| panic!("`src/doc/IPC-COMMANDS.md` 里没有 `{heading}` 那一小节"));
         let rest = &doc[start + heading.len()..];
         let end = rest.find("\n#### ").unwrap_or(rest.len());
         let section = &rest[..end];
@@ -1291,11 +1291,11 @@ fn the_reply_shapes_match_the_frozen_wire_contract() {
 /// 🔴 那份契约文档里**真的有**这四条命令的小节（名字不许漂）。
 #[test]
 fn every_wire_name_this_side_sends_has_a_section_in_the_contract() {
-    let doc = include_str!("../../../src/doc/IPC-PROTOCOL.md");
+    let doc = include_str!("../../../src/doc/IPC-COMMANDS.md");
     for c in COMMANDS {
         assert!(
             doc.contains(&format!("#### `{c}`")),
-            "`src/doc/IPC-PROTOCOL.md` 里没有 `{c}` 那一小节 —— \n\
+            "`src/doc/IPC-COMMANDS.md` 里没有 `{c}` 那一小节 —— \n\
              要么名字漂了，要么这一侧在发一条契约里不存在的命令（后端会回 `unknown_command`）。"
         );
     }

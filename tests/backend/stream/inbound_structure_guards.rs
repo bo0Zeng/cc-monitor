@@ -698,7 +698,7 @@ fn launch_fields_match_its_parser_and_output() {
         .iter()
         .find(|s| s.name == "launch")
         .expect("注册表里没有 launch");
-    let mut declared: Vec<String> = spec.fields.iter().map(|s| s.to_string()).collect();
+    let mut declared: Vec<String> = spec.field_names().map(str::to_string).collect();
     declared.sort();
     assert_eq!(
         declared, found,
@@ -707,55 +707,39 @@ fn launch_fields_match_its_parser_and_output() {
     );
 }
 
-/// ★**「声明零字段」不许成为免检开关**。
-///
-/// # 它补的洞
-///
-/// 两条判据（本文件这条 + `protocol_doc_guard` 的
-/// `every_command_payload_field_appears_in_its_own_doc_section`）**开头都是**
-/// `if spec.fields.is_empty() { continue; }`。
-/// ⇒ 一条命令只要把 `fields` 声明成 `&[]`，就**同时**从两条判据里消失 ——
-/// 而没有任何东西检查那个声明是不是诚实的。**声明本身成了豁免开关。**
-///
-/// ⚠ `resolve` 今天就是「有 `doc_anchor`、`fields: &[]`」。逐字读过它的文档段之后
-/// 判定**它是诚实的**：载荷记作 `{ResumeSpec}`，按**结构体引用**写、不逐字段列。
-/// ⇒ 所以本条不写成「有文档段就不许零字段」（那会当场误红），
-/// 而写成**默认拒绝 + 豁免登记**：零字段可以，但要写明为什么。
+/// ★**「声明零字段」不许成为免检开关**：零字段的命令在协议参考里就没有字段表，
+/// 而有载荷却声明成空等于让契约面整个消失 ⇒ 默认拒绝 ＋ 豁免登记（写明为什么）。
 #[test]
 fn declaring_zero_fields_needs_a_reason() {
     /// `(命令名, 为什么它可以声明零载荷字段)`。
-    const ZERO_FIELD_REASONS: &[(&str, &str)] = &[(
-        "resolve",
-        "载荷是 `ResumeSpec` **结构体**，文档段按结构体引用记（`args:{ResumeSpec}`）\
-             而不逐字段列；字段契约由那个 struct 的定义与它自己的序列化测试守。\
-             ⇒ 在这里列一份字段清单反而会造出第二个源头（E3）。",
-    )];
+    const ZERO_FIELD_REASONS: &[(&str, &str)] = &[
+        (
+            "resolve",
+            "载荷是 `ResumeSpec` / `CommandPlan` 两个结构体：协议参考的出入参那一节从结构体本身生成，\
+             在这里再列一份字段名就是第二个源头。",
+        ),
+        ("ping", "零载荷：问活，回 `ok`。"),
+    ];
     let mut unexplained: Vec<&str> = Vec::new();
-    let mut zero_with_doc = 0usize;
+    let mut zero = 0usize;
     for spec in super::REGISTRY {
         if !spec.fields.is_empty() {
             continue;
         }
-        if spec.doc_anchor.is_none() {
-            continue;
-        }
-        zero_with_doc += 1;
+        zero += 1;
         if !ZERO_FIELD_REASONS.iter().any(|(n, _)| *n == spec.name) {
             unexplained.push(spec.name);
         }
     }
     assert!(
-        zero_with_doc >= 1,
-        "没有任何命令处于「有文档段 + 零字段声明」状态 —— 本条在空转。\
+        zero >= 1,
+        "没有任何命令声明零字段 —— 本条在空转。\
              若确实全都列了字段，请把本条连同 `ZERO_FIELD_REASONS` 一起删掉（别留空转的判据）"
     );
     assert!(
         unexplained.is_empty(),
-        "这些命令有自己的文档小节，却把 `fields` 声明成空：{unexplained:?}\n\
-             ⚠ 空声明会让它**同时**从两条判据里消失（本文件这条 + `protocol_doc_guard` 那条，\n\
-             两条开头都是 `if spec.fields.is_empty() {{ continue; }}`）——\n\
-             也就是说**声明本身是免检开关**。\n\
-             要么把载荷字段列出来，要么在 `ZERO_FIELD_REASONS` 里写明为什么它没有可列的字段。"
+        "这些命令把 `fields` 声明成空：{unexplained:?}\n\
+             空声明 ⇒ 协议参考里没有它的字段表。要么把载荷字段列出来，要么在 `ZERO_FIELD_REASONS` 里写明为什么它没有可列的字段。"
     );
     for (name, _) in ZERO_FIELD_REASONS {
         let spec = super::REGISTRY
@@ -901,7 +885,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
             cap.args.iter().chain(cap.fields.iter()).copied().collect();
         want_fields.sort_unstable();
         want_fields.dedup();
-        let mut got_fields: Vec<&str> = spec.fields.to_vec();
+        let mut got_fields: Vec<&str> = spec.field_names().collect();
         got_fields.sort_unstable();
         got_fields.dedup();
         assert_eq!(
@@ -943,7 +927,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
             cap.args.iter().chain(cap.fields.iter()).copied().collect();
         want_fields.sort_unstable();
         want_fields.dedup();
-        let mut got_fields: Vec<&str> = spec.fields.to_vec();
+        let mut got_fields: Vec<&str> = spec.field_names().collect();
         got_fields.sort_unstable();
         got_fields.dedup();
         assert_eq!(
@@ -975,29 +959,6 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         crate::files::CAPABILITIES.len(),
         "只逐条判过 {checked} 条 —— 本条在空转"
     );
-}
-
-/// ★ **有 `fields` 就必须有自己的文档小节。**
-///
-/// 没有小节就没地方钉字段名 —— 那正是设计审计 P2 说的
-/// 「帧的字段有对拍，命令的载荷没有」。
-#[test]
-fn a_command_with_a_payload_must_own_a_doc_section() {
-    for spec in super::REGISTRY {
-        if spec.fields.is_empty() {
-            continue;
-        }
-        // `cancel` 的 `target` 记在入方向节的正文里（它是取消机制本身，不另开小节）。
-        if spec.name == "cancel" {
-            continue;
-        }
-        assert!(
-            spec.doc_anchor.is_some(),
-            "`{}` 有 {} 个载荷字段却没有自己的文档小节 —— 那些字段没地方钉",
-            spec.name,
-            spec.fields.len()
-        );
-    }
 }
 
 /// 帧命令名与它们派生出来的 CLI 面里零个带宿主名 `tmux` 的（名字按「终端」叫，宿主只是实现）。

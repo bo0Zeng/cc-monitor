@@ -1903,8 +1903,8 @@ mod tests {
     ///
     /// | # | 落点 | 判据强制吗 | 什么条件下才轮到它 |
     /// |---|---|---|---|
-    /// | 1 | `inbound::REGISTRY` 加一条 `CommandSpec` | ✅ 红（`protocol_doc_guard` 对拍：每条登记都要有文档小节） | **无条件** —— 插件要被宿主调，就得有一条命令 |
-    /// | 2 | 协议文档对应锚点 | ✅ 红（`protocol_doc_guard` 认 `doc_anchor`） | 无条件（跟着 1） |
+    /// | 1 | `inbound::REGISTRY` 加一条 `CommandSpec` | ✅ 红（`protocol_doc_gen`：协议参考要重生成） | **无条件** —— 插件要被宿主调，就得有一条命令 |
+    /// | 2 | 协议参考里它那一节 | ✅ 红（`protocol_doc_gen` 从登记生成，要 `summary`） | 无条件（跟着 1） |
     /// | 3 | 新插件自己的适配层（码表 · 候选路径 · 必需清单） | ➖ **不算宿主改动** | `E6`/`E9` 明写它就该每插件一份 |
     /// | 4 | `layering_guard::ALLOWED_INTO_PLUGIN`（今天 **5 条**，条数钉死） | ✅ 红 | 🔴 **只在适配层住 `control/` 或 `observe/` 时** —— 那条判据逐字 `for layer in ["control", "observe"]` |
     /// | 5 | `readonly_guard::spawn_registry`（`SPAWN_SITES_TODAY` 今天 **9**，相等断言） | ✅ 红 | 🔴 **只在没有复用那唯一一处起进程口时**；`E5` 裁定复用 ⇒ 这个数**不许涨**（本件一处没动） |
@@ -1949,8 +1949,8 @@ mod tests {
         );
         for s in &owners {
             assert!(
-                s.doc_anchor.is_some(),
-                "转调插件的命令 `{}` 没有文档锚点 —— 落点 2 那道对拍对它是空的",
+                !s.summary.is_empty(),
+                "转调插件的命令 `{}` 没有一句话说明 —— 落点 2 协议参考里它那一节是空的",
                 s.name
             );
         }

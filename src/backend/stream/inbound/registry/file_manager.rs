@@ -1,6 +1,6 @@
 //! 命令表 · 文件管理：`files-*`（读 · 写 · 上传的提交 · 解压 · 删历史会话）。
 
-use crate::stream::inbound::spec::{CommandSpec, Run};
+use crate::stream::inbound::spec::{arg, both, out, CommandSpec, Run};
 
 /// 删历史会话那一条要问的两件事，从原生那一侧（适配层注册表）的窄口取来，
 /// 由本门递给文件管理写面 —— 写面自己一家 agent 的布局都不认（`files/module_boundary_guard.rs` 围栏那一类为零）。
@@ -70,7 +70,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   「**谁引用得到 `control/files_write`**」。理由整段在那个模块的命令面那一节。
     CommandSpec {
         name: "files-create",
-        doc_anchor: Some("#### `files-create`"),
+        summary: "在文件管理目标根底下新建一份此前不存在的文件",
         codes: &[
             "bad_args",
             "bad_name",
@@ -79,7 +79,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "io_failed",
             "refused",
         ],
-        fields: &["bytes", "content", "path", "rel", "root", "single"],
+        fields: &[out("bytes", "这一趟写进去了几个字节"), arg("content", "要写进去的字节"), out("path", "真正落盘的那个绝对路径，**解完 symlink 的**（原始字节形）"), arg("rel", "相对 `root` 的那一段"), arg("root", "**用户指定的那个文件管理目标根**"), arg("single", "可选布尔：`true` ⇒ `rel` 只许是**一段名字**（界面就地新建 / 改名敲的那一格）；`files-mkdir` 的 `rel`、`files-rename` 的 `to` 同")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
@@ -97,7 +97,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   ⇒ `cancel` 命中时回 `not_cancellable`，不撒谎。
     CommandSpec {
         name: "files-mkdir",
-        doc_anchor: Some("#### `files-mkdir`"),
+        summary: "新建一个目录",
         codes: &[
             "bad_args",
             "bad_name",
@@ -106,7 +106,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "io_failed",
             "refused",
         ],
-        fields: &["path", "rel", "root", "single"],
+        fields: &[out("path", "建出来的那个目录（父目录解完 symlink 的）"), arg("rel", "目标根 ＋ 相对段"), arg("root", "目标根 ＋ 相对段"), arg("single", "可选布尔：`true` ⇒ `rel` 只许一段名字；名字规则同 `files-create`，不合 ⇒ `bad_name`")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
@@ -116,7 +116,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "files-rename",
-        doc_anchor: Some("#### `files-rename`"),
+        summary: "改名 / 同根内移动",
         codes: &[
             "bad_args",
             "bad_name",
@@ -125,7 +125,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "io_failed",
             "refused",
         ],
-        fields: &["from", "path", "root", "single", "to"],
+        fields: &[arg("from", "两个相对段，**各过一遍路径解析**（只解 `from` 的话，`to` 半路一条链接就能把东西搬到根外）"), out("path", "新名字的落点"), arg("root", "目标根"), arg("single", "可选布尔：`true` ⇒ `to` 只许一段名字；`to` 的名字规则同 `files-create`，不合 ⇒ `bad_name`"), arg("to", "两个相对段，**各过一遍路径解析**（只解 `from` 的话，`to` 半路一条链接就能把东西搬到根外）")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
@@ -135,21 +135,12 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "files-delete",
-        doc_anchor: Some("#### `files-delete`"),
+        summary: "删一个文件或一个空目录",
         codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
         // `recursive`（入）· `removed`（出）：显式才删整棵树，逐条目过围栏。
         // `expect`（入）：给了 ⇒ 盘上逐字节等于它才删一份普通文件，否则 `stale`。
         // `limit`（入）· `remaining`（出）：递归删一趟至多删几条、还剩几条（调用方接着发）。
-        fields: &[
-            "expect",
-            "limit",
-            "path",
-            "recursive",
-            "rel",
-            "remaining",
-            "removed",
-            "root",
-        ],
+        fields: &[arg("expect", "可选，字符串或 `{\"b16\": …}`：「我读到的是这一份」"), arg("limit", "可选，只对 `recursive: true`：这一趟至多删几条"), out("path", "删掉的那一项"), arg("recursive", "布尔，**缺省 `false`**"), arg("rel", "目标根 ＋ 相对段"), out("remaining", "还剩几条没删（只有带 `limit` 删够了停下时不是 `0`）：调用方再发一趟同样的请求接着删"), out("removed", "这一趟真删掉了几条（含目标自己；不递归那一支恒 `1`）"), arg("root", "目标根 ＋ 相对段")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
@@ -159,7 +150,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "files-chmod",
-        doc_anchor: Some("#### `files-chmod`"),
+        summary: "改 unix 权限位",
         // `no_unix_mode`：这个平台没有 unix 权限位（target 轴从这一格现推 Windows 那一格）。
         codes: &[
             "bad_args",
@@ -168,7 +159,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "no_unix_mode",
             "refused",
         ],
-        fields: &["before", "mode", "path", "rel", "root"],
+        fields: &[out("before", "**改之前**的权限位（十进制、低 12 位）：撤销 ＝ 拿它再发一趟"), both("mode", "**十进制数值**（`493` = `0o755`），只收低 12 位；超出 ⇒ `refused`"), out("path", "**解到底**的那个真路径"), arg("rel", "目标根 ＋ 相对段"), arg("root", "目标根 ＋ 相对段")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
@@ -181,21 +172,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   换名 ＋ 删自己刚建的那一份拼出来（理由住 `control/files_write.rs::copy_entry`）。
     CommandSpec {
         name: "files-copy",
-        doc_anchor: Some("#### `files-copy`"),
+        summary: "同根内复制一份普通文件",
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
         // `recursive`（入）· `files` / `dirs`（出）：显式才复制目录。
-        fields: &[
-            "bytes",
-            "dirs",
-            "files",
-            "from",
-            "links",
-            "overwrite",
-            "path",
-            "recursive",
-            "root",
-            "to",
-        ],
+        fields: &[out("bytes", "复制了几个字节（整棵时是全部普通文件之和）"), out("dirs", "几个目录（单文件那一形恒是 `1` / `0`）"), out("files", "复制了几个普通文件"), arg("from", "两个相对段"), out("links", "照原样复制了几条符号链接（单文件那一形恒是 `0`）"), arg("overwrite", "🔴 **覆盖策略显式**"), out("path", "落点（父目录解完 symlink 的）"), arg("recursive", "**复制目录显式**"), arg("root", "目标根（与写面其余几条同形）"), arg("to", "两个相对段")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
@@ -207,7 +187,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   `control/files_extract.rs`（第三层第四个登记的模块），本文件照旧是那一层唯一的门。阻塞档（同步读包 ＋ 落盘）。
     CommandSpec {
         name: "files-extract",
-        doc_anchor: Some("#### `files-extract`"),
+        summary: "解压到一个新目录",
         codes: &[
             "bad_args",
             "bad_path",
@@ -216,9 +196,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "refused",
             "unsupported",
         ],
-        fields: &[
-            "bytes", "dirs", "files", "fresh", "links", "path", "rel", "root",
-        ],
+        fields: &[out("bytes", "文件字节之和"), out("dirs", "几个目录（含补出来的上级）"), out("files", "建了几份文件（含硬链接落成的拷贝）"), arg("fresh", "可缺席的布尔"), out("links", "几条符号链接"), out("path", "落点目录（父目录解完 symlink 的）"), arg("rel", "包在 `root` 下的相对段；格式按名字后缀认：`.zip` · `.tar` · `.tar.gz` · `.tgz`（不分大小写），其余 ⇒ `unsupported`（「不认这种包」）"), arg("root", "那个目录（字符串或 `{\"b16\": …}`）")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_extract::answer_wire(&r.cmd, &r.args)
@@ -230,9 +208,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   目标文本原样（同 `cp -P`）。阻塞档（一次 `symlink`）。
     CommandSpec {
         name: "files-link",
-        doc_anchor: Some("#### `files-link`"),
+        summary: "建一条符号链接",
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
-        fields: &["path", "rel", "root", "target"],
+        fields: &[out("path", "建出来的那条链接（父目录解完 symlink 的）"), arg("rel", "链接自己那条路径：`rel` 在 `root` 下过路径解析（同写面其余几条；字符串或 `{\"b16\": …}`）"), arg("root", "链接自己那条路径：`rel` 在 `root` 下过路径解析（同写面其余几条；字符串或 `{\"b16\": …}`）"), arg("target", "链接的目标文本，**原样**写进去（不解、不判，同 `cp -P`）")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_extract::answer_wire(&r.cmd, &r.args)
@@ -242,11 +220,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "files-write-text",
-        doc_anchor: Some("#### `files-write-text`"),
+        summary: "覆盖写一份已经在的普通文件",
         codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
-        fields: &[
-            "bytes", "content", "expect", "path", "rel", "root", "sha256",
-        ],
+        fields: &[out("bytes", "写进去了几个字节"), arg("content", "字符串或 `{\"b16\":…}`"), arg("expect", "🔴 **必须给**，恰好 `{\"sha256\": \"<64 位小写十六进制>\"}`：「我看的时候那一份」的摘要（`files-read-text` 交的那个）"), out("path", "**解到底**的那个真路径（它跟链接，理由同 `files-chmod`）"), arg("rel", "目标根 ＋ 相对段"), arg("root", "目标根 ＋ 相对段"), out("sha256", "写进去那份的摘要 —— 调用方拿它当下一次存的 `expect`（连存两次不自撞）")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
@@ -264,7 +240,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   这一条「只许删会话形状那一份」的限制是它自己的，不是谁的例外。
     CommandSpec {
         name: "files-peek",
-        doc_anchor: Some("#### `files-peek`"),
+        summary: "读改写的读那一半",
         codes: &[
             "bad_args",
             "bad_path",
@@ -273,7 +249,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "refused",
             "too_large",
         ],
-        fields: &["exists", "path", "rel", "root", "text"],
+        fields: &[out("exists", "`false` ⇒ **确定不存在**（`text` 为 `null`）"), out("path", "读的是哪一份（最后一段是链接时是解到底的那一份）"), arg("rel", "与写面其余几条同形；**与 `files-put` 同一道围栏**（读的那一份就是写的那一份）"), arg("root", "与写面其余几条同形；**与 `files-put` 同一道围栏**（读的那一份就是写的那一份）"), out("text", "全文（UTF-8）；不在时 `null`")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
@@ -283,12 +259,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "files-put",
-        doc_anchor: Some("#### `files-put`"),
+        summary: "整份替换一份文本文件",
         codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
-        fields: &[
-            "backup", "bytes", "changed", "content", "created", "expect", "parents", "path", "rel",
-            "root",
-        ],
+        fields: &[arg("backup", "可缺席的布尔（缺省否）"), out("bytes", "新内容的字节数"), out("changed", "真的写了吗（新内容与盘上逐字节相同 ⇒ `false`，一个字节不动）"), arg("content", "新全文（字符串或 `{\"b16\":…}`），**必须给**"), out("created", "这份文件是这一次新建的"), arg("expect", "🔴 **必须给**：`null` = 「我读的时候它不在」；字符串 / b16 = 「我读到的就是这一份」"), arg("parents", "可缺席的布尔（缺省否）"), out("path", "落点"), arg("rel", "同 `files-peek`"), arg("root", "同 `files-peek`")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
@@ -298,9 +271,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "files-delete-session",
-        doc_anchor: Some("#### `files-delete-session`"),
+        summary: "删一份历史会话",
         codes: &["bad_args", "io_failed", "refused"],
-        fields: &["path", "sid"],
+        fields: &[out("path", "删掉的那一份"), arg("sid", "🔴 **只收 sid**：多给任何一个键 ⇒ `bad_args`")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
@@ -318,9 +291,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   同住 `control/files_commit.rs`（第三层第二个模块），阻塞档理由同上一条。
     CommandSpec {
         name: "files-stage-chunk",
-        doc_anchor: Some("#### `files-stage-chunk`"),
+        summary: "存盘的一块进暂存区",
         codes: &["bad_args", "io_failed", "refused"],
-        fields: &["bytes", "content", "key", "seq"],
+        fields: &[out("bytes", "这一块写进去的字节数"), arg("content", "字符串或 `{\"b16\":…}`，**至少 1 字节**（空块 ⇒ `bad_args`）"), arg("key", "这一次存盘的键：**恰好 32 位小写十六进制**（调用方每次存盘现造一个）"), arg("seq", "块号，从 0 起的非负整数")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_commit::answer_wire(&r.cmd, &r.args)
@@ -330,11 +303,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "files-commit-text",
-        doc_anchor: Some("#### `files-commit-text`"),
+        summary: "按块读回、拼起来、覆盖写",
         codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
-        fields: &[
-            "bytes", "chunks", "expect", "key", "path", "rel", "root", "sha256",
-        ],
+        fields: &[arg("bytes", "拼起来**必须恰好**这么长；最多 8 MiB（`files-read-text` 一趟的天花板：存得回的要读得回来），超了 ⇒ `bad_args`"), arg("chunks", "块数：读回 `0..chunks` 这几块"), arg("expect", "🔴 **必须给**，与 `files-write-text` 的 `expect` 同形同义（摘要形 CAS）：盘上那份对不上 ⇒ `stale`，目标一个字节没动（块照样删掉）"), arg("key", "与 `files-stage-chunk` 同一个键"), out("path", "解到底的那个真路径"), arg("rel", "目标，语义与 `files-write-text` **完全相同**：必须已经在、是普通文件；跟链接（解到底再判一次）；原子地换（权限位沿用；属主 / 硬链接不再保留，见 `files-write-text`）"), arg("root", "目标，语义与 `files-write-text` **完全相同**：必须已经在、是普通文件；跟链接（解到底再判一次）；原子地换（权限位沿用；属主 / 硬链接不再保留，见 `files-write-text`）"), out("sha256", "写进去那份的摘要")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_commit::answer_wire(&r.cmd, &r.args)
@@ -344,18 +315,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "files-commit-upload",
-        doc_anchor: Some("#### `files-commit-upload`"),
+        summary: "把暂存区里一份传完的上传件挪进目标",
         codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
-        fields: &[
-            "bytes",
-            "chunks",
-            "expect",
-            "key",
-            "overwrite",
-            "path",
-            "rel",
-            "root",
-        ],
+        fields: &[arg("bytes", "可缺席（缺席 ＝ 此前那一形）"), arg("chunks", "可缺席（缺席 ＝ 此前那一形）"), arg("expect", "🔴 **必须给**，恰好 `{\"sha256\": \"<64 位小写十六进制>\"}`：传输台上传时对**本机那份整份**算的摘要（`transfer` 帧 `end.sha256`，窗口原样交来）"), arg("key", "暂存件的键：**恰好 32 位小写十六进制**"), arg("overwrite", "🔴 **必须给**（`true` / `false`），不给默认值"), out("path", "落点（父目录解过 symlink 的那一个）"), arg("rel", "目标根 ＋ 相对段，先过写面那两道路径解析（词法 ＋ 父目录解 symlink；「会话文件那一问」删了）；`rel` 也收 `{\"b16\": …}`"), arg("root", "目标根 ＋ 相对段，先过写面那两道路径解析（词法 ＋ 父目录解 symlink；「会话文件那一问」删了）；`rel` 也收 `{\"b16\": …}`")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_commit::answer_wire(&r.cmd, &r.args)
@@ -365,19 +327,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "files-browse",
-        doc_anchor: Some("#### `files-browse`"),
+        summary: "告诉后端「用户现在在看哪几个目录」",
         codes: &["bad_args", "bad_path"],
         // +`watching` · `watch_failed` · `watch_error`（进程里那一个监听器跟上名单）。
-        fields: &[
-            "added",
-            "browse_watch_cap",
-            "dirs",
-            "rejected",
-            "removed",
-            "watch_error",
-            "watch_failed",
-            "watching",
-        ],
+        fields: &[out("added", "这一趟新挂上几个"), out("browse_watch_cap", "上限（今天 64）"), arg("dirs", "**此刻的整份名单**（数组，每项是字符串或 `{\"b16\":…}`）"), out("rejected", "超过上限被**拒掉**几个"), out("removed", "这一趟卸掉几个（用户不再看它们了）"), out("watch_error", "这一趟没挂上的条数 ＋ 第一条原因（`null` ＝ 都挂上了）"), out("watch_failed", "这一趟没挂上的条数 ＋ 第一条原因（`null` ＝ 都挂上了）"), out("watching", "此刻**真挂着** watch 的目录数（进程里那一个监听器，跟着名单挂 / 卸）")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)
@@ -387,18 +340,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "files-index-rebuild",
-        doc_anchor: Some("#### `files-index-rebuild`"),
+        summary: "重建常驻文件名索引：走一遍，做完返回",
         // `already_rebuilding`：非阻塞互斥抢不到那个位。`no_home`：没给根而家目录说不出。
         codes: &["already_rebuilding", "bad_path", "no_home", "unreadable"],
-        fields: &[
-            "entries",
-            "path",
-            "resident_bytes",
-            "skipped_mounts",
-            "truncated",
-            "unreadable_dirs",
-            "unreadable_paths",
-        ],
+        fields: &[out("entries", "这一趟走出来多少条（目录 ＋ 文件 ＋ 符号链接，根自己不算）"), both("path", "要走的那个**根**"), out("resident_bytes", "新那份索引在后端内存里占多少字节（路径总长 ＋ 5×条数：每条 4 字节界桩 ＋ 1 字节类型，**算得出的量**）"), out("skipped_mounts", "根底下挂着的**别的文件系统**没走进去的个数（设备号比对；那个目录本身照样在索引里，它底下的不在）"), out("truncated", "撞到条目上限、没走完 ⇒ 这份索引是**不完整**的"), out("unreadable_dirs", "这一趟有几个子目录读不进去（权限等）"), out("unreadable_paths", "那几个子目录（前 20 个，同 `files-index-status` 那一格）")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)
@@ -411,24 +356,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   （`files/mod.rs::answer_grep_cancellable`）。纯读。
     CommandSpec {
         name: "files-grep",
-        doc_anchor: Some("#### `files-grep`"),
+        summary: "在一个目录底下按内容搜",
         codes: &["bad_args", "bad_path", "unreadable"],
-        fields: &[
-            "bytes",
-            "files",
-            "hits",
-            "ignore_ascii_case",
-            "limit",
-            "links",
-            "needle",
-            "path",
-            "skipped_binary",
-            "skipped_large",
-            "skipped_mounts",
-            "stopped",
-            "truncated",
-            "unreadable",
-        ],
+        fields: &[out("bytes", "这一趟读了几份、多少字节"), out("files", "这一趟读了几份、多少字节"), out("hits", "每份命中的文件一项：`path`"), arg("ignore_ascii_case", "只对 ASCII 段大小写不敏感"), both("limit", "最多回几份命中的文件"), out("links", "碰到几条链接 —— **不跟**（它不一定在这棵树里，跟进去就是出界）；根本身是链接 ⇒ 不进去"), arg("needle", "要找的**字节**子串（字符串或 `{\"b16\":…}`），1 至 256 字节"), both("path", "从哪个目录往下搜（字符串或 `{\"b16\":…}`；也可以是一份文件）；回送原样那一格"), out("skipped_binary", "看着像二进制（前 8 KiB 有 NUL）"), out("skipped_large", "超过 8 MiB"), out("skipped_mounts", "挂在底下的别的文件系统"), out("stopped", "`null`"), out("truncated", "上界到了没走完：`\"hits\"`（命中份数到 `limit`）/ `\"bytes\"`（一趟累计读到 256 MiB）；走完 ⇒ `false`"), out("unreadable", "读不了的，各跳过几项")],
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {
@@ -441,30 +371,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "files-find",
-        doc_anchor: Some("#### `files-find`"),
+        summary: "在常驻索引里查",
         codes: &["bad_args", "bad_path", "bad_query", "superseded"],
-        fields: &[
-            "cover_root",
-            "desc",
-            "hits",
-            "index_age_secs",
-            "index_missing",
-            "index_root",
-            "limit",
-            "offset",
-            "out_of_index",
-            "query",
-            "scanned",
-            "scope",
-            "seq",
-            "sort",
-            "stale",
-            "start",
-            "stream",
-            "total_hits",
-            "truncated",
-            "under",
-        ],
+        fields: &[out("cover_root", "要搜全这一趟，重走该走哪个根：手上那份盖得住 ⇒ 它的根；否则范围在家目录里 ⇒ 家目录；否则 ⇒ 范围本身（都说不出 ⇒ `null`）"), both("desc", "`true` ⇒ 倒过来（默认 `false`）"), out("hits", "这一屏的命中，每条一个对象：`path`"), out("index_age_secs", "答这一趟用的那份索引，是多久以前建的"), out("index_missing", "索引还没建过 ⇒ 几个计数全是 0，而那不是「没搜到」；客户端要自己发 `files-index-rebuild`"), out("index_root", "手上那份索引的根（没建过 ⇒ `null`）"), arg("limit", "这一屏最多回几条"), both("offset", "从第几条命中起回（前面的只数不回）"), out("out_of_index", "这一趟的范围（`under` 或家目录）不在手上那份索引里 ⇒ 结果只是索引里碰巧有的那一部分"), arg("query", "原样的搜索词（字符串）"), out("scanned", "这一趟扫了几条（= 索引条目数）"), arg("scope", "`\"under\"`（默认，照 `under`）/ `\"machine\"`（整台机器：范围由这台自己定 —— unix `/`，Windows 家目录那块盘的根；`under` 不看）"), both("seq", "这一趟的号（非负整数，可不给）"), both("sort", "按哪一列排：`relevance`（默认）· `name` · `location` · `mtime` · `size`"), out("stale", "该重走了（`index_age_secs > rewalk_interval_secs`）"), out("start", "这一趟的搜索起点（`location` 相对它算；说不出 ⇒ `null`）"), arg("stream", "这个号属于哪一个搜索框（字符串，不给 ⇒ 空串）"), out("total_hits", "一共命中几条，**不受分页影响**"), out("truncated", "这一屏之后还有（往下翻：同号、`offset` 加上这一屏的条数）"), arg("under", "只搜这个目录**底下**（不含它自己；字符串或 `{\"b16\":…}`）")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)
@@ -474,23 +383,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "files-index-status",
-        doc_anchor: Some("#### `files-index-status`"),
+        summary: "索引的新鲜度 / 条目数 / 常驻字节",
         codes: &[],
-        fields: &[
-            "age_secs",
-            "browse_watch_cap",
-            "browse_watches",
-            "cold_first_build_secs",
-            "entries",
-            "index_missing",
-            "resident_bytes",
-            "rewalk_interval_secs",
-            "skipped_mounts",
-            "stale",
-            "truncated",
-            "unreadable_dirs",
-            "unreadable_paths",
-        ],
+        fields: &[out("age_secs", "这份索引建好到现在多少秒"), out("browse_watch_cap", "最多挂几个"), out("browse_watches", "此刻给「用户正在浏览的那几个目录」挂着几个 watch"), out("cold_first_build_secs", "后端**声明**的冷启动首建大约要几秒（今天 10，出处见 `index.rs::COLD_FIRST_BUILD_SECS`：一台 NVMe 上 `find` 的冷缓存读数取上整，**代理指标、不是实测**）"), out("entries", "索引里有几条"), out("index_missing", "还没建过"), out("resident_bytes", "它在后端内存里占多少字节（索引**只在内存里，重启重建**）"), out("rewalk_interval_secs", "🔴 **后端声明的重走周期**（今天 300）"), out("skipped_mounts", "根底下挂着的**别的文件系统**没走进去的个数（设备号比对；那个目录本身照样在索引里，它底下的不在）"), out("stale", "`age_secs > rewalk_interval_secs`"), out("truncated", "上一趟遍历撞到了条目数上限，没走完"), out("unreadable_dirs", "上一趟遍历里有几个目录读不进去（权限等）"), out("unreadable_paths", "那几个读不进去的目录（前 20 个，按遍历先后；字符串或 `{\"b16\":…}`；根自己不在里面 —— 根读不进去是 `files-index-rebuild` 的 `unreadable`）")],
         takes_input: false,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)
@@ -500,21 +395,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "files-ls",
-        doc_anchor: Some("#### `files-ls`"),
+        summary: "列一个目录的直接子项",
         codes: &["bad_path", "denied", "not_dir", "not_found", "unreadable"],
-        fields: &[
-            "entries",
-            "kind",
-            "limit",
-            "link_dir",
-            "link_to",
-            "mtime_secs",
-            "path",
-            "size",
-            "total",
-            "truncated",
-            "unreadable",
-        ],
+        fields: &[out("entries", "每项一个对象：`path`（原始字节形）· `kind` · `size` · `mtime_secs`（后两个拿不到就**不出这个键**，不填 0）"), out("kind", "**闭集四个词**：`dir` / `file` / `symlink` / `other`"), arg("limit", "这一趟最多回几条"), out("link_dir", "只在 `kind` 是 `symlink` 时出：它指向的是不是目录（跟链接问一次）"), out("link_to", "只在 `kind` 是 `symlink` 时出：它指向什么 —— `dir` · `file` · `missing`（断了：指向的东西不在 / 读不到）"), out("mtime_secs", "Unix 纪元秒"), arg("path", "要列的那个目录"), out("size", "字节数"), out("total", "目录里一共读到几项（含没回送的；截断时界面写「前 n / total 项」）"), out("truncated", "目录里的项数多于回送的条数（被 `limit` 截了）"), out("unreadable", "目录打开了、其中几项读不出来（没有回送、不算进 `truncated`）")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)
@@ -524,19 +407,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "files-stat",
-        doc_anchor: Some("#### `files-stat`"),
+        summary: "一个路径的元数据",
         codes: &["bad_path", "unreadable"],
         // +`mode`（能力 `files.stat` 同拍加的那一格；非 unix 缺席）· `owner` · `link_target`（文件窗口「属性」）。
-        fields: &[
-            "kind",
-            "link_target",
-            "mode",
-            "mtime_secs",
-            "owner",
-            "path",
-            "readonly",
-            "size",
-        ],
+        fields: &[out("kind", "`dir` · `file` · `symlink` · `other`"), out("link_target", "路径**本身**是符号链接 ⇒ 它的目标原文（`readlink`，不解不跟；原始字节形：字符串或 `{\"b16\":…}`）；不是链接 ⇒ `null`"), out("mode", "unix 权限位的低 12 位（十进制数；`420` = `0o644`）"), out("mtime_secs", "Unix 纪元秒（`mtime_secs` 拿不到就不出这个键）"), out("owner", "属主（跟链接）：用户名；查不到名字 ⇒ uid 的数字串；非 unix ⇒ `null`"), both("path", "入方向是要问的那个路径；出方向原样回送（原始字节形）"), out("readonly", "这个路径此刻是不是只读"), out("size", "字节数")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)
@@ -552,7 +426,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // ⚠ `run` 与同族那六条逐字同形（名字从 `r.cmd` 来）；同在 `Run::Blocking`、同样取消不掉。
     CommandSpec {
         name: "files-read-text",
-        doc_anchor: Some("#### `files-read-text`"),
+        summary: "读一份文本进编辑器",
         codes: &[
             "bad_args",
             "bad_path",
@@ -560,7 +434,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "too_large",
             "unreadable",
         ],
-        fields: &["bytes", "max_bytes", "path", "sha256", "text"],
+        fields: &[out("bytes", "字节数"), arg("max_bytes", "🔴 **必须给**：编辑上限是**调用方**的（它答的是「这个文本控件打字卡不卡」）"), both("path", "要读的那份文件"), out("sha256", "交出去的那份字节的 SHA-256（64 位小写十六进制）"), out("text", "整份内容（合法 UTF-8）")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)
@@ -571,9 +445,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 读族第十条：按字节寻址分块读回（非 UTF-8 名的下载）。同族同形、同在阻塞档。
     CommandSpec {
         name: "files-read-chunk",
-        doc_anchor: Some("#### `files-read-chunk`"),
+        summary: "按字节寻址分块读回",
         codes: &["bad_args", "bad_path", "not_text", "unreadable"],
-        fields: &["content", "eof", "len", "offset", "path", "size"],
+        fields: &[out("content", "这一块的原始字节，恒为 `{\"b16\": …}`"), out("eof", "这一块读到了末尾（`offset` 越过末尾 ⇒ 空块、`eof: true`）"), arg("len", "从哪读、读多少；`len` 只收 `1..=READ_CHUNK_MAX_BYTES`（256 KiB），越界 `bad_args`、不夹小"), arg("offset", "从哪读、读多少；`len` 只收 `1..=READ_CHUNK_MAX_BYTES`（256 KiB），越界 `bad_args`、不夹小"), both("path", "一份普通文件（字符串或 `{\"b16\": …}`；非 UTF-8 名的下载就走这一形，SFTP 库的路径是 `String` 寻址不到）"), out("size", "此刻整份多大（调用方据此报进度、判读完）")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)
@@ -584,18 +458,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 读族第九条：算目录大小。与同族那几条逐字同形、同在阻塞档。
     CommandSpec {
         name: "files-size",
-        doc_anchor: Some("#### `files-size`"),
+        summary: "算一个目录有多大",
         codes: &["bad_path", "unreadable"],
-        fields: &[
-            "bytes",
-            "dirs",
-            "files",
-            "links",
-            "other",
-            "path",
-            "skipped_mounts",
-            "unreadable_dirs",
-        ],
+        fields: &[out("bytes", "普通文件的**表观大小**之和（与 `files-ls` 的 `size` 同口径，不是占盘块数）"), out("dirs", "目录数（含顶上那个目录自己）"), out("files", "普通文件数"), out("links", "符号链接数 —— **不跟、不算字节**（它指向的东西不一定在这棵树里）"), out("other", "设备 / 管道 / 套接字之类"), both("path", "要算的那个路径（字符串或 `{\"b16\":…}`）；出方向原样回送（原始字节形）"), out("skipped_mounts", "底下挂着的**别的文件系统**，没走进去的个数（设备号比对）"), out("unreadable_dirs", "读不进去、跳过的目录数（不中断）")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)
@@ -605,9 +470,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "files-home",
-        doc_anchor: Some("#### `files-home`"),
+        summary: "后端这个用户的 home",
         codes: &["no_home"],
-        fields: &["path"],
+        fields: &[out("path", "后端这个进程环境里的 home（原始字节形）")],
         takes_input: false,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)

@@ -200,8 +200,8 @@ fn the_doc_scan_actually_reads_the_durable_docs() {
         })
         .sum();
     assert!(
-        total >= 4000,
-        "`doc/` 总共只剩 {total} 行 —— 路径或读法坏了（摸底实测 4158 行）"
+        total >= 2000,
+        "`doc/` 总共只剩 {total} 行 —— 路径或读法坏了（10-07 协议文档改成生成之后约 4000 行）"
     );
     let tables = status_tables();
     // 1 → 2：`src/doc/ARCHITECTURE.md` 新增「backend 四层落地」表。
@@ -701,83 +701,6 @@ fn each_registered_status_still_matches_reality() {
                  · 或者本条量法本身选错了标的（U8c-2a 就这么红过一次）⇒ 改量法 + 写清为什么。"
         );
     }
-}
-
-/// ★★ **F12 全局变异抽样抓到的缺口**：文档里**枚举的一组标识符**没人对拍。
-///
-/// # 它是怎么被发现的
-///
-/// Phase G 的全局变异抽样里，把 backend `stream/inbound/` 的 `unknown_command`
-/// **三处一起改名**成 `unknown_cmd` —— **backend 253 条全绿**。
-/// 而 `src/doc/IPC-PROTOCOL.md` 逐条列着六个**协议级**错误码，语义是
-/// 「客户端代码写错了，别重试」—— 那是**仓外可见的契约**（`resolve` 那条已经与 aterm 冻结）。
-///
-/// ⚠ F11 建这个登记表时扫的是「状态列」与「可数的实测断言」两族，
-/// **漏了第三种形状：文档里枚举的一组标识符**。
-/// 那不是「F11 做漏了」——是**摸底时的分族本身不完整**，
-/// 而**只有跨模块的变异抽样能发现这种「整族缺口」**（本工作区自己的判据都在
-/// 各自那件的范围里看，看不到「有一族根本没人管」）。
-///
-/// ⇒ 这条也是 skill 那句「**变异存活分布不会说谎**」在本工作区拿到的实货。
-#[test]
-fn the_protocol_level_error_codes_in_the_doc_are_the_ones_the_backend_uses() {
-    const IPC: &str = include_str!("../../../src/doc/IPC-PROTOCOL.md");
-    let marker = "**协议级**由 `stream/inbound/` 独占 ——";
-    let at = IPC.find(marker).unwrap_or_else(|| {
-        panic!(
-            "`IPC-PROTOCOL.md` 里找不到锚点 {marker:?} —— 那句话被改写了。\n\
-                 本条判据的价值是「那份清单只有一个家（文档）」，改措辞就把它变成零命中地绿。"
-        )
-    });
-    // ⚠ 收尾锚点是**清单本身的收尾**（`，语义是`），不是段落结束 ——
-    // 第一版切到空行，把后面几句里的 `invalid_args`/`launch`/`resolve` 也收进来了
-    // （抽到 9 个而真值 6 个）。**抽取器自检当场把它拦下来了**，这就是它的岗位。
-    let seg = &IPC[at..];
-    let end = seg
-        .find("，语义是")
-        .expect("找不到清单的收尾锚点「，语义是」—— 那句话被改写了");
-    let seg = &seg[..end];
-    let mut in_doc: Vec<&str> = Vec::new();
-    let mut rest = seg;
-    while let Some(a) = rest.find('`') {
-        rest = &rest[a + 1..];
-        let Some(b) = rest.find('`') else { break };
-        let word = &rest[..b];
-        rest = &rest[b + 1..];
-        // 只收「像错误码」的词：全小写 + 下划线，且不是模块名。
-        if !word.is_empty()
-            && word.chars().all(|c| c.is_ascii_lowercase() || c == '_')
-            && word != "inbound"
-        {
-            in_doc.push(word);
-        }
-    }
-    in_doc.sort();
-    in_doc.dedup();
-    // ★ 抽取器自检：这一段里就该有六个码；抽不到就说明剥法坏了。
-    assert_eq!(
-        in_doc.len(),
-        6,
-        "从文档那一段只抽到 {} 个协议级错误码（{in_doc:?}）—— 剥法坏了，\n\
-             下面那条会零命中地绿。文档实测是六个：bad_request · line_too_long ·\n\
-             unknown_command · duplicate_id · handler_panicked · not_cancellable。",
-        in_doc.len()
-    );
-    let backend = std::fs::read_to_string(repo_root().join("src/backend/stream/inbound/mod.rs"))
-        .expect("读不到后端的 stream/inbound/");
-    let prod = guard_core::production_code(&backend);
-    let missing: Vec<&&str> = in_doc
-        .iter()
-        .filter(|c| !prod.contains(&format!("\"{c}\"")))
-        .collect();
-    assert!(
-        missing.is_empty(),
-        "`IPC-PROTOCOL.md` 列着这些协议级错误码，而后端生产段里**找不到**：{missing:?}\n\
-             ⚠ 它是**仓外可见的契约**（`resolve` 那条已经与仓外 aterm 冻结）——\n\
-             改名 = 静默毁约：对端拿到一个它不认识的码，而两侧的测试都不会红\n\
-             （F12 的全局变异抽样就是这么把这个缺口逮出来的：三处一起改名，backend 253 条全绿）。\n\
-             要改就两侧一起改，并想清楚仓外消费方。"
-    );
 }
 
 /// **`doc/` 里点名的代码符号必须解析得到，且住在文档说的那个文件里。**
@@ -1891,9 +1814,9 @@ fn every_constant_value_quoted_in_the_docs_matches_the_code() {
     // 于是判据自己成了那个数的第二份副本（正是本模块头注警告的形态）：
     // 合法地把常量改成别的数时，红的会是锚点而不是对拍，诊断指错方向。
     assert!(
-        claims.iter().any(|(_, _, n, _)| n == "REPLY_BURST"),
-        "锚点 `REPLY_BURST` 不在抽到的清单里 —— 收的多半不是这一类了。\n\
-             （它是本条的立项样本：改代码不改文档时，全仓一条都不会红。）"
+        claims.iter().any(|(_, _, n, _)| n == "CHUNK_SIZE"),
+        "锚点 `CHUNK_SIZE` 不在抽到的清单里 —— 收的多半不是这一类了。\n\
+             （立项样本 `REPLY_BURST` 随协议总述压短离开了文档；今天的样本是架构文档里那一处。）"
     );
 
     // ── 代码侧：常量名 → 它被定义成的那些值

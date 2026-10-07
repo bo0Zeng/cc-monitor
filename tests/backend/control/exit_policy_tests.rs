@@ -153,7 +153,7 @@ fn the_wire_shape_is_exactly_the_registered_fields() {
             .find(|s| s.name == name)
             .unwrap_or_else(|| panic!("注册表里没有 {name}"));
         let declared: std::collections::BTreeSet<String> =
-            spec.fields.iter().map(|s| s.to_string()).collect();
+            spec.field_names().map(str::to_string).collect();
         assert_eq!(
             produced, declared,
             "`{name}` 真跑出来的键与登记的 `fields` 对不上（两向）"

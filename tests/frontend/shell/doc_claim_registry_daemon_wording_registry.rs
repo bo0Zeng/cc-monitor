@@ -47,10 +47,6 @@ const EXEMPT: &[(&str, &str, &str)] = &[
      "`K-R106` 订正段里**逐字回抄的原文**（下一句就是「那句被用户当场推翻了一半」）"),
     ("src/doc/INVARIANTS.md", "不许再用「daemon」这个词把「远端常驻的那份」与「后端」压成一个",
      "`R61` 裁定三本身 —— 它说的就是这个词，把词换掉这句话就没有指称对象了"),
-    ("src/doc/IPC-PROTOCOL.md", "= CC 2.1.x daemon 后台任务",
-     "这一处的 `daemon` 指的是 **Claude Code 自己**那个 `--fork-session` 后台模式，不是本仓的后端 —— 换了词就把两个不同的东西压成一个（`R61` 治的正是这一形，反方向）"),
-    ("src/doc/IPC-PROTOCOL.md", "（`daemon-协议-v1 §3`）",
-     "与仓外 aterm **冻结在 2026-07-18** 的那份契约文档的**名字**，不是散文"),
 ];
 
 /// 语料地板：低于这个字节数就判「散文没喂进来」，而不是「一处都没有」。
@@ -68,7 +64,8 @@ const CORPUS_FLOOR_BYTES: usize = 300_000;
 /// 被全仓冻结窗口整个取消了 ⇒ 那六处真的改成「后端」了，例外随之作废。
 /// 逐条理由见 [`EXEMPT`] 表头那段注释。**又一次是例外表变短，不是放宽。**
 // 8 → 7：`IPC-PROTOCOL.md` §11 按点 ↗ 时现查重写，那一处引文随旧链路的沿革一起删了。
-const EXEMPT_HITS: usize = 7;
+// 7 → 5：协议文档改成「总述手写 ＋ 逐格生成」，`IPC-PROTOCOL.md` 那两处（CC 的后台模式 · aterm 契约文档名）随旧正文一起删了。
+const EXEMPT_HITS: usize = 5;
 
 /// ASCII 标识符字符 —— **汉字不算**，这一条就是「两个数」的分水岭。
 fn is_ident(c: u8) -> bool {

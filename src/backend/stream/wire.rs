@@ -8,10 +8,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// A single backend→client frame.
-///
-/// Serializes with an external `kind` tag, e.g.
-/// `{"kind":"hello","v":1,...}` or `{"kind":"session_added","sid":"..."}`.
 /// [`Frame::SessionRemoved`] 的原因。**双写点**：字面量 `"superseded"` 与 monitor
 /// `src/frontend/shell/src/stream_source/` 的解析处逐字一致，由 monitor 侧
 /// `removal_cause_wire_literal_stays_in_sync`〔散文墓碑〕 钉住（同 `TMUX_LS_FMT` 的纪律）。
@@ -192,13 +188,17 @@ pub fn host_env_from(
         .collect()
 }
 
+/// 后端发给客户端的一帧；`kind` 是标签，例如 `{"kind":"hello","v":1,...}`。
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Frame {
     /// Handshake sent once when a client connects.
     Hello {
+        /// 协议版本号。
         v: u32,
+        /// 这份后端二进制的身份（`BUILD_ID`）；换不换后端按它判。
         build_id: String,
+        /// 这台机器的架构（`x86_64` / `aarch64` …）。
         host_arch: String,
         /// ⚠ **冻结兼容字段，不是欠账**。字段名里带 agent 名，违反 `D3` ——
         /// 但它是 hello 帧里**今天真的在线上、且有仓外消费方**（aterm，契约冻结 2026-07-18）
@@ -323,11 +323,16 @@ pub enum Frame {
     /// 这一行在渲染模型里是什么（`message`，缺 ＝ 不进界面、照占号）与它自己的 `cwd`。解释住后端适配层，
     /// monitor 只原样转交。原文 `raw` 只给发了 `--with-raw` 的客户端（第二个前端自己解析记录）。
     Line {
+        /// 会话 id。
         session_id: String,
+        /// 这份会话记录在那台机器上的绝对路径。
         path: String,
+        /// 这一行在本条流里的序号（按文件单调递增）；不是续传键，续传用 `byte_offset`。
         seq: u64,
+        /// 这一行在渲染模型里的成品；缺 ＝ 不进界面、照占号。
         #[serde(skip_serializing_if = "Option::is_none")]
         message: Option<serde_json::Value>,
+        /// 这条记录自己的工作目录。
         #[serde(skip_serializing_if = "Option::is_none")]
         cwd: Option<String>,
         /// backend-01（gap#2，additive 不 bump PROTO_VERSION）：本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——
@@ -353,6 +358,7 @@ pub enum Frame {
     /// （"interactive"/"bg"；字段名避开 enum tag `kind`）、`cwd`、`name`。
     /// None 时不上线（旧行为字节不变）；旧 monitor 忽略未知字段。
     SessionAdded {
+        /// 会话 id。
         sid: String,
         /// DG3（#2D，additive）：会话属哪 agent kind——`"codex"`（Codex 会话）。Claude 会话**省略**
         /// （skip_if_none）→ 消费侧缺=claude（向后兼容、旧后端无此字段）。
@@ -362,6 +368,7 @@ pub enum Frame {
         /// Claude（pidfile 权威）**省略**（skip_if_none）→ 消费侧缺=authoritative（向后兼容）。
         #[serde(skip_serializing_if = "Option::is_none")]
         liveness_confidence: Option<String>,
+        /// pidfile 里的会话种类（`interactive` · `bg` …）。
         #[serde(skip_serializing_if = "Option::is_none")]
         session_kind: Option<String>,
         /// **E73（additive）：attach 进去对人有没有意义。**
@@ -385,6 +392,7 @@ pub enum Frame {
         /// （`agents::project_dir_of`，只读记录开头）；记录还没写出来 ⇒ pidfile 那一格（那一刻还没有命令跑过，就是起会话的目录）。
         #[serde(skip_serializing_if = "Option::is_none")]
         project_dir: Option<String>,
+        /// pidfile 里的会话名。
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
         /// Batch8-F25（additive）：该会话 jsonl 的远端绝对路径（同 sid 多文件时
@@ -402,6 +410,7 @@ pub enum Frame {
         /// Batch9-F27（additive）：宣告时的初始 status/waitingFor——连接建立灯就对。
         #[serde(skip_serializing_if = "Option::is_none")]
         status: Option<String>,
+        /// 宣告时在等什么（同 `session_status`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,
         /// 〔additive〕这条会话住在什么容器里（见 [`SessionContainer`]）。
@@ -423,9 +432,12 @@ pub enum Frame {
     /// Batch9-F27：会话 status 变化（pidfile modify diff；CC 仅状态转换时重写，
     /// 天然稀疏）。远端红绿灯数据源；旧 monitor 未知 kind 忽略（additive）。
     SessionStatus {
+        /// 会话 id。
         sid: String,
+        /// 红绿灯状态（pidfile 里的 `status`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         status: Option<String>,
+        /// 在等什么（pidfile 里的 `waitingFor`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,
         /// DG3（#2D，additive）：判活置信度（同 SessionAdded；状态变化时带）。Claude 省→缺=authoritative。
@@ -437,9 +449,15 @@ pub enum Frame {
     /// 由 `observe::session_ledger` 在它看着发出去的 `session_removed` / `tmux_sessions` 之后补发（同一个 sink、同一条线程，
     /// 紧跟在引起它的那一帧之后）；新连接第一份可观测的 tmux 快照里「挂着 `@ccm_sid`、却不在活会话里」的也各发一帧可重连
     /// （在 `sessions_replayed` 之前）。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
-    SessionState { sid: String, state: SessionFate },
+    SessionState {
+        /// 会话 id。
+        sid: String,
+        /// 离开「活」之后的去向。
+        state: SessionFate,
+    },
     /// A session file went away.
     SessionRemoved {
+        /// 会话 id。
         sid: String,
         /// **S0（additive）：这个 sid 是「死了」还是「被顶替了」。**
         ///
@@ -467,7 +485,12 @@ pub enum Frame {
     /// gap#6 闭**；backend 不猜消息边界）。`uuid` = 完成记录**顶层 uuid** = 客户端 dedup 键。
     /// **不带 `byte_offset`**（只 Line 带）——α watcher：Line 推 currentOffset、TurnEnd 喂 rolling
     /// current，结算时 baseline+offset 同段提交。旧 monitor 未知 kind 忽略（additive）。
-    TurnEnd { session_id: String, uuid: String },
+    TurnEnd {
+        /// 会话 id。
+        session_id: String,
+        /// 这一轮最后那条 assistant 记录的 uuid。
+        uuid: String,
+    },
     // 这里原是 `TmuxSessions`（B2 · P1：`tmux ls` 原文 ＋ 观测取值）与 `TmuxSessionClosed`（P5：差分出的
     //   正向死亡）两帧。会话账本进后端之后，客户端只收成品（`SessionState`），这两份原料再没有线上读者（monitor 已不消费；
     //   仓外 aterm 的 `DaemonTransport.parseFrame` 从来按未知 kind 跳过）⇒ 删。快照只喂 `observe::session_ledger`。
@@ -477,6 +500,7 @@ pub enum Frame {
     /// lines were lost (#32). `dropped` counts frames dropped since the last
     /// overflow signal.
     Overflow {
+        /// 自上一次哨兵以来丢掉的帧数。
         dropped: u64,
         /// 〔audit-0805 F03，**additive**〕那批丢帧里**不可恢复**的那些的身份。
         /// 空集时**不序列化** ⇒ 旧客户端看到的字节与从前一字不差。
@@ -496,10 +520,14 @@ pub enum Frame {
     /// 错误形状 `{code, message}` **对齐 `--resolve` 已冻结的那套**（协议 v1 §3），
     /// 不发明第二种错误 JSON。成功时两者都省略。
     Reply {
+        /// 回显请求的 `id`。
         id: String,
+        /// 成功与否。
         ok: bool,
+        /// 失败时的码（协议级或命令级）。
         #[serde(skip_serializing_if = "Option::is_none")]
         code: Option<String>,
+        /// 失败时的原话。
         #[serde(skip_serializing_if = "Option::is_none")]
         message: Option<String>,
         /// U6b-3：命令的返回值（如 `resolve` 的 CommandPlan）。无返回值的命令省略。
@@ -509,7 +537,10 @@ pub enum Frame {
 
     /// U6b-1：某个在跑的命令**已被取消**。取消是一条普通命令（`cmd:"cancel"`）、不是带外信号——
     /// 带外要么另开通道要么发明转义序列，两者都要新的解析纪律，而取消排队等一下并无妨。
-    Cancelled { id: String },
+    Cancelled {
+        /// 被取消的那条命令的 `id`。
+        id: String,
+    },
 
     /// **这台机器上的账号清单变了**（账号 manifest 被改写）。
     ///
@@ -528,13 +559,19 @@ pub enum Frame {
     ///
     /// 只带 sid：客户端收到就重问一次 `rotation-session-read`（那一份的唯一出口仍是那条查询，同 `quota_changed`）。
     /// 走 tap 那条可丢的通道（轮换在盘上，丢了重问就补上）。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
-    RotationChanged { sid: String },
+    RotationChanged {
+        /// 轮换或「账号」格变了的会话。
+        sid: String,
+    },
 
     /// **这台机器上某个会话的任务清单变了**（`<agent 家>/tasks/<sid>/` 里有动静）。
     ///
     /// 只带 sid：客户端收到就重问一次 `tasks-list`（清单的唯一出口仍是那条查询，同 `accounts_changed`）。
     /// 一批文件事件里同一个 sid 动了几次都只发一帧。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
-    TasksChanged { sid: String },
+    TasksChanged {
+        /// 任务清单变了的会话。
+        sid: String,
+    },
 
     /// **这台机器的活会话清单报完了**：`observe::watcher::watch_loop` 的 Phase 1
     /// （同步扫 `sessions/`、对每个活 pidfile 发一帧 `session_added`）走完那一刻发**一次**。
@@ -553,7 +590,12 @@ pub enum Frame {
     /// 文件管理器改得动活会话的 jsonl；观察侧当它是「看的、不是管的」：不崩、不误判结束（判活不看 jsonl），
     /// 出声一次 —— 每次「在 → 不在」只发一帧；同名文件再出现（agent 按路径追加重建）从 0 读，当改写办：先发 [`Frame::SessionFileReread`]、行号从 0 重数；之后再不见才再发。
     /// 旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
-    SessionFileGone { session_id: String, path: String },
+    SessionFileGone {
+        /// 会话 id。
+        session_id: String,
+        /// 不见了的那份记录文件。
+        path: String,
+    },
 
     /// **活会话的记录文件被改过了，已从头重读**（截短 · 或游标之前被原地改写）。
     ///
@@ -561,8 +603,11 @@ pub enum Frame {
     /// （seq ＝ 当前文件里的行号，[`SeqCounter::restart`]）⇒ 下游据这一帧把这个会话旧的一代整份作废：monitor 丢留存与续点，
     /// 前端 tab 整份重来。
     SessionFileReread {
+        /// 会话 id。
         session_id: String,
+        /// 被改过、已从头重读的那份记录文件。
         path: String,
+        /// 为什么从头重读。
         why: RereadWhy,
     },
 
@@ -579,7 +624,12 @@ pub enum Frame {
     /// 🔴 **不丢**：本帧走**应答那条独立通道**（阻塞 `send().await`），不走出方向那条会丢帧的大通道 ——
     /// 丢一块下行字节就是这条链路上的数据坏了，别处没有第二份。流控是逐链路的信用（`link-credit`），
     /// 由 `dial/link.rs` 的下行泵执行。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
-    LinkData { link: String, data: String },
+    LinkData {
+        /// 链路 id（`link-open` 时客户端给的）。
+        link: String,
+        /// 下行字节，标准 base64（解码后 ≤ 32 KiB）。
+        data: String,
+    },
 
     /// **一条链路不会再有字节了**；后端已经忘掉这个 `link` id。
     ///
@@ -587,7 +637,9 @@ pub enum Frame {
     /// 带上 = 非正常收尾（下行泵写不出去 · 连接表被拆），那句人话原样给调用方。
     /// 拨不通**不**走这里 —— 那是链路字节里那一行失败的 ack（与 C2 同形），本帧随后照常到。
     LinkEnd {
+        /// 链路 id。
         link: String,
+        /// 非正常收尾的原话；缺 ＝ 正常收尾。
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
@@ -599,9 +651,13 @@ pub enum Frame {
     /// 🔴 **不丢**：走应答那条独立通道（终局丢了，客户端那一侧的看的人就永远等下去）。
     /// 旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
     Transfer {
+        /// 传输单 id。
         id: String,
+        /// 已传字节。
         got: u64,
+        /// 总字节。
         total: u64,
+        /// 只在最后一帧：这一趟怎么收场的。
         #[serde(skip_serializing_if = "Option::is_none")]
         end: Option<TransferEnd>,
     },
@@ -613,7 +669,9 @@ pub enum Frame {
     /// 🔴 **不丢**：走应答那条独立通道（`end` 丢了，界面就说不出结局；中间格丢了，就说不清停在哪一段）。
     /// 旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
     Probe {
+        /// 测试连接那一趟的票（`remote-probe` 交来的）。
         ticket: String,
+        /// 一格进度，恰好一个键：`stage` · `reached` · `end`。
         cell: serde_json::Value,
     },
 
@@ -631,16 +689,20 @@ pub enum Frame {
     /// 🔴 **可丢**：走后端自己那条有界 tap 通道（`tap::TAP_CAPACITY`），满了就丢，不回推中转、不挤出方向的内容帧。
     /// SSE 只保快，jsonl 保对。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
     Tap {
+        /// 请求自带的会话标识头的值。
         stream: String,
         /// 这段流归哪个子运行（主运行 ⇒ 不上线）。由后端归位（`run_route`）：请求自报了就定；没自报 ⇒ 没有在跑的子运行就归主，
         /// 有 ⇒ 先挂起、等记录对上对账键再放出来。
         #[serde(skip_serializing_if = "Option::is_none")]
         run: Option<String>,
+        /// 本进程第几段。
         resp: u64,
+        /// 这一段里第几件，从 0 连续。
         n: u64,
         /// 归一事件（上游原始事件已在后端按协议面折过；界面不认任何一家的事件名）。
         #[serde(skip_serializing_if = "Option::is_none")]
         ev: Option<crate::agents::StreamEv>,
+        /// 这一段的收尾（与 `ev` 恰有一个）。
         #[serde(skip_serializing_if = "Option::is_none")]
         end: Option<TapEnd>,
     },
@@ -648,8 +710,11 @@ pub enum Frame {
     /// 按最近一次动静排（最早动过的在前）。`ended`：被挤出运行表的已收场子运行（对上了派出调用的那些，先挤出的在前）——
     /// 派出它们的那几张卡照样标得上终态。
     SessionRuns {
+        /// 会话 id。
         sid: String,
+        /// 在表里的子运行（整份）。
         runs: Vec<RunInfo>,
+        /// 被挤出表的已收场子运行。
         ended: Vec<RunEnded>,
     },
 }
@@ -989,8 +1054,11 @@ pub fn b64_decode(text: &str) -> Result<Vec<u8>, String> {
 /// backend 自己发号的话，重连后号段会撞（同 F90「不许拿会变的东西当持久键」）。
 #[derive(Debug, Clone, Deserialize)]
 pub struct Request {
+    /// 客户端发号的不透明串，应答原样回显；同一时刻在跑的命令里不许重复。
     pub id: String,
+    /// 命令名（`hello.commands` 里的一个）。
     pub cmd: String,
+    /// 命令的参数对象；缺 ＝ `null`。
     #[serde(default)]
     pub args: serde_json::Value,
     /// 发起方这一发愿意等多久（毫秒）。可缺；不是正整数 ⇒ 当没带（不拒）。

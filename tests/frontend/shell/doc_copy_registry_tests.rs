@@ -92,8 +92,8 @@ const HAS_A_GUARD: &[(&str, &str)] = &[
         "tmux_ls_fmt_double_write_point_stays_in_sync",
     ),
     (
-        "wire 帧 kind 清单",
-        "every_wire_frame_kind_has_a_row_in_the_frame_table",
+        "wire 帧 kind 清单（协议参考里那张从 `wire.rs` 生成）",
+        "the_protocol_reference_is_what_the_code_generates",
     ),
     (
         "backend 生产段起进程的处数",

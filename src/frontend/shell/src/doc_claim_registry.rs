@@ -288,11 +288,6 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
         EnvKeyClaim::Asserts,
     ),
     (
-        "src/doc/IPC-PROTOCOL.md",
-        "`--session-accounts`（A2）",
-        EnvKeyClaim::Asserts,
-    ),
-    (
         // ⚠ 这一条**刻意留在生产文件里**：它的锚点是 `//!`（模块头注），
         //    而模块头注不属于测试段，剖分不搬它。上一版整批换住址时换过头了，已撤回。
         "src/backend/observe/accounts_query.rs",
@@ -335,7 +330,7 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
     // （本文件那个测试模块**里面**的字面量剥得掉 —— 同文件别处几处带本机数据目录名的串就在
     //  里面、从来没被数进去过；剥不掉的恰恰是模块**外面**的这三张表。这个不对称是全部成因。）
     // ⇒ 这张表里的每一个锚点，都要按「它会被全仓的字面量计数判据看见」来挑。
-    // 发版记录：说的是它那一版发出去时读哪几个键，是历史；改写发版记录去追今天的计数不对。当下的断言住 INVARIANTS / IPC-PROTOCOL。
+    // 发版记录：说的是它那一版发出去时读哪几个键，是历史；改写发版记录去追今天的计数不对。当下的断言住 INVARIANTS。
     (
         "CHANGELOG.md",
         "绝不回传整个环境快照 —— 那里面有用户全部的密钥类环境变量",
@@ -344,12 +339,12 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
     // ── 在引述那句话本身的那几份（逐字带着旧说法是故意的）────────────────
     (
         "tests/backend/observe/accounts_query_tests.rs",
-        "文档那一行把",
+        "本文件头注把",
         EnvKeyClaim::Quotes,
     ),
     (
         "tests/backend/observe/accounts_query_tests.rs",
-        "那句诚实边界：文档与本文件头注",
+        "那句诚实边界：本文件头注",
         EnvKeyClaim::Quotes,
     ),
     (

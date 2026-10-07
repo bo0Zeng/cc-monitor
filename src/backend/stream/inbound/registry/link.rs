@@ -1,13 +1,13 @@
 //! 命令表 · 连接本身：`cancel` · `ping` · 链路四条 · 传输四条（`Run::Builtin` 那几条的本体是 `dispatch` 的硬臂）。
 
-use crate::stream::inbound::spec::{CommandSpec, Run};
+use crate::stream::inbound::spec::{arg, CommandSpec, Run};
 
 pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "cancel",
-        doc_anchor: None,
+        summary: "撤掉一条在跑的命令（`target` = 它的 `id`）；撤不存在的 id 也回 `ok`",
         codes: &[],
-        fields: &["target"],
+        fields: &[arg("target", "要撤的那条命令的 `id`")],
         takes_input: true,
         run: Run::Builtin,
     },
@@ -17,38 +17,38 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 四条都是 `Run::Builtin`：要碰本连接的链路表 ⇒ **只在帧面**，CLI 面不派生（一次性进程没有「连接」可言）。
     CommandSpec {
         name: "link-open",
-        doc_anchor: Some("#### `link-open`"),
+        summary: "开一条链路",
         codes: &[
             "invalid_args",
             "unsupported_use",
             "duplicate_link",
             "too_many_links",
         ],
-        fields: &["dial", "link", "window"],
+        fields: &[arg("dial", "拨号请求（`host` · `port` · `user` · `key_path` · `use` …，蛇形键）；`use:\"files\"` 开 sftp 一问一答"), arg("link", "链路 id：客户端给、客户端负责唯一"), arg("window", "初始下行信用（字节），在 [32 KiB, 16 MiB] 之内")],
         takes_input: true,
         run: Run::Builtin,
     },
     CommandSpec {
         name: "link-data",
-        doc_anchor: Some("#### `link-data`"),
+        summary: "往链路里送一块上行字节",
         codes: &["invalid_args", "no_such_link", "link_busy", "link_closed"],
-        fields: &["data", "link"],
+        fields: &[arg("data", "无"), arg("link", "链路 id")],
         takes_input: true,
         run: Run::Builtin,
     },
     CommandSpec {
         name: "link-credit",
-        doc_anchor: Some("#### `link-credit`"),
+        summary: "还下行信用",
         codes: &["invalid_args", "no_such_link"],
-        fields: &["bytes", "link"],
+        fields: &[arg("bytes", "客户端读走了多少字节（累计信用不超过 16 MiB）"), arg("link", "链路 id")],
         takes_input: true,
         run: Run::Builtin,
     },
     CommandSpec {
         name: "link-close",
-        doc_anchor: Some("#### `link-close`"),
+        summary: "关一条链路",
         codes: &["invalid_args"],
-        fields: &["link"],
+        fields: &[arg("link", "链路 id；关不存在的也回 `ok`")],
         takes_input: true,
         run: Run::Builtin,
     },
@@ -56,39 +56,39 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 本机常驻后端。四条都是 `Run::Builtin`：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
     CommandSpec {
         name: "transfer-upload",
-        doc_anchor: Some("#### `transfer-upload`"),
+        summary: "开一张上传单",
         codes: &["bad_args", "io_failed", "busy", "too_many_transfers"],
-        fields: &["dial", "id", "key", "local_path"],
+        fields: &[arg("dial", "拨号请求，同 `link-open`"), arg("id", "传输单 id（`xfer-<n>`）"), arg("key", "暂存件的键（32 位十六进制）：同一份文件重拖同一个键 ⇒ 续传；提交时交给远端"), arg("local_path", "本机一份普通文件的路径")],
         takes_input: true,
         run: Run::Builtin,
     },
     CommandSpec {
         name: "transfer-download",
-        doc_anchor: Some("#### `transfer-download`"),
+        summary: "开一张下载单",
         codes: &["bad_args", "refused", "too_many_transfers"],
-        fields: &["dial", "id", "local_path", "remote_path"],
+        fields: &[arg("dial", "拨号请求，同 `link-open`"), arg("id", "传输单 id"), arg("local_path", "本机落点（绝对路径；也收 `{\"b16\":…}`）"), arg("remote_path", "远端路径")],
         takes_input: true,
         run: Run::Builtin,
     },
     CommandSpec {
         name: "transfer-start",
-        doc_anchor: Some("#### `transfer-start`"),
+        summary: "传输单起跑",
         codes: &["bad_args", "no_such_transfer", "already_started"],
-        fields: &["id"],
+        fields: &[arg("id", "传输单 id；之后进度与终局走 `transfer` 帧")],
         takes_input: true,
         run: Run::Builtin,
     },
     CommandSpec {
         name: "transfer-stop",
-        doc_anchor: Some("#### `transfer-stop`"),
+        summary: "撤一张传输单",
         codes: &["bad_args"],
-        fields: &["id"],
+        fields: &[arg("id", "传输单 id；撤不在册的也回 `ok`")],
         takes_input: true,
         run: Run::Builtin,
     },
     CommandSpec {
         name: "ping",
-        doc_anchor: None,
+        summary: "问活：零载荷，回 `ok`",
         codes: &[],
         fields: &[],
         takes_input: false,

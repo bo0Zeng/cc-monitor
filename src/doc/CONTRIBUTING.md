@@ -23,8 +23,8 @@
 界面要的新东西几乎都是这一形：那台后端算好，界面 `call(origin, op, …)` 拿成品。
 
 1. **本体**放进它该在的那一层：产出观测的读进 `observe/`，改状态、或只喂控制决策的查询进 `control/`，写用户文件经 `control/files_write` 那一族；入参出参用结构，不拼 shell 串。
-2. **登记**进它那一族的命令表 `src/backend/stream/inbound/registry/<族>.rs`：`SPECS` 里一条 `CommandSpec`（名字 · 协议文档锚点 · 错误码 · 输出字段 · 有没有入参 · 跑法）。`hello` 的命令名单从命令表派生，不另写。新开一族就在 `registry/` 下加一份文件、并进 `stream/inbound/mod.rs` 的 `FAMILIES`（漏了由 `inbound_structure_guards.rs::the_registry_families_are_exactly_the_files_in_the_registry_directory` 报）。只读查询的帧面宿主住 `faces/`。
-3. **协议文档**：[IPC-PROTOCOL.md](IPC-PROTOCOL.md) 里给它一节 `` #### `命令名` ``，写载荷与答话的形状；带载荷的命令没有这一节会红（`inbound_structure_guards.rs::a_command_with_a_payload_must_own_a_doc_section`）。
+2. **登记**进它那一族的命令表 `src/backend/stream/inbound/registry/<族>.rs`：`SPECS` 里一条 `CommandSpec`（名字 · 一句话 · 错误码 · 字段（名 ＋ 向 ＋ 一句话） · 有没有入参 · 跑法）。`hello` 的命令名单从命令表派生，不另写。新开一族就在 `registry/` 下加一份文件、并进 `stream/inbound/mod.rs` 的 `FAMILIES`（漏了由 `inbound_structure_guards.rs::the_registry_families_are_exactly_the_files_in_the_registry_directory` 报）。只读查询的帧面宿主住 `faces/`。
+3. **协议文档**：协议参考 [IPC-COMMANDS.md](IPC-COMMANDS.md) 从命令表生成，登记完重生成一次（命令见 [IPC-PROTOCOL.md](IPC-PROTOCOL.md) 开头）；不重生成 `protocol_doc_gen` 会红。
 4. **CLI 面**：帧命令默认派生同名的一次性子命令；只在流面上有意义的（读本进程里的 watcher、中转或转发账）登记进 `src/backend/control/cli_control.rs` 的 `STREAM_ONLY` 并写理由。子命令表一变 `build_id_guard` 就红 ⇒ bump `src/backend/lib.rs` 的 `BUILD_ID` 并重铺内嵌字节（[BUILDING.md § 内嵌字节与 BUILD_ID](BUILDING.md#内嵌字节与-build_id)）。
 5. **界面**：`chan.call(origin, "命令名", 载荷, 期限)`，期限由发起那件事的一方给一个绝对时刻。vitest 里用 `tests/test-support/chan-fake.ts` 的通道替身。
 6. **检查**：后端 `cargo test`（在 `src/backend`）· `npm test` · `npx tsc --noEmit`。
@@ -113,7 +113,7 @@
 
 ### 2.9 加跨进程文件
 
-做法见 [IPC-PROTOCOL.md § 添加新的跨进程协议文件](IPC-PROTOCOL.md#添加新的跨进程协议文件)。要点：放在 `~/.cc-monitor/` 下 · UTF-8 无 BOM · 原子写（临时件 ＋ 改名） · 反序列化容错（`#[serde(default)]`） · 先答它是「真相」还是「缓存」，在 `data_paths.rs` 登记并写清（INVARIANTS §2.1）。后端自己的状态文件另有写者登记（`readonly_guard.rs` 的 `OWN_STATE_WRITERS`）。
+做法见 [IPC-PROTOCOL.md § 加一条协议](IPC-PROTOCOL.md#加一条协议)。要点：放在 `~/.cc-monitor/` 下 · UTF-8 无 BOM · 原子写（临时件 ＋ 改名） · 反序列化容错（`#[serde(default)]`） · 先答它是「真相」还是「缓存」，在 `data_paths.rs` 登记并写清（INVARIANTS §2.1）。后端自己的状态文件另有写者登记（`readonly_guard.rs` 的 `OWN_STATE_WRITERS`）。
 
 ---
 
@@ -135,12 +135,12 @@ cargo test --workspace
 
 ### 3.2 撤一条后端帧命令
 
-从它那一族的命令表（`registry/<族>.rs`）里摘掉、删 IPC-PROTOCOL.md 那一节、处理 CLI 面（派生的子命令跟着没了，登记过的从 `STREAM_ONLY` 摘）、删界面的调用处与通道替身里的那一格，bump `BUILD_ID`。
+从它那一族的命令表（`registry/<族>.rs`）里摘掉、重生成协议参考、处理 CLI 面（派生的子命令跟着没了，登记过的从 `STREAM_ONLY` 摘）、删界面的调用处与通道替身里的那一格，bump `BUILD_ID`。
 
 ### 3.3 改跨进程文件的格式（`ps-await` · `ps-registry` · `sid-hwnd-cache` · `auto-launch`）
 
 - 写入方（PS 模板 `src/shared/cc.ps1.tpl`，或 Rust 的 `bind.rs` 等）与读取方（serde 结构）同拍改；
-- 更新 [IPC-PROTOCOL.md](IPC-PROTOCOL.md) 的字段定义；
+- 更新 [IPC-PROTOCOL.md](IPC-PROTOCOL.md) 第 9 节那张表；
 - 编码 UTF-8 无 BOM（[INVARIANTS § 3](INVARIANTS.md#3-所有跨进程-json-文件--utf-8-无-bom)），双端原子写；
 - 新增字段 `#[serde(default)]`。老 profile 里的 PS 模板不会自动更新，monitor 那一侧找窗口的重试就是留给它们的。
 

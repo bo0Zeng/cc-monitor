@@ -1,79 +1,13 @@
-//! ═══════════════════════════════════════════════════════════════════
-//! # 要求住址：**`src/doc/INVARIANTS.md` 条 42**
-//! ═══════════════════════════════════════════════════════════════════
+//! 协议面本身的几条判据（不是文档对拍：协议文档的逐格那一半从代码生成，见 `protocol_doc_gen`）。
 //!
-//! 本族守的性质是「**那份线上契约文档与代码不许漂**」，而**它的读者在仓外**。
+//! - 子命令分派的文件名单（[`DISPATCH_FILES`]）与「`--` 字面量」取词器 [`dispatched_subcommands`]：
+//!   `main_argv_table_guard` 拿它核 argv 表；`dispatch_registry_is_complete` 反向核对名单没漏文件。
+//! - 子进程旗标：发的与子进程收的恰好一致。
+//! - `control/` · `observe/` 里每个 serde 类型都登记（上线类型该进 `wire.rs`）。
+//! - 协议级错误码只有 `stream/inbound/` 发得出（R4）。
+//! - `EMITS` 是 `Frame` 变体的子集，缺席的有名有姓。
 //!
-//! 🔴 **那一条是 2026-09-22 才有的**（`P20` 现打之后升格）。
-//! 在那之前这条性质**只有下面那个工单号** `U6a`，`INVARIANTS` 里一条都没有
-//! ⇒ 这 13 条判据**点不到任何要求住址**。
-//! **工单号与条不是一回事**：工单是「我们那次做了这件事」，
-//! 条是「这件事必须一直成立」—— 只有工单号的性质，工单关掉之后就没人替它说话。
-//!
-//! ⇒ 升格的逐条依据住。
-//!
-//! U6a（2026-08-02）：**`src/doc/IPC-PROTOCOL.md` 与真实协议面的对拍。**
-//!
-//! # 为什么需要它
-//!
-//! 那份文档是 backend↔monitor（以及 aterm）之间的**权威契约**，而 U6 要在它上面加双向通道。
-//! 摸底实测缺口（**以本护栏首跑的机检结果为准，不是手工 grep 的估数**——
-//! 手工那版报 8 个字段 / 6 个子命令，两个数都不对）：
-//!
-//! - **7 个线上字段**从没进过文档：`agent_kind` `byte_offset` `codex_dir` `emits`
-//!   `kinds` `liveness_confidence` `observation`。手工那版还多报了一个 `next` ——
-//!   它是 `SeqCounter` 的进程内计数器，根本不上线（见下方 `wire_field_names` 的取法说明）。
-//! - **2 个子命令**全文档零出现（`--account-trust-zero` `--tmux-notify`）；
-//!   另有 `--fork-session` 出现在别处但不在一次性查询表里。手工那版把
-//!   `--list-accounts` / `--search` / `--session-accounts` 也算成漏了，实际早在表里。
-//! - 另有一处**比漏写更糟**的：`tmux_sessions` 帧的字段文档里叫 `classification`，
-//!   而全仓（backend + monitor）没有任何东西叫这个名字 —— 线上真名是 `observation`。
-//!   照文档写的客户端会永远读到 `None`、退回「保守跳过」，正是这字段当初要修的 idle 灰灯。
-//!
-//! 拿这份文档当冻结基线，等于把这些缺口固化进新协议。
-//!
-//! 但「这次补齐」不解决问题：这些本来也是一条条加进代码时忘了同步文档的。
-//! **没有机检，补完就会重新开始漂。** 计划原话：「没有它，那些漏列一条都发不出来」。
-//!
-//! # 判据
-//!
-//! - `wire.rs` 里每个 serde 字段名，**必须在文档里出现过**。
-//! - **全部分派文件**（不只 `main.rs`）里的每个 `--子命令`，**必须落进 §10 的代码跨度**
-//!   —— 不是「全文出现过就行」。⚠ 这句话在 U8a-2b 之前是**过期的宣称**：实现一直是
-//!   `DOC.contains()` 全文子串，散文里提一句就算过。已收紧，两者现在对得上。
-//! - 每条**入方向命令**必须落进 §10「入方向」那一**小节**的代码跨度（收到小节是因为
-//!   §10 的帧字段表里本来就有 `status`/`name`/`sid` 这些词，一条同名命令能零文档白嫖）。
-//! - 那份分派文件名单本身，必须囊括 `src/` 下每一个做分派的文件（`dispatch_registry_is_complete`）。
-//!
-//! 后两条都是 D 审计逼出来的收紧。第一版判据是「`main.rs` 的子命令在全文出现过」，两头都太松：
-//! **判据松** —— 散文里顺带提一句就算过，而读者是照着表实现客户端的；
-//! **抽取面松** —— `--read-session-from-offset` 分派在 `observe/history_query.rs`、文档零出现，
-//! 护栏**结构上根本扫不到它**、照常报绿。后者更危险：少一条能看出来，少看一片地方看不出来。
-//!
-//! # 它挡不住什么（如实登记 —— 本仓在「宣称强度前先验证」上栽过）
-//!
-//! # ⚠ 它的抽取边界（抽样实测，如实写下）
-//!
-//! [`dispatched_subcommands`] 认的是 **`"--xxx"` 字符串字面量**，
-//! 而 [`dispatch_registry_is_complete`] 把「哪些文件参与分派」**派生**出来
-//!（扫全 crate 找含 `--` 子命令字面量的文件，要求与 `DISPATCH_FILES` 相等）。
-//! 这一层是**有效**的：实测把 token 的字面量搬到 `wire.rs`（不在 `DISPATCH_FILES` 里）
-//! 再在 `main.rs` 用 `Some(x) if x == crate::stream::wire::PROBE_FLAG` 分派 ⇒
-//! `dispatch_registry_is_complete` **当场红**，诊断逐字说清了「漏登记的文件里所有子命令
-//! 都不受 IPC-PROTOCOL.md 对拍约束」。
-//!
-//! ⚠ **仍然查不了**：token 连 `"--` 字面量都不出现的写法，例如
-//! `const F: &str = concat!("-", "-probe-flag");` —— 实测这样分派一条新子命令，
-//! **全部 283 条判据全绿**。这属于本仓已有先例的那一档诚实边界
-//!（`readonly_guard` 头注同样写着「查不了连字面量都不出现的等价实现」）：
-//! 它不是会被顺手写出来的形态，钉它要上 AST 级解析，成本远超收益。**别读成证明。**
-//!
-//! - 只查**出现**，不查**描述得对不对**。文档里写一句「`emits` 字段（已废弃）」也算通过。
-//!   真正的语义正确性没有机器判据，只能靠人读。
-//! - 只查一个方向：**文档里有而代码里没有**的字段/子命令不会红（那是「文档超前」，
-//!   危害小于「文档滞后」——前者读者会发现对不上，后者读者根本不知道有这东西）。
-//! - 字段名靠 `^    pub? name:` 形态的正则抽取。用 `#[serde(rename)]` 改过名的字段抽的是
-//!   Rust 名而不是线上名 —— **今天 `wire.rs` 里零个 rename**（已核），真加了要同步改本护栏。
+//! ⚠ 取词器认的是 `"--xxx"` 字符串字面量；连字面量都不出现的写法（`concat!` 拼）它看不见。
 //!
 //! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空。
 
@@ -335,126 +269,9 @@ pub(crate) fn dispatched_subcommands() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        dashdash_literals, dispatched_subcommands, CHILD_FLAGS_NOT_SENT, CHILD_PROCESS_FLAGS,
-        DISPATCH_FILES, TERMINAL_SURFACE_FILES,
+        dashdash_literals, CHILD_FLAGS_NOT_SENT, CHILD_PROCESS_FLAGS, DISPATCH_FILES,
+        TERMINAL_SURFACE_FILES,
     };
-
-    const DOC: &str = include_str!("../../src/doc/IPC-PROTOCOL.md");
-
-    /// `wire.rs` 生产段里所有**会上线**的字段名。
-    ///
-    /// # 取法：括号配平，**不是**逐行认形状
-    ///
-    /// 前三版都是按行认形状（`#[derive(` 开头、缩进 4 或 8、`pub ` 前缀……），
-    /// D 审计一口气攻破了**五种 fmt-clean 的写法**，每一种都让整个类型或整行字段隐形，
-    /// 而 `fields.len() >= N` 的自检**不响**（部分隐形，总数还在地板之上）：
-    ///
-    /// | 写法 | 旧版为什么瞎 |
-    /// |---|---|
-    /// | derive 列表超 100 列 | **rustfmt 自己**折成一行一个，`Serialize` 不在 `#[derive(` 那行 |
-    /// | 子模块里的类型 | derive 行缩进 4，`starts_with("#[derive(")` 不命中 |
-    /// | `pub(crate) f: T` | `strip_prefix("pub ")` 失配，名字变成 `pub(crate) f` 被字符集丢掉 |
-    /// | 带 `where` 子句 | rustfmt 把 `where` 放列 0，区间当场收尾、body 为空 |
-    /// | 单行 variant | `TurnEnd { session_id: String, uuid: String }` —— 只切第一个冒号，名字带上了 `TurnEnd {` |
-    ///
-    /// 最后一条**今天就在漏**：`uuid`（TurnEnd）与 `dropped`（Overflow）从来没被扫到过，
-    /// 抽到 25 个而实际 27 个。它们碰巧在文档里，所以没暴雷。
-    ///
-    /// 现在改成：把 `#[derive(…)]` 当**可能跨行的属性**读到配平的 `)]`；类型体按
-    /// **大括号配平**取；体内按「标识符 + `:`（非 `::`）且前一个非空白是 `{` / `,` / 行首」
-    /// 抽字段 —— 缩进、`pub(crate)`、单行 variant、`where` 全都不再影响它。
-    fn wire_field_names() -> Vec<String> {
-        let mut out: Vec<String> = Vec::new();
-        for (_, _, fields) in serializable_types() {
-            for f in fields {
-                if !out.contains(&f) {
-                    out.push(f);
-                }
-            }
-        }
-        out.sort();
-        out
-    }
-
-    /// 每个 `derive(Serialize|Deserialize)` 的类型：(类型声明行, 体是否含字段, 抽到的字段)。
-    fn serializable_types() -> Vec<(String, bool, Vec<String>)> {
-        let src =
-            crate::guard_support::production_code(include_str!("../../src/backend/stream/wire.rs"));
-        let b = src.as_bytes();
-        let mut out: Vec<(String, bool, Vec<String>)> = Vec::new();
-        let mut from = 0usize;
-        while let Some(rel) = src[from..].find("#[derive(") {
-            let d = from + rel;
-            // 属性可能跨行：从 `#[` 起按方括号配平读到底。
-            let Some(attr_end) = balanced(b, d + 1, b'[', b']') else {
-                break;
-            };
-            let is_ser = src[d..=attr_end].contains("Serialize")
-                || src[d..=attr_end].contains("Deserialize");
-            // 类型体 = 声明之后第一个 `{` 起、按大括号配平。tuple struct（`;` 结尾、无体）跳过。
-            let semi = src[attr_end..].find(';').map(|k| attr_end + k);
-            let Some(open) = src[attr_end..].find('{').map(|k| attr_end + k) else {
-                break;
-            };
-            if semi.is_some_and(|s| s < open) {
-                from = attr_end + 1;
-                continue;
-            }
-            let Some(close) = balanced(b, open, b'{', b'}') else {
-                break;
-            };
-            if is_ser {
-                let body = &src[open + 1..close];
-                let decl = src[attr_end + 1..open]
-                    .trim()
-                    .lines()
-                    .next_back()
-                    .unwrap_or("?")
-                    .trim()
-                    .to_string();
-                // 「体里有字段」= 存在一个非 `::` 的冒号。fieldless enum（如 `RemovalCause`）没有。
-                let has_fields = body.match_indices(':').any(|(i, _)| {
-                    body.as_bytes().get(i + 1) != Some(&b':')
-                        && (i == 0 || body.as_bytes()[i - 1] != b':')
-                });
-                let mut fields = Vec::new();
-                collect_fields(body, &mut fields);
-                out.push((decl, has_fields, fields));
-            }
-            from = close + 1;
-        }
-        out
-    }
-
-    /// ★ 每个**有字段的**可序列化类型都必须至少产出一个字段。
-    ///
-    /// # 为什么光有 `fields.len() >= N` 的地板不够
-    ///
-    /// D 审计的核心发现：那条地板只挡得住「抽取器**整体**坏掉」。它挡不住**部分隐形** ——
-    /// rustfmt 把某个 derive 折行、某个类型挪进子模块、某个字段写 `pub(crate)`，
-    /// 那个类型整个消失，而总数还在地板之上，护栏**照常报绿**。
-    /// 实测四种 fmt-clean 的写法都能这么骗过去。
-    ///
-    /// 这条是按类型的：一个有字段的类型抽出 0 个，当场红 —— 与总数无关。
-    #[test]
-    fn every_serializable_type_yields_at_least_one_field() {
-        let types = serializable_types();
-        assert!(
-            types.len() >= 3,
-            "只扫到 {} 个可序列化类型 —— 抽取坏了，本断言在空转",
-            types.len()
-        );
-        let blind: Vec<&String> = types
-            .iter()
-            .filter(|(_, has, f)| *has && f.is_empty())
-            .map(|(d, _, _)| d)
-            .collect();
-        assert!(
-            blind.is_empty(),
-            "这些可序列化类型体里有字段，但抽取器一个都没抽到 —— **它对这个类型是瞎的**：{blind:?}\n\
-             总数地板挡不住这种部分隐形（D 审计实测四种 fmt-clean 写法都能这么过）。"
-        );
-    }
 
     /// 从 `at`（该处即 `open`）起找配平的闭合符，返回它的下标。
     fn balanced(b: &[u8], at: usize, open: u8, close: u8) -> Option<usize> {
@@ -470,149 +287,6 @@ mod tests {
             }
         }
         None
-    }
-
-    /// 从类型体里抽字段名。
-    ///
-    /// 判据：标识符紧跟 `:`（且不是 `::`），且它**前面第一个非空白字符**是
-    /// `{` / `,` / 什么都没有（体的开头）。这样：
-    /// - 单行 variant 的第二个及以后的字段（前面是 `,`）也抽得到；
-    /// - 类型里的 `Vec<HashMap<String, u64>>` 不会被误当字段（`String` 后面不是 `:`）；
-    /// - `#[serde(rename = "x")]` 里的 `rename` 前面是 `(`，不匹配。
-    fn collect_fields(body: &str, out: &mut Vec<String>) {
-        // 先把可见性前缀抹成空白：`pub` / `pub(crate)` / `pub(super)` / `pub(in …)`。
-        // 不抹的话 `pub id: String` 里 `id` 前面的非空白是 `b`，会被下面的 prev 判据否掉
-        // （旧版靠 `strip_prefix("pub ")`，正是 D 审计用 `pub(crate)` 攻破的那处）。
-        let body = &blank_out_visibility(body);
-        let bb = body.as_bytes();
-        let mut i = 0usize;
-        while i < bb.len() {
-            if !(bb[i].is_ascii_alphabetic() || bb[i] == b'_') {
-                i += 1;
-                continue;
-            }
-            let start = i;
-            while i < bb.len() && (bb[i].is_ascii_alphanumeric() || bb[i] == b'_') {
-                i += 1;
-            }
-            let name = &body[start..i];
-            // 后面必须是（可选空白 +）`:` 且不是 `::`
-            let mut j = i;
-            while j < bb.len() && (bb[j] as char).is_whitespace() {
-                j += 1;
-            }
-            if j >= bb.len() || bb[j] != b':' || bb.get(j + 1) == Some(&b':') {
-                continue;
-            }
-            // 前面第一个非空白必须是 `{` / `,` / 体开头
-            let mut k = start;
-            while k > 0 && (bb[k - 1] as char).is_whitespace() {
-                k -= 1;
-            }
-            // 前一个非空白：`{`（体开头后第一个字段）/ `,`（同级下一个字段）/
-            // `]`（前面是 `#[serde(...)]` 之类的属性）/ 体的最开头。
-            let prev_ok = k == 0 || bb[k - 1] == b'{' || bb[k - 1] == b',' || bb[k - 1] == b']';
-            if !prev_ok {
-                continue;
-            }
-            if name.chars().any(|c| c.is_ascii_uppercase()) {
-                continue; // 类型名而非字段名
-            }
-            let n = name.to_string();
-            if !out.contains(&n) {
-                out.push(n);
-            }
-        }
-    }
-
-    /// 把 `pub` / `pub(crate)` / `pub(super)` / `pub(in …)` 抹成等长空白。
-    ///
-    /// 等长是为了不打乱后面按下标取的名字切片。
-    fn blank_out_visibility(body: &str) -> String {
-        let mut out = body.to_string();
-        while let Some(i) = find_word(&out, "pub") {
-            let mut end = i + 3;
-            let bytes = out.as_bytes();
-            let mut j = end;
-            while j < bytes.len() && (bytes[j] as char).is_whitespace() {
-                j += 1;
-            }
-            if bytes.get(j) == Some(&b'(') {
-                if let Some(c) = balanced(bytes, j, b'(', b')') {
-                    end = c + 1;
-                }
-            }
-            out.replace_range(i..end, &" ".repeat(end - i));
-        }
-        out
-    }
-
-    /// 找 `word` 作为**完整单词**出现的第一处（两侧都不是标识符字符）。
-    fn find_word(hay: &str, word: &str) -> Option<usize> {
-        let b = hay.as_bytes();
-        let mut from = 0usize;
-        while let Some(rel) = hay[from..].find(word) {
-            let i = from + rel;
-            let before_ok = i == 0 || !(b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_');
-            let j = i + word.len();
-            let after_ok = j >= b.len() || !(b[j].is_ascii_alphanumeric() || b[j] == b'_');
-            if before_ok && after_ok {
-                return Some(i);
-            }
-            from = i + word.len();
-        }
-        None
-    }
-
-    /// ★ `wire.rs` 里**一个 serde 改名都不许有**。
-    ///
-    /// [`wire_field_names`] 抽的是 **Rust 名**。一旦有 `#[serde(rename = "x")]` 或
-    /// `rename_all`，线上名就与 Rust 名分家 —— 护栏会拿 Rust 名去文档里找、找到了就放行，
-    /// 而**线上那个名字在文档里 0 命中**。D 审计实测这条能骗过护栏。
-    ///
-    /// 旧版头注写着「今天 wire.rs 里零个 rename（已核）」—— 那是**一句没有判据的前提**。
-    /// 现在它有判据了。真要加 rename，就得同时教会 `wire_field_names` 抽线上名。
-    ///
-    /// # 什么算「改字段名」
-    ///
-    /// | 写法 | 判定 | 为什么 |
-    /// |---|---|---|
-    /// | 字段上的 `#[serde(rename = "…")]` | **红** | 直接改字段的线上名 |
-    /// | **struct** 上的 `rename_all` | **红** | 改的就是它所有字段 |
-    /// | **enum** 上的 `rename_all` | 放行 | 改的是 **variant 名**（`Frame` 的 `kind` 取值、`RemovalCause` 的取值），不碰字段。`Frame` 与 `RemovalCause` 今天都靠它 |
-    /// | **enum** 上的 `rename_all_fields` | **红** | 这个才是改 variant 里的字段 |
-    #[test]
-    fn wire_rs_has_no_serde_rename_on_fields() {
-        let src =
-            crate::guard_support::production_code(include_str!("../../src/backend/stream/wire.rs"));
-        let lines: Vec<&str> = src.lines().map(str::trim).collect();
-        let mut offenders: Vec<String> = Vec::new();
-        for (i, l) in lines.iter().enumerate() {
-            if !(l.starts_with("#[serde(") && l.contains("rename")) {
-                continue;
-            }
-            // `rename_all_fields` 改的是 variant 里的字段 —— 无论挂谁身上都红。
-            if l.contains("rename_all_fields") {
-                offenders.push((*l).to_string());
-                continue;
-            }
-            // 往下找它修饰的是什么：enum 上的 `rename_all` 改 variant 名，放行。
-            let target = lines[i + 1..]
-                .iter()
-                .find(|x| !x.starts_with("#[") && !x.starts_with("///") && !x.is_empty());
-            let on_enum = target.is_some_and(|t| t.contains("enum "));
-            if l.contains("rename_all") && on_enum {
-                continue;
-            }
-            offenders.push((*l).to_string());
-        }
-        assert!(
-            offenders.is_empty(),
-            "wire.rs 出现了 serde 改名：{offenders:?}\n\
-             `wire_field_names` 抽的是 **Rust 名**，改名之后线上名与它分家 ——\n\
-             护栏会拿 Rust 名去文档里找、找到就放行，而线上那个名字文档里 0 命中。\n\
-             要加改名，先教会 `wire_field_names` 抽线上名。"
-        );
     }
 
     /// ★ [`DISPATCH_FILES`] 必须囊括 `src/` 下**每一个**做子命令分派的文件。
@@ -907,121 +581,6 @@ mod tests {
         }
     }
 
-    /// 文档里所有**反引号代码跨度**内出现的标识符（按非标识符字符切词）。
-    ///
-    /// 为什么要这一步而不是直接 `DOC.contains(name)`：见调用处。一句话——
-    /// 散文里的常见词不算「文档化」，而逗号连写的跨度里的词算。
-    fn code_span_identifiers(doc: &str) -> std::collections::HashSet<String> {
-        let mut out = std::collections::HashSet::new();
-        // 按反引号切：奇数段（下标为奇）是跨度内容。三反引号围栏也被这么切，
-        // 段落切得碎但对「取词」无影响（我们只关心词的集合）。
-        for (i, seg) in doc.split('`').enumerate() {
-            if i % 2 == 0 {
-                continue;
-            }
-            // ★★**连字符要连着一起收一份**。
-            //
-            // 原来只按「字母数字下划线」切词 ⇒ `bus-list` 被切成 `bus` 与 `list`，
-            // 于是一条叫 `bus-list` 的命令**无论文档写得多全都过不了**
-            //（`documented.contains("bus-list")` 恒假）。这不是文档缺失，是**取词的射程**
-            // 画得比命名空间小 —— 本仓第一条带连字符的命令名把它照出来了。
-            //
-            // ⇒ **两种切法都收**（集合只增不减，原来能过的一条都不会变红）：
-            // 先按「允许连字符」切一遍收整词，再把它拆成原来的碎片各收一份。
-            for whole in seg.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-')) {
-                if whole.is_empty() {
-                    continue;
-                }
-                out.insert(whole.to_string());
-                for tok in whole.split('-') {
-                    if !tok.is_empty() {
-                        out.insert(tok.to_string());
-                    }
-                }
-            }
-        }
-        out
-    }
-
-    /// 取所有反引号代码跨度的**原文**拼起来。
-    ///
-    /// 与 [`code_span_identifiers`] 的区别：那个按「标识符字符」切词，`--usage` 会被切成
-    /// `usage`，于是「文档里写了 `usage` 但没写 `--usage`」也算过。子命令那条要的是**原样**。
-    fn code_span_text(doc: &str) -> String {
-        doc.split('`')
-            .enumerate()
-            .filter(|(i, _)| i % 2 == 1)
-            .map(|(_, seg)| seg)
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-
-    /// ★ **R3**：每条命令的 `args`/`data` 字段名，必须出现在**它自己那一小节**的代码跨度里。
-    ///
-    /// # 它闭掉的洞（设计审计 · 视角 A · P2）
-    ///
-    /// `every_wire_field_appears_in_the_protocol_doc` 只读 `wire.rs` —— 而命令的载荷
-    /// 两端都不在 `wire.rs`（请求侧手搓 `Value` 取字段，响应侧 `json!`）。
-    /// ⇒ `launch` 的 8 个字段**一个都不在护栏视野内**。
-    /// 「帧的字段有对拍，命令的载荷没有」，而后者才是新命令真正的契约面。
-    ///
-    /// # 强度边界（如实写）
-    ///
-    /// 它只查「字段名在那一小节的反引号跨度里出现过」，查不了描述得对不对 ——
-    /// 与本文件既有那条同一档局限。区别在于**作用面从「§10 全节」收到了「本命令那一小节」**。
-    #[test]
-    fn every_command_payload_field_appears_in_its_own_doc_section() {
-        let mut checked = 0usize;
-        for spec in crate::stream::inbound::REGISTRY {
-            if spec.fields.is_empty() {
-                continue;
-            }
-            let Some(anchor) = spec.doc_anchor else {
-                // `a_command_with_a_payload_must_own_a_doc_section` 已经管这一档；
-                // 这里只跳过（`cancel` 的 `target` 记在入方向节正文里）。
-                continue;
-            };
-            let at = DOC
-                .find(anchor)
-                .unwrap_or_else(|| panic!("文档里找不到 `{}` 的小节标题 {anchor:?}", spec.name));
-            // 小节 = 从本标题到下一个同级或更高级标题。
-            let rest = &DOC[at + anchor.len()..];
-            let end = rest
-                .find("\n#### ")
-                .into_iter()
-                .chain(rest.find("\n### "))
-                .chain(rest.find("\n## "))
-                .min()
-                .map(|k| at + anchor.len() + k)
-                .unwrap_or(DOC.len());
-            let section = &DOC[at..end];
-            assert!(
-                section.len() > 300,
-                "`{}` 的小节只切出 {} 字节 —— 抽取坏了，本断言在空转",
-                spec.name,
-                section.len()
-            );
-            let words = code_span_identifiers(section);
-            let missing: Vec<&&str> = spec
-                .fields
-                .iter()
-                .filter(|f| !words.contains(**f))
-                .collect();
-            assert!(
-                missing.is_empty(),
-                "\n`{}` 的这些载荷字段没有出现在它自己那一小节里：{missing:?}\n\
-                 小节标题：{anchor}\n\
-                 命令的 args/data 才是新命令真正的契约面 —— 下游只能读它，别让下游去读 Rust 源码。",
-                spec.name
-            );
-            checked += spec.fields.len();
-        }
-        assert!(
-            checked >= 8,
-            "只检查了 {checked} 个字段 —— 抽取坏了，本断言在空转"
-        );
-    }
-
     /// ★ **R2（登记制）**：`control/` 与 `observe/` 里每一个 serde 类型都必须**逐条登记**。
     ///
     /// # 为什么是登记制，不是「白名单恰好一条」
@@ -1202,16 +761,13 @@ mod tests {
     /// 改它会破坏那份契约 ⇒ 如实登记，不顺手改。
     #[test]
     fn protocol_level_codes_are_never_emitted_from_the_control_layer() {
-        // 协议级闭集。**只有 `stream/inbound/` 可以发这些。**
-        const PROTOCOL_CODES: &[&str] = &[
-            "line_too_long",
-            "unknown_command",
-            "duplicate_id",
-            "handler_panicked",
-            "not_cancellable",
-            // 后端在收场（排空停不下来的那一档）时新来的阻塞命令：与命令无关、只有 `stream/inbound/` 判得了。
-            "shutting_down",
-        ];
+        // 协议级闭集：协议参考的第 3 节从同一张表生成。**只有 `stream/inbound/` 可以发这些。**
+        // `bad_request` 不进本条：`resolve` 的命令级 parse 错误也叫它（登记在案的例外，见上）。
+        let protocol_codes: Vec<&str> = crate::protocol_doc_gen::PROTOCOL_CODES
+            .iter()
+            .map(|(c, _)| *c)
+            .filter(|c| *c != "bad_request")
+            .collect();
         // 逐个文件扫 `control/`（`observe/` 不产 code，不在本条范围）。
         let files: &[(&str, &str)] = &[
             (
@@ -1234,14 +790,14 @@ mod tests {
         // 匹配器自检：独立手写的样本必须命中。
         for sample in ["Err((\"unknown_command\", x))", "code: \"not_cancellable\""] {
             assert!(
-                PROTOCOL_CODES.iter().any(|c| sample.contains(c)),
+                protocol_codes.iter().any(|c| sample.contains(c)),
                 "匹配器漏了这种写法：{sample}"
             );
         }
         let mut violations: Vec<String> = Vec::new();
         for (name, raw) in files {
             let prod = crate::guard_support::production_code(raw);
-            for c in PROTOCOL_CODES {
+            for c in &protocol_codes {
                 if prod.contains(c) {
                     violations.push(format!("{name} 里出现了协议级 code `{c}`"));
                 }
@@ -1258,7 +814,7 @@ mod tests {
         for spec in crate::stream::inbound::REGISTRY {
             for c in spec.codes {
                 assert!(
-                    !PROTOCOL_CODES.contains(c),
+                    !protocol_codes.contains(c),
                     "`{}` 登记了协议级 code `{c}` —— 那一层不归命令管",
                     spec.name
                 );
@@ -1335,63 +891,12 @@ mod tests {
         out
     }
 
-    /// F06c：§10 **那张帧表**的数据行首格（= 已文档化的 `kind`）。
-    ///
-    /// ⚠ 锚点是**表头里含 `` `kind` `` 的那一张**，不是「首格是反引号标识符的任意行」——
-    /// 摸底时用后者抽出 **17** 个，里面混进了 `id`/`cmd`/`args`/`ok`/`data` 这些**字段名**。
-    /// ★ 「别在一张表里混装两种角色」这条纪律**也适用于抽取器本身**。
-    fn documented_frame_kinds() -> Vec<String> {
-        let sec = DOC
-            .find("## 10. 远端后端 wire 协议")
-            .expect("文档里找不到 §10");
-        let sec_end = DOC[sec..]
-            .find("\n## ")
-            .map(|k| sec + k)
-            .unwrap_or(DOC.len());
-        let section = &DOC[sec..sec_end];
-        let head_mark = format!("| `{}` | 字段 | 说明 |", "kind");
-        let at = section.find(head_mark.as_str()).unwrap_or_else(|| {
-            panic!("§10 里找不到帧表的表头 {head_mark:?} —— 表头措辞变了，本条会零命中地绿")
-        });
-        let mut out = Vec::new();
-        // 跳过表头行与分隔行，逐行取首格，直到遇到不以 `|` 开头的行。
-        for line in section[at..].lines().skip(2) {
-            if !line.starts_with('|') {
-                break;
-            }
-            let first = line.trim_start_matches('|').split('|').next().unwrap_or("");
-            let name = first.trim().trim_matches('`').trim();
-            if !name.is_empty() {
-                out.push(name.to_string());
-            }
-        }
-        out
-    }
-
-    /// ★★ **F06c**：`wire.rs` 的**每一个帧 kind** 都必须在 §10 的帧表里**有一行**。
-    ///
-    /// # 它闭掉的洞（aterm 的 DN-6）
-    ///
-    /// 仓外 aterm 通报过「`IPC-PROTOCOL.md §10` 落后于 `wire.rs`」，而**它说对了一半**：
-    /// 逐条量下来，11 个 kind 在 §10 里**全都被提到过**，但 `reply` / `cancelled`
-    /// **只活在「入方向」那段正文与线上示例里、帧表里没有它们的行**。
-    ///
-    /// 为什么「提到过」不够：那张表是**唯一的帧清册**，客户端实现者按表逐行对。
-    /// 一个 kind 只在别处的示例里出现，等于让实现者靠通读全节发现它 ——
-    /// aterm 的 KDoc 里那个「6 帧」的错数字就是这么来的（它数的是表）。
-    ///
-    /// ⚠ 与同族既有那条 `every_wire_field_appears_in_the_protocol_doc` 的区别：
-    /// 那条要求**字段名**在 §10 的代码跨度里出现；本条要求**帧 kind 在帧表里有行**。
-    /// 前者管「有没有写」，本条管「有没有登记在清册上」。
-    ///
-    /// ⚠ 本条**不检查行的内容对不对**（那需要逐字段对拍，已有别的判据管字段）。
     /// ★★ **`EMITS` 必须是 `Frame` 变体的子集，且缺席的三个要有名有姓**
     /// 〔audit-0805 F18 / 报告 §4.2〕。
     ///
     /// # 它此前**一条判据都没有**
     ///
-    /// `protocol_doc_guard` 有三条双向对拍（帧种 ↔ 帧表 · 入方向命令 ↔ 文档 · 子命令 ↔ 文档），
-    /// **唯独 `EMITS` 没人管** —— 它全仓只在 `main.rs` 被读一次（塞进 hello）。
+    /// `EMITS` 全仓只在 `main.rs` 被读一次（塞进 hello）。
     ///
     /// # 而它的**定义与值对不上**
     ///
@@ -1473,289 +978,5 @@ mod tests {
                 "`{k}` 已经在 `EMITS` 里了，却还留在豁免表 —— 豁免表过期了"
             );
         }
-    }
-
-    /// 它只钉「清册不许漏」——如实说明，别读成「表里那行是对的」。
-    #[test]
-    fn every_wire_frame_kind_has_a_row_in_the_frame_table() {
-        let mut variants = frame_variants();
-        let mut documented = documented_frame_kinds();
-        // 中间量自检：两个抽取器都必须真的抽到东西，否则本条零命中地绿。
-        assert!(
-            variants.len() >= 9,
-            "只从 `enum Frame` 抽到 {} 个变体 —— 抽取坏了（摸底实测 11 个）：{variants:?}",
-            variants.len()
-        );
-        assert!(
-            documented.len() >= 9,
-            "只从 §10 的帧表抽到 {} 行 —— 表头锚点或表结构变了：{documented:?}",
-            documented.len()
-        );
-        variants.sort();
-        documented.sort();
-        let missing: Vec<&String> = variants
-            .iter()
-            .filter(|v| !documented.contains(v))
-            .collect();
-        assert!(
-            missing.is_empty(),
-            "这些帧 kind 在 `wire.rs` 里存在，但 §10 的**帧表**里没有行：{missing:?}\n\
-             ⚠ 「§10 里提到过」不算 —— 那张表是唯一的帧清册，客户端实现者按表逐行对，\n\
-             只在示例或正文里出现的 kind 会被漏掉（仓外 aterm 的 KDoc 里那个错的帧数就是这么来的）。\n\
-             ⇒ 给它补一行，说明可以只写一句 + 指向它详细语义所在的小节。"
-        );
-        let stale: Vec<&String> = documented
-            .iter()
-            .filter(|d| !variants.contains(d))
-            .collect();
-        assert!(
-            stale.is_empty(),
-            "§10 的帧表里有这些行，而 `wire.rs` 里没有对应变体：{stale:?}\n\
-             ⇒ 帧被删/改名了而表没跟（那比漏写更糟：照它实现的客户端在等一个永不到来的 kind）。"
-        );
-    }
-
-    /// ★ 文档必须提到 wire 的每一个字段。
-    #[test]
-    fn every_wire_field_appears_in_the_protocol_doc() {
-        let fields = wire_field_names();
-        assert!(
-            fields.len() >= 15,
-            "只抽到 {} 个 wire 字段 —— 抽取坏了，本断言在空转：{fields:?}",
-            fields.len()
-        );
-        // ★ 判据是「作为标识符出现在某个**代码跨度之内**」，不是「字面量在全文任何地方出现过」。
-        //
-        // 松判据在 U6b-1 当场失效：新加的 `Reply { id, ok, code, message }` 四个字段
-        // **一条都没写进文档**，护栏却全绿 —— `ok` / `id` 这种词在 570 行中文文档里必然出现过。
-        //
-        // 但也不能要求「自成一个跨度」（`` `ok` ``）：文档里有 `v, build_id, host_arch, …`
-        // 这种**逗号连写在同一个跨度**的写法，那样会把 3 个既有的、确实有文档的字段误报。
-        // ⇒ 取所有反引号跨度的内容、按标识符切词，字段名必须是其中一个**完整词**。
-        // ★ **只在 §10「远端 backend wire 协议」那一节里找**（U6b-3，据 D 审计收紧）。
-        //
-        // 收紧前判据是「全文的代码跨度」。审计实测强度：把 §10 的帧字段表整段
-        // （12 002 字节 / 69 行）从文档里挖掉，**31 个字段里 16 个照样通过** ——
-        // 它们命中的是**毫不相干的代码跨度**：`sid` 命中文件名 `sid-hwnd-cache.json`、
-        // `attachable` 命中 BUILD_ID 名 `p1v-attachable`、`path`/`raw` 命中一段
-        // PowerShell 片段、`message` 命中一个前端事件的 payload。
-        //
-        // 也就是说：**一半的字段就算权威表被删干净，护栏也照样绿。**
-        // 子命令那条早已收紧成「必须落进 §10 的两张表之一」，字段这条一直停在全文。
-        let sec = DOC
-            .find("## 10. 远端后端 wire 协议")
-            .expect("文档里找不到 §10 —— 抽取坏了还是文档被大改了？");
-        let sec_end = DOC[sec..]
-            .find("\n## ")
-            .map(|k| sec + k)
-            .unwrap_or(DOC.len());
-        let wire_section = &DOC[sec..sec_end];
-        assert!(
-            wire_section.len() > 8000,
-            "§10 区间只抽到 {} 字节 —— 抽取坏了，本断言在空转",
-            wire_section.len()
-        );
-        let documented = code_span_identifiers(wire_section);
-        assert!(
-            documented.len() >= 60,
-            "只从 §10 的代码跨度里切出 {} 个标识符 —— 抽取坏了，本断言在空转",
-            documented.len()
-        );
-        let missing: Vec<&String> = fields.iter().filter(|f| !documented.contains(*f)).collect();
-        assert!(
-            missing.is_empty(),
-            "这些 wire 字段不在 `src/doc/IPC-PROTOCOL.md` **§10 wire 协议节**里：{missing:?}\n\
-             那份文档是 backend↔monitor↔aterm 的权威契约。字段加进代码却没进文档，\n\
-             下游只能靠读源码或抓包才知道它存在。"
-        );
-    }
-
-    /// §10 里「入方向」那一小节（到下一个三级标题为止）。
-    ///
-    /// ★ **收到「入方向」那一小节**（U8a-2b）：原来扫的是 §10 整节，而 §10 里的帧字段表本来就有
-    /// `status` / `path` / `name` / `sid` 这些词 ⇒ **一条叫 `status` 的命令零文档也直接通过**
-    /// （D 设计审计 · 视角 A · P3）。收到入方向小节之后，命令名要想白嫖就得恰好撞上入方向小节里的某个词，面小得多。
-    fn inbound_section(doc: &str) -> &str {
-        let sec = doc
-            .find("## 10. 远端后端 wire 协议")
-            .expect("文档里找不到 §10 —— 抽取坏了");
-        let sec_end = doc[sec..]
-            .find("\n## ")
-            .map(|k| sec + k)
-            .unwrap_or(doc.len());
-        let inbound_at = doc[sec..sec_end]
-            .find("### 入方向：流连接上的命令信封")
-            .map(|k| sec + k)
-            .expect("§10 里找不到「入方向」小节 —— 抽取坏了还是文档被大改了？");
-        let inbound_end = doc[inbound_at + 4..sec_end]
-            .find("\n### ")
-            .map(|k| inbound_at + 4 + k)
-            .unwrap_or(sec_end);
-        &doc[inbound_at..inbound_end]
-    }
-
-    /// 入方向小节里以命令名开头的四级标题：`(那一行, 开头那串名字)`。
-    ///
-    /// 「以命令名开头」＝ `#### ` 之后紧跟一个反引号跨度；开头那串名字是 `` `a` `` 或 `` `a` / `b` / … ``，
-    /// 到第一个不是「` / ` 再接一个反引号跨度」的地方为止。不以反引号开头的标题（讲一族、讲共同规则的）不算。
-    fn command_headings(section: &str) -> Vec<(String, Vec<String>)> {
-        let mut out = Vec::new();
-        for head in section.lines() {
-            let Some(mut rest) = head.strip_prefix("#### `") else {
-                continue;
-            };
-            let mut names = Vec::new();
-            loop {
-                let Some(end) = rest.find('`') else {
-                    break;
-                };
-                names.push(rest[..end].to_string());
-                rest = &rest[end + 1..];
-                match rest.strip_prefix(" / `") {
-                    Some(next) => rest = next,
-                    None => break,
-                }
-            }
-            out.push((head.to_string(), names));
-        }
-        out
-    }
-
-    /// 入方向小节里点了**不在注册表里的名字**的命令标题。
-    fn stray_command_headings(
-        section: &str,
-        registered: &std::collections::BTreeSet<&str>,
-    ) -> Vec<String> {
-        command_headings(section)
-            .into_iter()
-            .filter(|(_, names)| names.iter().any(|n| !registered.contains(n.as_str())))
-            .map(|(head, _)| head)
-            .collect()
-    }
-
-    /// ★ **反向**：入方向小节里凡以命令名开头的四级标题（`` `名字` ``：… · `` `a` / `b` ``：…），
-    /// 开头那串名字**每一个**都在 `REGISTRY`；每条带 `doc_anchor` 的命令，它的锚恰好是某个这样的标题的前缀。
-    ///
-    /// 正向（每条命令都在文档里、带载荷的有自己的小节）早有人查；反向此前没人查 ——
-    /// 删一条命令而忘了删它那一节，文档就一直当现状说着一条不存在的命令，客户端照着发只会拿到 `unknown_command`。
-    /// `cancel` · `ping` 没有自己的小节，照旧只要求出现在小节正文里（上一条）。
-    /// 讲一族、讲共同规则的标题不以反引号开头（「文件读那一族（`files-read` …）」），不在本条的人群里。
-    #[test]
-    fn every_command_heading_in_the_inbound_section_names_a_registered_command() {
-        let section = inbound_section(DOC);
-        let registered: std::collections::BTreeSet<&str> = crate::stream::inbound::command_names()
-            .into_iter()
-            .collect();
-        let heads = command_headings(section);
-        assert!(
-            heads.len() >= 100,
-            "入方向小节里只切出 {} 个命令标题 —— 切法坏了，本断言在空转",
-            heads.len()
-        );
-        let stray = stray_command_headings(section, &registered);
-        assert!(
-            stray.is_empty(),
-            "入方向小节里这几节讲的命令不在注册表里（删了命令没删文档，或标题写错了名字）：\n  {}",
-            stray.join("\n  ")
-        );
-        let mut anchored = 0usize;
-        for spec in crate::stream::inbound::REGISTRY {
-            let Some(anchor) = spec.doc_anchor else {
-                continue;
-            };
-            anchored += 1;
-            assert!(
-                heads.iter().any(|(head, _)| head.starts_with(anchor)),
-                "`{}` 的锚 {anchor:?} 不是入方向小节里任何一个命令标题的前缀",
-                spec.name
-            );
-        }
-        assert!(
-            anchored >= 100,
-            "只有 {anchored} 条命令带锚 —— 本断言在空转"
-        );
-        // 正控：往小节里补一节已删命令的标题，切法认得出它。
-        let planted = format!("{section}\n#### `relay-ensure`：没人在听就起一个脱离的中转\n");
-        assert_eq!(
-            stray_command_headings(&planted, &registered),
-            vec!["#### `relay-ensure`：没人在听就起一个脱离的中转".to_string()],
-            "补进去的一节已删命令没被认出来 —— 切法瞎了"
-        );
-    }
-
-    /// ★ **入方向命令名**也必须在 §10 里（U7-5 补的第三条）。
-    ///
-    /// # 这条是 U7-5 扫「自洽夹具」时顺带发现的空白
-    ///
-    /// wire 字段有对拍、`--子命令` 有对拍，**入方向命令名一直没有**。
-    /// `hello_commands_match_the_dispatch_table` 钉的是 `COMMANDS ↔ dispatch 分派臂`，
-    /// 两边都在代码里 —— **文档不在其中**。
-    ///
-    /// 实测：把 `ping` 在 `COMMANDS` 与分派臂里**同时**改名（= 正常地重命名一条命令），
-    /// 只有 `ping_replies_ok` 这条**行为测试**红了 —— 而重命名时那条自然会被一起改。
-    /// 改完之后文档里的 `ping` 就成了一个不存在的命令，**没有任何东西会响**。
-    ///
-    /// 客户端是照文档发命令的：文档说 `ping`、backend 只认 `heartbeat`，
-    /// 表现是 `unknown_command`，而两边各自看都"对"。
-    #[test]
-    fn every_inbound_command_appears_in_the_protocol_doc() {
-        let documented = code_span_identifiers(inbound_section(DOC));
-        assert!(
-            documented.len() >= 25,
-            "只从「入方向」小节切出 {} 个标识符 —— 抽取坏了，本断言在空转",
-            documented.len()
-        );
-        let cmds = crate::stream::inbound::command_names();
-        assert!(
-            cmds.len() >= 2,
-            "只有 {} 条命令 —— 抽取坏了，本断言在空转",
-            cmds.len()
-        );
-        let missing: Vec<&&str> = cmds.iter().filter(|c| !documented.contains(**c)).collect();
-        assert!(
-            missing.is_empty(),
-            "这些入方向命令不在 `src/doc/IPC-PROTOCOL.md` §10 里：{missing:?}\n\
-             客户端是照文档发命令的 —— 文档说一个名字、backend 只认另一个，\n\
-             表现是 `unknown_command`，而两边各自看都「对」。"
-        );
-    }
-
-    /// ★ 文档必须提到每一个被分发的子命令。
-    #[test]
-    fn every_dispatched_subcommand_appears_in_the_protocol_doc() {
-        let cmds = dispatched_subcommands();
-        assert!(
-            cmds.len() >= 8,
-            "只抽到 {} 个子命令 —— 抽取坏了，本断言在空转：{cmds:?}",
-            cmds.len()
-        );
-        // ★ **收紧到 §10 的代码跨度**（U8a-2b）。
-        //
-        // 原实现是 `DOC.contains(c)` —— **全文子串**，散文里提一句就算过。
-        // 而本文件头注两处都写着「必须落进 §10 的两张表之一 —— 不是『全文出现过就行』」。
-        // 那是一份**过期的宣称**，正是本仓最忌讳的那种：护栏自称的强度比实际高一档。
-        // （D 设计审计 · 视角 A · P7 点名。字段那条早在 U6a 就收到 §10 了，这条没跟。）
-        let sec = DOC
-            .find("## 10. 远端后端 wire 协议")
-            .expect("文档里找不到 §10 —— 抽取坏了");
-        let sec_end = DOC[sec..]
-            .find("\n## ")
-            .map(|k| sec + k)
-            .unwrap_or(DOC.len());
-        let spans = code_span_text(&DOC[sec..sec_end]);
-        assert!(
-            spans.len() > 2000,
-            "只从 §10 切出 {} 字节的代码跨度 —— 抽取坏了，本断言在空转",
-            spans.len()
-        );
-        let missing: Vec<&String> = cmds
-            .iter()
-            .filter(|c| !spans.contains(c.as_str()))
-            .collect();
-        assert!(
-            missing.is_empty(),
-            "这些子命令没有落进 `src/doc/IPC-PROTOCOL.md` §10 的代码跨度里：{missing:?}\n\
-             （在散文里提一句不算 —— §10 是给仓外读的冻结契约，命令要出现在表里。）"
-        );
     }
 }
