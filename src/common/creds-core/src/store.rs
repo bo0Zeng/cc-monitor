@@ -1,34 +1,19 @@
-//! 那份文件**长什么样**，以及「读一份 / 改一个键 / 再写回去」这三步的**纯逻辑**。
+//! 那份凭据文件长什么样，以及「读一份 / 改一个键 / 再写回去」这三步的纯逻辑。
 //!
-//! # ⚠ 本模块**一个文件系统调用都没有**，那是刻意的（不是「还没写」）
-//!
-//! 三条理由，每条都指向本仓一条真实存在的判据：
-//!
-//! 1. **backend 的写面逐文件登记**〔`K-H2a` 裁四，收窄后〕：`readonly_guard.rs` 扫后端生产段
-//!    （剥掉 `#[cfg(test)]` 块之后），写只许出现在登记过的那几层模块里（账号域那一份凭据写口在第四层）。
-//!    本 crate 被 backend depend、而那张登记表**扫不到**本 crate ⇒ 写调用放进来是在给那道护栏挖洞。
-//! 2. **写盘落点必须被登记表看见**：`src/frontend/shell/src/write_site_registry.rs` 与
-//!    `atomic_replace_registry.rs` 的扫描根**都是 `src/frontend/shell/src`**
-//!    （两者的 `src_root()` 逐字是 `CARGO_MANIFEST_DIR/src`）——
-//!    `src/common/` **不在它们的人群里**。
-//!    ⇒ 把写盘搬进本 crate，等于**让它从两张登记表底下溜出去**，而那正是本工作区在治的那族病
-//!    （守卫的人群对不上它守的性质）。⇒ 真正的写盘留在 `src/frontend/shell/src`，在人群里、要申报。
-//! 3. 纯函数好测：`KS10` 要测的是**交错**（人改了 A，程序写 B，A 还在不在），
-//!    而交错的关键是「程序在**写的那一刻**才去读」——那条纪律由调用方兑现，
+//! 本模块一个文件系统调用都没有，刻意的：
+//! 1. backend 的写面逐模块登记（`readonly_guard`，账号域那一份凭据写口在第四层），那张表扫不到本 crate ⇒ 写调用放进来是给护栏挖洞；
+//! 2. `src/frontend/shell/src/write_site_registry.rs` 与 `atomic_replace_registry.rs` 的扫描根都是 `src/frontend/shell/src`，`src/common/` 不在它们的人群里；
+//! 3. 纯函数好测：要测的是交错（人改了 A，程序写 B，A 还在不在），而「写的那一刻才去读」由调用方兑现，
 //!    本模块只保证「给我旧内容 + 新 key，我还你一份没吃掉任何东西的新内容」。
 //!
-//! # 格式（`KS9`：人能读能改，改完就生效）
+//! # 格式：人能读能改，改完就生效
 //!
-//! 一份**明文 JSON 对象**。今天本件只认一个键 [`KEY_FIELD`]，**其余键一律原样留着**。
-//! 文件不存在时给 [`template`] —— 一个「能手编但没人知道格式」的文件等于不能手编。
+//! 一份明文 JSON 对象。认的键之外其余键一律原样留着。文件不存在时给 [`template`] —— 一个「能手编但没人知道格式」的文件等于不能手编。
 
 use crate::SecretKey;
 use serde_json::{Map, Value};
 
-/// key 住在哪个字段。**这个名字是契约**：人手编的时候写的就是它。
-///
-/// ⚠ 它在**两个深度**上都是这个名字：顶层（`K-H2a` 交付时那一把）与
-/// [`ACCOUNTS_FIELD`] 里每一条账号内部。**刻意同名** —— 人手编时不必记两套词。
+/// key 住在哪个字段。这个名字是契约：人手编的时候写的就是它。顶层与 [`ACCOUNTS_FIELD`] 里每一条账号内部刻意同名（人手编时不必记两套词）。
 pub const KEY_FIELD: &str = "api_key";
 
 /// 多账号那张表住哪个字段。**这个名字是契约**。
@@ -39,52 +24,23 @@ pub const KEY_FIELD: &str = "api_key";
 /// 由上游选择装表时出声（`accounts::upstream_select::table::build` 那条「这一行进不了表」）。
 pub const ACCOUNTS_FIELD: &str = "accounts";
 
-/// 一条账号的**上游端点**住哪个字段。缺席 / 空串 ⇒ 用这个 agent 的默认上游（适配层 `agents::Adapter::upstream`）。
-///
-/// ⚠ 它**不是**「回落」：`base_url` 缺席说的是「这一行用默认端点」，
-/// 而「这一行根本不在表里」说的是**404**。两件事不许混 —— 见 `K-H2` `KH2`。
+/// 一条账号的上游端点住哪个字段。缺席 / 空串 ⇒ 用这个 agent 的默认上游（适配层 `agents::Adapter::upstream`）。
+/// 它不是回落：「这一行用默认端点」与「这一行根本不在表里」（404）是两件事。
 pub const BASE_URL_FIELD: &str = "base_url";
 
-/// 一条账号**怎么把 key 交给上游**住哪个字段。缺席 / 空串 ⇒ [`AuthStyle::DEFAULT`]。
-///
-/// ⚠⚠ **它说的只有「鉴权头怎么写」这一件事，不是「上游说哪种方言」。**
-/// 这两件事读起来像，混成一个字段就是本工作区最贵的那族病（一个值装了两件事）：
-/// 中转对请求体**一个字节都不解析**（`relay/` 生产段零 `serde_json`，乙路现打），
-/// ⇒ 它没有资格声称自己知道上游要哪种 body。方言那一格若将来真要买，
-/// 是**另一个字段**（`K-R1` 的 `KR12`/`KR13`），不是给本字段多加几个值。
+/// 一条账号怎么把 key 交给上游住哪个字段。缺席 / 空串 ⇒ [`AuthStyle::DEFAULT`]。
+/// 它说的只有「鉴权头怎么写」，不是「上游说哪种方言」：中转对请求体一个字节都不解析（`relay/` 生产段零 `serde_json`），没有资格声称知道上游要哪种 body。
 pub const AUTH_STYLE_FIELD: &str = "auth_style";
 
-/// 顶层那把 key（`K-H2a` 交付时的形状）在表里**叫什么名字**。
+/// 顶层那把 key 在表里叫什么名字。它是一个有名字的行，不是「默认行」：只有路由键里账号段逐字是 `default` 的请求才用它；
+/// 别的账号段查不到 ⇒ 404（「查不到就拿它顶上」= 拿 A 的 key 发 B 的请求）。
 ///
-/// # ⚠⚠ 它是一个**有名字的行**，不是「默认行」
-///
-/// 这两件事读起来像，差别却正是 `K-H2` `KH2` 要守的全部：
-/// - **有名字的行**：只有路由键里账号段**逐字**是 `default` 的请求才用它；别的账号段查不到 ⇒ **404**。
-/// - **默认行**（本件明令不做）：查不到就拿它顶上 ⇒ **拿 A 的 key 发 B 的请求**。
-///
-/// 它存在的理由只有一个：`K-H2a` 已经落地的那份文件（顶层一个 `api_key`）
-/// **升级之后要照常能用**，而不是变成「一份读不懂的旧文件」。
-///
-/// # ⚠⚠ `K-H2c` `KH2C3` 逐字：**它是读得出来的一行，但不再是写进去的地方**
-///
-/// 这两句必须一起读，只读一句都会读错一格：
-/// - **读**：[`read_accounts`] 今天仍然把顶层那一把折成一条 id 为本常量的行 ——
-///   老用户手上那份文件、以及 `KS9` 那条「脱离这个前端也能配」的手编路，都照常能用。
-///   **谁都不许顺手删它**（删掉就是打掉老用户手上那份文件），
-///   由 `the_legacy_top_level_key_becomes_one_named_row_not_a_default_row` 与
-///   `an_unconfigured_file_yields_no_rows_at_all` 两条钉着。
-/// - **写**：界面那条路（每台机器那台后端的写口 `accounts/upstream_select/file_face.rs`，本机也是）落的是 `accounts.<id>`，
-///   **一个字节都不再往顶层那一格写**。机检住后端那一侧的
-///   `file_face_tests::gp1_the_write_side_never_targets_the_legacy_top_level_slot`。
-///
-/// ★ 为什么写侧非换不可（这不是洁癖）：写顶层那一格 ⇒ 读回来 id 逐字是本常量，
-/// 而起会话那一侧按**账号目录末段名**索引 ⇒ **从界面配的 key 永远匹配不上任何账号**，
-/// 上游选择按 `KL7` 第 2 条给 404、一个字节不发上游。
-/// 〔`K-H2c` `§0` 的立件读数，09-02 在写侧接上之前仍然属实。〕
-///
-/// ⚠ 而 [`merge_key`]（写顶层那一格的那个纯函数）**没有被删**：
-/// 它仍是 [`merge_account_key`] 内部改「某一条里那个 `api_key`」的实现。
-/// **「不再往顶层写」是调用面的事实，不是这个模块少了一个函数。**
+/// - 读：[`read_accounts`] 把顶层那一把折成一条 id 为本常量的行 —— 老用户手上那份文件、以及手编那条路照常能用（不许顺手删，
+///   由 `the_legacy_top_level_key_becomes_one_named_row_not_a_default_row` 与 `an_unconfigured_file_yields_no_rows_at_all` 钉着）。
+/// - 写：界面那条路（那台后端的写口 `accounts/upstream_select/file_face.rs`）落的是 `accounts.<id>`，一个字节都不往顶层那一格写
+///   （后端 `file_face_tests::gp1_the_write_side_never_targets_the_legacy_top_level_slot`）：写顶层那一格，读回来 id 逐字是本常量，
+///   而起会话那一侧按账号目录末段名索引 ⇒ 从界面配的 key 永远匹配不上任何账号。
+/// [`merge_key`] 仍是 [`merge_account_key`] 内部改「某一条里那个 `api_key`」的实现。
 pub const LEGACY_ACCOUNT_ID: &str = "default";
 
 /// 那份文件在 monitor 数据目录**根上**的名字（[`credentials_path`]）。**两侧共用的唯一契约。**
@@ -159,20 +115,9 @@ pub fn credentials_path(data_dir: &std::path::Path) -> std::path::PathBuf {
     data_dir.join(FILE_NAME)
 }
 
-/// 文件不存在 / 是空的时候给出去的模板。
-///
-/// ⚠ 它是**注释 + 一个空字段**，不是一份能直接用的配置 —— 目的是让人一眼看出该填哪儿。
-/// JSON 没有注释语法，所以说明写成一个**未知键**（`_note`），而
-/// 「未知键原样保留」正是 [`merge_key`] 的性质 ⇒ 这份模板**自己就是那条性质的用例**。
-///
-/// 三句说明是用户读的话 ⇒ 住文案表（`credsStore.template.*`）；
-/// JSON 骨架（键与结构）留这里，运行期拼出来（键序与 [`to_pretty_json`] 同一个排法）。
-///
-/// # ⚠ 它刻意**不列举** `auth_style` 的合法值〔`K-R1`，`brief` 13b〕
-///
-/// 那个闭集只有一个住址（[`AuthStyle::ALL`]）。在这里再抄一份，加第四个成员的那天
-/// 这份模板会**静默变旧**，而它是随产物发到用户机器上的那一份。
-/// ⇒ 模板只点名字段，合法值由上游选择装表时**现算**印出来（`accounts::upstream_select::creds::announce`）。
+/// 文件不存在 / 是空的时候给出去的模板：说明 + 一个空字段，让人一眼看出该填哪儿。JSON 没有注释语法，所以说明写成一个未知键（`_note`），
+/// 而「未知键原样保留」正是 [`merge_key`] 的性质。三句说明住文案表（`credsStore.template.*`）；JSON 骨架留这里，运行期拼（键序与 [`to_pretty_json`] 同一个排法）。
+/// 不列举 `auth_style` 的合法值：闭集只住 [`AuthStyle::ALL`]，合法值由上游选择装表时现算印出来（`accounts::upstream_select::creds::announce`）。
 pub fn template() -> String {
     let example = format!(
         "\"{ACCOUNTS_FIELD}\": {{ \"my-account\": {{ \"{KEY_FIELD}\": \"sk-...\", \"base_url\": \"https://api.example.com\" }} }}"
@@ -258,42 +203,18 @@ fn read_base_url(doc: &Map<String, Value>) -> Option<String> {
     Some(s.to_string())
 }
 
-/// 这一行的 key **用哪种鉴权头交给上游**。
-///
-/// # ★ 为什么这三个值是「头怎么写」，而不是「哪一家供应商」
-///
-/// 〔用 09-04〕逐字点了「供应商deepseek\kimi\qwen\等等」，并要「api做成通用的,
-/// 还可以接本地部署的」。**按供应商枚举做不到「通用」** —— 每加一家就得加一条路，
-/// 而那张表永远落后于现实。⇒ 本枚举按**协议形状**切：今天现实里只有两种鉴权头形状
-/// （一个 `Authorization: Bearer`、一个 `x-api-key`）加一种「不发」。
-/// 供应商是谁**不进代码**：DeepSeek / Kimi / Qwen 用哪一种，是那一行 `auth_style`
-/// 里写着的，不是本 crate 里判的。
-///
-/// # ⚠ 它**不**说什么（射程如实写）
-///
-/// 不说上游要哪种请求体、不说路径长什么样、不说用哪个模型名。
-/// 中转对 body 零解析 ⇒ 这三样今天全由客户端决定，本字段一个字都管不到。
-///
-/// # 值的**闭集只有一个住址** —— [`AuthStyle::ALL`]
-///
-/// 散文里不复述成员（`brief` 13b）：要印出来就现算 [`AuthStyle::field_value`] 再 `join`。
-/// [`AuthStyle::from_field_value`] 也是从 `ALL` 派生的 ⇒ **没有第二份字面量会漂**。
+/// 这一行的 key 用哪种鉴权头交给上游。按协议形状切，不按供应商：现实里只有两种鉴权头形状（`Authorization: Bearer` · `x-api-key`）加一种「不发」；
+/// DeepSeek / Kimi / Qwen 用哪一种，是那一行 `auth_style` 里写着的，不是本 crate 里判的。
+/// 不说上游要哪种请求体、路径长什么样、用哪个模型名（中转对 body 零解析）。
+/// 值的闭集只有一个住址 —— [`AuthStyle::ALL`]（[`AuthStyle::from_field_value`] 也是从它派生的）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthStyle {
-    /// `Authorization: Bearer <key>`。**这是今天盘上的行为**，也是缺席时的默认
-    /// ⇒ 一份没写 `auth_style` 的旧文件，上游收到的字节与本件之前**逐字节相同**。
+    /// `Authorization: Bearer <key>`。缺席时的默认 ⇒ 一份没写 `auth_style` 的文件，上游收到的字节不变。
     Bearer,
     /// `x-api-key: <key>`。
     XApiKey,
-    /// **一个鉴权头都不发**，并且把客户端自带的那几个也丢掉。
-    ///
-    /// ★ 这一档是**本地部署那一格**（〔用 09-04〕「还可以接本地部署的」）：
-    /// 本机跑的推理服务默认不校验凭据，而「把一把真 key 发给一个不校验的本地端点」
-    /// 是把凭据白送出去。⇒ 无鉴权要能**显式表示**，不是靠「不配 key 恰好也能用」。
-    ///
-    /// ⚠ 它与「这一行不配 key」**不是一回事**，两者的区别是承重的：
-    /// 不配 key ⇒ **原样转发客户端那份鉴权头**（订阅登录那一档要的正是这个）；
-    /// 本档 ⇒ **连客户端那份也不转发**。
+    /// 一个鉴权头都不发，并且把客户端自带的那几个也丢掉。本地部署那一格：本机跑的推理服务默认不校验凭据，
+    /// 把一把真 key 发给一个不校验的本地端点是把凭据白送出去 ⇒ 无鉴权要能显式表示。
     NoAuth,
 }
 
@@ -392,32 +313,14 @@ pub struct AccountEntry {
     pub auth_style: AuthStyleSetting,
 }
 
-/// 把一份文档读成**一张表**。
+/// 把一份文档读成一张表。顺序由键名定（遍历走 [`ordered_keys`]，与 `Map` 是 `BTreeMap` 还是 `IndexMap` 无关）。
 ///
-/// # 两个来源，合成一张表，**顺序由键名定**
+/// 1. [`ACCOUNTS_FIELD`] 那张表逐条读：每一个对象都是一条，两个字段一个都没填也算（`base_url` 空 = 用默认上游，`api_key` 空 = 原样转发
+///    客户端自己那份鉴权头 —— 显式的一条透传路）；值不是对象的那一条跳过。
+/// 2. 顶层那把 key / 那个 `base_url` ⇒ 一条 id 逐字是 [`LEGACY_ACCOUNT_ID`] 的行；`accounts` 里已经有同名的那一条 ⇒ 顶层那半不再加（人手写的那条优先）。
+///    顶层完全没有 `api_key` / `base_url` ⇒ 一条都不加（加一条「什么都没配的默认行」就给「查不到就用它」开了门）：没配就是零条，零条就是全部 404。
 ///
-/// 1. [`ACCOUNTS_FIELD`] 那张表 —— 逐条读。遍历走 [`ordered_keys`]，
-///    ⇒ 输出顺序与 `Map` 今天是 `BTreeMap` 还是 `IndexMap` **无关**。
-/// 2. 顶层那把 key / 那个 `base_url` ⇒ 一条 id 逐字是 [`LEGACY_ACCOUNT_ID`] 的行。
-///
-/// # ⚠ 三条判断都要说清（每一条都对应一种「读起来像另一件事」的形状）
-///
-/// - **`accounts` 里每一个对象都是一条**，两个字段一个都没填也算 ——
-///   那是**合法且有用**的一条：`base_url` 空 = 用默认上游，`api_key` 空 = **原样转发
-///   客户端自己那份鉴权头**（`K-H1` 甲半那条「不配凭据也能用的透传路」，
-///   在多账号之后它从「隐式的全局行为」变成「**显式的一条路**」）。
-///   ⚠ 值**不是对象**的那一条跳过（比如有人写成 `"acct": "sk-..."`）。
-/// - **`accounts` 里已经有同名的那一条 ⇒ 顶层那半不再加**。理由：人手写的那条优先，
-///   程序不许拿一份「历史形状」去盖掉人明确写下的东西。
-/// - **顶层完全没有 `api_key` / `base_url` ⇒ 一条都不加**（不是加一条空的）。
-///   ⚠⚠ **这一条是承重的**：加一条「什么都没配的默认行」等于给「查不到就用它」
-///   开了门，而那正是 `K-H2` `KH2` 逐字禁的**回落**。**没配就是零条，零条就是全部 404。**
-///
-/// # 它**不**做什么
-///
-/// 不判 `id` 能不能当路由段用（那要 `route::segment_is_safe`，住后端那一侧，
-/// 本 crate 刻意不认识 HTTP）· 不解析 `base_url`（那要 `upstream::Base`，同上）。
-/// ⇒ **这两格由上游选择在装表那一刻判并出声**，本函数只负责「文件里写了什么」。
+/// 不判 `id` 能不能当路由段、不解析 `base_url`（那两样要后端那一侧的谓词，本 crate 不认识 HTTP）⇒ 由上游选择在装表那一刻判并出声。
 pub fn read_accounts(doc: &Map<String, Value>) -> Vec<AccountEntry> {
     let mut out: Vec<AccountEntry> = Vec::new();
 
@@ -456,24 +359,10 @@ pub fn read_accounts(doc: &Map<String, Value>) -> Vec<AccountEntry> {
     out
 }
 
-/// **`KS10` 在多条形状下的正主**：只改 `accounts.<id>.api_key` 那一格，
-/// **别的条一个字节都不动**，两层的未知键都留着。
-///
-/// # 为什么它不收「整张 accounts」
-///
-/// 件计划 `§0d 三㈣` 那条：**公开面上不许有「整份替换 accounts 子对象」的路**。
-/// 有那条路，「只改一条」就退化成「调用方记得只改一条」——而那正是本仓反复栽的形状。
-/// ⇒ 签名逼着调用方说清**改哪一条**，改别的条这件事在本模块的公开面上**不可表示**。
-///
-/// ⚠ **如实说它的分母**：它挡住的是**走本模块的写者**。盘上那份文件仍然可以被别的代码
-/// 整份覆盖（原子替换那一步就在 `src/frontend/shell/src/creds_store.rs` 里）⇒
-/// 这一格守的是「走 `store` 的写者」，**不是「所有写者」**。
-///
-/// # 落盘出口仍然只有一处
-///
-/// 本函数**不自己碰明文** —— 它把那一格转交给 [`merge_key`]，
-/// 而 `expose_for_persisting` 的调用点仍然**恰好 1 处**（在 `merge_key` 里）。
-/// ⇒ `KS2` 那条相等断言一个字节都不用动（`K-H2` `KH3`）。
+/// 只改 `accounts.<id>.api_key` 那一格，别的条一个字节都不动，两层的未知键都留着。
+/// 不收「整张 accounts」：公开面上不许有整份替换 `accounts` 子对象的路，改别的条这件事在本模块的公开面上不可表示。
+/// 它挡住的是走本模块的写者：盘上那份文件仍然可以被别的代码整份覆盖（原子替换那一步在 `src/frontend/shell/src/creds_store.rs` 里）。
+/// 本函数不自己碰明文：它把那一格转交给 [`merge_key`]，`expose_for_persisting` 的调用点仍然恰好 1 处（在 `merge_key` 里）。
 pub fn merge_account_key(
     current: &Map<String, Value>,
     id: &str,
@@ -562,15 +451,8 @@ pub fn restore_account(
     out
 }
 
-/// **`KS10` 的正主**：把 key 并进一份**刚从盘上读回来的**文档，其余键一个不动。
-///
-/// # 它为什么收 `current` 而不是收一个 `&mut self`
-///
-/// `backend_policy.rs` 头注逐字记着本仓踩过的那个形状：同一个文件有两个写者时，
-/// 「前端『读—改—写』整份的那一刻，会把 Rust 刚写进去的键按一份**陈旧副本**覆盖掉」。
-/// **本件是同一个形状换了两个当事人（程序 vs 人手）。**
-/// ⇒ 签名逼着调用方在**写的那一刻**把盘上的当前内容递进来，
-/// 而不是递一份「界面打开时读的那一份」。这条约束写在类型上，不写在注释里。
+/// 把 key 并进一份刚从盘上读回来的文档，其余键一个不动。收 `current` 而不是 `&mut self`：同一个文件有两个写者（程序 vs 人手）时，
+/// 拿一份「界面打开时读的那一份」写回会把另一方刚写进去的键盖掉 ⇒ 签名逼着调用方在写的那一刻把盘上的当前内容递进来。
 pub fn merge_key(current: &Map<String, Value>, key: &SecretKey) -> Map<String, Value> {
     merge_secret(current, KEY_FIELD, key)
 }

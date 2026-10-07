@@ -1,44 +1,25 @@
-//! U8a-2a：monitor 侧的**入方向发送端** —— 往那条长连接的写半边发命令、按 `id` 收应答。
-//!
-//! # 它补上的是哪一半
-//!
-//! U6b-1/2/3 在后端侧建了完整的入方向：信封、`id` 回显、取消、单行上限、能力协商。
-//! 但 U8a-2 摸底实测出一件事：**monitor 侧一个字节都没往那条流的 stdin 写过**
-//! （`stream_source/` 里写半边的唯一用法是 `probe_backend` 的 `shutdown()`，零数据字节）。
-//! ⇒ 那条通道在生产里**不可达**。本模块就是那条缺失的发送端。
+//! monitor 侧的入方向发送端 —— 往那条长连接的写半边发命令、按 `id` 收应答。
 //!
 //! # 「Hello 之前不许写」做成不可表示（对称于后端的 `wire::HelloFlushed`）
 //!
 //! ```text
 //! remote_resident::attach（远端）/ 本机宿主那条流 → 双工流
-//!         └── split_and_park(stream) ─→ (ReadHalf, ParkedWriter<WriteHalf>)
-//!                     │                            ▲ 身上没有任何写方法
-//!                     │                            └── .into_client(hello: BackendHello)
-//!                     └── ReadHalf → 既有 reader task      ▲ 只能由 InboundFrame::Hello 换来
+//! └── split_and_park(stream) ─→ (ReadHalf, ParkedWriter<WriteHalf>)
+//! │                            ▲ 身上没有任何写方法
+//! │                            └── .into_client(hello: BackendHello)
+//! └── ReadHalf → 既有 reader task      ▲ 只能由 InboundFrame::Hello 换来
 //! ```
 //!
-//! 收到 Hello 之前，`stream_loop` 手里只有一个 [`ParkedWriter`]，**它没有可调的写**。
-//! 这比「注释 + 扫文本的机检」强一档：U6b-3 的 D 审计用一次普通的函数抽取就绕过了那种机检。
-//!
-//! **诚实边界（据 D 审计订正，别再吹成「唯一」）**：
-//! - 切分与停放是**同一个函数**（[`split_and_park`]）⇒ 生产代码里**不存在**可写的裸
-//!   `WriteHalf` 窗口。第一版是 `split()` 之后再 `park()`，审计实测在那个窗口里
-//!   插一句 `w.write(b"early\n")` ⇒ 两条护栏全绿，而那就是一次 Hello 之前的写。
-//! - 剩下的绕过方式：自己造一个假的 `InboundFrame::Hello` 去换见证（调用点显眼的胡来），
-//!   或者绕开本模块直接拿 `tokio::io::split` —— 后者由 `stream_source` 的
-//!   `write_half_guard::stream_source_never_splits_a_stream_itself` 拦（**零命中型**判据，
-//!   尾随注释绕不动）。
+//! 收到 Hello 之前，`stream_loop` 手里只有一个 [`ParkedWriter`]，它没有可调的写（比「注释 + 扫文本的机检」强一档）。
+//! 切分与停放是同一个函数（[`split_and_park`]）⇒ 生产代码里不存在可写的裸 `WriteHalf` 窗口。
+//! 剩下的绕过方式：自己造一个假的 `InboundFrame::Hello` 去换见证（调用点显眼的胡来），或绕开本模块直接拿 `tokio::io::split` ——
+//! 后者由 `stream_source` 的 `write_half_guard::stream_source_never_splits_a_stream_itself` 拦（零命中型判据，尾随注释绕不动）。
 //!
 //! # 超时归客户端
 //!
-//! 已定「超时一律推给客户端」（backend 的零定时器铁律不改，登记表仍 1 条）。
-//! 所以 [`InboundClient::call`] 自带超时，且超时后**补发一条 `cancel`**，让后端别白跑 ——
-//! 这顺带让 U6b-1 写好的 `cancel` 命令第一次有真调用方。
-//! **调用方放弃等待**（这个 future 被丢）与超时同一格：命令已入队、还没拿到结局就走人
-//! ⇒ 同一条 `cancel` 补发（`AbandonGuard`）。对后端的可取消档（`Run::Async`）这一条真能把活停下；
-//! 对阻塞档它照旧回 `not_cancellable`。
-//! 对端不认撤单要说出来：握手没交出 `cancel` ⇒ 不补发、`Timeout.withdraw` 带
-//! `NotOffered`（那句话多说一句）＋ warn；补发之后被回 `not_cancellable` ⇒ warn 点名那条命令。
+//! backend 零定时器 ⇒ [`InboundClient::call`] 自带超时，超时后补发一条 `cancel` 让后端别白跑。调用方放弃等待（这个 future 被丢）与超时同一格：
+//! 命令已入队、还没拿到结局就走人 ⇒ 同一条 `cancel` 补发（`AbandonGuard`）。对可取消档（`Run::Async`）这一条真能把活停下；对阻塞档它照旧回 `not_cancellable`。
+//! 对端不认撤单要说出来：握手没交出 `cancel` ⇒ 不补发、`Timeout.withdraw` 带 `NotOffered` ＋ warn；补发之后被回 `not_cancellable` ⇒ warn 点名那条命令。
 
 use crate::chan::wire::{Offer, Withdraw, WITHDRAW_OP, WITHDRAW_REFUSED};
 // 「问后端失败了」那一套词（失败原因 · 在等应答的上限）住通信层 crate，与分流规则同一个家。
@@ -69,21 +50,12 @@ enum Outcome {
     Cancelled,
 }
 
-/// 交给 writer task 的活。
-///
-/// 之所以不是纯 `String`：**关写半边**必须是一条显式指令，不能是「写任务结束时顺手做的事」。
-/// 关掉写半边 = 让后端的入方向 reader 见 EOF 寿终；一次性探测想要这个收尾，
-/// 长连接不想要（那头之后还要能发命令）。两种语义必须分开表达。
-///
-/// ⚠ **不要以为关写半边就能让后端退出。** e2e 实测（`tests/e2e/inbound-backend-frames.sh` 第 9 条）：
-/// stdin EOF 只结束后端的入方向 reader **task**，进程照活。backend 只在
+/// 交给 writer task 的活。关写半边是一条显式指令（让后端的入方向 reader 见 EOF 寿终），不是「写任务结束时顺手做的事」：
+/// 一次性探测想要这个收尾，长连接不想要。关写半边不会让后端退出（`tests/e2e/inbound-backend-frames.sh` 第 9 条）：backend 只在
 /// ① `writer_task` 结束（stdout 关了）或 ② 收到停机信号 时退出（见其 `main.rs` 的 select）。
-/// `stream_source::probe_backend` 里那句「backend 看到 EOF 自行退出」的老注释是错的 ——
-/// 它真正的收尾靠的是整条 SSH channel 被 drop。
 enum WriteJob {
     Line(String),
-    /// 〔测试连接进本机后端〕生产里唯一的调用方（一次性探测 `probe_backend`）随测试连接删了 ⇒ 只编进测试档：
-    /// 两条起真后端的判据拿它演「宿主走了 / 关写端不带走后端」（C8）。生产里不再有关写半边这回事。
+    /// 只编进测试档：两条起真后端的判据拿它演「宿主走了 / 关写端不带走后端」。生产里没有关写半边这回事。
     #[cfg(test)]
     CloseWrite,
 }
@@ -134,23 +106,9 @@ pub struct ParkedWriter<W> {
     inner: W,
 }
 
-/// 把流切成两半，并且**在同一个表达式里**把写半边停住。
-///
-/// # ★ 为什么必须是这一个函数，而不是「`split` 之后记得 `park`」
-///
-/// D 审计对上一版做了两次变异，两次都全绿：
-/// - 在 `split()` 那行加一句**尾随注释**提到 `park`，写半边交给别的函数 —— 机检看窗口里
-///   有 `park` 就放行（`production_code` 只剥**行首**注释，行尾的原样留在扫描面里）；
-/// - `split()` 之后先 `w.write(b"early\n").await` 再 `park(w)` —— 那就是一次
-///   **Hello 之前的写**，而两条护栏都没话说。
-///
-/// 也就是说：`split()` 与 `park()` 之间存在一个**可写的裸 `WriteHalf` 窗口**，
-/// 类型系统在那里保护不了任何东西，兜底的只是一条能被普通写法绕过的文本机检。
-///
-/// 处置按本区的第 6 条纪律 ——「判据被绕过时，先问能不能让它不可表示」：
-/// 让那个窗口**根本不存在**。调用方拿不到裸 `WriteHalf`，只能拿到 [`ParkedWriter`]。
-/// 于是护栏也从「每处 split 后面要有 park」变成「生产段里**不许出现** `tokio::io::split(`」——
-/// 零命中型判据，尾随注释绕不动。
+/// 把流切成两半，并且在同一个表达式里把写半边停住。`split()` 与 `park()` 分开的话，两者之间有一个可写的裸 `WriteHalf` 窗口，
+/// 类型系统保护不了，文本机检也能被尾随注释或一句 `w.write(..)` 绕过 ⇒ 让那个窗口根本不存在：调用方拿不到裸 `WriteHalf`，只能拿到 [`ParkedWriter`]；
+/// 护栏是「生产段里不许出现 `tokio::io::split(`」（零命中型判据）。
 pub fn split_and_park<S>(
     stream: S,
 ) -> (
@@ -178,31 +136,11 @@ where
     ParkedWriter { inner: w }
 }
 
-/// P2（定框 C1/C4）：**停住一个「本来就独立、没有对应『切』动作」的写端**。
-///
-/// # 它和 [`park`] 的 `#[cfg(test)]` 不是一回事 —— 别把这里读成「把那道门拆了」
-///
-/// 上面那道门防的是**从双工流里切出来、却忘了停**的裸 WriteHalf：切与停必须由
-/// [`split_and_park`] 一步做完，否则会出现「有人能在 hello 之前写」的窗口。
-///
-/// 而本函数的入参**不是从任何流切出来的**。本机后端是 `std::process::Child`，
-/// 它的 `ChildStdin` / `ChildStdout` 是**两条本来就独立的管道** —— 这条路上
-/// **压根没有「切」这个动作**，因此也没有「切了忘了停」这个失效模式可防。
-///
-/// ⇒ 本函数承认的是**结构差异**，不是给「切了不停」开后门。它仍然产出 [`ParkedWriter`]，
-/// 也就是说「hello 之前不许写」那条性质**照旧由类型保证**（要拿到可写的 client，
-/// 唯一的路仍是 [`ParkedWriter::into_client`]，而它要一个 [`BackendHello`] 见证）。
-///
-/// # 为什么远端那条路用不了
-///
-/// `attach_inbound_client`（`stream_source/run.rs`）本身是泛型、传输无关的，本可直接复用；
-/// 卡住的是它要的 [`ParkedWriter`] 只能由 [`split_and_park`] 产出，而那个函数要一个
-/// **可切的双工流**（SSH channel 读写同体）。本机没有。
-///
-/// # 诚实边界
-///
-/// ⚠ 这是**新开的一个合法口**，它本身没有判据钉「只许本机用」。
-/// 有人拿它去停一个真的从双工流切出来的写端，就绕过了上面那道门（登记在 P2 的 10b）。
+/// 停住一个本来就独立、没有对应「切」动作的写端：本机后端是 `std::process::Child`，它的 `ChildStdin` / `ChildStdout` 是两条本来就独立的管道，
+/// 没有「切了忘了停」这个失效模式可防。仍然产出 [`ParkedWriter`] ⇒ 「hello 之前不许写」照旧由类型保证
+/// （可写的 client 唯一的路是 [`ParkedWriter::into_client`]，它要一个 [`BackendHello`] 见证）。
+/// 远端那条路用不了它：`attach_inbound_client`（`stream_source/run.rs`）要的 [`ParkedWriter`] 只能由 [`split_and_park`] 从可切的双工流产出。
+/// 它没有判据钉「只许本机用」：有人拿它去停一个真的从双工流切出来的写端，就绕过了上面那道门。
 pub fn park_owned_writer<W>(w: W) -> ParkedWriter<W>
 where
     W: AsyncWrite + Unpin + Send + 'static,
@@ -404,10 +342,8 @@ impl InboundClient {
                 });
             }
         }
-        // 从这一刻起它**已经入队**、后端会去跑它 ⇒ 调用方在拿到结局之前走人（超时，或者这个
-        // future 被丢：`select!` 输了 / 任务被撤 / 界面点了「取消」）都要补发一条 `cancel`，让后端别白跑。
-        // 〔墓碑 —— RM1f 之前只有超时那一臂补发：调用方放弃等待（future 被丢）时一条都不发，
-        //  后端那条命令照跑到它自己的期限（建索引 900 s）。〕
+        // 从这一刻起它已经入队、后端会去跑它 ⇒ 调用方在拿到结局之前走人（超时，或者这个 future 被丢：`select!` 输了 / 任务被撤 / 界面点了「取消」）
+        // 都要补发一条 `cancel`，让后端别白跑（不然那条命令照跑到它自己的期限）。
         let mut abandon = AbandonGuard {
             client: self,
             id: Some(id),
@@ -471,14 +407,8 @@ impl InboundClient {
         self.deliver(id, Outcome::Cancelled)
     }
 
-    /// **显式关掉写半边** —— backend 的入方向 reader 见 EOF 后寿终。
-    ///
-    /// 原先只有一次性探测调它（`stream_source::probe_backend`，随测试连接进本机后端删了）⇒ 今天只编进测试档。
-    /// 长连接上调它 = 之后**再也发不出任何命令**，而连接看起来一切正常。
-    /// 之所以做成一条要主动发的指令而不是「writer task 结束时顺手做」，就是为了让这个
-    /// 区别在调用点显形。
-    ///
-    /// **它不会让后端退出**（e2e 第 9 条实测钉住）—— 见 [`WriteJob`] 的说明。
+    /// 显式关掉写半边 —— backend 的入方向 reader 见 EOF 后寿终。只编进测试档。长连接上调它 = 之后再也发不出任何命令，而连接看起来一切正常；
+    /// 做成一条要主动发的指令，是为了让这个区别在调用点显形。它不会让后端退出（见 [`WriteJob`]）。
     #[cfg(test)]
     pub fn close_write(&self) {
         if self.writes.try_send(WriteJob::CloseWrite).is_err() {
@@ -684,13 +614,7 @@ pub fn encode_request(id: &str, cmd: &str, args: &Value, within: Option<Duration
     s
 }
 
-// 🔴 〔.5，2026-09-21〕**`launch` 的参数构造器
-//    与 `LaunchExtras` 搬走了** —— 新家 `backend/control/command_args.rs`。
-//    搬的理由不是整理：`C1`（零业务语义）在本文件上咬到 `sid` 与 `agent`
-//    两个词，**两处都在那三样身上**（`ccm_sid` 参数 · `extras.agent` 字段）。
-//    「一条命令要带哪几个业务字段」是**载荷的内容**，而本文件只该管载荷的搬运。
-//    ⚠ 那三样的单元判据**没有跟着搬**（跨半边 include 被别人的登记表按文件路径钉着）——
-//    理由逐字写在新家的头注里，不在这里抄第二份。
+// `launch` 的参数构造器住 `backend/control/command_args.rs`：「一条命令要带哪几个业务字段」是载荷的内容，本文件只管载荷的搬运（零业务语义）。
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
@@ -837,20 +761,9 @@ pub fn kick(origin: &str) {
     kick_handle(origin).notify_one();
 }
 
-/// 取某台远端主机当前的入方向客户端。没连上/还没收到 hello → `None`。
-///
-/// **今天只有测试在读**：注册表由 `stream_loop` 填，第一个生产读者是 U8a-2b 的 `launch`
-/// （起会话要在长连接上发命令）。这一条如实登记，不假装它已经在线上被用。
+/// 本机后端在 registry 里的 key。远端用 `cfg.origin_label()`（用户配的机器名）；本机在前端是省略 origin，而 registry 的 key 是 `String` ⇒ 需要一个约定值。
+/// 用户理论上可以把某台远端机器的 label 起成这个名字，两者就撞了；尖括号不是合法的 ssh host 名，撞名要故意才做得到，所以不加校验。
 #[allow(dead_code)]
-/// P2：**本机后端在 registry 里的 key**。
-///
-/// 远端用 `cfg.origin_label()`（用户配的机器名）。本机没有「机器名」这个概念 ——
-/// 前端表示本机是 `origin === null`（`ui_contract.rs:95` 逐字记着线上约定是**省略**而不是 `null`），
-/// 而 registry 的 key 是 `String` ⇒ 需要一个约定值。
-///
-/// ⚠ **诚实边界**：用户理论上可以把某台远端机器的 label 起成这个名字，两者就撞了。
-/// 不做防御（加校验 = 在用户的命名自由上开一个没人会撞的洞），如实登记在 P2 的诚实边界里。
-/// 尖括号是刻意的 —— 它不是合法的 ssh host 名，撞名要故意才做得到。
 pub const LOCAL_ORIGIN: &str = "<local>";
 
 /// **测试期 `<local>` 的独占锁**。
@@ -867,6 +780,7 @@ pub(crate) fn local_origin_test_lock() -> std::sync::MutexGuard<'static, ()> {
     L.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// 取某台主机当前的入方向客户端。没连上 / 还没收到 hello → `None`。
 pub fn client_for(origin: &str) -> Option<Arc<InboundClient>> {
     lock(registry()).get(origin).cloned()
 }
