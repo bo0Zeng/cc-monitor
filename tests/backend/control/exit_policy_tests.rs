@@ -284,22 +284,16 @@ fn the_production_wire_reads_the_carrier_from_the_listen_mode() {
 
 // ═══════════════════════════ E1：写者全仓只有一处 ═══════════════════════════
 
-/// 本模块生产段里的写原语 —— **恰好**这几处（按词找，钉住「只有一个写口」）。
+/// 本模块生产段里的写原语 —— **恰好**一处（按词找，钉住「只有一个写口」）。
 #[test]
 fn the_module_has_exactly_one_commit_point() {
     let prod = crate::guard_support::production_code(include_str!(
         "../../../src/backend/control/exit_policy.rs"
     ));
-    for (needle, why) in [
-        (
-            "fs::rename(",
-            "那一下原子挪进去 —— 真正落进 `backend.json` 的**唯一**一下",
-        ),
-        (
-            ".create_new(true)",
-            "临时文件 `O_EXCL` 新建 —— 不跟随、不覆盖别人的临时文件",
-        ),
-    ] {
+    for (needle, why) in [(
+        "own_state::write(",
+        "那一下原子写进去 —— 真正落进 `backend.json` 的**唯一**一下",
+    )] {
         guard_core::find_pinned(&prod, needle).unwrap_or_else(|e| {
             panic!("`exit_policy.rs` 里 `{needle}` 不是恰好一处（{why}）：{e}")
         });

@@ -1717,7 +1717,7 @@ fn analyze_session(p: &Path) -> serde_json::Value {
                     started_at = v
                         .get("timestamp")
                         .and_then(|t| t.as_str())
-                        .and_then(crate::observe::search_query::parse_iso8601_ms);
+                        .and_then(crate::common::time::parse_iso8601_ms);
                 }
                 if forked.is_none() {
                     forked = fork_origin(&v);

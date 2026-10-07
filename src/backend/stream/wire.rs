@@ -116,21 +116,8 @@ fn is_false(b: &bool) -> bool {
     !*b
 }
 
-/// `hello.homes` 的一项 —— **某个 agent 在这台机器上的 home 目录**〔`S4` / `D3`〕。
-///
-/// `D3` 逐字：「agent 维度只许出现在**值**里（`agent_kind`），不许出现在**字段名**里」。
-/// 这个结构就是那条 charter 的形状：两个字段名都与任何一个 agent 无关，
-/// **接第三个 agent 是多一个元素，不是多一个字段**。
-///
-/// 它替掉的是并列 `<名>_dir` 那条路。那条路的终点 `D3` 已经写死了：
-/// hello 帧里五个并列的目录字段，而客户端要靠 `if/else` 猜哪个有值。
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct AgentHome {
-    /// 哪个 agent —— **值**，与 `session_added.agent_kind` 同一套取值空间。
-    pub agent_kind: String,
-    /// 该 agent 在这台机器上的 home 目录（绝对路径）。
-    pub path: String,
-}
+/// `hello.homes` 的一项（类型住 agent 注册表那一侧，帧面只引用它）。
+pub use crate::agents::AgentHome;
 
 /// `hello.unavailable` 的一项 —— **这条命令我接得下，但在这台机器上做不到，以及为什么**
 ///〔`K-P4` 09-04，用户逐字「事前协商是要的」〕。
@@ -866,6 +853,28 @@ pub enum TransferEnd {
 }
 
 impl Frame {
+    /// 成功、不带数据的那一种应答。
+    pub(crate) fn ok(id: &str) -> Frame {
+        Frame::Reply {
+            id: id.to_string(),
+            ok: true,
+            code: None,
+            message: None,
+            data: None,
+        }
+    }
+
+    /// 失败应答：码 ＋ 一句话。
+    pub(crate) fn err(id: &str, code: &str, message: &str) -> Frame {
+        Frame::Reply {
+            id: id.to_string(),
+            ok: false,
+            code: Some(code.to_string()),
+            message: Some(message.to_string()),
+            data: None,
+        }
+    }
+
     /// **丢了还能不能恢复**。
     ///
     /// # 这条判据是对的，此前错的是「它没有被应用到出方向」
@@ -981,6 +990,20 @@ impl Frame {
 /// base64 的字母表（RFC 4648 §4，标准字母表、带 `=` 补位）。
 const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+/// 不在字母表里的字节在 [`B64_DECODE`] 里的值。
+const NOT_B64: u8 = 0xff;
+
+/// 字节 ⇒ 它在 [`B64`] 里的位置（不在 ⇒ [`NOT_B64`]）：解码每个字符查一次表。
+const B64_DECODE: [u8; 256] = {
+    let mut t = [NOT_B64; 256];
+    let mut i = 0;
+    while i < 64 {
+        t[B64[i] as usize] = i as u8;
+        i += 1;
+    }
+    t
+};
+
 /// 链路字节进 JSON 串的编码（`link_data` 帧 / `link-data` 命令的 `data`）。
 ///
 /// ⚠ **为什么手写而不加一条依赖**：本 crate 每加一条依赖都要过 `readonly_guard` 的依赖签字，
@@ -1017,7 +1040,9 @@ pub fn b64_decode(text: &str) -> Result<Vec<u8>, String> {
             s_count = s.len()
         )));
     }
-    let val = |c: u8| -> Option<u32> { B64.iter().position(|&x| x == c).map(|p| p as u32) };
+    let val = |c: u8| -> Option<u32> {
+        (B64_DECODE[usize::from(c)] != NOT_B64).then(|| u32::from(B64_DECODE[usize::from(c)]))
+    };
     let mut out = Vec::with_capacity(s.len() / 4 * 3);
     let quads = s.len() / 4;
     for (qi, q) in s.chunks(4).enumerate() {

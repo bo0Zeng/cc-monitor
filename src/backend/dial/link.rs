@@ -99,26 +99,6 @@ fn lock(m: &Links) -> std::sync::MutexGuard<'_, HashMap<String, Entry>> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-fn ok(id: &str) -> Frame {
-    Frame::Reply {
-        id: id.to_string(),
-        ok: true,
-        code: None,
-        message: None,
-        data: None,
-    }
-}
-
-fn err(id: &str, code: &str, message: &str) -> Frame {
-    Frame::Reply {
-        id: id.to_string(),
-        ok: false,
-        code: Some(code.to_string()),
-        message: Some(message.to_string()),
-        data: None,
-    }
-}
-
 /// `args.link`：非空、不超长的串。
 fn link_arg(args: &serde_json::Value) -> Result<String, String> {
     let link = args
@@ -153,10 +133,10 @@ impl Table {
     pub fn open(&self, id: &str, args: &serde_json::Value) -> Frame {
         let link = match link_arg(args) {
             Ok(l) => l,
-            Err(m) => return err(id, "invalid_args", &m),
+            Err(m) => return Frame::err(id, "invalid_args", &m),
         };
         let Some(dial) = args.get("dial") else {
-            return err(
+            return Frame::err(
                 id,
                 "invalid_args",
                 &crate::common::contract::malformed("missing `dial` (a dial request)"),
@@ -165,7 +145,7 @@ impl Table {
         // 原始子系统字节流不交给界面：SFTP 住本机常驻后端（`dial/sftp.rs`），界面只有部署 `use:"files"` 与传输 `transfer-*` 两条路；
         // 把协议字节交出去，界面进程就又碰 SSH 了。协议上认得这个词，说得出为什么不做。
         if dial.get("use").and_then(serde_json::Value::as_str) == Some("subsystem") {
-            return err(
+            return Frame::err(
                 id,
                 "unsupported_use",
                 &crate::common::contract::malformed("use `subsystem` is not served here"),
@@ -173,12 +153,12 @@ impl Table {
         }
         let req = match super::parse_request_value(dial) {
             Ok(r) => r,
-            Err((code, m)) => return err(id, code, &m),
+            Err((code, m)) => return Frame::err(id, code, &m),
         };
         let window = match args.get("window").and_then(serde_json::Value::as_u64) {
             Some(w) if (LINK_CHUNK_BYTES as u64..=MAX_WINDOW).contains(&w) => w,
             _ => {
-                return err(
+                return Frame::err(
                     id,
                     "invalid_args",
                     &crate::common::contract::malformed(&format!("`window` (initial credit, bytes) must be within [{LINK_CHUNK_BYTES}, {MAX_WINDOW}]")),
@@ -212,14 +192,14 @@ impl Table {
     {
         let mut g = lock(&self.links);
         if g.contains_key(&link) {
-            return err(
+            return Frame::err(
                 id,
                 "duplicate_link",
                 &crate::common::contract::malformed("this link id is still open"),
             );
         }
         if g.len() >= MAX_LINKS_PER_CONNECTION {
-            return err(
+            return Frame::err(
                 id,
                 "too_many_links",
                 &copy_text(
@@ -258,17 +238,17 @@ impl Table {
                 upstream,
             },
         );
-        ok(id)
+        Frame::ok(id)
     }
 
     /// `link-data`：解码、进那条链路的上行队列。`None` = 应答由上行泵在写进管子之后发。
     pub fn data(&self, id: &str, args: &serde_json::Value) -> Option<Frame> {
         let link = match link_arg(args) {
             Ok(l) => l,
-            Err(m) => return Some(err(id, "invalid_args", &m)),
+            Err(m) => return Some(Frame::err(id, "invalid_args", &m)),
         };
         let Some(text) = args.get("data").and_then(serde_json::Value::as_str) else {
-            return Some(err(
+            return Some(Frame::err(
                 id,
                 "invalid_args",
                 &crate::common::contract::malformed("missing `data` (base64)"),
@@ -276,10 +256,10 @@ impl Table {
         };
         let bytes = match b64_decode(text) {
             Ok(b) => b,
-            Err(e) => return Some(err(id, "invalid_args", &e)),
+            Err(e) => return Some(Frame::err(id, "invalid_args", &e)),
         };
         if bytes.len() > LINK_CHUNK_BYTES {
-            return Some(err(
+            return Some(Frame::err(
                 id,
                 "invalid_args",
                 &crate::common::contract::malformed(&format!(
@@ -290,20 +270,26 @@ impl Table {
         }
         let g = lock(&self.links);
         let Some(e) = g.get(&link) else {
-            return Some(err(id, "no_such_link", &copy_text("beLink.gone.say", &[])));
+            return Some(Frame::err(
+                id,
+                "no_such_link",
+                &copy_text("beLink.gone.say", &[]),
+            ));
         };
         match e.up.try_send((bytes, id.to_string())) {
             Ok(()) => None,
-            Err(mpsc::error::TrySendError::Full(_)) => Some(err(
+            Err(mpsc::error::TrySendError::Full(_)) => Some(Frame::err(
                 id,
                 "link_busy",
                 &crate::common::contract::malformed(
                     "the previous chunk on this link is not acknowledged yet",
                 ),
             )),
-            Err(mpsc::error::TrySendError::Closed(_)) => {
-                Some(err(id, "link_closed", &copy_text("beLink.gone.say", &[])))
-            }
+            Err(mpsc::error::TrySendError::Closed(_)) => Some(Frame::err(
+                id,
+                "link_closed",
+                &copy_text("beLink.gone.say", &[]),
+            )),
         }
     }
 
@@ -311,38 +297,38 @@ impl Table {
     pub fn credit(&self, id: &str, args: &serde_json::Value) -> Frame {
         let link = match link_arg(args) {
             Ok(l) => l,
-            Err(m) => return err(id, "invalid_args", &m),
+            Err(m) => return Frame::err(id, "invalid_args", &m),
         };
         let Some(bytes) = args.get("bytes").and_then(serde_json::Value::as_u64) else {
-            return err(id, "invalid_args", "缺 `bytes`（非负整数）");
+            return Frame::err(id, "invalid_args", "缺 `bytes`（非负整数）");
         };
         let g = lock(&self.links);
         let Some(e) = g.get(&link) else {
-            return err(id, "no_such_link", &copy_text("beLink.gone.say", &[]));
+            return Frame::err(id, "no_such_link", &copy_text("beLink.gone.say", &[]));
         };
         // 累计信用不许超过上限：对端还的比它读走的多 = 不守约 ⇒ 拒收＋回错（不替它夹）。
         let have = e.credit.available_permits() as u64;
         if have.saturating_add(bytes) > MAX_WINDOW {
-            return err(
+            return Frame::err(
                 id,
                 "invalid_args",
                 &format!("还了 {bytes} 字节信用，累计会超过上限 {MAX_WINDOW}（手里已有 {have}）"),
             );
         }
         e.credit.add_permits(bytes as usize);
-        ok(id)
+        Frame::ok(id)
     }
 
     /// `link-close`：界面走了。三个任务一起收；关一条不存在的链路是幂等的（同 `cancel`）。
     pub fn close(&self, id: &str, args: &serde_json::Value) -> Frame {
         let link = match link_arg(args) {
             Ok(l) => l,
-            Err(m) => return err(id, "invalid_args", &m),
+            Err(m) => return Frame::err(id, "invalid_args", &m),
         };
         if let Some(e) = lock(&self.links).remove(&link) {
             e.abort_all();
         }
-        ok(id)
+        Frame::ok(id)
     }
 }
 
@@ -411,8 +397,8 @@ async fn pump_up(
 ) {
     while let Some((bytes, id)) = rx.recv().await {
         let frame = match to.write_all(&bytes).await {
-            Ok(()) => ok(&id),
-            Err(e) => err(
+            Ok(()) => Frame::ok(&id),
+            Err(e) => Frame::err(
                 &id,
                 "link_closed",
                 &copy_text("beLink.gone.withError", &[("e", &e.to_string())]),

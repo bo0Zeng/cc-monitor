@@ -482,29 +482,6 @@ pub fn common_dir_bytes(a: &[u8], b: &[u8]) -> Vec<u8> {
     out
 }
 
-/// epoch 天数 → 公历 `(年, 月, 日)`。
-///
-/// 🔴 **它是 `crate::utils::days_from_civil` 的逆**（同一篇算法：Howard Hinnant
-/// 的 `civil_from_days`）。⚠ **两个方向没住在一起，如实登记**：正向那一份住
-/// `utils.rs`，而那份文件不在本刀写区 ⇒ 逆向这一份落在这儿。
-/// 接住这处分家的**不是**一句注释：`source_tests::the_two_date_algorithms_are_each_others_inverse`
-/// 拿正向那一份当对照，在一段稠密的日子上断**往返恒等**
-/// ⇒ 两份漂开（任一侧被改错）当场红，而且两侧**不同源**。
-///
-/// ⚠ 本函数不带时区：时区差由调用方先加进天数里（[`mtime_text_at`]）。
-pub fn civil_from_days(z: i64) -> (i64, i64, i64) {
-    let z = z + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 }.div_euclid(146_097);
-    let doe = z - era * 146_097; // [0, 146096]
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365; // [0, 399]
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
-    let mp = (5 * doy + 2) / 153; // [0, 11]
-    let d = doy - (153 * mp + 2) / 5 + 1; // [1, 31]
-    let m = if mp < 10 { mp + 3 } else { mp - 9 }; // [1, 12]
-    (if m <= 2 { y + 1 } else { y }, m, d)
-}
-
 /// 一格 `mtime_secs` 画出来是什么：列里那一格（短）与悬停 / 属性里的完整时间。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MtimeText {
@@ -517,7 +494,7 @@ pub struct MtimeText {
 /// 纯函数：`offset` 是那一刻本机时区与 UTC 的差（秒，含夏令时），`today` 是本机此刻的年月日。
 pub fn mtime_text_at(secs: u64, offset: i64, today: (i64, i64, i64)) -> MtimeText {
     let t = secs as i64 + offset;
-    let (y, m, d) = civil_from_days(t.div_euclid(86_400));
+    let (y, m, d) = host_core::civil_from_days(t.div_euclid(86_400));
     let rem = t.rem_euclid(86_400);
     let (hh, mm, ss) = (rem / 3600, (rem % 3600) / 60, rem % 60);
     let short = if (y, m, d) == today {
@@ -549,7 +526,7 @@ pub fn mtime_text(secs: u64) -> MtimeText {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64);
-    let today = civil_from_days((now + local_offset_at(now)).div_euclid(86_400));
+    let today = host_core::civil_from_days((now + local_offset_at(now)).div_euclid(86_400));
     mtime_text_at(secs, local_offset_at(secs as i64), today)
 }
 

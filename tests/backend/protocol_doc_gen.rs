@@ -541,8 +541,68 @@ fn read(rel: &str) -> String {
         .unwrap_or_else(|e| panic!("读不到 {rel}：{e}"))
 }
 
+/// 帧定义里 `pub use crate::<模块>::<类型>;` 引进来的线上类型（类型住在别处、帧面只引用它）：
+/// 就地换成那份类型定义的原文（连着它的文档与属性），于是它在参考里的位置与写在帧定义里时一样。
+fn inline_reexports(src: &str) -> String {
+    let mut out = String::new();
+    for line in src.lines() {
+        let reexport = line
+            .trim()
+            .strip_prefix("pub use crate::")
+            .and_then(|r| r.strip_suffix(';'))
+            .and_then(|r| r.rsplit_once("::"));
+        let Some((module, name)) = reexport else {
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        };
+        let file = module.replace("::", "/");
+        let home = std::fs::read_to_string(
+            crate::guard_support::src_root().join(format!("{file}/mod.rs")),
+        )
+        .or_else(|_| {
+            std::fs::read_to_string(crate::guard_support::src_root().join(format!("{file}.rs")))
+        })
+        .unwrap_or_else(|e| panic!("读不到 `{module}` 的源码：{e}"));
+        let lines: Vec<&str> = home.lines().collect();
+        let head = lines
+            .iter()
+            .position(|l| {
+                l.starts_with(&format!("pub struct {name} "))
+                    || l.starts_with(&format!("pub enum {name} "))
+            })
+            .unwrap_or_else(|| panic!("`{module}` 里没有 `{name}` 的定义"));
+        let mut from = head;
+        while from > 0 && (lines[from - 1].starts_with("///") || lines[from - 1].starts_with("#["))
+        {
+            from -= 1;
+        }
+        let to = head
+            + lines[head..]
+                .iter()
+                .position(|l| *l == "}")
+                .expect("定义没收尾");
+        // 引用那一行自己的文档（就在它上面）不进参考：换成定义原文里的那一段。
+        while out.ends_with("\n")
+            && out
+                .trim_end_matches('\n')
+                .lines()
+                .last()
+                .is_some_and(|l| l.trim_start().starts_with("///"))
+        {
+            let keep = out.trim_end_matches('\n').rfind('\n').map_or(0, |i| i + 1);
+            out.truncate(keep);
+        }
+        for l in &lines[from..=to] {
+            out.push_str(l);
+            out.push('\n');
+        }
+    }
+    out
+}
+
 fn frames(out: &mut String) {
-    let src = read("stream/wire.rs");
+    let src = inline_reexports(&read("stream/wire.rs"));
     let types = wire_types(&src);
     let frame = types
         .iter()

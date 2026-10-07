@@ -766,95 +766,29 @@ fn new_machine_id() -> String {
     f.hex()
 }
 
-/// 读一次目录文件。三态：没有（第一次）/ 读得懂 / 读不出来（**不覆盖**）。
-#[derive(Debug)]
-pub enum Read {
-    Absent,
-    Ok(Catalog),
-    Unreadable(String),
-}
+/// 读一次目录文件。三态：没有（第一次）/ 读得懂 / 读不出来（**不覆盖**）。更新的格式整份不认。
+pub type Read = crate::common::own_state::Read<Catalog>;
 
 pub fn read_at(path: &Path) -> Read {
-    let bytes = match crate::common::fs::read_regular_capped(path, CATALOG_MAX_BYTES) {
-        Ok(b) => b,
-        Err(_) if !path.exists() => return Read::Absent,
-        Err(e) => {
-            return Read::Unreadable(copy_text(
-                "beAssetCatalog.read.failed",
-                &[("path", &path.display().to_string()), ("e", &e.to_string())],
+    crate::common::own_state::read_json::<Catalog>(path, CATALOG_MAX_BYTES).and_then(|c| {
+        if c.v == FORMAT_V {
+            Read::Present(c)
+        } else {
+            Read::Unreadable(copy_text(
+                "beAssetCatalog.read.newer",
+                &[
+                    ("path", &path.display().to_string()),
+                    ("mine", &FORMAT_V.to_string()),
+                    ("theirs", &c.v.to_string()),
+                ],
             ))
         }
-    };
-    match serde_json::from_slice::<Catalog>(&bytes) {
-        Ok(c) if c.v == FORMAT_V => Read::Ok(c),
-        Ok(c) => Read::Unreadable(copy_text(
-            "beAssetCatalog.read.newer",
-            &[
-                ("path", &path.display().to_string()),
-                ("mine", &FORMAT_V.to_string()),
-                ("theirs", &c.v.to_string()),
-            ],
-        )),
-        Err(e) => Read::Unreadable(copy_text(
-            "beAssetCatalog.read.unknown",
-            &[("path", &path.display().to_string()), ("e", &e.to_string())],
-        )),
-    }
+    })
 }
 
-/// **全仓唯一的写者**：`O_EXCL` 新建临时文件 → 写满 → `sync` → 原子挪过去；失败删临时文件。
-/// 目录由 [`update_at`] 在拿锁之前建（那一层）。
+/// **全仓唯一的写者**（经 `own_state` 原子写）。目录由 [`update_at`] 在拿锁之前建（那一层）。
 fn write_at(path: &Path, cat: &Catalog) -> Result<(), String> {
-    use std::io::Write as _;
-    let dir = path.parent().ok_or_else(|| {
-        copy_text(
-            "beAssetCatalog.write.noParent",
-            &[("path", &path.display().to_string())],
-        )
-    })?;
-    let body = serde_json::to_string(cat).map_err(|e| {
-        copy_text(
-            "beAssetCatalog.write.encodeFailed",
-            &[("e", &e.to_string())],
-        )
-    })?;
-    let tmp = dir.join(format!("{FILE_NAME}.{}.tmp", std::process::id()));
-    let result = (|| {
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&tmp)
-            .map_err(|e| {
-                copy_text(
-                    "beAssetCatalog.write.tmpCreateFailed",
-                    &[("tmp", &tmp.display().to_string()), ("e", &e.to_string())],
-                )
-            })?;
-        f.write_all(body.as_bytes())
-            .and_then(|()| f.write_all(b"\n"))
-            .and_then(|()| f.sync_all())
-            .map_err(|e| {
-                copy_text(
-                    "beAssetCatalog.write.tmpWriteFailed",
-                    &[("tmp", &tmp.display().to_string()), ("e", &e.to_string())],
-                )
-            })?;
-        drop(f);
-        std::fs::rename(&tmp, path).map_err(|e| {
-            copy_text(
-                "beAssetCatalog.write.renameFailed",
-                &[
-                    ("tmp", &tmp.display().to_string()),
-                    ("path", &path.display().to_string()),
-                    ("e", &e.to_string()),
-                ],
-            )
-        })
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
+    crate::common::own_state::write_json(path, cat)
 }
 
 //
@@ -924,7 +858,7 @@ fn update_core(
     })?;
     let _lock = crate::platform::lock::hold(dir).map_err(|e| ("io_failed", e))?;
     let mut cat = match read_at(path) {
-        Read::Ok(c) => c,
+        Read::Present(c) => c,
         Read::Absent => fresh(new_machine_id()),
         Read::Unreadable(why) => return Err(("catalog_unreadable", why)),
     };

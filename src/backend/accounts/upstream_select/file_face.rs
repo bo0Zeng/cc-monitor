@@ -343,19 +343,15 @@ pub(crate) fn key_facts_at(path: &Path) -> Vec<KeyFact> {
 }
 
 /// 读一次、解析一次。`Ok(None)` = 文件不在（还没配）；空文件 = 空对象。
+/// 读盘的上限（一个号一格 key）。
+const KEY_FILE_READ_CAP: u64 = 4 << 20;
+
 fn read_doc(path: &Path) -> Result<Option<Map<String, Value>>, (&'static str, String)> {
-    let raw = match std::fs::read_to_string(path) {
-        Ok(s) => s,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => {
-            return Err((
-                "io_failed",
-                copy_text(
-                    "beUpstreamFileFace.read.failed",
-                    &[("path", &path.display().to_string()), ("e", &e.to_string())],
-                ),
-            ))
-        }
+    use crate::common::own_state::{read_bytes, Read};
+    let raw = match read_bytes(path, KEY_FILE_READ_CAP) {
+        Read::Present(b) => String::from_utf8_lossy(&b).into_owned(),
+        Read::Absent => return Ok(None),
+        Read::Unreadable(why) => return Err(("io_failed", why)),
     };
     store::parse(&raw)
         .map(Some)
@@ -398,7 +394,6 @@ type Rewrite<'a> = &'a dyn Fn(&Map<String, Value>) -> Option<Map<String, Value>>
 /// **这台机器上唯一的写者**（第四层：动词只有建那一层目录 · 原子改名 · 删自己的临时文件）。
 /// `change` 回 `None` ⇒ 一个字节不动（回 `false`）。
 fn rewrite_at(path: &Path, change: Rewrite) -> Result<bool, (&'static str, String)> {
-    use std::io::Write as _;
     let dir = path.parent().ok_or((
         "io_failed",
         copy_text(
@@ -425,48 +420,9 @@ fn rewrite_at(path: &Path, change: Rewrite) -> Result<bool, (&'static str, Strin
         return Ok(false);
     };
     let text = store::to_pretty_json(&merged);
-    let tmp = dir.join(format!("{}.{}.tmp", store::FILE_NAME, std::process::id()));
-    let result = (|| {
-        // ★ 出生即只给本人（O_EXCL）：先按 umask 建出来再收窄，中间那一段里已经有明文了。
-        let mut f = perm::create_private(&tmp).map_err(|e| {
-            (
-                "io_failed",
-                copy_text(
-                    "beUpstreamFileFace.write.tmpCreateFailed",
-                    &[("tmp", &tmp.display().to_string()), ("e", &e.to_string())],
-                ),
-            )
-        })?;
-        f.write_all(text.as_bytes())
-            .and_then(|()| f.sync_all())
-            .map_err(|e| {
-                (
-                    "io_failed",
-                    copy_text(
-                        "beUpstreamFileFace.write.tmpWriteFailed",
-                        &[("tmp", &tmp.display().to_string()), ("e", &e.to_string())],
-                    ),
-                )
-            })?;
-        drop(f);
-        std::fs::rename(&tmp, path).map_err(|e| {
-            (
-                "io_failed",
-                copy_text(
-                    "beUpstreamFileFace.write.renameFailed",
-                    &[
-                        ("tmp", &tmp.display().to_string()),
-                        ("path", &path.display().to_string()),
-                        ("e", &e.to_string()),
-                    ],
-                ),
-            )
-        })
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result.map(|()| true)
+    // 出生即只给本人（`own_state`）：先按 umask 建出来再收窄，中间那一段里已经有明文了。
+    crate::common::own_state::write(path, text.as_bytes()).map_err(|e| ("io_failed", e))?;
+    Ok(true)
 }
 
 #[cfg(test)]

@@ -5,25 +5,6 @@ use super::*;
 // 在这里再抄一份 = 又在本文件养出一个「口径的家」，正是本件要治的形状。
 
 #[test]
-fn parse_iso8601_basic() {
-    // 1970-01-01T00:00:00Z = 0
-    assert_eq!(parse_iso8601_ms("1970-01-01T00:00:00Z"), Some(0));
-    // 1970-01-01T00:00:01.500Z = 1500
-    assert_eq!(parse_iso8601_ms("1970-01-01T00:00:01.500Z"), Some(1500));
-    // 小数秒变体归一到毫秒：.12 → 120ms，.1 → 100ms，.123456 → 123ms，无小数 → 0
-    assert_eq!(parse_iso8601_ms("1970-01-01T00:00:00.12Z"), Some(120));
-    assert_eq!(parse_iso8601_ms("1970-01-01T00:00:00.1Z"), Some(100));
-    assert_eq!(parse_iso8601_ms("1970-01-01T00:00:00.123456Z"), Some(123));
-    assert_eq!(parse_iso8601_ms("1970-01-01T00:00:00Z"), Some(0));
-    // 2021-01-01T00:00:00Z = 1609459200000
-    assert_eq!(
-        parse_iso8601_ms("2021-01-01T00:00:00Z"),
-        Some(1_609_459_200_000)
-    );
-    assert_eq!(parse_iso8601_ms("garbage"), None);
-}
-
-#[test]
 fn search_end_to_end_and_rejects_traversal() {
     let tmp = std::env::temp_dir().join(format!("ccm-search-test-{}", std::process::id()));
     let proj = tmp.join("projects").join("proj-a");

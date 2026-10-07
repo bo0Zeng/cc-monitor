@@ -145,12 +145,12 @@ fn an_unreadable_file_is_never_overwritten() {
             "读不懂要说「读不懂」，不许说成空表：{bad}"
         );
     }
-    // 临时文件没留下（写口的临时文件名是 `<那份文件名>.<pid>.ccm-tmp`）。
-    let tmp = d.join(format!(
-        "history-metadata.json.{}.ccm-tmp",
-        std::process::id()
-    ));
-    assert!(!tmp.exists(), "拒写之后留下了临时文件");
+    // 临时文件没留下（写口的旁名是 `<那份文件名>.….tmp`）。
+    let stray: Vec<_> = guard_core::scan_tree!(&d, &["tmp"])
+        .into_iter()
+        .map(|(p, _)| p)
+        .collect();
+    assert!(stray.is_empty(), "拒写之后留下了临时文件：{stray:?}");
     let _ = std::fs::remove_dir_all(&d);
 }
 

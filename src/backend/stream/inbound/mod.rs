@@ -178,7 +178,7 @@ where
             if overflowed {
                 send(
                     &replies,
-                    err(
+                    Frame::err(
                         &overflow_id,
                         "line_too_long",
                         &crate::common::contract::malformed(&format!(
@@ -211,7 +211,7 @@ async fn handle_line(
         Ok(r) => r,
         Err(e) => {
             // 坏 JSON 时 `id` 无从得知 —— 回空 id，客户端按「上一条没应答」超时处理。
-            send(replies, err("", "bad_request", &e.to_string())).await;
+            send(replies, Frame::err("", "bad_request", &e.to_string())).await;
             return;
         }
     };
@@ -234,7 +234,7 @@ async fn handle_line(
             let Some(ticket) = DRAIN.enter(format!("{}（id={}）", req.cmd, req.id)) else {
                 send(
                     replies,
-                    err(
+                    Frame::err(
                         &req.id,
                         SHUTTING_DOWN,
                         &copy_text("beInbound.drain.shuttingDown", &[]),
@@ -371,7 +371,7 @@ fn dispatch(
                 }
             };
             if handle.is_none() && lock(running).contains_key(&target) {
-                let _ = replies.try_send(err(
+                let _ = replies.try_send(Frame::err(
                     &req.id,
                     "not_cancellable",
                     &copy_text("beInbound.dispatch.cannotCancel", &[]),
@@ -391,7 +391,7 @@ fn dispatch(
                 let _ = replies.try_send(Frame::Cancelled { id: target });
             }
             // 取消一个不存在的 id 是幂等的、不是错误。
-            let _ = replies.try_send(ok(&req.id));
+            let _ = replies.try_send(Frame::ok(&req.id));
             Disposition::Done
         }
         // U8a-2d：其余命令**一律查注册表**，不再是一串手写臂。
@@ -409,7 +409,7 @@ fn dispatch(
                 }
                 Run::BlockingData(f) => Disposition::SpawnBlocking(req, Box::new(f)),
                 // `cancel` 在上面那条硬臂里处理完了，走不到这儿。
-                Run::Builtin => Disposition::Reply(err(
+                Run::Builtin => Disposition::Reply(Frame::err(
                     &req.id,
                     "unknown_command",
                     &copy_text(
@@ -418,7 +418,7 @@ fn dispatch(
                     ),
                 )),
             },
-            None => Disposition::Reply(err(
+            None => Disposition::Reply(Frame::err(
                 &req.id,
                 "unknown_command",
                 &copy_text(
@@ -537,7 +537,7 @@ async fn spawn_handler<F, Fut>(
     if lock(&running).contains_key(&id) {
         send(
             &replies,
-            err(
+            Frame::err(
                 &id,
                 "duplicate_id",
                 &crate::common::contract::malformed("a command with this id is still running"),
@@ -600,7 +600,7 @@ async fn spawn_handler<F, Fut>(
         lock(&running_sup).remove(&id_sup);
         if outcome.as_ref().is_err_and(|e| e.is_panic()) {
             let _ = replies_sup
-                .send(err(
+                .send(Frame::err(
                     &id_sup,
                     "handler_panicked",
                     &copy_text("beInbound.spawnHandler.crashed", &[]),
@@ -626,26 +626,6 @@ fn lock(
     m: &Mutex<HashMap<String, InFlight>>,
 ) -> std::sync::MutexGuard<'_, HashMap<String, InFlight>> {
     m.lock().unwrap_or_else(|e| e.into_inner())
-}
-
-fn ok(id: &str) -> Frame {
-    Frame::Reply {
-        id: id.to_string(),
-        ok: true,
-        code: None,
-        message: None,
-        data: None,
-    }
-}
-
-fn err(id: &str, code: &str, message: &str) -> Frame {
-    Frame::Reply {
-        id: id.to_string(),
-        ok: false,
-        code: Some(code.to_string()),
-        message: Some(message.to_string()),
-        data: None,
-    }
 }
 
 /// 发一帧应答。通道满 ⇒ 记一条 warn 就算了。

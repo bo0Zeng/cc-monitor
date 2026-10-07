@@ -273,20 +273,16 @@ pub(crate) struct Note {
 
 /// 读那份记录。没有 ⇒ 空；读不懂 ⇒ `Err`（不覆盖它）。
 pub(crate) fn read_book(home: &Path) -> Result<Book, String> {
-    let path = home.join(FILE_NAME);
-    match std::fs::read_to_string(&path) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Book::default()),
-        Err(e) => Err(unreadable(&path, &e)),
-        Ok(s) => serde_json::from_str(&s).map_err(|e| unreadable(&path, &e)),
+    use crate::common::own_state::{read_json, Read};
+    match read_json(&home.join(FILE_NAME), MAX_BYTES) {
+        Read::Absent => Ok(Book::default()),
+        Read::Present(b) => Ok(b),
+        Read::Unreadable(why) => Err(why),
     }
 }
 
-fn unreadable(path: &Path, e: &dyn std::fmt::Display) -> String {
-    copy_text(
-        "beLaunchAccount.book.unreadable",
-        &[("path", &path.display().to_string()), ("e", &e.to_string())],
-    )
-}
+/// 读盘的上限（一条会话一行）。
+const MAX_BYTES: u64 = 16 << 20;
 
 /// 这条会话上次用的号（读不出 / 没记 ⇒ `None`）。
 pub(crate) fn last_of(home: Option<&Path>, sid: &str) -> Option<String> {
@@ -299,12 +295,13 @@ pub(crate) fn leave_note(home: &Path, pid: u32, account: &str, now: u64) -> Resu
     for d in [home, dir.as_path()] {
         crate::common::own_dir::ensure_private_dir(d).map_err(|e| failed(d, &e))?;
     }
-    let body = serde_json::to_string(&Note {
-        account: account.to_string(),
-        at: now,
-    })
-    .map_err(|e| failed(&dir, &e))?;
-    put(&dir, &format!("{pid}.json"), &body)
+    crate::common::own_state::write_json(
+        &dir.join(format!("{pid}.json")),
+        &Note {
+            account: account.to_string(),
+            at: now,
+        },
+    )
 }
 
 /// 观测侧看见 `pid` 的会话 `sid`：有它的便条、且便条不早于这个进程 ⇒ 记 `sid → 号`；顺手清掉进程已不在的便条。
@@ -367,8 +364,7 @@ fn record(home: &Path, sid: &str, account: &str) -> Result<(), String> {
     let _lock = crate::platform::lock::hold(home)?;
     let mut book = read_book(home)?;
     book.sessions.insert(sid.to_string(), account.to_string());
-    let body = serde_json::to_string(&book).map_err(|e| failed(home, &e))?;
-    put(home, FILE_NAME, &body)
+    crate::common::own_state::write_json(&home.join(FILE_NAME), &book)
 }
 
 fn failed(path: &Path, e: &dyn std::fmt::Display) -> String {
@@ -376,34 +372,6 @@ fn failed(path: &Path, e: &dyn std::fmt::Display) -> String {
         "beLaunchAccount.write.failed",
         &[("path", &path.display().to_string()), ("e", &e.to_string())],
     )
-}
-
-/// `O_EXCL` 临时文件 → 写满 → 原子挪成 `dir/name`；失败删自己的临时文件。
-fn put(dir: &Path, name: &str, body: &str) -> Result<(), String> {
-    use std::io::Write as _;
-    let path = dir.join(name);
-    let tmp = dir.join(format!(
-        "{name}.{}.{:?}.tmp",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    let result = (|| {
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&tmp)
-            .map_err(|e| failed(&tmp, &e))?;
-        f.write_all(body.as_bytes())
-            .and_then(|()| f.write_all(b"\n"))
-            .and_then(|()| f.sync_all())
-            .map_err(|e| failed(&tmp, &e))?;
-        drop(f);
-        std::fs::rename(&tmp, &path).map_err(|e| failed(&path, &e))
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
 }
 
 /// `history-last-accounts`：这台记着的 `{accounts: {sid: 号}}`。读不懂 ⇒ `unreadable`。

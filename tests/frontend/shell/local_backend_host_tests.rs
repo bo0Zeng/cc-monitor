@@ -1247,16 +1247,23 @@ fn this_item_loosened_none_of_the_ratchets_it_touched() {
 /// 已登记在 `cross_half_edge_registry`（它自己那条判据管着「不许长到生产段」）。
 #[test]
 fn the_listen_env_names_are_the_same_string_on_both_sides() {
-    let backend = include_str!("../../../src/backend/stream/listen.rs");
-    for (rust_name, ours) in [
-        ("ENV_PORT", LISTEN_PORT_ENV),
-        ("ENV_TOKEN_FILE", LISTEN_TOKEN_FILE_ENV),
+    // 两个 env 名住后端最下层那一份（帧面监听引它），拒绝原因住帧面监听。
+    let names = include_str!("../../../src/backend/platform/child_env.rs");
+    let listen = include_str!("../../../src/backend/stream/listen.rs");
+    for (backend, vis, rust_name, ours) in [
+        (names, "pub(crate) ", "LISTEN_PORT", LISTEN_PORT_ENV),
+        (
+            names,
+            "pub(crate) ",
+            "LISTEN_TOKEN_FILE",
+            LISTEN_TOKEN_FILE_ENV,
+        ),
         // ⚠ 第三条不是 env 名，但**同一族**：它是宿主判「这次拒绝会不会自己好」的依据。
         //   漂了的后果：「上一个 monitor 刚退、对面还没反应过来」会被当成不可恢复，
         //   于是新 monitor 直接报失败 —— 而它本来只要再等 20 毫秒。
-        ("REFUSE_BUSY", REFUSE_BUSY_REASON),
+        (listen, "pub ", "REFUSE_BUSY", REFUSE_BUSY_REASON),
     ] {
-        let head = format!("pub const {rust_name}: &str =");
+        let head = format!("{vis}const {rust_name}: &str =");
         let line = backend
             .lines()
             .find(|l| l.trim_start().starts_with(&head))

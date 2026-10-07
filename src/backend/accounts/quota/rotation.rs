@@ -626,22 +626,13 @@ pub(crate) fn path_now() -> Option<PathBuf> {
 }
 
 /// 读一次盘。三态：没有（没动过）/ 读得懂 / 读不懂（不覆盖）。
-#[derive(Debug)]
-pub(crate) enum Read {
-    Absent,
-    Present(Book),
-    Unreadable(String),
-}
+pub(crate) type Read = crate::common::own_state::Read<Book>;
+
+/// 读盘的上限（会话条数与每条的换号记录都有上限，远到不了）。
+const MAX_BYTES: u64 = 16 << 20;
 
 pub(crate) fn read_at(path: &Path) -> Read {
-    match std::fs::read_to_string(path) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Read::Absent,
-        Err(e) => Read::Unreadable(e.to_string()),
-        Ok(s) => match serde_json::from_str::<Book>(&s) {
-            Ok(b) => Read::Present(b),
-            Err(e) => Read::Unreadable(e.to_string()),
-        },
-    }
+    crate::common::own_state::read_json(path, MAX_BYTES)
 }
 
 type Stamp = (std::time::SystemTime, u64);
@@ -743,7 +734,6 @@ pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<String> {
 }
 
 fn write_locked<R>(path: &Path, f: impl FnOnce(&mut Book) -> R) -> Result<(R, Book, Book), String> {
-    use std::io::Write as _;
     let shown = path.display().to_string();
     let failed = |e: &dyn std::fmt::Display| {
         copy_text(
@@ -771,29 +761,8 @@ fn write_locked<R>(path: &Path, f: impl FnOnce(&mut Book) -> R) -> Result<(R, Bo
     if after == before {
         return Ok((r, before, after));
     }
-    let body = serde_json::to_string(&after).map_err(|e| failed(&e))?;
-    let tmp = dir.join(format!(
-        "{FILE_NAME}.{}.{:?}.tmp",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    let result = (|| {
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&tmp)
-            .map_err(|e| failed(&e))?;
-        file.write_all(body.as_bytes())
-            .and_then(|()| file.write_all(b"\n"))
-            .and_then(|()| file.sync_all())
-            .map_err(|e| failed(&e))?;
-        drop(file);
-        std::fs::rename(&tmp, path).map_err(|e| failed(&e))
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result.map(|()| (r, before, after))
+    crate::common::own_state::write_json(path, &after)?;
+    Ok((r, before, after))
 }
 
 // ── 线上那一份轮换的读法（整份收、不合法整份拒并说哪一格） ─────────────────

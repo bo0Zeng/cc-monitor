@@ -378,22 +378,13 @@ pub(crate) fn record_probe(
 }
 
 /// 读一次盘。三态：没有（还没看到过）/ 读得懂 / 读不懂（不覆盖）。
-#[derive(Debug)]
-pub(crate) enum Read {
-    Absent,
-    Present(Book),
-    Unreadable(String),
-}
+pub(crate) type Read = crate::common::own_state::Read<Book>;
+
+/// 读盘的上限（一台的号数有限，远到不了）。
+const MAX_BYTES: u64 = 16 << 20;
 
 pub(crate) fn read_at(path: &Path) -> Read {
-    match std::fs::read_to_string(path) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Read::Absent,
-        Err(e) => Read::Unreadable(e.to_string()),
-        Ok(s) => match serde_json::from_str::<Book>(&s) {
-            Ok(b) => Read::Present(b),
-            Err(e) => Read::Unreadable(e.to_string()),
-        },
-    }
+    crate::common::own_state::read_json(path, MAX_BYTES)
 }
 
 /// ★ 盘上那份的唯一写法：在跨进程锁里读盘 → 那个号那一条按窗口并进 `add`（[`merge`]；`headers` 同它）→ `O_EXCL` 临时文件 →
@@ -403,7 +394,6 @@ fn write_merged(
     add: &Observed,
     headers: bool,
 ) -> Result<(Observed, Option<Stamp>), String> {
-    use std::io::Write as _;
     let dir = path.parent().ok_or_else(|| {
         copy_text(
             "beQuotaLedger.write.noParent",
@@ -442,35 +432,8 @@ fn write_merged(
     book.accounts.push(entry.clone());
     book.accounts
         .sort_by(|a, b| (&a.agent, &a.account).cmp(&(&b.agent, &b.account)));
-    let failed = |e: &dyn std::fmt::Display| {
-        copy_text(
-            "beQuotaLedger.write.failed",
-            &[("path", &path.display().to_string()), ("e", &e.to_string())],
-        )
-    };
-    let body = serde_json::to_string(&book).map_err(|e| failed(&e))?;
-    let tmp = dir.join(format!(
-        "{FILE_NAME}.{}.{:?}.tmp",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    let result = (|| {
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&tmp)
-            .map_err(|e| failed(&e))?;
-        f.write_all(body.as_bytes())
-            .and_then(|()| f.write_all(b"\n"))
-            .and_then(|()| f.sync_all())
-            .map_err(|e| failed(&e))?;
-        drop(f);
-        std::fs::rename(&tmp, path).map_err(|e| failed(&e))
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result.map(|()| (entry, stamp(path)))
+    crate::common::own_state::write_json(path, &book)?;
+    Ok((entry, stamp(path)))
 }
 
 /// 帧命令 `quota-read` 的底子：现读这台的额度账（不读内存 —— 一次性 CLI 那一形里内存是空的）；显示态由帧面宿主补上。

@@ -54,6 +54,41 @@
       "zh": "清掉 key 表 {path} 里 {dir} 那一行",
       "args": ["dir", "path"]
     },
+    "beOwnState.read.failed": {
+      "kind": "error",
+      "zh": "读 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beOwnState.read.notJson": {
+      "kind": "error",
+      "zh": "{path} 不是 JSON：{e}",
+      "args": ["path", "e"]
+    },
+    "beOwnState.write.encodeFailed": {
+      "kind": "error",
+      "zh": "{path} 写不出来：{e}",
+      "args": ["path", "e"]
+    },
+    "beOwnState.write.noParent": {
+      "kind": "error",
+      "zh": "{path} 没有上一级目录。",
+      "args": ["path"]
+    },
+    "beOwnState.write.renameFailed": {
+      "kind": "error",
+      "zh": "把 {tmp} 换成 {path} 失败：{e}",
+      "args": ["tmp", "path", "e"]
+    },
+    "beOwnState.write.tmpCreateFailed": {
+      "kind": "error",
+      "zh": "建临时文件 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beOwnState.write.tmpWriteFailed": {
+      "kind": "error",
+      "zh": "写临时文件 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
     "beUpstreamFileFace.restore.notSaved": {
       "kind": "error",
       "zh": "备份 {from} 里没有 {account} 那一行，没法放回去。",
@@ -762,45 +797,15 @@
       "zh": "{rel} 读不出内容，只按长度算：{e}",
       "args": ["rel", "e"]
     },
-    "beAssetCatalog.read.failed": {
-      "kind": "error",
-      "zh": "读不了 {path}：{e}",
-      "args": ["path", "e"]
-    },
     "beAssetCatalog.read.newer": {
       "kind": "error",
       "zh": "{path} 是更新版本的后端写的，没有覆盖它。这个后端认格式 {mine}，它是 {theirs}。",
       "args": ["path", "mine", "theirs"]
     },
-    "beAssetCatalog.read.unknown": {
-      "kind": "error",
-      "zh": "{path} 读不出来，格式不对：{e}",
-      "args": ["path", "e"]
-    },
     "beAssetCatalog.write.noParent": {
       "kind": "error",
       "zh": "{path} 没有上一级目录。",
       "args": ["path"]
-    },
-    "beAssetCatalog.write.encodeFailed": {
-      "kind": "error",
-      "zh": "资产清单写不出来：{e}",
-      "args": ["e"]
-    },
-    "beAssetCatalog.write.tmpCreateFailed": {
-      "kind": "error",
-      "zh": "建临时文件 {tmp} 失败：{e}",
-      "args": ["tmp", "e"]
-    },
-    "beAssetCatalog.write.tmpWriteFailed": {
-      "kind": "error",
-      "zh": "写临时文件 {tmp} 失败：{e}",
-      "args": ["tmp", "e"]
-    },
-    "beAssetCatalog.write.renameFailed": {
-      "kind": "error",
-      "zh": "把 {tmp} 换成 {path} 失败：{e}",
-      "args": ["tmp", "path", "e"]
     },
     "beAssetCatalog.write.mkdirFailed": {
       "kind": "error",
@@ -892,11 +897,6 @@
       "zh": "「{p}」装完被改过，或者装之前就在。要你确认才删，这次一个都没删。",
       "args": ["p"]
     },
-    "beSkillLedger.read.failed": {
-      "kind": "error",
-      "zh": "读不了 {path}：{e}",
-      "args": ["path", "e"]
-    },
     "beSkillLedger.read.otherVersion": {
       "kind": "error",
       "zh": "{path} 是另一个版本的后端写的，没有动它。这个后端认格式 {mine}，它是 {theirs}。",
@@ -911,26 +911,6 @@
       "kind": "error",
       "zh": "{path} 没有上一级目录。",
       "args": ["path"]
-    },
-    "beSkillLedger.write.encodeFailed": {
-      "kind": "error",
-      "zh": "装记录写不出来：{e}",
-      "args": ["e"]
-    },
-    "beSkillLedger.write.tmpCreateFailed": {
-      "kind": "error",
-      "zh": "建临时文件 {tmp} 失败：{e}",
-      "args": ["tmp", "e"]
-    },
-    "beSkillLedger.write.tmpWriteFailed": {
-      "kind": "error",
-      "zh": "写临时文件 {tmp} 失败：{e}",
-      "args": ["tmp", "e"]
-    },
-    "beSkillLedger.write.renameFailed": {
-      "kind": "error",
-      "zh": "把 {tmp} 换成 {path} 失败：{e}",
-      "args": ["tmp", "path", "e"]
     },
     "beSkillLedger.add.tooMany": {
       "kind": "error",
@@ -977,11 +957,6 @@
       "zh": "写完再读，{path} 里找不到账号 {account} 的 API key。",
       "args": ["path", "account"]
     },
-    "beUpstreamFileFace.read.failed": {
-      "kind": "error",
-      "zh": "读不了 {path}：{e}",
-      "args": ["path", "e"]
-    },
     "beUpstreamFileFace.perm.tooWide": {
       "kind": "error",
       "zh": "{how}。怎么修：{fix}",
@@ -996,21 +971,6 @@
       "kind": "error",
       "zh": "建目录 {dir} 失败：{e}",
       "args": ["dir", "e"]
-    },
-    "beUpstreamFileFace.write.tmpCreateFailed": {
-      "kind": "error",
-      "zh": "建临时文件 {tmp} 失败：{e}",
-      "args": ["tmp", "e"]
-    },
-    "beUpstreamFileFace.write.tmpWriteFailed": {
-      "kind": "error",
-      "zh": "写临时文件 {tmp} 失败：{e}",
-      "args": ["tmp", "e"]
-    },
-    "beUpstreamFileFace.write.renameFailed": {
-      "kind": "error",
-      "zh": "把 {tmp} 换成 {path} 失败：{e}",
-      "args": ["tmp", "path", "e"]
     },
     "beClaudeAssets.scan.noHome": {
       "kind": "body",
@@ -1365,21 +1325,6 @@
       "zh": "取不到系统随机数，生成不了中转钥匙。",
       "args": []
     },
-    "beDoor.fs.tmpCreateFailed": {
-      "kind": "error",
-      "zh": "建临时文件 {tmp} 失败：{e}",
-      "args": ["tmp", "e"]
-    },
-    "beDoor.fs.tmpWriteFailed": {
-      "kind": "error",
-      "zh": "写临时文件 {tmp} 失败：{e}",
-      "args": ["tmp", "e"]
-    },
-    "beDoor.fs.renameFailed": {
-      "kind": "error",
-      "zh": "把 {tmp} 换成 {path} 失败：{e}",
-      "args": ["tmp", "path", "e"]
-    },
     "beStderrLog.roll.moveFailed": {
       "kind": "error",
       "zh": "上一份日志挪不走（{path}）：{e}",
@@ -1419,21 +1364,6 @@
       "kind": "error",
       "zh": "建目录 {dir} 失败：{e}",
       "args": ["dir", "e"]
-    },
-    "beResident.fs.tmpCreateFailed": {
-      "kind": "error",
-      "zh": "建临时文件 {tmp} 失败：{e}",
-      "args": ["tmp", "e"]
-    },
-    "beResident.fs.tmpWriteFailed": {
-      "kind": "error",
-      "zh": "写临时文件 {tmp} 失败：{e}",
-      "args": ["tmp", "e"]
-    },
-    "beResident.fs.renameFailed": {
-      "kind": "error",
-      "zh": "把 {tmp} 换成 {path} 失败：{e}",
-      "args": ["tmp", "path", "e"]
     },
     "rsRemoteResident.stop.unknownAnswer": {
       "kind": "error",
@@ -13515,21 +13445,6 @@
       "zh": "找不到家目录（HOME 和 USERPROFILE 都没设），没有写",
       "args": []
     },
-    "beExitPolicy.writeAt.renameFailed": {
-      "kind": "error",
-      "zh": "把 {tmp} 挪到 {path} 失败：{e}",
-      "args": ["tmp", "path", "e"]
-    },
-    "beExitPolicy.writeAt.tmpWriteFailed": {
-      "kind": "error",
-      "zh": "写不了临时文件 {tmp}：{e}",
-      "args": ["tmp", "e"]
-    },
-    "beExitPolicy.writeAt.tmpCreateFailed": {
-      "kind": "error",
-      "zh": "建不了临时文件 {tmp}：{e}",
-      "args": ["tmp", "e"]
-    },
     "beExitPolicy.writeAt.mkdirFailed": {
       "kind": "error",
       "zh": "建不了目录 {dir}：{e}",
@@ -13570,21 +13485,6 @@
       "zh": "锁 {dir} 失败（等待回 {status}）",
       "args": ["dir", "status"]
     },
-    "beHistoryAnnotations.writeAt.renameFailed": {
-      "kind": "error",
-      "zh": "把 {tmp} 挪到 {path} 失败：{e}",
-      "args": ["tmp", "path", "e"]
-    },
-    "beHistoryAnnotations.writeAt.tmpWriteFailed": {
-      "kind": "error",
-      "zh": "写不了临时文件 {tmp}：{e}",
-      "args": ["tmp", "e"]
-    },
-    "beHistoryAnnotations.writeAt.tmpCreateFailed": {
-      "kind": "error",
-      "zh": "建不了临时文件 {tmp}：{e}",
-      "args": ["tmp", "e"]
-    },
     "beHistoryAnnotations.writeAt.mkdirFailed": {
       "kind": "error",
       "zh": "建不了目录 {dir}：{e}",
@@ -13603,11 +13503,6 @@
     "beHistoryAnnotations.parse.unparsable": {
       "kind": "error",
       "zh": "星标和改名的记录文件 {path} 读不懂，没有覆盖它：{e}",
-      "args": ["path", "e"]
-    },
-    "beHistoryAnnotations.readRaw.unreadable": {
-      "kind": "error",
-      "zh": "读不了星标和改名的记录文件 {path}：{e}",
       "args": ["path", "e"]
     },
     "beHistoryJoin.blocking.unfinished": {
@@ -18019,11 +17914,6 @@
       "kind": "error",
       "zh": "令牌端点的回包里缺新的登录",
       "args": []
-    },
-    "beLaunchAccount.book.unreadable": {
-      "kind": "error",
-      "zh": "{path} 读不出来，没有覆盖它：{e}",
-      "args": ["path", "e"]
     },
     "beLaunchAccount.write.failed": {
       "kind": "error",

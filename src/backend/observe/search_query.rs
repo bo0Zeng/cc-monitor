@@ -418,7 +418,7 @@ impl Facts {
                     let ts_ms = v
                         .get("timestamp")
                         .and_then(Value::as_str)
-                        .and_then(parse_iso8601_ms)
+                        .and_then(crate::common::time::parse_iso8601_ms)
                         .unwrap_or(0);
                     let uuid = v
                         .get("uuid")
@@ -1064,7 +1064,7 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
             let ts_ms = v
                 .get("timestamp")
                 .and_then(Value::as_str)
-                .and_then(parse_iso8601_ms)
+                .and_then(crate::common::time::parse_iso8601_ms)
                 .unwrap_or(0);
             on_hit(&find_hit(uuid, kind, hit, &q, turn, ts_ms))?;
         }
@@ -1079,48 +1079,6 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
 // `collapse_ws` · `collapse_ws_keep_ellipsis` · `truncate_plain` · `truncate_excerpt`）
 // 与它们的单元测试只有一个家：通用的住 `search_rules.rs`，Claude 记录文本那三个住 `agents/claudecode/text.rs`
 // —— **同一份**。别在这里「顺手再写一个小的」：那就是收口前的形状（两份、逐字同、零判据）。
-
-/// 解析 Claude 的 ISO8601 时间戳 `YYYY-MM-DDTHH:MM:SS(.fff)?Z` → epoch ms。
-/// 自带 civil-days 算法（Howard Hinnant），无需 chrono。
-/// 开成 `pub(crate)`：历史会话清单那一行的开始时刻（`history_query::analyze_session`）用同一份。
-pub(crate) fn parse_iso8601_ms(s: &str) -> Option<i64> {
-    if s.len() < 19 {
-        return None;
-    }
-    let year: i64 = s.get(0..4)?.parse().ok()?;
-    let mon: i64 = s.get(5..7)?.parse().ok()?;
-    let day: i64 = s.get(8..10)?.parse().ok()?;
-    let hour: i64 = s.get(11..13)?.parse().ok()?;
-    let min: i64 = s.get(14..16)?.parse().ok()?;
-    let sec: i64 = s.get(17..19)?.parse().ok()?;
-    // 小数秒：扫 '.' 之后的数字串，归一到毫秒（取前 3 位、不足右补 0），对齐本地 utils
-    // 口径——容忍 1/2/3+ 位小数（真实 Claude 总是 .fffZ，但稳健处理变体）。
-    let millis = if s.as_bytes().get(19) == Some(&b'.') {
-        let mut frac: String = s[20..]
-            .chars()
-            .take_while(char::is_ascii_digit)
-            .take(3)
-            .collect();
-        while !frac.is_empty() && frac.len() < 3 {
-            frac.push('0');
-        }
-        frac.parse::<i64>().unwrap_or(0)
-    } else {
-        0
-    };
-    let days = days_from_civil(year, mon, day);
-    Some((days * 86_400 + hour * 3_600 + min * 60 + sec) * 1_000 + millis)
-}
-
-/// days since 1970-01-01 for a civil (proleptic Gregorian) date.
-fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = (if y >= 0 { y } else { y - 399 }) / 400;
-    let yoe = y - era * 400;
-    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146_097 + doe - 719_468
-}
 
 /// 帧命令 `history-search-merge`：**把各台 `history-search` 的会话行合成一份**。
 ///

@@ -9,9 +9,14 @@
 //! 中转口（`CCM_RELAY_PORT`：窗格里的 `ccm` 靠它找同机的中转，不是秘密；清掉它 ccm 会去连默认口）·
 //! 设置里填的 Claude 目录（`CLAUDE_CONFIG_DIR`，给 agent 的）。
 
-/// 常驻后端自有的那几格（起它的那一方只交给它自己用；中转口除外，见头注）。名字只住各自的模块，这里只列。
-pub(crate) const OWN_ENVS: [&str; 3] = [
-    crate::stream::listen::ENV_PORT,
-    crate::stream::listen::ENV_TOKEN_FILE,
-    crate::stderr_log::ENV,
-];
+/// 宿主告诉后端「听哪个口」的 env 名（帧面监听 `stream/listen.rs` 读它）。
+pub(crate) const LISTEN_PORT: &str = "CCM_LISTEN_PORT";
+
+/// 钥匙文件的**路径**（不是钥匙）的 env 名（帧面监听读它）。
+pub(crate) const LISTEN_TOKEN_FILE: &str = "CCM_LISTEN_TOKEN_FILE";
+
+/// stderr 诊断文件完整路径的 env 名（`stderr_log.rs` 读它）。
+pub(crate) const STDERR_LOG: &str = "CCM_BACKEND_STDERR_LOG";
+
+/// 常驻后端自有的那几格（起它的那一方只交给它自己用；中转口除外，见头注）。名字住这里（最下层），读它们的上层引这里。
+pub(crate) const OWN_ENVS: [&str; 3] = [LISTEN_PORT, LISTEN_TOKEN_FILE, STDERR_LOG];

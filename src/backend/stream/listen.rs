@@ -33,12 +33,12 @@ use std::net::{IpAddr, Ipv4Addr};
 pub const LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 
 /// 宿主告诉后端「听哪个口」的 env 名。端口只算一份、住宿主那一侧（`local_backend_host::listen_port_for`）：两边各算一份就会漂。
-pub const ENV_PORT: &str = "CCM_LISTEN_PORT";
+pub const ENV_PORT: &str = crate::platform::child_env::LISTEN_PORT;
 
 /// 钥匙文件的**路径**（不是钥匙）：起常驻后端的那一方交（本机 monitor · 远端 `--resident-ensure`，同一种），子进程自己读 ——
 /// 钥匙一次都不经过 env / argv（与中转钥匙同形，`relay/door.rs` 头注）。钥匙若在环境里，常驻后端起的 tmux server 会把它
 /// 拷成全局环境，之后每个窗格里的 shell · ccm · claude 都带着它。
-pub const ENV_TOKEN_FILE: &str = "CCM_LISTEN_TOKEN_FILE";
+pub const ENV_TOKEN_FILE: &str = crate::platform::child_env::LISTEN_TOKEN_FILE;
 
 /// 远端 `--resident-ensure` 起常驻后端时交的中转口 env 名（`main.rs` 在库外，够不着 `relay::` 的 crate 内口）。
 pub const RELAY_PORT_ENV: &str = crate::relay::ENV_PORT;

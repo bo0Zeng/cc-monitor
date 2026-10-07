@@ -229,13 +229,16 @@ fn monitor_and_backend_logs_live_side_by_side_under_logs() {
     );
 }
 
-/// 交给后端的那个变量名 == 后端读的那个（异源：从后端源码里现抠 `pub const ENV`）；路径就是设置页读的那一份（同一个函数）。
+/// 交给后端的那个变量名 == 后端读的那个（异源：从后端源码里现抠那个名字的家 `platform/child_env.rs::STDERR_LOG`）；路径就是设置页读的那一份（同一个函数）。
 /// 接线（文本，如实登记：按行为量要真起脱离后端）：`spawn_detached` 交它恰好一处，两条载体共用的 `backend_env` 不交。
 #[test]
 fn the_detached_backend_is_handed_its_stderr_log_path_and_only_that_carrier_is() {
-    let backend = include_str!("../../../src/backend/stderr_log.rs");
-    guard_core::pin_line(backend, "pub const ENV: &str = \"CCM_BACKEND_STDERR_LOG\";")
-        .unwrap_or_else(|e| panic!("后端读的变量名变了（或不是恰好一处）：{e}"));
+    let backend = include_str!("../../../src/backend/platform/child_env.rs");
+    guard_core::pin_line(
+        backend,
+        "pub(crate) const STDERR_LOG: &str = \"CCM_BACKEND_STDERR_LOG\";",
+    )
+    .unwrap_or_else(|e| panic!("后端读的变量名变了（或不是恰好一处）：{e}"));
     assert_eq!(BACKEND_STDERR_LOG_ENV, "CCM_BACKEND_STDERR_LOG");
     let host = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/local_backend_host.rs"

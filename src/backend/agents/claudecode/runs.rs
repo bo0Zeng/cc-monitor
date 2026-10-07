@@ -120,11 +120,7 @@ fn texts(c: Option<&Value>) -> Option<String> {
 
 /// 一条记录写着的时刻（`timestamp`，ISO 8601 ⇒ 自 1970 起的毫秒）。
 pub(crate) fn written(v: &Value) -> Option<u64> {
-    u64::try_from(crate::observe::search_query::parse_iso8601_ms(s(
-        v,
-        "timestamp",
-    )?)?)
-    .ok()
+    u64::try_from(crate::common::time::parse_iso8601_ms(s(v, "timestamp")?)?).ok()
 }
 
 /// trim：Unicode 空白 ＋ BOM。

@@ -397,6 +397,20 @@ impl tokio::io::AsyncWrite for LinkStream {
 
 const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+/// 不在字母表里的字节在 [`B64_DECODE`] 里的值。
+const NOT_B64: u8 = 0xff;
+
+/// 字节 ⇒ 它在 [`B64`] 里的位置（不在 ⇒ [`NOT_B64`]）：解码每个字符查一次表。
+const B64_DECODE: [u8; 256] = {
+    let mut t = [NOT_B64; 256];
+    let mut i = 0;
+    while i < 64 {
+        t[B64[i] as usize] = i as u8;
+        i += 1;
+    }
+    t
+};
+
 /// 编码（上行块）。**两个 crate 各一份**（后端那份在 `wire.rs`）：monitor 与后端是两棵依赖树，
 /// 为 20 行加一条共享依赖不值；两份各拿 RFC 4648 §10 的同一组向量核（异源是 RFC）。
 pub(crate) fn b64_encode(bytes: &[u8]) -> String {
@@ -428,7 +442,9 @@ pub(crate) fn b64_decode(text: &str) -> Result<Vec<u8>, String> {
             &[("len", &(s.len()).to_string())],
         ));
     }
-    let val = |c: u8| -> Option<u32> { B64.iter().position(|&x| x == c).map(|p| p as u32) };
+    let val = |c: u8| -> Option<u32> {
+        (B64_DECODE[usize::from(c)] != NOT_B64).then(|| u32::from(B64_DECODE[usize::from(c)]))
+    };
     let mut out = Vec::with_capacity(s.len() / 4 * 3);
     let quads = s.len() / 4;
     for (qi, q) in s.chunks(4).enumerate() {

@@ -65,7 +65,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -488,6 +488,16 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
     why: "「各命令因对方版本拒绝时回一个统一码（不各自拼句）」—— 界面与 Rust 两侧都出这两句，取的是同一张表",
   },
+  J23: {
+    what: "自 1970-01-01 起第几天 ⇒ 公历年月日",
+    homes: ["host-core::civil_from_days"],
+    status: "open",
+    // 界面额度悬停卡排时刻那一份（与后端 `control/quota_text.rs` 锁同一份金样 `quota-text.golden.json`）。
+    defs: ["civil"],
+    needles: [{ text: "719_468", count: 1, file: "src/frontend/ui/quota-lines.ts" }],
+    owner: "界面那一路：额度悬停卡的时刻改由后端排好交成品（或界面改走 `Date`）时删掉 `quota-lines.ts::civil`",
+    why: "两个前端的 Rust 那一份收进了 host-core；界面这一份是 TS，链不了 Rust crate，今天由金样对拍兜着",
+  },
 };
 
 /** `NONE` = 登记时逐个读过规则、在 TS 生产段按规则搜过，没有孪生。 */
@@ -625,6 +635,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 主窗 / 设置窗摆进工作区正中（宿主那一侧用；TS 侧没有孪生）。
     center_in_work_area: NONE,
     win32_long_path: NONE,
+    // 天数 ⇒ 公历（monitor 记主机钥匙那天的日期 · 文件窗口画修改时间）；界面额度悬停卡还有一份 TS（J23）。
+    civil_from_days: "J23",
   },
   "relay-route-core": {
     // 后端住在 `~/.cc-monitor` 里的那几样的相对路径（后端各写者引它、monitor 数据位置页按它列）；TS 侧没有孪生。

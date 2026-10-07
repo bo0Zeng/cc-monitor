@@ -18,6 +18,7 @@
 //! - [`lock`]：后端自有状态文件（第四层）的跨进程锁 —— 锁那份文件所在的目录（unix `flock` · Windows 命名互斥量）
 //! - [`acct_view`]：账号库读盘的平台原语（不跟链接地看一项 · unix 权限位 · 这台做不做得了多账号）—— 只读
 //! - [`fs`]：文件管理写面的两样原语：不覆盖改名（`rename_noreplace`）· 开文件不跟链接的旗（`NO_FOLLOW`）
+//! - [`child_env`]：常驻后端自有的那几格环境的名字（[`child`] 起每个子进程都摘掉）
 //! - [`child`]：后端起子进程的唯一原语（期限必填 · 超时杀整组 / 整个 Job · 自有环境无条件摘 · 脱离起 · ccm 最终那一跳）
 //! - `win_proc`：Windows 上判活 / 起始时刻 / 等进程退出的 Win32 读法（只在 Windows 编译时存在，不写 intra-doc 链接）
 //! - [`shell`]：shell 方言与「把一串命令交给这台的 shell」那一跳
@@ -27,6 +28,8 @@ pub(crate) mod acct_view;
 #[path = "../../../tests/backend/platform/cfgless_guard.rs"]
 mod cfgless_guard;
 pub(crate) mod child;
+/// 常驻后端自有的那几格环境的名字（监听口 · 钥匙文件 · 诊断文件）：起子进程原语无条件摘它们，帧面监听与诊断文件读它们。
+pub(crate) mod child_env;
 #[cfg(test)]
 #[path = "../../../tests/backend/platform/fallback_guard.rs"]
 mod fallback_guard;

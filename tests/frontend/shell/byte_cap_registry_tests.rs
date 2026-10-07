@@ -852,6 +852,49 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "后端自有的资产目录文件 `~/.cc-monitor/assets-catalog.json`（读不出来就不覆盖）",
         "拒收+回错",
     ),
+    // 后端自有状态文件的读上限（`common/own_state::read_bytes` 收它）：超了当读不出来 ⇒ 不覆盖、照实回错。
+    (
+        "src/backend/accounts/oauth/store.rs",
+        "MAX_BYTES",
+        "订阅号的凭据文件 `.credentials.json`（续令牌前读；读不出来就不续、不覆盖）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/accounts/quota/ledger.rs",
+        "MAX_BYTES",
+        "后端自有的额度账 `~/.cc-monitor/quota.json`（读不出来就不覆盖）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/accounts/quota/rotation.rs",
+        "MAX_BYTES",
+        "后端自有的账号轮换 `~/.cc-monitor/rotation.json`（读不出来就不覆盖）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/accounts/upstream_select/file_face.rs",
+        "KEY_FILE_READ_CAP",
+        "上游选择的凭据文件 `apikey-credentials.json`（写 key 前读；读不出来就 `io_failed`、不覆盖）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/control/exit_policy.rs",
+        "MAX_BYTES",
+        "后端自有的退出行为 `~/.cc-monitor/backend.json`（一格布尔；读不出来 ⇒ `unreadable` 带原因回出去，按缺省办）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/control/launch_account.rs",
+        "MAX_BYTES",
+        "后端自有的「会话用的号」记录 `~/.cc-monitor/launch-accounts.json`（读不出来就不覆盖、`unreadable`）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/dial/known_hosts.rs",
+        "MAX_BYTES",
+        "后端自有的主机钥匙 `~/.cc-monitor/known_hosts`（读不出来 ⇒ 不覆盖、回错，记钥匙那一处留一行日志）",
+        "拒收+回错",
+    ),
     // skill 装记录那份文件：超了当读不懂 ⇒ 不覆盖、`ledger_unreadable`（读的人也不许把它说成「什么都没装过」）。
     (
         "src/backend/assets/skill_ledger.rs",
