@@ -123,6 +123,28 @@ export function slotLabel(slot: string): string {
   return slot;
 }
 
+/** 一个号的显示态里与一格有关的那几样（`QuotaShow` 与账本里的一行都合这个形）。 */
+interface SlotsOf {
+  state: QuotaState;
+  limiting?: string;
+  slots: SlotShow[];
+}
+
+/**
+ * 一个语义位那一格的值（照后端显示态；账号面板与设置窗账号页同一处）：超额在兜 `超额` · 上一窗已过 / 没采样 `—` ·
+ * 用满（`full`）`✕` · 被拒没用满 `58% · 被拒` · 否则 `58%`。
+ */
+export function slotValue(q: SlotsOf, slot: string): string {
+  const x = q.slots.find((v) => v.slot === slot);
+  const here = (q.limiting ?? "5h") === slot;
+  if (here && q.state === "overageInUse" && x?.pct !== undefined) return copyText("acct.val.over");
+  if (here && (q.state === "resetSinceSeen" || q.state === "unseen")) return copyText("acct.val.none");
+  if (x?.full) return copyText("acct.val.full");
+  if (here && q.state === "refused") return x?.pct === undefined ? copyText("acct.val.refusedOnly") : copyText("acct.val.refusedPct", { pct: x.pct });
+  if (!x || x.pct === undefined) return copyText("acct.val.none");
+  return copyText("acct.val.pct", { pct: x.pct });
+}
+
 /** 首行：名 · 类型 · 没指定号 / 登录拿不到时的标签。 */
 function head(account: string, kind: QuotaKind, login: LoginState): string[] {
   const row = [accountLabel(account), kind === "api" ? copyText("acct.kind.api") : copyText("acct.kind.sub")];

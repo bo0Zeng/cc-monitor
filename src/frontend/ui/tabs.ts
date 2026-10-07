@@ -87,6 +87,7 @@ import { closeFrontResult, copyFrontDetail, flashFrontDone, setFrontBusy, showFr
 import { CHANNEL_ACTS, LaunchSlots, type SlotSpec } from "./launch-slot";
 import { applyHandedBack } from "./cards/speaker-bar";
 import { applyRetries } from "./cards/api-error";
+import type { ActionId } from "./keybindings/actions";
 
 
 export class TabManager {
@@ -157,7 +158,10 @@ export class TabManager {
         root: streamRootEl,
         hasTab: (sid) => this.store.tabs.has(sid),
         switchTo: (sid) => this.switchTo(sid),
-        shown: (on) => this.onSlotShown?.(on),
+        shown: (on) => {
+          this.slotOver = on;
+          this.onSlotShown?.(on);
+        },
       },
       CHANNEL_ACTS,
     );
@@ -251,6 +255,21 @@ export class TabManager {
   private readonly slots: LaunchSlots;
   /** 占位标签页那一页显 / 收（宿主让会话头跟着让开）。 */
   onSlotShown: ((on: boolean) => void) | null = null;
+  /** 占位标签页那一页此刻显没显（显着 ⇒ 作用于当前会话的快捷键不落到底下那个真标签页，[`shadowedBySlot`]）。 */
+  private slotOver = false;
+  /** 作用于当前会话的那几键（占位标签页显着时让开）。 */
+  private static readonly ACTS_ON_ACTIVE_SESSION: ReadonlySet<ActionId> = new Set<ActionId>([
+    "session.find",
+    "session.toggle-process",
+    "session.prev-turn",
+    "session.next-turn",
+    "session.to-bottom",
+    "tab.close-archived",
+    "tab.open-cwd",
+    "tab.pop-out",
+    "tab.context-menu",
+    "terminal.bring-front",
+  ]);
 
   /**
    * F40c DEV 探针用:active tab 状态一行 JSON（形状、口径与秤 6 的三个账本见 `tab-stream-view.ts` 那一份）。
@@ -1677,6 +1696,11 @@ export class TabManager {
   /** 起新会话：那台回了「起好了 / 开窗」⇒ 长出一个占位标签页、主区换成它（报到了换成真的）。 */
   addLaunchSlot(spec: SlotSpec): void {
     this.slots.add(spec);
+  }
+
+  /** 这一键此刻要不要让开：占位标签页那一页显着、而它作用于当前会话（底下那个真标签页不是你看着的那个）。 */
+  shadowedBySlot(id: ActionId): boolean {
+    return this.slotOver && TabManager.ACTS_ON_ACTIVE_SESSION.has(id);
   }
 
   /** 只给判据用：占位标签页此刻几个 · 正看着哪一个。 */

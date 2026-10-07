@@ -38,6 +38,7 @@
  */
 import { copyText } from "./copy-table";
 import { arrivedBody, expectArrival } from "./launch-arrival";
+import { DEFAULT_AGENT } from "./agent-profile";
 import { ControlError, exactKeys, isObj, machineName, settle, unreadable, type Refusals } from "./control-said";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody } from "./ipc/chan-caller";
@@ -295,6 +296,7 @@ export async function spawnAgent(origin: Origin, req: SpawnRequest): Promise<str
     match: { cwd: req.dir },
     tmuxName: id,
     arrived: { title: copyText("ccBus.spawn.arrived"), body: arrivedBody(origin) },
+    slot: { cwd: req.dir, agent: req.tool || DEFAULT_AGENT },
   });
   return said;
 }

@@ -5543,4 +5543,18 @@ describe("起新会话的占位标签页接在标签页栏里", () => {
     expect(tm.debugSlots().ids, "那一行留着、还在等").toEqual([1]);
     expect(shown).toEqual([true, false]);
   });
+
+  it("★ 占位那一页显着 ⇒ 作用于当前会话的快捷键（查找 · 折叠 · 翻轮 · 到底 · 关 · 开目录 · 开窗 · 菜单 · 切到终端）不落到底下那个真标签页；全局的照常", () => {
+    const tm = makeTM();
+    tm.createSkeletonTab("a", "/p/a", LOCAL_ORIGIN, null, null);
+    tm.switchTo("a");
+    const sessionKeys = ["session.find", "session.toggle-process", "session.prev-turn", "session.next-turn", "session.to-bottom", "tab.close-archived", "tab.open-cwd", "tab.pop-out", "tab.context-menu", "terminal.bring-front"] as const;
+    expect(sessionKeys.filter((k) => tm.shadowedBySlot(k)), "没有占位页时都照常").toEqual([]);
+    tm.addLaunchSlot({ origin: "devbox", cwd: "/w/x", tmuxName: null, agent: "claude", match: { cwd: "/w/x" } });
+    expect(sessionKeys.filter((k) => !tm.shadowedBySlot(k))).toEqual([]);
+    expect(tm.shadowedBySlot("app.open-command-bar"), "全局的照常").toBe(false);
+    expect(tm.shadowedBySlot("needs.next")).toBe(false);
+    tm.switchTo("a");
+    expect(tm.shadowedBySlot("session.find"), "切回真标签页 ⇒ 照常").toBe(false);
+  });
 });

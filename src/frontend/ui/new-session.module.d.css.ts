@@ -10,6 +10,7 @@ declare const classes: {
   readonly nsInput: string;
   readonly nsLabel: string;
   readonly nsMore: string;
+  readonly nsMoreRow: string;
   readonly nsNote: string;
   readonly nsPlace: string;
   readonly nsPlaceNote: string;
@@ -17,7 +18,6 @@ declare const classes: {
   readonly nsPlaces: string;
   readonly nsRecent: string;
   readonly nsRow: string;
-  readonly nsSelect: string;
   readonly nsTop: string;
 };
 export default classes;

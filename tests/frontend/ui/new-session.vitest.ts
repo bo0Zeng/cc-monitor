@@ -61,7 +61,24 @@ const flush = async (): Promise<void> => {
   for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
 };
 const dialog = (): HTMLElement => document.querySelector<HTMLElement>('[role="dialog"]')!;
-const sel = (label: string): HTMLSelectElement => dialog().querySelector<HTMLSelectElement>(`select[aria-label="${label}"]`)!;
+const sel = (label: string): HTMLButtonElement => dialog().querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
+/** 下拉点开后面板里那几项（字 ＋ 灰字）；点开再关上。 */
+const optionsOf = (b: HTMLButtonElement): string[] => {
+  b.click();
+  const items = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role^="menuitem"]')].map((i) => {
+    const c = i.cloneNode(true) as HTMLElement;
+    c.querySelector(".acct-avatar")?.remove();
+    return `${c.querySelector(".acct-avatar") ? "" : i.querySelector(".acct-avatar") ? "▣" : ""}${c.textContent ?? ""}`;
+  });
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  b.click();
+  return items;
+};
+/** 下拉里点选一项（按值）。 */
+const choose = (b: HTMLButtonElement, label: string): void => {
+  b.click();
+  [...document.querySelectorAll<HTMLElement>('[role="menu"] [role^="menuitem"]')].find((i) => i.textContent?.includes(label))!.click();
+};
 const input = (label: string): HTMLInputElement => dialog().querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
 const rowOf = (el: HTMLElement): HTMLElement => el.closest<HTMLElement>("[class*=nsRow]")!;
 const createBtn = (): HTMLButtonElement => [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "新建")!;
@@ -90,8 +107,9 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
     expect(input("工作目录").value).toBe("/home/u/srv/orders");
     expect(rowOf(sel("agent")).hidden).toBe(true);
     const acct = sel("账号");
-    expect(acct.value).toBe("work");
-    expect([...acct.options].map((o) => o.textContent)).toEqual(["work 默认", "personal · 需登录"]);
+    expect(acct.dataset.value).toBe("work");
+    expect(acct.querySelector(".acct-avatar"), "框上带头像").not.toBeNull();
+    expect(optionsOf(acct), "每项头像在前（▣）· 名字 · 灰字").toEqual(["▣work默认", "▣personal需登录"]);
     expect(input("tmux 会话名").placeholder).toBe("orders-cc");
     expect(sent.find((s) => s.op === "session-new-facts")!.body).toEqual({});
   });
@@ -111,8 +129,7 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
     void openNewSession({ origin: "devbox" });
     await flush();
     const acct = sel("账号");
-    acct.value = "personal";
-    acct.dispatchEvent(new Event("change"));
+    choose(acct, "personal");
     expect(rowOf(acct).textContent).toContain("personal 需登录");
     expect(rowOf(acct).textContent).toContain("登录…");
     expect(createBtn().getAttribute("aria-disabled")).toBe("true");
