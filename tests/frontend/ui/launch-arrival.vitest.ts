@@ -22,6 +22,7 @@ import {
   arrivedBody,
   lastWords,
   noteLive,
+  setArrivalSlots,
   watchArrival,
   type ArrivalSpec,
 } from "../../../src/frontend/ui/launch-arrival";
@@ -174,5 +175,37 @@ describe("发起方在别的窗口 ⇒ 那一句也交回那扇窗", () => {
     noteLive("devbox", "s3", seen(null));
     noteLive("devbox", "s4", seen(null));
     expect(echoed()).toEqual([]);
+  });
+});
+
+describe("主窗口里发起的（恢复 · cc-bus 派生 · 开窗 resume）⇒ 走占位标签页，不再到点说「没看到」", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    toast.mockReset();
+    capture.mockReset();
+    __resetArrivalsForTests();
+  });
+  afterEach(() => {
+    setArrivalSlots(null);
+    __resetArrivalsForTests();
+    vi.useRealTimers();
+  });
+
+  it("★ 带着占位要的两样（目录 · 哪一家）、发起方是主窗口 ⇒ 交占位标签页（同起新会话那一件）、自己不计时；别的窗口发起的照旧", async () => {
+    const slot = vi.fn();
+    setArrivalSlots(slot);
+    watchArrival(spec({ match: { sid: "s1" }, tmuxName: "orders-cc", slot: { cwd: "/w/orders", agent: "claude" } }));
+    watchArrival(spec({ match: { cwd: "/w/x" }, from: "main", slot: { cwd: "/w/x", agent: "codex" } }));
+    expect(slot.mock.calls.map((c) => c[0])).toEqual([
+      { origin: "devbox", cwd: "/w/orders", tmuxName: "orders-cc", agent: "claude", match: { sid: "s1" } },
+      { origin: "devbox", cwd: "/w/x", tmuxName: null, agent: "codex", match: { cwd: "/w/x" } },
+    ]);
+    await vi.advanceTimersByTimeAsync(ARRIVAL_BUDGET_MS + 1);
+    expect(toast, "交给占位标签页了，到点不再说「没看到」").not.toHaveBeenCalled();
+    watchArrival(spec({ match: { sid: "s9" }, from: "settings", slot: { cwd: "/w/s", agent: "claude" } }));
+    expect(slot, "设置窗里发起的照旧（主窗口没被看着）").toHaveBeenCalledTimes(2);
+    setArrivalSlots(null);
+    watchArrival(spec({ match: { sid: "s8" }, slot: { cwd: "/w/s", agent: "claude" } }));
+    expect(slot, "没有占位标签页（不是主窗口）⇒ 照旧").toHaveBeenCalledTimes(2);
   });
 });

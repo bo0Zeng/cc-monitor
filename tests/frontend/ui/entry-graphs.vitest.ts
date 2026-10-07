@@ -750,6 +750,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/kit/fold.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/list-row.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/menu.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
+  "src/frontend/ui/kit/select.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/meter.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/popover.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/split-button.module.css": { stacked: false, why: "通用组件（拆分按钮，暂定）：只挂自己的哈希类" },

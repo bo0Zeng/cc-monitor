@@ -85,7 +85,7 @@ import { sessionCommands } from "./session-commands";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
 import { currentAccountForBadge } from "./accounts";
 import { fetchSessionAccounts, fetchAccounts } from "./account-reads";
-import { bindLaunchArrivals, noteLive } from "./launch-arrival";
+import { bindLaunchArrivals, noteLive, setArrivalSlots } from "./launch-arrival";
 import { FOCUS_SESSION_EVENT, openNewSession, setNewSessionPlaceholder } from "./new-session";
 import { copyText } from "./copy-table";
 import { appStore } from "./app-store";
@@ -314,6 +314,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   tabs.onUpdateMachine = (origin) => void openSettingsWindow(undefined, dest.machineOf(origin));
   // 起新会话：在主窗口里起的先长出占位标签页、报到了换成真的；在设置 / 查看窗里起的点了［切过去］再切，先把主窗口拉到前面。
   setNewSessionPlaceholder((spec) => tabs.addLaunchSlot(spec));
+  // 别的起会话路（恢复 · cc-bus 派生 · 开窗 resume）在主窗口里发起的也走同一件占位标签页。
+  setArrivalSlots((spec) => tabs.addLaunchSlot(spec));
   // 占位标签页那一页显着：会话头与真标签页的选中样子让开。
   tabs.onSlotShown = (on) => {
     sessionHead.el.toggleAttribute("data-slot-over", on);
