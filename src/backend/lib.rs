@@ -844,7 +844,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p8x-own-state：后端自有状态文件读写收成 common/own_state；记录一遍扫出五样并缓存；宣告会话查 sid 表；线上形状不变。
 ///
 /// p8y-profiles-page：profiles-read / -resolve / -impact / -bases / -write 与 profiles_changed 推帧；删 aliases-render / -install / -to-form / -from-form。
-pub const BUILD_ID: &str = "p8y-profiles-page";
+///
+/// p8z-window-label：session-terminals 每个终端多回 window（接入块 v8 设的 LC_CCM_WINDOW，只认 <数字>-<数字>）。
+pub const BUILD_ID: &str = "p8z-window-label";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
