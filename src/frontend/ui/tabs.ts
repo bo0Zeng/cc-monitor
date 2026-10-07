@@ -86,6 +86,7 @@ import { awaitedFor, clearAwaiting, markAwaiting } from "./cards/step-line";
 import { machineName } from "./control-said";
 import { closeFrontResult, copyFrontDetail, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
 import { CHANNEL_ACTS, LaunchSlots, type SlotSpec } from "./launch-slot";
+import { applyHandedBack } from "./cards/speaker-bar";
 
 
 export class TabManager {
@@ -1332,6 +1333,8 @@ export class TabManager {
     const tab = this.store.tabs.get(sid);
     if (!tab) return;
     const ch = applyFacts(tab, f);
+    // 交回了的子运行：它的收场通知以交回为准（同一个子运行只报一次）。
+    applyHandedBack(tab.streamEl, new Set(f.handedBack));
     if (ch.forkedFrom || ch.projectDir) {
       tab.title = this.computeTitle(tab);
       this.refreshTabBar();

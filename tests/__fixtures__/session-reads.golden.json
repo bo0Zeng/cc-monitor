@@ -1,8 +1,11 @@
 {
   "history-facts": {
     "agent": "claude",
-    "end": 876,
+    "end": 1067,
     "forkedFrom": "src-0",
+    "handedBack": [
+      "ag-7"
+    ],
     "lastSay": {
       "at": "t5",
       "text": "done"

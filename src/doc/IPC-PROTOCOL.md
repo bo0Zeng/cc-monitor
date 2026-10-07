@@ -2945,7 +2945,7 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 | `after_ms` | → | 可选，= `--after-ms` |
 | `limit` | → | 可选，= `--limit` |
 | `titles` | → | 可选布尔：只比会话标题与第一句（不搜内容）；命中的会话照样一行，`hitCount` 为 `0`、`hits` 空。帧面才有（CLI 面 `--search` 没有这个选项） |
-| `lines` | ← | 每命中会话一行 `SessionHits`（带 `agent`：只扫记录树 ⇒ 记录树那一家），形状与行序同 `--search`。命中种类 `hits[].kind`：`user` · `assistant` · `report`（agent 回报，单列；会话内查找 `history-find` 不收这一种）· `tool` |
+| `lines` | ← | 每命中会话一行 `SessionHits`（带 `agent`：只扫记录树 ⇒ 记录树那一家），形状与行序同 `--search`。命中种类 `hits[].kind`：`user` · `assistant` · `report`（agent 回报，单列；会话内查找 `history-find` 同样收、同样单列）· `tool` |
 | `lines[].status` · `isBg` · `can` | ← | 这台判的：`status` `live` / `ended`（这台的 pidfile）· `isBg` 后台分身会话 · `can` 能做什么，口径与 `history-list` 行的 `can` 同一个函数；界面只读。CLI 面 `--search` 同 |
 | `unreadable` | ← | 这一趟有几份会话记录读不动、没搜到（权限 / IO 错 / 不是合法 UTF-8）。不是 `0` ⇒ 结果不全，界面说出来 |
 | `skipped` | ← | 内容搜索不覆盖、这台上又有它的会话记录的那几家（对用户的叫法，如 `Codex`）：它们的会话不在结果里 |
@@ -4132,6 +4132,7 @@ cc-monitor 装的：skill 按装记录逐文件删（带逐字节 `expect`），
 | `include_tools` | → | 可选，缺省 `false`：工具结果也搜 |
 | `limit` | → | 可选，缺省 500、封顶 2000（与 CLI 的 `--limit` 同一对常量） |
 | `skip` | → | 可选，缺省 0：跳过前几条命中（滚到底续下一页；`total` 照报全量） |
+| `hits[].kind` | ← | 命中种类：`user`（你说的）· `assistant`（那一家说的）· `report`（agent 回报：子 agent 交回 / 发来的话 · 另一个会话发来的话，正文是框里那一段）· `tool`（只在 `include_tools` 时） |
 | `hits[].turn` | ← | 第几轮：这条之前（含）你说过几句（口径同大纲 `history-user-inputs`；第一句之前 ＝ 0） |
 | `hits[].tsMs` | ← | 那条记录的时刻（毫秒；读不出 ＝ 0） |
 | `total` / `hits` | ← | **成品**（口径见 §10.5）：`hits` 与 `--find-in-session` 的 stdout **中段逐行相同**（同一个扫描；头尾只属于 CLI 那一臂），`total` = 全量命中数 |
@@ -4143,7 +4144,7 @@ CLI 面随之自动多一条 `--history-find`。
 
 ```text
 → {"id":"q12","cmd":"history-facts","args":{"path":"/home/u/.claude/projects/-p/s.jsonl"}}
-← {"kind":"reply","id":"q12","ok":true,"data":{"agent":"claude","end":5120088,"forkedFrom":null,"lastSay":{"text":"改好了。","at":"…"},"needs":{"kind":"approve","tool":"Bash","call":"toolu_1","what":"rm -rf build/","sinceMs":1700000000000},"pending":[{"id":"toolu_1","name":"Bash","what":"rm -rf build/","at":"…"}],"projectDir":"/p","touchedFiles":["/p/a.ts"],"usage":{"promptTokens":41250,"model":…,"peakPromptTokens":352000,"limit":1000000,"limitFrom":"observed"},"writers":[4711]}}
+← {"kind":"reply","id":"q12","ok":true,"data":{"agent":"claude","end":5120088,"forkedFrom":null,"handedBack":["a7f3c0d2"],"lastSay":{"text":"改好了。","at":"…"},"needs":{"kind":"approve","tool":"Bash","call":"toolu_1","what":"rm -rf build/","sinceMs":1700000000000},"pending":[{"id":"toolu_1","name":"Bash","what":"rm -rf build/","at":"…"}],"projectDir":"/p","touchedFiles":["/p/a.ts"],"usage":{"promptTokens":41250,"model":…,"peakPromptTokens":352000,"limit":1000000,"limitFrom":"observed"},"writers":[4711]}}
 → {"id":"q13","cmd":"history-facts","args":{"path":"…/s.jsonl","prior":{上一次的 data 原样},"limits":{"haiku":200000}}}
 ```
 
@@ -4162,6 +4163,7 @@ CLI 面随之自动多一条 `--history-find`。
 | `pending` | ← | 还没有结果的工具调用，文件序：`[{id, name, what, at}]`。assistant 记录里的 `tool_use` 进，user 记录里同 id 的 `tool_result` 来了摘；user 记录里没有 `tool_result`（你又发了一句 · 中断）⇒ 全摘。`what` ＝ 主参数一行（Bash → `command` · 读写工具 → 路径 · Grep / Glob → `pattern` · WebFetch → `url` · WebSearch → `query` · Task / Agent → `description` · AskUserQuestion → 第一问；头一个非空行、至多 160 字），没登记的工具 ⇒ `null`；`at` ＝ 那条记录的 `timestamp` 原样。至多 16 条（超 ⇒ 丢最早的）。累加、随 `prior` 续传 |
 | `lastSay` | ← | 文件序最后一段 assistant 正文（`text` 块）的头一个非空行（至多 160 字）＋ 那条记录的 `timestamp`：`{text, at}`；一段都没有 ⇒ `null`。悬停卡「它最后一句」用 |
 | `needs` | ← | **需要你**：这台 pidfile 里持着这条会话的活交互进程说 `status: "waiting"` ⇒ `{kind, tool, call, what, sinceMs}`，否则 `null`。`tool` ＝ 等的那个调用的工具名、`call` ＝ 它的 id（记录里 `tool_use.id`；界面把过程里那一步画成「在等你批准」）（判不出 ⇒ 都 `null`）。种类的唯一判定（`facts_query::needs_of`）：`pending` 里有 AskUserQuestion ⇒ `answer`（`what` 是那一问）· 有 ExitPlanMode ⇒ `plan` · 否则 `waitingFor` 带 `permission` 且有没结果的调用 ⇒ `approve`（`what` 是最早那一步的主参数）· 其余 ⇒ `unknown`（不猜）。`sinceMs` ＝ pidfile 的 `statusUpdatedAt`（epoch ms），没有 ⇒ `null`。每次现查、不累加（`prior` 里那一份不用） |
+| `handedBack` | ← | 交回了的子运行：`[子 agent 的 id]`，文件序、去重。user 记录「谁说的」是 agent 交回（适配层判：记录级 `origin.kind = peer` 且 `origin.handback = true`；只有框、没有记录级字段的认不出是不是交回 ⇒ 不进）⇒ 它的 `from`。至多 500 个（超 ⇒ 丢最早的）。累加、随 `prior` 续传。**同一个子运行的「交回」与「收场通知」只报一次，以交回为准**：通知（`userText.speaker.kind = taskNotification`）的 `taskId` 在这一格里 ⇒ 界面不画那条通知 |
 
 - 本体 `observe/facts_query.rs`（claude 的写类工具表也住那里：进适配层会让「加一个 agent 通用层要改几处」那只许降的棘轮涨一格）。子 agent 的列表与状态不在这里：那是运行表（`session_runs`），判定只有那一处。
 - 整份超过 32 MiB ⇒ `too_large`（不截断）。界面经通道直接问（`src/frontend/ui/session-reads.ts`），本机与远端同一条路；老后端不认 ⇒ `unsupported`（界面说「不可用」，不当成空）。

@@ -33,8 +33,8 @@ fn fixture() -> Vec<String> {
         "\u{feff}{\"type\":\"user\",\"uuid\":\"hit-bom\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"x needle y\"}]}}".into(),
         // 子 agent 记录的首条是主会话派给它的活，不是人说的 ⇒ 不算 user 命中
         r#"{"type":"user","uuid":"miss-sidechain-task","isSidechain":true,"message":{"content":"sub needle"}}"#.into(),
-        // agent 发来的话、后台通知不是人说的 ⇒ 不算 user 命中
-        r#"{"type":"user","uuid":"miss-agent","isMeta":true,"origin":{"kind":"peer","from":"a1"},"message":{"content":"<agent-message from=\"a1\">needle</agent-message>"}}"#.into(),
+        // agent 发来的话是 agent 回报（种类 `report` 单列）；后台通知不是谁说的话 ⇒ 不搜
+        r#"{"type":"user","uuid":"hit-agent-report","isMeta":true,"origin":{"kind":"peer","from":"a1"},"message":{"content":"<agent-message from=\"a1\">needle</agent-message>"}}"#.into(),
         r#"{"type":"user","uuid":"miss-notice","origin":{"kind":"task-notification"},"message":{"content":"<task-notification><summary>needle</summary></task-notification>"}}"#.into(),
     ]
 }
@@ -96,8 +96,8 @@ fn the_hits_are_exactly_the_named_ones_in_file_order() {
     let data = bytes_of(&lines);
     let plain = named(&lines, &["hit-"]);
     let with_tools = named(&lines, &["hit-", "tool-"]);
-    assert_eq!(plain.len(), 3, "夹具里 hit-* 的条数变了：{plain:?}");
-    assert_eq!(with_tools.len(), 5);
+    assert_eq!(plain.len(), 4, "夹具里 hit-* 的条数变了：{plain:?}");
+    assert_eq!(with_tools.len(), 6);
     assert!(named(&lines, &["miss-"]).len() >= 5, "miss-* 一类塌了");
     let v = find(&data, Q, false, FIND_DEFAULT_LIMIT);
     assert_eq!(uuids(&v), plain);
@@ -111,7 +111,7 @@ fn the_hits_are_exactly_the_named_ones_in_file_order() {
         .collect();
     assert_eq!(
         kinds,
-        ["user", "assistant", "tool", "tool", "user"],
+        ["user", "assistant", "tool", "tool", "user", "report"],
         "{kinds:?}"
     );
 }
@@ -180,13 +180,13 @@ fn find_and_global_search_agree_on_the_same_file() {
         let mut entry = FileEntry::empty(None, true);
         entry.take(None, &std::fs::read(&p).expect("读夹具"));
         let s = session_hits_in(&p, &entry, &q, &opts, &mut budget, 0).expect("有命中");
-        // 两者刻意的差别只有两处：`--search` 也列没有 uuid 的记录（uuid 记成空串）、本命令不列；
-        //   `--search` 收 agent 回报（种类 `report`，历史页「搜内容时」单列那一种）、会话内查找不收。
+        // 两者刻意的差别只有一处：`--search` 也列没有 uuid 的记录（uuid 记成空串）、本命令不列。
+        //   agent 回报（种类 `report`）两边都收。
         let searched: Vec<(String, String, String, String)> = s["hits"]
             .as_array()
             .unwrap()
             .iter()
-            .filter(|h| !h["uuid"].as_str().unwrap().is_empty() && h["kind"] != "report")
+            .filter(|h| !h["uuid"].as_str().unwrap().is_empty())
             .map(|h| {
                 let g = |k: &str| h[k].as_str().unwrap().to_string();
                 (g("uuid"), g("before"), g("matched"), g("after"))

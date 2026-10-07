@@ -40,7 +40,7 @@ import { copyText } from "./copy-table";
 export interface FindHit {
   /** 命中的那条记录的 uuid —— 前端按骨架索引 `uuid → seq` 跳过去。 */
   uuid: string;
-  /** `"user"` | `"assistant"` | `"tool"` */
+  /** `"user"` | `"assistant"` | `"report"`（agent 回报）| `"tool"` */
   kind: string;
   before: string;
   matched: string;
@@ -146,6 +146,8 @@ export interface SessionFacts {
   lastSay: { text: string; at: string | null } | null;
   /** 需要你：那台说在等、等的是什么（后端 `facts_query::needs_of` 判；界面不猜）。不在等 ⇒ `null`。 */
   needs: Needs | null;
+  /** 交回了的子运行（子 agent 的 id，文件序）：同一个子运行的收场通知以交回为准，消息流里不再另画。 */
+  handedBack: string[];
 }
 
 /** 一个还没有结果的工具调用（后端 `facts_query::PendingCall`）。 */
@@ -323,7 +325,7 @@ export function decodeFacts(v: unknown): SessionFacts {
   const bad = (): never => {
     throw new ShapeError("history-facts", copyText("sessionReads.missing.facts"));
   };
-  if (!isObj(v) || !exactKeys(v, ["agent", "end", "forkedFrom", "lastSay", "needs", "pending", "projectDir", "touchedFiles", "usage", "writers"])) return bad();
+  if (!isObj(v) || !exactKeys(v, ["agent", "end", "forkedFrom", "handedBack", "lastSay", "needs", "pending", "projectDir", "touchedFiles", "usage", "writers"])) return bad();
   if (!Array.isArray(v.pending)) return bad();
   const pending: PendingCall[] = [];
   for (const p of v.pending) {
@@ -347,6 +349,7 @@ export function decodeFacts(v: unknown): SessionFacts {
   if (!(v.projectDir === null || isStr(v.projectDir))) return bad();
   if (!(v.agent === null || isStr(v.agent))) return bad();
   if (!Array.isArray(v.touchedFiles) || !v.touchedFiles.every(isStr)) return bad();
+  if (!Array.isArray(v.handedBack) || !v.handedBack.every(isStr)) return bad();
   let usage: UsageFact | null = null;
   if (v.usage !== null) {
     const u = v.usage;
@@ -380,6 +383,7 @@ export function decodeFacts(v: unknown): SessionFacts {
     pending,
     lastSay,
     needs,
+    handedBack: v.handedBack as string[],
   };
 }
 

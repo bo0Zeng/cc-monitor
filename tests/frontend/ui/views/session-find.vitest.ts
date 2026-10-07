@@ -218,7 +218,7 @@ describe("会话内查找 · 搜索", () => {
 
   it("🔴 带着「含工具内容」那个勾；命中按后端给的顺序列、头一行「谁 · 第几轮 · 时刻」、<mark> 里是原文", async () => {
     const at = new Date(2026, 9, 6, 1, 52).getTime();
-    const s = vi.fn(async () => found([{ ...hit("u9", "NeedLe", "前 ", " 后", 3, at), kind: "user" }, hit("u2")]));
+    const s = vi.fn(async () => found([{ ...hit("u9", "NeedLe", "前 ", " 后", 3, at), kind: "user" }, hit("u2"), { ...hit("u4"), kind: "report", turn: 2 }]));
     const { p } = panelWith({ search: s } as Partial<SessionFindHost>);
     p.open("search");
     (p.el.querySelector("input[type=checkbox]") as HTMLInputElement).click();
@@ -226,12 +226,13 @@ describe("会话内查找 · 搜索", () => {
     await settleOutline();
     expect(s.mock.calls.at(-1)).toEqual(["needle", true, 0]);
     const rows = hitRows(p.el);
-    expect(rows.map((r) => r.dataset.hitUuid)).toEqual(["u9", "u2"]);
+    expect(rows.map((r) => r.dataset.hitUuid)).toEqual(["u9", "u2", "u4"]);
     expect(rows[0].firstElementChild!.textContent).toMatch(/^你 · 第 3 轮 · /);
     expect(rows[1].firstElementChild!.textContent, "第一句之前的不写轮").toBe("Claude");
+    expect(rows[2].firstElementChild!.textContent, "子 agent 交回的正文命中单列一种").toBe("agent 回报 · 第 2 轮");
     expect(rows[0].querySelector("mark")!.textContent).toBe("NeedLe");
     expect(rows[0].hasAttribute("data-uuid"), "命中行不许叫 data-uuid（那是消息卡的名字）").toBe(false);
-    expect(status(p)).toBe("2 条");
+    expect(status(p)).toBe("3 条");
   });
 
   it("🔴 全量 > 条数 ⇒ 说出来，滚到底续下一页（skip ＝ 已列的条数）", async () => {
