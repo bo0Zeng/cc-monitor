@@ -2861,7 +2861,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/frontend/shell/remote_write_registry_tests.rs",
             "claude_data_fence",
-            3,
+            2,
         ),
         // 收件箱三条 Tauri 命令随那一面进后端删了：点它们的账目句挂墓碑。
         (
@@ -3983,12 +3983,12 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/frontend/shell/remote_write_registry_tests.rs",
             "sftp_cancel_transfer",
-            4,
+            2,
         ),
         (
             "tests/frontend/shell/remote_write_registry_tests.rs",
             "sftp_read_text_for_edit",
-            2,
+            1,
         ),
         (
             "tests/frontend/shell/sftp_family_registry_tests.rs",
@@ -4745,7 +4745,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔删 `fenced_block::apply` 那一族〕`src/frontend/shell/src/verified_write.rs`（3）与 `tests/frontend/shell/verified_write_tests.rs`（1）两行摘掉：整份模块零调用方删了（整轴退役），
         //   它的墓碑说的那几件（`install_remote_ccm_helper` 两块 · `verify_and_rollback`）另有住址记着。
         // +2：传输台那三行摘掉时留的墓碑（暂存区上传 · 本机下载落地两个旧名）。
-        ("tests/frontend/shell/remote_write_registry_tests.rs", 18), // 两边各自贴的墓碑相加，按盘上现数（跑出来核过） // +3：点 monitor `claude_data_fence` 的三句挂墓碑 // // 〔删 `fenced_block::apply` 那一族〕+2：`read_profile_text` 那两句记事贴墓碑 // −1：双路径写入口那张表整条判据退役，表里那块墓碑（一个旧池命令名）随之走了 · 1 → 7（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· +1：F11 那条 SFTP 直删 · +2：写点表整张空了，`sftp.rs` 那一对原语（原子上传 · 入口落点类型）的旧名
+        ("tests/frontend/shell/remote_write_registry_tests.rs", 14),
         // `CCM_SELF` 删了那一拍：shim 那条判据改名留的墓碑。
         ("tests/frontend/shell/local_backend_tests.rs", 3), // 2 → 3：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 // // 1 → 2：两条副本判据删了，原地一块 //,
         // 别名改由后端渲染那一拍：本模块头注里 TS 那个旧生成器（`buildAliasLine`）·

@@ -155,9 +155,8 @@ fn capability_holders() -> Vec<String> {
 #[test]
 fn every_write_primitive_in_a_capability_holder_is_classified() {
     let sites = write_sites();
-    // 地板（「只抠到 N 处写点 —— 抽取器坏了」）翻成**零命中**：人群根（持 SFTP 会话的文件）
-    //   今天是空集 ⇒ 写点也是零。「抽取器没瞎」那一半由下面那条人群根判据的正控钉（同一把针喂合成语料必亮）。
-    //   〔从前的读数史：08-10 实测 10；步 23b +1 = 11；`sftp_chmod` +1 = 12；RW1 / SR1b 搬走之后 6 → 0。〕
+    // **零命中**：人群根（持 SFTP 会话的文件）是空集 ⇒ 写点也是零。
+    //   「抽取器没瞎」那一半由下面那条人群根判据的正控钉（同一把针喂合成语料必亮）。
     assert!(
         sites.is_empty(),
         "monitor 里又有持 SFTP 会话的文件在调写原语了：{sites:?} —— 远端写只许住本机后端 `dial/sftp.rs`"
@@ -229,16 +228,10 @@ fn pool_commands() -> Vec<String> {
     let pool = std::fs::read_to_string(repo_root().join("src/frontend/shell/src/sftp_pool.rs"))
         .expect("sftp_pool.rs 读不到");
     let commands = tauri_commands_of(&guard_core::production_code(&pool));
-    // 抽取器自检：`sftp_pool.rs` 到底有几条对外命令。
-    assert_eq!(
-        commands.len(),
-        // 1 → 0：最后一条（零流量复制）随门禁 `f3-copy` 那一格退役一起删了。
-        // 13 → 1 那一拍删了其余十二条。
-        0,
-        "`sftp_pool.rs` 现打 {} 条 `#[tauri::command]`（现打 **0**；1；2026-09-21 现打 13；\
-写的是 14，而含注释的 grep 数出来正是 14 —— \
-         「错的 grep 与截断的 grep 是同一种失败」）。实得：{commands:?}",
-        commands.len()
+    // `sftp_pool.rs` 不许再长对外命令（SFTP 只做传输，写经后端文件管理面）。
+    assert!(
+        commands.is_empty(),
+        "`sftp_pool.rs` 又长出了 `#[tauri::command]`：{commands:?}"
     );
     // 🔴 正控：人群今天是空集 ⇒ 抽取器同一段逻辑喂一份合成语料，证明它认得出命令
     //    （否则「0 条」与「抽取器坏了」在这里长得一模一样）。
@@ -422,11 +415,18 @@ fn the_remote_write_capability_is_still_confined_to_three_files() {
             "正控语料里没有 `{needle}` —— 正控本身坏了"
         );
     }
-    // 扫描面没塌（零命中 ≠ 没扫）：`src/frontend/shell/src` 生产段的份数有地板。
-    let n = guard_core::scan_tree!(&repo_root().join("src/frontend/shell/src"), &["rs"]).len();
-    assert!(
-        n >= 100,
-        "只扫到 {n} 份 monitor 源文件 —— 扫描面塌了，零命中在空转"
+    // 扫描面没塌（零命中 ≠ 没扫）：git 跟踪着的每一份 monitor 源文件都被扫到。
+    let seen: Vec<String> =
+        guard_core::scan_tree!(&repo_root().join("src/frontend/shell/src"), &["rs"])
+            .iter()
+            .map(|(p, _)| crate::guard_support::rel_of(p))
+            .collect();
+    crate::guard_support::assert_scanned_every_tracked(
+        "持 SFTP 会话的人群根",
+        &seen,
+        &["src/frontend/shell/src"],
+        "rs",
+        &[],
     );
 }
 
@@ -503,41 +503,17 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
         &root.join("src/frontend/filewin/src"),
         &["rs"]
     ));
-    // 抽取器自检①：**采集量**。射程被改窄在本条上是静默的（少扫一份 ⇒ 那一份
-    // 接的命令从 `used` 里消失 ⇒ 差集非空 ⇒ 会红；但少扫**全部**就两边都空了）。
-    assert_eq!(
-        files.len(),
-        // 〔合主线 09-24〕主线 19 → 20，多的是 `upload.rs`（工具栏「上传」那一问；一个池子符号都不碰）。
-        // 20 → 21，多的是 `bookmarks.rs`（书签：monitor 自己的状态文件，一个池子符号都不碰）；
-        //   21 → 22，多的是 `workspace.rs`（标签页 ＋ 双栏 ＋ 复制到另一栏；复制经通道问后端 `files-copy`，一个池子符号都不碰）。
-        //   22 → 23，多的是 `preview.rs`（预览：经通道问后端 `files-read-text`，一个池子符号都不碰）。
-        // 23 → 24，多的是 `size.rs`（算大小：经通道问后端 `files-size`，一个池子符号都不碰）；
-        //   24 → 25，多的是 `picker.rs`（原生选文件框：只碰本机选择框，一个池子符号都不碰）。
-        // 25 → 29，多的是 `extract.rs`（解压：经通道问后端 `files-extract`）· `lossy_pull.rs`（有损名下载：
-        //   经通道 `files-copy` 进暂存区再 `transfer-download`）· `chunk_upload.rs`（上传块形：经通道 `files-stage-chunk`）·
-        //   `cross_copy.rs`（复制到另一台：下 / 传都经通道）—— 四份一个池子符号都不碰。
-        // 29 → 30，多的是 `grep.rs`（按内容搜：经通道问后端 `files-grep`，一个池子符号都不碰）。
-        // 30 → 33：窗口独立成包，两棵合起来多三份 —— 窗口包的 `lib.rs`（原 `mod.rs` 的躯体；壳里那份 `mod.rs` 还在）·
-        //   窗口那一半 `proc.rs`（拨回 · 第一屏；壳里那一半 `proc.rs` 还在）· `guard_support.rs`（判据住址）；一个池子符号都不碰。
-        // 33 → 34，多的是窗口包的平台层 `platform.rs`（一个池子符号都不碰）。
-        // 34 → 38：样子 `theme.rs` · 窗口的框 `chrome.rs` · 文件种类 `kind.rs` · 属性框 `props.rs`（属性经通道问 `files-stat`；一个池子符号都不碰）。
-        // 38 → 39，多的是窗口的通用件 `kit.rs`（一个池子符号都不碰）。
-        // 39 → 40，多的是窗口底部那张「进度」表 `progress.rs`（只读各趟看板的读数，一个池子符号都不碰）。
-        40,
-        "`filewin/` 那棵树现扫到 {} 份 `.rs`（2026-09-22 现打 14：copy · corpus · **download** · **editor** · entry · \
-         find · fonts · mod · rows · scale · shell · source · transfer · writeops）\
-         〔第十三刀 09-23：14 → 16，多的是 **proc** 与 **win_main**（窗口改独立进程：\
-          一个窗口一个进程）。⚠ `win_main.rs` **不是一个模块** —— 它是那个 `[[bin]]` 的 \
-          crate 根，`mod.rs` 刻意不 `mod` 它；它照旧进本条的射程，因为本条问的是\
-          「`filewin/` 这棵树上谁在碰池子那几条命令」，而那个问题对一份 bin 入口一样要问〕\
-         〔F7b 09-24：16 → 18，多的是 **create** 与 **bigfile**（「新建空文件」；它走后端 `files-create`，\
-          一条池子命令都不碰 ⇒ 下面 `used` 那一摞不因它变）〕—— \
-         〔F9 09-24（与 F7b 同拍合并，现打 18）多的是 **bigfile**（大文件模式；它一条池子命令都不碰 ——\
-          读上限仍经 `editor.rs` 那一处 `MAX_EDIT_BYTES`）〕—— \
-         〔FW1+FW2 09-24：18 → 19（与 F7b / F9 同拍合并，现打 19），多的是 **select**（选中态 · 键位 · \
-          右键菜单那张表；它一条池命令都不碰，写操作经 `shell.rs` 那几个 `begin_*` 走）〕—— \
-         不等就是射程变了，先查扫描面再改这个数",
-        files.len()
+    // 抽取器自检①：**采集面**与 git 跟踪着的那两棵对拍（射程被改窄在本条上是静默的）。
+    let seen: Vec<String> = files
+        .iter()
+        .map(|(p, _)| crate::guard_support::rel_of(p))
+        .collect();
+    crate::guard_support::assert_scanned_every_tracked(
+        "`filewin/` 那两棵树",
+        &seen,
+        &["src/frontend/shell/src/filewin", "src/frontend/filewin/src"],
+        "rs",
+        &[],
     );
     let mut used: Vec<String> = Vec::new();
     let mut where_of: Vec<(String, String)> = Vec::new();
@@ -567,18 +543,9 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
         vec!["foo_bar".to_string(), "BAZ".to_string()],
         "抽取器认不出合成语料里那两处池子引用 —— 下面那个 0 不可信"
     );
-    // 抽取器自检②：**处数地板**。剥法把生产段剥没了 ⇒ 两边都空 ⇒ 相等断言恒真。
-    // 地板改成相等：10 → 9（少了 `sftp_realpath`：开窗前解 home 换成后端 `files-home`）
-    //   → 7（少了读文本那条命令与它的上限常量：换成后端 `files-read-text`，常量搬回 `editor.rs`）
-    //   → 5（少了复制那条命令与它的裁决类型：换成后端 `files-copy`）。
-    assert_eq!(
-        used.len(),
-        // 〔合主线 ＋ 收尾 09-24〕5 → 1：`sftp_download` · `sftp_upload` · `TRANSFER_LANE_CAP`（经通道）·
-        //   `sftp_cancel_transfer`〔散文墓碑〕（复制那一腿的取消，随复制走后端删了）走掉；剩那道围栏判定的旧住址。
-        // 1 → 0：那道围栏判定改指本家 `claude_data_fence`。〔散文墓碑〕
-        0,
-        "抠到 {} 处 `sftp_pool::…` 引用 —— 与现打的条数不等：抽取器坏了，或接线变了（实得 {used:?}）",
-        used.len()
+    assert!(
+        used.is_empty(),
+        "窗口那棵树又碰了 `sftp_pool::…`：{used:?} —— 窗口经通道问后端，不碰池子"
     );
 
     let mut declared: Vec<String> = SITES.iter().map(|(n, ..)| n.to_string()).collect();
@@ -639,25 +606,11 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
             "登记表说 `{n}` 是「{k}」，可它其实是一条 `#[tauri::command]`"
         );
     }
-    // 🔴**从「13 条全接上」变成「6 条 ＋ 7 条搬去后端」**。
-    //   窗口成了独立进程、只经通道说 `call` 之后，池子那 13 条里有 7 条在后端有了对应命令，
-    //   窗口不再碰它们（`D11`：没有退路）。剩下 6 条是窗口进程那一侧**还不是通道**的欠账。
-    //   ⇒ 两件事各一条**两向相等**：窗口还用的 == 6 条；搬走的 == 下表 7 条（逐条写清搬去了哪）。
-    // 这张表的人群是「池子里**还在**、而窗口不再用」的命令 ⇒ 池子收到只剩 `sftp_copy` 之后
-    //   它只剩一行。搬走过的十二条〔已删：`sftp_list_dir`→`files-ls` · `sftp_stat`→`files-stat` ·
-    //   `sftp_mkdir` · `sftp_delete` · `sftp_rename` · `sftp_chmod` · `sftp_write_text`→写面 ·
-    //   `sftp_realpath`→`files-home` · `sftp_read_text_for_edit`〔散文墓碑〕→`files-read-text`（F7a）·
-    //   `sftp_upload` / `sftp_download`→通道后面的传输台 · `sftp_cancel_transfer`〔散文墓碑〕→停订（F7c）〕连本体一起删了。
-    // 最后一行（同机复制 → 后端 `files-copy`）随池子那条命令一起删了 ⇒ 表空。
+    // 池子里还在、而窗口不再用的命令（今天池子一条命令都没有 ⇒ 表空）。
     const MOVED_TO_BACKEND: &[(&str, &str)] = &[];
-    assert_eq!(
-        declared_cmds.len(),
-        // 3 → 0：窗口一条池子命令都不接了（上传 · 往外拖经通道；取消随复制走后端）。
-        0,
-        "窗口今天接了 {} 条池子命令（13 → 6：上传 · 往外拖 · 取消 · 读文本进编辑器 ·\
-         同机复制 · 开窗前解 home；6 → 5：开窗前解 home 换成后端 `files-home`；\
-         5 → 4：读文本进编辑器换成后端 `files-read-text`；4 → 3：同机复制换成后端 `files-copy`）",
-        declared_cmds.len()
+    assert!(
+        declared_cmds.is_empty(),
+        "窗口又接了池子命令：{declared_cmds:?}"
     );
     let missing: std::collections::BTreeSet<&str> = commands
         .iter()
@@ -804,20 +757,10 @@ fn every_pool_command_is_either_a_registered_write_or_a_registered_read() {
         "这几条命令同时出现在两堆里：{both:?} —— \
          `NON_WRITING_COMMANDS` 说它不写，可它函数体里有 `guard_write`。哪一栏是假的？"
     );
-    // 现打读数：两个数各自钉住，别只钉和。
-    assert_eq!(
-        (fenced.len(), readers.len()),
-        // (8, 5) → (1, 0)：池子只剩一条带围栏的写命令，读命令一条都不剩。
-        // (1, 0) → (0, 0)：那一条（零流量复制）也删了。全集由 `pool_commands` 现打（带正控），
-        //   池子哪天再长出一条命令，本条逼它归档。
-        (0, 0),
-        "现打：写 {} 条 · 读 {} 条（2026-09-21 现打 **8 ＋ 5 = 13**；\
-         当日早先是 7 ＋ 6 —— `sftp_download` 从「读」那一堆搬到了「写」那一堆，\
-         它一直在写盘，只是写的是**用户选的本机路径**而没人守，逐条来历见\
-         `NON_WRITING_COMMANDS` 上方那段墓碑）。\
-         实得写 {fenced:?} · 读 {readers:?}",
-        fenced.len(),
-        readers.len()
+    // 池子不长命令 ⇒ 两堆都空（全集由 `pool_commands` 现打，带正控；池子哪天再长出一条，本条逼它归档）。
+    assert!(
+        fenced.is_empty() && readers.is_empty(),
+        "池子又有命令了：写 {fenced:?} · 读 {readers:?}"
     );
     for (n, what, why) in NON_WRITING_COMMANDS {
         assert!(

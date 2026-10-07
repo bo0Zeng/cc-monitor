@@ -269,20 +269,12 @@ fn every_registry_guard_keeps_its_reverse_half() {
     }
     // 抽取器自检⑤：**逐子树对拍采集面** —— git 跟踪着的每一份 `.rs` 都得被打开过。
     // 路径拼错 · 后缀过滤掉 · 静默跳过子目录都红。
-    let starved: Vec<String> = ["src/frontend/shell/src", "src/backend", "tests"]
-        .iter()
-        .flat_map(|sub| tracked_rs_under(sub))
-        .filter(|rel| !seen.iter().any(|q| q == rel))
-        .map(|rel| format!("  {rel}"))
-        .collect();
-    assert!(
-        starved.is_empty(),
-        "这几份 git 跟踪着的 `.rs` 本条没打开过：\n{}\n\
-             ⇒ 那个实参此刻漏了东西，而本条对漏掉的「全绿」——\n\
-             那正是「没红」与「没看」在输出上一模一样的那一格。\n\
-             ⇒ 先核实参（路径拼对了吗 · 后缀过滤对吗）。\n\
-             （本趟逐子树的采集量：{scanned:?}）",
-        starved.join("\n")
+    crate::guard_support::assert_scanned_every_tracked(
+        "登记表型判据",
+        &seen,
+        &["src/frontend/shell/src", "src/backend", "tests"],
+        "rs",
+        &[],
     );
     // 抽取器自检⑥（`K-R37`，**点名**）：**射程本身**也要被钉住。
     //
@@ -724,18 +716,6 @@ fn the_pending_inventory_only_shrinks() {
         "存量清单里这些已经不裸遍历了（迁完了或文件没了）：{stale:?}\n\
              ⇒ 删掉它们 —— 留着就是把棘轮的余量白送出去。"
     );
-}
-
-/// git 跟踪着的、住在 `sub` 下的 `.rs`（仓根相对、正斜杠；工作树里已删的不算）。
-///
-/// 采集面对拍的另一侧：与 `scan_tree!` 不同源（一个问 git 索引，一个走文件系统）。
-fn tracked_rs_under(sub: &str) -> Vec<String> {
-    let root = repo_root();
-    git_read(&root, &["ls-files", "-z", "--", sub])
-        .split('\0')
-        .filter(|rel| rel.ends_with(".rs") && root.join(rel).is_file())
-        .map(str::to_string)
-        .collect()
 }
 
 /// 本文件在仓里的相对住址 —— 下面要拿它去问 git 历史。
@@ -1282,7 +1262,7 @@ fn no_guard_prose_still_claims_the_scan_tree_self_exclusion_works() {
                 .iter()
                 .find(|(s, _)| s == sub)
                 .map_or(0, |(_, n)| *n);
-            let want = tracked_rs_under(sub).len();
+            let want = crate::guard_support::tracked_under(sub, "rs").len();
             (got < want).then(|| format!("  {sub} —— 采到 {got} 份，git 跟踪着 {want} 份"))
         })
         .collect();
