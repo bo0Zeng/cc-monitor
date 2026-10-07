@@ -276,6 +276,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/resume-menu.vitest.ts",
     "tests/frontend/ui/events-follow.vitest.ts",
     "tests/frontend/ui/viewer-window-text.vitest.ts",
+    "tests/frontend/ui/ipc/peer-version.vitest.ts",
     "tests/frontend/ui/views/session-viewer-follow.vitest.ts",
     "tests/frontend/ui/views/session-viewer-skeleton.vitest.ts",
     "tests/frontend/ui/views/user-input-panel.vitest.ts",
