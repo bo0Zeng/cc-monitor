@@ -46,7 +46,7 @@ mod tests {
     const CORE_FILES: &[&str] = &[
         "platform/mod.rs",
         "platform/pidwatch/mod.rs",
-        "platform/fallback_guard.rs",
+        // `platform/fallback_guard.rs` 出表：它是判据，整份搬去了 `tests/backend/platform/`（不是通用层的生产文件）。
         "common/mod.rs",
         "stream/wire.rs",
         "stream/inbound/mod.rs",
@@ -119,21 +119,6 @@ mod tests {
         "stream/inbound/registry/machine.rs",
         "stream/inbound/registry/terminals.rs",
     ];
-
-    /// 人群下界：低于它说明取法坏了（路径写错 / 扩展名过滤掉）⇒ **红**，不是绿。
-    ///
-    /// ⚠ `S3` 把它从 5 抬到 10：**下界必须跟着覆盖面涨**，否则搬进来一批之后
-    /// 「路径全写错」这种坏法仍然过得去（剩 5 个也满足旧下界）。
-    ///
-    /// ⚠ `K-W1A`（08-26）把它从 10 抬到 **14**：同一条纪律 —— `plugin/` 四个文件进表之后
-    /// 表长 15，下界若还停在 10，「`plugin/` 整个目录路径写错」这种坏法仍然过得去
-    ///（剩 11 个也满足旧下界）。抬到 14 之后余量是 1。
-    ///
-    /// ⚠ `K-R12` 下一拍（09-04）把它从 14 抬到 **15**：同一条纪律，不是顺手改数 ——
-    /// `common/tmux_utf8.rs` 进表之后表长 16，下界若还停在 14，
-    /// 「`common/` 两个文件的路径一起写错」这种坏法仍然过得去（剩 14 个也满足旧下界）。
-    /// 抬到 15 之后余量仍是 1。
-    const CORE_FILES_FLOOR: usize = 15;
 
     /// **已知欠账**（`文件:行内容片段`, 归哪一件, 为什么今天不动它）—— **递减棘轮**。
     ///
@@ -234,7 +219,7 @@ mod tests {
         for rel in CORE_FILES {
             let p = root.join(rel);
             let Ok(src) = std::fs::read_to_string(&p) else {
-                continue; // 文件被挪走 ⇒ 下面的下界断言会红，比在这里 panic 诊断更清楚
+                continue; // 文件被挪走 ⇒ 下面那条「每一份都读到了」会红，比在这里 panic 诊断更清楚
             };
             scanned += 1;
             for (no, line) in production_lines(&src) {
@@ -247,10 +232,12 @@ mod tests {
                 }
             }
         }
-        assert!(
-            scanned >= CORE_FILES_FLOOR,
-            "只扫到 {scanned} 个通用层文件（下界 {CORE_FILES_FLOOR}）—— \
-             取法坏了（路径写错？文件挪走了？），本断言此刻是**空转**的"
+        assert_eq!(
+            scanned,
+            CORE_FILES.len(),
+            "通用层清单 {} 份里只读到 {scanned} 份 —— \
+             取法坏了（路径写错？文件挪走了？），本断言此刻有一部分在**空转**",
+            CORE_FILES.len()
         );
         // 登记过的挑出来（欠账 `KNOWN_DEBT` + 冻结兼容 `FROZEN_COMPAT`）；
         // 剩下的才是**新增违规**。⚠ 两张表**都**要参与，但它们性质相反：
@@ -312,7 +299,6 @@ mod tests {
             // S1 立表当天
             "platform/mod.rs",
             "platform/pidwatch/mod.rs",
-            "platform/fallback_guard.rs",
             "common/mod.rs",
             "stream/wire.rs",
             "stream/inbound/mod.rs",
@@ -374,20 +360,10 @@ mod tests {
     ///
     /// 两条纪律：
     /// ① 每条都要有**非空的解锁条件**（没有解锁条件的「冻结」= 「永久豁免」的好听说法）；
-    /// ② 条数**有天花板**且只许降 —— 否则「加第三个 `<名>_dir` 字段」只要顺手登记一条
-    ///    就能过，而那恰恰是 `D3` 排除掉的那条路。
+    /// ② 往里加一条就是多欠一笔：加第二个 `<名>_dir` 字段正是 `D3` 排除掉的那条路
+    ///    （往 `homes` 里加一项，不要加字段）。
     #[test]
     fn every_frozen_compat_entry_states_how_it_gets_unfrozen() {
-        /// 今天恰好 1 条（`wire.rs` 的 `claude_dir`）。**只许降不许升**。
-        const FROZEN_COMPAT_CEILING: usize = 1;
-        assert!(
-            FROZEN_COMPAT.len() <= FROZEN_COMPAT_CEILING,
-            "`FROZEN_COMPAT` 涨到 {} 条了（天花板 {FROZEN_COMPAT_CEILING}）。\n\
-             这张表**只许缩短**：它装的是「真违规但今天动不了」，多一条就是多欠一笔。\n\
-             ⚠ 如果你正在加第二个 `<名>_dir` 字段 —— 那正是 `D3` 逐字排除掉的那条路，\n\
-             终点是 hello 里五个并列的目录字段。往 `homes` 里加一项，不要加字段。",
-            FROZEN_COMPAT.len()
-        );
         for (file, frag, why, unlock) in FROZEN_COMPAT {
             assert!(
                 !why.trim().is_empty(),
