@@ -52,6 +52,86 @@ pub(crate) fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
+// 问 git 索引的那一份住测试树（它起一个 `git` 进程；生产树里起进程要进出口的登记）。
+#[path = "../../../../tests/frontend/shell/guard_support_tracked.rs"]
+mod tracked;
+pub(crate) use tracked::tracked_under;
+
+/// 采集面对拍：`dirs` 下 git 跟踪着的每一份 `ext` 文件都得在 `seen`（仓根相对、正斜杠）里，`skip` 里的除外。
+/// 漏了 ⇒ panic，点名漏的是哪几份（路径拼错 · 后缀过滤掉 · 静默跳过子目录都在这里红）。
+pub(crate) fn assert_scanned_every_tracked(
+    label: &str,
+    seen: &[String],
+    dirs: &[&str],
+    ext: &str,
+    skip: &[&str],
+) {
+    let missing: Vec<String> = dirs
+        .iter()
+        .flat_map(|d| tracked_under(d, ext))
+        .filter(|rel| !skip.contains(&rel.as_str()) && !seen.iter().any(|s| s == rel))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "{label}：这几份 git 跟踪着的 `.{ext}` 没被扫到 —— 采集面塌了，零命中在空转：\n  {}",
+        missing.join("\n  ")
+    );
+}
+
+/// 第 `i` 行（0 起）所在的那一项的名字：往上找最近一处包着它的 `fn` / `struct` / `enum` / `const` / `static` / `trait`
+///（Rust 源码；按缩进与收口的 `}` 认外层，粗，但归错会红在名字对不上上）。找不到 ⇒ `"<顶层>"`。
+///
+/// 逐处登记按「文件 × 外层函数」认，不按处数认：同一个函数里多写一处不改登记，新函数里写一处要登记。
+pub(crate) fn enclosing_fn(lines: &[&str], i: usize) -> String {
+    let indent = |l: &str| l.len() - l.trim_start().len();
+    let Some(here) = lines.get(i) else {
+        return "<顶层>".to_string();
+    };
+    let fn_name = |l: &str| -> Option<String> {
+        let t = guard_core::strip_visibility(l.trim_start());
+        let t = t.strip_prefix("async ").unwrap_or(t);
+        let rest = ["fn ", "struct ", "enum ", "const ", "static ", "trait "]
+            .iter()
+            .find_map(|k| t.strip_prefix(k))
+            .or_else(|| l.split(" fn ").nth(1))?;
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        (!name.is_empty()).then_some(name)
+    };
+    // 命中落在签名那一行上：就是这个函数。
+    if let Some(name) = fn_name(here) {
+        return name;
+    }
+    let here_indent = indent(here);
+    // 往上走时见过的最浅的 `}` 行：比它深（或一样深）的 `fn` 已经在那儿收口了，不是外层。
+    let mut closed = usize::MAX;
+    for prev in lines[..i].iter().rev() {
+        let t = prev.trim_start();
+        let d = indent(prev);
+        if t.starts_with('}') {
+            closed = closed.min(d);
+            continue;
+        }
+        if d >= here_indent || d >= closed {
+            continue;
+        }
+        if let Some(name) = fn_name(prev) {
+            return name;
+        }
+    }
+    "<顶层>".to_string()
+}
+
+/// 一份文件相对仓根的路径（正斜杠）。
+pub(crate) fn rel_of(path: &Path) -> String {
+    path.strip_prefix(repo_root())
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
 /// 仓里的 `src/`（前端 TS ＋ 两个 Rust 半都住这儿）—— `<repo>/src`。
 pub(crate) fn repo_src_root() -> PathBuf {
     repo_root().join("src")

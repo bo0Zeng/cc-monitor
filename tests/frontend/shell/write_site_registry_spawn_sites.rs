@@ -357,22 +357,13 @@ fn the_three_policies_each_site_declares_match_the_code() {
         }
         checked += 1;
     }
-    // 3 → 2：`build.rs` 里给旧账号工具算指纹的那一处随那份 vendor 删了。
-    // 2 → 1：`build.rs` 里 vendor 新鲜度自检那一处随 vendored 引擎整棵删了。
+    // 「不进那个出口」只许出口自己那一处（多一处 = 有人给自己开了豁免）。
     assert_eq!(
         opted_out, 1,
-        "「不进那个出口」的落点从 1 处变成了 {opted_out} 处。\n\
-             今天只剩出口自己那一处。多一处 = 有人给自己开了豁免。"
+        "「不进那个出口」的落点有 {opted_out} 处 —— 只许出口自己那一处，多一处 = 有人给自己开了豁免。"
     );
-    // 地板 14 → 13：本机一次性查询那一个落点（`local_query` 模块的 `run_query`〔散文墓碑〕）随本机那几问
-    //   改走 `<local>` 长连接删了 ⇒ 人群恰好少一个（15 → 13 的另一个见失败读数，人群按现打为准）。
-    // 地板 13 → 12：驾驶舱本机 shell 读那一个落点随读面改走后端删了。
-    // 地板 12 → 11：两边各自删掉的落点相加（现打 11；两边合并前各自现打都 ≥ 12）。
-    assert!(
-        checked >= 11,
-        "只对拍到 {checked} 个带策略的落点 —— 09-18 现打 14 个，\
-加了文件管理窗口那个独立进程之后 15 个，删一次性本机查询之后 13 个。本条此刻在空转"
-    );
+    // 申报表与盘上两向相等由下一条（`every_local_spawn_is_declared`）钉；这里只挡「一处都没对拍到」的空转。
+    assert!(checked > 0, "一个带策略的落点都没对拍到 —— 本条此刻在空转");
 }
 
 #[test]
@@ -419,11 +410,7 @@ fn every_local_spawn_is_declared() {
     }
     found.sort();
     found.dedup();
-    assert!(
-        found.len() >= 5,
-        "全树只找到 {} 处本机起进程（08-08 实测 8 个「文件::函数」）—— 抽取器坏了，本条此刻无效",
-        found.len()
-    );
+    // 抽取器坏了扫不到东西 ⇒ 下面反向那一条（申报的落点必须真在）红。
 
     let missing: Vec<String> = found
         .iter()

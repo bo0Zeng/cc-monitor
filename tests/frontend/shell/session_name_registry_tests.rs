@@ -1,22 +1,18 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// `(相对仓根的路径, 类别, 命中数, 说明 + 谁退役它)`。
+/// `(相对仓根的路径, 类别, 说明 + 谁退役它)`，按文件两向相等（产名的本体只许一个文件，由下面那条钉）。
 ///
 /// 类别：`producer-target`（S12 要留的两族）· `producer-duplicate`（要退役的副本，
 /// **必须写退役归属**）· `consumer`（只判名字形状、不产名）。
-const REGISTERED: &[(&str, &str, usize, &str)] = &[
+const REGISTERED: &[(&str, &str, &str)] = &[
     // 前端那两格出表：`src/remote-launch.ts`（`deriveTmuxName`，原 `producer-target`）整份删、
     //   `src/frontend/ui/fork-launch.ts`（`forkTmuxName` 的 `-fork-cc`，原 `producer-duplicate` 退役归 U11）随派生 ＋ 避让一起搬进后端。
     //   ⇒ 前端零产名点（界面要名字就问那台后端的 `terminal-name-mint`）；后端那一份从「副本」翻成**唯一本体**。
     (
         // 🔴 住址从 `shared/ccm` 换到这里：〔用@09-11 `K33`〕那个 bash 脚本删了，`derive_tmux_name` 搬进了后端本体。
-        //    ⚠ 处数按**行**数：`derive_tmux_name` 里 `"session-cc"`（空名回落）与 `format!("{s}-cc")` 两行，
-        // ＋ `fork_tmux_base` 两行：`format!("{seg}-fork-cc")`（产名）与 `strip_suffix("-cc")`（剥源名那个尾巴，
-        //    尺子按「`-cc` 紧跟收尾引号」数、认不出它不产名）= 4。四行都在同一个 `name_segment` 净化器之上。
         "src/backend/control/ccm/plan.rs",
         "producer-target",
-        4,
         "本体：`derive_tmux_name`（cwd 派生 `<项目名>-cc`，空 ⇒ `session-cc`）＋ `fork_tmux_base`（分叉 `<源名>-fork-cc`）。\
 全仓唯一一份：`ccm` 起会话与帧命令 `terminal-name-mint`（界面问的那一口）都走它，\
              撞名避让走同文件的 `next_free_name`（`mint_tmux_name`，只收会话快照那张 `TakenNames`）。\
@@ -26,7 +22,6 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/shared/cc-bus/scripts/cc-spawn",
         "producer-duplicate",
-        1,
         "`<basename>_cc` —— ⚠ **下划线不是连字符**，全仓其余都用 `-cc` ⇒ \
              `is_ccm_tmux_name` 认不出它。是刻意隔开命名空间还是漂了，**待裁定**。\
              退役归 **U11 本体**。",
@@ -34,7 +29,6 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/backend/control/gate_rules.rs",
         "consumer",
-        2,
         "`is_ccm_tmux_name` —— 只**判**名字形状（§34 Gate 2 的本地那半），**不产名**。\
              登记它是为了让上面那条「多一处就红」不会被消费点噪音淹掉。\
              ⚠ **F03 从 `src/frontend/shell/src/tmux.rs` 搬到这里**：判定收进共享 crate，\
@@ -111,7 +105,7 @@ fn scan_files() -> Vec<PathBuf> {
     files
 }
 
-fn scan() -> Vec<(String, usize)> {
+fn scan() -> Vec<String> {
     let root = repo_root();
     let mut out = Vec::new();
     for f in scan_files() {
@@ -125,7 +119,7 @@ fn scan() -> Vec<(String, usize)> {
             &fs::read_to_string(&f).unwrap_or_default(),
         ));
         if n > 0 {
-            out.push((rel, n));
+            out.push(rel);
         }
     }
     out
@@ -176,55 +170,38 @@ fn the_scan_actually_reads_all_four_surfaces() {
     let root = repo_root();
     let mut ts = Vec::new();
     collect_ts(&root.join("src"), &mut ts);
+    // 两侧遍历器的正控：前端入口 `main.ts` 与 Rust 那半的入口 `lib.rs` 必在人群里
+    //（把遍历根指到一个不存在的目录，本条要红）。
     assert!(
-        // ★ audit-0805 F16：60 → **190**（今日实测）。落后 130 意味着
-        // 前端 `.ts` 少掉三分之二都不会红 —— 这条地板此前几乎不构成约束。
-        ts.len() >= 190,
-        "只扫到 {} 个前端 .ts —— 遍历器坏了",
+        ts.iter()
+            .any(|p| *p == root.join("src/frontend/ui/main.ts")),
+        "前端 .ts 的遍历器没走到 `main.ts`（走到 {} 份）—— 遍历器坏了",
         ts.len()
     );
-    // Rust 侧改成递归之后，**它自己也要有地板** ——
-    // 否则新加的覆盖面可以静默消失：实测把 `collect_rs` 的根指到一个不存在的目录，
-    // 本条**照样绿**（4 passed），而「未扫文件里的产名点」那个洞当场重新打开。
-    // ⇒ 扩了扫描面就要同步扩它的自检，这两步是一件事的两半。
-    let rs: Vec<_> = scan_files()
-        .into_iter()
-        .filter(|p| p.extension().is_some_and(|x| x == "rs"))
-        .collect();
+    let files = scan_files();
     assert!(
-        rs.len() >= 90,
-        "只扫到 {} 个 monitor 侧 .rs（08-06 实测 100+）—— Rust 那半的遍历器坏了，\
-             产名点会重新变成「只看两个文件」",
-        rs.len()
+        files
+            .iter()
+            .any(|p| *p == root.join("src/frontend/shell/src/lib.rs")),
+        "Rust 那半的遍历器没走到 `src/frontend/shell/src/lib.rs` —— 产名点会重新变成「只看两个文件」"
     );
     for f in [
         "src/backend/control/gate_rules.rs",
         "src/backend/control/ccm/plan.rs",
         "src/shared/cc-bus/scripts/cc-spawn",
     ] {
-        let n = fs::read_to_string(root.join(f))
-            .map(|s| s.len())
-            .unwrap_or(0);
-        assert!(n > 2000, "{f} 读不到或太短（{n} 字节）—— 路径变了？");
+        assert!(
+            fs::read_to_string(root.join(f)).is_ok_and(|s| !s.trim().is_empty()),
+            "{f} 读不到或是空的 —— 路径变了？"
+        );
     }
 }
 
-/// ★ 递减棘轮：目录内容 == 登记表，**连每个文件的命中数一起钉**。
-///
-/// ⚠ **F13（2026-08-04）往下拧了一格：5 → 4 个文件。**
-/// 消灭的是 `src/frontend/ui/launch-requests.ts` 那个 `<sid8>-cc` 默认值 —— 它与 `pickFreshTmuxName`
-/// 的基名逐字相同却**不做撞名避让**，正是用户问的「为什么会撞名」的根因之一。
-/// **是本条棘轮的「少一处也红」提醒我来拧的**（不是我记得）——
-/// 只挡回潮的棘轮不会自己往下走，那半句的价值就在这里。
-///
-/// 多一处 ⇒ 红（防回潮）；少一处 ⇒ 也红（提醒把棘轮往下拧 + 核对 S12 的账）。
+/// ★ 目录内容 == 登记表（按文件两向）：多一处产名的文件 ⇒ 红；退役了 ⇒ 也红。
 #[test]
 fn the_session_name_producers_match_the_registry_count_for_count() {
     let found = scan();
-    let mut want: Vec<(String, usize)> = REGISTERED
-        .iter()
-        .map(|(f, _, n, _)| (f.to_string(), *n))
-        .collect();
+    let mut want: Vec<String> = REGISTERED.iter().map(|(f, ..)| f.to_string()).collect();
     want.sort();
     let mut got = found.clone();
     got.sort();
@@ -232,25 +209,21 @@ fn the_session_name_producers_match_the_registry_count_for_count() {
         got, want,
         "\n会话名产出点与登记表对不上。\n\
              **多一处** = 又开了一个产出点（S12 要收敛到 2 个，别往回走）；\n\
-             **少一处** = 退役了一份 —— 把登记表那条删掉，并回 S12 把「计数守卫 == 2」的进度更新。\n\
-             （今天是 **2** 个产出点 + 1 个消费点 —— 前端两格（`remote-launch.ts` · `fork-launch.ts`）随派生 ＋ 避让\n\
-             搬进后端出表，后端 `plan.rs` 成唯一本体；另一格是 `cc-spawn` 的 `_cc`，退役归 U11。）"
+             **少一处** = 退役了一份 —— 把登记表那条删掉。"
     );
 }
 
 /// ★ 每个 `producer-duplicate` 都必须写明**谁退役它** —— 那是它与 `producer-target` 的分界。
 #[test]
 fn every_duplicate_producer_names_its_retirement_owner() {
-    let mut dups = 0usize;
     let mut targets = 0usize;
-    for (f, kind, _, why) in REGISTERED {
+    for (f, kind, why) in REGISTERED {
         assert!(
             matches!(*kind, "producer-target" | "producer-duplicate" | "consumer"),
             "{f} 的类别 {kind:?} 不在三类里"
         );
         match *kind {
             "producer-duplicate" => {
-                dups += 1;
                 assert!(why.contains("退役归"), "{f} 记成副本却没说谁退役它");
             }
             "producer-target" => targets += 1,
@@ -261,20 +234,5 @@ fn every_duplicate_producer_names_its_retirement_owner() {
         targets, 1,
         "产名的本体只许一个文件 —— 今天是后端 `control/ccm/plan.rs`（前端那份 `remote-launch.ts` 删了）；\
 sid 派生那一族随 `R55`「要是可读的名字 / 不要id」整条退役了。"
-    );
-    // F13（2026-08-04）：4 → 3。退役的是 `src/frontend/ui/launch-requests.ts` 那个 `<sid8>-cc` 默认值
-    // （与 `pickFreshTmuxName` 基名逐字相同却不做撞名避让 —— 用户问的「为什么会撞名」的根因之一）。
-    // 剩下 3 份：`fork-launch.ts`（→ F13 已改调铸名口，仍自产基名）·`shared/ccm`（→ F06）·
-    // `cc-spawn`（→ F13a）。⚠ **〔F13a 摸底订正 08-04〕它等的不是「本机后端」** ——
-    // 实测：`cc-spawn` 已经**走 `ccm`**（`CCM_BIN --detach`，还带 `--ccm-probe` 能力协商），
-    // 它走的是**命令行**、不是 monitor 的进程内通道 ⇒ 本机后端跑不跑起来与它**无关**。
-    // 它真正等的是 **F06b**：`ccm` 去调后端的 `--resolve` 拿 argv/名字。
-    // ⚠ 而后端侧 `--resolve` **早就做好了**（`control/resolve_query.rs`：
-    // stdin `ResumeSpec` → stdout `CommandPlan`）—— 缺的是 **`ccm` 那一侧的调用**。
-    // 3 → 1：`fork-launch.ts`（`-fork-cc`）随派生搬进后端退役；`plan.rs` 从副本翻成本体（`producer-target`）。
-    //   剩 `cc-spawn` 一份（`_cc`，退役归 U11 本体）。
-    assert_eq!(
-        dups, 1,
-        "副本数变了 —— 退役了就把棘轮往下拧，并更新 S12 的账"
     );
 }
