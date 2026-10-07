@@ -24,12 +24,16 @@ pub(crate) type Servers = Map<String, Value>;
 const VERSION: u64 = 1;
 /// 底那一格的键。
 const BASE_KEY: &str = "base";
+/// 「停止同步」那一格的键（停着 ⇒ `false`；开着时这一格不写）。
+const SYNC_KEY: &str = "sync";
 
 /// 盘上那一份：共享集合 ＋ 每个号（按配置目录）上次同步时的样子。
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct Store {
     pub servers: Servers,
     pub base: BTreeMap<String, Servers>,
+    /// 用户停了同步：各号各管各的，已经同步过去的不删；开回来那一刻照常三方对照。
+    pub paused: bool,
 }
 
 impl Store {
@@ -68,7 +72,16 @@ impl Store {
             }
             Some(_) => return Err(shape()),
         }
-        Ok(Store { servers, base })
+        let paused = match o.remove(SYNC_KEY) {
+            None => false,
+            Some(Value::Bool(on)) => !on,
+            Some(_) => return Err(shape()),
+        };
+        Ok(Store {
+            servers,
+            base,
+            paused,
+        })
     }
 
     /// 写回去的那份原文（两格缩进、末尾换行）。
@@ -82,6 +95,9 @@ impl Store {
         root.insert("version".to_string(), json!(VERSION));
         root.insert(key.to_string(), Value::Object(self.servers.clone()));
         root.insert(BASE_KEY.to_string(), Value::Object(base));
+        if self.paused {
+            root.insert(SYNC_KEY.to_string(), json!(false));
+        }
         let mut out = serde_json::to_string_pretty(&Value::Object(root)).unwrap_or_default();
         out.push('\n');
         out
@@ -203,7 +219,11 @@ pub(crate) fn plan(store: &Store, seen: &[Seen]) -> Plan {
         }
     }
     Plan {
-        store: Store { servers, base },
+        store: Store {
+            servers,
+            base,
+            paused: store.paused,
+        },
         writes,
         adopted,
         conflicts,

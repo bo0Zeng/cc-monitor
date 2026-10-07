@@ -67,7 +67,7 @@ describe("D1 · tmux 四选的说明与后端退让规则同一张表", () => {
 
   it("表单上选哪一种，下面那句就是哪一种的说明；每个选项的 title 也是它", async () => {
     const { buildAliasManager, TMUX_NAMING } = await import("../../../../src/frontend/ui/settings/machine-aliases");
-    const w = buildAliasManager({ platform: "posix", origin: () => "<local>" });
+    const w = buildAliasManager({ platform: "posix", origin: () => "<local>" }).element;
     // 表单是「＋ 新增别名」就地展开的那一张。
     [...w.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("machineAliases.list.add"))!.click();
     const sel = [...w.querySelectorAll("select")].find((s) =>

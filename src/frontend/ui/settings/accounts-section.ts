@@ -588,7 +588,7 @@ export class AccountsSection {
     };
     const cmds = f.commands.get(a.name) ?? [];
     if (cmds.length > 0) {
-      const copy = button({ label: copyText("acctPage.detail.copy"), kind: "ghost", size: "compact", onClick: () => void navigator.clipboard?.writeText(cmds.join(" ")) });
+      const copy = button({ label: copyText("acctPage.detail.copy"), kind: "icon", icon: "copy", size: "compact", onClick: () => void navigator.clipboard?.writeText(cmds.join(" ")) });
       line(copyText("acctPage.detail.commands"), mono(cmds.join(copyText("kit.text.sep"))), copy);
     }
     if (accountRowKind(a) === "apikey") line(copyText("acctPage.detail.apikey"), this.keyEditor(origin, a, readonly));

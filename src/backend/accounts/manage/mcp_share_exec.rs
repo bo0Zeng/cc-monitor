@@ -233,6 +233,7 @@ fn write_account(d: &dyn Door, h: &Here, a: &Account, want: &Servers) -> Result<
 fn view_of(store: &Store, conflicts: &[mcp_share::Conflict]) -> AccountMcpView {
     AccountMcpView {
         enabled: true,
+        sync: !store.paused,
         servers: store.servers.keys().cloned().collect(),
         conflicts: conflicts
             .iter()
@@ -267,9 +268,25 @@ fn lock(home: &str) -> Result<Option<crate::platform::lock::DirLock>, Refusal> {
     }
 }
 
+/// 这一趟是谁要的：文件事件 / 加号之后的那一趟（[`Why::Auto`]），还是用户在 cc-monitor 里点的（[`Why::Asked`]）。
+/// 停着同步时：前一种什么都不写、照实答此刻的样子；后一种拒（要先开回来，否则「从所有号删」就成了同步）。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Why {
+    Auto,
+    Asked,
+}
+
+/// 停着同步时那一份此刻的样子（不对照、不写；冲突不算 —— 各号各管各的）。
+fn paused_view(h: &Here) -> AccountMcpView {
+    let mut view = view_of(&h.store, &[]);
+    view.notes = h.notes.clone();
+    view
+}
+
 /// 一趟：锁 → 读 → `decide`（cc-monitor 里定的那一下；同步那一趟原样交回）→ 对照 → 落盘 → 写回共享集合。
 fn run(
     d: &dyn Door,
+    why: Why,
     decide: &dyn Fn(&Store, &[Seen]) -> Result<Store, Refusal>,
 ) -> Result<AccountMcpView, Refusal> {
     let home = door::home(d).map_err(|e| ("io_failed", e))?;
@@ -278,6 +295,12 @@ fn run(
         return Ok(AccountMcpView::default());
     };
     let h = load(&home, list)?;
+    if h.store.paused {
+        return match why {
+            Why::Auto => Ok(paused_view(&h)),
+            Why::Asked => Err(("refused", copy_text("beAcctMcpShare.sync.paused", &[]))),
+        };
+    }
     let seen: Vec<Seen> = h.accounts.iter().map(|a| a.seen.clone()).collect();
     let start = decide(&h.store, &seen)?;
     let plan = mcp_share::plan(&start, &seen);
@@ -331,7 +354,54 @@ fn run(
 
 /// 同步一趟（文件事件 · 加号 · 建库之后）。
 pub(crate) fn sync(d: &dyn Door) -> Result<AccountMcpView, Refusal> {
-    run(d, &|s, _| Ok(s.clone()))
+    run(d, Why::Auto, &|s, _| Ok(s.clone()))
+}
+
+/// `accounts-mcp-sync {on}`：停 / 开各号之间的同步。只改共享集合那份文件里那一格。
+/// 停 ⇒ 之后各号各管各的，已经同步过去的一条不删；开 ⇒ 落下那一格之后立刻同步一趟（停着那段时间各号改的照三方对照采纳，
+/// 两边都改了的照常列出来等挑）。已经是那一态 ⇒ 不写，照答。
+pub(crate) fn set_sync(d: &dyn Door, on: bool) -> Result<AccountMcpView, Refusal> {
+    let home = door::home(d).map_err(|e| ("io_failed", e))?;
+    {
+        let _held = lock(&home)?;
+        let Some(list) = accounts_in(&home)? else {
+            return Err(("refused", copy_text("beAcctMcpShare.sync.noLibrary", &[])));
+        };
+        let h = load(&home, list)?;
+        if h.store.paused == !on {
+            return if on { Ok(view_after(&h)) } else { Ok(paused_view(&h)) };
+        }
+        let mut store = h.store.clone();
+        store.paused = !on;
+        put_private(
+            d,
+            &home,
+            relay_route_core::ACCOUNTS_MCP_REL,
+            &store.render(h.key),
+            h.store_raw.as_deref(),
+        )
+        .map_err(|e| {
+            (
+                "io_failed",
+                copy_text("beAcctMcpShare.store.writeFailed", &[("e", &e.said())]),
+            )
+        })?;
+        if !on {
+            let mut view = view_of(&store, &[]);
+            view.notes = h.notes;
+            return Ok(view);
+        }
+    }
+    sync(d)
+}
+
+/// 开着时此刻的样子（只算不写；冲突照算）。
+fn view_after(h: &Here) -> AccountMcpView {
+    let seen: Vec<Seen> = h.accounts.iter().map(|a| a.seen.clone()).collect();
+    let plan = mcp_share::plan(&h.store, &seen);
+    let mut view = view_of(&plan.store, &plan.conflicts);
+    view.notes = h.notes.clone();
+    view
 }
 
 /// `accounts-mcp-read`：此刻的样子（只算不写；冲突照算）。
@@ -341,11 +411,11 @@ pub(crate) fn read(d: &dyn Door) -> Result<AccountMcpView, Refusal> {
         return Ok(AccountMcpView::default());
     };
     let h = load(&home, list)?;
-    let seen: Vec<Seen> = h.accounts.iter().map(|a| a.seen.clone()).collect();
-    let plan = mcp_share::plan(&h.store, &seen);
-    let mut view = view_of(&plan.store, &plan.conflicts);
-    view.notes = h.notes;
-    Ok(view)
+    Ok(if h.store.paused {
+        paused_view(&h)
+    } else {
+        view_after(&h)
+    })
 }
 
 fn known(store: &Store, seen: &[Seen], name: &str) -> Result<(), Refusal> {
@@ -365,7 +435,7 @@ fn known(store: &Store, seen: &[Seen], name: &str) -> Result<(), Refusal> {
 
 /// `accounts-mcp-remove`：从共享集合里删一条，所有号一起撤（删除只有这一条路）。
 pub(crate) fn remove(d: &dyn Door, name: &str) -> Result<AccountMcpView, Refusal> {
-    run(d, &|s, seen| {
+    run(d, Why::Asked, &|s, seen| {
         known(s, seen, name)?;
         Ok(mcp_share::decide(s, seen, name, None))
     })
@@ -377,7 +447,7 @@ pub(crate) fn pick(
     name: &str,
     from: Option<&str>,
 ) -> Result<AccountMcpView, Refusal> {
-    run(d, &|s, seen| {
+    run(d, Why::Asked, &|s, seen| {
         known(s, seen, name)?;
         let to = mcp_share::pick(s, seen, name, from).map_err(|e| ("refused", e))?;
         Ok(mcp_share::decide(s, seen, name, to))
@@ -392,7 +462,7 @@ pub(crate) fn put(d: &dyn Door, name: &str, def: &Value) -> Result<AccountMcpVie
             crate::common::contract::malformed("a server needs a name and an object definition"),
         ));
     }
-    run(d, &|s, seen| {
+    run(d, Why::Asked, &|s, seen| {
         Ok(mcp_share::decide(s, seen, name, Some(def.clone())))
     })
 }

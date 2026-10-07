@@ -805,9 +805,9 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     // 「这台上的 cc-monitor」里归这台连接配置的：恢复命令那一行（没有按钮）＋ 底行右侧那颗「从 a 卸载…」。
     expect(labels(got.components)).toEqual([]);
     expect(got.uninstall?.textContent).toBe(copyText("machineCard.uninstall.open", { machine: "a" }));
-    // ② 别名是与本机同一个组件（`buildAliasManager`，`data-origin` = 这台）；接入 / 卸载在组件里（卸那一颗叫「卸载 ccm」、
-    //   接入之后才出现 —— 由 `machine-aliases.vitest.ts` 的远端卡那一条钉）。组件是 `<details>`，栏上裸露的按钮一颗都不剩。
-    expect(labels(got.terminal)).toEqual([]);
+    // ② 别名与配置文件是与本机同一个组件（`buildConfigPage`，别名那一行 `data-origin` = 这台）；接上 / 卸载在别名那一行里
+    //   （卸那一颗叫「卸载 ccm」、接上之后才出现 —— 由 `machine-aliases.vitest.ts` 的远端卡那一条钉）。栏上的按钮全在那一栏里。
+    expect([...got.terminal.querySelectorAll("button")].filter((b) => !b.closest(".cfg-page")).map((b) => b.textContent)).toEqual([]);
     const mgr = got.terminal.querySelector<HTMLElement>(".machine-aliases");
     expect(mgr?.dataset.origin).toBe("a");
     expect(got.terminal.textContent).toContain("别名");

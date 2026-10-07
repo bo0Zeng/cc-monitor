@@ -30,52 +30,12 @@
   white-space: nowrap;
 }
 
-/* === 设置面板：PowerShell 集成区 (cc_integration.ts) === */
-/* ⚠ S21：`.settings-cc-profiles` / `-card` / `-head` / `-name` / `-path` 五条已删 ——
-   那个「一张 profile 卡」的组件被重写掉了，样式留在原地零引用。
-   活着的是下面 `-status` / `-badge` / `-buttons` / `-warn` 这几条（cc_integration.ts 现打在用）。 */
-.settings-cc-profile-status {
-  margin-bottom: 8px;
-}
-
-.settings-cc-profile-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: var(--radius-xl);
-  font-size: var(--font-size-small);
-}
-
-.settings-cc-badge-ok {
-  background: color-mix(in srgb, var(--success) 15%, transparent);
-  color: var(--success);
-}
-
-.settings-cc-badge-warn {
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-  color: var(--accent);
-}
-
+/* === 设置面板：一排按钮 · 一格读数 === */
 .settings-cc-profile-buttons {
   display: flex;
   gap: 8px;
   margin-top: 8px;
   flex-wrap: wrap;
-}
-
-/* 活跃注册数行 */
-.settings-cc-stat-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 10px;
-  font-size: var(--font-size-small);
-  color: var(--text-2);
-}
-
-.settings-cc-stat-label {
-  color: var(--text-faint);
-  display: inline-flex;
-  align-items: center;
 }
 
 .settings-cc-stat-value {
@@ -109,15 +69,6 @@
   border-color: var(--text);
 }
 
-/* === auto-launch toggle === */
-.settings-cc-autolaunch {
-  margin-top: 14px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-l);
-  background: var(--bg-2);
-}
-
 .settings-checkbox {
   width: 14px;
   height: 14px;
@@ -130,14 +81,6 @@
   user-select: none;
   font-size: var(--font-size-mono);
   color: var(--text);
-}
-
-.settings-cc-autolaunch-path {
-  margin-top: 6px;
-  margin-left: 22px;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
-  word-break: break-all;
 }
 
 .settings-cc-autolaunch-path-value {
@@ -361,8 +304,6 @@ body.settings-window-mode .settings-panel {
 .machine-part > :first-child {
   margin-top: 0;
 }
-
-
 
 /* 机器列表：一台一行（点 · 名字与第二行 · 右侧账号数 · ⋯），整张表一个框。
    点与两行字块垂直居中；右侧那一句与 ⋯ 在名字那一行；问题行 / chip 在下面跨到右缘。 */
@@ -888,9 +829,6 @@ body.settings-window-mode .settings-panel {
   grid-column: 1 / -1;
 }
 
-
-
-
 .settings-group-title {
   font-size: var(--font-size-small);
   color: var(--text-2);
@@ -1266,7 +1204,6 @@ body.settings-window-mode .settings-panel {
   background: none;
 }
 
-
 .remote-test-line {
   display: flex;
   align-items: center;
@@ -1275,8 +1212,6 @@ body.settings-window-mode .settings-panel {
 }
 
 /* F46：连接过程分阶段泳道日志 */
-
-
 
 .remote-test-ok {
   color: var(--success);
@@ -1305,11 +1240,6 @@ body.settings-window-mode .settings-panel {
 }
 
 /* Feature ②：远端 ↗ 拉前的只读 ccm wrapper 片段。等宽、保留空白、可横向滚动、带边框。 */
-
-
-
-
-
 
 /* === 远端机器列表（多机 #30）=== */
 
@@ -1373,16 +1303,6 @@ body.settings-window-mode .settings-panel {
   /* 〔WIN3 §2〕窄窗里 legend 挤它 ⇒「删除」竖排成两行：不换行、不被压缩。 */
   white-space: nowrap;
   flex-shrink: 0;
-}
-
-
-/* 动作按钮行（测试 / 装卸 backend / 装卸 ccm）：按钮多，允许换行、右对齐 */
-.settings-row-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: flex-end;
-  align-items: center;
 }
 
 /* === Keybindings Editor (issue #5) ===
@@ -1740,80 +1660,6 @@ body.settings-window-mode .settings-panel {
   background: var(--error);
 }
 
-
-
-
-
-
-
-
-
-
-
-/* 各账号共用的 MCP 那一块（别名与配置文件页）的说明行。 */
-.accounts-meta {
-  font-size: var(--font-size-small);
-  color: var(--text-faint);
-  margin-bottom: 6px;
-  overflow-wrap: anywhere;
-}
-
-.accounts-hint,
-.accounts-info {
-  font-size: var(--font-size-small);
-  color: var(--text-faint);
-  line-height: 1.5;
-  margin-top: 8px;
-}
-
-.accounts-info {
-  padding: 8px 10px;
-  background: var(--bg-2);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-m);
-  margin-top: 0;
-}
-
-/* 各账号共用的 MCP：一块说明 ＋ 名字一行一个（右侧「删除」）＋ 两边都改了的那几条（各版一个按钮）。 */
-.accounts-mcp {
-  margin-top: 12px;
-}
-
-.accounts-mcp-title {
-  font-weight: 600;
-}
-
-.accounts-mcp-shared,
-.accounts-mcp-delete-here,
-.accounts-mcp-new-sessions,
-.accounts-mcp-note {
-  margin-top: 2px;
-}
-
-.accounts-mcp-body {
-  margin-top: 6px;
-}
-
-.accounts-mcp-row,
-.accounts-mcp-conflict {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 3px 0;
-}
-
-.accounts-mcp-name {
-  flex: 1;
-  font-family: var(--font-mono);
-}
-
-.accounts-mcp-empty,
-.accounts-mcp-reading,
-.accounts-mcp-fail {
-  margin-top: 0;
-}
-
 /* F08：别名生成器——折叠标记自绘 ▸/▾，不用原生三角。 */
 .ccm-alias-gen {
   margin-top: 10px;
@@ -1839,30 +1685,6 @@ body.settings-window-mode .settings-panel {
 
 .ccm-alias-gen[open] > summary::before {
   content: var(--mark-open);
-}
-
-.ccm-alias-gen-hint {
-  margin: 4px 0 0;
-  font-size: var(--font-size-small);
-  color: var(--text-faint);
-}
-
-.ccm-alias-gen-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 6px;
-  align-items: center;
-}
-
-.ccm-alias-gen-grid input[type="text"],
-.ccm-alias-gen-grid select {
-  padding: 3px 6px;
-  font-size: var(--font-size-small);
-  color: var(--text);
-  background: transparent;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-m);
 }
 
 /* T03 迁移后这个 class 挂在 paste-block 的根 div 上，不再是 .ccm-alias-gen-grid 的
@@ -2340,8 +2162,9 @@ body.settings-window-mode .settings-panel {
     width: 100%;
   }
 
-/* 账号栏自带表头（「X 上的账号 · 新会话默认 Y」）：块标题只留给读屏。 */
-.settings-group:has(> .acct-page) > .settings-group-title {
+/* 账号栏自带表头（「X 上的账号 · 新会话默认 Y」）、「别名与配置文件」栏每行自带名字：块标题只留给读屏。 */
+.settings-group:has(> .acct-page) > .settings-group-title,
+.settings-group:has(> .cfg-page) > .settings-group-title {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -2669,5 +2492,525 @@ body.settings-window-mode .settings-panel {
 .acct-mcp-line .acct-pointer-link:focus-visible {
   color: var(--text);
   text-decoration: underline;
+}
+
+/* 机器页「别名与配置文件」栏：一张清单，每项一行（名字 · 一句现状 · 一个主动作 · 展开箭头），点开就地做。 */
+.cfg-page {
+  display: flex;
+  flex-direction: column;
+}
+
+.cfg-intro {
+  margin: 0 0 var(--space-6);
+  color: var(--text-2);
+  font-size: var(--font-size-mono);
+}
+
+.cfg-cap {
+  margin: var(--space-7) var(--space-1) var(--space-3);
+  color: var(--text-faint);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.06em;
+}
+
+.cfg-intro + .cfg-cap {
+  margin-top: 0;
+}
+
+.cfg {
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-l);
+  background: var(--bg);
+}
+
+.cfg-row + .cfg-row {
+  border-top: 1px solid var(--border-soft);
+}
+
+.cfg-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding-right: var(--space-6);
+}
+
+.cfg-head:hover {
+  background: var(--state-hover);
+}
+
+.cfg-toggle {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-5) var(--space-6);
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cfg-head > .cfg-chev {
+  flex: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: transform var(--dur-expand);
+}
+
+.cfg-toggle[aria-expanded="true"] ~ .cfg-chev {
+  transform: rotate(90deg);
+}
+
+.cfg-name {
+  font-weight: 600;
+}
+
+.cfg-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+.cfg-action {
+  display: flex;
+  flex: none;
+  gap: var(--space-3);
+}
+
+.cfg-body {
+  padding: var(--space-1) var(--space-6) var(--space-7);
+}
+
+.cfg-dot {
+  display: inline-block;
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--text-faint);
+  border-radius: 50%;
+}
+
+.cfg-dot[data-dot="ok"] {
+  border-color: var(--success);
+  background: var(--success);
+}
+
+.cfg-dot[data-dot="warn"] {
+  border-color: var(--warn);
+  background: var(--warn);
+}
+
+.cfg-hint {
+  color: var(--text-faint);
+  font-size: var(--font-size-small);
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
+.cfg-sub {
+  margin-bottom: var(--space-2);
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+.cfg-access {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.cfg-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border-faint);
+  border-radius: var(--radius-m);
+  background: var(--bg-2);
+  font-size: var(--font-size-mono);
+}
+
+.cfg-line-warn {
+  border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+}
+
+.cfg-clash > .cfg-line {
+  margin-top: var(--space-4);
+}
+
+.cfg-line-text {
+  flex: 1;
+  min-width: 200px;
+  overflow-wrap: anywhere;
+}
+
+.cfg-access-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-5);
+  padding: 0 var(--space-1);
+}
+
+.cfg-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.cfg-link:hover {
+  color: var(--text);
+}
+
+.cfg-link-danger:hover {
+  color: var(--error);
+}
+
+.cfg-panel,
+.cfg-conflict {
+  padding: var(--space-5) var(--space-6);
+  border: 1px solid var(--border-faint);
+  border-radius: var(--radius-m);
+  background: var(--bg-2);
+}
+
+.cfg-conflict {
+  margin-top: var(--space-5);
+  border-color: color-mix(in srgb, var(--warn) 30%, transparent);
+}
+
+.cfg-panel-title,
+.cfg-conflict-title {
+  margin-bottom: var(--space-2);
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+.cfg-code {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3) var(--space-5);
+  overflow-x: auto;
+  border: 1px solid var(--border-faint);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  line-height: 1.6;
+  white-space: pre;
+}
+
+.cfg-acts,
+.cfg-foot-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+}
+
+.cfg-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  margin: var(--space-7) 0 var(--space-3);
+}
+
+.cfg-list-title {
+  font-weight: 600;
+  font-size: var(--font-size-mono);
+}
+
+.cfg-grp {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  margin: var(--space-6) var(--space-1) var(--space-3);
+}
+
+.cfg-grp-title {
+  color: var(--text-faint);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.04em;
+}
+
+.cfg-atab {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-m);
+}
+
+.cfg-atab-one {
+  grid-template-columns: 110px minmax(0, 1fr);
+}
+
+.cfg-th {
+  padding: var(--space-3) var(--space-5);
+  background: var(--bg-2);
+  color: var(--text-faint);
+  font-size: var(--font-size-xs);
+}
+
+.cfg-td {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 36px;
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border-faint);
+}
+
+.cfg-acct {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-mono);
+}
+
+.cfg-who {
+  gap: var(--space-4);
+}
+
+.cfg-pill {
+  padding: var(--space-1) var(--space-4);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-s);
+  background: var(--bg-2);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-mono);
+  cursor: pointer;
+}
+
+.cfg-pill:hover {
+  border-color: var(--text-faint);
+}
+
+.cfg-pill[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--state-active);
+}
+
+.cfg-pill-add {
+  border-style: dashed;
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--font-base);
+  font-size: var(--font-size-small);
+}
+
+.cfg-list {
+  margin-top: var(--space-5);
+}
+
+.cfg-arows,
+.cfg-list {
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-m);
+}
+
+.cfg-arow,
+.cfg-list-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-3) var(--space-5);
+}
+
+.cfg-list-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.cfg-arow {
+  cursor: pointer;
+}
+
+.cfg-arow-wrap + .cfg-arow-wrap,
+.cfg-list-row + .cfg-list-row {
+  border-top: 1px solid var(--border-faint);
+}
+
+.cfg-arow:hover,
+.cfg-arow[aria-expanded="true"] {
+  background: var(--state-hover);
+}
+
+.cfg-arow-acts {
+  display: flex;
+  gap: var(--space-5);
+  visibility: hidden;
+}
+
+.cfg-arow:hover .cfg-arow-acts,
+.cfg-arow:focus-within .cfg-arow-acts,
+.cfg-arow[aria-expanded="true"] .cfg-arow-acts {
+  visibility: visible;
+}
+
+.cfg-alias-name,
+.cfg-list-name {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-mono);
+}
+
+.cfg-alias-said {
+  min-width: 0;
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+.cfg-alias-warn {
+  color: var(--warn);
+}
+
+.cfg-detail {
+  padding: var(--space-4) var(--space-6) var(--space-6);
+  background: var(--state-active);
+}
+
+.cfg-atab + .cfg-detail {
+  margin-top: var(--space-4);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-m);
+}
+
+.cfg-detail-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-5);
+  margin-bottom: var(--space-4);
+}
+
+.cfg-detail-head > .cfg-alias-said {
+  flex: 1;
+}
+
+.cfg-kv {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-2) var(--space-5);
+  font-size: var(--font-size-small);
+}
+
+.cfg-kv > span {
+  color: var(--text-faint);
+}
+
+.cfg-kv > code {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.cfg-note {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3) var(--space-5);
+  border-left: 3px solid var(--border-medium);
+  border-radius: var(--radius-s);
+  background: var(--overlay-dim);
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+  line-height: 1.55;
+}
+
+.cfg-note-warn {
+  border-left-color: var(--warn);
+}
+
+.cfg-writes {
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-faint);
+  color: var(--text-faint);
+  font-size: var(--font-size-small);
+}
+
+.cfg-minis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: var(--space-2) 0 var(--space-4);
+}
+
+.cfg-mini {
+  padding: var(--space-1) var(--space-4);
+  border: 1px solid var(--border-faint);
+  border-radius: var(--radius-s);
+  background: var(--bg-2);
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+.cfg-sw-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-5) 0;
+}
+
+.cfg-sw-name {
+  font-size: var(--font-size-mono);
+}
+
+.cfg-form {
+  margin: var(--space-4) 0;
+  padding: var(--space-6) var(--space-7);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-l);
+  background: var(--card);
+}
+
+.cfg-form-title {
+  margin-bottom: var(--space-5);
+  font-weight: 600;
+  font-size: var(--font-size-mono);
+}
+
+.cfg-fg {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-5) var(--space-6);
+}
+
+.cfg-fl {
+  padding-top: var(--space-3);
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+  text-align: right;
+}
+
+.cfg-fc,
+.cfg-cases,
+.cfg-adv {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.cfg-cr {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
 }
 }

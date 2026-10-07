@@ -203,10 +203,10 @@ export async function accountsLoginCmd(origin: Origin, name: string): Promise<st
   return v.cmd;
 }
 
-/** 各号共用的用户级 MCP 那三条的成品。形状不对 ⇒ `null`。 */
+/** 各号共用的用户级 MCP 那四条的成品。形状不对 ⇒ `null`。 */
 export function decodeAccountMcpView(v: unknown): AccountMcpView | null {
-  if (!isObj(v) || !exactKeys(v, ["enabled", "servers", "conflicts", "changed", "notes"])) return null;
-  if (typeof v.enabled !== "boolean" || !strList(v.servers) || !strList(v.changed) || !strList(v.notes) || !Array.isArray(v.conflicts)) return null;
+  if (!isObj(v) || !exactKeys(v, ["enabled", "sync", "servers", "conflicts", "changed", "notes"])) return null;
+  if (typeof v.enabled !== "boolean" || typeof v.sync !== "boolean" || !strList(v.servers) || !strList(v.changed) || !strList(v.notes) || !Array.isArray(v.conflicts)) return null;
   const choiceOk = (x: unknown): boolean =>
     isObj(x) && exactKeys(x, ["from", "holders", "gone"]) && optStr(x.from) && strList(x.holders) && typeof x.gone === "boolean";
   const ok = v.conflicts.every(
@@ -240,4 +240,11 @@ export async function accountsMcpPick(origin: Origin, name: string, from: string
   const body = jsonBody(from === null ? { name } : { name, from });
   const budget = budgetWithin(CHANGE_BUDGET_MS);
   return mcpView(origin, "accounts-mcp-pick", await settle(origin, "accounts-mcp-pick", chan.call(origin, "accounts-mcp-pick", body, budget), refusals()));
+}
+
+/** 停 / 开各号之间同步（停了已同步的不删；开回来那一刻同步一趟）。 */
+export async function accountsMcpSync(origin: Origin, on: boolean): Promise<AccountMcpView> {
+  const body = jsonBody({ on });
+  const budget = budgetWithin(CHANGE_BUDGET_MS);
+  return mcpView(origin, "accounts-mcp-sync", await settle(origin, "accounts-mcp-sync", chan.call(origin, "accounts-mcp-sync", body, budget), refusals()));
 }

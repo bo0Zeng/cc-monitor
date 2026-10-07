@@ -883,10 +883,11 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--accounts-init",
     "--accounts-isolate",
     "--accounts-login-cmd",
-    // 各号共用的用户级 MCP 那三条（`accounts-mcp-*`）派生的 CLI 面；`remove` / `pick` 的入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 各号共用的用户级 MCP 那四条（`accounts-mcp-*`）派生的 CLI 面；`remove` / `pick` / `sync` 的入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--accounts-mcp-pick",
     "--accounts-mcp-read",
     "--accounts-mcp-remove",
+    "--accounts-mcp-sync",
     "--accounts-remove",
     "--accounts-repair",
     "--accounts-rollback",

@@ -179,6 +179,37 @@ fn added_in_one_account_reaches_both_and_nothing_else_moves() {
     assert!(sync(&d).unwrap().changed.is_empty());
 }
 
+/// ★ 停止同步：停着时一个号里加的不同步过去、已同步的一条不删；cc-monitor 里的删 / 挑被拒；开回来那一刻照常同步一趟。
+#[test]
+fn stopping_the_sync_leaves_each_account_alone_until_it_is_turned_back_on() {
+    let t = two("pause");
+    let d = t.door();
+    let v = t.ok("accounts-mcp-sync", json!({ "on": false }));
+    assert_eq!(v["sync"], false, "{v}");
+    assert_eq!(v["servers"], json!(["cclsp"]), "停了也照实说共享的那几条");
+    assert_eq!(t.read(".cc-monitor/accounts-mcp.json").contains("\"sync\": false"), true);
+    let z_new = claude_json("z@example.test", &add_to(&cclsp(), "anysearch", anysearch()), 8);
+    t.write(&cfg("z"), &z_new);
+    let b_before = t.read(&cfg("b"));
+    let quiet = sync(&d).unwrap();
+    assert!(quiet.changed.is_empty() && !quiet.sync, "停着 ⇒ 文件事件那一趟什么都不写");
+    assert_eq!(t.read(&cfg("b")), b_before, "停着 ⇒ b 一个字节不动");
+    assert_eq!(t.servers("z")["cclsp"], cclsp()["cclsp"], "已同步过去的不删");
+    assert_eq!(
+        t.call("accounts-mcp-remove", json!({ "name": "cclsp" })).unwrap_err().0,
+        "refused",
+        "停着 ⇒ 从所有号删一条被拒（不然就成了同步）"
+    );
+    assert_eq!(t.ok("accounts-mcp-read", json!({}))["sync"], false);
+    let on = t.ok("accounts-mcp-sync", json!({ "on": true }));
+    assert_eq!(on["sync"], true);
+    assert_eq!(on["changed"], json!(["b"]), "开回来 ⇒ 立刻同步一趟：z 停着时加的那条到了 b");
+    assert_eq!(t.servers("b")["anysearch"], anysearch());
+    assert!(!t.read(".cc-monitor/accounts-mcp.json").contains("\"sync\""), "开着时那一格不写");
+    let again = t.ok("accounts-mcp-sync", json!({ "on": true }));
+    assert_eq!(again["changed"], json!([]), "已经开着 ⇒ 不写，照答");
+}
+
 #[test]
 fn an_old_full_rewrite_gets_the_entry_put_back() {
     let t = two("back");

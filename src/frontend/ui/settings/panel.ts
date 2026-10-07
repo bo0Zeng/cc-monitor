@@ -59,7 +59,8 @@ import {
   type BehaviorConfig,
 } from "../behavior";
 import { diagnoseRemoteLauncher } from "../launcher-diagnostics";
-import { buildAliasManager, buildUnknownOsAliasBlock, localShell, rereadAliases } from "./machine-aliases"; // 机器页 ②「别名」（两个平台一份，含 PowerShell 的终端集成）
+import { buildUnknownOsAliasBlock, localShell, rereadAliases } from "./machine-aliases"; // 机器页 ②「别名」（两个平台一份，含 PowerShell 的终端集成）
+import { buildConfigPage } from "./config-page"; // 机器页「别名与配置文件」那一栏
 import { dispatcher } from "../keybindings/registry";
 import { KeybindingsEditor } from "../keybindings/editor";
 // F82a：独立设置窗口——保存后广播 `settings-applied`，主窗口 listen 后重读并应用主题/行为
@@ -1183,16 +1184,20 @@ export class SettingsPanel {
       {
         appliesTo: "local",
         tab: "term",
-        el: this.safeBlock(copyText("settingsPanel.group.aliases"), () => {
-          // 认不出本机系统 ⇒ 不猜方言：明说、安装入口置灰。
-          const shell = localShell();
-          return shell === null
-            ? buildUnknownOsAliasBlock()
-            : buildAliasManager({
-                platform: shell,
-                origin: () => LOCAL_ORIGIN,
-              });
-        }),
+        el: this.safeBlock(
+          copyText("settingsPanel.group.aliases"),
+          () => {
+            // 认不出本机系统 ⇒ 不猜方言：明说、安装入口置灰。
+            const shell = localShell();
+            return shell === null
+              ? buildUnknownOsAliasBlock()
+              : buildConfigPage({
+                  platform: shell,
+                  origin: () => LOCAL_ORIGIN,
+                  machine: () => copyText("remote.cards.local"),
+                });
+          },
+        ),
       },
       // 机器页「终端」栏：让直接敲的 claude 也走中转（可选、生成让你贴）。本机远端同一块，跟当前机器走；
       //   构造零 I/O，第一次展开才问那台（要贴的那一段带着中转钥匙，不展开不进界面）。

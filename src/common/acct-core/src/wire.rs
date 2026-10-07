@@ -231,6 +231,15 @@ pub struct AccountMcpPickArgs {
     pub from: Option<String>,
 }
 
+/// `accounts-mcp-sync`：停 / 开各号之间同步用户级 MCP（停了已同步的不删）。
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+pub struct AccountMcpSyncArgs {
+    pub on: bool,
+}
+
 /// 冲突里的一版（只带号名，不带定义 —— 定义里可能有密钥）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -255,7 +264,7 @@ pub struct AccountMcpConflict {
     pub choices: Vec<AccountMcpChoice>,
 }
 
-/// `accounts-mcp-read` · `accounts-mcp-remove` · `accounts-mcp-pick` 的成品：这台各号共用的用户级 MCP 此刻的样子。
+/// `accounts-mcp-read` · `accounts-mcp-remove` · `accounts-mcp-pick` · `accounts-mcp-sync` 的成品：这台各号共用的用户级 MCP 此刻的样子。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -263,6 +272,8 @@ pub struct AccountMcpConflict {
 pub struct AccountMcpView {
     /// 这台有没有账号库（没有 ⇒ 不做同步，下面几格都是空的）。
     pub enabled: bool,
+    /// 各号之间在不在同步（用户停了 ⇒ `false`：各号各管各的，`conflicts` 恒空）。
+    pub sync: bool,
     /// 共享集合里的名字（排好序）。
     pub servers: Vec<String>,
     pub conflicts: Vec<AccountMcpConflict>,

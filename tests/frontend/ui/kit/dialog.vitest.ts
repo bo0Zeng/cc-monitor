@@ -141,8 +141,8 @@ function askCalls(file: string, text: string): { all: Hit[]; unawaited: Hit[] } 
 const ASK_CALLERS = [
   "src/frontend/ui/acct-panel.ts", // 账号面板的重启切换：「会打断什么」那一问
   "src/frontend/ui/keybindings/editor.ts",
-  "src/frontend/ui/settings/accounts-mcp-block.ts",
   "src/frontend/ui/settings/cc-bus-section.ts",
+  "src/frontend/ui/settings/config-page.ts",
   "src/frontend/ui/settings/machine-card.ts",
   "src/frontend/ui/settings/panel.ts",
   "src/frontend/ui/tab-batch-menu.ts",
