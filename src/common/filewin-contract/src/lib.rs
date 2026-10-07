@@ -1,13 +1,8 @@
-//! 要求：「种子与钥匙走 stdin，不走 argv / env」· `§2.3`「窗口进程拨回通道之后……在 stdout 上说一行「列到 N 行」或「列不出来：原话」」
-//!
-//! monitor 与文件窗口进程之间**两边必须对上**的那几样（契约类）：
+//! monitor 与文件窗口进程之间两边必须对上的那几样（契约类，两边分属两个 crate，形状只许有这一份）：
 //! - [`OpenRequest`] —— 开窗种子，整份走窗口进程的 stdin（一份 JSON，写完关掉 = EOF = 给完了）；
 //! - [`Ready`] —— 窗口进程列完第一屏在 stdout 上说的那一行；
 //! - [`TERMINAL_OPEN_OP`] —— 「在此打开终端」：窗口在它那条通道上 `call` 的、由 monitor 自己接下来的那一条（只带意图：那台 ＋ 当前目录）；
-//! - [`BIN_ENV`] —— 指到窗口那份二进制的环境变量（判据与「这个程序由 cc-monitor 打开」那句话都说它）。
-//!
-//! 从前这些住壳里 `filewin/proc.rs`：monitor 与窗口进程编自同一个 crate。窗口独立成包（`src/frontend/filewin/`）之后
-//! 两边分属两个 crate，形状只许有这一份。
+//! - [`BIN_ENV`] —— 指到窗口那份二进制的环境变量。
 
 use copy_core::copy_text;
 
@@ -22,26 +17,15 @@ pub use theme::{parse_css_color, parse_shadow, Rgba, Shadow, Theme, THEME_TOKENS
 /// ⚠ 它**不是** fail-open 的开关：给了但那份文件不在，照旧是一条响亮的失败。
 pub const BIN_ENV: &str = "CCM_FILEWIN_BIN";
 
-/// 一次开窗的**全部**输入 —— 它整份过一次进程边界（走 stdin，见模块头注 §三）。
-///
-/// 🔴多了 [`Self::handoff`]：通道的交接件（回环地址 ＋ **钥匙** ＋ 帧长）。
-/// 它**只走 stdin** —— 不走 argv（`/proc/<pid>/cmdline` 世界可读）、不走环境变量
-/// （`/proc/<pid>/environ` 同用户可读、且会被孙进程继承），理由与 `chan/host.rs` 头注
-/// 「钥匙怎么交接」第 3 步逐字同一条。⚠ 本类型的 `Debug` 会打到 `Handoff` 那一格，
-/// 而 `Handoff` / `Key` 的 `Debug` 都手写成不打印钥匙 —— 钥匙不进日志。
-///
-/// 🔴 字段与窗口那一侧 `shell::FileWindow::seeded` ＋ `set_reveal` 的入参**一一对应**，
-/// 刻意不多不少：多一个字段就是一处「窗口那侧能有、而开窗这条路给不了」的缝。
-/// 〔09-28 裁 3〕例外恰好两格、都由窗口进程自己补：`rows`（那一屏，窗口那一侧 `proc::first_screen` 列）与
-/// `cwd` 缺席时的 home（同一处问）。
+/// 一次开窗的全部输入 —— 它整份过一次进程边界（走 stdin）。[`Self::handoff`] 是通道的交接件（回环地址 ＋ 钥匙 ＋ 帧长），只走 stdin
+/// （理由同 `chan/host.rs` 头注「钥匙怎么交接」）；`Handoff` / `Key` 的 `Debug` 都手写成不打印钥匙。
+/// 字段与窗口那一侧 `shell::FileWindow::seeded` ＋ `set_reveal` 的入参一一对应、不多不少（多一个就是「窗口那侧能有、而开窗这条路给不了」的缝）；
+/// 例外两格由窗口进程自己补：`rows`（那一屏，`proc::first_screen` 列）与 `cwd` 缺席时的 home。
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct OpenRequest {
-    /// 这个窗口看哪台机器（寻址用的那个名字，`RemoteConfig::origin_label` 的口径）。
-    /// 从前这一格是那台机器的整份配置（`RemoteConfig`）：窗口只拿它取名字、再交给「在此打开终端」算机器事实 ——
-    ///   开终端改由 monitor 接（它自己查配置），窗口只剩这个名字。
+    /// 这个窗口看哪台机器（寻址用的那个名字，`RemoteConfig::origin_label` 的口径）。开终端由 monitor 接（它自己查配置），窗口只要这个名字。
     pub origin: String,
     /// 开在哪个目录；`None` = 问那台机器的 home（`files-home`，窗口进程自己问）。
-    /// 〔09-28 裁 3〕「已经列好的那一屏」（`rows`）这一格删了：第一屏由窗口进程自己列。
     pub cwd: Option<String>,
     /// 开窗就高亮这一行（`None` = 不高亮）。
     pub reveal: Option<String>,
@@ -91,8 +75,7 @@ pub fn decode_request(raw: &str) -> Result<OpenRequest, String> {
         .map_err(|e| copy_text("rsFilewinProc.seed.unreadable", &[("e", &e.to_string())]))
 }
 
-/// 窗口进程在 stdout 上说的**那一行**（〔09-28 裁 3〕）：第一屏列到几行，或列不出来的原话。
-/// 线上形 `{"listed":N}` / `{"failed":"…"}`，一行一个 JSON。
+/// 窗口进程在 stdout 上说的那一行：第一屏列到几行，或列不出来的原话。线上形 `{"listed":N}` / `{"failed":"…"}`，一行一个 JSON。
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Ready {
@@ -163,18 +146,11 @@ pub fn terminal_open_cwd(args: &serde_json::Value) -> Option<&serde_json::Value>
     args.get("cwd")
 }
 
-// ── 远端路径怎么切（原住窗口 `source.rs`，逐字搬来：开窗入口把「跳到这个文件」切成目录 ＋ 名字交进种子，窗口里之后每一次「上一级」
-//    都用同一个切法；两边分属两个 crate 之后切法只许住这一份）──
+// ── 远端路径怎么切：开窗入口把「跳到这个文件」切成目录 ＋ 名字交进种子，窗口里之后每一次「上一级」都用同一个切法 ──
 
-/// 上一级目录。
-///
-/// 🔴 **它只吃一条字符串，不吃 [`Source`]** —— 而那是本机那一侧退役买到的东西之一：
-/// 远端路径**恒用 `/`**（SFTP 协议就是这么定的，对面是 Windows 也一样）
-/// ⇒ 只剩一个算法。⚠ 别为了「看起来通用」把 `std::path` 换回来：
-/// 它在 Windows 上会把 `\` 也当分隔符 ⇒ 远端一个名字里含反斜杠的目录会被切成两级。
-///
-/// ⚠ 到顶了就**返回原值**（不是空串、不是 `None`）—— 调用方靠「回来的和给出去的相等」
-/// 判断「已经在顶上了」，这样「到顶」这件事不需要第二个返回通道。
+/// 上一级目录。只吃一条字符串：远端路径恒用 `/`（SFTP 协议就是这么定的，对面是 Windows 也一样）。
+/// 别换成 `std::path`：它在 Windows 上会把 `\` 也当分隔符 ⇒ 名字里含反斜杠的远端目录会被切成两级。
+/// 到顶了就返回原值：调用方靠「回来的和给出去的相等」判断已经在顶上了。
 pub fn parent_dir(cwd: &str) -> String {
     let trimmed = cwd.trim_end_matches('/');
     if trimmed.is_empty() {
@@ -187,17 +163,8 @@ pub fn parent_dir(cwd: &str) -> String {
     }
 }
 
-/// 远端路径的**最后一段**（basename）。
-///
-/// 🔴 抽成具名函数是因为盘上已经有**三处** `rsplit('/')` 各写了一份
-/// （`corpus.rs` · `shell.rs` 那两处），而这一刀要的是第四处。
-/// ⇒ 不再加第四份。它与 [`parent_dir`] 是**一对**（一个给前缀、一个给尾段），
-/// 所以住同一处。
-///
-/// ⚠ **只用 `/`**，理由与 [`parent_dir`] 逐字相同：SFTP 协议恒用 `/`，
-/// 拿 `std::path` 去切远端路径在 Windows 上会把 `\` 也当分隔符。
-/// ⚠ 那三处旧写法**本刀不动**（它们各在自己的语境里，改它们是另一件活）——
-/// 如实登记在这儿，别以为这个概念只有一个住址。
+/// 远端路径的最后一段（basename），与 [`parent_dir`] 是一对（一个给前缀、一个给尾段）。只用 `/`，理由同 [`parent_dir`]。
+/// （`corpus.rs` · `shell.rs` 里另有各自的 `rsplit('/')`，这个概念不只一个住址。）
 pub fn remote_basename(path: &str) -> &str {
     let t = path.trim_end_matches('/');
     match t.rfind('/') {

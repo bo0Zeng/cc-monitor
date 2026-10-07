@@ -1713,8 +1713,6 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
     const INVENTORY: &[(&str, &str, usize)] = &[
         ("atomic_replace_registry.rs", "fenced_block.rs", 5),
         ("ui_contract.rs", "tauri-2.11.2/src/ipc/mod.rs", 181),
-        ("data_paths.rs", "tauri-2.11.2/src/ipc/mod.rs", 181),
-        ("inbound_client.rs", "ui_contract.rs", 95),
         // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
         ("launch_tests.rs", "launch.rs", 122),
         // 🔴 〔步 7c 剖分 2026-09-19〕**这一行删了 —— 那处行号地址改成了符号地址。**
@@ -1822,10 +1820,13 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
     //   越界 → 新增 → 登记表保鲜。把保鲜排在前面时，「有人把一处地址指到了文件末尾之后」
     //   这一刀报出来的是「登记表里那一行盘上没有了」——**指错了修法**，
     //   而本仓反复吃过「读诊断」的亏：指错地方的诊断比没有诊断更费时间。
-    // ★ 抽取器自检：人群塌了 ⇒ 本条零命中地绿。
+    // ★ 抽取器自检：人群塌了 ⇒ 本条零命中地绿。量的是语料面（扫到几份文件），不是行号地址的处数：
+    //   散文里的行号地址本来就该越来越少，抽取器认不认得出由 `the_address_extractors_really_see_each_shape` 判。
+    let _ = hits;
     assert!(
-        hits >= 25,
-        "只抽到 {hits} 处行号地址 —— 抽取器坏了（09-02 现打 36 处 / 去重 32 对）"
+        corpus.len() >= 600,
+        "行号地址的语料面只收到 {} 份文件 —— 遍历坏了",
+        corpus.len()
     );
     assert!(
         overrun.is_empty(),

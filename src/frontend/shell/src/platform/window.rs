@@ -1,15 +1,10 @@
-//! 窗口这一族的平台差异〔余下〕：壳里平台 cfg 的唯一住址（同 [`super::fs`]）。
-//! 都原住 `lib.rs`，逐字搬来：[`desktop_fixes`]（`run()` 里那段 `cfg(windows)` 块）· [`bring_to_front`]（`bring_monitor_to_front` 两个平台臂）。
+//! 窗口这一族的平台差异：壳里平台 cfg 的唯一住址（同 [`super::fs`]）：[`desktop_fixes`]（`run()` 里那段 `cfg(windows)` 块）· [`bring_to_front`]（两个平台臂）。
 
 use tauri::Manager;
 
-/// Batch7-F23A：nudge skip 判定的纯函数对（单测钦定，见）。
-///
-/// `pack_nudge_state`：终态物理尺寸 + fullscreen 位打包成一个可比较状态值。
-/// fullscreen 占 bit 63（F11 borderless 全屏与 maximize 在"自动隐藏任务栏"下
-/// inner 尺寸可能相同——状态位保证这类 #4095 高危过渡不被 skip）；宽度截 31 位
-/// （物理像素远小于 2^31，不损失信息）。
-/// 只有本文件 Windows 那一臂调它；`test` 也编，好在 Linux 上跑那几条纯函数单测。
+/// nudge skip 判定的纯函数对。`pack_nudge_state`：终态物理尺寸 + fullscreen 位打包成一个可比较状态值。
+/// fullscreen 占 bit 63（F11 borderless 全屏与 maximize 在「自动隐藏任务栏」下 inner 尺寸可能相同 —— 状态位保证这类高危过渡不被 skip）；
+/// 宽度截 31 位（物理像素远小于 2^31）。只有本文件 Windows 那一臂调它；`test` 也编，好在 Linux 上跑那几条纯函数单测。
 #[cfg(any(windows, test))]
 fn pack_nudge_state(w: u32, h: u32, fullscreen: bool) -> u64 {
     ((fullscreen as u64) << 63) | (((w as u64) & 0x7FFF_FFFF) << 32) | h as u64
@@ -44,48 +39,28 @@ pub fn desktop_fixes(mut builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<
         }
     }));
 
-    // WebView2 maximize / 全屏后内容错位修复（v2.14.0 引入，F12 加固重写）。
-    // 根因是 WebView2 Runtime 内部（浏览器进程）在 maximize / restore / 全屏切换后
-    // 丢失/挂起对宿主 bounds 更新的处理（WebView2Feedback #4095 族，微软未修）：
-    // 宿主侧 put_Bounds 成功、容器 HWND 已是全尺寸，但合成层（"Intermediate D3D
-    // Window"）停在旧尺寸 → 内容不铺满、周围留白。DOM 之下，前端 reflow 够不着。
+    // WebView2 maximize / 全屏后内容错位修复。根因在 WebView2 Runtime 内部：maximize / restore / 全屏切换后丢失 / 挂起对宿主 bounds 更新的处理
+    // （WebView2Feedback #4095 族）：宿主侧 put_Bounds 成功、容器 HWND 已是全尺寸，但合成层（「Intermediate D3D Window」）停在旧尺寸 → 内容不铺满、周围留白。
+    // ±1px 抖动会被 Runtime 合并 / 丢弃，所以用 controller 级三板斧（with_webview 闭包内直接 COM 调用）：
+    // 1. 双 rect SetBounds（h-1 → h）：让 Runtime 看到「变化后的 rect」重新 put_Bounds
+    // 2. NotifyParentWindowPositionChanged：微软文档明示的宿主位置变化通知
+    // 3. SetIsVisible(false→true) 翻转：强制重建 / 重挂合成 visual，对 #4095 族最有效；仅 maximize / fullscreen 时做（普通拖拽 resize 不翻，避免闪烁）
     //
-    // v2.14 的手段（±1px webview.set_size 抖动）机制上生效但对 Runtime 内部 bug
-    // 不可靠（1px 差值可能被 Runtime 合并/丢弃），F12 升级为 controller 级三板斧
-    // （with_webview 闭包内直接 COM 调用）：
-    //   1. 双 rect SetBounds（h-1 → h）：让 Runtime 看到「变化后的 rect」重新 put_Bounds
-    //   2. NotifyParentWindowPositionChanged：微软文档明示的宿主位置变化通知
-    //   3. SetIsVisible(false→true) 翻转：强制重建/重挂合成 visual，对 #4095 族最有效；
-    //      仅 maximize/fullscreen 时做（普通拖拽 resize 不翻，避免理论上的闪烁）
+    // 最小化守卫：tao 在 WM_SIZE(SIZE_MINIMIZED) 时发 Resized(0,0)，而 wry 自己的 subclass 跳过 SIZE_MINIMIZED —— 最小化时把 controller bounds 打成 0×0
+    // 会让 renderer 视口归零、进入挂起态，restore 后输入 hit-test 层数秒才重建。入口按 0×0 早退 + 线程动作前二次守卫（去抖期间可能又被最小化）。
     //
-    // ⚠ 最小化守卫（F12，修"restore 后数秒点不了"）：tao 0.35 在 WM_SIZE(SIZE_MINIMIZED)
-    // 时发 Resized(0,0)（不过滤），而 wry 自己的 subclass 明确跳过 SIZE_MINIMIZED——
-    // 最小化时把 controller bounds 打成 0×0 会让 renderer 视口归零、进入挂起态，
-    // restore 后画面先回、输入 hit-test 层数秒才重建。入口按 0×0 早退 + 线程动作前
-    // 二次守卫（去抖 60ms 期间可能又被最小化），对齐 wry 的保护语义。
-    //
-    // 去抖：resize 期间（含拖拽）每个事件 bump 一个 generation；后台线程等到连续 60ms
-    // 没有新事件（= 过渡稳定）再动手。nudge_pending 保证一个突发 resize 只有一个
-    // 去抖线程在飞。with_webview 的闭包由 tauri 派发到主线程执行——闭包内只做 COM
-    // 调用、禁止 sleep（同一闭包内连续两次不同 rect 已满足重钉条件，v2.14 的 16ms
-    // 间隔不再需要）。
+    // 去抖：resize 期间每个事件 bump 一个 generation；后台线程等到连续 60ms 没有新事件再动手。nudge_pending 保证一个突发 resize 只有一个去抖线程在飞。
+    // with_webview 的闭包由 tauri 派发到主线程执行 —— 闭包内只做 COM 调用、禁止 sleep。
     builder = builder.on_window_event({
         use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
         use std::sync::Arc;
         use std::time::Duration;
         let resize_gen = Arc::new(AtomicU64::new(0));
         let nudge_pending = Arc::new(AtomicBool::new(false));
-        // Batch7-F23A：上次 nudge **闭包执行完毕**时的 (尺寸+全屏态) 打包值
-        // （pack_nudge_state；0=从未）。最小化→恢复回到同状态时合成层没有错位
-        // 理由（#4095 是 resize/maximize **过渡** bug），却会因 is_maximized()
-        // 为 true 走 SetIsVisible 翻转 → 拆挂合成 visual 瞬间露白底（用户实测
-        // 白闪）。同状态直接 skip 全部 COM 动作。两条取舍（审计 D 复核后留档）：
-        // ① store 在 with_webview 闭包尾执行——"执行完"= 闭包跑完，单个 COM
-        //   调用失败仍记录（COM 级失败不重试；派发失败才不记录）；
-        // ② 拖拽一圈回到原尺寸的 settle 也会被 skip（终态==上次已修复态，
-        //   wry 自身的 WM_SIZE 路径已实时跟踪中间态，残余风险接受）。
-        // F11 全屏与 maximize 同 inner 尺寸的角例由打包值里的 fullscreen 位
-        // 区分（状态变了照跑三板斧）。
+        // 上次 nudge 闭包执行完毕时的 (尺寸+全屏态) 打包值（pack_nudge_state；0 = 从未）。最小化→恢复回到同状态时合成层没有错位理由
+        // （#4095 是过渡 bug），却会因 is_maximized() 为 true 走 SetIsVisible 翻转 → 瞬间露白底 ⇒ 同状态直接 skip 全部 COM 动作。
+        // ① store 在 with_webview 闭包尾执行（单个 COM 调用失败仍记录；派发失败才不记录）；② 拖拽一圈回到原尺寸的 settle 也会被 skip（残余风险接受）。
+        // 全屏与 maximize 同 inner 尺寸的角例由打包值里的 fullscreen 位区分。
         let last_nudged = Arc::new(AtomicU64::new(0));
         move |window, event| {
             let size = match event {

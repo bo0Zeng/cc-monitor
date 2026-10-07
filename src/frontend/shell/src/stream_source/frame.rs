@@ -4,12 +4,8 @@ use super::*;
 use crate::copy_table::copy_text;
 use crate::session_book::Fate;
 
-/// 一行会话记录的成品 ＋ 它在那份文件里的行号（`seq`）—— 进 [`flush_lines`] 之前的形状。
-///
-/// 它原先住 monitor 自己的 jsonl watcher（`watcher.rs`，已删）。
-/// 本机那条流改走后端的 `line` 帧之后，**所有**行都从后端的帧来（远端流 · 本机流 · 旁路快照），
-/// 造它的只剩本模块 ⇒ 搬到这里。`seq` 是后端给的行号（`--tail-only` 下与快照同处一个行号空间），
-/// 前端按 `(session_id, seq)` 去重、按 `seq` 排序（`INVARIANTS §5` / `§9`）。
+/// 一行会话记录的成品 ＋ 它在那份文件里的行号（`seq`）—— 进 [`flush_lines`] 之前的形状。所有行都从后端的帧来（远端流 · 本机流 · 旁路快照）；
+/// `seq` 是后端给的行号（`--tail-only` 下与快照同处一个行号空间），前端按 `(session_id, seq)` 去重、按 `seq` 排序（`INVARIANTS §5` / `§9`）。
 #[derive(Debug, Clone)]
 pub struct JsonlLine {
     pub session_id: String,
@@ -37,30 +33,17 @@ pub struct LostFrameInfo {
     pub subject: Option<String>,
 }
 
-/// `hello.homes` 的一项 —— **某个 agent 在那台远端机器上的 home 目录**。
-///
-/// 与后端侧 `wire::AgentHome` 对称（这一侧刻意不依赖那个 crate，照 `InboundFrame`
-/// 一贯的做法自己解析 JSON）。字段名里没有任何一个 agent 的名字：agent 维度住在
-/// `agent_kind` 这个**值**里 —— backend 那边 `D3` 逐字要求的形状。
+/// `hello.homes` 的一项 —— 某个 agent 在那台远端机器上的 home 目录。与后端侧 `wire::AgentHome` 对称（这一侧自己解析 JSON）；
+/// agent 维度住在 `agent_kind` 这个值里，字段名里没有任何一个 agent 的名字。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentHome {
     pub agent_kind: String,
     pub path: String,
 }
 
-/// 从 hello 帧里解析出「Claude 的 home 目录」—— **优先 `homes`、回退 `claude_dir`**。
-///
-/// 这是 `S4` additive 迁移在消费侧的那一半。两个字段的关系：
-/// - `homes`（新，通用）：`[{agent_kind, path}]`，agent 维度在**值**里；
-/// - `claude_dir`（旧，冻结兼容）：字段名里带 agent 名，backend 侧登记在
-///   `agent_boundary_guard::FROZEN_COMPAT`，**解锁条件是 monitor 与 aterm 都改读 `homes`**。
-///
-/// ⇒ 本函数就是 monitor 那半的兑现：从今往后 monitor **不再依赖** `claude_dir` 的存在语义，
-/// 它只是回退路径。`claude_dir` 的删除因此只卡在仓外 aterm 上，我们这边不欠。
-///
-/// ⚠ 今天的 backend `homes` 恒空（DG1 未接线）⇒ 实际走的一直是回退分支。
-/// 这不是"没接上"，是 additive 迁移的正常中间态：先让消费侧认得新字段，
-/// 生产侧（`S5`）再开始发 —— 反过来做会有一段时间新字段被丢掉。
+/// 从 hello 帧里解析出「Claude 的 home 目录」—— 优先 `homes`、回退 `claude_dir`。
+/// `homes`（通用）：`[{agent_kind, path}]`；`claude_dir`（冻结兼容，字段名里带 agent 名，后端登记在 `agent_boundary_guard::FROZEN_COMPAT`，
+/// 解锁条件是 monitor 与 aterm 都改读 `homes`）。monitor 不再依赖 `claude_dir` 的存在语义，它只是回退路径。后端的 `homes` 现在恒空 ⇒ 实际走回退分支。
 pub(crate) fn claude_home_from_hello<'a>(homes: &'a [AgentHome], claude_dir: &'a str) -> &'a str {
     homes
         .iter()
@@ -87,17 +70,12 @@ pub enum InboundFrame {
         /// 这个字段是**冻结兼容面**（仓外 aterm 还在读它），
         /// 把回退结果写回这里会让"backend 到底发了什么"变得不可观测。
         claude_dir: String,
-        /// backend-split `S4`（additive）：远端各 agent 的 home 目录表。
-        /// 旧后端（含今天所有已部署的）无此字段 ⇒ 空表 ⇒ 回退 `claude_dir`。
-        /// 非数组 / 元素缺字段一律滤掉，绝不 panic（同 `capabilities` 口径）。
+        /// 远端各 agent 的 home 目录表（additive）。旧后端无此字段 ⇒ 空表 ⇒ 回退 `claude_dir`。非数组 / 元素缺字段一律滤掉，绝不 panic。
         homes: Vec<AgentHome>,
-        /// F66（#58③）：backend 声明的能力 token 集。旧后端无此字段 → 空集
-        /// （保守：按最小能力集待它，不发流模式 flag）。monitor 按此决定发
-        /// `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配。
+        /// backend 声明的能力 token 集。旧后端无此字段 → 空集（按最小能力集待它，不发流模式 flag）；monitor 按此决定发 `--with-bg` / `--tail-only`。
         capabilities: Vec<String>,
-        /// U6b-2 / U8a-2a：backend 声明**接受哪些入方向命令**（后端 `inbound::command_names`，从命令表派生）。
-        /// `capabilities` 说的是「我认识哪些流 flag」（出方向），这一条说的是入方向 ——
-        /// 两者正交。旧后端无此字段 ⇒ 空集 ⇒ monitor 一条入方向命令都不发。
+        /// backend 声明接受哪些入方向命令（后端 `inbound::command_names`，从命令表派生）。`capabilities` 说出方向的流 flag，这一条说入方向 —— 两者正交。
+        /// 旧后端无此字段 ⇒ 空集 ⇒ monitor 一条入方向命令都不发。
         commands: Vec<String>,
         /// `hello.unavailable`：这台接得下却做不到的 `(命令, 码)`。旧后端无此字段 ⇒ 空（没把握）。
         unavailable: Vec<(String, String)>,
@@ -117,24 +95,22 @@ pub enum InboundFrame {
         /// 对账键（后端 `rid`，原样转交）。
         rid: Option<String>,
     },
-    /// 远端新出现一个 session 文件。Batch7-F24：p1e backend 附带 pidfile 元信息
-    /// （additive）；旧后端缺字段 → None（保守视为交互）。
+    /// 远端新出现一个 session 文件。附带 pidfile 元信息（additive）；旧后端缺字段 → None（保守视为交互）。
     SessionAdded {
         sid: String,
         session_kind: Option<String>,
-        /// E73（additive）：attach 进去对人有没有意义。缺席 = true（存量零迁移）。
-        /// 语义与来源见 `src/backend/stream/wire.rs` 的同名字段 + `src/doc/IPC-PROTOCOL.md` §9.3。
+        /// attach 进去对人有没有意义（additive）。缺席 = true。语义与来源见 `src/backend/stream/wire.rs` 的同名字段 + `src/doc/IPC-PROTOCOL.md` §9.3。
         attachable: Option<bool>,
         /// pidfile 记的起会话目录（认「我刚起的那条」用）。
         cwd: Option<String>,
         /// 会话的项目目录（那台后端读记录开头给的；tab 标题用它）。老后端不带 ⇒ `None`。
         project_dir: Option<String>,
         name: Option<String>,
-        /// Batch8-F25：远端 jsonl 绝对路径（p1f backend 起有值）——旁路快照用。
+        /// 远端 jsonl 绝对路径 —— 旁路快照用。
         path: Option<String>,
-        /// Batch8 D-I2：backend prime 时的完整行数 L（快照完整性校验）。
+        /// backend prime 时的完整行数 L（快照完整性校验）。
         lines: Option<u64>,
-        /// Batch9-F27：宣告时的初始 status/waitingFor（连接建立灯就对）。
+        /// 宣告时的初始 status / waitingFor（连接建立灯就对）。
         status: Option<String>,
         waiting_for: Option<String>,
         /// 〔additive〕这条活会话住在什么容器里（`{host, terminal?}`）。缺席 ⇒ `None` = 不知道（**不是**「不在任何宿主里」）；
@@ -154,7 +130,7 @@ pub enum InboundFrame {
         path: String,
         change: FileChange,
     },
-    /// Batch9-F27：会话 status 变化（p1g backend；远端红绿灯）。
+    /// 会话 status 变化（远端红绿灯）。
     SessionStatus {
         sid: String,
         status: Option<String>,
@@ -171,13 +147,9 @@ pub enum InboundFrame {
         runs: crate::ui_contract::RecordBody,
         ended: crate::ui_contract::RecordBody,
     },
-    /// issue #32：远端后端发送通道拥塞、丢了 `dropped` 帧（慢 SSH 管道）。
-    /// monitor 收到后经 SS-F remote-health 通道提示用户。
-    ///
-    /// ★ `lost` / `lost_truncated`〔audit-0805 F21，additive〕：那批丢帧里**不可恢复**的
-    /// 那些的身份。⚠ **它们的有无决定了要对用户说哪句话** —— 丢内容帧「重开会话可看完整
-    /// 历史」是真的；丢状态增量帧**不是**（它是一次差分的结果、别处不存在）。
-    /// 旧后端不发这两个字段 ⇒ 空集 / false，行为退回从前。
+    /// 远端后端发送通道拥塞、丢了 `dropped` 帧（慢 SSH 管道）；monitor 收到后经 remote-health 通道提示用户。
+    /// `lost` / `lost_truncated`（additive）：那批丢帧里不可恢复的那些的身份 —— 决定了要对用户说哪句话：丢内容帧「重开会话可看完整历史」是真的，
+    /// 丢状态增量帧不是（它是一次差分的结果、别处不存在）。旧后端不发这两个字段 ⇒ 空集 / false。
     Overflow {
         dropped: u64,
         lost: Vec<LostFrameInfo>,
@@ -185,8 +157,7 @@ pub enum InboundFrame {
     },
     // 这里原是后端 tmux 观测两帧（整份快照 · 差分出的正向死亡）：收割与「可重连」进了那台后端的会话账本、
     //   后端也不再发它们 ⇒ 删。老后端发来 ⇒ 落未知 kind（照常 warn 后跳过）。
-    /// U6b-1 / U8a-2a：**入方向命令的应答**。`id` 是 monitor 自己生成的不透明串，
-    /// backend 原样回显。由 `inbound_client` 按 `id` 路由回请求方。
+    /// 入方向命令的应答。`id` 是 monitor 自己生成的不透明串，backend 原样回显；由 `inbound_client` 按 `id` 路由回请求方。
     Reply {
         id: String,
         ok: bool,
@@ -194,7 +165,7 @@ pub enum InboundFrame {
         message: Option<String>,
         data: Option<serde_json::Value>,
     },
-    /// U6b-1 / U8a-2a：某条在跑的入方向命令**已被取消**。
+    /// 某条在跑的入方向命令已被取消。
     Cancelled { id: String },
     /// 那台机器上的账号清单变了（后端 `wire::Frame::AccountsChanged`，无载荷）。
     AccountsChanged,
@@ -227,19 +198,10 @@ pub enum InboundFrame {
     RotationChanged { sid: String },
 }
 
-/// 拥塞提示的**措辞**：有没有不可恢复的丢失，说法完全不同。
-///
-/// # 为什么要一个纯函数
-///
-/// 这句话是**用户唯一能看到的东西**，而它此前是错的（对状态增量帧说「重开会话可看完整
-/// 历史」）。抽成纯函数是为了让它**可判据** —— 消费点那一整块要真 `AppHandle`、
-/// 测不了；措辞对不对却恰恰是本件的正题。
-///
-/// 三档（定框 **E4**：静默失败要给身份、且要抬到调用方能判定的那一层）：
-/// - **只丢了内容帧**（`lost` 空）：老说法成立，行还在远端 jsonl 里。
-///   ⚠ 旧后端（`p1x` 之前）不发 `lost` ⇒ 也落这一档，**行为与从前逐字相同**。
-/// - **有不可恢复的丢失**：点名主体，并**明说重开会话补不回来**。
-/// - **身份表还被截断了**：再加一句「清单不全」，暗示理性做法是整体重取。
+/// 拥塞提示的措辞：有没有不可恢复的丢失，说法完全不同。抽成纯函数让措辞可判据（消费点要真 `AppHandle`、测不了）。
+/// - 只丢了内容帧（`lost` 空；旧后端不发 `lost` 也落这一档）：行还在远端 jsonl 里，「重开会话可看完整历史」成立。
+/// - 有不可恢复的丢失：点名主体，并明说重开会话补不回来。
+/// - 身份表还被截断了：再加一句「清单不全」（理性做法是整体重取）。
 pub(super) fn overflow_health_message(
     host_label: &str,
     dropped: u64,

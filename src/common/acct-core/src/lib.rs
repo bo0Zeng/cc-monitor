@@ -23,37 +23,22 @@ pub const CREDENTIALS_NAME: &str = ".credentials.json";
 /// bump 反而会让盘上所有 `version: 1` 的清单被读成「没启用多账号」，整张账号列表消失。
 pub const SUPPORTED_SCHEMA: u64 = 1;
 
-// ---------------------------------------------------------------- 鉴权方式（K-A1）
+// ---------------------------------------------------------------- 鉴权方式
 
 /// 鉴权方式 = 订阅登录（`~/.claude` 那套 `.credentials.json`）。
 pub const AUTH_KIND_SUBSCRIPTION: &str = "subscription";
 /// 鉴权方式 = 第三方 / 官方 API key（**不**看订阅凭据文件）。
 pub const AUTH_KIND_API_KEY: &str = "api-key";
 
-/// 鉴权方式的**闭集**。
-///
-/// # 为什么是闭集而不是 `bool`
-///
-/// `unified-backend` 记着一次同形状的伤口：pidfile 的 `kind` 被写成「非 `interactive`
-/// 即隐藏」，第三档来的时候那个布尔装不下。这一维今天就看得见第三档
-/// （`apiKeyHelper` / bedrock / vertex 各是一种鉴权方式），所以从第一天就是**枚举**。
-///
-/// ⚠ **本数组只是「今天认识哪些字面量」，不是「将来只会有这两个」。**
-/// 加第三档的步骤：这里加一个常量 + `auth_ready` 里给它一条规则 +
-/// TS 侧 `src/frontend/ui/accounts.ts` 的 `AuthKind` 联合加一支（monitor 那份 Rust 枚举与生成物已退役；
-/// 后端成品与跨语言金样 `tests/__fixtures__/accounts.golden.json` 跟着变，TS 解码器不认就红）。
+/// 鉴权方式的闭集。不是 `bool`：这一维看得见第三档（`apiKeyHelper` / bedrock / vertex 各是一种鉴权方式）。
+/// 本数组只是「今天认识哪些字面量」。加第三档：这里加一个常量 + `auth_ready` 里给它一条规则 + TS 侧 `src/frontend/ui/accounts.ts` 的 `AuthKind` 联合加一支
+/// （后端成品与跨语言金样 `tests/__fixtures__/accounts.golden.json` 跟着变，TS 解码器不认就红）。
 pub const AUTH_KINDS: [&str; 2] = [AUTH_KIND_SUBSCRIPTION, AUTH_KIND_API_KEY];
 
-/// manifest 的 `authKind` 键 → 鉴权方式。**这是这条分类规则的唯一住址。**
-///
+/// manifest 的 `authKind` 键 → 鉴权方式。这是这条分类规则的唯一住址。
 /// - 缺席（旧 manifest / 写侧还没加这个键）⇒ [`AUTH_KIND_SUBSCRIPTION`]。
-///   这不是猜：K-A1 Bx 复量过，`ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` /
-///   `ANTHROPIC_BASE_URL` / `apiKeyHelper` 四个针在 `src/` + `src/frontend/shell/src/` +
-///   `shared/` + `src/backend/` 下**全为零命中** ⇒ 今天存量账号**全部**是订阅号。
-/// - 认不出的值（比如将来写侧先加了 `bedrock` 而读侧还没升）⇒ 也落
-///   [`AUTH_KIND_SUBSCRIPTION`]，**这是刻意选的保守方向**：订阅这一档**保留**
-///   「缺凭据 ⇒ 不可选」那道保护，用户看到的是「未登录」（看得见、可修），
-///   而落到 api-key 那一档会让它**变成可选**却连不上（看不见的坏）。
+/// - 认不出的值（写侧先加了 `bedrock` 而读侧还没升）⇒ 也落 [`AUTH_KIND_SUBSCRIPTION`]，刻意的保守方向：订阅这一档保留
+///   「缺凭据 ⇒ 不可选」那道保护（用户看到「未登录」，看得见、可修），落到 api-key 那一档会让它变成可选却连不上（看不见的坏）。
 pub fn auth_kind_from_manifest(raw: Option<&str>) -> &'static str {
     match raw {
         Some(s) if s == AUTH_KIND_API_KEY => AUTH_KIND_API_KEY,
@@ -61,23 +46,9 @@ pub fn auth_kind_from_manifest(raw: Option<&str>) -> &'static str {
     }
 }
 
-/// 分类的**第二个输入**：这台机器的 apikey 表里有没有这个号的一行。
-///
-/// 有 ⇒ [`AUTH_KIND_API_KEY`]；没有 ⇒ 原样回 `manifest_kind`（[`auth_kind_from_manifest`] 的结论，一格不动）。
-///
-/// # 为什么要有这一格
-///
-/// 清单里 `authKind` 缺席的号（旧清单、或 key 是后配进 apikey 表的）按上面那条落订阅，又没有订阅凭据 ⇒
-/// 「未登录」、选不中 —— 可它明明配好了 key。今天后端建 API 号时会写 `authKind`，这一格兜住其余那几种。
-///
-/// # 为什么住这里（而不是界面那一侧拼一个「清单说 api-key 或表里有它」）
-///
-/// 「这个号是什么种类」只许有一个家。界面各处（徽章 / 按钮 / 下拉）照读 `authKind`，
-/// 一份新判定都不长；可选性也经 [`auth_ready`] 跟着对上。
-///
-/// 喂第二个输入的是**那台机器自己的后端**（`accounts-list` 出成品时读它自己那份 apikey 表，
-/// 本机远端同一条路）。〔旧文要点：「只有本机那个生产者（monitor 的 `local_accounts.rs`）喂得出第二个输入，
-/// 远端清单今天不经这一格」—— RM1a 起每台机器一份表、那台后端读写，C4c 起清单由那台后端并表。〕
+/// 分类的第二个输入：这台机器的 apikey 表里有没有这个号的一行。有 ⇒ [`AUTH_KIND_API_KEY`]；没有 ⇒ 原样回 `manifest_kind`。
+/// 清单里 `authKind` 缺席、key 后配进 apikey 表的号，按上面那条会落订阅而选不中 —— 这一格兜住。「这个号是什么种类」只许有一个家：
+/// 界面各处照读 `authKind`，可选性也经 [`auth_ready`] 跟着对上。喂第二个输入的是那台机器自己的后端（`accounts-list` 出成品时读它自己那份 apikey 表）。
 pub fn auth_kind_with_apikey_table(
     manifest_kind: &'static str,
     in_apikey_table: bool,
@@ -89,11 +60,8 @@ pub fn auth_kind_with_apikey_table(
     }
 }
 
-/// 〔从 monitor `history.rs` 搬来〕「一个 configDir 对应 apikey 表里哪个 id」
-/// —— 路径的最后一段（`Path::file_name`，逐字节照搬旧那一份）。**这是这条规则的唯一住址**：
-/// monitor（起会话那一侧 · `apikey_routing_for` · 写 key 那两处）与后端（`accounts-list` 出成品时并表）
-/// 调的是这一份。两边各写一个 basename 规则，漂开的那天症状是「账号页说走 apikey 端点改写、
-/// 起会话时没走」，而两边看起来都没错。
+/// 「一个 configDir 对应 apikey 表里哪个 id」—— 路径的最后一段（`Path::file_name`）。这是这条规则的唯一住址：
+/// 两边各写一个 basename 规则，漂开的那天症状是「账号页说走 apikey 端点改写、起会话时没走」，而两边看起来都没错。
 pub fn apikey_account_id_of_dir(config_dir: &str) -> Option<String> {
     std::path::Path::new(config_dir.trim())
         .file_name()
@@ -101,15 +69,9 @@ pub fn apikey_account_id_of_dir(config_dir: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// 〔从 monitor `history.rs` 搬来〕给一批 configDir 与这台机器 apikey 表里的 id，
-/// 答「哪几个号在表里有行」。**这是这条规则的唯一住址**（同上一条的两个调用方）。
-///
-/// 「有行」说的是 **(agent, 账号) 这一对**〔条 49〕：凭据文件里的行只属于
-/// `table_agent` 那一家（今天只有后端一个调用方，传 `accounts::upstream_select::CREDENTIALS_FILE_AGENT`；
-/// monitor 那一份常量随上游选择整块进后端删了）⇒ `agent` 不是那一家 ⇒ 空集。
-///
-/// ⚠ 它答的是「表里有没有这一行」，**不是**「这个 key 能不能用」，也不是「这次拉起会不会真的注入」
-/// （那还要过「中转在不在跑」那一格）。
+/// 给一批 configDir 与这台机器 apikey 表里的 id，答「哪几个号在表里有行」。这是这条规则的唯一住址。
+/// 「有行」说的是 (agent, 账号) 这一对：凭据文件里的行只属于 `table_agent` 那一家（后端传 `accounts::upstream_select::CREDENTIALS_FILE_AGENT`）⇒ `agent` 不是那一家 ⇒ 空集。
+/// 它答的是「表里有没有这一行」，不是「这个 key 能不能用」，也不是「这次拉起会不会真的注入」（那还要过「中转在不在跑」那一格）。
 pub fn apikey_routed_subset(
     config_dirs: &[String],
     rows: &[String],
@@ -126,19 +88,10 @@ pub fn apikey_routed_subset(
         .collect()
 }
 
-/// 「鉴权方式这一维**不再阻塞**这个号被选中」。**这是这条规则的唯一住址** ——
-/// 两个生产者（backend `observe/accounts_query.rs` · monitor `local_accounts.rs`）都调它，
-/// 所以「三个生产者各填一个不同默认值」那种漂移在结构上不可表示。
-///
-/// - 订阅号：凭据文件在不在（**逐字节旧行为** —— `logged_in` 原来就是这一格）。
-/// - api-key 号：**恒真**，因为它压根不用那个文件。
-///
-/// ⚠ **`true` 不等于「真能连上」**（件计划 `KA6a`）：api-key 号今天还没有配端点的路，
-/// 起会话会在 claude 那边报鉴权失败。⇒ UI **必须**把这个状态说出来
-/// （徽章写「api-key（未配置端点）」而不是「已登录」，落点
-/// `src/frontend/ui/accounts.ts::accountStatusBadge`），否则这一维交付出去就是一个新的坏体验。
-///
-/// ⚠ 也不等于「凭据有效」（`KA6b`）：订阅那一支仍然只 stat 存在性，过期/吊销看不出来。
+/// 「鉴权方式这一维不再阻塞这个号被选中」。这是这条规则的唯一住址（几个生产者都调它，各填一个不同默认值在结构上不可表示）。
+/// - 订阅号：凭据文件在不在。
+/// - api-key 号：恒真，它不用那个文件。
+/// `true` 不等于「真能连上」（界面要把这个状态说出来，`src/frontend/ui/accounts.ts::accountStatusBadge`），也不等于「凭据有效」（订阅那一支只 stat 存在性，过期 / 吊销看不出来）。
 pub fn auth_ready(auth_kind: &str, credentials_present: bool) -> bool {
     match auth_kind {
         k if k == AUTH_KIND_API_KEY => true,
@@ -167,26 +120,17 @@ pub struct AuthKindParityCase {
     pub expect_auth_ready: bool,
 }
 
-/// 跨生产者对拍的**唯一一份夹具**（K-A1 `KAY1` 的那条 acceptor）。
-///
-/// # 为什么住在生产 crate 里而不是一个 `fixtures/` 文件
-///
-/// 两个生产者住在**两个不同的 crate**（`src/backend` 是 bin-only、刻意不进
-/// workspace），它们唯一共享的东西就是本 crate。夹具放文件里要各写一份读法与各自的路径，
-/// 那正是本 crate 存在的理由所反对的（「双写点必须有守卫」不如「让双写不可表示」）。
-/// 从前「代价如实写：这张表会编进两个二进制」（RE 现打：Windows 调试版 `monitor.exe` · `cc-monitor-filewin.exe` 里各一处）；
-/// 今天它在 `fixtures` feature 后面，只有测试构建开它 ⇒ 发布二进制里没有它。
-///
-/// # 六格各自在守什么
+/// 跨生产者对拍的唯一一份夹具。住在生产 crate 里：两个生产者住在两个不同的 crate（`src/backend` 刻意不进 workspace），唯一共享的就是本 crate；
+/// 在 `fixtures` feature 后面，只有测试构建开它 ⇒ 发布二进制里没有它。
 ///
 /// | 格 | 它在守什么 |
 /// |---|---|
-/// | `sub-cred` | 正常订阅号 —— 旧行为一格没变 |
-/// | `sub-nocred` | ★ `KAY3` 阴性对照：订阅号缺凭据**仍然**不可选 |
-/// | `api-nocred` | ★ `KAY2` 正题：api-key 号缺凭据**不再**被判不可用 |
-/// | `api-cred` | api-key 号**有**凭据文件也一样 —— 它不看那个文件（防「其实还是在看文件」） |
-/// | `legacy-nokind` | 旧 manifest（键缺席）⇒ 订阅（`KA6d` 的裁决落到判据上） |
-/// | `bogus-kind` | 认不出的值 ⇒ 保守落订阅，**不是**落 api-key |
+/// | `sub-cred` | 正常订阅号 |
+/// | `sub-nocred` | 阴性对照：订阅号缺凭据仍然不可选 |
+/// | `api-nocred` | 正题：api-key 号缺凭据不被判不可用 |
+/// | `api-cred` | api-key 号有凭据文件也一样 —— 它不看那个文件 |
+/// | `legacy-nokind` | 旧 manifest（键缺席）⇒ 订阅 |
+/// | `bogus-kind` | 认不出的值 ⇒ 保守落订阅，不是落 api-key |
 #[cfg(any(test, feature = "fixtures"))]
 pub const AUTH_KIND_PARITY_CASES: [AuthKindParityCase; 6] = [
     AuthKindParityCase {
@@ -268,25 +212,9 @@ pub fn auth_kind_parity_manifest(root: &str) -> String {
     s
 }
 
-/// 视觉欺骗字符：看不见或会改变渲染方向/边界的码位。
-///
-/// 账号名与 config dir 会进 UI、也会进命令串；一个夹带 RLO 的名字能在界面上
-/// 显示成另一个账号。两侧读的是**同一份 manifest**，所以「什么算欺骗」必须一致。
-///
-/// # 这里是两侧的并集 —— 因为它们各自都有洞
-///
-/// U7-3 实测，同名函数两侧**双向漂移**：
-///
-/// | 缺在哪 | 码位 | 是不是真洞 |
-/// |---|---|---|
-/// | backend 缺 | `U+2060..=U+2064`（word joiner / 不可见运算符）· `U+1680` · `U+2000..=U+200A` · `U+202F` · `U+205F` · `U+3000`（各类空白） | **是**。这些 `char::is_control()` 全是 `false`，backend 侧真的会放行 |
-/// | monitor 缺 | `U+0085`（NEL） | **不是**。U7-3 我把它当安全洞报了出来，**那是错的**：Rust 里 `'\u{0085}'.is_control() == true`（NEL 属 Cc 类），monitor 的 `is_safe_config_dir` 本来就靠 `is_control()` 拒了它。**集合差了一项，可观察行为没差。**<br>backend 源码里那句「NEL 不在 `char::is_control` 里」是**事实错误**，我照抄了它 —— U7-4 实测证伪 |
-///
-/// NEL 仍然留在本集合里：让集合**自足** —— 调用方即使没有另外查 `is_control()` 也有完整保护。
-/// 但**理由要说对**，不能靠一句错的断言撑着。
-///
-/// 那条既有守卫只钉四个字符串常量，**看不见这个**。
-/// 一个能骗过其中一侧的名字就是能骗人的名字，与哪一侧在读无关 ⇒ 取并集。
+/// 视觉欺骗字符：看不见或会改变渲染方向 / 边界的码位。账号名与 config dir 会进 UI、也会进命令串（一个夹带 RLO 的名字能在界面上显示成另一个账号），
+/// 两侧读的是同一份 manifest ⇒ 「什么算欺骗」只有这一份。集合是并集，并且自足：含 `U+2060..=U+2064` · `U+1680` · `U+2000..=U+200A` · `U+202F` · `U+205F` · `U+3000`
+/// 这些 `char::is_control()` 不认的码位；`U+0085`（NEL）`is_control()` 已认，仍留在集合里，让调用方不另查也有完整保护。
 pub fn is_deceptive_char(c: char) -> bool {
     matches!(c,
         '\u{0085}'                  // NEL（C1 换行；is_control 已覆盖，留此为让集合自足）
