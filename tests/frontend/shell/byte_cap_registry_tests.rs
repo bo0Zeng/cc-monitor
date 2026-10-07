@@ -880,8 +880,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     (
         "src/backend/control/exit_policy.rs",
         "MAX_BYTES",
-        "后端自有的退出行为 `~/.cc-monitor/backend.json`（一格布尔；读不出来按缺省办并说出原因）",
-        "降级+说清",
+        "后端自有的退出行为 `~/.cc-monitor/backend.json`（一格布尔；读不出来 ⇒ `unreadable` 带原因回出去，按缺省办）",
+        "拒收+回错",
     ),
     (
         "src/backend/control/launch_account.rs",
@@ -892,8 +892,8 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     (
         "src/backend/dial/known_hosts.rs",
         "MAX_BYTES",
-        "后端自有的主机钥匙 `~/.cc-monitor/known_hosts`（读不出来就不记这一台、留一行日志）",
-        "跳过+说清",
+        "后端自有的主机钥匙 `~/.cc-monitor/known_hosts`（读不出来 ⇒ 不覆盖、回错，记钥匙那一处留一行日志）",
+        "拒收+回错",
     ),
     // skill 装记录那份文件：超了当读不懂 ⇒ 不覆盖、`ledger_unreadable`（读的人也不许把它说成「什么都没装过」）。
     (
