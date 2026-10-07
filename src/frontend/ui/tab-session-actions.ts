@@ -449,13 +449,23 @@ export function bringTerminalToFront(sessionId: string): Promise<FrontResult> {
 }
 
 /**
- * 拉远端会话对应的本机终端窗口：点那一刻现查 —— 前两问（那台谁在显示它 · 本机哪串进程开着那条连接）住
- * `remote-terminal-front.ts`，最后一跳壳沿进程链找属主的窗口、校验、拉前。每一步的结局都落成结局族。
+ * 拉远端会话对应的本机终端窗口：点那一刻现查 —— 那台谁在显示它 · 按窗口标签找 · 本机哪串进程开着那条连接，顺序住
+ * `remote-terminal-front.ts`；最后一跳壳沿进程链找属主的窗口、校验、拉前。每一步的结局都落成结局族。
  */
 export async function bringRemoteTerminalToFront(origin: Origin, sessionId: string): Promise<FrontResult> {
-  const plan = await planRemoteFront(origin, sessionId);
+  // 按窗口标签那一问出了事（monitor 没回话 / 抛了）⇒ 当没对上，接着按连接对。
+  const byLabel = (terminals: unknown[]): Promise<FrontResult | null> =>
+    commands.bring_remote_terminal_to_front({ terminals }).catch((e: unknown) => {
+      console.warn("terminal front by label failed:", e);
+      return null;
+    });
+  const plan = await planRemoteFront(origin, sessionId, byLabel);
   if ("result" in plan) return plan.result;
-  return shellFront(() => commands.bring_remote_terminal_to_front({ chain: plan.chain }));
+  return shellFront(async () => {
+    const o = await commands.bring_remote_terminal_to_front({ chain: plan.chain });
+    if (o === null) throw new Error("bring_remote_terminal_to_front: no outcome for a chain");
+    return o;
+  });
 }
 
 /** 关 tab 时让后端 event_replay 把这个 session 的历史也丢掉（失败只记日志）。 */

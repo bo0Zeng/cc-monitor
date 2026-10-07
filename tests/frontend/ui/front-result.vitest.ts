@@ -29,8 +29,15 @@ describe("↗ 结局族", () => {
     expect(shape({ kind: "window-gone" }, true)).toEqual({ title: "终端窗口已关闭", body: "", hint: null, tone: "grey", acts: ["在终端里打开"] });
     expect(shape({ kind: "hosted-by-wt", program: "ssh.exe" })).toEqual({
       title: "未切换 · 终端由 Windows 托管",
-      body: "默认终端交接给 Windows Terminal · 窗口不归 ssh.exe",
-      hint: "从 Windows Terminal 直接打开可切换",
+      body: "Windows 交给「终端」应用托管 · 定位失败",
+      hint: "在「终端」应用里新开标签页再连",
+      tone: "amber",
+      acts: [],
+    });
+    expect(shape({ kind: "background-tab", program: "ssh.exe" })).toEqual({
+      title: "未切换 · 终端在后台标签页",
+      body: "「终端」应用里那个标签页不在前台 · 找不到窗口",
+      hint: "切到那个标签页再点 ↗",
       tone: "amber",
       acts: [],
     });

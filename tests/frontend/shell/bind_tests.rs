@@ -211,6 +211,11 @@ fn wins(table: &'static [(u32, &'static [isize])]) -> impl Fn(u32) -> Vec<isize>
     }
 }
 
+/// 记号标题探针的替身：借不到控制台。
+fn unavail(_: u32) -> TitleProbe {
+    TitleProbe::Unavailable
+}
+
 fn found(hwnd: isize, owner_pid: u32, owner_proc_start: u64) -> FoundWindow {
     FoundWindow {
         hwnd,
@@ -241,16 +246,23 @@ fn without_a_registration_the_window_is_the_first_one_up_the_chain_and_only_if_i
     let start = |pid: u32| u64::from(pid) * 10;
     // 经典控制台：窗口属主是 shell。
     assert_eq!(
-        pick_chain_window(&chain, none, wins(&[(600, &[0x11]), (500, &[0x22])]), start),
+        pick_chain_window(
+            &chain,
+            none,
+            wins(&[(600, &[0x11]), (500, &[0x22])]),
+            start,
+            unavail
+        ),
         Ok(found(0x11, 600, 6000))
     );
     // Windows Terminal 只开一个窗口。
     assert_eq!(
-        pick_chain_window(&chain, none, wins(&[(500, &[0x22])]), start),
+        pick_chain_window(&chain, none, wins(&[(500, &[0x22])]), start, unavail),
         Ok(found(0x22, 500, 5000))
     );
     // 开着两个窗口 ⇒ 分不清：说出是哪个程序与候选个数（不挑）。
-    let two = pick_chain_window(&chain, none, wins(&[(500, &[0x22, 0x33])]), start).unwrap_err();
+    let two =
+        pick_chain_window(&chain, none, wins(&[(500, &[0x22, 0x33])]), start, unavail).unwrap_err();
     assert_eq!(
         two,
         FrontOutcome::Several {
@@ -260,10 +272,28 @@ fn without_a_registration_the_window_is_the_first_one_up_the_chain_and_only_if_i
     );
     // 链上有 PowerShell 却一个窗口都没有（Windows 默认终端把它交给了 Windows Terminal，窗口属主不在链上）
     // ⇒ 窗口归别的程序托管，不说「在后台跑」。
-    let handed = pick_chain_window(&chain, none, wins(&[]), start).unwrap_err();
+    let handed = pick_chain_window(&chain, none, wins(&[]), start, unavail).unwrap_err();
     assert_eq!(
         handed,
         FrontOutcome::HostedByWt {
+            program: "ssh.exe".into()
+        }
+    );
+    // 同一条断链，点击那一刻在那个 shell 的控制台上挂记号标题：带着记号的窗口 ⇒ 就是它；
+    // 挂上了却没有窗口带着它（Windows Terminal 只给前台标签页的标题）⇒ 照实说在后台标签页里。
+    let marked = |pid: u32| {
+        assert_eq!(pid, 600, "记号挂在链上那个控制台 shell 上");
+        TitleProbe::Found(found(0x55, 900, 9000))
+    };
+    assert_eq!(
+        pick_chain_window(&chain, none, wins(&[]), start, marked),
+        Ok(found(0x55, 900, 9000))
+    );
+    let behind =
+        pick_chain_window(&chain, none, wins(&[]), start, |_| TitleProbe::NotShown).unwrap_err();
+    assert_eq!(
+        behind,
+        FrontOutcome::BackgroundTab {
             program: "ssh.exe".into()
         }
     );
@@ -273,7 +303,7 @@ fn without_a_registration_the_window_is_the_first_one_up_the_chain_and_only_if_i
         { "pid": 650, "name": "svchost.exe", "start": 3000 },
     ]))
     .unwrap();
-    let nowin = pick_chain_window(&bg, none, wins(&[]), start).unwrap_err();
+    let nowin = pick_chain_window(&bg, none, wins(&[]), start, unavail).unwrap_err();
     assert_eq!(
         nowin,
         FrontOutcome::NoWindow {
@@ -290,7 +320,13 @@ fn a_registered_shell_on_the_chain_names_its_window_even_when_the_terminal_has_s
     let start = |pid: u32| u64::from(pid) * 10;
     let reg = |pid: u32| (pid == 600).then(|| entry(600, 0x33, 500));
     assert_eq!(
-        pick_chain_window(&chain, reg, wins(&[(500, &[0x22, 0x33, 0x44])]), start),
+        pick_chain_window(
+            &chain,
+            reg,
+            wins(&[(500, &[0x22, 0x33, 0x44])]),
+            start,
+            unavail
+        ),
         Ok(found(0x33, 500, 777))
     );
     let nested: Vec<ChainLink> = serde_json::from_value(serde_json::json!([
@@ -301,7 +337,7 @@ fn a_registered_shell_on_the_chain_names_its_window_even_when_the_terminal_has_s
     ]))
     .unwrap();
     assert_eq!(
-        pick_chain_window(&nested, reg, wins(&[(500, &[0x22, 0x33])]), start),
+        pick_chain_window(&nested, reg, wins(&[(500, &[0x22, 0x33])]), start, unavail),
         Ok(found(0x33, 500, 777))
     );
 }
@@ -318,7 +354,8 @@ fn a_registration_above_the_terminal_window_is_not_this_window() {
     ]))
     .unwrap();
     let reg = |pid: u32| (pid == 400).then(|| entry(400, 0x99, 300));
-    let said = pick_chain_window(&chain, reg, wins(&[(500, &[0x22, 0x33])]), |_| 0).unwrap_err();
+    let said =
+        pick_chain_window(&chain, reg, wins(&[(500, &[0x22, 0x33])]), |_| 0, unavail).unwrap_err();
     assert!(
         matches!(&said, FrontOutcome::Several { program, .. } if program == "WindowsTerminal.exe"),
         "{said:?}"
@@ -346,7 +383,8 @@ fn a_registration_that_fails_its_check_is_not_used_and_several_windows_are_never
             .then(|| entry(600, 0x33, 500))
             .filter(|e| registration_holds(e, Some(1), |_| true))
     };
-    let said = pick_chain_window(&chain, stale, wins(&[(500, &[0x22, 0x33])]), |_| 0).unwrap_err();
+    let said = pick_chain_window(&chain, stale, wins(&[(500, &[0x22, 0x33])]), |_| 0, unavail)
+        .unwrap_err();
     assert_eq!(
         said,
         FrontOutcome::Several {
@@ -371,4 +409,30 @@ fn a_local_claude_finds_its_shell_through_ccm() {
         walk_chain(&chain, reg, wins(&[(500, &[0x22, 0x33])])),
         ChainHit::Registered(entry(600, 0x33, 500))
     );
+}
+
+/// ★ 那台回显的窗口标签 ⇒ 握手表里那个 PowerShell 登记的窗口：标签里的起始时刻要与登记时那个对得上（进程号被复用不认）；
+/// 几个终端按交来的顺序，第一个对上的就是它；没有标签 / 形状不对 / 没登记 ⇒ 没有（接着按连接对）。
+#[test]
+fn a_window_label_names_the_registered_shell_only_when_its_start_time_matches() {
+    let reg = |pid: u32| (pid == 600).then(|| entry(600, 0x33, 500));
+    let ts =
+        |v: serde_json::Value| -> Vec<serde_json::Value> { serde_json::from_value(v).unwrap() };
+    let hit = labeled_registration(
+        &ts(serde_json::json!([
+            { "ssh": null },
+            { "ssh": null, "window": "601-639150434950992340" },
+            { "ssh": null, "window": "600-639150434950992340" },
+        ])),
+        reg,
+    );
+    assert_eq!(hit, Some(entry(600, 0x33, 500)));
+    for bad in [
+        serde_json::json!([{ "ssh": null, "window": "600-639150434950992341" }]),
+        serde_json::json!([{ "ssh": null, "window": "600" }]),
+        serde_json::json!([{ "ssh": null, "window": 600 }]),
+        serde_json::json!([{ "ssh": null }]),
+    ] {
+        assert_eq!(labeled_registration(&ts(bad.clone()), reg), None, "{bad}");
+    }
 }

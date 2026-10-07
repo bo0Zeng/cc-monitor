@@ -573,6 +573,22 @@ export const FRONT_SCENES: Scene[] = [
   }, (w) => {
     w.commands.bring_terminal_to_front = () => ({ kind: "several", program: "WindowsTerminal.exe", count: 3 });
   }),
+  frontScene("panel-front-background-tab", "↗ · 终端在后台标签页", "单独起的 PowerShell 被 Win11 交给「终端」应用（进程链断）、借它的控制台挂了记号标题，却没有窗口带着它（那个标签页不在前台）：浮层照实说找不到窗口，灰字给改法", async () => {
+    await mainReady(ALL_TABS);
+    await clickHeadFront();
+    await waitFor("[data-role=front-result]");
+    await sleep(400);
+  }, (w) => {
+    w.commands.bring_terminal_to_front = () => ({ kind: "background-tab", program: "ssh.exe" });
+  }),
+  frontScene("panel-front-hosted", "↗ · 终端由 Windows 托管", "进程链断在被交给「终端」应用的 PowerShell 上、连它的控制台也借不到：浮层说定位失败，灰字给改法", async () => {
+    await mainReady(ALL_TABS);
+    await clickHeadFront();
+    await waitFor("[data-role=front-result]");
+    await sleep(400);
+  }, (w) => {
+    w.commands.bring_terminal_to_front = () => ({ kind: "hosted-by-wt", program: "ssh.exe" });
+  }),
   frontScene("panel-front-unbound", "↗ · 本机终端没登记", "在接上终端之前开的 PowerShell：浮层给［接上终端］（直达设置那一节）", async () => {
     await mainReady(ALL_TABS);
     await clickHeadFront();

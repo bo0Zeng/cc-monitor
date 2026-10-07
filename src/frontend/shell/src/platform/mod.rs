@@ -6,6 +6,8 @@
 //! （`tests/frontend/shell/platform/platform_home_guard.rs`）。住这里的只是「读法」；判定规则留在调用方。
 
 pub mod console_text;
+// 借别的进程的控制台挂一次记号标题（↗ 默认终端交接那一档）。
+pub mod console_title;
 // `utils::FileTime` 的 Win32 那两件。
 pub mod filetime;
 pub mod fs;

@@ -2101,11 +2101,12 @@ describe("：↗ 远端那一格按顺序问三方", () => {
   ];
   const CHAIN = [{ pid: 700, name: "ssh.exe", start: 4000 }];
   /** 那台 / 本机各回什么；壳那一跳回什么结局。 */
-  function answer(shown: unknown, found: unknown, front: () => Promise<unknown>): void {
+  /** `front` 答交进程链那一问；`label` 答交 `terminals` 那一问（按窗口标签找，缺 ⇒ 没对上 `null`）。 */
+  function answer(shown: unknown, found: unknown, front: () => Promise<unknown>, label: () => Promise<unknown> = () => Promise.resolve(null)): void {
     mockInvoke.mockImplementation((cmd: string, args: unknown) => {
       if (isChanCall(cmd, args, "session-terminals")) return Promise.resolve(chanReply(shown));
       if (isChanCall(cmd, args, "terminal-processes")) return Promise.resolve(chanReply(found));
-      if (cmd === "bring_remote_terminal_to_front") return front();
+      if (cmd === "bring_remote_terminal_to_front") return "terminals" in (args as object) ? label() : front();
       return Promise.resolve([]);
     });
   }
@@ -2141,7 +2142,11 @@ describe("：↗ 远端那一格按顺序问三方", () => {
     ]);
     const local = calls.filter(([c, a]) => isChanCall(c, a, "terminal-processes"));
     expect(local.map(([, a]) => chanArgsJson(a as never))).toEqual([{ terminals: TERMINALS }]);
-    expect(calls.filter(([c]) => c === "bring_remote_terminal_to_front").map(([, a]) => a)).toEqual([{ chain: CHAIN }]);
+    // 先把那台的 `terminals` 原样交 monitor 按窗口标签找（没对上），再交本机后端的 `chain`。
+    expect(calls.filter(([c]) => c === "bring_remote_terminal_to_front").map(([, a]) => a)).toEqual([
+      { terminals: TERMINALS },
+      { chain: CHAIN },
+    ]);
     expect(
       calls.filter(([c, a]) => c === "list_remote_tmux" || c === "list_local_tmux" || isChanCall(c, a, "terminals-list")),
       "↗ 又去查了 tmux —— tmux 回到了 ↗ 的前提链上",
@@ -2174,7 +2179,7 @@ describe("：↗ 远端那一格按顺序问三方", () => {
       answer(shown, found, () => Promise.resolve({ kind: "switched" }));
       await clickFront(tm, "r1");
       const calls = mockInvoke.mock.calls as [string, unknown][];
-      expect(calls.some(([c]) => c === "bring_remote_terminal_to_front"), `${title}：说了原因还去找了窗口`).toBe(false);
+      expect(calls.some(([c, a]) => c === "bring_remote_terminal_to_front" && "chain" in (a as object)), `${title}：说了原因还去找了窗口`).toBe(false);
       expect(calls.some(([c, a]) => isChanCall(c, a, "terminal-processes")), `${title}：本机后端问没问`).toBe(found !== null);
       expect(document.querySelectorAll("[data-role=front-result]").length, `${title}：同一个会话不另弹`).toBe(1);
       first ??= pop()!.closest("[role=dialog]");
@@ -2185,6 +2190,27 @@ describe("：↗ 远端那一格按顺序问三方", () => {
       expect(pop()!.dataset.shade, title).toBe(tone);
     }
     expect(showActionFailureToast).not.toHaveBeenCalled();
+  });
+
+  it("★ 按窗口标签对上了（monitor 回那一次的结局）⇒ 不再问本机后端、不另交进程链；切过去了 ↗ 换对勾", async () => {
+    const LABELED = [{ ...TERMINALS[0], window: "600-639150434950992340" }];
+    answer({ terminals: LABELED }, { chain: CHAIN }, () => Promise.resolve({ kind: "switched" }), () => Promise.resolve({ kind: "switched" }));
+    const tm = makeTM();
+    tm.createSkeletonTab("r3", "/p", "devbox", "interactive", null);
+    await clickFront(tm, "r3");
+    const calls = mockInvoke.mock.calls as [string, unknown][];
+    expect(calls.filter(([c]) => c === "bring_remote_terminal_to_front").map(([, a]) => a)).toEqual([{ terminals: LABELED }]);
+    expect(calls.some(([c, a]) => isChanCall(c, a, "terminal-processes"))).toBe(false);
+    expect(pop(), "切过去了：不出浮层").toBeNull();
+  });
+
+  it("★ 按窗口标签没对上（monitor 回 null）⇒ 接着问本机后端、交进程链", async () => {
+    answer({ terminals: TERMINALS }, { chain: CHAIN }, () => Promise.resolve({ kind: "switched" }));
+    const tm = makeTM();
+    tm.createSkeletonTab("r4", "/p", "devbox", "interactive", null);
+    await clickFront(tm, "r4");
+    const calls = mockInvoke.mock.calls as [string, unknown][];
+    expect(calls.filter(([c]) => c === "bring_remote_terminal_to_front").map(([, a]) => a)).toEqual([{ terminals: TERMINALS }, { chain: CHAIN }]);
   });
 
   it("★ 切过去了：什么都不出、↗ 换成对勾 1 秒；开着的结局浮层一起收起", async () => {
@@ -5542,6 +5568,20 @@ describe("起新会话的占位标签页接在标签页栏里", () => {
     expect(tm.debugSlots().showing, "切回原来那个也收起").toBeNull();
     expect(tm.debugSlots().ids, "那一行留着、还在等").toEqual([1]);
     expect(shown).toEqual([true, false]);
+  });
+
+  it("★ 恢复一条已有标签页的会话（按 sid 认）⇒ 不长占位页，直接切到那个标签页、回「没接」；按目录认的新起照旧长", () => {
+    const tm = makeTM();
+    tm.createSkeletonTab("a", "/p/a", LOCAL_ORIGIN, null, null);
+    tm.createSkeletonTab("s1", "/p/s1", LOCAL_ORIGIN, null, null);
+    tm.switchTo("a");
+    const taken = tm.addLaunchSlot({ origin: LOCAL_ORIGIN, cwd: "/p", tmuxName: null, agent: "claude", match: { sid: "s1" } });
+    expect(taken, "已有标签页 ⇒ 不接").toBe(false);
+    expect(tm.debugSlots().ids, "没长占位页").toEqual([]);
+    expect(tm.activeSessionId(), "切到了那个标签页").toBe("s1");
+    expect(tm.addLaunchSlot({ origin: LOCAL_ORIGIN, cwd: "/p", tmuxName: null, agent: "claude", match: { sid: "s9" } }), "没有那个标签页 ⇒ 照旧长").toBe(true);
+    expect(tm.addLaunchSlot({ origin: LOCAL_ORIGIN, cwd: "/p", tmuxName: null, agent: "claude", match: { cwd: "/p" } })).toBe(true);
+    expect(tm.debugSlots().ids).toEqual([1, 2]);
   });
 
   it("★ 占位那一页显着 ⇒ 作用于当前会话的快捷键（查找 · 折叠 · 翻轮 · 到底 · 关 · 开目录 · 开窗 · 菜单 · 切到终端）不落到底下那个真标签页；全局的照常", () => {

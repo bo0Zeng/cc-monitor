@@ -41,6 +41,13 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "src/bind.rs",
+        "probe_by_marker_title",
+        "wait-for-condition",
+        "↗ 默认终端交接那一档：借控制台挂记号标题之后等它传到窗口标题上，12×50ms（≤600ms）找到就停。**有次数上限**、\
+             只在点 ↗ 那一下跑，不是节拍器。（远端点 ↗ 的现扫重试随窗口标签那一套回来，与上面握手那条同一个上限。）",
+    ),
+    (
+        "src/bind.rs",
         "process_await_file",
         "wait-for-condition",
         "一处等窗口：`find_window_for_marker` 的 12×50ms（≤600ms，等 PowerShell 设标题传播）。**有次数上限**，\

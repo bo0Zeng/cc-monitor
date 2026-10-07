@@ -4006,12 +4006,27 @@
     },
     "front.body.hosted": {
       "kind": "body",
-      "zh": "默认终端交接给 Windows Terminal · 窗口不归 {program}",
-      "args": ["program"]
+      "zh": "Windows 交给「终端」应用托管 · 定位失败",
+      "args": []
+    },
+    "front.title.backgroundTab": {
+      "kind": "title",
+      "zh": "未切换 · 终端在后台标签页",
+      "args": []
+    },
+    "front.body.backgroundTab": {
+      "kind": "body",
+      "zh": "「终端」应用里那个标签页不在前台 · 找不到窗口",
+      "args": []
+    },
+    "front.hint.backgroundTab": {
+      "kind": "body",
+      "zh": "切到那个标签页再点 ↗",
+      "args": []
     },
     "front.hint.hosted": {
       "kind": "body",
-      "zh": "从 Windows Terminal 直接打开可切换",
+      "zh": "在「终端」应用里新开标签页再连",
       "args": []
     },
     "front.body.unknown": {

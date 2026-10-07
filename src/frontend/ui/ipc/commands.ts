@@ -413,9 +413,9 @@ export const commands = {
   bring_terminal_to_front: (args: { sessionId: string }) =>
     invoke<FrontOutcome>("bring_terminal_to_front", args),
 
-  /** 远端会话拉前（沿本机后端给的进程链找窗口）；回结局族。**桶①**。 */
-  bring_remote_terminal_to_front: (args: { chain: unknown[] }) =>
-    invoke<FrontOutcome>("bring_remote_terminal_to_front", args),
+  /** 远端会话拉前，两问：交那台回的 `terminals` ⇒ 按窗口标签找（对不上回 `null`）；交本机后端的进程链 ⇒ 沿链找窗口。回结局族。**桶①**。 */
+  bring_remote_terminal_to_front: (args: { terminals: unknown[] } | { chain: unknown[] }) =>
+    invoke<FrontOutcome | null>("bring_remote_terminal_to_front", args),
 
   /** 关 tab 时让事件重放忘掉这个会话。**桶①**。 */
   forget_session: (args: { sessionId: string }) => invoke<void>("forget_session", args),

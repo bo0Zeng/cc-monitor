@@ -2,8 +2,9 @@
  * 远端会话的 ↗ 前两问：此刻显示这个会话的，是这台电脑上哪一串进程。原因都来自两个后端的回话 ——
  * 界面不解析连接、不判对不对得上，只按顺序把一方的回话交给另一方：
  * ① 那台 `session-terminals {sid}` ⇒ 此刻连着这个会话的终端，或一条原因；
- * ② 本机后端 `terminal-processes {terminals}`（那台回话里的 `terminals` 原样交）⇒ 开着那条连接的进程往上的进程链，或一条原因。
- * 第三跳（沿链找窗口、校验、拉前）归 monitor（`bring_remote_terminal_to_front`）。
+ * ② 那台回话里的 `terminals` 原样交 monitor 按窗口标签找（`byLabel`，对上就已经拉到前台）；
+ * ③ 没对上 ⇒ 本机后端 `terminal-processes {terminals}`（同样原样交）⇒ 开着那条连接的进程往上的进程链，或一条原因。
+ * 最后一跳（沿链找窗口、校验、拉前）归 monitor（`bring_remote_terminal_to_front`）。
  */
 import { chan, ChanError } from "../../comms/inward/chan";
 import { budgetWithin, isOldBackend, jsonBody, readJson } from "./ipc/chan-caller";
@@ -13,7 +14,7 @@ import type { FrontResult } from "./front-result";
 /** 每一问的期限：那台读 `/proc` ＋ 问一次 tmux；本机读一次系统连接表与进程表。 */
 const ASK_BUDGET_MS = 15_000;
 
-/** 前两问的结局：进程链（原样交 monitor），或一个结局族。 */
+/** 这几问的结局：进程链（原样交 monitor），或一个结局族（按窗口标签已经拉到的那一次也是一个结局族）。 */
 export type RemoteFrontPlan = { chain: unknown[] } | { result: FrontResult };
 
 type Obj = Record<string, unknown>;
@@ -74,14 +75,23 @@ function localResult(why: unknown, addr: unknown): FrontResult {
   }
 }
 
-/** 问那台、再问本机：进程链或一个结局族。问不到 / 形状不认也落成结局族（不抛）。 */
-export async function planRemoteFront(origin: Origin, sid: string): Promise<RemoteFrontPlan> {
+/**
+ * 问那台、按窗口标签找、再问本机：进程链或一个结局族。问不到 / 形状不认也落成结局族（不抛）。
+ * `byLabel`：那台回的 `terminals` 原样交 monitor 按窗口标签找 ⇒ 对上了那一次的结局；没对上 ⇒ `null`（接着按连接对）。
+ */
+export async function planRemoteFront(
+  origin: Origin,
+  sid: string,
+  byLabel: (terminals: unknown[]) => Promise<FrontResult | null>,
+): Promise<RemoteFrontPlan> {
   try {
     const body = jsonBody({ sid });
     const budget = budgetWithin(ASK_BUDGET_MS);
     const shown = await answered("session-terminals", chan.call(origin, "session-terminals", body, budget));
     if (!Array.isArray(shown.terminals)) throw new BadShape("session-terminals: no terminals");
     if (shown.why !== undefined) return { result: shownResult(shown.why) };
+    const labeled = await byLabel(shown.terminals);
+    if (labeled !== null) return { result: labeled };
     const localBody = jsonBody({ terminals: shown.terminals });
     const localBudget = budgetWithin(ASK_BUDGET_MS);
     const found = await answered("terminal-processes", chan.call(LOCAL_ORIGIN, "terminal-processes", localBody, localBudget));

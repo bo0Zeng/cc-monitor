@@ -38,8 +38,8 @@ fn tmux(sock: &std::path::Path, args: &[&str]) -> String {
     String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
 
-/// 在 pty 里起一个 tmux 客户端连上 `a` 会话，环境里带着给定的 `SSH_CONNECTION`。
-fn attach_client(sock: &std::path::Path, ssh: &str) -> Child {
+/// 在 pty 里起一个 tmux 客户端连上 `a` 会话，环境里带着给定的 `SSH_CONNECTION`（与窗口标签，给了的话）。
+fn attach_client(sock: &std::path::Path, ssh: &str, window: Option<&str>) -> Child {
     let mut c = Command::new("script");
     c.args([
         "-qfc",
@@ -51,9 +51,13 @@ fn attach_client(sock: &std::path::Path, ssh: &str) -> Child {
     // CI 的环境里没有 TERM，tmux 会拒绝接上（「terminal does not support clear」）。
     .env("TERM", "xterm-256color")
     .env("SSH_CONNECTION", ssh)
-    .stdin(Stdio::null())
-    .stdout(Stdio::null())
-    .stderr(Stdio::null());
+    .env_remove("LC_CCM_WINDOW");
+    if let Some(w) = window {
+        c.env("LC_CCM_WINDOW", w);
+    }
+    c.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     c.spawn().expect("起不来 script —— 本组要它造 pty")
 }
 
@@ -97,11 +101,15 @@ fn inside_tmux_the_answer_is_the_clients_attached_right_now() {
         "没有终端连着却报出了终端"
     );
 
-    let mut a = attach_client(&sock, "10.0.0.5 62414 10.0.0.9 22");
+    let mut a = attach_client(&sock, "10.0.0.5 62414 10.0.0.9 22", None);
     assert!(wait_until(10, || clients(&sock) == 1), "客户端 A 没连上");
     // tmux 的动静是秒级的：隔开一秒多，B 才是「更近」的那个。
     std::thread::sleep(Duration::from_millis(1300));
-    let mut b = attach_client(&sock, "fd00::7 50000 fd00::1 2222");
+    let mut b = attach_client(
+        &sock,
+        "fd00::7 50000 fd00::1 2222",
+        Some("4242-133000000000000000"),
+    );
     assert!(wait_until(10, || clients(&sock) == 2), "客户端 B 没连上");
 
     let got = shown_by(pane_pid).unwrap();
@@ -128,6 +136,9 @@ fn inside_tmux_the_answer_is_the_clients_attached_right_now() {
         "顺序不是「最近动静在前」，或读到的不是那两个客户端自己的环境"
     );
     assert!(ts.iter().all(|t| t.activity.is_some()));
+    // 窗口标签读的也是各客户端自己的环境：B 送了、A 没送。
+    let windows: Vec<Option<String>> = ts.iter().map(|t| t.window.clone()).collect();
+    assert_eq!(windows, vec![Some("4242-133000000000000000".into()), None]);
 
     // 断开 ⇒ 又是「没有终端连着」。
     tmux(&sock, &["detach-client", "-s", "a"]);
@@ -156,6 +167,7 @@ fn outside_tmux_the_process_own_environment_is_the_answer() {
         .env_remove("TMUX")
         .env_remove("TMUX_PANE")
         .env("SSH_CONNECTION", "192.168.1.20 51111 192.168.1.2 22")
+        .env("LC_CCM_WINDOW", "4242-133000000000000000")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -185,6 +197,7 @@ fn outside_tmux_the_process_own_environment_is_the_answer() {
                 server_port: 22,
             }),
             activity: None,
+            window: Some("4242-133000000000000000".into()),
         }])
     );
     let _ = kid.kill();
@@ -231,6 +244,23 @@ fn ssh_connection_is_four_fields_or_nothing() {
         "10.0.0.1 1 10.0.0.2 22 x",
     ] {
         assert_eq!(parse_ssh_connection(bad), None, "{bad:?} 不该认");
+    }
+    // 窗口标签：`<进程号>-<起始时刻>` 才回显，别的形状一律不带。
+    assert_eq!(
+        window_label(" 4242-133000000000000000 "),
+        Some("4242-133000000000000000".into())
+    );
+    for bad in [
+        "",
+        "4242",
+        "-1",
+        "4242-",
+        "a-1",
+        "1-2-3",
+        "12345678901-1",
+        "1-123456789012345678901",
+    ] {
+        assert_eq!(window_label(bad), None, "{bad:?} 不该认");
     }
     assert_eq!(
         parse_clients("12 1790918865\nbad\n13 x\n14 7\n"),

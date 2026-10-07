@@ -4,7 +4,8 @@
 //! - 在 tmux 里：claude 的环境是建会话那个人的、可能早就断开了 ⇒ 不用它。问那个 socket（取自 claude 环境里的 `TMUX`）
 //!   「现在有哪些客户端连着这个 pane 所在的会话」，逐个读那些客户端进程的环境，按最近动静倒序。一个都没有 ⇒ `detached`。
 //!   tmux 在这里只被问「谁连着」，不读也不设标题。
-//! - 读环境只抠写死的那几个键（`TMUX` · `TMUX_PANE` · `SSH_CONNECTION`），不回整份环境。
+//! - 读环境只抠写死的那几个键（`TMUX` · `TMUX_PANE` · `SSH_CONNECTION` · `LC_CCM_WINDOW`），不回整份环境。
+//! - `LC_CCM_WINDOW` 是本机那个终端窗口的标签（PowerShell 接入块设、经 ssh 送过来），这里只原样回显，认窗口归本机。
 //! - 零定时器：只在被问时答。读不了别人的进程 ⇒ 照实说 `unreadable`。
 
 use crate::platform::child::{Child, Deadline};
@@ -19,6 +20,7 @@ pub(crate) type Answer = Result<Value, (&'static str, String)>;
 const TMUX_ENV: &str = "TMUX";
 const TMUX_PANE_ENV: &str = "TMUX_PANE";
 const SSH_CONNECTION_ENV: &str = "SSH_CONNECTION";
+const WINDOW_LABEL_ENV: &str = "LC_CCM_WINDOW";
 /// 一次最多报几个连着的终端（同一个会话连十几个客户端已经不正常；超出的按动静排在后面的丢掉）。
 const MAX_TERMINALS: usize = 16;
 
@@ -40,6 +42,9 @@ pub(crate) struct Terminal {
     pub(crate) ssh: Option<SshConnection>,
     /// 最近一次动静（tmux 客户端的 `client_activity`，Unix 秒）；不在 tmux 里 ⇒ `None`。
     pub(crate) activity: Option<u64>,
+    /// 本机那个终端窗口的标签（`LC_CCM_WINDOW`，形如 `<进程号>-<起始时刻>`）；没送过来 / 形状不对 ⇒ 不带。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) window: Option<String>,
 }
 
 /// 查到的事实：一串终端，或一条说得出的原因。
@@ -137,13 +142,25 @@ pub(crate) fn shown_by(pid: u32) -> Result<Shown, (&'static str, String)> {
     Ok(Shown::By(seen))
 }
 
-/// 读一个终端进程的 `SSH_CONNECTION`；环境读不到 ⇒ `None`（调用方据此说 `unreadable`）。
+/// 读一个终端进程的 `SSH_CONNECTION` 与窗口标签；环境读不到 ⇒ `None`（调用方据此说 `unreadable`）。
 fn terminal_of(pid: u32, activity: Option<u64>) -> Option<Terminal> {
     let ssh = env(pid, SSH_CONNECTION_ENV).ok()?;
+    let window = env(pid, WINDOW_LABEL_ENV).ok()?;
     Some(Terminal {
         ssh: ssh.as_deref().and_then(parse_ssh_connection),
         activity,
+        window: window.as_deref().and_then(window_label),
     })
+}
+
+/// 窗口标签：`<十进制>-<十进制>`（进程号 · 起始时刻），总长有界；别的形状不回显。
+pub(crate) fn window_label(raw: &str) -> Option<String> {
+    let t = raw.trim();
+    let (a, b) = t.split_once('-')?;
+    let digits = |x: &str, max: usize| {
+        !x.is_empty() && x.len() <= max && x.bytes().all(|c| c.is_ascii_digit())
+    };
+    (digits(a, 10) && digits(b, 20)).then(|| t.to_string())
 }
 
 /// `SSH_CONNECTION` 的四段：两个地址必须是 IP、两个口必须是端口号；不合 ⇒ `None`（当成不是经 ssh 连的）。

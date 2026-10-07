@@ -280,7 +280,7 @@ fn the_alias_block_is_the_one_place_that_sources_the_alias_file_in_both_dialects
 }
 
 /// 🔴 别名块只管接入：POSIX 那一块一个函数都不定义（`ccm` 进 PATH ＋ 接上别名文件）；PowerShell 那一块只定义拉前握手
-/// `__ccm_bind`（＋ 接上别名文件）。`cc` / `cct` / `cca` 住清单（[`first_aliases`]）。
+/// `__ccm_bind` 与带窗口标签的那层 `ssh`（＋ 接上别名文件）。`cc` / `cct` / `cca` 住清单（[`first_aliases`]）。
 /// 名字被我们的块占着 ⇒ 撞名提示照出声（`__ccm_bind`）；块不再占 `cc`。
 #[test]
 fn the_alias_blocks_only_wire_up_ccm() {
@@ -291,7 +291,7 @@ fn the_alias_blocks_only_wire_up_ccm() {
     };
     assert_eq!(fns(P, block::CCM_WRAPPER_SNIPPET), Vec::<String>::new());
     let ps = block::render_block(PS, "/h").expect("渲染");
-    assert_eq!(fns(PS, &ps), ["__ccm_bind"]);
+    assert_eq!(fns(PS, &ps), ["__ccm_bind", "ssh"]);
     // 正控：认法认得出函数。
     assert_eq!(fns(P, "cc() { ccm \"$@\"; }\n"), ["cc"]);
     let note = collision_note("__ccm_bind", PS).expect("我们的块占着 `__ccm_bind`，该出声");
