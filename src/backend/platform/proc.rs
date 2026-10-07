@@ -90,9 +90,8 @@ pub(crate) enum EnvRead {
 /// 从 `/proc/<pid>/environ` 抠某一个环境变量的值，三态返回（见 [`EnvRead`]）。空值按未设算（回 `Unset`）；
 /// 这一刻读不出来（读失败 / 读回 0 字节）回 `Unreadable`。变量名是参数：`platform/` 不认识任何一个 agent 的环境变量。
 ///
-/// 调用形状（`proc_env_var(pid, <键>)` 这一串字面）是两把尺子的量点，别改：
-/// `observe/accounts_query_tests.rs::the_only_env_keys_this_module_reads_are_the_two_named_constants` 与跨 crate 的
-/// `src/frontend/shell/src/doc_claim_registry_tests.rs::env_keys_actually_read` 都按这串字面数「backend 真读几个键」。
+/// 调用形状（`proc_env_var(pid, <键>)` 这一串字面）是量点，别改：
+/// `observe/accounts_query_tests.rs::the_only_env_keys_this_module_reads_are_the_two_named_constants` 按这串字面数「backend 真读几个键」。
 ///
 /// `warn!` 在这里而不在调用方：只有这里知道刚才走的是哪一支。
 pub(crate) fn proc_env_var(pid: u32, name: &str) -> EnvRead {

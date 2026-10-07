@@ -1453,49 +1453,6 @@ fn ccm_aliases_snippet_has_required_elements() {
     }
 }
 
-/// `KR58D2` —— `src/doc/IPC-PROTOCOL.md` §11 里描述别名块的那一句，**行数与名单同句**。
-///
-/// 本区最高频的那条病就是「数与名单同句、只改一半」⇒ 这里**两样一起对**，
-/// 而且两样都**现算**自源头 [`CCM_WRAPPER_SNIPPET`]（= `src/shared/ccm-aliases.sh` 本身），
-/// 判据里不抄第二份名单、不写死行数。
-///
-/// ⚠ **它买到的射程只有这一句**：§11 其余部分（`shared/ccm` · `CCM_CLI_SCRIPT`）
-/// 在 `K-R48` 第二拍之后已经是**存量馊话**，本判据够不着，也不假装够得着。
-///
-/// ⚠ 判据够不着被测对象时必须**响亮地红**，不许变成空真 ⇒ 找不到那一句就 panic。
-#[test]
-fn the_protocol_doc_sentence_about_the_alias_block_matches_the_file() {
-    const IPC_DOC: &str = include_str!("../../../../src/doc/IPC-PROTOCOL.md");
-    let defined: Vec<String> = CCM_WRAPPER_SNIPPET
-        .lines()
-        .filter_map(|l| Shell::Posix.dialect().declared_function(l.trim_start()))
-        .collect();
-    let want_lines = CCM_WRAPPER_SNIPPET.lines().count();
-
-    let sent = IPC_DOC
-        .lines()
-        .find(|l| l.contains("src/shared/ccm-aliases.sh`，**"))
-        .expect(
-            "src/doc/IPC-PROTOCOL.md 里描述别名块的那一句找不到了 —— \
-                 要么它被改写了、要么被删了；无论哪种，这条对账现在是瞎的",
-        );
-    let bold = sent
-        .split("**")
-        .nth(1)
-        .expect("那一句里的粗体段没了 —— 对账抓不到数与名单");
-
-    assert!(
-        bold.contains(&format!("{want_lines} 行")),
-        "行数对不上：src/shared/ccm-aliases.sh 现在 {want_lines} 行，而文档那句写的是「{bold}」"
-    );
-    // 块今天一个别名都不定义（`cc` / `cct` / `cca` 住清单）—— 文档那句要照实说，块里长回函数就要改那句。
-    assert_eq!(
-        bold.contains("一个别名都不定义"),
-        defined.is_empty(),
-        "块里定义了 {defined:?}，而文档那句写的是「{bold}」"
-    );
-}
-
 #[test]
 fn merge_profile_block_append_replace_idempotent() {
     let snippet = "ccm() { :; }";

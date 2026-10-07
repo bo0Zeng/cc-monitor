@@ -307,7 +307,7 @@ jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是�
 
 任何 `#[tauri::command] fn cmd(state: State<'_, Arc<X>>)` 都对应 `setup()` 里 `app.manage(x.clone())`。漏 `manage` 不会被 `cargo check` 抓住，运行时调用该 IPC 时 panic。
 
-修改 State 注册矩阵时**强制**走 [STATE-MATRIX.md](STATE-MATRIX.md) § 修改规则 的 grep checklist。
+改 State 时照 [CONTRIBUTING.md § 3.1](CONTRIBUTING.md) 那几条 grep 找全消费者、`manage` 与跨线程持有者（清单从代码现查，不另抄一份）。
 
 **为什么不能松动**：撤回某 State 时漏 `manage` 别的 IPC 依赖造成"5 个版本带病"是真实历史事故。`cargo check` 通过不代表运行时通过。
 
@@ -785,7 +785,7 @@ tmux user option **`@ccm_sid`** 记「这个 tmux 此刻在跑哪个 sid」（�
 - **前置**：没有后端时 `ccm` **响亮失败**（在 tmux 里起有身份的 agent ⇒ exit 2），
   逃生口 `CCM_NO_BACKEND=1` 明示放弃身份、**照样往 stderr 说一句**。不许静默降级 ——
   静默的后果是「会话起来了、monitor 绑不上、点 ↗ 弹『未绑定窗口』而没人知道为什么」。
-- **不碰窗口标题**：`@ccm_sid` 只给 kill / 送键的身份门与可重连那一格用；↗ 不靠它（点那一刻现查「此刻谁连着这个会话」，`IPC-PROTOCOL.md` §11）。
+- **不碰窗口标题**：`@ccm_sid` 只给 kill / 送键的身份门与可重连那一格用；↗ 不靠它（点那一刻现查「此刻谁连着这个会话」：`session-terminals` ＋ `terminal-processes`）。
 
 **铁律**（守 SS-5/SS-9「tab 身份钉在会话身份，找不到就报『不存在』，绝不静默换一个」）：
 - **attach / resume 定位后端，一律先按 `sid===@ccm_sid` 精确匹配**（`tabs.ts::findClaudeTmux`）。
@@ -1083,224 +1083,10 @@ monitor 的每一条起会话路径（新起 · resume · 换号重启 · 分叉
 `shared/ccm` 并对 `detach`/`tmux-size` 两项 fail-closed。**真正零覆盖的是**：
 首行 `name=ccm` · `version=` · `agents=` · 渲染器那 7 项 `CLI_REQUIRED_CAPS`。
 
-## 33b. 载荷编译器搬进 Rust 是**三步**，六条渲染器不变量各自的命运写在这里（U8c / unified-backend）
+## 33b. 起会话那一行只由后端渲
 
-**背景**：unified-backend 要把「起会话」的决策移到 backend，于是 TS 那两个渲染器要退役。
-这件事一轮吞不下（四个文件 614 行 + 三个下游依赖 321 行 + **本节以下六条不变量**），
-U8c-1 摸底后拆成三步：
-
-> 🔴🔴 **2026-09-20（B）订正 —— 本节最大的那一句变了：
-> `session-backend.ts` 与 `launch-render-fallback.ts` 今天的生产调用方是 0。**
->
-> 「launch 渲染链搬后端」收官：22b·A 在
-> 后端载荷那一层补出了**外层 tmux 那三格**
->（`container:tmux` 的 `create` / `send-into` ＋ `action:attach`）
-> 并立了一份入库的逐字节金标准（外层那一份夹具，13 条；随载荷那一层删了）；
-> **22b·B 把生产接过去了** —— `remote-launch-run.ts::renderLaunchCommand` 最后那一格
-> 改问 `commands.render_launch_payload` 要（请求带 `outer`），
-> `renderFallback` 的 `import` 与调用一起退役，**不留回落、不留开关、不留双写**。
->
-> **本节受影响的副本，逐处点名**（本节自己写着「订正一句假话时，先把它的全部副本找出来」——
-> 这一条由 F01 的四处「每 ~8s」与 F07 漏掉的那一格逼出来的，这次一次点全）：
->
-> | # | 哪一处 | 原文哪半假了 | 处置 |
-> |---|---|---|---|
-> | 1 | 「外层容器那半」下面那张**产出方表**的 `session-backend.ts` 行 | 「**生产远端主路**，天天在跑」 | 就地订正（见那一格） |
-> | 2 | 三问表 ② 的「没装 ccm 的远端」那一条 | 「仍是 `session-backend.ts::attach`，经 `launch-render-fallback.ts` 那一支」 | 就地订正。⚠ **判词 `〔现打②〕` 不动**，理由见那一格的〔尺子〕小节 |
-> | 3 | `K-R89` 第五次订正段末 | 「**真正让 `renderFallback` 站在生产路上的只有 `renderLaunchCommand` 最后那一行**」 | 就地订正 |
-> | 4 | `K-R106` 第六次订正段第 2 条 | 「`launch-render-fallback.ts` 那一处……**是差一个承接方**」＋「那时按定义就没有后端命令行入口可问」 | 就地订正（那句话把**远端的 ccm** 与 **monitor 自己进程里的 Rust 渲染器**压成了一个，正是 `R61` 裁定三禁的那一形） |
-> | 5 | 同段末「**U8c-3 的真前置不是文档，是 U8a-2c 与 U12 两件功能**」 | U8c-3 的前置今天与那两件功能无关了 | 就地订正 |
-> | 6 | 08-14 复裁表 ② 行 · `K-R105` 复裁表 ② 行 | 「`renderFallback` 的三格全在 TS」 | **不动 —— 那两张表逐字标着「原文留档」**，本节自己的纪律是「读它们要连日期一起读」。改留档等于把过去的话改成假话 |
->
-> ⚠ **两处「没变」也要写清，免得下一个人以为顺手该改**：
-> · 三问 ① 的判词仍是 `〔现打①〕部分切` —— 它量的是「生产段发不发 `create-or-attach`」，
->   而 22b·B 搬的是**渲染**（monitor 自己渲一条 shell 串交给用户的终端跑），
->   **一次 `launch` 帧都没多发** ⇒ 那把尺子上读数一个字没变。
->   🔴 **但别把「读数没变」读成「什么都没变」**：monitor 那条 `↗` 今天**是 Rust 渲的**了，
->   而这一问问的是「切到后端的 `launch` 了吗」—— **两件事，两把尺子**（`K-R105` 那条一般化：
->   「一句真话摆错了尺子」）。
-> · `U8c-3` 状态仍是**待做**：那两个 TS 文件**没删**，它们今天是两份入库夹具的**左边**
->  （「另一种语言的独立说法」）；删了就把跨语言对拍降级成「Rust 没变」的冻结快照
->  —— `launch-render-cli.ts` 曾按同一条先例留着；它已删（U8c-3 前一半），
->  夹具的左边换成了用例表里的手写期望（今天住 `tests/test-support/launch-cli-golden.ts` 头注）。兜底这一族仍待做。
->   逐处住址与「还站不站在生产路上」两把尺子当时住 `launch_wire_f07_main_path_tests.rs` 的两张消费者表〔已删，见下一块〕。
->
-> 🔴🔴 **U8c-3 后一半交付：`launch-render-fallback.ts` · `session-backend.ts` ·
-> `remote-launch.ts` 那五个 builder（连同只给它们用的 `shell-quote.ts` 三件拼串原语）删了。**
-> 依据「同一条命令串只留 Rust 那两份（CLI ＋ 载荷）；TS 的只供对拍、排期删」。
-> 两份夹具（`payload-golden.json` · `tmux-outer-golden.json`）**留着、字节一个没变**，左边照 LR1 的办法
-> 换成用例表里的**手写期望**（`tests/test-support/launch-payload-golden.ts` / `tests/test-support/launch-tmux-outer-golden.ts` 头注），
-> `req` 仍由生产的请求构造现产 ⇒ 它们钉的是「生产请求 → 线 → 生产命令」这一整条。已知代价：
-> 「两种语言渲出同一串」那一维没了（与 LR1 同一句话）。三套真 tmux e2e（`resume-suite` ·
-> `resume-backend-frames` · `tmux-target-acceptance`）改走生产渲染链（`tests/e2e/launch-render-driver.ts`）。
-> 「这一族不许回来」与条 1（前端零 shell 串）由 `tests/frontend/ui/launch-no-shell-in-ts.vitest.ts` 管。
-> ⇒ 下面那张状态表 `U8c-3` 改记已交付；产出方表 `session-backend.ts` 那一行与三问 ② 的判词同拍改（逐处写在那几格里）。
-
-| 件 | 内容 | 状态 |
-|---|---|---|
-| **U8c-1** | 载荷编译器进共享 crate `launch-core` + 跨语言逐字节对拍；`history.rs` POSIX 分支改调内核 | **2026-08-02 已交付**。⚠ **P4b 起内核不在共享 crate 里了** —— 它搬进了真后端 `control/launch_render/`（放共享 crate 的真实原因是 monitor 当时没有 `backend/` 边界）；那个 crate P4c 改名 `shell-quote-core`，只剩 `posix_quote`。🔴 **后来载荷那一层整层删了**：起会话只交一行 `ccm …`（见 §33 末尾「今天」那一段） |
-| **U8c-2b-0** ✅ | 账本 S5：POSIX quote 五处合一 + 零命中守卫 | 2026-08-02 |
-| **U8c-2c-1** ✅ | **ccm 调用行**进内核（**P4b 起**在 `backend::control::ccm_invocation::render_ccm_invocation`；交付时在共享 crate 的 `launch_core::cli`）+ 跨语言对拍。**不切生产** | 2026-08-02 |
-| **U8c-2c-2** | 生产切换：`remote-launch-run.ts` 改调 Rust（需 tauri 命令 + IR 上线形状） | **已交付**（F07 2026-08-04 实测订正：本列此前写「待做」，是**过期陈述** —— 实测两条 tauri 命令 `render_ccm_launch`/`render_launch_payload` 都已注册，生产 TS 三处在调（`remote-launch-run.ts:72,96,301`），`parity_ledger` 也有 `launch.render-cli`/`launch.render-payload` 两条能力） |
-| **U8c-3** | 删 TS 渲染器 + IR，收敛下面六条 | **已交付**（LR1 2026-09-25 删 `ccm …` 调用行那一份；LR2 2026-09-25 删兜底那一族 ＋ 座。本列此前写「待做」。⚠ IR 本身〔`launch-plan.ts` · `launch-dimensions.ts`〕当时**没删**（它是生产的请求构造，不是渲染器）；起会话只交一行 `ccm …` 之后它也删了，`launch-requests.ts` 只剩构造那一行要的请求；「收敛下面六条」各自的今天版见下面那张表） |
-
-### 外层容器那半为什么本轮不搬（**不是因为它没了** —— 我第一版就是这么写的，被工程审计证伪）
-
-一条完整命令分两层：外层 tmux（`new-session … ; send-keys … ; attach`）+ 内层载荷
-（`env 前缀 → cd → argv`）。U8c-1 只搬内层，**理由是「先做被依赖的」，不是「外层已经不需要了」**。
-
-⚠ **实测：外层当时有四个产出方，一个都没退役**（2026-08-02 逐条核过）。
-🔴 **2026-09-13（`K-R104`）订正：这句话今天假了 —— 四个里退役了一个。**
-用量探针那条（`account_usage.rs::build_usage_probe_cmd`）随「探针编排整条搬上后端帧面」
-而**整个不存在了**：今天 monitor 一个 shell 字符都不渲染，那几步各发一条帧命令
-（`oneshot-session` / `launch send-into` / `capture-pane` / `kill`）。
-⇒ 当时是**三个产出方 ＋ 一个已退役的墓碑**；那一格曾由
-`doc_claim_registry::the_outer_layer_producers_are_in_the_state_the_doc_claims`
-**翻面**钉着（从「必须在」变成「必须不在」）。
-🔴 **2026-09-18（删用量）第二次订正**：用量 ②③ 两轴整轴退役 ⇒
-**`account_usage.rs` 这份文件本身也没了**，那条翻面的量法（读那份文件 ＋ 断言函数不在）
-会因为读不到文件而恒红 ⇒ 已整删。**今天是三个产出方，没有墓碑那一格。**
-⚠ **如实登记为射程边界**：挡「有人重新在 monitor 里拼一条 tmux 编排串」的，
-今天只有「那个功能整个不存在」这个事实，**没有判据**。
-⚠ **它不改本节的结论**：U8c-3 的两条硬障碍（`create-or-attach` 与 attach 两格未切）
-与用量探针无关，一个字都没动。
-
-| 产出方 | 实况 |
-|---|---|
-| `session-backend.ts`（TS） | 🔴 **已删**；外层三格后来只剩后端载荷那一层一个家，那一层也随起会话只交一行 `ccm …` 删了（就地 resume 回落那一形今天由调用行渲染器包一层 tmux）。以下是删之前的原文留档（点名的那几条判据与两张消费者表随那一族删了〔散文墓碑〕）：<br>🔴 **生产调用方 0。** 原文逐字「**生产远端主路**，天天在跑」—— 收官之后那条 `↗` 主路改问 `commands.render_launch_payload` 要（带 `outer`），承接方是 `payload::render_tmux_outer`。座今天只被 `launch-render-fallback.ts` 引，而后者只被两个**金样本发生器**引 ⇒ 它站的是「逐字节对拍的左边」这个位置，不是生产路。⚠ **没退役**：它仍在盘上、仍是那份独立说法，`the_ts_fallback_renderer_now_stands_on_its_own_consumers` 的 ④ 反过来钉着「承接方那两个文件本身还在」 |
-| `control/launch.rs`（Rust argv，U8a-2b 建的） | ⚠ **F11 2026-08-04 订正：这一格原写「零生产调用方 —— 全仓 `.call("launch", …)` 只有一处且在 `#[cfg(test)]` 里」，那句已经假了。**〔机检〕生产段 `.call("launch")` 处数：0 处（原来那两处 —— 就地 resume 的 `send-into` = U8a-2c-1 · 送键 = F04c —— 连同 monitor 那两个发送端迁到界面，今天由 `src/frontend/ui/tmux-control.ts` 经通道直接说 `launch`）。⚠ **那两处当年都不是「又切了一格起会话」**——`create-or-attach` 与 attach 两格仍未切。⚠ `stream_source/snapshot.rs` 那条 `!client.accepts("launch")` 仍在，但它断言的是「某个 hello 没声明 launch」，**不是「生产不调 launch」**（F07 已订正过同一句话在三问表里的那一份 —— **这一格当时漏了**）。🔴**这里原来钉着 `:2208` 这个行号 —— 现打那一行是 `SNAPSHOT_MAX_BYTES`，那条断言今天住在别处、而且住在 `#[cfg(test)]` 里**。⇒ 行号撤掉，改指符号（`src/doc/INVARIANTS.md` 里指进本树的行号，要么带逐字校验位，要么别写）。⚠ 那个数**只有这一个家**：`doc_claim_registry::the_doc_number_for_production_launch_calls_matches_reality` 从这里把它读出来与现场数比，多一处调用而不改这里就红 |
-| `shared/ccm` | 用户终端那条路 |
-
-且 `control/launch.rs` **结构上不覆盖 attach** —— 它的模块头注逐字写着「本模块**不 attach**」（平面 ③）。
-而 `session-backend.ts::createRunAttach`/`attach()` 产出的串尾巴就是 `tmux attach -t …`。
-
-⇒ **U8c-3 删 `session-backend.ts` 之前必须先回答三件事。2026-08-03 逐条实测过了**：
-
-🔴 **2026-09-13（`K-R105`）：下面这张表的三格已经按今天的现打重写过一遍**，
-每一格都带一个 `〔现打…〕` 判词，由 `doc_claim_registry::the_three_questions_in_33b_have_todays_answers`
-**逐问与现场对拍**（改一问所依赖的行为而不改那问的答案 ⇒ 当场红）。
-判词的闭集只有一个家（那条判据旁边的 `THIRTY_THREE_B_QUESTIONS`）——
-**别在这一节里复述闭集，也别把判词写进散文**，那会让「恰好一个」那条断言当场失效。
-表格后面那几行 08-04 / 08-14 的原文**留档**，读它们要连日期一起读。
-
-| # | 问题 | 答案 |
-|---|---|---|
-| ① | 生产切到后端的 `launch` 了吗 | 🔴 **〔现打①〕部分切**〔`K-R105` 2026-09-13 第五次订正〕。**两棵树各算一格，08-14 那版只量了前一棵**：<br>· **monitor 自己那条 `↗` 路**（`src/frontend/shell/src/**.rs` 生产段）——**一次都不发** `create-or-attach`；`.call("launch")` 那两处发的是 `send-into` 与 `send-keys-raw`，**都不是「起会话」**（两处连同发送端迁到界面，今天 monitor 生产段一处都没有；界面经 `src/frontend/ui/tmux-control.ts` 只说 `send-into`；`send-keys-raw` 已删）。<br>· **后端自带的 CLI 面**（`src/backend/control/ccm/`）——**在发**。`K-P2` `D3`（2026-09-03）把 `ccm --tmux` 接到了后端那条一次性口上，后端侧 `control/launch.rs` 的 `Mode::CreateOrAttach` 分支就是承接方。<br>⇒ **起会话这一格已经有 Rust 承接方、而且真在跑**，只是 monitor 自己那条 `↗` 路没走它。**① 的剩余面从「没有承接方」变成了「monitor 没接过去」** —— 那是两件很不一样的事，而 08-14 之后没人回来改这一格：`launch_wire.rs` 里逐字记着「三问的答案① 变了」，**这张表一个字没动**。<br>⚠ attach 那一格与本问无关（后端结构上不 attach，见 ②）。<br>〔以下 08-04 原文留档〕⚠ **F07 2026-08-04 订正为「部分是」**（原写「否 —— 全仓只有一处且在 `cfg(test)` 里」，那句**已过期**）：实测**生产段有一处** monitor 的 `backend_send_into`（U8a-2c-1 交付；已迁到界面）🔴**原文钉的是 `:111`，现打那一行是 `SendIntoResponse::refused` 的头注，那处调用今天在别的行上** ⇒ 行号撤掉，改指符号⇒ **`send-into` 那一格已切**；`create-or-attach` 与 **attach** 两格未切。`stream_source/` 那条 `!accepts("launch")` 仍在（🔴 原文钉的 `:2208` 已漂，`K-R105` 09-13 撤掉行号），但它断言的是「某个 hello 没声明 launch」，**不是「生产不调 launch」** —— 两件事。〔原文续〕~~U8a-2c 未做~~ ⚠ **F11 2026-08-04 再订正：这半句也已过期** —— **U8a-2c-1 已交付**（`backend_send_into`，`send-into` 那一格），F04c 又接了 `send-keys`（不是「起会话」的格）。仍未切的是 **`create-or-attach` 与 attach 两格** ⇒ 该说「U8a-2c **未做完**」，不是「未做」 |
-| ② | attach 那条串归谁产 | 🔴 **〔现打②〕后端全产 attach**〔LR2 2026-09-25 重量：TS 座删了，生产 TS 里问座要 attach 的一处都不剩；没装 ccm 的远端那一条步 22b·B 起就是 Rust 产〕。以下是 `K-R105` 那一版的原文留档（当时的判词是「前端仍产」）：〔`K-R105` 2026-09-13 重量〕而且**这一问今天是删 `session-backend.ts` 唯一的硬障碍**（① 有承接方了、③ 退役了）。逐处现打：<br>· **装了 ccm 的主机** —— Rust 产（`backend/control/launch_render/ccm_invocation.rs`〔MIG-2 起住后端〕的 `Action::Attach` ⇒ `ccm attach <名>`），U8c-2c-2 起就是这样；<br>· **没装 ccm 的远端** —— 🔴 **这一条今天是 Rust 产。** 原文逐字「仍是 `session-backend.ts::attach`，经 `launch-render-fallback.ts` 那一支」；收官之后，`action:attach` 那一格走 `commands.render_launch_payload`（`outer:{mode:"attach"}`）⇒ `payload::render_tmux_outer`。**这条路走得到的前提一个字没变**（探测 `unknown` ⇒ `caps:null` ⇒ CLI 渲染器诚实降级），变的是**接手的是谁**：接手的是 **monitor 自己进程里那份 Rust 渲染器**，不是远端那台机器上的 ccm。<br>〔尺子〕⚠ **`〔现打②〕` 那个判词因此仍然是「前端仍产 attach」，而这不是疏漏**：量法② 量的是「生产 TS 里还有没有人问座要 `SESSION_BACKEND.attach`」，而 `launch-render-fallback.ts` 仍在问（它是金样本发生器那条链的一环）⇒ **那把尺子上读数没变**。🔴 但它已经答不了这一问的**生产面**了 —— 「前端有没有**代码**产 attach」与「那条 `↗` 上 attach 由谁产」是两件事（`K-R105` 那条一般化：一句真话摆错了尺子）。⇒ **登记为判不了 ＋ 缺什么**：要让 ② 的判词跟上生产面，量法得换成「生产**路径**上谁产」，而那要一条**行为**判据（走生产入口真跑一遍），今天它在 `tests/frontend/ui/remote-launch-run.vitest.ts` 的 `W22B` 组里；把 `doc_claim_registry` 的量法② 改挂到那一侧不在步 22b 的写区 ⇒ 交回报给 PM。🔴 **`K-R109` 09-13 补一句，别把这一格读成幽灵态**：`R64`〔用@09-13〕逐字裁「不存在什么没装 ccm 装了后端的情况」，但同一条**逐字划出了 `unknown`**（「探不到」与「探到了、没装」不是同一件事，本条只否掉后者）。而 `ccm-probe.ts` 的三态在 wire 上被压成两态（`caps: null`，`K-R95` 登记的缺口）⇒ **一次 ssh 抖动就走到这一支**。⇒ 这一支今天**走得到，而且走到它的不是那个幽灵态**；判据在 `tests/frontend/ui/remote-launch-run.vitest.ts` 的 `KR109D3` 两条（`〔现打②〕` 那个判词因此**不动**）；<br>· **本机就地 resume** —— 🔴 **`K-R109` 2026-09-13 订正：这一处接过去了。** 原文写「`remote-launch-run.ts::runLocalResumeIntoExistingTmux` **今天仍直接问座要**」，那句今天是假的：`K-R106` 留下的三处注册面（`generate_handler!` · `parity_ledger::LEDGER` · `src/frontend/ui/ipc/commands.ts`）本轮同一拍落地，那条 `↗` 现在 `await commands.render_local_attach({ tmuxName })`，渲不出来就诚实失败、**不回落到前端拼串**。⚠ 用户 2026-08-12 那条裁定（「attach 暂时就用纯 linux bash 以及 windows 的 PowerShell + Windows Terminal」）**一个字都没被推翻** —— 变的是「那一串由谁产」，不是「用什么把它跑起来」（跑它的仍是 `launch_remote_terminal` 那条既有分档路）。<br>🔴🔴 **`K-R106` 2026-09-13 第六次订正 —— 上面那句「后端结构上产不出它」被用户当场推翻了一半，而这一格今天有承接方了。**<br>原文逐字写着「**daemon 结构上产不出它**：`control/launch.rs` 头注逐字『本模块**不 attach**，一次都不』…… ⇒ 这一问不是『还没做』，是**要先有一个产品决定**」。⚠ **那句头注今天仍然对，而它的射程是「远端」** —— 它自己的理由逐字是「在远端，**开不了你面前的窗**」。**本机后端就在用户面前那台机器上**，那条讲位置的约束在这一侧不成立。用户 09-13 亲裁（`DECISIONS.md#R61` 裁定三，逐字「**归本机后端就好了啊**」）并同拍立下：**不许再用「daemon」这个词把「远端常驻的那份」与「后端」压成一个** —— 那正是这句话被读宽的成因。<br>⇒ **本机那半今天产得出了**：`src/frontend/shell/src/history.rs::render_local_attach` ⇒ `ccm attach <名>`，走的是本机 `new`/`resume` 同一条渲染路（`render_local_ccm` → `render_local_ccm_with` → `ccm_invocation`），由 `history.rs::tests::the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created` 驱动着钉（连「接的是不是刚建的那个会话名」「那个名字过不过 Gate 2」一起）。<br>⚠ **判词没变，而且不许提前改**：前端那条 `↗`（`runLocalResumeIntoExistingTmux`）**还没改成问它要**，接线要动的四处里有两处不在 `K-R106` 的写区（`src/frontend/shell/src/lib.rs` 的命令注册 ＋ `src/frontend/ui/ipc/commands.ts`）。⇒ 这一问的剩余面从「**要先有一个产品决定**」变成「**只差把前端那条 `↗` 接过去**」，与 ① 那一格今天是同一种形状（有承接方、没接过去）。<br>⚠ **远端那半不在 `K-R106` 的射程里**：没装 ccm 的远端仍走 `session-backend.ts::attach`，那是「还没装」不是「没路走」（见下方 `K-R89` 那一段）。<br>〔以下 08-03 原文留档〕**一半有答案**：装了 ccm 的主机 U8c-2c-2 起已是 Rust 产（`ccm attach <名>`）；**没装 ccm 的仍靠 `session-backend.ts::attach`** | 〔散文墓碑〕
-| ③ | daemonless 的远端还要不要能起会话 | 〔LR2 2026-09-25：本行点名的那条判据、它的看守与两张消费者表随 TS 兜底一族删了〔散文墓碑〕〕🔴 **这一问退出机检那张表了。** 不再管旧配置 ⇒ `remote-config.ts` 里最后那块墓碑（`LEGACY_NO_BACKEND_KEY` ＋ `legacyNoBackendHosts` ＋ `readiness.ts` 那条指名告知）**整块删除**。⇒ 量法③ 的三个载体在盘上**全部不存在**，三格恒 false ⇒ 判词恒为「已退役」⇒ 它与本行**永远对得上**，那是一条恒绿的 ⇒ `doc_claim_registry::THIRTY_THREE_B_QUESTIONS` 删掉 ③ 行、量法③ 与三条 `carriers` 同拍收掉（另有五条只为这个词存在的判据一起退役，逐条点名在那一拍的报告里）。**本行不删 —— 它是沿革。**<br>〔以下 09-13 原文留档〕🔴 **〔现打③〕已退役**〔`K-R105` 2026-09-13 复量，`K-R59` 09-11 落的〕—— **这一问今天不挡任何东西**。量的是那一档的**三个载体**（落盘字段 `REMOTE_HOST_FIELDS` 里那一项 · 机器卡片那个 input · `stream_source/` 那条轮询回落），现打**三个都不在**。⚠ 刻意**不数 `daemonless` 这个词**：`remote-config.ts` 里还留着一处认旧配置的墓碑（`LEGACY_NO_BACKEND_KEY`），数名字会把它读成回潮。<br>⚠ **「这一问退役」不等于「那条路退役」** —— 兜底渲染器今天靠自己的消费者站着，逐处与两把尺子住 `launch_wire.rs` 的 `TS_FALLBACK_KEEPERS`（处数）与 `TS_FALLBACK_REACH`（有没有生产调用方），**两张都从源码派生**。<br>〔以下 08-14 原文留档，读它要连日期一起读〕⚠ **2026-08-14 第三次订正：已决，答案是「要」**（原写「**未决** —— U12 仍是待做项」）。`U12` 那个**件**确实被 `C7` 关掉了，但 `C7` 逐字裁的是「**本机**也要有后端进程」；而 `daemonless` 今天仍是**每台远端主机的用户开关**（`src/frontend/ui/settings/machine-card.ts` 的 checkbox「daemonless 降级读取（无需 daemon）」→ `src/frontend/ui/remote-config.ts` 的 `RemoteHostConfig.daemonless`，前端生产段 7 个文件 31 处）⇒ 那种主机**存在**，且它的 `↗` 走纯 SSH（`launch_remote_terminal` 不经后端）⇒ 没装 ccm 时命令只能由 monitor 自己渲染。**⇒ ③ 从软障碍（未决所以不敢删）变成硬障碍（已决为「要」所以确定不能删）**。〔散文墓碑〕当年的判据叫 `the_daemonless_remote_still_needs_the_ts_fallback_renderer`（开关哪天真没了它主动红）。🔴 **2026-09-11 第四次订正：那一天到了。** 用户定框 `K35` 逐字「不要有 daemonless。没有没有后端的情况。前端应该就是去调用远程后端的。」⇒ 那个每机开关**整格删除**（字段 · 顶层二选一 · 轮询段 · 界面那一格 · `readiness.ts` 里那条本机豁免，五处一起走，`K-R59`），**「daemonless 的远端」这一类主机从此不存在**。⚠ **而那条判据红完之后的答案不是它自己预写的那句「兜底渲染器少了一类必须服务的主机」**：**那条路另有消费者** ⇒ **前提退役，那条路不退役**。🔴这里原来写着两个数（「3 个」「2 个」）——**那是尺子A（标识符出现处数）的读数，而读它的人一律读成尺子B（有几条生产路在跑它）**，已撤；两把尺子各有一个家，都从源码派生。新的存续理由与逐处住址住在 `launch_wire_f07_main_path_tests.rs::the_ts_fallback_renderer_now_stands_on_its_own_consumers` 与它旁边的 `TS_FALLBACK_KEEPERS`（处数从源码派生，少一处就红）；那份手续本身由 `launch_wire_f07_main_path_tests.rs::the_retired_premise_left_a_tombstone_that_is_still_on_the_board` 看着，撕掉它也红 |
-
-⇒ ⚠ **F11 2026-08-04 订正这条推论的依据**：原写「①「否」+ ③「未决」」，而 ① 早在 F07 就订正成了「**部分是**」（`send-into` 那一格已切）。**结论没变**，但依据要换成还量得准的那两条：**`create-or-attach` 与 attach 两格仍未切**（①的剩余面）**＋ ③「未决」** ⇒ 今天删不得：硬删会把「没装 ccm 的远端」与「daemonless 的远端」
-两类主机的起会话能力直接删掉，而那两类今天都还成立。
-
-🔴 **`K-R89` 2026-09-13 第五次订正 —— 上面那句「那两类今天都还成立」今天只剩一类，而且拦路的已经不是「哪类主机没路走」。**
-本节自己写着「订正一句假话时，先把它的全部副本找出来」，而 `K-R59`（09-11）那一拍的订正**只落在下面那张表的 ③ 行里** ⇒ 08-04 这一段又活了一轮。逐条现打（量于 `89ce650`，量具 `tests/evidence/K-R89-ruler.py`，人群 = `src/**` 去掉 `*.test.ts`/`*.vitest.ts`，剥法与 `launch_wire::production_ts` 同口径）：
-- 「daemonless 的远端」**那类主机不存在了**（定框 `K35` ＋ `K-R59` 整格删除，三条回潮闸钉着）；
-- 「没装 ccm 的远端」**存在**，而**产品自带装它的路**（`sftp::deploy_remote_backend` —— 部署后端那一颗按钮连同 `ccm` 入口一起放，`K27`/`K34`）⇒ 它今天也不是「没路走」，是「还没装」；
-- **今天真正撑着那两个文件的是消费者，不是主机类别**：**尺子A**（剥完注释的生产段里那个标识符出现几次）逐处住 `launch_wire_f07_main_path_tests.rs::TS_FALLBACK_KEEPERS`，登记表与现打逐格相同 —— 🔴**这里原来抄着两个基数（11 / 7），撤了**：那张表由判据从源码派生，散文抄一份就是第二个家。而**尺子B**（有没有生产调用方）今天也有自己的家 `launch_wire_f07_main_path_tests.rs::TS_FALLBACK_REACH`，同样派生。两把尺子的读数差着一个数量级，下面这一段说的就是尺子B：`remote-launch.ts` 那 5 个 builder **生产调用方是 0**（只有 `tests/e2e/resume-cmd-driver.ts` · `tests/e2e/tmux-target-emit.mts` · `remote-launch.test.ts` 在调）⇒ 〔**步 22b·B 2026-09-20 订正：这半句今天假了 —— 那一行退役了，`renderFallback` 的生产调用方是 0。** 原文续如下，留档：〕**真正让 `renderFallback` 站在生产路上的只有 `remote-launch-run.ts::renderLaunchCommand` 最后那一行**，加上同文件里那处 `SESSION_BACKEND.attach`（把 `↗` 交给用户自己的终端那一跳，明写**不做**：后端在远端开不了你面前的窗，那是结构不是退路）。🔴 **`K-R109` 09-13 订正后半句**：那条「明写不做」讲的是**远端**（`R61` 裁定三之后不许再用「后端」把两侧压平）；**本机**就地 resume 那一处后端就在用户面前那台机器上 ⇒ 本轮接过去了，同文件里那处 `SESSION_BACKEND.attach` **不在了**。前半句（`renderLaunchCommand` 最后那一行）**没变**，它今天仍是那条路唯一的生产入口。
-- ⚠ 顺带一条**分母订正**：`backend_kill_tests.rs::CREATION_PATHS` **今天是 3 条**（`K-R104` 09-13 把 `account_usage.rs` 那行删了，留着墓碑）⇒ 删得动 `session-backend.ts` 的话是 **3 → 2**，不是「4 → 3」。🔴〔`K-R106` 09-13 复量，量具 `tests/evidence/K-R106-ruler.py`〕**登记 3 条、遍历实得 3 条、两边逐格相同** —— 这个数**别在这里抄第二遍**，它的家是那张表。
-
-🔴 **`K-R106` 2026-09-13 第六次订正 —— 「删不删得掉」这一问的今天版：仍然删不掉，而拦路的换成了一条可以指名道姓的链。**
-`R61` 裁定三之后，②「attach 归谁产」那一格**本机那半有承接方了**（今天是本机后端 `local.rs::plan` 的接回那一格，帧命令 `launch-local`；原 Tauri 命令 `render_local_attach`〔散文墓碑〕）。
-于是「删 `session-backend.ts`」这件事第一次可以问得很具体 —— 现打（量具 `tests/evidence/K-R106-ruler.py`，人群 = `src/**` 去掉 `*.test.ts`/`*.vitest.ts`，剥法与 `launch_wire::production_ts` 同口径）：
-- 🔴 **`K-R109` 09-13 订正：这两条今天各只对一半。** 原文写「座今天有**两个**生产消费者文件：`launch-render-fallback.ts` 与 `remote-launch-run.ts`」＋「`remote-launch-run.ts` 那一处差的只是把前端接过去」。**接过去了** —— 那一处现在问 `commands.render_local_attach` 要（注册面三处同一拍落地）⇒ **`remote-launch-run.ts` 不再是座的消费者**。⚠ **数字不在这儿抄**：逐格处数的家是 `launch_wire_f07_main_path_tests.rs::TS_FALLBACK_KEEPERS`，而「有没有多出一个没登记的消费者」由同一条判据的第 ⑤ 格（`K-R109` 加的**反向闭合**）从源码派生 —— 本行只留住址；
-- 🔴🔴 **这一条被证伪了，而且它错在哪很值得写下来。** 原文逐字：「**`launch-render-fallback.ts` 那一处不是「差接线」，是差一个承接方**：它要座产的是 `container: tmux` 的 **`create` / `send-into` / `attach`** 三格外层 tmux 命令，而它被走到的**前提**恰恰是「后端那条渲染器拒了」（探测 unknown / 没装 ccm / 有维度说不出 CLI 语法）—— **那时按定义就没有后端命令行入口可问**。」<br>⚠ **「按定义就没有」那一步是错的，而且是一个有名字的错**：那句话里的「后端」指的是**远端那台机器上的 ccm**（拒的正是它），而承接方本来可以是、今天就是 **monitor 自己进程里的那份 Rust 渲染器**（`backend::control::payload`，一个 tauri 命令，不经网络、不依赖远端）。⇒ 把两侧压成一个「后端」——**这正是 `R61` 裁定三禁的那一形**（那条裁定立下的纪律是：不许再用那个旧词把「远端常驻的那份」与「后端」压成一个；逐字原文在同一节 ② 那一格里），而本节 ② 那一格早就为它挨过一次（`K-R106` 第六次订正：「那句头注今天仍然对，而它的射程是**远端**」）。**同一个混淆，在同一节里犯了两次。**<br>⇒ 现打：22b·A 补出承接方（`render_tmux_outer`〔散文墓碑〕 ＋ 13 条入库金标准，后来随载荷那一层删了），22b·B 接线，**「差一个承接方」这句话今天不成立**。
-⇒ 🔴 **「删掉座」的代价也换人了。** 原文逐字：「**删掉座 = 把那条兜底路整条删掉**，而那是「没装 ccm 的远端」那一格的事（六格表第 ⑤ 格，`K27`/`K34` 判它是**部署面**），不是 attach 这一格的事。」—— 今天删掉座**不会**动「没装 ccm 的远端」那一格的能力（那一格已经由 Rust 渲染器服务），它动的是**两份入库夹具的左边**：`payload-golden.json` 与 `tmux-outer-golden.json` 的左边都是 TS 的真渲染器 + 真座，删了它们，跨语言逐字节对拍就退化成「Rust 没变」的冻结快照。⇒ **代价从「部署面」变成「独立说法」**，逐字见 `the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold`〔散文墓碑〕（已改写成 `the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path`，依据一整条随 TS 兜底一族删了）的**依据一 c**（本拍新立，两个发生器 ＋ 两份夹具逐个钉在盘上）。
-⚠ **两件事别再压平**：`K-R54` 表第 3 行问的是「attach 归谁产」，它今天在本机这一侧**答完了**；而「座能不能删」还压着**另一格**（部署）。
-⇒ **结论仍然没变（今天删不得），但理由第五次换人了。** 逐处读数与量法住 `tests/evidence/K-R89-deathvalue.md`；六格今天版住 `src/frontend/shell/src/history.rs::tests::THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS`（由 `every_one_of_the_six_cells_is_measured_not_narrated` 逐格**真去驱动**，改了行为不改说法当场红）。 〔散文墓碑〕
-🔴 **这一句今天不成立了。** 原文逐字：「**U8c-3 的真前置不是文档，是 U8a-2c 与 U12 两件功能** —— ⚠ **F11 订正：U8a-2c 是「未做完」不是「未做」**（`send-into` 那一格 U8a-2c-1 已交付；剩 `create-or-attach` 与 attach）。」<br>⚠ 它预设的是「TS 那两个渲染器要等 monitor 把 `launch` 帧那条路走通才删得掉」。** 走的是另一条**：不经后端的 `launch` 帧，monitor 自己进程里的 Rust 渲染器直接产那条 shell 串（与 CLI 那支 U8c-2c-2 同一种做法）。⇒ **前置已经满足了，而 U8c-3 仍然不做** —— 今天挡它的是**依据一 c**（那两份入库夹具的左边要是「另一种语言的独立说法」），不是功能。⚠ **那不是「等不到」，是「不划算」** —— 权衡逐字见 `launch-render-cli.ts` 那一份的复裁（同一先例，已复裁两次）；真要删，回结账时一起裁，别顺手删。
-⚠ **本节这三处（914 · 925 末 · 本段）与 F07 订正的那一处说的是同一句话。**F07 只订正了手头那一处 ⇒ **同族的三处又活了一轮**。**订正一句假话时，先把它的全部副本找出来**（F01 的四处「每 ~8s」是同一个病）——这条纪律由 `doc_claim_registry` 把可数的那部分变成机检。
-
-### 2026-08-14 第三次复裁（U8c-3-r2）：结论第三次不变，而这次**多了一条硬依据、少了一个假绿的量具**
-
-🔴 **2026-09-13（`K-R105`）：下面这句「没有一条过期到可以放行」是 08-14 的读数，今天不成立。**
-现打 **③ 已退役、① 变过一次**（逐条见上面那张表的 `〔现打…〕` 判词，由
-`doc_claim_registry::the_three_questions_in_33b_have_todays_answers` 钉着）。
-**照抄下面这一句就是把 08-14 的读数当成今天的** —— 那正是本节犯过五次的那个病。
-
-〔以下 08-14 原文留档〕三问逐条重量，**没有一条过期到可以放行**：
-
-| # | 08-14 实测 | 它今天挡的是什么 |
-|---|---|---|
-| ① | **仍是「部分是」** —— 生产段发 `create-or-attach` **0 处**（`launch_wire.rs` 那条判据在量）；`attach` 结构上不归后端（`control/launch.rs` 头注「本模块**不 attach**，一次都不」） | 起会话的两格（create / attach）没有 Rust 承接方 |
-| ② | **仍挡着，而且不止 attach** —— `renderFallback` 的**三格**（tmux `create` / `send-into` / `attach`）全在 TS；`container:"none"` 那格 U8a-2c-pre 已切走，`ccm` 那条 U8c-2c-2 已切走，**剩下的正好就是要外层 tmux 命令的那三格** | 没装 ccm 的远端 |
-| ③ | ~~**已决：要**~~ ⇒ 🔴 **2026-09-11 `K-R59` 后：这一问退役了** —— 那一类主机不再存在（定框 `K35`）。**但那条路没退役**：它另有消费者，逐处与处数见 `TS_FALLBACK_KEEPERS`，「还站不站在生产路上」见 `TS_FALLBACK_REACH`（🔴这里原来写着两个数，那是尺子A 的读数被当成尺子B 读，已撤） | ~~daemonless 的远端~~ ⇒ 换成「那几个消费者」 |
-
-⚠ **本轮真正修掉的是量具，不是结论。** F07 立的前提触发器里，依据一原式是
-`fallback.contains("session-backend") || run.contains("session-backend")` ——
-**整份文件的子串、含注释、而且是 `||`**。而 `remote-launch-run.ts` 的注释里逐字提了 4 次
-`session-backend.ts`（那些注释干的正是「解释这一格为什么还在 TS」这件事）⇒
-**把生产调用点删干净，那条依然绿**。一条**前提触发器**在它被造出来要报的那个方向上是瞎的，
-与没有判据是同一件东西。现在量的是「生产段里那个调用还在不在」。
-
-⚠ **「件关掉了」不等于「约束消失了」** —— ③ 这次栽的就是这个。本节前两次栽的是
-「结论对所以没人查理由」；这次是「**件关了所以没人查约束**」。
-两者的处置相同：**把结论留住，把依据换成还量得准的那个**，并且给它配一条会红的判据。
-
-### 2026-09-13 第四次复裁（`K-R105`）：**结论第四次不变，而这次三问里过期了两问**
-
-前三次复裁每次都以「一条都没过期到可以放行」收尾。**这一次不是。**
-逐条现打（量于主干 `38168d7`，量具 `tests/evidence/K-R105-ruler.py`，人群与剥法与
-`launch_wire::production_ts` 同口径；判词由 `doc_claim_registry` 现算并与上面那张表对拍）：
-
-| # | 08-14 说的 | 09-13 现打 | 差在哪 |
-|---|---|---|---|
-| ① | 「仍是『部分是』—— 生产段发 `create-or-attach` **0 处**」 | 承接方在、**而且真在跑**（`control/ccm/` 那棵树在发，后端侧 `Mode::CreateOrAttach` 接着） | 🔴 **那句话在它自己的尺子上今天仍然是对的** —— 它只量了 monitor 那一棵树。`K-P2` `D3`（09-03）翻正的是**另一棵**。⇒ **不是读错了数，是那把尺子够不着这一问**（本工作区最高频的一类错） |
-| ② | 「仍挡着，而且不止 attach —— `renderFallback` 的三格全在 TS」 | **仍挡着，而且它今天是唯一的硬障碍** | 三格里 `create` / `send-into` 今天在后端侧**有承接方**（只是 monitor 没接过去），**只有 attach 是结构上没有** |
-| ③ | 「已决：要」 | **已退役** | `K35`〔用@09-11〕⇒ `K-R59` 整格删除。这一条 09-11 就该落到本表，**只落进了下面那张 08-14 表的 ③ 行** —— 08-04 这张表上又活了两天 |
-
-⇒ **`U8c-3` 今天仍然删不得，而理由第四次换人，且这次只剩一条**：
-**② 那条 attach**。它不是「还没做」，是**要先有一个产品决定**
-（monitor 的 `↗` 路要不要一律要求对端 —— 含**本机** —— 装着后端 / ccm）。
-`K-R105` 把它交回定框那一侧，**不由判据自裁**。
-
-🔴 **本轮的一般化，与前三次都不同**：前三次是「依据/度量过期而结论仍对」，
-处置是「把结论留住、把依据换成还量得准的那个」。**这一次是「一句真话摆错了尺子」** ——
-① 那个 `0 处` 与「三个生产消费者」那个 `3` 都**没有量错**，
-它们错在**被拿去回答另一把尺子的问题**，而两把尺子的差别没写在数的旁边。
-⇒ 处置多一条：**报一个数就要同句写清它的尺子**；两把尺子都要有自己的家
-（`TS_FALLBACK_KEEPERS` / `TS_FALLBACK_REACH`，两张都从源码派生），
-散文里**一个字面量都不许留**。
-
-⚠ **诚实边界，别把这一节读大**：`doc_claim_registry::the_three_questions_in_33b_have_todays_answers`
-钉的是每一问旁边那个 `〔现打…〕` **判词**，不是这几段散文。
-一段与判词相符、其余全说反了的答案，它静默。它买到的是
-**「三问的答案不会静默地过期」**，不是「答案写得对」。
-
-### 六条不变量各自的命运（U8c-1 逐条判定，别到 U8c-3 才现想）
-
-| 条 | 讲什么 | U8c-1 动了吗 | 后两件会怎么动 |
-|---|---|---|---|
-| **§33** | 双渲染器；CLI 渲染器表达不了就必须放弃、不许近似 | **没动** | U8c-2 后「两个渲染器」变成「一个 Rust 渲染器 + 一条 ccm 调用形态」；**「表达不了就放弃」这条纪律必须原样继承**，不许因为换了语言就默许近似。U8c-3 改写本条 |
-| **§35** | 维度的 `applies` 不许条件性跳过 `cliFlags` 的 `null` 安全网 | **U8c-2c-1 已在 Rust 侧兑现** | `backend::control::ccm_invocation` 里 `cliFlags` 是 `Option<Vec<String>>`，`None` **直接短路成 `Refusal::DimensionCannotSpeak`** —— 「拿不到命令」而不是「渲染出一条丢了修饰的命令」。夹具里有专门一条 refusal 用例钉住它，变异（改成 `Some(vec![])`）当场红。U8c-3 删 TS 那份 |
-| **§36** | 本地（Windows）路径**不经 IR** 产出命令 | **没动，而且 U8c-1 刻意维持它** | Windows 分支（`config_dir_prefix_ps` / `validate_config_dir_ps`）一个字节没碰。它要不要并进内核，取决于 `acct-core` 已裁决过的「`\` 与盘符」问题 ⇒ **U4b（真机）或 U8c-3**，登记在案 |
-| **§37** | 新维度的 `applies` 该不该恒真，看「沉默」是否等价于用户期望 | **U8c-2c-1 已在 Rust 侧兑现** | `DIMENSION_ORDER` 里 `account` 恒真（沉默 = 意外身份切换）、`model` 条件式（沉默 = 用户期望）；**能力只向已触发的维度收集**，且检查与 flags **逐维度交错**（初版我把检查提到循环外，那会在两种失败同时成立时给出另一个 reason —— 而 reason 是生产侧唯一的降级线索）|
-| **§38** | 一条新正交轴进注册表还是做一等字段（三条 checklist） | **没动** | 这条是**设计判据**不是实现，跨语言仍然成立 ⇒ U8c-3 只需把例子里的 TS 符号名换成 Rust 的 |
-| **§39** | `WrapSpec` 是纯数据不是闭包 | **已在 Rust 侧兑现**：`backend::control::payload::WrapSpec { order, prelude }` 就是纯数据，Rust 里连闭包这个选项都没给 | U8c-3 删 TS 那份 |
-
-### 变严的代价：它在两种语言之间**开了一条新缝**（U8c-1 如实登记）
-
-`history.rs` 的 POSIX 校验换成 `acct-core` 并集之后，同一个含 `U+3000` 的 configDir：
-**本机 Rust 拉起拒绝、远端 TS 拉起放行**（TS `shell-quote.ts::isValidConfigDir` 仍是旧集合）。
-迁移前两侧都用旧集合、是一致的。⇒ **这是变严的诚实代价**，U8c-2/U8c-3 收编 TS 时一并收口。
-收口了，收法是**删**：TS 那份 `isValidConfigDir`〔散文墓碑〕按删掉，configDir 只在拼命令的那一侧判（当时是载荷那一层的 `config_dir_command_safe`〔散文墓碑〕；今天是 `acct-core` 那张全表，载荷那一层随起会话只交一行 `ccm …` 删了）。
-
-### 跨语言一致性靠什么保住（U8c-1 的核心交付）
-
-**入库夹具 + 两侧各自与它比**，不是注释：
-
-```text
-  tests/test-support/launch-cli-golden.ts（用例表 ＋ 手写期望；`req` 由生产的请求构造现产）
-        │ npm run gen:cli-golden
-        ▼
-  src/backend/control/launch_render/fixtures/cli-golden.json   ← 入库
-        ▲
-        │ launch_cli_parity.rs「Rust 渲染的 == 入库的」（ok / refusal 两类各自条数恒等）
-```
-（载荷那一份夹具与它的两侧对拍随载荷那一层删了。）
-
-⚠ **两侧都必须有计数自检**（`MIN_CASES`）：夹具被清空/截断时，「逐条循环」在两种语言里
-都会零命中零失败地绿。⚠ **绝不能让 Rust 侧去调 TS 现场生成** —— 那就成了自洽夹具
-（U7-4 的病根正是「写侧读侧同一个常量」）。
+起会话交给终端的只有一行 `ccm …`，由那台后端渲（`control/launch_render/`：远端 `launch-render-cli` · 本机 `launch-local`），环境、中转地址与身份标记归那台的 `ccm`。
+界面不再有渲染器，也不留回落：后端答不出就明说失败。建得出来、主路杀不掉的名字不许被铸出来（`backend_kill_tests`）。
 
 ## 34. tmux 破坏性/半破坏性命令三道门 + 原子 verify+act（F04 / unify-launch / R10）
 
@@ -1411,7 +1197,7 @@ plan，只要满足其余 CLI 渲染条件，会被 `renderCli` 吐成一条**�
 
 **背景**：F06 曾把本地 resume/新建两条路径折进 `LaunchContext`/`LaunchPlan` IR（`src/frontend/ui/launch-requests.ts::planLocal`），跑一遍 `LAUNCH_DIMENSIONS` 注册表。**R07 已把这一遍删掉**（理由见下方 R07 段），该函数现名 `validateLocalLaunch`、只做 sid 校验、不构造任何 IR。下面这段描述的是"当时为什么算了却不消费"，其结论（**别给本地渲染器补一段读 env 的代码**）在 R07 之后依然是铁律，只是理由更直接了：本地路径压根不产出 `plan.env`。
 
-（**当时**的机制：`NESTED_ENV_RESET_DIMENSION`（issue #24：清 Claude 自己的嵌套会话标记 `CLAUDECODE`/`CLAUDE_CODE_SESSION_ID` 等）的 `applies` 只看 `ctx.action.kind==="new"||"resume"`、不看 `transport`——local 场景走到这里恒真，`plan.env` 会真的被塞进一条 `unset` `EnvOp`，而本地渲染器（后来是本机后端 `build_ps`〔散文墓碑〕；当时是 monitor 的 `build_local_ps_command`〔散文墓碑〕）**故意完全不读**它。这条"注册表对 local 也会产出 env op"的事实**今天依然成立**，只是本地路径不再去调它了——证据见 `tests/frontend/ui/launch-requests.vitest.ts` 的「维度注册表在 transport:local 下的行为」那组测试，它直接冲 `buildLaunchPlan` 去验，不借道任何生产函数。）
+（**当时**的机制：`NESTED_ENV_RESET_DIMENSION`（issue #24：清 Claude 自己的嵌套会话标记 `CLAUDECODE`/`CLAUDE_CODE_SESSION_ID` 等）的 `applies` 只看 `ctx.action.kind==="new"||"resume"`、不看 `transport`——local 场景走到这里恒真，`plan.env` 会真的被塞进一条 `unset` `EnvOp`，而本地渲染器（后来是本机后端 `build_ps`〔散文墓碑〕；当时是 monitor 里拼 PowerShell 命令的那个函数）**故意完全不读**它。这条"注册表对 local 也会产出 env op"的事实**今天依然成立**，只是本地路径不再去调它了——证据见 `tests/frontend/ui/launch-requests.vitest.ts` 的「维度注册表在 transport:local 下的行为」那组测试，它直接冲 `buildLaunchPlan` 去验，不借道任何生产函数。）
 
 **为什么不消费是对的**：`NESTED_ENV_RESET_DIMENSION` 保护的攻击面是"tmux **持久 server** 进程的环境表跨多次 resume 累积污染"——远端场景里，同一个 tmux server 可能存活很久，每次新 resume 进去的 shell 都从 server 环境继承，之前一次 `claude` 进程留下的 `CLAUDECODE=1` 等标记会一直挂在那，必须每次显式 `unset`。本地 Windows 场景没有这个"持久 server"概念——`launch_powershell_window`（`src/frontend/shell/src/launch.rs`）每次都是全新 `Command::new("wt.exe"/"powershell.exe").spawn()`，唯一可能的污染源是"cc-monitor.exe 自己被某个带毒环境启动"（如从一个嵌套的 Claude 会话终端里启动 cc-monitor 自身）——这条攻击面已经在**进程启动阶段一次性堵死**：`src/frontend/shell/src/lib.rs::run()` 里 `scrub_env_vars(&nested_env_markers())`（名单读后端生成的画像表 `agent-profile-table.ts`，从前是 monitor 那份适配器） 是 Tauri `Builder` 构造之前就跑的第一批实质语句，直接 `std::env::remove_var` 清掉 cc-monitor.exe 自己进程的环境；`Command::new(...)` 默认继承（已清洗过的）父进程环境，无需每次 launch 前再清一次。
 
@@ -1445,18 +1231,15 @@ plan，只要满足其余 CLI 渲染条件，会被 `renderCli` 吐成一条**�
 `parity_ledger` 两行也写成「本地路径不经 IR 产出命令（§36 + R07）」——**代码就按注释的宽度实现了**（一律拒本机）。
 而本节标题后半句就是它的全部内容（「嵌套 env 污染保护已在进程启动期做完，别在本地渲染器里重复实现」），
 铁律段逐字禁的是「给本地渲染器补一段读 `plan.env`、把 `unset` 翻成 PowerShell `Remove-Item Env:\X` 的代码」，
-论证从头到尾是 Windows 分支（`config_dir_prefix_ps` / `validate_config_dir_ps` / 「`\` 与盘符」）。
+论证从头到尾是 Windows 分支（配置目录前缀与它的校验 / 「`\` 与盘符」）。
 ⇒ 采信「**代码窄了**」：放行 POSIX 本机走 ccm 调用行渲染器**是在兑现本节的原意**，不是破例。
 
 上面 R07 补充那句「不接是因为**接了也拿不到新东西**」，在 **CLI 渲染器**这一侧已被 P3t-Y2 证伪：
 接上去拿到的是 `--tmux`，也就是本机旧路结构上产不出来的**会话容器**。
 （那句话对**载荷 IR** 仍然成立 —— `plan.action`/`plan.cwd` 恒等于输入。两者别混着引。）
 不放行的代价不是「不够对齐」，是本机产出的是一个**无 tty、无 tmux** 的进程，
-`src/doc/IPC-PROTOCOL.md` 逐字：「`stdin` 不接键盘 ⇒ 用户敲进去的字会被脚本吃掉」。
+`stdin` 不接键盘 ⇒ 用户敲进去的字会被脚本吃掉。
 
-**机检**：`arch_doc_shape_guard::every_citation_of_invariant_36_says_which_platform_it_binds` ——
-全树每一处引 `§36` 的**句子**必须在同一句里写出 `Windows`。
-引一段文字证明不了「今天的代码就是那个意思」，所以这条裁定配了一条机器能重跑的检查。
 
 **另注（同一审计发现）**：`F06-local-path-ir.md` §1 有一条**已勾 `[x]`** 的 DoD 逐字要求
 "从产出的 `LaunchPlan` 取 `action`/`cwd`/`launcher` 三个字段映射回现有 Tauri 调用参数"
@@ -1633,7 +1416,7 @@ IR 的 wrap 负责"，别两边都做（那会 rbind 两次）。
 收成了一条（6 个 executor → `planXxx` → `renderLaunchCommand` → 双渲染器），
 但**本地那条路完全在 IR 之外**：
 
-- `src/frontend/shell/src/history.rs:930` `build_local_ps_command` **不引用任何 IR 类型**
+- 当时本机拼 PowerShell 命令的那个函数（已删）**不引用任何 IR 类型**
   （`grep -n "LaunchPlan\|launch_plan" src/frontend/shell/src/history.rs` 为空）
 - `planLocal` 在生产代码里**零调用点**（`src/frontend/ui/launch-requests.ts:139` 只剩一句注释记录 R07 删掉了
   那次 `buildLaunchPlan` 调用；R07 的理由「接了也拿不到新东西」在当时成立）
@@ -1700,7 +1483,7 @@ Linux 本地是 POSIX + tmux + `ccm`，跟远端那条路**只差一跳 ssh**。
 |---|---|---|---|
 | **多账号**（列表 / 切号 / 按会话切号 / 用量） | 有 | POSIX 本机有 · Windows 本机无 | 账号库改由后端 `accounts/manage/` 建立和维护，远端与 POSIX 本机同一份代码；Windows 本机上建库那一组命令答 `unsupported` |
 | **per-account 默认模型**（`MODEL_DIMENSION`） | 有 | **无** | 依赖账号 ⇒ 随上一条 |
-| **嵌套 env 清理**（`unset-nested-env`） | 有 | **无** | `history.rs:930 build_local_ps_command` **不注入任何 env**。**这一条不依赖账号**，可单独还 |
+| **嵌套 env 清理**（`unset-nested-env`） | 有 | **无** | 当时本机拼 PowerShell 命令的那个函数（已删）**不注入任何 env**。**这一条不依赖账号**，可单独还 |
 | **`ccm` 全套修饰**（`--tmux`/`--detach`/`--tmux-size`/身份回填） | 有 | **无** | Windows 本地没有 tmux 也没有 `ccm`。**POSIX 本地（§40 主体）落地后自动就有** |
 | **配置面审计页对远端的实况** | **无**（7/10 行恒返回「未确定」，本页明写不连 SSH） | 有 | **反向缺口**——本地能答、远端答不出。说明这条原则是**双向**的 |
 | 远端 hooks 诊断读死 `$HOME/.claude/settings.json` | 不认 `CLAUDE_CONFIG_DIR` | 认（B04 已修） | 同型反向漂移，BACKLOG **E17** |
@@ -1982,35 +1765,18 @@ no-op（真机反向实测：写错 starttime 时探针存活，不误伤无关�
 
 ---
 
-## 42. `src/doc/IPC-PROTOCOL.md` 是**权威契约**，代码与它不许漂
+## 42. 协议文档从代码生成，不手抄
 
-那份文档是 backend↔monitor（以及 aterm）之间的线上契约，而**它的读者在仓外** ——
-照它写的客户端拿到的必须就是线上真有的东西。
+线上契约的读者在仓外（第二个前端 · aterm）——照文档写的客户端拿到的必须就是线上真有的东西。
 
-**性质**：`wire.rs` 里每个 serde 字段名、每条子命令、每条入方向命令，
-都必须在那份文档里**落进它该落的那一节**（不是「全文出现过就行」）。
+**性质**：逐格那一半（每一帧的字段 · 每一条命令的字段 / 向 / 码 / 档位 · 每一个 CLI 子命令）只有一个家 ——
+代码（`wire.rs` 的 serde 类型与它们的 `///` · `inbound::REGISTRY` · `SUBCOMMANDS` ＋ `CLI_ONLY_DOCS`），
+`src/doc/IPC-COMMANDS.md` 由它生成；`src/doc/IPC-PROTOCOL.md` 只写不随命令变的总述。
 
-**为什么不能松动**：漂开的后果不是「文档旧了」，是**照文档写的客户端静默读错**。
-首跑机检的现打（不是手工估）：**7 个线上字段**从没进过文档、**2 个子命令**全文零出现，
-还有一处比漏写更糟 —— 文档里叫 `classification`，而线上真名是 `observation`
-⇒ 照文档写的客户端**永远读到 `None`**、退回「保守跳过」，
-正是那个字段当初要修的 idle 灰灯。
-⚠ 「这次补齐」不解决问题：这些本来也都是一条条加进代码时忘了同步文档的。
-**没有机检，补完就会重新开始漂。**
+**为什么不能松动**：手抄再对拍的那几年，漂开的后果是「照文档写的客户端静默读错」（文档里叫 `classification`、线上真名是 `observation`）；
+对拍判据只能查「名字在」，查不了「说得对」，而每加一个字段要改三处。生成之后字段说明就挨着字段本身。
 
-**谁在守**：`tests/backend/protocol_doc_guard.rs`（13 条）。
-
-**射程（按标题「代码与它不许漂」读宽）**：不只字段名与命令名落进哪一节 ——
-那份文档里的**行为句**（一条命令收什么、回什么、拒什么、失败时说什么、帧何时发）同样是契约。
-`protocol_doc_guard` 只机检名字那一半；行为那一半由各命令 / 帧自己那一族行为判据守
-（链路四条 · 凭据读写 · 搜索 · 足迹 · 插件 · 任务 · 会话快照 · 线上帧 ⋯⋯ 这些族的头注以本节为主住址，经它落到 IPC 那一节）。
-⚠ 行为句与判据之间没有机检的对拍 —— 行为句改了、判据没跟 ⇒ 靠头注里那条住址让人找得到。
-
-🔴 **为什么它要升格成条**（2026-09-22 `P20` 现打）：在此之前这条性质**只有一个工单号**
-（`U6a`，2026-08-02），`INVARIANTS` 里一条都没有。
-**工单号与条不是一回事** —— 工单是「我们那次做了这件事」，条是「这件事必须一直成立」。
-一个只有工单号的性质，工单关掉之后就没人替它说话；
-而那 13 条判据因此**点不到任何要求住址**。
+**谁在守**：`tests/backend/protocol_doc_gen.rs`（重新生成 == 仓里那份）。行为那一半（收什么、拒什么、何时发帧）由各命令 / 帧自己那一族行为判据守，头注以本节为主住址。
 
 ---
 

@@ -1269,9 +1269,8 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
 ///
 /// | 格 | 断的是什么 | 翻掉它的形状 |
 /// |---|---|---|
-/// | ① | 出参字段表逐字等于生产段真发的那几个键（**顺序也算**） | 加一个字段不改文档 / 改了名字 |
-/// | ② | 文档那一行把**两个**环境变量键都点了名 | 加第二个键、却留着「只抠 `CLAUDE_CONFIG_DIR` 一个键」那句假话 |
-/// | ③ | 本文件头注也把两个键都点了名 | 只改文档、漏了 `:55` 那句同义的诚实边界（派工单逐字：「两处都改，漏一处就是留假话」） |
+/// | ① | `CLI_ONLY_DOCS` 那一行的出参字段表逐字等于生产段真发的那几个键（**顺序也算**） | 加一个字段不改说明 / 改了名字 |
+/// | ② | 本文件头注把**两个**环境变量键都点了名 | 加第二个键、却留着「只抠一个键」那句假话 |
 ///
 /// # ⚠ 它买不到什么
 ///
@@ -1279,16 +1278,12 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
 /// 解释）它一个字都判不了 —— 那是评审的活。
 #[test]
 fn the_protocol_doc_row_for_session_accounts_matches_what_we_emit() {
-    const DOC: &str = include_str!("../../../src/doc/IPC-PROTOCOL.md");
-    assert!(
-        DOC.len() > 20_000,
-        "只读到 {} 字节的 `src/doc/IPC-PROTOCOL.md` —— include_str! 没读到，本条在空转",
-        DOC.len()
-    );
-    let row = DOC
-        .lines()
-        .find(|l| l.starts_with("- `--session-accounts`（"))
-        .expect("`src/doc/IPC-PROTOCOL.md` 里找不到 `--session-accounts` 那一行 —— 锚点挪了");
+    // 协议参考的 CLI 那一节从 `CLI_ONLY_DOCS` 生成：那一行就是这里的说明。
+    let row = crate::stream::inbound::CLI_ONLY_DOCS
+        .iter()
+        .find(|(f, _, _)| *f == "session-accounts")
+        .map(|(_, _, what)| *what)
+        .expect("`CLI_ONLY_DOCS` 里没有 `--session-accounts`");
 
     // ── ① 出参字段表：从生产段把 `json!` 的键抠出来，与文档里那个花括号表对拍 ──
     let prod = production_text();
@@ -1317,16 +1312,16 @@ fn the_protocol_doc_row_for_session_accounts_matches_what_we_emit() {
         "从出参 `json!` 只抠到 {} 个键（应为 8）—— 抽取器坏了，下面那格会零命中地绿：{keys:?}",
         keys.len()
     );
-    let table = format!("{{{}}}", keys.join(","));
+    let table = format!("{{{}}}", keys.join(", "));
     assert!(
         row.contains(&table),
-        "\n★★ `src/doc/IPC-PROTOCOL.md` 的 `--session-accounts` 那一行里找不到字段表 {table:?}。\n\
+        "\n★★ `CLI_ONLY_DOCS` 的 `--session-accounts` 那一行里找不到字段表 {table:?}。\n\
              出参加了字段 / 改了名 / 换了顺序，而文档没跟着改 —— **盘上留了一句假话**，\n\
              而这条路撞 0 道机检，除了本条没有任何东西会说。\n\
-             文档那一行现在写的是：\n  {row}"
+             那一行现在写的是：\n  {row}"
     );
 
-    // ── ② / ③ 「只抠几个键」那句诚实边界：文档与本文件头注都得把两个键点到名 ──
+    // ── ② 「只抠几个键」那句诚实边界：本文件头注得把两个键点到名 ──
     let header: String = include_str!("../../../src/backend/observe/accounts_query.rs")
         .lines()
         .take_while(|l| l.starts_with("//!") || l.trim().is_empty())
@@ -1334,13 +1329,10 @@ fn the_protocol_doc_row_for_session_accounts_matches_what_we_emit() {
         .join("\n");
     assert!(
         header.len() > 2_000,
-        "头注只切出 {} 字节 —— 切法坏了，③ 那格会零命中地绿",
+        "头注只切出 {} 字节 —— 切法坏了，② 那格会零命中地绿",
         header.len()
     );
-    for (what, hay) in [
-        ("src/doc/IPC-PROTOCOL.md 那一行", row),
-        ("本文件头注", header.as_str()),
-    ] {
+    for (what, hay) in [("本文件头注", header.as_str())] {
         for key in ["CLAUDE_CONFIG_DIR", "ANTHROPIC_BASE_URL"] {
             assert!(
                 hay.contains(key),

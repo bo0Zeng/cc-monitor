@@ -5,20 +5,19 @@ use crate::copy_table::copy_text;
 use crate::event_replay::EventReplay;
 use std::sync::Arc;
 
-// === Batch8-F26：旁路快照拉取（"每管道一个对话，完就断"——用户设计） ===
 //
-// tail-only 下后端不再重放历史；每个已宣告会话的完整历史由这里经**独立
-// SSH 连接**跑 `--read-session` 一次性查询拉回，按行号编 seq 灌进与 tail 行
-// 完全相同的管线（flush_lines → on_line_batch_awaited）。两路 seq 同处行号
-// 空间：重叠区是精确重复的 (sid,seq)，被前端既有去重吸收（-batch8 §2）。
-// 并发 ≤SNAPSHOT_CONCURRENCY（不抢 tail 通道带宽）；F19 priority sid 优先出队。
+// === 旁路快照拉取（每管道一个对话，完就断） ===
+//
+// tail-only 下后端不重放历史；每个已宣告会话的完整历史由这里经独立 SSH 连接跑 `--read-session` 一次性查询拉回，按行号编 seq 灌进与 tail 行
+// 完全相同的管线（flush_lines → on_line_batch_awaited）。两路 seq 同处行号空间：重叠区是精确重复的 (sid,seq)，被前端既有去重吸收。
+// 并发 ≤SNAPSHOT_CONCURRENCY（不抢 tail 通道带宽）；priority sid 优先出队。
 
 const SNAPSHOT_CONCURRENCY: usize = 2;
 /// 单会话快照体量上限（防御：远端超巨文件不无界拉取；超限截断 warn——
 /// 历史浏览器按需查询不受此限）。
 const SNAPSHOT_MAX_BYTES: u64 = 512 * 1024 * 1024;
 const SNAPSHOT_CHUNK_LINES: usize = 500;
-/// Batch9-F30：尾部优先——最新 N 行先到（第一批 emit 即最新内容），旧历史回填。
+/// 尾部优先 —— 最新 N 行先到（第一批 emit 即最新内容），旧历史回填。
 const SNAPSHOT_TAIL_LINES: usize = 500;
 
 /// 每连接一个：待拉快照队列。sid 幂等（重复宣告不重拉）；`cancel(sid)`

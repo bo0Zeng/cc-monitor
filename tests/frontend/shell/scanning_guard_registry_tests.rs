@@ -75,7 +75,7 @@ const PENDING: &[&str] = &[
     //    ⇒ 清单条数 28 → 28，`PENDING_CEILING` **一格没动**。
     // `doc_claim_registry_tests.rs` 这一行删了 —— 那一族四处手写遍历改走 `git ls-files`（跟踪着的文件才是人群）
     //   ⇒ 存量少一条，上限同拍往下拧一格。
-    "tests/frontend/shell/doc_copy_registry_tests.rs",
+    // `doc_copy_registry_tests.rs` 这一行删了 —— 那条判据（散文里不许出现数字副本）随协议文档改成生成一起删 ⇒ 存量少一条，上限同拍往下拧一格。
     "tests/frontend/shell/frame_cadence_guard_tests.rs",
     "tests/frontend/shell/gate_singleton_guard_tests.rs",
     "tests/frontend/shell/local_read_surface_registry_tests.rs",
@@ -127,7 +127,7 @@ const PENDING: &[&str] = &[
 /// [`no_new_guard_walks_the_tree_without_excluding_itself`]。
 // 08-08：`backend_route.rs` 的裸遍历迁到了 `guard_core::scan_tree!`（那一轮把它的
 // 发现面从一个目录扩到整棵树，顺带就该换掉手写遍历）⇒ 清单少一行，上限一起降。
-const PENDING_CEILING: usize = 22; // 23 → 22：`doc_claim_registry_tests.rs` 改按 `git ls-files` 取人群 · 24 → 23：`backend_layering.rs` 随 `backend` 目录删了 · // 两路各少一条（MIG-1 `ssh_source_f032_idle_tests.rs` · MIG-2 f07）⇒ 24 · f07 那份真迁完 ⇒ 26 → 25 · `local_query_tests.rs` 随被测模块删了 ⇒ 存量少一条，上限同拍往下拧一格 · `tests/frontend/shell/panorama_tests.rs` 随 monitor 的内嵌引擎删了 ⇒ 存量少一条，上限同拍往下拧一格：`account_usage.rs` 整删 ⇒ 存量少一条，上限同拍往下拧一格
+const PENDING_CEILING: usize = 21; // 22 → 21：`doc_copy_registry_tests.rs` 删了 · 23 → 22：`doc_claim_registry_tests.rs` 改按 `git ls-files` 取人群 · 24 → 23：`backend_layering.rs` 随 `backend` 目录删了 · // 两路各少一条（MIG-1 `ssh_source_f032_idle_tests.rs` · MIG-2 f07）⇒ 24 · f07 那份真迁完 ⇒ 26 → 25 · `local_query_tests.rs` 随被测模块删了 ⇒ 存量少一条，上限同拍往下拧一格 · `tests/frontend/shell/panorama_tests.rs` 随 monitor 的内嵌引擎删了 ⇒ 存量少一条，上限同拍往下拧一格：`account_usage.rs` 整删 ⇒ 存量少一条，上限同拍往下拧一格
 
 /// 判定「这是一个带登记表的判据文件」的声明形态。**闭集，按名字认。**
 ///

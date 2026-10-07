@@ -23,17 +23,10 @@ use tauri::{AppHandle, Manager};
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 #[serde(rename_all = "camelCase")]
-// **那个 `../..` 里有一级是「幻影目录」**（Phase D 审计 S1 查清 `ts-rs` 源码）：
-// 有效路径 = `cwd` / `export_dir` / `export_to`，而 `export_dir` 默认是 `./bindings`
-// ——**那个目录永不被创建**，它只是被 `../` 抵消掉的一级。所以从 `src/frontend/shell/` 跑测试时：
-//   `src/frontend/shell/` + `bindings/` + `../../src/frontend/ui/generated` = `<repo>/src/frontend/ui/generated/` ✓
-// 基准是**测试二进制的 cwd**（`std::env::current_dir()`，不是 `CARGO_MANIFEST_DIR`），
-// 而 cargo 会把它设成 package root ⇒ `cargo test` 与
-// `cargo test --manifest-path src/frontend/shell/Cargo.toml` 都落对（审计双向实测过）。
-// **直接跑测试二进制则会落到仓库外**（审计实测落在 cwd 上两级）——CI 安全，
-// 因为 `ci.yml` 用 `working-directory: src/frontend/shell`。
-// 记这一段是因为：**我第一次写成 `../src/frontend/ui/generated/`，落到了 `src/frontend/shell/src/generated/`**，
-// 而不翻 ts-rs 源码是推不出为什么要两级的。
+// `../..` 里有一级是「幻影目录」：ts-rs 的有效路径 = `cwd` / `export_dir` / `export_to`，而 `export_dir` 默认是 `./bindings`、永不被创建，只是被 `../` 抵消掉的一级。
+// 从 `src/frontend/shell/` 跑测试时：`src/frontend/shell/` + `bindings/` + `../../src/frontend/ui/generated` = `<repo>/src/frontend/ui/generated/`。
+// 基准是测试二进制的 cwd（`std::env::current_dir()`，不是 `CARGO_MANIFEST_DIR`），cargo 会把它设成 package root；直接跑测试二进制会落到仓库外
+// （`ci.yml` 用 `working-directory: src/frontend/shell`，CI 安全）。
 pub struct DataPathInfo {
     /// 用户可见的简短名字（如 "config.json"）
     pub label: String,
@@ -50,44 +43,11 @@ pub struct DataPathInfo {
     pub description: String,
     /// 是否存在
     pub exists: bool,
-    /// 文件大小（bytes）；目录返 None（不递归算大小避免大目录卡 IPC）
-    ///
-    /// **两个 `ts` 属性都不是装饰，各修掉一次「类型撒谎」**（C01 实测 + Phase D 审计取证）：
-    ///
-    /// 1. **`optional`**：本字段带 `skip_serializing_if`，`None` 时**字段在 JSON 里整个缺席**，
-    ///    TS 侧收到 `undefined` 而不是 `null`。审计逐字节验过序列化产物：
-    ///    `None` → `{"label":…,"exists":true}`（key 整个不在）；
-    ///    `Some(u64::MAX)` → `…,"sizeBytes":18446744073709551615`。
-    ///    机制也查过：`ts-rs` 对 `skip_serializing_if` 只置 `maybe_omitted`，
-    ///    而它的兜底分支要求 `maybe_omitted && has_default`——本字段没有 `#[serde(default)]`，
-    ///    所以显式 `ts(optional)` 确实必需。
-    ///
-    ///    **一处措辞订正**：本注释初版写「不加 `optional` 会得到必需且可为 null」——**不准**。
-    ///    在 `type = "number"` 同时存在时，实测是 `sizeBytes: number`（必需、**不**可 null）；
-    ///    `bigint | null` 只在两个属性都缺席时出现。两个都是谎，但是不同的谎。
-    ///    （另：`ts(optional = nullable, type = "number")` 实测也产出 `sizeBytes?: number`
-    ///    ——type override 吃掉 nullable，所以那条逃生路不存在。）
-    ///
-    /// 2. **`type = "number"`**：`ts-rs` 默认把 `u64` 映射成 `bigint`，
-    ///    **而 Tauri 的命令 IPC 走 JSON，`u64` 到 TS 侧是 JSON number，不是 BigInt**。
-    ///
-    ///    **证据分强弱两层，用强的那层**（审计订正）：
-    ///    - **强（原理级）**：`tauri-2.11.2/src/ipc/mod.rs:181-183` 的
-    ///      `impl<T: Serialize> IpcResponse for T` 走 `serde_json::to_string(&self)`
-    ///      ⇒ 线上是 **JSON 文本**，而 `JSON.parse` 永不产出 BigInt
-    ///      ⇒ 命令返回值**在原理上不可能**以 BigInt 到达 TS 侧。
-    ///    - **弱（现象级，本注释初版用的）**：改动前 `data-section.ts` 直接
-    ///      `formatBytes(info.sizeBytes)` 而 `formatBytes` 内有 `.toFixed()`，
-    ///      `bigint` 没有该方法 ⇒ 真是 BigInt 的话生产里早就 `TypeError`。
-    ///      **它只证明「今天不是 bigint」，不证明「不可能是」。**
-    ///    - **仓内同向先例**：用量那一轴的四个 `u64` 字段曾跨边界、TS 侧声明 `number`
-    ///      并直接做算术。〔：那一轴整轴退役，**先例的样本没了、结论没变** ——
-    ///      全仓无 BigInt 这一条今天照样现打得出来。〕
-    ///
-    ///    **收窄成 `number` 在这里是安全的**：本字段只用于展示文件大小，
-    ///    而 f64 的安全整数上限 2^53-1 ≈ **8 PB**。
-    ///    **全局的大整数策略由 C03 定**（哪些字段该走 string 过线）；
-    ///    但无论策略如何，**类型不许与运行时不一致**，所以这一处在 C01 修掉。
+    /// 文件大小（bytes）；目录返 None（不递归算大小，避免大目录卡 IPC）。两个 `ts` 属性都是承重的：
+    /// 1. `optional`：本字段带 `skip_serializing_if`，`None` 时字段在 JSON 里整个缺席，TS 侧收到 `undefined`；ts-rs 只在 `maybe_omitted && has_default` 时兜底，
+    ///    本字段没有 `#[serde(default)]` ⇒ 显式 `ts(optional)` 必需（`ts(optional = nullable, type = "number")` 产出的也是 `sizeBytes?: number`：type override 吃掉 nullable）。
+    /// 2. `type = "number"`：ts-rs 默认把 `u64` 映射成 `bigint`，而 Tauri 的命令 IPC 走 JSON（`impl<T: Serialize> IpcResponse for T` 走 `serde_json::to_string`），
+    ///    `JSON.parse` 永不产出 BigInt。收窄成 `number` 安全：只用于展示文件大小，f64 的安全整数上限 2^53-1 ≈ 8 PB。类型不许与运行时不一致。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional, type = "number"))]
     pub size_bytes: Option<u64>,
@@ -122,8 +82,7 @@ pub struct DataPathsResponse {
     pub backend_entries: Vec<DataPathInfo>,
     /// WebView2 用户数据目录推断路径（cache / localStorage / IndexedDB / cookies）
     pub webview_user_data_dir: Option<DataPathInfo>,
-    // 这里原来有 `$PROFILE` 备份目录那一格 —— 「`$PROFILE` 在哪」只由后端方言答，
-    //   界面经通道直接问本机后端（`src/frontend/ui/settings/profile-backups.ts`），本命令不再带它。
+    // `$PROFILE` 在哪只由后端方言答，界面经通道直接问本机后端（`src/frontend/ui/settings/profile-backups.ts`），本命令不带它。
 }
 
 /// 日志目录那一行的名字。设置面板认它：那一行不自带 [打开]，改成指向「日志」那一块
@@ -464,9 +423,6 @@ fn detect_webview_data_dir(handle: &AppHandle) -> Option<DataPathInfo> {
         DataClass::Truth,
     ))
 }
-
-// 这里原来有 `$PROFILE` 备份目录那一族（探 `$PROFILE` 两个目录名 · 目录里有没有 `.ccm-backup-`）——
-//   `$PROFILE` 位置的第二个读者；搬到界面经通道问本机后端（`src/frontend/ui/settings/profile-backups.ts`）。
 
 /// IPC：前端设置面板「数据」区打开时调一次。
 ///

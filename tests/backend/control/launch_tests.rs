@@ -628,7 +628,7 @@ fn typed_is_only_as_strong_as_the_send_keys_exit_code() {
                 !body.contains(confirm),
                 "`{f}` 里出现了 `{confirm}` —— 看起来加了第二种确认。\n\
                      ★ 那是**好事**，但契约与注释此刻还写着「只有退出码那么强」：\n\
-                     `src/doc/IPC-PROTOCOL.md` 的 `typed` 那几行 · 本文件 `LaunchOutcome::typed` \n\
+                     `launch` 登记里 `typed` 字段的说明 · 本文件 `LaunchOutcome::typed` \n\
                      · 界面 `src/frontend/ui/tmux-control.ts::decodeTyped`（此前是 monitor 的 `SendIntoResponse::typed`）。**一起改。**"
             );
         }
@@ -642,25 +642,23 @@ fn typed_is_only_as_strong_as_the_send_keys_exit_code() {
 /// 而消费方默认会按字面把 `typed:true` 读成确凿落地 —— 那正是报告 I-3 的起点。
 #[test]
 fn the_contract_says_how_strong_typed_actually_is() {
-    let root = crate::guard_support::repo_root();
-    let doc = std::fs::read_to_string(root.join("src/doc/IPC-PROTOCOL.md"))
-        .expect("IPC-PROTOCOL.md 读不到");
-    assert!(
-        doc.len() > 10_000,
-        "IPC-PROTOCOL.md 只读到 {} 字节 —— 抽取器坏了",
-        doc.len()
-    );
-    for needle in [
-        "只有 `send-keys` 的退出码那么强",
-        "copy-mode",
-        "typed_is_only_as_strong_as_the_send_keys_exit_code",
-    ] {
+    // 契约那一句住 `launch` 登记里 `typed` 字段的说明（协议参考由它生成）。
+    let spec = crate::stream::inbound::REGISTRY
+        .iter()
+        .find(|s| s.name == "launch")
+        .expect("注册表里没有 launch");
+    let doc = spec
+        .fields
+        .iter()
+        .find(|f| f.name == "typed")
+        .map(|f| f.doc)
+        .expect("launch 没登记 `typed` 字段");
+    for needle in ["只有 `send-keys` 的退出码那么强", "copy-mode"] {
         assert!(
             doc.contains(needle),
-            "契约里找不到 `{needle}` —— `typed` 的语义边界那段被删了或改写了。\n\
-                 ★ 删掉它，契约就退回「什么都没说」，而消费方默认按字面把 `typed:true` \n\
-                 读成载荷确凿落地（`launch-cli-wire.ts:63`：那是回落的**唯一线索**）。\n\
-                 要改措辞可以，但**三样都得留**：多强 · 已知反例 · 判据名。"
+            "`launch` 的 `typed` 字段说明里找不到 `{needle}` —— `typed` 的语义边界那句被删了或改写了。\n\
+                 ★ 删掉它，契约就退回「什么都没说」，而消费方默认按字面把 `typed:true` 读成载荷确凿落地。\n\
+                 要改措辞可以，但多强 · 已知反例两样都得留。"
         );
     }
 }
@@ -675,7 +673,7 @@ fn no_doc_claims_the_payload_really_landed() {
     let overclaim = format!("{}键入了", "真的");
     // 第二份原是 monitor 的就地 resume 发送端（`backend_launch.rs`，逐字转发 `typed`）；
     //   它迁到界面删了，今天读 `typed` 的是 `src/frontend/ui/tmux-control.ts::decodeTyped` / `sendInto` ⇒ 换成那一份。
-    let files = ["src/doc/IPC-PROTOCOL.md", "src/frontend/ui/tmux-control.ts"];
+    let files = ["src/doc/IPC-COMMANDS.md", "src/frontend/ui/tmux-control.ts"];
     let mut total = 0usize;
     let mut hits = Vec::new();
     for f in files {

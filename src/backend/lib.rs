@@ -56,6 +56,9 @@ pub mod plugin; // K-W1A：插件通用调用口 —— 找它 / 传 argv 起它
 #[path = "../../tests/backend/plugin_walk_fixture.rs"]
 mod plugin_walk_fixture; // K-W2E：最小假插件走通全流程（夹具 + 判据，整个文件级 cfg(test)，生产构建为空）
 #[cfg(test)]
+#[path = "../../tests/backend/protocol_doc_gen.rs"]
+mod protocol_doc_gen; // 协议参考 IPC-COMMANDS.md 由它从代码生成；判据 = 重新生成 == 仓里那份
+#[cfg(test)]
 #[path = "../../tests/backend/protocol_doc_guard.rs"]
 mod protocol_doc_guard; // U6a：IPC-PROTOCOL.md 与真实协议面的对拍
 #[cfg(test)]
