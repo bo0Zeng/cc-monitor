@@ -86,40 +86,6 @@
     },
     {
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
-      "host_label": "项目目录",
-      "installable": true,
-      "note": "相对你选定的项目目录",
-      "path_declared": ".mcp.json",
-      "path_resolved": null,
-      "source_label": "由 cc-monitor 现场生成的文本",
-      "state": {
-        "kind": "undetermined",
-        "why": "相对项目目录（.mcp.json）——要先选定项目才知道查哪里"
-      },
-      "tier": "AppInstalls",
-      "tool_id": "project-mcp",
-      "tool_name": "项目 MCP 配置",
-      "uninstallable": true
-    },
-    {
-      "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
-      "host_label": "项目目录",
-      "installable": true,
-      "note": "相对你选定的项目目录。项目在确认卡上选；只加或覆盖那一条，别的条目不动",
-      "path_declared": ".mcp.json",
-      "path_resolved": null,
-      "source_label": "由 cc-monitor 现场生成的文本",
-      "state": {
-        "kind": "undetermined",
-        "why": "相对项目目录（.mcp.json）——要先选定项目才知道查哪里"
-      },
-      "tier": "AppInstalls",
-      "tool_id": "project-mcp",
-      "tool_name": "项目 MCP 配置",
-      "uninstallable": true
-    },
-    {
-      "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "本机或远端",
       "installable": true,
       "note": "部署时整个目录写进来，覆盖前先改名备份。只能从本机装，cc-bus 本身跟着 Claude Code 走",
@@ -389,6 +355,40 @@
       "tool_id": "claude-code",
       "tool_name": "Claude Code 的会话记录",
       "uninstallable": false
+    },
+    {
+      "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
+      "host_label": "项目目录",
+      "installable": true,
+      "note": "相对你选定的项目目录",
+      "path_declared": ".mcp.json",
+      "path_resolved": null,
+      "source_label": "由 cc-monitor 现场生成的文本",
+      "state": {
+        "kind": "undetermined",
+        "why": "相对项目目录（.mcp.json）——要先选定项目才知道查哪里"
+      },
+      "tier": "AppInstalls",
+      "tool_id": "project-mcp",
+      "tool_name": "项目 MCP 配置",
+      "uninstallable": true
+    },
+    {
+      "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
+      "host_label": "项目目录",
+      "installable": true,
+      "note": "相对你选定的项目目录。项目在确认卡上选；只加或覆盖那一条，别的条目不动",
+      "path_declared": ".mcp.json",
+      "path_resolved": null,
+      "source_label": "由 cc-monitor 现场生成的文本",
+      "state": {
+        "kind": "undetermined",
+        "why": "相对项目目录（.mcp.json）——要先选定项目才知道查哪里"
+      },
+      "tier": "AppInstalls",
+      "tool_id": "project-mcp",
+      "tool_name": "项目 MCP 配置",
+      "uninstallable": true
     },
     {
       "effect_label": "cc-monitor 不装它，只查它在不在；缺了这一行会告诉你，去装上就好",

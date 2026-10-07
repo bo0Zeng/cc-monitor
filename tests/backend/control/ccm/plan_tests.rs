@@ -14,12 +14,16 @@ fn parse(a: &[String]) -> Result<Parsed, crate::control::ccm::argv::Die> {
     crate::control::ccm::argv::parse(&crate::control::ccm::argv::tests::mixed_to_split(a))
 }
 
+/// Claude 找上游读的那个变量（夹具照它那一家填 `Env::base_url_env`）。
+const BASE_URL_ENV: &str = crate::agents::claudecode::paths::BASE_URL_ENV;
+
 fn env() -> Env {
     Env {
         home: "/home/pi".into(),
         pwd: "/p".into(),
         accts_manifest: "/nonexistent/accounts.json".into(),
         account_env: "CLAUDE_CONFIG_DIR".into(),
+        base_url_env: BASE_URL_ENV.into(),
         self_argv: vec!["/usr/local/bin/ccm".into()],
         ..Default::default()
     }
@@ -535,7 +539,7 @@ fn the_container_path_forwards_every_inherited_variable_inward() {
     );
     // ② 中转地址（`K-H2b` 08-28）。
     let mut e2 = env();
-    e2.anthropic_base_url = Some("https://relay.example/v1".into());
+    e2.inherited_base_url = Some("https://relay.example/v1".into());
     assert!(
         base(&e2).starts_with("export ANTHROPIC_BASE_URL='https://relay.example/v1'; "),
         "中转地址没被显式化 ⇒ 走 tmux 的会话静默不走中转：{}",
@@ -543,7 +547,7 @@ fn the_container_path_forwards_every_inherited_variable_inward() {
     );
     // ③ 值必须经 `sq`（带引号 / 空格的值不许把载荷拆断）。
     let mut e4 = env();
-    e4.anthropic_base_url = Some("https://relay.example/it's here".into());
+    e4.inherited_base_url = Some("https://relay.example/it's here".into());
     assert!(
         base(&e4).starts_with(&format!(
             "export ANTHROPIC_BASE_URL={}; ",
@@ -1079,7 +1083,7 @@ fn the_message_the_user_actually_sees_carries_the_reason() {
 fn the_self_check_is_the_payload_itself_plus_print_and_it_runs_before_registering() {
     let mut e = env();
     e.self_argv = vec!["/opt/cc-monitor-backend".into()];
-    e.anthropic_base_url = Some("https://relay.example/v1".into());
+    e.inherited_base_url = Some("https://relay.example/v1".into());
     e.bus_scripts = Some("/opt/bus".into());
     for (args, has_passthru) in [
         (
@@ -1340,7 +1344,7 @@ fn an_inherited_relay_address_of_ours_never_goes_into_the_pane() {
     let key = "0123456789abcdef".repeat(4);
     let container_of = |v: &str| -> Container {
         let mut e = env();
-        e.anthropic_base_url = Some(v.to_string());
+        e.inherited_base_url = Some(v.to_string());
         let Plan::Container(c) = plan_of(
             &["--ccm-tmux=n1", "--cwd", "/p"],
             &e,
@@ -1431,7 +1435,7 @@ fn the_relay_route_follows_the_target_account_not_the_outer_shell() {
         for outer in &outers {
             let mut e = env();
             e.relay = Some(listening);
-            e.anthropic_base_url = outer.clone();
+            e.inherited_base_url = outer.clone();
             let line = render(&plan_of(args, &e, &t));
             assert_eq!(
                 (
@@ -1481,7 +1485,7 @@ fn the_relay_route_follows_the_target_account_not_the_outer_shell() {
         for outer in &outers {
             let mut e = env();
             e.relay = Some(listening);
-            e.anthropic_base_url = outer.clone();
+            e.inherited_base_url = outer.clone();
             let Plan::Container(c) = plan_of(args, &e, &t) else {
                 panic!("{what} 该是容器路")
             };
@@ -1603,7 +1607,7 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
     }
     // 继承来的那三个：只有容器路会把它们显式化进载荷 ⇒ 只在那条路上判；直路上一个用不上的怪值不挡（拒过头）。
     let mut dirty = env();
-    dirty.anthropic_base_url = Some("http://x\nevil".into());
+    dirty.inherited_base_url = Some("http://x\nevil".into());
     build_of(&[], &dirty).unwrap_or_else(|e| panic!("直路上用不上的继承值挡住了起会话：{}", e.0));
     let e = build_of(&["--ccm-tmux=n"], &dirty)
         .err()
@@ -1972,7 +1976,7 @@ fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
         "注入那一句的形状变了"
     );
     e.relay = Some(never);
-    e.anthropic_base_url = Some("https://my.gateway/v1".into());
+    e.inherited_base_url = Some("https://my.gateway/v1".into());
     let Plan::Direct(d) = plan_split(&args, &e).unwrap() else {
         panic!()
     };
@@ -1980,7 +1984,7 @@ fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
     assert!(d.keeps_user_base_url, "用户自己的端点没记下要说一句");
     // 外层留下的我们那一形（别的号的）⇒ 不认，按这一发的账号重问。
     e.relay = Some(inject);
-    e.anthropic_base_url = Some(format!(
+    e.inherited_base_url = Some(format!(
         "http://127.0.0.1:8788/{}/t/claude-code/q",
         "a".repeat(64)
     ));
@@ -1996,7 +2000,7 @@ fn the_relay_address_is_decided_at_the_final_exec_and_only_there() {
         Some("http://127.0.0.1:8788/t/claude-code/w"),
         "外层留下的中转地址顶掉了这一发的"
     );
-    e.anthropic_base_url = None;
+    e.inherited_base_url = None;
     e.relay = Some(refuse);
     assert_eq!(plan_split(&args, &e).unwrap_err().0, "中转没在听");
     // 容器路不问（pane 里那一趟走直路时自己问）。

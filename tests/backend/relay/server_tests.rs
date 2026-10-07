@@ -2989,7 +2989,7 @@ head -n 1 <&3
 
 /// 一条**不带钥匙**的中转 URL → `ccm` 直路渲出的那一句 `export`（`--ccm-print` 与经 shell 那一趟同一份，不再手抄）。
 fn rendered_export(url: &str) -> String {
-    crate::control::ccm::plan::relay_export(url)
+    crate::control::ccm::plan::relay_export(crate::agents::claudecode::paths::BASE_URL_ENV, url)
 }
 
 /// ★★★ `KH2B1`。**判定不是「渲染串里含 `ANTHROPIC_BASE_URL`」** ——
