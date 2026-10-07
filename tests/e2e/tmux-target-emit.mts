@@ -17,7 +17,6 @@ import {
   planResumeTmux,
   planResumeIntoExistingTmux,
   planAttach,
-  planLauncher,
 } from "../../src/frontend/ui/launch-requests.ts";
 import { renderCmdViaProduction } from "./launch-render-driver.ts";
 import { DEFAULT_AGENT } from "../../src/frontend/ui/agent-profile.ts";
@@ -28,7 +27,16 @@ const out: Record<string, string> = {
   // 往「已存在的 cc-p1」就地 send-keys —— cc-p1 不存在时必须失败，绝不能落进 cc-p1-2
   resumeIntoExisting: renderCmdViaProduction(planResumeIntoExistingTmux(DEFAULT_AGENT, "p1", "cc-p1", "CCMPROBE")),
   attach: renderCmdViaProduction(planAttach(DEFAULT_AGENT, "cc-p1")),
-  // 起新会话（posixQuote 名路径，与上面的裸名路径是两条不同的引号分支）
-  launcher: renderCmdViaProduction(planLauncher(DEFAULT_AGENT, "", "cc-p1", "CCMPROBE")),
+  // 起新会话进 tmux（posixQuote 名路径，与上面的裸名路径是两条不同的引号分支）：起新会话那一个请求（`session-new`）在那台渲的就是这一形。
+  launcher: renderCmdViaProduction({
+    agent: DEFAULT_AGENT,
+    action: { kind: "new" },
+    container: { kind: "tmux", name: "cc-p1", mode: "create" },
+    cwd: null,
+    account: { kind: "follow" },
+    models: {},
+    launcherOverride: "CCMPROBE",
+    ccmSid: undefined,
+  }),
 };
 for (const [k, v] of Object.entries(out)) console.log(`${k}\t${v}`);

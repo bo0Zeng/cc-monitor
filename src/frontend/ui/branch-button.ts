@@ -29,10 +29,6 @@
  * 按钮的呈现自动跟着变，不需要任何刷新管线；③ 样式那半可以纯 CSS 后代选择器搞定。
  */
 
-import { forkSession, type BranchResult } from "./session-writes";
-// 本机 = `LOCAL_ORIGIN`（`"<local>"`，Rust 侧 `origin.rs::LOCAL`，跨语言对拍）。
-import type { Origin } from "./ipc/origin";
-import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
 
 /** off-main 的卡片被 `BranchFolder` 包进这个容器里。判据的唯一锚点。 */
@@ -51,24 +47,14 @@ export function isOffMainCard(el: Element): boolean {
 export interface BranchButtonOptions {
   /** 分叉点消息的 uuid。 */
   uuid: string;
-  /**
-   * 源会话 sid。**两条路都用它** —— 后端只认 sid 不认路径（见 `remote_branch.ts` 对面那份
-   * Rust 头注）。本机那条原先收路径，收成 sid 之后这里少了一个字段。
-   */
-  sourceSessionId: string;
-  /** 哪台机器（本机 = `LOCAL_ORIGIN`）。G6 起远端也能分叉。必填：「没说」不再被当成本机。 */
-  origin: Origin;
-  /** 新会话的工作目录（起会话用）。 */
-  cwd?: string;
-  /** 成功之后干什么（弹 toast / 起会话）——由调用方决定，本组件不管起会话。 */
-  onForked: (res: BranchResult) => void;
+  /** 点了：开起新会话框的分叉那一形（分叉记录在框里点［新建］那一步才写，取消就什么都不留）。 */
+  onFork: (uuid: string) => void;
 }
 
 /**
  * 给一张 user/assistant 卡挂分叉按钮。**幂等**：增量重渲会重复调本函数。
  *
- * 不在这里起会话 —— 那是 G3b 的事，且本地/远端两条路不同。本组件只负责
- * 「产出新会话文件」这一步，成功后把结果交给 `onForked`。
+ * 点了只开框（`onFork`）：分叉与起会话是同一个请求（`new-session.ts`），这里一个字都不写。
  */
 export function attachBranchButton(
   cardEl: HTMLElement,
@@ -93,30 +79,7 @@ export function attachBranchButton(
 
   btn.addEventListener("click", (ev) => {
     ev.stopPropagation();
-    if (btn.dataset.busy === "1") return;
-    btn.dataset.busy = "1";
-    void (async () => {
-      try {
-        // 🔴 **本机与远端不再是两条 IPC。**
-        // 这里原先逐字写着「本机与远端仍是**两条不同的 IPC**（活儿在哪台机器上干不一样，
-        // 远端那条还要一个 origin）」—— 要治的正是那个「还要一个 origin」：
-        // 那不该是**另一条命令**，那该是**同一条命令的一个参数**。
-        // 入参形状两侧早已一致（都收 sid、都不收路径），所以这一步只剩
-        // 把「哪台机器」从命令名里搬到参数里。
-        // ⚠ **本机是 `LOCAL_ORIGIN`（`"<local>"`），不是 `undefined`、不是 `null`** ——
-        //   `INVARIANTS §40` 逐字「本地 ＝ 不走 ssh 的远端」，它是一个**具名**的 origin。
-        // `opts.origin` 本来就是这个表示，原样过线。
-        // 今天界面经通道直说那台后端 `session-fork`（`session-writes.ts::forkSession`），monitor 那条转交删了。
-        const res = await forkSession(opts.origin, opts.sourceSessionId, opts.uuid);
-        btn.textContent = copyText("branchButton.attachBranchButton.done");
-        window.setTimeout(() => (btn.textContent = copyText("branchButton.attachBranchButton.icon")), 2000);
-        opts.onForked(res);
-      } catch (err) {
-        toast(copyText("branchButton.attachBranchButton.failed"), String(err));
-      } finally {
-        btn.dataset.busy = "0";
-      }
-    })();
+    opts.onFork(opts.uuid);
   });
 
   cardEl.appendChild(btn);

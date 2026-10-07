@@ -555,7 +555,8 @@ describe("子步 2 · CSS 按窗口拆（清单 ＝ 各 html 的 <link> 列表�
   it("完整性：每个窗口的代码挂得上的类，它们的每条规则都在这个窗口的清单里", () => {
     for (const win of Object.keys(WINDOWS) as Win[]) {
       const r = reachable(win);
-      expect(r.classes.size, `${win} 挂得上的类只收到 ${r.classes.size} 个 —— 抽取坏了`).toBeGreaterThan(150);
+      // 地板 150 → 140：查看窗那份少了分叉追问小窗的十几个全局类（`.fork-ask-*`，随起新会话收成一个框删了），10-06 实测 148。
+      expect(r.classes.size, `${win} 挂得上的类只收到 ${r.classes.size} 个 —— 抽取坏了`).toBeGreaterThan(140);
       expect(missingIn(win, linksOf(WINDOWS[win].html)), `${win} 窗口挂得上、却没链到样式的规则`).toEqual([]);
     }
   }, TIMEOUT_MS);
@@ -715,6 +716,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/front-pop.module.css": { stacked: false, why: "↗ 的结果浮层 · 「查找终端…」那一小行：只挂自己的哈希类（外框是 kit 浮层）" },
   "src/frontend/ui/status-messages.module.css": { stacked: false, why: "状态栏「消息」那一枚的外包与它的浮层：只挂自己的哈希类（里面那颗是 kit chip 的哈希类）" },
   "src/frontend/ui/views/command-bar.module.css": { stacked: false, why: "命令面板：外框是 kit 面板，里面全是自己的类" },
+  "src/frontend/ui/new-session.module.css": { stacked: false, why: "起新会话框：外框是 kit 表单对话框，里面全是自己的类" },
   "src/frontend/ui/views/keys-overview.module.css": { stacked: false, why: "快捷键一览：外框是 kit 面板，里面全是自己的类" },
   "src/frontend/ui/views/session-find.module.css": { stacked: false, why: "会话内查找面板本体（外框 .session-find 只在 styles.css 管位置，不叠这些类）" },
   "src/frontend/ui/usage-hud.module.css": { stacked: false, why: "状态栏「上下文」chip 与它的浮层：只挂自己的哈希类（chip 本身叠在 kit chip 的哈希类上，不是全局类）" },

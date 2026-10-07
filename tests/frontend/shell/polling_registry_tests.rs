@@ -413,7 +413,6 @@ fn every_data_poll_names_its_event_source_and_owner() {
 const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     ("src/frontend/ui/branch-fold.ts", "requestAnimationFrame", 1, "★ F15：live 模式主线重算的**帧末合批**（`scheduleLiveRecompute`）。排一次位（`liveScheduled`）⇒ **不是自链**：回调里不再排下一次，只有新记录到达才会再排。原来这里是逐条同步跑 `computeMainBranch`（扫全部 records 的 Kahn 拓扑）⇒ N 条记录 O(N²)。"),
     ("src/frontend/ui/branch-fold.ts", "setTimeout", 1, "★ F15：上面那条的**无 rAF 兜底**（`typeof requestAnimationFrame !== \"function\"` 时）。0ms，一次性。"),
-    ("src/frontend/ui/branch-button.ts", "setTimeout", 1, "2s 后把按钮文字恢复成 `⑂`。一次性 UI 反馈。"),
     ("src/frontend/ui/front-pop.ts", "setTimeout", 1, "↗ 切过去了：1 秒后把对勾换回 ↗。一次性 UI 反馈。"),
     // P2s（补审 A4）：**有退出条件的自链**，不是 data-poll。
     ("src/frontend/ui/settings/backend-section.ts", "setTimeout", 1,

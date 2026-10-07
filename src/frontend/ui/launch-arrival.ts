@@ -25,7 +25,7 @@ export const ARRIVAL_BUDGET_MS = 45_000;
 const WORDS_LINES = 6;
 /** 发起方窗口 → 主窗口：交一件「等它」（载荷 [`ArrivalSpec`]）。 */
 export const LAUNCH_EXPECT_EVENT = "launch-arrival-expect";
-/** 主窗口 → 发起方：带票的那一件等到了没有（载荷 `{ ticket, arrived }`）。 */
+/** 主窗口 → 发起方：带票的那一件等到了没有（载荷 `{ ticket, sid }`：等到了 ⇒ 报出来的那个 sid，没等到 ⇒ `null`）。 */
 export const LAUNCH_DONE_EVENT = "launch-arrival-done";
 /** 主窗口 → 发起方所在的那扇窗：等到了 / 没等到那一句也在那里说一遍（发起方常在设置窗里，主窗口被它挡着）。 */
 export const LAUNCH_SAID_EVENT = "launch-arrival-said";
@@ -154,36 +154,36 @@ export function watchArrival(spec: ArrivalSpec): void {
     timer: setTimeout(() => {
       if (!pending.delete(p)) return;
       void sayMissed(p);
-      answer(p, false);
+      answer(p, null);
     }, ARRIVAL_BUDGET_MS),
   };
   pending.add(p);
 }
 
-function answer(p: ArrivalSpec, arrived: boolean): void {
+function answer(p: ArrivalSpec, sid: string | null): void {
   if (p.ticket === undefined) return;
-  emit(LAUNCH_DONE_EVENT, { ticket: p.ticket, arrived }).catch((e: unknown) => console.warn("[launch-arrival] 回不了发起方：", e));
+  emit(LAUNCH_DONE_EVENT, { ticket: p.ticket, sid }).catch((e: unknown) => console.warn("[launch-arrival] 回不了发起方：", e));
 }
 
 /**
- * 发起方（任何窗口）：交一件「等它」并**等主窗口回话** ⇒ 见到了 `true`、预算内没见到 `false`
- * （没见到那一句由主窗口照常说）。换号重启与分叉据它才说「已用新账号重启 / 已分叉」、才记账。
+ * 发起方（任何窗口）：交一件「等它」并**等主窗口回话** ⇒ 见到了 ⇒ 报出来的那个 sid、预算内没见到 ⇒ `null`
+ * （没见到那一句由主窗口照常说）。起新会话据它切到新标签页、说「已启动」。
  */
-export async function awaitArrival(spec: ArrivalSpec): Promise<boolean> {
+export async function awaitArrival(spec: ArrivalSpec): Promise<string | null> {
   const ticket = crypto.randomUUID();
-  let done: (v: boolean) => void = () => {};
-  const got = new Promise<boolean>((res) => (done = res));
+  let done: (v: string | null) => void = () => {};
+  const got = new Promise<string | null>((res) => (done = res));
   let un: () => void;
   try {
-    un = await listen<{ ticket: string; arrived: boolean }>(LAUNCH_DONE_EVENT, (e) => {
-      if (e.payload.ticket === ticket) done(e.payload.arrived);
+    un = await listen<{ ticket: string; sid: string | null }>(LAUNCH_DONE_EVENT, (e) => {
+      if (e.payload.ticket === ticket) done(e.payload.sid);
     });
   } catch (e) {
     // 听不了回话（没有 Tauri 宿主）⇒ 等不到：照「没看到」算，不说成起来了。
     console.warn("[launch-arrival] 听不了主窗口的回话：", e);
-    return false;
+    return null;
   }
-  const cap = setTimeout(() => done(false), AWAIT_CAP_MS);
+  const cap = setTimeout(() => done(null), AWAIT_CAP_MS);
   try {
     expectArrival({ ...spec, ticket });
     return await got;
@@ -201,7 +201,7 @@ export function noteLive(origin: Origin, sid: string, seen: LiveSeen): void {
     clearTimeout(p.timer);
     pending.delete(p);
     if (p.arrived !== null) say(p, p.arrived.title, p.arrived.body, "info");
-    answer(p, true);
+    answer(p, sid);
   }
   let s = seenLive.get(k);
   if (!s) seenLive.set(k, (s = new Set()));

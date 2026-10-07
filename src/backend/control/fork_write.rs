@@ -157,16 +157,38 @@ pub(crate) fn answer_wire_at(
             })
     };
     let (sid, uuid) = (field("sid")?, field("uuid")?);
+    let res = fork_checked(agent_home, &sid, &uuid)?;
+    let mut v =
+        serde_json::to_value(&res).map_err(|e| ("fork_failed", format!("serialize: {e}")))?;
+    v["launch"] = launch(&res.source, &sid);
+    Ok(v)
+}
+
+/// 起新会话那一条（`session-new` 带 `forkFrom`）写分支记录：同 [`answer_wire_at`] 那一份本体，回新会话的 sid。
+pub(crate) fn fork_for_launch(
+    agent_home: &Path,
+    sid: &str,
+    uuid: &str,
+) -> Result<String, (&'static str, String)> {
+    fork_checked(agent_home, sid, uuid).map(|r| r.session_id)
+}
+
+/// 两个 id 先过放行判定，再交 [`run_inner`]。
+fn fork_checked(
+    agent_home: &Path,
+    sid: &str,
+    uuid: &str,
+) -> Result<ForkResult, (&'static str, String)> {
     // 〔`INVARIANTS §47` ①〕两个 id 在这里先过放行判定（界面经通道直说、不再判；本侧 = 真去用它的这一侧）：
     //   判定只有共享那一份 `session_id_ok`，这里只把「长度不对」与「形状不对」分成两句话。
     for (what, id) in [
         (
             copy_core::copy_text("rsRemoteBranch.what.sourceId", &[]),
-            &sid,
+            sid,
         ),
         (
             copy_core::copy_text("rsRemoteBranch.what.messageId", &[]),
-            &uuid,
+            uuid,
         ),
     ] {
         if !shell_quote_core::session_id_ok(id) {
@@ -179,12 +201,8 @@ pub(crate) fn answer_wire_at(
         }
     }
     // `run_inner` 只读第 1、2 格（第 0 格是 argv 形里的子命令名，本入口没有）。
-    let argv = [String::new(), sid.clone(), uuid];
-    let res = run_inner(agent_home, &argv).map_err(|m| ("fork_failed", m))?;
-    let mut v =
-        serde_json::to_value(&res).map_err(|e| ("fork_failed", format!("serialize: {e}")))?;
-    v["launch"] = launch(&res.source, &sid);
-    Ok(v)
+    let argv = [String::new(), sid.to_string(), uuid.to_string()];
+    run_inner(agent_home, &argv).map_err(|m| ("fork_failed", m))
 }
 
 fn fail(code: &str, message: &str) -> i32 {

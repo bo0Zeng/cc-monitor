@@ -123,6 +123,38 @@ export function defaultOps(): Record<string, OpHandler> {
       accounts: Object.fromEntries(w.sessions.map((s, i) => [s.sid, ACCOUNTS[i % 2].name])),
     }),
     "tasks-list": (_o, req, w) => ({ tasks: w.sessions.find((s) => s.sid === req.sid)?.tasks ?? [] }),
+    // 起新会话框那三问：那台最近用过的目录（它上面那几个会话的目录）· 有 tmux · 只有一家能起；分叉那一形照源会话给三格。
+    "session-new-facts": (origin, req, w) => {
+      const mine = w.sessions.filter((s) => s.origin === origin);
+      const src = w.sessions.find((s) => s.sid === req.forkOf);
+      return {
+        recent: [...new Set(mine.map((s) => s.cwd))].map((cwd, i) => ({ cwd, lastMs: Date.now() - i * 60_000 })),
+        tmux: !/win/.test(origin),
+        agents: ["claude"],
+        fork: src
+          ? {
+              agent: "claude",
+              launch: {
+                cwd: { kind: "known", value: src.cwd, from: "record" },
+                account: src.ended ? { kind: "unknown", why: "exited" } : { kind: "known", value: "personal", from: "process" },
+                terminal: src.ended ? { kind: "unknown", why: "exited" } : { kind: "known", value: { host: "tmux", terminal: "tmux:orders-cc" }, from: "terminal_list" },
+              },
+              turn: 9,
+              start: new Date(Date.now() - 3_600_000).toISOString(),
+            }
+          : null,
+      };
+    },
+    "session-new-dir": (_o, req) => ({ exists: !String(req.cwd).includes("nope"), tmuxName: `${String(req.cwd).split("/").filter(Boolean).pop() ?? "session"}-cc` }),
+    "session-new": (_o, req) => ({
+      outcome: req.place === "tmux" ? "started" : "open",
+      session: req.place === "tmux" ? "orders-cc-2" : null,
+      sid: null,
+      cmd: req.place === "tmux" ? null : "ccm -- new",
+      account: null,
+      agent: req.agent,
+      cwd: req.cwd,
+    }),
     // 会打断什么：合成世界里每个会话都当它有一轮在跑、带它在做的任务。
     "session-interrupts": (_o, req, w) => {
       const tasks = (w.sessions.find((s) => s.sid === req.sid)?.tasks ?? []).filter((t) => t.status === "in_progress").map((t) => t.subject);

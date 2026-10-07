@@ -45,18 +45,24 @@ function accountGoneWorld(): World {
   return w;
 }
 
-/** 分叉要先问的那种：源会话不在跑 ⇒ 那台推不出号与终端（`session-fork` 回复里那两格「不知道 · 已退出」）。 */
-function forkAskWorld(): World {
+/** 分叉沿用的那个号选不了：那台回 `account_unavailable`、带替代号（不起、不悄悄换号）。 */
+function forkUnavailableWorld(): World {
   const w = defaultWorld();
-  w.ops["session-fork"] = () => ({
-    sessionId: "5e55f0f0-0000-4000-8000-00000000f0f0",
-    jsonlPath: "/home/user/.claude/projects/-home-user-work-notes/5e55f0f0-0000-4000-8000-00000000f0f0.jsonl",
-    launch: {
-      cwd: { kind: "known", value: "/home/user/work/notes", from: "record" },
-      account: { kind: "unknown", why: "exited" },
-      terminal: { kind: "unknown", why: "exited" },
-    },
-  });
+  w.ops["session-new"] = () => {
+    throw new Refuse("account_unavailable", "personal 选不了", {
+      field: "account",
+      unavailable: { requested: "personal", pinned: true, listKnown: true, alternative: "work" },
+    });
+  };
+  return w;
+}
+
+/** 起新会话框：目录那一格那台说不在。 */
+function noDirWorld(): World {
+  const w = defaultWorld();
+  w.ops["session-new"] = () => {
+    throw new Refuse("no_dir", "目录不存在", { field: "cwd", unavailable: null });
+  };
   return w;
 }
 
@@ -121,15 +127,42 @@ export const PANEL_SCENES: Scene[] = [
     await click("#bottom-drawer .agent-row");
     await sleep(1200);
   }),
-  panel("panel-fork-ask", "从这一轮分叉", "已结束的会话里，用户那句话上的分叉按钮：源会话不在跑、说不清用哪个账号 ⇒ 先问", async () => {
+  panel("panel-new-session", "起新会话", "命令面板「新建会话…」：当前标签页那台 · 那个目录 · 默认账号在前；运行于两张单选；更多里是 tmux 会话名（那台铸的作占位）与启动命令", async () => {
+    await openCommandBar();
+    await type("[data-role=command-input]", "新建会话");
+    await key("Enter");
+    await waitFor('[role="dialog"] select[aria-label="账号"] option');
+    await sleep(600);
+  }),
+  panel("panel-new-session-nodir", "起新会话 · 目录那一格不行", "点［新建］、那台说目录不在：错误落在目录那一格下，框不关", async () => {
+    await openCommandBar();
+    await type("[data-role=command-input]", "新建会话");
+    await key("Enter");
+    await waitFor('[role="dialog"] select[aria-label="账号"] option');
+    await sleep(300);
+    await click(await byText('[role="dialog"] button', "新建"));
+    await sleep(600);
+  }, noDirWorld),
+  panel("panel-fork-new", "从这一轮分叉", "已结束的会话里，用户那句话上的分叉按钮：开起新会话框的分叉那一形 —— 顶上说分叉自哪一轮；源会话的号说不出 ⇒ 账号那一格是「跟随原会话上次的号」；不给终端名那一格", async () => {
     await mainReady(ALL_TABS);
     await openTab(2);
     await scrollStreamTop();
-    const btn = await waitFor(".viewer-branch-btn");
+    const btn = await waitFor(".stream.active .viewer-branch-btn");
     await click(btn);
-    await waitFor(".fork-ask");
+    await waitFor('[role="dialog"] select[aria-label="账号"] option');
     await sleep(700);
-  }, forkAskWorld),
+  }),
+  panel("panel-fork-unavailable", "分叉 · 原会话的号选不了", "在跑的会话上分叉、它用的号选不了：不起、不悄悄换号 —— 那一格下「原会话账号 · 不自动换」＋［改用 work］［登录…］", async () => {
+    await mainReady(ALL_TABS);
+    await openTab(0);
+    await scrollStreamTop();
+    const btn = await waitFor(".stream.active .viewer-branch-btn");
+    await click(btn);
+    await waitFor('[role="dialog"] select[aria-label="账号"] option');
+    await sleep(300);
+    await click(await byText('[role="dialog"] button', "新建"));
+    await sleep(600);
+  }, forkUnavailableWorld),
   panel("panel-kill-confirm", "结束会话前的确认", "tab 右键「结束会话…」：标题点名会话，中断 / 保留逐项写，tmux 会话名在正文里，焦点在「取消」", async () => {
     await mainReady(ALL_TABS);
     await rightClick("#tab-bar .tab");

@@ -87,7 +87,6 @@ import { loadConfig } from "../../../../src/frontend/ui/config";
 import { fakeCfg, fakeMachineTableTry } from "../config-patch-fake";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { dispatcher } from "../../../../src/frontend/ui/keybindings/registry";
-import { refusedReply } from "../../../test-support/chan-fake";
 const saveConfig = fakeCfg.saved;
 import {
   shouldShowResetFingerprint,
@@ -928,46 +927,22 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   });
 
   /**
-   * 「一条都不许静默忽略」：「开新 Claude」替用户派生的默认名要过铸名口，
-   * **铸不出 ⇒ 不起、出声**。先前这里「列不出来就用空集铸名」—— 同一个 cwd 派生出同一个名字，
-   * 撞上远端 `create-or-attach` 的幂等闸，静默接进第一个会话（#76）。铸名口是那台后端的 `terminal-name-mint`。
-   * 正控：那台铸了名字 ⇒ 照常往下走到渲染那一跳。
+   * 机器 ⋯「新建会话…」开的是全产品那一个起新会话框（`new-session.ts`），机器锁定在这一台；
+   * 这里一个名字都不铸、一行都不渲（终端名与那一行都在点［新建］时由那台后端出）。
    */
-  // 起会话那几问（中转地址 `launch-endpoint` → 渲染 `launch-render-*`）改问那台后端（`src/frontend/ui/launch-render.ts`），
-  //   不再是 `commands.*` 包装 ⇒ 看通道：问到了其中第一问就算「往下走到了」（本桩不答，后面几问不会发）。
-  const renderAsked = (): boolean => chanOps.some((op) => /^launch-(?:endpoint|render-)/.test(op));
-  const openLauncherAndStart = async (minted: unknown): Promise<void> => {
+  it("★ 新建会话… ⇒ 开起新会话框、机器锁定在这一台，界面不自己铸名", async () => {
+    document.body.innerHTML = "";
     ipcCalls.length = 0;
     chanOps.length = 0;
-    ipcReplies.set("terminal-name-mint", minted);
     const sec = await mount([mkH("a", "1.1.1.1")], fakePages().host);
     sec.menuFor("machine:a").find((m) => m.label === "新建会话…")!.onClick!();
-    const back = document.querySelector<HTMLElement>(".launcher-back")!;
-    expect(back, "「开新 Claude」的对话框没开出来 —— 下面的断言会零命中地绿").toBeTruthy();
-    back.querySelector<HTMLInputElement>("input")!.value = "/home/u/proj";
-    [...back.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "开始")!.click();
     for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
-  };
-
-  it("★ 〔FE1〕开新 Claude：那台铸不出名字 ⇒ 不起、出声（不自己拼一个不避让的名字）", async () => {
-    document.body.innerHTML = "";
-    await openLauncherAndStart(refusedReply("invalid_args", "ssh 抖动"));
-    expect(chanOps).toContain("terminal-name-mint");
-    expect(renderAsked(), "铸不出名字还往下起了").toBe(false);
-    expect(ipcCalls).not.toContain("launch_remote_terminal");
-    const toast = document.body.textContent ?? "";
-    expect(toast).toContain("没有起会话");
-    expect(toast).toContain("ssh 抖动");
-    ipcReplies.clear();
-    document.body.innerHTML = "";
-  });
-
-  it("正控：那台铸了名字 ⇒ 往下走到渲染那一跳", async () => {
-    document.body.innerHTML = "";
-    await openLauncherAndStart("proj-cc");
-    expect(renderAsked()).toBe(true);
-    expect(document.body.textContent ?? "").not.toContain("没有起会话");
-    ipcReplies.clear();
+    const dlg = document.querySelector<HTMLElement>('[role="dialog"]');
+    expect(dlg, "起新会话框没开出来 —— 下面的断言会零命中地绿").toBeTruthy();
+    expect(dlg!.textContent).toContain("新建会话 · a");
+    expect(dlg!.querySelector<HTMLSelectElement>('select[aria-label="机器"]')!.disabled).toBe(true);
+    expect(chanOps).not.toContain("terminal-name-mint");
+    expect(chanOps.some((op) => /^launch-render-/.test(op))).toBe(false);
     document.body.innerHTML = "";
   });
 
@@ -1185,7 +1160,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     });
   });
 
-  // Esc 一次只关最上面一层：机器页上的三个小框（批量导入预览 · 开新 Claude · 端口转发）关掉自己，设置窗不跟着关。
+  // Esc 一次只关最上面一层：机器页上的三个小框（批量导入预览 · 新建会话 · 端口转发）关掉自己，设置窗不跟着关。
   describe("Esc 只关最上面那个小框", () => {
     const esc = (): void => {
       (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
@@ -1219,13 +1194,14 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       sec.element.remove();
     });
 
-    it("开新 Claude", async () => {
+    it("新建会话", async () => {
       const p = fakePages();
       const sec = await mount([mkH("a", "1.1.1.1")], p.host);
       sec.menuFor("machine:a").find((m) => m.label === "新建会话…")!.onClick!();
-      expect(document.querySelector(".launcher-back"), "前提：对话框开着").toBeTruthy();
+      await tick();
+      expect(document.querySelector('[role="dialog"]'), "前提：起新会话框开着").toBeTruthy();
       esc();
-      expect(document.querySelector(".launcher-back")).toBeNull();
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
       expect(panelEsc).not.toHaveBeenCalled();
     });
 

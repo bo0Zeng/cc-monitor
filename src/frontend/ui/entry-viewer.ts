@@ -30,7 +30,7 @@ import { splitButton } from "./kit/split-button";
 import { defaultPick, resumeAccounts, resumeHint, resumeMenuItems, type ResumeAccounts, type ResumePick } from "./resume-menu";
 import { resumeHistoryRow } from "./history-resume";
 import { askOf, FOLLOW, type AccountAsk } from "./launch-account";
-import { newSessionIn } from "./new-session-in";
+import { openNewSession } from "./new-session";
 import { revealInFolder } from "./reveal-in-folder";
 import { terminalFrontAvailable } from "./terminal-front";
 import { bringRemoteTerminalToFront, bringTerminalToFront } from "./tab-session-actions";
@@ -251,7 +251,7 @@ function resumeControl(r: HistoryRow, viewer: SessionViewer): HTMLElement {
         accounts,
         pick,
         onChange: (p) => (sb.main.title = resumeHint(accounts, p)),
-        newInDir: () => void newSessionIn(r.origin, r.projectPath, r.agent),
+        newInDir: () => void openNewSession({ origin: r.origin ?? LOCAL_ORIGIN, cwd: r.projectPath, agent: r.agent }),
       });
     },
   });

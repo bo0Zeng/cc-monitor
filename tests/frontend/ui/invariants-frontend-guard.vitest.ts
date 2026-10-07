@@ -108,12 +108,14 @@ describe("P21 ⓪ 量具自检（这几条不过，下面六格全是空转）",
     //    14 → 13：少的是 `.history-view`（历史页照稿重做，样子进了 `views/history.module.css`；挂在 `document.body` 上、不在 ② 的表里）。
     //    13 → 12：少的是 `.tasks-popover`（任务 · agent 两块浮层并进主区底部抽屉 —— 网格里的一行，不是 fixed 浮层；它原在 ② 的表里，那一行一起摘了）。
     //    12 → 11：少的是 `.import-preview-back`（设置窗批量导入预览并进 kit 的「添加机器」对话框；它挂在 `document.body` 上）。
+    //    10 → 8：少的是 `.fork-ask-backdrop`（分叉追问小窗）与 `.launcher-back`（机器卡「开新 Claude」即席框）——
+    //    起新会话收成 kit 对话框里的一个框（`new-session.ts`），两张旧表单连同 CSS 删了；前一个原在 ② 的例外表里，那一行一起摘了。
     expect(
       fixedSelectors().length,
-      `CSS 里声明 \`position: fixed\` 的选择器有 ${fixedSelectors().length} 个（10-06 实测 10：命令面板的外框换成了 kit 面板，自己那一条 fixed 删了）。\n` +
+      `CSS 里声明 \`position: fixed\` 的选择器有 ${fixedSelectors().length} 个（10-06 实测 8：两张旧起会话表单的遮罩随表单删了）。\n` +
         "★ 变多 = 新加了一个浮层 ⇒ 去 ② 的登记表里交代它挂在哪；\n" +
         "★ 变少 = 要么真删了一个，要么**切规则那一刀又漏了**（第一版漏了 9 条，报 16）。",
-    ).toBe(10);
+    ).toBe(8);
   });
 
   it("🔴 正控：`alert(` 的量具对合成样本判得出「有」与「没有」两种", () => {
@@ -160,17 +162,7 @@ describe("P21 ① 条 12：前端 alert 不算错误反馈 —— 生产侧零 `
  * `will-change`/`contain`/`content-visibility`/`backdrop-filter`）。
  * 只登记「它是例外」是不够的：那条断言在「尺子把所有宿主都判安全」时同样绿。
  */
-const BODY_MOUNT_EXCEPTIONS: ReadonlyArray<{ sel: string; host: string; why: string }> = [
-  {
-    sel: ".fork-ask-backdrop",
-    host: "#app",
-    why:
-      "`src/frontend/ui/fork-ask.ts` 里是 `const host = opts.host ?? document.body` —— **默认就是 body**，" +
-      "`opts.host` 只给测试注入宿主用。量具按「文件里有没有 `document.body.<挂载动词>(`」判，" +
-      "这一形写成 `host.appendChild(backdrop)` ⇒ 判不出来。登记的宿主取 `#app`（最坏情况：" +
-      "调用方传一个应用内容器），机检它无包含块属性。",
-  },
-];
+const BODY_MOUNT_EXCEPTIONS: ReadonlyArray<{ sel: string; host: string; why: string }> = [];
 
 describe("P21 ② 条 13：CSS portal 元素必须真挂 body", () => {
   it("★ 建 fixed 浮层的模块必须碰 `document.body`；不碰的 == 登记表", () => {

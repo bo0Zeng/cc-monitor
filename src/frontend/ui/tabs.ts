@@ -20,8 +20,7 @@ import { runLabel } from "./runs";
 
 import { RunTimeline } from "./run-timeline";
 import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
-import { runForkFlow } from "./fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
-import type { BranchResult } from "./session-writes";
+import { openNewSession } from "./new-session";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 import type { JsonlLinePayload } from "./events";
 import { detectAccountMismatch, type SessionAccount } from "./accounts";
@@ -160,7 +159,7 @@ export class TabManager {
       scheduleTabBarRefresh: () => this.bar.scheduleRefresh(),
       applyAiTitle: (tab, aiTitle) => this.applyAiTitle(tab, aiTitle),
       userActive: (sid) => this.userActive(sid),
-      startForkedSession: (tab, res) => this.startForkedSession(tab, res),
+      forkFrom: (tab, uuid) => void openNewSession({ origin: tab.origin, fork: { sid: tab.sessionId, uuid, title: tab.aiTitle ?? tab.title } }),
       runLabelOf: (sid, run) => {
         const r = this.live.board.of(sid).find((x) => x.run === run);
         return r ? runLabel(r) : undefined;
@@ -389,14 +388,6 @@ export class TabManager {
     for (const t of this.store.tabs.values()) {
       if (t.origin === origin) this.view.recoverFromGap(t);
     }
-  }
-
-  /**
-   * 分叉产出新会话文件之后 —— **起它**（对源会话一个字都不碰）。
-   * 起会话要的三格那台已推好（`res.launch`）；起会话与反馈全在 `runForkFlow` 里，这里只说「哪台 + 分叉结果」。
-   */
-  private async startForkedSession(tab: Tab, res: BranchResult): Promise<void> {
-    await runForkFlow({ origin: tab.origin, newSessionId: res.sessionId, sourceSessionId: tab.sessionId, launch: res.launch });
   }
 
   /**

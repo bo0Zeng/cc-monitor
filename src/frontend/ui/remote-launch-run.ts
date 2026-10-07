@@ -1,6 +1,6 @@
 /**
  * 起会话执行器（UI 侧）：构造意图 → 问那台后端要那一行 `ccm …`（`launch-render-cli`）→ 开终端跑它
- * （`terminal-open.ts::openTerminal`：`ssh -t …` 那一行本机后端渲、monitor 开窗口）。tabs / 历史页 / 换号重启 / 分叉共用这一个入口。
+ * （`terminal-open.ts::openTerminal`：`ssh -t …` 那一行本机后端渲、monitor 开窗口）。resume 与接回走这里；起新会话走 `new-session.ts` 那一个请求。
  *
  * 起会话只有 ccm 一处：交给终端的永远是一行 `ccm …`（就地 resume 那一格外层包一层 tmux，包的也只是这一行）；
  * 环境、中转地址、身份标记由那台机器上的 `ccm` 自己做，本文件一句 shell 都不拼。
@@ -13,7 +13,6 @@ import { openTerminal } from "./terminal-open";
 import { isLocalOrigin } from "./ipc/origin";
 import {
   planResumeDirect,
-  planLauncher,
   planAttach,
 } from "./launch-requests";
 import type { LaunchContext, LaunchModifiers } from "./launch-types";
@@ -23,9 +22,6 @@ import { machineModels } from "./account-prefs";
 import { buildCliRenderRequest } from "./launch-cli-wire.ts";
 import { renderCli } from "./launch-render";
 import { toast } from "./kit/toast";
-import { defaultLauncherOf } from "./agent-profile";
-// 起新会话的名字只从一个家取：`terminal-name-mint.ts`（列名单 ＋ 铸名 ＋ 「列不出 ⇒ 不起」）。
-import { mintFreshTmuxName, refuseUnmintable } from "./terminal-name-mint";
 import { copyText } from "./copy-table";
 import { arrivedBody, expectArrival, type ArrivalMatch } from "./launch-arrival";
 
@@ -178,55 +174,6 @@ async function resumeDirectCore(
     failureCopied: copyText("remoteLaunchRun.resume.failedCopied"),
     failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
   }, { kind: "expect", match: { sid }, tmuxName: null });
-}
-
-/**
- * F96：历史页「在该目录起新会话」——远端分支。tmux 会话名由 cwd 派生、默认拉起命令取那一家的默认启动器，
- * **让调用方（history.ts）不必知道底下用不用 tmux** —— history.ts 只传起哪一家与 F34 配置命令（可空）。
- * 薄封装 F53 的 `runRemoteLauncher`，不写第二份拉起逻辑。
- * （`buildLauncherCmd` 只对 `undefined` 套默认、空串不触发，故默认在此显式兜。）
- */
-export async function runNewSessionRemote(
-  origin: string,
-  agent: string,
-  cwd: string,
-  command: string,
-  mods: LaunchModifiers = {}, // 正交修饰（要哪个号 · 那台的模型偏好表），见 launch-types.ts
-): Promise<void> {
-  // ★★ **默认名必须过铸名口**（F13）：同一个 cwd 点两次「起新会话」派生出同一个名字 ⇒ 撞上远端
-  // `create-or-attach` 的幂等闸 ⇒ **静默接进第一个会话，而用户以为开了新的**（issue #76 那一族）。
-  //
-  // 「列名单 → 铸名」收进 `terminal-name-mint.ts`（本机远端同一个家）。这里先前是
-  // `settings/machine-card.ts` 那段的逐字副本，**列不出名单就拿空集铸名**（「诚实降级：列不出来就不避让」）——
-  // 那正是 #76 的形状，而本机那一侧早就写着「绝不退化成空集」。⇒ 列不出 ⇒ 不起、说清。
-  const minted = await mintFreshTmuxName(origin, cwd);
-  if (!minted.ok) {
-    refuseUnmintable(origin, minted.why);
-    return;
-  }
-  await runRemoteLauncher(origin, agent, cwd, minted.name, command || defaultLauncherOf(agent), mods);
-}
-
-/** F53：「在这台机开新会话」——在远端 tmux 会话里起那一家的全新会话;失败回退复制命令。 */
-export async function runRemoteLauncher(
-  origin: string,
-  agent: string,
-  cwd: string,
-  tmuxName: string,
-  command: string,
-  mods: LaunchModifiers = {}, // 正交修饰（要哪个号 · 那台的模型偏好表），见 launch-types.ts
-): Promise<void> {
-  const ctx = planLauncher(agent, cwd, tmuxName, command, mods);
-  const cmd = await renderOrRefuse(origin, ctx, copyText("remoteLaunchRun.launcher.buildFailed"), mods, (account) =>
-    runRemoteLauncher(origin, agent, cwd, tmuxName, command, { ...mods, account }),
-  );
-  if (cmd === null) return;
-  // 新开的会话拉起那一刻没有 sid：认它按「预期之后第一次出现、工作目录相同的新 sid」。
-  await invokeLaunchOrCopyFallback(origin, cmd, {
-    success: copyText("remoteLaunchRun.launcher.started"),
-    failureCopied: copyText("remoteLaunchRun.launcher.failedCopied"),
-    failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
-  }, { kind: "expect", match: { cwd }, tmuxName });
 }
 
 /** F51：一键 attach 到远端 tmux 会话:拉起 `ssh -t … tmux attach -t <名>`;失败回退复制命令。

@@ -159,6 +159,10 @@ pub(crate) const STREAM_ONLY: &[&str] = &[
     "sessions-where",
     // 换号重启：要等压缩、等会话报出（几分钟），界面关了那台照样做完 —— 那是常驻流上的事；命令行那一侧逐个 `--kill` 再敲 `ccm --resume` 就是它。
     "session-restart",
+    // 起新会话框那三问：只有界面那个框用得着（命令行那一侧直接敲 `ccm` 就是它）。
+    "session-new",
+    "session-new-facts",
+    "session-new-dir",
 ];
 
 /// 命令名 → CLI 子命令（`launch` → `--launch`）。

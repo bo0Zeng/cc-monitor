@@ -1509,6 +1509,36 @@
       "zh": "家目录未知，找不到 ~/.cc-monitor/bin/ccm，没有起会话。",
       "args": []
     },
+    "beSessionNew.agent.missing": {
+      "kind": "error",
+      "zh": "没说起哪一家 agent，没有起。",
+      "args": []
+    },
+    "beSessionNew.cwd.missing": {
+      "kind": "error",
+      "zh": "目录不存在：{cwd}，没有起。",
+      "args": ["cwd"]
+    },
+    "beSessionNew.fork.noTree": {
+      "kind": "error",
+      "zh": "这台没有会话记录树，找不到要分叉的那个会话。",
+      "args": []
+    },
+    "beSessionNew.place.noTmux": {
+      "kind": "error",
+      "zh": "这台没有 tmux，只能开终端窗口。",
+      "args": []
+    },
+    "beSessionNew.tmux.taken": {
+      "kind": "error",
+      "zh": "tmux 会话名 {name} 已占用，没有起。",
+      "args": ["name"]
+    },
+    "beSessionNew.tmux.badName": {
+      "kind": "error",
+      "zh": "tmux 会话名 {name} 不能用（不许以 - 开头，不许带 . : = * ? 和控制字符）。",
+      "args": ["name"]
+    },
     "beResident.token.noRandom": {
       "kind": "error",
       "zh": "取不到系统随机数，做不出常驻后端的钥匙。没有起。",
@@ -3380,21 +3410,6 @@
       "zh": "生成不了 attach 命令",
       "args": []
     },
-    "remoteLaunchRun.launcher.failedCopied": {
-      "kind": "error",
-      "zh": "拉起失败，已复制命令",
-      "args": []
-    },
-    "remoteLaunchRun.launcher.started": {
-      "kind": "body",
-      "zh": "已拉起「开新 Claude」",
-      "args": []
-    },
-    "remoteLaunchRun.launcher.buildFailed": {
-      "kind": "error",
-      "zh": "生成不了启动命令",
-      "args": []
-    },
     "remoteLaunchRun.inPlace.notRun": {
       "kind": "error",
       "zh": "就地 resume 未执行",
@@ -4270,19 +4285,9 @@
       "zh": "最近：{last}",
       "args": ["last"]
     },
-    "branchButton.attachBranchButton.failed": {
-      "kind": "error",
-      "zh": "创建分支失败",
-      "args": []
-    },
     "branchButton.attachBranchButton.icon": {
       "kind": "action",
       "zh": "⑂",
-      "args": []
-    },
-    "branchButton.attachBranchButton.done": {
-      "kind": "action",
-      "zh": "✓",
       "args": []
     },
     "branchButton.title.offMain": {
@@ -4338,71 +4343,6 @@
     "revealInFolder.reveal.failed": {
       "kind": "error",
       "zh": "在文件夹中显示失败",
-      "args": []
-    },
-    "forkAsk.askForkLaunch.launch": {
-      "kind": "action",
-      "zh": "起会话",
-      "args": []
-    },
-    "forkAsk.askForkLaunch.cancel": {
-      "kind": "action",
-      "zh": "取消",
-      "args": []
-    },
-    "forkAsk.field.cwd": {
-      "kind": "title",
-      "zh": "工作目录",
-      "args": []
-    },
-    "forkAsk.field.tmux": {
-      "kind": "control",
-      "zh": "起在 tmux 里，断线可以 attach 回来",
-      "args": []
-    },
-    "forkAsk.account.base": {
-      "kind": "control",
-      "zh": "账号 0 · 不设 CLAUDE_CONFIG_DIR",
-      "args": []
-    },
-    "forkAsk.field.account": {
-      "kind": "title",
-      "zh": "账号",
-      "args": []
-    },
-    "forkAsk.askForkLaunch.intro": {
-      "kind": "body",
-      "zh": "分支文件已经生成，原会话不受影响。下面这几项从源会话身上查不出来，请确认后再起：",
-      "args": []
-    },
-    "forkAsk.askForkLaunch.title": {
-      "kind": "title",
-      "zh": "起这条分叉会话",
-      "args": []
-    },
-    "forkFlow.runForkFlow.failed": {
-      "kind": "error",
-      "zh": "起分叉会话失败",
-      "args": []
-    },
-    "forkFlow.done.body": {
-      "kind": "body",
-      "zh": "新会话 {id} 正在起来，原会话不受影响，两条都活着。",
-      "args": ["id"]
-    },
-    "forkFlow.done.title": {
-      "kind": "body",
-      "zh": "✓ 已从这一轮分叉并起新会话",
-      "args": []
-    },
-    "forkAsk.why.liveNoAccount": {
-      "kind": "error",
-      "zh": "原会话还在跑，但查不到它用的是哪个账号",
-      "args": []
-    },
-    "forkAsk.why.exited": {
-      "kind": "body",
-      "zh": "原会话已退出，查不到它当时用的账号",
       "args": []
     },
     "format.formatTimestampSmart.empty": {
@@ -6044,76 +5984,6 @@
       "kind": "body",
       "zh": "已装",
       "args": []
-    },
-    "machineCard.launch.start": {
-      "kind": "action",
-      "zh": "开始",
-      "args": []
-    },
-    "machineCard.launch.cancel": {
-      "kind": "action",
-      "zh": "取消",
-      "args": []
-    },
-    "machineCard.launch.accountBase": {
-      "kind": "control",
-      "zh": "不指定账号 · 用远端 ~/.claude 那套凭据，会清掉继承的 CLAUDE_CONFIG_DIR",
-      "args": []
-    },
-    "machineCard.launch.account": {
-      "kind": "control",
-      "zh": "账号 · 默认是当前账号",
-      "args": []
-    },
-    "machineCard.launch.tmuxNameAuto": {
-      "kind": "body",
-      "zh": "留空则按工作目录名自动生成",
-      "args": []
-    },
-    "machineCard.launch.tmuxNameDerived": {
-      "kind": "body",
-      "zh": "留空则用 {name}",
-      "args": ["name"]
-    },
-    "machineCard.launch.commandHint": {
-      "kind": "control",
-      "zh": "claude，可自定义，如 claude --model opus",
-      "args": []
-    },
-    "machineCard.launch.command": {
-      "kind": "control",
-      "zh": "启动命令",
-      "args": []
-    },
-    "machineCard.launch.tmuxNameHint": {
-      "kind": "control",
-      "zh": "留空则按工作目录名自动生成",
-      "args": []
-    },
-    "machineCard.launch.tmuxName": {
-      "kind": "control",
-      "zh": "tmux 会话名",
-      "args": []
-    },
-    "machineCard.launch.cwdHint": {
-      "kind": "control",
-      "zh": "远端绝对路径，留空用登录后的目录",
-      "args": []
-    },
-    "machineCard.launch.cwdTitle": {
-      "kind": "body",
-      "zh": "远端绝对路径，如 /home/<你的用户名>/proj；留空就是登录后的默认目录",
-      "args": []
-    },
-    "machineCard.launch.cwd": {
-      "kind": "control",
-      "zh": "工作目录",
-      "args": []
-    },
-    "machineCard.launch.title": {
-      "kind": "title",
-      "zh": "在 {machine} 开新 Claude",
-      "args": ["machine"]
     },
     "machineCard.launch.needHost": {
       "kind": "error",
@@ -11639,11 +11509,6 @@
       "zh": "{what} 长度非法（1..=64）",
       "args": ["what"]
     },
-    "sessionWrites.fork.badProduct": {
-      "kind": "error",
-      "zh": "那台后端说分叉成功了，但结果认不出来（{e}）。多半是后端版本不对，先别重试，刷新会话列表看看有没有多出来的那一条",
-      "args": ["e"]
-    },
     "machineAliases.powershell.pasteActivation": {
       "kind": "body",
       "zh": "开一个新的 PowerShell 窗口。",
@@ -11789,10 +11654,240 @@
       "zh": "删除",
       "args": []
     },
-    "history.newSession.failed": {
+    "newSession.title.plain": {
+      "kind": "title",
+      "zh": "新建会话",
+      "args": []
+    },
+    "newSession.title.onMachine": {
+      "kind": "title",
+      "zh": "新建会话 · {machine}",
+      "args": ["machine"]
+    },
+    "newSession.title.fork": {
+      "kind": "title",
+      "zh": "分叉 · 新建会话",
+      "args": []
+    },
+    "newSession.fork.fromBare": {
+      "kind": "body",
+      "zh": "分叉自「{title}」",
+      "args": ["title"]
+    },
+    "newSession.fork.from": {
+      "kind": "body",
+      "zh": "分叉自「{title}」· 第 {n} 轮 {time}",
+      "args": ["title", "n", "time"]
+    },
+    "newSession.fork.note": {
+      "kind": "body",
+      "zh": "原会话不变 · 新建前不写入 · 终端名自动换新",
+      "args": []
+    },
+    "newSession.label.machine": {
+      "kind": "control",
+      "zh": "机器",
+      "args": []
+    },
+    "newSession.label.cwd": {
+      "kind": "control",
+      "zh": "工作目录",
+      "args": []
+    },
+    "newSession.label.agent": {
+      "kind": "control",
+      "zh": "agent",
+      "args": []
+    },
+    "newSession.label.account": {
+      "kind": "control",
+      "zh": "账号",
+      "args": []
+    },
+    "newSession.label.place": {
+      "kind": "control",
+      "zh": "运行于",
+      "args": []
+    },
+    "newSession.label.tmuxName": {
+      "kind": "control",
+      "zh": "tmux 会话名",
+      "args": []
+    },
+    "newSession.label.command": {
+      "kind": "control",
+      "zh": "启动命令",
+      "args": []
+    },
+    "newSession.recent.label": {
+      "kind": "control",
+      "zh": "最近的",
+      "args": []
+    },
+    "newSession.recent.none": {
+      "kind": "body",
+      "zh": "还没有用过的目录",
+      "args": []
+    },
+    "newSession.machine.down": {
+      "kind": "body",
+      "zh": "离线",
+      "args": []
+    },
+    "newSession.machine.offline": {
       "kind": "error",
-      "zh": "新建会话失败 · {why}",
-      "args": ["why"]
+      "zh": "{machine} 离线",
+      "args": ["machine"]
+    },
+    "newSession.machine.reconnect": {
+      "kind": "action",
+      "zh": "重新连接",
+      "args": []
+    },
+    "newSession.account.default": {
+      "kind": "body",
+      "zh": "默认",
+      "args": []
+    },
+    "newSession.account.needLogin": {
+      "kind": "body",
+      "zh": "需登录",
+      "args": []
+    },
+    "newSession.account.follow": {
+      "kind": "body",
+      "zh": "跟随原会话上次的号",
+      "args": []
+    },
+    "newSession.account.pinned": {
+      "kind": "error",
+      "zh": "原会话账号 · 不自动换",
+      "args": []
+    },
+    "newSession.account.useAlt": {
+      "kind": "action",
+      "zh": "改用 {alt}",
+      "args": ["alt"]
+    },
+    "newSession.account.login": {
+      "kind": "action",
+      "zh": "登录…",
+      "args": []
+    },
+    "newSession.place.tmux": {
+      "kind": "control",
+      "zh": "tmux 里",
+      "args": []
+    },
+    "newSession.place.tmuxNote": {
+      "kind": "body",
+      "zh": "cc-monitor 内查看 · 关终端不断",
+      "args": []
+    },
+    "newSession.place.window": {
+      "kind": "control",
+      "zh": "新的终端窗口",
+      "args": []
+    },
+    "newSession.place.windowNote": {
+      "kind": "body",
+      "zh": "本机开终端窗口 · ssh 到 {machine}",
+      "args": ["machine"]
+    },
+    "newSession.place.windowNoteLocal": {
+      "kind": "body",
+      "zh": "本机开终端窗口",
+      "args": []
+    },
+    "newSession.place.noTmux": {
+      "kind": "body",
+      "zh": "无 tmux · 仅终端窗口",
+      "args": []
+    },
+    "newSession.more.plain": {
+      "kind": "control",
+      "zh": "更多：tmux 会话名 · 启动命令",
+      "args": []
+    },
+    "newSession.more.fork": {
+      "kind": "control",
+      "zh": "更多：启动命令",
+      "args": []
+    },
+    "newSession.command.placeholder": {
+      "kind": "body",
+      "zh": "留空用 {launcher}",
+      "args": ["launcher"]
+    },
+    "newSession.action.create": {
+      "kind": "action",
+      "zh": "新建",
+      "args": []
+    },
+    "newSession.facts.loading": {
+      "kind": "body",
+      "zh": "正在问那台机器",
+      "args": []
+    },
+    "newSession.facts.failed": {
+      "kind": "error",
+      "zh": "问不到{machine}上起会话要的事实：{why}",
+      "args": ["machine", "why"]
+    },
+    "newSession.cwd.empty": {
+      "kind": "error",
+      "zh": "先填工作目录",
+      "args": []
+    },
+    "newSession.retry.action": {
+      "kind": "action",
+      "zh": "重试",
+      "args": []
+    },
+    "newSession.window.failed": {
+      "kind": "error",
+      "zh": "终端窗口没开出来",
+      "args": []
+    },
+    "newSession.switch.action": {
+      "kind": "action",
+      "zh": "切过去",
+      "args": []
+    },
+    "newSession.start.failed": {
+      "kind": "error",
+      "zh": "没有起",
+      "args": []
+    },
+    "launch.dir.missing": {
+      "kind": "error",
+      "zh": "目录不存在 · {machine}",
+      "args": ["machine"]
+    },
+    "launch.tmux.taken": {
+      "kind": "error",
+      "zh": "tmux 会话名已占用",
+      "args": []
+    },
+    "launch.account.notLoggedIn": {
+      "kind": "error",
+      "zh": "{name} 需登录",
+      "args": ["name"]
+    },
+    "launch.account.unavailable": {
+      "kind": "error",
+      "zh": "{name} 不可用",
+      "args": ["name"]
+    },
+    "launch.timeout.noAnswer": {
+      "kind": "error",
+      "zh": "启动无应答 · {machine}",
+      "args": ["machine"]
+    },
+    "launch.fromSettings.done": {
+      "kind": "body",
+      "zh": "已启动 {name} · {machine}",
+      "args": ["name", "machine"]
     },
     "launchArrival.arrived.body": {
       "kind": "body",
@@ -11873,11 +11968,6 @@
       "kind": "body",
       "zh": "已在本机 resume",
       "args": []
-    },
-    "history.newSession.started": {
-      "kind": "body",
-      "zh": "已新建会话 · {dir}",
-      "args": ["dir"]
     },
     "history.rename.prompt": {
       "kind": "control",
@@ -21787,6 +21877,16 @@
       "kind": "body",
       "zh": "· {what}",
       "args": ["what"]
+    },
+    "main.cmd.newSession": {
+      "kind": "action",
+      "zh": "新建会话…",
+      "args": []
+    },
+    "main.cmd.newSessionKeywords": {
+      "kind": "body",
+      "zh": "新建 会话 起 启动 new session launch",
+      "args": []
     },
     "main.cmd.find": {
       "kind": "action",

@@ -6,12 +6,9 @@
 import { accountsLoginCmd } from "../account-ops";
 import { openTerminal } from "../terminal-open";
 import { POSIX_NO_WINDOW_MARKER } from "../remote-launch-run";
-import { runNewSessionRemote } from "../remote-launch-run";
-import { launchLocal } from "../launch-render";
-import { mintFreshTmuxName, refuseUnmintable } from "../terminal-name-mint";
 import { chosenAccount } from "../launch-account";
-import { ACTIVE_AGENT } from "../generated/agent-profile-table";
-import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
+import type { Origin } from "../ipc/origin";
+import { startNewSession } from "../new-session";
 
 /** 开登录窗口的结局：开了 · 这台电脑开不了终端窗口（换在 tmux 里登录）。其余失败抛（已说成一句）。 */
 export type LoginWindow = "opened" | "noWindow";
@@ -28,16 +25,7 @@ export async function openLoginWindow(origin: Origin, name: string, cmd?: string
   }
 }
 
-/** 在 tmux 里登录：用这个号在那台起一个 tmux 会话（目录 = 那个号的目录；账号 0 没有目录 ⇒ 不给这条路）。 */
+/** 在 tmux 里登录：用这个号在那台起一个 tmux 会话（目录 = 那个号的目录；账号 0 没有目录 ⇒ 不给这条路）。与起新会话同一个请求。 */
 export async function loginInTmux(origin: Origin, name: string, dir: string): Promise<void> {
-  if (!isLocalOrigin(origin)) {
-    await runNewSessionRemote(origin, ACTIVE_AGENT, dir, "", { account: chosenAccount(name) });
-    return;
-  }
-  const minted = await mintFreshTmuxName(LOCAL_ORIGIN, dir);
-  if (!minted.ok) {
-    refuseUnmintable(LOCAL_ORIGIN, minted.why);
-    return;
-  }
-  await launchLocal({ action: { kind: "new" }, agent: ACTIVE_AGENT, cwd: dir, launcher: null, account: chosenAccount(name), tmuxName: minted.name }, dir);
+  await startNewSession({ origin, cwd: dir, account: chosenAccount(name), place: "tmux" });
 }

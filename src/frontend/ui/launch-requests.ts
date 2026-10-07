@@ -75,26 +75,6 @@ export function planResumeIntoExistingTmux(
   };
 }
 
-/** 「在这台机开新会话」—— 新建 tmux 会话，起全新会话。 */
-export function planLauncher(
-  agent: string,
-  cwd: string,
-  tmuxName: string,
-  command = defaultLauncherOf(agent),
-  mods: LaunchModifiers = {},
-): LaunchContext {
-  return {
-    agent,
-    action: { kind: "new" },
-    container: { kind: "tmux", name: tmuxName.trim(), mode: "create" },
-    cwd: cwd.trim() || null,
-    account: mods.account ?? { kind: "follow" },
-    models: mods.models ?? {},
-    launcherOverride: command,
-    ccmSid: undefined,
-  };
-}
-
 /** 接回一个已存在的 tmux 会话，不启动任何东西 ⇒ 不收修饰（不起 agent 进程，令牌没有读者）。`agent` 是那个会话的那一家。 */
 export function planAttach(agent: string, name: string): LaunchContext {
   return {

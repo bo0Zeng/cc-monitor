@@ -328,10 +328,12 @@ export interface FormSpec {
   wide?: boolean;
   /** 打开时焦点落在哪；缺省第一个可填的格。 */
   first?: () => HTMLElement | null;
+  /** 打开时焦点落在主按钮（起会话这一类：大多照预填直接点）。压过 `first`。 */
+  focusAction?: boolean;
   /** 主按钮可不可点：`null` ⇒ 可；一句话 ⇒ 禁用、悬停说为什么。内容变了由宿主调 `refresh()`。 */
   blocked?: () => string | null;
-  /** 点主按钮：`null` ⇒ 成了、关框；一句话 ⇒ 框顶一条错误、不关、填的都在。 */
-  submit: () => Promise<string | null>;
+  /** 点主按钮：`null` ⇒ 成了、关框；一句话 ⇒ 框顶一条错误、不关、填的都在；`false` ⇒ 不关、错误由宿主画在框里（落在哪一格下）。 */
+  submit: () => Promise<string | null | false>;
   /** 填过东西：点遮罩不关。 */
   dirty?: () => boolean;
 }
@@ -341,6 +343,8 @@ export interface FormHandle {
   done: Promise<boolean>;
   refresh(): void;
   setAction(label: string): void;
+  /** 同点主按钮（输入框里 Enter）。 */
+  submit(): void;
 }
 
 /** 一张表单对话框（添加机器这一类）：内容由调用方建，框管按钮 · 错误条 · Esc · 焦点。 */
@@ -354,11 +358,13 @@ export function formDialog(spec: FormSpec): FormHandle {
   const submit = async (): Promise<boolean | undefined> => {
     const why = await spec.submit();
     if (why === null) return true;
-    errBox.replaceChildren(banner("error", why));
+    if (why === false) errBox.replaceChildren();
+    else errBox.replaceChildren(banner("error", why));
     return undefined;
   };
-  const first =
-    spec.first?.() ?? spec.body.querySelector<HTMLElement>("input:not([disabled]), textarea, select") ?? b.ok;
+  const first = spec.focusAction
+    ? b.ok
+    : (spec.first?.() ?? spec.body.querySelector<HTMLElement>("input:not([disabled]), textarea, select") ?? b.ok);
   const done = run<boolean>(b, false, submit, first, spec.dirty ?? (() => false));
-  return { done, refresh, setAction: (label) => setButtonLabel(b.ok, label) };
+  return { done, refresh, setAction: (label) => setButtonLabel(b.ok, label), submit: () => b.ok.click() };
 }

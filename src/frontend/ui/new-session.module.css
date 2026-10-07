@@ -1,0 +1,186 @@
+/* 起新会话框：标签在左 72px，控件在右；错误句落在那一格下。 */
+@layer components {
+  .nsForm {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .nsTop:empty {
+    display: none;
+  }
+
+  .nsFork {
+    display: flex;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+  }
+
+  .nsForkText {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .nsForkFrom {
+    overflow-wrap: anywhere;
+  }
+
+  .nsForkNote {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .nsRow {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-2) var(--space-4);
+  }
+
+  .nsRow[hidden] {
+    display: none;
+  }
+
+  .nsLabel {
+    padding-top: calc((var(--control-h) - var(--line-height-ui) * 1em) / 2);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .nsCell {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .nsBox {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: var(--control-h);
+    padding: 0 var(--space-4);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-m);
+    background: var(--field-bg);
+  }
+
+  .nsBox:focus-within {
+    border-color: var(--field-border-focus);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+
+  .nsCell[data-error="true"] .nsBox {
+    border-color: var(--error);
+  }
+
+  .nsInput {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-mono);
+  }
+
+  .nsInput::placeholder {
+    color: var(--field-placeholder);
+  }
+
+  .nsSelect {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+  }
+
+  .nsSelect:disabled {
+    opacity: var(--state-disabled-opacity);
+  }
+
+  .nsRecent {
+    flex: none;
+    max-width: 96px;
+    padding: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--text-2);
+    font: inherit;
+    font-size: var(--font-size-small);
+  }
+
+  .nsNote {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .nsNote[hidden] {
+    display: none;
+  }
+
+  .nsNote[data-intent="error"] {
+    color: var(--error-text);
+  }
+
+  .nsNote[data-intent="warn"] {
+    color: var(--warn);
+  }
+
+  .nsPlaces {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .nsPlace {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-m);
+    cursor: pointer;
+  }
+
+  .nsPlace[hidden] {
+    display: none;
+  }
+
+  .nsPlace:has(input:checked) {
+    border-color: var(--border-strong);
+    background: var(--overlay-hover);
+  }
+
+  .nsPlaceText {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .nsPlaceNote {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .nsMore {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+}

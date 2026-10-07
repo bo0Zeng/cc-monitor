@@ -78,3 +78,19 @@ fn reply_head_is_prose_only() {
         copy_text("rsTurns.reply.codeOnly", &[])
     );
 }
+
+#[test]
+fn turn_at_counts_your_sentences_up_to_that_record() {
+    let lines = [
+        r#"{"type":"user","uuid":"u1","timestamp":"t1","message":{"role":"user","content":"第一句"}}"#,
+        r#"{"type":"assistant","uuid":"a1","timestamp":"t1b","message":{"role":"assistant","content":[{"type":"text","text":"好"}]}}"#,
+        r#"{"type":"user","uuid":"u2","timestamp":"t2","message":{"role":"user","content":"第二句"}}"#,
+        r#"{"type":"assistant","uuid":"a2","timestamp":"t2b","message":{"role":"assistant","content":[{"type":"text","text":"行"}]}}"#,
+    ]
+    .join("\n");
+    let at = |u: &str| turn_at(std::io::Cursor::new(lines.as_bytes()), u);
+    assert_eq!(at("a1"), Some((1, "t1".to_string())));
+    assert_eq!(at("u2"), Some((2, "t2".to_string())));
+    assert_eq!(at("a2"), Some((2, "t2".to_string())));
+    assert_eq!(at("nope"), None);
+}

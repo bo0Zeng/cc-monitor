@@ -84,7 +84,7 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   // **39 → 38**（被测对象没了）：`sanitizeRemoteLauncher` 一条 · `isValidConfigDir` 一条随函数删；
   //    加一条「launcher 空白 ⇒ 默认、注入字符原样上线」（前端只剩缺省那一格）；「非法 configDir 拒」那条改测「前端不判、原样上线」（条数不变）。
   // **38 → 37**：`isValidSessionId` 那条随函数删；三条「非法 sid ⇒ throw」改测「前端不判、resumeSid 单报」（条数不变）。
-  ["test:remote-launch", "tests/frontend/ui/remote-launch.test.ts", 8], // −1：「只有目录没有名字 ⇒ 只交目录」那条随按目录交号那一形删 // −1：读 e2e 换号重启替身源码的那条漂移守卫随替身删（换号重启下沉后端，e2e 直接驱动后端） // 28 → 10：起会话只剩那一行 `ccm …`，请求形状收成每条路径一条（载荷 / 外层 / 嵌套 env 那几格随载荷渲染删了） // −6：TS 铸名口（`mintTmuxName` · `mintSessionTmuxName` · `deriveTmuxName`）随派生 ＋ 避让搬进后端，七条删、一条「请求逐字用传进来的名」留下（逐格归 `plan_tests.rs`） // −3：TS 两个 tmux 名谓词的三条逐格搬进 gate-core
+  ["test:remote-launch", "tests/frontend/ui/remote-launch.test.ts", 7], // −1：「开新会话」那条随界面拼那一发删了（起新会话收成后端 `session-new` 一个请求，判据在 `session_new_tests.rs`） // −1：「只有目录没有名字 ⇒ 只交目录」那条随按目录交号那一形删 // −1：读 e2e 换号重启替身源码的那条漂移守卫随替身删（换号重启下沉后端，e2e 直接驱动后端） // 28 → 10：起会话只剩那一行 `ccm …`，请求形状收成每条路径一条（载荷 / 外层 / 嵌套 env 那几格随载荷渲染删了） // −6：TS 铸名口（`mintTmuxName` · `mintSessionTmuxName` · `deriveTmuxName`）随派生 ＋ 避让搬进后端，七条删、一条「请求逐字用传进来的名」留下（逐格归 `plan_tests.rs`） // −3：TS 两个 tmux 名谓词的三条逐格搬进 gate-core
   ["test:format", "tests/frontend/ui/format.test.ts", 11], // +1：basename 随老 SFTP 面板退役从 sftp/paths 搬进 format.ts，判据一起搬来
   // 🔴 〔删用量 09-18〕原先这里有 `["test:usage-pivot", "tests/frontend/ui/views/usage-pivot.test.ts", 14]`。
   // 用量 ② 轴整轴退役 ⇒ 套件文件整删（**被测对象没了**，不是把测试删光了）。
@@ -159,7 +159,8 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
 // · 历史页照稿重做，旧历史页的三个纯模块（`history-cache` 8 · `history-prefs` 18 · `history-actions` 10）连同三份 `.test.ts` 整删
 //   （清单与「能做什么」由后端 `history-list` 出，界面那一侧的判据在 `tests/frontend/ui/views/history-page.vitest.ts`）。
 // 删后现打 70 ⇒ 棘到现打值。
-const TOTAL_FLOOR = 70;
+// **70 → 69**（被测对象没了）：`remote-launch.test.ts` −1，界面拼「开新会话」那一发删了（起新会话收成后端一个请求）。
+const TOTAL_FLOOR = 69;
 
 /** 判定一条 npm 命令是不是「用 tsx 跑某个 `.test.ts`」。`tsx …` 与 `npx tsx …` 都算。 */
 const TSX_SUITE_CMD = /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*(\S+\.test\.ts)\s*$/;

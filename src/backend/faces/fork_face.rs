@@ -24,7 +24,7 @@ pub(crate) fn answer(
 }
 
 /// 源会话的三格事实。名单读不出 ⇒ 那一半落「不知道 / 不在任何终端里」（同推断的规矩），不挡分叉。
-fn launch_of(home: &Path, source: &Path, sid: &str) -> fork_launch::Launch {
+pub(crate) fn launch_of(home: &Path, source: &Path, sid: &str) -> fork_launch::Launch {
     let cwd = crate::agents::project_dir_of(source);
     let processes: Vec<fork_launch::ProcessRow> = crate::observe::accounts_query::lines_for_frame(
         home,
