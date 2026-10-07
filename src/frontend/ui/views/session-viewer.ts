@@ -47,6 +47,7 @@ import { button } from "../kit/button";
 import { icon } from "../kit/icon";
 import { banner } from "../kit/banner";
 import { skeletonRows } from "../kit/skeleton";
+import { emptyState } from "../kit/empty";
 import { openPopover, closePopover, popoverOpenOn } from "../kit/popover";
 import { FindStrip } from "../find-strip";
 import sv from "./session-viewer.module.css";
@@ -268,6 +269,8 @@ export class SessionViewer {
   private countEl!: HTMLElement;
   private bannerEl!: HTMLElement;
   private loadingEl!: HTMLElement;
+  /** 读到了、一条可显示的消息都没有 ⇒ 消息流的位置换成这块空态（I5「空」· C16）。 */
+  private emptyEl!: HTMLElement;
   private statusEl!: HTMLElement;
   /** 「你说过的话」那份清单（实时 tab 同一个类）；开法换成工具行的按钮 ＋ 浮层。 */
   private said!: UserInputPanel;
@@ -324,6 +327,25 @@ export class SessionViewer {
     this.loadingEl.hidden = !on;
   }
 
+  /**
+   * 空态开 / 关：读完了（`loaded`）、没有还没画的段、消息流里一张卡都没有 ⇒ 开；否则关。
+   * 在跑的会话还会长 ⇒ 空态多一句「新消息到达后显示」。
+   */
+  private syncEmpty(): void {
+    const none =
+      this.loaded &&
+      !!this.stream &&
+      this.stream.contentElement.childElementCount === 0 &&
+      (this.unrendered?.isEmpty ?? true);
+    if (none) {
+      const hint = this.live ? copyText("sessionViewer.empty.liveHint") : undefined;
+      const e = emptyState({ icon: "chat", text: copyText("sessionViewer.empty.none"), hint });
+      this.emptyEl.replaceChildren(e);
+    }
+    this.emptyEl.hidden = !none;
+    this.streamEl.hidden = none;
+  }
+
   /** 「你说过的话」清单面板露 / 收（`.user-inputs` 不写 display，`hidden` 管得住）。 */
   private showSaidPanel(on: boolean): void {
     this.said.panel.hidden = !on;
@@ -363,6 +385,7 @@ export class SessionViewer {
     this.onLive = opts.follow?.onLive;
     this.live = opts.follow?.live ?? false;
     this.loaded = false;
+    this.syncEmpty();
     this.followBuf = [];
     this.showNewPill(false);
     // 先订、再读：读的这段时间里写出来的行在流里等着，读完按 `seq` 接上（一行都不漏、重叠的去重）。
@@ -497,6 +520,7 @@ export class SessionViewer {
       const early = this.followBuf;
       this.followBuf = [];
       if (early.length > 0) this.appendLive(early);
+      this.syncEmpty();
     } catch (e) {
       if (this.loadGeneration !== gen) return;
       this.setLoading(false);
@@ -661,6 +685,7 @@ export class SessionViewer {
       if (this.live === e.live) return;
       this.live = e.live;
       if (this.loaded) this.updateStatus(this.payloads.length);
+      this.syncEmpty();
       this.onLive?.(e.live);
     } else if (e.t === "sight") {
       this.following = e.seen;
@@ -732,6 +757,7 @@ export class SessionViewer {
     this.rebuildUserInputs();
     void this.turnFold?.refresh();
     if (!atBottom) this.showNewPill(true);
+    this.syncEmpty();
   }
 
   private showNewPill(on: boolean): void {
@@ -1047,6 +1073,11 @@ export class SessionViewer {
     this.streamEl = document.createElement("div");
     this.streamEl.className = "stream session-viewer-stream";
     view.appendChild(this.streamEl);
+    this.emptyEl = document.createElement("div");
+    this.emptyEl.className = sv.svEmpty;
+    this.emptyEl.dataset.role = "empty";
+    this.emptyEl.hidden = true;
+    view.appendChild(this.emptyEl);
     // 滚回底部 ⇒「↓ 新内容」收起（贴底与否由 `MessageStream` 按滚动判）。
     this.streamEl.addEventListener(
       "scroll",
@@ -1102,7 +1133,7 @@ export class SessionViewer {
     this.showSaidPanel(true);
     const main = document.createElement("div");
     main.className = sv.svWinMain;
-    main.append(this.bannerEl, tools, this.find.strip, this.loadingEl, this.streamEl, pillRow);
+    main.append(this.bannerEl, tools, this.find.strip, this.loadingEl, this.streamEl, this.emptyEl, pillRow);
     body.append(side, main);
     this.statusEl.remove();
     foot.replaceChildren();

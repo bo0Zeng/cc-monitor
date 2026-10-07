@@ -37,6 +37,8 @@ pub struct Palette {
     pub success: Color32,
     pub warn: Color32,
     pub error: Color32,
+    /// 抽屉底下内容区的那层淡暗。
+    pub dim: Color32,
 }
 
 fn c(x: Rgba) -> Color32 {
@@ -65,6 +67,7 @@ impl Palette {
             success: c(t.success),
             warn: c(t.warn),
             error: c(t.error),
+            dim: c(t.overlay_dim),
         }
     }
 
@@ -89,6 +92,7 @@ impl Palette {
             success: v.hyperlink_color,
             warn: v.warn_fg_color,
             error: v.error_fg_color,
+            dim: v.window_shadow.color,
         }
     }
 }

@@ -19802,6 +19802,16 @@
       "zh": "重试",
       "args": []
     },
+    "sessionViewer.empty.none": {
+      "kind": "body",
+      "zh": "无消息",
+      "args": []
+    },
+    "sessionViewer.empty.liveHint": {
+      "kind": "body",
+      "zh": "新消息到达后显示",
+      "args": []
+    },
     "sessionViewer.status.all": {
       "kind": "body",
       "zh": "{n} 条",
