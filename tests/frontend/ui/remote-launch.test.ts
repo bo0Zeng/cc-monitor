@@ -6,7 +6,7 @@
  * ＋ `ccm_invocation_tests.rs`。本文件只钉「意图落进请求的哪一格」，前端不判 sid / 名字 / 目录 / 启动器字符集。
  */
 
-import { AGENT_PROFILE } from "../../../src/frontend/ui/agent-profile.ts";
+import { defaultLauncherOf } from "../../../src/frontend/ui/agent-profile.ts";
 import {
   planResumeDirect,
   planResumeTmux,
@@ -49,7 +49,7 @@ test("直连 resume：没有容器、cwd 原样、点名的号原样上线（那
     model: null,
     models: {},
     launcher: "claude",
-    defaultLauncher: AGENT_PROFILE.defaultLauncher,
+    defaultLauncher: defaultLauncherOf("claude"),
   });
   eq(req(planResumeDirect("claude", "abc-123", "   ", "claude")).cwd, null, "cwd 空白 ⇒ 不带");
 });
@@ -74,8 +74,8 @@ test("接回：不起 agent ⇒ 不带账号修饰", () => {
 });
 
 test("launcher：空白 ⇒ 默认启动器；带注入字符的原样上线（字符集只在后端判）", () => {
-  eq(req(planResumeDirect("claude", "s1", "", "")).launcher, AGENT_PROFILE.defaultLauncher);
-  eq(req(planResumeDirect("claude", "s1", "", "   ")).launcher, AGENT_PROFILE.defaultLauncher);
+  eq(req(planResumeDirect("claude", "s1", "", "")).launcher, defaultLauncherOf("claude"));
+  eq(req(planResumeDirect("claude", "s1", "", "   ")).launcher, defaultLauncherOf("claude"));
   eq(req(planResumeDirect("claude", "s1", "", "cc; rm -rf /")).launcher, "cc; rm -rf /", "不许悄悄换成默认那个");
 });
 

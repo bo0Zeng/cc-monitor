@@ -510,11 +510,12 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
     //      12 → 11：信任框那一格删了（ccm 不再替用户答 agent 的信任框）。
     //      11 → 13：按会话的那一家起 —— 「Codex 会话还不能选账号」那句话要叫得出名字（对用户的叫法）；
     //      ccm 起 Codex 一律不连共享后台（垫在最前面的参数，Codex 那一格是 `--no-daemon`）。
+    //      13 → 14：消息流里说话那一方的短名（卡头 · 刻度悬停「Claude：…」）—— 界面不再按会话文件名猜是哪一家。
     let cells = launch_face_fields();
     assert_eq!(
         cells.len(),
-        13,
-        "起会话事实从 13 格变成 {} 格：{cells:?}\n\
+        14,
+        "起会话事实从 14 格变成 {} 格：{cells:?}\n\
              ⇒ 多一格 = 分叉面变大，那正是该有人过一眼的时刻；少一格 = 收敛了（改这个数并写清少了哪一格）。",
         cells.len()
     );

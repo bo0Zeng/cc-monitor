@@ -90,6 +90,8 @@ export function runtimeImports(rel: string, src: string = read(rel)): string[] {
 const DEPS: Record<string, readonly string[]> = {
   // 组装根：把下面每一份接起来 ＋ 原样 re-export 旧的 import 面（tab-drop / tab-model / tmux-sessions）。
   "src/frontend/ui/tabs.ts": [
+    "src/frontend/ui/agent-profile.ts", // 会话事实说是哪一家 ⇒ 卡头那一格补上那一家的短名（画像 `speakerName`）
+    "src/frontend/ui/cards/speaker.ts", // 卡头那一格在哪（补名字时按它找）
     "src/frontend/ui/accounts.ts", // debugSessionsSnapshot 的「账号不一致」派生（detectAccountMismatch）
     "src/frontend/ui/app-store.ts", // 「账号快照变了」改订阅 store（`appStore.sessionAccounts`）
     "src/frontend/ui/cards/index.ts", // onLine：这一行是不是 compact 摘要（换号重启的等待者）；子运行时间线用同一套渲染器
@@ -146,6 +148,7 @@ const DEPS: Record<string, readonly string[]> = {
   // ③ 实时流视图：渲染栈 ＋ 骨架 ＋ 大纲 ＋ 分叉按钮，骨架索引与正文都经通道问那台后端。
   // 大纲的界面从直接建 `UserInputPanel` 换成建查找面板（它里面挂着大纲）⇒ `user-input-panel` 只剩类型依赖。
   "src/frontend/ui/tab-stream-view.ts": [
+    "src/frontend/ui/agent-profile.ts", // 渲染上下文 / 刻度悬停：说话那一方叫什么（按会话的那一家取短名）
     "src/frontend/ui/branch-button.ts",
     "src/frontend/ui/branch-fold.ts",
     "src/frontend/ui/cards/index.ts",
@@ -216,7 +219,7 @@ const DEPS: Record<string, readonly string[]> = {
   ],
   // ⑤ 菜单放哪几项：账号 flyout · tmux 判据 · attach / 预览 · 菜单控件 · 会话动作。
   "src/frontend/ui/tab-menu.ts": [
-    "src/frontend/ui/agent-profile.ts", // 接回交那台时要说是哪一家（标签页里的会话是流跟的那一家）
+    "src/frontend/ui/agent-profile.ts", // 恢复 ▸ 的账号组：这一家有没有账号这一维 · 叫什么（会话是哪一家由会话事实给）
     "src/frontend/ui/kit/dialog.ts", // 「新建集合…」问名字（原 `window.prompt`）
     "src/frontend/ui/control-said.ts", // 那台握手时说过做不到的几项置灰：`unavailableSaid`（事实住 monitor 那份 Offer）
     "src/frontend/ui/copy-table.ts", // 固定那一项的两句提示（说到会话状态）住文案表
@@ -240,7 +243,6 @@ const DEPS: Record<string, readonly string[]> = {
   //   本份从此与其余几份一样只经 `ipc/commands.ts` 说话。
   "src/frontend/ui/tab-session-actions.ts": [
     "npm:@tauri-apps/plugin-opener",
-    "src/frontend/ui/agent-profile.ts", // 起会话项的默认启动器
     "src/frontend/ui/kit/dialog.ts", // 杀会话的确认（原 `window.confirm`：真 app 里恒真值，等于没问）
     "src/frontend/ui/behavior.ts",
     "src/frontend/ui/copy-table.ts", // 杀空 tmux / 杀会话的确认与回执（说到会话状态）住文案表

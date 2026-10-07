@@ -511,7 +511,8 @@ describe("本机起会话的主路：交「跟随」给本机后端、界面一�
     const root = document.createElement("div");
     document.body.append(bar, root);
     const tm = new TabManager(bar, root);
-    tm.ensureTab(sid, "/home/u/p", `/p/${sid}.jsonl`, LOCAL_ORIGIN);
+    const t = tm.ensureTab(sid, "/home/u/p", `/p/${sid}.jsonl`, LOCAL_ORIGIN);
+    t.agent = "claude"; // 会话事实到了（是哪一家由后端说）
     tm.archiveTab(sid);
     await (tm as unknown as { actions: TabSessionActions }).actions.resumeTab(sid);
     await new Promise((r) => setTimeout(r, 0));

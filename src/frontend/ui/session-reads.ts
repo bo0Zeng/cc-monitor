@@ -136,6 +136,8 @@ export interface SessionFacts {
   usage: UsageFact | null;
   /** 会话的项目目录（会话起在哪个目录；那台后端读记录开头给的）。开头里还没有 ⇒ `null`。 */
   projectDir: string | null;
+  /** 这份记录是哪一家的（线上的 kind，那台后端按记录认）；认不出 ⇒ `null`。 */
+  agent: string | null;
   /** 此刻持着这条会话的活进程 pid（那台的 pidfile，升序）。不止一个 ⇒ 几个进程在同时写这条会话。 */
   writers: number[];
   /** 还没有结果的工具调用（文件序：正在跑 / 在等批准的那几步）。 */
@@ -321,7 +323,7 @@ export function decodeFacts(v: unknown): SessionFacts {
   const bad = (): never => {
     throw new ShapeError("history-facts", copyText("sessionReads.missing.facts"));
   };
-  if (!isObj(v) || !exactKeys(v, ["end", "forkedFrom", "lastSay", "needs", "pending", "projectDir", "touchedFiles", "usage", "writers"])) return bad();
+  if (!isObj(v) || !exactKeys(v, ["agent", "end", "forkedFrom", "lastSay", "needs", "pending", "projectDir", "touchedFiles", "usage", "writers"])) return bad();
   if (!Array.isArray(v.pending)) return bad();
   const pending: PendingCall[] = [];
   for (const p of v.pending) {
@@ -343,6 +345,7 @@ export function decodeFacts(v: unknown): SessionFacts {
   if (!Array.isArray(v.writers) || !v.writers.every(isNum)) return bad();
   if (!isNum(v.end) || !(v.forkedFrom === null || isStr(v.forkedFrom))) return bad();
   if (!(v.projectDir === null || isStr(v.projectDir))) return bad();
+  if (!(v.agent === null || isStr(v.agent))) return bad();
   if (!Array.isArray(v.touchedFiles) || !v.touchedFiles.every(isStr)) return bad();
   let usage: UsageFact | null = null;
   if (v.usage !== null) {
@@ -372,6 +375,7 @@ export function decodeFacts(v: unknown): SessionFacts {
     touchedFiles: v.touchedFiles as string[],
     usage,
     projectDir: v.projectDir as string | null,
+    agent: v.agent as string | null,
     writers: v.writers as number[],
     pending,
     lastSay,

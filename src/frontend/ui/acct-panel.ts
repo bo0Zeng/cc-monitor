@@ -9,7 +9,7 @@
  * - 改即生效，不要保存；存失败列表退回原样、块顶一条 `未保存 · 轮换未变 [重试]`。
  * - 实时：数据变了原地重画；正在拖、正在填 `≥N%` 时不重画（松手 / 失焦再画）。
  */
-import { ACTIVE_AGENT } from "./agent-profile";
+import { displayNameOf, lookupAgentProfile } from "./agent-profile";
 import { appStore, type SessionRotationEntry } from "./app-store";
 import { refreshQuota, refreshSessions } from "./acct-center";
 import { acctAvatar } from "./acct-dom";
@@ -56,6 +56,8 @@ export interface AcctPanelHost {
   defaultOf(origin: Origin): string | null;
   /** 开这条会话的恢复菜单（与右键「恢复 ▸」同一份）。 */
   openResume(sid: string): void;
+  /** 这条会话是哪一家（线上的 kind，会话事实给的）；还不知道 ⇒ `null`。 */
+  agentOf(sid: string): string | null;
 }
 
 type Present = Extract<SessionRotationState, { state: "present" }>;
@@ -82,6 +84,19 @@ interface Open {
 }
 
 let open: Open | null = null;
+
+/** 这条会话那一家的全称（话里用）；还不知道 ⇒ 那一家的泛称。 */
+function agentName(host: AcctPanelHost, o: Open): string {
+  return displayNameOf(host.agentOf(o.sid)) ?? copyText("acct.agent.unknown");
+}
+
+/** 这条会话那一家在额度账里的名字（路由第 1 段 ＝ 那一家的适配器 id）；还不知道 ⇒ `null`。 */
+function routeOf(host: AcctPanelHost, o: Open): string | null {
+  const kind = host.agentOf(o.sid);
+  if (kind === null) return null;
+  const got = lookupAgentProfile(kind);
+  return got.known ? got.facts.adapterId : null;
+}
 
 /** 此刻开着的是不是这个会话的面板。 */
 export function panelOpenFor(sid: string): boolean {
@@ -243,6 +258,7 @@ function slotMeter(q: QuotaShow, slot: string, now: number, tz: number): HTMLEle
 
 function tagEl(text: string, tone?: "cur" | "warn" | "error"): HTMLElement {
   const t = el("span", s.acctTag, text);
+  t.title = text;
   if (tone) t.dataset.shade = tone;
   return t;
 }
@@ -532,7 +548,7 @@ function triggerControls(o: Open, host: AcctPanelHost, r: Rotation, readonly: bo
     for (const b of [go, stop]) if (b) b.disabled = true;
   }
   lim.append(label, seg);
-  if (r.atLimit === "stop" && actual === "continue" && pctMode) lim.appendChild(el("span", s.acctBlockNote, copyText("acct.lim.downgraded", { agent: ACTIVE_AGENT })));
+  if (r.atLimit === "stop" && actual === "continue" && pctMode) lim.appendChild(el("span", s.acctBlockNote, copyText("acct.lim.downgraded", { agent: agentName(host, o) })));
   const wrap = el("span", s.acctTriggerWrap);
   wrap.append(box, lim);
   return wrap;
@@ -713,7 +729,7 @@ function timelineFold(o: Open, read: Present, r: Rotation | null, quota: QuotaRe
 function switchBlock(o: Open, entry: SessionRotationEntry | undefined, read: Present | undefined, quota: QuotaRead | null, host: AcctPanelHost): HTMLElement {
   const sec = section(copyText("acct.sw.title"));
   // 中转没见过这个会话 ⇒ 不知道它的路由名，取这台额度账里那一家（今天只有一家）。
-  const agent = read?.agent ?? quota?.accounts[0]?.agent ?? quota?.unseen[0]?.agent ?? ACTIVE_AGENT;
+  const agent = read?.agent ?? routeOf(host, o) ?? quota?.accounts[0]?.agent ?? quota?.unseen[0]?.agent ?? "";
   const cur = read?.account.current ?? null;
   const now = entry?.now ?? Math.floor(Date.now() / 1000);
   const tz = localTzMin(now);
@@ -797,7 +813,7 @@ function switchBlock(o: Open, entry: SessionRotationEntry | undefined, read: Pre
 
 async function doSwitch(o: Open, host: AcctPanelHost, target: string | null, cur: string | null, read: Present | undefined, go: HTMLButtonElement): Promise<void> {
   if (!target) return;
-  const agent = read?.agent ?? ACTIVE_AGENT;
+  const agent = read?.agent ?? routeOf(host, o) ?? "";
   const hot = (read?.account.inPlace ?? "noRelay") === "ok" && o.mode === "hot";
   setDisabled(go, copyText("acct.sw.busy"));
   try {
@@ -829,9 +845,15 @@ const RESTART_BASE_MS = 60_000;
 
 /** 重启切换：先问那台会打断什么（有才问）、再交那台 `rotation-switch`（重启那一形，逐个交给 `session-restart`）、成了开终端接上。 */
 async function restartSwitch(o: Open, host: AcctPanelHost, target: string): Promise<void> {
+  // 用新号重起要知道是哪一家（会话事实给的）；还不知道 ⇒ 不起、说清，不落哪一家。
+  const kind = host.agentOf(o.sid);
+  if (kind === null) {
+    o.switchError = copyText("tabSessionActions.agent.unknown");
+    return;
+  }
   const standing = await standingOf(o.origin, o.sid);
   if (standing?.kind !== "running") {
-    o.switchError = copyText("acct.sw.failRestart", { reason: reasonLabel("not_in_terminal", { agent: ACTIVE_AGENT, target }) });
+    o.switchError = copyText("acct.sw.failRestart", { reason: reasonLabel("not_in_terminal", { agent: agentName(host, o), target }) });
     return;
   }
   const go = await confirmInterrupts({
@@ -848,12 +870,12 @@ async function restartSwitch(o: Open, host: AcctPanelHost, target: string): Prom
     compact_within_ms: 0,
     arrive_within_ms: ARRIVAL_BUDGET_MS,
     local: isLocalOrigin(o.origin),
-    ...(await startSettings(o.origin)),
+    ...(await startSettings(o.origin, kind)),
   };
   const got = (await switchRestart(o.origin, [args], target, ARRIVAL_BUDGET_MS + RESTART_BASE_MS))[o.sid];
   o.switchError = null;
   if (!got || got.state !== "done") {
-    const reason = reasonLabel(got ? got.code : "", { agent: ACTIVE_AGENT, target });
+    const reason = reasonLabel(got ? got.code : "", { agent: agentName(host, o), target });
     const log = { label: copyText("acct.sw.log"), run: () => void commands.open_log_file().catch((e) => console.warn("open_log_file failed:", e)) };
     if (got?.old === "ended") {
       toast(copyText("acct.sw.failRestartEnded", { ended: copyText("sessionState.ended.name"), reason }), "", {
@@ -867,7 +889,7 @@ async function restartSwitch(o: Open, host: AcctPanelHost, target: string): Prom
   }
   o.pick = null;
   toast(copyText("acct.sw.doneRestart", { name: accountLabel(target), session: host.sessionTitle(o.sid) }), "", { level: "info" });
-  await runRemoteAttach(o.origin, ACTIVE_AGENT, got.terminal, { quiet: true });
+  await runRemoteAttach(o.origin, kind, got.terminal, { quiet: true });
 }
 
 // ─────────────────────────────── 记录 · 底栏

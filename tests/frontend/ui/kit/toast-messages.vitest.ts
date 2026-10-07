@@ -112,4 +112,17 @@ describe("toast 排版 ＋「消息」记录", () => {
     list.querySelector<HTMLElement>("[data-more=open] [aria-expanded]")!.click();
     expect(list.querySelectorAll("[data-role=message-more]").length, "再点收起").toBe(0);
   });
+
+  it("★ 只在提示条上出的那一颗（［查看］：做的就是打开「消息」里这一条）在「消息」里不再出；别的动作照出", async () => {
+    const { StatusMessages, showMessage } = await import("../../../../src/frontend/ui/status-messages");
+    const sm = new StatusMessages();
+    document.body.appendChild(sm.el);
+    kit.toast("已结束 1 · 失败 1", "", { level: "error", more: ["失败 · web · 离线"], action: [{ label: "查看", run: () => {}, toastOnly: true }, { label: "重试", run: () => {} }] });
+    expect([...toasts()[0].querySelectorAll("button")].map((b) => b.textContent), "提示条上两颗都在").toEqual(expect.arrayContaining(["查看", "重试"]));
+    showMessage(kit.recentToasts()[0]);
+    const list = document.querySelector<HTMLElement>("[data-role=messages-list]")!;
+    const labels = [...list.querySelectorAll("button")].map((b) => b.textContent);
+    expect(labels).toContain("重试");
+    expect(labels).not.toContain("查看");
+  });
 });

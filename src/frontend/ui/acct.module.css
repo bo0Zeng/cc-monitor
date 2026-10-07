@@ -199,6 +199,11 @@
 
   .acctTag {
     padding: 0 var(--space-2);
+    /* 一枚标签是一段，不在段内折行（封顶 `5h 01:00-20:00 封顶 99%` 那种长的也一行）；一行放不下 ⇒ 尾部省略、悬停看全文，不挤掉右边的用量。 */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-s);
     color: var(--text-2);

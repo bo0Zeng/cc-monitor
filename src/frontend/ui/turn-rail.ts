@@ -24,6 +24,8 @@ export interface RailHost {
   waiting(): boolean;
   /** 跳到那一轮开头（没加载的由宿主取到再跳）。 */
   jump(uuid: string): void;
+  /** 说话那一方叫什么（那一家的短名）；还不知道是哪一家 ⇒ `null`。 */
+  speaker?(): string | null;
 }
 
 /** 轮 ⇒ 格：每格 `[from, to]`（轮的下标，含两头）。不超过上限一轮一格。 */
@@ -138,7 +140,11 @@ export class TurnRail {
         : copyText("stream.rail.tipRange", { from: from + 1, to: to + 1, time: formatTimestampShort(t.start) });
     card.appendChild(head);
     if (t.said) card.appendChild(line("turn-tip-said", copyText("stream.rail.you", { text: t.said })));
-    if (from === to && t.reply) card.appendChild(line("turn-tip-reply", copyText("stream.rail.claude", { text: t.reply })));
+    if (from === to && t.reply) {
+      // 说话那一方的名字（那一家的短名）；还不知道是哪一家 ⇒ 只写回复本身。
+      const who = this.host.speaker?.() ?? null;
+      card.appendChild(line("turn-tip-reply", who ? copyText("stream.rail.reply", { who, text: t.reply }) : t.reply));
+    }
     return card;
   }
 }

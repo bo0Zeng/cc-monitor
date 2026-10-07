@@ -29,6 +29,8 @@ export interface ToastOptions {
 export interface ToastAction {
   label: string;
   run: () => void;
+  /** 只在提示条上出：它做的就是打开「消息」里的这一条，在「消息」里不再出一遍。 */
+  toastOnly?: boolean;
 }
 
 export const TOAST_PLAIN_MS = 4000;

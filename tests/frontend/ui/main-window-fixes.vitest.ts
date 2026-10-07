@@ -485,6 +485,7 @@ describe("切走再切回一个 tab：回到离开时的位置", () => {
 
 describe("上下文占用：状态栏与监控板读同一个上限（后端定的）", () => {
   const facts = (limit: number, limitFrom: "relay" | "assumed"): SessionFacts => ({
+    agent: "claude",
     end: 1,
     forkedFrom: null,
     touchedFiles: [],

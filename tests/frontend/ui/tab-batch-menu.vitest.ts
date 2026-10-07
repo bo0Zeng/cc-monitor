@@ -115,6 +115,7 @@ describe("批量菜单", () => {
     ]);
     const opts = vi.mocked(showActionFailureToast).mock.calls.at(-1)?.[2] as { action?: { label: string; run: () => void } };
     expect(opts.action?.label, "有逐条原因 ⇒ 带［查看］").toBe(copyText("tabBatch.result.view"));
+    expect((opts.action as { toastOnly?: boolean }).toastOnly, "［查看］只在提示条上出（「消息」里那一条自己就展得开）").toBe(true);
     opts.action!.run();
     expect(showMessage, "［查看］打开「消息」并展开刚才那一条").toHaveBeenCalledWith({ title: "最新一条" });
     run.confirm.mockResolvedValueOnce(false);

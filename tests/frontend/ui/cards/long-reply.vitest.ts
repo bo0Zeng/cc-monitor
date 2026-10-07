@@ -117,4 +117,17 @@ describe("长回复建卡", () => {
     expect(rendered).toEqual([md.length]);
     expect(el.querySelector(".block-body-show-full")).toBeNull();
   });
+
+  it("★ 卡头那一家的名字是宿主交进来的（会话是哪一家由后端说），不按会话文件名猜；还不知道 ⇒ 先空着、按那一格补", async () => {
+    const { SPEAKER_SELECTOR } = await import("../../../../src/frontend/ui/cards/speaker");
+    const head = (speaker: string | null, parentPath: string): string => {
+      const el = (renderMessage(asst("好"), { ...ctx(), parentPath, speaker }) as { element: HTMLElement }).element;
+      const wrap = document.createElement("div");
+      wrap.appendChild(el);
+      return wrap.querySelector<HTMLElement>(SPEAKER_SELECTOR)?.textContent ?? "<没找到那一格>";
+    };
+    expect(head("Codex", "/p/s.jsonl")).toBe("Codex");
+    expect(head("Claude", "/x/rollout-2026-01-01.jsonl"), "文件名像 Codex 也照宿主说的").toBe("Claude");
+    expect(head(null, "/p/s.jsonl"), "还不知道是哪一家 ⇒ 不顶替成哪一家").toBe("");
+  });
 });

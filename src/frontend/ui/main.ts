@@ -284,6 +284,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const panelHost: AcctPanelHost = {
     sessionTitle: (sid) => tabs.snapshotSessions().find((x) => x.sessionId === sid)?.title ?? sid.slice(0, 8),
     cwdOf: (sid) => tabs.snapshotSessions().find((x) => x.sessionId === sid)?.cwd ?? "",
+    agentOf: (sid) => tabs.agentOf(sid),
     openSettings: (origin) => void openSettingsWindow(undefined, dest.accountsOf(origin)),
     openDefaultMenu: (anchor, origin) => void accountChip.openDefaultMenu(anchor, origin),
     defaultOf: (origin) => accountChip.defaultOf(origin),

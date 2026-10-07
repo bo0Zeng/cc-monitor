@@ -131,6 +131,11 @@ export interface RenderContext {
   /** 父记录路径：派出子运行的那张卡按它（＋ 工具调用 id）读那个子运行的记录 */
   parentPath: string;
   /**
+   * 说话的那一方叫什么（卡头那一格：那一家的短名，后端画像给的 `speakerName`，按会话的那一家取）。
+   * `null` ＝ 还不知道是哪一家（标签页的会话事实没到）⇒ 卡头那一格先空着，到了由宿主补上（`cards/speaker.ts`）。
+   */
+  speaker?: string | null;
+  /**
    * Batch9-F29：会话来源（本机 = `LOCAL_ORIGIN`；其余 = 远端机器 label）。
    * 上一版是「`null`/缺省 = 本地」—— 两种「没说」都被当成本机；
    * 现在**必填**：每个造渲染上下文的地方都得说出是哪台机器。
@@ -483,11 +488,8 @@ function buildAssistantCard(
 ): HTMLElement {
   const card = document.createElement("div");
   card.className = "card card-assistant";
-  // Phase G 审计修：Codex 会话的 jsonl 是 `rollout-*.jsonl`（同 monitor `adapter::kind_of_record_name` / `codex_sid_from_rollout`〔散文墓碑〕
-  // 的路径判据）；记录本身不带 agent kind，故据会话文件名判 agent 给对的卡头——否则 Codex 的每条文本回复
-  // 都错标成 "Claude"。非 Codex（含 live Claude 会话、子 agent）恒 "Claude"（rollout- 前缀是 Codex 独有）。
-  const agent = /(^|\/)rollout-[^/]*\.jsonl$/.test(ctx.parentPath) ? "Codex" : "Claude";
-  card.appendChild(cardHeader(agent, rec.timestamp, rec.message.model));
+  // 卡头那一家的名字：会话是哪一家由后端说（标签页 · 历史行的 `agent`），名字取画像里的短名；不按文件名猜。
+  card.appendChild(cardHeader(ctx.speaker ?? "", rec.timestamp, rec.message.model));
 
   const body = document.createElement("div");
   body.className = "card-body";

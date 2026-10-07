@@ -82,6 +82,7 @@ pub(crate) const AGENT_KIND: &str = "codex";
 pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     adapter_id: AGENT_KIND,
     display_name: "Codex",
+    speaker_name: "Codex",
     default_launcher: resume::DEFAULT_COMMAND,
     launcher_alias: None,
     resume_token: resume::RESUME_TOKEN,

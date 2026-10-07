@@ -140,6 +140,8 @@ pub(crate) struct SessionFacts {
     /// 会话的项目目录（会话起在哪个目录）：适配层读记录开头给（`agents::project_dir_of`），读到即锁定；
     /// 开头里还没有 ⇒ `null`，下一次再读。与会话宣告那一帧的 `project_dir` 同一个函数。
     pub(crate) project_dir: Option<String>,
+    /// 这份记录是哪一家的（线上的 kind，适配层按记录认：`agents::record_kind_of`）；认不出 ⇒ `null`（界面要分家的那几项灰着，不落哪一家）。
+    pub(crate) agent: Option<String>,
     /// 此刻持着这条会话的活进程 pid（这台的 pidfile，判活同会话宣告那一路），升序；不累加，每次现查（`prior` 里那一份不用）。
     /// 不止一个 ⇒ 同一条会话有几个进程在同时写。不留 pidfile 的那一家恒空。
     pub(crate) writers: Vec<u32>,
@@ -340,6 +342,7 @@ pub(crate) fn context_limit(
 /// （serde 对 `Option` 缺格默认读成 `None`，所以键集合先逐层核一遍 —— 不猜）。
 pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     const TOP: &[&str] = &[
+        "agent",
         "end",
         "forkedFrom",
         "lastSay",

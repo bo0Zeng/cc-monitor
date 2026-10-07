@@ -11,7 +11,7 @@ import { putAccounts } from "./app-store";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, isOldBackend, jsonBody, linesOf, readJson, saidOf } from "./ipc/chan-caller";
-import { ACTIVE_AGENT, lookupAgentProfile } from "./agent-profile";
+import { DEFAULT_AGENT, lookupAgentProfile } from "./agent-profile";
 import { decodeAccountsList, decodeTrust } from "./accounts-decode";
 import type { AccountsState, SessionAccount } from "./accounts";
 // API key 那两问的成品（`apikey-routing`）住 `apikey-reads.ts`；本文件只给账号面包一层（`agent` 与账号清单同一个出处）。
@@ -95,12 +95,12 @@ const TRUST_BUDGET_MS = 30_000;
 const accountsOldBackend = (): string => copyText("accounts.oldBackend.accounts");
 
 /**
- * 这次起会话的是哪一家（适配器 id，后端并 apikey 表时认它）。**值从后端来**：生成物里的 `ACTIVE_AGENT`
- * 与那一行的 `adapterId`（后端 `src/backend/agents/<名>/` 注册表 `Adapter.launch` 那张表，从前是 monitor `adapter.rs`），与 monitor 侧 `history::launch_agent_id` 〔散文墓碑〕
+ * 账号库那一家（适配器 id，后端并 apikey 表时认它）：新会话默认起的那一家 —— 账号 chip · 设置页 · 「新会话默认」说的都是它。
+ * **值从后端来**：生成物里的 `DEFAULT_AGENT`（注册表里声明默认的那一家）与那一行的 `adapterId`（后端 `src/backend/agents/<名>/` 注册表 `Adapter.launch` 那张表，从前是 monitor `adapter.rs`），与 monitor 侧 `history::launch_agent_id` 〔散文墓碑〕
  * 同一个事实（起会话那一侧写进中转路由键第 1 段的就是它）。表里没有 ⇒ 抛（不回落到任何一家）。
  */
 export function launchAgentId(): string {
-  const got = lookupAgentProfile(ACTIVE_AGENT);
+  const got = lookupAgentProfile(DEFAULT_AGENT);
   if (!got.known) throw new Error(got.message);
   return got.facts.adapterId;
 }

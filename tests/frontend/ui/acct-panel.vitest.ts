@@ -36,6 +36,7 @@ const NOW = 1_791_189_600;
 const host: AcctPanelHost = {
   sessionTitle: () => "orders",
   cwdOf: () => "/w",
+  agentOf: () => "claude",
   openSettings: vi.fn(),
   openDefaultMenu: vi.fn(),
   defaultOf: () => "work",

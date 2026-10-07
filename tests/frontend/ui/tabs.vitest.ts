@@ -221,6 +221,15 @@ import {
   type TabRect,
 } from "../../../src/frontend/ui/tabs";
 import { COLLECTION_CAP, type TabCollection } from "../../../src/frontend/ui/tab-collections";
+
+// 这一份里的会话都是 claude 会话：建好 tab 就当它的会话事实（`agent`）已经到了 —— 恢复 / 接回 / 选号要知道是哪一家，
+//   事实没到之前那几项灰着的那一形另有判据（下面「还不知道是哪一家」那一组）。
+const realEnsureTab = TabManager.prototype.ensureTab;
+TabManager.prototype.ensureTab = function (this: TabManager, ...args: Parameters<TabManager["ensureTab"]>) {
+  const t = realEnsureTab.apply(this, args);
+  if (t.agent === null && !(globalThis as { __keepAgentUnknown?: boolean }).__keepAgentUnknown) t.agent = "claude";
+  return t;
+};
 import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, LIVE_UNKNOWN_HOST, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
 import { readFileSync } from "node:fs";
 import { buildStepLine } from "../../../src/frontend/ui/cards/step-line";
@@ -1130,6 +1139,25 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
     // 默认 resume（没点号）⇒ 跟随，交给那台判。
     expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", "cct", { account: { kind: "follow" }, preflight: expect.any(Function) });
     expect(resumed()).toEqual([]);
+  });
+
+  it("★ 会话事实到了才知道是哪一家：codex 会话按 codex 起；还不知道是哪一家 ⇒ 不起、说一句（不落 claude）", async () => {
+    tm.ensureTab("cx", "/home/pi/proj", "/p/cx.jsonl", "devbox");
+    home(tm).store.tabs.get("cx")!.agent = "codex";
+    tm.archiveTab("cx");
+    await home(tm).actions.resumeTab("cx");
+    expect(vi.mocked(runRemoteResume).mock.calls.at(-1)?.[1]).toBe("codex");
+    vi.mocked(runRemoteResume).mockClear();
+    (globalThis as { __keepAgentUnknown?: boolean }).__keepAgentUnknown = true;
+    try {
+      tm.ensureTab("u1", "/home/pi/proj", "/p/u1.jsonl", "devbox");
+    } finally {
+      (globalThis as { __keepAgentUnknown?: boolean }).__keepAgentUnknown = false;
+    }
+    tm.archiveTab("u1");
+    await home(tm).actions.resumeTab("u1");
+    expect(runRemoteResume, "还不知道是哪一家就起了").not.toHaveBeenCalled();
+    expect(String(vi.mocked(showActionFailureToast).mock.calls.at(-1)?.[0])).toContain("还不知道这个会话是哪一家");
   });
 
   // 点了号 ⇒ 点名那个号原样交给那台（它判选不选得了；选不了时的说清 ＋ 显式选择由 `remote-launch-run.vitest.ts` 钉）。
@@ -4842,6 +4870,7 @@ describe.each([
 // 夹具只造结构（sid / 路径 / 占位 id），不采会话正文。
 describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () => {
   const facts = (p: Partial<SessionFacts> = {}): SessionFacts => ({
+    agent: "claude",
     end: 100,
     forkedFrom: null,
     touchedFiles: [],
@@ -4895,6 +4924,26 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect(tab.forkedFromSessionId).toBe("abcd1234-parent");
     expect(tab.title.startsWith("↳ ")).toBe(true);
     expect(cardText(tm, "fork-sid"), "悬停卡标出来源 sid 前 8 位").toContain(copyText("tabBar.hover.forked", { id: "abcd1234" }));
+  });
+
+  it("★ 成品说是哪一家 ⇒ tab 记下它（之前不知道 ⇒ `null`，不落 claude）；先画出来的卡头那一格补上那一家的短名", async () => {
+    (globalThis as { __keepAgentUnknown?: boolean }).__keepAgentUnknown = true;
+    try {
+      answerFacts(() => facts({ agent: "codex" }));
+      tm.onLine(line("cx-sid", 0));
+      const tab = home(tm).store.tabs.get("cx-sid")!;
+      expect(tab.agent, "事实到之前不知道是哪一家").toBeNull();
+      const card = document.createElement("div");
+      card.className = "card card-assistant";
+      card.innerHTML = '<div class="card-header"><span class="role"></span></div>';
+      tab.streamEl.appendChild(card);
+      const head = card.querySelector<HTMLElement>(".role")!;
+      await settle();
+      expect(tab.agent).toBe("codex");
+      expect(head.textContent, "卡头那一格补上那一家的短名（画像里的 speakerName）").toBe("Codex");
+    } finally {
+      (globalThis as { __keepAgentUnknown?: boolean }).__keepAgentUnknown = false;
+    }
   });
 
   it("成品说不止一个进程在写这条会话 ⇒ tab 的悬停提示多一行；一个 ⇒ 不说；会话结束了 ⇒ 不说", async () => {

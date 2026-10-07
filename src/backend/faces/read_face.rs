@@ -406,6 +406,9 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             if facts.project_dir.is_none() {
                 facts.project_dir = history_query::facts_project_dir(home, path);
             }
+            if facts.agent.is_none() {
+                facts.agent = history_query::facts_agent(home, path);
+            }
             facts.writers = accounts_query::session_writers(home, sid);
             // 需要你：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
             facts.needs = facts_query::needs_of(
