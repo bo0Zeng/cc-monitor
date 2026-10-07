@@ -52,7 +52,6 @@ import { KeysOverview } from "./views/keys-overview";
 import { StatusMessages } from "./status-messages";
 import { StatusChores } from "./status-chores";
 import { choresOf } from "./settings/data-reads";
-import { onMachineState } from "./machine-feed";
 import { restoreZoom, stepZoom } from "./zoom";
 import { mountTabBarFold, tabBarManuallyFolded, toggleTabBarFold } from "./tab-bar-fold";
 import { attachTooltip } from "./kit/tooltip";
@@ -181,9 +180,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   status.appendChild(chores.el);
   void chores.refreshAll();
-  onMachineState((origin, m) => {
-    if (m?.state === "up") void chores.refresh(origin);
-  });
   void getCurrentWindow()
     .onFocusChanged(({ payload: focused }) => {
       if (focused) void chores.refreshAll();

@@ -18,7 +18,6 @@ import { machineName } from "./control-said";
 import { toast } from "./kit/toast";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { previewByTmuxName } from "./terminal-reads";
-import type { SlotSpec } from "./launch-slot";
 
 /** 预算：从命令发出去到那台报出会话。慢机器上 ssh 握手 ＋ claude 冷启动在这之内；过了只说「没看到」，不说失败。 */
 export const ARRIVAL_BUDGET_MS = 45_000;
@@ -40,6 +39,20 @@ export type LaunchWait = "arrived" | "missed" | "unsent";
 
 /** 认它用的那一格。 */
 export type ArrivalMatch = { sid: string } | { cwd: string };
+
+/** 占位标签页那一件要的（`launch-slot.ts` 画它）：放在这里，起会话的几条路交它时不必 import 画它的那一份。 */
+export interface SlotSpec {
+  origin: Origin;
+  /** 起在哪个目录（那台展开过的）。 */
+  cwd: string;
+  /** 起在 tmux 会话里 ⇒ 它的名字；开窗起的 ⇒ `null`。 */
+  tmuxName: string | null;
+  /** 起的是哪一家（［在终端里打开］按它渲命令）。 */
+  agent: string;
+  /** 认报到用的那一格（分叉 ⇒ sid；新起的 ⇒ 目录）。 */
+  match: ArrivalMatch;
+}
+
 
 export interface ArrivalSpec {
   origin: Origin;

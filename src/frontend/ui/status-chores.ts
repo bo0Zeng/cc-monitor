@@ -1,7 +1,7 @@
 /**
  * 状态栏「要你动手 N」：N ＝ 各台 `data-report` 的 `chores` 相加，与设置窗「文件与数据」左栏角标同一个数
  * （读 `settings/data-reads.ts::choresOf`，问不到的那台不算、不当 0）。0 不渲染；点了打开设置窗直达「文件与数据」。
- * 什么时候问：起来时各台问一遍（`refreshAll`）· 那台连上了重问那一台（`refresh`）· 主窗口拿回焦点时各台再问一遍（从设置窗处理完回来）。
+ * 什么时候问：起来时各台问一遍 · 主窗口拿回焦点时各台再问一遍（从设置窗处理完回来）（`refreshAll`）；`refresh` 只问一台。
  */
 import { chip } from "./kit/chip";
 import { copyText } from "./copy-table";

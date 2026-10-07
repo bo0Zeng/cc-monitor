@@ -18,7 +18,7 @@
     transition: border-color var(--dur-press);
   }
 
-  .select:hover:not(:disabled) {
+  .select:hover {
     border-color: var(--text-faint);
   }
 
@@ -30,6 +30,7 @@
   }
 
   .select:disabled {
+    border-color: var(--field-border);
     opacity: var(--state-disabled-opacity);
     cursor: default;
   }
